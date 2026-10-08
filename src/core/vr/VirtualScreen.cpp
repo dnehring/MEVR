@@ -40,15 +40,17 @@ void ReleaseQuad() {
     }
 }
 
+// Closes everything down to the OpenXR instance, so the next start picks up whichever runtime
+// is active then (e.g. after switching from the Oculus runtime to SteamVR).
 void TearDownXr() {
-    if (!gXrUp) {
+    if (!gSession.HasInstance()) {
         return;
     }
     ReleaseQuad();
     gSession.Shutdown();
-    gXrUp = false;
     gLastState = XR_SESSION_STATE_UNKNOWN;
-    log::Info("virtual screen: XR session closed");
+    log::Info("virtual screen: XR {} closed", gXrUp ? "session" : "instance (no session yet)");
+    gXrUp = false;
 }
 
 // The headset session gaining focus doesn't give the game window Windows focus, and UE3 ignores

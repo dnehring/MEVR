@@ -40,6 +40,7 @@ public:
     bool BeginFrame(XrFrameState& state);
     void EndFrame(XrTime displayTime, std::span<XrCompositionLayerBaseHeader const* const> layers);
 
+    bool HasInstance() const { return instance_ != XR_NULL_HANDLE; }
     XrSession Handle() const { return session_; }
     XrSpace LocalSpace() const { return localSpace_; }
     // Changes whenever the session (and every swapchain created from it) is destroyed.
