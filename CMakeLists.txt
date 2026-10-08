@@ -163,6 +163,8 @@ set(MEVR_MOD_SOURCES
     src/game/SkeletonProbe.hpp
     src/game/ViewAnchor.cpp
     src/game/ViewAnchor.hpp
+    src/game/Weapon.cpp
+    src/game/Weapon.hpp
     src/mod/Mod.cpp
     src/mod/ModApi.hpp
 )
