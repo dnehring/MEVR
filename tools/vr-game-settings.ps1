@@ -4,14 +4,17 @@
 #                     clock beating against the headset's (research/08 H14).
 #   MotionBlur=False  Head rotation reads as camera motion, so every head turn smears.
 #   FilmGrain=False   Screen-locked noise; uncomfortable in a headset.
+#   DepthOfField=False Blurs whatever the game camera isn't focused on, which in VR is wherever the
+#                     player looks; it also fights stereo depth.
 #   [HDR] DesiredRange=DynamicRange_SDR
 #                     HDR renders to an FP16 scRGB backbuffer whose >1.0 highlights the sRGB eye
 #                     swapchains clip. Prior art (Halcyon, research/13) sets it here [verify:
 #                     the mod log's backbuffer format should no longer be R16G16B16A16_FLOAT].
 #
-# Optional: -ResX/-ResY set the game's render size. The headset's eyes are roughly square, so a
-# squarer image fills more of the vertical view (16:9 covers about 75 degrees vertically at
-# 108 horizontal). In windowed mode the size must fit on the monitor, e.g. -ResX 1400 -ResY 1400.
+# Optional: -ResX/-ResY set the game's render size, i.e. each eye's render with Halcyon's stereo
+# (LE1). Halcyon's Stereo mode expects a square 3072x3072 (its log flags anything else as
+# TARGETCHK MISMATCH): the eyes are about square, and a 16:9 render has much less vertical detail.
+# Halcyon reports a larger display to the game, so this may exceed the monitor even windowed.
 #
 # The first -Apply keeps a copy as GamerSettings.ini.mevr_backup; -Restore puts it back.
 # The game must be closed (it rewrites the file on exit).
@@ -35,7 +38,7 @@ $backup = "$ini.mevr_backup"
 if (-not (Test-Path $ini)) { throw "Not found: $ini (start the game once to create it)" }
 
 $wanted = [ordered]@{
-    'SystemSettings' = [ordered]@{ UseVSync = 'False'; MotionBlur = 'False'; FilmGrain = 'False' }
+    'SystemSettings' = [ordered]@{ UseVSync = 'False'; MotionBlur = 'False'; FilmGrain = 'False'; DepthOfField = 'False' }
     'HDR'            = [ordered]@{ DesiredRange = 'DynamicRange_SDR' }
 }
 if ($ResX -or $ResY) {
