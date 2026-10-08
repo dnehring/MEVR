@@ -84,8 +84,22 @@ char const* FormatName(DXGI_FORMAT format) {
 
 bool Blit::Initialize(ID3D11Device* device) {
     device_ = device;
-    if (FAILED(device->CreateDeferredContext(0, &deferred_))) {
-        log::Error("blit: CreateDeferredContext failed");
+    UINT const creationFlags = device->GetCreationFlags();
+    D3D_FEATURE_LEVEL const featureLevel = device->GetFeatureLevel();
+    log::Info("blit: game device flags 0x{:x}, feature level 0x{:x}", creationFlags, static_cast<int>(featureLevel));
+
+    ComPtr<ID3D11Device1> device1;
+    if (FAILED(device->QueryInterface(IID_PPV_ARGS(&device1)))) {
+        log::Error("blit: ID3D11Device1 unavailable");
+        return false;
+    }
+    UINT const stateFlags = (creationFlags & D3D11_CREATE_DEVICE_SINGLETHREADED) != 0
+        ? D3D11_1_CREATE_DEVICE_CONTEXT_STATE_SINGLETHREADED
+        : 0;
+    HRESULT const hr = device1->CreateDeviceContextState(stateFlags, &featureLevel, 1, D3D11_SDK_VERSION,
+        __uuidof(ID3D11Device), nullptr, &state_);
+    if (FAILED(hr)) {
+        log::Error("blit: CreateDeviceContextState failed: 0x{:08x}", static_cast<unsigned>(hr));
         return false;
     }
     auto const vsCode = Compile("VSMain", "vs_5_0", false);
@@ -119,7 +133,7 @@ void Blit::Shutdown() {
     psDecodeSrgb_.Reset();
     psPassthrough_.Reset();
     vs_.Reset();
-    deferred_.Reset();
+    state_.Reset();
     device_.Reset();
     copyDesc_ = {};
 }
@@ -158,32 +172,46 @@ bool Blit::EnsureCopy(ID3D11Texture2D* source) {
 
 void Blit::Draw(ID3D11DeviceContext* immediate, ID3D11Texture2D* source, ID3D11RenderTargetView* target,
     UINT targetWidth, UINT targetHeight) {
-    if (!deferred_ || !EnsureCopy(source)) {
+    if (!state_ || !EnsureCopy(source)) {
         return;
     }
-    ID3D11DeviceContext* const ctx = deferred_.Get();
+    ComPtr<ID3D11DeviceContext1> ctx;
+    if (FAILED(immediate->QueryInterface(IID_PPV_ARGS(&ctx)))) {
+        return;
+    }
+    // Copies don't touch pipeline state, so they can run in the game's state.
     if (sourceIsMultisampled_) {
         ctx->ResolveSubresource(copy_.Get(), 0, source, 0, copyDesc_.Format);
     } else {
         ctx->CopyResource(copy_.Get(), source);
     }
 
+    // Swap in our own pipeline state; the game's comes back untouched afterwards.
+    ComPtr<ID3DDeviceContextState> gameState;
+    ctx->SwapDeviceContextState(state_.Get(), &gameState);
+
     D3D11_VIEWPORT const viewport{0.0f, 0.0f, static_cast<float>(targetWidth), static_cast<float>(targetHeight), 0.0f, 1.0f};
     ID3D11ShaderResourceView* const srv = copySrv_.Get();
     ID3D11SamplerState* const sampler = sampler_.Get();
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ctx->IASetInputLayout(nullptr);
     ctx->VSSetShader(vs_.Get(), nullptr, 0);
     ctx->PSSetShader(decodeSrgb_ ? psDecodeSrgb_.Get() : psPassthrough_.Get(), nullptr, 0);
     ctx->PSSetShaderResources(0, 1, &srv);
     ctx->PSSetSamplers(0, 1, &sampler);
-    ctx->OMSetRenderTargets(1, &target, nullptr);
+    ctx->RSSetState(nullptr);
     ctx->RSSetViewports(1, &viewport);
+    ctx->OMSetBlendState(nullptr, nullptr, 0xffffffff);
+    ctx->OMSetDepthStencilState(nullptr, 0);
+    ctx->OMSetRenderTargets(1, &target, nullptr);
     ctx->Draw(3, 0);
 
-    ComPtr<ID3D11CommandList> commands;
-    if (SUCCEEDED(ctx->FinishCommandList(FALSE, &commands))) {
-        immediate->ExecuteCommandList(commands.Get(), TRUE);  // TRUE: restore the game's state
-    }
+    // Don't keep the XR swapchain image or our copy bound inside our state object.
+    ID3D11ShaderResourceView* const nullSrv = nullptr;
+    ctx->PSSetShaderResources(0, 1, &nullSrv);
+    ctx->OMSetRenderTargets(0, nullptr, nullptr);
+
+    ctx->SwapDeviceContextState(gameState.Get(), nullptr);
 }
 
 } // namespace mevr::d3d11

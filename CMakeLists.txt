@@ -51,6 +51,8 @@ set(MEVR_HOST_SOURCES
 )
 
 set(MEVR_MOD_SOURCES
+    src/core/Hotkey.cpp
+    src/core/Hotkey.hpp
     src/core/d3d11/Blit.cpp
     src/core/d3d11/Blit.hpp
     src/core/vr/VirtualScreen.cpp

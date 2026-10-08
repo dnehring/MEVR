@@ -1,14 +1,15 @@
 #pragma once
 
-#include <d3d11.h>
+#include <d3d11_1.h>
 #include <wrl/client.h>
 
 namespace mevr::d3d11 {
 
 // Copies a texture the game owns (e.g. the backbuffer, which usually can't be sampled) into an
-// internal shader-readable copy, then draws it into a render target. Commands are recorded on a
-// deferred context and executed with state restore, so the game's immediate-context state is
-// untouched.
+// internal shader-readable copy, then draws it into a render target. Drawing happens on the
+// game's immediate context inside our own ID3DDeviceContextState, swapped in and back out, so
+// the game's pipeline state is untouched. (Deferred contexts aren't an option: ME LE creates its
+// device single-threaded.)
 class Blit {
 public:
     bool Initialize(ID3D11Device* device);
@@ -23,7 +24,7 @@ private:
     bool EnsureCopy(ID3D11Texture2D* source);
 
     Microsoft::WRL::ComPtr<ID3D11Device> device_;
-    Microsoft::WRL::ComPtr<ID3D11DeviceContext> deferred_;
+    Microsoft::WRL::ComPtr<ID3DDeviceContextState> state_;
     Microsoft::WRL::ComPtr<ID3D11VertexShader> vs_;
     Microsoft::WRL::ComPtr<ID3D11PixelShader> psPassthrough_;
     Microsoft::WRL::ComPtr<ID3D11PixelShader> psDecodeSrgb_;

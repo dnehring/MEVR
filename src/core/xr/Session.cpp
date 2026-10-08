@@ -150,7 +150,7 @@ bool Session::EnsureCreated(ID3D11Device* device) {
     if (session_ != XR_NULL_HANDLE) {
         return true;
     }
-    if (instanceFailed_) {
+    if (instanceFailed_ || userExited_) {
         return false;
     }
     if (instance_ == XR_NULL_HANDLE && !CreateInstance()) {
@@ -216,6 +216,7 @@ void Session::Shutdown() {
         instance_ = XR_NULL_HANDLE;
     }
     system_ = XR_NULL_SYSTEM_ID;
+    userExited_ = false;
     instanceFailed_ = false;
     loggedWaitingForHeadset_ = false;
     errorsLogged_ = 0;
@@ -239,8 +240,13 @@ void Session::PollEvents() {
             } else if (state_ == XR_SESSION_STATE_STOPPING) {
                 Check(xrEndSession(session_), "xrEndSession");
                 running_ = false;
-            } else if (state_ == XR_SESSION_STATE_EXITING || state_ == XR_SESSION_STATE_LOSS_PENDING) {
-                // Tear down; EnsureCreated builds a new session when the runtime allows.
+            } else if (state_ == XR_SESSION_STATE_EXITING) {
+                // The user chose Quit in the headset menu. Don't come back on our own.
+                userExited_ = true;
+                DestroySession();
+                return;
+            } else if (state_ == XR_SESSION_STATE_LOSS_PENDING) {
+                // Runtime trouble (e.g. Link dropped): rebuild when it allows.
                 DestroySession();
                 system_ = XR_NULL_SYSTEM_ID;
                 nextSystemRetryMs_ = GetTickCount64() + kSystemRetryMs;

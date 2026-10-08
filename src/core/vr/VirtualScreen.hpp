@@ -11,4 +11,9 @@ void OnPresent(IDXGISwapChain* swapChain);
 // Releases the XR session and GPU resources. Not concurrent with OnPresent.
 void Shutdown();
 
+// Any thread. Disabling tears the XR session down on the next frame (the game keeps running
+// on the monitor); enabling starts a new one. Quitting from the headset menu disables it.
+void SetEnabled(bool enabled);
+bool IsEnabled();
+
 } // namespace mevr::vr::virtual_screen

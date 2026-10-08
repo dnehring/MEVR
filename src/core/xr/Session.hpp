@@ -31,6 +31,10 @@ public:
     // Drains runtime events; begins and ends the session when the runtime asks.
     void PollEvents();
     bool IsRunning() const { return running_; }
+    XrSessionState State() const { return state_; }
+    // The user quit from the headset's menu (session reached EXITING). The caller should shut
+    // the session down and not recreate it until the user asks again.
+    bool UserExited() const { return userExited_; }
 
     // xrWaitFrame + xrBeginFrame. When this returns true, EndFrame must follow.
     bool BeginFrame(XrFrameState& state);
@@ -58,6 +62,7 @@ private:
     XrSpace localSpace_ = XR_NULL_HANDLE;
     XrSessionState state_ = XR_SESSION_STATE_UNKNOWN;
     bool running_ = false;
+    bool userExited_ = false;
     bool instanceFailed_ = false;
     bool loggedWaitingForHeadset_ = false;
     std::uint64_t nextSystemRetryMs_ = 0;

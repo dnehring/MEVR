@@ -3,6 +3,7 @@
 
 #include "mod/ModApi.hpp"
 
+#include "core/Hotkey.hpp"
 #include "core/Log.hpp"
 #include "core/vr/VirtualScreen.hpp"
 #include "engine/Engine.hpp"
@@ -23,6 +24,8 @@ constexpr double kHeartbeatSeconds = 5.0;
 std::unique_ptr<::LESDK::Initializer> gInit;
 std::atomic<bool> gActive{false};  // read on the render thread too
 bool gHooked = false;  // ProcessEvent hook live (after the script packages loaded)
+
+mevr::Hotkey gVrToggleKey{VK_OEM_6};  // ]
 
 double gRetryTimer = kStartupRetrySeconds;  // first attempt on the first tick
 double gHeartbeatElapsed = 0.0;
@@ -78,6 +81,11 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     using namespace mevr;
     if (!gActive) {
         return;
+    }
+    if (gVrToggleKey.Pressed()) {
+        bool const enable = !vr::virtual_screen::IsEnabled();
+        vr::virtual_screen::SetEnabled(enable);
+        log::Info("]: VR {}", enable ? "ON" : "OFF");
     }
     if (!gHooked) {
         gRetryTimer += deltaSeconds;

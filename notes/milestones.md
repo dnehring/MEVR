@@ -66,10 +66,40 @@
 - `Camera.UpdateCamera` (once per frame) is a clean per-frame point for writing the base
   camera pose (`CameraCache.POV`).
 
-## M2: game mirrored onto a virtual screen in the headset. Next
+## M2: game mirrored onto a virtual screen in the headset. In progress
 
-1. D3D11 Present hook (REFramework's vtable approach, MIT), routed through our own hook manager.
-2. OpenXR session on the game's D3D11 device (Oculus runtime), one quad layer showing the
-   backbuffer copy.
-3. In parallel: find LE1 `ULocalPlayer::CalcSceneView` (Ghidra and x64dbg; LE3 is at RVA
-   `0x6cffd0` for comparison).
+### Attempt 1 (2026-10-07, 21:31–21:35)
+
+- **Present hook:** host-owned `IDXGISwapChain::Present` hook via SPI, installed at
+  `dxgi!...+0x...9000`.
+- **Blit failed first:** `CreateDeferredContext failed`. The game's D3D11 device is created with
+  **flags `0x1` (`D3D11_CREATE_DEVICE_SINGLETHREADED`)**, which forbids deferred contexts.
+  - Fix, hot-reloaded in game: draw on the immediate context inside our own
+    `ID3DDeviceContextState` (`SwapDeviceContextState` in and back out).
+- **After the hot reload:**
+  - **Runtime and headset:** OpenXR runtime **Oculus 1.208.0**, system **Meta Quest Pro** (max
+    16 layers). The session reached **FOCUSED** and the user saw the full-screen app view.
+  - **Game device:** feature level 0xb000 (11_0).
+  - **Backbuffer:** **2490×1401 `R16G16B16A16_FLOAT`**. That's FP16 scRGB (linear), so there's
+    no sRGB decode. **[verify]** whether highlights above 1.0 clip, and whether HDR is on.
+  - **Frame rate:** about 88–104 fps while the session ran, paced by the headset (Quest Pro
+    90 Hz). In-game it was 240 fps uncapped before XR.
+- **Bugs found:**
+  1. **Input didn't reach the game.** The game window didn't have Windows focus (UE3 ignores
+     keyboard, mouse and gamepad without it).
+     - Fix: when the XR session becomes FOCUSED, bring the game window to the foreground
+       (`AttachThreadInput` + `SetForegroundWindow`).
+  2. **Quit from the Meta menu kept relaunching VR.** EXITING was treated like LOSS_PENDING and
+     the session was recreated after 2 s, twice.
+     - Fix: EXITING means the user quit. Tear XR down and stay off until `]` is pressed in game.
+  3. **Crash on game exit.** The user closed the game from the desktop with the session live.
+     Fail-fast `0xc0000409` in `RuntimeIPCServiceClient_64.dll` (Oculus) during process
+     teardown.
+     - Fix: the host hooks `ExitProcess` and shuts the mod (and XR) down before Windows unloads
+       DLLs.
+
+### Still to do
+
+- Retest with the fixes. Check image correctness (colors and brightness vs the monitor).
+- In parallel: find LE1 `ULocalPlayer::CalcSceneView` (Ghidra and x64dbg; LE3 is at RVA
+  `0x6cffd0` for comparison).

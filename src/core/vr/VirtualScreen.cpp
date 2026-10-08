@@ -7,6 +7,7 @@
 #include <dxgi.h>
 
 #include <array>
+#include <atomic>
 
 namespace mevr::vr::virtual_screen {
 namespace {
@@ -17,10 +18,14 @@ using Microsoft::WRL::ComPtr;
 constexpr float kDistanceMeters = 2.0f;
 constexpr float kWidthMeters = 2.4f;  // about 62 degrees wide at 2 m
 
+std::atomic<bool> gEnabled{true};
 ComPtr<ID3D11Device> gDevice;
+HWND gWindow = nullptr;
 d3d11::Blit gBlit;
 xr::Session gSession;
 xr::QuadSwapchain gQuad;
+bool gXrUp = false;
+XrSessionState gLastState = XR_SESSION_STATE_UNKNOWN;
 bool gFailed = false;
 
 // A swapchain from an older session was destroyed along with that session.
@@ -35,9 +40,51 @@ void ReleaseQuad() {
     }
 }
 
+void TearDownXr() {
+    if (!gXrUp) {
+        return;
+    }
+    ReleaseQuad();
+    gSession.Shutdown();
+    gXrUp = false;
+    gLastState = XR_SESSION_STATE_UNKNOWN;
+    log::Info("virtual screen: XR session closed");
+}
+
+// The headset session gaining focus doesn't give the game window Windows focus, and UE3 ignores
+// keyboard, mouse and gamepad without it. Windows only lets the foreground thread hand out
+// focus, so briefly share its input queue.
+void BringToForeground(HWND window) {
+    HWND const foreground = GetForegroundWindow();
+    if (window == nullptr || foreground == window) {
+        return;
+    }
+    DWORD const foregroundThread = GetWindowThreadProcessId(foreground, nullptr);
+    DWORD const thisThread = GetCurrentThreadId();
+    bool const attached = foregroundThread != 0 && foregroundThread != thisThread &&
+        AttachThreadInput(thisThread, foregroundThread, TRUE);
+    BOOL const ok = SetForegroundWindow(window);
+    if (attached) {
+        AttachThreadInput(thisThread, foregroundThread, FALSE);
+    }
+    log::Info("virtual screen: game window to foreground: {}", ok ? "ok" : "refused by Windows");
+}
+
 } // namespace
 
+void SetEnabled(bool enabled) {
+    gEnabled = enabled;
+}
+
+bool IsEnabled() {
+    return gEnabled;
+}
+
 void OnPresent(IDXGISwapChain* swapChain) {
+    if (!gEnabled) {
+        TearDownXr();
+        return;
+    }
     if (gFailed) {
         return;
     }
@@ -52,6 +99,10 @@ void OnPresent(IDXGISwapChain* swapChain) {
             return;
         }
         gDevice = device;
+        DXGI_SWAP_CHAIN_DESC scDesc{};
+        if (SUCCEEDED(swapChain->GetDesc(&scDesc))) {
+            gWindow = scDesc.OutputWindow;
+        }
     } else if (gDevice != device) {
         return;  // a second device's swap chain; only mirror the game's main one
     }
@@ -59,7 +110,20 @@ void OnPresent(IDXGISwapChain* swapChain) {
     if (!gSession.EnsureCreated(gDevice.Get())) {
         return;
     }
+    gXrUp = true;
     gSession.PollEvents();
+    if (gSession.UserExited()) {
+        gEnabled = false;
+        TearDownXr();
+        log::Info("virtual screen: quit from the headset menu; press ] in game to turn VR back on");
+        return;
+    }
+    if (gSession.State() != gLastState) {
+        gLastState = gSession.State();
+        if (gLastState == XR_SESSION_STATE_FOCUSED) {
+            BringToForeground(gWindow);
+        }
+    }
     if (!gSession.IsRunning()) {
         return;
     }
@@ -112,8 +176,11 @@ void OnPresent(IDXGISwapChain* swapChain) {
 void Shutdown() {
     ReleaseQuad();
     gSession.Shutdown();
+    gXrUp = false;
+    gLastState = XR_SESSION_STATE_UNKNOWN;
     gBlit.Shutdown();
     gDevice.Reset();
+    gWindow = nullptr;
     gFailed = false;
 }
 

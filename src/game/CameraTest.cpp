@@ -1,5 +1,6 @@
 #include "game/CameraTest.hpp"
 
+#include "core/Hotkey.hpp"
 #include "core/Log.hpp"
 #include "engine/Objects.hpp"
 #include "engine/ProcessEvent.hpp"
@@ -35,14 +36,12 @@ struct Watched {
 
 std::vector<std::unique_ptr<Watched>> gWatched;
 
-// Backslash on US layouts. Not F-keys (bound in game) and not backtick (opens the UE console).
-constexpr int kVirtualKeyToggle = VK_OEM_5;
 constexpr double kSweepPeriodSeconds = 4.0;
 constexpr double kSweepDegrees = 30.0;
 constexpr double kRotatorUnitsPerDegree = 65536.0 / 360.0;
 
+Hotkey gToggleKey{VK_OEM_5};  // backslash on US layouts
 bool gSweepOn = false;
-bool gKeyWasDown = false;
 double gSweepTime = 0.0;
 std::atomic<int> gYawOffset{0};
 std::atomic<unsigned> gAdjustedViews{0};
@@ -72,21 +71,13 @@ void OnWatchedEvent(UObject* context, UFunction* function, void* parms, void* /*
     }
 }
 
-bool GameHasFocus() {
-    DWORD pid = 0;
-    GetWindowThreadProcessId(GetForegroundWindow(), &pid);
-    return pid == GetCurrentProcessId();
-}
-
 void PollHotkey() {
-    bool const down = GameHasFocus() && (GetAsyncKeyState(kVirtualKeyToggle) & 0x8000) != 0;
-    if (down && !gKeyWasDown) {
+    if (gToggleKey.Pressed()) {
         gSweepOn = !gSweepOn;
         gSweepTime = 0.0;
         gYawOffset.store(0, std::memory_order_relaxed);
         log::Info("backslash: camera sweep {}", gSweepOn ? "ON" : "OFF");
     }
-    gKeyWasDown = down;
 }
 
 } // namespace

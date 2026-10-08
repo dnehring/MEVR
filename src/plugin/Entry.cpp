@@ -29,6 +29,29 @@ void GameEngineTickHook(UGameEngine* self, float deltaSeconds) {
     mevr::host::Tick(deltaSeconds);
 }
 
+// Close the XR session before Windows starts unloading DLLs: the Oculus runtime's client DLL
+// fail-fasts (0xc0000409) if it's torn down with a live session.
+using tExitProcess = void(WINAPI)(UINT exitCode);
+tExitProcess* gExitProcessOrig = nullptr;
+
+void WINAPI ExitProcessHook(UINT exitCode) {
+    mevr::log::Info("game exiting (code {}); shutting the mod down first", exitCode);
+    mevr::host::Stop();
+    mevr::log::Close();
+    gExitProcessOrig(exitCode);
+}
+
+void HookExitProcess(::LESDK::Initializer& init) {
+    void* const target = reinterpret_cast<void*>(GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "ExitProcess"));
+    if (target != nullptr) {
+        gExitProcessOrig = reinterpret_cast<tExitProcess*>(
+            init.InstallHook("ExitProcess", target, reinterpret_cast<void*>(&ExitProcessHook)));
+    }
+    if (gExitProcessOrig == nullptr) {
+        mevr::log::Warn("ExitProcess hook failed; XR may not shut down cleanly on exit");
+    }
+}
+
 } // namespace
 
 SPI_IMPLEMENT_ATTACH
@@ -71,6 +94,7 @@ SPI_IMPLEMENT_ATTACH
     if (!mevr::host::present::Install(init)) {
         mevr::log::Error("present hook failed; VR output disabled");
     }
+    HookExitProcess(init);
     mevr::log::Info("host attached");
     return true;
 }
