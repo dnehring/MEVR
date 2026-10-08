@@ -1,8 +1,10 @@
 // Offline tests for the math that has to be right before it reaches a headset. No game, no
 // runtime: `ctest -C Release --test-dir build`.
 
+#include "core/ik/ArmPose.hpp"
 #include "core/ik/BoneNames.hpp"
 #include "core/ik/Ik.hpp"
+#include "core/ik/Rigid.hpp"
 #include "core/vr/ViewSync.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/GamepadMapping.hpp"
@@ -12,6 +14,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <numbers>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace {
 
@@ -476,11 +481,260 @@ void TestIk() {
     CHECK(elbowHint.y < torso.rightShoulder.y && elbowHint.x > torso.rightShoulder.x);
 }
 
+mevr::ik::Quat AxisAngleQ(double x, double y, double z, double degrees) {
+    double const half = degrees * std::numbers::pi / 360.0;
+    double const s = std::sin(half) / std::sqrt(x * x + y * y + z * z);
+    return {x * s, y * s, z * s, std::cos(half)};
+}
+
+bool NearV(mevr::ik::Vec3 a, mevr::ik::Vec3 b, double tolerance = 1e-9) {
+    return mevr::ik::Length(a - b) <= tolerance;
+}
+
+bool NearT(mevr::ik::Transform const& a, mevr::ik::Transform const& b, double tolerance = 1e-9) {
+    return NearV(a.translation, b.translation, tolerance) && mevr::ik::AngleBetween(a.rotation, b.rotation) <= tolerance &&
+        std::abs(a.scale - b.scale) <= tolerance;
+}
+
+void TestRigid() {
+    using namespace mevr::ik;
+    // Rotations act as expected and compose right to left.
+    Quat const yaw90 = AxisAngleQ(0, 0, 1, 90);
+    CHECK(NearV(Rotate(yaw90, {1, 0, 0}), {0, 1, 0}, 1e-12));
+    Quat const pitch = AxisAngleQ(0, 1, 0, 30);
+    Vec3 const v{0.3, -1.2, 2.5};
+    CHECK(NearV(Rotate(yaw90 * pitch, v), Rotate(yaw90, Rotate(pitch, v)), 1e-12));
+    CHECK(NearV(Rotate(yaw90 * Conjugate(yaw90), v), v, 1e-12));
+    // FromTo, including opposite directions.
+    for (auto const& [a, b] : {std::pair<Vec3, Vec3>{{1, 0, 0}, {0, 0, 1}}, {{1, 2, 3}, {-2, 0.5, 1}}, {{0, 1, 0}, {0, -1, 0}}}) {
+        CHECK(NearV(Rotate(FromTo(a, b), Normalize(a)), Normalize(b), 1e-9));
+    }
+    // FromAxes recovers a rotation from its axes, on every branch of the matrix conversion.
+    for (Quat const q : {AxisAngleQ(1, 2, 3, 40), AxisAngleQ(1, 0, 0, 179), AxisAngleQ(0, 1, 0, 179), AxisAngleQ(0, 0, 1, 179),
+             AxisAngleQ(-1, 1, 0.2, 200), Quat{}}) {
+        Quat const back = FromAxes(Rotate(q, {1, 0, 0}), Rotate(q, {0, 1, 0}), Rotate(q, {0, 0, 1}));
+        CHECK(AngleBetween(back, q) < 1e-7);
+    }
+    // Bone atoms: compose, invert, relative.
+    Transform const local{AxisAngleQ(1, 1, 0, 25), {3, 4, 5}, 1.0};
+    Transform const parent{AxisAngleQ(0, 0, 1, -70), {-10, 2, 7}, 2.0};
+    Vec3 const p{1, -2, 0.5};
+    CHECK(NearV(Apply(Compose(local, parent), p), Apply(parent, Apply(local, p)), 1e-9));
+    CHECK(NearV(Apply(Inverse(parent), Apply(parent, p)), p, 1e-9));
+    CHECK(NearT(Compose(Relative(local, parent), parent), local, 1e-9));
+    // UE3 FMatrix layout: rows are the images of the axes, row 3 the origin.
+    Affine a;
+    for (int r = 0; r < 3; ++r) {
+        Vec3 const axis = Rotate(parent.rotation, Vec3{r == 0 ? 1.0 : 0.0, r == 1 ? 1.0 : 0.0, r == 2 ? 1.0 : 0.0}) * parent.scale;
+        a.m[r][0] = axis.x;
+        a.m[r][1] = axis.y;
+        a.m[r][2] = axis.z;
+    }
+    a.m[3][0] = parent.translation.x;
+    a.m[3][1] = parent.translation.y;
+    a.m[3][2] = parent.translation.z;
+    CHECK(NearV(TransformPoint(a, p), Apply(parent, p), 1e-9));
+    auto const inverse = InverseAffine(a);
+    CHECK(inverse.has_value() && NearV(TransformPoint(*inverse, TransformPoint(a, p)), p, 1e-9));
+    auto const rotation = RotationOf(a);
+    CHECK(rotation.has_value() && AngleBetween(*rotation, parent.rotation) < 1e-7);
+    Affine mirrored = a;
+    for (int c = 0; c < 3; ++c) {
+        mirrored.m[0][c] = -mirrored.m[0][c];
+    }
+    CHECK(!RotationOf(mirrored).has_value());
+    Affine stretched = a;
+    for (int c = 0; c < 3; ++c) {
+        stretched.m[1][c] *= 1.5;
+    }
+    CHECK(!RotationOf(stretched).has_value());
+    Affine singular = a;
+    for (int c = 0; c < 3; ++c) {
+        singular.m[2][c] = 0.0;
+    }
+    CHECK(!InverseAffine(singular).has_value());
+}
+
+// OpenXR orientations as UE3 rotations: rotating then mapping equals mapping then rotating.
+void TestOrientation() {
+    using mevr::engine::ToUnrealOffset;
+    using mevr::engine::ToUnrealOrientation;
+    using mevr::ik::Vec3;
+    XrQuaternionf const samples[] = {AxisAngle(0, 1, 0, 90), AxisAngle(1, 0, 0, 30), AxisAngle(0, 0, 1, 20), {0.2f, -0.5f, 0.4f, 0.74f}};
+    XrVector3f const vectors[] = {{0, 0, -1}, {1, 0, 0}, {0.3f, -0.7f, 0.2f}};
+    for (int yaw : {0, Units(90), Units(-37)}) {
+        for (XrQuaternionf q : samples) {
+            double const n = std::sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
+            q = {static_cast<float>(q.x / n), static_cast<float>(q.y / n), static_cast<float>(q.z / n), static_cast<float>(q.w / n)};
+            for (XrVector3f const& v : vectors) {
+                Vec3 const turned = mevr::ik::Rotate(mevr::ik::Quat{q.x, q.y, q.z, q.w}, {v.x, v.y, v.z});
+                auto const expected = ToUnrealOffset({static_cast<float>(turned.x), static_cast<float>(turned.y), static_cast<float>(turned.z)}, yaw);
+                auto const mapped = ToUnrealOffset(v, 0);
+                Vec3 const actual = mevr::ik::Rotate(ToUnrealOrientation(q, yaw), {mapped.x, mapped.y, mapped.z});
+                CHECK(NearV(actual, {expected.x, expected.y, expected.z}, 1e-3));
+            }
+        }
+    }
+    // Turning left in OpenXR (about +Y) turns UE3 forward (+X) to the left (-Y).
+    Vec3 const forward = mevr::ik::Rotate(ToUnrealOrientation(AxisAngle(0, 1, 0, 90), 0), {1, 0, 0});
+    CHECK(NearV(forward, {0, -1, 0}, 1e-6));
+}
+
+void TestArmChains() {
+    using mevr::ik::FindArmChain;
+    // ME-style names (the LeftWrist / -Swivel bones the AnimTree's limb controls name), with roll
+    // and swivel helpers in and beside the chain.
+    std::vector<std::string> const me{"Root", "Pelvis", "Spine", "Spine1", "Neck", "Head", "LeftCollar", "LeftShoulder",
+        "LeftShoulder-Swivel", "LeftElbow", "LeftWrist", "LeftHandIndex1", "RightCollar", "RightShoulder", "RightShoulderRoll",
+        "RightElbow", "RightForearmRoll", "RightWrist", "RightHandIndex1", "LHIK"};
+    std::vector<int> const meParents{-1, 0, 1, 2, 3, 4, 3, 6, 6, 7, 9, 10, 3, 12, 13, 13, 15, 15, 17, 17};
+    auto const right = FindArmChain(me, meParents, 1);
+    CHECK(right && right->upper == 13 && right->fore == 15 && right->hand == 17);
+    auto const left = FindArmChain(me, meParents, 0);
+    CHECK(left && left->upper == 7 && left->fore == 9 && left->hand == 10);
+    // Mixamo: "Shoulder" is the clavicle there; the nearest arm-named ancestor wins.
+    std::vector<std::string> const mixamo{"Hips", "Spine", "RightShoulder", "RightArm", "RightForeArm", "RightHand"};
+    std::vector<int> const chainParents{-1, 0, 1, 2, 3, 4};
+    auto const mx = FindArmChain(mixamo, chainParents, 1);
+    CHECK(mx && mx->upper == 3 && mx->fore == 4 && mx->hand == 5);
+    // Biped.
+    std::vector<std::string> const biped{"Bip01", "Bip01 Spine", "Bip01 L Clavicle", "Bip01 L UpperArm", "Bip01 L Forearm", "Bip01 L Hand"};
+    auto const bp = FindArmChain(biped, chainParents, 0);
+    CHECK(bp && bp->upper == 3 && bp->fore == 4 && bp->hand == 5);
+    CHECK(!FindArmChain(biped, chainParents, 1));  // no right arm
+    // Unfamiliar names: the hand's nearest joints.
+    std::vector<std::string> const plain{"root", "j1", "j2", "j3", "R_Hand"};
+    std::vector<int> const plainParents{-1, 0, 1, 2, 3};
+    auto const fallback = FindArmChain(plain, plainParents, 1);
+    CHECK(fallback && fallback->upper == 2 && fallback->fore == 3 && fallback->hand == 4);
+    // An IK helper named like a hand, listed first, and a prop under the wrist don't win.
+    std::vector<std::string> const helpers{"Root", "RightHand_IK", "Spine", "RightShoulder", "RightElbow", "RightWrist", "RightHandProp"};
+    auto const real = FindArmChain(helpers, std::vector<int>{-1, 0, 0, 2, 3, 4, 5}, 1);
+    CHECK(real && real->upper == 3 && real->fore == 4 && real->hand == 5);
+    // A child listed before its parent is rejected (walks could loop).
+    CHECK(!FindArmChain(plain, std::vector<int>{-1, 0, 4, 2, 3}, 1));
+}
+
+void TestArmPose() {
+    using namespace mevr::ik;
+    // A right arm in UE3-like component axes (X forward, Y right, Z up, centimetres), animated
+    // with the elbow bent forward. Each bone's X axis points at its child, rolled arbitrarily.
+    Vec3 const shoulder{0, 18, 145};
+    Vec3 const elbow{5, 20, 117};
+    Vec3 const wrist{25, 20, 105};
+    Quat const upperRot = AxisAngleQ(elbow.x - shoulder.x, elbow.y - shoulder.y, elbow.z - shoulder.z, 33) * FromTo({1, 0, 0}, elbow - shoulder);
+    Quat const foreRot = AxisAngleQ(wrist.x - elbow.x, wrist.y - elbow.y, wrist.z - elbow.z, -50) * FromTo({1, 0, 0}, wrist - elbow);
+    Quat const handRot = AxisAngleQ(0.2, 1, 0.4, 70);
+    std::vector<Transform> pose{
+        {{}, {0, 0, 0}, 1.0},                                         // 0 root
+        {{}, {0, 0, 140}, 1.0},                                       // 1 spine
+        {upperRot, shoulder, 1.0},                                    // 2 upper arm
+        {upperRot * AxisAngleQ(1, 0, 0, 15), (shoulder + elbow) * 0.5, 1.0},  // 3 upper-arm twist (child of 2)
+        {foreRot, elbow, 1.0},                                        // 4 forearm
+        {handRot, wrist, 1.0},                                        // 5 hand
+        {handRot * AxisAngleQ(0, 0, 1, 20), wrist + Rotate(handRot, {8, 1, 0}), 1.0},  // 6 finger (child of 5)
+        {{}, {0, -18, 145}, 1.0},                                     // 7 left shoulder (other branch)
+    };
+    std::vector<int> const parents{-1, 0, 1, 2, 2, 4, 5, 1};
+    ArmChain const chain{2, 4, 5};
+    BodyFrame const body;  // X forward, Y right, Z up
+    std::vector<Transform> const before = pose;
+
+    // In front of the chest: reachable.
+    ArmGoal goal;
+    goal.wrist = {35, 10, 130};
+    ArmResult const result = PoseArm(pose, parents, chain, 1, body, goal);
+    CHECK(result.ok && result.reached);
+    CHECK(NearV(pose[5].translation, goal.wrist, 1e-6));
+    CHECK(NearV(pose[2].translation, shoulder));  // the shoulder stays
+    CHECK(std::abs(Length(pose[4].translation - shoulder) - Length(elbow - shoulder)) < 1e-6);
+    CHECK(std::abs(Length(pose[5].translation - pose[4].translation) - Length(wrist - elbow)) < 1e-6);
+    // Skinning stays rigid: each bone's offset in its parent's frame is unchanged...
+    for (int i : {4, 5}) {
+        Vec3 const oldOffset = Apply(Inverse(before[parents[i]]), before[i].translation);
+        Vec3 const newOffset = Apply(Inverse(pose[parents[i]]), pose[i].translation);
+        CHECK(NearV(oldOffset, newOffset, 1e-6));
+    }
+    // ...and bones hanging from a segment keep their whole transform relative to it.
+    CHECK(NearT(Relative(pose[3], pose[2]), Relative(before[3], before[2]), 1e-9));
+    CHECK(NearT(Relative(pose[6], pose[5]), Relative(before[6], before[5]), 1e-9));
+    CHECK(NearT(pose[7], before[7], 0.0) && NearT(pose[1], before[1], 0.0) && NearT(pose[0], before[0], 0.0));
+    // The elbow stays a hinge: it turns only about the animated bend axis, in the upper arm's frame.
+    Quat const oldBend = Relative(before[4], before[2]).rotation;
+    Quat const newBend = Relative(pose[4], pose[2]).rotation;
+    Quat const change = Normalize(newBend * Conjugate(oldBend));
+    Vec3 const changeAxis = Normalize(Vec3{change.x, change.y, change.z});
+    Vec3 const hinge = Rotate(Conjugate(upperRot), Normalize(Cross(elbow - shoulder, wrist - elbow)));
+    CHECK(Length(Cross(changeAxis, hinge)) < 1e-6);
+    // The elbow bends toward the pole: out to the right and down.
+    Vec3 const reach = Normalize(goal.wrist - shoulder);
+    Vec3 const bend = (pose[4].translation - shoulder) - reach * Dot(pose[4].translation - shoulder, reach);
+    CHECK(Dot(bend, ElbowPoleDirection(goal.wrist - shoulder, body, 1)) > 0.0);
+    // Solving again from the result changes nothing.
+    std::vector<Transform> const solved = pose;
+    CHECK(PoseArm(pose, parents, chain, 1, body, goal).ok);
+    for (std::size_t i = 0; i < pose.size(); ++i) {
+        CHECK(NearT(pose[i], solved[i], 1e-7));
+    }
+
+    // A hand rotation goal: the hand takes it, the finger follows the hand.
+    pose = before;
+    goal.hasRotation = true;
+    goal.rotation = AxisAngleQ(0, 1, 0, -40);
+    CHECK(PoseArm(pose, parents, chain, 1, body, goal).ok);
+    CHECK(AngleBetween(pose[5].rotation, goal.rotation) < 1e-9 && NearV(pose[5].translation, goal.wrist, 1e-6));
+    CHECK(NearT(Relative(pose[6], pose[5]), Relative(before[6], before[5]), 1e-9));
+
+    // Out of reach: a straight arm pointing at the target.
+    pose = before;
+    goal = {};
+    goal.wrist = {200, 18, 145};
+    ArmResult const outOfReach = PoseArm(pose, parents, chain, 1, body, goal);
+    double const armLength = Length(elbow - shoulder) + Length(wrist - elbow);
+    CHECK(outOfReach.ok && !outOfReach.reached);
+    CHECK(std::abs(Length(pose[5].translation - shoulder) - armLength) < 1e-4);
+    CHECK(NearV(Normalize(pose[5].translation - shoulder), Normalize(goal.wrist - shoulder), 1e-6));
+
+    // A straight animated arm (no bend plane) still solves cleanly.
+    pose = before;
+    pose[5].translation = elbow + Normalize(elbow - shoulder) * Length(wrist - elbow);
+    pose[6].translation = pose[5].translation + Vec3{1, 0, 0};
+    goal.wrist = {30, 15, 125};
+    ArmResult const fromStraight = PoseArm(pose, parents, chain, 1, body, goal);
+    CHECK(fromStraight.ok && NearV(pose[5].translation, goal.wrist, 1e-6));
+    for (Transform const& t : pose) {
+        CHECK(std::isfinite(t.translation.x) && std::isfinite(t.rotation.w));
+    }
+
+    // Failures write nothing.
+    pose = before;
+    goal.wrist = {std::nan(""), 0, 0};
+    CHECK(!PoseArm(pose, parents, chain, 1, body, goal).ok);
+    goal.wrist = {35, 10, 130};
+    CHECK(!PoseArm(pose, parents, ArmChain{4, 2, 5}, 1, body, goal).ok);  // out of order
+    CHECK(!PoseArm(pose, parents, ArmChain{2, 4, 7}, 1, body, goal).ok);  // not one branch
+    for (std::size_t i = 0; i < pose.size(); ++i) {
+        CHECK(NearT(pose[i], before[i], 0.0));
+    }
+
+    // The pole: out and down for a forward reach, perpendicular to it, mirrored for the left arm.
+    Vec3 const poleRight = ElbowPoleDirection({1, 0, 0}, body, 1);
+    Vec3 const poleLeft = ElbowPoleDirection({1, 0, 0}, body, 0);
+    CHECK(poleRight.y > 0.0 && poleRight.z < 0.0 && std::abs(poleRight.x) < 1e-9);
+    CHECK(poleLeft.y < 0.0 && poleLeft.z < 0.0);
+    Vec3 const overhead = ElbowPoleDirection({0, 0, 1}, body, 1);
+    CHECK(std::abs(overhead.z) < 1e-9 && NearD(Length(overhead), 1.0));
+}
+
 } // namespace
 
 int main() {
     TestBoneNames();
     TestIk();
+    TestRigid();
+    TestOrientation();
+    TestArmChains();
+    TestArmPose();
     TestViewSync();
     TestXrToUnreal();
     TestHeadSim();

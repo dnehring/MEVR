@@ -96,10 +96,14 @@ set(MEVR_MOD_SOURCES
     src/core/Hotkey.hpp
     src/core/d3d11/Blit.cpp
     src/core/d3d11/Blit.hpp
+    src/core/ik/ArmPose.cpp
+    src/core/ik/ArmPose.hpp
     src/core/ik/BoneNames.cpp
     src/core/ik/BoneNames.hpp
     src/core/ik/Ik.cpp
     src/core/ik/Ik.hpp
+    src/core/ik/Rigid.cpp
+    src/core/ik/Rigid.hpp
     src/core/vr/Controllers.cpp
     src/core/vr/Controllers.hpp
     src/core/vr/HostView.cpp
@@ -112,6 +116,8 @@ set(MEVR_MOD_SOURCES
     src/core/xr/Input.hpp
     src/core/xr/Session.cpp
     src/core/xr/Session.hpp
+    src/engine/BonePose.cpp
+    src/engine/BonePose.hpp
     src/engine/CallFunction.cpp
     src/engine/CallFunction.hpp
     src/engine/CodeDump.cpp
@@ -137,6 +143,8 @@ set(MEVR_MOD_SOURCES
     src/game/GamepadMapping.hpp
     src/game/HandAim.cpp
     src/game/HandAim.hpp
+    src/game/HandTargets.cpp
+    src/game/HandTargets.hpp
     src/game/HeadSim.cpp
     src/game/HeadSim.hpp
     src/game/HeadTracking.cpp
@@ -225,8 +233,10 @@ if (MEVR_BUILD_TESTS)
     enable_testing()
     add_executable(mevr-tests
         tests/Main.cpp
+        src/core/ik/ArmPose.cpp
         src/core/ik/BoneNames.cpp
         src/core/ik/Ik.cpp
+        src/core/ik/Rigid.cpp
         src/core/vr/ViewSync.cpp
         src/engine/XrToUnreal.cpp
         src/game/GamepadMapping.cpp

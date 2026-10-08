@@ -1,0 +1,65 @@
+#pragma once
+
+#include "core/ik/ArmPose.hpp"
+
+#include <array>
+#include <cstdint>
+#include <vector>
+
+class USkeletalMeshComponent;
+
+namespace LESDK {
+class Initializer;
+}
+
+// VRIK route 2 (research/14): arm IK written into the player's pose after the animation, before
+// anything shows it. USkeletalMeshComponent::UpdateSkelPose (LE1 0x592440) blends the AnimTree into
+// LocalAtoms, composes them into SpaceBases (component space) and applies the skeletal controls
+// (ComposeSkeleton, 0x580A60). Everything that shows the pose reads SpaceBases afterwards: the
+// render data update and attachments in UpdateTransform, GetBoneMatrix, sockets. A post-hook on it
+// rewrites the arm chains in SpaceBases (core/ik/ArmPose), carrying every bone below each upper
+// arm along rigidly, so fingers and anything on the hand follow.
+//
+// The game thread publishes what to write (Publish); the hook only reads it, and writes nothing
+// unless the mesh, its bone count and the chain's bone names all still match.
+namespace mevr::engine::bone_pose {
+
+enum class Target {
+    Off,        // the animation keeps this arm
+    Component,  // `wrist` is a component-space point
+    Chest,      // `wrist` is (forward, outward, up) from the shoulders' midpoint, in arm lengths (desktop test)
+};
+
+struct Arm {
+    Target target = Target::Off;
+    ik::ArmChain chain;          // set for every arm found, even when Off (Chest uses both shoulders)
+    std::uint64_t keys[3] = {};  // RefSkeleton names of the upper arm, forearm and hand
+    ik::Vec3 wrist;
+    bool hasRotation = false;
+    ik::Quat rotation;  // the hand bone's component-space rotation
+};
+
+struct Request {
+    USkeletalMeshComponent const* mesh = nullptr;  // compared by address only, never dereferenced
+    int boneCount = 0;
+    std::vector<int> parents;
+    ik::BodyFrame body;  // component space
+    std::array<Arm, 2> arms;  // 0 left, 1 right
+};
+
+// LE1 only: false (logged) for other games or if the address isn't a function start.
+bool Install(::LESDK::Initializer& init);
+// Waits for calls still inside the hook.
+void Uninstall(::LESDK::Initializer& init);
+bool Installed();
+
+// Game thread. Replaces what the hook writes; Clear stops all writes.
+void Publish(Request request);
+void Clear();
+
+// Game thread: logs the first write for the published mesh in detail (once per mesh).
+void LogFirstWrite();
+// Heartbeat: calls, writes, rejections and the latest before/after per arm.
+void LogStats();
+
+} // namespace mevr::engine::bone_pose

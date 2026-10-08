@@ -85,6 +85,15 @@ XrPosef OffsetRight(XrPosef const& head, float rightMeters) {
     return out;
 }
 
+ik::Quat ToUnrealOrientation(XrQuaternionf const& orientation, int yawUnits) {
+    // ToUnrealAxes is v -> C v with det C = -1; C = -P for the proper rotation P: (x, y, z) ->
+    // (z, -x, -y). C R C^-1 = P R P^-1, whose quaternion has the vector part turned by P.
+    ik::Quat const local{orientation.z, -orientation.x, -orientation.y, orientation.w};
+    double const half = ToRadians(yawUnits) * 0.5;
+    ik::Quat const yaw{0.0, 0.0, std::sin(half), std::cos(half)};  // about +Z: X turns toward +Y (right)
+    return ik::Normalize(yaw * local);
+}
+
 UnrealVector ToWorld(XrVector3f const& point, XrVector3f const& head, UnrealVector const& headWorld, int yawUnits) {
     UnrealVector const offset = ToUnrealOffset({point.x - head.x, point.y - head.y, point.z - head.z}, yawUnits);
     return {headWorld.x + offset.x, headWorld.y + offset.y, headWorld.z + offset.z};

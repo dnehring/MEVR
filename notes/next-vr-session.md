@@ -45,10 +45,37 @@ turns them all off. The rest are for testing:
 | `;` | stereo off / on (alternate-eye) |
 | `/` | 6DOF off / on |
 | `,` | hand aim off / on: shots follow the right controller (on foot) |
-| `.` | arm IK off / on: Shepard's arms follow the controllers (if the game's IK controls exist) |
+| `.` | arm IK off / on: Shepard's arms follow the controllers. Without a VR session: the desktop arm test (below) |
 | `=` | conversations, cutscenes, menus and galaxy map on the virtual screen: on (default) / off |
 
-### A. Desktop only (no headset needed, about 2 minutes)
+## A0. Desktop arm test (no headset, about 2 minutes)
+
+Checks the new arm writer (route 2, [research/14](../research/14-vrik.md)): the mod rewrites
+Shepard's arm bones after the animation each frame.
+
+1. Launch ME1 and load a save where Shepard stands on foot (any level). If SteamVR complains
+   about a missing headset, press `]` to turn VR off: the test needs VR off.
+2. Press `.` once. The log says `arm IK on (no VR session: desktop test, ...)`.
+3. Within a second, Shepard's **right hand should come up and stay in front of his chest** at
+   about shoulder height, with the elbow bent and out to the side. Watch from the normal
+   third-person camera, and rotate the camera around him if the body hides it.
+4. Walk around, turn, holster or draw the weapon. The hand should stay in front of the chest. The
+   fingers should keep their pose on the hand, with no stretched or torn mesh at the wrist or
+   elbow. Note whether the weapon (if drawn) moves with the hand.
+5. Press `.` again: the arm returns to the animation.
+6. Note what you saw (hand moved or not, any tearing, weapon or not), then quit.
+
+What Claude looks for:
+- `skeleton: GetBoneNames through ProcessEvent returned 0 names ...` (the root-cause check) and
+  the bone list with parents;
+- `arm IK: skeleton ... right arm RightShoulder(..) > RightElbow(..) > RightWrist(..)` (or
+  whatever the names are);
+- `arm IK: layout check ... match` lines and `bone layout verified`;
+- `arm IK: first write, right arm ...`: target vs wrist after (distance ~0), the arm lengths;
+- heartbeat `arm IK writeback: N UpdateSkelPose calls, M for the player mesh (from exe+0x58D709...),
+  K written, 0 rejected`.
+
+## A. Desktop only (no headset needed, about 2 minutes)
 
 Checks the new render-only head path on the monitor.
 
@@ -102,9 +129,10 @@ What Claude looks for in the log:
 8. **Hand aim:** draw a weapon and fire at something while pointing the right controller
    elsewhere than your head. Do shots land where the controller points? (There's no reticle
    yet, so watch the impacts; `,` compares with the game's aim.)
-9. **Arm IK:** wave the controllers. Hands are placed relative to Shepard's head and facing, so
-   this works in the normal third-person view: do Shepard's arms follow your hands? (If the log
-   says `route 1 unavailable`, nothing happens yet; that's expected. `.` compares.)
+9. **Arm IK:** wave the controllers. Hands are placed relative to the head-tracked view, so
+   this works in the normal third-person view: do Shepard's arms follow your hands? Twist a
+   controller: the hand should turn with it, from its animated pose. Note any tearing at the
+   elbow or wrist, and whether the weapon follows the right hand. (`.` compares.)
 10. **Conversations:** talk to someone. After about a third of a second the view should switch to
    the flat virtual screen, placed in front of wherever you're facing, and go back to
    head-tracked afterwards. Press `=` to compare with head-tracked

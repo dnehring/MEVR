@@ -25,8 +25,8 @@ Items marked **[verify]** are hypotheses based on stock UE3/UDK. Confirm them in
 ## First-person body and body IK
 
 Current plan, prior art and what's built: [research/14-vrik.md](../research/14-vrik.md). The
-IK math is in `src/core/ik` (unit-tested); the skeleton probe decides whether we drive the
-engine's `SkelControlLimb` or write the arm bones ourselves.
+IK math is in `src/core/ik` (unit-tested). The arms are written into the pose after animation
+(route 2): Shepard's AnimTree has no right-arm `SkelControlLimb` to drive.
 
 - **Base: MassFPS (LE1)** ([research/11](../research/11-massfps.md)), which we're allowed to fold
   into our mod. It already provides:
@@ -42,13 +42,13 @@ engine's `SkelControlLimb` or write the arm bones ourselves.
   - Keep the body visible in every gameplay mode, not just combat.
   - Replace the wireframe-head trick. 6DOF eyes can leave the head volume, so hide the head
     fully for the owner (`HideBoneByName` or SetOwnerNoSee without wireframe).
-- **Arms:** UE3 AnimTrees include **`SkelControlLimb`**, a built-in two-bone IK node with
-  `EffectorLocation` and `JointTargetLocation`. Add one per arm to Shepard's AnimTree in LEX, then
-  write each controller's pose into `EffectorLocation` from the plugin every frame. That gives
-  engine-native arm IK without writing a solver. **[verify]** which AnimTree the player pawn uses.
-  Fallback: our own analytic two-bone solver, writing bone transforms directly, using the approach
-  described for Overlord's `pose_solver` (elbow pole swung from a rest bend, single bend plane,
-  1.25× stretch limit).
+- **Arms (built, [verify in game]):** a post-hook on `USkeletalMeshComponent::UpdateSkelPose`
+  (LE1 `0x592440`) rewrites both arm chains in `SpaceBases` with our two-bone solver
+  (`core/ik/ArmPose`, adapted from Overlord's `pose_solver`: elbow pole swung from a rest bend,
+  one bend plane for both segments, no stretch). Every bone below the upper arm is carried
+  rigidly, so fingers and anything on the hand follow. Hand targets come from one function
+  (`game/HandTargets`). The engine's `SkelControlLimb` was the first plan, but the player's
+  AnimTree (`BIOG_Player_O`) has none on the right arm.
 - **Head and spine:** `SkelControlLookAt` / `SkelControlSingleBone` to bend the torso toward the HMD.
 - **Fingers:** our own finger-curl solver for grip and trigger, modeled on the approach in
   Overlord's `hands/pose_solver` (GPL, so we reimplement rather than copy).

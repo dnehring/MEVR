@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/ik/Rigid.hpp"
+
 #include <openxr/openxr.h>
 
 namespace mevr::engine {
@@ -33,6 +35,11 @@ UnrealVector ToUnrealOffset(XrVector3f const& meters, int yawUnits);
 // A LOCAL-space point (e.g. a controller) in the world, given where the head is in both: the
 // head's LOCAL position and its world location, and the body yaw LOCAL forward maps to.
 UnrealVector ToWorld(XrVector3f const& point, XrVector3f const& head, UnrealVector const& headWorld, int yawUnits);
+
+// An OpenXR LOCAL-space orientation as a UE3 world rotation (a quaternion over UE3's axes) for a
+// body facing `yawUnits`: ToUnrealOffset's mapping, applied to rotations. The axis flip mirrors
+// handedness; the result is still a proper rotation.
+ik::Quat ToUnrealOrientation(XrQuaternionf const& orientation, int yawUnits);
 
 // The right-hand axis (unit length) of a view with this rotation (UE3 FRotationMatrix's Y axis).
 UnrealVector RightAxis(UnrealRotation const& rotation);

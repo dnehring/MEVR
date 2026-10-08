@@ -7,108 +7,229 @@ the feature that sets us apart: none of the existing ME LE VR mods
 - Halcyon's mods have no motion controls.
 - The closed ME2VR has arm IK, but no source.
 
-## Prior art (concepts only)
+## Prior art
 
 | Project | How it does arms | Usable by us |
 |---------|------------------|--------------|
 | ME2VR (closed, LE2) | **Writes IK results back into the pose after animation.** Its log strings mention a post-animation pose-update hook, "live left/right-arm IK writeback", an "ArmDriver" with a captured rest pose, and the weapon following a `Prop01` writeback. It resolves bones by walking the skeletal mesh's ref skeleton (BoneResolver) | Concept only (never disassembled) |
-| Overlord (GPL, MW2CR) | Analytic two-bone arm IK plus finger posing, on a yaw-deadzone body frame | Our solver is our own; Overlord's may be copied since we went GPL-3.0 |
-| UE3 engine | **`SkelControlLimb`**: native two-bone IK in the AnimTree, driven by `EffectorLocation` and `JointTargetLocation` in a chosen space | Engine feature; driving it is plain gameplay code |
+| Overlord (GPL-3.0, MW2CR) | Analytic two-bone arm IK plus finger posing, on a yaw-deadzone body frame. Both arm segments are carried through one bend plane; the elbow pole is a rest bend swung with the reach | **Adapted** into `core/ik/ArmPose.cpp` since the project went GPL (NOTICE.md) |
+| UE3 engine | **`SkelControlLimb`**: native two-bone IK in the AnimTree, driven by `EffectorLocation` and `JointTargetLocation` in a chosen space | Only where the AnimTree has one (see route 1) |
 
-## Two ways to pose the arms in UE3-LE
+## Route 1 (drive the AnimTree's SkelControlLimb): out
 
-1. **Drive engine IK controls (preferred if available).** If the player's AnimTree already has a
-   `SkelControlLimb` on each hand bone, set its `EffectorLocation` (world space) to the
-   controller and its `JointTargetLocation` to our elbow hint, at strength 1. The engine solves
-   and blends every frame, and attachments (the weapon) follow the hand bone.
-   - The SDK exposes everything needed: `UAnimTree::SkelControlLists` (per bone, linked by
-     `NextControl`), the `USkelControlLimb` fields, `ControlStrength` / `StrengthTarget`, and
-     `USkeletalMeshComponent::InitSkelControls`.
-   - If the tree has no such controls, add them: construct a `SkelControlLimb` at runtime
-     (`StaticConstructObject`, LE1 `0x16D610`, a function start) and link it into the hand
-     bone's list. Or patch the AnimTree asset in the package as a mod file.
-2. **Write the bones ourselves (fallback).** After animation, overwrite the arm bones in
-   `SpaceBases` (component-space matrices, exposed at `USkeletalMeshComponent+0x2B0`) using
-   `core/ik`'s solution. This needs a hook after the pose is computed and before it's rendered.
-   That's the ME2VR route, and its LE1 address is unknown; finding it needs the decrypted code
-   dump.
+First in-game probe (2026-10-08): Shepard's AnimTree `BIOG_AnimTree_Humanoid.BIOG_Player_O` has
+three skeletal control lists, all `SkelControlLimb`, all at strength 0:
+- `RightAnkle` (control `RightLeg`, effector bone `RFIK`, joint target `RightHip-Swivel`);
+- `LeftAnkle` (`LeftLeg`, `LFIK`, `LeftHip-Swivel`);
+- `LeftWrist` (`LeftArm`, effector space 5 = other bone, bone `LHIK`, joint target
+  `LeftShoulder-Swivel`): the gun's off-hand grip.
 
-## What's built (2026-10-08)
+There is no right-arm control. Adding controls means building AnimTree objects at runtime or
+patching the asset, so we write the bones ourselves instead (route 2), like ME2VR.
 
-- **`core/ik` (unit-tested):**
-  - `BodyYaw`: the body follows head yaw past a deadzone and slowly re-centres while the head
-    holds still.
-  - `EstimateUpperBody`: neck and shoulders from the head and body yaw, with average adult
-    proportions (calibration later).
-  - `SolveTwoBone`: an analytic shoulder–elbow–hand solver. It keeps exact bone lengths, uses the
-    pole plane, straightens toward out-of-reach targets, and handles a degenerate pole.
-  - `ElbowPole`: an elbow hint below, outside and behind the shoulder.
-- **`game/SkeletonProbe`** (runs by itself, logs once per new player mesh):
-  - every bone name;
-  - component-space positions of the key bones (pelvis, spine, neck, head, clavicles, arms,
-    hands, fingers, weapon and prop sockets);
-  - every skeletal control in the AnimTree, with limb details.
+## Why the bone queries failed (2026-10-08, from the decrypted code)
 
-  **The next launch answers which route (1 or 2) is open.**
-- **Hand aim (`,`):** shots follow the right controller's aim ray, on foot. It goes through a new
-  `UObject::CallFunction` hook (LE1 `0x12AE40`), because the weapon asks
-  `BioPlayerController.GetAdjustedAimFor` from script, which ProcessEvent never sees. ME2VR's
-  logs show the same approach on LE2. Since 2026-10-08 the controller reaches the world through
-  `game/view_anchor` (an `engine::TrackingFrame`), which also works with Halcyon's renderer: it
-  publishes its view relative to the game camera ([13](13-existing-me-vr-mods.md)). **Arm IK
-  should take its hand positions from the same anchor.** Hand aim sets only the direction:
-  shots still start at the game's StartFireLoc, so they run parallel to the controller's ray,
-  offset by the distance between them. The log measures that offset once **[verify]**; if it's
-  large (third person), the fix is a start-location override or aiming from StartFireLoc at the
-  ray's hit point (a world trace).
+The first run logged `skeleton: 0 bones` for `HMM_ARM_MEDb_MDL` and `arm IK: head bone not
+found`: `SkeletalMeshComponent.GetBoneNames` through `UObject::ProcessEvent` returned nothing.
 
-**Route 1 driver (built 2026-10-08, `.` toggles, off by default): `game/ArmIk`.**
+- **LE1's ProcessEvent (`0x12DD20`)** is late UE3's. It rejects a function only if it has neither
+  `FUNC_Native` nor `FUNC_Defined`, fails `IsProbing`, the object is pending kill, `iNative` is
+  non-zero, or `ProcessRemoteFunction` claims it. It copies the parms into a fresh frame, builds
+  `OutParms` records pointing at the **caller's** parms, and calls `Function->Func` with
+  `Result = Parms + ReturnValueOffset`. There is no copy-back of the whole parms block.
+- **A native called this way reads its parameters from its own bytecode**, one
+  `EX_NativeParm` (0x29) token per parameter. Its handler (`0x11F210`, UE3's
+  `execNativeParm`) does nothing when the native passes a null result buffer. With a buffer, it
+  binds an out parameter to its `OutParms` address, and copies an in parameter from the frame.
+- **`execGetBoneNames` (`0x594950`)** zeroes `GPropAddr`, steps its out-array parameter with a
+  **null** result (UE3's `P_GET_TARRAY_REF`), then writes into `GPropAddr` if set, else into a
+  local temporary. Through ProcessEvent `GPropAddr` stays null, so the names go into the
+  temporary and are freed. The caller's array stays empty. No crash, no error.
+- **So any native with an `out array<>` parameter returns nothing through ProcessEvent.**
+  Natives that return through `Result` (`MatchRefBone`, `GetBoneLocation`, `GetBoneMatrix`) or
+  take plain inputs work. That includes `SceneCaptureComponent.SetFrameRate`, so the
+  reflection fix is fine: the log shows `raised 1, failed 0` when the second capture appeared,
+  and later passes skip captures already at 1000. Halcyon's `SetHidden`, `HideBoneByName` and
+  `SetOwnerNoSee` calls take plain inputs too.
+- **In-process confirmation [verify on the next run]:** the probe logs one `GetBoneNames
+  through ProcessEvent returned N names` line. It also prints the native's address, flags and
+  `iNative`, its first bytecode bytes (expect `29 ...`), and `GNatives[0x29]` and
+  `GNatives[0x48]` (expect `0x11F210` and `0x122050`).
 
-- **Finding the controls.** For the player's mesh it finds the first `SkelControlLimb` on each
-  hand bone. Hand bones are matched by name: `Hand_R`, `R_Hand`, `RightHand`, `Wrist_L` and so on.
-- **Driving them.** While on, it sets each control's effector to that controller's grip pose in
-  world space. The joint target is the `core/ik` elbow pole. Strength is 1.
-- **Mapping to the world.** Controller positions are placed relative to Shepard's **head bone**
-  (world location via `GetBoneLocation`), in the frame of the pawn's facing. That works in third
-  person too, so route 1 can be tested before a first-person camera exists. Every tick reads
-  fresh from the live pawn; no object pointers are kept across ticks (review finding).
-- **Safety.** It saves the controls' settings and restores them when turned off or when tracking
-  is lost. Every tick it re-finds the controls by walking the live AnimTree and writes only to
-  those found. Bone names are matched as whole tokens (`core/ik/BoneNames`, tested).
-- **When there's nothing to drive.** If the probe finds no limb controls on the hand bones, it
-  logs that once and stays inert.
+**Fix:** read the skeleton from memory instead of asking script. The offsets below were each
+confirmed in the code that uses them.
 
-**Research tooling:** `tools/xref.py` finds callers and references, and maps UE3's native table
-(`execGetBoneNames`-style names) to addresses. It runs on the disassemblable exe built from the
-mod's code dump. This is how route 2's post-animation hook will be found.
+| Data | LE1 layout | Evidence |
+|------|------------|----------|
+| `USkeletalMesh::RefSkeleton` | `+0xB4` (SDK: declared `TArray<int>`, really `TArray<FMeshBone>`) | `execGetBoneName` `0x594870`: `RefSkeleton.Data[i*0x50]`, bounds `[mesh+0xBC]` |
+| `FMeshBone` | `0x50` bytes: `Name` `+0x00` (8-byte SFXName), `Orientation` `+0x10`, `Position` `+0x20`, `ParentIndex` `+0x40` (root: 0) | `execGetParentBoneIndex` `0x594E70` reads `+0x40`; `execGetBoneNames` loops with stride `0x50`; `UpdateSkelPose` reads `+0x20..0x28` of bone 0 for root motion |
+| `USkeletalMeshComponent::SpaceBases` | `+0x2B0`, **`TArray<FBoneAtom>`, 0x20 bytes**: rotation (x, y, z, w) `+0x00`, translation `+0x10`, scale `+0x1C`, component space. The SDK's `TArray<FMatrix>` is wrong | `UpdateSkelPose` sizes it with element size `0x20` and fills identity atoms; `GetBoneMatrix` (`0x583540`) indexes it `<< 5` and builds a matrix from quat, translation and scale |
+| `USkeletalMeshComponent::LocalAtoms` | `+0x2C0`, `TArray<FBoneAtom>` (parent space) | `UpdateSkelPose` |
+| `UPrimitiveComponent::LocalToWorld` | `+0xC0`, `FMatrix` (UE3 row-vector layout) | `GetBoneMatrix` multiplies by `[comp+0xC0..0xFC]` |
+| `ParentAnimComponent` / `ParentBoneMap` | `+0x304` / `+0x30C` | `GetBoneMatrix` reads the parent's SpaceBases through the map |
+
+`engine/Skeleton` reads these, LE1 only. Before the first write to a mesh, `game/ArmIk` checks
+our reading of the head and hand bones against the engine's own `GetBoneLocation` (component and
+world space, through ProcessEvent). On a mismatch it doesn't write.
+
+## Route 2: write the arm bones after animation (built 2026-10-08)
+
+### The hook point: `USkeletalMeshComponent::UpdateSkelPose`, LE1 `0x592440`
+
+It's a `.pdata` function start (`tools/verify_rvas.py`). The arguments are `(this, FLOAT
+DeltaTime, UBOOL bTickFaceFX)`; callers also set r9, which it never reads.
+
+What it does (disassembly of the decrypted code dump):
+1. Without a `SkeletalMesh` it sets `bBioComputedValidPose` and returns.
+2. It sizes `SpaceBases` and `LocalAtoms` (and a byte array at `+0x6D8`) to `RefSkeleton.Num()`
+   with 0x20-byte elements.
+3. With `bNoSkeletonUpdate` or a `ParentAnimComponent`, it fills the reference pose and stops.
+4. Otherwise it blends the AnimTree (`Animations` `+0x26C`, virtual `+0x358`) into `LocalAtoms`
+   and handles root motion.
+5. It calls `ComposeSkeleton` (`0x580A60`, only caller): `LocalAtoms` become `SpaceBases`, with
+   the skeletal controls applied.
+6. Then FaceFX, `0x641130`, and the rigid-body joint motors.
+
+Callers:
+- the per-frame one, in `USkeletalMeshComponent::Tick`, at `0x58D709` with the frame's
+  `DeltaTime`. It's followed by the transform and attachment update (`0x2C9120` / `0x2C7C90`),
+  which pushes the pose to the render thread and moves attached components;
+- about 24 others with `DeltaTime = 0`: Attach (`0x579340`), reattach and force-update paths.
+
+After it returns, `SpaceBases` is the final pose for that update. Everything that shows it reads
+it afterwards: the render data update, attachments and sockets (`GetBoneMatrix`). So a
+**post-hook** that rewrites bones in `SpaceBases` changes what's rendered and what's attached to
+the hand, without touching animation or gameplay.
+
+Our hook (`engine/BonePose`):
+- compares `this` with the published player mesh (one atomic load for every other mesh);
+- copies the request under a lock, re-checks the bone count, the pose size and the chain bones'
+  names;
+- solves and writes, inside SEH. An access violation stops writes for good;
+- is installed the first time arm IK is turned on, and removed (waiting for in-flight calls)
+  before the mod unloads;
+- LE2/LE3: no address yet. It logs and stays inert.
+
+### How bones are written, and why children stay correct
+
+`SpaceBases` holds **component-space** transforms. A bone's skinning matrix is derived from its
+own entry alone, so moving a bone without moving its children would tear the mesh. That's why
+"rewrite the hand bone" isn't enough: fingers, twist bones and anything on the hand must move
+with it.
+
+`core/ik/PoseArm` works on the whole pose (`ik::Transform` per bone, parents before children, as
+UE3 orders RefSkeleton):
+
+1. **Lengths come from the current pose:** upper arm = |elbow − shoulder|, forearm =
+   |wrist − elbow|. The shoulder (upper-arm joint) stays where the animation put it.
+2. **Two-bone solve** (`SolveTwoBone`): the elbow sits in the plane of shoulder, target and
+   pole. The pole is a rest bend (out to the side and down) swung from body-forward to the reach
+   direction (Overlord's `elbow_pole`), so it has no singularity for front, side or overhead
+   reaches. Out of reach: a straight arm pointing at the target. No stretching.
+3. **Segment rotations:** each segment's delta maps its animated frame (direction + bend-plane
+   normal) onto the solved one (Overlord's `orient_arm`). Both segments share the plane, so the
+   elbow turns only about its animated hinge axis (tested). A straight animated arm falls back
+   to the upper arm's own axes.
+4. **Every bone below the upper arm is tagged** with the segment it hangs from: upper arm,
+   forearm or hand, found by one pass in index order. Each moves **rigidly with its segment**:
+   `new = pivot' + Δ·(old − pivot)`, rotation `Δ·old`. So each keeps its whole transform relative
+   to its segment, the animated finger pose included. That's equivalent to recomposing the
+   subtree from parent-relative transforms, but taken from `SpaceBases`, so skeletal-control
+   results on the children survive.
+5. **The hand:** with a target rotation it takes that rotation (fingers follow). Without one it
+   keeps its animated pose relative to the forearm.
+6. **Transactional:** any non-finite value or invalid chain writes nothing. Re-solving a solved
+   pose changes nothing (tested), which matters because UpdateSkelPose can run more than once a
+   frame or resubmit the previous pose.
+
+`LocalAtoms` aren't written: nothing after ComposeSkeleton rebuilds `SpaceBases` from them in a
+normal frame. If ragdoll or physics blending ever does, our arms would be overridden for that
+frame, not broken.
+
+### Bones and targets
+
+- **Chains** (`ik::FindArmChain`): the hand is found by name (`HandSide`: hand/wrist plus a side
+  token). Then come its nearest ancestors named like a forearm (`elbow`, `forearm`, `lowerarm`)
+  and an upper arm (`shoulder`, `upperarm`, `arm`). Roll, twist, swivel and IK helpers are
+  skipped, e.g. ME's `LeftShoulder-Swivel`. That handles ME (`RightShoulder` > `RightElbow` >
+  `RightWrist`, expected), Mixamo and Biped names (tested). Unfamiliar names fall back to the
+  nearest non-helper ancestors. Logged once per skeleton asset.
+- **Hand targets** (`game/HandTargets`, one function, about to change for Halcyon's renderer):
+  - today: OpenXR grip poses (LOCAL), relative to the HMD and turned by the body yaw from
+    `head_tracking::Anchor()` (`engine::ToWorld`), around **Shepard's head bone** (world, from
+    SpaceBases) rather than the camera, so it works in third person (as route 1 did). The
+    wrist is 7 cm behind the grip along grip +Z [verify in headset]. Once Halcyon's
+    first-person camera owns the view, anchor at the camera instead;
+  - orientation via `engine::ToUnrealOrientation`;
+  - `DesktopTest` when no VR session runs.
+- **To component space** (`game/ArmIk`): through the inverse of the mesh's `LocalToWorld`. The
+  body axes come from the pawn's yaw.
+- **Hand rotation in VR is relative for now:** when a hand starts following, the offset between
+  the controller and the animated hand is captured, and from then on the hand turns with the
+  controller. A calibrated grip-to-hand offset comes later.
+- **Desktop test:** with no VR session, `.` turns arm IK on and holds the right wrist in front of
+  the chest at shoulder height. The target is computed in the hook from the live shoulders:
+  midpoint + (0.70 forward, 0.15 outward, −0.05 up) × arm length.
+
+### Logging (first in-game run)
+
+- `arm IK: UpdateSkelPose at ... (entry bytes ...)`, then `hooked ...`.
+- Probe: the GetBoneNames diagnostic, every bone with its parent, both arm chains, and key bone
+  positions from SpaceBases.
+- `arm IK: skeleton ... left arm A(i) > B(j) > C(k); right arm ...; head ...`.
+- `arm IK: layout check <bone> component|world: SpaceBases (...) vs GetBoneLocation (...):
+  match`, then `bone layout verified`.
+- Status changes, e.g. `driving: right hand held in front of the chest (desktop test)`, or why
+  not.
+- `arm IK: first write, right arm (component space): target, wrist before -> after (distance
+  from target), elbow before -> after, shoulder, lengths, bones written`.
+- Heartbeat: UpdateSkelPose calls in total and for the player mesh (callers, threads), writes,
+  rejections with the last reason, and the latest before/after per arm.
+
+## Open risks [verify in game]
+
+- The desktop-test pose must appear on screen. If the log shows writes but Shepard's arm doesn't
+  move, something after UpdateSkelPose rebuilds `SpaceBases` (or the render update ran before
+  it): look for a second hook point (the `0x2C9120` update, or ComposeSkeleton itself).
+- UpdateSkelPose from another thread: the hook is thread-safe, and the log lists thread ids.
+- The weapon should follow the hand (an attachment via sockets, updated after the pose).
+  Unknown until seen.
+- The off-hand: the AnimTree's `LeftArm` limb control pulls the left wrist to `LHIK` during
+  ComposeSkeleton, before our write. In the desktop test the right hand moves but the left stays
+  on the gun's old grip. In VR both arms are ours.
+- Scale: 1 unit = 1 cm is assumed for the 7 cm wrist offset; the log's arm lengths will tell.
+- The VR hand rotation is relative (captured at the start), not calibrated.
 
 ## Plan
 
-1. **Read the probe log.**
-   - Bone names give the arm chain: clavicle, upper arm, forearm, hand, and the weapon socket.
-   - Positions give arm lengths in game units, to check against `kUnitsPerMeter`.
-   - Existing `SkelControlLimb`s decide route 1 or 2.
-2. **Route 1 (if the controls exist).** Each frame on the game thread:
-   - a. Controller grip pose (LOCAL) to world. Use the same mapping as the head (game yaw, plus
-     camera position when 6DOF is on), with a per-controller grip offset so the hand bone sits
-     in the palm.
-   - b. Set `EffectorLocation` and `JointTargetLocation` (world space), strength 1.
-   - c. Hand rotation: `bMaintainEffectorRelRot` or a `SkelControlSingleBone` on the hand bone.
-3. **First-person body:**
-   - MassFPS-style head hiding (research/11), so the camera sits in the head.
-   - The torso turns with `BodyYaw` (the pawn's rotation, or a spine `SkelControlSingleBone`).
-4. **Weapon in hand:** the weapon is attached to a hand socket, so it follows the IK'd hand. The
-   aim ray then comes from the weapon's muzzle, not the controller, which unifies hand aim with
-   what you see.
-5. **Comfort and polish:**
-   - arm length calibration (T-pose or a "hold arms out" step);
-   - smoothing the elbow pole;
-   - limits for the cover and roadie-run animations.
+1. **Next run:** desktop test (notes/next-vr-session.md). Confirm bone names and chains, the
+   layout check, writes, and the visible pose.
+2. **VR:** arms follow the controllers in third person. Then once Halcyon's renderer owns the
+   camera: swap `hand_targets::Current()` to its camera transform.
+3. **First-person body:** MassFPS-style head hiding (research/11). The torso turns with a body
+   yaw (deadzone, `ik::BodyYaw`).
+4. **Weapon in hand:** check the weapon attachment follows the IK'd hand; then the aim ray
+   from the muzzle unifies hand aim with what you see.
+5. **Comfort and polish:** grip-to-wrist calibration (a "hold arms out" step), arm length
+   scaling, elbow pole smoothing, limits for cover and roadie-run animations.
 
-## Open questions [verify in game]
+## Earlier (route 1 driver, superseded 2026-10-08)
 
-- Does LE's ProcessEvent run native functions (`GetBoneNames`, `SetFrameRate`)? The probe and
-  the reflection fix log whether results come back.
-- World scale: does 1 m = 100 units match the bone positions?
-- Is Shepard's head a separate mesh (MassFPS says yes, H5)? The body mesh's bones then stop at
-  the neck.
+`game/ArmIk` first drove the AnimTree's `SkelControlLimb`s: effector = controller, joint target =
+`ik::ElbowPole`, strength 1, with the controls' settings saved and restored. The probe found no
+right-arm control, so it was replaced by the route 2 driver above. `ik::EstimateUpperBody`,
+`ik::ElbowPole` and `ik::BodyYaw` remain, tested, for the body-yaw step.
+
+## Hand aim and the view anchor
+
+**Hand aim (`,`):** shots follow the right controller's aim ray, on foot. It goes through a new
+`UObject::CallFunction` hook (LE1 `0x12AE40`), because the weapon asks
+`BioPlayerController.GetAdjustedAimFor` from script, which ProcessEvent never sees. ME2VR's
+logs show the same approach on LE2. Since 2026-10-08 the controller reaches the world through
+`game/view_anchor` (an `engine::TrackingFrame`), which also works with Halcyon's renderer: it
+publishes its view relative to the game camera ([13](13-existing-me-vr-mods.md)). **Arm IK
+should take its hand positions from the same anchor.** Hand aim sets only the direction:
+shots still start at the game's StartFireLoc, so they run parallel to the controller's ray,
+offset by the distance between them. The log measures that offset once **[verify]**; if it's
+large (third person), the fix is a start-location override or aiming from StartFireLoc at the
+ray's hit point (a world trace).
