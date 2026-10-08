@@ -16,15 +16,18 @@ namespace {
 
 constexpr char const* kUpdateCamera = "Function Engine.Camera.UpdateCamera";
 constexpr char const* kGetPlayerViewPoint = "Function Engine.PlayerController.GetPlayerViewPoint";
+constexpr char const* kGetFovAngle = "Function Engine.PlayerController.GetFOVAngle";
 
 // Game thread only.
 bool gActive = false;  // this frame's head rotation is valid
+bool gOverrideFov = false;  // this frame renders at the headset's FOV
 engine::UnrealRotation gHead;
 float gLastFov = 0.0f;
 std::atomic<bool> gApplyToCamera{true};
 
 std::atomic<unsigned> gTaggedFrames{0};
 std::atomic<unsigned> gAdjustedViews{0};
+std::atomic<unsigned> gFovOverrides{0};
 
 // Once per frame, after the camera computed this frame's view.
 void OnUpdateCamera(UObject* context, UFunction* /*function*/, void* /*parms*/, void* /*result*/) {
@@ -42,6 +45,15 @@ void OnUpdateCamera(UObject* context, UFunction* /*function*/, void* /*parms*/, 
     }
     gHead = engine::ToUnrealRotation(head->orientation);
     gActive = true;
+
+    // Render as wide as the headset shows, so the image fills the view instead of a 70 degree
+    // window. Set in the camera cache (read by script) and returned from GetFOVAngle (read by
+    // the renderer); the frame is tagged with whatever FOV it actually renders at.
+    auto const headsetFov = vr::view_sync::HeadsetFov();
+    gOverrideFov = gApplyToCamera && headsetFov.has_value();
+    if (gOverrideFov) {
+        camera->CameraCache.POV.FOV = *headsetFov;
+    }
     gLastFov = camera->CameraCache.POV.FOV;
     vr::view_sync::PushRendered({*head, gLastFov});
     gTaggedFrames.fetch_add(1, std::memory_order_relaxed);
@@ -58,6 +70,14 @@ void OnGetPlayerViewPoint(UObject* context, UFunction* /*function*/, void* parms
     gAdjustedViews.fetch_add(1, std::memory_order_relaxed);
 }
 
+void OnGetFovAngle(UObject* context, UFunction* /*function*/, void* parms, void* /*result*/) {
+    if (!gActive || !gOverrideFov || context == nullptr || !context->IsA(APlayerController::StaticClass())) {
+        return;
+    }
+    static_cast<APlayerController_eventGetFOVAngle_Parms*>(parms)->ReturnValue = gLastFov;
+    gFovOverrides.fetch_add(1, std::memory_order_relaxed);
+}
+
 UFunction* FindFunction(wchar_t const* name, char const* fullName) {
     for (UFunction* function : engine::FindFunctionsNamed(name)) {
         if (engine::FullName(function) == fullName) {
@@ -72,21 +92,24 @@ UFunction* FindFunction(wchar_t const* name, char const* fullName) {
 bool TryStartup() {
     UFunction* const updateCamera = FindFunction(L"UpdateCamera", kUpdateCamera);
     UFunction* const viewPoint = FindFunction(L"GetPlayerViewPoint", kGetPlayerViewPoint);
-    if (updateCamera == nullptr || viewPoint == nullptr) {
+    UFunction* const fovAngle = FindFunction(L"GetFOVAngle", kGetFovAngle);
+    if (updateCamera == nullptr || viewPoint == nullptr || fovAngle == nullptr) {
         return false;  // script packages not loaded yet
     }
     engine::process_event::AddPostHandler(updateCamera, &OnUpdateCamera);
     engine::process_event::AddPostHandler(viewPoint, &OnGetPlayerViewPoint);
-    log::Info("head tracking ready ({}, {})", kUpdateCamera, kGetPlayerViewPoint);
+    engine::process_event::AddPostHandler(fovAngle, &OnGetFovAngle);
+    log::Info("head tracking ready ({}, {}, {})", kUpdateCamera, kGetPlayerViewPoint, kGetFovAngle);
     return true;
 }
 
 void LogStats() {
     unsigned const frames = gTaggedFrames.exchange(0);
     unsigned const views = gAdjustedViews.exchange(0);
+    unsigned const fovs = gFovOverrides.exchange(0);
     if (frames > 0 || views > 0) {
-        log::Info("    head tracking: {} frames tagged, {} views adjusted (camera {}), FOV {:.1f}, head yaw {} pitch {} roll {}",
-            frames, views, gApplyToCamera ? "on" : "OFF", gLastFov, gHead.yaw, gHead.pitch, gHead.roll);
+        log::Info("    head tracking: {} frames tagged, {} views adjusted (camera {}), FOV {:.1f} ({} overrides), head yaw {} pitch {} roll {}",
+            frames, views, gApplyToCamera ? "on" : "OFF", gLastFov, fovs, gHead.yaw, gHead.pitch, gHead.roll);
     } else {
         log::Info("    head tracking: idle ({})", vr::output::WantsHeadTracking() ? "waiting for a head pose" : "VR off or screen mode");
     }

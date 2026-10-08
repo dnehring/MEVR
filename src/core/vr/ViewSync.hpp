@@ -16,6 +16,11 @@ namespace mevr::vr::view_sync {
 void PublishHead(XrPosef const& pose);
 std::optional<XrPosef> LatestHead();
 
+// Render thread -> game thread: the horizontal field of view (degrees, symmetric) a single image
+// needs to cover both eyes of the headset.
+void PublishHeadsetFov(float horizontalDegrees);
+std::optional<float> HeadsetFov();
+
 // Game thread -> render thread: the view each game frame was rendered with, in order.
 struct RenderedView {
     XrPosef head;

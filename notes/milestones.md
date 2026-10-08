@@ -170,6 +170,27 @@ Design (2026-10-07):
     [Steam discussion](https://steamcommunity.com/app/250820/discussions/0/4036978698796115769).
   - Retest pending.
 
+### M3 test 2: **passed (2026-10-07)**
+
+- **Setup:** Theater Screen off.
+- **Result:** only the mod's output shows. Head rotation drives the game camera and the world
+  stays fixed in space; new scenery enters the box as you turn ("option A").
+  - This also **confirms ME's camera FOV is horizontal** (UE3 default); otherwise the world
+    would swim.
+- **Expected limitations at this stage:**
+  - Mono (no depth).
+  - A 70° box that follows the head.
+  - Walking direction comes from the stick or mouse, not the head.
+
+### M3.1: render at the headset's FOV (built, untested)
+
+- The render thread runs `xrLocateViews` and computes the symmetric horizontal FOV that covers
+  both eyes (outermost left and right edges), clamped to 60–150°, then publishes it.
+- The game thread sets `CameraCache.POV.FOV` in UpdateCamera and overrides the
+  `PlayerController.GetFOVAngle` event's return. Frames are tagged with the FOV they render at.
+- Vertical coverage is still limited by the 16:9 backbuffer (about 75° vertical at about 108°
+  horizontal). Filling it needs a squarer render size later.
+
 ### Still to do
 
 - Retest with the fixes. Check image correctness (colors and brightness vs the monitor).

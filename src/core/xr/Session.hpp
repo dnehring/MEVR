@@ -45,6 +45,8 @@ public:
     XrSpace LocalSpace() const { return localSpace_; }
     // Head (VIEW space) pose in LOCAL space at `time`. False if orientation isn't valid.
     bool LocateHead(XrTime time, XrPosef& out);
+    // Per-eye poses (LOCAL space) and fields of view at `time`, left then right.
+    bool LocateEyes(XrTime time, XrView (&out)[2]);
     // Changes whenever the session (and every swapchain created from it) is destroyed.
     std::uint32_t Generation() const { return generation_; }
 

@@ -7,6 +7,7 @@
 
 #include <dxgi.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cmath>
@@ -41,6 +42,7 @@ Mode gLastMode = Mode::HeadTracked;
 bool gFrameBegun = false;
 XrFrameState gFrame{XR_TYPE_FRAME_STATE};
 std::optional<view_sync::RenderedView> gLastRendered;
+float gPublishedFov = 0.0f;  // last headset FOV logged
 
 // A swapchain from an older session was destroyed along with that session.
 void ReleaseImage() {
@@ -58,6 +60,7 @@ void ResetFrameState() {
     gFrameBegun = false;
     gSessionRunning = false;
     gLastRendered.reset();
+    gPublishedFov = 0.0f;
     view_sync::Reset();
 }
 
@@ -94,6 +97,15 @@ void BringToForeground(HWND window) {
     log::Info("vr output: game window to foreground: {}", ok ? "ok" : "refused by Windows");
 }
 
+// Horizontal FOV (degrees) a single symmetric image needs so both eyes' views are covered:
+// the outermost left and right edges across the two eyes.
+float CoveringFovDegrees(XrView const (&eyes)[2]) {
+    float const left = -std::min(eyes[0].fov.angleLeft, eyes[1].fov.angleLeft);
+    float const right = std::max(eyes[0].fov.angleRight, eyes[1].fov.angleRight);
+    float const degrees = 2.0f * std::max(left, right) * 180.0f / std::numbers::pi_v<float>;
+    return std::clamp(degrees, 60.0f, 150.0f);  // UE3 projections degrade badly near 180
+}
+
 void BeginNextFrame() {
     gFrameBegun = gSession.BeginFrame(gFrame);
     if (!gFrameBegun) {
@@ -101,9 +113,21 @@ void BeginNextFrame() {
     }
     // The game thread is computing the frame after the one just begun (UE3 renders a frame
     // behind the game thread), so predict one display period further out.
+    XrTime const target = gFrame.predictedDisplayTime + gFrame.predictedDisplayPeriod;
     XrPosef head{};
-    if (gSession.LocateHead(gFrame.predictedDisplayTime + gFrame.predictedDisplayPeriod, head)) {
+    if (gSession.LocateHead(target, head)) {
         view_sync::PublishHead(head);
+    }
+    XrView eyes[2];
+    if (gSession.LocateEyes(target, eyes)) {
+        float const fov = CoveringFovDegrees(eyes);
+        view_sync::PublishHeadsetFov(fov);
+        if (std::abs(fov - gPublishedFov) > 0.5f) {
+            gPublishedFov = fov;
+            log::Info("vr output: headset FOV L {:.1f}/{:.1f} R {:.1f}/{:.1f} deg (left/right edges), rendering {:.1f} deg wide",
+                eyes[0].fov.angleLeft * 57.2958f, eyes[0].fov.angleRight * 57.2958f,
+                eyes[1].fov.angleLeft * 57.2958f, eyes[1].fov.angleRight * 57.2958f, fov);
+        }
     }
 }
 

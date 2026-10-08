@@ -306,6 +306,21 @@ bool Session::LocateHead(XrTime time, XrPosef& out) {
     return true;
 }
 
+bool Session::LocateEyes(XrTime time, XrView (&out)[2]) {
+    XrViewLocateInfo info{XR_TYPE_VIEW_LOCATE_INFO};
+    info.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
+    info.displayTime = time;
+    info.space = localSpace_;
+    XrViewState state{XR_TYPE_VIEW_STATE};
+    out[0] = {XR_TYPE_VIEW};
+    out[1] = {XR_TYPE_VIEW};
+    std::uint32_t count = 0;
+    if (!Check(xrLocateViews(session_, &info, &state, 2, &count, out), "xrLocateViews") || count != 2) {
+        return false;
+    }
+    return (state.viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT) != 0;
+}
+
 std::int64_t Session::ChooseSwapchainFormat(std::span<std::int64_t const> preferred) const {
     std::uint32_t count = 0;
     xrEnumerateSwapchainFormats(session_, 0, &count, nullptr);

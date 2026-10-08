@@ -12,9 +12,20 @@ constexpr std::size_t kMaxQueued = 3;
 
 std::mutex gMutex;
 std::optional<XrPosef> gLatest;
+std::optional<float> gHeadsetFov;
 std::deque<RenderedView> gRendered;
 
 } // namespace
+
+void PublishHeadsetFov(float horizontalDegrees) {
+    std::lock_guard lock(gMutex);
+    gHeadsetFov = horizontalDegrees;
+}
+
+std::optional<float> HeadsetFov() {
+    std::lock_guard lock(gMutex);
+    return gHeadsetFov;
+}
 
 void PublishHead(XrPosef const& pose) {
     std::lock_guard lock(gMutex);
@@ -47,6 +58,7 @@ std::optional<RenderedView> PopRendered() {
 void Reset() {
     std::lock_guard lock(gMutex);
     gLatest.reset();
+    gHeadsetFov.reset();
     gRendered.clear();
 }
 
