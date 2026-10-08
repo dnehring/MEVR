@@ -35,9 +35,9 @@ bool gWasFocused = false;  // Present thread
 constexpr std::uint64_t kForegroundTryMs = 15000;
 std::uint64_t gForegroundUntilMs = 0;
 std::uint64_t gForegroundNextMs = 0;
-// Both thumbsticks clicked and held closes Halcyon's menu, which otherwise only the Insert key
-// does. While open the menu blocks all game input, and in the first headset tests it couldn't be
-// seen, so the chord doesn't open it (the menu key does: \ in our deploy). Present thread.
+// Both thumbsticks clicked and held opens or closes Halcyon's menu, like its menu key (\ in our
+// deploy; Insert upstream, which a profile slot can bring back). The menu blocks all game input
+// while open. Present thread.
 constexpr std::uint64_t kMenuChordMs = 400;
 std::uint64_t gChordSinceMs = 0;
 bool gChordFired = false;
@@ -115,12 +115,10 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
         gChordSinceMs = now;
     } else if (!gChordFired && now - gChordSinceMs >= kMenuChordMs) {
         gChordFired = true;
-        if (MELEVR::Menu::IsOpen()) {
-            MELEVR::Menu::SetOpen(false);
-            mevr::log::Info("halcyon bridge: both sticks held: Halcyon's menu closed");
-        } else {
-            mevr::log::Info("halcyon bridge: both sticks held, menu already closed (the chord only closes it; the menu key, \\ in our deploy, opens it)");
-        }
+        bool const open = !MELEVR::Menu::IsOpen();
+        MELEVR::Menu::SetOpen(open);
+        mevr::log::Info(open ? "halcyon bridge: both sticks held: Halcyon's menu opened"
+                             : "halcyon bridge: both sticks held: Halcyon's menu closed");
     }
 }
 

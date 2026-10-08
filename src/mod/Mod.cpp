@@ -390,7 +390,7 @@ void PollHotkeys() {
             if (key->Pressed() && !gToldHostOwnsVr) {
                 gToldHostOwnsVr = true;
                 log::Info("Halcyon's renderer is active: our VR keys are off except , (hand aim) and . (arm IK); "
-                          "use its Insert menu");
+                          "its menu is \\ (or both thumbsticks held)");
             }
         }
         return;

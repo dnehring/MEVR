@@ -78,11 +78,10 @@ if ($hotReload) {
 if ($Game -eq 'LE1') {
     $ini = Join-Path $asiDir 'MELEVR.ini'
     if (-not (Test-Path $ini)) {
-        $text = @(
-            '; MELE VR config - written by the in-headset menu.', '',
-            '[active]', 'profile=Default', '',
-            '[hotkeys]', 'enabled=0', 'profile0=112', 'profile1=113', 'profile2=114', 'profile3=115', '',
-            '[profile:Default]',
+        # Halcyon keeps every setting per profile slot (Default, Custom 1-3), the menu key included,
+        # and a slot missing from the file loads as its code defaults (Insert, head aim on, third
+        # person). So all four slots get the same block.
+        $slot = @(
             'vrMode = 2',
             'sfr2ResX = 4096', 'sfr2ResY = 4250',
             'monoResX = 3840', 'monoResY = 2160',
@@ -93,19 +92,25 @@ if ($Game -eq 'LE1') {
             'menuKey = 220',
             'fpEnabled = 1',
             'combatHeadAim = 0', 'makoHeadAim = 0', ''
-        ) -join "`r`n"
-        [IO.File]::WriteAllText($ini, $text)
+        )
+        $lines = @('; MELE VR config - written by the in-headset menu.', '',
+            '[active]', 'profile=Default', '',
+            '[hotkeys]', 'enabled=0', 'profile0=112', 'profile1=113', 'profile2=114', 'profile3=115', '')
+        foreach ($name in 'Default', 'Custom 1', 'Custom 2', 'Custom 3') { $lines += @("[profile:$name]") + $slot }
+        [IO.File]::WriteAllText($ini, ($lines -join "`r`n"))
         Write-Output "Installed Halcyon's release MELEVR.ini (its tuned defaults; welcome seen, menu on backslash)"
     }
-    # Every deploy, since Halcyon rewrites the file: its F1-F4 profile hotkeys are game keys, so
-    # they're off; and every profile slot still on Insert (Halcyon's default for the Custom slots,
-    # which loading a slot brings back) gets backslash.
+    # Every deploy, since Halcyon rewrites the file, in every profile slot: the menu on backslash
+    # (Insert is Halcyon's default, and many keyboards lack it) and no head aim. Its F1-F4 profile
+    # hotkeys are game keys, so they're off. Everything else in a slot is the user's.
     $text = [IO.File]::ReadAllText($ini)
     $fixed = [regex]::Replace($text, '(?ms)(^\[hotkeys\]\r?\n(?:(?!^\[).)*?^enabled=)1', '${1}0')
-    $fixed = $fixed -replace '(?m)^menuKey = 45\b', 'menuKey = 220'
+    $fixed = $fixed -replace '(?m)^menuKey = \d+', 'menuKey = 220'
+    $fixed = $fixed -replace '(?m)^combatHeadAim = 1', 'combatHeadAim = 0'
+    $fixed = $fixed -replace '(?m)^makoHeadAim = 1', 'makoHeadAim = 0'
     if ($fixed -ne $text) {
         [IO.File]::WriteAllText($ini, $fixed)
-        Write-Output "MELEVR.ini: profile F-key hotkeys off, menu key backslash in every profile"
+        Write-Output "MELEVR.ini: every profile slot on backslash with head aim off; F-key profile hotkeys off"
     }
 }
 Write-Output "Log: $(Join-Path $bin "Logs\$name.log")"

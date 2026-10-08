@@ -161,22 +161,14 @@ if ($Game -eq 'LE1') {
             Write-Output "  BIOEngine.ini: SmoothFrameRate already off"
         }
     }
-    # Halcyon's own copy of the target, in its active profile.
+    # Halcyon's own copy of the target, in every profile slot (it keeps settings per slot, so a slot
+    # with another target would flag a mismatch once loaded).
     if ($ResX -gt 0 -and (Test-Path $halcyonIni)) {
         $h = [IO.File]::ReadAllText($halcyonIni)
-        $active = [regex]::Match($h, '(?m)^profile=([^\r\n]+)').Groups[1].Value
-        if (-not $active) { $active = 'Default' }
         foreach ($kv in @(@('sfr2ResX', $ResX), @('sfr2ResY', $ResY), @('expectedResX', $ResX), @('expectedResY', $ResY))) {
-            $section = "profile:$active"
-            $header = [regex]::Match($h, "(?m)^\[$([regex]::Escape($section))\]")
-            if (-not $header.Success) { break }
-            $next = [regex]::Match($h.Substring($header.Index + $header.Length), '(?m)^\[')
-            $end = if ($next.Success) { $header.Index + $header.Length + $next.Index } else { $h.Length }
-            $body = $h.Substring($header.Index, $end - $header.Index)
-            $body = [regex]::Replace($body, "(?m)^$($kv[0]) = [^\r\n]*", "$($kv[0]) = $($kv[1])")
-            $h = $h.Substring(0, $header.Index) + $body + $h.Substring($end)
+            $h = [regex]::Replace($h, "(?m)^$($kv[0]) = [^\r\n]*", "$($kv[0]) = $($kv[1])")
         }
         [IO.File]::WriteAllText($halcyonIni, $h)
-        Write-Output "  MELEVR.ini [profile:$active]: sfr2ResX/Y and expectedResX/Y = ${ResX}x${ResY}"
+        Write-Output "  MELEVR.ini, every profile: sfr2ResX/Y and expectedResX/Y = ${ResX}x${ResY}"
     }
 }
