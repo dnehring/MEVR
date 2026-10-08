@@ -80,6 +80,12 @@ switching frameworks.
 ## Gotchas
 
 - Don't `cd` in Bash tool calls; it moves the session's working directory. Use absolute paths.
+- **Never call LExSDKv2's generated function wrappers** (e.g. `USceneCaptureComponent::SetFrameRate`).
+  All 5,301 LE1 native wrappers do `FunctionFlags |= ~0x400` (meant `&=`), which permanently sets
+  every flag on that UFunction. Find the UFunction yourself and call ProcessEvent directly.
+  Class layouts, `StaticClass()` and `IsA()` are fine.
+- The exe's `.text` is encrypted on disk (EA DRM). Check RVAs statically with
+  `tools/verify_rvas.py` (`.pdata` function bounds); byte checks only work in-process.
 
 - Windows PowerShell 5.1 turns native stderr (e.g. git progress) into errors under
   `$ErrorActionPreference = 'Stop'`. Check `$LASTEXITCODE` instead.

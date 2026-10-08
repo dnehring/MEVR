@@ -212,3 +212,11 @@ over when we reach LE3. **LE1 still has no known `CalcSceneView` address.**
 4. `GetHostGame` returns a failure code even though it writes the value.
 5. The proxy's `ScanProcess` may return before checking the last pattern byte (`memory.h:53-56`).
 6. Unknown: whether `Game/Launcher` ships its own `bink2w64.dll` (affects the autoboot path).
+7. **Generated native-function wrappers corrupt `FunctionFlags`** (found 2026-10-07). Every LE1
+   wrapper in `*_functions.cpp` (5,301 of them) does `pFn->FunctionFlags |= ~0x400;` before
+   ProcessEvent and `|= 0x400` after. The intent was clearly `&= ~0x400` (temporarily clear
+   FUNC_Native). As written, every flag ends up set (`0xFFFFFFFF`) on the first call. Rule for
+   MEVR: don't call generated wrappers; resolve the UFunction and call ProcessEvent directly
+   (CLAUDE.md). Worth reporting upstream (llamathings/LExSDKv2). Also open: whether LE's
+   ProcessEvent needs FUNC_Native cleared to run a native function at all. Test on
+   `SceneCaptureComponent.SetFrameRate` (the reflection-judder fix, [13](13-existing-me-vr-mods.md)).
