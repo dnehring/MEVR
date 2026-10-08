@@ -292,6 +292,22 @@ real issues, all fixed in `6a5f283`:
 - **Smaller fixes:** mono fallback when eye resources fail; button-only controller input counts
   as active; INI line endings.
 
+**Second review pass** (on the fixes, plus my own walk-through of the pairing logic). Fixed in
+`15ddd0a`:
+- **No-view ticks no longer queue.** They publish a fallback pose that's never waited on. A late
+  push after its Present would have cost a 100 ms wait per tick.
+- **One queue entry per tick.** A second view replaces the first.
+- **Lockstep timeout 30 → 100 ms**, so an ordinary hitch can't trigger drift recovery.
+- **No waits while frames aren't wanted:** while the headset isn't showing frames, or after a
+  timeout with no Present since.
+- **Stick yaw** cleared on ticks without a player view.
+- **Stereo forced to mono** when eye resources failed.
+- **Code dump** checks page protections before reading.
+- **Pairing-queue tests:** `TestViewSync`.
+- **Accepted risk:** three consecutive render frames over 100 ms (heavy loading) can drop a valid
+  view. That leaves views one frame ahead until the game thread becomes the slower side. A real
+  fix needs a frame identity from the render thread.
+
 ### Still to do
 
 - Retest with the fixes. Check image correctness (colors and brightness vs the monitor).
