@@ -294,3 +294,16 @@ Ranked suspects:
    exact tag shook *because* the game thread runs ahead. Blocking it, as we do, avoids that,
    but costs throughput.
 
+
+## World scale (2026-10-08, first-person test)
+
+- **Shepard's skeleton puts 1 Unreal unit at about 1 cm**: upper arm 28.9 units, forearm 26.3,
+  head bone 165.7 units above the root (our arm IK log). So a life-size half IPD is about 3.2
+  units (3.25 for the 65 mm the headset reports).
+- **Halcyon's shipped `runtime/MELEVR.ini` sets `sfr2HalfEyeUU = 0.800`** while its code default
+  is 3.4 ("dialled-in 2026-08-12"). With 0.8 the stereo world looks about four times too big; the
+  user reported a "massive" weapon in first person. Our deploy writes 3.25. Its comment that
+  `aerHalfEyeUU ~1.6 = 1:1 life-size` disagrees with the skeleton **[verify in headset]**.
+- Halcyon's lean maps head motion at 50 units per metre (times `leanGain`, and three times that
+  forward), half of the body scale. **[verify]** whether lean feels small; `leanGain = 2` would
+  make side-to-side lean life-size.

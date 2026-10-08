@@ -74,8 +74,11 @@ if ($Game -eq 'LE1') {
     if (-not (Test-Path $ini)) {
         $defaults = Join-Path $PSScriptRoot '..\src\halcyon\le1\runtime\MELEVR.ini'
         $text = [IO.File]::ReadAllText($defaults) -replace '(?m)^firstRunDone = 0', 'firstRunDone = 1'
+        # Upstream ships 0.8 (a quarter of life-size: the world looks four times too big). Shepard's
+        # skeleton puts 1 unit at about 1 cm, so half a 65 mm IPD is 3.25 units.
+        $text = $text -replace '(?m)^sfr2HalfEyeUU = .*$', 'sfr2HalfEyeUU = 3.250'
         [IO.File]::WriteAllText($ini, $text)
-        Write-Output "Installed Halcyon's default MELEVR.ini (welcome marked seen)"
+        Write-Output "Installed Halcyon's default MELEVR.ini (welcome marked seen, life-size stereo)"
     }
 }
 Write-Output "Log: $(Join-Path $bin "Logs\$name.log")"
