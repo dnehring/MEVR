@@ -7,6 +7,7 @@
 
 #if defined(MEVR_WITH_HALCYON)
 #include "core/vr/Controllers.hpp"
+#include "core/vr/AimRay.hpp"
 #include "core/vr/HostView.hpp"
 #include "plugin/Halcyon.hpp"
 #endif
@@ -66,12 +67,17 @@ void HostView(vr::host_view::State* out) {
 void HostSetHandAim(bool on) {
     halcyon::SetModHandAim(on);
 }
+void HostSetAimRay(vr::aim_ray::Ray const* ray) {
+    vr::aim_ray::Publish(ray != nullptr ? *ray : vr::aim_ray::Ray{});
+}
 HostServices const gServices{kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
     static_cast<std::uint32_t>(sizeof(vr::controllers::State)), static_cast<std::uint32_t>(sizeof(vr::host_view::State)),
-    &HostSetProcessEventCallback, &HostProcessExiting, &HostKeepLoaded};
-// A mod that's gone can't aim: Halcyon's head aim must come back.
+    &HostSetProcessEventCallback, &HostProcessExiting, &HostKeepLoaded,
+    static_cast<std::uint32_t>(sizeof(vr::aim_ray::Ray)), &HostSetAimRay};
+// A mod that's gone can't aim: Halcyon's head aim must come back, and the reticle go.
 void ForgetModState() {
     halcyon::SetModHandAim(false);
+    vr::aim_ray::Reset();
 }
 #else
 HostServices const gServices{kHostServicesVersion, kHostLog, nullptr, nullptr, nullptr, 0, 0, &HostSetProcessEventCallback,

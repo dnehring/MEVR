@@ -18,6 +18,9 @@ struct State;
 namespace vr::host_view {
 struct State;
 }
+namespace vr::aim_ray {
+struct Ray;
+}
 
 // Fields are only ever appended: a mod reads the fields of every version up to the host's (and
 // its own), so a newer mod still runs on an older host, without what the older host lacks.
@@ -26,7 +29,7 @@ struct State;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 5;
+inline constexpr int kHostServicesVersion = 6;
 
 using ProcessEventCallback = void (*)(UObject* context, UFunction* function, void* parms, void* result);
 
@@ -67,6 +70,13 @@ struct HostServices {
     // The mod's shutdown couldn't make unloading safe: a hook it couldn't remove, or a call still
     // inside one when it gave up waiting. The host then pins the DLL instead of freeing it.
     void (*keepLoaded)(char const* reason) = nullptr;
+
+    // Version 6.
+    // The weapon's aim ray (core/vr/AimRay.hpp), each tick: the host's renderer draws the reticle
+    // along it. sizeof(vr::aim_ray::Ray) as the host was built; the mod only calls setAimRay when
+    // it matches. Non-null with `controllers`.
+    std::uint32_t aimRaySize = 0;
+    void (*setAimRay)(vr::aim_ray::Ray const* ray) = nullptr;
 };
 
 } // namespace mevr

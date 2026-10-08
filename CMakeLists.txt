@@ -108,6 +108,8 @@ set(MEVR_MOD_SOURCES
     src/core/ik/Ik.hpp
     src/core/ik/Rigid.cpp
     src/core/ik/Rigid.hpp
+    src/core/vr/AimRay.cpp
+    src/core/vr/AimRay.hpp
     src/core/vr/Controllers.cpp
     src/core/vr/Controllers.hpp
     src/core/vr/HostView.cpp
@@ -179,6 +181,8 @@ endfunction()
 # controller actions, motion controllers as pad 0, its view for our controller mapping, controller
 # aim in place of its head aim).
 set(MEVR_HALCYON_HOST_SOURCES
+    src/core/vr/AimRay.cpp
+    src/core/vr/AimRay.hpp
     src/core/vr/Controllers.cpp
     src/core/vr/Controllers.hpp
     src/core/vr/HostView.cpp
