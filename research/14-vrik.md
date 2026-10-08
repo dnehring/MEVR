@@ -55,6 +55,24 @@ the feature that sets us apart: none of the existing ME LE VR mods
   `BioPlayerController.GetAdjustedAimFor` from script, which ProcessEvent never sees. ME2VR's
   logs show the same approach on LE2.
 
+**Route 1 driver (built 2026-10-08, `.` toggles, off by default): `game/ArmIk`.**
+
+- **Finding the controls.** For the player's mesh it finds the first `SkelControlLimb` on each
+  hand bone. Hand bones are matched by name: `Hand_R`, `R_Hand`, `RightHand`, `Wrist_L` and so on.
+- **Driving them.** While on, it sets each control's effector to that controller's grip pose in
+  world space. The joint target is the `core/ik` elbow pole. Strength is 1.
+- **Mapping to the world.** Controller positions map through `head_tracking::Anchor`: where
+  the rendered head is in the world, plus the body yaw.
+- **Safety.** It saves the controls' settings and restores them when turned off or when tracking
+  is lost. Controls are re-found whenever the mesh or AnimTree changes, and every pointer is
+  liveness-checked (`engine::IsAlive`).
+- **When there's nothing to drive.** If the probe finds no limb controls on the hand bones, it
+  logs that once and stays inert.
+
+**Research tooling:** `tools/xref.py` finds callers and references, and maps UE3's native table
+(`execGetBoneNames`-style names) to addresses. It runs on the disassemblable exe built from the
+mod's code dump. This is how route 2's post-animation hook will be found.
+
 ## Plan
 
 1. **Read the probe log.**

@@ -18,6 +18,7 @@ Keys:
 | `;` | stereo: mono / alternate-eye |
 | `/` | 6DOF on / off |
 | `,` | hand aim on / off: shots follow the right controller (on foot) |
+| `.` | arm IK on / off: Shepard's arms follow the controllers (if the game's IK controls exist) |
 
 ## A. Desktop only (no headset needed, about 2 minutes)
 
@@ -68,8 +69,11 @@ What Claude looks for in the log:
 7. **Hand aim:** press `,`, draw a weapon and fire at something while pointing the right
    controller elsewhere than your head. Do shots land where the controller points? (There's no
    reticle yet, so watch the impacts.)
-8. Look at a reflective floor (e.g. the Normandy) while turning. Do reflections still jerk?
-9. Known: on the render path the crosshair no longer follows your head. Aim is still the game
+8. **Arm IK:** press `.`, step back with `\` to the camera path or look down, and wave the
+   controllers. Do Shepard's arms follow? (If the log says `route 1 unavailable`, nothing
+   happens yet; that's expected.)
+9. Look at a reflective floor (e.g. the Normandy) while turning. Do reflections still jerk?
+10. Known: on the render path the crosshair no longer follows your head. Aim is still the game
    camera's.
 
 What Claude looks for:

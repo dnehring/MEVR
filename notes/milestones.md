@@ -317,6 +317,13 @@ The user chose to keep our own project (VRIK isn't in Halcyon's scope). Built:
 
 Plan: [research/14](../research/14-vrik.md).
 
+Also built (2026-10-08, user away):
+- **Route 1 arm IK driver** (`.`, off by default).
+- **`tools/xref.py`**, for the code dump.
+- **All three games' plugins build.** Per-game spellings live in `engine/GameAdapter.hpp`.
+  LE2/LE3 CalcSceneView and Draw addresses are in place; the gameplay call site is taken from
+  inside Draw and logged so it can be pinned.
+
 ### Still to do
 
 - Retest with the fixes. Check image correctness (colors and brightness vs the monitor).
