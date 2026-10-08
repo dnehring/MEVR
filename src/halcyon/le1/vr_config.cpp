@@ -174,6 +174,15 @@ void ApplyKeyValue(VrConfig& c, const char* key, double val) noexcept
                                               // Stereo/DIBR per-mode scalars + now the fp* keys saved but never
                                               // loaded back. Wired in; also carries the First-person keys.
     if (strcmp(key, "hdrPaperWhiteNits") == 0) { c.hdrPaperWhiteNits = (v < 0.0f) ? 0.0f : v; return; }   // [MEVR] HDR
+    // [MEVR] body-locked HUD panel + hand reticle. Standalone if+return (C1061 guard).
+    if (strcmp(key, "hudPanel") == 0) { c.hudPanel = b; return; }
+    if (strcmp(key, "hudPanelDistanceM") == 0) { c.hudPanelDistanceM = v; return; }
+    if (strcmp(key, "hudPanelWidthM") == 0) { c.hudPanelWidthM = v; return; }
+    if (strcmp(key, "hudPanelDropM") == 0) { c.hudPanelDropM = v; return; }
+    if (strcmp(key, "hudPanelFollowDeg") == 0) { c.hudPanelFollowDeg = v; return; }
+    if (strcmp(key, "handReticle") == 0) { c.handReticle = b; return; }
+    if (strcmp(key, "handReticleDistanceM") == 0) { c.handReticleDistanceM = v; return; }
+    if (strcmp(key, "handReticleSizeDeg") == 0) { c.handReticleSizeDeg = v; return; }
     // Resolution watchdog: what MELE-VR.bat installed. Standalone if+return.
     if (strcmp(key, "expectedResX") == 0) { c.expectedResX = static_cast<int>(v); return; }
     if (strcmp(key, "expectedResY") == 0) { c.expectedResY = static_cast<int>(v); return; }
@@ -615,6 +624,17 @@ void WriteProfileSection(FILE* f, const char* name, const VrConfig& c) noexcept
     fprintf(f, "; conversation-movie element overrides (backend; subtitle work)\n");
     writeElems("convoElem_", MELEVR::Pchud::kConvoElemNames, VrConfig::kConvoElemCount, c.convoElems);
     }   // end HUD tab
+
+    // [MEVR] body-locked HUD panel + hand reticle
+    fprintf(f, "; ----- HUD panel and hand reticle (MEVR) -----\n");
+    fprintf(f, "hudPanel = %d\n",               c.hudPanel ? 1 : 0);
+    fprintf(f, "hudPanelDistanceM = %.3f\n",    c.hudPanelDistanceM);
+    fprintf(f, "hudPanelWidthM = %.3f\n",       c.hudPanelWidthM);
+    fprintf(f, "hudPanelDropM = %.3f\n",        c.hudPanelDropM);
+    fprintf(f, "hudPanelFollowDeg = %.1f\n",    c.hudPanelFollowDeg);
+    fprintf(f, "handReticle = %d\n",            c.handReticle ? 1 : 0);
+    fprintf(f, "handReticleDistanceM = %.2f\n", c.handReticleDistanceM);
+    fprintf(f, "handReticleSizeDeg = %.2f\n",   c.handReticleSizeDeg);
 
     fprintf(f, "; ----- Comfort / menu -----\n");
     fprintf(f, "menuDistanceM = %.3f\n",    c.menuDistanceM);

@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "logger.h"
+#include "mevr_bridge.h"   // [MEVR] body-locked HUD panel
 #include "render_hook.h"
 #include "vr_config.h"
 #include "vr_menu.h"
@@ -4433,6 +4434,138 @@ void SfrMirrorUiDrawIntoPass0(ID3D11DeviceContext* ctx, DrawThunk&& draw) noexce
     if (savedDsv != nullptr) savedDsv->Release();
 }
 
+// [MEVR] Body-locked HUD (src/plugin/HalcyonOverlays.cpp). While the panel is armed, each UI draw of
+// this present - the draws after both stereo passes that blend "over" (dst = INV_SRC_ALPHA) the
+// whole frame: Scaleform HUD, subtitles - goes into the HUD panel texture INSTEAD of the frame, so
+// neither eye carries the HUD and RunFrame shows the texture as a quad fixed in front of the body.
+// Same draw and state, the game's own depth-stencil (Scaleform masks with stencil); only the colour
+// target changes, plus a blend state that also accumulates alpha. The target must be the swapchain's
+// backbuffer itself, or (Halcyon's [SFR-UI] rule) an 8-bit scene-sized target: never the FP16 scene
+// colour, which is also scene-sized. Every distinct pixel shader is logged once ([MEVR-HUD]).
+// Returns false (draw untouched) for anything else. Render thread, immediate context only.
+template <typename DrawThunk>
+bool MevrHudPanelDraw(ID3D11DeviceContext* ctx, DrawThunk&& draw) noexcept
+{
+    if (!MELEVR::MevrBridge::HudPanelArmed() || !SfrUiMirrorArmed() || ctx != g_gameContext) return false;
+    const UINT bbW = g_sceneRenderW.load(std::memory_order_acquire);
+    const UINT bbH = g_sceneRenderH.load(std::memory_order_acquire);
+    if (bbW == 0 || bbH == 0) return false;
+    D3D11_VIEWPORT vp = {};
+    UINT nvp = 1;
+    ctx->RSGetViewports(&nvp, &vp);
+    if (!(nvp >= 1 && vp.Width > static_cast<float>(bbW) * 0.75f)) return false;
+
+    // The bound target, read live (the cached g_currentRtv* can be stomped by deferred recording).
+    static unsigned long long s_bbPresent = ~0ull;   // render-thread only
+    static void* s_bbIdentity = nullptr;
+    static bool s_bb8Bit = false;
+    const unsigned long long present = g_presentCount.load(std::memory_order_relaxed);
+    if (present != s_bbPresent && g_gameSwapChain != nullptr)
+    {
+        s_bbPresent = present;
+        s_bbIdentity = nullptr;
+        ID3D11Texture2D* bb = nullptr;
+        if (SUCCEEDED(g_gameSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&bb))) && bb != nullptr)
+        {
+            D3D11_TEXTURE2D_DESC bbd = {};
+            bb->GetDesc(&bbd);
+            s_bb8Bit = bbd.Format == DXGI_FORMAT_R8G8B8A8_UNORM;
+            s_bbIdentity = bb;   // identity only
+            bb->Release();
+        }
+    }
+    ID3D11RenderTargetView* rtv = nullptr;
+    ctx->OMGetRenderTargets(1, &rtv, nullptr);
+    if (rtv == nullptr) return false;
+    D3D11_RENDER_TARGET_VIEW_DESC rd = {};
+    rtv->GetDesc(&rd);
+    D3D11_TEXTURE2D_DESC td = {};
+    bool isBackbuffer = false;
+    {
+        ID3D11Resource* res = nullptr;
+        rtv->GetResource(&res);
+        if (res != nullptr)
+        {
+            ID3D11Texture2D* tex = nullptr;
+            if (SUCCEEDED(res->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&tex))) && tex != nullptr)
+            {
+                tex->GetDesc(&td);
+                isBackbuffer = (tex == s_bbIdentity);
+                tex->Release();
+            }
+            res->Release();
+        }
+    }
+    rtv->Release();
+    const bool sceneSized = td.Width == bbW && td.Height == bbH && td.SampleDesc.Count == 1 &&
+                            rd.ViewDimension == D3D11_RTV_DIMENSION_TEXTURE2D;
+    // Halcyon's rule (an 8-bit scene-sized target) only while the backbuffer itself is 8-bit: with an
+    // FP16 backbuffer the UI is drawn into it, and other 8-bit targets carry post effects (and would
+    // make the panel texture flip between formats within a frame).
+    const bool ldrFrame = s_bb8Bit && td.Format == DXGI_FORMAT_R8G8B8A8_UNORM;
+    if (!sceneSized || !(isBackbuffer || ldrFrame)) return false;
+
+    ID3D11BlendState* gameBlend = nullptr;
+    float blendFactor[4] = {};
+    UINT sampleMask = 0;
+    ctx->OMGetBlendState(&gameBlend, blendFactor, &sampleMask);
+    D3D11_BLEND_DESC bd = {};
+    if (gameBlend != nullptr) gameBlend->GetDesc(&bd);
+    const bool over = gameBlend != nullptr && bd.RenderTarget[0].BlendEnable != FALSE &&
+                      bd.RenderTarget[0].DestBlend == D3D11_BLEND_INV_SRC_ALPHA;
+
+    {   // one line per distinct pixel shader, either way
+        ID3D11PixelShader* ps = nullptr;
+        ctx->PSGetShader(&ps, nullptr, nullptr);
+        if (ps != nullptr) ps->Release();   // identity only (LookupPsHash keys on the pointer)
+        const unsigned hash = LookupPsHash(ps);
+        static unsigned s_seen[64] = {};    // render-thread only
+        static int s_seenN = 0;
+        bool seen = false;
+        for (int i = 0; i < s_seenN; ++i)
+            if (s_seen[i] == hash) { seen = true; break; }
+        if (!seen && s_seenN < 64)
+        {
+            s_seen[s_seenN++] = hash;
+            char line[256];
+            std::snprintf(line, sizeof(line),
+                          "[MEVR-HUD] %s ps=%08X target=%s fmt=%d vp=%.0fx%.0f blend=%d src=%d dst=%d srcA=%d dstA=%d mask=%X",
+                          over ? "to the HUD panel" : "left in the frame (not 'over' blended)", hash,
+                          isBackbuffer ? "backbuffer" : "8-bit scene-sized", static_cast<int>(rd.Format),
+                          vp.Width, vp.Height, bd.RenderTarget[0].BlendEnable ? 1 : 0,
+                          static_cast<int>(bd.RenderTarget[0].SrcBlend), static_cast<int>(bd.RenderTarget[0].DestBlend),
+                          static_cast<int>(bd.RenderTarget[0].SrcBlendAlpha),
+                          static_cast<int>(bd.RenderTarget[0].DestBlendAlpha),
+                          static_cast<unsigned>(bd.RenderTarget[0].RenderTargetWriteMask));
+            LogLine(line);
+        }
+    }
+    ID3D11RenderTargetView* panelRtv = over
+        ? MELEVR::MevrBridge::HudPanelTarget(ctx, td.Width, td.Height, static_cast<int>(rd.Format)) : nullptr;
+    if (panelRtv == nullptr)
+    {
+        if (gameBlend != nullptr) gameBlend->Release();
+        return false;
+    }
+    ID3D11BlendState* panelBlend = MELEVR::MevrBridge::HudPanelBlend(ctx, gameBlend);
+    ID3D11RenderTargetView* savedRtvs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
+    ID3D11DepthStencilView* savedDsv = nullptr;
+    ctx->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, savedRtvs, &savedDsv);
+    ctx->OMSetRenderTargets(1, &panelRtv, savedDsv);
+    if (panelBlend != nullptr) ctx->OMSetBlendState(panelBlend, blendFactor, sampleMask);
+    draw();
+    if (panelBlend != nullptr) ctx->OMSetBlendState(gameBlend, blendFactor, sampleMask);
+    ctx->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, savedRtvs, savedDsv);
+    for (auto*& r : savedRtvs)
+    {
+        if (r != nullptr) { r->Release(); r = nullptr; }
+    }
+    if (savedDsv != nullptr) savedDsv->Release();
+    if (gameBlend != nullptr) gameBlend->Release();
+    MELEVR::MevrBridge::NoteHudPanelDraw();
+    return true;
+}
+
 void STDMETHODCALLTYPE ClearDepthStencilViewHook(ID3D11DeviceContext* ctx, ID3D11DepthStencilView* dsv,
                                                  UINT flags, FLOAT depthVal, UINT8 stencil) noexcept
 {
@@ -5275,6 +5408,9 @@ void STDMETHODCALLTYPE DrawIndexedHook(ID3D11DeviceContext* context, UINT indexC
                 return;
             }
         }
+        // [MEVR] body-locked HUD: the UI draw goes into the HUD panel instead of the frame (both eyes).
+        if (MevrHudPanelDraw(context, [&] { original(context, indexCount, startIndexLocation, baseVertexLocation); }))
+            return;
         // [SFR-UI] Stereo 2: mirror each UI draw into the held left-eye pass (UI draws once per
         // present, after both passes, so the boundary-captured pass 0 has no HUD without this).
         if (SfrUiMirrorArmed())
@@ -5318,6 +5454,8 @@ void STDMETHODCALLTYPE DrawHook(ID3D11DeviceContext* context, UINT vertexCount, 
             return;
         }
     }
+    // [MEVR] body-locked HUD: the UI draw goes into the HUD panel instead of the frame (both eyes).
+    if (MevrHudPanelDraw(context, [&] { original(context, vertexCount, startVertexLocation); })) return;
     // [SFR-UI] Stereo 2: mirror non-indexed UI draws (Scaleform TEXT glyphs) into the left-eye pass.
     if (SfrUiMirrorArmed())
     {
@@ -5363,6 +5501,13 @@ void STDMETHODCALLTYPE DrawIndexedInstancedHook(ID3D11DeviceContext* context, UI
             return;
         }
     }
+    // [MEVR] body-locked HUD: the UI draw goes into the HUD panel instead of the frame (both eyes).
+    if (MevrHudPanelDraw(context, [&] {
+            original(context, indexCountPerInstance, instanceCount, startIndexLocation, baseVertexLocation, startInstanceLocation);
+        }))
+    {
+        return;
+    }
     // [SFR-UI] Stereo 2: mirror instanced UI batches into the left-eye pass too.
     if (SfrUiMirrorArmed())
     {
@@ -5389,6 +5534,13 @@ void STDMETHODCALLTYPE DrawInstancedHook(ID3D11DeviceContext* context, UINT vert
     DrawInstancedFn original = g_originalDrawInstanced;
     if (original != nullptr)
     {
+        // [MEVR] body-locked HUD: any UI batch drawn instanced goes to the HUD panel too.
+        if (MevrHudPanelDraw(context, [&] {
+                original(context, vertexCountPerInstance, instanceCount, startVertexLocation, startInstanceLocation);
+            }))
+        {
+            return;
+        }
         XScissorRestore xsc = {};
         BeginXScissorFix(context, &xsc);
         original(context, vertexCountPerInstance, instanceCount, startVertexLocation, startInstanceLocation);

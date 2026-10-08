@@ -1495,6 +1495,43 @@ void BuildUI() noexcept
             // [HUDNOTE] The HUD transforms are applied from the game's own HUD tick, which does
             // not run while this menu owns input, so edits land only once it is closed.
             ImGui::TextDisabled("Close this menu to see HUD size changes.");
+            // [MEVR] Body-locked HUD panel + hand reticle (src/plugin/HalcyonOverlays.cpp).
+            if (ImGui::CollapsingHeader("HUD panel and hand reticle", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                ImGui::Checkbox("HUD on a panel in front of you", &c.hudPanel);
+                ResetBtn("hudPanel", c.hudPanel, kDefaults.hudPanel);
+                ImGui::TextDisabled("Stereo 2: HUD and subtitles on a panel that stays put while you look around.");
+                ImGui::TextDisabled("R recenters it. The PCHUD movie settings below apply only with this off.");
+                if (c.hudPanel)
+                {
+                    ImGui::SetNextItemWidth(ControlWidth());
+                    ImGui::SliderFloat("Panel distance (m)", &c.hudPanelDistanceM, 0.6f, 3.0f, "%.2f");
+                    ResetBtn("hudPanelDistanceM", c.hudPanelDistanceM, kDefaults.hudPanelDistanceM);
+                    ImGui::SetNextItemWidth(ControlWidth());
+                    ImGui::SliderFloat("Panel width (m)", &c.hudPanelWidthM, 0.5f, 3.0f, "%.2f");
+                    ResetBtn("hudPanelWidthM", c.hudPanelWidthM, kDefaults.hudPanelWidthM);
+                    ImGui::SetNextItemWidth(ControlWidth());
+                    ImGui::SliderFloat("Panel below eye height (m)", &c.hudPanelDropM, -0.3f, 0.8f, "%.2f");
+                    ResetBtn("hudPanelDropM", c.hudPanelDropM, kDefaults.hudPanelDropM);
+                    ImGui::SetNextItemWidth(ControlWidth());
+                    ImGui::SliderFloat("Follow the head past (deg, 0 = never)", &c.hudPanelFollowDeg, 0.0f, 120.0f, "%.0f");
+                    ResetBtn("hudPanelFollowDeg", c.hudPanelFollowDeg, kDefaults.hudPanelFollowDeg);
+                    if (ImGui::Button("Put the panel where I'm looking")) MELEVR::MevrBridge::RequestHudPanelReplace();
+                    ImGui::TextDisabled("UI draws on the panel last frame: %u", MELEVR::MevrBridge::HudPanelDrawsLastFrame());
+                }
+                ImGui::Separator();
+                ImGui::Checkbox("Hand reticle (replaces the crosshair while the controller aims)", &c.handReticle);
+                ResetBtn("handReticle", c.handReticle, kDefaults.handReticle);
+                if (c.handReticle)
+                {
+                    ImGui::SetNextItemWidth(ControlWidth());
+                    ImGui::SliderFloat("Reticle distance (m)", &c.handReticleDistanceM, 2.0f, 30.0f, "%.1f");
+                    ResetBtn("handReticleDistanceM", c.handReticleDistanceM, kDefaults.handReticleDistanceM);
+                    ImGui::SetNextItemWidth(ControlWidth());
+                    ImGui::SliderFloat("Reticle size (deg)", &c.handReticleSizeDeg, 0.5f, 5.0f, "%.1f");
+                    ResetBtn("handReticleSizeDeg", c.handReticleSizeDeg, kDefaults.handReticleSizeDeg);
+                }
+            }
             if (ImGui::CollapsingHeader("PCHUD movie", ImGuiTreeNodeFlags_DefaultOpen))
             {
                 ImGui::Checkbox("PCHUD movie enabled", &c.pchudEnabled);
@@ -2148,6 +2185,14 @@ ID3D11Texture2D* RenderFrame() noexcept
 
     // ImGui_ImplDX11_RenderDrawData backs up + restores the device-context state, so it won't corrupt the
     // game's pipeline. This points it at a dedicated RTV first and clears it transparent.
+    // [MEVR] ...but not the render targets and viewports set here: those stayed bound into the game's
+    // next frame (UE3 caches its own state). Saved and restored around the menu draw.
+    ID3D11RenderTargetView* savedRtvs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
+    ID3D11DepthStencilView* savedDsv = nullptr;
+    D3D11_VIEWPORT savedVps[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE] = {};
+    UINT savedVpCount = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+    g_ctx->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, savedRtvs, &savedDsv);
+    g_ctx->RSGetViewports(&savedVpCount, savedVps);
     ID3D11RenderTargetView* rtvs[1] = { g_rtv };
     g_ctx->OMSetRenderTargets(1, rtvs, nullptr);
     const float clear[4] = { 0.0f, 0.0f, 0.0f, 0.0f };  // transparent
@@ -2155,6 +2200,13 @@ ID3D11Texture2D* RenderFrame() noexcept
     D3D11_VIEWPORT vp = { 0.0f, 0.0f, static_cast<float>(g_w), static_cast<float>(g_h), 0.0f, 1.0f };
     g_ctx->RSSetViewports(1, &vp);
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+    g_ctx->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, savedRtvs, savedDsv);   // [MEVR]
+    g_ctx->RSSetViewports(savedVpCount, savedVps);
+    for (auto*& r : savedRtvs)
+    {
+        if (r != nullptr) { r->Release(); r = nullptr; }
+    }
+    if (savedDsv != nullptr) savedDsv->Release();
 
     return g_tex;
 }

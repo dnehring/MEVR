@@ -23,7 +23,7 @@ other keys in the table further down are for our own renderer only.
      first: Halcyon's code has to catch the game's swap chain at startup.
    - Is head motion smooth now, in both eyes?
 2. **Controllers:** move, turn, fire, A/B/X/Y, grips, left menu = pause. Does the game react
-   without clicking the desktop window first? Open the Insert menu: can the controllers move
+   without clicking the desktop window first? Open the mod menu (`\`): can the controllers move
    through it?
 3. **First person:** press K. How does it look (Shepard's head hidden, camera at the eyes)?
    Recenter with R if the view is offset.
@@ -31,8 +31,7 @@ other keys in the table further down are for our own renderer only.
    - Look around: the view follows the head, but Shepard's aim no longer swings with it.
    - Point the right controller at a target away from where you're looking and fire. Do shots go
      where the controller points? Note any constant offset and roughly how far the target was.
-     The HUD crosshair stays in the middle of the view and doesn't show the controller's aim
-     (known; no reticle yet).
+     The game's crosshair should be gone; our ring reticle (step 6) shows the aim instead.
    - `,` switches to Halcyon's head aim and back. Which felt right?
    - Put the controllers down until they sleep and use a gamepad: head aim should come back.
    - The Mako's cannon should still follow the head.
@@ -51,13 +50,52 @@ other keys in the table further down are for our own renderer only.
    - Wave the gun around fast: does the gun stay locked to the hand (no lag behind it)?
    - Holster and draw again, switch weapons: same behaviour each time? (Each new weapon is
      measured again: hold still a moment after drawing.)
-   - If a reticle shows (the renderer side may not have it yet), does it sit on the barrel's line?
+   - Does the reticle (step 7) sit on the barrel's line?
    - `,` (hand aim off) gives Halcyon's head aim back; `.` (arm IK off) returns shots to the
      controller's ray without the gun following.
+7. **HUD panel, reticle and the mod menu (new).** Do this in Stereo 2, on foot.
+   - **Mod menu.** Press `\` (Halcyon's Insert menu; `\` in our deploy), once at the title screen
+     and once in gameplay. Press `\` again or hold both sticks to close it.
+     - Is the menu visible now? It's an opaque dark panel, a little nearer than before.
+     - If it's still invisible, say so. The log's `[MENUVIS]` lines will show why.
+   - **HUD.** The health, squad, radar and subtitles should sit on a panel about 1.5 m ahead,
+     a bit below eye level, not stuck to your face.
+     - Look around: the panel stays put, and the world shows no HUD in either eye.
+     - Turn your body with the stick: the panel stays in front of you.
+     - Keep your head turned more than about 50° for a second: the panel swings round.
+     - R recenters it.
+     - Is the text readable? Is the panel too big, small, near or low? The mod menu's HUD tab
+       has sliders for these.
+     - Untick **HUD on a panel in front of you** to compare with the old HUD. A/B both, then
+       leave it on.
+   - **Reticle.** Draw a weapon and point the right controller.
+     - A small ring should float along the controller's aim, about 10 m out, with the game's
+       crosshair gone.
+     - Do shots land on the ring? The ring follows the controller until the mod's weapon aim ray
+       arrives.
+     - Note the size you'd like. The HUD tab has distance and size sliders, and the reticle
+       checkbox for A/B.
+   - **Other screens.** Open the pause menu, the galaxy map and a conversation. They should look
+     as before, on the flat screen.
+   - **Fades.** Watch for anything full-screen ending up on the panel instead of the world, such
+     as a fade, a red damage tint or a flash. Note what and when.
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR
   loader (MEVR)`, its pacing lines.
+- HUD panel and reticle, in Halcyon's log and ours:
+  - `[MEVR-HUD] HUD panel texture WxH fmt=..`;
+  - the `[MEVR-HUD] to the HUD panel ps=..` / `left in the frame ps=..` shader list;
+  - `[MEVR-HUD] panel layer: N UI draws this frame`;
+  - `[MEVR-HUD] PCHUD movie layout: authored`;
+  - `[MEVR-CROSSHAIR] found ...` and `game crosshair hidden`;
+  - `[MEVR-HUD] first hand reticle`;
+  - `[MENUVIS]` lines for the HUD panel's swapchain image and texture (visible pixels > 0%).
+- Insert menu: `[MENUVIS]` lines.
+  - The ImGui texture and the swapchain image after the copy should both show visible pixels
+    (about 100%).
+  - `menu copy:` gives both descriptions (a format or size mismatch would drop the copy).
+  - `menu quad submitted`.
 - Ours: `halcyon: renderer attached`, `hooked UObject::ProcessEvent (host-owned)`, `OpenXR:
   controller actions ready`, `game window to foreground`, `hand aim on`, `first world view`, the
   camera-vs-view check (about 0 degrees), `first shot aimed by the right controller`, `arm IK on`,

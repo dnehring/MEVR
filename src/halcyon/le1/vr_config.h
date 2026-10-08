@@ -556,6 +556,21 @@ struct VrConfig
     ElemOverride hudGroupTop = {};
     ElemOverride hudGroupBottom = {};
 
+    // ---- [MEVR] Body-locked HUD panel and hand reticle (src/plugin/HalcyonOverlays.cpp) ----
+    // In Stereo 2 the game's UI (HUD, subtitles) goes onto a panel fixed in the tracking space in front
+    // of the body instead of into the eye images, so it no longer rides the head. Recenter (R) puts it
+    // straight ahead again; with the head turned past hudPanelFollowDeg for a second it swings round.
+    bool  hudPanel = true;
+    float hudPanelDistanceM = 1.5f;    // from the eyes at recenter
+    float hudPanelWidthM = 1.3f;       // height follows the game's frame aspect
+    float hudPanelDropM = 0.25f;       // centre below eye height at recenter
+    float hudPanelFollowDeg = 50.0f;   // 0 = never follows
+    // Our reticle on the weapon's aim ray replaces the game's screen-centre crosshair while the right
+    // controller aims (on foot): a ring at a fixed distance along the ray, constant angular size.
+    bool  handReticle = true;
+    float handReticleDistanceM = 10.0f;
+    float handReticleSizeDeg = 1.5f;
+
     // ---- Menu comfort ----
     float menuDistanceM = 1.54f;   // head-locked menu quad distance in metres (rebaked 2026-08-11; further = less disparity, easier to fuse)
     float menuSizeM = 1.0f;        // menu quad width in metres (resizable regardless of screen/res settings)

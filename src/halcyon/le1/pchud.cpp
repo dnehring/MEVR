@@ -1,3 +1,5 @@
+// Modified for ME VR Attempt (GPL-3.0) since 2026-10-08: changes are marked [MEVR].
+// Upstream: jrush64/MassEffect1-VR @ 3c51514 (Copyright (C) 2026 Halcyon).
 #include "pchud.h"
 
 #include "logger.h"
@@ -110,6 +112,15 @@ std::atomic<float> g_offsetY{0.0f};
 // Monotonic revision bumped whenever the desired values change; the applied copy tracks the last applied one.
 std::atomic_uint64_t g_settingsRev{0};
 std::atomic_uint64_t g_lastAppliedRev{0};
+
+// [MEVR] Body-locked HUD panel: the PCHUD movie keeps its authored layout while on (SetAuthoredLayout).
+std::atomic_bool g_mevrAuthored{false};
+// [MEVR] Hand reticle: the game's crosshair movie (BioSFHandler_Reticule) hidden while on.
+std::atomic_bool g_mevrHideCrosshair{false};
+std::atomic_uintptr_t g_mevrReticuleClsName{0};   // interned FName ptr -> pointer compare
+std::uintptr_t g_mevrReticulePanel = 0;           // game thread: the movie instance last written
+bool g_mevrCrosshairHidden = false;               // game thread: what that instance holds now
+uint32_t g_mevrReticuleEvents = 0;                // game thread: re-stamp cadence
 
 // ---- Conversation wheel (BioSFHandler_Conversation): a SECOND movie target driven by the exact same
 // mechanism. oPanel lives at 0x80 in the BASE UBioSFHandler (verified in Engine_classes.h), so every handler
@@ -1288,7 +1299,9 @@ void ApplyToLivePanel(void* panel) noexcept
     {
         static std::uintptr_t s_elemPanel = 0;
         static ElemRuntime s_elemRuntime[kHudElemCount] = {};
-        const HudElemState* desired = g_hudElemBuf[g_hudElemActive.load(std::memory_order_acquire)];
+        static const HudElemState kAuthored[kHudElemCount] = {};   // [MEVR] all off = authored layout
+        const bool authored = g_mevrAuthored.load(std::memory_order_acquire);   // [MEVR]
+        const HudElemState* desired = authored ? kAuthored : g_hudElemBuf[g_hudElemActive.load(std::memory_order_acquire)];
         ApplyElementsToPanel(panel, kHudElemNamesW, kHudElemBase, kHudElemCount, desired,
                              &s_elemPanel, s_elemRuntime, "HUDELEM");
     }
@@ -1315,7 +1328,10 @@ void ApplyToLivePanel(void* panel) noexcept
     constexpr float kRefScale = 0.35f;   // the default master scale; offset is "true" at this scale
     const float pivotedX = offsetX - kStageCenterX * (scaleX - kRefScale);
     const float pivotedY = offsetY - kStageCenterY * (scaleY - kRefScale);
-    const bool ok = ApplyScaleOffsetToPanel(panel, scaleX, scaleY, pivotedX, pivotedY);
+    // [MEVR] on the body-locked panel the movie keeps its authored root transform (scale 1, at 0,0).
+    const bool ok = g_mevrAuthored.load(std::memory_order_acquire)
+                        ? ApplyScaleOffsetToPanel(panel, 1.0f, 1.0f, 0.0f, 0.0f)
+                        : ApplyScaleOffsetToPanel(panel, scaleX, scaleY, pivotedX, pivotedY);
 
     if (ok)
     {
@@ -1858,6 +1874,52 @@ void MaybeBoostReflectionCaptureRate() noexcept
     if (s_cursor == 0) s_sweepNotBefore = now + 2000;
 }
 
+// [MEVR] Hand reticle: hide (or give back) the game's crosshair on its own handler's events, like the
+// PCHUD apply: the panel is read live from the handler being processed, never cached across events.
+// _root._alpha rather than _visible, so giving it back can't force-show a movie the game hid (the
+// VISIBILITY RULE above). Inert unless hiding or restoring: one class-name pointer compare per event.
+void MevrApplyCrosshair(void* context) noexcept
+{
+    const bool want = g_mevrHideCrosshair.load(std::memory_order_acquire);
+    if (context == nullptr || (!want && !g_mevrCrosshairHidden)) return;
+    const char* cls = ClassNameSEH(context);
+    if (cls == nullptr) return;
+    const std::uintptr_t cached = g_mevrReticuleClsName.load(std::memory_order_relaxed);
+    if (cached != 0)
+    {
+        if (reinterpret_cast<std::uintptr_t>(cls) != cached) return;
+    }
+    else
+    {
+        if (std::strcmp(cls, "BioSFHandler_Reticule") != 0) return;
+        g_mevrReticuleClsName.store(reinterpret_cast<std::uintptr_t>(cls), std::memory_order_relaxed);
+        LogLine("[MEVR-CROSSHAIR] found the crosshair movie's handler (BioSFHandler_Reticule) obj=" + PtrText(context));
+    }
+    void* panel = nullptr;
+    if (!ReadPtrAtSEH(context, kPchudHandlerPanel, &panel) || !PointerLooksCanonicalAligned(panel) ||
+        !Readable(panel, 0x100))
+    {
+        return;
+    }
+    const std::uintptr_t panelBits = reinterpret_cast<std::uintptr_t>(panel);
+    if (panelBits != g_mevrReticulePanel)
+    {
+        g_mevrReticulePanel = panelBits;   // a fresh movie instance shows its crosshair
+        g_mevrCrosshairHidden = false;
+        g_mevrReticuleEvents = 0;
+    }
+    // While hidden, re-stamp now and then: the movie's own timeline may reset _alpha.
+    const bool restamp = want && g_mevrCrosshairHidden && ((++g_mevrReticuleEvents % 60u) == 0u);
+    if (want == g_mevrCrosshairHidden && !restamp) return;
+    const bool ok = CallBioSfPanelSetVariableFloat(panel, L"_root._alpha", want ? 0.0f : 100.0f);
+    if (want != g_mevrCrosshairHidden)
+    {
+        LogLine(std::string("[MEVR-CROSSHAIR] game crosshair ") + (want ? "hidden (the hand reticle replaces it)" : "shown again") +
+                " ok=" + (ok ? "1" : "0") + " panel=" + PtrText(panel));
+    }
+    if (ok) g_mevrCrosshairHidden = want;
+}
+
 void __fastcall ProcessEventHook(void* context, void* function, void* params, void* result) noexcept
 {
     ProcessEventFn original = g_originalProcessEvent;
@@ -1914,6 +1976,8 @@ void __fastcall ProcessEventHook(void* context, void* function, void* params, vo
 
     // Ignore events that this own SetVariableFloat call triggered (reentrancy guard).
     if (g_applyingPchud) return;
+
+    MevrApplyCrosshair(context);   // [MEVR] hand reticle: the game's crosshair hidden while it aims
 
     // RELIABLE conversation detection for the overlay standdown - runs on EVERY event while the overlay is
     // on, independent of the convo-movie feature, so the overlay reliably stays off for the whole convo (the
@@ -3310,6 +3374,23 @@ void SetTransform(bool enabled, float scaleX, float scaleY, float offsetX, float
     g_enabled.store(enabled, std::memory_order_release);
 
     if (changed) g_settingsRev.fetch_add(1, std::memory_order_acq_rel);
+}
+
+// [MEVR] body-locked HUD panel: authored PCHUD layout while on (bumps the revision so it re-applies).
+void SetAuthoredLayout(bool on) noexcept
+{
+    if (g_mevrAuthored.exchange(on, std::memory_order_acq_rel) != on)
+    {
+        g_settingsRev.fetch_add(1, std::memory_order_acq_rel);
+        LogLine(std::string("[MEVR-HUD] PCHUD movie layout: ") +
+                (on ? "authored (shown on the body-locked panel)" : "configured (Halcyon's, in the eye images)"));
+    }
+}
+
+// [MEVR] hand reticle: hide the game's crosshair (applied from the ProcessEvent hook).
+void SetCrosshairHidden(bool hidden) noexcept
+{
+    g_mevrHideCrosshair.store(hidden, std::memory_order_release);
 }
 
 void SetConvoTransform(bool enabled, float scaleX, float scaleY, float offsetX, float offsetY) noexcept

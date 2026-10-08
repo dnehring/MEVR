@@ -1,3 +1,5 @@
+// Modified for ME VR Attempt (GPL-3.0) since 2026-10-08: changes are marked [MEVR].
+// Upstream: jrush64/MassEffect1-VR @ 3c51514 (Copyright (C) 2026 Halcyon).
 #pragma once
 
 // PCHUD movie transform (Scaleform-only HUD move/scale).
@@ -91,4 +93,14 @@ void SetHudGroups(const HudElemState& top, const HudElemState& bottom) noexcept;
 // Per-frame driver. Lazily installs on first call, then (if enabled + a panel is resolved + the panel or
 // the values changed) applies the transform.
 void Tick() noexcept;
+
+// [MEVR] Body-locked HUD panel: while on, the PCHUD movie gets its AUTHORED layout (scale 1, offset 0,
+// per-element overrides off) instead of the head-locked shrink-and-centre values above, because the
+// panel itself sets the HUD's size and place. Off restores the configured layout.
+void SetAuthoredLayout(bool on) noexcept;
+
+// [MEVR] Hand reticle: hides the game's screen-centre crosshair (the BioSFHandler_Reticule movie,
+// _root._alpha = 0) while our reticle on the weapon's aim ray replaces it; off gives it back (100).
+// Applied from the ProcessEvent hook on the handler's own events (game thread).
+void SetCrosshairHidden(bool hidden) noexcept;
 }

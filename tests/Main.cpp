@@ -6,6 +6,7 @@
 #include "core/ik/HandFrame.hpp"
 #include "core/ik/Ik.hpp"
 #include "core/ik/Rigid.hpp"
+#include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/ViewSync.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/GamepadMapping.hpp"
@@ -888,6 +889,97 @@ void TestHandForBarrel() {
     CHECK(!HandForBarrel({0.0, 0.0, 0.0}, gunUp, aim, up).has_value());
 }
 
+bool NearXr(XrVector3f a, XrVector3f b, double tolerance = 1e-4) {
+    return NearD(a.x, b.x, tolerance) && NearD(a.y, b.y, tolerance) && NearD(a.z, b.z, tolerance);
+}
+
+void TestOverlayPlacement() {
+    using namespace mevr::vr::overlay;
+    double const pi = std::numbers::pi;
+
+    // Headings: 0 facing -Z, + turned left (about +Y), from any quaternion with that forward.
+    CHECK(NearD(HeadingOf({0.0f, 0.0f, 0.0f, 1.0f}), 0.0));
+    CHECK(NearD(HeadingOf(AxisAngle(0, 1, 0, 90)), pi / 2.0));
+    CHECK(NearD(HeadingOf(AxisAngle(0, 1, 0, -30)), -pi / 6.0));
+    CHECK(NearD(HeadingOf(YawRotation(1.0f)), 1.0));
+    // Looking straight down keeps the heading of the top of the head.
+    CHECK(NearD(HeadingOf(AxisAngle(1, 0, 0, -90)), 0.0));
+    CHECK(NearD(WrapAngle(static_cast<float>(1.5 * pi)), -0.5 * pi) && NearD(WrapAngle(static_cast<float>(-pi)), pi));
+
+    // Facing: the quad's front (+Z) points along the normal, its top stays up.
+    XrQuaternionf const identity = Facing({0.0f, 0.0f, 1.0f});
+    CHECK(NearXr(Rotate(identity, {1.0f, 2.0f, 3.0f}), {1.0f, 2.0f, 3.0f}));
+    XrVector3f const n{0.6f, 0.0f, -0.8f};
+    XrQuaternionf const faced = Facing(n);
+    CHECK(NearXr(Rotate(faced, {0.0f, 0.0f, 1.0f}), n) && Rotate(faced, {0.0f, 1.0f, 0.0f}).y > 0.99f);
+    CHECK(NearXr(Rotate(Facing({0.0f, 1.0f, 0.0f}), {0.0f, 0.0f, 1.0f}), {0.0f, 1.0f, 0.0f}));  // up along normal
+
+    // The panel: straight ahead, below eye height, tilted to face the eye.
+    PanelSettings settings;
+    settings.distance = 1.5f;
+    settings.drop = 0.25f;
+    settings.followAfter = static_cast<float>(50.0 * pi / 180.0);
+    settings.followDelay = 1.0f;
+    Panel panel;
+    XrPosef pose = panel.Pose(settings);
+    CHECK(NearXr(pose.position, {0.0f, -0.25f, -1.5f}));
+    double const len = std::sqrt(0.25 * 0.25 + 1.5 * 1.5);
+    CHECK(NearXr(Rotate(pose.orientation, {0.0f, 0.0f, 1.0f}),
+        {0.0f, static_cast<float>(0.25 / len), static_cast<float>(1.5 / len)}));
+
+    // A 30 degree glance never moves it; 90 degrees for half a second neither.
+    XrQuaternionf const glance = AxisAngle(0, 1, 0, 30);
+    for (int i = 0; i < 300; ++i) {
+        panel.Update(glance, true, settings, 1.0f / 60.0f);
+    }
+    CHECK(NearD(panel.Yaw(), 0.0) && !panel.Following());
+    XrQuaternionf const turned = AxisAngle(0, 1, 0, 90);
+    for (int i = 0; i < 30; ++i) {
+        panel.Update(turned, true, settings, 1.0f / 60.0f);
+    }
+    CHECK(NearD(panel.Yaw(), 0.0) && !panel.Following());
+    // Held past the delay: it follows, then settles at the head's heading, to the left (-X).
+    for (int i = 0; i < 40; ++i) {
+        panel.Update(turned, true, settings, 1.0f / 60.0f);
+    }
+    CHECK(panel.Following());
+    for (int i = 0; i < 240; ++i) {
+        panel.Update(turned, true, settings, 1.0f / 60.0f);
+    }
+    CHECK(!panel.Following() && std::abs(panel.Yaw() - pi / 2.0) < 0.04);
+    pose = panel.Pose(settings);
+    CHECK(NearXr(pose.position, {-1.5f, -0.25f, 0.0f}, 0.07));
+    // Losing tracking doesn't count toward following; following off never follows.
+    Panel still;
+    for (int i = 0; i < 600; ++i) {
+        still.Update(turned, false, settings, 1.0f / 60.0f);
+    }
+    CHECK(!still.Following() && NearD(still.Yaw(), 0.0));
+    PanelSettings never = settings;
+    never.followAfter = 0.0f;
+    for (int i = 0; i < 600; ++i) {
+        still.Update(turned, true, never, 1.0f / 60.0f);
+    }
+    CHECK(!still.Following() && NearD(still.Yaw(), 0.0));
+    // Recenter and re-place.
+    panel.Reset();
+    CHECK(NearD(panel.Yaw(), 0.0));
+    panel.FaceHeading(AxisAngle(0, 1, 0, -45));
+    CHECK(NearD(panel.Yaw(), -pi / 4.0));
+
+    // The reticle: 10 m along the ray, facing the eye, constant angular size.
+    Billboard reticle;
+    CHECK(PlaceOnRay({0.2f, -0.3f, -0.4f}, {0.0f, 0.0f, -2.0f}, 10.0f, {0.0f, 0.0f, 0.0f},
+        static_cast<float>(2.0 * pi / 180.0), reticle));
+    CHECK(NearXr(reticle.pose.position, {0.2f, -0.3f, -10.4f}));
+    XrVector3f const p = reticle.pose.position;
+    double const range = std::sqrt(p.x * p.x + p.y * p.y + p.z * p.z);
+    CHECK(NearD(reticle.size, 2.0 * range * std::tan(pi / 180.0), 1e-4));
+    CHECK(NearXr(Rotate(reticle.pose.orientation, {0.0f, 0.0f, 1.0f}),
+        {static_cast<float>(-p.x / range), static_cast<float>(-p.y / range), static_cast<float>(-p.z / range)}));
+    CHECK(!PlaceOnRay({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 10.0f, {0.0f, 0.0f, 0.0f}, 0.03f, reticle));
+}
+
 int main() {
     TestBoneNames();
     TestIk();
@@ -905,6 +997,7 @@ int main() {
     TestHandFrame();
     TestHandForBarrel();
     TestGamepad();
+    TestOverlayPlacement();
     if (gFailures == 0) {
         std::printf("all tests passed\n");
     }
