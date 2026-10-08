@@ -887,13 +887,14 @@ void BuildUI() noexcept
     }
     ImGui::Separator();
 
-    // ---- LIVE HDR WARNING: the game's backbuffer is a float format = Windows/game HDR is ON. That gives the
-    // blue / doubled headset image. Show it every time it's detected, not just first run. ----
+    // ---- LIVE HDR NOTE: the game's backbuffer is a float format = Windows/game HDR is ON. [MEVR] The eye
+    // paths convert it to SDR now (it used to give the stuck blue / doubled image), so this is a note on
+    // brightness, not a warning that the image is broken. ----
     if (MELEVR::XrSession::IsHdrDetected())
     {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.30f, 0.25f, 1.0f));
-        ImGui::TextWrapped("!!  HDR IS ON  !!  Turn HDR OFF in the game's video options, or the headset "
-                           "image stays blue / doubled.");
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.80f, 0.55f, 1.0f));
+        ImGui::TextWrapped("HDR output detected: converted to SDR for the headset. If it looks too bright or "
+                           "too dark, set hdrPaperWhiteNits in MELEVR.ini (0 = auto).");
         ImGui::PopStyleColor();
         ImGui::Separator();
     }
@@ -930,9 +931,10 @@ void BuildUI() noexcept
         ImGui::TextWrapped("Welcome to MELE VR!");
         ImGui::PopStyleColor();
         ImGui::TextWrapped("INSERT opens / closes this menu.   R = recenter.   K = first person.   P = depth pop.");
+        // [MEVR] HDR output is converted to SDR for the headset now; it no longer breaks the image.
         ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.20f, 1.0f),
-                           "IMPORTANT: turn OFF HDR in the game's video options, or the headset image will "
-                           "be blue / doubled.");
+                           "Tip: game HDR is converted to SDR in the headset. Turning HDR off in the game's "
+                           "video options gives the game's own SDR colours.");
         const char* modeName = c.aerEnabled ? "AER" : (c.dibrEnabled ? "DIBR" : (c.sfr2Enabled ? "Stereo" : "Mono"));
         ImGui::TextDisabled("You're in %s mode. Switch modes or tweak anything in the tabs below.", modeName);
         if (ImGui::Button("Got it - don't show this again"))

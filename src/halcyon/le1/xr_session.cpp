@@ -8,7 +8,9 @@
 #include <d3dcompiler.h>
 #pragma comment(lib, "d3d11.lib")   // [SVRDIAG2] fresh-device discriminator probe
 
+#include <algorithm>   // [MEVR] HDR probe percentiles
 #include <atomic>
+#include <cstdlib>     // [MEVR] atof
 #include <cstring>
 #include <cstdio>
 #include <string>
@@ -50,13 +52,14 @@ std::atomic_bool g_ready{false};
 ID3D11Device* g_device = nullptr;
 ID3D11DeviceContext* g_context = nullptr;
 int64_t g_colorFormat = 0;
+int64_t g_eyeFormat = 28;   // [MEVR] HDR: 8-bit family of the eye swapchains (EyeColorFormat), set at session start
 uint32_t g_bbWidth = 0;
 uint32_t g_bbHeight = 0;
 std::atomic_uint32_t g_recommendedEyeWidth{0};
 std::atomic_uint32_t g_recommendedEyeHeight{0};
 std::atomic_uint32_t g_lastBackbufferWidth{0};
 std::atomic_uint32_t g_lastBackbufferHeight{0};
-std::atomic_bool     g_hdrDetected{false};   // true when the game's backbuffer comes through as an HDR float format (= Windows/game HDR is ON -> blue/doubled image)
+std::atomic_bool     g_hdrDetected{false};   // true when the game's backbuffer comes through as an HDR float format (= Windows/game HDR is ON; [MEVR] now converted to SDR for the eyes)
 std::atomic_bool     g_headsetDriven{false}; // [MIRRORTHROTTLE] true while the headset is actually being submitted to (read by PresentHook)
 std::atomic_uint32_t g_lastCopySourceWidth{0};
 std::atomic_uint32_t g_lastCopySourceHeight{0};
@@ -154,8 +157,14 @@ ID3D11RasterizerState* g_xrAtlasRasterizer = nullptr;
 ID3D11DepthStencilState* g_xrAtlasDepth = nullptr;
 ID3D11Texture2D* g_xrAtlasEyeTex[2] = {nullptr, nullptr};
 ID3D11RenderTargetView* g_xrAtlasEyeRtv[2] = {nullptr, nullptr};
+ID3D11RenderTargetView* g_xrAtlasEyeRtvSrgb[2] = {nullptr, nullptr};   // [MEVR] HDR: sRGB view, for linear (float) sources
 bool g_xrAtlasBlitTriedInit = false;
 bool g_xrAtlasBlitReady = false;
+
+// [MEVR] HDR: scRGB normalisation state (see HdrSourceScale / HdrProbeTick).
+bool g_hdrRangeSeen = false;              // a float frame held luminance > kHdrRangeLum (true HDR output)
+constexpr float kHdrRangeLum = 1.5f;      // SDR-in-scRGB never exceeds ~1.0; HDR UI/highlights go far above
+float g_hdrLastWhiteNits = -1.0f;         // last white level used (for the change log)
 
 // AER (alternate-eye rendering) was fully removed 2026-06-28: on a 5090/9800X3D running
 // this engine there is no GPU budget to save, so AER's half-rate content + cadence flicker were pure
@@ -235,6 +244,50 @@ int64_t SrgbSwapchainFormat(int64_t fmt) noexcept
     case 87: return 91;  // B8G8R8A8_UNORM -> B8G8R8A8_UNORM_SRGB
     default: return fmt;
     }
+}
+
+// [MEVR] HDR: the eyes are always 8-bit sRGB, whatever the backbuffer was when the session started.
+// LE1 creates its swapchain R8G8B8A8_UNORM, then (Windows HDR on) switches it to R16G16B16A16_FLOAT
+// scRGB once gameplay loads. Everything below that was made "in the backbuffer's format" at session
+// start (eye temps, the staged blit source) stayed 8-bit, so every CopyResource from the float frame
+// was a mismatched-format copy that D3D11 drops without an error: the eyes kept showing the last
+// 8-bit frame (the stuck blue loading screen). The eye family is fixed here; float sources go through
+// the shader blit into an sRGB view (see EnsureXrAtlasSource and AtlasEyeRtv).
+int64_t EyeColorFormat(int64_t backbufferFormat) noexcept
+{
+    switch (backbufferFormat)
+    {
+    case 87: case 91: return 87;   // B8G8R8A8 family
+    default: return 28;            // R8G8B8A8 (also for float/10-bit backbuffers: blitted, never copied)
+    }
+}
+
+DXGI_FORMAT TypelessOf(int64_t eyeFormat) noexcept
+{
+    return eyeFormat == 87 ? DXGI_FORMAT_B8G8R8A8_TYPELESS : DXGI_FORMAT_R8G8B8A8_TYPELESS;
+}
+
+// [MEVR] Formats whose SRV returns LINEAR values: float (scRGB) and the _SRGB views. Those are written
+// through the eye temp's sRGB view so the hardware encodes them. UNORM sources hold already-encoded
+// values and keep the original raw path (UNORM view, then the bits land in the sRGB swapchain).
+bool IsFloatColorFormat(DXGI_FORMAT f) noexcept
+{
+    return f == DXGI_FORMAT_R16G16B16A16_FLOAT || f == DXGI_FORMAT_R32G32B32A32_FLOAT ||
+           f == DXGI_FORMAT_R11G11B10_FLOAT;
+}
+
+bool SamplesLinear(DXGI_FORMAT f) noexcept
+{
+    return IsFloatColorFormat(f) || f == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB || f == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+}
+
+// [MEVR] True when a plain CopyResource/CopySubresourceRegion into the eye swapchain is valid and
+// correct: same 8-bit family as the eyes. Anything else (float, 10-bit, other channel order) blits.
+bool CopyCompatibleWithEyes(DXGI_FORMAT f, int64_t eyeFormat) noexcept
+{
+    if (eyeFormat == 87)
+        return f == DXGI_FORMAT_B8G8R8A8_UNORM || f == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB || f == DXGI_FORMAT_B8G8R8A8_TYPELESS;
+    return f == DXGI_FORMAT_R8G8B8A8_UNORM || f == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB || f == DXGI_FORMAT_R8G8B8A8_TYPELESS;
 }
 
 bool ResolveProc(const char* name, PFN_xrVoidFunction* out)
@@ -461,7 +514,7 @@ bool CreateSessionAndSwapchains()
         XrSwapchainCreateInfo sc = {};
         sc.type = XR_TYPE_SWAPCHAIN_CREATE_INFO_VALUE;
         sc.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT_VALUE | XR_SWAPCHAIN_USAGE_SAMPLED_BIT_VALUE;
-        sc.format = xrAtlasBlit ? g_colorFormat : SrgbSwapchainFormat(g_colorFormat);
+        sc.format = xrAtlasBlit ? g_eyeFormat : SrgbSwapchainFormat(g_eyeFormat);   // [MEVR] HDR: 8-bit family always
         sc.sampleCount = 1;
         sc.width = eyeWidth;
         sc.height = eyeHeight;
@@ -489,6 +542,11 @@ bool CreateSessionAndSwapchains()
         for (auto& im : images) g_eyes[eye].images.push_back(im.texture);
         LogLine("[XR] eye" + std::to_string(eye) + " swapchain images: " + std::to_string(imageCount));
     }
+    // [MEVR] HDR: which family the eyes use, against the backbuffer format seen at session start.
+    LogLine("[HDRBLIT] eye swapchains fmt=" +
+            std::to_string(static_cast<int>(xrAtlasBlit ? g_eyeFormat : SrgbSwapchainFormat(g_eyeFormat))) +
+            " (backbuffer fmt at session start=" + std::to_string(static_cast<int>(g_colorFormat)) +
+            "); 8-bit sources copy raw, float (scRGB) sources blit through an sRGB view.");
 
     // STEREO sharp eye swapchains: exactly the SBS half size (bbW/2 x bbH) so the halves copy 1:1 (no
     // resample blur). Non-fatal: if this fails, the stereo path falls back to the old blit into g_eyes.
@@ -506,7 +564,7 @@ bool CreateSessionAndSwapchains()
             XrSwapchainCreateInfo ssc = {};
             ssc.type = XR_TYPE_SWAPCHAIN_CREATE_INFO_VALUE;
             ssc.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT_VALUE | XR_SWAPCHAIN_USAGE_SAMPLED_BIT_VALUE;
-            ssc.format = SrgbSwapchainFormat(g_colorFormat);   // SRGB so the runtime doesn't re-gamma; copy-compatible with the UNORM backbuffer
+            ssc.format = SrgbSwapchainFormat(g_eyeFormat);   // SRGB so the runtime doesn't re-gamma; copy-compatible with the UNORM backbuffer ([MEVR] HDR: 8-bit family)
             ssc.sampleCount = 1; ssc.width = halfW; ssc.height = fullH;
             ssc.faceCount = 1; ssc.arraySize = 1; ssc.mipCount = 1;
             if (!XrSucceeded(g_fn.createSwapchain(g_session, &ssc, &g_stereoEyes[eye].swapchain)) || g_stereoEyes[eye].swapchain == nullptr)
@@ -709,6 +767,280 @@ bool BlitTextureToEyeWithFill(int eye, ID3D11Texture2D* src, float sourceVScale,
 
 float GetFlatCinematicAspect() noexcept;
 
+// ---- [MEVR] HDR: float (scRGB) sources ------------------------------------------------------------
+// One line per (path, source format) the first time an eye is fed that way, so the log names the
+// path that ran and what it was given.
+void LogEyePathOnce(const char* path, const D3D11_TEXTURE2D_DESC& src, const char* how) noexcept
+{
+    struct Seen { const char* path; DXGI_FORMAT fmt; };
+    static Seen s_seen[24] = {};
+    static int s_n = 0;
+    for (int i = 0; i < s_n; ++i)
+        if (s_seen[i].fmt == src.Format && std::strcmp(s_seen[i].path, path) == 0) return;
+    if (s_n >= 24) return;
+    s_seen[s_n++] = Seen{path, src.Format};
+    LogLine(std::string("[HDRBLIT] path=") + path + " src=" + std::to_string(src.Width) + "x" +
+            std::to_string(src.Height) + " fmt=" + std::to_string(static_cast<int>(src.Format)) + " -> " + how);
+}
+
+bool ReadHdrIniKey(const std::wstring& path, const char* key, float* out) noexcept
+{
+    FILE* f = nullptr;
+    if (_wfopen_s(&f, path.c_str(), L"r") != 0 || f == nullptr) return false;
+    char line[256];
+    bool inHdr = false;
+    bool found = false;
+    const size_t keyLen = std::strlen(key);
+    while (fgets(line, sizeof(line), f) != nullptr)
+    {
+        const char* s = line;
+        while (*s == ' ' || *s == '\t') ++s;
+        if (*s == '[') { inHdr = _strnicmp(s, "[HDR]", 5) == 0; continue; }
+        if (!inHdr || _strnicmp(s, key, keyLen) != 0) continue;
+        const char* p = s + keyLen;
+        while (*p == ' ' || *p == '\t') ++p;
+        if (*p != '=') continue;
+        *out = static_cast<float>(std::atof(p + 1));
+        found = true;
+    }
+    fclose(f);
+    return found;
+}
+
+// The game's own scene paper white ([HDR] PaperWhiteNitsScene): GamerSettings.ini (the user's
+// settings) over BIOEngine.ini (the defaults). Read once.
+float GamePaperWhiteNits() noexcept
+{
+    static float s_nits = 0.0f;
+    if (s_nits > 0.0f) return s_nits;
+    s_nits = 203.0f;   // BT.2408 reference white, if the game names none
+    const char* from = "default (BT.2408 reference white)";
+    wchar_t exePath[MAX_PATH] = {};
+    if (GetModuleFileNameW(nullptr, exePath, MAX_PATH) != 0)
+    {
+        const std::wstring exe(exePath);
+        const size_t cut = exe.rfind(L"\\Binaries\\");
+        if (cut != std::wstring::npos)
+        {
+            const std::wstring dir = exe.substr(0, cut) + L"\\BioGame\\Config\\";
+            float v = 0.0f;
+            if (ReadHdrIniKey(dir + L"GamerSettings.ini", "PaperWhiteNitsScene", &v) && v >= 80.0f && v <= 2000.0f)
+            {
+                s_nits = v;
+                from = "GamerSettings.ini";
+            }
+            else if (ReadHdrIniKey(dir + L"BIOEngine.ini", "PaperWhiteNitsScene", &v) && v >= 80.0f && v <= 2000.0f)
+            {
+                s_nits = v;
+                from = "BIOEngine.ini";
+            }
+        }
+    }
+    char line[160];
+    std::snprintf(line, sizeof(line), "[HDRWHITE] game scene paper white %.0f nits from %s [HDR] PaperWhiteNitsScene",
+                  s_nits, from);
+    LogLine(line);
+    return s_nits;
+}
+
+// Multiplier that maps a float (scRGB) source's SDR white to 1.0; 1 for any other source.
+// scRGB is linear with 1.0 = 80 nits. SDR content in scRGB keeps white at 1.0, so until a frame
+// shows values clearly above SDR range (g_hdrRangeSeen, from HdrProbeTick) the scale is 1 and the
+// sRGB view clips at 1.0, like our own renderer. LE1's HDR output puts the scene's paper white at
+// PaperWhiteNitsScene (250 nits = 3.125 on this install) with highlights and the UI far above it,
+// so once that shows, the paper white maps to 1.0 and the rest clips (hue-preserving, in the
+// shader). MELEVR.ini hdrPaperWhiteNits > 0 overrides both.
+float HdrSourceScale(DXGI_FORMAT srcFormat) noexcept
+{
+    if (!IsFloatColorFormat(srcFormat)) return 1.0f;
+    const float cfgNits = MELEVR::Config::Get().hdrPaperWhiteNits;
+    float nits = 80.0f;
+    const char* why = "scRGB 1.0 (no HDR-range values seen yet)";
+    if (cfgNits > 0.0f)
+    {
+        nits = cfgNits < 20.0f ? 20.0f : (cfgNits > 4000.0f ? 4000.0f : cfgNits);
+        why = "MELEVR.ini hdrPaperWhiteNits";
+    }
+    else if (g_hdrRangeSeen)
+    {
+        nits = GamePaperWhiteNits();
+        why = "the game's paper white (HDR-range values seen)";
+    }
+    if (nits != g_hdrLastWhiteNits)
+    {
+        g_hdrLastWhiteNits = nits;
+        char line[220];
+        std::snprintf(line, sizeof(line), "[HDRWHITE] float source white = %.0f nits (scRGB %.3f) from %s -> scale %.4f",
+                      nits, nits / 80.0f, why, 80.0f / nits);
+        LogLine(line);
+    }
+    return 80.0f / nits;
+}
+
+float HalfToFloat(uint16_t h) noexcept
+{
+    const uint32_t sign = static_cast<uint32_t>(h & 0x8000u) << 16;
+    uint32_t exp = (h >> 10) & 0x1Fu;
+    uint32_t mant = h & 0x3FFu;
+    uint32_t bits = sign;
+    if (exp == 0)
+    {
+        if (mant != 0)   // subnormal: normalise
+        {
+            exp = 113;
+            while ((mant & 0x400u) == 0) { mant <<= 1; --exp; }
+            bits = sign | (exp << 23) | ((mant & 0x3FFu) << 13);
+        }
+    }
+    else if (exp == 31)
+    {
+        bits = sign | 0x7F800000u | (mant << 13);
+    }
+    else
+    {
+        bits = sign | ((exp + 112u) << 23) | (mant << 13);
+    }
+    float f = 0.0f;
+    std::memcpy(&f, &bits, sizeof(f));
+    return f;
+}
+
+// What values does the float frame actually hold? Every 90th call (left-eye blit: about once a
+// second), 16 full-width rows of the staged blit source go to a staging texture; a LATER call maps it
+// with DO_NOT_WAIT (never a GPU stall), logs luminance percentiles and latches g_hdrRangeSeen.
+constexpr UINT kHdrProbeRows = 16;
+ID3D11Texture2D* g_hdrProbeStaging = nullptr;
+UINT g_hdrProbeW = 0;
+bool g_hdrProbePending = false;
+uint64_t g_hdrProbeCalls = 0;
+uint64_t g_hdrProbeReads = 0;
+
+void HdrProbeAnalyse(const D3D11_MAPPED_SUBRESOURCE& m, UINT width) noexcept
+{
+    static std::vector<float> s_lum;
+    s_lum.clear();
+    s_lum.reserve(static_cast<size_t>(width) * kHdrProbeRows);
+    float maxCh = 0.0f;
+    double sum = 0.0;
+    uint64_t overOne = 0;
+    for (UINT r = 0; r < kHdrProbeRows; ++r)
+    {
+        const uint16_t* px = reinterpret_cast<const uint16_t*>(static_cast<const BYTE*>(m.pData) +
+                                                               static_cast<size_t>(r) * m.RowPitch);
+        for (UINT x = 0; x < width; ++x)
+        {
+            float c[3] = {HalfToFloat(px[x * 4 + 0]), HalfToFloat(px[x * 4 + 1]), HalfToFloat(px[x * 4 + 2])};
+            for (float& v : c)
+                if (!(v >= 0.0f) || v > 65504.0f) v = 0.0f;   // NaN / negative (wide gamut) / inf -> 0 for stats
+            const float lum = 0.2126f * c[0] + 0.7152f * c[1] + 0.0722f * c[2];
+            const float mc = c[0] > c[1] ? (c[0] > c[2] ? c[0] : c[2]) : (c[1] > c[2] ? c[1] : c[2]);
+            if (mc > maxCh) maxCh = mc;
+            if (mc > 1.0f) ++overOne;
+            sum += lum;
+            s_lum.push_back(lum);
+        }
+    }
+    if (s_lum.empty()) return;
+    const size_t n = s_lum.size();
+    auto pct = [&](double q) {
+        const size_t k = static_cast<size_t>(q * static_cast<double>(n - 1));
+        std::nth_element(s_lum.begin(), s_lum.begin() + static_cast<std::ptrdiff_t>(k), s_lum.end());
+        return s_lum[k];
+    };
+    const float p50 = pct(0.50);
+    const float p90 = pct(0.90);
+    const float p99 = pct(0.99);
+    const float maxLum = *std::max_element(s_lum.begin(), s_lum.end());
+
+    ++g_hdrProbeReads;
+    const bool wasSeen = g_hdrRangeSeen;
+    if (maxLum > kHdrRangeLum) g_hdrRangeSeen = true;
+    if (g_hdrProbeReads <= 4 || (g_hdrProbeReads % 40) == 0 || g_hdrRangeSeen != wasSeen)
+    {
+        char line[320];
+        std::snprintf(line, sizeof(line),
+                      "[HDRSRC] probe#%llu fmt=10 rows=%u x %u: luminance mean=%.3f p50=%.3f p90=%.3f p99=%.3f "
+                      "max=%.3f, max channel=%.3f, pixels over 1.0=%.1f%% -> HDR range %s",
+                      static_cast<unsigned long long>(g_hdrProbeReads), kHdrProbeRows, width,
+                      sum / static_cast<double>(n), p50, p90, p99, maxLum, maxCh,
+                      100.0 * static_cast<double>(overOne) / static_cast<double>(n),
+                      g_hdrRangeSeen ? (wasSeen ? "(latched)" : "SEEN now: white -> game paper white")
+                                     : "not seen (white stays scRGB 1.0)");
+        LogLine(line);
+    }
+}
+
+void HdrProbeTick() noexcept
+{
+    if (g_xrAtlasSource == nullptr || g_device == nullptr || g_context == nullptr) return;
+    if (g_hdrProbePending)
+    {
+        D3D11_MAPPED_SUBRESOURCE m = {};
+        const HRESULT hr = g_context->Map(g_hdrProbeStaging, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &m);
+        if (hr == DXGI_ERROR_WAS_STILL_DRAWING) return;
+        g_hdrProbePending = false;
+        if (FAILED(hr) || m.pData == nullptr) return;
+        HdrProbeAnalyse(m, g_hdrProbeW);
+        g_context->Unmap(g_hdrProbeStaging, 0);
+        return;
+    }
+    D3D11_TEXTURE2D_DESC sd = {};
+    g_xrAtlasSource->GetDesc(&sd);
+    if (sd.Format != DXGI_FORMAT_R16G16B16A16_FLOAT || sd.SampleDesc.Count != 1 || sd.Width == 0 ||
+        sd.Height < kHdrProbeRows)
+        return;
+    if ((g_hdrProbeCalls++ % 90) != 0) return;
+    if (g_hdrProbeStaging == nullptr || g_hdrProbeW != sd.Width)
+    {
+        if (g_hdrProbeStaging != nullptr) { g_hdrProbeStaging->Release(); g_hdrProbeStaging = nullptr; }
+        D3D11_TEXTURE2D_DESC td = {};
+        td.Width = sd.Width;
+        td.Height = kHdrProbeRows;
+        td.MipLevels = 1;
+        td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_STAGING;
+        td.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        if (FAILED(g_device->CreateTexture2D(&td, nullptr, &g_hdrProbeStaging)) || g_hdrProbeStaging == nullptr)
+        {
+            g_hdrProbeStaging = nullptr;
+            g_hdrProbeW = 0;
+            return;
+        }
+        g_hdrProbeW = sd.Width;
+    }
+    for (UINT r = 0; r < kHdrProbeRows; ++r)
+    {
+        const UINT y = static_cast<UINT>((static_cast<uint64_t>(2 * r + 1) * sd.Height) / (2 * kHdrProbeRows));
+        D3D11_BOX box = {0, y, 0, sd.Width, y + 1, 1};
+        g_context->CopySubresourceRegion(g_hdrProbeStaging, 0, 0, r, 0, g_xrAtlasSource, 0, &box);
+    }
+    g_hdrProbePending = true;
+}
+
+// Linear sources write through the eye temp's sRGB view (the hardware encodes), encoded ones through
+// the UNORM view (the original path: the bits land unchanged in the sRGB swapchain).
+ID3D11RenderTargetView* AtlasEyeRtv(int eye) noexcept
+{
+    if (g_xrAtlasSource != nullptr && g_xrAtlasEyeRtvSrgb[eye] != nullptr)
+    {
+        D3D11_TEXTURE2D_DESC d = {};
+        g_xrAtlasSource->GetDesc(&d);
+        if (SamplesLinear(d.Format)) return g_xrAtlasEyeRtvSrgb[eye];
+    }
+    return g_xrAtlasEyeRtv[eye];
+}
+
+float AtlasColorScale() noexcept
+{
+    if (g_xrAtlasSource == nullptr) return 1.0f;
+    D3D11_TEXTURE2D_DESC d = {};
+    g_xrAtlasSource->GetDesc(&d);
+    return HdrSourceScale(d.Format);
+}
+// ---- end [MEVR] HDR helpers ------------------------------------------------------------------------
+
 bool CopyTextureToEyeFullFrame(int eye, ID3D11Texture2D* src, float sourceX = 0.0f) noexcept
 {
     if (eye < 0 || eye > 1 || g_eyes[eye].swapchain == nullptr || g_context == nullptr || src == nullptr) return false;
@@ -719,9 +1051,18 @@ bool CopyTextureToEyeFullFrame(int eye, ID3D11Texture2D* src, float sourceX = 0.
     g_lastCopySourceHeight.store(srcDesc.Height, std::memory_order_relaxed);
 
     // [SFRCONV] a non-zero submit-time convergence shift needs the sampling blit even at equal sizes.
+    // [MEVR] HDR: so does any source the eye can't take raw (float scRGB): CopyResource between
+    // mismatched formats is silently dropped and the eye keeps its old image.
     const bool sizeMismatch = srcDesc.Width != g_eyes[eye].width || srcDesc.Height != g_eyes[eye].height ||
-                              sourceX != 0.0f;
-    if (sizeMismatch) return BlitTextureToEyeWithFill(eye, src, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, sourceX);
+                              sourceX != 0.0f || !CopyCompatibleWithEyes(srcDesc.Format, g_eyeFormat);
+    if (sizeMismatch)
+    {
+        LogEyePathOnce("fullframe", srcDesc, SamplesLinear(srcDesc.Format)
+                                                 ? "shader blit, sRGB view (linear source)"
+                                                 : "shader blit, UNORM view (encoded source)");
+        return BlitTextureToEyeWithFill(eye, src, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, sourceX);
+    }
+    LogEyePathOnce("fullframe", srcDesc, "CopyResource (same size, 8-bit)");
 
     XrSwapchainImageAcquireInfo ai = {};
     ai.type = XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO_VALUE;
@@ -761,7 +1102,10 @@ void CopyTextureToEye(int eye, ID3D11Texture2D* src) noexcept
     g_lastCopySourceWidth.store(srcDesc.Width, std::memory_order_relaxed);
     g_lastCopySourceHeight.store(srcDesc.Height, std::memory_order_relaxed);
 
-    const bool sizeMismatch = srcDesc.Width != g_eyes[eye].width || srcDesc.Height != g_eyes[eye].height;
+    // [MEVR] HDR: a source the eye can't take raw (float scRGB) must blit too; see CopyTextureToEyeFullFrame.
+    const bool rawCopyOk = CopyCompatibleWithEyes(srcDesc.Format, g_eyeFormat);
+    const bool sizeMismatch = srcDesc.Width != g_eyes[eye].width || srcDesc.Height != g_eyes[eye].height || !rawCopyOk;
+    LogEyePathOnce("mono", srcDesc, sizeMismatch ? "shader blit" : "CopyResource (same size, 8-bit)");
     // Flat cinematics draw a 16:9 viewport inside the render target. Preserve that active image aspect instead of
     // assuming the full source texture is the visible frame.
     float monoFillV = 1.0f;
@@ -803,7 +1147,7 @@ void CopyTextureToEye(int eye, ID3D11Texture2D* src) noexcept
     wi.type = XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO_VALUE;
     wi.timeout = XR_INFINITE_DURATION_VALUE;
     g_fn.waitSwapchainImage(g_eyes[eye].swapchain, &wi);
-    if (index < g_eyes[eye].images.size() && g_eyes[eye].images[index] != nullptr)
+    if (rawCopyOk && index < g_eyes[eye].images.size() && g_eyes[eye].images[index] != nullptr)   // [MEVR] HDR
     {
         g_context->CopyResource(g_eyes[eye].images[index], src);
     }
@@ -856,31 +1200,83 @@ bool CompileAtlasShader(const char* source, const char* entry, const char* profi
     return true;
 }
 
+// [MEVR] HDR: the staged blit source follows the source. It used to be created ONCE, in whatever
+// format the first source had (RGBA8 at the title screen), so once gameplay switched the backbuffer
+// to FP16 every CopyResource into it was dropped and the eyes kept blitting that last 8-bit frame.
+bool EnsureXrAtlasSource(ID3D11Texture2D* src) noexcept
+{
+    D3D11_TEXTURE2D_DESC want = {};
+    src->GetDesc(&want);
+    if (g_xrAtlasSource != nullptr && g_xrAtlasSrv != nullptr)
+    {
+        D3D11_TEXTURE2D_DESC have = {};
+        g_xrAtlasSource->GetDesc(&have);
+        if (have.Width == want.Width && have.Height == want.Height && have.Format == want.Format &&
+            have.MipLevels == want.MipLevels && have.ArraySize == want.ArraySize &&
+            have.SampleDesc.Count == want.SampleDesc.Count && have.SampleDesc.Quality == want.SampleDesc.Quality)
+            return true;
+    }
+    if (g_xrAtlasSrv != nullptr) { g_xrAtlasSrv->Release(); g_xrAtlasSrv = nullptr; }
+    if (g_xrAtlasSource != nullptr) { g_xrAtlasSource->Release(); g_xrAtlasSource = nullptr; }
+
+    D3D11_TEXTURE2D_DESC srcDesc = want;
+    srcDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    srcDesc.CPUAccessFlags = 0;
+    srcDesc.MiscFlags = 0;
+    srcDesc.Usage = D3D11_USAGE_DEFAULT;
+    HRESULT hr = g_device->CreateTexture2D(&srcDesc, nullptr, &g_xrAtlasSource);
+    if (FAILED(hr) || g_xrAtlasSource == nullptr)
+    {
+        g_xrAtlasSource = nullptr;
+        LogLine("[XRATLAS_BLIT] CreateTexture2D atlas source failed hr=" + std::to_string(static_cast<long>(hr)) +
+                " fmt=" + std::to_string(static_cast<int>(want.Format)));
+        return false;
+    }
+    hr = g_device->CreateShaderResourceView(g_xrAtlasSource, nullptr, &g_xrAtlasSrv);
+    if (FAILED(hr) || g_xrAtlasSrv == nullptr)
+    {
+        g_xrAtlasSrv = nullptr;
+        g_xrAtlasSource->Release();
+        g_xrAtlasSource = nullptr;
+        LogLine("[XRATLAS_BLIT] CreateShaderResourceView atlas source failed hr=" + std::to_string(static_cast<long>(hr)));
+        return false;
+    }
+    LogLine("[HDRBLIT] blit source (re)created " + std::to_string(want.Width) + "x" + std::to_string(want.Height) +
+            " fmt=" + std::to_string(static_cast<int>(want.Format)) + " -> eye written through the " +
+            (SamplesLinear(want.Format) ? "sRGB view (linear source, hardware encode)" : "UNORM view (encoded source, raw)") +
+            (IsFloatColorFormat(want.Format) ? "; float source: scaled to SDR white, hue-preserving clip" : ""));
+    return true;
+}
+
 bool EnsureXrAtlasBlitResources(ID3D11Texture2D* src) noexcept
 {
     if (g_device == nullptr || g_context == nullptr || src == nullptr) return false;
-    if (g_xrAtlasBlitReady) return true;
+    if (g_xrAtlasBlitReady) return EnsureXrAtlasSource(src);   // [MEVR] HDR: per-source, follows format/size
     if (g_xrAtlasBlitTriedInit) return false;
     g_xrAtlasBlitTriedInit = true;
 
+    // [MEVR] HDR: colorScale.x maps a float source's SDR white to 1.0 (1 for 8-bit sources); ToEye
+    // then clips hue-preserving to [0,1] before the sRGB view encodes. Values <= 1 pass unchanged,
+    // so 8-bit sources stay bit-identical. PSCopy (the halving chain) stays linear and unscaled.
     const char* shaderSrc =
         "Texture2D t0 : register(t0);\n"
         "SamplerState s0 : register(s0);\n"
-        "cbuffer FillParams : register(b0) { float4 fillUv; float4 imageRect; };\n"
+        "cbuffer FillParams : register(b0) { float4 fillUv; float4 imageRect; float4 colorScale; };\n"
         "struct VSOut { float4 pos : SV_Position; float2 uv : TEXCOORD0; };\n"
         "VSOut VSMain(uint id : SV_VertexID) {\n"
         "  float2 p = float2((id == 2) ? 3.0 : -1.0, (id == 1) ? 3.0 : -1.0);\n"
         "  VSOut o; o.pos = float4(p, 0.0, 1.0); o.uv = float2((p.x + 1.0) * 0.5, 1.0 - ((p.y + 1.0) * 0.5)); return o;\n"
         "}\n"
+        "float4 ToEye(float4 c) { c.rgb *= colorScale.x; c.rgb /= max(1.0, max(c.r, max(c.g, c.b))); return c; }\n"
         // [DOWNCHAIN] plain 1:1 sample, used for the halving passes below.
         "float4 PSCopy(VSOut i) : SV_Target { return t0.Sample(s0, i.uv); }\n"
-        "float4 PSLeft(VSOut i) : SV_Target { return t0.Sample(s0, float2(i.uv.x * 0.5, i.uv.y)); }\n"
-        "float4 PSRight(VSOut i) : SV_Target { return t0.Sample(s0, float2(i.uv.x * 0.5 + 0.5, i.uv.y)); }\n"
+        "float4 PSLeft(VSOut i) : SV_Target { return ToEye(t0.Sample(s0, float2(i.uv.x * 0.5, i.uv.y))); }\n"
+        "float4 PSRight(VSOut i) : SV_Target { return ToEye(t0.Sample(s0, float2(i.uv.x * 0.5 + 0.5, i.uv.y))); }\n"
         "float4 PSFill(VSOut i) : SV_Target { float2 local = (i.uv - imageRect.xy) / imageRect.zw; "
         "if (local.x < 0.0 || local.x > 1.0 || local.y < 0.0 || local.y > 1.0) return float4(0.0, 0.0, 0.0, 1.0); "
         "float2 uv = fillUv.xy + local * fillUv.zw; "
         "if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return float4(0.0, 0.0, 0.0, 1.0); "
-        "return t0.Sample(s0, uv); }\n";
+        "return ToEye(t0.Sample(s0, uv)); }\n";
     ID3DBlob* vsBlob = nullptr;
     ID3DBlob* psLeftBlob = nullptr;
     ID3DBlob* psRightBlob = nullptr;
@@ -916,24 +1312,8 @@ bool EnsureXrAtlasBlitResources(ID3D11Texture2D* src) noexcept
         return false;
     }
 
-    D3D11_TEXTURE2D_DESC srcDesc = {};
-    src->GetDesc(&srcDesc);
-    srcDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    srcDesc.CPUAccessFlags = 0;
-    srcDesc.MiscFlags = 0;
-    srcDesc.Usage = D3D11_USAGE_DEFAULT;
-    hr = g_device->CreateTexture2D(&srcDesc, nullptr, &g_xrAtlasSource);
-    if (FAILED(hr) || g_xrAtlasSource == nullptr)
-    {
-        LogLine("[XRATLAS_BLIT] CreateTexture2D atlas source failed hr=" + std::to_string(static_cast<long>(hr)));
-        return false;
-    }
-    hr = g_device->CreateShaderResourceView(g_xrAtlasSource, nullptr, &g_xrAtlasSrv);
-    if (FAILED(hr) || g_xrAtlasSrv == nullptr)
-    {
-        LogLine("[XRATLAS_BLIT] CreateShaderResourceView atlas source failed hr=" + std::to_string(static_cast<long>(hr)));
-        return false;
-    }
+    // [MEVR] HDR: the staged source is no longer made here (once, in the first source's format); see
+    // EnsureXrAtlasSource, called on every use below.
 
     D3D11_SAMPLER_DESC sd = {};
     sd.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
@@ -949,7 +1329,7 @@ bool EnsureXrAtlasBlitResources(ID3D11Texture2D* src) noexcept
     }
 
     D3D11_BUFFER_DESC cbd = {};
-    cbd.ByteWidth = 32;
+    cbd.ByteWidth = 48;   // [MEVR] HDR: + float4 colorScale
     cbd.Usage = D3D11_USAGE_DEFAULT;
     cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     hr = g_device->CreateBuffer(&cbd, nullptr, &g_xrFillCb);
@@ -1006,7 +1386,9 @@ bool EnsureXrAtlasBlitResources(ID3D11Texture2D* src) noexcept
         eyeDesc.Height = g_eyes[eye].height;
         eyeDesc.MipLevels = 1;
         eyeDesc.ArraySize = 1;
-        eyeDesc.Format = static_cast<DXGI_FORMAT>(g_colorFormat);
+        // [MEVR] HDR: TYPELESS in the eyes' 8-bit family (was the session-start backbuffer format),
+        // viewed two ways: UNORM for encoded sources (the original raw path), sRGB for linear ones.
+        eyeDesc.Format = TypelessOf(g_eyeFormat);
         eyeDesc.SampleDesc.Count = 1;
         eyeDesc.Usage = D3D11_USAGE_DEFAULT;
         eyeDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
@@ -1020,18 +1402,29 @@ bool EnsureXrAtlasBlitResources(ID3D11Texture2D* src) noexcept
             return false;
         }
 
-        hr = g_device->CreateRenderTargetView(g_xrAtlasEyeTex[eye], nullptr, &g_xrAtlasEyeRtv[eye]);
+        D3D11_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+        rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+        rtvDesc.Format = static_cast<DXGI_FORMAT>(g_eyeFormat);
+        hr = g_device->CreateRenderTargetView(g_xrAtlasEyeTex[eye], &rtvDesc, &g_xrAtlasEyeRtv[eye]);
         if (FAILED(hr) || g_xrAtlasEyeRtv[eye] == nullptr)
         {
             LogLine("[XRATLAS_BLIT] CreateRenderTargetView temp eye" + std::to_string(eye) + " failed hr=" +
                     std::to_string(static_cast<long>(hr)));
             return false;
         }
+        rtvDesc.Format = static_cast<DXGI_FORMAT>(SrgbSwapchainFormat(g_eyeFormat));
+        hr = g_device->CreateRenderTargetView(g_xrAtlasEyeTex[eye], &rtvDesc, &g_xrAtlasEyeRtvSrgb[eye]);
+        if (FAILED(hr) || g_xrAtlasEyeRtvSrgb[eye] == nullptr)
+        {
+            g_xrAtlasEyeRtvSrgb[eye] = nullptr;   // float sources then go through UNORM (dark, but visible)
+            LogLine("[HDRBLIT] sRGB view on temp eye" + std::to_string(eye) + " failed hr=" +
+                    std::to_string(static_cast<long>(hr)));
+        }
     }
 
     g_xrAtlasBlitReady = true;
     LogLine("[XRATLAS_BLIT] shader crop/fill/blit resources ready; using temp eye RTs then CopyResource to OpenXR images.");
-    return true;
+    return EnsureXrAtlasSource(src);   // [MEVR] HDR
 }
 
 float ClampVrFill(float v) noexcept
@@ -1182,11 +1575,14 @@ bool BlitTextureToEyeWithFill(int eye, ID3D11Texture2D* src, float sourceVScale,
     {
         return false;
     }
-    float fillConstants[8] = {};
+    float fillConstants[12] = {};
     BuildFillConstants(fillConstants, sourceX, 1.0f, sourceVScale, fillH, fillV, imageMoveY, sourceY0);
+    fillConstants[8] = AtlasColorScale();   // [MEVR] HDR: colorScale.x
 
     g_context->CopyResource(g_xrAtlasSource, src);
+    if (eye == 0) HdrProbeTick();   // [MEVR] HDR: value-range probe on float sources
     g_context->UpdateSubresource(g_xrFillCb, 0, nullptr, fillConstants, 0, 0);
+    ID3D11RenderTargetView* eyeRtv = AtlasEyeRtv(eye);   // [MEVR] HDR
 
     XrSwapchainImageAcquireInfo ai = {};
     ai.type = XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO_VALUE;
@@ -1257,8 +1653,8 @@ bool BlitTextureToEyeWithFill(int eye, ID3D11Texture2D* src, float sourceVScale,
         ID3D11ShaderResourceView* fillSrv = DownsampleWithin2x(g_eyes[eye].width, g_eyes[eye].height);
         g_context->OMSetBlendState(g_xrAtlasBlend, blendFactor, 0xffffffff);
         g_context->OMSetDepthStencilState(g_xrAtlasDepth, 0);
-        g_context->ClearRenderTargetView(g_xrAtlasEyeRtv[eye], clear);
-        g_context->OMSetRenderTargets(1, &g_xrAtlasEyeRtv[eye], nullptr);
+        g_context->ClearRenderTargetView(eyeRtv, clear);          // [MEVR] HDR: sRGB view for linear sources
+        g_context->OMSetRenderTargets(1, &eyeRtv, nullptr);
         g_context->RSSetState(g_xrAtlasRasterizer);
         g_context->RSSetViewports(1, &vp);
         g_context->IASetInputLayout(nullptr);
@@ -1387,10 +1783,11 @@ bool BlitAtlasHalfToEye(int eye, int sourceHalf, float sourceVScale = 1.0f, floa
 
         const float clear[4] = {0.0f, 0.0f, 0.0f, 1.0f};
         const float blendFactor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-        g_context->ClearRenderTargetView(g_xrAtlasEyeRtv[eye], clear);
+        ID3D11RenderTargetView* eyeRtv = AtlasEyeRtv(eye);   // [MEVR] HDR: sRGB view for linear sources
+        g_context->ClearRenderTargetView(eyeRtv, clear);
         g_context->OMSetBlendState(g_xrAtlasBlend, blendFactor, 0xffffffff);
         g_context->OMSetDepthStencilState(g_xrAtlasDepth, 0);
-        g_context->OMSetRenderTargets(1, &g_xrAtlasEyeRtv[eye], nullptr);
+        g_context->OMSetRenderTargets(1, &eyeRtv, nullptr);
         g_context->RSSetState(g_xrAtlasRasterizer);
         g_context->RSSetViewports(1, &vp);
         g_context->IASetInputLayout(nullptr);
@@ -1400,9 +1797,12 @@ bool BlitAtlasHalfToEye(int eye, int sourceHalf, float sourceVScale = 1.0f, floa
                                 std::fabs(fillH - 1.0f) > 0.002f ||
                                 std::fabs(fillV - 1.0f) > 0.002f ||
                                 std::fabs(imageMoveY) > 0.001f;
+        // [MEVR] HDR: PSLeft/PSRight read colorScale too, so the constants are uploaded and bound on
+        // both branches (the fill rect values are simply unused by those two).
+        float fill[12] = {};
+        fill[8] = AtlasColorScale();
         if (fillActive && g_xrFillPs != nullptr && g_xrFillCb != nullptr)
         {
-            float fill[8] = {};
             // CENTERED vertical band (2026-07-08 crosshair fix, pairs with the centered P1 world
             // viewport in render_hook): the sub-height world now sits in the MIDDLE of the half, so the
             // submit crop samples the middle band - world center, UI center and eye center coincide.
@@ -1417,6 +1817,11 @@ bool BlitAtlasHalfToEye(int eye, int sourceHalf, float sourceVScale = 1.0f, floa
         }
         else
         {
+            if (g_xrFillCb != nullptr)
+            {
+                g_context->UpdateSubresource(g_xrFillCb, 0, nullptr, fill, 0, 0);
+                g_context->PSSetConstantBuffers(0, 1, &g_xrFillCb);
+            }
             g_context->PSSetShader(g_xrAtlasPs[sourceHalf], nullptr, 0);
         }
         g_context->PSSetShaderResources(0, 1, &g_xrAtlasSrv);
@@ -1742,6 +2147,7 @@ bool CopySbsHalvesToStereoEyes(ID3D11Texture2D* backBuffer, bool swapEyes) noexc
     backBuffer->GetDesc(&bd);
     const uint32_t halfW = bd.Width / 2;
     if (halfW == 0 || bd.Height == 0) return false;
+    if (!CopyCompatibleWithEyes(bd.Format, g_eyeFormat)) return false;   // [MEVR] HDR: float -> the blit path
     bool ok = true;
     for (int eye = 0; eye < 2; ++eye)
     {
@@ -1781,6 +2187,13 @@ bool CopySbsBackbufferToEyes(ID3D11Texture2D* backBuffer, bool swapEyes, float s
     }
 
     g_context->CopyResource(g_xrAtlasSource, backBuffer);
+    HdrProbeTick();   // [MEVR] HDR
+    {
+        D3D11_TEXTURE2D_DESC bd = {};
+        backBuffer->GetDesc(&bd);
+        LogEyePathOnce("sbs", bd, SamplesLinear(bd.Format) ? "half blit, sRGB view (linear source)"
+                                                           : "half blit, UNORM view (encoded source)");
+    }
     const int leftHalf = swapEyes ? 1 : 0;
     const int rightHalf = swapEyes ? 0 : 1;
     const bool copiedL = BlitAtlasHalfToEye(0, leftHalf, sourceVScale, 1.0f, 1.0f, 0.0f);
@@ -4329,9 +4742,20 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             backBuffer->GetDesc(&bbDesc);
             g_lastBackbufferWidth.store(bbDesc.Width, std::memory_order_relaxed);
             g_lastBackbufferHeight.store(bbDesc.Height, std::memory_order_relaxed);
-            // HDR watch: a float backbuffer (R16G16B16A16_FLOAT) means Windows/game HDR is ON, which gives the
-            // blue/doubled headset image. Flag it so the menu can warn the user in-headset.
+            // HDR watch: a float backbuffer (R16G16B16A16_FLOAT) means Windows/game HDR is ON. [MEVR] The eye
+            // paths now convert it to SDR (it used to give the stuck blue/doubled image); the menu notes it.
             g_hdrDetected.store(bbDesc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT, std::memory_order_relaxed);
+            {
+                // [MEVR] HDR: log every backbuffer format change (LE1: RGBA8 at the title, FP16 in gameplay).
+                static DXGI_FORMAT s_lastBbFormat = DXGI_FORMAT_UNKNOWN;
+                if (bbDesc.Format != s_lastBbFormat)
+                {
+                    LogLine("[HDRBLIT] backbuffer format " + std::to_string(static_cast<int>(s_lastBbFormat)) + " -> " +
+                            std::to_string(static_cast<int>(bbDesc.Format)) + " (" + std::to_string(bbDesc.Width) + "x" +
+                            std::to_string(bbDesc.Height) + "), eye family fmt=" + std::to_string(static_cast<int>(g_eyeFormat)));
+                    s_lastBbFormat = bbDesc.Format;
+                }
+            }
             const float backbufferAspect = (bbDesc.Height > 0) ? (static_cast<float>(bbDesc.Width) / static_cast<float>(bbDesc.Height)) : 1.0f;
             const float eyeAspect = (g_eyes[0].height > 0) ? (static_cast<float>(g_eyes[0].width) / static_cast<float>(g_eyes[0].height)) : 1.0f;
             // [TARGETCHK 2026-08-09] One-shot: does the LIVE render target actually match the Stereo 2
@@ -5459,6 +5883,7 @@ void TryCreateSession(ID3D11Device* device, int64_t colorFormat, uint32_t width,
     g_device->AddRef();
     g_device->GetImmediateContext(&g_context);
     g_colorFormat = colorFormat;
+    g_eyeFormat = EyeColorFormat(colorFormat);   // [MEVR] HDR
     g_bbWidth = width;
     g_bbHeight = height;
 

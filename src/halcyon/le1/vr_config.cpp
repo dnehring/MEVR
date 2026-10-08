@@ -173,6 +173,7 @@ void ApplyKeyValue(VrConfig& c, const char* key, double val) noexcept
     if (ApplyPerModeKey(c, key, v)) return;   // BUG FIX 2026-07-08: helper existed but was never CALLED -> the
                                               // Stereo/DIBR per-mode scalars + now the fp* keys saved but never
                                               // loaded back. Wired in; also carries the First-person keys.
+    if (strcmp(key, "hdrPaperWhiteNits") == 0) { c.hdrPaperWhiteNits = (v < 0.0f) ? 0.0f : v; return; }   // [MEVR] HDR
     // Resolution watchdog: what MELE-VR.bat installed. Standalone if+return.
     if (strcmp(key, "expectedResX") == 0) { c.expectedResX = static_cast<int>(v); return; }
     if (strcmp(key, "expectedResY") == 0) { c.expectedResY = static_cast<int>(v); return; }
@@ -492,6 +493,7 @@ void WriteProfileSection(FILE* f, const char* name, const VrConfig& c) noexcept
     fprintf(f, "convoMonoQuadWidth = %.3f\n", c.convoMonoQuadWidth);
     fprintf(f, "cutsceneMonoQuadWidth = %.3f\n", c.cutsceneMonoQuadWidth);
     fprintf(f, "disableDof = %d\n",         c.disableDof ? 1 : 0);
+    fprintf(f, "hdrPaperWhiteNits = %.0f\n", c.hdrPaperWhiteNits);   // [MEVR] HDR: nits shown as white (0 = auto)
     fprintf(f, "menuFlat = %d\n",           c.menuFlat ? 1 : 0);
     fprintf(f, "menuMonoQuadWidth = %.3f\n", c.menuMonoQuadWidth);
     fprintf(f, "galaxyFlat = %d\n",         c.galaxyFlat ? 1 : 0);

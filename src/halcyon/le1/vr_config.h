@@ -1,3 +1,5 @@
+// Modified for ME VR Attempt (GPL-3.0) since 2026-10-08: changes are marked [MEVR].
+// Upstream: jrush64/MassEffect1-VR @ 3c51514 (Copyright (C) 2026 Halcyon).
 #pragma once
 
 // MELE VR (clean rebuild) runtime config - Milestone 1.
@@ -156,6 +158,11 @@ struct VrConfig
     // off makes the game lose colour and look washed out, in ME1 exactly as in ME2. The blur it removes
     // is not worth that. Users who want it off can still tick the box.
     bool  disableDof = false;
+    // [MEVR] HDR: when the game hands over a float (scRGB) backbuffer (Windows HDR on), the eyes show it
+    // as SDR with this many nits mapped to white. 0 = auto: scRGB 1.0 (80 nits) until values above SDR
+    // range show up, then the game's own [HDR] PaperWhiteNitsScene. Raise it if the headset image looks
+    // too bright, lower it if too dark. Edit MELEVR.ini with the game closed (it is read at startup).
+    float hdrPaperWhiteNits = 0.0f;
     // Full-screen menus (EGameModes 7 = GUI: pause/inventory/squad/journal/map/options) -> flat mono, every VR
     // mode. Detected via USFXGameModeManager::CurrentMode (menu-exclusive; never gameplay/convo/cutscene).
     bool  menuFlat = true;            // menus -> flat mono head-locked quad (readable) instead of stereo/AER/DIBR
