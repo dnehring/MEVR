@@ -20,6 +20,8 @@ constexpr char const* kGetPlayerViewPoint = "Function Engine.PlayerController.Ge
 // Game thread only.
 bool gActive = false;  // this frame's head rotation is valid
 engine::UnrealRotation gHead;
+float gLastFov = 0.0f;
+std::atomic<bool> gApplyToCamera{true};
 
 std::atomic<unsigned> gTaggedFrames{0};
 std::atomic<unsigned> gAdjustedViews{0};
@@ -40,12 +42,13 @@ void OnUpdateCamera(UObject* context, UFunction* /*function*/, void* /*parms*/, 
     }
     gHead = engine::ToUnrealRotation(head->orientation);
     gActive = true;
-    vr::view_sync::PushRendered({*head, camera->CameraCache.POV.FOV});
+    gLastFov = camera->CameraCache.POV.FOV;
+    vr::view_sync::PushRendered({*head, gLastFov});
     gTaggedFrames.fetch_add(1, std::memory_order_relaxed);
 }
 
 void OnGetPlayerViewPoint(UObject* context, UFunction* /*function*/, void* parms, void* /*result*/) {
-    if (!gActive || context == nullptr || !context->IsA(APlayerController::StaticClass())) {
+    if (!gActive || !gApplyToCamera || context == nullptr || !context->IsA(APlayerController::StaticClass())) {
         return;
     }
     auto* const p = static_cast<AController_eventGetPlayerViewPoint_Parms*>(parms);
@@ -82,8 +85,8 @@ void LogStats() {
     unsigned const frames = gTaggedFrames.exchange(0);
     unsigned const views = gAdjustedViews.exchange(0);
     if (frames > 0 || views > 0) {
-        log::Info("    head tracking: {} frames tagged, {} views adjusted, head yaw {} pitch {} roll {}",
-            frames, views, gHead.yaw, gHead.pitch, gHead.roll);
+        log::Info("    head tracking: {} frames tagged, {} views adjusted (camera {}), FOV {:.1f}, head yaw {} pitch {} roll {}",
+            frames, views, gApplyToCamera ? "on" : "OFF", gLastFov, gHead.yaw, gHead.pitch, gHead.roll);
     } else {
         log::Info("    head tracking: idle ({})", vr::output::WantsHeadTracking() ? "waiting for a head pose" : "VR off or screen mode");
     }
@@ -91,6 +94,14 @@ void LogStats() {
 
 void Shutdown() {
     gActive = false;
+}
+
+void SetApplyToCamera(bool apply) {
+    gApplyToCamera = apply;
+}
+
+bool AppliesToCamera() {
+    return gApplyToCamera;
 }
 
 } // namespace mevr::game::head_tracking

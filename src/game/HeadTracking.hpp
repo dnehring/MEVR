@@ -16,4 +16,9 @@ bool TryStartup();
 void LogStats();
 void Shutdown();
 
+// Diagnostic A/B: when off, the head pose still tags frames (the view box follows the head) but
+// the game camera isn't rotated, so the picture inside the box stays head-locked.
+void SetApplyToCamera(bool apply);
+bool AppliesToCamera();
+
 } // namespace mevr::game::head_tracking

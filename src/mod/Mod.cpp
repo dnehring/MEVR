@@ -27,6 +27,7 @@ bool gHooked = false;  // ProcessEvent hook live (after the script packages load
 
 mevr::Hotkey gVrToggleKey{VK_OEM_6};    // ]  VR on / off
 mevr::Hotkey gModeToggleKey{VK_OEM_4};  // [  head-tracked / screen
+mevr::Hotkey gCameraAbKey{VK_OEM_5};    // \  head rotation applied to the game camera (A/B)
 
 double gRetryTimer = kStartupRetrySeconds;  // first attempt on the first tick
 double gHeartbeatElapsed = 0.0;
@@ -61,6 +62,11 @@ void PollHotkeys() {
             : vr::output::Mode::HeadTracked;
         vr::output::SetMode(mode);
         log::Info("[: {}", mode == vr::output::Mode::HeadTracked ? "head-tracked" : "screen");
+    }
+    if (gCameraAbKey.Pressed()) {
+        bool const apply = !game::head_tracking::AppliesToCamera();
+        game::head_tracking::SetApplyToCamera(apply);
+        log::Info("\\: head rotation on game camera {}", apply ? "ON" : "OFF");
     }
 }
 
