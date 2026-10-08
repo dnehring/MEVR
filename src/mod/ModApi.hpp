@@ -21,7 +21,7 @@ struct State;
 
 // Fields are only ever appended: a mod reads the fields of every version up to the host's (and
 // its own), so a newer mod still runs on an older host, without what the older host lacks.
-inline constexpr int kHostServicesVersion = 4;
+inline constexpr int kHostServicesVersion = 5;
 
 using ProcessEventCallback = void (*)(UObject* context, UFunction* function, void* parms, void* result);
 
@@ -50,8 +50,17 @@ struct HostServices {
     std::uint32_t controllerStateSize = 0;
     std::uint32_t viewStateSize = 0;
     // The host's UObject::ProcessEvent hook (installed at attach, never removed) runs this after
-    // the original. Clearing it waits for in-flight calls.
+    // the original. Clearing it waits (bounded) for in-flight calls; if one doesn't leave in time,
+    // the host keeps the mod DLL loaded. No wait once the process is exiting.
     void (*setProcessEventCallback)(ProcessEventCallback callback) = nullptr;
+
+    // Version 5.
+    // True once the process has begun exiting (the host's ExitProcess hook): shutdown must not
+    // wait for other threads, which may never run again. The host won't unload the DLL then.
+    bool (*processExiting)() = nullptr;
+    // The mod's shutdown couldn't make unloading safe: a hook it couldn't remove, or a call still
+    // inside one when it gave up waiting. The host then pins the DLL instead of freeing it.
+    void (*keepLoaded)(char const* reason) = nullptr;
 };
 
 } // namespace mevr
@@ -70,7 +79,8 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds);
 // when MevrModShutdown is called.
 MEVR_MOD_API void MevrModOnPresent(IDXGISwapChain* swapChain);
 // Removes every hook the mod installed and releases its XR/D3D resources. The host calls this
-// before unloading the DLL.
+// before unloading the DLL; whatever couldn't be made safe to unload is reported through
+// HostServices::keepLoaded, and the host then keeps the DLL loaded.
 MEVR_MOD_API void MevrModShutdown();
 
 using MevrModStartupFn = decltype(&MevrModStartup);

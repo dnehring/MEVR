@@ -1,5 +1,6 @@
 #include "engine/BonePose.hpp"
 
+#include "core/Hook.hpp"
 #include "core/Log.hpp"
 #include "engine/Skeleton.hpp"
 
@@ -215,17 +216,27 @@ void WriteGuarded(USkeletalMeshComponent* self, float deltaTime) {
     }
 }
 
-void UpdateSkelPoseHook(USkeletalMeshComponent* self, float deltaTime, unsigned tickFaceFx, unsigned unused) {
-    gInFlight.fetch_add(1, std::memory_order_acquire);
-    gOrig(self, deltaTime, tickFaceFx, unused);
+void AfterUpdateSkelPose(USkeletalMeshComponent* self, float deltaTime, std::uintptr_t caller) {
     gCalls.fetch_add(1, std::memory_order_relaxed);
     if (self != nullptr && self == gMesh.load(std::memory_order_acquire) && !gBroken.load(std::memory_order_relaxed)) {
         gPlayerCalls.fetch_add(1, std::memory_order_relaxed);
-        Count(gCallers, reinterpret_cast<std::uintptr_t>(_ReturnAddress()));
+        Count(gCallers, caller);
         Count(gThreads, GetCurrentThreadId());
         WriteGuarded(self, deltaTime);
     }
-    gInFlight.fetch_sub(1, std::memory_order_release);
+}
+
+// No C++ objects with destructors here, so __finally keeps the in-flight count right even when an
+// exception unwinds through the engine's call (a count left up would keep the mod pinned).
+void UpdateSkelPoseHook(USkeletalMeshComponent* self, float deltaTime, unsigned tickFaceFx, unsigned unused) {
+    std::uintptr_t const caller = reinterpret_cast<std::uintptr_t>(_ReturnAddress());
+    gInFlight.fetch_add(1, std::memory_order_acquire);
+    __try {
+        gOrig(self, deltaTime, tickFaceFx, unused);
+        AfterUpdateSkelPose(self, deltaTime, caller);
+    } __finally {
+        gInFlight.fetch_sub(1, std::memory_order_release);
+    }
 }
 
 std::string Format(ik::Vec3 v) {
@@ -273,8 +284,7 @@ bool Install(::LESDK::Initializer& init) {
     }
     gModuleBase = reinterpret_cast<std::uintptr_t>(init.ModuleBase);
     log::Info("arm IK: UpdateSkelPose at {} (entry bytes {})", target, EntryBytes(target));
-    gOrig = reinterpret_cast<tUpdateSkelPose*>(init.InstallHook(kHookName, target, reinterpret_cast<void*>(&UpdateSkelPoseHook)));
-    if (gOrig == nullptr) {
+    if (!hook::Install(init, kHookName, reinterpret_cast<tUpdateSkelPose*>(target), &UpdateSkelPoseHook, gOrig)) {
         log::Error("arm IK: UpdateSkelPose hook failed");
         return false;
     }
@@ -283,25 +293,28 @@ bool Install(::LESDK::Initializer& init) {
     return true;
 }
 
-void Uninstall(::LESDK::Initializer& init) {
+bool Uninstall(::LESDK::Initializer& init, bool waitForCalls) {
     if (!gInstalled) {
-        return;
+        return true;
     }
     Clear();
-    init.UninstallHook(kHookName);
-    // A call already inside the detour finishes with the old code.
-    for (int i = 0; i < 200 && gInFlight.load() > 0; ++i) {
-        Sleep(1);
-    }
-    if (gInFlight.load() > 0) {
-        log::Warn("arm IK: {} UpdateSkelPose calls still in the hook at unhook", gInFlight.load());
+    if (!hook::Uninstall(init, kHookName)) {
+        return false;  // still live, and still calling gOrig
     }
     gInstalled = false;
-    gOrig = nullptr;
+    // A call already inside the detour finishes with the old code: this module must outlive it.
+    for (int i = 0; waitForCalls && i < 200 && gInFlight.load() > 0; ++i) {
+        Sleep(1);
+    }
+    bool const drained = gInFlight.load() == 0;
+    if (!drained && waitForCalls) {
+        log::Error("arm IK: {} UpdateSkelPose call(s) still in the hook 200 ms after unhooking", gInFlight.load());
+    }
     gBroken = false;
     gFirstWriteLogged = false;
     gFirstWriteReady = false;
     log::Info("unhooked {}", kHookName);
+    return drained;
 }
 
 bool Installed() {

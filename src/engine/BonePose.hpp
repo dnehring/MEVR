@@ -49,8 +49,9 @@ struct Request {
 
 // LE1 only: false (logged) for other games or if the address isn't a function start.
 bool Install(::LESDK::Initializer& init);
-// Waits for calls still inside the hook.
-void Uninstall(::LESDK::Initializer& init);
+// Removes the hook and waits (up to 200 ms, if `waitForCalls`) for calls still inside it. False
+// if the hook couldn't be removed or a call is still inside: this DLL must stay loaded.
+bool Uninstall(::LESDK::Initializer& init, bool waitForCalls);
 bool Installed();
 
 // Game thread. Replaces what the hook writes; Clear stops all writes.

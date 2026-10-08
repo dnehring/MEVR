@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 class UFunction;
 class UObject;
 
@@ -15,11 +17,15 @@ namespace mevr::host::process_event {
 
 using Callback = void (*)(UObject* context, UFunction* function, void* parms, void* result);
 
+// How long clearing the callback waits for calls still inside it, by default.
+inline constexpr std::uint32_t kDrainWaitMs = 500;
+
 bool Install(::LESDK::Initializer& init);
 
-// Runs after the original, on whichever thread called ProcessEvent. Clearing waits until no
-// thread is inside the old callback, so its module can be unloaded afterwards. Not to be called
-// from inside the callback.
-void SetCallback(Callback callback);
+// Runs after the original, on whichever thread called ProcessEvent. Clearing waits (up to
+// `waitMs`; 0 doesn't wait) until no thread is inside the old callback, so its module can be
+// unloaded afterwards. False if one still is: that module must stay loaded. Not to be called from
+// inside the callback.
+bool SetCallback(Callback callback, std::uint32_t waitMs = kDrainWaitMs);
 
 } // namespace mevr::host::process_event

@@ -21,6 +21,7 @@ void AddPostHandler(UFunction* function, Handler handler);
 void ClearHandlers();
 
 bool Install(::LESDK::Initializer& init);
-void Uninstall(::LESDK::Initializer& init);
+// False: the hook couldn't be removed, so this DLL must stay loaded.
+bool Uninstall(::LESDK::Initializer& init);
 
 } // namespace mevr::engine::call_function

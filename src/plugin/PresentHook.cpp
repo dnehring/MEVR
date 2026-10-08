@@ -1,5 +1,6 @@
 #include "plugin/PresentHook.hpp"
 
+#include "core/Hook.hpp"
 #include "core/Log.hpp"
 
 #include <LESDK/Init.hpp>
@@ -14,7 +15,7 @@ namespace {
 using Microsoft::WRL::ComPtr;
 
 using tPresent = HRESULT(STDMETHODCALLTYPE)(IDXGISwapChain* self, UINT syncInterval, UINT flags);
-tPresent* gPresentOrig = nullptr;
+tPresent* gPresentOrig = nullptr;  // written before the hook goes live (core/Hook)
 
 SRWLOCK gLock = SRWLOCK_INIT;
 Callback gCallback = nullptr;
@@ -82,9 +83,7 @@ bool Install(::LESDK::Initializer& init) {
         log::Error("present hook: couldn't locate IDXGISwapChain::Present");
         return false;
     }
-    gPresentOrig = reinterpret_cast<tPresent*>(
-        init.InstallHook("IDXGISwapChain::Present", target, reinterpret_cast<void*>(&PresentHook)));
-    if (gPresentOrig == nullptr) {
+    if (!hook::Install(init, "IDXGISwapChain::Present", reinterpret_cast<tPresent*>(target), &PresentHook, gPresentOrig)) {
         log::Error("present hook: install failed");
         return false;
     }

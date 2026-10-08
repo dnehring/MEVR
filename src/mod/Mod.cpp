@@ -404,6 +404,10 @@ MEVR_MOD_API bool MevrModStartup(ISharedProxyInterface* spi, mevr::HostServices 
         log::Warn("the host ASI is older than this mod (services v{}): no view to aim with, so hand aim stays off; "
                   "close the game and redeploy the host", host->version);
     }
+    if (gHost != nullptr && gHost->version < 5) {
+        log::Warn("the host ASI is older than this mod (services v{}): it unloads the mod even when a hook couldn't be "
+                  "removed; close the game and redeploy the host", gHost->version);
+    }
     game::view_anchor::UseHostView(gHostOwnsVr);
 
     // Hook names get this prefix, so the host's and the mod's hooks never collide.
@@ -506,26 +510,47 @@ MEVR_MOD_API void MevrModOnPresent(IDXGISwapChain* swapChain) {
 MEVR_MOD_API void MevrModShutdown() {
     using namespace mevr;
     gActive = false;
+    // The process is exiting (v5 hosts say so): nothing waits for other threads, and the host
+    // leaves the DLL mapped anyway.
+    bool const exiting = gHost != nullptr && gHost->version >= 5 && gHost->processExiting != nullptr &&
+        gHost->processExiting();
+    // The first thing that leaves this DLL's code reachable after shutdown: the host must not
+    // unload it then.
+    char const* keepLoaded = nullptr;
+    auto const removed = [&keepLoaded](bool ok, char const* what) {
+        if (!ok && keepLoaded == nullptr) {
+            keepLoaded = what;
+        }
+    };
     vr::output::SetScreenOverride(false);
     gScreenWanted = gScreenShown = false;
     gScreenWantedFor = 0.0;
     // The host has already detached the present callback, so the render thread is out.
     vr::output::Shutdown();
     if (gInit && gHooked) {
-        engine::process_event::Uninstall(*gInit);
+        removed(engine::process_event::Uninstall(*gInit), "the ProcessEvent hook couldn't be removed");
     }
     if (gInit && gSceneViewHooked) {
-        engine::scene_view::Uninstall(*gInit);
+        removed(engine::scene_view::Uninstall(*gInit), "the CalcSceneView hook couldn't be removed");
     }
     if (gInit && gGamepadHooked) {
-        game::gamepad_bridge::Uninstall(*gInit);
+        removed(game::gamepad_bridge::Uninstall(*gInit), "an XInput hook couldn't be removed");
     }
     if (gInit && gCallFunctionHooked) {
-        engine::call_function::Uninstall(*gInit);
+        removed(engine::call_function::Uninstall(*gInit), "the CallFunction hook couldn't be removed");
     }
     game::arm_ik::Shutdown();  // stops the writes before the hook goes
     if (gInit && gBonePoseHooked) {
-        engine::bone_pose::Uninstall(*gInit);
+        removed(engine::bone_pose::Uninstall(*gInit, !exiting),
+            "the UpdateSkelPose hook couldn't be removed, or a call was still inside it");
+    }
+    if (keepLoaded != nullptr && !exiting) {
+        if (gHost != nullptr && gHost->version >= 5 && gHost->keepLoaded != nullptr) {
+            gHost->keepLoaded(keepLoaded);  // the host pins this DLL instead of unloading it
+        } else {
+            log::Error("{}, but the host (services v{}) unloads the mod anyway: the game may crash; redeploy the host",
+                keepLoaded, gHost != nullptr ? gHost->version : 0);
+        }
     }
     gBonePoseTried = gBonePoseHooked = false;
     engine::call_function::ClearHandlers();
