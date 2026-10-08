@@ -30,7 +30,7 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   static library and linked into the **host** ASI, so it isn't hot-reloaded). It owns OpenXR,
   Present, stereo (two renders per present), first person (K), head look and its Insert menu.
   Its log is `%LOCALAPPDATA%\MELEVR\MELEVR_Log.txt`; its settings are `MELEVR.ini` in
-  `Binaries\Win64\ASI`. Its keys: Insert menu, R recenter (or double-click the right stick),
+  `Binaries\Win64\ASI`. Its keys: Insert menu (or both thumbsticks held, our addition; the open menu blocks all game input), R recenter (or double-click the right stick),
   K first person. Our own VR hotkeys are off on LE1.
 - Our seams into it are marked `[MEVR]` and declared in `src/halcyon/le1/mevr_bridge.h`
   (implemented in `src/plugin/HalcyonBridge.cpp`): static OpenXR loader, our controller actions
