@@ -1495,6 +1495,43 @@ void BuildUI() noexcept
             // [HUDNOTE] The HUD transforms are applied from the game's own HUD tick, which does
             // not run while this menu owns input, so edits land only once it is closed.
             ImGui::TextDisabled("Close this menu to see HUD size changes.");
+            // [MEVR] Body-locked HUD panel + hand reticle (src/plugin/HalcyonOverlays.cpp).
+            if (ImGui::CollapsingHeader("HUD panel and hand reticle", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                ImGui::Checkbox("HUD on a panel in front of you", &c.hudPanel);
+                ResetBtn("hudPanel", c.hudPanel, kDefaults.hudPanel);
+                ImGui::TextDisabled("Stereo 2: HUD and subtitles on a panel that stays put while you look around.");
+                ImGui::TextDisabled("R recenters it. The PCHUD movie settings below apply only with this off.");
+                if (c.hudPanel)
+                {
+                    ImGui::SetNextItemWidth(ControlWidth());
+                    ImGui::SliderFloat("Panel distance (m)", &c.hudPanelDistanceM, 0.6f, 3.0f, "%.2f");
+                    ResetBtn("hudPanelDistanceM", c.hudPanelDistanceM, kDefaults.hudPanelDistanceM);
+                    ImGui::SetNextItemWidth(ControlWidth());
+                    ImGui::SliderFloat("Panel width (m)", &c.hudPanelWidthM, 0.5f, 3.0f, "%.2f");
+                    ResetBtn("hudPanelWidthM", c.hudPanelWidthM, kDefaults.hudPanelWidthM);
+                    ImGui::SetNextItemWidth(ControlWidth());
+                    ImGui::SliderFloat("Panel below eye height (m)", &c.hudPanelDropM, -0.3f, 0.8f, "%.2f");
+                    ResetBtn("hudPanelDropM", c.hudPanelDropM, kDefaults.hudPanelDropM);
+                    ImGui::SetNextItemWidth(ControlWidth());
+                    ImGui::SliderFloat("Follow the head past (deg, 0 = never)", &c.hudPanelFollowDeg, 0.0f, 120.0f, "%.0f");
+                    ResetBtn("hudPanelFollowDeg", c.hudPanelFollowDeg, kDefaults.hudPanelFollowDeg);
+                    if (ImGui::Button("Put the panel where I'm looking")) MELEVR::MevrBridge::RequestHudPanelReplace();
+                    ImGui::TextDisabled("UI draws on the panel last frame: %u", MELEVR::MevrBridge::HudPanelDrawsLastFrame());
+                }
+                ImGui::Separator();
+                ImGui::Checkbox("Hand reticle (replaces the crosshair while the controller aims)", &c.handReticle);
+                ResetBtn("handReticle", c.handReticle, kDefaults.handReticle);
+                if (c.handReticle)
+                {
+                    ImGui::SetNextItemWidth(ControlWidth());
+                    ImGui::SliderFloat("Reticle distance (m)", &c.handReticleDistanceM, 2.0f, 30.0f, "%.1f");
+                    ResetBtn("handReticleDistanceM", c.handReticleDistanceM, kDefaults.handReticleDistanceM);
+                    ImGui::SetNextItemWidth(ControlWidth());
+                    ImGui::SliderFloat("Reticle size (deg)", &c.handReticleSizeDeg, 0.5f, 5.0f, "%.1f");
+                    ResetBtn("handReticleSizeDeg", c.handReticleSizeDeg, kDefaults.handReticleSizeDeg);
+                }
+            }
             if (ImGui::CollapsingHeader("PCHUD movie", ImGuiTreeNodeFlags_DefaultOpen))
             {
                 ImGui::Checkbox("PCHUD movie enabled", &c.pchudEnabled);

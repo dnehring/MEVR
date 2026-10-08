@@ -197,6 +197,7 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/Halcyon.cpp
     src/plugin/Halcyon.hpp
     src/plugin/HalcyonBridge.cpp
+    src/plugin/HalcyonOverlays.cpp
 )
 
 function(mevr_add_plugin game)

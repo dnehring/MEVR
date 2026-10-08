@@ -4158,6 +4158,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             g_recenterReLatchAim = true;
             g_smoothPoseReset = true;   // app space changed: old-space smoothed quat + tag history are invalid
             g_tagHistReset = true;
+            MELEVR::MevrBridge::OnRecentered();   // [MEVR] the body-locked HUD panel goes straight ahead again
         }
     }
     g_recenterKeyPrev = rDown;
@@ -5616,7 +5617,9 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     proj.viewCount = 2;
     proj.views = projViews;
 
-    const XrCompositionLayerBaseHeader* layers[4] = {nullptr, nullptr, nullptr, nullptr};
+    // [MEVR] room for the world, our HUD panel and reticle quads, the menu and SteamVR's placeholder
+    constexpr uint32_t kMaxLayers = 8;
+    const XrCompositionLayerBaseHeader* layers[kMaxLayers] = {};
     uint32_t layerCount = 0;
     XrCompositionLayerQuad flatCineQuad = {};
     // The head-locked per-eye QUAD path for cine was removed 2026-08-02. A VR cine now submits on
@@ -5652,6 +5655,36 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     else if (submitted)
     {
         layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&proj);
+    }
+
+    // [MEVR] Body-locked HUD panel and hand reticle (src/plugin/HalcyonOverlays.cpp): quads in the app
+    // space above the world and below the menu. Called every frame: it also clears the panel texture,
+    // arms the UI redirect for the next frame (world frames only) and hides the game's crosshair.
+    {
+        MELEVR::MevrBridge::OverlayFrame mevrFrame;
+        mevrFrame.session = g_session;
+        mevrFrame.appSpace = g_appSpace;
+        mevrFrame.context = g_context;
+        mevrFrame.worldFrame = submitted && !forceFlatCine;
+        mevrFrame.menuOpen = menuOpen;
+        mevrFrame.sfr2 = cineIn.sfr2CfgOn;
+        mevrFrame.gameMode = gameMode;
+        mevrFrame.headValid = headValid;
+        if (headValid)
+        {
+            const XrQuaternionf& hq = g_subViews[0].pose.orientation;
+            mevrFrame.headOrientation[0] = hq.x; mevrFrame.headOrientation[1] = hq.y;
+            mevrFrame.headOrientation[2] = hq.z; mevrFrame.headOrientation[3] = hq.w;
+            mevrFrame.headPosition[0] = 0.5f * (g_subViews[0].pose.position.x + g_subViews[1].pose.position.x);
+            mevrFrame.headPosition[1] = 0.5f * (g_subViews[0].pose.position.y + g_subViews[1].pose.position.y);
+            mevrFrame.headPosition[2] = 0.5f * (g_subViews[0].pose.position.z + g_subViews[1].pose.position.z);
+        }
+        mevrFrame.floatWhiteScale =
+            MELEVR::MevrBridge::HudPanelIsFloat() ? HdrSourceScale(DXGI_FORMAT_R16G16B16A16_FLOAT) : 1.0f;
+        const void* mevrQuads[2] = {nullptr, nullptr};
+        const unsigned mevrQuadCount = MELEVR::MevrBridge::OverlayLayers(mevrFrame, mevrQuads, 2);
+        for (unsigned i = 0; i < mevrQuadCount && layerCount < kMaxLayers - 2; ++i)
+            layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(mevrQuads[i]);
     }
 
     // Options menu: head-locked, alpha-blended quad rendered on top of the world.
@@ -5712,7 +5745,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         bool projInLayers = false;
         for (uint32_t li = 0; li < layerCount; ++li)
             if (layers[li] == reinterpret_cast<const XrCompositionLayerBaseHeader*>(&proj)) projInLayers = true;
-        if (!projInLayers && layerCount < 4)
+        if (!projInLayers && layerCount < kMaxLayers)   // [MEVR] was 4 (the array grew)
         {
             for (int e = 0; e < 2; ++e)
             {
