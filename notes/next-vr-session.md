@@ -70,11 +70,12 @@ What Claude looks for in the log:
 7. **Hand aim:** press `,`, draw a weapon and fire at something while pointing the right
    controller elsewhere than your head. Do shots land where the controller points? (There's no
    reticle yet, so watch the impacts.)
-8. **Arm IK:** press `.`, step back with `\` to the camera path or look down, and wave the
-   controllers. Do Shepard's arms follow? (If the log says `route 1 unavailable`, nothing
-   happens yet; that's expected.)
-9. **Conversations:** talk to someone. The view should switch to the flat virtual screen for the
-   conversation and back to head-tracked afterwards. Press `=` to compare with head-tracked
+8. **Arm IK:** press `.` and wave the controllers. Hands are placed relative to Shepard's head
+   and facing, so this works in the normal third-person view: do Shepard's arms follow your
+   hands? (If the log says `route 1 unavailable`, nothing happens yet; that's expected.)
+9. **Conversations:** talk to someone. After about a third of a second the view should switch to
+   the flat virtual screen, placed in front of wherever you're facing, and go back to
+   head-tracked afterwards. Press `=` to compare with head-tracked
    conversations.
 10. Look at a reflective floor (e.g. the Normandy) while turning. Do reflections still jerk?
 11. Known: on the render path the crosshair no longer follows your head. Aim is still the game

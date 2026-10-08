@@ -61,11 +61,13 @@ the feature that sets us apart: none of the existing ME LE VR mods
   hand bone. Hand bones are matched by name: `Hand_R`, `R_Hand`, `RightHand`, `Wrist_L` and so on.
 - **Driving them.** While on, it sets each control's effector to that controller's grip pose in
   world space. The joint target is the `core/ik` elbow pole. Strength is 1.
-- **Mapping to the world.** Controller positions map through `head_tracking::Anchor`: where
-  the rendered head is in the world, plus the body yaw.
+- **Mapping to the world.** Controller positions are placed relative to Shepard's **head bone**
+  (world location via `GetBoneLocation`), in the frame of the pawn's facing. That works in third
+  person too, so route 1 can be tested before a first-person camera exists. Every tick reads
+  fresh from the live pawn; no object pointers are kept across ticks (review finding).
 - **Safety.** It saves the controls' settings and restores them when turned off or when tracking
-  is lost. Controls are re-found whenever the mesh or AnimTree changes, and every pointer is
-  liveness-checked (`engine::IsAlive`).
+  is lost. Every tick it re-finds the controls by walking the live AnimTree and writes only to
+  those found. Bone names are matched as whole tokens (`core/ik/BoneNames`, tested).
 - **When there's nothing to drive.** If the probe finds no limb controls on the hand bones, it
   logs that once and stays inert.
 
