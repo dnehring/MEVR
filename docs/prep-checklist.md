@@ -29,6 +29,14 @@ Writing freshly built DLLs and reading logs under `Program Files (x86)` triggers
 iteration. After the download, Steam can move the game: Properties → Installed Files → Move
 install folder → `H:\SteamLibrary` (ME LE is about 120 GB; H: has 184 GB free).
 
+## If you use SteamVR (Steam Link, Virtual Desktop's SteamVR mode, or a SteamVR headset)
+
+- Set SteamVR as the OpenXR runtime: SteamVR → Settings → OpenXR → "Set SteamVR as OpenXR
+  Runtime".
+- **Turn off Desktop Game Theatre for ME LE:** Steam → ME LE → Properties → General → uncheck
+  "Use Desktop Game Theatre while SteamVR is active". Otherwise SteamVR mirrors the game window
+  onto its own screen on top of the mod's output.
+
 ## When the download finishes
 
 1. Launch LE1 once from Steam, without mods, and get in-game. This confirms the EA App handoff

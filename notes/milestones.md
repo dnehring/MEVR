@@ -151,6 +151,20 @@ Design (2026-10-07):
 - **[verify]:** whether ME's FOV is horizontal (UE3 default) or aspect-constrained. If the scale
   is wrong, the world will "swim" when you turn your head.
 
+### M3 test 1 (2026-10-07, 22:06–22:17, SteamVR 2.17.10 via Steam Link)
+
+- **Head poses reach the game:** about 90 frames tagged per second, and the view function is
+  adjusted 3–48 times per frame. The game's FOV is **70.0** (horizontal).
+- **User report:**
+  1. The game's main screen still showed over the head-tracked image.
+  2. The two eyes' images were badly misaligned.
+- **Diagnosis:** SteamVR's **Desktop Game Theatre** mirrors any non-VR Steam game's window onto
+  a virtual screen while SteamVR runs. That gives two layers: SteamVR's theater screen at a
+  finite distance, plus our mono projection at infinity. The doubled, misaligned look is most
+  likely those two overlapping.
+- **Fix (user setting):** Steam → ME LE → Properties → General → uncheck "Use Desktop Game
+  Theatre while SteamVR is active". Retest pending.
+
 ### Still to do
 
 - Retest with the fixes. Check image correctness (colors and brightness vs the monitor).
