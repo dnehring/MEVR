@@ -40,6 +40,20 @@ other keys in the table further down are for our own renderer only.
    (K). Do Shepard's arms follow? Any tearing at the wrist or elbow, or fingers off the hand?
    Does the weapon follow the hand? `.` turns it off to compare. (The left hand may stay on the
    gun's grip while the weapon is out.)
+6. **The gun points where the controller points (new):** first person (K), on foot, draw a
+   pistol or rifle, and hold the right hand still for a moment (the mod measures how the gun sits
+   in the hand; the log says `grip measured`).
+   - Hold the controller normally and point it at something: the gun's barrel should point the
+     same way, upright. (The `handPitch = 90` in `LE1MEVR.ini` no longer matters for guns; leave
+     it.) Turn and tilt the controller: the gun should follow without lag or jitter.
+   - Fire at a wall at different distances: impacts should land where the barrel points, and the
+     tracers should leave the muzzle. Note any constant offset and the distance.
+   - Wave the gun around fast: does the gun stay locked to the hand (no lag behind it)?
+   - Holster and draw again, switch weapons: same behaviour each time? (Each new weapon is
+     measured again: hold still a moment after drawing.)
+   - If a reticle shows (the renderer side may not have it yet), does it sit on the barrel's line?
+   - `,` (hand aim off) gives Halcyon's head aim back; `.` (arm IK off) returns shots to the
+     controller's ray without the gun following.
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR
@@ -49,6 +63,14 @@ What Claude looks for:
   camera-vs-view check (about 0 degrees), `first shot aimed by the right controller`, `arm IK on`,
   the skeleton and arm-chain lines, `bone layout verified`, `first write`, and the heartbeat's
   `hand aim:`, `host view:` and `arm IK writeback:` lines.
+- The gun ([research/14](../research/14-vrik.md), "The gun in the hand"): `weapon: natives:`,
+  per weapon `muzzle ... vs GetMuzzleLoc ...: match`, the `GetSocketWorldLocationAndRotation`
+  line (do struct out parameters come back?), `weapon: barrel: the muzzle socket's X axis`,
+  `in the right hand: its mesh hangs on Prop01(98)`, `grip measured`, `follow check ...: follows
+  the written hand in the same frame` (or LAGS: then the fix in research/14), `arm IK: driving:
+  ... (the right hand points the gun's barrel ...)`, `hand aim: shots follow the gun barrel from
+  the muzzle`, `shot start moved to the muzzle`, `the shot started at the muzzle`, `aim ray from
+  the muzzle along the barrel`, and the heartbeat's `weapon:` and `hand aim:` counts.
 
 ## LE1 on the desktop (no headset): arm test
 

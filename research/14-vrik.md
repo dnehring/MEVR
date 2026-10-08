@@ -201,19 +201,119 @@ frame, not broken.
 - Heartbeat: UpdateSkelPose calls in total and for the player mesh (callers, threads), writes,
   rejections with the last reason, and the latest before/after per arm.
 
+## The gun in the hand: muzzle, barrel and shots (2026-10-08, decrypted code)
+
+Headset feedback: holding the controller normally, the gun pointed about 90 degrees up, and
+"the shots are not corresponding to the gun model". The first is most likely the grip-to-hand
+mapping: `core/ik/HandFrame` maps the hand's wrist-to-knuckles axis onto OpenXR grip -Z, which
+the spec puts along the tube the closed fingers make (pinky to thumb, the controller's handle),
+about a right angle from where a fist's knuckles and a gun's barrel point. The second: hand aim sent shots
+along the controller's aim ray from the game's own start, while the gun model pointed wherever
+the hand put it. Fix: the gun decides. The hand turns so the barrel follows the controller's aim
+ray, and shots leave the muzzle along the barrel.
+
+### How LE1 fires (read in the dump)
+
+| What | LE1 | Evidence |
+|------|-----|----------|
+| Fire tick: `BioWeaponRanged.TickFire`'s body **[verify: the log prints the native's address]** | `0xC621E0` (this, DeltaTime) | Counts down `FireDelay`/`ReFireDelay` (`+0x4F0`/`+0x4F4`), sets the firing bits at `+0x548`, branches on `Stats.FireMode` (`Stats +0x4C0`, mode `+0x259`: 1 single, 3 burst with `RemainingBurstFireCount +0x4EC`, else automatic; another path `0xC62650` when a check on the instigator (`0x4A7550`) passes and byte `+0xDF4` of what the weapon's virtual `+0x890` returns is 3 or 4). Every firing path does the next three steps |
+| Shot start | `Instigator.GetWeaponStartTraceLocation(None)` **through ProcessEvent** (vtable slot `0x250`; the event thunk `0xC63C10`, parms `CurrentWeapon +0x0`, `ReturnValue +0x8`) | The caller reads the return value back from the parms, so a ProcessEvent post-handler can rewrite it. For the player it's `SFXGame.BioPawn.GetWeaponStartTraceLocation` (native; `SFXPawn_Player` doesn't override it) |
+| Shot aim | `this.GetAdjustedAim(start)` through ProcessEvent (parms `StartFireLoc +0x0`, `ReturnValue +0xC`), whose script asks `BioPlayerController.GetAdjustedAimFor` (script to script: `UObject::CallFunction`) | Matches the in-game log of 2026-10-08: the GetAdjustedAim post-handler saw `StartFireLoc` 59 units behind the hand, so the pawn's answer is about the camera, not the muzzle |
+| The trace | `0xC589F0(this, &start, &aim)`: end = start + `Vector(aim)` × `GetTraceRange()` (`0xC5C9D0`), pellets from `Stats.PelletSpread` (`+0xE4`, count `+0xEC`), `ShotCount++` (`+0x4DC`) | `Weapon.GetPhysicalFireStartLoc` isn't on this path |
+| `BioWeaponRanged::GetMuzzleLoc` (C++) | `0xC59870` | `SkelMeshComp` (`BioWeapon +0x3E8`) and `m_MuzzleSocketName` (`+0x490`, not None): `SkelMeshComp->GetSocketWorldLocationAndRotation(name, &loc, &rot, 0)`; otherwise `Instigator` (`+0x1A4`)'s `Location` (`+0x108`), else its own |
+| `USkeletalMeshComponent::GetSocketWorldLocationAndRotation` (C++) | `0x584640` | `SkeletalMesh` (`+0x254`) → `FindSocket` (`0x5A8C70`) → `MatchRefBone(socket.BoneName)` (`0x587D30`) → `GetBoneMatrix` (`0x583540`) → `FRotationTranslationMatrix(RelativeRotation, RelativeLocation)` (`0xBF810`) × bone matrix. **No `RelativeScale`.** Space 1 multiplies by the inverse `LocalToWorld` (`+0xC0`); the rotator comes from `0x145230` |
+| `USkeletalMesh::FindSocket` | `0x5A8C70` | `Sockets` data `+0x144`, count `+0x14C`; compares `SocketName` `+0x84` (index) and `+0x88` (number) |
+| `USkeletalMeshSocket` | `RelativeLocation +0x60`, `RelativeRotation +0x6C`, `RelativeScale +0x78`, `SocketName +0x84`, `BoneName +0x8C` | `0x584640`, `0x57A120` (SDK agrees; `static_assert`ed) |
+| `BioWeapon.AttachToMesh` (native) | `0xC3EC70` | With `SkelMeshComp` and a socket name: `MeshComponent->AttachComponentToSocket(this->Mesh (Weapon +0x394), SocketName)` (`0x57A120`), then `AttachedMesh +0x3F8` = the body, `AttachedBone +0x400` = **the socket's name** (not a bone), `AttachPawn +0x408` and `Instigator` = the body's owner |
+| `AttachComponentToSocket` | `0x57A120` | `FindSocket`, then `AttachComponent(component, socket.BoneName, &RelativeLocation, &RelativeRotation, &RelativeScale)` (`0x5795F0`) |
+| `SkeletalMeshComponent.Attachments` | data `+0x3B4`, count `+0x3BC`, `FAttachment` `0x34` bytes (`Component +0x0`, `BoneName +0x8`, `RelativeLocation +0x10`, `RelativeRotation +0x1C`, `RelativeScale +0x28`) | A transform update (`0x593110`, by its shape) loops `imul 34h` over them, calling `BeginDeferredUpdateTransform` (`0x2C7C90`) on each component |
+| After `UpdateSkelPose` in `Tick` | `0x58D70E`: with `bForceUpdateAttachmentsInTick` (`+0x438` bit `0x40000`) the transform update runs now (`0x2C9120` → vtable `+0x2D8`), otherwise `BeginDeferredUpdateTransform` (`0x2C7C90`) defers it to later in the frame | So attached components take their transforms from the bones **after** our post-hook writes them: the gun should follow the written hand in the same frame **[verify: the follow-check log line]** |
+
+The player's skeleton has `Prop01` (98) under `RightWrist` (82), and `LHIK` (109) under `Prop01`
+(the off hand's grip target), so the weapon most likely hangs on `Prop01`. The arm writer carries
+every bone below the upper arm rigidly, `Prop01` included.
+
+### What the mod does (`game/weapon`, `game/arm_ik`, `game/hand_aim`)
+
+- **Which weapon** (`game/weapon`, LE1 only): `Pawn.Weapon` (`+0x4A8`) when it's a
+  `BioWeaponRanged`; its `SkelMeshComp`; the socket `m_MuzzleSocketName`.
+- **The muzzle**, computed the engine's way from memory (`engine::skeleton::FindSocket`): the
+  socket's offset, on its bone in the weapon's `SpaceBases`, through the weapon mesh's
+  `LocalToWorld`. **Verified once per weapon** against `GetMuzzleLoc` called through ProcessEvent
+  (a plain return value, which works); more than 1 unit apart: no weapon, logged (fail closed).
+  The same pass calls `GetSocketWorldLocationAndRotation` once and logs whether its struct out
+  parameters came back through ProcessEvent (`H17`) **[verify]**.
+- **The barrel** is the muzzle socket's X axis (the engine spawns muzzle effects with the
+  socket's rotation), accepted if it's within 60 degrees of the direction from the weapon's
+  origin (its grip) to the muzzle; failing that, the weapon mesh's X axis; failing both, no
+  weapon. Its up is the same frame's Z. **[verify: the `barrel:` log line]**
+- **Held in the right hand**: the weapon mesh is in the body's `Attachments` on a bone at or
+  below the right hand (`ik::FindArmChain`).
+- **The grip**: muzzle, barrel and up in the right hand bone's own axes, measured from the world
+  while the hand holds still (moved under 0.5 units and 1 degree per tick for 5 ticks that agree),
+  so it doesn't matter whether the weapon updates before or after the hand is written. Kept per
+  weapon; a still measurement more than 1 unit or 2 degrees away replaces it (logged).
+- **The hand** (`game/arm_ik`): with a grip, the right hand bone's rotation is solved so the
+  barrel points along the right controller's OpenXR aim ray (aim pose -Z) and the gun's up stays
+  as close to the aim pose's +Y as the barrel allows (`ik::HandForBarrel`, unit-tested). No grip
+  yet, or no weapon: the old grip mapping (`HandFrame` plus the `[Hands]` trims). The wrist still
+  goes where the grip pose puts it.
+- **Shots** (`game/hand_aim`), only while arm IK points the gun this tick and the writer is
+  writing the pose (`arm_ik::RightHandAimsGun`): `GetAdjustedAimFor` returns the barrel's
+  direction, and a ProcessEvent post-handler on `GetWeaponStartTraceLocation` (the local
+  player's pawn only) moves the start to the muzzle. Both read the weapon live at the shot. The
+  `GetAdjustedAim` post-handler checks every such shot's `StartFireLoc` against the muzzle.
+  Otherwise the controller's ray as before (direction only).
+- **The reticle's ray** (`hand_aim::AimRay`, published every tick through
+  `HostServices::setAimRay`, v6): the muzzle and the barrel in tracking space, through the view
+  anchor's frame inverted (`engine::ToTracking`, `DirectionToTracking`, unit-tested). `valid`
+  false whenever shots don't follow the barrel (no weapon, not on foot, hand aim off, no grip yet,
+  no anchor).
+- **Does the gun follow the written hand?** Every tick with a written pose, the muzzle where the
+  engine put it (the weapon mesh's `LocalToWorld`) is compared with where the body's current pose
+  and the attachment put it (`FAttachment` offset, then the bone without scale **[verify]**), and
+  with where last tick's pose put it. After 40 ticks of motion it logs once per weapon: same
+  frame, one tick behind, or not at all. The heartbeat repeats the error.
+  - Expected: same frame (the table's last row).
+  - If it lags: in the bone writer's post-hook, after writing, call
+    `BeginDeferredUpdateTransform` (`0x2C7C90`) on each component in the body's `Attachments`,
+    as the engine's own transform update does. Not done blind: the log decides.
+
+### What the log shows
+
+- At startup: `weapon: natives: BioWeaponRanged.GetMuzzleLoc exe+0x..., TickFire exe+0x...`
+  (ties the code reading to the script functions).
+- Per weapon: `weapon: <weapon> (mesh ...): muzzle socket '...' on bone ...: muzzle (...) vs
+  GetMuzzleLoc (...): match`, the `GetSocketWorldLocationAndRotation` line, `weapon: barrel: ...`,
+  `weapon: ... in the right hand: its mesh hangs on Prop01(98) under RightWrist(82)`,
+  `weapon: grip measured in the right hand's axes: ...`, later
+  `weapon: follow check, attached to ...: ... follows the written hand in the same frame`.
+- `arm IK: driving: ... (the right hand points the gun's barrel along the controller's aim)`.
+- `hand aim: shots follow the gun barrel from the muzzle (...)` or `... the right controller's aim
+  ray (why not the barrel)`; on the first shot: `shot start moved to the muzzle: the pawn said
+  (...), the muzzle is at (...)`, `first shot along the gun barrel`, `the shot started at the
+  muzzle`.
+- `hand aim: aim ray from the muzzle along the barrel` / `none (why)`, and the first ray in
+  tracking space.
+
 ## Open risks [verify in game]
 
 - The desktop-test pose must appear on screen. If the log shows writes but Shepard's arm doesn't
   move, something after UpdateSkelPose rebuilds `SpaceBases` (or the render update ran before
   it): look for a second hook point (the `0x2C9120` update, or ComposeSkeleton itself).
 - UpdateSkelPose from another thread: the hook is thread-safe, and the log lists thread ids.
-- The weapon should follow the hand (an attachment via sockets, updated after the pose).
-  Unknown until seen.
+- The weapon should follow the hand: by the code it does, in the same frame (the follow check
+  says). The barrel axis (socket X) and the attachment's scale handling are read from code, not
+  seen yet.
+- Shots now start at the muzzle: a muzzle poked through a wall fires from the far side. The game
+  has `BioPawn.GetPulledInMuzzleLocation(Wpn, AimDir)` (a script event), probably for this; not
+  used yet.
 - The off-hand: the AnimTree's `LeftArm` limb control pulls the left wrist to `LHIK` during
   ComposeSkeleton, before our write. In the desktop test the right hand moves but the left stays
   on the gun's old grip. In VR both arms are ours.
 - Scale: 1 unit = 1 cm is assumed for the 7 cm wrist offset; the log's arm lengths will tell.
-- The VR hand rotation is relative (captured at the start), not calibrated.
+- Without a gun, the VR hand rotation is the grip mapping (`HandFrame`) plus the `[Hands]` trims,
+  not calibrated per player.
 
 ## Plan
 
@@ -223,8 +323,8 @@ frame, not broken.
    camera: swap `hand_targets::Current()` to its camera transform.
 3. **First-person body:** MassFPS-style head hiding (research/11). The torso turns with a body
    yaw (deadzone, `ik::BodyYaw`).
-4. **Weapon in hand:** check the weapon attachment follows the IK'd hand; then the aim ray
-   from the muzzle unifies hand aim with what you see.
+4. **Weapon in hand:** built 2026-10-08 (above): the hand aims the gun, shots leave the muzzle
+   along the barrel, the aim ray goes to the renderer's reticle. Next: confirm in the headset.
 5. **Comfort and polish:** grip-to-wrist calibration (a "hold arms out" step), arm length
    scaling, elbow pole smoothing, limits for cover and roadie-run animations.
 
@@ -245,6 +345,6 @@ logs show the same approach on LE2. Since 2026-10-08 the controller reaches the 
 publishes its view relative to the game camera ([13](13-existing-me-vr-mods.md)). **Arm IK
 should take its hand positions from the same anchor.** Hand aim sets only the direction:
 shots still start at the game's StartFireLoc, so they run parallel to the controller's ray,
-offset by the distance between them. The log measures that offset once **[verify]**; if it's
-large (third person), the fix is a start-location override or aiming from StartFireLoc at the
-ray's hit point (a world trace).
+offset by the distance between them. The log measured it on 2026-10-08: the start was 59 units
+behind the hand along the ray and 24 off it. That's now the fallback: with a gun in the hand,
+shots leave the muzzle along the barrel (above, "The gun in the hand").
