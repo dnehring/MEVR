@@ -14,7 +14,7 @@ namespace mevr::game::hand_targets {
 enum class Source {
     None,         // nothing to follow: the animation keeps the arms
     Controllers,  // tracked motion controllers
-    DesktopTest,  // no VR session: arm IK holds the right hand in front of the chest (no positions here)
+    DesktopTest,  // no headset: arm IK holds the right hand in front of the chest (no positions here)
 };
 
 struct Hand {
@@ -37,8 +37,8 @@ struct Targets {
 // person the two nearly coincide. Without it, around the view's head location.
 Targets Current(std::optional<engine::UnrealVector> const& headBone);
 
-// Latched when arm IK is turned on with no VR to follow (set by the mod), cleared when it's
-// turned off: the right hand is then held in front of the chest.
+// Set by the mod every tick: true while there's no headset to follow (our renderer: no VR session;
+// the host's: no headset session seen yet). Arm IK then holds the right hand in front of the chest.
 void SetDesktopTest(bool on);
 bool DesktopTest();
 

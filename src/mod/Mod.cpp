@@ -48,9 +48,15 @@ mevr::HostServices const* gHost = nullptr;
 bool gHostOwnsVr = false;
 bool gToldHostOwnsVr = false;
 bool gToldStateMismatch = false;
-// Host renderer (HostServices v3): it publishes its view (game/view_anchor maps the controllers
+// Host renderer (HostServices v4): it publishes its view (game/view_anchor maps the controllers
 // into the world with it) and takes our word on hand aim (its head aim stops while we aim).
 bool gHostView = false;
+// Host renderer: this tick's controllers and view came from the host (state sizes match; always
+// in the monolithic build, which shares them).
+bool gHostDataOk = false;
+// Host renderer: a headset session has shown up (the host published a view or a controller
+// sample) since the host started. Until then, arm IK's desktop test stands in for it.
+bool gHeadsetSeen = false;
 // Host renderer: hand aim comes on by itself the first time a motion controller aims, unless `,`
 // has decided it this session.
 bool gHandAimChosen = false;
@@ -78,7 +84,7 @@ mevr::Hotkey gHeadSimKey{VK_OEM_7};     // '  desktop head simulator: sweep / no
 mevr::Hotkey gStereoKey{VK_OEM_1};      // ;  stereo: mono / alternate-eye (render path, headset)
 mevr::Hotkey gPositionKey{VK_OEM_2};    // /  6DOF: head position moves the view (render path)
 mevr::Hotkey gHandAimKey{VK_OEM_COMMA}; // ,  aim weapons with the right controller (on foot)
-mevr::Hotkey gArmIkKey{VK_OEM_PERIOD};  // .  VRIK arms follow the controllers (no VR session: desktop test pose)
+mevr::Hotkey gArmIkKey{VK_OEM_PERIOD};  // .  VRIK arms follow the controllers (no headset: desktop test pose)
 mevr::Hotkey gCinemaKey{VK_OEM_PLUS};   // =  conversations, cutscenes, menus on the virtual screen
 mevr::Hotkey gLockstepKey{VK_OEM_MINUS}; // -  lockstep on / off (frame pacing A/B)
 bool gAutoCinema = true;
@@ -212,7 +218,6 @@ void SetVrFeatures(bool on) {
     if (on) {
         EnsureBonePoseHook();
     }
-    game::hand_targets::SetDesktopTest(false);
     game::arm_ik::SetEnabled(on);
     if (gHandAimAvailable) {
         if (on) {
@@ -222,17 +227,36 @@ void SetVrFeatures(bool on) {
     }
 }
 
-// `.`: arm IK on or off. Turned on with nothing to follow (no view to place controllers in, or
-// none tracked), it's the desktop test: the right hand held in front of the chest.
-void ToggleArmIk(bool noVr) {
+// Arm IK's desktop test (the right hand held in front of the chest) stands in for the controllers
+// only where no headset can be followed: our renderer with no VR session, or the host's renderer
+// before any headset session has shown up. Decided every tick (before arm IK's), never latched: a
+// view lost for a moment (the Insert menu, a flat conversation, a tracking blip, the first tick
+// after a hot reload) leaves the arms to the animation instead of switching to the test.
+bool NoHeadset() {
+    using namespace mevr;
+    if (!gHostOwnsVr) {
+        return !vr::output::Running();
+    }
+    if (!gHostDataOk) {
+        return false;  // the host's state is unreadable: assume a headset rather than risk the test in one
+    }
+    if (!gHeadsetSeen) {
+        // Any view or controller sample means an XR session ran. The host keeps the sequences
+        // across hot reloads, and the mod mirrors them each tick (MirrorHostState).
+        gHeadsetSeen = vr::host_view::Latest(UINT64_MAX).sequence != 0 || vr::controllers::Latest(UINT64_MAX).sequence != 0;
+    }
+    return !gHeadsetSeen;
+}
+
+// `.`: arm IK on or off. With no headset to follow, it's the desktop test (NoHeadset).
+void ToggleArmIk() {
     using namespace mevr;
     bool const on = game::arm_ik::Toggle();
     if (on) {
         EnsureBonePoseHook();
     }
-    game::hand_targets::SetDesktopTest(on && noVr);
     log::Info(".: arm IK {}{}", on ? "on" : "off",
-        on && noVr ? " (nothing to follow: desktop test, right hand held in front of the chest)" : "");
+        on && NoHeadset() ? " (no headset to follow: desktop test, right hand held in front of the chest)" : "");
 }
 
 // Host renderer: arm IK, like hand aim, comes on by itself once tracked controllers have a view.
@@ -243,7 +267,6 @@ void UpdateHostArmIk() {
     }
     if (vr::controllers::Latest().active && game::view_anchor::Current()) {
         EnsureBonePoseHook();
-        game::hand_targets::SetDesktopTest(false);
         game::arm_ik::SetEnabled(true);
         log::Info("arm IK on: tracked controllers in a head-tracked view (. toggles)");
     }
@@ -264,13 +287,44 @@ void UpdateHostHandAim() {
             log::Info("hand aim on: motion controllers are active, so the right controller aims (, toggles)");
         }
     }
-    // Tell the host only what actually works: without the CallFunction hook, shots fired from
-    // script keep the game's aim, so the host's head aim must stay.
-    bool const aiming = game::hand_aim::Enabled() && gCallFunctionHooked;
+    // Tell the host only what actually works, or its head aim stops with nothing in its place:
+    // without the CallFunction hook, shots fired from script keep the game's aim; without the
+    // host's controllers and view (state sizes differ: an older host), hand aim has nothing to
+    // aim with.
+    bool const aiming = game::hand_aim::Enabled() && gCallFunctionHooked && gHostDataOk;
     if (aiming != gHandAimReported) {
         gHandAimReported = aiming;
         gHost->setHandAim(aiming);
     }
+}
+
+// Host renderer: copies the host's latest controllers and view into the mod (first thing each
+// tick, so everything after sees this tick's).
+void MirrorHostState() {
+    using namespace mevr;
+#if defined(MEVR_MOD_DLL)
+    // A v4+ host says how big its structs are; older hosts can't, so trust them.
+    bool const sizesMatch = gHost->version < 4 || (gHost->controllerStateSize == sizeof(vr::controllers::State) &&
+        gHost->viewStateSize == sizeof(vr::host_view::State));
+    if (sizesMatch) {
+        vr::controllers::State controllers;
+        gHost->controllers(&controllers);
+        vr::controllers::Mirror(controllers);  // keeps the host's timestamp, so it still ages
+        if (gHostView) {
+            vr::host_view::State view;
+            gHost->view(&view);
+            vr::host_view::Mirror(view);
+        }
+    } else if (!gToldStateMismatch) {
+        gToldStateMismatch = true;
+        log::Error("host state sizes differ from the mod's (controllers {} vs {}, view {} vs {}): close the game and "
+            "redeploy the host; controllers and the view ignored, hand aim stays with the host", gHost->controllerStateSize,
+            sizeof(vr::controllers::State), gHost->viewStateSize, sizeof(vr::host_view::State));
+    }
+    gHostDataOk = sizesMatch;
+#else
+    gHostDataOk = true;  // monolithic: host and mod already share this state
+#endif
 }
 
 void PollHotkeys() {
@@ -292,7 +346,7 @@ void PollHotkeys() {
         }
         if (gArmIkKey.Pressed()) {
             gArmIkChosen = true;
-            ToggleArmIk(!vr::controllers::Latest().active || !game::view_anchor::Current());
+            ToggleArmIk();
         }
         for (Hotkey* key : {&gVrToggleKey, &gModeToggleKey, &gHeadPathKey, &gHeadSimKey, &gStereoKey, &gPositionKey,
                  &gCinemaKey, &gLockstepKey}) {
@@ -339,7 +393,7 @@ void PollHotkeys() {
         log::Info("=: conversations and cutscenes on the virtual screen {}", gAutoCinema ? "on" : "off");
     }
     if (gArmIkKey.Pressed()) {
-        ToggleArmIk(!vr::output::Running());
+        ToggleArmIk();
     }
     if (gHandAimKey.Pressed()) {
         if (!gHandAimAvailable) {
@@ -394,7 +448,8 @@ MEVR_MOD_API bool MevrModStartup(ISharedProxyInterface* spi, mevr::HostServices 
         }
         gHost = host;
         gHostOwnsVr = host->controllers != nullptr;
-        gHostView = gHostOwnsVr && host->version >= 3 && host->view != nullptr && host->setHandAim != nullptr;
+        // Nothing past `controllers` from a v3 host: v3 had two layouts (mod/ModApi.hpp).
+        gHostView = gHostOwnsVr && host->version >= 4 && host->view != nullptr && host->setHandAim != nullptr;
         if (host->version >= 4) {
             engine::process_event::UseHost(host->setProcessEventCallback);
         }
@@ -425,30 +480,11 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     if (!gActive) {
         return;
     }
-    PollHotkeys();
     if (gHostOwnsVr) {
-#if defined(MEVR_MOD_DLL)  // monolithic: host and mod already share this state
-        // A v4+ host says how big its structs are; older hosts can't, so trust them.
-        bool const sizesMatch = gHost->version < 4 || (gHost->controllerStateSize == sizeof(vr::controllers::State) &&
-            gHost->viewStateSize == sizeof(vr::host_view::State));
-        if (sizesMatch) {
-            vr::controllers::State controllers;
-            gHost->controllers(&controllers);
-            vr::controllers::Mirror(controllers);  // keeps the host's timestamp, so it still ages
-            if (gHostView) {
-                vr::host_view::State view;
-                gHost->view(&view);
-                vr::host_view::Mirror(view);
-            }
-        } else if (!gToldStateMismatch) {
-            gToldStateMismatch = true;
-            log::Error("host state sizes differ from the mod's (controllers {} vs {}, view {} vs {}): close the game and "
-                "redeploy the host; controllers and the view ignored", gHost->controllerStateSize,
-                sizeof(vr::controllers::State), gHost->viewStateSize, sizeof(vr::host_view::State));
-        }
-#endif
+        MirrorHostState();
         gGamepadHooked = true;  // the host's XInput hook feeds the controllers to the game
     }
+    PollHotkeys();
     if (!gHooked || !gGamepadHooked) {
         gRetryTimer += deltaSeconds;
         if (gRetryTimer >= kStartupRetrySeconds) {
@@ -487,6 +523,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::reflections::Tick(deltaSeconds);
     }
     if (gHooked) {
+        game::hand_targets::SetDesktopTest(NoHeadset());
         game::arm_ik::Tick(deltaSeconds);  // uses this tick's view anchor, so before OnTickEnd
         game::head_tracking::OnTickEnd();
     }
@@ -566,6 +603,9 @@ MEVR_MOD_API void MevrModShutdown() {
     gToldStateMismatch = false;
     engine::process_event::UseHost(nullptr);
     gHostView = false;
+    gHostDataOk = false;
+    gHeadsetSeen = false;
+    game::hand_targets::SetDesktopTest(false);
     gHandAimChosen = false;
     gHandAimReported = false;
     gArmIkChosen = false;
