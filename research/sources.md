@@ -43,6 +43,14 @@
 - [ispr.info: Inside the VR mod that's brought VR to hundreds of games](https://ispr.info/2026/01/07/inside-the-vr-mod-thats-brought-virtual-reality-to-hundreds-of-games/)
 - [REFramework](https://github.com/praydog/REFramework)
 
+## Existing Mass Effect LE VR mods (found 2026-10-07, later)
+- [jrush64/MassEffect1-VR (Halcyon, GPL-3.0)](https://github.com/jrush64/MassEffect1-VR), [MassEffect2-VR](https://github.com/jrush64/MassEffect2-VR), [MassEffect3-VR](https://github.com/jrush64/MassEffect3-VR)
+- [Nexus: Mass Effect Legendary Edition Trilogy VR Mod (mod 3397)](https://www.nexusmods.com/masseffectlegendaryedition/mods/3397) (page returned 403 to the fetcher; seen only in search results)
+- [Generation Amiga: Mass Effect VR mod brings the entire Legendary Edition to PC VR (2026-08-23)](https://www.generationamiga.com/2026/08/23/mass-effect-vr-mod-brings-the-entire-legendary-edition-to-pc-vr/), which links a Patreon post by "dhalcyon"
+- [Hostile VR on X: teaser for a Mass Effect LE VR mod by "Marauder"](https://x.com/BadHostile/status/2075261692263453053) (Stereo/AER/DIBR/Mono modes, the same mode list as Halcyon's)
+- [YouTube: "Mass Effect VR Mod is HERE!"](https://www.youtube.com/watch?v=cy0N6oUL_j8)
+- ME2VR v0.54.0 (package named v0.5.6), a local download the user found (`F:\downloads\ME2VR-v0.5.6-Steam`); no public page found
+
 ## Searched, nothing relevant found
 - "vorpX Mass Effect Legendary Edition profile": no vorpX information
 - "Modern Warfare 2 Campaign Remastered VR mod AI" (standard search): nothing; the GitHub-targeted search found Overlord

@@ -13,7 +13,11 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
 ## Licensing rules (MIT project)
 
 - Copy code only from permissive sources (REFramework is MIT) and keep their notices.
-- Overlord, h2-mod and Legendary Explorer are GPL-3.0: **read for design, never copy or translate code.**
+- Overlord, h2-mod, Legendary Explorer and Halcyon's MassEffect1/2/3-VR are GPL-3.0: **read for
+  design, never copy or translate code.** Facts (RVAs, offsets, what an engine function does) are
+  fine to reuse once we've verified them ourselves; cite them in `research/13`.
+- Closed binaries (e.g. the ME2VR download): never disassemble, decompile or run them. Their
+  READMEs, configs and log strings are fair game for concepts.
 - UEVR and TF2VR are all rights reserved: never clone or copy.
 - LExASIs and LEBinkProxy have no license: read for patterns; ask ME3Tweaks before copying.
 - LExSDKv2: use as a git submodule only, never vendored into `src/`.

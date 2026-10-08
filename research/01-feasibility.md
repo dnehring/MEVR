@@ -31,8 +31,12 @@ fork either way.
 
 ## What already exists for "Mass Effect VR"
 
-- **No VR mod for Legendary Edition was found** (searched 2026-10-07: web, Nexus top-mods coverage,
-  PC Gamer and GameRevolution mod roundups).
+- ~~No VR mod for Legendary Edition was found~~ (searched 2026-10-07: web, Nexus top-mods coverage,
+  PC Gamer and GameRevolution mod roundups). **Wrong; corrected later the same day.** Halcyon's
+  GPL-3.0 [MassEffect1/2/3-VR](https://github.com/jrush64/MassEffect1-VR) (6DOF stereo, all three
+  games, source on GitHub since 2026-09-20) and a closed motion-controlled ME2VR exist. The first
+  searches used "vorpX" and roundup queries and missed them. See
+  [13-existing-me-vr-mods.md](13-existing-me-vr-mods.md).
 - **"MASS EFFECT VR" on itch.io (kawinfinity)** takes the opposite route: ME1's *original-trilogy*
   assets were extracted with modding tools, rebuilt in Blender, and assembled in **Unreal Engine 4**.
   It's a prototype where you can explore the Normandy, with known bugs. It requires SteamVR and

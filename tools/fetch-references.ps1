@@ -18,6 +18,9 @@ $repos = @(
     @{ Name = 'LExASIs';     Url = 'https://github.com/ME3Tweaks/LExASIs.git';    Submodules = $true  }  # no license: patterns; pulls LExSDKv2
     @{ Name = 'LEBinkProxy'; Url = 'https://github.com/ME3Tweaks/LEBinkProxy.git'; Submodules = $false }  # no license: the ASI loader
     @{ Name = 'vrframework'; Url = 'https://github.com/elliotttate/vrframework.git'; Submodules = $false }  # MIT: VR porting guides + core scaffold
+    @{ Name = 'MassEffect1-VR'; Url = 'https://github.com/jrush64/MassEffect1-VR.git'; Submodules = $false }  # GPL-3.0 (Halcyon): design reference only
+    @{ Name = 'MassEffect2-VR'; Url = 'https://github.com/jrush64/MassEffect2-VR.git'; Submodules = $false }  # GPL-3.0 (Halcyon): design reference only
+    @{ Name = 'MassEffect3-VR'; Url = 'https://github.com/jrush64/MassEffect3-VR.git'; Submodules = $false }  # GPL-3.0 (Halcyon): design reference only
 )
 
 foreach ($r in $repos) {

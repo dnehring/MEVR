@@ -14,6 +14,11 @@ estimate.
 | alicealys/h2-mod | GPL-3.0 | 92,157 | 2026-07-27 | develop |
 | llamathings/LExSDKv2 | none (deliberate, see README) | 14,893 | 2026-07-12 | (HEAD) |
 | CircuitLord/CircuitLordVRModInstaller | Installer MIT; **mods closed, all rights reserved** | n/a | n/a | n/a |
+| jrush64/MassEffect1-VR, MassEffect2-VR, MassEffect3-VR (Halcyon) | GPL-3.0 | 1,785 (ME2) | 2026-09-30 | main |
+
+Added 2026-10-07 (later): Halcyon's three repos, cloned to `reference/` at `3c51514` (ME1),
+`4784e90` (ME2) and `cfd4001` (ME3). Created 2026-09-20, two commits each. GPL-3.0: design and
+fact reference only. See [13](13-existing-me-vr-mods.md).
 
 ## Cloned into `reference/` (2026-10-07, via `tools/fetch-references.ps1`, shallow)
 
@@ -40,7 +45,7 @@ OpenXR-SDK**, CascLib.
 | Source | Can we copy code? |
 |--------|-------------------|
 | REFramework (MIT) | **Yes**, keeping its copyright notice |
-| Overlord, h2-mod, LEX (GPL-3.0) | **No.** It would force GPL. Design reference only, or ask the author for an MIT grant |
+| Overlord, h2-mod, LEX, Halcyon's MassEffect1/2/3-VR (GPL-3.0) | **No.** It would force GPL. Design reference only, or ask the author for an MIT grant |
 | UEVR, TF2VR (all rights reserved) | **No.** Ideas only |
 | LExASIs, LEBinkProxy (no license) | **No** by default. Ask ME3Tweaks; reading for patterns is fine |
 | LExSDKv2 (deliberately none) | Consume as a submodule, as the whole LE native-mod scene does |
