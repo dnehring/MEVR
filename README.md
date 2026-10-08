@@ -48,18 +48,24 @@ Output: `build/Release/LE1MEVR.asi`. Deploying needs the ME3Tweaks ASI loader in
 The plugin logs to `<Win64>/Logs/LE1MEVR.log`, or `%LOCALAPPDATA%/MEVR/` if the game folder
 isn't writable. Undeploy with `tools/deploy-asi.ps1 -Remove`.
 
+Offline tests (no game needed): `cmake --build build --config Release --target mevr-tests`,
+then `ctest -C Release --test-dir build`. Before playing in VR, run
+`tools/vr-game-settings.ps1` (VSync, motion blur, film grain off, HDR to SDR; `-Restore` undoes
+it). The current test plan and hotkeys are in [notes/next-vr-session.md](notes/next-vr-session.md).
+
 ## Layout
 
 | Path         | What lives there |
 |--------------|------------------|
 | `docs/`      | Plans and decisions |
 | `research/`  | Sourced findings, hypotheses to verify, all URLs ([index](research/README.md)) |
-| `tools/`     | `inventory-game.ps1` (records the game install), `deploy-asi.ps1` (copies the plugin into the game), `extract-m3m.ps1` (unpacks ME3MM merge mods), `fetch-references.ps1` (clones reference repos) |
+| `tools/`     | `inventory-game.ps1` (records the game install), `deploy-asi.ps1` (copies the plugin into the game), `vr-game-settings.ps1` (VR-friendly game settings, with restore), `extract-m3m.ps1` (unpacks ME3MM merge mods), `fetch-references.ps1` (clones reference repos), `verify_rvas.py` (checks addresses against the exe's unwind table), `splice_text.py` (disassemblable exe from the mod's local code dump), `minidump_scan.py` (crash triage) |
 | `notes/`     | Generated inventories and reverse-engineering notes |
 | `external/`  | Git submodules: LExSDKv2 (`RVA` branch), OpenXR-SDK (release 1.1.63). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) |
 | `reference/` | Third-party repos for reading only (gitignored; recreate with `tools/fetch-references.ps1`) |
 | `mods/`      | Raw mod downloads (gitignored) |
-| `src/core/`, `src/engine/`, `src/plugin/` | The native plugin: game-agnostic core, UE3/LExSDK bridge, loader entry point |
+| `src/core/`, `src/engine/`, `src/game/`, `src/plugin/`, `src/mod/` | The native plugin: game-agnostic VR core (OpenXR, D3D11, controllers), UE3/LExSDK bridge (scene view, ProcessEvent), ME gameplay adapters (head tracking, gamepad bridge, reflections), the loader host and the hot-reloadable mod |
+| `tests/`     | Offline tests for game-independent math (ctest) |
 | `src/script/` | UnrealScript side (e.g. `le1/massfps-base/`, MassFPS by Aphar) |
 
 ## Docs
@@ -67,4 +73,5 @@ isn't writable. Undeploy with `tools/deploy-asi.ps1 -Remove`.
 - [Prep checklist](docs/prep-checklist.md): tools to install and what to do once the download finishes
 - [Trilogy design](docs/trilogy-design.md): one VR system, the per-game mechanic changes, code layout
 - [VR features plan](docs/vr-features-plan.md): gun handling, body IK, HUD, camera, conversations
+- [Stereo stage 2 design](docs/stereo-stage2-design.md): two full renders per frame
 - [Reuse and licensing](docs/reuse-and-licensing.md): what we can copy versus only learn from
