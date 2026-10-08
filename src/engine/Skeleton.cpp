@@ -6,6 +6,7 @@
 
 #include <Windows.h>
 
+#include <cmath>
 #include <cstddef>
 #include <cstring>
 #include <format>
@@ -179,6 +180,109 @@ USkeletalMeshComponent* PoseParent(USkeletalMeshComponent const* mesh) {
 #else
     (void)mesh;
     return nullptr;
+#endif
+}
+
+int FindBone(USkeletalMeshComponent const* mesh, std::uint64_t key) {
+    RawBones const bones = Bones(mesh);
+    for (int i = 0; i < bones.count; ++i) {
+        if (Key(NameAt(bones, i)) == key) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+ik::Quat FromRotator(int pitch, int yaw, int roll) {
+    Basis const axes = ToBasis(UnrealRotation{pitch, yaw, roll});
+    return ik::FromAxes({axes.forward.x, axes.forward.y, axes.forward.z}, {axes.right.x, axes.right.y, axes.right.z},
+        {axes.up.x, axes.up.y, axes.up.z});
+}
+
+#if defined(SDK_TARGET_LE1)
+// Offsets each confirmed in the code that uses them (research/14, "Weapon and muzzle").
+static_assert(offsetof(USkeletalMesh, Sockets) == 0x144);
+static_assert(offsetof(USkeletalMeshSocket, RelativeLocation) == 0x60);
+static_assert(offsetof(USkeletalMeshSocket, RelativeRotation) == 0x6C);
+static_assert(offsetof(USkeletalMeshSocket, RelativeScale) == 0x78);
+static_assert(offsetof(USkeletalMeshSocket, SocketName) == 0x84);
+static_assert(offsetof(USkeletalMeshSocket, BoneName) == 0x8C);
+static_assert(offsetof(USkeletalMeshComponent, Attachments) == 0x3B4);
+static_assert(sizeof(FAttachment) == 0x34);
+#endif
+
+std::optional<Socket> FindSocket(USkeletalMeshComponent const* mesh, std::uint64_t socketName) {
+#if defined(SDK_TARGET_LE1)
+    if (mesh == nullptr || mesh->SkeletalMesh == nullptr || socketName == 0) {
+        return std::nullopt;
+    }
+    auto const& sockets = mesh->SkeletalMesh->Sockets;
+    int const count = static_cast<int>(sockets.Count());
+    if (sockets.GetData() == nullptr || count <= 0 || count > 4096) {
+        return std::nullopt;
+    }
+    for (int i = 0; i < count; ++i) {
+        USkeletalMeshSocket const* const socket = sockets.GetData()[i];
+        if (socket == nullptr || Key(socket->SocketName) != socketName) {
+            continue;
+        }
+        Socket out;
+        out.boneKey = Key(socket->BoneName);
+        out.bone = FindBone(mesh, out.boneKey);
+        if (out.bone < 0) {
+            return std::nullopt;
+        }
+        FRotator const& r = socket->RelativeRotation;
+        FVector const& t = socket->RelativeLocation;
+        out.relative = {FromRotator(r.Pitch, r.Yaw, r.Roll), {t.X, t.Y, t.Z}, 1.0};
+        return out;
+    }
+    return std::nullopt;
+#else
+    (void)mesh;
+    (void)socketName;
+    return std::nullopt;
+#endif
+}
+
+std::optional<Attachment> FindAttachment(USkeletalMeshComponent const* mesh, UObject const* component) {
+#if defined(SDK_TARGET_LE1)
+    if (mesh == nullptr || component == nullptr) {
+        return std::nullopt;
+    }
+    auto const& attachments = mesh->Attachments;
+    int const count = static_cast<int>(attachments.Count());
+    if (attachments.GetData() == nullptr || count <= 0 || count > 4096) {
+        return std::nullopt;
+    }
+    for (int i = 0; i < count; ++i) {
+        FAttachment const& entry = attachments.GetData()[i];
+        if (static_cast<UObject const*>(entry.Component) != component) {
+            continue;
+        }
+        Attachment out;
+        out.boneKey = Key(entry.BoneName);
+        out.bone = FindBone(mesh, out.boneKey);
+        if (out.bone < 0) {
+            return std::nullopt;
+        }
+        FRotator const& r = entry.RelativeRotation;
+        FVector const& t = entry.RelativeLocation;
+        FVector const& s = entry.RelativeScale;
+        // UE3 treats a zero scale as 1.
+        double scale = 1.0;
+        if (s.X != 0.0f || s.Y != 0.0f || s.Z != 0.0f) {
+            scale = s.X;
+            out.uniformScale = std::abs(s.X - s.Y) < 1e-4f && std::abs(s.X - s.Z) < 1e-4f;
+        }
+        out.relative = {FromRotator(r.Pitch, r.Yaw, r.Roll), {t.X, t.Y, t.Z}, out.uniformScale ? scale : 1.0};
+        return out;
+    }
+    return std::nullopt;
+#else
+    (void)mesh;
+    (void)component;
+    return std::nullopt;
 #endif
 }
 
