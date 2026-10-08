@@ -108,8 +108,10 @@ render_hook, vr_menu, vr_config, head_aim and pchud are built; `game_camera.cpp`
 | FViewportClient::Draw | `0x6D0A00` | `0x6D1E30` |
 | AllocateViewState | `0x329750` | `0x3440F0` |
 
-The gameplay call-site return addresses for LE2 and LE3 aren't known yet. Our scene-view hook
-logs other callers' RVAs, so the first run on those games reveals them.
+The gameplay call-site return addresses for LE2 and LE3 aren't known yet. Until they're
+pinned, our scene-view hook counts any call from inside `FViewportClient::Draw` as the player
+view, and logs the caller's RVA (`scene views: N primary (from exe+0x...)`) so the first run on
+each game pins it. All three games' plugins build (2026-10-08).
 
 **`.text` is encrypted on disk.** The function-start bytes are noise, and an `.ooa` section (EA
 DRM) decrypts the code at runtime. So signature and byte checks must run in-process after

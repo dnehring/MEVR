@@ -4,6 +4,7 @@
 #include "core/vr/Output.hpp"
 #include "core/vr/ViewSync.hpp"
 #include "engine/Objects.hpp"
+#include "engine/GameAdapter.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/SceneView.hpp"
 #include "engine/XrToUnreal.hpp"
@@ -129,7 +130,7 @@ bool IsOnFoot(APlayerController* controller) {
     if (controller == nullptr || !controller->IsA(ABioPlayerController::StaticClass())) {
         return false;
     }
-    USFXGameModeManager const* const modes = static_cast<ABioPlayerController*>(controller)->GameModeManager;
+    USFXGameModeManager const* const modes = engine::adapter::GameModes(static_cast<ABioPlayerController*>(controller));
     return modes != nullptr && modes->CurrentMode == kGameModeDefault;
 }
 
@@ -180,11 +181,12 @@ void OnGetPlayerViewPoint(UObject* context, UFunction* /*function*/, void* parms
         return;
     }
     auto* const p = static_cast<AController_eventGetPlayerViewPoint_Parms*>(parms);
-    int const gameYaw = p->out_Rotation.Yaw;
+    FRotator& rotation = engine::adapter::ViewPointRotation(*p);
+    int const gameYaw = rotation.Yaw;
     gGameYaw = gameYaw;
-    ApplyRotation(p->out_Rotation);
+    ApplyRotation(rotation);
     if (inView) {
-        ApplyTranslation(p->out_Location, gameYaw, p->out_Rotation);
+        ApplyTranslation(p->out_Location, gameYaw, rotation);
     }
 }
 

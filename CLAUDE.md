@@ -65,6 +65,9 @@ switching frameworks.
   render path, default off); `,` toggles hand aim (shots follow the right controller, on foot).
 - Motion controllers reach the game as Xbox pad 0 (`game/GamepadBridge`, XInput hooks). Mapping
   is in `game/GamepadMapping` (unit-tested).
+- Trilogy check: `build-trilogy/` (configured with `-DMEVR_BUILD_LE2=ON -DMEVR_BUILD_LE3=ON`) must
+  keep building all three games. Per-game field spellings go in `src/engine/GameAdapter.hpp`;
+  per-game addresses sit next to their use (e.g. `engine/SceneView.cpp`).
 - Offline tests: `cmake --build build --config Release --target mevr-tests`, then
   `ctest -C Release --test-dir build`. Put game-independent math there.
 - `tools/vr-game-settings.ps1` sets VR-friendly GamerSettings.ini values (VSync, motion blur,

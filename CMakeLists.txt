@@ -73,6 +73,7 @@ set(MEVR_MOD_SOURCES
     src/engine/CodeDump.hpp
     src/engine/Engine.cpp
     src/engine/Engine.hpp
+    src/engine/GameAdapter.hpp
     src/engine/Objects.cpp
     src/engine/Objects.hpp
     src/engine/ProcessEvent.cpp
