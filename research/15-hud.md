@@ -85,8 +85,8 @@ The code is `src/plugin/HalcyonOverlays.cpp`, with seams in `mevr_bridge.h`, `d3
 - **Redirect.** While armed, a UI draw goes into a panel texture instead of the frame. A UI draw here
   means: after the pass-0 capture of this present, immediate context, full viewport, "over" blended
   (`DestBlend = INV_SRC_ALPHA`).
-  - The target must be the swapchain backbuffer (by identity) or an 8-bit scene-sized texture,
-    never the FP16 scene colour.
+  - The target must be the swapchain backbuffer (by identity) or, while the backbuffer is 8-bit,
+    an 8-bit scene-sized texture. It is never the FP16 scene colour.
   - The draw keeps its own state and the game's depth-stencil, which Scaleform masks with.
   - Its blend state gains `ONE`/`INV_SRC_ALPHA` for alpha, so the texture holds premultiplied
     colour plus coverage.
