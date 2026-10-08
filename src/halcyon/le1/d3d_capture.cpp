@@ -4458,6 +4458,7 @@ bool MevrHudPanelDraw(ID3D11DeviceContext* ctx, DrawThunk&& draw) noexcept
     // The bound target, read live (the cached g_currentRtv* can be stomped by deferred recording).
     static unsigned long long s_bbPresent = ~0ull;   // render-thread only
     static void* s_bbIdentity = nullptr;
+    static bool s_bb8Bit = false;
     const unsigned long long present = g_presentCount.load(std::memory_order_relaxed);
     if (present != s_bbPresent && g_gameSwapChain != nullptr)
     {
@@ -4466,6 +4467,9 @@ bool MevrHudPanelDraw(ID3D11DeviceContext* ctx, DrawThunk&& draw) noexcept
         ID3D11Texture2D* bb = nullptr;
         if (SUCCEEDED(g_gameSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&bb))) && bb != nullptr)
         {
+            D3D11_TEXTURE2D_DESC bbd = {};
+            bb->GetDesc(&bbd);
+            s_bb8Bit = bbd.Format == DXGI_FORMAT_R8G8B8A8_UNORM;
             s_bbIdentity = bb;   // identity only
             bb->Release();
         }
@@ -4495,7 +4499,10 @@ bool MevrHudPanelDraw(ID3D11DeviceContext* ctx, DrawThunk&& draw) noexcept
     rtv->Release();
     const bool sceneSized = td.Width == bbW && td.Height == bbH && td.SampleDesc.Count == 1 &&
                             rd.ViewDimension == D3D11_RTV_DIMENSION_TEXTURE2D;
-    const bool ldrFrame = td.Format == DXGI_FORMAT_R8G8B8A8_UNORM;
+    // Halcyon's rule (an 8-bit scene-sized target) only while the backbuffer itself is 8-bit: with an
+    // FP16 backbuffer the UI is drawn into it, and other 8-bit targets carry post effects (and would
+    // make the panel texture flip between formats within a frame).
+    const bool ldrFrame = s_bb8Bit && td.Format == DXGI_FORMAT_R8G8B8A8_UNORM;
     if (!sceneSized || !(isBackbuffer || ldrFrame)) return false;
 
     ID3D11BlendState* gameBlend = nullptr;

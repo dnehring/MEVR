@@ -636,6 +636,9 @@ ID3D11RenderTargetView* HudPanelTarget(ID3D11DeviceContext* context, unsigned wi
     if (gPanel.failed && gPanel.width == width && gPanel.height == height && gPanel.format == fmt) {
         return nullptr;
     }
+    if (gPanel.texture != nullptr && gPanelDraws.load(std::memory_order_relaxed) > 0) {
+        return nullptr;  // a second kind of target in one frame: keep this frame's panel, that draw stays in the frame
+    }
     gPanel = PanelTexture{};
     gPanel.width = width;
     gPanel.height = height;
