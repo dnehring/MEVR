@@ -62,7 +62,8 @@ switching frameworks.
   session) on and off; `[` switches between head-tracked and screen mode; `\` cycles the head
   path (render-only / camera / off); `'` cycles the desktop head simulator (sweep / nod / off,
   used while VR isn't head-tracked); `;` toggles alternate-eye stereo and `/` toggles 6DOF (both
-  render path, default off); `,` toggles hand aim (shots follow the right controller, on foot).
+  render path, default off); `,` toggles hand aim (shots follow the right controller, on foot); `.` toggles VRIK arm IK;
+  `=` toggles the automatic virtual screen for conversations, cutscenes and menus (default on).
 - Motion controllers reach the game as Xbox pad 0 (`game/GamepadBridge`, XInput hooks). Mapping
   is in `game/GamepadMapping` (unit-tested).
 - Trilogy check: `build-trilogy/` (configured with `-DMEVR_BUILD_LE2=ON -DMEVR_BUILD_LE3=ON`) must
