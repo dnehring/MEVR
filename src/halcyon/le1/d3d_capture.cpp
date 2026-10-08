@@ -1,3 +1,5 @@
+// Modified for ME VR Attempt (GPL-3.0) since 2026-10-08: changes are marked [MEVR].
+// Upstream: jrush64/MassEffect1-VR @ 3c51514 (Copyright (C) 2026 Halcyon).
 #include "d3d_capture.h"
 
 #include <Windows.h>
@@ -1689,12 +1691,24 @@ void FillDibrParamBuffer(float* p, float eyeScale) noexcept
     p[11] = eyeScale;
 }
 
+// [MEVR] HDR: LE1 switches its backbuffer from RGBA8 to FP16 once gameplay loads (Windows HDR on), so
+// the "same format as the backbuffer" targets below must follow the format, not just the size: a
+// stale RGBA8 copy target drops every CopyResource from the FP16 frame.
+bool TexFormatIs(ID3D11Texture2D* tex, DXGI_FORMAT format) noexcept
+{
+    if (tex == nullptr) return false;
+    D3D11_TEXTURE2D_DESC d = {};
+    tex->GetDesc(&d);
+    return d.Format == format;
+}
+
 // (Re)create the SRV-able color copy to match the backbuffer (so the warp can sample the finished frame
 // while the monitor/debug result renders back into that same backbuffer).
 bool EnsureColorCopy(const D3D11_TEXTURE2D_DESC& bbDesc) noexcept
 {
     if (g_gameDevice == nullptr) return false;
-    if (g_dibrColorCopy != nullptr && g_dibrColorW == bbDesc.Width && g_dibrColorH == bbDesc.Height) return true;
+    if (g_dibrColorCopy != nullptr && g_dibrColorW == bbDesc.Width && g_dibrColorH == bbDesc.Height &&
+        TexFormatIs(g_dibrColorCopy, bbDesc.Format)) return true;   // [MEVR] HDR
     SafeRelease(g_dibrColorSrv);
     SafeRelease(g_dibrColorCopy);
     D3D11_TEXTURE2D_DESC cd = bbDesc;
@@ -1718,7 +1732,8 @@ bool EnsureColorCopy(const D3D11_TEXTURE2D_DESC& bbDesc) noexcept
 bool EnsureWarpedTex(const D3D11_TEXTURE2D_DESC& bbDesc) noexcept
 {
     if (g_gameDevice == nullptr) return false;
-    if (g_dibrWarpedTex != nullptr && g_dibrWarpedW == bbDesc.Width && g_dibrWarpedH == bbDesc.Height) return true;
+    if (g_dibrWarpedTex != nullptr && g_dibrWarpedW == bbDesc.Width && g_dibrWarpedH == bbDesc.Height &&
+        TexFormatIs(g_dibrWarpedTex, bbDesc.Format)) return true;   // [MEVR] HDR
     SafeRelease(g_dibrWarpedRtv);
     SafeRelease(g_dibrWarpedTex);
     D3D11_TEXTURE2D_DESC cd = bbDesc;
@@ -1737,7 +1752,8 @@ bool EnsureWarpedTex(const D3D11_TEXTURE2D_DESC& bbDesc) noexcept
 
 bool EnsureLeftDibrTex(const D3D11_TEXTURE2D_DESC& bbDesc) noexcept
 {
-    if (g_dibrLeftTex != nullptr && g_dibrLeftW == bbDesc.Width && g_dibrLeftH == bbDesc.Height) return true;
+    if (g_dibrLeftTex != nullptr && g_dibrLeftW == bbDesc.Width && g_dibrLeftH == bbDesc.Height &&
+        TexFormatIs(g_dibrLeftTex, bbDesc.Format)) return true;   // [MEVR] HDR
     SafeRelease(g_dibrLeftRtv); SafeRelease(g_dibrLeftTex);
     D3D11_TEXTURE2D_DESC cd = bbDesc;
     cd.BindFlags = D3D11_BIND_RENDER_TARGET;
@@ -1758,7 +1774,8 @@ bool EnsureLeftDibrTex(const D3D11_TEXTURE2D_DESC& bbDesc) noexcept
 bool EnsureReliefTex(const D3D11_TEXTURE2D_DESC& bbDesc) noexcept
 {
     if (g_gameDevice == nullptr) return false;
-    if (g_reliefTex != nullptr && g_reliefW == bbDesc.Width && g_reliefH == bbDesc.Height) return true;
+    if (g_reliefTex != nullptr && g_reliefW == bbDesc.Width && g_reliefH == bbDesc.Height &&
+        TexFormatIs(g_reliefTex, bbDesc.Format)) return true;   // [MEVR] HDR
     SafeRelease(g_reliefRtv); SafeRelease(g_reliefTex);
     D3D11_TEXTURE2D_DESC cd = bbDesc;
     cd.BindFlags = D3D11_BIND_RENDER_TARGET;
