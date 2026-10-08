@@ -2,6 +2,8 @@
 
 #include <LESDK/Headers.hpp>
 
+#include <cstdint>
+
 namespace mevr::engine {
 namespace {
 
@@ -51,6 +53,19 @@ std::string FullName(UObject* object) {
 std::string ToString(SFXName const& name) {
     FString const wide = name.Instanced();
     return Narrow(wide.Chars());
+}
+
+bool IsAlive(UObject const* object) {
+    if (object == nullptr) {
+        return false;
+    }
+    auto* const objects = UObject::GObjObjects;
+    int const index = object->ObjectInternalInteger;
+    if (index < 0 || index >= static_cast<int>(objects->Count()) || objects->GetData()[index] != object) {
+        return false;
+    }
+    constexpr std::uint64_t kPendingKill = 0x2000000000000000ull;  // EObjectFlags::PendingKill
+    return (static_cast<std::uint64_t>(object->ObjectFlags) & kPendingKill) == 0;
 }
 
 APlayerController* LocalPlayerController() {

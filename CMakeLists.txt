@@ -81,6 +81,8 @@ set(MEVR_MOD_SOURCES
     src/engine/SceneView.hpp
     src/engine/XrToUnreal.cpp
     src/engine/XrToUnreal.hpp
+    src/game/ArmIk.cpp
+    src/game/ArmIk.hpp
     src/game/GamepadBridge.cpp
     src/game/GamepadBridge.hpp
     src/game/GamepadMapping.cpp

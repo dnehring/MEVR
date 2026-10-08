@@ -43,6 +43,7 @@ float gCameraFov = 0.0f;  // the camera's FOV this frame, including any override
 float gRenderedFov = 0.0f;  // the FOV the last player view was built with (stats)
 bool gOnFoot = false;  // on-foot gameplay (no conversation, GUI, vehicle, wheels)
 std::optional<int> gGameYaw;  // the game's yaw under the head rotation, from the last rotated view
+std::optional<ViewAnchor> gAnchor;  // render path: the last rotated player view's head placement
 bool gTaggedThisTick = false;
 bool gPrimaryThisTick = false;
 // Render path, if CalcSceneView turns out not to ask GetFOVAngle: override the camera's FOV
@@ -99,11 +100,16 @@ void ApplyRotation(FRotator& rotation) {
     gAdjustedViews.fetch_add(1, std::memory_order_relaxed);
 }
 
-// Render path only: head position (6DOF) and the stereo eye offset, in world units.
+// Render path only: head position (6DOF) and the stereo eye offset, in world units. Records
+// where the head (without the eye offset) ended up, for mapping controllers into the world.
 void ApplyTranslation(FVector& location, int gameYaw, FRotator const& rotation) {
     engine::UnrealVector offset{};
     if (gPositional && gHeadPose) {
         offset = engine::ToUnrealOffset(gHeadPose->position, gameYaw);
+    }
+    if (gHeadPose) {
+        // Without 6DOF the camera stands for the head wherever it is in LOCAL space.
+        gAnchor = ViewAnchor{{location.X + offset.x, location.Y + offset.y, location.Z + offset.z}, gameYaw, *gHeadPose};
     }
     if (gEye >= 0) {
         engine::UnrealVector const right = engine::RightAxis({rotation.Pitch, rotation.Yaw, rotation.Roll});
@@ -239,6 +245,7 @@ void OnBeforePrimaryView() {
     bool const forVr = BeginView();
     gRenderYawOffset = gActive && gOnFoot ? gHead.yaw : 0;
     gGameYaw.reset();  // set again below if this view gets rotated
+    gAnchor.reset();
     gEye = -1;
     if (!gActive) {
         return;
@@ -277,6 +284,7 @@ void OnTickEnd() {
         gRenderYawOffset = 0;  // no player view (full-screen GUI, pause): the stick isn't for walking
         if (gPath == Path::Render) {
             gGameYaw.reset();
+            gAnchor.reset();
         }
     }
     gTaggedThisTick = false;
@@ -330,6 +338,7 @@ void LogStats() {
 void Shutdown() {
     gReady = false;
     gGameYaw.reset();
+    gAnchor.reset();
     gOnFoot = false;
     gActive = false;
     gHeadPose.reset();
@@ -346,6 +355,7 @@ Path CyclePath() {
     gEye = -1;
     gRenderYawOffset = 0;
     gGameYaw.reset();
+    gAnchor.reset();
     return gPath;
 }
 
@@ -380,6 +390,10 @@ int RenderYawOffset() {
 
 std::optional<int> GameYaw() {
     return gGameYaw;
+}
+
+std::optional<ViewAnchor> Anchor() {
+    return gAnchor;
 }
 
 bool OnFoot() {

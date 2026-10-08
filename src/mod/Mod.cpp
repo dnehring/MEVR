@@ -12,6 +12,7 @@
 #include "engine/Engine.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/SceneView.hpp"
+#include "game/ArmIk.hpp"
 #include "game/GamepadBridge.hpp"
 #include "game/HandAim.hpp"
 #include "game/HeadSim.hpp"
@@ -47,6 +48,7 @@ mevr::Hotkey gHeadSimKey{VK_OEM_7};     // '  desktop head simulator: sweep / no
 mevr::Hotkey gStereoKey{VK_OEM_1};      // ;  stereo: mono / alternate-eye (render path, headset)
 mevr::Hotkey gPositionKey{VK_OEM_2};    // /  6DOF: head position moves the view (render path)
 mevr::Hotkey gHandAimKey{VK_OEM_COMMA}; // ,  aim weapons with the right controller (on foot)
+mevr::Hotkey gArmIkKey{VK_OEM_PERIOD};  // .  VRIK arms: the engine's limb IK follows the controllers
 
 double gRetryTimer = kStartupRetrySeconds;  // first attempt on the first tick
 double gHeartbeatElapsed = 0.0;
@@ -162,6 +164,9 @@ void PollHotkeys() {
     if (gPositionKey.Pressed()) {
         log::Info("/: 6DOF {}", game::head_tracking::TogglePositional() ? "on" : "off");
     }
+    if (gArmIkKey.Pressed()) {
+        log::Info(".: arm IK {}", game::arm_ik::Toggle() ? "on" : "off");
+    }
     if (gHandAimKey.Pressed()) {
         if (!gHandAimAvailable) {
             log::Info(",: hand aim unavailable");
@@ -190,6 +195,7 @@ void Heartbeat() {
         game::head_tracking::LogStats();
         game::reflections::LogStats();
         game::hand_aim::LogStats();
+        game::arm_ik::LogStats();
         game::skeleton_probe::Tick();
     }
     engine::scene_view::LogStats();
@@ -242,6 +248,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     }
     if (gHooked) {
         game::reflections::Tick(deltaSeconds);
+        game::arm_ik::Tick(deltaSeconds);  // uses this tick's view anchor, so before OnTickEnd
         game::head_tracking::OnTickEnd();
     }
     WaitForThisFrameToPresent();
@@ -282,6 +289,7 @@ MEVR_MOD_API void MevrModShutdown() {
     gCallFunctionHooked = false;
     gHandAimAvailable = false;
     game::hand_aim::Shutdown();
+    game::arm_ik::Shutdown();
     game::skeleton_probe::Shutdown();
     gHooked = false;
     gSceneViewHooked = false;

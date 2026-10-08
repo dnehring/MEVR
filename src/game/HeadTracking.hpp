@@ -1,5 +1,9 @@
 #pragma once
 
+#include "engine/XrToUnreal.hpp"
+
+#include <openxr/openxr.h>
+
 #include <optional>
 
 // The game view follows the headset. Rendered yaw = the game's own yaw (mouse / stick turning)
@@ -56,6 +60,17 @@ int RenderYawOffset();
 // The game's own (body) yaw, in Unreal units, before the head is added: the world direction of
 // LOCAL space's forward. Valid once a view has been rotated. Game thread.
 std::optional<int> GameYaw();
+
+// Where the last head-rotated player view put the head: its world location (the camera plus any
+// 6DOF offset, without the stereo eye offset), the body yaw, and the head pose (LOCAL) it was
+// built from. Maps LOCAL-space points such as controllers into the world (engine::ToWorld).
+// Render path only. Game thread.
+struct ViewAnchor {
+    engine::UnrealVector headWorld;
+    int gameYaw = 0;
+    XrPosef head{};
+};
+std::optional<ViewAnchor> Anchor();
 // On-foot gameplay (SFXGameModeManager mode 0) as of this frame's camera update. Game thread.
 bool OnFoot();
 

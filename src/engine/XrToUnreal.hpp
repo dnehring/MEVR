@@ -30,6 +30,10 @@ inline constexpr double kUnitsPerMeter = 100.0;
 // facing `yawUnits`: LOCAL forward is the body's forward.
 UnrealVector ToUnrealOffset(XrVector3f const& meters, int yawUnits);
 
+// A LOCAL-space point (e.g. a controller) in the world, given where the head is in both: the
+// head's LOCAL position and its world location, and the body yaw LOCAL forward maps to.
+UnrealVector ToWorld(XrVector3f const& point, XrVector3f const& head, UnrealVector const& headWorld, int yawUnits);
+
 // The right-hand axis (unit length) of a view with this rotation (UE3 FRotationMatrix's Y axis).
 UnrealVector RightAxis(UnrealRotation const& rotation);
 

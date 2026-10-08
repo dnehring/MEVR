@@ -85,6 +85,11 @@ XrPosef OffsetRight(XrPosef const& head, float rightMeters) {
     return out;
 }
 
+UnrealVector ToWorld(XrVector3f const& point, XrVector3f const& head, UnrealVector const& headWorld, int yawUnits) {
+    UnrealVector const offset = ToUnrealOffset({point.x - head.x, point.y - head.y, point.z - head.z}, yawUnits);
+    return {headWorld.x + offset.x, headWorld.y + offset.y, headWorld.z + offset.z};
+}
+
 UnrealVector RightAxis(UnrealRotation const& rotation) {
     double const sp = std::sin(ToRadians(rotation.pitch)), cp = std::cos(ToRadians(rotation.pitch));
     double const sy = std::sin(ToRadians(rotation.yaw)), cy = std::cos(ToRadians(rotation.yaw));

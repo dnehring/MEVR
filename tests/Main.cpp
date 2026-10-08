@@ -106,6 +106,10 @@ void TestOffsets() {
     auto const up = ToUnrealOffset({0.0f, 1.0f, 0.0f}, Units(45));
     CHECK(NearD(up.z, 100.0) && NearD(up.x, 0.0) && NearD(up.y, 0.0));
 
+    // A controller 30 cm right of and 40 cm below the head, for a body facing world +Y.
+    auto const hand = ToWorld({0.3f, 1.2f, 0.0f}, {0.0f, 1.6f, 0.0f}, {1000.0, 2000.0, 300.0}, Units(90));
+    CHECK(NearD(hand.x, 1000.0 - 30.0, 0.01) && NearD(hand.y, 2000.0, 0.01) && NearD(hand.z, 260.0, 0.01));
+
     // The view's right axis: +Y facing +X; -X after turning right 90; down after rolling right.
     auto const r0 = RightAxis({0, 0, 0});
     CHECK(NearD(r0.x, 0.0) && NearD(r0.y, 1.0) && NearD(r0.z, 0.0));
