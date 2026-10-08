@@ -10,6 +10,7 @@
 #include "engine/CallFunction.hpp"
 #include "engine/CodeDump.hpp"
 #include "engine/Engine.hpp"
+#include "engine/GameAdapter.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/SceneView.hpp"
 #include "game/ArmIk.hpp"
@@ -49,6 +50,8 @@ mevr::Hotkey gStereoKey{VK_OEM_1};      // ;  stereo: mono / alternate-eye (rend
 mevr::Hotkey gPositionKey{VK_OEM_2};    // /  6DOF: head position moves the view (render path)
 mevr::Hotkey gHandAimKey{VK_OEM_COMMA}; // ,  aim weapons with the right controller (on foot)
 mevr::Hotkey gArmIkKey{VK_OEM_PERIOD};  // .  VRIK arms: the engine's limb IK follows the controllers
+mevr::Hotkey gCinemaKey{VK_OEM_PLUS};   // =  conversations, cutscenes, menus on the virtual screen
+bool gAutoCinema = true;
 
 double gRetryTimer = kStartupRetrySeconds;  // first attempt on the first tick
 double gHeartbeatElapsed = 0.0;
@@ -164,6 +167,10 @@ void PollHotkeys() {
     if (gPositionKey.Pressed()) {
         log::Info("/: 6DOF {}", game::head_tracking::TogglePositional() ? "on" : "off");
     }
+    if (gCinemaKey.Pressed()) {
+        gAutoCinema = !gAutoCinema;
+        log::Info("=: conversations and cutscenes on the virtual screen {}", gAutoCinema ? "on" : "off");
+    }
     if (gArmIkKey.Pressed()) {
         log::Info(".: arm IK {}", game::arm_ik::Toggle() ? "on" : "off");
     }
@@ -247,6 +254,10 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         }
     }
     if (gHooked) {
+        // Cutscenes and conversations cut between cameras, and menus have no world to look
+        // around in: show them on the virtual screen (the chosen mode returns afterwards).
+        auto const mode = game::head_tracking::GameMode();
+        vr::output::SetScreenOverride(gAutoCinema && mode && engine::adapter::IsFlatScreenMode(*mode));
         game::reflections::Tick(deltaSeconds);
         game::arm_ik::Tick(deltaSeconds);  // uses this tick's view anchor, so before OnTickEnd
         game::head_tracking::OnTickEnd();
@@ -271,6 +282,7 @@ MEVR_MOD_API void MevrModOnPresent(IDXGISwapChain* swapChain) {
 MEVR_MOD_API void MevrModShutdown() {
     using namespace mevr;
     gActive = false;
+    vr::output::SetScreenOverride(false);
     // The host has already detached the present callback, so the render thread is out.
     vr::output::Shutdown();
     if (gInit && gHooked) {

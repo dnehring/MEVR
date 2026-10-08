@@ -28,6 +28,11 @@ constexpr float kScreenWidthMeters = 2.4f;  // about 62 degrees wide at 2 m
 
 std::atomic<bool> gEnabled{true};
 std::atomic<Mode> gMode{Mode::HeadTracked};
+std::atomic<bool> gScreenOverride{false};
+
+Mode EffectiveMode() {
+    return gScreenOverride ? Mode::Screen : gMode.load();
+}
 std::atomic<bool> gSessionRunning{false};
 std::atomic<bool> gSessionVisible{false};
 std::atomic<bool> gStereoFailed{false};  // mirrors gEyesFailedGeneration for the game thread
@@ -325,8 +330,12 @@ Mode GetMode() {
     return gMode;
 }
 
+void SetScreenOverride(bool screen) {
+    gScreenOverride = screen;
+}
+
 bool WantsHeadTracking() {
-    return gEnabled && gSessionRunning && gMode == Mode::HeadTracked;
+    return gEnabled && gSessionRunning && EffectiveMode() == Mode::HeadTracked;
 }
 
 bool ShowsFrames() {
@@ -421,7 +430,7 @@ void OnPresent(IDXGISwapChain* swapChain) {
         }
     }
 
-    Mode const mode = gMode;
+    Mode const mode = EffectiveMode();
     if (mode != gLastMode) {
         gLastMode = mode;
         gLastRendered.reset();

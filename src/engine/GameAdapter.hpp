@@ -27,4 +27,18 @@ inline USFXGameModeManager* GameModes(ABioPlayerController* controller) {
 #endif
 }
 
+// Game modes better shown on the flat virtual screen than head-tracked: conversations,
+// cinematics, full-screen GUI, movies, the galaxy map and similar (the cameras cut, or there's no
+// world to look around in). On-foot play, vehicles and the power/weapon/command wheels stay
+// head-tracked. SFXGameModeManager.EGameModes differs per game.
+inline bool IsFlatScreenMode(unsigned char mode) {
+#if defined(SDK_TARGET_LE1)
+    return mode >= 5 && mode <= 10;  // Conversation, Cinematic, GUI, Movie, Galaxy, Minigame
+#elif defined(SDK_TARGET_LE2)
+    return mode >= 5 && mode <= 10;  // Conversation, Cinematic, GUI, Movie, Galaxy, Orbital
+#else
+    return mode >= 7 && mode <= 12;  // Conversation, Cinematic, GUI, Movie, Galaxy, Orbital
+#endif
+}
+
 } // namespace mevr::engine::adapter

@@ -43,6 +43,7 @@ float gHalfIpdMeters = kDefaultHalfIpdMeters;
 float gCameraFov = 0.0f;  // the camera's FOV this frame, including any override written to it
 float gRenderedFov = 0.0f;  // the FOV the last player view was built with (stats)
 bool gOnFoot = false;  // on-foot gameplay (no conversation, GUI, vehicle, wheels)
+std::optional<unsigned char> gGameMode;  // EGameModes as of the last camera update
 std::optional<int> gGameYaw;  // the game's yaw under the head rotation, from the last rotated view
 std::optional<ViewAnchor> gAnchor;  // render path: the last rotated player view's head placement
 bool gTaggedThisTick = false;
@@ -124,14 +125,16 @@ void ApplyTranslation(FVector& location, int gameYaw, FRotator const& rotation) 
     location.Z += static_cast<float>(offset.z);
 }
 
-// On-foot gameplay: the only mode where the move stick should follow the head (not the
-// conversation wheel, galaxy map, menus, power/weapon wheels or the Mako).
-bool IsOnFoot(APlayerController* controller) {
+// The player's game mode (EGameModes), if the controller has a mode manager.
+std::optional<unsigned char> ReadGameMode(APlayerController* controller) {
     if (controller == nullptr || !controller->IsA(ABioPlayerController::StaticClass())) {
-        return false;
+        return std::nullopt;
     }
     USFXGameModeManager const* const modes = engine::adapter::GameModes(static_cast<ABioPlayerController*>(controller));
-    return modes != nullptr && modes->CurrentMode == kGameModeDefault;
+    if (modes == nullptr) {
+        return std::nullopt;
+    }
+    return modes->CurrentMode;
 }
 
 // Once per frame, after the camera computed this frame's view (before the player view is built).
@@ -140,7 +143,10 @@ void OnUpdateCamera(UObject* context, UFunction* /*function*/, void* /*parms*/, 
     if (camera == nullptr || camera->PCOwner == nullptr) {
         return;
     }
-    gOnFoot = IsOnFoot(camera->PCOwner);
+    gGameMode = ReadGameMode(camera->PCOwner);
+    // On foot is the only mode where the move stick should follow the head (not the
+    // conversation wheel, galaxy map, menus, power/weapon wheels or the Mako).
+    gOnFoot = gGameMode == kGameModeDefault;
     if (!gOnFoot) {
         gRenderYawOffset = 0;  // menus, conversations, wheels: the stick isn't for walking
     }
@@ -342,6 +348,7 @@ void Shutdown() {
     gGameYaw.reset();
     gAnchor.reset();
     gOnFoot = false;
+    gGameMode.reset();
     gActive = false;
     gHeadPose.reset();
     gHeadsetFov.reset();
@@ -400,6 +407,10 @@ std::optional<ViewAnchor> Anchor() {
 
 bool OnFoot() {
     return gOnFoot;
+}
+
+std::optional<unsigned char> GameMode() {
+    return gGameMode;
 }
 
 } // namespace mevr::game::head_tracking

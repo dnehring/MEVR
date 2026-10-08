@@ -26,6 +26,9 @@ bool IsEnabled();
 
 void SetMode(Mode mode);
 Mode GetMode();
+// While set, frames go to the virtual screen whatever the mode (e.g. during conversations and
+// cutscenes); the chosen mode comes back when it's cleared. Any thread.
+void SetScreenOverride(bool screen);
 
 // True while the game camera should follow the head: VR running in HeadTracked mode.
 bool WantsHeadTracking();
