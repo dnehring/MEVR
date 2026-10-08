@@ -20,7 +20,7 @@ XrVector3f Wrist(XrPosef const& grip) {
 
 } // namespace
 
-Targets Current() {
+Targets Current(std::optional<engine::UnrealVector> const& headBone) {
     Targets targets;
     if (!vr::output::Running()) {
         targets.source = Source::DesktopTest;
@@ -34,6 +34,7 @@ Targets Current() {
         return targets;
     }
     targets.source = Source::Controllers;
+    engine::UnrealVector const center = headBone ? *headBone : anchor->headWorld;
     for (int side : {0, 1}) {
         vr::controllers::Hand const& hand = side == 0 ? controllers.left : controllers.right;
         if (!hand.gripValid) {
@@ -41,7 +42,7 @@ Targets Current() {
         }
         Hand& out = targets.hands[side];
         out.valid = true;
-        out.position = engine::ToWorld(Wrist(hand.grip), anchor->head.position, anchor->headWorld, anchor->gameYaw);
+        out.position = engine::ToWorld(Wrist(hand.grip), anchor->head.position, center, anchor->gameYaw);
         out.hasRotation = true;
         out.rotation = engine::ToUnrealOrientation(hand.grip.orientation, anchor->gameYaw);
     }

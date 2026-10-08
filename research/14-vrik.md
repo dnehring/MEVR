@@ -155,8 +155,11 @@ frame, not broken.
   `RightWrist`, expected), Mixamo and Biped names (tested). Unfamiliar names fall back to the
   nearest non-helper ancestors. Logged once per skeleton asset.
 - **Hand targets** (`game/HandTargets`, one function, about to change for Halcyon's renderer):
-  - today: OpenXR grip poses (LOCAL), placed through `head_tracking::Anchor()` with
-    `engine::ToWorld`, the wrist 7 cm behind the grip along grip +Z [verify in headset];
+  - today: OpenXR grip poses (LOCAL), relative to the HMD and turned by the body yaw from
+    `head_tracking::Anchor()` (`engine::ToWorld`), around **Shepard's head bone** (world, from
+    SpaceBases) rather than the camera, so it works in third person (as route 1 did). The
+    wrist is 7 cm behind the grip along grip +Z [verify in headset]. Once Halcyon's
+    first-person camera owns the view, anchor at the camera instead;
   - orientation via `engine::ToUnrealOrientation`;
   - `DesktopTest` when no VR session runs.
 - **To component space** (`game/ArmIk`): through the inverse of the mesh's `LocalToWorld`. The

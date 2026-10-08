@@ -267,7 +267,10 @@ void Drive() {
         return Stop("component transform unusable");
     }
 
-    hand_targets::Targets const targets = hand_targets::Current();
+    auto const headBone = info->head >= 0
+        ? engine::skeleton::BoneLocation(mesh, info->head, engine::skeleton::Space::World)
+        : std::nullopt;
+    hand_targets::Targets const targets = hand_targets::Current(headBone);
     gSource = targets.source;
     engine::bone_pose::Request request;
     request.mesh = mesh;
