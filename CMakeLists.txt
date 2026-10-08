@@ -98,6 +98,8 @@ set(MEVR_MOD_SOURCES
     src/core/ik/Ik.hpp
     src/core/vr/Controllers.cpp
     src/core/vr/Controllers.hpp
+    src/core/vr/HostView.cpp
+    src/core/vr/HostView.hpp
     src/core/vr/Output.cpp
     src/core/vr/Output.hpp
     src/core/vr/ViewSync.cpp
@@ -139,6 +141,8 @@ set(MEVR_MOD_SOURCES
     src/game/Reflections.hpp
     src/game/SkeletonProbe.cpp
     src/game/SkeletonProbe.hpp
+    src/game/ViewAnchor.cpp
+    src/game/ViewAnchor.hpp
     src/mod/Mod.cpp
     src/mod/ModApi.hpp
 )
@@ -154,10 +158,13 @@ function(mevr_configure target game)
 endfunction()
 
 # The LE1 host's side of Halcyon's renderer: its startup, and our seams into it (OpenXR loader,
-# controller actions, motion controllers as pad 0).
+# controller actions, motion controllers as pad 0, its view for our controller mapping, controller
+# aim in place of its head aim).
 set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/Controllers.cpp
     src/core/vr/Controllers.hpp
+    src/core/vr/HostView.cpp
+    src/core/vr/HostView.hpp
     src/core/xr/Input.cpp
     src/core/xr/Input.hpp
     src/game/GamepadMapping.cpp

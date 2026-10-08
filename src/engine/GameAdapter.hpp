@@ -27,6 +27,15 @@ inline FVector const& Location(AActor const* actor) {
 #endif
 }
 
+// A camera point of view's location (LE3's generator lower-cased it).
+inline FVector const& Location(FTPOV const& pov) {
+#if defined(SDK_TARGET_LE3)
+    return pov.location;
+#else
+    return pov.Location;
+#endif
+}
+
 // The game-mode manager (EGameModes: 0 = on-foot gameplay in all three games).
 inline USFXGameModeManager* GameModes(ABioPlayerController* controller) {
 #if defined(SDK_TARGET_LE1)

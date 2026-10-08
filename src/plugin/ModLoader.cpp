@@ -6,6 +6,8 @@
 
 #if defined(MEVR_WITH_HALCYON)
 #include "core/vr/Controllers.hpp"
+#include "core/vr/HostView.hpp"
+#include "plugin/Halcyon.hpp"
 #endif
 
 #include <LESDK/Headers.hpp>
@@ -25,9 +27,20 @@ void HostLog(char const* level, char const* message) {
 void HostControllers(vr::controllers::State* out) {
     *out = vr::controllers::Latest(UINT64_MAX);  // raw sample: the mod ages it itself
 }
-HostServices const gServices{kHostServicesVersion, &HostLog, &HostControllers};
+void HostView(vr::host_view::State* out) {
+    *out = vr::host_view::Latest(UINT64_MAX);  // raw sample: the mod ages it itself
+}
+void HostSetHandAim(bool on) {
+    halcyon::SetModHandAim(on);
+}
+HostServices const gServices{kHostServicesVersion, &HostLog, &HostControllers, &HostView, &HostSetHandAim};
+// A mod that's gone can't aim: Halcyon's head aim must come back.
+void ForgetModState() {
+    halcyon::SetModHandAim(false);
+}
 #else
-HostServices const gServices{kHostServicesVersion, &HostLog, nullptr};
+HostServices const gServices{kHostServicesVersion, &HostLog, nullptr, nullptr, nullptr};
+void ForgetModState() {}
 #endif
 ISharedProxyInterface* gSpi = nullptr;
 
@@ -59,6 +72,7 @@ void Stop() {
         MevrModShutdown();
         gModActive = false;
     }
+    ForgetModState();
 }
 
 #else // hot reload
@@ -132,6 +146,7 @@ void Unload() {
     if (gMod.shutdown != nullptr) {
         gMod.shutdown();
     }
+    ForgetModState();
     FreeLibrary(gMod.module);
     std::error_code ec;
     fs::remove(gMod.shadowPath, ec);

@@ -66,7 +66,8 @@ std::optional<int> GameYaw();
 // Where the last head-rotated player view put the head: its world location (the camera plus any
 // 6DOF offset, without the stereo eye offset), the body yaw, and the head pose (LOCAL) it was
 // built from. Maps LOCAL-space points such as controllers into the world (engine::ToWorld).
-// Render path only. Game thread.
+// Render path only (our renderer). Game thread. Features should use game/view_anchor, which
+// wraps this and also works with the host's renderer (Halcyon).
 struct ViewAnchor {
     engine::UnrealVector headWorld;
     int gameYaw = 0;

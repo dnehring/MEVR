@@ -11,8 +11,13 @@ namespace mevr {
 namespace vr::controllers {
 struct State;
 }
+namespace vr::host_view {
+struct State;
+}
 
-inline constexpr int kHostServicesVersion = 2;
+// Fields are only ever appended: a mod reads the fields of every version up to the host's (and
+// its own), so a newer mod still runs on an older host, without what the older host lacks.
+inline constexpr int kHostServicesVersion = 3;
 
 struct HostServices {
     int version = kHostServicesVersion;
@@ -21,6 +26,15 @@ struct HostServices {
     // VR output, head tracking or XInput hooking of its own. Returns the latest motion controller
     // sample, published by the host's frame loop.
     void (*controllers)(vr::controllers::State* out) = nullptr;
+
+    // Version 3.
+    // The host renderer's latest view, relative to the game camera (core/vr/HostView.hpp): what
+    // maps the controllers into the world. Non-null with `controllers`.
+    void (*view)(vr::host_view::State* out) = nullptr;
+    // The mod aims weapons with the right controller (game/HandAim) or has stopped. While it
+    // does and the right controller is tracked, the host's renderer stops aiming with the head
+    // (Halcyon's on-foot combat head aim). The host forgets it when it unloads the mod.
+    void (*setHandAim)(bool on) = nullptr;
 };
 
 } // namespace mevr

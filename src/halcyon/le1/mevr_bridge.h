@@ -25,4 +25,20 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
 // From Halcyon's XInput hooks, right after the real read: merges the motion controllers into pad
 // 0 (Touch -> Xbox mapping) before Halcyon's own pad handling (menu block, move-follows-head).
 DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noexcept;
+
+// Present thread, once per frame after the view for the next game frame is set up (head look,
+// view offset): publishes how that view relates to the game camera, so our mod can map the
+// controllers into the world (hand aim, arm IK). `worldView`: a head-tracked 3D view (head
+// valid, no menu, not the flat screen). `head`: the roll-removed head pose the view is built for
+// (orientation xyzw, position; Halcyon's app space). Offsets are the view offset in UE units
+// along the camera's right/up/forward; `unitsPerMeter` is the view's movement per meter of head
+// movement. Head look is read from RenderHook.
+void OnViewBuilt(bool worldView, bool headLook, bool headAim, float const headOrientation[4],
+                 float const headPosition[3], float offsetRightUU, float offsetUpUU, float offsetForwardUU,
+                 float unitsPerMeter) noexcept;
+
+// True while our mod aims weapons with the right controller and that controller is tracked
+// (held for a moment through brief tracking loss): Halcyon's on-foot combat head aim then stays
+// off, so the head only looks (render-side) and the controller aims. False with a plain gamepad.
+bool ControllerAimActive() noexcept;
 }
