@@ -1,25 +1,27 @@
 #pragma once
 
-// VRIK route 1 (research/14): drive the engine's own two-bone IK. If the player's AnimTree has a
-// SkelControlLimb on a hand bone, its effector is set to that motion controller and its joint
-// target to a natural elbow position (core/ik), so the engine bends the arm and blends it with
-// the animation every frame. Hands are placed relative to Shepard's head bone, in the frame of
-// the pawn's facing, so it works (and can be tested) in third person too. Never creates or
-// removes controls; the original settings come back when it's turned off. Everything is read
-// fresh from the live player pawn each tick (no object pointers kept). On with each VR session
-// (`.` toggles).
+// VRIK arms, route 2 (research/14): Shepard's arms follow the hand targets (game/hand_targets)
+// through arm bones written after the animation (engine/bone_pose). Route 1, driving the AnimTree's
+// own SkelControlLimb, is out: the player's tree has limb controls only on the ankles and on the
+// gun's off-hand (LeftWrist), none on the right arm.
 //
-// If the probe (game/skeleton_probe) shows no such controls, route 2 (writing the arm bones
-// after animation) is needed instead, and this stays inert.
+// Each tick, on foot: finds the player's body mesh; resolves both arm chains by bone name (once
+// per skeleton, logged); checks the bone layouts against the engine's own GetBoneLocation (once per
+// mesh, logged); turns the targets into component space and hands them to the writer. Anything
+// that doesn't resolve stops all writes, and the status says why. Nothing is kept across ticks
+// but values and pointers compared by address.
+//
+// Desktop test: with no VR session, arm IK on (`.`) holds the right hand at a fixed point in
+// front of the chest, visible in the normal third-person camera.
 namespace mevr::game::arm_ik {
 
-// Game thread, after each engine tick: finds the controls for a new mesh, drives them while on.
+// Game thread, after each engine tick (needs the engine::bone_pose hook installed to write).
 void Tick(float deltaSeconds);
 bool Toggle();
 void SetEnabled(bool on);
+bool Enabled();
 void LogStats();
-// Restores the controls' settings if the player's body is present, and forgets them. (If the
-// body is away at that moment, e.g. in the Mako, they keep the driven values until a level load.)
+// Stops all writes and forgets everything.
 void Shutdown();
 
 } // namespace mevr::game::arm_ik

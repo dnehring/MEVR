@@ -1,6 +1,7 @@
 #include "game/SkeletonProbe.hpp"
 
 #include "core/Log.hpp"
+#include "core/ik/ArmPose.hpp"
 #include "engine/Objects.hpp"
 #include "engine/Skeleton.hpp"
 #include "game/HeadTracking.hpp"
@@ -9,6 +10,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <format>
 #include <string>
 #include <vector>
 
@@ -18,7 +20,7 @@ namespace {
 // Bones worth a position (lengths and proportions for the IK): matched case-insensitively.
 constexpr char const* kKeyBoneParts[] = {"root", "pelvis", "spine", "neck", "head", "clav", "shoulder", "arm",
     "elbow", "wrist", "hand", "finger", "thumb", "weapon", "gun", "prop"};
-constexpr std::size_t kNamesPerLine = 12;
+constexpr std::size_t kNamesPerLine = 10;
 constexpr unsigned kMaxProbes = 3;  // per session: each level load brings a new mesh
 
 bool gHudProbed = false;
@@ -64,30 +66,46 @@ void LogControls(UAnimTree* tree) {
 
 void Probe(APawn* pawn, USkeletalMeshComponent* mesh) {
     log::Info("skeleton: pawn {}", engine::FullName(pawn));
-    log::Info("skeleton: mesh {}, AnimTree template {}, animations {}", engine::FullName(mesh->SkeletalMesh),
-        engine::FullName(mesh->AnimTreeTemplate), engine::FullName(mesh->Animations));
-
-    std::vector<SFXName> const names = engine::skeleton::BoneNames(mesh);
-    log::Info("skeleton: {} bones", names.size());
+    log::Info("skeleton: mesh {}, AnimTree template {}, animations {}, pose parent {}", engine::FullName(mesh->SkeletalMesh),
+        engine::FullName(mesh->AnimTreeTemplate), engine::FullName(mesh->Animations),
+        engine::FullName(engine::skeleton::PoseParent(mesh)));
+    // Names straight from the asset's RefSkeleton (the GetBoneNames native can't return them
+    // through ProcessEvent; the diagnostic line shows what it does).
+    log::Info("skeleton: {}", engine::skeleton::GetBoneNamesDiagnostic(mesh));
+    auto const skeleton = engine::skeleton::ReadRefSkeleton(mesh);
+    if (!skeleton) {
+        log::Info("skeleton: RefSkeleton unreadable{}", engine::skeleton::Supported() ? "" : " (layout unknown for this game)");
+        return;
+    }
+    std::vector<std::string> const& names = skeleton->names;
+    log::Info("skeleton: {} bones (name:parent)", names.size());
     std::string line;
     for (std::size_t i = 0; i < names.size(); ++i) {
-        line += engine::ToString(names[i]);
-        line += (i + 1) % kNamesPerLine == 0 || i + 1 == names.size() ? "" : ", ";
-        if ((i + 1) % kNamesPerLine == 0 || i + 1 == names.size()) {
-            log::Info("skeleton:   {}", line);
+        line += std::format("{}:{}", names[i], skeleton->parents[i]);
+        bool const last = (i + 1) % kNamesPerLine == 0 || i + 1 == names.size();
+        line += last ? "" : ", ";
+        if (last) {
+            log::Info("skeleton:   [{}] {}", i + 1 - ((i % kNamesPerLine) + 1), line);
             line.clear();
         }
     }
-    // GetBoneLocation in component space indexes SpaceBases unchecked: only once the pose exists.
-    bool const posed = mesh->SpaceBases.Count() >= names.size();
-    if (!posed) {
-        log::Info("skeleton: pose not computed yet ({} of {} bones); positions skipped", mesh->SpaceBases.Count(), names.size());
+    for (int side : {0, 1}) {
+        auto const chain = ik::FindArmChain(names, skeleton->parents, side);
+        log::Info("skeleton: {} arm {}", side == 0 ? "left" : "right",
+            chain ? std::format("{}({}) > {}({}) > {}({})", names[chain->upper], chain->upper, names[chain->fore], chain->fore,
+                        names[chain->hand], chain->hand)
+                  : std::string("not found"));
     }
-    for (SFXName const& bone : names) {
-        std::string const name = engine::ToString(bone);
-        if (posed && IsKeyBone(name)) {
-            if (auto const at = engine::skeleton::BoneLocation(mesh, bone, engine::skeleton::Space::Component)) {
-                log::Info("skeleton:   {} at ({:.1f}, {:.1f}, {:.1f}) component space", name, at->x, at->y, at->z);
+    // Positions from SpaceBases once the pose exists.
+    std::size_t const posed = engine::skeleton::SpaceBases(mesh).size();
+    if (posed != names.size()) {
+        log::Info("skeleton: pose not computed yet ({} of {} bones); positions skipped", posed, names.size());
+    }
+    for (std::size_t i = 0; i < names.size() && posed == names.size(); ++i) {
+        if (IsKeyBone(names[i])) {
+            auto const at = engine::skeleton::BoneLocation(mesh, static_cast<int>(i), engine::skeleton::Space::Component);
+            if (at) {
+                log::Info("skeleton:   {}({}) at ({:.1f}, {:.1f}, {:.1f}) component space", names[i], i, at->x, at->y, at->z);
             }
         }
     }

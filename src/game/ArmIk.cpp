@@ -1,85 +1,67 @@
 #include "game/ArmIk.hpp"
 
 #include "core/Log.hpp"
+#include "core/ik/ArmPose.hpp"
 #include "core/ik/BoneNames.hpp"
-#include "core/ik/Ik.hpp"
-#include "core/vr/Controllers.hpp"
-#include "core/vr/Output.hpp"
-#include "core/vr/ViewSync.hpp"
+#include "engine/BonePose.hpp"
 #include "engine/GameAdapter.hpp"
 #include "engine/Objects.hpp"
 #include "engine/Skeleton.hpp"
-#include "engine/XrToUnreal.hpp"
-#include "game/HeadTracking.hpp"
+#include "game/HandTargets.hpp"
 
 #include <LESDK/Headers.hpp>
 
 #include <array>
-#include <atomic>
+#include <cmath>
 #include <cstdint>
-#include <cstring>
+#include <format>
+#include <numbers>
 #include <optional>
 #include <string>
-#include <unordered_map>
+#include <vector>
 
 namespace mevr::game::arm_ik {
 namespace {
 
-constexpr unsigned char kWorldSpace = 0;  // EBoneControlSpace::BCS_WorldSpace
-constexpr double kMaxHeadDistance = 300.0;  // head bone to pawn origin, Unreal units (3 m)
 enum Side { kLeft = 0, kRight = 1 };
-
-// A hand's limb control as found this tick. Nothing here is kept across ticks: a level load
-// frees objects and can hand their addresses to unrelated ones, so every tick starts from the
-// live player pawn and its AnimTree.
-struct Found {
-    USkelControlLimb* control = nullptr;
-    SFXName bone{};
-};
-
-// The settings a control had before we drove it, matched to it by pointer *and* bone name (and
-// only restored to a control found again this tick).
-struct Saved {
-    bool valid = false;
-    USkelControlLimb const* control = nullptr;
-    std::uint64_t bone = 0;
-    FVector effector{};
-    FVector jointTarget{};
-    unsigned char effectorSpace = 0;
-    unsigned char jointSpace = 0;
-    float strength = 0.0f;
-    float strengthTarget = 0.0f;
-};
+constexpr char const* kSideNames[2] = {"left", "right"};
+constexpr unsigned char kGameModeOnFoot = 0;  // SFXGameModeManager.EGameModes, all three games
+// Desktop test: the right wrist this far from the shoulders' midpoint, in arm lengths
+// (forward, outward, up): in front of the chest at about shoulder height, elbow bent.
+constexpr ik::Vec3 kDesktopWrist{0.70, 0.15, -0.05};
+// Our SpaceBases reading and the engine's GetBoneLocation must agree this closely (Unreal units).
+constexpr double kLayoutTolerance = 0.5;
 
 bool gEnabled = false;
-std::array<Saved, 2> gSaved;
-ik::BodyYaw gBodyYaw;
-// Bone-name analysis per skeleton asset (names are values, safe to keep).
-UObject const* gSkeletonAsset = nullptr;
-std::optional<SFXName> gHeadBone;
-std::unordered_map<std::uint64_t, int> gHandSides;  // bone name -> side (-1: not a hand)
 std::string gStatus = "off";
-std::atomic<unsigned> gDrivenFrames{0};
+std::string gLastLoggedStatus;
+hand_targets::Source gSource = hand_targets::Source::None;
 
-std::uint64_t Key(SFXName const& name) {
-    std::uint64_t key = 0;
-    std::memcpy(&key, &name, sizeof key);
-    return key;
-}
+// Per skeleton asset: names, parents, arm chains. Re-resolved when the asset or its bones change.
+struct SkeletonInfo {
+    UObject const* asset = nullptr;  // compared by address only
+    int boneCount = 0;
+    engine::skeleton::RefSkeleton bones;
+    std::array<std::optional<ik::ArmChain>, 2> arms;
+    int head = -1;
+};
+std::optional<SkeletonInfo> gSkeleton;
 
-int SideOf(SFXName const& bone) {
-    auto const [it, inserted] = gHandSides.try_emplace(Key(bone), -1);
-    if (inserted) {
-        it->second = ik::HandSide(engine::ToString(bone));
-    }
-    return it->second;
-}
+// The bone layout check, per mesh (addresses compared only).
+struct LayoutCheck {
+    USkeletalMeshComponent const* mesh = nullptr;
+    UObject const* asset = nullptr;
+    bool passed = false;
+};
+LayoutCheck gLayout;
 
-// The player's own body on foot: its pawn and skeletal mesh, read fresh.
+// VR: the hand bone's rotation relative to the controller grip, captured when a hand starts
+// following its controller, so the hand turns with the controller from its animated pose.
+std::array<std::optional<ik::Quat>, 2> gGripToHand;
+
 struct Body {
     APawn* pawn = nullptr;
     USkeletalMeshComponent* mesh = nullptr;
-    UAnimTree* tree = nullptr;
 };
 
 std::optional<Body> PlayerBody() {
@@ -89,163 +71,259 @@ std::optional<Body> PlayerBody() {
         return std::nullopt;
     }
     USkeletalMeshComponent* const mesh = pawn->Mesh;
-    if (mesh->SkeletalMesh == nullptr || mesh->Animations == nullptr || !mesh->Animations->IsA(UAnimTree::StaticClass())) {
+    if (mesh->SkeletalMesh == nullptr) {
         return std::nullopt;
     }
-    return Body{pawn, mesh, static_cast<UAnimTree*>(mesh->Animations)};
+    return Body{pawn, mesh};
 }
 
-std::array<Found, 2> FindArms(UAnimTree* tree) {
-    std::array<Found, 2> found;
-    for (FSkelControlListHead const& list : tree->SkelControlLists) {
-        int const side = SideOf(list.BoneName);
-        if (side < 0 || found[side].control != nullptr) {
-            continue;
-        }
-        int depth = 0;
-        for (USkelControlBase* control = list.ControlHead; control != nullptr && depth < 32; control = control->NextControl, ++depth) {
-            if (control->IsA(USkelControlLimb::StaticClass())) {
-                found[side] = {static_cast<USkelControlLimb*>(control), list.BoneName};
-                break;
-            }
-        }
+// On-foot gameplay: no conversation, cinematic, GUI or vehicle.
+bool OnFoot() {
+    APlayerController* const controller = engine::LocalPlayerController();
+    if (controller == nullptr || !controller->IsA(ABioPlayerController::StaticClass())) {
+        return false;
     }
-    return found;
+    USFXGameModeManager const* const modes = engine::adapter::GameModes(static_cast<ABioPlayerController*>(controller));
+    return modes != nullptr && modes->CurrentMode == kGameModeOnFoot;
 }
 
-bool Matches(Saved const& saved, Found const& found) {
-    return saved.valid && found.control != nullptr && saved.control == found.control && saved.bone == Key(found.bone);
+std::string Format(engine::UnrealVector const& v) {
+    return std::format("({:.1f}, {:.1f}, {:.1f})", v.x, v.y, v.z);
 }
 
-void Save(Saved& saved, Found const& found) {
-    USkelControlLimb const* const c = found.control;
-    saved = {true, c, Key(found.bone), c->EffectorLocation, c->JointTargetLocation, c->EffectorLocationSpace,
-        c->JointTargetLocationSpace, c->ControlStrength, c->StrengthTarget};
-}
-
-// Puts the saved settings back if this tick found the same control; otherwise just forgets them.
-void Restore(Saved& saved, Found const& found) {
-    if (Matches(saved, found)) {
-        USkelControlLimb* const c = found.control;
-        c->EffectorLocation = saved.effector;
-        c->JointTargetLocation = saved.jointTarget;
-        c->EffectorLocationSpace = saved.effectorSpace;
-        c->JointTargetLocationSpace = saved.jointSpace;
-        c->ControlStrength = saved.strength;
-        c->StrengthTarget = saved.strengthTarget;
+std::string ChainText(SkeletonInfo const& info, std::optional<ik::ArmChain> const& chain) {
+    if (!chain) {
+        return "not found";
     }
-    saved.valid = false;
+    auto const& names = info.bones.names;
+    return std::format("{}({}) > {}({}) > {}({})", names[chain->upper], chain->upper, names[chain->fore], chain->fore,
+        names[chain->hand], chain->hand);
 }
 
-void RestoreAll(std::array<Found, 2> const& found) {
-    for (int side : {kLeft, kRight}) {
-        Restore(gSaved[side], found[side]);
-    }
-}
-
-// The body's head bone, re-resolved whenever the skeleton asset changes.
-std::optional<SFXName> HeadBone(USkeletalMeshComponent* mesh) {
+// The asset's skeleton and arm chains, resolved once per asset (logged). Nullopt: unreadable.
+SkeletonInfo const* Skeleton(USkeletalMeshComponent* mesh) {
     UObject const* const asset = mesh->SkeletalMesh;
-    if (asset != gSkeletonAsset) {
-        gSkeletonAsset = asset;
-        gHeadBone.reset();
-        gHandSides.clear();
-        for (SFXName const& bone : engine::skeleton::BoneNames(mesh)) {
-            if (ik::IsHeadBone(engine::ToString(bone))) {
-                gHeadBone = bone;
-                break;
+    int const count = engine::skeleton::RefBoneCount(mesh);
+    if (gSkeleton && gSkeleton->asset == asset && gSkeleton->boneCount == count) {
+        // Same address and size; also the same arm bones (a level load can put another asset there).
+        bool same = true;
+        for (auto const& arm : gSkeleton->arms) {
+            for (int bone : {arm ? arm->upper : -1, arm ? arm->fore : -1, arm ? arm->hand : -1}) {
+                same = same && (bone < 0 || engine::skeleton::RefBoneKey(mesh, bone) == gSkeleton->bones.keys[bone]);
             }
         }
-        log::Info("arm IK: head bone {}", gHeadBone ? engine::ToString(*gHeadBone) : "not found");
+        if (same) {
+            return &*gSkeleton;
+        }
     }
-    return gHeadBone;
+    gSkeleton.reset();
+    gLayout = {};
+    gGripToHand = {};
+    auto bones = engine::skeleton::ReadRefSkeleton(mesh);
+    if (!bones) {
+        return nullptr;
+    }
+    SkeletonInfo info;
+    info.asset = asset;
+    info.boneCount = count;
+    info.bones = std::move(*bones);
+    for (int side : {kLeft, kRight}) {
+        info.arms[side] = ik::FindArmChain(info.bones.names, info.bones.parents, side);
+    }
+    for (int i = 0; i < count; ++i) {
+        if (ik::IsHeadBone(info.bones.names[i])) {
+            info.head = i;
+            break;
+        }
+    }
+    log::Info("arm IK: skeleton {} ({} bones): left arm {}; right arm {}; head {}", engine::FullName(mesh->SkeletalMesh), count,
+        ChainText(info, info.arms[kLeft]), ChainText(info, info.arms[kRight]),
+        info.head >= 0 ? std::format("{}({})", info.bones.names[info.head], info.head) : "not found");
+    gSkeleton = std::move(info);
+    return &*gSkeleton;
 }
 
-void Drive(Body const& body, std::array<Found, 2> const& found, float deltaSeconds) {
-    vr::controllers::State const controllers = vr::controllers::Latest();
-    auto const head = vr::view_sync::LatestHead();
-    auto const headBone = HeadBone(body.mesh);
-    auto headWorld = headBone ? engine::skeleton::BoneLocation(body.mesh, *headBone, engine::skeleton::Space::World)
-                              : std::nullopt;
-    if (headWorld) {
-        // The head must be on the body: anything else is a stale bone or an unposed mesh.
-        FVector const& at = engine::adapter::Location(body.pawn);
-        double const dx = headWorld->x - at.X, dy = headWorld->y - at.Y, dz = headWorld->z - at.Z;
-        if (dx * dx + dy * dy + dz * dz > kMaxHeadDistance * kMaxHeadDistance) {
-            headWorld.reset();
+// Our reading of SpaceBases against the engine's GetBoneLocation (component and world space),
+// for the head and both hands. Once per mesh, before the first write.
+bool CheckLayout(USkeletalMeshComponent* mesh, SkeletonInfo const& info) {
+    using engine::skeleton::Space;
+    std::vector<int> bones;
+    if (info.head >= 0) {
+        bones.push_back(info.head);
+    }
+    for (auto const& arm : info.arms) {
+        if (arm) {
+            bones.push_back(arm->hand);
         }
     }
-    bool const ready = controllers.active && head && headWorld && vr::output::WantsHeadTracking() && head_tracking::OnFoot();
-    gStatus = !headBone ? "no head bone" : !headWorld ? "head bone not posed" : !ready ? "waiting for tracking" : "driving";
-    if (!ready) {
-        RestoreAll(found);  // the game's own animation until we're tracking again
-        return;
+    bool ok = !bones.empty();
+    for (int bone : bones) {
+        for (Space space : {Space::Component, Space::World}) {
+            auto const ours = engine::skeleton::BoneLocation(mesh, bone, space);
+            auto const native = engine::skeleton::NativeBoneLocation(mesh, engine::skeleton::NameOf(info.bones.keys[bone]), space);
+            double const error = ours && native ? std::hypot(ours->x - native->x, ours->y - native->y, ours->z - native->z) : -1.0;
+            bool const match = error >= 0.0 && error <= kLayoutTolerance;
+            log::Info("arm IK: layout check {} {}: SpaceBases {} vs GetBoneLocation {}: {}", info.bones.names[bone],
+                space == Space::World ? "world" : "component", ours ? Format(*ours) : "none", native ? Format(*native) : "none",
+                match ? "match" : "MISMATCH");
+            ok = ok && match;
+        }
     }
-    // Hands relative to Shepard's head, in the frame of the body's facing (LOCAL forward).
-    int const bodyYaw = body.pawn->Rotation.Yaw;
-    double const headYaw = ik::YawOf(head->orientation.x, head->orientation.y, head->orientation.z, head->orientation.w);
-    ik::UpperBody const torso = ik::EstimateUpperBody({head->position.x, head->position.y, head->position.z},
-        gBodyYaw.Update(headYaw, deltaSeconds));
+    log::Info("arm IK: bone layout {} for {}", ok ? "verified" : "NOT verified: no writes", engine::FullName(mesh));
+    return ok;
+}
 
-    for (int side : {kLeft, kRight}) {
-        Found const& arm = found[side];
-        vr::controllers::Hand const& hand = side == kLeft ? controllers.left : controllers.right;
-        if (arm.control == nullptr) {
-            gSaved[side].valid = false;
-            continue;
-        }
-        if (!hand.gripValid) {
-            Restore(gSaved[side], arm);
-            continue;
-        }
-        if (!Matches(gSaved[side], arm)) {
-            Save(gSaved[side], arm);  // fresh snapshot each time we start driving this control
-        }
-        ik::Vec3 const pole = ik::ElbowPole(torso, side == kLeft ? -1 : +1);
-        engine::UnrealVector const effector = engine::ToWorld(hand.grip.position, head->position, *headWorld, bodyYaw);
-        engine::UnrealVector const joint = engine::ToWorld(
-            {static_cast<float>(pole.x), static_cast<float>(pole.y), static_cast<float>(pole.z)}, head->position, *headWorld, bodyYaw);
-        USkelControlLimb* const c = arm.control;
-        c->EffectorLocationSpace = kWorldSpace;
-        c->JointTargetLocationSpace = kWorldSpace;
-        c->EffectorLocation = {static_cast<float>(effector.x), static_cast<float>(effector.y), static_cast<float>(effector.z)};
-        c->JointTargetLocation = {static_cast<float>(joint.x), static_cast<float>(joint.y), static_cast<float>(joint.z)};
-        c->ControlStrength = 1.0f;
-        c->StrengthTarget = 1.0f;
-        gDrivenFrames.fetch_add(1, std::memory_order_relaxed);
+// The body's axes in component space, from the pawn's facing.
+std::optional<ik::BodyFrame> BodyAxes(APawn const* pawn, ik::Affine const& worldToComponent) {
+    double const yaw = pawn->Rotation.Yaw * std::numbers::pi / 32768.0;
+    ik::Vec3 const forwardWorld{std::cos(yaw), std::sin(yaw), 0.0};
+    ik::Vec3 const rightWorld{-std::sin(yaw), std::cos(yaw), 0.0};
+    ik::Vec3 const upWorld{0.0, 0.0, 1.0};
+    ik::BodyFrame frame;
+    frame.up = ik::Normalize(ik::TransformDirection(worldToComponent, upWorld));
+    ik::Vec3 forward = ik::TransformDirection(worldToComponent, forwardWorld);
+    forward = forward - frame.up * ik::Dot(forward, frame.up);
+    ik::Vec3 right = ik::TransformDirection(worldToComponent, rightWorld);
+    right = right - frame.up * ik::Dot(right, frame.up);
+    if (ik::Length(forward) < 1e-6 || ik::Length(right) < 1e-6) {
+        return std::nullopt;
     }
+    frame.forward = ik::Normalize(forward);
+    right = right - frame.forward * ik::Dot(right, frame.forward);
+    frame.right = ik::Normalize(right);
+    return frame;
+}
+
+void Stop(std::string status) {
+    engine::bone_pose::Clear();
+    gGripToHand = {};
+    gStatus = std::move(status);
+}
+
+void LogStatusChange() {
+    if (gStatus != gLastLoggedStatus) {
+        log::Info("arm IK: {}", gStatus);
+        gLastLoggedStatus = gStatus;
+    }
+}
+
+void Drive() {
+    if (!engine::bone_pose::Installed()) {
+        return Stop("writeback hook not installed (see the log above)");
+    }
+    auto const body = PlayerBody();
+    if (!body) {
+        return Stop("no player body");
+    }
+    if (!OnFoot()) {
+        return Stop("not on foot");
+    }
+    USkeletalMeshComponent* const mesh = body->mesh;
+    if (engine::skeleton::PoseParent(mesh) != nullptr) {
+        return Stop("the body mesh takes its pose from a ParentAnimComponent: not supported");
+    }
+    SkeletonInfo const* const info = Skeleton(mesh);
+    if (info == nullptr) {
+        return Stop("skeleton unreadable");
+    }
+    if (!info->arms[kLeft] && !info->arms[kRight]) {
+        return Stop("no arm chains found in the skeleton");
+    }
+    if (static_cast<int>(engine::skeleton::SpaceBases(mesh).size()) != info->boneCount) {
+        return Stop("pose not computed yet");
+    }
+    if (gLayout.mesh != mesh || gLayout.asset != info->asset) {
+        gLayout = {mesh, info->asset, CheckLayout(mesh, *info)};
+    }
+    if (!gLayout.passed) {
+        return Stop("bone layout not verified (see the layout check lines)");
+    }
+    ik::Affine const componentToWorld = engine::skeleton::LocalToWorld(mesh);
+    auto const worldToComponent = ik::InverseAffine(componentToWorld);
+    auto const frame = worldToComponent ? BodyAxes(body->pawn, *worldToComponent) : std::nullopt;
+    if (!frame) {
+        return Stop("component transform unusable");
+    }
+
+    hand_targets::Targets const targets = hand_targets::Current();
+    gSource = targets.source;
+    engine::bone_pose::Request request;
+    request.mesh = mesh;
+    request.boneCount = info->boneCount;
+    request.parents = info->bones.parents;
+    request.body = *frame;
+    for (int side : {kLeft, kRight}) {
+        if (auto const& chain = info->arms[side]) {
+            engine::bone_pose::Arm& arm = request.arms[side];
+            arm.chain = *chain;
+            arm.keys[0] = info->bones.keys[chain->upper];
+            arm.keys[1] = info->bones.keys[chain->fore];
+            arm.keys[2] = info->bones.keys[chain->hand];
+        }
+    }
+
+    std::string driven;
+    if (targets.source == hand_targets::Source::DesktopTest) {
+        if (!info->arms[kRight]) {
+            return Stop("desktop test: no right arm chain in the skeleton");
+        }
+        request.arms[kRight].target = engine::bone_pose::Target::Chest;
+        request.arms[kRight].wrist = kDesktopWrist;
+        driven = "right hand held in front of the chest (desktop test)";
+        gGripToHand = {};
+    } else if (targets.source == hand_targets::Source::Controllers) {
+        auto const componentRotation = ik::RotationOf(componentToWorld);
+        std::span<engine::skeleton::BoneAtom const> const pose = engine::skeleton::SpaceBases(mesh);
+        for (int side : {kLeft, kRight}) {
+            hand_targets::Hand const& hand = targets.hands[side];
+            auto const& chain = info->arms[side];
+            if (!hand.valid || !chain) {
+                gGripToHand[side].reset();
+                continue;
+            }
+            engine::bone_pose::Arm& arm = request.arms[side];
+            arm.target = engine::bone_pose::Target::Component;
+            arm.wrist = ik::TransformPoint(*worldToComponent, {hand.position.x, hand.position.y, hand.position.z});
+            if (hand.hasRotation && componentRotation) {
+                ik::Quat const grip = ik::Normalize(ik::Conjugate(*componentRotation) * hand.rotation);
+                if (!gGripToHand[side]) {
+                    // Last frame's hand: the animated one, since this hand wasn't driven then.
+                    ik::Quat const animated = engine::skeleton::ToTransform(pose[chain->hand]).rotation;
+                    gGripToHand[side] = ik::Normalize(ik::Conjugate(grip) * animated);
+                }
+                arm.hasRotation = true;
+                arm.rotation = ik::Normalize(grip * *gGripToHand[side]);
+            }
+            driven += driven.empty() ? kSideNames[side] : std::string(" and ") + kSideNames[side];
+        }
+        if (!driven.empty()) {
+            driven += " following the controllers";
+        }
+    }
+    if (driven.empty()) {
+        return Stop(std::format("no hand targets (source {})", hand_targets::Name(targets.source)));
+    }
+    engine::bone_pose::Publish(std::move(request));
+    gStatus = "driving: " + driven;
 }
 
 } // namespace
 
-void Tick(float deltaSeconds) {
-    if (!gEnabled && !gSaved[kLeft].valid && !gSaved[kRight].valid) {
-        return;  // off and nothing to put back
-    }
-    auto const body = PlayerBody();
-    if (!body) {
-        // In the Mako, mid-load...: nothing to drive or restore now. The snapshots stay, so the
-        // controls get their own settings back once a walk of the live body finds them again.
-        gStatus = gEnabled ? "no player body" : "off";
-        return;
-    }
-    std::array<Found, 2> const found = FindArms(body->tree);
+void Tick(float /*deltaSeconds*/) {
     if (!gEnabled) {
-        RestoreAll(found);
-        gStatus = "off";
+        if (gStatus != "off") {
+            Stop("off");
+            LogStatusChange();
+        }
         return;
     }
-    if (found[kLeft].control == nullptr && found[kRight].control == nullptr) {
-        // Keep the snapshots: the body may have swapped AnimTrees (e.g. a cinematic one) and will
-        // swap back; a walk that finds a different control re-saves anyway.
-        gStatus = "no SkelControlLimb on the hand bones (route 1 unavailable)";
-        return;
-    }
-    Drive(*body, found, deltaSeconds);
+    Drive();
+    LogStatusChange();
+    engine::bone_pose::LogFirstWrite();
 }
 
 bool Toggle() {
-    gEnabled = !gEnabled;  // restoring happens in the next Tick, from a fresh walk
+    gEnabled = !gEnabled;
     return gEnabled;
 }
 
@@ -253,26 +331,26 @@ void SetEnabled(bool on) {
     gEnabled = on;
 }
 
+bool Enabled() {
+    return gEnabled;
+}
+
 void LogStats() {
-    unsigned const frames = gDrivenFrames.exchange(0);
     if (gEnabled) {
-        log::Info("    arm IK: {}, {} arm-frames driven", gStatus, frames);
+        log::Info("    arm IK: {} (hand source {})", gStatus, hand_targets::Name(gSource));
     }
+    engine::bone_pose::LogStats();
 }
 
 void Shutdown() {
-    if (gSaved[kLeft].valid || gSaved[kRight].valid) {
-        if (auto const body = PlayerBody()) {
-            RestoreAll(FindArms(body->tree));
-        }
-    }
-    gSaved = {};
+    engine::bone_pose::Clear();
     gEnabled = false;
-    gBodyYaw = ik::BodyYaw();
-    gSkeletonAsset = nullptr;
-    gHeadBone.reset();
-    gHandSides.clear();
     gStatus = "off";
+    gLastLoggedStatus.clear();
+    gSource = hand_targets::Source::None;
+    gSkeleton.reset();
+    gLayout = {};
+    gGripToHand = {};
 }
 
 } // namespace mevr::game::arm_ik

@@ -73,6 +73,8 @@ set(MEVR_MOD_SOURCES
     src/core/xr/Input.hpp
     src/core/xr/Session.cpp
     src/core/xr/Session.hpp
+    src/engine/BonePose.cpp
+    src/engine/BonePose.hpp
     src/engine/CallFunction.cpp
     src/engine/CallFunction.hpp
     src/engine/CodeDump.cpp
@@ -98,6 +100,8 @@ set(MEVR_MOD_SOURCES
     src/game/GamepadMapping.hpp
     src/game/HandAim.cpp
     src/game/HandAim.hpp
+    src/game/HandTargets.cpp
+    src/game/HandTargets.hpp
     src/game/HeadSim.cpp
     src/game/HeadSim.hpp
     src/game/HeadTracking.cpp

@@ -7,6 +7,7 @@
 #include "core/Log.hpp"
 #include "core/vr/Output.hpp"
 #include "core/vr/ViewSync.hpp"
+#include "engine/BonePose.hpp"
 #include "engine/CallFunction.hpp"
 #include "engine/CodeDump.hpp"
 #include "engine/Engine.hpp"
@@ -41,6 +42,8 @@ bool gSceneViewHooked = false;
 bool gGamepadHooked = false;  // XInput hooks (once the game has loaded an XInput DLL)
 bool gCallFunctionHooked = false;  // installed the first time hand aim is turned on
 bool gHandAimAvailable = false;
+bool gBonePoseTried = false;  // the arm writeback hook goes in the first time arm IK is turned on
+bool gBonePoseHooked = false;
 // `]` is the one switch a player needs: once a VR session runs, every VR feature comes on with
 // it (stereo, 6DOF, hand aim, arm IK), and turning VR off (or quitting from the headset) turns
 // them off. The headset sleeping doesn't count as off. Within a session the feature keys switch
@@ -54,7 +57,7 @@ mevr::Hotkey gHeadSimKey{VK_OEM_7};     // '  desktop head simulator: sweep / no
 mevr::Hotkey gStereoKey{VK_OEM_1};      // ;  stereo: mono / alternate-eye (render path, headset)
 mevr::Hotkey gPositionKey{VK_OEM_2};    // /  6DOF: head position moves the view (render path)
 mevr::Hotkey gHandAimKey{VK_OEM_COMMA}; // ,  aim weapons with the right controller (on foot)
-mevr::Hotkey gArmIkKey{VK_OEM_PERIOD};  // .  VRIK arms: the engine's limb IK follows the controllers
+mevr::Hotkey gArmIkKey{VK_OEM_PERIOD};  // .  VRIK arms follow the controllers (no VR session: desktop test pose)
 mevr::Hotkey gCinemaKey{VK_OEM_PLUS};   // =  conversations, cutscenes, menus on the virtual screen
 mevr::Hotkey gLockstepKey{VK_OEM_MINUS}; // -  lockstep on / off (frame pacing A/B)
 bool gAutoCinema = true;
@@ -167,12 +170,25 @@ void EnsureCallFunctionHook() {
     }
 }
 
+// UpdateSkelPose runs for every skeletal mesh, so its hook only goes in once arm IK is first
+// turned on (game thread, outside the engine tick).
+void EnsureBonePoseHook() {
+    using namespace mevr;
+    if (!gBonePoseTried) {
+        gBonePoseTried = true;
+        gBonePoseHooked = engine::bone_pose::Install(*gInit);
+    }
+}
+
 void SetVrFeatures(bool on) {
     using namespace mevr;
     gVrFeatures = on;
     log::Info("VR features {}", on ? "on: stereo, 6DOF, hand aim, arm IK (; / , . switch each)" : "off");
     game::head_tracking::SetStereo(on ? game::head_tracking::Stereo::AlternateEye : game::head_tracking::Stereo::Mono);
     game::head_tracking::SetPositional(on);
+    if (on) {
+        EnsureBonePoseHook();
+    }
     game::arm_ik::SetEnabled(on);
     if (gHandAimAvailable) {
         if (on) {
@@ -219,7 +235,12 @@ void PollHotkeys() {
         log::Info("=: conversations and cutscenes on the virtual screen {}", gAutoCinema ? "on" : "off");
     }
     if (gArmIkKey.Pressed()) {
-        log::Info(".: arm IK {}", game::arm_ik::Toggle() ? "on" : "off");
+        bool const on = game::arm_ik::Toggle();
+        if (on) {
+            EnsureBonePoseHook();
+        }
+        log::Info(".: arm IK {}{}", on ? "on" : "off",
+            on && !vr::output::Running() ? " (no VR session: desktop test, right hand held in front of the chest)" : "");
     }
     if (gHandAimKey.Pressed()) {
         if (!gHandAimAvailable) {
@@ -356,6 +377,11 @@ MEVR_MOD_API void MevrModShutdown() {
     if (gInit && gCallFunctionHooked) {
         engine::call_function::Uninstall(*gInit);
     }
+    game::arm_ik::Shutdown();  // stops the writes before the hook goes
+    if (gInit && gBonePoseHooked) {
+        engine::bone_pose::Uninstall(*gInit);
+    }
+    gBonePoseTried = gBonePoseHooked = false;
     engine::call_function::ClearHandlers();
     gCallFunctionHooked = false;
     gHandAimAvailable = false;
