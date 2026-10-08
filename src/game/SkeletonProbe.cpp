@@ -23,6 +23,9 @@ constexpr char const* kKeyBoneParts[] = {"root", "pelvis", "spine", "neck", "hea
 constexpr std::size_t kNamesPerLine = 12;
 constexpr unsigned kMaxProbes = 3;  // per session: each level load brings a new mesh
 
+bool gHudProbed = false;
+unsigned gHudAttempts = 0;
+constexpr unsigned kMaxHudAttempts = 6;  // full object scans: don't keep paying for a class that isn't there
 UFunction* gGetBoneNames = nullptr;
 UFunction* gGetBoneLocation = nullptr;
 USkeletalMeshComponent* gLastMesh = nullptr;
@@ -115,6 +118,33 @@ void Probe(APawn* pawn, USkeletalMeshComponent* mesh) {
     }
 }
 
+// HUD research (research/15): what the gameplay HUD's Scaleform panel holds. If MovieRef is a
+// GFxMovie, its RenderTexture can take the HUD off the game image. LE1 class names.
+void ProbeHud() {
+#if defined(SDK_TARGET_LE1)
+    UClass* const hudClass = UBioSFHandler_PCHUD::StaticClass();
+    auto* const objects = UObject::GObjObjects;
+    for (int i = 0; i < static_cast<int>(objects->Count()) && hudClass != nullptr; ++i) {
+        UObject* const object = objects->GetData()[i];
+        if (object == nullptr || object->Class != hudClass || !engine::IsAlive(object)) {
+            continue;
+        }
+        auto* const handler = static_cast<UBioSFHandler_PCHUD*>(object);
+        UBioSFPanel* const panel = handler->oPanel;
+        if (panel == nullptr || !engine::IsAlive(panel)) {
+            continue;
+        }
+        UObject* const movie = panel->MovieRef;
+        log::Info("hud: {} panel {} movie {} (class {}), aspect {:.3f}", engine::FullName(handler), engine::FullName(panel),
+            engine::FullName(movie), movie != nullptr ? engine::FullName(movie->Class) : "None", panel->fMovieAspectRatio);
+        gHudProbed = true;
+        return;
+    }
+#else
+    gHudProbed = true;
+#endif
+}
+
 } // namespace
 
 bool TryStartup() {
@@ -124,7 +154,14 @@ bool TryStartup() {
 }
 
 void Tick() {
-    if (gGetBoneNames == nullptr || gGetBoneLocation == nullptr || gProbes >= kMaxProbes) {
+    if (gGetBoneNames == nullptr || gGetBoneLocation == nullptr) {
+        return;
+    }
+    if (!gHudProbed && gHudAttempts < kMaxHudAttempts && head_tracking::OnFoot()) {
+        ++gHudAttempts;
+        ProbeHud();  // once the gameplay HUD exists
+    }
+    if (gProbes >= kMaxProbes) {
         return;
     }
     APlayerController* const controller = engine::LocalPlayerController();
@@ -147,6 +184,8 @@ void Shutdown() {
     gGetBoneLocation = nullptr;
     gLastMesh = nullptr;
     gProbes = 0;
+    gHudProbed = false;
+    gHudAttempts = 0;
 }
 
 } // namespace mevr::game::skeleton_probe
