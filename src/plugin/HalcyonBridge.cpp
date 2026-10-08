@@ -117,8 +117,7 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
         gChordFired = true;
         bool const open = !MELEVR::Menu::IsOpen();
         MELEVR::Menu::SetOpen(open);
-        mevr::log::Info(open ? "halcyon bridge: both sticks held: Halcyon's menu opened"
-                             : "halcyon bridge: both sticks held: Halcyon's menu closed");
+        mevr::log::Info("halcyon bridge: both sticks held: Halcyon's menu {}", open ? "opened" : "closed");
     }
 }
 
