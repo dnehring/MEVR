@@ -37,7 +37,8 @@ std::atomic<bool> gActive{false};  // read on the render thread too
 bool gHooked = false;  // ProcessEvent hook live (after the script packages loaded)
 bool gSceneViewHooked = false;
 bool gGamepadHooked = false;  // XInput hooks (once the game has loaded an XInput DLL)
-bool gCallFunctionHooked = false;
+bool gCallFunctionHooked = false;  // installed the first time hand aim is turned on
+bool gHandAimAvailable = false;
 
 mevr::Hotkey gVrToggleKey{VK_OEM_6};    // ]  VR on / off
 mevr::Hotkey gModeToggleKey{VK_OEM_4};  // [  head-tracked / screen
@@ -121,9 +122,9 @@ void TryInstallScriptHooks() {
     if (!game::skeleton_probe::TryStartup()) {
         log::Warn("skeleton probe: bone query functions not found");
     }
-    bool const handAim = game::hand_aim::TryStartup();
-    if (!handAim) {
-        log::Warn("hand aim: BioPlayerController.GetAdjustedAimFor not found; hand aim off");
+    gHandAimAvailable = game::hand_aim::TryStartup();
+    if (!gHandAimAvailable) {
+        log::Warn("hand aim: BioPlayerController.GetAdjustedAimFor not found; hand aim unavailable");
     }
     if (!engine::process_event::Install(*gInit)) {
         log::Error("ProcessEvent hook failed; mod inactive");
@@ -132,10 +133,6 @@ void TryInstallScriptHooks() {
     }
     game::head_tracking::SetReady();
     gHooked = true;
-    // Script-to-script calls (hand aim). Optional: everything else works without it.
-    if (handAim) {
-        gCallFunctionHooked = engine::call_function::Install(*gInit);
-    }
 }
 
 void PollHotkeys() {
@@ -166,7 +163,17 @@ void PollHotkeys() {
         log::Info("/: 6DOF {}", game::head_tracking::TogglePositional() ? "on" : "off");
     }
     if (gHandAimKey.Pressed()) {
-        log::Info(",: hand aim {}", game::hand_aim::Toggle() ? "on" : "off");
+        if (!gHandAimAvailable) {
+            log::Info(",: hand aim unavailable");
+        } else {
+            bool const on = game::hand_aim::Toggle();
+            // Every script call would pass through this hook, so it only goes in once someone
+            // uses hand aim (game thread, outside any script call; handlers already registered).
+            if (on && !gCallFunctionHooked) {
+                gCallFunctionHooked = engine::call_function::Install(*gInit);
+            }
+            log::Info(",: hand aim {}{}", on ? "on" : "off", on && !gCallFunctionHooked ? " (script hook failed: native calls only)" : "");
+        }
     }
 }
 
@@ -273,6 +280,7 @@ MEVR_MOD_API void MevrModShutdown() {
     }
     engine::call_function::ClearHandlers();
     gCallFunctionHooked = false;
+    gHandAimAvailable = false;
     game::hand_aim::Shutdown();
     game::skeleton_probe::Shutdown();
     gHooked = false;

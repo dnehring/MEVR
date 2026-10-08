@@ -2,6 +2,7 @@
 
 #include "core/Log.hpp"
 #include "engine/Objects.hpp"
+#include "game/HeadTracking.hpp"
 
 #include <LESDK/Headers.hpp>
 
@@ -94,9 +95,14 @@ void Probe(APawn* pawn, USkeletalMeshComponent* mesh) {
             line.clear();
         }
     }
+    // GetBoneLocation in component space indexes SpaceBases unchecked: only once the pose exists.
+    bool const posed = mesh->SpaceBases.Count() >= names.size();
+    if (!posed) {
+        log::Info("skeleton: pose not computed yet ({} of {} bones); positions skipped", mesh->SpaceBases.Count(), names.size());
+    }
     for (SFXName const& bone : names) {
         std::string const name = engine::ToString(bone);
-        if (IsKeyBone(name)) {
+        if (posed && IsKeyBone(name)) {
             FVector const at = BoneLocation(mesh, bone);
             log::Info("skeleton:   {} at ({:.1f}, {:.1f}, {:.1f}) component space", name, at.X, at.Y, at.Z);
         }
@@ -123,7 +129,11 @@ void Tick() {
     }
     APlayerController* const controller = engine::LocalPlayerController();
     APawn* const pawn = controller != nullptr ? controller->Pawn : nullptr;
-    USkeletalMeshComponent* const mesh = pawn != nullptr ? pawn->Mesh : nullptr;
+    // Shepard's own body, on foot: not the Mako (a vehicle pawn) or a menu's stand-in.
+    if (pawn == nullptr || !pawn->IsA(ABioPawn::StaticClass()) || !head_tracking::OnFoot()) {
+        return;
+    }
+    USkeletalMeshComponent* const mesh = pawn->Mesh;
     if (mesh == nullptr || mesh == gLastMesh || mesh->SkeletalMesh == nullptr) {
         return;
     }

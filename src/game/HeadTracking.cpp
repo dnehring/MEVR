@@ -148,6 +148,7 @@ void OnUpdateCamera(UObject* context, UFunction* /*function*/, void* /*parms*/, 
     }
     BeginView();
     gEye = -1;
+    gGameYaw.reset();  // set again if this frame's views get rotated
     if (gPath == Path::Camera && gHeadsetFov) {
         // Set in the camera cache (read by script) and returned from GetFOVAngle.
         camera->CameraCache.POV.FOV = *gHeadsetFov;
@@ -237,6 +238,7 @@ void OnBeforePrimaryView() {
     }
     bool const forVr = BeginView();
     gRenderYawOffset = gActive && gOnFoot ? gHead.yaw : 0;
+    gGameYaw.reset();  // set again below if this view gets rotated
     gEye = -1;
     if (!gActive) {
         return;
@@ -273,6 +275,9 @@ void OnTickEnd() {
     }
     if (!gPrimaryThisTick) {
         gRenderYawOffset = 0;  // no player view (full-screen GUI, pause): the stick isn't for walking
+        if (gPath == Path::Render) {
+            gGameYaw.reset();
+        }
     }
     gTaggedThisTick = false;
     gPrimaryThisTick = false;

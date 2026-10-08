@@ -47,8 +47,16 @@ double BodyYaw::Update(double headYaw, double deltaSeconds) {
 
 double YawOf(double qx, double qy, double qz, double qw) {
     // Forward (-Z) rotated by q; yaw from its horizontal part.
-    double const fx = -2.0 * (qx * qz + qw * qy);
-    double const fz = -(1.0 - 2.0 * (qx * qx + qy * qy));
+    double fx = -2.0 * (qx * qz + qw * qy);
+    double const fy = -2.0 * (qy * qz - qw * qx);
+    double fz = -(1.0 - 2.0 * (qx * qx + qy * qy));
+    if (fx * fx + fz * fz < 0.01) {
+        // Looking (nearly) straight up or down: forward's horizontal part is noise. The head's up
+        // vector then points where the face is turned (down) or away from it (up).
+        double const sign = fy < 0.0 ? 1.0 : -1.0;
+        fx = sign * 2.0 * (qx * qy - qw * qz);
+        fz = sign * 2.0 * (qy * qz + qw * qx);
+    }
     return std::atan2(-fx, -fz);
 }
 
@@ -66,6 +74,13 @@ UpperBody EstimateUpperBody(Vec3 headPosition, double bodyYaw, BodyProportions c
 
 TwoBoneResult SolveTwoBone(Vec3 root, Vec3 target, double upper, double lower, Vec3 pole) {
     TwoBoneResult out;
+    constexpr double kMinBone = 1e-4;
+    if (!(upper >= kMinBone) || !(lower >= kMinBone)) {
+        // Not an arm: a collapsed chain at the root, aimed at the target.
+        out.mid = root;
+        out.end = root + Normalize(target - root) * std::max(upper + lower, 0.0);
+        return out;
+    }
     Vec3 const toTarget = target - root;
     Vec3 const dir = Normalize(toTarget);
     double const maxReach = upper + lower;

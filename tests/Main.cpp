@@ -340,6 +340,23 @@ void TestIk() {
     CHECK(NearD(YawOf(left.x, left.y, left.z, left.w), std::numbers::pi / 2.0, 1e-5));
     XrQuaternionf const lookUp = AxisAngle(1, 0, 0, 30);
     CHECK(NearD(YawOf(lookUp.x, lookUp.y, lookUp.z, lookUp.w), 0.0, 1e-5));
+    // Turned 30 degrees left, then looking straight down or up: still 30 degrees, from the up vector.
+    for (double pitch : {-90.0, -89.0, 89.0, 90.0}) {
+        double const yaw = std::numbers::pi / 6.0;
+        XrQuaternionf const qy = AxisAngle(0, 1, 0, 30);
+        XrQuaternionf const qp = AxisAngle(1, 0, 0, pitch);
+        XrQuaternionf const q{  // qy * qp
+            qy.w * qp.x + qy.x * qp.w + qy.y * qp.z - qy.z * qp.y,
+            qy.w * qp.y - qy.x * qp.z + qy.y * qp.w + qy.z * qp.x,
+            qy.w * qp.z + qy.x * qp.y - qy.y * qp.x + qy.z * qp.w,
+            qy.w * qp.w - qy.x * qp.x - qy.y * qp.y - qy.z * qp.z,
+        };
+        CHECK(NearD(YawOf(q.x, q.y, q.z, q.w), yaw, 1e-4));
+    }
+
+    // Zero-length bones don't produce NaNs.
+    auto const collapsed = SolveTwoBone(shoulder, target, 0.0, lower, pole);
+    CHECK(std::isfinite(collapsed.mid.x) && std::isfinite(collapsed.end.x));
 
     // Upper body: shoulders level and symmetric about the neck, below and behind the head.
     auto const torso = EstimateUpperBody(Vec3{0.0, 1.7, 0.0}, 0.0);

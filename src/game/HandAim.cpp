@@ -2,6 +2,7 @@
 
 #include "core/Log.hpp"
 #include "core/vr/Controllers.hpp"
+#include "core/vr/Output.hpp"
 #include "engine/CallFunction.hpp"
 #include "engine/Objects.hpp"
 #include "engine/ProcessEvent.hpp"
@@ -26,7 +27,7 @@ std::atomic<unsigned> gOverrides{0};
 // rendered view maps to the game's own (body) yaw.
 bool HandRotation(FRotator& out) {
     auto const yaw = head_tracking::GameYaw();
-    if (!gEnabled || !yaw || !head_tracking::OnFoot()) {
+    if (!gEnabled || !yaw || !head_tracking::OnFoot() || !vr::output::WantsHeadTracking()) {
         return false;
     }
     vr::controllers::State const controllers = vr::controllers::Latest();
