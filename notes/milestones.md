@@ -26,11 +26,50 @@
 - The loader writes its own log to `Win64/Logs/bink2w64_proxy.log`, not to `Win64/` as
   research/09 assumed.
 
-## M1: plugin controls the game camera. Next
+## M1: plugin controls the game camera (LE1). **Passed 2026-10-07**
 
-Plan:
-1. Hook ProcessEvent and filter by cached `UFunction*` for `Engine.Camera.UpdateCamera`. The
-   ConsoleExtension pattern, research/09 §4.
-2. Override `CameraCache.POV` with a visible test motion (a slow yaw sweep on a hotkey).
-3. In parallel, find LE1 `ULocalPlayer::CalcSceneView` (Ghidra and x64dbg; LE3 is at RVA
-   `0x6cffd0` for comparison) for per-eye projection later.
+- **Dev loop:** a hot-reload host (`LE1MEVR.asi` 0.1.0) plus the mod DLL
+  (`build/Release/LE1MEVR_mod.dll`, via `LE1MEVR.modpath`).
+  - **First hot reload in a running game:** at 21:19:57 the host saw the new build and
+    swapped it in.
+  - Loaded generation 2. From build finished to mod live: under 10 s.
+  - No restart needed.
+- **First attempt failed safely:** at attach, `Engine.PlayerController.GetPlayerViewPoint` didn't
+  exist yet, because the script packages load after the DRM wait.
+  - Fix: retry the script-level setup every 1 s from the tick. The ProcessEvent hook is
+    installed only after the handlers are registered.
+- **Camera functions found:**
+  - `Engine.Controller` / `PlayerController` / `AIController` / `SFXGame.BioAiController.GetPlayerViewPoint`
+  - `Engine.Camera.UpdateCamera`, `Engine.Camera.GetCameraViewPoint`
+  - `Engine.Actor` / `SVehicle.CalcCamera`
+- **Call rates in game:**
+  - `PlayerController.GetPlayerViewPoint`: about **10,000/s, roughly 43 per frame**. Many
+    systems query the player view point, not just rendering.
+  - `Camera.UpdateCamera`: **once per frame**.
+  - The others: 0.
+- **Test:** the backslash key toggles a ±30° yaw sine sweep (4 s period), added to
+  `GetPlayerViewPoint`'s `out_Rotation` after the call (ProcessEvent post-handler, matched by
+  cached `UFunction*`).
+  - **The user confirmed the view sways left and right.**
+  - Log: 12,282 and 43,067 adjusted views per 5 s window while on.
+- **F9 note:** F9 is bound in game, so don't use F-keys for dev hotkeys. Backtick opens the UE
+  console.
+- **Frame rate this session:** about 230–240 fps in the heartbeat, versus the 60 fps lock seen
+  in M0. Likely a different game state (menu or pause?) or the VSync setting. Still open (H14).
+
+### Implications for VR
+
+- `GetPlayerViewPoint` is shared by everything that asks "where is the player looking", so
+  adding head rotation there probably also moves **aim**, AI perception, audio and so on. For VR
+  the **render view** should come from `ULocalPlayer::CalcSceneView` (still needs locating in
+  LE1), keeping gameplay aim on the controller.
+- `Camera.UpdateCamera` (once per frame) is a clean per-frame point for writing the base
+  camera pose (`CameraCache.POV`).
+
+## M2: game mirrored onto a virtual screen in the headset. Next
+
+1. D3D11 Present hook (REFramework's vtable approach, MIT), routed through our own hook manager.
+2. OpenXR session on the game's D3D11 device (Oculus runtime), one quad layer showing the
+   backbuffer copy.
+3. In parallel: find LE1 `ULocalPlayer::CalcSceneView` (Ghidra and x64dbg; LE3 is at RVA
+   `0x6cffd0` for comparison).

@@ -12,6 +12,9 @@ endif ()
 option(MEVR_BUILD_LE1 "Build LE1MEVR.asi" ON)
 option(MEVR_BUILD_LE2 "Build LE2MEVR.asi" OFF)
 option(MEVR_BUILD_LE3 "Build LE3MEVR.asi" OFF)
+# Development: a small stable host ASI plus <GAME>MEVR_mod.dll, which the host reloads whenever
+# it changes, so the game can keep running between builds. Release: one self-contained ASI.
+option(MEVR_HOT_RELOAD "Build the mod as a separate hot-reloadable DLL" ON)
 
 # LExSDKv2 honors these as normal variables (CMP0077).
 set(LESDK_WITH_LE1 ${MEVR_BUILD_LE1})
@@ -22,27 +25,61 @@ set(LESDK_WITH_SAMPLES OFF)
 set(LESDK_WITH_TESTS OFF)
 add_subdirectory(external/LExSDKv2)
 
-set(MEVR_SOURCES
+set(MEVR_CORE_SOURCES
     src/core/Log.cpp
     src/core/Log.hpp
     src/core/Version.cpp
     src/core/Version.hpp
-    src/engine/Engine.cpp
-    src/engine/Engine.hpp
-    src/plugin/Entry.cpp
 )
 
-function(mevr_add_plugin GAME)
-    set(target MEVR-${GAME})
-    add_library(${target} SHARED ${MEVR_SOURCES})
+set(MEVR_HOST_SOURCES
+    src/mod/ModApi.hpp
+    src/plugin/Entry.cpp
+    src/plugin/ModLoader.cpp
+    src/plugin/ModLoader.hpp
+)
+
+set(MEVR_MOD_SOURCES
+    src/engine/Engine.cpp
+    src/engine/Engine.hpp
+    src/engine/Objects.cpp
+    src/engine/Objects.hpp
+    src/engine/ProcessEvent.cpp
+    src/engine/ProcessEvent.hpp
+    src/game/CameraTest.cpp
+    src/game/CameraTest.hpp
+    src/mod/Mod.cpp
+    src/mod/ModApi.hpp
+)
+
+function(mevr_configure target game)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_link_libraries(${target} PRIVATE LESDK-${GAME} version)
+    target_link_libraries(${target} PRIVATE LESDK-${game} version)
     target_compile_definitions(${target} PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
     # Same warning policy as the SDK's own consumers; the generated headers need /permissive.
     target_compile_options(${target} PRIVATE /W4 /WX /permissive /utf-8 /Zc:__cplusplus /Zi
         /wd4121 /wd4127 /wd4702)
     target_link_options(${target} PRIVATE /DEBUG)
-    set_target_properties(${target} PROPERTIES OUTPUT_NAME "${GAME}MEVR" SUFFIX ".asi")
+endfunction()
+
+function(mevr_add_plugin game)
+    set(host MEVR-${game})
+    if (MEVR_HOT_RELOAD)
+        add_library(${host} SHARED ${MEVR_HOST_SOURCES} ${MEVR_CORE_SOURCES})
+
+        set(mod MEVR-${game}-mod)
+        add_library(${mod} SHARED ${MEVR_MOD_SOURCES} ${MEVR_CORE_SOURCES})
+        mevr_configure(${mod} ${game})
+        target_compile_definitions(${mod} PRIVATE MEVR_MOD_DLL)
+        set_target_properties(${mod} PROPERTIES OUTPUT_NAME "${game}MEVR_mod")
+        # Building the host target builds the mod too.
+        add_dependencies(${host} ${mod})
+    else ()
+        add_library(${host} SHARED ${MEVR_HOST_SOURCES} ${MEVR_CORE_SOURCES} ${MEVR_MOD_SOURCES})
+        target_compile_definitions(${host} PRIVATE MEVR_MONOLITHIC)
+    endif ()
+    mevr_configure(${host} ${game})
+    set_target_properties(${host} PROPERTIES OUTPUT_NAME "${game}MEVR" SUFFIX ".asi")
 endfunction()
 
 foreach (game LE1 LE2 LE3)

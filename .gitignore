@@ -9,6 +9,7 @@ mod-manager/
 
 # Build output
 build/
+build-*/
 out/
 .vs/
 *.user

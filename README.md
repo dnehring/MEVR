@@ -25,7 +25,7 @@ VR is a renderer-level feature, so it can't be ported in as content
 | #  | Milestone                                                 | Difficulty |
 |----|-----------------------------------------------------------|------------|
 | M0 | ASI loads in LE1, checks the exe version, hooks the engine tick, logs a heartbeat | **Done 2026-10-07** ([notes/milestones.md](notes/milestones.md)) |
-| M1 | Plugin controls the game camera                           | Easy–medium |
+| M1 | Plugin controls the game camera                           | **Done 2026-10-07** (hot-reload dev loop + yaw sweep) |
 | M2 | Game mirrored onto a virtual screen in the headset        | Medium |
 | M3 | Head tracking drives the camera (mono)                    | Medium |
 | M4 | True stereo with per-eye projection                       | **Hard: the research wall** |

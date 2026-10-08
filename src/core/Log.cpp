@@ -12,6 +12,7 @@ namespace {
 std::mutex gMutex;
 std::FILE* gFile = nullptr;
 std::filesystem::path gPath;
+Sink gSink = nullptr;
 
 std::filesystem::path ExeDirectory() {
     wchar_t buffer[MAX_PATH]{};
@@ -67,7 +68,16 @@ std::filesystem::path const& Path() {
     return gPath;
 }
 
+void SetSink(Sink sink) {
+    gSink = sink;
+}
+
 void Write(std::string_view level, std::string_view message) {
+    if (gSink != nullptr) {
+        gSink(std::string(level).c_str(), std::string(message).c_str());
+        return;
+    }
+
     SYSTEMTIME t{};
     GetLocalTime(&t);
     auto const line = std::format("[{:02}:{:02}:{:02}.{:03}] [{}] {}\n",

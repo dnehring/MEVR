@@ -4,6 +4,12 @@ Native VR mod for Mass Effect Legendary Edition (BioWare's UE3 fork): a C++ ASI 
 ME3Tweaks' LEBinkProxy, on top of LExSDKv2. One VR system for LE1/LE2/LE3, built LE1 first. Game
 mechanics may change to fit VR (see `docs/trilogy-design.md`).
 
+## Git
+
+- **Commit freely.** The user gave standing permission (2026-10-07) to commit without asking.
+  Commit at natural checkpoints (milestones, verified changes). No remote is configured; ask
+  before pushing anywhere.
+
 ## Licensing rules (MIT project)
 
 - Copy code only from permissive sources (REFramework is MIT) and keep their notices.
@@ -33,6 +39,15 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   `cmake --build build --config Release --target MEVR-LE1`, producing `build/Release/LE1MEVR.asi`.
 - Deploy: `tools/deploy-asi.ps1 -Game LE1` (needs the ME3MM ASI loader). The log is at
   `<Win64>/Logs/LE1MEVR.log` or `%LOCALAPPDATA%/MEVR/`.
+- **Hot reload (default build):** `LE1MEVR.asi` is a small host; the code lives in
+  `LE1MEVR_mod.dll`, which the host reloads within about a second of each rebuild (the
+  `.modpath` file points at `build/Release`). So during a play session, just rebuild
+  `MEVR-LE1-mod`; the user stays in game. Changes to `src/plugin/` (the host) need the game
+  closed and a redeploy. Release builds use `-DMEVR_HOT_RELOAD=OFF` (one ASI; e.g. `build-mono/`).
+- Script-level hooks must wait for the script packages to load (they aren't there at attach).
+  `Mod.cpp` retries every second before installing the ProcessEvent hook.
+- Dev hotkeys: not F-keys (bound in game), not backtick (UE console). Backslash is the camera
+  test toggle.
 - Our targets build with `/W4 /WX /permissive`. The SDK's generated code emits warnings
   (C4315, C4789) that aren't ours.
 - The LExSDKv2 submodule tracks the `RVA` branch (hardcoded RVAs for 2.0.0.48602). The plugin

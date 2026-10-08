@@ -12,6 +12,11 @@ bool Open(std::wstring_view fileName);
 void Close();
 std::filesystem::path const& Path();
 
+// When set, Write forwards to the sink instead of the file. The hot-reloadable mod DLL uses
+// this to log through the host, which owns the file.
+using Sink = void (*)(char const* level, char const* message);
+void SetSink(Sink sink);
+
 void Write(std::string_view level, std::string_view message);
 
 template <typename... Args>
