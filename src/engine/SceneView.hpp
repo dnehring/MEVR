@@ -24,6 +24,8 @@ void Uninstall(::LESDK::Initializer& init);
 // True on the game thread while the frame's player view is being built.
 bool InPrimaryView();
 
+// Calls from anywhere but the player view since the last LogStats (game thread).
+unsigned OtherCalls();
 // Logs and resets call counts: primary views, other callers.
 void LogStats();
 

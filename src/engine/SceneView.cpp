@@ -128,6 +128,10 @@ bool InPrimaryView() {
     return tInPrimary;
 }
 
+unsigned OtherCalls() {
+    return gOtherCalls.load(std::memory_order_relaxed);
+}
+
 void LogStats() {
     if (!gInstalled) {
         return;

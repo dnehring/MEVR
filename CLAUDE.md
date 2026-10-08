@@ -88,7 +88,10 @@ switching frameworks.
   every flag on that UFunction. Find the UFunction yourself and call ProcessEvent directly.
   Class layouts, `StaticClass()` and `IsA()` are fine.
 - The exe's `.text` is encrypted on disk (EA DRM). Check RVAs statically with
-  `tools/verify_rvas.py` (`.pdata` function bounds); byte checks only work in-process.
+  `tools/verify_rvas.py` (`.pdata` function bounds); byte checks only work in-process. The mod
+  saves the decrypted `.text` once per exe build to `%LOCALAPPDATA%\MEVR\dump`;
+  `tools/splice_text.py` turns it into a disassemblable copy (`dumpbin /disasm /range:`).
+  Local research data: never commit or share dumps or spliced exes.
 
 - Windows PowerShell 5.1 turns native stderr (e.g. git progress) into errors under
   `$ErrorActionPreference = 'Stop'`. Check `$LASTEXITCODE` instead.

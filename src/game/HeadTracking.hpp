@@ -29,11 +29,16 @@ enum class Stereo { Mono, AlternateEye };
 // script packages have loaded; retry later. Call before installing the ProcessEvent hook.
 // `renderPathAvailable` is false if the CalcSceneView hook couldn't be installed.
 bool TryStartup(bool renderPathAvailable);
+// The ProcessEvent hook is live: start counting views for the render-path self-checks.
+void SetReady();
 void LogStats();
 void Shutdown();
 
 // Game thread, from engine/scene_view: the frame's player view is about to be built.
 void OnBeforePrimaryView();
+// Game thread, after each engine tick (before the lockstep wait): tags a tick that drew no
+// player view, so VR always has an image.
+void OnTickEnd();
 
 Path CyclePath();
 char const* Name(Path path);
@@ -42,8 +47,8 @@ char const* Name(Stereo stereo);
 bool TogglePositional();
 
 // Head yaw (Unreal units) the rendered view is turned by beyond the game camera: non-zero only on
-// the render path. Input uses it so "forward" on the stick means where the player looks.
-// Any thread.
+// the render path during on-foot gameplay (not conversations, menus, wheels, galaxy map or
+// the Mako). Input uses it so "forward" on the stick means where the player looks. Any thread.
 int RenderYawOffset();
 
 } // namespace mevr::game::head_tracking

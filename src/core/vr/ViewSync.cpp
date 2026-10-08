@@ -8,8 +8,10 @@
 namespace mevr::vr::view_sync {
 namespace {
 
-// More than this means frames stopped being presented (e.g. a loading stall); drop the oldest.
-constexpr std::size_t kMaxQueued = 4;
+// UE3's game thread runs at most one frame ahead of the render thread, so a Present can find
+// at most two views queued: its own and the next frame's. Older ones belong to frames that
+// never presented (e.g. a loading stall) and are dropped.
+constexpr std::size_t kMaxQueued = 2;
 
 std::mutex gMutex;
 std::condition_variable gPresented;
@@ -61,21 +63,35 @@ void PushRendered(RenderedView view) {
     }
 }
 
-std::optional<RenderedView> TakeForPresent(std::size_t& depth) {
+std::optional<RenderedView> PeekForPresent(std::size_t& depth) {
     std::lock_guard lock(gMutex);
     depth = gRendered.size();
     if (gRendered.empty()) {
         return std::nullopt;
     }
-    RenderedView const view = gRendered.back();
-    gRendered.clear();
-    return view;
+    return gRendered.front();
 }
 
 void NotifyPresented() {
     {
         std::lock_guard lock(gMutex);
-        gPresentedFrames = gPushedFrames;
+        if (gRendered.empty()) {
+            gPresentedFrames = gPushedFrames;  // nothing tagged (VR off, loading): release any waiter
+        } else {
+            gPresentedFrames = gRendered.front().engineFrame;
+            gRendered.pop_front();
+        }
+    }
+    gPresented.notify_all();
+}
+
+void DropOldest() {
+    {
+        std::lock_guard lock(gMutex);
+        if (!gRendered.empty()) {
+            gPresentedFrames = gRendered.front().engineFrame;
+            gRendered.pop_front();
+        }
     }
     gPresented.notify_all();
 }

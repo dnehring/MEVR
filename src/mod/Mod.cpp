@@ -7,6 +7,7 @@
 #include "core/Log.hpp"
 #include "core/vr/Output.hpp"
 #include "core/vr/ViewSync.hpp"
+#include "engine/CodeDump.hpp"
 #include "engine/Engine.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/SceneView.hpp"
@@ -49,8 +50,12 @@ unsigned gHeartbeats = 0;
 // camera pairs with exactly one image (vrframework guide 07). The timeout keeps a frame that
 // never presents (loading, minimized) from stalling the game.
 constexpr std::uint32_t kLockstepTimeoutMs = 30;
+// One timeout is a long frame; several in a row mean the view queue drifted (view_sync).
+constexpr unsigned kDriftTimeouts = 3;
 unsigned gLockstepWaits = 0;
 unsigned gLockstepTimeouts = 0;
+unsigned gConsecutiveTimeouts = 0;
+unsigned gDriftRecoveries = 0;
 double gLockstepWaitMs = 0.0;
 
 void WaitForThisFrameToPresent() {
@@ -67,8 +72,15 @@ void WaitForThisFrameToPresent() {
     QueryPerformanceFrequency(&frequency);
     ++gLockstepWaits;
     gLockstepWaitMs += static_cast<double>(end.QuadPart - start.QuadPart) * 1000.0 / frequency.QuadPart;
-    if (!presented) {
-        ++gLockstepTimeouts;
+    if (presented) {
+        gConsecutiveTimeouts = 0;
+        return;
+    }
+    ++gLockstepTimeouts;
+    if (++gConsecutiveTimeouts >= kDriftTimeouts) {
+        vr::view_sync::DropOldest();
+        gConsecutiveTimeouts = 0;
+        ++gDriftRecoveries;
     }
 }
 
@@ -91,6 +103,7 @@ void TryInstallScriptHooks() {
         gActive = false;
         return;
     }
+    game::head_tracking::SetReady();
     gHooked = true;
 }
 
@@ -125,6 +138,9 @@ void PollHotkeys() {
 
 void Heartbeat() {
     using namespace mevr;
+    if (gHeartbeats == 0) {
+        engine::code_dump::SaveOnce();  // the game is up, so its code is decrypted by now
+    }
     UWorld* const world = (GWorld != nullptr) ? *GWorld : nullptr;
     log::Info("heartbeat #{}: {:.1f} fps, GWorld={}, objects={}, script hooks {}",
         ++gHeartbeats, gHeartbeatFrames / gHeartbeatElapsed, static_cast<void*>(world),
@@ -137,10 +153,10 @@ void Heartbeat() {
     game::gamepad_bridge::LogStats();
     vr::output::LogStats();
     if (gLockstepWaits > 0) {
-        log::Info("    lockstep: {} waits (game thread {}), avg {:.2f} ms, {} timeouts",
-            gLockstepWaits, GetCurrentThreadId(), gLockstepWaitMs / gLockstepWaits, gLockstepTimeouts);
+        log::Info("    lockstep: {} waits (game thread {}), avg {:.2f} ms, {} timeouts, {} drift recoveries",
+            gLockstepWaits, GetCurrentThreadId(), gLockstepWaitMs / gLockstepWaits, gLockstepTimeouts, gDriftRecoveries);
     }
-    gLockstepWaits = gLockstepTimeouts = 0;
+    gLockstepWaits = gLockstepTimeouts = gDriftRecoveries = 0;
     gLockstepWaitMs = 0.0;
 }
 
@@ -183,6 +199,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     }
     if (gHooked) {
         game::reflections::Tick(deltaSeconds);
+        game::head_tracking::OnTickEnd();
     }
     WaitForThisFrameToPresent();
 

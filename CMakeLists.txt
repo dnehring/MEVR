@@ -65,6 +65,8 @@ set(MEVR_MOD_SOURCES
     src/core/xr/Input.hpp
     src/core/xr/Session.cpp
     src/core/xr/Session.hpp
+    src/engine/CodeDump.cpp
+    src/engine/CodeDump.hpp
     src/engine/Engine.cpp
     src/engine/Engine.hpp
     src/engine/Objects.cpp

@@ -35,19 +35,26 @@ struct RenderedView {
     std::uint64_t engineFrame = 0;  // assigned by PushRendered
 };
 void PushRendered(RenderedView view);
-// The view of the frame being presented: the newest queued one (older entries are dropped).
-// Correct because of the lockstep below: the game thread doesn't start frame N+1 until frame N
-// has been presented. `depth` reports how many entries were queued (1 = in sync).
-std::optional<RenderedView> TakeForPresent(std::size_t& depth);
+// The view of the frame being presented: the oldest one not yet presented. Each Present
+// consumes exactly one view (NotifyPresented), so after a lockstep timeout, when the game has
+// already pushed the next frame, the image still gets its own view. UE3's game thread is at most
+// one frame ahead of the render thread, so anything beyond two queued views is stale and dropped.
+// `depth` reports how many were queued (1 = in sync, 2 = game one frame ahead).
+std::optional<RenderedView> PeekForPresent(std::size_t& depth);
 
 // Lockstep (vrframework guide 07: engine and presenter frames must not drift).
-// Render thread, after submitting a frame:
+// Render thread, after every game Present (whatever path it took): consumes the oldest view
+// and releases the game thread waiting for it.
 void NotifyPresented();
 // Game thread, after the engine tick that pushed a view: blocks until that frame has been
 // presented or the timeout passes. Returns false on timeout.
 bool WaitForPresent(std::uint32_t timeoutMs);
 // Frames pushed but not presented yet: nothing to wait for when this is 0.
 bool HasPendingFrame();
+// Drift recovery (guide 07): a frame that pushed a view but never presented leaves a stale view
+// at the front, after which every image gets the previous frame's view and every lockstep wait
+// times out. The game thread calls this after several timeouts in a row: drops the oldest view.
+void DropOldest();
 
 // Forget everything (VR off, mode change, session restart).
 void Reset();

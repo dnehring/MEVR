@@ -272,8 +272,12 @@ void Input::Sync(Session& session, XrTime time, vr::controllers::State& out) {
         h.gripValid = Locate(gripSpaces_[hand], session.LocalSpace(), time, h.grip);
         h.aimValid = Locate(aimSpaces_[hand], session.LocalSpace(), time, h.aim);
     }
-    out.active = out.left.gripValid || out.right.gripValid || out.left.trigger > 0.0f || out.right.trigger > 0.0f ||
-        out.left.stickX != 0.0f || out.left.stickY != 0.0f || out.right.stickX != 0.0f || out.right.stickY != 0.0f;
+    auto const pressed = [](vr::controllers::Hand const& h) {
+        return h.trigger > 0.0f || h.squeeze > 0.0f || h.stickX != 0.0f || h.stickY != 0.0f || h.stickClick ||
+            h.primary || h.secondary || h.menu;
+    };
+    // Tracked, or used while tracking is lost (buttons still work then).
+    out.active = out.left.gripValid || out.right.gripValid || pressed(out.left) || pressed(out.right);
 }
 
 } // namespace mevr::xr

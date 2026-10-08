@@ -48,6 +48,7 @@ struct EyeImage {
     std::optional<view_sync::RenderedView> view;
 };
 std::array<EyeImage, 2> gEyes;
+std::uint32_t gEyesFailedGeneration = UINT32_MAX;  // eye resources failed: mono for this session
 bool gFailed = false;
 XrSessionState gLastState = XR_SESSION_STATE_UNKNOWN;
 Mode gLastMode = Mode::HeadTracked;
@@ -82,9 +83,15 @@ void RecordPresentTiming() {
     gPresentThread = GetCurrentThreadId();
 }
 
-// Every Present ends a game frame, whatever path OnPresent takes; release the lockstep wait.
+// Every game Present ends a game frame, whatever path OnPresent takes: it consumes that frame's
+// view and releases the lockstep wait. Presents of other swap chains don't.
 struct PresentScope {
-    ~PresentScope() { view_sync::NotifyPresented(); }
+    bool gameFrame = true;
+    ~PresentScope() {
+        if (gameFrame) {
+            view_sync::NotifyPresented();
+        }
+    }
 };
 
 // A swapchain from an older session was destroyed along with that session.
@@ -272,6 +279,9 @@ bool SubmitAlternateEye(ID3D11DeviceContext* context, ID3D11Texture2D* backbuffe
     view_sync::RenderedView const& view, std::array<XrCompositionLayerProjectionView, 2>& out) {
     for (EyeImage& eye : gEyes) {
         if (!EnsureEye(eye, width, height)) {
+            ReleaseEyes();
+            gEyesFailedGeneration = gSession.Generation();
+            log::Error("vr output: alternate-eye resources failed; mono for this session");
             return false;
         }
     }
@@ -329,7 +339,7 @@ void LogStats() {
 }
 
 void OnPresent(IDXGISwapChain* swapChain) {
-    PresentScope const presentScope;
+    PresentScope presentScope;
     RecordPresentTiming();
     if (!gEnabled) {
         TearDownXr();
@@ -340,6 +350,7 @@ void OnPresent(IDXGISwapChain* swapChain) {
     }
     ComPtr<ID3D11Device> device;
     if (FAILED(swapChain->GetDevice(IID_PPV_ARGS(&device)))) {
+        presentScope.gameFrame = false;
         return;  // not a D3D11 swap chain
     }
     if (!gDevice) {
@@ -354,6 +365,7 @@ void OnPresent(IDXGISwapChain* swapChain) {
             gWindow = scDesc.OutputWindow;
         }
     } else if (gDevice != device) {
+        presentScope.gameFrame = false;
         return;  // a second device's swap chain; only use the game's main one
     }
 
@@ -424,7 +436,7 @@ void OnPresent(IDXGISwapChain* swapChain) {
     // The pose this image was rendered with (head-tracked mode).
     if (mode == Mode::HeadTracked) {
         std::size_t depth = 0;
-        if (auto rendered = view_sync::TakeForPresent(depth)) {
+        if (auto rendered = view_sync::PeekForPresent(depth)) {
             gLastRendered = rendered;
         }
         gDepthCounts[std::min<std::size_t>(depth, 3)].fetch_add(1, std::memory_order_relaxed);
@@ -436,7 +448,8 @@ void OnPresent(IDXGISwapChain* swapChain) {
     std::array<XrCompositionLayerBaseHeader const*, 1> layers{};
     std::size_t layerCount = 0;
     bool const haveView = mode == Mode::Screen || gLastRendered.has_value();
-    bool const alternateEye = mode == Mode::HeadTracked && gLastRendered && gLastRendered->eye >= 0;
+    bool const alternateEye = mode == Mode::HeadTracked && gLastRendered && gLastRendered->eye >= 0 &&
+        gEyesFailedGeneration != gSession.Generation();
     if (!alternateEye) {
         for (EyeImage& eye : gEyes) {
             eye.view.reset();  // don't resume stereo later with stale images

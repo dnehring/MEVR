@@ -56,9 +56,13 @@ function Show-Values([string]$Text) {
 
 # Sets key=value inside [section], adding the key or the section when missing.
 function Set-IniValue([string]$Text, [string]$Section, [string]$Key, [string]$Value) {
-    $header = [regex]::Match($Text, "(?m)^\[$([regex]::Escape($Section))\]\r?$")
+    # The header line including its line break, so new keys go on a line of their own.
+    $header = [regex]::Match($Text, "(?m)^\[$([regex]::Escape($Section))\][ \t]*(\r?\n|\z)")
     if (-not $header.Success) {
         return $Text.TrimEnd() + "`r`n`r`n[$Section]`r`n$Key=$Value`r`n"
+    }
+    if ($header.Groups[1].Length -eq 0) {
+        return $Text + "`r`n$Key=$Value`r`n"  # header on the last line, nothing after it
     }
     $bodyStart = $header.Index + $header.Length
     $next = [regex]::Match($Text.Substring($bodyStart), '(?m)^\[')
@@ -68,7 +72,7 @@ function Set-IniValue([string]$Text, [string]$Section, [string]$Key, [string]$Va
     if ([regex]::IsMatch($body, $keyPattern)) {
         $body = [regex]::Replace($body, $keyPattern, "$Key=$Value")
     } else {
-        $body = "`r`n$Key=$Value" + $body
+        $body = "$Key=$Value`r`n" + $body
     }
     return $Text.Substring(0, $bodyStart) + $body + $Text.Substring($bodyEnd)
 }
