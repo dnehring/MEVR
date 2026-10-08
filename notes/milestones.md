@@ -332,3 +332,18 @@ per-feature keys stay as in-session overrides for A/B tests and crash isolation.
 
 - Retest with the fixes. Check image correctness (colors and brightness vs the monitor).
 - ~~Find LE1 `ULocalPlayer::CalcSceneView`~~: `0x4C5300` (research/13).
+
+## Controller aim with Halcyon's renderer (built 2026-10-08, untested in game)
+
+The user's report with Halcyon's renderer: aiming followed the head. Now, on foot with motion
+controllers, the right controller aims and the head only looks; a plain gamepad keeps Halcyon's
+head aim.
+- Halcyon publishes its view each frame (`[MEVR]` call in RunFrame); HostServices v3 hands it to
+  the mod with `setHandAim`. `game/view_anchor` places it on the game camera
+  (`engine::FromCameraView`, unit-tested): the one tracking-to-world mapping, for arm IK too.
+- Hand aim turns on the first time the right controller aims. While it does, Halcyon's on-foot
+  combat head aim stays off (`[MEVR]` gate). The Mako keeps head aim. `,` switches between them.
+- Known: the HUD crosshair stays at the view's center (where the head looks). Shots take the
+  controller's direction but start at the game's StartFireLoc; the log measures the offset.
+
+Test: [next-vr-session](next-vr-session.md), first section.

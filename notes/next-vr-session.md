@@ -7,6 +7,31 @@ you saw and roughly when.
 Already done for you: `tools/vr-game-settings.ps1` turned VSync, motion blur and film grain off
 and HDR to SDR in ME1's GamerSettings.ini (backup kept; `-Restore` undoes it).
 
+## First: controller aim with Halcyon's renderer (LE1, 2026-10-08)
+
+The host ASI changed, so close the game and redeploy (`tools/deploy-asi.ps1 -Game LE1`) before
+this test; a hot reload alone isn't enough.
+
+1. Start SteamVR, then the game, load a save, and pick up the Touch controllers.
+2. On foot, draw a weapon. Look around with your head: the view should follow the head, but
+   Shepard's aim should no longer swing with it.
+3. Point the right controller at a target away from where you're looking and fire. Do the
+   shots go where the controller points? Note any constant offset (left/right, high/low) and
+   roughly how far away the target was. The HUD crosshair still sits in the middle of your view
+   and doesn't show the controller's aim (known; no reticle yet).
+4. Press `,` to switch to Halcyon's head aim (shots follow the head again) and `,` again to
+   switch back. Say which felt right.
+5. Put the controllers down until they sleep and use a gamepad: Halcyon's head aim should be
+   back (the log says `controller aim stopped`).
+6. The Mako should behave as before (its cannon follows the head).
+
+What Claude looks for: `hand aim on`, `the right controller aims weapons`, `first world view`,
+`game camera's right axis vs the renderer's view: N degrees apart` (should be about 0),
+`first shot aimed by the right controller`, `shots start at ... off it` (how far shots pass
+beside the controller's ray), and the heartbeat's `hand aim:` and `host view:` lines.
+
+## Our own renderer (LE2/LE3, or LE1 built without Halcyon)
+
 Keys: `]` is the only one you need. It turns VR on and off, and the VR features come with it:
 once the headset session starts, stereo, 6DOF, hand aim and arm IK are all on, and VR off
 turns them all off. The rest are for testing:
@@ -23,7 +48,7 @@ turns them all off. The rest are for testing:
 | `.` | arm IK off / on: Shepard's arms follow the controllers (if the game's IK controls exist) |
 | `=` | conversations, cutscenes, menus and galaxy map on the virtual screen: on (default) / off |
 
-## A. Desktop only (no headset needed, about 2 minutes)
+### A. Desktop only (no headset needed, about 2 minutes)
 
 Checks the new render-only head path on the monitor.
 
@@ -49,7 +74,7 @@ What Claude looks for in the log:
 - `gamepad: hooked XInputGetState@...` and the poll count;
 - `reflections: ... raised N` on a level with reflective floors.
 
-## B. In the headset (head-tracked mode, the default)
+### B. In the headset (head-tracked mode, the default)
 
 1. Start SteamVR / Steam Link first, then the game, and load a save. Everything comes on with
    the headset session (the log says `VR features on`).

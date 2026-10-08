@@ -59,6 +59,10 @@ engine's `SkelControlLimb` or write the arm bones ourselves.
 
 - **Aim source:** UE3 weapons fire along `GetAdjustedAim` from `GetPhysicalFireStartLoc`
   (script). Override both to the controller's aim pose. **[verify]** in `SFXWeapon`.
+  - Direction: done for LE1 (`game/HandAim`, through `BioPlayerController.GetAdjustedAimFor`),
+    with our renderer and with Halcyon's, whose on-foot head aim steps aside while the right
+    controller aims.
+  - Start location: not yet. The log measures how far shots start from the controller's ray.
 - **Weapon placement:** attach the weapon mesh to the hand socket, so it follows the IK hand
   automatically, plus a per-weapon-class grip offset table (pistol, SMG, shotgun, AR, sniper,
   heavy).
