@@ -17,6 +17,7 @@ Keys:
 | `'` | desktop head simulator: sweep / nod / off |
 | `;` | stereo: mono / alternate-eye |
 | `/` | 6DOF on / off |
+| `,` | hand aim on / off: shots follow the right controller (on foot) |
 
 ## A. Desktop only (no headset needed, about 2 minutes)
 
@@ -64,8 +65,11 @@ What Claude looks for in the log:
 5. **6DOF:** press `/` and lean or crouch. Does the view move naturally, at a believable scale?
 6. **Stereo:** press `;`. Is there depth? Comfortable, or ghosting and flicker on movement? Is
    the scale right? Press `;` again to compare with mono.
-7. Look at a reflective floor (e.g. the Normandy) while turning. Do reflections still jerk?
-8. Known: on the render path the crosshair no longer follows your head. Aim is still the game
+7. **Hand aim:** press `,`, draw a weapon and fire at something while pointing the right
+   controller elsewhere than your head. Do shots land where the controller points? (There's no
+   reticle yet, so watch the impacts.)
+8. Look at a reflective floor (e.g. the Normandy) while turning. Do reflections still jerk?
+9. Known: on the render path the crosshair no longer follows your head. Aim is still the game
    camera's.
 
 What Claude looks for:
@@ -76,4 +80,6 @@ What Claude looks for:
 - fps now that VSync is off;
 - `controller actions ready`;
 - `stereo alternate-eye (L n / R n)` roughly equal;
-- the half IPD in mm.
+- the half IPD in mm;
+- the `skeleton:` lines (bones, positions, skeletal controls): Claude reads them for VRIK
+  ([research/14](../research/14-vrik.md)); nothing to do in game.

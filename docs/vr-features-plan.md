@@ -24,6 +24,10 @@ Items marked **[verify]** are hypotheses based on stock UE3/UDK. Confirm them in
 
 ## First-person body and body IK
 
+Current plan, prior art and what's built: [research/14-vrik.md](../research/14-vrik.md). The
+IK math is in `src/core/ik` (unit-tested); the skeleton probe decides whether we drive the
+engine's `SkelControlLimb` or write the arm bones ourselves.
+
 - **Base: MassFPS (LE1)** ([research/11](../research/11-massfps.md)), which we're allowed to fold
   into our mod. It already provides:
   - first-person camera modes (`bFirstPerson`, `SFXCameraSetup` offsets at head height)

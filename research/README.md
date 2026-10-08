@@ -18,6 +18,7 @@ and what is still unverified. The [docs/](../docs) folder holds the conclusions.
 | [11-massfps.md](11-massfps.md) | MassFPS (LE1 first-person camera mod): permissions, how it works, what to keep or change for VR | 2026-10-07 |
 | [12-vr-frameworks-survey.md](12-vr-frameworks-survey.md) | Any framework to build on instead? UEVR, VorpX, Geo-11/3Dmigoto, **vrframework** (MIT guide + core) | 2026-10-07 |
 | [13-existing-me-vr-mods.md](13-existing-me-vr-mods.md) | **Prior art:** Halcyon's GPL MassEffect1/2/3-VR (working stereo for all three games) and the closed ME2VR (motion controls). What they teach us | 2026-10-07 |
+| [14-vrik.md](14-vrik.md) | VRIK: arms and body following the controllers. Routes in UE3-LE (drive SkelControlLimb vs write bones), what's built, the plan | 2026-10-08 |
 | [sources.md](sources.md) | Every URL consulted | 2026-10-07 |
 
 ## Conventions

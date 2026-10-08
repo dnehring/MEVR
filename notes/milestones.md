@@ -308,6 +308,15 @@ real issues, all fixed in `6a5f283`:
   view. That leaves views one frame ahead until the game thread becomes the slower side. A real
   fix needs a frame identity from the render thread.
 
+## M6 groundwork: VRIK and hand aim (built 2026-10-08, untested in game)
+
+The user chose to keep our own project (VRIK isn't in Halcyon's scope). Built:
+- `core/ik`: unit-tested body, shoulder and arm math.
+- `game/SkeletonProbe`: logs Shepard's skeleton and existing IK controls on the next launch.
+- Hand aim (`,`), through a new `UObject::CallFunction` hook.
+
+Plan: [research/14](../research/14-vrik.md).
+
 ### Still to do
 
 - Retest with the fixes. Check image correctness (colors and brightness vs the monitor).
