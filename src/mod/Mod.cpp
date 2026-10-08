@@ -41,8 +41,13 @@ bool gSceneViewHooked = false;
 bool gGamepadHooked = false;  // XInput hooks (once the game has loaded an XInput DLL)
 bool gCallFunctionHooked = false;  // installed the first time hand aim is turned on
 bool gHandAimAvailable = false;
+// `]` is the one switch a player needs: once a VR session runs, every VR feature comes on with
+// it (stereo, 6DOF, hand aim, arm IK), and turning VR off (or quitting from the headset) turns
+// them off. The headset sleeping doesn't count as off. Within a session the feature keys switch
+// each one individually (A/B tests, isolating a problem); the next `]` on resets them.
+bool gVrFeatures = false;
 
-mevr::Hotkey gVrToggleKey{VK_OEM_6};    // ]  VR on / off
+mevr::Hotkey gVrToggleKey{VK_OEM_6};    // ]  VR on / off, with all VR features
 mevr::Hotkey gModeToggleKey{VK_OEM_4};  // [  head-tracked / screen
 mevr::Hotkey gHeadPathKey{VK_OEM_5};    // \  head path: render / camera / off (A/B)
 mevr::Hotkey gHeadSimKey{VK_OEM_7};     // '  desktop head simulator: sweep / nod / off
@@ -146,6 +151,33 @@ void TryInstallScriptHooks() {
     gHooked = true;
 }
 
+// Every script call passes through the CallFunction hook, so it only goes in once hand aim is
+// first turned on (game thread, outside any script call; handlers already registered).
+void EnsureCallFunctionHook() {
+    using namespace mevr;
+    if (!gCallFunctionHooked) {
+        gCallFunctionHooked = engine::call_function::Install(*gInit);
+        if (!gCallFunctionHooked) {
+            log::Warn("hand aim: script hook failed; only native aim queries are redirected");
+        }
+    }
+}
+
+void SetVrFeatures(bool on) {
+    using namespace mevr;
+    gVrFeatures = on;
+    log::Info("VR features {}", on ? "on: stereo, 6DOF, hand aim, arm IK (; / , . switch each)" : "off");
+    game::head_tracking::SetStereo(on ? game::head_tracking::Stereo::AlternateEye : game::head_tracking::Stereo::Mono);
+    game::head_tracking::SetPositional(on);
+    game::arm_ik::SetEnabled(on);
+    if (gHandAimAvailable) {
+        if (on) {
+            EnsureCallFunctionHook();
+        }
+        game::hand_aim::SetEnabled(on);
+    }
+}
+
 void PollHotkeys() {
     using namespace mevr;
     if (gVrToggleKey.Pressed()) {
@@ -185,12 +217,10 @@ void PollHotkeys() {
             log::Info(",: hand aim unavailable");
         } else {
             bool const on = game::hand_aim::Toggle();
-            // Every script call would pass through this hook, so it only goes in once someone
-            // uses hand aim (game thread, outside any script call; handlers already registered).
-            if (on && !gCallFunctionHooked) {
-                gCallFunctionHooked = engine::call_function::Install(*gInit);
+            if (on) {
+                EnsureCallFunctionHook();
             }
-            log::Info(",: hand aim {}{}", on ? "on" : "off", on && !gCallFunctionHooked ? " (script hook failed: native calls only)" : "");
+            log::Info(",: hand aim {}", on ? "on" : "off");
         }
     }
 }
@@ -260,6 +290,11 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         }
     }
     if (gHooked) {
+        if (!gVrFeatures && vr::output::Running()) {
+            SetVrFeatures(true);
+        } else if (gVrFeatures && !vr::output::IsEnabled()) {
+            SetVrFeatures(false);
+        }
         // Cutscenes and conversations cut between cameras, and menus have no world to look
         // around in: show them on the virtual screen (the chosen mode returns afterwards).
         game::head_tracking::RefreshGameMode();
@@ -315,6 +350,7 @@ MEVR_MOD_API void MevrModShutdown() {
     engine::call_function::ClearHandlers();
     gCallFunctionHooked = false;
     gHandAimAvailable = false;
+    gVrFeatures = false;
     game::hand_aim::Shutdown();
     game::arm_ik::Shutdown();
     game::skeleton_probe::Shutdown();

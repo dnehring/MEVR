@@ -249,6 +249,10 @@ bool Toggle() {
     return gEnabled;
 }
 
+void SetEnabled(bool on) {
+    gEnabled = on;
+}
+
 void LogStats() {
     unsigned const frames = gDrivenFrames.exchange(0);
     if (gEnabled) {

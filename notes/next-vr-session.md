@@ -7,18 +7,20 @@ you saw and roughly when.
 Already done for you: `tools/vr-game-settings.ps1` turned VSync, motion blur and film grain off
 and HDR to SDR in ME1's GamerSettings.ini (backup kept; `-Restore` undoes it).
 
-Keys:
+Keys: `]` is the only one you need. It turns VR on and off, and the VR features come with it:
+once the headset session starts, stereo, 6DOF, hand aim and arm IK are all on, and VR off
+turns them all off. The rest are for testing:
 
 | Key | What it does |
 |-----|--------------|
-| `]` | VR on / off |
+| `]` | VR on / off, with all VR features (each `]` on resets the four keys below `'`) |
 | `[` | head-tracked / screen mode |
 | `\` | head path: render / camera / off |
 | `'` | desktop head simulator: sweep / nod / off |
-| `;` | stereo: mono / alternate-eye |
-| `/` | 6DOF on / off |
-| `,` | hand aim on / off: shots follow the right controller (on foot) |
-| `.` | arm IK on / off: Shepard's arms follow the controllers (if the game's IK controls exist) |
+| `;` | stereo off / on (alternate-eye) |
+| `/` | 6DOF off / on |
+| `,` | hand aim off / on: shots follow the right controller (on foot) |
+| `.` | arm IK off / on: Shepard's arms follow the controllers (if the game's IK controls exist) |
 | `=` | conversations, cutscenes, menus and galaxy map on the virtual screen: on (default) / off |
 
 ## A. Desktop only (no headset needed, about 2 minutes)
@@ -49,12 +51,16 @@ What Claude looks for in the log:
 
 ## B. In the headset (head-tracked mode, the default)
 
-1. Start SteamVR / Steam Link first, then the game.
+1. Start SteamVR / Steam Link first, then the game, and load a save. Everything comes on with
+   the headset session (the log says `VR features on`).
 2. **Nod test:** look slowly up and down, then side to side. Is the vertical judder gone, better
    or unchanged? (The default path is now render-only.)
-3. **A/B:** press `\` to compare render vs camera path stutter. Say which is smoother. Return
+3. **If anything feels wrong** (flicker, ghosting, wrong scale, nausea), switch features off one
+   at a time to find which: `;` stereo first, then `/` 6DOF. Note which one made the
+   difference, then press it again to turn it back on.
+4. **A/B:** press `\` to compare render vs camera path stutter. Say which is smoother. Return
    to render.
-4. **Touch controllers:**
+5. **Touch controllers:**
    - left stick: move;
    - right stick: turn;
    - triggers: aim / fire;
@@ -64,22 +70,25 @@ What Claude looks for in the log:
 
    Does pushing forward move where you look? It should only do so on foot; check that the
    dialogue wheel isn't rotated.
-5. **6DOF:** press `/` and lean or crouch. Does the view move naturally, at a believable scale?
-6. **Stereo:** press `;`. Is there depth? Comfortable, or ghosting and flicker on movement? Is
-   the scale right? Press `;` again to compare with mono.
-7. **Hand aim:** press `,`, draw a weapon and fire at something while pointing the right
-   controller elsewhere than your head. Do shots land where the controller points? (There's no
-   reticle yet, so watch the impacts.)
-8. **Arm IK:** press `.` and wave the controllers. Hands are placed relative to Shepard's head
-   and facing, so this works in the normal third-person view: do Shepard's arms follow your
-   hands? (If the log says `route 1 unavailable`, nothing happens yet; that's expected.)
-9. **Conversations:** talk to someone. After about a third of a second the view should switch to
+6. **6DOF:** lean or crouch. Does the view move naturally, at a believable scale? (`/` compares
+   with it off.)
+7. **Stereo:** is there depth? Comfortable, or ghosting and flicker on movement? Is the scale
+   right? (`;` compares with mono.)
+8. **Hand aim:** draw a weapon and fire at something while pointing the right controller
+   elsewhere than your head. Do shots land where the controller points? (There's no reticle
+   yet, so watch the impacts; `,` compares with the game's aim.)
+9. **Arm IK:** wave the controllers. Hands are placed relative to Shepard's head and facing, so
+   this works in the normal third-person view: do Shepard's arms follow your hands? (If the log
+   says `route 1 unavailable`, nothing happens yet; that's expected. `.` compares.)
+10. **Conversations:** talk to someone. After about a third of a second the view should switch to
    the flat virtual screen, placed in front of wherever you're facing, and go back to
    head-tracked afterwards. Press `=` to compare with head-tracked
    conversations.
-10. Look at a reflective floor (e.g. the Normandy) while turning. Do reflections still jerk?
-11. Known: on the render path the crosshair no longer follows your head. Aim is still the game
-   camera's.
+11. Look at a reflective floor (e.g. the Normandy) while turning. Do reflections still jerk?
+12. Known: on the render path the crosshair no longer follows your head. Aim is still the game
+    camera's.
+13. If the game crashes, say what you were doing. Next launch, switch the features off with
+    `;` `/` `,` `.` right after the session starts and bring them back one at a time.
 
 What Claude looks for:
 - queue depth all at 1;

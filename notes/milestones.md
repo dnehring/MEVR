@@ -324,6 +324,10 @@ Also built (2026-10-08, user away):
   LE2/LE3 CalcSceneView and Draw addresses are in place; the gameplay call site is taken from
   inside Draw and logged so it can be pinned.
 
+Controls simplified (2026-10-08, the user's call): `]` alone gives the full VR experience. Once a
+headset session runs, stereo, 6DOF, hand aim and arm IK all come on; VR off turns them off. The
+per-feature keys stay as in-session overrides for A/B tests and crash isolation.
+
 ### Still to do
 
 - Retest with the fixes. Check image correctness (colors and brightness vs the monitor).

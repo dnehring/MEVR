@@ -18,7 +18,7 @@
 //     boom and aim follow the head.
 //   Off: frames are still tagged, so the view box follows the head but its picture doesn't.
 //
-// Render path extras (off by default, so A/B tests stay clean):
+// Render path extras (on with each VR session, see mod/Mod.cpp; off without one):
 //   6DOF (`/`): head position moves the rendered view too (LOCAL space, 1 m = 100 units).
 //   Alternate-eye stereo (`;`): frames alternate between the left and right eye, each rendered
 //     half an IPD to its side and tagged with that eye's pose; the output keeps each eye's latest
@@ -49,8 +49,10 @@ void OnTickEnd();
 Path CyclePath();
 char const* Name(Path path);
 Stereo CycleStereo();
+void SetStereo(Stereo stereo);
 char const* Name(Stereo stereo);
 bool TogglePositional();
+void SetPositional(bool on);
 
 // Head yaw (Unreal units) the rendered view is turned by beyond the game camera: non-zero only on
 // the render path during on-foot gameplay (not conversations, menus, wheels, galaxy map or

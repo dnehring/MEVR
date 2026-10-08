@@ -81,6 +81,10 @@ bool Toggle() {
     return gEnabled;
 }
 
+void SetEnabled(bool on) {
+    gEnabled = on;
+}
+
 void LogStats() {
     if (gGetAdjustedAimFor == nullptr) {
         return;

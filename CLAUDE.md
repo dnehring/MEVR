@@ -58,11 +58,13 @@ switching frameworks.
   closed and a redeploy. Release builds use `-DMEVR_HOT_RELOAD=OFF` (one ASI; e.g. `build-mono/`).
 - Script-level hooks must wait for the script packages to load (they aren't there at attach).
   `Mod.cpp` retries every second before installing the ProcessEvent hook.
-- Dev hotkeys: not F-keys (bound in game), not backtick (UE console). `]` toggles VR (the XR
-  session) on and off; `[` switches between head-tracked and screen mode; `\` cycles the head
-  path (render-only / camera / off); `'` cycles the desktop head simulator (sweep / nod / off,
-  used while VR isn't head-tracked); `;` toggles alternate-eye stereo and `/` toggles 6DOF (both
-  render path, default off); `,` toggles hand aim (shots follow the right controller, on foot); `.` toggles VRIK arm IK;
+- Hotkeys: not F-keys (bound in game), not backtick (UE console). `]` toggles VR (the XR
+  session) on and off, and with it every VR feature: once a session runs, alternate-eye stereo,
+  6DOF, hand aim and arm IK all come on; VR off turns them off. The rest are dev overrides:
+  `[` switches between head-tracked and screen mode; `\` cycles the head path (render-only /
+  camera / off); `'` cycles the desktop head simulator (sweep / nod / off, used while VR isn't
+  head-tracked); within a session `;` (stereo), `/` (6DOF), `,` (hand aim: shots follow the right
+  controller, on foot) and `.` (VRIK arm IK) switch one feature each, until the next `]` on;
   `=` toggles the automatic virtual screen for conversations, cutscenes and menus (default on).
 - Motion controllers reach the game as Xbox pad 0 (`game/GamepadBridge`, XInput hooks). Mapping
   is in `game/GamepadMapping` (unit-tested).

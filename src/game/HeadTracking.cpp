@@ -384,6 +384,10 @@ Stereo CycleStereo() {
     return gStereo;
 }
 
+void SetStereo(Stereo stereo) {
+    gStereo = stereo;
+}
+
 char const* Name(Stereo stereo) {
     return stereo == Stereo::AlternateEye ? "alternate-eye" : "mono";
 }
@@ -391,6 +395,10 @@ char const* Name(Stereo stereo) {
 bool TogglePositional() {
     gPositional = !gPositional;
     return gPositional;
+}
+
+void SetPositional(bool on) {
+    gPositional = on;
 }
 
 int RenderYawOffset() {

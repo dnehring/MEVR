@@ -32,6 +32,8 @@ void SetScreenOverride(bool screen);
 
 // True while the game camera should follow the head: VR running in HeadTracked mode.
 bool WantsHeadTracking();
+// True while VR is on and its headset session is running, in either mode. Any thread.
+bool Running();
 // True while the headset is actually showing our frames (session VISIBLE or FOCUSED). When the
 // headset is off or the system menu is up, the runtime throttles frames, and the game thread
 // shouldn't wait for them.

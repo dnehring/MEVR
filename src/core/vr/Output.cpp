@@ -357,6 +357,10 @@ bool WantsHeadTracking() {
     return gEnabled && gSessionRunning && EffectiveMode() == Mode::HeadTracked;
 }
 
+bool Running() {
+    return gEnabled && gSessionRunning;
+}
+
 bool ShowsFrames() {
     return gSessionVisible;
 }
