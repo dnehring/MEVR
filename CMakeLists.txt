@@ -98,6 +98,8 @@ set(MEVR_MOD_SOURCES
     src/core/d3d11/Blit.hpp
     src/core/ik/ArmPose.cpp
     src/core/ik/ArmPose.hpp
+    src/core/ik/HandFrame.cpp
+    src/core/ik/HandFrame.hpp
     src/core/ik/BoneNames.cpp
     src/core/ik/BoneNames.hpp
     src/core/ik/Ik.cpp
@@ -142,6 +144,8 @@ set(MEVR_MOD_SOURCES
     src/game/GamepadMapping.cpp
     src/game/GamepadMapping.hpp
     src/game/HandAim.cpp
+    src/game/HandCalibration.cpp
+    src/game/HandCalibration.hpp
     src/game/HandAim.hpp
     src/game/HandTargets.cpp
     src/game/HandTargets.hpp
@@ -234,6 +238,7 @@ if (MEVR_BUILD_TESTS)
     add_executable(mevr-tests
         tests/Main.cpp
         src/core/ik/ArmPose.cpp
+        src/core/ik/HandFrame.cpp
         src/core/ik/BoneNames.cpp
         src/core/ik/Ik.cpp
         src/core/ik/Rigid.cpp

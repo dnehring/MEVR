@@ -3,6 +3,7 @@
 
 #include "core/ik/ArmPose.hpp"
 #include "core/ik/BoneNames.hpp"
+#include "core/ik/HandFrame.hpp"
 #include "core/ik/Ik.hpp"
 #include "core/ik/Rigid.hpp"
 #include "core/vr/ViewSync.hpp"
@@ -728,6 +729,35 @@ void TestArmPose() {
 
 } // namespace
 
+void TestHandFrame() {
+    using namespace mevr::ik;
+    auto const same = [](Vec3 a, Vec3 b) { return Length(a - b) < 1e-6; };
+    // A hand bone whose axes are the anatomical ones: fingers +X, thumb side +Y.
+    auto const plain = AnatomyInHand({9.0, 0.0, 0.0}, {8.0, 2.0, 0.5}, {8.0, -2.0, 0.5});
+    CHECK(plain.has_value());
+    CHECK(same(Rotate(*plain, {1.0, 0.0, 0.0}), {1.0, 0.0, 0.0}));
+    CHECK(same(Rotate(*plain, {0.0, 1.0, 0.0}), {0.0, 1.0, 0.0}));
+    // The fingers follow where the grip points, the thumb side its up, with no trim.
+    Quat const grip = Normalize(Quat{0.1, -0.3, 0.2, 0.9});
+    Quat const hand = HandFromGrip(grip, Quat{}, *plain);
+    CHECK(same(Rotate(hand, {1.0, 0.0, 0.0}), Rotate(grip, {1.0, 0.0, 0.0})));
+    CHECK(same(Rotate(hand, {0.0, 1.0, 0.0}), Rotate(grip, {0.0, 0.0, 1.0})));
+    // A bone with other axes (fingers along -Z, thumb side +X): its fingers still follow the grip.
+    auto const turned = AnatomyInHand({0.0, 0.0, -9.0}, {2.0, 0.3, -8.0}, {-2.0, 0.3, -8.0});
+    CHECK(turned.has_value());
+    Quat const hand2 = HandFromGrip(grip, Quat{}, *turned);
+    CHECK(same(Rotate(hand2, {0.0, 0.0, -1.0}), Rotate(grip, {1.0, 0.0, 0.0})));
+    CHECK(same(Rotate(hand2, {1.0, 0.0, 0.0}), Rotate(grip, {0.0, 0.0, 1.0})));
+    // Degenerate fingers: no frame.
+    CHECK(!AnatomyInHand({0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, {-1.0, 0.0, 0.0}).has_value());
+    CHECK(!AnatomyInHand({9.0, 0.0, 0.0}, {9.0, 0.0, 0.0}, {8.0, 0.0, 0.0}).has_value());
+    // Trims: +pitch tilts the fingers down, +yaw turns them right (+Y), +roll the top to the right.
+    CHECK(Rotate(GripTrim(30.0, 0.0, 0.0), {1.0, 0.0, 0.0}).z < -0.4);
+    CHECK(Rotate(GripTrim(0.0, 30.0, 0.0), {1.0, 0.0, 0.0}).y > 0.4);
+    CHECK(Rotate(GripTrim(0.0, 0.0, 30.0), {0.0, 0.0, 1.0}).y > 0.4);
+    CHECK(same(Rotate(GripTrim(0.0, 0.0, 0.0), {1.0, 2.0, 3.0}), {1.0, 2.0, 3.0}));
+}
+
 int main() {
     TestBoneNames();
     TestIk();
@@ -735,6 +765,7 @@ int main() {
     TestOrientation();
     TestArmChains();
     TestArmPose();
+    TestHandFrame();
     TestViewSync();
     TestXrToUnreal();
     TestHeadSim();

@@ -3,6 +3,8 @@
 #include "core/Log.hpp"
 #include "core/ik/ArmPose.hpp"
 #include "core/ik/BoneNames.hpp"
+#include "core/ik/HandFrame.hpp"
+#include "game/HandCalibration.hpp"
 #include "engine/BonePose.hpp"
 #include "engine/GameAdapter.hpp"
 #include "engine/Objects.hpp"
@@ -48,6 +50,8 @@ struct SkeletonInfo {
     engine::skeleton::RefSkeleton bones;
     std::array<std::optional<ik::ArmChain>, 2> arms;
     int head = -1;
+    // Per hand: the middle, index and pinky finger base bones (-1: not found), for the hand frame.
+    std::array<std::array<int, 3>, 2> fingers{{{-1, -1, -1}, {-1, -1, -1}}};
 };
 std::optional<SkeletonInfo> gSkeleton;
 
@@ -60,9 +64,39 @@ struct LayoutCheck {
 };
 LayoutCheck gLayout;
 
-// VR: the hand bone's rotation relative to the controller grip, captured when a hand starts
-// following its controller, so the hand turns with the controller from its animated pose.
-std::array<std::optional<ik::Quat>, 2> gGripToHand;
+// VR: each hand's anatomical frame in its bone's own axes (core/ik/HandFrame), measured once per
+// skeleton from the finger bases, so a controller grip maps to the hand the same way every time.
+std::array<std::optional<ik::Quat>, 2> gAnatomy;
+std::array<bool, 2> gAnatomyTried{};
+
+// A hand's anatomical frame in its bone's axes, from the finger bases' positions relative to the
+// hand bone (rigid children, so any pose will do). Logged once per skeleton and hand.
+std::optional<ik::Quat> HandAnatomy(SkeletonInfo const& info, std::span<engine::skeleton::BoneAtom const> pose,
+    int side, int handBone) {
+    std::array<int, 3> const& fingers = info.fingers[side];
+    char const* const sideName = side == kLeft ? "left" : "right";
+    int const count = static_cast<int>(pose.size());
+    for (int bone : fingers) {
+        if (bone < 0 || bone >= count || handBone < 0 || handBone >= count) {
+            log::Warn("arm IK: {} hand: finger base bones not found; the hand keeps its animated rotation", sideName);
+            return std::nullopt;
+        }
+    }
+    ik::Transform const hand = engine::skeleton::ToTransform(pose[handBone]);
+    auto const local = [&](int bone) {
+        return ik::Rotate(ik::Conjugate(hand.rotation), engine::skeleton::ToTransform(pose[bone]).translation - hand.translation);
+    };
+    ik::Vec3 const middle = local(fingers[0]), index = local(fingers[1]), pinky = local(fingers[2]);
+    auto anatomy = ik::AnatomyInHand(middle, index, pinky);
+    if (!anatomy) {
+        log::Warn("arm IK: {} hand: the finger bases don't span a hand frame; the hand keeps its animated rotation", sideName);
+        return std::nullopt;
+    }
+    log::Info("arm IK: {} hand frame from {}, {}, {} (local middle ({:.1f}, {:.1f}, {:.1f}), index ({:.1f}, {:.1f}, {:.1f}), "
+              "pinky ({:.1f}, {:.1f}, {:.1f}))", sideName, info.bones.names[fingers[0]], info.bones.names[fingers[1]],
+        info.bones.names[fingers[2]], middle.x, middle.y, middle.z, index.x, index.y, index.z, pinky.x, pinky.y, pinky.z);
+    return anatomy;
+}
 
 struct Body {
     APawn* pawn = nullptr;
@@ -123,7 +157,8 @@ SkeletonInfo const* Skeleton(USkeletalMeshComponent* mesh) {
     }
     gSkeleton.reset();
     gLayout = {};
-    gGripToHand = {};
+    gAnatomy = {};
+    gAnatomyTried = {};
     auto bones = engine::skeleton::ReadRefSkeleton(mesh);
     if (!bones) {
         return nullptr;
@@ -139,6 +174,18 @@ SkeletonInfo const* Skeleton(USkeletalMeshComponent* mesh) {
         if (ik::IsHeadBone(info.bones.names[i])) {
             info.head = i;
             break;
+        }
+    }
+    for (int side : {kLeft, kRight}) {
+        std::string const prefix = side == kLeft ? "Left" : "Right";
+        std::array<char const*, 3> const fingers{"MiddleFinger", "IndexFinger", "PinkFinger"};
+        for (std::size_t f = 0; f < fingers.size(); ++f) {
+            for (int i = 0; i < count; ++i) {
+                if (info.bones.names[i] == prefix + fingers[f]) {
+                    info.fingers[side][f] = i;
+                    break;
+                }
+            }
         }
     }
     log::Info("arm IK: skeleton {} ({} bones): left arm {}; right arm {}; head {}", engine::FullName(mesh->SkeletalMesh), count,
@@ -218,7 +265,6 @@ std::optional<ik::BodyFrame> BodyAxes(APawn const* pawn, ik::Affine const& world
 
 void Stop(std::string status) {
     engine::bone_pose::Clear();
-    gGripToHand = {};
     gStatus = std::move(status);
 }
 
@@ -230,6 +276,7 @@ void LogStatusChange() {
 }
 
 void Drive() {
+    hand_calibration::Refresh();
     if (!engine::bone_pose::Installed()) {
         return Stop("writeback hook not installed (see the log above)");
     }
@@ -302,7 +349,6 @@ void Drive() {
         request.arms[kRight].target = engine::bone_pose::Target::Chest;
         request.arms[kRight].wrist = kDesktopWrist;
         driven = "right hand held in front of the chest (desktop test)";
-        gGripToHand = {};
     } else if (targets.source == hand_targets::Source::Controllers) {
         auto const componentRotation = ik::RotationOf(componentToWorld);
         std::span<engine::skeleton::BoneAtom const> const pose = engine::skeleton::SpaceBases(mesh);
@@ -310,21 +356,19 @@ void Drive() {
             hand_targets::Hand const& hand = targets.hands[side];
             auto const& chain = arms[side];
             if (!hand.valid || !chain) {
-                gGripToHand[side].reset();
                 continue;
             }
             engine::bone_pose::Arm& arm = request.arms[side];
             arm.target = engine::bone_pose::Target::Component;
             arm.wrist = ik::TransformPoint(*worldToComponent, {hand.position.x, hand.position.y, hand.position.z});
-            if (hand.hasRotation && componentRotation) {
+            if (!gAnatomyTried[side]) {
+                gAnatomyTried[side] = true;
+                gAnatomy[side] = HandAnatomy(*info, pose, side, chain->hand);
+            }
+            if (hand.hasRotation && componentRotation && gAnatomy[side]) {
                 ik::Quat const grip = ik::Normalize(ik::Conjugate(*componentRotation) * hand.rotation);
-                if (!gGripToHand[side]) {
-                    // Last frame's hand: the animated one, since this hand wasn't driven then.
-                    ik::Quat const animated = engine::skeleton::ToTransform(pose[chain->hand]).rotation;
-                    gGripToHand[side] = ik::Normalize(ik::Conjugate(grip) * animated);
-                }
                 arm.hasRotation = true;
-                arm.rotation = ik::Normalize(grip * *gGripToHand[side]);
+                arm.rotation = ik::HandFromGrip(grip, hand_calibration::Trim(side), *gAnatomy[side]);
             }
             driven += driven.empty() ? kSideNames[side] : std::string(" and ") + kSideNames[side];
         }
@@ -382,7 +426,8 @@ void Shutdown() {
     gSource = hand_targets::Source::None;
     gSkeleton.reset();
     gLayout = {};
-    gGripToHand = {};
+    gAnatomy = {};
+    gAnatomyTried = {};
 }
 
 } // namespace mevr::game::arm_ik
