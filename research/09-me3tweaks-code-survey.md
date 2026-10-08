@@ -188,6 +188,18 @@ simdutf `cd79a25`) and `reference/LEBinkProxy` (`1c435d8`), 2026-10-07. Paths ar
 - **Third-party code inside LExASIs:** spdlog (MIT), simdutf (MIT/Apache-2.0), fpng (Unlicense),
   nlohmann json (MIT), Discord Social SDK notices.
 
+## LExSDKv2 branches (checked 2026-10-07)
+
+| Branch | Head | How addresses are found | Notes |
+|--------|------|-------------------------|-------|
+| `main` | `000d7c3` (2026-03-30) | **Byte patterns** (`*_RIP` via `FromInstrRelative`, `*_PHOOK` via `FromPostHook`) | Only extra commit: adds LE3 `BUILTIN_CALCSCENEVIEW_RVA` (`0x6cffd0`) |
+| `RVA` | `6bd0580` (2026-07-12) | **Hardcoded RVAs** (`*_RVA`) for exe 2.0.0.48602 | Actively maintained. Contains LExASIs' pin `3885be1` plus later fixes (TMap, FArchive layout, LE3 shader decomp) |
+
+**We pin `RVA`** (`.gitmodules` `branch = RVA`, submodule at `6bd0580`). It matches what ME3Tweaks
+builds against, and our exes are 2.0.0.48602. The plugin checks the exe version at attach and
+won't hook on a mismatch. The LE3 `CalcSceneView` RVA from `main` (`0x6cffd0`) is worth carrying
+over when we reach LE3. **LE1 still has no known `CalcSceneView` address.**
+
 ## Issues spotted (code reading only)
 
 1. **Hardcoded RVAs** only match exe build 2.0.0.48602. Unverified against our install.

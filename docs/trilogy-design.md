@@ -48,6 +48,14 @@ and the LExASIs survey ([research/09](../research/09-me3tweaks-code-survey.md)).
    moves the gun, never the head.
 7. **Hardware truth:** a desktop or offline test passing is never reported as working in the headset.
 
+## First-person base per game
+
+| Game | Script-side first-person base | Status |
+|------|-------------------------------|--------|
+| LE1 | MassFPS (LE1) 1.2.2.1, fully permissive | Absorb ([research/11](../research/11-massfps.md)) |
+| LE2 | MassFPS (LE2) | Exists; **permissions not yet checked** |
+| LE3 | MassFPS (LE3) "coming soon" as of 2023 | Unknown; may need our own |
+
 ## Mechanics: per-game differences and the unified VR treatment
 
 Game-mechanic rows marked **[verify]** come from memory and should be checked in-game.

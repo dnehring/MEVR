@@ -20,11 +20,27 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
 - `docs/`: plans and decisions. Keep them consistent with `research/`.
 - `reference/`: read-only third-party clones (gitignored). Recreate with `tools/fetch-references.ps1`.
 - `notes/game-inventory.md`: exe versions and hashes from `tools/inventory-game.ps1`. Re-run after
-  game updates.
+  game updates. All three exes are 2.0.0.48602 (the build LExSDKv2's RVAs target).
+- `mods/`: raw mod downloads (gitignored). Unpack `.m3m` merge mods with `tools/extract-m3m.ps1`.
+  The scripts we build on live in `src/script/` (e.g. `src/script/le1/massfps-base/`, MassFPS by
+  Aphar, fully permissive).
 - Game install: Steam app 1328670, currently `C:\Program Files (x86)\Steam\steamapps\common\Mass Effect Legendary Edition`.
 - Dev machine: RTX 4090, Quest via the Oculus OpenXR runtime, VS 2022 Build Tools (no IDE), CMake.
 
+## Build
+
+- Configure: `cmake -S . -B build -G "Visual Studio 17 2022" -A x64`. Build:
+  `cmake --build build --config Release --target MEVR-LE1`, producing `build/Release/LE1MEVR.asi`.
+- Deploy: `tools/deploy-asi.ps1 -Game LE1` (needs the ME3MM ASI loader). The log is at
+  `<Win64>/Logs/LE1MEVR.log` or `%LOCALAPPDATA%/MEVR/`.
+- Our targets build with `/W4 /WX /permissive`. The SDK's generated code emits warnings
+  (C4315, C4789) that aren't ours.
+- The LExSDKv2 submodule tracks the `RVA` branch (hardcoded RVAs for 2.0.0.48602). The plugin
+  fails closed on any other exe version.
+
 ## Gotchas
+
+- Don't `cd` in Bash tool calls; it moves the session's working directory. Use absolute paths.
 
 - Windows PowerShell 5.1 turns native stderr (e.g. git progress) into errors under
   `$ErrorActionPreference = 'Stop'`. Check `$LASTEXITCODE` instead.

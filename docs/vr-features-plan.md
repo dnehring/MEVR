@@ -5,6 +5,8 @@ Items marked **[verify]** are hypotheses based on stock UE3/UDK. Confirm them in
 
 ## Camera and stereo (M1–M4)
 
+- **First-person base camera:** MassFPS's script-side camera modes put the game camera at
+  Shepard's eyes. Our ASI then only *adds* the HMD pose on top.
 - **Camera hook:** UE3 builds each frame's view in native `ULocalPlayer::CalcSceneView`, after
   script-side `PlayerController.GetPlayerViewPoint` and `Camera.UpdateCamera`. Override the
   rotation and location with the HMD pose there, and swap in OpenXR's asymmetric per-eye FOV
@@ -22,9 +24,20 @@ Items marked **[verify]** are hypotheses based on stock UE3/UDK. Confirm them in
 
 ## First-person body and body IK
 
-- ME is third-person, so Shepard's full body already exists. Put the camera at the head bone and
-  hide the head. **[verify]** Shepard's head is a separate mesh component (for the custom face),
-  which would make hiding it trivial. Fallback: UE3 `SkeletalMeshComponent.HideBoneByName`.
+- **Base: MassFPS (LE1)** ([research/11](../research/11-massfps.md)), which we're allowed to fold
+  into our mod. It already provides:
+  - first-person camera modes (`bFirstPerson`, `SFXCameraSetup` offsets at head height)
+  - head hiding (the head is separate components)
+  - near-clip pull-in
+  - camera shake and FOV changes removed
+  - movement relative to the PlayerController's facing
+  - first-person cinematic transitions
+- **VR changes to MassFPS:**
+  - Strip all camera roll (cover lean, sprint wobble, interpolated roll) and the cover-peek
+    camera offsets.
+  - Keep the body visible in every gameplay mode, not just combat.
+  - Replace the wireframe-head trick. 6DOF eyes can leave the head volume, so hide the head
+    fully for the owner (`HideBoneByName` or SetOwnerNoSee without wireframe).
 - **Arms:** UE3 AnimTrees include **`SkelControlLimb`**, a built-in two-bone IK node with
   `EffectorLocation` and `JointTargetLocation`. Add one per arm to Shepard's AnimTree in LEX, then
   write each controller's pose into `EffectorLocation` from the plugin every frame. That gives

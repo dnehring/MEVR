@@ -1,0 +1,4 @@
+[submodule "external/LExSDKv2"]
+	path = external/LExSDKv2
+	url = https://github.com/llamathings/LExSDKv2.git
+	branch = RVA

@@ -21,6 +21,7 @@ That decides what we can borrow. Raw data: [research/06-repo-licenses.md](../res
 
 | Project | License | Role for us |
 |---------|---------|-------------|
+| [MassFPS (LE1)](https://www.nexusmods.com/masseffectlegendaryedition/mods/1731) (Aphar) | "Do whatever you want … incorporating its modifications into your own mod", no credit needed | **Script-side code source.** First-person camera modes and offsets, head hiding, controller-relative movement. We credit Aphar anyway. Exception: its bundled LE1 Community Patch `CombatStorm.Initialize` variant. See [research/11](../research/11-massfps.md) |
 | [REFramework](https://github.com/praydog/REFramework) | MIT | **Code source.** Present hook, D3D11 eye textures and swapchain copy, OpenXR runtime abstraction (`src/D3D11Hook.*`, `src/mods/vr/D3D11Component.*`, `runtimes/`). Not its overlay, which is OpenVR-only. Fix the 7 bugs listed in [research/10](../research/10-vr-code-survey.md) when lifting |
 | [Overlord](https://github.com/Aeka0/Overlord) | GPL-3.0 | **Design reference.** Runtime/gameplay separation, isolated per-eye state, cylinder UI layers, controller grip calibration (Quest Touch over SteamVR and Virtual Desktop), data-driven weapon recipes, holsters, reload arbitration |
 | TF2VR (CircuitLord) | Closed | **Feel reference.** Reload choreography, two-hand handling, comfort. Learned by playing |

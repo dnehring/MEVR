@@ -35,10 +35,13 @@ install folder → `H:\SteamLibrary` (ME LE is about 120 GB; H: has 184 GB free)
    works and generates config files.
 2. **Make a vanilla backup** in ME3Tweaks Mod Manager before installing anything.
 3. Install the ASI loader through Mod Manager (Tools → ASI Mod Manager). That installs LEBinkProxy.
+   Then `tools/deploy-asi.ps1` can copy our plugin in.
 4. Run `tools/inventory-game.ps1` to record exe versions and hashes in `notes/`. **Check that
    `MassEffect1.exe` is FileVersion 2.0.0.48602.** LExSDKv2 hardcodes engine addresses for that
    build, and a mismatch aborts the game at plugin attach ([research/09](../research/09-me3tweaks-code-survey.md)).
-5. Open LE1's startup package and `SFXGame` in Legendary Explorer to start verifying the hypotheses
+5. ~~Download MassFPS (LE1)~~. **Done 2026-10-07:** downloaded to `mods/` and extracted with
+   `tools/extract-m3m.ps1` into `src/script/le1/massfps-base/` ([research/11](../research/11-massfps.md)).
+6. Open LE1's startup package and `SFXGame` in Legendary Explorer to start verifying the hypotheses
    in [vr-features-plan.md](vr-features-plan.md).
 
 ## Homework while you wait: play Overlord and TF2VR with a notebook

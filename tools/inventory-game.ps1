@@ -5,26 +5,11 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$AppId = '1328670'
-
-function Find-GameRoot {
-    $steam = (Get-ItemProperty 'HKCU:\Software\Valve\Steam').SteamPath -replace '/', '\'
-    $vdf = Join-Path $steam 'steamapps\libraryfolders.vdf'
-    $libs = @($steam) + (Select-String -Path $vdf -Pattern '"path"\s+"([^"]+)"' |
-        ForEach-Object { $_.Matches[0].Groups[1].Value -replace '\\\\', '\' })
-    foreach ($lib in $libs | Select-Object -Unique) {
-        $manifest = Join-Path $lib "steamapps\appmanifest_$AppId.acf"
-        if (Test-Path $manifest) {
-            $dir = (Select-String -Path $manifest -Pattern '"installdir"\s+"([^"]+)"').Matches[0].Groups[1].Value
-            return [pscustomobject]@{ Root = Join-Path $lib "steamapps\common\$dir"; Manifest = $manifest }
-        }
-    }
-    throw "Steam app $AppId not found in any library"
-}
+. "$PSScriptRoot\common.ps1"
 
 $manifest = $null
 if (-not $GameRoot) {
-    $found = Find-GameRoot
+    $found = Find-MELEInstall
     $GameRoot = $found.Root
     $manifest = $found.Manifest
 }
@@ -53,7 +38,10 @@ foreach ($g in 'ME1', 'ME2', 'ME3') {
     $asiDir = Join-Path $bin 'ASI'
     $asis = if (Test-Path $asiDir) { (Get-ChildItem $asiDir -Filter '*.asi' | ForEach-Object Name) -join ', ' } else { '' }
     if (-not $asis) { $asis = '(none)' }
-    $lines += "| $g | $($exe.Name) | $($exe.VersionInfo.FileVersion) | $($exe.Length) | ``$hash`` | $loader | $asis |"
+    # The FileVersion string reads "2.0.0.0"; the build number (e.g. 48602) only lives in the numeric parts.
+    $vi = $exe.VersionInfo
+    $ver = "$($vi.FileMajorPart).$($vi.FileMinorPart).$($vi.FileBuildPart).$($vi.FilePrivatePart)"
+    $lines += "| $g | $($exe.Name) | $ver | $($exe.Length) | ``$hash`` | $loader | $asis |"
 }
 
 $lines | Set-Content -Path $out -Encoding utf8

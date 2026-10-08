@@ -17,6 +17,12 @@
 - [LExSDKv2](https://github.com/llamathings/LExSDKv2)
 - [Legendary Explorer](https://github.com/ME3Tweaks/LegendaryExplorer)
 
+## MassFPS (first-person camera mod)
+- [MassFPS: First-Person Camera (LE1), Nexus 1731](https://www.nexusmods.com/masseffectlegendaryedition/mods/1731)
+- [MassFPS 1.2 code comments (Nexus article 106)](https://www.nexusmods.com/masseffectlegendaryedition/articles/106)
+- [GamePressure listing (LE1 v1.2.2)](https://www.gamepressure.com/download/mass-effect-legendary-edition-massfps-first-person-camera-le1-v1/z01482a)
+- [PC Gamer via Yahoo: first-person ME mod (LE2 release)](https://uk.news.yahoo.com/no-starfield-no-problem-turn-114017890.html)
+
 ## Titanfall 2 VR
 - [Road to VR](https://roadtovr.com/titanfall-2-vr-mod-circuitlord/)
 - [UploadVR](https://www.uploadvr.com/titanfall-2s-vr-mod-is-stellar-and-its-installer-is-the-best-thing-about-it/)

@@ -1,6 +1,9 @@
 # Third-party repos cloned for reading
 reference/
 
+# Raw mod downloads (extracted copies we use live under src/)
+mods/
+
 # Build output
 build/
 out/

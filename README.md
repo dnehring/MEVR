@@ -24,7 +24,7 @@ VR is a renderer-level feature, so it can't be ported in as content
 
 | #  | Milestone                                                 | Difficulty |
 |----|-----------------------------------------------------------|------------|
-| M0 | ASI loads in LE1, logs, draws an ImGui overlay            | Easy |
+| M0 | ASI loads in LE1, checks the exe version, hooks the engine tick, logs a heartbeat | Easy (**built**, awaiting in-game test) |
 | M1 | Plugin controls the game camera                           | Easy–medium |
 | M2 | Game mirrored onto a virtual screen in the headset        | Medium |
 | M3 | Head tracking drives the camera (mono)                    | Medium |
@@ -33,16 +33,34 @@ VR is a renderer-level feature, so it can't be ported in as content
 | M6 | Motion-controlled weapons, body IK, holsters, reloads     | Hard |
 | M7 | Port to LE2 and LE3 (adapters plus data tables)           | Medium |
 
+## Build and deploy
+
+Requires VS 2022 (Build Tools is enough) and CMake ≥ 3.27. Clone with submodules
+(`git submodule update --init`), which brings in LExSDKv2 on its `RVA` branch.
+
+```
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+cmake --build build --config Release --target MEVR-LE1
+powershell -File tools/deploy-asi.ps1 -Game LE1
+```
+
+Output: `build/Release/LE1MEVR.asi`. Deploying needs the ME3Tweaks ASI loader installed first.
+The plugin logs to `<Win64>/Logs/LE1MEVR.log`, or `%LOCALAPPDATA%/MEVR/` if the game folder
+isn't writable. Undeploy with `tools/deploy-asi.ps1 -Remove`.
+
 ## Layout
 
 | Path         | What lives there |
 |--------------|------------------|
 | `docs/`      | Plans and decisions |
 | `research/`  | Sourced findings, hypotheses to verify, all URLs ([index](research/README.md)) |
-| `tools/`     | `inventory-game.ps1` (records the game install), `fetch-references.ps1` (clones reference repos) |
+| `tools/`     | `inventory-game.ps1` (records the game install), `deploy-asi.ps1` (copies the plugin into the game), `extract-m3m.ps1` (unpacks ME3MM merge mods), `fetch-references.ps1` (clones reference repos) |
 | `notes/`     | Generated inventories and reverse-engineering notes |
+| `external/`  | Git submodules: LExSDKv2 (`RVA` branch) |
 | `reference/` | Third-party repos for reading only (gitignored; recreate with `tools/fetch-references.ps1`) |
-| `src/`       | The plugin (from M0 on) |
+| `mods/`      | Raw mod downloads (gitignored) |
+| `src/core/`, `src/engine/`, `src/plugin/` | The native plugin: game-agnostic core, UE3/LExSDK bridge, loader entry point |
+| `src/script/` | UnrealScript side (e.g. `le1/massfps-base/`, MassFPS by Aphar) |
 
 ## Docs
 
