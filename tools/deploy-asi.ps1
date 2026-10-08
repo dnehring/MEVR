@@ -66,4 +66,16 @@ if ($hotReload) {
 } elseif (Test-Path $modPathFile) {
     Remove-Item $modPathFile -Confirm:$false
 }
+# LE1 runs Halcyon's renderer, which reads MELEVR.ini next to our ASI. Install its shipped defaults
+# once, with the first-run welcome marked seen: that welcome opens Halcyon's menu, which blocks all
+# game input until dismissed with Insert (unreachable from the headset).
+if ($Game -eq 'LE1') {
+    $ini = Join-Path $asiDir 'MELEVR.ini'
+    if (-not (Test-Path $ini)) {
+        $defaults = Join-Path $PSScriptRoot '..\src\halcyon\le1\runtime\MELEVR.ini'
+        $text = [IO.File]::ReadAllText($defaults) -replace '(?m)^firstRunDone = 0', 'firstRunDone = 1'
+        [IO.File]::WriteAllText($ini, $text)
+        Write-Output "Installed Halcyon's default MELEVR.ini (welcome marked seen)"
+    }
+}
 Write-Output "Log: $(Join-Path $bin "Logs\$name.log")"

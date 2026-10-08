@@ -3,6 +3,7 @@
 // for mapping the controllers into the world, and controller aim replacing Halcyon's head aim.
 
 #include "halcyon/le1/mevr_bridge.h"
+#include "halcyon/le1/vr_menu.h"
 
 #include "core/Log.hpp"
 #include "core/Window.hpp"
@@ -28,6 +29,11 @@ mevr::xr::Input::Target gTarget;  // set on Halcyon's XR thread before frames st
 bool gInputFailed = false;
 std::atomic<HWND> gGameWindow{nullptr};
 bool gWasFocused = false;  // Present thread
+// Both thumbsticks clicked and held opens or closes Halcyon's menu, which otherwise only the
+// Insert key does (a headset player can't reach the keyboard). Present thread.
+constexpr std::uint64_t kMenuChordMs = 400;
+std::uint64_t gChordSinceMs = 0;
+bool gChordFired = false;
 std::atomic<unsigned> gFrames{0};
 
 std::mutex gPadMutex;  // the latches and packet numbering below (XInput is polled from any thread)
@@ -81,6 +87,19 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
         mevr::window::BringToForeground(gGameWindow.load());
     }
     gWasFocused = focused;
+
+    bool const chord = state.left.stickClick && state.right.stickClick;
+    std::uint64_t const now = GetTickCount64();
+    if (!chord) {
+        gChordSinceMs = 0;
+        gChordFired = false;
+    } else if (gChordSinceMs == 0) {
+        gChordSinceMs = now;
+    } else if (!gChordFired && now - gChordSinceMs >= kMenuChordMs) {
+        gChordFired = true;
+        MELEVR::Menu::Toggle();
+        mevr::log::Info("halcyon bridge: both sticks held: Halcyon's menu {}", MELEVR::Menu::IsOpen() ? "opened" : "closed");
+    }
 }
 
 void SetGameWindow(HWND window) noexcept {
@@ -139,8 +158,11 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     }
     bool const realPad = result == ERROR_SUCCESS;
     std::lock_guard lock(gPadMutex);
-    XINPUT_GAMEPAD const pad = mevr::game::gamepad::Merge(realPad ? state->Gamepad : XINPUT_GAMEPAD{},
+    XINPUT_GAMEPAD pad = mevr::game::gamepad::Merge(realPad ? state->Gamepad : XINPUT_GAMEPAD{},
         mevr::game::gamepad::FromControllers(controllers, gLatches));
+    if (controllers.left.stickClick && controllers.right.stickClick) {
+        pad.wButtons &= ~(XINPUT_GAMEPAD_LEFT_THUMB | XINPUT_GAMEPAD_RIGHT_THUMB);  // the menu chord, not L3 + R3
+    }
     if (std::memcmp(&pad, &gLastPad, sizeof pad) != 0) {
         gLastPad = pad;
         ++gPacket;  // the game only re-reads a pad whose packet number changed
