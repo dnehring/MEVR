@@ -56,4 +56,40 @@ UnrealRotation ToUnrealRotation(XrQuaternionf const& orientation) {
     return {ToUnits(pitch), ToUnits(yaw), ToUnits(roll)};
 }
 
+namespace {
+
+double ToRadians(int units) {
+    return units * std::numbers::pi / 32768.0;
+}
+
+} // namespace
+
+UnrealVector ToUnrealOffset(XrVector3f const& meters, int yawUnits) {
+    Vec3 const local = ToUnrealAxes({meters.x, meters.y, meters.z});  // forward, right, up
+    double const yaw = ToRadians(yawUnits);
+    double const cy = std::cos(yaw);
+    double const sy = std::sin(yaw);
+    return {
+        (local.x * cy - local.y * sy) * kUnitsPerMeter,
+        (local.x * sy + local.y * cy) * kUnitsPerMeter,
+        local.z * kUnitsPerMeter,
+    };
+}
+
+XrPosef OffsetRight(XrPosef const& head, float rightMeters) {
+    Vec3 const offset = Rotate(head.orientation, {rightMeters, 0.0, 0.0});
+    XrPosef out = head;
+    out.position.x += static_cast<float>(offset.x);
+    out.position.y += static_cast<float>(offset.y);
+    out.position.z += static_cast<float>(offset.z);
+    return out;
+}
+
+UnrealVector RightAxis(UnrealRotation const& rotation) {
+    double const sp = std::sin(ToRadians(rotation.pitch)), cp = std::cos(ToRadians(rotation.pitch));
+    double const sy = std::sin(ToRadians(rotation.yaw)), cy = std::cos(ToRadians(rotation.yaw));
+    double const sr = std::sin(ToRadians(rotation.roll)), cr = std::cos(ToRadians(rotation.roll));
+    return {sr * sp * cy - cr * sy, sr * sp * sy + cr * cy, -sr * cp};
+}
+
 } // namespace mevr::engine

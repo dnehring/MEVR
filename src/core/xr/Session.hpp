@@ -41,6 +41,9 @@ public:
     void EndFrame(XrTime displayTime, std::span<XrCompositionLayerBaseHeader const* const> layers);
 
     bool HasInstance() const { return instance_ != XR_NULL_HANDLE; }
+    XrInstance Instance() const { return instance_; }
+    // Changes whenever the instance (and everything created from it) is destroyed.
+    std::uint32_t InstanceGeneration() const { return instanceGeneration_; }
     XrSession Handle() const { return session_; }
     XrSpace LocalSpace() const { return localSpace_; }
     // Head (VIEW space) pose in LOCAL space at `time`. False if orientation isn't valid.
@@ -73,6 +76,7 @@ private:
     bool loggedWaitingForHeadset_ = false;
     std::uint64_t nextSystemRetryMs_ = 0;
     std::uint32_t generation_ = 0;
+    std::uint32_t instanceGeneration_ = 0;
     unsigned errorsLogged_ = 0;
 };
 
@@ -94,9 +98,14 @@ public:
     std::uint32_t Generation() const { return generation_; }
     std::uint32_t Width() const { return width_; }
     std::uint32_t Height() const { return height_; }
+    DXGI_FORMAT Format() const { return format_; }
+    // Acquire's image as a texture (valid until Release), for CopyResource.
+    ID3D11Texture2D* AcquiredTexture() const { return acquired_.Get(); }
 
 private:
     Session* session_ = nullptr;
+    DXGI_FORMAT format_ = DXGI_FORMAT_UNKNOWN;
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> acquired_;
     XrSwapchain swapchain_ = XR_NULL_HANDLE;
     std::vector<Microsoft::WRL::ComPtr<ID3D11RenderTargetView>> views_;
     std::uint32_t width_ = 0;

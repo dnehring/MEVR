@@ -221,6 +221,7 @@ void Session::Shutdown() {
     if (instance_ != XR_NULL_HANDLE) {
         xrDestroyInstance(instance_);
         instance_ = XR_NULL_HANDLE;
+        ++instanceGeneration_;
     }
     system_ = XR_NULL_SYSTEM_ID;
     userExited_ = false;
@@ -385,6 +386,7 @@ bool ColorSwapchain::Create(Session& session, ID3D11Device* device, std::uint32_
     session_ = &session;
     width_ = width;
     height_ = height;
+    format_ = static_cast<DXGI_FORMAT>(format);
     generation_ = session.Generation();
     log::Info("color swapchain {}x{}, format {}, {} images", width, height, format, count);
     return true;
@@ -399,10 +401,12 @@ void ColorSwapchain::Destroy() {
 }
 
 void ColorSwapchain::Forget() {
+    acquired_.Reset();
     views_.clear();
     swapchain_ = XR_NULL_HANDLE;
     session_ = nullptr;
     width_ = height_ = 0;
+    format_ = DXGI_FORMAT_UNKNOWN;
 }
 
 bool ColorSwapchain::Matches(std::uint32_t width, std::uint32_t height, std::uint32_t generation) const {
@@ -421,10 +425,14 @@ ID3D11RenderTargetView* ColorSwapchain::Acquire() {
         Release();
         return nullptr;
     }
+    ComPtr<ID3D11Resource> resource;
+    views_[index]->GetResource(&resource);
+    resource.As(&acquired_);
     return views_[index].Get();
 }
 
 void ColorSwapchain::Release() {
+    acquired_.Reset();
     XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
     session_->Check(xrReleaseSwapchainImage(swapchain_, &release), "xrReleaseSwapchainImage");
 }

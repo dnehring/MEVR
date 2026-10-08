@@ -10,8 +10,10 @@
 #include "engine/Engine.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/SceneView.hpp"
+#include "game/GamepadBridge.hpp"
 #include "game/HeadSim.hpp"
 #include "game/HeadTracking.hpp"
+#include "game/Reflections.hpp"
 
 #include <LESDK/Headers.hpp>
 #include <LESDK/Init.hpp>
@@ -29,11 +31,14 @@ std::unique_ptr<::LESDK::Initializer> gInit;
 std::atomic<bool> gActive{false};  // read on the render thread too
 bool gHooked = false;  // ProcessEvent hook live (after the script packages loaded)
 bool gSceneViewHooked = false;
+bool gGamepadHooked = false;  // XInput hooks (once the game has loaded an XInput DLL)
 
 mevr::Hotkey gVrToggleKey{VK_OEM_6};    // ]  VR on / off
 mevr::Hotkey gModeToggleKey{VK_OEM_4};  // [  head-tracked / screen
 mevr::Hotkey gHeadPathKey{VK_OEM_5};    // \  head path: render / camera / off (A/B)
 mevr::Hotkey gHeadSimKey{VK_OEM_7};     // '  desktop head simulator: sweep / nod / off
+mevr::Hotkey gStereoKey{VK_OEM_1};      // ;  stereo: mono / alternate-eye (render path, headset)
+mevr::Hotkey gPositionKey{VK_OEM_2};    // /  6DOF: head position moves the view (render path)
 
 double gRetryTimer = kStartupRetrySeconds;  // first attempt on the first tick
 double gHeartbeatElapsed = 0.0;
@@ -78,6 +83,9 @@ void TryInstallScriptHooks() {
     if (!game::head_tracking::TryStartup(gSceneViewHooked)) {
         return;
     }
+    if (!game::reflections::TryStartup()) {
+        log::Warn("reflections: SceneCaptureComponent.SetFrameRate not found; reflection fix off");
+    }
     if (!engine::process_event::Install(*gInit)) {
         log::Error("ProcessEvent hook failed; mod inactive");
         gActive = false;
@@ -107,6 +115,12 @@ void PollHotkeys() {
         log::Info("': head simulator {}{}", game::head_sim::Name(game::head_sim::Cycle()),
             vr::output::WantsHeadTracking() ? " (ignored while VR is head-tracked)" : "");
     }
+    if (gStereoKey.Pressed()) {
+        log::Info(";: stereo {}", game::head_tracking::Name(game::head_tracking::CycleStereo()));
+    }
+    if (gPositionKey.Pressed()) {
+        log::Info("/: 6DOF {}", game::head_tracking::TogglePositional() ? "on" : "off");
+    }
 }
 
 void Heartbeat() {
@@ -117,8 +131,10 @@ void Heartbeat() {
         UObject::GObjObjects->Count(), gHooked ? "live" : "waiting for script packages");
     if (gHooked) {
         game::head_tracking::LogStats();
+        game::reflections::LogStats();
     }
     engine::scene_view::LogStats();
+    game::gamepad_bridge::LogStats();
     vr::output::LogStats();
     if (gLockstepWaits > 0) {
         log::Info("    lockstep: {} waits (game thread {}), avg {:.2f} ms, {} timeouts",
@@ -153,12 +169,20 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         return;
     }
     PollHotkeys();
-    if (!gHooked) {
+    if (!gHooked || !gGamepadHooked) {
         gRetryTimer += deltaSeconds;
         if (gRetryTimer >= kStartupRetrySeconds) {
             gRetryTimer = 0.0;
-            TryInstallScriptHooks();
+            if (!gHooked) {
+                TryInstallScriptHooks();
+            }
+            if (!gGamepadHooked && gActive) {
+                gGamepadHooked = game::gamepad_bridge::TryInstall(*gInit);
+            }
         }
+    }
+    if (gHooked) {
+        game::reflections::Tick(deltaSeconds);
     }
     WaitForThisFrameToPresent();
 
@@ -188,8 +212,13 @@ MEVR_MOD_API void MevrModShutdown() {
     if (gInit && gSceneViewHooked) {
         engine::scene_view::Uninstall(*gInit);
     }
+    if (gInit && gGamepadHooked) {
+        game::gamepad_bridge::Uninstall(*gInit);
+    }
     gHooked = false;
     gSceneViewHooked = false;
+    gGamepadHooked = false;
+    game::reflections::Shutdown();
     engine::process_event::ClearHandlers();
     game::head_tracking::Shutdown();
     gInit.reset();

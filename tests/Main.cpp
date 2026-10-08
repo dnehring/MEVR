@@ -2,6 +2,7 @@
 // runtime: `ctest -C Release --test-dir build`.
 
 #include "engine/XrToUnreal.hpp"
+#include "game/GamepadMapping.hpp"
 #include "game/HeadSim.hpp"
 
 #include <cmath>
@@ -87,11 +88,116 @@ void TestHeadSim() {
     CHECK(Near(nod.pitch, Units(20)) && Near(nod.yaw, 0) && Near(nod.roll, 0));
 }
 
+bool NearD(double actual, double expected, double tolerance = 1e-3) {
+    return std::abs(actual - expected) <= tolerance;
+}
+
+void TestOffsets() {
+    using namespace mevr::engine;
+    // 1 m forward in LOCAL (OpenXR -Z) is 100 units along the body's facing.
+    auto const ahead = ToUnrealOffset({0.0f, 0.0f, -1.0f}, 0);
+    CHECK(NearD(ahead.x, 100.0) && NearD(ahead.y, 0.0) && NearD(ahead.z, 0.0));
+    auto const aheadTurned = ToUnrealOffset({0.0f, 0.0f, -1.0f}, Units(90));  // body faces +Y
+    CHECK(NearD(aheadTurned.x, 0.0, 0.01) && NearD(aheadTurned.y, 100.0, 0.01));
+    auto const right = ToUnrealOffset({1.0f, 0.0f, 0.0f}, 0);
+    CHECK(NearD(right.x, 0.0) && NearD(right.y, 100.0));
+    auto const up = ToUnrealOffset({0.0f, 1.0f, 0.0f}, Units(45));
+    CHECK(NearD(up.z, 100.0) && NearD(up.x, 0.0) && NearD(up.y, 0.0));
+
+    // The view's right axis: +Y facing +X; -X after turning right 90; down after rolling right.
+    auto const r0 = RightAxis({0, 0, 0});
+    CHECK(NearD(r0.x, 0.0) && NearD(r0.y, 1.0) && NearD(r0.z, 0.0));
+    auto const r90 = RightAxis({0, Units(90), 0});
+    CHECK(NearD(r90.x, -1.0, 1e-4) && NearD(r90.y, 0.0, 1e-4));
+    auto const rolled = RightAxis({0, 0, Units(90)});
+    CHECK(NearD(rolled.z, -1.0, 1e-4) && NearD(rolled.y, 0.0, 1e-4));
+
+    // Eyes sit along the head's own right axis.
+    XrPosef head{};
+    head.orientation = {0, 0, 0, 1};
+    head.position = {0.0f, 1.6f, 0.0f};
+    auto const rightEye = OffsetRight(head, 0.032f);
+    CHECK(NearD(rightEye.position.x, 0.032) && NearD(rightEye.position.y, 1.6) && NearD(rightEye.position.z, 0.0));
+    head.orientation = AxisAngle(0, 1, 0, 90);  // turned left: the right side now faces -Z
+    auto const turned = OffsetRight(head, 0.032f);
+    CHECK(NearD(turned.position.x, 0.0, 1e-5) && NearD(turned.position.z, -0.032, 1e-5));
+}
+
+void TestGamepad() {
+    using namespace mevr::game::gamepad;
+    mevr::vr::controllers::State state;
+    Latches latches;
+    state.left.stickY = 1.0f;
+    state.right.stickX = -1.0f;
+    state.right.trigger = 1.0f;
+    state.left.squeeze = 0.7f;
+    auto pad = FromControllers(state, latches);
+    CHECK(pad.sThumbLY == 32767 && pad.sThumbLX == 0);
+    CHECK(pad.sThumbRX == -32767);
+    CHECK(pad.bRightTrigger == 255 && pad.bLeftTrigger == 0);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0);
+
+    // Hysteresis: a half-squeezed grip stays pressed, a released one lets go.
+    state.left.squeeze = 0.5f;
+    CHECK((FromControllers(state, latches).wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0);
+    state.left.squeeze = 0.3f;
+    CHECK((FromControllers(state, latches).wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) == 0);
+    state.left.squeeze = 0.5f;  // not enough to press again
+    CHECK((FromControllers(state, latches).wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) == 0);
+
+    // Buttons, and menu as Start, or Back with the left grip held.
+    state = {};
+    latches = {};
+    state.right.primary = state.right.secondary = state.left.primary = state.left.secondary = true;
+    state.left.menu = true;
+    pad = FromControllers(state, latches);
+    WORD const faces = XINPUT_GAMEPAD_A | XINPUT_GAMEPAD_B | XINPUT_GAMEPAD_X | XINPUT_GAMEPAD_Y;
+    CHECK((pad.wButtons & faces) == faces);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_START) != 0 && (pad.wButtons & XINPUT_GAMEPAD_BACK) == 0);
+    state.left.squeeze = 1.0f;
+    pad = FromControllers(state, latches);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_BACK) != 0 && (pad.wButtons & XINPUT_GAMEPAD_START) == 0);
+
+    // Merge: buttons combine; each stick and trigger comes from the pad pushed further.
+    XINPUT_GAMEPAD a{};
+    XINPUT_GAMEPAD b{};
+    a.wButtons = XINPUT_GAMEPAD_A;
+    b.wButtons = XINPUT_GAMEPAD_B;
+    a.sThumbLX = 1000;
+    b.sThumbLY = -20000;
+    a.bLeftTrigger = 10;
+    b.bLeftTrigger = 200;
+    auto const merged = Merge(a, b);
+    CHECK(merged.wButtons == (XINPUT_GAMEPAD_A | XINPUT_GAMEPAD_B));
+    CHECK(merged.sThumbLX == 0 && merged.sThumbLY == -20000);
+    CHECK(merged.bLeftTrigger == 200);
+
+    // Looking 90 degrees right, "forward" becomes the game camera's right.
+    SHORT x = 0;
+    SHORT y = 32767;
+    RotateStick(x, y, Units(90));
+    CHECK(Near(x, 32767) && Near(y, 0));
+    x = 0;
+    y = 32767;
+    RotateStick(x, y, -Units(90));
+    CHECK(Near(x, -32767) && Near(y, 0));
+    x = 0;
+    y = 0;
+    RotateStick(x, y, Units(45));
+    CHECK(x == 0 && y == 0);
+    x = 0;
+    y = 32767;
+    RotateStick(x, y, Units(180));
+    CHECK(Near(x, 0) && Near(y, -32767));
+}
+
 } // namespace
 
 int main() {
     TestXrToUnreal();
     TestHeadSim();
+    TestOffsets();
+    TestGamepad();
     if (gFailures == 0) {
         std::printf("all tests passed\n");
     }

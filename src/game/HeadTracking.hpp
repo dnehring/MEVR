@@ -1,7 +1,7 @@
 #pragma once
 
-// The game view follows the headset (rotation only, mono). Rendered yaw = the game's own yaw
-// (mouse / stick turning) + head yaw; rendered pitch and roll come from the head.
+// The game view follows the headset. Rendered yaw = the game's own yaw (mouse / stick turning)
+// + head yaw; rendered pitch and roll come from the head.
 //
 // Paths (`\` cycles them, for A/B tests):
 //   Render (default): only the frame's player view is rotated, inside CalcSceneView
@@ -12,11 +12,18 @@
 //     boom and aim follow the head.
 //   Off: frames are still tagged, so the view box follows the head but its picture doesn't.
 //
+// Render path extras (off by default, so A/B tests stay clean):
+//   6DOF (`/`): head position moves the rendered view too (LOCAL space, 1 m = 100 units).
+//   Alternate-eye stereo (`;`): frames alternate between the left and right eye, each rendered
+//     half an IPD to its side and tagged with that eye's pose; the output keeps each eye's latest
+//     image, so the headset always shows both (each refreshed at half the frame rate).
+//
 // Head source: the headset when VR runs head-tracked, else the desktop simulator (head_sim),
-// so the camera path can be checked without VR.
+// so the camera path can be checked without VR. Stereo needs the headset.
 namespace mevr::game::head_tracking {
 
 enum class Path { Render, Camera, Off };
+enum class Stereo { Mono, AlternateEye };
 
 // Finds the functions and registers ProcessEvent handlers. False (nothing registered) until the
 // script packages have loaded; retry later. Call before installing the ProcessEvent hook.
@@ -30,5 +37,13 @@ void OnBeforePrimaryView();
 
 Path CyclePath();
 char const* Name(Path path);
+Stereo CycleStereo();
+char const* Name(Stereo stereo);
+bool TogglePositional();
+
+// Head yaw (Unreal units) the rendered view is turned by beyond the game camera: non-zero only on
+// the render path. Input uses it so "forward" on the stick means where the player looks.
+// Any thread.
+int RenderYawOffset();
 
 } // namespace mevr::game::head_tracking

@@ -2,7 +2,9 @@
 
 #include "core/Log.hpp"
 #include "core/d3d11/Blit.hpp"
+#include "core/vr/Controllers.hpp"
 #include "core/vr/ViewSync.hpp"
+#include "core/xr/Input.hpp"
 #include "core/xr/Session.hpp"
 
 #include <dxgi.h>
@@ -33,7 +35,19 @@ HWND gWindow = nullptr;
 d3d11::Blit gBlit;
 xr::Session gSession;
 xr::ColorSwapchain gImage;
+xr::Input gInput;
+std::uint32_t gInputFailedGeneration = UINT32_MAX;  // don't retry a failed setup every frame
 bool gXrUp = false;
+
+// Alternate-eye stereo: each eye has its own swapchain and keeps its latest image (rendered every
+// other frame) with the pose it was rendered from, so each frame submits both eyes.
+struct EyeImage {
+    xr::ColorSwapchain swapchain;
+    ComPtr<ID3D11Texture2D> held;
+    ComPtr<ID3D11RenderTargetView> heldRtv;
+    std::optional<view_sync::RenderedView> view;
+};
+std::array<EyeImage, 2> gEyes;
 bool gFailed = false;
 XrSessionState gLastState = XR_SESSION_STATE_UNKNOWN;
 Mode gLastMode = Mode::HeadTracked;
@@ -74,15 +88,35 @@ struct PresentScope {
 };
 
 // A swapchain from an older session was destroyed along with that session.
-void ReleaseImage() {
-    if (gImage.Handle() == XR_NULL_HANDLE) {
+void ReleaseSwapchain(xr::ColorSwapchain& swapchain) {
+    if (swapchain.Handle() == XR_NULL_HANDLE) {
         return;
     }
-    if (gSession.Handle() != XR_NULL_HANDLE && gImage.Generation() == gSession.Generation()) {
-        gImage.Destroy();
+    if (gSession.Handle() != XR_NULL_HANDLE && swapchain.Generation() == gSession.Generation()) {
+        swapchain.Destroy();
     } else {
-        gImage.Forget();
+        swapchain.Forget();
     }
+}
+
+void ReleaseEyes() {
+    for (EyeImage& eye : gEyes) {
+        ReleaseSwapchain(eye.swapchain);
+        eye.heldRtv.Reset();
+        eye.held.Reset();
+        eye.view.reset();
+    }
+}
+
+void ReleaseImage() {
+    ReleaseSwapchain(gImage);
+    ReleaseEyes();
+}
+
+void ReleaseInput() {
+    gInput.Release(gSession);
+    gInputFailedGeneration = UINT32_MAX;
+    controllers::Reset();
 }
 
 void ResetFrameState() {
@@ -90,6 +124,9 @@ void ResetFrameState() {
     gSessionRunning = false;
     gLastRendered.reset();
     gPublishedFov = 0.0f;
+    for (EyeImage& eye : gEyes) {
+        eye.view.reset();
+    }
     view_sync::Reset();
 }
 
@@ -100,6 +137,7 @@ void TearDownXr() {
         return;
     }
     ReleaseImage();
+    ReleaseInput();
     gSession.Shutdown();
     ResetFrameState();
     gLastState = XR_SESSION_STATE_UNKNOWN;
@@ -151,6 +189,12 @@ void BeginNextFrame() {
     if (gSession.LocateEyes(target, eyes)) {
         float const fov = CoveringFovDegrees(eyes);
         view_sync::PublishHeadsetFov(fov);
+        float const dx = eyes[1].pose.position.x - eyes[0].pose.position.x;
+        float const dy = eyes[1].pose.position.y - eyes[0].pose.position.y;
+        float const dz = eyes[1].pose.position.z - eyes[0].pose.position.z;
+        float const halfIpd = 0.5f * std::sqrt(dx * dx + dy * dy + dz * dz);
+        // Runtimes that report no eye separation (or nonsense) get a typical 64 mm IPD.
+        view_sync::PublishHalfIpd(halfIpd > 0.02f && halfIpd < 0.045f ? halfIpd : 0.032f);
         if (std::abs(fov - gPublishedFov) > 0.5f) {
             gPublishedFov = fov;
             log::Info("vr output: headset FOV L {:.1f}/{:.1f} R {:.1f}/{:.1f} deg (left/right edges), rendering {:.1f} deg wide",
@@ -173,19 +217,80 @@ XrCompositionLayerQuad ScreenLayer() {
     return layer;
 }
 
-// Mono: both eyes get the same image, posed where the game camera was when it rendered it,
-// with the game's own field of view. The runtime reprojects it to the eyes' current poses.
-void FillProjectionViews(view_sync::RenderedView const& view, std::array<XrCompositionLayerProjectionView, 2>& out) {
+// One projection view: `image` posed where the game camera was when it rendered it, with the
+// game's own (symmetric) field of view. The runtime reprojects it to the eye's current pose.
+XrCompositionLayerProjectionView ProjectionView(view_sync::RenderedView const& view, xr::ColorSwapchain const& image) {
     float const halfX = view.fovXDegrees * std::numbers::pi_v<float> / 360.0f;
-    float const halfY = std::atan(std::tan(halfX) * static_cast<float>(gImage.Height()) / gImage.Width());
-    for (auto& eye : out) {
-        eye = {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};
-        eye.pose = view.head;
-        eye.fov = {-halfX, halfX, halfY, -halfY};
-        eye.subImage.swapchain = gImage.Handle();
-        eye.subImage.imageRect = {{0, 0},
-            {static_cast<std::int32_t>(gImage.Width()), static_cast<std::int32_t>(gImage.Height())}};
+    float const halfY = std::atan(std::tan(halfX) * static_cast<float>(image.Height()) / image.Width());
+    XrCompositionLayerProjectionView out{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};
+    out.pose = view.pose;
+    out.fov = {-halfX, halfX, halfY, -halfY};
+    out.subImage.swapchain = image.Handle();
+    out.subImage.imageRect = {{0, 0},
+        {static_cast<std::int32_t>(image.Width()), static_cast<std::int32_t>(image.Height())}};
+    return out;
+}
+
+// Mono: both eyes get the same image.
+void FillProjectionViews(view_sync::RenderedView const& view, std::array<XrCompositionLayerProjectionView, 2>& out) {
+    out[0] = out[1] = ProjectionView(view, gImage);
+}
+
+bool EnsureEye(EyeImage& eye, UINT width, UINT height) {
+    if (eye.swapchain.Matches(width, height, gSession.Generation()) && eye.held) {
+        return true;
     }
+    ReleaseSwapchain(eye.swapchain);
+    eye.heldRtv.Reset();
+    eye.held.Reset();
+    eye.view.reset();
+    if (!eye.swapchain.Create(gSession, gDevice.Get(), width, height)) {
+        return false;
+    }
+    // Same format as the swapchain, so it can be copied in with CopyResource.
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width = width;
+    desc.Height = height;
+    desc.MipLevels = 1;
+    desc.ArraySize = 1;
+    desc.Format = eye.swapchain.Format();
+    desc.SampleDesc = {1, 0};
+    desc.Usage = D3D11_USAGE_DEFAULT;
+    desc.BindFlags = D3D11_BIND_RENDER_TARGET;
+    if (FAILED(gDevice->CreateTexture2D(&desc, nullptr, &eye.held)) ||
+        FAILED(gDevice->CreateRenderTargetView(eye.held.Get(), nullptr, &eye.heldRtv))) {
+        log::Error("vr output: eye image {}x{} failed", width, height);
+        eye.held.Reset();
+        return false;
+    }
+    return true;
+}
+
+// Alternate-eye stereo: the backbuffer holds the eye `view.eye` only. Keep it with its pose, then
+// give each eye's swapchain that eye's latest image (or this one, until the eye has its own).
+bool SubmitAlternateEye(ID3D11DeviceContext* context, ID3D11Texture2D* backbuffer, UINT width, UINT height,
+    view_sync::RenderedView const& view, std::array<XrCompositionLayerProjectionView, 2>& out) {
+    for (EyeImage& eye : gEyes) {
+        if (!EnsureEye(eye, width, height)) {
+            return false;
+        }
+    }
+    EyeImage& current = gEyes[static_cast<std::size_t>(view.eye)];
+    gBlit.Draw(context, backbuffer, current.heldRtv.Get(), width, height);
+    current.view = view;
+    for (std::size_t e = 0; e < gEyes.size(); ++e) {
+        EyeImage& eye = gEyes[e];
+        EyeImage const& source = eye.view ? eye : current;
+        if (eye.swapchain.Acquire() == nullptr) {
+            return false;
+        }
+        if (ID3D11Texture2D* const texture = eye.swapchain.AcquiredTexture()) {
+            context->CopyResource(texture, source.held.Get());
+        }
+        eye.swapchain.Release();
+        out[e] = ProjectionView(*source.view, eye.swapchain);
+    }
+    return true;
 }
 
 } // namespace
@@ -298,12 +403,23 @@ void OnPresent(IDXGISwapChain* swapChain) {
         log::Info("vr output: mode {}", mode == Mode::HeadTracked ? "head-tracked" : "screen");
     }
 
+    if (!gInput.Matches(gSession) && gInputFailedGeneration != gSession.Generation()) {
+        gInput.Release(gSession);
+        if (!gInput.Create(gSession)) {
+            gInputFailedGeneration = gSession.Generation();
+        }
+    }
+
     if (!gFrameBegun) {
         BeginNextFrame();
         if (!gFrameBegun) {
             return;
         }
     }
+
+    controllers::State input;
+    gInput.Sync(gSession, gFrame.predictedDisplayTime, input);
+    controllers::Publish(input);
 
     // The pose this image was rendered with (head-tracked mode).
     if (mode == Mode::HeadTracked) {
@@ -320,10 +436,23 @@ void OnPresent(IDXGISwapChain* swapChain) {
     std::array<XrCompositionLayerBaseHeader const*, 1> layers{};
     std::size_t layerCount = 0;
     bool const haveView = mode == Mode::Screen || gLastRendered.has_value();
-    if (gFrame.shouldRender && haveView) {
+    bool const alternateEye = mode == Mode::HeadTracked && gLastRendered && gLastRendered->eye >= 0;
+    if (!alternateEye) {
+        for (EyeImage& eye : gEyes) {
+            eye.view.reset();  // don't resume stereo later with stale images
+        }
+    }
+    ComPtr<ID3D11DeviceContext> immediate;
+    gDevice->GetImmediateContext(&immediate);
+    if (gFrame.shouldRender && alternateEye) {
+        if (SubmitAlternateEye(immediate.Get(), backbuffer.Get(), desc.Width, desc.Height, *gLastRendered, views)) {
+            projection.space = gSession.LocalSpace();
+            projection.viewCount = static_cast<std::uint32_t>(views.size());
+            projection.views = views.data();
+            layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader const*>(&projection);
+        }
+    } else if (gFrame.shouldRender && haveView) {
         if (ID3D11RenderTargetView* const target = gImage.Acquire()) {
-            ComPtr<ID3D11DeviceContext> immediate;
-            gDevice->GetImmediateContext(&immediate);
             gBlit.Draw(immediate.Get(), backbuffer.Get(), target, gImage.Width(), gImage.Height());
             gImage.Release();
 
@@ -347,6 +476,7 @@ void OnPresent(IDXGISwapChain* swapChain) {
 
 void Shutdown() {
     ReleaseImage();
+    ReleaseInput();
     gSession.Shutdown();
     ResetFrameState();
     gXrUp = false;

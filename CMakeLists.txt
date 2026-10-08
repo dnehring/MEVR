@@ -55,10 +55,14 @@ set(MEVR_MOD_SOURCES
     src/core/Hotkey.hpp
     src/core/d3d11/Blit.cpp
     src/core/d3d11/Blit.hpp
+    src/core/vr/Controllers.cpp
+    src/core/vr/Controllers.hpp
     src/core/vr/Output.cpp
     src/core/vr/Output.hpp
     src/core/vr/ViewSync.cpp
     src/core/vr/ViewSync.hpp
+    src/core/xr/Input.cpp
+    src/core/xr/Input.hpp
     src/core/xr/Session.cpp
     src/core/xr/Session.hpp
     src/engine/Engine.cpp
@@ -71,10 +75,16 @@ set(MEVR_MOD_SOURCES
     src/engine/SceneView.hpp
     src/engine/XrToUnreal.cpp
     src/engine/XrToUnreal.hpp
+    src/game/GamepadBridge.cpp
+    src/game/GamepadBridge.hpp
+    src/game/GamepadMapping.cpp
+    src/game/GamepadMapping.hpp
     src/game/HeadSim.cpp
     src/game/HeadSim.hpp
     src/game/HeadTracking.cpp
     src/game/HeadTracking.hpp
+    src/game/Reflections.cpp
+    src/game/Reflections.hpp
     src/mod/Mod.cpp
     src/mod/ModApi.hpp
 )
@@ -124,10 +134,12 @@ if (MEVR_BUILD_TESTS)
     add_executable(mevr-tests
         tests/Main.cpp
         src/engine/XrToUnreal.cpp
+        src/game/GamepadMapping.cpp
         src/game/HeadSim.cpp
     )
     target_include_directories(mevr-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(mevr-tests PRIVATE OpenXR::headers)
+    target_compile_definitions(mevr-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_test(NAME mevr-tests COMMAND mevr-tests)
 endif ()

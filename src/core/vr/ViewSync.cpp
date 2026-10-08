@@ -15,6 +15,7 @@ std::mutex gMutex;
 std::condition_variable gPresented;
 std::optional<XrPosef> gLatest;
 std::optional<float> gHeadsetFov;
+std::optional<float> gHalfIpd;
 std::deque<RenderedView> gRendered;
 std::uint64_t gPushedFrames = 0;     // engine frames that queued a view
 std::uint64_t gPresentedFrames = 0;  // of those, how many have been presented
@@ -39,6 +40,16 @@ void PublishHeadsetFov(float horizontalDegrees) {
 std::optional<float> HeadsetFov() {
     std::lock_guard lock(gMutex);
     return gHeadsetFov;
+}
+
+void PublishHalfIpd(float meters) {
+    std::lock_guard lock(gMutex);
+    gHalfIpd = meters;
+}
+
+std::optional<float> HalfIpd() {
+    std::lock_guard lock(gMutex);
+    return gHalfIpd;
 }
 
 void PushRendered(RenderedView view) {
@@ -86,6 +97,7 @@ void Reset() {
         std::lock_guard lock(gMutex);
         gLatest.reset();
         gHeadsetFov.reset();
+        gHalfIpd.reset();
         gRendered.clear();
         gPresentedFrames = gPushedFrames;  // release any waiter
     }

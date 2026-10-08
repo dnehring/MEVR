@@ -23,10 +23,15 @@ std::optional<XrPosef> LatestHead();
 void PublishHeadsetFov(float horizontalDegrees);
 std::optional<float> HeadsetFov();
 
+// Render thread -> game thread: half the distance between the headset's eyes (meters).
+void PublishHalfIpd(float meters);
+std::optional<float> HalfIpd();
+
 // Game thread -> render thread: the view each game frame was rendered with.
 struct RenderedView {
-    XrPosef head;
+    XrPosef pose;  // where the image was rendered from (the head, or one eye; LOCAL space)
     float fovXDegrees;  // the game's horizontal field of view for that frame
+    int eye = -1;  // -1: mono (both eyes); 0 / 1: left / right eye only (alternate-eye stereo)
     std::uint64_t engineFrame = 0;  // assigned by PushRendered
 };
 void PushRendered(RenderedView view);
