@@ -21,7 +21,8 @@ class Initializer;
 // arm along rigidly, so fingers and anything on the hand follow.
 //
 // The game thread publishes what to write (Publish); the hook only reads it, and writes nothing
-// unless the mesh, its bone count and the chain's bone names all still match.
+// unless the mesh, its owner, the world, its bone count and the chain's bone names all still
+// match and the request is recent (a level load runs no mod tick in between).
 namespace mevr::engine::bone_pose {
 
 enum class Target {
@@ -54,7 +55,8 @@ bool Install(::LESDK::Initializer& init);
 bool Uninstall(::LESDK::Initializer& init, bool waitForCalls);
 bool Installed();
 
-// Game thread. Replaces what the hook writes; Clear stops all writes.
+// Game thread. Replaces what the hook writes (also noting the mesh's owner, the world and the
+// time, which the hook checks); Clear stops all writes.
 void Publish(Request request);
 void Clear();
 
