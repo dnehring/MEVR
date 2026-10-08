@@ -5,6 +5,7 @@
 
 #include "core/Hotkey.hpp"
 #include "core/Log.hpp"
+#include "core/vr/AimRay.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/Output.hpp"
@@ -25,6 +26,7 @@
 #include "game/Reflections.hpp"
 #include "game/SkeletonProbe.hpp"
 #include "game/ViewAnchor.hpp"
+#include "game/Weapon.hpp"
 
 #include <LESDK/Headers.hpp>
 #include <LESDK/Init.hpp>
@@ -64,6 +66,9 @@ bool gHandAimReported = false;  // what the host was last told
 // Host renderer: arm IK comes on by itself the first time tracked controllers have a view to be
 // placed in, unless `.` has decided it this session.
 bool gArmIkChosen = false;
+// Host renderer (HostServices v6): it draws the reticle along the gun's aim ray we publish.
+bool gToldNoAimRay = false;
+bool gAimRaySent = false;  // a ray was published (cleared again at shutdown)
 bool gHooked = false;  // ProcessEvent hook live (after the script packages loaded)
 bool gSceneViewHooked = false;
 bool gGamepadHooked = false;  // XInput hooks (once the game has loaded an XInput DLL)
@@ -173,6 +178,9 @@ void TryInstallScriptHooks() {
     }
     if (!game::skeleton_probe::TryStartup()) {  // also starts engine::skeleton (arm IK uses it)
         log::Warn("skeleton probe: bone query functions not found");
+    }
+    if (!game::weapon::TryStartup()) {
+        log::Warn("weapon: BioWeaponRanged.GetMuzzleLoc not found (or not LE1): shots and hands keep the controller's aim");
     }
     gHandAimAvailable = game::hand_aim::TryStartup();
     if (!gHandAimAvailable) {
@@ -298,6 +306,35 @@ void UpdateHostHandAim() {
     }
 }
 
+// The host can take the gun's aim ray: v6 services, built with the same Ray (hot reload replaces
+// only the mod). The monolithic build passes its own services, so this holds there too.
+bool HostTakesAimRay() {
+    using namespace mevr;
+    return gHostView && gHost->version >= 6 && gHost->setAimRay != nullptr &&
+        gHost->aimRaySize == sizeof(vr::aim_ray::Ray);
+}
+
+// Host renderer: the gun's aim ray (muzzle and barrel, tracking space) for its reticle, every
+// tick; `valid` false whenever shots don't follow the barrel.
+void PublishAimRay() {
+    using namespace mevr;
+    if (!gHostView || !gHostDataOk) {
+        return;
+    }
+    if (!HostTakesAimRay()) {
+        if (!gToldNoAimRay) {
+            gToldNoAimRay = true;
+            log::Warn("aim ray: the host (services v{}, ray size {} vs {}) can't take it: no reticle along the gun; close the "
+                      "game and redeploy the host", gHost->version, gHost->version >= 6 ? gHost->aimRaySize : 0u,
+                sizeof(vr::aim_ray::Ray));
+        }
+        return;
+    }
+    vr::aim_ray::Ray const ray = game::hand_aim::AimRay();
+    gHost->setAimRay(&ray);
+    gAimRaySent = true;
+}
+
 // Host renderer: copies the host's latest controllers and view into the mod (first thing each
 // tick, so everything after sees this tick's).
 void MirrorHostState() {
@@ -421,6 +458,7 @@ void Heartbeat() {
         game::head_tracking::LogStats();
         game::reflections::LogStats();
         game::hand_aim::LogStats();
+        game::weapon::LogStats();
         game::view_anchor::LogStats();
         game::arm_ik::LogStats();
         game::skeleton_probe::Tick();
@@ -524,7 +562,12 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     }
     if (gHooked) {
         game::hand_targets::SetDesktopTest(NoHeadset());
-        game::arm_ik::Tick(deltaSeconds);  // uses this tick's view anchor, so before OnTickEnd
+        // The held gun first (arm IK aims it), then arm IK (uses this tick's view anchor, so before
+        // OnTickEnd), then which way shots go and the reticle's ray.
+        game::weapon::Tick(game::hand_aim::Enabled() || game::arm_ik::Enabled());
+        game::arm_ik::Tick(deltaSeconds);
+        game::hand_aim::Tick();
+        PublishAimRay();
         game::head_tracking::OnTickEnd();
     }
     WaitForThisFrameToPresent();
@@ -597,6 +640,13 @@ MEVR_MOD_API void MevrModShutdown() {
     if (gHostView && gHandAimReported) {
         gHost->setHandAim(false);  // the host's head aim comes back (it also forgets on unload)
     }
+    if (gAimRaySent && HostTakesAimRay()) {
+        vr::aim_ray::Ray const none;
+        gHost->setAimRay(&none);  // no reticle without the mod (the host also forgets on unload)
+    }
+    gAimRaySent = false;
+    gToldNoAimRay = false;
+    game::weapon::Shutdown();
     gHost = nullptr;
     gHostOwnsVr = false;
     gToldHostOwnsVr = false;
