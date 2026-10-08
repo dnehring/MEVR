@@ -247,6 +247,7 @@ bool Input::Matches(Target const& target) const {
 
 void Input::Sync(Target const& target, XrTime time, vr::controllers::State& out) {
     out = {};
+    focused_ = false;
     if (!Matches(target)) {
         return;
     }
@@ -266,6 +267,7 @@ void Input::Sync(Target const& target, XrTime time, vr::controllers::State& out)
         return;
     }
     loggedFocus_ = false;
+    focused_ = true;
 
     XrSession const handle = target.session;
     for (int hand : {kLeft, kRight}) {

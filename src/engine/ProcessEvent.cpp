@@ -20,9 +20,19 @@ struct Entry {
 // Matched by pointer: no per-call name lookups (docs/trilogy-design.md, rule 5).
 std::vector<Entry> gHandlers;
 bool gInstalled = false;
+SetHostCallback gHostSet = nullptr;
+bool gViaHost = false;
 
 using tProcessEvent = void(UObject* context, UFunction* function, void* parms, void* result);
 tProcessEvent* gProcessEventOrig = nullptr;
+
+void Dispatch(UObject* context, UFunction* function, void* parms, void* result) {
+    for (Entry const& entry : gHandlers) {
+        if (entry.function == function) {
+            entry.handler(context, function, parms, result);
+        }
+    }
+}
 
 void ProcessEventHook(UObject* context, UFunction* function, void* parms, void* result) {
     gProcessEventOrig(context, function, parms, result);
@@ -43,7 +53,17 @@ void ClearHandlers() {
     gHandlers.clear();
 }
 
+void UseHost(SetHostCallback set) {
+    gHostSet = set;
+}
+
 bool Install(::LESDK::Initializer& init) {
+    if (gHostSet != nullptr) {
+        gHostSet(&Dispatch);
+        gInstalled = gViaHost = true;
+        log::Info("ProcessEvent handlers live on the host's hook ({} handlers)", gHandlers.size());
+        return true;
+    }
     auto* const target = init.ResolveTyped<tProcessEvent>(BUILTIN_PROCESSEVENT_RVA);
     if (target == nullptr) {
         log::Error("failed to resolve UObject::ProcessEvent");
@@ -62,6 +82,11 @@ bool Install(::LESDK::Initializer& init) {
 
 void Uninstall(::LESDK::Initializer& init) {
     if (!gInstalled) {
+        return;
+    }
+    if (gViaHost) {
+        gHostSet(nullptr);  // waits for in-flight handlers
+        gInstalled = gViaHost = false;
         return;
     }
     init.UninstallHook(kHookName);

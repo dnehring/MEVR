@@ -43,6 +43,7 @@ std::atomic<bool> gActive{false};  // read on the render thread too
 mevr::HostServices const* gHost = nullptr;
 bool gHostOwnsVr = false;
 bool gToldHostOwnsVr = false;
+bool gToldStateMismatch = false;
 bool gHooked = false;  // ProcessEvent hook live (after the script packages loaded)
 bool gSceneViewHooked = false;
 bool gGamepadHooked = false;  // XInput hooks (once the game has loaded an XInput DLL)
@@ -285,10 +286,13 @@ void Heartbeat() {
 
 MEVR_MOD_API bool MevrModStartup(ISharedProxyInterface* spi, mevr::HostServices const* host) {
     using namespace mevr;
-    if (host != nullptr && host->version == kHostServicesVersion && host->log != nullptr) {
-        log::SetSink(host->log);
+    if (host != nullptr && host->version == kHostServicesVersion) {
+        if (host->log != nullptr) {
+            log::SetSink(host->log);  // separate DLL: log through the host's file
+        }
         gHost = host;
         gHostOwnsVr = host->controllers != nullptr;
+        engine::process_event::UseHost(host->setProcessEventCallback);
     }
     log::Info("mod startup (built {} {}){}", __DATE__, __TIME__, gHostOwnsVr ? "; VR renderer: the host's (Halcyon)" : "");
 
@@ -309,9 +313,17 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     }
     PollHotkeys();
     if (gHostOwnsVr) {
-        vr::controllers::State controllers;
-        gHost->controllers(&controllers);
-        vr::controllers::Mirror(controllers);  // keeps the host's timestamp, so it still ages
+#if defined(MEVR_MOD_DLL)  // monolithic: host and mod already share the controller state
+        if (gHost->controllerStateSize == sizeof(vr::controllers::State)) {
+            vr::controllers::State controllers;
+            gHost->controllers(&controllers);
+            vr::controllers::Mirror(controllers);  // keeps the host's timestamp, so it still ages
+        } else if (!gToldStateMismatch) {
+            gToldStateMismatch = true;
+            log::Error("host controller state is {} bytes, mod expects {}: redeploy the host; controllers ignored",
+                gHost->controllerStateSize, sizeof(vr::controllers::State));
+        }
+#endif
         gGamepadHooked = true;  // the host's XInput hook feeds the controllers to the game
     }
     if (!gHooked || !gGamepadHooked) {
@@ -395,6 +407,8 @@ MEVR_MOD_API void MevrModShutdown() {
     gHost = nullptr;
     gHostOwnsVr = false;
     gToldHostOwnsVr = false;
+    gToldStateMismatch = false;
+    engine::process_event::UseHost(nullptr);
     game::hand_aim::Shutdown();
     game::arm_ik::Shutdown();
     game::skeleton_probe::Shutdown();

@@ -29,13 +29,18 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
 - Since 2026-10-08 LE1's VR renderer is Halcyon's (`src/halcyon/le1`, built as the `halcyon-le1`
   static library and linked into the **host** ASI, so it isn't hot-reloaded). It owns OpenXR,
   Present, stereo (two renders per present), first person (K), head look and its Insert menu.
-  Its log is `MELEVR_Log.txt` and its settings `MELEVR.ini`, both in `Binaries\Win64\ASI`.
+  Its log is `%LOCALAPPDATA%\MELEVR\MELEVR_Log.txt`; its settings are `MELEVR.ini` in
+  `Binaries\Win64\ASI`. Its keys: Insert menu, R recenter (or double-click the right stick),
+  K first person. Our own VR hotkeys are off on LE1.
 - Our seams into it are marked `[MEVR]` and declared in `src/halcyon/le1/mevr_bridge.h`
   (implemented in `src/plugin/HalcyonBridge.cpp`): static OpenXR loader, our controller actions
   on its session, Touch → Xbox pad 0 in its XInput hooks. Keep changes to its files small and
   marked; `git log -p -- src/halcyon` must show every change.
 - The mod learns from `HostServices::controllers` that the host owns VR, and then skips our own
   VR output (`core/vr/Output`), scene view hook, reflection fix, XInput hook and VR hotkeys.
+- **UObject::ProcessEvent is hooked by the host at attach and never removed** (all games); the
+  mod's handlers run through `HostServices::setProcessEventCallback`. Halcyon hooks it too, with
+  its own MinHook, on top of ours: never uninstall a hook another hooker may sit on.
   LE2/LE3 still use our own renderer until Halcyon's ME2/ME3 code is brought in.
 
 ## Before each VR milestone
@@ -81,7 +86,9 @@ switching frameworks.
   camera / off); `'` cycles the desktop head simulator (sweep / nod / off, used while VR isn't
   head-tracked); within a session `;` (stereo), `/` (6DOF), `,` (hand aim: shots follow the right
   controller, on foot) and `.` (VRIK arm IK) switch one feature each, until the next `]` on;
-  `=` toggles the automatic virtual screen for conversations, cutscenes and menus (default on).
+  `=` toggles the automatic virtual screen for conversations, cutscenes and menus (default on);
+  `-` toggles the lockstep (game thread waits for each Present; default off). These are for our
+  own renderer (LE2/LE3); on LE1 Halcyon's keys apply instead.
 - Motion controllers reach the game as Xbox pad 0 (`game/GamepadBridge`, XInput hooks). Mapping
   is in `game/GamepadMapping` (unit-tested).
 - Trilogy check: `build-trilogy/` (configured with `-DMEVR_BUILD_LE2=ON -DMEVR_BUILD_LE3=ON`) must

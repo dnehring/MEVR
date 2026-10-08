@@ -45,7 +45,7 @@ OpenXR-SDK**, CascLib.
 | Source | Can we copy code? |
 |--------|-------------------|
 | REFramework (MIT) | **Yes**, keeping its copyright notice |
-| Overlord, h2-mod, LEX, Halcyon's MassEffect1/2/3-VR (GPL-3.0) | **No.** It would force GPL. Design reference only, or ask the author for an MIT grant |
+| Overlord, h2-mod, LEX, Halcyon's MassEffect1/2/3-VR (GPL-3.0) | **Yes, since 2026-10-08** (the project is GPL-3.0 now). Keep their notices; Halcyon's code lives in `src/halcyon/` |
 | UEVR, TF2VR (all rights reserved) | **No.** Ideas only |
 | LExASIs, LEBinkProxy (no license) | **No** by default. Ask ME3Tweaks; reading for patterns is fine |
 | LExSDKv2 (deliberately none) | Consume as a submodule, as the whole LE native-mod scene does |

@@ -12,7 +12,7 @@ the feature that sets us apart: none of the existing ME LE VR mods
 | Project | How it does arms | Usable by us |
 |---------|------------------|--------------|
 | ME2VR (closed, LE2) | **Writes IK results back into the pose after animation.** Its log strings mention a post-animation pose-update hook, "live left/right-arm IK writeback", an "ArmDriver" with a captured rest pose, and the weapon following a `Prop01` writeback. It resolves bones by walking the skeletal mesh's ref skeleton (BoneResolver) | Concept only (never disassembled) |
-| Overlord (GPL, MW2CR) | Analytic two-bone arm IK plus finger posing, on a yaw-deadzone body frame | Design reference only; our solver is our own |
+| Overlord (GPL, MW2CR) | Analytic two-bone arm IK plus finger posing, on a yaw-deadzone body frame | Our solver is our own; Overlord's may be copied since we went GPL-3.0 |
 | UE3 engine | **`SkelControlLimb`**: native two-bone IK in the AnimTree, driven by `EffectorLocation` and `JointTargetLocation` in a chosen space | Engine feature; driving it is plain gameplay code |
 
 ## Two ways to pose the arms in UE3-LE

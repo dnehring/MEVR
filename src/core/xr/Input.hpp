@@ -38,6 +38,8 @@ public:
     // `out.active` is false when the session doesn't have input focus.
     void Sync(Target const& target, XrTime time, vr::controllers::State& out);
     void Sync(Session& session, XrTime time, vr::controllers::State& out) { Sync(From(session), time, out); }
+    // Whether the last Sync found the session focused (input reaches this app).
+    bool Focused() const { return focused_; }
 
 private:
     enum Hand { kLeft = 0, kRight = 1 };
@@ -59,6 +61,7 @@ private:
     std::uint32_t instanceGeneration_ = 0;
     bool created_ = false;
     bool loggedFocus_ = false;
+    bool focused_ = false;
 };
 
 } // namespace mevr::xr

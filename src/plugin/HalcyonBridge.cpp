@@ -4,6 +4,7 @@
 #include "halcyon/le1/mevr_bridge.h"
 
 #include "core/Log.hpp"
+#include "core/Window.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/xr/Input.hpp"
 #include "game/GamepadMapping.hpp"
@@ -18,8 +19,10 @@ namespace MELEVR::MevrBridge {
 namespace {
 
 mevr::xr::Input gInput;
-mevr::xr::Input::Target gTarget;  // Present thread
+mevr::xr::Input::Target gTarget;  // set on Halcyon's XR thread before frames start, then Present thread
 bool gInputFailed = false;
+std::atomic<HWND> gGameWindow{nullptr};
+bool gWasFocused = false;  // Present thread
 std::atomic<unsigned> gFrames{0};
 
 std::mutex gPadMutex;  // the latches and packet numbering below (XInput is polled from any thread)
@@ -56,6 +59,15 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
     gInput.Sync(gTarget, static_cast<XrTime>(predictedDisplayTime), state);
     mevr::vr::controllers::Publish(state);
     gFrames.fetch_add(1, std::memory_order_relaxed);
+    bool const focused = gInput.Focused();
+    if (focused && !gWasFocused) {
+        mevr::window::BringToForeground(gGameWindow.load());
+    }
+    gWasFocused = focused;
+}
+
+void SetGameWindow(HWND window) noexcept {
+    gGameWindow.store(window);
 }
 
 DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noexcept {

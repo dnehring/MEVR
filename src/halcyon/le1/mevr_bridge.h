@@ -15,8 +15,13 @@ namespace MELEVR::MevrBridge
 // which our ASI doesn't ship). Our controller actions must come from the same loader instance.
 void* StaticXrGetInstanceProcAddr() noexcept;
 
-// The session and its spaces exist (Present thread): create and attach our controller actions.
+// The session and its spaces exist (Halcyon's XR thread, before xrBeginSession; published to the
+// Present thread through its g_ready): create and attach our controller actions.
 void OnSessionCreated(void* instance, void* session) noexcept;
+
+// The game's window (Present thread, once known): brought to the foreground when the headset
+// session gains input focus, since UE3 ignores input without window focus.
+void SetGameWindow(HWND window) noexcept;
 
 // After xrBeginFrame (Present thread): sync the controller actions and publish their state, with
 // poses located in `space` (Halcyon's recentered LOCAL app space, the head pose's space).

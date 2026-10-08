@@ -11,6 +11,7 @@
 #include <MinHook.h>
 
 #include <Windows.h>
+#include <dxgi.h>
 
 #include <string>
 
@@ -44,7 +45,31 @@ void Attach() {
         return;
     }
     MELEVR::DxgiProxy::InstallRealFactoryHooks();
-    log::Info("halcyon: renderer attached (its log: MELEVR_Log.txt next to this ASI)");
+    // Upstream, as the game's dxgi.dll, saw every factory. We hook the system one's exports, so a
+    // factory the game made before our attach would be missed; making one now patches the factory
+    // vtable all instances share (the CreateSwapChain capture).
+    IDXGIFactory1* factory = nullptr;
+    if (SUCCEEDED(CreateDXGIFactory1(__uuidof(IDXGIFactory1), reinterpret_cast<void**>(&factory))) && factory != nullptr) {
+        factory->Release();
+    }
+    log::Info("halcyon: renderer attached (its log: %LOCALAPPDATA%\\MELEVR\\MELEVR_Log.txt)");
+}
+
+void Tick(float deltaSeconds) {
+    // Upstream hooks XInput at attach (only DLLs already loaded) and once more at its menu's first
+    // frame. Keep trying for the first minutes in case the game loads XInput later; it's
+    // idempotent and cheap.
+    static double elapsed = 0.0;
+    static double sinceTry = 1.0;
+    if (elapsed > 300.0) {
+        return;
+    }
+    elapsed += deltaSeconds;
+    sinceTry += deltaSeconds;
+    if (sinceTry >= 1.0) {
+        sinceTry = 0.0;
+        MELEVR::Menu::InstallInputBlock();
+    }
 }
 
 void Shutdown() {

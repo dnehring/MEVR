@@ -14,6 +14,8 @@ Cloned to `reference/Overlord` at `11f3005` (see [06-repo-licenses.md](06-repo-l
   aren't expected to work. [Overlord README]
 - **Acknowledged upstreams:** H2-Mod (alicealys, GPL-3.0), IW6x, S1x, ZoneTool, gsc-tool,
   CoDLuaDecompiler, **REFramework**, plus related work from Valve and Khronos. [Overlord README]
+- **Update 2026-10-08:** the project is now GPL-3.0, so Overlord's code may be copied (with its
+  notice). The rest of this line predates that.
 - **For us (MIT project):** design reference only. Copying code would force GPL-3.0 on us. If a
   specific engine-agnostic module would save a lot of work, ask Aeka0 to relicense or dual-license
   it under MIT. Some of their OpenXR code may derive from REFramework (MIT), and we can take that

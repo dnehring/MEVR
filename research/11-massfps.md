@@ -7,7 +7,7 @@
   https://www.nexusmods.com/masseffectlegendaryedition/articles/106
 - Read 2026-10-07 in the built-in browser (Nexus returns 403 to WebFetch).
 
-## Permissions: fully permissive, compatible with our MIT license
+## Permissions: fully permissive, compatible with our license (GPL-3.0 since 2026-10-08)
 
 From the mod page's "Permissions and credits": "This mod is entirely my own work and includes no
 modifications from any other authors. You may do whatever you want with this mod, no credit or

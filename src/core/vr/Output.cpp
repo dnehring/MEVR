@@ -1,6 +1,7 @@
 #include "core/vr/Output.hpp"
 
 #include "core/Log.hpp"
+#include "core/Window.hpp"
 #include "core/d3d11/Blit.hpp"
 #include "core/ik/Ik.hpp"
 #include "core/vr/Controllers.hpp"
@@ -179,25 +180,6 @@ void TearDownXr() {
     gLastState = XR_SESSION_STATE_UNKNOWN;
     log::Info("vr output: XR {} closed", gXrUp ? "session" : "instance (no session yet)");
     gXrUp = false;
-}
-
-// The headset session gaining focus doesn't give the game window Windows focus, and UE3 ignores
-// keyboard, mouse and gamepad without it. Windows only lets the foreground thread hand out
-// focus, so briefly share its input queue.
-void BringToForeground(HWND window) {
-    HWND const foreground = GetForegroundWindow();
-    if (window == nullptr || foreground == window) {
-        return;
-    }
-    DWORD const foregroundThread = GetWindowThreadProcessId(foreground, nullptr);
-    DWORD const thisThread = GetCurrentThreadId();
-    bool const attached = foregroundThread != 0 && foregroundThread != thisThread &&
-        AttachThreadInput(thisThread, foregroundThread, TRUE);
-    BOOL const ok = SetForegroundWindow(window);
-    if (attached) {
-        AttachThreadInput(thisThread, foregroundThread, FALSE);
-    }
-    log::Info("vr output: game window to foreground: {}", ok ? "ok" : "refused by Windows");
 }
 
 // Horizontal FOV (degrees) a single symmetric image needs so both eyes' views are covered:
@@ -434,7 +416,7 @@ void OnPresent(IDXGISwapChain* swapChain) {
         gLastState = gSession.State();
         gSessionVisible = gLastState == XR_SESSION_STATE_VISIBLE || gLastState == XR_SESSION_STATE_FOCUSED;
         if (gLastState == XR_SESSION_STATE_FOCUSED) {
-            BringToForeground(gWindow);
+            window::BringToForeground(gWindow);
         }
     }
     if (!gSession.IsRunning()) {

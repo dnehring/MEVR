@@ -74,6 +74,8 @@ target_link_libraries(halcyon-le1 PUBLIC d3d11 dxgi Shell32 Ole32)
 set(MEVR_CORE_SOURCES
     src/core/Log.cpp
     src/core/Log.hpp
+    src/core/Window.cpp
+    src/core/Window.hpp
     src/core/Version.cpp
     src/core/Version.hpp
 )
@@ -85,6 +87,8 @@ set(MEVR_HOST_SOURCES
     src/plugin/ModLoader.hpp
     src/plugin/PresentHook.cpp
     src/plugin/PresentHook.hpp
+    src/plugin/ProcessEventHook.cpp
+    src/plugin/ProcessEventHook.hpp
 )
 
 set(MEVR_MOD_SOURCES

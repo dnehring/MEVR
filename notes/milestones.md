@@ -328,6 +328,12 @@ Controls simplified (2026-10-08, the user's call): `]` alone gives the full VR e
 headset session runs, stereo, 6DOF, hand aim and arm IK all come on; VR off turns them off. The
 per-feature keys stay as in-session overrides for A/B tests and crash isolation.
 
+Known issue in our own renderer (LE2/LE3, or `MEVR_HALCYON=OFF`), from the 2026-10-08 review:
+with the lockstep off (now the default) the drift recovery never runs, so a view whose frame never
+presents can stay at the front of the queue and pair every later image with the previous tick's
+view. Fix before using our renderer again: tag views with the engine frame and drop older entries
+at Present.
+
 ### Still to do
 
 - Retest with the fixes. Check image correctness (colors and brightness vs the monitor).

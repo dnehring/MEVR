@@ -17,6 +17,11 @@ using Handler = void (*)(UObject* context, UFunction* function, void* parms, voi
 void AddPostHandler(UFunction* function, Handler handler);
 void ClearHandlers();
 
+// The host's ProcessEvent hook (HostServices::setProcessEventCallback). With it, Install/Uninstall
+// just set and clear the host's callback; without, the mod hooks ProcessEvent itself.
+using SetHostCallback = void (*)(Handler callback);
+void UseHost(SetHostCallback set);
+
 bool Install(::LESDK::Initializer& init);
 void Uninstall(::LESDK::Initializer& init);
 

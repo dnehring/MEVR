@@ -19,6 +19,17 @@ instead of re-deriving it. Raw data: [research/06-repo-licenses.md](../research/
 5. **LExSDKv2** is consumed as a git submodule, never copied into `src/`. It's deliberately
    unlicensed (a modding gray area), and every LE native mod depends on it the same way.
 
+## Before distributing binaries
+
+- **Unlicensed parts in the ASI.** LExSDKv2 (deliberately no license) and LEBinkProxy's `SPI.h`
+  (no license) are compiled into the ASI. GPL-3.0 section 5c needs the whole binary licensable
+  under the GPL, so ask their authors (llamathings, ME3Tweaks) for permission or a compatible
+  license before publishing builds. Sharing the source is fine.
+- Ship `LICENSE`, `NOTICE.md` and the MinHook and Dear ImGui license files with any binary, plus
+  the corresponding source (GPL-3.0 section 6).
+- Modified Halcyon files carry a dated "Modified for ME VR Attempt" header (section 5a); keep it
+  on any file we change there.
+
 ## What we take from each
 
 | Project | License | Role for us |

@@ -1,3 +1,5 @@
+// Modified for ME VR Attempt (GPL-3.0) since 2026-10-08: changes are marked [MEVR].
+// Upstream: jrush64/MassEffect1-VR @ 3c51514 (Copyright (C) 2026 Halcyon).
 #include "xr_session.h"
 
 #include <Windows.h>
@@ -3487,6 +3489,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         if (gameSwapChain != nullptr && SUCCEEDED(gameSwapChain->GetDesc(&scd)) && scd.OutputWindow != nullptr)
         {
             MELEVR::Menu::SetGameWindow(scd.OutputWindow);   // subclass the window to swallow mouse+kb while open
+            MELEVR::MevrBridge::SetGameWindow(scd.OutputWindow);   // [MEVR] foreground it when the headset gains focus
         }
         MELEVR::Pchud::Install();   // PCHUD Scaleform HUD move/scale hook (idempotent; Tick retries if not ready)
         g_menuInited = true;

@@ -125,9 +125,9 @@ Read-only survey, 2026-10-07. REFramework at `d1461375` (2026-09-16), Overlord a
   | minhook | BSD-2-Clause (GitHub reports NOASSERTION) |
   | glm | MIT or Happy Bunny (GitHub reports NOASSERTION) |
 
-  All are permissive and compatible with our MIT license.
+  All are permissive and compatible with our license (MIT then, GPL-3.0 since 2026-10-08).
 
-## Overlord: architecture only (GPL-3.0; never copy)
+## Overlord: architecture (GPL-3.0; copyable since we went GPL-3.0 on 2026-10-08)
 
 `OL/THIRD_PARTY_NOTICES.md:87-92` says its D3D11/OpenXR architecture was researched with
 reference to REFramework.

@@ -12,7 +12,7 @@
   rights reserved." (GitHub reports NOASSERTION.) [UEVR LICENSE via GitHub API]
 - **Community:** a compatibility spreadsheet maintained by Alex Nicholas; profiles shared on the
   Flat2VR Discord and a profiles website. [ispr.info, Mixed-News]
-- **For us:** ideas only. Not cloned into `reference/`, to keep our MIT codebase clean.
+- **For us:** ideas only. Not cloned into `reference/` (all rights reserved; still true now that we're GPL-3.0).
 
 ## REFramework (praydog)
 

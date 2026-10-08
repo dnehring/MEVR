@@ -5,6 +5,7 @@
 #include "core/Version.hpp"
 #include "plugin/ModLoader.hpp"
 #include "plugin/PresentHook.hpp"
+#include "plugin/ProcessEventHook.hpp"
 
 #if defined(MEVR_WITH_HALCYON)
 #include "plugin/Halcyon.hpp"
@@ -30,6 +31,9 @@ tGameEngineTick* gGameEngineTickOrig = nullptr;
 
 void GameEngineTickHook(UGameEngine* self, float deltaSeconds) {
     gGameEngineTickOrig(self, deltaSeconds);
+#if defined(MEVR_WITH_HALCYON)
+    mevr::host::halcyon::Tick(deltaSeconds);
+#endif
     mevr::host::Tick(deltaSeconds);
 }
 
@@ -89,6 +93,12 @@ SPI_IMPLEMENT_ATTACH
     if (tickTarget == nullptr) {
         mevr::log::Error("failed to resolve UGameEngine::Tick; VR disabled");
         return true;
+    }
+
+    // Before Halcyon's renderer hooks it too (at its first frame): ours must sit underneath and
+    // never be removed. The mod's handlers come and go through its callback.
+    if (!mevr::host::process_event::Install(init)) {
+        mevr::log::Error("ProcessEvent hook failed; script-level features off");
     }
 
     // Load the mod before the tick hook goes live, so its first tick sees a started mod.

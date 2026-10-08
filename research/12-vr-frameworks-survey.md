@@ -12,7 +12,7 @@ that a framework already provides?
 | **Geo-11 / 3Dmigoto / HelixMod** | DX11 wrapper that makes games stereo by patching shaders (both eyes rendered in sync); output is mostly stereo on a virtual screen | No ME LE stereo fix found. The only ME hit was a 3Dmigoto *visual* tweak mod for ME3 LE | 3Dmigoto: GitHub reports NOASSERTION (check) | A possible route to *synchronized* stereo without engine reverse engineering, but per-game shader fixing is needed and it isn't 6DOF VR by itself |
 | **vrframework** (elliotttate) | **A 17-part guide (~6,000 lines) plus an engine-agnostic VR core scaffold**, derived from REFramework. Grounded in REFramework, starfield2vr and anvilengine2vr | Engine-agnostic | **MIT** (preserves praydog's notice) | **Adopt its guides and architecture.** The core is a scaffold: contract headers are complete, but several `.cpp` files are stubs pointing at REFramework code. It isn't a drop-in runtime |
 | REFramework | The original | RE Engine only | MIT | Already our code source for D3D11/OpenXR pieces |
-| Overlord | MW2CR VR | IW engine | GPL-3.0 | Design reference only |
+| Overlord | MW2CR VR | IW engine | GPL-3.0 | Design reference (code copyable since we went GPL-3.0, 2026-10-08) |
 
 ## What this means for us
 

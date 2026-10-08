@@ -3,6 +3,7 @@
 #include "core/Log.hpp"
 #include "mod/ModApi.hpp"
 #include "plugin/PresentHook.hpp"
+#include "plugin/ProcessEventHook.hpp"
 
 #if defined(MEVR_WITH_HALCYON)
 #include "core/vr/Controllers.hpp"
@@ -17,17 +18,23 @@
 namespace mevr::host {
 namespace {
 
+#if defined(MEVR_MONOLITHIC)
+constexpr auto* kHostLog = static_cast<void (*)(char const*, char const*)>(nullptr);  // one log already
+#else
 void HostLog(char const* level, char const* message) {
     log::Write(level, message);
 }
+constexpr auto* kHostLog = &HostLog;
+#endif
 
 #if defined(MEVR_WITH_HALCYON)
 void HostControllers(vr::controllers::State* out) {
     *out = vr::controllers::Latest(UINT64_MAX);  // raw sample: the mod ages it itself
 }
-HostServices const gServices{kHostServicesVersion, &HostLog, &HostControllers};
+HostServices const gServices{kHostServicesVersion, kHostLog, &HostControllers,
+    static_cast<std::uint32_t>(sizeof(vr::controllers::State)), &process_event::SetCallback};
 #else
-HostServices const gServices{kHostServicesVersion, &HostLog, nullptr};
+HostServices const gServices{kHostServicesVersion, kHostLog, nullptr, 0, &process_event::SetCallback};
 #endif
 ISharedProxyInterface* gSpi = nullptr;
 
