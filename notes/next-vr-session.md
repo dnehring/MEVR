@@ -6,10 +6,13 @@ roughly when):
 - ours: `<ME1>\Binaries\Win64\Logs\LE1MEVR.log`;
 - Halcyon's: `%LOCALAPPDATA%\MELEVR\MELEVR_Log.txt` (settings: `MELEVR.ini` in `Binaries\Win64\ASI`).
 
-Already done for you: `tools/vr-game-settings.ps1` turned VSync, motion blur and film grain off
-and HDR to SDR in ME1's GamerSettings.ini (backup kept; `-Restore` undoes it). Halcyon's settings
-may also set the game resolution per VR mode (3840x2160 for stereo), effective from the next
-launch.
+Already done for you: `tools/vr-game-settings.ps1` turned VSync, motion blur, film grain and
+dynamic shadows off and HDR to SDR in ME1's GamerSettings.ini, and set what Halcyon's installer
+sets: a borderless window at its near-square stereo target, 3072x3188 (backup kept; `-Restore`
+undoes it). `MELEVR.ini` is Halcyon's release default again: its tuned eye separation (3.4), eye
+order, VR conversations and cutscenes, head aim when the controllers aren't aiming. The old file
+is `MELEVR.ini.mevr_old`. Halcyon's log should now show `[TARGETCHK] Stereo 2 target OK` and, in
+gameplay, `[PASSCAP] published complete stereo pair` lines (none of those = no stereo).
 
 **Keys on LE1:** `\` = Halcyon's menu (Insert upstream) (the controllers navigate it as a gamepad; while it's open the game gets no input; clicking and holding both thumbsticks closes it), R = recenter
 (or double-click the right stick), K = first person on/off (off at every launch). Ours: `,` hand

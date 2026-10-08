@@ -308,8 +308,23 @@ Ranked suspects:
   units (3.25 for the 65 mm the headset reports).
 - **Halcyon's shipped `runtime/MELEVR.ini` sets `sfr2HalfEyeUU = 0.800`** while its code default
   is 3.4 ("dialled-in 2026-08-12"). With 0.8 the stereo world looks about four times too big; the
-  user reported a "massive" weapon in first person. Our deploy writes 3.25. Its comment that
-  `aerHalfEyeUU ~1.6 = 1:1 life-size` disagrees with the skeleton **[verify in headset]**.
+  user reported a "massive" weapon in first person. Its comment that `aerHalfEyeUU ~1.6 = 1:1
+  life-size` disagrees with the skeleton **[verify in headset]**.
+- **That `runtime/MELEVR.ini` is a stale starting file; the release package ships
+  `release/MELEVR.ini`** with only the mode and resolutions, so players get the tuned code defaults
+  (`sfr2HalfEyeUU` 3.4, `sfr2SwapEyes` on, `sfr2Convergence` 0.012, VR conversations and
+  cutscenes on). Our deploy copied the runtime file until 2026-10-08 and now writes the release
+  one. `sfr2SwapEyes` flips both the eye offset and the routing (`[SWAPME2]`), so each eye keeps
+  its own viewpoint; it only changes which render pass reaches which eye.
+- **Halcyon's installer (`release/MELE-VR.bat`) also sets GamerSettings:** `BorderlessWindow=True`,
+  `Fullscreen=False`, `DynamicShadows=False`, `FilmGrain=False`, `MotionBlur=False`, HDR to SDR,
+  `ResX/ResY` from a near-square ladder (2048x2124, 3072x3188, 4096x4250 recommended, 5120x5312,
+  6144x6374; height = width / 0.964), and `SmoothFrameRate=FALSE` in BIOEngine.ini (a 60 fps cap
+  otherwise). It no longer forces depth of field off ("the game loses colour and looks washed
+  out"). Its display hooks (`[DISPQ]`) report the target as the desktop size, but a *bordered*
+  window is still capped at the real monitor: on a 5120x1440 monitor a 2048x2048 target gave a
+  2009x2009 backbuffer with gameplay rendered at 2009x1421, so the left-eye capture (scene size
+  must equal the backbuffer's) never fired and both eyes got one image (2026-10-08).
 - Halcyon's lean maps head motion at 50 units per metre (times `leanGain`, and three times that
   forward), half of the body scale. **[verify]** whether lean feels small; `leanGain = 2` would
   make side-to-side lean life-size.

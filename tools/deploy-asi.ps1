@@ -66,21 +66,44 @@ if ($hotReload) {
 } elseif (Test-Path $modPathFile) {
     Remove-Item $modPathFile -Confirm:$false
 }
-# LE1 runs Halcyon's renderer, which reads MELEVR.ini next to our ASI. Install its shipped defaults
-# once, with the first-run welcome marked seen: that welcome opens Halcyon's menu, which blocks all
-# game input until dismissed with Insert (unreachable from the headset).
+# LE1 runs Halcyon's renderer, which reads MELEVR.ini next to our ASI. Install what its release
+# package ships (reference/MassEffect1-VR/release/MELEVR.ini): the mode and resolutions only, so
+# every other setting is Halcyon's tuned code default. Not src/halcyon/le1/runtime/MELEVR.ini: that
+# older starting file pins stale values over the tuned ones (eye separation 0.8 instead of 3.4,
+# which makes the world look four times too big; eye swap; VR conversations and cutscenes off).
+# Our changes: the first-run welcome marked seen (it opens the menu, which blocks all game input);
+# the menu on backslash (220), as many keyboards have no Insert; no F-key profile hotkeys (game
+# keys); first person on. The resolution comes from tools/vr-game-settings.ps1.
 if ($Game -eq 'LE1') {
     $ini = Join-Path $asiDir 'MELEVR.ini'
     if (-not (Test-Path $ini)) {
-        $defaults = Join-Path $PSScriptRoot '..\src\halcyon\le1\runtime\MELEVR.ini'
-        $text = [IO.File]::ReadAllText($defaults) -replace '(?m)^firstRunDone = 0', 'firstRunDone = 1'
-        # Upstream ships 0.8 (a quarter of life-size: the world looks four times too big). Shepard's
-        # skeleton puts 1 unit at about 1 cm, so half a 65 mm IPD is 3.25 units.
-        $text = $text -replace '(?m)^sfr2HalfEyeUU = .*$', 'sfr2HalfEyeUU = 3.250'
-        # The menu key: Insert by default, which many keyboards lack; backslash (220) is free on LE1.
-        $text = $text -replace '(?m)^menuKey = .*$', 'menuKey = 220'
+        $text = @(
+            '; MELE VR config - written by the in-headset menu.', '',
+            '[active]', 'profile=Default', '',
+            '[hotkeys]', 'enabled=0', 'profile0=112', 'profile1=113', 'profile2=114', 'profile3=115', '',
+            '[profile:Default]',
+            'vrMode = 2',
+            'sfr2ResX = 4096', 'sfr2ResY = 4250',
+            'monoResX = 3840', 'monoResY = 2160',
+            'aerResX = 3072', 'aerResY = 3072',
+            'dibrResX = 3072', 'dibrResY = 3072',
+            'expectedResX = 0', 'expectedResY = 0',
+            'firstRunDone = 1',
+            'menuKey = 220',
+            'fpEnabled = 1', ''
+        ) -join "`r`n"
         [IO.File]::WriteAllText($ini, $text)
-        Write-Output "Installed Halcyon's default MELEVR.ini (welcome marked seen, life-size stereo)"
+        Write-Output "Installed Halcyon's release MELEVR.ini (its tuned defaults; welcome seen, menu on backslash)"
+    }
+    # Every deploy, since Halcyon rewrites the file: its F1-F4 profile hotkeys are game keys, so
+    # they're off; and every profile slot still on Insert (Halcyon's default for the Custom slots,
+    # which loading a slot brings back) gets backslash.
+    $text = [IO.File]::ReadAllText($ini)
+    $fixed = [regex]::Replace($text, '(?ms)(^\[hotkeys\]\r?\n(?:(?!^\[).)*?^enabled=)1', '${1}0')
+    $fixed = $fixed -replace '(?m)^menuKey = 45\b', 'menuKey = 220'
+    if ($fixed -ne $text) {
+        [IO.File]::WriteAllText($ini, $fixed)
+        Write-Output "MELEVR.ini: profile F-key hotkeys off, menu key backslash in every profile"
     }
 }
 Write-Output "Log: $(Join-Path $bin "Logs\$name.log")"
