@@ -100,6 +100,17 @@ render_hook, vr_menu, vr_config, head_aim and pchud are built; `game_camera.cpp`
 | `AllocateViewState` (Halcyon: "likely") | `0x742B70` | Function start, 62 bytes long |
 | ProcessEvent, GameEngineTick (LExSDKv2) | `0x12DD20`, `0x3CA090` | Function starts (consistent with what we already use) |
 
+**LE2 and LE3** (from Halcyon's ME2/ME3 repos), also all confirmed as function starts:
+
+| Function | LE2 | LE3 |
+|----------|-----|-----|
+| CalcSceneView | `0x6CEB70` | `0x6CFFD0` (matches ConsoleExtension's) |
+| FViewportClient::Draw | `0x6D0A00` | `0x6D1E30` |
+| AllocateViewState | `0x329750` | `0x3440F0` |
+
+The gameplay call-site return addresses for LE2 and LE3 aren't known yet. Our scene-view hook
+logs other callers' RVAs, so the first run on those games reveals them.
+
 **`.text` is encrypted on disk.** The function-start bytes are noise, and an `.ooa` section (EA
 DRM) decrypts the code at runtime. So signature and byte checks must run in-process after
 startup. `.pdata` is plain and gives reliable function boundaries. Tool:

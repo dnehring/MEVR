@@ -51,6 +51,11 @@
 - [YouTube: "Mass Effect VR Mod is HERE!"](https://www.youtube.com/watch?v=cy0N6oUL_j8)
 - ME2VR v0.54.0 (package named v0.5.6), a local download the user found (`F:\downloads\ME2VR-v0.5.6-Steam`); no public page found
 
+## ME LE gamepad layout (for the Touch -> Xbox mapping, 2026-10-07)
+- [Nexus readme (original ME1 PC, not necessarily LE): D-pad UI/power shortcuts, LB D-pad modifier, RB tactical menu, Back quicksave](https://nexusmods.com/masseffectlegendaryedition/mods/1317)
+- [GameRevolution: LE has full PC controller support](https://www.gamerevolution.com/?p=681808), [Ginx: early PC controller issues](https://www.ginx.tv/en/mass-effect-legendary-edition-pc-controller-issues-possible-solutions-fix)
+- [EA accessibility page (Xbox One)](https://www.ea.com/able/resources/mass-effect-legendary-edition/xbox-one): no bindings listed. **The LE1 gamepad layout is still unverified**; the mapping stays one-to-one until checked in game
+
 ## Searched, nothing relevant found
 - "vorpX Mass Effect Legendary Edition profile": no vorpX information
 - "Modern Warfare 2 Campaign Remastered VR mod AI" (standard search): nothing; the GitHub-targeted search found Overlord
