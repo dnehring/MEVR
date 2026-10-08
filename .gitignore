@@ -20,3 +20,6 @@ out/
 *.log
 __pycache__/
 *.pyc
+
+# Agent worktrees (Claude Code)
+.claude/worktrees/
