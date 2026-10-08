@@ -3,7 +3,7 @@
 # (see research/06-repo-licenses.md).
 #
 # Deliberately NOT fetched:
-#   praydog/UEVR (all rights reserved) and the TF2VR mod (closed), to keep this MIT codebase clean.
+#   praydog/UEVR (all rights reserved) and the TF2VR mod (closed), whose code we can't use.
 #   ME3Tweaks/LegendaryExplorer (~690 MB); use the release build instead.
 
 # git writes progress to stderr; Windows PowerShell 5.1 turns that into errors under 'Stop',

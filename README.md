@@ -4,7 +4,7 @@ A native VR mod for **Mass Effect Legendary Edition**: first-person 6DOF, motion
 weapons, body IK, and a VR-friendly HUD. **One VR system for all three games, starting with LE1.**
 Mechanics change where VR needs them to; see [docs/trilogy-design.md](docs/trilogy-design.md).
 
-**License:** [MIT](LICENSE). **Status (2026-10-07):** prep. Game downloading via Steam (app 1328670).
+**License:** [GPL-3.0](LICENSE) (MIT until 2026-10-08; see [NOTICE.md](NOTICE.md)).
 
 ## Approach
 
@@ -17,8 +17,9 @@ VR is a renderer-level feature, so it can't be ported in as content
   camera/projection overrides, and stereo rendering.
 - **UnrealScript side** (compiled with Legendary Explorer) for gameplay changes where script is
   the easier lever: weapon aim source, AnimTree IK effectors, HUD render target redirect.
-- **Borrowed code only from permissive sources** (mainly REFramework, MIT). GPL and closed mods
-  are design references. See [docs/reuse-and-licensing.md](docs/reuse-and-licensing.md).
+- **Built on Halcyon's GPL MassEffect1/2/3-VR** for rendering, stereo, first person and HUD
+  (imported into `src/halcyon/`), with our own motion controls and body IK on top. See
+  [docs/reuse-and-licensing.md](docs/reuse-and-licensing.md).
 
 ## Milestones (LE1 first)
 

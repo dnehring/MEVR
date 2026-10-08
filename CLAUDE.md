@@ -10,12 +10,14 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   Commit at natural checkpoints (milestones, verified changes). No remote is configured; ask
   before pushing anywhere.
 
-## Licensing rules (MIT project)
+## Licensing rules (GPL-3.0 project since 2026-10-08)
 
-- Copy code only from permissive sources (REFramework is MIT) and keep their notices.
-- Overlord, h2-mod, Legendary Explorer and Halcyon's MassEffect1/2/3-VR are GPL-3.0: **read for
-  design, never copy or translate code.** Facts (RVAs, offsets, what an engine function does) are
-  fine to reuse once we've verified them ourselves; cite them in `research/13`.
+- The project is GPL-3.0 (`LICENSE`, `NOTICE.md`). Code from GPL-3.0-compatible sources may be
+  copied and modified: GPL-3.0 (Halcyon's MassEffect1/2/3-VR, Overlord, h2-mod, Legendary
+  Explorer) and permissive (REFramework, vrframework, MinHook, ImGui). Keep their copyright and
+  license notices, and list them in `NOTICE.md`. GPL-2.0-only code is **not** compatible.
+- Halcyon's code lives in `src/halcyon/`: imported verbatim in its own commit, then modified, so
+  `git log` shows exactly what we changed.
 - Closed binaries (e.g. the ME2VR download): never disassemble, decompile or run them. Their
   READMEs, configs and log strings are fair game for concepts.
 - UEVR and TF2VR are all rights reserved: never clone or copy.
