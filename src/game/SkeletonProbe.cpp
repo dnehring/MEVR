@@ -2,6 +2,7 @@
 
 #include "core/Log.hpp"
 #include "engine/Objects.hpp"
+#include "engine/Skeleton.hpp"
 #include "game/HeadTracking.hpp"
 
 #include <LESDK/Headers.hpp>
@@ -14,9 +15,6 @@
 namespace mevr::game::skeleton_probe {
 namespace {
 
-constexpr char const* kGetBoneNames = "Function Engine.SkeletalMeshComponent.GetBoneNames";
-constexpr char const* kGetBoneLocation = "Function Engine.SkeletalMeshComponent.GetBoneLocation";
-constexpr int kComponentSpace = 1;  // GetBoneLocation's Space: 0 world, 1 component
 // Bones worth a position (lengths and proportions for the IK): matched case-insensitively.
 constexpr char const* kKeyBoneParts[] = {"root", "pelvis", "spine", "neck", "head", "clav", "shoulder", "arm",
     "elbow", "wrist", "hand", "finger", "thumb", "weapon", "gun", "prop"};
@@ -26,9 +24,8 @@ constexpr unsigned kMaxProbes = 3;  // per session: each level load brings a new
 bool gHudProbed = false;
 unsigned gHudAttempts = 0;
 constexpr unsigned kMaxHudAttempts = 6;  // full object scans: don't keep paying for a class that isn't there
-UFunction* gGetBoneNames = nullptr;
-UFunction* gGetBoneLocation = nullptr;
-USkeletalMeshComponent* gLastMesh = nullptr;
+bool gReady = false;
+USkeletalMeshComponent* gLastMesh = nullptr;  // compared only, never dereferenced
 unsigned gProbes = 0;
 
 std::string Lower(std::string text) {
@@ -44,23 +41,6 @@ bool IsKeyBone(std::string const& name) {
         }
     }
     return false;
-}
-
-// Called through ProcessEvent directly: the SDK's generated wrappers corrupt FunctionFlags.
-std::vector<SFXName> BoneNames(USkeletalMeshComponent* mesh) {
-    USkeletalMeshComponent_execGetBoneNames_Parms parms;
-    mesh->ProcessEvent(gGetBoneNames, &parms, nullptr);
-    std::vector<SFXName> names(parms.BoneNames.GetData(), parms.BoneNames.GetData() + parms.BoneNames.Count());
-    parms.BoneNames.~TArray();  // the parms union doesn't free it
-    return names;
-}
-
-FVector BoneLocation(USkeletalMeshComponent* mesh, SFXName const& bone) {
-    USkeletalMeshComponent_execGetBoneLocation_Parms parms;
-    parms.BoneName = bone;
-    parms.Space = kComponentSpace;
-    mesh->ProcessEvent(gGetBoneLocation, &parms, nullptr);
-    return parms.ReturnValue;
 }
 
 void LogControls(UAnimTree* tree) {
@@ -87,7 +67,7 @@ void Probe(APawn* pawn, USkeletalMeshComponent* mesh) {
     log::Info("skeleton: mesh {}, AnimTree template {}, animations {}", engine::FullName(mesh->SkeletalMesh),
         engine::FullName(mesh->AnimTreeTemplate), engine::FullName(mesh->Animations));
 
-    std::vector<SFXName> const names = BoneNames(mesh);
+    std::vector<SFXName> const names = engine::skeleton::BoneNames(mesh);
     log::Info("skeleton: {} bones", names.size());
     std::string line;
     for (std::size_t i = 0; i < names.size(); ++i) {
@@ -106,8 +86,9 @@ void Probe(APawn* pawn, USkeletalMeshComponent* mesh) {
     for (SFXName const& bone : names) {
         std::string const name = engine::ToString(bone);
         if (posed && IsKeyBone(name)) {
-            FVector const at = BoneLocation(mesh, bone);
-            log::Info("skeleton:   {} at ({:.1f}, {:.1f}, {:.1f}) component space", name, at.X, at.Y, at.Z);
+            if (auto const at = engine::skeleton::BoneLocation(mesh, bone, engine::skeleton::Space::Component)) {
+                log::Info("skeleton:   {} at ({:.1f}, {:.1f}, {:.1f}) component space", name, at->x, at->y, at->z);
+            }
         }
     }
 
@@ -148,13 +129,12 @@ void ProbeHud() {
 } // namespace
 
 bool TryStartup() {
-    gGetBoneNames = engine::FindFunction(L"GetBoneNames", kGetBoneNames);
-    gGetBoneLocation = engine::FindFunction(L"GetBoneLocation", kGetBoneLocation);
-    return gGetBoneNames != nullptr && gGetBoneLocation != nullptr;
+    gReady = engine::skeleton::TryStartup();
+    return gReady;
 }
 
 void Tick() {
-    if (gGetBoneNames == nullptr || gGetBoneLocation == nullptr) {
+    if (!gReady) {
         return;
     }
     if (!gHudProbed && gHudAttempts < kMaxHudAttempts && head_tracking::OnFoot()) {
@@ -180,8 +160,8 @@ void Tick() {
 }
 
 void Shutdown() {
-    gGetBoneNames = nullptr;
-    gGetBoneLocation = nullptr;
+    gReady = false;
+    engine::skeleton::Shutdown();
     gLastMesh = nullptr;
     gProbes = 0;
     gHudProbed = false;

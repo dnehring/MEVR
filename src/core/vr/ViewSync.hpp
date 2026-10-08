@@ -66,7 +66,10 @@ std::uint64_t PresentCount();
 // times out. The game thread calls this after several timeouts in a row: drops the oldest view.
 void DropOldest();
 
-// Forget everything (VR off, mode change, session restart).
+// Forget everything (VR off, session restart).
 void Reset();
+// Forget the queued views and the fallback, release any waiter, but keep the latest head pose,
+// FOV and IPD (a mode switch: the headset is still tracking).
+void ClearFrames();
 
 } // namespace mevr::vr::view_sync

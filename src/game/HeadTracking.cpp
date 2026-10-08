@@ -413,4 +413,9 @@ std::optional<unsigned char> GameMode() {
     return gGameMode;
 }
 
+void RefreshGameMode() {
+    gGameMode = ReadGameMode(engine::LocalPlayerController());
+    gOnFoot = gGameMode == kGameModeDefault;
+}
+
 } // namespace mevr::game::head_tracking

@@ -27,9 +27,10 @@ std::string ToString(SFXName const& name);
 // The first local player's controller (GEngine->GamePlayers[0]->Actor), or nullptr.
 APlayerController* LocalPlayerController();
 
-// True if `object` is still a live entry of GObjObjects (its index maps back to it and it isn't
-// pending destruction). Guards pointers kept across frames: a level load frees objects and can
-// reuse their addresses.
+// True if `object` is a live entry of GObjObjects (its index maps back to it and it isn't
+// pending destruction). It reads the object, so it's for pointers just read from live objects
+// (e.g. a handler's panel), never for pointers kept across frames: after a level load such a
+// pointer may be freed, or reused by an unrelated object that passes this check.
 bool IsAlive(UObject const* object);
 
 } // namespace mevr::engine

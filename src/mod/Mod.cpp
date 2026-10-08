@@ -52,6 +52,12 @@ mevr::Hotkey gHandAimKey{VK_OEM_COMMA}; // ,  aim weapons with the right control
 mevr::Hotkey gArmIkKey{VK_OEM_PERIOD};  // .  VRIK arms: the engine's limb IK follows the controllers
 mevr::Hotkey gCinemaKey{VK_OEM_PLUS};   // =  conversations, cutscenes, menus on the virtual screen
 bool gAutoCinema = true;
+// The game mode can flicker (e.g. between conversation lines); switch the screen only once a
+// state has held this long, so every flicker isn't a layer change.
+constexpr double kScreenSwitchSeconds = 0.3;
+bool gScreenWanted = false;
+bool gScreenShown = false;
+double gScreenWantedFor = 0.0;
 
 double gRetryTimer = kStartupRetrySeconds;  // first attempt on the first tick
 double gHeartbeatElapsed = 0.0;
@@ -124,7 +130,7 @@ void TryInstallScriptHooks() {
     if (!game::reflections::TryStartup()) {
         log::Warn("reflections: SceneCaptureComponent.SetFrameRate not found; reflection fix off");
     }
-    if (!game::skeleton_probe::TryStartup()) {
+    if (!game::skeleton_probe::TryStartup()) {  // also starts engine::skeleton (arm IK uses it)
         log::Warn("skeleton probe: bone query functions not found");
     }
     gHandAimAvailable = game::hand_aim::TryStartup();
@@ -256,8 +262,15 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     if (gHooked) {
         // Cutscenes and conversations cut between cameras, and menus have no world to look
         // around in: show them on the virtual screen (the chosen mode returns afterwards).
+        game::head_tracking::RefreshGameMode();
         auto const mode = game::head_tracking::GameMode();
-        vr::output::SetScreenOverride(gAutoCinema && mode && engine::adapter::IsFlatScreenMode(*mode));
+        bool const wanted = gAutoCinema && mode && engine::adapter::IsFlatScreenMode(*mode);
+        gScreenWantedFor = wanted == gScreenWanted ? gScreenWantedFor + deltaSeconds : 0.0;
+        gScreenWanted = wanted;
+        if (gScreenShown != gScreenWanted && (gScreenWantedFor >= kScreenSwitchSeconds || !gAutoCinema)) {
+            gScreenShown = gScreenWanted;
+            vr::output::SetScreenOverride(gScreenShown);
+        }
         game::reflections::Tick(deltaSeconds);
         game::arm_ik::Tick(deltaSeconds);  // uses this tick's view anchor, so before OnTickEnd
         game::head_tracking::OnTickEnd();
@@ -283,6 +296,8 @@ MEVR_MOD_API void MevrModShutdown() {
     using namespace mevr;
     gActive = false;
     vr::output::SetScreenOverride(false);
+    gScreenWanted = gScreenShown = false;
+    gScreenWantedFor = 0.0;
     // The host has already detached the present callback, so the render thread is out.
     vr::output::Shutdown();
     if (gInit && gHooked) {

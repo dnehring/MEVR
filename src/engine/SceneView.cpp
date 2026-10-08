@@ -43,7 +43,13 @@ std::uintptr_t gModuleBase = 0;
 std::uintptr_t gPrimaryReturn = 0;
 std::uintptr_t gDrawStart = 0;
 std::uintptr_t gDrawEnd = 0;
-std::atomic<std::uintptr_t> gLastPrimaryCaller{0};
+// Distinct player-view callers and their counts (LE2/LE3: pins the call site on the first run;
+// two sites in one Draw would show up here). Game thread.
+struct CallerCount {
+    std::uintptr_t caller = 0;
+    unsigned count = 0;
+};
+CallerCount gPrimaryCallers[4];
 bool gInstalled = false;
 
 thread_local bool tInPrimary = false;
@@ -70,7 +76,13 @@ void* CalcSceneViewHook(void* player, void* viewFamily, void* viewLocation, void
         return gOrig(player, viewFamily, viewLocation, viewRotation, viewport, viewDrawer);
     }
     gPrimaryCalls.fetch_add(1, std::memory_order_relaxed);
-    gLastPrimaryCaller.store(caller, std::memory_order_relaxed);
+    for (CallerCount& slot : gPrimaryCallers) {
+        if (slot.caller == caller || slot.caller == 0) {
+            slot.caller = caller;
+            ++slot.count;
+            break;
+        }
+    }
     if (gBefore != nullptr) {
         gBefore();
     }
@@ -155,12 +167,18 @@ void LogStats() {
     unsigned const primary = gPrimaryCalls.exchange(0);
     unsigned const other = gOtherCalls.exchange(0);
     std::uintptr_t const lastOther = gLastOtherCaller.load();
-    std::uintptr_t const lastPrimary = gLastPrimaryCaller.load();
+    std::string callers;
+    for (CallerCount& slot : gPrimaryCallers) {
+        if (slot.caller != 0) {
+            callers += std::format(" exe+0x{:X}x{}", slot.caller - gModuleBase, slot.count);
+        }
+        slot = {};
+    }
     if (other > 0) {
-        log::Info("    scene views: {} primary (from exe+0x{:X}), {} other (last other caller exe+0x{:X})", primary,
-            lastPrimary != 0 ? lastPrimary - gModuleBase : 0, other, lastOther - gModuleBase);
+        log::Info("    scene views: {} primary (from{}), {} other (last other caller exe+0x{:X})", primary, callers, other,
+            lastOther - gModuleBase);
     } else {
-        log::Info("    scene views: {} primary (from exe+0x{:X})", primary, lastPrimary != 0 ? lastPrimary - gModuleBase : 0);
+        log::Info("    scene views: {} primary (from{})", primary, callers);
     }
 }
 

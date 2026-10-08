@@ -55,6 +55,8 @@ set(MEVR_MOD_SOURCES
     src/core/Hotkey.hpp
     src/core/d3d11/Blit.cpp
     src/core/d3d11/Blit.hpp
+    src/core/ik/BoneNames.cpp
+    src/core/ik/BoneNames.hpp
     src/core/ik/Ik.cpp
     src/core/ik/Ik.hpp
     src/core/vr/Controllers.cpp
@@ -80,6 +82,8 @@ set(MEVR_MOD_SOURCES
     src/engine/ProcessEvent.hpp
     src/engine/SceneView.cpp
     src/engine/SceneView.hpp
+    src/engine/Skeleton.cpp
+    src/engine/Skeleton.hpp
     src/engine/XrToUnreal.cpp
     src/engine/XrToUnreal.hpp
     src/game/ArmIk.cpp
@@ -146,6 +150,7 @@ if (MEVR_BUILD_TESTS)
     enable_testing()
     add_executable(mevr-tests
         tests/Main.cpp
+        src/core/ik/BoneNames.cpp
         src/core/ik/Ik.cpp
         src/core/vr/ViewSync.cpp
         src/engine/XrToUnreal.cpp

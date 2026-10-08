@@ -1,6 +1,7 @@
 // Offline tests for the math that has to be right before it reaches a headset. No game, no
 // runtime: `ctest -C Release --test-dir build`.
 
+#include "core/ik/BoneNames.hpp"
 #include "core/ik/Ik.hpp"
 #include "core/vr/ViewSync.hpp"
 #include "engine/XrToUnreal.hpp"
@@ -298,6 +299,26 @@ void TestViewSync() {
     vs::Reset();
 }
 
+void TestBoneNames() {
+    using mevr::ik::HandSide;
+    using mevr::ik::IsHeadBone;
+    // Hands, whatever the convention.
+    CHECK(HandSide("Hand_R") == 1 && HandSide("hand_l") == 0);
+    CHECK(HandSide("R_Hand") == 1 && HandSide("L_Wrist") == 0);
+    CHECK(HandSide("RightHand") == 1 && HandSide("leftHand") == 0);
+    CHECK(HandSide("Bip01_R_Hand") == 1);
+    // Not hands.
+    CHECK(HandSide("Handle_R") == -1);
+    CHECK(HandSide("Finger1_R") == -1 && HandSide("Hand_R_Thumb") == -1 && HandSide("Hand_R_End") == -1);
+    CHECK(HandSide("Hand") == -1);  // no side
+    CHECK(HandSide("Spine2") == -1);
+    // The head.
+    CHECK(IsHeadBone("Head") && IsHeadBone("head") && IsHeadBone("Bip01_Head"));
+    CHECK(!IsHeadBone("HeadEnd") && !IsHeadBone("Head_Nub") && !IsHeadBone("Eye_Left") && !IsHeadBone("Forehead"));
+    auto const tokens = mevr::ik::NameTokens("Bip01_R_Finger12");
+    CHECK(tokens.size() == 5 && tokens[0] == "bip" && tokens[2] == "r" && tokens[3] == "finger" && tokens[4] == "12");
+}
+
 void TestIk() {
     using namespace mevr::ik;
     double const upper = 0.30;
@@ -377,6 +398,7 @@ void TestIk() {
 } // namespace
 
 int main() {
+    TestBoneNames();
     TestIk();
     TestViewSync();
     TestXrToUnreal();

@@ -139,17 +139,24 @@ bool WaitForPresent(std::uint32_t timeoutMs) {
         [target] { return gPresentedFrames >= target; });
 }
 
+void ClearFrames() {
+    {
+        std::lock_guard lock(gMutex);
+        gRendered.clear();
+        gFallback.reset();
+        gPresentedFrames = gPushedFrames;  // release any waiter
+    }
+    gPresented.notify_all();
+}
+
 void Reset() {
     {
         std::lock_guard lock(gMutex);
         gLatest.reset();
         gHeadsetFov.reset();
         gHalfIpd.reset();
-        gRendered.clear();
-        gFallback.reset();
-        gPresentedFrames = gPushedFrames;  // release any waiter
     }
-    gPresented.notify_all();
+    ClearFrames();
 }
 
 } // namespace mevr::vr::view_sync

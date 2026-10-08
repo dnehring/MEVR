@@ -2,6 +2,7 @@
 
 #include "core/Log.hpp"
 #include "core/d3d11/Blit.hpp"
+#include "core/ik/Ik.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/ViewSync.hpp"
 #include "core/xr/Input.hpp"
@@ -22,7 +23,7 @@ namespace {
 
 using Microsoft::WRL::ComPtr;
 
-// Screen mode panel placement in LOCAL space (origin = head position at the last recenter).
+// Screen mode panel: this far ahead of where the head faced when the screen appeared.
 constexpr float kScreenDistanceMeters = 2.0f;
 constexpr float kScreenWidthMeters = 2.4f;  // about 62 degrees wide at 2 m
 
@@ -59,6 +60,21 @@ std::uint32_t gEyesFailedGeneration = UINT32_MAX;  // eye resources failed: mono
 bool gFailed = false;
 XrSessionState gLastState = XR_SESSION_STATE_UNKNOWN;
 Mode gLastMode = Mode::HeadTracked;
+XrPosef gScreenPose{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, -kScreenDistanceMeters}};
+
+// Places the virtual screen straight ahead of the head's current heading (yaw only, at eye
+// height), so it never appears beside or behind a player who has turned since the recenter.
+void PlaceScreen() {
+    auto const head = view_sync::LatestHead();
+    if (!head) {
+        return;
+    }
+    double const yaw = ik::YawOf(head->orientation.x, head->orientation.y, head->orientation.z, head->orientation.w);
+    float const half = static_cast<float>(yaw / 2.0);
+    gScreenPose.orientation = {0.0f, std::sin(half), 0.0f, std::cos(half)};
+    gScreenPose.position = {head->position.x - std::sin(static_cast<float>(yaw)) * kScreenDistanceMeters, head->position.y,
+        head->position.z - std::cos(static_cast<float>(yaw)) * kScreenDistanceMeters};
+}
 
 // The OpenXR frame is begun right after the previous one ends, so the head prediction for the
 // frame the game is about to compute is available as early as possible.
@@ -226,8 +242,7 @@ XrCompositionLayerQuad ScreenLayer() {
     layer.subImage.swapchain = gImage.Handle();
     layer.subImage.imageRect = {{0, 0},
         {static_cast<std::int32_t>(gImage.Width()), static_cast<std::int32_t>(gImage.Height())}};
-    layer.pose.orientation.w = 1.0f;
-    layer.pose.position = {0.0f, 0.0f, -kScreenDistanceMeters};
+    layer.pose = gScreenPose;
     layer.size = {kScreenWidthMeters, kScreenWidthMeters * static_cast<float>(gImage.Height()) / gImage.Width()};
     return layer;
 }
@@ -434,7 +449,10 @@ void OnPresent(IDXGISwapChain* swapChain) {
     if (mode != gLastMode) {
         gLastMode = mode;
         gLastRendered.reset();
-        view_sync::Reset();
+        view_sync::ClearFrames();  // the headset still tracks: keep its pose, FOV and IPD
+        if (mode == Mode::Screen) {
+            PlaceScreen();
+        }
         log::Info("vr output: mode {}", mode == Mode::HeadTracked ? "head-tracked" : "screen");
     }
 

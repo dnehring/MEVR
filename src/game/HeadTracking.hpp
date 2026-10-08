@@ -73,7 +73,10 @@ struct ViewAnchor {
 std::optional<ViewAnchor> Anchor();
 // On-foot gameplay (SFXGameModeManager mode 0) as of this frame's camera update. Game thread.
 bool OnFoot();
-// The SFXGameModeManager mode as of the last camera update (EGameModes, per game), if known.
+// The SFXGameModeManager mode (EGameModes, per game), if known: read every camera update and
+// every tick, so it stays current while the camera doesn't update (movies, loading).
 std::optional<unsigned char> GameMode();
+// Game thread, once per tick: re-reads the game mode from the local player.
+void RefreshGameMode();
 
 } // namespace mevr::game::head_tracking

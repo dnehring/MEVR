@@ -7,9 +7,14 @@ tools/splice_text.py (the shipped exe's code is encrypted). It works on any unen
     python -I tools/xref.py <pe> --string "SkelControlLimb"      # references to a string (ASCII or UTF-16)
     python -I tools/xref.py <pe> --natives [--filter Bone]       # UE3 native table: execName -> RVA
 
-It scans code bytes for E8/E9 rel32 and RIP-relative operands (lea/mov/call/jmp), so a hit can
-occasionally be a false positive from a misaligned scan; each one is reported with its
-containing function (from .pdata) to make that easy to judge. Local research data only.
+It scans code bytes for E8/E9 rel32 and RIP-relative memory operands: lea, mov (all widths,
+including byte moves and immediate stores), the ALU ops, test/cmp with immediates, movzx/movsx,
+setcc and the common SSE loads/stores/compares, and call/jmp through memory. A byte scan can
+occasionally produce a false positive (a misaligned match); each hit is reported with its
+containing function (from .pdata) to make that easy to judge. Unusual encodings (VEX/AVX, x87)
+aren't decoded, so "0 references" is strong evidence but not proof. --natives pairs each
+exec* name string with the nearest lea of code within 32 bytes (after, else before): spot-check
+one known native before trusting the list. Local research data only.
 """
 import argparse
 import bisect
@@ -17,9 +22,19 @@ import re
 import struct
 import sys
 
-# Opcodes whose ModRM operand may be RIP-relative and that take no immediate: lea, mov (both
-# directions), cmp, add, sub, xor, or, and, test.
-RIP_OPCODES = {0x8D, 0x8B, 0x89, 0x3B, 0x39, 0x03, 0x2B, 0x33, 0x0B, 0x23, 0x85}
+# One-byte opcodes with a ModRM operand (RIP-relative when (modrm & 0xC7) == 0x05), and the size
+# of the immediate that follows the displacement (needed: RIP-relative targets are relative to
+# the end of the whole instruction). None: depends on the operand-size prefix (imm16 / imm32).
+ONE_BYTE_OPCODES = {
+    0x8D: 0, 0x8B: 0, 0x89: 0, 0x8A: 0, 0x88: 0,                    # lea, mov
+    0x03: 0, 0x01: 0, 0x2B: 0, 0x29: 0, 0x33: 0, 0x31: 0, 0x0B: 0, 0x09: 0,
+    0x23: 0, 0x21: 0, 0x3B: 0, 0x39: 0, 0x3A: 0, 0x38: 0, 0x85: 0, 0x84: 0,  # alu, cmp, test
+    0x80: 1, 0x83: 1, 0xC6: 1, 0x81: None, 0xC7: None,              # alu/mov with immediates
+}
+# Two-byte (0F xx) opcodes with a ModRM operand and no immediate: SSE moves/compares/arith,
+# movzx/movsx, setcc, cmovcc.
+TWO_BYTE_OPCODES = set(range(0x10, 0x18)) | {0x28, 0x29, 0x2E, 0x2F, 0x51, 0x54, 0x57, 0x58, 0x59, 0x5A,
+    0x5C, 0x5D, 0x5E, 0x5F, 0x6E, 0x6F, 0x7E, 0x7F, 0xB6, 0xB7, 0xBE, 0xBF, 0xD6} | set(range(0x90, 0xA0)) | set(range(0x40, 0x50))
 
 
 class Pe:
@@ -84,9 +99,9 @@ def scan_references(pe, wanted):
     d = pe.data
     for _, va, vsize, raw, rsize, _ in pe.code_sections():
         end = raw + min(vsize, rsize)
-        rex_end = -1  # a REX-prefixed hit already covered the byte after its prefix
+        skip_until = -1  # a prefixed hit already covered the bytes up to its opcode
         for at in range(raw, end - 7):
-            if at == rex_end:
+            if at <= skip_until:
                 continue
             op = d[at]
             rva = va + at - raw
@@ -95,26 +110,42 @@ def scan_references(pe, wanted):
                 if wanted is None or target in wanted:
                     yield rva, 'call' if op == 0xE8 else 'jmp', target
                 continue
-            # [REX] opcode modrm disp32, RIP-relative when (modrm & 0xC7) == 0x05.
+            # [66|F2|F3] [REX] opcode [0F xx] modrm disp32 [imm], RIP-relative when
+            # (modrm & 0xC7) == 0x05; the target is relative to the instruction's end.
             body = at
-            if 0x40 <= op <= 0x4F:
-                body = at + 1
+            operand16 = False
+            if op in (0x66, 0xF2, 0xF3):
+                operand16 = op == 0x66
+                body += 1
                 op = d[body]
+            if 0x40 <= op <= 0x4F:
+                body += 1
+                op = d[body]
+            if body + 7 > end:
+                continue
+            kind = None
             if op == 0xFF:
                 modrm = d[body + 1]
                 if modrm in (0x15, 0x25):  # call [rip+x], jmp [rip+x]
-                    target = va + (body + 6) - raw + struct.unpack_from('<i', d, body + 2)[0]
-                    if body != at:
-                        rex_end = body
-                    if wanted is None or target in wanted:
-                        yield rva, 'call*' if modrm == 0x15 else 'jmp*', target
+                    kind, modrm_at, immediate = ('call*' if modrm == 0x15 else 'jmp*'), body + 1, 0
+            elif op == 0x0F:
+                if d[body + 1] in TWO_BYTE_OPCODES and (d[body + 2] & 0xC7) == 0x05:
+                    kind, modrm_at, immediate = 'load', body + 2, 0
+            elif op in (0xF6, 0xF7) and (d[body + 1] & 0xC7) == 0x05 and (d[body + 1] & 0x38) == 0:
+                kind, modrm_at, immediate = 'test', body + 1, 1 if op == 0xF6 else (2 if operand16 else 4)  # test r/m, imm
+            elif op in ONE_BYTE_OPCODES and (d[body + 1] & 0xC7) == 0x05:
+                immediate = ONE_BYTE_OPCODES[op]
+                if immediate is None:
+                    immediate = 2 if operand16 else 4
+                kind = 'lea' if op == 0x8D else 'load'
+                modrm_at = body + 1
+            if kind is None:
                 continue
-            if op in RIP_OPCODES and (d[body + 1] & 0xC7) == 0x05:
-                target = va + (body + 6) - raw + struct.unpack_from('<i', d, body + 2)[0]
-                if body != at:
-                    rex_end = body
-                if wanted is None or target in wanted:
-                    yield rva, 'lea' if op == 0x8D else 'load', target
+            next_instruction = modrm_at + 5 + immediate
+            target = va + next_instruction - raw + struct.unpack_from('<i', d, modrm_at + 1)[0]
+            skip_until = body  # matches starting inside the prefixes are this instruction again
+            if wanted is None or target in wanted:
+                yield rva, kind, target
 
 
 def scan_pointers(pe, wanted):
@@ -170,12 +201,11 @@ def natives(pe, name_filter):
         name = strings.get(target)
         if name is None:
             continue
-        for later_rva, later_target in leas[i + 1:i + 4]:
-            if later_rva - rva > 32:
-                break
-            if in_code(later_target):
-                pairs.append((name, later_target))
-                break
+        # The function's lea usually follows the name's; fall back to the one just before it.
+        after = [t for r, t in leas[i + 1:i + 4] if r - rva <= 32 and in_code(t)]
+        before = [t for r, t in reversed(leas[max(0, i - 3):i]) if rva - r <= 32 and in_code(t)]
+        if after or before:
+            pairs.append((name, (after or before)[0]))
     for name, target in sorted(set(pairs)):
         if name_filter is None or name_filter.lower() in name.lower():
             print(f'{name:48s} 0x{target:X}')
