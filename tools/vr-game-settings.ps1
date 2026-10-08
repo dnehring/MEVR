@@ -9,12 +9,18 @@
 #                     swapchains clip. Prior art (Halcyon, research/13) sets it here [verify:
 #                     the mod log's backbuffer format should no longer be R16G16B16A16_FLOAT].
 #
+# Optional: -ResX/-ResY set the game's render size. The headset's eyes are roughly square, so a
+# squarer image fills more of the vertical view (16:9 covers about 75 degrees vertically at
+# 108 horizontal). In windowed mode the size must fit on the monitor, e.g. -ResX 1400 -ResY 1400.
+#
 # The first -Apply keeps a copy as GamerSettings.ini.mevr_backup; -Restore puts it back.
 # The game must be closed (it rewrites the file on exit).
 param(
     [ValidateSet('LE1', 'LE2', 'LE3')] [string]$Game = 'LE1',
     [string]$GameRoot,
     [switch]$Restore,
+    [int]$ResX,
+    [int]$ResY,
     # Prints the current values without changing anything.
     [switch]$Show
 )
@@ -31,6 +37,11 @@ if (-not (Test-Path $ini)) { throw "Not found: $ini (start the game once to crea
 $wanted = [ordered]@{
     'SystemSettings' = [ordered]@{ UseVSync = 'False'; MotionBlur = 'False'; FilmGrain = 'False' }
     'HDR'            = [ordered]@{ DesiredRange = 'DynamicRange_SDR' }
+}
+if ($ResX -or $ResY) {
+    if (-not ($ResX -gt 0 -and $ResY -gt 0)) { throw 'Give both -ResX and -ResY.' }
+    $wanted['SystemSettings']['ResX'] = "$ResX"
+    $wanted['SystemSettings']['ResY'] = "$ResY"
 }
 
 function Show-Values([string]$Text) {
