@@ -53,7 +53,14 @@ the feature that sets us apart: none of the existing ME LE VR mods
 - **Hand aim (`,`):** shots follow the right controller's aim ray, on foot. It goes through a new
   `UObject::CallFunction` hook (LE1 `0x12AE40`), because the weapon asks
   `BioPlayerController.GetAdjustedAimFor` from script, which ProcessEvent never sees. ME2VR's
-  logs show the same approach on LE2.
+  logs show the same approach on LE2. Since 2026-10-08 the controller reaches the world through
+  `game/view_anchor` (an `engine::TrackingFrame`), which also works with Halcyon's renderer: it
+  publishes its view relative to the game camera ([13](13-existing-me-vr-mods.md)). **Arm IK
+  should take its hand positions from the same anchor.** Hand aim sets only the direction:
+  shots still start at the game's StartFireLoc, so they run parallel to the controller's ray,
+  offset by the distance between them. The log measures that offset once **[verify]**; if it's
+  large (third person), the fix is a start-location override or aiming from StartFireLoc at the
+  ray's hit point (a world trace).
 
 **Route 1 driver (built 2026-10-08, `.` toggles, off by default): `game/ArmIk`.**
 

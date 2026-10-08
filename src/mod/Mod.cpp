@@ -6,6 +6,7 @@
 #include "core/Hotkey.hpp"
 #include "core/Log.hpp"
 #include "core/vr/Controllers.hpp"
+#include "core/vr/HostView.hpp"
 #include "core/vr/Output.hpp"
 #include "core/vr/ViewSync.hpp"
 #include "engine/CallFunction.hpp"
@@ -21,6 +22,7 @@
 #include "game/HeadTracking.hpp"
 #include "game/Reflections.hpp"
 #include "game/SkeletonProbe.hpp"
+#include "game/ViewAnchor.hpp"
 
 #include <LESDK/Headers.hpp>
 #include <LESDK/Init.hpp>
@@ -44,6 +46,13 @@ mevr::HostServices const* gHost = nullptr;
 bool gHostOwnsVr = false;
 bool gToldHostOwnsVr = false;
 bool gToldStateMismatch = false;
+// Host renderer (HostServices v3): it publishes its view (game/view_anchor maps the controllers
+// into the world with it) and takes our word on hand aim (its head aim stops while we aim).
+bool gHostView = false;
+// Host renderer: hand aim comes on by itself the first time a motion controller aims, unless `,`
+// has decided it this session.
+bool gHandAimChosen = false;
+bool gHandAimReported = false;  // what the host was last told
 bool gHooked = false;  // ProcessEvent hook live (after the script packages loaded)
 bool gSceneViewHooked = false;
 bool gGamepadHooked = false;  // XInput hooks (once the game has loaded an XInput DLL)
@@ -192,15 +201,52 @@ void SetVrFeatures(bool on) {
     }
 }
 
+// Host renderer: hand aim needs the host's view, and the CallFunction hook (the weapon asks for
+// its aim from script). Comes on the first time the right controller aims, unless `,` decided.
+void UpdateHostHandAim() {
+    using namespace mevr;
+    if (!gHostView || !gHooked || !gHandAimAvailable) {
+        return;
+    }
+    if (!gHandAimChosen && !game::hand_aim::Enabled()) {
+        vr::controllers::State const controllers = vr::controllers::Latest();
+        if (controllers.active && controllers.right.aimValid) {
+            EnsureCallFunctionHook();
+            game::hand_aim::SetEnabled(true);
+            log::Info("hand aim on: motion controllers are active, so the right controller aims (, toggles)");
+        }
+    }
+    // Tell the host only what actually works: without the CallFunction hook, shots fired from
+    // script keep the game's aim, so the host's head aim must stay.
+    bool const aiming = game::hand_aim::Enabled() && gCallFunctionHooked;
+    if (aiming != gHandAimReported) {
+        gHandAimReported = aiming;
+        gHost->setHandAim(aiming);
+    }
+}
+
 void PollHotkeys() {
     using namespace mevr;
     if (gHostOwnsVr) {
-        // Halcyon's renderer has its own controls (Insert menu, R recenter, K first person).
+        // `,` still switches hand aim (A/B against Halcyon's head aim). Everything else is
+        // Halcyon's (Insert menu, R recenter, K first person).
+        if (gHandAimKey.Pressed()) {
+            if (!gHostView || !gHandAimAvailable) {
+                log::Info(",: hand aim unavailable{}", gHostView ? "" : " (the host publishes no view: redeploy the host ASI)");
+            } else {
+                gHandAimChosen = true;
+                bool const on = game::hand_aim::Toggle();
+                if (on) {
+                    EnsureCallFunctionHook();
+                }
+                log::Info(",: hand aim {}", on ? "on (the right controller aims)" : "off (Halcyon's head aim)");
+            }
+        }
         for (Hotkey* key : {&gVrToggleKey, &gModeToggleKey, &gHeadPathKey, &gHeadSimKey, &gStereoKey, &gPositionKey,
-                 &gHandAimKey, &gArmIkKey, &gCinemaKey, &gLockstepKey}) {
+                 &gArmIkKey, &gCinemaKey, &gLockstepKey}) {
             if (key->Pressed() && !gToldHostOwnsVr) {
                 gToldHostOwnsVr = true;
-                log::Info("Halcyon's renderer is active: our VR keys are off; use its Insert menu");
+                log::Info("Halcyon's renderer is active: our VR keys are off except , (hand aim); use its Insert menu");
             }
         }
         return;
@@ -268,6 +314,7 @@ void Heartbeat() {
         game::head_tracking::LogStats();
         game::reflections::LogStats();
         game::hand_aim::LogStats();
+        game::view_anchor::LogStats();
         game::arm_ik::LogStats();
         game::skeleton_probe::Tick();
     }
@@ -286,15 +333,25 @@ void Heartbeat() {
 
 MEVR_MOD_API bool MevrModStartup(ISharedProxyInterface* spi, mevr::HostServices const* host) {
     using namespace mevr;
-    if (host != nullptr && host->version == kHostServicesVersion) {
+    // Version 2 and up: fields are only appended, so read what both sides know. (The monolithic
+    // build passes no logger: host and mod already share one log.)
+    if (host != nullptr && host->version >= 2) {
         if (host->log != nullptr) {
             log::SetSink(host->log);  // separate DLL: log through the host's file
         }
         gHost = host;
         gHostOwnsVr = host->controllers != nullptr;
-        engine::process_event::UseHost(host->setProcessEventCallback);
+        gHostView = gHostOwnsVr && host->version >= 3 && host->view != nullptr && host->setHandAim != nullptr;
+        if (host->version >= 4) {
+            engine::process_event::UseHost(host->setProcessEventCallback);
+        }
     }
     log::Info("mod startup (built {} {}){}", __DATE__, __TIME__, gHostOwnsVr ? "; VR renderer: the host's (Halcyon)" : "");
+    if (gHostOwnsVr && !gHostView) {
+        log::Warn("the host ASI is older than this mod (services v{}): no view to aim with, so hand aim stays off; "
+                  "close the game and redeploy the host", host->version);
+    }
+    game::view_anchor::UseHostView(gHostOwnsVr);
 
     // Hook names get this prefix, so the host's and the mod's hooks never collide.
     gInit = std::make_unique<::LESDK::Initializer>(spi, SDK_TARGET_NAME_A "MEVRmod");
@@ -313,15 +370,24 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     }
     PollHotkeys();
     if (gHostOwnsVr) {
-#if defined(MEVR_MOD_DLL)  // monolithic: host and mod already share the controller state
-        if (gHost->controllerStateSize == sizeof(vr::controllers::State)) {
+#if defined(MEVR_MOD_DLL)  // monolithic: host and mod already share this state
+        // A v4+ host says how big its structs are; older hosts can't, so trust them.
+        bool const sizesMatch = gHost->version < 4 || (gHost->controllerStateSize == sizeof(vr::controllers::State) &&
+            gHost->viewStateSize == sizeof(vr::host_view::State));
+        if (sizesMatch) {
             vr::controllers::State controllers;
             gHost->controllers(&controllers);
             vr::controllers::Mirror(controllers);  // keeps the host's timestamp, so it still ages
+            if (gHostView) {
+                vr::host_view::State view;
+                gHost->view(&view);
+                vr::host_view::Mirror(view);
+            }
         } else if (!gToldStateMismatch) {
             gToldStateMismatch = true;
-            log::Error("host controller state is {} bytes, mod expects {}: redeploy the host; controllers ignored",
-                gHost->controllerStateSize, sizeof(vr::controllers::State));
+            log::Error("host state sizes differ from the mod's (controllers {} vs {}, view {} vs {}): close the game and "
+                "redeploy the host; controllers and the view ignored", gHost->controllerStateSize,
+                sizeof(vr::controllers::State), gHost->viewStateSize, sizeof(vr::host_view::State));
         }
 #endif
         gGamepadHooked = true;  // the host's XInput hook feeds the controllers to the game
@@ -340,6 +406,9 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     }
     if (gHooked) {
         game::head_tracking::RefreshGameMode();
+    }
+    if (gHostOwnsVr) {
+        UpdateHostHandAim();
     }
     if (gHooked && !gHostOwnsVr) {
         if (!gVrFeatures && vr::output::Running()) {
@@ -404,12 +473,19 @@ MEVR_MOD_API void MevrModShutdown() {
     gCallFunctionHooked = false;
     gHandAimAvailable = false;
     gVrFeatures = false;
+    if (gHostView && gHandAimReported) {
+        gHost->setHandAim(false);  // the host's head aim comes back (it also forgets on unload)
+    }
     gHost = nullptr;
     gHostOwnsVr = false;
     gToldHostOwnsVr = false;
     gToldStateMismatch = false;
     engine::process_event::UseHost(nullptr);
+    gHostView = false;
+    gHandAimChosen = false;
+    gHandAimReported = false;
     game::hand_aim::Shutdown();
+    game::view_anchor::Shutdown();
     game::arm_ik::Shutdown();
     game::skeleton_probe::Shutdown();
     gHooked = false;

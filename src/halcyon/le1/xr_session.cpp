@@ -4032,7 +4032,8 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             // Mako is handled in the gameMode==1 branch above. Keep this guard so a clean mode-byte read never
             // falls through into the normal on-foot aim path.
             const bool aimGatesPass = cfg.combatHeadAim && weaponOut && !isStorm && !forceFlatCine &&
-                                      ctrlLive && ctrlStable && gameMode != 1;
+                                      ctrlLive && ctrlStable && gameMode != 1 &&
+                                      !MELEVR::MevrBridge::ControllerAimActive();   // [MEVR] the right controller aims instead
             if (aimGatesPass)
             {
                 // Head aims via ControlRotation (1:1, no sensitivity scaling). Invert flips the input sign.
@@ -4525,6 +4526,14 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         const float upUU = up * kMetersToUU;
         const float fwdUU = fwd * kMetersToUU;
         MELEVR::RenderHook::SetViewOffset(rightUU, upUU, fwdUU);
+        {   // [MEVR] publish this view for mapping the motion controllers into the world (our hand aim)
+            const float mevrHeadQ[4] = {renderTagPose.orientation.x, renderTagPose.orientation.y,
+                                        renderTagPose.orientation.z, renderTagPose.orientation.w};
+            const float mevrHeadP[3] = {renderTagPose.position.x, renderTagPose.position.y, renderTagPose.position.z};
+            const float mevrLeanScale = (cfg.leanEnabled && cfg.leanGain > 0.0f) ? cfg.leanGain : 1.0f;
+            MELEVR::MevrBridge::OnViewBuilt(headValid && !menuOpen && !forceFlatCine, headLookApplied, headAimApplied,
+                                            mevrHeadQ, mevrHeadP, rightUU, upUU, fwdUU, kMetersToUU * mevrLeanScale);
+        }
         // ME2/ME3 parity: arm AER independently of the generic lean/base offset. Only the primary
         // ULocalPlayer branch consumes this eye and publishes its render stamp.
         MELEVR::RenderHook::SetAerState(aerActive, g_aerRenderEye,

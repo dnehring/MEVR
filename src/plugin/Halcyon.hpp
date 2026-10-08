@@ -15,4 +15,9 @@ void Tick(float deltaSeconds);
 // Process exit: asks the frame loop to stop.
 void Shutdown();
 
+// The mod aims weapons with the right controller (HostServices::setHandAim), or stopped (also
+// when it unloads). Combined with the right controller being tracked, this turns Halcyon's
+// on-foot combat head aim off (plugin/HalcyonBridge.cpp). Any thread.
+void SetModHandAim(bool on);
+
 } // namespace mevr::host::halcyon

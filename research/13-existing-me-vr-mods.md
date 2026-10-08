@@ -232,6 +232,35 @@ startup. `.pdata` is plain and gives reliable function boundaries. Tool:
   On the body: `HideBoneByName` for the eyes and tongue. MassFPS does the same ([11](11-massfps.md)).
 - **Thread.** They make these calls from the Present thread. We'll use the game thread.
 
+### Head look, view offset and scale (read 2026-10-08, for our controller aim)
+
+Read in `src/halcyon/le1` (`xr_session.cpp` RunFrame, `render_hook.cpp`), to map our motion
+controllers into the world the way Halcyon renders it:
+
+- **Angles.** `HeadEulerDegrees` gives yaw + right, pitch + up (from the head's forward vector).
+  `SetHeadLook` takes yaw + = view turned *left*; RunFrame passes `-yaw` (`invertLookYaw` off)
+  and `+pitch`. At `lookSensitivity` 1 the applied look equals the head's yaw and pitch.
+- **Composition.** `ApplyHeadRotation` post-multiplies the view matrices by a yaw about the
+  camera's up, then a pitch about the turned right axis: the same as a UE rotator (pitch, yaw,
+  0) applied in the camera's frame. So while head look is on, tracking space turns into the world
+  exactly as the game camera does, pitch included (`engine::FromCameraView`, unit-tested).
+- **Position.** `ApplyViewOffsetSEH` moves the rendered camera along the pre-look camera axes.
+  The offset is the camera-offset and screen-distance knobs plus lean: head position × `leanGain`
+  × 50 UU, with forward ×3.
+- **Scale.** Halcyon treats 1 m as 50 UU: the lean, and its AER note that a 1.6 UU half-eye is
+  "1:1 life-size". Our `kUnitsPerMeter` is 100 **[verify]**; the skeleton probe's arm lengths
+  should settle it.
+- **Not used.** `GetBaseViewOrigin` is stashed after the view and eye offsets, and the sign of
+  `0x320` is disputed (its REFLFIX note says it holds −position). We take the base camera from
+  `CameraCache.POV` instead, and log once how far its right axis is from `GetLastViewRight`
+  (Halcyon's pre-look right axis) **[verify]** that it's about 0.
+- **Head aim** writes ControlRotation additively with the stick and subtracts its injection on
+  release; the [AIMSEED] ramp hands a render-side look offset over to ControlRotation.
+
+Our changes for controller aim (2026-10-08, marked `[MEVR]`): the on-foot head-aim gate in
+RunFrame also requires `!MevrBridge::ControllerAimActive()`, and after `SetViewOffset` RunFrame
+calls `MevrBridge::OnViewBuilt` to publish the view (`plugin/HalcyonBridge.cpp`).
+
 ### Other LE1 offsets they use [verify]
 
 | Type | Offsets |
