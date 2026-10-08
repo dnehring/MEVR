@@ -37,6 +37,7 @@ std::optional<XrPosef> gHeadPose;
 engine::UnrealRotation gHead;
 int gEye = -1;  // eye of the view being built: -1 mono, 0 left, 1 right
 unsigned gEyeParity = 0;
+int gTickEye = 0;  // the eye this tick renders (alternate-eye stereo)
 float gHalfIpdMeters = kDefaultHalfIpdMeters;
 float gCameraFov = 0.0f;  // the camera's FOV this frame, including any override written to it
 float gRenderedFov = 0.0f;  // the FOV the last player view was built with (stats)
@@ -249,10 +250,15 @@ void OnBeforePrimaryView() {
     }
     XrPosef pose = *gHeadPose;
     if (forVr && gStereo == Stereo::AlternateEye && vr::output::StereoAvailable()) {
-        gEye = static_cast<int>(gEyeParity++ & 1u);
+        // One eye per tick: a second player view in the same tick replaces the first in the
+        // queue (TagFrame), so it must render the same eye or that eye would never alternate.
+        if (!gTaggedThisTick) {
+            gTickEye = static_cast<int>(gEyeParity++ & 1u);
+            gEyeViews[gTickEye].fetch_add(1, std::memory_order_relaxed);
+        }
+        gEye = gTickEye;
         gHalfIpdMeters = vr::view_sync::HalfIpd().value_or(kDefaultHalfIpdMeters);
         pose = engine::OffsetRight(pose, gEye == 0 ? -gHalfIpdMeters : gHalfIpdMeters);
-        gEyeViews[gEye].fetch_add(1, std::memory_order_relaxed);
     }
     // The headset FOV snapshot is what GetFOVAngle will return inside this view; without an
     // override the camera's own FOV (this frame's) is what gets rendered.

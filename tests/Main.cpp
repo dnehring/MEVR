@@ -238,12 +238,32 @@ void TestViewSync() {
     vs::PushRendered(View(3));
     CHECK(PeekId(depth) == 2 && depth == 2);
 
-    // A frame that pushed but never presented: drift recovery drops its view.
+    // A frame that pushed but never presented, in the real call order: every later image is
+    // paired with the previous frame's view and every lockstep wait times out, until the game
+    // thread's drift recovery (3 timeouts in a row, as in Mod.cpp) drops one view.
     vs::Reset();
-    vs::PushRendered(View(1));  // never presented
-    vs::PushRendered(View(2));
-    vs::DropOldest();
-    CHECK(PeekId(depth) == 2 && depth == 1);
+    vs::PushRendered(View(1));  // its Present never comes
+    unsigned timeouts = 0;
+    bool recovered = false;
+    for (int frame = 2; frame <= 6; ++frame) {
+        vs::PushRendered(View(static_cast<float>(frame)));
+        float const paired = PeekId(depth);  // what the render thread shows image `frame` with
+        if (recovered) {
+            CHECK(paired == static_cast<float>(frame) && depth == 1);  // aligned again
+        } else {
+            CHECK(paired == static_cast<float>(frame - 1));  // off by one while drifting
+        }
+        vs::NotifyPresented();
+        if (vs::WaitForPresent(0)) {
+            timeouts = 0;
+        } else if (++timeouts == 3) {
+            vs::DropOldest();
+            timeouts = 0;
+            recovered = true;
+        }
+    }
+    CHECK(recovered);
+    CHECK(!vs::HasPendingFrame());
 
     // A second view in the same frame replaces the first; still one entry to consume.
     vs::Reset();
