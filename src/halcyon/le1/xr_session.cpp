@@ -2354,7 +2354,8 @@ void ReleaseTexture(ID3D11Texture2D*& t) noexcept
 
 
 // Copy the menu's ImGui texture into the menu quad swapchain (acquire/wait/copy/release).
-bool CopyMenuToSwapchain(ID3D11Texture2D* src) noexcept
+// [MEVR] [MENUVIS] probe: also read back the swapchain image right after the copy (one-shot diagnostics).
+bool CopyMenuToSwapchain(ID3D11Texture2D* src, bool probe) noexcept
 {
     if (g_menuSwapchain == nullptr || g_context == nullptr || src == nullptr || g_menuImages.empty()) return false;
     XrSwapchainImageAcquireInfo ai = {};
@@ -2364,10 +2365,25 @@ bool CopyMenuToSwapchain(ID3D11Texture2D* src) noexcept
     XrSwapchainImageWaitInfo wi = {};
     wi.type = XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO_VALUE;
     wi.timeout = XR_INFINITE_DURATION_VALUE;
-    g_fn.waitSwapchainImage(g_menuSwapchain, &wi);
+    const XrResult waited = g_fn.waitSwapchainImage(g_menuSwapchain, &wi);
     if (index < g_menuImages.size() && g_menuImages[index] != nullptr)
     {
         g_context->CopyResource(g_menuImages[index], src);
+        if (probe)   // [MEVR] [MENUVIS]
+        {
+            D3D11_TEXTURE2D_DESC sd = {}, dd = {};
+            src->GetDesc(&sd);
+            g_menuImages[index]->GetDesc(&dd);
+            char line[256];
+            std::snprintf(line, sizeof(line),
+                          "[MENUVIS] menu copy: image %u/%zu wait=%d src %ux%u fmt=%d -> image %ux%u fmt=%d mips=%u "
+                          "array=%u samples=%u bind=0x%X misc=0x%X",
+                          index, g_menuImages.size(), static_cast<int>(waited), sd.Width, sd.Height,
+                          static_cast<int>(sd.Format), dd.Width, dd.Height, static_cast<int>(dd.Format), dd.MipLevels,
+                          dd.ArraySize, dd.SampleDesc.Count, dd.BindFlags, dd.MiscFlags);
+            LogLine(line);
+            MELEVR::MevrBridge::ProbeTextureAlpha(g_context, g_menuImages[index], "Insert menu swapchain image (after the copy)");
+        }
     }
     XrSwapchainImageReleaseInfo ri = {};
     ri.type = XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO_VALUE;
@@ -5660,6 +5676,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     // [MEVR] Body-locked HUD panel and hand reticle (src/plugin/HalcyonOverlays.cpp): quads in the app
     // space above the world and below the menu. Called every frame: it also clears the panel texture,
     // arms the UI redirect for the next frame (world frames only) and hides the game's crosshair.
+    float mevrNearestQuadM = (submitted && forceFlatCine) ? 1.4f : 100.0f;   // the flat cine quad's distance
     {
         MELEVR::MevrBridge::OverlayFrame mevrFrame;
         mevrFrame.session = g_session;
@@ -5685,17 +5702,32 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         const unsigned mevrQuadCount = MELEVR::MevrBridge::OverlayLayers(mevrFrame, mevrQuads, 2);
         for (unsigned i = 0; i < mevrQuadCount && layerCount < kMaxLayers - 2; ++i)
             layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(mevrQuads[i]);
+        if (mevrQuadCount > 0 && cfg.hudPanelDistanceM < mevrNearestQuadM) mevrNearestQuadM = cfg.hudPanelDistanceM;
     }
 
     // Options menu: head-locked, alpha-blended quad rendered on top of the world.
+    // [MEVR] [MENUVIS] Never seen in the headset (SteamVR 2.17 over Steam Link) though submitted every
+    // frame. Now OPAQUE (the window fills the whole texture at ~94% opacity anyway, so nothing is lost)
+    // and always the NEAREST quad (SteamVR draws quad layers as overlays, which may sort by distance:
+    // at 1.54 m it would sit behind the 1.4 m flat panel), at the same angular size and place. The first
+    // frames of each opening read back the ImGui texture and the swapchain image ([MENUVIS] lines).
     XrCompositionLayerQuad menuQuad = {};
+    static bool s_menuShownLastFrame = false;   // [MEVR] [MENUVIS]
+    static int s_menuProbes = 0;
     if (menuOpen && g_menuSwapchain != nullptr)
     {
         ID3D11Texture2D* menuTex = MELEVR::Menu::RenderFrame();
-        if (menuTex != nullptr && CopyMenuToSwapchain(menuTex))
+        const bool probeMenu = !s_menuShownLastFrame && s_menuProbes < 3 && menuTex != nullptr;   // [MEVR]
+        if (probeMenu)
+        {
+            ++s_menuProbes;
+            MELEVR::MevrBridge::ProbeTextureAlpha(g_context, menuTex, "Insert menu ImGui texture");
+        }
+        s_menuShownLastFrame = menuTex != nullptr;
+        if (menuTex != nullptr && CopyMenuToSwapchain(menuTex, probeMenu))
         {
             menuQuad.type = XR_TYPE_COMPOSITION_LAYER_QUAD_VALUE;
-            menuQuad.layerFlags = kBlendSourceAlpha;
+            menuQuad.layerFlags = 0;        // [MEVR] opaque (was kBlendSourceAlpha); see [MENUVIS] above
             menuQuad.space = g_viewSpace;   // head-locked
             menuQuad.eyeVisibility = XR_EYE_VISIBILITY_BOTH_VALUE;
             menuQuad.subImage.swapchain = g_menuSwapchain;
@@ -5724,10 +5756,36 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             // a bad ini value can never shrink the menu into unusability or blow it up past reach.
             float menuW = MELEVR::Config::Get().menuSizeM;
             if (!(menuW >= 0.5f && menuW <= 2.5f)) menuW = 1.0f;
+            // [MEVR] [MENUVIS] nearest quad: pull it in front of the flat panel / HUD panel, scaled about
+            // the eye so it keeps the same angular size and direction.
+            const float menuDistNow = -menuQuad.pose.position.z;
+            const float menuDistMax = (std::max)(0.5f, mevrNearestQuadM - 0.15f);
+            if (menuDistNow > menuDistMax)
+            {
+                const float k = menuDistMax / menuDistNow;
+                menuQuad.pose.position.x *= k;
+                menuQuad.pose.position.y *= k;
+                menuQuad.pose.position.z *= k;
+                menuW *= k;
+            }
             menuQuad.size.width = menuW;
             menuQuad.size.height = menuW * static_cast<float>(kMenuH) / static_cast<float>(kMenuW);  // keep aspect
             layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&menuQuad);
+            if (probeMenu)   // [MEVR] [MENUVIS]
+            {
+                char line[288];
+                std::snprintf(line, sizeof(line),
+                              "[MENUVIS] menu quad submitted: layer %u (before any SteamVR placeholder), opaque, VIEW space, %.2f x %.2f m at "
+                              "(%.2f, %.2f, %.2f) m (configured %.2f m away; nearest other quad %.2f m)",
+                              layerCount, menuQuad.size.width, menuQuad.size.height, menuQuad.pose.position.x,
+                              menuQuad.pose.position.y, menuQuad.pose.position.z, menuDistNow, mevrNearestQuadM);
+                LogLine(line);
+            }
         }
+    }
+    else
+    {
+        s_menuShownLastFrame = false;   // [MEVR] [MENUVIS] the next opening probes again
     }
 
     // [STEAMVRSCENE 2026-07-20] never end a SteamVR frame without a projection layer. Quad-only and

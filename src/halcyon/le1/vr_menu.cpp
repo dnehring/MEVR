@@ -2185,6 +2185,14 @@ ID3D11Texture2D* RenderFrame() noexcept
 
     // ImGui_ImplDX11_RenderDrawData backs up + restores the device-context state, so it won't corrupt the
     // game's pipeline. This points it at a dedicated RTV first and clears it transparent.
+    // [MEVR] ...but not the render targets and viewports set here: those stayed bound into the game's
+    // next frame (UE3 caches its own state). Saved and restored around the menu draw.
+    ID3D11RenderTargetView* savedRtvs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
+    ID3D11DepthStencilView* savedDsv = nullptr;
+    D3D11_VIEWPORT savedVps[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE] = {};
+    UINT savedVpCount = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+    g_ctx->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, savedRtvs, &savedDsv);
+    g_ctx->RSGetViewports(&savedVpCount, savedVps);
     ID3D11RenderTargetView* rtvs[1] = { g_rtv };
     g_ctx->OMSetRenderTargets(1, rtvs, nullptr);
     const float clear[4] = { 0.0f, 0.0f, 0.0f, 0.0f };  // transparent
@@ -2192,6 +2200,13 @@ ID3D11Texture2D* RenderFrame() noexcept
     D3D11_VIEWPORT vp = { 0.0f, 0.0f, static_cast<float>(g_w), static_cast<float>(g_h), 0.0f, 1.0f };
     g_ctx->RSSetViewports(1, &vp);
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+    g_ctx->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, savedRtvs, savedDsv);   // [MEVR]
+    g_ctx->RSSetViewports(savedVpCount, savedVps);
+    for (auto*& r : savedRtvs)
+    {
+        if (r != nullptr) { r->Release(); r = nullptr; }
+    }
+    if (savedDsv != nullptr) savedDsv->Release();
 
     return g_tex;
 }
