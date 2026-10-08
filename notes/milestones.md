@@ -240,6 +240,39 @@ Built 2026-10-07 while the user was away from VR:
 
 Test plan: [next-vr-session.md](next-vr-session.md).
 
+### M3.3 / M4 stage 1 / M6 groundwork (built 2026-10-07, untested in game)
+
+Built while the user was away from VR, behind toggles so the M3.2 A/B test stays clean:
+
+- **Motion controllers as a gamepad (on).**
+  - `core/xr/Input`: an OpenXR action set with Touch, Index and simple-controller bindings,
+    synced each frame on the render thread. It also locates grip and aim poses, for later.
+  - `game/GamepadBridge`: hooks `XInputGetState` (and ordinal 100) in the XInput DLLs the game
+    loaded. Pad 0 becomes the controllers merged with any real pad.
+  - Mapping (`game/GamepadMapping`, unit-tested):
+
+    | Touch | Xbox |
+    |-------|------|
+    | Sticks | Sticks |
+    | Triggers | Triggers |
+    | Grips | LB / RB (with hysteresis) |
+    | A / B / X / Y | A / B / X / Y |
+    | Stick clicks | LS / RS |
+    | Left menu | Start |
+    | Left grip + menu | Back |
+
+  - On the render path the left stick is turned by head yaw, so forward is where you look.
+  - No D-pad yet.
+- **Alternate-eye stereo (`;`, off).** Frames alternate eyes at ±half the runtime's IPD along
+  the view's right axis. Each frame is tagged with its eye's pose (`OffsetRight`). The output
+  keeps a swapchain and a held image per eye and submits both every frame, so a stale eye is
+  reprojected from its own pose.
+- **6DOF (`/`, off).** Head position (LOCAL space) offsets the rendered view, rotated into the
+  game yaw. 1 m = 100 units **[verify]**.
+- **Reflection judder fix (on).** Every 3 s, finds live `SceneCaptureReflectComponent`s and calls
+  `SetFrameRate(1000)` through ProcessEvent, then reads `FrameRate` back. It disables itself if
+  the call has no effect (open question: does LE's ProcessEvent run natives?).
+
 ### Still to do
 
 - Retest with the fixes. Check image correctness (colors and brightness vs the monitor).

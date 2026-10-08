@@ -7,18 +7,18 @@ Items marked **[verify]** are hypotheses based on stock UE3/UDK. Confirm them in
 
 - **First-person base camera:** MassFPS's script-side camera modes put the game camera at
   Shepard's eyes. Our ASI then only *adds* the HMD pose on top.
-- **Camera hook:** UE3 builds each frame's view in native `ULocalPlayer::CalcSceneView`, after
-  script-side `PlayerController.GetPlayerViewPoint` and `Camera.UpdateCamera`. Override the
-  rotation and location with the HMD pose there, and swap in OpenXR's asymmetric per-eye FOV
-  for the projection matrix. **[verify]** ME's camera classes (`BioCamera` / `SFXCamera`) in LEX,
-  and find `CalcSceneView` in Ghidra.
-- **Stereo, stage 1:** alternate-eye rendering. Offset the camera by ±IPD/2 on alternating
-  frames. Cheap, and gets us to M4-lite.
-- **Stereo, stage 2:** UE3 natively renders **multiple views per frame for split-screen**. Each
-  `ULocalPlayer` has its own `FSceneViewState`, which holds occlusion and temporal history. If we
-  can hijack that path with two "players" sharing one pawn, we'd get synchronized stereo with
-  isolated per-eye state, which is exactly what Overlord had to build by hand. **[verify]** that
-  the split-screen code survives in ME LE.
+- **Camera hook (built, M3.2):** `ULocalPlayer::CalcSceneView` (LE1 `0x4C5300`). Inside it the
+  engine asks script for the view point and FOV; our handlers change them only there, so only
+  the rendered view follows the head (`src/engine/SceneView.*`, `src/game/HeadTracking.*`).
+  Asymmetric per-eye projection is still to do (we render a symmetric FOV covering both eyes).
+- **6DOF (built, `/`):** head position offsets the rendered view (1 m = 100 units [verify]).
+- **Stereo, stage 1 (built, `;`):** alternate-eye rendering. Frames alternate eyes at ±IPD/2,
+  each tagged with its eye's pose, and each eye keeps its latest image. Cheap; each eye updates
+  at half the frame rate.
+- **Stereo, stage 2:** ~~split-screen views~~ (refuted: UE3-LE skips lighting and post for a
+  secondary view, research/13). Instead, render the whole frame twice per present, each a full
+  primary render (Halcyon's approach: a second `FViewportClient::Draw`, LE1 `0x4C71A0`, and pass
+  capture on the render thread).
 - **Post effects to disable:** motion blur, depth of field, film grain, vignette, lens flares,
   chromatic aberration. Most are reachable through ini settings or the LEX console.
 

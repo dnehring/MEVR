@@ -61,7 +61,10 @@ switching frameworks.
 - Dev hotkeys: not F-keys (bound in game), not backtick (UE console). `]` toggles VR (the XR
   session) on and off; `[` switches between head-tracked and screen mode; `\` cycles the head
   path (render-only / camera / off); `'` cycles the desktop head simulator (sweep / nod / off,
-  used while VR isn't head-tracked).
+  used while VR isn't head-tracked); `;` toggles alternate-eye stereo and `/` toggles 6DOF (both
+  render path, default off).
+- Motion controllers reach the game as Xbox pad 0 (`game/GamepadBridge`, XInput hooks). Mapping
+  is in `game/GamepadMapping` (unit-tested).
 - Offline tests: `cmake --build build --config Release --target mevr-tests`, then
   `ctest -C Release --test-dir build`. Put game-independent math there.
 - `tools/vr-game-settings.ps1` sets VR-friendly GamerSettings.ini values (VSync, motion blur,
