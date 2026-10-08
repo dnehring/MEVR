@@ -67,8 +67,12 @@ set(MEVR_MOD_SOURCES
     src/engine/Objects.hpp
     src/engine/ProcessEvent.cpp
     src/engine/ProcessEvent.hpp
+    src/engine/SceneView.cpp
+    src/engine/SceneView.hpp
     src/engine/XrToUnreal.cpp
     src/engine/XrToUnreal.hpp
+    src/game/HeadSim.cpp
+    src/game/HeadSim.hpp
     src/game/HeadTracking.cpp
     src/game/HeadTracking.hpp
     src/mod/Mod.cpp
@@ -112,3 +116,18 @@ foreach (game LE1 LE2 LE3)
         mevr_add_plugin(${game})
     endif ()
 endforeach ()
+
+# Offline tests for game-independent math (no game, no runtime needed).
+option(MEVR_BUILD_TESTS "Build the offline tests" ON)
+if (MEVR_BUILD_TESTS)
+    enable_testing()
+    add_executable(mevr-tests
+        tests/Main.cpp
+        src/engine/XrToUnreal.cpp
+        src/game/HeadSim.cpp
+    )
+    target_include_directories(mevr-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(mevr-tests PRIVATE OpenXR::headers)
+    target_compile_options(mevr-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+    add_test(NAME mevr-tests COMMAND mevr-tests)
+endif ()

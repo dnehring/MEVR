@@ -1,24 +1,34 @@
 #pragma once
 
-// M3: the game camera follows the headset (rotation only, mono).
+// The game view follows the headset (rotation only, mono). Rendered yaw = the game's own yaw
+// (mouse / stick turning) + head yaw; rendered pitch and roll come from the head.
 //
-// Once per game frame, at Engine.Camera.UpdateCamera, the latest predicted head pose is read and
-// queued (with the camera's FOV) for the render thread, which tags that frame's image with it.
-// Every PlayerController.GetPlayerViewPoint that frame then returns:
-//   yaw   = the game's own yaw (mouse / stick turning) + head yaw
-//   pitch = head pitch, roll = head roll (the game's pitch is ignored)
-// Aim follows the view for now, since weapons also ask GetPlayerViewPoint.
+// Paths (`\` cycles them, for A/B tests):
+//   Render (default): only the frame's player view is rotated, inside CalcSceneView
+//     (engine/scene_view). The game camera, aim and AI keep the unrotated view, so the
+//     third-person camera can't swing or smooth against the head. Aim stays with the game camera
+//     for now (no head aim).
+//   Camera (M3): every GetPlayerViewPoint is rotated and the camera FOV overridden. The camera
+//     boom and aim follow the head.
+//   Off: frames are still tagged, so the view box follows the head but its picture doesn't.
+//
+// Head source: the headset when VR runs head-tracked, else the desktop simulator (head_sim),
+// so the camera path can be checked without VR.
 namespace mevr::game::head_tracking {
+
+enum class Path { Render, Camera, Off };
 
 // Finds the functions and registers ProcessEvent handlers. False (nothing registered) until the
 // script packages have loaded; retry later. Call before installing the ProcessEvent hook.
-bool TryStartup();
+// `renderPathAvailable` is false if the CalcSceneView hook couldn't be installed.
+bool TryStartup(bool renderPathAvailable);
 void LogStats();
 void Shutdown();
 
-// Diagnostic A/B: when off, the head pose still tags frames (the view box follows the head) but
-// the game camera isn't rotated, so the picture inside the box stays head-locked.
-void SetApplyToCamera(bool apply);
-bool AppliesToCamera();
+// Game thread, from engine/scene_view: the frame's player view is about to be built.
+void OnBeforePrimaryView();
+
+Path CyclePath();
+char const* Name(Path path);
 
 } // namespace mevr::game::head_tracking

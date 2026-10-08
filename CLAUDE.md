@@ -59,7 +59,13 @@ switching frameworks.
 - Script-level hooks must wait for the script packages to load (they aren't there at attach).
   `Mod.cpp` retries every second before installing the ProcessEvent hook.
 - Dev hotkeys: not F-keys (bound in game), not backtick (UE console). `]` toggles VR (the XR
-  session) on and off; `[` switches between head-tracked and screen mode.
+  session) on and off; `[` switches between head-tracked and screen mode; `\` cycles the head
+  path (render-only / camera / off); `'` cycles the desktop head simulator (sweep / nod / off,
+  used while VR isn't head-tracked).
+- Offline tests: `cmake --build build --config Release --target mevr-tests`, then
+  `ctest -C Release --test-dir build`. Put game-independent math there.
+- `tools/vr-game-settings.ps1` sets VR-friendly GamerSettings.ini values (VSync, motion blur,
+  film grain off, HDR to SDR); `-Restore` puts the user's originals back.
 - The mod connects to Windows' active OpenXR runtime (Oculus, or SteamVR for Steam Link). The
   user currently uses Steam Link / SteamVR.
 - The game's D3D11 device is SINGLETHREADED: no deferred contexts, and all D3D/XR work happens

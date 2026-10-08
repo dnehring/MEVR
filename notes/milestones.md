@@ -208,8 +208,39 @@ Design (2026-10-07):
     queue depth histogram (should be all depth 1), lockstep waits, average wait, timeouts.
 - Retest pending.
 
+### M3.2: render-only head rotation (built and unit-tested; untested in game)
+
+Prior art ([research/13](../research/13-existing-me-vr-mods.md)) points to three suspects for
+the vertical judder:
+- our pitch going through the third-person camera, whose boom and smoothing fight it;
+- VSync tying Present to the desktop monitor;
+- motion blur on head turns.
+
+Built 2026-10-07 while the user was away from VR:
+
+- **CalcSceneView hook** (`src/engine/SceneView.*`, LE1 `0x4C5300`). The address is checked
+  against `.pdata` at runtime, and the decrypted entry bytes are logged. Only the call from
+  `FViewportClient::Draw` (return address `0x4C7A4E`) counts as the frame's player view.
+- **Render path (new default).** GetPlayerViewPoint/GetFOVAngle are changed *only inside* that
+  call. UE3 builds the matrices itself, and the camera, aim and AI never see the head. The head
+  is sampled and the frame tagged at the start of the view (as late as possible on the game
+  thread). Self-checks in the heartbeat:
+  - if no GetPlayerViewPoint call happens inside the view, it falls back to the camera path;
+  - if no GetFOVAngle call does, the FOV goes through the camera cache instead.
+- **`\` cycles render / camera (old M3) / off** for A/B testing.
+- **Desktop head simulator.** `'` cycles sweep / nod / off and is used while VR isn't
+  head-tracked, so the render path can be checked on the monitor.
+- **Offline tests:** `ctest -C Release --test-dir build` covers the rotation conversion and
+  the simulator.
+- **`tools/vr-game-settings.ps1`.** Applied to LE1 (backup kept): VSync off, motion blur off,
+  film grain off, HDR to SDR. `-Restore` undoes it.
+- **Known behaviour change:** on the render path, weapons aim along the game camera, not the
+  head, so the crosshair is no longer at the view centre once you turn your head. Head or
+  controller aim comes later.
+
+Test plan: [next-vr-session.md](next-vr-session.md).
+
 ### Still to do
 
 - Retest with the fixes. Check image correctness (colors and brightness vs the monitor).
-- In parallel: find LE1 `ULocalPlayer::CalcSceneView` (Ghidra and x64dbg; LE3 is at RVA
-  `0x6cffd0` for comparison).
+- ~~Find LE1 `ULocalPlayer::CalcSceneView`~~: `0x4C5300` (research/13).

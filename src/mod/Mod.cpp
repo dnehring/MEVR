@@ -9,6 +9,8 @@
 #include "core/vr/ViewSync.hpp"
 #include "engine/Engine.hpp"
 #include "engine/ProcessEvent.hpp"
+#include "engine/SceneView.hpp"
+#include "game/HeadSim.hpp"
 #include "game/HeadTracking.hpp"
 
 #include <LESDK/Headers.hpp>
@@ -26,10 +28,12 @@ constexpr double kHeartbeatSeconds = 5.0;
 std::unique_ptr<::LESDK::Initializer> gInit;
 std::atomic<bool> gActive{false};  // read on the render thread too
 bool gHooked = false;  // ProcessEvent hook live (after the script packages loaded)
+bool gSceneViewHooked = false;
 
 mevr::Hotkey gVrToggleKey{VK_OEM_6};    // ]  VR on / off
 mevr::Hotkey gModeToggleKey{VK_OEM_4};  // [  head-tracked / screen
-mevr::Hotkey gCameraAbKey{VK_OEM_5};    // \  head rotation applied to the game camera (A/B)
+mevr::Hotkey gHeadPathKey{VK_OEM_5};    // \  head path: render / camera / off (A/B)
+mevr::Hotkey gHeadSimKey{VK_OEM_7};     // '  desktop head simulator: sweep / nod / off
 
 double gRetryTimer = kStartupRetrySeconds;  // first attempt on the first tick
 double gHeartbeatElapsed = 0.0;
@@ -67,7 +71,11 @@ void WaitForThisFrameToPresent() {
 // registered before the ProcessEvent hook goes live so the table never changes under it.
 void TryInstallScriptHooks() {
     using namespace mevr;
-    if (!game::head_tracking::TryStartup()) {
+    // CalcSceneView is native and always there, but the handlers it serves need the scripts.
+    if (!gSceneViewHooked) {
+        gSceneViewHooked = engine::scene_view::Install(*gInit, &game::head_tracking::OnBeforePrimaryView);
+    }
+    if (!game::head_tracking::TryStartup(gSceneViewHooked)) {
         return;
     }
     if (!engine::process_event::Install(*gInit)) {
@@ -92,10 +100,12 @@ void PollHotkeys() {
         vr::output::SetMode(mode);
         log::Info("[: {}", mode == vr::output::Mode::HeadTracked ? "head-tracked" : "screen");
     }
-    if (gCameraAbKey.Pressed()) {
-        bool const apply = !game::head_tracking::AppliesToCamera();
-        game::head_tracking::SetApplyToCamera(apply);
-        log::Info("\\: head rotation on game camera {}", apply ? "ON" : "OFF");
+    if (gHeadPathKey.Pressed()) {
+        log::Info("\\: head path {}", game::head_tracking::Name(game::head_tracking::CyclePath()));
+    }
+    if (gHeadSimKey.Pressed()) {
+        log::Info("': head simulator {}{}", game::head_sim::Name(game::head_sim::Cycle()),
+            vr::output::WantsHeadTracking() ? " (ignored while VR is head-tracked)" : "");
     }
 }
 
@@ -108,6 +118,7 @@ void Heartbeat() {
     if (gHooked) {
         game::head_tracking::LogStats();
     }
+    engine::scene_view::LogStats();
     vr::output::LogStats();
     if (gLockstepWaits > 0) {
         log::Info("    lockstep: {} waits (game thread {}), avg {:.2f} ms, {} timeouts",
@@ -174,7 +185,11 @@ MEVR_MOD_API void MevrModShutdown() {
     if (gInit && gHooked) {
         engine::process_event::Uninstall(*gInit);
     }
+    if (gInit && gSceneViewHooked) {
+        engine::scene_view::Uninstall(*gInit);
+    }
     gHooked = false;
+    gSceneViewHooked = false;
     engine::process_event::ClearHandlers();
     game::head_tracking::Shutdown();
     gInit.reset();
