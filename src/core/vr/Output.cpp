@@ -157,6 +157,7 @@ void ResetFrameState() {
     gSessionRunning = false;
     gSessionVisible = false;
     gLastRendered.reset();
+    gLeavingScreen = false;
     gPublishedFov = 0.0f;
     for (EyeImage& eye : gEyes) {
         eye.view.reset();

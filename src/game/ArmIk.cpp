@@ -236,7 +236,8 @@ void Tick(float deltaSeconds) {
         return;
     }
     if (found[kLeft].control == nullptr && found[kRight].control == nullptr) {
-        gSaved = {};  // the live body has no such controls: the snapshots can't apply
+        // Keep the snapshots: the body may have swapped AnimTrees (e.g. a cinematic one) and will
+        // swap back; a walk that finds a different control re-saves anyway.
         gStatus = "no SkelControlLimb on the hand bones (route 1 unavailable)";
         return;
     }

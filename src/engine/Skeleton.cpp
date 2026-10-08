@@ -47,6 +47,7 @@ std::optional<UnrealVector> BoneLocation(USkeletalMeshComponent* mesh, SFXName c
     }
     USkeletalMeshComponent_execMatchRefBone_Parms match;
     match.BoneName = bone;
+    match.ReturnValue = -1;  // stays -1 if the engine rejects the call
     mesh->ProcessEvent(gMatchRefBone, &match, nullptr);
     if (match.ReturnValue < 0 || match.ReturnValue >= static_cast<int>(mesh->SpaceBases.Count())) {
         return std::nullopt;  // not this skeleton's bone, or not posed yet
