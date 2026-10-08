@@ -24,6 +24,20 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
 - LExASIs and LEBinkProxy have no license: read for patterns; ask ME3Tweaks before copying.
 - LExSDKv2: use as a git submodule only, never vendored into `src/`.
 
+## Renderer (LE1): Halcyon's, inside our host
+
+- Since 2026-10-08 LE1's VR renderer is Halcyon's (`src/halcyon/le1`, built as the `halcyon-le1`
+  static library and linked into the **host** ASI, so it isn't hot-reloaded). It owns OpenXR,
+  Present, stereo (two renders per present), first person (K), head look and its Insert menu.
+  Its log is `MELEVR_Log.txt` and its settings `MELEVR.ini`, both in `Binaries\Win64\ASI`.
+- Our seams into it are marked `[MEVR]` and declared in `src/halcyon/le1/mevr_bridge.h`
+  (implemented in `src/plugin/HalcyonBridge.cpp`): static OpenXR loader, our controller actions
+  on its session, Touch → Xbox pad 0 in its XInput hooks. Keep changes to its files small and
+  marked; `git log -p -- src/halcyon` must show every change.
+- The mod learns from `HostServices::controllers` that the host owns VR, and then skips our own
+  VR output (`core/vr/Output`), scene view hook, reflection fix, XInput hook and VR hotkeys.
+  LE2/LE3 still use our own renderer until Halcyon's ME2/ME3 code is brought in.
+
 ## Before each VR milestone
 
 Read the matching chapter of `reference/vrframework/guides/` (MIT, a 17-part guide on adding
