@@ -526,6 +526,10 @@ void TestArmChains() {
     std::vector<int> const plainParents{-1, 0, 1, 2, 3};
     auto const fallback = FindArmChain(plain, plainParents, 1);
     CHECK(fallback && fallback->upper == 2 && fallback->fore == 3 && fallback->hand == 4);
+    // An IK helper named like a hand, listed first, and a prop under the wrist don't win.
+    std::vector<std::string> const helpers{"Root", "RightHand_IK", "Spine", "RightShoulder", "RightElbow", "RightWrist", "RightHandProp"};
+    auto const real = FindArmChain(helpers, std::vector<int>{-1, 0, 0, 2, 3, 4, 5}, 1);
+    CHECK(real && real->upper == 3 && real->fore == 4 && real->hand == 5);
     // A child listed before its parent is rejected (walks could loop).
     CHECK(!FindArmChain(plain, std::vector<int>{-1, 0, 4, 2, 3}, 1));
 }

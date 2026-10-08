@@ -31,6 +31,10 @@ constexpr unsigned char kGameModeOnFoot = 0;  // SFXGameModeManager.EGameModes, 
 constexpr ik::Vec3 kDesktopWrist{0.70, 0.15, -0.05};
 // Our SpaceBases reading and the engine's GetBoneLocation must agree this closely (Unreal units).
 constexpr double kLayoutTolerance = 0.5;
+// An arm chain whose segments fall outside these (Unreal units, ratio) isn't an arm: not driven.
+constexpr double kMinSegment = 3.0;
+constexpr double kMaxSegment = 150.0;
+constexpr double kMaxSegmentRatio = 2.5;
 
 bool gEnabled = false;
 std::string gStatus = "off";
@@ -47,11 +51,12 @@ struct SkeletonInfo {
 };
 std::optional<SkeletonInfo> gSkeleton;
 
-// The bone layout check, per mesh (addresses compared only).
+// The bone layout check, per mesh (addresses compared only), and which arms look like arms.
 struct LayoutCheck {
     USkeletalMeshComponent const* mesh = nullptr;
     UObject const* asset = nullptr;
     bool passed = false;
+    std::array<bool, 2> arms{};
 };
 LayoutCheck gLayout;
 
@@ -145,7 +150,7 @@ SkeletonInfo const* Skeleton(USkeletalMeshComponent* mesh) {
 
 // Our reading of SpaceBases against the engine's GetBoneLocation (component and world space),
 // for the head and both hands. Once per mesh, before the first write.
-bool CheckLayout(USkeletalMeshComponent* mesh, SkeletonInfo const& info) {
+LayoutCheck CheckLayout(USkeletalMeshComponent* mesh, SkeletonInfo const& info) {
     using engine::skeleton::Space;
     std::vector<int> bones;
     if (info.head >= 0) {
@@ -170,7 +175,24 @@ bool CheckLayout(USkeletalMeshComponent* mesh, SkeletonInfo const& info) {
         }
     }
     log::Info("arm IK: bone layout {} for {}", ok ? "verified" : "NOT verified: no writes", engine::FullName(mesh));
-    return ok;
+    LayoutCheck check{mesh, info.asset, ok, {}};
+    // Segment lengths from the animated pose: a wrong chain shows up here.
+    std::span<engine::skeleton::BoneAtom const> const pose = engine::skeleton::SpaceBases(mesh);
+    for (int side : {kLeft, kRight}) {
+        auto const& chain = info.arms[side];
+        if (!chain || !ok) {
+            continue;
+        }
+        auto const at = [&](int bone) { return engine::skeleton::ToTransform(pose[bone]).translation; };
+        double const upper = ik::Length(at(chain->fore) - at(chain->upper));
+        double const lower = ik::Length(at(chain->hand) - at(chain->fore));
+        bool const plausible = upper >= kMinSegment && upper <= kMaxSegment && lower >= kMinSegment && lower <= kMaxSegment &&
+            upper <= lower * kMaxSegmentRatio && lower <= upper * kMaxSegmentRatio;
+        check.arms[side] = plausible;
+        log::Info("arm IK: {} arm upper {:.1f}, forearm {:.1f} units: {}", kSideNames[side], upper, lower,
+            plausible ? "plausible" : "IMPLAUSIBLE, not driven");
+    }
+    return check;
 }
 
 // The body's axes in component space, from the pawn's facing.
@@ -233,7 +255,7 @@ void Drive() {
         return Stop("pose not computed yet");
     }
     if (gLayout.mesh != mesh || gLayout.asset != info->asset) {
-        gLayout = {mesh, info->asset, CheckLayout(mesh, *info)};
+        gLayout = CheckLayout(mesh, *info);
     }
     if (!gLayout.passed) {
         return Stop("bone layout not verified (see the layout check lines)");
@@ -252,8 +274,15 @@ void Drive() {
     request.boneCount = info->boneCount;
     request.parents = info->bones.parents;
     request.body = *frame;
+    // Arms that resolved and look like arms; the others stay with the animation.
+    std::array<std::optional<ik::ArmChain>, 2> arms;
     for (int side : {kLeft, kRight}) {
-        if (auto const& chain = info->arms[side]) {
+        if (info->arms[side] && gLayout.arms[side]) {
+            arms[side] = info->arms[side];
+        }
+    }
+    for (int side : {kLeft, kRight}) {
+        if (auto const& chain = arms[side]) {
             engine::bone_pose::Arm& arm = request.arms[side];
             arm.chain = *chain;
             arm.keys[0] = info->bones.keys[chain->upper];
@@ -264,8 +293,8 @@ void Drive() {
 
     std::string driven;
     if (targets.source == hand_targets::Source::DesktopTest) {
-        if (!info->arms[kRight]) {
-            return Stop("desktop test: no right arm chain in the skeleton");
+        if (!arms[kRight]) {
+            return Stop("desktop test: no usable right arm chain in the skeleton");
         }
         request.arms[kRight].target = engine::bone_pose::Target::Chest;
         request.arms[kRight].wrist = kDesktopWrist;
@@ -276,7 +305,7 @@ void Drive() {
         std::span<engine::skeleton::BoneAtom const> const pose = engine::skeleton::SpaceBases(mesh);
         for (int side : {kLeft, kRight}) {
             hand_targets::Hand const& hand = targets.hands[side];
-            auto const& chain = info->arms[side];
+            auto const& chain = arms[side];
             if (!hand.valid || !chain) {
                 gGripToHand[side].reset();
                 continue;

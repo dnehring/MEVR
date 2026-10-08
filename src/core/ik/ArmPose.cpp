@@ -166,10 +166,15 @@ std::optional<ArmChain> FindArmChain(std::span<std::string const> names, std::sp
         tokens[i] = NameTokens(names[i]);
     }
     constexpr int kMaxSteps = 4;
-    for (int hand = 0; hand < count; ++hand) {
-        if (HandSide(names[hand]) != side) {
-            continue;
+    // Hand candidates in index order (parents first: the wrist before props or helpers below it).
+    std::vector<int> hands;
+    for (int i = 0; i < count; ++i) {
+        if (HandSide(names[i]) == side && !IsHelper(tokens[i])) {
+            hands.push_back(i);
         }
+    }
+    // First any hand whose arm bones are named as such...
+    for (int hand : hands) {
         int const fore = NearestAncestor(parents, hand, kMaxSteps, [&](int i) {
             return !IsHelper(tokens[i]) && IsForearm(tokens[i]) && SideOf(tokens[i]) == side;
         });
@@ -179,8 +184,10 @@ std::optional<ArmChain> FindArmChain(std::span<std::string const> names, std::sp
         if (fore >= 0 && upper >= 0) {
             return ArmChain{upper, fore, hand};
         }
-        // Unfamiliar names: the hand's nearest real joints above it.
-        auto const joint = [&](int i) { return !IsHelper(tokens[i]); };
+    }
+    // ...else, for unfamiliar names, the first hand's nearest real joints above it (never the root).
+    auto const joint = [&](int i) { return !IsHelper(tokens[i]) && parents[i] >= 0; };
+    for (int hand : hands) {
         int const parentJoint = NearestAncestor(parents, hand, kMaxSteps, joint);
         int const grandparentJoint = parentJoint < 0 ? -1 : NearestAncestor(parents, parentJoint, kMaxSteps, joint);
         if (parentJoint >= 0 && grandparentJoint >= 0) {
