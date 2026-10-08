@@ -10,7 +10,7 @@ Already done for you: `tools/vr-game-settings.ps1` turned VSync, motion blur, fi
 dynamic shadows off and HDR to SDR in ME1's GamerSettings.ini, and set what Halcyon's installer
 sets: a borderless window at its near-square stereo target, 3072x3188 (backup kept; `-Restore`
 undoes it). `MELEVR.ini` is Halcyon's release default again: its tuned eye separation (3.4), eye
-order, VR conversations and cutscenes, head aim when the controllers aren't aiming. The old file
+order, VR conversations and cutscenes; head aim is off (the hand aims). The old file
 is `MELEVR.ini.mevr_old`. Halcyon's log should now show `[TARGETCHK] Stereo 2 target OK` and, in
 gameplay, `[PASSCAP] published complete stereo pair` lines (none of those = no stereo).
 
@@ -35,8 +35,7 @@ other keys in the table further down are for our own renderer only.
    - Point the right controller at a target away from where you're looking and fire. Do shots go
      where the controller points? Note any constant offset and roughly how far the target was.
      The game's crosshair should be gone; our ring reticle (step 6) shows the aim instead.
-   - `,` switches to Halcyon's head aim and back. Which felt right?
-   - Put the controllers down until they sleep and use a gamepad: head aim should come back.
+   - Head aim is off (`combatHeadAim = 0`): with the controllers asleep, the right stick aims.
    - The Mako's cannon should still follow the head.
 5. **Arms:** with the controllers tracked, wave your hands, in first person and in third person
    (K). Do Shepard's arms follow? Any tearing at the wrist or elbow, or fingers off the hand?
@@ -54,7 +53,7 @@ other keys in the table further down are for our own renderer only.
    - Holster and draw again, switch weapons: same behaviour each time? (Each new weapon is
      measured again: hold still a moment after drawing.)
    - Does the reticle (step 7) sit on the barrel's line?
-   - `,` (hand aim off) gives Halcyon's head aim back; `.` (arm IK off) returns shots to the
+   - `,` (hand aim off) leaves aim to the right stick; `.` (arm IK off) returns shots to the
      controller's ray without the gun following.
 7. **HUD panel, reticle and the mod menu (new).** Do this in Stereo 2, on foot.
    - **Mod menu.** Press `\` (Halcyon's Insert menu; `\` in our deploy), once at the title screen

@@ -73,7 +73,8 @@ if ($hotReload) {
 # which makes the world look four times too big; eye swap; VR conversations and cutscenes off).
 # Our changes: the first-run welcome marked seen (it opens the menu, which blocks all game input);
 # the menu on backslash (220), as many keyboards have no Insert; no F-key profile hotkeys (game
-# keys); first person on. The resolution comes from tools/vr-game-settings.ps1.
+# keys); first person on; no head aim (combatHeadAim, makoHeadAim: the hand aims, through our arm
+# IK; the head still drives the view). The resolution comes from tools/vr-game-settings.ps1.
 if ($Game -eq 'LE1') {
     $ini = Join-Path $asiDir 'MELEVR.ini'
     if (-not (Test-Path $ini)) {
@@ -90,7 +91,8 @@ if ($Game -eq 'LE1') {
             'expectedResX = 0', 'expectedResY = 0',
             'firstRunDone = 1',
             'menuKey = 220',
-            'fpEnabled = 1', ''
+            'fpEnabled = 1',
+            'combatHeadAim = 0', 'makoHeadAim = 0', ''
         ) -join "`r`n"
         [IO.File]::WriteAllText($ini, $text)
         Write-Output "Installed Halcyon's release MELEVR.ini (its tuned defaults; welcome seen, menu on backslash)"

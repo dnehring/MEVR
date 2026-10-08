@@ -26,6 +26,12 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
 
 ## Renderer (LE1): Halcyon's, inside our host
 
+- **Direction (user, 2026-10-08): our work is VRIK** (controller aim, arm IK, the gun in the hand,
+  two-handed grip, the reticle along the gun). Halcyon's experience is the core: touch it as little
+  as possible, only to fix its bugs (like the HDR blue screen) or where VRIK needs a seam. Before
+  changing one of its settings or behaviours, compare with upstream (`reference/MassEffect1-VR/
+  release/`, `vr_config.h` defaults). **No head aim:** the deploy writes `combatHeadAim = 0` and
+  `makoHeadAim = 0`; the hand aims, the head drives the view only.
 - Since 2026-10-08 LE1's VR renderer is Halcyon's (`src/halcyon/le1`, built as the `halcyon-le1`
   static library and linked into the **host** ASI, so it isn't hot-reloaded). It owns OpenXR,
   Present, stereo (two renders per present), first person (K), head look and its Insert menu.
