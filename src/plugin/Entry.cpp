@@ -62,7 +62,7 @@ SPI_IMPLEMENT_ATTACH
 #else
     mevr::log::Info("MEVR {} (hot reload host) attaching to {}", MEVR_VERSION, SDK_TARGET_NAME_A);
 #endif
-    mevr::log::Info("log file: {}", mevr::log::Path().string());
+    mevr::log::Info("log file: {} (pid {})", mevr::log::Path().string(), GetCurrentProcessId());
 
     // Fail closed: hardcoded RVAs are only valid for one exe build.
     auto const version = mevr::GetHostExeVersion();

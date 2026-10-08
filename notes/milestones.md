@@ -70,8 +70,8 @@
 
 ### Attempt 1 (2026-10-07, 21:31–21:35)
 
-- **Present hook:** host-owned `IDXGISwapChain::Present` hook via SPI, installed at
-  `dxgi!...+0x...9000`.
+- **Present hook:** host-owned `IDXGISwapChain::Present` hook via SPI, found through a
+  throwaway device and installed at `0x7ffc16bd9000` (in dxgi.dll).
 - **Blit failed first:** `CreateDeferredContext failed`. The game's D3D11 device is created with
   **flags `0x1` (`D3D11_CREATE_DEVICE_SINGLETHREADED`)**, which forbids deferred contexts.
   - Fix, hot-reloaded in game: draw on the immediate context inside our own
@@ -97,6 +97,26 @@
      teardown.
      - Fix: the host hooks `ExitProcess` and shuts the mod (and XR) down before Windows unloads
        DLLs.
+
+### Attempt 2 (2026-10-07, 21:41–21:44): virtual screen works
+
+- **Game in the headset:** the user saw the game rendered in the headset.
+- **`]` toggles:** VR went OFF and ON three times cleanly; each XR session closed in about 70 ms.
+- **Quit from the Meta menu:** EXITING, then VR off, and it stayed off until `]`. No relaunch
+  loop.
+- **Not a bug:** head movement doesn't change the game view. That's expected for M2: the panel
+  is fixed in LOCAL space, and head tracking comes in M3.
+- **Earlier crash at 21:41:08:** the run that started 21:40:16 crashed 52 s in.
+  - **Dump:** `%LOCALAPPDATA%\CrashDumps\MassEffect1.exe.32192.dmp`, triaged with
+    `tools/minidump_scan.py`.
+  - **What it shows:** access violation writing `0x24` in `ntdll+0x1a12d`. The faulting worker
+    thread's whole stack is MassEffect1.exe plus `ws2_32`/`mswsock` (networking). No MEVR frames,
+    and no Oculus DLLs loaded.
+  - **Open question:** whether the user was closing the game at that moment. If so, our
+    ExitProcess hook (which closes XR before the real exit) may widen an existing exit-time race
+    in the game's network thread.
+  - **Mitigation added:** the log now keeps the previous run as `LE1MEVR.prev.log` and records
+    the pid, so the next incident keeps its evidence.
 
 ### Still to do
 

@@ -35,6 +35,13 @@ std::FILE* TryOpen(std::filesystem::path const& directory, std::wstring_view fil
     std::error_code ec;
     std::filesystem::create_directories(directory, ec);
     auto const path = directory / fileName;
+    // Keep the previous run's log (e.g. LE1MEVR.prev.log): a crash's evidence shouldn't be
+    // overwritten by the relaunch.
+    if (std::filesystem::exists(path, ec)) {
+        auto previous = path;
+        previous.replace_extension(L".prev.log");
+        std::filesystem::rename(path, previous, ec);
+    }
     std::FILE* file = _wfsopen(path.c_str(), L"w", _SH_DENYWR);
     if (file != nullptr) {
         gPath = path;
