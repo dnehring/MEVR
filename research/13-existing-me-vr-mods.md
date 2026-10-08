@@ -84,4 +84,171 @@ our own build; our exe is the same 2.0.0.48602.
     hooking constant buffers.
 11. **HDR must be off** in the game's options (it shows as a stuck blue or doubled image).
 
-<!-- Deeper code-level findings are appended below by the follow-up read. -->
+## Code-level findings (Halcyon ME1 source, read 2026-10-07)
+
+These were read from `reference/MassEffect1-VR/src/` and are described in our own words. File
+references are to that tree. Only dllmain, dxgi_proxy, logger, d3d_capture, xr_session,
+render_hook, vr_menu, vr_config, head_aim and pchud are built; `game_camera.cpp` is retired.
+
+### Verified against our exe (static, 2026-10-07)
+
+| What | LE1 RVA | Our check |
+|------|---------|-----------|
+| `ULocalPlayer::CalcSceneView` | `0x4C5300` | **Function start** in the exe's `.pdata` unwind table (ends `0x4C67B2`) |
+| `FViewportClient::Draw` | `0x4C71A0` | **Function start** (ends `0x4C9434`) |
+| Gameplay CalcSceneView return address | `0x4C7A4E` | Lies inside Draw. The call bytes can't be checked on disk |
+| `AllocateViewState` (Halcyon: "likely") | `0x742B70` | Function start, 62 bytes long |
+| ProcessEvent, GameEngineTick (LExSDKv2) | `0x12DD20`, `0x3CA090` | Function starts (consistent with what we already use) |
+
+**`.text` is encrypted on disk.** The function-start bytes are noise, and an `.ooa` section (EA
+DRM) decrypts the code at runtime. So signature and byte checks must run in-process after
+startup. `.pdata` is plain and gives reliable function boundaries. Tool:
+`tools/verify_rvas.py`.
+
+### How the head pose is applied (render-only, native)
+
+- **One hook: `CalcSceneView` (`0x4C5300`).**
+  - It calls the original, then edits the returned `FSceneView` (`render_hook.cpp:2360-2551`).
+  - The primary player view is recognised by its return address `0x4C7A4E`.
+  - Orthographic views are skipped.
+- **FSceneView offsets** (same in ME2; LE3 matches ConsoleExtension, see [09](09-me3tweaks-code-survey.md)):
+
+  | Offset | Field |
+  |--------|-------|
+  | `0x8` | State |
+  | `0x90` | ViewMatrix |
+  | `0xD0` | ProjectionMatrix |
+  | `0x190` | TranslatedViewMatrix |
+  | `0x1D0` | TranslatedViewProjection |
+  | `0x210` | its inverse |
+  | `0x250` | PreViewTranslation |
+  | `0x260` | ViewProjection |
+  | `0x2A0` | inverse Projection |
+  | `0x2E0` | inverse ViewProjection |
+  | `0x320` | ViewOrigin (sign **[verify]**; their doc and code disagree) |
+
+  Matrices are row-major with row vectors.
+- **Order of edits:**
+  1. eye/lean translation, applied to ViewOrigin and PreViewTranslation on the *body* basis;
+  2. FOV, by rewriting projection [0] and [5];
+  3. head yaw then pitch, post-multiplied into the View and TranslatedView matrices, then
+     rebuilding the view-projection products;
+  4. recompute the three inverse slots.
+
+  Stale inverses after a pitch change put a screen-locked dark panel in height fog and light
+  shafts.
+- **Roll is never rendered.** It's removed from the submitted pose, and the compositor shows head
+  roll.
+- **No GetPlayerViewPoint or UpdateCamera hooks.** With the weapon holstered, only the rendered
+  view turns; the left stick is rotated by head yaw in an XInput hook.
+- **With the weapon out ("head aim"),** head deltas are written into `ControlRotation`
+  (`AActor.Rotation` `0x114`). Pitch is clamped to ±85°, and render-side look is zeroed so it
+  isn't applied twice. They note that **driving ControlRotation makes the third-person camera
+  arc around Shepard**.
+- **FOV:** the larger per-eye half-angle times a fill factor goes into the projection. The angle
+  is read back and declared as a symmetric FOV. They never write `FOVAngle`.
+
+### Frame pacing
+
+- **Loop.** One XR frame per game Present, all on the render thread:
+  1. optional pacing hold;
+  2. `xrWaitFrame`, `xrBeginFrame`;
+  3. locate the head at **this frame's** `predictedDisplayTime` and publish it for the *next*
+     CalcSceneView;
+  4. copy the eyes;
+  5. `xrEndFrame`.
+
+  **The game thread is never blocked.** UE3's game thread runs about one frame ahead of the
+  render thread.
+- **Pose tag.** The layer is tagged with the pose from **2 presents back** (fractional blend, a
+  3-entry ring, tuned in the headset). An "exact sequence" tag **shook in gameplay**, because the
+  game thread runs ahead and made the tag intermittently too fresh. Late-latching was worse.
+  When a stale image is resubmitted, its tag and FOV are frozen too.
+- **Smoothing.** `headLookSmoothing` 0.4, a speed-adaptive nlerp. It feeds *both* the render and
+  the tag, so they can't disagree.
+- **Locking to display periods.** `StereoLockPeriods` / `PaceDisplayLockedAer` lock to N display
+  periods when the natural interval is within 0.25 of an integer. An adaptive variant steps to
+  N+1 under load. It's off by default in gameplay and on for cinematics.
+- **60 fps cap = `BIOEngine.ini` SmoothFrameRate / MaxSmoothedFrameRate=60.**
+  - Every attach rewrites it to `TRUE`/`120`; the game re-syncs the file, so a one-off edit
+    doesn't stick.
+  - It stays on because tick smoothing keeps cutscene cameras from juddering.
+  - **This answers H14.**
+- **Other stutter sources:**
+  - A 60 Hz monitor caps Present without `DXGI_PRESENT_ALLOW_TEARING`. Not our case: we measured
+    89.6 fps.
+  - Reflection captures (`SceneCaptureReflectComponent.FrameRate`, default 30) are fixed with
+    `SetFrameRate(1000)` through ProcessEvent, found via GObjects.
+  - Look toggling on and off.
+
+### D3D11 device
+
+- **The "deferred context" claim is unsupported.** Their hooks never saw the game create one.
+  ME2's doc found the real cause: the engine **caches D3D11 draw function pointers** at startup,
+  so vtable patches miss draws; hook the draw functions inline. LE1 renders on the immediate
+  context, consistent with our H16.
+- **SINGLETHREADED vs SteamVR.** Since 2026-07-20 they strip the `0x1` flag (hooking
+  `D3D11CreateDevice*`). SteamVR's client needs a keyed-mutex sync texture, which a
+  SINGLETHREADED device refuses. Without it, SteamVR silently drops the projection layer while
+  `xrEndFrame` succeeds. **We haven't hit this** (M2/M3 work on SteamVR 2.17.10 via Steam Link),
+  but it's the first suspect if SteamVR ever shows only its void.
+- **FP16 backbuffer = in-game HDR is on.** Their installer forces
+  `GamerSettings.ini [HDR] DesiredRange=DynamicRange_SDR`.
+
+### Submission and HUD
+
+- **Swapchains.** One per eye at the recommended size. The format is the backbuffer's sRGB twin,
+  so the copy is a plain `CopyResource`. No depth layer.
+- **SteamVR rejects views declared wider than its frustum**, so they crop the declared FOV and
+  sub-image to the runtime's per-eye frustum.
+- **Flat content.** Menus, movies and the galaxy map go on a head-locked quad (about 2.35 m wide
+  at 1.4 m).
+- **Mono HUD.** Moved through Scaleform variables (`BioSFHandler_PCHUD`,
+  `BioSFPanel.SetVariableFloat`). Subtitles are redrawn through `BioHUD.PostRender`.
+- **Stereo HUD.** UI draws (R8G8B8A8 target at backbuffer width, full viewport, `INV_SRC_ALPHA`
+  blend) are mirrored into the held left eye with the game's DSV. Shader IDs are FNV-1a hashes
+  of pixel-shader bytecode.
+
+### First person
+
+- **Camera.** Write `USFXCameraMode.Offset` (`0xB4`) per camera mode, plus `Interpolate.To`
+  (`0x168`) during blends. The native `bFirstPerson` bit makes the game ignore the offset.
+- **Keeping the pawn visible.** `SetHidden(false)` plus `bIgnoreHiddenActorsMembership`. Editing
+  `HiddenActors` crashed.
+- **Hiding the head.** On BioPawn head parts (`0x7EC`–`0x80C`): `SetOwnerNoSee` plus wireframe.
+  On the body: `HideBoneByName` for the eyes and tongue. MassFPS does the same ([11](11-massfps.md)).
+- **Thread.** They make these calls from the Present thread. We'll use the game thread.
+
+### Other LE1 offsets they use [verify]
+
+| Type | Offsets |
+|------|---------|
+| UObject | index `0x08`, Outer `0x40`, Name `0x48`, Class `0x50` |
+| AActor | Location `0x108`, Rotation `0x114` |
+| Controller | Pawn `0x3DC`, PlayerCamera `0x6B0`, FOVAngle `0x758` |
+| ACamera | CameraCache `0x45C` (FOV +`0x18`), CurrentMode `0x568`, flags `0x514`; bit 2 = bConstrainAspectRatio, which causes the cutscene letterbox |
+| AWorldInfo | DeltaSeconds `0x730` |
+| GameMode | `ABioPlayerController+0xA70` → `USFXGameModeManager+0xB8` gives the EGameModes byte: 0 gameplay, 1 vehicle, 5 conversation, 6 cinematic, 7 GUI (also in-world GUIs), 8 movie, 9 galaxy, 10 minigame |
+
+Most of these are also in LExSDKv2's generated headers, so cross-check there first.
+
+## What this means for our M3 vertical stutter
+
+Ranked suspects:
+
+1. **Our pitch goes through the game camera.**
+   - We override pitch in `GetPlayerViewPoint` and the camera.
+   - In third person, the camera boom then arcs and interpolates with pitch, so position and
+     rotation fight each frame. That would explain *vertical* judder specifically.
+   - Halcyon deliberately keeps head look render-only.
+   - Fix: apply head rotation in `CalcSceneView` (render-only). That's also where M4's stereo
+     eye offsets go.
+2. **Irregular cadence.** 51–80 fps against 90 Hz. Our `GamerSettings.ini` has
+   `UseVSync=True`, so every Present also waits on the desktop monitor's vblank: two clocks
+   beating. First test: VSync off, HDR off (zero code). Then lock to whole display periods if
+   needed.
+3. **Reflection captures at 30 fps.** Only on reflective floors.
+4. **Tag age.** Our lockstep makes the tag exact by blocking the game thread. Halcyon found an
+   exact tag shook *because* the game thread runs ahead. Blocking it, as we do, avoids that,
+   but costs throughput.
+
