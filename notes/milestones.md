@@ -354,12 +354,44 @@ at Present.
 The user's report with Halcyon's renderer: aiming followed the head. Now, on foot with motion
 controllers, the right controller aims and the head only looks; a plain gamepad keeps Halcyon's
 head aim.
-- Halcyon publishes its view each frame (`[MEVR]` call in RunFrame); HostServices v3 hands it to
-  the mod with `setHandAim`. `game/view_anchor` places it on the game camera
+- Halcyon publishes its view each frame (`[MEVR]` call in RunFrame); HostServices (v4 since the
+  merge; v3 had two layouts, so the mod reads neither from a v3 host) hands it to the mod with
+  `setHandAim`. `game/view_anchor` places it on the game camera
   (`engine::FromCameraView`, unit-tested): the one tracking-to-world mapping, for arm IK too.
 - Hand aim turns on the first time the right controller aims. While it does, Halcyon's on-foot
   combat head aim stays off (`[MEVR]` gate). The Mako keeps head aim. `,` switches between them.
 - Known: the HUD crosshair stays at the view's center (where the head looks). Shots take the
   controller's direction but start at the game's StartFireLoc; the log measures the offset.
 
+Known issues to verify in game (from the 2026-10-08 review of the merge):
+- **ControlRotation follows only the stick while hand aim is on.** With hand aim on, Halcyon's
+  combat head aim is off, so ControlRotation no longer follows the head. Shots are redirected
+  through `GetAdjustedAimFor`, but anything that reads ControlRotation directly (power
+  targeting, the native reticle, the torso aim animation) follows neither the head nor the
+  controller. Also, hand aim turns on whenever the right controller is merely tracked (lying on
+  the desk counts), so head aim goes away even when the player isn't using the controller.
+- **The third-person camera can jump when controller aim takes over.** `ReleaseHeadAim` removes
+  the yaw Halcyon injected for head aim in one frame, so the camera snaps back by however far
+  the head had turned it.
+
 Test: [next-vr-session](next-vr-session.md), first section.
+
+### Review fixes (2026-10-08, built and unit-tested, untested in game)
+
+- **Desktop arm test** is decided every tick, never latched: our renderer with no VR session,
+  or Halcyon's before any headset session has shown up (no view or controller sample since the
+  host started). With a headset session, `.` while the view is momentarily gone (Insert menu,
+  flat conversation, tracking blip) no longer switches to the test for the rest of the session.
+- **Hands measured from the tracking origin** (the head at start or recenter), placed at
+  Shepard's head bone: leaning no longer moves the virtual hands backwards.
+- **Bone writer** also checks the mesh's owner, GWorld and the request's age, so a level load
+  can't send the arm write to another component at the same address.
+- **Hooks:** every original is written before its detour goes live (LEBinkProxy's SPI writes it
+  through its out-parameter before enabling; LESDK only returned it afterwards). Unhook results
+  are checked. A hook that couldn't be removed, or a call still inside one after a bounded wait
+  (ProcessEvent callback 500 ms, UpdateSkelPose 200 ms), makes the host **pin** the old mod DLL
+  instead of unloading it (logged as an error: restart the game when convenient). At exit
+  nothing waits and the DLL stays mapped. HostServices v5 carries `processExiting` and
+  `keepLoaded`; an older host still unloads (the mod logs it).
+- The mod tells Halcyon it aims only when it actually can (CallFunction hook in, and the host's
+  controllers and view readable: state sizes match).
