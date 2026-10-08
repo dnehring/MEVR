@@ -29,8 +29,15 @@ mevr::xr::Input::Target gTarget;  // set on Halcyon's XR thread before frames st
 bool gInputFailed = false;
 std::atomic<HWND> gGameWindow{nullptr};
 bool gWasFocused = false;  // Present thread
-// Both thumbsticks clicked and held opens or closes Halcyon's menu, which otherwise only the
-// Insert key does (a headset player can't reach the keyboard). Present thread.
+// After the headset gains focus, keep trying (once a second, for a while) until the game window is
+// the foreground window: the first focused frame can come before the window is known, and Windows
+// may refuse a single attempt.
+constexpr std::uint64_t kForegroundTryMs = 15000;
+std::uint64_t gForegroundUntilMs = 0;
+std::uint64_t gForegroundNextMs = 0;
+// Both thumbsticks clicked and held closes Halcyon's menu, which otherwise only the Insert key
+// does. While open the menu blocks all game input, and in the first headset tests it couldn't be
+// seen, so the chord doesn't open it (Insert does). Present thread.
 constexpr std::uint64_t kMenuChordMs = 400;
 std::uint64_t gChordSinceMs = 0;
 bool gChordFired = false;
@@ -82,14 +89,25 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
         gRightAimTrackedMs.store(GetTickCount64(), std::memory_order_relaxed);
     }
     gFrames.fetch_add(1, std::memory_order_relaxed);
+    std::uint64_t const now = GetTickCount64();
     bool const focused = gInput.Focused();
     if (focused && !gWasFocused) {
-        mevr::window::BringToForeground(gGameWindow.load());
+        gForegroundUntilMs = now + kForegroundTryMs;
+        gForegroundNextMs = now;
     }
     gWasFocused = focused;
+    if (focused && now < gForegroundUntilMs && now >= gForegroundNextMs) {
+        if (HWND const window = gGameWindow.load()) {
+            if (GetForegroundWindow() == window) {
+                gForegroundUntilMs = 0;  // done
+            } else {
+                mevr::window::BringToForeground(window);
+                gForegroundNextMs = now + 1000;
+            }
+        }
+    }
 
     bool const chord = state.left.stickClick && state.right.stickClick;
-    std::uint64_t const now = GetTickCount64();
     if (!chord) {
         gChordSinceMs = 0;
         gChordFired = false;
@@ -97,8 +115,12 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
         gChordSinceMs = now;
     } else if (!gChordFired && now - gChordSinceMs >= kMenuChordMs) {
         gChordFired = true;
-        MELEVR::Menu::Toggle();
-        mevr::log::Info("halcyon bridge: both sticks held: Halcyon's menu {}", MELEVR::Menu::IsOpen() ? "opened" : "closed");
+        if (MELEVR::Menu::IsOpen()) {
+            MELEVR::Menu::SetOpen(false);
+            mevr::log::Info("halcyon bridge: both sticks held: Halcyon's menu closed");
+        } else {
+            mevr::log::Info("halcyon bridge: both sticks held, menu already closed (the chord only closes it; Insert opens it)");
+        }
     }
 }
 
