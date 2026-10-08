@@ -9,21 +9,25 @@ namespace {
 
 constexpr char const* kGetBoneNames = "Function Engine.SkeletalMeshComponent.GetBoneNames";
 constexpr char const* kGetBoneLocation = "Function Engine.SkeletalMeshComponent.GetBoneLocation";
+constexpr char const* kMatchRefBone = "Function Engine.SkeletalMeshComponent.MatchRefBone";
 
 UFunction* gGetBoneNames = nullptr;
 UFunction* gGetBoneLocation = nullptr;
+UFunction* gMatchRefBone = nullptr;
 
 } // namespace
 
 bool TryStartup() {
     gGetBoneNames = FindFunction(L"GetBoneNames", kGetBoneNames);
     gGetBoneLocation = FindFunction(L"GetBoneLocation", kGetBoneLocation);
-    return gGetBoneNames != nullptr && gGetBoneLocation != nullptr;
+    gMatchRefBone = FindFunction(L"MatchRefBone", kMatchRefBone);
+    return gGetBoneNames != nullptr && gGetBoneLocation != nullptr && gMatchRefBone != nullptr;
 }
 
 void Shutdown() {
     gGetBoneNames = nullptr;
     gGetBoneLocation = nullptr;
+    gMatchRefBone = nullptr;
 }
 
 std::vector<SFXName> BoneNames(USkeletalMeshComponent* mesh) {
@@ -38,11 +42,14 @@ std::vector<SFXName> BoneNames(USkeletalMeshComponent* mesh) {
 }
 
 std::optional<UnrealVector> BoneLocation(USkeletalMeshComponent* mesh, SFXName const& bone, Space space) {
-    if (gGetBoneLocation == nullptr || mesh == nullptr) {
+    if (gGetBoneLocation == nullptr || gMatchRefBone == nullptr || mesh == nullptr) {
         return std::nullopt;
     }
-    if (space == Space::Component && mesh->SpaceBases.Count() == 0) {
-        return std::nullopt;  // no pose yet: component space would index an empty array
+    USkeletalMeshComponent_execMatchRefBone_Parms match;
+    match.BoneName = bone;
+    mesh->ProcessEvent(gMatchRefBone, &match, nullptr);
+    if (match.ReturnValue < 0 || match.ReturnValue >= static_cast<int>(mesh->SpaceBases.Count())) {
+        return std::nullopt;  // not this skeleton's bone, or not posed yet
     }
     USkeletalMeshComponent_execGetBoneLocation_Parms parms;
     parms.BoneName = bone;

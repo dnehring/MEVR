@@ -18,6 +18,15 @@ inline FRotator& ViewPointRotation(AController_eventGetPlayerViewPoint_Parms& pa
 #endif
 }
 
+// An actor's world location (LE3's generator lower-cased it).
+inline FVector const& Location(AActor const* actor) {
+#if defined(SDK_TARGET_LE3)
+    return actor->location;
+#else
+    return actor->Location;
+#endif
+}
+
 // The game-mode manager (EGameModes: 0 = on-foot gameplay in all three games).
 inline USFXGameModeManager* GameModes(ABioPlayerController* controller) {
 #if defined(SDK_TARGET_LE1)

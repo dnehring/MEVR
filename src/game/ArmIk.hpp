@@ -16,7 +16,8 @@ namespace mevr::game::arm_ik {
 void Tick(float deltaSeconds);
 bool Toggle();
 void LogStats();
-// Restores the controls' settings (if the mesh is still the player's) and forgets them.
+// Restores the controls' settings if the player's body is present, and forgets them. (If the
+// body is away at that moment, e.g. in the Mako, they keep the driven values until a level load.)
 void Shutdown();
 
 } // namespace mevr::game::arm_ik

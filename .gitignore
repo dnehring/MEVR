@@ -18,3 +18,5 @@ out/
 *.rdc
 *.dmp
 *.log
+__pycache__/
+*.pyc

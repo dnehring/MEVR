@@ -6,6 +6,7 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/Output.hpp"
 #include "core/vr/ViewSync.hpp"
+#include "engine/GameAdapter.hpp"
 #include "engine/Objects.hpp"
 #include "engine/Skeleton.hpp"
 #include "engine/XrToUnreal.hpp"
@@ -25,6 +26,7 @@ namespace mevr::game::arm_ik {
 namespace {
 
 constexpr unsigned char kWorldSpace = 0;  // EBoneControlSpace::BCS_WorldSpace
+constexpr double kMaxHeadDistance = 300.0;  // head bone to pawn origin, Unreal units (3 m)
 enum Side { kLeft = 0, kRight = 1 };
 
 // A hand's limb control as found this tick. Nothing here is kept across ticks: a level load
@@ -163,10 +165,18 @@ void Drive(Body const& body, std::array<Found, 2> const& found, float deltaSecon
     vr::controllers::State const controllers = vr::controllers::Latest();
     auto const head = vr::view_sync::LatestHead();
     auto const headBone = HeadBone(body.mesh);
-    auto const headWorld = headBone ? engine::skeleton::BoneLocation(body.mesh, *headBone, engine::skeleton::Space::World)
-                                    : std::nullopt;
+    auto headWorld = headBone ? engine::skeleton::BoneLocation(body.mesh, *headBone, engine::skeleton::Space::World)
+                              : std::nullopt;
+    if (headWorld) {
+        // The head must be on the body: anything else is a stale bone or an unposed mesh.
+        FVector const& at = engine::adapter::Location(body.pawn);
+        double const dx = headWorld->x - at.X, dy = headWorld->y - at.Y, dz = headWorld->z - at.Z;
+        if (dx * dx + dy * dy + dz * dz > kMaxHeadDistance * kMaxHeadDistance) {
+            headWorld.reset();
+        }
+    }
     bool const ready = controllers.active && head && headWorld && vr::output::WantsHeadTracking() && head_tracking::OnFoot();
-    gStatus = !headBone ? "no head bone" : !ready ? "waiting for tracking" : "driving";
+    gStatus = !headBone ? "no head bone" : !headWorld ? "head bone not posed" : !ready ? "waiting for tracking" : "driving";
     if (!ready) {
         RestoreAll(found);  // the game's own animation until we're tracking again
         return;
@@ -214,7 +224,8 @@ void Tick(float deltaSeconds) {
     }
     auto const body = PlayerBody();
     if (!body) {
-        gSaved = {};  // the body is gone or changed: forget, don't touch
+        // In the Mako, mid-load...: nothing to drive or restore now. The snapshots stay, so the
+        // controls get their own settings back once a walk of the live body finds them again.
         gStatus = gEnabled ? "no player body" : "off";
         return;
     }
@@ -225,7 +236,7 @@ void Tick(float deltaSeconds) {
         return;
     }
     if (found[kLeft].control == nullptr && found[kRight].control == nullptr) {
-        gSaved = {};
+        gSaved = {};  // the live body has no such controls: the snapshots can't apply
         gStatus = "no SkelControlLimb on the hand bones (route 1 unavailable)";
         return;
     }

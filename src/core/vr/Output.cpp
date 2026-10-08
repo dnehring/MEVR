@@ -61,14 +61,17 @@ bool gFailed = false;
 XrSessionState gLastState = XR_SESSION_STATE_UNKNOWN;
 Mode gLastMode = Mode::HeadTracked;
 XrPosef gScreenPose{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, -kScreenDistanceMeters}};
+bool gPlaceScreen = true;  // re-place the screen ahead of the head once its pose is known
+bool gLeavingScreen = false;  // back to head-tracked, but no head-tracked frame has arrived yet
 
 // Places the virtual screen straight ahead of the head's current heading (yaw only, at eye
 // height), so it never appears beside or behind a player who has turned since the recenter.
 void PlaceScreen() {
     auto const head = view_sync::LatestHead();
     if (!head) {
-        return;
+        return;  // try again next frame (gPlaceScreen stays set)
     }
+    gPlaceScreen = false;
     double const yaw = ik::YawOf(head->orientation.x, head->orientation.y, head->orientation.z, head->orientation.w);
     float const half = static_cast<float>(yaw / 2.0);
     gScreenPose.orientation = {0.0f, std::sin(half), 0.0f, std::cos(half)};
@@ -427,6 +430,9 @@ void OnPresent(IDXGISwapChain* swapChain) {
         ResetFrameState();  // xrEndSession discards any begun frame
         return;
     }
+    if (!gSessionRunning) {
+        gPlaceScreen = true;  // a new session: put the screen ahead of wherever the head is now
+    }
     gSessionRunning = true;
 
     ComPtr<ID3D11Texture2D> backbuffer;
@@ -450,9 +456,8 @@ void OnPresent(IDXGISwapChain* swapChain) {
         gLastMode = mode;
         gLastRendered.reset();
         view_sync::ClearFrames();  // the headset still tracks: keep its pose, FOV and IPD
-        if (mode == Mode::Screen) {
-            PlaceScreen();
-        }
+        gPlaceScreen = mode == Mode::Screen;
+        gLeavingScreen = mode == Mode::HeadTracked;
         log::Info("vr output: mode {}", mode == Mode::HeadTracked ? "head-tracked" : "screen");
     }
 
@@ -473,6 +478,9 @@ void OnPresent(IDXGISwapChain* swapChain) {
     controllers::State input;
     gInput.Sync(gSession, gFrame.predictedDisplayTime, input);
     controllers::Publish(input);
+    if (gPlaceScreen && mode == Mode::Screen) {
+        PlaceScreen();  // the head pose is published by now (BeginNextFrame)
+    }
 
     // The pose this image was rendered with (head-tracked mode).
     if (mode == Mode::HeadTracked) {
@@ -484,14 +492,20 @@ void OnPresent(IDXGISwapChain* swapChain) {
         }
         gDepthCounts[std::min<std::size_t>(depth, 3)].fetch_add(1, std::memory_order_relaxed);
     }
+    if (gLastRendered) {
+        gLeavingScreen = false;
+    }
+    // The frame at the switch back from the screen was drawn for the screen and has no tag:
+    // show it there once more rather than blank.
+    Mode const submitMode = mode == Mode::HeadTracked && !gLastRendered && gLeavingScreen ? Mode::Screen : mode;
 
     XrCompositionLayerQuad quad{};
     XrCompositionLayerProjection projection{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
     std::array<XrCompositionLayerProjectionView, 2> views{};
     std::array<XrCompositionLayerBaseHeader const*, 1> layers{};
     std::size_t layerCount = 0;
-    bool const haveView = mode == Mode::Screen || gLastRendered.has_value();
-    bool const alternateEye = mode == Mode::HeadTracked && gLastRendered && gLastRendered->eye >= 0 &&
+    bool const haveView = submitMode == Mode::Screen || gLastRendered.has_value();
+    bool const alternateEye = submitMode == Mode::HeadTracked && gLastRendered && gLastRendered->eye >= 0 &&
         gEyesFailedGeneration != gSession.Generation();
     if (!alternateEye) {
         for (EyeImage& eye : gEyes) {
@@ -512,7 +526,7 @@ void OnPresent(IDXGISwapChain* swapChain) {
             gBlit.Draw(immediate.Get(), backbuffer.Get(), target, gImage.Width(), gImage.Height());
             gImage.Release();
 
-            if (mode == Mode::Screen) {
+            if (submitMode == Mode::Screen) {
                 quad = ScreenLayer();
                 layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader const*>(&quad);
             } else {
