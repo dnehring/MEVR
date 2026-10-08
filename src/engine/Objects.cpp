@@ -3,6 +3,19 @@
 #include <LESDK/Headers.hpp>
 
 namespace mevr::engine {
+namespace {
+
+std::string Narrow(wchar_t const* chars) {
+    int const size = WideCharToMultiByte(CP_UTF8, 0, chars, -1, nullptr, 0, nullptr, nullptr);
+    if (size <= 1) {
+        return {};
+    }
+    std::string narrow(static_cast<size_t>(size - 1), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, chars, -1, narrow.data(), size, nullptr, nullptr);
+    return narrow;
+}
+
+} // namespace
 
 std::vector<UFunction*> FindFunctionsNamed(wchar_t const* name) {
     std::vector<UFunction*> found;
@@ -18,19 +31,35 @@ std::vector<UFunction*> FindFunctionsNamed(wchar_t const* name) {
     return found;
 }
 
+UFunction* FindFunction(wchar_t const* name, char const* fullName) {
+    for (UFunction* function : FindFunctionsNamed(name)) {
+        if (FullName(function) == fullName) {
+            return function;
+        }
+    }
+    return nullptr;
+}
+
 std::string FullName(UObject* object) {
     if (object == nullptr) {
         return "None";
     }
     FString const wide = object->GetFullName();
-    wchar_t const* const chars = wide.Chars();
-    int const size = WideCharToMultiByte(CP_UTF8, 0, chars, -1, nullptr, 0, nullptr, nullptr);
-    if (size <= 1) {
-        return {};
+    return Narrow(wide.Chars());
+}
+
+std::string ToString(SFXName const& name) {
+    FString const wide = name.Instanced();
+    return Narrow(wide.Chars());
+}
+
+APlayerController* LocalPlayerController() {
+    UEngine* const engine = (GEngine != nullptr) ? *GEngine : nullptr;
+    if (engine == nullptr || engine->GamePlayers.Count() == 0) {
+        return nullptr;
     }
-    std::string narrow(static_cast<size_t>(size - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, chars, -1, narrow.data(), size, nullptr, nullptr);
-    return narrow;
+    ULocalPlayer* const player = engine->GamePlayers.GetData()[0];
+    return player != nullptr ? player->Actor : nullptr;
 }
 
 } // namespace mevr::engine

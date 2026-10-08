@@ -42,6 +42,7 @@ float gHalfIpdMeters = kDefaultHalfIpdMeters;
 float gCameraFov = 0.0f;  // the camera's FOV this frame, including any override written to it
 float gRenderedFov = 0.0f;  // the FOV the last player view was built with (stats)
 bool gOnFoot = false;  // on-foot gameplay (no conversation, GUI, vehicle, wheels)
+std::optional<int> gGameYaw;  // the game's yaw under the head rotation, from the last rotated view
 bool gTaggedThisTick = false;
 bool gPrimaryThisTick = false;
 // Render path, if CalcSceneView turns out not to ask GetFOVAngle: override the camera's FOV
@@ -173,6 +174,7 @@ void OnGetPlayerViewPoint(UObject* context, UFunction* /*function*/, void* parms
     }
     auto* const p = static_cast<AController_eventGetPlayerViewPoint_Parms*>(parms);
     int const gameYaw = p->out_Rotation.Yaw;
+    gGameYaw = gameYaw;
     ApplyRotation(p->out_Rotation);
     if (inView) {
         ApplyTranslation(p->out_Location, gameYaw, p->out_Rotation);
@@ -193,15 +195,6 @@ void OnGetFovAngle(UObject* context, UFunction* /*function*/, void* parms, void*
         gFovCallsInPrimary.fetch_add(1, std::memory_order_relaxed);
         gRenderedFov = p->ReturnValue;
     }
-}
-
-UFunction* FindFunction(wchar_t const* name, char const* fullName) {
-    for (UFunction* function : engine::FindFunctionsNamed(name)) {
-        if (engine::FullName(function) == fullName) {
-            return function;
-        }
-    }
-    return nullptr;
 }
 
 // Render-path self-checks, once per heartbeat window. Each needs kWindowsToDecide windows in a
@@ -286,9 +279,9 @@ void OnTickEnd() {
 }
 
 bool TryStartup(bool renderPathAvailable) {
-    UFunction* const updateCamera = FindFunction(L"UpdateCamera", kUpdateCamera);
-    UFunction* const viewPoint = FindFunction(L"GetPlayerViewPoint", kGetPlayerViewPoint);
-    UFunction* const fovAngle = FindFunction(L"GetFOVAngle", kGetFovAngle);
+    UFunction* const updateCamera = engine::FindFunction(L"UpdateCamera", kUpdateCamera);
+    UFunction* const viewPoint = engine::FindFunction(L"GetPlayerViewPoint", kGetPlayerViewPoint);
+    UFunction* const fovAngle = engine::FindFunction(L"GetFOVAngle", kGetFovAngle);
     if (updateCamera == nullptr || viewPoint == nullptr || fovAngle == nullptr) {
         return false;  // script packages not loaded yet
     }
@@ -331,6 +324,8 @@ void LogStats() {
 
 void Shutdown() {
     gReady = false;
+    gGameYaw.reset();
+    gOnFoot = false;
     gActive = false;
     gHeadPose.reset();
     gHeadsetFov.reset();
@@ -345,6 +340,7 @@ Path CyclePath() {
     gActive = false;
     gEye = -1;
     gRenderYawOffset = 0;
+    gGameYaw.reset();
     return gPath;
 }
 
@@ -375,6 +371,14 @@ bool TogglePositional() {
 
 int RenderYawOffset() {
     return gRenderYawOffset.load(std::memory_order_relaxed);
+}
+
+std::optional<int> GameYaw() {
+    return gGameYaw;
+}
+
+bool OnFoot() {
+    return gOnFoot;
 }
 
 } // namespace mevr::game::head_tracking

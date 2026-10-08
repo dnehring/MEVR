@@ -81,14 +81,12 @@ void ScanSlice() {
 } // namespace
 
 bool TryStartup() {
-    for (UFunction* function : engine::FindFunctionsNamed(L"SetFrameRate")) {
-        if (engine::FullName(function) == kSetFrameRate) {
-            gSetFrameRate = function;
-            log::Info("reflections: will raise planar reflection captures to every frame");
-            return true;
-        }
+    gSetFrameRate = engine::FindFunction(L"SetFrameRate", kSetFrameRate);
+    if (gSetFrameRate == nullptr) {
+        return false;
     }
-    return false;
+    log::Info("reflections: will raise planar reflection captures to every frame");
+    return true;
 }
 
 void Tick(float deltaSeconds) {

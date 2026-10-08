@@ -55,6 +55,8 @@ set(MEVR_MOD_SOURCES
     src/core/Hotkey.hpp
     src/core/d3d11/Blit.cpp
     src/core/d3d11/Blit.hpp
+    src/core/ik/Ik.cpp
+    src/core/ik/Ik.hpp
     src/core/vr/Controllers.cpp
     src/core/vr/Controllers.hpp
     src/core/vr/Output.cpp
@@ -65,6 +67,8 @@ set(MEVR_MOD_SOURCES
     src/core/xr/Input.hpp
     src/core/xr/Session.cpp
     src/core/xr/Session.hpp
+    src/engine/CallFunction.cpp
+    src/engine/CallFunction.hpp
     src/engine/CodeDump.cpp
     src/engine/CodeDump.hpp
     src/engine/Engine.cpp
@@ -81,12 +85,16 @@ set(MEVR_MOD_SOURCES
     src/game/GamepadBridge.hpp
     src/game/GamepadMapping.cpp
     src/game/GamepadMapping.hpp
+    src/game/HandAim.cpp
+    src/game/HandAim.hpp
     src/game/HeadSim.cpp
     src/game/HeadSim.hpp
     src/game/HeadTracking.cpp
     src/game/HeadTracking.hpp
     src/game/Reflections.cpp
     src/game/Reflections.hpp
+    src/game/SkeletonProbe.cpp
+    src/game/SkeletonProbe.hpp
     src/mod/Mod.cpp
     src/mod/ModApi.hpp
 )
@@ -135,6 +143,7 @@ if (MEVR_BUILD_TESTS)
     enable_testing()
     add_executable(mevr-tests
         tests/Main.cpp
+        src/core/ik/Ik.cpp
         src/core/vr/ViewSync.cpp
         src/engine/XrToUnreal.cpp
         src/game/GamepadMapping.cpp

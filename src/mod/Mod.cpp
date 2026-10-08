@@ -7,14 +7,17 @@
 #include "core/Log.hpp"
 #include "core/vr/Output.hpp"
 #include "core/vr/ViewSync.hpp"
+#include "engine/CallFunction.hpp"
 #include "engine/CodeDump.hpp"
 #include "engine/Engine.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/SceneView.hpp"
 #include "game/GamepadBridge.hpp"
+#include "game/HandAim.hpp"
 #include "game/HeadSim.hpp"
 #include "game/HeadTracking.hpp"
 #include "game/Reflections.hpp"
+#include "game/SkeletonProbe.hpp"
 
 #include <LESDK/Headers.hpp>
 #include <LESDK/Init.hpp>
@@ -34,6 +37,7 @@ std::atomic<bool> gActive{false};  // read on the render thread too
 bool gHooked = false;  // ProcessEvent hook live (after the script packages loaded)
 bool gSceneViewHooked = false;
 bool gGamepadHooked = false;  // XInput hooks (once the game has loaded an XInput DLL)
+bool gCallFunctionHooked = false;
 
 mevr::Hotkey gVrToggleKey{VK_OEM_6};    // ]  VR on / off
 mevr::Hotkey gModeToggleKey{VK_OEM_4};  // [  head-tracked / screen
@@ -41,6 +45,7 @@ mevr::Hotkey gHeadPathKey{VK_OEM_5};    // \  head path: render / camera / off (
 mevr::Hotkey gHeadSimKey{VK_OEM_7};     // '  desktop head simulator: sweep / nod / off
 mevr::Hotkey gStereoKey{VK_OEM_1};      // ;  stereo: mono / alternate-eye (render path, headset)
 mevr::Hotkey gPositionKey{VK_OEM_2};    // /  6DOF: head position moves the view (render path)
+mevr::Hotkey gHandAimKey{VK_OEM_COMMA}; // ,  aim weapons with the right controller (on foot)
 
 double gRetryTimer = kStartupRetrySeconds;  // first attempt on the first tick
 double gHeartbeatElapsed = 0.0;
@@ -113,6 +118,13 @@ void TryInstallScriptHooks() {
     if (!game::reflections::TryStartup()) {
         log::Warn("reflections: SceneCaptureComponent.SetFrameRate not found; reflection fix off");
     }
+    if (!game::skeleton_probe::TryStartup()) {
+        log::Warn("skeleton probe: bone query functions not found");
+    }
+    bool const handAim = game::hand_aim::TryStartup();
+    if (!handAim) {
+        log::Warn("hand aim: BioPlayerController.GetAdjustedAimFor not found; hand aim off");
+    }
     if (!engine::process_event::Install(*gInit)) {
         log::Error("ProcessEvent hook failed; mod inactive");
         gActive = false;
@@ -120,6 +132,10 @@ void TryInstallScriptHooks() {
     }
     game::head_tracking::SetReady();
     gHooked = true;
+    // Script-to-script calls (hand aim). Optional: everything else works without it.
+    if (handAim) {
+        gCallFunctionHooked = engine::call_function::Install(*gInit);
+    }
 }
 
 void PollHotkeys() {
@@ -149,6 +165,9 @@ void PollHotkeys() {
     if (gPositionKey.Pressed()) {
         log::Info("/: 6DOF {}", game::head_tracking::TogglePositional() ? "on" : "off");
     }
+    if (gHandAimKey.Pressed()) {
+        log::Info(",: hand aim {}", game::hand_aim::Toggle() ? "on" : "off");
+    }
 }
 
 void Heartbeat() {
@@ -163,6 +182,8 @@ void Heartbeat() {
     if (gHooked) {
         game::head_tracking::LogStats();
         game::reflections::LogStats();
+        game::hand_aim::LogStats();
+        game::skeleton_probe::Tick();
     }
     engine::scene_view::LogStats();
     game::gamepad_bridge::LogStats();
@@ -247,6 +268,13 @@ MEVR_MOD_API void MevrModShutdown() {
     if (gInit && gGamepadHooked) {
         game::gamepad_bridge::Uninstall(*gInit);
     }
+    if (gInit && gCallFunctionHooked) {
+        engine::call_function::Uninstall(*gInit);
+    }
+    engine::call_function::ClearHandlers();
+    gCallFunctionHooked = false;
+    game::hand_aim::Shutdown();
+    game::skeleton_probe::Shutdown();
     gHooked = false;
     gSceneViewHooked = false;
     gGamepadHooked = false;

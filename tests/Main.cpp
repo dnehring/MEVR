@@ -1,6 +1,7 @@
 // Offline tests for the math that has to be right before it reaches a headset. No game, no
 // runtime: `ctest -C Release --test-dir build`.
 
+#include "core/ik/Ik.hpp"
 #include "core/vr/ViewSync.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/GamepadMapping.hpp"
@@ -293,9 +294,69 @@ void TestViewSync() {
     vs::Reset();
 }
 
+void TestIk() {
+    using namespace mevr::ik;
+    double const upper = 0.30;
+    double const lower = 0.28;
+    Vec3 const shoulder{0.2, 1.4, 0.0};
+    Vec3 const pole{0.5, 0.9, 0.2};  // down, out to the right, back
+
+    // Reachable: hand on target, bones keep their lengths, elbow on the pole's side.
+    Vec3 const target{0.3, 1.2, -0.4};
+    auto const arm = SolveTwoBone(shoulder, target, upper, lower, pole);
+    CHECK(arm.reached);
+    CHECK(Length(arm.end - target) < 1e-5);
+    CHECK(std::abs(Length(arm.mid - shoulder) - upper) < 1e-9);
+    CHECK(std::abs(Length(arm.end - arm.mid) - lower) < 1e-5);
+    Vec3 const line = Normalize(target - shoulder);
+    Vec3 const elbowOffset = (arm.mid - shoulder) - line * Dot(arm.mid - shoulder, line);
+    Vec3 const poleOffset = (pole - shoulder) - line * Dot(pole - shoulder, line);
+    CHECK(Dot(elbowOffset, poleOffset) > 0.0);
+
+    // Out of reach: a straight arm pointing at the target.
+    Vec3 const distant{0.2, 1.4, -2.0};
+    auto const straight = SolveTwoBone(shoulder, distant, upper, lower, pole);
+    CHECK(!straight.reached);
+    CHECK(std::abs(Length(straight.end - shoulder) - (upper + lower)) < 1e-4);
+    CHECK(Length(Normalize(straight.end - shoulder) - Normalize(distant - shoulder)) < 1e-6);
+
+    // Pole on the line: still a valid bend (lengths kept).
+    auto const degenerate = SolveTwoBone(shoulder, Vec3{0.2, 1.4, -0.4}, upper, lower, Vec3{0.2, 1.4, -1.0});
+    CHECK(std::abs(Length(degenerate.mid - shoulder) - upper) < 1e-9);
+
+    // Body yaw: holds inside the deadzone, is dragged along past it.
+    BodyYaw body(0.6, 0.0);  // no recentering, to test the deadzone alone
+    CHECK(NearD(body.Update(0.0, 0.1), 0.0));
+    CHECK(NearD(body.Update(0.5, 0.1), 0.0));
+    CHECK(NearD(body.Update(1.0, 0.1), 0.4));
+    CHECK(NearD(body.Update(-1.0, 0.1), -0.4));
+    BodyYaw easing(0.6, 1.0);  // recenters a fraction per second
+    easing.Update(0.0, 0.1);
+    double const eased = easing.Update(0.4, 0.5);
+    CHECK(eased > 0.0 && eased < 0.4);
+
+    // YawOf matches the OpenXR convention (positive = turned left about +Y).
+    XrQuaternionf const left = AxisAngle(0, 1, 0, 90);
+    CHECK(NearD(YawOf(left.x, left.y, left.z, left.w), std::numbers::pi / 2.0, 1e-5));
+    XrQuaternionf const lookUp = AxisAngle(1, 0, 0, 30);
+    CHECK(NearD(YawOf(lookUp.x, lookUp.y, lookUp.z, lookUp.w), 0.0, 1e-5));
+
+    // Upper body: shoulders level and symmetric about the neck, below and behind the head.
+    auto const torso = EstimateUpperBody(Vec3{0.0, 1.7, 0.0}, 0.0);
+    CHECK(NearD(torso.leftShoulder.y, torso.rightShoulder.y));
+    CHECK(torso.rightShoulder.x > 0.0 && torso.leftShoulder.x < 0.0);
+    CHECK(NearD(torso.rightShoulder.x, -torso.leftShoulder.x));
+    CHECK(torso.neck.y < 1.7 && torso.neck.z > 0.0);  // forward is -Z, so behind is +Z
+    auto const turned = EstimateUpperBody(Vec3{0.0, 1.7, 0.0}, std::numbers::pi / 2.0);  // facing left (-X)
+    CHECK(NearD(turned.forward.x, -1.0, 1e-9) && NearD(turned.right.z, -1.0, 1e-9));
+    Vec3 const elbowHint = ElbowPole(torso, +1);
+    CHECK(elbowHint.y < torso.rightShoulder.y && elbowHint.x > torso.rightShoulder.x);
+}
+
 } // namespace
 
 int main() {
+    TestIk();
     TestViewSync();
     TestXrToUnreal();
     TestHeadSim();

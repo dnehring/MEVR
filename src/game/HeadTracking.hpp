@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 // The game view follows the headset. Rendered yaw = the game's own yaw (mouse / stick turning)
 // + head yaw; rendered pitch and roll come from the head.
 //
@@ -50,5 +52,11 @@ bool TogglePositional();
 // the render path during on-foot gameplay (not conversations, menus, wheels, galaxy map or
 // the Mako). Input uses it so "forward" on the stick means where the player looks. Any thread.
 int RenderYawOffset();
+
+// The game's own (body) yaw, in Unreal units, before the head is added: the world direction of
+// LOCAL space's forward. Valid once a view has been rotated. Game thread.
+std::optional<int> GameYaw();
+// On-foot gameplay (SFXGameModeManager mode 0) as of this frame's camera update. Game thread.
+bool OnFoot();
 
 } // namespace mevr::game::head_tracking

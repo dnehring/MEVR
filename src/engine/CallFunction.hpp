@@ -1,0 +1,26 @@
+#pragma once
+
+class UFunction;
+class UObject;
+
+namespace LESDK {
+class Initializer;
+}
+
+// UObject::CallFunction: how UnrealScript calls another function. Script-to-script calls (most
+// gameplay logic, e.g. a weapon asking the controller for its aim) never pass through
+// ProcessEvent, which only sees calls made from native code. Post-handlers here can rewrite a
+// function's return value for those calls.
+namespace mevr::engine::call_function {
+
+// Runs after the original call. `result` points at the return value (or is null).
+using Handler = void (*)(UObject* context, UFunction* function, void* result);
+
+// Register before Install; the table is read without locking while hooked.
+void AddPostHandler(UFunction* function, Handler handler);
+void ClearHandlers();
+
+bool Install(::LESDK::Initializer& init);
+void Uninstall(::LESDK::Initializer& init);
+
+} // namespace mevr::engine::call_function
