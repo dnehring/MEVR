@@ -130,6 +130,87 @@ void TestOffsets() {
     CHECK(NearD(turned.position.x, 0.0, 1e-5) && NearD(turned.position.z, -0.032, 1e-5));
 }
 
+XrQuaternionf Multiply(XrQuaternionf const& a, XrQuaternionf const& b) {
+    return {a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y, a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+        a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w, a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z};
+}
+
+// Yaw (+ right) then pitch (+ up) in degrees, as an OpenXR orientation (yaw about +Y is + left).
+XrQuaternionf YawPitch(double yawRight, double pitchUp) {
+    return Multiply(AxisAngle(0, 1, 0, -yawRight), AxisAngle(1, 0, 0, pitchUp));
+}
+
+bool NearV(mevr::engine::UnrealVector const& a, mevr::engine::UnrealVector const& b, double tolerance = 1e-4) {
+    return NearD(a.x, b.x, tolerance) && NearD(a.y, b.y, tolerance) && NearD(a.z, b.z, tolerance);
+}
+
+bool NearB(mevr::engine::Basis const& a, mevr::engine::Basis const& b, double tolerance = 1e-4) {
+    return NearV(a.forward, b.forward, tolerance) && NearV(a.right, b.right, tolerance) && NearV(a.up, b.up, tolerance);
+}
+
+void TestTrackingFrame() {
+    using namespace mevr::engine;
+    double const s30 = 0.5, c30 = std::sqrt(3.0) / 2.0;
+
+    // Rotator axes: yaw turns right (+Y), pitch looks up (+Z).
+    CHECK(NearV(ToBasis(UnrealRotation{0, Units(90), 0}).forward, {0.0, 1.0, 0.0}));
+    Basis const pitched = ToBasis(UnrealRotation{Units(30), 0, 0});
+    CHECK(NearV(pitched.forward, {c30, 0.0, s30}) && NearV(pitched.up, {-s30, 0.0, c30}));
+
+    // An OpenXR orientation's axes are the axes of the rotator it converts to, roll included.
+    for (XrQuaternionf const q : {YawPitch(40, 15), YawPitch(-120, -50), Multiply(YawPitch(10, 20), AxisAngle(0, 0, 1, 25))}) {
+        CHECK(NearB(ToBasis(q), ToBasis(ToUnrealRotation(q)), 2e-4));
+    }
+
+    // Inverse undoes, Compose chains, ToRotation reads a direction back.
+    Basis const any = ToBasis(UnrealRotation{Units(-20), Units(130), Units(15)});
+    CHECK(NearB(Compose(any, Inverse(any)), Basis{}));
+    auto const back = ToRotation(ToBasis(UnrealRotation{Units(-20), Units(130), 0}).forward);
+    CHECK(Near(back.pitch, Units(-20)) && Near(back.yaw, Units(130)) && back.roll == 0);
+    CHECK(ToRotation({0.0, -2.0, 0.0}).yaw == -Units(90));
+
+    // Unwind keeps a rotator's winding next to the game's own.
+    CHECK(Unwind(100, 65536 * 3 + 50) == 65536 * 3 + 100);
+    CHECK(Unwind(-32000, 32000) == 33536);
+    CHECK(Unwind(Units(10), -65536 + Units(5)) == -65536 + Units(10));
+
+    // Our renderer (body yaw): the same mapping as ToWorld / the old hand aim (yaw + aim yaw).
+    XrPosef head{};
+    head.orientation = {0, 0, 0, 1};
+    head.position = {0.0f, 1.6f, 0.0f};
+    TrackingFrame const body = FromBodyYaw({1000.0, 2000.0, 300.0}, Units(90), head);
+    CHECK(NearV(ToWorld(body, {0.3f, 1.2f, 0.0f}), ToWorld({0.3f, 1.2f, 0.0f}, head.position, {1000.0, 2000.0, 300.0}, Units(90)), 0.01));
+    auto const aimBody = ToRotation(OrientationToWorld(body, YawPitch(30, 10)).forward);
+    CHECK(Near(aimBody.yaw, Units(120), 3) && Near(aimBody.pitch, Units(10), 3));
+
+    // Halcyon's view: the game camera turned by head look. With look equal to the head's yaw and
+    // pitch, tracking space is the camera itself, and a controller pointing where the head looks
+    // points along the rendered view.
+    UnrealRotation const camera{Units(-10), Units(70), 0};
+    XrPosef gaze{};
+    gaze.orientation = YawPitch(40, 15);
+    gaze.position = {0.1f, 1.5f, -0.2f};
+    UnrealRotation const look{Units(15), Units(40), 0};
+    TrackingFrame const view = FromCameraView({100.0, 200.0, 300.0}, camera, look, {0.0, 0.0, 0.0}, gaze, 50.0);
+    CHECK(NearB(view.rotation, ToBasis(camera), 2e-4));
+    CHECK(NearV(OrientationToWorld(view, gaze.orientation).forward, Compose(ToBasis(camera), ToBasis(look)).forward, 2e-4));
+    // The head itself sits at the camera; 0.5 m to its right in tracking space is along the camera's right.
+    CHECK(NearV(ToWorld(view, gaze.position), {100.0, 200.0, 300.0}));
+    UnrealVector const cameraRight = ToBasis(camera).right;
+    CHECK(NearV(ToWorld(view, {0.6f, 1.5f, -0.2f}),
+        {100.0 + 25.0 * cameraRight.x, 200.0 + 25.0 * cameraRight.y, 300.0 + 25.0 * cameraRight.z}, 0.01));
+
+    // Head-locked view (no look): whatever the head does, the view's center is the camera's
+    // forward, so a controller aimed with the head points along the camera.
+    TrackingFrame const locked = FromCameraView({0.0, 0.0, 0.0}, camera, {}, {0.0, 0.0, 0.0}, gaze, 50.0);
+    CHECK(NearV(OrientationToWorld(locked, gaze.orientation).forward, ToBasis(camera).forward, 2e-4));
+
+    // The view offset moves the head along the camera's own axes (forward, right, up).
+    TrackingFrame const moved = FromCameraView({100.0, 200.0, 300.0}, UnrealRotation{0, Units(90), 0}, {},
+        {0.0, 10.0, 5.0}, head, 50.0);
+    CHECK(NearV(moved.headWorld, {90.0, 200.0, 305.0}));
+}
+
 void TestGamepad() {
     using namespace mevr::game::gamepad;
     mevr::vr::controllers::State state;
@@ -404,6 +485,7 @@ int main() {
     TestXrToUnreal();
     TestHeadSim();
     TestOffsets();
+    TestTrackingFrame();
     TestGamepad();
     if (gFailures == 0) {
         std::printf("all tests passed\n");

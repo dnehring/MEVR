@@ -91,10 +91,88 @@ UnrealVector ToWorld(XrVector3f const& point, XrVector3f const& head, UnrealVect
 }
 
 UnrealVector RightAxis(UnrealRotation const& rotation) {
+    return ToBasis(rotation).right;
+}
+
+Basis ToBasis(UnrealRotation const& rotation) {
     double const sp = std::sin(ToRadians(rotation.pitch)), cp = std::cos(ToRadians(rotation.pitch));
     double const sy = std::sin(ToRadians(rotation.yaw)), cy = std::cos(ToRadians(rotation.yaw));
     double const sr = std::sin(ToRadians(rotation.roll)), cr = std::cos(ToRadians(rotation.roll));
-    return {sr * sp * cy - cr * sy, sr * sp * sy + cr * cy, -sr * cp};
+    return {
+        {cp * cy, cp * sy, sp},
+        {sr * sp * cy - cr * sy, sr * sp * sy + cr * cy, -sr * cp},
+        {-(cr * sp * cy + sr * sy), cy * sr - cr * sp * sy, cr * cp},
+    };
+}
+
+Basis ToBasis(XrQuaternionf const& orientation) {
+    auto const axis = [&](Vec3 v) {
+        Vec3 const u = ToUnrealAxes(Rotate(orientation, v));
+        return UnrealVector{u.x, u.y, u.z};
+    };
+    return {axis({0.0, 0.0, -1.0}), axis({1.0, 0.0, 0.0}), axis({0.0, 1.0, 0.0})};
+}
+
+UnrealVector Apply(Basis const& basis, UnrealVector const& local) {
+    return {
+        basis.forward.x * local.x + basis.right.x * local.y + basis.up.x * local.z,
+        basis.forward.y * local.x + basis.right.y * local.y + basis.up.y * local.z,
+        basis.forward.z * local.x + basis.right.z * local.y + basis.up.z * local.z,
+    };
+}
+
+Basis Compose(Basis const& parent, Basis const& local) {
+    return {Apply(parent, local.forward), Apply(parent, local.right), Apply(parent, local.up)};
+}
+
+Basis Inverse(Basis const& basis) {
+    Basis const& b = basis;
+    return {
+        {b.forward.x, b.right.x, b.up.x},
+        {b.forward.y, b.right.y, b.up.y},
+        {b.forward.z, b.right.z, b.up.z},
+    };
+}
+
+UnrealRotation ToRotation(UnrealVector const& direction) {
+    return {ToUnits(std::atan2(direction.z, std::hypot(direction.x, direction.y))),
+        ToUnits(std::atan2(direction.y, direction.x)), 0};
+}
+
+int Unwind(int angle, int reference) {
+    long long delta = (static_cast<long long>(angle) - reference) % 65536;
+    if (delta > 32768) {
+        delta -= 65536;
+    } else if (delta < -32768) {
+        delta += 65536;
+    }
+    return static_cast<int>(reference + delta);
+}
+
+UnrealVector ToWorld(TrackingFrame const& frame, XrVector3f const& point) {
+    XrVector3f const& head = frame.head.position;
+    Vec3 const local = ToUnrealAxes({point.x - head.x, point.y - head.y, point.z - head.z});
+    double const scale = frame.unitsPerMeter;
+    UnrealVector const offset = Apply(frame.rotation, {local.x * scale, local.y * scale, local.z * scale});
+    return {frame.headWorld.x + offset.x, frame.headWorld.y + offset.y, frame.headWorld.z + offset.z};
+}
+
+Basis OrientationToWorld(TrackingFrame const& frame, XrQuaternionf const& orientation) {
+    return Compose(frame.rotation, ToBasis(orientation));
+}
+
+TrackingFrame FromBodyYaw(UnrealVector const& headWorld, int yawUnits, XrPosef const& head, double unitsPerMeter) {
+    return {head, headWorld, ToBasis(UnrealRotation{0, yawUnits, 0}), unitsPerMeter};
+}
+
+TrackingFrame FromCameraView(UnrealVector const& cameraLocation, UnrealRotation const& cameraRotation,
+    UnrealRotation const& look, UnrealVector const& offset, XrPosef const& head, double unitsPerMeter) {
+    Basis const camera = ToBasis(cameraRotation);
+    Basis const view = Compose(camera, ToBasis(look));
+    UnrealVector const moved = Apply(camera, offset);
+    return {head,
+        {cameraLocation.x + moved.x, cameraLocation.y + moved.y, cameraLocation.z + moved.z},
+        Compose(view, Inverse(ToBasis(head.orientation))), unitsPerMeter};
 }
 
 } // namespace mevr::engine
