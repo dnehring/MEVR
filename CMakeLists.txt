@@ -187,6 +187,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/Controllers.hpp
     src/core/vr/HostView.cpp
     src/core/vr/HostView.hpp
+    src/core/vr/OverlayPlacement.cpp
+    src/core/vr/OverlayPlacement.hpp
     src/core/xr/Input.cpp
     src/core/xr/Input.hpp
     src/game/GamepadMapping.cpp
@@ -248,6 +250,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/BoneNames.cpp
         src/core/ik/Ik.cpp
         src/core/ik/Rigid.cpp
+        src/core/vr/OverlayPlacement.cpp
         src/core/vr/ViewSync.cpp
         src/engine/XrToUnreal.cpp
         src/game/GamepadMapping.cpp
