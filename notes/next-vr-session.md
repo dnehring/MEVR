@@ -11,7 +11,7 @@ and HDR to SDR in ME1's GamerSettings.ini (backup kept; `-Restore` undoes it). H
 may also set the game resolution per VR mode (3840x2160 for stereo), effective from the next
 launch.
 
-**Keys on LE1:** Insert = Halcyon's menu (the controllers navigate it as a gamepad; while it's open the game gets no input; clicking and holding both thumbsticks closes it), R = recenter
+**Keys on LE1:** `\` = Halcyon's menu (Insert upstream) (the controllers navigate it as a gamepad; while it's open the game gets no input; clicking and holding both thumbsticks closes it), R = recenter
 (or double-click the right stick), K = first person on/off (off at every launch). Ours: `,` hand
 aim on/off and `.` arm IK on/off, both on by themselves once the controllers are tracked; the
 other keys in the table further down are for our own renderer only.

@@ -77,6 +77,8 @@ if ($Game -eq 'LE1') {
         # Upstream ships 0.8 (a quarter of life-size: the world looks four times too big). Shepard's
         # skeleton puts 1 unit at about 1 cm, so half a 65 mm IPD is 3.25 units.
         $text = $text -replace '(?m)^sfr2HalfEyeUU = .*$', 'sfr2HalfEyeUU = 3.250'
+        # The menu key: Insert by default, which many keyboards lack; backslash (220) is free on LE1.
+        $text = $text -replace '(?m)^menuKey = .*$', 'menuKey = 220'
         [IO.File]::WriteAllText($ini, $text)
         Write-Output "Installed Halcyon's default MELEVR.ini (welcome marked seen, life-size stereo)"
     }
