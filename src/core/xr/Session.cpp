@@ -141,6 +141,11 @@ bool Session::CreateSession(ID3D11Device* device) {
         DestroySession();
         return false;
     }
+    spaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_VIEW;
+    if (!Check(xrCreateReferenceSpace(session_, &spaceInfo, &viewSpace_), "xrCreateReferenceSpace(VIEW)")) {
+        DestroySession();
+        return false;
+    }
     ++generation_;
     log::Info("OpenXR session created");
     return true;
@@ -198,9 +203,11 @@ bool Session::EnsureCreated(ID3D11Device* device) {
 void Session::DestroySession() {
     running_ = false;
     state_ = XR_SESSION_STATE_UNKNOWN;
-    if (localSpace_ != XR_NULL_HANDLE) {
-        xrDestroySpace(localSpace_);
-        localSpace_ = XR_NULL_HANDLE;
+    for (XrSpace* space : {&viewSpace_, &localSpace_}) {
+        if (*space != XR_NULL_HANDLE) {
+            xrDestroySpace(*space);
+            *space = XR_NULL_HANDLE;
+        }
     }
     if (session_ != XR_NULL_HANDLE) {
         xrDestroySession(session_);  // also destroys its swapchains
@@ -284,6 +291,21 @@ void Session::EndFrame(XrTime displayTime, std::span<XrCompositionLayerBaseHeade
     Check(xrEndFrame(session_, &end), "xrEndFrame");
 }
 
+bool Session::LocateHead(XrTime time, XrPosef& out) {
+    XrSpaceLocation location{XR_TYPE_SPACE_LOCATION};
+    if (!Check(xrLocateSpace(viewSpace_, localSpace_, time, &location), "xrLocateSpace(VIEW)")) {
+        return false;
+    }
+    if ((location.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT) == 0) {
+        return false;
+    }
+    out = location.pose;
+    if ((location.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) == 0) {
+        out.position = {0.0f, 0.0f, 0.0f};
+    }
+    return true;
+}
+
 std::int64_t Session::ChooseSwapchainFormat(std::span<std::int64_t const> preferred) const {
     std::uint32_t count = 0;
     xrEnumerateSwapchainFormats(session_, 0, &count, nullptr);
@@ -299,7 +321,7 @@ std::int64_t Session::ChooseSwapchainFormat(std::span<std::int64_t const> prefer
     return 0;
 }
 
-bool QuadSwapchain::Create(Session& session, ID3D11Device* device, std::uint32_t width, std::uint32_t height) {
+bool ColorSwapchain::Create(Session& session, ID3D11Device* device, std::uint32_t width, std::uint32_t height) {
     // _SRGB: the blit writes linear color and the runtime gets correctly encoded images.
     std::int64_t const preferred[] = {DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_FORMAT_B8G8R8A8_UNORM_SRGB};
     std::int64_t const format = session.ChooseSwapchainFormat(preferred);
@@ -349,11 +371,11 @@ bool QuadSwapchain::Create(Session& session, ID3D11Device* device, std::uint32_t
     width_ = width;
     height_ = height;
     generation_ = session.Generation();
-    log::Info("quad swapchain {}x{}, format {}, {} images", width, height, format, count);
+    log::Info("color swapchain {}x{}, format {}, {} images", width, height, format, count);
     return true;
 }
 
-void QuadSwapchain::Destroy() {
+void ColorSwapchain::Destroy() {
     views_.clear();
     if (swapchain_ != XR_NULL_HANDLE) {
         xrDestroySwapchain(swapchain_);
@@ -361,18 +383,18 @@ void QuadSwapchain::Destroy() {
     Forget();
 }
 
-void QuadSwapchain::Forget() {
+void ColorSwapchain::Forget() {
     views_.clear();
     swapchain_ = XR_NULL_HANDLE;
     session_ = nullptr;
     width_ = height_ = 0;
 }
 
-bool QuadSwapchain::Matches(std::uint32_t width, std::uint32_t height, std::uint32_t generation) const {
+bool ColorSwapchain::Matches(std::uint32_t width, std::uint32_t height, std::uint32_t generation) const {
     return swapchain_ != XR_NULL_HANDLE && width == width_ && height == height_ && generation == generation_;
 }
 
-ID3D11RenderTargetView* QuadSwapchain::Acquire() {
+ID3D11RenderTargetView* ColorSwapchain::Acquire() {
     std::uint32_t index = 0;
     XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
     if (!session_->Check(xrAcquireSwapchainImage(swapchain_, &acquire, &index), "xrAcquireSwapchainImage")) {
@@ -387,7 +409,7 @@ ID3D11RenderTargetView* QuadSwapchain::Acquire() {
     return views_[index].Get();
 }
 
-void QuadSwapchain::Release() {
+void ColorSwapchain::Release() {
     XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
     session_->Check(xrReleaseSwapchainImage(swapchain_, &release), "xrReleaseSwapchainImage");
 }

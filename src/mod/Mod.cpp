@@ -1,14 +1,14 @@
-// The hot-reloadable part of MEVR. Everything that changes often lives behind these three
-// entry points; the host ASI only owns the loader hookup and the engine tick.
+// The hot-reloadable part of MEVR. Everything that changes often lives behind these entry
+// points; the host ASI only owns the loader hookup, the engine tick and the Present hook.
 
 #include "mod/ModApi.hpp"
 
 #include "core/Hotkey.hpp"
 #include "core/Log.hpp"
-#include "core/vr/VirtualScreen.hpp"
+#include "core/vr/Output.hpp"
 #include "engine/Engine.hpp"
 #include "engine/ProcessEvent.hpp"
-#include "game/CameraTest.hpp"
+#include "game/HeadTracking.hpp"
 
 #include <LESDK/Headers.hpp>
 #include <LESDK/Init.hpp>
@@ -25,7 +25,8 @@ std::unique_ptr<::LESDK::Initializer> gInit;
 std::atomic<bool> gActive{false};  // read on the render thread too
 bool gHooked = false;  // ProcessEvent hook live (after the script packages loaded)
 
-mevr::Hotkey gVrToggleKey{VK_OEM_6};  // ]
+mevr::Hotkey gVrToggleKey{VK_OEM_6};    // ]  VR on / off
+mevr::Hotkey gModeToggleKey{VK_OEM_4};  // [  head-tracked / screen
 
 double gRetryTimer = kStartupRetrySeconds;  // first attempt on the first tick
 double gHeartbeatElapsed = 0.0;
@@ -36,7 +37,7 @@ unsigned gHeartbeats = 0;
 // registered before the ProcessEvent hook goes live so the table never changes under it.
 void TryInstallScriptHooks() {
     using namespace mevr;
-    if (!game::camera_test::TryStartup()) {
+    if (!game::head_tracking::TryStartup()) {
         return;
     }
     if (!engine::process_event::Install(*gInit)) {
@@ -47,6 +48,22 @@ void TryInstallScriptHooks() {
     gHooked = true;
 }
 
+void PollHotkeys() {
+    using namespace mevr;
+    if (gVrToggleKey.Pressed()) {
+        bool const enable = !vr::output::IsEnabled();
+        vr::output::SetEnabled(enable);
+        log::Info("]: VR {}", enable ? "ON" : "OFF");
+    }
+    if (gModeToggleKey.Pressed()) {
+        auto const mode = vr::output::GetMode() == vr::output::Mode::HeadTracked
+            ? vr::output::Mode::Screen
+            : vr::output::Mode::HeadTracked;
+        vr::output::SetMode(mode);
+        log::Info("[: {}", mode == vr::output::Mode::HeadTracked ? "head-tracked" : "screen");
+    }
+}
+
 void Heartbeat() {
     using namespace mevr;
     UWorld* const world = (GWorld != nullptr) ? *GWorld : nullptr;
@@ -54,7 +71,7 @@ void Heartbeat() {
         ++gHeartbeats, gHeartbeatFrames / gHeartbeatElapsed, static_cast<void*>(world),
         UObject::GObjObjects->Count(), gHooked ? "live" : "waiting for script packages");
     if (gHooked) {
-        game::camera_test::LogStats();
+        game::head_tracking::LogStats();
     }
 }
 
@@ -82,19 +99,13 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     if (!gActive) {
         return;
     }
-    if (gVrToggleKey.Pressed()) {
-        bool const enable = !vr::virtual_screen::IsEnabled();
-        vr::virtual_screen::SetEnabled(enable);
-        log::Info("]: VR {}", enable ? "ON" : "OFF");
-    }
+    PollHotkeys();
     if (!gHooked) {
         gRetryTimer += deltaSeconds;
         if (gRetryTimer >= kStartupRetrySeconds) {
             gRetryTimer = 0.0;
             TryInstallScriptHooks();
         }
-    } else {
-        game::camera_test::Tick(deltaSeconds);
     }
 
     gHeartbeatElapsed += deltaSeconds;
@@ -108,7 +119,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
 
 MEVR_MOD_API void MevrModOnPresent(IDXGISwapChain* swapChain) {
     if (gActive) {
-        mevr::vr::virtual_screen::OnPresent(swapChain);
+        mevr::vr::output::OnPresent(swapChain);
     }
 }
 
@@ -116,13 +127,13 @@ MEVR_MOD_API void MevrModShutdown() {
     using namespace mevr;
     gActive = false;
     // The host has already detached the present callback, so the render thread is out.
-    vr::virtual_screen::Shutdown();
+    vr::output::Shutdown();
     if (gInit && gHooked) {
         engine::process_event::Uninstall(*gInit);
     }
     gHooked = false;
     engine::process_event::ClearHandlers();
-    game::camera_test::Shutdown();
+    game::head_tracking::Shutdown();
     gInit.reset();
     log::Info("mod shut down");
     log::SetSink(nullptr);

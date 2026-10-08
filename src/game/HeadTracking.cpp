@@ -1,0 +1,96 @@
+#include "game/HeadTracking.hpp"
+
+#include "core/Log.hpp"
+#include "core/vr/Output.hpp"
+#include "core/vr/ViewSync.hpp"
+#include "engine/Objects.hpp"
+#include "engine/ProcessEvent.hpp"
+#include "engine/XrToUnreal.hpp"
+
+#include <LESDK/Headers.hpp>
+
+#include <atomic>
+
+namespace mevr::game::head_tracking {
+namespace {
+
+constexpr char const* kUpdateCamera = "Function Engine.Camera.UpdateCamera";
+constexpr char const* kGetPlayerViewPoint = "Function Engine.PlayerController.GetPlayerViewPoint";
+
+// Game thread only.
+bool gActive = false;  // this frame's head rotation is valid
+engine::UnrealRotation gHead;
+
+std::atomic<unsigned> gTaggedFrames{0};
+std::atomic<unsigned> gAdjustedViews{0};
+
+// Once per frame, after the camera computed this frame's view.
+void OnUpdateCamera(UObject* context, UFunction* /*function*/, void* /*parms*/, void* /*result*/) {
+    gActive = false;
+    if (!vr::output::WantsHeadTracking()) {
+        return;
+    }
+    auto* const camera = static_cast<ACamera*>(context);
+    if (camera == nullptr || camera->PCOwner == nullptr) {
+        return;
+    }
+    auto const head = vr::view_sync::LatestHead();
+    if (!head) {
+        return;
+    }
+    gHead = engine::ToUnrealRotation(head->orientation);
+    gActive = true;
+    vr::view_sync::PushRendered({*head, camera->CameraCache.POV.FOV});
+    gTaggedFrames.fetch_add(1, std::memory_order_relaxed);
+}
+
+void OnGetPlayerViewPoint(UObject* context, UFunction* /*function*/, void* parms, void* /*result*/) {
+    if (!gActive || context == nullptr || !context->IsA(APlayerController::StaticClass())) {
+        return;
+    }
+    auto* const p = static_cast<AController_eventGetPlayerViewPoint_Parms*>(parms);
+    p->out_Rotation.Yaw += gHead.yaw;
+    p->out_Rotation.Pitch = gHead.pitch;
+    p->out_Rotation.Roll = gHead.roll;
+    gAdjustedViews.fetch_add(1, std::memory_order_relaxed);
+}
+
+UFunction* FindFunction(wchar_t const* name, char const* fullName) {
+    for (UFunction* function : engine::FindFunctionsNamed(name)) {
+        if (engine::FullName(function) == fullName) {
+            return function;
+        }
+    }
+    return nullptr;
+}
+
+} // namespace
+
+bool TryStartup() {
+    UFunction* const updateCamera = FindFunction(L"UpdateCamera", kUpdateCamera);
+    UFunction* const viewPoint = FindFunction(L"GetPlayerViewPoint", kGetPlayerViewPoint);
+    if (updateCamera == nullptr || viewPoint == nullptr) {
+        return false;  // script packages not loaded yet
+    }
+    engine::process_event::AddPostHandler(updateCamera, &OnUpdateCamera);
+    engine::process_event::AddPostHandler(viewPoint, &OnGetPlayerViewPoint);
+    log::Info("head tracking ready ({}, {})", kUpdateCamera, kGetPlayerViewPoint);
+    return true;
+}
+
+void LogStats() {
+    unsigned const frames = gTaggedFrames.exchange(0);
+    unsigned const views = gAdjustedViews.exchange(0);
+    if (frames > 0 || views > 0) {
+        log::Info("    head tracking: {} frames tagged, {} views adjusted, head yaw {} pitch {} roll {}",
+            frames, views, gHead.yaw, gHead.pitch, gHead.roll);
+    } else {
+        log::Info("    head tracking: idle ({})", vr::output::WantsHeadTracking() ? "waiting for a head pose" : "VR off or screen mode");
+    }
+}
+
+void Shutdown() {
+    gActive = false;
+}
+
+} // namespace mevr::game::head_tracking

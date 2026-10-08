@@ -46,8 +46,10 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   closed and a redeploy. Release builds use `-DMEVR_HOT_RELOAD=OFF` (one ASI; e.g. `build-mono/`).
 - Script-level hooks must wait for the script packages to load (they aren't there at attach).
   `Mod.cpp` retries every second before installing the ProcessEvent hook.
-- Dev hotkeys: not F-keys (bound in game), not backtick (UE console). Backslash toggles the
-  camera test; `]` toggles VR (the XR session) on and off.
+- Dev hotkeys: not F-keys (bound in game), not backtick (UE console). `]` toggles VR (the XR
+  session) on and off; `[` switches between head-tracked and screen mode.
+- The mod connects to Windows' active OpenXR runtime (Oculus, or SteamVR for Steam Link). The
+  user currently uses Steam Link / SteamVR.
 - The game's D3D11 device is SINGLETHREADED: no deferred contexts, and all D3D/XR work happens
   on the render thread inside the host's Present callback. Its backbuffer is FP16 (scRGB, linear).
 - Quitting from the headset's menu (session EXITING) must turn VR off, not recreate the session.

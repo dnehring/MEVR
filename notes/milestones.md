@@ -118,6 +118,39 @@
   - **Mitigation added:** the log now keeps the previous run as `LE1MEVR.prev.log` and records
     the pid, so the next incident keeps its evidence.
 
+### Attempt 3: Steam Link
+
+- The user switched to Steam Link, so SteamVR needs to be the active OpenXR runtime. The mod is
+  runtime-agnostic. Fix: `]` off/on now always recreates the OpenXR instance, so a runtime
+  switch is picked up without restarting.
+- Worked under SteamVR. The user's next request was head tracking (M3).
+
+## M3: head tracking drives the camera (mono). In progress
+
+Design (2026-10-07):
+- **Render thread (Present):** submit frame N, then immediately `xrWaitFrame` + `xrBeginFrame`
+  for N+1 and locate the head (VIEW in LOCAL) at `predictedDisplayTime + predictedDisplayPeriod`.
+  The extra period is because UE3 renders a frame behind the game thread. The pose is published
+  through `core/vr/ViewSync`.
+- **Game thread:**
+  - At `Engine.Camera.UpdateCamera` (once per frame), read the latest pose and convert it to a
+    UE3 rotator (`engine/XrToUnreal`).
+  - Queue `{pose, CameraCache.POV.FOV}` for the render thread.
+  - Every `PlayerController.GetPlayerViewPoint` that frame gets `yaw = game yaw + head yaw`,
+    `pitch = head pitch`, `roll = head roll`.
+- **Submission:** a **projection layer**. Both eyes show the same image (mono), posed at the
+  queued head pose with the game's FOV (horizontal, symmetric; vertical from the aspect). The
+  runtime's reprojection keeps it world-stable. Queue order (FIFO, cap 3) pairs images with
+  poses, since UE3 ticks once per Present.
+- **Modes:** `[` switches between head-tracked and screen (M2). `]` turns VR on and off.
+- **Known limitations:**
+  - Aim follows the head (weapons use GetPlayerViewPoint too).
+  - Only the game's FOV is covered (black outside).
+  - No positional tracking yet.
+  - In vanilla third person the camera pivots in place behind Shepard.
+- **[verify]:** whether ME's FOV is horizontal (UE3 default) or aspect-constrained. If the scale
+  is wrong, the world will "swim" when you turn your head.
+
 ### Still to do
 
 - Retest with the fixes. Check image correctness (colors and brightness vs the monitor).

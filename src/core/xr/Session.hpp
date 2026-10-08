@@ -43,6 +43,8 @@ public:
     bool HasInstance() const { return instance_ != XR_NULL_HANDLE; }
     XrSession Handle() const { return session_; }
     XrSpace LocalSpace() const { return localSpace_; }
+    // Head (VIEW space) pose in LOCAL space at `time`. False if orientation isn't valid.
+    bool LocateHead(XrTime time, XrPosef& out);
     // Changes whenever the session (and every swapchain created from it) is destroyed.
     std::uint32_t Generation() const { return generation_; }
 
@@ -61,6 +63,7 @@ private:
     XrSystemId system_ = XR_NULL_SYSTEM_ID;
     XrSession session_ = XR_NULL_HANDLE;
     XrSpace localSpace_ = XR_NULL_HANDLE;
+    XrSpace viewSpace_ = XR_NULL_HANDLE;
     XrSessionState state_ = XR_SESSION_STATE_UNKNOWN;
     bool running_ = false;
     bool userExited_ = false;
@@ -71,8 +74,8 @@ private:
     unsigned errorsLogged_ = 0;
 };
 
-// A single-image-layer swapchain for a quad layer, with one render target view per image.
-class QuadSwapchain {
+// A 2D color swapchain (quad or projection layers), with one render target view per image.
+class ColorSwapchain {
 public:
     bool Create(Session& session, ID3D11Device* device, std::uint32_t width, std::uint32_t height);
     void Destroy();

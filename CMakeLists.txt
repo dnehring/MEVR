@@ -55,8 +55,10 @@ set(MEVR_MOD_SOURCES
     src/core/Hotkey.hpp
     src/core/d3d11/Blit.cpp
     src/core/d3d11/Blit.hpp
-    src/core/vr/VirtualScreen.cpp
-    src/core/vr/VirtualScreen.hpp
+    src/core/vr/Output.cpp
+    src/core/vr/Output.hpp
+    src/core/vr/ViewSync.cpp
+    src/core/vr/ViewSync.hpp
     src/core/xr/Session.cpp
     src/core/xr/Session.hpp
     src/engine/Engine.cpp
@@ -65,8 +67,10 @@ set(MEVR_MOD_SOURCES
     src/engine/Objects.hpp
     src/engine/ProcessEvent.cpp
     src/engine/ProcessEvent.hpp
-    src/game/CameraTest.cpp
-    src/game/CameraTest.hpp
+    src/engine/XrToUnreal.cpp
+    src/engine/XrToUnreal.hpp
+    src/game/HeadTracking.cpp
+    src/game/HeadTracking.hpp
     src/mod/Mod.cpp
     src/mod/ModApi.hpp
 )
