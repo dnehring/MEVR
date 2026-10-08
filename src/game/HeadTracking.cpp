@@ -42,6 +42,7 @@ float gCameraFov = 0.0f;  // the camera's FOV this frame, including any override
 float gRenderedFov = 0.0f;  // the FOV the last player view was built with (stats)
 bool gOnFoot = false;  // on-foot gameplay (no conversation, GUI, vehicle, wheels)
 bool gTaggedThisTick = false;
+bool gPrimaryThisTick = false;
 // Render path, if CalcSceneView turns out not to ask GetFOVAngle: override the camera's FOV
 // instead (it then also reaches game logic, as on the camera path).
 bool gFovViaCamera = false;
@@ -73,13 +74,20 @@ bool BeginView() {
     return forVr;
 }
 
-// Tagging only matters for VR: it tells the output which pose (and eye) the image has.
+// Tagging only matters for VR: it tells the output which pose (and eye) the image has. One
+// queue entry per tick: a second view in the same tick replaces the first, so the tick's single
+// Present consumes exactly one (otherwise the lockstep would wait for a Present that never comes).
 void TagFrame(XrPosef const& pose, float fov, int eye) {
-    if (vr::output::WantsHeadTracking()) {
+    if (!vr::output::WantsHeadTracking()) {
+        return;
+    }
+    if (gTaggedThisTick) {
+        vr::view_sync::ReplaceNewest({pose, fov, eye});
+    } else {
         vr::view_sync::PushRendered({pose, fov, eye});
         gTaggedFrames.fetch_add(1, std::memory_order_relaxed);
-        gTaggedThisTick = true;
     }
+    gTaggedThisTick = true;
 }
 
 void ApplyRotation(FRotator& rotation) {
@@ -124,6 +132,9 @@ void OnUpdateCamera(UObject* context, UFunction* /*function*/, void* /*parms*/, 
         return;
     }
     gOnFoot = IsOnFoot(camera->PCOwner);
+    if (!gOnFoot) {
+        gRenderYawOffset = 0;  // menus, conversations, wheels: the stick isn't for walking
+    }
     if (gPath == Path::Render) {
         // The head is sampled at the player view instead (as late as possible).
         auto const headsetFov = vr::view_sync::HeadsetFov();
@@ -226,6 +237,7 @@ void OnBeforePrimaryView() {
         return;  // the ProcessEvent handlers aren't live yet
     }
     gPrimaryViews.fetch_add(1, std::memory_order_relaxed);
+    gPrimaryThisTick = true;
     if (gPath != Path::Render) {
         return;
     }
@@ -236,7 +248,7 @@ void OnBeforePrimaryView() {
         return;
     }
     XrPosef pose = *gHeadPose;
-    if (forVr && gStereo == Stereo::AlternateEye) {
+    if (forVr && gStereo == Stereo::AlternateEye && vr::output::StereoAvailable()) {
         gEye = static_cast<int>(gEyeParity++ & 1u);
         gHalfIpdMeters = vr::view_sync::HalfIpd().value_or(kDefaultHalfIpdMeters);
         pose = engine::OffsetRight(pose, gEye == 0 ? -gHalfIpdMeters : gHalfIpdMeters);
@@ -249,17 +261,22 @@ void OnBeforePrimaryView() {
 
 void OnTickEnd() {
     // Render path: a tick that drew no player view (loading screen, movie, or an unknown call
-    // site) still gets a tag, at the current head pose, as the camera path always does. The
-    // image is then head-locked instead of stuck at an old pose, and VR never goes black.
+    // site) still gives the output a pose, the current head pose, so the image is head-locked
+    // instead of stuck at an old pose and VR never goes black. It's published as a fallback, not
+    // queued: this late in the tick its Present may already have happened.
     if (gReady && gPath == Path::Render && !gTaggedThisTick && vr::output::WantsHeadTracking()) {
         BeginView();
         gActive = false;  // nothing to rotate: the tick's views (if any) are done
         if (gHeadPose) {
-            TagFrame(*gHeadPose, gCameraFov, -1);
+            vr::view_sync::PublishFallback({*gHeadPose, gCameraFov, -1});
             gTickTags.fetch_add(1, std::memory_order_relaxed);
         }
     }
+    if (!gPrimaryThisTick) {
+        gRenderYawOffset = 0;  // no player view (full-screen GUI, pause): the stick isn't for walking
+    }
     gTaggedThisTick = false;
+    gPrimaryThisTick = false;
 }
 
 bool TryStartup(bool renderPathAvailable) {

@@ -36,8 +36,8 @@ void Shutdown();
 
 // Game thread, from engine/scene_view: the frame's player view is about to be built.
 void OnBeforePrimaryView();
-// Game thread, after each engine tick (before the lockstep wait): tags a tick that drew no
-// player view, so VR always has an image.
+// Game thread, after each engine tick (before the lockstep wait): gives a tick that drew no
+// player view a fallback pose, so VR always has an image.
 void OnTickEnd();
 
 Path CyclePath();

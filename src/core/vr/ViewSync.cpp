@@ -19,6 +19,8 @@ std::optional<XrPosef> gLatest;
 std::optional<float> gHeadsetFov;
 std::optional<float> gHalfIpd;
 std::deque<RenderedView> gRendered;
+std::optional<RenderedView> gFallback;
+std::uint64_t gPresentCount = 0;
 std::uint64_t gPushedFrames = 0;     // engine frames that queued a view
 std::uint64_t gPresentedFrames = 0;  // of those, how many have been presented
 
@@ -61,6 +63,34 @@ void PushRendered(RenderedView view) {
     while (gRendered.size() > kMaxQueued) {
         gRendered.pop_front();
     }
+    gFallback.reset();
+}
+
+void ReplaceNewest(RenderedView view) {
+    std::lock_guard lock(gMutex);
+    if (gRendered.empty()) {
+        // Already consumed (can't normally happen before the frame's own Present): queue anew.
+        view.engineFrame = ++gPushedFrames;
+        gRendered.push_back(view);
+        return;
+    }
+    view.engineFrame = gRendered.back().engineFrame;
+    gRendered.back() = view;
+}
+
+void PublishFallback(RenderedView view) {
+    std::lock_guard lock(gMutex);
+    gFallback = view;
+}
+
+std::optional<RenderedView> Fallback() {
+    std::lock_guard lock(gMutex);
+    return gFallback;
+}
+
+std::uint64_t PresentCount() {
+    std::lock_guard lock(gMutex);
+    return gPresentCount;
 }
 
 std::optional<RenderedView> PeekForPresent(std::size_t& depth) {
@@ -75,6 +105,7 @@ std::optional<RenderedView> PeekForPresent(std::size_t& depth) {
 void NotifyPresented() {
     {
         std::lock_guard lock(gMutex);
+        ++gPresentCount;
         if (gRendered.empty()) {
             gPresentedFrames = gPushedFrames;  // nothing tagged (VR off, loading): release any waiter
         } else {
@@ -115,6 +146,7 @@ void Reset() {
         gHeadsetFov.reset();
         gHalfIpd.reset();
         gRendered.clear();
+        gFallback.reset();
         gPresentedFrames = gPushedFrames;  // release any waiter
     }
     gPresented.notify_all();

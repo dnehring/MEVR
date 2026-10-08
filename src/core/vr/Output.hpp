@@ -29,6 +29,12 @@ Mode GetMode();
 
 // True while the game camera should follow the head: VR running in HeadTracked mode.
 bool WantsHeadTracking();
+// True while the headset is actually showing our frames (session VISIBLE or FOCUSED). When the
+// headset is off or the system menu is up, the runtime throttles frames, and the game thread
+// shouldn't wait for them.
+bool ShowsFrames();
+// False after alternate-eye resources failed for this session: the game should render mono.
+bool StereoAvailable();
 
 // Logs and resets frame-pacing counters (queue depth at present, frame interval spread).
 void LogStats();

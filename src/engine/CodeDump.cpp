@@ -14,6 +14,23 @@
 namespace mevr::engine::code_dump {
 namespace {
 
+// True if every page in [start, start + size) is committed and readable (no guard or
+// no-access pages left behind by the DRM), so copying it can't fault.
+bool IsReadable(std::uint8_t const* start, std::size_t size) {
+    constexpr DWORD kReadable = PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ |
+        PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY;
+    std::uint8_t const* const end = start + size;
+    for (std::uint8_t const* address = start; address < end;) {
+        MEMORY_BASIC_INFORMATION info{};
+        if (VirtualQuery(address, &info, sizeof info) == 0 || info.State != MEM_COMMIT ||
+            (info.Protect & kReadable) == 0 || (info.Protect & (PAGE_GUARD | PAGE_NOACCESS)) != 0) {
+            return false;
+        }
+        address = static_cast<std::uint8_t const*>(info.BaseAddress) + info.RegionSize;
+    }
+    return true;
+}
+
 std::filesystem::path DumpDirectory() {
     char* appData = nullptr;
     std::size_t length = 0;
@@ -46,6 +63,10 @@ void SaveOnce() {
         }
     }
     if (text == nullptr) {
+        return;
+    }
+    if (!IsReadable(base + text->VirtualAddress, text->Misc.VirtualSize)) {
+        log::Warn("code dump: .text has unreadable pages; skipped");
         return;
     }
 

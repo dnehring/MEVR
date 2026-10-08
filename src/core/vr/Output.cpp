@@ -29,6 +29,8 @@ constexpr float kScreenWidthMeters = 2.4f;  // about 62 degrees wide at 2 m
 std::atomic<bool> gEnabled{true};
 std::atomic<Mode> gMode{Mode::HeadTracked};
 std::atomic<bool> gSessionRunning{false};
+std::atomic<bool> gSessionVisible{false};
+std::atomic<bool> gStereoFailed{false};  // mirrors gEyesFailedGeneration for the game thread
 
 ComPtr<ID3D11Device> gDevice;
 HWND gWindow = nullptr;
@@ -129,6 +131,7 @@ void ReleaseInput() {
 void ResetFrameState() {
     gFrameBegun = false;
     gSessionRunning = false;
+    gSessionVisible = false;
     gLastRendered.reset();
     gPublishedFov = 0.0f;
     for (EyeImage& eye : gEyes) {
@@ -281,6 +284,7 @@ bool SubmitAlternateEye(ID3D11DeviceContext* context, ID3D11Texture2D* backbuffe
         if (!EnsureEye(eye, width, height)) {
             ReleaseEyes();
             gEyesFailedGeneration = gSession.Generation();
+            gStereoFailed = true;
             log::Error("vr output: alternate-eye resources failed; mono for this session");
             return false;
         }
@@ -323,6 +327,14 @@ Mode GetMode() {
 
 bool WantsHeadTracking() {
     return gEnabled && gSessionRunning && gMode == Mode::HeadTracked;
+}
+
+bool ShowsFrames() {
+    return gSessionVisible;
+}
+
+bool StereoAvailable() {
+    return !gStereoFailed;
 }
 
 void LogStats() {
@@ -382,6 +394,7 @@ void OnPresent(IDXGISwapChain* swapChain) {
     }
     if (gSession.State() != gLastState) {
         gLastState = gSession.State();
+        gSessionVisible = gLastState == XR_SESSION_STATE_VISIBLE || gLastState == XR_SESSION_STATE_FOCUSED;
         if (gLastState == XR_SESSION_STATE_FOCUSED) {
             BringToForeground(gWindow);
         }
@@ -398,6 +411,7 @@ void OnPresent(IDXGISwapChain* swapChain) {
     }
     D3D11_TEXTURE2D_DESC desc{};
     backbuffer->GetDesc(&desc);
+    gStereoFailed = gEyesFailedGeneration == gSession.Generation();
     if (!gImage.Matches(desc.Width, desc.Height, gSession.Generation())) {
         ReleaseImage();  // resized, or the session was recreated
         if (!gImage.Create(gSession, gDevice.Get(), desc.Width, desc.Height)) {
@@ -438,6 +452,8 @@ void OnPresent(IDXGISwapChain* swapChain) {
         std::size_t depth = 0;
         if (auto rendered = view_sync::PeekForPresent(depth)) {
             gLastRendered = rendered;
+        } else if (auto fallback = view_sync::Fallback()) {
+            gLastRendered = fallback;  // a frame without a player view: head-locked
         }
         gDepthCounts[std::min<std::size_t>(depth, 3)].fetch_add(1, std::memory_order_relaxed);
     }

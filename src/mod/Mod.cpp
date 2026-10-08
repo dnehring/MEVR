@@ -22,6 +22,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <optional>
 
 namespace {
 
@@ -46,22 +47,35 @@ double gHeartbeatElapsed = 0.0;
 unsigned gHeartbeatFrames = 0;
 unsigned gHeartbeats = 0;
 
-// Lockstep: after each engine tick, wait until that frame is presented so the next frame's
-// camera pairs with exactly one image (vrframework guide 07). The timeout keeps a frame that
-// never presents (loading, minimized) from stalling the game.
-constexpr std::uint32_t kLockstepTimeoutMs = 30;
-// One timeout is a long frame; several in a row mean the view queue drifted (view_sync).
+// Lockstep: after each engine tick, wait until that frame is presented, so the head pose read
+// for the next frame is predicted for the display time it will actually be shown at (vrframework
+// guide 07). Pairing images with views doesn't depend on it (view_sync consumes one view per
+// Present). The timeout only guards against a frame that never presents: it's long enough that
+// an ordinary hitch never trips it, since a timed-out wait lets the game run a frame ahead.
+constexpr std::uint32_t kLockstepTimeoutMs = 100;
+// Several timeouts in a row mean a view whose frame never presented is stuck at the front of
+// the queue (every image would get the previous frame's view): drop it.
 constexpr unsigned kDriftTimeouts = 3;
 unsigned gLockstepWaits = 0;
 unsigned gLockstepTimeouts = 0;
 unsigned gConsecutiveTimeouts = 0;
+// Presents seen when the last wait timed out: if none came since, presenting has stopped
+// (e.g. minimized), so waiting would only slow the game to the timeout rate.
+std::optional<std::uint64_t> gPresentsAtTimeout;
 unsigned gDriftRecoveries = 0;
 double gLockstepWaitMs = 0.0;
 
 void WaitForThisFrameToPresent() {
     using namespace mevr;
-    if (!vr::output::WantsHeadTracking() || !vr::view_sync::HasPendingFrame()) {
+    if (!vr::output::WantsHeadTracking() || !vr::output::ShowsFrames() || !vr::view_sync::HasPendingFrame()) {
+        gConsecutiveTimeouts = 0;
         return;
+    }
+    if (gPresentsAtTimeout) {
+        if (vr::view_sync::PresentCount() == *gPresentsAtTimeout) {
+            return;  // still no Present since the last timeout
+        }
+        gPresentsAtTimeout.reset();
     }
     LARGE_INTEGER start{};
     LARGE_INTEGER end{};
@@ -77,6 +91,7 @@ void WaitForThisFrameToPresent() {
         return;
     }
     ++gLockstepTimeouts;
+    gPresentsAtTimeout = vr::view_sync::PresentCount();
     if (++gConsecutiveTimeouts >= kDriftTimeouts) {
         vr::view_sync::DropOldest();
         gConsecutiveTimeouts = 0;

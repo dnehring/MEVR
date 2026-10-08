@@ -1,6 +1,7 @@
 // Offline tests for the math that has to be right before it reaches a headset. No game, no
 // runtime: `ctest -C Release --test-dir build`.
 
+#include "core/vr/ViewSync.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/GamepadMapping.hpp"
 #include "game/HeadSim.hpp"
@@ -191,9 +192,91 @@ void TestGamepad() {
     CHECK(Near(x, 0) && Near(y, -32767));
 }
 
+// A view whose FOV identifies it in the checks below.
+mevr::vr::view_sync::RenderedView View(float id, int eye = -1) {
+    XrPosef pose{};
+    pose.orientation.w = 1.0f;
+    return {pose, id, eye};
+}
+
+float PeekId(std::size_t& depth) {
+    auto const view = mevr::vr::view_sync::PeekForPresent(depth);
+    return view ? view->fovXDegrees : -1.0f;
+}
+
+// Image/view pairing between the game thread (push, wait) and the render thread (peek at
+// Present, then consume). Each case starts from Reset.
+void TestViewSync() {
+    namespace vs = mevr::vr::view_sync;
+    std::size_t depth = 0;
+
+    // Steady lockstep: one view per frame, consumed by that frame's Present.
+    vs::Reset();
+    vs::PushRendered(View(1));
+    CHECK(vs::HasPendingFrame());
+    CHECK(PeekId(depth) == 1 && depth == 1);
+    vs::NotifyPresented();
+    CHECK(!vs::HasPendingFrame());
+    CHECK(vs::WaitForPresent(0));
+
+    // The game ran a frame ahead (after a timeout): each image still gets its own view.
+    vs::Reset();
+    vs::PushRendered(View(1));
+    vs::PushRendered(View(2));
+    CHECK(PeekId(depth) == 1 && depth == 2);
+    vs::NotifyPresented();
+    CHECK(vs::HasPendingFrame());
+    CHECK(!vs::WaitForPresent(0));  // frame 2 not presented yet
+    CHECK(PeekId(depth) == 2 && depth == 1);
+    vs::NotifyPresented();
+    CHECK(!vs::HasPendingFrame());
+
+    // Never more than the engine's one-frame lead: older views are stale.
+    vs::Reset();
+    vs::PushRendered(View(1));
+    vs::PushRendered(View(2));
+    vs::PushRendered(View(3));
+    CHECK(PeekId(depth) == 2 && depth == 2);
+
+    // A frame that pushed but never presented: drift recovery drops its view.
+    vs::Reset();
+    vs::PushRendered(View(1));  // never presented
+    vs::PushRendered(View(2));
+    vs::DropOldest();
+    CHECK(PeekId(depth) == 2 && depth == 1);
+
+    // A second view in the same frame replaces the first; still one entry to consume.
+    vs::Reset();
+    vs::PushRendered(View(1, 0));
+    vs::ReplaceNewest(View(5, 1));
+    auto const replaced = vs::PeekForPresent(depth);
+    CHECK(replaced && replaced->fovXDegrees == 5 && replaced->eye == 1 && depth == 1);
+    vs::NotifyPresented();
+    CHECK(!vs::HasPendingFrame());
+
+    // Frames without a player view use the fallback; it's never waited on and a real view
+    // replaces it.
+    vs::Reset();
+    vs::PublishFallback(View(9));
+    CHECK(!vs::HasPendingFrame());
+    CHECK(PeekId(depth) == -1 && depth == 0);
+    CHECK(vs::Fallback() && vs::Fallback()->fovXDegrees == 9);
+    vs::PushRendered(View(1));
+    CHECK(!vs::Fallback());
+
+    // Presents with nothing queued (VR off, loading) release any waiter and are counted.
+    vs::Reset();
+    auto const before = vs::PresentCount();
+    vs::NotifyPresented();
+    CHECK(vs::PresentCount() == before + 1);
+    CHECK(!vs::HasPendingFrame());
+    vs::Reset();
+}
+
 } // namespace
 
 int main() {
+    TestViewSync();
     TestXrToUnreal();
     TestHeadSim();
     TestOffsets();

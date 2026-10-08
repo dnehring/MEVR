@@ -135,6 +135,7 @@ if (MEVR_BUILD_TESTS)
     enable_testing()
     add_executable(mevr-tests
         tests/Main.cpp
+        src/core/vr/ViewSync.cpp
         src/engine/XrToUnreal.cpp
         src/game/GamepadMapping.cpp
         src/game/HeadSim.cpp

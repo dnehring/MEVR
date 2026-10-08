@@ -35,6 +35,14 @@ struct RenderedView {
     std::uint64_t engineFrame = 0;  // assigned by PushRendered
 };
 void PushRendered(RenderedView view);
+// A second view for the same game frame replaces the first (one queue entry per frame, so each
+// Present still consumes exactly one).
+void ReplaceNewest(RenderedView view);
+// Frames that draw no player view (loading screens, movies, full-screen GUI) aren't queued: the
+// output uses the latest of these, head-locked, whenever no view is queued. Never waited on.
+// Cleared by the next PushRendered.
+void PublishFallback(RenderedView view);
+std::optional<RenderedView> Fallback();
 // The view of the frame being presented: the oldest one not yet presented. Each Present
 // consumes exactly one view (NotifyPresented), so after a lockstep timeout, when the game has
 // already pushed the next frame, the image still gets its own view. UE3's game thread is at most
@@ -51,6 +59,8 @@ void NotifyPresented();
 bool WaitForPresent(std::uint32_t timeoutMs);
 // Frames pushed but not presented yet: nothing to wait for when this is 0.
 bool HasPendingFrame();
+// Game Presents so far (any thread): lets the game thread see whether presenting has stopped.
+std::uint64_t PresentCount();
 // Drift recovery (guide 07): a frame that pushed a view but never presented leaves a stale view
 // at the front, after which every image gets the previous frame's view and every lockstep wait
 // times out. The game thread calls this after several timeouts in a row: drops the oldest view.
