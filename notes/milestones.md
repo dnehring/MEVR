@@ -318,7 +318,7 @@ The user chose to keep our own project (VRIK isn't in Halcyon's scope). Built:
 Plan: [research/14](../research/14-vrik.md).
 
 Also built (2026-10-08, user away):
-- **Route 1 arm IK driver** (`.`, off by default).
+- **Route 1 arm IK driver** (`.`, off by default). Superseded the same day by route 2 (below).
 - **`tools/xref.py`**, for the code dump.
 - **All three games' plugins build.** Per-game spellings live in `engine/GameAdapter.hpp`.
   LE2/LE3 CalcSceneView and Draw addresses are in place; the gameplay call site is taken from
@@ -327,6 +327,16 @@ Also built (2026-10-08, user away):
 Controls simplified (2026-10-08, the user's call): `]` alone gives the full VR experience. Once a
 headset session runs, stereo, 6DOF, hand aim and arm IK all come on; VR off turns them off. The
 per-feature keys stay as in-session overrides for A/B tests and crash isolation.
+
+VRIK route 2 (2026-10-08, built and unit-tested, not yet run in game):
+- **Why the bone queries failed:** natives with an `out array<>` parameter (`GetBoneNames`) can't
+  return data through ProcessEvent in LE1 (`EX_NativeParm` with a null result). Bones are now read
+  from memory (`RefSkeleton`, `SpaceBases`, which is FBoneAtom, not the SDK's FMatrix), checked
+  against `GetBoneLocation` before any write.
+- **Arm writeback:** a post-hook on `UpdateSkelPose` (LE1 `0x592440`) rewrites the arm chains with
+  `core/ik/PoseArm`, carrying everything below the upper arm rigidly.
+- **Desktop test:** `.` with no VR session holds the right hand in front of the chest
+  (next-vr-session.md, A0).
 
 ### Still to do
 

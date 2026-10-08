@@ -48,5 +48,5 @@ instead of re-deriving it. Raw data: [research/06-repo-licenses.md](../research/
 | Two-hand aim (shortest-arc onto the controller vector, acquire/release hysteresis) | `weapon_profile.hpp`, `grip_presenter.hpp` | `core/interaction/` |
 | Holster volumes on a yaw-deadzone body frame | `weapon_holsters.hpp`, `body_pose.hpp` | `core/interaction/` |
 | Carry, grip and reload arbitration | `weapon_carry_grip.hpp`, `interaction_coordinator.cpp` | `core/interaction/` |
-| Analytic two-bone arm IK and finger posing | `hands/pose_solver.hpp` | `core/ik/`, as a fallback if UE3 `SkelControlLimb` (H3) doesn't work out |
+| Analytic two-bone arm IK and finger posing | `hands/pose_solver.hpp` | `core/ik/ArmPose.cpp`: arm orientation, elbow pole and subtree transfer adapted (GPL-3.0, NOTICE.md). UE3's `SkelControlLimb` (H3) has no right-arm control in Shepard's AnimTree |
 | Second eye with isolated view state and history | `engine_stereo_*.cpp` | UE3 split-screen view states (H2 in [research/08](../research/08-ue3-hypotheses.md)) |
