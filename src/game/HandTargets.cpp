@@ -12,6 +12,13 @@ constexpr float kWristBehindGripMeters = 0.07f;
 
 bool gDesktopTest = false;
 
+// A tracking-space orientation as a world rotation: its -Z, +X, +Y become UE's X, Y, Z.
+ik::Quat WorldRotation(engine::TrackingFrame const& frame, XrQuaternionf const& orientation) {
+    engine::Basis const axes = engine::OrientationToWorld(frame, orientation);
+    return ik::FromAxes({axes.forward.x, axes.forward.y, axes.forward.z}, {axes.right.x, axes.right.y, axes.right.z},
+        {axes.up.x, axes.up.y, axes.up.z});
+}
+
 XrVector3f Wrist(XrPosef const& grip) {
     XrQuaternionf const& q = grip.orientation;
     ik::Vec3 const back = ik::Rotate(ik::Quat{q.x, q.y, q.z, q.w}, {0.0, 0.0, kWristBehindGripMeters});
@@ -53,10 +60,13 @@ Targets Current(std::optional<engine::UnrealVector> const& headBone) {
         out.valid = true;
         out.position = engine::ToWorld(body, Wrist(hand.grip));
         // The grip's -Z, +X, +Y in the world are the images of UE's X, Y, Z.
-        engine::Basis const axes = engine::OrientationToWorld(body, hand.grip.orientation);
         out.hasRotation = true;
-        out.rotation = ik::FromAxes({axes.forward.x, axes.forward.y, axes.forward.z},
-            {axes.right.x, axes.right.y, axes.right.z}, {axes.up.x, axes.up.y, axes.up.z});
+        out.rotation = WorldRotation(body, hand.grip.orientation);
+        // The aim pose (where the controller points: a held gun's barrel follows it).
+        if (hand.aimValid) {
+            out.hasAim = true;
+            out.aim = WorldRotation(body, hand.aim.orientation);
+        }
     }
     return targets;
 }

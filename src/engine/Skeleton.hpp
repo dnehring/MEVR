@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+class UObject;
 class USkeletalMeshComponent;
 struct SFXName;
 
@@ -60,6 +61,36 @@ std::span<BoneAtom> SpaceBases(USkeletalMeshComponent* mesh);
 ik::Affine LocalToWorld(USkeletalMeshComponent const* mesh);
 // The component this mesh takes its pose from (ParentAnimComponent), if any.
 USkeletalMeshComponent* PoseParent(USkeletalMeshComponent const* mesh);
+
+// The bone with this raw name in the mesh asset's skeleton (MatchRefBone from memory), or -1.
+int FindBone(USkeletalMeshComponent const* mesh, std::uint64_t key);
+
+// A socket of the mesh's asset (USkeletalMesh::Sockets +0x144, USkeletalMeshSocket: RelativeLocation
+// +0x60, RelativeRotation +0x6C, SocketName +0x84, BoneName +0x8C; USkeletalMesh::FindSocket
+// 0x5A8C70). `relative` places the socket in its bone's space the way the engine does
+// (GetSocketWorldLocationAndRotation 0x584640: FRotationTranslationMatrix(RelativeRotation,
+// RelativeLocation) * GetBoneMatrix(bone), no scale).
+struct Socket {
+    int bone = -1;
+    std::uint64_t boneKey = 0;
+    ik::Transform relative;
+};
+std::optional<Socket> FindSocket(USkeletalMeshComponent const* mesh, std::uint64_t socketName);
+
+// How `component` hangs on the mesh (USkeletalMeshComponent::Attachments +0x3B4, FAttachment 0x34
+// bytes: Component, BoneName, RelativeLocation, RelativeRotation, RelativeScale), as
+// AttachComponentToSocket (0x57A120) records a socket: its bone and offset. `relative` includes the
+// scale only when it's uniform (`uniformScale`).
+struct Attachment {
+    int bone = -1;
+    std::uint64_t boneKey = 0;
+    ik::Transform relative;
+    bool uniformScale = true;
+};
+std::optional<Attachment> FindAttachment(USkeletalMeshComponent const* mesh, UObject const* component);
+
+// A UE3 rotator (Unreal units) as a rotation (FRotationMatrix's axes).
+ik::Quat FromRotator(int pitch, int yaw, int roll);
 
 enum class Space { World = 0, Component = 1 };
 // From SpaceBases (and LocalToWorld for world space). Nullopt if the bone isn't posed.

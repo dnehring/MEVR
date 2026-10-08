@@ -61,6 +61,7 @@ std::atomic<bool> gBroken{false};  // an access violation in the writer: writes 
 std::atomic<unsigned> gCalls{0};
 std::atomic<unsigned> gPlayerCalls{0};
 std::atomic<unsigned> gWrites{0};
+std::atomic<std::uint64_t> gTotalWrites{0};
 std::atomic<unsigned> gRejects{0};
 std::atomic<char const*> gLastReject{nullptr};
 struct Slot {
@@ -235,6 +236,7 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
         bases[i] = skeleton::ToAtom(pose[i]);
     }
     gWrites.fetch_add(1, std::memory_order_relaxed);
+    gTotalWrites.fetch_add(1, std::memory_order_relaxed);
     gFirstWriteReady.store(true, std::memory_order_release);
 }
 
@@ -394,6 +396,10 @@ void LogFirstWrite() {
             log::Info("arm IK: first write, {} arm (component space): {}", side == 0 ? "left" : "right", Describe(samples[side]));
         }
     }
+}
+
+std::uint64_t TotalWrites() {
+    return gTotalWrites.load(std::memory_order_relaxed);
 }
 
 void LogStats() {

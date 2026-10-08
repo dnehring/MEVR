@@ -395,3 +395,21 @@ Test: [next-vr-session](next-vr-session.md), first section.
   `keepLoaded`; an older host still unloads (the mod logs it).
 - The mod tells Halcyon it aims only when it actually can (CallFunction hook in, and the host's
   controllers and view readable: state sizes match).
+
+## The gun decides: barrel aim, muzzle shots, aim ray (built 2026-10-08, untested in game)
+
+The user's report: holding the controller normally, the gun pointed about 90 degrees up, and
+shots didn't match the gun model. Now ([research/14](../research/14-vrik.md), "The gun in the
+hand"):
+- `game/weapon` (LE1) finds the held `BioWeaponRanged`, its muzzle socket and barrel, verifies the
+  muzzle against `GetMuzzleLoc` once per weapon, and measures how the gun sits in the right hand.
+- Arm IK turns the right hand so the barrel follows the right controller's aim ray, upright with
+  it (`ik::HandForBarrel`). The `[Hands]` trims only matter without a gun.
+- Hand aim: while the gun follows the controller, shots go along the barrel and start at the
+  muzzle (`Pawn.GetWeaponStartTraceLocation`'s answer rewritten); otherwise the controller's ray as
+  before.
+- The aim ray (muzzle and barrel in tracking space) goes to the host every tick
+  (`HostServices::setAimRay`, v6) for the renderer's reticle.
+- A follow check logs once per weapon whether the gun follows the written hand in the same frame.
+
+Test: [next-vr-session](next-vr-session.md), step 6.

@@ -10,6 +10,7 @@
 #include "engine/Objects.hpp"
 #include "engine/Skeleton.hpp"
 #include "game/HandTargets.hpp"
+#include "game/Weapon.hpp"
 
 #include <LESDK/Headers.hpp>
 
@@ -42,6 +43,11 @@ bool gEnabled = false;
 std::string gStatus = "off";
 std::string gLastLoggedStatus;
 hand_targets::Source gSource = hand_targets::Source::None;
+// This tick's request turns the right hand to aim the held gun (game/weapon's grip), and the
+// writer has been writing the pose (engine::bone_pose::TotalWrites moved since the last tick).
+bool gGunAimed = false;
+bool gGunAimedAndWritten = false;
+std::uint64_t gLastWrites = 0;
 
 // Per skeleton asset: names, parents, arm chains. Re-resolved when the asset or its bones change.
 struct SkeletonInfo {
@@ -342,6 +348,7 @@ void Drive() {
     }
 
     std::string driven;
+    bool gunAimed = false;
     if (targets.source == hand_targets::Source::DesktopTest) {
         if (!arms[kRight]) {
             return Stop("desktop test: no usable right arm chain in the skeleton");
@@ -365,7 +372,20 @@ void Drive() {
                 gAnatomyTried[side] = true;
                 gAnatomy[side] = HandAnatomy(*info, pose, side, chain->hand);
             }
-            if (hand.hasRotation && componentRotation && gAnatomy[side]) {
+            // Holding a gun: the hand turns so the gun's barrel points along the controller's
+            // aim ray, upright with the controller (core/ik HandForBarrel, game/weapon's grip).
+            if (side == kRight && hand.hasAim && componentRotation) {
+                if (auto const grip = weapon::RightHandGrip()) {
+                    ik::Quat const aim = ik::Normalize(ik::Conjugate(*componentRotation) * hand.aim);
+                    if (auto const rotation = ik::HandForBarrel(grip->barrel, grip->up, ik::Rotate(aim, {1.0, 0.0, 0.0}),
+                            ik::Rotate(aim, {0.0, 0.0, 1.0}))) {
+                        arm.hasRotation = true;
+                        arm.rotation = *rotation;
+                        gunAimed = true;
+                    }
+                }
+            }
+            if (!arm.hasRotation && hand.hasRotation && componentRotation && gAnatomy[side]) {
                 ik::Quat const grip = ik::Normalize(ik::Conjugate(*componentRotation) * hand.rotation);
                 arm.hasRotation = true;
                 arm.rotation = ik::HandFromGrip(grip, hand_calibration::Trim(side), *gAnatomy[side]);
@@ -374,6 +394,9 @@ void Drive() {
         }
         if (!driven.empty()) {
             driven += " following the controllers";
+            if (gunAimed) {
+                driven += " (the right hand points the gun's barrel along the controller's aim)";
+            }
         }
     }
     if (driven.empty()) {
@@ -381,12 +404,19 @@ void Drive() {
     }
     engine::bone_pose::Publish(std::move(request));
     gStatus = "driving: " + driven;
+    gGunAimed = gunAimed;
 }
 
 } // namespace
 
 void Tick(float /*deltaSeconds*/) {
+    // The writer wrote the player's pose since the last tick: what was published is being shown.
+    std::uint64_t const writes = engine::bone_pose::TotalWrites();
+    bool const written = writes != gLastWrites;
+    gLastWrites = writes;
+    gGunAimed = false;
     if (!gEnabled) {
+        gGunAimedAndWritten = false;
         if (gStatus != "off") {
             Stop("off");
             LogStatusChange();
@@ -394,8 +424,13 @@ void Tick(float /*deltaSeconds*/) {
         return;
     }
     Drive();
+    gGunAimedAndWritten = gGunAimed && written;
     LogStatusChange();
     engine::bone_pose::LogFirstWrite();
+}
+
+bool RightHandAimsGun() {
+    return gGunAimedAndWritten;
 }
 
 bool Toggle() {
@@ -421,6 +456,8 @@ void LogStats() {
 void Shutdown() {
     engine::bone_pose::Clear();
     gEnabled = false;
+    gGunAimed = gGunAimedAndWritten = false;
+    gLastWrites = 0;
     gStatus = "off";
     gLastLoggedStatus.clear();
     gSource = hand_targets::Source::None;

@@ -170,6 +170,36 @@ Basis OrientationToWorld(TrackingFrame const& frame, XrQuaternionf const& orient
     return Compose(frame.rotation, ToBasis(orientation));
 }
 
+namespace {
+
+// UE3 (x forward, y right, z up) to OpenXR (x right, y up, -z forward): ToUnrealAxes undone.
+XrVector3f FromUnrealAxes(UnrealVector const& v) {
+    return {static_cast<float>(v.y), static_cast<float>(v.z), static_cast<float>(-v.x)};
+}
+
+} // namespace
+
+XrVector3f ToTracking(TrackingFrame const& frame, UnrealVector const& world) {
+    XrVector3f const& head = frame.head.position;
+    if (!(frame.unitsPerMeter > 0.0)) {
+        return head;
+    }
+    UnrealVector const offset{world.x - frame.headWorld.x, world.y - frame.headWorld.y, world.z - frame.headWorld.z};
+    UnrealVector const local = Apply(Inverse(frame.rotation), offset);
+    double const scale = 1.0 / frame.unitsPerMeter;
+    XrVector3f const meters = FromUnrealAxes({local.x * scale, local.y * scale, local.z * scale});
+    return {head.x + meters.x, head.y + meters.y, head.z + meters.z};
+}
+
+XrVector3f DirectionToTracking(TrackingFrame const& frame, UnrealVector const& direction) {
+    UnrealVector const local = Apply(Inverse(frame.rotation), direction);
+    double const length = std::sqrt(local.x * local.x + local.y * local.y + local.z * local.z);
+    if (!(length > 0.0)) {
+        return {0.0f, 0.0f, 0.0f};
+    }
+    return FromUnrealAxes({local.x / length, local.y / length, local.z / length});
+}
+
 UnrealVector OriginWorld(TrackingFrame const& frame) {
     return ToWorld(frame, XrVector3f{0.0f, 0.0f, 0.0f});
 }

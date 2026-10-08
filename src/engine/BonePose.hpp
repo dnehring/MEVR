@@ -62,6 +62,9 @@ void Clear();
 
 // Game thread: logs the first write for the published mesh in detail (once per mesh).
 void LogFirstWrite();
+// Poses written since the hook went in (any thread; never reset by the heartbeat): a caller
+// compares it across ticks to know the pose it asked for is being written.
+std::uint64_t TotalWrites();
 // Heartbeat: calls, writes, rejections and the latest before/after per arm.
 void LogStats();
 

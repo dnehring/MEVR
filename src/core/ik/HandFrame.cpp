@@ -40,4 +40,35 @@ Quat HandFromGrip(Quat grip, Quat trim, Quat anatomyInHand) {
     return Normalize(grip * trim * anatomyInGrip * Conjugate(anatomyInHand));
 }
 
+namespace {
+
+// The rotation taking X to `forward` and Z to `up` made perpendicular to it (Y = Z cross X).
+std::optional<Quat> ForwardUpFrame(Vec3 forward, Vec3 up) {
+    double const forwardLength = Length(forward);
+    double const upLength = Length(up);
+    if (!(forwardLength > 1e-9) || !(upLength > 1e-9)) {
+        return std::nullopt;
+    }
+    Vec3 const x = forward * (1.0 / forwardLength);
+    Vec3 const across = up - x * Dot(up, x);
+    // sin(3 degrees): an up this close to the barrel says nothing about the roll.
+    if (Length(across) < 0.05 * upLength) {
+        return std::nullopt;
+    }
+    Vec3 const z = Normalize(across);
+    return FromAxes(x, Cross(z, x), z);
+}
+
+} // namespace
+
+std::optional<Quat> HandForBarrel(Vec3 barrelInHand, Vec3 upInHand, Vec3 aim, Vec3 up) {
+    auto const held = ForwardUpFrame(barrelInHand, upInHand);
+    auto const wanted = ForwardUpFrame(aim, up);
+    if (!held || !wanted) {
+        return std::nullopt;
+    }
+    // hand * held = wanted: the hand turns the object's frame onto the wanted one.
+    return Normalize(*wanted * Conjugate(*held));
+}
+
 } // namespace mevr::ik

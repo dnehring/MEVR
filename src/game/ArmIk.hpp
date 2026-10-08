@@ -16,7 +16,12 @@
 namespace mevr::game::arm_ik {
 
 // Game thread, after each engine tick (needs the engine::bone_pose hook installed to write).
+// Holding a gun (game/weapon has its grip), the right hand turns so the gun's barrel points along
+// the right controller's aim ray instead of following the grip pose (core/ik HandForBarrel).
 void Tick(float deltaSeconds);
+// This tick's request points the held gun along the right controller's aim, and the writer is
+// writing the pose: the gun model follows the controller, so shots can follow the gun.
+bool RightHandAimsGun();
 bool Toggle();
 void SetEnabled(bool on);
 bool Enabled();

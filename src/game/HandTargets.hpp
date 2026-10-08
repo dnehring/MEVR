@@ -22,6 +22,8 @@ struct Hand {
     engine::UnrealVector position;  // world, Unreal units: where the hand bone (wrist joint) goes
     bool hasRotation = false;
     ik::Quat rotation;  // world, UE3 axes: the controller's grip orientation
+    bool hasAim = false;
+    ik::Quat aim;  // world, UE3 axes: the controller's aim orientation (X = where it points, Z = its up)
 };
 
 struct Targets {

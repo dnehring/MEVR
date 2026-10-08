@@ -217,6 +217,59 @@ void TestTrackingFrame() {
     CHECK(NearV(moved.headWorld, {90.0, 200.0, 305.0}));
 }
 
+bool NearX(XrVector3f const& a, XrVector3f const& b, double tolerance = 1e-4) {
+    return NearD(a.x, b.x, tolerance) && NearD(a.y, b.y, tolerance) && NearD(a.z, b.z, tolerance);
+}
+
+// The aim ray (core/vr/AimRay) goes from the world back into tracking space: ToTracking and
+// DirectionToTracking undo ToWorld and OrientationToWorld, for every kind of frame.
+void TestToTracking() {
+    using namespace mevr::engine;
+    XrPosef gaze{};
+    gaze.orientation = YawPitch(40, 15);
+    gaze.position = {0.1f, 1.5f, -0.2f};
+    TrackingFrame const view = FromCameraView({100.0, 200.0, 300.0}, UnrealRotation{Units(-10), Units(70), Units(5)},
+        UnrealRotation{Units(15), Units(40), 0}, {3.0, -2.0, 1.0}, gaze, 50.0);
+    TrackingFrame const body = FromBodyYaw({1000.0, 2000.0, 300.0}, Units(-135), gaze);
+    TrackingFrame const origin = AtOrigin(view, {-50.0, 20.0, 160.0}, kUnitsPerMeter);
+    XrVector3f const points[] = {{0.0f, 0.0f, 0.0f}, {0.3f, 1.2f, -0.4f}, {-0.6f, 0.9f, 0.5f}, gaze.position};
+    XrQuaternionf const orientations[] = {{0, 0, 0, 1}, YawPitch(-70, 30), Multiply(YawPitch(10, -20), AxisAngle(0, 0, 1, 35))};
+    for (TrackingFrame const& frame : {view, body, origin}) {
+        for (XrVector3f const& p : points) {
+            CHECK(NearX(ToTracking(frame, ToWorld(frame, p)), p, 1e-4));
+        }
+        // A world point back and forth.
+        UnrealVector const world{-321.0, 45.5, 99.0};
+        CHECK(NearV(ToWorld(frame, ToTracking(frame, world)), world, 0.01));
+        for (XrQuaternionf const& q : orientations) {
+            // An aim pose's forward (-Z), right (+X) and up (+Y) come back as themselves.
+            Basis const axes = OrientationToWorld(frame, q);
+            mevr::ik::Quat const iq{q.x, q.y, q.z, q.w};
+            auto const along = [&](mevr::ik::Vec3 v) {
+                mevr::ik::Vec3 const r = mevr::ik::Rotate(iq, v);
+                return XrVector3f{static_cast<float>(r.x), static_cast<float>(r.y), static_cast<float>(r.z)};
+            };
+            CHECK(NearX(DirectionToTracking(frame, axes.forward), along({0.0, 0.0, -1.0})));
+            CHECK(NearX(DirectionToTracking(frame, axes.right), along({1.0, 0.0, 0.0})));
+            CHECK(NearX(DirectionToTracking(frame, axes.up), along({0.0, 1.0, 0.0})));
+        }
+    }
+    // Directions come back unit length, whatever their length in the world; zero stays zero.
+    XrVector3f const d = DirectionToTracking(view, {30.0, -40.0, 0.0});
+    CHECK(NearD(std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z), 1.0, 1e-6));
+    CHECK(NearX(DirectionToTracking(view, {0.0, 0.0, 0.0}), {0.0f, 0.0f, 0.0f}));
+    // Concretely: our renderer facing world +Y, a point 50 units along +Y and 20 up from the head
+    // is half a meter ahead (-Z) and 0.2 m up in tracking space.
+    XrPosef level{};
+    level.orientation = {0, 0, 0, 1};
+    TrackingFrame const facingY = FromBodyYaw({0.0, 0.0, 0.0}, Units(90), level);
+    CHECK(NearX(ToTracking(facingY, {0.0, 50.0, 20.0}), {0.0f, 0.2f, -0.5f}, 1e-4));
+    // No scale: everything maps to the head.
+    TrackingFrame flat = facingY;
+    flat.unitsPerMeter = 0.0;
+    CHECK(NearX(ToTracking(flat, {10.0, 20.0, 30.0}), level.position));
+}
+
 // Hand targets (game/HandTargets): controllers measured from tracking space's origin, placed at
 // Shepard's head bone. Leaning must move the view, not the hands.
 void TestHandTargetsOrigin() {
@@ -798,6 +851,43 @@ void TestHandFrame() {
     CHECK(same(Rotate(GripTrim(0.0, 0.0, 0.0), {1.0, 2.0, 3.0}), {1.0, 2.0, 3.0}));
 }
 
+// A held gun's barrel follows the controller's aim (core/ik/HandFrame HandForBarrel).
+void TestHandForBarrel() {
+    using namespace mevr::ik;
+    auto const same = [](Vec3 a, Vec3 b, double tolerance = 1e-9) { return Length(a - b) < tolerance; };
+    auto const about = [](Vec3 axis, double degrees) {
+        Vec3 const a = Normalize(axis);
+        double const half = degrees * std::numbers::pi / 360.0;
+        return Quat{a.x * std::sin(half), a.y * std::sin(half), a.z * std::sin(half), std::cos(half)};
+    };
+    // How a gun might sit on a hand bone: barrel and up in the bone's axes (not perpendicular).
+    Vec3 const barrel{0.3, -0.9, 0.2};
+    Vec3 const gunUp{0.1, 0.25, 0.95};
+    // Aims made by turning the hand: the solve finds that very turn, whatever the lengths.
+    for (Quat const hand : {Quat{}, about({1, 2, 3}, 40), about({0, 1, 0}, 179), about({-1, 0.3, 0.5}, 250)}) {
+        auto const solved = HandForBarrel(barrel, gunUp, Rotate(hand, barrel) * 3.0, Rotate(hand, gunUp) * 0.2);
+        CHECK(solved.has_value() && AngleBetween(*solved, hand) < 1e-7);
+    }
+    // An up that isn't perpendicular to the aim: the barrel goes exactly along the aim, and the
+    // gun's up stays in the plane of the aim and the wanted up, on its side.
+    Vec3 const aim{0.0, 1.0, 0.0};
+    Vec3 const up{0.0, 0.5, 1.0};
+    auto const hand = HandForBarrel(barrel, gunUp, aim, up);
+    CHECK(hand.has_value());
+    CHECK(same(Rotate(*hand, Normalize(barrel)), aim));
+    Vec3 const turnedUp = Rotate(*hand, gunUp);
+    CHECK(std::abs(turnedUp.x) < 1e-9 && turnedUp.z > 0.0);
+    // The gun's own up needn't be perpendicular to its barrel either: only its part across the
+    // barrel counts, which ends up straight up here.
+    Vec3 const across = Normalize(gunUp - Normalize(barrel) * Dot(gunUp, Normalize(barrel)));
+    CHECK(same(Rotate(*hand, across), {0.0, 0.0, 1.0}));
+    // No roll information or no direction: nothing.
+    CHECK(!HandForBarrel(barrel, barrel * 2.0, aim, up).has_value());
+    CHECK(!HandForBarrel(barrel, gunUp, aim, aim).has_value());
+    CHECK(!HandForBarrel(barrel, gunUp, {0.0, 0.0, 0.0}, up).has_value());
+    CHECK(!HandForBarrel({0.0, 0.0, 0.0}, gunUp, aim, up).has_value());
+}
+
 int main() {
     TestBoneNames();
     TestIk();
@@ -811,7 +901,9 @@ int main() {
     TestHeadSim();
     TestOffsets();
     TestTrackingFrame();
+    TestToTracking();
     TestHandFrame();
+    TestHandForBarrel();
     TestGamepad();
     if (gFailures == 0) {
         std::printf("all tests passed\n");
