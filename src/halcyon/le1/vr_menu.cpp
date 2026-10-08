@@ -4,6 +4,7 @@
 #include "d3d_capture.h"  // DIBR depth-warp tunables (Set/GetDibrParams)
 #include "render_hook.h"
 #include "logger.h"
+#include "mevr_bridge.h"   // [MEVR]
 #include "xr_session.h"
 #include "pchud.h"
 #include "head_aim.h"   // [DECOUPLEMENU] ReadGameModeSEH: 7 = full-screen GUI
@@ -179,7 +180,8 @@ bool MenuOwnsLook() noexcept
 
 DWORD WINAPI HookedXInputGetState(DWORD idx, XINPUT_STATE* state) noexcept
 {
-    const DWORD r = g_origXInput ? g_origXInput(idx, state) : ERROR_DEVICE_NOT_CONNECTED;
+    DWORD r = g_origXInput ? g_origXInput(idx, state) : ERROR_DEVICE_NOT_CONNECTED;
+    r = MELEVR::MevrBridge::MergeMotionControllers(idx, state, r);   // [MEVR] Touch -> Xbox pad 0
     CaptureLeftStick(state, r, idx);
     DetectRecenterCombo(state, r, idx);   // double-click R3 = recenter (read before any menu zeroing)
     if (state != nullptr)
@@ -206,8 +208,9 @@ DWORD WINAPI HookedXInputGetState(DWORD idx, XINPUT_STATE* state) noexcept
 // zeroes the pad the game reads while the menu is open; it never writes a game object.
 DWORD WINAPI HookedXInputGetStateEx(DWORD idx, XINPUT_STATE* state) noexcept
 {
-    const DWORD r = g_origXInputEx ? g_origXInputEx(idx, state)
-                                   : (g_origXInput ? g_origXInput(idx, state) : ERROR_DEVICE_NOT_CONNECTED);
+    DWORD r = g_origXInputEx ? g_origXInputEx(idx, state)
+                             : (g_origXInput ? g_origXInput(idx, state) : ERROR_DEVICE_NOT_CONNECTED);
+    r = MELEVR::MevrBridge::MergeMotionControllers(idx, state, r);   // [MEVR] Touch -> Xbox pad 0
     CaptureLeftStick(state, r, idx);
     DetectRecenterCombo(state, r, idx);   // double-click R3 = recenter (Ex poll path)
     if (state != nullptr)

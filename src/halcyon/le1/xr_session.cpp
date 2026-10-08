@@ -16,6 +16,7 @@
 
 #include "xr_types.h"
 #include "logger.h"
+#include "mevr_bridge.h"   // [MEVR]
 #include "render_hook.h"
 #include "d3d_capture.h"
 #include "vr_menu.h"
@@ -248,6 +249,12 @@ bool ResolveProc(const char* name, PFN_xrVoidFunction* out)
 
 bool CreateInstance()
 {
+#if defined(MEVR_ASI)
+    // [MEVR] The OpenXR loader is linked statically into our ASI (no openxr_loader.dll in the game
+    // folder), and our controller actions must use the same loader instance as this session.
+    g_getProc = reinterpret_cast<PFN_xrGetInstanceProcAddr>(MELEVR::MevrBridge::StaticXrGetInstanceProcAddr());
+    LogLine("[XR] using the statically linked OpenXR loader (MEVR).");
+#else
     g_loader = LoadLibraryW(L"openxr_loader.dll");
     if (g_loader == nullptr)
     {
@@ -264,6 +271,7 @@ bool CreateInstance()
         MELEVR::Logger::LogWindowsError("[XR] xrGetInstanceProcAddr export missing", GetLastError());
         return false;
     }
+#endif
 
     PFN_xrVoidFunction createInstanceFn = nullptr;
     if (!XrSucceeded(g_getProc(nullptr, "xrCreateInstance", &createInstanceFn)) || createInstanceFn == nullptr)
@@ -650,7 +658,9 @@ bool CreateSessionAndSwapchains()
     vrci.poseInReferenceSpace = IdentityPose();
     r = g_fn.createReferenceSpace(g_session, &vrci, &g_viewSpace);
     LogLine("[XR] xrCreateReferenceSpace(VIEW): " + FmtXr(r));
-    return XrSucceeded(r) && g_viewSpace != nullptr;
+    if (!XrSucceeded(r) || g_viewSpace == nullptr) return false;
+    MELEVR::MevrBridge::OnSessionCreated(g_instance, g_session);   // [MEVR] motion controller actions
+    return true;
 }
 
 void PollEvents()
@@ -3465,6 +3475,8 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     XrFrameBeginInfo fbi = {};
     fbi.type = XR_TYPE_FRAME_BEGIN_INFO_VALUE;
     g_fn.beginFrame(g_session, &fbi);
+    // [MEVR] motion controllers, located in the app space at this frame's display time
+    MELEVR::MevrBridge::OnFrameBegun(g_session, g_appSpace, static_cast<std::int64_t>(fs.predictedDisplayTime));
 
     // --- Options menu: lazy-init (Present thread), Insert toggle ------------------------------------
     if (!g_menuInited)

@@ -5,6 +5,7 @@
 
 #include "core/Hotkey.hpp"
 #include "core/Log.hpp"
+#include "core/vr/Controllers.hpp"
 #include "core/vr/Output.hpp"
 #include "core/vr/ViewSync.hpp"
 #include "engine/CallFunction.hpp"
@@ -36,6 +37,12 @@ constexpr double kHeartbeatSeconds = 5.0;
 
 std::unique_ptr<::LESDK::Initializer> gInit;
 std::atomic<bool> gActive{false};  // read on the render thread too
+// LE1: the host runs Halcyon's renderer (HostServices::controllers set). Then the mod does no VR
+// output, render-path head tracking, reflection fix or XInput hooking of its own (the renderer
+// does all of those), and gets the motion controllers from the host.
+mevr::HostServices const* gHost = nullptr;
+bool gHostOwnsVr = false;
+bool gToldHostOwnsVr = false;
 bool gHooked = false;  // ProcessEvent hook live (after the script packages loaded)
 bool gSceneViewHooked = false;
 bool gGamepadHooked = false;  // XInput hooks (once the game has loaded an XInput DLL)
@@ -130,13 +137,15 @@ void WaitForThisFrameToPresent() {
 void TryInstallScriptHooks() {
     using namespace mevr;
     // CalcSceneView is native and always there, but the handlers it serves need the scripts.
-    if (!gSceneViewHooked) {
+    if (!gSceneViewHooked && !gHostOwnsVr) {
         gSceneViewHooked = engine::scene_view::Install(*gInit, &game::head_tracking::OnBeforePrimaryView);
     }
+    // Without the scene view hook (or a head source) head tracking stays inert; it still reads
+    // the game mode, which the probes and features use.
     if (!game::head_tracking::TryStartup(gSceneViewHooked)) {
         return;
     }
-    if (!game::reflections::TryStartup()) {
+    if (!gHostOwnsVr && !game::reflections::TryStartup()) {
         log::Warn("reflections: SceneCaptureComponent.SetFrameRate not found; reflection fix off");
     }
     if (!game::skeleton_probe::TryStartup()) {  // also starts engine::skeleton (arm IK uses it)
@@ -184,6 +193,17 @@ void SetVrFeatures(bool on) {
 
 void PollHotkeys() {
     using namespace mevr;
+    if (gHostOwnsVr) {
+        // Halcyon's renderer has its own controls (Insert menu, R recenter, K first person).
+        for (Hotkey* key : {&gVrToggleKey, &gModeToggleKey, &gHeadPathKey, &gHeadSimKey, &gStereoKey, &gPositionKey,
+                 &gHandAimKey, &gArmIkKey, &gCinemaKey, &gLockstepKey}) {
+            if (key->Pressed() && !gToldHostOwnsVr) {
+                gToldHostOwnsVr = true;
+                log::Info("Halcyon's renderer is active: our VR keys are off; use its Insert menu");
+            }
+        }
+        return;
+    }
     if (gVrToggleKey.Pressed()) {
         bool const enable = !vr::output::IsEnabled();
         vr::output::SetEnabled(enable);
@@ -267,8 +287,10 @@ MEVR_MOD_API bool MevrModStartup(ISharedProxyInterface* spi, mevr::HostServices 
     using namespace mevr;
     if (host != nullptr && host->version == kHostServicesVersion && host->log != nullptr) {
         log::SetSink(host->log);
+        gHost = host;
+        gHostOwnsVr = host->controllers != nullptr;
     }
-    log::Info("mod startup (built {} {})", __DATE__, __TIME__);
+    log::Info("mod startup (built {} {}){}", __DATE__, __TIME__, gHostOwnsVr ? "; VR renderer: the host's (Halcyon)" : "");
 
     // Hook names get this prefix, so the host's and the mod's hooks never collide.
     gInit = std::make_unique<::LESDK::Initializer>(spi, SDK_TARGET_NAME_A "MEVRmod");
@@ -286,6 +308,12 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         return;
     }
     PollHotkeys();
+    if (gHostOwnsVr) {
+        vr::controllers::State controllers;
+        gHost->controllers(&controllers);
+        vr::controllers::Mirror(controllers);  // keeps the host's timestamp, so it still ages
+        gGamepadHooked = true;  // the host's XInput hook feeds the controllers to the game
+    }
     if (!gHooked || !gGamepadHooked) {
         gRetryTimer += deltaSeconds;
         if (gRetryTimer >= kStartupRetrySeconds) {
@@ -299,6 +327,9 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         }
     }
     if (gHooked) {
+        game::head_tracking::RefreshGameMode();
+    }
+    if (gHooked && !gHostOwnsVr) {
         if (!gVrFeatures && vr::output::Running()) {
             SetVrFeatures(true);
         } else if (gVrFeatures && !vr::output::IsEnabled()) {
@@ -306,7 +337,6 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         }
         // Cutscenes and conversations cut between cameras, and menus have no world to look
         // around in: show them on the virtual screen (the chosen mode returns afterwards).
-        game::head_tracking::RefreshGameMode();
         auto const mode = game::head_tracking::GameMode();
         bool const wanted = gAutoCinema && mode && engine::adapter::IsFlatScreenMode(*mode);
         gScreenWantedFor = wanted == gScreenWanted ? gScreenWantedFor + deltaSeconds : 0.0;
@@ -316,6 +346,8 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
             vr::output::SetScreenOverride(gScreenShown);
         }
         game::reflections::Tick(deltaSeconds);
+    }
+    if (gHooked) {
         game::arm_ik::Tick(deltaSeconds);  // uses this tick's view anchor, so before OnTickEnd
         game::head_tracking::OnTickEnd();
     }
@@ -360,6 +392,9 @@ MEVR_MOD_API void MevrModShutdown() {
     gCallFunctionHooked = false;
     gHandAimAvailable = false;
     gVrFeatures = false;
+    gHost = nullptr;
+    gHostOwnsVr = false;
+    gToldHostOwnsVr = false;
     game::hand_aim::Shutdown();
     game::arm_ik::Shutdown();
     game::skeleton_probe::Shutdown();

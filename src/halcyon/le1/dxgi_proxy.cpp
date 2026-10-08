@@ -226,6 +226,7 @@ HRESULT MissingExportResult(const char* exportName) noexcept
 }
 }
 
+#if !defined(MEVR_ASI)  // [MEVR] the proxy exports only exist in upstream's dxgi.dll build
 extern "C" __declspec(dllexport) HRESULT WINAPI CreateDXGIFactory(REFIID riid, void** factory)
 {
     using Function = HRESULT(WINAPI*)(REFIID, void**);
@@ -312,3 +313,4 @@ extern "C" __declspec(dllexport) HRESULT WINAPI DXGIGetDebugInterface1(UINT flag
 
     return realFunction(flags, riid, debugInterface);
 }
+#endif  // !MEVR_ASI

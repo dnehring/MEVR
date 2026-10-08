@@ -33,6 +33,9 @@ struct State {
 };
 
 void Publish(State const& state);
+// Stores a sample published elsewhere (e.g. by the host, for the hot-reloadable mod), keeping its
+// sequence and time so Latest still ages it correctly.
+void Mirror(State const& state);
 // The latest sample; `active` is forced false if it's older than `maxAgeMs` (VR stopped,
 // session lost focus) so callers fall back to the real gamepad.
 State Latest(std::uint64_t maxAgeMs = 250);

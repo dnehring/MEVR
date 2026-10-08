@@ -864,8 +864,12 @@ bool& ProfileHotkeysEnabledRef() noexcept { return g_profileHotkeysEnabled; }
 std::wstring GameResIniPath() noexcept
 {
     HMODULE self = nullptr;
+#if defined(MEVR_ASI)
+    // [MEVR] relative to the exe (Binaries\Win64), not our ASI (Binaries\Win64\ASI)
+#else
     GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                        reinterpret_cast<LPCWSTR>(&GameResIniPath), &self);
+#endif
     wchar_t path[MAX_PATH] = {0};
     DWORD n = GetModuleFileNameW(self, path, MAX_PATH);
     std::wstring p(path, n);

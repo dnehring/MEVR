@@ -13,17 +13,31 @@ namespace mevr::xr {
 // simple controller. Render thread only, like Session.
 class Input {
 public:
+    // The session the actions belong to, whoever owns it (our Session, or Halcyon's renderer).
+    struct Target {
+        XrInstance instance = XR_NULL_HANDLE;
+        XrSession session = XR_NULL_HANDLE;
+        XrSpace base = XR_NULL_HANDLE;  // poses are located in this space
+        std::uint32_t instanceGeneration = 0;
+        std::uint32_t sessionGeneration = 0;
+    };
+    static Target From(Session const& session);
+
     // Creates the action set and attaches it to the session. Call once per session.
-    bool Create(Session& session);
+    bool Create(Target const& target);
+    bool Create(Session& session) { return Create(From(session)); }
     // Destroys what still exists: spaces die with their session and the action set with its
     // instance, so this only calls OpenXR for objects whose parent is still alive.
-    void Release(Session& session);
+    void Release(Target const& target);
+    void Release(Session& session) { Release(From(session)); }
     // True if created for this session (and so usable).
-    bool Matches(Session const& session) const;
+    bool Matches(Target const& target) const;
+    bool Matches(Session const& session) const { return Matches(From(session)); }
 
-    // Syncs the actions and fills `out` (poses located at `time` in LOCAL space). `out.active`
-    // is false when the session doesn't have input focus.
-    void Sync(Session& session, XrTime time, vr::controllers::State& out);
+    // Syncs the actions and fills `out` (poses located at `time` in the target's base space).
+    // `out.active` is false when the session doesn't have input focus.
+    void Sync(Target const& target, XrTime time, vr::controllers::State& out);
+    void Sync(Session& session, XrTime time, vr::controllers::State& out) { Sync(From(session), time, out); }
 
 private:
     enum Hand { kLeft = 0, kRight = 1 };

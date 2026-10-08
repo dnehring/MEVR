@@ -9,13 +9,21 @@
 namespace mevr::xr {
 namespace {
 
+bool Check(XrResult result, char const* what) {
+    if (XR_SUCCEEDED(result)) {
+        return true;
+    }
+    log::Warn("OpenXR: {} failed ({})", what, static_cast<int>(result));
+    return false;
+}
+
 XrPath ToPath(XrInstance instance, char const* text) {
     XrPath path = XR_NULL_PATH;
     xrStringToPath(instance, text, &path);
     return path;
 }
 
-XrAction CreateAction(Session& session, XrActionSet set, XrActionType type, char const* name,
+XrAction CreateAction(XrActionSet set, XrActionType type, char const* name,
     char const* localized, std::array<XrPath, 2> const& hands) {
     XrActionCreateInfo info{XR_TYPE_ACTION_CREATE_INFO};
     info.actionType = type;
@@ -24,7 +32,7 @@ XrAction CreateAction(Session& session, XrActionSet set, XrActionType type, char
     info.countSubactionPaths = static_cast<std::uint32_t>(hands.size());
     info.subactionPaths = hands.data();
     XrAction action = XR_NULL_HANDLE;
-    if (!session.Check(xrCreateAction(set, &info, &action), name)) {
+    if (!Check(xrCreateAction(set, &info, &action), name)) {
         return XR_NULL_HANDLE;
     }
     return action;
@@ -41,8 +49,7 @@ void Bind(std::vector<Binding>& list, XrAction action, char const* hand, char co
 
 // Suggestions for one interaction profile. A runtime that doesn't know a profile rejects it;
 // that's fine as long as one profile is accepted.
-bool Suggest(Session& session, char const* profile, std::vector<Binding> const& bindings) {
-    XrInstance const instance = session.Instance();
+bool Suggest(XrInstance instance, char const* profile, std::vector<Binding> const& bindings) {
     std::vector<XrActionSuggestedBinding> suggested;
     for (Binding const& binding : bindings) {
         suggested.push_back({binding.action, ToPath(instance, binding.path.c_str())});
@@ -110,33 +117,37 @@ bool Locate(XrSpace space, XrSpace base, XrTime time, XrPosef& out) {
 
 } // namespace
 
-bool Input::Create(Session& session) {
-    XrInstance const instance = session.Instance();
+Input::Target Input::From(Session const& session) {
+    return {session.Instance(), session.Handle(), session.LocalSpace(), session.InstanceGeneration(), session.Generation()};
+}
+
+bool Input::Create(Target const& target) {
+    XrInstance const instance = target.instance;
     hands_ = {ToPath(instance, "/user/hand/left"), ToPath(instance, "/user/hand/right")};
 
     XrActionSetCreateInfo setInfo{XR_TYPE_ACTION_SET_CREATE_INFO};
     std::strcpy(setInfo.actionSetName, "gameplay");
     std::strcpy(setInfo.localizedActionSetName, "Gameplay");
-    if (!session.Check(xrCreateActionSet(instance, &setInfo, &set_), "xrCreateActionSet")) {
+    if (!Check(xrCreateActionSet(instance, &setInfo, &set_), "xrCreateActionSet")) {
         set_ = XR_NULL_HANDLE;
         return false;
     }
-    instanceGeneration_ = session.InstanceGeneration();
-    sessionGeneration_ = session.Generation();
+    instanceGeneration_ = target.instanceGeneration;
+    sessionGeneration_ = target.sessionGeneration;
     created_ = true;  // from here on, Release cleans up whatever exists
 
-    trigger_ = CreateAction(session, set_, XR_ACTION_TYPE_FLOAT_INPUT, "trigger", "Trigger", hands_);
-    squeeze_ = CreateAction(session, set_, XR_ACTION_TYPE_FLOAT_INPUT, "squeeze", "Grip", hands_);
-    stick_ = CreateAction(session, set_, XR_ACTION_TYPE_VECTOR2F_INPUT, "thumbstick", "Thumbstick", hands_);
-    stickClick_ = CreateAction(session, set_, XR_ACTION_TYPE_BOOLEAN_INPUT, "thumbstick_click", "Thumbstick click", hands_);
-    primary_ = CreateAction(session, set_, XR_ACTION_TYPE_BOOLEAN_INPUT, "primary", "A / X", hands_);
-    secondary_ = CreateAction(session, set_, XR_ACTION_TYPE_BOOLEAN_INPUT, "secondary", "B / Y", hands_);
-    menu_ = CreateAction(session, set_, XR_ACTION_TYPE_BOOLEAN_INPUT, "menu", "Menu", hands_);
-    gripPose_ = CreateAction(session, set_, XR_ACTION_TYPE_POSE_INPUT, "grip_pose", "Grip pose", hands_);
-    aimPose_ = CreateAction(session, set_, XR_ACTION_TYPE_POSE_INPUT, "aim_pose", "Aim pose", hands_);
+    trigger_ = CreateAction(set_, XR_ACTION_TYPE_FLOAT_INPUT, "trigger", "Trigger", hands_);
+    squeeze_ = CreateAction(set_, XR_ACTION_TYPE_FLOAT_INPUT, "squeeze", "Grip", hands_);
+    stick_ = CreateAction(set_, XR_ACTION_TYPE_VECTOR2F_INPUT, "thumbstick", "Thumbstick", hands_);
+    stickClick_ = CreateAction(set_, XR_ACTION_TYPE_BOOLEAN_INPUT, "thumbstick_click", "Thumbstick click", hands_);
+    primary_ = CreateAction(set_, XR_ACTION_TYPE_BOOLEAN_INPUT, "primary", "A / X", hands_);
+    secondary_ = CreateAction(set_, XR_ACTION_TYPE_BOOLEAN_INPUT, "secondary", "B / Y", hands_);
+    menu_ = CreateAction(set_, XR_ACTION_TYPE_BOOLEAN_INPUT, "menu", "Menu", hands_);
+    gripPose_ = CreateAction(set_, XR_ACTION_TYPE_POSE_INPUT, "grip_pose", "Grip pose", hands_);
+    aimPose_ = CreateAction(set_, XR_ACTION_TYPE_POSE_INPUT, "aim_pose", "Aim pose", hands_);
     for (XrAction action : {trigger_, squeeze_, stick_, stickClick_, primary_, secondary_, menu_, gripPose_, aimPose_}) {
         if (action == XR_NULL_HANDLE) {
-            Release(session);
+            Release(target);
             return false;
         }
     }
@@ -176,12 +187,12 @@ bool Input::Create(Session& session) {
         Bind(simple, aimPose_, hand, "/input/aim/pose");
     }
 
-    bool const touchOk = Suggest(session, "/interaction_profiles/oculus/touch_controller", touch);
-    bool const indexOk = Suggest(session, "/interaction_profiles/valve/index_controller", index);
-    bool const simpleOk = Suggest(session, "/interaction_profiles/khr/simple_controller", simple);
+    bool const touchOk = Suggest(instance, "/interaction_profiles/oculus/touch_controller", touch);
+    bool const indexOk = Suggest(instance, "/interaction_profiles/valve/index_controller", index);
+    bool const simpleOk = Suggest(instance, "/interaction_profiles/khr/simple_controller", simple);
     if (!touchOk && !indexOk && !simpleOk) {
         log::Error("OpenXR: no controller profile accepted; motion controllers unavailable");
-        Release(session);
+        Release(target);
         return false;
     }
 
@@ -190,16 +201,16 @@ bool Input::Create(Session& session) {
         spaceInfo.subactionPath = hands_[hand];
         spaceInfo.poseInActionSpace.orientation.w = 1.0f;
         spaceInfo.action = gripPose_;
-        session.Check(xrCreateActionSpace(session.Handle(), &spaceInfo, &gripSpaces_[hand]), "xrCreateActionSpace(grip)");
+        Check(xrCreateActionSpace(target.session, &spaceInfo, &gripSpaces_[hand]), "xrCreateActionSpace(grip)");
         spaceInfo.action = aimPose_;
-        session.Check(xrCreateActionSpace(session.Handle(), &spaceInfo, &aimSpaces_[hand]), "xrCreateActionSpace(aim)");
+        Check(xrCreateActionSpace(target.session, &spaceInfo, &aimSpaces_[hand]), "xrCreateActionSpace(aim)");
     }
 
     XrSessionActionSetsAttachInfo attach{XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};
     attach.countActionSets = 1;
     attach.actionSets = &set_;
-    if (!session.Check(xrAttachSessionActionSets(session.Handle(), &attach), "xrAttachSessionActionSets")) {
-        Release(session);
+    if (!Check(xrAttachSessionActionSets(target.session, &attach), "xrAttachSessionActionSets")) {
+        Release(target);
         return false;
     }
     loggedFocus_ = false;
@@ -207,12 +218,12 @@ bool Input::Create(Session& session) {
     return true;
 }
 
-void Input::Release(Session& session) {
+void Input::Release(Target const& target) {
     if (!created_) {
         return;
     }
-    bool const sessionAlive = session.Handle() != XR_NULL_HANDLE && session.Generation() == sessionGeneration_;
-    bool const instanceAlive = session.HasInstance() && session.InstanceGeneration() == instanceGeneration_;
+    bool const sessionAlive = target.session != XR_NULL_HANDLE && target.sessionGeneration == sessionGeneration_;
+    bool const instanceAlive = target.instance != XR_NULL_HANDLE && target.instanceGeneration == instanceGeneration_;
     for (auto* spaces : {&gripSpaces_, &aimSpaces_}) {
         for (XrSpace& space : *spaces) {
             if (space != XR_NULL_HANDLE && sessionAlive) {
@@ -229,21 +240,21 @@ void Input::Release(Session& session) {
     created_ = false;
 }
 
-bool Input::Matches(Session const& session) const {
-    return created_ && session.Handle() != XR_NULL_HANDLE && session.Generation() == sessionGeneration_ &&
-        session.InstanceGeneration() == instanceGeneration_;
+bool Input::Matches(Target const& target) const {
+    return created_ && target.session != XR_NULL_HANDLE && target.sessionGeneration == sessionGeneration_ &&
+        target.instanceGeneration == instanceGeneration_;
 }
 
-void Input::Sync(Session& session, XrTime time, vr::controllers::State& out) {
+void Input::Sync(Target const& target, XrTime time, vr::controllers::State& out) {
     out = {};
-    if (!Matches(session)) {
+    if (!Matches(target)) {
         return;
     }
     XrActiveActionSet active{set_, XR_NULL_PATH};
     XrActionsSyncInfo sync{XR_TYPE_ACTIONS_SYNC_INFO};
     sync.countActiveActionSets = 1;
     sync.activeActionSets = &active;
-    XrResult const result = xrSyncActions(session.Handle(), &sync);
+    XrResult const result = xrSyncActions(target.session, &sync);
     if (result == XR_SESSION_NOT_FOCUSED) {
         if (!loggedFocus_) {
             log::Info("OpenXR: controllers idle (session not focused)");
@@ -251,12 +262,12 @@ void Input::Sync(Session& session, XrTime time, vr::controllers::State& out) {
         }
         return;
     }
-    if (!session.Check(result, "xrSyncActions")) {
+    if (!Check(result, "xrSyncActions")) {
         return;
     }
     loggedFocus_ = false;
 
-    XrSession const handle = session.Handle();
+    XrSession const handle = target.session;
     for (int hand : {kLeft, kRight}) {
         vr::controllers::Hand& h = hand == kLeft ? out.left : out.right;
         XrPath const path = hands_[hand];
@@ -269,8 +280,8 @@ void Input::Sync(Session& session, XrTime time, vr::controllers::State& out) {
         h.primary = ReadBool(handle, primary_, path);
         h.secondary = ReadBool(handle, secondary_, path);
         h.menu = ReadBool(handle, menu_, path);
-        h.gripValid = Locate(gripSpaces_[hand], session.LocalSpace(), time, h.grip);
-        h.aimValid = Locate(aimSpaces_[hand], session.LocalSpace(), time, h.aim);
+        h.gripValid = Locate(gripSpaces_[hand], target.base, time, h.grip);
+        h.aimValid = Locate(aimSpaces_[hand], target.base, time, h.aim);
     }
     auto const pressed = [](vr::controllers::Hand const& h) {
         return h.trigger > 0.0f || h.squeeze > 0.0f || h.stickX != 0.0f || h.stickY != 0.0f || h.stickClick ||

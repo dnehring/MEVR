@@ -20,6 +20,11 @@ void Publish(State const& state) {
     gLatest.timeMs = GetTickCount64();
 }
 
+void Mirror(State const& state) {
+    std::lock_guard lock(gMutex);
+    gLatest = state;
+}
+
 State Latest(std::uint64_t maxAgeMs) {
     State copy;
     {

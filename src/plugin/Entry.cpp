@@ -6,6 +6,10 @@
 #include "plugin/ModLoader.hpp"
 #include "plugin/PresentHook.hpp"
 
+#if defined(MEVR_WITH_HALCYON)
+#include "plugin/Halcyon.hpp"
+#endif
+
 #include <LESDK/Headers.hpp>
 #include <LESDK/Init.hpp>
 #include <SPI.h>
@@ -36,6 +40,9 @@ tExitProcess* gExitProcessOrig = nullptr;
 
 void WINAPI ExitProcessHook(UINT exitCode) {
     mevr::log::Info("game exiting (code {}); shutting the mod down first", exitCode);
+#if defined(MEVR_WITH_HALCYON)
+    mevr::host::halcyon::Shutdown();
+#endif
     mevr::host::Stop();
     mevr::log::Close();
     gExitProcessOrig(exitCode);
@@ -72,6 +79,10 @@ SPI_IMPLEMENT_ATTACH
         return true;
     }
     mevr::log::Info("game version {} OK", version->ToString());
+#if defined(MEVR_WITH_HALCYON)
+    // Before anything else: it has to hook the system dxgi.dll before the game creates its device.
+    mevr::host::halcyon::Attach();
+#endif
 
     static ::LESDK::Initializer init{InterfacePtr, SDK_TARGET_NAME_A "MEVR"};
     auto* const tickTarget = init.ResolveTyped<tGameEngineTick>(BUILTIN_GAMEENGINETICK_RVA);
@@ -90,10 +101,12 @@ SPI_IMPLEMENT_ATTACH
         mevr::host::Stop();
         return true;
     }
+#if !defined(MEVR_WITH_HALCYON)  // Halcyon's renderer hooks Present itself
     // Owned by the host so the render thread never runs code from an unloading mod DLL.
     if (!mevr::host::present::Install(init)) {
         mevr::log::Error("present hook failed; VR output disabled");
     }
+#endif
     HookExitProcess(init);
     mevr::log::Info("host attached");
     return true;
@@ -102,6 +115,9 @@ SPI_IMPLEMENT_ATTACH
 SPI_IMPLEMENT_DETACH
 {
     (void)InterfacePtr;
+#if defined(MEVR_WITH_HALCYON)
+    mevr::host::halcyon::Shutdown();
+#endif
     mevr::host::Stop();
     mevr::log::Info("detaching");
     mevr::log::Close();

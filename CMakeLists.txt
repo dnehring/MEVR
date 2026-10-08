@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.27)
-project(MEVR LANGUAGES CXX)
+project(MEVR LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -33,6 +33,43 @@ set(BUILD_CONFORMANCE_TESTS OFF)
 set(BUILD_SDK_TESTS OFF)
 set(BUILD_ALL_EXTENSIONS OFF)
 add_subdirectory(external/OpenXR-SDK EXCLUDE_FROM_ALL)
+
+# Halcyon's LE1 VR renderer (GPL-3.0, src/halcyon/le1) with its vendored MinHook and Dear ImGui.
+# It runs inside the LE1 host: OpenXR session, Present path, stereo, first person, HUD, menu.
+option(MEVR_HALCYON "Use Halcyon's renderer for LE1" ON)
+set(HALCYON_LE1_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/halcyon/le1)
+add_library(halcyon-le1 STATIC
+    ${HALCYON_LE1_DIR}/d3d_capture.cpp
+    ${HALCYON_LE1_DIR}/dxgi_proxy.cpp
+    ${HALCYON_LE1_DIR}/head_aim.cpp
+    ${HALCYON_LE1_DIR}/logger.cpp
+    ${HALCYON_LE1_DIR}/pchud.cpp
+    ${HALCYON_LE1_DIR}/render_hook.cpp
+    ${HALCYON_LE1_DIR}/vr_config.cpp
+    ${HALCYON_LE1_DIR}/vr_menu.cpp
+    ${HALCYON_LE1_DIR}/xr_session.cpp
+    third_party/imgui/imgui.cpp
+    third_party/imgui/imgui_draw.cpp
+    third_party/imgui/imgui_tables.cpp
+    third_party/imgui/imgui_widgets.cpp
+    third_party/imgui/backends/imgui_impl_dx11.cpp
+    third_party/minhook/src/buffer.c
+    third_party/minhook/src/hde/hde64.c
+    third_party/minhook/src/hook.c
+    third_party/minhook/src/trampoline.c
+)
+target_include_directories(halcyon-le1 PUBLIC
+    ${HALCYON_LE1_DIR}
+    third_party/minhook/include
+    third_party/imgui
+    third_party/imgui/backends
+)
+# Upstream's settings (MELEVRClean.vcxproj): C++17, Unicode. MEVR_ASI selects our changes.
+set_target_properties(halcyon-le1 PROPERTIES CXX_STANDARD 17)
+target_compile_definitions(halcyon-le1 PRIVATE WIN32 _WINDOWS UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS
+    MELEVR_EXPORTS MEVR_ASI)
+target_compile_options(halcyon-le1 PRIVATE /W3 /utf-8 /Zi)
+target_link_libraries(halcyon-le1 PUBLIC d3d11 dxgi Shell32 Ole32)
 
 set(MEVR_CORE_SOURCES
     src/core/Log.cpp
@@ -116,10 +153,31 @@ function(mevr_configure target game)
     target_link_options(${target} PRIVATE /DEBUG)
 endfunction()
 
+# The LE1 host's side of Halcyon's renderer: its startup, and our seams into it (OpenXR loader,
+# controller actions, motion controllers as pad 0).
+set(MEVR_HALCYON_HOST_SOURCES
+    src/core/vr/Controllers.cpp
+    src/core/vr/Controllers.hpp
+    src/core/xr/Input.cpp
+    src/core/xr/Input.hpp
+    src/game/GamepadMapping.cpp
+    src/game/GamepadMapping.hpp
+    src/halcyon/le1/mevr_bridge.h
+    src/plugin/Halcyon.cpp
+    src/plugin/Halcyon.hpp
+    src/plugin/HalcyonBridge.cpp
+)
+
 function(mevr_add_plugin game)
     set(host MEVR-${game})
+    set(host_sources ${MEVR_HOST_SOURCES} ${MEVR_CORE_SOURCES})
+    set(with_halcyon OFF)
+    if (MEVR_HALCYON AND game STREQUAL "LE1")
+        set(with_halcyon ON)
+        list(APPEND host_sources ${MEVR_HALCYON_HOST_SOURCES})
+    endif ()
     if (MEVR_HOT_RELOAD)
-        add_library(${host} SHARED ${MEVR_HOST_SOURCES} ${MEVR_CORE_SOURCES})
+        add_library(${host} SHARED ${host_sources})
 
         set(mod MEVR-${game}-mod)
         add_library(${mod} SHARED ${MEVR_MOD_SOURCES} ${MEVR_CORE_SOURCES})
@@ -130,9 +188,15 @@ function(mevr_add_plugin game)
         # Building the host target builds the mod too.
         add_dependencies(${host} ${mod})
     else ()
-        add_library(${host} SHARED ${MEVR_HOST_SOURCES} ${MEVR_CORE_SOURCES} ${MEVR_MOD_SOURCES})
+        set(all_sources ${host_sources} ${MEVR_MOD_SOURCES})
+        list(REMOVE_DUPLICATES all_sources)
+        add_library(${host} SHARED ${all_sources})
         target_link_libraries(${host} PRIVATE OpenXR::openxr_loader d3dcompiler)
         target_compile_definitions(${host} PRIVATE MEVR_MONOLITHIC)
+    endif ()
+    if (with_halcyon)
+        target_link_libraries(${host} PRIVATE halcyon-le1 OpenXR::openxr_loader)
+        target_compile_definitions(${host} PRIVATE MEVR_WITH_HALCYON)
     endif ()
     mevr_configure(${host} ${game})
     set_target_properties(${host} PROPERTIES OUTPUT_NAME "${game}MEVR" SUFFIX ".asi")

@@ -8,11 +8,19 @@ struct IDXGISwapChain;
 
 namespace mevr {
 
-inline constexpr int kHostServicesVersion = 1;
+namespace vr::controllers {
+struct State;
+}
+
+inline constexpr int kHostServicesVersion = 2;
 
 struct HostServices {
     int version = kHostServicesVersion;
     void (*log)(char const* level, char const* message) = nullptr;
+    // Non-null when the host runs the VR renderer itself (LE1: Halcyon's): the mod then does no
+    // VR output, head tracking or XInput hooking of its own. Returns the latest motion controller
+    // sample, published by the host's frame loop.
+    void (*controllers)(vr::controllers::State* out) = nullptr;
 };
 
 } // namespace mevr

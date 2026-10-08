@@ -4,6 +4,10 @@
 #include "mod/ModApi.hpp"
 #include "plugin/PresentHook.hpp"
 
+#if defined(MEVR_WITH_HALCYON)
+#include "core/vr/Controllers.hpp"
+#endif
+
 #include <LESDK/Headers.hpp>
 
 #include <filesystem>
@@ -17,7 +21,14 @@ void HostLog(char const* level, char const* message) {
     log::Write(level, message);
 }
 
-HostServices const gServices{kHostServicesVersion, &HostLog};
+#if defined(MEVR_WITH_HALCYON)
+void HostControllers(vr::controllers::State* out) {
+    *out = vr::controllers::Latest(UINT64_MAX);  // raw sample: the mod ages it itself
+}
+HostServices const gServices{kHostServicesVersion, &HostLog, &HostControllers};
+#else
+HostServices const gServices{kHostServicesVersion, &HostLog, nullptr};
+#endif
 ISharedProxyInterface* gSpi = nullptr;
 
 } // namespace
