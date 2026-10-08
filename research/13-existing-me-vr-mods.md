@@ -221,6 +221,12 @@ startup. `.pdata` is plain and gives reliable function boundaries. Tool:
 - **Stereo HUD.** UI draws (R8G8B8A8 target at backbuffer width, full viewport, `INV_SRC_ALPHA`
   blend) are mirrored into the held left eye with the game's DSV. Shader IDs are FNV-1a hashes
   of pixel-shader bytecode.
+  - Our logs (2026-10-08): with an FP16 backbuffer (Windows HDR) no UI draw matches that rule, so
+    the mirror never runs and the HUD is in the right eye only.
+  - We now redirect these draws to a body-locked panel instead ([15](15-hud.md)).
+- **Insert menu quad.** Never visible to us on SteamVR over Steam Link, though it's submitted
+  (head-locked, 1.54 m, source alpha). We made it opaque and always the nearest quad, and added
+  `[MENUVIS]` readbacks to find the cause ([15](15-hud.md), next session).
 
 ### First person
 

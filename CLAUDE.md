@@ -91,6 +91,10 @@ switching frameworks.
   own renderer (LE2/LE3); on LE1 Halcyon's keys apply instead.
 - Motion controllers reach the game as Xbox pad 0 (`game/GamepadBridge`, XInput hooks). Mapping
   is in `game/GamepadMapping` (unit-tested).
+- LE1 HUD (Halcyon's renderer, Stereo 2): the game's UI draws go to a body-locked HUD panel quad,
+  and a hand reticle on the aim ray replaces the crosshair (`src/plugin/HalcyonOverlays.cpp`,
+  [research/15](research/15-hud.md)). Toggles: `MELEVR.ini` `hudPanel*` / `handReticle*`, or the
+  Insert menu's HUD tab.
 - Trilogy check: `build-trilogy/` (configured with `-DMEVR_BUILD_LE2=ON -DMEVR_BUILD_LE3=ON`) must
   keep building all three games. Per-game field spellings go in `src/engine/GameAdapter.hpp`;
   per-game addresses sit next to their use (e.g. `engine/SceneView.cpp`).
