@@ -158,12 +158,17 @@ Design (2026-10-07):
 - **User report:**
   1. The game's main screen still showed over the head-tracked image.
   2. The two eyes' images were badly misaligned.
-- **Diagnosis:** SteamVR's **Desktop Game Theatre** mirrors any non-VR Steam game's window onto
-  a virtual screen while SteamVR runs. That gives two layers: SteamVR's theater screen at a
-  finite distance, plus our mono projection at infinity. The doubled, misaligned look is most
-  likely those two overlapping.
-- **Fix (user setting):** Steam → ME LE → Properties → General → uncheck "Use Desktop Game
-  Theatre while SteamVR is active". Retest pending.
+- **Diagnosis:** SteamVR's **Theater Screen** (the SteamVR 2.1+ successor to Desktop Game
+  Theatre) shows any non-VR Steam game's window on a virtual screen while SteamVR runs. That
+  gives two layers: SteamVR's theater screen at a finite distance, plus our mono projection at
+  infinity. The doubled, misaligned look is most likely those two overlapping.
+- **Fix (user setting):** SteamVR Settings → Show Advanced Settings → Dashboard → turn off
+  presenting non-VR apps on the Theater Screen at launch.
+  - My first instruction pointed at the per-game Steam checkbox. That was removed in SteamVR 2.1
+    (late 2023), and the user found it missing.
+  - Sources: [SteamVR 2.1 announcement](https://forum.fractalcoffee.duckdns.org/viewtopic.php?p=3856),
+    [Steam discussion](https://steamcommunity.com/app/250820/discussions/0/4036978698796115769).
+  - Retest pending.
 
 ### Still to do
 

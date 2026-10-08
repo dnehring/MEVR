@@ -33,9 +33,12 @@ install folder → `H:\SteamLibrary` (ME LE is about 120 GB; H: has 184 GB free)
 
 - Set SteamVR as the OpenXR runtime: SteamVR → Settings → OpenXR → "Set SteamVR as OpenXR
   Runtime".
-- **Turn off Desktop Game Theatre for ME LE:** Steam → ME LE → Properties → General → uncheck
-  "Use Desktop Game Theatre while SteamVR is active". Otherwise SteamVR mirrors the game window
-  onto its own screen on top of the mod's output.
+- **Stop SteamVR putting the game on its Theater Screen:** SteamVR → Settings → enable "Show
+  Advanced Settings" → **Dashboard** → turn off the option that presents non-VR applications on
+  the Theater Screen at launch. Otherwise SteamVR mirrors the game window onto its own screen on
+  top of the mod's output.
+  - The old per-game Steam option "Use Desktop Game Theatre while SteamVR is active" (Properties
+    → General) was removed with SteamVR 2.1 in late 2023. Don't look for it.
 
 ## When the download finishes
 
