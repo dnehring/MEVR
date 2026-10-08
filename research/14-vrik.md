@@ -154,22 +154,37 @@ frame, not broken.
   skipped, e.g. ME's `LeftShoulder-Swivel`. That handles ME (`RightShoulder` > `RightElbow` >
   `RightWrist`, expected), Mixamo and Biped names (tested). Unfamiliar names fall back to the
   nearest non-helper ancestors. Logged once per skeleton asset.
-- **Hand targets** (`game/HandTargets`, one function, about to change for Halcyon's renderer):
-  - today: OpenXR grip poses (LOCAL), relative to the HMD and turned by the body yaw from
-    `head_tracking::Anchor()` (`engine::ToWorld`), around **Shepard's head bone** (world, from
-    SpaceBases) rather than the camera, so it works in third person (as route 1 did). The
-    wrist is 7 cm behind the grip along grip +Z [verify in headset]. Once Halcyon's
-    first-person camera owns the view, anchor at the camera instead;
-  - orientation via `engine::ToUnrealOrientation`;
-  - `DesktopTest` when no VR session runs.
+- **Hand targets** (`game/HandTargets`, one function):
+  - the grip poses (tracking space) are turned into the world by `game/view_anchor`, the one
+    tracking-to-world mapping for whichever renderer draws VR (Halcyon's: its published view on
+    the game camera, `engine::FromCameraView`; ours: the body yaw, `engine::FromBodyYaw`);
+  - positions are measured from **tracking space's origin**, not the live head
+    (`engine::AtOrigin`, unit-tested in `TestHandFrame`). The origin is where the head was at
+    the start or the last recenter (OpenXR LOCAL; Halcyon's recenter re-origins its app space at
+    the head), and it is placed at **Shepard's head bone** (world, from SpaceBases) rather than
+    the camera, so it works in third person (as route 1 did). Measured from the live head,
+    leaning moved the hands the wrong way (0.2 m forward with still hands: the view moved ~30
+    units forward, the hands ~20 back). Now leaning or 6DOF moves only the view. Without a head
+    bone, the origin goes where the view puts it (`engine::OriginWorld`). 100 units per meter,
+    whatever scale the renderer gives head motion [verify in headset: reach];
+  - orientation: the grip's axes through the same anchor (`engine::OrientationToWorld`);
+  - the wrist is 7 cm behind the grip along grip +Z [verify in headset];
+  - `DesktopTest` only where no headset can be followed, decided every tick by the mod: our
+    renderer with no VR session, or Halcyon's before any headset session has shown up (no view
+    or controller sample ever). A view lost for a moment (menu, flat conversation, tracking
+    blip, hot reload) leaves the arms to the animation instead.
 - **To component space** (`game/ArmIk`): through the inverse of the mesh's `LocalToWorld`. The
   body axes come from the pawn's yaw.
 - **Hand rotation in VR is relative for now:** when a hand starts following, the offset between
   the controller and the animated hand is captured, and from then on the hand turns with the
   controller. A calibrated grip-to-hand offset comes later.
-- **Desktop test:** with no VR session, `.` turns arm IK on and holds the right wrist in front of
-  the chest at shoulder height. The target is computed in the hook from the live shoulders:
-  midpoint + (0.70 forward, 0.15 outward, −0.05 up) × arm length.
+- **Desktop test:** with no headset (see above), `.` turns arm IK on and holds the right wrist in
+  front of the chest at shoulder height. The target is computed in the hook from the live
+  shoulders: midpoint + (0.70 forward, 0.15 outward, −0.05 up) × arm length.
+- **Which mesh gets the write:** the hook matches the published request by component address,
+  then also by the component's owner actor, by GWorld and by age (published within 500 ms). A
+  level load runs no mod tick, and a new component with the same skeleton can land at a freed
+  address; the owner and world checks reject that (logged as a rejection).
 
 ### Logging (first in-game run)
 

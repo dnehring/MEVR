@@ -14,7 +14,7 @@ namespace mevr::game::hand_targets {
 enum class Source {
     None,         // nothing to follow: the animation keeps the arms
     Controllers,  // tracked motion controllers
-    DesktopTest,  // no VR session: arm IK holds the right hand in front of the chest (no positions here)
+    DesktopTest,  // no headset: arm IK holds the right hand in front of the chest (no positions here)
 };
 
 struct Hand {
@@ -31,14 +31,17 @@ struct Targets {
 
 // Game thread, once per tick: the motion controllers' grip poses, placed in the world through
 // game/view_anchor (whichever renderer draws VR), with the wrist a few centimetres behind the
-// grip; or DesktopTest while that's latched.
-// `headBone`: the world location of Shepard's head bone. Given, the controllers are placed around
-// it rather than around the view (the camera): that's what works in third person, and in first
-// person the two nearly coincide. Without it, around the view's head location.
+// grip; or DesktopTest while the mod says there's no headset.
+// The controllers are measured from tracking space's origin (the head at the start or the last
+// recenter), which is mapped to `headBone`, the world location of Shepard's head bone: hands
+// around Shepard rather than around the view (the camera), which is what works in third person
+// (in first person the two nearly coincide), and leaning or 6DOF moves the view, not the hands.
+// The anchor gives only the turn into the world. Without a head bone, the origin goes where the
+// view puts it.
 Targets Current(std::optional<engine::UnrealVector> const& headBone);
 
-// Latched when arm IK is turned on with no VR to follow (set by the mod), cleared when it's
-// turned off: the right hand is then held in front of the chest.
+// Set by the mod every tick: true while there's no headset to follow (our renderer: no VR session;
+// the host's: no headset session seen yet). Arm IK then holds the right hand in front of the chest.
 void SetDesktopTest(bool on);
 bool DesktopTest();
 

@@ -13,12 +13,24 @@
 
 #include <LESDK/Headers.hpp>
 
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <string>
 
 namespace mevr::host {
 namespace {
+
+std::atomic<bool> gProcessExiting{false};
+// Why the current mod generation must stay loaded when it's unloaded, if it must.
+std::string gKeepReason;
+
+void KeepModLoaded(char const* reason) {
+    log::Error("the mod's code must stay loaded: {}", reason != nullptr ? reason : "(no reason given)");
+    if (gKeepReason.empty()) {
+        gKeepReason = reason != nullptr ? reason : "unknown";
+    }
+}
 
 #if defined(MEVR_MONOLITHIC)
 constexpr auto* kHostLog = static_cast<void (*)(char const*, char const*)>(nullptr);  // one log already
@@ -28,6 +40,21 @@ void HostLog(char const* level, char const* message) {
 }
 constexpr auto* kHostLog = &HostLog;
 #endif
+
+// The mod's ProcessEvent callback. Clearing it waits for calls still inside it, except once the
+// process is exiting; a call that doesn't leave in time keeps the mod loaded.
+void HostSetProcessEventCallback(ProcessEventCallback callback) {
+    bool const exiting = gProcessExiting.load();
+    if (!process_event::SetCallback(callback, exiting ? 0 : process_event::kDrainWaitMs) && !exiting) {
+        KeepModLoaded("a thread was still inside the mod's ProcessEvent callback");
+    }
+}
+bool HostProcessExiting() {
+    return gProcessExiting.load();
+}
+void HostKeepLoaded(char const* reason) {
+    KeepModLoaded(reason);
+}
 
 #if defined(MEVR_WITH_HALCYON)
 void HostControllers(vr::controllers::State* out) {
@@ -41,18 +68,27 @@ void HostSetHandAim(bool on) {
 }
 HostServices const gServices{kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
     static_cast<std::uint32_t>(sizeof(vr::controllers::State)), static_cast<std::uint32_t>(sizeof(vr::host_view::State)),
-    &process_event::SetCallback};
+    &HostSetProcessEventCallback, &HostProcessExiting, &HostKeepLoaded};
 // A mod that's gone can't aim: Halcyon's head aim must come back.
 void ForgetModState() {
     halcyon::SetModHandAim(false);
 }
 #else
-HostServices const gServices{kHostServicesVersion, kHostLog, nullptr, nullptr, nullptr, 0, 0, &process_event::SetCallback};
+HostServices const gServices{kHostServicesVersion, kHostLog, nullptr, nullptr, nullptr, 0, 0, &HostSetProcessEventCallback,
+    &HostProcessExiting, &HostKeepLoaded};
 void ForgetModState() {}
 #endif
 ISharedProxyInterface* gSpi = nullptr;
 
 } // namespace
+
+void SetProcessExiting() {
+    gProcessExiting.store(true);
+}
+
+bool ProcessExiting() {
+    return gProcessExiting.load();
+}
 
 #if defined(MEVR_MONOLITHIC)
 
@@ -81,6 +117,7 @@ void Stop() {
         gModActive = false;
     }
     ForgetModState();
+    gKeepReason.clear();  // nothing to unload: host and mod are one module
 }
 
 #else // hot reload
@@ -145,6 +182,15 @@ bool SameStamp(FILETIME const& a, FILETIME const& b) {
     return CompareFileTime(&a, &b) == 0;
 }
 
+// Keeps a module mapped until the process ends, whatever FreeLibrary calls follow.
+void Pin(HMODULE module) {
+    HMODULE pinned = nullptr;
+    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_PIN | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+            reinterpret_cast<LPCWSTR>(module), &pinned)) {
+        log::Warn("pinning the old mod DLL failed (error {}); it stays loaded anyway (never freed)", GetLastError());
+    }
+}
+
 void Unload() {
     if (gMod.module == nullptr) {
         return;
@@ -155,9 +201,24 @@ void Unload() {
         gMod.shutdown();
     }
     ForgetModState();
-    FreeLibrary(gMod.module);
-    std::error_code ec;
-    fs::remove(gMod.shadowPath, ec);
+    // The mod clears its ProcessEvent callback in its shutdown; make sure (an older or half-started
+    // mod), since nothing may call into the DLL once it's freed.
+    HostSetProcessEventCallback(nullptr);
+    if (gProcessExiting.load()) {
+        // Windows unloads it with the process. Freeing it now could pull code out from under a
+        // thread that's still in a hook and never gets to leave.
+        log::Info("mod shut down for exit; its DLL stays mapped");
+    } else if (!gKeepReason.empty()) {
+        Pin(gMod.module);
+        log::Error("mod generation {} STAYS LOADED (pinned, not unloaded): {}. Its hooks may still run its code; "
+                   "restart the game when convenient", gGeneration, gKeepReason);
+        // The shadow copy is locked while mapped; the next session's cleanup removes it.
+    } else {
+        FreeLibrary(gMod.module);
+        std::error_code ec;
+        fs::remove(gMod.shadowPath, ec);
+    }
+    gKeepReason.clear();
     gMod = {};
 }
 

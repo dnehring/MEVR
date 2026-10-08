@@ -1,5 +1,6 @@
 #include "engine/SceneView.hpp"
 
+#include "core/Hook.hpp"
 #include "core/Log.hpp"
 
 #include <LESDK/Init.hpp>
@@ -129,9 +130,7 @@ bool Install(::LESDK::Initializer& init, BeforePrimaryView before) {
         log::Info("CalcSceneView: player view = any call from FViewportClient::Draw (call site not pinned yet)");
     }
     gBefore = before;
-    gOrig = reinterpret_cast<tCalcSceneView*>(init.InstallHook(kHookName, target,
-        reinterpret_cast<void*>(&CalcSceneViewHook)));
-    if (gOrig == nullptr) {
+    if (!hook::Install(init, kHookName, reinterpret_cast<tCalcSceneView*>(target), &CalcSceneViewHook, gOrig)) {
         log::Error("CalcSceneView: hook failed");
         gBefore = nullptr;
         return false;
@@ -141,15 +140,17 @@ bool Install(::LESDK::Initializer& init, BeforePrimaryView before) {
     return true;
 }
 
-void Uninstall(::LESDK::Initializer& init) {
+bool Uninstall(::LESDK::Initializer& init) {
     if (!gInstalled) {
-        return;
+        return true;
     }
-    init.UninstallHook(kHookName);
+    gBefore = nullptr;  // the handler belongs to a mod that's shutting down
+    if (!hook::Uninstall(init, kHookName)) {
+        return false;  // still live, and still calling gOrig
+    }
     gInstalled = false;
-    gOrig = nullptr;
-    gBefore = nullptr;
     log::Info("unhooked {}", kHookName);
+    return true;
 }
 
 bool InPrimaryView() {

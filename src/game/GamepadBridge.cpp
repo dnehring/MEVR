@@ -1,5 +1,6 @@
 #include "game/GamepadBridge.hpp"
 
+#include "core/Hook.hpp"
 #include "core/Log.hpp"
 #include "core/vr/Controllers.hpp"
 #include "game/GamepadMapping.hpp"
@@ -102,16 +103,14 @@ void Hook(::LESDK::Initializer& init, void* target, std::string name) {
     Slot& slot = gSlots[gSlotCount];
     slot.name = std::move(name);
     slot.target = target;
-    // Until InstallHook returns, `original` is null and Bridge treats the pad as disconnected.
-    // (In practice both run on the game thread.)
-    slot.original = nullptr;
-    void* const original = init.InstallHook(slot.name.c_str(), target, reinterpret_cast<void*>(kDetours[gSlotCount]));
-    if (original == nullptr) {
+    // LEBinkProxy writes `original` before the detour goes live (core/Hook); XInput is polled
+    // from any thread. (Bridge still treats a null one as a disconnected pad.)
+    if (!hook::Install(init, slot.name.c_str(), target, reinterpret_cast<void*>(kDetours[gSlotCount]),
+            reinterpret_cast<void**>(&slot.original))) {
         log::Warn("gamepad: hooking {} failed", slot.name);
         slot = {};
         return;
     }
-    slot.original = reinterpret_cast<tGetState>(original);
     ++gSlotCount;
     log::Info("gamepad: hooked {}", slot.name);
 }
@@ -130,16 +129,23 @@ bool TryInstall(::LESDK::Initializer& init) {
     return gSlotCount > 0;
 }
 
-void Uninstall(::LESDK::Initializer& init) {
+bool Uninstall(::LESDK::Initializer& init) {
+    bool removed = true;
     for (std::size_t i = 0; i < gSlotCount; ++i) {
-        init.UninstallHook(gSlots[i].name.c_str());
+        if (!hook::Uninstall(init, gSlots[i].name.c_str())) {
+            removed = false;  // still live: its slot (and original) must stay as they are
+            continue;
+        }
         log::Info("gamepad: unhooked {}", gSlots[i].name);
         gSlots[i] = {};
     }
-    gSlotCount = 0;
+    if (removed) {
+        gSlotCount = 0;
+    }
     std::lock_guard lock(gMutex);
     gLatches = {};
     gLastPad = {};
+    return removed;
 }
 
 void LogStats() {

@@ -1,5 +1,6 @@
 #include "engine/ProcessEvent.hpp"
 
+#include "core/Hook.hpp"
 #include "core/Log.hpp"
 
 #include <LESDK/Headers.hpp>
@@ -69,9 +70,7 @@ bool Install(::LESDK::Initializer& init) {
         log::Error("failed to resolve UObject::ProcessEvent");
         return false;
     }
-    gProcessEventOrig = reinterpret_cast<tProcessEvent*>(init.InstallHook(kHookName,
-        reinterpret_cast<void*>(target), reinterpret_cast<void*>(&ProcessEventHook)));
-    if (gProcessEventOrig == nullptr) {
+    if (!hook::Install(init, kHookName, target, &ProcessEventHook, gProcessEventOrig)) {
         log::Error("failed to hook UObject::ProcessEvent");
         return false;
     }
@@ -80,19 +79,22 @@ bool Install(::LESDK::Initializer& init) {
     return true;
 }
 
-void Uninstall(::LESDK::Initializer& init) {
+bool Uninstall(::LESDK::Initializer& init) {
     if (!gInstalled) {
-        return;
+        return true;
     }
     if (gViaHost) {
-        gHostSet(nullptr);  // waits for in-flight handlers
+        // Waits (bounded) for in-flight handlers; the host keeps this DLL loaded if one stays.
+        gHostSet(nullptr);
         gInstalled = gViaHost = false;
-        return;
+        return true;
     }
-    init.UninstallHook(kHookName);
+    if (!hook::Uninstall(init, kHookName)) {
+        return false;  // still live, and still calling gProcessEventOrig
+    }
     gInstalled = false;
-    gProcessEventOrig = nullptr;
     log::Info("unhooked UObject::ProcessEvent");
+    return true;
 }
 
 } // namespace mevr::engine::process_event

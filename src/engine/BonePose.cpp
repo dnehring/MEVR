@@ -1,5 +1,6 @@
 #include "engine/BonePose.hpp"
 
+#include "core/Hook.hpp"
 #include "core/Log.hpp"
 #include "engine/Skeleton.hpp"
 
@@ -34,16 +35,26 @@ constexpr std::size_t kUpdateSkelPoseRva = 0;
 // (this, DeltaTime, bTickFaceFX); callers also set r9, which the function never reads. All four
 // register arguments are passed through unchanged.
 using tUpdateSkelPose = void(USkeletalMeshComponent* self, float deltaTime, unsigned tickFaceFx, unsigned unused);
-tUpdateSkelPose* gOrig = nullptr;
+tUpdateSkelPose* gOrig = nullptr;  // written before the hook goes live (core/Hook)
 bool gInstalled = false;
 std::uintptr_t gModuleBase = 0;
 std::atomic<int> gInFlight{0};
 
-// What to write. The hook compares the mesh address lock-free, then copies the request under
-// the lock and works on the copy.
+// A request is only good for the mesh it was made for: the same component address, owned by the
+// same actor, in the same world, and recent. Across a level load the mod doesn't tick, and a new
+// component with the same skeleton can land at a freed address (another actor's, or one in the
+// new level); the owner and world catch that, the age catches anything else the mod missed.
+// Published every mod tick, so a write normally uses the previous tick's request.
+constexpr ULONGLONG kMaxRequestAgeMs = 500;
+
+// What to write. The hook compares the mesh address lock-free, then checks the rest and copies
+// the request under the lock and works on the copy.
 std::atomic<USkeletalMeshComponent const*> gMesh{nullptr};
 SRWLOCK gRequestLock = SRWLOCK_INIT;
 Request gRequest;
+UObject const* gRequestOwner = nullptr;  // compared by address only, never dereferenced
+UObject const* gRequestWorld = nullptr;  // GWorld when published; compared by address only
+ULONGLONG gRequestTimeMs = 0;
 std::atomic<bool> gBroken{false};  // an access violation in the writer: writes stop for good
 
 // Stats (any thread; the hook normally runs on the game thread).
@@ -125,10 +136,28 @@ bool Goal(Request const& request, std::span<ik::Transform const> pose, int side,
     return std::isfinite(wrist.x) && std::isfinite(wrist.y) && std::isfinite(wrist.z);
 }
 
+UObject const* CurrentWorld() {
+    return GWorld != nullptr ? *GWorld : nullptr;
+}
+
 // Copies the request for `self`, or false if there's nothing to write for it.
 bool TakeRequest(USkeletalMeshComponent const* self, Request& copy) {
+    UObject const* const owner = self->Owner;
+    UObject const* const world = CurrentWorld();
+    ULONGLONG const now = GetTickCount64();
+    char const* stale = nullptr;
     AcquireSRWLockShared(&gRequestLock);
-    bool const matches = gRequest.mesh == self;
+    bool matches = gRequest.mesh == self;
+    if (matches) {
+        if (gRequestOwner != owner) {
+            stale = "the mesh's owner changed (another component at the same address)";
+        } else if (gRequestWorld != world) {
+            stale = "the world changed since the request (level load)";
+        } else if (now - gRequestTimeMs > kMaxRequestAgeMs) {
+            stale = "request too old (the mod stopped publishing)";
+        }
+        matches = stale == nullptr;
+    }
     if (matches) {
         copy.mesh = gRequest.mesh;
         copy.boneCount = gRequest.boneCount;
@@ -137,6 +166,12 @@ bool TakeRequest(USkeletalMeshComponent const* self, Request& copy) {
         copy.arms = gRequest.arms;
     }
     ReleaseSRWLockShared(&gRequestLock);
+    if (stale != nullptr) {
+        // Stop matching this address until the mod publishes again.
+        USkeletalMeshComponent const* expected = self;
+        gMesh.compare_exchange_strong(expected, nullptr, std::memory_order_acq_rel);
+        Reject(stale);
+    }
     return matches;
 }
 
@@ -215,17 +250,27 @@ void WriteGuarded(USkeletalMeshComponent* self, float deltaTime) {
     }
 }
 
-void UpdateSkelPoseHook(USkeletalMeshComponent* self, float deltaTime, unsigned tickFaceFx, unsigned unused) {
-    gInFlight.fetch_add(1, std::memory_order_acquire);
-    gOrig(self, deltaTime, tickFaceFx, unused);
+void AfterUpdateSkelPose(USkeletalMeshComponent* self, float deltaTime, std::uintptr_t caller) {
     gCalls.fetch_add(1, std::memory_order_relaxed);
     if (self != nullptr && self == gMesh.load(std::memory_order_acquire) && !gBroken.load(std::memory_order_relaxed)) {
         gPlayerCalls.fetch_add(1, std::memory_order_relaxed);
-        Count(gCallers, reinterpret_cast<std::uintptr_t>(_ReturnAddress()));
+        Count(gCallers, caller);
         Count(gThreads, GetCurrentThreadId());
         WriteGuarded(self, deltaTime);
     }
-    gInFlight.fetch_sub(1, std::memory_order_release);
+}
+
+// No C++ objects with destructors here, so __finally keeps the in-flight count right even when an
+// exception unwinds through the engine's call (a count left up would keep the mod pinned).
+void UpdateSkelPoseHook(USkeletalMeshComponent* self, float deltaTime, unsigned tickFaceFx, unsigned unused) {
+    std::uintptr_t const caller = reinterpret_cast<std::uintptr_t>(_ReturnAddress());
+    gInFlight.fetch_add(1, std::memory_order_acquire);
+    __try {
+        gOrig(self, deltaTime, tickFaceFx, unused);
+        AfterUpdateSkelPose(self, deltaTime, caller);
+    } __finally {
+        gInFlight.fetch_sub(1, std::memory_order_release);
+    }
 }
 
 std::string Format(ik::Vec3 v) {
@@ -273,8 +318,7 @@ bool Install(::LESDK::Initializer& init) {
     }
     gModuleBase = reinterpret_cast<std::uintptr_t>(init.ModuleBase);
     log::Info("arm IK: UpdateSkelPose at {} (entry bytes {})", target, EntryBytes(target));
-    gOrig = reinterpret_cast<tUpdateSkelPose*>(init.InstallHook(kHookName, target, reinterpret_cast<void*>(&UpdateSkelPoseHook)));
-    if (gOrig == nullptr) {
+    if (!hook::Install(init, kHookName, reinterpret_cast<tUpdateSkelPose*>(target), &UpdateSkelPoseHook, gOrig)) {
         log::Error("arm IK: UpdateSkelPose hook failed");
         return false;
     }
@@ -283,25 +327,28 @@ bool Install(::LESDK::Initializer& init) {
     return true;
 }
 
-void Uninstall(::LESDK::Initializer& init) {
+bool Uninstall(::LESDK::Initializer& init, bool waitForCalls) {
     if (!gInstalled) {
-        return;
+        return true;
     }
     Clear();
-    init.UninstallHook(kHookName);
-    // A call already inside the detour finishes with the old code.
-    for (int i = 0; i < 200 && gInFlight.load() > 0; ++i) {
-        Sleep(1);
-    }
-    if (gInFlight.load() > 0) {
-        log::Warn("arm IK: {} UpdateSkelPose calls still in the hook at unhook", gInFlight.load());
+    if (!hook::Uninstall(init, kHookName)) {
+        return false;  // still live, and still calling gOrig
     }
     gInstalled = false;
-    gOrig = nullptr;
+    // A call already inside the detour finishes with the old code: this module must outlive it.
+    for (int i = 0; waitForCalls && i < 200 && gInFlight.load() > 0; ++i) {
+        Sleep(1);
+    }
+    bool const drained = gInFlight.load() == 0;
+    if (!drained && waitForCalls) {
+        log::Error("arm IK: {} UpdateSkelPose call(s) still in the hook 200 ms after unhooking", gInFlight.load());
+    }
     gBroken = false;
     gFirstWriteLogged = false;
     gFirstWriteReady = false;
     log::Info("unhooked {}", kHookName);
+    return drained;
 }
 
 bool Installed() {
@@ -310,12 +357,17 @@ bool Installed() {
 
 void Publish(Request request) {
     USkeletalMeshComponent const* const mesh = request.mesh;
+    UObject const* const owner = mesh != nullptr ? mesh->Owner : nullptr;
+    UObject const* const world = CurrentWorld();
     AcquireSRWLockExclusive(&gRequestLock);
-    if (gRequest.mesh != mesh) {
+    if (gRequest.mesh != mesh || gRequestOwner != owner) {
         gFirstWriteLogged = false;
         gFirstWriteReady = false;
     }
     gRequest = std::move(request);
+    gRequestOwner = owner;
+    gRequestWorld = world;
+    gRequestTimeMs = GetTickCount64();
     ReleaseSRWLockExclusive(&gRequestLock);
     gMesh.store(gBroken.load() ? nullptr : mesh, std::memory_order_release);
 }
@@ -324,6 +376,8 @@ void Clear() {
     gMesh.store(nullptr, std::memory_order_release);
     AcquireSRWLockExclusive(&gRequestLock);
     gRequest = {};
+    gRequestOwner = gRequestWorld = nullptr;
+    gRequestTimeMs = 0;
     ReleaseSRWLockExclusive(&gRequestLock);
 }
 

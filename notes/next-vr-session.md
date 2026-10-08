@@ -52,8 +52,10 @@ What Claude looks for:
 
 ## LE1 on the desktop (no headset): arm test
 
-Load a save on foot without holding the controllers, press `.`: the right hand should come up and
-stay in front of Shepard's chest (details in A0 below). `.` again hands the arm back.
+Start the game with no headset session (headset off or SteamVR closed: once Halcyon has shown a
+view or read a controller, the test stays off for that game session). Load a save on foot, press
+`.`: the right hand should come up and stay in front of Shepard's chest (details in A0 below).
+`.` again hands the arm back.
 
 ## Our own renderer (LE2/LE3, or LE1 built without Halcyon)
 
@@ -78,9 +80,10 @@ turns them all off. The rest are for testing:
 Checks the new arm writer (route 2, [research/14](../research/14-vrik.md)): the mod rewrites
 Shepard's arm bones after the animation each frame.
 
-1. Launch ME1 and load a save where Shepard stands on foot (any level). On LE1 just don't hold
-   the controllers; with our own renderer press `]` to turn VR off if SteamVR complains.
-2. Press `.` once. The log says `arm IK on (nothing to follow: desktop test, ...)`.
+1. Launch ME1 and load a save where Shepard stands on foot (any level). On LE1 (Halcyon's
+   renderer) start without a headset session (headset off or SteamVR closed); with our own
+   renderer press `]` to turn VR off if SteamVR complains.
+2. Press `.` once. The log says `arm IK on (no headset to follow: desktop test, ...)`.
 3. Within a second, Shepard's **right hand should come up and stay in front of his chest** at
    about shoulder height, with the elbow bent and out to the side. Watch from the normal
    third-person camera, and rotate the camera around him if the body hides it.

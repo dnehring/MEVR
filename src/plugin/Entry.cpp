@@ -1,6 +1,7 @@
 // ASI entry point, loaded by ME3Tweaks' LEBinkProxy through its SPI interface.
 // The host stays small and stable: version check, the engine tick hook, and the mod loader.
 
+#include "core/Hook.hpp"
 #include "core/Log.hpp"
 #include "core/Version.hpp"
 #include "plugin/ModLoader.hpp"
@@ -26,6 +27,8 @@ SPI_PLUGINSIDE_ASYNCATTACH;
 
 namespace {
 
+// Attach runs on LEBinkProxy's thread while the game runs: every original is written before its
+// hook goes live (core/Hook), so a detour entered at once never calls through null.
 using tGameEngineTick = void(UGameEngine* self, float deltaSeconds);
 tGameEngineTick* gGameEngineTickOrig = nullptr;
 
@@ -44,6 +47,9 @@ tExitProcess* gExitProcessOrig = nullptr;
 
 void WINAPI ExitProcessHook(UINT exitCode) {
     mevr::log::Info("game exiting (code {}); shutting the mod down first", exitCode);
+    // Nothing waits for other threads from here on, and the mod DLL stays mapped: the process is
+    // going away, and a thread caught inside a hook may never run again.
+    mevr::host::SetProcessExiting();
 #if defined(MEVR_WITH_HALCYON)
     mevr::host::halcyon::Shutdown();
 #endif
@@ -53,12 +59,8 @@ void WINAPI ExitProcessHook(UINT exitCode) {
 }
 
 void HookExitProcess(::LESDK::Initializer& init) {
-    void* const target = reinterpret_cast<void*>(GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "ExitProcess"));
-    if (target != nullptr) {
-        gExitProcessOrig = reinterpret_cast<tExitProcess*>(
-            init.InstallHook("ExitProcess", target, reinterpret_cast<void*>(&ExitProcessHook)));
-    }
-    if (gExitProcessOrig == nullptr) {
+    auto* const target = reinterpret_cast<tExitProcess*>(GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "ExitProcess"));
+    if (target == nullptr || !mevr::hook::Install(init, "ExitProcess", target, &ExitProcessHook, gExitProcessOrig)) {
         mevr::log::Warn("ExitProcess hook failed; XR may not shut down cleanly on exit");
     }
 }
@@ -104,9 +106,7 @@ SPI_IMPLEMENT_ATTACH
     // Load the mod before the tick hook goes live, so its first tick sees a started mod.
     mevr::host::Start(InterfacePtr);
 
-    gGameEngineTickOrig = reinterpret_cast<tGameEngineTick*>(init.InstallHook("UGameEngine::Tick",
-        reinterpret_cast<void*>(tickTarget), reinterpret_cast<void*>(&GameEngineTickHook)));
-    if (gGameEngineTickOrig == nullptr) {
+    if (!mevr::hook::Install(init, "UGameEngine::Tick", tickTarget, &GameEngineTickHook, gGameEngineTickOrig)) {
         mevr::log::Error("failed to hook UGameEngine::Tick; VR disabled");
         mevr::host::Stop();
         return true;
@@ -125,6 +125,8 @@ SPI_IMPLEMENT_ATTACH
 SPI_IMPLEMENT_DETACH
 {
     (void)InterfacePtr;
+    // LEBinkProxy detaches plugins as it unloads, i.e. at process exit: treat it like ExitProcess.
+    mevr::host::SetProcessExiting();
 #if defined(MEVR_WITH_HALCYON)
     mevr::host::halcyon::Shutdown();
 #endif

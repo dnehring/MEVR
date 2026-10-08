@@ -77,7 +77,7 @@ int Unwind(int angle, int reference);
 // of the head and controller poses) sits in the world for the view the player is seeing. Maps
 // controller poses into the world (hand aim, arm IK).
 struct TrackingFrame {
-    XrPosef head{};            // the head pose the view was built for (tracking space)
+    XrPosef head{};            // the head pose the view was built for (tracking space; AtOrigin: the origin)
     UnrealVector headWorld{};  // where that head is in the world (the view's eye midpoint)
     Basis rotation{};          // the world directions of tracking space's -Z, +X and +Y
     double unitsPerMeter = kUnitsPerMeter;
@@ -87,6 +87,15 @@ struct TrackingFrame {
 UnrealVector ToWorld(TrackingFrame const& frame, XrVector3f const& point);
 // A tracking-space orientation's axes in the world (an aim pose points along `forward`).
 Basis OrientationToWorld(TrackingFrame const& frame, XrQuaternionf const& orientation);
+
+// Where `frame` puts tracking space's origin in the world.
+UnrealVector OriginWorld(TrackingFrame const& frame);
+// `frame`, measured from tracking space's origin instead of from the head: the origin sits at
+// `originWorld`, the axes turn as in `frame`, at `unitsPerMeter`. The origin is where the head
+// was at the start or the last recenter (OpenXR LOCAL; Halcyon's recenter re-origins its app
+// space at the head), so it stands for the body: points mapped through this frame stay put when
+// only the head moves (leaning, 6DOF), whatever the renderer does with the view.
+TrackingFrame AtOrigin(TrackingFrame const& frame, UnrealVector const& originWorld, double unitsPerMeter);
 
 // Our renderer: tracking space is level and its forward is the body's yaw (the head yaw is added
 // on top in the view), and the view sits at `headWorld`.

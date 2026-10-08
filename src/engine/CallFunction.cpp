@@ -1,5 +1,6 @@
 #include "engine/CallFunction.hpp"
 
+#include "core/Hook.hpp"
 #include "core/Log.hpp"
 
 #include <LESDK/Headers.hpp>
@@ -48,9 +49,7 @@ bool Install(::LESDK::Initializer& init) {
         log::Error("failed to resolve UObject::CallFunction");
         return false;
     }
-    gCallFunctionOrig = reinterpret_cast<tCallFunction*>(init.InstallHook(kHookName,
-        reinterpret_cast<void*>(target), reinterpret_cast<void*>(&CallFunctionHook)));
-    if (gCallFunctionOrig == nullptr) {
+    if (!hook::Install(init, kHookName, target, &CallFunctionHook, gCallFunctionOrig)) {
         log::Error("failed to hook UObject::CallFunction");
         return false;
     }
@@ -59,14 +58,16 @@ bool Install(::LESDK::Initializer& init) {
     return true;
 }
 
-void Uninstall(::LESDK::Initializer& init) {
+bool Uninstall(::LESDK::Initializer& init) {
     if (!gInstalled) {
-        return;
+        return true;
     }
-    init.UninstallHook(kHookName);
+    if (!hook::Uninstall(init, kHookName)) {
+        return false;  // still live, and still calling gCallFunctionOrig
+    }
     gInstalled = false;
-    gCallFunctionOrig = nullptr;
     log::Info("unhooked UObject::CallFunction");
+    return true;
 }
 
 } // namespace mevr::engine::call_function

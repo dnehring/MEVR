@@ -72,6 +72,8 @@ target_compile_options(halcyon-le1 PRIVATE /W3 /utf-8 /Zi)
 target_link_libraries(halcyon-le1 PUBLIC d3d11 dxgi Shell32 Ole32)
 
 set(MEVR_CORE_SOURCES
+    src/core/Hook.cpp
+    src/core/Hook.hpp
     src/core/Log.cpp
     src/core/Log.hpp
     src/core/Window.cpp

@@ -169,6 +169,14 @@ simdutf `cd79a25`) and `reference/LEBinkProxy` (`1c435d8`), 2026-10-07. Paths ar
   "unsupported yet"), `FindPattern` (main module, max 100 bytes), `InstallHook(name, target,
   detour, &orig)`, `UninstallHook`. Hooks go through the **multihook fork of MinHook**, so several
   ASIs can hook the same target; hook names must be unique.
+  - **`&orig` is written before the hook is live** (checked 2026-10-08):
+    `SharedHookMngr::Install` (`src/spi/shared_hook_manager.h`) calls `MH_CreateHookEx`, which
+    stores the trampoline through `ppOriginal` (`minhook/include/MinHook.h`), and only then
+    `MH_EnableHookEx`. LExSDKv2's `Initializer::InstallHook` passes a local and returns it after
+    the SPI call, i.e. after the hook is enabled, and its `UninstallHook` drops the SPI's result.
+    Our `core/Hook` calls the SPI directly with the detour's own pointer and checks removals.
+  - **`SpiOnDetach` runs from the proxy's `DLL_PROCESS_DETACH`** (`src/dllmain.cpp`), i.e. at
+    process exit in practice.
 - **Required ASI exports:** `SpiSupportDecl`, `SpiShouldPreload`, `SpiShouldSpawnThread`,
   `SpiOnAttach`, `SpiOnDetach`. ASIs without them still get loaded ("RAW").
 - **Launcher bypass:** in `MassEffectLauncher.exe`, `-game N [-autoterminate]` launches
