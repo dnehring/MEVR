@@ -56,6 +56,7 @@ mevr::Hotkey gPositionKey{VK_OEM_2};    // /  6DOF: head position moves the view
 mevr::Hotkey gHandAimKey{VK_OEM_COMMA}; // ,  aim weapons with the right controller (on foot)
 mevr::Hotkey gArmIkKey{VK_OEM_PERIOD};  // .  VRIK arms: the engine's limb IK follows the controllers
 mevr::Hotkey gCinemaKey{VK_OEM_PLUS};   // =  conversations, cutscenes, menus on the virtual screen
+mevr::Hotkey gLockstepKey{VK_OEM_MINUS}; // -  lockstep on / off (frame pacing A/B)
 bool gAutoCinema = true;
 // The game mode can flicker (e.g. between conversation lines); switch the screen only once a
 // state has held this long, so every flicker isn't a layer change.
@@ -71,13 +72,16 @@ unsigned gHeartbeats = 0;
 
 // Lockstep: after each engine tick, wait until that frame is presented, so the head pose read
 // for the next frame is predicted for the display time it will actually be shown at (vrframework
-// guide 07). Pairing images with views doesn't depend on it (view_sync consumes one view per
+// guide 07). Off by default: in game it serialized the game and render threads, dropping 88 fps
+// to 50 (2026-10-08). The runtime reprojects each image from the pose it carries, so a pose
+// predicted a frame ahead (vr::output::SetLockstep) costs little. Pairing images with views doesn't depend on it (view_sync consumes one view per
 // Present). The timeout only guards against a frame that never presents: it's long enough that
 // an ordinary hitch never trips it, since a timed-out wait lets the game run a frame ahead.
 constexpr std::uint32_t kLockstepTimeoutMs = 100;
 // Several timeouts in a row mean a view whose frame never presented is stuck at the front of
 // the queue (every image would get the previous frame's view): drop it.
 constexpr unsigned kDriftTimeouts = 3;
+bool gLockstep = false;
 unsigned gLockstepWaits = 0;
 unsigned gLockstepTimeouts = 0;
 unsigned gConsecutiveTimeouts = 0;
@@ -89,7 +93,7 @@ double gLockstepWaitMs = 0.0;
 
 void WaitForThisFrameToPresent() {
     using namespace mevr;
-    if (!vr::output::WantsHeadTracking() || !vr::output::ShowsFrames() || !vr::view_sync::HasPendingFrame()) {
+    if (!gLockstep || !vr::output::WantsHeadTracking() || !vr::output::ShowsFrames() || !vr::view_sync::HasPendingFrame()) {
         gConsecutiveTimeouts = 0;
         return;
     }
@@ -204,6 +208,11 @@ void PollHotkeys() {
     }
     if (gPositionKey.Pressed()) {
         log::Info("/: 6DOF {}", game::head_tracking::TogglePositional() ? "on" : "off");
+    }
+    if (gLockstepKey.Pressed()) {
+        gLockstep = !gLockstep;
+        vr::output::SetLockstep(gLockstep);
+        log::Info("-: lockstep {}", gLockstep ? "on" : "off");
     }
     if (gCinemaKey.Pressed()) {
         gAutoCinema = !gAutoCinema;

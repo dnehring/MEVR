@@ -29,6 +29,10 @@ Mode GetMode();
 // While set, frames go to the virtual screen whatever the mode (e.g. during conversations and
 // cutscenes); the chosen mode comes back when it's cleared. Any thread.
 void SetScreenOverride(bool screen);
+// Whether the game thread waits for each frame to be presented before computing the next (see
+// mod/Mod.cpp). Without it the game runs a frame ahead, so the head is predicted one display
+// period further. Any thread.
+void SetLockstep(bool on);
 
 // True while the game camera should follow the head: VR running in HeadTracked mode.
 bool WantsHeadTracking();

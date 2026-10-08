@@ -28,6 +28,7 @@ constexpr float kScreenDistanceMeters = 2.0f;
 constexpr float kScreenWidthMeters = 2.4f;  // about 62 degrees wide at 2 m
 
 std::atomic<bool> gEnabled{true};
+std::atomic<bool> gLockstep{false};
 std::atomic<Mode> gMode{Mode::HeadTracked};
 std::atomic<bool> gScreenOverride{false};
 
@@ -214,8 +215,9 @@ void BeginNextFrame() {
         return;
     }
     // With the lockstep (game thread waits for each Present), the frame the game computes next
-    // is the one shown at this frame's display time.
-    XrTime const target = gFrame.predictedDisplayTime;
+    // is the one shown at this frame's display time. Without it the game is already computing
+    // that frame, so the one reading this pose is shown a display period later.
+    XrTime const target = gFrame.predictedDisplayTime + (gLockstep ? 0 : gFrame.predictedDisplayPeriod);
     XrPosef head{};
     if (gSession.LocateHead(target, head)) {
         view_sync::PublishHead(head);
@@ -351,6 +353,10 @@ Mode GetMode() {
 
 void SetScreenOverride(bool screen) {
     gScreenOverride = screen;
+}
+
+void SetLockstep(bool on) {
+    gLockstep = on;
 }
 
 bool WantsHeadTracking() {
