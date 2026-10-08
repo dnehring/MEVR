@@ -605,7 +605,8 @@ void ApplyGamepadInput() noexcept
     // Reads ONLY through g_origXInput (the trampoline set by InstallInputBlock) - the clean project
     // doesn't link the static xinput import, so there's no direct-call fallback. Neutral until installed.
     XINPUT_STATE xs = {};
-    const DWORD r = g_origXInput ? g_origXInput(0, &xs) : ERROR_DEVICE_NOT_CONNECTED;
+    DWORD r = g_origXInput ? g_origXInput(0, &xs) : ERROR_DEVICE_NOT_CONNECTED;
+    r = MELEVR::MevrBridge::MergeMotionControllers(0, &xs, r);   // [MEVR] Touch controllers drive the menu too
     if (r != ERROR_SUCCESS) ZeroMemory(&xs, sizeof(xs));
     const unsigned short pad = xs.Gamepad.wButtons;
     const float lx = static_cast<float>(xs.Gamepad.sThumbLX) / 32767.0f;
