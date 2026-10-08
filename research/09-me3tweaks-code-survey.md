@@ -155,7 +155,8 @@ simdutf `cd79a25`) and `reference/LEBinkProxy` (`1c435d8`), 2026-10-07. Paths ar
 ## 6. LEBinkProxy (the loader)
 
 - **Build:** an MSBuild v143 C++17 proxy for `bink2w64.dll`, forwarding to
-  `bink2w64_original.dll`. Logs to `bink2w64_proxy.log`.
+  `bink2w64_original.dll`. Logs to `bink2w64_proxy.log`, which in practice lands in
+  **`Win64/Logs/`** (observed 2026-10-07).
 - **Load order** (`dllmain.cpp`), on a new thread at attach:
   1. `MH_Initialize`.
   2. Detect the game from the exe name.

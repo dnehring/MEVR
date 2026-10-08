@@ -4,6 +4,9 @@ reference/
 # Raw mod downloads (extracted copies we use live under src/)
 mods/
 
+# Local ME3Tweaks Mod Manager install
+mod-manager/
+
 # Build output
 build/
 out/
