@@ -30,8 +30,9 @@ Checks the new render-only head path on the monitor.
 4. Press `\` to switch to the **camera** path, the old behaviour: the camera boom swings around
    Shepard. Compare the smoothness of the two paths. Press `\` twice more to return to
    **render**.
-5. With the sweep running, walk forward with the left stick or W. On the render path you should
-   move where the view points (stick only; the keyboard isn't rotated).
+5. With the sweep running, walk forward with a gamepad's left stick. On the render path, during
+   on-foot gameplay, you should move where the view points. Only the stick is rotated, not the
+   keyboard, and not in conversations, menus, wheels, the galaxy map or the Mako.
 6. Press `'` again to turn the simulator off, then quit.
 
 What Claude looks for in the log:
@@ -58,7 +59,8 @@ What Claude looks for in the log:
    - grips: LB / RB;
    - left menu: pause.
 
-   Does pushing forward move where you look?
+   Does pushing forward move where you look? It should only do so on foot; check that the
+   dialogue wheel isn't rotated.
 5. **6DOF:** press `/` and lean or crouch. Does the view move naturally, at a believable scale?
 6. **Stereo:** press `;`. Is there depth? Comfortable, or ghosting and flicker on movement? Is
    the scale right? Press `;` again to compare with mono.
@@ -68,7 +70,8 @@ What Claude looks for in the log:
 
 What Claude looks for:
 - queue depth all at 1;
-- lockstep timeouts about 0;
+- lockstep timeouts about 0, and drift recoveries 0;
+- `frames tagged (N without a player view)`: N should be about 0 in gameplay;
 - present intervals tight around 11.1 ms (90 Hz);
 - fps now that VSync is off;
 - `controller actions ready`;

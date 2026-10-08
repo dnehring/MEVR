@@ -273,6 +273,25 @@ Built while the user was away from VR, behind toggles so the M3.2 A/B test stays
   `SetFrameRate(1000)` through ProcessEvent, then reads `FrameRate` back. It disables itself if
   the call has no effect (open question: does LE's ProcessEvent run natives?).
 
+**Independent review** (a subagent read the whole 151c02e..9402a30 diff). No crash paths, but
+real issues, all fixed in `6a5f283`:
+- **View pairing.** After a lockstep timeout the newest view could be given to the previous
+  image (a one-frame pose error; eyes swapped in stereo).
+  - Now each game Present consumes exactly one view, oldest first, capped at UE3's one-frame
+    lead.
+  - Drift recovery: three timeouts in a row drop a stale view.
+- **No player view, no image.** If the player-view call site didn't match, VR would have gone
+  black. Now any tick without a player view is still tagged (head-locked), as before.
+- **FOV.** The FOV tag could disagree with the rendered FOV. It's now snapshotted once per view.
+- **Stick rotation** was applied everywhere. Now it applies only on foot (SFXGameModeManager
+  mode 0).
+- **Reflection scan.** A full GObjects walk in one tick could itself stutter. It now runs in
+  20k slices.
+- **Self-checks** could misfire at startup. They now count only once the hooks are live, and
+  need two windows in a row.
+- **Smaller fixes:** mono fallback when eye resources fail; button-only controller input counts
+  as active; INI line endings.
+
 ### Still to do
 
 - Retest with the fixes. Check image correctness (colors and brightness vs the monitor).
