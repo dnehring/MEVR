@@ -1,0 +1,13 @@
+# Third-party repos cloned for reading
+reference/
+
+# Build output
+build/
+out/
+.vs/
+*.user
+
+# Captures and dumps
+*.rdc
+*.dmp
+*.log
