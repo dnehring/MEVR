@@ -26,4 +26,12 @@ Quat GripTrim(double pitchDegrees, double yawDegrees, double rollDegrees);
 // expressed in the same space as `grip`.
 Quat HandFromGrip(Quat grip, Quat trim, Quat anatomyInHand);
 
+// The hand bone's rotation that points a held object's barrel along `aim` and keeps the object's
+// up as close to `up` as the barrel allows (a gun follows a controller's aim ray, upright with
+// the controller). `barrelInHand` and `upInHand` are the object's barrel and up directions in the
+// hand bone's own axes (fixed while it's held); `aim` and `up` say where they should point, in
+// the space the result is in (e.g. component space). Any lengths. Nullopt if a direction is zero
+// or its up is within a few degrees of its barrel.
+std::optional<Quat> HandForBarrel(Vec3 barrelInHand, Vec3 upInHand, Vec3 aim, Vec3 up);
+
 } // namespace mevr::ik

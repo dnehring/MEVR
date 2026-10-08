@@ -88,6 +88,12 @@ UnrealVector ToWorld(TrackingFrame const& frame, XrVector3f const& point);
 // A tracking-space orientation's axes in the world (an aim pose points along `forward`).
 Basis OrientationToWorld(TrackingFrame const& frame, XrQuaternionf const& orientation);
 
+// The inverse of ToWorld: a world point in tracking space (meters, OpenXR axes). A frame with no
+// scale (unitsPerMeter not positive) maps everything to the head.
+XrVector3f ToTracking(TrackingFrame const& frame, UnrealVector const& world);
+// A world direction in tracking space (OpenXR axes), unit length; a zero direction stays zero.
+XrVector3f DirectionToTracking(TrackingFrame const& frame, UnrealVector const& direction);
+
 // Where `frame` puts tracking space's origin in the world.
 UnrealVector OriginWorld(TrackingFrame const& frame);
 // `frame`, measured from tracking space's origin instead of from the head: the origin sits at
