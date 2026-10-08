@@ -35,13 +35,15 @@ Targets Current(std::optional<engine::UnrealVector> const& headBone) {
         return targets;
     }
     targets.source = Source::Controllers;
-    engine::TrackingFrame body = *anchor;
-    if (headBone) {
-        body.headWorld = *headBone;  // hands around Shepard's head, not the camera
-    }
-    // Hands relative to the body at the body's own scale; a renderer may scale head motion
-    // differently (Halcyon's lean). [verify in headset: reach matches Shepard's arms]
-    body.unitsPerMeter = engine::kUnitsPerMeter;
+    // The controllers are measured from tracking space's origin, not from the live head: the
+    // origin is where the head was at the start or the last recenter, so it stands for Shepard's
+    // head bone (hands around Shepard, not the camera), and leaning or 6DOF moves only the view,
+    // never the hands. Without a head bone, around where the view puts the origin. The anchor
+    // still gives the turn into the world.
+    engine::UnrealVector const origin = headBone ? *headBone : engine::OriginWorld(*anchor);
+    // At the body's own scale; a renderer may scale head motion differently (Halcyon's lean).
+    // [verify in headset: reach matches Shepard's arms]
+    engine::TrackingFrame const body = engine::AtOrigin(*anchor, origin, engine::kUnitsPerMeter);
     for (int side : {0, 1}) {
         vr::controllers::Hand const& hand = side == 0 ? controllers.left : controllers.right;
         if (!hand.gripValid) {

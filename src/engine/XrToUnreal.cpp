@@ -170,6 +170,16 @@ Basis OrientationToWorld(TrackingFrame const& frame, XrQuaternionf const& orient
     return Compose(frame.rotation, ToBasis(orientation));
 }
 
+UnrealVector OriginWorld(TrackingFrame const& frame) {
+    return ToWorld(frame, XrVector3f{0.0f, 0.0f, 0.0f});
+}
+
+TrackingFrame AtOrigin(TrackingFrame const& frame, UnrealVector const& originWorld, double unitsPerMeter) {
+    XrPosef origin{};
+    origin.orientation = {0.0f, 0.0f, 0.0f, 1.0f};
+    return {origin, originWorld, frame.rotation, unitsPerMeter};
+}
+
 TrackingFrame FromBodyYaw(UnrealVector const& headWorld, int yawUnits, XrPosef const& head, double unitsPerMeter) {
     return {head, headWorld, ToBasis(UnrealRotation{0, yawUnits, 0}), unitsPerMeter};
 }

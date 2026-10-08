@@ -216,6 +216,46 @@ void TestTrackingFrame() {
     CHECK(NearV(moved.headWorld, {90.0, 200.0, 305.0}));
 }
 
+// Hand targets (game/HandTargets): controllers measured from tracking space's origin, placed at
+// Shepard's head bone. Leaning must move the view, not the hands.
+void TestHandFrame() {
+    using namespace mevr::engine;
+    // Halcyon-style views of one camera (facing world +X), head-locked, 150 units per meter of
+    // lean: upright at the origin, then leaning 0.2 m forward with the view moved 30 units along.
+    UnrealRotation const camera{0, 0, 0};
+    XrPosef upright{};
+    upright.orientation = {0, 0, 0, 1};
+    XrPosef leaning = upright;
+    leaning.position = {0.0f, 0.0f, -0.2f};
+    TrackingFrame const viewUpright = FromCameraView({0.0, 0.0, 0.0}, camera, {}, {0.0, 0.0, 0.0}, upright, 150.0);
+    TrackingFrame const viewLeaning = FromCameraView({0.0, 0.0, 0.0}, camera, {}, {30.0, 0.0, 0.0}, leaning, 150.0);
+    CHECK(NearV(viewLeaning.headWorld, {30.0, 0.0, 0.0}));
+    // The view puts the origin in the same place either way.
+    CHECK(NearV(OriginWorld(viewUpright), {0.0, 0.0, 0.0}));
+    CHECK(NearV(OriginWorld(viewLeaning), {0.0, 0.0, 0.0}, 1e-3));
+
+    UnrealVector const headBone{100.0, 20.0, 160.0};
+    XrVector3f const grip{0.2f, -0.4f, -0.3f};  // still: right, below and ahead of the origin
+    UnrealVector const handUpright = ToWorld(AtOrigin(viewUpright, headBone, kUnitsPerMeter), grip);
+    UnrealVector const handLeaning = ToWorld(AtOrigin(viewLeaning, headBone, kUnitsPerMeter), grip);
+    CHECK(NearV(handUpright, handLeaning, 1e-3));
+    CHECK(NearV(handUpright, {100.0 + 30.0, 20.0 + 20.0, 160.0 - 40.0}, 1e-3));  // 1 m = 100 units around the bone
+    // Measured from the live head instead (the old mapping), the still hand moved 20 units back.
+    TrackingFrame fromHead = viewLeaning;
+    fromHead.headWorld = headBone;
+    fromHead.unitsPerMeter = kUnitsPerMeter;
+    CHECK(NearD(ToWorld(fromHead, grip).x - handUpright.x, -20.0, 1e-3));
+
+    // The turn into the world is the view's, untouched: a turned camera turns the hands about the bone.
+    TrackingFrame const turned = FromCameraView({0.0, 0.0, 0.0}, UnrealRotation{0, Units(90), 0}, {}, {0.0, 0.0, 0.0},
+        upright, 150.0);
+    TrackingFrame const body = AtOrigin(turned, headBone, kUnitsPerMeter);
+    CHECK(NearB(body.rotation, turned.rotation));
+    CHECK(NearV(ToWorld(body, grip), {100.0 - 20.0, 20.0 + 30.0, 160.0 - 40.0}, 1e-3));
+    XrQuaternionf const q = YawPitch(25, -10);
+    CHECK(NearB(OrientationToWorld(body, q), OrientationToWorld(turned, q)));
+}
+
 void TestGamepad() {
     using namespace mevr::game::gamepad;
     mevr::vr::controllers::State state;
@@ -740,6 +780,7 @@ int main() {
     TestHeadSim();
     TestOffsets();
     TestTrackingFrame();
+    TestHandFrame();
     TestGamepad();
     if (gFailures == 0) {
         std::printf("all tests passed\n");
