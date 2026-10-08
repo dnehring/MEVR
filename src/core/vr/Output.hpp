@@ -30,4 +30,7 @@ Mode GetMode();
 // True while the game camera should follow the head: VR running in HeadTracked mode.
 bool WantsHeadTracking();
 
+// Logs and resets frame-pacing counters (queue depth at present, frame interval spread).
+void LogStats();
+
 } // namespace mevr::vr::output

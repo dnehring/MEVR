@@ -6,6 +6,7 @@
 #include "core/Hotkey.hpp"
 #include "core/Log.hpp"
 #include "core/vr/Output.hpp"
+#include "core/vr/ViewSync.hpp"
 #include "engine/Engine.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "game/HeadTracking.hpp"
@@ -14,6 +15,7 @@
 #include <LESDK/Init.hpp>
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 
 namespace {
@@ -33,6 +35,33 @@ double gRetryTimer = kStartupRetrySeconds;  // first attempt on the first tick
 double gHeartbeatElapsed = 0.0;
 unsigned gHeartbeatFrames = 0;
 unsigned gHeartbeats = 0;
+
+// Lockstep: after each engine tick, wait until that frame is presented so the next frame's
+// camera pairs with exactly one image (vrframework guide 07). The timeout keeps a frame that
+// never presents (loading, minimized) from stalling the game.
+constexpr std::uint32_t kLockstepTimeoutMs = 30;
+unsigned gLockstepWaits = 0;
+unsigned gLockstepTimeouts = 0;
+double gLockstepWaitMs = 0.0;
+
+void WaitForThisFrameToPresent() {
+    using namespace mevr;
+    if (!vr::output::WantsHeadTracking() || !vr::view_sync::HasPendingFrame()) {
+        return;
+    }
+    LARGE_INTEGER start{};
+    LARGE_INTEGER end{};
+    LARGE_INTEGER frequency{};
+    QueryPerformanceCounter(&start);
+    bool const presented = vr::view_sync::WaitForPresent(kLockstepTimeoutMs);
+    QueryPerformanceCounter(&end);
+    QueryPerformanceFrequency(&frequency);
+    ++gLockstepWaits;
+    gLockstepWaitMs += static_cast<double>(end.QuadPart - start.QuadPart) * 1000.0 / frequency.QuadPart;
+    if (!presented) {
+        ++gLockstepTimeouts;
+    }
+}
 
 // Script-level hooks need Engine.u/SFXGame.u loaded, which happens after attach. Handlers are
 // registered before the ProcessEvent hook goes live so the table never changes under it.
@@ -79,6 +108,13 @@ void Heartbeat() {
     if (gHooked) {
         game::head_tracking::LogStats();
     }
+    vr::output::LogStats();
+    if (gLockstepWaits > 0) {
+        log::Info("    lockstep: {} waits (game thread {}), avg {:.2f} ms, {} timeouts",
+            gLockstepWaits, GetCurrentThreadId(), gLockstepWaitMs / gLockstepWaits, gLockstepTimeouts);
+    }
+    gLockstepWaits = gLockstepTimeouts = 0;
+    gLockstepWaitMs = 0.0;
 }
 
 } // namespace
@@ -113,6 +149,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
             TryInstallScriptHooks();
         }
     }
+    WaitForThisFrameToPresent();
 
     gHeartbeatElapsed += deltaSeconds;
     ++gHeartbeatFrames;

@@ -191,6 +191,23 @@ Design (2026-10-07):
 - Vertical coverage is still limited by the 16:9 backbuffer (about 75° vertical at about 108°
   horizontal). Filling it needs a squarer render size later.
 
+### M3.1 test: FOV works; micro-stutter found
+
+- **FOV:** the user confirmed the image fills most of the view and the world stays put.
+  - The headset FOV override is honored, and our horizontal-FOV tagging matches what the game
+    renders.
+- **Problem:** "y-axis movement incredibly jagged, very bad micro-stutters."
+- **Diagnosis** (vrframework guide 07): the image/pose pairing *assumed* one tick per Present
+  in FIFO order. Any slip means every later image carries a neighboring frame's pose, which
+  shows as judder during head motion.
+- **Fix:**
+  - **Lockstep.** After each engine tick, the game thread waits (30 ms timeout) until that
+    frame has presented. At Present, the newest queued view is exactly the frame being shown.
+    The head is predicted for the very next display time (the old +1 period is gone).
+  - **Counters** in every heartbeat: presents and render thread id, present interval min/max,
+    queue depth histogram (should be all depth 1), lockstep waits, average wait, timeouts.
+- Retest pending.
+
 ### Still to do
 
 - Retest with the fixes. Check image correctness (colors and brightness vs the monitor).

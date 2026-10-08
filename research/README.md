@@ -16,6 +16,7 @@ and what is still unverified. The [docs/](../docs) folder holds the conclusions.
 | [09-me3tweaks-code-survey.md](09-me3tweaks-code-survey.md) | LExASIs, LExSDKv2 and LEBinkProxy, verified from cloned source | 2026-10-07 |
 | [10-vr-code-survey.md](10-vr-code-survey.md) | REFramework VR internals (extraction notes) and Overlord architecture, from cloned source | 2026-10-07 |
 | [11-massfps.md](11-massfps.md) | MassFPS (LE1 first-person camera mod): permissions, how it works, what to keep or change for VR | 2026-10-07 |
+| [12-vr-frameworks-survey.md](12-vr-frameworks-survey.md) | Any framework to build on instead? UEVR, VorpX, Geo-11/3Dmigoto, **vrframework** (MIT guide + core) | 2026-10-07 |
 | [sources.md](sources.md) | Every URL consulted | 2026-10-07 |
 
 ## Conventions

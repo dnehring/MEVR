@@ -11,6 +11,7 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <cstdint>
 #include <numbers>
 #include <optional>
 
@@ -43,6 +44,34 @@ bool gFrameBegun = false;
 XrFrameState gFrame{XR_TYPE_FRAME_STATE};
 std::optional<view_sync::RenderedView> gLastRendered;
 float gPublishedFov = 0.0f;  // last headset FOV logged
+
+// Pacing counters (render thread writes, game thread reads and resets in LogStats).
+std::atomic<unsigned> gDepthCounts[4]{};  // queue depth at present: 0, 1, 2, 3+
+std::atomic<unsigned> gPresents{0};
+std::atomic<std::int64_t> gIntervalMinUs{INT64_MAX};
+std::atomic<std::int64_t> gIntervalMaxUs{0};
+std::atomic<DWORD> gPresentThread{0};
+LARGE_INTEGER gLastPresent{};
+
+void RecordPresentTiming() {
+    LARGE_INTEGER now{};
+    LARGE_INTEGER frequency{};
+    QueryPerformanceCounter(&now);
+    QueryPerformanceFrequency(&frequency);
+    if (gLastPresent.QuadPart != 0) {
+        std::int64_t const us = (now.QuadPart - gLastPresent.QuadPart) * 1'000'000 / frequency.QuadPart;
+        if (us < gIntervalMinUs) gIntervalMinUs = us;
+        if (us > gIntervalMaxUs) gIntervalMaxUs = us;
+    }
+    gLastPresent = now;
+    gPresents.fetch_add(1, std::memory_order_relaxed);
+    gPresentThread = GetCurrentThreadId();
+}
+
+// Every Present ends a game frame, whatever path OnPresent takes; release the lockstep wait.
+struct PresentScope {
+    ~PresentScope() { view_sync::NotifyPresented(); }
+};
 
 // A swapchain from an older session was destroyed along with that session.
 void ReleaseImage() {
@@ -111,9 +140,9 @@ void BeginNextFrame() {
     if (!gFrameBegun) {
         return;
     }
-    // The game thread is computing the frame after the one just begun (UE3 renders a frame
-    // behind the game thread), so predict one display period further out.
-    XrTime const target = gFrame.predictedDisplayTime + gFrame.predictedDisplayPeriod;
+    // With the lockstep (game thread waits for each Present), the frame the game computes next
+    // is the one shown at this frame's display time.
+    XrTime const target = gFrame.predictedDisplayTime;
     XrPosef head{};
     if (gSession.LocateHead(target, head)) {
         view_sync::PublishHead(head);
@@ -181,7 +210,22 @@ bool WantsHeadTracking() {
     return gEnabled && gSessionRunning && gMode == Mode::HeadTracked;
 }
 
+void LogStats() {
+    unsigned const presents = gPresents.exchange(0);
+    unsigned d0 = gDepthCounts[0].exchange(0), d1 = gDepthCounts[1].exchange(0);
+    unsigned d2 = gDepthCounts[2].exchange(0), d3 = gDepthCounts[3].exchange(0);
+    std::int64_t const minUs = gIntervalMinUs.exchange(INT64_MAX);
+    std::int64_t const maxUs = gIntervalMaxUs.exchange(0);
+    if (presents == 0) {
+        return;
+    }
+    log::Info("    presents {} (render thread {}), interval {:.2f}-{:.2f} ms, queue depth 0:{} 1:{} 2:{} 3+:{}",
+        presents, static_cast<unsigned>(gPresentThread), minUs / 1000.0, maxUs / 1000.0, d0, d1, d2, d3);
+}
+
 void OnPresent(IDXGISwapChain* swapChain) {
+    PresentScope const presentScope;
+    RecordPresentTiming();
     if (!gEnabled) {
         TearDownXr();
         return;
@@ -263,9 +307,11 @@ void OnPresent(IDXGISwapChain* swapChain) {
 
     // The pose this image was rendered with (head-tracked mode).
     if (mode == Mode::HeadTracked) {
-        if (auto rendered = view_sync::PopRendered()) {
+        std::size_t depth = 0;
+        if (auto rendered = view_sync::TakeForPresent(depth)) {
             gLastRendered = rendered;
         }
+        gDepthCounts[std::min<std::size_t>(depth, 3)].fetch_add(1, std::memory_order_relaxed);
     }
 
     XrCompositionLayerQuad quad{};

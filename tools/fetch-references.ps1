@@ -17,6 +17,7 @@ $repos = @(
     @{ Name = 'REFramework'; Url = 'https://github.com/praydog/REFramework.git';  Submodules = $false }  # MIT: OpenXR/D3D11 code source
     @{ Name = 'LExASIs';     Url = 'https://github.com/ME3Tweaks/LExASIs.git';    Submodules = $true  }  # no license: patterns; pulls LExSDKv2
     @{ Name = 'LEBinkProxy'; Url = 'https://github.com/ME3Tweaks/LEBinkProxy.git'; Submodules = $false }  # no license: the ASI loader
+    @{ Name = 'vrframework'; Url = 'https://github.com/elliotttate/vrframework.git'; Submodules = $false }  # MIT: VR porting guides + core scaffold
 )
 
 foreach ($r in $repos) {

@@ -18,6 +18,14 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
 - LExASIs and LEBinkProxy have no license: read for patterns; ask ME3Tweaks before copying.
 - LExSDKv2: use as a git submodule only, never vendored into `src/`.
 
+## Before each VR milestone
+
+Read the matching chapter of `reference/vrframework/guides/` (MIT, a 17-part guide on adding
+VR to closed engines): 07 frame timing, 08 stereo, 09 camera math, 10 submission and TAA,
+11 HUD, 12 input, 14 engine quirks. Don't re-derive what it already explains.
+`research/12-vr-frameworks-survey.md` explains why we keep our own small core rather than
+switching frameworks.
+
 ## Layout and workflow
 
 - `research/`: sourced findings. Record new findings here with sources. Mark unverified UE3
