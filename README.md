@@ -56,7 +56,7 @@ isn't writable. Undeploy with `tools/deploy-asi.ps1 -Remove`.
 | `research/`  | Sourced findings, hypotheses to verify, all URLs ([index](research/README.md)) |
 | `tools/`     | `inventory-game.ps1` (records the game install), `deploy-asi.ps1` (copies the plugin into the game), `extract-m3m.ps1` (unpacks ME3MM merge mods), `fetch-references.ps1` (clones reference repos) |
 | `notes/`     | Generated inventories and reverse-engineering notes |
-| `external/`  | Git submodules: LExSDKv2 (`RVA` branch) |
+| `external/`  | Git submodules: LExSDKv2 (`RVA` branch), OpenXR-SDK (release 1.1.63). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) |
 | `reference/` | Third-party repos for reading only (gitignored; recreate with `tools/fetch-references.ps1`) |
 | `mods/`      | Raw mod downloads (gitignored) |
 | `src/core/`, `src/engine/`, `src/plugin/` | The native plugin: game-agnostic core, UE3/LExSDK bridge, loader entry point |

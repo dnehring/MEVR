@@ -2,3 +2,6 @@
 	path = external/LExSDKv2
 	url = https://github.com/llamathings/LExSDKv2.git
 	branch = RVA
+[submodule "external/OpenXR-SDK"]
+	path = external/OpenXR-SDK
+	url = https://github.com/KhronosGroup/OpenXR-SDK.git

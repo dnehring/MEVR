@@ -4,6 +4,7 @@
 // into the host (monolithic release build) or a separate DLL the host hot-reloads (dev build).
 
 class ISharedProxyInterface;
+struct IDXGISwapChain;
 
 namespace mevr {
 
@@ -26,9 +27,14 @@ struct HostServices {
 MEVR_MOD_API bool MevrModStartup(ISharedProxyInterface* spi, mevr::HostServices const* host);
 // Called by the host every UGameEngine::Tick, after the engine's own tick.
 MEVR_MOD_API void MevrModTick(float deltaSeconds);
-// Removes every hook the mod installed. The host calls this before unloading the DLL.
+// Render thread, before each IDXGISwapChain::Present. The host guarantees this isn't running
+// when MevrModShutdown is called.
+MEVR_MOD_API void MevrModOnPresent(IDXGISwapChain* swapChain);
+// Removes every hook the mod installed and releases its XR/D3D resources. The host calls this
+// before unloading the DLL.
 MEVR_MOD_API void MevrModShutdown();
 
 using MevrModStartupFn = decltype(&MevrModStartup);
 using MevrModTickFn = decltype(&MevrModTick);
+using MevrModOnPresentFn = decltype(&MevrModOnPresent);
 using MevrModShutdownFn = decltype(&MevrModShutdown);

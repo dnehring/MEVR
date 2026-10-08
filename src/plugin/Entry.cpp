@@ -4,6 +4,7 @@
 #include "core/Log.hpp"
 #include "core/Version.hpp"
 #include "plugin/ModLoader.hpp"
+#include "plugin/PresentHook.hpp"
 
 #include <LESDK/Headers.hpp>
 #include <LESDK/Init.hpp>
@@ -65,6 +66,10 @@ SPI_IMPLEMENT_ATTACH
         mevr::log::Error("failed to hook UGameEngine::Tick; VR disabled");
         mevr::host::Stop();
         return true;
+    }
+    // Owned by the host so the render thread never runs code from an unloading mod DLL.
+    if (!mevr::host::present::Install(init)) {
+        mevr::log::Error("present hook failed; VR output disabled");
     }
     mevr::log::Info("host attached");
     return true;

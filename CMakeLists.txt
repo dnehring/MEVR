@@ -25,6 +25,15 @@ set(LESDK_WITH_SAMPLES OFF)
 set(LESDK_WITH_TESTS OFF)
 add_subdirectory(external/LExSDKv2)
 
+# Khronos OpenXR loader (Apache-2.0), linked statically into the mod.
+set(DYNAMIC_LOADER OFF)
+set(BUILD_API_LAYERS OFF)
+set(BUILD_TESTS OFF)
+set(BUILD_CONFORMANCE_TESTS OFF)
+set(BUILD_SDK_TESTS OFF)
+set(BUILD_ALL_EXTENSIONS OFF)
+add_subdirectory(external/OpenXR-SDK EXCLUDE_FROM_ALL)
+
 set(MEVR_CORE_SOURCES
     src/core/Log.cpp
     src/core/Log.hpp
@@ -37,9 +46,17 @@ set(MEVR_HOST_SOURCES
     src/plugin/Entry.cpp
     src/plugin/ModLoader.cpp
     src/plugin/ModLoader.hpp
+    src/plugin/PresentHook.cpp
+    src/plugin/PresentHook.hpp
 )
 
 set(MEVR_MOD_SOURCES
+    src/core/d3d11/Blit.cpp
+    src/core/d3d11/Blit.hpp
+    src/core/vr/VirtualScreen.cpp
+    src/core/vr/VirtualScreen.hpp
+    src/core/xr/Session.cpp
+    src/core/xr/Session.hpp
     src/engine/Engine.cpp
     src/engine/Engine.hpp
     src/engine/Objects.cpp
@@ -54,7 +71,7 @@ set(MEVR_MOD_SOURCES
 
 function(mevr_configure target game)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_link_libraries(${target} PRIVATE LESDK-${game} version)
+    target_link_libraries(${target} PRIVATE LESDK-${game} version d3d11 dxgi)
     target_compile_definitions(${target} PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
     # Same warning policy as the SDK's own consumers; the generated headers need /permissive.
     target_compile_options(${target} PRIVATE /W4 /WX /permissive /utf-8 /Zc:__cplusplus /Zi
@@ -70,12 +87,14 @@ function(mevr_add_plugin game)
         set(mod MEVR-${game}-mod)
         add_library(${mod} SHARED ${MEVR_MOD_SOURCES} ${MEVR_CORE_SOURCES})
         mevr_configure(${mod} ${game})
+        target_link_libraries(${mod} PRIVATE OpenXR::openxr_loader d3dcompiler)
         target_compile_definitions(${mod} PRIVATE MEVR_MOD_DLL)
         set_target_properties(${mod} PROPERTIES OUTPUT_NAME "${game}MEVR_mod")
         # Building the host target builds the mod too.
         add_dependencies(${host} ${mod})
     else ()
         add_library(${host} SHARED ${MEVR_HOST_SOURCES} ${MEVR_CORE_SOURCES} ${MEVR_MOD_SOURCES})
+        target_link_libraries(${host} PRIVATE OpenXR::openxr_loader d3dcompiler)
         target_compile_definitions(${host} PRIVATE MEVR_MONOLITHIC)
     endif ()
     mevr_configure(${host} ${game})

@@ -2,6 +2,7 @@
 
 #include "core/Log.hpp"
 #include "mod/ModApi.hpp"
+#include "plugin/PresentHook.hpp"
 
 #include <LESDK/Headers.hpp>
 
@@ -30,6 +31,9 @@ bool gModActive = false;
 void Start(ISharedProxyInterface* spi) {
     gSpi = spi;
     gModActive = MevrModStartup(gSpi, &gServices);
+    if (gModActive) {
+        present::SetCallback(&MevrModOnPresent);
+    }
 }
 
 void Tick(float deltaSeconds) {
@@ -40,6 +44,7 @@ void Tick(float deltaSeconds) {
 
 void Stop() {
     if (gModActive) {
+        present::SetCallback(nullptr);
         MevrModShutdown();
         gModActive = false;
     }
@@ -111,6 +116,8 @@ void Unload() {
     if (gMod.module == nullptr) {
         return;
     }
+    // Waits for the render thread to leave the mod's present callback.
+    present::SetCallback(nullptr);
     if (gMod.shutdown != nullptr) {
         gMod.shutdown();
     }
@@ -138,7 +145,8 @@ LoadResult Load() {
     auto const startup = reinterpret_cast<MevrModStartupFn>(GetProcAddress(module, "MevrModStartup"));
     auto const tick = reinterpret_cast<MevrModTickFn>(GetProcAddress(module, "MevrModTick"));
     auto const shutdown = reinterpret_cast<MevrModShutdownFn>(GetProcAddress(module, "MevrModShutdown"));
-    if (startup == nullptr || tick == nullptr || shutdown == nullptr) {
+    auto const onPresent = reinterpret_cast<MevrModOnPresentFn>(GetProcAddress(module, "MevrModOnPresent"));
+    if (startup == nullptr || tick == nullptr || shutdown == nullptr || onPresent == nullptr) {
         log::Error("mod DLL is missing its entry points");
         FreeLibrary(module);
         return LoadResult::Failed;
@@ -149,6 +157,7 @@ LoadResult Load() {
         return LoadResult::Failed;
     }
     gMod = {module, shadow, tick, shutdown};
+    present::SetCallback(onPresent);
     log::Info("mod generation {} loaded from {}", gGeneration, gSourcePath.string());
     return LoadResult::Loaded;
 }

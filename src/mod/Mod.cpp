@@ -4,6 +4,7 @@
 #include "mod/ModApi.hpp"
 
 #include "core/Log.hpp"
+#include "core/vr/VirtualScreen.hpp"
 #include "engine/Engine.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "game/CameraTest.hpp"
@@ -11,6 +12,7 @@
 #include <LESDK/Headers.hpp>
 #include <LESDK/Init.hpp>
 
+#include <atomic>
 #include <memory>
 
 namespace {
@@ -19,7 +21,7 @@ constexpr double kStartupRetrySeconds = 1.0;
 constexpr double kHeartbeatSeconds = 5.0;
 
 std::unique_ptr<::LESDK::Initializer> gInit;
-bool gActive = false;
+std::atomic<bool> gActive{false};  // read on the render thread too
 bool gHooked = false;  // ProcessEvent hook live (after the script packages loaded)
 
 double gRetryTimer = kStartupRetrySeconds;  // first attempt on the first tick
@@ -96,9 +98,17 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     }
 }
 
+MEVR_MOD_API void MevrModOnPresent(IDXGISwapChain* swapChain) {
+    if (gActive) {
+        mevr::vr::virtual_screen::OnPresent(swapChain);
+    }
+}
+
 MEVR_MOD_API void MevrModShutdown() {
     using namespace mevr;
     gActive = false;
+    // The host has already detached the present callback, so the render thread is out.
+    vr::virtual_screen::Shutdown();
     if (gInit && gHooked) {
         engine::process_event::Uninstall(*gInit);
     }
