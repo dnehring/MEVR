@@ -1,34 +1,59 @@
 # Next test session
 
-What to check next time, in order. The log is
-`<ME1>\Binaries\Win64\Logs\LE1MEVR.log`; Claude reads it after each step, so just note what
-you saw and roughly when.
+LE1 now renders VR with Halcyon's renderer (since 2026-10-08), with our motion controllers, hand
+aim and arm IK on top. Logs, both read by Claude after each step (just note what you saw and
+roughly when):
+- ours: `<ME1>\Binaries\Win64\Logs\LE1MEVR.log`;
+- Halcyon's: `%LOCALAPPDATA%\MELEVR\MELEVR_Log.txt` (settings: `MELEVR.ini` in `Binaries\Win64\ASI`).
 
 Already done for you: `tools/vr-game-settings.ps1` turned VSync, motion blur and film grain off
-and HDR to SDR in ME1's GamerSettings.ini (backup kept; `-Restore` undoes it).
+and HDR to SDR in ME1's GamerSettings.ini (backup kept; `-Restore` undoes it). Halcyon's settings
+may also set the game resolution per VR mode (3840x2160 for stereo), effective from the next
+launch.
 
-## First: controller aim with Halcyon's renderer (LE1, 2026-10-08)
+**Keys on LE1:** Insert = Halcyon's menu (the controllers navigate it as a gamepad), R = recenter
+(or double-click the right stick), K = first person on/off (off at every launch). Ours: `,` hand
+aim on/off and `.` arm IK on/off, both on by themselves once the controllers are tracked; the
+other keys in the table further down are for our own renderer only.
 
-The host ASI changed, so close the game and redeploy (`tools/deploy-asi.ps1 -Game LE1`) before
-this test; a hot reload alone isn't enough.
+## LE1 in the headset
 
-1. Start SteamVR, then the game, load a save, and pick up the Touch controllers.
-2. On foot, draw a weapon. Look around with your head: the view should follow the head, but
-   Shepard's aim should no longer swing with it.
-3. Point the right controller at a target away from where you're looking and fire. Do the
-   shots go where the controller points? Note any constant offset (left/right, high/low) and
-   roughly how far away the target was. The HUD crosshair still sits in the middle of your view
-   and doesn't show the controller's aim (known; no reticle yet).
-4. Press `,` to switch to Halcyon's head aim (shots follow the head again) and `,` again to
-   switch back. Say which felt right.
-5. Put the controllers down until they sleep and use a gamepad: Halcyon's head aim should be
-   back (the log says `controller aim stopped`).
-6. The Mako should behave as before (its cannon follows the head).
+1. Start SteamVR, then the game, and load a save on foot.
+   - Does the headset show the game, in stereo (depth)? If there's **no VR at all**, say so
+     first: Halcyon's code has to catch the game's swap chain at startup.
+   - Is head motion smooth now, in both eyes?
+2. **Controllers:** move, turn, fire, A/B/X/Y, grips, left menu = pause. Does the game react
+   without clicking the desktop window first? Open the Insert menu: can the controllers move
+   through it?
+3. **First person:** press K. How does it look (Shepard's head hidden, camera at the eyes)?
+   Recenter with R if the view is offset.
+4. **Controller aim:** on foot, draw a weapon.
+   - Look around: the view follows the head, but Shepard's aim no longer swings with it.
+   - Point the right controller at a target away from where you're looking and fire. Do shots go
+     where the controller points? Note any constant offset and roughly how far the target was.
+     The HUD crosshair stays in the middle of the view and doesn't show the controller's aim
+     (known; no reticle yet).
+   - `,` switches to Halcyon's head aim and back. Which felt right?
+   - Put the controllers down until they sleep and use a gamepad: head aim should come back.
+   - The Mako's cannon should still follow the head.
+5. **Arms:** with the controllers tracked, wave your hands, in first person and in third person
+   (K). Do Shepard's arms follow? Any tearing at the wrist or elbow, or fingers off the hand?
+   Does the weapon follow the hand? `.` turns it off to compare. (The left hand may stay on the
+   gun's grip while the weapon is out.)
 
-What Claude looks for: `hand aim on`, `the right controller aims weapons`, `first world view`,
-`game camera's right axis vs the renderer's view: N degrees apart` (should be about 0),
-`first shot aimed by the right controller`, `shots start at ... off it` (how far shots pass
-beside the controller's ray), and the heartbeat's `hand aim:` and `host view:` lines.
+What Claude looks for:
+- Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR
+  loader (MEVR)`, its pacing lines.
+- Ours: `halcyon: renderer attached`, `hooked UObject::ProcessEvent (host-owned)`, `OpenXR:
+  controller actions ready`, `game window to foreground`, `hand aim on`, `first world view`, the
+  camera-vs-view check (about 0 degrees), `first shot aimed by the right controller`, `arm IK on`,
+  the skeleton and arm-chain lines, `bone layout verified`, `first write`, and the heartbeat's
+  `hand aim:`, `host view:` and `arm IK writeback:` lines.
+
+## LE1 on the desktop (no headset): arm test
+
+Load a save on foot without holding the controllers, press `.`: the right hand should come up and
+stay in front of Shepard's chest (details in A0 below). `.` again hands the arm back.
 
 ## Our own renderer (LE2/LE3, or LE1 built without Halcyon)
 
@@ -53,9 +78,9 @@ turns them all off. The rest are for testing:
 Checks the new arm writer (route 2, [research/14](../research/14-vrik.md)): the mod rewrites
 Shepard's arm bones after the animation each frame.
 
-1. Launch ME1 and load a save where Shepard stands on foot (any level). If SteamVR complains
-   about a missing headset, press `]` to turn VR off: the test needs VR off.
-2. Press `.` once. The log says `arm IK on (no VR session: desktop test, ...)`.
+1. Launch ME1 and load a save where Shepard stands on foot (any level). On LE1 just don't hold
+   the controllers; with our own renderer press `]` to turn VR off if SteamVR complains.
+2. Press `.` once. The log says `arm IK on (nothing to follow: desktop test, ...)`.
 3. Within a second, Shepard's **right hand should come up and stay in front of his chest** at
    about shoulder height, with the elbow bent and out to the side. Watch from the normal
    third-person camera, and rotate the camera around him if the body hides it.
