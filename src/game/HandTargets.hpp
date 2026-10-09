@@ -43,6 +43,7 @@ struct Targets {
     XrPosef head{};                 // the headset, tracking space
     engine::UnrealVector headWorld;  // the headset (the eyes' midpoint) in the world
     double viewToHeadBone = -1.0;    // units between the view and Shepard's head bone (-1: no bone)
+    engine::UnrealVector viewFromHeadBone;  // the view minus Shepard's animated head bone (world)
 };
 
 // Game thread, once per tick: the motion controllers' grip poses, placed in the world through

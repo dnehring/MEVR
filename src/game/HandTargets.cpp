@@ -56,6 +56,10 @@ Targets Current(std::optional<engine::UnrealVector> const& animatedHead) {
     double const scale = hand_calibration::TrackingScale() > 0.0 ? hand_calibration::TrackingScale() : anchor->unitsPerMeter;
     targets.viewToHeadBone = animatedHead ? Distance(anchor->headWorld, *animatedHead) : -1.0;
     if (animatedHead) {
+        targets.viewFromHeadBone = {anchor->headWorld.x - animatedHead->x, anchor->headWorld.y - animatedHead->y,
+            anchor->headWorld.z - animatedHead->z};
+    }
+    if (animatedHead) {
         gFirstPerson = gFirstPerson ? targets.viewToHeadBone <= kFirstPersonLeaveUnits
                                     : targets.viewToHeadBone <= kFirstPersonEnterUnits;
     } else {

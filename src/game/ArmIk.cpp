@@ -383,6 +383,40 @@ std::optional<ik::Vec3> TorsoFacingWorld(hand_targets::Targets const& targets, d
     return ik::Normalize(forward);
 }
 
+// First person, every few seconds: where Halcyon's camera sits relative to Shepard's head bone, in
+// the view's own axes (the headset's yaw, world up), and the MELEVR.ini camera offsets that would
+// cancel it. Halcyon's first-person camera sat about 44 units from his eyes (2026-10-08), so the
+// player stood in front of Shepard's shoulders. Stand where you recentered for a clean reading.
+std::uint64_t gNextCameraLogMs = 0;
+void LogCameraOffset(hand_targets::Targets const& targets) {
+    std::uint64_t const now = GetTickCount64();
+    if (targets.anchor != hand_targets::Anchor::View || targets.viewToHeadBone < 0.0 || now < gNextCameraLogMs) {
+        return;
+    }
+    gNextCameraLogMs = now + 5000;
+    XrVector3f const& h = targets.head.position;
+    XrQuaternionf const& q = targets.head.orientation;
+    // The headset's forward (-Z), flattened, into the world.
+    double const fx = -2.0 * (q.x * q.z + q.w * q.y), fz = -(1.0 - 2.0 * (q.x * q.x + q.y * q.y));
+    double const flat = std::hypot(fx, fz);
+    if (!(flat > 1e-6)) {
+        return;
+    }
+    XrVector3f const ahead{h.x + static_cast<float>(fx / flat), h.y, h.z + static_cast<float>(fz / flat)};
+    engine::UnrealVector const a = engine::ToWorld(targets.body, h);
+    engine::UnrealVector const b = engine::ToWorld(targets.body, ahead);
+    ik::Vec3 const up{0.0, 0.0, 1.0};
+    ik::Vec3 const forward = ik::Normalize(ik::Vec3{b.x - a.x, b.y - a.y, 0.0});
+    ik::Vec3 const right = ik::Cross(up, forward);
+    ik::Vec3 const d{targets.viewFromHeadBone.x, targets.viewFromHeadBone.y, targets.viewFromHeadBone.z};
+    double const f = ik::Dot(d, forward), r = ik::Dot(d, right), u = ik::Dot(d, up);
+    // Halcyon's camera offsets are metres at 50 units each (kMetersToUU); flatScreenDistance + is back.
+    log::Info("arm IK: first person camera vs Shepard's head bone: forward {:.1f}, right {:.1f}, up {:.1f} units "
+              "(headset {:.2f}/{:.2f}/{:.2f} m from the recenter point); to cancel: flatScreenDistance = {:.3f}, "
+              "cameraOffsetRight = {:.3f}, cameraOffsetUp = {:.3f} (plus the current values)",
+        f, r, u, h.x, h.y, h.z, f / 50.0, -r / 50.0, -u / 50.0);
+}
+
 void LogAnchor(hand_targets::Targets const& targets) {
     if (targets.anchor == gLoggedAnchor && std::abs(targets.body.unitsPerMeter - gLoggedScale) < 1e-6) {
         return;
@@ -480,6 +514,7 @@ void Drive(double deltaSeconds) {
         driven = "right hand held in front of the chest (desktop test)";
     } else if (targets.source == hand_targets::Source::Controllers) {
         LogAnchor(targets);
+        LogCameraOffset(targets);
         // The shoulders under the headset: the spine turns to the body's heading and leans so
         // Shepard's eyes (first person) or head (third person) come to the headset.
         bool torso = false;
