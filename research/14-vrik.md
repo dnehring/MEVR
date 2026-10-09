@@ -418,6 +418,85 @@ the upper arm (twist bones) keep their offsets from the shoulder. Unit-tested.
 - Logs: `hands: arm length 0.630 m (left ..., right ..., shoulder to grip, from a T pose); saved as
   [Arms] armLengthM`, or `hands: arm-length sample #N isn't a T pose (...)`.
 
+## Two-handed grip = focused fire (built 2026-10-08, not tested in the headset)
+
+The plan agreed with the user (notes/todo-vrik.md): the left grip squeezed on the gun's
+foregrip holds the gun with both hands; while held the game sees LT (aimed fire's accuracy bonus)
+and the barrel points between the hands. One-handed is hip fire.
+
+**Prior art: Overlord** (GPL-3.0; NOTICE.md). `gameplay/support_grip.hpp`: a lease that only a
+*new* squeeze within `acquire` takes, released when the grip opens or the hand passes `release`
+(defaults 0.10 / 0.22 m, `weapon_profile.hpp` `profile_defaults`). `grip_presenter.hpp`: the
+distance is checked at the one-hand pose to acquire and at the solved two-hand pose to retain
+(a held rifle must not drop when the rear wrist turns); hands closer than 0.08 m count as
+released; a 0.1 s blend. `weapon_profile.hpp` `aimed_rotation`: the rear hand's rotation swung by
+`from_to(rear * span, support - rear)`, which keeps the rear hand's roll with no world-up
+singularity.
+
+**Where the foregrip is (`game/support_grip`, per gun, in the right hand bone's axes).** The
+first candidate that lies on the gun (`ik::OnGun`: not on the right hand, between 20 units behind
+the grip and 5 past the muzzle, within 20 of the barrel's line) [verify thresholds]:
+1. a socket of the weapon's mesh whose name suggests the off hand (`game/weapon` logs every socket
+   name once per weapon: we don't know LE1's names yet [verify]);
+2. the body bone `LHIK` (109, under `Prop01` under `RightWrist`): the goal of the AnimTree's
+   `LeftArm` limb control. It hangs below the right hand, so our right-arm write carries it and
+   its place in the hand's axes is the animation's either way;
+3. the animated left hand (the pose before our writes, `engine::bone_pose::AnimatedHands`);
+4. otherwise under the grip (`ik::UnderGrip`: 8 units below the thumb side, 2 forward), for
+   pistols [verify where Shepard's pistol stance puts the left hand].
+It settles after 5 ticks within 0.5 units and isn't moved while held. The left hand's rotation on
+the gun comes from the animated left hand when that is within 4 units of the point, else from the
+controller. A span with less than 10 units along the barrel (the pistol's cup) doesn't define the
+barrel: the right hand keeps aiming. Once per gun the log says how far the animated left wrist is
+from LHIK, i.e. whether the AnimTree's off-hand IK actually holds it there (the probe found the
+limb controls at strength 0 outside combat) [verify].
+
+**Left arm: solved to the foregrip, not left to the native LHIK.** By the code: the `LeftArm`
+limb control runs in ComposeSkeleton, inside UpdateSkelPose, **before** our post-hook moves the
+right arm (and with it the gun). Skipping our left-arm write would leave the left hand where the
+animation had the gun, not on the gun we moved. So while held the writer puts the left wrist on
+the foregrip as written: `right wrist goal + rotation * span` (logged with the foregrip).
+
+**The writer (`engine::bone_pose`, `Request::support`).** Both arm goals are computed first
+(clavicles, reach scaling), then `ApplySupport`: the left goal's distance from the foregrip, in
+meters of left-controller motion (written units / (view units per meter x the left arm's reach
+scale)), at the one-hand pose, or the two-hand pose while held; hands closer than 0.08 m report
+99 m (release). With `blend` > 0 the right hand turns toward `ik::TwoHandRotation` (slerped by the
+blend) and the left wrist moves to the foregrip (lerped). Shots and the reticle need nothing new:
+`game/hand_aim` reads the muzzle and barrel from the gun model, which follows the written hand.
+
+**The pad (`game/GamepadMapping`, unit-tested).** `UpdateSupportGrip` runs on the left grip's
+latch: a new squeeze within `acquire` = Support (no LB; LT forced to 255), else Shoulder (LB, as
+before) for the whole squeeze; Support lost by distance or the gun = nothing until the grip opens
+(no surprise LB, which opens LE1's power wheel). Left grip + menu stays Back. The pad is built
+in the host's XInput hook with Halcyon's renderer, so the mod sends its distance and settings
+each tick through **HostServices v7** (`setSupportGrip(distance, acquire, release, flags)`, read
+back with `supportGripHeld()`; stale after 250 ms: defaults). With our renderer (LE2/LE3)
+`game/gamepad_bridge` runs the same mapping in the mod. **A host change: redeploy.**
+
+**Settings** (`ASI\LE1MEVR.ini [Controls]`, appended to older files, live): `supportGrip`,
+`supportAcquireM = 0.12`, `supportReleaseM = 0.22`, `sniperAims = 0` (a sniper rifle's LT is
+the game's scope camera, which Halcyon's first person leaves to the game: no LT by default
+[verify]), `leftTrigger = lt | none` (default `lt`: nothing changes until the user picks a use).
+
+**Does LT zoom under Halcyon?** By the code, no: in gameplay (not a flat cinematic) Halcyon's
+`xr_session.cpp` calls `RenderHook::SetTargetFovHalfAngles(headset FOV x fill,
+vrFovFillEnabled)` every frame (`vrFovFillEnabled` defaults on, and the release `MELEVR.ini`
+doesn't change it), and `render_hook.cpp` `ApplyTargetFovOverride` rewrites the scene view's
+projection after CalcSceneView (`[RENDER_FOV_MATCH] applied ...`); the compositor is told the same
+FOV. So the narrower FOV of `SFXCameraMode_TightAim` never reaches the projection. Its first-person
+offset (`fpCombatAim` -70/19.8/20.0) is within 1 unit of `fpCombat` (-70/19.9/21.0). The sniper
+mode is not first-person-written (`FpStateForClass`: "leave the game's scope view"), hence
+`sniperAims = 0`. [verify in the headset: no zoom, no camera jump when the grip takes hold.] If
+it did zoom, the minimal fix would be a marked seam forcing `SetTargetFovHalfAngles` on while the
+support grip holds, not a change to Halcyon's camera code.
+
+Logs: `weapon: <weapon> (<type>); mesh sockets: ...; off-hand socket: ...`; `arm IK: torso: ...;
+off-hand IK goal LHIK(109)`; `support grip: candidates ...`, `support grip: foregrip set from
+...`; `halcyon bridge: support grip taken / let go`; `support grip: held ... / released ...`;
+heartbeat `support grip: ...`; `controls: two-handed grip on (acquire 0.12 m, release 0.22 m,
+...), left trigger = LT`.
+
 ## Open risks [verify in game]
 
 - The desktop-test pose must appear on screen. If the log shows writes but Shepard's arm doesn't
@@ -432,7 +511,11 @@ the upper arm (twist bones) keep their offsets from the shoulder. Unit-tested.
   used yet.
 - The off-hand: the AnimTree's `LeftArm` limb control pulls the left wrist to `LHIK` during
   ComposeSkeleton, before our write. In the desktop test the right hand moves but the left stays
-  on the gun's old grip. In VR both arms are ours.
+  on the gun's old grip. In VR both arms are ours; with the two-handed grip the left wrist is put
+  on the foregrip as written (above).
+- Two-handed grip: the acquire distance is in meters of controller motion through the view's
+  scale and the reach scale; with Shepard about twice the player's size, the foregrip may sit
+  farther out than a real rifle's. Tune `supportAcquireM` or the foregrip choice from the log.
 - Scale: hands now follow the view's scale (Halcyon: 50 units per meter), so Shepard looks
   about twice the player's size and his arms stay bent at the player's full reach; see "Reach".
 - Without a gun, the VR hand rotation is the grip mapping (`HandFrame`) plus the `[Hands]` trims,

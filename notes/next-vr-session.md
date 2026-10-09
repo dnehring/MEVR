@@ -139,6 +139,47 @@ other keys in the table further down are for our own renderer only.
      as before, on the flat screen.
    - **Fades.** Watch for anything full-screen ending up on the panel instead of the world, such
      as a fade, a red damage tint or a flash. Note what and when.
+8. **Two-handed grip = focused fire (new; needs the redeployed host, see below).** First person
+   (K), on foot, assault rifle out, right hand held still a moment (`grip measured`), then a few
+   seconds with the left hand anywhere (the mod settles where the left hand goes on this gun).
+   - Log first, once per weapon: `weapon: ... (assault rifle); mesh sockets: ...; off-hand
+     socket: ...` (tell Claude the socket names), `support grip: candidates in the right hand's axes
+     ...: socket ...; LHIK ...; animated left hand ...; the animated left wrist is N units from LHIK:
+     the AnimTree's off-hand IK is active / NOT holding it there`, then `support grip: foregrip set
+     from <source>: (...), N along the barrel and N off it; ...`.
+   - **Grab:** bring the left hand to where Shepard's left hand would hold the rifle's foregrip
+     (where you see it on the gun) and squeeze the left grip. It should take hold
+     (`halcyon bridge: support grip taken (left hand 0.0x m from the foregrip): LT to the game
+     instead of LB` and `support grip: held ...`). **No power wheel** opens.
+     - Squeezing the left grip with the hand away from the gun (more than about 12 cm from the
+       foregrip) must still be LB (the power wheel), as before.
+   - **While held:** Shepard's left hand sits on the gun and stays there as you move. The barrel
+     points from your right hand toward your left: move the left hand up/down/sideways and the
+     gun swings with it; roll the right wrist and the gun rolls with it. Shots and the reticle
+     follow the gun. Does it feel steadier than one-handed? Is the aim more accurate (focused
+     fire = the game's LT aim bonus)?
+     - **Does the view zoom?** By the code it shouldn't (Halcyon replaces the game's projection
+       with the headset's every frame, `[RENDER_FOV_MATCH] applied` in its log, constant
+       halfH/halfV), and the first-person camera's aimed-mode offset is within 1 unit of the
+       normal one. Say if anything moves or zooms when the grip takes hold.
+   - **Release:** open the grip, or pull the left hand more than about 22 cm away from the
+     foregrip (`support grip: released`). Pulling away while still squeezing gives nothing until
+     you open the grip (no surprise LB).
+   - Bring the hands very close together (crossed): it lets go.
+   - **Pistol:** the left hand goes under the grip (cupping it), unless the log found a foregrip
+     for it. The right hand keeps aiming. Note where you'd want the left hand.
+   - **Shotgun:** like the rifle. **Sniper rifle:** the grip holds the gun but sends no LT (its LT
+     is the scope camera); set `sniperAims = 1` to try LT anyway.
+   - **Settings** (`ASI\LE1MEVR.ini [Controls]`, live): `supportAcquireM` / `supportReleaseM`
+     (meters), `supportGrip = 0` turns it off, `leftTrigger = none` stops the left trigger from
+     reaching the game (aimed fire then comes from the grip only). Tell Claude which left-trigger
+     use you'd like (a power, a squad command).
+   - Heartbeat: `support grip: HELD / not held, foregrip <source>; nearest 0.xx m; last write ...
+     m, blend, two-hand aim, swing N degrees, left wrist N units from its goal` (a large left-wrist
+     number = the arm can't reach the foregrip).
+   - **Host redeploy:** the pad mapping lives in the host ASI. Close the game, run
+     `tools/deploy-asi.ps1 -Game LE1`. With an older host the mod logs `support grip: the host
+     (services v6) can't take it` and everything stays as before.
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR
