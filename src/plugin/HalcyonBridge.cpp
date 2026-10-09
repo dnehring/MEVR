@@ -13,6 +13,7 @@
 #include "game/GamepadMapping.hpp"
 #include "halcyon/le1/render_hook.h"
 #include "plugin/Halcyon.hpp"
+#include "plugin/MevrMenu.hpp"
 
 #include <openxr/openxr.h>
 
@@ -85,6 +86,7 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
     mevr::vr::controllers::State state;
     gInput.Sync(gTarget, static_cast<XrTime>(predictedDisplayTime), state);
     mevr::vr::controllers::Publish(state);
+    TickCameraAlign();
     if (state.active && state.right.aimValid) {
         gRightAimTrackedMs.store(GetTickCount64(), std::memory_order_relaxed);
     }
@@ -181,6 +183,9 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
         mevr::game::gamepad::FromControllers(controllers, gLatches));
     if (controllers.left.stickClick && controllers.right.stickClick) {
         pad.wButtons &= ~(XINPUT_GAMEPAD_LEFT_THUMB | XINPUT_GAMEPAD_RIGHT_THUMB);  // the menu chord, not L3 + R3
+    }
+    if (CameraAlignOwnsLeftTrigger()) {
+        pad.bLeftTrigger = 0;
     }
     if (std::memcmp(&pad, &gLastPad, sizeof pad) != 0) {
         gLastPad = pad;

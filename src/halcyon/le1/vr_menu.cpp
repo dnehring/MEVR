@@ -2256,6 +2256,8 @@ void RenderFlat(ID3D11RenderTargetView* target, int width, int height) noexcept
 int Width() noexcept { return g_w; }
 int Height() noexcept { return g_h; }
 
+void RequestRecenter() noexcept { g_recenterRequest = true; }   // [MEVR]
+
 bool ConsumeRecenterRequest() noexcept
 {
     const bool r = g_recenterRequest;

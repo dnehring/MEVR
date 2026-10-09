@@ -20,6 +20,7 @@
 #include "halcyon/le1/mevr_bridge.h"
 #include "plugin/MevrMenu.hpp"
 #include "halcyon/le1/vr_config.h"
+#include "halcyon/le1/vr_menu.h"
 
 #include "core/Log.hpp"
 #include "core/vr/Controllers.hpp"
@@ -33,6 +34,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cwchar>
+#include <format>
 #include <string>
 
 namespace MELEVR::MevrBridge {
@@ -60,6 +62,15 @@ bool gHaveCamera = false;
 float gCamera[3] = {0.0f, 0.0f, 0.0f};  // forward, right, up (units)
 float gCameraAppliedAt[3] = {1e9f, 1e9f, 1e9f};  // the measurement the last alignment used
 std::atomic<bool> gLifeSize{false};
+// The left-trigger alignment: armed from the tab (the menu closes, since the view isn't tracked
+// while it's open); the player stands naturally and pulls the left trigger; it recenters, waits
+// for the mod's next measurement, and moves the camera.
+enum class Align { Idle, WaitRelease, Armed, Settling };
+std::atomic<Align> gAlign{Align::Idle};
+std::uint64_t gAlignSinceMs = 0;
+constexpr std::uint64_t kAlignArmedTimeoutMs = 60000;
+constexpr std::uint64_t kAlignSettleMs = 6000;  // the mod re-measures every 5 s
+std::string gAlignResult;
 
 // Arm-length sample: waiting for the T pose and a trigger pull.
 enum class Measure { Idle, WaitRelease, WaitPull };
@@ -271,6 +282,24 @@ void MeasureSection() {
 // Halcyon's view offsets are metres at 50 units each (xr_session kMetersToUU).
 constexpr float kUnitsPerOffsetMeter = 50.0f;
 
+// Moves Halcyon's camera offsets by the latest measurement (which includes the current offsets,
+// so this adds the rest) and saves the profile.
+void ApplyCameraAlignment(char const* why) {
+    MELEVR::Config::VrConfig& c = MELEVR::Config::Get();
+    c.screenDistanceEnabled = true;
+    c.cameraOffsetEnabled = true;
+    c.flatScreenDistance += gCamera[0] / kUnitsPerOffsetMeter;  // + moves the view back
+    c.cameraOffsetRight -= gCamera[1] / kUnitsPerOffsetMeter;
+    c.cameraOffsetUp -= gCamera[2] / kUnitsPerOffsetMeter;
+    for (int i = 0; i < 3; ++i) {
+        gCameraAppliedAt[i] = gCamera[i];
+    }
+    MELEVR::Config::SaveProfile(MELEVR::Config::ActiveProfileIndex());
+    mevr::log::Info("menu: camera to Shepard's head ({}): measured {:.1f}/{:.1f}/{:.1f} units; Halcyon's offsets now back "
+                    "{:.3f} m, right {:.3f} m, up {:.3f} m", why, gCamera[0], gCamera[1], gCamera[2], c.flatScreenDistance,
+        c.cameraOffsetRight, c.cameraOffsetUp);
+}
+
 void CameraSection() {
     ImGui::SeparatorText("First-person camera");
     MELEVR::Config::VrConfig& c = MELEVR::Config::Get();
@@ -285,21 +314,21 @@ void CameraSection() {
                                        std::abs(gCamera[2] - gCameraAppliedAt[2]) > 0.5f);
     ImGui::BeginDisabled(!fresh);
     if (ImGui::Button("Put the camera at Shepard's head")) {
-        // The measurement already includes the current offsets, so this adds the rest.
-        c.screenDistanceEnabled = true;
-        c.cameraOffsetEnabled = true;
-        c.flatScreenDistance += gCamera[0] / kUnitsPerOffsetMeter;  // + moves the view back
-        c.cameraOffsetRight -= gCamera[1] / kUnitsPerOffsetMeter;
-        c.cameraOffsetUp -= gCamera[2] / kUnitsPerOffsetMeter;
-        for (int i = 0; i < 3; ++i) {
-            gCameraAppliedAt[i] = gCamera[i];
-        }
-        MELEVR::Config::SaveProfile(MELEVR::Config::ActiveProfileIndex());
-        mevr::log::Info("menu: camera to Shepard's head: back {:.3f} m, right {:.3f} m, up {:.3f} m (Halcyon's offsets)",
-            c.flatScreenDistance, c.cameraOffsetRight, c.cameraOffsetUp);
+        ApplyCameraAlignment("menu button");
     }
     ImGui::EndDisabled();
     ImGui::TextDisabled("Press R first, standing naturally. Press again after a few seconds to refine.");
+    if (ImGui::Button("Align with the left trigger")) {
+        gAlign.store(Align::WaitRelease);
+        gAlignSinceMs = GetTickCount64();
+        gAlignResult.clear();
+        MELEVR::Menu::SetOpen(false);
+        mevr::log::Info("menu: camera alignment armed: stand naturally and pull the left trigger");
+    }
+    ImGui::TextDisabled("Closes the menu. Stand naturally, pull the left trigger, hold still about 6 seconds.");
+    if (!gAlignResult.empty()) {
+        ImGui::TextUnformatted(gAlignResult.c_str());
+    }
     bool changed = false;
     bool done = false;
     changed |= ImGui::SliderFloat("Back (m)", &c.flatScreenDistance, -2.0f, 2.0f, "%.3f");
@@ -328,6 +357,55 @@ void CameraSection() {
 }
 
 } // namespace
+
+bool CameraAlignOwnsLeftTrigger() noexcept {
+    Align const state = gAlign.load(std::memory_order_relaxed);
+    return state == Align::WaitRelease || state == Align::Armed;
+}
+
+void TickCameraAlign() noexcept {
+    Align const state = gAlign.load();
+    if (state == Align::Idle) {
+        return;
+    }
+    std::uint64_t const now = GetTickCount64();
+    float const trigger = controllers::Latest().left.trigger;
+    switch (state) {
+    case Align::WaitRelease:
+        if (trigger < 0.4f) {
+            gAlign.store(Align::Armed);
+        }
+        break;
+    case Align::Armed:
+        if (now - gAlignSinceMs > kAlignArmedTimeoutMs) {
+            gAlign.store(Align::Idle);
+            gAlignResult = "Camera alignment timed out (no left trigger within a minute).";
+            mevr::log::Info("menu: camera alignment timed out");
+        } else if (trigger > 0.6f) {
+            MELEVR::Menu::RequestRecenter();
+            gAlignSinceMs = now;
+            gAlign.store(Align::Settling);
+            mevr::log::Info("menu: camera alignment: recentered; hold still while the camera is measured");
+        }
+        break;
+    case Align::Settling:
+        if (now - gAlignSinceMs >= kAlignSettleMs) {
+            gAlign.store(Align::Idle);
+            Reload(true);
+            if (gHaveCamera) {
+                ApplyCameraAlignment("left trigger");
+                gAlignResult = std::format("Aligned: the camera was {:.0f} forward, {:.0f} right, {:.0f} up from Shepard's head.",
+                    gCamera[0], gCamera[1], gCamera[2]);
+            } else {
+                gAlignResult = "No camera measurement: be in first person (K) and try again.";
+                mevr::log::Info("menu: camera alignment: no measurement (not in first person?)");
+            }
+        }
+        break;
+    case Align::Idle:
+        break;
+    }
+}
 
 float ForwardLeanEmphasis() noexcept {
     Reload(false);  // Present thread, like the menu; once a second at most

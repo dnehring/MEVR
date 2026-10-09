@@ -45,6 +45,8 @@ int Height() noexcept;
 
 // Returns true ONCE after the "Recenter now" button is clicked, then clears the flag.
 bool ConsumeRecenterRequest() noexcept;
+// [MEVR] Same as clicking "Recenter now" (our camera alignment, src/plugin/MevrMenuTab.cpp).
+void RequestRecenter() noexcept;
 
 // Returns true ONCE after R3 is double-clicked on the gamepad, then clears the flag.
 bool ConsumeRecenterCombo() noexcept;

@@ -9,4 +9,9 @@ namespace MELEVR::MevrBridge {
 // that submitted the menu quad, if that was within `maxAgeMs`.
 bool LatestMenuHead(XrPosef& head, unsigned maxAgeMs = 250) noexcept;
 
+// Camera alignment armed from the VR hands tab (MevrMenuTab.cpp): each frame, menu open or not.
+void TickCameraAlign() noexcept;
+// While armed, the left trigger is the alignment's, not the game's.
+bool CameraAlignOwnsLeftTrigger() noexcept;
+
 } // namespace MELEVR::MevrBridge
