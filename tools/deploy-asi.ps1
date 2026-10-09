@@ -91,7 +91,10 @@ if ($Game -eq 'LE1') {
             'firstRunDone = 1',
             'menuKey = 220',
             'fpEnabled = 1',
-            'combatHeadAim = 0', 'makoHeadAim = 0', ''
+            'combatHeadAim = 0', 'makoHeadAim = 0',
+            # research/16: presenting the desktop mirror every frame costs a lot while focused, and
+            # depth pop (P) costs about 30% while on.
+            'mirrorPresentEvery = 2', 'depthPopKeyEnabled = 0', ''
         )
         $lines = @('; MELE VR config - written by the in-headset menu.', '',
             '[active]', 'profile=Default', '',
