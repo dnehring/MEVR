@@ -4,6 +4,7 @@
 #include "core/ik/ArmPose.hpp"
 #include "core/ik/BoneNames.hpp"
 #include "core/ik/HandFrame.hpp"
+#include "core/ik/TouchReference.hpp"
 #include "game/HandCalibration.hpp"
 #include "engine/BonePose.hpp"
 #include "engine/GameAdapter.hpp"
@@ -14,6 +15,7 @@
 
 #include <LESDK/Headers.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -102,6 +104,25 @@ std::optional<ik::Quat> HandAnatomy(SkeletonInfo const& info, std::span<engine::
               "pinky ({:.1f}, {:.1f}, {:.1f}))", sideName, info.bones.names[fingers[0]], info.bones.names[fingers[1]],
         info.bones.names[fingers[2]], middle.x, middle.y, middle.z, index.x, index.y, index.z, pinky.x, pinky.y, pinky.z);
     return anatomy;
+}
+
+// Once per grip (weapon): how the gun is held, against what its model's axes would have said.
+std::optional<weapon::Grip> gLoggedGrip;
+
+void LogGunHold(weapon::Grip const& grip, std::optional<ik::Vec3> const& upInHand) {
+    if (gLoggedGrip && ik::Length(gLoggedGrip->muzzle - grip.muzzle) < 1e-6 && ik::Length(gLoggedGrip->barrel - grip.barrel) < 1e-9) {
+        return;
+    }
+    gLoggedGrip = grip;
+    if (!upInHand) {
+        log::Warn("arm IK: gun held, but no thumb-side up for it ({}): the hand doesn't aim it",
+            gAnatomy[kRight] ? "barrel along the thumb side" : "no right hand frame");
+        return;
+    }
+    double const apart = std::acos(std::clamp(ik::Dot(*upInHand, grip.up), -1.0, 1.0)) * 180.0 / std::numbers::pi;
+    log::Info("arm IK: gun held thumb side up, roll trim {:.1f} degrees: up in the hand's axes ({:.3f}, {:.3f}, {:.3f}); "
+              "the weapon model's up is {:.0f} degrees from it (ignored)",
+        hand_calibration::GunRoll(), upInHand->x, upInHand->y, upInHand->z, apart);
 }
 
 struct Body {
@@ -372,13 +393,23 @@ void Drive() {
                 gAnatomyTried[side] = true;
                 gAnatomy[side] = HandAnatomy(*info, pose, side, chain->hand);
             }
-            // Holding a gun: the hand turns so the gun's barrel points along the controller's
-            // aim ray, upright with the controller (core/ik HandForBarrel, game/weapon's grip).
-            if (side == kRight && hand.hasAim && componentRotation) {
+            // Holding a gun: the gun sits at a fixed pose on the controller and the hand follows
+            // it. Its barrel points along the controller's aim ray (without one, along the Touch
+            // reference frame's forward), and its top is the hand's thumb side turned to the
+            // controller's up, so its roll follows the wrist. The weapon model's own axes don't
+            // decide the roll (core/ik GunUpInHand, HandForBarrel; game/weapon's grip).
+            if (side == kRight && componentRotation && (hand.hasAim || hand.hasRotation)) {
                 if (auto const grip = weapon::RightHandGrip()) {
-                    ik::Quat const aim = ik::Normalize(ik::Conjugate(*componentRotation) * hand.aim);
-                    if (auto const rotation = ik::HandForBarrel(grip->barrel, grip->up, ik::Rotate(aim, {1.0, 0.0, 0.0}),
-                            ik::Rotate(aim, {0.0, 0.0, 1.0}))) {
+                    auto const upInHand = gAnatomy[side]
+                        ? ik::GunUpInHand(grip->barrel, *gAnatomy[side], hand_calibration::GunRoll())
+                        : std::nullopt;
+                    LogGunHold(*grip, upInHand);
+                    ik::Quat const held = hand.hasAim ? hand.aim : ik::Normalize(hand.rotation * ik::TouchReferenceRotationUe());
+                    ik::Quat const aim = ik::Normalize(ik::Conjugate(*componentRotation) * held);
+                    auto const rotation = upInHand ? ik::HandForBarrel(grip->barrel, *upInHand,
+                                                         ik::Rotate(aim, {1.0, 0.0, 0.0}), ik::Rotate(aim, {0.0, 0.0, 1.0}))
+                                                   : std::nullopt;
+                    if (rotation) {
                         arm.hasRotation = true;
                         arm.rotation = *rotation;
                         gunAimed = true;
@@ -465,6 +496,7 @@ void Shutdown() {
     gLayout = {};
     gAnatomy = {};
     gAnatomyTried = {};
+    gLoggedGrip.reset();
 }
 
 } // namespace mevr::game::arm_ik

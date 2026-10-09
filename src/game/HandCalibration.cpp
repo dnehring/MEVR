@@ -22,6 +22,7 @@ struct Values {
     double pitch = 0.0;
     double yaw = 0.0;
     double roll = 0.0;
+    double gunRoll = 0.0;
     bool operator==(Values const&) const = default;
 };
 
@@ -84,6 +85,8 @@ Values Read(fs::path const& path) {
             values.yaw = value;
         } else if (key == "handRoll") {
             values.roll = value;
+        } else if (key == "gunRoll") {
+            values.gunRoll = value;
         }
     }
     return values;
@@ -93,6 +96,10 @@ Values Read(fs::path const& path) {
 
 ik::Quat Trim(int side) {
     return gTrims[side == 0 ? 0 : 1];
+}
+
+double GunRoll() {
+    return gValues.gunRoll;
 }
 
 void Refresh() {
@@ -117,8 +124,8 @@ void Refresh() {
     if (!gApplied || values != gValues) {
         gApplied = true;
         Apply(values);
-        log::Info("hands: calibration pitch {:.1f}, yaw {:.1f}, roll {:.1f} degrees (from {})", values.pitch,
-            values.yaw, values.roll, path.filename().string());
+        log::Info("hands: calibration pitch {:.1f}, yaw {:.1f}, roll {:.1f} degrees, gun roll {:.1f} degrees (from {})",
+            values.pitch, values.yaw, values.roll, values.gunRoll, path.filename().string());
     }
 }
 

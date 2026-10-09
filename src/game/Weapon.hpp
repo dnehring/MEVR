@@ -17,11 +17,13 @@
 //     closed, logged).
 //   - The barrel: the muzzle socket's X axis (the engine points muzzle effects along it), checked
 //     against the direction from the weapon's origin (its grip) to the muzzle; failing that, the
-//     weapon mesh's own X axis. Its up: the same frame's Z.
+//     weapon mesh's own X axis. Its up: the same frame's Z, for diagnostics only: model axes don't
+//     agree between weapons (the pistol's and the rifle's ups were 90 degrees apart in the hand), so
+//     arm IK takes the gun's roll from the hand, not from this (ik::GunUpInHand).
 //   - Held in the right hand: the weapon mesh hangs (SkeletalMeshComponent.Attachments) on a bone
 //     of the body's right-hand subtree (e.g. Prop01 under RightWrist), which is how
 //     BioWeapon.AttachToMesh (0xC3EC70) attaches it, through a socket of the body.
-//   - The grip: muzzle, barrel and up in the right hand bone's own axes. Measured from the world
+//   - The grip: muzzle, barrel (and the model's up) in the right hand bone's own axes. Measured from the world
 //     while the hand holds still, so it doesn't matter whether the weapon updates before or after
 //     the hand is written; kept per weapon and re-measured when it settles somewhere else.
 //   - Following: each tick it compares the weapon's muzzle with where the written hand and the
@@ -33,13 +35,13 @@ namespace mevr::game::weapon {
 struct Muzzle {
     engine::UnrealVector location;  // world
     engine::UnrealVector barrel;    // world, unit
-    engine::UnrealVector up;        // world, unit, perpendicular to the barrel
+    engine::UnrealVector up;        // world, unit, perpendicular to the barrel (model axes: diagnostics only)
 };
 
 // How the muzzle sits on the right hand bone, in the bone's own axes.
 struct Grip {
     ik::Vec3 barrel;  // unit
-    ik::Vec3 up;      // unit, perpendicular to the barrel
+    ik::Vec3 up;      // unit, perpendicular to the barrel: the model's up (diagnostics; not the roll)
     ik::Vec3 muzzle;  // from the hand bone (component-space units)
 };
 

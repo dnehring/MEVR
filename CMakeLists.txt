@@ -108,6 +108,8 @@ set(MEVR_MOD_SOURCES
     src/core/ik/Ik.hpp
     src/core/ik/Rigid.cpp
     src/core/ik/Rigid.hpp
+    src/core/ik/TouchReference.cpp
+    src/core/ik/TouchReference.hpp
     src/core/vr/AimRay.cpp
     src/core/vr/AimRay.hpp
     src/core/vr/Controllers.cpp
@@ -258,6 +260,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/BoneNames.cpp
         src/core/ik/Ik.cpp
         src/core/ik/Rigid.cpp
+        src/core/ik/TouchReference.cpp
         src/core/vr/MenuPointer.cpp
         src/core/vr/OverlayPlacement.cpp
         src/core/vr/ViewSync.cpp

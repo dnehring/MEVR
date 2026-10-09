@@ -34,4 +34,13 @@ Quat HandFromGrip(Quat grip, Quat trim, Quat anatomyInHand);
 // or its up is within a few degrees of its barrel.
 std::optional<Quat> HandForBarrel(Vec3 barrelInHand, Vec3 upInHand, Vec3 aim, Vec3 up);
 
+// Which way is "up" for a gun held in a hand, in the hand bone's own axes: the hand's thumb side
+// (anatomical +Y, from AnatomyInHand) made perpendicular to the barrel, then rolled about the
+// barrel by `rollDegrees` (positive rolls the top to the right, seen from behind the gun). A hand
+// holds every gun with the top of its grip toward the thumb and index finger, so this doesn't
+// depend on how a weapon model's axes happen to be authored (they disagree between LE1's weapons).
+// With HandForBarrel, the thumb side then follows the controller's up: the gun's roll follows the
+// wrist. Nullopt if the barrel is (nearly) along the thumb side or zero.
+std::optional<Vec3> GunUpInHand(Vec3 barrelInHand, Quat anatomyInHand, double rollDegrees = 0.0);
+
 } // namespace mevr::ik

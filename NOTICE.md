@@ -13,6 +13,7 @@ GPL VR mods. Code it contains from other projects keeps its own license and noti
 |------|-------|---------|
 | Halcyon's [MassEffect1-VR](https://github.com/jrush64/MassEffect1-VR) (Copyright (C) 2026 Halcyon), and later its ME2/ME3 siblings | `src/halcyon/` (imported verbatim, then modified; see the README there) | GPL-3.0 |
 | [Overlord](https://github.com/Aeka0/Overlord) (Aeka0): the arm orientation, elbow pole and subtree transfer of `hands/pose_solver.hpp`, adapted | `src/core/ik/ArmPose.cpp` (marked in the file) | GPL-3.0 |
+| [Overlord](https://github.com/Aeka0/Overlord) (Aeka0): the canonical Touch controller frame of `touch_controller_reference.hpp` (offset and 20.6 degree pitch from the OpenXR grip), adapted | `src/core/ik/TouchReference.cpp` (marked in the file) | GPL-3.0 |
 | [MinHook](https://github.com/TsudaKageyu/minhook) (Tsuda Kageyu) | `third_party/minhook/` | BSD-2-Clause (`third_party/minhook/LICENSE.txt`) |
 | [Dear ImGui](https://github.com/ocornut/imgui) (Omar Cornut) | `third_party/imgui/` | MIT (`third_party/imgui/LICENSE.txt`) |
 | [Khronos OpenXR SDK](https://github.com/KhronosGroup/OpenXR-SDK) | `external/OpenXR-SDK` (submodule) | Apache-2.0 |

@@ -6,6 +6,7 @@
 #include "core/ik/HandFrame.hpp"
 #include "core/ik/Ik.hpp"
 #include "core/ik/Rigid.hpp"
+#include "core/ik/TouchReference.hpp"
 #include "core/vr/MenuPointer.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/ViewSync.hpp"
@@ -13,6 +14,7 @@
 #include "game/GamepadMapping.hpp"
 #include "game/HeadSim.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -890,6 +892,79 @@ void TestHandForBarrel() {
     CHECK(!HandForBarrel({0.0, 0.0, 0.0}, gunUp, aim, up).has_value());
 }
 
+// A held gun: fixed on the controller, its roll from the hand (thumb side), never the model's axes.
+void TestGunHold() {
+    using namespace mevr::ik;
+    double const pi = std::numbers::pi;
+    auto const same = [](Vec3 a, Vec3 b, double tolerance = 1e-9) { return Length(a - b) < tolerance; };
+    auto const degrees = [pi](Vec3 a, Vec3 b) {
+        return std::acos(std::clamp(Dot(Normalize(a), Normalize(b)), -1.0, 1.0)) * 180.0 / pi;
+    };
+    auto const about = [pi](Vec3 axis, double angle) {
+        Vec3 const a = Normalize(axis);
+        double const half = angle * pi / 360.0;
+        return Quat{a.x * std::sin(half), a.y * std::sin(half), a.z * std::sin(half), std::cos(half)};
+    };
+
+    // Overlord's Touch reference: forward pitched 20.6 degrees down from the grip's, the origin
+    // about 10 cm ahead of the grip and 3.4 cm below, 7 mm to the side (mirrored per hand).
+    double const s = std::sin(20.6 * pi / 180.0), c = std::cos(20.6 * pi / 180.0);
+    Transform const right = TouchReferenceInGrip(1);
+    Transform const left = TouchReferenceInGrip(0);
+    CHECK(same(Rotate(right.rotation, {0.0, 0.0, -1.0}), {0.0, -s, -c}, 1e-12));
+    CHECK(same(Rotate(right.rotation, {0.0, 1.0, 0.0}), {0.0, c, -s}, 1e-12));
+    CHECK(same(right.translation, {0.007, -0.0342, -0.0960}, 5e-4));
+    CHECK(NearD(left.translation.x, -right.translation.x, 1e-12) && NearD(left.translation.z, right.translation.z, 1e-12));
+    CHECK(NearD(Length(right.translation), Length(Vec3{0.007, -0.00182941, 0.1019482}), 1e-9));
+    // The same rotation in UE-style grip axes (X = -Z, Y = +X, Z = +Y): a 20.6 degree pitch down.
+    auto const ue = [](Vec3 v) { return Vec3{-v.z, v.x, v.y}; };
+    for (Vec3 const v : {Vec3{0.0, 0.0, -1.0}, Vec3{1.0, 0.0, 0.0}, Vec3{0.0, 1.0, 0.0}}) {
+        CHECK(same(ue(Rotate(right.rotation, v)), Rotate(TouchReferenceRotationUe(), ue(v)), 1e-12));
+    }
+
+    // A hand bone whose axes are the anatomical ones: the gun's top is the thumb side (+Y).
+    Quat const plain{};
+    auto const up = GunUpInHand({1.0, 0.0, 0.0}, plain);
+    CHECK(up.has_value() && same(*up, {0.0, 1.0, 0.0}));
+    // A barrel tilted toward the thumb: the up stays perpendicular to it, on the thumb side.
+    auto const tilted = GunUpInHand({1.0, 0.5, 0.0}, plain);
+    CHECK(tilted.has_value() && std::abs(Dot(*tilted, Normalize(Vec3{1.0, 0.5, 0.0}))) < 1e-12 && tilted->y > 0.8);
+    // The roll trim turns the top to the right (up x barrel), seen from behind.
+    auto const rolled = GunUpInHand({1.0, 0.0, 0.0}, plain, 90.0);
+    CHECK(rolled.has_value() && same(*rolled, Cross({0.0, 1.0, 0.0}, {1.0, 0.0, 0.0}), 1e-12));
+    // No roll information: a barrel along the thumb side, or none.
+    CHECK(!GunUpInHand({0.0, 2.0, 0.0}, plain).has_value());
+    CHECK(!GunUpInHand({0.0, 0.0, 0.0}, plain).has_value());
+
+    // LE1's numbers (2026-10-08 log): Shepard's right hand frame from its finger bases, and the
+    // pistol's and the rifle's grips. Same barrel; their model ups 90 degrees apart.
+    auto const hand = AnatomyInHand({2.3, -8.6, 1.8}, {1.8, -8.1, 4.2}, {0.9, -8.1, -2.6});
+    CHECK(hand.has_value());
+    Vec3 const pistolBarrel{0.190, -0.965, -0.181}, pistolModelUp{-0.160, 0.151, -0.975};
+    Vec3 const rifleBarrel{0.189, -0.965, -0.179}, rifleModelUp{0.968, 0.214, -0.130};
+    auto const pistolUp = GunUpInHand(pistolBarrel, *hand);
+    auto const rifleUp = GunUpInHand(rifleBarrel, *hand);
+    CHECK(pistolUp.has_value() && rifleUp.has_value());
+    CHECK(degrees(*pistolUp, *rifleUp) < 1.0);          // both guns held the same way
+    CHECK(degrees(*pistolUp, pistolModelUp) > 170.0);   // the pistol's model up was upside down
+    CHECK(std::abs(degrees(*rifleUp, rifleModelUp) - 90.0) < 15.0);  // the rifle's on its side
+
+    // With HandForBarrel: the barrel goes along the aim, the thumb side to the controller's up,
+    // and rolling the controller about its aim rolls the hand (and the gun) by the same angle.
+    Vec3 const aim = Normalize(Vec3{0.8, 0.3, -0.2});
+    Vec3 const aimUp = Normalize(Cross(Cross(aim, Vec3{0.0, 0.0, 1.0}), aim));  // up, across the aim
+    auto const held = HandForBarrel(pistolBarrel, *pistolUp, aim, aimUp);
+    CHECK(held.has_value() && same(Rotate(*held, Normalize(pistolBarrel)), aim, 1e-9));
+    CHECK(same(Rotate(*held, *pistolUp), aimUp, 1e-9));
+    Vec3 const thumb = Rotate(*held, Rotate(*hand, {0.0, 1.0, 0.0}));
+    CHECK(Dot(thumb, aimUp) > 0.9);  // the thumb side is on top
+    for (double roll : {30.0, -75.0, 180.0}) {
+        Quat const twist = about(aim, roll);
+        auto const turned = HandForBarrel(pistolBarrel, *pistolUp, aim, Rotate(twist, aimUp));
+        CHECK(turned.has_value() && AngleBetween(*turned, Normalize(twist * *held)) < 1e-7);
+    }
+}
+
 bool NearXr(XrVector3f a, XrVector3f b, double tolerance = 1e-4) {
     return NearD(a.x, b.x, tolerance) && NearD(a.y, b.y, tolerance) && NearD(a.z, b.z, tolerance);
 }
@@ -1030,6 +1105,7 @@ int main() {
     TestToTracking();
     TestHandFrame();
     TestHandForBarrel();
+    TestGunHold();
     TestGamepad();
     TestOverlayPlacement();
     TestMenuPointer();

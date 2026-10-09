@@ -254,10 +254,11 @@ every bone below the upper arm rigidly, `Prop01` included.
   so it doesn't matter whether the weapon updates before or after the hand is written. Kept per
   weapon; a still measurement more than 1 unit or 2 degrees away replaces it (logged).
 - **The hand** (`game/arm_ik`): with a grip, the right hand bone's rotation is solved so the
-  barrel points along the right controller's OpenXR aim ray (aim pose -Z) and the gun's up stays
-  as close to the aim pose's +Y as the barrel allows (`ik::HandForBarrel`, unit-tested). No grip
-  yet, or no weapon: the old grip mapping (`HandFrame` plus the `[Hands]` trims). The wrist still
-  goes where the grip pose puts it.
+  barrel points along the right controller's OpenXR aim ray (aim pose -Z) and the gun's top
+  follows the aim pose's +Y as far as the barrel allows (`ik::HandForBarrel`, unit-tested). The
+  gun's top is the **hand's thumb side**, not the model's up (see "Gun roll" below). No grip yet,
+  or no weapon: the old grip mapping (`HandFrame` plus the `[Hands]` trims). The wrist still goes
+  where the grip pose puts it.
 - **Shots** (`game/hand_aim`), only while arm IK points the gun this tick and the writer is
   writing the pose (`arm_ik::RightHandAimsGun`): `GetAdjustedAimFor` returns the barrel's
   direction, and a ProcessEvent post-handler on `GetWeaponStartTraceLocation` (the local
@@ -278,6 +279,34 @@ every bone below the upper arm rigidly, `Prop01` included.
   - If it lags: in the bone writer's post-hook, after writing, call
     `BeginDeferredUpdateTransform` (`0x2C7C90`) on each component in the body's `Attachments`,
     as the engine's own transform update does. Not done blind: the log decides.
+
+### Gun roll: from the hand, not the model (2026-10-08)
+
+Headset feedback: the gun was upside down. The roll came from the weapon model's axes (the muzzle
+socket's Z), and those disagree between weapons. The 15:56 log measured two grips in the right
+hand's axes with the same barrel `(0.19, -0.965, -0.18)`: the pistol's up `(-0.160, 0.151, -0.975)`
+and the rifle's `(0.968, 0.214, -0.130)`, 90 degrees apart. Against the hand's own frame (from the
+logged finger bases), the pistol's model up is about 180 degrees from the thumb side (upside down) and
+the rifle's about 90 (on its side) (`TestGunHold`, on those numbers).
+
+**Fix** (Overlord's rule: the controller decides, the gun is the master and the hand follows):
+- The gun sits at a fixed pose on the controller: the barrel along the aim pose's forward, its top
+  along the aim pose's up, so its roll follows the wrist. Without an aim pose, the forward of the
+  **Touch reference frame** (Overlord's `touch_controller_reference.hpp`: from the OpenXR grip,
+  translation (+/-7, -1.83, 101.9) mm and a 20.6 degree right-handed X rotation, inverted;
+  `core/ik/TouchReference`, its forward is the grip's pitched 20.6 degrees down).
+- Which way is the gun's top in the hand: the hand's **thumb side** (anatomical +Y, pinky
+  knuckle to index knuckle, from the finger bases) made perpendicular to the barrel
+  (`ik::GunUpInHand`). A hand holds every gun with the top of its grip toward the index finger
+  and thumb, so this is the same for every weapon (the pistol and the rifle come out less than 1
+  degree apart). The model's up is only logged.
+- `[Hands] gunRoll` (degrees, `<GAME>MEVR.ini`, live) rolls the gun about its barrel if it still
+  looks rolled in the headset **[verify]**.
+- The muzzle and barrel measurement, shots from the muzzle and the reticle's ray are unchanged
+  (they use the barrel and the muzzle, never the up).
+- Log: `arm IK: gun held thumb side up, roll trim 0.0 degrees: up in the hand's axes (...); the
+  weapon model's up is N degrees from it (ignored)`, once per weapon (expect about 180 for the
+  pistol, about 90 for the rifle).
 
 ### What the log shows
 

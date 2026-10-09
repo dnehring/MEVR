@@ -48,8 +48,15 @@ other keys in the table further down are for our own renderer only.
    pistol or rifle, and hold the right hand still for a moment (the mod measures how the gun sits
    in the hand; the log says `grip measured`).
    - Hold the controller normally and point it at something: the gun's barrel should point the
-     same way, upright. (The `handPitch = 90` in `LE1MEVR.ini` no longer matters for guns; leave
-     it.) Turn and tilt the controller: the gun should follow without lag or jitter.
+     same way, **upright (not upside down or on its side, pistol and rifle alike: the gun's top
+     now comes from the hand's thumb side, not the weapon model)**. Roll the controller: the gun
+     rolls with the wrist. (The `handPitch = 90` in `LE1MEVR.ini` no longer matters for guns;
+     leave it.) Turn and tilt the controller: the gun should follow without lag or jitter.
+     - Log: `arm IK: gun held thumb side up, ... the weapon model's up is N degrees from it
+       (ignored)`, once per weapon (about 180 for the pistol, about 90 for the rifle).
+     - Still rolled? Set `gunRoll` under `[Hands]` in `LE1MEVR.ini` (degrees, positive rolls the
+       top to the right; applies within a second, logged as `hands: calibration ... gun roll`)
+       and note the value that looks right.
    - Fire at a wall at different distances: impacts should land where the barrel points, and the
      tracers should leave the muzzle. Note any constant offset and the distance.
    - Wave the gun around fast: does the gun stay locked to the hand (no lag behind it)?
