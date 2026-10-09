@@ -36,8 +36,15 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   static library and linked into the **host** ASI, so it isn't hot-reloaded). It owns OpenXR,
   Present, stereo (two renders per present), first person (K), head look and its Insert menu.
   Its log is `%LOCALAPPDATA%\MELEVR\MELEVR_Log.txt`; its settings are `MELEVR.ini` in
-  `Binaries\Win64\ASI`. Its keys: `\` menu (`menuKey = 220` in our deploy; upstream uses Insert; both thumbsticks held closes it, our addition; the open menu blocks all game input, and it wasn't visible in the first headset tests), R recenter (or double-click the right stick),
-  K first person. Our own VR hotkeys are off on LE1.
+  `Binaries\Win64\ASI`. Its keys: `\` menu (`menuKey = 220` in our deploy; upstream uses Insert;
+  both thumbsticks held opens or closes it, our addition; the open menu blocks all game input),
+  R recenter (or double-click the right stick), K first person. Our own VR hotkeys are off on LE1.
+- Its menu takes the pad (Touch merged in as Xbox pad 0: left stick/d-pad, A, B; upstream never
+  set ImGui's `HasGamepad` backend flag, so pad nav was dead until we did) and our laser pointer
+  (`src/plugin/MevrMenuPointer.cpp`: a controller's aim ray on the head-locked quad is the mouse,
+  trigger clicks, right stick scrolls). Our own tab, "VR hands" (`src/plugin/MevrMenuTab.cpp`),
+  edits `[Hands]` in `ASI\LE1MEVR.ini` (the mod re-reads it) and writes the arm-length sample
+  (`[Arms] measureRequest` counter plus grip/head positions; `armLengthM` is shown if present).
 - Our seams into it are marked `[MEVR]` and declared in `src/halcyon/le1/mevr_bridge.h`
   (implemented in `src/plugin/HalcyonBridge.cpp`): static OpenXR loader, our controller actions
   on its session, Touch → Xbox pad 0 in its XInput hooks. Keep changes to its files small and

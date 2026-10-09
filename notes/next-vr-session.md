@@ -14,7 +14,10 @@ order, VR conversations and cutscenes; head aim is off (the hand aims). The old 
 is `MELEVR.ini.mevr_old`. Halcyon's log should now show `[TARGETCHK] Stereo 2 target OK` and, in
 gameplay, `[PASSCAP] published complete stereo pair` lines (none of those = no stereo).
 
-**Keys on LE1:** `\` = Halcyon's menu (Insert upstream) (the controllers navigate it as a gamepad; while it's open the game gets no input; clicking and holding both thumbsticks closes it), R = recenter
+**Keys on LE1:** `\` = Halcyon's menu (Insert upstream), or click and hold both thumbsticks to
+open or close it. While it's open the game gets no input. Point at it with a controller (laser
+pointer: trigger clicks, right stick scrolls), or navigate it as a gamepad (left stick or d-pad
+moves, A activates, B backs out). R = recenter
 (or double-click the right stick), K = first person on/off (off at every launch). Ours: `,` hand
 aim on/off and `.` arm IK on/off, both on by themselves once the controllers are tracked; the
 other keys in the table further down are for our own renderer only.
@@ -60,6 +63,29 @@ other keys in the table further down are for our own renderer only.
      and once in gameplay. Press `\` again or hold both sticks to close it.
      - Is the menu visible now? It's an opaque dark panel, a little nearer than before.
      - If it's still invisible, say so. The log's `[MENUVIS]` lines will show why.
+   - **Mod menu with the controllers (fixed and new).** The pad never worked in this menu, not
+     even an Xbox pad: the ImGui setup threw every gamepad key away. Now:
+     - **Gamepad:** left stick or d-pad moves the highlight, A activates, B backs out. Check a
+       checkbox, a slider (highlight it, then hold left/right) and a tab (move up to the tab row,
+       then left/right and A).
+     - **Laser pointer:** point the right controller at the menu. A blue dot should sit where it
+       points (the menu follows your head, so point and look roughly the same way). Pull the
+       trigger to click (the dot turns orange): click a tab, a checkbox, drag a slider. Push the
+       right stick up/down over a long tab to scroll. Point with the left hand instead: it takes
+       over once it is on the menu (or pulls its trigger there).
+     - Does the dot land exactly where you point, or is it offset (which way, how much)? Is it
+       steady enough to hit small checkboxes?
+     - Move the desktop mouse: it should take the cursor back; pointing again takes it over.
+   - **VR hands tab (new, last tab of the menu).** Pitch, yaw and roll for how Shepard's hands sit
+     on the controllers, the same values as `[Hands]` in `ASI\LE1MEVR.ini`.
+     - Press +10 on Pitch with the menu open: the file changes, and within a second Shepard's
+       hands should turn (visible behind the menu, or after closing it). Put it back afterwards
+       (the gun is aimed separately and doesn't use these).
+     - **Measure arm length:** press it, then hold both arms straight out to the sides (a T)
+       and pull either trigger. It should say `Sample 1 taken: N m between the controllers`
+       (roughly your arm span minus a little), and `ASI\LE1MEVR.ini` gets an `[Arms]` section.
+       Using the sample (an arm length for the IK) is a separate change; until it lands, nothing
+       else happens.
    - **HUD.** The health, squad, radar and subtitles should sit on a panel about 1.5 m ahead,
      a bit below eye level, not stuck to your face.
      - Look around: the panel stays put, and the world shows no HUD in either eye.
@@ -98,6 +124,8 @@ What Claude looks for:
     (about 100%).
   - `menu copy:` gives both descriptions (a format or size mismatch would drop the copy).
   - `menu quad submitted`.
+  - Ours: `menu pointer: the right controller's ray is on the menu (x, y) px, N m away`, `menu
+    pointer: the left/right controller points`, `menu: hand trims ...`, `menu: arm-length sample`.
 - Ours: `halcyon: renderer attached`, `hooked UObject::ProcessEvent (host-owned)`, `OpenXR:
   controller actions ready`, `game window to foreground`, `hand aim on`, `first world view`, the
   camera-vs-view check (about 0 degrees), `first shot aimed by the right controller`, `arm IK on`,

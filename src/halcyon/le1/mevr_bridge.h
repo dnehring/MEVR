@@ -110,6 +110,39 @@ void RequestHudPanelReplace() noexcept;
 // Insert menu status: UI draws that went to the panel in the last world frame.
 unsigned HudPanelDrawsLastFrame() noexcept;
 
+// ---- Halcyon's menu: laser pointer and our tab (src/plugin/MevrMenuPointer.cpp, MevrMenuTab.cpp) ---
+// All on the Present thread (RunFrame / RenderFrame).
+
+// Each frame the menu quad is submitted (xr_session.cpp): where it is. `headOrientation` (xyzw) and
+// `headPosition`: the VIEW space's pose in Halcyon's app space (the controllers' space); `center`:
+// the quad's center in VIEW space (it is head-locked, oriented like VIEW); size in meters.
+void OnMenuQuad(float const headOrientation[4], float const headPosition[3], float const center[3], float width,
+                float height) noexcept;
+
+struct MenuPointer
+{
+    bool hit = false;    // a controller's aim ray is on the menu (or holds a press that began there)
+    bool left = false;   // no hit, but the last sample had one: the pointer just left the menu
+    float x = 0.0f;      // menu texture pixels
+    float y = 0.0f;
+    bool click = false;  // the pointing hand's trigger: ImGui's left button
+    float wheel = 0.0f;  // right stick: ImGui wheel steps for this frame
+};
+
+// ApplyGamepadInput (before ImGui::NewFrame): the pointer on a `width` x `height` menu texture,
+// `dt` seconds after the last frame. True when it is on the menu.
+bool SampleMenuPointer(int width, int height, float dt, MenuPointer* out) noexcept;
+
+// ApplyGamepadInput: whether the OS cursor at screen (x, y) should drive ImGui's mouse. The pointer
+// takes the mouse while it is on the menu and keeps it until the OS cursor moves.
+bool MenuMouseFromOs(long x, long y, bool pointerHit) noexcept;
+
+// After BuildUI, inside the ImGui frame: the pointer's dot.
+void DrawMenuPointer() noexcept;
+
+// Inside BuildUI's tab bar: our tabs ("VR hands": hand angle trims, arm-length measurement).
+void BuildMenuTabs() noexcept;
+
 // [MENUVIS] One-shot diagnostics for Halcyon's Insert menu quad (Present thread): reads back
 // `texture` (the menu's ImGui texture, or the swapchain image right after the copy into it) a few
 // frames later without stalling, and logs how many pixels are visible (alpha > 0). `tag` names it.
