@@ -70,14 +70,22 @@ void HostSetHandAim(bool on) {
 void HostSetAimRay(vr::aim_ray::Ray const* ray) {
     vr::aim_ray::Publish(ray != nullptr ? *ray : vr::aim_ray::Ray{});
 }
+void HostSetSupportGrip(float distanceMeters, float acquireMeters, float releaseMeters, std::uint32_t flags) {
+    halcyon::SetSupportGrip(distanceMeters, acquireMeters, releaseMeters, flags);
+}
+bool HostSupportGripHeld() {
+    return halcyon::SupportGripHeld();
+}
 HostServices const gServices{kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
     static_cast<std::uint32_t>(sizeof(vr::controllers::State)), static_cast<std::uint32_t>(sizeof(vr::host_view::State)),
     &HostSetProcessEventCallback, &HostProcessExiting, &HostKeepLoaded,
-    static_cast<std::uint32_t>(sizeof(vr::aim_ray::Ray)), &HostSetAimRay};
-// A mod that's gone can't aim: Halcyon's head aim must come back, and the reticle go.
+    static_cast<std::uint32_t>(sizeof(vr::aim_ray::Ray)), &HostSetAimRay, &HostSetSupportGrip, &HostSupportGripHeld};
+// A mod that's gone can't aim: Halcyon's head aim must come back, the reticle go, and the pad
+// mapping forget the two-handed grip.
 void ForgetModState() {
     halcyon::SetModHandAim(false);
     vr::aim_ray::Reset();
+    halcyon::ForgetSupportGrip();
 }
 #else
 HostServices const gServices{kHostServicesVersion, kHostLog, nullptr, nullptr, nullptr, 0, 0, &HostSetProcessEventCallback,

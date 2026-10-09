@@ -19,12 +19,14 @@
 #include "engine/SceneView.hpp"
 #include "game/ArmIk.hpp"
 #include "game/GamepadBridge.hpp"
+#include "game/GamepadMapping.hpp"
 #include "game/HandAim.hpp"
 #include "game/HandTargets.hpp"
 #include "game/HeadSim.hpp"
 #include "game/HeadTracking.hpp"
 #include "game/Reflections.hpp"
 #include "game/SkeletonProbe.hpp"
+#include "game/SupportGrip.hpp"
 #include "game/ViewAnchor.hpp"
 #include "game/Weapon.hpp"
 
@@ -69,6 +71,8 @@ bool gArmIkChosen = false;
 // Host renderer (HostServices v6): it draws the reticle along the gun's aim ray we publish.
 bool gToldNoAimRay = false;
 bool gAimRaySent = false;  // a ray was published (cleared again at shutdown)
+// Host renderer (HostServices v7): it runs the two-handed grip's pad mapping.
+bool gToldNoSupportGrip = false;
 bool gHooked = false;  // ProcessEvent hook live (after the script packages loaded)
 bool gSceneViewHooked = false;
 bool gGamepadHooked = false;  // XInput hooks (once the game has loaded an XInput DLL)
@@ -335,6 +339,33 @@ void PublishAimRay() {
     gAimRaySent = true;
 }
 
+// Host renderer (HostServices v7): its XInput hook builds the pad, so it runs the two-handed grip's
+// mapping with our distance and settings, and tells us whether it holds.
+bool HostTakesSupportGrip() {
+    using namespace mevr;
+    return gHostOwnsVr && gHost->version >= 7 && gHost->setSupportGrip != nullptr && gHost->supportGripHeld != nullptr;
+}
+
+void PublishSupportGrip() {
+    using namespace mevr;
+    if (!gHostOwnsVr) {
+        return;  // our renderer: game/gamepad_bridge reads support_grip itself
+    }
+    if (!HostTakesSupportGrip()) {
+        if (!gToldNoSupportGrip) {
+            gToldNoSupportGrip = true;
+            log::Warn("support grip: the host (services v{}) can't take it: no two-handed grip, and [Controls] leftTrigger "
+                      "isn't applied; close the game and redeploy the host", gHost->version);
+        }
+        game::support_grip::SetHeld(false);
+        return;
+    }
+    game::gamepad::Options const options = game::support_grip::PadOptions();
+    gHost->setSupportGrip(options.support.distance, options.support.acquire, options.support.release,
+        game::gamepad::ToFlags(options));
+    game::support_grip::SetHeld(gHost->supportGripHeld());
+}
+
 // Host renderer: copies the host's latest controllers and view into the mod (first thing each
 // tick, so everything after sees this tick's).
 void MirrorHostState() {
@@ -461,6 +492,7 @@ void Heartbeat() {
         game::weapon::LogStats();
         game::view_anchor::LogStats();
         game::arm_ik::LogStats();
+        game::support_grip::LogStats();
         game::skeleton_probe::Tick();
     }
     engine::scene_view::LogStats();
@@ -566,6 +598,8 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // OnTickEnd), then which way shots go and the reticle's ray.
         game::weapon::Tick(game::hand_aim::Enabled() || game::arm_ik::Enabled());
         game::arm_ik::Tick(deltaSeconds);
+        game::support_grip::Tick(deltaSeconds, game::arm_ik::SupportRequested());
+        PublishSupportGrip();
         game::hand_aim::Tick();
         PublishAimRay();
         game::head_tracking::OnTickEnd();
@@ -646,6 +680,12 @@ MEVR_MOD_API void MevrModShutdown() {
     }
     gAimRaySent = false;
     gToldNoAimRay = false;
+    if (HostTakesSupportGrip()) {
+        // No grip without the mod, LT back on the trigger (the host also forgets on unload).
+        gHost->setSupportGrip(-1.0f, 0.12f, 0.22f, game::gamepad::kFlagLeftTrigger | game::gamepad::kFlagSupportAims);
+    }
+    gToldNoSupportGrip = false;
+    game::support_grip::Shutdown();
     game::weapon::Shutdown();
     gHost = nullptr;
     gHostOwnsVr = false;

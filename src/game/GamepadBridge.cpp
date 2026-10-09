@@ -5,6 +5,7 @@
 #include "core/vr/Controllers.hpp"
 #include "game/GamepadMapping.hpp"
 #include "game/HeadTracking.hpp"
+#include "game/SupportGrip.hpp"
 
 #include <LESDK/Init.hpp>
 
@@ -63,7 +64,8 @@ DWORD Bridge(tGetState original, DWORD index, XINPUT_STATE* state) {
     std::lock_guard lock(gMutex);
     XINPUT_GAMEPAD pad = realPad ? state->Gamepad : XINPUT_GAMEPAD{};
     if (controllers.active) {
-        pad = gamepad::Merge(pad, gamepad::FromControllers(controllers, gLatches));
+        pad = gamepad::Merge(pad, gamepad::FromControllers(controllers, gLatches, support_grip::PadOptions()));
+        support_grip::SetHeld(gLatches.left == gamepad::LeftGrip::Support);
         gControllerFrames.fetch_add(1, std::memory_order_relaxed);
     }
     gamepad::RotateStick(pad.sThumbLX, pad.sThumbLY, yaw);

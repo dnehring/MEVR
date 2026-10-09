@@ -49,6 +49,26 @@ mevr::game::gamepad::Latches gLatches;
 XINPUT_GAMEPAD gLastPad{};
 DWORD gPacket = 0;
 
+// The mod's two-handed grip input (HostServices::setSupportGrip), and the mapping's answer.
+constexpr std::uint64_t kSupportInputMaxAgeMs = 250;
+std::atomic<float> gSupportDistance{-1.0f};
+std::atomic<float> gSupportAcquire{0.12f};
+std::atomic<float> gSupportRelease{0.22f};
+std::atomic<unsigned> gSupportFlags{mevr::game::gamepad::kFlagLeftTrigger | mevr::game::gamepad::kFlagSupportAims};
+std::atomic<std::uint64_t> gSupportInputMs{0};
+std::atomic<bool> gSupportHeld{false};
+
+// The pad options from the mod's latest input; defaults (no grip, LT from the trigger) when stale.
+mevr::game::gamepad::Options PadOptions() {
+    std::uint64_t const at = gSupportInputMs.load(std::memory_order_relaxed);
+    if (at == 0 || GetTickCount64() - at > kSupportInputMaxAgeMs) {
+        return {};
+    }
+    return mevr::game::gamepad::FromFlags(gSupportDistance.load(std::memory_order_relaxed),
+        gSupportAcquire.load(std::memory_order_relaxed), gSupportRelease.load(std::memory_order_relaxed),
+        gSupportFlags.load(std::memory_order_relaxed));
+}
+
 // Controller aim: the mod aims with the right controller (HostServices::setHandAim) and that
 // controller's aim pose was tracked within the hold time, so a moment of lost tracking doesn't
 // hand aiming back and forth between the head and the hand.
@@ -175,12 +195,19 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     }
     mevr::vr::controllers::State const controllers = mevr::vr::controllers::Latest();
     if (!controllers.active) {
+        gSupportHeld.store(false, std::memory_order_relaxed);
         return result;
     }
     bool const realPad = result == ERROR_SUCCESS;
     std::lock_guard lock(gPadMutex);
     XINPUT_GAMEPAD pad = mevr::game::gamepad::Merge(realPad ? state->Gamepad : XINPUT_GAMEPAD{},
-        mevr::game::gamepad::FromControllers(controllers, gLatches));
+        mevr::game::gamepad::FromControllers(controllers, gLatches, PadOptions()));
+    bool const held = gLatches.left == mevr::game::gamepad::LeftGrip::Support;
+    if (gSupportHeld.exchange(held, std::memory_order_relaxed) != held) {
+        mevr::log::Info("halcyon bridge: support grip {} (left hand {:.2f} m from the foregrip){}", held ? "taken" : "let go",
+            gSupportDistance.load(std::memory_order_relaxed),
+            held ? ((PadOptions().supportAims) ? ": LT to the game instead of LB" : ": no LT (sniper rifle)") : "");
+    }
     if (controllers.left.stickClick && controllers.right.stickClick) {
         pad.wButtons &= ~(XINPUT_GAMEPAD_LEFT_THUMB | XINPUT_GAMEPAD_RIGHT_THUMB);  // the menu chord, not L3 + R3
     }
@@ -204,6 +231,23 @@ void SetModHandAim(bool on) {
     if (MELEVR::MevrBridge::gModHandAim.exchange(on, std::memory_order_relaxed) != on) {
         log::Info("halcyon bridge: the mod {} weapons with the right controller", on ? "aims" : "no longer aims");
     }
+}
+
+void SetSupportGrip(float distanceMeters, float acquireMeters, float releaseMeters, unsigned flags) {
+    using namespace MELEVR::MevrBridge;
+    gSupportDistance.store(distanceMeters, std::memory_order_relaxed);
+    gSupportAcquire.store(acquireMeters, std::memory_order_relaxed);
+    gSupportRelease.store(releaseMeters, std::memory_order_relaxed);
+    gSupportFlags.store(flags, std::memory_order_relaxed);
+    gSupportInputMs.store(GetTickCount64(), std::memory_order_relaxed);
+}
+
+void ForgetSupportGrip() {
+    MELEVR::MevrBridge::gSupportInputMs.store(0, std::memory_order_relaxed);
+}
+
+bool SupportGripHeld() {
+    return MELEVR::MevrBridge::gSupportHeld.load(std::memory_order_relaxed);
 }
 
 } // namespace mevr::host::halcyon

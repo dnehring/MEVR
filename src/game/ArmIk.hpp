@@ -22,6 +22,9 @@ void Tick(float deltaSeconds);
 // This tick's request points the held gun along the right controller's aim, and the writer is
 // writing the pose: the gun model follows the controller, so shots can follow the gun.
 bool RightHandAimsGun();
+// This tick's request asks the writer for the two-handed grip (a settled foregrip on the aimed gun,
+// the left controller followed): game/support_grip's distance and blend are about this gun.
+bool SupportRequested();
 bool Toggle();
 void SetEnabled(bool on);
 bool Enabled();

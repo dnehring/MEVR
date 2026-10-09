@@ -32,6 +32,12 @@ struct Values {
     double armStretch = ik::kMaxArmStretch;
     double trackingScale = 0.0;
     double armLength = 0.0;  // [Arms] armLengthM
+    // [Controls]
+    bool leftTrigger = true;
+    bool supportGrip = true;
+    double supportAcquire = 0.12;
+    double supportRelease = 0.22;
+    bool sniperAims = false;
     bool operator==(Values const&) const = default;
 };
 
@@ -76,6 +82,23 @@ constexpr char const* kDefaultFile =
     "[Arms]\n"
     "; Arm-length calibration (the VR hands tab samples a T pose; the mod writes armLengthM, the\n"
     "; player's shoulder-to-grip length in meters, and scales reach with it; 0 or absent = off).\n";
+
+// Appended to a settings file that has no [Controls] yet (and part of a new file).
+constexpr char const* kControlsBlock =
+    "\n"
+    "[Controls]\n"
+    "; The two-handed grip: squeeze the left grip with the left hand on the gun's foregrip (within\n"
+    "; supportAcquireM meters) to hold it with both hands; it lets go when the grip opens or the hand\n"
+    "; moves supportReleaseM away. While held, the barrel points from the right hand toward the left,\n"
+    "; and the game sees the left trigger (LT) held: aimed, focused fire. Elsewhere the left grip is LB.\n"
+    "supportGrip = 1\n"
+    "supportAcquireM = 0.12\n"
+    "supportReleaseM = 0.22\n"
+    "; sniperAims: 1 also holds LT for a sniper rifle (its aimed mode is the game's scope camera).\n"
+    "sniperAims = 0\n"
+    "; leftTrigger: lt = the left trigger is the game's LT, as before; none = the game doesn't see it\n"
+    "; (aimed fire then comes from the two-handed grip only).\n"
+    "leftTrigger = lt\n";
 
 fs::path FilePath() {
     wchar_t buffer[MAX_PATH]{};
@@ -159,6 +182,25 @@ Values ReadValues(Ini const& ini) {
     if (Number(ini, "Arms", "armLengthM", values.armLength) && !(values.armLength >= 0.3 && values.armLength <= 1.2)) {
         values.armLength = 0.0;
     }
+    if (auto const s = ini.find("Controls"); s != ini.end()) {
+        if (auto const k = s->second.find("leftTrigger"); k != s->second.end()) {
+            std::string value = k->second;
+            std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            values.leftTrigger = !(value == "none" || value == "off" || value == "0");
+        }
+    }
+    if (Number(ini, "Controls", "supportGrip", flag)) {
+        values.supportGrip = flag != 0.0;
+    }
+    double acquire = values.supportAcquire;
+    double release = values.supportRelease;
+    Number(ini, "Controls", "supportAcquireM", acquire);
+    Number(ini, "Controls", "supportReleaseM", release);
+    values.supportAcquire = std::clamp(acquire, 0.02, 0.5);
+    values.supportRelease = std::clamp(release, values.supportAcquire, 1.0);
+    if (Number(ini, "Controls", "sniperAims", flag)) {
+        values.sniperAims = flag != 0.0;
+    }
     return values;
 }
 
@@ -233,6 +275,10 @@ double ArmLength() {
     return gValues.armLength;
 }
 
+Controls GetControls() {
+    return {gValues.leftTrigger, gValues.supportGrip, gValues.supportAcquire, gValues.supportRelease, gValues.sniperAims};
+}
+
 std::optional<ik::ArmLengths> MeasureArmLength(ik::ArmLengthSample const& sample) {
     auto const arms = ik::ArmLengthFromTPose(sample);
     if (!arms) {
@@ -260,16 +306,22 @@ void Refresh() {
     fs::path const path = FilePath();
     std::error_code ec;
     if (!fs::exists(path, ec)) {
-        std::ofstream(path) << kDefaultFile;
+        std::ofstream(path) << kDefaultFile << kControlsBlock;
         log::Info("hands: wrote default calibration to {}", path.string());
     }
-    auto const stamp = fs::last_write_time(path, ec);
+    auto stamp = fs::last_write_time(path, ec);
     if (ec || (gHaveStamp && stamp == gStamp)) {
         return;
     }
+    Ini ini = ReadIni(path);
+    if (ini.find("Controls") == ini.end()) {
+        std::ofstream(path, std::ios::app) << kControlsBlock;  // an older file: show the new settings
+        log::Info("hands: added the [Controls] defaults to {}", path.string());
+        ini = ReadIni(path);
+        stamp = fs::last_write_time(path, ec);
+    }
     gStamp = stamp;
     gHaveStamp = true;
-    Ini const ini = ReadIni(path);
     Values const values = ReadValues(ini);
     if (!gApplied || values != gValues) {
         gApplied = true;
@@ -280,6 +332,9 @@ void Refresh() {
             values.trackingScale > 0.0 ? std::format("{:.1f} units/m", values.trackingScale) : std::string("the view's"),
             values.armLength > 0.0 ? std::format("{:.3f} m", values.armLength) : std::string("not calibrated"),
             path.filename().string());
+        log::Info("controls: two-handed grip {} (acquire {:.2f} m, release {:.2f} m, sniper rifles {}), left trigger {}",
+            values.supportGrip ? "on" : "off", values.supportAcquire, values.supportRelease,
+            values.sniperAims ? "aim too" : "steady only, no LT", values.leftTrigger ? "= LT" : "not sent to the game");
     }
     // The menu's arm-length sample: each new measureRequest value is one T-pose sample. One
     // already there at startup with a result saved is old news.

@@ -35,7 +35,48 @@ void Stronger(SHORT ax, SHORT ay, SHORT bx, SHORT by, SHORT& outX, SHORT& outY) 
 
 } // namespace
 
+LeftGrip UpdateSupportGrip(SupportGrip& grip, bool gripDown, SupportInput const& input) {
+    bool const available = std::isfinite(input.distance) && input.distance >= 0.0f && std::isfinite(input.acquire) &&
+        std::isfinite(input.release) && input.acquire > 0.0f && input.release >= input.acquire;
+    if (!gripDown) {
+        grip.engaged = false;
+        grip.shoulder = false;
+        grip.armed = true;
+        return LeftGrip::Open;
+    }
+    if (grip.armed) {  // a new squeeze: on the foregrip, or the shoulder button
+        grip.armed = false;
+        grip.engaged = available && input.distance <= input.acquire;
+        grip.shoulder = !grip.engaged;
+        return grip.engaged ? LeftGrip::Support : LeftGrip::Shoulder;
+    }
+    if (grip.engaged) {
+        if (!available || input.distance > input.release) {
+            grip.engaged = false;  // let go; nothing more until the grip opens
+            return LeftGrip::Held;
+        }
+        return LeftGrip::Support;
+    }
+    return grip.shoulder ? LeftGrip::Shoulder : LeftGrip::Held;
+}
+
+std::uint32_t ToFlags(Options const& options) {
+    return (options.leftTrigger ? kFlagLeftTrigger : 0u) | (options.supportAims ? kFlagSupportAims : 0u);
+}
+
+Options FromFlags(float distance, float acquire, float release, std::uint32_t flags) {
+    Options options;
+    options.leftTrigger = (flags & kFlagLeftTrigger) != 0;
+    options.supportAims = (flags & kFlagSupportAims) != 0;
+    options.support = {distance, acquire, release};
+    return options;
+}
+
 XINPUT_GAMEPAD FromControllers(vr::controllers::State const& state, Latches& latches) {
+    return FromControllers(state, latches, Options{});
+}
+
+XINPUT_GAMEPAD FromControllers(vr::controllers::State const& state, Latches& latches, Options const& options) {
     auto const& l = state.left;
     auto const& r = state.right;
     XINPUT_GAMEPAD pad{};
@@ -43,12 +84,14 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& state, Latches& lat
     pad.sThumbLY = ToAxis(l.stickY);
     pad.sThumbRX = ToAxis(r.stickX);
     pad.sThumbRY = ToAxis(r.stickY);
-    pad.bLeftTrigger = ToTrigger(l.trigger);
+    pad.bLeftTrigger = options.leftTrigger ? ToTrigger(l.trigger) : BYTE{0};
     pad.bRightTrigger = ToTrigger(r.trigger);
 
     WORD buttons = 0;
     bool const leftGrip = Latch(latches.leftGrip, l.squeeze);
-    if (leftGrip) buttons |= XINPUT_GAMEPAD_LEFT_SHOULDER;
+    latches.left = UpdateSupportGrip(latches.support, leftGrip, options.support);
+    if (latches.left == LeftGrip::Shoulder) buttons |= XINPUT_GAMEPAD_LEFT_SHOULDER;
+    if (latches.left == LeftGrip::Support && options.supportAims) pad.bLeftTrigger = 255;
     if (Latch(latches.rightGrip, r.squeeze)) buttons |= XINPUT_GAMEPAD_RIGHT_SHOULDER;
     if (r.primary) buttons |= XINPUT_GAMEPAD_A;
     if (r.secondary) buttons |= XINPUT_GAMEPAD_B;

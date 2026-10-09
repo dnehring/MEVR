@@ -9,6 +9,7 @@
 #include "core/ik/Rigid.hpp"
 #include "core/ik/TorsoPose.hpp"
 #include "core/ik/TouchReference.hpp"
+#include "core/ik/TwoHand.hpp"
 #include "core/vr/MenuPointer.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/ViewSync.hpp"
@@ -382,6 +383,150 @@ void TestGamepad() {
     y = 32767;
     RotateStick(x, y, Units(180));
     CHECK(Near(x, 0) && Near(y, -32767));
+}
+
+void TestSupportGrip() {
+    using namespace mevr::game::gamepad;
+    SupportInput onGrip{0.05f, 0.12f, 0.22f};
+    SupportInput between{0.18f, 0.12f, 0.22f};
+    SupportInput away{0.30f, 0.12f, 0.22f};
+    SupportInput none{};  // no gun
+
+    // A new squeeze near the foregrip holds; between acquire and release it keeps holding; past
+    // release it lets go, and nothing (no LB) until the grip opens.
+    SupportGrip grip;
+    CHECK(UpdateSupportGrip(grip, false, onGrip) == LeftGrip::Open);
+    CHECK(UpdateSupportGrip(grip, true, onGrip) == LeftGrip::Support);
+    CHECK(UpdateSupportGrip(grip, true, between) == LeftGrip::Support);
+    CHECK(UpdateSupportGrip(grip, true, away) == LeftGrip::Held);
+    CHECK(UpdateSupportGrip(grip, true, onGrip) == LeftGrip::Held);  // back in range: no re-grab while squeezed
+    CHECK(UpdateSupportGrip(grip, false, onGrip) == LeftGrip::Open);
+    CHECK(UpdateSupportGrip(grip, true, onGrip) == LeftGrip::Support);  // a new squeeze
+
+    // A squeeze between acquire and release (or away from the gun) is LB, and stays LB even when
+    // the hand then moves onto the foregrip: only a new squeeze grabs.
+    grip = {};
+    CHECK(UpdateSupportGrip(grip, true, between) == LeftGrip::Shoulder);
+    CHECK(UpdateSupportGrip(grip, true, onGrip) == LeftGrip::Shoulder);
+    CHECK(UpdateSupportGrip(grip, false, onGrip) == LeftGrip::Open);
+    grip = {};
+    CHECK(UpdateSupportGrip(grip, true, none) == LeftGrip::Shoulder);
+
+    // The gun goes away while held (holstered, arm IK off): let go, no LB.
+    grip = {};
+    CHECK(UpdateSupportGrip(grip, true, onGrip) == LeftGrip::Support);
+    CHECK(UpdateSupportGrip(grip, true, none) == LeftGrip::Held);
+    // Bad thresholds (release below acquire) mean no gun to hold.
+    grip = {};
+    CHECK(UpdateSupportGrip(grip, true, SupportInput{0.05f, 0.2f, 0.1f}) == LeftGrip::Shoulder);
+    grip = {};
+    CHECK(UpdateSupportGrip(grip, true, SupportInput{std::nanf(""), 0.12f, 0.22f}) == LeftGrip::Shoulder);
+
+    // Through the pad: held = LT fully pulled and no LB; the left trigger setting.
+    mevr::vr::controllers::State state;
+    Latches latches;
+    Options options;
+    options.support = onGrip;
+    state.left.squeeze = 1.0f;
+    state.left.trigger = 0.4f;
+    auto pad = FromControllers(state, latches, options);
+    CHECK(latches.left == LeftGrip::Support);
+    CHECK(pad.bLeftTrigger == 255 && (pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) == 0);
+    options.supportAims = false;  // a sniper rifle: steadies only
+    pad = FromControllers(state, latches, options);
+    CHECK(pad.bLeftTrigger == 102 && (pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) == 0);
+    options.leftTrigger = false;  // the left trigger freed
+    pad = FromControllers(state, latches, options);
+    CHECK(pad.bLeftTrigger == 0);
+    options.supportAims = true;
+    pad = FromControllers(state, latches, options);
+    CHECK(pad.bLeftTrigger == 255);  // the grip still aims with the trigger freed
+    // Grip opens, then a squeeze away from the gun: LB, and the trigger is still not LT.
+    state.left.squeeze = 0.0f;
+    FromControllers(state, latches, options);
+    state.left.squeeze = 1.0f;
+    options.support = away;
+    pad = FromControllers(state, latches, options);
+    CHECK(latches.left == LeftGrip::Shoulder && (pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0 && pad.bLeftTrigger == 0);
+    // Left grip + menu is still Back while the grip holds the gun.
+    state = {};
+    latches = {};
+    options = {};
+    options.support = onGrip;
+    state.left.squeeze = 1.0f;
+    state.left.menu = true;
+    pad = FromControllers(state, latches, options);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_BACK) != 0);
+
+    // The flags across the host boundary.
+    Options flagged;
+    flagged.leftTrigger = false;
+    flagged.supportAims = true;
+    Options const back = FromFlags(0.1f, 0.12f, 0.22f, ToFlags(flagged));
+    CHECK(!back.leftTrigger && back.supportAims && back.support.distance == 0.1f);
+    CHECK(ToFlags(Options{}) == (kFlagLeftTrigger | kFlagSupportAims));
+}
+
+void TestTwoHand() {
+    using namespace mevr::ik;
+    constexpr double kPi = std::numbers::pi;
+    auto const closeTo = [](Vec3 a, Vec3 b, double tolerance = 1e-6) { return Length(a - b) < tolerance; };
+
+    // Slerp: ends, middle, and the short way round.
+    Quat const quarter = FromTo({1.0, 0.0, 0.0}, {0.0, 1.0, 0.0});
+    CHECK(AngleBetween(Slerp({}, quarter, 0.0), {}) < 1e-9);
+    CHECK(AngleBetween(Slerp({}, quarter, 1.0), quarter) < 1e-9);
+    CHECK(std::abs(AngleBetween(Slerp({}, quarter, 0.5), {}) - kPi / 4.0) < 1e-9);
+    Quat const flipped{-quarter.x, -quarter.y, -quarter.z, -quarter.w};
+    CHECK(std::abs(AngleBetween(Slerp({}, flipped, 0.5), {}) - kPi / 4.0) < 1e-9);
+
+    // A rifle in the right hand: barrel along hand X, foregrip 30 units ahead and 5 below.
+    Vec3 const span{30.0, 0.0, -5.0};
+    Quat const rear{};  // hand axes = component axes
+    Vec3 const rearAt{0.0, 0.0, 0.0};
+    // The left hand exactly where the one-hand pose has the foregrip: no swing.
+    auto same = TwoHandRotation(rear, span, rearAt, span, 8.0);
+    CHECK(same && AngleBetween(*same, rear) < 1e-9);
+    // The left hand moved up and left: the span now points at it; the barrel turned with it.
+    Vec3 const left{20.0, 15.0, 10.0};
+    auto turned = TwoHandRotation(rear, span, rearAt, left, 8.0);
+    CHECK(turned.has_value());
+    if (turned) {
+        Vec3 const spanNow = Rotate(*turned, span);
+        CHECK(closeTo(Normalize(spanNow), Normalize(left)));
+        // Roll stays the right hand's: a swing about an axis perpendicular to both directions,
+        // so the hand's axis perpendicular to that plane (the swing axis) doesn't move.
+        Vec3 const axis = Normalize(Cross(span, left));
+        CHECK(closeTo(Rotate(*turned, axis), axis));
+    }
+    // The barrel follows the line between the hands: rotating the right hand rotates the span,
+    // and the result still points the span at the left hand, keeping the new roll.
+    Quat const rolled = FromTo({0.0, 1.0, 0.0}, {0.0, 0.0, 1.0});  // 90 degrees about X
+    auto rolledTurn = TwoHandRotation(rolled, span, rearAt, left, 8.0);
+    CHECK(rolledTurn && closeTo(Normalize(Rotate(*rolledTurn, span)), Normalize(left)));
+    // Hands too close (or on top of each other): no axis, keep the right hand's aim.
+    CHECK(!TwoHandRotation(rear, span, rearAt, {5.0, 0.0, 0.0}, 8.0));
+    CHECK(!TwoHandRotation(rear, {0.0, 0.0, 0.0}, rearAt, left, 8.0));
+    CHECK(!TwoHandRotation(rear, span, rearAt, {std::nan(""), 0.0, 0.0}, 8.0));
+    // Opposite: the left hand behind the right turns the gun around (a well-defined half turn).
+    auto behind = TwoHandRotation(rear, {30.0, 0.0, 0.0}, rearAt, {-30.0, 0.0, 0.0}, 8.0);
+    CHECK(behind && closeTo(Normalize(Rotate(*behind, {1.0, 0.0, 0.0})), {-1.0, 0.0, 0.0}));
+
+    // Foregrip candidates: on a rifle whose muzzle is 60 units ahead.
+    Vec3 const barrel{1.0, 0.0, 0.0};
+    Vec3 const muzzle{60.0, 0.0, 4.0};
+    CHECK(OnGun({30.0, 0.0, -5.0}, barrel, muzzle));
+    CHECK(!OnGun({1.0, 1.0, 1.0}, barrel, muzzle));           // on the right hand itself
+    CHECK(!OnGun({30.0, 40.0, 0.0}, barrel, muzzle));         // far off the barrel (a hand at the side)
+    CHECK(!OnGun({80.0, 0.0, 4.0}, barrel, muzzle));          // past the muzzle
+    CHECK(OnGun({-10.0, 0.0, -10.0}, barrel, muzzle));        // a pistol cupped from just behind and below
+    CHECK(!OnGun({-40.0, 0.0, 0.0}, barrel, muzzle));         // far behind the grip
+    GunOffsets const o = OffsetsOnGun({30.0, 0.0, -5.0}, barrel, muzzle);
+    CHECK(std::abs(o.along - 30.0) < 1e-9 && std::abs(o.off - 9.0) < 1e-9);
+    // Under the grip: down against the thumb side, a little forward, whatever the lengths.
+    Vec3 const under = UnderGrip({2.0, 0.0, 0.0}, {0.0, 0.0, 3.0});
+    CHECK(closeTo(under, {2.0, 0.0, -8.0}));
+    CHECK(OnGun(under, barrel, muzzle));
 }
 
 // A view whose FOV identifies it in the checks below.
@@ -1311,6 +1456,8 @@ int main() {
     TestHandForBarrel();
     TestGunHold();
     TestGamepad();
+    TestSupportGrip();
+    TestTwoHand();
     TestOverlayPlacement();
     TestMenuPointer();
     if (gFailures == 0) {

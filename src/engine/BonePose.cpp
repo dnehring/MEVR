@@ -2,6 +2,7 @@
 
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
+#include "core/ik/TwoHand.hpp"
 #include "engine/Skeleton.hpp"
 
 #include <LESDK/Headers.hpp>
@@ -90,6 +91,15 @@ TorsoSample gTorso;
 USkeletalMeshComponent const* gAnimatedMesh = nullptr;
 ik::Vec3 gAnimatedHead;
 ULONGLONG gAnimatedTimeMs = 0;
+// Both hands before our writes (AnimatedHands), and the support grip's last result.
+USkeletalMeshComponent const* gHandsMesh = nullptr;
+Hands gAnimatedHands;
+ULONGLONG gHandsTimeMs = 0;
+USkeletalMeshComponent const* gSupportMesh = nullptr;
+SupportSample gSupport;
+ULONGLONG gSupportTimeMs = 0;
+// Hands closer than Support::minSpanMeters: the distance reported, so the hold lets go.
+constexpr double kCrossedMeters = 99.0;
 bool gFirstWriteLogged = false;  // game thread
 std::atomic<bool> gFirstWriteReady{false};
 
@@ -152,6 +162,47 @@ UObject const* CurrentWorld() {
     return GWorld != nullptr ? *GWorld : nullptr;
 }
 
+// The support grip on this write's goals (Request::support). Measures the left goal's distance from
+// the foregrip (at the one-hand pose while not held; at the two-hand pose while held, like Overlord's
+// grip_presenter: a correctly held rifle must not drop when the right wrist turns), then blends the
+// right hand toward the two-hand rotation and the left wrist onto the foregrip. Adapted from
+// Overlord's grip_presenter.hpp (https://github.com/Aeka0/Overlord, GPL-3.0, Aeka0).
+SupportSample ApplySupport(Support const& s, double handScale, ik::ArmGoal& left, ik::ArmGoal& right) {
+    SupportSample out;
+    double const unitsPerMeter = s.unitsPerMeter > 1e-6 && std::isfinite(s.unitsPerMeter) ? s.unitsPerMeter : 50.0;
+    double const blend = std::clamp(std::isfinite(s.blend) ? s.blend : 0.0, 0.0, 1.0);
+    ik::Vec3 const span = s.foregrip.translation * handScale;
+    ik::Quat const one = right.rotation;
+    ik::Vec3 const controller = left.wrist;
+    std::optional<ik::Quat> two;
+    if (s.twoHandAim) {
+        two = ik::TwoHandRotation(one, span, right.wrist, controller, s.minSpanMeters * unitsPerMeter);
+    }
+    ik::Quat const check = blend > 0.0 && two ? *two : one;
+    if (s.twoHandAim && !two) {
+        out.distanceMeters = kCrossedMeters;  // the hands define no axis
+    } else {
+        out.distanceMeters = ik::Length(controller - (right.wrist + ik::Rotate(check, span))) / unitsPerMeter;
+    }
+    out.blend = blend;
+    if (blend <= 0.0) {
+        return out;
+    }
+    ik::Quat const held = two ? *two : one;
+    ik::Quat const rotation = blend >= 1.0 ? held : ik::Slerp(one, held, blend);
+    right.rotation = rotation;
+    out.twoHand = two.has_value();
+    out.swingDegrees = ik::AngleBetween(one, rotation) * 180.0 / 3.14159265358979323846;
+    ik::Vec3 const onGun = right.wrist + ik::Rotate(rotation, span);
+    left.wrist = controller + (onGun - controller) * blend;
+    if (s.hasRotation) {
+        ik::Quat const hand = ik::Normalize(rotation * s.foregrip.rotation);
+        left.rotation = left.hasRotation ? ik::Slerp(left.rotation, hand, blend) : hand;
+        left.hasRotation = true;
+    }
+    return out;
+}
+
 // Copies the request for `self`, or false if there's nothing to write for it.
 bool TakeRequest(USkeletalMeshComponent const* self, Request& copy) {
     UObject const* const owner = self->Owner;
@@ -184,6 +235,7 @@ bool TakeRequest(USkeletalMeshComponent const* self, Request& copy) {
         copy.torso.collars = gRequest.torso.collars;
         copy.maxStretch = gRequest.maxStretch;
         copy.head = gRequest.head;
+        copy.support = gRequest.support;
     }
     ReleaseSRWLockShared(&gRequestLock);
     if (stale != nullptr) {
@@ -232,6 +284,15 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
         gAnimatedTimeMs = GetTickCount64();
         ReleaseSRWLockExclusive(&gSampleLock);
     }
+    int const leftHand = request.arms[0].chain.hand;
+    int const rightHand = request.arms[1].chain.hand;
+    if (leftHand >= 0 && leftHand < count && rightHand >= 0 && rightHand < count) {
+        AcquireSRWLockExclusive(&gSampleLock);
+        gHandsMesh = self;
+        gAnimatedHands = {pose[leftHand], pose[rightHand]};
+        gHandsTimeMs = GetTickCount64();
+        ReleaseSRWLockExclusive(&gSampleLock);
+    }
     int first = count;
     ik::BodyFrame body = request.body;
     TorsoSample torso;
@@ -261,12 +322,15 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
             }
         }
     }
+    // Both goals first (each clavicle moves only its own arm), so the support grip can tie them.
+    std::array<ik::ArmGoal, 2> goals;
+    std::array<bool, 2> haveGoal{};
     for (int side : {0, 1}) {
         Arm const& arm = request.arms[side];
         if (arm.target == Target::Off) {
             continue;
         }
-        ik::ArmGoal goal;
+        ik::ArmGoal& goal = goals[side];
         if (!Goal(request, pose, side, goal.wrist)) {
             Reject("target not finite");
             continue;
@@ -284,7 +348,25 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
         goal.hasRotation = arm.hasRotation;
         goal.rotation = arm.rotation;
         goal.maxStretch = arm.target == Target::Component ? request.maxStretch : 1.0;
+        haveGoal[side] = true;
+    }
+    bool const support = request.support.enabled && haveGoal[0] && haveGoal[1] && goals[1].hasRotation &&
+        request.arms[0].target == Target::Component && request.arms[1].target == Target::Component;
+    SupportSample supportSample;
+    if (support) {
+        double const handScale = pose[rightHand].scale > 1e-6 ? pose[rightHand].scale : 1.0;
+        supportSample = ApplySupport(request.support, handScale, goals[0], goals[1]);
+    }
+    for (int side : {0, 1}) {
+        Arm const& arm = request.arms[side];
+        if (!haveGoal[side]) {
+            continue;
+        }
+        ik::ArmGoal const& goal = goals[side];
         ik::ArmResult const result = ik::PoseArm(pose, request.parents, arm.chain, side, body, goal);
+        if (side == 0 && support) {
+            supportSample.leftErrorUnits = ik::Length(pose[leftHand].translation - goal.wrist);
+        }
         torso.stretch[side] = result.stretch;
         AcquireSRWLockExclusive(&gSampleLock);
         gSamples[side] = {true, result, goal.wrist, deltaTime};
@@ -298,6 +380,13 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
     if (torso.valid) {
         AcquireSRWLockExclusive(&gSampleLock);
         gTorso = torso;
+        ReleaseSRWLockExclusive(&gSampleLock);
+    }
+    if (support) {
+        AcquireSRWLockExclusive(&gSampleLock);
+        gSupportMesh = self;
+        gSupport = supportSample;
+        gSupportTimeMs = GetTickCount64();
         ReleaseSRWLockExclusive(&gSampleLock);
     }
     if (first >= count) {
@@ -492,6 +581,24 @@ std::optional<ik::Vec3> AnimatedHead() {
     ik::Vec3 const head = gAnimatedHead;
     ReleaseSRWLockShared(&gSampleLock);
     return fresh ? std::optional<ik::Vec3>(head) : std::nullopt;
+}
+
+std::optional<Hands> AnimatedHands() {
+    USkeletalMeshComponent const* const mesh = gMesh.load(std::memory_order_acquire);
+    AcquireSRWLockShared(&gSampleLock);
+    bool const fresh = mesh != nullptr && gHandsMesh == mesh && GetTickCount64() - gHandsTimeMs <= kMaxRequestAgeMs;
+    Hands const hands = gAnimatedHands;
+    ReleaseSRWLockShared(&gSampleLock);
+    return fresh ? std::optional<Hands>(hands) : std::nullopt;
+}
+
+std::optional<SupportSample> LatestSupport() {
+    USkeletalMeshComponent const* const mesh = gMesh.load(std::memory_order_acquire);
+    AcquireSRWLockShared(&gSampleLock);
+    bool const fresh = mesh != nullptr && gSupportMesh == mesh && GetTickCount64() - gSupportTimeMs <= kMaxRequestAgeMs;
+    SupportSample const sample = gSupport;
+    ReleaseSRWLockShared(&gSampleLock);
+    return fresh ? std::optional<SupportSample>(sample) : std::nullopt;
 }
 
 std::uint64_t TotalWrites() {

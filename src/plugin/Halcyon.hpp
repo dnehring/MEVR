@@ -20,4 +20,11 @@ void Shutdown();
 // on-foot combat head aim off (plugin/HalcyonBridge.cpp). Any thread.
 void SetModHandAim(bool on);
 
+// The mod's two-handed grip input (HostServices::setSupportGrip), for the pad mapping in the XInput
+// hook; stale after 250 ms. Forget drops it now (the mod unloads). Any thread.
+void SetSupportGrip(float distanceMeters, float acquireMeters, float releaseMeters, unsigned flags);
+void ForgetSupportGrip();
+// The pad mapping holds the support grip (HostServices::supportGripHeld).
+bool SupportGripHeld();
+
 } // namespace mevr::host::halcyon

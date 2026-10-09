@@ -13,6 +13,7 @@
 #include "engine/Objects.hpp"
 #include "engine/Skeleton.hpp"
 #include "game/HandTargets.hpp"
+#include "game/SupportGrip.hpp"
 #include "game/Weapon.hpp"
 
 #include <LESDK/Headers.hpp>
@@ -52,6 +53,8 @@ hand_targets::Source gSource = hand_targets::Source::None;
 bool gGunAimed = false;
 bool gGunAimedAndWritten = false;
 std::uint64_t gLastWrites = 0;
+// This tick's request asks the writer for the support grip (engine::bone_pose::Support).
+bool gSupportRequested = false;
 // The torso's heading (OpenXR yaw in tracking space): follows the head past a deadzone, pulled
 // toward where the hands are (ik::BodyYaw). Reset whenever the torso isn't driven.
 ik::BodyYaw gBodyYaw;
@@ -78,6 +81,8 @@ struct SkeletonInfo {
     // The spine and clavicles (core/ik/TorsoPose) and the eyes (-1: not found).
     std::optional<ik::TorsoChain> torso;
     std::array<int, 2> eyes{-1, -1};
+    // LHIK: the off-hand IK goal (under Prop01 under RightWrist; research/14), -1: not found.
+    int lhik = -1;
 };
 std::optional<SkeletonInfo> gSkeleton;
 
@@ -222,6 +227,12 @@ SkeletonInfo const* Skeleton(USkeletalMeshComponent* mesh) {
             break;
         }
     }
+    for (int i = 0; i < count; ++i) {
+        if (_stricmp(info.bones.names[i].c_str(), "LHIK") == 0) {
+            info.lhik = i;
+            break;
+        }
+    }
     for (int side : {kLeft, kRight}) {
         std::string const prefix = side == kLeft ? "Left" : "Right";
         std::array<char const*, 3> const fingers{"MiddleFinger", "IndexFinger", "PinkFinger"};
@@ -259,9 +270,9 @@ SkeletonInfo const* Skeleton(USkeletalMeshComponent* mesh) {
     auto const named = [&](int bone) {
         return bone >= 0 ? std::format("{}({})", info.bones.names[bone], bone) : std::string("none");
     };
-    log::Info("arm IK: torso: spine {}; clavicles {} and {}; eyes {} and {}", info.torso ? spine : std::string("not found"),
-        named(info.torso ? info.torso->collars[kLeft] : -1), named(info.torso ? info.torso->collars[kRight] : -1),
-        named(info.eyes[kLeft]), named(info.eyes[kRight]));
+    log::Info("arm IK: torso: spine {}; clavicles {} and {}; eyes {} and {}; off-hand IK goal {}",
+        info.torso ? spine : std::string("not found"), named(info.torso ? info.torso->collars[kLeft] : -1),
+        named(info.torso ? info.torso->collars[kRight] : -1), named(info.eyes[kLeft]), named(info.eyes[kRight]), named(info.lhik));
     gSkeleton = std::move(info);
     return &*gSkeleton;
 }
@@ -338,7 +349,51 @@ std::optional<ik::BodyFrame> BodyAxes(APawn const* pawn, ik::Affine const& world
 void Stop(std::string status) {
     engine::bone_pose::Clear();
     gBodyYawActive = false;
+    gSupportRequested = false;
     gStatus = std::move(status);
+}
+
+// The two-handed grip (game/support_grip): this tick's foregrip candidates, all in the right hand
+// bone's axes, and, once a foregrip has settled and the left controller is followed, the writer's
+// support request. LHIK hangs below the right hand (Prop01), so our write carries it rigidly: its
+// place in the hand's axes is the animation's either way.
+bool RequestSupport(SkeletonInfo const& info, std::span<engine::skeleton::BoneAtom const> pose, weapon::Grip const& grip,
+    ik::Vec3 const& up, hand_targets::Targets const& targets, engine::bone_pose::Request& request) {
+    int const right = info.arms[kRight]->hand;
+    int const count = static_cast<int>(pose.size());
+    if (right < 0 || right >= count) {
+        return false;
+    }
+    support_grip::Candidates c;
+    c.gun = weapon::Key();
+    c.barrel = grip.barrel;
+    c.muzzle = grip.muzzle;
+    c.up = up;
+    c.socket = weapon::OffHandSocketInHand();
+    ik::Transform const hand = engine::skeleton::ToTransform(pose[right]);
+    if (info.lhik >= 0 && info.lhik < count) {
+        c.lhik = ik::Relative(engine::skeleton::ToTransform(pose[info.lhik]), hand).translation;
+    }
+    if (auto const animated = engine::bone_pose::AnimatedHands()) {
+        c.animatedLeft = ik::Relative(animated->left, animated->right);
+    }
+    support_grip::Measure(c);
+    auto const foregrip = support_grip::Current();
+    if (!foregrip || !targets.hands[kLeft].valid || request.arms[kLeft].target != engine::bone_pose::Target::Component ||
+        !request.arms[kRight].hasRotation) {
+        return false;
+    }
+    engine::bone_pose::Support& s = request.support;
+    s.enabled = true;
+    s.foregrip.translation = foregrip->position;
+    s.foregrip.rotation = foregrip->rotation;
+    s.foregrip.scale = 1.0;
+    s.hasRotation = foregrip->hasRotation;
+    s.twoHandAim = foregrip->twoHandAim;
+    s.blend = support_grip::Blend();
+    double const reach = request.arms[kLeft].reachScale;
+    s.unitsPerMeter = targets.body.unitsPerMeter * (std::isfinite(reach) && reach > 0.0 ? reach : 1.0);
+    return true;
 }
 
 void LogStatusChange() {
@@ -509,6 +564,7 @@ void Drive(double deltaSeconds) {
 
     std::string driven;
     bool gunAimed = false;
+    bool supportRequested = false;
     if (targets.source == hand_targets::Source::DesktopTest) {
         if (!arms[kRight]) {
             return Stop("desktop test: no usable right arm chain in the skeleton");
@@ -563,6 +619,8 @@ void Drive(double deltaSeconds) {
         request.maxStretch = hand_calibration::ArmStretch();
         auto const componentRotation = ik::RotationOf(componentToWorld);
         std::span<engine::skeleton::BoneAtom const> const pose = engine::skeleton::SpaceBases(mesh);
+        std::optional<weapon::Grip> heldGrip;
+        std::optional<ik::Vec3> heldUp;
         for (int side : {kLeft, kRight}) {
             hand_targets::Hand const& hand = targets.hands[side];
             auto const& chain = arms[side];
@@ -600,6 +658,8 @@ void Drive(double deltaSeconds) {
                         arm.hasRotation = true;
                         arm.rotation = *rotation;
                         gunAimed = true;
+                        heldGrip = grip;
+                        heldUp = upInHand;
                     }
                 }
             }
@@ -610,13 +670,18 @@ void Drive(double deltaSeconds) {
             }
             driven += driven.empty() ? kSideNames[side] : std::string(" and ") + kSideNames[side];
         }
+        if (heldGrip && heldUp && arms[kLeft] && arms[kRight]) {
+            supportRequested = RequestSupport(*info, pose, *heldGrip, *heldUp, targets, request);
+        }
         if (!driven.empty()) {
             driven += " following the controllers";
             if (request.torso.enabled) {
                 driven += ", shoulders under the headset";
             }
             if (gunAimed) {
-                driven += " (the right hand points the gun's barrel along the controller's aim)";
+                driven += supportRequested && support_grip::Held()
+                    ? " (both hands on the gun: the barrel between them)"
+                    : " (the right hand points the gun's barrel along the controller's aim)";
             }
         }
     }
@@ -626,6 +691,7 @@ void Drive(double deltaSeconds) {
     engine::bone_pose::Publish(std::move(request));
     gStatus = "driving: " + driven;
     gGunAimed = gunAimed;
+    gSupportRequested = supportRequested;
 }
 
 } // namespace
@@ -654,6 +720,10 @@ bool RightHandAimsGun() {
     return gGunAimedAndWritten;
 }
 
+bool SupportRequested() {
+    return gEnabled && gSupportRequested;
+}
+
 bool Toggle() {
     gEnabled = !gEnabled;
     return gEnabled;
@@ -678,6 +748,7 @@ void Shutdown() {
     engine::bone_pose::Clear();
     gEnabled = false;
     gGunAimed = gGunAimedAndWritten = false;
+    gSupportRequested = false;
     gLastWrites = 0;
     gStatus = "off";
     gLastLoggedStatus.clear();

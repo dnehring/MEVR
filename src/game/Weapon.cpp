@@ -11,6 +11,7 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -71,8 +72,15 @@ constexpr double kMovingUnits = 1.0;
 constexpr double kStillMuzzleUnits = 0.1;
 constexpr int kFollowSamples = 40;
 
+constexpr char const* kGetRangedWeaponType = "Function SFXGame.BioWeaponRanged.GetRangedWeaponType";
+
 UFunction* gGetMuzzleLoc = nullptr;
 UFunction* gGetSocketWorld = nullptr;
+UFunction* gGetRangedWeaponType = nullptr;
+
+// A weapon-mesh socket for the off hand, by name (lowercase substrings).
+constexpr char const* kOffHandSocketWords[] = {"lefthand", "left_hand", "lhand", "lhik", "offhand", "off_hand", "support",
+    "foregrip", "fore_grip", "handguard", "grip_l", "l_grip"};
 
 // A world transform as its origin and unit axes.
 struct Frame {
@@ -210,6 +218,8 @@ struct Resolved {
     bool failed = false;
     int attempts = 0;
     std::string name;
+    int rangedType = -1;  // RangedType
+    std::optional<engine::skeleton::Socket> offHand;  // a socket for the off hand (support grip)
 };
 std::optional<Resolved> gResolved;
 
@@ -317,6 +327,49 @@ void LogSocketNative(USkeletalMeshComponent* mesh, SFXName const& socket, Frame 
         Degrees(V(axes.up), ours.z), unbound ? " (out parameters not bound through ProcessEvent)" : "");
 }
 
+char const* TypeName(int type) {
+    switch (type) {
+    case 0: return "pistol";
+    case 1: return "shotgun";
+    case 2: return "assault rifle";
+    case 3: return "sniper rifle";
+    default: return "unknown type";
+    }
+}
+
+// Once per weapon, for the support grip (game/support_grip): its ranged type (the native
+// GetRangedWeaponType, a plain return value through ProcessEvent), every socket of its mesh, and
+// which one, if any, is named for the off hand.
+void DescribeForSupport(Live const& live, Resolved& r) {
+    if (gGetRangedWeaponType != nullptr) {
+        ABioWeaponRanged_execGetRangedWeaponType_Parms parms;
+        parms.ReturnValue = 0xFF;
+        live.weapon->ProcessEvent(gGetRangedWeaponType, &parms, nullptr);  // directly: never the SDK's wrapper
+        r.rangedType = parms.ReturnValue <= 3 ? parms.ReturnValue : -1;
+    }
+    std::string list;
+    std::string chosen;
+    for (auto const& named : engine::skeleton::Sockets(live.mesh)) {
+        std::string const name = engine::ToString(engine::skeleton::NameOf(named.name));
+        list += std::format("{}{} on {} at {}", list.empty() ? "" : "; ", name,
+            engine::ToString(engine::skeleton::NameOf(named.socket.boneKey)), Text(named.socket.relative.translation));
+        if (named.name == r.socketName || r.offHand) {
+            continue;
+        }
+        std::string lower = name;
+        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        for (char const* word : kOffHandSocketWords) {
+            if (lower.find(word) != std::string::npos) {
+                r.offHand = named.socket;
+                chosen = name;
+                break;
+            }
+        }
+    }
+    log::Info("weapon: {} ({}); mesh sockets: {}; off-hand socket: {}", r.name, TypeName(r.rangedType),
+        list.empty() ? std::string("none") : list, chosen.empty() ? std::string("none by name") : chosen);
+}
+
 // Checks the weapon's muzzle against the engine's and picks the barrel axis (logged). Leaves
 // `r` pending if the weapon's pose isn't there yet.
 void Verify(Live const& live, Resolved& r) {
@@ -394,6 +447,7 @@ void Verify(Live const& live, Resolved& r) {
             r.name, engine::FullName(live.weapon->Mesh));
     }
     r.verified = true;
+    DescribeForSupport(live, r);
 }
 
 // The grip: muzzle, barrel and up in the right hand bone's axes, measured while the hand holds
@@ -510,6 +564,7 @@ bool TryStartup() {
 #if defined(SDK_TARGET_LE1)
     gGetMuzzleLoc = engine::FindFunction(L"GetMuzzleLoc", kGetMuzzleLoc);
     gGetSocketWorld = engine::FindFunction(L"GetSocketWorldLocationAndRotation", kGetSocketWorld);
+    gGetRangedWeaponType = engine::FindFunction(L"GetRangedWeaponType", kGetRangedWeaponType);
     // Research: where the natives behind the fire path live, to tie the code reading (TickFire's
     // body at 0xC621E0, GetMuzzleLoc's at 0xC59870) to the script functions.
     auto const base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
@@ -648,6 +703,51 @@ std::optional<Grip> RightHandGrip() {
 #endif
 }
 
+std::uintptr_t Key() {
+#if defined(SDK_TARGET_LE1)
+    return gResolved && gResolved->verified && gHeld ? reinterpret_cast<std::uintptr_t>(gResolved->weapon) : 0;
+#else
+    return 0;
+#endif
+}
+
+RangedType Type() {
+#if defined(SDK_TARGET_LE1)
+    if (gResolved && gResolved->verified && gResolved->rangedType >= 0 && gResolved->rangedType <= 3) {
+        return static_cast<RangedType>(gResolved->rangedType);
+    }
+#endif
+    return RangedType::Unknown;
+}
+
+std::optional<ik::Vec3> OffHandSocketInHand() {
+#if defined(SDK_TARGET_LE1)
+    if (!gResolved || !gResolved->verified || !gHeld || !gResolved->offHand || !gBody || gBody->hand < 0) {
+        return std::nullopt;
+    }
+    std::string why;
+    auto const live = LivePointers(why);
+    if (!live || live->weapon != gResolved->weapon || live->mesh != gResolved->mesh) {
+        return std::nullopt;
+    }
+    auto const local = SocketInMesh(live->mesh, *gResolved->offHand);
+    std::span<engine::skeleton::BoneAtom const> const pose = engine::skeleton::SpaceBases(live->body);
+    if (!local || static_cast<std::size_t>(gBody->hand) >= pose.size()) {
+        return std::nullopt;
+    }
+    ik::Vec3 const world = ik::TransformPoint(engine::skeleton::LocalToWorld(live->mesh), local->translation);
+    auto const worldToBody = ik::InverseAffine(engine::skeleton::LocalToWorld(live->body));
+    if (!worldToBody) {
+        return std::nullopt;
+    }
+    ik::Transform const hand = engine::skeleton::ToTransform(pose[gBody->hand]);
+    double const inverseScale = hand.scale > 1e-6 ? 1.0 / hand.scale : 1.0;
+    return ik::Rotate(ik::Conjugate(hand.rotation), ik::TransformPoint(*worldToBody, world) - hand.translation) * inverseScale;
+#else
+    return std::nullopt;
+#endif
+}
+
 std::string const& Status() {
     return gStatus;
 }
@@ -675,6 +775,7 @@ void Shutdown() {
     gBody.reset();
     gGetMuzzleLoc = nullptr;
     gGetSocketWorld = nullptr;
+    gGetRangedWeaponType = nullptr;
 #endif
     gStatus = "off";
     gLoggedStatus.clear();

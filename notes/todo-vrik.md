@@ -52,7 +52,7 @@ are, never the animation.
 ## 3. Later
 
 - Two-handed grip (Overlord `support_grip` acquire/release hysteresis); what the zoom button does
-  in first person.
+  in first person. (Built 2026-10-08: see "Next" below.)
 - Holo sight; Overlord's lens magnifier for sniper rifles.
 - Colour controls (saturation/contrast/brightness) in the eye blit, if still wanted. Depth of
   field is left on, since Halcyon found turning it off washes the colours out.
@@ -101,7 +101,25 @@ are, never the animation.
     launch; retest after restarting SteamVR);
   - Quest Link performance (research/16).
 
-## Next: two-handed grip = focused fire (agreed with the user, 2026-10-08)
+## Next: two-handed grip = focused fire (agreed with the user, 2026-10-08; built the same day, to test)
+
+**Built** (research/14 "Two-handed grip", test steps in notes/next-vr-session.md step 8; needs a
+host redeploy, HostServices v7):
+- Grab with Overlord's hysteresis (new squeeze within 0.12 m, release past 0.22 m or grip open);
+  LB elsewhere; no surprise LB after a release by distance.
+- Focused fire: LT forced while held (not for sniper rifles by default, `sniperAims = 0`); the
+  left trigger is behind `[Controls] leftTrigger = lt | none` (default `lt`, unchanged).
+- Two-hand aim: Overlord's swing of the grip-to-foregrip span onto the hands' line, roll from the
+  right wrist; hands closer than 8 cm let go; pistols (cup under the grip) keep the right hand's aim.
+- Left hand: solved to the foregrip as written (the native LHIK runs before our right-arm write).
+- Foregrip per gun: an off-hand socket if one is named so, else LHIK, else the animated left hand,
+  else under the grip; logged.
+- Zoom: by the code Halcyon's FOV fill replaces the game's projection each frame, so LT doesn't
+  zoom [verify].
+- **Open:** the left trigger's new use (a power or squad command); LE1's weapon socket names; the
+  thresholds and the pistol point once seen in the headset.
+
+The agreed plan:
 
 1. **Grab:** the left grip squeezed with the left hand within about 10-15 cm of the gun's foregrip
    latches a support grip. Use hysteresis like Overlord's `support_grip` (acquire nearer than
