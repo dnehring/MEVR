@@ -3,6 +3,7 @@
 #include "core/ik/Rigid.hpp"
 #include "engine/XrToUnreal.hpp"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -55,6 +56,15 @@ void Tick(bool wanted);
 std::optional<Muzzle> Current();
 // The grip, once measured for the weapon held in the right hand.
 std::optional<Grip> RightHandGrip();
+// The verified weapon in the right hand, as an identity to compare (0: none).
+std::uintptr_t Key();
+// Its ranged type (BioWeaponRanged.GetRangedWeaponType, EBioItemWeaponRangedType), read once per
+// weapon.
+enum class RangedType { Pistol = 0, Shotgun = 1, AssaultRifle = 2, Sniper = 3, Unknown = -1 };
+RangedType Type();
+// A socket of the weapon's mesh named for the off hand (logged once per weapon with all its
+// sockets), live, in the right hand bone's axes (component units). Nullopt if it has none.
+std::optional<ik::Vec3> OffHandSocketInHand();
 // One line for status logs: which weapon and how far along it is.
 std::string const& Status();
 // Heartbeat.

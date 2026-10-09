@@ -29,7 +29,7 @@ struct Ray;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 6;
+inline constexpr int kHostServicesVersion = 7;
 
 using ProcessEventCallback = void (*)(UObject* context, UFunction* function, void* parms, void* result);
 
@@ -77,6 +77,18 @@ struct HostServices {
     // it matches. Non-null with `controllers`.
     std::uint32_t aimRaySize = 0;
     void (*setAimRay)(vr::aim_ray::Ray const* ray) = nullptr;
+
+    // Version 7.
+    // The two-handed grip (game/support_grip), each tick: the left hand's distance from the held
+    // gun's foregrip (meters; negative: no gun to hold), the acquire and release distances, and
+    // gamepad::Options flags (kFlagLeftTrigger: the left trigger is the game's LT; kFlagSupportAims:
+    // the grip holds LT). The host's pad mapping (gamepad::UpdateSupportGrip) takes hold on a new
+    // left-grip squeeze within `acquire`: LT instead of LB, until the grip opens or the hand leaves
+    // `release`. Forgotten (no grip, LT from the trigger) when not called for 250 ms. Non-null with
+    // `controllers`.
+    void (*setSupportGrip)(float distanceMeters, float acquireMeters, float releaseMeters, std::uint32_t flags) = nullptr;
+    // Whether the pad mapping holds the support grip now.
+    bool (*supportGripHeld)() = nullptr;
 };
 
 } // namespace mevr

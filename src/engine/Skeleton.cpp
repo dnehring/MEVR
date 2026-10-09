@@ -245,6 +245,32 @@ std::optional<Socket> FindSocket(USkeletalMeshComponent const* mesh, std::uint64
 #endif
 }
 
+std::vector<NamedSocket> Sockets(USkeletalMeshComponent const* mesh) {
+    std::vector<NamedSocket> out;
+#if defined(SDK_TARGET_LE1)
+    if (mesh == nullptr || mesh->SkeletalMesh == nullptr) {
+        return out;
+    }
+    auto const& sockets = mesh->SkeletalMesh->Sockets;
+    int const count = static_cast<int>(sockets.Count());
+    if (sockets.GetData() == nullptr || count <= 0 || count > 4096) {
+        return out;
+    }
+    for (int i = 0; i < count; ++i) {
+        USkeletalMeshSocket const* const socket = sockets.GetData()[i];
+        if (socket == nullptr) {
+            continue;
+        }
+        if (auto found = FindSocket(mesh, Key(socket->SocketName))) {
+            out.push_back({Key(socket->SocketName), *found});
+        }
+    }
+#else
+    (void)mesh;
+#endif
+    return out;
+}
+
 std::optional<Attachment> FindAttachment(USkeletalMeshComponent const* mesh, UObject const* component) {
 #if defined(SDK_TARGET_LE1)
     if (mesh == nullptr || component == nullptr) {

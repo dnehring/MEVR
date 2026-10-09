@@ -21,6 +21,9 @@
 //           measureRequest, measure*      the VR hands tab's T-pose sample (src/plugin/MevrMenuTab.cpp,
 //                                         contract at its top): each new measureRequest value is
 //                                         measured (ik::ArmLengthFromTPose) and saved as armLengthM.
+//   [Controls] supportGrip, supportAcquireM, supportReleaseM, sniperAims, leftTrigger: the
+//                                         two-handed grip (game/support_grip) and whether the left
+//                                         trigger reaches the game as LT.
 namespace mevr::game::hand_calibration {
 
 // The trim for one hand (0 left, 1 right), in the grip's own axes (ik::GripTrim).
@@ -32,6 +35,15 @@ double ArmStretch();
 double TrackingScale();
 // The calibrated arm length (meters, shoulder to grip), 0 if not calibrated.
 double ArmLength();
+// [Controls] (appended to an older file that lacks it): the two-handed grip and the left trigger.
+struct Controls {
+    bool leftTrigger = true;      // leftTrigger = lt (true) | none
+    bool supportGrip = true;      // supportGrip
+    double acquireMeters = 0.12;  // supportAcquireM
+    double releaseMeters = 0.22;  // supportReleaseM
+    bool sniperAims = false;      // sniperAims: the grip holds LT with a sniper rifle too
+};
+Controls GetControls();
 // Where Halcyon's first-person camera sits from Shepard's head bone with the headset at the
 // recenter point (units: forward, right, up in the view's yaw), for the menu's "Put the camera at
 // Shepard's eyes" button (src/plugin/MevrMenuTab.cpp). Written as [Camera] measuredForward,

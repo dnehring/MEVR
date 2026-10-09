@@ -76,6 +76,13 @@ struct Socket {
     ik::Transform relative;
 };
 std::optional<Socket> FindSocket(USkeletalMeshComponent const* mesh, std::uint64_t socketName);
+// Every socket of the mesh's asset whose bone resolves: its raw name and placement (empty if
+// unsupported or none).
+struct NamedSocket {
+    std::uint64_t name = 0;
+    Socket socket;
+};
+std::vector<NamedSocket> Sockets(USkeletalMeshComponent const* mesh);
 
 // How `component` hangs on the mesh (USkeletalMeshComponent::Attachments +0x3B4, FAttachment 0x34
 // bytes: Component, BoneName, RelativeLocation, RelativeRotation, RelativeScale), as

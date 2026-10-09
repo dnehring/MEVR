@@ -1,0 +1,232 @@
+#include "game/SupportGrip.hpp"
+
+#include "core/Log.hpp"
+#include "core/ik/TwoHand.hpp"
+#include "engine/BonePose.hpp"
+#include "game/HandCalibration.hpp"
+#include "game/Weapon.hpp"
+
+#include <algorithm>
+#include <atomic>
+#include <cmath>
+#include <format>
+#include <string>
+
+namespace mevr::game::support_grip {
+namespace {
+
+// A foregrip candidate settles after this many ticks within this of the last one (units).
+constexpr int kSettleTicks = 5;
+constexpr double kStillUnits = 0.5;
+// A settled foregrip this far from the kept one replaces it (only while not held).
+constexpr double kMoveUnits = 1.0;
+// The animated left hand this close to the chosen point lends it its rotation (units).
+constexpr double kRotationFromAnimationUnits = 4.0;
+// The AnimTree's off-hand IK counts as active when the animated left wrist is this close to LHIK.
+constexpr double kIkActiveUnits = 2.0;
+// A span with less than this along the barrel (a pistol cupped from below) doesn't define the
+// barrel: the right hand keeps aiming.
+constexpr double kMinAlongForTwoHandAim = 10.0;
+// Overlord's grip blend (grip_presenter.hpp, profile_defaults::blend_seconds).
+constexpr double kBlendSeconds = 0.10;
+
+std::uintptr_t gGun = 0;
+std::optional<Foregrip> gForegrip;
+std::optional<Foregrip> gCandidate;
+int gStillTicks = 0;
+bool gLoggedGun = false;  // the diagnostics line for gGun
+double gBlend = 0.0;
+bool gLoggedHeld = false;
+bool gRequested = false;
+
+std::atomic<bool> gHeld{false};
+// The pad mapping's input, written each game tick, read from XInput polls.
+std::atomic<float> gDistance{-1.0f};
+std::atomic<float> gAcquire{0.12f};
+std::atomic<float> gRelease{0.22f};
+std::atomic<std::uint32_t> gFlags{gamepad::kFlagLeftTrigger | gamepad::kFlagSupportAims};
+
+// Heartbeat: the nearest the left hand came to the foregrip, and the last write's result.
+double gNearest = 1e9;
+std::optional<engine::bone_pose::SupportSample> gLastSample;
+
+std::string Text(ik::Vec3 const& v) {
+    return std::format("({:.1f}, {:.1f}, {:.1f})", v.x, v.y, v.z);
+}
+
+std::string Where(std::optional<ik::Vec3> const& point, Candidates const& c) {
+    if (!point) {
+        return "none";
+    }
+    ik::GunOffsets const o = ik::OffsetsOnGun(*point, c.barrel, c.muzzle);
+    return std::format("{} ({:.1f} along the barrel, {:.1f} off it, {})", Text(*point), o.along, o.off,
+        ik::OnGun(*point, c.barrel, c.muzzle) ? "on the gun" : "OFF the gun");
+}
+
+Foregrip Choose(Candidates const& c) {
+    Foregrip f;
+    std::optional<ik::Vec3> point;
+    if (c.socket && ik::OnGun(*c.socket, c.barrel, c.muzzle)) {
+        point = c.socket;
+        f.source = "the weapon's off-hand socket";
+    } else if (c.lhik && ik::OnGun(*c.lhik, c.barrel, c.muzzle)) {
+        point = c.lhik;
+        f.source = "the LHIK bone (the AnimTree's off-hand IK goal)";
+    } else if (c.animatedLeft && ik::OnGun(c.animatedLeft->translation, c.barrel, c.muzzle)) {
+        point = c.animatedLeft->translation;
+        f.source = "the animated left hand";
+    } else {
+        point = ik::UnderGrip(c.barrel, c.up);
+        f.source = "under the grip (no foregrip on the gun)";
+    }
+    f.position = *point;
+    if (c.animatedLeft && ik::Length(c.animatedLeft->translation - f.position) <= kRotationFromAnimationUnits) {
+        f.hasRotation = true;
+        f.rotation = ik::Normalize(c.animatedLeft->rotation);
+    }
+    f.twoHandAim = std::abs(ik::OffsetsOnGun(f.position, c.barrel, c.muzzle).along) >= kMinAlongForTwoHandAim;
+    return f;
+}
+
+void LogGun(Candidates const& c) {
+    std::string ik = "unknown (no animated pose)";
+    if (c.animatedLeft && c.lhik) {
+        double const apart = ik::Length(c.animatedLeft->translation - *c.lhik);
+        ik = std::format("the animated left wrist is {:.1f} units from LHIK: the AnimTree's off-hand IK is {}", apart,
+            apart <= kIkActiveUnits ? "active" : "NOT holding it there");
+    }
+    log::Info("support grip: candidates in the right hand's axes (barrel ({:.3f}, {:.3f}, {:.3f}), muzzle {}): socket {}; "
+              "LHIK {}; animated left hand {}; {}",
+        c.barrel.x, c.barrel.y, c.barrel.z, Text(c.muzzle), Where(c.socket, c), Where(c.lhik, c),
+        Where(c.animatedLeft ? std::optional<ik::Vec3>(c.animatedLeft->translation) : std::nullopt, c), ik);
+}
+
+void Reset() {
+    gForegrip.reset();
+    gCandidate.reset();
+    gStillTicks = 0;
+    gLoggedGun = false;
+}
+
+} // namespace
+
+void Measure(Candidates const& c) {
+    if (c.gun != gGun) {
+        gGun = c.gun;
+        Reset();
+    }
+    if (!gLoggedGun && c.animatedLeft) {
+        gLoggedGun = true;
+        LogGun(c);
+    }
+    if (gForegrip && gBlend > 0.0) {
+        return;  // held: the place under the hand stays put
+    }
+    Foregrip const f = Choose(c);
+    bool const agrees = gCandidate && gCandidate->source == f.source && ik::Length(gCandidate->position - f.position) < kStillUnits;
+    gCandidate = f;
+    gStillTicks = agrees ? gStillTicks + 1 : 0;
+    if (gStillTicks < kSettleTicks) {
+        return;
+    }
+    if (gForegrip && gForegrip->source == f.source && ik::Length(gForegrip->position - f.position) < kMoveUnits) {
+        return;
+    }
+    bool const first = !gForegrip;
+    gForegrip = f;
+    ik::GunOffsets const o = ik::OffsetsOnGun(f.position, c.barrel, c.muzzle);
+    log::Info("support grip: foregrip {} from {}: {} in the right hand's axes, {:.1f} along the barrel and {:.1f} off it; "
+              "the hand's rotation {}; {}; the left arm is solved to it while held (the AnimTree's off-hand IK runs "
+              "before our right-arm write, so it would leave the hand where the animation had the gun)",
+        first ? "set" : "moved", f.source, Text(f.position), o.along, o.off,
+        f.hasRotation ? "from the animated left hand" : "from the left controller",
+        f.twoHandAim ? "two-hand aim: the barrel turns toward the left hand" : "too short along the barrel to aim with: "
+                                                                               "the right hand keeps aiming");
+}
+
+std::optional<Foregrip> Current() {
+    return gForegrip;
+}
+
+void Tick(double deltaSeconds, bool requested) {
+    gRequested = requested;
+    hand_calibration::Refresh();  // at most once a second; arm IK may be off
+    hand_calibration::Controls const controls = hand_calibration::GetControls();
+    auto const sample = requested ? engine::bone_pose::LatestSupport() : std::nullopt;
+    float distance = -1.0f;
+    if (controls.supportGrip && sample && sample->distanceMeters >= 0.0) {
+        distance = static_cast<float>(sample->distanceMeters);
+        gNearest = std::min(gNearest, sample->distanceMeters);
+        gLastSample = sample;
+    }
+    gDistance.store(distance, std::memory_order_relaxed);
+    gAcquire.store(static_cast<float>(controls.acquireMeters), std::memory_order_relaxed);
+    gRelease.store(static_cast<float>(controls.releaseMeters), std::memory_order_relaxed);
+    gamepad::Options options;
+    options.leftTrigger = controls.leftTrigger;
+    options.supportAims = controls.sniperAims || weapon::Type() != weapon::RangedType::Sniper;
+    gFlags.store(gamepad::ToFlags(options), std::memory_order_relaxed);
+
+    bool const held = gHeld.load(std::memory_order_relaxed) && requested;
+    double const goal = held ? 1.0 : 0.0;
+    double const step = std::clamp(deltaSeconds, 0.0, 0.05) / kBlendSeconds;
+    gBlend = requested ? std::clamp(gBlend + std::clamp(goal - gBlend, -step, step), 0.0, 1.0) : 0.0;
+    if (held != gLoggedHeld) {
+        gLoggedHeld = held;
+        if (held) {
+            log::Info("support grip: held ({} m from the foregrip, from {}): {}; the left hand on the gun{}", distance,
+                gForegrip ? gForegrip->source : "?",
+                gForegrip && gForegrip->twoHandAim ? "the barrel points toward the left hand" : "the right hand keeps aiming",
+                options.supportAims ? "; the game sees LT held (focused fire)" : "; no LT (sniper rifle, sniperAims = 0)");
+        } else {
+            log::Info("support grip: released ({})", distance < 0.0f ? "no gun or arm IK" : std::format("{:.2f} m from the foregrip", distance));
+        }
+    }
+}
+
+void SetHeld(bool held) {
+    gHeld.store(held, std::memory_order_relaxed);
+}
+
+bool Held() {
+    return gHeld.load(std::memory_order_relaxed);
+}
+
+double Blend() {
+    return gBlend;
+}
+
+gamepad::Options PadOptions() {
+    return gamepad::FromFlags(gDistance.load(std::memory_order_relaxed), gAcquire.load(std::memory_order_relaxed),
+        gRelease.load(std::memory_order_relaxed), gFlags.load(std::memory_order_relaxed));
+}
+
+void LogStats() {
+    if (!gForegrip && !gRequested) {
+        return;
+    }
+    std::string last = "no write yet";
+    if (gLastSample) {
+        last = std::format("last write {:.2f} m, blend {:.2f}, {}, swing {:.1f} degrees, left wrist {:.1f} units from its goal",
+            gLastSample->distanceMeters, gLastSample->blend, gLastSample->twoHand ? "two-hand aim" : "one-hand aim",
+            gLastSample->swingDegrees, gLastSample->leftErrorUnits);
+    }
+    log::Info("    support grip: {}, foregrip {}; nearest {}; {}", Held() ? "HELD" : "not held",
+        gForegrip ? gForegrip->source : "not settled", gNearest < 1e8 ? std::format("{:.2f} m", gNearest) : std::string("-"), last);
+    gNearest = 1e9;
+}
+
+void Shutdown() {
+    gGun = 0;
+    Reset();
+    gBlend = 0.0;
+    gLoggedHeld = false;
+    gRequested = false;
+    gHeld.store(false);
+    gDistance.store(-1.0f);
+    gFlags.store(gamepad::kFlagLeftTrigger | gamepad::kFlagSupportAims);
+    gNearest = 1e9;
+    gLastSample.reset();
+}
+
+} // namespace mevr::game::support_grip

@@ -114,6 +114,8 @@ set(MEVR_MOD_SOURCES
     src/core/ik/TorsoPose.hpp
     src/core/ik/TouchReference.cpp
     src/core/ik/TouchReference.hpp
+    src/core/ik/TwoHand.cpp
+    src/core/ik/TwoHand.hpp
     src/core/vr/AimRay.cpp
     src/core/vr/AimRay.hpp
     src/core/vr/Controllers.cpp
@@ -167,6 +169,8 @@ set(MEVR_MOD_SOURCES
     src/game/Reflections.hpp
     src/game/SkeletonProbe.cpp
     src/game/SkeletonProbe.hpp
+    src/game/SupportGrip.cpp
+    src/game/SupportGrip.hpp
     src/game/ViewAnchor.cpp
     src/game/ViewAnchor.hpp
     src/game/Weapon.cpp
@@ -267,6 +271,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/Rigid.cpp
         src/core/ik/TorsoPose.cpp
         src/core/ik/TouchReference.cpp
+        src/core/ik/TwoHand.cpp
         src/core/vr/MenuPointer.cpp
         src/core/vr/OverlayPlacement.cpp
         src/core/vr/ViewSync.cpp
