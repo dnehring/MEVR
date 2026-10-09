@@ -254,3 +254,18 @@ frame) and our Custom 1 profile has 1.
   90, the cost is input-driven; if not, it's SteamVR's focused-scene path.
 - **Our per-tick cost.** Add ms timings per handler to our heartbeats (ArmIk, HandAim, Weapon,
   ProcessEvent dispatch).
+
+## Quest Link (Oculus runtime), 2026-10-08 evening
+
+- **Measured:** 45.0 fps in VR cutscenes (Halcyon's `cineFpsCap`) and 46.5-49 fps in gameplay,
+  from `tools/perf-summary.py` on the 20:47 session.
+- **Resolution is not overshot:** the runtime recommends 2880x2956 per eye ([XR] line); we render
+  3072x3188, about 1.07x per axis, roughly 15% more pixels.
+- **Suspected cause:** gameplay sits at almost exactly half of 90 Hz, which matches the Oculus
+  runtime's Asynchronous Spacewarp (ASW) locking the app to half rate once frames run late.
+  On SteamVR / Steam Link the same build held 90 fps for minutes. **[verify]**
+- **Checks:**
+  - Oculus Debug Tool, ASW = Disabled: does gameplay rise above 45?
+  - Link's own render resolution and the encode bitrate.
+  - `vr-game-settings.ps1 -Quality Low` (2048x2124) for comparison.
+  - The focused-mirror cost applies on Link too; `mirrorPresentEvery = 2` is already set.
