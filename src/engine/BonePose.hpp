@@ -1,9 +1,11 @@
 #pragma once
 
 #include "core/ik/ArmPose.hpp"
+#include "core/ik/TorsoPose.hpp"
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 class USkeletalMeshComponent;
@@ -38,6 +40,19 @@ struct Arm {
     ik::Vec3 wrist;
     bool hasRotation = false;
     ik::Quat rotation;  // the hand bone's component-space rotation
+    // The wrist target's distance from the shoulder (after the torso and clavicle moved it) is
+    // scaled by this: arm-length calibration (the player's full reach is Shepard's). 1: none.
+    double reachScale = 1.0;
+};
+
+// The upper body under the headset (core/ik/TorsoPose), solved before the arms so they reach
+// from where the shoulders end up.
+struct Torso {
+    bool enabled = false;
+    ik::TorsoChain chain;
+    std::vector<std::uint64_t> keys;  // RefSkeleton names: the spine bones, then both clavicles (0: none)
+    ik::TorsoGoal goal;               // component space
+    bool collars = true;              // clavicles shrug toward far hand targets (ik::PoseCollar)
 };
 
 struct Request {
@@ -46,6 +61,9 @@ struct Request {
     std::vector<int> parents;
     ik::BodyFrame body;  // component space
     std::array<Arm, 2> arms;  // 0 left, 1 right
+    Torso torso;
+    double maxStretch = 1.0;  // arms may stretch this much to reach (ik::ArmGoal::maxStretch)
+    int head = -1;            // the head bone: its animated position is kept for AnimatedHead()
 };
 
 // LE1 only: false (logged) for other games or if the address isn't a function start.
@@ -67,5 +85,10 @@ void LogFirstWrite();
 std::uint64_t TotalWrites();
 // Heartbeat: calls, writes, rejections and the latest before/after per arm.
 void LogStats();
+
+// The published mesh's head bone (Request::head) as the animation left it, before our writes
+// (component space), from the last write within half a second. Moving the spine moves the head,
+// so whatever is anchored to the head must use this, or it would chase its own writes.
+std::optional<ik::Vec3> AnimatedHead();
 
 } // namespace mevr::engine::bone_pose

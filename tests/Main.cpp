@@ -1,11 +1,14 @@
 // Offline tests for the math that has to be right before it reaches a headset. No game, no
 // runtime: `ctest -C Release --test-dir build`.
 
+#include "core/ik/ArmLength.hpp"
 #include "core/ik/ArmPose.hpp"
 #include "core/ik/BoneNames.hpp"
 #include "core/ik/HandFrame.hpp"
 #include "core/ik/Ik.hpp"
 #include "core/ik/Rigid.hpp"
+#include "core/ik/TorsoPose.hpp"
+#include "core/ik/TouchReference.hpp"
 #include "core/vr/MenuPointer.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/ViewSync.hpp"
@@ -13,6 +16,7 @@
 #include "game/GamepadMapping.hpp"
 #include "game/HeadSim.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -822,6 +826,204 @@ void TestArmPose() {
     CHECK(std::abs(overhead.z) < 1e-9 && NearD(Length(overhead), 1.0));
 }
 
+// Out of reach, the arm stretches up to 1.25x (Overlord) so the hand lands on the target.
+void TestArmStretch() {
+    using namespace mevr::ik;
+    Vec3 const shoulder{0, 18, 145};
+    std::vector<Transform> const before{
+        {{}, {0, 0, 140}, 1.0},
+        {FromTo({1, 0, 0}, {0.2, 0, -1}), shoulder, 1.0},
+        {FromTo({1, 0, 0}, {1, 0, -0.3}), {5, 18, 117}, 1.0},
+        {{}, {25, 18, 111}, 1.0},
+    };
+    std::vector<int> const parents{-1, 0, 1, 2};
+    ArmChain const chain{1, 2, 3};
+    double const length = Length(before[2].translation - shoulder) + Length(before[3].translation - before[2].translation);
+    ArmGoal goal;
+    goal.maxStretch = kMaxArmStretch;
+    // 1.2 arm lengths ahead: reached, both segments 1.2x.
+    std::vector<Transform> pose = before;
+    goal.wrist = shoulder + Vec3{1, 0, 0} * (1.2 * length);
+    ArmResult const stretched = PoseArm(pose, parents, chain, 1, BodyFrame{}, goal);
+    CHECK(stretched.ok && stretched.reached && NearD(stretched.stretch, 1.2, 1e-3));
+    CHECK(NearV(pose[3].translation, goal.wrist, 1e-6));
+    double const upper = Length(pose[2].translation - shoulder), lower = Length(pose[3].translation - pose[2].translation);
+    CHECK(NearD(upper / Length(before[2].translation - shoulder), lower / Length(before[3].translation - before[2].translation), 1e-6));
+    // 1.4 arm lengths: capped at 1.25x, a straight arm pointing at it.
+    pose = before;
+    goal.wrist = shoulder + Vec3{1, 0, 0} * (1.4 * length);
+    ArmResult const capped = PoseArm(pose, parents, chain, 1, BodyFrame{}, goal);
+    CHECK(capped.ok && !capped.reached && NearD(capped.stretch, kMaxArmStretch, 1e-9));
+    CHECK(NearD(Length(pose[3].translation - shoulder), 1.25 * length, 1e-3));
+    // No stretch asked (the default) or within reach: lengths unchanged.
+    pose = before;
+    goal.maxStretch = 1.0;
+    goal.wrist = shoulder + Vec3{1, 0, 0} * (1.2 * length);
+    CHECK(PoseArm(pose, parents, chain, 1, BodyFrame{}, goal).stretch == 1.0);
+    CHECK(NearD(Length(pose[3].translation - shoulder), length, 1e-4));
+    pose = before;
+    goal.maxStretch = kMaxArmStretch;
+    goal.wrist = shoulder + Vec3{0.5, 0, -0.5} * (0.6 * length);
+    CHECK(PoseArm(pose, parents, chain, 1, BodyFrame{}, goal).stretch == 1.0);
+}
+
+// A UE3-like upper body (X forward, Y right, Z up, units ~cm): legs hang from the pelvis, the
+// spine from it too; clavicles, neck and arms from the top of the spine.
+struct TorsoRig {
+    std::vector<std::string> names{"Root", "Pelvis", "LowerBack", "Chest", "Chest2", "LeftCollar", "RightCollar", "Neck",
+        "Head", "LeftShoulder", "LeftElbow", "LeftWrist", "RightShoulder", "RightElbow", "RightWrist", "Eye_Left",
+        "Eye_Right", "LeftHip"};
+    std::vector<int> parents{-1, 0, 1, 2, 3, 4, 4, 4, 7, 5, 9, 10, 6, 12, 13, 8, 8, 1};
+    std::vector<mevr::ik::Transform> pose;
+    TorsoRig() {
+        using mevr::ik::Vec3;
+        std::vector<Vec3> const at{{0, 0, 0}, {0, 0, 100}, {0, 0, 105}, {0, 0, 120}, {0, 0, 135}, {0, -5, 145}, {0, 5, 145},
+            {0, 0, 150}, {0, 0, 165}, {0, -18, 145}, {2, -18, 117}, {12, -16, 95}, {0, 18, 145}, {2, 18, 117}, {12, 16, 95},
+            {8, -3, 170}, {8, 3, 170}, {0, -10, 90}};
+        for (std::size_t i = 0; i < at.size(); ++i) {
+            pose.push_back({AxisAngleQ(0.3, 1, 0.2, 10.0 * static_cast<double>(i)), at[i], 1.0});
+        }
+    }
+};
+
+void TestTorsoPose() {
+    using namespace mevr::ik;
+    TorsoRig rig;
+    auto const left = FindArmChain(rig.names, rig.parents, 0);
+    auto const right = FindArmChain(rig.names, rig.parents, 1);
+    CHECK(left && right);
+    auto const chain = FindTorsoChain(rig.names, rig.parents, *left, *right);
+    CHECK(chain.has_value());
+    CHECK(chain->spine == (std::vector<int>{2, 3, 4}));
+    CHECK(chain->collars[0] == 5 && chain->collars[1] == 6);
+    BodyFrame const body;
+    std::vector<Transform> const before = rig.pose;
+    auto const mid = [](std::vector<Transform> const& p) { return (p[9].translation + p[12].translation) * 0.5; };
+    auto const eyes = [](std::vector<Transform> const& p) { return (p[15].translation + p[16].translation) * 0.5; };
+
+    // Already there: nothing moves.
+    TorsoGoal goal;
+    goal.reference = {15, 16};
+    goal.head = eyes(before);
+    goal.forward = {1, 0, 0};
+    std::vector<Transform> pose = before;
+    TorsoResult r = PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal);
+    CHECK(r.ok && !r.limited && r.bonesWritten > 0);
+    for (std::size_t i = 0; i < pose.size(); ++i) {
+        CHECK(NearT(pose[i], before[i], 1e-6));
+    }
+
+    // A pose the spine can reach: the upper body turned 20 degrees right and leaned 15 forward
+    // about the lowest spine joint. The shoulders land there and face the new way; the legs and
+    // the pelvis stay; everything above the spine moves rigidly.
+    Vec3 const pivot = before[2].translation;
+    Quat const turn = Normalize(AxisAngleQ(0, 1, 0, 15) * AxisAngleQ(0, 0, 1, 20));
+    goal.head = pivot + Rotate(turn, eyes(before) - pivot);
+    goal.forward = Rotate(AxisAngleQ(0, 0, 1, 20), {1, 0, 0});
+    Vec3 const expected = pivot + Rotate(turn, mid(before) - pivot);
+    pose = before;
+    r = PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal);
+    CHECK(r.ok && !r.limited);
+    CHECK(Length(mid(pose) - expected) < 1.0);
+    CHECK(Length(r.wantedShoulders - expected) < 1.0);
+    CHECK(std::acos(std::clamp(Dot(r.facing, goal.forward), -1.0, 1.0)) * 180.0 / std::numbers::pi < 2.0);
+    CHECK(NearD(r.twistDegrees, 20.0, 1e-6));
+    for (int i : {0, 1, 2, 17}) {
+        CHECK(NearV(pose[i].translation, before[i].translation, 1e-9));
+    }
+    CHECK(NearT(pose[0], before[0], 0.0) && NearT(pose[1], before[1], 0.0) && NearT(pose[17], before[17], 0.0));
+    for (int i : {5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}) {
+        CHECK(NearT(Relative(pose[i], pose[4]), Relative(before[i], before[4]), 1e-6));
+    }
+    CHECK(NearD(Length(pose[13].translation - pose[12].translation), Length(before[13].translation - before[12].translation), 1e-9));
+
+    // Too far: the bend stops at its limit, toward the goal.
+    pose = before;
+    goal.head = eyes(before) + Vec3{100, 0, -60};
+    goal.forward = {1, 0, 0};
+    r = PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal);
+    CHECK(r.ok && r.limited && r.bendDegrees <= 35.0 + 1e-6 && r.bendDegrees > 30.0);
+    CHECK(mid(pose).x > mid(before).x + 20.0);
+    // Facing backwards: the twist stops at 60 degrees.
+    pose = before;
+    goal.head = eyes(before);
+    goal.forward = {-1, 0.01, 0};
+    r = PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal);
+    CHECK(r.ok && r.limited && NearD(std::abs(r.twistDegrees), 60.0, 1e-6));
+
+    // Failures write nothing.
+    pose = before;
+    goal.reference = {-1, -1};
+    CHECK(!PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal).ok);
+    goal.reference = {17, -1};  // a leg isn't above the spine
+    CHECK(!PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal).ok);
+    goal.reference = {8, -1};
+    goal.head = {std::nan(""), 0, 0};
+    CHECK(!PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal).ok);
+    for (std::size_t i = 0; i < pose.size(); ++i) {
+        CHECK(NearT(pose[i], before[i], 0.0));
+    }
+
+    // The clavicle shrugs toward a hand target far above, within its limit; a near one: nothing.
+    pose = before;
+    double const shrug = PoseCollar(pose, rig.parents, 6, *right, {0, 18, 250});
+    CHECK(shrug > 1.0 && shrug <= 15.0 + 1e-9);
+    CHECK(pose[12].translation.z > before[12].translation.z + 0.5);
+    CHECK(NearT(pose[9], before[9], 0.0));
+    CHECK(NearT(Relative(pose[14], pose[6]), Relative(before[14], before[6]), 1e-9));
+    pose = before;
+    CHECK(PoseCollar(pose, rig.parents, 6, *right, {20, 18, 120}) == 0.0);
+
+    // A fraction of a turn: the same axis, that part of the angle.
+    Quat const half = Fraction(AxisAngleQ(0, 0, 1, 90), 0.5);
+    CHECK(AngleBetween(half, AxisAngleQ(0, 0, 1, 45)) < 1e-9);
+    CHECK(AngleBetween(Fraction(Quat{0, 0, 0, -1}, 0.5), Quat{}) < 1e-9);
+}
+
+// The arm-length calibration's T pose (tracking space, meters).
+void TestArmLength() {
+    using namespace mevr::ik;
+    ArmLengthSample sample{{0.02, 1.62, -0.05}, {-0.80, 1.45, 0.0}, {0.82, 1.45, 0.0}};
+    auto const arms = ArmLengthFromTPose(sample);
+    CHECK(arms.has_value());
+    // The head projects onto the grip line at x = 0.02: shoulders at -0.16 and 0.20.
+    CHECK(NearD(arms->left, 0.64, 1e-9) && NearD(arms->right, 0.62, 1e-9) && NearD(arms->mean, 0.63, 1e-9));
+    // Not a T pose: hands together, or both hands to one side of the head.
+    CHECK(!ArmLengthFromTPose({{0, 1.6, 0}, {-0.1, 1.2, -0.3}, {0.1, 1.2, -0.3}}).has_value());
+    CHECK(!ArmLengthFromTPose({{0, 1.6, 0}, {0.1, 1.45, 0}, {1.6, 1.45, 0}}).has_value());
+    CHECK(!ArmLengthFromTPose({{0, 1.6, 0}, {-3.0, 1.45, 0}, {3.0, 1.45, 0}}).has_value());  // 2.8 m arms
+}
+
+// The first aim ray's muzzle sat 2.12 m from the head in tracking space (2026-10-08): the hands
+// were mapped into the world at 100 units per meter, the view (Halcyon's) at 50, so mapped back
+// through the view every offset doubled. At the view's own scale, and in its frame, a point goes
+// back exactly where the controller was.
+void TestReachScale() {
+    using namespace mevr::engine;
+    XrPosef head{};
+    head.orientation = {0.0f, 0.0f, 0.0f, 1.0f};
+    head.position = {0.0f, 1.6f, 0.0f};
+    TrackingFrame const view = FromCameraView({100.0, 200.0, 300.0}, UnrealRotation{0, Units(30), 0}, {}, {0.0, 0.0, 0.0}, head, 50.0);
+    XrVector3f const grip{0.10f, 0.55f, -0.30f};  // a hand 1.09 m from the head, hanging low
+    double const handFromHead = std::hypot(grip.x - head.position.x, grip.y - head.position.y, grip.z - head.position.z);
+    // The old mapping: 100 units per meter about the same point.
+    TrackingFrame old = view;
+    old.unitsPerMeter = kUnitsPerMeter;
+    XrVector3f const back = ToTracking(view, ToWorld(old, grip));
+    double const oldDistance = std::hypot(back.x - head.position.x, back.y - head.position.y, back.z - head.position.z);
+    CHECK(NearD(oldDistance, 2.0 * handFromHead, 1e-4));
+    // First person now: the view's own frame at its own scale.
+    TrackingFrame const firstPerson{view.head, view.headWorld, view.rotation, view.unitsPerMeter};
+    CHECK(NearX(ToTracking(view, ToWorld(firstPerson, grip)), grip, 1e-5));
+
+    // The torso's heading leans toward the hands the short way round.
+    double const pi = std::numbers::pi;
+    CHECK(NearD(mevr::ik::BlendYaw(0.0, 1.0, 0.5), 0.5));
+    CHECK(NearD(std::abs(mevr::ik::BlendYaw(3.0, -3.0, 0.5)), pi, 1e-9));  // across the seam, not through 0
+    CHECK(NearD(mevr::ik::BlendYaw(0.3, 2.0, 0.0), 0.3) && NearD(mevr::ik::BlendYaw(0.3, 2.0, 1.0), 2.0));
+}
+
+
 } // namespace
 
 void TestHandFrame() {
@@ -888,6 +1090,79 @@ void TestHandForBarrel() {
     CHECK(!HandForBarrel(barrel, gunUp, aim, aim).has_value());
     CHECK(!HandForBarrel(barrel, gunUp, {0.0, 0.0, 0.0}, up).has_value());
     CHECK(!HandForBarrel({0.0, 0.0, 0.0}, gunUp, aim, up).has_value());
+}
+
+// A held gun: fixed on the controller, its roll from the hand (thumb side), never the model's axes.
+void TestGunHold() {
+    using namespace mevr::ik;
+    double const pi = std::numbers::pi;
+    auto const same = [](Vec3 a, Vec3 b, double tolerance = 1e-9) { return Length(a - b) < tolerance; };
+    auto const degrees = [pi](Vec3 a, Vec3 b) {
+        return std::acos(std::clamp(Dot(Normalize(a), Normalize(b)), -1.0, 1.0)) * 180.0 / pi;
+    };
+    auto const about = [pi](Vec3 axis, double angle) {
+        Vec3 const a = Normalize(axis);
+        double const half = angle * pi / 360.0;
+        return Quat{a.x * std::sin(half), a.y * std::sin(half), a.z * std::sin(half), std::cos(half)};
+    };
+
+    // Overlord's Touch reference: forward pitched 20.6 degrees down from the grip's, the origin
+    // about 10 cm ahead of the grip and 3.4 cm below, 7 mm to the side (mirrored per hand).
+    double const s = std::sin(20.6 * pi / 180.0), c = std::cos(20.6 * pi / 180.0);
+    Transform const right = TouchReferenceInGrip(1);
+    Transform const left = TouchReferenceInGrip(0);
+    CHECK(same(Rotate(right.rotation, {0.0, 0.0, -1.0}), {0.0, -s, -c}, 1e-12));
+    CHECK(same(Rotate(right.rotation, {0.0, 1.0, 0.0}), {0.0, c, -s}, 1e-12));
+    CHECK(same(right.translation, {0.007, -0.0342, -0.0960}, 5e-4));
+    CHECK(NearD(left.translation.x, -right.translation.x, 1e-12) && NearD(left.translation.z, right.translation.z, 1e-12));
+    CHECK(NearD(Length(right.translation), Length(Vec3{0.007, -0.00182941, 0.1019482}), 1e-9));
+    // The same rotation in UE-style grip axes (X = -Z, Y = +X, Z = +Y): a 20.6 degree pitch down.
+    auto const ue = [](Vec3 v) { return Vec3{-v.z, v.x, v.y}; };
+    for (Vec3 const v : {Vec3{0.0, 0.0, -1.0}, Vec3{1.0, 0.0, 0.0}, Vec3{0.0, 1.0, 0.0}}) {
+        CHECK(same(ue(Rotate(right.rotation, v)), Rotate(TouchReferenceRotationUe(), ue(v)), 1e-12));
+    }
+
+    // A hand bone whose axes are the anatomical ones: the gun's top is the thumb side (+Y).
+    Quat const plain{};
+    auto const up = GunUpInHand({1.0, 0.0, 0.0}, plain);
+    CHECK(up.has_value() && same(*up, {0.0, 1.0, 0.0}));
+    // A barrel tilted toward the thumb: the up stays perpendicular to it, on the thumb side.
+    auto const tilted = GunUpInHand({1.0, 0.5, 0.0}, plain);
+    CHECK(tilted.has_value() && std::abs(Dot(*tilted, Normalize(Vec3{1.0, 0.5, 0.0}))) < 1e-12 && tilted->y > 0.8);
+    // The roll trim turns the top to the right (up x barrel), seen from behind.
+    auto const rolled = GunUpInHand({1.0, 0.0, 0.0}, plain, 90.0);
+    CHECK(rolled.has_value() && same(*rolled, Cross({0.0, 1.0, 0.0}, {1.0, 0.0, 0.0}), 1e-12));
+    // No roll information: a barrel along the thumb side, or none.
+    CHECK(!GunUpInHand({0.0, 2.0, 0.0}, plain).has_value());
+    CHECK(!GunUpInHand({0.0, 0.0, 0.0}, plain).has_value());
+
+    // LE1's numbers (2026-10-08 log): Shepard's right hand frame from its finger bases, and the
+    // pistol's and the rifle's grips. Same barrel; their model ups 90 degrees apart.
+    auto const hand = AnatomyInHand({2.3, -8.6, 1.8}, {1.8, -8.1, 4.2}, {0.9, -8.1, -2.6});
+    CHECK(hand.has_value());
+    Vec3 const pistolBarrel{0.190, -0.965, -0.181}, pistolModelUp{-0.160, 0.151, -0.975};
+    Vec3 const rifleBarrel{0.189, -0.965, -0.179}, rifleModelUp{0.968, 0.214, -0.130};
+    auto const pistolUp = GunUpInHand(pistolBarrel, *hand);
+    auto const rifleUp = GunUpInHand(rifleBarrel, *hand);
+    CHECK(pistolUp.has_value() && rifleUp.has_value());
+    CHECK(degrees(*pistolUp, *rifleUp) < 1.0);          // both guns held the same way
+    CHECK(degrees(*pistolUp, pistolModelUp) > 170.0);   // the pistol's model up was upside down
+    CHECK(std::abs(degrees(*rifleUp, rifleModelUp) - 90.0) < 15.0);  // the rifle's on its side
+
+    // With HandForBarrel: the barrel goes along the aim, the thumb side to the controller's up,
+    // and rolling the controller about its aim rolls the hand (and the gun) by the same angle.
+    Vec3 const aim = Normalize(Vec3{0.8, 0.3, -0.2});
+    Vec3 const aimUp = Normalize(Cross(Cross(aim, Vec3{0.0, 0.0, 1.0}), aim));  // up, across the aim
+    auto const held = HandForBarrel(pistolBarrel, *pistolUp, aim, aimUp);
+    CHECK(held.has_value() && same(Rotate(*held, Normalize(pistolBarrel)), aim, 1e-9));
+    CHECK(same(Rotate(*held, *pistolUp), aimUp, 1e-9));
+    Vec3 const thumb = Rotate(*held, Rotate(*hand, {0.0, 1.0, 0.0}));
+    CHECK(Dot(thumb, aimUp) > 0.9);  // the thumb side is on top
+    for (double roll : {30.0, -75.0, 180.0}) {
+        Quat const twist = about(aim, roll);
+        auto const turned = HandForBarrel(pistolBarrel, *pistolUp, aim, Rotate(twist, aimUp));
+        CHECK(turned.has_value() && AngleBetween(*turned, Normalize(twist * *held)) < 1e-7);
+    }
 }
 
 bool NearXr(XrVector3f a, XrVector3f b, double tolerance = 1e-4) {
@@ -1021,6 +1296,10 @@ int main() {
     TestOrientation();
     TestArmChains();
     TestArmPose();
+    TestArmStretch();
+    TestTorsoPose();
+    TestArmLength();
+    TestReachScale();
     TestHandTargetsOrigin();
     TestViewSync();
     TestXrToUnreal();
@@ -1030,6 +1309,7 @@ int main() {
     TestToTracking();
     TestHandFrame();
     TestHandForBarrel();
+    TestGunHold();
     TestGamepad();
     TestOverlayPlacement();
     TestMenuPointer();

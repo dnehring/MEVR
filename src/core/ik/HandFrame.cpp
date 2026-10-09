@@ -71,4 +71,24 @@ std::optional<Quat> HandForBarrel(Vec3 barrelInHand, Vec3 upInHand, Vec3 aim, Ve
     return Normalize(*wanted * Conjugate(*held));
 }
 
+std::optional<Vec3> GunUpInHand(Vec3 barrelInHand, Quat anatomyInHand, double rollDegrees) {
+    double const barrelLength = Length(barrelInHand);
+    if (!(barrelLength > 1e-9)) {
+        return std::nullopt;
+    }
+    Vec3 const barrel = barrelInHand * (1.0 / barrelLength);
+    Vec3 const thumb = Rotate(Normalize(anatomyInHand), {0.0, 1.0, 0.0});
+    Vec3 const across = thumb - barrel * Dot(thumb, barrel);
+    // sin(3 degrees), as in ForwardUpFrame: a barrel along the thumb side says nothing about roll.
+    if (Length(across) < 0.05) {
+        return std::nullopt;
+    }
+    Vec3 const up = Normalize(across);
+    // The gun's right, seen from behind it (UE axes: up x forward = right; the formula doesn't
+    // depend on handedness as long as barrel, up and right keep UE's X, Z, Y roles).
+    Vec3 const right = Cross(up, barrel);
+    double const roll = rollDegrees * std::numbers::pi / 180.0;
+    return Normalize(up * std::cos(roll) + right * std::sin(roll));
+}
+
 } // namespace mevr::ik

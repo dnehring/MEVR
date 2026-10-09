@@ -45,6 +45,10 @@ double BodyYaw::Update(double headYaw, double deltaSeconds) {
     return yaw_;
 }
 
+double BlendYaw(double a, double b, double weight) {
+    return WrapAngle(a + WrapAngle(b - a) * weight);
+}
+
 double YawOf(double qx, double qy, double qz, double qw) {
     // Forward (-Z) rotated by q; yaw from its horizontal part.
     double fx = -2.0 * (qx * qz + qw * qy);

@@ -341,11 +341,17 @@ vr::aim_ray::Ray AimRay() {
         if (!gLoggedFirstRay) {
             gLoggedFirstRay = true;
             XrVector3f const& head = frame->head.position;
+            // Where the right controller is: the muzzle should sit a gun's length ahead of it
+            // (at the view's scale), not metres away (research/14, "Reach").
+            vr::controllers::State const controllers = vr::controllers::Latest();
+            XrVector3f const grip = controllers.right.gripValid ? controllers.right.grip.position : head;
             log::Info("hand aim: first aim ray (tracking space): muzzle ({:.3f}, {:.3f}, {:.3f}) m, {:.2f} m from the head, "
-                      "direction ({:.3f}, {:.3f}, {:.3f})",
+                      "{:.2f} m from the right grip ({}), direction ({:.3f}, {:.3f}, {:.3f}); view {:.1f} units per meter",
                 ray.origin.x, ray.origin.y, ray.origin.z,
-                std::hypot(ray.origin.x - head.x, ray.origin.y - head.y, ray.origin.z - head.z), ray.direction.x,
-                ray.direction.y, ray.direction.z);
+                std::hypot(ray.origin.x - head.x, ray.origin.y - head.y, ray.origin.z - head.z),
+                std::hypot(ray.origin.x - grip.x, ray.origin.y - grip.y, ray.origin.z - grip.z),
+                controllers.right.gripValid ? "tracked" : "not tracked: from the head", ray.direction.x, ray.direction.y,
+                ray.direction.z, frame->unitsPerMeter);
         }
     }
     gRayStatus = why == nullptr ? "from the muzzle along the barrel" : std::format("none ({})", why);

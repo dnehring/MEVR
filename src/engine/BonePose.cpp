@@ -77,8 +77,19 @@ struct Sample {
     ik::Vec3 target;
     float deltaTime = 0.0f;
 };
+struct TorsoSample {
+    bool valid = false;
+    ik::TorsoResult result;
+    double collars[2] = {0.0, 0.0};  // degrees each clavicle turned
+    double stretch[2] = {1.0, 1.0};
+};
 SRWLOCK gSampleLock = SRWLOCK_INIT;
 Sample gSamples[2];
+TorsoSample gTorso;
+// The head bone before our writes (AnimatedHead).
+USkeletalMeshComponent const* gAnimatedMesh = nullptr;
+ik::Vec3 gAnimatedHead;
+ULONGLONG gAnimatedTimeMs = 0;
 bool gFirstWriteLogged = false;  // game thread
 std::atomic<bool> gFirstWriteReady{false};
 
@@ -165,6 +176,14 @@ bool TakeRequest(USkeletalMeshComponent const* self, Request& copy) {
         copy.parents.assign(gRequest.parents.begin(), gRequest.parents.end());
         copy.body = gRequest.body;
         copy.arms = gRequest.arms;
+        copy.torso.enabled = gRequest.torso.enabled;
+        copy.torso.chain.spine.assign(gRequest.torso.chain.spine.begin(), gRequest.torso.chain.spine.end());
+        copy.torso.chain.collars = gRequest.torso.chain.collars;
+        copy.torso.keys.assign(gRequest.torso.keys.begin(), gRequest.torso.keys.end());
+        copy.torso.goal = gRequest.torso.goal;
+        copy.torso.collars = gRequest.torso.collars;
+        copy.maxStretch = gRequest.maxStretch;
+        copy.head = gRequest.head;
     }
     ReleaseSRWLockShared(&gRequestLock);
     if (stale != nullptr) {
@@ -206,7 +225,42 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
     for (std::size_t i = 0; i < bases.size(); ++i) {
         pose[i] = skeleton::ToTransform(bases[i]);
     }
+    if (request.head >= 0 && request.head < count) {
+        AcquireSRWLockExclusive(&gSampleLock);
+        gAnimatedMesh = self;
+        gAnimatedHead = pose[request.head].translation;
+        gAnimatedTimeMs = GetTickCount64();
+        ReleaseSRWLockExclusive(&gSampleLock);
+    }
     int first = count;
+    ik::BodyFrame body = request.body;
+    TorsoSample torso;
+    Torso const& t = request.torso;
+    if (t.enabled) {
+        // The same skeleton: the spine and clavicle names as when the request was made.
+        bool same = t.keys.size() == t.chain.spine.size() + 2;
+        for (std::size_t k = 0; same && k < t.chain.spine.size(); ++k) {
+            int const bone = t.chain.spine[k];
+            same = bone >= 0 && bone < count && skeleton::RefBoneKey(self, bone) == t.keys[k];
+        }
+        for (int side = 0; same && side < 2; ++side) {
+            int const bone = t.chain.collars[side];
+            same = bone < 0 || (bone < count && skeleton::RefBoneKey(self, bone) == t.keys[t.chain.spine.size() + side]);
+        }
+        if (!same) {
+            Reject("skeleton changed (spine bone names)");
+        } else {
+            torso.valid = true;
+            torso.result = ik::PoseTorso(pose, request.parents, t.chain, request.arms[0].chain, request.arms[1].chain, body, t.goal);
+            if (!torso.result.ok) {
+                Reject(torso.result.error);
+            } else {
+                first = (std::min)(first, t.chain.spine.front());
+                body.forward = torso.result.facing;
+                body.right = ik::Normalize(ik::Cross(body.up, body.forward), body.right);
+            }
+        }
+    }
     for (int side : {0, 1}) {
         Arm const& arm = request.arms[side];
         if (arm.target == Target::Off) {
@@ -217,9 +271,21 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
             Reject("target not finite");
             continue;
         }
+        if (arm.target == Target::Component && t.enabled && t.collars && t.chain.collars[side] >= 0) {
+            torso.collars[side] = ik::PoseCollar(pose, request.parents, t.chain.collars[side], arm.chain, goal.wrist);
+            if (torso.collars[side] > 0.0) {
+                first = (std::min)(first, t.chain.collars[side]);
+            }
+        }
+        if (arm.target == Target::Component && arm.reachScale != 1.0 && std::isfinite(arm.reachScale) && arm.reachScale > 0.0) {
+            ik::Vec3 const shoulder = pose[arm.chain.upper].translation;
+            goal.wrist = shoulder + (goal.wrist - shoulder) * arm.reachScale;
+        }
         goal.hasRotation = arm.hasRotation;
         goal.rotation = arm.rotation;
-        ik::ArmResult const result = ik::PoseArm(pose, request.parents, arm.chain, side, request.body, goal);
+        goal.maxStretch = arm.target == Target::Component ? request.maxStretch : 1.0;
+        ik::ArmResult const result = ik::PoseArm(pose, request.parents, arm.chain, side, body, goal);
+        torso.stretch[side] = result.stretch;
         AcquireSRWLockExclusive(&gSampleLock);
         gSamples[side] = {true, result, goal.wrist, deltaTime};
         ReleaseSRWLockExclusive(&gSampleLock);
@@ -228,6 +294,11 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
             continue;
         }
         first = (std::min)(first, arm.chain.upper);
+    }
+    if (torso.valid) {
+        AcquireSRWLockExclusive(&gSampleLock);
+        gTorso = torso;
+        ReleaseSRWLockExclusive(&gSampleLock);
     }
     if (first >= count) {
         return;
@@ -288,6 +359,18 @@ std::string Describe(Sample const& sample) {
         Format(sample.target), Format(r.oldWrist), Format(r.newWrist), ik::Length(r.newWrist - sample.target),
         r.reached ? "" : ", out of reach", Format(r.oldElbow), Format(r.newElbow), Format(r.shoulder), r.upperLength,
         r.lowerLength, r.bonesWritten);
+}
+
+std::string DescribeTorso(TorsoSample const& sample) {
+    ik::TorsoResult const& r = sample.result;
+    if (!r.ok) {
+        return std::format("not written ({})", r.error != nullptr ? r.error : "?");
+    }
+    return std::format("shoulders {} -> {} (wanted {}, {:.1f} short{}), twist {:.0f} deg, bend {:.0f} deg, clavicles {:.0f}/{:.0f} deg, "
+                       "arm stretch {:.2f}/{:.2f}, {} bones",
+        Format(r.oldShoulders), Format(r.newShoulders), Format(r.wantedShoulders), ik::Length(r.newShoulders - r.wantedShoulders),
+        r.limited ? ", limited" : "", r.twistDegrees, r.bendDegrees, sample.collars[0], sample.collars[1], sample.stretch[0],
+        sample.stretch[1], r.bonesWritten);
 }
 
 std::string Slots(Slot (&slots)[4], bool rva) {
@@ -390,12 +473,25 @@ void LogFirstWrite() {
     gFirstWriteLogged = true;
     AcquireSRWLockShared(&gSampleLock);
     Sample const samples[2] = {gSamples[0], gSamples[1]};
+    TorsoSample const torso = gTorso;
     ReleaseSRWLockShared(&gSampleLock);
+    if (torso.valid) {
+        log::Info("arm IK: first write, torso (component space): {}", DescribeTorso(torso));
+    }
     for (int side : {0, 1}) {
         if (samples[side].valid) {
             log::Info("arm IK: first write, {} arm (component space): {}", side == 0 ? "left" : "right", Describe(samples[side]));
         }
     }
+}
+
+std::optional<ik::Vec3> AnimatedHead() {
+    USkeletalMeshComponent const* const mesh = gMesh.load(std::memory_order_acquire);
+    AcquireSRWLockShared(&gSampleLock);
+    bool const fresh = mesh != nullptr && gAnimatedMesh == mesh && GetTickCount64() - gAnimatedTimeMs <= kMaxRequestAgeMs;
+    ik::Vec3 const head = gAnimatedHead;
+    ReleaseSRWLockShared(&gSampleLock);
+    return fresh ? std::optional<ik::Vec3>(head) : std::nullopt;
 }
 
 std::uint64_t TotalWrites() {
@@ -422,8 +518,13 @@ void LogStats() {
         gBroken.load() ? ", STOPPED after a fault" : "");
     AcquireSRWLockExclusive(&gSampleLock);
     Sample samples[2] = {gSamples[0], gSamples[1]};
+    TorsoSample const torso = gTorso;
     gSamples[0].valid = gSamples[1].valid = false;
+    gTorso.valid = false;
     ReleaseSRWLockExclusive(&gSampleLock);
+    if (torso.valid) {
+        log::Info("    arm IK torso (component space): {}", DescribeTorso(torso));
+    }
     for (int side : {0, 1}) {
         if (samples[side].valid) {
             log::Info("    arm IK {} (component space, dt {:.4f}): {}", side == 0 ? "left" : "right", samples[side].deltaTime,

@@ -98,6 +98,8 @@ set(MEVR_MOD_SOURCES
     src/core/Hotkey.hpp
     src/core/d3d11/Blit.cpp
     src/core/d3d11/Blit.hpp
+    src/core/ik/ArmLength.cpp
+    src/core/ik/ArmLength.hpp
     src/core/ik/ArmPose.cpp
     src/core/ik/ArmPose.hpp
     src/core/ik/HandFrame.cpp
@@ -108,6 +110,10 @@ set(MEVR_MOD_SOURCES
     src/core/ik/Ik.hpp
     src/core/ik/Rigid.cpp
     src/core/ik/Rigid.hpp
+    src/core/ik/TorsoPose.cpp
+    src/core/ik/TorsoPose.hpp
+    src/core/ik/TouchReference.cpp
+    src/core/ik/TouchReference.hpp
     src/core/vr/AimRay.cpp
     src/core/vr/AimRay.hpp
     src/core/vr/Controllers.cpp
@@ -253,11 +259,14 @@ if (MEVR_BUILD_TESTS)
     enable_testing()
     add_executable(mevr-tests
         tests/Main.cpp
+        src/core/ik/ArmLength.cpp
         src/core/ik/ArmPose.cpp
         src/core/ik/HandFrame.cpp
         src/core/ik/BoneNames.cpp
         src/core/ik/Ik.cpp
         src/core/ik/Rigid.cpp
+        src/core/ik/TorsoPose.cpp
+        src/core/ik/TouchReference.cpp
         src/core/vr/MenuPointer.cpp
         src/core/vr/OverlayPlacement.cpp
         src/core/vr/ViewSync.cpp
