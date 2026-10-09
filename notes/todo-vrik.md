@@ -79,9 +79,12 @@ are, never the animation.
   and the user saw heavy judder whenever they moved physically (commit 489ef51, reverted).
 - Leaning toward the camera (25-35 degrees) put both shoulders under the view, and the arms seemed
   to come from the middle of the chest.
-- Now: in first person the torso twists only (`TorsoGoal::lean = false`).
-- **Next:** find where Halcyon places the first-person camera relative to the head
-  (`[FPCAM] write before=(-50.1, 0, 25.1)`; `fpCombat_*` offsets in `vr_config.h`;
-  `game_camera` / `head_aim.cpp`), and decide whether the eye offset can be zeroed for VRIK (a
-  setting, not a code change), so his eyes sit at the camera and 6DOF lean can drive the torso
-  again.
+- Now (first person): the torso leans by the headset's move from where it was recentered
+  (`TorsoGoal::relative`), not toward the view itself, and the hidden head keeps its animated
+  transform (`TorsoGoal::keepBone`), so Halcyon's camera doesn't follow our writes.
+  **[verify in headset]:** physical leans bend Shepard's torso without judder; the shoulders stay
+  at the sides; no doubled view motion.
+- Still open: Halcyon's camera sits about 44 units from Shepard's eyes (`[FPCAM]`: the camera mode
+  offsets `fpCombat`/`fpExplore`/... fwd/right/up in `vr_config.h`, written in `head_aim.cpp`
+  FpOwnAndWrite). If the arms still look offset from the player's shoulders, tune those offsets
+  in MELEVR.ini so the camera sits at the eyes (a setting, not a code change).

@@ -42,10 +42,17 @@ struct TorsoGoal {
     // Limits: how far the spine bends (whole chain, about its bottom joint) and twists.
     double maxBendDegrees = 35.0;
     double maxTwistDegrees = 60.0;
-    // False: twist only, no lean toward `head`. First person: Halcyon builds its camera from
-    // Shepard's head bone as written, so leaning (or moving) him toward the view moves the view
-    // too, a loop that never settles; and the lean put both shoulders under the view.
+    // False: twist only, no lean toward `head`.
     bool lean = true;
+    // True: `head` is an offset from the reference's animated position, not a point. First
+    // person: the headset's move from where it was recentered, so the lean follows the player's
+    // own lean; aiming the eyes at the view itself bent Shepard toward Halcyon's camera, which
+    // sits about 44 units from his eyes, and put both shoulders under it.
+    bool relative = false;
+    // This bone and its subtree keep their animated transforms (-1: none). First person: the
+    // (hidden) head, since Halcyon's camera follows the head bone as written; moving it moved the
+    // view, a loop that juddered whenever the player moved.
+    int keepBone = -1;
 };
 
 struct TorsoResult {

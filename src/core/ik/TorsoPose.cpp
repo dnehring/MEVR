@@ -236,7 +236,8 @@ TorsoResult PoseTorso(std::span<Transform> pose, std::span<int const> parents, T
     // or farther (crouching, standing taller) is met only in direction; the arms take the rest.
     Vec3 const twisted = Rotate(twistTurn, oldMid - pivot);
     Vec3 const twistedReference = Rotate(twistTurn, reference - pivot);
-    Quat const fullSwing = FromTo(twistedReference, goal.lean ? goal.head - pivot : twistedReference);
+    Vec3 const goalHead = goal.relative ? reference + goal.head : goal.head;
+    Quat const fullSwing = FromTo(twistedReference, goal.lean ? goalHead - pivot : twistedReference);
     result.wantedShoulders = pivot + Rotate(fullSwing, twisted);
     double const maxBend = std::max(0.0, goal.maxBendDegrees) / kDegrees;
     Quat swing = fullSwing;
@@ -263,6 +264,13 @@ TorsoResult PoseTorso(std::span<Transform> pose, std::span<int const> parents, T
             Quat const lean = FromTo(Rotate(turn, mid - at), reachable - at);
             double const share = 1.0 / static_cast<double>(joints - k);
             TurnSubtree(work, parents, bone, Fraction(Normalize(lean * turn), share), in);
+        }
+    }
+    if (goal.keepBone >= 0 && goal.keepBone < count) {
+        for (int i = goal.keepBone; i < count; ++i) {
+            if (IsAncestor(parents, goal.keepBone, i)) {
+                work[i] = pose[i];
+            }
         }
     }
     Vec3 const newMid = Midpoint(work, left.upper, right.upper);

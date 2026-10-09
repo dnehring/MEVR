@@ -499,10 +499,19 @@ void Drive(double deltaSeconds) {
                 for (int bone : t.chain.collars) {
                     t.keys.push_back(bone >= 0 ? info->bones.keys[bone] : 0);
                 }
-                t.goal.head = ik::TransformPoint(*worldToComponent, {targets.headWorld.x, targets.headWorld.y, targets.headWorld.z});
                 t.goal.reference = reference;
-                // First person: twist only (ik::TorsoGoal::lean).
-                t.goal.lean = targets.anchor != hand_targets::Anchor::View;
+                if (targets.anchor == hand_targets::Anchor::View) {
+                    // First person: Shepard's eyes move as far as the headset moved from where it
+                    // was recentered (ik::TorsoGoal::relative), and his hidden head stays where
+                    // the animation put it, since Halcyon's camera follows it (keepBone).
+                    engine::UnrealVector const origin = engine::OriginWorld(targets.body);
+                    t.goal.head = ik::TransformDirection(*worldToComponent,
+                        {targets.headWorld.x - origin.x, targets.headWorld.y - origin.y, targets.headWorld.z - origin.z});
+                    t.goal.relative = true;
+                    t.goal.keepBone = info->head;
+                } else {
+                    t.goal.head = ik::TransformPoint(*worldToComponent, {targets.headWorld.x, targets.headWorld.y, targets.headWorld.z});
+                }
                 ik::Vec3 forward = ik::TransformDirection(*worldToComponent, *facing);
                 forward = forward - frame->up * ik::Dot(forward, frame->up);
                 t.goal.forward = ik::Normalize(forward, frame->forward);
