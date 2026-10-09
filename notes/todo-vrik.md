@@ -88,3 +88,16 @@ are, never the animation.
   offsets `fpCombat`/`fpExplore`/... fwd/right/up in `vr_config.h`, written in `head_aim.cpp`
   FpOwnAndWrite). If the arms still look offset from the player's shoulders, tune those offsets
   in MELEVR.ini so the camera sits at the eyes (a setting, not a code change).
+
+## Verified in the headset (2026-10-08, 20:48)
+
+- **Left-trigger camera alignment works.** It measured the camera 33.7 forward, -3.9 right and
+  4.1 up (units) from Shepard's head bone. Halcyon's offsets are now: back 0.674 m, right 0.078 m,
+  up -0.082 m (profile Custom 1).
+- Life-size movement was turned on at 20:55 (`leanGain 2`, forward emphasis 1). How it feels isn't
+  reported yet.
+- **Still open:**
+  - the upside-down world seen at the 20:44 launch (a 180-degree roll of the tracked head, from
+    launch; retest after restarting SteamVR);
+  - Quest Link performance (research/16).
+
