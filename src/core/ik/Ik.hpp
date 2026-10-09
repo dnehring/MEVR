@@ -42,6 +42,9 @@ private:
     bool initialized_ = false;
 };
 
+// `a` turned toward `b` by `weight` (0: a, 1: b) the short way round; radians, wrapped to (-pi, pi].
+double BlendYaw(double a, double b, double weight);
+
 // Yaw (as BodyYaw uses it) of an OpenXR orientation's forward direction, ignoring pitch/roll.
 double YawOf(double qx, double qy, double qz, double qw);
 

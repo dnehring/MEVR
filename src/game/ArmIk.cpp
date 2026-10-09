@@ -4,7 +4,9 @@
 #include "core/ik/ArmPose.hpp"
 #include "core/ik/BoneNames.hpp"
 #include "core/ik/HandFrame.hpp"
+#include "core/ik/TorsoPose.hpp"
 #include "core/ik/TouchReference.hpp"
+#include "core/vr/Controllers.hpp"
 #include "game/HandCalibration.hpp"
 #include "engine/BonePose.hpp"
 #include "engine/GameAdapter.hpp"
@@ -50,6 +52,19 @@ hand_targets::Source gSource = hand_targets::Source::None;
 bool gGunAimed = false;
 bool gGunAimedAndWritten = false;
 std::uint64_t gLastWrites = 0;
+// The torso's heading (OpenXR yaw in tracking space): follows the head past a deadzone, pulled
+// toward where the hands are (ik::BodyYaw). Reset whenever the torso isn't driven.
+ik::BodyYaw gBodyYaw;
+bool gBodyYawActive = false;
+hand_targets::Anchor gLoggedAnchor = hand_targets::Anchor::None;
+double gLoggedScale = 0.0;
+// The torso heading leans this far toward the hands (both tracked, in front of the head).
+constexpr double kHandsYawWeight = 0.5;
+constexpr double kHandsMinMeters = 0.15;
+constexpr double kHandsMaxDegrees = 100.0;
+// Reach scaling from the arm-length calibration stays within these.
+constexpr double kMinReachScale = 0.5;
+constexpr double kMaxReachScale = 3.0;
 
 // Per skeleton asset: names, parents, arm chains. Re-resolved when the asset or its bones change.
 struct SkeletonInfo {
@@ -60,6 +75,9 @@ struct SkeletonInfo {
     int head = -1;
     // Per hand: the middle, index and pinky finger base bones (-1: not found), for the hand frame.
     std::array<std::array<int, 3>, 2> fingers{{{-1, -1, -1}, {-1, -1, -1}}};
+    // The spine and clavicles (core/ik/TorsoPose) and the eyes (-1: not found).
+    std::optional<ik::TorsoChain> torso;
+    std::array<int, 2> eyes{-1, -1};
 };
 std::optional<SkeletonInfo> gSkeleton;
 
@@ -69,6 +87,7 @@ struct LayoutCheck {
     UObject const* asset = nullptr;
     bool passed = false;
     std::array<bool, 2> arms{};
+    std::array<double, 2> lengths{};  // upper arm + forearm, animated (Unreal units)
 };
 LayoutCheck gLayout;
 
@@ -218,6 +237,31 @@ SkeletonInfo const* Skeleton(USkeletalMeshComponent* mesh) {
     log::Info("arm IK: skeleton {} ({} bones): left arm {}; right arm {}; head {}", engine::FullName(mesh->SkeletalMesh), count,
         ChainText(info, info.arms[kLeft]), ChainText(info, info.arms[kRight]),
         info.head >= 0 ? std::format("{}({})", info.bones.names[info.head], info.head) : "not found");
+    // The eyes: a bone named just "eye" and a side (Eye_Left), not eyeBlink, underEye or lids.
+    for (int i = 0; i < count; ++i) {
+        std::vector<std::string> const tokens = ik::NameTokens(info.bones.names[i]);
+        if (tokens.size() == 2 && tokens[0] == "eye") {
+            int const side = tokens[1] == "left" || tokens[1] == "l" ? kLeft : tokens[1] == "right" || tokens[1] == "r" ? kRight : -1;
+            if (side >= 0 && info.eyes[side] < 0) {
+                info.eyes[side] = i;
+            }
+        }
+    }
+    if (info.arms[kLeft] && info.arms[kRight]) {
+        info.torso = ik::FindTorsoChain(info.bones.names, info.bones.parents, *info.arms[kLeft], *info.arms[kRight]);
+    }
+    std::string spine;
+    if (info.torso) {
+        for (int bone : info.torso->spine) {
+            spine += std::format("{}{}({})", spine.empty() ? "" : " > ", info.bones.names[bone], bone);
+        }
+    }
+    auto const named = [&](int bone) {
+        return bone >= 0 ? std::format("{}({})", info.bones.names[bone], bone) : std::string("none");
+    };
+    log::Info("arm IK: torso: spine {}; clavicles {} and {}; eyes {} and {}", info.torso ? spine : std::string("not found"),
+        named(info.torso ? info.torso->collars[kLeft] : -1), named(info.torso ? info.torso->collars[kRight] : -1),
+        named(info.eyes[kLeft]), named(info.eyes[kRight]));
     gSkeleton = std::move(info);
     return &*gSkeleton;
 }
@@ -263,6 +307,7 @@ LayoutCheck CheckLayout(USkeletalMeshComponent* mesh, SkeletonInfo const& info) 
         bool const plausible = upper >= kMinSegment && upper <= kMaxSegment && lower >= kMinSegment && lower <= kMaxSegment &&
             upper <= lower * kMaxSegmentRatio && lower <= upper * kMaxSegmentRatio;
         check.arms[side] = plausible;
+        check.lengths[side] = upper + lower;
         log::Info("arm IK: {} arm upper {:.1f}, forearm {:.1f} units: {}", kSideNames[side], upper, lower,
             plausible ? "plausible" : "IMPLAUSIBLE, not driven");
     }
@@ -292,6 +337,7 @@ std::optional<ik::BodyFrame> BodyAxes(APawn const* pawn, ik::Affine const& world
 
 void Stop(std::string status) {
     engine::bone_pose::Clear();
+    gBodyYawActive = false;
     gStatus = std::move(status);
 }
 
@@ -302,7 +348,54 @@ void LogStatusChange() {
     }
 }
 
-void Drive() {
+// The torso's facing in the world: the headset's yaw (with a deadzone), pulled toward the hands.
+std::optional<ik::Vec3> TorsoFacingWorld(hand_targets::Targets const& targets, double deltaSeconds) {
+    XrQuaternionf const& q = targets.head.orientation;
+    double const headYaw = ik::YawOf(q.x, q.y, q.z, q.w);
+    double yaw = headYaw;
+    vr::controllers::State const controllers = vr::controllers::Latest();
+    if (controllers.active && controllers.left.gripValid && controllers.right.gripValid) {
+        XrVector3f const& l = controllers.left.grip.position;
+        XrVector3f const& r = controllers.right.grip.position;
+        XrVector3f const& h = targets.head.position;
+        double const dx = 0.5 * (l.x + r.x) - h.x;
+        double const dz = 0.5 * (l.z + r.z) - h.z;
+        double const handsYaw = std::atan2(-dx, -dz);  // BodyYaw's convention: 0 = -Z, + = left
+        double const apart = std::abs(ik::BlendYaw(0.0, handsYaw - headYaw, 1.0)) * 180.0 / std::numbers::pi;
+        if (std::hypot(dx, dz) >= kHandsMinMeters && apart <= kHandsMaxDegrees) {
+            yaw = ik::BlendYaw(headYaw, handsYaw, kHandsYawWeight);
+        }
+    }
+    if (!gBodyYawActive) {
+        gBodyYaw.Reset(yaw);
+        gBodyYawActive = true;
+    }
+    double const body = gBodyYaw.Update(yaw, deltaSeconds);
+    // Tracking-space forward for that yaw, into the world through the body frame.
+    XrVector3f const& h = targets.head.position;
+    XrVector3f const ahead{h.x - static_cast<float>(std::sin(body)), h.y, h.z - static_cast<float>(std::cos(body))};
+    engine::UnrealVector const a = engine::ToWorld(targets.body, h);
+    engine::UnrealVector const b = engine::ToWorld(targets.body, ahead);
+    ik::Vec3 const forward{b.x - a.x, b.y - a.y, b.z - a.z};
+    if (!(ik::Length(forward) > 1e-6)) {
+        return std::nullopt;
+    }
+    return ik::Normalize(forward);
+}
+
+void LogAnchor(hand_targets::Targets const& targets) {
+    if (targets.anchor == gLoggedAnchor && std::abs(targets.body.unitsPerMeter - gLoggedScale) < 1e-6) {
+        return;
+    }
+    gLoggedAnchor = targets.anchor;
+    gLoggedScale = targets.body.unitsPerMeter;
+    log::Info("arm IK: body anchor: {}, view {} from Shepard's animated head bone, {:.1f} units per meter",
+        hand_targets::Name(targets.anchor),
+        targets.viewToHeadBone >= 0.0 ? std::format("{:.0f} units", targets.viewToHeadBone) : std::string("(no head bone)"),
+        targets.body.unitsPerMeter);
+}
+
+void Drive(double deltaSeconds) {
     hand_calibration::Refresh();
     if (!engine::bone_pose::Installed()) {
         return Stop("writeback hook not installed (see the log above)");
@@ -341,9 +434,16 @@ void Drive() {
         return Stop("component transform unusable");
     }
 
-    auto const headBone = info->head >= 0
-        ? engine::skeleton::BoneLocation(mesh, info->head, engine::skeleton::Space::World)
-        : std::nullopt;
+    // The head bone as the animation left it: our spine writes move it, and the hands' anchor
+    // mustn't chase them (engine::bone_pose::AnimatedHead). Before the first write, the pose is
+    // the animation's anyway.
+    std::optional<engine::UnrealVector> headBone;
+    if (auto const animated = engine::bone_pose::AnimatedHead()) {
+        ik::Vec3 const world = ik::TransformPoint(componentToWorld, *animated);
+        headBone = engine::UnrealVector{world.x, world.y, world.z};
+    } else if (info->head >= 0) {
+        headBone = engine::skeleton::BoneLocation(mesh, info->head, engine::skeleton::Space::World);
+    }
     hand_targets::Targets const targets = hand_targets::Current(headBone);
     gSource = targets.source;
     engine::bone_pose::Request request;
@@ -351,6 +451,7 @@ void Drive() {
     request.boneCount = info->boneCount;
     request.parents = info->bones.parents;
     request.body = *frame;
+    request.head = info->head;
     // Arms that resolved and look like arms; the others stay with the animation.
     std::array<std::optional<ik::ArmChain>, 2> arms;
     for (int side : {kLeft, kRight}) {
@@ -378,6 +479,38 @@ void Drive() {
         request.arms[kRight].wrist = kDesktopWrist;
         driven = "right hand held in front of the chest (desktop test)";
     } else if (targets.source == hand_targets::Source::Controllers) {
+        LogAnchor(targets);
+        // The shoulders under the headset: the spine turns to the body's heading and leans so
+        // Shepard's eyes (first person) or head (third person) come to the headset.
+        bool torso = false;
+        if (hand_calibration::BodyFollowsHead() && info->torso && arms[kLeft] && arms[kRight]) {
+            auto const facing = TorsoFacingWorld(targets, deltaSeconds);
+            std::array<int, 2> reference{info->head, -1};
+            if (targets.anchor == hand_targets::Anchor::View && info->eyes[kLeft] >= 0 && info->eyes[kRight] >= 0) {
+                reference = info->eyes;
+            }
+            if (facing && reference[0] >= 0) {
+                engine::bone_pose::Torso& t = request.torso;
+                t.enabled = true;
+                t.chain = *info->torso;
+                for (int bone : t.chain.spine) {
+                    t.keys.push_back(info->bones.keys[bone]);
+                }
+                for (int bone : t.chain.collars) {
+                    t.keys.push_back(bone >= 0 ? info->bones.keys[bone] : 0);
+                }
+                t.goal.head = ik::TransformPoint(*worldToComponent, {targets.headWorld.x, targets.headWorld.y, targets.headWorld.z});
+                t.goal.reference = reference;
+                ik::Vec3 forward = ik::TransformDirection(*worldToComponent, *facing);
+                forward = forward - frame->up * ik::Dot(forward, frame->up);
+                t.goal.forward = ik::Normalize(forward, frame->forward);
+                torso = true;
+            }
+        }
+        if (!torso) {
+            gBodyYawActive = false;
+        }
+        request.maxStretch = hand_calibration::ArmStretch();
         auto const componentRotation = ik::RotationOf(componentToWorld);
         std::span<engine::skeleton::BoneAtom const> const pose = engine::skeleton::SpaceBases(mesh);
         for (int side : {kLeft, kRight}) {
@@ -389,6 +522,10 @@ void Drive() {
             engine::bone_pose::Arm& arm = request.arms[side];
             arm.target = engine::bone_pose::Target::Component;
             arm.wrist = ik::TransformPoint(*worldToComponent, {hand.position.x, hand.position.y, hand.position.z});
+            // Arm-length calibration: the player's full reach is Shepard's full reach.
+            if (double const player = hand_calibration::ArmLength(); player > 0.0 && gLayout.lengths[side] > 0.0) {
+                arm.reachScale = std::clamp(gLayout.lengths[side] / (player * targets.body.unitsPerMeter), kMinReachScale, kMaxReachScale);
+            }
             if (!gAnatomyTried[side]) {
                 gAnatomyTried[side] = true;
                 gAnatomy[side] = HandAnatomy(*info, pose, side, chain->hand);
@@ -425,6 +562,9 @@ void Drive() {
         }
         if (!driven.empty()) {
             driven += " following the controllers";
+            if (request.torso.enabled) {
+                driven += ", shoulders under the headset";
+            }
             if (gunAimed) {
                 driven += " (the right hand points the gun's barrel along the controller's aim)";
             }
@@ -440,7 +580,7 @@ void Drive() {
 
 } // namespace
 
-void Tick(float /*deltaSeconds*/) {
+void Tick(float deltaSeconds) {
     // The writer wrote the player's pose since the last tick: what was published is being shown.
     std::uint64_t const writes = engine::bone_pose::TotalWrites();
     bool const written = writes != gLastWrites;
@@ -454,7 +594,7 @@ void Tick(float /*deltaSeconds*/) {
         }
         return;
     }
-    Drive();
+    Drive(deltaSeconds);
     gGunAimedAndWritten = gGunAimed && written;
     LogStatusChange();
     engine::bone_pose::LogFirstWrite();
@@ -497,6 +637,9 @@ void Shutdown() {
     gAnatomy = {};
     gAnatomyTried = {};
     gLoggedGrip.reset();
+    gBodyYawActive = false;
+    gLoggedAnchor = hand_targets::Anchor::None;
+    gLoggedScale = 0.0;
 }
 
 } // namespace mevr::game::arm_ik

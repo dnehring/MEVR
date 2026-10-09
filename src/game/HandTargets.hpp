@@ -6,8 +6,8 @@
 #include <array>
 #include <optional>
 
-// Where Shepard's hands should be: the one place that knows the hand source, so swapping it
-// (e.g. for Halcyon's renderer, which owns the camera) touches only this file. Arm IK
+// Where Shepard's hands (and head) should be: the one place that knows the hand source, so
+// swapping it (e.g. for Halcyon's renderer, which owns the camera) touches only this file. Arm IK
 // (game/arm_ik) turns these into bone targets.
 namespace mevr::game::hand_targets {
 
@@ -26,21 +26,37 @@ struct Hand {
     ik::Quat aim;  // world, UE3 axes: the controller's aim orientation (X = where it points, Z = its up)
 };
 
+// How tracking space is placed on the body this tick.
+enum class Anchor {
+    None,
+    View,      // first person: the view's own frame (the controllers where the player sees them)
+    HeadBone,  // third person: tracking space's origin at Shepard's animated head bone
+    Origin,    // no head bone: the origin where the view puts it
+};
+
 struct Targets {
     Source source = Source::None;
     std::array<Hand, 2> hands;  // 0 left, 1 right
+    // Controllers only: the frame used, and the headset in it.
+    Anchor anchor = Anchor::None;
+    engine::TrackingFrame body;
+    XrPosef head{};                 // the headset, tracking space
+    engine::UnrealVector headWorld;  // the headset (the eyes' midpoint) in the world
+    double viewToHeadBone = -1.0;    // units between the view and Shepard's head bone (-1: no bone)
 };
 
 // Game thread, once per tick: the motion controllers' grip poses, placed in the world through
-// game/view_anchor (whichever renderer draws VR), with the wrist a few centimetres behind the
-// grip; or DesktopTest while the mod says there's no headset.
-// The controllers are measured from tracking space's origin (the head at the start or the last
-// recenter), which is mapped to `headBone`, the world location of Shepard's head bone: hands
-// around Shepard rather than around the view (the camera), which is what works in third person
-// (in first person the two nearly coincide), and leaning or 6DOF moves the view, not the hands.
-// The anchor gives only the turn into the world. Without a head bone, the origin goes where the
-// view puts it.
-Targets Current(std::optional<engine::UnrealVector> const& headBone);
+// game/view_anchor (whichever renderer draws VR); or DesktopTest while the mod says there's no
+// headset.
+// - Scale: the view's own units per meter (Halcyon's: 50), or [Hands] trackingScale: the scale at
+//   which the player sees the world, so a hand lands where the player sees the controller.
+// - First person (the view within about 45 units of Shepard's animated head bone, leaving at 75):
+//   the view's own frame. Third person: tracking space's origin (the head at the start or the
+//   last recenter) at `animatedHead`, the head bone as the animation left it (not after our spine
+//   writes, which move it), so the hands go around Shepard, not the camera, and leaning moves the
+//   view, not the hands. Without a head bone, where the view puts the origin.
+// - The wrist sits 7 units behind the grip, along the grip's -Z (in Shepard's units).
+Targets Current(std::optional<engine::UnrealVector> const& animatedHead);
 
 // Set by the mod every tick: true while there's no headset to follow (our renderer: no VR session;
 // the host's: no headset session seen yet). Arm IK then holds the right hand in front of the chest.
@@ -48,5 +64,6 @@ void SetDesktopTest(bool on);
 bool DesktopTest();
 
 char const* Name(Source source);
+char const* Name(Anchor anchor);
 
 } // namespace mevr::game::hand_targets

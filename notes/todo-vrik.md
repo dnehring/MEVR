@@ -4,7 +4,7 @@ Direction: our work is VRIK; Halcyon's core is touched only for bugs (see CLAUDE
 Overlord (MW2 VR, GPL-3.0, `reference/Overlord`). Its rule: the controller decides where things
 are, never the animation.
 
-## 1. The gun is upside down (do first: small, contained)
+## 1. The gun is upside down (done 2026-10-08, to test: research/14 "Gun roll")
 
 - **Cause:** `game/Weapon` takes the gun's "up" from the mesh/socket Z axis, measured in the hand's
   axes. That is unreliable across weapons. The 15:56 log shows two grip measurements, probably the
@@ -20,7 +20,7 @@ are, never the animation.
   - Keep the barrel and muzzle measurement (it works: shots leave the muzzle, follow error 0.01
     units).
 
-## 2. Shepard's arms don't match the player's reach
+## 2. Shepard's arms don't match the player's reach (done 2026-10-08, to test: research/14 "Reach")
 
 - **Symptom:** with the arms fully extended, Shepard's hands don't line up with the controllers.
 - **Cause:** `game/ArmIk` keeps Shepard's shoulders where the combat animation puts them (rotated,

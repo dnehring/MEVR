@@ -1,16 +1,21 @@
 #include "game/HandCalibration.hpp"
 
 #include "core/Log.hpp"
+#include "core/ik/ArmPose.hpp"
 #include "core/ik/HandFrame.hpp"
 
 #include <LESDK/Headers.hpp>
 
 #include <Windows.h>
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <format>
 #include <fstream>
+#include <map>
 #include <string>
 
 namespace mevr::game::hand_calibration {
@@ -23,7 +28,19 @@ struct Values {
     double yaw = 0.0;
     double roll = 0.0;
     double gunRoll = 0.0;
+    bool bodyFollowsHead = true;
+    double armStretch = ik::kMaxArmStretch;
+    double trackingScale = 0.0;
+    double armLength = 0.0;  // [Arms] armLengthM
     bool operator==(Values const&) const = default;
+};
+
+// The menu's arm-length sample ([Arms], src/plugin/MevrMenuTab.cpp).
+struct Sample {
+    bool hasRequest = false;
+    long long request = 0;
+    ik::ArmLengthSample poses;
+    int fields = 0;  // how many of the nine coordinates were present
 };
 
 Values gValues;
@@ -32,9 +49,12 @@ ULONGLONG gLastCheckMs = 0;
 fs::file_time_type gStamp{};
 bool gHaveStamp = false;
 bool gApplied = false;
+bool gHaveRequest = false;
+long long gLastRequest = 0;
 
 constexpr char const* kDefaultFile =
     "; ME VR Attempt settings. Edited while the game runs: changes apply within a second.\n"
+    "; Halcyon's menu (VR hands tab) edits some of these too.\n"
     "\n"
     "[Hands]\n"
     "; How Shepard's hands sit on the controllers, in degrees, the same for both hands (mirrored for\n"
@@ -42,7 +62,20 @@ constexpr char const* kDefaultFile =
     "; for the right hand. handRoll: positive rolls the thumb side outward for the right hand.\n"
     "handPitch = 0\n"
     "handYaw = 0\n"
-    "handRoll = 0\n";
+    "handRoll = 0\n"
+    "; A held gun's barrel follows the controller's aim and its top the thumb side of the hand.\n"
+    "; gunRoll: degrees about the barrel if the gun looks rolled; positive rolls its top to the right.\n"
+    "gunRoll = 0\n"
+    "; bodyFollowsHead: 1 turns and leans Shepard's spine so his shoulders sit under the headset.\n"
+    "bodyFollowsHead = 1\n"
+    "; armStretch: how far Shepard's arms may stretch to keep the hands on the controllers (1-1.25).\n"
+    "armStretch = 1.25\n"
+    "; trackingScale: Unreal units per meter of hand and head motion; 0 = the view's own scale.\n"
+    "trackingScale = 0\n"
+    "\n"
+    "[Arms]\n"
+    "; Arm-length calibration (the VR hands tab samples a T pose; the mod writes armLengthM, the\n"
+    "; player's shoulder-to-grip length in meters, and scales reach with it; 0 or absent = off).\n";
 
 fs::path FilePath() {
     wchar_t buffer[MAX_PATH]{};
@@ -56,40 +89,103 @@ void Apply(Values const& values) {
     gTrims[0] = ik::GripTrim(values.pitch, -values.yaw, -values.roll);
 }
 
-Values Read(fs::path const& path) {
-    Values values;
+std::string Strip(std::string const& text) {
+    auto const first = text.find_first_not_of(" \t\r");
+    auto const last = text.find_last_not_of(" \t\r");
+    return first == std::string::npos ? std::string() : text.substr(first, last - first + 1);
+}
+
+// "[Section]" -> "key" -> value text, for "key = value" and "key=value" alike.
+using Ini = std::map<std::string, std::map<std::string, std::string>>;
+
+Ini ReadIni(fs::path const& path) {
+    Ini ini;
     std::ifstream in(path);
     std::string line;
-    bool hands = false;
+    std::string section;
     while (std::getline(in, line)) {
-        auto const first = line.find_first_not_of(" \t");
-        if (first == std::string::npos || line[first] == ';' || line[first] == '#') {
+        std::string const text = Strip(line);
+        if (text.empty() || text[0] == ';' || text[0] == '#') {
             continue;
         }
-        if (line[first] == '[') {
-            hands = line.compare(first, 7, "[Hands]") == 0;
+        if (text[0] == '[') {
+            auto const close = text.find(']');
+            section = close == std::string::npos ? std::string() : text.substr(1, close - 1);
             continue;
         }
-        auto const equals = line.find('=');
-        if (!hands || equals == std::string::npos) {
+        auto const equals = text.find('=');
+        if (equals == std::string::npos) {
             continue;
         }
-        std::string key = line.substr(first, equals - first);
-        while (!key.empty() && (key.back() == ' ' || key.back() == '\t')) {
-            key.pop_back();
-        }
-        double const value = std::strtod(line.c_str() + equals + 1, nullptr);
-        if (key == "handPitch") {
-            values.pitch = value;
-        } else if (key == "handYaw") {
-            values.yaw = value;
-        } else if (key == "handRoll") {
-            values.roll = value;
-        } else if (key == "gunRoll") {
-            values.gunRoll = value;
-        }
+        ini[section][Strip(text.substr(0, equals))] = Strip(text.substr(equals + 1));
+    }
+    return ini;
+}
+
+bool Number(Ini const& ini, char const* section, char const* key, double& out) {
+    auto const s = ini.find(section);
+    if (s == ini.end()) {
+        return false;
+    }
+    auto const k = s->second.find(key);
+    if (k == s->second.end() || k->second.empty()) {
+        return false;
+    }
+    char* end = nullptr;
+    double const value = std::strtod(k->second.c_str(), &end);
+    if (end == k->second.c_str() || !std::isfinite(value)) {
+        return false;
+    }
+    out = value;
+    return true;
+}
+
+Values ReadValues(Ini const& ini) {
+    Values values;
+    Number(ini, "Hands", "handPitch", values.pitch);
+    Number(ini, "Hands", "handYaw", values.yaw);
+    Number(ini, "Hands", "handRoll", values.roll);
+    Number(ini, "Hands", "gunRoll", values.gunRoll);
+    double flag = 1.0;
+    if (Number(ini, "Hands", "bodyFollowsHead", flag)) {
+        values.bodyFollowsHead = flag != 0.0;
+    }
+    if (Number(ini, "Hands", "armStretch", values.armStretch)) {
+        values.armStretch = std::clamp(values.armStretch, 1.0, ik::kMaxArmStretch);
+    }
+    if (Number(ini, "Hands", "trackingScale", values.trackingScale) && !(values.trackingScale > 0.0)) {
+        values.trackingScale = 0.0;
+    }
+    if (Number(ini, "Arms", "armLengthM", values.armLength) && !(values.armLength >= 0.3 && values.armLength <= 1.2)) {
+        values.armLength = 0.0;
     }
     return values;
+}
+
+Sample ReadSample(Ini const& ini) {
+    Sample sample;
+    double request = 0.0;
+    sample.hasRequest = Number(ini, "Arms", "measureRequest", request);
+    sample.request = static_cast<long long>(request);
+    struct Field {
+        char const* key;
+        double* value;
+    };
+    Field const fields[] = {
+        {"measureHeadX", &sample.poses.head.x}, {"measureHeadY", &sample.poses.head.y}, {"measureHeadZ", &sample.poses.head.z},
+        {"measureLeftX", &sample.poses.left.x}, {"measureLeftY", &sample.poses.left.y}, {"measureLeftZ", &sample.poses.left.z},
+        {"measureRightX", &sample.poses.right.x}, {"measureRightY", &sample.poses.right.y},
+        {"measureRightZ", &sample.poses.right.z},
+    };
+    for (Field const& field : fields) {
+        sample.fields += Number(ini, "Arms", field.key, *field.value) ? 1 : 0;
+    }
+    return sample;
+}
+
+bool WriteArmLength(double meters) {
+    std::wstring const value = meters > 0.0 ? std::format(L"{:.3f}", meters) : std::wstring(L"0");
+    return WritePrivateProfileStringW(L"Arms", L"armLengthM", value.c_str(), FilePath().wstring().c_str()) != 0;
 }
 
 } // namespace
@@ -100,6 +196,40 @@ ik::Quat Trim(int side) {
 
 double GunRoll() {
     return gValues.gunRoll;
+}
+
+bool BodyFollowsHead() {
+    return gValues.bodyFollowsHead;
+}
+
+double ArmStretch() {
+    return gValues.armStretch;
+}
+
+double TrackingScale() {
+    return gValues.trackingScale;
+}
+
+double ArmLength() {
+    return gValues.armLength;
+}
+
+std::optional<ik::ArmLengths> MeasureArmLength(ik::ArmLengthSample const& sample) {
+    auto const arms = ik::ArmLengthFromTPose(sample);
+    if (!arms) {
+        return std::nullopt;
+    }
+    bool const saved = WriteArmLength(arms->mean);
+    gValues.armLength = arms->mean;
+    log::Info("hands: arm length {:.3f} m (left {:.3f}, right {:.3f}, shoulder to grip, from a T pose){}", arms->mean, arms->left,
+        arms->right, saved ? "; saved as [Arms] armLengthM" : "; NOT saved (ini write failed)");
+    return arms;
+}
+
+void ClearArmLength() {
+    gValues.armLength = 0.0;
+    WriteArmLength(0.0);
+    log::Info("hands: arm length cleared: reach is not scaled");
 }
 
 void Refresh() {
@@ -120,12 +250,36 @@ void Refresh() {
     }
     gStamp = stamp;
     gHaveStamp = true;
-    Values const values = Read(path);
+    Ini const ini = ReadIni(path);
+    Values const values = ReadValues(ini);
     if (!gApplied || values != gValues) {
         gApplied = true;
         Apply(values);
-        log::Info("hands: calibration pitch {:.1f}, yaw {:.1f}, roll {:.1f} degrees, gun roll {:.1f} degrees (from {})",
-            values.pitch, values.yaw, values.roll, values.gunRoll, path.filename().string());
+        log::Info("hands: calibration pitch {:.1f}, yaw {:.1f}, roll {:.1f} degrees, gun roll {:.1f} degrees; body follows head {}, "
+                  "arm stretch {:.2f}, tracking scale {}, arm length {} (from {})",
+            values.pitch, values.yaw, values.roll, values.gunRoll, values.bodyFollowsHead ? "on" : "off", values.armStretch,
+            values.trackingScale > 0.0 ? std::format("{:.1f} units/m", values.trackingScale) : std::string("the view's"),
+            values.armLength > 0.0 ? std::format("{:.3f} m", values.armLength) : std::string("not calibrated"),
+            path.filename().string());
+    }
+    // The menu's arm-length sample: each new measureRequest value is one T-pose sample. One
+    // already there at startup with a result saved is old news.
+    Sample const sample = ReadSample(ini);
+    if (sample.hasRequest && (!gHaveRequest || sample.request != gLastRequest)) {
+        bool const old = !gHaveRequest && values.armLength > 0.0;
+        gHaveRequest = true;
+        gLastRequest = sample.request;
+        if (old) {
+            return;
+        }
+        if (sample.fields != 9) {
+            log::Warn("hands: arm-length sample #{} is incomplete ({} of 9 coordinates); ignored", sample.request, sample.fields);
+        } else if (!MeasureArmLength(sample.poses)) {
+            ik::ArmLengthSample const& p = sample.poses;
+            log::Warn("hands: arm-length sample #{} isn't a T pose (head ({:.2f}, {:.2f}, {:.2f}), left ({:.2f}, {:.2f}, {:.2f}), "
+                      "right ({:.2f}, {:.2f}, {:.2f}) m): hold both arms straight out to the sides; armLengthM unchanged",
+                sample.request, p.head.x, p.head.y, p.head.z, p.left.x, p.left.y, p.left.z, p.right.x, p.right.y, p.right.z);
+        }
     }
 }
 

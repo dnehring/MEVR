@@ -44,6 +44,28 @@ other keys in the table further down are for our own renderer only.
    (K). Do Shepard's arms follow? Any tearing at the wrist or elbow, or fingers off the hand?
    Does the weapon follow the hand? `.` turns it off to compare. (The left hand may stay on the
    gun's grip while the weapon is out.)
+   - **Reach and shoulders (new).** First person (K), on foot:
+     - Log first: `arm IK: body anchor: first person (the view's frame), view N units from
+       Shepard's animated head bone, 50.0 units per meter`. Tell Claude N, in first and third
+       person (it picks first person below 45 units).
+     - Hold a controller in front of your face, then stretch both arms fully out, forward, to the
+       sides and up. **Do Shepard's hands sit on the controllers** (where you feel them), at full
+       stretch too? His arms may look bent at your full reach (he's drawn about twice your size at
+       Halcyon's scale); say whether that bothers you.
+     - Lean forward, sideways and turn your head and body: **the shoulders should stay under you**
+       (the spine bends and twists; the torso follows the head only past about 35 degrees, and
+       turns toward your hands). Look down: does the body look right, or poke into the view?
+     - Log: `arm IK: first write, torso (component space): shoulders (...) -> (...) (wanted (...),
+       N short, limited), twist, bend, clavicles, arm stretch ...`, and the same in the heartbeat
+       (`arm IK torso`). "N short" is how far the limits held the shoulders back.
+     - Raise a hand high: the shoulder should shrug up a little. Reach far: the arm may stretch up
+       to 1.25x before the hand stops.
+     - A/B: `bodyFollowsHead = 0` in `ASI\LE1MEVR.ini` `[Hands]` turns the torso off (live);
+       `armStretch = 1` turns the stretch off; `trackingScale = 100` brings back the old hand
+       scale (hands twice as far out). Leave them at 1 / 1.25 / 0 afterwards.
+     - Draw the pistol and hold still: the log's `hand aim: first aim ray (tracking space): muzzle
+       ...` should now be well under a metre from the head and about the gun's length (0.5-0.8 m)
+       from the right grip, not 2 m.
 6. **The gun points where the controller points (new):** first person (K), on foot, draw a
    pistol or rifle, and hold the right hand still for a moment (the mod measures how the gun sits
    in the hand; the log says `grip measured`).
@@ -91,8 +113,11 @@ other keys in the table further down are for our own renderer only.
      - **Measure arm length:** press it, then hold both arms straight out to the sides (a T)
        and pull either trigger. It should say `Sample 1 taken: N m between the controllers`
        (roughly your arm span minus a little), and `ASI\LE1MEVR.ini` gets an `[Arms]` section.
-       Using the sample (an arm length for the IK) is a separate change; until it lands, nothing
-       else happens.
+       Within a second the mod logs `hands: arm length 0.6x m (left ..., right ...)` and writes
+       `armLengthM`, which the tab then shows. From then on Shepard's full reach matches yours
+       (his hands go out farther than the controllers when your arm is straight). Compare with and
+       without: delete the `armLengthM` line (or set it to 0) to turn it off. A bad pose logs
+       `isn't a T pose` and changes nothing.
    - **HUD.** The health, squad, radar and subtitles should sit on a panel about 1.5 m ahead,
      a bit below eye level, not stuck to your face.
      - Look around: the panel stays put, and the world shows no HUD in either eye.

@@ -1,13 +1,16 @@
 // Adapted from Overlord by Aeka0 (https://github.com/Aeka0/Overlord), GPL-3.0:
 // src/client/component/vr/gameplay/hands/pose_solver.hpp (orient_arm, arm_plane_normal,
-// arm_segment_frame, elbow_pole, transformed). Changes: double precision on our own vector and
-// quaternion types, one arm at a time on a UE3 component-space pose, no stretch, no weapon
-// bones, and a per-bone segment tag instead of repeated ancestry walks.
+// arm_segment_frame, elbow_pole, transformed, and solve_limb's stretch: both segments scale by
+// clamp((distance + .001) / (upper + lower), 1, 1.25)). Changes: double precision on our own vector
+// and quaternion types, one arm at a time on a UE3 component-space pose, the stretch limit per
+// goal (default none), no weapon bones, and a per-bone segment tag instead of repeated ancestry
+// walks.
 
 #include "core/ik/ArmPose.hpp"
 
 #include "core/ik/BoneNames.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <initializer_list>
@@ -262,7 +265,11 @@ ArmResult PoseArm(std::span<Transform> pose, std::span<int const> parents, ArmCh
 
     Vec3 const reach = goal.wrist - shoulder;
     Vec3 const pole = ElbowPoleDirection(Length(reach) > 1e-6 ? reach : body.forward, body, side);
-    TwoBoneResult const solved = SolveTwoBone(shoulder, goal.wrist, upperLength, lowerLength, shoulder + pole * upperLength);
+    // Overlord's stretch: out of reach, both segments lengthen together, up to the limit.
+    double const limit = std::isfinite(goal.maxStretch) ? std::clamp(goal.maxStretch, 1.0, kMaxArmStretch) : 1.0;
+    double const stretch = std::clamp((Length(reach) + 1e-3) / (upperLength + lowerLength), 1.0, limit);
+    TwoBoneResult const solved = SolveTwoBone(shoulder, goal.wrist, upperLength * stretch, lowerLength * stretch,
+        shoulder + pole * upperLength);
     ArmRotations const rotations = OrientArm(elbow - shoulder, wrist - elbow, solved.mid - shoulder, solved.end - solved.mid,
         upperBone.rotation);
     Quat const handDelta = goal.hasRotation ? Normalize(Normalize(goal.rotation) * Conjugate(Normalize(handBone.rotation)))
@@ -302,6 +309,7 @@ ArmResult PoseArm(std::span<Transform> pose, std::span<int const> parents, ArmCh
     }
     result.ok = true;
     result.reached = solved.reached;
+    result.stretch = stretch;
     result.newElbow = solved.mid;
     result.newWrist = solved.end;
     result.bonesWritten = bones;

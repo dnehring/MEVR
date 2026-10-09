@@ -38,10 +38,16 @@ struct BodyFrame {
     Vec3 up{0.0, 0.0, 1.0};
 };
 
+// Overlord's limit on how far an arm may stretch to keep the hand on its controller.
+inline constexpr double kMaxArmStretch = 1.25;
+
 struct ArmGoal {
     Vec3 wrist;  // where the hand bone goes
     bool hasRotation = false;
     Quat rotation;  // the hand bone's rotation; without one the hand keeps its pose on the forearm
+    // Out of reach, both segments may lengthen by up to this factor so the hand still lands on the
+    // target (Overlord's max_arm_stretch_ratio, 1.25). 1: no stretch. Clamped to [1, 1.25].
+    double maxStretch = 1.0;
 };
 
 struct ArmResult {
@@ -55,6 +61,7 @@ struct ArmResult {
     Vec3 newWrist;
     double upperLength = 0.0;
     double lowerLength = 0.0;
+    double stretch = 1.0;  // how much the segments were lengthened (1: not at all)
     int bonesWritten = 0;
 };
 
@@ -63,7 +70,8 @@ struct ArmResult {
 Vec3 ElbowPoleDirection(Vec3 reach, BodyFrame const& body, int side);
 
 // Transactional: rewrites the arm chain and every bone below the upper arm, or nothing (`error`
-// says why). Bone lengths are kept; a target out of reach gets a straight arm pointing at it.
+// says why). Bone lengths are kept up to `goal.maxStretch`; a target out of reach beyond that gets a
+// straight arm pointing at it.
 ArmResult PoseArm(std::span<Transform> pose, std::span<int const> parents, ArmChain const& chain, int side,
     BodyFrame const& body, ArmGoal const& goal);
 

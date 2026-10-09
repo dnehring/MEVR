@@ -1,16 +1,26 @@
 #include "game/HandTargets.hpp"
 
 #include "core/vr/Controllers.hpp"
+#include "game/HandCalibration.hpp"
 #include "game/ViewAnchor.hpp"
+
+#include <cmath>
 
 namespace mevr::game::hand_targets {
 namespace {
 
 // The hand bone is the wrist joint; the grip pose sits in the palm. OpenXR grip space: -Z points
-// along a held object's barrel, so the wrist is behind it along +Z. [verify in headset]
-constexpr float kWristBehindGripMeters = 0.07f;
+// along a held object's barrel, so the wrist is behind it along +Z (UE-style grip axes: -X).
+// Shepard's units, not the player's: it's his hand. [verify in headset]
+constexpr double kWristBehindGripUnits = 7.0;
+// First person: the view this close to Shepard's head bone (Unreal units); third person again
+// beyond the second (hysteresis). Halcyon's first-person eye sits near the head; its third-person
+// camera is a metre or more behind. [verify: the log's "body anchor" line gives the distance]
+constexpr double kFirstPersonEnterUnits = 45.0;
+constexpr double kFirstPersonLeaveUnits = 75.0;
 
 bool gDesktopTest = false;
+bool gFirstPerson = false;
 
 // A tracking-space orientation as a world rotation: its -Z, +X, +Y become UE's X, Y, Z.
 ik::Quat WorldRotation(engine::TrackingFrame const& frame, XrQuaternionf const& orientation) {
@@ -19,16 +29,13 @@ ik::Quat WorldRotation(engine::TrackingFrame const& frame, XrQuaternionf const& 
         {axes.up.x, axes.up.y, axes.up.z});
 }
 
-XrVector3f Wrist(XrPosef const& grip) {
-    XrQuaternionf const& q = grip.orientation;
-    ik::Vec3 const back = ik::Rotate(ik::Quat{q.x, q.y, q.z, q.w}, {0.0, 0.0, kWristBehindGripMeters});
-    return {grip.position.x + static_cast<float>(back.x), grip.position.y + static_cast<float>(back.y),
-        grip.position.z + static_cast<float>(back.z)};
+double Distance(engine::UnrealVector const& a, engine::UnrealVector const& b) {
+    return std::hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 }
 
 } // namespace
 
-Targets Current(std::optional<engine::UnrealVector> const& headBone) {
+Targets Current(std::optional<engine::UnrealVector> const& animatedHead) {
     Targets targets;
     if (gDesktopTest) {
         targets.source = Source::DesktopTest;
@@ -42,15 +49,34 @@ Targets Current(std::optional<engine::UnrealVector> const& headBone) {
         return targets;
     }
     targets.source = Source::Controllers;
-    // The controllers are measured from tracking space's origin, not from the live head: the
-    // origin is where the head was at the start or the last recenter, so it stands for Shepard's
-    // head bone (hands around Shepard, not the camera), and leaning or 6DOF moves only the view,
-    // never the hands. Without a head bone, around where the view puts the origin. The anchor
-    // still gives the turn into the world.
-    engine::UnrealVector const origin = headBone ? *headBone : engine::OriginWorld(*anchor);
-    // At the body's own scale; a renderer may scale head motion differently (Halcyon's lean).
-    // [verify in headset: reach matches Shepard's arms]
-    engine::TrackingFrame const body = engine::AtOrigin(*anchor, origin, engine::kUnitsPerMeter);
+    // The scale the player sees the world at (Halcyon: 50 units per meter, its lean and its eye
+    // separation), so the hands land where the player sees the controllers. Mapping them at 100
+    // while the view used 50 put them twice as far from the head as the controllers were
+    // (research/14, "Reach").
+    double const scale = hand_calibration::TrackingScale() > 0.0 ? hand_calibration::TrackingScale() : anchor->unitsPerMeter;
+    targets.viewToHeadBone = animatedHead ? Distance(anchor->headWorld, *animatedHead) : -1.0;
+    if (animatedHead) {
+        gFirstPerson = gFirstPerson ? targets.viewToHeadBone <= kFirstPersonLeaveUnits
+                                    : targets.viewToHeadBone <= kFirstPersonEnterUnits;
+    } else {
+        gFirstPerson = false;
+    }
+    if (gFirstPerson) {
+        // The view's own frame, scaled about the live head: the controllers exactly where the
+        // player sees them.
+        targets.anchor = Anchor::View;
+        targets.body = {anchor->head, anchor->headWorld, anchor->rotation, scale};
+    } else if (animatedHead) {
+        // Measured from tracking space's origin, placed at Shepard's animated head bone: hands
+        // around Shepard, and leaning or 6DOF moves only the view. The anchor gives the turn.
+        targets.anchor = Anchor::HeadBone;
+        targets.body = engine::AtOrigin(*anchor, *animatedHead, scale);
+    } else {
+        targets.anchor = Anchor::Origin;
+        targets.body = engine::AtOrigin(*anchor, engine::OriginWorld(*anchor), scale);
+    }
+    targets.head = anchor->head;
+    targets.headWorld = engine::ToWorld(targets.body, anchor->head.position);
     for (int side : {0, 1}) {
         vr::controllers::Hand const& hand = side == 0 ? controllers.left : controllers.right;
         if (!hand.gripValid) {
@@ -58,14 +84,16 @@ Targets Current(std::optional<engine::UnrealVector> const& headBone) {
         }
         Hand& out = targets.hands[side];
         out.valid = true;
-        out.position = engine::ToWorld(body, Wrist(hand.grip));
         // The grip's -Z, +X, +Y in the world are the images of UE's X, Y, Z.
         out.hasRotation = true;
-        out.rotation = WorldRotation(body, hand.grip.orientation);
+        out.rotation = WorldRotation(targets.body, hand.grip.orientation);
+        engine::UnrealVector const grip = engine::ToWorld(targets.body, hand.grip.position);
+        ik::Vec3 const back = ik::Rotate(out.rotation, {-kWristBehindGripUnits, 0.0, 0.0});
+        out.position = {grip.x + back.x, grip.y + back.y, grip.z + back.z};
         // The aim pose (where the controller points: a held gun's barrel follows it).
         if (hand.aimValid) {
             out.hasAim = true;
-            out.aim = WorldRotation(body, hand.aim.orientation);
+            out.aim = WorldRotation(targets.body, hand.aim.orientation);
         }
     }
     return targets;
@@ -83,6 +111,15 @@ char const* Name(Source source) {
     switch (source) {
     case Source::Controllers: return "controllers";
     case Source::DesktopTest: return "desktop test";
+    default: return "none";
+    }
+}
+
+char const* Name(Anchor anchor) {
+    switch (anchor) {
+    case Anchor::View: return "first person (the view's frame)";
+    case Anchor::HeadBone: return "third person (tracking origin at Shepard's animated head)";
+    case Anchor::Origin: return "the view's origin (no head bone)";
     default: return "none";
     }
 }

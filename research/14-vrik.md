@@ -165,8 +165,8 @@ frame, not broken.
     the camera, so it works in third person (as route 1 did). Measured from the live head,
     leaning moved the hands the wrong way (0.2 m forward with still hands: the view moved ~30
     units forward, the hands ~20 back). Now leaning or 6DOF moves only the view. Without a head
-    bone, the origin goes where the view puts it (`engine::OriginWorld`). 100 units per meter,
-    whatever scale the renderer gives head motion [verify in headset: reach];
+    bone, the origin goes where the view puts it (`engine::OriginWorld`). Since the reach work
+    (below): the view's own scale, and in first person the view's own frame;
   - orientation: the grip's axes through the same anchor (`engine::OrientationToWorld`);
   - the wrist is 7 cm behind the grip along grip +Z [verify in headset];
   - `DesktopTest` only where no headset can be followed, decided every tick by the mod: our
@@ -325,6 +325,99 @@ the rifle's about 90 (on its side) (`TestGunHold`, on those numbers).
 - `hand aim: aim ray from the muzzle along the barrel` / `none (why)`, and the first ray in
   tracking space.
 
+## Reach: shoulders under the headset, hands on the controllers (2026-10-08)
+
+Headset feedback: with the arms fully out, Shepard's hands stopped short of the controllers. The
+15:55 log's first writes ended "out of reach" by 20 units, from shoulders where the combat stance
+put them, with fixed arm lengths (upper arm 28.9 + forearm 26.3).
+
+### Why the first aim ray was 2.12 m from the head
+
+`hand aim: first aim ray (tracking space): muzzle (0.201, -2.141, 0.061) m, 2.12 m from the head`
+(15:56:18). The reticle's ray maps the muzzle back through the **view's** frame, which Halcyon
+publishes at **50 units per meter** (`halcyon bridge: first world view: ... 50.0 units per meter`;
+its lean and its 1.6-unit half-eye, research/13). The hands had gone into the world at **100**
+(`engine::kUnitsPerMeter`), measured from Shepard's head bone. So every hand offset came back
+doubled: the controller hung about 0.75 m below the head, plus the pistol (muzzle 36.8 units from
+the wrist, 0.37 m at 100) is about 1.1 m, which reads as 2.1-2.2 m at 50. The direction
+`(-0.098, -0.967, -0.234)` (straight down) fits a hand hanging during the "hold still" grip
+measurement. `TestReachScale` reproduces the doubling and checks the fix. Second, smaller cause:
+the head bone and the view's eye point aren't the same point.
+
+**Fix** (`game/HandTargets`):
+- Hands (and the headset, for the torso) go into the world at **the view's own scale**
+  (`TrackingFrame::unitsPerMeter`, Halcyon's 50), or `[Hands] trackingScale` if set: the scale
+  at which the player sees the world, so a hand lands where the player sees the controller.
+- **First person** (the view within 45 units of Shepard's animated head bone; back to third
+  person beyond 75): the view's own frame, so the controllers are exactly where the player sees
+  them. **Third person**: tracking space's origin at Shepard's **animated** head bone, as before.
+- The anchor is the head bone **before our writes** (`bone_pose::AnimatedHead`, kept by the
+  writer from the freshly animated pose): the spine writes move the head, and an anchor read
+  after them would chase its own writes.
+- The wrist offset behind the grip is now 7 of Shepard's units (it's his hand), not 7 cm of
+  tracking space.
+- Log: `arm IK: body anchor: first person (the view's frame), view N units from Shepard's
+  animated head bone, 50.0 units per meter`; the first-ray line now also gives the muzzle's
+  distance from the right grip (expect about the gun's length at the view's scale, 0.5-0.8 m for
+  the pistol) **[verify]**.
+- Consequence: at 50 units per meter Shepard is about twice the player's size as seen, so a
+  player's 0.6 m reach is 30 units, about half of his arm. The hands are on the controllers, the
+  elbows bent. The arm-length calibration (below) trades that back if wanted. **[verify in
+  headset which feels right; `trackingScale = 100` restores the old scale.]**
+
+### Shoulders from the headset (`core/ik/TorsoPose`, `engine/BonePose`)
+
+Overlord rebases its weapon arms at the view anchor; we bend Shepard's spine instead (his body is
+on screen):
+- **Chain** (`ik::FindTorsoChain`): the top of the spine is the nearest common ancestor of the
+  upper arms (LE1: `Chest2`); below it, ancestors named like a spine (`Chest1`, `Chest`,
+  `LowerBack`; stops at `Root`); clavicles are the bones between the top and each upper arm
+  (`LeftCollar`, `RightCollar`). Logged: `arm IK: torso: spine LowerBack(2) > Chest(3) >
+  Chest1(4) > Chest2(5); clavicles LeftCollar(6) and RightCollar(7); eyes Eye_Left(52) and
+  Eye_Right(51)` **[verify]**.
+- **Goal**: the reference point (Shepard's eyes in first person, his head bone in third) goes to
+  the headset; the shoulders face the body's heading. The heading is the headset's yaw through
+  `ik::BodyYaw` (34 degree deadzone, slow recenter), pulled halfway toward the hands when both
+  are tracked, at least 15 cm out and within 100 degrees of the face.
+- **Solve** (`ik::PoseTorso`): the upper body turns rigidly about the bottom spine joint, twist
+  about the body's up (at most 60 degrees) then the lean that points the reference at the
+  headset (at most 35 degrees), spread over the spine joints (each turns about its own position
+  and carries everything above it, three passes). Rotation only: no bone stretches, the
+  reference keeps its distance from the pivot, and a crouch or a taller player is left to the
+  arms. Unit-tested on a synthetic rig (reachable goal, limits, identity, failures, rigidity).
+- **Clavicles** (`ik::PoseCollar`): a hand target beyond 85% of the arm's length turns the
+  clavicle toward it by half the angle, at most 15 degrees (reaching up or forward shrugs).
+- Written in the same post-`UpdateSkelPose` pass, before the arms, which then reach from where
+  the shoulders ended up; the elbow poles use the new facing. Transactional like the arms.
+- `[Hands] bodyFollowsHead = 0` turns it off (live).
+- Log: `arm IK: first write, torso (component space): shoulders (...) -> (...) (wanted (...),
+  N short, limited), twist N deg, bend N deg, clavicles N/N deg, arm stretch N/N, N bones`, and
+  the same in the heartbeat.
+
+### Hands always on the controllers: stretch
+
+`ik::PoseArm` lengthens both segments by `clamp((distance + .001) / (upper + lower), 1, max)`,
+`max` = `[Hands] armStretch` (default and limit 1.25, Overlord's `max_arm_stretch_ratio` in
+`hands/pose_solver.hpp` `solve_limb`). The mesh stretches between the bones; bones hanging from
+the upper arm (twist bones) keep their offsets from the shoulder. Unit-tested.
+
+### Arm-length calibration
+
+- The VR hands tab (host, `src/plugin/MevrMenuTab.cpp`) samples a T pose into `LE1MEVR.ini`
+  `[Arms]`: `measureHead/Left/RightX/Y/Z` (tracking space, meters) and `measureRequest` (a
+  counter, written last). `game/HandCalibration` re-reads the file within a second; each new
+  `measureRequest` is measured (`ik::ArmLengthFromTPose`: shoulders on the grip line, 18 cm either
+  side of the head's foot point; each arm is its grip's distance from its shoulder; rejected if
+  not a T pose or outside 0.3-1.2 m) and saved as `[Arms] armLengthM` (shown by the tab).
+  A request already in the file at startup, with `armLengthM` set, is not re-measured.
+- With `armLengthM` set, each wrist target's distance from the (moved) shoulder is scaled by
+  Shepard's arm length / (`armLengthM` x units per meter), within 0.5-3: the player's full reach
+  is Shepard's full reach. 0 or absent: no scaling (hands on the controllers).
+- Function API for code: `hand_calibration::MeasureArmLength(ik::ArmLengthSample)` (measures,
+  saves, applies; nullopt if not a T pose), `ClearArmLength()`, `ArmLength()`.
+- Logs: `hands: arm length 0.630 m (left ..., right ..., shoulder to grip, from a T pose); saved as
+  [Arms] armLengthM`, or `hands: arm-length sample #N isn't a T pose (...)`.
+
 ## Open risks [verify in game]
 
 - The desktop-test pose must appear on screen. If the log shows writes but Shepard's arm doesn't
@@ -340,7 +433,8 @@ the rifle's about 90 (on its side) (`TestGunHold`, on those numbers).
 - The off-hand: the AnimTree's `LeftArm` limb control pulls the left wrist to `LHIK` during
   ComposeSkeleton, before our write. In the desktop test the right hand moves but the left stays
   on the gun's old grip. In VR both arms are ours.
-- Scale: 1 unit = 1 cm is assumed for the 7 cm wrist offset; the log's arm lengths will tell.
+- Scale: hands now follow the view's scale (Halcyon: 50 units per meter), so Shepard looks
+  about twice the player's size and his arms stay bent at the player's full reach; see "Reach".
 - Without a gun, the VR hand rotation is the grip mapping (`HandFrame`) plus the `[Hands]` trims,
   not calibrated per player.
 
