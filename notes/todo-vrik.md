@@ -101,3 +101,19 @@ are, never the animation.
     launch; retest after restarting SteamVR);
   - Quest Link performance (research/16).
 
+## Next: two-handed grip = focused fire (agreed with the user, 2026-10-08)
+
+1. **Grab:** the left grip squeezed with the left hand within about 10-15 cm of the gun's foregrip
+   latches a support grip. Use hysteresis like Overlord's `support_grip` (acquire nearer than
+   release). A grip squeezed anywhere else keeps its current mapping (LB).
+2. **Focused fire:** while gripped, the game sees LT held (the aimed-fire accuracy bonus), without
+   the zoom. One-handed = hip fire. The left trigger is freed from LT; for now leave it unmapped or
+   mapped as today, behind a setting, until we pick a use (a power or squad command).
+3. **Aim from both hands:** while gripped, the barrel points from the right hand toward the left;
+   the roll stays with the right wrist.
+4. **Left hand on the gun:** while gripped, stop overriding the left arm. Shepard's AnimTree
+   already has a left-hand IK onto the gun (`LeftWrist` -> bone `LHIK`, research/08 H3), or put
+   the left hand on the measured foregrip point.
+5. **Verify first:** does holding LT change the field of view in Halcyon's VR view (zoom)? If
+   yes, suppress it. Pistols: the grab point is under the grip.
+
