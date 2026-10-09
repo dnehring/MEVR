@@ -5771,6 +5771,16 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             menuQuad.size.width = menuW;
             menuQuad.size.height = menuW * static_cast<float>(kMenuH) / static_cast<float>(kMenuW);  // keep aspect
             layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&menuQuad);
+            if (headValid)   // [MEVR] the laser pointer's target (src/plugin/MevrMenuPointer.cpp)
+            {
+                const XrPosef& v0 = g_subViews[0].pose;
+                const XrPosef& v1 = g_subViews[1].pose;
+                const float hq[4] = {v0.orientation.x, v0.orientation.y, v0.orientation.z, v0.orientation.w};
+                const float hp[3] = {0.5f * (v0.position.x + v1.position.x), 0.5f * (v0.position.y + v1.position.y),
+                                     0.5f * (v0.position.z + v1.position.z)};
+                const float qc[3] = {menuQuad.pose.position.x, menuQuad.pose.position.y, menuQuad.pose.position.z};
+                MELEVR::MevrBridge::OnMenuQuad(hq, hp, qc, menuQuad.size.width, menuQuad.size.height);
+            }
             if (probeMenu)   // [MEVR] [MENUVIS]
             {
                 char line[288];

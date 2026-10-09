@@ -566,8 +566,13 @@ void ApplyGamepadInput() noexcept
     // ---- mouse (mouse+keyboard players): a visible cursor in the menu, mapped from the OS cursor ----
     io.MouseDrawCursor = true;
     ClipCursor(nullptr);  // free the cursor (the game may have clipped it for mouse-look) so it can roam the menu
+    // [MEVR] Laser pointer (src/plugin/MevrMenuPointer.cpp): a controller's aim ray on the menu quad is
+    // the mouse while it's there (trigger = left button, right stick = wheel); the OS cursor takes the
+    // mouse back when it moves.
+    MELEVR::MevrBridge::MenuPointer laser;
+    const bool laserHit = MELEVR::MevrBridge::SampleMenuPointer(g_w, g_h, io.DeltaTime, &laser);
     POINT pt = {};
-    if (GetCursorPos(&pt))
+    if (GetCursorPos(&pt) && MELEVR::MevrBridge::MenuMouseFromOs(pt.x, pt.y, laserHit))   // [MEVR]
     {
         HWND h = g_gameHwnd ? g_gameHwnd : GetForegroundWindow();
         RECT rc = {};
@@ -597,8 +602,12 @@ void ApplyGamepadInput() noexcept
                                 static_cast<float>(pt.y) / reachH * static_cast<float>(g_h));
         }
     }
+    if (laserHit) io.AddMousePosEvent(laser.x, laser.y);                    // [MEVR]
+    else if (laser.left) io.AddMousePosEvent(-FLT_MAX, -FLT_MAX);           // [MEVR] off the menu: no hover
+    if (laser.wheel != 0.0f) io.AddMouseWheelEvent(0.0f, laser.wheel);      // [MEVR]
     const bool llMouseActive = (g_mouseLL != nullptr);
-    io.AddMouseButtonEvent(0, llMouseActive ? (g_llLBtn != 0) : ((GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0));
+    io.AddMouseButtonEvent(0, laser.click ||                                  // [MEVR] trigger
+                              (llMouseActive ? (g_llLBtn != 0) : ((GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0)));
     io.AddMouseButtonEvent(1, llMouseActive ? (g_llRBtn != 0) : ((GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0));
     const LONG wheel = InterlockedExchange(&g_llWheel, 0);
     if (wheel != 0) io.AddMouseWheelEvent(0.0f, static_cast<float>(wheel) / static_cast<float>(WHEEL_DELTA));
@@ -2003,6 +2012,8 @@ void BuildUI() noexcept
             ImGui::EndTabItem();
         }
 
+        MELEVR::MevrBridge::BuildMenuTabs();   // [MEVR] "VR hands" (src/plugin/MevrMenuTab.cpp)
+
         ImGui::EndTabBar();
     }
 
@@ -2185,6 +2196,7 @@ ID3D11Texture2D* RenderFrame() noexcept
     ImGui::NewFrame();
     g_flatRender = false;
     BuildUI();
+    MELEVR::MevrBridge::DrawMenuPointer();   // [MEVR] the laser pointer's dot
     ImGui::Render();
 
     // ImGui_ImplDX11_RenderDrawData backs up + restores the device-context state, so it won't corrupt the

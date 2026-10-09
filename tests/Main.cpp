@@ -6,6 +6,7 @@
 #include "core/ik/HandFrame.hpp"
 #include "core/ik/Ik.hpp"
 #include "core/ik/Rigid.hpp"
+#include "core/vr/MenuPointer.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/ViewSync.hpp"
 #include "engine/XrToUnreal.hpp"
@@ -980,6 +981,39 @@ void TestOverlayPlacement() {
     CHECK(!PlaceOnRay({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 10.0f, {0.0f, 0.0f, 0.0f}, 0.03f, reticle));
 }
 
+void TestMenuPointer() {
+    using namespace mevr::vr::menu_pointer;
+    Quad quad;
+    quad.head.orientation = {0.0f, 0.0f, 0.0f, 1.0f};
+    quad.head.position = {0.0f, 1.6f, 0.0f};
+    quad.center = {0.0f, 0.0f, -1.35f};
+    quad.width = 0.88f;
+    quad.height = 0.70f;
+    Hit hit;
+    // Straight ahead from in front of the head: the middle.
+    CHECK(Intersect(quad, {0.0f, 1.6f, -0.3f}, {0.0f, 0.0f, -1.0f}, hit));
+    CHECK(NearD(hit.u, 0.5) && NearD(hit.v, 0.5) && NearD(hit.distance, 1.05));
+    // Toward the upper-left quarter point: u and v count from the top-left corner.
+    CHECK(Intersect(quad, {0.0f, 1.6f, 0.0f}, {-0.22f, 0.175f, -1.35f}, hit));
+    CHECK(NearD(hit.u, 0.25) && NearD(hit.v, 0.25));
+    // Outside the quad, pointing away, from behind it, or no direction: no hit.
+    CHECK(!Intersect(quad, {0.0f, 1.6f, 0.0f}, {0.5f, 0.0f, -1.0f}, hit));
+    CHECK(!Intersect(quad, {0.0f, 1.6f, 0.0f}, {0.0f, 0.0f, 1.0f}, hit));
+    CHECK(!Intersect(quad, {0.0f, 1.6f, -2.0f}, {0.0f, 0.0f, 1.0f}, hit));
+    CHECK(!Intersect(quad, {0.0f, 1.6f, 0.0f}, {0.0f, 0.0f, 0.0f}, hit));
+    // The quad follows the head: turned 90 degrees left, it sits along -X.
+    quad.head.orientation = AxisAngle(0, 1, 0, 90);
+    CHECK(Intersect(quad, {0.0f, 1.6f, 0.0f}, {-1.0f, 0.0f, 0.0f}, hit));
+    CHECK(NearD(hit.u, 0.5) && NearD(hit.v, 0.5) && NearD(hit.distance, 1.35));
+    // Angled toward the head's right (-Z in the tracking space here): right of the middle.
+    CHECK(Intersect(quad, {0.0f, 1.6f, 0.0f}, {-1.35f, 0.0f, -0.2f}, hit) && hit.u > 0.6f);
+    // An aim pose's forward is its -Z.
+    XrPosef aim{};
+    aim.orientation = AxisAngle(0, 1, 0, 90);
+    XrVector3f const forward = AimDirection(aim);
+    CHECK(NearD(forward.x, -1.0) && NearD(forward.z, 0.0));
+}
+
 int main() {
     TestBoneNames();
     TestIk();
@@ -998,6 +1032,7 @@ int main() {
     TestHandForBarrel();
     TestGamepad();
     TestOverlayPlacement();
+    TestMenuPointer();
     if (gFailures == 0) {
         std::printf("all tests passed\n");
     }
