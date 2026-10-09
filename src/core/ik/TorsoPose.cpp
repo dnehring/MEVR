@@ -235,7 +235,8 @@ TorsoResult PoseTorso(std::span<Transform> pose, std::span<int const> parents, T
     // The lean, limited: the reference point keeps its distance from the pivot, so a goal nearer
     // or farther (crouching, standing taller) is met only in direction; the arms take the rest.
     Vec3 const twisted = Rotate(twistTurn, oldMid - pivot);
-    Quat const fullSwing = FromTo(Rotate(twistTurn, reference - pivot), goal.head - pivot);
+    Vec3 const twistedReference = Rotate(twistTurn, reference - pivot);
+    Quat const fullSwing = FromTo(twistedReference, goal.lean ? goal.head - pivot : twistedReference);
     result.wantedShoulders = pivot + Rotate(fullSwing, twisted);
     double const maxBend = std::max(0.0, goal.maxBendDegrees) / kDegrees;
     Quat swing = fullSwing;

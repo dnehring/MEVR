@@ -69,3 +69,19 @@ are, never the animation.
   the menu with head aim off.
 - **Menu:** the stick chord toggles the menu.
 - **Stereo:** works with a borderless window at 3072x3188 (`[TARGETCHK] Stereo 2 target OK`).
+
+## Open: Halcyon's first-person camera vs Shepard's eyes (2026-10-08 evening)
+
+- Halcyon builds its first-person camera from Shepard's head bone *as written*, about 44 units
+  away from his animated eyes (log: `arm IK: body anchor: first person ..., view 44 units`).
+- So the torso must not chase the view. Moving the body toward the camera moved the camera too:
+  the anchor then flipped between first and third person every frame (view 41 <-> 76-109 units),
+  and the user saw heavy judder whenever they moved physically (commit 489ef51, reverted).
+- Leaning toward the camera (25-35 degrees) put both shoulders under the view, and the arms seemed
+  to come from the middle of the chest.
+- Now: in first person the torso twists only (`TorsoGoal::lean = false`).
+- **Next:** find where Halcyon places the first-person camera relative to the head
+  (`[FPCAM] write before=(-50.1, 0, 25.1)`; `fpCombat_*` offsets in `vr_config.h`;
+  `game_camera` / `head_aim.cpp`), and decide whether the eye offset can be zeroed for VRIK (a
+  setting, not a code change), so his eyes sit at the camera and 6DOF lean can drive the torso
+  again.

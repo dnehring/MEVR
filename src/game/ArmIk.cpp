@@ -501,6 +501,8 @@ void Drive(double deltaSeconds) {
                 }
                 t.goal.head = ik::TransformPoint(*worldToComponent, {targets.headWorld.x, targets.headWorld.y, targets.headWorld.z});
                 t.goal.reference = reference;
+                // First person: twist only (ik::TorsoGoal::lean).
+                t.goal.lean = targets.anchor != hand_targets::Anchor::View;
                 ik::Vec3 forward = ik::TransformDirection(*worldToComponent, *facing);
                 forward = forward - frame->up * ik::Dot(forward, frame->up);
                 t.goal.forward = ik::Normalize(forward, frame->forward);

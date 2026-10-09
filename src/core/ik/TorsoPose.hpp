@@ -42,6 +42,10 @@ struct TorsoGoal {
     // Limits: how far the spine bends (whole chain, about its bottom joint) and twists.
     double maxBendDegrees = 35.0;
     double maxTwistDegrees = 60.0;
+    // False: twist only, no lean toward `head`. First person: Halcyon builds its camera from
+    // Shepard's head bone as written, so leaning (or moving) him toward the view moves the view
+    // too, a loop that never settles; and the lean put both shoulders under the view.
+    bool lean = true;
 };
 
 struct TorsoResult {
