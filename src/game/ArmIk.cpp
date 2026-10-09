@@ -62,6 +62,8 @@ double gLoggedScale = 0.0;
 constexpr double kHandsYawWeight = 0.5;
 constexpr double kHandsMinMeters = 0.15;
 constexpr double kHandsMaxDegrees = 100.0;
+// First person: how far the whole body may move so Shepard's eyes sit at the view (units).
+constexpr double kTorsoMaxShift = 80.0;
 // Reach scaling from the arm-length calibration stays within these.
 constexpr double kMinReachScale = 0.5;
 constexpr double kMaxReachScale = 3.0;
@@ -501,6 +503,12 @@ void Drive(double deltaSeconds) {
                 }
                 t.goal.head = ik::TransformPoint(*worldToComponent, {targets.headWorld.x, targets.headWorld.y, targets.headWorld.z});
                 t.goal.reference = reference;
+                if (targets.anchor == hand_targets::Anchor::View) {
+                    // First person: Halcyon's camera can sit far from Shepard's animated eyes (44
+                    // units in the 2026-10-08 log), so the body moves under it rather than bending
+                    // hard toward it (which put both shoulders under the view).
+                    t.goal.maxShift = kTorsoMaxShift;
+                }
                 ik::Vec3 forward = ik::TransformDirection(*worldToComponent, *facing);
                 forward = forward - frame->up * ik::Dot(forward, frame->up);
                 t.goal.forward = ik::Normalize(forward, frame->forward);

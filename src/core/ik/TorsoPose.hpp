@@ -42,6 +42,11 @@ struct TorsoGoal {
     // Limits: how far the spine bends (whole chain, about its bottom joint) and twists.
     double maxBendDegrees = 35.0;
     double maxTwistDegrees = 60.0;
+    // First person: the whole body first moves (every bone, rigidly) by up to this far so the
+    // reference lands on the goal; the lean only takes what's left. Without it a view far from
+    // Shepard's animated eyes bends him hard toward it, and from the eyes both shoulders end up
+    // under the view: the arms seem to come from the middle of the chest. 0: no move.
+    double maxShift = 0.0;
 };
 
 struct TorsoResult {
@@ -54,6 +59,8 @@ struct TorsoResult {
     double twistDegrees = 0.0;
     double bendDegrees = 0.0;
     bool limited = false;  // a limit held it back
+    Vec3 shift;            // the whole body's move (TorsoGoal::maxShift)
+    bool shifted = false;  // every bone was written, not just the spine's subtree
     int bonesWritten = 0;
 };
 

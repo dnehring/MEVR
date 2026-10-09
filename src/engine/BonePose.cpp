@@ -255,7 +255,7 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
             if (!torso.result.ok) {
                 Reject(torso.result.error);
             } else {
-                first = (std::min)(first, t.chain.spine.front());
+                first = (std::min)(first, torso.result.shifted ? 0 : t.chain.spine.front());
                 body.forward = torso.result.facing;
                 body.right = ik::Normalize(ik::Cross(body.up, body.forward), body.right);
             }
@@ -366,9 +366,10 @@ std::string DescribeTorso(TorsoSample const& sample) {
     if (!r.ok) {
         return std::format("not written ({})", r.error != nullptr ? r.error : "?");
     }
-    return std::format("shoulders {} -> {} (wanted {}, {:.1f} short{}), twist {:.0f} deg, bend {:.0f} deg, clavicles {:.0f}/{:.0f} deg, "
+    return std::format("body moved {} ({:.1f} units), shoulders {} -> {} (wanted {}, {:.1f} short{}), twist {:.0f} deg, bend {:.0f} deg, clavicles {:.0f}/{:.0f} deg, "
                        "arm stretch {:.2f}/{:.2f}, {} bones",
-        Format(r.oldShoulders), Format(r.newShoulders), Format(r.wantedShoulders), ik::Length(r.newShoulders - r.wantedShoulders),
+        Format(r.shift), ik::Length(r.shift), Format(r.oldShoulders), Format(r.newShoulders), Format(r.wantedShoulders),
+        ik::Length(r.newShoulders - r.wantedShoulders),
         r.limited ? ", limited" : "", r.twistDegrees, r.bendDegrees, sample.collars[0], sample.collars[1], sample.stretch[0],
         sample.stretch[1], r.bonesWritten);
 }
