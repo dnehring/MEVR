@@ -188,7 +188,26 @@ bool WriteArmLength(double meters) {
     return WritePrivateProfileStringW(L"Arms", L"armLengthM", value.c_str(), FilePath().wstring().c_str()) != 0;
 }
 
+double gCameraWritten[3] = {1e9, 1e9, 1e9};
+
 } // namespace
+
+void WriteCameraOffset(double forward, double right, double up) {
+    double const values[3] = {forward, right, up};
+    bool changed = false;
+    for (int i = 0; i < 3; ++i) {
+        changed = changed || std::abs(values[i] - gCameraWritten[i]) > 0.5;
+    }
+    if (!changed) {
+        return;
+    }
+    wchar_t const* const keys[3] = {L"measuredForward", L"measuredRight", L"measuredUp"};
+    for (int i = 0; i < 3; ++i) {
+        std::wstring const value = std::format(L"{:.1f}", values[i]);
+        WritePrivateProfileStringW(L"Camera", keys[i], value.c_str(), FilePath().wstring().c_str());
+        gCameraWritten[i] = values[i];
+    }
+}
 
 ik::Quat Trim(int side) {
     return gTrims[side == 0 ? 0 : 1];

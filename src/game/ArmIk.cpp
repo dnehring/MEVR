@@ -410,6 +410,10 @@ void LogCameraOffset(hand_targets::Targets const& targets) {
     ik::Vec3 const right = ik::Cross(up, forward);
     ik::Vec3 const d{targets.viewFromHeadBone.x, targets.viewFromHeadBone.y, targets.viewFromHeadBone.z};
     double const f = ik::Dot(d, forward), r = ik::Dot(d, right), u = ik::Dot(d, up);
+    // The same at the recenter point (the view without the player's own lean), for the menu.
+    engine::UnrealVector const origin = engine::OriginWorld(targets.body);
+    ik::Vec3 const n{origin.x - a.x + d.x, origin.y - a.y + d.y, origin.z - a.z + d.z};
+    hand_calibration::WriteCameraOffset(ik::Dot(n, forward), ik::Dot(n, right), ik::Dot(n, up));
     // Halcyon's camera offsets are metres at 50 units each (kMetersToUU); flatScreenDistance + is back.
     log::Info("arm IK: first person camera vs Shepard's head bone: forward {:.1f}, right {:.1f}, up {:.1f} units "
               "(headset {:.2f}/{:.2f}/{:.2f} m from the recenter point); to cancel: flatScreenDistance = {:.3f}, "

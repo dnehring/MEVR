@@ -32,6 +32,11 @@ double ArmStretch();
 double TrackingScale();
 // The calibrated arm length (meters, shoulder to grip), 0 if not calibrated.
 double ArmLength();
+// Where Halcyon's first-person camera sits from Shepard's head bone with the headset at the
+// recenter point (units: forward, right, up in the view's yaw), for the menu's "Put the camera at
+// Shepard's eyes" button (src/plugin/MevrMenuTab.cpp). Written as [Camera] measuredForward,
+// measuredRight, measuredUp. Any thread; no-op when unchanged.
+void WriteCameraOffset(double forward, double right, double up);
 
 // Arm-length calibration API (for a menu, a key or a test; the VR hands tab reaches it through the
 // ini instead): measures one T-pose sample (tracking space, meters), and if it is one, saves the

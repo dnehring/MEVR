@@ -4937,7 +4937,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         if (cfg.leanEnabled && headValid && !menuOpen && !forceFlatCine)
         {
             // Forward/back (a dolly) reads ~3x weaker than sideways (parallax), so emphasize it to feel matched.
-            constexpr float kFwdLeanEmphasis = 3.0f;
+            const float kFwdLeanEmphasis = MELEVR::MevrBridge::ForwardLeanEmphasis();   // [MEVR] upstream: 3.0f
             right += headPos.x * cfg.leanGain;
             up += headPos.y * cfg.leanGain;
             fwd += -headPos.z * cfg.leanGain * kFwdLeanEmphasis;

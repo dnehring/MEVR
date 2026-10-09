@@ -19,6 +19,7 @@
 
 #include "halcyon/le1/mevr_bridge.h"
 #include "plugin/MevrMenu.hpp"
+#include "halcyon/le1/vr_config.h"
 
 #include "core/Log.hpp"
 #include "core/vr/Controllers.hpp"
@@ -27,6 +28,7 @@
 
 #include <Windows.h>
 
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -52,6 +54,12 @@ Trims gTrims;
 bool gHaveArmLength = false;
 float gArmLength = 0.0f;
 long gMeasureRequests = 0;
+// [Camera]: where Halcyon's first-person camera sits from Shepard's head bone at the recenter
+// point (written by the mod, game/HandCalibration WriteCameraOffset), and life-size movement.
+bool gHaveCamera = false;
+float gCamera[3] = {0.0f, 0.0f, 0.0f};  // forward, right, up (units)
+float gCameraAppliedAt[3] = {1e9f, 1e9f, 1e9f};  // the measurement the last alignment used
+std::atomic<bool> gLifeSize{false};
 
 // Arm-length sample: waiting for the T pose and a trigger pull.
 enum class Measure { Idle, WaitRelease, WaitPull };
@@ -124,6 +132,10 @@ void Reload(bool force) {
     gHaveArmLength = ReadNumber(L"Arms", L"armLengthM", gArmLength);
     float requests = 0.0f;
     gMeasureRequests = ReadNumber(L"Arms", L"measureRequest", requests) ? std::lround(requests) : 0;
+    gHaveCamera = ReadNumber(L"Camera", L"measuredForward", gCamera[0]) && ReadNumber(L"Camera", L"measuredRight", gCamera[1]) &&
+                  ReadNumber(L"Camera", L"measuredUp", gCamera[2]);
+    float lifeSize = 0.0f;
+    gLifeSize.store(ReadNumber(L"Camera", L"lifeSize", lifeSize) && lifeSize != 0.0f);
 }
 
 void WriteTrims(char const* why) {
@@ -256,7 +268,71 @@ void MeasureSection() {
     }
 }
 
+// Halcyon's view offsets are metres at 50 units each (xr_session kMetersToUU).
+constexpr float kUnitsPerOffsetMeter = 50.0f;
+
+void CameraSection() {
+    ImGui::SeparatorText("First-person camera");
+    MELEVR::Config::VrConfig& c = MELEVR::Config::Get();
+    if (gHaveCamera) {
+        ImGui::Text("The camera is %.0f forward, %.0f right, %.0f up (units) from Shepard's head.", gCamera[0], gCamera[1],
+            gCamera[2]);
+    } else {
+        ImGui::TextDisabled("No measurement yet: stand in first person (K) for a few seconds.");
+    }
+    bool const fresh = gHaveCamera && (std::abs(gCamera[0] - gCameraAppliedAt[0]) > 0.5f ||
+                                       std::abs(gCamera[1] - gCameraAppliedAt[1]) > 0.5f ||
+                                       std::abs(gCamera[2] - gCameraAppliedAt[2]) > 0.5f);
+    ImGui::BeginDisabled(!fresh);
+    if (ImGui::Button("Put the camera at Shepard's head")) {
+        // The measurement already includes the current offsets, so this adds the rest.
+        c.screenDistanceEnabled = true;
+        c.cameraOffsetEnabled = true;
+        c.flatScreenDistance += gCamera[0] / kUnitsPerOffsetMeter;  // + moves the view back
+        c.cameraOffsetRight -= gCamera[1] / kUnitsPerOffsetMeter;
+        c.cameraOffsetUp -= gCamera[2] / kUnitsPerOffsetMeter;
+        for (int i = 0; i < 3; ++i) {
+            gCameraAppliedAt[i] = gCamera[i];
+        }
+        MELEVR::Config::SaveProfile(MELEVR::Config::ActiveProfileIndex());
+        mevr::log::Info("menu: camera to Shepard's head: back {:.3f} m, right {:.3f} m, up {:.3f} m (Halcyon's offsets)",
+            c.flatScreenDistance, c.cameraOffsetRight, c.cameraOffsetUp);
+    }
+    ImGui::EndDisabled();
+    ImGui::TextDisabled("Press R first, standing naturally. Press again after a few seconds to refine.");
+    bool changed = false;
+    bool done = false;
+    changed |= ImGui::SliderFloat("Back (m)", &c.flatScreenDistance, -2.0f, 2.0f, "%.3f");
+    done |= ImGui::IsItemDeactivatedAfterEdit();
+    changed |= ImGui::SliderFloat("Right (m)", &c.cameraOffsetRight, -1.0f, 1.0f, "%.3f");
+    done |= ImGui::IsItemDeactivatedAfterEdit();
+    changed |= ImGui::SliderFloat("Up (m)", &c.cameraOffsetUp, -1.0f, 1.0f, "%.3f");
+    done |= ImGui::IsItemDeactivatedAfterEdit();
+    if (changed) {
+        c.screenDistanceEnabled = true;
+        c.cameraOffsetEnabled = true;
+    }
+    if (done) {
+        MELEVR::Config::SaveProfile(MELEVR::Config::ActiveProfileIndex());
+    }
+    bool lifeSize = gLifeSize.load();
+    if (ImGui::Checkbox("Life-size movement (crouch, lean and step 1:1 with the body)", &lifeSize)) {
+        gLifeSize.store(lifeSize);
+        c.leanGain = lifeSize ? 2.0f : 1.0f;  // 100 units per metre, Shepard's skeleton scale
+        WriteNumber(L"Camera", L"lifeSize", lifeSize ? 1.0 : 0.0, L"%.0f");
+        MELEVR::Config::SaveProfile(MELEVR::Config::ActiveProfileIndex());
+        mevr::log::Info("menu: life-size movement {} (lean gain {:.1f}, forward emphasis {:.0f})", lifeSize ? "on" : "off",
+            c.leanGain, lifeSize ? 1.0 : 3.0);
+    }
+    ImGui::TextDisabled("Off: Halcyon's half-scale movement, forward tripled.");
+}
+
 } // namespace
+
+float ForwardLeanEmphasis() noexcept {
+    Reload(false);  // Present thread, like the menu; once a second at most
+    return gLifeSize.load(std::memory_order_relaxed) ? 1.0f : 3.0f;
+}
 
 void BuildMenuTabs() noexcept {
     if (!ImGui::BeginTabItem("VR hands")) {
@@ -274,6 +350,7 @@ void BuildMenuTabs() noexcept {
     TrimRow("Yaw (+ turns the right hand's fingers outward)", "yaw", gTrims.yaw);
     TrimRow("Roll (+ rolls the right hand's thumb side outward)", "roll", gTrims.roll);
     MeasureSection();
+    CameraSection();
     ImGui::EndTabItem();
 }
 

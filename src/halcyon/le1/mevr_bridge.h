@@ -140,8 +140,14 @@ bool MenuMouseFromOs(long x, long y, bool pointerHit) noexcept;
 // After BuildUI, inside the ImGui frame: the pointer's dot.
 void DrawMenuPointer() noexcept;
 
-// Inside BuildUI's tab bar: our tabs ("VR hands": hand angle trims, arm-length measurement).
+// Inside BuildUI's tab bar: our tabs ("VR hands": hand angle trims, arm-length measurement,
+// camera at Shepard's eyes, life-size movement).
 void BuildMenuTabs() noexcept;
+
+// The lean's forward/back emphasis: upstream's 3 (a dolly reads weaker than sideways parallax),
+// or 1 with the VR hands tab's life-size movement on, since a body that follows the player only
+// lines up with the player's own movement 1:1.
+float ForwardLeanEmphasis() noexcept;
 
 // [MENUVIS] One-shot diagnostics for Halcyon's Insert menu quad (Present thread): reads back
 // `texture` (the menu's ImGui texture, or the swapchain image right after the copy into it) a few
