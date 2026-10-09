@@ -604,6 +604,10 @@ void ApplyGamepadInput() noexcept
     if (wheel != 0) io.AddMouseWheelEvent(0.0f, static_cast<float>(wheel) / static_cast<float>(WHEEL_DELTA));
 
     // ---- gamepad: read the REAL pad (bypasses the block) and feed ImGui gamepad-nav keys ----
+    // [MEVR] ImGui ignores every gamepad key unless the backend reports a gamepad: NewFrame clears
+    // all ImGuiKey_Gamepad_* state each frame without ImGuiBackendFlags_HasGamepad, and nav stays off.
+    // Upstream never set it, so pad navigation (Xbox or Touch) did nothing in this menu.
+    io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
     // Reads ONLY through g_origXInput (the trampoline set by InstallInputBlock) - the clean project
     // doesn't link the static xinput import, so there's no direct-call fallback. Neutral until installed.
     XINPUT_STATE xs = {};
