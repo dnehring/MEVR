@@ -214,31 +214,13 @@ TorsoResult PoseTorso(std::span<Transform> pose, std::span<int const> parents, T
     Vec3 const up = Normalize(body.up, {0.0, 0.0, 1.0});
     Vec3 const wantedFacing = Normalize(Horizontal(goal.forward, up), Normalize(Horizontal(body.forward, up), {1.0, 0.0, 0.0}));
 
-    // The whole body's move first (first person): the reference onto the goal, limited.
-    thread_local std::vector<Transform> work;
-    thread_local std::vector<unsigned char> in;
-    work.assign(pose.begin(), pose.end());
-    Vec3 shift;
-    if (goal.maxShift > 0.0) {
-        shift = goal.head - referenceSum * (1.0 / references);
-        double const distance = Length(shift);
-        if (distance > goal.maxShift) {
-            shift = shift * (goal.maxShift / distance);
-            result.limited = true;
-        }
-        for (Transform& bone : work) {
-            bone.translation = bone.translation + shift;
-        }
-        referenceSum = referenceSum + shift * static_cast<double>(references);
-    }
-
-    // The animated pose (moved): shoulders, facing, and the reference point (eyes or head). The
-    // upper body turns rigidly about the bottom spine joint: first the twist about the body's up,
-    // then the lean that carries the reference point toward the goal; the shoulders go along.
-    Vec3 const oldMid = Midpoint(work, left.upper, right.upper);
-    Vec3 const oldFacing = Facing(work, left, right, up, wantedFacing);
+    // The animated pose: shoulders, facing, and the reference point (eyes or head). The upper body
+    // turns rigidly about the bottom spine joint: first the twist about the body's up, then the
+    // lean that carries the reference point toward the goal; the shoulders go along.
+    Vec3 const oldMid = Midpoint(pose, left.upper, right.upper);
+    Vec3 const oldFacing = Facing(pose, left, right, up, wantedFacing);
     Vec3 const reference = referenceSum * (1.0 / references);
-    Vec3 const pivot = work[chain.spine.front()].translation;
+    Vec3 const pivot = pose[chain.spine.front()].translation;
 
     // The twist, limited.
     double const maxTwist = std::max(0.0, goal.maxTwistDegrees) / kDegrees;
@@ -266,6 +248,9 @@ TorsoResult PoseTorso(std::span<Transform> pose, std::span<int const> parents, T
 
     // Spread over the spine joints, bottom to top: each takes its share of what's left, measured
     // from where it is now.
+    thread_local std::vector<Transform> work;
+    thread_local std::vector<unsigned char> in;
+    work.assign(pose.begin(), pose.end());
     int const joints = static_cast<int>(chain.spine.size());
     for (int pass = 0; pass < kPasses; ++pass) {
         for (int k = 0; k < joints; ++k) {
@@ -286,10 +271,9 @@ TorsoResult PoseTorso(std::span<Transform> pose, std::span<int const> parents, T
             return result;
         }
     }
-    bool const shifted = Length(shift) > 1e-9;
     int bones = 0;
-    for (int i = shifted ? 0 : chain.spine.front(); i < count; ++i) {
-        if (shifted || IsAncestor(parents, chain.spine.front(), i)) {
+    for (int i = chain.spine.front(); i < count; ++i) {
+        if (IsAncestor(parents, chain.spine.front(), i)) {
             pose[i] = work[i];
             ++bones;
         }
@@ -300,8 +284,6 @@ TorsoResult PoseTorso(std::span<Transform> pose, std::span<int const> parents, T
     result.facing = Facing(pose, left, right, up, facing);
     result.twistDegrees = twist * kDegrees;
     result.bendDegrees = Angle(swing) * kDegrees;
-    result.shift = shift;
-    result.shifted = shifted;
     result.bonesWritten = bones;
     return result;
 }
