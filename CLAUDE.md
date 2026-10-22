@@ -178,6 +178,9 @@ Use it to check VR changes yourself instead of asking the user what they see
   All 5,301 LE1 native wrappers do `FunctionFlags |= ~0x400` (meant `&=`), which permanently sets
   every flag on that UFunction. Find the UFunction yourself and call ProcessEvent directly.
   Class layouts, `StaticClass()` and `IsA()` are fine.
+- **Never write Shepard's `Camera` or `God` bone** (VRIK): LE1's camera hangs off them through
+  `SpaceBases`, so the view would follow the body (research/18). `engine/BonePose` skips them
+  (`Request::keep`); any whole-body move must exclude them (research/14, "Camera hook bones").
 - The exe's `.text` is encrypted on disk (EA DRM). Check RVAs statically with
   `tools/verify_rvas.py` (`.pdata` function bounds); byte checks only work in-process. The host
   saves the decrypted `.text` once per exe build to `%LOCALAPPDATA%\MEVR\dump`, at attach before

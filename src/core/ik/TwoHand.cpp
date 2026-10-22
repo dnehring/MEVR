@@ -98,4 +98,24 @@ Vec3 UnderGrip(Vec3 barrelInHand, Vec3 upInHand, double down, double forward) {
     return barrel * forward - up * down;
 }
 
+NativeIk ClassifyNativeIk(double strength) {
+    if (!std::isfinite(strength)) {
+        return NativeIk::Unknown;
+    }
+    if (strength <= 0.01) {
+        return NativeIk::Off;
+    }
+    return strength >= 0.99 ? NativeIk::On : NativeIk::Blending;
+}
+
+char const* Name(NativeIk state) {
+    switch (state) {
+    case NativeIk::Off: return "off";
+    case NativeIk::Blending: return "blending";
+    case NativeIk::On: return "on";
+    case NativeIk::Unknown: break;
+    }
+    return "unknown";
+}
+
 } // namespace mevr::ik

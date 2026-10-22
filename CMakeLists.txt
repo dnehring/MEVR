@@ -108,6 +108,8 @@ set(MEVR_MOD_SOURCES
     src/core/ik/HandFrame.hpp
     src/core/ik/BoneNames.cpp
     src/core/ik/BoneNames.hpp
+    src/core/ik/CameraHook.cpp
+    src/core/ik/CameraHook.hpp
     src/core/ik/Ik.cpp
     src/core/ik/Ik.hpp
     src/core/ik/Rigid.cpp
@@ -157,6 +159,8 @@ set(MEVR_MOD_SOURCES
     src/engine/XrToUnreal.hpp
     src/game/ArmIk.cpp
     src/game/ArmIk.hpp
+    src/game/CameraProbe.cpp
+    src/game/CameraProbe.hpp
     src/game/GamepadBridge.cpp
     src/game/GamepadBridge.hpp
     src/game/GamepadMapping.cpp
@@ -289,6 +293,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/ArmPose.cpp
         src/core/ik/HandFrame.cpp
         src/core/ik/BoneNames.cpp
+        src/core/ik/CameraHook.cpp
         src/core/ik/Ik.cpp
         src/core/ik/Rigid.cpp
         src/core/ik/TorsoPose.cpp

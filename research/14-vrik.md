@@ -146,6 +146,20 @@ UE3 orders RefSkeleton):
 normal frame. If ragdoll or physics blending ever does, our arms would be overridden for that
 frame, not broken.
 
+### Camera hook bones: never written (2026-10-21, [18](18-camera-and-hands.md))
+
+LE1's player camera hangs off a bone of Shepard's body mesh, read from `SpaceBases`: the bone
+named `Camera` (index 104, a child of the root `God`) for exploration, combat, crouch and tight
+aim, and `God` for a sniper crouch mode. Writing either moves the view in the same frame, the
+judder loop of commit 489ef51 (it moved every bone). **Rule:** the writer never writes `Camera`
+or `God` (`Request::keep`, from `ik::FindCameraHookBones`, checked by name per write); their
+entries stay the animation's bit for bit, whatever the torso and arms did. Our writes (the
+`LowerBack` subtree, the clavicles, the arms) don't contain them anyway: arm IK logs that once
+per skeleton (`arm IK: camera hook bones ...: outside every subtree we write`), and the heartbeat
+warns if a solve ever moved one. A future whole-body move (putting Shepard's eyes at the view)
+must move every bone **except `God` and `Camera`**. The head itself is free to move: it isn't
+the camera's hook, so `TorsoGoal::keepBone` is no longer set.
+
 ### Bones and targets
 
 - **Chains** (`ik::FindArmChain`): the hand is found by name (`HandSide`: hand/wrist plus a side

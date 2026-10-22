@@ -83,6 +83,12 @@ struct Request {
     double maxStretch = 1.0;  // arms may stretch this much to reach (ik::ArmGoal::maxStretch)
     int head = -1;            // the head bone: its animated position is kept for AnimatedHead()
     Support support;
+    // Bones the writer never writes, whatever the torso and arms did: their SpaceBases entries
+    // stay the animation's (LE1: the camera hook bones `Camera` and `God`, ik::FindCameraHookBones;
+    // the camera reads its hook from SpaceBases, so moving one moves the view, research/18). With
+    // their RefSkeleton names, checked like the chains'. A future whole-body move must keep them too.
+    std::vector<int> keep;
+    std::vector<std::uint64_t> keepKeys;
 };
 
 // What the writer did with Request::support on its last write.
@@ -111,7 +117,8 @@ void LogFirstWrite();
 // Poses written since the hook went in (any thread; never reset by the heartbeat): a caller
 // compares it across ticks to know the pose it asked for is being written.
 std::uint64_t TotalWrites();
-// Heartbeat: calls, writes, rejections and the latest before/after per arm.
+// Heartbeat: calls, writes, rejections, the latest before/after per arm, and how often a solve
+// moved a kept bone (Request::keep; kept animated anyway).
 void LogStats();
 
 // The published mesh's head bone (Request::head) as the animation left it, before our writes

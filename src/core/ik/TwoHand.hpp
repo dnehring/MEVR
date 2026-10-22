@@ -63,4 +63,11 @@ GunOffsets OffsetsOnGun(Vec3 point, Vec3 barrelInHand, Vec3 muzzleInHand);
 // units below it (against the gun's up, the thumb side) and `forward` units along the barrel.
 Vec3 UnderGrip(Vec3 barrelInHand, Vec3 upInHand, double down = 8.0, double forward = 2.0);
 
+// The AnimTree's own off-hand IK (LE1: the SkelControlLimb `LeftArm`, LeftWrist -> LHIK;
+// research/18) by its ControlStrength: off at or below 0.01 (the engine skips it below 1e-5), on
+// at or above 0.99, blending in between; Unknown if the strength isn't finite.
+enum class NativeIk { Unknown, Off, Blending, On };
+NativeIk ClassifyNativeIk(double strength);
+char const* Name(NativeIk state);
+
 } // namespace mevr::ik

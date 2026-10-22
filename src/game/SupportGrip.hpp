@@ -32,6 +32,15 @@ struct Foregrip {
     char const* source = "";
 };
 
+// The AnimTree's own off-hand IK as the engine has it this tick: the SkelControlLimb `LeftArm`
+// (LeftWrist -> LHIK; research/18). Its strength follows the `AddCombatIdleOffset` blend node's
+// weight while `fromAnimNode`; the weapon draw and holster code clears that and blends it off.
+struct NativeIkSample {
+    double strength = 0.0;  // ControlStrength (+0xA8)
+    double target = 0.0;    // StrengthTarget (+0xB4)
+    bool fromAnimNode = false;  // bSetStrengthFromAnimNode (+0xCC bit 0x2)
+};
+
 // What arm IK sees this tick, all in the right hand bone's axes (units).
 struct Candidates {
     std::uintptr_t gun = 0;  // game/weapon's Key
@@ -41,16 +50,20 @@ struct Candidates {
     std::optional<ik::Vec3> socket;
     std::optional<ik::Vec3> lhik;
     std::optional<ik::Transform> animatedLeft;  // before our writes
+    std::optional<NativeIkSample> nativeIk;     // nullopt: no AnimTree or no LeftArm control
 };
 
-// Arm IK, each tick it aims a held gun with a measured grip.
+// Arm IK, each tick it aims a held gun with a measured grip. Logs the candidates once per gun and
+// the native off-hand IK's state (off, blending, on) on each change.
 void Measure(Candidates const& candidates);
 // The settled foregrip for the gun last measured.
 std::optional<Foregrip> Current();
 
 // Each mod tick, after arm IK. `requested`: arm IK asked the writer for the support grip this tick
 // (engine::bone_pose::Support), so its distance is this gun's. Updates the distance and settings the
-// pad mapping reads, the blend arm IK uses next tick, and logs holds and releases.
+// pad mapping reads, the blend arm IK uses next tick, and logs holds and releases, and each change
+// of the held weapon's bIsZoomed (the game's aimed fire, research/18) with whether our grip is
+// forcing LT then.
 void Tick(double deltaSeconds, bool requested);
 // The pad mapping's answer (any thread): the support grip is held.
 void SetHeld(bool held);
