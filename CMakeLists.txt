@@ -124,6 +124,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/HostView.hpp
     src/core/vr/Output.cpp
     src/core/vr/Output.hpp
+    src/core/vr/TestRequest.cpp
+    src/core/vr/TestRequest.hpp
     src/core/vr/ViewSync.cpp
     src/core/vr/ViewSync.hpp
     src/core/xr/Input.cpp
@@ -199,12 +201,24 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/Controllers.hpp
     src/core/vr/HostView.cpp
     src/core/vr/HostView.hpp
+    src/core/vr/ImageConvert.cpp
+    src/core/vr/ImageConvert.hpp
+    src/core/vr/LayerComposite.cpp
+    src/core/vr/LayerComposite.hpp
     src/core/vr/MenuPointer.cpp
     src/core/vr/MenuPointer.hpp
     src/core/vr/OverlayPlacement.cpp
     src/core/vr/OverlayPlacement.hpp
+    src/core/vr/PoseRecording.cpp
+    src/core/vr/PoseRecording.hpp
+    src/core/vr/TestRequest.cpp
+    src/core/vr/TestRequest.hpp
     src/core/xr/Input.cpp
     src/core/xr/Input.hpp
+    src/core/Hotkey.cpp
+    src/core/Hotkey.hpp
+    src/core/PngFile.cpp
+    src/core/PngFile.hpp
     src/game/GamepadMapping.cpp
     src/game/GamepadMapping.hpp
     src/halcyon/le1/mevr_bridge.h
@@ -215,6 +229,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/MevrMenu.hpp
     src/plugin/MevrMenuPointer.cpp
     src/plugin/MevrMenuTab.cpp
+    src/plugin/TestLoop.cpp
+    src/plugin/TestLoop.hpp
 )
 
 function(mevr_add_plugin game)
@@ -244,7 +260,8 @@ function(mevr_add_plugin game)
         target_compile_definitions(${host} PRIVATE MEVR_MONOLITHIC)
     endif ()
     if (with_halcyon)
-        target_link_libraries(${host} PRIVATE halcyon-le1 OpenXR::openxr_loader)
+        # windowscodecs: WIC, the test loop's PNG snapshots (plugin/TestLoop).
+        target_link_libraries(${host} PRIVATE halcyon-le1 OpenXR::openxr_loader windowscodecs)
         target_compile_definitions(${host} PRIVATE MEVR_WITH_HALCYON)
     endif ()
     mevr_configure(${host} ${game})
@@ -263,6 +280,7 @@ if (MEVR_BUILD_TESTS)
     enable_testing()
     add_executable(mevr-tests
         tests/Main.cpp
+        src/core/PngFile.cpp
         src/core/ik/ArmLength.cpp
         src/core/ik/ArmPose.cpp
         src/core/ik/HandFrame.cpp
@@ -272,15 +290,19 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/TorsoPose.cpp
         src/core/ik/TouchReference.cpp
         src/core/ik/TwoHand.cpp
+        src/core/vr/ImageConvert.cpp
+        src/core/vr/LayerComposite.cpp
         src/core/vr/MenuPointer.cpp
         src/core/vr/OverlayPlacement.cpp
+        src/core/vr/PoseRecording.cpp
+        src/core/vr/TestRequest.cpp
         src/core/vr/ViewSync.cpp
         src/engine/XrToUnreal.cpp
         src/game/GamepadMapping.cpp
         src/game/HeadSim.cpp
     )
     target_include_directories(mevr-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_link_libraries(mevr-tests PRIVATE OpenXR::headers)
+    target_link_libraries(mevr-tests PRIVATE OpenXR::headers windowscodecs ole32)
     target_compile_definitions(mevr-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_test(NAME mevr-tests COMMAND mevr-tests)

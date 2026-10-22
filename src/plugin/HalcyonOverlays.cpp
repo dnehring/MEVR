@@ -15,6 +15,7 @@
 #include "core/vr/AimRay.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/OverlayPlacement.hpp"
+#include "plugin/TestLoop.hpp"
 
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -307,6 +308,7 @@ struct QuadSwapchain {
     }
     void Destroy() {
         if (handle != XR_NULL_HANDLE) {
+            mevr::host::testloop::ForgetSwapchain(handle);
             xrDestroySwapchain(handle);
         }
         Forget();
@@ -499,6 +501,7 @@ bool RenderPanel(ID3D11DeviceContext* context, ID3D11Device* device, float white
         if (gPanelSwapchain.failed || !CreateSwapchain(gSession, width, height, gPanelSwapchain, "HUD panel")) {
             return false;
         }
+        mevr::host::testloop::NameSwapchain(gPanelSwapchain.handle, "hud");
     }
     gPanelFactor = factor;
     std::uint32_t index = 0;
@@ -545,6 +548,7 @@ bool RenderPanel(ID3D11DeviceContext* context, ID3D11Device* device, float white
         ProbeTextureAlpha(context, gPanelSwapchain.images[index], "HUD panel swapchain image (first frame with UI)");
         ProbeTextureAlpha(context, gPanel.texture.Get(), "HUD panel texture (the game's UI draws)");
     }
+    mevr::host::testloop::OnImageWritten(gPanelSwapchain.handle, gPanelSwapchain.images[index]);  // snapshots
     ReleaseImage(gPanelSwapchain);
     return drew;
 }
@@ -616,6 +620,9 @@ bool EnsureReticle(ID3D11DeviceContext* context, ID3D11Device* device) {
         context->CopyResource(gReticleSwapchain.images[index], source.Get());
         ReleaseImage(gReticleSwapchain);
     }
+    // Snapshots draw it from these pixels: its images are never released again to be copied.
+    mevr::host::testloop::NameSwapchain(gReticleSwapchain.handle, "reticle");
+    mevr::host::testloop::SetStaticImage(gReticleSwapchain.handle, kReticleSize, kReticleSize, pixels);
     return true;
 }
 

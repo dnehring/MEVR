@@ -149,6 +149,15 @@ void BuildMenuTabs() noexcept;
 // lines up with the player's own movement 1:1.
 float ForwardLeanEmphasis() noexcept;
 
+// ---- Test loop: eye snapshots, pose recording and replay (src/plugin/TestLoop.cpp) ------------------
+// ResolveSessionFunctions, once its session functions are resolved: replaces four of them in place
+// (each argument points at a resolved function pointer) with wrappers that call the original. They
+// copy each swapchain image just before it's released and read the layers each xrEndFrame submits
+// (snapshots, only while one is being taken), note the head located in the app space (recording),
+// and during a replay substitute the recorded head poses in xrLocateViews, keeping the runtime's FOVs.
+void WrapSessionFunctions(void** acquireSwapchainImage, void** releaseSwapchainImage, void** endFrame,
+                          void** locateViews) noexcept;
+
 // [MENUVIS] One-shot diagnostics for Halcyon's Insert menu quad (Present thread): reads back
 // `texture` (the menu's ImGui texture, or the swapchain image right after the copy into it) a few
 // frames later without stalling, and logs how many pixels are visible (alpha > 0). `tag` names it.

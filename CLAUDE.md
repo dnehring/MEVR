@@ -131,6 +131,39 @@ switching frameworks.
 - The LExSDKv2 submodule tracks the `RVA` branch (hardcoded RVAs for 2.0.0.48602). The plugin
   fails closed on any other exe version.
 
+## Test loop (LE1): see what the headset shows, replay a session
+
+Use it to check VR changes yourself instead of asking the user what they see
+(`src/plugin/TestLoop.hpp`; host side, so changes need a redeploy). Everything lives in
+`%LOCALAPPDATA%\MEVR`; the log lines start with `test loop:`.
+- **Snapshots:** `tools/snapshot.ps1 [-Count N -Interval s -Delay s -Tag x]` writes
+  `snapshot.request` and waits. Output in `snapshots\`: `<stamp>-left.png` / `-right.png` (what
+  each eye shows: the world plus our HUD panel, reticle and Halcyon's menu, composited like the
+  runtime does), `-left-world.png` (world layer alone), `-hud.png`, `-menu.png`, and `<stamp>.json`
+  (head and eye poses/FOVs, controllers, aim ray, host view, the mod's arm IK / hand aim / weapon /
+  support grip state, every layer). The JSON is written last. Read the PNGs to look.
+- **Recording:** `tools/record.ps1 -Seconds N` (or `-Start` / `-Stop`) writes `record.request`;
+  frames go to `recordings\<stamp>.mevrrec` (head eye views, both controllers' poses and inputs).
+  `python tools/mevrrec.py --latest [--csv out.csv]` summarizes or dumps one.
+- **Replay:** `tools/replay.ps1 [-Path f] [-Loop] [-Inputs] [-Wait]` / `-Stop` writes
+  `replay.request` (`<path|latest|stop> [loop=1] [inputs=1]`). The recorded head (the runtime's
+  FOVs kept) and controller poses stand in for the live ones; buttons and sticks only with
+  `-Inputs`. Replay + snapshot = look at a recorded pose: `tools/replay.ps1 -Loop`,
+  `tools/snapshot.ps1 -Delay 2`, `tools/replay.ps1 -Stop`.
+- **Player triggers:** End = snapshot, Home = recording on/off (game focused); both grips + left
+  stick click = snapshot, both grips + right stick click = recording on/off (stick clicks don't
+  reach the game while both grips are held); the menu's VR hands tab ("Test loop": snapshot in
+  3 s, record, replay the last recording).
+- `testloop.status` (JSON, once a second): recording, replay, last snapshot, `framesRunning`.
+- Needs a running VR session (Halcyon only runs frames between READY and STOPPING). Not focused
+  (headset off the face, VISIBLE) is fine: replay drives the view and controllers. SYNCHRONIZED or
+  asleep: no eye images (`shouldRender` false) or no frames at all. See notes/next-vr-session.md.
+- How it hooks in: one seam in Halcyon's `ResolveSessionFunctions` (`MevrBridge::
+  WrapSessionFunctions`) wraps `xrAcquireSwapchainImage` / `xrReleaseSwapchainImage` (copy each
+  image to staging before release, only while a snapshot is armed), `xrEndFrame` (the layers) and
+  `xrLocateViews` (record the head; substitute it in a replay). Our quads report their images from
+  `HalcyonOverlays`. Staging copies are mapped 2+ frames later and converted on a worker thread.
+
 ## Gotchas
 
 - Don't `cd` in Bash tool calls; it moves the session's working directory. Use absolute paths.

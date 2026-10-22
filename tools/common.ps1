@@ -23,3 +23,25 @@ function Get-MELEBinDir([string]$GameRoot, [string]$Game) {
     $n = $Game.Substring(2)
     return Join-Path $GameRoot "Game\ME$n\Binaries\Win64"
 }
+
+# ---- The test loop (src/plugin/TestLoop.hpp): request files the running game polls once a second ----
+
+$MevrDataDir = Join-Path $env:LOCALAPPDATA 'MEVR'
+
+# Writes %LOCALAPPDATA%\MEVR\<Name> (snapshot.request, record.request, replay.request) as UTF-8
+# without a byte order mark, through a temporary file so the game never reads half of it.
+function Write-MevrRequest([string]$Name, [string]$Text) {
+    New-Item -ItemType Directory -Force -Path $MevrDataDir | Out-Null
+    $path = Join-Path $MevrDataDir $Name
+    $temp = "$path.writing"
+    [System.IO.File]::WriteAllText($temp, $Text, (New-Object System.Text.UTF8Encoding($false)))
+    Move-Item -LiteralPath $temp -Destination $path -Force
+    return $path
+}
+
+# The game's test loop status (%LOCALAPPDATA%\MEVR\testloop.status), or $null.
+function Get-MevrTestLoopStatus {
+    $path = Join-Path $MevrDataDir 'testloop.status'
+    if (-not (Test-Path $path)) { return $null }
+    try { return Get-Content -Raw -LiteralPath $path | ConvertFrom-Json } catch { return $null }
+}

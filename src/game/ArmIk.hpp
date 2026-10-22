@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 // VRIK arms, route 2 (research/14): Shepard's arms follow the hand targets (game/hand_targets)
 // through arm bones written after the animation (engine/bone_pose). Route 1, driving the AnimTree's
 // own SkelControlLimb, is out: the player's tree has limb controls only on the ankles and on the
@@ -28,6 +30,10 @@ bool SupportRequested();
 bool Toggle();
 void SetEnabled(bool on);
 bool Enabled();
+// One line: what arm IK does now ("off", "driving: ...", or why it can't), as LogStats prints it.
+std::string const& Status();
+// Where the hand targets come from (game/hand_targets' name for it).
+char const* HandSource();
 void LogStats();
 // Stops all writes and forgets everything.
 void Shutdown();

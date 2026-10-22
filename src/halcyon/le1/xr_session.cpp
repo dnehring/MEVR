@@ -426,6 +426,11 @@ bool ResolveSessionFunctions()
     RESOLVE("xrDestroySpace", destroySpace, PFN_xrDestroySpace)
     RESOLVE("xrLocateViews", locateViews, PFN_xrLocateViews)
 #undef RESOLVE
+    // [MEVR] test loop (snapshots, pose recording and replay): wrappers that call these originals
+    MELEVR::MevrBridge::WrapSessionFunctions(reinterpret_cast<void**>(&g_fn.acquireSwapchainImage),
+                                             reinterpret_cast<void**>(&g_fn.releaseSwapchainImage),
+                                             reinterpret_cast<void**>(&g_fn.endFrame),
+                                             reinterpret_cast<void**>(&g_fn.locateViews));
     // Optional: only present if XR_FB_display_refresh_rate was enabled. Not fatal if it fails to resolve.
     g_fn.getDisplayRefreshRate = nullptr;
     if (g_hasRefreshRateExt)
