@@ -246,7 +246,8 @@ XrView gHead[2]{{XR_TYPE_VIEW}, {XR_TYPE_VIEW}};  // located this frame in the a
 
 struct MenuQuadNote {
     std::uint64_t frame = UINT64_MAX;
-    XrVector3f center{};
+    XrVector3f position{};   // as submitted, in its space
+    bool headLocked = true;  // submitted in VIEW space (else in the app space: world-locked panels)
     float width = 0.0f;
     float height = 0.0f;
 };
@@ -796,7 +797,9 @@ void FinishArming(XrFrameEndInfo const& info, std::vector<LayerShot> layers) {
         }
         l.name = NameFor(l.swapchain);
         if (l.name.empty() && gMenuQuad.frame == gFrame && std::abs(l.size.width - gMenuQuad.width) < 1e-3f &&
-            std::abs(l.size.height - gMenuQuad.height) < 1e-3f && std::abs(l.pose.position.z - gMenuQuad.center.z) < 1e-3f) {
+            std::abs(l.size.height - gMenuQuad.height) < 1e-3f && std::abs(l.pose.position.x - gMenuQuad.position.x) < 1e-3f &&
+            std::abs(l.pose.position.y - gMenuQuad.position.y) < 1e-3f &&
+            std::abs(l.pose.position.z - gMenuQuad.position.z) < 1e-3f) {
             l.name = "menu";
         }
         if (l.name.empty()) {
@@ -813,7 +816,7 @@ void FinishArming(XrFrameEndInfo const& info, std::vector<LayerShot> layers) {
         if (l.space == reference) {
             l.located = true;
             l.poseInReference = l.pose;
-        } else if (l.name == "menu" && gHeadValid) {
+        } else if (l.name == "menu" && gMenuQuad.headLocked && gHeadValid) {
             // Head-locked (VIEW space): placed from the head Halcyon rendered with, which is the replayed
             // one during a replay (the runtime's VIEW space would follow the real headset).
             XrPosef head = gHead[0].pose;
@@ -1385,9 +1388,10 @@ void ForgetSwapchain(XrSwapchain swapchain) {
     gSwapchains.erase(swapchain);
 }
 
-void NoteMenuQuad(float const center[3], float width, float height) {
+void NoteMenuQuad(float const position[3], bool headLocked, float width, float height) {
     gMenuQuad.frame = gFrame;
-    gMenuQuad.center = {center[0], center[1], center[2]};
+    gMenuQuad.position = {position[0], position[1], position[2]};
+    gMenuQuad.headLocked = headLocked;
     gMenuQuad.width = width;
     gMenuQuad.height = height;
 }

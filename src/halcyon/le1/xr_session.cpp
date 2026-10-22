@@ -5643,6 +5643,25 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     const XrCompositionLayerBaseHeader* layers[kMaxLayers] = {};
     uint32_t layerCount = 0;
     XrCompositionLayerQuad flatCineQuad = {};
+    // [MEVR] world-locked panels (MevrBridge::PlacePanel) and the menu pointer: the eye centre in the app space
+    float mevrHeadQ[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    float mevrHeadP[3] = {0.0f, 0.0f, 0.0f};
+    if (headValid)
+    {
+        const XrPosef& v0 = g_subViews[0].pose;
+        const XrPosef& v1 = g_subViews[1].pose;
+        mevrHeadQ[0] = v0.orientation.x; mevrHeadQ[1] = v0.orientation.y;
+        mevrHeadQ[2] = v0.orientation.z; mevrHeadQ[3] = v0.orientation.w;
+        mevrHeadP[0] = 0.5f * (v0.position.x + v1.position.x);
+        mevrHeadP[1] = 0.5f * (v0.position.y + v1.position.y);
+        mevrHeadP[2] = 0.5f * (v0.position.z + v1.position.z);
+    }
+    auto mevrApplyPanelPose = [](XrCompositionLayerQuad& quad, const MELEVR::MevrBridge::PanelPose& placed)
+    {
+        quad.space = static_cast<XrSpace>(placed.space);
+        quad.pose.orientation = {placed.orientation[0], placed.orientation[1], placed.orientation[2], placed.orientation[3]};
+        quad.pose.position = {placed.position[0], placed.position[1], placed.position[2]};
+    };
     // The head-locked per-eye QUAD path for cine was removed 2026-08-02. A VR cine now submits on
     // the normal projection layer with the [VRCINE FILL] window, which is what ME2 and ME3 do; the
     // quad path was an ME1 invention that declared no FOV and so could never carry the fill model.
@@ -5671,6 +5690,15 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         if (monoWidth > 3.5f) monoWidth = 3.5f;
         flatCineQuad.size.width = monoWidth;
         flatCineQuad.size.height = flatCineQuad.size.width / quadAspect;
+        {   // [MEVR] world-locked panels: VIEW space as above (upstream), or fixed in the app space where it appeared
+            using MELEVR::MevrBridge::PanelKind;
+            const PanelKind kind = inMenuMode ? PanelKind::GameMenu
+                                 : (inGalaxyMode ? PanelKind::GalaxyMap
+                                 : (inConversationMode ? PanelKind::Conversation : PanelKind::Cutscene));
+            const float viewPos[3] = {flatCineQuad.pose.position.x, flatCineQuad.pose.position.y, flatCineQuad.pose.position.z};
+            mevrApplyPanelPose(flatCineQuad, MELEVR::MevrBridge::PlacePanel(kind, viewPos, g_viewSpace, g_appSpace, headValid,
+                                                                            mevrHeadQ, mevrHeadP));
+        }
         layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&flatCineQuad);
     }
     else if (submitted)
@@ -5775,24 +5803,21 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             }
             menuQuad.size.width = menuW;
             menuQuad.size.height = menuW * static_cast<float>(kMenuH) / static_cast<float>(kMenuW);  // keep aspect
+            // [MEVR] world-locked panels: VIEW space as above (upstream), or fixed in the app space where it opened
+            const float menuViewPos[3] = {menuQuad.pose.position.x, menuQuad.pose.position.y, menuQuad.pose.position.z};
+            const MELEVR::MevrBridge::PanelPose menuPlaced = MELEVR::MevrBridge::PlacePanel(
+                MELEVR::MevrBridge::PanelKind::InsertMenu, menuViewPos, g_viewSpace, g_appSpace, headValid, mevrHeadQ, mevrHeadP);
+            mevrApplyPanelPose(menuQuad, menuPlaced);
             layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&menuQuad);
             if (headValid)   // [MEVR] the laser pointer's target (src/plugin/MevrMenuPointer.cpp)
-            {
-                const XrPosef& v0 = g_subViews[0].pose;
-                const XrPosef& v1 = g_subViews[1].pose;
-                const float hq[4] = {v0.orientation.x, v0.orientation.y, v0.orientation.z, v0.orientation.w};
-                const float hp[3] = {0.5f * (v0.position.x + v1.position.x), 0.5f * (v0.position.y + v1.position.y),
-                                     0.5f * (v0.position.z + v1.position.z)};
-                const float qc[3] = {menuQuad.pose.position.x, menuQuad.pose.position.y, menuQuad.pose.position.z};
-                MELEVR::MevrBridge::OnMenuQuad(hq, hp, qc, menuQuad.size.width, menuQuad.size.height);
-            }
+                MELEVR::MevrBridge::OnMenuQuad(mevrHeadQ, mevrHeadP, menuPlaced, menuQuad.size.width, menuQuad.size.height);
             if (probeMenu)   // [MEVR] [MENUVIS]
             {
                 char line[288];
                 std::snprintf(line, sizeof(line),
-                              "[MENUVIS] menu quad submitted: layer %u (before any SteamVR placeholder), opaque, VIEW space, %.2f x %.2f m at "
+                              "[MENUVIS] menu quad submitted: layer %u (before any SteamVR placeholder), opaque, %s space, %.2f x %.2f m at "
                               "(%.2f, %.2f, %.2f) m (configured %.2f m away; nearest other quad %.2f m)",
-                              layerCount, menuQuad.size.width, menuQuad.size.height, menuQuad.pose.position.x,
+                              layerCount, menuPlaced.headLocked ? "VIEW" : "app", menuQuad.size.width, menuQuad.size.height, menuQuad.pose.position.x,
                               menuQuad.pose.position.y, menuQuad.pose.position.z, menuDistNow, mevrNearestQuadM);
                 LogLine(line);
             }

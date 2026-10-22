@@ -147,6 +147,79 @@ XrPosef Panel::Pose(PanelSettings const& settings) const {
     return pose;
 }
 
+char const* PlacementName(Placement placement) {
+    switch (placement) {
+    case Placement::Kept: return "kept";
+    case Placement::Appeared: return "appeared";
+    case Placement::KindChanged: return "kind changed";
+    case Placement::Recentered: return "recentered";
+    case Placement::HeadFound: return "head found";
+    case Placement::Followed: return "follows the head";
+    }
+    return "?";
+}
+
+void WorldPanel::PlaceAt(XrPosef const& head, bool headValid) {
+    placed_ = true;
+    blind_ = !headValid;
+    if (headValid) {
+        anchor_ = head.position;
+        heading_.FaceHeading(head.orientation);
+    } else {
+        // No head: where recentering puts it (the origin, facing -Z), until the head is found.
+        anchor_ = {0.0f, 0.0f, 0.0f};
+        heading_.Reset();
+    }
+}
+
+Placement WorldPanel::Update(int kind, std::uint64_t frame, XrPosef const& head, bool headValid,
+    WorldPanelSettings const& settings, float dt) {
+    bool const appeared = !placed_ || frame < lastFrame_ || frame - lastFrame_ > settings.gapFrames;
+    bool const kindChanged = kind != kind_;
+    lastFrame_ = frame;
+    kind_ = kind;
+    if (recenter_) {
+        recenter_ = false;
+        PlaceAt(head, headValid);
+        return Placement::Recentered;
+    }
+    if (appeared || kindChanged) {
+        Placement const why = appeared ? Placement::Appeared : Placement::KindChanged;
+        if (placed_ && !blind_ && headValid) {
+            float const turned = std::abs(WrapAngle(HeadingOf(head.orientation) - heading_.Yaw()));
+            float const moved = Length(Sub(head.position, anchor_));
+            if (turned < settings.keepYaw && moved < settings.keepDistance) {
+                return Placement::Kept;
+            }
+        }
+        PlaceAt(head, headValid);
+        return why;
+    }
+    if (blind_ && headValid) {
+        PlaceAt(head, true);
+        return Placement::HeadFound;
+    }
+    PanelSettings follow;
+    follow.followAfter = settings.followAfter;
+    follow.followDelay = settings.followDelay;
+    bool const wasFollowing = heading_.Following();
+    heading_.Update(head.orientation, headValid, follow, dt);
+    if ((wasFollowing || heading_.Following()) && headValid && dt > 0.0f && std::isfinite(dt)) {
+        // The eyes it faces move with it: it ends up in front of where the player now stands.
+        float const k = std::min(1.0f, std::min(dt, 0.25f) * kFollowRate);
+        anchor_ = Add(anchor_, Scale(Sub(head.position, anchor_), k));
+    }
+    return heading_.Following() && !wasFollowing ? Placement::Followed : Placement::Kept;
+}
+
+XrPosef WorldPanel::PoseOf(XrVector3f const& local) const {
+    XrQuaternionf const yaw = YawRotation(heading_.Yaw());
+    XrPosef pose{};
+    pose.orientation = yaw;
+    pose.position = Add(anchor_, Rotate(yaw, local));
+    return pose;
+}
+
 bool PlaceOnRay(XrVector3f const& origin, XrVector3f const& direction, float distance, XrVector3f const& eye,
     float angularSize, Billboard& out) {
     XrVector3f dir = direction;

@@ -111,6 +111,9 @@ if ($Game -eq 'LE1') {
     $fixed = $fixed -replace '(?m)^menuKey = \d+', 'menuKey = 220'
     $fixed = $fixed -replace '(?m)^combatHeadAim = 1', 'combatHeadAim = 0'
     $fixed = $fixed -replace '(?m)^makoHeadAim = 1', 'makoHeadAim = 0'
+    # The HUD panel's old default swing-round (50 degrees, until 2026-10-21) becomes the new 70, the
+    # same rule as the world-locked panels (panelFollowDeg). Any other value is the user's.
+    $fixed = $fixed -replace '(?m)^hudPanelFollowDeg = 50\.0\b', 'hudPanelFollowDeg = 70.0'
     if ($fixed -ne $text) {
         [IO.File]::WriteAllText($ini, $fixed)
         Write-Output "MELEVR.ini: every profile slot on backslash with head aim off; F-key profile hotkeys off"

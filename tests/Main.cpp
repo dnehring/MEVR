@@ -1540,12 +1540,11 @@ void TestOverlayPlacement() {
 
 void TestMenuPointer() {
     using namespace mevr::vr::menu_pointer;
-    Quad quad;
-    quad.head.orientation = {0.0f, 0.0f, 0.0f, 1.0f};
-    quad.head.position = {0.0f, 1.6f, 0.0f};
-    quad.center = {0.0f, 0.0f, -1.35f};
-    quad.width = 0.88f;
-    quad.height = 0.70f;
+    XrPosef head{};
+    head.orientation = {0.0f, 0.0f, 0.0f, 1.0f};
+    head.position = {0.0f, 1.6f, 0.0f};
+    Quad quad = HeadLocked(head, {0.0f, 0.0f, -1.35f}, 0.88f, 0.70f);
+    CHECK(NearXr(quad.pose.position, {0.0f, 1.6f, -1.35f}));
     Hit hit;
     // Straight ahead from in front of the head: the middle.
     CHECK(Intersect(quad, {0.0f, 1.6f, -0.3f}, {0.0f, 0.0f, -1.0f}, hit));
@@ -1558,17 +1557,144 @@ void TestMenuPointer() {
     CHECK(!Intersect(quad, {0.0f, 1.6f, 0.0f}, {0.0f, 0.0f, 1.0f}, hit));
     CHECK(!Intersect(quad, {0.0f, 1.6f, -2.0f}, {0.0f, 0.0f, 1.0f}, hit));
     CHECK(!Intersect(quad, {0.0f, 1.6f, 0.0f}, {0.0f, 0.0f, 0.0f}, hit));
-    // The quad follows the head: turned 90 degrees left, it sits along -X.
-    quad.head.orientation = AxisAngle(0, 1, 0, 90);
+    // Head-locked, the quad follows the head: turned 90 degrees left, it sits along -X.
+    head.orientation = AxisAngle(0, 1, 0, 90);
+    quad = HeadLocked(head, {0.0f, 0.0f, -1.35f}, 0.88f, 0.70f);
     CHECK(Intersect(quad, {0.0f, 1.6f, 0.0f}, {-1.0f, 0.0f, 0.0f}, hit));
     CHECK(NearD(hit.u, 0.5) && NearD(hit.v, 0.5) && NearD(hit.distance, 1.35));
     // Angled toward the head's right (-Z in the tracking space here): right of the middle.
     CHECK(Intersect(quad, {0.0f, 1.6f, 0.0f}, {-1.35f, 0.0f, -0.2f}, hit) && hit.u > 0.6f);
+
+    // World-locked: a quad submitted in the tracking space itself (identity space pose). Placed
+    // 1.5 m along +X from a player who faced +X (yawed -90 degrees), upright, facing back at them.
+    XrPosef const identity{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
+    XrPosef placed{};
+    placed.orientation = AxisAngle(0, 1, 0, -90);
+    placed.position = {1.5f, 1.6f, 0.2f};
+    Quad const world = InTracking(identity, placed, 1.0f, 0.5f);
+    CHECK(NearXr(world.pose.position, {1.5f, 1.6f, 0.2f}));
+    // A controller beside the head, pointing at the middle: u, v = 0.5, wherever the head looks.
+    CHECK(Intersect(world, {0.3f, 1.6f, 0.2f}, {1.0f, 0.0f, 0.0f}, hit));
+    CHECK(NearD(hit.u, 0.5) && NearD(hit.v, 0.5) && NearD(hit.distance, 1.2));
+    // Its right edge is toward +Z (the player's right when facing +X), its top is up.
+    CHECK(Intersect(world, {0.3f, 1.6f, 0.2f}, {1.2f, 0.2f, 0.4f}, hit));
+    CHECK(NearD(hit.u, 0.9) && NearD(hit.v, 0.1));
+    // From behind (past the quad) or beside it: no hit.
+    CHECK(!Intersect(world, {2.0f, 1.6f, 0.2f}, {-1.0f, 0.0f, 0.0f}, hit));
+    CHECK(!Intersect(world, {0.3f, 1.6f, 1.5f}, {1.0f, 0.0f, 0.0f}, hit));
+    // A VIEW-space quad through InTracking is the same as HeadLocked.
+    XrPosef local{};
+    local.orientation = {0.0f, 0.0f, 0.0f, 1.0f};
+    local.position = {0.1f, -0.2f, -1.35f};
+    Quad const a = InTracking(head, local, 0.88f, 0.70f);
+    Quad const b = HeadLocked(head, local.position, 0.88f, 0.70f);
+    CHECK(NearXr(a.pose.position, b.pose.position) && NearD(a.pose.orientation.y, b.pose.orientation.y));
+    // Composition: the head's rotation applies to the offset and to the quad's own orientation.
+    CHECK(NearXr(a.pose.position, {-1.35f, 1.4f, -0.1f}));
+    CHECK(NearXr(mevr::vr::overlay::Rotate(a.pose.orientation, {0.0f, 0.0f, 1.0f}), {1.0f, 0.0f, 0.0f}));
     // An aim pose's forward is its -Z.
     XrPosef aim{};
     aim.orientation = AxisAngle(0, 1, 0, 90);
     XrVector3f const forward = AimDirection(aim);
     CHECK(NearD(forward.x, -1.0) && NearD(forward.z, 0.0));
+}
+
+XrPosef HeadAt(double yawDeg, XrVector3f position, double pitchDeg = 0.0) {
+    XrQuaternionf const yaw = AxisAngle(0, 1, 0, yawDeg);
+    XrQuaternionf const pitch = AxisAngle(1, 0, 0, pitchDeg);
+    XrPosef head{};
+    head.orientation = {yaw.w * pitch.x + yaw.x * pitch.w + yaw.y * pitch.z - yaw.z * pitch.y,
+        yaw.w * pitch.y - yaw.x * pitch.z + yaw.y * pitch.w + yaw.z * pitch.x,
+        yaw.w * pitch.z + yaw.x * pitch.y - yaw.y * pitch.x + yaw.z * pitch.w,
+        yaw.w * pitch.w - yaw.x * pitch.x - yaw.y * pitch.y - yaw.z * pitch.z};  // yaw * pitch
+    head.position = position;
+    return head;
+}
+
+void TestWorldPanel() {
+    using namespace mevr::vr::overlay;
+    double const pi = std::numbers::pi;
+    float const step = 1.0f / 60.0f;
+    WorldPanelSettings const settings;  // 70 degrees for a second, 5 frames' gap
+    XrVector3f const local{0.0f, 0.0f, -1.4f};  // Halcyon's flat screen, head-locked
+
+    // Appears: in front of the head where it is, its yaw only (looking down 40 degrees, turned 30 left).
+    WorldPanel panel;
+    std::uint64_t frame = 100;
+    XrPosef head = HeadAt(30, {0.1f, 1.7f, -0.2f}, -40);
+    CHECK(panel.Update(1, frame, head, true, settings, step) == Placement::Appeared);
+    XrPosef const pose = panel.PoseOf(local);
+    double const s30 = std::sin(pi / 6.0), c30 = std::cos(pi / 6.0);
+    CHECK(NearXr(pose.position, {static_cast<float>(0.1 - 1.4 * s30), 1.7f, static_cast<float>(-0.2 - 1.4 * c30)}));
+    CHECK(Rotate(pose.orientation, {0.0f, 1.0f, 0.0f}).y > 0.9999f);  // level, upright
+    CHECK(NearXr(Rotate(pose.orientation, {0.0f, 0.0f, 1.0f}), {static_cast<float>(s30), 0.0f, static_cast<float>(c30)}));
+    XrVector3f const placedAt = pose.position;
+
+    // Looking around within 70 degrees and leaning (6DOF): it stays put, so leaning gives parallax.
+    for (int i = 0; i < 300; ++i) {
+        head = HeadAt(30 + 60 * std::sin(i * 0.05), {0.1f + 0.3f * static_cast<float>(std::sin(i * 0.1)), 1.7f, -0.2f});
+        CHECK(panel.Update(1, ++frame, head, true, settings, step) == Placement::Kept);
+    }
+    CHECK(NearXr(panel.PoseOf(local).position, placedAt) && !panel.Following());
+
+    // Turned past 70 degrees for a moment: still put. Held past a second: it eases round, eyes and all.
+    head = HeadAt(30 + 100, {0.5f, 1.7f, 0.3f});
+    for (int i = 0; i < 30; ++i) {
+        CHECK(panel.Update(1, ++frame, head, true, settings, step) == Placement::Kept);
+    }
+    CHECK(NearXr(panel.PoseOf(local).position, placedAt));
+    bool followed = false;
+    for (int i = 0; i < 40; ++i) {
+        followed = panel.Update(1, ++frame, head, true, settings, step) == Placement::Followed || followed;
+    }
+    CHECK(followed && panel.Following());
+    for (int i = 0; i < 300; ++i) {
+        panel.Update(1, ++frame, head, true, settings, step);
+    }
+    CHECK(!panel.Following() && std::abs(WrapAngle(panel.Yaw() - static_cast<float>(130.0 * pi / 180.0))) < 0.04f);
+    CHECK(NearXr(panel.Anchor(), {0.5f, 1.7f, 0.3f}, 0.03));
+
+    // Hidden for a while, then shown again: placed in front of the head anew.
+    frame += 20;
+    head = HeadAt(-10, {0.0f, 1.6f, 0.0f});
+    CHECK(panel.Update(1, frame, head, true, settings, step) == Placement::Appeared);
+    CHECK(NearXr(panel.Anchor(), {0.0f, 1.6f, 0.0f}) && NearD(panel.Yaw(), -10.0 * pi / 180.0));
+    // A blink of a frame or two (within gapFrames) doesn't re-place it.
+    head = HeadAt(20, {0.2f, 1.6f, 0.0f});
+    frame += 3;
+    CHECK(panel.Update(1, frame, head, true, settings, step) == Placement::Kept);
+    CHECK(NearD(panel.Yaw(), -10.0 * pi / 180.0));
+    // Another kind of panel takes the slot (a cutscene becomes a conversation): re-placed.
+    CHECK(panel.Update(2, ++frame, head, true, settings, step) == Placement::KindChanged);
+    CHECK(NearD(panel.Yaw(), 20.0 * pi / 180.0) && NearXr(panel.Anchor(), {0.2f, 1.6f, 0.0f}));
+    // ... unless the head hasn't moved: then it stays exactly where it was.
+    head = HeadAt(22, {0.21f, 1.6f, 0.0f});
+    CHECK(panel.Update(1, ++frame, head, true, settings, step) == Placement::Kept);
+    CHECK(NearD(panel.Yaw(), 20.0 * pi / 180.0));
+    // Recenter: placed afresh next frame, even with the head where it was.
+    panel.Recenter();
+    CHECK(panel.Update(1, ++frame, head, true, settings, step) == Placement::Recentered);
+    CHECK(NearD(panel.Yaw(), 22.0 * pi / 180.0));
+
+    // No head when it appears: placed at the origin facing -Z, then in front of the head once found.
+    WorldPanel blind;
+    CHECK(blind.Update(0, 5, head, false, settings, step) == Placement::Appeared);
+    CHECK(NearXr(blind.PoseOf(local).position, {0.0f, 0.0f, -1.4f}));
+    CHECK(blind.Update(0, 6, head, false, settings, step) == Placement::Kept);
+    CHECK(blind.Update(0, 7, head, true, settings, step) == Placement::HeadFound);
+    CHECK(NearD(blind.Yaw(), 22.0 * pi / 180.0));
+    // Following off: never follows.
+    WorldPanelSettings never = settings;
+    never.followAfter = 0.0f;
+    head = HeadAt(150, {0.0f, 1.6f, 0.0f});
+    for (std::uint64_t f = 8; f < 600; ++f) {
+        CHECK(blind.Update(0, f, head, true, never, step) == Placement::Kept);
+    }
+    CHECK(NearD(blind.Yaw(), 22.0 * pi / 180.0));
+    // Offsets in the panel's frame (Halcyon's menu offsets): right is the panel's right.
+    WorldPanel facingX;
+    facingX.Update(0, 1, HeadAt(-90, {0.0f, 1.6f, 0.0f}), true, settings, step);
+    CHECK(NearXr(facingX.PoseOf({0.3f, -0.1f, -1.0f}).position, {1.0f, 1.5f, 0.3f}));
 }
 
 // ---- Test loop: recordings, snapshot images, request files ------------------------------------
@@ -1867,6 +1993,7 @@ int main() {
     TestTwoHand();
     TestOverlayPlacement();
     TestMenuPointer();
+    TestWorldPanel();
     TestPoseRecording();
     TestImageConvert();
     TestLayerComposite();

@@ -183,6 +183,8 @@ void ApplyKeyValue(VrConfig& c, const char* key, double val) noexcept
     if (strcmp(key, "handReticle") == 0) { c.handReticle = b; return; }
     if (strcmp(key, "handReticleDistanceM") == 0) { c.handReticleDistanceM = v; return; }
     if (strcmp(key, "handReticleSizeDeg") == 0) { c.handReticleSizeDeg = v; return; }
+    if (strcmp(key, "worldLockedPanels") == 0) { c.worldLockedPanels = b; return; }   // [MEVR] world-locked panels
+    if (strcmp(key, "panelFollowDeg") == 0) { c.panelFollowDeg = v; return; }
     // Resolution watchdog: what MELE-VR.bat installed. Standalone if+return.
     if (strcmp(key, "expectedResX") == 0) { c.expectedResX = static_cast<int>(v); return; }
     if (strcmp(key, "expectedResY") == 0) { c.expectedResY = static_cast<int>(v); return; }
@@ -635,6 +637,8 @@ void WriteProfileSection(FILE* f, const char* name, const VrConfig& c) noexcept
     fprintf(f, "handReticle = %d\n",            c.handReticle ? 1 : 0);
     fprintf(f, "handReticleDistanceM = %.2f\n", c.handReticleDistanceM);
     fprintf(f, "handReticleSizeDeg = %.2f\n",   c.handReticleSizeDeg);
+    fprintf(f, "worldLockedPanels = %d\n",      c.worldLockedPanels ? 1 : 0);   // [MEVR] world-locked panels
+    fprintf(f, "panelFollowDeg = %.1f\n",       c.panelFollowDeg);
 
     fprintf(f, "; ----- Comfort / menu -----\n");
     fprintf(f, "menuDistanceM = %.3f\n",    c.menuDistanceM);

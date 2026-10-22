@@ -2,16 +2,24 @@
 
 #include <openxr/openxr.h>
 
-// A controller's aim ray against a head-locked menu quad (OpenXR conventions: meters, +Y up,
-// -Z forward; a quad faces along its +Z). Engine-agnostic; unit-tested in tests/Main.cpp.
+// A controller's aim ray against a menu quad (OpenXR conventions: meters, +Y up, -Z forward; a
+// quad faces along its +Z). The quad may be head-locked (submitted in VIEW space) or fixed in the
+// tracking space (world-locked panels); either way it is first brought into the tracking space,
+// where the controllers are. Engine-agnostic; unit-tested in tests/Main.cpp.
 namespace mevr::vr::menu_pointer {
 
 struct Quad {
-    XrPosef head{};          // the VIEW space's pose in the tracking space (the head)
-    XrVector3f center{};     // the quad's center in VIEW space (its orientation is VIEW's)
+    XrPosef pose{};          // the quad's center and orientation in the tracking space
     float width = 0.0f;      // meters
     float height = 0.0f;
 };
+
+// A quad submitted at `poseInSpace` in a space whose pose in the tracking space is `space`: the
+// head for a VIEW-space (head-locked) quad, identity for one in the tracking space itself.
+Quad InTracking(XrPosef const& space, XrPosef const& poseInSpace, float width, float height);
+
+// A head-locked quad: `center` in VIEW space, oriented like VIEW, with VIEW at `head`.
+Quad HeadLocked(XrPosef const& head, XrVector3f const& center, float width, float height);
 
 struct Hit {
     float u = 0.0f;         // 0 at the left edge, 1 at the right

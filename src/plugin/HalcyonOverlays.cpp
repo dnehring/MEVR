@@ -16,6 +16,7 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "plugin/TestLoop.hpp"
+#include "plugin/WorldPanels.hpp"
 
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -719,6 +720,7 @@ bool HudPanelIsFloat() noexcept {
 
 void OnRecentered() noexcept {
     gRecentered.store(true, std::memory_order_release);
+    RecenterWorldPanels();  // the world-locked flat panels too (plugin/WorldPanels.cpp)
 }
 
 void RequestHudPanelReplace() noexcept {

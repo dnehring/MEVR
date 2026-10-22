@@ -54,7 +54,9 @@ void SetStaticImage(XrSwapchain swapchain, std::uint32_t width, std::uint32_t he
 void NameSwapchain(XrSwapchain swapchain, char const* name);
 void ForgetSwapchain(XrSwapchain swapchain);
 // Halcyon's menu quad this frame (MevrBridge::OnMenuQuad): the quad layer that matches is "menu".
-void NoteMenuQuad(float const center[3], float width, float height);
+// `position` as submitted; `headLocked`: in VIEW space (placed from the rendered head in snapshots),
+// else in the app space (world-locked panels: the eyes' space, placed as is).
+void NoteMenuQuad(float const position[3], bool headLocked, float width, float height);
 
 // ---- Any thread ----------------------------------------------------------------------------------------
 // Both grips are squeezed on the live controllers: the stick clicks are the test loop's chords, and

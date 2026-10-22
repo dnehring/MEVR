@@ -1544,6 +1544,17 @@ void BuildUI() noexcept
                     ImGui::SliderFloat("Reticle size (deg)", &c.handReticleSizeDeg, 0.5f, 5.0f, "%.1f");
                     ResetBtn("handReticleSizeDeg", c.handReticleSizeDeg, kDefaults.handReticleSizeDeg);
                 }
+                // [MEVR] World-locked flat panels (src/plugin/WorldPanels.cpp).
+                ImGui::Separator();
+                ImGui::Checkbox("Flat screens and this menu stay where they appear", &c.worldLockedPanels);
+                ResetBtn("worldLockedPanels", c.worldLockedPanels, kDefaults.worldLockedPanels);
+                ImGui::TextDisabled("Off: they ride the head. On: placed in front of you when they open; R re-places them.");
+                if (c.worldLockedPanels)
+                {
+                    ImGui::SetNextItemWidth(ControlWidth());
+                    ImGui::SliderFloat("Bring them round past (deg, 0 = never)", &c.panelFollowDeg, 0.0f, 150.0f, "%.0f");
+                    ResetBtn("panelFollowDeg", c.panelFollowDeg, kDefaults.panelFollowDeg);
+                }
             }
             if (ImGui::CollapsingHeader("PCHUD movie", ImGuiTreeNodeFlags_DefaultOpen))
             {

@@ -239,6 +239,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/MevrMenuTab.cpp
     src/plugin/TestLoop.cpp
     src/plugin/TestLoop.hpp
+    src/plugin/WorldPanels.cpp
+    src/plugin/WorldPanels.hpp
 )
 
 function(mevr_add_plugin game)

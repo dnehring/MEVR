@@ -15,6 +15,7 @@
 #include "plugin/Halcyon.hpp"
 #include "plugin/MevrMenu.hpp"
 #include "plugin/TestLoop.hpp"
+#include "plugin/WorldPanels.hpp"
 
 #include <openxr/openxr.h>
 
@@ -101,6 +102,7 @@ void OnSessionCreated(void* instance, void* session) noexcept {
 }
 
 void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime) noexcept {
+    NoteWorldPanelFrame();  // every frame, whatever else happens below
     if (session == nullptr || static_cast<XrSession>(session) != gTarget.session) {
         return;
     }
