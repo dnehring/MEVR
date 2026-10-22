@@ -488,6 +488,75 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       and `[MEVR-HUD] Scaleform blend mode src=9 dst=1 ...: colour to the HUD panel, and its effect
       on what's behind as the panel's tint` lines, and `overlays: first frame with Scaleform
       blend-mode draws in the panel's tint`.
+14. **Gun sights and the sniper scope (new, 2026-10-22; HOST REDEPLOY: services v13).** Every gun
+    has a sight now: a red dot on the pistol, a holographic ring and dot on the shotgun and the assault
+    rifle, a 4x scope on the sniper rifle ([research/21](../research/21-sights-and-scopes.md)). Close
+    the game and run `tools/deploy-asi.ps1 -Game LE1` first: with the old host the mod logs `sights:
+    the host (services v12) can't draw gun sights: close the game and redeploy the host`.
+    - **Dot and holo:** first person (K), on foot, draw the pistol. A faint dark ring marks the sight's
+      window on the gun. Bring the gun up to your eye and look through that ring: the dot appears, out
+      on whatever you aim at, only in the eye that looks through it. Move your head a little behind the
+      sight: the dot stays on the target (it's collimated), and goes when your eye leaves the window.
+      The floating ring reticle hides while you look through. Fire: shots land at the dot (a few cm
+      under it: the sight sits above the barrel). Same with the shotgun and the assault rifle (a ring
+      and a dot).
+    - **Scope:** draw the sniper rifle, shoulder it, and bring your right eye about 10 cm behind the
+      back of its scope. A round picture appears there: the view 4x magnified, a black crosshair with a
+      red centre. Move your eye sideways: a black crescent creeps in (the scope's shadow) while the
+      crosshair stays on the target. Pull your head back: the picture shrinks. The other eye sees the
+      world as usual (keep both eyes open). Fire through it: the shots get the game's aimed-fire
+      accuracy (no game scope camera, no third-person jump).
+    - **What to check:** where each sight sits on each gun (too high, too far back?), the dot's size and
+      colour, whether you can get your eye close enough to the scope with Shepard's gun, how sharp the
+      scope's picture is, whether the crosshair is where the shots land, any flicker as the eye enters
+      or leaves the sight. **Close each eye in turn** while looking through: the dot and the scope's
+      picture should be in the looking eye only (if the other eye sees them too, the runtime ignores
+      per-eye quads: tell Claude).
+    - **Snapshot of it:** look through the sight and tap both stick clicks: `<stamp>-sight.png` (the
+      dot), `-sightframe.png` (the window ring), `-scope.png` (the scope's picture), and both eyes with
+      them in `-left.png` / `-right.png` (the dot or the scope only in the eye looking through). The JSON's
+      `"sights"` says where each eye is against the sight (`along`, `lateral`), which eye aims, and the
+      mod's `"sights"` the placement. Claude can tune the placement from these.
+    - **Settings:** `[Sights]` in `Binaries\Win64\ASI\LE1MEVR.ini` (added to your file, live):
+      `pistol = dot`, `shotgun = holo`, `assaultRifle = holo` (try `scope 2`), `sniperRifle = scope 4`
+      (`none` turns one off); `pistolPlace = auto` (or `back, height` in gun units: behind the muzzle,
+      above the bore; also `shotgunPlace`, `assaultRiflePlace`, `sniperRiflePlace`); `dotColor = ff3020`
+      (or red, green, amber, cyan, white), `dotSizeDeg = 0.25`, `ringSizeDeg = 1.6`, `windowUnits = 3`,
+      `frame = 1`, `zeroM = 0`; scope: `lensUnits = 2`, `reticle = duplex` (`mildot`, `dot`),
+      `reticleColor = ff2020`, `source = other` (`same`: magnify the aiming eye's own picture),
+      `focusM = 40`, `eyeReliefM = 0.12`, `resolution = 768`; `replaceRing = 1`, `aimedFire = 1`.
+    - **A/B in the headset:** Halcyon's menu (`\` or both sticks held) -> VR hands -> "Gun sights": per
+      weapon none / dot / holo / scope with its zoom, and which eye's picture a scope magnifies (takes
+      effect within a second).
+    - **Offline look:** `build\Release\mevr-sight-preview.exe <folder>` renders the scope (several eye
+      positions and reticles) and the reticles to PNGs without the game.
+    - **Logs (ours):** `sights: settings: on: pistol red dot (placed auto), ...`; per gun `sights: the
+      sniper rifle has a scope sight (4.0x): N units behind the muzzle, N above the bore (auto; the gun is
+      N units from muzzle to grip), eyepiece radius 2.0 units (N m at N units per meter)` (**tell Claude
+      the numbers if a sight looks misplaced**); `sights: the host draws a ... sight for the ...`;
+      `[MEVR-SIGHT] first sight window ring at (...)`, `[MEVR-SIGHT] first holographic reticle: the
+      right eye looks through the window (N m behind it, N m off the line, ...)`, `[MEVR-SIGHT] the right
+      eye through the red dot sight` / `no eye through the sight` as it changes; scope: `sights: the scope
+      magnifies a copy of the eye image (WxH, format N)`, `[MEVR-SIGHT] first scope picture: the right eye
+      aims (N m behind the eyepiece, ...), 4.0x from the left eye's image ...`, `sights: the right eye
+      sees the scope's picture`, and on the first scoped shot `sights: first scoped shot with aimed fire:
+      aim error A -> B` (B smaller); the heartbeat's `sights: ...; scoped aimed fire on N of M aim-error
+      queries`.
+15. **A recenter that fixes an upside-down or tilted world (new, 2026-10-22; HOST REDEPLOY).** If the
+    world ever shows upside down or tilted (SteamVR started wrong), look straight ahead, level, and
+    recenter (R, double-click the right stick, or Halcyon's menu). Normally a recenter is the same as
+    before (yaw only).
+    - **What to check:** a normal recenter still just turns the world to face you. After 5 s of an
+      upside-down world, our log hints to recenter. Don't recenter while staring at the floor for a few
+      seconds: that would tilt the world (recenter again looking ahead to undo it).
+    - **Settings:** `recenterTiltDeg = 60` in `MELEVR.ini` (0 = Halcyon's yaw-only recenter, always).
+    - **Logs (both ours and Halcyon's):** every recenter adds `[MEVR-RECENTER] yaw-only recenter
+      (upstream): the head is level enough in the base space (head up N deg from the base space's up,
+      roll N deg, pitch N deg)` after Halcyon's `[M1] recenter - app space re-origined to head yaw=N`;
+      the first one says `, automatic`; a correction says `[MEVR-RECENTER] tilt-corrected recenter: the
+      head is rolled past 90 degrees in the base space (...)`; the hint is `[MEVR-RECENTER] the world
+      has looked upside down for 5 s ...`. Snapshots carry `"recenter"` (recenters, corrected, the head's
+      tilt now).
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR

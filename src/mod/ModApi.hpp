@@ -24,6 +24,9 @@ struct Ray;
 namespace vr::floor {
 struct State;
 }
+namespace vr::sights {
+struct Sight;
+}
 namespace vr::squad_menu {
 struct View;
 namespace wheel {
@@ -38,7 +41,7 @@ struct Panel;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 12;
+inline constexpr int kHostServicesVersion = 13;
 
 using ProcessEventCallback = void (*)(UObject* context, UFunction* function, void* parms, void* result);
 
@@ -159,6 +162,16 @@ struct HostServices {
     // (cut out of the HUD panel). The mod calls it only if wheelPanelSize matches its sizeof(Panel).
     std::uint32_t wheelPanelSize = 0;
     void (*setWheelPanel)(vr::squad_menu::wheel::Panel const* panel) = nullptr;
+
+    // Version 13: gun sights (core/vr/Sights.hpp, game/sights, research/21).
+    // The sight on the held gun, each tick (kind None: no sight): the host draws a red dot or holographic
+    // reticle to the eye looking through it, or a scope's magnified picture at its eyepiece. The mod calls
+    // it only if sightSize matches its own sizeof(vr::sights::Sight).
+    std::uint32_t sightSize = 0;
+    void (*setSight)(vr::sights::Sight const* sight) = nullptr;
+    // What the host showed in its latest frame (vr::sights::View bits: which eye looks through the sight,
+    // whether a scope's picture is up); 0 when nothing or stale. The mod's aimed fire for scoped shots.
+    std::uint32_t (*sightView)() = nullptr;
 };
 
 } // namespace mevr
