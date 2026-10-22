@@ -26,14 +26,14 @@ and keeps our effort on what only we provide.
 without the user wearing the headset or describing what they see.
 
 - **Eye snapshots:**
-  - What it saves: PNGs of what each eye shows (world, HUD panel, reticle, menu), plus a JSON of
-    the head and controller poses and the arm IK, weapon and grip state.
-  - Triggers: End, both grips + left stick click, the VR hands tab, or
-    `%LOCALAPPDATA%\MEVR\snapshot.request` (`tools/snapshot.ps1`), which Claude can write while
-    the user plays.
+  - What it saves: PNGs of what each eye shows (world, HUD panel, reticle, squad menu, menu), plus
+    a JSON of the head and controller poses and the arm IK, weapon and grip state.
+  - Triggers: End, a quick tap of both stick clicks (since 2026-10-22; the grip chords are gone),
+    the VR hands tab, or `%LOCALAPPDATA%\MEVR\snapshot.request` (`tools/snapshot.ps1`), which
+    Claude can write while the user plays.
 - **Pose recording and replay:**
-  - Recording: Home, both grips + right stick click, or `record.request`. It records head and
-    controller poses (and inputs).
+  - Recording: Home, the VR hands tab, or `record.request`. It records head and controller poses
+    (and inputs).
   - Replay: `replay.request` / `tools/replay.ps1` feeds a recording back in as live tracking.
     Inputs replay only with `inputs=1`, so a replay doesn't fire weapons.
   - Typical use: the user records a short session once (drawing a rifle, gripping it, aiming

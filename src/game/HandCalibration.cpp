@@ -148,6 +148,33 @@ constexpr char const* kHolstersBlock =
     "belly = shotgun, 0.00, -0.50, 0.12, 0.13\n"
     "shoulderLeft = sniper, -0.18, -0.08, -0.20, 0.20\n";
 
+// Appended to a settings file that has no [Squad] yet (and part of a new file).
+constexpr char const* kSquadBlock =
+    "\n"
+    "[Squad]\n"
+    "; Squad weapons: point your left hand at a squadmate and squeeze the left grip (away from the gun's\n"
+    "; foregrip) to open a menu above your hand. The left stick picks the squadmate, a flick of the right\n"
+    "; stick a weapon; let go of the grip (or press A) to give it to them, B cancels. While it's open the\n"
+    "; game doesn't see the sticks, A or B.\n"
+    "enabled = 1\n"
+    "; pointConeDeg: how close to your left hand's pointing a squadmate must be to be the one you point at\n"
+    "; (degrees); pointMaxM: how far away at most (meters).\n"
+    "pointConeDeg = 10\n"
+    "pointMaxM = 40\n"
+    "; openHoldS: pointing at nobody, keep the grip squeezed this long (seconds) and it opens anyway, with the\n"
+    "; squadmate you gave a weapon last (or the one nearest your pointing) chosen.\n"
+    "openHoldS = 0.35\n"
+    "; panelDistanceM: the menu's centre from your left hand (meters); panelWidthM: its width (meters).\n"
+    "panelDistanceM = 0.27\n"
+    "panelWidthM = 0.40\n"
+    "; confirmOnRelease: 1 = letting go of the grip gives the chosen weapon (nothing chosen: cancels);\n"
+    "; 0 = the menu stays open when you let go: A gives it, B or a new squeeze cancels.\n"
+    "confirmOnRelease = 1\n"
+    "; pause: 1 = the game pauses while the menu is open, like its own weapon wheel; 0 = it keeps running.\n"
+    "pause = 0\n"
+    "; hapticAmplitude: how strong the menu's ticks and clicks are, 0..1 (0.5 as designed, 0 = none).\n"
+    "hapticAmplitude = 0.5\n";
+
 fs::path FilePath() {
     wchar_t buffer[MAX_PATH]{};
     GetModuleFileNameW(nullptr, buffer, MAX_PATH);
@@ -372,6 +399,50 @@ std::string Describe(Holsters const& h) {
 Holsters gHolsters;
 std::string gHolstersText;
 
+Squad ReadSquad(Ini const& ini) {
+    Squad squad;
+    double value = 0.0;
+    if (Number(ini, "Squad", "enabled", value)) {
+        squad.enabled = value != 0.0;
+    }
+    if (Number(ini, "Squad", "pointConeDeg", value)) {
+        squad.pointConeDeg = std::clamp(value, 1.0, 45.0);
+    }
+    if (Number(ini, "Squad", "pointMaxM", value)) {
+        squad.pointMaxM = std::clamp(value, 1.0, 200.0);
+    }
+    if (Number(ini, "Squad", "openHoldS", value)) {
+        squad.openHoldSeconds = std::clamp(value, 0.0, 3.0);
+    }
+    if (Number(ini, "Squad", "panelDistanceM", value)) {
+        squad.panelDistanceM = std::clamp(value, 0.1, 0.8);
+    }
+    if (Number(ini, "Squad", "panelWidthM", value)) {
+        squad.panelWidthM = std::clamp(value, 0.15, 1.0);
+    }
+    if (Number(ini, "Squad", "confirmOnRelease", value)) {
+        squad.confirmOnRelease = value != 0.0;
+    }
+    if (Number(ini, "Squad", "pause", value)) {
+        squad.pause = value != 0.0;
+    }
+    if (Number(ini, "Squad", "hapticAmplitude", value)) {
+        squad.hapticAmplitude = std::clamp(value, 0.0, 1.0);
+    }
+    return squad;
+}
+
+std::string Describe(Squad const& s) {
+    return std::format("{}; pointing within {:.0f} degrees and {:.0f} m, or {:.2f} s held at nobody; the menu {:.2f} m from the "
+                       "hand, {:.2f} m wide; {}; the game {} while it's open; haptics {:.2f}",
+        s.enabled ? "on" : "off", s.pointConeDeg, s.pointMaxM, s.openHoldSeconds, s.panelDistanceM, s.panelWidthM,
+        s.confirmOnRelease ? "letting go confirms" : "A confirms, letting go keeps it open", s.pause ? "pauses" : "keeps running",
+        s.hapticAmplitude);
+}
+
+Squad gSquad;
+std::string gSquadText;
+
 Sample ReadSample(Ini const& ini) {
     Sample sample;
     double request = 0.0;
@@ -460,6 +531,10 @@ Holsters GetHolsters() {
     return gHolsters;
 }
 
+Squad GetSquad() {
+    return gSquad;
+}
+
 std::optional<ik::ArmLengths> MeasureArmLength(ik::ArmLengthSample const& sample) {
     auto const arms = ik::ArmLengthFromTPose(sample);
     if (!arms) {
@@ -487,7 +562,7 @@ void Refresh() {
     fs::path const path = FilePath();
     std::error_code ec;
     if (!fs::exists(path, ec)) {
-        std::ofstream(path) << kDefaultFile << kControlsBlock << kHolstersBlock;
+        std::ofstream(path) << kDefaultFile << kControlsBlock << kHolstersBlock << kSquadBlock;
         log::Info("hands: wrote default calibration to {}", path.string());
     }
     auto stamp = fs::last_write_time(path, ec);
@@ -504,6 +579,12 @@ void Refresh() {
     if (ini.find("Holsters") == ini.end()) {
         std::ofstream(path, std::ios::app) << kHolstersBlock;
         log::Info("hands: added the [Holsters] defaults to {}", path.string());
+        ini = ReadIni(path);
+        stamp = fs::last_write_time(path, ec);
+    }
+    if (ini.find("Squad") == ini.end()) {
+        std::ofstream(path, std::ios::app) << kSquadBlock;
+        log::Info("hands: added the [Squad] defaults to {}", path.string());
         ini = ReadIni(path);
         stamp = fs::last_write_time(path, ec);
     }
@@ -538,6 +619,11 @@ void Refresh() {
     if (std::string const text = Describe(gHolsters); text != gHolstersText) {
         gHolstersText = text;
         log::Info("holsters: {}", text);
+    }
+    gSquad = ReadSquad(ini);
+    if (std::string const text = Describe(gSquad); text != gSquadText) {
+        gSquadText = text;
+        log::Info("squad: settings: {}", text);
     }
     gHaveStamp = true;
     Values const values = ReadValues(ini);

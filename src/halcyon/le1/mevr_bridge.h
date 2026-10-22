@@ -93,7 +93,8 @@ struct OverlayFrame
 
 // Present thread (RunFrame), once per frame after the eyes are filled, every frame (also flat and
 // menu frames): copies the HUD panel texture into its swapchain, places the panel and the reticle,
-// and writes up to `capacity` quad layers (XrCompositionLayerQuad*, panel first) into `layersOut`.
+// draws the squad weapon menu while the mod has it open (src/plugin/SquadPanel.cpp), and writes up to
+// `capacity` quad layers (XrCompositionLayerQuad*: panel, reticle, squad menu) into `layersOut`.
 // Also clears the panel texture, arms the redirect for the next frame, and hides the game's own
 // crosshair while the hand reticle replaces it. Returns the number of layers written.
 unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsigned capacity) noexcept;

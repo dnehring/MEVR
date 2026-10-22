@@ -2,9 +2,9 @@
 #
 # Writes %LOCALAPPDATA%\MEVR\snapshot.request; the host polls it once a second, captures what each
 # eye shows on the next headset frame and writes, in %LOCALAPPDATA%\MEVR\snapshots:
-#   <stamp>-left.png, <stamp>-right.png   what each eye shows (world + HUD panel + reticle + menu)
+#   <stamp>-left.png, <stamp>-right.png   what each eye shows (world + HUD panel + reticle + squad menu + menu)
 #   <stamp>-left-world.png, ...           the world layer alone (when a quad was drawn over it)
-#   <stamp>-hud.png, <stamp>-menu.png     the quad layers on their own
+#   <stamp>-hud.png, -squad.png, -menu.png the quad layers on their own
 #   <stamp>.json                          head, controllers, aim ray, the mod's arm IK / weapon state
 # The JSON is written last, so this script waits for it. Prints the paths it finds.
 #

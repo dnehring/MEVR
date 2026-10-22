@@ -1,8 +1,58 @@
-# Squad weapons in VR (design proposal, not built; 2026-10-22)
+# Squad weapons in VR (option A built 2026-10-22, to test in the headset)
 
 Shepard's own weapons now come from body holsters ([research/19](../research/19-body-holsters.md)).
-Squadmates' weapons still need the game's weapon wheel (the left trigger, LB). This note proposes a
-VR-native way to choose them, and recommends one. Nothing here is built.
+Squadmates' weapons needed the game's weapon wheel (the left trigger, LB). This note proposed a
+VR-native way to choose them and recommended one; the user approved **option A** on 2026-10-22 with
+a UI concept (two squadmate cards, a four-way radial of weapon tiles, the left stick for the
+squadmate, the right stick for the weapon, confirm and cancel hints; dark translucent blue panels,
+bevelled or hexagonal tiles, cyan outlines, amber highlight). The proposal below is kept as written;
+**"As built"** says where the build differs and why. Test steps: notes/next-vr-session.md step 12.
+
+## As built
+
+| | Built | Why |
+|-|-------|-----|
+| Open | Point the left hand at a squadmate (within `pointConeDeg` 10° of the left aim ray and `pointMaxM` 40 m; the smallest angle, a tie within a degree going to the nearer) and squeeze the left grip away from the gun's foregrip: it opens at once with that card chosen | Pointing is explicit (Arizona Sunshine 2's orders) |
+| Open without pointing | Keep the grip squeezed `openHoldS` (0.35 s): it opens with the squadmate last given a weapon, else the one nearest the ray | **Held, because** a squeeze at nobody is often a grab that missed the foregrip: opening at once would put a menu in the player's face mid-fight. A miss right next to the gun (within the support grip's release distance) never opens it, and a quick squeeze-and-let-go at nobody does nothing |
+| Who decides it's "away from the gun" | The host's pad mapping, on the new squeeze (the same decision that makes it the support grip or not), counted and reported (`HostServices::leftGripAway`, v11); the two-handed grip keeps priority, and taking it closes the menu | No race between the mod's tick and the mapping |
+| The squadmate | Left stick left or right picks the left or right card. The cards are ordered by where the two stand (the one further left on the left) when it opens | The concept's layout, and it matches the world |
+| The weapon | A flick of the **right** stick into a new sector (past 0.55, kept until back inside 0.35, 12° of hysteresis at the diagonals) highlights that tile; centred, the choice stays. Fixed places: assault rifle up, shotgun left, sniper rifle right, pistol down | The user's controls (the proposal had the left stick); fixed places are muscle memory, like the holsters. A stick already pushed when it opens (walking, turning) chooses nothing until it moves on |
+| Only what they carry | Tiles only for the types in their quick slots; the others are faint empty outlines (no label), and a flick toward one gives a soft refusal | The user's rule; the outlines keep the four places recognisable |
+| Confirm / cancel | Letting go of the grip confirms the highlighted weapon, or cancels with none; A confirms (with one chosen), B cancels. `confirmOnRelease = 0`: letting go keeps it open (A gives it; B, a new squeeze or 15 s untouched cancels) | The user's controls |
+| Input while open | The host keeps the sticks, A, B and both stick clicks from the game (`gamepad::kFlagSquadMenu`), and each one in use when it closes stays off until released or centred | The right stick turns and R3 is the power wheel; the flick and the confirming A must not leak |
+| Time | **The game keeps running** (`pause = 0`); `pause = 1` calls `WorldInfo.PauseGame` like ME1's weapon wheel, and unpauses before applying, as the wheel's close does | Point, squeeze, flick, let go is about a second, and the squad keeps fighting meanwhile; a paused world in a headset is jarring, and ME1's pause exists because its wheel is a full-screen overlay. Slowing time (`TimeDilation`) was not built: the game sets it too, so we'd fight it. The option is there if a fight shows the second matters |
+| The panel | A quad above the left hand: placed once when it opens, 0.27 m (`panelDistanceM`) from the grip, mostly up and a little further out from the head, level and facing the eyes, 0.40 m wide (`panelWidthM`), fixed in the room while open (not on the jittery hand); placed again on a recenter | The user's numbers |
+| Drawing | Its own ImGui context and its own texture and swapchain in the host (Present thread, the game's context saved and restored), drawn as the "squad" quad layer: in snapshots as `-squad.png` and in the eye composites. `tools/squad-preview` renders it to PNGs offline | Halcyon's menu keeps its own context; Claude can check the look without a headset |
+| Haptics | A tick on each highlight (the hand whose stick moved), a firmer click on confirm, softer on cancel or refusal (`hapticAmplitude`) | Meta's haptics guide |
+| Applying | What the weapon wheel's close does, for that one member (below) | The game's own path |
+
+**Adapted from the concept:**
+- kept: two cards left and right (name, class, a ten-segment health bar, the weapon in hand), the
+  central four-way radial with a dial pointing at the choice, amber highlight, cyan outlines, dark
+  translucent blue panels, hexagonal tiles, the stick and A/B hints;
+- portraits: a hexagonal class badge with initials, coloured by the class's discipline (combat
+  red, tech blue, biotic violet), instead of the game's portrait textures (not used: no game
+  images);
+- weapons: ME1's four types as simple vector silhouettes and labels;
+- left out: the HUD around it (objective, own health, ammo), which the game's HUD panel already
+  shows; "hold LB" became "release the grip to confirm".
+
+**Applying, verified in the code** (research/19 section 9): `SFXGameModeWeaponWheel.Deactivated`
+applies the recorded choices only while **Shepard's weapon is away** (`!IsInCombatActionState`):
+`ChangeToQuickSlot(GetMemberSwitchWeapon(i))` on each member's `BioEquipment`, then
+`SetMemberSwitchWeapon(i, 4)`, then Shepard's own `UpdatePrimaryAndSecondaryWeapons` and
+`DrawPrimaryWeapon`. With his weapon **out** it calls `BioPlayerController.ApplyTacticalOrders()`,
+whose native resets the record and has each member's AI controller switch (vtable `0xB38`). We do
+the same for the chosen member after `SquadOrderEquipWeapon(type, pawn)`, minus the two steps for
+Shepard's own weapon (his weapon isn't being changed, and drawing it would undo a holstered gun).
+The cheat `BioCheatManager.ChangeWeapon` is the same pair: `SquadOrderEquipWeapon`, then
+`ApplyTacticalOrders`.
+
+**[verify] in the headset:** the AI switch with Shepard's weapon out (does it animate, how long);
+the instant switch with it away; that the other member's orders aren't disturbed by
+`ApplyTacticalOrders`; the names (the class gives Liara, Wrex, Garrus, Tali, Ashley and Kaidan;
+**[inference]** from `EBioPartyMemberClassBase`, the log shows the game's own strings); the panel's
+place and size; whether the pause option is wanted.
 
 ## How ME1 does it
 
@@ -16,7 +66,9 @@ From research/19 section 2 (Ghidra, `SFXGame.pcc` bytecode, the SDK):
   `nWeapon`, delayed switch = 4).
 - **Closing the wheel** (`SFXGameModeWeaponWheel.Deactivated`) applies it: for each member whose
   recorded switch isn't 4, `ChangeToQuickSlot` on their equipment (instant: the game is paused),
-  reset to 4, Shepard's primary weapons updated, then `ApplyTacticalOrders`.
+  reset to 4, Shepard's primary weapons updated, then `ApplyTacticalOrders`. (Corrected when it was
+  built, research/19 section 9: that loop runs only with Shepard's weapon away; with it out the
+  wheel calls only `ApplyTacticalOrders`, whose native has the AI switch.)
 - Holding LB opens the wheel, a tap swaps Shepard's weapon (`TrySwapWeapon`); the wheel is steered
   with the right stick.
 

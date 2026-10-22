@@ -123,6 +123,14 @@ switching frameworks.
   and a hand reticle on the aim ray replaces the crosshair (`src/plugin/HalcyonOverlays.cpp`,
   [research/15](research/15-hud.md)). Toggles: `MELEVR.ini` `hudPanel*` / `handReticle*`, or the
   Insert menu's HUD tab.
+- LE1 squad weapons ([docs/squad-weapons-design.md](docs/squad-weapons-design.md), research/19
+  section 9): point the left hand at a squadmate and squeeze the left grip away from the gun's
+  foregrip: a menu opens above the hand (left stick = squadmate, right stick flick = weapon, let go
+  or A = give it, B = cancel). `game/SquadWeapons` (mod) reads the squad and applies the choice the
+  way the weapon wheel's close does; `plugin/SquadPanel` (host) draws it with its own ImGui context
+  as the "squad" quad; `core/vr/SquadMenu` is the shared, unit-tested part. While it's open the host
+  keeps the sticks, A, B and stick clicks from the game (`gamepad::kFlagSquadMenu`, HostServices
+  v11). Settings: `[Squad]` in `ASI\LE1MEVR.ini`.
 - Trilogy check: `build-trilogy/` (configured with `-DMEVR_BUILD_LE2=ON -DMEVR_BUILD_LE3=ON`) must
   keep building all three games. Per-game field spellings go in `src/engine/GameAdapter.hpp`;
   per-game addresses sit next to their use (e.g. `engine/SceneView.cpp`).
@@ -153,10 +161,11 @@ Use it to check VR changes yourself instead of asking the user what they see
 `%LOCALAPPDATA%\MEVR`; the log lines start with `test loop:`.
 - **Snapshots:** `tools/snapshot.ps1 [-Count N -Interval s -Delay s -Tag x]` writes
   `snapshot.request` and waits. Output in `snapshots\`: `<stamp>-left.png` / `-right.png` (what
-  each eye shows: the world plus our HUD panel, reticle and Halcyon's menu, composited like the
-  runtime does), `-left-world.png` (world layer alone), `-hud.png`, `-menu.png`, and `<stamp>.json`
-  (head and eye poses/FOVs, controllers, aim ray, host view, the mod's arm IK / hand aim / weapon /
-  support grip state, every layer). The JSON is written last. Read the PNGs to look.
+  each eye shows: the world plus our HUD panel, reticle, squad menu and Halcyon's menu, composited
+  like the runtime does), `-left-world.png` (world layer alone), `-hud.png`, `-squad.png`,
+  `-menu.png`, and `<stamp>.json` (head and eye poses/FOVs, controllers, aim ray, host view, the
+  mod's arm IK / hand aim / weapon / support grip / holsters / squad state, every layer). The JSON
+  is written last. Read the PNGs to look.
 - **Recording:** `tools/record.ps1 -Seconds N` (or `-Start` / `-Stop`) writes `record.request`;
   frames go to `recordings\<stamp>.mevrrec` (head eye views, both controllers' poses and inputs).
   `python tools/mevrrec.py --latest [--csv out.csv]` summarizes or dumps one.
@@ -165,11 +174,13 @@ Use it to check VR changes yourself instead of asking the user what they see
   FOVs kept) and controller poses stand in for the live ones; buttons and sticks only with
   `-Inputs`. Replay + snapshot = look at a recorded pose: `tools/replay.ps1 -Loop`,
   `tools/snapshot.ps1 -Delay 2`, `tools/replay.ps1 -Stop`.
-- **Player triggers:** End = snapshot, Home = recording on/off (game focused); both grips + left
-  stick click = snapshot, both grips + right stick click = recording on/off (stick clicks don't
-  reach the game while both grips are held; with `gripHolds` only while the left grip is away
-  from the gun's foregrip, since two-handed aiming holds both grips); the menu's VR hands tab
-  ("Test loop": snapshot in 3 s, record, replay the last recording).
+- **Player triggers:** End = snapshot, Home = recording on/off (game focused); a quick tap of both
+  stick clicks = snapshot (both down within 100 ms of each other and up within 300 ms of the first
+  press; held 400 ms they open Halcyon's menu instead, never both: `gamepad::UpdateStickChord` in
+  `HalcyonBridge`; L3 is held back 100 ms so the tap is never a crouch, and RB from R3 starts only
+  after 100 ms alone); the menu's VR hands tab ("Test loop": snapshot in 3 s, record, replay the
+  last recording). There's no controller chord for recording (both grips are the gun and the
+  squad menu since 2026-10-22).
 - `testloop.status` (JSON, once a second): recording, replay, last snapshot, `framesRunning`.
 - Needs a running VR session (Halcyon only runs frames between READY and STOPPING). Not focused
   (headset off the face, VISIBLE) is fine: replay drives the view and controllers. SYNCHRONIZED or
@@ -178,7 +189,10 @@ Use it to check VR changes yourself instead of asking the user what they see
   WrapSessionFunctions`) wraps `xrAcquireSwapchainImage` / `xrReleaseSwapchainImage` (copy each
   image to staging before release, only while a snapshot is armed), `xrEndFrame` (the layers) and
   `xrLocateViews` (record the head; substitute it in a replay). Our quads report their images from
-  `HalcyonOverlays`. Staging copies are mapped 2+ frames later and converted on a worker thread.
+  `HalcyonOverlays` and `SquadPanel`. Staging copies are mapped 2+ frames later and converted on a
+  worker thread.
+- The squad menu's look can be checked offline: `build\Release\mevr-squad-preview.exe <folder>`
+  renders sample squads to PNGs with the host's own drawing code (`src/plugin/SquadPanelDraw.cpp`).
 
 ## Gotchas
 

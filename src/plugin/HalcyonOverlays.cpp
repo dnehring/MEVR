@@ -4,6 +4,7 @@
 //   swapchain and becomes a quad fixed in the tracking space in front of the player's body;
 // - the hand reticle: a small ring on the weapon's aim ray (or the right controller's aim pose
 //   until the mod publishes the ray), replacing the game's screen-centre crosshair;
+// - the squad weapon menu at the left hand while the mod has it open (plugin/SquadPanel.cpp);
 // - [MENUVIS] readbacks that tell whether Halcyon's Insert menu texture has visible pixels.
 
 #include "halcyon/le1/mevr_bridge.h"
@@ -16,6 +17,7 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "plugin/Halcyon.hpp"
+#include "plugin/SquadPanel.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/WorldPanels.hpp"
 
@@ -722,6 +724,7 @@ bool HudPanelIsFloat() noexcept {
 void OnRecentered() noexcept {
     gRecentered.store(true, std::memory_order_release);
     RecenterWorldPanels();  // the world-locked flat panels too (plugin/WorldPanels.cpp)
+    mevr::host::squad_panel::Recentered();  // and an open squad menu
     mevr::host::halcyon::NoteRecentered();  // the holsters take the standing eye height there
 }
 
@@ -933,6 +936,23 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                     size / kDegToRad);
                 LogBoth(line);
             }
+        }
+    }
+
+    // ---- The squad weapon menu, at the left hand (plugin/SquadPanel): last, on top of ours ----
+    if (count < capacity) {
+        mevr::host::squad_panel::Frame squad;
+        squad.session = session;
+        squad.appSpace = static_cast<XrSpace>(frame.appSpace);
+        squad.context = context;
+        squad.device = device.Get();
+        squad.worldFrame = frame.worldFrame;
+        squad.menuOpen = frame.menuOpen;
+        squad.headValid = frame.headValid;
+        squad.head.orientation = ToQuat(frame.headOrientation);
+        squad.head.position = ToVec(frame.headPosition);
+        if (XrCompositionLayerQuad const* layer = mevr::host::squad_panel::Layer(squad)) {
+            layersOut[count++] = layer;
         }
     }
     return count;

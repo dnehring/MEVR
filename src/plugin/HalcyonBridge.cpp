@@ -45,12 +45,11 @@ bool gWasFocused = false;  // Present thread
 constexpr std::uint64_t kForegroundTryMs = 15000;
 std::uint64_t gForegroundUntilMs = 0;
 std::uint64_t gForegroundNextMs = 0;
-// Both thumbsticks clicked and held opens or closes Halcyon's menu, like its menu key (\ in our
-// deploy; Insert upstream, which a profile slot can bring back). The menu blocks all game input
-// while open. Present thread.
-constexpr std::uint64_t kMenuChordMs = 400;
-std::uint64_t gChordSinceMs = 0;
-bool gChordFired = false;
+// Both thumbsticks clicked and held (gamepad::kStickHoldMs) opens or closes Halcyon's menu, like its
+// menu key (\ in our deploy; Insert upstream, which a profile slot can bring back). The menu blocks all
+// game input while open. Both tapped together (down and up within gamepad::kStickTapMs) is the test
+// loop's snapshot. Present thread, on the player's own clicks.
+mevr::game::gamepad::StickChord gStickChord;
 std::atomic<unsigned> gFrames{0};
 
 std::mutex gPadMutex;  // the latches and packet numbering below (XInput is polled from any thread)
@@ -72,6 +71,10 @@ std::atomic<bool> gSupportHeld{false};
 std::atomic<std::uint32_t> gRightGripReport{0};
 std::atomic<bool> gLoggedRightGripFree{false};
 std::atomic<bool> gLoggedRightGripHolds{false};
+// The squad weapon menu (v11): the mapping's left-grip report (gamepad::LeftGripReport), and whether
+// the mod's flag says the menu is open (logged when it changes).
+std::atomic<std::uint32_t> gLeftGripReport{0};
+bool gSquadMenuLogged = false;  // under gPadMutex
 std::mutex gHapticMutex;  // gHaptics
 std::array<mevr::vr::haptics::Channel, 2> gHaptics;
 bool gLoggedHaptic = false;            // frame thread
@@ -205,10 +208,6 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
     MeasureFloor(static_cast<XrTime>(predictedDisplayTime));
     bool const inputFocused = !gInputFailed && gInput.Focused();
     mevr::vr::controllers::State const live = state;
-    // With the right grip holding the gun, both grips are held in ordinary two-handed aiming: the test
-    // loop's chord (both grips + a stick click) then needs the left grip away from the gun, so the
-    // stick clicks (crouch, and RB on the right one) still reach the game while aiming.
-    mevr::host::testloop::BlockGripChord(PadOptions().rightGripHolds && gSupportHeld.load(std::memory_order_relaxed));
     // The test loop records the live sample, or replaces it with a recording's (plugin/TestLoop).
     mevr::host::testloop::OnFrameBegun(static_cast<XrSession>(session), static_cast<XrSpace>(space),
         static_cast<XrTime>(predictedDisplayTime), inputFocused, state);
@@ -240,17 +239,20 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
         }
     }
 
-    bool const chord = live.left.stickClick && live.right.stickClick;  // the player's, not a replay's
-    if (!chord) {
-        gChordSinceMs = 0;
-        gChordFired = false;
-    } else if (gChordSinceMs == 0) {
-        gChordSinceMs = now;
-    } else if (!gChordFired && now - gChordSinceMs >= kMenuChordMs) {
-        gChordFired = true;
+    // The player's clicks, not a replay's (a sample without input focus has none).
+    mevr::game::gamepad::StickChordStep const chord =
+        mevr::game::gamepad::UpdateStickChord(gStickChord, live.active && live.left.stickClick,
+            live.active && live.right.stickClick, now);
+    if (chord.hold) {
         bool const open = !MELEVR::Menu::IsOpen();
         MELEVR::Menu::SetOpen(open);
         mevr::log::Info("halcyon bridge: both sticks held: Halcyon's menu {}", open ? "opened" : "closed");
+    }
+    if (chord.tap) {
+        mevr::log::Info("test loop: both sticks tapped: snapshot");
+        mevr::host::testloop::SnapshotRequest request;
+        request.trigger = "stick tap";
+        mevr::host::testloop::RequestSnapshot(request);
     }
 }
 
@@ -324,9 +326,15 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
         options.rightGripFree = false;
         options.countKept = false;
     }
-    options.stickClicksReserved = mevr::host::testloop::GripChordHeld();
     XINPUT_GAMEPAD pad = mevr::game::gamepad::Merge(realPad ? state->Gamepad : XINPUT_GAMEPAD{},
         mevr::game::gamepad::FromControllers(controllers, gLatches, options));
+    gLeftGripReport.store(mevr::game::gamepad::LeftGripReport(gLatches), std::memory_order_relaxed);
+    if (options.squadMenu != gSquadMenuLogged) {
+        gSquadMenuLogged = options.squadMenu;
+        mevr::log::Info("halcyon bridge: squad menu {}", options.squadMenu
+            ? "open: the sticks, A, B and the stick clicks are its own (kept from the game until released)"
+            : "closed");
+    }
     std::uint32_t const report = mevr::game::gamepad::RightGripReport(gLatches);
     if (gRightGripReport.exchange(report, std::memory_order_relaxed) != report && (report & 1u) != 0) {
         if (gLatches.rightHold) {
@@ -345,17 +353,9 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
             held ? ((PadOptions().supportAims) ? ": LT to the game instead of LB" : ": no LT (sniper rifle)") : "");
     }
     if (controllers.left.stickClick && controllers.right.stickClick) {
-        pad.wButtons &= ~(XINPUT_GAMEPAD_LEFT_THUMB | XINPUT_GAMEPAD_RIGHT_THUMB);  // the menu chord, not L3 + R3
-    }
-    if (mevr::host::testloop::GripChordHeld()) {
-        // Both grips squeezed: a stick click is the test loop's snapshot or recording chord.
+        // The both-sticks chord (Halcyon's menu held, a snapshot tapped), not L3 + R3. (L3 alone is held
+        // back briefly by the mapping, gamepad::GateClick, so a chord pressed left first isn't a crouch.)
         pad.wButtons &= ~(XINPUT_GAMEPAD_LEFT_THUMB | XINPUT_GAMEPAD_RIGHT_THUMB);
-        if (!held) {
-            // ...and the grips themselves aren't LB + RB, which held would open the game's
-            // weapon and power wheels. (With the support grip the left grip isn't LB anyway, and
-            // the right grip stays RB.)
-            pad.wButtons &= ~(XINPUT_GAMEPAD_LEFT_SHOULDER | XINPUT_GAMEPAD_RIGHT_SHOULDER);
-        }
     }
     if (CameraAlignOwnsLeftTrigger()) {
         pad.bLeftTrigger = 0;
@@ -421,6 +421,10 @@ void ForgetHaptics() {
 
 std::uint32_t RightGripFree() {
     return MELEVR::MevrBridge::gRightGripReport.load(std::memory_order_relaxed);
+}
+
+std::uint32_t LeftGripAway() {
+    return MELEVR::MevrBridge::gLeftGripReport.load(std::memory_order_relaxed);
 }
 
 void Floor(vr::floor::State* out) {

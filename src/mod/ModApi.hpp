@@ -24,6 +24,9 @@ struct Ray;
 namespace vr::floor {
 struct State;
 }
+namespace vr::squad_menu {
+struct View;
+}
 
 // Fields are only ever appended: a mod reads the fields of every version up to the host's (and
 // its own), so a newer mod still runs on an older host, without what the older host lacks.
@@ -32,7 +35,7 @@ struct State;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 10;
+inline constexpr int kHostServicesVersion = 11;
 
 using ProcessEventCallback = void (*)(UObject* context, UFunction* function, void* parms, void* result);
 
@@ -129,6 +132,19 @@ struct HostServices {
     // if floorStateSize matches its own sizeof(vr::floor::State).
     std::uint32_t floorStateSize = 0;
     void (*floor)(vr::floor::State* out) = nullptr;
+
+    // Version 11: the squad weapon menu (game/squad_weapons, docs/squad-weapons-design.md).
+    // setSupportGrip's flags also take gamepad::kFlagSquadMenu (a v10 host ignores it): while set, the
+    // sticks, A, B and the stick clicks are the menu's, and each stays kept from the game until released.
+    // The menu to draw (core/vr/SquadMenu.hpp), each tick while it's open and once when it closes; the
+    // host draws it at the left hand while it's fresh (250 ms). The mod calls it only if squadMenuSize
+    // matches its own sizeof(vr::squad_menu::View).
+    std::uint32_t squadMenuSize = 0;
+    void (*setSquadMenu)(vr::squad_menu::View const* view) = nullptr;
+    // The pad mapping's left grip (gamepad::LeftGripReport): the count of squeezes that began away from
+    // the gun's foregrip (not the support grip) shifted up one bit, and in bit 0 whether the current
+    // squeeze is one. Squeezes while Halcyon's menu is open aren't counted.
+    std::uint32_t (*leftGripAway)() = nullptr;
 };
 
 } // namespace mevr

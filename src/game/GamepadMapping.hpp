@@ -11,7 +11,9 @@
 // offline); game/gamepad_bridge feeds the result to the game's XInput calls.
 //
 // Touch -> Xbox: sticks -> sticks, triggers -> triggers, grips -> LB / RB, A/B (right) -> A/B,
-// X/Y (left) -> X/Y, stick clicks -> LS / RS, left menu -> Start; left grip + menu -> Back. The
+// X/Y (left) -> X/Y, stick clicks -> LS / RS (LS held back briefly: GateClick), left menu -> Start;
+// left grip + menu -> Back. While the squad weapon menu is open (Options::squadMenu) the sticks, A, B
+// and the stick clicks are the menu's. The
 // left grip on the held gun's foregrip is the support grip instead (LT held, no LB; below), and the
 // right grip squeezed at a body holster draws a weapon instead of RB (Options::rightGripFree).
 // With the body holsters' "grip holds the gun" (Options::rightGripHolds) the right grip is never RB;
@@ -69,6 +71,44 @@ struct RbClickInput {
 // One step. True while the game should see RB.
 bool RbFromStickClick(RbClick& state, RbClickInput const& input);
 
+// Both stick clicks are a chord, not L3 + R3: held kStickHoldMs, Halcyon's menu opens or closes (as
+// before); tapped (the second click down within kStickJoinMs of the first, both up again within
+// kStickTapMs of the first press), the test loop takes a snapshot. A tap is over before a hold could
+// fire, and a hold outlasts any tap, so neither is ever both. The join window is RB's commit delay:
+// a second click later than that comes after R3 may already be RB (or L3 crouch), so it's no tap.
+inline constexpr std::uint64_t kStickJoinMs = kRbCommitMs;
+inline constexpr std::uint64_t kStickTapMs = 300;
+inline constexpr std::uint64_t kStickHoldMs = 400;
+
+struct StickChord {
+    bool left = false;              // the clicks, last step
+    bool right = false;
+    std::uint64_t firstPressMs = 0; // the first click of this sequence (both were up before it)
+    std::uint64_t bothSinceMs = 0;  // both down since (0: not both down now)
+    bool both = false;              // both were down together in this sequence
+    bool joined = false;            // ...the second within kStickJoinMs of the first
+    bool held = false;              // the hold fired in this sequence
+};
+struct StickChordStep {
+    bool tap = false;   // both released: a snapshot
+    bool hold = false;  // both held kStickHoldMs: Halcyon's menu
+};
+// One step on the player's own clicks (never a replay's). `nowMs` a millisecond clock (nonzero).
+StickChordStep UpdateStickChord(StickChord& chord, bool leftClick, bool rightClick, std::uint64_t nowMs);
+
+// L3 (crouch) waits kStickJoinMs to see whether the right click joins (the chord above): a click held
+// that long alone reaches the game; one released sooner reaches it as a kRbTapMs press afterwards;
+// one the right click joins never does, nor does it come back when the right click lets go first.
+struct ClickGate {
+    enum class Phase : std::uint8_t { Idle, Pending, Pass, Pulse, Blocked };
+    Phase phase = Phase::Idle;
+    bool down = false;
+    std::uint64_t pressMs = 0;
+    std::uint64_t pulseUntilMs = 0;
+};
+// One step. True while the game should see the click. `nowMs` 0 (no clock): the click passes as is.
+bool GateClick(ClickGate& gate, bool click, bool otherClick, std::uint64_t nowMs);
+
 // The support grip (game/support_grip): the left grip squeezed with the left hand near the held
 // gun's foregrip holds the gun with both hands, and the game then sees LT held (aimed, "focused"
 // fire) instead of LB. A grip squeezed anywhere else is LB, as always.
@@ -122,7 +162,34 @@ struct Latches {
     RbClick rbClick;
     std::uint8_t faceDown = 0;
     std::uint8_t faceRb = 0;
+    // L3, held back while it might be the start of the both-sticks chord.
+    ClickGate leftClick;
+    // The squad weapon menu (game/squad_weapons): the left-grip squeezes that began away from the gun's
+    // foregrip (not the support grip), counted like the right grip's kept squeezes; whether the current
+    // squeeze is one.
+    std::uint32_t leftAwayCount = 0;
+    bool leftAway = false;
+    // Controls in use when the squad menu closed (kSquadLeftStick...): kept from the game until each is
+    // released or centred, so the flick that chose a weapon doesn't turn, nor A walk off as "use".
+    std::uint8_t squadHeld = 0;
 };
+
+// The squad menu's controls (Options::squadMenu): none reaches the game while it's open.
+inline constexpr std::uint8_t kSquadLeftStick = 1;
+inline constexpr std::uint8_t kSquadRightStick = 2;
+inline constexpr std::uint8_t kSquadA = 4;
+inline constexpr std::uint8_t kSquadB = 8;
+inline constexpr std::uint8_t kSquadL3 = 16;
+inline constexpr std::uint8_t kSquadR3 = 32;
+inline constexpr std::uint8_t kSquadAll = 63;
+// A stick inside this is centred (released) for that purpose.
+inline constexpr float kSquadStickCentred = 0.25f;
+
+// What the host reports of the left grip (HostServices::leftGripAway, v11): the count of squeezes that
+// began away from the gun, shifted up one bit, and whether the current squeeze is one of them.
+inline std::uint32_t LeftGripReport(Latches const& latches) {
+    return (latches.leftAwayCount << 1) | (latches.leftAway ? 1u : 0u);
+}
 
 // What the host reports of the right grip (HostServices::rightGripFree): the count of squeezes kept
 // from the game, shifted up one bit, and whether the current squeeze is one of them.
@@ -150,11 +217,15 @@ struct Options {
     // meaning it began with, and so does a press of rbSource.
     bool rightGripHolds = false;
     RbSource rbSource = RbSource::None;  // the mod sets it from [Holsters] powerWheel
-    // Not across the boundary: set by the host while the stick clicks belong to the test loop's chord
-    // (no RB from the right stick click then), and cleared while Halcyon's menu is open (a squeeze
-    // kept from the game there isn't counted: it must never draw a weapon).
+    // Not across the boundary: stickClicksReserved, set by the host while the stick clicks belong to
+    // something else (no RB from the right stick click then; nothing sets it since the test loop's chord
+    // became the both-sticks tap); countKept, cleared while Halcyon's menu is open (a squeeze kept from
+    // the game there isn't counted: it must never draw a weapon, nor open the squad menu).
     bool stickClicksReserved = false;
     bool countKept = true;
+    // The squad weapon menu is open (game/squad_weapons, kFlagSquadMenu): the sticks, A, B and both
+    // stick clicks are its own (Latches::squadHeld keeps them from the game until released).
+    bool squadMenu = false;
     SupportInput support;
 };
 
@@ -166,6 +237,7 @@ inline constexpr std::uint32_t kFlagGripShoulder = 4;         // Options::gripSh
 inline constexpr std::uint32_t kFlagLeftTriggerShoulder = 8;  // Options::leftTriggerShoulder
 inline constexpr std::uint32_t kFlagRightGripFree = 16;       // Options::rightGripFree
 inline constexpr std::uint32_t kFlagRightGripHolds = 32;      // Options::rightGripHolds (host v10)
+inline constexpr std::uint32_t kFlagSquadMenu = 64;           // Options::squadMenu (host v11)
 inline constexpr std::uint32_t kRbSourceShift = 8;            // Options::rbSource in bits 8-11 (host v10)
 inline constexpr std::uint32_t kRbSourceMask = 0xFu << kRbSourceShift;
 std::uint32_t ToFlags(Options const& options);

@@ -131,6 +131,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/HostView.hpp
     src/core/vr/Output.cpp
     src/core/vr/Output.hpp
+    src/core/vr/SquadMenu.cpp
+    src/core/vr/SquadMenu.hpp
     src/core/vr/TestRequest.cpp
     src/core/vr/TestRequest.hpp
     src/core/vr/ViewSync.cpp
@@ -184,6 +186,8 @@ set(MEVR_MOD_SOURCES
     src/game/Reflections.hpp
     src/game/SkeletonProbe.cpp
     src/game/SkeletonProbe.hpp
+    src/game/SquadWeapons.cpp
+    src/game/SquadWeapons.hpp
     src/game/SupportGrip.cpp
     src/game/SupportGrip.hpp
     src/game/ViewAnchor.cpp
@@ -227,6 +231,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/OverlayPlacement.hpp
     src/core/vr/PoseRecording.cpp
     src/core/vr/PoseRecording.hpp
+    src/core/vr/SquadMenu.cpp
+    src/core/vr/SquadMenu.hpp
     src/core/vr/TestRequest.cpp
     src/core/vr/TestRequest.hpp
     src/core/xr/Floor.cpp
@@ -247,6 +253,10 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/MevrMenu.hpp
     src/plugin/MevrMenuPointer.cpp
     src/plugin/MevrMenuTab.cpp
+    src/plugin/SquadPanel.cpp
+    src/plugin/SquadPanel.hpp
+    src/plugin/SquadPanelDraw.cpp
+    src/plugin/SquadPanelDraw.hpp
     src/plugin/TestLoop.cpp
     src/plugin/TestLoop.hpp
     src/plugin/WorldPanels.cpp
@@ -318,6 +328,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/MenuPointer.cpp
         src/core/vr/OverlayPlacement.cpp
         src/core/vr/PoseRecording.cpp
+        src/core/vr/SquadMenu.cpp
         src/core/vr/TestRequest.cpp
         src/core/vr/ViewSync.cpp
         src/engine/XrToUnreal.cpp
@@ -329,4 +340,19 @@ if (MEVR_BUILD_TESTS)
     target_compile_definitions(mevr-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_test(NAME mevr-tests COMMAND mevr-tests)
+
+    # The squad weapon menu's look, offline (tools/squad-preview): PNGs of sample squads drawn with the
+    # host's own drawing code and ImGui's D3D11 backend (from the halcyon-le1 library).
+    if (MEVR_HALCYON)
+        add_executable(mevr-squad-preview
+            tools/squad-preview/Main.cpp
+            src/core/PngFile.cpp
+            src/core/vr/SquadMenu.cpp
+            src/plugin/SquadPanelDraw.cpp
+        )
+        target_include_directories(mevr-squad-preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+        target_link_libraries(mevr-squad-preview PRIVATE halcyon-le1 OpenXR::headers windowscodecs ole32 d3d11)
+        target_compile_definitions(mevr-squad-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+        target_compile_options(mevr-squad-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+    endif ()
 endif ()

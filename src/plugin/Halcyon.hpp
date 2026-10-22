@@ -44,6 +44,9 @@ void RequestContinuousHaptic(int hand, float amplitude, float frequencyHz, float
 void ForgetHaptics();
 // The pad mapping's right grip report (gamepad::RightGripReport). Any thread.
 std::uint32_t RightGripFree();
+// v11: the pad mapping's left grip report (gamepad::LeftGripReport): squeezes that began away from the
+// gun, for the squad weapon menu. Any thread.
+std::uint32_t LeftGripAway();
 
 // v10: the head's height above the floor, the latest frame's (core/xr/Floor). Any thread.
 void Floor(vr::floor::State* out);

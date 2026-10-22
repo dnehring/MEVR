@@ -27,6 +27,7 @@
 //                                         two-handed grip (game/support_grip) and whether the left
 //                                         trigger reaches the game as LT.
 //   [Holsters] body holsters (below, GetHolsters).
+//   [Squad]  the squad weapon menu (below, GetSquad).
 namespace mevr::game::hand_calibration {
 
 // The trim for one hand (0 left, 1 right), in the grip's own axes (ik::GripTrim).
@@ -82,6 +83,31 @@ struct Holsters {
     double hapticAmplitude = 0.5;
 };
 Holsters GetHolsters();
+// [Squad] (appended to an older file that lacks it): the squad weapon menu (game/squad_weapons,
+// docs/squad-weapons-design.md).
+//   enabled           1: point the left hand at a squadmate and squeeze the left grip (away from the gun's
+//                     foregrip) to open the menu at the hand
+//   pointConeDeg      how close to the left hand's aim ray a squadmate must be to be "pointed at"
+//   pointMaxM         ...and how far away at most (meters)
+//   openHoldS         pointing at nobody: the grip held this long (seconds) opens it anyway
+//   panelDistanceM    the menu's centre from the left hand when it opens (meters)
+//   panelWidthM       its width (meters)
+//   confirmOnRelease  1: letting go of the grip gives the chosen weapon (nothing chosen: cancels);
+//                     0: it stays open after letting go (A gives it, B or a new squeeze cancels)
+//   pause             1: the game pauses while it's open (as ME1's own wheels do); 0 (default): it runs
+//   hapticAmplitude   0..1: its ticks and clicks (0.5 as designed; 0: none)
+struct Squad {
+    bool enabled = true;
+    double pointConeDeg = 10.0;
+    double pointMaxM = 40.0;
+    double openHoldSeconds = 0.35;
+    double panelDistanceM = 0.27;
+    double panelWidthM = 0.40;
+    bool confirmOnRelease = true;
+    bool pause = false;
+    double hapticAmplitude = 0.5;
+};
+Squad GetSquad();
 // Where Halcyon's first-person camera sits from Shepard's head bone with the headset at the
 // recenter point (units: forward, right, up in the view's yaw), for the menu's "Put the camera at
 // Shepard's eyes" button (src/plugin/MevrMenuTab.cpp). Written as [Camera] measuredForward,

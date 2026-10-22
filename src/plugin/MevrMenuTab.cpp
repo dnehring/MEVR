@@ -423,7 +423,7 @@ static void TestLoopSection() {
         testloop::RequestSnapshot(request);
     }
     ImGui::SameLine();
-    ImGui::TextDisabled("close the menu; End or both grips + left stick click take one now");
+    ImGui::TextDisabled("close the menu; End, or tap both stick clicks together, takes one now");
     if (ImGui::Button(s.recording ? "Stop recording" : "Start recording")) {
         testloop::RequestRecording(s.recording ? 0 : 1);
     }
@@ -432,7 +432,7 @@ static void TestLoopSection() {
         ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "recording %.0f s", s.recordingSeconds);
     } else {
         ImGui::SameLine();
-        ImGui::TextDisabled("Home, or both grips + right stick click");
+        ImGui::TextDisabled("or Home on the keyboard");
     }
     if (s.replaying) {
         if (ImGui::Button("Stop replay")) {

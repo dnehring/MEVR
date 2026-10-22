@@ -9,6 +9,7 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/Floor.hpp"
 #include "core/vr/HostView.hpp"
+#include "core/vr/SquadMenu.hpp"
 #include "core/vr/Output.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "core/vr/ViewSync.hpp"
@@ -31,6 +32,7 @@
 #include "game/Holsters.hpp"
 #include "game/Reflections.hpp"
 #include "game/SkeletonProbe.hpp"
+#include "game/SquadWeapons.hpp"
 #include "game/SupportGrip.hpp"
 #include "game/ViewAnchor.hpp"
 #include "game/Weapon.hpp"
@@ -195,6 +197,7 @@ void TryInstallScriptHooks() {
         log::Warn("weapon: BioWeaponRanged.GetMuzzleLoc not found (or not LE1): shots and hands keep the controller's aim");
     }
     game::holsters::TryStartup();  // logs what it found; holsters stay off without it
+    game::squad_weapons::TryStartup();  // likewise for the squad weapon menu
     gHandAimAvailable = game::hand_aim::TryStartup();
     if (!gHandAimAvailable) {
         log::Warn("hand aim: BioPlayerController.GetAdjustedAimFor not found; hand aim unavailable");
@@ -413,6 +416,29 @@ mevr::game::holsters::Link HolsterLink() {
     return link;
 }
 
+// Host renderer: the squad weapon menu (HostServices v11: drawing it, the left grip's report, the pad flag),
+// and the controller pulses (v9/v10).
+mevr::game::squad_weapons::Link SquadLink() {
+    using namespace mevr;
+    game::squad_weapons::Link link;
+    if (!gHostOwnsVr) {
+        return link;  // our own renderer draws no squad menu
+    }
+    if (MEVR_HOST_HAS(leftGripAway) && gHost->setSquadMenu != nullptr && gHost->leftGripAway != nullptr &&
+        gHost->squadMenuSize == sizeof(vr::squad_menu::View)) {
+        link.supported = true;
+        link.setMenu = gHost->setSquadMenu;
+        link.leftGripAway = gHost->leftGripAway();
+    }
+    if (gHost->version >= 9) {
+        link.haptic = gHost->hapticPulse;
+    }
+    if (MEVR_HOST_HAS(hapticPulseHz)) {
+        link.hapticHz = gHost->hapticPulseHz;
+    }
+    return link;
+}
+
 // Host renderer (HostServices v8): while the test loop takes a snapshot, our state for its JSON.
 void PublishStatus() {
     using namespace mevr;
@@ -435,14 +461,14 @@ void PublishStatus() {
         "\"armIk\": {{\"enabled\": {}, \"status\": {}, \"handSource\": {}, \"rightHandAimsGun\": {}, \"supportRequested\": {}}}, "
         "\"handAim\": {{\"enabled\": {}, \"toldHost\": {}}}, "
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
-        "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}}}",
+        "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
         game::arm_ik::SupportRequested() ? "true" : "false", game::hand_aim::Enabled() ? "true" : "false",
         gHandAimReported ? "true" : "false", json::JsonString(type), static_cast<unsigned long long>(game::weapon::Key()),
         json::JsonString(game::weapon::Status()), game::support_grip::Held() ? "true" : "false",
-        json::JsonNumber(game::support_grip::Blend()), game::holsters::StatusJson());
+        json::JsonNumber(game::support_grip::Blend()), game::holsters::StatusJson(), game::squad_weapons::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -575,6 +601,7 @@ void Heartbeat() {
         game::arm_ik::LogStats();
         game::support_grip::LogStats();
         game::holsters::LogStats();
+        game::squad_weapons::LogStats();
         game::skeleton_probe::Tick();
     }
     engine::scene_view::LogStats();
@@ -680,8 +707,9 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // OnTickEnd), then which way shots go and the reticle's ray.
         game::weapon::Tick(game::hand_aim::Enabled() || game::arm_ik::Enabled());
         game::arm_ik::Tick(deltaSeconds);
-        // Holsters before the support grip: it publishes the pad flags, holsters' among them.
+        // Holsters and the squad menu before the support grip: it publishes the pad flags, theirs among them.
         game::holsters::Tick(deltaSeconds, HolsterLink());
+        game::squad_weapons::Tick(deltaSeconds, SquadLink());
         game::support_grip::Tick(deltaSeconds, game::arm_ik::SupportRequested());
         PublishSupportGrip();
         game::camera_probe::Tick();
@@ -773,6 +801,7 @@ MEVR_MOD_API void MevrModShutdown() {
     gToldNoSupportGrip = false;
     game::support_grip::Shutdown();
     game::holsters::Shutdown();
+    game::squad_weapons::Shutdown(exiting);  // unpauses the game if its menu paused it
     game::weapon::Shutdown();
     game::camera_probe::Shutdown();
     gHost = nullptr;
