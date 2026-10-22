@@ -269,6 +269,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/RecenterTilt.hpp
     src/plugin/SightLayers.cpp
     src/plugin/SightLayers.hpp
+    src/plugin/SightPictures.cpp
+    src/plugin/SightPictures.hpp
     src/plugin/SquadPanel.cpp
     src/plugin/SquadPanel.hpp
     src/plugin/SquadPanelDraw.cpp
@@ -359,6 +361,22 @@ if (MEVR_BUILD_TESTS)
     target_compile_definitions(mevr-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_test(NAME mevr-tests COMMAND mevr-tests)
+
+    # The gun sights' look, offline (tools/sight-preview): the scope's picture with the host's own shader, the
+    # reticles and the window ring, as PNGs from a ray-traced test scene.
+    add_executable(mevr-sight-preview
+        tools/sight-preview/Main.cpp
+        src/core/PngFile.cpp
+        src/core/vr/ImageConvert.cpp
+        src/core/vr/LayerComposite.cpp
+        src/core/vr/OverlayPlacement.cpp
+        src/core/vr/Sights.cpp
+        src/plugin/SightPictures.cpp
+    )
+    target_include_directories(mevr-sight-preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(mevr-sight-preview PRIVATE OpenXR::headers windowscodecs ole32 d3d11 d3dcompiler)
+    target_compile_definitions(mevr-sight-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-sight-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
 
     # The squad weapon menu's look, offline (tools/squad-preview): PNGs of sample squads drawn with the
     # host's own drawing code and ImGui's D3D11 backend (from the halcyon-le1 library).
