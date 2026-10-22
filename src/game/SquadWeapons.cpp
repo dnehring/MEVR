@@ -829,8 +829,8 @@ Pick PickOf(Game const& game, UBioSFHandler_HUD const* hud, wheel::Entry entry) 
     }
     pick.squadIndex = entry.member == 0 ? hud->m_nShepardIndex : entry.member == 1 ? hud->m_nHench1Index : hud->m_nHench2Index;
     pick.weapon = wheel::WeaponOfSlot(entry.slot);
-    if (pick.squadIndex < 0 || pick.weapon < 0) {
-        return pick;
+    if (pick.squadIndex < 0 || pick.squadIndex >= SquadSize(game.squad) || pick.weapon < 0) {
+        return pick;  // a henchman slot the squad doesn't have (one squadmate, or the HUD's indices stale)
     }
     if (entry.member == 0) {
         int current = -1;

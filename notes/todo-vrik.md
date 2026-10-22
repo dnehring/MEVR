@@ -167,6 +167,11 @@ The agreed plan:
   - Next: a snapshot (End) with the wheel open shows which part is where. Possible fixes: send
     every UI draw to the panel while a wheel is open, or none (Halcyon's head-locked HUD) while it
     is open.
+  - **Fixed 2026-10-22, to verify** (research/15 "Scaleform's blend modes and the doubled wheel"):
+    the part left in the eyes was most likely Scaleform's multiply-blended draws (`761A1BD7`,
+    `11B5823A`: DEST_COLOR/ZERO with Scaleform's DEST_ALPHA alpha factor), which the redirect
+    skipped. They go to the panel now (colour + a tint texture for their effect on the world), and
+    the wheel itself has a panel of its own at the hand (below).
 - **Bug: world scale and close-up parallax are wrong.** The pistol looked massive, and the user
   went cross-eyed up close.
   - Settings in play: life-size movement on (leanGain 2, 100 units/m), stereo half-eye 3.4
@@ -262,6 +267,34 @@ notes/next-vr-session.md step 12.
   game's TLK name (string refs) isn't read; Halcyon's double-click recenter can fire on two quick
   taps pressed right stick first.
 
+
+## The game's own weapon wheel at the hand (user, 2026-10-22; built the same day, to test)
+
+The user: the squad menu should be ME1's actual UI, pause and slow down like the flat game's wheel,
+and show only weapons the squadmate can equip. Design: docs/squad-weapons-design.md "The game's own
+wheel"; the game's side: research/19 section 10; the panel: research/15. Test steps:
+notes/next-vr-session.md step 13.
+- **Host change, needs a redeploy:** HostServices v12 (`wheelPanelSize`, `setWheelPanel`); the pad's
+  `kFlagNativeWheel`, `kFlagWheelPressA` and wheel stick bits (`gamepad::WheelStick`); the wheel panel
+  (`HalcyonOverlays`, `core/vr/WheelCrop`: cut out of the HUD panel, a quad at the hand, "wheel" in
+  snapshots); Scaleform's non-"over" blend modes into the HUD panel (the doubled wheel); Halcyon fix:
+  decoupled pitch no longer cuts the wheels' steering (`vr_menu.cpp` `MenuOwnsLook`, [MEVR]);
+  OverlayLayers takes four quads.
+- **Mod (hot reload, but needs the v12 host):** `[Squad] style = native` (default):
+  `EnterWeaponWheel` / `ExitWeaponWheel` through ProcessEvent, A on release, preselect by pointing
+  (the HUD's `nLastAngle`), highlight ticks from the HUD's `nAngle` (`squad_menu::wheel`, unit-tested);
+  new `[Squad]` keys appended (`style`, `wheelStick`, `wheelPreselect`, `wheelPanel`, `weaponWheelAt`,
+  `powerWheelAt`, `wheelCrop`). `style = custom` is the drawn menu.
+- **Decisions:** call the execs rather than hold LB (LB's tap would swap Shepard's weapon, and its
+  hold adds 0.3 s); letting go gives the highlighted entry (an A), B closes without; the wheel is cut
+  out by place (it's part of the HUD movie), measured once per session; the power wheel goes to the
+  right hand.
+- **[verify in headset]:** nothing of the wheel left in the eyes; the crop (measured vs the default
+  guess; the squad portraits inside); A from our pad queues while paused (the `queued:` log line);
+  the preselect; all twelve entries reachable; the steering gate; the power wheel at the right hand.
+- **Open, for the user:** opening the wheel draws Shepard's holstered weapon (ME1 does that); a stick
+  remap so the pointed squadmate's arc fills the whole stick (not built: the flat game's absolute
+  directions kept); the native wheel always pauses (the custom one can run on).
 
 ## World-locked flat panels (user, 2026-10-21; built the same day, to test)
 

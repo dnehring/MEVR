@@ -85,6 +85,11 @@
 - Menus in VR: [Santos et al. 2017 (ISS poster)](https://iss2017.acm.org/program/posters), [Chertoff et al. (poster)](https://www.eecs.ucf.edu/~jjl/pubs/chertoff.pdf), [Komerska and Ware 2004](https://scholars.unh.edu/ccom/295), [Lediaeva and LaViola, GI 2020](https://www.eecs.ucf.edu/~jjl/pubs/GI2020-1.pdf)
 - Squad orders: Arizona Sunshine 2 ([UploadVR](https://uploadvr.com/arizona-sunshine-2-review), [Mixed](https://mixed-news.com/en/arizona-sunshine-2-review/), [Android Central](https://androidcentral.com/gaming/virtual-reality/arizona-sunshine-2-review)); Star Trek: Bridge Crew voice ([Road to VR](https://www.roadtovr.com/hands-ibm-watson-brings-voice-commands-star-trek-vr/), [UploadVR](https://uploadvr.com/star-trek-bridge-crew-getting-voice-commands-via-ibm-watson/))
 
+## The game's own weapon wheel at the hand (research/19 section 10, research/15, consulted 2026-10-22)
+- LE1's own files, read-only and local: `BIOInput.ini` (the wheel modes' bindings), `SFXGame.pcc` bytecode (`EnterWeaponWheel`, `SFXGameModeWeaponWheel.Activated` / `ExitWeaponWheel`, `BioSFHandler_HUD.HandleInputEvent` / `HandleEvent`), and the HUD movies `GUI_SF_HUD.ME_HUD` / `PC_ME_HUD` in `Startup_INT.pcc` (the GFX inside each GFxMovieInfo: display list and ActionScript 2 bytecode, parsed by scratch scripts; nothing kept or committed)
+- GhidraMCP on the LE1 project: `UBioSFHandler_HUD::UpdateHUDModes` (`0xB12410`), `ChangeSelectedWeapon` (`0xB180E0`), the natives dump
+- Scaleform blend modes as D3D blend pairs: inferred from the game's own blend states in Halcyon's `[MEVR-HUD]` log lines (multiply = DEST_COLOR/ZERO with Scaleform's DEST_ALPHA alpha factor)
+
 ## Searched, nothing relevant found
 - "vorpX Mass Effect Legendary Edition profile": no vorpX information
 - "Modern Warfare 2 Campaign Remastered VR mod AI" (standard search): nothing; the GitHub-targeted search found Overlord

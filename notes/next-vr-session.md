@@ -371,7 +371,8 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       buzz, the eye height and its source, the head's height now. Halcyon's side: `halcyon bridge:
       first controller vibration (right hand, N ms at 0.xx, NNN Hz): applied`.
 12. **Squad weapons at the left hand, and the snapshot tap (new, 2026-10-22; HOST REDEPLOY:
-    services v11).** Give a squadmate a weapon without the game's wheel
+    services v11).** Since step 13 this is `[Squad] style = custom` (our drawn menu, the fallback);
+    the default is the game's own wheel (step 13). Give a squadmate a weapon without the game's wheel
     ([docs/squad-weapons-design.md](../docs/squad-weapons-design.md), research/19 section 9). Close
     the game and run `tools/deploy-asi.ps1 -Game LE1` first: without the new host the mod logs
     `squad: the host can't draw the squad menu ...: the menu stays off; ... redeploy the host`.
@@ -399,7 +400,8 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
     - **Settings:** `[Squad]` in `Binaries\Win64\ASI\LE1MEVR.ini` (added to your file): `enabled`,
       `pointConeDeg = 10`, `pointMaxM = 40`, `openHoldS = 0.35`, `panelDistanceM = 0.27`,
       `panelWidthM = 0.40`, `confirmOnRelease = 1` (0: the menu stays open after you let go; A gives,
-      B or a new squeeze cancels), `pause = 0`, `hapticAmplitude = 0.5`.
+      B or a new squeeze cancels), `pause = 1` (like ME1's wheel; 0 keeps the game running),
+      `hapticAmplitude = 0.5`.
     - **The both-sticks tap (snapshots):** click and let go of both sticks together quickly: one
       snapshot (`test loop: both sticks tapped: snapshot`). Hold both: Halcyon's menu opens, and no
       snapshot. Click the left stick alone: you crouch, about a tenth of a second later than before
@@ -420,6 +422,69 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       and the stick clicks are its own`, `squad panel: ImGui context of its own ..., font
       bahnschrift.ttf`, `squad panel: swapchain 1024x600`, `squad panel: menu #N placed 0.27 m from
       the left grip, at (...)`.
+
+13. **The game's own weapon wheel at your hand (new, 2026-10-22; HOST REDEPLOY: services v12).**
+    The squad gesture now opens ME1's real weapon wheel (its look, its pause, its rules), shown on a
+    panel above your left hand ([docs/squad-weapons-design.md](../docs/squad-weapons-design.md)
+    "The game's own wheel", research/19 section 10, research/15). Close the game and run
+    `tools/deploy-asi.ps1 -Game LE1` first: with the old host the mod logs `squad: style = native,
+    but the host can't show the game's wheel at the hand (services older than v12 ...): our drawn
+    menu instead`.
+    - **How:** on foot. **Point your left hand at a squadmate and squeeze the left grip** (away from
+      the gun), or keep it squeezed a third of a second pointing at nobody. The game's wheel opens
+      (the game pauses, as on a flat screen) on a panel about 40 cm wide above your left hand,
+      fixed in the room while it's open. Pointing at someone first puts the highlight on their
+      weapon in hand. **Push the right stick** toward a weapon (one ring: Shepard's four weapons,
+      and each squadmate's four in their own arc): the highlight moves, the game plays its sound,
+      and your right hand ticks (a soft buzz on a weapon they don't carry). **Let go of the grip:**
+      the mod presses A for you (the game's own "pick this one") and closes the wheel; the
+      squadmate switches. A picks too (you can pick for both squadmates, then let go); B closes it
+      without picking. Opening the wheel draws Shepard's weapon if it's holstered: ME1's own wheel
+      does that (EnterWeaponWheel calls DrawPrimaryWeapon). Tell Claude if that's unwanted.
+    - **While it's open:** a stick that was pushed when it opened (turning) steers nothing until you
+      let it come back to centre; the left stick doesn't walk; B and the stick clicks don't reach the
+      game. After it closes, what you still hold stays off until you let go.
+    - **The wheel shows once:** nothing of it should stay stuck to your view, in either eye (the
+      doubled wheel of 2026-10-21). The rest of the HUD stays on the HUD panel, with the wheel's
+      part cut out of it.
+    - **Also check:** the left trigger (LB) still opens the wheel the flat-game way, now also on the
+      panel at the left hand. R3 held (the power wheel) shows on a panel at your right hand
+      (`powerWheelAt`), steered with the right stick in both directions (decoupled pitch no longer
+      cuts its up/down).
+    - **What to check:** the panel's place and size; whether the crop shows the whole wheel (squad
+      portraits included) and nothing else; the highlight following the stick, all twelve entries
+      reachable; the preselect when pointing; letting go gives the highlighted weapon; how long the
+      squadmate takes to switch, weapon out and holstered.
+    - **Snapshot of it:** with the wheel open, tap both stick clicks: `<stamp>-wheel.png` (the
+      wheel panel), `-hud.png` (the HUD panel with the hole), and both in `-left.png` / `-right.png`.
+      Claude can tune the crop from these.
+    - **Settings:** `[Squad]` in `Binaries\Win64\ASI\LE1MEVR.ini` (new keys added to your file):
+      `style = native` (`custom`: step 12's menu), `wheelStick = right` (`left`: the stick on the
+      hand that holds the grip; `either`), `wheelPreselect = 1`, `wheelPanel = 1`, `weaponWheelAt =
+      left` (`right`, `front`, `hud`), `powerWheelAt = right`, `wheelCrop = auto` (or `x, y, width,
+      height` as fractions of the frame), and as before `panelDistanceM`, `panelWidthM`,
+      `confirmOnRelease` (0: letting go closes without picking; only A picks), `openHoldS`,
+      `hapticAmplitude`.
+    - **Logs (ours):** `squad: script functions found ...; the game's own wheel can be opened and
+      closed`, `squad: style: the game's own weapon wheel at the hand`, `squad: wheel #N: opening
+      the game's weapon wheel, pointed at <name> (SFXGameModeDefault.EnterWeaponWheel ...)`,
+      `squad: wheel #N open after N s (game mode 3 ...); HUD handler BioSFHandler_...HUD ...,
+      its movie uses the gamepad` (**tell Claude if it says "doesn't use"**), `squad: wheel #N:
+      preselected <name>'s <weapon> (wheel member 1, slot 2: ...)`, `squad: wheel highlight: member
+      M slot S = <name>'s <weapon>` per change (**check the name and weapon match what the wheel
+      shows**), `squad: wheel #N: grip let go: giving <name> the <weapon> (A for the game ...)`,
+      `squad: wheel #N: closing (ExitWeaponWheel ...); queued: <name>: <weapon>` (**nothing
+      queued after a pick means the A didn't reach the wheel**), `squad: wheel #N closed after N
+      s`, `squad: <name> holds the <weapon> after N s`. Halcyon bridge: `halcyon bridge: the
+      game's weapon wheel held by the left grip: the right stick steers it ...`, `A pressed for the
+      mod`. Overlays (both logs): `[MEVR-WHEEL] the weapon wheel on its own panel: 0.27 m from the
+      left hand, at (...), 0.40 m wide; the UI's part (x, y) WxH of 3072x3188 (the default guess /
+      measured)`, and once per session `[MEVR-WHEEL] measured: the wheel is at (...)` (or why it
+      wasn't), `overlays: wheel panel swapchain WxH`, `[MEVR-WHEEL] the weapon wheel closed`. The
+      doubled wheel: any `[MEVR-HUD] ... to the HUD panel (a Scaleform blend mode, as a tint) ps=..`
+      and `[MEVR-HUD] Scaleform blend mode src=9 dst=1 ...: colour to the HUD panel, and its effect
+      on what's behind as the panel's tint` lines, and `overlays: first frame with Scaleform
+      blend-mode draws in the panel's tint`.
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR

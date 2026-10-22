@@ -1,5 +1,41 @@
 # Squad weapons in VR (option A built 2026-10-22, to test in the headset)
 
+**Since the evening of 2026-10-22 the default is the game's own wheel** (`[Squad] style = native`,
+the next section): the user wanted ME1's actual UI, its pause and its rules rather than our drawing.
+Our drawn menu ("As built" below) stays as `style = custom`.
+
+## The game's own wheel (style = native; built 2026-10-22, to test)
+
+The gesture stays; what it opens is ME1's weapon wheel (`SFXGameModeWeaponWheel`, game mode 3), shown
+on a panel at the hand. The game then does everything the flat game does: its look, its pause (its
+`Activated` calls `PauseGame`), which squadmate can hold what, and applying the choice when it closes.
+How the game's wheel works: [research/19](../research/19-body-holsters.md) section 10. How it's cut
+out of the UI: [research/15](../research/15-hud.md), "The wheels on their own panel". Test steps:
+notes/next-vr-session.md step 13.
+
+| | Built | Why |
+|-|-------|-----|
+| Open | The same gesture as before (point and squeeze the left grip away from the gun; or hold it `openHoldS` at nobody; a squeeze at nobody next to the foregrip is a missed grab), then `SFXGameModeDefault.EnterWeaponWheel()` through ProcessEvent: exactly what holding LB does once the binding's 0.3 s have passed | Holding LB through the pad would add the 0.3 s, and a squeeze let go sooner would be LB's *tap*: `TrySwapWeapon` (Shepard's weapon swapped). The exec has no such case |
+| Close | Letting go of the grip: an A for the highlighted entry if there's something new to give (below), then `SFXGameModeWeaponWheel.ExitWeaponWheel()`, what releasing LB does; its `Deactivated` applies the queue. B closes without the A. If the game closes it itself (LB, the pause menu), we just follow | The wheel needs A to pick (its own rule); "let go to give" was the user's control for our menu and is the natural VR gesture |
+| Pick | The highlighted entry's A is sent through the pad (`kFlagWheelPressA`, 80 ms), then we wait (at most 0.4 s) until that member's squad entry has taken it (`GetMemberSwitchWeapon`), then exit. No A when the entry is their weapon in hand or one they don't carry, or one already queued. A by hand works as in the flat game (pick for several squadmates, then let go) | The console movie only queues on A (`selectWeaponOrPowerInTacticalMode`); waiting for the queue makes sure the exit doesn't beat it |
+| Steer | The right stick, as the game binds it (`wheelStick = left` or `either`: the left stick, on the hand that holds the grip, sent as the right stick). A stick already pushed when it opens (turning) reaches the game only after it has been centred once; the left stick never walks; B and the stick clicks are kept from the game; whatever is held when it closes stays off until let go | The wheel reads the right stick's angle; the gate stops a turn from picking an entry the moment it opens |
+| Pointing preselects | Yes: the wheel has no "active squadmate", only one ring whose angle picks a member and a weapon together. Its HUD keeps the last stick angle while the stick is centred (`BioSFHandler_HUD.nLastAngle`), so on opening we set it to the pointed squadmate's weapon in hand. Pushing the stick takes over at once | "Steer it there with simulated input" without simulating anything: the same state the stick would leave. A no-op if confirmed (their own weapon), so nothing happens by accident **[verify]** |
+| Feedback | A tick in the steering hand on each new highlight (read from the HUD's `nAngle`, mapped through the movie's own table), a soft buzz on a weapon they don't carry, a firmer click on the pick, softer on a cancel; the game's own highlight sound plays too | Meta's haptics guide, as before |
+| Presentation | The host cuts the wheel's part out of the UI frame and shows it on its own quad, placed when it opens 0.27 m above the left hand (`panelDistanceM`), 0.40 m wide (`panelWidthM`), fixed in the room while it's open; the HUD panel shows the rest with that part cut out. Any way the wheel opens (our gesture, LB) it goes there; the power wheel (R3 held) goes to the right hand (`powerWheelAt`) | The user's request; the HUD stays where it is |
+| Only what they carry | The game's own rule (the movie greys what they don't have) | |
+| Time | The game's wheel pauses the game (`Activated` → `PauseGame`); `pause` is for our menu only | Wanted: like the flat game |
+| Shepard's weapon | Opening it draws Shepard's weapon if holstered (`EnterWeaponWheel` calls `DrawPrimaryWeapon`), as in the flat game | Kept as the game does it; **question for the user** |
+
+**[verify] in the headset:** that the console HUD movie (`ME_HUD`) is the one the wheel is drawn by
+with a pad (the log names the HUD handler and whether its panel uses the gamepad); that A from our pad
+queues while the game is paused; the crop (measured once per session; `wheelCrop` by hand); the
+preselect; that nothing of the wheel stays in the eyes.
+
+**Not done:** a "point at the squadmate's arc" remap of the stick (the stick's direction picks the
+entry absolutely, as in the flat game, so the stick has to go to the squadmate's side of the ring).
+
+## Our drawn menu (style = custom)
+
 Shepard's own weapons now come from body holsters ([research/19](../research/19-body-holsters.md)).
 Squadmates' weapons needed the game's weapon wheel (the left trigger, LB). This note proposed a
 VR-native way to choose them and recommended one; the user approved **option A** on 2026-10-22 with
@@ -17,10 +53,10 @@ bevelled or hexagonal tiles, cyan outlines, amber highlight). The proposal below
 | Who decides it's "away from the gun" | The host's pad mapping, on the new squeeze (the same decision that makes it the support grip or not), counted and reported (`HostServices::leftGripAway`, v11); the two-handed grip keeps priority, and taking it closes the menu | No race between the mod's tick and the mapping |
 | The squadmate | Left stick left or right picks the left or right card. The cards are ordered by where the two stand (the one further left on the left) when it opens | The concept's layout, and it matches the world |
 | The weapon | A flick of the **right** stick into a new sector (past 0.55, kept until back inside 0.35, 12° of hysteresis at the diagonals) highlights that tile; centred, the choice stays. Fixed places: assault rifle up, shotgun left, sniper rifle right, pistol down | The user's controls (the proposal had the left stick); fixed places are muscle memory, like the holsters. A stick already pushed when it opens (walking, turning) chooses nothing until it moves on |
-| Only what they carry | Tiles only for the types in their quick slots; the others are faint empty outlines (no label), and a flick toward one gives a soft refusal | The user's rule; the outlines keep the four places recognisable |
+| Only what they carry | Tiles only for the types in their quick slots; the others are hidden (since f27cae4; first faint outlines), and a flick toward one gives a soft refusal | The user's rule |
 | Confirm / cancel | Letting go of the grip confirms the highlighted weapon, or cancels with none; A confirms (with one chosen), B cancels. `confirmOnRelease = 0`: letting go keeps it open (A gives it; B, a new squeeze or 15 s untouched cancels) | The user's controls |
 | Input while open | The host keeps the sticks, A, B and both stick clicks from the game (`gamepad::kFlagSquadMenu`), and each one in use when it closes stays off until released or centred | The right stick turns and R3 is the power wheel; the flick and the confirming A must not leak |
-| Time | **The game keeps running** (`pause = 0`); `pause = 1` calls `WorldInfo.PauseGame` like ME1's weapon wheel, and unpauses before applying, as the wheel's close does | Point, squeeze, flick, let go is about a second, and the squad keeps fighting meanwhile; a paused world in a headset is jarring, and ME1's pause exists because its wheel is a full-screen overlay. Slowing time (`TimeDilation`) was not built: the game sets it too, so we'd fight it. The option is there if a fight shows the second matters |
+| Time | First built running (`pause = 0`); since f27cae4 (user, 2026-10-22) **`pause = 1` by default**: `WorldInfo.PauseGame` like ME1's weapon wheel, unpaused before applying, as the wheel's close does | The user wanted the flat game's pause. Slowing time (`TimeDilation`) was not built: the game sets it too, so we'd fight it |
 | The panel | A quad above the left hand: placed once when it opens, 0.27 m (`panelDistanceM`) from the grip, mostly up and a little further out from the head, level and facing the eyes, 0.40 m wide (`panelWidthM`), fixed in the room while open (not on the jittery hand); placed again on a recenter | The user's numbers |
 | Drawing | Its own ImGui context and its own texture and swapchain in the host (Present thread, the game's context saved and restored), drawn as the "squad" quad layer: in snapshots as `-squad.png` and in the eye composites. `tools/squad-preview` renders it to PNGs offline | Halcyon's menu keeps its own context; Claude can check the look without a headset |
 | Haptics | A tick on each highlight (the hand whose stick moved), a firmer click on confirm, softer on cancel or refusal (`hapticAmplitude`) | Meta's haptics guide |

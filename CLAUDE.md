@@ -117,20 +117,27 @@ switching frameworks.
   elsewhere it goes back after `releaseGrace`; the grip is never RB, RB (power wheel / mapped
   power) is the right stick click (`powerWheel`). Contact haptics while the hand is in a slot
   (host `core/vr/Haptics`); the slots scale with the standing eye height from the floor (host
-  `core/xr/Floor`, STAGE). Squad weapons: the game's wheel (docs/squad-weapons-design.md).
-  Settings: `[Holsters]` in `ASI\LE1MEVR.ini`.
+  `core/xr/Floor`, STAGE). Squad weapons: below. Settings: `[Holsters]` in `ASI\LE1MEVR.ini`.
 - LE1 HUD (Halcyon's renderer, Stereo 2): the game's UI draws go to a body-locked HUD panel quad,
   and a hand reticle on the aim ray replaces the crosshair (`src/plugin/HalcyonOverlays.cpp`,
-  [research/15](research/15-hud.md)). Toggles: `MELEVR.ini` `hudPanel*` / `handReticle*`, or the
-  Insert menu's HUD tab.
+  [research/15](research/15-hud.md)). Scaleform's non-"over" blend modes (multiply...) go there too,
+  through a tint texture the panel's alpha is made from (they used to stay in the eyes: the doubled
+  wheel). While the game's weapon or power wheel is up, its part of the UI (`core/vr/WheelCrop`:
+  guessed, then measured once per session) is cut out of the HUD panel and shown on a quad of its
+  own at the left / right hand ("wheel"). Toggles: `MELEVR.ini` `hudPanel*` / `handReticle*`, or the
+  Insert menu's HUD tab; the wheel panel's in `[Squad]`.
 - LE1 squad weapons ([docs/squad-weapons-design.md](docs/squad-weapons-design.md), research/19
-  section 9): point the left hand at a squadmate and squeeze the left grip away from the gun's
-  foregrip: a menu opens above the hand (left stick = squadmate, right stick flick = weapon, let go
-  or A = give it, B = cancel). `game/SquadWeapons` (mod) reads the squad and applies the choice the
-  way the weapon wheel's close does; `plugin/SquadPanel` (host) draws it with its own ImGui context
-  as the "squad" quad; `core/vr/SquadMenu` is the shared, unit-tested part. While it's open the host
-  keeps the sticks, A, B and stick clicks from the game (`gamepad::kFlagSquadMenu`, HostServices
-  v11). Settings: `[Squad]` in `ASI\LE1MEVR.ini`.
+  sections 9-10): point the left hand at a squadmate and squeeze the left grip away from the gun's
+  foregrip. `[Squad] style = native` (default, HostServices v12): that opens the GAME's weapon wheel
+  (`SFXGameModeDefault.EnterWeaponWheel` through ProcessEvent; it pauses the game itself), shown at
+  the left hand; the right stick steers it (`gamepad::kFlagNativeWheel`: the stick reaches the game
+  once centred), letting go sends A for the highlighted entry and then `ExitWeaponWheel`; pointing
+  preselects through the HUD's kept stick angle (`BioSFHandler_HUD.nLastAngle`). `style = custom`:
+  our drawn menu (left stick = squadmate, right stick flick = weapon, let go or A = give it, B =
+  cancel; `plugin/SquadPanel` draws it with its own ImGui context as the "squad" quad;
+  `gamepad::kFlagSquadMenu`, v11). `game/SquadWeapons` (mod) drives both; `core/vr/SquadMenu` is the
+  shared, unit-tested part (the native ring's tables in `squad_menu::wheel`). Settings: `[Squad]` in
+  `ASI\LE1MEVR.ini`.
 - Trilogy check: `build-trilogy/` (configured with `-DMEVR_BUILD_LE2=ON -DMEVR_BUILD_LE3=ON`) must
   keep building all three games. Per-game field spellings go in `src/engine/GameAdapter.hpp`;
   per-game addresses sit next to their use (e.g. `engine/SceneView.cpp`).
@@ -161,10 +168,11 @@ Use it to check VR changes yourself instead of asking the user what they see
 `%LOCALAPPDATA%\MEVR`; the log lines start with `test loop:`.
 - **Snapshots:** `tools/snapshot.ps1 [-Count N -Interval s -Delay s -Tag x]` writes
   `snapshot.request` and waits. Output in `snapshots\`: `<stamp>-left.png` / `-right.png` (what
-  each eye shows: the world plus our HUD panel, reticle, squad menu and Halcyon's menu, composited
-  like the runtime does), `-left-world.png` (world layer alone), `-hud.png`, `-squad.png`,
-  `-menu.png`, and `<stamp>.json` (head and eye poses/FOVs, controllers, aim ray, host view, the
-  mod's arm IK / hand aim / weapon / support grip / holsters / squad state, every layer). The JSON
+  each eye shows: the world plus our HUD panel, reticle, squad menu, the game's wheel and Halcyon's
+  menu, composited like the runtime does), `-left-world.png` (world layer alone), `-hud.png`,
+  `-squad.png`, `-wheel.png`, `-menu.png`, and `<stamp>.json` (head and eye poses/FOVs,
+  controllers, aim ray, host view, the mod's arm IK / hand aim / weapon / support grip / holsters /
+  squad state, every layer). The JSON
   is written last. Read the PNGs to look.
 - **Recording:** `tools/record.ps1 -Seconds N` (or `-Start` / `-Stop`) writes `record.request`;
   frames go to `recordings\<stamp>.mevrrec` (head eye views, both controllers' poses and inputs).
@@ -189,7 +197,7 @@ Use it to check VR changes yourself instead of asking the user what they see
   WrapSessionFunctions`) wraps `xrAcquireSwapchainImage` / `xrReleaseSwapchainImage` (copy each
   image to staging before release, only while a snapshot is armed), `xrEndFrame` (the layers) and
   `xrLocateViews` (record the head; substitute it in a replay). Our quads report their images from
-  `HalcyonOverlays` and `SquadPanel`. Staging copies are mapped 2+ frames later and converted on a
+  `HalcyonOverlays` (HUD, reticle, wheel) and `SquadPanel`. Staging copies are mapped 2+ frames later and converted on a
   worker thread.
 - The squad menu's look can be checked offline: `build\Release\mevr-squad-preview.exe <folder>`
   renders sample squads to PNGs with the host's own drawing code (`src/plugin/SquadPanelDraw.cpp`).

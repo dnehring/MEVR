@@ -26,7 +26,7 @@ and keeps our effort on what only we provide.
 without the user wearing the headset or describing what they see.
 
 - **Eye snapshots:**
-  - What it saves: PNGs of what each eye shows (world, HUD panel, reticle, squad menu, menu), plus
+  - What it saves: PNGs of what each eye shows (world, HUD panel, reticle, squad menu, the game's wheel, menu), plus
     a JSON of the head and controller poses and the arm IK, weapon and grip state.
   - Triggers: End, a quick tap of both stick clicks (since 2026-10-22; the grip chords are gone),
     the VR hands tab, or `%LOCALAPPDATA%\MEVR\snapshot.request` (`tools/snapshot.ps1`), which
