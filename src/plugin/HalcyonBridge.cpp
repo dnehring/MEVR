@@ -75,6 +75,8 @@ std::atomic<bool> gLoggedRightGripHolds{false};
 // the mod's flag says the menu is open (logged when it changes).
 std::atomic<std::uint32_t> gLeftGripReport{0};
 bool gSquadMenuLogged = false;  // under gPadMutex
+bool gNativeWheelLogged = false;  // under gPadMutex: the mod holds the game's weapon wheel (v12)
+bool gWheelPressALogged = false;  // under gPadMutex
 std::mutex gHapticMutex;  // gHaptics
 std::array<mevr::vr::haptics::Channel, 2> gHaptics;
 bool gLoggedHaptic = false;            // frame thread
@@ -334,6 +336,19 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
         mevr::log::Info("halcyon bridge: squad menu {}", options.squadMenu
             ? "open: the sticks, A, B and the stick clicks are its own (kept from the game until released)"
             : "closed");
+    }
+    if (options.nativeWheel != gNativeWheelLogged) {
+        gNativeWheelLogged = options.nativeWheel;
+        mevr::log::Info("halcyon bridge: the game's weapon wheel {}", options.nativeWheel
+            ? std::format("held by the left grip: {} steers it (once centred), A queues; the left stick, B and the stick "
+                          "clicks are kept from the game", mevr::game::gamepad::Name(options.wheelStick))
+            : std::string("let go (what was in use stays kept from the game until released or centred)"));
+    }
+    if (options.nativeWheel && options.wheelPressA != gWheelPressALogged) {
+        gWheelPressALogged = options.wheelPressA;
+        if (options.wheelPressA) {
+            mevr::log::Info("halcyon bridge: A pressed for the mod (confirming the highlighted entry on release)");
+        }
     }
     std::uint32_t const report = mevr::game::gamepad::RightGripReport(gLatches);
     if (gRightGripReport.exchange(report, std::memory_order_relaxed) != report && (report & 1u) != 0) {

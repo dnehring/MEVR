@@ -26,6 +26,9 @@ struct State;
 }
 namespace vr::squad_menu {
 struct View;
+namespace wheel {
+struct Panel;
+}
 }
 
 // Fields are only ever appended: a mod reads the fields of every version up to the host's (and
@@ -35,7 +38,7 @@ struct View;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 11;
+inline constexpr int kHostServicesVersion = 12;
 
 using ProcessEventCallback = void (*)(UObject* context, UFunction* function, void* parms, void* result);
 
@@ -145,6 +148,17 @@ struct HostServices {
     // the gun's foregrip (not the support grip) shifted up one bit, and in bit 0 whether the current
     // squeeze is one. Squeezes while Halcyon's menu is open aren't counted.
     std::uint32_t (*leftGripAway)() = nullptr;
+
+    // Version 12: the game's own weapon wheel at the hand ([Squad] style = native,
+    // docs/squad-weapons-design.md "Native wheel").
+    // setSupportGrip's flags also take gamepad::kFlagNativeWheel, kFlagWheelPressA and the wheel stick
+    // (kWheelStickMask): while the flag is set the left grip holds the game's wheel open, one stick steers
+    // it, A queues (plus the mod's own A), the rest is kept from the game until released.
+    // The wheel panel's settings (core/vr/SquadMenu.hpp, squad_menu::wheel::Panel), each tick: while the
+    // game's weapon or power wheel is up, the host shows its part of the UI on a panel of its own at a hand
+    // (cut out of the HUD panel). The mod calls it only if wheelPanelSize matches its sizeof(Panel).
+    std::uint32_t wheelPanelSize = 0;
+    void (*setWheelPanel)(vr::squad_menu::wheel::Panel const* panel) = nullptr;
 };
 
 } // namespace mevr

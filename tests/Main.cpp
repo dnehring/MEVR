@@ -22,6 +22,7 @@
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "core/vr/ViewSync.hpp"
+#include "core/vr/WheelCrop.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/GamepadMapping.hpp"
 #include "game/HeadSim.hpp"
@@ -3590,6 +3591,63 @@ void TestNativeWheelPad() {
     CHECK(pad.sThumbRX < -30000);
 }
 
+void TestWheelCrop() {
+    namespace crop = mevr::vr::wheel_crop;
+    // The default: the stage shown whole, top left. A near-square VR frame fits the stage's width.
+    crop::Rect const vr = crop::DefaultCrop(3072, 3188);
+    CHECK(NearD(vr.x, 282.0 * 2.4 / 3072.0, 1e-4) && NearD(vr.width, 716.0 * 2.4 / 3072.0, 1e-4));
+    CHECK(NearD(vr.y, 61.0 * 2.4 / 3188.0, 1e-4) && NearD(vr.height, 588.0 * 2.4 / 3188.0, 1e-4));
+    crop::Rect const flat = crop::DefaultCrop(1920, 1080);  // 16:9: the stage itself
+    CHECK(NearD(flat.x, 282.0 / 1280.0, 1e-4) && NearD(flat.y, 61.0 / 720.0, 1e-4) && NearD(flat.height, 588.0 / 720.0, 1e-4));
+    CHECK(!crop::DefaultCrop(0, 100).Valid());
+
+    // Measuring: what appeared when the wheel opened.
+    crop::Grid before;
+    before.columns = 48;
+    before.rows = 50;
+    before.cells.assign(48 * 50, 0);
+    auto const set = [](crop::Grid& g, std::uint32_t x0, std::uint32_t y0, std::uint32_t x1, std::uint32_t y1, std::uint8_t v) {
+        for (std::uint32_t y = y0; y <= y1; ++y) {
+            for (std::uint32_t x = x0; x <= x1; ++x) {
+                g.cells[y * g.columns + x] = v;
+            }
+        }
+    };
+    set(before, 40, 44, 46, 49, 200);  // the radar, there all along
+    set(before, 20, 30, 22, 31, 30);   // a faint HUD element
+    crop::Grid wheel = before;
+    set(wheel, 11, 4, 36, 22, 180);    // the wheel
+    set(wheel, 2, 46, 3, 47, 255);     // a small HUD change elsewhere (4 cells)
+    set(wheel, 40, 44, 46, 49, 90);    // the radar dimmed: not "appeared"
+    auto const measured = crop::MeasureCrop(before, wheel);
+    CHECK(measured.has_value());
+    if (measured) {
+        CHECK(measured->cells == 26u * 19u && measured->changed == 26u * 19u + 4u);
+        CHECK(NearD(measured->rect.x, 10.0 / 48.0, 1e-5) && NearD(measured->rect.y, 3.0 / 50.0, 1e-5));
+        CHECK(NearD(measured->rect.width, 28.0 / 48.0, 1e-5) && NearD(measured->rect.height, 21.0 / 50.0, 1e-5));
+    }
+    // At the frame's edge the padding is clipped.
+    crop::Grid edge = before;
+    set(edge, 0, 0, 5, 5, 255);
+    auto const corner = crop::MeasureCrop(before, edge);
+    CHECK(corner.has_value() && corner->rect.x == 0.0f && corner->rect.y == 0.0f && NearD(corner->rect.width, 7.0 / 48.0, 1e-5));
+    // Nothing big enough, or grids that don't match: no measurement.
+    crop::Grid speck = before;
+    set(speck, 5, 5, 7, 7, 255);  // 9 cells
+    CHECK(!crop::MeasureCrop(before, speck).has_value());
+    crop::Grid other;
+    other.columns = 10;
+    other.rows = 10;
+    other.cells.assign(100, 255);
+    CHECK(!crop::MeasureCrop(before, other).has_value());
+
+    // To pixels: rounded, inside the frame, at least 16 wide.
+    crop::Pixels const p = crop::ToPixels({0.25f, 0.5f, 0.5f, 0.25f}, 1000, 800);
+    CHECK(p.x == 250 && p.y == 400 && p.width == 500 && p.height == 200);
+    crop::Pixels const tiny = crop::ToPixels({0.995f, 0.0f, 0.001f, 1.5f}, 1000, 800);
+    CHECK(tiny.width == 16 && tiny.x + tiny.width <= 1000 && tiny.y == 0 && tiny.height == 800);
+}
+
 int main() {
     TestBoneNames();
     TestIk();
@@ -3627,6 +3685,7 @@ int main() {
     TestNativeWheelGeometry();
     TestNativeWheelMachine();
     TestNativeWheelPad();
+    TestWheelCrop();
     TestBodySlotGeometry();
     TestBodySlotMachine();
     TestBodySlotHolding();

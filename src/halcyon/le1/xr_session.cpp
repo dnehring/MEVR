@@ -5731,8 +5731,8 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         }
         mevrFrame.floatWhiteScale =
             MELEVR::MevrBridge::HudPanelIsFloat() ? HdrSourceScale(DXGI_FORMAT_R16G16B16A16_FLOAT) : 1.0f;
-        const void* mevrQuads[3] = {nullptr, nullptr, nullptr};   // [MEVR] HUD panel, reticle, squad menu
-        const unsigned mevrQuadCount = MELEVR::MevrBridge::OverlayLayers(mevrFrame, mevrQuads, 3);
+        const void* mevrQuads[4] = {nullptr, nullptr, nullptr, nullptr};   // [MEVR] HUD panel, reticle, squad menu, wheel
+        const unsigned mevrQuadCount = MELEVR::MevrBridge::OverlayLayers(mevrFrame, mevrQuads, 4);
         for (unsigned i = 0; i < mevrQuadCount && layerCount < kMaxLayers - 2; ++i)
             layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(mevrQuads[i]);
         if (mevrQuadCount > 0 && cfg.hudPanelDistanceM < mevrNearestQuadM) mevrNearestQuadM = cfg.hudPanelDistanceM;

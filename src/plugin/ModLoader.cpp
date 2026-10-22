@@ -106,6 +106,13 @@ void HostSetSquadMenu(vr::squad_menu::View const* view) {
 std::uint32_t HostLeftGripAway() {
     return halcyon::LeftGripAway();
 }
+void HostSetWheelPanel(vr::squad_menu::wheel::Panel const* panel) {
+    if (panel != nullptr) {
+        vr::squad_menu::wheel::PublishPanel(*panel);
+    } else {
+        vr::squad_menu::wheel::ResetPanel();
+    }
+}
 HostServices const gServices{kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
     static_cast<std::uint32_t>(sizeof(vr::controllers::State)), static_cast<std::uint32_t>(sizeof(vr::host_view::State)),
     &HostSetProcessEventCallback, &HostProcessExiting, &HostKeepLoaded,
@@ -113,14 +120,16 @@ HostServices const gServices{kHostServicesVersion, kHostLog, &HostControllers, &
     &HostStatusWanted, &HostSetStatus, &HostHapticPulse, &HostRightGripFree,
     static_cast<std::uint32_t>(sizeof(HostServices)), &HostHapticPulseHz, &HostHapticContinuous,
     static_cast<std::uint32_t>(sizeof(vr::floor::State)), &HostFloor,
-    static_cast<std::uint32_t>(sizeof(vr::squad_menu::View)), &HostSetSquadMenu, &HostLeftGripAway};
+    static_cast<std::uint32_t>(sizeof(vr::squad_menu::View)), &HostSetSquadMenu, &HostLeftGripAway,
+    static_cast<std::uint32_t>(sizeof(vr::squad_menu::wheel::Panel)), &HostSetWheelPanel};
 // A mod that's gone can't aim: Halcyon's head aim must come back, the reticle go, the pad mapping
-// forget the two-handed grip (the grip holding the gun, the squad menu's controls), the squad menu go,
-// and the controllers stop vibrating.
+// forget the two-handed grip (the grip holding the gun, the squad menu's controls), the squad menu and the
+// wheel panel settings go, and the controllers stop vibrating.
 void ForgetModState() {
     halcyon::SetModHandAim(false);
     vr::aim_ray::Reset();
     vr::squad_menu::Reset();
+    vr::squad_menu::wheel::ResetPanel();
     halcyon::ForgetSupportGrip();
     halcyon::ForgetHaptics();
 }
