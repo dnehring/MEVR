@@ -101,8 +101,40 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
 // True when the frame's panel texture is a float (scRGB) format, so RunFrame passes its white scale.
 bool HudPanelIsFloat() noexcept;
 
-// Recentering re-origined the app space: the panel goes straight ahead again.
+// Recentering re-origined the app space: the HUD panel goes straight ahead again, and the world-locked
+// flat panels are placed afresh in front of the head.
 void OnRecentered() noexcept;
+
+// ---- World-locked flat panels (src/plugin/WorldPanels.cpp) -------------------------------------------
+// Halcyon's flat screen (menus, galaxy map, flat conversations, cutscenes, movies) and its Insert menu are
+// head-locked upstream (VIEW space). With MELEVR.ini worldLockedPanels on they stay put in the app space
+// instead: placed in front of the head when they appear (yaw only, level, at their head-locked offset),
+// kept there while the player looks around or leans (parallax), and placed afresh when they reappear, when
+// the flat screen's kind changes, on recenter, or once the head has stayed turned past panelFollowDeg.
+
+enum class PanelKind : int
+{
+    InsertMenu = 0,     // Halcyon's own menu (its own slot)
+    GameMenu = 1,       // the flat screen: the game's menus
+    GalaxyMap = 2,
+    Conversation = 3,
+    Cutscene = 4,       // cutscenes and movies
+};
+
+struct PanelPose
+{
+    void* space = nullptr;                             // XrSpace to submit the quad in
+    float orientation[4] = {0.0f, 0.0f, 0.0f, 1.0f};   // xyzw, in `space`
+    float position[3] = {0.0f, 0.0f, 0.0f};            // meters, in `space`
+    bool headLocked = true;                            // `space` is VIEW (upstream's placement)
+};
+
+// Present thread, each frame a flat panel quad is submitted. `viewPosition`: where Halcyon puts it
+// head-locked (VIEW space, oriented like VIEW). `head`: the eye centre in the app space this frame
+// (orientation xyzw, position; ignored while !headValid). Returns VIEW and `viewPosition` unchanged
+// with the setting off (or no app space yet), else the app space and the pose fixed in it.
+PanelPose PlacePanel(PanelKind kind, float const viewPosition[3], void* viewSpace, void* appSpace, bool headValid,
+                     float const headOrientation[4], float const headPosition[3]) noexcept;
 
 // Insert menu: re-place the panel in front of where the head points now (next frame).
 void RequestHudPanelReplace() noexcept;
@@ -114,9 +146,10 @@ unsigned HudPanelDrawsLastFrame() noexcept;
 // All on the Present thread (RunFrame / RenderFrame).
 
 // Each frame the menu quad is submitted (xr_session.cpp): where it is. `headOrientation` (xyzw) and
-// `headPosition`: the VIEW space's pose in Halcyon's app space (the controllers' space); `center`:
-// the quad's center in VIEW space (it is head-locked, oriented like VIEW); size in meters.
-void OnMenuQuad(float const headOrientation[4], float const headPosition[3], float const center[3], float width,
+// `headPosition`: the VIEW space's pose in Halcyon's app space (the controllers' space). `placed`: the
+// quad's space and pose as submitted (PlacePanel): head-locked (VIEW) or fixed in the app space. Size in
+// meters.
+void OnMenuQuad(float const headOrientation[4], float const headPosition[3], PanelPose const& placed, float width,
                 float height) noexcept;
 
 struct MenuPointer

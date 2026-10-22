@@ -564,12 +564,19 @@ struct VrConfig
     float hudPanelDistanceM = 1.5f;    // from the eyes at recenter
     float hudPanelWidthM = 1.3f;       // height follows the game's frame aspect
     float hudPanelDropM = 0.25f;       // centre below eye height at recenter
-    float hudPanelFollowDeg = 50.0f;   // 0 = never follows
+    float hudPanelFollowDeg = 70.0f;   // 0 = never follows (was 50 until 2026-10-21; same rule as panelFollowDeg)
     // Our reticle on the weapon's aim ray replaces the game's screen-centre crosshair while the right
     // controller aims (on foot): a ring at a fixed distance along the ray, constant angular size.
     bool  handReticle = true;
     float handReticleDistanceM = 10.0f;
     float handReticleSizeDeg = 1.5f;
+    // [MEVR] World-locked flat panels (src/plugin/WorldPanels.cpp): the flat screen (menus, galaxy map, flat
+    // conversations, cutscenes, movies) and this menu stay put in the room where they appeared, level, in
+    // front of the head at that moment, instead of riding the head. They are placed afresh when they
+    // reappear, when the flat screen's kind changes, on recenter (R), and when the head has stayed turned
+    // past panelFollowDeg for a second. Off = upstream's head-locked (VIEW space) quads.
+    bool  worldLockedPanels = true;
+    float panelFollowDeg = 70.0f;      // 0 = never follows
 
     // ---- Menu comfort ----
     float menuDistanceM = 1.54f;   // head-locked menu quad distance in metres (rebaked 2026-08-11; further = less disparity, easier to fuse)

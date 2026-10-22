@@ -130,7 +130,7 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
        checkbox, a slider (highlight it, then hold left/right) and a tab (move up to the tab row,
        then left/right and A).
      - **Laser pointer:** point the right controller at the menu. A blue dot should sit where it
-       points (the menu follows your head, so point and look roughly the same way). Pull the
+       points (the menu now stays where it opened, step 10). Pull the
        trigger to click (the dot turns orange): click a tab, a checkbox, drag a slider. Push the
        right stick up/down over a long tab to scroll. Point with the left hand instead: it takes
        over once it is on the menu (or pulls its trigger there).
@@ -154,7 +154,9 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
      a bit below eye level, not stuck to your face.
      - Look around: the panel stays put, and the world shows no HUD in either eye.
      - Turn your body with the stick: the panel stays in front of you.
-     - Keep your head turned more than about 50° for a second: the panel swings round.
+     - Keep your head turned more than about 70° for a second: the panel swings round (it was 50°
+       until 2026-10-21; the deploy turns a saved `hudPanelFollowDeg = 50.0` into 70). Below 70°
+       it never moves.
      - R recenters it.
      - Is the text readable? Is the panel too big, small, near or low? The mod menu's HUD tab
        has sliders for these.
@@ -167,8 +169,8 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
        arrives.
      - Note the size you'd like. The HUD tab has distance and size sliders, and the reticle
        checkbox for A/B.
-   - **Other screens.** Open the pause menu, the galaxy map and a conversation. They should look
-     as before, on the flat screen.
+   - **Other screens.** Open the pause menu, the galaxy map and a conversation. They should show
+     on the flat screen, which now stays put in the room (step 10).
    - **Fades.** Watch for anything full-screen ending up on the panel instead of the world, such
      as a fade, a red damage tint or a flash. Note what and when.
 8. **Two-handed grip = focused fire (new; needs the redeployed host, see below).** First person
@@ -250,6 +252,37 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
      now lean together; if anything looks or feels worse than before (a head shadow left behind,
      the view swimming as you lean), say so: `TorsoGoal::keepBone` can come back.
 
+10. **World-locked flat screens and menu (new, 2026-10-21; host redeploy).** Halcyon's flat screen
+    (the "view box": movies, cutscenes, flat conversations, the game's menus, the galaxy map) and
+    its `\` menu used to ride the head. Now each stays where it appeared: in front of your head at
+    that moment, level, at Halcyon's usual distance and size. Log (ours): `world panels: the flat
+    screen slot is world-locked`, then one `world panels: <kind> appeared|kind changed|recentered|
+    follows the head: heading N deg, eyes at (...), quad at (...) m` per placement.
+    - **Intro movie** (launch the game): look around and lean sideways and forward. The screen
+      stays put; leaning shows it from a slightly different angle (parallax), and nothing is
+      glued to your face. Turn your head well away (more than 70°) and hold it a second: the
+      screen eases round in front of you.
+    - **Main menu:** when the movie ends and the menu comes up, the screen is placed in front of
+      wherever you face then (the kind changed). Press R: it comes back straight ahead.
+    - **Pause menu** in gameplay: it opens in front of you, stays while you look around, and
+      closes; opening it again facing elsewhere puts it there.
+    - **Galaxy map** (Normandy, flat): same.
+    - **A flat conversation** (or a cutscene, if VR conversations/cutscenes are off): the screen
+      stays put through the shots. Note any jump between a cutscene and the conversation it
+      leads into (each kind change re-places it in front of the head, unless the head barely moved).
+    - **HUD in gameplay:** the body-locked HUD panel (step 7) only swings round past 70° now.
+    - **Pointer on the world-locked menu:** open `\`, then turn your head away (keep the menu in
+      view at the edge): the menu stays, and the controller's blue dot still lands exactly where
+      the ray hits it. Lean in and out: the dot stays under the ray. Click a tab and drag a slider
+      with your head turned. Recenter (R) with the menu open: it jumps straight ahead and the
+      pointer still works.
+    - **A/B:** in the menu's HUD tab, untick **Flat screens and this menu stay where they appear**
+      (`worldLockedPanels = 0` in `MELEVR.ini`): everything rides the head again, as upstream.
+      The slider below it (`panelFollowDeg`, 0 = never) sets the swing-round angle. Say which you
+      prefer, and whether 70° suits you.
+    - **Snapshot** (End) with the menu open and the head turned: Claude checks the menu quad sits
+      at its app-space pose in the composite.
+
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR
   loader (MEVR)`, its pacing lines.
@@ -261,6 +294,9 @@ What Claude looks for:
   - `[MEVR-CROSSHAIR] found ...` and `game crosshair hidden`;
   - `[MEVR-HUD] first hand reticle`;
   - `[MENUVIS]` lines for the HUD panel's swapchain image and texture (visible pixels > 0%).
+- World-locked panels (ours): `world panels: the ... slot is world-locked`, one placement line per
+  appearance or kind change (many in a row = a kind that flickers), and Halcyon's `[MENUVIS] menu
+  quad submitted: ... app space`.
 - Insert menu: `[MENUVIS]` lines.
   - The ImGui texture and the swapchain image after the copy should both show visible pixels
     (about 100%).

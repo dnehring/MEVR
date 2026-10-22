@@ -1,5 +1,5 @@
 // Laser pointer for Halcyon's menu (src/halcyon/le1/vr_menu.cpp): a motion controller's aim ray
-// on the head-locked menu quad drives ImGui's mouse. The trigger is the left button, the right
+// on the menu quad (head-locked, or fixed in the app space with world-locked panels) drives ImGui's mouse. The trigger is the left button, the right
 // stick scrolls, and a dot marks where the ray lands. Either hand points: the right one by default,
 // the left one once it points at the menu while the right doesn't (or pulls its trigger on it).
 // Gamepad navigation (Touch through Halcyon's pad read, or a real pad) keeps working alongside.
@@ -25,7 +25,8 @@ namespace pointer = mevr::vr::menu_pointer;
 namespace controllers = mevr::vr::controllers;
 
 // Present thread only (RunFrame submits the quad, then the next RenderFrame samples the pointer).
-pointer::Quad gQuad;
+pointer::Quad gQuad;                  // in the app space, the controllers' space
+XrPosef gHead{};                      // the head (VIEW) when it was submitted
 std::uint64_t gQuadMs = 0;            // when the quad was last submitted; 0 = never
 constexpr std::uint64_t kQuadFreshMs = 250;
 
@@ -65,15 +66,18 @@ bool HitOf(controllers::Hand const& hand, pointer::Hit& hit) {
 
 } // namespace
 
-void OnMenuQuad(float const headOrientation[4], float const headPosition[3], float const center[3], float width,
+void OnMenuQuad(float const headOrientation[4], float const headPosition[3], PanelPose const& placed, float width,
     float height) noexcept {
-    gQuad.head.orientation = {headOrientation[0], headOrientation[1], headOrientation[2], headOrientation[3]};
-    gQuad.head.position = {headPosition[0], headPosition[1], headPosition[2]};
-    gQuad.center = {center[0], center[1], center[2]};
-    gQuad.width = width;
-    gQuad.height = height;
+    gHead.orientation = {headOrientation[0], headOrientation[1], headOrientation[2], headOrientation[3]};
+    gHead.position = {headPosition[0], headPosition[1], headPosition[2]};
+    XrPosef local{};
+    local.orientation = {placed.orientation[0], placed.orientation[1], placed.orientation[2], placed.orientation[3]};
+    local.position = {placed.position[0], placed.position[1], placed.position[2]};
+    // Head-locked: VIEW sits at the head. World-locked: the quad is in the app space already.
+    XrPosef const identity{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
+    gQuad = pointer::InTracking(placed.headLocked ? gHead : identity, local, width, height);
     gQuadMs = GetTickCount64();
-    mevr::host::testloop::NoteMenuQuad(center, width, height);  // snapshots name its layer "menu"
+    mevr::host::testloop::NoteMenuQuad(placed.position, placed.headLocked, width, height);  // snapshots name its layer "menu"
 }
 
 bool SampleMenuPointer(int width, int height, float dt, MenuPointer* out) noexcept {
@@ -155,7 +159,7 @@ bool LatestMenuHead(XrPosef& head, unsigned maxAgeMs) noexcept {
     if (gQuadMs == 0 || GetTickCount64() - gQuadMs >= maxAgeMs) {
         return false;
     }
-    head = gQuad.head;
+    head = gHead;
     return true;
 }
 

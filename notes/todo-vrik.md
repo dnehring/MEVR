@@ -180,6 +180,33 @@ The agreed plan:
     on the Camera bone (research/18) also bears on where the view sits relative to Shepard.
 
 
+## World-locked flat panels (user, 2026-10-21; built the same day, to test)
+
+The user: the HUD and flat panels should stay placed in space, not move with the head (the intro's
+"view box" rode the head). Host change (redeploy). Test steps: notes/next-vr-session.md step 10.
+- **Seam:** `MevrBridge::PlacePanel` (`mevr_bridge.h`, `src/plugin/WorldPanels.cpp`) is asked for
+  the space and pose of Halcyon's flat screen and of its Insert menu each frame, given the
+  head-locked pose Halcyon computed (distance, offsets, its nearest-quad pull-in) and the head.
+  Off: VIEW and that pose, upstream bit for bit. On: the app space, the head-locked offset applied
+  in a level frame at the head's position and yaw when the panel appeared.
+- **Rules** (`core/vr/OverlayPlacement` `WorldPanel`, unit-tested): placed afresh when it appears
+  (not shown for more than 5 frames), when the flat screen's kind changes (game menu, galaxy map,
+  conversation, cutscene/movie), on recenter (Halcyon's R re-origins the app space; `OnRecentered`
+  and a changed app space handle both re-place) and once the head is found after a blind placement;
+  eases round (yaw and eye position) when the head stays turned past `panelFollowDeg` (70) for a
+  second; a re-placement that would move it under 5 degrees and 5 cm keeps it, so a flickering kind
+  doesn't nudge it.
+- **Settings:** `MELEVR.ini` `worldLockedPanels = 1`, `panelFollowDeg = 70` ([MEVR] fields in
+  Halcyon's config, like `hudPanel*`), checkbox and slider in the menu's HUD tab.
+- **HUD panel:** `hudPanelFollowDeg` default 50 -> 70 (the deploy migrates a saved 50.0).
+- **Pointer:** `menu_pointer::Quad` is now a pose in the tracking space (`InTracking` composes a
+  VIEW-space quad with the head); `OnMenuQuad` passes the placed pose. The test loop names and
+  places the menu quad by its submitted position and space.
+- **[verify in headset]:** no jump at the movie -> menu and cutscene -> conversation boundaries
+  beyond the intended re-place; the menu still the nearest quad on SteamVR (its pull-in is
+  measured from where the head was when it opened; a menu opened from another spot or heading
+  than the flat screen's can end up behind it); the pointer on the app-space menu.
+
 ## Camera hook guard and native-state logs (research/18 proposals 1-5, built 2026-10-21, to test)
 
 Mod only (hot reload, no host redeploy). Test steps: notes/next-vr-session.md steps 8 and 9.
