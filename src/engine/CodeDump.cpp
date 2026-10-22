@@ -10,6 +10,9 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <optional>
+#include <string>
+#include <vector>
 
 namespace mevr::engine::code_dump {
 namespace {
@@ -40,6 +43,53 @@ std::filesystem::path DumpDirectory() {
     std::filesystem::path dir = std::filesystem::path(appData) / "MEVR" / "dump";
     std::free(appData);
     return dir;
+}
+
+// Function starts (from .pdata) that begin with a jmp out of the image: a hook's patch. Their
+// first bytes in a dump are the hook's, not the game's.
+std::vector<std::uint32_t> PatchedStarts(std::uint8_t const* base, IMAGE_NT_HEADERS64 const* nt) {
+    std::vector<std::uint32_t> patched;
+    auto const& directory = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION];
+    std::uint32_t const imageSize = nt->OptionalHeader.SizeOfImage;
+    if (directory.VirtualAddress == 0 || !IsReadable(base + directory.VirtualAddress, directory.Size)) {
+        return patched;
+    }
+    auto const* const functions = reinterpret_cast<RUNTIME_FUNCTION const*>(base + directory.VirtualAddress);
+    std::size_t const count = directory.Size / sizeof(RUNTIME_FUNCTION);
+    std::uint32_t previous = 0;
+    for (std::size_t i = 0; i < count; ++i) {
+        std::uint32_t const start = functions[i].BeginAddress;
+        if (start == previous || start + 14 >= imageSize) {
+            continue;
+        }
+        previous = start;
+        std::uint8_t const* const code = base + start;
+        bool hooked = false;
+        if (code[0] == 0xE9) {
+            std::int32_t displacement = 0;
+            std::memcpy(&displacement, code + 1, sizeof displacement);
+            std::int64_t const target = static_cast<std::int64_t>(start) + 5 + displacement;
+            hooked = target < 0 || target >= static_cast<std::int64_t>(imageSize);
+        } else if (code[0] == 0xFF && code[1] == 0x25) {  // jmp [rip+x]: an absolute jump
+            hooked = true;
+        }
+        if (hooked) {
+            patched.push_back(start);
+        }
+    }
+    return patched;
+}
+
+// The patched_starts count an earlier dump recorded, if it did.
+std::optional<std::size_t> RecordedPatchedCount(std::filesystem::path const& info) {
+    std::ifstream in(info);
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.rfind("patched_starts=", 0) == 0) {
+            return static_cast<std::size_t>(std::strtoull(line.c_str() + 15, nullptr, 10));
+        }
+    }
+    return std::nullopt;
 }
 
 } // namespace
@@ -77,25 +127,38 @@ void SaveOnce() {
     // One dump per exe build: the link timestamp identifies it.
     std::string const stem = std::format("MassEffect-{:08X}", nt->FileHeader.TimeDateStamp);
     std::filesystem::path const file = dir / (stem + ".text.bin");
+    std::filesystem::path const infoFile = dir / (stem + ".txt");
+    std::vector<std::uint32_t> const patched = PatchedStarts(base, nt);
     std::error_code error;
     if (std::filesystem::exists(file, error)) {
-        return;
+        // Keep it unless this code is cleaner (a dump taken before this check says nothing).
+        auto const recorded = RecordedPatchedCount(infoFile);
+        if (recorded && *recorded <= patched.size()) {
+            return;
+        }
+        log::Info("code dump: replacing {} ({} hook-patched function starts) with this one ({})", file.string(),
+            recorded ? std::to_string(*recorded) : std::string("unknown"), patched.size());
     }
     std::filesystem::create_directories(dir, error);
 
     std::ofstream out(file, std::ios::binary);
     out.write(reinterpret_cast<char const*>(base + text->VirtualAddress), text->Misc.VirtualSize);
     out.close();
-    std::ofstream info(dir / (stem + ".txt"));
-    info << std::format("timestamp=0x{:08X}\ntext_rva=0x{:X}\ntext_size=0x{:X}\n", nt->FileHeader.TimeDateStamp,
-        text->VirtualAddress, text->Misc.VirtualSize);
+    std::ofstream info(infoFile);
+    info << std::format("timestamp=0x{:08X}\ntext_rva=0x{:X}\ntext_size=0x{:X}\npatched_starts={}\npatched=",
+        nt->FileHeader.TimeDateStamp, text->VirtualAddress, text->Misc.VirtualSize, patched.size());
+    for (std::size_t i = 0; i < patched.size(); ++i) {
+        info << std::format("{}0x{:X}", i == 0 ? "" : ",", patched[i]);
+    }
+    info << "\n";
     if (!out || !info) {
         log::Warn("code dump: writing {} failed", file.string());
         std::filesystem::remove(file, error);
         return;
     }
-    log::Info("code dump: saved the decrypted .text ({} MB) to {} (local research data)",
-        text->Misc.VirtualSize / (1024 * 1024), file.string());
+    log::Info("code dump: saved the decrypted .text ({} MB) to {} (local research data); {} function starts "
+              "already hook-patched",
+        text->Misc.VirtualSize / (1024 * 1024), file.string(), patched.size());
 }
 
 } // namespace mevr::engine::code_dump

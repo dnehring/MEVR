@@ -83,6 +83,8 @@ set(MEVR_CORE_SOURCES
 )
 
 set(MEVR_HOST_SOURCES
+    src/engine/CodeDump.cpp
+    src/engine/CodeDump.hpp
     src/mod/ModApi.hpp
     src/plugin/Entry.cpp
     src/plugin/ModLoader.cpp

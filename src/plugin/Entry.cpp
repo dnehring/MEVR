@@ -4,6 +4,7 @@
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
 #include "core/Version.hpp"
+#include "engine/CodeDump.hpp"
 #include "plugin/ModLoader.hpp"
 #include "plugin/PresentHook.hpp"
 #include "plugin/ProcessEventHook.hpp"
@@ -85,6 +86,8 @@ SPI_IMPLEMENT_ATTACH
         return true;
     }
     mevr::log::Info("game version {} OK", version->ToString());
+    // Research dump of the decrypted code, before our or Halcyon's hooks patch any of it.
+    mevr::engine::code_dump::SaveOnce();
 #if defined(MEVR_WITH_HALCYON)
     // Before anything else: it has to hook the system dxgi.dll before the game creates its device.
     mevr::host::halcyon::Attach();
