@@ -56,6 +56,26 @@
 - [GameRevolution: LE has full PC controller support](https://www.gamerevolution.com/?p=681808), [Ginx: early PC controller issues](https://www.ginx.tv/en/mass-effect-legendary-edition-pc-controller-issues-possible-solutions-fix)
 - [EA accessibility page (Xbox One)](https://www.ea.com/able/resources/mass-effect-legendary-edition/xbox-one): no bindings listed. **The LE1 gamepad layout is still unverified**; the mapping stays one-to-one until checked in game
 
+## Body holsters in VR shooters and mods (research/19, consulted 2026-10-22)
+- [GoldenEye VR: docs/body-slots.md](https://github.com/MrSco/goldeneye-vr/blob/main/docs/body-slots.md), [repository (own code MIT per README)](https://github.com/MrSco/goldeneye-vr), [release v0.4.15](https://newreleases.io/project/github/MrSco/goldeneye-vr/release/v0.4.15)
+- [Quake VR (GPL-2.0: concepts only)](https://github.com/vittorioromeo/quakevr): `Quake/vr/vr_cvars.inc`, `Quake/vr/vr_body.cpp`
+- [Doom 3 BFG VR "Fully Possessed" README](https://github.com/CarlKenner/DOOM-3-BFG-VR)
+- [Road to VR: Half-Life: Alyx inventory](https://roadtovr.com/half-life-alyx-release-date-no-delay/), [UploadVR: Alyx tested](https://www.uploadvr.com/half-life-alyx-valve-tested/), [Road to VR: Alyx accessibility](https://roadtovr.com/half-life-alyx-accessibility-options-subtitles-seated-single-controller/), [GameSpot: Alyx accessibility](https://www.gamespot.com/articles/half-life-alyx-accessibility-options-guide/1100-6475045/)
+- [Steam: Boneworks holstering thread](https://steamcommunity.com/app/823500/discussions/0/3963662449068210745/), [Steam: Bonelab chest holsters](https://steamcommunity.com/app/1592190/discussions/0/597396451236099784/)
+- [Steam: H3VR quickbelt from the headset](https://steamcommunity.com/app/450540/discussions/0/604143843941595363/), [Steam: H3VR shoulder anchor declined](https://steamcommunity.com/app/450540/discussions/0/1484358860943006720/)
+- [Steam: Contractors inventory anchoring](https://steamcommunity.com/app/963930/discussions/0/5792223132453011488)
+- [Steam: Into the Radius slots and head turns](https://steamcommunity.com/app/1012790/discussions/0/3823032780423878516/), [Steam: ITR2 rig modes](https://steamcommunity.com/app/2307350/discussions/0/4848778277271288558/), [Steam: ITR2 height](https://steamcommunity.com/app/2307350/discussions/0/4848777893535603042/)
+- [Pavlov wiki: Game Controls](http://wiki.pavlov-vr.com/index.php?title=Game_Controls) (didn't load; search summary only), [Steam: Pavlov height](https://steamcommunity.com/app/555160/discussions/0/154644787622699656), [Steam: Pavlov seated](https://steamcommunity.com/app/555160/discussions/0/1644290458823888434)
+- [Medal of Honor: Above and Beyond review](https://sometimesiplaygames.com/medal-of-honor-vr-above-and-beyond-is-good/)
+- [Game Chronicles: Saints & Sinners review](https://gamechronicles.com/the-walking-dead-saints-sinners-review-oculus-quest/), [Game Developer: intuitive inventory systems in VR](https://gamedeveloper.com/design/intuitive-inventory-systems-in-vr-games)
+- [Gfinity: Resident Evil 4 VR review](https://www.gfinityesports.com/resident-evil/4-vr-review/) (search summary only)
+- [Steam: Blade & Sorcery holsters](https://steamcommunity.com/app/629730/discussions/0/3886101131592520502/), [mod.io: MoreSlots](https://mod.io/g/blade-and-sorcery/m/moreslots)
+- [IMFDB: Arizona Sunshine 2](https://www.imfdb.org/wiki/Arizona_Sunshine_2)
+- [SynergyVR: VRIK (Skyrim VR)](https://synergyvr.org/mgo/mod-highlights/vrik/), [Nexus: VRIK](https://www.nexusmods.com/skyrimspecialedition/mods/23416) and [Nexus: Virtual Holsters (Fallout 4 VR)](https://www.nexusmods.com/fallout4/mods/51224) (both 403; search summaries only)
+- [Road to VR: Half-Life 2 VR mod](https://roadtovr.com/?p=171232), [Mixed: Half-Life 2 VR Unleashed](https://mixed-news.com/en/half-life-2-vr-mod-unleashed/)
+- [Madeline Miller: the issue of body size in VR](https://madelinemiller.dev/blog/the-issue-of-body-size-in-vr/)
+- Not found: Onward, Zero Caliber, Hellsplit Arena holster specifics; how Bonelab, Pavlov and Arizona Sunshine anchor their slots
+
 ## Searched, nothing relevant found
 - "vorpX Mass Effect Legendary Edition profile": no vorpX information
 - "Modern Warfare 2 Campaign Remastered VR mod AI" (standard search): nothing; the GitHub-targeted search found Overlord
