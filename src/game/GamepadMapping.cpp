@@ -131,10 +131,90 @@ bool RbFromStickClick(RbClick& s, RbClickInput const& in) {
     return s.phase == Phase::Held || s.phase == Phase::Tap;
 }
 
+StickChordStep UpdateStickChord(StickChord& c, bool leftClick, bool rightClick, std::uint64_t nowMs) {
+    StickChordStep step;
+    bool const anyBefore = c.left || c.right;
+    bool const anyNow = leftClick || rightClick;
+    if (!anyBefore && anyNow) {  // a new sequence
+        c.firstPressMs = nowMs;
+        c.bothSinceMs = 0;
+        c.both = c.joined = c.held = false;
+    }
+    if (leftClick && rightClick) {
+        if (c.bothSinceMs == 0) {
+            c.bothSinceMs = nowMs;
+            if (!c.both) {
+                c.both = true;
+                c.joined = nowMs - c.firstPressMs <= kStickJoinMs;
+            }
+        }
+        if (!c.held && nowMs - c.bothSinceMs >= kStickHoldMs) {
+            c.held = true;
+            step.hold = true;
+        }
+    } else {
+        c.bothSinceMs = 0;
+    }
+    if (anyBefore && !anyNow) {
+        step.tap = c.both && c.joined && !c.held && nowMs - c.firstPressMs <= kStickTapMs;
+        c.both = c.joined = c.held = false;
+    }
+    c.left = leftClick;
+    c.right = rightClick;
+    return step;
+}
+
+bool GateClick(ClickGate& g, bool click, bool otherClick, std::uint64_t nowMs) {
+    using Phase = ClickGate::Phase;
+    bool const pressed = click && !g.down;
+    g.down = click;
+    if (nowMs == 0) {
+        g.phase = click ? Phase::Pass : Phase::Idle;
+        return click;
+    }
+    if (pressed) {
+        g.phase = otherClick ? Phase::Blocked : Phase::Pending;
+        g.pressMs = nowMs;
+    }
+    switch (g.phase) {
+    case Phase::Pending:
+        if (otherClick) {
+            g.phase = Phase::Blocked;  // the both-sticks chord: never L3
+        } else if (!click) {
+            g.phase = Phase::Pulse;    // a quick click alone: L3 now, briefly
+            g.pulseUntilMs = nowMs + kRbTapMs;
+        } else if (nowMs - g.pressMs >= kStickJoinMs) {
+            g.phase = Phase::Pass;
+        }
+        break;
+    case Phase::Pass:
+        if (!click) {
+            g.phase = Phase::Idle;
+        } else if (otherClick) {
+            g.phase = Phase::Blocked;  // the right click joined late: L3 lets go and doesn't come back
+        }
+        break;
+    case Phase::Pulse:
+        if (nowMs >= g.pulseUntilMs) {
+            g.phase = Phase::Idle;
+        }
+        break;
+    case Phase::Blocked:
+        if (!click) {
+            g.phase = Phase::Idle;
+        }
+        break;
+    case Phase::Idle:
+        break;
+    }
+    return g.phase == Phase::Pass || g.phase == Phase::Pulse;
+}
+
 std::uint32_t ToFlags(Options const& options) {
     return (options.leftTrigger ? kFlagLeftTrigger : 0u) | (options.supportAims ? kFlagSupportAims : 0u) |
            (options.gripShoulder ? kFlagGripShoulder : 0u) | (options.leftTriggerShoulder ? kFlagLeftTriggerShoulder : 0u) |
            (options.rightGripFree ? kFlagRightGripFree : 0u) | (options.rightGripHolds ? kFlagRightGripHolds : 0u) |
+           (options.squadMenu ? kFlagSquadMenu : 0u) |
            ((static_cast<std::uint32_t>(options.rbSource) << kRbSourceShift) & kRbSourceMask);
 }
 
@@ -146,6 +226,7 @@ Options FromFlags(float distance, float acquire, float release, std::uint32_t fl
     options.leftTriggerShoulder = (flags & kFlagLeftTriggerShoulder) != 0;
     options.rightGripFree = (flags & kFlagRightGripFree) != 0;
     options.rightGripHolds = (flags & kFlagRightGripHolds) != 0;
+    options.squadMenu = (flags & kFlagSquadMenu) != 0;
     std::uint32_t const source = (flags & kRbSourceMask) >> kRbSourceShift;
     options.rbSource = source <= static_cast<std::uint32_t>(RbSource::B) ? static_cast<RbSource>(source) : RbSource::None;
     options.support = {distance, acquire, release};
@@ -156,7 +237,35 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& state, Latches& lat
     return FromControllers(state, latches, Options{});
 }
 
-XINPUT_GAMEPAD FromControllers(vr::controllers::State const& state, Latches& latches, Options const& options) {
+XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& latches, Options const& options) {
+    // The squad menu's controls: everything in use while it's open stays the menu's until released or
+    // centred, so the flick that chose a weapon doesn't turn the view and the A that confirmed doesn't
+    // "use" whatever is in front once it closes.
+    auto const pushed = [](float x, float y) { return x * x + y * y > kSquadStickCentred * kSquadStickCentred; };
+    std::uint8_t const active = static_cast<std::uint8_t>((pushed(input.left.stickX, input.left.stickY) ? kSquadLeftStick : 0) |
+        (pushed(input.right.stickX, input.right.stickY) ? kSquadRightStick : 0) | (input.right.primary ? kSquadA : 0) |
+        (input.right.secondary ? kSquadB : 0) | (input.left.stickClick ? kSquadL3 : 0) | (input.right.stickClick ? kSquadR3 : 0));
+    latches.squadHeld = options.squadMenu ? active : static_cast<std::uint8_t>(latches.squadHeld & active);
+    std::uint8_t const block = options.squadMenu ? kSquadAll : latches.squadHeld;
+    vr::controllers::State state = input;
+    if ((block & kSquadLeftStick) != 0) {
+        state.left.stickX = state.left.stickY = 0.0f;
+    }
+    if ((block & kSquadRightStick) != 0) {
+        state.right.stickX = state.right.stickY = 0.0f;
+    }
+    if ((block & kSquadA) != 0) {
+        state.right.primary = false;
+    }
+    if ((block & kSquadB) != 0) {
+        state.right.secondary = false;
+    }
+    if ((block & kSquadL3) != 0) {
+        state.left.stickClick = false;
+    }
+    if ((block & kSquadR3) != 0) {
+        state.right.stickClick = false;
+    }
     auto const& l = state.left;
     auto const& r = state.right;
     XINPUT_GAMEPAD pad{};
@@ -169,7 +278,17 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& state, Latches& lat
 
     WORD buttons = 0;
     bool const leftGrip = Latch(latches.leftGrip, l.squeeze);
+    LeftGrip const leftBefore = latches.left;
     latches.left = UpdateSupportGrip(latches.support, leftGrip, options.support);
+    // A new left squeeze away from the gun (not the support grip): the squad menu's (counted for the mod).
+    if (leftBefore == LeftGrip::Open && latches.left != LeftGrip::Open) {
+        latches.leftAway = latches.left == LeftGrip::Shoulder;
+        if (latches.leftAway && options.countKept) {
+            ++latches.leftAwayCount;
+        }
+    } else if (latches.left == LeftGrip::Open) {
+        latches.leftAway = false;
+    }
     if (latches.left == LeftGrip::Shoulder && options.gripShoulder) buttons |= XINPUT_GAMEPAD_LEFT_SHOULDER;
     bool const leftTriggerDown = Latch(latches.leftTrigger, l.trigger);
     if (options.leftTriggerShoulder && leftTriggerDown) buttons |= XINPUT_GAMEPAD_LEFT_SHOULDER;
@@ -235,7 +354,7 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& state, Latches& lat
     }
     if (rb) buttons |= XINPUT_GAMEPAD_RIGHT_SHOULDER;
     if (r.primary) buttons |= XINPUT_GAMEPAD_A;
-    if (l.stickClick) buttons |= XINPUT_GAMEPAD_LEFT_THUMB;
+    if (GateClick(latches.leftClick, l.stickClick, r.stickClick, state.timeMs)) buttons |= XINPUT_GAMEPAD_LEFT_THUMB;
     if (r.stickClick) buttons |= XINPUT_GAMEPAD_RIGHT_THUMB;
     if (l.menu) buttons |= leftGrip ? XINPUT_GAMEPAD_BACK : XINPUT_GAMEPAD_START;
     pad.wButtons = buttons;

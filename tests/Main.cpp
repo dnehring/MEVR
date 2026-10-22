@@ -19,6 +19,7 @@
 #include "core/vr/MenuPointer.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/PoseRecording.hpp"
+#include "core/vr/SquadMenu.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "core/vr/ViewSync.hpp"
 #include "engine/XrToUnreal.hpp"
@@ -2754,6 +2755,545 @@ void TestRbFromStickClick() {
     CHECK((pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) == 0);
 }
 
+// ---- The squad weapon menu (core/vr/SquadMenu, game/GamepadMapping's chord, gate and squad flag) ----
+
+void TestSquadPointing() {
+    using namespace mevr::vr::squad_menu;
+    float const deg = 3.14159265f / 180.0f;
+    XrVector3f const origin{0.0f, 1.2f, 0.0f};
+    XrVector3f const ahead{0.0f, 0.0f, -1.0f};
+    // A target straight ahead is 0 degrees off; one 5 m ahead and 1 m right is about 11.3 degrees off.
+    CHECK(AngleToRay(origin, ahead, {0.0f, 1.2f, -5.0f}) < 1e-3f);
+    CHECK(std::abs(AngleToRay(origin, ahead, {1.0f, 1.2f, -5.0f}) / deg - 11.31f) < 0.05f);
+    // Degenerate: a point at the origin or no direction is as far off as can be.
+    CHECK(AngleToRay(origin, ahead, origin) > 3.1f);
+    CHECK(AngleToRay(origin, {0.0f, 0.0f, 0.0f}, {0.0f, 1.2f, -5.0f}) > 3.1f);
+
+    Target targets[2];
+    targets[0] = {true, {-0.4f, 1.2f, -5.0f}};  // 4.6 degrees left
+    targets[1] = {true, {0.6f, 1.2f, -5.0f}};   // 6.8 degrees right
+    CHECK(PickPointed(origin, ahead, targets, 2, 10.0f * deg, 40.0f) == 0);
+    // Pointing a little right picks the right one.
+    XrVector3f const right = {std::sin(6.0f * deg), 0.0f, -std::cos(6.0f * deg)};
+    CHECK(PickPointed(origin, right, targets, 2, 10.0f * deg, 40.0f) == 1);
+    // A narrow cone misses both; a short reach misses both.
+    CHECK(PickPointed(origin, ahead, targets, 2, 3.0f * deg, 40.0f) == -1);
+    CHECK(PickPointed(origin, ahead, targets, 2, 10.0f * deg, 4.0f) == -1);
+    // Pointing away: nobody within the cone, but the nearest to the ray is still known.
+    XrVector3f const leftward{-1.0f, 0.0f, 0.0f};
+    CHECK(PickPointed(origin, leftward, targets, 2, 10.0f * deg, 40.0f) == -1);
+    CHECK(NearestToRay(origin, leftward, targets, 2) == 0);
+    // Two squadmates in line (within a degree): the nearer one.
+    targets[0] = {true, {0.0f, 1.2f, -12.0f}};
+    targets[1] = {true, {0.05f, 1.2f, -4.0f}};
+    CHECK(PickPointed(origin, ahead, targets, 2, 10.0f * deg, 40.0f) == 1);
+    // An invalid target (no position) is never picked.
+    targets[1].valid = false;
+    CHECK(PickPointed(origin, ahead, targets, 2, 10.0f * deg, 40.0f) == 0);
+    targets[0].valid = false;
+    CHECK(PickPointed(origin, ahead, targets, 2, 10.0f * deg, 40.0f) == -1);
+    CHECK(NearestToRay(origin, ahead, targets, 2) == -1);
+}
+
+void TestSquadRadial() {
+    using namespace mevr::vr::squad_menu;
+    RadialSettings const s;  // dead zone 0.55, release 0.35, 12 degrees of hysteresis
+    // The fixed layout.
+    CHECK(WeaponAt(Direction::Up) == 2 && WeaponAt(Direction::Left) == 1 && WeaponAt(Direction::Right) == 3 &&
+          WeaponAt(Direction::Down) == 0 && WeaponAt(Direction::None) == -1);
+    for (int w = 0; w < kWeapons; ++w) {
+        CHECK(WeaponAt(DirectionOf(w)) == w);
+    }
+    // Inside the dead zone: nothing.
+    CHECK(Radial(0.0f, 0.5f, Direction::None, s) == Direction::None);
+    CHECK(Radial(0.3f, -0.3f, Direction::None, s) == Direction::None);
+    // Past it: the nearest of the four.
+    CHECK(Radial(0.0f, 0.9f, Direction::None, s) == Direction::Up);
+    CHECK(Radial(0.0f, -0.9f, Direction::None, s) == Direction::Down);
+    CHECK(Radial(-0.9f, 0.1f, Direction::None, s) == Direction::Left);
+    CHECK(Radial(0.9f, -0.2f, Direction::None, s) == Direction::Right);
+    // Just past the up/right diagonal (50 degrees): right, unless up is held (hysteresis to 57 degrees).
+    float const a50 = 50.0f * 3.14159265f / 180.0f;
+    CHECK(Radial(0.9f * std::sin(a50), 0.9f * std::cos(a50), Direction::None, s) == Direction::Right);
+    CHECK(Radial(0.9f * std::sin(a50), 0.9f * std::cos(a50), Direction::Up, s) == Direction::Up);
+    float const a60 = 60.0f * 3.14159265f / 180.0f;
+    CHECK(Radial(0.9f * std::sin(a60), 0.9f * std::cos(a60), Direction::Up, s) == Direction::Right);
+    // Held: it stays down to the release radius, not the dead zone.
+    CHECK(Radial(0.0f, 0.45f, Direction::Up, s) == Direction::Up);
+    CHECK(Radial(0.0f, 0.3f, Direction::Up, s) == Direction::None);
+    // Garbage in: nothing.
+    CHECK(Radial(std::nanf(""), 0.9f, Direction::None, s) == Direction::None);
+}
+
+void TestSquadMachine() {
+    using namespace mevr::vr::squad_menu;
+    Machine m;
+    Input in;
+    in.dt = 0.011f;
+    in.usable = true;
+    in.memberCount = 2;
+    in.members[0] = {0x0F, 2};  // carries all four, holds the assault rifle
+    in.members[1] = {0x05, 0};  // pistol and assault rifle only, holds the pistol
+    auto const step = [&]() { return m.Update(in); };
+
+    // Point at the right squadmate and squeeze: open at once with that card.
+    in.pointed = 1;
+    in.gripDown = true;
+    in.newAwaySqueeze = true;
+    Step s = step();
+    CHECK(s.opened && s.openedPointing && m.IsOpen() && m.Selected() == 1 && m.Highlighted() == -1);
+    in.newAwaySqueeze = false;
+    in.pointed = -1;
+    // Flick up: the assault rifle (carried) is highlighted; centring keeps it.
+    in.rightY = 0.9f;
+    s = step();
+    CHECK(s.tileChanged && m.Highlighted() == 2);
+    in.rightY = 0.0f;
+    s = step();
+    CHECK(!s.tileChanged && m.Highlighted() == 2);
+    // Flick right: the sniper rifle, which this one doesn't carry: refused, the highlight stays.
+    in.rightX = 0.9f;
+    s = step();
+    CHECK(s.tileRefused && !s.tileChanged && m.Highlighted() == 2);
+    s = step();
+    CHECK(!s.tileRefused);  // one refusal per flick
+    in.rightX = 0.0f;
+    step();
+    // Let go: confirmed, that card, that weapon.
+    in.gripDown = false;
+    s = step();
+    CHECK(s.closed == Close::Confirmed && s.member == 1 && s.weapon == 2 && !m.IsOpen());
+
+    // Let go with nothing chosen: cancelled.
+    in.gripDown = true;
+    in.newAwaySqueeze = true;
+    in.pointed = 0;
+    s = step();
+    CHECK(s.opened && m.Selected() == 0);
+    in.newAwaySqueeze = false;
+    in.gripDown = false;
+    s = step();
+    CHECK(s.closed == Close::Released && s.weapon == -1);
+
+    // B cancels; A confirms only with something chosen; an A held when it opened doesn't count.
+    in.gripDown = true;
+    in.newAwaySqueeze = true;
+    in.a = true;
+    s = step();
+    CHECK(s.opened);
+    in.newAwaySqueeze = false;
+    s = step();
+    CHECK(s.closed == Close::None);
+    in.a = false;
+    step();
+    in.a = true;
+    s = step();
+    CHECK(s.closed == Close::None && m.IsOpen());  // A with nothing chosen: nothing
+    in.a = false;
+    in.rightX = -0.9f;  // the shotgun
+    s = step();
+    CHECK(m.Highlighted() == 1);
+    in.rightX = 0.0f;
+    in.a = true;
+    s = step();
+    CHECK(s.closed == Close::Confirmed && s.member == 0 && s.weapon == 1);
+    in.a = false;
+    in.gripDown = false;
+    step();
+    in.gripDown = true;
+    in.newAwaySqueeze = true;
+    step();
+    in.newAwaySqueeze = false;
+    in.b = true;
+    s = step();
+    CHECK(s.closed == Close::CancelButton);
+    in.b = false;
+    in.gripDown = false;
+    step();
+
+    // The left stick picks the card; a weapon the new one lacks is no longer chosen.
+    in.gripDown = true;
+    in.newAwaySqueeze = true;
+    in.pointed = 0;
+    step();
+    in.newAwaySqueeze = false;
+    in.rightY = -0.9f;  // the pistol: both carry it
+    step();
+    in.rightY = 0.0f;
+    step();
+    CHECK(m.Highlighted() == 0);
+    in.leftX = 0.8f;
+    s = step();
+    CHECK(s.cardChanged && m.Selected() == 1 && m.Highlighted() == 0 && !s.tileChanged);
+    in.leftX = 0.0f;
+    step();
+    in.leftX = -0.8f;
+    s = step();
+    CHECK(s.cardChanged && m.Selected() == 0);
+    in.leftX = 0.0f;
+    in.rightX = -0.9f;  // the shotgun (card 0 carries it)
+    step();
+    in.rightX = 0.0f;
+    step();
+    CHECK(m.Highlighted() == 1);
+    in.leftX = 0.8f;  // card 1 has no shotgun
+    s = step();
+    CHECK(s.cardChanged && s.tileChanged && m.Highlighted() == -1);
+    in.leftX = 0.0f;
+    in.gripDown = false;
+    s = step();
+    CHECK(s.closed == Close::Released);
+
+    // Sticks already pushed when it opens (walking, turning) choose nothing until they move on.
+    in.leftX = -0.9f;
+    in.rightY = 0.9f;
+    in.gripDown = true;
+    in.newAwaySqueeze = true;
+    in.pointed = 1;
+    s = step();
+    CHECK(s.opened && m.Selected() == 1 && m.Highlighted() == -1);
+    in.newAwaySqueeze = false;
+    s = step();
+    CHECK(!s.cardChanged && !s.tileChanged && m.Selected() == 1 && m.Highlighted() == -1);
+    in.leftX = 0.0f;
+    in.rightY = 0.0f;
+    step();
+    in.rightY = 0.9f;
+    s = step();
+    CHECK(s.tileChanged && m.Highlighted() == 2);
+    in.rightY = 0.0f;
+    // It can't stay open where it can't be used.
+    in.usable = false;
+    s = step();
+    CHECK(s.closed == Close::Unusable && !m.IsOpen());
+    in.usable = true;
+    in.gripDown = false;
+    step();
+
+    // Pointing at nobody: it arms, and opens after the hold with the preferred card.
+    in.pointed = -1;
+    in.preferred = 1;
+    in.openHoldSeconds = 0.3f;
+    in.gripDown = true;
+    in.newAwaySqueeze = true;
+    s = step();
+    CHECK(s.armed && !s.opened && m.CurrentPhase() == Phase::Arming);
+    in.newAwaySqueeze = false;
+    in.dt = 0.1f;
+    s = step();
+    s = step();
+    CHECK(!s.opened);
+    s = step();
+    CHECK(s.opened && !s.openedPointing && m.Selected() == 1);
+    in.gripDown = false;
+    s = step();
+    CHECK(s.closed == Close::Released);
+    // Let go before the hold: nothing.
+    in.gripDown = true;
+    in.newAwaySqueeze = true;
+    step();
+    in.newAwaySqueeze = false;
+    step();
+    in.gripDown = false;
+    s = step();
+    CHECK(!s.opened && s.closed == Close::None && m.CurrentPhase() == Phase::Idle);
+    // Pointing at someone while arming opens at once with them.
+    in.gripDown = true;
+    in.newAwaySqueeze = true;
+    step();
+    in.newAwaySqueeze = false;
+    in.pointed = 0;
+    s = step();
+    CHECK(s.opened && s.openedPointing && m.Selected() == 0);
+    in.pointed = -1;
+    in.gripDown = false;
+    step();
+    in.dt = 0.011f;
+    // A squeeze at nobody right by the gun is a missed foregrip grab; with no squad, a refusal.
+    in.nearGun = true;
+    in.gripDown = true;
+    in.newAwaySqueeze = true;
+    s = step();
+    CHECK(s.missedGrab && m.CurrentPhase() == Phase::Idle);
+    in.nearGun = false;
+    in.gripDown = false;
+    in.newAwaySqueeze = false;
+    step();
+    in.memberCount = 0;
+    in.gripDown = true;
+    in.newAwaySqueeze = true;
+    s = step();
+    CHECK(s.refused && !m.IsOpen());
+    in.memberCount = 2;
+    in.gripDown = false;
+    in.newAwaySqueeze = false;
+    step();
+    // Not usable: a squeeze does nothing.
+    in.usable = false;
+    in.gripDown = true;
+    in.newAwaySqueeze = true;
+    in.pointed = 0;
+    s = step();
+    CHECK(!s.opened && !s.armed && m.CurrentPhase() == Phase::Idle);
+    in.usable = true;
+    in.gripDown = false;
+    in.newAwaySqueeze = false;
+    step();
+
+    // confirmOnRelease off: letting go keeps it open; A confirms; a new squeeze cancels; it times out.
+    in.confirmOnRelease = false;
+    in.idleCloseSeconds = 1.0f;
+    in.gripDown = true;
+    in.newAwaySqueeze = true;
+    in.pointed = 0;
+    step();
+    in.newAwaySqueeze = false;
+    in.gripDown = false;
+    s = step();
+    CHECK(s.closed == Close::None && m.IsOpen());
+    in.rightY = 0.9f;
+    step();
+    in.rightY = 0.0f;
+    in.a = true;
+    s = step();
+    CHECK(s.closed == Close::Confirmed && s.weapon == 2);
+    in.a = false;
+    in.gripDown = true;
+    in.newAwaySqueeze = true;
+    step();
+    in.newAwaySqueeze = false;
+    in.gripDown = false;
+    step();
+    in.gripDown = true;
+    in.newAwaySqueeze = true;
+    s = step();
+    CHECK(s.closed == Close::Resqueezed);
+    in.gripDown = false;
+    in.newAwaySqueeze = false;
+    step();
+    in.gripDown = true;
+    in.newAwaySqueeze = true;
+    step();
+    in.newAwaySqueeze = false;
+    in.gripDown = false;
+    in.dt = 0.4f;
+    s = step();
+    s = step();
+    CHECK(s.closed == Close::None);
+    s = step();
+    CHECK(s.closed == Close::Idle && !m.IsOpen());
+}
+
+void TestSquadPanelPlacement() {
+    using namespace mevr::vr::squad_menu;
+    XrVector3f const head{0.0f, 1.6f, 0.0f};
+    XrVector3f const hand{-0.2f, 1.1f, -0.4f};
+    XrPosef const pose = PlaceAtHand(hand, head, 0.27f);
+    XrVector3f const d{pose.position.x - hand.x, pose.position.y - hand.y, pose.position.z - hand.z};
+    CHECK(NearD(std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z), 0.27, 0.005));
+    CHECK(d.y > 0.2f);                // mostly above the hand
+    CHECK(d.x < 0.0f && d.z < 0.0f);  // and a little further out, away from the head
+    // Its front (+Z) faces the eyes, its +X is level (no roll).
+    XrVector3f const z = mevr::vr::overlay::Rotate(pose.orientation, {0.0f, 0.0f, 1.0f});
+    XrVector3f const x = mevr::vr::overlay::Rotate(pose.orientation, {1.0f, 0.0f, 0.0f});
+    XrVector3f const toHead{head.x - pose.position.x, head.y - pose.position.y, head.z - pose.position.z};
+    float const n = std::sqrt(toHead.x * toHead.x + toHead.y * toHead.y + toHead.z * toHead.z);
+    CHECK(NearD((z.x * toHead.x + z.y * toHead.y + z.z * toHead.z) / n, 1.0, 1e-3));
+    CHECK(NearD(x.y, 0.0, 1e-4));
+    float const q = pose.orientation.x * pose.orientation.x + pose.orientation.y * pose.orientation.y +
+        pose.orientation.z * pose.orientation.z + pose.orientation.w * pose.orientation.w;
+    CHECK(NearD(q, 1.0, 1e-4));
+    // A hand straight under the head still gives a usable pose.
+    XrPosef const under = PlaceAtHand({0.0f, 1.0f, 0.0f}, head, 0.27f);
+    CHECK(std::isfinite(under.position.x) && std::isfinite(under.orientation.w));
+}
+
+void TestStickChord() {
+    using namespace mevr::game::gamepad;
+    StickChord c;
+    std::uint64_t t = 10000;
+    auto const step = [&](bool l, bool r, std::uint64_t advance) {
+        t += advance;
+        return UpdateStickChord(c, l, r, t);
+    };
+    // A tap: both down within the join window, both up within 300 ms of the first press: a snapshot.
+    CHECK(!step(true, false, 0).tap);
+    CHECK(!step(true, true, 40).tap);
+    CHECK(!step(true, true, 100).hold);
+    CHECK(!step(false, true, 60).tap);
+    StickChordStep s = step(false, false, 30);
+    CHECK(s.tap && !s.hold);
+    // A hold: Halcyon's menu once at 400 ms, and no snapshot when they're let go.
+    t += 1000;
+    step(true, true, 0);
+    CHECK(!step(true, true, 390).hold);
+    s = step(true, true, 20);
+    CHECK(s.hold && !s.tap);
+    CHECK(!step(true, true, 500).hold);  // once per hold
+    s = step(false, false, 10);
+    CHECK(!s.tap && !s.hold);
+    // Too slow to be a tap (350 ms), too short to be a hold: nothing.
+    t += 1000;
+    step(true, true, 0);
+    s = step(false, false, 350);
+    CHECK(!s.tap && !s.hold);
+    // The second click too late (150 ms after the first): no tap, even if quick after.
+    t += 1000;
+    step(false, true, 0);
+    step(true, true, 150);
+    s = step(false, false, 60);
+    CHECK(!s.tap);
+    // One stick alone is never a chord.
+    t += 1000;
+    step(true, false, 0);
+    s = step(false, false, 50);
+    CHECK(!s.tap && !s.hold);
+}
+
+void TestClickGate() {
+    using namespace mevr::game::gamepad;
+    using Phase = ClickGate::Phase;
+    ClickGate g;
+    std::uint64_t t = 5000;
+    auto const step = [&](bool click, bool other, std::uint64_t advance) {
+        t += advance;
+        return GateClick(g, click, other, t);
+    };
+    // Held alone: L3 from 100 ms on, until let go.
+    CHECK(!step(true, false, 0) && g.phase == Phase::Pending);
+    CHECK(!step(true, false, 60));
+    CHECK(step(true, false, 50) && g.phase == Phase::Pass);
+    CHECK(step(true, false, 300));
+    CHECK(!step(false, false, 10) && g.phase == Phase::Idle);
+    // A quick click alone: a short L3 right after it's let go.
+    CHECK(!step(true, false, 100));
+    CHECK(step(false, false, 40) && g.phase == Phase::Pulse);
+    CHECK(step(false, false, 50));
+    CHECK(!step(false, false, 40) && g.phase == Phase::Idle);
+    // The right click joining within 100 ms: never L3.
+    CHECK(!step(true, false, 100));
+    CHECK(!step(true, true, 40) && g.phase == Phase::Blocked);
+    CHECK(!step(true, false, 200));  // the right click let go first: L3 doesn't come back
+    CHECK(!step(false, false, 10));
+    // The right click joining late: L3 lets go and stays off.
+    CHECK(!step(true, false, 100));
+    CHECK(step(true, false, 150));
+    CHECK(!step(true, true, 50) && g.phase == Phase::Blocked);
+    CHECK(!step(true, false, 50));
+    CHECK(!step(false, false, 10));
+    // Pressed while the right click is held: never L3.
+    CHECK(!step(true, true, 100) && g.phase == Phase::Blocked);
+    CHECK(!step(false, false, 10));
+    // No clock: it passes as is.
+    g = {};
+    CHECK(GateClick(g, true, false, 0));
+    CHECK(!GateClick(g, false, false, 0));
+
+    // Through the pad: L3 shows up 100 ms after the press; in a both-sticks chord it never does.
+    mevr::vr::controllers::State state;
+    Latches latches;
+    state.timeMs = 9000;
+    state.left.stickClick = true;
+    auto pad = FromControllers(state, latches);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB) == 0);
+    state.timeMs += 110;
+    pad = FromControllers(state, latches);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB) != 0);
+    state.left.stickClick = false;
+    state.timeMs += 10;
+    pad = FromControllers(state, latches);
+    state.timeMs += 1000;
+    state.left.stickClick = true;
+    pad = FromControllers(state, latches);
+    state.right.stickClick = true;
+    state.timeMs += 30;
+    pad = FromControllers(state, latches);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB) == 0);
+    state.timeMs += 300;
+    pad = FromControllers(state, latches);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB) == 0);
+}
+
+void TestSquadPad() {
+    using namespace mevr::game::gamepad;
+    // The flag crosses the boundary.
+    Options options;
+    options.squadMenu = true;
+    CHECK((ToFlags(options) & kFlagSquadMenu) != 0);
+    CHECK(FromFlags(-1.0f, 0.12f, 0.22f, ToFlags(options)).squadMenu);
+    CHECK(!FromFlags(-1.0f, 0.12f, 0.22f, kFlagLeftTrigger).squadMenu);
+
+    // While open: no sticks, no A, B or stick clicks; the triggers and X/Y still pass.
+    mevr::vr::controllers::State state;
+    state.active = true;
+    state.timeMs = 20000;
+    state.left.stickX = 0.8f;
+    state.right.stickY = 0.9f;
+    state.right.primary = true;
+    state.right.secondary = true;
+    state.left.secondary = true;
+    state.right.trigger = 1.0f;
+    state.left.stickClick = true;
+    Latches latches;
+    auto pad = FromControllers(state, latches, options);
+    CHECK(pad.sThumbLX == 0 && pad.sThumbLY == 0 && pad.sThumbRX == 0 && pad.sThumbRY == 0);
+    CHECK((pad.wButtons & (XINPUT_GAMEPAD_A | XINPUT_GAMEPAD_B | XINPUT_GAMEPAD_LEFT_THUMB | XINPUT_GAMEPAD_RIGHT_THUMB)) == 0);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_Y) != 0 && pad.bRightTrigger == 255);
+    // Closed: what was in use stays the menu's until released or centred...
+    options.squadMenu = false;
+    state.timeMs += 20;
+    pad = FromControllers(state, latches, options);
+    CHECK(pad.sThumbLX == 0 && pad.sThumbRY == 0 && (pad.wButtons & (XINPUT_GAMEPAD_A | XINPUT_GAMEPAD_B)) == 0);
+    // ...each on its own: A let go and pressed again is A; the right stick centred and pushed again turns.
+    state.right.primary = false;
+    state.right.stickY = 0.1f;
+    state.timeMs += 20;
+    pad = FromControllers(state, latches, options);
+    state.right.primary = true;
+    state.right.stickY = 0.9f;
+    state.timeMs += 20;
+    pad = FromControllers(state, latches, options);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_A) != 0 && pad.sThumbRY > 0);
+    CHECK(pad.sThumbLX == 0 && (pad.wButtons & XINPUT_GAMEPAD_B) == 0);  // still held from the menu
+    state.left.stickX = 0.0f;
+    state.right.secondary = false;
+    state.timeMs += 20;
+    FromControllers(state, latches, options);
+    state.left.stickX = 0.8f;
+    state.right.secondary = true;
+    state.timeMs += 20;
+    pad = FromControllers(state, latches, options);
+    CHECK(pad.sThumbLX > 0 && (pad.wButtons & XINPUT_GAMEPAD_B) != 0);
+
+    // The left grip's report: squeezes away from the gun count; one on the foregrip doesn't.
+    Latches grip;
+    mevr::vr::controllers::State hands;
+    hands.active = true;
+    Options away;
+    away.support = {0.5f, 0.12f, 0.22f};  // the hand half a metre from the foregrip
+    hands.left.squeeze = 1.0f;
+    FromControllers(hands, grip, away);
+    CHECK(LeftGripReport(grip) == ((1u << 1) | 1u));
+    FromControllers(hands, grip, away);
+    CHECK(LeftGripReport(grip) == ((1u << 1) | 1u));  // the same squeeze
+    hands.left.squeeze = 0.0f;
+    FromControllers(hands, grip, away);
+    CHECK(LeftGripReport(grip) == (1u << 1));
+    Options onGun;
+    onGun.support = {0.05f, 0.12f, 0.22f};
+    hands.left.squeeze = 1.0f;
+    FromControllers(hands, grip, onGun);
+    CHECK(LeftGripReport(grip) == (1u << 1) && grip.left == LeftGrip::Support);
+    hands.left.squeeze = 0.0f;
+    FromControllers(hands, grip, onGun);
+    // Not counted while Halcyon's menu is open (countKept off).
+    Options inMenu = away;
+    inMenu.countKept = false;
+    hands.left.squeeze = 1.0f;
+    FromControllers(hands, grip, inMenu);
+    CHECK((LeftGripReport(grip) >> 1) == 1u);
+}
+
 int main() {
     TestBoneNames();
     TestIk();
@@ -2781,6 +3321,13 @@ int main() {
     TestRightGripFree();
     TestRightGripHolds();
     TestRbFromStickClick();
+    TestStickChord();
+    TestClickGate();
+    TestSquadPad();
+    TestSquadPointing();
+    TestSquadRadial();
+    TestSquadMachine();
+    TestSquadPanelPlacement();
     TestBodySlotGeometry();
     TestBodySlotMachine();
     TestBodySlotHolding();

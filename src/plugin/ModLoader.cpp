@@ -10,6 +10,7 @@
 #include "core/vr/AimRay.hpp"
 #include "core/vr/Floor.hpp"
 #include "core/vr/HostView.hpp"
+#include "core/vr/SquadMenu.hpp"
 #include "plugin/Halcyon.hpp"
 #include "plugin/TestLoop.hpp"
 #endif
@@ -99,18 +100,27 @@ void HostHapticContinuous(int hand, float amplitude, float frequencyHz, float se
 void HostFloor(vr::floor::State* out) {
     halcyon::Floor(out);
 }
+void HostSetSquadMenu(vr::squad_menu::View const* view) {
+    vr::squad_menu::Publish(view != nullptr ? *view : vr::squad_menu::View{});
+}
+std::uint32_t HostLeftGripAway() {
+    return halcyon::LeftGripAway();
+}
 HostServices const gServices{kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
     static_cast<std::uint32_t>(sizeof(vr::controllers::State)), static_cast<std::uint32_t>(sizeof(vr::host_view::State)),
     &HostSetProcessEventCallback, &HostProcessExiting, &HostKeepLoaded,
     static_cast<std::uint32_t>(sizeof(vr::aim_ray::Ray)), &HostSetAimRay, &HostSetSupportGrip, &HostSupportGripHeld,
     &HostStatusWanted, &HostSetStatus, &HostHapticPulse, &HostRightGripFree,
     static_cast<std::uint32_t>(sizeof(HostServices)), &HostHapticPulseHz, &HostHapticContinuous,
-    static_cast<std::uint32_t>(sizeof(vr::floor::State)), &HostFloor};
+    static_cast<std::uint32_t>(sizeof(vr::floor::State)), &HostFloor,
+    static_cast<std::uint32_t>(sizeof(vr::squad_menu::View)), &HostSetSquadMenu, &HostLeftGripAway};
 // A mod that's gone can't aim: Halcyon's head aim must come back, the reticle go, the pad mapping
-// forget the two-handed grip (and the grip holding the gun), and the controllers stop vibrating.
+// forget the two-handed grip (the grip holding the gun, the squad menu's controls), the squad menu go,
+// and the controllers stop vibrating.
 void ForgetModState() {
     halcyon::SetModHandAim(false);
     vr::aim_ray::Reset();
+    vr::squad_menu::Reset();
     halcyon::ForgetSupportGrip();
     halcyon::ForgetHaptics();
 }

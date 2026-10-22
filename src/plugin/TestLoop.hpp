@@ -14,8 +14,9 @@ struct ID3D11Texture2D;
 // describing what they see. LE1, with Halcyon's renderer in the host.
 //
 // Eye snapshots: what each eye shows, saved as PNGs to %LOCALAPPDATA%\MEVR\snapshots\<stamp>-left.png
-// and -right.png (the world with our HUD panel, reticle and Halcyon's menu drawn in, as the
-// compositor shows them), the layers on their own (-left-world.png, -hud.png, -menu.png), and
+// and -right.png (the world with our HUD panel, reticle, squad weapon menu and Halcyon's menu drawn
+// in, as the compositor shows them), the layers on their own (-left-world.png, -hud.png, -squad.png,
+// -menu.png), and
 // <stamp>.json (head, controllers, aim ray, the mod's arm IK and weapon state, the layers). The
 // swapchain images are copied into staging textures on the Present thread as they are released,
 // mapped two or more frames later (no stall), and converted and written on a worker thread.
@@ -26,9 +27,10 @@ struct ID3D11Texture2D;
 // Halcyon locates its views (the wrapped xrLocateViews, keeping the runtime's FOVs). Replayed buttons
 // and sticks only when asked (inputs=1), so a replay doesn't fire weapons by default.
 //
-// Triggers: End (snapshot) and Home (recording on/off) while the game has focus; both grips squeezed
-// plus the left stick click (snapshot) or the right stick click (recording on/off); the menu's VR
-// hands tab; and request files in %LOCALAPPDATA%\MEVR, polled once a second, read and deleted:
+// Triggers: End (snapshot) and Home (recording on/off) while the game has focus; both stick clicks
+// tapped together (snapshot: down and up within 300 ms; held 400 ms they open Halcyon's menu instead,
+// HalcyonBridge with gamepad::UpdateStickChord); the menu's VR hands tab; and request files in
+// %LOCALAPPDATA%\MEVR, polled once a second, read and deleted:
 //   snapshot.request  [count=N] [interval=seconds] [delay=seconds] [tag=word]
 //   record.request    [start|stop|toggle] [seconds=N]
 //   replay.request    <path.mevrrec | latest | stop> [loop=1] [inputs=1]
@@ -59,13 +61,6 @@ void ForgetSwapchain(XrSwapchain swapchain);
 void NoteMenuQuad(float const position[3], bool headLocked, float width, float height);
 
 // ---- Any thread ----------------------------------------------------------------------------------------
-// Both grips are squeezed on the live controllers: the stick clicks are the test loop's chords, and
-// the pad mapping keeps them from the game (no L3 / R3).
-bool GripChordHeld();
-// While true, both grips held isn't the chord (the right grip holds the gun and the left hand holds
-// its foregrip: two-handed aiming, whose stick clicks belong to the game). Set each frame before
-// OnFrameBegun.
-void BlockGripChord(bool blocked);
 // A replay drives the controllers (and with inputs=1, the buttons and sticks).
 bool Replaying();
 bool ReplayDrivesInputs();

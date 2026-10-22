@@ -6,6 +6,7 @@
 #include "engine/BonePose.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/Holsters.hpp"
+#include "game/SquadWeapons.hpp"
 #include "game/ViewAnchor.hpp"
 #include "game/Weapon.hpp"
 
@@ -215,6 +216,7 @@ void Tick(double deltaSeconds, bool requested) {
     options.supportAims = (controls.sniperAims || weapon::Type() != weapon::RangedType::Sniper) &&
                           (!controls.aimAtShoulder || shouldered);
     holsters::AdjustPad(options);  // RB kept off a squeeze at a holster; the wheel's LB if turned off
+    squad_weapons::AdjustPad(options);  // the squad menu's controls while it's open; no LB from a left grip away
     gFlags.store(gamepad::ToFlags(options), std::memory_order_relaxed);
     bool const aiming = options.supportAims && gHeld.load(std::memory_order_relaxed) && requested;
     std::optional<bool> const zoomed = weapon::Zoomed();
