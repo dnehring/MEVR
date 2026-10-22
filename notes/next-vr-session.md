@@ -22,6 +22,38 @@ moves, A activates, B backs out). R = recenter
 aim on/off and `.` arm IK on/off, both on by themselves once the controllers are tracked; the
 other keys in the table further down are for our own renderer only.
 
+## Test loop: let Claude see what you see (new)
+
+The host can now save what each eye shows (PNG snapshots) and record your head and controllers,
+so Claude can look for itself and replay your movements later without you in the headset.
+Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). Files go to
+`%LOCALAPPDATA%\MEVR\snapshots` and `\recordings`.
+
+- **Snapshot:** press **End** (game window focused), or squeeze **both grips and click the left
+  stick**, or in Halcyon's menu (`\`) open **VR hands -> Test loop -> Snapshot in 3 s** and close
+  the menu. Log: `test loop: snapshot saved in ...`. Claude can also take them any time while
+  you play (`tools/snapshot.ps1`): just keep still and say "go" when you're in position.
+- **Recording a short session for Claude** (about 20-60 s is plenty):
+  1. In game, on foot, with a weapon drawn. Recenter first (R).
+  2. Press **Home** (or both grips + right stick click) to start. Log: `test loop: recording the
+     head and controllers to ...\<stamp>.mevrrec`.
+  3. Do the thing you want Claude to check, slowly and deliberately, and say out loud (or note)
+     roughly when: e.g. "aim at the crate, 5 s; both hands on the rifle, 5 s; look left, arms out".
+     Hold each pose for a couple of seconds.
+  4. Press **Home** again to stop (log: `recording stopped ... N frames, X s`). Tell Claude the
+     file name and your notes.
+- Claude then replays it (`tools/replay.ps1`), taking snapshots at the interesting moments. The
+  replay moves the view and the controllers as you did (not the buttons, unless asked), so you can
+  take the headset off. **But keep the headset awake**: the game only runs VR frames while the
+  VR session runs, and a sleeping headset stops it.
+  - Quest + Steam Link / SteamVR: the headset sleeps a few seconds after you take it off. Cover
+    the proximity sensor (between the lenses) with a bit of tape or cloth, or in the Meta Quest
+    Developer Hub turn the proximity sensor off [verify which works with Steam Link].
+  - Leave the controllers on a table, untouched: the replay replaces their poses, but their
+    buttons and sticks still reach the game unless the replay replays buttons too.
+  - If `%LOCALAPPDATA%\MEVR\testloop.status` says `"framesRunning": false`, the session has
+    stopped; put the headset on briefly to wake it.
+
 ## LE1 in the headset
 
 1. Start SteamVR, then the game, and load a save on foot.
