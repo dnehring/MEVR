@@ -41,7 +41,7 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   R recenter (or double-click the right stick), K first person. Our own VR hotkeys are off on LE1.
 - Its menu takes the pad (Touch merged in as Xbox pad 0: left stick/d-pad, A, B; upstream never
   set ImGui's `HasGamepad` backend flag, so pad nav was dead until we did) and our laser pointer
-  (`src/plugin/MevrMenuPointer.cpp`: a controller's aim ray on the head-locked quad is the mouse,
+  (`src/plugin/MevrMenuPointer.cpp`: a controller's aim ray on the menu quad, world-locked by default (`worldLockedPanels`, `src/plugin/WorldPanels.cpp`), is the mouse,
   trigger clicks, right stick scrolls). Our own tab, "VR hands" (`src/plugin/MevrMenuTab.cpp`),
   edits `[Hands]` in `ASI\LE1MEVR.ini` (the mod re-reads it) and writes the arm-length sample
   (`[Arms] measureRequest` counter plus grip/head positions; `armLengthM` is shown if present).
