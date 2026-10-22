@@ -145,6 +145,8 @@ bool Input::Create(Target const& target) {
     menu_ = CreateAction(set_, XR_ACTION_TYPE_BOOLEAN_INPUT, "menu", "Menu", hands_);
     gripPose_ = CreateAction(set_, XR_ACTION_TYPE_POSE_INPUT, "grip_pose", "Grip pose", hands_);
     aimPose_ = CreateAction(set_, XR_ACTION_TYPE_POSE_INPUT, "aim_pose", "Aim pose", hands_);
+    // Optional: without it the controllers work, they just don't vibrate (Vibrate).
+    haptic_ = CreateAction(set_, XR_ACTION_TYPE_VIBRATION_OUTPUT, "haptic", "Vibration", hands_);
     for (XrAction action : {trigger_, squeeze_, stick_, stickClick_, primary_, secondary_, menu_, gripPose_, aimPose_}) {
         if (action == XR_NULL_HANDLE) {
             Release(target);
@@ -166,6 +168,10 @@ bool Input::Create(Target const& target) {
     Bind(touch, primary_, "right", "/input/a/click");
     Bind(touch, secondary_, "right", "/input/b/click");
     Bind(touch, menu_, "left", "/input/menu/click");
+    if (haptic_ != XR_NULL_HANDLE) {
+        Bind(touch, haptic_, "left", "/output/haptic");
+        Bind(touch, haptic_, "right", "/output/haptic");
+    }
 
     std::vector<Binding> index;
     for (char const* hand : {"left", "right"}) {
@@ -177,6 +183,9 @@ bool Input::Create(Target const& target) {
         Bind(index, secondary_, hand, "/input/b/click");
         Bind(index, gripPose_, hand, "/input/grip/pose");
         Bind(index, aimPose_, hand, "/input/aim/pose");
+        if (haptic_ != XR_NULL_HANDLE) {
+            Bind(index, haptic_, hand, "/output/haptic");
+        }
     }
 
     std::vector<Binding> simple;
@@ -185,6 +194,9 @@ bool Input::Create(Target const& target) {
         Bind(simple, menu_, hand, "/input/menu/click");
         Bind(simple, gripPose_, hand, "/input/grip/pose");
         Bind(simple, aimPose_, hand, "/input/aim/pose");
+        if (haptic_ != XR_NULL_HANDLE) {
+            Bind(simple, haptic_, hand, "/output/haptic");
+        }
     }
 
     bool const touchOk = Suggest(instance, "/interaction_profiles/oculus/touch_controller", touch);
@@ -236,7 +248,7 @@ void Input::Release(Target const& target) {
         xrDestroyActionSet(set_);  // also destroys its actions
     }
     set_ = XR_NULL_HANDLE;
-    trigger_ = squeeze_ = stick_ = stickClick_ = primary_ = secondary_ = menu_ = gripPose_ = aimPose_ = XR_NULL_HANDLE;
+    trigger_ = squeeze_ = stick_ = stickClick_ = primary_ = secondary_ = menu_ = gripPose_ = aimPose_ = haptic_ = XR_NULL_HANDLE;
     created_ = false;
 }
 
@@ -291,6 +303,22 @@ void Input::Sync(Target const& target, XrTime time, vr::controllers::State& out)
     };
     // Tracked, or used while tracking is lost (buttons still work then).
     out.active = out.left.gripValid || out.right.gripValid || pressed(out.left) || pressed(out.right);
+}
+
+bool Input::Vibrate(Target const& target, int hand, float seconds, float amplitude) {
+    if (!Matches(target) || haptic_ == XR_NULL_HANDLE || hand < kLeft || hand > kRight || !(seconds > 0.0f) ||
+        !(amplitude > 0.0f)) {
+        return false;
+    }
+    XrHapticActionInfo info{XR_TYPE_HAPTIC_ACTION_INFO};
+    info.action = haptic_;
+    info.subactionPath = hands_[hand];
+    XrHapticVibration vibration{XR_TYPE_HAPTIC_VIBRATION};
+    vibration.duration = static_cast<XrDuration>(static_cast<double>(seconds) * 1e9);
+    vibration.frequency = XR_FREQUENCY_UNSPECIFIED;
+    vibration.amplitude = amplitude > 1.0f ? 1.0f : amplitude;
+    return Check(xrApplyHapticFeedback(target.session, &info, reinterpret_cast<XrHapticBaseHeader const*>(&vibration)),
+        "xrApplyHapticFeedback");
 }
 
 } // namespace mevr::xr

@@ -4,6 +4,7 @@
 #include "core/PngFile.hpp"
 #include "core/ik/ArmLength.hpp"
 #include "core/ik/ArmPose.hpp"
+#include "core/ik/BodySlots.hpp"
 #include "core/ik/BoneNames.hpp"
 #include "core/ik/CameraHook.hpp"
 #include "core/ik/HandFrame.hpp"
@@ -1966,6 +1967,280 @@ void TestTestRequest() {
     CHECK(JsonNumber(1.5) == "1.5" && JsonNumber(std::nan("")) == "null");
 }
 
+mevr::ik::Quat ToIk(XrQuaternionf const& q) {
+    return {q.x, q.y, q.z, q.w};
+}
+
+bool NearIk(mevr::ik::Vec3 const& a, mevr::ik::Vec3 const& b, double tolerance = 1e-6) {
+    return NearD(a.x, b.x, tolerance) && NearD(a.y, b.y, tolerance) && NearD(a.z, b.z, tolerance);
+}
+
+void TestBodySlotGeometry() {
+    using namespace mevr::ik;
+    using namespace mevr::ik::body_slots;
+    // Axes of a body yaw: 0 faces -Z with +X to the right; 90 degrees left faces -X.
+    CHECK(NearIk(YawForward(0.0), {0.0, 0.0, -1.0}));
+    CHECK(NearIk(YawRight(0.0), {1.0, 0.0, 0.0}));
+    double const left90 = std::numbers::pi / 2.0;
+    CHECK(NearIk(YawForward(left90), {-1.0, 0.0, 0.0}));
+    CHECK(NearIk(YawRight(left90), {0.0, 0.0, -1.0}));
+
+    // The neutral eye: an upright head is its own anchor; pitching or rolling about the neck pivot
+    // doesn't move it; turning doesn't either.
+    Vec3 const head{0.3, 1.6, -0.2};
+    CHECK(NearIk(NeutralEye(head, ToIk(YawPitch(0, 0))), head));
+    CHECK(NearIk(NeutralEye(head, ToIk(YawPitch(35, 0))), head));
+    // Looking 60 degrees down about the neck pivot: the eyes move down and forward; the anchor is
+    // where they'd be upright again.
+    Quat const down = ToIk(YawPitch(20, -60));
+    Vec3 const pivot = head + Rotate(ToIk(YawPitch(20, 0)), Vec3{0.0, -0.08, 0.08});
+    Vec3 const pitchedEye = pivot - Rotate(down, Vec3{0.0, -0.08, 0.08});
+    CHECK(NearIk(NeutralEye(pitchedEye, down), head, 1e-6));
+
+    // Slot centers: the default right hip, facing -Z, is to the right, below and a little behind;
+    // facing 90 degrees left, "right" is -Z; offsets scale with the eye height.
+    Layout layout = DefaultLayout();
+    CHECK(layout.slots[0].weapon == Weapon::Pistol && layout.slots[1].weapon == Weapon::AssaultRifle &&
+          layout.slots[2].weapon == Weapon::Shotgun && layout.slots[3].weapon == Weapon::Sniper);
+    Frame frame{{0.0, 1.6, 0.0}, 0.0};
+    Vec3 const hip = SlotCenter(frame, layout.slots[0], 1.0);
+    CHECK(NearIk(hip, {0.20, 1.6 - 0.62, 0.05}));
+    frame.yaw = left90;
+    CHECK(NearIk(SlotCenter(frame, layout.slots[0], 1.0), {0.05, 1.6 - 0.62, -0.20}));
+    layout.eyeHeight = kReferenceEyeHeight * 1.2;
+    CHECK(NearD(Scale(layout), 1.2, 1e-9));
+    layout.eyeHeight = 10.0;  // nonsense is clamped
+    CHECK(Scale(layout) <= 1.5);
+    // The shoulders are behind the head and don't contain it; the default slots don't overlap,
+    // except the two shoulders behind the neck (as GoldenEye VR's do; the nearer one wins).
+    frame.yaw = 0.0;
+    for (int i : {1, 3}) {
+        Vec3 const c = SlotCenter(frame, DefaultLayout().slots[i], 1.0);
+        CHECK(c.z > 0.1);
+        CHECK(Length(c - frame.anchor) > DefaultLayout().slots[i].radius);
+    }
+    for (int i = 0; i < kSlots; ++i) {
+        for (int j = i + 1; j < kSlots; ++j) {
+            if (i == 1 && j == 3) {
+                continue;
+            }
+            Slot const& a = DefaultLayout().slots[i];
+            Slot const& b = DefaultLayout().slots[j];
+            CHECK(Length(SlotCenter(frame, a, 1.0) - SlotCenter(frame, b, 1.0)) > a.radius + b.radius);
+        }
+    }
+    // The shouldered aim point (support grip's "at the shoulder") isn't near any slot.
+    Vec3 const shouldered = frame.anchor + Vec3{0.15, -0.15, -0.10};
+    for (Slot const& slot : DefaultLayout().slots) {
+        CHECK(Length(shouldered - SlotCenter(frame, slot, 1.0)) > slot.radius + DefaultLayout().exitMargin);
+    }
+
+    // The anchor's height follows with a time constant; its horizontal position at once.
+    Anchor anchor(0.08);
+    CHECK(NearIk(anchor.Update({0.0, 1.6, 0.0}, 0.011), {0.0, 1.6, 0.0}));
+    Vec3 const crouch = anchor.Update({0.1, 1.2, 0.0}, 0.08);
+    CHECK(NearD(crouch.x, 0.1, 1e-9));
+    CHECK(NearD(crouch.y, 1.6 - 0.4 * (1.0 - std::exp(-1.0)), 1e-6));
+    for (int i = 0; i < 100; ++i) {
+        anchor.Update({0.1, 1.2, 0.0}, 0.011);
+    }
+    CHECK(NearD(anchor.Update({0.1, 1.2, 0.0}, 0.011).y, 1.2, 1e-3));
+
+    // Weapon names.
+    CHECK(ParseWeapon("Pistol") == Weapon::Pistol);
+    CHECK(ParseWeapon(" rifle ") == Weapon::AssaultRifle);
+    CHECK(ParseWeapon("assault_rifle") == Weapon::AssaultRifle);
+    CHECK(ParseWeapon("SNIPER") == Weapon::Sniper);
+    CHECK(ParseWeapon("off") == Weapon::None);
+    CHECK(!ParseWeapon("rocket"));
+}
+
+void TestBodySlotMachine() {
+    using namespace mevr::ik::body_slots;
+    // Two slots: 0 a pistol (r 0.14), 1 an assault rifle (r 0.20); 2 and 3 off.
+    auto const input = [](double d0, double d1) {
+        Input in;
+        in.distance = {d0, d1, -1.0, -1.0};
+        in.radius = {0.14, 0.20, 0.13, 0.20};
+        in.weapon = {Weapon::Pistol, Weapon::AssaultRifle, Weapon::None, Weapon::None};
+        in.available = {true, true, false, false};
+        in.exitMargin = 0.05;
+        return in;
+    };
+    Machine m;
+    // Approaching: near (RB kept off) before in; in at the radius; out only past radius + margin.
+    Step s = m.Update(input(0.30, 1.0));
+    CHECK(!s.nearby && m.InSlot() == -1);
+    s = m.Update(input(0.18, 1.0));
+    CHECK(s.nearby && m.InSlot() == -1 && s.entered == -1);
+    s = m.Update(input(0.13, 1.0));
+    CHECK(s.entered == 0 && m.InSlot() == 0 && s.action == Action::None);
+    s = m.Update(input(0.17, 1.0));
+    CHECK(m.InSlot() == 0 && s.left == -1);  // within the hysteresis
+    s = m.Update(input(0.20, 1.0));
+    CHECK(s.left == 0 && m.InSlot() == -1);
+
+    // A new squeeze in a slot draws its weapon, once; the grip held after that does nothing more.
+    m.Reset();
+    Input in = input(0.05, 1.0);
+    in.held = Weapon::AssaultRifle;
+    m.Update(in);
+    in.gripDown = in.newSqueeze = true;
+    s = m.Update(in);
+    CHECK(s.action == Action::Draw && s.slot == 0 && s.weapon == Weapon::Pistol);
+    CHECK(m.CurrentPhase() == Phase::Grab && m.Busy());
+    in.newSqueeze = false;
+    s = m.Update(in);
+    CHECK(s.action == Action::None);
+    in.gripDown = false;
+    s = m.Update(in);
+    CHECK(s.action == Action::None && m.CurrentPhase() == Phase::Idle);
+
+    // A grip held while the hand moves into a slot never grabs (no new squeeze).
+    m.Reset();
+    in = input(0.5, 1.0);
+    in.gripDown = true;
+    m.Update(in);
+    in.distance[0] = 0.05;
+    s = m.Update(in);
+    CHECK(s.entered == 0 && s.action == Action::None);
+
+    // A slot whose weapon the player doesn't carry refuses.
+    m.Reset();
+    in = input(1.0, 0.1);
+    in.available[1] = false;
+    m.Update(in);
+    in.gripDown = in.newSqueeze = true;
+    s = m.Update(in);
+    CHECK(s.action == Action::Unavailable && s.slot == 1);
+
+    // A squeeze near a slot but in none: missed (nothing drawn).
+    m.Reset();
+    in = input(0.16, 1.0);
+    in.gripDown = in.newSqueeze = true;
+    s = m.Update(in);
+    CHECK(s.nearby && s.action == Action::Missed);
+
+    // Holster: squeeze and release at the held gun's own slot.
+    m.Reset();
+    in = input(0.05, 1.0);
+    in.held = Weapon::Pistol;
+    m.Update(in);
+    in.gripDown = in.newSqueeze = true;
+    s = m.Update(in);
+    CHECK(s.action == Action::HolsterArmed && m.CurrentPhase() == Phase::HolsterArmed);
+    in.newSqueeze = false;
+    in.gripDown = false;
+    s = m.Update(in);
+    CHECK(s.action == Action::Holster && s.slot == 0 && s.weapon == Weapon::Pistol);
+    // ... in one quick tap between steps too.
+    m.Reset();
+    in.gripDown = false;
+    in.newSqueeze = true;
+    m.Update(input(0.05, 1.0));
+    s = m.Update(in);
+    CHECK(s.action == Action::Holster);
+    // ... cancelled by leaving the slot (past the hysteresis) before the release.
+    m.Reset();
+    in = input(0.05, 1.0);
+    in.held = Weapon::Pistol;
+    m.Update(in);
+    in.gripDown = in.newSqueeze = true;
+    m.Update(in);
+    in.newSqueeze = false;
+    in.distance[0] = 0.25;
+    s = m.Update(in);
+    CHECK(s.action == Action::HolsterCancelled);
+    in.distance[0] = 0.05;  // back in the slot and released: still nothing
+    m.Update(in);
+    in.gripDown = false;
+    s = m.Update(in);
+    CHECK(s.action == Action::None);
+    // ... cancelled by the trigger.
+    m.Reset();
+    in = input(0.05, 1.0);
+    in.held = Weapon::Pistol;
+    m.Update(in);
+    in.gripDown = in.newSqueeze = true;
+    m.Update(in);
+    in.newSqueeze = false;
+    in.trigger = true;
+    s = m.Update(in);
+    CHECK(s.action == Action::HolsterCancelled);
+    in.gripDown = false;
+    CHECK(m.Update(in).action == Action::None);
+    // ... off: the held gun's slot does nothing.
+    m.Reset();
+    in = input(0.05, 1.0);
+    in.held = Weapon::Pistol;
+    in.holster = Holster::Off;
+    in.gripDown = in.newSqueeze = true;
+    s = m.Update(in);
+    CHECK(s.action == Action::AlreadyHeld);
+    in.newSqueeze = in.gripDown = false;
+    CHECK(m.Update(in).action == Action::None);
+    // ... an empty slot holsters only with OwnOrEmptySlot.
+    m.Reset();
+    in = input(1.0, 0.05);
+    in.available[1] = false;
+    in.held = Weapon::Pistol;
+    in.gripDown = in.newSqueeze = true;
+    CHECK(m.Update(in).action == Action::Unavailable);
+    in.newSqueeze = in.gripDown = false;
+    CHECK(m.Update(in).action == Action::None);
+    m.Reset();
+    in.holster = Holster::OwnOrEmptySlot;
+    in.gripDown = in.newSqueeze = true;
+    CHECK(m.Update(in).action == Action::HolsterArmed);
+    in.newSqueeze = in.gripDown = false;
+    CHECK(m.Update(in).action == Action::Holster);
+
+    // Overlapping slots: the smaller distance / radius wins.
+    m.Reset();
+    s = m.Update(input(0.12, 0.15));  // 0.86 vs 0.75
+    CHECK(m.InSlot() == 1);
+    // Lost tracking: out of every slot, not near.
+    in = input(0.05, 1.0);
+    in.tracked = false;
+    s = m.Update(in);
+    CHECK(s.left == 1 && m.InSlot() == -1 && !s.nearby);
+}
+
+void TestRightGripFree() {
+    using namespace mevr::game::gamepad;
+    mevr::vr::controllers::State state;
+    Latches latches;
+    Options options;
+    // Without the flag the right grip is RB as always.
+    state.right.squeeze = 1.0f;
+    CHECK((FromControllers(state, latches, options).wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0);
+    // The flag appearing while the grip is held changes nothing (the squeeze began elsewhere).
+    options.rightGripFree = true;
+    CHECK((FromControllers(state, latches, options).wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0);
+    CHECK(RightGripReport(latches) == 0);
+    // A new squeeze with the flag: no RB, counted, until the grip opens, wherever the hand goes.
+    state.right.squeeze = 0.0f;
+    FromControllers(state, latches, options);
+    state.right.squeeze = 1.0f;
+    CHECK((FromControllers(state, latches, options).wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) == 0);
+    CHECK(RightGripReport(latches) == ((1u << 1) | 1u));
+    options.rightGripFree = false;  // the hand left the holster, grip still held
+    CHECK((FromControllers(state, latches, options).wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) == 0);
+    state.right.squeeze = 0.0f;
+    FromControllers(state, latches, options);
+    CHECK(RightGripReport(latches) == (1u << 1));
+    // The next squeeze away from a holster is RB again.
+    state.right.squeeze = 1.0f;
+    CHECK((FromControllers(state, latches, options).wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0);
+    CHECK(RightGripReport(latches) == (1u << 1));
+    // The flag crosses the host boundary.
+    Options flagged;
+    flagged.rightGripFree = true;
+    CHECK((ToFlags(flagged) & kFlagRightGripFree) != 0);
+    CHECK(FromFlags(-1.0f, 0.12f, 0.22f, ToFlags(flagged)).rightGripFree);
+    CHECK(!FromFlags(-1.0f, 0.12f, 0.22f, kFlagLeftTrigger).rightGripFree);
+}
+
 int main() {
     TestBoneNames();
     TestIk();
@@ -1990,6 +2265,9 @@ int main() {
     TestGunHold();
     TestGamepad();
     TestSupportGrip();
+    TestRightGripFree();
+    TestBodySlotGeometry();
+    TestBodySlotMachine();
     TestTwoHand();
     TestOverlayPlacement();
     TestMenuPointer();

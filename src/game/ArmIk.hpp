@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 
 // VRIK arms, route 2 (research/14): Shepard's arms follow the hand targets (game/hand_targets)
@@ -27,6 +28,9 @@ bool RightHandAimsGun();
 // This tick's request asks the writer for the two-handed grip (a settled foregrip on the aimed gun,
 // the left controller followed): game/support_grip's distance and blend are about this gun.
 bool SupportRequested();
+// The torso's heading this tick (OpenXR yaw in tracking space, ik::BodyYaw's convention), while arm
+// IK turns the torso to it (game/holsters hangs the body slots off it). Nullopt otherwise.
+std::optional<double> TorsoYaw();
 bool Toggle();
 void SetEnabled(bool on);
 bool Enabled();

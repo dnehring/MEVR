@@ -180,6 +180,39 @@ The agreed plan:
     on the Camera bone (research/18) also bears on where the view sits relative to Shepard.
 
 
+## Body holsters (user, 2026-10-22; built the same day, to test)
+
+The user: switch weapons by reaching to places on the body, so the weapon wheel isn't needed for
+Shepard. Research, the native switch path and the design: research/19. Test steps:
+notes/next-vr-session.md step 11.
+- **Host change, needs a redeploy:** HostServices v9:
+  - `hapticPulse`, an OpenXR vibration action on our action set, applied after the sync;
+  - `rightGripFree`, the mapping's count of squeezes kept off RB;
+  - `gamepad::kFlagRightGripFree`: a new right-grip squeeze near a slot isn't RB until it opens.
+
+  Without the redeploy, grabs still work, but RB reaches the game and there is no buzz (both
+  logged once).
+- **Mod (hot reload):**
+  - `core/ik/BodySlots` (geometry and the grab/holster machine, unit-tested);
+  - `game/Holsters`: `SFXGameModeDefault.SwitchToWeapon(type)` / `TryHolster()` through
+    ProcessEvent; quick slots from `BioEquipment`;
+  - `[Holsters]` in LE1MEVR.ini.
+- **Defaults:** holsters on, the weapon wheel kept (`weaponWheel = 1`), and holstering by squeeze
+  and release at the gun's own slot.
+- **[verify in headset]:**
+  - the switch from our tick matches the number keys;
+  - the slot positions and radii;
+  - no RB and no switches by accident in a fight;
+  - the yaw hold when looking down.
+- **Open, for the user:**
+  - make the right grip "hold the gun" (research/19, section 4)? Not built;
+  - turn the wheel off once holsters feel right;
+  - squadmates' weapons still need the wheel;
+  - seated preset;
+  - a floor-relative space in the host to measure eye height instead of `eyeHeightM`;
+  - a visual hint for the slot the hand is in.
+
+
 ## World-locked flat panels (user, 2026-10-21; built the same day, to test)
 
 The user: the HUD and flat panels should stay placed in space, not move with the head (the intro's

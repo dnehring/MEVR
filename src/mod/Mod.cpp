@@ -27,6 +27,7 @@
 #include "game/HandTargets.hpp"
 #include "game/HeadSim.hpp"
 #include "game/HeadTracking.hpp"
+#include "game/Holsters.hpp"
 #include "game/Reflections.hpp"
 #include "game/SkeletonProbe.hpp"
 #include "game/SupportGrip.hpp"
@@ -191,6 +192,7 @@ void TryInstallScriptHooks() {
     if (!game::weapon::TryStartup()) {
         log::Warn("weapon: BioWeaponRanged.GetMuzzleLoc not found (or not LE1): shots and hands keep the controller's aim");
     }
+    game::holsters::TryStartup();  // logs what it found; holsters stay off without it
     gHandAimAvailable = game::hand_aim::TryStartup();
     if (!gHandAimAvailable) {
         log::Warn("hand aim: BioPlayerController.GetAdjustedAimFor not found; hand aim unavailable");
@@ -371,6 +373,19 @@ void PublishSupportGrip() {
     game::support_grip::SetHeld(gHost->supportGripHeld());
 }
 
+// Host renderer (HostServices v9): the body holsters' right-grip report and controller pulses.
+mevr::game::holsters::Link HolsterLink() {
+    using namespace mevr;
+    game::holsters::Link link;
+    if (gHostOwnsVr && gHost->version >= 9) {
+        if (gHost->rightGripFree != nullptr) {
+            link.rightGrip = gHost->rightGripFree();
+        }
+        link.haptic = gHost->hapticPulse;
+    }
+    return link;
+}
+
 // Host renderer (HostServices v8): while the test loop takes a snapshot, our state for its JSON.
 void PublishStatus() {
     using namespace mevr;
@@ -393,14 +408,14 @@ void PublishStatus() {
         "\"armIk\": {{\"enabled\": {}, \"status\": {}, \"handSource\": {}, \"rightHandAimsGun\": {}, \"supportRequested\": {}}}, "
         "\"handAim\": {{\"enabled\": {}, \"toldHost\": {}}}, "
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
-        "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}}}",
+        "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
         game::arm_ik::SupportRequested() ? "true" : "false", game::hand_aim::Enabled() ? "true" : "false",
         gHandAimReported ? "true" : "false", json::JsonString(type), static_cast<unsigned long long>(game::weapon::Key()),
         json::JsonString(game::weapon::Status()), game::support_grip::Held() ? "true" : "false",
-        json::JsonNumber(game::support_grip::Blend()));
+        json::JsonNumber(game::support_grip::Blend()), game::holsters::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -532,6 +547,7 @@ void Heartbeat() {
         game::view_anchor::LogStats();
         game::arm_ik::LogStats();
         game::support_grip::LogStats();
+        game::holsters::LogStats();
         game::skeleton_probe::Tick();
     }
     engine::scene_view::LogStats();
@@ -637,6 +653,8 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // OnTickEnd), then which way shots go and the reticle's ray.
         game::weapon::Tick(game::hand_aim::Enabled() || game::arm_ik::Enabled());
         game::arm_ik::Tick(deltaSeconds);
+        // Holsters before the support grip: it publishes the pad flags, holsters' among them.
+        game::holsters::Tick(deltaSeconds, HolsterLink());
         game::support_grip::Tick(deltaSeconds, game::arm_ik::SupportRequested());
         PublishSupportGrip();
         game::camera_probe::Tick();
@@ -727,6 +745,7 @@ MEVR_MOD_API void MevrModShutdown() {
     }
     gToldNoSupportGrip = false;
     game::support_grip::Shutdown();
+    game::holsters::Shutdown();
     game::weapon::Shutdown();
     game::camera_probe::Shutdown();
     gHost = nullptr;

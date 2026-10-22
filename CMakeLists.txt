@@ -106,6 +106,8 @@ set(MEVR_MOD_SOURCES
     src/core/ik/ArmPose.hpp
     src/core/ik/HandFrame.cpp
     src/core/ik/HandFrame.hpp
+    src/core/ik/BodySlots.cpp
+    src/core/ik/BodySlots.hpp
     src/core/ik/BoneNames.cpp
     src/core/ik/BoneNames.hpp
     src/core/ik/CameraHook.cpp
@@ -175,6 +177,8 @@ set(MEVR_MOD_SOURCES
     src/game/HeadSim.hpp
     src/game/HeadTracking.cpp
     src/game/HeadTracking.hpp
+    src/game/Holsters.cpp
+    src/game/Holsters.hpp
     src/game/Reflections.cpp
     src/game/Reflections.hpp
     src/game/SkeletonProbe.cpp
@@ -293,6 +297,7 @@ if (MEVR_BUILD_TESTS)
         src/core/PngFile.cpp
         src/core/ik/ArmLength.cpp
         src/core/ik/ArmPose.cpp
+        src/core/ik/BodySlots.cpp
         src/core/ik/HandFrame.cpp
         src/core/ik/BoneNames.cpp
         src/core/ik/CameraHook.cpp

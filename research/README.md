@@ -22,6 +22,7 @@ and what is still unverified. The [docs/](../docs) folder holds the conclusions.
 | [15-hud.md](15-hud.md) | The HUD in VR (M5): BioSFPanel variables, GFxMovie render-to-texture, the options in order of effort | 2026-10-08 |
 | [17-ghidra.md](17-ghidra.md) | Reading native code with headless Ghidra (`tools/ghidra`): what analysis gives, and the fire path decompiled against research/14 (confirmed; `execTickFire` reaches `0xC621E0` through vtable slot `0x8A0`) | 2026-10-21 |
 | [18-camera-and-hands.md](18-camera-and-hands.md) | LE1's camera hangs off the body bone `Camera` (not the head), so body writes that leave it alone can't move the view; the native off-hand IK (`LeftArm` → `LHIK`) follows the combat-idle node's weight and runs before our write; the aimed-fire bonus is the weapon's `bIsZoomed`, set from input, not the camera mode | 2026-10-21 |
+| [19-body-holsters.md](19-body-holsters.md) | Body holsters: how VR shooters and VR mods place, size and trigger body slots (sources), Overlord's holsters; how LE1 equips (`SFXGameModeDefault.SwitchToWeapon`, quick slot = weapon type) and holsters (`TryHolster`); the design built | 2026-10-22 |
 | [sources.md](sources.md) | Every URL consulted | 2026-10-07 |
 
 ## Conventions

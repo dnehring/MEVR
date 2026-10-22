@@ -12,7 +12,8 @@
 //
 // Touch -> Xbox: sticks -> sticks, triggers -> triggers, grips -> LB / RB, A/B (right) -> A/B,
 // X/Y (left) -> X/Y, stick clicks -> LS / RS, left menu -> Start; left grip + menu -> Back. The
-// left grip on the held gun's foregrip is the support grip instead (LT held, no LB; below).
+// left grip on the held gun's foregrip is the support grip instead (LT held, no LB; below), and the
+// right grip squeezed at a body holster draws a weapon instead of RB (Options::rightGripFree).
 namespace mevr::game::gamepad {
 
 // The support grip (game/support_grip): the left grip squeezed with the left hand near the held
@@ -55,7 +56,18 @@ struct Latches {
     bool leftTrigger = false;  // as a button (Options::leftTriggerShoulder)
     SupportGrip support;
     LeftGrip left = LeftGrip::Open;  // the last step's answer
+    // The body holsters (game/holsters): the current right-grip squeeze began while
+    // Options::rightGripFree was set, so it isn't RB until the grip opens; and how many such
+    // squeezes there have been (the mod acts on each new one).
+    bool rightFree = false;
+    std::uint32_t rightFreeCount = 0;
 };
+
+// What the host reports of the right grip (HostServices::rightGripFree): the count of squeezes kept
+// from the game, shifted up one bit, and whether the current squeeze is one of them.
+inline std::uint32_t RightGripReport(Latches const& latches) {
+    return (latches.rightFreeCount << 1) | (latches.rightFree ? 1u : 0u);
+}
 
 struct Options {
     // The left trigger reaches the game as LT (false: it's freed for something else; the game
@@ -69,14 +81,19 @@ struct Options {
     bool gripShoulder = true;
     // The left trigger is LB (the weapon wheel) instead of LT.
     bool leftTriggerShoulder = false;
+    // The right hand is at a body holster (game/holsters): a NEW right-grip squeeze isn't RB (the
+    // power wheel) until the grip opens. A squeeze already held stays RB.
+    bool rightGripFree = false;
     SupportInput support;
 };
 
-// Options across the host/mod boundary (HostServices::setSupportGrip): two flags.
+// Options across the host/mod boundary (HostServices::setSupportGrip): flags. A host older than a
+// flag ignores it (the mapping then works as before it).
 inline constexpr std::uint32_t kFlagLeftTrigger = 1;  // Options::leftTrigger
 inline constexpr std::uint32_t kFlagSupportAims = 2;  // Options::supportAims
 inline constexpr std::uint32_t kFlagGripShoulder = 4;         // Options::gripShoulder
 inline constexpr std::uint32_t kFlagLeftTriggerShoulder = 8;  // Options::leftTriggerShoulder
+inline constexpr std::uint32_t kFlagRightGripFree = 16;       // Options::rightGripFree
 std::uint32_t ToFlags(Options const& options);
 Options FromFlags(float distance, float acquire, float release, std::uint32_t flags);
 

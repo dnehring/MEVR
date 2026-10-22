@@ -840,6 +840,13 @@ bool SupportRequested() {
     return gEnabled && gSupportRequested;
 }
 
+std::optional<double> TorsoYaw() {
+    if (!gEnabled || !gBodyYawActive) {
+        return std::nullopt;
+    }
+    return gBodyYaw.Value();
+}
+
 bool Toggle() {
     gEnabled = !gEnabled;
     return gEnabled;

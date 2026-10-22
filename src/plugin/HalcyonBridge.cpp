@@ -19,6 +19,7 @@
 
 #include <openxr/openxr.h>
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <cstring>
@@ -59,6 +60,43 @@ std::atomic<float> gSupportRelease{0.22f};
 std::atomic<unsigned> gSupportFlags{mevr::game::gamepad::kFlagLeftTrigger | mevr::game::gamepad::kFlagSupportAims};
 std::atomic<std::uint64_t> gSupportInputMs{0};
 std::atomic<bool> gSupportHeld{false};
+// The body holsters: the mapping's right-grip report (gamepad::RightGripReport), and the pending
+// vibration per hand (seconds and amplitude as float bits; 0 seconds = none), applied after the
+// action sync on the frame thread.
+std::atomic<std::uint32_t> gRightGripReport{0};
+std::atomic<bool> gLoggedRightGripFree{false};
+std::array<std::atomic<std::uint64_t>, 2> gPendingHaptic{};
+bool gLoggedHaptic = false;  // frame thread
+
+std::uint64_t PackHaptic(float seconds, float amplitude) {
+    std::uint32_t s = 0;
+    std::uint32_t a = 0;
+    std::memcpy(&s, &seconds, sizeof s);
+    std::memcpy(&a, &amplitude, sizeof a);
+    return (static_cast<std::uint64_t>(s) << 32) | a;
+}
+
+void ApplyPendingHaptics() {
+    for (int hand : {0, 1}) {
+        std::uint64_t const packed = gPendingHaptic[hand].exchange(0, std::memory_order_relaxed);
+        if (packed == 0) {
+            continue;
+        }
+        float seconds = 0.0f;
+        float amplitude = 0.0f;
+        std::uint32_t const s = static_cast<std::uint32_t>(packed >> 32);
+        std::uint32_t const a = static_cast<std::uint32_t>(packed & 0xFFFFFFFFu);
+        std::memcpy(&seconds, &s, sizeof seconds);
+        std::memcpy(&amplitude, &a, sizeof amplitude);
+        bool const ok = gInput.Vibrate(gTarget, hand, seconds, amplitude);
+        if (!gLoggedHaptic) {
+            gLoggedHaptic = true;
+            mevr::log::Info("halcyon bridge: first controller vibration ({} hand, {:.0f} ms at {:.2f}): {}",
+                hand == 0 ? "left" : "right", seconds * 1000.0f, amplitude,
+                ok ? "applied" : "refused (no vibration action, or the runtime said no)");
+        }
+    }
+}
 
 // The pad options from the mod's latest input; defaults (no grip, LT from the trigger) when stale.
 mevr::game::gamepad::Options PadOptions() {
@@ -110,6 +148,7 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
     mevr::vr::controllers::State state;
     if (!gInputFailed) {
         gInput.Sync(gTarget, static_cast<XrTime>(predictedDisplayTime), state);
+        ApplyPendingHaptics();  // the mod's holster pulses (HostServices::hapticPulse)
     }
     bool const inputFocused = !gInputFailed && gInput.Focused();
     mevr::vr::controllers::State const live = state;
@@ -221,8 +260,17 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     }
     bool const realPad = result == ERROR_SUCCESS;
     std::lock_guard lock(gPadMutex);
+    mevr::game::gamepad::Options options = PadOptions();
+    if (MELEVR::Menu::IsOpen()) {
+        options.rightGripFree = false;  // a squeeze in the menu never draws a weapon (the menu zeroes the game's pad)
+    }
     XINPUT_GAMEPAD pad = mevr::game::gamepad::Merge(realPad ? state->Gamepad : XINPUT_GAMEPAD{},
-        mevr::game::gamepad::FromControllers(controllers, gLatches, PadOptions()));
+        mevr::game::gamepad::FromControllers(controllers, gLatches, options));
+    std::uint32_t const report = mevr::game::gamepad::RightGripReport(gLatches);
+    if (gRightGripReport.exchange(report, std::memory_order_relaxed) != report && (report & 1u) != 0 &&
+        !gLoggedRightGripFree.exchange(true, std::memory_order_relaxed)) {
+        mevr::log::Info("halcyon bridge: first right-grip squeeze at a holster: kept from the game (no RB)");
+    }
     bool const held = gLatches.left == mevr::game::gamepad::LeftGrip::Support;
     if (gSupportHeld.exchange(held, std::memory_order_relaxed) != held) {
         mevr::log::Info("halcyon bridge: support grip {} (left hand {:.2f} m from the foregrip){}", held ? "taken" : "let go",
@@ -279,6 +327,19 @@ void ForgetSupportGrip() {
 
 bool SupportGripHeld() {
     return MELEVR::MevrBridge::gSupportHeld.load(std::memory_order_relaxed);
+}
+
+void RequestHaptic(int hand, float seconds, float amplitude) {
+    if ((hand != 0 && hand != 1) || !(seconds > 0.0f) || !(amplitude > 0.0f)) {
+        return;
+    }
+    seconds = seconds > 1.0f ? 1.0f : seconds;
+    amplitude = amplitude > 1.0f ? 1.0f : amplitude;
+    MELEVR::MevrBridge::gPendingHaptic[hand].store(MELEVR::MevrBridge::PackHaptic(seconds, amplitude), std::memory_order_relaxed);
+}
+
+std::uint32_t RightGripFree() {
+    return MELEVR::MevrBridge::gRightGripReport.load(std::memory_order_relaxed);
 }
 
 } // namespace mevr::host::halcyon

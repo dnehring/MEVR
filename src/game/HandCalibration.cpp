@@ -17,6 +17,7 @@
 #include <fstream>
 #include <map>
 #include <string>
+#include <vector>
 
 namespace mevr::game::hand_calibration {
 namespace {
@@ -108,6 +109,32 @@ constexpr char const* kControlsBlock =
     "; leftGripAway: what a left grip squeezed away from the gun does. none (the default): nothing, the\n"
     "; grip only takes the gun; lb = the weapon wheel, as before.\n"
     "leftGripAway = none\n";
+
+// Appended to a settings file that has no [Holsters] yet (and part of a new file).
+constexpr char const* kHolstersBlock =
+    "\n"
+    "[Holsters]\n"
+    "; Body holsters: reach to a slot on your body with the right hand and squeeze the right grip to\n"
+    "; draw that weapon (a short buzz when the hand enters a slot). Near a slot the right grip isn't RB.\n"
+    "enabled = 1\n"
+    "; weaponWheel: 1 keeps the game's weapon wheel (LB: the left trigger, see leftTrigger) as a fallback;\n"
+    "; 0 turns LB off while holsters are on. The wheel also picks your squad's weapons.\n"
+    "weaponWheel = 1\n"
+    "; holster: 1 = squeeze and release the right grip with the gun at its own slot puts it away (leaving\n"
+    "; the slot or pulling the trigger first cancels); 2 = also at a slot you have no weapon for; 0 = never.\n"
+    "holster = 1\n"
+    "; eyeHeightM: your standing eye height in meters (roughly your height minus 0.12); scales the slots.\n"
+    "eyeHeightM = 1.65\n"
+    "; hapticAmplitude: the buzz on entering a slot, 0..1 (0 = no vibration).\n"
+    "hapticAmplitude = 0.5\n"
+    "; Each slot: weapon, right, up, forward, radius. weapon: pistol, shotgun, rifle, sniper or none.\n"
+    "; Meters from your eyes (as if the head were upright), in your body's frame (it turns with you, not\n"
+    "; with every glance), for a 1.65 m eye height: right is + to the right, up is + up, forward is +\n"
+    "; ahead and - behind. radius: how close the hand must come (shoulders are bigger: you can't see them).\n"
+    "hipRight = pistol, 0.20, -0.62, -0.05, 0.14\n"
+    "shoulderRight = rifle, 0.18, -0.08, -0.20, 0.20\n"
+    "belly = shotgun, 0.00, -0.50, 0.12, 0.13\n"
+    "shoulderLeft = sniper, -0.18, -0.08, -0.20, 0.20\n";
 
 fs::path FilePath() {
     wchar_t buffer[MAX_PATH]{};
@@ -222,6 +249,87 @@ Values ReadValues(Ini const& ini) {
     return values;
 }
 
+// "weapon, right, up, forward, radius": the weapon alone keeps the slot's default place.
+bool ReadSlot(std::string const& text, ik::body_slots::Slot& slot) {
+    std::vector<std::string> parts;
+    std::string current;
+    for (char c : text + ",") {
+        if (c == ',') {
+            parts.push_back(Strip(current));
+            current.clear();
+        } else {
+            current.push_back(c);
+        }
+    }
+    auto const weapon = parts.empty() ? std::nullopt : ik::body_slots::ParseWeapon(parts[0]);
+    if (!weapon) {
+        return false;
+    }
+    double values[4] = {slot.offset.x, slot.offset.y, slot.offset.z, slot.radius};
+    for (std::size_t i = 1; i < parts.size() && i <= 4; ++i) {
+        char* end = nullptr;
+        double const value = std::strtod(parts[i].c_str(), &end);
+        if (end == parts[i].c_str() || !std::isfinite(value)) {
+            return false;
+        }
+        values[i - 1] = value;
+    }
+    slot.weapon = *weapon;
+    slot.offset = {std::clamp(values[0], -1.0, 1.0), std::clamp(values[1], -1.5, 0.5), std::clamp(values[2], -1.0, 1.0)};
+    slot.radius = std::clamp(values[3], 0.03, 0.5);
+    return true;
+}
+
+Holsters ReadHolsters(Ini const& ini) {
+    Holsters holsters;
+    double value = 0.0;
+    if (Number(ini, "Holsters", "enabled", value)) {
+        holsters.enabled = value != 0.0;
+    }
+    if (Number(ini, "Holsters", "weaponWheel", value)) {
+        holsters.weaponWheel = value != 0.0;
+    }
+    if (Number(ini, "Holsters", "holster", value)) {
+        int const mode = static_cast<int>(std::lround(value));
+        holsters.holster = mode <= 0 ? ik::body_slots::Holster::Off
+                         : mode == 1 ? ik::body_slots::Holster::OwnSlot
+                                     : ik::body_slots::Holster::OwnOrEmptySlot;
+    }
+    if (Number(ini, "Holsters", "eyeHeightM", value)) {
+        holsters.layout.eyeHeight = std::clamp(value, 0.8, 2.2);
+    }
+    if (Number(ini, "Holsters", "hapticAmplitude", value)) {
+        holsters.hapticAmplitude = std::clamp(value, 0.0, 1.0);
+    }
+    if (auto const s = ini.find("Holsters"); s != ini.end()) {
+        for (ik::body_slots::Slot& slot : holsters.layout.slots) {
+            if (auto const k = s->second.find(slot.name); k != s->second.end()) {
+                ik::body_slots::Slot parsed = slot;
+                if (ReadSlot(k->second, parsed)) {
+                    slot = parsed;
+                } else {
+                    log::Warn("holsters: can't read {} = {} (weapon, right, up, forward, radius); default kept", slot.name, k->second);
+                }
+            }
+        }
+    }
+    return holsters;
+}
+
+std::string Describe(Holsters const& h) {
+    std::string text = std::format("{}, weapon wheel {}, holster {}, eye height {:.2f} m, haptics {:.2f}; slots:",
+        h.enabled ? "on" : "off", h.weaponWheel ? "kept (LB)" : "off", static_cast<int>(h.holster), h.layout.eyeHeight,
+        h.hapticAmplitude);
+    for (ik::body_slots::Slot const& slot : h.layout.slots) {
+        text += std::format(" {} {} ({:.2f}, {:.2f}, {:.2f}) r {:.2f};", slot.name, ik::body_slots::Name(slot.weapon), slot.offset.x,
+            slot.offset.y, slot.offset.z, slot.radius);
+    }
+    return text;
+}
+
+Holsters gHolsters;
+std::string gHolstersText;
+
 Sample ReadSample(Ini const& ini) {
     Sample sample;
     double request = 0.0;
@@ -306,6 +414,10 @@ Controls GetControls() {
     return controls;
 }
 
+Holsters GetHolsters() {
+    return gHolsters;
+}
+
 std::optional<ik::ArmLengths> MeasureArmLength(ik::ArmLengthSample const& sample) {
     auto const arms = ik::ArmLengthFromTPose(sample);
     if (!arms) {
@@ -333,7 +445,7 @@ void Refresh() {
     fs::path const path = FilePath();
     std::error_code ec;
     if (!fs::exists(path, ec)) {
-        std::ofstream(path) << kDefaultFile << kControlsBlock;
+        std::ofstream(path) << kDefaultFile << kControlsBlock << kHolstersBlock;
         log::Info("hands: wrote default calibration to {}", path.string());
     }
     auto stamp = fs::last_write_time(path, ec);
@@ -347,7 +459,18 @@ void Refresh() {
         ini = ReadIni(path);
         stamp = fs::last_write_time(path, ec);
     }
+    if (ini.find("Holsters") == ini.end()) {
+        std::ofstream(path, std::ios::app) << kHolstersBlock;
+        log::Info("hands: added the [Holsters] defaults to {}", path.string());
+        ini = ReadIni(path);
+        stamp = fs::last_write_time(path, ec);
+    }
     gStamp = stamp;
+    gHolsters = ReadHolsters(ini);
+    if (std::string const text = Describe(gHolsters); text != gHolstersText) {
+        gHolstersText = text;
+        log::Info("holsters: {}", text);
+    }
     gHaveStamp = true;
     Values const values = ReadValues(ini);
     if (!gApplied || values != gValues) {
