@@ -29,6 +29,23 @@ Upstream checked: `reference/MassEffect1-VR` at 3c51514 (2026-09-30), still the 
   `xr_session.cpp` (about 500 lines in total). Split out the HDR-only hunks into a patch against
   upstream. Upstream's installer asks players to turn HDR off; the fix makes that unnecessary.
 
+## 3. World-locked flat screen and menu (a feature to offer, not a bug fix)
+
+- **Our change:** the `PlacePanel` seam (2026-10-21, `mevr_bridge.h`, `src/plugin/WorldPanels.cpp`,
+  rules in `src/core/vr/OverlayPlacement` `WorldPanel`, unit-tested).
+- **Upstream behaviour:** the flat screen (menus, galaxy map, flat conversations, cutscenes and
+  movies) and the Insert menu are quads in VIEW space, so they ride the head, with no parallax.
+- **What it does:** with `worldLockedPanels = 1`, each is placed in the app space in front of the
+  head when it appears (yaw only, level, at upstream's distance and offsets). It stays there until
+  it hides, its kind changes, the player recenters, or the head stays turned past `panelFollowDeg`
+  (70°) for a second. A user asked for exactly this (the intro's screen rode the head).
+- **To do before offering it:**
+  - The seam calls into our host. For upstream, fold `WorldPanels.cpp` and the `WorldPanel` class
+    into its `xr_session.cpp` (about 150 lines, no dependencies beyond its own quaternion helpers)
+    and keep the setting default off, so its players see no change unless they opt in.
+  - Its menu has no pointer, so the menu part needs no pointer change there.
+  - Ask the user first.
+
 ## Possibly later
 
 - Its F1-F4 profile hotkeys clash with the game's F-keys (we turn them off in our deploy).

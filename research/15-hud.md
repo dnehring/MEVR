@@ -96,7 +96,8 @@ The code is `src/plugin/HalcyonOverlays.cpp`, with seams in `mevr_bridge.h`, `d3
   - FP16: scale paper white to 1.0 and clip, keeping the hue.
   - It is submitted as a quad in Halcyon's app space: 1.5 m ahead, 1.3 m wide, 0.25 m below eye
     height, tilted to face the eye.
-  - Recenter puts it straight ahead. With the head turned past 50° for a second, it eases round.
+  - Recenter puts it straight ahead. With the head turned past 70° for a second, it eases round
+    (50° until 2026-10-21; see "World-locked flat panels" below).
   - Placement math is in `core/vr/OverlayPlacement` (unit-tested).
 - **Scope.** Stereo 2 only (the pass-0 boundary is the "after the world" signal), in gameplay modes
   0-4. VR conversations and cutscenes keep Halcyon's head-locked presentation.
@@ -106,6 +107,62 @@ The code is `src/plugin/HalcyonOverlays.cpp`, with seams in `mevr_bridge.h`, `d3
   the mod publishes the ray. It keeps a constant 1.5° and shows on foot while the controller aims.
   Meanwhile the crosshair movie gets `_root._alpha = 0` (restored to 100 afterwards).
 - **Toggles.** `MELEVR.ini` `hudPanel*` and `handReticle*`, and the Insert menu, HUD tab.
+
+## World-locked flat panels (2026-10-21)
+
+**Request (user, 2026-10-21):** the HUD and flat panels should stay placed in space, not move with
+the head. The intro's "view box" rode the head.
+
+**Upstream behaviour (src/halcyon/le1/xr_session.cpp, unchanged since the import):**
+- the flat screen (`forceFlatCine`: menus, the galaxy map, flat conversations, cutscenes and
+  movies) is a quad in `g_viewSpace` (VIEW) at z = -1.4 m, width from `cfg.*MonoQuadWidth`;
+- its Insert menu is a VIEW quad at `menuDistanceM` with `menuOffsetX/YM`, which our `[MENUVIS]`
+  change pulls in front of the nearest other quad.
+
+Both are head-locked: a cinema screen glued to the face, with no parallax when leaning. The
+vrframework guide's HUD chapter (`reference/vrframework/guides/11-hud-ui-and-menus-in-vr.md`,
+sections 2 and 4) says fullscreen menus want a stable panel that doesn't swim as you look
+around. It rates a world-space quad as stable and physical, but possibly too far away to read,
+which is why Halcyon's distances and widths are kept.
+
+**Built:**
+- `MevrBridge::PlacePanel` (seam, `mevr_bridge.h`; `src/plugin/WorldPanels.cpp`). Halcyon still
+  computes its head-locked pose, then asks the seam for the space and pose to submit.
+  - Off: VIEW and the same pose (upstream).
+  - On: Halcyon's app space. The head-locked offset is applied in a level frame (the head's yaw
+    only) at the eye centre when the panel appeared, so its distance, offsets and size stay
+    Halcyon's settings.
+- **Placement rules** (`core/vr/OverlayPlacement` `WorldPanel`, unit-tested in
+  `TestWorldPanel`). The panel is placed afresh in front of the head:
+  - when it appears (not shown for more than 5 frames; a blink of a frame or two doesn't count);
+  - when the flat screen's kind changes (game menu, galaxy map, conversation, cutscene/movie);
+  - on recenter (Halcyon re-origins the app space: `OnRecentered`, and a new app space handle);
+  - once the head is found, if it had to be placed without one.
+  - Re-placements that would move it less than 5° and 5 cm keep it exactly where it is.
+  - Otherwise it stays put while the player looks around or leans (6DOF parallax). With the head
+    turned past `panelFollowDeg` (70°) for a second, it eases round in front of the head, eye
+    position included. No other follow, cutscenes included.
+- **HUD panel:** the same 70° rule (`hudPanelFollowDeg` default 50 → 70). It stays anchored at the
+  recenter origin (body-locked), as before.
+- **Laser pointer:** `core/vr/MenuPointer` intersects a quad given as a pose in the tracking space.
+  A VIEW quad is composed with the head first (`InTracking`); an app-space quad is used as is,
+  since the controllers are in the app space too.
+- **Test loop:** the menu quad is named by its submitted position. A world-locked quad is in the
+  eyes' space and is placed as is; a head-locked one is placed from the rendered head.
+- **Settings:** `MELEVR.ini` `worldLockedPanels` (default 1) and `panelFollowDeg` (default 70),
+  `[MEVR]` fields in Halcyon's config next to `hudPanel*`. They're in the HUD tab of its menu.
+  - Why Halcyon's config rather than our `LE1MEVR.ini`: the setting changes a Halcyon behaviour,
+    the HUD-panel settings already live there, and its menu saves and resets them with no extra
+    plumbing.
+
+**Risks [verify in headset]:**
+- **Re-placement at kind boundaries.** A cutscene running into its conversation is a kind change,
+  so it re-places in front of the head (wanted by the request). If `inConversationMode` and the
+  cutscene state flicker, the placement log shows a run of lines.
+- **SteamVR quad order.** The `[MENUVIS]` pull-in keeps the menu nearer than the flat screen only
+  when both were placed from about the same head pose.
+- **No head when a panel appears:** it is placed at the app-space origin (where recenter puts the
+  head), facing -Z, until the head is located.
 
 ### Known limits and risks
 
