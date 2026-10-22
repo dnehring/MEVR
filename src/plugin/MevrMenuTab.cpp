@@ -18,6 +18,10 @@
 //   [Squad] style, wheelStick              squad weapons: the game's own wheel (native) or our menu
 //                                          (custom), and the stick that steers the game's wheel.
 //
+//   [Sights] pistol, shotgun, assaultRifle, sniperRifle, source
+//                                          gun sights: none | dot | holo | scope <zoom> per weapon type,
+//                                          and which eye's picture a scope magnifies (research/21).
+//
 // The sample is taken in the T pose: both arms straight out to the sides, either trigger pulled.
 
 #include "halcyon/le1/mevr_bridge.h"
@@ -38,6 +42,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cwchar>
 #include <format>
 #include <string>
@@ -511,6 +516,77 @@ static void SquadSection() {
     }
 }
 
+// Gun sights ([Sights] <type> = none | dot | holo | scope <zoom>, and the scope's source eye), for A/B
+// in the headset (game/HandCalibration re-reads the file within a second; research/21).
+static void SightsSection() {
+    ImGui::SeparatorText("Gun sights (look through the sight's ring; scopes at the eyepiece)");
+    if (Path().empty()) {
+        return;
+    }
+    struct Gun {
+        char const* label;
+        wchar_t const* key;
+        wchar_t const* fallback;
+    };
+    static constexpr Gun kGuns[] = {{"Pistol", L"pistol", L"dot"}, {"Shotgun", L"shotgun", L"holo"},
+        {"Assault rifle", L"assaultRifle", L"holo"}, {"Sniper rifle", L"sniperRifle", L"scope 4"}};
+    static constexpr char const* kKinds[] = {"none", "dot", "holo", "scope"};
+    for (Gun const& gun : kGuns) {
+        std::string const value = ReadText(L"Sights", gun.key, gun.fallback);
+        auto const space = value.find(' ');
+        std::string const kind = value.substr(0, space);
+        float zoom = space != std::string::npos ? static_cast<float>(std::atof(value.c_str() + space + 1)) : 4.0f;
+        if (!(zoom >= 1.0f && zoom <= 12.0f)) {
+            zoom = 4.0f;
+        }
+        ImGui::PushID(gun.label);
+        ImGui::TextUnformatted(gun.label);
+        int chosen = -1;
+        for (int k = 0; k < 4; ++k) {
+            ImGui::SameLine(k == 0 ? 130.0f : 0.0f);
+            if (ImGui::RadioButton(kKinds[k], kind == kKinds[k]) && kind != kKinds[k]) {
+                chosen = k;
+            }
+        }
+        if (kind == "scope") {
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(120.0f);
+            // Written as it moves (the slider reads its value back from the file each frame).
+            float edited = zoom;
+            if (ImGui::SliderFloat("zoom", &edited, 1.0f, 12.0f, "%.1fx") && std::abs(edited - zoom) >= 0.05f) {
+                chosen = 3;
+                zoom = edited;
+            }
+        }
+        if (chosen >= 0) {
+            std::wstring text;
+            for (char const* c = kKinds[chosen]; *c != '\0'; ++c) {
+                text.push_back(static_cast<wchar_t>(*c));
+            }
+            if (chosen == 3) {
+                wchar_t number[32]{};
+                std::swprintf(number, 32, L" %.1f", zoom);
+                text += number;
+            }
+            WritePrivateProfileStringW(L"Sights", gun.key, text.c_str(), Path().c_str());
+            mevr::log::Info("menu: sights: {} = {}{}", gun.label, kKinds[chosen], chosen == 3 ? std::format(" {:.1f}x", zoom) : "");
+        }
+        ImGui::PopID();
+    }
+    std::string const source = ReadText(L"Sights", L"source", L"other");
+    ImGui::TextUnformatted("A scope magnifies:");
+    ImGui::SameLine();
+    if (ImGui::RadioButton("the other eye's picture", source != "same") && source == "same") {
+        WritePrivateProfileStringW(L"Sights", L"source", L"other", Path().c_str());
+        mevr::log::Info("menu: sights: scopes magnify the other eye's picture");
+    }
+    ImGui::SameLine();
+    if (ImGui::RadioButton("the aiming eye's", source == "same") && source != "same") {
+        WritePrivateProfileStringW(L"Sights", L"source", L"same", Path().c_str());
+        mevr::log::Info("menu: sights: scopes magnify the aiming eye's own picture");
+    }
+}
+
 float ForwardLeanEmphasis() noexcept {
     Reload(false);  // Present thread, like the menu; once a second at most
     return gLifeSize.load(std::memory_order_relaxed) ? 1.0f : 3.0f;
@@ -534,6 +610,7 @@ void BuildMenuTabs() noexcept {
     MeasureSection();
     CameraSection();
     SquadSection();
+    SightsSection();
     TestLoopSection();
     ImGui::EndTabItem();
 }

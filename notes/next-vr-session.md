@@ -525,6 +525,9 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       `frame = 1`, `zeroM = 0`; scope: `lensUnits = 2`, `reticle = duplex` (`mildot`, `dot`),
       `reticleColor = ff2020`, `source = other` (`same`: magnify the aiming eye's own picture),
       `focusM = 40`, `eyeReliefM = 0.12`, `resolution = 768`; `replaceRing = 1`, `aimedFire = 1`.
+    - **A/B in the headset:** Halcyon's menu (`\` or both sticks held) -> VR hands -> "Gun sights": per
+      weapon none / dot / holo / scope with its zoom, and which eye's picture a scope magnifies (takes
+      effect within a second).
     - **Offline look:** `build\Release\mevr-sight-preview.exe <folder>` renders the scope (several eye
       positions and reticles) and the reticles to PNGs without the game.
     - **Logs (ours):** `sights: settings: on: pistol red dot (placed auto), ...`; per gun `sights: the
