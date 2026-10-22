@@ -20,6 +20,7 @@ and what is still unverified. The [docs/](../docs) folder holds the conclusions.
 | [13-existing-me-vr-mods.md](13-existing-me-vr-mods.md) | **Prior art:** Halcyon's GPL MassEffect1/2/3-VR (working stereo for all three games) and the closed ME2VR (motion controls). What they teach us | 2026-10-07 |
 | [14-vrik.md](14-vrik.md) | VRIK: arms and body following the controllers. Why route 1 (SkelControlLimb) is out, why bone queries through ProcessEvent failed, LE1 skeleton layouts, the UpdateSkelPose writeback (route 2), the plan | 2026-10-08 |
 | [15-hud.md](15-hud.md) | The HUD in VR (M5): BioSFPanel variables, GFxMovie render-to-texture, the options in order of effort | 2026-10-08 |
+| [17-ghidra.md](17-ghidra.md) | Reading native code with headless Ghidra (`tools/ghidra`): what analysis gives, and the fire path decompiled against research/14 (confirmed; `execTickFire` reaches `0xC621E0` through vtable slot `0x8A0`) | 2026-10-21 |
 | [sources.md](sources.md) | Every URL consulted | 2026-10-07 |
 
 ## Conventions

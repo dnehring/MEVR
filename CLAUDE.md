@@ -139,10 +139,15 @@ switching frameworks.
   every flag on that UFunction. Find the UFunction yourself and call ProcessEvent directly.
   Class layouts, `StaticClass()` and `IsA()` are fine.
 - The exe's `.text` is encrypted on disk (EA DRM). Check RVAs statically with
-  `tools/verify_rvas.py` (`.pdata` function bounds); byte checks only work in-process. The mod
-  saves the decrypted `.text` once per exe build to `%LOCALAPPDATA%\MEVR\dump`;
-  `tools/splice_text.py` turns it into a disassemblable copy (`dumpbin /disasm /range:`).
+  `tools/verify_rvas.py` (`.pdata` function bounds); byte checks only work in-process. The host
+  saves the decrypted `.text` once per exe build to `%LOCALAPPDATA%\MEVR\dump`, at attach before
+  any hook patches it (the `.txt` lists starts other ASIs already patched);
+  `tools/splice_text.py` turns it into a disassemblable copy.
   Local research data: never commit or share dumps or spliced exes.
+- **Read native code with Ghidra, not dumpbin:** `tools/ghidra/decompile.ps1 0xC621E0` (RVA,
+  `exe+0x...` or a name; `-Search`, `-Rename`/`-Comment -Record`) prints C, callers, callees and
+  vtable slots. Setup and the MCP server: [tools/ghidra/README.md](tools/ghidra/README.md). One
+  process at a time on the project (decompile.ps1 or the MCP server, never both).
 
 - Windows PowerShell 5.1 turns native stderr (e.g. git progress) into errors under
   `$ErrorActionPreference = 'Stop'`. Check `$LASTEXITCODE` instead.

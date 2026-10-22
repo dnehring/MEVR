@@ -216,7 +216,7 @@ ray, and shots leave the muzzle along the barrel.
 
 | What | LE1 | Evidence |
 |------|-----|----------|
-| Fire tick: `BioWeaponRanged.TickFire`'s body **[verify: the log prints the native's address]** | `0xC621E0` (this, DeltaTime) | Counts down `FireDelay`/`ReFireDelay` (`+0x4F0`/`+0x4F4`), sets the firing bits at `+0x548`, branches on `Stats.FireMode` (`Stats +0x4C0`, mode `+0x259`: 1 single, 3 burst with `RemainingBurstFireCount +0x4EC`, else automatic; another path `0xC62650` when a check on the instigator (`0x4A7550`) passes and byte `+0xDF4` of what the weapon's virtual `+0x890` returns is 3 or 4). Every firing path does the next three steps |
+| Fire tick: `BioWeaponRanged.TickFire`'s body (**confirmed** in [research/17](17-ghidra.md): the native `execTickFire` `0xB72660` calls vtable slot `0x8A0`, which holds it) | `0xC621E0` (this, DeltaTime) | Counts down `FireDelay`/`ReFireDelay` (`+0x4F0`/`+0x4F4`), sets the firing bits at `+0x548`, branches on `Stats.FireMode` (`Stats +0x4C0`, mode `+0x259`: 1 single, 3 burst with `RemainingBurstFireCount +0x4EC`, else automatic; another path `0xC62650` when a check on the instigator (`0x4A7550`) passes and byte `+0xDF4` of what the weapon's virtual `+0x890` returns is 3 or 4). Every firing path does the next three steps |
 | Shot start | `Instigator.GetWeaponStartTraceLocation(None)` **through ProcessEvent** (vtable slot `0x250`; the event thunk `0xC63C10`, parms `CurrentWeapon +0x0`, `ReturnValue +0x8`) | The caller reads the return value back from the parms, so a ProcessEvent post-handler can rewrite it. For the player it's `SFXGame.BioPawn.GetWeaponStartTraceLocation` (native; `SFXPawn_Player` doesn't override it) |
 | Shot aim | `this.GetAdjustedAim(start)` through ProcessEvent (parms `StartFireLoc +0x0`, `ReturnValue +0xC`), whose script asks `BioPlayerController.GetAdjustedAimFor` (script to script: `UObject::CallFunction`) | Matches the in-game log of 2026-10-08: the GetAdjustedAim post-handler saw `StartFireLoc` 59 units behind the hand, so the pawn's answer is about the camera, not the muzzle |
 | The trace | `0xC589F0(this, &start, &aim)`: end = start + `Vector(aim)` × `GetTraceRange()` (`0xC5C9D0`), pellets from `Stats.PelletSpread` (`+0xE4`, count `+0xEC`), `ShotCount++` (`+0x4DC`) | `Weapon.GetPhysicalFireStartLoc` isn't on this path |
@@ -311,7 +311,9 @@ the rifle's about 90 (on its side) (`TestGunHold`, on those numbers).
 ### What the log shows
 
 - At startup: `weapon: natives: BioWeaponRanged.GetMuzzleLoc exe+0x..., TickFire exe+0x...`
-  (ties the code reading to the script functions).
+  (ties the code reading to the script functions). Seen 2026-10-08: `exe+0xB72D30`, `exe+0xB72660`,
+  `GetWeaponStartTraceLocation` `exe+0xB939E0`, `GetSocketWorldLocationAndRotation` `exe+0x5740C0`;
+  each `exec` thunk calls the C++ body through a vtable slot ([research/17](17-ghidra.md)).
 - Per weapon: `weapon: <weapon> (mesh ...): muzzle socket '...' on bone ...: muzzle (...) vs
   GetMuzzleLoc (...): match`, the `GetSocketWorldLocationAndRotation` line, `weapon: barrel: ...`,
   `weapon: ... in the right hand: its mesh hangs on Prop01(98) under RightWrist(82)`,
