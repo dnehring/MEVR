@@ -29,15 +29,17 @@ so Claude can look for itself and replay your movements later without you in the
 Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). Files go to
 `%LOCALAPPDATA%\MEVR\snapshots` and `\recordings`.
 
-- **Snapshot:** press **End** (game window focused), or squeeze **both grips and click the left
-  stick** (with the right grip holding the gun, step 11: the left grip must be away from the gun's
-  foregrip; while you aim two-handed the clicks go to the game), or in Halcyon's menu (`\`) open
-  **VR hands -> Test loop -> Snapshot in 3 s** and close the menu. Log: `test loop: snapshot saved in ...`. Claude can also take them any time while
-  you play (`tools/snapshot.ps1`): just keep still and say "go" when you're in position.
+- **Snapshot:** press **End** (game window focused), or **tap both stick clicks together** (click
+  and let go of both within about a third of a second; since 2026-10-22, step 12: holding both
+  still opens Halcyon's menu instead), or in Halcyon's menu (`\`) open **VR hands -> Test loop ->
+  Snapshot in 3 s** and close the menu. Log: `test loop: both sticks tapped: snapshot` then `test
+  loop: snapshot saved in ...`. Claude can also take them any time while you play
+  (`tools/snapshot.ps1`): just keep still and say "go" when you're in position.
 - **Recording a short session for Claude** (about 20-60 s is plenty):
   1. In game, on foot, with a weapon drawn. Recenter first (R).
-  2. Press **Home** (or both grips + right stick click) to start. Log: `test loop: recording the
-     head and controllers to ...\<stamp>.mevrrec`.
+  2. Press **Home** (or Halcyon's menu: VR hands -> Test loop -> Start recording) to start. Log:
+     `test loop: recording the head and controllers to ...\<stamp>.mevrrec`. (The old grip chord
+     for recording is gone: both grips are the gun and the squad menu now.)
   3. Do the thing you want Claude to check, slowly and deliberately, and say out loud (or note)
      roughly when: e.g. "aim at the crate, 5 s; both hands on the rifle, 5 s; look left, arms out".
      Hold each pose for a couple of seconds.
@@ -345,9 +347,8 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
     - **Two-handed and aimed fire:** squeeze the left grip at the foregrip while holding the gun:
       as before (`support grip: held ...`, aimed fire at the shoulder). Crouch (left stick click)
       and the power wheel (right stick click) must still work while you aim two-handed.
-    - **Test loop chords:** now squeeze the left grip **away from the gun** (right grip squeezed
-      or not), then click a stick: left = snapshot, right = recording. While aiming two-handed the
-      clicks go to the game; use End or the menu's snapshot then.
+    - **Test loop chords:** replaced in step 12 (a snapshot is a tap of both stick clicks; the grip
+      chords are gone).
     - **Menus and wheels:** open the power wheel (R3 hold) or the pause menu while holding the gun,
       close it, let go: the gun goes back as usual. In the Mako the right grip fires the cannon
       as before (`holsters: the right grip is RB (gripHolds off, or not on foot)`).
@@ -369,6 +370,56 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
     - The heartbeat's `holsters:` line: entries, draws, holsters, refusals, the strongest contact
       buzz, the eye height and its source, the head's height now. Halcyon's side: `halcyon bridge:
       first controller vibration (right hand, N ms at 0.xx, NNN Hz): applied`.
+12. **Squad weapons at the left hand, and the snapshot tap (new, 2026-10-22; HOST REDEPLOY:
+    services v11).** Give a squadmate a weapon without the game's wheel
+    ([docs/squad-weapons-design.md](../docs/squad-weapons-design.md), research/19 section 9). Close
+    the game and run `tools/deploy-asi.ps1 -Game LE1` first: without the new host the mod logs
+    `squad: the host can't draw the squad menu ...: the menu stays off; ... redeploy the host`.
+    - **How:** on foot, with two squadmates. **Point your left hand at one of them and squeeze the
+      left grip** (away from the gun's foregrip). A menu appears above your left hand: their two
+      cards left and right (the one you pointed at outlined in amber), and in the middle the
+      weapons the chosen one carries: assault rifle up, shotgun left, sniper rifle right, pistol
+      down. **Flick the right stick** toward one (it turns amber, a tick in the right hand), **let
+      go of the grip**: a firm click in the left hand, and they switch. B cancels; letting go with
+      nothing chosen cancels; A confirms too. The left stick (left or right) picks the other card.
+    - **Pointing at nobody:** keep the grip squeezed about a third of a second: it opens with the
+      squadmate you gave a weapon last (or the one nearest where you point). A quick squeeze at
+      nobody does nothing, and so does one right next to the gun's foregrip (a missed grab).
+    - **While it's open** the game doesn't see the sticks, A or B (you stop walking and turning) or
+      the stick clicks; the game keeps running (`pause = 1` pauses it like ME1's own wheel). After
+      it closes, a stick or button you still hold stays off until you let go of it.
+    - **What to check:** the panel's place (above the hand, readable, about 40 cm wide, still while
+      open even if the hand moves); the names, classes, health and the weapon in hand on the cards;
+      only weapons they carry are shown (the others are faint empty outlines); the ticks and the
+      click; the switch itself. With your own weapon **out**, the game's AI switches theirs (watch
+      whether they play an animation); with it **holstered**, it switches at once (as ME1's wheel
+      does). Does it take long? Does anything else happen to the squad (their orders reset)?
+    - **Snapshot of it:** with the menu open, tap both stick clicks: the snapshot has
+      `<stamp>-squad.png` and the menu in `-left.png` / `-right.png`.
+    - **Settings:** `[Squad]` in `Binaries\Win64\ASI\LE1MEVR.ini` (added to your file): `enabled`,
+      `pointConeDeg = 10`, `pointMaxM = 40`, `openHoldS = 0.35`, `panelDistanceM = 0.27`,
+      `panelWidthM = 0.40`, `confirmOnRelease = 1` (0: the menu stays open after you let go; A gives,
+      B or a new squeeze cancels), `pause = 0`, `hapticAmplitude = 0.5`.
+    - **The both-sticks tap (snapshots):** click and let go of both sticks together quickly: one
+      snapshot (`test loop: both sticks tapped: snapshot`). Hold both: Halcyon's menu opens, and no
+      snapshot. Click the left stick alone: you crouch, about a tenth of a second later than before
+      (it waits to see whether the right click joins); a both-sticks tap never crouches. A quick
+      right click still casts the mapped power about a third of a second later.
+    - **Logs (ours):** `squad: script functions found`, `squad: settings: on; pointing within 10
+      degrees ...`, `squad: squadmate 0x...: "GARRUS" from its class (class 8 = TURIAN AGENT;
+      ActorGameName "...", actor type's "...", tag "...")` (tell Claude the names in quotes: they
+      show what the game itself calls them), `squad: <name>'s quick slots: ...` (**NOT slot =
+      weapon type** means our reading is off), `squad: <name> (<class>; health N%; in hand ...;
+      carries ...)` per change, `squad: left grip squeezed away from the gun: pointing at <name>
+      (N deg off, N m)`, `squad: menu #N opened (pointed): <name> chosen; cards: left .., right ..`,
+      `squad: highlight: the assault rifle (up)`, `squad: menu #N confirmed (grip let go): <name>
+      gets the ...`, `squad: <name> ordered to the ... : SquadOrderEquipWeapon, then
+      ApplyTacticalOrders (...)` or `... ChangeToQuickSlot and SetMemberSwitchWeapon(4) (...)`,
+      then `squad: <name> holds the ... after N s` (or a warning that they don't), and the
+      heartbeat's `squad:` line. Halcyon's side: `halcyon bridge: squad menu open: the sticks, A, B
+      and the stick clicks are its own`, `squad panel: ImGui context of its own ..., font
+      bahnschrift.ttf`, `squad panel: swapchain 1024x600`, `squad panel: menu #N placed 0.27 m from
+      the left grip, at (...)`.
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR

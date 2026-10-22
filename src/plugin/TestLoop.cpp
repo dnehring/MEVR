@@ -1014,7 +1014,7 @@ void StartRecordingNow(double maxSeconds) {
     gRecordStartMs.store(GetTickCount64(), std::memory_order_relaxed);
     gRecordingActive.store(true, std::memory_order_relaxed);
     log::Info("test loop: recording the head and controllers to {}{}", Utf8(path),
-        maxSeconds > 0.0 ? std::format(" for {:.0f} s", maxSeconds) : std::string(" (Home, both grips + right stick click, or "
+        maxSeconds > 0.0 ? std::format(" for {:.0f} s", maxSeconds) : std::string(" (Home, the VR hands tab, or "
                                                                                     "record.request stops it)"));
 }
 

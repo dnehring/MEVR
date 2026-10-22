@@ -18,7 +18,7 @@ This note covers:
    right stick click;
 7. contact haptics (Blade & Sorcery style) and how they map to OpenXR;
 8. the eye height from the floor;
-9. squad weapons (design proposal in [docs/squad-weapons-design.md](../docs/squad-weapons-design.md)).
+9. squad weapons: how the weapon wheel applies them, and the VR menu built from [docs/squad-weapons-design.md](../docs/squad-weapons-design.md).
 
 Web sources are listed at the end and in [sources.md](sources.md). Claims marked
 **[search summary]** come from a search engine's summary of a page that didn't load directly
@@ -319,6 +319,8 @@ Script calls to `BioEquipment.ChangeToQuickSlot` (a virtual call by name) come f
     combat);
   - then `ApplyTacticalOrders`.
 - So the wheel swaps instantly (the game is paused while it's open), for Shepard and the squad.
+- **Corrected 2026-10-22 (section 9):** that loop runs only while Shepard's weapon is away; with
+  it out, the close calls only `ApplyTacticalOrders`, and the members' AI switches.
 
 **The exec Shepard's own input uses: `SFXGameModeDefault.SwitchToWeapon(byte Slot)`.** From its
 bytecode (`Outer` is the player controller):
@@ -523,11 +525,10 @@ so the game sees nothing new.
 
 **The test loop's chords (both grips + a stick click)** were safe because both grips were rarely
 held in play (the right grip was RB). Now both grips are the ordinary two-handed aim, and the
-stick clicks then are crouch (L3) and RB (R3). So with `gripHolds` the chord only counts while the
-left grip is **not** on the foregrip: squeeze the left grip away from the gun (where it does nothing
-else, `leftGripAway = none`). While aiming two-handed the clicks go to the game; take snapshots
-with End, the menu's "Snapshot in 3 s" or `tools/snapshot.ps1` then. The host decides it each frame
-(`testloop::BlockGripChord`, from the support grip and the flag).
+stick clicks then are crouch (L3) and RB (R3). So with `gripHolds` the chord only counted while the
+left grip was **not** on the foregrip. **Superseded 2026-10-22 (section 9):** the left grip away
+from the gun opens the squad menu now, so the grip chords are gone. A snapshot is a quick tap of
+both stick clicks (`gamepad::UpdateStickChord`); recording is Home or the menu's button.
 
 ## 5. Open
 
@@ -546,7 +547,7 @@ with End, the menu's "Snapshot in 3 s" or `tools/snapshot.ps1` then. The host de
 - Left-handed play: not supported anywhere in the mod yet. When it is, the slots mirror
   (gun-hand shoulder, off-hand shoulder).
 - No visual slot marker (user decision): the contact haptics are the feedback.
-- Squad weapons: the game's weapon wheel stays; a VR-native way is proposed in section 9.
+- Squad weapons: the VR menu is built (section 9) **[verify]** in the headset; the game's wheel stays as the fallback.
 
 ## 6. Where RB went
 
@@ -621,8 +622,14 @@ now holds the gun (grip) and fires (trigger).
 - **Halcyon's double-click recenter** (press to press within 400 ms, `vr_menu.cpp`): a quick click
   (released within the 100 ms) becomes an 80 ms RB tap only after that window has passed with no
   second press; a second press in the window is never RB. The pair is used up as Halcyon does.
-- **The test loop's chord** reserves the clicks.
+- **The test loop's chord** reserved the clicks (until 2026-10-22; now the both-sticks tap, section
+  9, uses the same 100 ms join window as RB's commit, so a chord is never RB).
+- **The squad menu** (section 9) keeps both clicks from the game while it's open, and a click held
+  then until it's released.
 - R3 itself still reaches the game, since Halcyon reads it there.
+- **L3** (crouch) is held back up to 100 ms too since 2026-10-22 (`gamepad::GateClick`): held that
+  long alone it reaches the game; a quicker click reaches it as an 80 ms press when let go; one the
+  right click joins never does. So a both-sticks chord pressed left first is never a crouch.
 
 **Cost:** the mapped power comes about 0.35 s after a quick click, and the wheel opens about 0.4 s
 after the press (0.1 s commit plus the game's 0.3 s). If that's too slow in play,
@@ -725,10 +732,93 @@ hips don't), which moves the low slots down **[verify in headset]**.
 
 ## 9. Squad weapons
 
-The game's weapon wheel stays on the left trigger: in ME1 it is the only way to change a
-squadmate's weapon (`SquadOrderEquipWeapon` records the choice per member, the wheel applies it on
-closing, section 2). A VR-native way is proposed, not built, in
-[docs/squad-weapons-design.md](../docs/squad-weapons-design.md). The recommendation: point the
-left hand at a squadmate and squeeze the left grip to open a small radial menu at them, flick the
-left stick toward a weapon, let go to apply; the wheel stays as the fallback, and voice is a later
-option.
+The game's weapon wheel stays on the left trigger as the fallback. The VR way, option A of
+[docs/squad-weapons-design.md](../docs/squad-weapons-design.md), was approved and built on
+2026-10-22 (`game/SquadWeapons`, `core/vr/SquadMenu`, the host's `plugin/SquadPanel`): point the
+left hand at a squadmate, squeeze the left grip away from the gun, flick the right stick toward a
+weapon, let go. The design doc's "As built" has the decisions; this section has what the game does.
+
+### How the weapon wheel applies a squad weapon (verified 2026-10-22)
+
+From the bytecode of `SFXGame.pcc` (decompressed read-only as in [18](18-camera-and-hands.md),
+"Method"; jump targets resolved by counting each token's in-memory size, object references being 8
+bytes in memory and 4 on disk) and GhidraMCP on the LE1 project. RVAs for 2.0.0.48602.
+
+`SFXGameModeWeaponWheel.Deactivated` (and `SFXGameModeCommand.Deactivated`, the same code):
+
+```
+Super.Deactivated();
+Outer.WorldInfo.PauseGame(false);
+MyBP = BioPawn(Outer.Pawn);
+if (MyBP != None) {
+    if (!MyBP.IsInCombatActionState()) {            // Shepard's weapon is away
+        Squad = MyBP.m_oBehavior.Squad;
+        for (Idx = 0; Idx < Squad.GetSquadSize(); ++Idx) {
+            if (Squad.GetMember(Idx) != None && Squad.GetMemberSwitchWeapon(Idx) != 4) {
+                SquadBehavior = BioPawnBehavior(Squad.GetMember(Idx).oBioComponent);
+                if (SquadBehavior != None && SquadBehavior.m_oEquipment != None) {
+                    SquadBehavior.m_oEquipment.ChangeToQuickSlot(Squad.GetMemberSwitchWeapon(Idx));
+                    Squad.SetMemberSwitchWeapon(Idx, 4);
+                    MyBP.UpdatePrimaryAndSecondaryWeapons();
+                }
+            }
+        }
+        MyBP.DrawPrimaryWeapon();
+    } else {                                         // Shepard's weapon is out
+        Outer.ApplyTacticalOrders();
+    }
+}
+Outer.GetScaleFormManager().PlayGuiSound(...);
+```
+
+(Reconstructed from the references and jumps; the order, the constants and the branch targets are
+certain.) So section 2's "on close" was half right: the per-member loop only runs with Shepard's
+weapon away.
+
+The natives (GhidraMCP; names recorded in `tools/ghidra/symbols-le1.csv`):
+- `SquadOrderEquipWeapon(nWeapon, Pawn)` (`0xC77FD0`): the member's index (squad vtable `0x828`);
+  unless pawn vtable `0x978` says no and if `nWeapon < 4`: **`eAction` = 4** (no tactical action,
+  `0x9E0240`, which `execSetMemberTacticalAction` also calls: it was misnamed "delayed switch"
+  before) and **`eSwitchWeapon` = nWeapon** (`0x9E0220`, entry byte `+0x71`). Entries are 0x74
+  bytes (`FMemberData`, the SDK's packing agrees), the pawn at `+0x48`.
+- `ApplyTacticalOrders` (`0xBAD490` -> `0xC71DB0`): unless Shepard is in a vehicle-like state, for
+  each member `0xC71A70`: with no power order, a switch weapon of 4 re-issues an ordered attack;
+  any other value is reset to 4 and, if it differs from the member's `m_eQuickSlotCurrent`, the
+  member's AI controller (pawn `+0x400`) switches through its vtable `0xB38` (skipped while it runs
+  an active of a certain class). **[verify]** whether that switch animates.
+- `GetMemberDelayedSwitchWeapon` (`0x9D97A0`) reads the AI controller's current active (byte
+  `+0x88`), and `0xB180E0` feeds the switch and delayed switch to the HUD movie's
+  `ChangeSelectedWeapon` (UI only). Nothing else reads `eSwitchWeapon`: a recorded choice that no
+  close applies just sits there (the cheat `BioCheatManager.ChangeWeapon` is `SquadOrderEquipWeapon`
+  then `ApplyTacticalOrders`).
+
+### What we call
+
+For the one member chosen, after `SquadOrderEquipWeapon(type, pawn)` (and checking
+`GetMemberSwitchWeapon` took it): with Shepard's weapon out, `ApplyTacticalOrders()`; with it away,
+`ChangeToQuickSlot(type)` on the member's `BioEquipment` and `SetMemberSwitchWeapon(index, 4)`. The
+wheel's two steps for Shepard himself (`UpdatePrimaryAndSecondaryWeapons`, `DrawPrimaryWeapon`) are
+left out: his weapon isn't being changed, and drawing it would undo a holstered gun. The squad comes
+from the player pawn's `BioPawnBehavior.Squad` through `GetSquadSize` / `GetMember` (what the wheel
+uses), Shepard skipped. All through ProcessEvent.
+
+The rest of what the menu shows:
+- **Quick slots:** as Shepard's (section 2): `m_QuickSlotArray[4]`, each weapon's
+  `GetRangedWeaponType`, `m_eQuickSlotCurrent`; logged with the "slot = weapon type" check.
+- **Class:** `BioPawnBehavior.GetClass()` = `BioAttributesPawnParty.m_ClassBase`
+  (`EBioPartyMemberClassBase`: soldier, engineer, adept, infiltrator, savant (sentinel), reaver
+  (vanguard), asari scientist, krogan old one, turian spectre, quarian tinker, supersoldier, woman
+  veteran, man thinker). The henchmen have classes of their own, so the class names them
+  **[inference]**: 6 Liara, 7 Wrex, 8 Garrus, 9 Tali, 11 Ashley, 12 Kaidan.
+- **Name otherwise:** `BioActorBehavior.ActorGameName`, else its actor type's; in LE1 the game
+  usually uses the string ref instead (`bUseStringRefActorGameName`, through the TLK), which we don't
+  read: `GetActorGameName` returns an FString the caller must free, and Halcyon traced a heap
+  fast-fail to that pattern (`pchud.cpp`). Then the pawn's tag. All candidates are logged once.
+- **Health:** `BioEpicPawnBehavior.GetPercentHealth()` (script: `m_HealthCurrent / GetMaxHealth()`).
+- **Pause (option):** `WorldInfo.PauseGame(true/false)`, the wheel's own call.
+
+### Controls
+
+The both-sticks chord, the L3 gate and the squad menu's input block are in section 6's guard list.
+The left grip away from the gun was "nothing" (`leftGripAway = none`); with `[Squad] enabled` it is
+the squad menu and never LB.

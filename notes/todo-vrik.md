@@ -232,10 +232,35 @@ steps: notes/next-vr-session.md step 11.
   - the standing eye height from the floor (SteamVR / Steam Link and Oculus);
   - two-handed aim, crouch and R3 while aiming; the new chord rule.
 - **Open:**
-  - squad weapons the VR way (docs/squad-weapons-design.md recommends pointing plus a radial at
-    the left hand);
+  - squad weapons the VR way: built the same day (below);
   - turn the weapon wheel off once holsters feel right (it stays for squad weapons until then);
   - a waist bend moves the low slots down (the anchor follows the head).
+
+## Squad weapons at the left hand, snapshot on a stick tap (user, 2026-10-22; built, to test)
+
+The user approved option A of docs/squad-weapons-design.md with a UI concept, and asked for the
+snapshot chord to become a quick tap of both stick clicks. Design and decisions:
+docs/squad-weapons-design.md "As built"; the game's path: research/19 section 9. Test steps:
+notes/next-vr-session.md step 12.
+- **Host change, needs a redeploy:** HostServices v11 (`squadMenuSize`, `setSquadMenu`,
+  `leftGripAway`); `gamepad::kFlagSquadMenu` (the sticks, A, B and stick clicks kept from the game
+  while open and until released); `plugin/SquadPanel` (its own ImGui context, texture and swapchain,
+  the "squad" quad in snapshots); Halcyon's OverlayLayers seam takes three quads; the both-sticks
+  chord (`gamepad::UpdateStickChord`: tap = snapshot, hold = Halcyon's menu); L3 held back 100 ms
+  (`gamepad::GateClick`); the grip chords removed from the test loop.
+- **Mod (hot reload):** `core/vr/SquadMenu` (pointing, the radial, the machine, the placement;
+  unit-tested), `game/SquadWeapons` (the squad, the apply step, haptics, logs, status), `[Squad]`
+  in LE1MEVR.ini (appended to existing files).
+- **Decisions:** the game keeps running (`pause = 1` pauses like the wheel); opening at nobody needs
+  the grip held 0.35 s (a missed foregrip grab mustn't open it); the left grip away from the gun is
+  never LB while the menu is on; recording has no controller chord (Home or the menu).
+- **[verify in headset]:** the panel's place and size; the names from the class; the AI switch with
+  Shepard's weapon out (animated? how long?) and the instant one with it away; the other squadmate's
+  orders after `ApplyTacticalOrders`; the tap (no crouch, no menu) and the hold (menu, no snapshot);
+  the crouch's 0.1 s delay.
+- **Open:** voice orders (option C) and a squad status panel on the wrist (B) remain proposals; the
+  game's TLK name (string refs) isn't read; Halcyon's double-click recenter can fire on two quick
+  taps pressed right stick first.
 
 
 ## World-locked flat panels (user, 2026-10-21; built the same day, to test)

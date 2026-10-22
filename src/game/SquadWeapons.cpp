@@ -490,6 +490,23 @@ void PauseGame(Game const& game, bool pause) {
     log::Info("squad: the game {} (WorldInfo.PauseGame, as ME1's weapon wheel)", pause ? "paused" : "runs again");
 }
 
+// The menu closed some other way (the mode changed, the mod unloads) while it had paused the game.
+void ResumeIfPaused(char const* why) {
+    if (!gPausedByUs) {
+        return;
+    }
+    gPausedByUs = false;
+    APlayerController* const pc = engine::LocalPlayerController();
+    if (pc == nullptr || pc->WorldInfo == nullptr || gPauseGame == nullptr) {
+        log::Warn("squad: the menu paused the game and closed ({}), but there's no world to unpause", why);
+        return;
+    }
+    AWorldInfo_execPauseGame_Parms parms;
+    parms.bPause = 0;
+    pc->WorldInfo->ProcessEvent(gPauseGame, &parms, nullptr);
+    log::Info("squad: the game runs again ({})", why);
+}
+
 // What the weapon wheel does for one member when it closes (SFXGameModeWeaponWheel.Deactivated).
 void Equip(Game const& game, int member, int weapon) {
     MemberInfo const& m = gMembers[member];
@@ -616,6 +633,9 @@ void Inactive(std::string why, Link const& link) {
     if (gMachine.CurrentPhase() != menu::Phase::Idle) {
         log::Info("squad: menu closed ({})", why);
     }
+#if defined(SDK_TARGET_LE1)
+    ResumeIfPaused(why.c_str());
+#endif
     gMachine.Reset();
     gUsable = false;
     Publish(link, false);
@@ -726,15 +746,13 @@ void Tick(double deltaSeconds, Link const& link) {
     // The squad, this tick.
     bool const busy = gMachine.CurrentPhase() != menu::Phase::Idle;
     gDetailsAge += deltaSeconds;
-    bool const details = busy || newAway || gDetailsAge >= kDetailsSeconds;
+    bool const details = busy || newAway || gPending.key != 0 || gDetailsAge >= kDetailsSeconds;
     if (details) {
         gDetailsAge = 0.0;
     }
-    bool membersChanged = game->count != gCount;
     for (int i = 0; i < game->count; ++i) {
         std::uintptr_t const key = reinterpret_cast<std::uintptr_t>(game->pawns[i]);
         bool const fresh = gMembers[i].key != key;
-        membersChanged = membersChanged || fresh;
         if (fresh) {
             gMembers[i] = MemberInfo{};
             gMembers[i].key = key;
@@ -819,7 +837,7 @@ void Tick(double deltaSeconds, Link const& link) {
             sameSquad = gMembers[i].key == gOpenKeys[i];
         }
     }
-    gUsable = sameSquad && gCount > 0;
+    gUsable = sameSquad;  // an empty squad still answers a squeeze (a refusal); the machine closes on it
 
     // The two-handed grip keeps priority: a squeeze near the foregrip that the mapping didn't take is a
     // missed grab, not the menu (unless the hand points at someone).
@@ -1002,13 +1020,8 @@ void LogStats() {
 
 void Shutdown(bool processExiting) {
 #if defined(SDK_TARGET_LE1)
-    if (gPausedByUs && !processExiting && gPauseGame != nullptr) {
-        if (APlayerController* const pc = engine::LocalPlayerController(); pc != nullptr && pc->WorldInfo != nullptr) {
-            AWorldInfo_execPauseGame_Parms parms;
-            parms.bPause = 0;
-            pc->WorldInfo->ProcessEvent(gPauseGame, &parms, nullptr);
-            log::Info("squad: the game runs again (the mod is unloading with the menu open)");
-        }
+    if (!processExiting) {
+        ResumeIfPaused("the mod is unloading with the menu open");
     }
     gGetSquadSize = gGetMember = gGetMemberSwitchWeapon = gSetMemberSwitchWeapon = gSquadOrderEquipWeapon = nullptr;
     gApplyTacticalOrders = gChangeToQuickSlot = gIsInCombatActionState = gGetRangedWeaponType = nullptr;
