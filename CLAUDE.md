@@ -56,6 +56,13 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   its own MinHook, on top of ours: never uninstall a hook another hooker may sit on.
   LE2/LE3 still use our own renderer until Halcyon's ME2/ME3 code is brought in.
 
+## How we work
+
+`docs/development-approach.md`: build on Halcyon and own the VRIK; let Claude see the game through
+the test loop (eye snapshots, pose recording and replay); read the engine with Ghidra
+(`tools/ghidra`, GhidraMCP) instead of by hand; parallel agents in worktrees, merged only after all
+three builds and the tests pass.
+
 ## Before each VR milestone
 
 Read the matching chapter of `reference/vrframework/guides/` (MIT, a 17-part guide on adding
