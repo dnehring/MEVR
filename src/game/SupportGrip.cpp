@@ -185,6 +185,8 @@ void Tick(double deltaSeconds, bool requested) {
     gRelease.store(static_cast<float>(controls.releaseMeters), std::memory_order_relaxed);
     gamepad::Options options;
     options.leftTrigger = controls.leftTrigger;
+    options.leftTriggerShoulder = controls.leftTriggerLB;
+    options.gripShoulder = controls.gripLB || !controls.supportGrip;
     // Aimed fire: both hands on the gun and, unless turned off, the gun at the shoulder.
     bool const shouldered = AtShoulder();
     options.supportAims = (controls.sniperAims || weapon::Type() != weapon::RangedType::Sniper) &&

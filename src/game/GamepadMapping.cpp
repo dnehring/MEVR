@@ -61,13 +61,16 @@ LeftGrip UpdateSupportGrip(SupportGrip& grip, bool gripDown, SupportInput const&
 }
 
 std::uint32_t ToFlags(Options const& options) {
-    return (options.leftTrigger ? kFlagLeftTrigger : 0u) | (options.supportAims ? kFlagSupportAims : 0u);
+    return (options.leftTrigger ? kFlagLeftTrigger : 0u) | (options.supportAims ? kFlagSupportAims : 0u) |
+           (options.gripShoulder ? kFlagGripShoulder : 0u) | (options.leftTriggerShoulder ? kFlagLeftTriggerShoulder : 0u);
 }
 
 Options FromFlags(float distance, float acquire, float release, std::uint32_t flags) {
     Options options;
     options.leftTrigger = (flags & kFlagLeftTrigger) != 0;
     options.supportAims = (flags & kFlagSupportAims) != 0;
+    options.gripShoulder = (flags & kFlagGripShoulder) != 0;
+    options.leftTriggerShoulder = (flags & kFlagLeftTriggerShoulder) != 0;
     options.support = {distance, acquire, release};
     return options;
 }
@@ -84,13 +87,15 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& state, Latches& lat
     pad.sThumbLY = ToAxis(l.stickY);
     pad.sThumbRX = ToAxis(r.stickX);
     pad.sThumbRY = ToAxis(r.stickY);
-    pad.bLeftTrigger = options.leftTrigger ? ToTrigger(l.trigger) : BYTE{0};
+    pad.bLeftTrigger = options.leftTrigger && !options.leftTriggerShoulder ? ToTrigger(l.trigger) : BYTE{0};
     pad.bRightTrigger = ToTrigger(r.trigger);
 
     WORD buttons = 0;
     bool const leftGrip = Latch(latches.leftGrip, l.squeeze);
     latches.left = UpdateSupportGrip(latches.support, leftGrip, options.support);
-    if (latches.left == LeftGrip::Shoulder) buttons |= XINPUT_GAMEPAD_LEFT_SHOULDER;
+    if (latches.left == LeftGrip::Shoulder && options.gripShoulder) buttons |= XINPUT_GAMEPAD_LEFT_SHOULDER;
+    bool const leftTriggerDown = Latch(latches.leftTrigger, l.trigger);
+    if (options.leftTriggerShoulder && leftTriggerDown) buttons |= XINPUT_GAMEPAD_LEFT_SHOULDER;
     if (latches.left == LeftGrip::Support && options.supportAims) pad.bLeftTrigger = 255;
     if (Latch(latches.rightGrip, r.squeeze)) buttons |= XINPUT_GAMEPAD_RIGHT_SHOULDER;
     if (r.primary) buttons |= XINPUT_GAMEPAD_A;

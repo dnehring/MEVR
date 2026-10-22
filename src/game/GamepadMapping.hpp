@@ -27,7 +27,7 @@ namespace mevr::game::gamepad {
 // grip opens.
 enum class LeftGrip {
     Open,      // not squeezed
-    Shoulder,  // squeezed away from the gun: LB
+    Shoulder,  // squeezed away from the gun: LB if Options::gripShoulder
     Support,   // holding the gun's foregrip
     Held,      // squeezed, but the hold was lost: nothing until the grip opens
 };
@@ -52,6 +52,7 @@ LeftGrip UpdateSupportGrip(SupportGrip& grip, bool gripDown, SupportInput const&
 struct Latches {
     bool leftGrip = false;
     bool rightGrip = false;
+    bool leftTrigger = false;  // as a button (Options::leftTriggerShoulder)
     SupportGrip support;
     LeftGrip left = LeftGrip::Open;  // the last step's answer
 };
@@ -63,12 +64,19 @@ struct Options {
     // While the support grip holds, the game sees LT fully pulled (false: the grip only steadies
     // the gun, e.g. a sniper rifle, whose aimed mode is a scope camera).
     bool supportAims = true;
+    // A left grip squeezed away from the gun is LB (the weapon wheel). Off with the two-handed
+    // grip: in play the grip opened the wheel whenever the hand wasn't right at the foregrip.
+    bool gripShoulder = true;
+    // The left trigger is LB (the weapon wheel) instead of LT.
+    bool leftTriggerShoulder = false;
     SupportInput support;
 };
 
 // Options across the host/mod boundary (HostServices::setSupportGrip): two flags.
 inline constexpr std::uint32_t kFlagLeftTrigger = 1;  // Options::leftTrigger
 inline constexpr std::uint32_t kFlagSupportAims = 2;  // Options::supportAims
+inline constexpr std::uint32_t kFlagGripShoulder = 4;         // Options::gripShoulder
+inline constexpr std::uint32_t kFlagLeftTriggerShoulder = 8;  // Options::leftTriggerShoulder
 std::uint32_t ToFlags(Options const& options);
 Options FromFlags(float distance, float acquire, float release, std::uint32_t flags);
 

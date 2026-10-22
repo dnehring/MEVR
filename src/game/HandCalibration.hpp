@@ -37,7 +37,9 @@ double TrackingScale();
 double ArmLength();
 // [Controls] (appended to an older file that lacks it): the two-handed grip and the left trigger.
 struct Controls {
-    bool leftTrigger = false;     // leftTrigger = lt (true) | none
+    bool leftTrigger = false;     // leftTrigger = lt: the game's LT
+    bool leftTriggerLB = true;    // leftTrigger = lb (the default): the weapon wheel
+    bool gripLB = false;          // leftGripAway = lb: a left grip away from the gun is LB
     bool supportGrip = true;      // supportGrip
     double acquireMeters = 0.12;  // supportAcquireM
     double releaseMeters = 0.22;  // supportReleaseM

@@ -468,13 +468,43 @@ void TestSupportGrip() {
     pad = FromControllers(state, latches, options);
     CHECK((pad.wButtons & XINPUT_GAMEPAD_BACK) != 0);
 
+    // The grip only takes the gun (gripShoulder off): squeezed away from it, no LB.
+    state = {};
+    latches = {};
+    options = {};
+    options.gripShoulder = false;
+    options.support = away;
+    state.left.squeeze = 1.0f;
+    pad = FromControllers(state, latches, options);
+    CHECK(latches.left == LeftGrip::Shoulder && (pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) == 0);
+    // The left trigger as LB (the weapon wheel): pulled = LB, and no LT.
+    state = {};
+    latches = {};
+    options = {};
+    options.gripShoulder = false;
+    options.leftTriggerShoulder = true;
+    state.left.trigger = 1.0f;
+    pad = FromControllers(state, latches, options);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0 && pad.bLeftTrigger == 0);
+    state.left.trigger = 0.0f;
+    pad = FromControllers(state, latches, options);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) == 0);
+    // ...and across the host boundary.
+    {
+        Options wheel;
+        wheel.gripShoulder = false;
+        wheel.leftTriggerShoulder = true;
+        Options const back = FromFlags(0.0f, 0.12f, 0.22f, ToFlags(wheel));
+        CHECK(!back.gripShoulder && back.leftTriggerShoulder);
+    }
+
     // The flags across the host boundary.
     Options flagged;
     flagged.leftTrigger = false;
     flagged.supportAims = true;
     Options const back = FromFlags(0.1f, 0.12f, 0.22f, ToFlags(flagged));
     CHECK(!back.leftTrigger && back.supportAims && back.support.distance == 0.1f);
-    CHECK(ToFlags(Options{}) == (kFlagLeftTrigger | kFlagSupportAims));
+    CHECK(ToFlags(Options{}) == (kFlagLeftTrigger | kFlagSupportAims | kFlagGripShoulder));
 }
 
 void TestTwoHand() {

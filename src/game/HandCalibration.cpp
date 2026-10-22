@@ -34,6 +34,8 @@ struct Values {
     double armLength = 0.0;  // [Arms] armLengthM
     // [Controls]
     bool leftTrigger = false;
+    bool leftTriggerLB = true;
+    bool gripLB = false;
     bool supportGrip = true;
     double supportAcquire = 0.12;
     double supportRelease = 0.22;
@@ -100,9 +102,12 @@ constexpr char const* kControlsBlock =
     "; aimAtShoulder: 1 = aimed fire (LT) needs the gun at the shoulder as well (the right hand\n"
     "; close under the eyes, near the cheek); 0 = both hands on the gun is enough.\n"
     "aimAtShoulder = 1\n"
-    "; leftTrigger: none = the game doesn't see the left trigger (aimed fire comes from holding the gun\n"
-    "; with both hands at the shoulder); lt = it is the game's LT (aim, zoom), as before.\n"
-    "leftTrigger = none\n";
+    "; leftTrigger: lb = the weapon wheel (the default); lt = the game's LT (aim, zoom), as before;\n"
+    "; none = the game doesn't see it. Aimed fire comes from holding the gun with both hands at the shoulder.\n"
+    "leftTrigger = lb\n"
+    "; leftGripAway: what a left grip squeezed away from the gun does. none (the default): nothing, the\n"
+    "; grip only takes the gun; lb = the weapon wheel, as before.\n"
+    "leftGripAway = none\n";
 
 fs::path FilePath() {
     wchar_t buffer[MAX_PATH]{};
@@ -190,7 +195,13 @@ Values ReadValues(Ini const& ini) {
         if (auto const k = s->second.find("leftTrigger"); k != s->second.end()) {
             std::string value = k->second;
             std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-            values.leftTrigger = !(value == "none" || value == "off" || value == "0");
+            values.leftTrigger = value == "lt";
+            values.leftTriggerLB = value == "lb";
+        }
+        if (auto const k = s->second.find("leftGripAway"); k != s->second.end()) {
+            std::string value = k->second;
+            std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            values.gripLB = value == "lb";
         }
     }
     if (Number(ini, "Controls", "aimAtShoulder", flag)) {
@@ -283,8 +294,16 @@ double ArmLength() {
 }
 
 Controls GetControls() {
-    return {gValues.leftTrigger, gValues.supportGrip, gValues.supportAcquire, gValues.supportRelease, gValues.sniperAims,
-        gValues.aimAtShoulder};
+    Controls controls;
+    controls.leftTrigger = gValues.leftTrigger;
+    controls.leftTriggerLB = gValues.leftTriggerLB;
+    controls.gripLB = gValues.gripLB;
+    controls.supportGrip = gValues.supportGrip;
+    controls.acquireMeters = gValues.supportAcquire;
+    controls.releaseMeters = gValues.supportRelease;
+    controls.sniperAims = gValues.sniperAims;
+    controls.aimAtShoulder = gValues.aimAtShoulder;
+    return controls;
 }
 
 std::optional<ik::ArmLengths> MeasureArmLength(ik::ArmLengthSample const& sample) {
@@ -345,7 +364,8 @@ void Refresh() {
             values.supportGrip ? "on" : "off", values.supportAcquire, values.supportRelease,
             values.sniperAims ? "aim too" : "steady only, no LT",
             values.aimAtShoulder ? "with both hands and the gun at the shoulder" : "with both hands",
-            values.leftTrigger ? "= LT" : "not sent to the game");
+            values.leftTrigger ? "= LT" : values.leftTriggerLB ? "= LB (weapon wheel)" : "not sent to the game");
+        log::Info("controls: a left grip away from the gun is {}", values.gripLB ? "LB (weapon wheel)" : "nothing (it only takes the gun)");
     }
     // The menu's arm-length sample: each new measureRequest value is one T-pose sample. One
     // already there at startup with a result saved is old news.
