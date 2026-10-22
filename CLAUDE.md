@@ -112,8 +112,13 @@ switching frameworks.
 - Motion controllers reach the game as Xbox pad 0 (`game/GamepadBridge`, XInput hooks). Mapping
   is in `game/GamepadMapping` (unit-tested).
 - LE1 body holsters (`game/Holsters`, `core/ik/BodySlots`, research/19): a right-grip squeeze at a
-  body slot draws that weapon through `SFXGameModeDefault.SwitchToWeapon` (ProcessEvent); near a
-  slot the grip isn't RB. Settings: `[Holsters]` in `ASI\LE1MEVR.ini`.
+  body slot draws that weapon through `SFXGameModeDefault.SwitchToWeapon` (ProcessEvent). The
+  right grip holds the gun (`gripHolds = 1`): let go at its slot to holster (`TryHolster`),
+  elsewhere it goes back after `releaseGrace`; the grip is never RB, RB (power wheel / mapped
+  power) is the right stick click (`powerWheel`). Contact haptics while the hand is in a slot
+  (host `core/vr/Haptics`); the slots scale with the standing eye height from the floor (host
+  `core/xr/Floor`, STAGE). Squad weapons: the game's wheel (docs/squad-weapons-design.md).
+  Settings: `[Holsters]` in `ASI\LE1MEVR.ini`.
 - LE1 HUD (Halcyon's renderer, Stereo 2): the game's UI draws go to a body-locked HUD panel quad,
   and a hand reticle on the aim ray replaces the crosshair (`src/plugin/HalcyonOverlays.cpp`,
   [research/15](research/15-hud.md)). Toggles: `MELEVR.ini` `hudPanel*` / `handReticle*`, or the
@@ -162,8 +167,9 @@ Use it to check VR changes yourself instead of asking the user what they see
   `tools/snapshot.ps1 -Delay 2`, `tools/replay.ps1 -Stop`.
 - **Player triggers:** End = snapshot, Home = recording on/off (game focused); both grips + left
   stick click = snapshot, both grips + right stick click = recording on/off (stick clicks don't
-  reach the game while both grips are held); the menu's VR hands tab ("Test loop": snapshot in
-  3 s, record, replay the last recording).
+  reach the game while both grips are held; with `gripHolds` only while the left grip is away
+  from the gun's foregrip, since two-handed aiming holds both grips); the menu's VR hands tab
+  ("Test loop": snapshot in 3 s, record, replay the last recording).
 - `testloop.status` (JSON, once a second): recording, replay, last snapshot, `framesRunning`.
 - Needs a running VR session (Halcyon only runs frames between READY and STOPPING). Not focused
   (headset off the face, VISIBLE) is fine: replay drives the view and controllers. SYNCHRONIZED or

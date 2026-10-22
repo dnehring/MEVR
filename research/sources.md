@@ -76,6 +76,15 @@
 - [Madeline Miller: the issue of body size in VR](https://madelinemiller.dev/blog/the-issue-of-body-size-in-vr/)
 - Not found: Onward, Zero Caliber, Hellsplit Arena holster specifics; how Bonelab, Pavlov and Arizona Sunshine anchor their slots
 
+## Grip-holds, RB, contact haptics, eye height, squad weapons (research/19 sections 4-9, docs/squad-weapons-design.md, consulted 2026-10-22)
+- LE1's own files, read-only and local: `BIOInput.ini` inside `CookedPCConsole\Coalesced_INT.bin`, and `SFXGame.pcc` (decompressed with the game's Oodle DLL): the pad bindings per game mode and the bytecode of the input execs
+- OpenXR: [XrHapticVibration](https://registry.khronos.org/OpenXR/specs/1.1/man/html/XrHapticVibration.html), [xrApplyHapticFeedback](https://registry.khronos.org/OpenXR/specs/1.1/man/html/xrApplyHapticFeedback.html) (a new event interrupts and replaces the playing one)
+- [Meta: haptics design system](https://developers.meta.com/horizon/design/haptics-system/) (hover transient, grab, release mirrors the grab at lower amplitude and frequency)
+- [Kruijff et al. 2022, Frontiers in Virtual Reality: vibrotactile proximity and collision cues](https://www.frontiersin.org/journals/virtual-reality/articles/10.3389/frvir.2022.954587/full), [Bloomfield and Badler 2007: collision vibrotactile feedback](https://aaron.cs.virginia.edu/docs/vr-2007-p163.pdf)
+- Blade & Sorcery haptics: [SteamDB patch notes, Index controller update](https://steamdb.info/patchnotes/3961532/), [Road to VR: U8](https://roadtovr.com/blade-sorcery-u8-update/) (search summaries only; no write-up of its contact haptics found)
+- Menus in VR: [Santos et al. 2017 (ISS poster)](https://iss2017.acm.org/program/posters), [Chertoff et al. (poster)](https://www.eecs.ucf.edu/~jjl/pubs/chertoff.pdf), [Komerska and Ware 2004](https://scholars.unh.edu/ccom/295), [Lediaeva and LaViola, GI 2020](https://www.eecs.ucf.edu/~jjl/pubs/GI2020-1.pdf)
+- Squad orders: Arizona Sunshine 2 ([UploadVR](https://uploadvr.com/arizona-sunshine-2-review), [Mixed](https://mixed-news.com/en/arizona-sunshine-2-review/), [Android Central](https://androidcentral.com/gaming/virtual-reality/arizona-sunshine-2-review)); Star Trek: Bridge Crew voice ([Road to VR](https://www.roadtovr.com/hands-ibm-watson-brings-voice-commands-star-trek-vr/), [UploadVR](https://uploadvr.com/star-trek-bridge-crew-getting-voice-commands-via-ibm-watson/))
+
 ## Searched, nothing relevant found
 - "vorpX Mass Effect Legendary Edition profile": no vorpX information
 - "Modern Warfare 2 Campaign Remastered VR mod AI" (standard search): nothing; the GitHub-targeted search found Overlord

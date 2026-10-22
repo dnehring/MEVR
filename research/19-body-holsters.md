@@ -11,7 +11,14 @@ This note covers:
 1. how established VR shooters and VR mods do body slots (web sources, plus Overlord's code);
 2. how LE1 equips and holsters a weapon natively (Ghidra, the natives dump, `SFXGame.pcc`
    bytecode, the LExSDKv2 headers);
-3. the design we build (`core/ik/BodySlots`, `game/Holsters`), and what is still open.
+3. the design we build (`core/ik/BodySlots`, `game/Holsters`), and what is still open;
+4. the right grip as "hold the gun" (user decision 2026-10-22, built);
+5. what is still open;
+6. where RB went: what ME1 binds to it and to every other pad control, and why RB moved to the
+   right stick click;
+7. contact haptics (Blade & Sorcery style) and how they map to OpenXR;
+8. the eye height from the floor;
+9. squad weapons (design proposal in [docs/squad-weapons-design.md](../docs/squad-weapons-design.md)).
 
 Web sources are listed at the end and in [sources.md](sources.md). Claims marked
 **[search summary]** come from a search engine's summary of a page that didn't load directly
@@ -33,6 +40,10 @@ reasoning, not a source.
 | LE1: equip weapon type X | **`SFXGameModeDefault.SwitchToWeapon(Slot)`**, the same exec the PC number keys use. Called through ProcessEvent on the player controller's default game mode. Quick slot index = weapon type (0 pistol, 1 shotgun, 2 assault rifle, 3 sniper rifle). In combat it starts the animated draw (`BioActiveSelectWeapon`); holstered, it changes the slot and draws |
 | LE1: holster | **`SFXGameModeDefault.TryHolster()`**, the holster key. It's a toggle (holstered: draws the primary), so we call it only while `BioPawn.IsInCombatActionState()` is true |
 | LE1: which weapons the player has | `BioPawn.m_oBehavior` → `BioPawnBehavior.m_oEquipment` → `BioEquipment.m_QuickSlotArray[4]`: an empty slot means no weapon of that type is equipped. `m_eQuickSlotCurrent` is the current slot |
+| LE1: what RB does on foot | `Console_PowerWheel`: **hold 0.3 s = power wheel** (`EnterPowerWheel`, game mode 2, paused, steered with the right stick, closed by releasing RB), **tap = the mapped power** (`TryUseMappedPower`). In the Mako RB fires the cannon (section 6) |
+| Where RB went (gripHolds = 1) | **The right stick click**, whose own command (`ChangeMagnification`, a scoped weapon's zoom step) does nothing in Halcyon's view; hold it and tilt the same stick to choose, like Half-Life: Alyx's weapon menu. Guarded against Halcyon's double-click recenter, its both-sticks menu chord and clicks while turning (section 6). `[Holsters] powerWheel = y / x / b` are the alternatives |
+| Contact haptics | A continuous buzz while the hand overlaps a slot, stronger and higher-pitched toward its middle, a firmer edge crossing in, a crisp click on a draw and a softer one on a holster. Played as short refreshed OpenXR vibrations that stop by themselves if the mod stops asking (section 7) |
+| Eye height | Measured by the host in an OpenXR `STAGE` space (`LOCAL_FLOOR` if listed; Halcyon's 1.0 instance doesn't enable it), taken at each recenter, then a slow-rising maximum; `eyeHeightM` is the fallback (section 8) |
 
 ## 1. How VR shooters do body slots
 
@@ -250,10 +261,12 @@ What we take, in our own code (no Overlord code copied):
    - one squeeze, one action.
 4. **The current gun** goes back to its own slot on a swap. In LE1 that's what the game does
    anyway.
-5. **Holstering is conservative:** squeeze and release at the gun's own slot. The hand leaving the
-   zone or the trigger being pulled cancels it.
-6. **Feedback:** a light pulse on entry and a firmer one on draw or holster. No visuals for now.
-7. **The wheel stays as a fallback** (the setting `weaponWheel`) until the slots are tried.
+5. **Holstering:** first built conservative (squeeze and release at the gun's own slot); since the
+   user's decision of 2026-10-22 the grip holds the gun and letting go at its slot holsters it,
+   letting go elsewhere returns it after a grace (section 4).
+6. **Feedback:** first a light pulse on entry and a firmer one on draw or holster; now contact
+   haptics (section 7). No visuals (user decision).
+7. **The wheel stays as a fallback** (the setting `weaponWheel`), and for squad weapons (section 9).
 
 ## 2. How LE1 equips and holsters a weapon
 
@@ -373,17 +386,15 @@ All in Halcyon's LOCAL tracking space (meters; +X right, +Y up, −Z forward).
     the hands when both are in front) while arm IK drives the torso;
   - otherwise our own `ik::BodyYaw` on the head yaw (same deadzone);
   - **held** while the right hand is in a slot or a grab or holster is in progress, so reaching
-    or looking at the hip doesn't move the slot.
+    or looking at the hip doesn't move the slot. (With the grip holding the gun, carrying it
+    doesn't hold the yaw: only being in a slot does.)
 - **Anchor:** the eye as it would be with the head upright. The head turns about a neck pivot
   8 cm behind and 8 cm below the eyes, and the anchor puts the eye back above that pivot at the
   head's yaw (`NeutralEye`). Its height follows with an 80 ms time constant (crouching moves the
   slots; jitter doesn't). Horizontally it follows the anchor directly.
 - **Scale:** offsets are given for a 1.65 m standing eye height and scaled by
-  `eyeHeightM / 1.65`. Radii aren't scaled.
-
-  **Why a setting:** Halcyon's space is LOCAL, whose origin is the head at recenter, so the
-  floor, and with it the player's height, isn't known. A host-side `STAGE` or `LOCAL_FLOOR`
-  space could measure it later (proposal).
+  `eyeHeight / 1.65`. Radii aren't scaled. The eye height is measured from the floor since the
+  host's v10 (section 8); `eyeHeightM` is the fallback.
 
 ### Default slots
 
@@ -413,8 +424,9 @@ Checks against poses that must not grab **[inference, to tune in the headset]**:
   - **the player has no weapon of that type:** a weaker double-length pulse, logged, no call;
   - **it's the gun already in hand:** this arms a holster (below), or does nothing with
     `holster = 0`.
-- **The right grip and RB:**
-  - Today the right grip reaches the game as RB, which opens the power wheel.
+- **The right grip and RB with `gripHolds = 0`** (the first design; with `gripHolds = 1` the grip
+  is never RB, section 4):
+  - The right grip reaches the game as RB, which opens the power wheel.
   - Within a slot's radius plus 5 cm, the mod sets `kFlagRightGripFree`. The host's pad mapping
     then keeps a **new** squeeze off RB until the grip opens.
   - A squeeze begun elsewhere stays RB. A grip already held while moving in neither grabs nor
@@ -429,28 +441,21 @@ Checks against poses that must not grab **[inference, to tune in the headset]**:
 
 ### Holster (`holster` setting)
 
-- `1` (default): squeeze **and release** at the held gun's own slot. The hand leaving that slot
-  (past the 5 cm hysteresis) or the trigger being pulled while squeezed cancels it.
+- `1` (default): at the held gun's own slot. With `gripHolds = 1`: let go there (section 4). With
+  `gripHolds = 0`: squeeze **and release** there; the hand leaving that slot (past the 5 cm
+  hysteresis) or the trigger being pulled while squeezed cancels it.
 - `2`: also at a slot whose weapon you don't carry (an empty holster).
-- `0`: never; holster with the game's own key.
+- `0`: never by hand; holster with the game's own key.
 
-Since the grip isn't "hold the gun" here (below), "release the grip at the slot" becomes squeeze
-and release. Pulling the trigger while holstered makes ME1 draw again, so an accidental holster
-is cheap to undo **[verify]**.
+Pulling the trigger while holstered makes ME1 draw again, so an accidental holster is cheap to
+undo **[verify]**.
 
 ### Feedback
 
-Through `HostServices::hapticPulse` (v9), with an OpenXR vibration action on the host's action
-set (`/output/haptic` on Touch, Index and the simple controller). Applied on Halcyon's frame
-thread after the action sync.
-
-| Event | Duration | Amplitude |
-|-------|----------|-----------|
-| Entering a slot | 25 ms | `hapticAmplitude` (0.5) |
-| Draw or holster | 60 ms | 0.8 |
-| Nothing there | 120 ms | 0.3 |
-
-`hapticAmplitude = 0` turns them off.
+Contact haptics since 2026-10-22 (section 7). The first version, still what a v9 host gets: one
+pulse per event through `HostServices::hapticPulse`, with an OpenXR vibration action on the
+host's action set (`/output/haptic` on Touch, Index and the simple controller), applied on
+Halcyon's frame thread after the action sync. `hapticAmplitude = 0` turns all haptics off.
 
 ### The weapon wheel
 
@@ -470,39 +475,260 @@ Everything is logged once per change, with `holsters:` lines:
 There is also a heartbeat line, and a `holsters` object in the test loop's mod status (the slots'
 centers in tracking space, the hand's distance to each, the phase, the frame's yaw source).
 
-## 4. The right grip as "hold the gun" (proposal, not built)
+## 4. The right grip holds the gun (user decision 2026-10-22; built, `[Holsters] gripHolds = 1`)
 
-Most VR shooters use grip to hold and release to drop or holster: Overlord, Boneworks, H3VR,
-Pavlov. In ME1 that would mean:
-- **squeeze at a slot:** draw;
-- **keep the grip held:** carry and fire;
-- **release:** holster at a slot, or keep the gun (ME1 can't drop weapons) or holster it
-  anywhere else.
+Most VR shooters use the grip to hold and letting go to drop or holster (Overlord, Boneworks,
+H3VR, Pavlov). The user chose that convention for ME1. ME1 has no "dropped" state, so a let-go gun
+goes back to its own holster: what GoldenEye VR does on a swap, Medal of Honor's float-back and
+Half-Life 2 VR Unleashed's auto-holster do on release (section 1). `gripHolds = 0` keeps the first
+design (squeeze to draw, the grip is RB elsewhere).
 
-**For:**
-- It is the convention, and holstering becomes "let go at the slot".
-- It frees RB's power wheel from the right grip entirely. RB could move to a button.
+| You | What happens |
+|-----|--------------|
+| squeeze at a slot (nothing out, or another gun) | that weapon is drawn (`SwitchToWeapon`); keep squeezing to carry it |
+| squeeze at the slot of the gun that's out | you take it (no call) |
+| squeeze anywhere else | you take hold of whatever is out; with nothing out, nothing happens (and no RB) |
+| let go at the gun's own slot | holstered at once (`TryHolster`); `holster = 2`: also at an empty slot |
+| let go anywhere else | it goes back after `releaseGrace` (0.3 s) unless you squeeze again; `releaseGrace = -1`: it stays out |
+| let go while firing | the grace's clock stops while the trigger is held: never in the middle of a burst |
+| let go at its slot while firing, or while the draw is still running | it goes back once the trigger is let go or the gun is out (waiting at most 2 s for a draw), with no grace |
+| the game swaps or puts the gun away during the grace | the return is off |
+| a squeeze that began in a menu, a wheel or a conversation, with a gun out | taken as holding it (the host's report says the squeeze is kept from the game), so letting go still puts it away |
+| the game draws a gun by itself, grip open | left alone: only a let-go we saw acts. (`TryUseMappedPower`, `UseFirstAid`, `UseGrenade`, `TryMelee` and `EnterPowerWheel` all call `DrawPrimaryWeapon` when holstered, by their bytecode) |
 
-**Against:**
-- The game has no "dropped" state to map a release to.
-- Holding the grip through a whole fight is tiring, and ME1 fights are long **[inference]**.
-- It changes a mapping the user has been testing.
-- The two-handed grip already uses the left grip.
+**Why a grace, and why never mid-burst [inference]:** a hand relaxes for an instant while
+aiming, and holstering on every slip would be the error-prone release research/19 section 1
+warns about (Boneworks drops guns). A player firing one-handed with a loose grip expects the gun to
+keep firing.
 
-**Proposal:** keep the grip as a squeeze to draw (built). Ask the user whether to try "hold to
-carry" as an option (`[Holsters] gripHolds = 1`): release away from a slot keeps the gun, release
-at a slot holsters it.
+**Where the grip holds:** on foot (game mode 0) and in the two wheels opened from there (2 the
+power wheel, 3 the weapon wheel: the game is paused in them, and the hand still holds the gun). In
+the Mako (1) the right grip is RB as always (the cannon, section 6), and in menus and
+conversations too. A squeeze keeps the meaning it began with, whatever changes while it's held, so
+a gun held into a menu never becomes RB when it closes.
+
+**Pieces:**
+- The pad mapping (`game/GamepadMapping`, host): `kFlagRightGripHolds` (32) and the RB source in
+  flag bits 8-11 (`kRbSourceMask`), from the mod each tick. A new right squeeze with the flag is
+  never RB (`Latches::rightHold`) and is counted like a holster squeeze, so the mod sees every one
+  (`HostServices::rightGripFree`). With Halcyon's menu open it isn't counted (`Options::countKept`).
+- The machine (`ik::body_slots::Machine`, `Input::gripHolds`, unit-tested in
+  `TestBodySlotHolding`): the actions `ReturnArmed`, `ReturnCancelled`, `Return`, the phase
+  `Returning`. Carrying a gun doesn't hold the body yaw (only being in a slot does).
+- A host older than v10 ignores the new flag, so the mod keeps the old mapping and logs it once.
+
+**The two-handed grip and aimed fire** are unchanged: the left grip takes the gun's foregrip on a
+new squeeze there, aimed fire needs it plus the gun at the shoulder. The held right grip isn't RB,
+so the game sees nothing new.
+
+**The test loop's chords (both grips + a stick click)** were safe because both grips were rarely
+held in play (the right grip was RB). Now both grips are the ordinary two-handed aim, and the
+stick clicks then are crouch (L3) and RB (R3). So with `gripHolds` the chord only counts while the
+left grip is **not** on the foregrip: squeeze the left grip away from the gun (where it does nothing
+else, `leftGripAway = none`). While aiming two-handed the clicks go to the game; take snapshots
+with End, the menu's "Snapshot in 3 s" or `tools/snapshot.ps1` then. The host decides it each frame
+(`testloop::BlockGripChord`, from the support grip and the flag).
 
 ## 5. Open
 
 - **[verify]** All of section 2's calls in game, and the slot-to-type map.
 - **[verify]** The default positions and radii in the headset: the right shoulder reached
   without hitting the head, the belly slot not triggered by low hip fire.
-- The player's height: `eyeHeightM` by hand until a floor-relative space exists (host proposal).
-  The arm-length calibration could also give a height estimate.
-- Seated play: no preset yet. Move the low slots with their ini lines; a `seated` preset is a
-  follow-up.
+- **[verify]** `gripHolds`: holding the grip through a long fight (fatigue, research/19's old
+  objection), slips that start the grace, the 0.3 s grace itself.
+- **[verify]** R3 as RB: the power wheel opened and steered with the right stick while R3 is held
+  (section 6), the mapped power about 0.35 s after a click, no casts on a double-click recenter.
+- **[verify]** Whether the runtime honors the vibration frequency (section 7).
+- **[verify]** The standing eye height from the floor on SteamVR (Steam Link) and the Oculus
+  runtime, and a waist bend's effect on the low slots (section 8).
+- Seated play: no preset (the user doesn't want one). The floor-based scale uses the standing
+  height, so a player who recenters seated gets a smaller layout until they stand once.
 - Left-handed play: not supported anywhere in the mod yet. When it is, the slots mirror
   (gun-hand shoulder, off-hand shoulder).
-- Visual hints (a ring or label for the slot the hand is in) need an overlay in Halcyon's
-  renderer: a later step, if the pulses aren't enough.
+- No visual slot marker (user decision): the contact haptics are the feedback.
+- Squad weapons: the game's weapon wheel stays; a VR-native way is proposed in section 9.
+
+## 6. Where RB went
+
+### What ME1 binds to the pad
+
+The gamepad bindings are config: `BIOInput.ini` inside `CookedPCConsole\Coalesced_INT.bin`
+(parsed read-only: a count of files, then per file its name, sections and key/value pairs as length-
+prefixed UTF-16 strings), and the same values as the defaults of `SFXGameModeBase.Bindings` /
+`SFXGameModeDefault.Bindings` in `SFXGame.pcc` (decompressed read-only with the game's Oodle DLL,
+as in [18](18-camera-and-hands.md)). Each game mode has its own `Bindings`
+(`SFXGameModeBase.Bindings`, `CPF_Config`, SDK). On foot (`SFXGameModeDefault`):
+
+| Pad | Command | What it does | Touch, our mapping |
+|-----|---------|--------------|--------------------|
+| left stick | `Console_Strafe` / `Console_Movement` | move | left stick |
+| right stick | `Console_LookX` / `Console_LookY` | turn and look | right stick (Halcyon: turning) |
+| LT | `Console_Aim`: `TightAim` / `StopTightAim` | aimed fire (`bIsZoomed`) | the support grip at the shoulder; the left trigger is LB by default |
+| RT | `Console_Shoot` | fire | right trigger |
+| LB | `Console_WeaponWheel`: `OnHold 0.3 EnterWeaponWheel \| OnTap 0.3 TrySwapWeapon` | weapon wheel; tap = the other weapon | left trigger (`leftTrigger = lb`) |
+| **RB** | **`Console_PowerWheel`: `OnHold 0.3 EnterPowerWheel \| OnTap 0.3 TryUseMappedPower`** | **power wheel; tap = the mapped power** | right grip (`gripHolds = 0`); **right stick click** (`gripHolds = 1`) |
+| A | `Console_Action`: `OnRelease StormOff \| OnHold 0.3 StormOn \| OnTap 0.3 TapAction` | use, take cover; hold = sprint | A |
+| B | `Console_Melee`: `TryMelee` | a melee power: `Pistol_Whip` with the pistol, else `Rifle_Butt` (bytecode), with a cooldown | B |
+| X | `Console_Grenade`: `UseGrenade` | throw a grenade | X |
+| Y | `Console_FirstAid`: `UseFirstAid` | medi-gel (`INTERNAL_POWER_ID_HEAL`) | Y |
+| d-pad | `Console_Squad{Attack,Follow,Move1,Move2}` | squad orders | not mapped from Touch |
+| L3 | `Console_Crouch`: `ToggleCrouch` | crouch | left stick click |
+| R3 | `Console_ChangeMagnification` | only while zoomed: the weapon's `CycleMagnification` (a scope's zoom step), and a GUI sound | right stick click (Halcyon: double-click = recenter) |
+| Start | `Console_Menu`: `ShowMenuGui` | pause menu | left menu button |
+| Back | `Console_Holster`: `TryHolster` | holster | left grip + menu |
+
+Other modes:
+- **Power wheel** (`SFXGameModePowerWheel`, mode 2): the right stick (`Console_LookX/Y`: it steers
+  the selection), **RB = `OnRelease ExitPowerWheel`**, Start, the d-pad's squad orders. Its
+  `Activated` pauses the game and swaps the sticks only when the profile's stick option (26) is 1
+  (bytecode), so by default the right stick steers.
+- **Weapon wheel** (mode 3): the same with LB's release.
+- **Mako** (`SFXGameModeVehicle`, mode 1): **RB = `FireCannon`**, LB boost, LT aim, RT the gun,
+  A jump jets, B exit, Y repair, X leave the world, R3 magnification.
+- Cinematics, movies, minigames, the GUI and photo mode bind nothing to RB.
+- At runtime `SFXGameModeManager.UpdateControllerTriggerBindings` swaps the bumpers with the
+  triggers, `UpdateControllerStickBindings` the sticks (southpaw) and `UpdateControllerButtonBindings`
+  A and B in menus, each from a profile option (bytecode: their only key names are those pairs).
+  The defaults (`m_nDefaultTriggerConfiguration = 0`, `m_nDefaultSouthpawFlag = 0` in
+  `BIOGame.ini`) leave the table as is.
+- The mapped power: `TryUseMappedPower` uses `BioPlayerInput.MappedPower` (`SetCurrentPower`,
+  then `AcquireActive`); it returns at once when combat is disabled or nothing is mapped
+  (bytecode). The natives dump also has `BioPlayerController.QuickCommandUseMappedAction`
+  (`0xBACCD0` → `0xC76AD0`, GhidraMCP): a mapped action per slot, 4 and 5 being the two squad
+  members.
+
+### Choosing RB's new control
+
+The power wheel is **hold RB, steer with the right stick, let go to apply**; a tap casts the
+mapped power. So RB's new control must be held while the right stick moves, and the right hand
+now holds the gun (grip) and fires (trigger).
+
+| Control | Its job now | As RB | Verdict |
+|---------|-------------|-------|---------|
+| **R3** | `ChangeMagnification`: a zoom step while zoomed, which Halcyon's view doesn't show (it replaces the game's projection each frame, research/14) **[verify]**; Halcyon's double-click recenter and both-sticks menu read it | hold it and tilt the same stick to choose, as Half-Life: Alyx's weapon menu does on a stick click (section 1); the thumb is already there | **chosen**: nothing important is lost |
+| Y | first aid | the left thumb holds, the right steers: comfortable | the alternative (`powerWheel = y`); first aid then only through the power wheel (its HUD lists the heal and grenade powers: `PopulateHealPower`, `PopulateGrenadePower`) |
+| X | grenade | as Y | `powerWheel = x`; grenades through the wheel |
+| B | melee | the right thumb can't hold B and steer the right stick | `powerWheel = b`: taps only, really |
+| L3 | crouch | a held left click while the right thumb steers works, but clicks while walking would cast | no |
+| left grip away from the gun | nothing (`leftGripAway = none`) | a grab that misses the foregrip would open the wheel or cast: the complaint that made the left grip "only take the gun" (7b80f5d) | no |
+| left trigger | the weapon wheel (LB), kept for squad weapons | | no |
+| A, menu | action/sprint/cover, pause | | no |
+
+**R3's guards** (`gamepad::RbFromStickClick`, pure, unit-tested in `TestRbFromStickClick`):
+- **Turning:** a click with the stick pushed past half (snap or smooth turning) isn't RB.
+- **Halcyon's both-sticks menu chord:** RB starts only once R3 has been held 100 ms alone; the left
+  click joining within that cancels it.
+- **Halcyon's double-click recenter** (press to press within 400 ms, `vr_menu.cpp`): a quick click
+  (released within the 100 ms) becomes an 80 ms RB tap only after that window has passed with no
+  second press; a second press in the window is never RB. The pair is used up as Halcyon does.
+- **The test loop's chord** reserves the clicks.
+- R3 itself still reaches the game, since Halcyon reads it there.
+
+**Cost:** the mapped power comes about 0.35 s after a quick click, and the wheel opens about 0.4 s
+after the press (0.1 s commit plus the game's 0.3 s). If that's too slow in play,
+`[Holsters] powerWheel = y` moves RB to Y with no delays (and first aid to the wheel).
+
+## 7. Haptics as contact
+
+The user asked for feedback like Blade & Sorcery's collision haptics: the hand *feels* the slot,
+continuously, rather than one buzz on entry, and no visual marker.
+
+**Sources:**
+- We found no write-up of Blade & Sorcery's own haptic rules. Its patch notes list improved haptics
+  with the Index controller update and haptics on imbue and spell charge **[search summary]**; the
+  reference here is how it feels to the user.
+- Meta's haptics design system: a hover is "a short, sharp transient"; a grab confirms the grasp;
+  the release "mirrors the grab haptic at lower amplitude and frequency"; success is two events
+  over 175 ms. Its continuous effects are amplitude and frequency envelopes (0-1).
+- Studies: continuous vibrotactile cues carry proximity well (Kruijff et al. 2022, Frontiers in
+  Virtual Reality), and collision vibration improved performance over visuals alone (Bloomfield &
+  Badler 2007).
+- Section 1: Fallout 4 VR's Virtual Holsters buzz near a zone, Doom 3 BFG VR vibrates in a slot,
+  VRIK pulses on hover.
+- **OpenXR** (`XrHapticVibration`, `xrApplyHapticFeedback`): a vibration has a duration (ns;
+  `XR_MIN_HAPTIC_DURATION` for the shortest), a frequency (Hz; `XR_FREQUENCY_UNSPECIFIED` leaves
+  it to the runtime) and an amplitude (0-1); duration and frequency "may be clamped to
+  implementation-dependent ranges". A new haptic event from the session on the same action and
+  hand **must** interrupt and replace the one playing; an unfocused session gets
+  `XR_SESSION_NOT_FOCUSED` and no vibration. `xrStopHapticFeedback` stops it. The spec page names
+  no infinite duration, so a continuous buzz is short chunks re-sent.
+
+**The model** (`ik::body_slots` `Depth`, `Contact`, `EnterEdge`, `DrawClick`, `HolsterClick`,
+`Refused`, unit-tested in `TestContactHaptics`), at `hapticAmplitude = 0.5` (it scales them all
+linearly, clamped at 1; 0 = none):
+
+| Event | Duration | Amplitude | Frequency |
+|-------|----------|-----------|-----------|
+| hand in a slot (continuous) | while there | 0.08 at the edge (and in the 5 cm exit band) to 0.35 at the center; half while carrying a gun | 70 to 200 Hz with depth |
+| crossing in | 35 ms | 0.55 | 160 Hz |
+| draw | 20 ms | 0.9 | 320 Hz |
+| holster (at the slot, or the return) | 20 ms | 0.65 | 200 Hz (the draw's mirror, lower) |
+| no weapon of that type | 120 ms | 0.3 | 60 Hz |
+
+Depth is `1 − distance / radius`. The halving while carrying a gun keeps a gun hand resting near
+the hip from droning **[inference]**.
+
+**How it's played** (`core/vr/Haptics`, `vr::haptics::Channel`, unit-tested in
+`TestHapticChannel`; the host's frame thread, after the action sync):
+- The mod asks for the buzz each tick with a 0.15 s expiry (`HostServices::hapticContinuous`, v10).
+- The host sends chunks of at most 100 ms, again when 40 ms are left (if the request outlasts the
+  chunk) or when the amplitude moves by 0.02 or the frequency by 5 Hz. No chunk outlasts the
+  request, so a stalled or unloaded mod goes quiet within 0.15 s; amplitude 0 sends a stop.
+- Pulses (`hapticPulseHz`, v10, or `hapticPulse`) interrupt the buzz, which resumes after them.
+- Five failed vibrations in a row stop vibration for the session (logged once). The mod unloading
+  clears both hands.
+- A v9 host has no continuous buzz: the mod sends the crossing pulse only (logged once).
+
+**[verify]:** whether SteamVR (Steam Link) and the Oculus runtime honor the frequency on Quest
+controllers. If not, depth is carried by the amplitude alone, which still rises toward the center.
+
+## 8. The eye height from the floor
+
+**What Halcyon has:** a 1.0 instance with `XR_KHR_D3D11_enable` (and `XR_FB_display_refresh_rate`
+when offered); a LOCAL space it re-origins at each recenter (its app space), a LOCAL base space and
+a VIEW space. No floor.
+
+**The host** (`core/xr/Floor`, `xr::FloorSpace`, created in `MevrBridge::OnSessionCreated`):
+- Lists the session's reference spaces (`xrEnumerateReferenceSpaces`) and takes `LOCAL_FLOOR` if
+  listed (core in OpenXR 1.1; a 1.0 instance needs `XR_EXT_local_floor`, which Halcyon doesn't
+  enable, so normally not), else `STAGE` (core, optional per runtime). Neither moves with Halcyon's
+  recenter, which only re-origins its own app space.
+- Makes its own VIEW space and locates it in the floor space each frame at the predicted display
+  time: its `y` is the eye height above the floor.
+- Publishes it (`HostServices::floor`, v10, `vr::floor::State`, with a size check) with the count
+  of recenters and of sessions. A new session gets new spaces (the old ones died with the old
+  session).
+- Logs `floor: the head's height above the floor comes from STAGE (reference spaces: ...)` and the
+  first sample; a runtime with no floor space logs that the setting stays.
+
+**The mod** (`ik::body_slots::StandingHeight`, unit-tested in `TestStandingHeight`;
+`game/Holsters`):
+- A sample outside 0.9-2.3 m isn't an eye above a floor (no floor set up, or the floor at the head)
+  and is ignored.
+- **At a recenter** that sample becomes the standing eye height: the player is told to recenter
+  standing straight. Up or down, so a new player or a wrong earlier value is fixed by recentering.
+- **Otherwise a slow-rising maximum:** higher samples pull it up with a 2 s time constant (a
+  tiptoe or a jump barely moves it), lower ones never pull it down.
+- A new session starts over. `eyeHeightFromFloor = 0`, an older host, no floor space or no
+  plausible sample: `[Holsters] eyeHeightM`. The source is logged when it changes
+  (`holsters: eye height 1.62 m from the floor (STAGE), standing (slot scale 0.98)`), and the
+  heartbeat and the snapshot's status carry the height, its source and the head's current height.
+
+**Crouching (decided):** the slots' *spacing* comes from the standing height, so crouching doesn't
+shrink the layout toward the head (body-height-relative, as the user suggested), while the anchor
+still follows the head down (80 ms), so a squat or sitting down carries the slots with the hips.
+That is what the sources do: GoldenEye VR places by fractions of standing eye height, Overlord
+follows crouch with 80 ms, Quake VR shifts holsters with crouch, and Boneworks' complaint was
+holsters that didn't stay where the body was. Not chosen: slots fixed above the floor, which a
+squat would leave above the hips. The known weak case is bending at the waist (the head drops, the
+hips don't), which moves the low slots down **[verify in headset]**.
+
+## 9. Squad weapons
+
+The game's weapon wheel stays on the left trigger: in ME1 it is the only way to change a
+squadmate's weapon (`SquadOrderEquipWeapon` records the choice per member, the wheel applies it on
+closing, section 2). A VR-native way is proposed, not built, in
+[docs/squad-weapons-design.md](../docs/squad-weapons-design.md). The recommendation: point the
+left hand at a squadmate and squeeze the left grip to open a small radial menu at them, flick the
+left stick toward a weapon, let go to apply; the wheel stays as the fallback, and voice is a later
+option.
