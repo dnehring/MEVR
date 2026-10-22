@@ -56,3 +56,30 @@ rva,name,kind,comment
 0xC3EC70,ABioWeapon::AttachToMesh,func,research/14: BioWeapon.AttachToMesh (native)
 0x78C50,ReturnTrue_folded,func,'return 1' stub shared by many vtables (identical code folding); GetMuzzleLoc calls it on m_MuzzleSocketName
 0xC621E0,ABioWeaponRanged::TickFire,func,virtual: vtable 0x1315460 slot 0x8A0 (execTickFire 0xB72660 calls it); GetMuzzleLoc is slot 0x8E8
+0xCB2240,USFXCameraMode::GetCameraLocation,func,research/18: virtual slot 0x2C0 (vtable 0x1310858 and 4 subclass vtables); hook = GetActorCameraHook then minus R(m_pov pitch/yaw) * Offset (+0xB4)
+0xCB1CE0,USFXCameraMode::GetActorCameraHook,func,research/18: virtual slot 0x2C8; BioPawn target -> CalculateOffsetHook(1); other pawns -> bone HookName (+0xE4) world + yaw * HookOffset (+0xC0)
+0xCB20B0,USFXCameraMode::GetCameraHook,func,research/18: HookName 'CoverSlot' -> BioPawn+0x8BC actor; None -> Location minus CollisionHeight; else GetBoneLocation(Mesh; HookName; world); stores LastHookPos +0xCC
+0xCAEF50,USFXCameraMode::CalculateOffsetHook,func,research/18: hook as GetCameraHook plus controller-yaw-rotated HookOffset * Distance
+0xB8F690,USFXCameraMode::execGetCameraLocation,func,research/18: calls virtual +0x2C0
+0xB8F6F0,USFXCameraMode::execCalculateOffsetHook,func,research/18
+0xB8F7A0,USFXCameraMode::execGetCameraHook,func,research/18
+0xB8F800,USFXCameraMode::execGetActorCameraHook,func,research/18: calls virtual +0x2C8
+0x583410,USkeletalMeshComponent::GetBoneLocation,func,research/18: (Out; BoneName; Space) Space 1 = component (SpaceBases translation) else world via GetBoneMatrix
+0x2D9D10,CastToPawn_guess,func,research/18: IsA check against an Engine class (Pawn: Mesh +0x480 and CylinderComponent +0x488 used after it)
+0x3CDFD0,CastToBioPawn_guess,func,research/18: IsA check against an SFXGame class; 348 callers incl. UpdateSkelPose
+0x54F360,USkelControlLimb::CalculateNewBoneTransforms,func,research/18: virtual slot 0x2F8; reads EffectorLocation +0xD4 JointTarget +0xE0 spaces +0x110/+0x111 axes +0x112/+0x113 from SpaceBases
+0x54D940,USkelControlFootPlacement::CalculateNewBoneTransforms_guess,func,research/18: calls the limb solve directly
+0x5776F0,USkeletalMeshComponent::ApplyControlsForBone_guess,func,research/18: per-bone SkelControlIndex (+0x3C4/+0x3D4); strength = ControlStrength (+0xA8) [* AnimMetadataWeight]; skips <= 1e-5; vtable +0x2F0/+0x2F8/+0x300/+0x310
+0x57AD90,USkeletalMeshComponent::ComposeSkeletonBody_guess,func,research/18: LocalAtoms -> SpaceBases; calls ApplyControlsForBone per bone with controls
+0x568330,USkelControlBase::SetSkelControlActive,func,research/18: StrengthTarget +0xB4 = 0/1; BlendTimeToGo +0xB8; propagates along NextControl when bPropagateSetActive
+0x582300,USkeletalMeshComponent::FindSkelControl_guess,func,research/18: called with the name 'LeftArm'
+0xBE4A50,UBioActiveSelectWeapon::StartActive_guess,func,research/18: caches the 'LeftArm' control in m_oWeaponIKControl (+0x88) and the 'WeaponEquip' node
+0xBF1890,UBioActiveSelectWeapon::WeaponIKOff_guess,func,research/18: draw/holster: clears bSetStrengthFromAnimNode on LeftArm and SetSkelControlActive(false)
+0xBC7E90,UBioActiveSelectWeapon::WeaponIKRestore_guess,func,research/18: sets bSetStrengthFromAnimNode back on LeftArm and drops m_oWeaponIKControl
+0xC59920,ABioWeaponRanged::GetPlayerAimError,func,research/18: virtual slot 0x908; Stats aim-error range picked by bIsZoomed (+0x548 bit 4)
+0xC59F90,ABioWeaponRanged::GetRecoil,func,research/18: virtual slot 0x900; Stats recoil picked by bIsZoomed (+0x548 bit 4)
+0xB72E80,ABioWeaponRanged::execGetPlayerAimError,func,research/18: calls virtual +0x908
+0xB72E30,ABioWeaponRanged::execGetRecoil,func,research/18: calls virtual +0x900
+0x568560,USkelControlBase::TickSkelControl,func,research/18: bSetStrengthFromAnimNode (+0xCC bit 2) -> strength = sum of NodeTotalWeight (+0xD0) of relevant nodes named in StrengthAnimNodeNameList; then blends ControlStrength toward StrengthTarget
+0x41AC30,UWorld::Tick,func,research/18: UGameEngine::Tick calls it (GWorld; 2; DeltaSeconds); tick groups 0x40D630 0x40B240 0x40BB60 0x40C450 then the camera loop (PlayerCamera +0x6B0 UpdateCamera via ProcessEvent) then 0x40CD40
+0x616660,UWorld::GetFirstController_guess,func,research/18: UWorld::Tick walks controllers from it via NextController +0x3EC
