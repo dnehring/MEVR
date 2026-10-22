@@ -227,6 +227,12 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     if (mevr::host::testloop::GripChordHeld()) {
         // Both grips squeezed: a stick click is the test loop's snapshot or recording chord.
         pad.wButtons &= ~(XINPUT_GAMEPAD_LEFT_THUMB | XINPUT_GAMEPAD_RIGHT_THUMB);
+        if (!held) {
+            // ...and the grips themselves aren't LB + RB, which held would open the game's
+            // weapon and power wheels. (With the support grip the left grip isn't LB anyway, and
+            // the right grip stays RB.)
+            pad.wButtons &= ~(XINPUT_GAMEPAD_LEFT_SHOULDER | XINPUT_GAMEPAD_RIGHT_SHOULDER);
+        }
     }
     if (CameraAlignOwnsLeftTrigger()) {
         pad.bLeftTrigger = 0;
