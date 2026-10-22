@@ -19,7 +19,9 @@
 // right grip squeezed at a body holster draws a weapon instead of RB (Options::rightGripFree).
 // With the body holsters' "grip holds the gun" (Options::rightGripHolds) the right grip is never RB;
 // RB (LE1 on foot: hold = power wheel, tap = mapped power) comes from Options::rbSource instead
-// (research/19, "The right grip holds the gun").
+// (research/19, "The right grip holds the gun"). B (melee) and X (grenade) can be kept from the game
+// on foot (Options::meleeButton / grenadeButton) once the physical swing and throw replace them
+// (research/20).
 namespace mevr::game::gamepad {
 
 // The control that sends RB while the right grip holds the gun (Options::rightGripHolds).
@@ -248,6 +250,11 @@ struct Options {
     bool nativeWheel = false;
     WheelStick wheelStick = WheelStick::Right;
     bool wheelPressA = false;
+    // The face buttons for melee and grenades (game/throwables, research/20): false keeps B (melee) or
+    // X (grenade) from the game, so only the physical swing or throw does them. A press that is RB
+    // (rbSource = b or x) is still RB. The mod clears them only on foot, so menus keep B.
+    bool meleeButton = true;
+    bool grenadeButton = true;
     SupportInput support;
 };
 
@@ -266,6 +273,9 @@ inline constexpr std::uint32_t kRbSourceMask = 0xFu << kRbSourceShift;
 inline constexpr std::uint32_t kFlagWheelPressA = 1u << 12;   // Options::wheelPressA (host v12)
 inline constexpr std::uint32_t kWheelStickShift = 13;         // Options::wheelStick in bits 13-14 (host v12)
 inline constexpr std::uint32_t kWheelStickMask = 3u << kWheelStickShift;
+// Inverted, so 0 (an older mod, or none sent) keeps both buttons (host v13).
+inline constexpr std::uint32_t kFlagNoMeleeButton = 1u << 15;    // !Options::meleeButton
+inline constexpr std::uint32_t kFlagNoGrenadeButton = 1u << 16;  // !Options::grenadeButton
 std::uint32_t ToFlags(Options const& options);
 Options FromFlags(float distance, float acquire, float release, std::uint32_t flags);
 

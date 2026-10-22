@@ -38,7 +38,7 @@ struct Panel;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 12;
+inline constexpr int kHostServicesVersion = 13;
 
 using ProcessEventCallback = void (*)(UObject* context, UFunction* function, void* parms, void* result);
 
@@ -159,6 +159,10 @@ struct HostServices {
     // (cut out of the HUD panel). The mod calls it only if wheelPanelSize matches its sizeof(Panel).
     std::uint32_t wheelPanelSize = 0;
     void (*setWheelPanel)(vr::squad_menu::wheel::Panel const* panel) = nullptr;
+
+    // Version 13: physical melee and grenades (game/throwables, research/20). No new fields:
+    // setSupportGrip's flags also take gamepad::kFlagNoMeleeButton and kFlagNoGrenadeButton (B and X
+    // kept from the game on foot); a v12 host ignores them, so the buttons stay.
 };
 
 } // namespace mevr

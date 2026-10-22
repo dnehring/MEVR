@@ -59,6 +59,12 @@ void Tick(double deltaSeconds, Link const& link);
 // [Holsters] weaponWheel = 0. Called by game/support_grip before it publishes the flags (so after
 // Tick).
 void AdjustPad(gamepad::Options& options);
+// For game/throwables (research/20): the standing eye height that scales the slots (meters), whether
+// the right hand is in a weapon slot now, and the seconds since our last draw request (a draw's fast
+// reach mustn't count as a melee stroke).
+double EyeHeight();
+bool RightHandInSlot();
+double SecondsSinceDraw();
 // For the test loop's mod status: a JSON object.
 std::string StatusJson();
 void LogStats();

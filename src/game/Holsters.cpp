@@ -10,6 +10,7 @@
 #include "game/ArmIk.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/HeadTracking.hpp"
+#include "game/Throwables.hpp"
 
 #include <LESDK/Headers.hpp>
 
@@ -100,6 +101,10 @@ double gEyeHeight = slots::kReferenceEyeHeight;
 std::string gEyeSource = "the setting";
 std::string gLoggedEyeSource;
 double gLoggedEyeHeight = -1.0;
+// Seconds since our last draw request (game/throwables: a draw's reach isn't a melee stroke).
+double gSinceDraw = 1e9;
+// The right hand holds a grenade (game/throwables): logged when it changes.
+bool gLoggedGrenadeHand = false;
 
 // What the player carries, re-read each tick; the type map is rebuilt when the slots change.
 struct Carried {
@@ -302,6 +307,7 @@ void Draw(Game const& game, Weapon weapon, char const* slot, Link const& link, d
         holds ? "; keep the grip squeezed to hold it" : "");
     game.mode->ProcessEvent(gSwitchToWeapon, &parms, nullptr);  // directly: never the SDK's wrapper
     gPending = {slots::Action::Draw, weapon, 0.0};
+    gSinceDraw = 0.0;
     ++gDraws;
     Pulse(link, slots::DrawClick(strength));
 }
@@ -450,6 +456,7 @@ void Tick(double deltaSeconds, Link const& link) {
     hand_calibration::Refresh();  // at most once a second
     hand_calibration::Holsters const settings = hand_calibration::GetHolsters();
     gEnabled = settings.enabled;
+    gSinceDraw = std::min(gSinceDraw + std::max(deltaSeconds, 0.0), 1e9);
     gWheelOff = settings.enabled && !settings.weaponWheel;
 
     vr::controllers::State const controllers = vr::controllers::Latest();
@@ -574,7 +581,16 @@ void Tick(double deltaSeconds, Link const& link) {
         }
     }
     input.tracked = true;
-    input.gripDown = gOwnGrip;
+    // The right hand holding a grenade (or having just thrown one) still counts as holding the gun, so
+    // it doesn't go back to its holster under the throw (research/20). Its claiming squeeze reaches the
+    // machine as a squeeze away from every slot: it keeps a gun that's out (a return is cancelled).
+    bool const grenadeHand = throwables::RightHandBusy();
+    if (grenadeHand != gLoggedGrenadeHand) {
+        gLoggedGrenadeHand = grenadeHand;
+        log::Info("holsters: {}", grenadeHand ? "the right hand has a grenade: the gun stays out as if held"
+                                              : "the right hand is back to holding the gun with the grip");
+    }
+    input.gripDown = gOwnGrip || grenadeHand;
     input.newSqueeze = newSqueeze;
     input.trigger = right.trigger >= kTriggerOn;
     input.held = Held();
@@ -678,6 +694,18 @@ void AdjustPad(gamepad::Options& options) {
     }
 }
 
+double EyeHeight() {
+    return gEyeHeight;
+}
+
+bool RightHandInSlot() {
+    return gActive && gMachine.InSlot() >= 0;
+}
+
+double SecondsSinceDraw() {
+    return gSinceDraw;
+}
+
 std::string StatusJson() {
     namespace json = vr::test_request;
     hand_calibration::Holsters const settings = hand_calibration::GetHolsters();
@@ -771,6 +799,8 @@ void Shutdown() {
     gLoggedEyeHeight = -1.0;
     gCarried = {};
     gPending = {};
+    gSinceDraw = 1e9;
+    gLoggedGrenadeHand = false;
     gStarted = false;
     gWhy = "not started";
     gLoggedWhy.clear();
