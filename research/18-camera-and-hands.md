@@ -176,7 +176,32 @@ Halcyon writes `Offset` on the active camera mode, including the TightAim mode, 
 this chain reads the camera mode. **The bonus applies in first person under Halcyon** as long as
 LT reaches the game's TightAim action.
 
-## Proposals (no code changed)
+## Proposals
+
+**Status (2026-10-21):** 1-5 are built (mod only, no host redeploy); 6 isn't needed unless a
+stance's camera hooks a bone we write. Test steps: `notes/next-vr-session.md` steps 8 and 9.
+- 1: `engine/BonePose` skips the bones named `Camera` and `God` (`Request::keep`); arm IK logs
+  once per skeleton whether a written subtree contains them, the heartbeat if a solve moved one.
+  The rule is in [14](14-vrik.md), "Camera hook bones".
+- 2: `keepBone` is no longer set; the comments are fixed. First-person lean stays `relative`:
+  the Camera bone's animation wanders tens of units against the head, so aiming the eyes at the
+  view would follow the animation's camera track, not the player.
+- 3: `game/CameraProbe` logs each mode change (`camera: mode ...`), with GetCameraLocation's
+  formula from the hook bone against the mode's `m_pov` **[verify: gap near 0]**.
+- 4: the `LeftArm` control's strength, target and `bSetStrengthFromAnimNode`, per gun and on each
+  change (`support grip: the AnimTree's off-hand IK (LeftArm) is on|off|blending`); the wrist-
+  to-LHIK distance is kept as a cross-check.
+- 5: `bIsZoomed` on each change, with whether our grip forces LT (`support grip: the weapon's
+  bIsZoomed is on (our grip forces LT)`).
+
+Offsets checked against the LE1 SDK headers (static_asserts in the code): `SFXCameraNativeBase.
+CurrentCameraMode +0x568`, `SFXCameraMode` `m_pov +0x98`, `Offset +0xB4`, `HookOffset +0xC0`,
+`LastHookPos +0xCC`, `HookName +0xE4`, `SFXCameraMode_Interpolate.To +0x168`, `SkelControlBase`
+`ControlStrength +0xA8`, `StrengthTarget +0xB4`, `bSetStrengthFromAnimNode +0xCC bit 0x2`,
+`BioWeaponRanged.bIsZoomed +0x548 bit 0x4`: all as above.
+
+The original proposals:
+
 
 1. **Never move the `Camera` bone.** In `engine/BonePose` `Write`, after building the pose,
    copy the animated `SpaceBases` entry of the bone named `Camera` back (find it by name once

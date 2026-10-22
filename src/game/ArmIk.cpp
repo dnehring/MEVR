@@ -3,6 +3,7 @@
 #include "core/Log.hpp"
 #include "core/ik/ArmPose.hpp"
 #include "core/ik/BoneNames.hpp"
+#include "core/ik/CameraHook.hpp"
 #include "core/ik/HandFrame.hpp"
 #include "core/ik/TorsoPose.hpp"
 #include "core/ik/TouchReference.hpp"
@@ -21,6 +22,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <format>
 #include <numbers>
@@ -83,6 +85,8 @@ struct SkeletonInfo {
     std::array<int, 2> eyes{-1, -1};
     // LHIK: the off-hand IK goal (under Prop01 under RightWrist; research/14), -1: not found.
     int lhik = -1;
+    // The camera hook bones (`Camera`, `God`; research/18): the writer never writes them.
+    std::vector<int> cameraHooks;
 };
 std::optional<SkeletonInfo> gSkeleton;
 
@@ -190,6 +194,57 @@ std::string ChainText(SkeletonInfo const& info, std::optional<ik::ArmChain> cons
         names[chain->hand], chain->hand);
 }
 
+// LE1's camera hangs off the bone named `Camera` (`God` for a sniper crouch mode), read from
+// SpaceBases (research/18): if we moved it, the view would follow our writes (489ef51's loop).
+// The writer never writes these (Request::keep). Once per skeleton, whether any subtree we write
+// (the bottom spine joint's, the clavicles', the upper arms') contains one: it shouldn't, since
+// they hang off the root, not the spine.
+void LogCameraHooks(SkeletonInfo& info) {
+    info.cameraHooks = ik::FindCameraHookBones(info.bones.names);
+    auto const& names = info.bones.names;
+    auto const& parents = info.bones.parents;
+    if (info.cameraHooks.empty()) {
+        log::Warn("arm IK: no Camera or God bone in this skeleton: the camera hook can't be guarded (research/18)");
+        return;
+    }
+    std::vector<int> roots;
+    std::string written;
+    auto const add = [&](int bone, char const* what) {
+        if (bone >= 0) {
+            roots.push_back(bone);
+            written += std::format("{}{} {}({})", written.empty() ? "" : ", ", what, names[bone], bone);
+        }
+    };
+    if (info.torso && !info.torso->spine.empty()) {
+        add(info.torso->spine.front(), "spine");
+        add(info.torso->collars[kLeft], "clavicle");
+        add(info.torso->collars[kRight], "clavicle");
+    }
+    for (auto const& arm : info.arms) {
+        add(arm ? arm->upper : -1, "arm");
+    }
+    std::string hooks;
+    for (int bone : info.cameraHooks) {
+        int const parent = parents[bone];
+        hooks += std::format("{}{}({}, parent {})", hooks.empty() ? "" : ", ", names[bone], bone,
+            parent >= 0 ? std::format("{}({})", names[parent], parent) : std::string("none: the root"));
+    }
+    std::vector<int> const inside = ik::InSubtrees(parents, roots, info.cameraHooks);
+    if (inside.empty()) {
+        log::Info("arm IK: camera hook bones {}: outside every subtree we write ({}), so the view can't follow our "
+                  "writes; the writer skips them anyway",
+            hooks, written.empty() ? "none" : written);
+    } else {
+        std::string text;
+        for (int bone : inside) {
+            text += std::format("{}{}({})", text.empty() ? "" : ", ", names[bone], bone);
+        }
+        log::Warn("arm IK: camera hook bones {}: {} INSIDE a subtree we write ({}): the writer keeps them animated, but the "
+                  "bones around them move (research/18)",
+            hooks, text, written);
+    }
+}
+
 // The asset's skeleton and arm chains, resolved once per asset (logged). Nullopt: unreadable.
 SkeletonInfo const* Skeleton(USkeletalMeshComponent* mesh) {
     UObject const* const asset = mesh->SkeletalMesh;
@@ -273,6 +328,7 @@ SkeletonInfo const* Skeleton(USkeletalMeshComponent* mesh) {
     log::Info("arm IK: torso: spine {}; clavicles {} and {}; eyes {} and {}; off-hand IK goal {}",
         info.torso ? spine : std::string("not found"), named(info.torso ? info.torso->collars[kLeft] : -1),
         named(info.torso ? info.torso->collars[kRight] : -1), named(info.eyes[kLeft]), named(info.eyes[kRight]), named(info.lhik));
+    LogCameraHooks(info);
     gSkeleton = std::move(info);
     return &*gSkeleton;
 }
@@ -353,12 +409,64 @@ void Stop(std::string status) {
     gStatus = std::move(status);
 }
 
+// The AnimTree's own off-hand IK, the SkelControlLimb named `LeftArm` (research/18): found by
+// name once per AnimTree, then followed by address (the lists are walked each time, so a control
+// that went away is never read).
+#if defined(SDK_TARGET_LE1)
+static_assert(offsetof(USkelControlBase, ControlStrength) == 0xA8);
+static_assert(offsetof(USkelControlBase, StrengthTarget) == 0xB4);
+#endif
+constexpr int kMaxControlsPerList = 32;
+UAnimTree const* gIkTree = nullptr;
+USkelControlBase const* gIkControl = nullptr;
+bool gIkSearched = false;
+
+USkelControlBase* FindControl(UAnimTree* tree, USkelControlBase const* address, char const* name) {
+    for (FSkelControlListHead const& list : tree->SkelControlLists) {
+        int depth = 0;
+        for (USkelControlBase* control = list.ControlHead; control != nullptr && depth < kMaxControlsPerList;
+             control = control->NextControl, ++depth) {
+            if (address != nullptr ? control == address : engine::ToString(control->ControlName) == name) {
+                return control;
+            }
+        }
+    }
+    return nullptr;
+}
+
+std::optional<support_grip::NativeIkSample> NativeLeftArmIk(USkeletalMeshComponent* mesh) {
+    UAnimNode* const animations = mesh->Animations;
+    if (animations == nullptr || !animations->IsA(UAnimTree::StaticClass())) {
+        return std::nullopt;
+    }
+    auto* const tree = static_cast<UAnimTree*>(animations);
+    if (tree != gIkTree) {
+        gIkTree = tree;
+        gIkControl = nullptr;
+        gIkSearched = false;
+    }
+    USkelControlBase* control = nullptr;
+    if (gIkControl != nullptr) {
+        control = FindControl(tree, gIkControl, nullptr);
+        gIkSearched = gIkSearched && control != nullptr;  // it went away: look it up by name again
+    }
+    if (control == nullptr && !gIkSearched) {
+        control = FindControl(tree, nullptr, "LeftArm");  // once per tree, unless it goes away
+        gIkSearched = true;
+    }
+    gIkControl = control;
+    if (control == nullptr) {
+        return std::nullopt;
+    }
+    return support_grip::NativeIkSample{control->ControlStrength, control->StrengthTarget, control->bSetStrengthFromAnimNode != 0};
+}
+
 // The two-handed grip (game/support_grip): this tick's foregrip candidates, all in the right hand
 // bone's axes, and, once a foregrip has settled and the left controller is followed, the writer's
 // support request. LHIK hangs below the right hand (Prop01), so our write carries it rigidly: its
 // place in the hand's axes is the animation's either way.
-bool RequestSupport(SkeletonInfo const& info, std::span<engine::skeleton::BoneAtom const> pose, weapon::Grip const& grip,
-    ik::Vec3 const& up, hand_targets::Targets const& targets, engine::bone_pose::Request& request) {
+bool RequestSupport(USkeletalMeshComponent* mesh, SkeletonInfo const& info, std::span<engine::skeleton::BoneAtom const> pose,
+    weapon::Grip const& grip, ik::Vec3 const& up, hand_targets::Targets const& targets, engine::bone_pose::Request& request) {
     int const right = info.arms[kRight]->hand;
     int const count = static_cast<int>(pose.size());
     if (right < 0 || right >= count) {
@@ -377,6 +485,7 @@ bool RequestSupport(SkeletonInfo const& info, std::span<engine::skeleton::BoneAt
     if (auto const animated = engine::bone_pose::AnimatedHands()) {
         c.animatedLeft = ik::Relative(animated->left, animated->right);
     }
+    c.nativeIk = NativeLeftArmIk(mesh);
     support_grip::Measure(c);
     auto const foregrip = support_grip::Current();
     if (!foregrip || !targets.hands[kLeft].valid || request.arms[kLeft].target != engine::bone_pose::Target::Component ||
@@ -545,6 +654,10 @@ void Drive(double deltaSeconds) {
     request.parents = info->bones.parents;
     request.body = *frame;
     request.head = info->head;
+    request.keep = info->cameraHooks;
+    for (int bone : info->cameraHooks) {
+        request.keepKeys.push_back(info->bones.keys[bone]);
+    }
     // Arms that resolved and look like arms; the others stay with the animation.
     std::array<std::optional<ik::ArmChain>, 2> arms;
     for (int side : {kLeft, kRight}) {
@@ -597,13 +710,16 @@ void Drive(double deltaSeconds) {
                 t.goal.reference = reference;
                 if (targets.anchor == hand_targets::Anchor::View) {
                     // First person: Shepard's eyes move as far as the headset moved from where it
-                    // was recentered (ik::TorsoGoal::relative), and his hidden head stays where
-                    // the animation put it, since Halcyon's camera follows it (keepBone).
+                    // was recentered (ik::TorsoGoal::relative). The head goes with the spine: the
+                    // camera hangs off the `Camera` bone, not the head (research/18), and the
+                    // writer never writes that (Request::keep). Not absolute: the view sits where
+                    // the Camera bone's animation and Halcyon's per-state offsets put it, which
+                    // wanders against the head bone by tens of units as the animation plays, so
+                    // aiming the eyes at it would bend Shepard after the animation, not the player.
                     engine::UnrealVector const origin = engine::OriginWorld(targets.body);
                     t.goal.head = ik::TransformDirection(*worldToComponent,
                         {targets.headWorld.x - origin.x, targets.headWorld.y - origin.y, targets.headWorld.z - origin.z});
                     t.goal.relative = true;
-                    t.goal.keepBone = info->head;
                 } else {
                     t.goal.head = ik::TransformPoint(*worldToComponent, {targets.headWorld.x, targets.headWorld.y, targets.headWorld.z});
                 }
@@ -671,7 +787,7 @@ void Drive(double deltaSeconds) {
             driven += driven.empty() ? kSideNames[side] : std::string(" and ") + kSideNames[side];
         }
         if (heldGrip && heldUp && arms[kLeft] && arms[kRight]) {
-            supportRequested = RequestSupport(*info, pose, *heldGrip, *heldUp, targets, request);
+            supportRequested = RequestSupport(mesh, *info, pose, *heldGrip, *heldUp, targets, request);
         }
         if (!driven.empty()) {
             driven += " following the controllers";
@@ -766,6 +882,9 @@ void Shutdown() {
     gAnatomy = {};
     gAnatomyTried = {};
     gLoggedGrip.reset();
+    gIkTree = nullptr;
+    gIkControl = nullptr;
+    gIkSearched = false;
     gBodyYawActive = false;
     gLoggedAnchor = hand_targets::Anchor::None;
     gLoggedScale = 0.0;

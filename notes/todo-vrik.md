@@ -72,16 +72,21 @@ are, never the animation.
 
 ## Open: Halcyon's first-person camera vs Shepard's eyes (2026-10-08 evening)
 
+- **Superseded by research/18 (2026-10-21):** the camera hangs off the bone named `Camera`
+  (index 104, a child of the root `God`), not the head. 489ef51 looped because it wrote every
+  bone, `Camera` included. See "Camera hook guard" below.
 - Halcyon builds its first-person camera from Shepard's head bone *as written*, about 44 units
   away from his animated eyes (log: `arm IK: body anchor: first person ..., view 44 units`).
+  (Wrong: from the `Camera` bone, research/18.)
 - So the torso must not chase the view. Moving the body toward the camera moved the camera too:
   the anchor then flipped between first and third person every frame (view 41 <-> 76-109 units),
   and the user saw heavy judder whenever they moved physically (commit 489ef51, reverted).
 - Leaning toward the camera (25-35 degrees) put both shoulders under the view, and the arms seemed
   to come from the middle of the chest.
 - Now (first person): the torso leans by the headset's move from where it was recentered
-  (`TorsoGoal::relative`), not toward the view itself, and the hidden head keeps its animated
-  transform (`TorsoGoal::keepBone`), so Halcyon's camera doesn't follow our writes.
+  (`TorsoGoal::relative`), not toward the view itself. Until 2026-10-21 the hidden head also kept
+  its animated transform (`TorsoGoal::keepBone`); that's dropped (research/18: it wasn't what
+  kept the camera still), and the head leans with the spine.
   **[verify in headset]:** physical leans bend Shepard's torso without judder; the shoulders stay
   at the sides; no doubled view motion.
 - Still open: Halcyon's camera sits about 44 units from Shepard's eyes (`[FPCAM]`: the camera mode
@@ -146,3 +151,29 @@ The agreed plan:
 - **[verify in headset]:** the zone's bounds (cheek weld vs held out); log
   `support grip: aimed fire on/off`.
 
+
+## Camera hook guard and native-state logs (research/18 proposals 1-5, built 2026-10-21, to test)
+
+Mod only (hot reload, no host redeploy). Test steps: notes/next-vr-session.md steps 8 and 9.
+- **Camera hook guard:** `engine/BonePose` never writes the bones named `Camera` and `God`
+  (`Request::keep`, found by `ik::FindCameraHookBones`); their SpaceBases entries stay the
+  animation's bit for bit, whatever the torso and arms did. Once per skeleton arm IK logs whether
+  any subtree we write contains them (it shouldn't: they hang off the root); the heartbeat warns
+  if a solve ever moved one. **Rule:** any future whole-body move (489ef51's idea) must move every
+  bone except `God` and `Camera` (research/14, "Camera hook bones").
+- **keepBone dropped** in first person; `relative` lean kept (eyes move by the headset's own
+  move). Absolute lean wasn't brought back: the view sits at the Camera bone plus Halcyon's
+  per-state offset, calibrated so it's at the head bone on average, but the Camera bone's
+  animation wanders against the head (−14..+44 units forward within a minute, 2026-10-08), so
+  aiming the eyes at the view would make the spine follow the animation's camera track, not the
+  player. **[verify in headset]:** no judder when leaning; nothing visible left behind by the head.
+- **Camera mode log** (`game/CameraProbe`): class, HookName, HookOffset, Offset, LastHookPos, the
+  hook bone against the game camera, and GetCameraLocation's formula against the mode's m_pov,
+  on each change. **[verify]:** the formula's gap near 0 in game.
+- **Native off-hand IK:** the `LeftArm` control's ControlStrength/StrengthTarget/
+  bSetStrengthFromAnimNode, per gun and on each state change (off, blending, on), and in the
+  heartbeat. **[verify]:** which stances weight `AddCombatIdleOffset` (research/18).
+- **Aimed fire:** BioWeaponRanged.bIsZoomed on each change, with whether our grip forces LT.
+  **[verify]:** bIsZoomed on a tick after `aimed fire on`.
+- Not done: proposal 6 (a GetCameraLocation post-handler), only needed if a stance hooks another
+  bone we write; optional `ControlStrength = 0` while gripping (saves the native solve only).

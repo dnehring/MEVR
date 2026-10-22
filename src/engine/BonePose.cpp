@@ -64,6 +64,9 @@ std::atomic<unsigned> gPlayerCalls{0};
 std::atomic<unsigned> gWrites{0};
 std::atomic<std::uint64_t> gTotalWrites{0};
 std::atomic<unsigned> gRejects{0};
+// Writes in which a solve moved a kept bone (Request::keep), which then kept its animated entry.
+std::atomic<unsigned> gKeptMoves{0};
+std::atomic<std::uint64_t> gTotalKeptMoves{0};
 std::atomic<char const*> gLastReject{nullptr};
 struct Slot {
     std::atomic<std::uintptr_t> key{0};
@@ -236,6 +239,8 @@ bool TakeRequest(USkeletalMeshComponent const* self, Request& copy) {
         copy.maxStretch = gRequest.maxStretch;
         copy.head = gRequest.head;
         copy.support = gRequest.support;
+        copy.keep.assign(gRequest.keep.begin(), gRequest.keep.end());
+        copy.keepKeys.assign(gRequest.keepKeys.begin(), gRequest.keepKeys.end());
     }
     ReleaseSRWLockShared(&gRequestLock);
     if (stale != nullptr) {
@@ -273,9 +278,26 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
             }
         }
     }
+    if (request.keepKeys.size() != request.keep.size()) {
+        Reject("kept bones without names");
+        return;
+    }
+    for (std::size_t k = 0; k < request.keep.size(); ++k) {
+        int const bone = request.keep[k];
+        if (bone < 0 || bone >= count || skeleton::RefBoneKey(self, bone) != request.keepKeys[k]) {
+            Reject("skeleton changed (kept bone names)");
+            return;
+        }
+    }
     pose.resize(bases.size());
     for (std::size_t i = 0; i < bases.size(); ++i) {
         pose[i] = skeleton::ToTransform(bases[i]);
+    }
+    // The kept bones as the animation left them, to tell whether a solve moved one.
+    thread_local std::vector<ik::Transform> kept;
+    kept.clear();
+    for (int bone : request.keep) {
+        kept.push_back(pose[bone]);
     }
     if (request.head >= 0 && request.head < count) {
         AcquireSRWLockExclusive(&gSampleLock);
@@ -392,8 +414,24 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
     if (first >= count) {
         return;
     }
+    // The kept bones are never written: their entries stay the animation's, bit for bit, whatever
+    // the solves did (they only move one that hangs under a bone they turn).
+    bool movedKept = false;
+    for (std::size_t k = 0; k < request.keep.size(); ++k) {
+        ik::Transform const& now = pose[request.keep[k]];
+        ik::Transform const& was = kept[k];
+        movedKept = movedKept || now.translation.x != was.translation.x || now.translation.y != was.translation.y ||
+            now.translation.z != was.translation.z || now.rotation.x != was.rotation.x || now.rotation.y != was.rotation.y ||
+            now.rotation.z != was.rotation.z || now.rotation.w != was.rotation.w || now.scale != was.scale;
+    }
+    if (movedKept) {
+        gKeptMoves.fetch_add(1, std::memory_order_relaxed);
+        gTotalKeptMoves.fetch_add(1, std::memory_order_relaxed);
+    }
     for (int i = first; i < count; ++i) {
-        bases[i] = skeleton::ToAtom(pose[i]);
+        if (std::find(request.keep.begin(), request.keep.end(), i) == request.keep.end()) {
+            bases[i] = skeleton::ToAtom(pose[i]);
+        }
     }
     gWrites.fetch_add(1, std::memory_order_relaxed);
     gTotalWrites.fetch_add(1, std::memory_order_relaxed);
@@ -613,6 +651,7 @@ void LogStats() {
     unsigned const player = gPlayerCalls.exchange(0);
     unsigned const writes = gWrites.exchange(0);
     unsigned const rejects = gRejects.exchange(0);
+    unsigned const keptMoves = gKeptMoves.exchange(0);
     char const* const lastReject = gLastReject.exchange(nullptr);
     std::string const callers = Slots(gCallers, true);
     std::string const threads = Slots(gThreads, false);
@@ -623,6 +662,11 @@ void LogStats() {
     log::Info("    arm IK writeback: {} UpdateSkelPose calls, {} for the player mesh (from{}; threads{}), {} written, {} rejected{}{}",
         calls, player, callers, threads, writes, rejects, lastReject != nullptr ? std::format(" (last: {})", lastReject) : "",
         gBroken.load() ? ", STOPPED after a fault" : "");
+    if (keptMoves > 0) {
+        log::Warn("    arm IK writeback: {} writes moved a camera hook bone (Camera/God) in the solve; kept animated, not "
+                  "written ({} since the hook went in)",
+            keptMoves, gTotalKeptMoves.load(std::memory_order_relaxed));
+    }
     AcquireSRWLockExclusive(&gSampleLock);
     Sample samples[2] = {gSamples[0], gSamples[1]};
     TorsoSample const torso = gTorso;

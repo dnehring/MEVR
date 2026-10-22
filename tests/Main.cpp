@@ -5,6 +5,7 @@
 #include "core/ik/ArmLength.hpp"
 #include "core/ik/ArmPose.hpp"
 #include "core/ik/BoneNames.hpp"
+#include "core/ik/CameraHook.hpp"
 #include "core/ik/HandFrame.hpp"
 #include "core/ik/Ik.hpp"
 #include "core/ik/Rigid.hpp"
@@ -579,6 +580,13 @@ void TestTwoHand() {
     Vec3 const under = UnderGrip({2.0, 0.0, 0.0}, {0.0, 0.0, 3.0});
     CHECK(closeTo(under, {2.0, 0.0, -8.0}));
     CHECK(OnGun(under, barrel, muzzle));
+
+    // The native off-hand IK's state from its strength.
+    CHECK(ClassifyNativeIk(0.0) == NativeIk::Off && ClassifyNativeIk(0.01) == NativeIk::Off);
+    CHECK(ClassifyNativeIk(0.5) == NativeIk::Blending && ClassifyNativeIk(0.98) == NativeIk::Blending);
+    CHECK(ClassifyNativeIk(0.99) == NativeIk::On && ClassifyNativeIk(1.0) == NativeIk::On);
+    CHECK(ClassifyNativeIk(std::nan("")) == NativeIk::Unknown);
+    CHECK(std::string(Name(NativeIk::On)) == "on" && std::string(Name(NativeIk::Unknown)) == "unknown");
 }
 
 // A view whose FOV identifies it in the checks below.
@@ -1177,6 +1185,83 @@ void TestTorsoPose() {
     CHECK(AngleBetween(Fraction(Quat{0, 0, 0, -1}, 0.5), Quat{}) < 1e-9);
 }
 
+// LE1's camera hook bones (research/18): found by name, outside what the torso and arms write, and
+// GetCameraLocation's formula.
+void TestCameraHook() {
+    using namespace mevr::ik;
+    std::vector<std::string> const names{"God", "Root", "Pelvis", "CAMERA", "Camera_End", "Godot", "camera"};
+    CHECK(FindCameraHookBones(names) == (std::vector<int>{0, 3, 6}));
+    CHECK(FindCameraHookBones(std::vector<std::string>{}).empty());
+
+    // A torso rig with a root above it and a Camera bone beside Root, as on Shepard (God > Root,
+    // God > Camera): the spine, the clavicles and the arms never reach it, and a full solve
+    // leaves it where it was.
+    TorsoRig rig;
+    std::vector<std::string> names2{"God"};
+    std::vector<int> parents{-1};
+    std::vector<Transform> pose{{AxisAngleQ(0, 0, 1, 5), {0, 0, 0}, 1.0}};
+    for (std::size_t i = 0; i < rig.names.size(); ++i) {
+        names2.push_back(rig.names[i]);
+        parents.push_back(rig.parents[i] + 1);
+        pose.push_back(rig.pose[i]);
+    }
+    names2.push_back("Camera");
+    parents.push_back(0);
+    pose.push_back({AxisAngleQ(0, 1, 0, 30), {5, 0, 170}, 1.0});
+    int const camera = static_cast<int>(names2.size()) - 1;
+    auto const left = FindArmChain(names2, parents, 0);
+    auto const right = FindArmChain(names2, parents, 1);
+    CHECK(left && right);
+    auto const chain = FindTorsoChain(names2, parents, *left, *right);
+    CHECK(chain.has_value());
+    std::vector<int> const hooks = FindCameraHookBones(names2);
+    CHECK(hooks == (std::vector<int>{0, camera}));
+    std::vector<int> const roots{chain->spine.front(), chain->collars[0], chain->collars[1], left->upper, right->upper};
+    CHECK(InSubtrees(parents, roots, hooks).empty());
+    CHECK(InSubtrees(parents, std::vector<int>{0}, hooks) == hooks);  // a whole-body move would reach both
+    CHECK(InSubtrees(parents, std::vector<int>{1}, hooks).empty());   // Root's subtree: not them
+    CHECK(InSubtrees(parents, roots, std::vector<int>{left->hand, -1, 999}) == (std::vector<int>{left->hand}));
+    std::vector<Transform> const before = pose;
+    TorsoGoal goal;
+    goal.reference = {16, 17};  // the eyes, shifted by the God bone in front
+    goal.head = (before[16].translation + before[17].translation) * 0.5 + Vec3{40, 10, -30};
+    goal.forward = Rotate(AxisAngleQ(0, 0, 1, 40), {1, 0, 0});
+    TorsoResult const r = PoseTorso(pose, parents, *chain, *left, *right, BodyFrame{}, goal);
+    CHECK(r.ok && r.bonesWritten > 0);
+    CHECK(NearT(pose[camera], before[camera], 0.0) && NearT(pose[0], before[0], 0.0));
+    CHECK(Length(pose[left->hand].translation - before[left->hand].translation) > 1.0);
+
+    // GetCameraLocation: the hook plus HookOffset turned by yaw only, minus Offset turned by
+    // pitch and yaw. Level, facing +X: the combat camera's defaults.
+    double const quarter = std::numbers::pi / 2.0;
+    CHECK(NearV(CameraFromHook({0, 0, 0}, {-30, 20, 90}, {80, -44, 15}, 0.0, 0.0), {-110, 64, 75}, 1e-9));
+    CHECK(NearV(CameraFromHook({1, 2, 3}, {-30, 20, 90}, {80, -44, 15}, 0.0, quarter), Vec3{1, 2, 3} + Vec3{-64, -110, 75}, 1e-9));
+    // Looking straight up: Offset's forward goes up, HookOffset stays level.
+    CHECK(NearV(CameraFromHook({0, 0, 0}, {10, 0, 0}, {10, 0, 0}, quarter, 0.0), {10, 0, -10}, 1e-9));
+    // In the view's level axes: facing +Y, +Y is forward and -X is right.
+    CHECK(NearV(InViewAxes({0, 5, 0}, quarter), {5, 0, 0}, 1e-9));
+    CHECK(NearV(InViewAxes({-5, 0, 2}, quarter), {0, 5, 2}, 1e-9));
+    CHECK(NearV(InViewAxes({3, 4, 0}, 0.0), {3, 4, 0}, 1e-12));
+
+    // The log's change test.
+    CameraModeKey const a{1, 7, {-30, 20, 90}, {80, -44, 15}};
+    CameraModeKey b = a;
+    CHECK(!CameraModeChanged(a, b));
+    b.offset.x += 0.4;
+    CHECK(!CameraModeChanged(a, b));
+    b.offset.x += 0.2;
+    CHECK(CameraModeChanged(a, b));
+    b = a;
+    b.hookOffset.z -= 45;  // crouch
+    CHECK(CameraModeChanged(a, b));
+    b = a;
+    b.mode = 2;
+    CHECK(CameraModeChanged(a, b));
+    b = a;
+    b.hookName = 8;
+    CHECK(CameraModeChanged(a, b));
+}
+
 // The arm-length calibration's T pose (tracking space, meters).
 void TestArmLength() {
     using namespace mevr::ik;
@@ -1764,6 +1849,7 @@ int main() {
     TestArmPose();
     TestArmStretch();
     TestTorsoPose();
+    TestCameraHook();
     TestArmLength();
     TestReachScale();
     TestHandTargetsOrigin();

@@ -24,7 +24,8 @@ constexpr double kStillUnits = 0.5;
 constexpr double kMoveUnits = 1.0;
 // The animated left hand this close to the chosen point lends it its rotation (units).
 constexpr double kRotationFromAnimationUnits = 4.0;
-// The AnimTree's off-hand IK counts as active when the animated left wrist is this close to LHIK.
+// The animated left wrist this close to LHIK: where the AnimTree's off-hand IK holds it (a
+// cross-check of the control's strength, which is what says whether it's on).
 constexpr double kIkActiveUnits = 2.0;
 // A span with less than this along the barrel (a pistol cupped from below) doesn't define the
 // barrel: the right hand keeps aiming.
@@ -51,6 +52,21 @@ std::atomic<std::uint32_t> gFlags{gamepad::kFlagLeftTrigger | gamepad::kFlagSupp
 // Heartbeat: the nearest the left hand came to the foregrip, and the last write's result.
 double gNearest = 1e9;
 std::optional<engine::bone_pose::SupportSample> gLastSample;
+// The native off-hand IK's state last logged, and its latest sample (heartbeat).
+ik::NativeIk gNativeIk = ik::NativeIk::Unknown;
+std::optional<NativeIkSample> gNativeSample;
+// The held weapon's bIsZoomed last logged (nullopt: no ranged weapon).
+std::optional<bool> gLoggedZoomed;
+bool gLoggedZoomedOnce = false;
+
+std::string NativeIkText(std::optional<NativeIkSample> const& n) {
+    if (!n) {
+        return "the AnimTree's off-hand IK (LeftArm): no such control";
+    }
+    return std::format("the AnimTree's off-hand IK (LeftArm) is {}: strength {:.2f}, target {:.2f}, {}",
+        ik::Name(ik::ClassifyNativeIk(n->strength)), n->strength, n->target,
+        n->fromAnimNode ? "from the AddCombatIdleOffset node" : "set by the weapon code (draw or holster)");
+}
 
 std::string Text(ik::Vec3 const& v) {
     return std::format("({:.1f}, {:.1f}, {:.1f})", v.x, v.y, v.z);
@@ -91,11 +107,11 @@ Foregrip Choose(Candidates const& c) {
 }
 
 void LogGun(Candidates const& c) {
-    std::string ik = "unknown (no animated pose)";
+    std::string ik = NativeIkText(c.nativeIk);
     if (c.animatedLeft && c.lhik) {
         double const apart = ik::Length(c.animatedLeft->translation - *c.lhik);
-        ik = std::format("the animated left wrist is {:.1f} units from LHIK: the AnimTree's off-hand IK is {}", apart,
-            apart <= kIkActiveUnits ? "active" : "NOT holding it there");
+        ik += std::format("; the animated left wrist is {:.1f} units from LHIK ({})", apart,
+            apart <= kIkActiveUnits ? "held there" : "not there");
     }
     log::Info("support grip: candidates in the right hand's axes (barrel ({:.3f}, {:.3f}, {:.3f}), muzzle {}): socket {}; "
               "LHIK {}; animated left hand {}; {}",
@@ -120,6 +136,12 @@ void Measure(Candidates const& c) {
     if (!gLoggedGun && c.animatedLeft) {
         gLoggedGun = true;
         LogGun(c);
+    }
+    gNativeSample = c.nativeIk;
+    ik::NativeIk const native = c.nativeIk ? ik::ClassifyNativeIk(c.nativeIk->strength) : ik::NativeIk::Unknown;
+    if (native != gNativeIk) {
+        gNativeIk = native;
+        log::Info("support grip: {}", NativeIkText(c.nativeIk));
     }
     if (gForegrip && gBlend > 0.0) {
         return;  // held: the place under the hand stays put
@@ -193,10 +215,24 @@ void Tick(double deltaSeconds, bool requested) {
                           (!controls.aimAtShoulder || shouldered);
     gFlags.store(gamepad::ToFlags(options), std::memory_order_relaxed);
     bool const aiming = options.supportAims && gHeld.load(std::memory_order_relaxed) && requested;
+    std::optional<bool> const zoomed = weapon::Zoomed();
+    auto const zoomText = [&zoomed] {
+        return zoomed ? std::format("the weapon's bIsZoomed is {}", *zoomed ? "on" : "off") : std::string("no ranged weapon");
+    };
     if (aiming != gLoggedAiming) {
         gLoggedAiming = aiming;
-        log::Info("support grip: aimed fire {}", aiming ? "on (both hands, the gun at the shoulder): the game sees LT held"
-                                                        : "off (hip fire)");
+        log::Info("support grip: aimed fire {}; {}", aiming ? "on (both hands, the gun at the shoulder): the game sees LT held"
+                                                            : "off (hip fire)", zoomText());
+    }
+    // The game's own answer: bIsZoomed follows LT through BioPlayerInput.bWantsToZoom a tick or so
+    // later (forced off while switching weapons or overheated).
+    if (!gLoggedZoomedOnce || zoomed != gLoggedZoomed) {
+        gLoggedZoomedOnce = true;
+        gLoggedZoomed = zoomed;
+        char const* const why = aiming || !gHeld.load(std::memory_order_relaxed) ? ""
+            : !requested                                                      ? ": held, but arm IK isn't asking for the grip"
+                                                                              : ": held, but not at the shoulder (or a sniper rifle)";
+        log::Info("support grip: {} (our grip {} LT{})", zoomText(), aiming ? "forces" : "doesn't force", why);
     }
 
     bool const held = gHeld.load(std::memory_order_relaxed) && requested;
@@ -243,8 +279,10 @@ void LogStats() {
             gLastSample->distanceMeters, gLastSample->blend, gLastSample->twoHand ? "two-hand aim" : "one-hand aim",
             gLastSample->swingDegrees, gLastSample->leftErrorUnits);
     }
-    log::Info("    support grip: {}, foregrip {}; nearest {}; {}", Held() ? "HELD" : "not held",
-        gForegrip ? gForegrip->source : "not settled", gNearest < 1e8 ? std::format("{:.2f} m", gNearest) : std::string("-"), last);
+    std::optional<bool> const zoomed = weapon::Zoomed();
+    log::Info("    support grip: {}, foregrip {}; nearest {}; {}; {}; bIsZoomed {}", Held() ? "HELD" : "not held",
+        gForegrip ? gForegrip->source : "not settled", gNearest < 1e8 ? std::format("{:.2f} m", gNearest) : std::string("-"), last,
+        NativeIkText(gNativeSample), zoomed ? (*zoomed ? "on" : "off") : "-");
     gNearest = 1e9;
 }
 
@@ -259,6 +297,11 @@ void Shutdown() {
     gFlags.store(gamepad::kFlagLeftTrigger | gamepad::kFlagSupportAims);
     gNearest = 1e9;
     gLastSample.reset();
+    gNativeIk = ik::NativeIk::Unknown;
+    gNativeSample.reset();
+    gLoggedZoomed.reset();
+    gLoggedZoomedOnce = false;
+    gLoggedAiming = false;
 }
 
 } // namespace mevr::game::support_grip

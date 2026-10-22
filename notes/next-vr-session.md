@@ -176,9 +176,16 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
    seconds with the left hand anywhere (the mod settles where the left hand goes on this gun).
    - Log first, once per weapon: `weapon: ... (assault rifle); mesh sockets: ...; off-hand
      socket: ...` (tell Claude the socket names), `support grip: candidates in the right hand's axes
-     ...: socket ...; LHIK ...; animated left hand ...; the animated left wrist is N units from LHIK:
-     the AnimTree's off-hand IK is active / NOT holding it there`, then `support grip: foregrip set
-     from <source>: (...), N along the barrel and N off it; ...`.
+     ...: socket ...; LHIK ...; animated left hand ...; the AnimTree's off-hand IK (LeftArm) is
+     on/off/blending: strength N, target N, from the AddCombatIdleOffset node / set by the weapon
+     code (draw or holster); the animated left wrist is N units from LHIK (held there / not
+     there)`, then `support grip: foregrip set from <source>: (...), N along the barrel and N off
+     it; ...`.
+   - **Native off-hand IK (new, research/18):** `support grip: the AnimTree's off-hand IK (LeftArm)
+     is on|off|blending: strength ..., target ...` on each change. Expect "on" with a rifle out in
+     combat stance, "blending" then "off" while drawing or holstering (set by the weapon code),
+     and "off" whenever the combat-idle node has no weight. Note when you see "off" with the gun
+     out: that's a stance where the game itself lets go of the gun.
    - **Grab:** bring the left hand to where Shepard's left hand would hold the rifle's foregrip
      (where you see it on the gun) and squeeze the left grip. It should take hold
      (`halcyon bridge: support grip taken (left hand 0.0x m from the foregrip): LT to the game
@@ -190,6 +197,14 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
      gun swings with it; roll the right wrist and the gun rolls with it. Shots and the reticle
      follow the gun. Does it feel steadier than one-handed? Is the aim more accurate (focused
      fire = the game's LT aim bonus)?
+     - **Aimed fire in the log (new, research/18):** `support grip: aimed fire on (both hands, the
+       gun at the shoulder): the game sees LT held; the weapon's bIsZoomed is off`, then a tick or
+       two later `support grip: the weapon's bIsZoomed is on (our grip forces LT)`. That second
+       line is the game's own flag for the smaller aim error and recoil, so it proves focused fire
+       without judging the spread by eye. On release: `bIsZoomed is off (our grip doesn't force
+       LT)`. `bIsZoomed is on` with "doesn't force LT" means the real left trigger did it. Held
+       but not at the shoulder: no LT, and bIsZoomed should stay off. The heartbeat's `support
+       grip:` line ends with the native IK state and `bIsZoomed on/off`.
      - **Does the view zoom?** By the code it shouldn't (Halcyon replaces the game's projection
        with the headset's every frame, `[RENDER_FOV_MATCH] applied` in its log, constant
        halfH/halfV), and the first-person camera's aimed-mode offset is within 1 unit of the
@@ -212,6 +227,28 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
    - **Host redeploy:** the pad mapping lives in the host ASI. Close the game, run
      `tools/deploy-asi.ps1 -Game LE1`. With an older host the mod logs `support grip: the host
      (services v6) can't take it` and everything stays as before.
+
+9. **The camera hook and the torso (new, research/18; mod only, no host redeploy).** First
+   person (K), on foot.
+   - Log once per skeleton: `arm IK: camera hook bones God(0, parent none: the root),
+     Camera(104, parent God(0)): outside every subtree we write (spine LowerBack(..), clavicle
+     ..., arm ...), so the view can't follow our writes; the writer skips them anyway`. A
+     `WARN ... INSIDE a subtree we write` or `no Camera or God bone` line means research/18 doesn't
+     hold for this skeleton: tell Claude.
+   - The heartbeat should never show `arm IK writeback: N writes moved a camera hook bone`.
+   - Camera mode log, on each change (walk, draw a weapon, crouch, hold LT or the two-hand grip,
+     take cover): `camera: mode Class SFXGame.SFXCameraMode_Combat '...CombatCam0' (was ...):
+     HookName Camera, HookOffset (...), Offset (...); hook bone Camera(104) at (...) world, F
+     forward, R right, U up of the game camera (...) (yaw ...); the formula from it puts the camera
+     at (...): N units from the mode's m_pov (...), M from the game camera; LastHookPos ... is K
+     from the bone`. **N near 0** confirms the camera hangs off the Camera bone in game (M differs
+     by Halcyon's head look and the camera's collision). Cover modes say `CoverSlot`; the sniper
+     crouch mode `God`. Tell Claude the F/R/U values per stance: they're why first person needs
+     per-state offsets.
+   - **The head is no longer pinned:** lean forward and sideways, turn: the view must not move
+     with Shepard's body (no judder, no drift), only with your head. The torso and (hidden) head
+     now lean together; if anything looks or feels worse than before (a head shadow left behind,
+     the view swimming as you lean), say so: `TorsoGoal::keepBone` can come back.
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR

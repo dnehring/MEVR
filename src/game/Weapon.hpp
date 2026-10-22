@@ -62,6 +62,10 @@ std::uintptr_t Key();
 // weapon.
 enum class RangedType { Pistol = 0, Shotgun = 1, AssaultRifle = 2, Sniper = 3, Unknown = -1 };
 RangedType Type();
+// The player's ranged weapon's bIsZoomed (BioWeaponRanged +0x548 bit 0x4), live: the game's aimed
+// fire (research/18: it picks the smaller aim error and recoil, and the TightAim camera follows
+// it; set from BioPlayerInput.bWantsToZoom, i.e. LT). Nullopt without a ranged weapon.
+std::optional<bool> Zoomed();
 // A socket of the weapon's mesh named for the off hand (logged once per weapon with all its
 // sockets), live, in the right hand bone's axes (component units). Nullopt if it has none.
 std::optional<ik::Vec3> OffHandSocketInHand();

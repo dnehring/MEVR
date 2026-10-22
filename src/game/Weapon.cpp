@@ -45,6 +45,9 @@ static_assert(offsetof(APawn, Weapon) == 0x4A8);
 static_assert(offsetof(AWeapon, Mesh) == 0x394);
 static_assert(offsetof(ABioWeapon, SkelMeshComp) == 0x3E8);
 static_assert(offsetof(ABioWeaponRanged, m_MuzzleSocketName) == 0x490);
+// bIsZoomed is bit 0x4 of the bitfield word at 0x548 (the SDK; GetPlayerAimError 0xC59920 tests it):
+// the word follows this float.
+static_assert(offsetof(ABioWeaponRanged, m_fMinVFXDecalIntensity) == 0x544);
 
 constexpr char const* kGetMuzzleLoc = "Function SFXGame.BioWeaponRanged.GetMuzzleLoc";
 constexpr char const* kGetSocketWorld = "Function Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation";
@@ -718,6 +721,19 @@ RangedType Type() {
     }
 #endif
     return RangedType::Unknown;
+}
+
+std::optional<bool> Zoomed() {
+#if defined(SDK_TARGET_LE1)
+    std::string why;
+    auto const live = LivePointers(why);
+    if (!live) {
+        return std::nullopt;
+    }
+    return live->weapon->bIsZoomed != 0;
+#else
+    return std::nullopt;
+#endif
 }
 
 std::optional<ik::Vec3> OffHandSocketInHand() {

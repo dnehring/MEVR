@@ -49,9 +49,11 @@ struct TorsoGoal {
     // own lean; aiming the eyes at the view itself bent Shepard toward Halcyon's camera, which
     // sits about 44 units from his eyes, and put both shoulders under it.
     bool relative = false;
-    // This bone and its subtree keep their animated transforms (-1: none). First person: the
-    // (hidden) head, since Halcyon's camera follows the head bone as written; moving it moved the
-    // view, a loop that juddered whenever the player moved.
+    // This bone and its subtree keep their animated transforms (-1: none, the default). Unused
+    // since research/18: it was set to the (hidden) head in first person on the belief that
+    // Halcyon's camera follows the head bone, but LE1's camera hangs off the bone named `Camera`
+    // (a child of the root, outside the spine), which the writer never writes
+    // (engine::bone_pose::Request::keep). Kept in case the hidden head ever needs pinning.
     int keepBone = -1;
 };
 

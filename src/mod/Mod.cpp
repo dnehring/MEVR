@@ -20,6 +20,7 @@
 #include "engine/ProcessEvent.hpp"
 #include "engine/SceneView.hpp"
 #include "game/ArmIk.hpp"
+#include "game/CameraProbe.hpp"
 #include "game/GamepadBridge.hpp"
 #include "game/GamepadMapping.hpp"
 #include "game/HandAim.hpp"
@@ -638,6 +639,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::arm_ik::Tick(deltaSeconds);
         game::support_grip::Tick(deltaSeconds, game::arm_ik::SupportRequested());
         PublishSupportGrip();
+        game::camera_probe::Tick();
         game::hand_aim::Tick();
         PublishAimRay();
         game::head_tracking::OnTickEnd();
@@ -726,6 +728,7 @@ MEVR_MOD_API void MevrModShutdown() {
     gToldNoSupportGrip = false;
     game::support_grip::Shutdown();
     game::weapon::Shutdown();
+    game::camera_probe::Shutdown();
     gHost = nullptr;
     gHostOwnsVr = false;
     gToldHostOwnsVr = false;
