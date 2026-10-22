@@ -39,6 +39,9 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   `Binaries\Win64\ASI`. Its keys: `\` menu (`menuKey = 220` in our deploy; upstream uses Insert;
   both thumbsticks held opens or closes it, our addition; the open menu blocks all game input),
   R recenter (or double-click the right stick), K first person. Our own VR hotkeys are off on LE1.
+  Recenter is yaw-only as upstream, except that a recenter the player asks for also removes a badly
+  tilted base space (rolled past 90 degrees, or tilted past `recenterTiltDeg` for 1.5 s: SteamVR's
+  upside-down start; [MEVR] `RecenterOrientation`, `core/vr/Recenter`, log `[MEVR-RECENTER]`).
 - Its menu takes the pad (Touch merged in as Xbox pad 0: left stick/d-pad, A, B; upstream never
   set ImGui's `HasGamepad` backend flag, so pad nav was dead until we did) and our laser pointer
   (`src/plugin/MevrMenuPointer.cpp`: a controller's aim ray on the menu quad, world-locked by default (`worldLockedPanels`, `src/plugin/WorldPanels.cpp`), is the mouse,
@@ -126,6 +129,14 @@ switching frameworks.
   guessed, then measured once per session) is cut out of the HUD panel and shown on a quad of its
   own at the left / right hand ("wheel"). Toggles: `MELEVR.ini` `hudPanel*` / `handReticle*`, or the
   Insert menu's HUD tab; the wheel panel's in `[Squad]`.
+- LE1 gun sights ([research/21](research/21-sights-and-scopes.md), HostServices v13): a collimated red
+  dot / holo per gun (a quad 50 m out along the sight line, `eyeVisibility` = the eye looking through the
+  window) and a 4x picture-in-picture scope on the sniper rifle (a disc at the eyepiece for the aiming
+  eye, magnifying the OTHER eye's image, copied as Halcyon releases it: `testloop::SetReleaseTap`). The
+  mod places them (`game/sights`, `[Sights]` in `ASI\LE1MEVR.ini`); the host draws them
+  (`src/plugin/SightLayers.cpp`, pictures and shader in `SightPictures.cpp`; offline look:
+  `mevr-sight-preview`). Scoped shots get the zoomed aim error via a `GetPlayerAimError` post-handler
+  (`bIsZoomed` set for one native call only: never set it where the camera can see it, research/18).
 - LE1 squad weapons ([docs/squad-weapons-design.md](docs/squad-weapons-design.md), research/19
   sections 9-10): point the left hand at a squadmate and squeeze the left grip away from the gun's
   foregrip. `[Squad] style = native` (default, HostServices v12): that opens the GAME's weapon wheel
@@ -169,7 +180,7 @@ Use it to check VR changes yourself instead of asking the user what they see
 - **Snapshots:** `tools/snapshot.ps1 [-Count N -Interval s -Delay s -Tag x]` writes
   `snapshot.request` and waits. Output in `snapshots\`: `<stamp>-left.png` / `-right.png` (what
   each eye shows: the world plus our HUD panel, reticle, squad menu, the game's wheel and Halcyon's
-  menu, composited like the runtime does), `-left-world.png` (world layer alone), `-hud.png`,
+  menu, sight, scope, composited like the runtime does), `-left-world.png` (world layer alone), `-hud.png`,
   `-squad.png`, `-wheel.png`, `-menu.png`, and `<stamp>.json` (head and eye poses/FOVs,
   controllers, aim ray, host view, the mod's arm IK / hand aim / weapon / support grip / holsters /
   squad state, every layer). The JSON

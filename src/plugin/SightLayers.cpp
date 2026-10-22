@@ -81,7 +81,7 @@ XrCompositionLayerQuad gScopeQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
 
 bool Create(XrSession session, std::uint32_t width, std::uint32_t height, Swapchain& out, char const* what, char const* name) {
     XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
-    info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
+    info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;  // as the reticle's (filled by a copy too)
     info.format = kSwapchainFormat;
     info.sampleCount = 1;
     info.width = width;

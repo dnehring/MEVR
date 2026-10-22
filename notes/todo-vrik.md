@@ -53,7 +53,7 @@ are, never the animation.
 
 - Two-handed grip (Overlord `support_grip` acquire/release hysteresis); what the zoom button does
   in first person. (Built 2026-10-08: see "Next" below.)
-- Holo sight; Overlord's lens magnifier for sniper rifles.
+- Holo sight; Overlord's lens magnifier for sniper rifles. (Built 2026-10-22: "Sights and scopes" below.)
 - Colour controls (saturation/contrast/brightness) in the eye blit, if still wanted. Depth of
   field is left on, since Halcyon found turning it off washes the colours out.
 - Performance at the 3072x3188 stereo target: read the perf monitor CSV
@@ -103,7 +103,8 @@ are, never the animation.
   reported yet.
 - **Still open:**
   - the upside-down world seen at the 20:44 launch (a 180-degree roll of the tracked head, from
-    launch; retest after restarting SteamVR);
+    launch; retest after restarting SteamVR); since 2026-10-22 a recenter corrects it (below,
+    "A recenter that fixes a tilted tracking space");
   - Quest Link performance (research/16).
 
 ## Next: two-handed grip = focused fire (agreed with the user, 2026-10-08; built the same day, to test)
@@ -348,3 +349,49 @@ Mod only (hot reload, no host redeploy). Test steps: notes/next-vr-session.md st
   **[verify]:** bIsZoomed on a tick after `aimed fire on`.
 - Not done: proposal 6 (a GetCameraLocation post-handler), only needed if a stance hooks another
   bone we write; optional `ControlStrength = 0` while gripping (saves the native solve only).
+
+## Sights and scopes (user, 2026-10-22; built the same day, to test)
+
+The user asked for a scope option on the rifle, Overlord as the reference, the options from a collimated
+dot to a true render-to-texture scope. Research and design: research/21. Test steps:
+notes/next-vr-session.md step 14.
+- **Built:** a collimated red dot (pistol) or holo (shotgun, assault rifle) for every gun, shown only to the
+  eye looking through the sight's window, with a faint ring marking the window; the sniper rifle gets a 4x
+  scope by picture-in-picture: a disc at the eyepiece, for the aiming eye, magnifying the **other** eye's
+  image (the gun's scope model blocks the aiming eye's own), with a duplex reticle and the exit pupil's
+  shadow. The floating ring reticle hides while sighting. Scoped shots get the game's aimed-fire spread
+  (`GetPlayerAimError` rewritten with `bIsZoomed` set for one native call only, never the scope camera).
+- **Host change, needs a redeploy:** HostServices v13 (`setSight`, `sightView`); `plugin/SightLayers`,
+  `plugin/SightPictures`; the test loop's release tap; Halcyon's OverlayFrame carries the eyes and the world
+  layer's views ([MEVR]), six overlay quads, ten layers.
+- **Mod (hot reload, but needs the v13 host):** `game/sights`, `[Sights]` in LE1MEVR.ini (appended),
+  `weapon::Muzzle::origin`, `weapon::ZoomedAimError`.
+- **Offline:** `mevr-sight-preview` renders the scope and the reticles to PNGs with the host's shader.
+- **[verify in headset]:** where each sight sits on each gun (auto placement is a guess past the pistol's
+  and the rifle's lengths: tune `<type>Place` from a snapshot); the dot's look and size; the scope's
+  magnification, sharpness and eye relief with Shepard's proportions (can the eye get within 12 cm of the
+  eyepiece?); the aimed-fire log line; no sniper scope camera ever.
+- **Open, for the user:** red dots for all guns, or iron-sight style for the pistol? Should looking through
+  a dot sight count as aimed fire too? Is 4x right for the sniper rifle, 2x scope for the assault rifle?
+  Overlord's eye-distance assistance (the gun slides toward the eye when aligned) if the eyepiece is hard
+  to reach.
+
+## A recenter that fixes a tilted tracking space (user, 2026-10-22; built the same day, to test)
+
+The user once saw the world upside down: SteamVR started with the tracked head rolled 180 degrees, and
+Halcyon's recenter (yaw-only, from the base space) can never undo a rolled or pitched base.
+- **Built:** a [MEVR] seam in `DoRecenter` (`MevrBridge::RecenterOrientation`; rules in `core/vr/Recenter`,
+  unit-tested; `plugin/RecenterTilt`): a recenter you ask for (R, double-click the right stick, the menu)
+  takes the head's full orientation when the head is rolled past 90 degrees in the base space, or has
+  stayed more than `recenterTiltDeg` (MELEVR.ini, 60; 0 = upstream) from the base's up for 1.5 s. The normal
+  case and the automatic first recenter stay yaw-only, bit for bit. Logs `[MEVR-RECENTER] ...` (both logs),
+  and a hint after 5 s of an upside-down world.
+- **What depends on the app space:** the controllers (located in it each frame), the HUD panel, the
+  world panels, the squad and wheel panels (all re-placed on recenter), the holsters' body frame and arm IK
+  (head and hands in it, +Y as up): all take the corrected space as level. The floor (`core/xr/Floor`) is
+  measured from STAGE/LOCAL_FLOOR against VIEW, independent of the app space; if the runtime's floor space
+  is tilted too, its eye height is implausible and the holsters fall back to `eyeHeightM` (logged).
+- **Host change, needs a redeploy.** Offered upstream as notes/upstream-halcyon/README.md section 4 (not
+  sent).
+- **[verify in headset]:** a normal recenter logs `yaw-only recenter (upstream)`; a recenter while looking
+  at the floor for a while logs a correction (expected: recenter again looking ahead heals it).

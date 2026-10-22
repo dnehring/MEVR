@@ -90,6 +90,15 @@
 - GhidraMCP on the LE1 project: `UBioSFHandler_HUD::UpdateHUDModes` (`0xB12410`), `ChangeSelectedWeapon` (`0xB180E0`), the natives dump
 - Scaleform blend modes as D3D blend pairs: inferred from the game's own blend states in Halcyon's `[MEVR-HUD]` log lines (multiply = DEST_COLOR/ZERO with Scaleform's DEST_ALPHA alpha factor)
 
+## Sights and scopes (research/21, consulted 2026-10-22)
+- Overlord (`reference/Overlord`, GPL-3.0): `docs/vr-native-ads.md`, `docs/vr-optic-rendering-feasibility.md`, `src/client/component/vr/gameplay/optic_geometry.hpp`, `optic_catalog.hpp`, `ads_alignment.hpp`, `spatial_panel_renderer.cpp` (`optic_ps`)
+- [Unreal forum: dual-render scopes](https://forums.unrealengine.com/t/how-to-dual-render-scopes-video-example/393900), [Valve Developer Wiki: Adding a Dynamic Scope](https://developer.valvesoftware.com/wiki/Adding_a_Dynamic_Scope), [TweakTown: Bodycam's optics shading](https://tweaktown.com/news/113239/bodycam-develops-in-house-optics-shading-technique-for-scopes-in-unreal-engine-5-with-no-performance-loss/index.html) (a press claim)
+- [Steam: Sniper Elite VR scopes thread](https://steamcommunity.com/app/752480/discussions/0/3049483485751256789) (Pavlov renders the scope from the eye: a player's description)
+- [Wikipedia: Red dot sight](https://en.wikipedia.org/wiki/Red_dot_sight), [godotshaders: collimator shader (MIT)](https://godotshaders.com/shader/red-dot-hud-holographic-projection-shader/), [Booth: Real Weapon Sights Shaders](https://booth.pm/ja/items/7275536) (vendor feature list)
+- OpenXR: [XrEyeVisibility](https://registry.khronos.org/OpenXR/specs/1.1/man/html/XrEyeVisibility.html), [XrCompositionLayerQuad](https://registry.khronos.org/OpenXR/specs/1.1/man/html/XrCompositionLayerQuad.html)
+- GhidraMCP on the LE1 project: `ABioWeaponRanged::GetPlayerAimError` (`0xC59920`), `TickFire` (`0xC621E0`), the callers of `GetWeaponStartTraceLocation`'s name (`0xC5A010`, `0xC566F0`)
+- Not found: how Half-Life: Alyx, Boneworks or H3VR implement their scopes (no developer write-ups surfaced)
+
 ## Searched, nothing relevant found
 - "vorpX Mass Effect Legendary Edition profile": no vorpX information
 - "Modern Warfare 2 Campaign Remastered VR mod AI" (standard search): nothing; the GitHub-targeted search found Overlord
