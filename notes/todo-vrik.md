@@ -146,3 +146,31 @@ The agreed plan:
 - **[verify in headset]:** the zone's bounds (cheek weld vs held out); log
   `support grip: aimed fire on/off`.
 
+## Headset session 2026-10-21 21:06
+
+- **Two-handed grip works.** It was taken at 0.11 m from the foregrip (the LHIK bone), two-hand
+  aim swung the barrel 22 degrees, and "aimed fire on" came at the shoulder.
+- **Fixed (7b80f5d):** the left grip opened the weapon wheel (LB) unless the hand was at the
+  foregrip. The left grip now only takes the gun; the left trigger is the weapon wheel
+  (`[Controls] leftTrigger = lb`, `leftGripAway = none`).
+- **Bug: the quick menus (weapon and power wheels) are doubled.**
+  - Seen: an outline of the wheel's selector stays locked to the view, while the normal
+    stationary wheel shows too.
+  - Cause, probably: our HUD-panel redirect sends part of the wheel's UI draws to the panel
+    (`[MEVR-HUD] to the HUD panel ps=693326A9` appeared when it opened), and other draws stay in
+    the eyes, head-locked.
+  - Next: a snapshot (End) with the wheel open shows which part is where. Possible fixes: send
+    every UI draw to the panel while a wheel is open, or none (Halcyon's head-locked HUD) while it
+    is open.
+- **Bug: world scale and close-up parallax are wrong.** The pistol looked massive, and the user
+  went cross-eyed up close.
+  - Settings in play: life-size movement on (leanGain 2, 100 units/m), stereo half-eye 3.4
+    units (a 68 mm IPD at 100 units/m, life-size by Shepard's skeleton), `sfr2SwapEyes` on
+    (flips the offset and the routing together), `sfr2Convergence` 0.012 (shifts the images
+    inward a little), and the camera moved back 0.674 m onto Shepard's head bone.
+  - Next: snapshot with the pistol held about 30 cm from the face. In correct stereo a near
+    object sits further right in the left eye's image than in the right eye's; reversed means
+    pseudoscopic.
+  - A/B in the menu's VR tab: "Swap eyes" (sfr2SwapEyes) and the convergence (0). The research
+    on the Camera bone (research/18) also bears on where the view sits relative to Shepard.
+
