@@ -18,7 +18,9 @@ This note covers:
    right stick click;
 7. contact haptics (Blade & Sorcery style) and how they map to OpenXR;
 8. the eye height from the floor;
-9. squad weapons: how the weapon wheel applies them, and the VR menu built from [docs/squad-weapons-design.md](../docs/squad-weapons-design.md).
+9. squad weapons: how the weapon wheel applies them, and the VR menu built from [docs/squad-weapons-design.md](../docs/squad-weapons-design.md);
+10. the game's own weapon wheel opened from the VR gesture and shown at the hand: how LB opens and
+    closes it, its one ring in the HUD movie, the stick angle, and what we drive.
 
 Web sources are listed at the end and in [sources.md](sources.md). Claims marked
 **[search summary]** come from a search engine's summary of a page that didn't load directly
@@ -44,6 +46,7 @@ reasoning, not a source.
 | Where RB went (gripHolds = 1) | **The right stick click**, whose own command (`ChangeMagnification`, a scoped weapon's zoom step) does nothing in Halcyon's view; hold it and tilt the same stick to choose, like Half-Life: Alyx's weapon menu. Guarded against Halcyon's double-click recenter, its both-sticks menu chord and clicks while turning (section 6). `[Holsters] powerWheel = y / x / b` are the alternatives |
 | Contact haptics | A continuous buzz while the hand overlaps a slot, stronger and higher-pitched toward its middle, a firmer edge crossing in, a crisp click on a draw and a softer one on a holster. Played as short refreshed OpenXR vibrations that stop by themselves if the mod stops asking (section 7) |
 | Eye height | Measured by the host in an OpenXR `STAGE` space (`LOCAL_FLOOR` if listed; Halcyon's 1.0 instance doesn't enable it), taken at each recenter, then a slow-rising maximum; `eyeHeightM` is the fallback (section 8) |
+| The game's weapon wheel from VR | `SFXGameModeDefault.EnterWeaponWheel()` opens it (LB held), `SFXGameModeWeaponWheel.ExitWeaponWheel()` closes and applies it (LB let go). One ring in the console HUD movie: the right stick's angle (`BioSFHandler_HUD.nAngle`, kept while centred) picks a member and a weapon together; A queues the highlighted entry (section 10) |
 
 ## 1. How VR shooters do body slots
 
@@ -547,7 +550,8 @@ both stick clicks (`gamepad::UpdateStickChord`); recording is Home or the menu's
 - Left-handed play: not supported anywhere in the mod yet. When it is, the slots mirror
   (gun-hand shoulder, off-hand shoulder).
 - No visual slot marker (user decision): the contact haptics are the feedback.
-- Squad weapons: the VR menu is built (section 9) **[verify]** in the headset; the game's wheel stays as the fallback.
+- Squad weapons: the VR menu is built (section 9), and since the evening of 2026-10-22 the gesture
+  opens the game's own wheel at the hand by default (section 10) **[verify]** in the headset.
 
 ## 6. Where RB went
 
@@ -822,3 +826,111 @@ The rest of what the menu shows:
 The both-sticks chord, the L3 gate and the squad menu's input block are in section 6's guard list.
 The left grip away from the gun was "nothing" (`leftGripAway = none`); with `[Squad] enabled` it is
 the squad menu and never LB.
+
+## 10. The game's own weapon wheel at the hand (2026-10-22)
+
+The user wanted the squad menu to be ME1's actual UI, with its pause and its rules, rather than our
+drawing. So the VR gesture (point, squeeze the left grip away from the gun) now opens the game's own
+weapon wheel, the host shows it on a panel at the hand ([research/15](15-hud.md), "The wheels on
+their own panel"), and the controllers steer it ([docs/squad-weapons-design.md](../docs/squad-weapons-design.md),
+"The game's own wheel"). Sources, all read-only and local: `BIOInput.ini` in `Coalesced_INT.bin`
+(section 6), the bytecode of `SFXGame.pcc` (as in section 9), the HUD movies `GUI_SF_HUD.ME_HUD` and
+`GUI_SF_HUD.PC_ME_HUD` in `Startup_INT.pcc` (GFxMovieInfo exports; the GFX file inside parsed for its
+display list and ActionScript 2 bytecode), and GhidraMCP. RVAs for 2.0.0.48602, names recorded in
+`tools/ghidra/symbols-le1.csv`.
+
+### How LB opens and closes it
+
+- **Bindings:** on foot LB is `Console_WeaponWheel` = `OnHold 0.3 EnterWeaponWheel | OnTap 0.3
+  TrySwapWeapon`. In the wheel's own mode (`SFXGameModeWeaponWheel`, `DisableMoveTime = 0.25`): the
+  right stick is `Console_LookX/Y` (the wheel's steering), LB is `Console_ExitWeaponWheel` =
+  `OnRelease ExitWeaponWheel`, Start the pause menu, the d-pad the squad orders. Nothing else.
+- **`SFXGameModeDefault.EnterWeaponWheel`** (exec, script): returns if `PlayerInput.IsCombatEnabled()`
+  is false; checks the HUD panel (`GetScaleFormManager().GetPanelByTag`); if Shepard's weapon is away
+  (`!IsInCombatActionState`) calls `DrawPrimaryWeapon`; `ShowTutorial`; then
+  `GameModeManager.EnableMode(3)`.
+- **`SFXGameModeWeaponWheel.Activated`:** `SetZoomed` (off), `WorldInfo.PauseGame(true)`, a GUI
+  sound, the command target, the profile's stick option (`Helper_SwapStaticConsoleSticks`) and
+  `SFXEngine.ResetForcedInactiveParticleSystems`. So the wheel pauses the game itself.
+- **`SFXGameModeWeaponWheel.ExitWeaponWheel`:** `GameModeManager.DisableMode(3)`, whose
+  `Deactivated` applies the choices (section 9).
+- **Why we call the execs, not LB:** holding LB through the pad mapping would add the binding's
+  0.3 s, and a squeeze let go sooner would be LB's tap, `TrySwapWeapon` (Shepard's weapon swapped).
+  Calling `EnterWeaponWheel` is what the binding does after its 0.3 s, and `ExitWeaponWheel` what
+  releasing LB does. LB itself (the left trigger) still opens and closes it as before.
+
+### The wheel in the HUD movie
+
+- **The movies:** `ME_HUD` (console) and `PC_ME_HUD` (PC), 1280x720 stages; ActionScript sets
+  `Stage.align = "TL"` and `ScreenResized` snaps the edge groups to `Stage.visibleRect` (GFx's visible
+  area). The wheel is the clip `squadMC`, centred on the stage: (298, 129)-(982, 603) in `ME_HUD`
+  (with the squadmates' portraits and the weapon tiles), (357, 77)-(914, 633) in `PC_ME_HUD`.
+- **One ring:** InitializeHud builds three tables (in array order):
+  - `weaponWheelAngleBoundaries` = 1, 12, 51, 90, 129, 169, 193, 214, 238, 270, 302, 326, 347, 361;
+  - `weaponWheelBoundaryToSlotMap` = 0, 1, 4, 3, 2, 1, 4, 3, 2, 1, 4, 3, 2, 1;
+  - `weaponWheelBoundaryToMemberMap` = -1, 2, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2.
+
+  The movie's `UpdateHUDMode(inputMode, actionState, thumbAngle)` turns the native angle into an arrow
+  angle (361 - clamp(thumbAngle, 1, 360)) and `updateArrowAngleInfo` takes the first boundary above it:
+  member 0 (Shepard) owns 12-169, member 1 169-270, member 2 270-361 and 1-12, four slots each.
+  A new entry is highlighted (`highlightWeapon(slot + member * 5)`) with the
+  `HUDWeaponPadNewHighlight` sound. (The power wheel's tables have 26 entries the same way.) In
+  `PC_ME_HUD` that function says "this function should be deprecated now" and returns: the PC movie's
+  wheel is mouse-driven (`hitTest` in `updateOnMouseMove`), so the pad's wheel is the console movie's
+  **[inference; the mod logs the HUD handler and whether its panel uses the gamepad]**.
+- **A queues:** the console movie's key handler sends A (and X) to `selectWeaponOrPowerInTacticalMode`,
+  which marks the entry and sends the FSCommand `SelectWeaponHUD` "index,member" to
+  `BioSFHandler_HUD.HandleEvent` (command 11). Its bytecode: slot 1 -> 3 (sniper rifle), 2 -> 0
+  (pistol), 3 -> 2 (assault rifle), anything else -> 1 (shotgun); member 1 -> `GetMember(m_nHench1Index)`,
+  2 -> `GetMember(m_nHench2Index)`, else `GetMember(m_nShepardIndex)`; then `SquadOrderEquipWeapon`.
+  The native that fills the wheel's tiles (`0xB180E0`, `ChangeSelectedWeapon`) passes the quick slots
+  in the order 3, 0, 2, 1: the same map.
+- **So the wheel can't be told "this squadmate's ring":** there is none. Pointing can only put the
+  highlight on one of their entries (below).
+
+### The stick angle (native)
+
+- `BioSFHandler_HUD.HandleInputEvent` (script) stores input events 2 and 3 in `vInput.X` / `.Y`
+  (`+0xDC`): the right stick.
+- `UBioSFHandler_HUD::UpdateHUDModes` (`0xB12410`, vtable `0x378` of `execUpdateHUDModes`): inputMode 5
+  while mode 3 (the weapon wheel) is active, 6 for mode 2 (the power wheel), else 0 and `nAngle = -1`.
+  While either axis is past a dead zone and the stick isn't moving back in (radius at least the last
+  one), `nAngle` (`+0x134`) = the yaw of `vInput` in degrees, 0..359 (atan2(up, right)), and
+  `nLastAngle` (`+0x138`) = `nAngle`; otherwise `nAngle = nLastAngle`. Then the movie's
+  `UpdateHUDMode(inputMode, actionState, nAngle)`. So the highlight stays when the stick springs back,
+  and the HUD's kept angle is what a centred stick shows.
+
+### What we drive (game/SquadWeapons, `[Squad] style = native`)
+
+- **Open:** the gesture (unchanged: pointing opens at once, at nobody after `openHoldS`, a missed
+  foregrip grab never), then `EnterWeaponWheel()` on the controller's `SFXGameModeDefault`; the wheel is
+  open when the mode manager's `CurrentMode` is 3 (given up after 0.6 s: combat disabled in a hub).
+- **Preselect:** pointed at a squadmate, the HUD's `nLastAngle` and `nAngle` are set to the centre of
+  their weapon-in-hand's arc (their wheel member from `m_nHench1Index` / `m_nHench2Index`, the slot from
+  the map above). A centred stick shows it; pushing the stick takes over **[verify]**.
+- **Highlight:** read back from `nAngle` through the same tables each tick: a tick in the steering
+  hand per new entry, a soft buzz on a weapon the member doesn't carry, logged with the member's name.
+- **Close:** letting go of the grip sends A through the pad for 80 ms if the highlighted entry is a
+  weapon they carry, not in hand, not yet queued; waits until their squad entry's switch weapon is it
+  (`GetMemberSwitchWeapon`, at most 0.4 s); then `ExitWeaponWheel()` on the `SFXGameModeWeaponWheel`.
+  B closes without the A. A mode that leaves 3 by itself (LB, Start) is followed.
+- **Pad** (host, `gamepad::kFlagNativeWheel`): the steering stick (the right one; `wheelStick = left`
+  or `either` sends the left one as the right) reaches the game only after it has been centred once
+  since the wheel opened; the left stick, B and the stick clicks are kept from the game; A passes (and
+  the mod's A, `kFlagWheelPressA`); what is held when it closes stays kept until let go.
+- **The HUD handler:** `PlayerController.GetScaleFormManager()` (native, through ProcessEvent) ->
+  `MassEffectGuiManager.m_oSFHudHandler` (`+0x1A4`), a `BioSFHandler_HUD`; its `m_nShepardIndex`,
+  `m_nHench1Index`, `m_nHench2Index` (`+0x10C`..`+0x114`).
+
+### Halcyon's decoupled pitch cut the wheels' steering
+
+Halcyon's XInput hooks zero the right stick's Y (decoupled pitch, on in the user's profile) or X
+(decoupled yaw) except while a full-screen menu (mode 7) owns the screen (`MenuOwnsLook`). The wheels
+(modes 2 and 3) are steered with both axes, so with decoupled pitch only the left and right entries
+could be reached. Fixed in `vr_menu.cpp` (`[MEVR]`): modes 2 and 3 count as menus there.
+
+### The power wheel
+
+R3 held (RB, section 6) opens `SFXGameModePowerWheel` (mode 2), the same ring with 26 entries for the
+powers. The mod doesn't drive it; the host shows it on its own panel at the right hand
+(`[Squad] powerWheelAt`), cut out of the UI the same way.

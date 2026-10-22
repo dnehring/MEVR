@@ -170,4 +170,68 @@ which is why Halcyon's distances and widths are kept.
   land on the panel instead of the world. The `[MEVR-HUD]` shader list shows any such case.
 - The desktop mirror loses the HUD while the panel is on.
 - The left-eye UI mirror (`[SFR-UI]`) no longer runs for redirected draws. Non-"over" UI draws
-  still only reach the right eye, as before.
+  still only reach the right eye, as before. (Since 2026-10-22 Scaleform's own non-"over" modes go
+  to the panel too: next section.)
+
+## Scaleform's blend modes and the doubled wheel (2026-10-22)
+
+**The bug (headset, 2026-10-21):** an outline of the weapon wheel's selector stayed locked to the
+view while the wheel itself showed on the HUD panel.
+
+**Cause [inference from the logs, verify with a snapshot]:** the redirect took only "over" blended
+draws. Scaleform draws its other blend modes (Flash's multiply, screen, add...) with other blend
+states, and those stayed in the frame: drawn once after both stereo passes, so in the right eye only,
+head-locked. The logs show two on the backbuffer during gameplay: `761A1BD7` and `11B5823A`,
+`src=9 dst=1` (DEST_COLOR / ZERO: multiply). What tells them apart from the engine's own full-screen
+passes is the alpha factor: Scaleform's states keep the target's alpha (`dstA = 7`, DEST_ALPHA, also on
+its "over" draws), the engine's post passes on the 8-bit scene target use ONE or ZERO.
+
+**Built (`d3d_capture.cpp` [MEVR] `MevrHudPanelDraw`, `HalcyonOverlays.cpp`):**
+- A blended draw with `DestBlendAlpha = DEST_ALPHA` that isn't "over" goes to the panel too (logged
+  once per shader: `to the HUD panel (a Scaleform blend mode, as a tint)`).
+- The panel then needs to say what the UI does to whatever is behind it, which a single alpha can't
+  for a multiply. The composite is `world * K + B`: B is the panel texture (premultiplied colour, as
+  before), K a new "tint" texture of the same size, white when nothing touches the world. An "over"
+  draw scales K by (1 - alpha) through the panel's alpha channel as before; a non-"over" draw is drawn
+  twice: into B with the game's own blend (B's alpha left alone), and into K with `dest *= f(source)`,
+  f from the game's pair: multiply (DEST_COLOR/ZERO) -> SRC_COLOR, screen (INV_DEST_COLOR/ONE) ->
+  INV_SRC_COLOR, a source-only factor as is; add (ONE) and MIN/MAX leave K. The second draw uses a
+  copy of the game's depth-stencil state without depth or stencil writes, so a mask isn't counted
+  twice.
+- The blit's alpha is `1 - (1 - coverage) * grey(K)`. Grey: a coloured multiply darkens the world
+  behind the panel without its hue (a quad layer has one alpha).
+- **Risk:** an engine draw with Scaleform's alpha factor that isn't UI would land on the panel. The
+  shader list (`[MEVR-HUD] Scaleform blend mode src=.. dst=..` once per blend state) shows it.
+
+## The wheels on their own panel (2026-10-22)
+
+The user wanted the game's own weapon wheel at the hand (docs/squad-weapons-design.md "The game's own
+wheel", research/19 section 10). The wheel is part of the HUD movie, so it can't be told apart by draw;
+it's told apart by place.
+
+- **Where the wheel is in the frame:** the HUD movie is a 1280x720 stage (`GUI_SF_HUD.ME_HUD` /
+  `PC_ME_HUD` in `Startup_INT.pcc`); its wheel, `squadMC`, is centred on it, (298, 129)-(982, 603)
+  stage pixels in the console movie, (357, 77)-(914, 633) in the PC one. How the stage maps onto the
+  near-square VR frame depends on the movie's scale mode, which wasn't found: the movie sets
+  `Stage.align = "TL"` and snaps its edge groups to `Stage.visibleRect`, which fits GFx's "show all".
+  So `core/vr/WheelCrop` starts from that guess (`DefaultCrop`: the union of both clips plus 16 px,
+  the stage fitted to the frame's width at the top), and **measures** it once per session: a coarse
+  grid (48x50 cells, the most opaque pixel of each, every 4th pixel) of the panel texture now and then
+  while on foot, and once 0.6 s after a wheel opens (past its grow animation); the largest 4-connected
+  group of cells that became at least 40/255 more opaque is the wheel (`MeasureCrop`, padded by a cell).
+  Logged as `[MEVR-WHEEL] measured: the wheel is at (...)` with the guess beside it. `[Squad] wheelCrop
+  = x, y, w, h` overrides both.
+- **The panel:** while the game's mode is 3 (weapon wheel) or 2 (power wheel), that part of the panel
+  texture is blitted into a swapchain of its own and submitted as a quad (on top of ours), placed when
+  the wheel opens like the squad menu (`squad_menu::PlaceAtHand`: 0.27 m above the hand, facing the
+  eyes, level, 0.40 m wide; the mod's `[Squad] panelDistanceM`, `panelWidthM`): the weapon wheel at the
+  left hand, the power wheel at the right (`weaponWheelAt`, `powerWheelAt`: left, right, front, hud).
+  Fixed in the room while it's open; placed again on recenter.
+- **The HUD panel** shows the rest: its blit leaves that rectangle transparent while the wheel panel
+  shows, so the wheel is seen once.
+- **Test loop:** the quad's swapchain is named "wheel": `<stamp>-wheel.png`, and it's in the eye
+  composites.
+- **Settings across the boundary:** the mod publishes them each tick (`HostServices::setWheelPanel`,
+  v12, `squad_menu::wheel::Panel`, size-checked); without them the host uses the same defaults.
+- **[verify]:** the measured crop against the snapshot; the wheel's squad portraits inside it; nothing
+  of the wheel left in the eyes.

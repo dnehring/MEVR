@@ -15,6 +15,9 @@
 //           armLengthM                     shown here if present: the mod's result (the arm-length
 //                                          calibration owns this key and how it's computed).
 //
+//   [Squad] style, wheelStick              squad weapons: the game's own wheel (native) or our menu
+//                                          (custom), and the stick that steers the game's wheel.
+//
 // The sample is taken in the T pose: both arms straight out to the sides, either trigger pulled.
 
 #include "halcyon/le1/mevr_bridge.h"
@@ -31,6 +34,7 @@
 #include <Windows.h>
 
 #include <atomic>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -458,6 +462,55 @@ static void TestLoopSection() {
     }
 }
 
+// Squad weapons ([Squad] style and wheelStick): the game's own wheel or our menu, for A/B in the
+// headset (game/SquadWeapons re-reads the file within a second).
+static std::string ReadText(wchar_t const* section, wchar_t const* key, wchar_t const* fallback) {
+    wchar_t text[64]{};
+    GetPrivateProfileStringW(section, key, fallback, text, 64, Path().c_str());
+    std::string out;
+    for (wchar_t const* c = text; *c != L'\0'; ++c) {
+        out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(*c < 128 ? *c : '?'))));
+    }
+    return out;
+}
+
+static void SquadSection() {
+    ImGui::SeparatorText("Squad weapons (point, squeeze the left grip)");
+    if (Path().empty()) {
+        return;
+    }
+    std::string const style = ReadText(L"Squad", L"style", L"native");
+    bool const native = style != "custom";
+    if (ImGui::RadioButton("The game's own weapon wheel", native) && !native) {
+        WritePrivateProfileStringW(L"Squad", L"style", L"native", Path().c_str());
+        mevr::log::Info("menu: squad weapons: the game's own wheel");
+    }
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Our menu", !native) && native) {
+        WritePrivateProfileStringW(L"Squad", L"style", L"custom", Path().c_str());
+        mevr::log::Info("menu: squad weapons: our menu");
+    }
+    if (native) {
+        std::string const stick = ReadText(L"Squad", L"wheelStick", L"right");
+        ImGui::TextUnformatted("Steer the wheel with:");
+        struct Choice {
+            char const* label;
+            wchar_t const* value;
+            char const* key;
+        };
+        static constexpr Choice kChoices[] = {
+            {"right stick", L"right", "right"}, {"left stick", L"left", "left"}, {"either", L"either", "either"}};
+        for (Choice const& choice : kChoices) {
+            ImGui::SameLine();
+            bool const on = stick == choice.key;
+            if (ImGui::RadioButton(choice.label, on) && !on) {
+                WritePrivateProfileStringW(L"Squad", L"wheelStick", choice.value, Path().c_str());
+                mevr::log::Info("menu: squad weapons: the wheel is steered with {}", choice.key);
+            }
+        }
+    }
+}
+
 float ForwardLeanEmphasis() noexcept {
     Reload(false);  // Present thread, like the menu; once a second at most
     return gLifeSize.load(std::memory_order_relaxed) ? 1.0f : 3.0f;
@@ -480,6 +533,7 @@ void BuildMenuTabs() noexcept {
     TrimRow("Roll (+ rolls the right hand's thumb side outward)", "roll", gTrims.roll);
     MeasureSection();
     CameraSection();
+    SquadSection();
     TestLoopSection();
     ImGui::EndTabItem();
 }

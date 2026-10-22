@@ -429,6 +429,12 @@ mevr::game::squad_weapons::Link SquadLink() {
         link.supported = true;
         link.setMenu = gHost->setSquadMenu;
         link.leftGripAway = gHost->leftGripAway();
+        // v12: the game's own wheel at the hand (the wheel panel, the pad's native wheel flags).
+        if (MEVR_HOST_HAS(setWheelPanel) && gHost->setWheelPanel != nullptr &&
+            gHost->wheelPanelSize == sizeof(vr::squad_menu::wheel::Panel)) {
+            link.nativeSupported = true;
+            link.setWheelPanel = gHost->setWheelPanel;
+        }
     }
     if (gHost->version >= 9) {
         link.haptic = gHost->hapticPulse;

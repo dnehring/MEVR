@@ -185,4 +185,129 @@ void Publish(View const& view);
 View Latest(std::uint64_t maxAgeMs = 250);
 void Reset();
 
+// ---- The game's own weapon wheel ([Squad] style = native; docs/squad-weapons-design.md) -------------
+//
+// ME1's weapon wheel (SFXGameModeWeaponWheel, game mode 3) is one ring in the console HUD movie
+// (GUI_SF_HUD.ME_HUD): its angle picks a squad member and one of their four weapons together. The
+// native BioSFHandler_HUD::UpdateHUDModes turns the right stick (vInput) into `nAngle` = the stick's
+// yaw in degrees (atan2(up, right), 0..359; kept while the stick is centred), and the movie's
+// updateArrowAngleInfo maps 361 - nAngle through weaponWheelAngleBoundaries to an entry. A pressed on
+// an entry queues it (FSCommand SelectWeaponHUD -> BioSFHandler_HUD.HandleEvent 11 ->
+// SquadOrderEquipWeapon); closing the wheel applies the queue (research/19 section 9).
+// Read from the movie's ActionScript and SFXGame.pcc's bytecode (research/19 section 10).
+namespace wheel {
+
+// The wheel's members: 0 Shepard, 1 the HUD's first henchman (BioSFHandler_HUD.m_nHench1Index), 2 its
+// second (m_nHench2Index). Its slots: 1 sniper rifle, 2 pistol, 3 assault rifle, 4 shotgun.
+inline constexpr int kMembers = 3;
+inline constexpr int kSlots = 4;
+
+struct Entry {
+    int member = -1;  // -1: none
+    int slot = 0;     // 1..4; 0: none
+    bool Valid() const { return member >= 0 && slot >= 1; }
+    bool operator==(Entry const& other) const { return member == other.member && slot == other.slot; }
+};
+
+// The entry the HUD highlights for its nAngle (degrees; negative: no wheel, no entry).
+Entry EntryAtStickAngle(int nAngle);
+// The nAngle at the centre of an entry's arc (0..359), or -1 for an invalid entry.
+int StickAngleOf(Entry entry);
+// Slot <-> weapon type (BioBaseSquad.ESwitchToWeapon: 0 pistol, 1 shotgun, 2 assault rifle, 3 sniper
+// rifle), as HandleEvent 11 converts them. -1 / 0 for anything else.
+int WeaponOfSlot(int slot);
+int SlotOfWeapon(int weapon);
+
+// The open/steer/close machine for the game's wheel, opened by the same gesture as the custom menu.
+struct Input {
+    float dt = 0.0f;
+    bool usable = false;          // it may open or stay open (a world view, tracked controllers, LE1 on foot or in the wheel)
+    bool gripDown = false;        // the left grip (latched)
+    bool newAwaySqueeze = false;  // a new left-grip squeeze began away from the gun's foregrip
+    bool nearGun = false;         // the hand is near the foregrip (a squeeze at nobody there is a missed grab)
+    bool pointed = false;         // the left hand points at a squadmate
+    bool onFoot = false;          // the game is in its default mode (0): the wheel can be entered
+    bool wheelActive = false;     // the game's mode is the weapon wheel (3)
+    bool confirmOnRelease = true; // letting go gives the highlighted entry (an A press) before closing
+    float openHoldSeconds = 0.35f;
+    bool highlightValid = false;  // the HUD highlights an entry
+    bool highlightCarried = false;// ...and that member carries its weapon
+    bool choiceRecorded = false;  // ...and it's already queued (the member's switch weapon is it)
+    bool b = false;               // B (held): closes without giving anything
+};
+
+enum class Phase : std::uint8_t {
+    Idle,
+    Arming,      // squeezed at nobody: opens once held openHoldSeconds
+    Opening,     // EnterWeaponWheel called, waiting for the game's mode
+    Open,        // the wheel is up and the grip holds it
+    Confirming,  // the grip let go: A held, then waiting for the queue to take it
+    Closing,     // ExitWeaponWheel called, waiting for the mode to leave
+};
+char const* PhaseName(Phase phase);
+
+struct Step {
+    bool armed = false;
+    bool missedGrab = false;
+    bool enter = false;          // call SFXGameModeDefault.EnterWeaponWheel now
+    bool openedPointing = false; // (with enter) at once, because the hand pointed at someone
+    bool opened = false;         // the game's mode became the wheel
+    bool openFailed = false;     // ...or didn't within kOpenTimeout
+    bool holdA = false;          // the pad shows A this tick
+    bool confirmed = false;      // an A was sent for the highlighted entry
+    bool exit = false;           // call SFXGameModeWeaponWheel.ExitWeaponWheel now
+    bool closed = false;         // the mode left the wheel after our exit
+    bool closedByGame = false;   // ...or by itself (LB released, the pause menu, a cutscene)
+    bool cancelled = false;      // B, or let go with nothing to give
+    bool exitStuck = false;      // the mode didn't leave within kCloseTimeout twice: given up
+};
+
+inline constexpr float kOpenTimeout = 0.6f;    // seconds for the game to enter the wheel
+inline constexpr float kPressASeconds = 0.08f; // how long A is held for a confirm
+inline constexpr float kQueueTimeout = 0.4f;   // after A: how long to wait for the queue before closing anyway
+inline constexpr float kCloseTimeout = 0.5f;   // after an exit: how long before trying once more
+
+class Machine {
+public:
+    Step Update(Input const& input);
+    void Reset() { *this = Machine{}; }
+    Phase CurrentPhase() const { return phase_; }
+    // The wheel is ours: from the enter until the mode has left (the pad's kFlagNativeWheel).
+    bool Holding() const { return phase_ == Phase::Opening || phase_ == Phase::Open || phase_ == Phase::Confirming || phase_ == Phase::Closing; }
+
+private:
+    void BeginClose(Step& step, bool confirm, Input const& input);
+
+    Phase phase_ = Phase::Idle;
+    float timer_ = 0.0f;
+    bool releasedEarly_ = false;  // let go while it was still opening
+    bool gripWasDown_ = false;
+    bool bWasDown_ = true;        // B edges only from a press that began after it opened
+    int exitTries_ = 0;
+};
+
+// What the host shows (HostServices::setWheelPanel, v12): the game's wheels on a panel of their own
+// while one is up, cut out of the HUD panel texture. Published by the mod every tick.
+struct Panel {
+    std::uint32_t size = sizeof(Panel);  // the mod's sizeof(Panel): the host uses only a matching one
+    std::uint32_t serial = 0;            // + 1 each time the mod opens the weapon wheel: placed afresh
+    bool enabled = true;                 // a wheel panel at all (0: the wheels stay on the HUD panel)
+    bool modOpen = false;                // the mod holds the weapon wheel open (its gesture)
+    std::int8_t weaponPlace = 0;         // where the weapon wheel goes: 0 left hand, 1 right hand, 2 in front
+    std::int8_t powerPlace = 1;          // where the power wheel goes (R3 hold): 0 left hand, 1 right hand, 2 in front
+    float distance = 0.27f;              // panel centre from the hand, meters
+    float width = 0.40f;                 // panel width, meters
+    // The wheel's part of the UI, as fractions of the backbuffer (x, y, width, height); width <= 0: the
+    // host measures it (WheelCrop) and starts from DefaultCrop.
+    float crop[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    std::uint64_t sequence = 0;          // set by PublishPanel
+    std::uint64_t timeMs = 0;
+};
+void PublishPanel(Panel const& panel);
+// Any thread: the mod's latest, or nullopt-like (size 0) when it never published or is older than maxAgeMs.
+Panel LatestPanel(std::uint64_t maxAgeMs = 1000);
+void ResetPanel();
+
+} // namespace wheel
+
 } // namespace mevr::vr::squad_menu

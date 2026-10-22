@@ -235,6 +235,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/SquadMenu.hpp
     src/core/vr/TestRequest.cpp
     src/core/vr/TestRequest.hpp
+    src/core/vr/WheelCrop.cpp
+    src/core/vr/WheelCrop.hpp
     src/core/xr/Floor.cpp
     src/core/xr/Floor.hpp
     src/core/xr/Input.cpp
@@ -331,6 +333,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/SquadMenu.cpp
         src/core/vr/TestRequest.cpp
         src/core/vr/ViewSync.cpp
+        src/core/vr/WheelCrop.cpp
         src/engine/XrToUnreal.cpp
         src/game/GamepadMapping.cpp
         src/game/HeadSim.cpp

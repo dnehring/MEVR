@@ -13,7 +13,8 @@
 // Touch -> Xbox: sticks -> sticks, triggers -> triggers, grips -> LB / RB, A/B (right) -> A/B,
 // X/Y (left) -> X/Y, stick clicks -> LS / RS (LS held back briefly: GateClick), left menu -> Start;
 // left grip + menu -> Back. While the squad weapon menu is open (Options::squadMenu) the sticks, A, B
-// and the stick clicks are the menu's. The
+// and the stick clicks are the menu's; while the left grip holds the game's own weapon wheel open
+// (Options::nativeWheel) one stick steers it and A queues, the rest is kept from the game. The
 // left grip on the held gun's foregrip is the support grip instead (LT held, no LB; below), and the
 // right grip squeezed at a body holster draws a weapon instead of RB (Options::rightGripFree).
 // With the body holsters' "grip holds the gun" (Options::rightGripHolds) the right grip is never RB;
@@ -172,7 +173,20 @@ struct Latches {
     // Controls in use when the squad menu closed (kSquadLeftStick...): kept from the game until each is
     // released or centred, so the flick that chose a weapon doesn't turn, nor A walk off as "use".
     std::uint8_t squadHeld = 0;
+    // The game's own weapon wheel held open by the left grip (Options::nativeWheel): whether the flag was
+    // set last step, and whether the steering stick has been centred since it was set (until then the
+    // game sees no steering, so a stick pushed while turning or walking doesn't pick an entry).
+    bool wheelWas = false;
+    bool wheelArmed = false;
 };
+
+// Which stick steers the game's weapon wheel while the left grip holds it open (Options::wheelStick).
+enum class WheelStick : std::uint8_t {
+    Right = 0,   // the game's own control (the default)
+    Left = 1,    // the left stick, on the hand that holds the grip (sent to the game as the right stick)
+    Either = 2,  // whichever is pushed further
+};
+char const* Name(WheelStick stick);
 
 // The squad menu's controls (Options::squadMenu): none reaches the game while it's open.
 inline constexpr std::uint8_t kSquadLeftStick = 1;
@@ -226,6 +240,14 @@ struct Options {
     // The squad weapon menu is open (game/squad_weapons, kFlagSquadMenu): the sticks, A, B and both
     // stick clicks are its own (Latches::squadHeld keeps them from the game until released).
     bool squadMenu = false;
+    // The left grip holds the game's own weapon wheel open ([Squad] style = native, kFlagNativeWheel):
+    // the steering stick (wheelStick) reaches the game as the right stick once it has been centred since
+    // the wheel opened; the left stick never walks, B and the stick clicks are the mod's; A still reaches
+    // the game (A queues the highlighted entry), and wheelPressA adds an A the mod sends to confirm on
+    // release. Whatever is in use when it closes stays kept from the game until released or centred.
+    bool nativeWheel = false;
+    WheelStick wheelStick = WheelStick::Right;
+    bool wheelPressA = false;
     SupportInput support;
 };
 
@@ -238,8 +260,12 @@ inline constexpr std::uint32_t kFlagLeftTriggerShoulder = 8;  // Options::leftTr
 inline constexpr std::uint32_t kFlagRightGripFree = 16;       // Options::rightGripFree
 inline constexpr std::uint32_t kFlagRightGripHolds = 32;      // Options::rightGripHolds (host v10)
 inline constexpr std::uint32_t kFlagSquadMenu = 64;           // Options::squadMenu (host v11)
+inline constexpr std::uint32_t kFlagNativeWheel = 128;        // Options::nativeWheel (host v12)
 inline constexpr std::uint32_t kRbSourceShift = 8;            // Options::rbSource in bits 8-11 (host v10)
 inline constexpr std::uint32_t kRbSourceMask = 0xFu << kRbSourceShift;
+inline constexpr std::uint32_t kFlagWheelPressA = 1u << 12;   // Options::wheelPressA (host v12)
+inline constexpr std::uint32_t kWheelStickShift = 13;         // Options::wheelStick in bits 13-14 (host v12)
+inline constexpr std::uint32_t kWheelStickMask = 3u << kWheelStickShift;
 std::uint32_t ToFlags(Options const& options);
 Options FromFlags(float distance, float acquire, float release, std::uint32_t flags);
 

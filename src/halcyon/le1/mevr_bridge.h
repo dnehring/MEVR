@@ -10,6 +10,7 @@
 #include <cstdint>
 
 struct ID3D11BlendState;
+struct ID3D11DepthStencilState;
 struct ID3D11DeviceContext;
 struct ID3D11RenderTargetView;
 struct ID3D11Texture2D;
@@ -75,6 +76,23 @@ ID3D11BlendState* HudPanelBlend(ID3D11DeviceContext* context, ID3D11BlendState* 
 // Counts one UI draw that went to the panel (OverlayLayers logs and resets the count).
 void NoteHudPanelDraw() noexcept;
 
+// Scaleform's other blend modes (multiply, screen, add...: blended, not "over", with Scaleform's
+// DEST_ALPHA alpha factor) go to the panel too, so no part of the UI stays in the eyes (the doubled
+// weapon wheel, notes/todo-vrik.md 2026-10-21). Their colour goes into the panel with the game's blend
+// (`colour`: alpha left alone), and what they do to whatever is behind them (the world) into a "tint"
+// texture the panel's alpha is made from (`tint`: dest *= the draw's factor; nullptr when the mode
+// leaves the world as is, like add). Cached per game state.
+void HudPanelTintBlends(ID3D11DeviceContext* context, ID3D11BlendState* game, ID3D11BlendState** colour,
+                        ID3D11BlendState** tint) noexcept;
+// The tint texture's render target (white = the world unchanged), the panel texture's size; nullptr
+// if there is none. Call after HudPanelTarget.
+ID3D11RenderTargetView* HudPanelTintTarget() noexcept;
+// The game's depth-stencil state without depth or stencil writes (for drawing the same draw a second
+// time, into the tint texture, without counting its stencil twice). Cached; nullptr keeps the game's.
+ID3D11DepthStencilState* HudPanelNoWrites(ID3D11DeviceContext* context, ID3D11DepthStencilState* game) noexcept;
+// Counts one draw that went into the tint texture.
+void NoteHudPanelTint() noexcept;
+
 // What RunFrame knows about the frame it is submitting.
 struct OverlayFrame
 {
@@ -93,8 +111,10 @@ struct OverlayFrame
 
 // Present thread (RunFrame), once per frame after the eyes are filled, every frame (also flat and
 // menu frames): copies the HUD panel texture into its swapchain, places the panel and the reticle,
-// draws the squad weapon menu while the mod has it open (src/plugin/SquadPanel.cpp), and writes up to
-// `capacity` quad layers (XrCompositionLayerQuad*: panel, reticle, squad menu) into `layersOut`.
+// draws the squad weapon menu while the mod has it open (src/plugin/SquadPanel.cpp), shows the game's
+// weapon or power wheel on a panel of its own at a hand while one is up (cut out of the HUD panel),
+// and writes up to `capacity` quad layers (XrCompositionLayerQuad*: panel, reticle, squad menu, wheel)
+// into `layersOut`.
 // Also clears the panel texture, arms the redirect for the next frame, and hides the game's own
 // crosshair while the hand reticle replaces it. Returns the number of layers written.
 unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsigned capacity) noexcept;

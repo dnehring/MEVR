@@ -404,4 +404,243 @@ void Reset() {
     gLatest = View{};
 }
 
+// ---- The game's own weapon wheel ---------------------------------------------------------------------
+namespace wheel {
+namespace {
+
+// GUI_SF_HUD.ME_HUD's tables (InitializeHud, `new Array(...)`): the arrow angle (361 - nAngle) belongs to
+// the first boundary above it; each boundary index names a slot and a member.
+constexpr int kBoundaries[] = {1, 12, 51, 90, 129, 169, 193, 214, 238, 270, 302, 326, 347, 361};
+constexpr int kSlotOf[] = {0, 1, 4, 3, 2, 1, 4, 3, 2, 1, 4, 3, 2, 1};
+constexpr int kMemberOf[] = {-1, 2, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2};
+constexpr int kBoundaryCount = static_cast<int>(sizeof(kBoundaries) / sizeof(kBoundaries[0]));
+
+std::mutex gPanelMutex;
+Panel gPanel{0};
+std::uint64_t gPanelSequence = 0;
+
+} // namespace
+
+Entry EntryAtStickAngle(int nAngle) {
+    if (nAngle < 0) {
+        return {};
+    }
+    int const arrow = 361 - std::clamp(nAngle, 1, 360);  // the movie's UpdateHUDMode
+    int i = 0;
+    while (i < kBoundaryCount - 1 && arrow >= kBoundaries[i]) {
+        ++i;
+    }
+    if (arrow >= kBoundaries[i] || kSlotOf[i] <= 0 || kMemberOf[i] < 0) {
+        return {};
+    }
+    return {kMemberOf[i], kSlotOf[i]};
+}
+
+int StickAngleOf(Entry entry) {
+    if (!entry.Valid() || entry.member >= kMembers || entry.slot > kSlots) {
+        return -1;
+    }
+    if (entry.member == 2 && entry.slot == 1) {
+        return 2;  // its arc wraps ([347, 361) and [1, 12), 25 degrees about 359.5): arrow 359
+    }
+    for (int i = 1; i < kBoundaryCount; ++i) {
+        if (kMemberOf[i] == entry.member && kSlotOf[i] == entry.slot) {
+            int const arrow = (kBoundaries[i - 1] + kBoundaries[i]) / 2;
+            return std::clamp(361 - arrow, 0, 359);
+        }
+    }
+    return -1;
+}
+
+int WeaponOfSlot(int slot) {
+    switch (slot) {
+    case 1: return 3;  // sniper rifle
+    case 2: return 0;  // pistol
+    case 3: return 2;  // assault rifle
+    case 4: return 1;  // shotgun
+    default: return -1;
+    }
+}
+
+int SlotOfWeapon(int weapon) {
+    switch (weapon) {
+    case 3: return 1;
+    case 0: return 2;
+    case 2: return 3;
+    case 1: return 4;
+    default: return 0;
+    }
+}
+
+char const* PhaseName(Phase phase) {
+    switch (phase) {
+    case Phase::Idle: return "idle";
+    case Phase::Arming: return "arming";
+    case Phase::Opening: return "opening";
+    case Phase::Open: return "open";
+    case Phase::Confirming: return "confirming";
+    case Phase::Closing: return "closing";
+    }
+    return "?";
+}
+
+void Machine::BeginClose(Step& step, bool confirm, Input const& input) {
+    if (confirm && input.highlightValid && input.highlightCarried && !input.choiceRecorded) {
+        phase_ = Phase::Confirming;
+        timer_ = 0.0f;
+        step.holdA = true;
+        step.confirmed = true;
+        return;
+    }
+    if (!(input.highlightValid && input.choiceRecorded)) {
+        step.cancelled = true;  // nothing queued now (an earlier A may have queued another entry)
+    }
+    phase_ = Phase::Closing;
+    timer_ = 0.0f;
+    exitTries_ = 1;
+    step.exit = true;
+}
+
+Step Machine::Update(Input const& in) {
+    Step step;
+    float const dt = std::max(in.dt, 0.0f);
+    bool const gripReleased = !in.gripDown && gripWasDown_;
+    gripWasDown_ = in.gripDown;
+    bool const bPressed = in.b && !bWasDown_;
+    bWasDown_ = in.b;
+
+    switch (phase_) {
+    case Phase::Idle:
+        if (!in.newAwaySqueeze || !in.usable || !in.onFoot) {
+            break;
+        }
+        if (in.pointed) {
+            phase_ = Phase::Opening;
+            timer_ = 0.0f;
+            releasedEarly_ = false;
+            step.enter = true;
+            step.openedPointing = true;
+        } else if (in.nearGun) {
+            step.missedGrab = true;
+        } else {
+            phase_ = Phase::Arming;
+            timer_ = 0.0f;
+            step.armed = true;
+        }
+        break;
+
+    case Phase::Arming:
+        if (!in.gripDown || !in.usable || !in.onFoot) {
+            phase_ = Phase::Idle;
+            break;
+        }
+        timer_ += dt;
+        if (in.pointed || timer_ >= in.openHoldSeconds) {
+            phase_ = Phase::Opening;
+            timer_ = 0.0f;
+            releasedEarly_ = false;
+            step.enter = true;
+            step.openedPointing = in.pointed;
+        }
+        break;
+
+    case Phase::Opening:
+        timer_ += dt;
+        releasedEarly_ = releasedEarly_ || !in.gripDown;
+        if (in.wheelActive) {
+            phase_ = Phase::Open;
+            timer_ = 0.0f;
+            step.opened = true;
+            bWasDown_ = true;  // a B held from before isn't a cancel
+            if (releasedEarly_) {
+                BeginClose(step, false, in);  // a quick squeeze-and-let-go: open and shut, give nothing
+            }
+        } else if (timer_ >= kOpenTimeout || !in.usable) {
+            phase_ = Phase::Idle;
+            step.openFailed = true;
+        }
+        break;
+
+    case Phase::Open:
+        if (!in.wheelActive) {
+            phase_ = Phase::Idle;
+            step.closedByGame = true;
+        } else if (bPressed) {
+            step.cancelled = true;
+            phase_ = Phase::Closing;
+            timer_ = 0.0f;
+            exitTries_ = 1;
+            step.exit = true;
+        } else if (gripReleased || !in.gripDown || !in.usable) {
+            BeginClose(step, in.confirmOnRelease && in.usable, in);
+        }
+        break;
+
+    case Phase::Confirming:
+        if (!in.wheelActive) {
+            phase_ = Phase::Idle;
+            step.closedByGame = true;
+            break;
+        }
+        timer_ += dt;
+        if (timer_ < kPressASeconds) {
+            step.holdA = true;
+        } else if (in.choiceRecorded || timer_ >= kPressASeconds + kQueueTimeout) {
+            phase_ = Phase::Closing;
+            timer_ = 0.0f;
+            exitTries_ = 1;
+            step.exit = true;
+        }
+        break;
+
+    case Phase::Closing:
+        if (!in.wheelActive) {
+            phase_ = Phase::Idle;
+            step.closed = true;
+            break;
+        }
+        timer_ += dt;
+        if (timer_ >= kCloseTimeout) {
+            if (exitTries_ < 2) {
+                ++exitTries_;
+                timer_ = 0.0f;
+                step.exit = true;
+            } else {
+                phase_ = Phase::Idle;
+                step.exitStuck = true;
+            }
+        }
+        break;
+    }
+    return step;
+}
+
+void PublishPanel(Panel const& panel) {
+    std::lock_guard lock(gPanelMutex);
+    gPanel = panel;
+    gPanel.size = sizeof(Panel);
+    gPanel.sequence = ++gPanelSequence;
+    gPanel.timeMs = GetTickCount64();
+}
+
+Panel LatestPanel(std::uint64_t maxAgeMs) {
+    Panel copy{0};
+    {
+        std::lock_guard lock(gPanelMutex);
+        copy = gPanel;
+    }
+    if (copy.timeMs == 0 || GetTickCount64() - copy.timeMs > maxAgeMs) {
+        copy.size = 0;
+        copy.modOpen = false;
+    }
+    return copy;
+}
+
+void ResetPanel() {
+    std::lock_guard lock(gPanelMutex);
+    gPanel = Panel{0};
+}
+
+} // namespace wheel
+
 } // namespace mevr::vr::squad_menu

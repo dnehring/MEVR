@@ -4442,6 +4442,8 @@ void SfrMirrorUiDrawIntoPass0(ID3D11DeviceContext* ctx, DrawThunk&& draw) noexce
 // target changes, plus a blend state that also accumulates alpha. The target must be the swapchain's
 // backbuffer itself, or (Halcyon's [SFR-UI] rule) an 8-bit scene-sized target: never the FP16 scene
 // colour, which is also scene-sized. Every distinct pixel shader is logged once ([MEVR-HUD]).
+// Since 2026-10-22 Scaleform's other blend modes (multiply, screen...) go there too: their colour into
+// the panel, their effect on what's behind into the panel's tint texture (HudPanelTintBlends).
 // Returns false (draw untouched) for anything else. Render thread, immediate context only.
 template <typename DrawThunk>
 bool MevrHudPanelDraw(ID3D11DeviceContext* ctx, DrawThunk&& draw) noexcept
@@ -4513,6 +4515,11 @@ bool MevrHudPanelDraw(ID3D11DeviceContext* ctx, DrawThunk&& draw) noexcept
     if (gameBlend != nullptr) gameBlend->GetDesc(&bd);
     const bool over = gameBlend != nullptr && bd.RenderTarget[0].BlendEnable != FALSE &&
                       bd.RenderTarget[0].DestBlend == D3D11_BLEND_INV_SRC_ALPHA;
+    // Scaleform's other blend modes (multiply, screen, add): its blend states keep the target's alpha
+    // with a DEST_ALPHA factor, which the engine's own full-screen passes don't use. Left in the frame,
+    // they stayed in the eyes, head-locked, beside the panel (the doubled weapon wheel, 2026-10-21).
+    const bool tint = !over && gameBlend != nullptr && bd.RenderTarget[0].BlendEnable != FALSE &&
+                      bd.RenderTarget[0].DestBlendAlpha == D3D11_BLEND_DEST_ALPHA;
 
     {   // one line per distinct pixel shader, either way
         ID3D11PixelShader* ps = nullptr;
@@ -4530,7 +4537,8 @@ bool MevrHudPanelDraw(ID3D11DeviceContext* ctx, DrawThunk&& draw) noexcept
             char line[256];
             std::snprintf(line, sizeof(line),
                           "[MEVR-HUD] %s ps=%08X target=%s fmt=%d vp=%.0fx%.0f blend=%d src=%d dst=%d srcA=%d dstA=%d mask=%X",
-                          over ? "to the HUD panel" : "left in the frame (not 'over' blended)", hash,
+                          over ? "to the HUD panel" : tint ? "to the HUD panel (a Scaleform blend mode, as a tint)"
+                                                           : "left in the frame (not 'over' blended)", hash,
                           isBackbuffer ? "backbuffer" : "8-bit scene-sized", static_cast<int>(rd.Format),
                           vp.Width, vp.Height, bd.RenderTarget[0].BlendEnable ? 1 : 0,
                           static_cast<int>(bd.RenderTarget[0].SrcBlend), static_cast<int>(bd.RenderTarget[0].DestBlend),
@@ -4540,21 +4548,43 @@ bool MevrHudPanelDraw(ID3D11DeviceContext* ctx, DrawThunk&& draw) noexcept
             LogLine(line);
         }
     }
-    ID3D11RenderTargetView* panelRtv = over
+    ID3D11RenderTargetView* panelRtv = (over || tint)
         ? MELEVR::MevrBridge::HudPanelTarget(ctx, td.Width, td.Height, static_cast<int>(rd.Format)) : nullptr;
     if (panelRtv == nullptr)
     {
         if (gameBlend != nullptr) gameBlend->Release();
         return false;
     }
-    ID3D11BlendState* panelBlend = MELEVR::MevrBridge::HudPanelBlend(ctx, gameBlend);
+    ID3D11BlendState* panelBlend = nullptr;
+    ID3D11BlendState* tintBlend = nullptr;
+    if (over)
+        panelBlend = MELEVR::MevrBridge::HudPanelBlend(ctx, gameBlend);
+    else
+        MELEVR::MevrBridge::HudPanelTintBlends(ctx, gameBlend, &panelBlend, &tintBlend);
     ID3D11RenderTargetView* savedRtvs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
     ID3D11DepthStencilView* savedDsv = nullptr;
     ctx->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, savedRtvs, &savedDsv);
     ctx->OMSetRenderTargets(1, &panelRtv, savedDsv);
     if (panelBlend != nullptr) ctx->OMSetBlendState(panelBlend, blendFactor, sampleMask);
     draw();
-    if (panelBlend != nullptr) ctx->OMSetBlendState(gameBlend, blendFactor, sampleMask);
+    // The tint pass: the same draw once more, into the tint texture, without depth or stencil writes.
+    ID3D11RenderTargetView* tintRtv = (tintBlend != nullptr && (bd.RenderTarget[0].RenderTargetWriteMask & 7u) != 0)
+        ? MELEVR::MevrBridge::HudPanelTintTarget() : nullptr;
+    if (tintRtv != nullptr)
+    {
+        ID3D11DepthStencilState* gameDepth = nullptr;
+        UINT stencilRef = 0;
+        ctx->OMGetDepthStencilState(&gameDepth, &stencilRef);
+        ID3D11DepthStencilState* noWrites = MELEVR::MevrBridge::HudPanelNoWrites(ctx, gameDepth);
+        ctx->OMSetRenderTargets(1, &tintRtv, savedDsv);
+        ctx->OMSetBlendState(tintBlend, blendFactor, sampleMask);
+        if (noWrites != nullptr) ctx->OMSetDepthStencilState(noWrites, stencilRef);
+        draw();
+        ctx->OMSetDepthStencilState(gameDepth, stencilRef);
+        if (gameDepth != nullptr) gameDepth->Release();
+        MELEVR::MevrBridge::NoteHudPanelTint();
+    }
+    if (panelBlend != nullptr || tintRtv != nullptr) ctx->OMSetBlendState(gameBlend, blendFactor, sampleMask);
     ctx->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, savedRtvs, savedDsv);
     for (auto*& r : savedRtvs)
     {

@@ -32,6 +32,7 @@ namespace mevr::game::squad_weapons {
 namespace {
 
 namespace menu = vr::squad_menu;
+namespace wheel = menu::wheel;
 using menu::kMaxMembers;
 using menu::kWeapons;
 
@@ -76,6 +77,10 @@ UFunction* gGetRangedWeaponType = nullptr;
 UFunction* gGetClass = nullptr;
 UFunction* gGetPercentHealth = nullptr;
 UFunction* gPauseGame = nullptr;
+UFunction* gEnterWeaponWheel = nullptr;
+UFunction* gExitWeaponWheel = nullptr;
+UFunction* gGetScaleFormManager = nullptr;
+UFunction* gIsCombatEnabled = nullptr;
 #endif
 
 bool gStarted = false;
@@ -132,6 +137,18 @@ struct Pending {
     std::string who;
 };
 Pending gPending;
+
+// style = native: the game's own weapon wheel, held by the left grip.
+wheel::Machine gWheel;
+bool gWheelPressA = false;       // the pad shows A this tick (confirming on release)
+std::uint32_t gWheelSerial = 0;  // + 1 per opening (the host places its panel afresh)
+wheel::Entry gWheelEntry;        // the HUD's highlighted entry, last tick
+int gWheelMode = -1;             // the game's mode, last tick
+int gWheelPointed = -1;          // the gMembers index pointed at when it opened
+double gWheelOpenedAt = 0.0;     // seconds since the enter
+bool gToldNoNative = false;
+bool gStyleNative = false;
+gamepad::WheelStick gWheelStick = gamepad::WheelStick::Right;
 
 // Heartbeat counters.
 unsigned gOpens = 0;
@@ -594,6 +611,496 @@ void FollowPending(double deltaSeconds) {
     }
 }
 
+// ---- The squad and the pointing (both styles) -----------------------------------------------------
+
+struct Survey {
+    int pointed = -1;    // gMembers index the left hand points at (within the cone), -1: none
+    int nearest = -1;    // gMembers index nearest the left hand's ray, whatever the cone
+    int preferred = -1;  // who the custom menu preselects when not pointing
+    char const* preferredWhy = "";
+    float gunDistance = -1.0f;  // the left hand from the held gun's foregrip (meters; negative: no gun)
+    bool nearGun = false;       // ...within the support grip's release distance
+};
+
+// Reads the squad (names and classes once, quick slots and health now and then, every tick while
+// `busy`), maps them into tracking space, and what the left hand points at.
+Survey SurveySquad(Game const& game, double deltaSeconds, bool busy, bool newAway, vr::controllers::Hand const& left,
+    vr::host_view::State const& view, hand_calibration::Squad const& settings) {
+    Survey survey;
+    gDetailsAge += deltaSeconds;
+    bool const details = busy || newAway || gPending.key != 0 || gDetailsAge >= kDetailsSeconds;
+    if (details) {
+        gDetailsAge = 0.0;
+    }
+    for (int i = 0; i < game.count; ++i) {
+        std::uintptr_t const key = reinterpret_cast<std::uintptr_t>(game.pawns[i]);
+        bool const fresh = gMembers[i].key != key;
+        if (fresh) {
+            gMembers[i] = MemberInfo{};
+            gMembers[i].key = key;
+        }
+        if (fresh || details) {
+            ReadDetails(game.pawns[i], gMembers[i], fresh);
+        }
+    }
+    for (int i = game.count; i < kMaxMembers; ++i) {
+        gMembers[i] = MemberInfo{};
+    }
+    gCount = game.count;
+    std::string squadText;
+    for (int i = 0; i < gCount; ++i) {
+        squadText += std::format("{}{}", i > 0 ? "; " : "", Describe(gMembers[i]));
+    }
+    if (squadText != gLoggedSquad) {
+        gLoggedSquad = squadText;
+        log::Info("squad: {}", gCount > 0 ? squadText : std::string("no squadmates"));
+    }
+
+    // Where they are, and what the left hand points at.
+    auto const anchor = view_anchor::Current();
+    XrVector3f const handOrigin = left.aim.position;
+    XrVector3f const handDirection = Rotate(left.aim.orientation, {0.0f, 0.0f, -1.0f});
+    std::array<menu::Target, kMaxMembers> targets{};
+    for (int i = 0; i < gCount; ++i) {
+        MemberInfo& m = gMembers[i];
+        m.target.valid = false;
+        m.angle = kPi;
+        m.distance = -1.0f;
+        if (anchor) {
+            FVector const& at = engine::adapter::Location(game.pawns[i]);
+            m.target.position = engine::ToTracking(*anchor, engine::UnrealVector{at.X, at.Y, at.Z + kChestUnits});
+            m.target.valid = std::isfinite(m.target.position.x) && std::isfinite(m.target.position.y) &&
+                std::isfinite(m.target.position.z);
+        }
+        if (m.target.valid && left.aimValid) {
+            m.angle = menu::AngleToRay(handOrigin, handDirection, m.target.position);
+            XrVector3f const d{m.target.position.x - handOrigin.x, m.target.position.y - handOrigin.y,
+                m.target.position.z - handOrigin.z};
+            m.distance = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
+        }
+        targets[i] = left.aimValid ? m.target : menu::Target{};
+    }
+    // The cards: the squadmate standing further left on the left (decided when the menu opens).
+    if (!busy) {
+        gCardOrder = {0, 1};
+        if (gCount == 2 && gMembers[0].target.valid && gMembers[1].target.valid) {
+            XrQuaternionf const& q = view.head.orientation;
+            XrVector3f const right = Rotate(q, {1.0f, 0.0f, 0.0f});
+            auto const side = [&](MemberInfo const& m) {
+                XrVector3f const d{m.target.position.x - view.head.position.x, 0.0f, m.target.position.z - view.head.position.z};
+                float const length = std::sqrt(d.x * d.x + d.z * d.z);
+                return length > 1e-3f ? (d.x * right.x + d.z * right.z) / length : 0.0f;
+            };
+            if (side(gMembers[1]) < side(gMembers[0])) {
+                gCardOrder = {1, 0};
+            }
+        }
+    }
+    survey.pointed = menu::PickPointed(handOrigin, handDirection, targets.data(), gCount,
+        static_cast<float>(settings.pointConeDeg) * kDeg, static_cast<float>(settings.pointMaxM));
+    survey.nearest = menu::NearestToRay(handOrigin, handDirection, targets.data(), gCount);
+    for (int i = 0; i < gCount; ++i) {
+        if (gMembers[i].key == gLastUsed && gLastUsed != 0) {
+            survey.preferred = i;
+        }
+    }
+    survey.preferredWhy = "the last squadmate you gave a weapon";
+    if (survey.preferred < 0) {
+        survey.preferred = survey.nearest >= 0 ? survey.nearest : 0;
+        survey.preferredWhy = survey.nearest >= 0 ? "the one nearest your pointing" : "the first in the squad";
+    }
+
+    // The two-handed grip keeps priority: a squeeze near the foregrip that the mapping didn't take is a
+    // missed grab, not the menu (unless the hand points at someone).
+    gamepad::Options const pad = support_grip::PadOptions();
+    hand_calibration::Controls const controls = hand_calibration::GetControls();
+    survey.gunDistance = pad.support.distance;
+    survey.nearGun = std::isfinite(survey.gunDistance) && survey.gunDistance >= 0.0f && survey.gunDistance <= controls.releaseMeters;
+    return survey;
+}
+
+void LogSqueeze(Survey const& survey, hand_calibration::Squad const& settings) {
+    log::Info("squad: left grip squeezed away from the gun{}: {}",
+        survey.nearGun ? std::format(" ({:.2f} m from the foregrip)", survey.gunDistance) : "",
+        survey.pointed >= 0 ? std::format("pointing at {} ({:.1f} deg off, {:.1f} m)", gMembers[survey.pointed].name,
+                                  gMembers[survey.pointed].angle / kDeg, gMembers[survey.pointed].distance)
+        : survey.nearest >= 0 ? std::format("pointing at nobody (nearest {} at {:.0f} deg, cone {:.0f})", gMembers[survey.nearest].name,
+                                    gMembers[survey.nearest].angle / kDeg, settings.pointConeDeg)
+                              : std::string("no squadmate in view"));
+}
+
+// ---- style = native: the game's own weapon wheel -------------------------------------------------
+
+static_assert(offsetof(APlayerController, m_oCachedScaleFormManager) == 0x740);
+static_assert(offsetof(UMassEffectGuiManager, m_oSFHudHandler) == 0x1A4);
+static_assert(offsetof(UBioSFHandler_HUD, vInput) == 0xDC);
+static_assert(offsetof(UBioSFHandler_HUD, m_nShepardIndex) == 0x10C);
+static_assert(offsetof(UBioSFHandler_HUD, m_nHench1Index) == 0x110);
+static_assert(offsetof(UBioSFHandler_HUD, m_nHench2Index) == 0x114);
+static_assert(offsetof(UBioSFHandler_HUD, nAngle) == 0x134);
+static_assert(offsetof(UBioSFHandler_HUD, nLastAngle) == 0x138);
+
+std::optional<unsigned char> CurrentMode(ABioPlayerController* controller) {
+    USFXGameModeManager const* const modes = engine::adapter::GameModes(controller);
+    if (modes == nullptr) {
+        return std::nullopt;
+    }
+    return modes->CurrentMode;
+}
+
+USFXGameModeBase* FindMode(ABioPlayerController* controller, UClass* cls) {
+    USFXGameModeManager* const manager = controller->GameModeManager;
+    if (manager == nullptr || cls == nullptr) {
+        return nullptr;
+    }
+    for (int i = 0; i < static_cast<int>(manager->GameModes.Count()); ++i) {
+        USFXGameModeBase* const mode = manager->GameModes.GetData()[i];
+        if (mode != nullptr && mode->IsA(cls)) {
+            return mode;
+        }
+    }
+    return nullptr;
+}
+
+// The HUD's script handler (the console HUD movie's, which draws and steers the wheel), or nullptr.
+UBioSFHandler_HUD* HudHandler(ABioPlayerController* controller) {
+    UBioSFManager* manager = nullptr;
+    if (gGetScaleFormManager != nullptr) {
+        APlayerController_execGetScaleFormManager_Parms parms;
+        controller->ProcessEvent(gGetScaleFormManager, &parms, nullptr);  // directly: never the SDK's wrapper
+        manager = parms.ReturnValue;
+    }
+    if (manager == nullptr) {
+        manager = controller->m_oCachedScaleFormManager;
+    }
+    if (manager == nullptr || !manager->IsA(UMassEffectGuiManager::StaticClass())) {
+        return nullptr;
+    }
+    UBioSFHandler_HUD* const hud = static_cast<UMassEffectGuiManager*>(manager)->m_oSFHudHandler;
+    return hud != nullptr && hud->IsA(UBioSFHandler_HUD::StaticClass()) ? hud : nullptr;
+}
+
+// Whether the player may fight here (EnterWeaponWheel returns at once in a hub where it's false). True
+// when it can't be told.
+bool CombatEnabled(Game const& game) {
+    UPlayerInput* const input = game.controller->PlayerInput;
+    if (gIsCombatEnabled == nullptr || input == nullptr || !input->IsA(UBioPlayerInput::StaticClass())) {
+        return true;
+    }
+    return CallBool(input, gIsCombatEnabled);
+}
+
+bool CallNoParms(UObject* object, UFunction* function) {
+    if (object == nullptr || function == nullptr) {
+        return false;
+    }
+    struct {
+        unsigned char pad[64];
+    } parms{};
+    object->ProcessEvent(function, &parms, nullptr);  // directly: never the SDK's wrapper
+    return true;
+}
+
+// A wheel entry as the squad knows it.
+struct Pick {
+    bool valid = false;
+    int squadIndex = -1;  // BioBaseSquad index
+    int member = -1;      // gMembers index, -1 for Shepard
+    int weapon = -1;      // ESwitchToWeapon
+    bool carried = false;
+    bool inHand = false;  // the weapon they hold now
+    bool recorded = false;  // their squad entry's switch weapon is it (queued)
+    std::string name;
+};
+
+std::uint8_t ShepardCarried(Game const& game, int& current) {
+    std::uint8_t carried = 0;
+    current = -1;
+    UBioPawnBehavior* const behavior = game.player->m_oBehavior;
+    UBioEquipment* const equipment = behavior != nullptr ? behavior->m_oEquipment : nullptr;
+    if (equipment == nullptr) {
+        return 0;
+    }
+    std::array<int, kWeapons> typeOfSlot{-1, -1, -1, -1};
+    for (int i = 0; i < kWeapons; ++i) {
+        typeOfSlot[i] = RangedType(equipment->m_QuickSlotArray[i]);
+        if (typeOfSlot[i] >= 0) {
+            carried = static_cast<std::uint8_t>(carried | (1u << typeOfSlot[i]));
+        }
+    }
+    int const slot = equipment->m_eQuickSlotCurrent;
+    current = slot >= 0 && slot < kWeapons ? typeOfSlot[slot] : -1;
+    return carried;
+}
+
+Pick PickOf(Game const& game, UBioSFHandler_HUD const* hud, wheel::Entry entry) {
+    Pick pick;
+    if (hud == nullptr || !entry.Valid()) {
+        return pick;
+    }
+    pick.squadIndex = entry.member == 0 ? hud->m_nShepardIndex : entry.member == 1 ? hud->m_nHench1Index : hud->m_nHench2Index;
+    pick.weapon = wheel::WeaponOfSlot(entry.slot);
+    if (pick.squadIndex < 0 || pick.squadIndex >= SquadSize(game.squad) || pick.weapon < 0) {
+        return pick;  // a henchman slot the squad doesn't have (one squadmate, or the HUD's indices stale)
+    }
+    if (entry.member == 0) {
+        int current = -1;
+        pick.carried = (ShepardCarried(game, current) & (1u << pick.weapon)) != 0;
+        pick.inHand = current == pick.weapon;
+        pick.name = "SHEPARD";
+    } else {
+        for (int i = 0; i < game.count; ++i) {
+            if (game.indices[i] == pick.squadIndex) {
+                pick.member = i;
+            }
+        }
+        if (pick.member < 0) {
+            return pick;  // not one of the squadmates we read (the HUD's indices are stale?)
+        }
+        MemberInfo const& m = gMembers[pick.member];
+        pick.carried = (m.carried & (1u << pick.weapon)) != 0;
+        pick.inHand = m.current == pick.weapon;
+        pick.name = m.name;
+    }
+    pick.recorded = SwitchWeaponOf(game.squad, pick.squadIndex) == pick.weapon;
+    pick.valid = true;
+    return pick;
+}
+
+// The wheel's member for a squadmate (1 or 2: the HUD's first or second henchman), or -1.
+int WheelMemberOf(Game const& game, UBioSFHandler_HUD const* hud, int member) {
+    if (hud == nullptr || member < 0 || member >= game.count) {
+        return -1;
+    }
+    int const squadIndex = game.indices[member];
+    return squadIndex == hud->m_nHench1Index ? 1 : squadIndex == hud->m_nHench2Index ? 2 : -1;
+}
+
+std::string Recorded(Game const& game) {
+    std::string out;
+    int const size = SquadSize(game.squad);
+    for (int i = 0; i < size; ++i) {
+        int const recorded = SwitchWeaponOf(game.squad, i);
+        if (recorded >= 0 && recorded < kWeapons) {
+            APawn* const member = SquadMember(game.squad, i);
+            std::string name = member == game.player ? std::string("Shepard") : std::format("member {}", i);
+            for (int m = 0; m < gCount; ++m) {
+                if (game.indices[m] == i) {
+                    name = gMembers[m].name;
+                }
+            }
+            out += std::format("{}{}: {}", out.empty() ? "" : ", ", name, menu::WeaponName(recorded));
+        }
+    }
+    return out.empty() ? std::string("nothing") : out;
+}
+
+Pick gWheelGiven;  // what the last confirm gave
+bool gWheelClicked = false;  // this opening's confirm click was given
+
+void Publish(Link const& link, bool open);
+
+// Gives the game's wheel back if we hold it (the menu turned off, the style changed, the mod unloading).
+void ReleaseWheel(char const* why) {
+    if (!gWheel.Holding()) {
+        gWheel.Reset();
+        gWheelPressA = false;
+        return;
+    }
+    gWheel.Reset();
+    gWheelPressA = false;
+    APlayerController* const pc = engine::LocalPlayerController();
+    if (pc == nullptr || !pc->IsA(ABioPlayerController::StaticClass())) {
+        return;
+    }
+    auto* const controller = static_cast<ABioPlayerController*>(pc);
+    auto const mode = CurrentMode(controller);
+    if (mode && *mode == 3) {
+        bool const called = CallNoParms(FindMode(controller, USFXGameModeWeaponWheel::StaticClass()), gExitWeaponWheel);
+        log::Info("squad: the game's weapon wheel let go ({}){}", why, called ? ": closed (ExitWeaponWheel)" : ": no wheel mode to close");
+    }
+}
+
+void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad const& settings,
+    vr::controllers::State const& controllers, bool newAway) {
+    // Our own menu stays shut.
+    if (gMachine.CurrentPhase() != menu::Phase::Idle) {
+        log::Info("squad: menu closed (style is native now)");
+        ResumeIfPaused("style is native now");
+        gMachine.Reset();
+    }
+    Publish(link, false);
+    gWheelStick = settings.wheelStick;
+
+    std::string why;
+    auto const game = ReadGame(why);
+    auto const mode = game ? CurrentMode(game->controller) : std::nullopt;
+    bool const wheelActive = mode && *mode == 3;
+    bool const onFoot = mode && *mode == 0;
+    vr::host_view::State const view = vr::host_view::Latest();
+    bool const usable = game.has_value() && view.valid && controllers.active && !support_grip::Held();
+
+    Survey survey;
+    if (game) {
+        survey = SurveySquad(*game, deltaSeconds, gWheel.Holding(), newAway, controllers.left, view, settings);
+    } else {
+        gCount = 0;
+    }
+    if (newAway && game) {
+        LogSqueeze(survey, settings);
+    }
+
+    // What the wheel highlights (any time it's up: also when LB opened it).
+    UBioSFHandler_HUD* const hud = (wheelActive || gWheel.Holding()) && game ? HudHandler(game->controller) : nullptr;
+    wheel::Entry const entry = wheelActive && hud != nullptr ? wheel::EntryAtStickAngle(hud->nAngle) : wheel::Entry{};
+    Pick const pick = game && wheelActive ? PickOf(*game, hud, entry) : Pick{};
+
+    wheel::Input in;
+    in.dt = static_cast<float>(deltaSeconds);
+    in.usable = usable;
+    in.gripDown = gOwnGrip;
+    in.newAwaySqueeze = newAway;
+    in.nearGun = survey.nearGun;
+    in.pointed = survey.pointed >= 0;
+    bool const combat = game && onFoot ? CombatEnabled(*game) : true;
+    in.onFoot = onFoot && combat;
+    in.wheelActive = wheelActive;
+    in.confirmOnRelease = settings.confirmOnRelease;
+    in.openHoldSeconds = static_cast<float>(settings.openHoldSeconds);
+    in.highlightValid = pick.valid;
+    in.highlightCarried = pick.valid && pick.carried && !pick.inHand;  // their weapon in hand: nothing to give
+    in.choiceRecorded = pick.valid && pick.recorded;
+    in.b = controllers.right.secondary;
+    wheel::Step const step = gWheel.Update(in);
+    gWheelPressA = step.holdA;
+
+    if (step.missedGrab) {
+        log::Info("squad: a squeeze at nobody next to the gun is a missed foregrip grab, not the weapon wheel");
+    }
+    if (newAway && onFoot && !combat && !survey.nearGun) {
+        log::Info("squad: combat is off here (a hub): the game has no weapon wheel to open");
+    }
+    if (step.armed) {
+        log::Info("squad: keep squeezing {:.2f} s to open the weapon wheel anyway", settings.openHoldSeconds);
+    }
+    if (step.enter) {
+        ++gWheelSerial;
+        ++gOpens;
+        gWheelPointed = step.openedPointing && survey.pointed >= 0 ? survey.pointed : -1;
+        gWheelOpenedAt = 0.0;
+        gWheelClicked = false;
+        USFXGameModeBase* const defaultMode = game ? FindMode(game->controller, USFXGameModeDefault::StaticClass()) : nullptr;
+        bool const called = CallNoParms(defaultMode, gEnterWeaponWheel);
+        log::Info("squad: wheel #{}: {} the game's weapon wheel{} (SFXGameModeDefault.EnterWeaponWheel, what holding LB does)",
+            gWheelSerial, called ? "opening" : "can't open (no SFXGameModeDefault)",
+            gWheelPointed >= 0 ? std::format(", pointed at {}", gMembers[gWheelPointed].name)
+                               : std::format(" (held {:.2f} s at nobody)", settings.openHoldSeconds));
+    }
+    if (gWheel.Holding()) {
+        gWheelOpenedAt += deltaSeconds;
+    }
+    if (step.opened) {
+        log::Info("squad: wheel #{} open after {:.2f} s (game mode 3; the game pauses itself); HUD handler {}{}", gWheelSerial,
+            gWheelOpenedAt, hud != nullptr ? engine::FullName(hud) : std::string("not found (no highlight, no preselect)"),
+            hud != nullptr && hud->oPanel != nullptr
+                ? std::format(", its movie {} the gamepad", hud->oPanel->bUsingGamepad ? "uses" : "doesn't use")
+                : std::string());
+        OpenHaptic(link);
+        // Pointing preselects: the HUD keeps its last stick angle while the stick is centred, so set it to
+        // the pointed squadmate's weapon in hand. [verify] in the headset
+        int const member = game ? WheelMemberOf(*game, hud, gWheelPointed) : -1;
+        if (settings.wheelPreselect && gWheelPointed >= 0 && member > 0) {
+            int const weapon = gMembers[gWheelPointed].current;
+            int const angle = wheel::StickAngleOf({member, wheel::SlotOfWeapon(weapon)});
+            if (angle >= 0) {
+                hud->nLastAngle = angle;
+                hud->nAngle = angle;
+                log::Info("squad: wheel #{}: preselected {}'s {} (wheel member {}, slot {}: the HUD's kept stick angle {} deg)", gWheelSerial,
+                    gMembers[gWheelPointed].name, menu::WeaponName(weapon), member, wheel::SlotOfWeapon(weapon), angle);
+            } else {
+                log::Info("squad: wheel #{}: nothing to preselect for {} (weapon in hand unknown)", gWheelSerial, gMembers[gWheelPointed].name);
+            }
+        } else if (settings.wheelPreselect && gWheelPointed >= 0) {
+            log::Info("squad: wheel #{}: {} isn't on the HUD's wheel (its henchmen indices {} and {}): no preselect", gWheelSerial,
+                gMembers[gWheelPointed].name, hud != nullptr ? hud->m_nHench1Index : -1, hud != nullptr ? hud->m_nHench2Index : -1);
+        }
+    }
+    if (step.openFailed) {
+        log::Warn("squad: wheel #{}: the game didn't enter its weapon wheel within {:.1f} s (combat disabled here, a tutorial, "
+                  "or a mode in the way: game mode {})", gWheelSerial, wheel::kOpenTimeout, mode ? std::to_string(*mode) : std::string("?"));
+        RefusedHaptic(link, kLeft);
+    }
+    // The highlight: a tick in the steering hand on each change; a soft refusal on a weapon they don't carry.
+    if (wheelActive && !(entry == gWheelEntry)) {
+        if (entry.Valid()) {
+            bool const leftSteers = settings.wheelStick == gamepad::WheelStick::Left ||
+                (settings.wheelStick == gamepad::WheelStick::Either &&
+                    controllers.left.stickX * controllers.left.stickX + controllers.left.stickY * controllers.left.stickY >
+                        controllers.right.stickX * controllers.right.stickX + controllers.right.stickY * controllers.right.stickY);
+            int const hand = leftSteers ? kLeft : kRight;
+            if (pick.valid && pick.carried) {
+                TickHaptic(link, hand);
+            } else {
+                RefusedHaptic(link, hand);
+            }
+            log::Info("squad: wheel highlight: member {} slot {} = {}'s {}{}", entry.member, entry.slot,
+                pick.valid ? pick.name : std::string("?"), menu::WeaponName(wheel::WeaponOfSlot(entry.slot)),
+                !pick.valid ? " (not one of the squad we read)" : !pick.carried ? " (not carried)" : pick.inHand ? " (in hand)" : "");
+        }
+        gWheelEntry = entry;
+    }
+    if (!wheelActive) {
+        gWheelEntry = {};
+    }
+    if (step.confirmed) {
+        ++gConfirms;
+        log::Info("squad: wheel #{}: grip let go: giving {} the {} (A for the game: it queues the highlighted entry)", gWheelSerial,
+            pick.name, menu::WeaponName(pick.weapon));
+        ConfirmHaptic(link);
+        gWheelClicked = true;
+        gWheelGiven = pick;
+    }
+    if (step.exit && !step.cancelled && !gWheelClicked) {
+        ConfirmHaptic(link);  // closing on something queued by hand (A): the click all the same
+        gWheelClicked = true;
+    }
+    if (step.exit && game) {
+        bool const called = CallNoParms(FindMode(game->controller, USFXGameModeWeaponWheel::StaticClass()), gExitWeaponWheel);
+        log::Info("squad: wheel #{}: {} (ExitWeaponWheel, what letting go of LB does); queued: {}", gWheelSerial,
+            called ? "closing" : "can't close (no SFXGameModeWeaponWheel)", Recorded(*game));
+    }
+    if (step.cancelled) {
+        ++gCancels;
+        log::Info("squad: wheel #{}: {}", gWheelSerial, controllers.right.secondary ? "B: closed without giving anything"
+                                                          : "let go with nothing new to give");
+        CancelHaptic(link);
+        gWheelClicked = true;  // no click on a retried exit either
+    }
+    if (step.closed || step.closedByGame) {
+        log::Info("squad: wheel #{} closed{} after {:.2f} s", gWheelSerial, step.closedByGame ? " by the game (LB, the pause menu...)" : "",
+            gWheelOpenedAt);
+        if (gWheelGiven.valid && gWheelGiven.member >= 0 && game) {
+            MemberInfo const& m = gMembers[gWheelGiven.member];
+            gLastUsed = m.key;
+            gPending = {m.key, gWheelGiven.weapon, 0.0, m.name};
+            gLastResult = std::format("{} given the {} (the game's wheel)", m.name, menu::WeaponName(gWheelGiven.weapon));
+        }
+        gWheelGiven = {};
+    }
+    if (step.exitStuck) {
+        log::Warn("squad: wheel #{}: the game's weapon wheel didn't close after two ExitWeaponWheel calls: let go of it", gWheelSerial);
+    }
+    if (game) {
+        FollowPending(deltaSeconds);
+    }
+    gWheelMode = mode ? *mode : -1;
+    SetWhy(gWheel.Holding() ? std::format("the game's wheel: {}", wheel::PhaseName(gWheel.CurrentPhase()))
+           : gWheel.CurrentPhase() == wheel::Phase::Arming ? std::string("arming (held at nobody)")
+           : !game ? why
+           : !onFoot ? std::format("ready (game mode {})", mode ? std::to_string(*mode) : std::string("?"))
+                     : std::string("ready (native)"));
+}
+
 #endif  // SDK_TARGET_LE1
 
 void Publish(Link const& link, bool open) {
@@ -629,12 +1136,35 @@ void Publish(Link const& link, bool open) {
     gPublishedOpen = open;
 }
 
+#if defined(SDK_TARGET_LE1)
+void ReleaseWheel(char const* why);
+#endif
+
+void PublishWheelPanel(Link const& link, hand_calibration::Squad const& settings) {
+    if (link.setWheelPanel == nullptr) {
+        return;
+    }
+    wheel::Panel panel;
+    panel.serial = gWheelSerial;
+    panel.enabled = settings.wheelPanel;
+    panel.modOpen = gWheel.Holding();
+    panel.weaponPlace = static_cast<std::int8_t>(settings.weaponWheelAt);
+    panel.powerPlace = static_cast<std::int8_t>(settings.powerWheelAt);
+    panel.distance = static_cast<float>(settings.panelDistanceM);
+    panel.width = static_cast<float>(settings.panelWidthM);
+    for (int i = 0; i < 4; ++i) {
+        panel.crop[i] = static_cast<float>(settings.wheelCrop[i]);
+    }
+    link.setWheelPanel(&panel);
+}
+
 void Inactive(std::string why, Link const& link) {
     if (gMachine.CurrentPhase() != menu::Phase::Idle) {
         log::Info("squad: menu closed ({})", why);
     }
 #if defined(SDK_TARGET_LE1)
     ResumeIfPaused(why.c_str());
+    ReleaseWheel(why.c_str());
 #endif
     gMachine.Reset();
     gUsable = false;
@@ -664,6 +1194,10 @@ bool TryStartup() {
         {&gGetClass, L"GetClass", "Function SFXGame.BioPawnBehavior.GetClass"},
         {&gGetPercentHealth, L"GetPercentHealth", "Function SFXGame.BioEpicPawnBehavior.GetPercentHealth"},
         {&gPauseGame, L"PauseGame", "Function Engine.WorldInfo.PauseGame"},
+        {&gEnterWeaponWheel, L"EnterWeaponWheel", "Function SFXGame.SFXGameModeDefault.EnterWeaponWheel"},
+        {&gExitWeaponWheel, L"ExitWeaponWheel", "Function SFXGame.SFXGameModeWeaponWheel.ExitWeaponWheel"},
+        {&gGetScaleFormManager, L"GetScaleFormManager", "Function Engine.PlayerController.GetScaleFormManager"},
+        {&gIsCombatEnabled, L"IsCombatEnabled", "Function SFXGame.BioPlayerInput.IsCombatEnabled"},
     };
     std::string missing;
     for (Want const& w : wants) {
@@ -676,8 +1210,9 @@ bool TryStartup() {
     gStarted = gGetSquadSize != nullptr && gGetMember != nullptr && gGetMemberSwitchWeapon != nullptr &&
         gSetMemberSwitchWeapon != nullptr && gSquadOrderEquipWeapon != nullptr && gApplyTacticalOrders != nullptr &&
         gChangeToQuickSlot != nullptr && gIsInCombatActionState != nullptr && gGetRangedWeaponType != nullptr;
-    log::Info("squad: script functions {}{}", gStarted ? "found" : "MISSING: the squad menu stays off",
-        missing.empty() ? std::string() : std::format(" (not found: {})", missing));
+    log::Info("squad: script functions {}{}; the game's own wheel {}", gStarted ? "found" : "MISSING: the squad menu stays off",
+        missing.empty() ? std::string() : std::format(" (not found: {})", missing),
+        gEnterWeaponWheel != nullptr && gExitWeaponWheel != nullptr ? "can be opened and closed" : "CAN'T be opened (custom menu instead)");
     return gStarted;
 #else
     return false;
@@ -703,6 +1238,7 @@ void Tick(double deltaSeconds, Link const& link) {
         gHaveCount = true;
     }
     (void)wasDown;
+    PublishWheelPanel(link, settings);  // the game's wheels at the hand, whichever way they open
 
     if (!settings.enabled) {
         Inactive("off ([Squad] enabled = 0)", link);
@@ -721,6 +1257,25 @@ void Tick(double deltaSeconds, Link const& link) {
     if (!gStarted) {
         Inactive("waiting for the script functions", link);
         return;
+    }
+    bool const nativeReady = gEnterWeaponWheel != nullptr && gExitWeaponWheel != nullptr;
+    if (settings.native && (!link.nativeSupported || !nativeReady) && !gToldNoNative) {
+        gToldNoNative = true;
+        log::Warn("squad: style = native, but {}: our drawn menu instead", !link.nativeSupported
+            ? "the host can't show the game's wheel at the hand (services older than v12: close the game and redeploy the host)"
+            : "the game's EnterWeaponWheel/ExitWeaponWheel weren't found");
+    }
+    bool const native = settings.native && link.nativeSupported && nativeReady;
+    if (native != gStyleNative) {
+        gStyleNative = native;
+        log::Info("squad: style: {}", native ? "the game's own weapon wheel at the hand" : "our drawn menu at the hand");
+    }
+    if (native) {
+        TickNative(deltaSeconds, link, settings, controllers, newAway);
+        return;
+    }
+    if (gWheel.Holding()) {
+        ReleaseWheel("style is custom now");
     }
     auto const mode = head_tracking::GameMode();
     if (!mode || *mode != 0) {
@@ -743,91 +1298,12 @@ void Tick(double deltaSeconds, Link const& link) {
         return;
     }
 
-    // The squad, this tick.
+    // The squad, this tick, and what the left hand points at.
     bool const busy = gMachine.CurrentPhase() != menu::Phase::Idle;
-    gDetailsAge += deltaSeconds;
-    bool const details = busy || newAway || gPending.key != 0 || gDetailsAge >= kDetailsSeconds;
-    if (details) {
-        gDetailsAge = 0.0;
-    }
-    for (int i = 0; i < game->count; ++i) {
-        std::uintptr_t const key = reinterpret_cast<std::uintptr_t>(game->pawns[i]);
-        bool const fresh = gMembers[i].key != key;
-        if (fresh) {
-            gMembers[i] = MemberInfo{};
-            gMembers[i].key = key;
-        }
-        if (fresh || details) {
-            ReadDetails(game->pawns[i], gMembers[i], fresh);
-        }
-    }
-    for (int i = game->count; i < kMaxMembers; ++i) {
-        gMembers[i] = MemberInfo{};
-    }
-    gCount = game->count;
-    std::string squadText;
-    for (int i = 0; i < gCount; ++i) {
-        squadText += std::format("{}{}", i > 0 ? "; " : "", Describe(gMembers[i]));
-    }
-    if (squadText != gLoggedSquad) {
-        gLoggedSquad = squadText;
-        log::Info("squad: {}", gCount > 0 ? squadText : std::string("no squadmates"));
-    }
-
-    // Where they are, and what the left hand points at.
-    auto const anchor = view_anchor::Current();
-    XrVector3f const handOrigin = left.aim.position;
-    XrVector3f const handDirection = Rotate(left.aim.orientation, {0.0f, 0.0f, -1.0f});
-    std::array<menu::Target, kMaxMembers> targets{};
-    for (int i = 0; i < gCount; ++i) {
-        MemberInfo& m = gMembers[i];
-        m.target.valid = false;
-        m.angle = kPi;
-        m.distance = -1.0f;
-        if (anchor) {
-            FVector const& at = engine::adapter::Location(game->pawns[i]);
-            m.target.position = engine::ToTracking(*anchor, engine::UnrealVector{at.X, at.Y, at.Z + kChestUnits});
-            m.target.valid = std::isfinite(m.target.position.x) && std::isfinite(m.target.position.y) &&
-                std::isfinite(m.target.position.z);
-        }
-        if (m.target.valid && left.aimValid) {
-            m.angle = menu::AngleToRay(handOrigin, handDirection, m.target.position);
-            XrVector3f const d{m.target.position.x - handOrigin.x, m.target.position.y - handOrigin.y,
-                m.target.position.z - handOrigin.z};
-            m.distance = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
-        }
-        targets[i] = left.aimValid ? m.target : menu::Target{};
-    }
-    // The cards: the squadmate standing further left on the left (decided when the menu opens).
-    if (!busy) {
-        gCardOrder = {0, 1};
-        if (gCount == 2 && gMembers[0].target.valid && gMembers[1].target.valid) {
-            XrQuaternionf const& q = view.head.orientation;
-            XrVector3f const right = Rotate(q, {1.0f, 0.0f, 0.0f});
-            auto const side = [&](MemberInfo const& m) {
-                XrVector3f const d{m.target.position.x - view.head.position.x, 0.0f, m.target.position.z - view.head.position.z};
-                float const length = std::sqrt(d.x * d.x + d.z * d.z);
-                return length > 1e-3f ? (d.x * right.x + d.z * right.z) / length : 0.0f;
-            };
-            if (side(gMembers[1]) < side(gMembers[0])) {
-                gCardOrder = {1, 0};
-            }
-        }
-    }
-    int const pointed = menu::PickPointed(handOrigin, handDirection, targets.data(), gCount,
-        static_cast<float>(settings.pointConeDeg) * kDeg, static_cast<float>(settings.pointMaxM));
-    int const nearest = menu::NearestToRay(handOrigin, handDirection, targets.data(), gCount);
-    int preferred = -1;
-    for (int i = 0; i < gCount; ++i) {
-        if (gMembers[i].key == gLastUsed && gLastUsed != 0) {
-            preferred = i;
-        }
-    }
-    char const* preferredWhy = "the last squadmate you gave a weapon";
-    if (preferred < 0) {
-        preferred = nearest >= 0 ? nearest : 0;
-        preferredWhy = nearest >= 0 ? "the one nearest your pointing" : "the first in the squad";
-    }
+    Survey const survey = SurveySquad(*game, deltaSeconds, busy, newAway, left, view, settings);
+    int const pointed = survey.pointed;
+    int const preferred = survey.preferred;
+    char const* const preferredWhy = survey.preferredWhy;
 
     // The squad mustn't change under an open menu.
     bool sameSquad = true;
@@ -839,12 +1315,7 @@ void Tick(double deltaSeconds, Link const& link) {
     }
     gUsable = sameSquad;  // an empty squad still answers a squeeze (a refusal); the machine closes on it
 
-    // The two-handed grip keeps priority: a squeeze near the foregrip that the mapping didn't take is a
-    // missed grab, not the menu (unless the hand points at someone).
-    gamepad::Options const pad = support_grip::PadOptions();
-    hand_calibration::Controls const controls = hand_calibration::GetControls();
-    float const gunDistance = pad.support.distance;
-    bool const nearGun = std::isfinite(gunDistance) && gunDistance >= 0.0f && gunDistance <= controls.releaseMeters;
+    bool const nearGun = survey.nearGun;
 
     menu::Input in;
     in.dt = static_cast<float>(deltaSeconds);
@@ -874,12 +1345,7 @@ void Tick(double deltaSeconds, Link const& link) {
         return card >= 0 && card < gCount ? gMembers[gCardOrder[card]].name : std::string("-");
     };
     if (newAway) {
-        log::Info("squad: left grip squeezed away from the gun{}: {}", nearGun ? std::format(" ({:.2f} m from the foregrip)", gunDistance) : "",
-            pointed >= 0 ? std::format("pointing at {} ({:.1f} deg off, {:.1f} m)", gMembers[pointed].name, gMembers[pointed].angle / kDeg,
-                               gMembers[pointed].distance)
-            : nearest >= 0 ? std::format("pointing at nobody (nearest {} at {:.0f} deg, cone {:.0f})", gMembers[nearest].name,
-                                 gMembers[nearest].angle / kDeg, settings.pointConeDeg)
-                           : std::string("no squadmate in view"));
+        LogSqueeze(survey, settings);
     }
     if (step.refused) {
         ++gRefusals;
@@ -964,10 +1430,13 @@ void AdjustPad(gamepad::Options& options) {
     }
     options.gripShoulder = false;
     options.squadMenu = gMachine.IsOpen();
+    options.nativeWheel = gWheel.Holding();
+    options.wheelStick = gWheelStick;
+    options.wheelPressA = gWheelPressA && gWheel.Holding();
 }
 
 bool IsOpen() {
-    return gMachine.IsOpen();
+    return gMachine.IsOpen() || gWheel.Holding();
 }
 
 std::string StatusJson() {
@@ -996,11 +1465,14 @@ std::string StatusJson() {
                            : std::string("null"),
             json::JsonNumber(m.angle / kDeg), json::JsonNumber(m.distance));
     }
-    return std::format("{{\"enabled\": {}, \"hostSupports\": {}, \"why\": {}, \"phase\": {}, \"serial\": {}, \"selectedCard\": {}, "
-                       "\"highlighted\": {}, \"pausedGame\": {}, \"lastResult\": {}, \"members\": [{}]}}",
-        gEnabled ? "true" : "false", gSupported ? "true" : "false", json::JsonString(gWhy), json::JsonString(phase), gSerial,
-        gMachine.Selected(), json::JsonString(menu::WeaponName(gMachine.Highlighted())), gPausedByUs ? "true" : "false",
-        json::JsonString(gLastResult), members);
+    return std::format("{{\"enabled\": {}, \"hostSupports\": {}, \"style\": {}, \"why\": {}, \"phase\": {}, \"serial\": {}, "
+                       "\"selectedCard\": {}, \"highlighted\": {}, \"pausedGame\": {}, \"wheel\": {{\"phase\": {}, \"serial\": {}, "
+                       "\"gameMode\": {}, \"entry\": [{}, {}], \"pressingA\": {}}}, \"lastResult\": {}, \"members\": [{}]}}",
+        gEnabled ? "true" : "false", gSupported ? "true" : "false", json::JsonString(gStyleNative ? "native" : "custom"),
+        json::JsonString(gWhy), json::JsonString(phase), gSerial, gMachine.Selected(),
+        json::JsonString(menu::WeaponName(gMachine.Highlighted())), gPausedByUs ? "true" : "false",
+        json::JsonString(wheel::PhaseName(gWheel.CurrentPhase())), gWheelSerial, gWheelMode, gWheelEntry.member, gWheelEntry.slot,
+        gWheelPressA ? "true" : "false", json::JsonString(gLastResult), members);
 }
 
 void LogStats() {
@@ -1022,10 +1494,13 @@ void Shutdown(bool processExiting) {
 #if defined(SDK_TARGET_LE1)
     if (!processExiting) {
         ResumeIfPaused("the mod is unloading with the menu open");
+        ReleaseWheel("the mod is unloading");
     }
     gGetSquadSize = gGetMember = gGetMemberSwitchWeapon = gSetMemberSwitchWeapon = gSquadOrderEquipWeapon = nullptr;
     gApplyTacticalOrders = gChangeToQuickSlot = gIsInCombatActionState = gGetRangedWeaponType = nullptr;
     gGetClass = gGetPercentHealth = gPauseGame = nullptr;
+    gEnterWeaponWheel = gExitWeaponWheel = gGetScaleFormManager = gIsCombatEnabled = nullptr;
+    gWheelGiven = {};
 #else
     (void)processExiting;
 #endif
@@ -1050,6 +1525,14 @@ void Shutdown(bool processExiting) {
     gPointedCard = -1;
     gPending = {};
     gStarted = false;
+    gWheel.Reset();
+    gWheelPressA = false;
+    gWheelEntry = {};
+    gWheelMode = -1;
+    gWheelPointed = -1;
+    gWheelOpenedAt = 0.0;
+    gToldNoNative = false;
+    gStyleNative = false;
     gWhy = "not started";
     gLoggedWhy.clear();
 }
