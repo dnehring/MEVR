@@ -158,6 +158,12 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
     }
 }
 
+bool FirstPersonAtBoot(bool saved) noexcept {
+    mevr::log::Info("halcyon bridge: first person at launch {} (the active profile's saved state; upstream always boots it off)",
+        saved ? "on" : "off");
+    return saved;
+}
+
 void SetGameWindow(HWND window) noexcept {
     gGameWindow.store(window);
 }

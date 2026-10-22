@@ -182,6 +182,10 @@ void BuildMenuTabs() noexcept;
 // lines up with the player's own movement 1:1.
 float ForwardLeanEmphasis() noexcept;
 
+// Whether first person (K) is on at launch. Upstream always boots it off (experimental, opt-in per
+// session); our VRIK is a first-person experience, so ours keeps what the active profile saved.
+bool FirstPersonAtBoot(bool saved) noexcept;
+
 // ---- Test loop: eye snapshots, pose recording and replay (src/plugin/TestLoop.cpp) ------------------
 // ResolveSessionFunctions, once its session functions are resolved: replaces four of them in place
 // (each argument points at a resolved function pointer) with wrappers that call the original. They

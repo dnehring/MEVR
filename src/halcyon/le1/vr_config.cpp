@@ -3,6 +3,7 @@
 // _CRT_SECURE_NO_WARNINGS for _wfopen/sscanf is set project-wide in the vcxproj PreprocessorDefinitions.
 
 #include "vr_config.h"
+#include "mevr_bridge.h"   // [MEVR]
 
 #include "logger.h"
 #include "pchud.h"   // k*ElemNames: per-element override key names come from the SWF-dump tables
@@ -818,7 +819,7 @@ void LoadFromIni() noexcept
     Get() = g_slots[g_active];       // copy the active slot into the live config (address unchanged)
     // First person ALWAYS boots OFF (2026-07-08 decision): it's experimental, so make it opt-in per session
     // (toggle with the K key in-game) rather than restoring a saved-on state that could surprise on launch.
-    Get().fpEnabled = false;
+    Get().fpEnabled = MELEVR::MevrBridge::FirstPersonAtBoot(g_slots[g_active].fpEnabled);   // [MEVR] upstream: false
     // Depth pop (relief warp) ALWAYS boots OFF (2026-07-09 decision): with it on, AER flickers on load-in
     // and it was implicated in an intermittent startup-load NVIDIA-driver crash (0xC0000005 in
     // nvwgf2umx.dll during the level load). Opt-in per session via the Insert menu, never restored from
