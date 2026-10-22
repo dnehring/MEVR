@@ -8,15 +8,31 @@
 
 namespace mevr::vr::squad_menu {
 struct View;
+namespace wheel {
+struct Panel;
+}
 }
 
-// Squad weapons in VR (docs/squad-weapons-design.md, option A; built 2026-10-22): point the left hand
-// at a squadmate and squeeze the left grip away from the gun's foregrip, and a menu opens above the
-// hand: the two squadmates' cards left and right (the pointed one chosen), and a radial of the weapon
-// types the chosen one carries. The left stick picks the card, a flick of the right stick a weapon;
-// letting go of the grip (or A) gives it to them, B cancels (core/vr/SquadMenu's machine).
+// Squad weapons in VR (docs/squad-weapons-design.md): point the left hand at a squadmate and squeeze
+// the left grip away from the gun's foregrip.
 //
-// Each tick, LE1 on foot with the host's world view and a v11 host:
+// [Squad] style = native (the default since 2026-10-22, host v12): that opens the GAME's own weapon
+// wheel (SFXGameModeDefault.EnterWeaponWheel, what holding LB does: ME1's look, its pause, its squad and
+// weapon rules), which the host shows on a panel at the left hand (squad_menu::wheel::Panel). The
+// right stick (wheelStick) highlights an entry of its one ring (squadmates and weapons together); letting
+// go of the grip sends A for the highlighted entry (the game's own "queue it") and then
+// SFXGameModeWeaponWheel.ExitWeaponWheel (what releasing LB does), whose Deactivated applies the queue.
+// Pointing at a squadmate puts the wheel on their weapon in hand (the HUD's kept stick angle,
+// BioSFHandler_HUD.nLastAngle). The highlighted entry comes from the HUD's nAngle (squad_menu::wheel);
+// a tick in the steering hand on each change. The machine is squad_menu::wheel::Machine.
+//
+// style = custom (the first build, kept as the fallback; also with a host older than v12): a menu we
+// draw opens above the hand: the two squadmates' cards left and right (the pointed one chosen), and a
+// radial of the weapon types the chosen one carries. The left stick picks the card, a flick of the
+// right stick a weapon; letting go of the grip (or A) gives it to them, B cancels (core/vr/SquadMenu's
+// machine).
+//
+// Each tick (custom), LE1 on foot with the host's world view and a v11 host:
 //   - the squad: the player pawn's BioPawnBehavior.Squad, its members through BioBaseSquad.GetSquadSize /
 //     GetMember (the natives the weapon wheel uses), each one's name, class (BioPawnBehavior.GetClass),
 //     health (BioEpicPawnBehavior.GetPercentHealth), quick slots (BioEquipment, as the holsters read
@@ -40,8 +56,10 @@ namespace mevr::game::squad_weapons {
 // What the host offers this tick (Mod.cpp fills it from HostServices v11).
 struct Link {
     bool supported = false;  // a v11 host with a matching squad_menu::View (or the monolithic build)
+    bool nativeSupported = false;  // ...and v12: the wheel panel and the pad's native wheel flags
     std::optional<std::uint32_t> leftGripAway;  // HostServices::leftGripAway
     void (*setMenu)(vr::squad_menu::View const* view) = nullptr;
+    void (*setWheelPanel)(vr::squad_menu::wheel::Panel const* panel) = nullptr;  // v12
     void (*haptic)(int hand, float seconds, float amplitude) = nullptr;                      // v9
     void (*hapticHz)(int hand, float seconds, float amplitude, float frequencyHz) = nullptr; // v10
 };
@@ -49,9 +67,11 @@ struct Link {
 // Finds the script functions. False until the script packages have loaded (or not LE1).
 bool TryStartup();
 void Tick(double deltaSeconds, Link const& link);
-// The pad options while the menu is on: kFlagSquadMenu while it's open, and no LB from a left grip away
-// from the gun. Called by game/support_grip before it publishes the flags (so after Tick).
+// The pad options while the menu is on: kFlagSquadMenu while ours is open, kFlagNativeWheel (with the
+// steering stick and the A it sends) while the left grip holds the game's wheel, and no LB from a left
+// grip away from the gun. Called by game/support_grip before it publishes the flags (so after Tick).
 void AdjustPad(gamepad::Options& options);
+// Ours is open, or the left grip holds the game's wheel.
 bool IsOpen();
 // For the test loop's mod status: a JSON object.
 std::string StatusJson();

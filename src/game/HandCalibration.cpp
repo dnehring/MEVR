@@ -153,10 +153,25 @@ constexpr char const* kSquadBlock =
     "\n"
     "[Squad]\n"
     "; Squad weapons: point your left hand at a squadmate and squeeze the left grip (away from the gun's\n"
-    "; foregrip) to open a menu above your hand. The left stick picks the squadmate, a flick of the right\n"
-    "; stick a weapon; let go of the grip (or press A) to give it to them, B cancels. While it's open the\n"
-    "; game doesn't see the sticks, A or B.\n"
+    "; foregrip) to open the weapon wheel above your hand.\n"
     "enabled = 1\n"
+    "; style: native = the game's own weapon wheel (ME1's look; it pauses the game like the flat game's wheel):\n"
+    "; the right stick highlights a weapon, letting go of the grip gives it (A queues one too, B closes it\n"
+    "; without). custom = our drawn menu: the left stick picks the squadmate, a flick of the right stick a\n"
+    "; weapon; let go (or A) to give it, B cancels.\n"
+    "style = native\n"
+    "; wheelStick (native): the stick that steers the wheel: right (the game's own) | left | either.\n"
+    "wheelStick = right\n"
+    "; wheelPreselect (native): 1 = pointing at a squadmate when you squeeze puts the wheel on their weapon in hand.\n"
+    "wheelPreselect = 1\n"
+    "; wheelPanel: 1 = the game's weapon and power wheels show on a panel of their own (however they open);\n"
+    "; weaponWheelAt / powerWheelAt: where: left (hand) | right | front | hud (stays on the HUD panel).\n"
+    "wheelPanel = 1\n"
+    "weaponWheelAt = left\n"
+    "powerWheelAt = right\n"
+    "; wheelCrop: the wheel's part of the game's UI frame: auto (measured the first time a wheel opens) or\n"
+    "; x, y, width, height as fractions of the frame (the log's [MEVR-WHEEL] lines say what was measured).\n"
+    "wheelCrop = auto\n"
     "; pointConeDeg: how close to your left hand's pointing a squadmate must be to be the one you point at\n"
     "; (degrees); pointMaxM: how far away at most (meters).\n"
     "pointConeDeg = 10\n"
@@ -170,7 +185,8 @@ constexpr char const* kSquadBlock =
     "; confirmOnRelease: 1 = letting go of the grip gives the chosen weapon (nothing chosen: cancels);\n"
     "; 0 = the menu stays open when you let go: A gives it, B or a new squeeze cancels.\n"
     "confirmOnRelease = 1\n"
-    "; pause: 1 (the default) = the game pauses while the menu is open, like its own weapon wheel; 0 = it keeps running.\n"
+    "; pause (custom): 1 (the default) = the game pauses while the menu is open, like its own weapon wheel; 0 = it\n"
+    "; keeps running. The native wheel always pauses (it's the game's).\n"
     "pause = 1\n"
     "; hapticAmplitude: how strong the menu's ticks and clicks are, 0..1 (0.5 as designed, 0 = none).\n"
     "hapticAmplitude = 0.5\n";
@@ -429,15 +445,110 @@ Squad ReadSquad(Ini const& ini) {
     if (Number(ini, "Squad", "hapticAmplitude", value)) {
         squad.hapticAmplitude = std::clamp(value, 0.0, 1.0);
     }
+    if (Number(ini, "Squad", "wheelPreselect", value)) {
+        squad.wheelPreselect = value != 0.0;
+    }
+    if (Number(ini, "Squad", "wheelPanel", value)) {
+        squad.wheelPanel = value != 0.0;
+    }
+    auto const text = [&](char const* key) -> std::optional<std::string> {
+        auto const s = ini.find("Squad");
+        if (s == ini.end()) {
+            return std::nullopt;
+        }
+        auto const k = s->second.find(key);
+        if (k == s->second.end()) {
+            return std::nullopt;
+        }
+        std::string t = k->second;
+        std::transform(t.begin(), t.end(), t.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return t;
+    };
+    if (auto const style = text("style")) {
+        if (*style == "native" || *style == "game") {
+            squad.native = true;
+        } else if (*style == "custom" || *style == "ours") {
+            squad.native = false;
+        } else {
+            log::Warn("squad: can't read style = {} (native or custom); native kept", *style);
+        }
+    }
+    if (auto const stick = text("wheelStick")) {
+        if (*stick == "right" || *stick == "r") {
+            squad.wheelStick = gamepad::WheelStick::Right;
+        } else if (*stick == "left" || *stick == "l") {
+            squad.wheelStick = gamepad::WheelStick::Left;
+        } else if (*stick == "either" || *stick == "both") {
+            squad.wheelStick = gamepad::WheelStick::Either;
+        } else {
+            log::Warn("squad: can't read wheelStick = {} (right, left or either); right kept", *stick);
+        }
+    }
+    auto const place = [&](char const* key, int& out) {
+        if (auto const where = text(key)) {
+            if (*where == "left") {
+                out = 0;
+            } else if (*where == "right") {
+                out = 1;
+            } else if (*where == "front") {
+                out = 2;
+            } else if (*where == "hud" || *where == "off" || *where == "none") {
+                out = -1;
+            } else {
+                log::Warn("squad: can't read {} = {} (left, right, front or hud); default kept", key, *where);
+            }
+        }
+    };
+    place("weaponWheelAt", squad.weaponWheelAt);
+    place("powerWheelAt", squad.powerWheelAt);
+    if (auto const crop = text("wheelCrop"); crop && *crop != "auto" && !crop->empty()) {
+        double values[4] = {};
+        int n = 0;
+        char const* p = crop->c_str();
+        while (*p != '\0' && n < 4) {
+            char* end = nullptr;
+            double const v = std::strtod(p, &end);
+            if (end == p) {
+                ++p;  // separators
+                continue;
+            }
+            values[n++] = v;
+            p = end;
+        }
+        bool const ok = n == 4 && values[2] > 0.02 && values[3] > 0.02 && values[0] >= 0.0 && values[1] >= 0.0 &&
+            values[0] + values[2] <= 1.0001 && values[1] + values[3] <= 1.0001;
+        if (ok) {
+            std::copy(values, values + 4, squad.wheelCrop);
+        } else {
+            log::Warn("squad: can't read wheelCrop = {} (auto, or x, y, width, height as fractions of the frame); auto kept", *crop);
+        }
+    }
     return squad;
 }
 
+char const* PlaceName(int place) {
+    switch (place) {
+    case 0: return "the left hand";
+    case 1: return "the right hand";
+    case 2: return "in front";
+    default: return "the HUD panel";
+    }
+}
+
 std::string Describe(Squad const& s) {
-    return std::format("{}; pointing within {:.0f} degrees and {:.0f} m, or {:.2f} s held at nobody; the menu {:.2f} m from the "
-                       "hand, {:.2f} m wide; {}; the game {} while it's open; haptics {:.2f}",
-        s.enabled ? "on" : "off", s.pointConeDeg, s.pointMaxM, s.openHoldSeconds, s.panelDistanceM, s.panelWidthM,
-        s.confirmOnRelease ? "letting go confirms" : "A confirms, letting go keeps it open", s.pause ? "pauses" : "keeps running",
-        s.hapticAmplitude);
+    std::string const style = s.native
+        ? std::format("native (the game's wheel; {} steers it, {}{})", gamepad::Name(s.wheelStick),
+              s.confirmOnRelease ? "letting go gives the highlighted weapon" : "A queues, letting go closes",
+              s.wheelPreselect ? ", pointing preselects" : "")
+        : std::format("custom (our menu; {}; the game {} while it's open)",
+              s.confirmOnRelease ? "letting go confirms" : "A confirms, letting go keeps it open", s.pause ? "pauses" : "keeps running");
+    return std::format("{}, style {}; pointing within {:.0f} degrees and {:.0f} m, or {:.2f} s held at nobody; the panel {:.2f} m from "
+                       "the hand, {:.2f} m wide; haptics {:.2f}; the game's wheels {} (weapon wheel at {}, power wheel at {}, crop {})",
+        s.enabled ? "on" : "off", style, s.pointConeDeg, s.pointMaxM, s.openHoldSeconds, s.panelDistanceM, s.panelWidthM,
+        s.hapticAmplitude, s.wheelPanel ? "on a panel of their own" : "on the HUD panel", PlaceName(s.weaponWheelAt),
+        PlaceName(s.powerWheelAt),
+        s.wheelCrop[2] > 0.0 ? std::format("({:.3f}, {:.3f}) {:.3f} x {:.3f}", s.wheelCrop[0], s.wheelCrop[1], s.wheelCrop[2], s.wheelCrop[3])
+                             : std::string("auto"));
 }
 
 Squad gSquad;
@@ -611,6 +722,29 @@ void Refresh() {
     }
     if (!added.empty()) {
         log::Info("hands: added {} (defaults) to [Holsters] in {}", added, path.string());
+        ini = ReadIni(path);
+        stamp = fs::last_write_time(path, ec);
+    }
+    // Likewise [Squad]'s keys for the game's own wheel (2026-10-22).
+    static constexpr NewKey kNewSquadKeys[] = {
+        {L"style", "style", L"native"},
+        {L"wheelStick", "wheelStick", L"right"},
+        {L"wheelPreselect", "wheelPreselect", L"1"},
+        {L"wheelPanel", "wheelPanel", L"1"},
+        {L"weaponWheelAt", "weaponWheelAt", L"left"},
+        {L"powerWheelAt", "powerWheelAt", L"right"},
+        {L"wheelCrop", "wheelCrop", L"auto"},
+    };
+    std::string addedSquad;
+    for (NewKey const& k : kNewSquadKeys) {
+        auto const s = ini.find("Squad");
+        if (s != ini.end() && s->second.find(k.name) == s->second.end() &&
+            WritePrivateProfileStringW(L"Squad", k.key, k.value, path.wstring().c_str()) != 0) {
+            addedSquad += std::format("{}{}", addedSquad.empty() ? "" : ", ", k.name);
+        }
+    }
+    if (!addedSquad.empty()) {
+        log::Info("hands: added {} (defaults) to [Squad] in {}", addedSquad, path.string());
         ini = ReadIni(path);
         stamp = fs::last_write_time(path, ec);
     }

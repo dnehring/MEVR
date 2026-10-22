@@ -83,21 +83,33 @@ struct Holsters {
     double hapticAmplitude = 0.5;
 };
 Holsters GetHolsters();
-// [Squad] (appended to an older file that lacks it): the squad weapon menu (game/squad_weapons,
-// docs/squad-weapons-design.md).
+// [Squad] (appended to an older file that lacks it; keys added later are appended with their defaults):
+// squad weapons (game/squad_weapons, docs/squad-weapons-design.md).
 //   enabled           1: point the left hand at a squadmate and squeeze the left grip (away from the gun's
 //                     foregrip) to open the menu at the hand
+//   style             native (default): the game's own weapon wheel (ME1's look, pause and rules), shown on
+//                     a panel at the hand; custom: our drawn menu (the fallback)
 //   pointConeDeg      how close to the left hand's aim ray a squadmate must be to be "pointed at"
 //   pointMaxM         ...and how far away at most (meters)
 //   openHoldS         pointing at nobody: the grip held this long (seconds) opens it anyway
-//   panelDistanceM    the menu's centre from the left hand when it opens (meters)
+//   panelDistanceM    the menu's (or wheel's) centre from the hand when it opens (meters)
 //   panelWidthM       its width (meters)
 //   confirmOnRelease  1: letting go of the grip gives the chosen weapon (nothing chosen: cancels);
-//                     0: it stays open after letting go (A gives it, B or a new squeeze cancels)
-//   pause             1: the game pauses while it's open (as ME1's own wheels do); 0 (default): it runs
+//                     0: custom: it stays open after letting go (A gives it, B or a new squeeze cancels);
+//                     native: letting go closes it, only A (the game's own) queues a weapon
+//   pause             custom only: 1 (default) the game pauses while it's open, as ME1's wheels do; 0 it runs.
+//                     (The native wheel always pauses: it's the game's.)
 //   hapticAmplitude   0..1: its ticks and clicks (0.5 as designed; 0: none)
+//   wheelStick        native: the stick that steers the wheel: right (the game's) | left | either
+//   wheelPreselect    native: 1 = pointing at a squadmate puts the wheel on their weapon in hand
+//   wheelPanel        1: the game's weapon and power wheels show on a panel of their own (any way they open)
+//   weaponWheelAt     where that panel goes for the weapon wheel: left (hand) | right | front | hud
+//   powerWheelAt      ...for the power wheel (R3 held): right | left | front | hud (stays on the HUD panel)
+//   wheelCrop         the wheel's part of the UI frame: auto (measured the first time) or x, y, width, height
+//                     as fractions of the frame
 struct Squad {
     bool enabled = true;
+    bool native = true;
     double pointConeDeg = 10.0;
     double pointMaxM = 40.0;
     double openHoldSeconds = 0.35;
@@ -106,6 +118,12 @@ struct Squad {
     bool confirmOnRelease = true;
     bool pause = true;
     double hapticAmplitude = 0.5;
+    gamepad::WheelStick wheelStick = gamepad::WheelStick::Right;
+    bool wheelPreselect = true;
+    bool wheelPanel = true;
+    int weaponWheelAt = 0;  // 0 left hand, 1 right hand, 2 in front, -1 the HUD panel
+    int powerWheelAt = 1;
+    double wheelCrop[4] = {0.0, 0.0, 0.0, 0.0};  // width 0: auto
 };
 Squad GetSquad();
 // Where Halcyon's first-person camera sits from Shepard's head bone with the headset at the
