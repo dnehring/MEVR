@@ -79,6 +79,13 @@ UFunction* gGetPercentHealth = nullptr;
 UFunction* gPauseGame = nullptr;
 UFunction* gEnterWeaponWheel = nullptr;
 UFunction* gExitWeaponWheel = nullptr;
+UFunction* gTryHolster = nullptr;
+UFunction* gIsSwitchingWeapons = nullptr;
+// The game's wheel draws Shepard's weapon (EnterWeaponWheel does). If it was put away when the wheel
+// opened, it goes back after the wheel closes (user, 2026-10-22), unless the right grip holds it then.
+bool gWheelWasHolstered = false;
+double gReholsterWait = -1.0;  // seconds waited for the drawn weapon; negative: not waiting
+constexpr double kReholsterTimeout = 3.0;
 UFunction* gGetScaleFormManager = nullptr;
 UFunction* gIsCombatEnabled = nullptr;
 #endif
@@ -990,6 +997,8 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
         gWheelOpenedAt = 0.0;
         gWheelClicked = false;
         USFXGameModeBase* const defaultMode = game ? FindMode(game->controller, USFXGameModeDefault::StaticClass()) : nullptr;
+        gWheelWasHolstered = game && !CallBool(game->player, gIsInCombatActionState);
+        gReholsterWait = -1.0;
         bool const called = CallNoParms(defaultMode, gEnterWeaponWheel);
         log::Info("squad: wheel #{}: {} the game's weapon wheel{} (SFXGameModeDefault.EnterWeaponWheel, what holding LB does)",
             gWheelSerial, called ? "opening" : "can't open (no SFXGameModeDefault)",
@@ -1086,6 +1095,32 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
             gLastResult = std::format("{} given the {} (the game's wheel)", m.name, menu::WeaponName(gWheelGiven.weapon));
         }
         gWheelGiven = {};
+        if (gWheelWasHolstered && gTryHolster != nullptr) {
+            gReholsterWait = 0.0;  // put Shepard's weapon back once the game has finished drawing it
+        }
+        gWheelWasHolstered = false;
+    }
+    if (gReholsterWait >= 0.0 && game) {
+        gReholsterWait += deltaSeconds;
+        bool const armed = CallBool(game->player, gIsInCombatActionState);
+        bool const switching = gIsSwitchingWeapons != nullptr && CallBool(game->player, gIsSwitchingWeapons);
+        if (controllers.right.squeeze > 0.5f) {
+            log::Info("squad: wheel #{}: Shepard's weapon stays out (the right grip holds it)", gWheelSerial);
+            gReholsterWait = -1.0;
+        } else if (armed && !switching) {
+            USFXGameModeBase* const defaultMode = FindMode(game->controller, USFXGameModeDefault::StaticClass());
+            if (defaultMode != nullptr) {
+                USFXGameModeDefault_execTryHolster_Parms parms;
+                defaultMode->ProcessEvent(gTryHolster, &parms, nullptr);  // directly: never the SDK's wrapper
+                log::Info("squad: wheel #{}: Shepard's weapon was away before the wheel, so it goes back "
+                          "(SFXGameModeDefault.TryHolster, {:.2f} s after closing)", gWheelSerial, gReholsterWait);
+            }
+            gReholsterWait = -1.0;
+        } else if (gReholsterWait > kReholsterTimeout) {
+            log::Info("squad: wheel #{}: Shepard's weapon wasn't drawn within {:.0f} s of closing: nothing to put back",
+                gWheelSerial, kReholsterTimeout);
+            gReholsterWait = -1.0;
+        }
     }
     if (step.exitStuck) {
         log::Warn("squad: wheel #{}: the game's weapon wheel didn't close after two ExitWeaponWheel calls: let go of it", gWheelSerial);
@@ -1196,6 +1231,8 @@ bool TryStartup() {
         {&gPauseGame, L"PauseGame", "Function Engine.WorldInfo.PauseGame"},
         {&gEnterWeaponWheel, L"EnterWeaponWheel", "Function SFXGame.SFXGameModeDefault.EnterWeaponWheel"},
         {&gExitWeaponWheel, L"ExitWeaponWheel", "Function SFXGame.SFXGameModeWeaponWheel.ExitWeaponWheel"},
+        {&gTryHolster, L"TryHolster", "Function SFXGame.SFXGameModeDefault.TryHolster"},
+        {&gIsSwitchingWeapons, L"IsSwitchingWeapons", "Function SFXGame.BioPawn.IsSwitchingWeapons"},
         {&gGetScaleFormManager, L"GetScaleFormManager", "Function Engine.PlayerController.GetScaleFormManager"},
         {&gIsCombatEnabled, L"IsCombatEnabled", "Function SFXGame.BioPlayerInput.IsCombatEnabled"},
     };
@@ -1499,7 +1536,9 @@ void Shutdown(bool processExiting) {
     gGetSquadSize = gGetMember = gGetMemberSwitchWeapon = gSetMemberSwitchWeapon = gSquadOrderEquipWeapon = nullptr;
     gApplyTacticalOrders = gChangeToQuickSlot = gIsInCombatActionState = gGetRangedWeaponType = nullptr;
     gGetClass = gGetPercentHealth = gPauseGame = nullptr;
-    gEnterWeaponWheel = gExitWeaponWheel = gGetScaleFormManager = gIsCombatEnabled = nullptr;
+    gEnterWeaponWheel = gExitWeaponWheel = gGetScaleFormManager = gIsCombatEnabled = gTryHolster = gIsSwitchingWeapons = nullptr;
+    gWheelWasHolstered = false;
+    gReholsterWait = -1.0;
     gWheelGiven = {};
 #else
     (void)processExiting;
