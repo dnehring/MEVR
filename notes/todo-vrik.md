@@ -297,6 +297,27 @@ notes/next-vr-session.md step 13.
   remap so the pointed squadmate's arc fills the whole stick (not built: the flat game's absolute
   directions kept); the native wheel always pauses (the custom one can run on).
 
+## Physical grenades and melee (user, 2026-10-22; built the same day, to test)
+
+The user: melee and grenades should be physical, as in good VR shooters (Overlord for grenades).
+Research and design: research/20. Test steps: notes/next-vr-session.md step 16.
+- **Mod (hot reload):** `core/ik/Throwing` (release velocity, grip early release, the grenade machine,
+  the swing detector, the arc; unit-tested), `game/Throwables` (the slot in the holsters' body frame,
+  claims, `UseGrenade` / `TryMelee` through ProcessEvent, the launch post-handler that re-aims the
+  game's grenade, enemy check, hit watch, haptics, logs, status), `[Throwables]` in LE1MEVR.ini
+  (appended to existing files). Holsters keep the gun out while the right hand has a grenade; the
+  squad menu ignores a claimed left squeeze.
+- **Host change (redeploy only to free B/X):** HostServices v14, `gamepad::kFlagNoMeleeButton` /
+  `kFlagNoGrenadeButton` (B and X kept from the game on foot).
+- **Decisions (mine, to confirm with the user):** the slot on the left side of the chest; either hand;
+  a slow release puts the grenade back; the game's own disc re-aimed (start at the hand, land where
+  the throw would), `flight = arc` as an experiment; melee only with an enemy within 2 m in front;
+  nothing shown in the hand while holding (a faint buzz); B and X kept by default.
+- **[verify in headset]:** the launch delay after the release; the disc from the hand and where it
+  lands; `Actor.Trace`'s hit point through ProcessEvent; the melee cone's direction; false strikes
+  while aiming or reloading; the arc mode at all; a grenade cooldown.
+- **Open:** the grenade mesh in the hand while held; the throw animation under arm IK.
+
 ## World-locked flat panels (user, 2026-10-21; built the same day, to test)
 
 The user: the HUD and flat panels should stay placed in space, not move with the head (the intro's

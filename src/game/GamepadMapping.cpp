@@ -225,6 +225,7 @@ std::uint32_t ToFlags(Options const& options) {
            (options.rightGripFree ? kFlagRightGripFree : 0u) | (options.rightGripHolds ? kFlagRightGripHolds : 0u) |
            (options.squadMenu ? kFlagSquadMenu : 0u) | (options.nativeWheel ? kFlagNativeWheel : 0u) |
            (options.wheelPressA ? kFlagWheelPressA : 0u) |
+           (options.meleeButton ? 0u : kFlagNoMeleeButton) | (options.grenadeButton ? 0u : kFlagNoGrenadeButton) |
            ((static_cast<std::uint32_t>(options.wheelStick) << kWheelStickShift) & kWheelStickMask) |
            ((static_cast<std::uint32_t>(options.rbSource) << kRbSourceShift) & kRbSourceMask);
 }
@@ -240,6 +241,8 @@ Options FromFlags(float distance, float acquire, float release, std::uint32_t fl
     options.squadMenu = (flags & kFlagSquadMenu) != 0;
     options.nativeWheel = (flags & kFlagNativeWheel) != 0;
     options.wheelPressA = (flags & kFlagWheelPressA) != 0;
+    options.meleeButton = (flags & kFlagNoMeleeButton) == 0;
+    options.grenadeButton = (flags & kFlagNoGrenadeButton) == 0;
     std::uint32_t const stick = (flags & kWheelStickMask) >> kWheelStickShift;
     options.wheelStick = stick <= static_cast<std::uint32_t>(WheelStick::Either) ? static_cast<WheelStick>(stick) : WheelStick::Right;
     std::uint32_t const source = (flags & kRbSourceMask) >> kRbSourceShift;
@@ -358,11 +361,12 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
         RbSource as;
         WORD bit;
         std::uint8_t mask;
+        bool allowed;  // reaches the game as its own button (B / X can be the physical melee's and throw's only)
     };
     Face const faces[] = {
-        {r.secondary, RbSource::B, XINPUT_GAMEPAD_B, 1},
-        {l.primary, RbSource::X, XINPUT_GAMEPAD_X, 2},
-        {l.secondary, RbSource::Y, XINPUT_GAMEPAD_Y, 4},
+        {r.secondary, RbSource::B, XINPUT_GAMEPAD_B, 1, options.meleeButton},
+        {l.primary, RbSource::X, XINPUT_GAMEPAD_X, 2, options.grenadeButton},
+        {l.secondary, RbSource::Y, XINPUT_GAMEPAD_Y, 4, true},
     };
     for (Face const& face : faces) {
         bool const was = (latches.faceDown & face.mask) != 0;
@@ -375,7 +379,7 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
         if (face.down) {
             if ((latches.faceRb & face.mask) != 0) {
                 rb = true;
-            } else {
+            } else if (face.allowed) {
                 buttons |= face.bit;
             }
         }

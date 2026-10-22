@@ -192,6 +192,50 @@ constexpr char const* kSquadBlock =
     "; hapticAmplitude: how strong the menu's ticks and clicks are, 0..1 (0.5 as designed, 0 = none).\n"
     "hapticAmplitude = 0.5\n";
 
+// Appended to a settings file that has no [Throwables] yet (and part of a new file).
+constexpr char const* kThrowablesBlock =
+    "\n"
+    "[Throwables]\n"
+    "; Physical grenades: reach to the grenade slot on your body (the left side of the chest), squeeze a\n"
+    "; grip to take a grenade, throw it by letting go while the hand moves. A slow release puts it back.\n"
+    "enabled = 1\n"
+    "; hands: both | left | right. The left grip at the gun's foregrip is still the two-handed grip.\n"
+    "hands = both\n"
+    "; slot: right, up, forward, radius in meters from your eyes, like the holsters' slots.\n"
+    "slot = -0.13, -0.33, 0.00, 0.10\n"
+    "; throwSpeedMinMS: a release slower than this (m/s) isn't a throw. throwGain: the throw's speed is the\n"
+    "; hand's times this. throwSpeedMaxMS: the hand's speed is capped first.\n"
+    "throwSpeedMinMS = 1.5\n"
+    "throwGain = 2.5\n"
+    "throwSpeedMaxMS = 15\n"
+    "; flight: disc = the game's own grenade (a disc that flies straight and sticks), sent where your throw\n"
+    "; would land; arc = the game's unused ballistic grenade, thrown with your hand's velocity (experimental).\n"
+    "flight = disc\n"
+    "; fromHand: 1 = the grenade starts at your hand. drawForThrow: 1 = taking a grenade with your weapon\n"
+    "; away draws it (ME1 only throws with a weapon out). earlyRelease: the grip lets go this far below its\n"
+    "; tightest squeeze while the hand moves fast (0 = only when opened).\n"
+    "fromHand = 1\n"
+    "drawForThrow = 1\n"
+    "earlyRelease = 0.3\n"
+    "; grenadeButton: 1 = X still throws a grenade the game's way; 0 = only the physical throw (on foot).\n"
+    "grenadeButton = 1\n"
+    "; Physical melee: a fast stroke of either hand toward an enemy in reach is the game's melee (pistol whip\n"
+    "; or rifle butt). Speeds in m/s relative to your head; travel in meters; cooldown in seconds.\n"
+    "melee = 1\n"
+    "meleeSpeedMS = 3.0\n"
+    "meleeGunSpeedMS = 3.5\n"
+    "meleeTravelM = 0.12\n"
+    "meleeCooldownS = 0.8\n"
+    "; meleeNeedsEnemy: 1 = only with a living enemy within meleeReachM meters and meleeConeDeg degrees of your front.\n"
+    "meleeNeedsEnemy = 1\n"
+    "meleeReachM = 2.0\n"
+    "meleeConeDeg = 75\n"
+    "; meleeButton: 1 = B still melees; 0 = only the physical stroke (on foot).\n"
+    "meleeButton = 1\n"
+    "; hapticAmplitude: 0..1 (0.5 as designed, 0 = none). holdBuzz: 1 = a faint buzz while a grenade is held.\n"
+    "hapticAmplitude = 0.5\n"
+    "holdBuzz = 1\n";
+
 // Appended to a settings file that has no [Sights] yet (and part of a new file).
 constexpr char const* kSightsBlock =
     "\n"
@@ -598,6 +642,104 @@ std::string Describe(Squad const& s) {
 Squad gSquad;
 std::string gSquadText;
 
+Throwables ReadThrowables(Ini const& ini) {
+    Throwables t;
+    double value = 0.0;
+    auto const flag = [&](char const* key, bool& out) {
+        if (Number(ini, "Throwables", key, value)) {
+            out = value != 0.0;
+        }
+    };
+    auto const number = [&](char const* key, double& out, double lo, double hi) {
+        if (Number(ini, "Throwables", key, value)) {
+            out = std::clamp(value, lo, hi);
+        }
+    };
+    flag("enabled", t.enabled);
+    number("throwSpeedMinMS", t.throwSpeedMin, 0.3, 6.0);
+    number("throwGain", t.throwGain, 0.5, 6.0);
+    number("throwSpeedMaxMS", t.throwSpeedMax, 2.0, 30.0);
+    flag("fromHand", t.fromHand);
+    flag("drawForThrow", t.drawForThrow);
+    number("earlyRelease", t.earlyRelease, 0.0, 0.9);
+    flag("grenadeButton", t.grenadeButton);
+    flag("melee", t.melee);
+    number("meleeSpeedMS", t.meleeSpeed, 1.0, 10.0);
+    number("meleeGunSpeedMS", t.meleeGunSpeed, 1.0, 10.0);
+    number("meleeTravelM", t.meleeTravel, 0.02, 0.6);
+    number("meleeCooldownS", t.meleeCooldown, 0.1, 5.0);
+    flag("meleeNeedsEnemy", t.meleeNeedsEnemy);
+    number("meleeReachM", t.meleeReach, 0.5, 6.0);
+    number("meleeConeDeg", t.meleeConeDeg, 10.0, 180.0);
+    flag("meleeButton", t.meleeButton);
+    number("hapticAmplitude", t.hapticAmplitude, 0.0, 1.0);
+    flag("holdBuzz", t.holdBuzz);
+    auto const s = ini.find("Throwables");
+    if (s == ini.end()) {
+        return t;
+    }
+    auto const text = [&](char const* key) -> std::optional<std::string> {
+        auto const k = s->second.find(key);
+        if (k == s->second.end()) {
+            return std::nullopt;
+        }
+        std::string v = k->second;
+        std::transform(v.begin(), v.end(), v.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return v;
+    };
+    if (auto const hands = text("hands")) {
+        if (*hands == "both") {
+            t.leftHand = t.rightHand = true;
+        } else if (*hands == "left") {
+            t.leftHand = true;
+            t.rightHand = false;
+        } else if (*hands == "right") {
+            t.leftHand = false;
+            t.rightHand = true;
+        } else {
+            log::Warn("throwables: can't read hands = {} (both, left or right); both kept", *hands);
+        }
+    }
+    if (auto const flight = text("flight")) {
+        if (*flight == "disc") {
+            t.arc = false;
+        } else if (*flight == "arc") {
+            t.arc = true;
+        } else {
+            log::Warn("throwables: can't read flight = {} (disc or arc); disc kept", *flight);
+        }
+    }
+    if (auto const slot = text("slot")) {
+        // "right, up, forward, radius": the same numbers as a holster slot, without the weapon.
+        ik::body_slots::Slot parsed = t.slot;
+        if (ReadSlot("none, " + *slot, parsed)) {
+            parsed.name = "grenade";
+            parsed.weapon = ik::body_slots::Weapon::None;
+            t.slot = parsed;
+        } else {
+            log::Warn("throwables: can't read slot = {} (right, up, forward, radius); default kept", *slot);
+        }
+    }
+    return t;
+}
+
+std::string Describe(Throwables const& t) {
+    return std::format("{}: grenades with {} from the slot ({:.2f}, {:.2f}, {:.2f}) r {:.2f}; a throw from {:.1f} m/s, x{:.1f} "
+                       "(hand capped at {:.0f} m/s), flight {}{}{}, early release {:.2f}; X {}; melee {} (free hand {:.1f} m/s, gun "
+                       "hand {:.1f} m/s, {:.2f} m, cooldown {:.1f} s, {}); B {}; haptics {:.2f}{}",
+        t.enabled ? "on" : "off", t.leftHand && t.rightHand ? "either hand" : t.leftHand ? "the left hand" : "the right hand",
+        t.slot.offset.x, t.slot.offset.y, t.slot.offset.z, t.slot.radius, t.throwSpeedMin, t.throwGain, t.throwSpeedMax,
+        t.arc ? "arc (experimental)" : "disc", t.fromHand ? ", from the hand" : "", t.drawForThrow ? ", draws the weapon if away" : "",
+        t.earlyRelease, t.grenadeButton ? "kept" : "off on foot", t.melee ? "on" : "off", t.meleeSpeed, t.meleeGunSpeed, t.meleeTravel,
+        t.meleeCooldown,
+        t.meleeNeedsEnemy ? std::format("an enemy within {:.1f} m and {:.0f} degrees", t.meleeReach, t.meleeConeDeg)
+                          : std::string("any time"),
+        t.meleeButton ? "kept" : "off on foot", t.hapticAmplitude, t.holdBuzz ? ", hold buzz" : "");
+}
+
+Throwables gThrowables;
+std::string gThrowablesText;
+
 vr::sights::Settings ReadSights(Ini const& ini) {
     namespace sv = vr::sights;
     sv::Settings out;
@@ -805,6 +947,10 @@ Squad GetSquad() {
     return gSquad;
 }
 
+Throwables GetThrowables() {
+    return gThrowables;
+}
+
 vr::sights::Settings GetSights() {
     return gSights;
 }
@@ -836,7 +982,7 @@ void Refresh() {
     fs::path const path = FilePath();
     std::error_code ec;
     if (!fs::exists(path, ec)) {
-        std::ofstream(path) << kDefaultFile << kControlsBlock << kHolstersBlock << kSquadBlock << kSightsBlock;
+        std::ofstream(path) << kDefaultFile << kControlsBlock << kHolstersBlock << kSquadBlock << kSightsBlock << kThrowablesBlock;
         log::Info("hands: wrote default calibration to {}", path.string());
     }
     auto stamp = fs::last_write_time(path, ec);
@@ -859,6 +1005,12 @@ void Refresh() {
     if (ini.find("Squad") == ini.end()) {
         std::ofstream(path, std::ios::app) << kSquadBlock;
         log::Info("hands: added the [Squad] defaults to {}", path.string());
+        ini = ReadIni(path);
+        stamp = fs::last_write_time(path, ec);
+    }
+    if (ini.find("Throwables") == ini.end()) {
+        std::ofstream(path, std::ios::app) << kThrowablesBlock;
+        log::Info("hands: added the [Throwables] defaults to {}", path.string());
         ini = ReadIni(path);
         stamp = fs::last_write_time(path, ec);
     }
@@ -927,6 +1079,11 @@ void Refresh() {
     if (std::string const text = Describe(gSquad); text != gSquadText) {
         gSquadText = text;
         log::Info("squad: settings: {}", text);
+    }
+    gThrowables = ReadThrowables(ini);
+    if (std::string const text = Describe(gThrowables); text != gThrowablesText) {
+        gThrowablesText = text;
+        log::Info("throwables: settings: {}", text);
     }
     gSights = ReadSights(ini);
     if (std::string const text = Describe(gSights); text != gSightsText) {

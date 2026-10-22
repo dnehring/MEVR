@@ -12,6 +12,7 @@
 #include "game/HandCalibration.hpp"
 #include "game/HeadTracking.hpp"
 #include "game/SupportGrip.hpp"
+#include "game/Throwables.hpp"
 #include "game/ViewAnchor.hpp"
 
 #include <LESDK/Headers.hpp>
@@ -1273,6 +1274,11 @@ void Tick(double deltaSeconds, Link const& link) {
         newAway = gHaveCount && count != gLastCount && (*link.leftGripAway & 1u) != 0;
         gLastCount = count;
         gHaveCount = true;
+    }
+    // A squeeze at the grenade slot takes a grenade (game/throwables, research/20): not the menu's.
+    if (newAway && throwables::ClaimedLeft()) {
+        newAway = false;
+        log::Info("squad: the left squeeze took a grenade (the grenade slot): no menu");
     }
     (void)wasDown;
     PublishWheelPanel(link, settings);  // the game's wheels at the hand, whichever way they open

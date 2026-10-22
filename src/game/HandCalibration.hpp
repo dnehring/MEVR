@@ -29,6 +29,7 @@
 //                                         trigger reaches the game as LT.
 //   [Holsters] body holsters (below, GetHolsters).
 //   [Squad]  the squad weapon menu (below, GetSquad).
+//   [Throwables] physical grenades and melee (below, GetThrowables).
 namespace mevr::game::hand_calibration {
 
 // The trim for one hand (0 left, 1 right), in the grip's own axes (ik::GripTrim).
@@ -127,6 +128,57 @@ struct Squad {
     double wheelCrop[4] = {0.0, 0.0, 0.0, 0.0};  // width 0: auto
 };
 Squad GetSquad();
+// [Throwables] (appended to an older file that lacks it): physical grenades and melee (game/throwables,
+// research/20).
+//   enabled          1: take a grenade from a slot on the body with a grip, throw it by letting go
+//   hands            both (default) | left | right: which hands may take grenades
+//   slot             right, up, forward, radius: the grenade slot, meters from the eyes as the holsters'
+//                    slots (default the left side of the chest)
+//   throwSpeedMinMS  a release slower than this (m/s) is no throw: the grenade goes back
+//   throwGain        the hand's speed is multiplied by this for the throw (Overlord: 2.5)
+//   throwSpeedMaxMS  the hand's speed is capped at this (m/s) before the gain
+//   flight           disc (default): the game's own grenade (a disc that flies straight and sticks), sent
+//                    where the throw would land; arc: the game's unused ballistic grenade, thrown with the
+//                    hand's velocity (experimental)
+//   fromHand         1: the grenade starts at the hand that threw it
+//   drawForThrow     1: taking a grenade with the weapon away draws it (ME1 only throws with a weapon out)
+//   earlyRelease     the analog grip lets go this far below its peak while the hand moves fast (0: off)
+//   grenadeButton    1: X still throws a grenade the game's way; 0: only the physical throw (on foot)
+//   melee            1: a fast stroke of a hand toward an enemy in reach is the game's melee
+//   meleeSpeedMS     the free hand's speed for a strike (m/s, relative to the head)
+//   meleeGunSpeedMS  the gun hand's
+//   meleeTravelM     the stroke's travel at that speed (m)
+//   meleeCooldownS   seconds between strikes (the game adds its own: 0.96 s pistol, 1.38 s rifle)
+//   meleeNeedsEnemy  1: only with a living hostile within meleeReachM and meleeConeDeg of the body's front
+//   meleeReachM, meleeConeDeg
+//   meleeButton      1: B still melees; 0: only the physical stroke (on foot)
+//   hapticAmplitude  0..1 (0.5 as designed; 0: none); holdBuzz: 1 = a faint buzz while a grenade is held
+struct Throwables {
+    bool enabled = true;
+    bool leftHand = true;
+    bool rightHand = true;
+    ik::body_slots::Slot slot{"grenade", ik::body_slots::Weapon::None, {-0.13, -0.33, 0.0}, 0.10};
+    double throwSpeedMin = 1.5;
+    double throwGain = 2.5;
+    double throwSpeedMax = 15.0;
+    bool arc = false;
+    bool fromHand = true;
+    bool drawForThrow = true;
+    double earlyRelease = 0.3;
+    bool grenadeButton = true;
+    bool melee = true;
+    double meleeSpeed = 3.0;
+    double meleeGunSpeed = 3.5;
+    double meleeTravel = 0.12;
+    double meleeCooldown = 0.8;
+    bool meleeNeedsEnemy = true;
+    double meleeReach = 2.0;
+    double meleeConeDeg = 75.0;
+    bool meleeButton = true;
+    double hapticAmplitude = 0.5;
+    bool holdBuzz = true;
+};
+Throwables GetThrowables();
 // [Sights] (appended to an older file that lacks it): gun sights (game/sights, research/21; the keys and
 // their meaning are in a new file's block and core/vr/Sights.hpp's Settings).
 vr::sights::Settings GetSights();

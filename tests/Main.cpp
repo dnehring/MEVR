@@ -10,6 +10,7 @@
 #include "core/ik/HandFrame.hpp"
 #include "core/ik/Ik.hpp"
 #include "core/ik/Rigid.hpp"
+#include "core/ik/Throwing.hpp"
 #include "core/ik/TorsoPose.hpp"
 #include "core/ik/TouchReference.hpp"
 #include "core/ik/TwoHand.hpp"
@@ -3650,6 +3651,281 @@ void TestWheelCrop() {
     CHECK(tiny.width == 16 && tiny.x + tiny.width <= 1000 && tiny.y == 0 && tiny.height == 800);
 }
 
+// ---- Physical grenades and melee (core/ik/Throwing, research/20) ----------------------------------
+
+// A hand moving at constant velocity, sampled at 90 Hz: the release estimate is that velocity.
+void TestThrowVelocity() {
+    namespace thr = mevr::ik::throwing;
+    using mevr::ik::Vec3;
+    thr::MotionHistory history;
+    Vec3 const v{1.0, 2.0, -6.0};
+    double const dt = 1.0 / 90.0;
+    for (int i = 0; i < 30; ++i) {
+        history.Add(i * dt, v * (i * dt));
+    }
+    double const now = 29 * dt;
+    auto const fit = history.FitVelocity(now - 0.05, now);
+    CHECK(fit && std::abs(fit->x - 1.0) < 1e-6 && std::abs(fit->y - 2.0) < 1e-6 && std::abs(fit->z + 6.0) < 1e-6);
+    thr::Release const r = thr::EstimateRelease(history, now);
+    CHECK(r.valid && std::abs(r.speed - mevr::ik::Length(v)) < 1e-6 && r.samples >= 10);
+    // A sample at the same time (or earlier) is ignored; a jump breaks the history.
+    CHECK(!history.Add(now, {}));
+    CHECK(history.Count() == 30);
+    CHECK(history.Add(now + dt, {5.0, 5.0, 5.0}));
+    CHECK(history.Count() == 1);
+    // A gap breaks it too.
+    CHECK(history.Add(now + dt + 0.2, {5.0, 5.0, 5.0}));
+
+    // A throw: the hand speeds up to 8 m/s forward, then slows to 3 m/s before the grip opens 67 ms
+    // later (the release comes late): the estimate is the peak, not the slow tail or an average.
+    thr::MotionHistory throwing;
+    double t = 0.0;
+    Vec3 p{0.0, 0.0, 0.0};
+    double peakTime = 0.0;
+    for (int i = 0; i < 31; ++i) {
+        double speed = 0.0;
+        if (i < 25) {
+            speed = 8.0 * i / 24.0;  // into the throw
+            peakTime = t;
+        } else {
+            speed = std::max(3.0, 8.0 - (i - 24) * 1.0);  // the follow-through, slowing
+        }
+        p = p + Vec3{0.0, 0.0, -speed * dt};
+        throwing.Add(t, p);
+        t += dt;
+    }
+    double const release = t - dt;
+    thr::Release const late = thr::EstimateRelease(throwing, release);
+    CHECK(late.valid && late.speed > 7.0 && late.speed < 8.5);
+    CHECK(late.velocity.z < -7.0 && std::abs(late.velocity.x) < 1e-6);
+    CHECK(std::abs((release - late.peakAgo) - peakTime) < 0.03);
+    // A plain average over the window would have been well under the peak.
+    auto const average = throwing.FitVelocity(release - 0.12, release);
+    CHECK(average && mevr::ik::Length(*average) < late.speed - 0.5);
+
+    // Times from sequences: evenly spaced at the learned period, whatever the observation jitter; the
+    // same sequence twice is no new sample; a gap starts over.
+    thr::SampleClock clock;
+    auto const first = clock.Update(100, 10.0);
+    CHECK(first && std::abs(*first - 10.0) < 1e-9);
+    CHECK(!clock.Update(100, 10.004).has_value());
+    double previous = *first;
+    double observed = 10.0;
+    for (int i = 1; i <= 200; ++i) {
+        observed += (i % 2 == 0) ? 0.009 : 0.0132;  // seen unevenly
+        auto const at = clock.Update(100 + static_cast<std::uint64_t>(i), observed);
+        CHECK(at.has_value());
+        if (at && i > 100) {
+            CHECK(std::abs((*at - previous) - 0.0111) < 0.0012);
+        }
+        previous = at ? *at : previous;
+    }
+    CHECK(std::abs(clock.Period() - 0.0111) < 0.0005);
+    auto const restarted = clock.Update(400, observed + 1.0);
+    CHECK(restarted && std::abs(*restarted - (observed + 1.0)) < 1e-9);
+}
+
+void TestThrowGrip() {
+    namespace thr = mevr::ik::throwing;
+    thr::GripLatch latch;
+    CHECK(!thr::UpdateGrip(latch, 0.5f, 0.0));
+    CHECK(thr::UpdateGrip(latch, 0.65f, 0.0));
+    CHECK(thr::UpdateGrip(latch, 1.0f, 0.0));
+    // Opening a little while slow keeps it; the same while fast lets go early (0.3 below the peak).
+    CHECK(thr::UpdateGrip(latch, 0.75f, 0.5));
+    CHECK(!thr::UpdateGrip(latch, 0.69f, 3.0));
+    // At the latch's own "off" it lets go at any speed; early release off (0) waits for it.
+    thr::GripLatch slow;
+    thr::GripParams params;
+    params.earlyDrop = 0.0f;
+    thr::UpdateGrip(slow, 1.0f, 0.0, params);
+    CHECK(thr::UpdateGrip(slow, 0.5f, 5.0, params));
+    CHECK(!thr::UpdateGrip(slow, 0.4f, 0.0, params));
+}
+
+void TestGrenadeMachine() {
+    namespace thr = mevr::ik::throwing;
+    using mevr::ik::Vec3;
+    double const dt = 1.0 / 90.0;
+    thr::GrenadeMachine machine;
+    thr::Input in;
+    in.radius = 0.10;
+    double t = 0.0;
+    auto step = [&](Vec3 left, double leftDistance, float leftSqueeze, bool newLeft) {
+        in.now = t;
+        in.hands[0].tracked = true;
+        in.hands[0].position = left;
+        in.hands[0].distance = leftDistance;
+        in.hands[0].squeeze = leftSqueeze;
+        in.hands[0].newSqueeze = newLeft;
+        in.hands[1].tracked = true;
+        in.hands[1].position = {0.3, -0.3, -0.3};
+        in.hands[1].distance = 0.5;
+        thr::Step const s = machine.Update(in);
+        t += dt;
+        return s;
+    };
+    // A squeeze outside the slot takes nothing; entering is reported; a new squeeze inside takes one.
+    CHECK(step({}, 0.20, 1.0f, true).event == thr::Event::None);
+    thr::Step s = step({}, 0.05, 1.0f, false);
+    CHECK(s.entered[0] == 1 && s.event == thr::Event::None && machine.InSlot(0));
+    // A grip already held while the hand moves in never grabs (only a new squeeze does).
+    CHECK(step({}, 0.05, 1.0f, false).event == thr::Event::None && machine.Holder() < 0);
+    in.canGrab = false;
+    s = step({}, 0.05, 1.0f, true);
+    CHECK(s.event == thr::Event::Refused && s.hand == 0 && machine.Holder() < 0);
+    in.canGrab = true;
+    s = step({}, 0.05, 1.0f, true);
+    CHECK(s.event == thr::Event::Grabbed && s.hand == 0 && machine.Holder() == 0);
+    // The other hand can't take a second one meanwhile.
+    in.now = t;
+    in.hands[1].newSqueeze = true;
+    in.hands[1].distance = 0.01;
+    CHECK(machine.Update(in).event == thr::Event::None);
+    in.hands[1].newSqueeze = false;
+    t += dt;
+    // Holding it out of the slot (exit hysteresis: 0.14 is still inside, 0.16 is out).
+    CHECK(step({}, 0.14, 1.0f, false).left[0] == 0);
+    CHECK(step({}, 0.16, 1.0f, false).left[0] == 1);
+    // A fast throw forward and up, released: thrown, with the hand's velocity.
+    Vec3 p{};
+    for (int i = 0; i < 12; ++i) {
+        p = p + Vec3{0.0, 0.03, -0.06};  // 2.7 m/s up, 5.4 m/s forward
+        CHECK(step(p, 0.5, 1.0f, false).event == thr::Event::None);
+    }
+    p = p + Vec3{0.0, 0.03, -0.06};
+    s = step(p, 0.5, 0.2f, false);
+    CHECK(s.event == thr::Event::Thrown && s.hand == 0 && machine.Holder() < 0);
+    CHECK(s.release.valid && std::abs(s.release.speed - std::sqrt(2.7 * 2.7 + 5.4 * 5.4)) < 0.1);
+    CHECK(s.release.velocity.z < 0.0 && s.release.velocity.y > 0.0);
+
+    // A slow release puts it back.
+    step(p, 0.05, 1.0f, false);
+    s = step(p, 0.05, 1.0f, true);
+    CHECK(s.event == thr::Event::Grabbed);
+    for (int i = 0; i < 10; ++i) {
+        p = p + Vec3{0.0, 0.0, -0.005};  // 0.45 m/s
+        step(p, 0.05, 1.0f, false);
+    }
+    s = step(p, 0.05, 0.1f, false);
+    CHECK(s.event == thr::Event::Cancelled && s.release.speed < 1.0);
+
+    // Losing tracking while holding puts it back (no throw).
+    s = step(p, 0.05, 1.0f, true);
+    CHECK(s.event == thr::Event::Grabbed);
+    in.now = t;
+    in.hands[0].tracked = false;
+    s = machine.Update(in);
+    CHECK(s.event == thr::Event::Dropped && machine.Holder() < 0);
+    t += dt;
+    // A hand not allowed to take grenades doesn't.
+    in.hands[0].allowed = false;
+    step(p, 0.05, 1.0f, false);
+    s = step(p, 0.05, 1.0f, true);
+    CHECK(s.event == thr::Event::None && machine.Holder() < 0);
+}
+
+void TestSwing() {
+    namespace thr = mevr::ik::throwing;
+    using mevr::ik::Vec3;
+    double const dt = 1.0 / 90.0;
+    thr::SwingParams params;  // 3 m/s, 0.12 m
+    thr::SwingDetector swing;
+    thr::SwingInput in;
+    in.tracked = true;
+    double t = 0.0;
+    Vec3 p{0.2, -0.3, -0.2};
+    auto run = [&](Vec3 velocity, int frames) {
+        int strikes = 0;
+        char const* refused = nullptr;
+        for (int i = 0; i < frames; ++i) {
+            p = p + velocity * dt;
+            in.now = t;
+            in.position = p;
+            thr::SwingStep const s = swing.Update(in, params);
+            strikes += s.strike ? 1 : 0;
+            refused = s.refused != nullptr ? s.refused : refused;
+            t += dt;
+        }
+        return std::make_pair(strikes, refused);
+    };
+    // Holding still, then aiming around slowly (1.5 m/s): nothing.
+    CHECK(run({}, 20).first == 0);
+    CHECK(run({1.5, 0.0, 0.0}, 20).first == 0);
+    CHECK(run({}, 10).first == 0);
+    // A punch forward at 4 m/s for 0.1 s (0.4 m): one strike, however long it lasts.
+    auto const punch = run({0.0, 0.0, -4.0}, 9);
+    CHECK(punch.first == 1);
+    CHECK(run({0.0, 0.0, -4.0}, 5).first == 0);
+    // Pulling back fast isn't a strike (backward); then the cooldown blocks the next punch.
+    CHECK(run({}, 5).first == 0);
+    auto const pull = run({0.0, 0.0, 4.0}, 9);
+    CHECK(pull.first == 0 && pull.second != nullptr);
+    CHECK(run({}, 5).first == 0);
+    auto const early = run({0.0, 0.0, -4.0}, 9);
+    CHECK(early.first == 0 && early.second != nullptr && std::string(early.second) == "cooldown");
+    // After the cooldown a sideways swipe (a pistol whip across the body) strikes.
+    CHECK(run({}, 72).first == 0);
+    CHECK(run({-4.5, -1.0, -0.5}, 9).first == 1);
+    // Fast jitter (back and forth every other frame) never travels far enough.
+    CHECK(run({}, 80).first == 0);
+    int jitter = 0;
+    for (int i = 0; i < 40; ++i) {
+        jitter += run({0.0, 0.0, (i % 2 == 0) ? -5.0 : 5.0}, 2).first;
+    }
+    CHECK(jitter == 0);
+    // Suppressed (a grenade in the hand, firing...): refused with that reason.
+    CHECK(run({}, 80).first == 0);
+    in.suppressed = true;
+    auto const held = run({0.0, 0.0, -4.0}, 9);
+    CHECK(held.first == 0 && held.second != nullptr);
+    in.suppressed = false;
+    // A tracking glitch (40 m/s) is no stroke.
+    CHECK(run({}, 10).first == 0);
+    CHECK(run({0.0, 0.0, -40.0}, 3).first == 0);
+}
+
+void TestArcPoints() {
+    namespace thr = mevr::ik::throwing;
+    // Unreal axes: +Z up. 1000 units/s level, gravity -981: after 1 s, 1000 ahead and 490.5 down.
+    auto const arc = thr::ArcPoints({0.0, 0.0, 100.0}, {1000.0, 0.0, 0.0}, -981.0, 0.05, 1.0, 1e9);
+    CHECK(arc.size() == 21);
+    CHECK(std::abs(arc.back().x - 1000.0) < 1e-6 && std::abs(arc.back().z - (100.0 - 490.5)) < 1e-6);
+    // It stops once it has fallen maxDrop.
+    auto const dropped = thr::ArcPoints({}, {0.0, 0.0, 0.0}, -1000.0, 0.1, 10.0, 500.0);
+    CHECK(dropped.size() < 15 && dropped.back().z < -500.0);
+    CHECK(thr::ArcPoints({}, {}, -1000.0, 0.0, 1.0, 1.0).empty());
+}
+
+// B and X kept from the game when the physical melee and throw replace them; an RB press stays RB.
+void TestFaceButtonsOff() {
+    using namespace mevr::game::gamepad;
+    mevr::vr::controllers::State state;
+    Latches latches;
+    Options options;
+    options.meleeButton = false;
+    options.grenadeButton = false;
+    state.right.secondary = true;  // B
+    state.left.primary = true;     // X
+    state.left.secondary = true;   // Y
+    auto pad = FromControllers(state, latches, options);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_B) == 0 && (pad.wButtons & XINPUT_GAMEPAD_X) == 0);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_Y) != 0);
+    // The flags round-trip, and 0 (an older mod) keeps both buttons.
+    Options const back = FromFlags(-1.0f, 0.12f, 0.22f, ToFlags(options));
+    CHECK(!back.meleeButton && !back.grenadeButton);
+    Options const none = FromFlags(-1.0f, 0.12f, 0.22f, 0u);
+    CHECK(none.meleeButton && none.grenadeButton);
+    // B as the power wheel's RB source still sends RB.
+    state = {};
+    latches = {};
+    options.rightGripHolds = true;
+    options.rbSource = RbSource::B;
+    state.right.secondary = true;
+    pad = FromControllers(state, latches, options);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0 && (pad.wButtons & XINPUT_GAMEPAD_B) == 0);
+}
+
 // ---- The recenter that corrects a tilted base space (core/vr/Recenter) ----------------------------------
 bool SameQuat(XrQuaternionf a, XrQuaternionf b) {
     return a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w;
@@ -3930,6 +4206,12 @@ int main() {
     TestNativeWheelMachine();
     TestNativeWheelPad();
     TestWheelCrop();
+    TestThrowVelocity();
+    TestThrowGrip();
+    TestGrenadeMachine();
+    TestSwing();
+    TestArcPoints();
+    TestFaceButtonsOff();
     TestBodySlotGeometry();
     TestBodySlotMachine();
     TestBodySlotHolding();

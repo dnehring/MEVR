@@ -120,6 +120,8 @@ set(MEVR_MOD_SOURCES
     src/core/ik/TorsoPose.hpp
     src/core/ik/TouchReference.cpp
     src/core/ik/TouchReference.hpp
+    src/core/ik/Throwing.cpp
+    src/core/ik/Throwing.hpp
     src/core/ik/TwoHand.cpp
     src/core/ik/TwoHand.hpp
     src/core/vr/AimRay.cpp
@@ -196,6 +198,8 @@ set(MEVR_MOD_SOURCES
     src/game/SquadWeapons.hpp
     src/game/SupportGrip.cpp
     src/game/SupportGrip.hpp
+    src/game/Throwables.cpp
+    src/game/Throwables.hpp
     src/game/ViewAnchor.cpp
     src/game/ViewAnchor.hpp
     src/game/Weapon.cpp
@@ -338,6 +342,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/Ik.cpp
         src/core/ik/Rigid.cpp
         src/core/ik/TorsoPose.cpp
+        src/core/ik/Throwing.cpp
         src/core/ik/TouchReference.cpp
         src/core/ik/TwoHand.cpp
         src/core/vr/Haptics.cpp

@@ -35,6 +35,7 @@
 #include "game/SkeletonProbe.hpp"
 #include "game/SquadWeapons.hpp"
 #include "game/SupportGrip.hpp"
+#include "game/Throwables.hpp"
 #include "game/ViewAnchor.hpp"
 #include "game/Weapon.hpp"
 
@@ -201,6 +202,7 @@ void TryInstallScriptHooks() {
     }
     game::holsters::TryStartup();  // logs what it found; holsters stay off without it
     game::squad_weapons::TryStartup();  // likewise for the squad weapon menu
+    game::throwables::TryStartup();  // and physical grenades and melee (registers its launch handlers)
     gHandAimAvailable = game::hand_aim::TryStartup();
     game::sights::TryStartup();  // the scoped shots' aimed fire (a CallFunction handler, registered before the hook)
     if (!gHandAimAvailable) {
@@ -475,6 +477,34 @@ mevr::game::squad_weapons::Link SquadLink() {
     return link;
 }
 
+// Host renderer: physical grenades and melee (research/20): the grips' reports (v9 right, v11 left), the
+// controller pulses and buzz (v9/v10), and whether the pad mapping can keep B and X from the game (v14).
+mevr::game::throwables::Link ThrowablesLink() {
+    using namespace mevr;
+    game::throwables::Link link;
+    if (!gHostOwnsVr) {
+        link.buttonFlags = true;  // our own pad mapping (game/gamepad_bridge) knows every flag
+        return link;
+    }
+    if (gHost->version >= 9) {
+        if (gHost->rightGripFree != nullptr) {
+            link.rightGrip = gHost->rightGripFree();
+        }
+        link.haptic = gHost->hapticPulse;
+    }
+    if (MEVR_HOST_HAS(leftGripAway) && gHost->leftGripAway != nullptr) {
+        link.leftGrip = gHost->leftGripAway();
+    }
+    if (MEVR_HOST_HAS(hapticPulseHz)) {
+        link.hapticHz = gHost->hapticPulseHz;
+    }
+    if (MEVR_HOST_HAS(hapticContinuous)) {
+        link.hapticContinuous = gHost->hapticContinuous;
+    }
+    link.buttonFlags = gHost->version >= 14;
+    return link;
+}
+
 // Host renderer (HostServices v8): while the test loop takes a snapshot, our state for its JSON.
 void PublishStatus() {
     using namespace mevr;
@@ -497,7 +527,7 @@ void PublishStatus() {
         "\"armIk\": {{\"enabled\": {}, \"status\": {}, \"handSource\": {}, \"rightHandAimsGun\": {}, \"supportRequested\": {}}}, "
         "\"handAim\": {{\"enabled\": {}, \"toldHost\": {}}}, "
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
-        "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}}}",
+        "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"throwables\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -505,7 +535,7 @@ void PublishStatus() {
         gHandAimReported ? "true" : "false", json::JsonString(type), static_cast<unsigned long long>(game::weapon::Key()),
         json::JsonString(game::weapon::Status()), game::support_grip::Held() ? "true" : "false",
         json::JsonNumber(game::support_grip::Blend()), game::holsters::StatusJson(), game::squad_weapons::StatusJson(),
-        game::sights::StatusJson());
+        game::sights::StatusJson(), game::throwables::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -640,6 +670,7 @@ void Heartbeat() {
         game::holsters::LogStats();
         game::squad_weapons::LogStats();
         game::sights::LogStats();
+        game::throwables::LogStats();
         game::skeleton_probe::Tick();
     }
     engine::scene_view::LogStats();
@@ -745,9 +776,14 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // OnTickEnd), then which way shots go and the reticle's ray.
         game::weapon::Tick(game::hand_aim::Enabled() || game::arm_ik::Enabled());
         game::arm_ik::Tick(deltaSeconds);
-        // Holsters and the squad menu before the support grip: it publishes the pad flags, theirs among them.
+        // Holsters, the squad menu and the grenades before the support grip: it publishes the pad flags,
+        // theirs among them. A squeeze at the grenade slot is claimed first, so neither holsters nor the
+        // squad menu take it.
+        game::throwables::Link const throwablesLink = ThrowablesLink();
+        game::throwables::Claim(throwablesLink);
         game::holsters::Tick(deltaSeconds, HolsterLink());
         game::squad_weapons::Tick(deltaSeconds, SquadLink());
+        game::throwables::Tick(deltaSeconds, throwablesLink);
         game::support_grip::Tick(deltaSeconds, game::arm_ik::SupportRequested());
         PublishSupportGrip();
         game::camera_probe::Tick();
@@ -848,6 +884,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::support_grip::Shutdown();
     game::holsters::Shutdown();
     game::squad_weapons::Shutdown(exiting);  // unpauses the game if its menu paused it
+    game::throwables::Shutdown();
     game::weapon::Shutdown();
     game::camera_probe::Shutdown();
     gHost = nullptr;
