@@ -29,7 +29,7 @@ struct Ray;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 8;
+inline constexpr int kHostServicesVersion = 9;
 
 using ProcessEventCallback = void (*)(UObject* context, UFunction* function, void* parms, void* result);
 
@@ -96,6 +96,17 @@ struct HostServices {
     // tick; the snapshot's JSON carries it as "mod". Non-null with `controllers`.
     bool (*statusWanted)() = nullptr;
     void (*setStatus)(char const* json) = nullptr;
+
+    // Version 9: the body holsters (game/holsters, research/19).
+    // A vibration on one controller (0 left, 1 right) for `seconds` at `amplitude` (0..1), applied
+    // on the host's next frame (a newer request for the same hand replaces a pending one). Any
+    // thread. Non-null with `controllers`.
+    void (*hapticPulse)(int hand, float seconds, float amplitude) = nullptr;
+    // The pad mapping's right grip (setSupportGrip's gamepad::kFlagRightGripFree): the number of
+    // squeezes it kept from the game (no RB, because they began at a holster) shifted up one bit, and
+    // in bit 0 whether the current squeeze is one (gamepad::RightGripReport). Squeezes while Halcyon's
+    // menu is open never count. Non-null with `controllers`.
+    std::uint32_t (*rightGripFree)() = nullptr;
 };
 
 } // namespace mevr

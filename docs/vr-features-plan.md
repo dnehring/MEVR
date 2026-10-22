@@ -71,7 +71,10 @@ IK math is in `src/core/ik` (unit-tested). The arms are written into the pose af
 - **Reloads:** LE2/LE3 thermal clips: eject, grab a clip from the belt, insert. That maps
   directly onto TF2VR/Overlord-style reloads. LE1 has no reloads; an optional vent gesture could
   cool the weapon early.
-- **Holsters:** four weapon slots. Hips, back and chest, as in Overlord.
+- **Holsters:** four weapon slots (LE1, built 2026-10-22, [research/19](../research/19-body-holsters.md)): pistol at the
+  right hip, assault rifle over the right shoulder, shotgun at the belly, sniper rifle over the
+  left shoulder; a right-grip squeeze at a slot draws through the game's own switch, the weapon
+  wheel stays as a fallback.
 - **Powers:** power wheel as a radial menu on the off-hand. Stretch goal: gesture casting.
 - **Cover (LE2/LE3):** keep button cover, but let the player physically lean and peek out of it.
 

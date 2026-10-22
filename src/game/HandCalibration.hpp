@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/ik/ArmLength.hpp"
+#include "core/ik/BodySlots.hpp"
 #include "core/ik/Rigid.hpp"
 
 #include <optional>
@@ -24,6 +25,7 @@
 //   [Controls] supportGrip, supportAcquireM, supportReleaseM, sniperAims, leftTrigger: the
 //                                         two-handed grip (game/support_grip) and whether the left
 //                                         trigger reaches the game as LT.
+//   [Holsters] body holsters (below, GetHolsters).
 namespace mevr::game::hand_calibration {
 
 // The trim for one hand (0 left, 1 right), in the grip's own axes (ik::GripTrim).
@@ -47,6 +49,24 @@ struct Controls {
     bool aimAtShoulder = true;    // aimAtShoulder: aimed fire (LT) needs the gun at the shoulder too
 };
 Controls GetControls();
+// [Holsters] (appended to an older file that lacks it): body holsters (game/holsters, research/19).
+//   enabled          1: reach to a slot on the body and squeeze the right grip to draw its weapon
+//   weaponWheel      1: the game's weapon wheel stays on its button (LB) as a fallback; 0: no LB
+//                    from the left trigger or grip while holsters are on
+//   holster          0 off; 1 squeeze and release at the held gun's own slot; 2 also at an empty slot
+//   eyeHeightM       the player's standing eye height: scales the slot offsets (1.65 = as written)
+//   hapticAmplitude  0..1, the pulse on entering a slot (0: no vibration)
+//   hipRight, shoulderRight, belly, shoulderLeft = weapon, right, up, forward, radius
+//                    weapon: pistol | shotgun | rifle | sniper | none; meters from the eyes (held
+//                    upright), in the body's frame, at a 1.65 m eye height
+struct Holsters {
+    bool enabled = true;
+    bool weaponWheel = true;
+    ik::body_slots::Holster holster = ik::body_slots::Holster::OwnSlot;
+    ik::body_slots::Layout layout = ik::body_slots::DefaultLayout();
+    double hapticAmplitude = 0.5;
+};
+Holsters GetHolsters();
 // Where Halcyon's first-person camera sits from Shepard's head bone with the headset at the
 // recenter point (units: forward, right, up in the view's yaw), for the menu's "Put the camera at
 // Shepard's eyes" button (src/plugin/MevrMenuTab.cpp). Written as [Camera] measuredForward,

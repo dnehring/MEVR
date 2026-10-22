@@ -282,6 +282,56 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       prefer, and whether 70° suits you.
     - **Snapshot** (End) with the menu open and the head turned: Claude checks the menu quad sits
       at its app-space pose in the composite.
+11. **Body holsters (new, 2026-10-22; host redeploy for the buzz and the RB block).** Draw
+    weapons by reaching for them ([research/19](../research/19-body-holsters.md)):
+    - **Where:** pistol at the right hip, assault rifle over the right shoulder, shotgun in front
+      of the belly, sniper rifle over the left shoulder.
+    - **How:** reach there with the right hand (a short buzz says you're in) and squeeze the right
+      grip once. To put the gun away, squeeze and release the right grip with the gun at its own
+      slot.
+    - **Settings:** `[Holsters]` in `Binaries\Win64\ASI\LE1MEVR.ini`. It applies within a second,
+      so you can tune while playing. Set `eyeHeightM` to your eye height (about your height minus
+      12 cm) first. The game's weapon wheel stays on the left trigger (`weaponWheel = 1`).
+
+    Steps (first person, on foot, recentered with R while standing straight):
+    - **Each slot, with a weapon drawn:**
+      - Reach slowly to each slot. Note where the buzz starts (log: `holsters: right hand entered
+        <slot> (..., 0.xx m from its center ...)`) and whether that matches where you'd expect
+        the weapon.
+      - Squeeze there. The weapon switch animation runs and the new gun appears in the hand. Logs:
+        `holsters: grab at <slot>: drawing the <type> (SFXGameModeDefault.SwitchToWeapon(N) ...)`
+        and `holsters: the <type> is in hand after N s`.
+      - The power wheel (RB) must **not** open. If it does, the host wasn't redeployed: say so.
+    - **Holstered** (put the gun away with the game's own key, or below): squeeze at a slot. The
+      game should draw that weapon (log as above).
+    - **Holster:** with the pistol drawn, hand at the hip, squeeze and release. Log:
+      `holsters: squeezed at hipRight with the pistol in hand: release here to holster it`, then
+      `the pistol goes back in hipRight (SFXGameModeDefault.TryHolster)` and
+      `the pistol is holstered after N s`.
+      - Squeeze, move the hand away, and release: nothing happens (log `holster ... called off`).
+      - Squeeze, pull the trigger, and release: nothing happens either.
+    - **A weapon you don't carry:** a weaker, longer buzz, log `you carry no <type>`.
+    - **Accidents:** fight normally for a minute, including hip fire low in front of you and
+      aiming with the gun at your cheek. Did anything switch or holster by itself? Did the power
+      wheel stop working anywhere except right at the slots?
+    - **Turning and looking:**
+      - Look down at the hip and belly slots. They must not move as you look (log `yaw from arm
+        IK's torso` or `the head (lagging)`).
+      - Turn your whole body: the slots come round with you after the torso follows.
+    - **Fit:** if a slot is hard to reach or too easy to hit, say which. Edit its line (`weapon,
+      right, up, forward, radius` in meters) and retry; Claude can also read the slot centers from
+      a snapshot (End) taken with your hand at the slot (the `holsters` object in the mod status).
+    - **Optional:**
+      - `weaponWheel = 0` turns the wheel's LB off (the left trigger then does nothing). Try it
+        once holsters feel right.
+      - `holster = 0` turns holstering by hand off.
+    - Log at startup: `holsters: script functions found (...)`, `holsters: on, weapon wheel kept
+      (LB), holster 1, ...`, and once in game `holsters: the player's quick slots: 0: ...
+      (pistol); 1: ...; slot = weapon type, as research/19 expects`. **NOT slot = weapon type**
+      would mean our reading of the quick slots is off: tell Claude.
+    - The heartbeat's `holsters:` line counts entries, draws, holsters and refusals, and lists
+      the slot centers from the eyes. Halcyon's side: `halcyon bridge: first controller vibration
+      (... applied)` and `first right-grip squeeze at a holster: kept from the game (no RB)`.
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR

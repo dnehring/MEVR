@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 // Halcyon's VR renderer (src/halcyon/le1, GPL-3.0), running inside our host ASI: it owns the
 // OpenXR session, the Present path, stereo, first person, the HUD and its Insert-key menu. Its log
 // is %LOCALAPPDATA%\MELEVR\MELEVR_Log.txt; its settings are MELEVR.ini next to our ASI.
@@ -26,5 +28,11 @@ void SetSupportGrip(float distanceMeters, float acquireMeters, float releaseMete
 void ForgetSupportGrip();
 // The pad mapping holds the support grip (HostServices::supportGripHeld).
 bool SupportGripHeld();
+
+// The body holsters (HostServices v9). A controller vibration, applied on the next frame after the
+// action sync (Halcyon's frame thread); a newer request for a hand replaces a pending one. Any thread.
+void RequestHaptic(int hand, float seconds, float amplitude);
+// The pad mapping's right grip report (gamepad::RightGripReport). Any thread.
+std::uint32_t RightGripFree();
 
 } // namespace mevr::host::halcyon

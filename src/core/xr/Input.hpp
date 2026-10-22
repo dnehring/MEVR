@@ -40,6 +40,9 @@ public:
     void Sync(Session& session, XrTime time, vr::controllers::State& out) { Sync(From(session), time, out); }
     // Whether the last Sync found the session focused (input reaches this app).
     bool Focused() const { return focused_; }
+    // A vibration on one controller (0 left, 1 right) for `seconds` at `amplitude` (0..1), at the
+    // runtime's default frequency. False if there's no vibration action or OpenXR refused it.
+    bool Vibrate(Target const& target, int hand, float seconds, float amplitude);
 
 private:
     enum Hand { kLeft = 0, kRight = 1 };
@@ -54,6 +57,7 @@ private:
     XrAction menu_ = XR_NULL_HANDLE;
     XrAction gripPose_ = XR_NULL_HANDLE;
     XrAction aimPose_ = XR_NULL_HANDLE;
+    XrAction haptic_ = XR_NULL_HANDLE;  // vibration output; optional
     std::array<XrPath, 2> hands_{};
     std::array<XrSpace, 2> gripSpaces_{};
     std::array<XrSpace, 2> aimSpaces_{};

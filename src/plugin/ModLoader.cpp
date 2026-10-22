@@ -83,11 +83,17 @@ bool HostStatusWanted() {
 void HostSetStatus(char const* json) {
     testloop::SetModStatus(json);
 }
+void HostHapticPulse(int hand, float seconds, float amplitude) {
+    halcyon::RequestHaptic(hand, seconds, amplitude);
+}
+std::uint32_t HostRightGripFree() {
+    return halcyon::RightGripFree();
+}
 HostServices const gServices{kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
     static_cast<std::uint32_t>(sizeof(vr::controllers::State)), static_cast<std::uint32_t>(sizeof(vr::host_view::State)),
     &HostSetProcessEventCallback, &HostProcessExiting, &HostKeepLoaded,
     static_cast<std::uint32_t>(sizeof(vr::aim_ray::Ray)), &HostSetAimRay, &HostSetSupportGrip, &HostSupportGripHeld,
-    &HostStatusWanted, &HostSetStatus};
+    &HostStatusWanted, &HostSetStatus, &HostHapticPulse, &HostRightGripFree};
 // A mod that's gone can't aim: Halcyon's head aim must come back, the reticle go, and the pad
 // mapping forget the two-handed grip.
 void ForgetModState() {
