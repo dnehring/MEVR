@@ -210,11 +210,22 @@ bool GateClick(ClickGate& g, bool click, bool otherClick, std::uint64_t nowMs) {
     return g.phase == Phase::Pass || g.phase == Phase::Pulse;
 }
 
+char const* Name(WheelStick stick) {
+    switch (stick) {
+    case WheelStick::Right: return "the right stick";
+    case WheelStick::Left: return "the left stick";
+    case WheelStick::Either: return "either stick";
+    }
+    return "?";
+}
+
 std::uint32_t ToFlags(Options const& options) {
     return (options.leftTrigger ? kFlagLeftTrigger : 0u) | (options.supportAims ? kFlagSupportAims : 0u) |
            (options.gripShoulder ? kFlagGripShoulder : 0u) | (options.leftTriggerShoulder ? kFlagLeftTriggerShoulder : 0u) |
            (options.rightGripFree ? kFlagRightGripFree : 0u) | (options.rightGripHolds ? kFlagRightGripHolds : 0u) |
-           (options.squadMenu ? kFlagSquadMenu : 0u) |
+           (options.squadMenu ? kFlagSquadMenu : 0u) | (options.nativeWheel ? kFlagNativeWheel : 0u) |
+           (options.wheelPressA ? kFlagWheelPressA : 0u) |
+           ((static_cast<std::uint32_t>(options.wheelStick) << kWheelStickShift) & kWheelStickMask) |
            ((static_cast<std::uint32_t>(options.rbSource) << kRbSourceShift) & kRbSourceMask);
 }
 
@@ -227,6 +238,10 @@ Options FromFlags(float distance, float acquire, float release, std::uint32_t fl
     options.rightGripFree = (flags & kFlagRightGripFree) != 0;
     options.rightGripHolds = (flags & kFlagRightGripHolds) != 0;
     options.squadMenu = (flags & kFlagSquadMenu) != 0;
+    options.nativeWheel = (flags & kFlagNativeWheel) != 0;
+    options.wheelPressA = (flags & kFlagWheelPressA) != 0;
+    std::uint32_t const stick = (flags & kWheelStickMask) >> kWheelStickShift;
+    options.wheelStick = stick <= static_cast<std::uint32_t>(WheelStick::Either) ? static_cast<WheelStick>(stick) : WheelStick::Right;
     std::uint32_t const source = (flags & kRbSourceMask) >> kRbSourceShift;
     options.rbSource = source <= static_cast<std::uint32_t>(RbSource::B) ? static_cast<RbSource>(source) : RbSource::None;
     options.support = {distance, acquire, release};
@@ -245,8 +260,30 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
     std::uint8_t const active = static_cast<std::uint8_t>((pushed(input.left.stickX, input.left.stickY) ? kSquadLeftStick : 0) |
         (pushed(input.right.stickX, input.right.stickY) ? kSquadRightStick : 0) | (input.right.primary ? kSquadA : 0) |
         (input.right.secondary ? kSquadB : 0) | (input.left.stickClick ? kSquadL3 : 0) | (input.right.stickClick ? kSquadR3 : 0));
-    latches.squadHeld = options.squadMenu ? active : static_cast<std::uint8_t>(latches.squadHeld & active);
-    std::uint8_t const block = options.squadMenu ? kSquadAll : latches.squadHeld;
+    bool const owning = options.squadMenu || options.nativeWheel;
+    latches.squadHeld = owning ? active : static_cast<std::uint8_t>(latches.squadHeld & active);
+    // The game's own weapon wheel: one stick steers it (as the game's right stick), once it has been
+    // centred since the wheel opened; nothing else of the sticks, B or the clicks reaches the game.
+    float steerX = 0.0f;
+    float steerY = 0.0f;
+    if (options.nativeWheel) {
+        bool const left = options.wheelStick == WheelStick::Left ||
+            (options.wheelStick == WheelStick::Either &&
+                input.left.stickX * input.left.stickX + input.left.stickY * input.left.stickY >
+                    input.right.stickX * input.right.stickX + input.right.stickY * input.right.stickY);
+        steerX = left ? input.left.stickX : input.right.stickX;
+        steerY = left ? input.left.stickY : input.right.stickY;
+        if (!latches.wheelWas) {
+            latches.wheelArmed = false;
+        }
+        if (!pushed(steerX, steerY)) {
+            latches.wheelArmed = true;
+        }
+    }
+    latches.wheelWas = options.nativeWheel;
+    std::uint8_t const block = options.squadMenu ? kSquadAll
+        : options.nativeWheel ? static_cast<std::uint8_t>(kSquadLeftStick | kSquadRightStick | kSquadB | kSquadL3 | kSquadR3)
+                              : latches.squadHeld;
     vr::controllers::State state = input;
     if ((block & kSquadLeftStick) != 0) {
         state.left.stickX = state.left.stickY = 0.0f;
@@ -265,6 +302,10 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
     }
     if ((block & kSquadR3) != 0) {
         state.right.stickClick = false;
+    }
+    if (options.nativeWheel && latches.wheelArmed) {
+        state.right.stickX = steerX;
+        state.right.stickY = steerY;
     }
     auto const& l = state.left;
     auto const& r = state.right;
@@ -353,7 +394,7 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
         rb = true;
     }
     if (rb) buttons |= XINPUT_GAMEPAD_RIGHT_SHOULDER;
-    if (r.primary) buttons |= XINPUT_GAMEPAD_A;
+    if (r.primary || (options.nativeWheel && options.wheelPressA)) buttons |= XINPUT_GAMEPAD_A;
     if (GateClick(latches.leftClick, l.stickClick, r.stickClick, state.timeMs)) buttons |= XINPUT_GAMEPAD_LEFT_THUMB;
     if (r.stickClick) buttons |= XINPUT_GAMEPAD_RIGHT_THUMB;
     if (l.menu) buttons |= leftGrip ? XINPUT_GAMEPAD_BACK : XINPUT_GAMEPAD_START;

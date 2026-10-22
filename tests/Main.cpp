@@ -3294,6 +3294,302 @@ void TestSquadPad() {
     CHECK((LeftGripReport(grip) >> 1) == 1u);
 }
 
+void TestNativeWheelGeometry() {
+    namespace wheel = mevr::vr::squad_menu::wheel;
+    using wheel::Entry;
+    // Every entry's centre angle reads back as that entry (the HUD movie's own tables).
+    int seen = 0;
+    for (int member = 0; member < wheel::kMembers; ++member) {
+        for (int slot = 1; slot <= wheel::kSlots; ++slot) {
+            int const angle = wheel::StickAngleOf({member, slot});
+            CHECK(angle >= 0 && angle < 360);
+            CHECK((wheel::EntryAtStickAngle(angle) == Entry{member, slot}));
+            ++seen;
+        }
+    }
+    CHECK(seen == 12);
+    // The movie's arrow angle is 361 - nAngle: its boundaries, checked from both sides.
+    auto const at = [](int arrow) { return wheel::EntryAtStickAngle(361 - arrow); };
+    CHECK((at(1) == Entry{2, 1}));    // member 2's slot 1 wraps through the arrow's 0
+    CHECK((at(11) == Entry{2, 1}));
+    CHECK((at(12) == Entry{0, 4}));
+    CHECK((at(168) == Entry{0, 1}));
+    CHECK((at(169) == Entry{1, 4}));
+    CHECK((at(269) == Entry{1, 1}));
+    CHECK((at(270) == Entry{2, 4}));
+    CHECK((at(346) == Entry{2, 2}));
+    CHECK((at(347) == Entry{2, 1}));
+    CHECK((at(360) == Entry{2, 1}));
+    CHECK(wheel::EntryAtStickAngle(0) == wheel::EntryAtStickAngle(1));  // clamped like the movie
+    CHECK(!wheel::EntryAtStickAngle(-1).Valid());                      // no wheel
+    CHECK(wheel::StickAngleOf({}) == -1 && wheel::StickAngleOf({3, 1}) == -1 && wheel::StickAngleOf({0, 5}) == -1);
+    // Slots <-> weapon types, as BioSFHandler_HUD.HandleEvent 11 converts them.
+    CHECK(wheel::WeaponOfSlot(1) == 3 && wheel::WeaponOfSlot(2) == 0 && wheel::WeaponOfSlot(3) == 2 && wheel::WeaponOfSlot(4) == 1);
+    for (int weapon = 0; weapon < 4; ++weapon) {
+        CHECK(wheel::WeaponOfSlot(wheel::SlotOfWeapon(weapon)) == weapon);
+    }
+    CHECK(wheel::WeaponOfSlot(0) == -1 && wheel::SlotOfWeapon(4) == 0);
+}
+
+void TestNativeWheelMachine() {
+    namespace wheel = mevr::vr::squad_menu::wheel;
+    using wheel::Phase;
+    wheel::Machine m;
+    wheel::Input in;
+    in.dt = 0.02f;
+    in.usable = true;
+    in.onFoot = true;
+    // Pointing: the enter goes out with the squeeze; the wheel opens when the game's mode says so.
+    in.gripDown = true;
+    in.newAwaySqueeze = true;
+    in.pointed = true;
+    wheel::Step s = m.Update(in);
+    CHECK(s.enter && s.openedPointing && m.CurrentPhase() == Phase::Opening && m.Holding());
+    in.newAwaySqueeze = false;
+    s = m.Update(in);
+    CHECK(!s.enter && !s.opened && m.CurrentPhase() == Phase::Opening);
+    in.onFoot = false;
+    in.wheelActive = true;
+    s = m.Update(in);
+    CHECK(s.opened && m.CurrentPhase() == Phase::Open);
+    // Let go with a carried entry highlighted: A for a moment, then the exit once it's queued.
+    in.highlightValid = true;
+    in.highlightCarried = true;
+    in.gripDown = false;
+    s = m.Update(in);
+    CHECK(s.holdA && s.confirmed && !s.exit && m.CurrentPhase() == Phase::Confirming);
+    s = m.Update(in);
+    CHECK(s.holdA);  // 0.02 s < 0.08 s
+    in.dt = 0.1f;
+    s = m.Update(in);
+    CHECK(!s.holdA && !s.exit);  // A let go; the queue hasn't taken it yet
+    in.choiceRecorded = true;
+    s = m.Update(in);
+    CHECK(s.exit && m.CurrentPhase() == Phase::Closing);
+    in.wheelActive = false;
+    in.onFoot = true;
+    s = m.Update(in);
+    CHECK(s.closed && m.CurrentPhase() == Phase::Idle && !m.Holding());
+
+    // At nobody: held 0.35 s; near the foregrip: a missed grab.
+    m.Reset();
+    in = {};
+    in.dt = 0.1f;
+    in.usable = true;
+    in.onFoot = true;
+    in.gripDown = true;
+    in.newAwaySqueeze = true;
+    s = m.Update(in);
+    CHECK(s.armed && m.CurrentPhase() == Phase::Arming);
+    in.newAwaySqueeze = false;
+    m.Update(in);
+    m.Update(in);
+    CHECK(m.CurrentPhase() == Phase::Arming);
+    s = m.Update(in);
+    s = m.Update(in);
+    CHECK(s.enter && !s.openedPointing && m.CurrentPhase() == Phase::Opening);
+    m.Reset();
+    in.newAwaySqueeze = true;
+    in.nearGun = true;
+    s = m.Update(in);
+    CHECK(s.missedGrab && m.CurrentPhase() == Phase::Idle);
+    // Let go early while arming: nothing.
+    in.nearGun = false;
+    s = m.Update(in);
+    CHECK(s.armed);
+    in.newAwaySqueeze = false;
+    in.gripDown = false;
+    m.Update(in);
+    CHECK(m.CurrentPhase() == Phase::Idle);
+    // Not on foot (the Mako, a conversation): no wheel.
+    in.gripDown = true;
+    in.newAwaySqueeze = true;
+    in.onFoot = false;
+    s = m.Update(in);
+    CHECK(!s.armed && !s.enter && m.CurrentPhase() == Phase::Idle);
+
+    // The game never enters the wheel (combat disabled in a hub): given up after the timeout.
+    m.Reset();
+    in = {};
+    in.dt = 0.1f;
+    in.usable = true;
+    in.onFoot = true;
+    in.gripDown = true;
+    in.newAwaySqueeze = true;
+    in.pointed = true;
+    m.Update(in);
+    in.newAwaySqueeze = false;
+    int updates = 0;
+    bool failed = false;
+    while (!failed && updates < 20) {
+        failed = m.Update(in).openFailed;
+        ++updates;
+    }
+    CHECK(failed && updates >= 6 && updates <= 7 && m.CurrentPhase() == Phase::Idle);
+
+    // A quick squeeze-and-let-go that the game still opens: shut at once, nothing given.
+    m.Reset();
+    in.newAwaySqueeze = true;
+    m.Update(in);
+    in.newAwaySqueeze = false;
+    in.gripDown = false;
+    m.Update(in);
+    in.wheelActive = true;
+    in.highlightValid = true;
+    in.highlightCarried = true;
+    s = m.Update(in);
+    CHECK(s.opened && s.exit && !s.holdA && m.CurrentPhase() == Phase::Closing);
+
+    // B closes without an A; a B held from before the wheel opened doesn't.
+    m.Reset();
+    in = {};
+    in.dt = 0.02f;
+    in.usable = true;
+    in.onFoot = true;
+    in.gripDown = true;
+    in.newAwaySqueeze = true;
+    in.pointed = true;
+    in.b = true;
+    m.Update(in);
+    in.newAwaySqueeze = false;
+    in.wheelActive = true;
+    m.Update(in);
+    s = m.Update(in);
+    CHECK(!s.exit && m.CurrentPhase() == Phase::Open);
+    in.b = false;
+    m.Update(in);
+    in.b = true;
+    in.highlightValid = true;
+    in.highlightCarried = true;
+    s = m.Update(in);
+    CHECK(s.exit && s.cancelled && !s.holdA && m.CurrentPhase() == Phase::Closing);
+    // The mode doesn't leave: one more exit, then given up.
+    in.dt = 0.3f;
+    s = m.Update(in);
+    s = m.Update(in);
+    CHECK(s.exit && !s.exitStuck);
+    s = m.Update(in);
+    s = m.Update(in);
+    CHECK(s.exitStuck && m.CurrentPhase() == Phase::Idle);
+
+    // confirmOnRelease off, or an entry they don't carry, or one already queued: no A.
+    for (int variant = 0; variant < 3; ++variant) {
+        m.Reset();
+        in = {};
+        in.dt = 0.02f;
+        in.usable = true;
+        in.onFoot = true;
+        in.gripDown = true;
+        in.newAwaySqueeze = true;
+        in.pointed = true;
+        m.Update(in);
+        in.newAwaySqueeze = false;
+        in.wheelActive = true;
+        m.Update(in);
+        in.highlightValid = true;
+        in.highlightCarried = variant != 1;
+        in.confirmOnRelease = variant != 0;
+        in.choiceRecorded = variant == 2;
+        in.gripDown = false;
+        s = m.Update(in);
+        CHECK(s.exit && !s.holdA && m.CurrentPhase() == Phase::Closing);
+        CHECK(s.cancelled == (variant != 2));
+    }
+    // The game closes it by itself (LB let go, the pause menu): back to idle, nothing to call.
+    m.Reset();
+    in = {};
+    in.usable = true;
+    in.onFoot = true;
+    in.gripDown = true;
+    in.newAwaySqueeze = true;
+    in.pointed = true;
+    m.Update(in);
+    in.newAwaySqueeze = false;
+    in.wheelActive = true;
+    m.Update(in);
+    in.wheelActive = false;
+    s = m.Update(in);
+    CHECK(s.closedByGame && !s.exit && m.CurrentPhase() == Phase::Idle);
+}
+
+void TestNativeWheelPad() {
+    using namespace mevr::game::gamepad;
+    // The flags cross the boundary.
+    Options options;
+    options.nativeWheel = true;
+    options.wheelStick = WheelStick::Either;
+    options.wheelPressA = true;
+    Options const back = FromFlags(-1.0f, 0.12f, 0.22f, ToFlags(options));
+    CHECK(back.nativeWheel && back.wheelPressA && back.wheelStick == WheelStick::Either && !back.squadMenu);
+    CHECK(FromFlags(-1.0f, 0.12f, 0.22f, kFlagLeftTrigger).wheelStick == WheelStick::Right);
+    CHECK(FromFlags(-1.0f, 0.12f, 0.22f, 3u << kWheelStickShift).wheelStick == WheelStick::Right);  // unknown: right
+
+    // A right stick pushed (turning) when the wheel opens steers nothing until it has been centred.
+    options.wheelPressA = false;
+    options.wheelStick = WheelStick::Right;
+    mevr::vr::controllers::State state;
+    state.active = true;
+    state.timeMs = 30000;
+    state.right.stickX = 0.9f;
+    state.left.stickY = 0.8f;
+    Latches latches;
+    auto pad = FromControllers(state, latches, options);
+    CHECK(pad.sThumbRX == 0 && pad.sThumbLY == 0);
+    state.right.stickX = 0.1f;
+    state.timeMs += 20;
+    FromControllers(state, latches, options);
+    state.right.stickX = -0.9f;
+    state.timeMs += 20;
+    pad = FromControllers(state, latches, options);
+    CHECK(pad.sThumbRX < -20000 && pad.sThumbLY == 0);  // steers; the left stick never walks
+    // A reaches the game (it queues the highlighted entry); B and the clicks don't; the mod's own A too.
+    state.right.primary = true;
+    state.right.secondary = true;
+    state.right.stickClick = true;
+    pad = FromControllers(state, latches, options);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_A) != 0);
+    CHECK((pad.wButtons & (XINPUT_GAMEPAD_B | XINPUT_GAMEPAD_RIGHT_THUMB)) == 0);
+    state.right.primary = false;
+    options.wheelPressA = true;
+    pad = FromControllers(state, latches, options);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_A) != 0);
+    options.wheelPressA = false;
+    // Closed: the steering stick and B stay kept until centred and let go.
+    options.nativeWheel = false;
+    state.timeMs += 20;
+    pad = FromControllers(state, latches, options);
+    CHECK(pad.sThumbRX == 0 && (pad.wButtons & XINPUT_GAMEPAD_B) == 0);
+    // The mod's A only with the wheel flag.
+    options.wheelPressA = true;
+    state.right.secondary = false;
+    pad = FromControllers(state, latches, options);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_A) == 0);
+
+    // The left stick steering: it reaches the game as the right stick; the right stick is kept.
+    Latches left;
+    Options leftOptions;
+    leftOptions.nativeWheel = true;
+    leftOptions.wheelStick = WheelStick::Left;
+    mevr::vr::controllers::State hands;
+    hands.active = true;
+    hands.timeMs = 40000;
+    FromControllers(hands, left, leftOptions);  // centred: armed
+    hands.left.stickX = 0.7f;
+    hands.left.stickY = 0.7f;
+    hands.right.stickX = -0.9f;
+    pad = FromControllers(hands, left, leftOptions);
+    CHECK(pad.sThumbRX > 20000 && pad.sThumbRY > 20000 && pad.sThumbLX == 0 && pad.sThumbLY == 0);
+    // Either: the one pushed further.
+    leftOptions.wheelStick = WheelStick::Either;
+    pad = FromControllers(hands, left, leftOptions);
+    CHECK(pad.sThumbRX > 20000);  // the left (0.99) beats the right (0.9)
+    hands.right.stickX = -1.0f;
+    hands.left.stickX = 0.3f;
+    hands.left.stickY = 0.3f;
+    pad = FromControllers(hands, left, leftOptions);
+    CHECK(pad.sThumbRX < -30000);
+}
+
 int main() {
     TestBoneNames();
     TestIk();
@@ -3328,6 +3624,9 @@ int main() {
     TestSquadRadial();
     TestSquadMachine();
     TestSquadPanelPlacement();
+    TestNativeWheelGeometry();
+    TestNativeWheelMachine();
+    TestNativeWheelPad();
     TestBodySlotGeometry();
     TestBodySlotMachine();
     TestBodySlotHolding();
