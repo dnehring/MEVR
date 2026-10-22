@@ -45,6 +45,7 @@ instead of re-deriving it. Raw data: [research/06-repo-licenses.md](../research/
 | [LExSDKv2](https://github.com/llamathings/LExSDKv2) | None (deliberate) | Submodule: UE3/ME class layouts, ProcessEvent |
 | [LExASIs](https://github.com/ME3Tweaks/LExASIs) / [LEBinkProxy](https://github.com/ME3Tweaks/LEBinkProxy) | None | Patterns for hooks, build setup and loading. LEBinkProxy is the runtime loader |
 | Khronos OpenXR SDK | Apache-2.0 | Dependency (loader and headers) |
+| [Ghidra](https://github.com/NationalSecurityAgency/ghidra) 12.1.4 and [GhidraMCP](https://github.com/LaurieWired/GhidraMCP) 2.0 (LaurieWired) | Apache-2.0, both | **Local research tooling only, not in the repo and never shipped.** `tools/ghidra/` drives the installed copies (headless decompiling, and an MCP server on the same project). Our Ghidra scripts are our own code |
 | Dear ImGui, MinHook, SafetyHook, kananlib, spdlog, glm, DirectXTK | MIT, BSD-2, BSL-1.0, BSL-1.0, MIT, MIT, MIT | Likely dependencies (all permissive) |
 
 ## Overlord ideas worth taking (code may now be copied, with its notice)

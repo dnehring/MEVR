@@ -16,6 +16,7 @@
 #include "engine/CodeDump.hpp"
 #include "engine/Engine.hpp"
 #include "engine/GameAdapter.hpp"
+#include "engine/NativesDump.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/SceneView.hpp"
 #include "game/ArmIk.hpp"
@@ -522,6 +523,7 @@ void Heartbeat() {
         ++gHeartbeats, gHeartbeatFrames / gHeartbeatElapsed, static_cast<void*>(world),
         UObject::GObjObjects->Count(), gHooked ? "live" : "waiting for script packages");
     if (gHooked) {
+        engine::natives_dump::SaveIfRequested(*gInit);  // opt-in (MEVR_DUMP_NATIVES), once
         game::head_tracking::LogStats();
         game::reflections::LogStats();
         game::hand_aim::LogStats();

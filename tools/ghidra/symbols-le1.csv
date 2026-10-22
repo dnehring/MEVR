@@ -1,0 +1,58 @@
+# Hand-curated LE1 (2.0.0.48602, timestamp 0x60AEEFA2) names for the Ghidra project, from our
+# source and research notes. tools/ghidra/seed.ps1 merges this with LExSDKv2's RVA table and the
+# mod's natives dump; this file is applied last, so its names win.
+# Columns: rva,name,kind,comment. kind: func (makes a function there if needed) | label | data.
+# "A::B" puts B in namespace A. A "_guess" suffix means the role is inferred, not confirmed.
+# No commas inside a comment.
+rva,name,kind,comment
+0x4C5300,ULocalPlayer::CalcSceneView,func,research/13: .pdata start (ends 0x4C67B2); engine/SceneView.cpp
+0x4C71A0,FViewportClient::Draw,func,research/13: Halcyon's double-render hook; ends 0x4C9434
+0x4C7A4E,Draw_ret_GameplayCalcSceneView,label,research/13: return address of the gameplay CalcSceneView call inside Draw
+0x742B70,AllocateViewState_guess,func,research/13: Halcyon calls it 'likely AllocateViewState'; 62 bytes
+0x76EE20,SceneRenderB_halcyon,func,Halcyon render_hook.cpp kSceneRenderBRva
+0x767900,SceneRenderC_halcyon,func,Halcyon render_hook.cpp kSceneRenderCRva
+0x30EBF0,DrawChildA_halcyon,func,Halcyon render_hook.cpp: FViewportClient::Draw child (call 0x4C7A95)
+0x072A70,DrawChildB_halcyon,func,Halcyon render_hook.cpp: FViewportClient::Draw child (call 0x4C7AB4)
+0x063B00,DrawChildC_halcyon,func,Halcyon render_hook.cpp: FViewportClient::Draw child (call 0x4C7AE7)
+0x3043B0,DrawChildD_halcyon,func,Halcyon render_hook.cpp: FViewportClient::Draw child (call 0x4C7CD0)
+0x402170,DrawChildE_halcyon,func,Halcyon render_hook.cpp: FViewportClient::Draw child (call 0x4C7D03)
+0x310F40,SubtitleProbe1_halcyon,func,Halcyon pchud.cpp native subtitle probe SUBN1
+0x9BC180,SubtitleProbe3_halcyon,func,Halcyon pchud.cpp native subtitle probe SUBN3
+0x9B8BD0,SubtitleProbe4_halcyon,func,Halcyon pchud.cpp native subtitle probe SUBN4
+0x9BDA70,SubtitleProbe5_halcyon,func,Halcyon pchud.cpp native subtitle probe SUBN5
+0x154FC0,appCreateBitmap,func,research/09: ME3Tweaks PNGScreenshots hook
+0x11F210,UObject::execNativeParm,func,research/14: GNatives[EX_NativeParm 0x29]
+0x122050,UObject::execLocalOutVariable,func,research/14 and engine/Skeleton.cpp: expected GNatives[EX_LocalOutVariable 0x48]
+0x592440,USkeletalMeshComponent::UpdateSkelPose,func,research/14: our arm IK post-hook (engine/BonePose.cpp)
+0x580A60,USkeletalMeshComponent::ComposeSkeleton,func,research/14: LocalAtoms -> SpaceBases; only caller is UpdateSkelPose
+0x58D709,Tick_call_UpdateSkelPose,label,research/14: the per-frame UpdateSkelPose call in USkeletalMeshComponent::Tick
+0x58D70E,Tick_after_UpdateSkelPose,label,research/14: transform/attachment update follows
+0x579340,USkeletalMeshComponent::Attach,func,research/14: calls UpdateSkelPose with DeltaTime 0
+0x641130,UpdateFaceFX_guess,func,research/14: called by UpdateSkelPose after ComposeSkeleton (FaceFX)
+0x2C9120,UActorComponent::UpdateTransform_guess,func,research/14: Tick's immediate transform update (-> vtable +0x2D8)
+0x2C7C90,UActorComponent::BeginDeferredUpdateTransform,func,research/14
+0x593110,USkeletalMeshComponent::UpdateAttachmentsTransform_guess,func,research/14: loops Attachments (imul 34h)
+0x594950,USkeletalMeshComponent::execGetBoneNames,func,research/14
+0x594870,USkeletalMeshComponent::execGetBoneName,func,research/14: RefSkeleton.Data[i*0x50]
+0x594E70,USkeletalMeshComponent::execGetParentBoneIndex,func,research/14: reads FMeshBone +0x40
+0x583540,USkeletalMeshComponent::GetBoneMatrix,func,research/14: SpaceBases << 5 (FBoneAtom 0x20)
+0x584640,USkeletalMeshComponent::GetSocketWorldLocationAndRotation,func,research/14 (C++)
+0x5740C0,USkeletalMeshComponent::execGetSocketWorldLocationAndRotation,func,LE1MEVR.log 'weapon: natives:'
+0x5A8C70,USkeletalMesh::FindSocket,func,research/14
+0x587D30,USkeletalMesh::MatchRefBone,func,research/14
+0x0BF810,FRotationTranslationMatrix::FRotationTranslationMatrix,func,research/14: (RelativeRotation; RelativeLocation)
+0x145230,FMatrix::Rotator_guess,func,research/14: GetSocketWorldLocationAndRotation's rotator
+0x57A120,USkeletalMeshComponent::AttachComponentToSocket,func,research/14
+0x5795F0,USkeletalMeshComponent::AttachComponent,func,research/14
+0xC59870,ABioWeaponRanged::GetMuzzleLoc,func,research/14 (C++ body)
+0xB72D30,ABioWeaponRanged::execGetMuzzleLoc,func,LE1MEVR.log 'weapon: natives:'
+0xC621E0,ABioWeaponRanged::TickFire,func,research/14: fire tick body (DeltaTime)
+0xB72660,ABioWeaponRanged::execTickFire,func,LE1MEVR.log 'weapon: natives:'
+0xC62650,ABioWeaponRanged::TickFireAltPath_guess,func,research/14: TickFire's other firing path
+0xC589F0,ABioWeaponRanged::TraceShot_guess,func,research/14: (this; &start; &aim) end = start + aim * GetTraceRange
+0xC5C9D0,ABioWeaponRanged::GetTraceRange,func,research/14
+0xC63C10,APawn::eventGetWeaponStartTraceLocation,func,research/14: ProcessEvent thunk
+0xB939E0,ABioPawn::execGetWeaponStartTraceLocation,func,LE1MEVR.log 'weapon: natives:'
+0xC3EC70,ABioWeapon::AttachToMesh,func,research/14: BioWeapon.AttachToMesh (native)
+0x78C50,ReturnTrue_folded,func,'return 1' stub shared by many vtables (identical code folding); GetMuzzleLoc calls it on m_MuzzleSocketName
+0xC621E0,ABioWeaponRanged::TickFire,func,virtual: vtable 0x1315460 slot 0x8A0 (execTickFire 0xB72660 calls it); GetMuzzleLoc is slot 0x8E8
