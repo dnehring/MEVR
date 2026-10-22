@@ -33,7 +33,7 @@
 // the game's pistol whip or rifle butt, its cone and cooldown. A tick on the strike; a thump when the
 // target's health drops within 1.2 s (the hit).
 // B and X stay the game's melee and grenade unless [Throwables] meleeButton / grenadeButton = 0 (then
-// kept from the game on foot; host v13).
+// kept from the game on foot; host v14).
 //
 // Ties to the other hand features: a squeeze that takes a grenade is "claimed" (Claim, before holsters
 // and the squad menu tick): the squad menu ignores a claimed left squeeze; holsters keep the gun out
@@ -51,7 +51,7 @@ struct Link {
     void (*haptic)(int hand, float seconds, float amplitude) = nullptr;
     void (*hapticHz)(int hand, float seconds, float amplitude, float frequencyHz) = nullptr;
     void (*hapticContinuous)(int hand, float amplitude, float frequencyHz, float seconds) = nullptr;
-    // The host's pad mapping knows gamepad::kFlagNoMeleeButton / kFlagNoGrenadeButton (v13).
+    // The host's pad mapping knows gamepad::kFlagNoMeleeButton / kFlagNoGrenadeButton (v14).
     bool buttonFlags = false;
 };
 

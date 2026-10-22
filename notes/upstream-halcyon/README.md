@@ -46,6 +46,35 @@ Upstream checked: `reference/MassEffect1-VR` at 3c51514 (2026-09-30), still the 
   - Its menu has no pointer, so the menu part needs no pointer change there.
   - Ask the user first.
 
+## 4. Recenter can't fix a tilted tracking space (a bug fix to offer)
+
+- **Our change:** 2026-10-22, the `[MEVR]` seam in `xr_session.cpp` `DoRecenter`
+  (`MevrBridge::RecenterOrientation`), the rules in `src/core/vr/Recenter` (unit-tested in
+  `TestRecenterTilt`), the per-frame watch and logs in `src/plugin/RecenterTilt.cpp`, and
+  `MELEVR.ini recenterTiltDeg` (`vr_config.h`, default 60; 0 = upstream).
+- **Bug:** `DoRecenter` re-origins the app space from the never-moved LOCAL base space with a
+  yaw-only pose (`EulerYawToQuat(yaw)`). That keeps the base space's up, which is right when the
+  runtime's LOCAL space is gravity-aligned, as OpenXR says it is. But a runtime can start it tilted:
+  our user once saw the world upside down under SteamVR (the tracked head rolled 180 degrees in the
+  app space from launch, notes/todo-vrik.md). Then no recenter helps, and the game offers no other way
+  to recalibrate: only restarting SteamVR.
+- **Fix:** measure the head's tilt in the base space at the recenter. When the head is rolled past 90
+  degrees, or its up has stayed more than `recenterTiltDeg` from the base's up for 1.5 s (a glance at
+  the hands or the floor doesn't count), the re-origin pose takes the head's full orientation, so the
+  head is level and straight ahead in the new app space. Everything else stays yaw-only, bit for bit.
+  Halcyon's first recenter (automatic, when tracking starts) is never corrected: the headset may be
+  lying on a desk. The log says which kind ran (`[MEVR-RECENTER] yaw-only recenter (upstream)` or
+  `tilt-corrected recenter`), and hints after 5 s of an upside-down world.
+- **Why it's safe:** the check is against the base space, which a recenter never changes. A wrong
+  correction (the player recentering while looking far down for a while) heals with the next recenter
+  looking ahead. A correct one is repeated by every later recenter, since the base stays tilted.
+  Halcyon's own users of the app space (roll removal against its +Y, the head look, the submit tags)
+  take the corrected space as level.
+- **To do before offering it:** fold `core/vr/Recenter` (about 100 lines, no dependencies) and the
+  watch into `xr_session.cpp`, keep the setting, and log through its `LogLine`. Ask the user first.
+- **[verify in headset]:** not yet seen against a tilted SteamVR start (it can't be provoked on
+  purpose); a normal recenter must log `yaw-only recenter (upstream)`.
+
 ## Possibly later
 
 - Its F1-F4 profile hotkeys clash with the game's F-keys (we turn them off in our deploy).

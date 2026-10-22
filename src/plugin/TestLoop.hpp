@@ -52,6 +52,11 @@ void OnImageWritten(XrSwapchain swapchain, ID3D11Texture2D* image);
 // A swapchain whose images never change once filled (the reticle): its pixels (premultiplied
 // sRGB RGBA8, 0xAABBGGRR), drawn into snapshots instead of a copy.
 void SetStaticImage(XrSwapchain swapchain, std::uint32_t width, std::uint32_t height, std::vector<std::uint32_t> pixels);
+// Something else that wants one swapchain's image right before Halcyon releases it (the gun sights'
+// scope copies the eye image it magnifies: plugin/SightLayers). One at a time; `tap` nullptr (or a null
+// swapchain) clears it. Present thread.
+using ReleaseTap = void (*)(XrSwapchain swapchain, ID3D11Texture2D* image);
+void SetReleaseTap(XrSwapchain swapchain, ReleaseTap tap);
 // Names a swapchain's layer in snapshots ("hud", "reticle"); ForgetSwapchain when it's destroyed.
 void NameSwapchain(XrSwapchain swapchain, char const* name);
 void ForgetSwapchain(XrSwapchain swapchain);

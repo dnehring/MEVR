@@ -353,7 +353,7 @@ post-handler sees them with the projectile in `ReturnValue`.
 
 `meleeButton = 1`, `grenadeButton = 1` (default): B and X stay. With 0 the host's pad mapping keeps
 B or X from the game **on foot only** (menus keep B), through `gamepad::kFlagNoMeleeButton` /
-`kFlagNoGrenadeButton` (HostServices v13; an older host ignores them and the mod logs it once). B
+`kFlagNoGrenadeButton` (HostServices v14; an older host ignores them and the mod logs it once). B
 or X as the power wheel's RB source stays RB.
 
 ### Diagnostics

@@ -3,6 +3,7 @@
 #include "core/ik/ArmLength.hpp"
 #include "core/ik/BodySlots.hpp"
 #include "core/ik/Rigid.hpp"
+#include "core/vr/Sights.hpp"
 #include "game/GamepadMapping.hpp"
 
 #include <optional>
@@ -178,6 +179,9 @@ struct Throwables {
     bool holdBuzz = true;
 };
 Throwables GetThrowables();
+// [Sights] (appended to an older file that lacks it): gun sights (game/sights, research/21; the keys and
+// their meaning are in a new file's block and core/vr/Sights.hpp's Settings).
+vr::sights::Settings GetSights();
 // Where Halcyon's first-person camera sits from Shepard's head bone with the headset at the
 // recenter point (units: forward, right, up in the view's yaw), for the menu's "Put the camera at
 // Shepard's eyes" button (src/plugin/MevrMenuTab.cpp). Written as [Camera] measuredForward,

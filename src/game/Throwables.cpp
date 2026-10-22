@@ -1187,7 +1187,7 @@ void AdjustPad(gamepad::Options& options) {
     if (gActive && (!settings.meleeButton || !settings.grenadeButton)) {
         if (!gButtonFlags && !gToldNoButtons) {
             gToldNoButtons = true;
-            log::Warn("throwables: meleeButton/grenadeButton = 0 needs the redeployed host (services v13): until then B and X still "
+            log::Warn("throwables: meleeButton/grenadeButton = 0 needs the redeployed host (services v14): until then B and X still "
                       "reach the game; close the game and redeploy the host");
         }
         options.meleeButton = settings.meleeButton;

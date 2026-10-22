@@ -31,6 +31,7 @@
 #include "game/HeadTracking.hpp"
 #include "game/Holsters.hpp"
 #include "game/Reflections.hpp"
+#include "game/Sights.hpp"
 #include "game/SkeletonProbe.hpp"
 #include "game/SquadWeapons.hpp"
 #include "game/SupportGrip.hpp"
@@ -82,6 +83,8 @@ bool gArmIkChosen = false;
 // Host renderer (HostServices v6): it draws the reticle along the gun's aim ray we publish.
 bool gToldNoAimRay = false;
 bool gAimRaySent = false;  // a ray was published (cleared again at shutdown)
+bool gToldNoSight = false;
+bool gSightSent = false;  // a sight was published (cleared again at shutdown)
 // Host renderer (HostServices v7): it runs the two-handed grip's pad mapping.
 bool gToldNoSupportGrip = false;
 bool gHooked = false;  // ProcessEvent hook live (after the script packages loaded)
@@ -201,6 +204,7 @@ void TryInstallScriptHooks() {
     game::squad_weapons::TryStartup();  // likewise for the squad weapon menu
     game::throwables::TryStartup();  // and physical grenades and melee (registers its launch handlers)
     gHandAimAvailable = game::hand_aim::TryStartup();
+    game::sights::TryStartup();  // the scoped shots' aimed fire (a CallFunction handler, registered before the hook)
     if (!gHandAimAvailable) {
         log::Warn("hand aim: BioPlayerController.GetAdjustedAimFor not found; hand aim unavailable");
     }
@@ -332,6 +336,8 @@ bool HostTakesAimRay() {
         gHost->aimRaySize == sizeof(vr::aim_ray::Ray);
 }
 
+void PublishSight(mevr::vr::aim_ray::Ray const& ray);  // below, with the other v10+ services
+
 // Host renderer: the gun's aim ray (muzzle and barrel, tracking space) for its reticle, every
 // tick; `valid` false whenever shots don't follow the barrel.
 void PublishAimRay() {
@@ -351,6 +357,7 @@ void PublishAimRay() {
     vr::aim_ray::Ray const ray = game::hand_aim::AimRay();
     gHost->setAimRay(&ray);
     gAimRaySent = true;
+    PublishSight(ray);
 }
 
 // Host renderer (HostServices v7): its XInput hook builds the pad, so it runs the two-handed grip's
@@ -386,6 +393,29 @@ bool HostHas(std::size_t offset, std::size_t size) {
     return gHost != nullptr && gHost->version >= 10 && gHost->servicesSize >= offset + size;
 }
 #define MEVR_HOST_HAS(field) HostHas(offsetof(mevr::HostServices, field), sizeof(mevr::HostServices::field))
+
+// Host renderer (HostServices v13): the sight on the held gun, from the same aim ray, and what the host
+// showed (which eye looks through it; a scope's picture up: aimed fire for scoped shots).
+bool HostTakesSight() {
+    using namespace mevr;
+    return gHostView && MEVR_HOST_HAS(sightView) && gHost->setSight != nullptr && gHost->sightView != nullptr &&
+        gHost->sightSize == sizeof(vr::sights::Sight);
+}
+
+void PublishSight(mevr::vr::aim_ray::Ray const& ray) {
+    using namespace mevr;
+    if (!HostTakesSight()) {
+        if (!gToldNoSight) {
+            gToldNoSight = true;
+            log::Warn("sights: the host (services v{}) can't draw gun sights: close the game and redeploy the host", gHost->version);
+        }
+        return;
+    }
+    vr::sights::Sight const sight = game::sights::Current(ray);
+    gHost->setSight(&sight);
+    gSightSent = true;
+    game::sights::SetHostView(gHost->sightView());
+}
 
 // Host renderer: the body holsters' right-grip report and controller pulses (HostServices v9), the
 // grip holding the gun, the contact buzz and the floor (v10).
@@ -448,7 +478,7 @@ mevr::game::squad_weapons::Link SquadLink() {
 }
 
 // Host renderer: physical grenades and melee (research/20): the grips' reports (v9 right, v11 left), the
-// controller pulses and buzz (v9/v10), and whether the pad mapping can keep B and X from the game (v13).
+// controller pulses and buzz (v9/v10), and whether the pad mapping can keep B and X from the game (v14).
 mevr::game::throwables::Link ThrowablesLink() {
     using namespace mevr;
     game::throwables::Link link;
@@ -471,7 +501,7 @@ mevr::game::throwables::Link ThrowablesLink() {
     if (MEVR_HOST_HAS(hapticContinuous)) {
         link.hapticContinuous = gHost->hapticContinuous;
     }
-    link.buttonFlags = gHost->version >= 13;
+    link.buttonFlags = gHost->version >= 14;
     return link;
 }
 
@@ -497,7 +527,7 @@ void PublishStatus() {
         "\"armIk\": {{\"enabled\": {}, \"status\": {}, \"handSource\": {}, \"rightHandAimsGun\": {}, \"supportRequested\": {}}}, "
         "\"handAim\": {{\"enabled\": {}, \"toldHost\": {}}}, "
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
-        "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"throwables\": {}}}",
+        "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"throwables\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -505,7 +535,7 @@ void PublishStatus() {
         gHandAimReported ? "true" : "false", json::JsonString(type), static_cast<unsigned long long>(game::weapon::Key()),
         json::JsonString(game::weapon::Status()), game::support_grip::Held() ? "true" : "false",
         json::JsonNumber(game::support_grip::Blend()), game::holsters::StatusJson(), game::squad_weapons::StatusJson(),
-        game::throwables::StatusJson());
+        game::sights::StatusJson(), game::throwables::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -639,6 +669,7 @@ void Heartbeat() {
         game::support_grip::LogStats();
         game::holsters::LogStats();
         game::squad_weapons::LogStats();
+        game::sights::LogStats();
         game::throwables::LogStats();
         game::skeleton_probe::Tick();
     }
@@ -837,6 +868,14 @@ MEVR_MOD_API void MevrModShutdown() {
     }
     gAimRaySent = false;
     gToldNoAimRay = false;
+    if (gSightSent && HostTakesSight()) {
+        vr::sights::Sight none{};
+        none.kind = 0;
+        gHost->setSight(&none);  // no sight without the mod (the host also forgets on unload)
+    }
+    gSightSent = false;
+    gToldNoSight = false;
+    game::sights::Shutdown();
     if (HostTakesSupportGrip()) {
         // No grip without the mod, LT back on the trigger (the host also forgets on unload).
         gHost->setSupportGrip(-1.0f, 0.12f, 0.22f, game::gamepad::kFlagLeftTrigger | game::gamepad::kFlagSupportAims);

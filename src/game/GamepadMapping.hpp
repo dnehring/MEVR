@@ -273,7 +273,7 @@ inline constexpr std::uint32_t kRbSourceMask = 0xFu << kRbSourceShift;
 inline constexpr std::uint32_t kFlagWheelPressA = 1u << 12;   // Options::wheelPressA (host v12)
 inline constexpr std::uint32_t kWheelStickShift = 13;         // Options::wheelStick in bits 13-14 (host v12)
 inline constexpr std::uint32_t kWheelStickMask = 3u << kWheelStickShift;
-// Inverted, so 0 (an older mod, or none sent) keeps both buttons (host v13).
+// Inverted, so 0 (an older mod, or none sent) keeps both buttons (host v14).
 inline constexpr std::uint32_t kFlagNoMeleeButton = 1u << 15;    // !Options::meleeButton
 inline constexpr std::uint32_t kFlagNoGrenadeButton = 1u << 16;  // !Options::grenadeButton
 std::uint32_t ToFlags(Options const& options);
