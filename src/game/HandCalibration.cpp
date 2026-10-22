@@ -33,11 +33,12 @@ struct Values {
     double trackingScale = 0.0;
     double armLength = 0.0;  // [Arms] armLengthM
     // [Controls]
-    bool leftTrigger = true;
+    bool leftTrigger = false;
     bool supportGrip = true;
     double supportAcquire = 0.12;
     double supportRelease = 0.22;
     bool sniperAims = false;
+    bool aimAtShoulder = true;
     bool operator==(Values const&) const = default;
 };
 
@@ -96,9 +97,12 @@ constexpr char const* kControlsBlock =
     "supportReleaseM = 0.22\n"
     "; sniperAims: 1 also holds LT for a sniper rifle (its aimed mode is the game's scope camera).\n"
     "sniperAims = 0\n"
-    "; leftTrigger: lt = the left trigger is the game's LT, as before; none = the game doesn't see it\n"
-    "; (aimed fire then comes from the two-handed grip only).\n"
-    "leftTrigger = lt\n";
+    "; aimAtShoulder: 1 = aimed fire (LT) needs the gun at the shoulder as well (the right hand\n"
+    "; close under the eyes, near the cheek); 0 = both hands on the gun is enough.\n"
+    "aimAtShoulder = 1\n"
+    "; leftTrigger: none = the game doesn't see the left trigger (aimed fire comes from holding the gun\n"
+    "; with both hands at the shoulder); lt = it is the game's LT (aim, zoom), as before.\n"
+    "leftTrigger = none\n";
 
 fs::path FilePath() {
     wchar_t buffer[MAX_PATH]{};
@@ -189,6 +193,9 @@ Values ReadValues(Ini const& ini) {
             values.leftTrigger = !(value == "none" || value == "off" || value == "0");
         }
     }
+    if (Number(ini, "Controls", "aimAtShoulder", flag)) {
+        values.aimAtShoulder = flag != 0.0;
+    }
     if (Number(ini, "Controls", "supportGrip", flag)) {
         values.supportGrip = flag != 0.0;
     }
@@ -276,7 +283,8 @@ double ArmLength() {
 }
 
 Controls GetControls() {
-    return {gValues.leftTrigger, gValues.supportGrip, gValues.supportAcquire, gValues.supportRelease, gValues.sniperAims};
+    return {gValues.leftTrigger, gValues.supportGrip, gValues.supportAcquire, gValues.supportRelease, gValues.sniperAims,
+        gValues.aimAtShoulder};
 }
 
 std::optional<ik::ArmLengths> MeasureArmLength(ik::ArmLengthSample const& sample) {
@@ -332,9 +340,12 @@ void Refresh() {
             values.trackingScale > 0.0 ? std::format("{:.1f} units/m", values.trackingScale) : std::string("the view's"),
             values.armLength > 0.0 ? std::format("{:.3f} m", values.armLength) : std::string("not calibrated"),
             path.filename().string());
-        log::Info("controls: two-handed grip {} (acquire {:.2f} m, release {:.2f} m, sniper rifles {}), left trigger {}",
+        log::Info("controls: two-handed grip {} (acquire {:.2f} m, release {:.2f} m, sniper rifles {}), aimed fire {}, "
+                  "left trigger {}",
             values.supportGrip ? "on" : "off", values.supportAcquire, values.supportRelease,
-            values.sniperAims ? "aim too" : "steady only, no LT", values.leftTrigger ? "= LT" : "not sent to the game");
+            values.sniperAims ? "aim too" : "steady only, no LT",
+            values.aimAtShoulder ? "with both hands and the gun at the shoulder" : "with both hands",
+            values.leftTrigger ? "= LT" : "not sent to the game");
     }
     // The menu's arm-length sample: each new measureRequest value is one T-pose sample. One
     // already there at startup with a result saved is old news.

@@ -135,3 +135,14 @@ The agreed plan:
 5. **Verify first:** does holding LT change the field of view in Halcyon's VR view (zoom)? If
    yes, suppress it. Pistols: the grab point is under the grip.
 
+## Aimed fire comes from posture (user, 2026-10-21)
+
+- Aimed fire is not the left trigger ("zoom") any more. It needs both hands on the gun (the
+  support grip) **and** the gun at the shoulder: the right grip 5-35 cm under the eyes, within
+  30 cm to the side, -15 to +40 cm ahead (`ik::Shouldered`, 5 cm hysteresis).
+- Settings, `[Controls]` in `ASI\LE1MEVR.ini`:
+  - `aimAtShoulder = 1`; 0 = both hands alone are enough;
+  - `leftTrigger = none` by default; `lt` puts the old LT back.
+- **[verify in headset]:** the zone's bounds (cheek weld vs held out); log
+  `support grip: aimed fire on/off`.
+

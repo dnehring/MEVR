@@ -37,6 +37,20 @@ inline constexpr double kForegripPastMuzzle = 5.0;
 inline constexpr double kForegripOffBarrel = 20.0;
 bool OnGun(Vec3 point, Vec3 barrelInHand, Vec3 muzzleInHand);
 
+// The gun at the shoulder (aimed fire, with both hands on it): the rear hand's grip close under
+// the eyes, near the cheek and shoulder, in front of the face but not held out. Meters, in any
+// space where `up` is up: `drop` below the eyes, `side` off the head's centre, `forward` along the
+// head's level facing. Once inside, each bound widens by `margin` (hysteresis).
+struct ShoulderZone {
+    double minDrop = 0.05;
+    double maxDrop = 0.35;
+    double maxSide = 0.30;
+    double minForward = -0.15;
+    double maxForward = 0.40;
+    double margin = 0.05;
+};
+bool Shouldered(Vec3 head, Vec3 headForward, Vec3 up, Vec3 grip, bool wasShouldered, ShoulderZone const& zone = {});
+
 // Along the barrel from the rear hand, and how far off the barrel's line (units), for logs and for
 // deciding whether two hands define the gun's axis.
 struct GunOffsets {

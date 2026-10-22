@@ -527,6 +527,18 @@ void TestTwoHand() {
     Vec3 const muzzle{60.0, 0.0, 4.0};
     CHECK(OnGun({30.0, 0.0, -5.0}, barrel, muzzle));
     CHECK(!OnGun({1.0, 1.0, 1.0}, barrel, muzzle));           // on the right hand itself
+    // The gun at the shoulder (OpenXR axes: +Y up, -Z forward).
+    {
+        Vec3 const head{0.0, 1.6, 0.0}, ahead{0.0, 0.0, -1.0}, up{0.0, 1.0, 0.0};
+        CHECK(Shouldered(head, ahead, up, {0.12, 1.42, -0.15}, false));    // cheek weld: right of and under the eyes
+        CHECK(!Shouldered(head, ahead, up, {0.25, 1.05, -0.30}, false));   // at the hip
+        CHECK(!Shouldered(head, ahead, up, {0.15, 1.40, -0.60}, false));   // held out at arm's length
+        CHECK(!Shouldered(head, ahead, up, {0.12, 1.62, -0.15}, false));   // at eye height, not under it
+        CHECK(Shouldered(head, ahead, up, {0.12, 1.21, -0.15}, true));     // just past the bound, already in: kept
+        CHECK(!Shouldered(head, ahead, up, {0.12, 1.21, -0.15}, false));   // ...but not entered
+        CHECK(Shouldered(head, {0.0, -0.5, -0.8}, up, {0.12, 1.42, -0.15}, false));  // looking down the sights
+        CHECK(!Shouldered(head, up, up, {0.12, 1.42, -0.15}, false));      // straight up: no facing
+    }
     CHECK(!OnGun({30.0, 40.0, 0.0}, barrel, muzzle));         // far off the barrel (a hand at the side)
     CHECK(!OnGun({80.0, 0.0, 4.0}, barrel, muzzle));          // past the muzzle
     CHECK(OnGun({-10.0, 0.0, -10.0}, barrel, muzzle));        // a pistol cupped from just behind and below

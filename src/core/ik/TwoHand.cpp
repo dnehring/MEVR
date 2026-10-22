@@ -64,6 +64,23 @@ GunOffsets OffsetsOnGun(Vec3 point, Vec3 barrelInHand, Vec3 muzzleInHand) {
     return {along, Length(off)};
 }
 
+bool Shouldered(Vec3 head, Vec3 headForward, Vec3 up, Vec3 grip, bool wasShouldered, ShoulderZone const& zone) {
+    Vec3 const u = Normalize(up, {0.0, 1.0, 0.0});
+    Vec3 const level = headForward - u * Dot(headForward, u);
+    if (!(Length(level) > 1e-6)) {
+        return false;  // looking straight up or down: no facing to measure against
+    }
+    Vec3 const forward = Normalize(level, level);
+    Vec3 const right = Cross(forward, u);
+    Vec3 const d = grip - head;
+    double const m = wasShouldered ? zone.margin : 0.0;
+    double const drop = -Dot(d, u);
+    double const side = std::abs(Dot(d, right));
+    double const ahead = Dot(d, forward);
+    return drop >= zone.minDrop - m && drop <= zone.maxDrop + m && side <= zone.maxSide + m && ahead >= zone.minForward - m &&
+           ahead <= zone.maxForward + m;
+}
+
 bool OnGun(Vec3 point, Vec3 barrelInHand, Vec3 muzzleInHand) {
     if (!Finite(point) || !Finite(barrelInHand) || !Finite(muzzleInHand) || Length(barrelInHand) < 1e-9 ||
         Length(point) < kForegripMinSpan) {

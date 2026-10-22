@@ -2,8 +2,10 @@
 
 #include "core/Log.hpp"
 #include "core/ik/TwoHand.hpp"
+#include "core/vr/Controllers.hpp"
 #include "engine/BonePose.hpp"
 #include "game/HandCalibration.hpp"
+#include "game/ViewAnchor.hpp"
 #include "game/Weapon.hpp"
 
 #include <algorithm>
@@ -148,6 +150,25 @@ std::optional<Foregrip> Current() {
     return gForegrip;
 }
 
+// The right hand's grip at the shoulder, against the headset (tracking space, meters).
+bool gShouldered = false;
+bool gLoggedAiming = false;
+bool AtShoulder() {
+    auto const anchor = view_anchor::Current();
+    vr::controllers::State const controllers = vr::controllers::Latest();
+    if (!anchor || !controllers.active || !controllers.right.gripValid) {
+        gShouldered = false;
+        return false;
+    }
+    XrQuaternionf const& q = anchor->head.orientation;
+    // The headset's forward, -Z rotated by q.
+    ik::Vec3 const forward{-2.0 * (q.x * q.z + q.w * q.y), -2.0 * (q.y * q.z - q.w * q.x), -(1.0 - 2.0 * (q.x * q.x + q.y * q.y))};
+    XrVector3f const& h = anchor->head.position;
+    XrVector3f const& g = controllers.right.grip.position;
+    gShouldered = ik::Shouldered({h.x, h.y, h.z}, forward, {0.0, 1.0, 0.0}, {g.x, g.y, g.z}, gShouldered);
+    return gShouldered;
+}
+
 void Tick(double deltaSeconds, bool requested) {
     gRequested = requested;
     hand_calibration::Refresh();  // at most once a second; arm IK may be off
@@ -164,8 +185,17 @@ void Tick(double deltaSeconds, bool requested) {
     gRelease.store(static_cast<float>(controls.releaseMeters), std::memory_order_relaxed);
     gamepad::Options options;
     options.leftTrigger = controls.leftTrigger;
-    options.supportAims = controls.sniperAims || weapon::Type() != weapon::RangedType::Sniper;
+    // Aimed fire: both hands on the gun and, unless turned off, the gun at the shoulder.
+    bool const shouldered = AtShoulder();
+    options.supportAims = (controls.sniperAims || weapon::Type() != weapon::RangedType::Sniper) &&
+                          (!controls.aimAtShoulder || shouldered);
     gFlags.store(gamepad::ToFlags(options), std::memory_order_relaxed);
+    bool const aiming = options.supportAims && gHeld.load(std::memory_order_relaxed) && requested;
+    if (aiming != gLoggedAiming) {
+        gLoggedAiming = aiming;
+        log::Info("support grip: aimed fire {}", aiming ? "on (both hands, the gun at the shoulder): the game sees LT held"
+                                                        : "off (hip fire)");
+    }
 
     bool const held = gHeld.load(std::memory_order_relaxed) && requested;
     double const goal = held ? 1.0 : 0.0;

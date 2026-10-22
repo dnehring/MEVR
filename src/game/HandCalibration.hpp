@@ -37,11 +37,12 @@ double TrackingScale();
 double ArmLength();
 // [Controls] (appended to an older file that lacks it): the two-handed grip and the left trigger.
 struct Controls {
-    bool leftTrigger = true;      // leftTrigger = lt (true) | none
+    bool leftTrigger = false;     // leftTrigger = lt (true) | none
     bool supportGrip = true;      // supportGrip
     double acquireMeters = 0.12;  // supportAcquireM
     double releaseMeters = 0.22;  // supportReleaseM
     bool sniperAims = false;      // sniperAims: the grip holds LT with a sniper rifle too
+    bool aimAtShoulder = true;    // aimAtShoulder: aimed fire (LT) needs the gun at the shoulder too
 };
 Controls GetControls();
 // Where Halcyon's first-person camera sits from Shepard's head bone with the headset at the
