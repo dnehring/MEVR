@@ -139,6 +139,8 @@ set(MEVR_MOD_SOURCES
     src/engine/Engine.cpp
     src/engine/Engine.hpp
     src/engine/GameAdapter.hpp
+    src/engine/NativesDump.cpp
+    src/engine/NativesDump.hpp
     src/engine/Objects.cpp
     src/engine/Objects.hpp
     src/engine/ProcessEvent.cpp
