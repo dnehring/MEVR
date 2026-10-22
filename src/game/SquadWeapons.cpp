@@ -80,6 +80,7 @@ UFunction* gPauseGame = nullptr;
 UFunction* gEnterWeaponWheel = nullptr;
 UFunction* gExitWeaponWheel = nullptr;
 UFunction* gGetScaleFormManager = nullptr;
+UFunction* gIsCombatEnabled = nullptr;
 #endif
 
 bool gStarted = false;
@@ -779,6 +780,16 @@ UBioSFHandler_HUD* HudHandler(ABioPlayerController* controller) {
     return hud != nullptr && hud->IsA(UBioSFHandler_HUD::StaticClass()) ? hud : nullptr;
 }
 
+// Whether the player may fight here (EnterWeaponWheel returns at once in a hub where it's false). True
+// when it can't be told.
+bool CombatEnabled(Game const& game) {
+    UPlayerInput* const input = game.controller->PlayerInput;
+    if (gIsCombatEnabled == nullptr || input == nullptr || !input->IsA(UBioPlayerInput::StaticClass())) {
+        return true;
+    }
+    return CallBool(input, gIsCombatEnabled);
+}
+
 bool CallNoParms(UObject* object, UFunction* function) {
     if (object == nullptr || function == nullptr) {
         return false;
@@ -885,6 +896,7 @@ std::string Recorded(Game const& game) {
 }
 
 Pick gWheelGiven;  // what the last confirm gave
+bool gWheelClicked = false;  // this opening's confirm click was given
 
 void Publish(Link const& link, bool open);
 
@@ -950,7 +962,8 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
     in.newAwaySqueeze = newAway;
     in.nearGun = survey.nearGun;
     in.pointed = survey.pointed >= 0;
-    in.onFoot = onFoot;
+    bool const combat = game && onFoot ? CombatEnabled(*game) : true;
+    in.onFoot = onFoot && combat;
     in.wheelActive = wheelActive;
     in.confirmOnRelease = settings.confirmOnRelease;
     in.openHoldSeconds = static_cast<float>(settings.openHoldSeconds);
@@ -964,6 +977,9 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
     if (step.missedGrab) {
         log::Info("squad: a squeeze at nobody next to the gun is a missed foregrip grab, not the weapon wheel");
     }
+    if (newAway && onFoot && !combat && !survey.nearGun) {
+        log::Info("squad: combat is off here (a hub): the game has no weapon wheel to open");
+    }
     if (step.armed) {
         log::Info("squad: keep squeezing {:.2f} s to open the weapon wheel anyway", settings.openHoldSeconds);
     }
@@ -972,6 +988,7 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
         ++gOpens;
         gWheelPointed = step.openedPointing && survey.pointed >= 0 ? survey.pointed : -1;
         gWheelOpenedAt = 0.0;
+        gWheelClicked = false;
         USFXGameModeBase* const defaultMode = game ? FindMode(game->controller, USFXGameModeDefault::StaticClass()) : nullptr;
         bool const called = CallNoParms(defaultMode, gEnterWeaponWheel);
         log::Info("squad: wheel #{}: {} the game's weapon wheel{} (SFXGameModeDefault.EnterWeaponWheel, what holding LB does)",
@@ -1040,7 +1057,12 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
         log::Info("squad: wheel #{}: grip let go: giving {} the {} (A for the game: it queues the highlighted entry)", gWheelSerial,
             pick.name, menu::WeaponName(pick.weapon));
         ConfirmHaptic(link);
+        gWheelClicked = true;
         gWheelGiven = pick;
+    }
+    if (step.exit && !step.cancelled && !gWheelClicked) {
+        ConfirmHaptic(link);  // closing on something queued by hand (A): the click all the same
+        gWheelClicked = true;
     }
     if (step.exit && game) {
         bool const called = CallNoParms(FindMode(game->controller, USFXGameModeWeaponWheel::StaticClass()), gExitWeaponWheel);
@@ -1052,6 +1074,7 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
         log::Info("squad: wheel #{}: {}", gWheelSerial, controllers.right.secondary ? "B: closed without giving anything"
                                                           : "let go with nothing new to give");
         CancelHaptic(link);
+        gWheelClicked = true;  // no click on a retried exit either
     }
     if (step.closed || step.closedByGame) {
         log::Info("squad: wheel #{} closed{} after {:.2f} s", gWheelSerial, step.closedByGame ? " by the game (LB, the pause menu...)" : "",
@@ -1174,6 +1197,7 @@ bool TryStartup() {
         {&gEnterWeaponWheel, L"EnterWeaponWheel", "Function SFXGame.SFXGameModeDefault.EnterWeaponWheel"},
         {&gExitWeaponWheel, L"ExitWeaponWheel", "Function SFXGame.SFXGameModeWeaponWheel.ExitWeaponWheel"},
         {&gGetScaleFormManager, L"GetScaleFormManager", "Function Engine.PlayerController.GetScaleFormManager"},
+        {&gIsCombatEnabled, L"IsCombatEnabled", "Function SFXGame.BioPlayerInput.IsCombatEnabled"},
     };
     std::string missing;
     for (Want const& w : wants) {
@@ -1475,7 +1499,7 @@ void Shutdown(bool processExiting) {
     gGetSquadSize = gGetMember = gGetMemberSwitchWeapon = gSetMemberSwitchWeapon = gSquadOrderEquipWeapon = nullptr;
     gApplyTacticalOrders = gChangeToQuickSlot = gIsInCombatActionState = gGetRangedWeaponType = nullptr;
     gGetClass = gGetPercentHealth = gPauseGame = nullptr;
-    gEnterWeaponWheel = gExitWeaponWheel = gGetScaleFormManager = nullptr;
+    gEnterWeaponWheel = gExitWeaponWheel = gGetScaleFormManager = gIsCombatEnabled = nullptr;
     gWheelGiven = {};
 #else
     (void)processExiting;
