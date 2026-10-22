@@ -167,6 +167,9 @@ inline void RotateMoveStickByHeadLook(XINPUT_GAMEPAD* pad) noexcept
 // "some commands like universe map are out of reach unless DP is off". The option is about gameplay
 // look, so it stands down whenever a menu owns the screen and comes back by itself afterwards.
 // Cached briefly because the input hooks are polled far faster than this state can change.
+// [MEVR] 2026-10-22: the power and weapon wheels (modes 2 and 3) too. They are steered with the right
+// stick (both axes: ME1's wheel is one ring), so decoupled pitch left only its horizontal half and the
+// upper and lower entries couldn't be reached.
 bool MenuOwnsLook() noexcept
 {
     static unsigned long long s_lastMs = 0;
@@ -175,7 +178,8 @@ bool MenuOwnsLook() noexcept
     if (now - s_lastMs >= 50)
     {
         s_lastMs = now;
-        s_cached = (MELEVR::HeadAim::ReadGameModeSEH() == 7);   // 7 = GUI full-screen menu
+        const int mode = MELEVR::HeadAim::ReadGameModeSEH();
+        s_cached = (mode == 7 || mode == 2 || mode == 3);   // 7 = GUI full-screen menu; [MEVR] 2/3 = power/weapon wheel
     }
     return s_cached;
 }
