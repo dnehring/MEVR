@@ -458,6 +458,9 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
     - **Snapshot of it:** with the wheel open, tap both stick clicks: `<stamp>-wheel.png` (the
       wheel panel), `-hud.png` (the HUD panel with the hole), and both in `-left.png` / `-right.png`.
       Claude can tune the crop from these.
+    - **A/B in the headset:** Halcyon's menu (`\` or both sticks held) -> VR hands -> "Squad
+      weapons": the game's own wheel or our menu, and which stick steers the wheel (takes effect
+      within a second).
     - **Settings:** `[Squad]` in `Binaries\Win64\ASI\LE1MEVR.ini` (new keys added to your file):
       `style = native` (`custom`: step 12's menu), `wheelStick = right` (`left`: the stick on the
       hand that holds the grip; `either`), `wheelPreselect = 1`, `wheelPanel = 1`, `weaponWheelAt =

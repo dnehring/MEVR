@@ -43,7 +43,7 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   set ImGui's `HasGamepad` backend flag, so pad nav was dead until we did) and our laser pointer
   (`src/plugin/MevrMenuPointer.cpp`: a controller's aim ray on the menu quad, world-locked by default (`worldLockedPanels`, `src/plugin/WorldPanels.cpp`), is the mouse,
   trigger clicks, right stick scrolls). Our own tab, "VR hands" (`src/plugin/MevrMenuTab.cpp`),
-  edits `[Hands]` in `ASI\LE1MEVR.ini` (the mod re-reads it) and writes the arm-length sample
+  edits `[Hands]` and `[Squad] style` in `ASI\LE1MEVR.ini` (the mod re-reads it) and writes the arm-length sample
   (`[Arms] measureRequest` counter plus grip/head positions; `armLengthM` is shown if present).
 - Our seams into it are marked `[MEVR]` and declared in `src/halcyon/le1/mevr_bridge.h`
   (implemented in `src/plugin/HalcyonBridge.cpp`): static OpenXR loader, our controller actions
