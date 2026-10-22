@@ -62,6 +62,10 @@ void NoteMenuQuad(float const position[3], bool headLocked, float width, float h
 // Both grips are squeezed on the live controllers: the stick clicks are the test loop's chords, and
 // the pad mapping keeps them from the game (no L3 / R3).
 bool GripChordHeld();
+// While true, both grips held isn't the chord (the right grip holds the gun and the left hand holds
+// its foregrip: two-handed aiming, whose stick clicks belong to the game). Set each frame before
+// OnFrameBegun.
+void BlockGripChord(bool blocked);
 // A replay drives the controllers (and with inputs=1, the buttons and sticks).
 bool Replaying();
 bool ReplayDrivesInputs();

@@ -126,6 +126,7 @@ set(MEVR_MOD_SOURCES
     src/core/vr/AimRay.hpp
     src/core/vr/Controllers.cpp
     src/core/vr/Controllers.hpp
+    src/core/vr/Floor.hpp
     src/core/vr/HostView.cpp
     src/core/vr/HostView.hpp
     src/core/vr/Output.cpp
@@ -211,6 +212,9 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/AimRay.hpp
     src/core/vr/Controllers.cpp
     src/core/vr/Controllers.hpp
+    src/core/vr/Floor.hpp
+    src/core/vr/Haptics.cpp
+    src/core/vr/Haptics.hpp
     src/core/vr/HostView.cpp
     src/core/vr/HostView.hpp
     src/core/vr/ImageConvert.cpp
@@ -225,6 +229,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/PoseRecording.hpp
     src/core/vr/TestRequest.cpp
     src/core/vr/TestRequest.hpp
+    src/core/xr/Floor.cpp
+    src/core/xr/Floor.hpp
     src/core/xr/Input.cpp
     src/core/xr/Input.hpp
     src/core/Hotkey.cpp
@@ -306,6 +312,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/TorsoPose.cpp
         src/core/ik/TouchReference.cpp
         src/core/ik/TwoHand.cpp
+        src/core/vr/Haptics.cpp
         src/core/vr/ImageConvert.cpp
         src/core/vr/LayerComposite.cpp
         src/core/vr/MenuPointer.cpp

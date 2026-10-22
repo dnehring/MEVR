@@ -115,17 +115,29 @@ constexpr char const* kHolstersBlock =
     "\n"
     "[Holsters]\n"
     "; Body holsters: reach to a slot on your body with the right hand and squeeze the right grip to\n"
-    "; draw that weapon (a short buzz when the hand enters a slot). Near a slot the right grip isn't RB.\n"
+    "; draw that weapon. The controller buzzes while your hand is in a slot (stronger toward its middle).\n"
     "enabled = 1\n"
+    "; gripHolds: 1 = the right grip holds the gun: keep it squeezed to carry the gun, let go at the gun's\n"
+    "; slot to holster it. Let go anywhere else and it goes back to its holster after releaseGrace seconds,\n"
+    "; unless you squeeze again (never while the trigger is held; -1 = it stays out). The right grip is then\n"
+    "; never RB: powerWheel is (hold = power wheel, tap = your mapped power): r3 (the right stick click), y,\n"
+    "; x, b or none. 0 = the old mapping: the right grip is RB, except a squeeze at a slot.\n"
+    "gripHolds = 1\n"
+    "releaseGrace = 0.3\n"
+    "powerWheel = r3\n"
     "; weaponWheel: 1 keeps the game's weapon wheel (LB: the left trigger, see leftTrigger) as a fallback;\n"
     "; 0 turns LB off while holsters are on. The wheel also picks your squad's weapons.\n"
     "weaponWheel = 1\n"
-    "; holster: 1 = squeeze and release the right grip with the gun at its own slot puts it away (leaving\n"
-    "; the slot or pulling the trigger first cancels); 2 = also at a slot you have no weapon for; 0 = never.\n"
+    "; holster: 1 = put the gun away at its own slot (gripHolds 1: let go there; 0: squeeze and release\n"
+    "; there, leaving the slot or pulling the trigger first cancels); 2 = also at a slot you have no weapon\n"
+    "; for; 0 = never by hand.\n"
     "holster = 1\n"
-    "; eyeHeightM: your standing eye height in meters (roughly your height minus 0.12); scales the slots.\n"
+    "; eyeHeightFromFloor: 1 = the slots scale with your standing eye height, measured from the headset's\n"
+    "; floor (taken when you recenter standing straight, then only ever rising). eyeHeightM is used when\n"
+    "; there's no usable floor, or with 0: your standing eye height in meters (about your height - 0.12).\n"
+    "eyeHeightFromFloor = 1\n"
     "eyeHeightM = 1.65\n"
-    "; hapticAmplitude: the buzz on entering a slot, 0..1 (0 = no vibration).\n"
+    "; hapticAmplitude: how strong the holster haptics are, 0..1 (0.5 as designed, 0 = no vibration).\n"
     "hapticAmplitude = 0.5\n"
     "; Each slot: weapon, right, up, forward, radius. weapon: pistol, shotgun, rifle, sniper or none.\n"
     "; Meters from your eyes (as if the head were upright), in your body's frame (it turns with you, not\n"
@@ -295,6 +307,15 @@ Holsters ReadHolsters(Ini const& ini) {
                          : mode == 1 ? ik::body_slots::Holster::OwnSlot
                                      : ik::body_slots::Holster::OwnOrEmptySlot;
     }
+    if (Number(ini, "Holsters", "gripHolds", value)) {
+        holsters.gripHolds = value != 0.0;
+    }
+    if (Number(ini, "Holsters", "releaseGrace", value)) {
+        holsters.releaseGrace = value < 0.0 ? -1.0 : std::min(value, 5.0);
+    }
+    if (Number(ini, "Holsters", "eyeHeightFromFloor", value)) {
+        holsters.eyeHeightFromFloor = value != 0.0;
+    }
     if (Number(ini, "Holsters", "eyeHeightM", value)) {
         holsters.layout.eyeHeight = std::clamp(value, 0.8, 2.2);
     }
@@ -302,6 +323,23 @@ Holsters ReadHolsters(Ini const& ini) {
         holsters.hapticAmplitude = std::clamp(value, 0.0, 1.0);
     }
     if (auto const s = ini.find("Holsters"); s != ini.end()) {
+        if (auto const k = s->second.find("powerWheel"); k != s->second.end()) {
+            std::string text = k->second;
+            std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (text == "r3" || text == "rs" || text == "stick") {
+                holsters.powerWheel = gamepad::RbSource::RightStickClick;
+            } else if (text == "y") {
+                holsters.powerWheel = gamepad::RbSource::Y;
+            } else if (text == "x") {
+                holsters.powerWheel = gamepad::RbSource::X;
+            } else if (text == "b") {
+                holsters.powerWheel = gamepad::RbSource::B;
+            } else if (text == "none" || text == "off") {
+                holsters.powerWheel = gamepad::RbSource::None;
+            } else {
+                log::Warn("holsters: can't read powerWheel = {} (r3, y, x, b or none); r3 kept", k->second);
+            }
+        }
         for (ik::body_slots::Slot& slot : holsters.layout.slots) {
             if (auto const k = s->second.find(slot.name); k != s->second.end()) {
                 ik::body_slots::Slot parsed = slot;
@@ -317,9 +355,13 @@ Holsters ReadHolsters(Ini const& ini) {
 }
 
 std::string Describe(Holsters const& h) {
-    std::string text = std::format("{}, weapon wheel {}, holster {}, eye height {:.2f} m, haptics {:.2f}; slots:",
-        h.enabled ? "on" : "off", h.weaponWheel ? "kept (LB)" : "off", static_cast<int>(h.holster), h.layout.eyeHeight,
-        h.hapticAmplitude);
+    std::string const grip = h.gripHolds
+        ? std::format("the right grip holds the gun (let go elsewhere: back after {}), RB from {}",
+              h.releaseGrace >= 0.0 ? std::format("{:.2f} s", h.releaseGrace) : std::string("never"), gamepad::Name(h.powerWheel))
+        : std::string("the right grip is RB except a squeeze at a slot (gripHolds 0)");
+    std::string text = std::format("{}, {}, weapon wheel {}, holster {}, eye height {} (setting {:.2f} m), haptics {:.2f}; slots:",
+        h.enabled ? "on" : "off", grip, h.weaponWheel ? "kept (LB)" : "off", static_cast<int>(h.holster),
+        h.eyeHeightFromFloor ? "from the floor" : "from the setting", h.layout.eyeHeight, h.hapticAmplitude);
     for (ik::body_slots::Slot const& slot : h.layout.slots) {
         text += std::format(" {} {} ({:.2f}, {:.2f}, {:.2f}) r {:.2f};", slot.name, ik::body_slots::Name(slot.weapon), slot.offset.x,
             slot.offset.y, slot.offset.z, slot.radius);
@@ -462,6 +504,32 @@ void Refresh() {
     if (ini.find("Holsters") == ini.end()) {
         std::ofstream(path, std::ios::app) << kHolstersBlock;
         log::Info("hands: added the [Holsters] defaults to {}", path.string());
+        ini = ReadIni(path);
+        stamp = fs::last_write_time(path, ec);
+    }
+    // Keys added to [Holsters] since a file was written: appended with their defaults, so the file
+    // shows them (their comments are in a new file's block and research/19).
+    struct NewKey {
+        wchar_t const* key;
+        char const* name;
+        wchar_t const* value;
+    };
+    static constexpr NewKey kNewHolsterKeys[] = {
+        {L"gripHolds", "gripHolds", L"1"},
+        {L"releaseGrace", "releaseGrace", L"0.3"},
+        {L"powerWheel", "powerWheel", L"r3"},
+        {L"eyeHeightFromFloor", "eyeHeightFromFloor", L"1"},
+    };
+    std::string added;
+    for (NewKey const& k : kNewHolsterKeys) {
+        auto const s = ini.find("Holsters");
+        if (s != ini.end() && s->second.find(k.name) == s->second.end() &&
+            WritePrivateProfileStringW(L"Holsters", k.key, k.value, path.wstring().c_str()) != 0) {
+            added += std::format("{}{}", added.empty() ? "" : ", ", k.name);
+        }
+    }
+    if (!added.empty()) {
+        log::Info("hands: added {} (defaults) to [Holsters] in {}", added, path.string());
         ini = ReadIni(path);
         stamp = fs::last_write_time(path, ec);
     }

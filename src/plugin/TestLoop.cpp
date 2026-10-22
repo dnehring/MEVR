@@ -229,6 +229,7 @@ std::atomic<bool> gReplayLoop{false};
 std::atomic<std::int64_t> gReplayPositionNs{0};
 std::atomic<std::int64_t> gReplayDurationNs{0};
 std::atomic<bool> gGripChord{false};
+std::atomic<bool> gGripChordBlocked{false};
 std::atomic<std::uint64_t> gLastFrameMs{0};
 std::atomic<std::uint64_t> gWantStatusUntilMs{0};
 std::atomic<DWORD> gPresentThread{0};
@@ -1341,10 +1342,12 @@ void OnFrameBegun(XrSession session, XrSpace appSpace, XrTime displayTime, bool 
     TickRecording(displayTime, live);
     ApplyReplay(displayTime, state);
 
-    // Chords on the live controllers: both grips squeezed, then a stick click.
+    // Chords on the live controllers: both grips squeezed, then a stick click (not while the grips
+    // hold the gun with both hands: BlockGripChord).
     static bool s_leftClick = false;
     static bool s_rightClick = false;
-    bool const grips = live.active && live.left.squeeze > 0.75f && live.right.squeeze > 0.75f;
+    bool const grips = live.active && live.left.squeeze > 0.75f && live.right.squeeze > 0.75f &&
+        !gGripChordBlocked.load(std::memory_order_relaxed);
     gGripChord.store(grips, std::memory_order_relaxed);
     if (grips && live.left.stickClick && !s_leftClick) {
         log::Info("test loop: both grips + left stick: snapshot");
@@ -1398,6 +1401,10 @@ void NoteMenuQuad(float const position[3], bool headLocked, float width, float h
 
 bool GripChordHeld() {
     return gGripChord.load(std::memory_order_relaxed);
+}
+
+void BlockGripChord(bool blocked) {
+    gGripChordBlocked.store(blocked, std::memory_order_relaxed);
 }
 
 bool Replaying() {

@@ -3,6 +3,7 @@
 #include "core/ik/ArmLength.hpp"
 #include "core/ik/BodySlots.hpp"
 #include "core/ik/Rigid.hpp"
+#include "game/GamepadMapping.hpp"
 
 #include <optional>
 
@@ -49,20 +50,34 @@ struct Controls {
     bool aimAtShoulder = true;    // aimAtShoulder: aimed fire (LT) needs the gun at the shoulder too
 };
 Controls GetControls();
-// [Holsters] (appended to an older file that lacks it): body holsters (game/holsters, research/19).
+// [Holsters] (appended to an older file that lacks it; keys added later are appended to the section
+// with their defaults): body holsters (game/holsters, research/19).
 //   enabled          1: reach to a slot on the body and squeeze the right grip to draw its weapon
+//   gripHolds        1 (default): the right grip holds the gun: squeeze at a slot to draw, keep it
+//                    squeezed to carry, let go at the gun's slot to holster; RB moves to powerWheel.
+//                    0: the old mapping (the grip is RB except a squeeze at a slot)
+//   releaseGrace     seconds after letting go away from the gun's slot before it goes back (a new
+//                    squeeze in time keeps it; never while the trigger is held); negative: it stays out
+//   powerWheel       with gripHolds: the control that is RB (hold: power wheel, tap: mapped power):
+//                    r3 (default) | y | x | b | none
 //   weaponWheel      1: the game's weapon wheel stays on its button (LB) as a fallback; 0: no LB
 //                    from the left trigger or grip while holsters are on
-//   holster          0 off; 1 squeeze and release at the held gun's own slot; 2 also at an empty slot
+//   holster          0 off; 1 at the held gun's own slot; 2 also at an empty slot
+//   eyeHeightFromFloor  1: scale by the standing eye height measured from the floor (host v10);
+//                    eyeHeightM is the fallback. 0: always eyeHeightM
 //   eyeHeightM       the player's standing eye height: scales the slot offsets (1.65 = as written)
-//   hapticAmplitude  0..1, the pulse on entering a slot (0: no vibration)
+//   hapticAmplitude  0..1, the strength of the contact haptics (0.5 as designed; 0: no vibration)
 //   hipRight, shoulderRight, belly, shoulderLeft = weapon, right, up, forward, radius
 //                    weapon: pistol | shotgun | rifle | sniper | none; meters from the eyes (held
 //                    upright), in the body's frame, at a 1.65 m eye height
 struct Holsters {
     bool enabled = true;
+    bool gripHolds = true;
+    double releaseGrace = 0.3;
+    gamepad::RbSource powerWheel = gamepad::RbSource::RightStickClick;
     bool weaponWheel = true;
     ik::body_slots::Holster holster = ik::body_slots::Holster::OwnSlot;
+    bool eyeHeightFromFloor = true;
     ik::body_slots::Layout layout = ik::body_slots::DefaultLayout();
     double hapticAmplitude = 0.5;
 };

@@ -60,10 +60,82 @@ LeftGrip UpdateSupportGrip(SupportGrip& grip, bool gripDown, SupportInput const&
     return grip.shoulder ? LeftGrip::Shoulder : LeftGrip::Held;
 }
 
+char const* Name(RbSource source) {
+    switch (source) {
+    case RbSource::RightStickClick: return "the right stick click";
+    case RbSource::Y: return "Y";
+    case RbSource::X: return "X";
+    case RbSource::B: return "B";
+    case RbSource::None: break;
+    }
+    return "nothing (no RB)";
+}
+
+bool RbFromStickClick(RbClick& s, RbClickInput const& in) {
+    using Phase = RbClick::Phase;
+    bool const pressed = in.click && !s.down;
+    s.down = in.click;
+    bool const deflected = std::abs(in.stickX) > kRbStickCentered || std::abs(in.stickY) > kRbStickCentered;
+    bool const clock = in.nowMs != 0;
+    if (pressed) {
+        // Halcyon counts every R3 press it sees (the host hides the chords' clicks from it): two
+        // within kRbDoubleClickMs are its recenter, and the pair is used up.
+        bool const counted = !in.reserved && !in.otherClick;
+        bool const second = clock && counted && s.lastPressMs != 0 && in.nowMs - s.lastPressMs <= kRbDoubleClickMs;
+        if (counted && clock) {
+            s.lastPressMs = second ? 0 : in.nowMs;
+        }
+        if (!in.enabled || second || in.reserved || in.otherClick || deflected) {
+            s.phase = Phase::Ignored;  // also drops a tap still waiting for the window to pass
+        } else {
+            s.phase = clock ? Phase::Pending : Phase::Held;
+            s.pressMs = in.nowMs;
+        }
+    }
+    switch (s.phase) {
+    case Phase::Pending:
+        if (in.otherClick || in.reserved) {
+            s.phase = Phase::Ignored;
+        } else if (!in.click) {
+            s.phase = Phase::TapWait;
+        } else if (in.nowMs - s.pressMs >= kRbCommitMs) {
+            s.phase = Phase::Held;
+        }
+        break;
+    case Phase::Held:
+        if (!in.click) {
+            s.phase = Phase::Idle;
+        } else if (in.otherClick || in.reserved) {
+            s.phase = Phase::Ignored;  // a chord after all: let go of RB
+        }
+        break;
+    case Phase::TapWait:
+        if (in.nowMs - s.pressMs > kRbDoubleClickMs) {
+            s.phase = Phase::Tap;
+            s.tapUntilMs = in.nowMs + kRbTapMs;
+        }
+        break;
+    case Phase::Tap:
+        if (in.nowMs >= s.tapUntilMs) {
+            s.phase = Phase::Idle;
+        }
+        break;
+    case Phase::Ignored:
+        if (!in.click) {
+            s.phase = Phase::Idle;
+        }
+        break;
+    case Phase::Idle:
+        break;
+    }
+    return s.phase == Phase::Held || s.phase == Phase::Tap;
+}
+
 std::uint32_t ToFlags(Options const& options) {
     return (options.leftTrigger ? kFlagLeftTrigger : 0u) | (options.supportAims ? kFlagSupportAims : 0u) |
            (options.gripShoulder ? kFlagGripShoulder : 0u) | (options.leftTriggerShoulder ? kFlagLeftTriggerShoulder : 0u) |
-           (options.rightGripFree ? kFlagRightGripFree : 0u);
+           (options.rightGripFree ? kFlagRightGripFree : 0u) | (options.rightGripHolds ? kFlagRightGripHolds : 0u) |
+           ((static_cast<std::uint32_t>(options.rbSource) << kRbSourceShift) & kRbSourceMask);
 }
 
 Options FromFlags(float distance, float acquire, float release, std::uint32_t flags) {
@@ -73,6 +145,9 @@ Options FromFlags(float distance, float acquire, float release, std::uint32_t fl
     options.gripShoulder = (flags & kFlagGripShoulder) != 0;
     options.leftTriggerShoulder = (flags & kFlagLeftTriggerShoulder) != 0;
     options.rightGripFree = (flags & kFlagRightGripFree) != 0;
+    options.rightGripHolds = (flags & kFlagRightGripHolds) != 0;
+    std::uint32_t const source = (flags & kRbSourceMask) >> kRbSourceShift;
+    options.rbSource = source <= static_cast<std::uint32_t>(RbSource::B) ? static_cast<RbSource>(source) : RbSource::None;
     options.support = {distance, acquire, release};
     return options;
 }
@@ -99,23 +174,67 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& state, Latches& lat
     bool const leftTriggerDown = Latch(latches.leftTrigger, l.trigger);
     if (options.leftTriggerShoulder && leftTriggerDown) buttons |= XINPUT_GAMEPAD_LEFT_SHOULDER;
     if (latches.left == LeftGrip::Support && options.supportAims) pad.bLeftTrigger = 255;
-    // The right grip is RB, except a squeeze that began at a body holster (Options::rightGripFree):
-    // that one stays off RB until the grip opens, wherever the hand goes meanwhile.
+    // The right grip is RB, except a squeeze that began at a body holster (Options::rightGripFree) or
+    // while the grip holds the gun (Options::rightGripHolds): that one stays off RB until the grip
+    // opens, wherever the hand goes and whatever the options say meanwhile.
     bool const rightWasDown = latches.rightGrip;
     bool const rightGrip = Latch(latches.rightGrip, r.squeeze);
     if (rightGrip && !rightWasDown) {
-        latches.rightFree = options.rightGripFree;
-        if (latches.rightFree) {
+        latches.rightHold = options.rightGripHolds;
+        latches.rightFree = options.rightGripFree || options.rightGripHolds;
+        if (latches.rightFree && options.countKept) {
             ++latches.rightFreeCount;
         }
     } else if (!rightGrip) {
         latches.rightFree = false;
+        latches.rightHold = false;
     }
-    if (rightGrip && !latches.rightFree) buttons |= XINPUT_GAMEPAD_RIGHT_SHOULDER;
+    bool rb = rightGrip && !latches.rightFree;
+    // RB from Options::rbSource while the grip holds the gun. Each press is RB or its own button,
+    // decided when it goes down.
+    RbSource const source = options.rightGripHolds ? options.rbSource : RbSource::None;
+    struct Face {
+        bool down;
+        RbSource as;
+        WORD bit;
+        std::uint8_t mask;
+    };
+    Face const faces[] = {
+        {r.secondary, RbSource::B, XINPUT_GAMEPAD_B, 1},
+        {l.primary, RbSource::X, XINPUT_GAMEPAD_X, 2},
+        {l.secondary, RbSource::Y, XINPUT_GAMEPAD_Y, 4},
+    };
+    for (Face const& face : faces) {
+        bool const was = (latches.faceDown & face.mask) != 0;
+        if (face.down && !was && source == face.as) {
+            latches.faceRb = static_cast<std::uint8_t>(latches.faceRb | face.mask);
+        } else if (!face.down || !was) {
+            latches.faceRb = static_cast<std::uint8_t>(latches.faceRb & ~face.mask);
+        }
+        latches.faceDown = static_cast<std::uint8_t>(face.down ? (latches.faceDown | face.mask) : (latches.faceDown & ~face.mask));
+        if (face.down) {
+            if ((latches.faceRb & face.mask) != 0) {
+                rb = true;
+            } else {
+                buttons |= face.bit;
+            }
+        }
+    }
+    // The right stick click stays R3 either way: Halcyon's double-click recenter reads it, and the
+    // game's R3 (ChangeMagnification, a scoped weapon's zoom step) does nothing in Halcyon's view.
+    RbClickInput click;
+    click.click = r.stickClick;
+    click.stickX = r.stickX;
+    click.stickY = r.stickY;
+    click.otherClick = l.stickClick;
+    click.reserved = options.stickClicksReserved;
+    click.enabled = source == RbSource::RightStickClick;
+    click.nowMs = state.timeMs;
+    if (RbFromStickClick(latches.rbClick, click)) {
+        rb = true;
+    }
+    if (rb) buttons |= XINPUT_GAMEPAD_RIGHT_SHOULDER;
     if (r.primary) buttons |= XINPUT_GAMEPAD_A;
-    if (r.secondary) buttons |= XINPUT_GAMEPAD_B;
-    if (l.primary) buttons |= XINPUT_GAMEPAD_X;
-    if (l.secondary) buttons |= XINPUT_GAMEPAD_Y;
     if (l.stickClick) buttons |= XINPUT_GAMEPAD_LEFT_THUMB;
     if (r.stickClick) buttons |= XINPUT_GAMEPAD_RIGHT_THUMB;
     if (l.menu) buttons |= leftGrip ? XINPUT_GAMEPAD_BACK : XINPUT_GAMEPAD_START;

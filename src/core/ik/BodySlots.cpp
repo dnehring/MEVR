@@ -52,6 +52,9 @@ char const* Name(Action action) {
     case Action::HolsterArmed: return "holster armed";
     case Action::HolsterCancelled: return "holster cancelled";
     case Action::Missed: return "missed";
+    case Action::ReturnArmed: return "return armed";
+    case Action::ReturnCancelled: return "return cancelled";
+    case Action::Return: return "return";
     }
     return "?";
 }
@@ -108,6 +111,102 @@ void Machine::Reset() {
     phase_ = Phase::Idle;
     armedSlot_ = -1;
     armedWeapon_ = Weapon::None;
+    drawn_ = Weapon::None;
+    returning_ = Weapon::None;
+    returnLeft_ = 0.0;
+    returnWaited_ = 0.0;
+    returnAwaitsDraw_ = false;
+}
+
+void Machine::UpdateHolding(Input const& input, Step& step) {
+    auto const act = [&step](Action action, int slot, Weapon weapon) {
+        step.action = action;
+        step.slot = slot;
+        step.weapon = weapon;
+    };
+
+    // A new squeeze: in a slot it takes that slot's gun (draws it, or takes the one that's out of
+    // it); anywhere else it takes hold of whatever is out. Either way a return in progress is over.
+    if (input.newSqueeze) {
+        bool const wasReturning = phase_ == Phase::Returning;
+        Weapon const wasReturningGun = returning_;
+        phase_ = Phase::Grab;
+        drawn_ = Weapon::None;
+        returning_ = Weapon::None;
+        if (inSlot_ >= 0) {
+            Weapon const weapon = input.weapon[inSlot_];
+            if (input.held != Weapon::None && input.held == weapon) {
+                act(Action::AlreadyHeld, inSlot_, weapon);
+            } else if (input.available[inSlot_]) {
+                act(Action::Draw, inSlot_, weapon);
+                drawn_ = weapon;
+            } else {
+                act(Action::Unavailable, inSlot_, weapon);
+            }
+        } else if (wasReturning) {
+            act(Action::ReturnCancelled, -1, wasReturningGun);
+        } else if (step.nearby) {
+            act(Action::Missed, -1, Weapon::None);
+        }
+    }
+
+    // A squeeze that began while we weren't running, holding a gun that's out: it's held.
+    if (phase_ == Phase::Idle && input.gripDown && input.gripKept && !input.newSqueeze && input.held != Weapon::None) {
+        phase_ = Phase::Grab;
+    }
+
+    // The grip opens on a squeeze we saw: let go of the gun. At its own slot (or an empty one with
+    // OwnOrEmptySlot) it's holstered now; elsewhere it goes back after the grace. A squeeze and
+    // release between two steps acts on the squeeze first and on the release next step.
+    if (!input.gripDown && phase_ == Phase::Grab && step.action == Action::None) {
+        Weapon const gun = input.held != Weapon::None ? input.held : drawn_;  // a draw on its way counts
+        phase_ = Phase::Idle;
+        if (gun != Weapon::None && input.holster != Holster::Off) {
+            bool const ownSlot = inSlot_ >= 0 && input.weapon[inSlot_] == gun;
+            bool const emptySlot = inSlot_ >= 0 && !input.available[inSlot_] && input.holster == Holster::OwnOrEmptySlot;
+            if ((ownSlot || emptySlot) && input.held == gun && !input.trigger) {
+                act(Action::Holster, inSlot_, gun);
+            } else if (input.releaseGrace >= 0.0 || ownSlot || emptySlot) {
+                // Let go at the gun's slot while drawing or firing: it goes back once that's over, with
+                // no grace (where it was let go says what was meant).
+                phase_ = Phase::Returning;
+                returning_ = gun;
+                returnLeft_ = ownSlot || emptySlot ? 0.0 : std::max(input.releaseGrace, 0.0);
+                returnWaited_ = 0.0;
+                returnAwaitsDraw_ = input.held == Weapon::None;
+                act(Action::ReturnArmed, inSlot_, gun);
+            }
+        }
+        drawn_ = Weapon::None;
+        return;
+    }
+
+    // The grace: it runs while the gun is out and the trigger isn't held.
+    if (phase_ == Phase::Returning && step.action == Action::None) {
+        if (input.held != Weapon::None && input.held != returning_) {
+            act(Action::ReturnCancelled, -1, returning_);  // the gun changed
+            phase_ = Phase::Idle;
+        } else if (input.held == Weapon::None) {
+            returnWaited_ += std::max(input.deltaSeconds, 0.0);
+            if (!returnAwaitsDraw_ || returnWaited_ > kReturnWaitForDrawSeconds) {
+                act(Action::ReturnCancelled, -1, returning_);  // put away already, or never came out
+                phase_ = Phase::Idle;
+            }
+        } else if (input.trigger) {
+            returnAwaitsDraw_ = false;
+            step.returnWaitsForTrigger = true;  // never in the middle of a burst
+        } else {
+            returnAwaitsDraw_ = false;
+            returnLeft_ -= std::max(input.deltaSeconds, 0.0);
+            if (returnLeft_ <= 0.0) {
+                act(Action::Return, -1, returning_);
+                phase_ = Phase::Idle;
+            }
+        }
+        if (phase_ == Phase::Idle) {
+            returning_ = Weapon::None;
+        }
+    }
 }
 
 Step Machine::Update(Input const& input) {
@@ -142,6 +241,18 @@ Step Machine::Update(Input const& input) {
     step.nearby = inSlot_ >= 0;
     for (int i = 0; input.tracked && i < kSlots; ++i) {
         step.nearby = step.nearby || (On(input, i) && input.distance[i] <= input.radius[i] + input.exitMargin);
+    }
+
+    // Switching between the two grip modes drops whatever was in progress.
+    if (input.gripHolds != holds_) {
+        int const keep = inSlot_;
+        Reset();
+        inSlot_ = keep;
+        holds_ = input.gripHolds;
+    }
+    if (input.gripHolds) {
+        UpdateHolding(input, step);
+        return step;
     }
 
     auto const act = [&step](Action action, int slot, Weapon weapon) {
@@ -199,6 +310,67 @@ Step Machine::Update(Input const& input) {
         armedWeapon_ = Weapon::None;
     }
     return step;
+}
+
+namespace {
+
+// `strength` 0.5 is the designed level; 1 doubles it (amplitudes clamp at 1).
+float Scaled(double strength, double level) {
+    if (!(strength > 0.0)) {
+        return 0.0f;
+    }
+    return static_cast<float>(std::clamp(strength * 2.0 * level, 0.0, 1.0));
+}
+
+} // namespace
+
+double Depth(double distance, double radius) {
+    if (!(radius > 0.0) || !std::isfinite(distance) || distance < 0.0) {
+        return 0.0;
+    }
+    return std::clamp(1.0 - distance / radius, 0.0, 1.0);
+}
+
+Buzz Contact(double depth, double strength, bool holding) {
+    double const d = std::isfinite(depth) ? std::clamp(depth, 0.0, 1.0) : 0.0;
+    Buzz buzz;
+    // Faint at the edge (and in the hysteresis band), firm at the center; the frequency rises with it.
+    buzz.amplitude = Scaled(strength, (0.08 + 0.27 * d) * (holding ? 0.5 : 1.0));
+    buzz.frequency = static_cast<float>(70.0 + 130.0 * d);
+    return buzz;
+}
+
+Buzz EnterEdge(double strength) {
+    return {Scaled(strength, 0.55), 160.0f, 0.035f};
+}
+
+Buzz DrawClick(double strength) {
+    return {Scaled(strength, 0.9), 320.0f, 0.02f};
+}
+
+Buzz HolsterClick(double strength) {
+    return {Scaled(strength, 0.65), 200.0f, 0.02f};
+}
+
+Buzz Refused(double strength) {
+    return {Scaled(strength, 0.3), 60.0f, 0.12f};
+}
+
+void StandingHeight::Update(double eyeHeight, double deltaSeconds) {
+    if (!(eyeHeight >= kMin && eyeHeight <= kMax)) {
+        return;  // no floor, or not this player's eyes above it
+    }
+    if (!(value_ > 0.0)) {
+        value_ = eyeHeight;
+    } else if (eyeHeight > value_) {
+        value_ += (eyeHeight - value_) * (1.0 - std::exp(-std::max(deltaSeconds, 0.0) / kRiseSeconds));
+    }
+}
+
+void StandingHeight::Recenter(double eyeHeight) {
+    if (eyeHeight >= kMin && eyeHeight <= kMax) {
+        value_ = eyeHeight;
+    }
 }
 
 } // namespace mevr::ik::body_slots

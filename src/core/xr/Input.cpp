@@ -305,7 +305,7 @@ void Input::Sync(Target const& target, XrTime time, vr::controllers::State& out)
     out.active = out.left.gripValid || out.right.gripValid || pressed(out.left) || pressed(out.right);
 }
 
-bool Input::Vibrate(Target const& target, int hand, float seconds, float amplitude) {
+bool Input::Vibrate(Target const& target, int hand, float seconds, float amplitude, float frequencyHz) {
     if (!Matches(target) || haptic_ == XR_NULL_HANDLE || hand < kLeft || hand > kRight || !(seconds > 0.0f) ||
         !(amplitude > 0.0f)) {
         return false;
@@ -315,10 +315,20 @@ bool Input::Vibrate(Target const& target, int hand, float seconds, float amplitu
     info.subactionPath = hands_[hand];
     XrHapticVibration vibration{XR_TYPE_HAPTIC_VIBRATION};
     vibration.duration = static_cast<XrDuration>(static_cast<double>(seconds) * 1e9);
-    vibration.frequency = XR_FREQUENCY_UNSPECIFIED;
+    vibration.frequency = frequencyHz > 0.0f ? frequencyHz : XR_FREQUENCY_UNSPECIFIED;
     vibration.amplitude = amplitude > 1.0f ? 1.0f : amplitude;
     return Check(xrApplyHapticFeedback(target.session, &info, reinterpret_cast<XrHapticBaseHeader const*>(&vibration)),
         "xrApplyHapticFeedback");
+}
+
+bool Input::StopVibration(Target const& target, int hand) {
+    if (!Matches(target) || haptic_ == XR_NULL_HANDLE || hand < kLeft || hand > kRight) {
+        return false;
+    }
+    XrHapticActionInfo info{XR_TYPE_HAPTIC_ACTION_INFO};
+    info.action = haptic_;
+    info.subactionPath = hands_[hand];
+    return Check(xrStopHapticFeedback(target.session, &info), "xrStopHapticFeedback");
 }
 
 } // namespace mevr::xr

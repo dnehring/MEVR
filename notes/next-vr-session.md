@@ -30,8 +30,9 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
 `%LOCALAPPDATA%\MEVR\snapshots` and `\recordings`.
 
 - **Snapshot:** press **End** (game window focused), or squeeze **both grips and click the left
-  stick**, or in Halcyon's menu (`\`) open **VR hands -> Test loop -> Snapshot in 3 s** and close
-  the menu. Log: `test loop: snapshot saved in ...`. Claude can also take them any time while
+  stick** (with the right grip holding the gun, step 11: the left grip must be away from the gun's
+  foregrip; while you aim two-handed the clicks go to the game), or in Halcyon's menu (`\`) open
+  **VR hands -> Test loop -> Snapshot in 3 s** and close the menu. Log: `test loop: snapshot saved in ...`. Claude can also take them any time while
   you play (`tools/snapshot.ps1`): just keep still and say "go" when you're in position.
 - **Recording a short session for Claude** (about 20-60 s is plenty):
   1. In game, on foot, with a weapon drawn. Recenter first (R).
@@ -282,56 +283,92 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       prefer, and whether 70° suits you.
     - **Snapshot** (End) with the menu open and the head turned: Claude checks the menu quad sits
       at its app-space pose in the composite.
-11. **Body holsters (new, 2026-10-22; host redeploy for the buzz and the RB block).** Draw
-    weapons by reaching for them ([research/19](../research/19-body-holsters.md)):
+11. **Body holsters, the grip holds the gun (new, 2026-10-22; HOST REDEPLOY: services v10).**
+    Draw weapons by reaching for them, carry them by keeping the right grip squeezed
+    ([research/19](../research/19-body-holsters.md) sections 3-8). Close the game and run
+    `tools/deploy-asi.ps1 -Game LE1` first: without the new host the mod logs `holsters: gripHolds
+    = 1 needs the redeployed host (services v10)` and falls back to the old squeeze-to-draw mapping
+    (the right grip stays RB), with one buzz on entering a slot instead of the contact buzz.
     - **Where:** pistol at the right hip, assault rifle over the right shoulder, shotgun in front
       of the belly, sniper rifle over the left shoulder.
-    - **How:** reach there with the right hand (a short buzz says you're in) and squeeze the right
-      grip once. To put the gun away, squeeze and release the right grip with the gun at its own
-      slot.
-    - **Settings:** `[Holsters]` in `Binaries\Win64\ASI\LE1MEVR.ini`. It applies within a second,
-      so you can tune while playing. Set `eyeHeightM` to your eye height (about your height minus
-      12 cm) first. The game's weapon wheel stays on the left trigger (`weaponWheel = 1`).
+    - **How:** reach there with the right hand (you feel a buzz while the hand is in the slot,
+      stronger toward its middle) and squeeze the right grip: the gun comes out. **Keep squeezing
+      to hold it.** Let go at its own slot to holster it. Let go anywhere else and it goes back to
+      its holster after 0.3 s, unless you squeeze again (never while you hold the trigger).
+    - **RB (the power wheel) is now the right stick click:** hold it and tilt the right stick to
+      choose a power, let go to use it; a quick click casts your mapped power (about a third of a
+      second later: it waits to be sure it isn't a double-click recenter).
+    - **Settings:** `[Holsters]` in `Binaries\Win64\ASI\LE1MEVR.ini`, applied within a second.
+      New keys (added to your file with their defaults): `gripHolds = 1` (0 = the old mapping),
+      `releaseGrace = 0.3` (seconds; -1 = a let-go gun stays out), `powerWheel = r3` (or `y`, `x`,
+      `b`, `none`), `eyeHeightFromFloor = 1`. `hapticAmplitude` (0.5) is now the strength of all
+      the holster haptics (0 = none). The game's weapon wheel stays on the left trigger (it also
+      picks your squad's weapons).
 
-    Steps (first person, on foot, recentered with R while standing straight):
-    - **Each slot, with a weapon drawn:**
-      - Reach slowly to each slot. Note where the buzz starts (log: `holsters: right hand entered
-        <slot> (..., 0.xx m from its center ...)`) and whether that matches where you'd expect
-        the weapon.
-      - Squeeze there. The weapon switch animation runs and the new gun appears in the hand. Logs:
-        `holsters: grab at <slot>: drawing the <type> (SFXGameModeDefault.SwitchToWeapon(N) ...)`
-        and `holsters: the <type> is in hand after N s`.
-      - The power wheel (RB) must **not** open. If it does, the host wasn't redeployed: say so.
-    - **Holstered** (put the gun away with the game's own key, or below): squeeze at a slot. The
-      game should draw that weapon (log as above).
-    - **Holster:** with the pistol drawn, hand at the hip, squeeze and release. Log:
-      `holsters: squeezed at hipRight with the pistol in hand: release here to holster it`, then
-      `the pistol goes back in hipRight (SFXGameModeDefault.TryHolster)` and
-      `the pistol is holstered after N s`.
-      - Squeeze, move the hand away, and release: nothing happens (log `holster ... called off`).
-      - Squeeze, pull the trigger, and release: nothing happens either.
-    - **A weapon you don't carry:** a weaker, longer buzz, log `you carry no <type>`.
-    - **Accidents:** fight normally for a minute, including hip fire low in front of you and
-      aiming with the gun at your cheek. Did anything switch or holster by itself? Did the power
-      wheel stop working anywhere except right at the slots?
-    - **Turning and looking:**
-      - Look down at the hip and belly slots. They must not move as you look (log `yaw from arm
-        IK's torso` or `the head (lagging)`).
-      - Turn your whole body: the slots come round with you after the torso follows.
+    Steps (first person, on foot). **Recenter with R while standing straight** first: that's when
+    your standing eye height is taken.
+    - **Eye height (log first):** `floor: the head's height above the floor comes from STAGE
+      (reference spaces: ...)`, `floor: first sample: the head is 1.xx m above the floor`, then
+      `holsters: recentered with the head 1.xx m above the floor: taken as the standing eye
+      height` and `holsters: eye height 1.xx m from the floor (STAGE), standing (slot scale
+      0.9x)`. Is 1.xx your eye height (roughly your height minus 12 cm)? If it says `from [Holsters]
+      eyeHeightM (...)`, the reason in brackets says why (no floor set up in the headset, an older
+      host): tell Claude. Crouch: the scale must not change (the slots come down with you).
+    - **Contact haptics:** move the right hand slowly into the hip slot and through it. A firmer
+      edge as you cross in, then a buzz that grows toward the middle and fades toward the edge,
+      and stops when you're out. Same at each slot. Does it feel like touching something? Too
+      strong or too weak (`hapticAmplitude`)? Can you tell the middle from the edge? (If the pitch
+      doesn't change, the runtime ignores the frequency: say so.)
+    - **Draw and carry:** squeeze at the hip: a crisp click, the pistol comes out. Logs: `holsters:
+      grab at hipRight: drawing the pistol (SFXGameModeDefault.SwitchToWeapon(0); was holstered);
+      keep the grip squeezed to hold it` and `holsters: the pistol is in hand after N s`. Keep
+      squeezing and fight with it: no power wheel opens (Halcyon's log: `first right-grip squeeze
+      that holds the gun: kept from the game (no RB); RB comes from the right stick click`).
+    - **Holster at the slot:** carry the pistol back to the hip and let go: a softer click, it's
+      put away. Log: `holsters: let go at hipRight: the pistol goes back in its holster
+      (SFXGameModeDefault.TryHolster)`, `the pistol is holstered after N s`.
+    - **Let go elsewhere:** hold the pistol out in front, let go: `holsters: let go of the pistol
+      away from its slot: it goes back in 0.30 s unless you squeeze again`, then 0.3 s later `let
+      go 0.30 s ago away from hipRight: the pistol goes back in its holster`. Again, but squeeze
+      again quickly: `the pistol stays out (squeezed again)`.
+    - **Never mid-burst:** hold the trigger (assault rifle, burst fire), let go of the grip, keep
+      firing: the gun stays out while you fire (`waits for the trigger to be let go`), then goes
+      back 0.3 s after you stop.
+    - **Swap:** holding the pistol, reach to the right shoulder and let go there, then squeeze there
+      again: the rifle. Or let go anywhere and squeeze at the shoulder within 0.3 s.
+    - **A weapon you don't carry:** a dull longer buzz, log `you carry no <type>`.
+    - **The power wheel on the right stick click:** hold the click: the wheel opens (about 0.4 s);
+      tilt the same stick to choose, let go. A quick click casts the mapped power. A double click
+      recenters (R3 twice quickly) and must **not** cast anything. Clicking while turning with the
+      stick pushed over does nothing. Both sticks held still open Halcyon's menu (no wheel).
+      If holding the click while steering is awkward, try `powerWheel = y`.
+    - **Two-handed and aimed fire:** squeeze the left grip at the foregrip while holding the gun:
+      as before (`support grip: held ...`, aimed fire at the shoulder). Crouch (left stick click)
+      and the power wheel (right stick click) must still work while you aim two-handed.
+    - **Test loop chords:** now squeeze the left grip **away from the gun** (right grip squeezed
+      or not), then click a stick: left = snapshot, right = recording. While aiming two-handed the
+      clicks go to the game; use End or the menu's snapshot then.
+    - **Menus and wheels:** open the power wheel (R3 hold) or the pause menu while holding the gun,
+      close it, let go: the gun goes back as usual. In the Mako the right grip fires the cannon
+      as before (`holsters: the right grip is RB (gripHolds off, or not on foot)`).
+    - **Accidents:** fight for a minute, including hip fire low in front of you and aiming with the
+      gun at your cheek. Did anything switch or holster by itself? Is holding the grip through a
+      fight tiring? (`gripHolds = 0` brings the old mapping back.)
+    - **Turning and looking:** look down at the hip and belly slots: they must not move. Turn your
+      whole body: the slots come round after the torso follows.
     - **Fit:** if a slot is hard to reach or too easy to hit, say which. Edit its line (`weapon,
       right, up, forward, radius` in meters) and retry; Claude can also read the slot centers from
-      a snapshot (End) taken with your hand at the slot (the `holsters` object in the mod status).
-    - **Optional:**
-      - `weaponWheel = 0` turns the wheel's LB off (the left trigger then does nothing). Try it
-        once holsters feel right.
-      - `holster = 0` turns holstering by hand off.
-    - Log at startup: `holsters: script functions found (...)`, `holsters: on, weapon wheel kept
-      (LB), holster 1, ...`, and once in game `holsters: the player's quick slots: 0: ...
-      (pistol); 1: ...; slot = weapon type, as research/19 expects`. **NOT slot = weapon type**
-      would mean our reading of the quick slots is off: tell Claude.
-    - The heartbeat's `holsters:` line counts entries, draws, holsters and refusals, and lists
-      the slot centers from the eyes. Halcyon's side: `halcyon bridge: first controller vibration
-      (... applied)` and `first right-grip squeeze at a holster: kept from the game (no RB)`.
+      a snapshot (End) taken with your hand at the slot (the `holsters` object in the mod status:
+      `eyeHeight`, `eyeHeightSource`, `floorEyeHeight`, `contact`, `phase`, `returnLeft`).
+    - Logs at startup: `holsters: script functions found (...)`, `holsters: on, the right grip
+      holds the gun (let go elsewhere: back after 0.30 s), RB from the right stick click, ...`,
+      `hands: added gripHolds, releaseGrace, powerWheel, eyeHeightFromFloor (defaults) to
+      [Holsters]` (once), `holsters: the right grip holds the gun (no RB from it); RB is the right
+      stick click`, and in game `holsters: the player's quick slots: ...; slot = weapon type, as
+      research/19 expects` (**NOT slot = weapon type** means our reading is off: tell Claude).
+    - The heartbeat's `holsters:` line: entries, draws, holsters, refusals, the strongest contact
+      buzz, the eye height and its source, the head's height now. Halcyon's side: `halcyon bridge:
+      first controller vibration (right hand, N ms at 0.xx, NNN Hz): applied`.
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR

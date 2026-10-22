@@ -204,13 +204,38 @@ notes/next-vr-session.md step 11.
   - the slot positions and radii;
   - no RB and no switches by accident in a fight;
   - the yaw hold when looking down.
-- **Open, for the user:**
-  - make the right grip "hold the gun" (research/19, section 4)? Not built;
-  - turn the wheel off once holsters feel right;
-  - squadmates' weapons still need the wheel;
-  - seated preset;
-  - a floor-relative space in the host to measure eye height instead of `eyeHeightM`;
-  - a visual hint for the slot the hand is in.
+- **Open, for the user:** see "The grip holds the gun" below (the user's decisions of the same day).
+
+## The grip holds the gun, contact haptics, eye height from the floor (user, 2026-10-22; built, to test)
+
+The user decided: the right grip is "hold the gun"; squad weapons stay on the game's wheel (plus a
+proposal); haptics as contact feedback, no visual marker, no seated preset; the eye height measured
+from the floor. Research and design: research/19 sections 4-9, docs/squad-weapons-design.md. Test
+steps: notes/next-vr-session.md step 11.
+- **Host change, needs a redeploy:** HostServices v10 (`servicesSize`, `hapticPulseHz`,
+  `hapticContinuous`, `floorStateSize`, `floor`); the pad mapping's `kFlagRightGripHolds` and RB
+  source bits; `core/vr/Haptics` (the continuous buzz as refreshed chunks with an expiry);
+  `core/xr/Floor` (STAGE, or LOCAL_FLOOR if listed); the test loop's chord blocked while the grips
+  hold the gun with both hands.
+- **Mod:** `ik::body_slots` grip-hold machine (`gripHolds`, `ReturnArmed`/`Return`, the grace,
+  never mid-burst), the contact haptics model, `StandingHeight`; `game/Holsters` wires them;
+  `[Holsters] gripHolds = 1`, `releaseGrace = 0.3`, `powerWheel = r3`, `eyeHeightFromFloor = 1`
+  (appended to existing files).
+- **RB:** ME1's RB on foot is the power wheel (hold) and the mapped power (tap); in the Mako, the
+  cannon. Moved to the right stick click (its own job, a scope's zoom step, does nothing in VR),
+  with guards for Halcyon's double-click recenter, its both-sticks menu and clicks while turning.
+- **[verify in headset]:**
+  - holding the grip through fights; the 0.3 s grace; no holster mid-burst;
+  - R3 as the power wheel: hold and steer with the same stick; the mapped power's ~0.35 s delay;
+    no cast on a double-click recenter (else try `powerWheel = y`);
+  - the contact buzz's feel and strength; whether the frequency changes anything;
+  - the standing eye height from the floor (SteamVR / Steam Link and Oculus);
+  - two-handed aim, crouch and R3 while aiming; the new chord rule.
+- **Open:**
+  - squad weapons the VR way (docs/squad-weapons-design.md recommends pointing plus a radial at
+    the left hand);
+  - turn the weapon wheel off once holsters feel right (it stays for squad weapons until then);
+  - a waist bend moves the low slots down (the anchor follows the head).
 
 
 ## World-locked flat panels (user, 2026-10-21; built the same day, to test)
