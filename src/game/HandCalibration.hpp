@@ -122,7 +122,7 @@ struct Squad {
     bool wheelPreselect = true;
     bool wheelPanel = true;
     int weaponWheelAt = 0;  // 0 left hand, 1 right hand, 2 in front, -1 the HUD panel
-    int powerWheelAt = 1;
+    int powerWheelAt = -1;  // hud (user, 2026-10-22: the right hand is busy with the gun)
     double wheelCrop[4] = {0.0, 0.0, 0.0, 0.0};  // width 0: auto
 };
 Squad GetSquad();

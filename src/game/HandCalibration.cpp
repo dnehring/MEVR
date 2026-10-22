@@ -168,7 +168,7 @@ constexpr char const* kSquadBlock =
     "; weaponWheelAt / powerWheelAt: where: left (hand) | right | front | hud (stays on the HUD panel).\n"
     "wheelPanel = 1\n"
     "weaponWheelAt = left\n"
-    "powerWheelAt = right\n"
+    "powerWheelAt = hud\n"
     "; wheelCrop: the wheel's part of the game's UI frame: auto (measured the first time a wheel opens) or\n"
     "; x, y, width, height as fractions of the frame (the log's [MEVR-WHEEL] lines say what was measured).\n"
     "wheelCrop = auto\n"
@@ -732,7 +732,7 @@ void Refresh() {
         {L"wheelPreselect", "wheelPreselect", L"1"},
         {L"wheelPanel", "wheelPanel", L"1"},
         {L"weaponWheelAt", "weaponWheelAt", L"left"},
-        {L"powerWheelAt", "powerWheelAt", L"right"},
+        {L"powerWheelAt", "powerWheelAt", L"hud"},
         {L"wheelCrop", "wheelCrop", L"auto"},
     };
     std::string addedSquad;
