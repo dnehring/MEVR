@@ -111,6 +111,12 @@ switching frameworks.
   own renderer (LE2/LE3); on LE1 Halcyon's keys apply instead.
 - Motion controllers reach the game as Xbox pad 0 (`game/GamepadBridge`, XInput hooks). Mapping
   is in `game/GamepadMapping` (unit-tested).
+- Physical grenades and melee (LE1, `game/Throwables` + `core/ik/Throwing`, research/20,
+  `[Throwables]`): a new grip squeeze at the grenade slot (left side of the chest) takes one, a fast
+  release throws it (the game's `UseGrenade`; its disc re-aimed from the hand in a post-handler of
+  `BioGrenade.LaunchGrenadeAtPoint`), a slow one puts it back; a fast stroke with an enemy in reach
+  is `TryMelee`. Claimed squeezes run before holsters and the squad menu. B/X stay unless
+  `meleeButton`/`grenadeButton = 0` (host v13).
 - LE1 body holsters (`game/Holsters`, `core/ik/BodySlots`, research/19): a right-grip squeeze at a
   body slot draws that weapon through `SFXGameModeDefault.SwitchToWeapon` (ProcessEvent). The
   right grip holds the gun (`gripHolds = 1`): let go at its slot to holster (`TryHolster`),

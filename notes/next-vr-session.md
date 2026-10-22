@@ -489,6 +489,63 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       on what's behind as the panel's tint` lines, and `overlays: first frame with Scaleform
       blend-mode draws in the panel's tint`.
 
+14. **Physical grenades and melee (new, 2026-10-22; the mod hot-reloads; the host redeploy
+    (services v13) is only needed to turn B or X off).** Research and design:
+    [research/20](../research/20-melee-and-grenades.md). B and X still work as before.
+    - **Grenade:** on foot, weapon out (with it away, taking a grenade draws it first: ME1 throws
+      only with a weapon out). Reach your **left hand to the left side of your chest** (about a
+      hand's width left of the sternum, a little below the collarbone): it buzzes like a holster.
+      **Squeeze the left grip** there (a new squeeze; the left grip at the gun's foregrip is still
+      the two-handed grip): a click, then a faint buzz while you hold it. **Throw it and let go**
+      while your hand moves: Shepard plays his throw, and the grenade (the game's disc) leaves from
+      your hand toward where your throw would land, flying straight and sticking there (a lob over
+      cover lands behind it). **Let go slowly** (under 1.5 m/s): it goes back (a softer click).
+      The right hand can do the same (it crosses to the left side of the chest); while it holds a
+      grenade the gun stays out, and after the throw squeeze the right grip again to hold the gun.
+    - **Melee:** with a weapon out and an enemy within about 2 m in front of you, **punch or swing**
+      either hand fast (a pistol whip or rifle butt with the gun hand, a punch with the free hand):
+      the game's melee once (a tick in that hand; a thump when it hurts the enemy). Not while
+      firing, holding a grenade, just after a throw or a draw from a holster, or with the left hand
+      on the foregrip (the gun hand's swing counts then). Pulling back fast isn't a strike.
+    - **What to check:** the slot's place (too high, low, far?); grabs you didn't mean (reaching
+      for the sniper rifle, the support grip, the squad menu); how long Shepard takes to throw after
+      you let go (`launched N s after`); whether the grenade leaves from your hand and lands where
+      you threw; gentle tosses vs hard throws (too short, too far? `throwGain`); melee strokes that
+      didn't count (the log says why) and strikes you didn't mean while aiming, reloading, turning;
+      whether the game's melee hits what's in front of the hand or of Shepard.
+    - **Snapshot:** End (or the stick tap) while holding a grenade: the mod status's `throwables`
+      has the slot's centre, both hands' distances, the holder, the last throw (hand speed,
+      direction, landing, launch delay) and the last melee.
+    - **Settings:** `[Throwables]` in `Binaries\Win64\ASI\LE1MEVR.ini` (added to your file):
+      `enabled`, `hands = both | left | right`, `slot = right, up, forward, radius` (-0.13, -0.33,
+      0.00, 0.10), `throwSpeedMinMS = 1.5`, `throwGain = 2.5`, `throwSpeedMaxMS = 15`, `flight =
+      disc` (`arc`: the game's unused ballistic grenade with your hand's velocity, experimental),
+      `fromHand = 1`, `drawForThrow = 1`, `earlyRelease = 0.3` (0: the grip lets go only when
+      opened), `grenadeButton = 1`, `melee = 1`, `meleeSpeedMS = 3.0`, `meleeGunSpeedMS = 3.5`,
+      `meleeTravelM = 0.12`, `meleeCooldownS = 0.8`, `meleeNeedsEnemy = 1`, `meleeReachM = 2.0`,
+      `meleeConeDeg = 75`, `meleeButton = 1`, `hapticAmplitude = 0.5`, `holdBuzz = 1`.
+      `grenadeButton = 0` / `meleeButton = 0` keep X / B from the game on foot (needs the redeployed
+      host; else logged once: `throwables: meleeButton/grenadeButton = 0 needs the redeployed host`).
+    - **Logs (ours):** `throwables: script functions found`, `throwables: settings: ...`,
+      `throwables: active`, `throwables: left hand entered the grenade slot (...)`, `throwables:
+      grenade taken with the left hand (N left)` (or `a squeeze at the grenade slot ...: no grenade
+      (why)`), `squad: the left squeeze took a grenade (the grenade slot): no menu`, `holsters: the
+      right hand has a grenade: the gun stays out as if held`, `throwables: grenade thrown with the
+      left hand at N m/s (fastest N ms before the release, N samples), direction (...), N degrees
+      up; world velocity (...) (x2.5); lands on <actor> at (...), N m away (flight: disc)`,
+      `throwables: Actor.Trace through ProcessEvent: the hit point came back` (**or "didn't come
+      back": tell Claude**), `throwables: SFXGameModeDefault.UseGrenade called N s after the
+      release: Shepard is throwing`, **`throwables: grenade launched N s after the left hand's
+      release (LaunchGrenadeAtPoint(...) -> BioGrenadeProjectileFrisbee_N): the disc re-aimed,
+      moved N units ... to the hand to (...) (N m, ...)`** (the game's own target is the first
+      vector: compare it with where you looked), `throwables: the left hand let go at N m/s (under
+      1.5): the grenade goes back`, `throwables: melee: the right hand's N m/s stroke (N m, N toward
+      the front) -> SFXGameModeDefault.TryMelee (pistol whip); target <pawn> at N m, N degrees,
+      health N%`, `throwables: melee: hit <pawn> after N s (health N% -> N%)` or `no damage seen
+      ...`, `throwables: melee: ... isn't a strike: <why>` / `... no strike (<why>)`, and the
+      heartbeat's `throwables:` line (counts, peak hand speeds, grenades left). Problems:
+      `the game didn't launch the ... grenade within 3 s`, `the weapon didn't come out within 2 s`.
+
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR
   loader (MEVR)`, its pacing lines.
