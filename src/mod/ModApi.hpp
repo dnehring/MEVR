@@ -29,7 +29,7 @@ struct Ray;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 7;
+inline constexpr int kHostServicesVersion = 8;
 
 using ProcessEventCallback = void (*)(UObject* context, UFunction* function, void* parms, void* result);
 
@@ -89,6 +89,13 @@ struct HostServices {
     void (*setSupportGrip)(float distanceMeters, float acquireMeters, float releaseMeters, std::uint32_t flags) = nullptr;
     // Whether the pad mapping holds the support grip now.
     bool (*supportGripHeld)() = nullptr;
+
+    // Version 8.
+    // The test loop (plugin/TestLoop): while statusWanted() is true (a snapshot is being taken), the
+    // mod passes a JSON object with its state (arm IK, hand aim, the weapon, the support grip) each
+    // tick; the snapshot's JSON carries it as "mod". Non-null with `controllers`.
+    bool (*statusWanted)() = nullptr;
+    void (*setStatus)(char const* json) = nullptr;
 };
 
 } // namespace mevr

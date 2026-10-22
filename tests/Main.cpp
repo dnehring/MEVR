@@ -1,6 +1,7 @@
 // Offline tests for the math that has to be right before it reaches a headset. No game, no
 // runtime: `ctest -C Release --test-dir build`.
 
+#include "core/PngFile.hpp"
 #include "core/ik/ArmLength.hpp"
 #include "core/ik/ArmPose.hpp"
 #include "core/ik/BoneNames.hpp"
@@ -10,15 +11,24 @@
 #include "core/ik/TorsoPose.hpp"
 #include "core/ik/TouchReference.hpp"
 #include "core/ik/TwoHand.hpp"
+#include "core/vr/ImageConvert.hpp"
+#include "core/vr/LayerComposite.hpp"
 #include "core/vr/MenuPointer.hpp"
 #include "core/vr/OverlayPlacement.hpp"
+#include "core/vr/PoseRecording.hpp"
+#include "core/vr/TestRequest.hpp"
 #include "core/vr/ViewSync.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/GamepadMapping.hpp"
 #include "game/HeadSim.hpp"
 
+#include <Windows.h>
+#include <objbase.h>
+
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <filesystem>
 #include <cstdio>
 #include <cstdlib>
 #include <numbers>
@@ -1434,6 +1444,275 @@ void TestMenuPointer() {
     CHECK(NearD(forward.x, -1.0) && NearD(forward.z, 0.0));
 }
 
+// ---- Test loop: recordings, snapshot images, request files ------------------------------------
+
+mevr::vr::recording::Frame RecordedFrame(std::int64_t timeNs, float x) {
+    mevr::vr::recording::Frame frame;
+    frame.timeNs = timeNs;
+    frame.headValid = true;
+    frame.views[0].pose = {{0.0f, 0.0f, 0.0f, 1.0f}, {x - 0.032f, 1.6f, 0.0f}};
+    frame.views[1].pose = {{0.0f, 0.0f, 0.0f, 1.0f}, {x + 0.032f, 1.6f, 0.0f}};
+    frame.views[0].fov = {-0.9f, 0.8f, 0.85f, -0.95f};
+    frame.views[1].fov = {-0.8f, 0.9f, 0.85f, -0.95f};
+    frame.controllersActive = true;
+    for (int h = 0; h < 2; ++h) {
+        auto& hand = frame.hands[h];
+        hand.gripValid = hand.aimValid = true;
+        hand.grip = {AxisAngle(0, 1, 0, 10.0 * h), {x + (h == 0 ? -0.2f : 0.2f), 1.1f, -0.3f}};
+        hand.aim = {AxisAngle(1, 0, 0, -20.0), {x, 1.2f, -0.35f}};
+        hand.trigger = 0.25f * static_cast<float>(h + 1);
+        hand.squeeze = 0.5f;
+        hand.stickX = -0.5f;
+        hand.stickY = 1.0f;
+        hand.primary = h == 1;
+        hand.stickClick = h == 0;
+        hand.menu = h == 0;
+    }
+    return frame;
+}
+
+bool SamePose(XrPosef const& a, XrPosef const& b, double tolerance = 1e-5) {
+    return NearD(a.orientation.x, b.orientation.x, tolerance) && NearD(a.orientation.y, b.orientation.y, tolerance) &&
+        NearD(a.orientation.z, b.orientation.z, tolerance) && NearD(a.orientation.w, b.orientation.w, tolerance) &&
+        NearD(a.position.x, b.position.x, tolerance) && NearD(a.position.y, b.position.y, tolerance) &&
+        NearD(a.position.z, b.position.z, tolerance);
+}
+
+void TestPoseRecording() {
+    using namespace mevr::vr::recording;
+    std::vector<std::uint8_t> bytes;
+    EncodeHeader(1234567890123, bytes);
+    CHECK(bytes.size() == kHeaderBytes);
+    Frame const a = RecordedFrame(0, 0.0f);
+    Frame b = RecordedFrame(10'000'000, 1.0f);  // 10 ms later, 1 m to the right
+    b.hands[1].aimValid = false;
+    b.hands[0].primary = true;
+    Frame c = RecordedFrame(20'000'000, 2.0f);
+    c.headValid = false;
+    EncodeFrame(a, bytes);
+    CHECK(bytes.size() == kHeaderBytes + kFrameBytes);
+    EncodeFrame(b, bytes);
+    EncodeFrame(c, bytes);
+
+    // Round trip: every field back as written.
+    Recording rec;
+    std::string error;
+    bool truncated = true;
+    CHECK(Decode(bytes.data(), bytes.size(), rec, &error, &truncated));
+    CHECK(!truncated && rec.createdUnixMs == 1234567890123 && rec.frames.size() == 3);
+    if (rec.frames.size() == 3) {
+        Frame const& r = rec.frames[0];
+        CHECK(r.timeNs == 0 && r.headValid && r.controllersActive);
+        CHECK(SamePose(r.views[0].pose, a.views[0].pose) && SamePose(r.views[1].pose, a.views[1].pose));
+        CHECK(r.views[1].fov.angleLeft == a.views[1].fov.angleLeft && r.views[0].fov.angleDown == a.views[0].fov.angleDown);
+        for (int h = 0; h < 2; ++h) {
+            CHECK(SamePose(r.hands[h].grip, a.hands[h].grip) && SamePose(r.hands[h].aim, a.hands[h].aim));
+            CHECK(r.hands[h].trigger == a.hands[h].trigger && r.hands[h].squeeze == a.hands[h].squeeze);
+            CHECK(r.hands[h].stickX == a.hands[h].stickX && r.hands[h].stickY == a.hands[h].stickY);
+            CHECK(r.hands[h].primary == a.hands[h].primary && r.hands[h].stickClick == a.hands[h].stickClick &&
+                r.hands[h].menu == a.hands[h].menu && r.hands[h].secondary == a.hands[h].secondary);
+            CHECK(r.hands[h].gripValid && r.hands[h].aimValid);
+        }
+        CHECK(!rec.frames[1].hands[1].aimValid && rec.frames[1].hands[0].primary && !rec.frames[2].headValid);
+    }
+    CHECK(rec.DurationNs() == 20'000'000);
+
+    // A partial last frame (the game closed mid-write) is dropped, not an error.
+    std::vector<std::uint8_t> cut(bytes.begin(), bytes.end() - 100);
+    CHECK(Decode(cut.data(), cut.size(), rec, &error, &truncated) && truncated && rec.frames.size() == 2);
+    // Not a recording, or no frames.
+    std::vector<std::uint8_t> junk(64, 0x41);
+    CHECK(!Decode(junk.data(), junk.size(), rec, &error));
+    CHECK(!Decode(bytes.data(), kHeaderBytes, rec, &error));
+    CHECK(Decode(bytes.data(), bytes.size(), rec));
+
+    // Sampling: halfway between a and b, positions interpolate, inputs hold the earlier frame.
+    Frame s;
+    CHECK(Sample(rec, 5'000'000, false, s));
+    CHECK(s.headValid && NearD(s.views[0].pose.position.x, 0.5 - 0.032) && NearD(s.views[1].pose.position.x, 0.5 + 0.032));
+    CHECK(NearD(s.hands[0].grip.position.x, 0.5 - 0.2) && !s.hands[0].primary);
+    // The right aim pose is only valid in a: taken from a, not blended toward b's.
+    CHECK(s.hands[1].aimValid && NearD(s.hands[1].aim.position.x, 0.0));
+    // Orientations stay unit length.
+    XrQuaternionf const& q = s.hands[1].grip.orientation;
+    CHECK(NearD(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w, 1.0));
+    // Between b and c, the head is only valid in b: held from b.
+    CHECK(Sample(rec, 15'000'000, false, s) && s.headValid && NearD(s.views[0].pose.position.x, 1.0 - 0.032));
+    CHECK(s.hands[0].primary);
+    // Past the end: the last frame, and false; with loop, wrapped to the start.
+    CHECK(!Sample(rec, 30'000'000, false, s) && s.timeNs == 20'000'000);
+    CHECK(Sample(rec, 25'000'000, true, s) && NearD(s.views[0].pose.position.x, 0.5 - 0.032));
+    // Before the start: the first frame.
+    CHECK(Sample(rec, -5, false, s) && NearD(s.views[0].pose.position.x, -0.032));
+    Recording empty;
+    CHECK(!Sample(empty, 0, true, s));
+
+    // Through a real file: the Writer streams what Load reads back (left in %TEMP% for
+    // tools/mevrrec.py to read).
+    std::filesystem::path const file = std::filesystem::temp_directory_path() / "mevr-tests-roundtrip.mevrrec";
+    {
+        Writer writer;
+        CHECK(writer.Open(file, 42));
+        CHECK(writer.Append(a) && writer.Append(b) && writer.Append(c) && writer.Frames() == 3);
+    }
+    Recording loaded;
+    CHECK(Load(file, loaded, &error) && loaded.createdUnixMs == 42 && loaded.frames.size() == 3);
+    if (loaded.frames.size() == 3) {
+        CHECK(SamePose(loaded.frames[1].hands[0].grip, b.hands[0].grip) && loaded.frames[2].timeNs == c.timeNs);
+    }
+    CHECK(!Load(file.parent_path() / "mevr-tests-missing.mevrrec", loaded, &error));
+}
+
+void TestImageConvert() {
+    using namespace mevr::vr::image;
+    // FP16: 1.0, 0.5, 0, -2, a subnormal, infinity.
+    CHECK(HalfToFloat(0x3C00) == 1.0f && HalfToFloat(0x3800) == 0.5f && HalfToFloat(0x0000) == 0.0f);
+    CHECK(HalfToFloat(0xC000) == -2.0f && NearD(HalfToFloat(0x0001), 5.96046e-8, 1e-12));
+    CHECK(std::isinf(HalfToFloat(0x7C00)));
+    // sRGB transfer: ends, mid grey (linear 0.2140 is sRGB 0.5), and back.
+    CHECK(LinearToSrgb8(0.0f) == 0 && LinearToSrgb8(1.0f) == 255 && LinearToSrgb8(4.0f) == 255 && LinearToSrgb8(-1.0f) == 0);
+    CHECK(LinearToSrgb8(0.2140f) == 128 || LinearToSrgb8(0.2140f) == 127);
+    CHECK(NearD(SrgbToLinear(LinearToSrgb(0.3f)), 0.3, 1e-5));
+
+    // 8-bit: BGRA is swizzled; opaque forces alpha.
+    std::uint8_t const bgra[8] = {10, 20, 30, 40, 1, 2, 3, 4};
+    std::uint32_t out[2] = {};
+    Options opaque;
+    opaque.opaque = true;
+    CHECK(ConvertRow(format::kB8G8R8A8UnormSrgb, bgra, 2, opaque, out));
+    CHECK(out[0] == Pack(30, 20, 10, 255) && out[1] == Pack(3, 2, 1, 255));
+    CHECK(ConvertRow(format::kR8G8B8A8Unorm, bgra, 2, Options{}, out) && out[0] == Pack(10, 20, 30, 40));
+    // Premultiplied half-covered white: straight white at half alpha (in linear light: sRGB 188 is
+    // linear 0.5).
+    std::uint8_t const premul[4] = {188, 188, 188, 128};
+    Options pre;
+    pre.premultiplied = true;
+    CHECK(ConvertRow(format::kR8G8B8A8UnormSrgb, premul, 1, pre, out));
+    CHECK((out[0] & 0xFF) >= 254 && (out[0] >> 24) == 128);
+    // Fully transparent premultiplied: no colour.
+    std::uint8_t const clear[4] = {0, 0, 0, 0};
+    CHECK(ConvertRow(format::kR8G8B8A8UnormSrgb, clear, 1, pre, out) && out[0] == 0);
+    // FP16 scRGB: linear 0.5 encodes; the white scale maps 2.0 to 1.0.
+    std::uint16_t const half[8] = {0x3800, 0x3800, 0x3800, 0x3C00, 0x4000, 0x0000, 0x0000, 0x3C00};
+    Options hdr;
+    hdr.whiteScale = 0.5f;
+    CHECK(ConvertRow(format::kR16G16B16A16Float, half, 2, hdr, out));
+    CHECK((out[0] & 0xFF) == LinearToSrgb8(0.25f) && (out[0] >> 24) == 255);
+    CHECK((out[1] & 0xFF) == 255 && ((out[1] >> 8) & 0xFF) == 0);
+    // 10:10:10:2: max red, opaque.
+    std::uint32_t const r10 = 0x3FFu | (3u << 30);
+    CHECK(ConvertRow(format::kR10G10B10A2Unorm, &r10, 1, Options{}, out) && out[0] == Pack(255, 0, 0, 255));
+    CHECK(!ConvertRow(2, bgra, 1, Options{}, out) && !Supported(2) && BytesPerPixel(10) == 8);
+
+    // Over: opaque source replaces, transparent keeps, half white over black is linear 0.5 (sRGB 188).
+    CHECK(Over(Pack(1, 2, 3, 255), Pack(9, 9, 9, 255)) == Pack(9, 9, 9, 255));
+    CHECK(Over(Pack(1, 2, 3, 255), Pack(9, 9, 9, 0)) == Pack(1, 2, 3, 255));
+    std::uint32_t const grey = Over(Pack(0, 0, 0, 255), Pack(255, 255, 255, 128));
+    CHECK((grey >> 24) == 255 && (grey & 0xFF) >= 187 && (grey & 0xFF) <= 189);
+}
+
+void TestLayerComposite() {
+    using namespace mevr::vr::composite;
+    using mevr::vr::image::Pack;
+    // A 90-degree square FOV.
+    XrFovf const fov{-0.785398f, 0.785398f, 0.785398f, -0.785398f};
+    XrVector3f const center = EyeRay(fov, 0.5f, 0.5f);
+    CHECK(NearD(center.x, 0.0) && NearD(center.y, 0.0) && center.z == -1.0f);
+    XrVector3f const corner = EyeRay(fov, 0.0f, 0.0f);  // top left
+    CHECK(NearD(corner.x, -1.0) && NearD(corner.y, 1.0));
+
+    // A 1 m quad 2 m ahead, facing the eye.
+    Image texture{2, 2, {Pack(255, 0, 0, 255), Pack(0, 255, 0, 255), Pack(0, 0, 255, 255), Pack(255, 255, 255, 255)}};
+    Quad quad;
+    quad.pose.position = {0.0f, 0.0f, -2.0f};
+    quad.width = 1.0f;
+    quad.height = 1.0f;
+    quad.image = &texture;
+    float u = 0.0f, v = 0.0f;
+    CHECK(HitQuad(quad, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -1.0f}, u, v) && NearD(u, 0.5) && NearD(v, 0.5));
+    // Up-left of the center: the texture's top-left quarter (v counts down).
+    CHECK(HitQuad(quad, {0.0f, 0.0f, 0.0f}, {-0.125f, 0.125f, -1.0f}, u, v) && NearD(u, 0.25) && NearD(v, 0.25));
+    CHECK(!HitQuad(quad, {0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, -1.0f}, u, v));   // misses
+    CHECK(!HitQuad(quad, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, u, v));    // points away
+    CHECK(!HitQuad(quad, {0.0f, 0.0f, -3.0f}, {0.0f, 0.0f, 1.0f}, u, v));   // from behind
+
+    // Into a black 40x40 eye image: the quad spans tan = 0.25 either side, i.e. the middle 10 pixels.
+    Image eye{40, 40, std::vector<std::uint32_t>(1600, Pack(0, 0, 0, 255))};
+    Eye view;
+    view.fov = fov;
+    std::size_t const covered = Draw(eye, view, quad);
+    CHECK(covered == 100);
+    CHECK(eye.At(16, 16) == Pack(255, 0, 0, 255));   // top left: red
+    CHECK(eye.At(23, 16) == Pack(0, 255, 0, 255));   // top right: green
+    CHECK(eye.At(16, 23) == Pack(0, 0, 255, 255));   // bottom left: blue
+    CHECK(eye.At(10, 10) == Pack(0, 0, 0, 255));     // outside: untouched
+    // The eye turned 90 degrees left sees nothing of it.
+    Image eye2{40, 40, std::vector<std::uint32_t>(1600, Pack(0, 0, 0, 255))};
+    view.pose.orientation = AxisAngle(0, 1, 0, 90);
+    CHECK(Draw(eye2, view, quad) == 0);
+    // Both turned: the quad at the origin facing +X (its +Z turned 90 degrees about +Y), the eye
+    // 2 m along +X looking back along -X (its -Z turned the same way).
+    quad.pose.orientation = AxisAngle(0, 1, 0, 90);
+    quad.pose.position = {0.0f, 0.0f, 0.0f};
+    view.pose.position = {2.0f, 0.0f, 0.0f};
+    CHECK(Draw(eye2, view, quad) == 100);
+    // Alpha: a half-transparent white quad shows grey over black.
+    Image white{1, 1, {Pack(255, 255, 255, 128)}};
+    quad.image = &white;
+    Image eye3{40, 40, std::vector<std::uint32_t>(1600, Pack(0, 0, 0, 255))};
+    CHECK(Draw(eye3, view, quad) == 100);
+    CHECK((eye3.At(20, 20) & 0xFF) >= 187 && (eye3.At(20, 20) & 0xFF) <= 189);
+    quad.blend = false;  // opaque: alpha ignored
+    CHECK(Draw(eye3, view, quad) == 100 && eye3.At(20, 20) == Pack(255, 255, 255, 255));
+}
+
+void TestPng() {
+    using mevr::vr::image::Pack;
+    // COM for WIC, as the snapshot worker has it.
+    HRESULT const co = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    std::vector<std::uint32_t> pixels;
+    for (int y = 0; y < 3; ++y) {
+        for (int x = 0; x < 5; ++x) {
+            pixels.push_back(Pack(static_cast<std::uint8_t>(x * 50), static_cast<std::uint8_t>(y * 100), 7,
+                static_cast<std::uint8_t>(255 - x * 40)));
+        }
+    }
+    std::filesystem::path const file = std::filesystem::temp_directory_path() / "mevr-tests-snapshot.png";
+    std::string error;
+    CHECK(mevr::png::Write(file, 5, 3, pixels.data(), &error));
+    int width = 0, height = 0;
+    std::vector<std::uint32_t> back;
+    CHECK(mevr::png::Read(file, width, height, back, &error));
+    CHECK(width == 5 && height == 3 && back == pixels);  // lossless, RGBA order and alpha kept
+    CHECK(!mevr::png::Write(file, 0, 3, pixels.data(), &error) && !error.empty());
+    CHECK(!mevr::png::Read(file.parent_path() / "mevr-tests-missing.png", width, height, back, &error));
+    if (SUCCEEDED(co)) {
+        CoUninitialize();
+    }
+}
+
+void TestTestRequest() {
+    using namespace mevr::vr::test_request;
+    Request r = Parse("C:\\Users\\me\\AppData\\Local\\MEVR\\recordings\\a b.mevrrec loop=1 Inputs=yes");
+    CHECK(r.argument == "C:\\Users\\me\\AppData\\Local\\MEVR\\recordings\\a b.mevrrec");
+    CHECK(r.Flag("loop", false) && r.Flag("inputs", false) && !r.Flag("missing", false) && r.Flag("missing", true));
+    r = Parse("\xEF\xBB\xBF" "count=5\r\ninterval=0.5\ndelay=x\n\"C:\\a path\\x.mevrrec\"\n");
+    CHECK(r.argument == "C:\\a path\\x.mevrrec");
+    CHECK(NearD(r.Number("count", 1), 5) && NearD(r.Number("interval", 0), 0.5) && NearD(r.Number("delay", 2), 2));
+    CHECK(r.Has("COUNT") && r.Get("tag", "none") == "none");
+    r = Parse("stop");
+    CHECK(r.argument == "stop" && r.options.empty());
+    r = Parse("   ");
+    CHECK(r.argument.empty() && r.options.empty());
+    // A path with '=' in it stays the argument (a key is letters, digits and _ only).
+    r = Parse("C:\\x=y\\z.mevrrec");
+    CHECK(r.argument == "C:\\x=y\\z.mevrrec");
+
+    CHECK(JsonString("a\"b\\c\nd") == "\"a\\\"b\\\\c\\nd\"");
+    CHECK(JsonString(std::string_view("\x01", 1)) == "\"\\u0001\"");
+    CHECK(JsonNumber(1.5) == "1.5" && JsonNumber(std::nan("")) == "null");
+}
+
 int main() {
     TestBoneNames();
     TestIk();
@@ -1460,6 +1739,11 @@ int main() {
     TestTwoHand();
     TestOverlayPlacement();
     TestMenuPointer();
+    TestPoseRecording();
+    TestImageConvert();
+    TestLayerComposite();
+    TestTestRequest();
+    TestPng();
     if (gFailures == 0) {
         std::printf("all tests passed\n");
     }

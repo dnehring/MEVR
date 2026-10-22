@@ -10,6 +10,7 @@
 #include "core/vr/AimRay.hpp"
 #include "core/vr/HostView.hpp"
 #include "plugin/Halcyon.hpp"
+#include "plugin/TestLoop.hpp"
 #endif
 
 #include <LESDK/Headers.hpp>
@@ -76,10 +77,17 @@ void HostSetSupportGrip(float distanceMeters, float acquireMeters, float release
 bool HostSupportGripHeld() {
     return halcyon::SupportGripHeld();
 }
+bool HostStatusWanted() {
+    return testloop::ModStatusWanted();
+}
+void HostSetStatus(char const* json) {
+    testloop::SetModStatus(json);
+}
 HostServices const gServices{kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
     static_cast<std::uint32_t>(sizeof(vr::controllers::State)), static_cast<std::uint32_t>(sizeof(vr::host_view::State)),
     &HostSetProcessEventCallback, &HostProcessExiting, &HostKeepLoaded,
-    static_cast<std::uint32_t>(sizeof(vr::aim_ray::Ray)), &HostSetAimRay, &HostSetSupportGrip, &HostSupportGripHeld};
+    static_cast<std::uint32_t>(sizeof(vr::aim_ray::Ray)), &HostSetAimRay, &HostSetSupportGrip, &HostSupportGripHeld,
+    &HostStatusWanted, &HostSetStatus};
 // A mod that's gone can't aim: Halcyon's head aim must come back, the reticle go, and the pad
 // mapping forget the two-handed grip.
 void ForgetModState() {

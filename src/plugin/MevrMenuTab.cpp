@@ -19,6 +19,7 @@
 
 #include "halcyon/le1/mevr_bridge.h"
 #include "plugin/MevrMenu.hpp"
+#include "plugin/TestLoop.hpp"
 #include "halcyon/le1/vr_config.h"
 #include "halcyon/le1/vr_menu.h"
 
@@ -407,6 +408,56 @@ void TickCameraAlign() noexcept {
     }
 }
 
+// The test loop (plugin/TestLoop): snapshots, recordings and replays, for checking VR changes
+// without describing what the headset shows.
+static bool gReplayWithInputs = false;
+
+static void TestLoopSection() {
+    namespace testloop = mevr::host::testloop;
+    ImGui::SeparatorText("Test loop (for Claude)");
+    testloop::Status const s = testloop::GetStatus();
+    if (ImGui::Button("Snapshot in 3 s")) {
+        testloop::SnapshotRequest request;
+        request.delaySeconds = 3.0;  // time to close this menu
+        request.trigger = "menu";
+        testloop::RequestSnapshot(request);
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("close the menu; End or both grips + left stick click take one now");
+    if (ImGui::Button(s.recording ? "Stop recording" : "Start recording")) {
+        testloop::RequestRecording(s.recording ? 0 : 1);
+    }
+    if (s.recording) {
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "recording %.0f s", s.recordingSeconds);
+    } else {
+        ImGui::SameLine();
+        ImGui::TextDisabled("Home, or both grips + right stick click");
+    }
+    if (s.replaying) {
+        if (ImGui::Button("Stop replay")) {
+            testloop::StopReplay();
+        }
+        ImGui::SameLine();
+        ImGui::Text("replaying %.1f / %.1f s%s", s.replaySeconds, s.replayDuration, s.replayLoop ? " (loop)" : "");
+    } else {
+        if (ImGui::Button("Replay the last recording")) {
+            std::string error;
+            if (!testloop::StartReplay(L"", false, gReplayWithInputs, &error)) {
+                mevr::log::Warn("menu: replay: {}", error);
+            }
+        }
+        ImGui::SameLine();
+        ImGui::Checkbox("with buttons and sticks", &gReplayWithInputs);
+    }
+    if (!s.lastSnapshot.empty()) {
+        ImGui::TextDisabled("Last snapshot: %s", s.lastSnapshot.c_str());
+    }
+    if (!s.lastRecording.empty()) {
+        ImGui::TextDisabled("Last recording: %s", s.lastRecording.c_str());
+    }
+}
+
 float ForwardLeanEmphasis() noexcept {
     Reload(false);  // Present thread, like the menu; once a second at most
     return gLifeSize.load(std::memory_order_relaxed) ? 1.0f : 3.0f;
@@ -429,6 +480,7 @@ void BuildMenuTabs() noexcept {
     TrimRow("Roll (+ rolls the right hand's thumb side outward)", "roll", gTrims.roll);
     MeasureSection();
     CameraSection();
+    TestLoopSection();
     ImGui::EndTabItem();
 }
 

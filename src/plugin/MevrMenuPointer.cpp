@@ -6,6 +6,7 @@
 
 #include "halcyon/le1/mevr_bridge.h"
 #include "plugin/MevrMenu.hpp"
+#include "plugin/TestLoop.hpp"
 
 #include "core/Log.hpp"
 #include "core/vr/Controllers.hpp"
@@ -72,6 +73,7 @@ void OnMenuQuad(float const headOrientation[4], float const headPosition[3], flo
     gQuad.width = width;
     gQuad.height = height;
     gQuadMs = GetTickCount64();
+    mevr::host::testloop::NoteMenuQuad(center, width, height);  // snapshots name its layer "menu"
 }
 
 bool SampleMenuPointer(int width, int height, float dt, MenuPointer* out) noexcept {

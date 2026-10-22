@@ -9,6 +9,7 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/Output.hpp"
+#include "core/vr/TestRequest.hpp"
 #include "core/vr/ViewSync.hpp"
 #include "engine/BonePose.hpp"
 #include "engine/CallFunction.hpp"
@@ -35,8 +36,10 @@
 
 #include <atomic>
 #include <cstdint>
+#include <format>
 #include <memory>
 #include <optional>
+#include <string>
 
 namespace {
 
@@ -366,6 +369,39 @@ void PublishSupportGrip() {
     game::support_grip::SetHeld(gHost->supportGripHeld());
 }
 
+// Host renderer (HostServices v8): while the test loop takes a snapshot, our state for its JSON.
+void PublishStatus() {
+    using namespace mevr;
+    if (!gHostOwnsVr || gHost->version < 8 || gHost->statusWanted == nullptr || gHost->setStatus == nullptr ||
+        !gHost->statusWanted()) {
+        return;
+    }
+    namespace json = vr::test_request;
+    auto const mode = gHooked ? game::head_tracking::GameMode() : std::nullopt;
+    char const* type = "none";
+    switch (game::weapon::Type()) {
+    case game::weapon::RangedType::Pistol: type = "pistol"; break;
+    case game::weapon::RangedType::Shotgun: type = "shotgun"; break;
+    case game::weapon::RangedType::AssaultRifle: type = "assault rifle"; break;
+    case game::weapon::RangedType::Sniper: type = "sniper rifle"; break;
+    case game::weapon::RangedType::Unknown: type = game::weapon::Key() != 0 ? "unknown" : "none"; break;
+    }
+    std::string const status = std::format(
+        "{{\"built\": {}, \"scriptHooks\": {}, \"gameMode\": {}, \"noHeadset\": {}, "
+        "\"armIk\": {{\"enabled\": {}, \"status\": {}, \"handSource\": {}, \"rightHandAimsGun\": {}, \"supportRequested\": {}}}, "
+        "\"handAim\": {{\"enabled\": {}, \"toldHost\": {}}}, "
+        "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
+        "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}}}",
+        json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
+        NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
+        json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
+        game::arm_ik::SupportRequested() ? "true" : "false", game::hand_aim::Enabled() ? "true" : "false",
+        gHandAimReported ? "true" : "false", json::JsonString(type), static_cast<unsigned long long>(game::weapon::Key()),
+        json::JsonString(game::weapon::Status()), game::support_grip::Held() ? "true" : "false",
+        json::JsonNumber(game::support_grip::Blend()));
+    gHost->setStatus(status.c_str());
+}
+
 // Host renderer: copies the host's latest controllers and view into the mod (first thing each
 // tick, so everything after sees this tick's).
 void MirrorHostState() {
@@ -604,6 +640,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         PublishAimRay();
         game::head_tracking::OnTickEnd();
     }
+    PublishStatus();
     WaitForThisFrameToPresent();
 
     gHeartbeatElapsed += deltaSeconds;

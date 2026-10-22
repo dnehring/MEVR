@@ -14,6 +14,7 @@
 #include "halcyon/le1/render_hook.h"
 #include "plugin/Halcyon.hpp"
 #include "plugin/MevrMenu.hpp"
+#include "plugin/TestLoop.hpp"
 
 #include <openxr/openxr.h>
 
@@ -92,6 +93,7 @@ void OnSessionCreated(void* instance, void* session) noexcept {
     gTarget.session = static_cast<XrSession>(session);
     ++gTarget.instanceGeneration;
     ++gTarget.sessionGeneration;
+    mevr::host::testloop::OnSessionCreated(gTarget.session);
     gInputFailed = !gInput.Create(gTarget);
     if (gInputFailed) {
         mevr::log::Error("halcyon bridge: controller actions failed; motion controllers unavailable");
@@ -99,12 +101,22 @@ void OnSessionCreated(void* instance, void* session) noexcept {
 }
 
 void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime) noexcept {
-    if (gInputFailed || session == nullptr || static_cast<XrSession>(session) != gTarget.session) {
+    if (session == nullptr || static_cast<XrSession>(session) != gTarget.session) {
         return;
     }
     gTarget.base = static_cast<XrSpace>(space);  // recentering replaces it
     mevr::vr::controllers::State state;
-    gInput.Sync(gTarget, static_cast<XrTime>(predictedDisplayTime), state);
+    if (!gInputFailed) {
+        gInput.Sync(gTarget, static_cast<XrTime>(predictedDisplayTime), state);
+    }
+    bool const inputFocused = !gInputFailed && gInput.Focused();
+    mevr::vr::controllers::State const live = state;
+    // The test loop records the live sample, or replaces it with a recording's (plugin/TestLoop).
+    mevr::host::testloop::OnFrameBegun(static_cast<XrSession>(session), static_cast<XrSpace>(space),
+        static_cast<XrTime>(predictedDisplayTime), inputFocused, state);
+    if (gInputFailed && !state.active) {
+        return;  // no controllers, and no replay standing in for them
+    }
     mevr::vr::controllers::Publish(state);
     TickCameraAlign();
     if (state.active && state.right.aimValid) {
@@ -112,7 +124,8 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
     }
     gFrames.fetch_add(1, std::memory_order_relaxed);
     std::uint64_t const now = GetTickCount64();
-    bool const focused = gInput.Focused();
+    // A replay that presses buttons needs the game window in front too (UE3 ignores pad input without it).
+    bool const focused = inputFocused || mevr::host::testloop::ReplayDrivesInputs();
     if (focused && !gWasFocused) {
         gForegroundUntilMs = now + kForegroundTryMs;
         gForegroundNextMs = now;
@@ -129,7 +142,7 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
         }
     }
 
-    bool const chord = state.left.stickClick && state.right.stickClick;
+    bool const chord = live.left.stickClick && live.right.stickClick;  // the player's, not a replay's
     if (!chord) {
         gChordSinceMs = 0;
         gChordFired = false;
@@ -210,6 +223,10 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     }
     if (controllers.left.stickClick && controllers.right.stickClick) {
         pad.wButtons &= ~(XINPUT_GAMEPAD_LEFT_THUMB | XINPUT_GAMEPAD_RIGHT_THUMB);  // the menu chord, not L3 + R3
+    }
+    if (mevr::host::testloop::GripChordHeld()) {
+        // Both grips squeezed: a stick click is the test loop's snapshot or recording chord.
+        pad.wButtons &= ~(XINPUT_GAMEPAD_LEFT_THUMB | XINPUT_GAMEPAD_RIGHT_THUMB);
     }
     if (CameraAlignOwnsLeftTrigger()) {
         pad.bLeftTrigger = 0;

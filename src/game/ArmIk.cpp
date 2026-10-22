@@ -737,6 +737,14 @@ bool Enabled() {
     return gEnabled;
 }
 
+std::string const& Status() {
+    return gStatus;
+}
+
+char const* HandSource() {
+    return hand_targets::Name(gSource);
+}
+
 void LogStats() {
     if (gEnabled) {
         log::Info("    arm IK: {} (hand source {})", gStatus, hand_targets::Name(gSource));
