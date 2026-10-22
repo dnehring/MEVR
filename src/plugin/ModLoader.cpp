@@ -8,6 +8,7 @@
 #if defined(MEVR_WITH_HALCYON)
 #include "core/vr/Controllers.hpp"
 #include "core/vr/AimRay.hpp"
+#include "core/vr/Floor.hpp"
 #include "core/vr/HostView.hpp"
 #include "plugin/Halcyon.hpp"
 #include "plugin/TestLoop.hpp"
@@ -89,21 +90,34 @@ void HostHapticPulse(int hand, float seconds, float amplitude) {
 std::uint32_t HostRightGripFree() {
     return halcyon::RightGripFree();
 }
+void HostHapticPulseHz(int hand, float seconds, float amplitude, float frequencyHz) {
+    halcyon::RequestHaptic(hand, seconds, amplitude, frequencyHz);
+}
+void HostHapticContinuous(int hand, float amplitude, float frequencyHz, float seconds) {
+    halcyon::RequestContinuousHaptic(hand, amplitude, frequencyHz, seconds);
+}
+void HostFloor(vr::floor::State* out) {
+    halcyon::Floor(out);
+}
 HostServices const gServices{kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
     static_cast<std::uint32_t>(sizeof(vr::controllers::State)), static_cast<std::uint32_t>(sizeof(vr::host_view::State)),
     &HostSetProcessEventCallback, &HostProcessExiting, &HostKeepLoaded,
     static_cast<std::uint32_t>(sizeof(vr::aim_ray::Ray)), &HostSetAimRay, &HostSetSupportGrip, &HostSupportGripHeld,
-    &HostStatusWanted, &HostSetStatus, &HostHapticPulse, &HostRightGripFree};
-// A mod that's gone can't aim: Halcyon's head aim must come back, the reticle go, and the pad
-// mapping forget the two-handed grip.
+    &HostStatusWanted, &HostSetStatus, &HostHapticPulse, &HostRightGripFree,
+    static_cast<std::uint32_t>(sizeof(HostServices)), &HostHapticPulseHz, &HostHapticContinuous,
+    static_cast<std::uint32_t>(sizeof(vr::floor::State)), &HostFloor};
+// A mod that's gone can't aim: Halcyon's head aim must come back, the reticle go, the pad mapping
+// forget the two-handed grip (and the grip holding the gun), and the controllers stop vibrating.
 void ForgetModState() {
     halcyon::SetModHandAim(false);
     vr::aim_ray::Reset();
     halcyon::ForgetSupportGrip();
+    halcyon::ForgetHaptics();
 }
 #else
 HostServices const gServices{kHostServicesVersion, kHostLog, nullptr, nullptr, nullptr, 0, 0, &HostSetProcessEventCallback,
-    &HostProcessExiting, &HostKeepLoaded};
+    &HostProcessExiting, &HostKeepLoaded, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+    static_cast<std::uint32_t>(sizeof(HostServices))};
 void ForgetModState() {}
 #endif
 ISharedProxyInterface* gSpi = nullptr;

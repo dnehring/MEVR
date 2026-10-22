@@ -15,6 +15,7 @@
 #include "core/vr/AimRay.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/OverlayPlacement.hpp"
+#include "plugin/Halcyon.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/WorldPanels.hpp"
 
@@ -721,6 +722,7 @@ bool HudPanelIsFloat() noexcept {
 void OnRecentered() noexcept {
     gRecentered.store(true, std::memory_order_release);
     RecenterWorldPanels();  // the world-locked flat panels too (plugin/WorldPanels.cpp)
+    mevr::host::halcyon::NoteRecentered();  // the holsters take the standing eye height there
 }
 
 void RequestHudPanelReplace() noexcept {

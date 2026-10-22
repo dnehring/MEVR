@@ -7,6 +7,7 @@
 #include "core/Log.hpp"
 #include "core/vr/AimRay.hpp"
 #include "core/vr/Controllers.hpp"
+#include "core/vr/Floor.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/Output.hpp"
 #include "core/vr/TestRequest.hpp"
@@ -38,6 +39,7 @@
 #include <LESDK/Init.hpp>
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <format>
 #include <memory>
@@ -373,15 +375,40 @@ void PublishSupportGrip() {
     game::support_grip::SetHeld(gHost->supportGripHeld());
 }
 
-// Host renderer (HostServices v9): the body holsters' right-grip report and controller pulses.
+// A v10+ field of the host's services: the host says how big its struct is, so a field is read only
+// if it reaches past it (and only from v10 on, where servicesSize itself exists).
+bool HostHas(std::size_t offset, std::size_t size) {
+    return gHost != nullptr && gHost->version >= 10 && gHost->servicesSize >= offset + size;
+}
+#define MEVR_HOST_HAS(field) HostHas(offsetof(mevr::HostServices, field), sizeof(mevr::HostServices::field))
+
+// Host renderer: the body holsters' right-grip report and controller pulses (HostServices v9), the
+// grip holding the gun, the contact buzz and the floor (v10).
 mevr::game::holsters::Link HolsterLink() {
     using namespace mevr;
     game::holsters::Link link;
-    if (gHostOwnsVr && gHost->version >= 9) {
+    if (!gHostOwnsVr) {
+        link.gripHoldsSupported = true;  // our own pad mapping (game/gamepad_bridge) knows every flag
+        return link;
+    }
+    if (gHost->version >= 9) {
         if (gHost->rightGripFree != nullptr) {
             link.rightGrip = gHost->rightGripFree();
         }
         link.haptic = gHost->hapticPulse;
+    }
+    // The grip holding the gun needs a mapping that knows kFlagRightGripHolds: any v10 host does.
+    link.gripHoldsSupported = gHost->version >= 10 && link.rightGrip.has_value();
+    if (MEVR_HOST_HAS(hapticPulseHz)) {
+        link.hapticHz = gHost->hapticPulseHz;
+    }
+    if (MEVR_HOST_HAS(hapticContinuous)) {
+        link.hapticContinuous = gHost->hapticContinuous;
+    }
+    if (MEVR_HOST_HAS(floor) && gHost->floor != nullptr && gHost->floorStateSize == sizeof(vr::floor::State) && gHostDataOk) {
+        vr::floor::State floor;
+        gHost->floor(&floor);
+        link.floor = floor;
     }
     return link;
 }

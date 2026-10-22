@@ -8,7 +8,10 @@
 #include "core/Log.hpp"
 #include "core/Window.hpp"
 #include "core/vr/Controllers.hpp"
+#include "core/vr/Floor.hpp"
+#include "core/vr/Haptics.hpp"
 #include "core/vr/HostView.hpp"
+#include "core/xr/Floor.hpp"
 #include "core/xr/Input.hpp"
 #include "game/GamepadMapping.hpp"
 #include "halcyon/le1/render_hook.h"
@@ -23,7 +26,10 @@
 #include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <format>
 #include <mutex>
+#include <optional>
+#include <string>
 
 namespace MELEVR::MevrBridge {
 namespace {
@@ -60,41 +66,77 @@ std::atomic<float> gSupportRelease{0.22f};
 std::atomic<unsigned> gSupportFlags{mevr::game::gamepad::kFlagLeftTrigger | mevr::game::gamepad::kFlagSupportAims};
 std::atomic<std::uint64_t> gSupportInputMs{0};
 std::atomic<bool> gSupportHeld{false};
-// The body holsters: the mapping's right-grip report (gamepad::RightGripReport), and the pending
-// vibration per hand (seconds and amplitude as float bits; 0 seconds = none), applied after the
-// action sync on the frame thread.
+// The body holsters: the mapping's right-grip report (gamepad::RightGripReport), and each hand's
+// vibration (pulses and the continuous contact buzz, core/vr/Haptics), stepped after the action
+// sync on the frame thread.
 std::atomic<std::uint32_t> gRightGripReport{0};
 std::atomic<bool> gLoggedRightGripFree{false};
-std::array<std::atomic<std::uint64_t>, 2> gPendingHaptic{};
-bool gLoggedHaptic = false;  // frame thread
+std::atomic<bool> gLoggedRightGripHolds{false};
+std::mutex gHapticMutex;  // gHaptics
+std::array<mevr::vr::haptics::Channel, 2> gHaptics;
+bool gLoggedHaptic = false;            // frame thread
+unsigned gHapticFailures = 0;          // frame thread: in a row
+constexpr unsigned kHapticFailuresToGiveUp = 5;
+bool gHapticGaveUp = false;            // frame thread: for this session
 
-std::uint64_t PackHaptic(float seconds, float amplitude) {
-    std::uint32_t s = 0;
-    std::uint32_t a = 0;
-    std::memcpy(&s, &seconds, sizeof s);
-    std::memcpy(&a, &amplitude, sizeof a);
-    return (static_cast<std::uint64_t>(s) << 32) | a;
-}
+// The head above the floor (core/xr/Floor): measured each frame, read by the mod (HostServices::floor).
+mevr::xr::FloorSpace gFloor;  // XR thread at creation, then frame thread
+std::mutex gFloorMutex;       // gFloorState
+mevr::vr::floor::State gFloorState;
+std::atomic<std::uint32_t> gRecenters{0};
+std::atomic<std::uint32_t> gSessions{0};
+bool gLoggedFloor = false;  // frame thread
 
 void ApplyPendingHaptics() {
+    std::uint64_t const now = GetTickCount64();
     for (int hand : {0, 1}) {
-        std::uint64_t const packed = gPendingHaptic[hand].exchange(0, std::memory_order_relaxed);
-        if (packed == 0) {
+        mevr::vr::haptics::Command command;
+        {
+            std::lock_guard lock(gHapticMutex);
+            command = gHaptics[hand].Step(now);
+        }
+        using Kind = mevr::vr::haptics::Command::Kind;
+        if (command.kind == Kind::None || gHapticGaveUp) {
             continue;
         }
-        float seconds = 0.0f;
-        float amplitude = 0.0f;
-        std::uint32_t const s = static_cast<std::uint32_t>(packed >> 32);
-        std::uint32_t const a = static_cast<std::uint32_t>(packed & 0xFFFFFFFFu);
-        std::memcpy(&seconds, &s, sizeof seconds);
-        std::memcpy(&amplitude, &a, sizeof amplitude);
-        bool const ok = gInput.Vibrate(gTarget, hand, seconds, amplitude);
-        if (!gLoggedHaptic) {
+        bool const ok = command.kind == Kind::Play
+            ? gInput.Vibrate(gTarget, hand, command.seconds, command.amplitude, command.frequency)
+            : gInput.StopVibration(gTarget, hand);
+        if (command.kind == Kind::Play && !gLoggedHaptic) {
             gLoggedHaptic = true;
-            mevr::log::Info("halcyon bridge: first controller vibration ({} hand, {:.0f} ms at {:.2f}): {}",
-                hand == 0 ? "left" : "right", seconds * 1000.0f, amplitude,
+            mevr::log::Info("halcyon bridge: first controller vibration ({} hand, {:.0f} ms at {:.2f}, {}): {}",
+                hand == 0 ? "left" : "right", command.seconds * 1000.0f, command.amplitude,
+                command.frequency > 0.0f ? std::format("{:.0f} Hz", command.frequency) : std::string("the runtime's frequency"),
                 ok ? "applied" : "refused (no vibration action, or the runtime said no)");
         }
+        gHapticFailures = ok ? 0 : gHapticFailures + 1;
+        if (gHapticFailures >= kHapticFailuresToGiveUp) {
+            gHapticGaveUp = true;
+            mevr::log::Warn("halcyon bridge: {} controller vibrations in a row failed: no more vibration this session",
+                gHapticFailures);
+        }
+    }
+}
+
+// The floor height for this frame (render thread, after the sync).
+void MeasureFloor(XrTime time) {
+    std::optional<float> const height = gFloor.EyeHeight(time);
+    {
+        std::lock_guard lock(gFloorMutex);
+        gFloorState.valid = height.has_value();
+        if (height) {
+            gFloorState.eyeHeight = *height;
+        }
+        gFloorState.source = gFloor.Source();
+        gFloorState.recenters = gRecenters.load(std::memory_order_relaxed);
+        gFloorState.sessions = gSessions.load(std::memory_order_relaxed);
+        ++gFloorState.sequence;
+        gFloorState.timeMs = GetTickCount64();
+    }
+    if (height && !gLoggedFloor) {
+        gLoggedFloor = true;
+        mevr::log::Info("floor: first sample: the head is {:.2f} m above the floor ({})", *height,
+            mevr::vr::floor::Name(gFloor.Source()));
     }
 }
 
@@ -137,6 +179,16 @@ void OnSessionCreated(void* instance, void* session) noexcept {
     if (gInputFailed) {
         mevr::log::Error("halcyon bridge: controller actions failed; motion controllers unavailable");
     }
+    // A new session: its own floor space, vibration from scratch.
+    gFloor.Create(gTarget.session);
+    gSessions.fetch_add(1, std::memory_order_relaxed);
+    gLoggedFloor = false;
+    gHapticGaveUp = false;
+    gHapticFailures = 0;
+    std::lock_guard lock(gHapticMutex);
+    for (auto& channel : gHaptics) {
+        channel = {};
+    }
 }
 
 void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime) noexcept {
@@ -148,10 +200,15 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
     mevr::vr::controllers::State state;
     if (!gInputFailed) {
         gInput.Sync(gTarget, static_cast<XrTime>(predictedDisplayTime), state);
-        ApplyPendingHaptics();  // the mod's holster pulses (HostServices::hapticPulse)
+        ApplyPendingHaptics();  // the mod's holster pulses and contact buzz (HostServices v9/v10)
     }
+    MeasureFloor(static_cast<XrTime>(predictedDisplayTime));
     bool const inputFocused = !gInputFailed && gInput.Focused();
     mevr::vr::controllers::State const live = state;
+    // With the right grip holding the gun, both grips are held in ordinary two-handed aiming: the test
+    // loop's chord (both grips + a stick click) then needs the left grip away from the gun, so the
+    // stick clicks (crouch, and RB on the right one) still reach the game while aiming.
+    mevr::host::testloop::BlockGripChord(PadOptions().rightGripHolds && gSupportHeld.load(std::memory_order_relaxed));
     // The test loop records the live sample, or replaces it with a recording's (plugin/TestLoop).
     mevr::host::testloop::OnFrameBegun(static_cast<XrSession>(session), static_cast<XrSpace>(space),
         static_cast<XrTime>(predictedDisplayTime), inputFocused, state);
@@ -262,14 +319,24 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     std::lock_guard lock(gPadMutex);
     mevr::game::gamepad::Options options = PadOptions();
     if (MELEVR::Menu::IsOpen()) {
-        options.rightGripFree = false;  // a squeeze in the menu never draws a weapon (the menu zeroes the game's pad)
+        // A squeeze in the menu never draws a weapon (the menu zeroes the game's pad). One that holds
+        // the gun still isn't RB, so it doesn't reach the game as RB once the menu closes.
+        options.rightGripFree = false;
+        options.countKept = false;
     }
+    options.stickClicksReserved = mevr::host::testloop::GripChordHeld();
     XINPUT_GAMEPAD pad = mevr::game::gamepad::Merge(realPad ? state->Gamepad : XINPUT_GAMEPAD{},
         mevr::game::gamepad::FromControllers(controllers, gLatches, options));
     std::uint32_t const report = mevr::game::gamepad::RightGripReport(gLatches);
-    if (gRightGripReport.exchange(report, std::memory_order_relaxed) != report && (report & 1u) != 0 &&
-        !gLoggedRightGripFree.exchange(true, std::memory_order_relaxed)) {
-        mevr::log::Info("halcyon bridge: first right-grip squeeze at a holster: kept from the game (no RB)");
+    if (gRightGripReport.exchange(report, std::memory_order_relaxed) != report && (report & 1u) != 0) {
+        if (gLatches.rightHold) {
+            if (!gLoggedRightGripHolds.exchange(true, std::memory_order_relaxed)) {
+                mevr::log::Info("halcyon bridge: first right-grip squeeze that holds the gun: kept from the game (no RB); RB "
+                                "comes from {}", mevr::game::gamepad::Name(options.rbSource));
+            }
+        } else if (!gLoggedRightGripFree.exchange(true, std::memory_order_relaxed)) {
+            mevr::log::Info("halcyon bridge: first right-grip squeeze at a holster: kept from the game (no RB)");
+        }
     }
     bool const held = gLatches.left == mevr::game::gamepad::LeftGrip::Support;
     if (gSupportHeld.exchange(held, std::memory_order_relaxed) != held) {
@@ -329,17 +396,43 @@ bool SupportGripHeld() {
     return MELEVR::MevrBridge::gSupportHeld.load(std::memory_order_relaxed);
 }
 
-void RequestHaptic(int hand, float seconds, float amplitude) {
+void RequestHaptic(int hand, float seconds, float amplitude, float frequencyHz) {
     if ((hand != 0 && hand != 1) || !(seconds > 0.0f) || !(amplitude > 0.0f)) {
         return;
     }
-    seconds = seconds > 1.0f ? 1.0f : seconds;
-    amplitude = amplitude > 1.0f ? 1.0f : amplitude;
-    MELEVR::MevrBridge::gPendingHaptic[hand].store(MELEVR::MevrBridge::PackHaptic(seconds, amplitude), std::memory_order_relaxed);
+    std::lock_guard lock(MELEVR::MevrBridge::gHapticMutex);
+    MELEVR::MevrBridge::gHaptics[hand].Pulse(seconds, amplitude, frequencyHz);
+}
+
+void RequestContinuousHaptic(int hand, float amplitude, float frequencyHz, float seconds) {
+    if (hand != 0 && hand != 1) {
+        return;
+    }
+    std::lock_guard lock(MELEVR::MevrBridge::gHapticMutex);
+    MELEVR::MevrBridge::gHaptics[hand].Continuous(amplitude, frequencyHz, seconds, GetTickCount64());
+}
+
+void ForgetHaptics() {
+    std::lock_guard lock(MELEVR::MevrBridge::gHapticMutex);
+    for (auto& channel : MELEVR::MevrBridge::gHaptics) {
+        channel.Clear();
+    }
 }
 
 std::uint32_t RightGripFree() {
     return MELEVR::MevrBridge::gRightGripReport.load(std::memory_order_relaxed);
+}
+
+void Floor(vr::floor::State* out) {
+    if (out == nullptr) {
+        return;
+    }
+    std::lock_guard lock(MELEVR::MevrBridge::gFloorMutex);
+    *out = MELEVR::MevrBridge::gFloorState;
+}
+
+void NoteRecentered() {
+    MELEVR::MevrBridge::gRecenters.fetch_add(1, std::memory_order_relaxed);
 }
 
 } // namespace mevr::host::halcyon

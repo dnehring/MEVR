@@ -21,6 +21,9 @@ struct State;
 namespace vr::aim_ray {
 struct Ray;
 }
+namespace vr::floor {
+struct State;
+}
 
 // Fields are only ever appended: a mod reads the fields of every version up to the host's (and
 // its own), so a newer mod still runs on an older host, without what the older host lacks.
@@ -29,7 +32,7 @@ struct Ray;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 9;
+inline constexpr int kHostServicesVersion = 10;
 
 using ProcessEventCallback = void (*)(UObject* context, UFunction* function, void* parms, void* result);
 
@@ -107,6 +110,25 @@ struct HostServices {
     // in bit 0 whether the current squeeze is one (gamepad::RightGripReport). Squeezes while Halcyon's
     // menu is open never count. Non-null with `controllers`.
     std::uint32_t (*rightGripFree)() = nullptr;
+
+    // Version 10: the grip holds the gun, contact haptics, the floor (research/19).
+    // sizeof(HostServices) as the host was built: the mod reads a v10+ field only if the host's struct
+    // reaches past it (HostHas in mod/Mod.cpp), so a later host that appends more stays readable and
+    // an earlier v10 build can't be over-read.
+    std::uint32_t servicesSize = 0;
+    // setSupportGrip's flags also take gamepad::kFlagRightGripHolds and the RB source
+    // (gamepad::kRbSourceMask): a host older than v10 ignores them, so the mod mustn't make the right
+    // grip "hold the gun" there (RB would stay on it).
+    // A pulse at a frequency (Hz; 0 = the runtime's choice), like hapticPulse.
+    void (*hapticPulseHz)(int hand, float seconds, float amplitude, float frequencyHz) = nullptr;
+    // A continuous vibration at `amplitude` (0 stops it) and `frequencyHz`, for `seconds` from now
+    // (at most 0.5): the mod asks again each tick to keep it going, so it stops by itself within that
+    // if the mod stalls or unloads. Pulses interrupt it and it resumes after them (core/vr/Haptics).
+    void (*hapticContinuous)(int hand, float amplitude, float frequencyHz, float seconds) = nullptr;
+    // The head's height above the floor (core/vr/Floor.hpp), the latest frame's; the mod reads it only
+    // if floorStateSize matches its own sizeof(vr::floor::State).
+    std::uint32_t floorStateSize = 0;
+    void (*floor)(vr::floor::State* out) = nullptr;
 };
 
 } // namespace mevr

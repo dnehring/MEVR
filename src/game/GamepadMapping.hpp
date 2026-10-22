@@ -14,7 +14,60 @@
 // X/Y (left) -> X/Y, stick clicks -> LS / RS, left menu -> Start; left grip + menu -> Back. The
 // left grip on the held gun's foregrip is the support grip instead (LT held, no LB; below), and the
 // right grip squeezed at a body holster draws a weapon instead of RB (Options::rightGripFree).
+// With the body holsters' "grip holds the gun" (Options::rightGripHolds) the right grip is never RB;
+// RB (LE1 on foot: hold = power wheel, tap = mapped power) comes from Options::rbSource instead
+// (research/19, "The right grip holds the gun").
 namespace mevr::game::gamepad {
+
+// The control that sends RB while the right grip holds the gun (Options::rightGripHolds).
+enum class RbSource : std::uint8_t {
+    None = 0,             // no RB at all
+    RightStickClick = 1,  // R3 (the default): also still R3, which Halcyon's double-click recenter reads
+    Y = 2,                // instead of Y (first aid)
+    X = 3,                // instead of X (grenade)
+    B = 4,                // instead of B (melee)
+};
+char const* Name(RbSource source);
+
+// RB from the right stick click (RbSource::RightStickClick) is decided per press:
+// - a press with the stick pushed past this (turning) isn't RB;
+inline constexpr float kRbStickCentered = 0.5f;
+// - nor one with the left stick clicked too (Halcyon's both-sticks menu chord), seen within the
+//   first kRbCommitMs: RB only starts once the click has been held that long alone;
+inline constexpr std::uint64_t kRbCommitMs = 100;
+// - a click released before then is a tap: RB is sent for kRbTapMs, but only once the double-click
+//   window of Halcyon's recenter (kRbDoubleClickMs, press to press) has passed without a second press;
+//   a second press inside it is the recenter, and neither click is RB.
+inline constexpr std::uint64_t kRbTapMs = 80;
+inline constexpr std::uint64_t kRbDoubleClickMs = 400;
+
+// The right stick click as RB, one press at a time (pure; RbFromStickClick).
+struct RbClick {
+    enum class Phase : std::uint8_t {
+        Idle,     // no press, or a press that's over
+        Pending,  // pressed, not yet held kRbCommitMs
+        Held,     // RB while the click stays down
+        TapWait,  // a quick click: RB once the double-click window has passed
+        Tap,      // RB for kRbTapMs
+        Ignored,  // this press isn't RB (deflected, chord, second click of a double-click, not the source)
+    };
+    Phase phase = Phase::Idle;
+    bool down = false;              // the click, last step
+    std::uint64_t pressMs = 0;      // this press (or the tap's press)
+    std::uint64_t lastPressMs = 0;  // the last press Halcyon's double-click counts (0: none)
+    std::uint64_t tapUntilMs = 0;
+};
+struct RbClickInput {
+    bool click = false;        // the right stick click now
+    float stickX = 0.0f;       // the right stick
+    float stickY = 0.0f;
+    bool otherClick = false;   // the left stick click (Halcyon's both-sticks menu chord)
+    bool reserved = false;     // the stick clicks belong to the test loop's chord
+    bool enabled = false;      // a new press may be RB (it's the RB source); a press already RB carries on
+    std::uint64_t nowMs = 0;   // a millisecond clock; 0: none, so RB just follows an accepted click
+};
+// One step. True while the game should see RB.
+bool RbFromStickClick(RbClick& state, RbClickInput const& input);
 
 // The support grip (game/support_grip): the left grip squeezed with the left hand near the held
 // gun's foregrip holds the gun with both hands, and the game then sees LT held (aimed, "focused"
@@ -57,10 +110,18 @@ struct Latches {
     SupportGrip support;
     LeftGrip left = LeftGrip::Open;  // the last step's answer
     // The body holsters (game/holsters): the current right-grip squeeze began while
-    // Options::rightGripFree was set, so it isn't RB until the grip opens; and how many such
-    // squeezes there have been (the mod acts on each new one).
+    // Options::rightGripFree or Options::rightGripHolds was set, so it isn't RB until the grip opens;
+    // and how many such squeezes there have been (the mod acts on each new one).
     bool rightFree = false;
     std::uint32_t rightFreeCount = 0;
+    // The current squeeze began while Options::rightGripHolds was set (it holds the gun).
+    bool rightHold = false;
+    // RB from Options::rbSource (rightGripHolds): the right stick click's state; for the face buttons
+    // B, X, Y (bits 1, 2, 4) whether each is down and whether its current press is RB (decided when
+    // it went down).
+    RbClick rbClick;
+    std::uint8_t faceDown = 0;
+    std::uint8_t faceRb = 0;
 };
 
 // What the host reports of the right grip (HostServices::rightGripFree): the count of squeezes kept
@@ -84,6 +145,16 @@ struct Options {
     // The right hand is at a body holster (game/holsters): a NEW right-grip squeeze isn't RB (the
     // power wheel) until the grip opens. A squeeze already held stays RB.
     bool rightGripFree = false;
+    // The right grip holds the gun (game/holsters, [Holsters] gripHolds): a NEW right-grip squeeze is
+    // never RB (it's counted like a rightGripFree one); RB comes from rbSource. A squeeze keeps the
+    // meaning it began with, and so does a press of rbSource.
+    bool rightGripHolds = false;
+    RbSource rbSource = RbSource::None;  // the mod sets it from [Holsters] powerWheel
+    // Not across the boundary: set by the host while the stick clicks belong to the test loop's chord
+    // (no RB from the right stick click then), and cleared while Halcyon's menu is open (a squeeze
+    // kept from the game there isn't counted: it must never draw a weapon).
+    bool stickClicksReserved = false;
+    bool countKept = true;
     SupportInput support;
 };
 
@@ -94,6 +165,9 @@ inline constexpr std::uint32_t kFlagSupportAims = 2;  // Options::supportAims
 inline constexpr std::uint32_t kFlagGripShoulder = 4;         // Options::gripShoulder
 inline constexpr std::uint32_t kFlagLeftTriggerShoulder = 8;  // Options::leftTriggerShoulder
 inline constexpr std::uint32_t kFlagRightGripFree = 16;       // Options::rightGripFree
+inline constexpr std::uint32_t kFlagRightGripHolds = 32;      // Options::rightGripHolds (host v10)
+inline constexpr std::uint32_t kRbSourceShift = 8;            // Options::rbSource in bits 8-11 (host v10)
+inline constexpr std::uint32_t kRbSourceMask = 0xFu << kRbSourceShift;
 std::uint32_t ToFlags(Options const& options);
 Options FromFlags(float distance, float acquire, float release, std::uint32_t flags);
 

@@ -40,9 +40,13 @@ public:
     void Sync(Session& session, XrTime time, vr::controllers::State& out) { Sync(From(session), time, out); }
     // Whether the last Sync found the session focused (input reaches this app).
     bool Focused() const { return focused_; }
-    // A vibration on one controller (0 left, 1 right) for `seconds` at `amplitude` (0..1), at the
-    // runtime's default frequency. False if there's no vibration action or OpenXR refused it.
-    bool Vibrate(Target const& target, int hand, float seconds, float amplitude);
+    // A vibration on one controller (0 left, 1 right) for `seconds` at `amplitude` (0..1) and
+    // `frequencyHz` (0: the runtime's choice; runtimes may clamp or ignore it). It replaces whatever
+    // this session's vibration on that hand was doing (xrApplyHapticFeedback). False if there's no
+    // vibration action or OpenXR refused it.
+    bool Vibrate(Target const& target, int hand, float seconds, float amplitude, float frequencyHz = 0.0f);
+    // Stops that hand's vibration now (xrStopHapticFeedback).
+    bool StopVibration(Target const& target, int hand);
 
 private:
     enum Hand { kLeft = 0, kRight = 1 };

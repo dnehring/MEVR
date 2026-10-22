@@ -2,6 +2,10 @@
 
 #include <cstdint>
 
+namespace mevr::vr::floor {
+struct State;
+}
+
 // Halcyon's VR renderer (src/halcyon/le1, GPL-3.0), running inside our host ASI: it owns the
 // OpenXR session, the Present path, stereo, first person, the HUD and its Insert-key menu. Its log
 // is %LOCALAPPDATA%\MELEVR\MELEVR_Log.txt; its settings are MELEVR.ini next to our ASI.
@@ -31,8 +35,20 @@ bool SupportGripHeld();
 
 // The body holsters (HostServices v9). A controller vibration, applied on the next frame after the
 // action sync (Halcyon's frame thread); a newer request for a hand replaces a pending one. Any thread.
-void RequestHaptic(int hand, float seconds, float amplitude);
+// `frequencyHz` 0: the runtime's choice (v10 adds the frequency).
+void RequestHaptic(int hand, float seconds, float amplitude, float frequencyHz = 0.0f);
+// v10: a continuous vibration for `seconds` from now unless asked again (core/vr/Haptics); amplitude
+// 0 stops it. Any thread.
+void RequestContinuousHaptic(int hand, float amplitude, float frequencyHz, float seconds);
+// The mod unloaded: no more vibration from it.
+void ForgetHaptics();
 // The pad mapping's right grip report (gamepad::RightGripReport). Any thread.
 std::uint32_t RightGripFree();
+
+// v10: the head's height above the floor, the latest frame's (core/xr/Floor). Any thread.
+void Floor(vr::floor::State* out);
+// Halcyon recentered (MevrBridge::OnRecentered): counted in the floor state, since the mod takes the
+// standing eye height there.
+void NoteRecentered();
 
 } // namespace mevr::host::halcyon

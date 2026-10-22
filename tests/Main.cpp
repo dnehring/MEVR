@@ -13,6 +13,7 @@
 #include "core/ik/TorsoPose.hpp"
 #include "core/ik/TouchReference.hpp"
 #include "core/ik/TwoHand.hpp"
+#include "core/vr/Haptics.hpp"
 #include "core/vr/ImageConvert.hpp"
 #include "core/vr/LayerComposite.hpp"
 #include "core/vr/MenuPointer.hpp"
@@ -2206,6 +2207,349 @@ void TestBodySlotMachine() {
     CHECK(s.left == 1 && m.InSlot() == -1 && !s.nearby);
 }
 
+// The right grip holds the gun (ik::body_slots::Machine with gripHolds).
+void TestBodySlotHolding() {
+    using namespace mevr::ik::body_slots;
+    // Two slots: 0 a pistol (r 0.14), 1 an assault rifle (r 0.20); 2 and 3 off.
+    auto const base = [](double d0, double d1) {
+        Input in;
+        in.distance = {d0, d1, -1.0, -1.0};
+        in.radius = {0.14, 0.20, 0.13, 0.20};
+        in.weapon = {Weapon::Pistol, Weapon::AssaultRifle, Weapon::None, Weapon::None};
+        in.available = {true, true, false, false};
+        in.gripHolds = true;
+        in.releaseGrace = 0.3;
+        in.deltaSeconds = 0.011;
+        return in;
+    };
+    Machine m;
+    // Squeeze at the hip: draw the pistol; keep squeezing (carry it away): nothing more, and the long
+    // hold doesn't hold the body yaw once the hand is out of the slot.
+    Input in = base(0.05, 1.0);
+    m.Update(in);
+    in.gripDown = in.newSqueeze = true;
+    Step s = m.Update(in);
+    CHECK(s.action == Action::Draw && s.weapon == Weapon::Pistol && m.CurrentPhase() == Phase::Grab);
+    in.newSqueeze = false;
+    in.held = Weapon::Pistol;
+    in.distance[0] = 0.6;
+    for (int i = 0; i < 100; ++i) {
+        s = m.Update(in);
+        CHECK(s.action == Action::None);
+    }
+    CHECK(!m.Busy());
+    // Let go away from the slot: the return is armed; squeezing again in time keeps the gun.
+    in.gripDown = false;
+    s = m.Update(in);
+    CHECK(s.action == Action::ReturnArmed && s.weapon == Weapon::Pistol && m.CurrentPhase() == Phase::Returning);
+    CHECK(m.ReturnLeft() > 0.28);
+    in.gripDown = in.newSqueeze = true;
+    s = m.Update(in);
+    CHECK(s.action == Action::ReturnCancelled && m.CurrentPhase() == Phase::Grab);
+    in.newSqueeze = false;
+    // Let go again and wait: it goes back after the grace (0.3 s), once.
+    in.gripDown = false;
+    CHECK(m.Update(in).action == Action::ReturnArmed);
+    in.deltaSeconds = 0.1;
+    CHECK(m.Update(in).action == Action::None);
+    CHECK(m.Update(in).action == Action::None);
+    s = m.Update(in);  // 0.3 - 3 * 0.1: about zero, either side with floating point
+    if (s.action == Action::None) {
+        s = m.Update(in);
+    }
+    CHECK(s.action == Action::Return && s.weapon == Weapon::Pistol && m.CurrentPhase() == Phase::Idle);
+    CHECK(m.Update(in).action == Action::None);
+    // Never mid-burst: the trigger held stops the grace's clock.
+    m.Reset();
+    in = base(0.6, 1.0);
+    in.held = Weapon::Pistol;
+    in.gripDown = in.newSqueeze = true;
+    m.Update(in);
+    in.newSqueeze = false;
+    in.gripDown = false;
+    in.trigger = true;
+    CHECK(m.Update(in).action == Action::ReturnArmed);
+    in.deltaSeconds = 0.5;
+    for (int i = 0; i < 5; ++i) {
+        s = m.Update(in);
+        CHECK(s.action == Action::None && s.returnWaitsForTrigger);
+    }
+    in.trigger = false;
+    s = m.Update(in);
+    CHECK(s.action == Action::Return);
+
+    // Let go at the gun's own slot: holstered at once. At another slot: the grace, as anywhere.
+    m.Reset();
+    in = base(0.05, 1.0);
+    in.held = Weapon::Pistol;
+    in.deltaSeconds = 0.011;
+    m.Update(in);
+    in.gripDown = in.newSqueeze = true;
+    s = m.Update(in);
+    CHECK(s.action == Action::AlreadyHeld && s.weapon == Weapon::Pistol);  // taking the gun that's out
+    in.newSqueeze = false;
+    in.gripDown = false;
+    s = m.Update(in);
+    CHECK(s.action == Action::Holster && s.slot == 0 && s.weapon == Weapon::Pistol);
+    m.Reset();
+    in = base(0.6, 1.0);
+    in.held = Weapon::Pistol;
+    in.gripDown = in.newSqueeze = true;
+    m.Update(in);
+    in.newSqueeze = false;
+    in.distance[1] = 0.05;  // carried to the rifle's slot, let go there
+    m.Update(in);
+    in.gripDown = false;
+    s = m.Update(in);
+    CHECK(s.action == Action::ReturnArmed && s.slot == 1 && s.weapon == Weapon::Pistol);
+    // A squeeze at another gun's slot while holding one draws that one; let go there and it's
+    // holstered (it's at its own slot by then).
+    m.Reset();
+    in = base(1.0, 0.05);
+    in.held = Weapon::Pistol;
+    in.gripDown = in.newSqueeze = true;
+    CHECK(m.Update(in).action == Action::Draw);
+    in.newSqueeze = false;
+    in.gripDown = false;
+    in.held = Weapon::AssaultRifle;
+    s = m.Update(in);
+    CHECK(s.action == Action::Holster && s.weapon == Weapon::AssaultRifle);
+
+    // Let go at the own slot while firing: it goes back once the trigger is let go (no grace).
+    m.Reset();
+    in = base(0.05, 1.0);
+    in.held = Weapon::Pistol;
+    in.gripDown = in.newSqueeze = true;
+    m.Update(in);
+    in.newSqueeze = false;
+    in.gripDown = false;
+    in.trigger = true;
+    CHECK(m.Update(in).action == Action::ReturnArmed);
+    in.trigger = false;
+    CHECK(m.Update(in).action == Action::Return);
+
+    // Let go while the draw is still on its way (nothing out yet): it waits for the gun, then the grace.
+    m.Reset();
+    in = base(0.05, 1.0);
+    in.gripDown = in.newSqueeze = true;
+    CHECK(m.Update(in).action == Action::Draw);
+    in.newSqueeze = false;
+    in.gripDown = false;
+    in.distance[0] = 0.6;
+    CHECK(m.Update(in).action == Action::ReturnArmed);
+    in.deltaSeconds = 0.2;
+    CHECK(m.Update(in).action == Action::None);  // not out yet: waiting
+    in.held = Weapon::Pistol;
+    CHECK(m.Update(in).action == Action::None);
+    s = m.Update(in);
+    CHECK(s.action == Action::Return && s.weapon == Weapon::Pistol);
+    // ...but not forever.
+    m.Reset();
+    in = base(0.05, 1.0);
+    in.gripDown = in.newSqueeze = true;
+    m.Update(in);
+    in.newSqueeze = in.gripDown = false;
+    in.distance[0] = 0.6;
+    m.Update(in);
+    in.deltaSeconds = 1.0;
+    m.Update(in);
+    m.Update(in);
+    CHECK(m.Update(in).action == Action::ReturnCancelled && m.CurrentPhase() == Phase::Idle);
+    // The gun put away (by the game) or swapped during the grace: the return is off.
+    m.Reset();
+    in = base(0.6, 1.0);
+    in.held = Weapon::Pistol;
+    in.deltaSeconds = 0.011;
+    in.gripDown = in.newSqueeze = true;
+    m.Update(in);
+    in.newSqueeze = in.gripDown = false;
+    m.Update(in);
+    in.held = Weapon::None;
+    CHECK(m.Update(in).action == Action::ReturnCancelled);
+    m.Reset();
+    in.held = Weapon::Pistol;
+    in.gripDown = in.newSqueeze = true;
+    m.Update(in);
+    in.newSqueeze = in.gripDown = false;
+    m.Update(in);
+    in.held = Weapon::AssaultRifle;
+    CHECK(m.Update(in).action == Action::ReturnCancelled);
+
+    // releaseGrace < 0: let go away from a slot and the gun stays out; holster = 0: never by hand.
+    m.Reset();
+    in = base(0.6, 1.0);
+    in.held = Weapon::Pistol;
+    in.releaseGrace = -1.0;
+    in.gripDown = in.newSqueeze = true;
+    m.Update(in);
+    in.newSqueeze = in.gripDown = false;
+    CHECK(m.Update(in).action == Action::None && m.CurrentPhase() == Phase::Idle);
+    m.Reset();
+    in = base(0.05, 1.0);
+    in.held = Weapon::Pistol;
+    in.holster = Holster::Off;
+    in.gripDown = in.newSqueeze = true;
+    m.Update(in);
+    in.newSqueeze = in.gripDown = false;
+    CHECK(m.Update(in).action == Action::None && m.CurrentPhase() == Phase::Idle);
+
+    // A squeeze and release between two steps at a slot: the draw now, the let-go next step.
+    m.Reset();
+    in = base(0.05, 1.0);
+    in.newSqueeze = true;
+    in.gripDown = false;
+    CHECK(m.Update(in).action == Action::Draw);
+    in.newSqueeze = false;
+    CHECK(m.Update(in).action == Action::ReturnArmed);
+
+    // A squeeze we didn't see (it began in a menu): taken as held once a gun is out (gripKept), so
+    // letting go still puts it away; without gripKept it isn't ours.
+    m.Reset();
+    in = base(0.6, 1.0);
+    in.held = Weapon::Pistol;
+    in.gripDown = true;
+    in.gripKept = true;
+    m.Update(in);
+    CHECK(m.CurrentPhase() == Phase::Grab);
+    in.gripDown = false;
+    CHECK(m.Update(in).action == Action::ReturnArmed);
+    m.Reset();
+    in.gripDown = true;
+    in.gripKept = false;
+    m.Update(in);
+    in.gripDown = false;
+    CHECK(m.Update(in).action == Action::None);
+
+    // A squeeze away from the slots with nothing out: no action, no RB; near a slot: missed.
+    m.Reset();
+    in = base(0.6, 1.0);
+    in.gripDown = in.newSqueeze = true;
+    CHECK(m.Update(in).action == Action::None);
+    in.newSqueeze = in.gripDown = false;
+    CHECK(m.Update(in).action == Action::None);
+    in = base(0.17, 1.0);
+    in.gripDown = in.newSqueeze = true;
+    CHECK(m.Update(in).action == Action::Missed);
+
+    // Switching modes drops what was in progress.
+    m.Reset();
+    in = base(0.6, 1.0);
+    in.held = Weapon::Pistol;
+    in.gripDown = in.newSqueeze = true;
+    m.Update(in);
+    in.newSqueeze = in.gripDown = false;
+    m.Update(in);
+    CHECK(m.CurrentPhase() == Phase::Returning);
+    in.gripHolds = false;
+    CHECK(m.Update(in).action == Action::None && m.CurrentPhase() == Phase::Idle);
+}
+
+void TestContactHaptics() {
+    using namespace mevr::ik::body_slots;
+    CHECK(NearD(Depth(0.0, 0.14), 1.0, 1e-9));
+    CHECK(NearD(Depth(0.07, 0.14), 0.5, 1e-9));
+    CHECK(Depth(0.16, 0.14) == 0.0);  // the hysteresis band
+    CHECK(Depth(-1.0, 0.14) == 0.0 && Depth(0.1, 0.0) == 0.0);
+    // Deeper: stronger and higher; the edge is faint but felt.
+    Buzz const edge = Contact(0.0, 0.5, false);
+    Buzz const mid = Contact(0.5, 0.5, false);
+    Buzz const center = Contact(1.0, 0.5, false);
+    CHECK(edge.amplitude > 0.05f && edge.amplitude < mid.amplitude && mid.amplitude < center.amplitude);
+    CHECK(edge.frequency < mid.frequency && mid.frequency < center.frequency);
+    CHECK(center.amplitude <= 0.4f);  // a buzz, not a jolt
+    CHECK(std::abs(Contact(1.0, 0.5, true).amplitude - center.amplitude * 0.5f) < 1e-6f);
+    // Strength scales everything; 0 is silence; it never exceeds 1.
+    CHECK(Contact(1.0, 0.0, false).amplitude == 0.0f && DrawClick(0.0).amplitude == 0.0f);
+    CHECK(std::abs(Contact(0.5, 1.0, false).amplitude - 2.0f * mid.amplitude) < 1e-6f);
+    CHECK(DrawClick(1.0).amplitude <= 1.0f);
+    // The events: the edge above the contact; the click crisp and short; the holster click the draw's
+    // mirror at lower amplitude and frequency; a refusal dull and longer.
+    CHECK(EnterEdge(0.5).amplitude > center.amplitude && EnterEdge(0.5).seconds <= 0.05f);
+    CHECK(DrawClick(0.5).seconds <= 0.03f && DrawClick(0.5).frequency > center.frequency);
+    CHECK(HolsterClick(0.5).amplitude < DrawClick(0.5).amplitude && HolsterClick(0.5).frequency < DrawClick(0.5).frequency);
+    CHECK(Refused(0.5).seconds > DrawClick(0.5).seconds && Refused(0.5).frequency < edge.frequency);
+}
+
+void TestStandingHeight() {
+    using namespace mevr::ik::body_slots;
+    StandingHeight h;
+    CHECK(!h.Valid());
+    h.Update(0.2, 0.011);  // no floor (the head at the origin): ignored
+    h.Update(3.0, 0.011);
+    CHECK(!h.Valid());
+    h.Update(1.60, 0.011);
+    CHECK(h.Valid() && NearD(h.Value(), 1.60, 1e-9));
+    // Crouching never lowers it.
+    for (int i = 0; i < 1000; ++i) {
+        h.Update(1.0, 0.011);
+    }
+    CHECK(NearD(h.Value(), 1.60, 1e-9));
+    // Standing taller raises it slowly: a 0.1 s tiptoe barely moves it; staying there gets there.
+    h.Update(1.75, 0.1);
+    CHECK(h.Value() > 1.60 && h.Value() < 1.61);
+    for (int i = 0; i < 1000; ++i) {
+        h.Update(1.70, 0.011);
+    }
+    CHECK(NearD(h.Value(), 1.70, 0.01));
+    // A recenter takes the sample as the standing height, down too (another player, or the last
+    // estimate was a jump); an implausible one is ignored.
+    h.Recenter(1.55);
+    CHECK(NearD(h.Value(), 1.55, 1e-9));
+    h.Recenter(0.1);
+    CHECK(NearD(h.Value(), 1.55, 1e-9));
+    h.Reset();
+    CHECK(!h.Valid());
+}
+
+void TestHapticChannel() {
+    using namespace mevr::vr::haptics;
+    using Kind = Command::Kind;
+    Channel c;
+    std::uint64_t t = 10000;
+    CHECK(c.Step(t).kind == Kind::None);
+    // A continuous buzz is sent in chunks: once, then again only when the chunk is nearly over or
+    // the amplitude changes.
+    c.Continuous(0.3f, 120.0f, 0.15f, t);
+    Command cmd = c.Step(t);
+    CHECK(cmd.kind == Kind::Play && std::abs(cmd.seconds - 0.1f) < 1e-6f && cmd.amplitude == 0.3f && cmd.frequency == 120.0f);
+    CHECK(c.Step(t + 11).kind == Kind::None);
+    c.Continuous(0.305f, 120.0f, 0.15f, t + 22);  // a tiny change waits
+    CHECK(c.Step(t + 22).kind == Kind::None);
+    c.Continuous(0.5f, 150.0f, 0.15f, t + 33);  // a real one doesn't
+    cmd = c.Step(t + 33);
+    CHECK(cmd.kind == Kind::Play && cmd.amplitude == 0.5f);
+    c.Continuous(0.5f, 150.0f, 0.15f, t + 70);
+    CHECK(c.Step(t + 70).kind == Kind::None);
+    c.Continuous(0.5f, 150.0f, 0.15f, t + 100);
+    CHECK(c.Step(t + 100).kind == Kind::Play);  // 33 ms left of the chunk sent at +33: re-sent
+    // A pulse interrupts it; the buzz resumes when the pulse is over.
+    c.Pulse(0.02f, 0.9f, 320.0f);
+    cmd = c.Step(t + 110);
+    CHECK(cmd.kind == Kind::Play && cmd.amplitude == 0.9f && cmd.frequency == 320.0f);
+    c.Continuous(0.5f, 150.0f, 0.15f, t + 115);
+    CHECK(c.Step(t + 115).kind == Kind::None);
+    CHECK(c.Step(t + 131).kind == Kind::Play);
+    // Not asked again: the last chunk ends with the request (chunks never outlast it) and nothing
+    // more is sent; the vibration just ends.
+    cmd = c.Step(t + 200);
+    CHECK(cmd.kind == Kind::Play && cmd.seconds <= 0.066f);
+    CHECK(c.Step(t + 240).kind == Kind::None);
+    CHECK(c.Step(t + 270).kind == Kind::None && !c.ContinuousActive(t + 270));
+    // Amplitude 0 stops it now; Clear (the mod unloaded) too.
+    c.Continuous(0.3f, 0.0f, 0.15f, t + 400);
+    CHECK(c.Step(t + 400).kind == Kind::Play);
+    c.Continuous(0.0f, 0.0f, 0.0f, t + 411);
+    CHECK(c.Step(t + 411).kind == Kind::Stop);
+    c.Continuous(0.3f, 0.0f, 0.15f, t + 500);
+    CHECK(c.Step(t + 500).kind == Kind::Play);
+    c.Clear();
+    CHECK(c.Step(t + 511).kind == Kind::Stop);
+    CHECK(c.Step(t + 522).kind == Kind::None);
+    // A request can't keep it going for long: at most kMaxContinuousSeconds.
+    c.Continuous(0.3f, 0.0f, 10.0f, t + 600);
+    CHECK(!c.ContinuousActive(t + 600 + 501) && c.ContinuousActive(t + 600 + 499));
+}
+
 void TestRightGripFree() {
     using namespace mevr::game::gamepad;
     mevr::vr::controllers::State state;
@@ -2241,6 +2585,175 @@ void TestRightGripFree() {
     CHECK(!FromFlags(-1.0f, 0.12f, 0.22f, kFlagLeftTrigger).rightGripFree);
 }
 
+// The right grip holds the gun (research/19): never RB, every squeeze counted; RB from rbSource.
+void TestRightGripHolds() {
+    using namespace mevr::game::gamepad;
+    constexpr WORD kRb = XINPUT_GAMEPAD_RIGHT_SHOULDER;
+    mevr::vr::controllers::State state;
+    Latches latches;
+    Options options;
+    options.rightGripHolds = true;
+    options.rbSource = RbSource::Y;
+    // Every squeeze is kept from the game and counted, anywhere.
+    state.right.squeeze = 1.0f;
+    CHECK((FromControllers(state, latches, options).wButtons & kRb) == 0);
+    CHECK(latches.rightHold && RightGripReport(latches) == ((1u << 1) | 1u));
+    // The option dropping mid-squeeze (a menu, the Mako) doesn't make the held grip RB.
+    Options legacy;
+    CHECK((FromControllers(state, latches, legacy).wButtons & kRb) == 0);
+    state.right.squeeze = 0.0f;
+    FromControllers(state, latches, options);
+    CHECK(!latches.rightHold && RightGripReport(latches) == (1u << 1));
+    // A new squeeze without the option is RB, as always.
+    state.right.squeeze = 1.0f;
+    CHECK((FromControllers(state, latches, legacy).wButtons & kRb) != 0);
+    state.right.squeeze = 0.0f;
+    FromControllers(state, latches, legacy);
+    // Halcyon's menu: still not RB, but not counted (it must never draw a weapon).
+    Options menu = options;
+    menu.countKept = false;
+    state.right.squeeze = 1.0f;
+    CHECK((FromControllers(state, latches, menu).wButtons & kRb) == 0);
+    CHECK(RightGripReport(latches) == ((1u << 1) | 1u));
+    state.right.squeeze = 0.0f;
+    FromControllers(state, latches, options);
+
+    // Y as the RB source: Y is RB, not Y; X and B keep their own buttons.
+    state = {};
+    latches = {};
+    state.left.secondary = true;
+    state.left.primary = true;
+    state.right.secondary = true;
+    auto pad = FromControllers(state, latches, options);
+    CHECK((pad.wButtons & kRb) != 0 && (pad.wButtons & XINPUT_GAMEPAD_Y) == 0);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_X) != 0 && (pad.wButtons & XINPUT_GAMEPAD_B) != 0);
+    // A press keeps its meaning: Y held stays RB when the option drops (the power wheel stays open).
+    pad = FromControllers(state, latches, legacy);
+    CHECK((pad.wButtons & kRb) != 0 && (pad.wButtons & XINPUT_GAMEPAD_Y) == 0);
+    state.left.secondary = false;
+    pad = FromControllers(state, latches, legacy);
+    CHECK((pad.wButtons & kRb) == 0);
+    // ...and a Y pressed without the option is Y.
+    state.left.secondary = true;
+    pad = FromControllers(state, latches, legacy);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_Y) != 0 && (pad.wButtons & kRb) == 0);
+    pad = FromControllers(state, latches, options);  // held on: still Y
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_Y) != 0 && (pad.wButtons & kRb) == 0);
+
+    // The flags cross the boundary; an unknown source reads as none.
+    Options const back = FromFlags(-1.0f, 0.12f, 0.22f, ToFlags(options));
+    CHECK(back.rightGripHolds && back.rbSource == RbSource::Y);
+    CHECK(FromFlags(-1.0f, 0.12f, 0.22f, kFlagRightGripHolds | (0xFu << kRbSourceShift)).rbSource == RbSource::None);
+    CHECK(ToFlags(Options{}) == (kFlagLeftTrigger | kFlagSupportAims | kFlagGripShoulder));
+}
+
+// The right stick click as RB (the default RB source): commit delay, tap after the double-click
+// window, Halcyon's double-click recenter, the stick pushed over, the chords.
+void TestRbFromStickClick() {
+    using namespace mevr::game::gamepad;
+    using Phase = RbClick::Phase;
+    RbClick s;
+    RbClickInput in;
+    in.enabled = true;
+    std::uint64_t t = 1000;
+    auto const step = [&](bool click, std::uint64_t advance) {
+        t += advance;
+        in.click = click;
+        in.nowMs = t;
+        return RbFromStickClick(s, in);
+    };
+    // A hold: no RB for the first kRbCommitMs, then RB until the click opens.
+    CHECK(!step(true, 0) && s.phase == Phase::Pending);
+    CHECK(!step(true, 50));
+    CHECK(step(true, 60) && s.phase == Phase::Held);
+    CHECK(step(true, 500));
+    CHECK(!step(false, 10) && s.phase == Phase::Idle);
+    // A quick click: RB only after the double-click window, for kRbTapMs.
+    t += 1000;
+    CHECK(!step(true, 0));
+    CHECK(!step(false, 40) && s.phase == Phase::TapWait);
+    CHECK(!step(false, 300));
+    CHECK(step(false, 100) && s.phase == Phase::Tap);  // 440 ms after the press
+    CHECK(step(false, 50));
+    CHECK(!step(false, 40) && s.phase == Phase::Idle);
+    // A double-click (Halcyon's recenter): neither click is RB.
+    t += 1000;
+    CHECK(!step(true, 0));
+    CHECK(!step(false, 60));
+    CHECK(!step(true, 120) && s.phase == Phase::Ignored);  // second press 180 ms after the first
+    CHECK(!step(true, 200));
+    CHECK(!step(false, 10) && s.phase == Phase::Idle);
+    // ...and the pair is used up (as in Halcyon): a third click 100 ms later is a fresh first click,
+    // whose tap a fourth click inside the window cancels (another recenter).
+    CHECK(!step(true, 90) && s.phase == Phase::Pending);
+    CHECK(!step(false, 30) && s.phase == Phase::TapWait);
+    CHECK(!step(true, 100) && s.phase == Phase::Ignored);
+    CHECK(!step(false, 30));
+    CHECK(!step(false, 600) && s.phase == Phase::Idle);
+    t += 1000;
+    step(false, 0);
+    // The stick pushed over (turning) when clicked: not RB, even if held.
+    in.stickX = 0.9f;
+    CHECK(!step(true, 0) && s.phase == Phase::Ignored);
+    in.stickX = 0.0f;
+    CHECK(!step(true, 300));
+    CHECK(!step(false, 10));
+    // Halcyon's both-sticks chord: the left click joining within the commit delay cancels it.
+    t += 1000;
+    CHECK(!step(true, 0));
+    in.otherClick = true;
+    CHECK(!step(true, 30) && s.phase == Phase::Ignored);
+    CHECK(!step(true, 500));
+    in.otherClick = false;
+    CHECK(!step(false, 10));
+    // The test loop's chord reserves the clicks.
+    t += 1000;
+    in.reserved = true;
+    CHECK(!step(true, 0) && s.phase == Phase::Ignored);
+    CHECK(!step(true, 300));
+    in.reserved = false;
+    CHECK(!step(false, 10));
+    // Not the RB source: a new press is ignored, but one already held carries on.
+    t += 1000;
+    CHECK(!step(true, 0));
+    CHECK(step(true, 150));
+    in.enabled = false;
+    CHECK(step(true, 100));
+    CHECK(!step(false, 10));
+    CHECK(!step(true, 1000) && s.phase == Phase::Ignored);
+    CHECK(!step(false, 10));
+    in.enabled = true;
+    // No clock: RB follows an accepted click.
+    s = {};
+    in.nowMs = 0;
+    in.click = true;
+    CHECK(RbFromStickClick(s, in));
+    in.click = false;
+    CHECK(!RbFromStickClick(s, in));
+
+    // Through the pad: R3 stays R3 (Halcyon reads it) and is RB once committed.
+    mevr::vr::controllers::State state;
+    Latches latches;
+    Options options;
+    options.rightGripHolds = true;
+    options.rbSource = RbSource::RightStickClick;
+    state.timeMs = 5000;
+    state.right.stickClick = true;
+    auto pad = FromControllers(state, latches, options);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0 && (pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) == 0);
+    state.timeMs += 120;
+    pad = FromControllers(state, latches, options);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0 && (pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0);
+    // Without gripHolds the stick click is only R3.
+    latches = {};
+    state.timeMs += 2000;
+    Options legacy;
+    pad = FromControllers(state, latches, legacy);
+    state.timeMs += 300;
+    pad = FromControllers(state, latches, legacy);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) == 0);
+}
+
 int main() {
     TestBoneNames();
     TestIk();
@@ -2266,8 +2779,14 @@ int main() {
     TestGamepad();
     TestSupportGrip();
     TestRightGripFree();
+    TestRightGripHolds();
+    TestRbFromStickClick();
     TestBodySlotGeometry();
     TestBodySlotMachine();
+    TestBodySlotHolding();
+    TestContactHaptics();
+    TestStandingHeight();
+    TestHapticChannel();
     TestTwoHand();
     TestOverlayPlacement();
     TestMenuPointer();
