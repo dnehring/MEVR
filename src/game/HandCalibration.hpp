@@ -104,7 +104,7 @@ struct Squad {
     double panelDistanceM = 0.27;
     double panelWidthM = 0.40;
     bool confirmOnRelease = true;
-    bool pause = false;
+    bool pause = true;
     double hapticAmplitude = 0.5;
 };
 Squad GetSquad();

@@ -170,8 +170,8 @@ constexpr char const* kSquadBlock =
     "; confirmOnRelease: 1 = letting go of the grip gives the chosen weapon (nothing chosen: cancels);\n"
     "; 0 = the menu stays open when you let go: A gives it, B or a new squeeze cancels.\n"
     "confirmOnRelease = 1\n"
-    "; pause: 1 = the game pauses while the menu is open, like its own weapon wheel; 0 = it keeps running.\n"
-    "pause = 0\n"
+    "; pause: 1 (the default) = the game pauses while the menu is open, like its own weapon wheel; 0 = it keeps running.\n"
+    "pause = 1\n"
     "; hapticAmplitude: how strong the menu's ticks and clicks are, 0..1 (0.5 as designed, 0 = none).\n"
     "hapticAmplitude = 0.5\n";
 

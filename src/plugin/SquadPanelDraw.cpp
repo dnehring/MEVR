@@ -263,10 +263,8 @@ void Tile(ImDrawList* dl, ImFont* font, int weapon, ImVec2 c, float w, float h, 
     FitText(dl, font, 20.0f, {c.x, c.y + 20.0f}, ink, WeaponLabel(weapon), labelWidth, 0.5f);
 }
 
-// A weapon this squadmate doesn't carry: only a faint outline, so the four places stay recognisable.
-void EmptySlot(ImDrawList* dl, ImVec2 c, float w, float h) {
-    Hex(dl, c, w, h, Rgba(8, 20, 36, 90), kCyanFaint, 1.5f);
-}
+// A weapon this squadmate doesn't carry or can't equip: hidden (user, 2026-10-22).
+void EmptySlot(ImDrawList*, ImVec2, float, float) {}
 
 } // namespace
 
@@ -319,7 +317,7 @@ void Draw(ImDrawList* dl, ImFont* font, menu::View const& view) {
         for (Place const& p : places) {
             int const weapon = menu::WeaponAt(p.direction);
             if (weapon < 0 || (m->carried & (1u << weapon)) == 0) {
-                EmptySlot(dl, p.at, p.w, 104.0f);  // only what this squadmate carries
+                EmptySlot(dl, p.at, p.w, 104.0f);  // only what this squadmate carries: the rest is hidden
                 continue;
             }
             bool const lit = view.highlighted == weapon;
