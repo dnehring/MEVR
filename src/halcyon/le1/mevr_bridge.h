@@ -107,14 +107,26 @@ struct OverlayFrame
     float headOrientation[4] = {0.0f, 0.0f, 0.0f, 1.0f};   // xyzw, app space
     float headPosition[3] = {0.0f, 0.0f, 0.0f};            // eye center, app space, meters
     float floatWhiteScale = 1.0f;  // for a float (scRGB) panel: multiplier that maps SDR white to 1.0
+    // [MEVR] Gun sights (src/plugin/SightLayers.cpp): each eye this frame (the runtime's views, app space),
+    // which eye looks through a sight; and the world layer's views as submitted (swapchain, rect, the pose
+    // and FOV each image was rendered for), the eye image a scope magnifies.
+    float eyeOrientation[2][4] = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
+    float eyePosition[2][3] = {};
+    bool projectionValid = false;
+    void* projectionSwapchain[2] = {nullptr, nullptr};   // XrSwapchain
+    int projectionRect[2][4] = {};                       // x, y, width, height (pixels)
+    float projectionOrientation[2][4] = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
+    float projectionPosition[2][3] = {};
+    float projectionFov[2][4] = {};                      // angleLeft, angleRight, angleUp, angleDown (radians)
 };
 
 // Present thread (RunFrame), once per frame after the eyes are filled, every frame (also flat and
 // menu frames): copies the HUD panel texture into its swapchain, places the panel and the reticle,
+// draws the gun's sight (a red dot or holo reticle, or a scope's picture: src/plugin/SightLayers.cpp),
 // draws the squad weapon menu while the mod has it open (src/plugin/SquadPanel.cpp), shows the game's
 // weapon or power wheel on a panel of its own at a hand while one is up (cut out of the HUD panel),
-// and writes up to `capacity` quad layers (XrCompositionLayerQuad*: panel, reticle, squad menu, wheel)
-// into `layersOut`.
+// and writes up to `capacity` quad layers (XrCompositionLayerQuad*: panel, reticle, sight (two), squad
+// menu, wheel) into `layersOut`.
 // Also clears the panel texture, arms the redirect for the next frame, and hides the game's own
 // crosshair while the hand reticle replaces it. Returns the number of layers written.
 unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsigned capacity) noexcept;

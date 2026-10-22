@@ -7,6 +7,8 @@
 #include <optional>
 #include <string>
 
+class UObject;
+
 // The ranged weapon the player holds, as the game draws it: where its muzzle is and which way its
 // barrel points (LE1; research/14, "Weapon and muzzle").
 //   - Which weapon: Pawn.Weapon, an SFXGame.BioWeaponRanged. Its mesh is BioWeapon.SkelMeshComp
@@ -37,6 +39,7 @@ struct Muzzle {
     engine::UnrealVector location;  // world
     engine::UnrealVector barrel;    // world, unit
     engine::UnrealVector up;        // world, unit, perpendicular to the barrel (model axes: diagnostics only)
+    engine::UnrealVector origin;    // world: the weapon mesh's origin (its root, where the hand holds it)
 };
 
 // How the muzzle sits on the right hand bone, in the bone's own axes.
@@ -66,6 +69,14 @@ RangedType Type();
 // fire (research/18: it picks the smaller aim error and recoil, and the TightAim camera follows
 // it; set from BioPlayerInput.bWantsToZoom, i.e. LT). Nullopt without a ranged weapon.
 std::optional<bool> Zoomed();
+// The held ranged weapon's aim error for `accuracy` as if it were zoomed (aimed fire): the native
+// GetPlayerAimError called through ProcessEvent with bIsZoomed set for that call only, so nothing else
+// (the camera, which picks the game's TightAim and sniper scope modes from it) ever sees the flag.
+// `weapon` must be the player's held ranged weapon; nullopt if not, if it's already zoomed, or LE2/LE3.
+// Game thread.
+std::optional<float> ZoomedAimError(UObject* weapon, float accuracy);
+// The same native's answer as the weapon is now (not zoomed): for undoing the lerp it applies.
+std::optional<float> AimError(UObject* weapon, float accuracy);
 // A socket of the weapon's mesh named for the off hand (logged once per weapon with all its
 // sockets), live, in the right hand bone's axes (component units). Nullopt if it has none.
 std::optional<ik::Vec3> OffHandSocketInHand();

@@ -27,6 +27,7 @@
 #include "core/vr/WheelCrop.hpp"
 #include "plugin/Halcyon.hpp"
 #include "plugin/RecenterTilt.hpp"
+#include "plugin/SightLayers.hpp"
 #include "plugin/SquadPanel.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/WorldPanels.hpp"
@@ -590,6 +591,7 @@ bool gProbedPanel = false;
 int gReticleSource = -1;  // last logged: 0 none, 1 aim ray, 2 right controller
 int gLastGameMode = -1;   // the last readable USFXGameModeManager mode
 std::uint64_t gReticleSeenMs = 0;  // the reticle last had a ray
+std::uint64_t gSightSeenMs = 0;    // an eye last looked through the gun's sight (the ring hides meanwhile)
 std::uint64_t gNextPanelLogMs = 0;
 
 // One blit of a window of the panel texture (and its tint) into a swapchain image, `factor` times
@@ -1427,6 +1429,36 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     }
     gArmed.store(armNext, std::memory_order_release);
 
+    // ---- The gun's sight (plugin/SightLayers): a red dot or holo reticle, or a scope's picture ----
+    // Worked out before the ring reticle, which hides while an eye looks through the sight (held 0.3 s so
+    // the edge of the window doesn't make it blink); its quads go on top of the ring's.
+    mevr::host::sight_layers::Frame sightFrame;
+    sightFrame.session = session;
+    sightFrame.appSpace = static_cast<XrSpace>(frame.appSpace);
+    sightFrame.context = context;
+    sightFrame.device = device.Get();
+    sightFrame.worldFrame = frame.worldFrame;
+    sightFrame.menuOpen = frame.menuOpen;
+    sightFrame.onFoot = gLastGameMode == 0;
+    sightFrame.eyesValid = frame.headValid;
+    sightFrame.projectionValid = frame.projectionValid;
+    for (int e = 0; e < 2; ++e) {
+        sightFrame.eyes[e].orientation = ToQuat(frame.eyeOrientation[e]);
+        sightFrame.eyes[e].position = ToVec(frame.eyePosition[e]);
+        sightFrame.projectionSwapchain[e] = static_cast<XrSwapchain>(frame.projectionSwapchain[e]);
+        sightFrame.projectionRect[e] = {{frame.projectionRect[e][0], frame.projectionRect[e][1]},
+            {frame.projectionRect[e][2], frame.projectionRect[e][3]}};
+        sightFrame.projectionPose[e].orientation = ToQuat(frame.projectionOrientation[e]);
+        sightFrame.projectionPose[e].position = ToVec(frame.projectionPosition[e]);
+        sightFrame.projectionFov[e] = {frame.projectionFov[e][0], frame.projectionFov[e][1], frame.projectionFov[e][2],
+            frame.projectionFov[e][3]};
+    }
+    mevr::host::sight_layers::Output const sight = mevr::host::sight_layers::Layers(sightFrame);
+    if (sight.looking && sight.replaceRing) {
+        gSightSeenMs = now;
+    }
+    bool const sightHidesRing = gSightSeenMs != 0 && now - gSightSeenMs < 300;
+
     // ---- Hand reticle ----
     // Where the weapon points: the mod's aim ray (muzzle and barrel) once it publishes one, else the
     // right controller's aim pose. While it has a ray, the game's screen-centre crosshair is hidden
@@ -1467,7 +1499,8 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         gReticleSeenMs = now;
     }
     MELEVR::Pchud::SetCrosshairHidden(reticleMode && gReticleSeenMs != 0 && now - gReticleSeenMs < 500);
-    if (source != 0 && frame.worldFrame && !frame.menuOpen && frame.headValid && count < capacity && device != nullptr) {
+    if (source != 0 && !sightHidesRing && frame.worldFrame && !frame.menuOpen && frame.headValid && count < capacity &&
+        device != nullptr) {
         overlay::Billboard reticle;
         float const distance = std::clamp(cfg.handReticleDistanceM, 1.0f, 100.0f);
         float const size = std::clamp(cfg.handReticleSizeDeg, 0.2f, 10.0f) * kDegToRad;
@@ -1493,6 +1526,11 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                 LogBoth(line);
             }
         }
+    }
+
+    // The sight's quads, on top of the ring.
+    for (unsigned i = 0; i < sight.count && count < capacity; ++i) {
+        layersOut[count++] = sight.layers[i];
     }
 
     // ---- The squad weapon menu, at the left hand (plugin/SquadPanel): last, on top of ours ----

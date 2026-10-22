@@ -76,10 +76,12 @@ constexpr double kStillMuzzleUnits = 0.1;
 constexpr int kFollowSamples = 40;
 
 constexpr char const* kGetRangedWeaponType = "Function SFXGame.BioWeaponRanged.GetRangedWeaponType";
+constexpr char const* kGetPlayerAimError = "Function SFXGame.BioWeaponRanged.GetPlayerAimError";
 
 UFunction* gGetMuzzleLoc = nullptr;
 UFunction* gGetSocketWorld = nullptr;
 UFunction* gGetRangedWeaponType = nullptr;
+UFunction* gGetPlayerAimError = nullptr;  // aimed fire for scoped shots (game/sights)
 
 // A weapon-mesh socket for the off hand, by name (lowercase substrings).
 constexpr char const* kOffHandSocketWords[] = {"lefthand", "left_hand", "lhand", "lhik", "offhand", "off_hand", "support",
@@ -172,7 +174,7 @@ Muzzle ToMuzzle(Frame const& muzzle, ik::Affine const& meshToWorld, Axis axis) {
         up = ik::Normalize(ik::TransformDirection(meshToWorld, {0.0, 0.0, 1.0}), {0.0, 0.0, 1.0});
     }
     up = ik::Normalize(up - barrel * ik::Dot(up, barrel), {0.0, 0.0, 1.0});
-    return {U(muzzle.origin), U(barrel), U(up)};
+    return {U(muzzle.origin), U(barrel), U(up), U(ik::TransformPoint(meshToWorld, {0.0, 0.0, 0.0}))};
 }
 
 // This tick's pointers, read from the local player. All live objects.
@@ -568,6 +570,7 @@ bool TryStartup() {
     gGetMuzzleLoc = engine::FindFunction(L"GetMuzzleLoc", kGetMuzzleLoc);
     gGetSocketWorld = engine::FindFunction(L"GetSocketWorldLocationAndRotation", kGetSocketWorld);
     gGetRangedWeaponType = engine::FindFunction(L"GetRangedWeaponType", kGetRangedWeaponType);
+    gGetPlayerAimError = engine::FindFunction(L"GetPlayerAimError", kGetPlayerAimError);
     // Research: where the natives behind the fire path live, to tie the code reading (TickFire's
     // body at 0xC621E0, GetMuzzleLoc's at 0xC59870) to the script functions.
     auto const base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
@@ -736,6 +739,60 @@ std::optional<bool> Zoomed() {
 #endif
 }
 
+#if defined(SDK_TARGET_LE1)
+namespace {
+// GetPlayerAimError (0xC59920): lerp(Stats' aim-error range picked by bIsZoomed, accuracy). A native with
+// a plain float in and out, so ProcessEvent passes both (research/14). Never the SDK's wrapper.
+std::optional<float> CallAimError(ABioWeaponRanged* weapon, float accuracy) {
+    if (gGetPlayerAimError == nullptr) {
+        return std::nullopt;
+    }
+    ABioWeaponRanged_execGetPlayerAimError_Parms parms;
+    parms.Accuracy = accuracy;
+    weapon->ProcessEvent(gGetPlayerAimError, &parms, nullptr);
+    return std::isfinite(parms.ReturnValue) ? std::optional<float>(parms.ReturnValue) : std::nullopt;
+}
+
+ABioWeaponRanged* HeldRanged(UObject* weapon) {
+    std::string why;
+    auto const live = LivePointers(why);
+    if (!live || weapon == nullptr || weapon != live->weapon) {
+        return nullptr;
+    }
+    return live->weapon;
+}
+} // namespace
+#endif
+
+std::optional<float> AimError(UObject* weapon, float accuracy) {
+#if defined(SDK_TARGET_LE1)
+    if (ABioWeaponRanged* const held = HeldRanged(weapon)) {
+        return CallAimError(held, accuracy);
+    }
+#else
+    (void)weapon;
+    (void)accuracy;
+#endif
+    return std::nullopt;
+}
+
+std::optional<float> ZoomedAimError(UObject* weapon, float accuracy) {
+#if defined(SDK_TARGET_LE1)
+    ABioWeaponRanged* const held = HeldRanged(weapon);
+    if (held == nullptr || held->bIsZoomed != 0) {
+        return std::nullopt;
+    }
+    held->bIsZoomed = 1;  // for this one call: put back before anything else runs on this thread
+    std::optional<float> const zoomed = CallAimError(held, accuracy);
+    held->bIsZoomed = 0;
+    return zoomed;
+#else
+    (void)weapon;
+    (void)accuracy;
+    return std::nullopt;
+#endif
+}
+
 std::optional<ik::Vec3> OffHandSocketInHand() {
 #if defined(SDK_TARGET_LE1)
     if (!gResolved || !gResolved->verified || !gHeld || !gResolved->offHand || !gBody || gBody->hand < 0) {
@@ -792,6 +849,7 @@ void Shutdown() {
     gGetMuzzleLoc = nullptr;
     gGetSocketWorld = nullptr;
     gGetRangedWeaponType = nullptr;
+    gGetPlayerAimError = nullptr;
 #endif
     gStatus = "off";
     gLoggedStatus.clear();

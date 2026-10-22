@@ -5647,8 +5647,8 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     proj.viewCount = 2;
     proj.views = projViews;
 
-    // [MEVR] room for the world, our HUD panel and reticle quads, the menu and SteamVR's placeholder
-    constexpr uint32_t kMaxLayers = 8;
+    // [MEVR] room for the world, our HUD panel, reticle, sight and hand quads, the menu and SteamVR's placeholder
+    constexpr uint32_t kMaxLayers = 10;
     const XrCompositionLayerBaseHeader* layers[kMaxLayers] = {};
     uint32_t layerCount = 0;
     XrCompositionLayerQuad flatCineQuad = {};
@@ -5740,8 +5740,29 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         }
         mevrFrame.floatWhiteScale =
             MELEVR::MevrBridge::HudPanelIsFloat() ? HdrSourceScale(DXGI_FORMAT_R16G16B16A16_FLOAT) : 1.0f;
-        const void* mevrQuads[4] = {nullptr, nullptr, nullptr, nullptr};   // [MEVR] HUD panel, reticle, squad menu, wheel
-        const unsigned mevrQuadCount = MELEVR::MevrBridge::OverlayLayers(mevrFrame, mevrQuads, 4);
+        for (int e = 0; e < 2; ++e)   // [MEVR] gun sights: the eyes, and the world layer as submitted
+        {
+            const XrPosef& ev = g_subViews[e].pose;
+            mevrFrame.eyeOrientation[e][0] = ev.orientation.x; mevrFrame.eyeOrientation[e][1] = ev.orientation.y;
+            mevrFrame.eyeOrientation[e][2] = ev.orientation.z; mevrFrame.eyeOrientation[e][3] = ev.orientation.w;
+            mevrFrame.eyePosition[e][0] = ev.position.x; mevrFrame.eyePosition[e][1] = ev.position.y;
+            mevrFrame.eyePosition[e][2] = ev.position.z;
+            const XrCompositionLayerProjectionView& pv = projViews[e];
+            mevrFrame.projectionSwapchain[e] = pv.subImage.swapchain;
+            mevrFrame.projectionRect[e][0] = pv.subImage.imageRect.offset.x;
+            mevrFrame.projectionRect[e][1] = pv.subImage.imageRect.offset.y;
+            mevrFrame.projectionRect[e][2] = pv.subImage.imageRect.extent.width;
+            mevrFrame.projectionRect[e][3] = pv.subImage.imageRect.extent.height;
+            mevrFrame.projectionOrientation[e][0] = pv.pose.orientation.x; mevrFrame.projectionOrientation[e][1] = pv.pose.orientation.y;
+            mevrFrame.projectionOrientation[e][2] = pv.pose.orientation.z; mevrFrame.projectionOrientation[e][3] = pv.pose.orientation.w;
+            mevrFrame.projectionPosition[e][0] = pv.pose.position.x; mevrFrame.projectionPosition[e][1] = pv.pose.position.y;
+            mevrFrame.projectionPosition[e][2] = pv.pose.position.z;
+            mevrFrame.projectionFov[e][0] = pv.fov.angleLeft; mevrFrame.projectionFov[e][1] = pv.fov.angleRight;
+            mevrFrame.projectionFov[e][2] = pv.fov.angleUp; mevrFrame.projectionFov[e][3] = pv.fov.angleDown;
+        }
+        mevrFrame.projectionValid = submitted && !forceFlatCine;
+        const void* mevrQuads[6] = {};   // [MEVR] HUD panel, reticle, sight (two), squad menu, wheel
+        const unsigned mevrQuadCount = MELEVR::MevrBridge::OverlayLayers(mevrFrame, mevrQuads, 6);
         for (unsigned i = 0; i < mevrQuadCount && layerCount < kMaxLayers - 2; ++i)
             layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(mevrQuads[i]);
         if (mevrQuadCount > 0 && cfg.hudPanelDistanceM < mevrNearestQuadM) mevrNearestQuadM = cfg.hudPanelDistanceM;

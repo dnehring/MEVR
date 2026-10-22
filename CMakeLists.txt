@@ -131,6 +131,10 @@ set(MEVR_MOD_SOURCES
     src/core/vr/HostView.hpp
     src/core/vr/Output.cpp
     src/core/vr/Output.hpp
+    src/core/vr/OverlayPlacement.cpp
+    src/core/vr/OverlayPlacement.hpp
+    src/core/vr/Sights.cpp
+    src/core/vr/Sights.hpp
     src/core/vr/SquadMenu.cpp
     src/core/vr/SquadMenu.hpp
     src/core/vr/TestRequest.cpp
@@ -184,6 +188,8 @@ set(MEVR_MOD_SOURCES
     src/game/Holsters.hpp
     src/game/Reflections.cpp
     src/game/Reflections.hpp
+    src/game/Sights.cpp
+    src/game/Sights.hpp
     src/game/SkeletonProbe.cpp
     src/game/SkeletonProbe.hpp
     src/game/SquadWeapons.cpp
@@ -261,6 +267,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/MevrMenuTab.cpp
     src/plugin/RecenterTilt.cpp
     src/plugin/RecenterTilt.hpp
+    src/plugin/SightLayers.cpp
+    src/plugin/SightLayers.hpp
     src/plugin/SquadPanel.cpp
     src/plugin/SquadPanel.hpp
     src/plugin/SquadPanelDraw.cpp

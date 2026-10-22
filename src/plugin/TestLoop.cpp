@@ -4,6 +4,7 @@
 
 #include "plugin/TestLoop.hpp"
 #include "plugin/RecenterTilt.hpp"
+#include "plugin/SightLayers.hpp"
 
 #include "halcyon/le1/mevr_bridge.h"
 #include "halcyon/le1/vr_menu.h"
@@ -609,7 +610,7 @@ void StageImage(XrSwapchain swapchain, ID3D11Texture2D* image) {
 
 // A swapchain image Halcyon is about to release: its index from the wrapped acquire, its texture
 // from the runtime's list.
-void StageReleased(XrSwapchain swapchain) {
+ID3D11Texture2D* ReleasingImage(XrSwapchain swapchain) {
     ID3D11Texture2D* image = nullptr;
     {
         std::lock_guard lock(gSwapchainMutex);
@@ -631,8 +632,12 @@ void StageReleased(XrSwapchain swapchain) {
             image = info.images[info.acquired];
         }
     }
-    StageImage(swapchain, image);
+    return image;
 }
+
+// The release tap (SetReleaseTap): Present thread only.
+XrSwapchain gTapSwapchain = XR_NULL_HANDLE;
+ReleaseTap gTap = nullptr;
 
 std::string NameFor(XrSwapchain swapchain) {
     std::lock_guard lock(gSwapchainMutex);
@@ -759,12 +764,14 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
         "  \"head\": {},\n  \"controllers\": {{\"active\": {}, \"left\": {}, \"right\": {}}},\n"
         "  \"aimRay\": {{\"valid\": {}, \"origin\": {}, \"direction\": {}, \"ageMs\": {}}},\n"
         "  \"hostView\": {{\"valid\": {}, \"headLook\": {}, \"headAim\": {}, \"lookYawUU\": {}, \"lookPitchUU\": {}, "
-        "\"offsetUU\": [{}, {}, {}], \"unitsPerMeter\": {}}},\n  \"recenter\": {},\n  \"mod\": {},\n  \"layers\": [{}\n  ]",
+        "\"offsetUU\": [{}, {}, {}], \"unitsPerMeter\": {}}},\n  \"recenter\": {},\n  \"sights\": {},\n  \"mod\": {},\n"
+        "  \"layers\": [{}\n  ]",
         req::JsonString(trigger), req::JsonString(tag), gFrame, static_cast<long long>(displayTime), UnixMs(), J(gFocused),
         J(MELEVR::Menu::IsOpen()), J(gRecordingActive.load()), replay, head, J(c.active), JHand(c.left), JHand(c.right),
         J(ray.valid), JVec(ray.origin), JVec(ray.direction), ray.timeMs != 0 ? GetTickCount64() - ray.timeMs : 0,
         J(view.valid), J(view.headLook), J(view.headAim), view.lookYaw, view.lookPitch, J(view.offsetForward),
-        J(view.offsetRight), J(view.offsetUp), J(view.unitsPerMeter), recenter_tilt::StatusJson(), mod, LayersJson(layers));
+        J(view.offsetRight), J(view.offsetUp), J(view.unitsPerMeter), recenter_tilt::StatusJson(), sight_layers::StatusJson(), mod,
+        LayersJson(layers));
 }
 
 // The capture's last armed frame: what was submitted, where the quads are, the metadata.
@@ -1161,8 +1168,17 @@ XrResult XRAPI_CALL WrappedAcquire(XrSwapchain swapchain, XrSwapchainImageAcquir
 }
 
 XrResult XRAPI_CALL WrappedRelease(XrSwapchain swapchain, XrSwapchainImageReleaseInfo const* info) {
-    if (gArmed.load(std::memory_order_relaxed) && OnPresentThread()) {
-        StageReleased(swapchain);
+    bool const armed = gArmed.load(std::memory_order_relaxed);
+    bool const onPresent = OnPresentThread();
+    bool const tapped = onPresent && gTap != nullptr && swapchain == gTapSwapchain;  // both written on that thread
+    if ((armed || tapped) && onPresent) {
+        ID3D11Texture2D* const image = ReleasingImage(swapchain);
+        if (armed) {
+            StageImage(swapchain, image);
+        }
+        if (tapped && image != nullptr) {
+            gTap(swapchain, image);
+        }
     }
     return gRealRelease(swapchain, info);
 }
@@ -1360,6 +1376,11 @@ void SetStaticImage(XrSwapchain swapchain, std::uint32_t width, std::uint32_t he
     info.staticWidth = width;
     info.staticHeight = height;
     info.staticPixels = std::move(pixels);
+}
+
+void SetReleaseTap(XrSwapchain swapchain, ReleaseTap tap) {
+    gTapSwapchain = tap != nullptr ? swapchain : XR_NULL_HANDLE;
+    gTap = swapchain != XR_NULL_HANDLE ? tap : nullptr;
 }
 
 void NameSwapchain(XrSwapchain swapchain, char const* name) {

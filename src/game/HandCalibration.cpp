@@ -3,6 +3,7 @@
 #include "core/Log.hpp"
 #include "core/ik/ArmPose.hpp"
 #include "core/ik/HandFrame.hpp"
+#include "core/vr/Sights.hpp"
 
 #include <LESDK/Headers.hpp>
 
@@ -190,6 +191,49 @@ constexpr char const* kSquadBlock =
     "pause = 1\n"
     "; hapticAmplitude: how strong the menu's ticks and clicks are, 0..1 (0.5 as designed, 0 = none).\n"
     "hapticAmplitude = 0.5\n";
+
+// Appended to a settings file that has no [Sights] yet (and part of a new file).
+constexpr char const* kSightsBlock =
+    "\n"
+    "[Sights]\n"
+    "; Gun sights (research/21). Each weapon type gets: none, dot (a red dot), holo (a ring and a dot), or scope with\n"
+    "; its magnification (scope 4: a magnified picture at the eyepiece). A dot shows only to the eye looking through\n"
+    "; the sight's window, and stays on the target wherever that eye is behind it.\n"
+    "enabled = 1\n"
+    "pistol = dot\n"
+    "shotgun = holo\n"
+    "assaultRifle = holo\n"
+    "sniperRifle = scope 4\n"
+    "; Where the sight sits on each gun: auto, or back, height: units behind the muzzle along the barrel, units above\n"
+    "; the bore (the log's `sights:` lines say what auto chose).\n"
+    "pistolPlace = auto\n"
+    "shotgunPlace = auto\n"
+    "assaultRiflePlace = auto\n"
+    "sniperRiflePlace = auto\n"
+    "; dotColor: hex RRGGBB, or red, green, amber, cyan, white. dotSizeDeg, ringSizeDeg: how big the dot and the holo\n"
+    "; ring look (degrees). windowUnits: the sight window's radius (gun units). frame: 1 = a faint ring marks it.\n"
+    "dotColor = ff3020\n"
+    "dotSizeDeg = 0.25\n"
+    "ringSizeDeg = 1.6\n"
+    "windowUnits = 3\n"
+    "frame = 1\n"
+    "; zeroM: where the sight line crosses the shot (game meters); 0 = parallel to the barrel (zeroed at infinity).\n"
+    "zeroM = 0\n"
+    "; Scopes. lensUnits: the eyepiece's radius (gun units). reticle: duplex, mildot or dot; reticleColor: its lit\n"
+    "; centre. source: other = magnify the other eye's picture (the gun's own scope model doesn't block it), same =\n"
+    "; the aiming eye's. focusM: where both eyes' pictures agree (game meters). eyeReliefM: how close (meters) your eye\n"
+    "; must be to the eyepiece for the full picture. resolution: the picture's pixels across.\n"
+    "lensUnits = 2\n"
+    "reticle = duplex\n"
+    "reticleColor = ff2020\n"
+    "source = other\n"
+    "focusM = 40\n"
+    "eyeReliefM = 0.12\n"
+    "resolution = 768\n"
+    "; replaceRing: 1 = the floating ring reticle hides while you look through a sight.\n"
+    "replaceRing = 1\n"
+    "; aimedFire: 1 = looking through a scope gives the shots the game's aimed-fire accuracy (no scope camera).\n"
+    "aimedFire = 1\n";
 
 fs::path FilePath() {
     wchar_t buffer[MAX_PATH]{};
@@ -554,6 +598,121 @@ std::string Describe(Squad const& s) {
 Squad gSquad;
 std::string gSquadText;
 
+vr::sights::Settings ReadSights(Ini const& ini) {
+    namespace sv = vr::sights;
+    sv::Settings out;
+    auto const section = ini.find("Sights");
+    if (section == ini.end()) {
+        return out;
+    }
+    auto const text = [&](char const* key) -> std::optional<std::string> {
+        auto const k = section->second.find(key);
+        if (k == section->second.end() || k->second.empty()) {
+            return std::nullopt;
+        }
+        return k->second;
+    };
+    double value = 0.0;
+    if (Number(ini, "Sights", "enabled", value)) {
+        out.enabled = value != 0.0;
+    }
+    for (int w = 0; w < sv::kWeaponTypes; ++w) {
+        std::string const key = sv::WeaponKey(w);
+        if (auto const t = text(key.c_str())) {
+            if (auto const gun = sv::ParseGun(*t, out.guns[w])) {
+                out.guns[w] = *gun;
+            } else {
+                log::Warn("sights: can't read {} = {} (none, dot, holo, or scope with a magnification); default kept", key, *t);
+            }
+        }
+        std::string const placeKey = key + "Place";
+        if (auto const t = text(placeKey.c_str()); t && !sv::ParsePlace(*t, out.guns[w])) {
+            log::Warn("sights: can't read {} = {} (auto, or back, height in gun units); auto kept", placeKey, *t);
+            out.guns[w].autoPlace = true;
+        }
+    }
+    auto const color = [&](char const* key, std::uint32_t& into) {
+        if (auto const t = text(key)) {
+            if (auto const c = sv::ParseColor(*t)) {
+                into = *c;
+            } else {
+                log::Warn("sights: can't read {} = {} (hex RRGGBB or red, green, amber, cyan, white); default kept", key, *t);
+            }
+        }
+    };
+    color("dotColor", out.dotColor);
+    color("reticleColor", out.scopeColor);
+    auto const number = [&](char const* key, float& into, float lo, float hi) {
+        if (Number(ini, "Sights", key, value)) {
+            into = static_cast<float>(std::clamp(value, static_cast<double>(lo), static_cast<double>(hi)));
+        }
+    };
+    number("dotSizeDeg", out.dotSizeDeg, 0.05f, 3.0f);
+    number("ringSizeDeg", out.ringSizeDeg, 0.3f, 6.0f);
+    number("windowUnits", out.windowUnits, 0.5f, 20.0f);
+    number("zeroM", out.zeroM, 0.0f, 500.0f);
+    number("lensUnits", out.lensUnits, 0.5f, 10.0f);
+    number("focusM", out.focusM, 2.0f, 1000.0f);
+    number("eyeReliefM", out.eyeReliefM, 0.03f, 0.5f);
+    if (Number(ini, "Sights", "frame", value)) {
+        out.frame = value != 0.0;
+    }
+    if (Number(ini, "Sights", "replaceRing", value)) {
+        out.replaceRing = value != 0.0;
+    }
+    if (Number(ini, "Sights", "aimedFire", value)) {
+        out.aimedFire = value != 0.0;
+    }
+    if (Number(ini, "Sights", "resolution", value)) {
+        out.resolution = static_cast<int>(std::clamp(value, 128.0, 2048.0));
+    }
+    if (auto const t = text("reticle")) {
+        if (auto const r = sv::ParseScopeReticle(*t)) {
+            out.scopeReticle = *r;
+        } else {
+            log::Warn("sights: can't read reticle = {} (duplex, mildot or dot); duplex kept", *t);
+        }
+    }
+    if (auto const t = text("source")) {
+        std::string lower = *t;
+        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (lower == "other") {
+            out.otherEye = true;
+        } else if (lower == "same") {
+            out.otherEye = false;
+        } else {
+            log::Warn("sights: can't read source = {} (other or same); other kept", *t);
+        }
+    }
+    return out;
+}
+
+std::string Describe(vr::sights::Settings const& s) {
+    namespace sv = vr::sights;
+    if (!s.enabled) {
+        return "off";
+    }
+    std::string guns;
+    for (int w = 0; w < sv::kWeaponTypes; ++w) {
+        sv::Gun const& g = s.guns[w];
+        guns += std::format("{}{} {}{}{}", guns.empty() ? "" : ", ", sv::WeaponName(w), sv::Name(g.kind),
+            g.kind == sv::Kind::Scope ? std::format(" {:.1f}x", g.zoom) : std::string(),
+            g.kind == sv::Kind::None ? std::string()
+            : g.autoPlace         ? std::string(" (placed auto)")
+                                  : std::format(" ({:.1f} back, {:.1f} up)", g.back, g.height));
+    }
+    return std::format("on: {}; dot #{:06X} {:.2f} deg, ring {:.2f} deg, window {:.1f} units{}, zero {}; scope lens {:.1f} units, "
+                       "{} reticle #{:06X}, {} eye's picture, focus {:.0f} m, eye relief {:.2f} m, {} px; ring reticle {}, scoped "
+                       "aimed fire {}",
+        guns, s.dotColor, s.dotSizeDeg, s.ringSizeDeg, s.windowUnits, s.frame ? " (framed)" : "",
+        s.zeroM > 0.0f ? std::format("{:.0f} m", s.zeroM) : std::string("parallel"), s.lensUnits, sv::Name(s.scopeReticle),
+        s.scopeColor, s.otherEye ? "the other" : "the same", s.focusM, s.eyeReliefM, s.resolution,
+        s.replaceRing ? "hidden while sighting" : "kept", s.aimedFire ? "on" : "off");
+}
+
+vr::sights::Settings gSights;
+std::string gSightsText;
+
 Sample ReadSample(Ini const& ini) {
     Sample sample;
     double request = 0.0;
@@ -646,6 +805,10 @@ Squad GetSquad() {
     return gSquad;
 }
 
+vr::sights::Settings GetSights() {
+    return gSights;
+}
+
 std::optional<ik::ArmLengths> MeasureArmLength(ik::ArmLengthSample const& sample) {
     auto const arms = ik::ArmLengthFromTPose(sample);
     if (!arms) {
@@ -673,7 +836,7 @@ void Refresh() {
     fs::path const path = FilePath();
     std::error_code ec;
     if (!fs::exists(path, ec)) {
-        std::ofstream(path) << kDefaultFile << kControlsBlock << kHolstersBlock << kSquadBlock;
+        std::ofstream(path) << kDefaultFile << kControlsBlock << kHolstersBlock << kSquadBlock << kSightsBlock;
         log::Info("hands: wrote default calibration to {}", path.string());
     }
     auto stamp = fs::last_write_time(path, ec);
@@ -696,6 +859,12 @@ void Refresh() {
     if (ini.find("Squad") == ini.end()) {
         std::ofstream(path, std::ios::app) << kSquadBlock;
         log::Info("hands: added the [Squad] defaults to {}", path.string());
+        ini = ReadIni(path);
+        stamp = fs::last_write_time(path, ec);
+    }
+    if (ini.find("Sights") == ini.end()) {
+        std::ofstream(path, std::ios::app) << kSightsBlock;
+        log::Info("hands: added the [Sights] defaults to {}", path.string());
         ini = ReadIni(path);
         stamp = fs::last_write_time(path, ec);
     }
@@ -758,6 +927,11 @@ void Refresh() {
     if (std::string const text = Describe(gSquad); text != gSquadText) {
         gSquadText = text;
         log::Info("squad: settings: {}", text);
+    }
+    gSights = ReadSights(ini);
+    if (std::string const text = Describe(gSights); text != gSightsText) {
+        gSightsText = text;
+        log::Info("sights: settings: {}", text);
     }
     gHaveStamp = true;
     Values const values = ReadValues(ini);

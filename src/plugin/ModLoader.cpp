@@ -10,6 +10,7 @@
 #include "core/vr/AimRay.hpp"
 #include "core/vr/Floor.hpp"
 #include "core/vr/HostView.hpp"
+#include "core/vr/Sights.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "plugin/Halcyon.hpp"
 #include "plugin/TestLoop.hpp"
@@ -113,6 +114,16 @@ void HostSetWheelPanel(vr::squad_menu::wheel::Panel const* panel) {
         vr::squad_menu::wheel::ResetPanel();
     }
 }
+void HostSetSight(vr::sights::Sight const* sight) {
+    if (sight != nullptr) {
+        vr::sights::Publish(*sight);
+    } else {
+        vr::sights::Reset();
+    }
+}
+std::uint32_t HostSightView() {
+    return vr::sights::LatestView();
+}
 HostServices const gServices{kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
     static_cast<std::uint32_t>(sizeof(vr::controllers::State)), static_cast<std::uint32_t>(sizeof(vr::host_view::State)),
     &HostSetProcessEventCallback, &HostProcessExiting, &HostKeepLoaded,
@@ -121,7 +132,8 @@ HostServices const gServices{kHostServicesVersion, kHostLog, &HostControllers, &
     static_cast<std::uint32_t>(sizeof(HostServices)), &HostHapticPulseHz, &HostHapticContinuous,
     static_cast<std::uint32_t>(sizeof(vr::floor::State)), &HostFloor,
     static_cast<std::uint32_t>(sizeof(vr::squad_menu::View)), &HostSetSquadMenu, &HostLeftGripAway,
-    static_cast<std::uint32_t>(sizeof(vr::squad_menu::wheel::Panel)), &HostSetWheelPanel};
+    static_cast<std::uint32_t>(sizeof(vr::squad_menu::wheel::Panel)), &HostSetWheelPanel,
+    static_cast<std::uint32_t>(sizeof(vr::sights::Sight)), &HostSetSight, &HostSightView};
 // A mod that's gone can't aim: Halcyon's head aim must come back, the reticle go, the pad mapping
 // forget the two-handed grip (the grip holding the gun, the squad menu's controls), the squad menu and the
 // wheel panel settings go, and the controllers stop vibrating.
@@ -130,6 +142,7 @@ void ForgetModState() {
     vr::aim_ray::Reset();
     vr::squad_menu::Reset();
     vr::squad_menu::wheel::ResetPanel();
+    vr::sights::Reset();
     halcyon::ForgetSupportGrip();
     halcyon::ForgetHaptics();
 }
