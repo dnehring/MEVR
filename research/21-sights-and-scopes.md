@@ -80,7 +80,7 @@ step 14.
 | | 1. Collimated dot / holo | 2. PiP magnifier | 3. Render-to-texture |
 |---|---|---|---|
 | What | A reticle quad far out along the sight line, shown only to an eye looking through the window | A disc at the eyepiece showing a magnified crop of an eye image already rendered | An extra scene render with a narrow FOV behind the lens |
-| Detail | n/a (no zoom) | The eye image's pixels, enlarged (4x: about 5 source pixels per degree) | Full detail |
+| Detail | n/a (no zoom) | The eye image's pixels, enlarged (4x: about 6 source pixels per degree of the target) | Full detail |
 | Cost | Two static quads | One eye-image copy and one 768-pixel shader pass per frame while aiming | A third scene render (or a reduced one), engine work in Halcyon's render path |
 | Risk | Low | Medium: parallax between the eyes, blur at high zoom | High: invasive in Halcyon's core, the performance budget |
 
