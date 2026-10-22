@@ -231,6 +231,10 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/OverlayPlacement.hpp
     src/core/vr/PoseRecording.cpp
     src/core/vr/PoseRecording.hpp
+    src/core/vr/Recenter.cpp
+    src/core/vr/Recenter.hpp
+    src/core/vr/Sights.cpp
+    src/core/vr/Sights.hpp
     src/core/vr/SquadMenu.cpp
     src/core/vr/SquadMenu.hpp
     src/core/vr/TestRequest.cpp
@@ -255,6 +259,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/MevrMenu.hpp
     src/plugin/MevrMenuPointer.cpp
     src/plugin/MevrMenuTab.cpp
+    src/plugin/RecenterTilt.cpp
+    src/plugin/RecenterTilt.hpp
     src/plugin/SquadPanel.cpp
     src/plugin/SquadPanel.hpp
     src/plugin/SquadPanelDraw.cpp
@@ -330,6 +336,8 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/MenuPointer.cpp
         src/core/vr/OverlayPlacement.cpp
         src/core/vr/PoseRecording.cpp
+        src/core/vr/Recenter.cpp
+        src/core/vr/Sights.cpp
         src/core/vr/SquadMenu.cpp
         src/core/vr/TestRequest.cpp
         src/core/vr/ViewSync.cpp

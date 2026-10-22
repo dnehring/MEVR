@@ -577,6 +577,10 @@ struct VrConfig
     // past panelFollowDeg for a second. Off = upstream's head-locked (VIEW space) quads.
     bool  worldLockedPanels = true;
     float panelFollowDeg = 70.0f;      // 0 = never follows
+    // [MEVR] Recenter (R) also corrects a badly tilted tracking space (src/plugin/RecenterTilt.cpp): with the
+    // head's up more than this many degrees from the base space's up (or rolled past 90), a recenter takes
+    // the head's full orientation instead of its yaw only. 0 = upstream's yaw-only recenter, always.
+    float recenterTiltDeg = 60.0f;
 
     // ---- Menu comfort ----
     float menuDistanceM = 1.54f;   // head-locked menu quad distance in metres (rebaked 2026-08-11; further = less disparity, easier to fuse)

@@ -26,6 +26,7 @@
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/WheelCrop.hpp"
 #include "plugin/Halcyon.hpp"
+#include "plugin/RecenterTilt.hpp"
 #include "plugin/SquadPanel.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/WorldPanels.hpp"
@@ -1163,6 +1164,7 @@ bool HudPanelIsFloat() noexcept {
 }
 
 void OnRecentered() noexcept {
+    mevr::host::recenter_tilt::Committed();  // the orientation RecenterOrientation chose is the app space's now
     gRecentered.store(true, std::memory_order_release);
     gWheelRecentered.store(true, std::memory_order_release);  // an open wheel's panel is placed again
     RecenterWorldPanels();  // the world-locked flat panels too (plugin/WorldPanels.cpp)
@@ -1230,6 +1232,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     std::uint64_t const now = GetTickCount64();
     float const dt = gLastFrameMs == 0 ? 0.0f : static_cast<float>(now - gLastFrameMs) / 1000.0f;
     gLastFrameMs = now;
+    mevr::host::recenter_tilt::NoteHead(frame.headOrientation, frame.headValid);  // the tilt-correcting recenter's watch
 
     // The panel is for gameplay (modes 0-4: on foot, Mako, wheels, squad command). Conversations and
     // cutscenes in VR keep Halcyon's presentation: head tracking is parked there and their UI stays in

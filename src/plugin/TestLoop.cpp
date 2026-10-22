@@ -3,6 +3,7 @@
 // (src/halcyon/le1/mevr_bridge.h), called from xr_session.cpp's ResolveSessionFunctions.
 
 #include "plugin/TestLoop.hpp"
+#include "plugin/RecenterTilt.hpp"
 
 #include "halcyon/le1/mevr_bridge.h"
 #include "halcyon/le1/vr_menu.h"
@@ -758,12 +759,12 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
         "  \"head\": {},\n  \"controllers\": {{\"active\": {}, \"left\": {}, \"right\": {}}},\n"
         "  \"aimRay\": {{\"valid\": {}, \"origin\": {}, \"direction\": {}, \"ageMs\": {}}},\n"
         "  \"hostView\": {{\"valid\": {}, \"headLook\": {}, \"headAim\": {}, \"lookYawUU\": {}, \"lookPitchUU\": {}, "
-        "\"offsetUU\": [{}, {}, {}], \"unitsPerMeter\": {}}},\n  \"mod\": {},\n  \"layers\": [{}\n  ]",
+        "\"offsetUU\": [{}, {}, {}], \"unitsPerMeter\": {}}},\n  \"recenter\": {},\n  \"mod\": {},\n  \"layers\": [{}\n  ]",
         req::JsonString(trigger), req::JsonString(tag), gFrame, static_cast<long long>(displayTime), UnixMs(), J(gFocused),
         J(MELEVR::Menu::IsOpen()), J(gRecordingActive.load()), replay, head, J(c.active), JHand(c.left), JHand(c.right),
         J(ray.valid), JVec(ray.origin), JVec(ray.direction), ray.timeMs != 0 ? GetTickCount64() - ray.timeMs : 0,
         J(view.valid), J(view.headLook), J(view.headAim), view.lookYaw, view.lookPitch, J(view.offsetForward),
-        J(view.offsetRight), J(view.offsetUp), J(view.unitsPerMeter), mod, LayersJson(layers));
+        J(view.offsetRight), J(view.offsetUp), J(view.unitsPerMeter), recenter_tilt::StatusJson(), mod, LayersJson(layers));
 }
 
 // The capture's last armed frame: what was submitted, where the quads are, the metadata.

@@ -2555,6 +2555,15 @@ bool DoRecenter(XrTime displayTime) noexcept
     rsci.type = XR_TYPE_REFERENCE_SPACE_CREATE_INFO_VALUE;
     rsci.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_LOCAL_VALUE;
     rsci.poseInReferenceSpace.orientation = EulerYawToQuat(yawDeg);   // face current yaw, level
+    {   // [MEVR] a base space that is badly tilted (SteamVR once started with the head rolled 180 degrees) is
+        // corrected too: then the head's full orientation; else the yaw-only pose above, unchanged
+        const XrQuaternionf& h = baseViews[0].pose.orientation;
+        XrQuaternionf& q = rsci.poseInReferenceSpace.orientation;
+        const float head[4] = {h.x, h.y, h.z, h.w};
+        float out[4] = {q.x, q.y, q.z, q.w};
+        MELEVR::MevrBridge::RecenterOrientation(head, !g_haveRecentered, out);
+        q.x = out[0]; q.y = out[1]; q.z = out[2]; q.w = out[3];
+    }
     rsci.poseInReferenceSpace.position.x = (baseViews[0].pose.position.x + baseViews[1].pose.position.x) * 0.5f;
     rsci.poseInReferenceSpace.position.y = (baseViews[0].pose.position.y + baseViews[1].pose.position.y) * 0.5f;
     rsci.poseInReferenceSpace.position.z = (baseViews[0].pose.position.z + baseViews[1].pose.position.z) * 0.5f;

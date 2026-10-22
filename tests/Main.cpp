@@ -19,6 +19,8 @@
 #include "core/vr/MenuPointer.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/PoseRecording.hpp"
+#include "core/vr/Recenter.hpp"
+#include "core/vr/Sights.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "core/vr/ViewSync.hpp"
@@ -3648,7 +3650,249 @@ void TestWheelCrop() {
     CHECK(tiny.width == 16 && tiny.x + tiny.width <= 1000 && tiny.y == 0 && tiny.height == 800);
 }
 
+// ---- The recenter that corrects a tilted base space (core/vr/Recenter) ----------------------------------
+bool SameQuat(XrQuaternionf a, XrQuaternionf b) {
+    return a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w;
+}
+// The same rotation (q and -q alike).
+bool NearQuat(XrQuaternionf a, XrQuaternionf b, double tolerance = 1e-4) {
+    double const dot = std::abs(a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w);
+    return dot >= 1.0 - tolerance;
+}
+
+void TestRecenterTilt() {
+    namespace rc = mevr::vr::recenter;
+    rc::Settings const settings;  // 60 degrees, 1.5 s
+    XrQuaternionf const identity{0.0f, 0.0f, 0.0f, 1.0f};
+
+    // Level, and level turned: nothing to correct; upstream's yaw-only pose comes back bit for bit.
+    rc::Tilt const level = rc::Measure(identity);
+    CHECK(NearD(level.upAngleDeg, 0.0, 0.05) && NearD(level.rollDeg, 0.0, 0.05) && NearD(level.pitchDeg, 0.0, 0.05));
+    XrQuaternionf const yaw = AxisAngle(0, 1, 0, 40);
+    rc::Decision d = rc::Decide(yaw, yaw, settings, false, 10.0f);
+    CHECK(d.kind == rc::Kind::YawOnly && SameQuat(d.orientation, yaw));
+
+    // Rolled (positive = right ear down: about the forward, -Z) and pitched (about +X).
+    rc::Tilt const rolled = rc::Measure(AxisAngle(0, 0, -1, 30));
+    CHECK(NearD(rolled.rollDeg, 30.0, 0.05) && NearD(rolled.upAngleDeg, 30.0, 0.05) && NearD(rolled.pitchDeg, 0.0, 0.05));
+    rc::Tilt const down = rc::Measure(AxisAngle(1, 0, 0, -70));
+    CHECK(NearD(down.pitchDeg, -70.0, 0.05) && NearD(down.upAngleDeg, 70.0, 0.05) && NearD(down.rollDeg, 0.0, 0.05));
+    rc::Tilt const straightDown = rc::Measure(AxisAngle(1, 0, 0, -90));
+    CHECK(!straightDown.rollKnown && NearD(straightDown.upAngleDeg, 90.0, 0.05));
+    // Yaw doesn't change any of them.
+    rc::Tilt const turnedRolled = rc::Measure(rc::Compose(AxisAngle(0, 1, 0, 120), AxisAngle(0, 0, -1, 30)));
+    CHECK(NearD(turnedRolled.rollDeg, 30.0, 0.05) && NearD(turnedRolled.upAngleDeg, 30.0, 0.05));
+
+    // Upside down (SteamVR's bad start: the head rolled 180 degrees in the base space): corrected at once
+    // on a recenter the player asks for, never on the automatic first one, never with the setting off.
+    XrQuaternionf const upsideDown = rc::Compose(AxisAngle(0, 1, 0, 25), AxisAngle(0, 0, 1, 180));
+    rc::Tilt const flipped = rc::Measure(upsideDown);
+    CHECK(rc::UpsideDown(flipped) && NearD(flipped.upAngleDeg, 180.0, 0.05) && NearD(std::abs(flipped.rollDeg), 180.0, 0.05));
+    d = rc::Decide(upsideDown, yaw, settings, false, 0.0f);
+    CHECK(d.kind == rc::Kind::Corrected && NearQuat(d.orientation, upsideDown));
+    // After it, the head sits level and straight ahead in the new app space (the app's orientation
+    // undone: conj(app) * head).
+    XrQuaternionf const app = d.orientation;
+    XrQuaternionf const inApp = rc::Compose({-app.x, -app.y, -app.z, app.w}, upsideDown);
+    CHECK(NearQuat(inApp, identity));
+    // ...and a later head motion keeps its sense: nodding down in the room is nodding down in the app space.
+    XrQuaternionf const nodInApp = rc::Compose({-app.x, -app.y, -app.z, app.w}, rc::Compose(upsideDown, AxisAngle(1, 0, 0, -20)));
+    CHECK(NearD(rc::Measure(nodInApp).pitchDeg, -20.0, 0.05) && NearD(rc::Measure(nodInApp).rollDeg, 0.0, 0.05));
+    CHECK(rc::Decide(upsideDown, yaw, settings, true, 10.0f).kind == rc::Kind::YawOnly);
+    rc::Settings off = settings;
+    off.tiltDeg = 0.0f;
+    d = rc::Decide(upsideDown, yaw, off, false, 10.0f);
+    CHECK(d.kind == rc::Kind::YawOnly && SameQuat(d.orientation, yaw));
+    // Rolled past 90 on its side: the same.
+    CHECK(rc::Decide(AxisAngle(0, 0, -1, 100), yaw, settings, false, 0.0f).kind == rc::Kind::Corrected);
+
+    // Looking down 70 degrees: tilted past 60, but it's a glance at the hands until it has lasted.
+    XrQuaternionf const lookDown = AxisAngle(1, 0, 0, -70);
+    CHECK(rc::Tilted(rc::Measure(lookDown), settings) && !rc::UpsideDown(rc::Measure(lookDown)));
+    CHECK(rc::Decide(lookDown, yaw, settings, false, 0.3f).kind == rc::Kind::YawOnly);
+    CHECK(rc::Decide(lookDown, yaw, settings, false, 2.0f).kind == rc::Kind::Corrected);
+    // 50 degrees down: never.
+    CHECK(rc::Decide(AxisAngle(1, 0, 0, -50), yaw, settings, false, 30.0f).kind == rc::Kind::YawOnly);
+    // Straight down (no roll to speak of): only when it has lasted.
+    CHECK(rc::Decide(AxisAngle(1, 0, 0, -90), yaw, settings, false, 0.0f).kind == rc::Kind::YawOnly);
+
+    // The watch: grows while tilted, shrinks three times as fast, a hitch counts as a quarter second.
+    rc::TiltWatch watch;
+    for (int i = 0; i < 20; ++i) {
+        watch.Note(true, 0.1f);
+    }
+    CHECK(NearD(watch.Seconds(), 2.0, 1e-4));
+    for (int i = 0; i < 5; ++i) {
+        watch.Note(false, 0.1f);
+    }
+    CHECK(NearD(watch.Seconds(), 0.5, 1e-4));
+    watch.Note(true, 5.0f);
+    CHECK(NearD(watch.Seconds(), 0.75, 1e-4));
+    watch.Note(false, 1.0f);
+    CHECK(watch.Seconds() < 1e-6f);
+}
+
+// ---- Sights and scopes (core/vr/Sights) ------------------------------------------------------------------
+void TestSightSettings() {
+    namespace s = mevr::vr::sights;
+    s::Gun const none;
+    auto gun = s::ParseGun("scope 6", none);
+    CHECK(gun && gun->kind == s::Kind::Scope && gun->zoom == 6.0f);
+    gun = s::ParseGun(" Holo ", none);
+    CHECK(gun && gun->kind == s::Kind::Holo && gun->zoom == 1.0f);
+    gun = s::ParseGun("scope", s::Gun{s::Kind::Scope, 3.0f});
+    CHECK(gun && gun->kind == s::Kind::Scope && gun->zoom == 3.0f);
+    gun = s::ParseGun("scope", none);
+    CHECK(gun && gun->zoom == 4.0f);
+    gun = s::ParseGun("scope 40", none);
+    CHECK(gun && gun->zoom == 12.0f);
+    CHECK(s::ParseGun("dot 4", none) == std::nullopt);
+    CHECK(s::ParseGun("laser", none) == std::nullopt);
+    CHECK(s::ParseGun("", none) == std::nullopt);
+    gun = s::ParseGun("none", s::Gun{s::Kind::Dot});
+    CHECK(gun && gun->kind == s::Kind::None);
+
+    s::Gun place;
+    CHECK(s::ParsePlace("30, 6", place) && !place.autoPlace && place.back == 30.0f && place.height == 6.0f);
+    CHECK(s::ParsePlace("auto", place) && place.autoPlace);
+    CHECK(!s::ParsePlace("30", place) && !s::ParsePlace("a, b", place));
+
+    CHECK(s::ParseColor("#00ff00") == 0x00FF00u && s::ParseColor("FF3020") == 0xFF3020u && s::ParseColor("0x123456") == 0x123456u);
+    CHECK(s::ParseColor("green") == 0x30FF40u && s::ParseColor("12345") == std::nullopt && s::ParseColor("zzzzzz") == std::nullopt);
+    CHECK(s::ParseScopeReticle("mil-dot") == s::ScopeReticle::MilDot && s::ParseScopeReticle("x") == std::nullopt);
+
+    // Auto placement: a share of the gun's muzzle-to-grip length, a typical one when it's unknown.
+    s::Gun const placed = s::AutoPlace(0, s::Gun{s::Kind::Dot}, 27.2f);
+    CHECK(NearD(placed.back, 0.75 * 27.2, 1e-4) && placed.height > 0.0f);
+    CHECK(NearD(s::AutoPlace(3, s::Gun{s::Kind::Scope, 4.0f}, 0.0f).back, 1.05 * 55.0, 1e-4));
+    s::Gun fixed{s::Kind::Holo};
+    fixed.autoPlace = false;
+    fixed.back = 12.0f;
+    CHECK(s::AutoPlace(2, fixed, 39.0f).back == 12.0f);
+}
+
+void TestSightGeometry() {
+    namespace s = mevr::vr::sights;
+    using mevr::vr::overlay::Rotate;
+    XrVector3f const muzzle{0.0f, 0.0f, -1.0f};
+    XrVector3f const barrel{0.0f, 0.0f, -1.0f};
+    XrVector3f const up{0.0f, 1.0f, 0.0f};
+    // The sight 0.3 m behind the muzzle and 5 cm over the bore.
+    XrVector3f const center = s::Place(muzzle, barrel, up, 0.3f, 0.05f);
+    CHECK(NearXr(center, {0.0f, 0.05f, -0.7f}));
+    // The gun's top: the controller's up made perpendicular to the barrel.
+    auto const top = s::TopOf(barrel, {0.1f, 1.0f, 0.3f});
+    CHECK(top && NearD(top->z, 0.0, 1e-5) && NearD(top->x * top->x + top->y * top->y, 1.0, 1e-5));
+    CHECK(!s::TopOf(barrel, {0.0f, 0.0f, 2.0f}));
+    // Zeroing: parallel without, down onto the shot's line at the zero.
+    CHECK(NearXr(s::Zeroed(center, muzzle, barrel, 0.0f), barrel));
+    XrVector3f const zeroed = s::Zeroed(center, muzzle, barrel, 10.0f);
+    CHECK(zeroed.y < 0.0f && NearD(zeroed.y / -zeroed.z, -0.05 / 10.3, 1e-4));
+
+    // An eye 10 cm behind the sight, 1 cm to the right of its line.
+    s::Line const line = s::EyeLine({0.01f, 0.05f, -0.6f}, center, barrel, up);
+    CHECK(NearD(line.along, 0.1, 1e-5) && NearD(line.lateral, 0.01, 1e-5) && NearD(line.x, 0.01, 1e-5) && NearD(line.y, 0.0, 1e-5));
+    // In front of the sight: negative along.
+    CHECK(s::EyeLine({0.0f, 0.05f, -0.9f}, center, barrel, up).along < 0.0f);
+
+    // Looking through a 2 cm window: on inside it, kept to 2.5 cm, off beyond, back on only inside 2 cm.
+    s::Looking looking;
+    auto at = [](float lateral, float along) {
+        s::Line l;
+        l.lateral = lateral;
+        l.along = along;
+        return l;
+    };
+    CHECK(looking.Update(at(0.019f, 0.1f), 0.02f, 0.02f, 1.0f));
+    CHECK(looking.Update(at(0.024f, 0.1f), 0.02f, 0.02f, 1.0f));
+    CHECK(!looking.Update(at(0.026f, 0.1f), 0.02f, 0.02f, 1.0f));
+    CHECK(!looking.Update(at(0.022f, 0.1f), 0.02f, 0.02f, 1.0f));
+    CHECK(!looking.Update(at(0.01f, 0.01f), 0.02f, 0.02f, 1.0f));  // too close
+    CHECK(!looking.Update(at(0.01f, 1.5f), 0.02f, 0.02f, 1.0f));   // too far
+    CHECK(looking.Update(at(0.01f, 0.5f), 0.02f, 0.02f, 1.0f));
+
+    // Which eye aims through a scope (box 4 cm): the nearer one; the current one kept unless clearly worse.
+    s::Line lines[2] = {at(0.07f, 0.1f), at(0.01f, 0.1f)};
+    CHECK(s::AimingEye(lines, 0.04f, 0.01f, 0.6f, -1) == 1);
+    lines[1] = at(0.045f, 0.1f);
+    CHECK(s::AimingEye(lines, 0.04f, 0.01f, 0.6f, 1) == 1);   // kept within 1.25 box
+    CHECK(s::AimingEye(lines, 0.04f, 0.01f, 0.6f, -1) == -1); // but not taken there
+    lines[0] = at(0.005f, 0.1f);
+    CHECK(s::AimingEye(lines, 0.04f, 0.01f, 0.6f, 1) == 0);   // the other is clearly nearer
+    lines[0] = at(0.035f, 0.1f);
+    lines[1] = at(0.04f, 0.1f);
+    CHECK(s::AimingEye(lines, 0.04f, 0.01f, 0.6f, 1) == 1);   // nearer, but not clearly
+
+    // The collimated reticle: 100 m out along the line, facing back, 1 degree across.
+    s::Quad const reticle = s::Reticle({0.0f, 0.0f, 0.0f}, barrel, up, 100.0f, static_cast<float>(std::numbers::pi / 180.0));
+    CHECK(NearXr(reticle.pose.position, {0.0f, 0.0f, -100.0f}) && NearD(reticle.size, 200.0 * std::tan(std::numbers::pi / 360.0), 1e-3));
+    CHECK(NearXr(Rotate(reticle.pose.orientation, {0.0f, 0.0f, 1.0f}), {0.0f, 0.0f, 1.0f}) &&
+        NearXr(Rotate(reticle.pose.orientation, {0.0f, 1.0f, 0.0f}), up));
+    s::Quad const disc = s::Disc(center, barrel, up, 0.02f);
+    CHECK(NearXr(disc.pose.position, center) && NearD(disc.size, 0.04, 1e-6));
+}
+
+void TestScopeMapping() {
+    namespace s = mevr::vr::sights;
+    XrVector3f const axis{0.0f, 0.0f, -1.0f};
+    XrVector3f const up{0.0f, 1.0f, 0.0f};
+    auto const lens = s::MakeLens({0.0f, 0.0f, -0.1f}, axis, up, 0.02f);
+    CHECK(lens && NearXr(lens->right, {1.0f, 0.0f, 0.0f}));
+    if (!lens) {
+        return;
+    }
+    // An eye 10 cm behind the eyepiece, on its line.
+    auto view = s::View(*lens, {0.0f, 0.0f, 0.0f}, 0.1f);
+    CHECK(view && NearD(view->along, 0.1, 1e-6) && NearD(view->qx, 0.0, 1e-6) && view->pupil == 1.0f);
+    if (!view) {
+        return;
+    }
+    // Zoom 1: a lens point shows what's behind it (the direction from the eye to it).
+    CHECK(NearXr(s::LensDirection(*lens, *view, 1.0f, 0.0f, 1.0f), {0.02f, 0.0f, -0.1f}));
+    CHECK(NearXr(s::LensDirection(*lens, *view, 0.0f, -1.0f, 1.0f), {0.0f, -0.02f, -0.1f}));
+    // Zoom 4: the angle off the line (its tangent) is a quarter; the centre stays on the line.
+    CHECK(NearXr(s::LensDirection(*lens, *view, 1.0f, 0.0f, 4.0f), {0.005f, 0.0f, -0.1f}));
+    CHECK(NearXr(s::LensDirection(*lens, *view, 0.0f, 0.0f, 4.0f), {0.0f, 0.0f, -0.1f}));
+    // An eye 1 cm off to the right: the line through it meets the lens half a radius right, and that
+    // point shows straight along the sight line (collimated: the reticle there stays on target).
+    auto const off = s::View(*lens, {0.01f, 0.0f, 0.0f}, 0.1f);
+    CHECK(off && NearD(off->qx, 0.5, 1e-5) && NearD(off->qy, 0.0, 1e-5));
+    if (off) {
+        CHECK(NearXr(s::LensDirection(*lens, *off, 0.5f, 0.0f, 4.0f), {0.0f, 0.0f, -0.1f}));
+    }
+    // Eye relief: full up to 1.5 reliefs, then shrinking, none past 6.
+    auto const back = s::View(*lens, {0.0f, 0.0f, 0.2f}, 0.1f);  // 0.3 m back
+    CHECK(back && NearD(back->pupil, 0.5, 1e-5));
+    CHECK(!s::View(*lens, {0.0f, 0.0f, 0.6f}, 0.1f));    // 0.7 m back
+    CHECK(!s::View(*lens, {0.0f, 0.0f, -0.12f}, 0.1f));  // in front of the eyepiece
+
+    // Where the magnified direction lands: 40 m out along the axis, then into an eye image.
+    XrVector3f const point = s::FocusPoint({0.0f, 0.0f, 0.0f}, s::LensDirection(*lens, *view, 1.0f, 0.0f, 4.0f), axis, 40.0f);
+    CHECK(NearXr(point, {2.0f, 0.0f, -40.0f}, 1e-3));
+    XrPosef const eye{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
+    XrFovf const fov{-0.7853982f, 0.7853982f, 0.7853982f, -0.7853982f};
+    float u = 0.0f;
+    float v = 0.0f;
+    CHECK(s::Project(eye, fov, {0.0f, 0.0f, -10.0f}, u, v) && NearD(u, 0.5, 1e-5) && NearD(v, 0.5, 1e-5));
+    CHECK(s::Project(eye, fov, {10.0f, 0.0f, -10.0f}, u, v) && NearD(u, 1.0, 1e-4));
+    CHECK(s::Project(eye, fov, {0.0f, 10.0f, -10.0f}, u, v) && NearD(v, 0.0, 1e-4));
+    CHECK(!s::Project(eye, fov, {0.0f, 0.0f, 1.0f}, u, v));
+    // Turned 90 degrees left, the image's centre looks along -X.
+    XrPosef const turned{AxisAngle(0, 1, 0, 90), {0.0f, 0.0f, 0.0f}};
+    CHECK(s::Project(turned, fov, {-10.0f, 0.0f, 0.0f}, u, v) && NearD(u, 0.5, 1e-4) && NearD(v, 0.5, 1e-4));
+    // The other eye (6.4 cm left) as the source: something at the focus distance on the sight line lands
+    // exactly where that eye sees it, so the lens centre shows it whichever eye's image is magnified.
+    XrPosef const left{{0.0f, 0.0f, 0.0f, 1.0f}, {-0.064f, 0.0f, 0.0f}};
+    XrVector3f const onLine = s::FocusPoint({0.0f, 0.0f, 0.0f}, s::LensDirection(*lens, *view, 0.0f, 0.0f, 4.0f), axis, 40.0f);
+    CHECK(NearXr(onLine, {0.0f, 0.0f, -40.0f}, 1e-4));
+    CHECK(s::Project(left, fov, onLine, u, v) && NearD(u, 0.5 + 0.5 * 0.064 / 40.0, 1e-5) && NearD(v, 0.5, 1e-5));
+}
+
 int main() {
+    TestRecenterTilt();
+    TestSightSettings();
+    TestSightGeometry();
+    TestScopeMapping();
     TestBoneNames();
     TestIk();
     TestRigid();

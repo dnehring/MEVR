@@ -126,6 +126,14 @@ bool HudPanelIsFloat() noexcept;
 // flat panels are placed afresh in front of the head.
 void OnRecentered() noexcept;
 
+// ---- A recenter that also corrects a tilted base space (src/plugin/RecenterTilt.cpp) --------------------
+// DoRecenter, before it creates the new app space: `head` is the head's orientation in the never-moved base
+// space (xyzw), `orientation` holds upstream's yaw-only re-origin orientation. Left as it is (bit for bit)
+// unless the base space is badly tilted (MELEVR.ini recenterTiltDeg, core/vr/Recenter), when it becomes the
+// head's full orientation. `automatic`: Halcyon's first recenter when tracking starts (never corrected).
+// Logs which kind of recenter ran; OnRecentered confirms it took.
+void RecenterOrientation(float const head[4], bool automatic, float orientation[4]) noexcept;
+
 // ---- World-locked flat panels (src/plugin/WorldPanels.cpp) -------------------------------------------
 // Halcyon's flat screen (menus, galaxy map, flat conversations, cutscenes, movies) and its Insert menu are
 // head-locked upstream (VIEW space). With MELEVR.ini worldLockedPanels on they stay put in the app space
