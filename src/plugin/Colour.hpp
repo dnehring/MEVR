@@ -46,4 +46,21 @@ std::string StatusJson();
 // Inside the VR hands tab (MevrMenuTab.cpp): the profile, live sliders, hold to compare.
 void MenuSection();
 
+// For our main menu's Display page (plugin/MainMenuSettings).
+struct MenuState {
+    vr::colour::Profile chosen = vr::colour::Profile::Auto;
+    vr::colour::Profile effective = vr::colour::Profile::Neutral;
+    vr::colour::Settings settings;   // what applies
+    vr::colour::Settings custom;     // the headset's Custom values
+    vr::colour::Detection detection;
+    std::string runtime;             // xrGetInstanceProperties' runtime name ("" before VR starts)
+    std::string system;              // xrGetSystemProperties' system name
+    bool compareInFile = false;      // [Colour] compare = 1
+};
+MenuState GetMenuState();
+// Writes [Colour.<headset>] profile = p (as the VR hands tab's radio buttons).
+void SelectProfile(vr::colour::Profile p);
+// The headset's Custom values: applied at once; with `save`, written to the file too (profile = custom).
+void SetCustom(vr::colour::Settings const& settings, bool save);
+
 } // namespace mevr::host::colour

@@ -285,6 +285,53 @@ float ColourFromPercent(float percent) {
     return 1.0f + percent / 100.0f;
 }
 
+std::string HeadsetLabel(std::string_view runtimeName, std::string_view systemName) {
+    std::string system = Trim(systemName);
+    if (system.empty()) {
+        return {};
+    }
+    std::string const lower = Lower(system);
+    if (std::size_t const colon = lower.find(" : "); lower.rfind("steamvr", 0) == 0 && colon != std::string::npos) {
+        std::string const driver = Trim(std::string_view(lower).substr(colon + 3));
+        struct Known {
+            char const* driver;
+            char const* name;
+        };
+        static constexpr Known kKnown[] = {{"playstation_vr2", "PlayStation VR2"}, {"oculus", "Meta Quest"},
+            {"vrlink", "Quest (Steam Link)"}, {"lighthouse", "Index / Vive"}, {"holographic", "Windows Mixed Reality"},
+            {"pico", "Pico"}, {"virtual_desktop", "Virtual Desktop"}};
+        system.clear();
+        for (Known const& k : kKnown) {
+            if (driver == k.driver) {
+                system = k.name;
+            }
+        }
+        if (system.empty()) {
+            bool start = true;
+            for (char const c : driver) {
+                system.push_back(c == '_' ? ' ' : start ? static_cast<char>(std::toupper(static_cast<unsigned char>(c))) : c);
+                start = c == '_';
+            }
+        }
+    }
+    std::string const runtime = Lower(Trim(runtimeName));
+    char const* via = runtime.find("steamvr") != std::string::npos      ? "SteamVR"
+                    : runtime.find("oculus") != std::string::npos ||
+                          runtime.find("meta") != std::string::npos      ? "Link"
+                    : runtime.find("virtualdesktop") != std::string::npos ? "Virtual Desktop"
+                    : runtime.find("vdxr") != std::string::npos           ? "Virtual Desktop"
+                                                                          : "";
+    return *via != '\0' ? system + " \xC2\xB7 " + via : system;
+}
+
+std::string ControllersLabel(std::string_view calibrationLabel) {
+    std::string label = Trim(calibrationLabel);
+    if (std::size_t const bracket = label.find(" ("); bracket != std::string::npos) {
+        label.resize(bracket);
+    }
+    return label;
+}
+
 void PendingWrites::Put(std::string section, std::string key, std::string value, std::uint64_t dueMs) {
     for (Edit& edit : edits_) {
         if (edit.section == section && edit.key == key) {

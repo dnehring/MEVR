@@ -335,11 +335,7 @@ void CameraSection() {
     ImGui::EndDisabled();
     ImGui::TextDisabled("Press R first, standing naturally. Press again after a few seconds to refine.");
     if (ImGui::Button("Align with the left trigger")) {
-        gAlign.store(Align::WaitRelease);
-        gAlignSinceMs = GetTickCount64();
-        gAlignResult.clear();
-        MELEVR::Menu::SetOpen(false);
-        mevr::log::Info("menu: camera alignment armed: stand naturally and pull the left trigger");
+        StartCameraAlign("the VR hands tab");
     }
     ImGui::TextDisabled("Closes the menu. Stand naturally, pull the left trigger, hold still about 6 seconds.");
     if (!gAlignResult.empty()) {
@@ -380,6 +376,22 @@ std::wstring const& SettingsPath() noexcept {
 
 void TakeArmSample(XrVector3f const& left, XrVector3f const& right, XrVector3f const* head, char const* why) noexcept {
     WriteArmSample(left, right, head, why != nullptr ? why : "?");
+}
+
+void StartCameraAlign(char const* why) noexcept {
+    gAlign.store(Align::WaitRelease);
+    gAlignSinceMs = GetTickCount64();
+    gAlignResult.clear();
+    MELEVR::Menu::SetOpen(false);
+    mevr::log::Info("menu: camera alignment armed ({}): stand naturally and pull the left trigger", why != nullptr ? why : "?");
+}
+
+std::string CameraAlignResult() noexcept {
+    return gAlignResult;
+}
+
+bool CameraAlignBusy() noexcept {
+    return gAlign.load(std::memory_order_relaxed) != Align::Idle;
 }
 
 bool CameraAlignOwnsLeftTrigger() noexcept {

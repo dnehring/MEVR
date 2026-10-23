@@ -90,6 +90,13 @@ int MirrorPresentEvery(std::string_view choice);
 float ColourPercent(float value);
 float ColourFromPercent(float percent);
 
+// ---- The top bar's chips --------------------------------------------------------------------------------------
+// "PlayStation VR2 · SteamVR" from xrGetInstanceProperties' runtime name and xrGetSystemProperties' system name
+// (SteamVR's "SteamVR/OpenXR : <tracking system>" names the headset by its driver); "" when VR hasn't started.
+std::string HeadsetLabel(std::string_view runtimeName, std::string_view systemName);
+// The calibration's controller label without the system it adds in brackets ("Sense Controller (...)").
+std::string ControllersLabel(std::string_view calibrationLabel);
+
 // ---- Settings-file edits -------------------------------------------------------------------------------------
 // Edits on their way to an ini file: one per (section, key), the latest value wins, each written when it's due
 // (a slider's 300 ms after it last moved; a toggle at once). Until then a re-read of the file shows the pending

@@ -1518,6 +1518,11 @@ Summary GetSummary() {
             s.results = std::format("{} eye; pistol {}; rifle {}; eyes {} m, crouched {} m", eye.empty() ? "?" : eye,
                 pistol.empty() ? "skipped" : pistol + " deg", rifle.empty() ? "skipped" : rifle + " deg", stand.empty() ? "?" : stand,
                 crouch.empty() ? "?" : crouch);
+            s.eye = eye;
+            s.pistolSpreadDeg = pistol;
+            s.rifleSpreadDeg = rifle;
+            s.standEyeM = stand;
+            s.crouchEyeM = crouch;
         }
     }
     return s;

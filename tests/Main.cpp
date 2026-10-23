@@ -22,6 +22,7 @@
 #include "core/vr/ImageConvert.hpp"
 #include "core/vr/LayerComposite.hpp"
 #include "core/vr/MenuPointer.hpp"
+#include "core/vr/MenuSettings.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/PoseRecording.hpp"
 #include "core/vr/Recenter.hpp"
@@ -43,10 +44,12 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <cstdio>
 #include <cstdlib>
 #include <limits>
 #include <numbers>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -5283,7 +5286,136 @@ void TestCalibration() {
     CHECK(mevr::ik::Shouldered(eyes, ahead, up, eyes + Vec3{0.06, -0.12, -0.15}, true, zone));    // inside with the margin
 }
 
+// The main menu's settings (core/vr/MenuSettings, research/28): the schema, what a slider reads, the conversions
+// between rows and settings, and its edits of an ini file (key by key, the rest of the file untouched).
+void TestMenuSettings() {
+    namespace ms = mevr::vr::menu_settings;
+    // The schema: unique, well-formed keys; numbers' defaults inside their ranges.
+    std::vector<std::string> keys;
+    for (ms::Field const& f : ms::Schema()) {
+        std::string const key = f.key;
+        CHECK(!key.empty());
+        CHECK(std::all_of(key.begin(), key.end(), [](char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'; }));
+        CHECK(std::find(keys.begin(), keys.end(), key) == keys.end());
+        keys.push_back(key);
+        if (f.type == ms::Type::Number) {
+            CHECK(f.min < f.max);
+            CHECK(f.number >= f.min && f.number <= f.max);
+            CHECK(ms::Find(key + "_text") == nullptr);  // the companion's name is free
+        }
+    }
+    CHECK(ms::Find("crouch") != nullptr && ms::Find("crouch")->type == ms::Type::Flag);
+    CHECK(ms::Find("section") != nullptr && ms::Find("section")->local);
+    CHECK(ms::Find("nonsense") == nullptr);
+    ms::Field const* trim = ms::Find("trim_pitch");
+    CHECK(trim != nullptr && ms::Clamp(*trim, 45.0f) == 30.0f && ms::Clamp(*trim, -45.0f) == -30.0f);
+    CHECK(trim != nullptr && ms::Clamp(*trim, std::numeric_limits<float>::quiet_NaN()) == 0.0f);
+    CHECK(ms::Clamp(*ms::Find("crouch"), 0.4f) == 1.0f);
+
+    // What a slider reads.
+    CHECK(ms::FormatValue(ms::Format::SignedPercent, 8.0f) == "+8%");
+    CHECK(ms::FormatValue(ms::Format::SignedPercent, -2.0f) == "-2%");
+    CHECK(ms::FormatValue(ms::Format::SignedPercent, 0.2f) == "0%");  // no "+0" or "-0"
+    CHECK(ms::FormatValue(ms::Format::SignedPercent, -0.2f) == "0%");
+    CHECK(ms::FormatValue(ms::Format::Percent, 60.0f) == "60%");
+    CHECK(ms::FormatValue(ms::Format::SignedDegrees, 4.0f) == "+4\xC2\xB0");
+    CHECK(ms::FormatValue(ms::Format::DegreesOrNever, 0.0f) == "Never");
+    CHECK(ms::FormatValue(ms::Format::DegreesOrNever, 35.0f) == "35\xC2\xB0");
+    CHECK(ms::FormatValue(ms::Format::DegreesPerSec, 120.0f) == "120\xC2\xB0/s");
+    CHECK(ms::FormatValue(ms::Format::Fixed2, 0.92f) == "0.92");
+    CHECK(ms::FormatValue(ms::Format::SignedFixed3, -0.01f) == "-0.010");
+    CHECK(ms::FormatValue(ms::Format::Fixed3, 0.012f) == "0.012");
+    CHECK(ms::FormatValue(ms::Format::Times2, 1.0f) == "1.00\xC3\x97");
+    CHECK(ms::FormatValue(ms::Format::Meters1, 1.6f) == "1.6 m");
+    CHECK(ms::FormatValue(ms::Format::SignedMeters2, 0.125f) == "+0.13 m");
+    CHECK(ms::FormatValue(ms::Format::Fixed1, std::numeric_limits<float>::infinity()) == "?");
+
+    // The render resolution ladder (MELE-VR.bat's tiers, Halcyon's near-square height).
+    CHECK(ms::QualityWidth("performance") == 3072);
+    CHECK(ms::QualityWidth("max") == 6144);
+    CHECK(ms::QualityWidth("huge") == 0);
+    CHECK(std::string(ms::QualityFor(3072)) == "performance");
+    CHECK(std::string(ms::QualityFor(4000)) == "balanced");
+    CHECK(std::string(ms::QualityFor(100)) == "low");
+    CHECK(ms::EyeHeight(3072) == 3188);  // the deploy's Performance target, 3072 x 3188
+    CHECK(ms::EyeHeight(4096) == 4250);  // vr_config.h's sfr2ResX/Y defaults
+    CHECK(ms::QualityText(3072) == "3072 \xC3\x97 3188");
+
+    // Gun sights.
+    CHECK(ms::SightKind("scope 4", "dot") == "scope");
+    CHECK(ms::SightKind(" Holo ", "dot") == "holo");
+    CHECK(ms::SightKind("laser", "dot") == "dot");
+    CHECK(ms::SightValue("dot", "scope 6") == "dot");
+    CHECK(ms::SightValue("scope", "scope 6") == "scope 6");
+    CHECK(ms::SightValue("scope", "scope 2.5") == "scope 2.5");
+    CHECK(ms::SightValue("scope", "holo") == "scope 4");
+    CHECK(ms::SightValue("scope", "scope 99") == "scope 4");
+
+    // The desktop mirror, the colour sliders, the chips.
+    CHECK(ms::MirrorChoice(1) == "every" && ms::MirrorChoice(2) == "smooth" && ms::MirrorChoice(8) == "normal");
+    CHECK(ms::MirrorPresentEvery("every") == 1 && ms::MirrorPresentEvery("smooth") == 2 && ms::MirrorPresentEvery("normal") == 8);
+    CHECK(ms::ColourPercent(1.08f) == 8.0f && ms::ColourPercent(0.98f) == -2.0f);
+    CHECK(std::fabs(ms::ColourFromPercent(12.0f) - 1.12f) < 1e-6f);
+    CHECK(ms::HeadsetLabel("SteamVR/OpenXR", "SteamVR/OpenXR : playstation_vr2") == "PlayStation VR2 \xC2\xB7 SteamVR");
+    CHECK(ms::HeadsetLabel("Oculus", "Meta Quest 3") == "Meta Quest 3 \xC2\xB7 Link");
+    CHECK(ms::HeadsetLabel("SteamVR/OpenXR", "SteamVR/OpenXR : some_new_thing") == "Some New Thing \xC2\xB7 SteamVR");
+    CHECK(ms::HeadsetLabel("", "") .empty());
+    CHECK(ms::ControllersLabel("Sense Controller (SteamVR/OpenXR : playstation_vr2)") == "Sense Controller");
+    CHECK(ms::ControllersLabel("Touch Plus Controller") == "Touch Plus Controller");
+
+    // A section as GetPrivateProfileSection gives it: lower-cased keys, trimmed values, comments skipped.
+    auto const section = ms::ParseSection("; a comment\nphysicalCrouch = 1\n  HandPitch=-4.5 \nbroken line\n");
+    CHECK(section.size() == 2 && section.at("physicalcrouch") == "1" && section.at("handpitch") == "-4.5");
+
+    // The queue of edits: the latest value wins, a slider's waits until it rests, a re-read sees it meanwhile.
+    ms::PendingWrites pending;
+    pending.Put("Hands", "handPitch", "1.0", 1300);
+    pending.Put("Hands", "handPitch", "2.0", 1600);  // the slider moved again: one edit, later
+    pending.Put("Hands", "physicalCrouch", "0", 1000);
+    CHECK(pending.Size() == 2);
+    CHECK(pending.Overlay("Hands", "handPitch") == std::optional<std::string>("2.0"));
+    CHECK(!pending.Overlay("Hands", "handYaw"));
+    std::vector<ms::PendingWrites::Edit> due = pending.TakeDue(1100);
+    CHECK(due.size() == 1 && due[0].key == "physicalCrouch");
+    CHECK(pending.TakeDue(1500).empty());
+    due = pending.TakeDue(0, true);  // the menu closed: everything
+    CHECK(due.size() == 1 && due[0].value == "2.0" && pending.Empty());
+
+    // Written key by key into a real file: the rest of it (other keys, comments, other sections) stays as it was.
+    wchar_t temp[MAX_PATH]{};
+    GetTempPathW(MAX_PATH, temp);
+    std::filesystem::path const file = std::filesystem::path(temp) / L"mevr-menu-settings-test.ini";
+    std::ofstream(file) << "; ME VR Attempt settings\n[Hands]\n; how the hands sit\nhandPitch = 0\nphysicalCrouch = 1\n\n[Sights]\npistol = dot\n";
+    pending.Put("Hands", "physicalCrouch", "0", 0);
+    pending.Put("Sights", "sniperRifle", ms::SightValue("scope", "scope 6"), 0);
+    for (ms::PendingWrites::Edit const& e : pending.TakeDue(0)) {
+        std::wstring const section16(e.section.begin(), e.section.end());
+        std::wstring const key16(e.key.begin(), e.key.end());
+        std::wstring const value16(e.value.begin(), e.value.end());
+        CHECK(WritePrivateProfileStringW(section16.c_str(), key16.c_str(), value16.c_str(), file.c_str()) != 0);
+    }
+    std::string text;
+    {
+        std::ifstream in(file);
+        for (std::string line; std::getline(in, line);) {
+            text += line + "\n";
+        }
+    }
+    CHECK(text.find("; ME VR Attempt settings") != std::string::npos);
+    CHECK(text.find("; how the hands sit") != std::string::npos);
+    CHECK(text.find("handPitch = 0") != std::string::npos);
+    CHECK(text.find("pistol = dot") != std::string::npos);
+    CHECK(text.find("physicalCrouch") == text.rfind("physicalCrouch"));  // replaced in place, not added again
+    wchar_t value[64]{};
+    GetPrivateProfileStringW(L"Hands", L"physicalCrouch", L"", value, 64, file.c_str());
+    CHECK(std::wstring(value) == L"0");
+    GetPrivateProfileStringW(L"Sights", L"sniperRifle", L"", value, 64, file.c_str());
+    CHECK(std::wstring(value) == L"scope 6");
+    std::filesystem::remove(file);
+}
+
 int main() {
+    TestMenuSettings();
     TestCalibration();
     TestViewLevel();
     TestAimAssist();
