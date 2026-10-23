@@ -142,7 +142,9 @@ frame) and our Custom 1 profile has 1.
   - For every full-viewport draw it makes about 8 COM calls: `RSGetViewports`,
     `OMGetRenderTargets`, the RTV and texture `GetDesc`, `GetResource`, `QueryInterface`, and three
     `Release`s. Scene-sized 8-bit targets add `OMGetBlendState` and `PSGetShader`.
-  - On a device made thread-safe by `[SVRFIX]`, each of those calls takes a lock.
+  - ~~On a device made thread-safe by `[SVRFIX]`, each of those calls takes a lock.~~ Wrong
+    (2026-10-22, [22](22-performance-levers.md)): only the device becomes thread-safe; immediate
+    context calls are unlocked unless `ID3D11Multithread::SetMultithreadProtected(TRUE)` is set.
   - At about 2,800 draws per pass this is an estimated 0.5-2 ms per frame. [verify: A/B with
     `hudPanel = 0`]
   - If it matters, a cheap prefilter on Halcyon's cached `g_currentRtvWidth` and
@@ -256,6 +258,11 @@ frame) and our Custom 1 profile has 1.
   ProcessEvent dispatch).
 
 ## Quest Link (Oculus runtime), 2026-10-08 evening
+
+**Correction (2026-10-22, [22](22-performance-levers.md)):** Halcyon's log shows this session on
+SteamVR's OpenXR runtime (`[XRRUNTIME] name='SteamVR/OpenXR'`, recommended eye 2880x2956), and
+SteamVR's compositor log counts 52% of its frames reprojected. The 45 fps is SteamVR's half-rate
+lock, not ASW.
 
 - **Measured:** 45.0 fps in VR cutscenes (Halcyon's `cineFpsCap`) and 46.5-49 fps in gameplay,
   from `tools/perf-summary.py` on the 20:47 session.
