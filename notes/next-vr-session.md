@@ -14,10 +14,10 @@ order, VR conversations and cutscenes; head aim is off (the hand aims). The old 
 is `MELEVR.ini.mevr_old`. Halcyon's log should now show `[TARGETCHK] Stereo 2 target OK` and, in
 gameplay, `[PASSCAP] published complete stereo pair` lines (none of those = no stereo).
 
-**Keys on LE1:** `\` = Halcyon's menu (Insert upstream), or click and hold both thumbsticks to
-open or close it. While it's open the game gets no input. Point at it with a controller (laser
-pointer: trigger clicks, right stick scrolls), or navigate it as a gamepad (left stick or d-pad
-moves, A activates, B backs out). R = recenter
+**Keys on LE1:** `\` = our main menu (since 2026-10-23, step 25), or click and hold both thumbsticks to
+open or close it; **Ctrl + `\`** = Halcyon's old menu (with the VR hands tab). While either is open the
+game gets no input. Point at it with a controller (laser pointer: trigger clicks, right stick scrolls),
+or navigate it as a gamepad (left stick or d-pad moves, A activates, B backs out). R = recenter
 (or double-click the right stick), K = first person on/off (off at every launch). Ours: `,` hand
 aim on/off and `.` arm IK on/off, both on by themselves once the controllers are tracked; the
 other keys in the table further down are for our own renderer only.
@@ -850,6 +850,62 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       the correction X ms ...` (Claude wants that number; hold compare a few seconds to get the plain blit's
       for the difference); `colour: corrected variants of Halcyon's eye shaders ready` at the start of VR (or an
       error: then nothing is corrected).
+    - (Since step 25: `\` and both sticks open our new menu; the Colour controls are on its **Display** page,
+      "hold A" compares. The VR hands tab is still in the classic menu: **Ctrl + `\`**.)
+
+25. **Our new VR main menu (new, 2026-10-23; HOST REDEPLOY: services v16, and `ASI\menu` deployed).** The
+    approved glass board replaces Halcyon's ImGui menu: frosted panels over the game, a section rail (Comfort,
+    Controls, Body & calibration, Display, HUD & sights, Advanced), rows with toggles, sliders and chips.
+    [research/28](../research/28-main-menu.md).
+    - **Open and close:** hold both stick clicks (about half a second), or press `\`. It appears about 1.3 m
+      ahead, level, and stays put in the room (turn your head: it doesn't follow). **Resume**, **B**, `\` or
+      both sticks again close it. On foot the game pauses while it's open (Comfort > "Pause while open";
+      the log says `menu pause: the game paused`). The game must not react to anything while it's open: the
+      sticks, the trigger, A/B, the keyboard and the mouse do nothing in the game.
+    - **Point and click:** point either controller at it: a blue dot follows the ray (orange while the trigger
+      is held), each control under it gives a small tick in the hand, a click a firmer one. The right stick
+      scrolls the long pages (Controls, Body, Advanced). Hover the orange **Resume**: a light sweeps across
+      it; press a button: it dips.
+    - **Pad:** with a gamepad (or the left Touch stick) move the focus (a cyan ring) up, down, left and
+      right; A presses, B goes back to the rail, B again closes. On the Display page left/right on a focused
+      slider moves it.
+    - **Every row does something real (or says Soon):** change a few and close the menu, then check they hold:
+      Comfort > Physical crouch off (crouching no longer crouches Shepard); Controls > Left trigger "Aim" (LT
+      is the game's aim again) and back to "Weapon wheel"; HUD & sights > Distance and Size move the HUD panel;
+      Sniper rifle "Holo"; Display > Colour profile and the sliders (hold **A** on the Display page: the
+      picture goes back to the original while held; the test strip on the right shows the adjusted one);
+      Body > Recenter; Advanced > Stereo > Eye distance (the world's scale), Advanced > First person. Open
+      `LE1MEVR.ini`: only the keys you changed changed (no rewrite); `MELEVR.ini`'s active profile has the
+      renderer changes after the menu closed (log `main menu: renderer settings saved to profile ...`).
+      Turn style, Turn speed, Comfort vignette and Walk toward "Left hand" are marked Soon and do nothing.
+    - **Body & calibration:** the tiles show your saved calibration (eye heights, arm length, aiming eye,
+      spreads); **Start calibration** closes the menu and starts the guided calibration (step 22). **Measure**
+      (arms only): arms out in a T, pull a trigger: the row says how far apart the controllers were. **Align**
+      closes the menu; stand naturally and pull the left trigger (as the VR hands tab's alignment).
+    - **The glass:** the panels should look frosted: the game behind the menu blurred, darker and less
+      colourful, updating about ten times a second as the world moves (walk around with the menu open and
+      the game unpaused: Comfort > Pause while open off). Over a flat screen (a game menu, a cutscene on the
+      flat screen) the glass is plain dark.
+    - **Developer fallback:** **Ctrl + `\`** (or Advanced > Diagnostics > Classic renderer menu) opens
+      Halcyon's old menu as before.
+    - **Cost:** with the menu open and the pointer moving, the log says every 10 s `main menu: open N s: X ms
+      CPU per frame, Y ms GPU per frame, R renders/s, B backdrops/s` (Claude wants those numbers). Closed it
+      costs nothing (no line, no layer). A perf probe (Advanced > Diagnostics > Measure frame timing closes
+      the menu first) should match the numbers without the menu.
+    - **Snapshot:** with the menu open take an End snapshot (End on the keyboard, or Diagnostics > Snapshot,
+      which closes the menu first): `<stamp>-mainmenu.png` is the menu as submitted and `"mainMenu"` in the
+      JSON has its place, the pointer and the cost.
+    - **Look while it runs:** `assets/menu/main.rcss` and `main.rml` can be edited live: point `[Menu]
+      assets` in `LE1MEVR.ini` at the repo's `assets\menu` folder, open the menu, save a change: it reloads
+      within a second (log `menu: main.rml or main.rcss changed: reloaded`). `[Menu] distanceM` and `widthM`
+      move and size it (next opening).
+    - **Logs (ours):** `main menu: ready in N ms (1440x900 canvas, documents ..., fonts ...)` at the first
+      opening (or an error naming what failed: the documents not deployed, the fonts), `menu: RmlUi 6.3
+      ready ...`, `main menu: placed 1.30 m ahead ...`, `main menu: the backdrop samples the left eye's image
+      (WxH, format F)`, `main menu: opened (both sticks held)` / `closed (B)`, one line per setting written
+      (`main menu: [Hands] physicalCrouch = 0`), `main menu: renderer settings saved to profile ...`,
+      `rmlui:` warnings if the document has a mistake. The mod: `menu pause: the game paused (the main menu is
+      open; ...)` and `runs again (the main menu closed)`.
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR

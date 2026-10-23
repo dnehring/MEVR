@@ -126,6 +126,10 @@
 - Local, read-only: `%LOCALAPPDATA%\MELEVR\MELEVR_Log.txt`, our `LE1MEVR.log`, Steam's `logs\vrserver.txt`, `vrhw_steamvr.vdf`, `driver_vrlink*.txt`, `xrclient_MassEffect1*.txt`
 - Not found: independent measurements (contrast, black level, nits, white point) of Quest 3/3S/Pro/2 or PS VR2; the chroma subsampling and video range of Link, Steam Link and Virtual Desktop; Virtual Desktop's gamma formula; a log of the OpenXR system name SteamVR reports for Steam Link
 
+## Our VR main menu (research/28, consulted 2026-10-23)
+- https://github.com/mikke89/RmlUi (tag 6.3: `Backends/RmlUi_Renderer_DX11.cpp`, `Source/Core/PropertyParserColour.cpp` (rgba alpha 0-255 or %), `Source/Core/ElementUtilities.cpp` `GetClippingRegion` (transforms and overflow), `Source/Core/Context.cpp` `ProcessMouseWheel`)
+- https://github.com/freetype/freetype (tag VER-2-13-3; `docs/FTL.TXT`)
+
 ## Searched, nothing relevant found
 - "vorpX Mass Effect Legendary Edition profile": no vorpX information
 - "Modern Warfare 2 Campaign Remastered VR mod AI" (standard search): nothing; the GitHub-targeted search found Overlord
