@@ -503,6 +503,33 @@ target_link_libraries(mevr-install PUBLIC version bcrypt winhttp shell32 ole32 a
 target_compile_definitions(mevr-install PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 target_compile_options(mevr-install PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
 
+# Our own ASI loader (src/loader, research/33): bink2w64.dll, a proxy for RAD's Bink DLL that forwards every export to
+# bink2w64_original.dll and loads Binaries\Win64\ASI\*.asi, offering LExSDKv2-based plugins the SPI interface they
+# expect. GPL-3.0 new code (no LEBinkProxy code), MinHook (BSD-2) for the hooks, no LExSDKv2. The setup app installs
+# it when no ASI loader is there (ME3Tweaks' LEBinkProxy, if installed, is used instead).
+add_library(mevr-minhook STATIC
+    third_party/minhook/src/buffer.c
+    third_party/minhook/src/hde/hde64.c
+    third_party/minhook/src/hook.c
+    third_party/minhook/src/trampoline.c
+)
+target_include_directories(mevr-minhook PUBLIC third_party/minhook/include)
+target_compile_options(mevr-minhook PRIVATE /W3)
+add_library(MEVR-Loader SHARED
+    src/loader/Loader.cpp
+    src/loader/Loader.rc
+    src/loader/LoaderCore.cpp
+    src/loader/LoaderCore.hpp
+    src/loader/Forwarders.hpp
+    src/loader/SpiAbi.hpp
+)
+target_include_directories(MEVR-Loader PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(MEVR-Loader PRIVATE mevr-minhook)
+target_compile_definitions(MEVR-Loader PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS)
+target_compile_options(MEVR-Loader PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus /Zi)
+target_link_options(MEVR-Loader PRIVATE /DEBUG)
+set_target_properties(MEVR-Loader PROPERTIES OUTPUT_NAME bink2w64)
+
 # Offline tests for game-independent math (no game, no runtime needed).
 option(MEVR_BUILD_TESTS "Build the offline tests" ON)
 if (MEVR_BUILD_TESTS)
@@ -510,6 +537,7 @@ if (MEVR_BUILD_TESTS)
     add_executable(mevr-tests
         tests/Main.cpp
         tests/InstallTests.cpp
+        src/loader/LoaderCore.cpp
         src/core/PngFile.cpp
         src/core/ik/ArmLength.cpp
         src/core/ik/ArmPose.cpp
@@ -555,6 +583,29 @@ if (MEVR_BUILD_TESTS)
     target_compile_definitions(mevr-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_test(NAME mevr-tests COMMAND mevr-tests)
+
+    # Our ASI loader in a tiny host process (tools/loader-test, research/33): a folder like the game's Win64 with our
+    # bink2w64.dll, a stand-in bink2w64_original.dll (the same 79 export names) and a test ASI built against
+    # LExSDKv2's own SPI header; the host checks the forwarders, the attach, FindPattern and the hooks.
+    set(loader_test_dir ${CMAKE_BINARY_DIR}/loader-test/$<CONFIG>)
+    add_library(mevr-loader-test-original SHARED tools/loader-test/TestOriginal.cpp tools/loader-test/TestOriginal.def)
+    set_target_properties(mevr-loader-test-original PROPERTIES OUTPUT_NAME bink2w64_original RUNTIME_OUTPUT_DIRECTORY ${loader_test_dir})
+    target_compile_options(mevr-loader-test-original PRIVATE /W4 /WX /utf-8)
+    add_library(mevr-loader-test-asi SHARED tools/loader-test/TestAsi.cpp)
+    set_target_properties(mevr-loader-test-asi PROPERTIES OUTPUT_NAME MEVRLoaderTest SUFFIX ".asi" RUNTIME_OUTPUT_DIRECTORY ${loader_test_dir}/ASI)
+    target_include_directories(mevr-loader-test-asi PRIVATE external/LExSDKv2/External)
+    target_compile_options(mevr-loader-test-asi PRIVATE /W4 /WX /permissive /utf-8)  # the SDK's macros need /permissive, as for our ASI
+    add_executable(mevr-loader-test tools/loader-test/Main.cpp)
+    set_target_properties(mevr-loader-test PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${loader_test_dir})
+    target_include_directories(mevr-loader-test PRIVATE external/LExSDKv2/External)
+    target_compile_definitions(mevr-loader-test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-loader-test PRIVATE /W4 /WX /utf-8)
+    target_link_options(mevr-loader-test PRIVATE /INCREMENTAL:NO)
+    add_dependencies(mevr-loader-test MEVR-Loader mevr-loader-test-original mevr-loader-test-asi)
+    add_custom_command(TARGET mevr-loader-test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:MEVR-Loader> ${loader_test_dir}/bink2w64.dll
+        VERBATIM)
+    add_test(NAME mevr-loader COMMAND mevr-loader-test WORKING_DIRECTORY ${loader_test_dir})
 
     # The gun sights' look, offline (tools/sight-preview): the scope's picture with the host's own shader, the
     # reticles and the window ring, as PNGs from a ray-traced test scene.

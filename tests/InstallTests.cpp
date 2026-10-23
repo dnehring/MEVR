@@ -13,6 +13,7 @@
 #include "install/Manifest.hpp"
 #include "install/Packs.hpp"
 #include "install/Updates.hpp"
+#include "loader/LoaderCore.hpp"
 
 #include <Windows.h>
 
@@ -402,6 +403,46 @@ void TestTransaction() {
     fs::remove_all(root.parent_path(), ec);
 }
 
+void TestLoaderCore() {
+    namespace ld = mevr::loader;
+    using G = mevr::loader::spi::Game;
+    ICHECK(ld::HostFromExeName(L"MassEffect1.exe") == G::LE1);
+    ICHECK(ld::HostFromExeName(L"masseffect3.EXE") == G::LE3);
+    ICHECK(ld::HostFromExeName(L"MassEffectLauncher.exe") == G::Launcher);
+    ICHECK(!ld::HostFromExeName(L"mevr-loader-test.exe"));
+    bool tooLong = false;
+    auto const p = ld::ParsePattern("48 8B ?? 05 ? C3");
+    ICHECK(p && p->bytes.size() == 6 && !p->mask[2] && !p->mask[4] && p->bytes[1] == 0x8B);
+    ICHECK(!ld::ParsePattern("48 8G"));
+    ICHECK(!ld::ParsePattern("?? 48"));  // a leading wildcard has nothing to anchor on
+    ICHECK(!ld::ParsePattern(""));
+    std::string longText;
+    for (int i = 0; i < 101; ++i) {
+        longText += "90 ";
+    }
+    ICHECK(!ld::ParsePattern(longText, &tooLong) && tooLong);
+    std::uint8_t const memory[] = {0x00, 0x48, 0x8B, 0x01, 0x48, 0x8B, 0x77, 0x05, 0x11, 0xC3, 0x00};
+    ICHECK(p && ld::FindPattern(memory, *p) == std::optional<std::size_t>(4));
+    auto const missing = ld::ParsePattern("C3 C3");
+    ICHECK(missing && !ld::FindPattern(memory, *missing));
+    // The DRM check: 90% of the samples must differ from the file.
+    ICHECK(ld::LooksDecrypted(256, 256));
+    ICHECK(ld::LooksDecrypted(231, 256));
+    ICHECK(!ld::LooksDecrypted(200, 256));
+    ICHECK(!ld::LooksDecrypted(3, 256));  // still encrypted: only relocated windows differ
+    ICHECK(!ld::LooksDecrypted(0, 0));
+    auto const offsets = ld::SampleOffsets(0xF9BB81, 256, 16);
+    ICHECK(offsets.size() == 256 && offsets.front() == 0 && offsets.back() == 0xF9BB81 - 16);
+    ICHECK(ld::SampleOffsets(8, 4, 16).empty());
+    // Which plugins attach: LE1MEVR.asi declares LE1 only (1 << 1) and SPI 3.
+    ICHECK(ld::ShouldAttach(1 << 1, 3, G::LE1));
+    ICHECK(!ld::ShouldAttach(1 << 1, 3, G::LE2));
+    ICHECK(!ld::ShouldAttach(1 << 1, 4, G::LE1));
+    ICHECK(ld::ShouldAttach(0, 3, std::nullopt));
+    auto const sorted = ld::SortAsiNames({L"b.asi", L"A.asi", L"LE1MEVR.asi"});
+    ICHECK(sorted.size() == 3 && sorted[0] == L"A.asi" && sorted[2] == L"LE1MEVR.asi");
+}
+
 } // namespace
 
 void RunInstallTests(int& failures) {
@@ -414,4 +455,5 @@ void RunInstallTests(int& failures) {
     TestLaunch();
     TestPacksAndUpdates();
     TestTransaction();
+    TestLoaderCore();
 }
