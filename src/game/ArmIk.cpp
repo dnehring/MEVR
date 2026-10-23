@@ -14,7 +14,7 @@
 #include "game/BodyFollow.hpp"
 #include "game/HandCalibration.hpp"
 #include "engine/BonePose.hpp"
-#include "engine/GameAdapter.hpp"
+#include "engine/GameAdapterSdk.hpp"
 #include "engine/Objects.hpp"
 #include "engine/Skeleton.hpp"
 #include "game/HandTargets.hpp"

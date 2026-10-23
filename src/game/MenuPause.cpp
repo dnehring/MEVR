@@ -1,41 +1,53 @@
 #include "game/MenuPause.hpp"
 
 #include "core/Log.hpp"
-#include "engine/Objects.hpp"
 #include "game/HeadTracking.hpp"
 #include "mod/ModApi.hpp"
-
-#include <LESDK/Headers.hpp>
+#include "ue3/Handles.hpp"
 
 #include <format>
 
 namespace mevr::game::menu_pause {
 namespace {
 
-#if defined(SDK_TARGET_LE1)
-UFunction* gPauseGame = nullptr;
+#if defined(MEVR_GAME_LE1)
+// Our reflection layer (ue3/, research/34).
+ue3::FunctionRef gPauseGameRef{"Engine.WorldInfo.PauseGame"};
+ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo"};
+ue3::Function* gPauseGame = nullptr;
 bool gLookedUp = false;
 #endif
 bool gPaused = false;     // we paused the game
 bool gWasOpen = false;
 std::string gLast = "never";
 
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
 bool Pause(bool pause, char const* why) {
+    if (!ue3::runtime::Ready()) {
+        if (!gLookedUp) {
+            gLookedUp = true;
+            log::Warn("menu pause: our reflection layer is off ({}): the main menu won't pause the game", ue3::runtime::Status());
+        }
+        return false;
+    }
     if (!gLookedUp) {
         gLookedUp = true;
-        gPauseGame = engine::FindFunction(L"PauseGame", "Function Engine.WorldInfo.PauseGame");
+        gPauseGame = gPauseGameRef.Get();
         if (gPauseGame == nullptr) {
             log::Warn("menu pause: Engine.WorldInfo.PauseGame not found: the main menu won't pause the game");
         }
     }
-    APlayerController* const pc = engine::LocalPlayerController();
-    if (pc == nullptr || pc->WorldInfo == nullptr || gPauseGame == nullptr) {
+    ue3::Object* const pc = ue3::runtime::LocalPlayerController();
+    ue3::Object* const world = pc != nullptr ? gWorldInfo.Read<ue3::Object*>(pc).value_or(nullptr) : nullptr;
+    if (world == nullptr || gPauseGame == nullptr) {
         return false;
     }
-    AWorldInfo_execPauseGame_Parms parms;
-    parms.bPause = pause ? 1 : 0;
-    pc->WorldInfo->ProcessEvent(gPauseGame, &parms, nullptr);  // the script function directly, never the SDK's wrapper
+    ue3::Params parms(ue3::runtime::Get(), gPauseGame);
+    if (!parms.SetBool("bPause", pause)) {
+        log::Warn("menu pause: WorldInfo.PauseGame has no bool parameter bPause: not called");
+        return false;
+    }
+    ue3::runtime::Call(world, gPauseGame, parms);  // the script function through ProcessEvent
     gLast = std::format("{} ({})", pause ? "paused" : "resumed", why);
     log::Info("menu pause: the game {} ({}; WorldInfo.PauseGame, as ME1's weapon wheel)", pause ? "paused" : "runs again", why);
     return true;

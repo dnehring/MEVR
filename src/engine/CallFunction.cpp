@@ -14,8 +14,9 @@ namespace {
 constexpr char const* kHookName = "UObject::CallFunction";
 
 struct Entry {
-    UFunction* function;
-    Handler handler;
+    void const* function;
+    Handler handler;              // LExSDKv2-typed modules
+    ObjectHandler objectHandler;  // modules on ue3/
 };
 
 // Every script call passes through here, so the lookup is a short pointer scan.
@@ -28,7 +29,11 @@ void CallFunctionHook(UObject* context, FFrame* stack, void* result, UFunction* 
     gCallFunctionOrig(context, stack, result, function);
     for (Entry const& entry : gHandlers) {
         if (entry.function == function) {
-            entry.handler(context, function, result);
+            if (entry.handler != nullptr) {
+                entry.handler(context, function, result);
+            } else {
+                entry.objectHandler(reinterpret_cast<ue3::Object*>(context), reinterpret_cast<ue3::Function*>(function), result);
+            }
         }
     }
 }
@@ -36,7 +41,11 @@ void CallFunctionHook(UObject* context, FFrame* stack, void* result, UFunction* 
 } // namespace
 
 void AddPostHandler(UFunction* function, Handler handler) {
-    gHandlers.push_back({function, handler});
+    gHandlers.push_back({function, handler, nullptr});
+}
+
+void AddPostHandler(ue3::Function* function, ObjectHandler handler) {
+    gHandlers.push_back({function, nullptr, handler});
 }
 
 void ClearHandlers() {

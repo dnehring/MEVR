@@ -4,13 +4,11 @@
 #include "core/vr/TestRequest.hpp"
 #include "core/vr/ViewLevel.hpp"
 #include "engine/CallFunction.hpp"
-#include "engine/Objects.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/HeadTracking.hpp"
 #include "game/SupportGrip.hpp"
-
-#include <LESDK/Headers.hpp>
+#include "ue3/Handles.hpp"
 
 #include <Windows.h>
 
@@ -18,6 +16,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <format>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -37,8 +36,8 @@ constexpr int kFallbackTicks = 3;
 
 Link gLink;
 bool gStarted = false;
-std::vector<UFunction*> gPlayerTicks;
-UFunction* gSetWeaponRecoil = nullptr;
+std::vector<ue3::Function*> gPlayerTicks;
+ue3::Function* gSetWeaponRecoil = nullptr;
 
 vl::Window gWindow;
 vl::ChangeLog gChanges{kLogThresholdUnits, kLogMinSeconds};
@@ -78,8 +77,8 @@ double gSnapLoggedAt = -1e9;  // the last "took hold of a pitched camera" line
 
 // Aim assist's friction and adhesion (research/24 section 7): CallFunction post-handlers on
 // SFXModule_AimAssist.ViewFriction and ViewAdhesion zero their results while the hand aims.
-UFunction* gViewFriction = nullptr;
-UFunction* gViewAdhesion = nullptr;
+ue3::Function* gViewFriction = nullptr;
+ue3::Function* gViewAdhesion = nullptr;
 vl::AssistWhy gAssistWhy = vl::AssistWhy::NoView;
 vl::AssistWhy gLoggedAssistWhy = vl::AssistWhy::NoView;
 bool gAssistLogged = false;
@@ -93,7 +92,7 @@ bool gToldAdhesion = false;
 // Per camera mode class: its short name, whether the hold applies in it, and whether aim assist's
 // friction and adhesion are removed in it.
 struct ModeEntry {
-    UClass* cls;
+    ue3::Class* cls;
     std::string name;
     bool allowed;
     bool assistOff;
@@ -120,27 +119,42 @@ std::string Delta(long long units) {
     return std::format("{:+.2f} deg ({:+} UU)", static_cast<double>(units) * 360.0 / vl::kUnitsPerTurn, units);
 }
 
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
 
-static_assert(offsetof(AActor, Rotation) == 0x114);
-static_assert(offsetof(AActor, Physics) == 0x27C);
-static_assert(offsetof(AActor, Modules) == 0x70);
-static_assert(offsetof(APawn, InvManager) == 0x4A0);
-static_assert(offsetof(ABioPawn, CoverType) == 0xA55);
-static_assert(offsetof(ABioPawn, CoverAction) == 0xA56);
-static_assert(offsetof(ASFXInventoryManager, WeaponRecoilOffset) == 0x2CC);
-static_assert(offsetof(ASFXInventoryManager, TotalRecoil) == 0x2D8);
-static_assert(offsetof(USFXModule_AimAssist, LastZoomSnapTarget) == 0xB8);
-static_assert(offsetof(APlayerController, PlayerCamera) == 0x6B0);
-static_assert(offsetof(ASFXCameraNativeBase, CurrentCameraMode) == 0x568);
-static_assert(offsetof(USFXCameraMode_Interpolate, To) == 0x168);
-static_assert(offsetof(APlayerController, PlayerInput) == 0x708);
-static_assert(offsetof(UPlayerInput, RawJoyLookRight) == 0x1E0);
-static_assert(offsetof(UPlayerInput, RawJoyLookUp) == 0x1E4);
+// Our reflection layer (ue3/, research/34): each found once, by name, in the running game.
+ue3::ClassRef gCameraNativeBase{"SFXGame.SFXCameraNativeBase"};
+ue3::ClassRef gCameraModeInterpolate{"SFXGame.SFXCameraMode_Interpolate"};
+ue3::ClassRef gBioPawn{"SFXGame.BioPawn"};
+ue3::ClassRef gSfxInventory{"SFXGame.SFXInventoryManager"};
+ue3::ClassRef gAimAssistModule{"SFXGame.SFXModule_AimAssist"};
+ue3::FieldRef gRotation{"Engine.Actor", "Rotation"};
+ue3::FieldRef gPhysics{"Engine.Actor", "Physics"};
+ue3::FieldRef gModules{"Engine.Actor", "Modules"};
+ue3::FieldRef gPawn{"Engine.Controller", "Pawn"};
+ue3::FieldRef gInvManager{"Engine.Pawn", "InvManager"};
+ue3::FieldRef gCoverType{"SFXGame.BioPawn", "CoverType"};
+ue3::FieldRef gCoverAction{"SFXGame.BioPawn", "CoverAction"};
+ue3::FieldRef gWeaponRecoilOffset{"SFXGame.SFXInventoryManager", "WeaponRecoilOffset"};
+ue3::FieldRef gTotalRecoil{"SFXGame.SFXInventoryManager", "TotalRecoil"};
+ue3::FieldRef gLastZoomSnapTarget{"SFXGame.SFXModule_AimAssist", "LastZoomSnapTarget"};
+ue3::FieldRef gPlayerCamera{"Engine.PlayerController", "PlayerCamera"};
+ue3::FieldRef gCurrentCameraMode{"SFXGame.SFXCameraNativeBase", "CurrentCameraMode"};
+ue3::FieldRef gInterpolateTo{"SFXGame.SFXCameraMode_Interpolate", "To"};
+ue3::FieldRef gPlayerInput{"Engine.PlayerController", "PlayerInput"};
+ue3::FieldRef gRawJoyLookRight{"Engine.PlayerInput", "RawJoyLookRight"};
+ue3::FieldRef gRawJoyLookUp{"Engine.PlayerInput", "RawJoyLookUp"};
 
-constexpr char const* kSetWeaponRecoil = "Function SFXGame.SFXInventoryManager.SetWeaponRecoil";
-constexpr char const* kViewFriction = "Function SFXGame.SFXModule_AimAssist.ViewFriction";
-constexpr char const* kViewAdhesion = "Function SFXGame.SFXModule_AimAssist.ViewAdhesion";
+ue3::Object* ObjectField(ue3::Object const* object, ue3::FieldRef& field) {
+    return field.Read<ue3::Object*>(object).value_or(nullptr);
+}
+
+ue3::Object* PawnOf(ue3::Object const* controller) {
+    return ObjectField(controller, gPawn);
+}
+
+ue3::FunctionRef gSetWeaponRecoilRef{"SFXGame.SFXInventoryManager.SetWeaponRecoil"};
+ue3::FunctionRef gViewFrictionRef{"SFXGame.SFXModule_AimAssist.ViewFriction"};
+ue3::FunctionRef gViewAdhesionRef{"SFXGame.SFXModule_AimAssist.ViewAdhesion"};
 constexpr unsigned char kPhysLadder = 9;  // EPhysics PHYS_Ladder
 
 void LogWhy(vl::Why why, double now) {
@@ -159,13 +173,13 @@ void LogWhy(vl::Why why, double now) {
     log::Info("view level: {} (camera mode {}, pitch as the game left it {})", vl::Name(why), gModeName, Angle(gPitch));
 }
 
-ModeEntry const& Mode(UClass* cls) {
+ModeEntry const& Mode(ue3::Class* cls) {
     for (ModeEntry const& entry : gModes) {
         if (entry.cls == cls) {
             return entry;
         }
     }
-    std::string name = cls != nullptr ? engine::ToString(cls->Name) : std::string("none");
+    std::string name = cls != nullptr ? ue3::runtime::Get().NameText(cls) : std::string("none");
     bool const allowed = vl::CameraModeAllows(name);
     bool const assistOff = vl::CameraModeRemovesAssist(name);
     gModes.push_back({cls, std::move(name), allowed, assistOff});
@@ -174,29 +188,29 @@ ModeEntry const& Mode(UClass* cls) {
 
 // The camera's mode, or the one it blends to (`blending` set); nullptr if there's none (or a blend
 // toward none, `blending` set too).
-ModeEntry const* CurrentMode(APlayerController* controller, bool& blending) {
+ModeEntry const* CurrentMode(ue3::Object* controller, bool& blending) {
     blending = false;
-    ACamera* const base = controller->PlayerCamera;
-    if (base == nullptr || !base->IsA(ASFXCameraNativeBase::StaticClass())) {
+    ue3::Object* const base = ObjectField(controller, gPlayerCamera);
+    if (base == nullptr || !ue3::IsA(base, gCameraNativeBase)) {
         return nullptr;
     }
-    USFXCameraMode* mode = static_cast<ASFXCameraNativeBase*>(base)->CurrentCameraMode;
-    if (mode == nullptr || !engine::IsAlive(mode)) {
+    ue3::Object* mode = ObjectField(base, gCurrentCameraMode);
+    if (mode == nullptr || !ue3::runtime::IsAlive(mode)) {
         return nullptr;
     }
-    if (mode->IsA(USFXCameraMode_Interpolate::StaticClass())) {
+    if (ue3::IsA(mode, gCameraModeInterpolate)) {
         blending = true;
-        USFXCameraMode* const to = static_cast<USFXCameraMode_Interpolate*>(mode)->To;
-        if (to == nullptr || !engine::IsAlive(to)) {
+        ue3::Object* const to = ObjectField(mode, gInterpolateTo);
+        if (to == nullptr || !ue3::runtime::IsAlive(to)) {
             return nullptr;
         }
         mode = to;
     }
-    return &Mode(mode->Class);
+    return &Mode(ue3::runtime::Get().ClassOf(mode));
 }
 
 // The camera's mode (or the one it blends to), named in gModeName.
-ModeEntry const* NamedMode(APlayerController* controller) {
+ModeEntry const* NamedMode(ue3::Object* controller) {
     bool blending = false;
     ModeEntry const* const entry = CurrentMode(controller, blending);
     if (entry == nullptr) {
@@ -208,14 +222,14 @@ ModeEntry const* NamedMode(APlayerController* controller) {
 }
 
 // Whether aim assist's friction and adhesion are removed for this controller now (`mode`: its camera mode).
-vl::AssistWhy DecideAssist(APlayerController* controller, ModeEntry const* mode) {
+vl::AssistWhy DecideAssist(ue3::Object* controller, ModeEntry const* mode) {
     vl::AssistInputs in;
     in.keep = hand_calibration::AimAssist();
     in.headTrackedView = gLink.headTrackedView;
     in.headAim = gLink.headAim;
     in.handAim = gLink.handAim;
     in.onFoot = head_tracking::OnFoot();
-    in.pawn = controller->Pawn != nullptr;
+    in.pawn = PawnOf(controller) != nullptr;
     in.cameraModeRemoves = mode != nullptr && mode->assistOff;
     return vl::DecideAssist(in);
 }
@@ -237,28 +251,32 @@ void LogAssistWhy(vl::AssistWhy why, double now) {
     log::Info("aim assist: {} (camera mode {})", vl::Name(why), gModeName);
 }
 
-ASFXInventoryManager* PlayerInventory(APlayerController* controller) {
-    APawn* const pawn = controller != nullptr ? controller->Pawn : nullptr;
-    AInventoryManager* const manager = pawn != nullptr ? pawn->InvManager : nullptr;
-    if (manager == nullptr || !manager->IsA(ASFXInventoryManager::StaticClass())) {
-        return nullptr;
-    }
-    return static_cast<ASFXInventoryManager*>(manager);
+ue3::Object* PlayerInventory(ue3::Object* controller) {
+    ue3::Object* const pawn = controller != nullptr ? PawnOf(controller) : nullptr;
+    ue3::Object* const manager = pawn != nullptr ? ObjectField(pawn, gInvManager) : nullptr;
+    return ue3::As(manager, gSfxInventory);
+}
+
+std::optional<int> RecoilPitch(ue3::Object* inventory, ue3::FieldRef& field) {
+    std::optional<ue3::Rotator> const rotator = field.Read<ue3::Rotator>(inventory);
+    return rotator ? std::optional<int>(rotator->pitch) : std::nullopt;
 }
 
 // Aim assist's zoom snap (SFXModule_AimAssist.ZoomSnap, from SetZoomed while zoomed: the support grip's
 // aimed fire) picks a target that the camera then turns the controller to (SFXCameraTransition_ZoomSnap,
 // PC.SetRotation): with the hand aiming that only turns the world. Dropping the target before the camera
 // update keeps the transition from starting. True if one was dropped.
-bool DropZoomSnap(APlayerController* controller) {
+bool DropZoomSnap(ue3::Object* controller) {
     bool dropped = false;
-    TArray<USFXModule*>& modules = controller->Modules;
-    for (int i = 0; i < static_cast<int>(modules.Count()); ++i) {
-        USFXModule* const module = modules.GetData()[i];
-        if (module != nullptr && module->IsA(USFXModule_AimAssist::StaticClass())) {
-            auto* const assist = static_cast<USFXModule_AimAssist*>(module);
-            if (assist->LastZoomSnapTarget != nullptr) {
-                assist->LastZoomSnapTarget = nullptr;
+    ue3::TArray<ue3::Object*> const* const modules = gModules.In<ue3::TArray<ue3::Object*>>(controller);
+    if (modules == nullptr) {
+        return false;
+    }
+    for (int i = 0; i < modules->Count(); ++i) {
+        ue3::Object* const module = modules->data[i];
+        if (module != nullptr && ue3::IsA(module, gAimAssistModule)) {
+            if (ue3::Object** const target = gLastZoomSnapTarget.In<ue3::Object*>(module); target != nullptr && *target != nullptr) {
+                *target = nullptr;
                 dropped = true;
             }
         }
@@ -267,18 +285,22 @@ bool DropZoomSnap(APlayerController* controller) {
 }
 
 // One controller tick: measure what the game did to the rotation, and level it when the hold applies.
-void Level(APlayerController* controller, bool fromModTick) {
+void Level(ue3::Object* controller, bool fromModTick) {
     double const now = Now();
     if (reinterpret_cast<std::uintptr_t>(controller) != gController) {
         gController = reinterpret_cast<std::uintptr_t>(controller);  // a new level or a new controller
         gHaveLeft = false;
         gRecoilSeenValid = false;
     }
-    FRotator& rotation = controller->Rotation;
-    int const pitch = rotation.Pitch;
-    int const roll = rotation.Roll;
+    ue3::Rotator* const controlRotation = gRotation.In<ue3::Rotator>(controller);
+    if (controlRotation == nullptr) {
+        return;  // the layer said why, once
+    }
+    ue3::Rotator& rotation = *controlRotation;
+    int const pitch = rotation.pitch;
+    int const roll = rotation.roll;
     gPitch = pitch;
-    gYaw = rotation.Yaw;
+    gYaw = rotation.yaw;
     gRoll = roll;
     gHaveRotation = true;
     int const gameDelta = gHaveLeft ? vl::Signed(pitch - gLeftPitch) : 0;
@@ -289,13 +311,12 @@ void Level(APlayerController* controller, bool fromModTick) {
     in.headAim = gLink.headAim;
     in.handAim = gLink.handAim;
     in.onFoot = head_tracking::OnFoot();
-    APawn* const pawn = controller->Pawn;
+    ue3::Object* const pawn = PawnOf(controller);
     in.pawn = pawn != nullptr;
     if (pawn != nullptr) {
-        in.ladder = pawn->Physics == kPhysLadder;
-        if (pawn->IsA(ABioPawn::StaticClass())) {
-            auto* const bio = static_cast<ABioPawn*>(pawn);
-            in.cover = bio->CoverType != 0 || bio->CoverAction != 0;
+        in.ladder = gPhysics.Read<std::uint8_t>(pawn) == kPhysLadder;
+        if (ue3::IsA(pawn, gBioPawn)) {
+            in.cover = gCoverType.Read<std::uint8_t>(pawn).value_or(0) != 0 || gCoverAction.Read<std::uint8_t>(pawn).value_or(0) != 0;
         }
     }
     ModeEntry const* const mode = NamedMode(controller);
@@ -321,8 +342,8 @@ void Level(APlayerController* controller, bool fromModTick) {
                 roll != 0 ? std::format(" and rolled {}", Angle(roll)) : std::string());
         }
         if (pitch != 0 || roll != 0) {
-            rotation.Pitch = 0;
-            rotation.Roll = 0;
+            rotation.pitch = 0;
+            rotation.roll = 0;
         }
         bool const dropped = DropZoomSnap(controller);
         if (dropped && !gZoomSnapPending) {
@@ -335,7 +356,7 @@ void Level(APlayerController* controller, bool fromModTick) {
     } else {
         gZoomSnapPending = false;
     }
-    gLeftPitch = rotation.Pitch;
+    gLeftPitch = rotation.pitch;
     gHaveLeft = true;
 
     gWindow.Frame(now, pitch, roll, gameDelta, correction, held);
@@ -348,16 +369,15 @@ void Level(APlayerController* controller, bool fromModTick) {
             Angle(pitch), Angle(gYaw), Angle(roll), held ? "put back to level" : std::format("kept ({})", vl::Name(why)));
     }
 
-    if (ASFXInventoryManager* const inventory = PlayerInventory(controller)) {
-        gRecoilSeen = inventory->WeaponRecoilOffset.Pitch;
-        gRecoilSeenValid = true;
-    } else {
-        gRecoilSeenValid = false;
+    std::optional<int> const recoil = RecoilPitch(PlayerInventory(controller), gWeaponRecoilOffset);
+    gRecoilSeenValid = recoil.has_value();
+    if (recoil) {
+        gRecoilSeen = *recoil;
     }
 }
 
-void OnPlayerTick(UObject* context, UFunction* /*function*/, void* /*parms*/, void* /*result*/) {
-    APlayerController* const controller = engine::LocalPlayerController();
+void OnPlayerTick(ue3::Object* context, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
+    ue3::Object* const controller = ue3::runtime::LocalPlayerController();
     if (controller == nullptr || context != controller) {
         return;
     }
@@ -367,13 +387,15 @@ void OnPlayerTick(UObject* context, UFunction* /*function*/, void* /*parms*/, vo
 
 // One of the player's shots (SFXPawn_Player.OnWeaponFired -> SetWeaponRecoil(GetRecoil() * 182.044)):
 // count it, measure its kick, and pulse the hand.
-void OnSetWeaponRecoil(UObject* context, UFunction* /*function*/, void* /*result*/) {
-    APlayerController* const controller = engine::LocalPlayerController();
-    ASFXInventoryManager* const inventory = PlayerInventory(controller);
-    if (inventory == nullptr || context != inventory) {
+void OnSetWeaponRecoil(ue3::Object* context, ue3::Function* /*function*/, void* /*result*/) {
+    ue3::Object* const controller = ue3::runtime::LocalPlayerController();
+    ue3::Object* const inventory = PlayerInventory(controller);
+    std::optional<int> const recoil =
+        inventory != nullptr && context == inventory ? RecoilPitch(inventory, gWeaponRecoilOffset) : std::nullopt;
+    if (!recoil) {
         return;
     }
-    int const now = inventory->WeaponRecoilOffset.Pitch;
+    int const now = *recoil;
     int const kick = gRecoilSeenValid ? vl::Signed(now - gRecoilSeen) : 0;
     gRecoilSeen = now;
     gRecoilSeenValid = true;
@@ -385,7 +407,7 @@ void OnSetWeaponRecoil(UObject* context, UFunction* /*function*/, void* /*result
     if (!gToldFirstShot) {
         gToldFirstShot = true;
         log::Info("view level: first shot seen (SFXInventoryManager.SetWeaponRecoil): pitch kick {} queued for the controller's "
-                  "rotation; TotalRecoil pitch {}", Angle(kick), Angle(inventory->TotalRecoil.Pitch));
+                  "rotation; TotalRecoil pitch {}", Angle(kick), Angle(RecoilPitch(inventory, gTotalRecoil).value_or(0)));
     }
     double const scale = hand_calibration::RecoilHaptic();
     vl::Pulse const pulse = vl::RecoilPulse(vl::Degrees(kick), scale);
@@ -400,51 +422,52 @@ void OnSetWeaponRecoil(UObject* context, UFunction* /*function*/, void* /*result
 
 // The local player's controller, if `context` is its aim-assist module (SFXModule_AimAssist's Outer is
 // the controller: the script reads self.Outer.Pawn).
-APlayerController* AssistController(UObject* context) {
-    APlayerController* const controller = engine::LocalPlayerController();
-    if (controller == nullptr || context == nullptr || context->Outer != controller) {
+ue3::Object* AssistController(ue3::Object* context) {
+    ue3::Object* const controller = ue3::runtime::LocalPlayerController();
+    if (controller == nullptr || context == nullptr || ue3::runtime::Get().OuterOf(context) != controller) {
         return nullptr;
     }
     return controller;
 }
 
-bool LookStickTurns(APlayerController* controller) {
-    UPlayerInput const* const input = controller->PlayerInput;
-    return input != nullptr && (input->RawJoyLookRight != 0.0f || input->RawJoyLookUp != 0.0f);
+bool LookStickTurns(ue3::Object* controller) {
+    ue3::Object* const input = ObjectField(controller, gPlayerInput);
+    return input != nullptr
+        && (gRawJoyLookRight.Read<float>(input).value_or(0.0f) != 0.0f || gRawJoyLookUp.Read<float>(input).value_or(0.0f) != 0.0f);
 }
 
-bool AssistRemoved(APlayerController* controller) {
+bool AssistRemoved(ue3::Object* controller) {
     bool blending = false;
     return DecideAssist(controller, CurrentMode(controller, blending)) == vl::AssistWhy::Removed;
 }
 
 // SFXModule_AimAssist.ViewAdhesion (from ProcessRotation, each tick with a gamepad and a ranged weapon):
 // the turn after the target it adds to the stick's DeltaRot. Zeroed while the hand aims.
-void OnViewAdhesion(UObject* context, UFunction* /*function*/, void* result) {
-    APlayerController* const controller = AssistController(context);
+void OnViewAdhesion(ue3::Object* context, ue3::Function* /*function*/, void* result) {
+    ue3::Object* const controller = AssistController(context);
     if (controller == nullptr || result == nullptr) {
         return;
     }
     ++gAdhesionCalls;
-    FRotator& turn = *static_cast<FRotator*>(result);
+    ue3::Rotator& turn = *static_cast<ue3::Rotator*>(result);
     bool const removed = AssistRemoved(controller);
-    gWindow.Adhesion(Now(), turn.Pitch, turn.Yaw, removed);
-    if (!gToldAdhesion && (vl::Signed(turn.Pitch) != 0 || vl::Signed(turn.Yaw) != 0)) {
+    gWindow.Adhesion(Now(), turn.pitch, turn.yaw, removed);
+    if (!gToldAdhesion && (vl::Signed(turn.pitch) != 0 || vl::Signed(turn.yaw) != 0)) {
         gToldAdhesion = true;
         log::Info("aim assist: first adhesion seen (SFXModule_AimAssist.ViewAdhesion): it would have turned the view pitch {}, yaw "
-                  "{} this tick; {}", Angle(turn.Pitch), Angle(turn.Yaw), removed ? "removed" : "kept");
+                  "{} this tick; {}", Angle(turn.pitch), Angle(turn.yaw), removed ? "removed" : "kept");
     }
-    if (removed && (turn.Pitch != 0 || turn.Yaw != 0 || turn.Roll != 0)) {
-        turn.Pitch = 0;
-        turn.Yaw = 0;
-        turn.Roll = 0;
+    if (removed && (turn.pitch != 0 || turn.yaw != 0 || turn.roll != 0)) {
+        turn.pitch = 0;
+        turn.yaw = 0;
+        turn.roll = 0;
     }
 }
 
 // SFXModule_AimAssist.ViewFriction (right after ViewAdhesion): the share of the stick's turn taken away
 // (ProcessRotation: DeltaRot *= 1 - factor). Zeroed while the hand aims.
-void OnViewFriction(UObject* context, UFunction* /*function*/, void* result) {
-    APlayerController* const controller = AssistController(context);
+void OnViewFriction(ue3::Object* context, ue3::Function* /*function*/, void* result) {
+    ue3::Object* const controller = AssistController(context);
     if (controller == nullptr || result == nullptr) {
         return;
     }
@@ -468,23 +491,28 @@ void OnViewFriction(UObject* context, UFunction* /*function*/, void* result) {
 } // namespace
 
 bool TryStartup() {
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
+    if (!ue3::runtime::Ready()) {
+        log::Warn("view level: our reflection layer is off ({}): the camera isn't levelled", ue3::runtime::Status());
+        return false;
+    }
     // PlayerTick is an event the native controller tick sends through ProcessEvent; FindFunction picks
     // the current state's version, so every PlayerController / BioPlayerController one is registered.
     gPlayerTicks.clear();
     std::string names;
-    for (UFunction* function : engine::FindFunctionsNamed(L"PlayerTick")) {
-        std::string const full = engine::FullName(function);
+    ue3::Reflection& reflection = ue3::runtime::Get();
+    for (ue3::Function* function : reflection.FindFunctionsNamed("PlayerTick")) {
+        std::string const full = reflection.FullName(function);
         if (full.starts_with("Function Engine.PlayerController.") || full.starts_with("Function SFXGame.BioPlayerController.")) {
             gPlayerTicks.push_back(function);
             names += std::format("{}{}", names.empty() ? "" : ", ", full.substr(9));
         }
     }
-    gSetWeaponRecoil = engine::FindFunction(L"SetWeaponRecoil", kSetWeaponRecoil);
+    gSetWeaponRecoil = gSetWeaponRecoilRef.Get();
     if (gPlayerTicks.empty()) {
         log::Warn("view level: PlayerController.PlayerTick not found: the camera is levelled from the mod's tick (a frame late)");
     }
-    for (UFunction* function : gPlayerTicks) {
+    for (ue3::Function* function : gPlayerTicks) {
         engine::process_event::AddPostHandler(function, &OnPlayerTick);
     }
     if (gSetWeaponRecoil != nullptr) {
@@ -493,8 +521,8 @@ bool TryStartup() {
         log::Warn("view level: SFXInventoryManager.SetWeaponRecoil not found: shots aren't counted and recoil isn't felt");
     }
     // Script calls them from script (ProcessRotation), so only the CallFunction hook sees them.
-    gViewFriction = engine::FindFunction(L"ViewFriction", kViewFriction);
-    gViewAdhesion = engine::FindFunction(L"ViewAdhesion", kViewAdhesion);
+    gViewFriction = gViewFrictionRef.Get();
+    gViewAdhesion = gViewAdhesionRef.Get();
     if (gViewFriction != nullptr && gViewAdhesion != nullptr) {
         engine::call_function::AddPostHandler(gViewAdhesion, &OnViewAdhesion);
         engine::call_function::AddPostHandler(gViewFriction, &OnViewFriction);
@@ -514,7 +542,7 @@ bool TryStartup() {
 
 void Tick(Link const& link) {
     gLink = link;
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
     if (!gStarted) {
         return;
     }
@@ -526,7 +554,7 @@ void Tick(Link const& link) {
     }
     gPostsAtTick = gPosts;
     if (gTicksWithoutPost >= kFallbackTicks) {
-        if (APlayerController* const controller = engine::LocalPlayerController()) {
+        if (ue3::Object* const controller = ue3::runtime::LocalPlayerController()) {
             if (!gToldFallback) {
                 gToldFallback = true;
                 log::Warn("view level: no PlayerTick seen for {} ticks: levelling from the mod's tick instead (after the camera "

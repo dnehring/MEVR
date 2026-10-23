@@ -6,7 +6,7 @@
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/Engine.hpp"
-#include "engine/GameAdapter.hpp"
+#include "engine/GameAdapterSdk.hpp"
 #include "engine/Objects.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/HandCalibration.hpp"

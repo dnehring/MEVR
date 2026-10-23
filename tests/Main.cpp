@@ -6312,9 +6312,12 @@ void TestUpscale() {
 
 // tests/InstallTests.cpp: the installer's logic (research/33).
 void RunInstallTests(int& failures);
+// tests/ReflectTests.cpp: our UE3 reflection layer (src/ue3, research/34).
+int RunReflectTests();
 
 int main() {
     RunInstallTests(gFailures);
+    gFailures += RunReflectTests();
     TestUpscale();
     TestComfort();
     TestMetricStereo();

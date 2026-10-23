@@ -24,6 +24,10 @@ struct SFXName;
 // Names can't come from the GetBoneNames native: through ProcessEvent its out-array parameter is
 // never bound to the caller's parms (EX_NativeParm with a null result), so it returns nothing.
 // LE2/LE3: layouts not verified; everything here answers "unsupported" there.
+namespace mevr::ue3 {
+struct Object;
+}
+
 namespace mevr::engine::skeleton {
 
 // This game's layouts are known (LE1).
@@ -59,6 +63,8 @@ std::uint64_t RefBoneKey(USkeletalMeshComponent const* mesh, int index);
 // The component-space pose (empty until the pose has been computed, or if unsupported).
 std::span<BoneAtom> SpaceBases(USkeletalMeshComponent* mesh);
 ik::Affine LocalToWorld(USkeletalMeshComponent const* mesh);
+// The same for modules on our reflection layer (a SkeletalMeshComponent found through ue3/).
+ik::Affine LocalToWorld(ue3::Object const* mesh);
 // The component this mesh takes its pose from (ParentAnimComponent), if any.
 USkeletalMeshComponent* PoseParent(USkeletalMeshComponent const* mesh);
 

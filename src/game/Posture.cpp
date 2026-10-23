@@ -6,13 +6,12 @@
 #include "core/vr/HostView.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/CoverAcquire.hpp"
-#include "engine/Objects.hpp"
+#include "engine/GameAdapter.hpp"
 #include "game/BodyCalibration.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/HeadTracking.hpp"
 #include "game/ViewAnchor.hpp"
-
-#include <LESDK/Headers.hpp>
+#include "ue3/Handles.hpp"
 
 #include <Windows.h>
 
@@ -20,6 +19,7 @@
 #include <cmath>
 #include <cstdint>
 #include <format>
+#include <optional>
 #include <string>
 
 namespace mevr::game::posture {
@@ -99,83 +99,109 @@ void SetWhy(std::string why) {
     }
 }
 
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
 
-static_assert(offsetof(ABioPawn, CoverType) == 0xA55);
-static_assert(offsetof(ABioPawn, CoverAction) == 0xA56);
+// Our reflection layer (ue3/, research/34): each found once, by name, in the running game.
+ue3::ClassRef gBioPlayerController{"SFXGame.BioPlayerController"};
+ue3::ClassRef gBioPawn{"SFXGame.BioPawn"};
+ue3::ClassRef gGameModeDefault{"SFXGame.SFXGameModeDefault"};
+ue3::FieldRef gPawnField{"Engine.Controller", "Pawn"};
+ue3::FieldRef gGameModeManager{"SFXGame.BioPlayerController", engine::adapter::kGameModeManager};
+ue3::FieldRef gGameModes{"SFXGame.SFXGameModeManager", "GameModes"};
+ue3::FieldRef gStorming{"SFXGame.BioPlayerController", "bStorming"};
+ue3::FieldRef gCoverType{"SFXGame.BioPawn", "CoverType"};
+ue3::FieldRef gCoverAction{"SFXGame.BioPawn", "CoverAction"};
+ue3::FieldRef gLocation{"Engine.Actor", "Location"};
+ue3::FieldRef gIsCrouched{"Engine.Pawn", "bIsCrouched"};
+ue3::FieldRef gWantsToCrouch{"Engine.Pawn", "bWantsToCrouch"};
 
-UFunction* gShouldCrouch = nullptr;
-UFunction* gTryExitCover = nullptr;
-UFunction* gIsInCover = nullptr;
-UFunction* gLeaveCover = nullptr;
+ue3::Function* gShouldCrouch = nullptr;
+ue3::Function* gTryExitCover = nullptr;
+ue3::Function* gIsInCover = nullptr;
+ue3::Function* gLeaveCover = nullptr;
+bool gToldNoCrouchParam = false;
 
 struct Game {
-    ABioPlayerController* controller = nullptr;
-    ABioPawn* pawn = nullptr;
-    USFXGameModeDefault* mode = nullptr;
+    ue3::Object* controller = nullptr;  // a BioPlayerController
+    ue3::Object* pawn = nullptr;        // a BioPawn
+    ue3::Object* mode = nullptr;        // its SFXGameModeDefault
 };
 
+std::uint8_t CoverType(ue3::Object const* pawn) {
+    return gCoverType.Read<std::uint8_t>(pawn).value_or(0);
+}
+
+bool WantsToCrouch(ue3::Object const* pawn) {
+    return gWantsToCrouch.ReadBool(pawn).value_or(false);
+}
+
 std::optional<Game> ReadGame(std::string& why) {
-    APlayerController* const pc = engine::LocalPlayerController();
-    if (pc == nullptr || !pc->IsA(ABioPlayerController::StaticClass())) {
+    if (!ue3::runtime::Ready()) {
+        why = "our reflection layer is off (see the 'reflect:' log lines)";
+        return std::nullopt;
+    }
+    ue3::Object* const pc = ue3::runtime::LocalPlayerController();
+    if (pc == nullptr || !ue3::IsA(pc, gBioPlayerController)) {
         why = "no player controller";
         return std::nullopt;
     }
     Game game;
-    game.controller = static_cast<ABioPlayerController*>(pc);
-    if (pc->Pawn == nullptr || !pc->Pawn->IsA(ABioPawn::StaticClass())) {
+    game.controller = pc;
+    ue3::Object* const pawn = gPawnField.Read<ue3::Object*>(pc).value_or(nullptr);
+    if (pawn == nullptr || !ue3::IsA(pawn, gBioPawn)) {
         why = "no player pawn (the Mako or a cutscene?)";
         return std::nullopt;
     }
-    game.pawn = static_cast<ABioPawn*>(pc->Pawn);
-    if (USFXGameModeManager* const manager = game.controller->GameModeManager) {
-        for (int i = 0; i < static_cast<int>(manager->GameModes.Count()); ++i) {
-            USFXGameModeBase* const mode = manager->GameModes.GetData()[i];
-            if (mode != nullptr && mode->IsA(USFXGameModeDefault::StaticClass())) {
-                game.mode = static_cast<USFXGameModeDefault*>(mode);
-                break;
+    game.pawn = pawn;
+    if (ue3::Object* const manager = gGameModeManager.Read<ue3::Object*>(pc).value_or(nullptr)) {
+        if (ue3::TArray<ue3::Object*> const* const modes = gGameModes.In<ue3::TArray<ue3::Object*>>(manager)) {
+            for (int i = 0; i < modes->Count(); ++i) {
+                ue3::Object* const mode = modes->data[i];
+                if (mode != nullptr && ue3::IsA(mode, gGameModeDefault)) {
+                    game.mode = mode;
+                    break;
+                }
             }
         }
     }
     return game;
 }
 
-// Directly through ProcessEvent, never the SDK's wrappers (they set every flag on the UFunction).
-bool CallBool(UObject* object, UFunction* function) {
+// Through ProcessEvent with the function's own parameter block.
+bool CallBool(ue3::Object* object, ue3::Function* function) {
     if (object == nullptr || function == nullptr) {
         return false;
     }
-    struct {
-        unsigned long ReturnValue;
-        unsigned char pad[60];
-    } parms{};
-    object->ProcessEvent(function, &parms, nullptr);
-    return parms.ReturnValue != 0;
+    ue3::Params parms(ue3::runtime::Get(), function);
+    ue3::runtime::Call(object, function, parms);
+    return parms.ReturnBool().value_or(false);
 }
 
-void CallVoid(UObject* object, UFunction* function) {
+void CallVoid(ue3::Object* object, ue3::Function* function) {
     if (object == nullptr || function == nullptr) {
         return;
     }
-    struct {
-        unsigned char pad[64];
-    } parms{};
-    object->ProcessEvent(function, &parms, nullptr);
+    ue3::Params parms(ue3::runtime::Get(), function);
+    ue3::runtime::Call(object, function, parms);
 }
 
 // BioPawn.ShouldCrouch: Pawn.ShouldCrouch sets bWantsToCrouch (the engine crouches or stands on its
 // next move, standing only where there's room), then BioPawn resets its movement animation state.
-void ShouldCrouch(ABioPawn* pawn, bool crouch) {
-    struct {
-        unsigned long bCrouch;
-        unsigned char pad[60];
-    } parms{};
-    parms.bCrouch = crouch ? 1u : 0u;
-    pawn->ProcessEvent(gShouldCrouch, &parms, nullptr);
+void ShouldCrouch(ue3::Object* pawn, bool crouch) {
+    ue3::Params parms(ue3::runtime::Get(), gShouldCrouch);
+    if (!parms.SetBool("bCrouch", crouch)) {
+        if (!gToldNoCrouchParam) {
+            gToldNoCrouchParam = true;
+            log::Warn("posture: BioPawn.ShouldCrouch has no bool parameter bCrouch: not called");
+        }
+        return;
+    }
+    ue3::runtime::Call(pawn, gShouldCrouch, parms);
 }
 
-bool InCover(ABioPawn* pawn) {
-    return gIsInCover != nullptr ? CallBool(pawn, gIsInCover) : pawn->CoverType != 0 && pawn->CoverAction != 13;
+bool InCover(ue3::Object* pawn) {
+    return gIsInCover != nullptr ? CallBool(pawn, gIsInCover)
+                                 : CoverType(pawn) != 0 && gCoverAction.Read<std::uint8_t>(pawn).value_or(0) != 13;
 }
 
 char const* CoverName(int type) {
@@ -183,20 +209,21 @@ char const* CoverName(int type) {
 }
 
 // The view's height above Shepard's origin (units), if there's a view.
-std::optional<double> ViewAbovePawn(ABioPawn* pawn) {
+std::optional<double> ViewAbovePawn(ue3::Object* pawn) {
     auto const frame = view_anchor::Current();
-    if (!frame) {
+    std::optional<ue3::Vector> const location = gLocation.Read<ue3::Vector>(pawn);
+    if (!frame || !location) {
         return std::nullopt;
     }
-    return frame->headWorld.z - pawn->Location.Z;
+    return frame->headWorld.z - location->z;
 }
 
-void StartProbe(ABioPawn* pawn, char const* what) {
+void StartProbe(ue3::Object* pawn, char const* what) {
     auto const before = ViewAbovePawn(pawn);
     gProbe = {true, 0.0, before.value_or(0.0), before.has_value(), what};
 }
 
-void FollowProbe(ABioPawn* pawn, double deltaSeconds) {
+void FollowProbe(ue3::Object* pawn, double deltaSeconds) {
     if (!gProbe.active) {
         return;
     }
@@ -210,7 +237,7 @@ void FollowProbe(ABioPawn* pawn, double deltaSeconds) {
     if (after && gProbe.haveBefore) {
         log::Info("posture: {:.2f} s after the {}: the view is {:.1f} units above Shepard's origin (was {:.1f}: {:+.1f}); "
                   "Halcyon's lean now {:+.1f} units up, Shepard crouched {} [verify: the game's crouch camera]",
-            gProbe.age, gProbe.what, *after, gProbe.before, *after - gProbe.before, view.offsetUp, pawn->bIsCrouched ? "yes" : "no");
+            gProbe.age, gProbe.what, *after, gProbe.before, *after - gProbe.before, view.offsetUp, gIsCrouched.ReadBool(pawn).value_or(false) ? "yes" : "no");
     }
 }
 
@@ -254,7 +281,7 @@ void TickCover(Game const& game, bool active, bool noCover, double deltaSeconds)
         gExitRetry = 0.0;
         gToldFallback = false;
         log::Info("posture: Shepard is in {} cover (taken before noCover applied, or by a script): leaving it as A does "
-                  "(SFXGameModeDefault.TryExitCover)", CoverName(game.pawn->CoverType));
+                  "(SFXGameModeDefault.TryExitCover)", CoverName(CoverType(game.pawn)));
     }
     gCoverSeconds += deltaSeconds;
     gExitRetry -= deltaSeconds;
@@ -351,7 +378,7 @@ std::optional<double> Measure(Link const& link, vr::host_view::State const& view
 void Ask(Game const& game, bool crouch, std::string const& why) {
     StartProbe(game.pawn, crouch ? "crouch" : "stand");
     ShouldCrouch(game.pawn, crouch);
-    gGameWants = game.pawn->bWantsToCrouch != 0;
+    gGameWants = WantsToCrouch(game.pawn);
     gArbiter.Applied(gGameWants);
     gLastChange = std::format("{} ({})", crouch ? "crouch" : "stand", why);
     log::Info("posture: Shepard {} ({}): BioPawn.ShouldCrouch({}){}", crouch ? "crouches" : "stands", why, crouch ? "true" : "false",
@@ -361,8 +388,8 @@ void Ask(Game const& game, bool crouch, std::string const& why) {
 // The crouch side, each tick with a game.
 void TickCrouch(Game const& game, Link const& link, vr::host_view::State const& view, bool active, bool enabled,
     double deltaSeconds) {
-    gGameWants = game.pawn->bWantsToCrouch != 0;
-    gGameCrouched = game.pawn->bIsCrouched != 0;
+    gGameWants = WantsToCrouch(game.pawn);
+    gGameCrouched = gIsCrouched.ReadBool(game.pawn).value_or(false);
     FollowProbe(game.pawn, deltaSeconds);
     vr::host_view::State const raw = vr::host_view::Latest(~0ull);
     bool const vrGone = raw.timeMs == 0 || GetTickCount64() - raw.timeMs > kVrGoneMs;
@@ -399,7 +426,7 @@ void TickCrouch(Game const& game, Link const& link, vr::host_view::State const& 
     pz::ArbiterInput input;
     input.physical = event;
     input.gameWants = gGameWants;
-    input.canApply = !game.controller->bStorming;  // ToggleCrouch refuses while sprinting too
+    input.canApply = !gStorming.ReadBool(game.controller).value_or(false);  // ToggleCrouch refuses while sprinting too
     pz::ArbiterStep const step = gArbiter.Update(input);
     if (step.external) {
         ++gExternal;
@@ -432,29 +459,31 @@ void TickCrouch(Game const& game, Link const& link, vr::host_view::State const& 
     }
 }
 
-#endif  // SDK_TARGET_LE1
+#endif  // MEVR_GAME_LE1
 
 } // namespace
 
 bool TryStartup() {
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
+    if (!ue3::runtime::Ready()) {
+        log::Warn("posture: our reflection layer is off ({}): physical cover and crouch stay off", ue3::runtime::Status());
+        return false;
+    }
     struct Want {
-        UFunction** slot;
-        wchar_t const* name;
-        char const* full;
-        bool needed;
+        ue3::Function** slot;
+        char const* path;
     };
     Want const wants[] = {
-        {&gShouldCrouch, L"ShouldCrouch", "Function SFXGame.BioPawn.ShouldCrouch", false},
-        {&gTryExitCover, L"TryExitCover", "Function SFXGame.SFXGameModeDefault.TryExitCover", false},
-        {&gIsInCover, L"IsInCover", "Function SFXGame.BioPawn.IsInCover", false},
-        {&gLeaveCover, L"LeaveCover", "Function SFXGame.BioPawn.LeaveCover", false},
+        {&gShouldCrouch, "SFXGame.BioPawn.ShouldCrouch"},
+        {&gTryExitCover, "SFXGame.SFXGameModeDefault.TryExitCover"},
+        {&gIsInCover, "SFXGame.BioPawn.IsInCover"},
+        {&gLeaveCover, "SFXGame.BioPawn.LeaveCover"},
     };
     std::string missing;
     for (Want const& w : wants) {
-        *w.slot = engine::FindFunction(w.name, w.full);
+        *w.slot = ue3::runtime::Get().FindFunction(w.path);
         if (*w.slot == nullptr) {
-            missing += std::format("{}{}", missing.empty() ? "" : ", ", w.full);
+            missing += std::format("{}Function {}", missing.empty() ? "" : ", ", w.path);
         }
     }
     gStarted = gShouldCrouch != nullptr || gTryExitCover != nullptr || gIsInCover != nullptr;
@@ -474,10 +503,11 @@ bool WantsCoverHook() {
 void Tick(double deltaSeconds, Link const& link) {
     hand_calibration::Refresh();  // at most once a second
     hand_calibration::Posture const settings = hand_calibration::GetPosture();
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
     if (!gStarted) {
         engine::cover_acquire::Refuse(nullptr);
-        SetWhy("waiting for the script functions");
+        SetWhy(ue3::runtime::Ready() ? std::string("waiting for the script functions")
+                                     : std::format("waiting for our reflection layer ({})", ue3::runtime::Status()));
         return;
     }
     std::string why;
@@ -490,7 +520,7 @@ void Tick(double deltaSeconds, Link const& link) {
     }
     if (reinterpret_cast<std::uintptr_t>(game->pawn) != gPawn) {
         if (gPawn != 0) {
-            log::Info("posture: a new player pawn ({}): nothing of the crouch is ours", engine::FullName(game->pawn));
+            log::Info("posture: a new player pawn ({}): nothing of the crouch is ours", ue3::runtime::Get().FullName(game->pawn));
         }
         gPawn = reinterpret_cast<std::uintptr_t>(game->pawn);
         gArbiter.Forget();
@@ -555,18 +585,19 @@ void LogStats() {
 
 void Shutdown(bool processExiting) {
     engine::cover_acquire::Refuse(nullptr);
-#if defined(SDK_TARGET_LE1)
-    if (!processExiting && gArbiter.Owns() && gShouldCrouch != nullptr) {
-        APlayerController* const pc = engine::LocalPlayerController();
-        if (pc != nullptr && reinterpret_cast<std::uintptr_t>(pc->Pawn) == gPawn && pc->Pawn->IsA(ABioPawn::StaticClass())) {
-            auto* const pawn = static_cast<ABioPawn*>(pc->Pawn);
-            if (pawn->bWantsToCrouch) {
+#if defined(MEVR_GAME_LE1)
+    if (!processExiting && gArbiter.Owns() && gShouldCrouch != nullptr && ue3::runtime::Ready()) {
+        ue3::Object* const pc = ue3::runtime::LocalPlayerController();
+        ue3::Object* const pawn = pc != nullptr ? gPawnField.Read<ue3::Object*>(pc).value_or(nullptr) : nullptr;
+        if (pawn != nullptr && reinterpret_cast<std::uintptr_t>(pawn) == gPawn && ue3::IsA(pawn, gBioPawn)) {
+            if (WantsToCrouch(pawn)) {
                 ShouldCrouch(pawn, false);
                 log::Info("posture: the mod is unloading: Shepard stands (the crouch was ours)");
             }
         }
     }
     gShouldCrouch = gTryExitCover = gIsInCover = gLeaveCover = nullptr;
+    gToldNoCrouchParam = false;
 #else
     (void)processExiting;
 #endif
