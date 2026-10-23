@@ -83,6 +83,60 @@ int Correction(int units) {
     return -Signed(units);
 }
 
+char const* Name(AssistWhy why) {
+    switch (why) {
+    case AssistWhy::Removed: return "friction and adhesion removed (the hand aims; the stick's turn is the player's own)";
+    case AssistWhy::Kept: return "the game's friction and adhesion kept ([Hands] aimAssist = 1)";
+    case AssistWhy::NoView: return "the game's friction and adhesion (no head-tracked view)";
+    case AssistWhy::HeadAim: return "the game's friction and adhesion (the host's head aim turns the camera)";
+    case AssistWhy::NoHandAim: return "the game's friction and adhesion (the hand doesn't aim)";
+    case AssistWhy::NotOnFoot: return "the game's friction and adhesion (not on foot)";
+    case AssistWhy::NoPawn: return "the game's friction and adhesion (no pawn)";
+    case AssistWhy::CameraMode: return "the game's friction and adhesion (a camera mode that keeps them: the sniper scope...)";
+    }
+    return "?";
+}
+
+AssistWhy DecideAssist(AssistInputs const& in) {
+    if (in.keep) {
+        return AssistWhy::Kept;
+    }
+    if (!in.headTrackedView) {
+        return AssistWhy::NoView;
+    }
+    if (in.headAim) {
+        return AssistWhy::HeadAim;
+    }
+    if (!in.handAim) {
+        return AssistWhy::NoHandAim;
+    }
+    if (!in.onFoot) {
+        return AssistWhy::NotOnFoot;
+    }
+    if (!in.pawn) {
+        return AssistWhy::NoPawn;
+    }
+    if (!in.cameraModeRemoves) {
+        return AssistWhy::CameraMode;
+    }
+    return AssistWhy::Removed;
+}
+
+bool CameraModeRemovesAssist(std::string_view className) {
+    // Exact class names, as CameraModeAllows (VehicleTightAim isn't TightAim). Cover is in: the hand aims
+    // there too, and the stick still turns.
+    constexpr std::string_view kRemoves[] = {
+        "SFXCameraMode_Explore",
+        "SFXCameraMode_ExploreStorm",
+        "SFXCameraMode_Combat",
+        "SFXCameraMode_CombatStorm",
+        "SFXCameraMode_TightAim",
+        "SFXCameraMode_EnterCover",
+        "SFXCameraMode_HipAimCover",
+    };
+    return std::find(std::begin(kRemoves), std::end(kRemoves), className) != std::end(kRemoves);
+}
+
 Window::Bucket& Window::At(double now) {
     long long const second = static_cast<long long>(std::floor(now));
     Bucket& bucket = buckets_[static_cast<std::size_t>(((second % 64) + 64) % 64)];
@@ -123,6 +177,31 @@ void Window::ZoomSnap(double now) {
     ++At(now).zoomSnaps;
 }
 
+void Window::Friction(double now, double factor, bool turning, bool removed) {
+    if (!(factor > 0.0)) {
+        return;  // no target in the soft margin (or friction off for the weapon): nothing would have happened
+    }
+    Bucket& b = At(now);
+    ++b.frictionTicks;
+    b.frictionTurning += turning ? 1 : 0;
+    b.frictionRemoved += removed ? 1 : 0;
+    b.frictionSum += factor;
+    b.frictionMax = std::max(b.frictionMax, factor);
+}
+
+void Window::Adhesion(double now, int pitch, int yaw, bool removed) {
+    int const p = Signed(pitch);
+    int const y = Signed(yaw);
+    if (p == 0 && y == 0) {
+        return;
+    }
+    Bucket& b = At(now);
+    ++b.adhesionTicks;
+    b.adhesionRemoved += removed ? 1 : 0;
+    b.adhesionYaw += std::abs(y);
+    b.adhesionPitch += std::abs(p);
+}
+
 Summary Window::Last(double now, double seconds) const {
     Summary s;
     long long const current = static_cast<long long>(std::floor(now));
@@ -154,6 +233,15 @@ Summary Window::Last(double now, double seconds) const {
         s.frames += b.frames;
         s.heldFrames += b.heldFrames;
         s.zoomSnaps += b.zoomSnaps;
+        s.frictionTicks += b.frictionTicks;
+        s.frictionTurning += b.frictionTurning;
+        s.frictionRemoved += b.frictionRemoved;
+        s.frictionSum += b.frictionSum;
+        s.frictionMax = std::max(s.frictionMax, b.frictionMax);
+        s.adhesionTicks += b.adhesionTicks;
+        s.adhesionRemoved += b.adhesionRemoved;
+        s.adhesionYaw += b.adhesionYaw;
+        s.adhesionPitch += b.adhesionPitch;
     }
     s.seconds = s.any ? static_cast<double>(current - first + 1) : 0.0;
     return s;

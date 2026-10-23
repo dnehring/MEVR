@@ -25,6 +25,8 @@
 //           levelCamera                   1 (default): the game camera kept level on foot while the hand
 //                                         aims (game/view_level, research/24); 0: the game's pitch
 //           recoilHaptic                  0..1 (default 0.5): a shot's recoil as a controller pulse; 0: none
+//           aimAssist                     0 (default): the game's aim assist friction and adhesion off on
+//                                         foot while the hand aims (game/view_level, research/24); 1: kept
 //   [Arms]  armLengthM                    the player's shoulder-to-grip length (meters); 0 or absent:
 //                                         reach isn't scaled. Written by MeasureArmLength.
 //           measureRequest, measure*      the VR hands tab's T-pose sample (src/plugin/MevrMenuTab.cpp,
@@ -58,6 +60,9 @@ double ReachNearFace();
 bool LevelCamera();
 // [Hands] recoilHaptic: 0..1, how strongly a shot's recoil pulses the hand (0: none).
 double RecoilHaptic();
+// [Hands] aimAssist: true (1) keeps the game's aim assist friction and adhesion while the hand aims; false
+// (0, the default) removes them there (game/view_level).
+bool AimAssist();
 // [Controls] (appended to an older file that lacks it): the two-handed grip and the left trigger.
 struct Controls {
     bool leftTrigger = false;     // leftTrigger = lt: the game's LT

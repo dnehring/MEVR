@@ -76,11 +76,27 @@ unsigned gPulses = 0;           // since the heartbeat
 bool gToldFirstShot = false;
 double gSnapLoggedAt = -1e9;  // the last "took hold of a pitched camera" line
 
-// Per camera mode class: its short name and whether the hold applies in it.
+// Aim assist's friction and adhesion (research/24 section 7): CallFunction post-handlers on
+// SFXModule_AimAssist.ViewFriction and ViewAdhesion zero their results while the hand aims.
+UFunction* gViewFriction = nullptr;
+UFunction* gViewAdhesion = nullptr;
+vl::AssistWhy gAssistWhy = vl::AssistWhy::NoView;
+vl::AssistWhy gLoggedAssistWhy = vl::AssistWhy::NoView;
+bool gAssistLogged = false;
+double gAssistLoggedAt = -1e9;
+unsigned gAssistChanges = 0;  // since the heartbeat
+unsigned long long gFrictionCalls = 0;  // the local player's, in all
+unsigned long long gAdhesionCalls = 0;
+bool gToldFriction = false;
+bool gToldAdhesion = false;
+
+// Per camera mode class: its short name, whether the hold applies in it, and whether aim assist's
+// friction and adhesion are removed in it.
 struct ModeEntry {
     UClass* cls;
     std::string name;
     bool allowed;
+    bool assistOff;
 };
 std::vector<ModeEntry> gModes;
 
@@ -118,8 +134,13 @@ static_assert(offsetof(USFXModule_AimAssist, LastZoomSnapTarget) == 0xB8);
 static_assert(offsetof(APlayerController, PlayerCamera) == 0x6B0);
 static_assert(offsetof(ASFXCameraNativeBase, CurrentCameraMode) == 0x568);
 static_assert(offsetof(USFXCameraMode_Interpolate, To) == 0x168);
+static_assert(offsetof(APlayerController, PlayerInput) == 0x708);
+static_assert(offsetof(UPlayerInput, RawJoyLookRight) == 0x1E0);
+static_assert(offsetof(UPlayerInput, RawJoyLookUp) == 0x1E4);
 
 constexpr char const* kSetWeaponRecoil = "Function SFXGame.SFXInventoryManager.SetWeaponRecoil";
+constexpr char const* kViewFriction = "Function SFXGame.SFXModule_AimAssist.ViewFriction";
+constexpr char const* kViewAdhesion = "Function SFXGame.SFXModule_AimAssist.ViewAdhesion";
 constexpr unsigned char kPhysLadder = 9;  // EPhysics PHYS_Ladder
 
 void LogWhy(vl::Why why, double now) {
@@ -146,35 +167,74 @@ ModeEntry const& Mode(UClass* cls) {
     }
     std::string name = cls != nullptr ? engine::ToString(cls->Name) : std::string("none");
     bool const allowed = vl::CameraModeAllows(name);
-    gModes.push_back({cls, std::move(name), allowed});
+    bool const assistOff = vl::CameraModeRemovesAssist(name);
+    gModes.push_back({cls, std::move(name), allowed, assistOff});
     return gModes.back();
 }
 
-// Whether the camera's mode (or the one it blends to) is one the hold applies in; names it in gModeName.
-bool CameraModeAllowed(APlayerController* controller) {
+// The camera's mode, or the one it blends to (`blending` set); nullptr if there's none (or a blend
+// toward none, `blending` set too).
+ModeEntry const* CurrentMode(APlayerController* controller, bool& blending) {
+    blending = false;
     ACamera* const base = controller->PlayerCamera;
     if (base == nullptr || !base->IsA(ASFXCameraNativeBase::StaticClass())) {
-        gModeName = "none";
-        return false;
+        return nullptr;
     }
     USFXCameraMode* mode = static_cast<ASFXCameraNativeBase*>(base)->CurrentCameraMode;
     if (mode == nullptr || !engine::IsAlive(mode)) {
-        gModeName = "none";
-        return false;
+        return nullptr;
     }
-    std::string prefix;
     if (mode->IsA(USFXCameraMode_Interpolate::StaticClass())) {
+        blending = true;
         USFXCameraMode* const to = static_cast<USFXCameraMode_Interpolate*>(mode)->To;
         if (to == nullptr || !engine::IsAlive(to)) {
-            gModeName = "SFXCameraMode_Interpolate";
-            return false;
+            return nullptr;
         }
-        prefix = "SFXCameraMode_Interpolate to ";
         mode = to;
     }
-    ModeEntry const& entry = Mode(mode->Class);
-    gModeName = prefix + entry.name;
-    return entry.allowed;
+    return &Mode(mode->Class);
+}
+
+// The camera's mode (or the one it blends to), named in gModeName.
+ModeEntry const* NamedMode(APlayerController* controller) {
+    bool blending = false;
+    ModeEntry const* const entry = CurrentMode(controller, blending);
+    if (entry == nullptr) {
+        gModeName = blending ? "SFXCameraMode_Interpolate" : "none";
+    } else {
+        gModeName = blending ? "SFXCameraMode_Interpolate to " + entry->name : entry->name;
+    }
+    return entry;
+}
+
+// Whether aim assist's friction and adhesion are removed for this controller now (`mode`: its camera mode).
+vl::AssistWhy DecideAssist(APlayerController* controller, ModeEntry const* mode) {
+    vl::AssistInputs in;
+    in.keep = hand_calibration::AimAssist();
+    in.headTrackedView = gLink.headTrackedView;
+    in.headAim = gLink.headAim;
+    in.handAim = gLink.handAim;
+    in.onFoot = head_tracking::OnFoot();
+    in.pawn = controller->Pawn != nullptr;
+    in.cameraModeRemoves = mode != nullptr && mode->assistOff;
+    return vl::DecideAssist(in);
+}
+
+void LogAssistWhy(vl::AssistWhy why, double now) {
+    if (why != gAssistWhy) {
+        ++gAssistChanges;
+    }
+    gAssistWhy = why;
+    if (gAssistLogged && why == gLoggedAssistWhy) {
+        return;
+    }
+    if (gAssistLogged && now - gAssistLoggedAt < kWhyLogSeconds) {
+        return;  // flapping (camera blends): the heartbeat has the count, and the state settles in a line
+    }
+    gAssistLogged = true;
+    gLoggedAssistWhy = why;
+    gAssistLoggedAt = now;
+    log::Info("aim assist: {} (camera mode {})", vl::Name(why), gModeName);
 }
 
 ASFXInventoryManager* PlayerInventory(APlayerController* controller) {
@@ -238,9 +298,14 @@ void Level(APlayerController* controller, bool fromModTick) {
             in.cover = bio->CoverType != 0 || bio->CoverAction != 0;
         }
     }
-    in.cameraModeAllowed = CameraModeAllowed(controller);
+    ModeEntry const* const mode = NamedMode(controller);
+    in.cameraModeAllowed = mode != nullptr && mode->allowed;
     vl::Why const why = vl::Decide(in);
     LogWhy(why, now);
+    // Aim assist's state, for its log line and the heartbeat (the handlers decide again, fresh, each call).
+    if (gViewFriction != nullptr) {
+        LogAssistWhy(DecideAssist(controller, mode), now);
+    }
     bool const wasHeld = gWhy == vl::Why::Holding;
     gWhy = why;
 
@@ -333,6 +398,71 @@ void OnSetWeaponRecoil(UObject* context, UFunction* /*function*/, void* /*result
     }
 }
 
+// The local player's controller, if `context` is its aim-assist module (SFXModule_AimAssist's Outer is
+// the controller: the script reads self.Outer.Pawn).
+APlayerController* AssistController(UObject* context) {
+    APlayerController* const controller = engine::LocalPlayerController();
+    if (controller == nullptr || context == nullptr || context->Outer != controller) {
+        return nullptr;
+    }
+    return controller;
+}
+
+bool LookStickTurns(APlayerController* controller) {
+    UPlayerInput const* const input = controller->PlayerInput;
+    return input != nullptr && (input->RawJoyLookRight != 0.0f || input->RawJoyLookUp != 0.0f);
+}
+
+bool AssistRemoved(APlayerController* controller) {
+    bool blending = false;
+    return DecideAssist(controller, CurrentMode(controller, blending)) == vl::AssistWhy::Removed;
+}
+
+// SFXModule_AimAssist.ViewAdhesion (from ProcessRotation, each tick with a gamepad and a ranged weapon):
+// the turn after the target it adds to the stick's DeltaRot. Zeroed while the hand aims.
+void OnViewAdhesion(UObject* context, UFunction* /*function*/, void* result) {
+    APlayerController* const controller = AssistController(context);
+    if (controller == nullptr || result == nullptr) {
+        return;
+    }
+    ++gAdhesionCalls;
+    FRotator& turn = *static_cast<FRotator*>(result);
+    bool const removed = AssistRemoved(controller);
+    gWindow.Adhesion(Now(), turn.Pitch, turn.Yaw, removed);
+    if (!gToldAdhesion && (vl::Signed(turn.Pitch) != 0 || vl::Signed(turn.Yaw) != 0)) {
+        gToldAdhesion = true;
+        log::Info("aim assist: first adhesion seen (SFXModule_AimAssist.ViewAdhesion): it would have turned the view pitch {}, yaw "
+                  "{} this tick; {}", Angle(turn.Pitch), Angle(turn.Yaw), removed ? "removed" : "kept");
+    }
+    if (removed && (turn.Pitch != 0 || turn.Yaw != 0 || turn.Roll != 0)) {
+        turn.Pitch = 0;
+        turn.Yaw = 0;
+        turn.Roll = 0;
+    }
+}
+
+// SFXModule_AimAssist.ViewFriction (right after ViewAdhesion): the share of the stick's turn taken away
+// (ProcessRotation: DeltaRot *= 1 - factor). Zeroed while the hand aims.
+void OnViewFriction(UObject* context, UFunction* /*function*/, void* result) {
+    APlayerController* const controller = AssistController(context);
+    if (controller == nullptr || result == nullptr) {
+        return;
+    }
+    ++gFrictionCalls;
+    float& factor = *static_cast<float*>(result);
+    bool const removed = AssistRemoved(controller);
+    bool const turning = LookStickTurns(controller);
+    gWindow.Friction(Now(), factor, turning, removed);
+    if (!gToldFriction && factor > 0.0f) {
+        gToldFriction = true;
+        log::Info("aim assist: first friction seen (SFXModule_AimAssist.ViewFriction): {:.0f}% of the stick's turn taken away "
+                  "(the look stick {}); {}", factor * 100.0f, turning ? "turning" : "still", removed ? "removed" : "kept");
+    }
+    if (removed && factor != 0.0f) {
+        factor = 0.0f;
+    }
+}
+
 #endif
 
 } // namespace
@@ -362,9 +492,20 @@ bool TryStartup() {
     } else {
         log::Warn("view level: SFXInventoryManager.SetWeaponRecoil not found: shots aren't counted and recoil isn't felt");
     }
+    // Script calls them from script (ProcessRotation), so only the CallFunction hook sees them.
+    gViewFriction = engine::FindFunction(L"ViewFriction", kViewFriction);
+    gViewAdhesion = engine::FindFunction(L"ViewAdhesion", kViewAdhesion);
+    if (gViewFriction != nullptr && gViewAdhesion != nullptr) {
+        engine::call_function::AddPostHandler(gViewAdhesion, &OnViewAdhesion);
+        engine::call_function::AddPostHandler(gViewFriction, &OnViewFriction);
+    } else {
+        log::Warn("aim assist: SFXModule_AimAssist.ViewFriction or ViewAdhesion not found: the game's friction and adhesion stay");
+        gViewFriction = gViewAdhesion = nullptr;
+    }
     gStarted = true;
-    log::Info("view level: handlers on {} ({} PlayerTick functions){}", names.empty() ? std::string("none") : names, gPlayerTicks.size(),
-        gSetWeaponRecoil != nullptr ? "; shots from SFXInventoryManager.SetWeaponRecoil" : "");
+    log::Info("view level: handlers on {} ({} PlayerTick functions){}{}", names.empty() ? std::string("none") : names, gPlayerTicks.size(),
+        gSetWeaponRecoil != nullptr ? "; shots from SFXInventoryManager.SetWeaponRecoil" : "",
+        gViewFriction != nullptr ? "; aim assist from SFXModule_AimAssist.ViewFriction and ViewAdhesion" : "");
     return true;
 #else
     return false;
@@ -400,17 +541,26 @@ void Tick(Link const& link) {
 std::string StatusJson() {
     namespace json = vr::test_request;
     vl::Summary const s = gWindow.Last(Now());
+    std::string const assist = std::format(
+        "{{\"keep\": {}, \"why\": {}, \"frictionCalls\": {}, \"adhesionCalls\": {}, \"lastMinute\": {{\"frictionTicks\": {}, "
+        "\"frictionTurning\": {}, \"frictionRemoved\": {}, \"frictionMean\": {}, \"frictionMax\": {}, \"adhesionTicks\": {}, "
+        "\"adhesionRemoved\": {}, \"adhesionYawDeg\": {}, \"adhesionPitchDeg\": {}}}}}",
+        hand_calibration::AimAssist() ? "true" : "false", json::JsonString(vl::Name(gAssistWhy)), gFrictionCalls, gAdhesionCalls,
+        s.frictionTicks, s.frictionTurning, s.frictionRemoved,
+        json::JsonNumber(s.frictionTicks > 0 ? s.frictionSum / s.frictionTicks : 0.0), json::JsonNumber(s.frictionMax),
+        s.adhesionTicks, s.adhesionRemoved, json::JsonNumber(static_cast<double>(s.adhesionYaw) * 360.0 / vl::kUnitsPerTurn),
+        json::JsonNumber(static_cast<double>(s.adhesionPitch) * 360.0 / vl::kUnitsPerTurn));
     return std::format("{{\"enabled\": {}, \"why\": {}, \"cameraMode\": {}, \"pitchUU\": {}, \"pitchDeg\": {}, \"yawUU\": {}, "
                        "\"rollUU\": {}, \"shots\": {}, \"recoilDeg\": {}, \"lastMinute\": {{\"seconds\": {}, \"gameDriftDeg\": {}, "
                        "\"correctedDeg\": {}, \"recoilDeg\": {}, \"shots\": {}, \"minPitchDeg\": {}, \"maxPitchDeg\": {}, "
-                       "\"heldFrames\": {}, \"frames\": {}, \"zoomSnaps\": {}}}}}",
+                       "\"heldFrames\": {}, \"frames\": {}, \"zoomSnaps\": {}}}, \"aimAssist\": {}}}",
         hand_calibration::LevelCamera() ? "true" : "false", json::JsonString(vl::Name(gWhy)), json::JsonString(gModeName),
         vl::Signed(gPitch), json::JsonNumber(vl::Degrees(vl::Signed(gPitch))), vl::Signed(gYaw), vl::Signed(gRoll), gShots,
         json::JsonNumber(static_cast<double>(gRecoilTotal) * 360.0 / vl::kUnitsPerTurn), json::JsonNumber(s.seconds),
         json::JsonNumber(static_cast<double>(s.gameDrift) * 360.0 / vl::kUnitsPerTurn),
         json::JsonNumber(static_cast<double>(s.corrected) * 360.0 / vl::kUnitsPerTurn),
         json::JsonNumber(static_cast<double>(s.recoil) * 360.0 / vl::kUnitsPerTurn), s.shots, json::JsonNumber(vl::Degrees(s.minPitch)),
-        json::JsonNumber(vl::Degrees(s.maxPitch)), s.heldFrames, s.frames, s.zoomSnaps);
+        json::JsonNumber(vl::Degrees(s.maxPitch)), s.heldFrames, s.frames, s.zoomSnaps, assist);
 }
 
 void LogStats() {
@@ -436,6 +586,24 @@ void LogStats() {
     gWhyChanges = 0;
     gFallbackHolds = 0;
     gPulses = 0;
+
+    // Aim assist: how often friction and adhesion would have turned the world (the game's own values).
+    if (gViewFriction == nullptr) {
+        return;
+    }
+    std::string const friction = s.frictionTicks > 0
+        ? std::format("friction would have taken {:.0f}% of the stick's turn on average ({:.0f}% at most) in {} ticks with a target "
+                      "in the soft margin, {} of them while the look stick turned; removed in {}",
+              100.0 * s.frictionSum / s.frictionTicks, 100.0 * s.frictionMax, s.frictionTicks, s.frictionTurning, s.frictionRemoved)
+        : std::string("friction never engaged");
+    std::string const adhesion = s.adhesionTicks > 0
+        ? std::format("adhesion would have turned the view in {} ticks (yaw {:.1f} deg, pitch {:.1f} deg in all); removed in {}",
+              s.adhesionTicks, static_cast<double>(s.adhesionYaw) * 360.0 / vl::kUnitsPerTurn,
+              static_cast<double>(s.adhesionPitch) * 360.0 / vl::kUnitsPerTurn, s.adhesionRemoved)
+        : std::string("adhesion never turned the view");
+    log::Info("    aim assist: {} ({} state changes); last {:.0f} s: {}; {}; {} ViewFriction and {} ViewAdhesion calls in all",
+        vl::Name(gAssistWhy), gAssistChanges, s.seconds, friction, adhesion, gFrictionCalls, gAdhesionCalls);
+    gAssistChanges = 0;
 }
 
 void Shutdown() {
@@ -468,6 +636,17 @@ void Shutdown() {
     gPulses = 0;
     gToldFirstShot = false;
     gSnapLoggedAt = -1e9;
+    gViewFriction = nullptr;
+    gViewAdhesion = nullptr;
+    gAssistWhy = vl::AssistWhy::NoView;
+    gLoggedAssistWhy = vl::AssistWhy::NoView;
+    gAssistLogged = false;
+    gAssistLoggedAt = -1e9;
+    gAssistChanges = 0;
+    gFrictionCalls = 0;
+    gAdhesionCalls = 0;
+    gToldFriction = false;
+    gToldAdhesion = false;
     gModes.clear();
 }
 

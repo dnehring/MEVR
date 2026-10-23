@@ -4481,6 +4481,74 @@ void TestViewLevel() {
     CHECK(vl::RecoilPulse(10.0, 2.0).amplitude <= 1.0f);
 }
 
+// Aim assist's friction and adhesion removed under hand aim (core/vr/ViewLevel, research/24 section 7):
+// the gate, the camera modes, and the window's counts of what they would have done.
+void TestAimAssist() {
+    namespace vl = mevr::vr::view_level;
+    vl::AssistInputs in;
+    in.headTrackedView = in.handAim = in.onFoot = in.pawn = in.cameraModeRemoves = true;
+    CHECK(vl::DecideAssist(in) == vl::AssistWhy::Removed);
+    vl::AssistInputs t = in;
+    t.keep = true;  // [Hands] aimAssist = 1 wins over everything
+    t.headTrackedView = false;
+    CHECK(vl::DecideAssist(t) == vl::AssistWhy::Kept);
+    t = in;
+    t.headTrackedView = false;  // the flat game, VR off
+    CHECK(vl::DecideAssist(t) == vl::AssistWhy::NoView);
+    t = in;
+    t.headAim = true;
+    CHECK(vl::DecideAssist(t) == vl::AssistWhy::HeadAim);
+    t = in;
+    t.handAim = false;
+    CHECK(vl::DecideAssist(t) == vl::AssistWhy::NoHandAim);
+    t = in;
+    t.onFoot = false;  // the Mako
+    CHECK(vl::DecideAssist(t) == vl::AssistWhy::NotOnFoot);
+    t = in;
+    t.pawn = false;
+    CHECK(vl::DecideAssist(t) == vl::AssistWhy::NoPawn);
+    t = in;
+    t.cameraModeRemoves = false;  // the sniper scope
+    CHECK(vl::DecideAssist(t) == vl::AssistWhy::CameraMode);
+    for (vl::AssistWhy why : {vl::AssistWhy::Removed, vl::AssistWhy::Kept, vl::AssistWhy::CameraMode}) {
+        CHECK(std::string(vl::Name(why)) != "?");
+    }
+
+    // Camera modes: wherever the hand aims on foot (cover too); the sniper scope, the Mako, photo and
+    // cinematic modes keep the game's (exact names).
+    for (char const* mode : {"SFXCameraMode_Explore", "SFXCameraMode_ExploreStorm", "SFXCameraMode_Combat",
+             "SFXCameraMode_CombatStorm", "SFXCameraMode_TightAim", "SFXCameraMode_EnterCover", "SFXCameraMode_HipAimCover"}) {
+        CHECK(vl::CameraModeRemovesAssist(mode));
+    }
+    for (char const* mode : {"SFXCameraMode_SniperAim", "SFXCameraMode_Vehicle", "SFXCameraMode_VehicleTightAim",
+             "SFXCameraMode_VehicleTightAimEx", "SFXCameraMode_Photo", "SFXCameraMode_PhotoFree", "SFXCameraMode_PhotoOrbit",
+             "SFXCameraMode_Cinematic", "SFXCameraMode_Interpolate", "none", ""}) {
+        CHECK(!vl::CameraModeRemovesAssist(mode));
+    }
+
+    // The window: friction counts only with a target in the soft margin (factor > 0), adhesion only a
+    // non-zero turn (wrapped components read signed).
+    vl::Window window;
+    double const now = 500.5;
+    window.Friction(now, 0.0, true, true);  // no target: nothing would have happened
+    window.Friction(now, std::nan(""), true, true);
+    window.Adhesion(now, 0, 65536, true);  // a whole turn is no turn
+    vl::Summary s = window.Last(now);
+    CHECK(s.frictionTicks == 0 && s.adhesionTicks == 0);
+    window.Friction(now, 0.2, true, true);
+    window.Friction(now, 0.6, false, true);
+    window.Friction(now + 1.0, 0.4, true, false);
+    window.Adhesion(now, 65536 - 30, 100, true);  // 30 units down, 100 right
+    window.Adhesion(now + 1.0, 10, -50, false);
+    s = window.Last(now + 1.0);
+    CHECK(s.frictionTicks == 3 && s.frictionTurning == 2 && s.frictionRemoved == 2);
+    CHECK(std::abs(s.frictionSum - 1.2) < 1e-9 && std::abs(s.frictionMax - 0.6) < 1e-9);
+    CHECK(s.adhesionTicks == 2 && s.adhesionRemoved == 1 && s.adhesionYaw == 150 && s.adhesionPitch == 40);
+    // They age out of the minute like the rest.
+    s = window.Last(now + 70.0);
+    CHECK(s.frictionTicks == 0 && s.adhesionTicks == 0 && s.frictionMax == 0.0);
+}
+
 // The left trigger belongs to the squad wheel per pull: decided at the press, kept until let go.
 void TestTriggerOwner() {
     using namespace mevr::vr::squad_menu;
@@ -4713,6 +4781,7 @@ void TestSightAssist() {
 
 int main() {
     TestViewLevel();
+    TestAimAssist();
     TestRecenterTilt();
     TestTriggerOwner();
     TestSupportZone();
