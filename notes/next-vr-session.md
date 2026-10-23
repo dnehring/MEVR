@@ -1272,3 +1272,9 @@ Stand still in gameplay (or `tools/console.ps1 pause`) for each A/B; each step i
    wrong, `tools/vr-game-settings.ps1 -Game LE1` puts the old rung back. In SteamVR's per-app settings try
    Throttling "Fixed" with motion smoothing, and 120 Hz (60 real frames, smoothed) against 90 Hz: which feels
    steadier is yours to judge; the probe's numbers are the same either way.
+7. **The eye upscale (FSR 1), for the GPU side** (research/32): with the game closed, `tools/vr-game-settings.ps1
+   -Game LE1 -Scale 0.75` (2824x2880 -> 2118x2160), then in `ASI\LE1MEVR.ini` add `[Upscale]` with `method = fsr`
+   (live; `sharpness = 0.9`). Expect `[TARGETCHK] Stereo 2 target OK` at 2118x2160, `upscale: FSR 1 shaders
+   ready` and a `upscale: ... ms of GPU per eye` line in LE1MEVR.log, and the probe's GPU span near 56% of
+   before. Compare by eye with `method = off` (the bilinear fill of the same small target) and with the full-size
+   target (`-ResX 2824 -ResY 2880` again, game closed). If anything looks wrong, `method = off` is instant.

@@ -235,6 +235,14 @@ switching frameworks.
   auto|neutral|quest|vivid|custom`, the custom values per headset, `compare`, `dither`; our menu's Display
   page (and the VR hands tab's Colour section) edits them live; holding A there is `colour::HoldCompare()`. Log
   `[MEVR-COLOUR]` / `colour:` (the GPU cost every 10 s); snapshots show the corrected picture (`"colour"`).
+- LE1 eye upscale ([research/32](research/32-ue3-vr-performance.md), `[Upscale]` in `ASI\LE1MEVR.ini`, off by
+  default): with `method = fsr` and the stereo target below the headset's eye size (`tools/vr-game-settings.ps1
+  -Scale 0.75`), Halcyon's eye blit scales each 8-bit eye up with FSR 1 (EASU into an intermediate, RCAS into the
+  eye, the colour correction at the end; `sharpness` 0..1) instead of its bilinear fill: seam `[MEVR] upscale` in
+  `BlitTextureToEyeWithFill`, `MevrBridge::EyeUpscale` in `plugin/Upscale`, the math and shader text in
+  `core/vr/Upscale` (unit-tested), AMD's MIT headers in `external/fsr1` embedded at build time. Offline look and
+  check: `mevr-upscale-preview` (PNGs; `--check` is ctest `mevr-upscale-shader`; `--bench` times an eye). Log
+  `upscale:`; the probe JSON's `"upscale"`.
 - LE1 gun sights ([research/21](research/21-sights-and-scopes.md), HostServices v13): a collimated red
   dot / holo per gun (a quad 50 m out along the sight line, `eyeVisibility` = the eye looking through the
   window) and a 4x picture-in-picture scope on the sniper rifle (a disc at the eyepiece for the aiming

@@ -318,6 +318,9 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/Floor.hpp
     src/core/vr/FrameProbe.cpp
     src/core/vr/FrameProbe.hpp
+    src/core/vr/Upscale.cpp
+    src/core/vr/Upscale.hpp
+    src/core/Embedded.hpp
     src/core/vr/Haptics.cpp
     src/core/vr/Haptics.hpp
     src/core/vr/HostView.cpp
@@ -384,6 +387,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/SightPictures.hpp
     src/plugin/SquadPanel.cpp
     src/plugin/SquadPanel.hpp
+    src/plugin/Upscale.cpp
+    src/plugin/Upscale.hpp
     src/plugin/SquadPanelDraw.cpp
     src/plugin/SquadPanelDraw.hpp
     src/plugin/TestLoop.cpp
@@ -394,6 +399,26 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/WorldPanels.hpp
 )
 
+# Text embedded at build time as a char array (tools/cmake/EmbedText.cmake; the declarations in src/core/Embedded.hpp):
+# the generated .cpp goes in `out_var` for the targets that use it.
+function(mevr_embed_text input symbol out_var)
+    set(out "${CMAKE_CURRENT_BINARY_DIR}/embedded/${symbol}.cpp")
+    add_custom_command(
+        OUTPUT "${out}"
+        COMMAND ${CMAKE_COMMAND} -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/${input} -DOUTPUT=${out} -DSYMBOL=${symbol}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tools/cmake/EmbedText.cmake
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${input}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/cmake/EmbedText.cmake"
+        COMMENT "Embedding ${input} as ${symbol}"
+        VERBATIM)
+    set(${out_var} "${out}" PARENT_SCOPE)
+endfunction()
+
+# AMD FidelityFX Super Resolution 1 (external/fsr1, MIT): the shader headers the eye upscale compiles at run time
+# (core/vr/Upscale, plugin/Upscale; research/32).
+mevr_embed_text(external/fsr1/ffx_a.h kFfxA MEVR_EMBEDDED_FFX_A)
+mevr_embed_text(external/fsr1/ffx_fsr1.h kFfxFsr1 MEVR_EMBEDDED_FFX_FSR1)
+set(MEVR_FSR_EMBEDDED ${MEVR_EMBEDDED_FFX_A} ${MEVR_EMBEDDED_FFX_FSR1})
+
 function(mevr_add_plugin game)
     set(host MEVR-${game})
     set(host_sources ${MEVR_HOST_SOURCES} ${MEVR_CORE_SOURCES})
@@ -401,7 +426,7 @@ function(mevr_add_plugin game)
     set(with_main_menu OFF)
     if (MEVR_HALCYON AND game STREQUAL "LE1")
         set(with_halcyon ON)
-        list(APPEND host_sources ${MEVR_HALCYON_HOST_SOURCES})
+        list(APPEND host_sources ${MEVR_HALCYON_HOST_SOURCES} ${MEVR_FSR_EMBEDDED})
         if (MEVR_MAIN_MENU)
             # Our VR main menu (research/28): LE1 only for now, in the host (not hot-reloaded).
             set(with_main_menu ON)
@@ -484,6 +509,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/Sights.cpp
         src/core/vr/SquadMenu.cpp
         src/core/vr/TestRequest.cpp
+        src/core/vr/Upscale.cpp
         src/core/vr/ViewLevel.cpp
         src/core/vr/ViewSync.cpp
         src/core/vr/WheelCrop.cpp
@@ -533,6 +559,23 @@ if (MEVR_BUILD_TESTS)
     target_compile_definitions(mevr-colour-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-colour-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_test(NAME mevr-colour-shader COMMAND mevr-colour-preview --check)
+
+    # The eye upscale, offline (tools/upscale-preview, research/32): FSR 1's EASU and RCAS from core/vr/Upscale's
+    # shader text (the embedded AMD headers) on a D3D11 device of its own, over a synthetic test image, as PNGs
+    # next to a bilinear scale of the same; --check (a ctest test) compiles them and checks what the output must
+    # keep (flat stays flat, nothing beyond the source's range, sharper than bilinear); --bench times an eye.
+    add_executable(mevr-upscale-preview
+        tools/upscale-preview/Main.cpp
+        src/core/PngFile.cpp
+        src/core/vr/Colour.cpp
+        src/core/vr/Upscale.cpp
+        ${MEVR_FSR_EMBEDDED}
+    )
+    target_include_directories(mevr-upscale-preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(mevr-upscale-preview PRIVATE windowscodecs ole32 d3d11 d3dcompiler)
+    target_compile_definitions(mevr-upscale-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-upscale-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+    add_test(NAME mevr-upscale-shader COMMAND mevr-upscale-preview --check)
 
     # The squad weapon menu's look, offline (tools/squad-preview): PNGs of sample squads drawn with the
     # host's own drawing code and ImGui's D3D11 backend (from the halcyon-le1 library).

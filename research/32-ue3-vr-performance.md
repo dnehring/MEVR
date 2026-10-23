@@ -85,6 +85,7 @@ bookkeeping ~0.5 ms), lights ~0.6 ms, translucency ~0.5 ms. The `depthPrepass` s
 | 5 | **P-cores only**, SteamVR fixed throttling as a net | steadier frames | low | `pCoresOnly` built |
 | 6 | **No wait for Umbra's query results** (`umbraQueryWait = 0`) | 0 flat; in VR whatever the resolve spins for a query the GPU hasn't reached (the stamp is a float of 2 s precision: the wait, when it happens, is 0 to ~1 s) | an unready query counts as visible: a few more draws | built, untested; the log's `longest results read` says if it ever spins |
 | 7 | **UE3's own per-primitive queries waited on** (`0x762550`, `bWait = TRUE`): the second eye waits for the first eye's query of the same frame **[verify]** | unknown in VR | `UMBRA TOGGLEOCCLUSION` (console) ignores them: a zero-code A/B; lever 1 removes the second eye's wait anyway | to measure |
+| 8 | **Spatial upscaling at the eye blit** (FSR 1: `[Upscale] method = fsr`, the target at 0.75 of the eye) | GPU only: the scene at 56% of the pixels, +0.14 ms per eye for the scaler; nothing on the CPU | a softer picture below ~0.75; the HUD panel at the smaller size | built, untested ("Lever: spatial upscaling" below) |
 
 ### Lever 1 in detail [inference, to verify in the code]
 
@@ -182,6 +183,38 @@ below lists them.
 - The heap is not a lever: `RtlAllocateHeap` + `RtlFreeHeap` are ~2.7% of the flat render-thread samples (the
   "ntdll 15%" was mostly `NtWaitForSingleObject`, semaphores and FLS). A replacement allocator would save ~0.3 ms.
 
+## Lever: spatial upscaling at the eye blit (FSR 1), built (2026-10-23)
+
+The GPU side, for machines where it's the limit (and the p90 case on this one, research/22): the game renders its
+stereo target below the headset's eye size and the eye blit scales it up. Temporal upscalers (DLSS, DLAA, FSR 2/3,
+XeSS) need per-pixel motion vectors, a jittered projection and a seam between the scene and the post-process,
+none of which LE1 offers from outside; a camera-only motion field would ghost everything that moves, worse in VR
+than aliasing. Spatial upscaling needs nothing from the engine: AMD's FidelityFX Super Resolution 1 (`external/fsr1`,
+MIT): EASU, a 12-tap edge-adaptive upscale with deringing, then RCAS, a contrast-adaptive sharpen.
+
+**Built (`[Upscale]` in `ASI\LE1MEVR.ini`: `method = fsr` (default off), `sharpness` 0..1 (default 0.9 = RCAS's
+recommended 0.2 stops); the render size with `tools/vr-game-settings.ps1 -Scale 0.75`; untested in the headset):**
+- The seam is `[MEVR] upscale` in Halcyon's `BlitTextureToEyeWithFill`, where a source that isn't the eye's size
+  already takes a bilinear fill draw: with the method on and a smaller 8-bit source, `EyeUpscale` (plugin/Upscale)
+  draws EASU into an intermediate of the eye's size and RCAS into the eye instead, with the colour correction
+  (research/27) at the end of RCAS as it is at the end of Halcyon's fill, through Halcyon's own fill constants
+  (its rectangle mapping folded into EASU's affine map; core/vr/Upscale). The AMD headers are embedded at build
+  time (`tools/cmake/EmbedText.cmake`) and compiled at run time like the colour variants. Off, or on the float HDR
+  path, or with the source at the eye's size, nothing changes.
+- Offline, on this GPU (`mevr-upscale-preview --bench`, hardware device): one eye 2118x2160 → 2824x2880 costs
+  0.14 ms (bilinear 0.02 ms): nothing against the pixels saved (0.75² = 56% of the GPU's scene work). The check
+  (ctest `mevr-upscale-shader`): a flat patch stays flat, EASU keeps a step within its levels, RCAS's halo stays
+  within 10% of the step, the result is sharper than bilinear and the same geometry (mean difference 0.5 of 255).
+- What a smaller target also changes: the game's UI and our HUD panel render at that size (the panel is a quad
+  that covers a fraction of the view, so 0.75 is still plenty), Halcyon's `[TARGETCHK]` expects the new size (the
+  settings tool writes it), and Halcyon's dormant auto-resolution sidecar (`MELEVR_autores.ini`, absent) must stay
+  absent or it rewrites ResX/ResY at launch. The engine's own `DynResFraction` (Halcyon's `dynResFraction`) is not
+  the way: it upsamples inside the engine, softly, before we see the pixels.
+- To verify in the headset: `[TARGETCHK] Stereo 2 target OK` at the smaller size, the `upscale:` log line (the GPU
+  cost per eye), the probe's GPU span (expect ~56% of before at 0.75), then look: sharper than the bilinear fill at
+  the same scale (`method = off` for the comparison, live), no ringing on edges, text on the HUD still clean.
+  Below 0.75 the picture softens; 0.67 is where FSR's own "Performance" mode sits.
+
 ## The commander, read (2026-10-23, Ghidra, a subagent's pass; decompiled C in the scratchpad, names in symbols-le1.csv)
 
 BioWare's `UmbraCommander::command` (`0x8C34C0`, vtable `0x11D62C0` slot 1) is the game's side of Umbra's resolve.
@@ -218,6 +251,7 @@ second eye entirely.
 
 ## Sources
 
+- AMD FidelityFX Super Resolution 1 (EASU, RCAS; MIT): https://github.com/GPUOpen-Effects/FidelityFX-FSR
 - UEVR: https://github.com/praydog/UEVR, https://docs.uevr.io/
 - Unreal single-pass stereo culling: https://forums.unrealengine.com/t/pico-openxr-fix-sps-mono-culling-frustum-incorrectly-culling-edge-objects/2763119
 - Unity single-pass instanced: https://docs.unity3d.com/ScriptReference/XR.XRSettings.StereoRenderingMode.SinglePassInstanced.html

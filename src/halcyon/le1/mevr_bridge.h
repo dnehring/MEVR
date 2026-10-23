@@ -10,11 +10,14 @@
 #include <cstdint>
 
 struct ID3D11BlendState;
+struct ID3D11Buffer;
 struct ID3D11DepthStencilState;
 struct ID3D11Device;
 struct ID3D11DeviceContext;
 struct ID3D11PixelShader;
 struct ID3D11RenderTargetView;
+struct ID3D11SamplerState;
+struct ID3D11ShaderResourceView;
 struct ID3D11Texture2D;
 
 namespace MELEVR::MevrBridge
@@ -288,6 +291,17 @@ ID3D11PixelShader* EyeColourShader(ID3D11DeviceContext* context, int which, ID3D
                                    int eye) noexcept;
 // Right after that draw: puts b1 back.
 void EyeColourDone(ID3D11DeviceContext* context) noexcept;
+
+// ---- Spatial upscaling of the eye images (src/plugin/Upscale.cpp, core/vr/Upscale, research/32) ----------------
+// Present thread, in BlitTextureToEyeWithFill right before its fill draw (the eye's RTV, viewport and fixed state
+// set): with [Upscale] method = fsr and `source` a smaller 8-bit image, scales it into `eyeRtv` with FSR 1 (EASU
+// into an intermediate of the eye's size, RCAS into the eye, the colour correction at its end) and returns true;
+// false (nothing drawn, no state changed but b2) for Halcyon's own fill. `fill`: the FillParams uploaded to
+// `fillConstants` (fillUv, imageRect, colorScale). `linearSource`: the eye's sRGB view is bound (a float or _SRGB
+// source): not upscaled.
+bool EyeUpscale(ID3D11DeviceContext* context, ID3D11ShaderResourceView* source, ID3D11SamplerState* sampler,
+                ID3D11Buffer* fillConstants, ID3D11RenderTargetView* eyeRtv, unsigned eyeWidth, unsigned eyeHeight,
+                const float fill[12], bool linearSource, int eye) noexcept;
 
 // ---- Life-size (metric) stereo (src/plugin/MetricStereo.cpp, core/vr/MetricStereo, research/30) ---------------
 // Halcyon's Stereo 2 renders both passes from the head centre +- sfr2HalfEyeUU along the body's right, with one

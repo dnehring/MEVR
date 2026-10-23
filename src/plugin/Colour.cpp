@@ -576,6 +576,30 @@ void MenuSection() {
     }
 }
 
+bool gBoundForEye = false;
+
+bool BeginEye(ID3D11DeviceContext* context, int eye, bool linearSource) {
+    gEyeDrawOpen = false;
+    gActiveWithoutDraw = 0;  // this draw is the eye blit's
+    gBoundForEye = false;
+    if (context == nullptr) {
+        return false;
+    }
+    Tick();
+    if (!gNonNeutral.load(std::memory_order_relaxed) || !Correcting()) {
+        return false;
+    }
+    gBoundForEye = Bind(context, eye == 1 ? kSlotRight : kSlotLeft, linearSource, eye == 1 ? 1u : 0u);
+    return gBoundForEye;
+}
+
+void EndEye(ID3D11DeviceContext* context) {
+    if (gBoundForEye && context != nullptr) {
+        Unbind(context);
+    }
+    gBoundForEye = false;
+}
+
 } // namespace mevr::host::colour
 
 // ---- The [MEVR] colour seams in Halcyon's eye blit (src/halcyon/le1/mevr_bridge.h) ----------------------------

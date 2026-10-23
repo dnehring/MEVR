@@ -41,6 +41,9 @@ param(
     [ValidateSet('Low', 'Performance', 'Balanced', 'Sharp', 'Max')] [string]$Quality = 'Performance',
     [int]$ResX,
     [int]$ResY,
+    # The current target scaled (0.5..1.0; even sizes), for the eye upscale ([Upscale] method = fsr in
+    # ASI\LE1MEVR.ini, research/32): -Scale 0.75 from 2824x2880 gives 2118x2160.
+    [double]$Scale,
     # Prints the current values without changing anything.
     [switch]$Show
 )
@@ -61,6 +64,19 @@ $halcyonIni = Join-Path $GameRoot "Game\ME$n\Binaries\Win64\ASI\MELEVR.ini"
 $wanted = [ordered]@{
     'SystemSettings' = [ordered]@{ UseVSync = 'False'; MotionBlur = 'False'; FilmGrain = 'False'; MaxAnisotropy = '16' }
     'HDR'            = [ordered]@{ DesiredRange = 'DynamicRange_SDR' }
+}
+if ($Scale) {
+    if ($ResX -or $ResY) { throw 'Give -Scale or -ResX/-ResY, not both.' }
+    if ($Scale -lt 0.5 -or $Scale -gt 1.0) { throw '-Scale is 0.5..1.0 of the current target.' }
+    $current = [IO.File]::ReadAllText($ini)
+    $mx = [regex]::Match($current, '(?m)^ResX=(\d+)')
+    $my = [regex]::Match($current, '(?m)^ResY=(\d+)')
+    if (-not ($mx.Success -and $my.Success)) { throw 'No ResX/ResY in GamerSettings.ini to scale; give -ResX/-ResY.' }
+    $ResX = [int][math]::Floor([int]$mx.Groups[1].Value * $Scale + 0.5)
+    $ResY = [int][math]::Floor([int]$my.Groups[1].Value * $Scale + 0.5)
+    if ($ResX % 2) { $ResX++ }
+    if ($ResY % 2) { $ResY++ }
+    Write-Output ("Target scaled by {0}: {1}x{2} -> {3}x{4}" -f $Scale, $mx.Groups[1].Value, $my.Groups[1].Value, $ResX, $ResY)
 }
 if ($ResX -or $ResY) {
     if (-not ($ResX -gt 0 -and $ResY -gt 0)) { throw 'Give both -ResX and -ResY.' }

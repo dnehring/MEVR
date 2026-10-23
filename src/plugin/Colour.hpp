@@ -40,6 +40,12 @@ void SetCompare(bool on);
 bool BeginPanel(ID3D11DeviceContext* context, std::uint32_t seed);
 void EndPanel(ID3D11DeviceContext* context);
 
+// The eye upscale's last pass (plugin/Upscale), which stands in for Halcyon's eye blit: true when the correction is
+// on and its constants are bound at b1 for `eye` (the pass then draws its corrected variant), false for the plain
+// one; EndEye after the draw either way. Feeds the eye blit's watchdog as EyeColourShader does.
+bool BeginEye(ID3D11DeviceContext* context, int eye, bool linearSource);
+void EndEye(ID3D11DeviceContext* context);
+
 // For snapshots (plugin/TestLoop): profile, values, headset, whether it corrects, the measured cost.
 std::string StatusJson();
 

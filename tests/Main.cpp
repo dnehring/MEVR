@@ -19,6 +19,7 @@
 #include "core/vr/Calibration.hpp"
 #include "core/vr/Colour.hpp"
 #include "core/vr/ColourStrip.hpp"
+#include "core/vr/Upscale.hpp"
 #include "core/vr/Comfort.hpp"
 #include "core/vr/Haptics.hpp"
 #include "core/vr/ImageConvert.hpp"
@@ -6229,7 +6230,59 @@ void TestComfort() {
     }
 }
 
+// The eye upscale's settings and constants (core/vr/Upscale, research/32): FSR 1's EASU constants for the
+// headset's sizes, the affine map for Halcyon's fill rectangles, RCAS's sharpness.
+void TestUpscale() {
+    namespace vu = mevr::vr::upscale;
+    CHECK(vu::Parse("fsr", 0.9).method == vu::Method::Fsr);
+    CHECK(vu::Parse(" FSR1 ", 0.5).method == vu::Method::Fsr);
+    CHECK(vu::Parse("off", 0.9).method == vu::Method::Off);
+    CHECK(vu::Parse("", 0.9).method == vu::Method::Off);
+    CHECK(vu::Parse("bilinear", 0.9).method == vu::Method::Off);
+    CHECK(vu::Parse("fsr", 7.0).sharpness == 1.0f);
+    CHECK(vu::Parse("fsr", -1.0).sharpness == 0.0f);
+    CHECK(vu::Parse("fsr", std::nan("")).sharpness == 0.9f);
+    CHECK(std::fabs(vu::RcasStops(1.0f)) < 1e-6f);
+    CHECK(std::fabs(vu::RcasStops(0.0f) - 2.0f) < 1e-6f);
+    CHECK(std::fabs(vu::RcasStops(0.9f) - 0.2f) < 1e-5f);
+    auto const f = [](std::uint32_t u) {
+        float v;
+        std::memcpy(&v, &u, sizeof v);
+        return v;
+    };
+    // The whole image: FsrEasuCon's own con0 (scale, and half a scaled pixel less half a texel).
+    float const whole[4] = {0.0f, 0.0f, 1.0f, 1.0f};
+    vu::Constants const k = vu::MakeConstants(2118, 2160, 2824, 2880, whole, whole, 0.9f);
+    CHECK(std::fabs(f(k.con0[0]) - 2118.0f / 2824.0f) < 1e-6f);
+    CHECK(std::fabs(f(k.con0[1]) - 0.75f) < 1e-6f);
+    CHECK(std::fabs(f(k.con0[2]) - (0.5f * 2118.0f / 2824.0f - 0.5f)) < 1e-6f);
+    CHECK(std::fabs(f(k.con0[3]) - (0.5f * 0.75f - 0.5f)) < 1e-6f);
+    CHECK(std::fabs(f(k.con1[0]) - 1.0f / 2118.0f) < 1e-9f);
+    CHECK(std::fabs(f(k.con1[3]) + 1.0f / 2160.0f) < 1e-9f);
+    CHECK(std::fabs(f(k.con2[1]) - 2.0f / 2160.0f) < 1e-9f);
+    CHECK(std::fabs(f(k.con3[1]) - 4.0f / 2160.0f) < 1e-9f);
+    CHECK(k.con3[2] == 0 && k.con3[3] == 0);
+    CHECK(std::fabs(f(k.rcas[0]) - std::exp2(-0.2f)) < 1e-6f);
+    CHECK((k.rcas[1] & 0xFFFFu) == (k.rcas[1] >> 16));
+    CHECK((k.rcas[1] & 0xFFFFu) == 0x3AF7u);  // half(0.87055)
+    CHECK(k.sizes[0] == 2118.0f && k.sizes[1] == 2160.0f && k.sizes[2] == 2824.0f && k.sizes[3] == 2880.0f);
+    // A rectangle: the source's right half shown in the middle half of the target. Target pixel 200 (the image's
+    // first column) reads the source at 199.75 (its column 200 less half a texel, plus half a target pixel's worth).
+    float const fill[4] = {0.5f, 0.0f, 0.5f, 1.0f};
+    float const rect[4] = {0.25f, 0.0f, 0.5f, 1.0f};
+    vu::Constants const r = vu::MakeConstants(400, 400, 800, 800, fill, rect, 0.9f);
+    CHECK(std::fabs(f(r.con0[0]) - 0.5f) < 1e-6f);
+    CHECK(std::fabs(200.0f * f(r.con0[0]) + f(r.con0[2]) - 199.75f) < 1e-4f);
+    CHECK(std::fabs(f(r.con0[1]) - 0.5f) < 1e-6f);
+    CHECK(std::fabs(f(r.con0[3]) - (0.5f * 0.5f - 0.5f)) < 1e-6f);
+    std::string const src = vu::ShaderSource("//A\n", "//F\n");
+    CHECK(src.find("#define A_GPU 1") != std::string::npos && src.find("//A") != std::string::npos);
+    CHECK(src.find("#define FSR_EASU_F 1") != std::string::npos && src.find("//F") < src.find("PSEasu"));
+    CHECK(src.find("PSRcas") != std::string::npos && src.find("MEVR_EYE_OUT") != std::string::npos);
+}
+
 int main() {
+    TestUpscale();
     TestComfort();
     TestMetricStereo();
     TestMenuSettings();

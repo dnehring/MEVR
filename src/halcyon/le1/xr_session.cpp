@@ -1682,6 +1682,10 @@ bool BlitTextureToEyeWithFill(int eye, ID3D11Texture2D* src, float sourceVScale,
         g_context->IASetInputLayout(nullptr);
         g_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         g_context->VSSetShader(g_xrAtlasVs, nullptr, 0);
+        // [MEVR] upscale: a smaller 8-bit source may be scaled by FSR 1 instead of the bilinear fill below.
+        if (!MELEVR::MevrBridge::EyeUpscale(g_context, fillSrv, g_xrAtlasSampler, g_xrFillCb, eyeRtv, g_eyes[eye].width,
+                                            g_eyes[eye].height, fillConstants, eyeRtv == g_xrAtlasEyeRtvSrgb[eye], eye))
+        {
         g_context->PSSetShader(MELEVR::MevrBridge::EyeColourShader(g_context, 2, g_xrFillPs,
                                    eyeRtv == g_xrAtlasEyeRtvSrgb[eye], eye), nullptr, 0);   // [MEVR] colour
         g_context->PSSetShaderResources(0, 1, &fillSrv);
@@ -1689,6 +1693,7 @@ bool BlitTextureToEyeWithFill(int eye, ID3D11Texture2D* src, float sourceVScale,
         g_context->PSSetConstantBuffers(0, 1, &g_xrFillCb);
         g_context->Draw(3, 0);
         MELEVR::MevrBridge::EyeColourDone(g_context);   // [MEVR] colour
+        }
 
         ID3D11ShaderResourceView* nullSrv = nullptr;
         g_context->PSSetShaderResources(0, 1, &nullSrv);
