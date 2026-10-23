@@ -276,12 +276,14 @@ switching frameworks.
 - Offline tests: `cmake --build build --config Release --target mevr-tests`, then
   `ctest -C Release --test-dir build`. Put game-independent math there.
 - `tools/vr-game-settings.ps1` sets VR-friendly GamerSettings.ini values (VSync, motion blur,
-  film grain off, HDR to SDR); `-Restore` puts the user's originals back. On LE1 it also does what
-  Halcyon's installer (`MELE-VR.bat`) does: a borderless window (a bordered one is capped at the
-  monitor's height, which broke stereo), dynamic shadows off, frame smoothing off, and its
-  near-square stereo target (`-Quality`, default Performance 3072x3188), mirrored into
-  `MELEVR.ini`. The deploy installs Halcyon's *release* `MELEVR.ini` (its tuned code defaults),
-  not the older `src/halcyon/le1/runtime/MELEVR.ini`, which pins stale values.
+  film grain off, HDR to SDR, 16x anisotropic filtering); `-Restore` puts the user's originals back. On
+  LE1 it also does what Halcyon's installer (`MELE-VR.bat`) does: a borderless window (a bordered one is
+  capped at the monitor's height, which broke stereo), dynamic shadows off, frame smoothing off, and the
+  stereo target, mirrored into `MELEVR.ini`: Halcyon's ladder (`-Quality`, Performance 3072x3188) on the
+  first apply or when asked, else `-ResX/-ResY`; a later apply keeps the target. Since 2026-10-23 it is
+  the headset's own eye size (2824x2880 on the user's PS VR2: the GPU was over budget at p90 rendering 18%
+  more pixels than displayed, research/22). The deploy installs Halcyon's *release* `MELEVR.ini` (its tuned
+  code defaults), not the older `src/halcyon/le1/runtime/MELEVR.ini`, which pins stale values.
 - The mod connects to Windows' active OpenXR runtime (Oculus, or SteamVR for Steam Link). The
   user currently uses Steam Link / SteamVR.
 - The game's D3D11 device is SINGLETHREADED: no deferred contexts, and all D3D/XR work happens

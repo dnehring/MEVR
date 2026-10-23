@@ -4,6 +4,8 @@
 #                     clock beating against the headset's (research/08 H14).
 #   MotionBlur=False  Head rotation reads as camera motion, so every head turn smears.
 #   FilmGrain=False   Screen-locked noise; uncomfortable in a headset.
+#   MaxAnisotropy=16  Floors and walls at grazing angles shimmer in a headset far more than on a
+#                     monitor; 16x is nearly free on current GPUs (the game's default is lower).
 #   [HDR] DesiredRange=DynamicRange_SDR
 #                     HDR renders to an FP16 scRGB backbuffer whose >1.0 highlights the sRGB eye
 #                     swapchains clip. Prior art (Halcyon, research/13) sets it here [verify:
@@ -13,8 +15,10 @@
 #
 # LE1 also gets what Halcyon's installer (MELE-VR.bat) sets for its Stereo mode, which renders
 # the whole frame once per eye at a near-square size (height = width / 0.964, the eye's shape):
-#   ResX/ResY         the stereo target from -Quality (or -ResX/-ResY). Halcyon reports a display of
-#                     that size to the game, so it may exceed the monitor.
+#   ResX/ResY         the stereo target from -Quality (or -ResX/-ResY) on the first apply, or when either is
+#                     given; a later apply without them keeps the target (since 2026-10-23 it's the headset's
+#                     own eye size, 2824x2880 for the user's PS VR2: research/22). Halcyon reports a display
+#                     of that size to the game, so it may exceed the monitor.
 #   BorderlessWindow=True, Fullscreen=False
 #                     A bordered window is capped by Windows at the real monitor's height: on a
 #                     1440p monitor a 2048x2048 target rendered gameplay at 2009x1421, and
@@ -55,12 +59,13 @@ $engineBackup = "$engineIni.mevr_backup"
 $halcyonIni = Join-Path $GameRoot "Game\ME$n\Binaries\Win64\ASI\MELEVR.ini"
 
 $wanted = [ordered]@{
-    'SystemSettings' = [ordered]@{ UseVSync = 'False'; MotionBlur = 'False'; FilmGrain = 'False' }
+    'SystemSettings' = [ordered]@{ UseVSync = 'False'; MotionBlur = 'False'; FilmGrain = 'False'; MaxAnisotropy = '16' }
     'HDR'            = [ordered]@{ DesiredRange = 'DynamicRange_SDR' }
 }
 if ($ResX -or $ResY) {
     if (-not ($ResX -gt 0 -and $ResY -gt 0)) { throw 'Give both -ResX and -ResY.' }
-} elseif ($Game -eq 'LE1') {
+} elseif ($Game -eq 'LE1' -and ($PSBoundParameters.ContainsKey('Quality') -or -not (Test-Path $backup))) {
+    # The ladder on the first apply or when asked; a later apply without -Quality/-ResX keeps the target as it is.
     $ladder = @{ Low = 2048; Performance = 3072; Balanced = 4096; Sharp = 5120; Max = 6144 }
     $ResX = $ladder[$Quality]
     # Halcyon's EyeHeightForWidth (vr_config.h): width / 0.964, rounded, made even.
