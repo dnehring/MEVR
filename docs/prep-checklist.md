@@ -51,7 +51,8 @@ install folder → `H:\SteamLibrary` (ME LE is about 120 GB; H: has 184 GB free)
    `MassEffect1.exe` is FileVersion 2.0.0.48602.** LExSDKv2 hardcodes engine addresses for that
    build, and a mismatch aborts the game at plugin attach ([research/09](../research/09-me3tweaks-code-survey.md)).
 5. ~~Download MassFPS (LE1)~~. **Done 2026-10-07:** downloaded to `mods/` and extracted with
-   `tools/extract-m3m.ps1` into `src/script/le1/massfps-base/` ([research/11](../research/11-massfps.md)).
+   `tools/extract-m3m.ps1` for study ([research/11](../research/11-massfps.md)). The extracted files
+   stay local; they aren't in the repository.
 6. Open LE1's startup package and `SFXGame` in Legendary Explorer to start verifying the hypotheses
    in [vr-features-plan.md](vr-features-plan.md).
 

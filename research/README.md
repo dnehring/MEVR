@@ -11,7 +11,6 @@ and what is still unverified. The [docs/](../docs) folder holds the conclusions.
 | [04-me-le-modding-ecosystem.md](04-me-le-modding-ecosystem.md) | ME3Tweaks, LEBinkProxy, LExASIs, LExSDKv2, Legendary Explorer, the UDK workflow | 2026-10-07 |
 | [05-vr-frameworks.md](05-vr-frameworks.md) | UEVR, REFramework | 2026-10-07 |
 | [06-repo-licenses.md](06-repo-licenses.md) | License and size check for every reference repo (GitHub API) | 2026-10-07 |
-| [07-machine-audit.md](07-machine-audit.md) | Dev machine: toolchain, GPU, headset runtime, game install | 2026-10-07 |
 | [08-ue3-hypotheses.md](08-ue3-hypotheses.md) | UE3 engine mechanisms we plan to lean on (all unverified against ME LE) | 2026-10-07 |
 | [09-me3tweaks-code-survey.md](09-me3tweaks-code-survey.md) | LExASIs, LExSDKv2 and LEBinkProxy, verified from cloned source | 2026-10-07 |
 | [10-vr-code-survey.md](10-vr-code-survey.md) | REFramework VR internals (extraction notes) and Overlord architecture, from cloned source | 2026-10-07 |
