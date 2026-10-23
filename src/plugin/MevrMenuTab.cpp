@@ -25,6 +25,7 @@
 // The sample is taken in the T pose: both arms straight out to the sides, either trigger pulled.
 
 #include "halcyon/le1/mevr_bridge.h"
+#include "plugin/Calibration.hpp"
 #include "plugin/MevrMenu.hpp"
 #include "plugin/PerfProbe.hpp"
 #include "plugin/TestLoop.hpp"
@@ -212,11 +213,8 @@ void TrimRow(char const* label, char const* id, float& value) {
     ImGui::PopID();
 }
 
-void TakeSample(controllers::State const& state) {
-    XrPosef head{};
-    bool const haveHead = LatestMenuHead(head, 1000);
-    XrVector3f const l = state.left.grip.position;
-    XrVector3f const r = state.right.grip.position;
+void WriteArmSample(XrVector3f const& l, XrVector3f const& r, XrVector3f const* head, char const* why) {
+    Reload(true);  // the latest request counter
     float const dx = r.x - l.x, dy = r.y - l.y, dz = r.z - l.z;
     float const span = std::sqrt(dx * dx + dy * dy + dz * dz);
     WriteNumber(L"Arms", L"measureLeftX", l.x, L"%.4f");
@@ -225,10 +223,10 @@ void TakeSample(controllers::State const& state) {
     WriteNumber(L"Arms", L"measureRightX", r.x, L"%.4f");
     WriteNumber(L"Arms", L"measureRightY", r.y, L"%.4f");
     WriteNumber(L"Arms", L"measureRightZ", r.z, L"%.4f");
-    if (haveHead) {
-        WriteNumber(L"Arms", L"measureHeadX", head.position.x, L"%.4f");
-        WriteNumber(L"Arms", L"measureHeadY", head.position.y, L"%.4f");
-        WriteNumber(L"Arms", L"measureHeadZ", head.position.z, L"%.4f");
+    if (head != nullptr) {
+        WriteNumber(L"Arms", L"measureHeadX", head->x, L"%.4f");
+        WriteNumber(L"Arms", L"measureHeadY", head->y, L"%.4f");
+        WriteNumber(L"Arms", L"measureHeadZ", head->z, L"%.4f");
     }
     WriteNumber(L"Arms", L"measureSpanM", span, L"%.4f");
     // The counter last, so a reader that sees it change finds the sample already written.
@@ -236,10 +234,16 @@ void TakeSample(controllers::State const& state) {
     char text[128];
     std::snprintf(text, sizeof text, "Sample %ld taken: %.2f m between the controllers.", gMeasureRequests + 1, span);
     gMeasureResult = text;
-    mevr::log::Info("menu: arm-length sample {}: grips {:.2f} m apart, left ({:.2f}, {:.2f}, {:.2f}), right ({:.2f}, "
+    mevr::log::Info("menu: arm-length sample {} ({}): grips {:.2f} m apart, left ({:.2f}, {:.2f}, {:.2f}), right ({:.2f}, "
                     "{:.2f}, {:.2f}), head {}",
-        gMeasureRequests + 1, span, l.x, l.y, l.z, r.x, r.y, r.z, haveHead ? "recorded" : "unknown");
+        gMeasureRequests + 1, why, span, l.x, l.y, l.z, r.x, r.y, r.z, head != nullptr ? "recorded" : "unknown");
     Reload(true);
+}
+
+void TakeSample(controllers::State const& state) {
+    XrPosef head{};
+    bool const haveHead = LatestMenuHead(head, 1000);
+    WriteArmSample(state.left.grip.position, state.right.grip.position, haveHead ? &head.position : nullptr, "the T-pose button");
 }
 
 void MeasureSection() {
@@ -369,6 +373,14 @@ void CameraSection() {
 
 } // namespace
 
+std::wstring const& SettingsPath() noexcept {
+    return Path();
+}
+
+void TakeArmSample(XrVector3f const& left, XrVector3f const& right, XrVector3f const* head, char const* why) noexcept {
+    WriteArmSample(left, right, head, why != nullptr ? why : "?");
+}
+
 bool CameraAlignOwnsLeftTrigger() noexcept {
     Align const state = gAlign.load(std::memory_order_relaxed);
     return state == Align::WaitRelease || state == Align::Armed;
@@ -479,6 +491,60 @@ static void TestLoopSection() {
     }
     if (!p.lastCapture.empty()) {
         ImGui::TextDisabled("Last frame timing: %s", p.lastCapture.c_str());
+    }
+}
+
+// The guided calibration (plugin/Calibration, research/25): start it, see what it measured for these
+// controllers, the aiming eye, and whether the mod applies it ([Calibration] eye, use).
+static std::string ReadText(wchar_t const* section, wchar_t const* key, wchar_t const* fallback);
+
+static void CalibrationSection() {
+    namespace calibration = mevr::host::calibration;
+    ImGui::SeparatorText("Calibration (aim, hands, body)");
+    calibration::Summary const s = calibration::GetSummary();
+    ImGui::Text("Controllers: %s", s.device.empty() ? "not known yet (once the controllers are bound)" : s.device.c_str());
+    if (s.running) {
+        ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), "Calibrating (step: %s). Close this menu to go on.", s.step.c_str());
+        if (ImGui::Button("Cancel the calibration")) {
+            calibration::Cancel("the VR hands tab");
+        }
+    } else {
+        if (s.calibrated) {
+            ImGui::TextWrapped("Calibrated %s: %s", s.when.c_str(), s.results.c_str());
+        } else {
+            ImGui::TextDisabled("Not calibrated for these controllers: the guns follow the controller's aim pose.");
+        }
+        if (ImGui::Button(s.calibrated ? "Calibrate again" : "Calibrate")) {
+            MELEVR::Menu::SetOpen(false);  // it runs in the world, with the menu closed
+            calibration::Start("the VR hands tab");
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("about a minute; closes this menu. Stand somewhere safe and roomy.");
+    }
+    if (Path().empty()) {
+        return;
+    }
+    std::string const eye = ReadText(L"Calibration", L"eye", L"auto");
+    ImGui::TextUnformatted("Aiming eye:");
+    struct Choice {
+        char const* label;
+        wchar_t const* value;
+        char const* key;
+    };
+    static constexpr Choice kEyes[] = {{"measured", L"auto", "auto"}, {"left", L"left", "left"}, {"right", L"right", "right"}};
+    bool const chosen = eye == "left" || eye == "right";
+    for (Choice const& choice : kEyes) {
+        ImGui::SameLine();
+        bool const on = chosen ? eye == choice.key : std::string(choice.key) == "auto";
+        if (ImGui::RadioButton(choice.label, on) && !on) {
+            WritePrivateProfileStringW(L"Calibration", L"eye", choice.value, Path().c_str());
+            mevr::log::Info("menu: calibration: aiming eye {} (next calibration)", choice.key);
+        }
+    }
+    bool use = ReadText(L"Calibration", L"use", L"1") != "0";
+    if (ImGui::Checkbox("Use the calibration (off: the guns follow the controller's aim pose, as before)", &use)) {
+        WritePrivateProfileStringW(L"Calibration", L"use", use ? L"1" : L"0", Path().c_str());
+        mevr::log::Info("menu: calibration {}", use ? "used" : "not used");
     }
 }
 
@@ -622,6 +688,7 @@ void BuildMenuTabs() noexcept {
     TrimRow("Pitch (+ tilts the fingers down)", "pitch", gTrims.pitch);
     TrimRow("Yaw (+ turns the right hand's fingers outward)", "yaw", gTrims.yaw);
     TrimRow("Roll (+ rolls the right hand's thumb side outward)", "roll", gTrims.roll);
+    CalibrationSection();
     MeasureSection();
     CameraSection();
     SquadSection();

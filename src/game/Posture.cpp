@@ -7,6 +7,7 @@
 #include "core/vr/TestRequest.hpp"
 #include "engine/CoverAcquire.hpp"
 #include "engine/Objects.hpp"
+#include "game/BodyCalibration.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/HeadTracking.hpp"
 #include "game/ViewAnchor.hpp"
@@ -274,6 +275,13 @@ void TickCover(Game const& game, bool active, bool noCover, double deltaSeconds)
     }
 }
 
+// The crouch thresholds: [Hands] crouchBelow / standAbove, or with the guided calibration's standing and crouched
+// eye heights both measured, a threshold between them (research/25; the dwell stays [Hands]').
+pz::CrouchParams CrouchParamsNow() {
+    pz::CrouchParams const base = hand_calibration::GetPosture().crouch;
+    return body_calibration::CrouchParams(base).value_or(base);
+}
+
 // The eyes' height as a fraction of the standing eye height, and where it came from.
 std::optional<double> Measure(Link const& link, vr::host_view::State const& view, double deltaSeconds) {
     double const assumed = hand_calibration::GetHolsters().layout.eyeHeight;
@@ -332,9 +340,9 @@ std::optional<double> Measure(Link const& link, vr::host_view::State const& view
     if (source != gLoggedSource || (gStandingHeight > 0.0 && std::abs(gStandingHeight - gLoggedStanding) >= kStandingLogStep)) {
         gLoggedSource = source;
         gLoggedStanding = gStandingHeight;
-        log::Info("posture: standing eye height {:.2f} m, from {}; Shepard crouches below {:.2f} m and stands above {:.2f} m",
-            gStandingHeight, source, gStandingHeight * hand_calibration::GetPosture().crouch.crouchBelow,
-            gStandingHeight * hand_calibration::GetPosture().crouch.standAbove);
+        log::Info("posture: standing eye height {:.2f} m, from {}; Shepard crouches below {:.2f} m and stands above {:.2f} m{}",
+            gStandingHeight, source, gStandingHeight * CrouchParamsNow().crouchBelow, gStandingHeight * CrouchParamsNow().standAbove,
+            body_calibration::CrouchParams(hand_calibration::GetPosture().crouch) ? " (between your calibrated heights)" : "");
     }
     gFraction = fraction;
     return fraction;
@@ -374,7 +382,7 @@ void TickCrouch(Game const& game, Link const& link, vr::host_view::State const& 
         return;
     }
     std::optional<double> const fraction = Measure(link, view, deltaSeconds);
-    pz::CrouchParams const params = hand_calibration::GetPosture().crouch;
+    pz::CrouchParams const params = CrouchParamsNow();
     if (!gCrouchActive) {
         gCrouchActive = true;
         gDetector.Reset(gArbiter.Owns() && gGameWants);  // a crouch of ours stands back up if the player did
@@ -499,6 +507,9 @@ void Tick(double deltaSeconds, Link const& link) {
     } else if (!view.valid) {
         gActive = false;
         SetWhy("no head-tracked world view (menu, flat screen or VR off)");
+    } else if (body_calibration::Calibrating()) {
+        gActive = false;  // the calibration's crouch step is the player's, not Shepard's
+        SetWhy("the player is calibrating (research/25)");
     } else {
         gActive = true;
         SetWhy("active");

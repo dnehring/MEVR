@@ -64,6 +64,11 @@ Targets Current(std::optional<engine::UnrealVector> const& animatedHead);
 void SetDesktopTest(bool on);
 bool DesktopTest();
 
+// A tracking-space orientation as a world rotation (its -Z, +X, +Y become UE's X, Y, Z), as the hands' are.
+ik::Quat WorldRotation(engine::TrackingFrame const& frame, XrQuaternionf const& orientation);
+// Where a hand bone (the wrist) goes for a grip pose (tracking space): the grip in the world, 7 units back.
+engine::UnrealVector WristFromGrip(engine::TrackingFrame const& frame, XrPosef const& grip);
+
 char const* Name(Source source);
 char const* Name(Anchor anchor);
 

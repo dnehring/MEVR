@@ -2,8 +2,10 @@
 
 #include "core/Log.hpp"
 #include "core/ik/TwoHand.hpp"
+#include "core/vr/Calibration.hpp"
 #include "core/vr/Controllers.hpp"
 #include "engine/BonePose.hpp"
+#include "game/BodyCalibration.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/Holsters.hpp"
 #include "game/SquadWeapons.hpp"
@@ -201,9 +203,28 @@ bool AtShoulder() {
     ik::Vec3 const forward{-2.0 * (q.x * q.z + q.w * q.y), -2.0 * (q.y * q.z - q.w * q.x), -(1.0 - 2.0 * (q.x * q.x + q.y * q.y))};
     XrVector3f const& h = anchor->head.position;
     XrVector3f const& g = controllers.right.grip.position;
-    gShouldered = ik::Shouldered({h.x, h.y, h.z}, forward, {0.0, 1.0, 0.0}, {g.x, g.y, g.z}, gShouldered);
+    // Calibrated (research/25): around where the player's right hand sat with the rifle shouldered.
+    ik::ShoulderZone const zone = body_calibration::ShoulderZone().value_or(ik::ShoulderZone{});
+    gShouldered = ik::Shouldered({h.x, h.y, h.z}, forward, {0.0, 1.0, 0.0}, {g.x, g.y, g.z}, gShouldered, zone);
     return gShouldered;
 }
+
+// The guided calibration's own foregrip point (research/25): where the player's left hand sat on the rifle when
+// calibrating, from the right grip now (tracking meters). A left grip that near takes the gun too, whatever the
+// gun's own foregrip (the capsule along the gun stays as generous as before). Nullopt: not calibrated, a pistol.
+std::optional<double> CalibratedForegripDistance() {
+    auto const stance = body_calibration::TwoHanded();
+    vr::controllers::State const controllers = vr::controllers::Latest();
+    if (!stance || weapon::Type() == weapon::RangedType::Pistol || !controllers.active || !controllers.right.gripValid ||
+        !controllers.left.gripValid) {
+        return std::nullopt;
+    }
+    XrPosef const& right = controllers.right.grip;
+    XrVector3f const offset = vr::calibration::Rotate(vr::calibration::GunOrientation(right.orientation, *stance), stance->foregrip);
+    XrVector3f const& left = controllers.left.grip.position;
+    return std::hypot(left.x - (right.position.x + offset.x), left.y - (right.position.y + offset.y), left.z - (right.position.z + offset.z));
+}
+bool gNearCalibrated = false;  // the last distance came from the calibrated point (logged with the hold)
 
 void Tick(double deltaSeconds, bool requested) {
     gRequested = requested;
@@ -211,9 +232,14 @@ void Tick(double deltaSeconds, bool requested) {
     hand_calibration::Controls const controls = hand_calibration::GetControls();
     auto const sample = requested ? engine::bone_pose::LatestSupport() : std::nullopt;
     float distance = -1.0f;
+    gNearCalibrated = false;
     if (controls.supportGrip && sample && sample->distanceMeters >= 0.0) {
         distance = static_cast<float>(sample->distanceMeters);
-        gNearest = std::min(gNearest, sample->distanceMeters);
+        if (auto const calibrated = CalibratedForegripDistance(); calibrated && *calibrated < distance) {
+            distance = static_cast<float>(*calibrated);
+            gNearCalibrated = true;
+        }
+        gNearest = std::min(gNearest, static_cast<double>(distance));
         gLastSample = sample;
     }
     gDistance.store(distance, std::memory_order_relaxed);
@@ -272,6 +298,9 @@ void Tick(double deltaSeconds, bool requested) {
                 where += std::format(", {:.2f} m from the foregrip, {:.2f} m along the barrel from the right hand", sample->foregripMeters,
                     sample->alongMeters);
             }
+            if (gNearCalibrated) {
+                where += ", at your calibrated foregrip place";
+            }
             log::Info("support grip: held ({}; {}, foregrip from {}): {}; the left hand goes to the foregrip{}", where,
                 controls.supportCapsule ? "a capsule along the gun" : "the foregrip alone", gForegrip ? gForegrip->source : "?",
                 gForegrip && gForegrip->twoHandAim
@@ -310,7 +339,8 @@ void LogStats() {
         last = std::format("last write {:.2f} m from the grab zone ({:.2f} m from the foregrip, {:.2f} m along), blend {:.2f}, {}{}, "
                            "swing {:.1f} degrees, left wrist {:.1f} units from its goal",
             gLastSample->distanceMeters, gLastSample->foregripMeters, gLastSample->alongMeters, gLastSample->blend,
-            gLastSample->twoHand ? "two-hand aim" : "one-hand aim", gLastSample->captured ? " (the grab's line)" : "",
+            gLastSample->twoHand ? "two-hand aim" : "one-hand aim",
+            gLastSample->calibrated ? " (the calibrated line)" : gLastSample->captured ? " (the grab's line)" : "",
             gLastSample->swingDegrees, gLastSample->leftErrorUnits);
     }
     std::optional<bool> const zoomed = weapon::Zoomed();

@@ -50,6 +50,10 @@ struct ShoulderZone {
     double margin = 0.05;
 };
 bool Shouldered(Vec3 head, Vec3 headForward, Vec3 up, Vec3 grip, bool wasShouldered, ShoulderZone const& zone = {});
+// The zone around a measured stock point (the guided calibration, research/25): the right grip from the eyes in
+// the head's level frame (x right, y up, z back; meters), `tolerance` either way in drop and forward (the forward
+// limit 0.05 more: arms push out), and sideways at least 0.20 m (a canted head moves the grip across).
+ShoulderZone ShoulderZoneAround(Vec3 stock, double tolerance = 0.12);
 
 // Along the barrel from the rear hand, and how far off the barrel's line (units), for logs and for
 // deciding whether two hands define the gun's axis.

@@ -1,7 +1,11 @@
 #pragma once
 
+#include "core/ik/Rigid.hpp"
 #include "core/vr/AimRay.hpp"
 #include "core/vr/Sights.hpp"
+#include "game/Weapon.hpp"
+
+#include <optional>
 
 #include <cstdint>
 #include <string>
@@ -32,6 +36,10 @@ vr::sights::Sight Current(vr::aim_ray::Ray const& ray);
 // none). The sight it then draws includes the move; Current takes it out again (two ticks later, when the
 // engine has posed the gun with it) before measuring the eye against the line.
 XrVector3f TakeGunShift();
+// Where the held gun's sight centre sits in the right hand bone's axes (component units) for a gun held with its
+// top along `upInHand`: its [Sights] place, or the weapon type's typical one (whatever the sight's kind, so the
+// guided calibration's sight line has a place on every gun). Nullopt without a held ranged weapon of known type.
+std::optional<ik::Vec3> SightInHand(weapon::Grip const& grip, ik::Vec3 const& upInHand);
 // The host's report for the latest frame (vr::sights::View bits), each tick.
 void SetHostView(std::uint32_t view);
 // For snapshots and the heartbeat.

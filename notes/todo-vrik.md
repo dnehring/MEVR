@@ -528,3 +528,27 @@ PSVR 2 on SteamVR: the world pitched more and more over a session while SteamVR'
 - **Open:** the Target Assist option (High/Normal/Low, no Off) is native and doesn't reach friction or
   adhesion; what it scales is unread. Magnetism (`GetAdjustedAimFor`) is already the hand's
   (`hand_aim`).
+
+## The guided calibration (2026-10-22; built the same day, to test)
+
+- **Why (user):** the rifle scope "wasn't really lined up very well with my eye"; the left hand missed the
+  foregrip grab (15-21 cm off it); switching controllers (Quest, PSVR 2) changed how the guns sat. The
+  idea: aim an orb standing for a gun naturally at targets; where the player aims is calibrated.
+- **Built ([research/25](../research/25-calibration.md); HOST REDEPLOY, services v15):**
+  `plugin/Calibration` (the sequence: stand, T pose, arms ahead, crouch, pistol orb, rifle orbs, check; a
+  sample per 1 s hold; three aims within 3 degrees), `plugin/CalibrationDraw` (the main menu mockup's style)
+  and `tools/calibration-preview`; `core/vr/Calibration` (the solve, unit-tested); `game/BodyCalibration`
+  applying `[Calibration.<controller type>]` to the gun's barrel and sight line, the support grip (foregrip
+  point, hands line, left trim), the shoulder zone, the crouch thresholds, the holsters' eye height and the
+  arm length. The VR hands tab: Calibrate, the aiming eye, use on/off. A one-time prompt per controller type.
+- **[verify in headset]:** notes/next-vr-session.md step 22.
+- **Open:**
+  - the step criteria's thresholds (stillness 2.5 cm / 4 degrees, the T pose, the crouch's 25 cm) are
+    guesses: read the `calibration:` lines;
+  - the measured eye relief and the hands line's spread are recorded, not used (the scope's eye relief is
+    still `[Sights] eyeReliefM`);
+  - through SteamVR, whether PSVR 2 and a Quest over Steam Link get different keys depends on the system
+    names SteamVR reports;
+  - Rajdhani and Titillium Web (the mockup's fonts, SIL OFL) aren't bundled: downloading them needs the
+    user's go-ahead; drop them into `ASI\fonts` (or the preview's `fonts`) and they're used;
+  - LE2/LE3 can read the same section once their gun placement exists.

@@ -137,6 +137,19 @@ switching frameworks.
   / `ViewAdhesion`, which slowed and bent the stick's turn near enemies) are zeroed by CallFunction
   post-handlers under the same conditions (cover included; not the sniper scope or the Mako):
   `[Hands] aimAssist = 0` (1 keeps them), log `aim assist:` (research/24 section 7).
+- LE1 guided calibration ([research/25](research/25-calibration.md), HostServices v15): the VR hands tab's
+  Calibrate (or a one-time prompt for uncalibrated controllers) runs about a minute in the headset
+  (`plugin/Calibration`; look in `plugin/CalibrationDraw`, the coming main menu's style; offline look:
+  `mevr-calibration-preview`): stand tall, T pose, arms ahead, crouch, a pistol orb and two rifle orbs aimed
+  at three targets (captured on a 1 s hold, no buttons; B back a step, both sticks held cancel), a red-dot
+  check, save. Solved in `core/vr/Calibration` (unit-tested): the gun frame (eye-to-target line, level) in
+  the right GRIP frame, the line's offset from the grip, the eye, the rifle's foregrip, left trim and stock.
+  Saved per controller type (interaction profile + headset) as `[Calibration.<key>]` in `ASI\LE1MEVR.ini`;
+  `game/BodyCalibration` applies it: the barrel follows grip * trim (not the aim pose), the gun's sight is
+  moved onto the calibrated line (`gunShift`, the assist on top), the foregrip point takes the left grip,
+  two-hand aim keeps the calibrated hands line, the shoulder zone, the crouch thresholds, the holsters'
+  eye height. While it runs the game sees a neutral pad and the mod no controllers. `[Calibration] use = 0`
+  or no section: everything as before. Log `calibration:`.
 - LE1 body holsters (`game/Holsters`, `core/ik/BodySlots`, research/19): a right-grip squeeze at a
   body slot draws that weapon through `SFXGameModeDefault.SwitchToWeapon` (ProcessEvent). The
   right grip holds the gun (`gripHolds = 1`): let go at its slot to holster (`TryHolster`),

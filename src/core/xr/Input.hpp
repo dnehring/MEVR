@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstdint>
+#include <string>
 
 namespace mevr::xr {
 
@@ -47,6 +48,10 @@ public:
     bool Vibrate(Target const& target, int hand, float seconds, float amplitude, float frequencyHz = 0.0f);
     // Stops that hand's vibration now (xrStopHapticFeedback).
     bool StopVibration(Target const& target, int hand);
+    // The interaction profile the runtime bound for a hand (0 left, 1 right; xrGetCurrentInteractionProfile),
+    // e.g. "/interaction_profiles/oculus/touch_controller"; empty while none is bound (before input focus) or
+    // on failure. The guided calibration is kept per profile.
+    std::string InteractionProfile(Target const& target, int hand) const;
 
 private:
     enum Hand { kLeft = 0, kRight = 1 };

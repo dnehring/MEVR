@@ -128,6 +128,8 @@ set(MEVR_MOD_SOURCES
     src/core/ik/TwoHand.hpp
     src/core/vr/AimRay.cpp
     src/core/vr/AimRay.hpp
+    src/core/vr/Calibration.cpp
+    src/core/vr/Calibration.hpp
     src/core/vr/Controllers.cpp
     src/core/vr/Controllers.hpp
     src/core/vr/Floor.hpp
@@ -176,6 +178,8 @@ set(MEVR_MOD_SOURCES
     src/engine/XrToUnreal.hpp
     src/game/ArmIk.cpp
     src/game/ArmIk.hpp
+    src/game/BodyCalibration.cpp
+    src/game/BodyCalibration.hpp
     src/game/CameraProbe.cpp
     src/game/CameraProbe.hpp
     src/game/GamepadBridge.cpp
@@ -234,6 +238,8 @@ endfunction()
 set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/AimRay.cpp
     src/core/vr/AimRay.hpp
+    src/core/vr/Calibration.cpp
+    src/core/vr/Calibration.hpp
     src/core/vr/Controllers.cpp
     src/core/vr/Controllers.hpp
     src/core/vr/Floor.hpp
@@ -274,6 +280,10 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/game/GamepadMapping.cpp
     src/game/GamepadMapping.hpp
     src/halcyon/le1/mevr_bridge.h
+    src/plugin/Calibration.cpp
+    src/plugin/Calibration.hpp
+    src/plugin/CalibrationDraw.cpp
+    src/plugin/CalibrationDraw.hpp
     src/plugin/Halcyon.cpp
     src/plugin/Halcyon.hpp
     src/plugin/HalcyonBridge.cpp
@@ -360,6 +370,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/Throwing.cpp
         src/core/ik/TouchReference.cpp
         src/core/ik/TwoHand.cpp
+        src/core/vr/Calibration.cpp
         src/core/vr/FrameProbe.cpp
         src/core/vr/Haptics.cpp
         src/core/vr/ImageConvert.cpp
@@ -413,5 +424,20 @@ if (MEVR_BUILD_TESTS)
         target_link_libraries(mevr-squad-preview PRIVATE halcyon-le1 OpenXR::headers windowscodecs ole32 d3d11)
         target_compile_definitions(mevr-squad-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
         target_compile_options(mevr-squad-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+
+        # The guided calibration's look, offline (tools/calibration-preview, research/25): the panel's screens, the
+        # target board, the orbs and the check dot as PNGs, and eye views composited as the runtime shows them.
+        add_executable(mevr-calibration-preview
+            tools/calibration-preview/Main.cpp
+            src/core/PngFile.cpp
+            src/core/vr/Calibration.cpp
+            src/core/vr/ImageConvert.cpp
+            src/core/vr/LayerComposite.cpp
+            src/plugin/CalibrationDraw.cpp
+        )
+        target_include_directories(mevr-calibration-preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+        target_link_libraries(mevr-calibration-preview PRIVATE halcyon-le1 OpenXR::headers windowscodecs ole32 d3d11)
+        target_compile_definitions(mevr-calibration-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+        target_compile_options(mevr-calibration-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     endif ()
 endif ()

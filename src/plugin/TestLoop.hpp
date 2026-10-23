@@ -16,7 +16,7 @@ struct ID3D11Texture2D;
 // Eye snapshots: what each eye shows, saved as PNGs to %LOCALAPPDATA%\MEVR\snapshots\<stamp>-left.png
 // and -right.png (the world with our HUD panel, reticle, squad weapon menu and Halcyon's menu drawn
 // in, as the compositor shows them), the layers on their own (-left-world.png, -hud.png, -squad.png,
-// -menu.png), and
+// -menu.png, and the guided calibration's -calibration*.png), and
 // <stamp>.json (head, controllers, aim ray, the mod's arm IK and weapon state, the layers). The
 // swapchain images are copied into staging textures on the Present thread as they are released,
 // mapped two or more frames later (no stall), and converted and written on a worker thread.

@@ -83,6 +83,12 @@ struct Support {
     // the left hand took hold is captured as the span two-hand aim swings (ik::CapturedSpan), so taking
     // hold anywhere in the zone doesn't swing the gun; the left hand still goes to the foregrip.
     std::uint32_t hold = 0;
+    // The guided calibration (game/body_calibration, research/25): the player's own rifle stance, the left
+    // wrist from the right in the right hand bone's axes (component units). With `useCalibratedSpan` (the left
+    // hand took hold near where it sat when calibrating) a hold's first write takes it instead of capturing the
+    // grab's line, so the barrel keeps the calibrated relation to the line between the hands.
+    bool useCalibratedSpan = false;
+    ik::Vec3 calibratedSpan;
 };
 
 struct Request {
@@ -116,6 +122,7 @@ struct SupportSample {
     double foregripMeters = -1.0;  // ...from the foregrip itself (diagnostics)
     double alongMeters = 0.0;      // how far along the barrel from the right hand the left goal is
     bool captured = false;         // two-hand aim swings the span captured when this hold began
+    bool calibrated = false;       // ...which is the guided calibration's (Support::useCalibratedSpan)
     double blend = 0.0;
     bool twoHand = false;          // the barrel swung toward the left hand
     double swingDegrees = 0.0;     // how far the right hand turned for it

@@ -16,6 +16,7 @@
 #include "core/xr/Input.hpp"
 #include "game/GamepadMapping.hpp"
 #include "halcyon/le1/render_hook.h"
+#include "plugin/Calibration.hpp"
 #include "plugin/Halcyon.hpp"
 #include "plugin/MevrMenu.hpp"
 #include "plugin/PerfProbe.hpp"
@@ -93,6 +94,10 @@ mevr::vr::floor::State gFloorState;
 std::atomic<std::uint32_t> gRecenters{0};
 std::atomic<std::uint32_t> gSessions{0};
 bool gLoggedFloor = false;  // frame thread
+// The bound interaction profile, asked for about once a second (frame thread): the guided calibration is kept
+// per controller type (plugin/Calibration).
+unsigned gProfileCheckFrames = 0;
+constexpr unsigned kProfileCheckEvery = 90;
 
 void ApplyPendingHaptics() {
     std::uint64_t const now = GetTickCount64();
@@ -186,6 +191,18 @@ void OnSessionCreated(void* instance, void* session) noexcept {
     if (gInputFailed) {
         mevr::log::Error("halcyon bridge: controller actions failed; motion controllers unavailable");
     }
+    // The headset's name, for the guided calibration's per-controller-type sections (plugin/Calibration).
+    {
+        XrSystemGetInfo systemInfo{XR_TYPE_SYSTEM_GET_INFO};
+        systemInfo.formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
+        XrSystemId system = XR_NULL_SYSTEM_ID;
+        XrSystemProperties properties{XR_TYPE_SYSTEM_PROPERTIES};
+        if (XR_SUCCEEDED(xrGetSystem(gTarget.instance, &systemInfo, &system)) &&
+            XR_SUCCEEDED(xrGetSystemProperties(gTarget.instance, system, &properties))) {
+            mevr::host::calibration::SetSystem(properties.systemName);
+        }
+    }
+    gProfileCheckFrames = 0;
     // A new session: its own floor space, vibration from scratch.
     gFloor.Create(gTarget.session);
     gSessions.fetch_add(1, std::memory_order_relaxed);
@@ -224,7 +241,19 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
     if (gInputFailed && !state.active) {
         return;  // no controllers, and no replay standing in for them
     }
-    mevr::vr::controllers::Publish(state);
+    if (!gInputFailed && gProfileCheckFrames++ % kProfileCheckEvery == 0) {
+        std::string profile = gInput.InteractionProfile(gTarget, 1);
+        if (profile.empty()) {
+            profile = gInput.InteractionProfile(gTarget, 0);
+        }
+        if (!profile.empty()) {
+            mevr::host::calibration::SetProfile(profile);
+        }
+    }
+    // The guided calibration takes the controllers while it runs: everything else (the mod, our pad mapping)
+    // sees none, so holsters, grenades, melee, the squad trigger and the support grip stand down.
+    mevr::host::calibration::NoteControllers(state);
+    mevr::vr::controllers::Publish(mevr::host::calibration::Active() ? mevr::host::calibration::Hidden(state) : state);
     TickCameraAlign();
     if (state.active && state.right.aimValid) {
         gRightAimTrackedMs.store(GetTickCount64(), std::memory_order_relaxed);
@@ -253,7 +282,9 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
     mevr::game::gamepad::StickChordStep const chord =
         mevr::game::gamepad::UpdateStickChord(gStickChord, live.active && live.left.stickClick,
             live.active && live.right.stickClick, now);
-    if (chord.hold) {
+    if (chord.hold && mevr::host::calibration::Running()) {
+        mevr::host::calibration::Cancel("both sticks held");  // the calibration panel's hint
+    } else if (chord.hold) {
         bool const open = !MELEVR::Menu::IsOpen();
         MELEVR::Menu::SetOpen(open);
         mevr::log::Info("halcyon bridge: both sticks held: Halcyon's menu {}", open ? "opened" : "closed");
@@ -322,6 +353,18 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     if (index != 0 || state == nullptr) {
         return result;
     }
+    if (mevr::host::calibration::Active()) {
+        // The guided calibration: the game sees a neutral pad (the motion controllers' and a real pad's alike).
+        std::lock_guard lock(gPadMutex);
+        XINPUT_GAMEPAD const neutral{};
+        if (std::memcmp(&neutral, &gLastPad, sizeof neutral) != 0) {
+            gLastPad = neutral;
+            ++gPacket;
+        }
+        state->dwPacketNumber = gPacket;
+        state->Gamepad = neutral;
+        return ERROR_SUCCESS;
+    }
     mevr::vr::controllers::State const controllers = mevr::vr::controllers::Latest();
     if (!controllers.active) {
         gSupportHeld.store(false, std::memory_order_relaxed);
@@ -382,6 +425,10 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     }
     if (CameraAlignOwnsLeftTrigger()) {
         pad.bLeftTrigger = 0;
+    }
+    if (mevr::host::calibration::OwnsTriggers()) {
+        pad.bLeftTrigger = 0;  // the calibration's first-run prompt is being pointed at: its click isn't a shot
+        pad.bRightTrigger = 0;
     }
     if (std::memcmp(&pad, &gLastPad, sizeof pad) != 0) {
         gLastPad = pad;

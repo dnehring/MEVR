@@ -8,6 +8,7 @@
 #include "engine/Engine.hpp"
 #include "engine/Objects.hpp"
 #include "game/ArmIk.hpp"
+#include "game/BodyCalibration.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/HeadTracking.hpp"
 #include "game/Throwables.hpp"
@@ -372,7 +373,15 @@ void UpdateEyeHeight(hand_calibration::Holsters const& settings, Link const& lin
     std::string source;
     double height = settings.layout.eyeHeight;
     gFloorNow = -1.0;
-    if (!settings.eyeHeightFromFloor) {
+    if (auto const calibrated = body_calibration::StandingEyeHeight()) {
+        // The guided calibration measured it standing tall (research/25): the player's height, whatever the floor
+        // learns later. The floor is still watched (gFloorNow, a new session) for the log and the snapshot.
+        if (link.floor && link.floor->valid) {
+            gFloorNow = link.floor->eyeHeight;
+        }
+        height = *calibrated;
+        source = "[Calibration] standing eye height";
+    } else if (!settings.eyeHeightFromFloor) {
         source = "[Holsters] eyeHeightM (eyeHeightFromFloor = 0)";
     } else if (!link.floor) {
         source = "[Holsters] eyeHeightM (the host has no floor: services older than v10, or a size mismatch; redeploy the host)";

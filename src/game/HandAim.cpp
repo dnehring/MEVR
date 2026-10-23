@@ -2,6 +2,7 @@
 
 #include "core/Log.hpp"
 #include "core/vr/AimRay.hpp"
+#include "core/vr/Calibration.hpp"
 #include "core/vr/Controllers.hpp"
 #include "engine/CallFunction.hpp"
 #include "engine/GameAdapter.hpp"
@@ -9,6 +10,7 @@
 #include "engine/ProcessEvent.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/ArmIk.hpp"
+#include "game/BodyCalibration.hpp"
 #include "game/HeadTracking.hpp"
 #include "game/ViewAnchor.hpp"
 #include "game/Weapon.hpp"
@@ -129,7 +131,12 @@ bool HandRotation(FRotator const& game, FRotator& out) {
         gNoAnchor.fetch_add(1, std::memory_order_relaxed);
         return false;
     }
-    XrPosef const& aim = controllers.right.aim;
+    XrPosef aim = controllers.right.aim;
+    // Calibrated (research/25): the calibrated sight line from the grip, not the runtime's aim pose.
+    if (auto const stance = body_calibration::StanceFor(static_cast<int>(weapon::Type())); stance && controllers.right.gripValid) {
+        aim.position = vr::calibration::SightLine(controllers.right.grip, *stance).point;
+        aim.orientation = vr::calibration::GunOrientation(controllers.right.grip.orientation, *stance);
+    }
     engine::Basis const ray = engine::OrientationToWorld(*frame, aim.orientation);
     engine::UnrealRotation const rotation = engine::ToRotation(ray.forward);
     out.Pitch = engine::Unwind(rotation.pitch, game.Pitch);
