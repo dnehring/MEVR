@@ -128,6 +128,9 @@ std::vector<Field> const& Schema() {
         {"quality", Type::Choice, 0, "performance"},
         {"quality_text", Type::Text, 0, "3072 \xC3\x97 3188"},
         {"quality_note", Type::Text, 0, "applies after a restart"},
+        {"headset_known", Type::Flag, 0},
+        {"headset_text", Type::Text, 0, "Your headset's own eye size, known once VR starts"},
+        {"upscale", Type::Choice, 0, "off"},
         {"steady_cine", Type::Flag, 1},
         // HUD and sights.
         {"hud_distance", Type::Number, 1.5f, "", 1, 3, F::Meters1},
@@ -246,7 +249,71 @@ int EyeHeight(int width) {
 }
 
 std::string QualityText(int width) {
-    return std::format("{} \xC3\x97 {}", width, EyeHeight(width));
+    return SizeText(width, EyeHeight(width));
+}
+
+std::string SizeText(int width, int height) {
+    return std::format("{} \xC3\x97 {}", width, height);
+}
+
+std::vector<HeadsetChoice> const& HeadsetChoices() {
+    static std::vector<HeadsetChoice> const choices = {{"headset", 1.0f}, {"headset85", 0.85f}, {"headset75", 0.75f}};
+    return choices;
+}
+
+int RoundEven(float value) {
+    if (!std::isfinite(value) || value < 2.0f) {
+        return 2;
+    }
+    return 2 * static_cast<int>(std::lround(value * 0.5f));
+}
+
+Size HeadsetSize(std::string_view key, int recommendedWidth, int recommendedHeight) {
+    if (recommendedWidth <= 0 || recommendedHeight <= 0) {
+        return {};
+    }
+    for (HeadsetChoice const& choice : HeadsetChoices()) {
+        if (key == choice.key) {
+            if (choice.scale == 1.0f) {
+                return {recommendedWidth, recommendedHeight};  // the runtime's size exactly, even or not
+            }
+            return {RoundEven(static_cast<float>(recommendedWidth) * choice.scale),
+                RoundEven(static_cast<float>(recommendedHeight) * choice.scale)};
+        }
+    }
+    return {};
+}
+
+std::string ResolutionChoice(int resX, int resY, int recommendedWidth, int recommendedHeight) {
+    for (HeadsetChoice const& choice : HeadsetChoices()) {
+        Size const size = HeadsetSize(choice.key, recommendedWidth, recommendedHeight);
+        if (size.width > 0 && size == Size{resX, resY}) {
+            return choice.key;
+        }
+    }
+    for (QualityTier const& tier : QualityTiers()) {
+        if (tier.width == resX) {
+            return tier.key;
+        }
+    }
+    return "";
+}
+
+std::string HeadsetSizesText(int recommendedWidth, int recommendedHeight) {
+    if (recommendedWidth <= 0 || recommendedHeight <= 0) {
+        return "Your headset's own eye size, known once VR starts";
+    }
+    Size const full = HeadsetSize("headset", recommendedWidth, recommendedHeight);
+    Size const s85 = HeadsetSize("headset85", recommendedWidth, recommendedHeight);
+    Size const s75 = HeadsetSize("headset75", recommendedWidth, recommendedHeight);
+    return std::format("Headset {} \xC2\xB7 \xC3\x97 0.85: {} \xC2\xB7 \xC3\x97 0.75: {}", SizeText(full.width, full.height),
+        SizeText(s85.width, s85.height), SizeText(s75.width, s75.height));
+}
+
+std::string UpscaleChoice(std::string_view method) {
+    // As core/vr/Upscale's Parse (kept apart: the menu library doesn't link the upscale).
+    std::string const m = Lower(Trim(method));
+    return m == "fsr" || m == "fsr1" || m == "easu" || m == "on" || m == "1" ? "fsr" : "off";
 }
 
 std::string SightKind(std::string_view value, std::string_view fallback) {

@@ -6,6 +6,7 @@
 #include "halcyon/le1/mevr_bridge.h"
 #include "halcyon/le1/vr_config.h"
 #include "halcyon/le1/vr_menu.h"
+#include "halcyon/le1/xr_session.h"
 
 #include "core/Log.hpp"
 #include "plugin/Calibration.hpp"
@@ -173,7 +174,7 @@ void Settings::Read(menu::Values& v) {
     Ini ini;
     ini.pending = &pending_;
     if (!path.empty()) {
-        for (wchar_t const* s : {L"Hands", L"Holsters", L"Controls", L"Throwables", L"Sights", L"Camera", L"Arms", L"Menu", L"Comfort"}) {
+        for (wchar_t const* s : {L"Hands", L"Holsters", L"Controls", L"Throwables", L"Sights", L"Camera", L"Arms", L"Menu", L"Comfort", L"Upscale"}) {
             ini.sections[Narrow(s)] = ReadSection(path, s);
         }
     }
@@ -254,9 +255,17 @@ void Settings::Read(menu::Values& v) {
     v.numbers["c_saturation"] = ms::ColourPercent(shown.saturation);
     v.numbers["c_midtones"] = shown.gamma;
     v.numbers["c_black"] = shown.black;
-    v.texts["quality"] = ms::QualityFor(c.sfr2ResX);
-    v.texts["quality_text"] = ms::QualityText(c.sfr2ResX);
+    // The render target: the headset's own eye size (and 0.85 / 0.75 of it) once VR has started, or Halcyon's ladder.
+    MELEVR::XrSession::ResolutionStats resolution{};
+    MELEVR::XrSession::GetResolutionStats(&resolution);
+    int const recommendedW = static_cast<int>(resolution.recommendedEyeWidth);
+    int const recommendedH = static_cast<int>(resolution.recommendedEyeHeight);
+    v.texts["quality"] = ms::ResolutionChoice(c.sfr2ResX, c.sfr2ResY, recommendedW, recommendedH);
+    v.texts["quality_text"] = ms::SizeText(c.sfr2ResX, c.sfr2ResY);
     v.texts["quality_note"] = "applies after a restart";
+    flag("headset_known", recommendedW > 0 && recommendedH > 0);
+    v.texts["headset_text"] = ms::HeadsetSizesText(recommendedW, recommendedH);
+    v.texts["upscale"] = ms::UpscaleChoice(ini.Text("Upscale", "method", "off"));
     flag("steady_cine", c.cineFpsCap);
     // HUD and sights.
     v.numbers["hud_distance"] = c.hudPanelDistanceM;
@@ -415,6 +424,8 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         wchar_t previous[64]{};
         GetPrivateProfileStringW(L"Sights", L"sniperRifle", L"scope 4", previous, 64, path.c_str());
         Put("Sights", "sniperRifle", ms::SightValue(v.Text(key), Narrow(previous)), true);
+    } else if (key == "upscale") {
+        Put("Upscale", "method", v.Text("upscale") == "fsr" ? "fsr" : "off", true);  // plugin/Upscale re-reads it within a second
     } else if (key == "sight_assist") {
         Put("Sights", "assist", onOff("sight_assist"), true);
     } else if (key == "sight_converge") {
@@ -446,15 +457,32 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
             HalcyonChanged(false);
         }
     } else if (key == "quality") {
-        int const width = ms::QualityWidth(v.Text("quality"));
-        if (width > 0) {
-            c.sfr2ResX = width;
-            c.sfr2ResY = MELEVR::Config::EyeHeightForWidth(width);
+        // A headset chip (the runtime's recommended eye size, or 0.85 / 0.75 of it) or a ladder tier (Halcyon's near-square
+        // height). Either way written as tools/vr-game-settings.ps1 writes a target: sfr2ResX/Y and the watchdog's
+        // expectedResX/Y in MELEVR.ini (the active profile), GamerSettings.ini's ResX/ResY for the next launch.
+        std::string const choice = v.Text("quality");
+        MELEVR::XrSession::ResolutionStats resolution{};
+        MELEVR::XrSession::GetResolutionStats(&resolution);
+        ms::Size size = ms::HeadsetSize(choice, static_cast<int>(resolution.recommendedEyeWidth),
+            static_cast<int>(resolution.recommendedEyeHeight));
+        if (size.width == 0) {
+            int const width = ms::QualityWidth(choice);
+            if (width > 0) {
+                size = {width, MELEVR::Config::EyeHeightForWidth(width)};
+            }
+        }
+        if (size.width > 0) {
+            c.sfr2ResX = size.width;
+            c.sfr2ResY = size.height;
+            c.expectedResX = size.width;
+            c.expectedResY = size.height;
             HalcyonChanged(true);  // as Halcyon's slider: saved, and GamerSettings.ini written for the next launch
             int wx = 0, wy = 0;
             MELEVR::Config::ApplyResolutionForCurrentMode(&wx, &wy);
-            log::Info("main menu: render resolution {} ({}x{}), GamerSettings.ini {}", v.Text("quality"), c.sfr2ResX, c.sfr2ResY,
+            log::Info("main menu: render resolution {} ({}x{}), GamerSettings.ini {}", choice, c.sfr2ResX, c.sfr2ResY,
                 wx > 0 ? std::format("set to {}x{}", wx, wy) : std::string("unchanged (auto-set per mode is off)"));
+        } else {
+            log::Warn("main menu: render resolution {}: no size for it (the headset's isn't known before VR starts)", choice);
         }
     } else if (key == "steady_cine") {
         c.cineFpsCap = v.Flag(key);

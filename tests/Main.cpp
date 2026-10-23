@@ -5769,6 +5769,35 @@ void TestMenuSettings() {
     CHECK(ms::EyeHeight(4096) == 4250);  // vr_config.h's sfr2ResX/Y defaults
     CHECK(ms::QualityText(3072) == "3072 \xC3\x97 3188");
 
+    // The headset-sized targets (research/32): the PS VR2's recommended 2824 x 2880 exactly, 0.85 and 0.75 of it even.
+    CHECK(ms::RoundEven(2400.4f) == 2400 && ms::RoundEven(2401.2f) == 2402 && ms::RoundEven(2118.0f) == 2118);
+    CHECK(ms::RoundEven(2119.0f) == 2120 && ms::RoundEven(0.5f) == 2);
+    CHECK((ms::HeadsetSize("headset", 2824, 2880) == ms::Size{2824, 2880}));
+    CHECK((ms::HeadsetSize("headset85", 2824, 2880) == ms::Size{2400, 2448}));  // 2400.4 x 2448
+    CHECK((ms::HeadsetSize("headset75", 2824, 2880) == ms::Size{2118, 2160}));
+    CHECK((ms::HeadsetSize("headset", 2017, 2161) == ms::Size{2017, 2161}));    // the runtime's own size kept as it is
+    CHECK((ms::HeadsetSize("headset85", 2017, 2161) == ms::Size{1714, 1836}));  // 1714.45 x 1836.85, each even
+    CHECK((ms::HeadsetSize("headset85", 0, 0) == ms::Size{}));                  // before VR has started
+    CHECK((ms::HeadsetSize("balanced", 2824, 2880) == ms::Size{}));
+    // Selected: a headset chip when the target is exactly its size; a ladder tier by its width; else none.
+    CHECK(ms::ResolutionChoice(2824, 2880, 2824, 2880) == "headset");
+    CHECK(ms::ResolutionChoice(2400, 2448, 2824, 2880) == "headset85");
+    CHECK(ms::ResolutionChoice(2118, 2160, 2824, 2880) == "headset75");
+    CHECK(ms::ResolutionChoice(2824, 2930, 2824, 2880).empty());      // the headset's width, Halcyon's height: neither
+    CHECK(ms::ResolutionChoice(2824, 2880, 0, 0).empty());            // not known before VR starts
+    CHECK(ms::ResolutionChoice(3072, 3188, 2824, 2880) == "performance");
+    CHECK(ms::ResolutionChoice(3072, 3188, 0, 0) == "performance");
+    CHECK(ms::ResolutionChoice(4096, 4250, 2824, 2880) == "balanced");
+    CHECK(ms::ResolutionChoice(3072, 3072, 3072, 3072) == "headset");  // a headset chip wins a tie with the ladder
+    CHECK(ms::ResolutionChoice(3000, 3112, 2824, 2880).empty());
+    CHECK(ms::SizeText(2824, 2880) == "2824 \xC3\x97 2880");
+    CHECK(ms::HeadsetSizesText(2824, 2880) ==
+          "Headset 2824 \xC3\x97 2880 \xC2\xB7 \xC3\x97 0.85: 2400 \xC3\x97 2448 \xC2\xB7 \xC3\x97 0.75: 2118 \xC3\x97 2160");
+    CHECK(ms::HeadsetSizesText(0, 2880).find("once VR starts") != std::string::npos);
+    // The upscale chip ([Upscale] method, read as core/vr/Upscale reads it).
+    CHECK(ms::UpscaleChoice("fsr") == "fsr" && ms::UpscaleChoice(" FSR1 ") == "fsr" && ms::UpscaleChoice("on") == "fsr");
+    CHECK(ms::UpscaleChoice("off") == "off" && ms::UpscaleChoice("bilinear") == "off" && ms::UpscaleChoice("") == "off");
+
     // Gun sights.
     CHECK(ms::SightKind("scope 4", "dot") == "scope");
     CHECK(ms::SightKind(" Holo ", "dot") == "holo");

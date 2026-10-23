@@ -6,6 +6,8 @@
 //   mevr-menu-preview [output folder] [--warp] [--assets <folder>] [--fonts <folder>]
 //
 //   section-<name>.png       each section (the menu over the stand-in world, as the headset composites it)
+//   section-<name>-<x>.png   a section's other states (Comfort's snap and movement, Display's image quality rows with
+//                            the headset known and before VR has started)
 //   advanced-<tab>.png       each of Advanced's tabs
 //   state-hover.png          the pointer resting on Resume (its light sweep part-way) and a row hovered
 //   state-pressed.png        a button held down (the dip)
@@ -73,7 +75,11 @@ public:
             v.numbers["c_saturation"] = 12;
             v.numbers["c_midtones"] = 0.92f;
             v.numbers["c_black"] = -0.01f;
-            v.texts["quality_text"] = ms::QualityText(3072);
+            // The PS VR2's recommended eye size (SteamVR), the target matched to it (research/32).
+            v.texts["quality"] = ms::ResolutionChoice(2824, 2880, 2824, 2880);
+            v.texts["quality_text"] = ms::SizeText(2824, 2880);
+            v.numbers["headset_known"] = 1;
+            v.texts["headset_text"] = ms::HeadsetSizesText(2824, 2880);
             v.texts["prof_active"] = "1";
             v.numbers["lifesize"] = 1;
             v.numbers["eye_distance"] = 3.4f;
@@ -415,6 +421,29 @@ int main(int argc, char** argv) {
         save("section-comfort-movement");
         content->SetScrollTop(0.0f);
     }
+    // Display's image quality rows (research/32): Headset × 0.85 with FSR, then before VR has started (no recommendation).
+    model.SetText("section", "display");
+    model.SetText("quality", "headset85");
+    model.SetText("quality_text", ms::SizeText(2400, 2448));
+    model.SetText("upscale", "fsr");
+    frames(30);
+    if (Rml::Element* content = element("content")) {
+        content->SetScrollTop(content->GetScrollHeight());
+        frames(10);
+        save("section-display-quality");
+        model.SetNumber("headset_known", 0.0f);
+        model.SetText("headset_text", ms::HeadsetSizesText(0, 0));
+        model.SetText("quality", ms::ResolutionChoice(2824, 2880, 0, 0));
+        model.SetText("quality_text", ms::SizeText(2824, 2880));
+        model.SetText("upscale", "off");
+        frames(10);
+        save("section-display-quality-novr");
+        content->SetScrollTop(0.0f);
+    }
+    model.SetNumber("headset_known", 1.0f);
+    model.SetText("headset_text", ms::HeadsetSizesText(2824, 2880));
+    model.SetText("quality", "headset");
+    model.SetText("section", "comfort");
     model.SetText("turn", "smooth");
     model.SetText("snap", "45");
     model.SetNumber("vignette", 0.0f);

@@ -54,7 +54,9 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   (Halcyon's settings in sub-tabs). Every row drives a real setting (`plugin/MainMenuSettings`: our
   `LE1MEVR.ini` key by key, Halcyon's live config saved with its own `SaveProfile` when the menu closes;
   never a reset written over a profile; Comfort's turning, vignette and walking rows since 2026-10-23,
-  research/31) or is marked Soon. Code: `src/plugin/menu` (game-independent:
+  research/31; Display's render resolution offers the headset's own eye size, × 0.85 and × 0.75 of it before
+  Halcyon's ladder, and the Upscale row is `[Upscale] method`, since 2026-10-23, research/28's mapping table) or is
+  marked Soon. Code: `src/plugin/menu` (game-independent:
   RmlUi's own DX11 renderer wrapped for the game's context, our `chamfer`/`backdrop`/`icon` decorators,
   the data model over `core/vr/MenuSettings`' schema, the frosted backdrop from the left eye's image),
   `src/plugin/MainMenu` (the quad, input, cost). The look is `assets/menu/main.rml` + `main.rcss`
@@ -237,7 +239,7 @@ switching frameworks.
   `[MEVR-COLOUR]` / `colour:` (the GPU cost every 10 s); snapshots show the corrected picture (`"colour"`).
 - LE1 eye upscale ([research/32](research/32-ue3-vr-performance.md), `[Upscale]` in `ASI\LE1MEVR.ini`, off by
   default): with `method = fsr` and the stereo target below the headset's eye size (`tools/vr-game-settings.ps1
-  -Scale 0.75`), Halcyon's eye blit scales each 8-bit eye up with FSR 1 (EASU into an intermediate, RCAS into the
+  -Scale 0.75`, or the main menu's Display > Headset × 0.75 / × 0.85 and Upscale > FSR), Halcyon's eye blit scales each 8-bit eye up with FSR 1 (EASU into an intermediate, RCAS into the
   eye, the colour correction at the end; `sharpness` 0..1) instead of its bilinear fill: seam `[MEVR] upscale` in
   `BlitTextureToEyeWithFill`, `MevrBridge::EyeUpscale` in `plugin/Upscale`, the math and shader text in
   `core/vr/Upscale` (unit-tested), AMD's MIT headers in `external/fsr1` embedded at build time. Offline look and

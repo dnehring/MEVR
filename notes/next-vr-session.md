@@ -1078,6 +1078,21 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       `halcyon bridge: the left stick walks toward ...`, `vignette: first shown ...`, `vignette: shown in N frames
       ..., M texture refills (X ms CPU each ...)`, and the heartbeat's `comfort:` line. No `torso: re-anchored
       (tracking jump)` at a snap.
+31. **Display: the headset's own resolution and the upscale in our menu (new, 2026-10-23; HOST REDEPLOY).** Our
+    menu's Display page ([research/28](../research/28-main-menu.md), "What each section drives"; research/32). Open it in VR, scroll
+    to Image quality.
+    - **Render resolution:** three chips, Headset / Headset × 0.85 / Headset × 0.75; the line under the label
+      says "Now 2824 × 2880 per eye" and "Headset 2824 × 2880 · × 0.85: 2400 × 2448 · × 0.75: 2118 × 2160" on the
+      PS VR2. With the deploy's target, **Headset** shows selected.
+    - **Fixed sizes:** Halcyon's ladder as before (Low to Max); none of them selected at 2824 × 2880.
+    - Pick **Headset × 0.85**: "Now 2400 × 2448"; log `main menu: render resolution headset85 (2400x2448),
+      GamerSettings.ini set to 2400x2448`. Then **Upscale > FSR**: log `main menu: [Upscale] method = fsr` and,
+      within a second, `upscale: ...`. Restart the game: Halcyon's log `[TARGETCHK] Stereo 2 target OK` at
+      2400x2448, and the probe's `"upscale"` active. Look at it against Headset with Upscale Off, and say which
+      you'd keep. Halcyon's old menu (Ctrl + `\`) must not show "RESOLUTION WAS RESET" after the restart.
+    - Before restarting, a size you picked shows selected; a larger one than the game runs at now may make
+      Halcyon's old menu warn "RESOLUTION WAS RESET" until the restart (its watchdog compares with the new size).
+    - Put it back: **Headset** and **Upscale > Off** (or keep what you liked), restart.
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR
