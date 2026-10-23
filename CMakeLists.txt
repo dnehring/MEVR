@@ -471,12 +471,45 @@ foreach (game LE1 LE2 LE3)
     endif ()
 endforeach ()
 
+# The installer's logic (research/33): game and VR detection, the manifest with backups, INI edits that never reset a
+# profile, the VR game settings, the launch arguments, optional content (texture packs through Mass Effect Modder),
+# the update check. Linked by the setup app (tools/setup) and the tests. No game code, no LExSDKv2.
+add_library(mevr-install STATIC
+    src/core/Json.cpp
+    src/core/Json.hpp
+    src/core/Version.cpp
+    src/core/Version.hpp
+    src/install/Detect.cpp
+    src/install/Detect.hpp
+    src/install/GameSettings.cpp
+    src/install/GameSettings.hpp
+    src/install/Http.cpp
+    src/install/Http.hpp
+    src/install/Ini.cpp
+    src/install/Ini.hpp
+    src/install/Installer.cpp
+    src/install/Installer.hpp
+    src/install/Launch.cpp
+    src/install/Launch.hpp
+    src/install/Manifest.cpp
+    src/install/Manifest.hpp
+    src/install/Packs.cpp
+    src/install/Packs.hpp
+    src/install/Updates.cpp
+    src/install/Updates.hpp
+)
+target_include_directories(mevr-install PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(mevr-install PUBLIC version bcrypt winhttp shell32 ole32 advapi32)
+target_compile_definitions(mevr-install PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+target_compile_options(mevr-install PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+
 # Offline tests for game-independent math (no game, no runtime needed).
 option(MEVR_BUILD_TESTS "Build the offline tests" ON)
 if (MEVR_BUILD_TESTS)
     enable_testing()
     add_executable(mevr-tests
         tests/Main.cpp
+        tests/InstallTests.cpp
         src/core/PngFile.cpp
         src/core/ik/ArmLength.cpp
         src/core/ik/ArmPose.cpp
@@ -518,7 +551,7 @@ if (MEVR_BUILD_TESTS)
         src/game/HeadSim.cpp
     )
     target_include_directories(mevr-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_link_libraries(mevr-tests PRIVATE OpenXR::headers windowscodecs ole32)
+    target_link_libraries(mevr-tests PRIVATE mevr-install OpenXR::headers windowscodecs ole32)
     target_compile_definitions(mevr-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_test(NAME mevr-tests COMMAND mevr-tests)
