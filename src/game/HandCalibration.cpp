@@ -36,6 +36,9 @@ struct Values {
     double reachNearFace = 0.30;  // [Hands] reachNearFaceM
     double armLength = 0.0;  // [Arms] armLengthM
     bool levelCamera = true;     // [Hands] levelCamera
+    bool bodyMove = true;        // [Hands] bodyMove
+    double leanM = 0.20;         // [Hands] leanM
+    double bodyMoveMaxM = 0.75;  // [Hands] bodyMoveMaxM
     double recoilHaptic = 0.5;   // [Hands] recoilHaptic
     bool aimAssist = false;      // [Hands] aimAssist
     // [Controls]
@@ -86,6 +89,13 @@ constexpr char const* kDefaultFile =
     "gunRoll = 0\n"
     "; bodyFollowsHead: 1 turns and leans Shepard's spine so his shoulders sit under the headset.\n"
     "bodyFollowsHead = 1\n"
+    "; bodyMove: 1 (with bodyFollowsHead) also turns and steps Shepard's whole body (not God or Camera) under the\n"
+    "; view: his hips take the turn his spine can't (an explore-mode Shepard faces where he runs), and his feet\n"
+    "; follow your head once it leans more than leanM meters from them, at most bodyMoveMaxM from where the game\n"
+    "; put him (research/29). 0: the spine alone, as before.\n"
+    "bodyMove = 1\n"
+    "leanM = 0.20\n"
+    "bodyMoveMaxM = 0.75\n"
     "; armStretch: how far Shepard's arms may stretch to keep the hands on the controllers (1-1.25).\n"
     "armStretch = 1.25\n"
     "; trackingScale: Unreal units per meter of hand and head motion; 0 = the view's own scale.\n"
@@ -406,6 +416,15 @@ Values ReadValues(Ini const& ini) {
     }
     if (Number(ini, "Hands", "levelCamera", flag)) {
         values.levelCamera = flag != 0.0;
+    }
+    if (Number(ini, "Hands", "bodyMove", flag)) {
+        values.bodyMove = flag != 0.0;
+    }
+    if (Number(ini, "Hands", "leanM", values.leanM)) {
+        values.leanM = std::clamp(values.leanM, 0.0, 0.6);
+    }
+    if (Number(ini, "Hands", "bodyMoveMaxM", values.bodyMoveMaxM)) {
+        values.bodyMoveMaxM = std::clamp(values.bodyMoveMaxM, 0.0, 3.0);
     }
     if (Number(ini, "Hands", "recoilHaptic", values.recoilHaptic)) {
         values.recoilHaptic = std::clamp(values.recoilHaptic, 0.0, 1.0);
@@ -1037,6 +1056,10 @@ double ReachNearFace() {
     return gValues.reachNearFace;
 }
 
+BodyMove GetBodyMove() {
+    return {gValues.bodyMove, gValues.leanM, gValues.bodyMoveMaxM};
+}
+
 bool LevelCamera() {
     return gValues.levelCamera;
 }
@@ -1260,6 +1283,9 @@ void Refresh() {
         {L"Hands", "Hands", L"standAbove", "standAbove", L"0.85"},
         {L"Hands", "Hands", L"crouchDwellS", "crouchDwellS", L"0.2"},
         {L"Hands", "Hands", L"aimAssist", "aimAssist", L"0"},
+        {L"Hands", "Hands", L"bodyMove", "bodyMove", L"1"},
+        {L"Hands", "Hands", L"leanM", "leanM", L"0.20"},
+        {L"Hands", "Hands", L"bodyMoveMaxM", "bodyMoveMaxM", L"0.75"},
     };
     std::string addedKeys;
     for (auto const& k : kNewKeys) {
@@ -1305,9 +1331,10 @@ void Refresh() {
     if (!gApplied || values != gValues) {
         gApplied = true;
         Apply(values);
-        log::Info("hands: calibration pitch {:.1f}, yaw {:.1f}, roll {:.1f} degrees, gun roll {:.1f} degrees; body follows head {}, "
+        log::Info("hands: calibration pitch {:.1f}, yaw {:.1f}, roll {:.1f} degrees, gun roll {:.1f} degrees; body follows head {} (whole body {}, lean {:.2f} m, at most {:.2f} m), "
                   "arm stretch {:.2f}, tracking scale {}, arm length {} (from {}), {}",
-            values.pitch, values.yaw, values.roll, values.gunRoll, values.bodyFollowsHead ? "on" : "off", values.armStretch,
+            values.pitch, values.yaw, values.roll, values.gunRoll, values.bodyFollowsHead ? "on" : "off",
+            values.bodyMove ? "turns and steps" : "off", values.leanM, values.bodyMoveMaxM, values.armStretch,
             values.trackingScale > 0.0 ? std::format("{:.1f} units/m", values.trackingScale) : std::string("the view's"),
             values.armLength > 0.0 ? std::format("{:.3f} m", values.armLength) : std::string("not calibrated"),
             path.filename().string(),

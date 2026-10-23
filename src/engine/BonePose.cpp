@@ -90,6 +90,10 @@ struct TorsoSample {
 SRWLOCK gSampleLock = SRWLOCK_INIT;
 Sample gSamples[2];
 TorsoSample gTorso;
+// The torso's last result for LatestTorso (not cleared by the heartbeat).
+USkeletalMeshComponent const* gLatestTorsoMesh = nullptr;
+ik::TorsoResult gLatestTorso;
+ULONGLONG gLatestTorsoTimeMs = 0;
 // The head bone before our writes (AnimatedHead).
 USkeletalMeshComponent const* gAnimatedMesh = nullptr;
 ik::Vec3 gAnimatedHead;
@@ -374,7 +378,7 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
             if (!torso.result.ok) {
                 Reject(torso.result.error);
             } else {
-                first = (std::min)(first, t.chain.spine.front());
+                first = (std::min)(first, torso.result.firstBone >= 0 ? torso.result.firstBone : t.chain.spine.front());
                 body.forward = torso.result.facing;
                 body.right = ik::Normalize(ik::Cross(body.up, body.forward), body.right);
             }
@@ -451,6 +455,9 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
     if (torso.valid) {
         AcquireSRWLockExclusive(&gSampleLock);
         gTorso = torso;
+        gLatestTorsoMesh = self;
+        gLatestTorso = torso.result;
+        gLatestTorsoTimeMs = GetTickCount64();
         ReleaseSRWLockExclusive(&gSampleLock);
     }
     if (support) {
@@ -542,11 +549,14 @@ std::string DescribeTorso(TorsoSample const& sample) {
     if (!r.ok) {
         return std::format("not written ({})", r.error != nullptr ? r.error : "?");
     }
-    return std::format("shoulders {} -> {} (wanted {}, {:.1f} short{}), twist {:.0f} deg, bend {:.0f} deg, clavicles {:.0f}/{:.0f} deg, "
-                       "arm stretch {:.2f}/{:.2f}, {} bones",
+    return std::format("shoulders {} -> {} (wanted {}, {:.1f} short{}), twist {:.0f} deg, bend {:.0f} deg, body turn {:.0f} of {:.0f} deg, "
+                       "body shift {:.1f} units{}, reference {:.1f} from its goal, clavicles {:.0f}/{:.0f} deg, arm stretch {:.2f}/{:.2f}, "
+                       "{} bones",
         Format(r.oldShoulders), Format(r.newShoulders), Format(r.wantedShoulders), ik::Length(r.newShoulders - r.wantedShoulders),
-        r.limited ? ", limited" : "", r.twistDegrees, r.bendDegrees, sample.collars[0], sample.collars[1], sample.stretch[0],
-        sample.stretch[1], r.bonesWritten);
+        r.limited ? ", limited" : "", r.twistDegrees, r.bendDegrees, r.bodyTurnDegrees, r.wantedTurnDegrees, ik::Length(r.bodyShift),
+        r.shiftLimited ? std::format(" (wanted {:.1f}: capped)", ik::Length(r.wantedBodyShift)) : std::string(),
+        ik::Length(r.newReference - r.goalReference), sample.collars[0], sample.collars[1], sample.stretch[0], sample.stretch[1],
+        r.bonesWritten);
 }
 
 std::string Slots(Slot (&slots)[4], bool rva) {
@@ -686,6 +696,15 @@ std::optional<SupportSample> LatestSupport() {
     SupportSample const sample = gSupport;
     ReleaseSRWLockShared(&gSampleLock);
     return fresh ? std::optional<SupportSample>(sample) : std::nullopt;
+}
+
+std::optional<ik::TorsoResult> LatestTorso() {
+    USkeletalMeshComponent const* const mesh = gMesh.load(std::memory_order_acquire);
+    AcquireSRWLockShared(&gSampleLock);
+    bool const fresh = mesh != nullptr && gLatestTorsoMesh == mesh && GetTickCount64() - gLatestTorsoTimeMs <= kMaxRequestAgeMs;
+    ik::TorsoResult const result = gLatestTorso;
+    ReleaseSRWLockShared(&gSampleLock);
+    return fresh ? std::optional<ik::TorsoResult>(result) : std::nullopt;
 }
 
 std::uint64_t TotalWrites() {

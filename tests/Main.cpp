@@ -4,6 +4,7 @@
 #include "core/PngFile.hpp"
 #include "core/ik/ArmLength.hpp"
 #include "core/ik/ArmPose.hpp"
+#include "core/ik/BodyFollow.hpp"
 #include "core/ik/BodySlots.hpp"
 #include "core/ik/BoneNames.hpp"
 #include "core/ik/CameraHook.hpp"
@@ -1277,6 +1278,221 @@ void TestCameraHook() {
     b = a;
     b.hookName = 8;
     CHECK(CameraModeChanged(a, b));
+}
+
+// The body under the player (research/29): an offline replay of the torso on Shepard's layout (God >
+// Root > Pelvis > spine and legs; God > Camera) for the cases the user reported ("turning my head and
+// walking ... as if my shoulders are in a different location"): the old solve (spine alone) against
+// the new one (the whole body turns and steps under the view, core/ik/BodyFollow + TorsoGoal::body).
+struct BodyRig {
+    std::vector<std::string> names{"God"};
+    std::vector<int> parents{-1};
+    std::vector<mevr::ik::Transform> pose{{mevr::ik::Quat{}, {0, 0, 0}, 1.0}};
+    int camera = -1;
+    BodyRig() {
+        TorsoRig rig;
+        for (std::size_t i = 0; i < rig.names.size(); ++i) {
+            names.push_back(rig.names[i]);
+            parents.push_back(rig.parents[i] + 1);
+            pose.push_back(rig.pose[i]);
+        }
+        names.push_back("Camera");
+        parents.push_back(0);
+        pose.push_back({AxisAngleQ(0, 1, 0, 30), {5, 0, 170}, 1.0});
+        camera = static_cast<int>(names.size()) - 1;
+    }
+};
+
+void TestBodyFollow() {
+    using namespace mevr::ik;
+    BodyRig rig;
+    auto const left = FindArmChain(rig.names, rig.parents, 0);
+    auto const right = FindArmChain(rig.names, rig.parents, 1);
+    CHECK(left && right);
+    auto const chain = FindTorsoChain(rig.names, rig.parents, *left, *right);
+    CHECK(chain.has_value());
+    int const pelvis = 2, hip = 18, head = 9;
+    CHECK(chain->spine.front() == 3 && rig.parents[3] == pelvis);
+    std::vector<int> const hooks = FindCameraHookBones(rig.names);
+    CHECK(InSubtrees(rig.parents, std::vector<int>{pelvis}, hooks).empty());  // a whole-body move never reaches them
+    std::vector<Transform> const before = rig.pose;
+    BodyFrame const body;
+    auto const yawOf = [](Vec3 v) { return std::atan2(v.y, v.x) * 180.0 / std::numbers::pi; };
+    auto const facingError = [&](TorsoResult const& r, Vec3 wanted) { return std::abs(std::remainder(yawOf(r.facing) - yawOf(wanted), 360.0)); };
+    auto const mid = [&](std::vector<Transform> const& p) { return (p[left->upper].translation + p[right->upper].translation) * 0.5; };
+
+    // 1. The pawn faces away from the player. Explore mode turns Shepard to where the stick runs (with
+    // moveFollowsHead: the head's yaw plus the stick's angle), so backing up turns him 180 degrees from the
+    // player and strafing 90; standing, he keeps the last way he ran. The old spine twist stops at 60
+    // degrees: the shoulders stay 120 / 30 degrees off the player's.
+    for (double const away : {90.0, 180.0, -135.0}) {
+        Vec3 const wanted = Rotate(AxisAngleQ(0, 0, 1, away - (away == 180.0 ? 0.5 : 0.0)), {1, 0, 0});
+        TorsoGoal goal;
+        goal.reference = {head, -1};
+        goal.head = before[head].translation;
+        goal.forward = wanted;
+        std::vector<Transform> pose = before;
+        TorsoResult const old = PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal);
+        CHECK(old.ok && old.limited && facingError(old, wanted) > std::abs(away) - 61.0);
+        goal.body = pelvis;
+        goal.maxTwistDegrees = 30.0;
+        pose = before;
+        TorsoResult const now = PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal);
+        CHECK(now.ok && facingError(now, wanted) < 2.0);
+        CHECK(std::abs(now.twistDegrees) <= 30.0 + 1e-6 && std::abs(now.bodyTurnDegrees) > std::abs(away) - 32.0);
+        CHECK(now.firstBone == pelvis);
+        // The legs went with the hips (rigidly), Root, God and Camera didn't move at all.
+        CHECK(NearT(Relative(pose[hip], pose[pelvis]), Relative(before[hip], before[pelvis]), 1e-6));
+        CHECK(NearT(pose[0], before[0], 0.0) && NearT(pose[1], before[1], 0.0) && NearT(pose[rig.camera], before[rig.camera], 0.0));
+    }
+
+    // 2. The view isn't where the animation put Shepard's head: Halcyon's camera hangs off the animated
+    // `Camera` bone plus per-state offsets, and wandered -21..+25 units forward of the head bone within
+    // minutes (LE1MEVR.log, 2026-10-23 00:14-00:18). The hands are mapped from the view, so the old relative
+    // goal (Shepard's eyes moved as far as the headset moved: here not at all) left his shoulders 25 units
+    // behind the player's. Now the feet go under the view and his head to the head's pivot.
+    {
+        Vec3 const view = before[head].translation + Vec3{25, 4, 0};
+        TorsoGoal goal;
+        goal.reference = {head, -1};
+        goal.relative = true;
+        goal.head = {};  // the headset at the recenter point
+        goal.forward = {1, 0, 0};
+        std::vector<Transform> pose = before;
+        TorsoResult const old = PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal);
+        CHECK(old.ok && Length(old.newReference - view) > 24.0);
+        goal.relative = false;
+        goal.head = view;
+        goal.body = pelvis;
+        goal.bodyMoves = true;
+        goal.bodyAt = before[pelvis].translation + Vec3{25, 4, 0};  // the feet under the head (at rest)
+        goal.maxBodyShift = 75.0;
+        goal.maxTwistDegrees = 30.0;
+        pose = before;
+        TorsoResult const now = PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal);
+        CHECK(now.ok && !now.shiftLimited && Length(now.newReference - view) < 1.0);
+        CHECK(NearD(Length(now.bodyShift), std::hypot(25.0, 4.0), 1e-9) && now.bendDegrees < 2.0);
+        CHECK(Length(mid(pose) - (mid(before) + Vec3{25, 4, 0})) < 1.5);
+        CHECK(NearT(pose[rig.camera], before[rig.camera], 0.0) && NearT(pose[0], before[0], 0.0) && NearT(pose[1], before[1], 0.0));
+        // A slide past its limit stops there (logged as capped), along the way.
+        goal.bodyAt = before[pelvis].translation + Vec3{100, 0, 30};
+        goal.maxBodyShift = 50.0;
+        pose = before;
+        TorsoResult const capped = PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal);
+        CHECK(capped.ok && capped.shiftLimited && NearD(Length(capped.bodyShift), 50.0, 1e-9) && capped.bodyShift.z == 0.0);
+        CHECK(NearD(Length(capped.wantedBodyShift), 100.0, 1e-9));
+        // The body bone must hang below the skeleton's root and above the spine.
+        goal.body = 0;
+        CHECK(!PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal).ok);
+        goal.body = hip;
+        CHECK(!PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal).ok);
+    }
+
+    // 3. A physical step: the head 0.6 m forward over a second (100 units per meter, life-size). The old
+    // solve leans the spine (35 degrees at most) about LowerBack: Shepard bends over and his head stays
+    // short of the view. Now the feet follow the head (core/ik/BodyFollow): the body steps, the spine
+    // leans the last leanRadius, and the lean settles once the head stops.
+    {
+        double const unitsPerMeter = 100.0;
+        BodyFollow follow;
+        FollowState state;
+        int const steps = 90;
+        for (int i = 0; i <= steps; ++i) {
+            FollowInput in;
+            in.pivot = {0.0, 1.6, -0.6 * i / steps};  // -Z is forward in tracking space
+            in.deltaSeconds = 1.0 / 90.0;
+            in.haveRecenters = true;
+            state = follow.Update(in);
+            CHECK(state.anchored == (i == 0 ? FollowAnchor::Start : FollowAnchor::None));
+        }
+        CHECK(NearD(std::hypot(state.lean.x, state.lean.z), 0.20, 0.02));  // leaning at the radius while walking
+        CHECK(NearD(state.feet.z, -0.4, 0.03));
+        // Tracking -Z is the body's +X here: the view (Shepard's head at rest plus the step) and the feet.
+        Vec3 const view = before[head].translation + Vec3{0.6 * unitsPerMeter, 0, 0};
+        TorsoGoal goal;
+        goal.reference = {head, -1};
+        goal.relative = true;
+        goal.head = {0.6 * unitsPerMeter, 0, 0};
+        goal.forward = {1, 0, 0};
+        std::vector<Transform> pose = before;
+        TorsoResult const old = PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal);
+        CHECK(old.ok && old.limited && Length(old.newReference - view) > 20.0);
+        goal.relative = false;
+        goal.head = view;
+        goal.body = pelvis;
+        goal.bodyMoves = true;
+        goal.bodyAt = before[pelvis].translation + Vec3{-state.feet.z * unitsPerMeter, state.feet.x * unitsPerMeter, 0};
+        goal.maxBodyShift = 0.75 * unitsPerMeter;
+        goal.maxTwistDegrees = 30.0;
+        pose = before;
+        TorsoResult const now = PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal);
+        // Horizontally the head lands within a few units (the old: 21 behind); the rest is the lean's drop and
+        // the spine's curl (the solve aims the shoulders; the head sits above them).
+        auto const flat = [](Vec3 v) { return std::hypot(v.x, v.y); };
+        CHECK(flat(old.newReference - view) > 20.0);
+        CHECK(now.ok && !now.limited && flat(now.newReference - view) < 6.0 && now.bendDegrees < 20.0);
+        // Standing still for three seconds: the leftover lean settles under the head.
+        for (int i = 0; i < 270; ++i) {
+            FollowInput in;
+            in.pivot = {0.0, 1.6, -0.6};
+            in.deltaSeconds = 1.0 / 90.0;
+            in.haveRecenters = true;
+            state = follow.Update(in);
+        }
+        CHECK(std::hypot(state.lean.x, state.lean.z) < 0.09);
+    }
+
+    // 4. Turning the head in place swings the eyes around the neck (about 13 cm for 90 degrees): the old
+    // relative goal moved Shepard's eyes, so his spine leaned sideways. The head's pivot doesn't move.
+    {
+        Vec3 const pivot{0.1, 1.6, -0.2};
+        NeckModel const neck;
+        for (double const turn : {0.0, 90.0, -120.0}) {
+            Quat const look = Normalize(AxisAngleQ(0, 1, 0, turn) * AxisAngleQ(1, 0, 0, -20));  // turned, and looking down
+            Vec3 const eyes = pivot + Rotate(look, Vec3{0.0, neck.down, -neck.back});
+            CHECK(NearV(HeadPivot(eyes, look, neck), pivot, 1e-9));
+            if (turn == 90.0) {
+                Vec3 const eyesAhead = pivot + Rotate(AxisAngleQ(1, 0, 0, -20), Vec3{0.0, neck.down, -neck.back});
+                CHECK(Length(eyes - eyesAhead) > 0.11);  // what the old goal followed
+            }
+        }
+    }
+
+    // 5. A recenter re-origins tracking space at the head: the head's yaw jumps from 90 degrees to 0. The old
+    // body yaw (never reset while the torso ran) was left at the deadzone's edge, 34 degrees off, and eased
+    // back over seconds; the new one re-anchors at once. A jump we aren't told about (no counter) too.
+    {
+        double const quarter = std::numbers::pi / 2.0;
+        BodyYaw old;
+        old.Reset(quarter);
+        CHECK(NearD(old.Update(0.0, 1.0 / 90.0), 0.6, 1e-3));
+        BodyFollow follow;
+        FollowInput in;
+        in.pivot = {0.3, 1.6, 0.2};
+        in.headYaw = in.facingYaw = quarter;
+        in.haveRecenters = true;
+        in.recenters = 3;
+        in.deltaSeconds = 1.0 / 90.0;
+        CHECK(follow.Update(in).anchored == FollowAnchor::Start);
+        CHECK(NearD(follow.Update(in).yaw, quarter, 1e-9));
+        in.recenters = 4;
+        in.headYaw = in.facingYaw = 0.0;
+        in.pivot = {0.0, 1.6, 0.09};
+        FollowState state = follow.Update(in);
+        CHECK(state.anchored == FollowAnchor::Recenter && NearD(state.yaw, 0.0, 1e-12) && NearD(state.feet.x, 0.0, 1e-12));
+        // No counter: the head's pivot jumping a meter re-anchors.
+        in.haveRecenters = false;
+        in.pivot = {1.2, 1.6, 0.09};
+        state = follow.Update(in);
+        CHECK(state.anchored == FollowAnchor::Jump && NearD(state.feet.x, 1.2, 1e-12));
+        // Reset (the torso wasn't driven: a cutscene, a menu): the next update starts over.
+        follow.Reset();
+        CHECK(follow.Update(in).anchored == FollowAnchor::Start);
+        // A small move follows without re-anchoring: within the radius the feet stay (nearly) put.
+        in.pivot = {1.3, 1.6, 0.09};
+        state = follow.Update(in);
+        CHECK(state.anchored == FollowAnchor::None && NearD(state.feet.x, 1.2, 0.01));
+    }
 }
 
 // The arm-length calibration's T pose (tracking space, meters).
@@ -5607,6 +5823,7 @@ int main() {
     TestArmStretch();
     TestTorsoPose();
     TestCameraHook();
+    TestBodyFollow();
     TestArmLength();
     TestReachScale();
     TestHandTargetsOrigin();
