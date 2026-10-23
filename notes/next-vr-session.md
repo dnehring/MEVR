@@ -692,7 +692,50 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       Claude the numbers**), and `hands: ... hands within 0.30 m of the eyes unscaled`. Snapshot JSON:
       the mod's `"sights"."assist"` (eye, angle, offset, goal, shift).
 
-20. **The world stays level while you shoot (new, 2026-10-22; the mod only, it hot-reloads).** The
+20. **No cover snapping; crouch for real (new, 2026-10-22; the mod hot-reloads, no host redeploy).**
+    Research and design: [research/23](../research/23-cover.md). ME1 takes cover by itself when you
+    walk into a wall or low cover (there's no cover button: A only leaves it) and its cover camera is
+    third person; in VR on foot that's now off, and your real crouch crouches Shepard.
+    - **Walls and low cover:** on foot, first person, weapon out and away. Walk straight into a wall,
+      then into a waist-high crate or barrier, with the stick pushed into it for a few seconds; also
+      sideways along it, and with your head turned toward it. Shepard should **never snap into cover**
+      and the view should stay first person (he just stops at the wall). Log, once per push:
+      `posture: refused a cover entry: high (standing) / low (crouching) cover ahead, the move N
+      degrees off its normal`.
+    - **A still does everything else:** open a door, talk to someone, pick up an item, use a
+      terminal or an elevator, get into the Mako, all with A. **Hold A** while walking forward:
+      Shepard sprints (also right after walking into a wall).
+    - **Crouch:** behind a crate, crouch down for real (lower than about three quarters of your
+      standing eye height) and stay a moment: **Shepard crouches** (log: `posture: physical crouch:
+      eyes N m = N of the standing N m, below 0.75 for 0.20 s` then `posture: Shepard crouches (...):
+      BioPawn.ShouldCrouch(true)`). Stand up: he stands (`... Shepard stands`). Does the view feel
+      right at that moment, or does the world jump up (the game's crouch camera is 45 units lower in
+      combat on top of your own lean)? About a second later the log says how far the view moved:
+      `posture: 0.75 s after the crouch: the view is N units above Shepard's origin (was M: -D)`.
+      **Tell Claude how it felt**; that number decides whether the view needs fixing.
+    - **Crouch-walk** with the weapon out (ME1 allows it in combat). With the weapon away, moving
+      stands Shepard up (ME1 does that); the log says `Shepard's crouch changed without us`, and he
+      crouches again only after you stand up and crouch again.
+    - **L3 still toggles crouch:** standing, click L3: he crouches and stays crouched; click it again
+      or crouch and stand for real: he stands. Crouching for real, click L3: he stands; your next
+      stand-up and crouch take over again. Sprinting while crouched: the crouch waits for the sprint
+      to end (`posture: the physical crouch waits: Shepard is sprinting`).
+    - **Elsewhere nothing changes:** conversations, menus, the Mako (crouching in a conversation does
+      nothing). Off the headset for a few seconds while crouched: Shepard stands up (`VR is gone`).
+    - **Already in cover** (only if it happens, e.g. a save taken in cover): Shepard leaves it by
+      himself, as A does (`posture: Shepard is in ... cover ...: leaving it as A does`).
+    - **Snapshot** (End or the stick tap) while crouched: the mod status's `posture` has the eye
+      height, the standing eye height and its source, the fraction, physical and game crouch, and the
+      cover counts.
+    - **Settings:** `[Hands]` in `Binaries\Win64\ASI\LE1MEVR.ini` (added to your file): `noCover = 1`
+      (0: the game's cover as before), `physicalCrouch = 1`, `crouchBelow = 0.75`, `standAbove =
+      0.85`, `crouchDwellS = 0.2` (fractions of your standing eye height; seconds).
+    - **Logs (ours):** `hooked ABioPawn::TryAcquireCover` (with `cover: the cover test at ... (entry
+      bytes ...)`), `posture: script functions found`, `posture: settings: ...`, `posture: active`,
+      `posture: standing eye height N m, from the floor (STAGE)` (or the fallback: `the head's drop
+      since the recenter over [Holsters] eyeHeightM (...)`), the crouch and stand lines above, and the
+      heartbeat's `posture:` line (tests and entries refused, crouches, stands, changes without us).
+21. **The world stays level while you shoot (new, 2026-10-22; the mod only, it hot-reloads).** The
     tilt you saw was the guns' recoil: LE1 kicks the game camera up with every shot and the rifles'
     kick never comes back (a flat-screen player pulls the stick down); by the end of that session the
     camera looked about 30 degrees up. [research/24](../research/24-view-level.md). Now, on foot with

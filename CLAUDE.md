@@ -121,6 +121,12 @@ switching frameworks.
   is `TryMelee`. Claimed squeezes run before holsters; a left squeeze in the support grip's zone is the
   support grip, never a grenade. B/X stay unless
   `meleeButton`/`grenadeButton = 0` (host v14).
+- No cover snapping, physical crouch (LE1, VR on foot; `game/Posture` + `core/ik/Posture`, research/23,
+  `[Hands] noCover`, `physicalCrouch`, `crouchBelow`/`standAbove`/`crouchDwellS`): ME1 takes cover by
+  itself (BioPawn's native test, no button; A only leaves it). `engine/cover_acquire` pre-hooks that
+  test (`0xAB1430`, mod side) and skips it for the player's pawn; a cover already taken is left with
+  `TryExitCover`. A real crouch below 0.75 of the standing eye height (hysteresis 0.85, 0.2 s) is
+  `BioPawn.ShouldCrouch` (ProcessEvent), on physical changes only: L3 still toggles in between.
 - LE1 level camera (`game/view_level`, `core/vr/ViewLevel`, [research/24](research/24-view-level.md)):
   each shot's recoil goes into the player controller's rotation (ControlRotation) and the rifles' pitch
   kick never fades (`RecoilFadeSpeed=0`); with the stick's pitch off (`decoupledPitch`) the world tilted

@@ -9,6 +9,7 @@
 #include "core/ik/CameraHook.hpp"
 #include "core/ik/HandFrame.hpp"
 #include "core/ik/Ik.hpp"
+#include "core/ik/Posture.hpp"
 #include "core/ik/Rigid.hpp"
 #include "core/ik/Throwing.hpp"
 #include "core/ik/TorsoPose.hpp"
@@ -2507,6 +2508,162 @@ void TestStandingHeight() {
     CHECK(!h.Valid());
 }
 
+void TestCrouchFraction() {
+    using namespace mevr::ik::posture;
+    CHECK(NearD(FractionFromFloor(1.2, 1.6).value_or(-1.0), 0.75, 1e-12));
+    CHECK(!FractionFromFloor(1.2, 0.0));
+    CHECK(!FractionFromFloor(std::nan(""), 1.6));
+    // No floor: the head 0.4 m below where it stood (tracking space), over an assumed 1.65 m.
+    CHECK(NearD(FractionFromRecenter(-0.4, 0.0, 1.65).value_or(-1.0), 1.25 / 1.65, 1e-12));
+    // A recenter that didn't put the standing head at 0 (another space origin): only the drop counts.
+    CHECK(NearD(FractionFromRecenter(0.3, 0.3, 1.65).value_or(-1.0), 1.0, 1e-12));
+    CHECK(!FractionFromRecenter(0.0, std::nan(""), 1.65));
+    // Settings are clamped: stand above at least 0.02 over crouch below, the dwell 0..2 s.
+    CrouchParams p;
+    p.crouchBelow = 0.9;
+    p.standAbove = 0.5;
+    p.dwellSeconds = -1.0;
+    CrouchParams const s = Sanitize(p);
+    CHECK(NearD(s.crouchBelow, 0.9, 1e-12) && NearD(s.standAbove, 0.92, 1e-12) && NearD(s.dwellSeconds, 0.0, 1e-12));
+    p.crouchBelow = 0.1;
+    p.standAbove = 2.0;
+    p.dwellSeconds = 9.0;
+    CrouchParams const t = Sanitize(p);
+    CHECK(NearD(t.crouchBelow, 0.3, 1e-12) && NearD(t.standAbove, 0.99, 1e-12) && NearD(t.dwellSeconds, 2.0, 1e-12));
+}
+
+void TestCrouchDetector() {
+    using namespace mevr::ik::posture;
+    CrouchParams const p;  // 0.75 / 0.85 / 0.2 s
+    double const dt = 1.0 / 90.0;
+    CrouchDetector d;
+    // Standing tall, then a quick dip below the threshold (a duck shorter than the dwell): nothing.
+    CHECK(d.Update(1.0, dt, p) == CrouchEvent::None);
+    for (int i = 0; i < 10; ++i) {  // 0.11 s
+        CHECK(d.Update(0.7, dt, p) == CrouchEvent::None);
+    }
+    CHECK(d.Update(0.9, dt, p) == CrouchEvent::None && d.Dwell() == 0.0 && !d.Crouched());
+    // Staying down: a crouch once the head has been below 0.75 for 0.2 s, exactly once.
+    int crouches = 0;
+    int ticks = 0;
+    for (int i = 0; i < 60; ++i) {
+        CrouchEvent const e = d.Update(0.7, dt, p);
+        crouches += e == CrouchEvent::Crouch ? 1 : 0;
+        ticks += crouches == 0 ? 1 : 0;
+    }
+    CHECK(crouches == 1 && d.Crouched());
+    CHECK(ticks >= 17 && ticks <= 18);  // 18 ticks of 1/90 s reach 0.2 s
+    // Hysteresis: rising to 0.8 (between the thresholds) keeps the crouch however long.
+    for (int i = 0; i < 200; ++i) {
+        CHECK(d.Update(0.8, dt, p) == CrouchEvent::None);
+    }
+    CHECK(d.Crouched());
+    // A lost measurement holds the state and restarts the dwell.
+    for (int i = 0; i < 10; ++i) {
+        d.Update(0.95, dt, p);
+    }
+    CHECK(d.Dwell() > 0.0);
+    CHECK(d.Update(std::nullopt, dt, p) == CrouchEvent::None && d.Dwell() == 0.0 && d.Crouched());
+    // Standing up past 0.85 for the dwell: a stand.
+    int stands = 0;
+    for (int i = 0; i < 30; ++i) {
+        stands += d.Update(0.95, dt, p) == CrouchEvent::Stand ? 1 : 0;
+    }
+    CHECK(stands == 1 && !d.Crouched());
+    // Hovering around one threshold doesn't flap: only a full dwell past it counts.
+    int events = 0;
+    for (int i = 0; i < 300; ++i) {
+        events += d.Update(i % 4 < 2 ? 0.74 : 0.76, dt, p) != CrouchEvent::None ? 1 : 0;
+    }
+    CHECK(events == 0 && !d.Crouched());
+    // No dwell: at once. A reset starts crouched if asked.
+    CrouchParams quick = p;
+    quick.dwellSeconds = 0.0;
+    CHECK(d.Update(0.5, dt, quick) == CrouchEvent::Crouch);
+    d.Reset(true);
+    CHECK(d.Crouched() && d.Update(1.0, dt, quick) == CrouchEvent::Stand);
+}
+
+void TestCrouchArbiter() {
+    using namespace mevr::ik::posture;
+    // Crouch while the game stands: ask; the game takes it; it's ours.
+    CrouchArbiter a;
+    ArbiterStep s = a.Update({CrouchEvent::None, false, true});
+    CHECK(s.action == CrouchAction::None && !s.external);
+    s = a.Update({CrouchEvent::Crouch, false, true});
+    CHECK(s.action == CrouchAction::Crouch);
+    a.Applied(true);
+    CHECK(a.Owns() && !a.Pending());
+    // Nothing more while nothing changes.
+    s = a.Update({CrouchEvent::None, true, true});
+    CHECK(s.action == CrouchAction::None && !s.external);
+    // L3 stands Shepard up while the player stays crouched: seen, kept, no longer ours.
+    s = a.Update({CrouchEvent::None, false, true});
+    CHECK(s.external && s.action == CrouchAction::None && !a.Owns());
+    for (int i = 0; i < 5; ++i) {
+        CHECK(a.Update({CrouchEvent::None, false, true}).action == CrouchAction::None);
+    }
+    // The player stands: the game already stands: nothing to ask.
+    s = a.Update({CrouchEvent::Stand, false, true});
+    CHECK(s.action == CrouchAction::None && s.alreadyThere && !a.Owns());
+    // L3 crouches him while the player stands: kept.
+    s = a.Update({CrouchEvent::None, true, true});
+    CHECK(s.external && s.action == CrouchAction::None);
+    // The player crouches too: already there, and from now on it's the player's (a stand releases it).
+    s = a.Update({CrouchEvent::Crouch, true, true});
+    CHECK(s.alreadyThere && a.Owns());
+    s = a.Update({CrouchEvent::Stand, true, true});
+    CHECK(s.action == CrouchAction::Stand);
+    a.Applied(false);
+    CHECK(!a.Owns() && !a.Pending());
+    // A crouch while sprinting waits, then goes once the game takes changes again.
+    s = a.Update({CrouchEvent::Crouch, false, false});
+    CHECK(s.deferred && s.action == CrouchAction::None && a.Pending() == std::optional<bool>(true));
+    s = a.Update({CrouchEvent::None, false, false});
+    CHECK(s.deferred);
+    s = a.Update({CrouchEvent::None, false, true});
+    CHECK(s.action == CrouchAction::Crouch);
+    a.Applied(true);
+    CHECK(a.Owns());
+    // A stand that's overtaken by a crouch before it could go: only the latest counts.
+    s = a.Update({CrouchEvent::Stand, true, false});
+    CHECK(s.deferred && a.Pending() == std::optional<bool>(false));
+    s = a.Update({CrouchEvent::Crouch, true, false});
+    CHECK(s.alreadyThere && !a.Pending() && a.Owns());
+    // A change the game doesn't take is asked kMaxTries times, then dropped.
+    s = a.Update({CrouchEvent::Stand, true, true});
+    int asks = 0;
+    for (int i = 0; i < 10 && a.Pending(); ++i) {
+        if (s.action == CrouchAction::Stand) {
+            ++asks;
+            a.Applied(true);  // bWantsToCrouch didn't change
+        }
+        s = a.Update({CrouchEvent::None, true, true});
+    }
+    CHECK(asks == CrouchArbiter::kMaxTries && s.gaveUp && !a.Pending());
+    // While inactive (a conversation) a change by the game is seen, and nothing waits.
+    CrouchArbiter b;
+    b.Update({CrouchEvent::Crouch, false, true});
+    b.Applied(true);
+    CHECK(b.Owns());
+    b.Observe(true);
+    CHECK(b.Owns());
+    b.Observe(false);  // the conversation stood him up
+    CHECK(!b.Owns());
+    // Releasing a crouch of ours outside a physical change (the setting off): nothing stays ours.
+    CrouchArbiter c;
+    c.Update({CrouchEvent::Crouch, false, true});
+    c.Applied(true);
+    c.Applied(false);
+    CHECK(!c.Owns());
+    // A new pawn: nothing seen, nothing ours.
+    c.Update({CrouchEvent::Crouch, false, true});
+    c.Applied(true);
+    c.Forget();
+    CHECK(!c.Owns() && !c.Pending());
+    CHECK(!c.Update({CrouchEvent::None, true, true}).external);
+}
+
 void TestHapticChannel() {
     using namespace mevr::vr::haptics;
     using Kind = Command::Kind;
@@ -4557,6 +4714,9 @@ int main() {
     TestBodySlotHolding();
     TestContactHaptics();
     TestStandingHeight();
+    TestCrouchFraction();
+    TestCrouchDetector();
+    TestCrouchArbiter();
     TestHapticChannel();
     TestTwoHand();
     TestOverlayPlacement();

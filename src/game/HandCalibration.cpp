@@ -92,6 +92,17 @@ constexpr char const* kDefaultFile =
     "; reachNearFaceM: with armLengthM set, a hand this close to your eyes (meters) isn't reach-scaled: it\n"
     "; sits exactly on its controller (a gun at the cheek lines up with your eye); 0 = always scaled.\n"
     "reachNearFaceM = 0.30\n"
+    "; Physical cover and crouch (VR on foot only). noCover: 1 = the game's cover snapping is off: take\n"
+    "; cover by crouching or leaning behind things (a cover you're already in is left as A leaves it).\n"
+    "; physicalCrouch: 1 = crouching for real crouches Shepard (a smaller target, ducked behind low cover);\n"
+    "; L3 still toggles it until your next crouch or stand. crouchBelow / standAbove: the eye height, as a\n"
+    "; fraction of your standing eye height, below which Shepard crouches and above which he stands again;\n"
+    "; crouchDwellS: how long (seconds) the head must stay past it first.\n"
+    "noCover = 1\n"
+    "physicalCrouch = 1\n"
+    "crouchBelow = 0.75\n"
+    "standAbove = 0.85\n"
+    "crouchDwellS = 0.2\n"
     "; levelCamera: 1 keeps the game camera level on foot while the hand aims (the guns' recoil and aim assist\n"
     "; no longer tilt the world; research/24). recoilHaptic: how strongly a shot's recoil buzzes the hand, 0..1.\n"
     "levelCamera = 1\n"
@@ -791,6 +802,32 @@ std::string Describe(Throwables const& t) {
 Throwables gThrowables;
 std::string gThrowablesText;
 
+Posture ReadPosture(Ini const& ini) {
+    Posture p;
+    double value = 0.0;
+    if (Number(ini, "Hands", "noCover", value)) {
+        p.noCover = value != 0.0;
+    }
+    if (Number(ini, "Hands", "physicalCrouch", value)) {
+        p.physicalCrouch = value != 0.0;
+    }
+    Number(ini, "Hands", "crouchBelow", p.crouch.crouchBelow);
+    Number(ini, "Hands", "standAbove", p.crouch.standAbove);
+    Number(ini, "Hands", "crouchDwellS", p.crouch.dwellSeconds);
+    p.crouch = ik::posture::Sanitize(p.crouch);
+    return p;
+}
+
+std::string Describe(Posture const& p) {
+    return std::format("cover snapping {} in VR on foot; physical crouch {}", p.noCover ? "off (noCover = 1)" : "kept (noCover = 0)",
+        p.physicalCrouch ? std::format("on: crouch below {:.2f} of the standing eye height, stand above {:.2f}, after {:.2f} s",
+                               p.crouch.crouchBelow, p.crouch.standAbove, p.crouch.dwellSeconds)
+                         : std::string("off"));
+}
+
+Posture gPosture;
+std::string gPostureText;
+
 vr::sights::Settings ReadSights(Ini const& ini) {
     namespace sv = vr::sights;
     sv::Settings out;
@@ -1028,6 +1065,10 @@ Throwables GetThrowables() {
     return gThrowables;
 }
 
+Posture GetPosture() {
+    return gPosture;
+}
+
 vr::sights::Settings GetSights() {
     return gSights;
 }
@@ -1184,8 +1225,8 @@ void Refresh() {
         ini = ReadIni(path);
         stamp = fs::last_write_time(path, ec);
     }
-    // [Hands] reachNearFaceM, levelCamera and recoilHaptic (research/24), and the [Sights] alignment assist
-    // (2026-10-22), appended with their defaults.
+    // [Hands] reachNearFaceM, the [Sights] alignment assist, [Hands]' physical cover and crouch
+    // (research/23) and levelCamera / recoilHaptic (research/24) (2026-10-22), appended with their defaults.
     static constexpr struct {
         wchar_t const* section;
         char const* sectionName;
@@ -1201,6 +1242,11 @@ void Refresh() {
         {L"Sights", "Sights", L"assistStrength", "assistStrength", L"1"},
         {L"Sights", "Sights", L"assistMaxM", "assistMaxM", L"0.10"},
         {L"Sights", "Sights", L"assistRangeM", "assistRangeM", L"0.65"},
+        {L"Hands", "Hands", L"noCover", "noCover", L"1"},
+        {L"Hands", "Hands", L"physicalCrouch", "physicalCrouch", L"1"},
+        {L"Hands", "Hands", L"crouchBelow", "crouchBelow", L"0.75"},
+        {L"Hands", "Hands", L"standAbove", "standAbove", L"0.85"},
+        {L"Hands", "Hands", L"crouchDwellS", "crouchDwellS", L"0.2"},
     };
     std::string addedKeys;
     for (auto const& k : kNewKeys) {
@@ -1216,6 +1262,11 @@ void Refresh() {
         stamp = fs::last_write_time(path, ec);
     }
     gStamp = stamp;
+    gPosture = ReadPosture(ini);
+    if (std::string const text = Describe(gPosture); text != gPostureText) {
+        gPostureText = text;
+        log::Info("posture: settings: {}", text);
+    }
     gHolsters = ReadHolsters(ini);
     if (std::string const text = Describe(gHolsters); text != gHolstersText) {
         gHolstersText = text;
