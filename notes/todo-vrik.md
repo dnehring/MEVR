@@ -634,6 +634,31 @@ PSVR 2 on SteamVR: the world pitched more and more over a session while SteamVR'
   moving or turning the pawn itself (room-scale, the cap) would change mechanics: ask first; the neck
   model's constants per player (the calibration's eye height could scale it).
 
+## Sights beside the picture, shots right of the dot (user, headset session 2026-10-22 22:2x-00:19; built 2026-10-23, to test)
+
+- **Report:** the sniper's scope window and the model's lens apart (the rifle too); sniper and pistol shots
+  reliably right of the crosshair; the assault rifle had no sight.
+- **Causes ([research/21](../research/21-sights-and-scopes.md) sections 9-12):**
+  - Halcyon's Stereo 2 isn't metric: each eye rendered 3.4 cm from the midpoint (the headset's 3.1), and each
+    finished image moved 1.27 degrees outward at submit (`sfr2Convergence` 0.012 with swap-eyes). Measured in the
+    23:51 snapshot: far content 652 px apart where the geometry says 685.6. Our one-eye dot sat on the true line,
+    the target under it was 1.27 degrees left in the right eye's image: shots right. The scope sampled the other
+    eye's shifted image; its disc sat at the true place, the model a few mm beside it and further away.
+  - Not the frames: shots and the sight both follow the drawn barrel and muzzle (shots start at the muzzle,
+    0.00 units). The "273 units from the muzzle" warnings were squadmates' shots.
+  - The assault rifle's holo needed the eye within its 3-unit window.
+- **Built:** shots converge on the sight line's hit (`Actor.Trace` each tick, `ConvergedShot`); an eye box
+  (6 units) and one eye for dots, dot by default on the shotgun and assault rifle; the sight on a bone or socket
+  named for a sight, else its height from the mesh's bounds (bones and sockets logged); long guns borrow the
+  pistol's grip frame without a rifle stance; the shot-start check skips squadmates. `[Sights] eyeBox, converge`;
+  a menu row under HUD & sights.
+- **Not ours:** the picture's 1.27 degrees per eye is fixed by a metric stereo mode in Halcyon (a separate job; a
+  per-eye quad workaround was built and removed on 2026-10-23). Until then dots and the scope read about 1.27
+  degrees left of the hits for a right aiming eye.
+- **[verify in headset]:** notes/next-vr-session.md step 28.
+- **Open:** the sniper's eyepiece `back` is still the length-share guess unless its mesh names a sight bone (the
+  model log gives the scope's extent; set `sniperRiflePlace` from it).
+
 ## Life-size stereo (user reports 2026-10-22/23, approved replacing Halcyon's stereo core; built 2026-10-23, to test)
 
 - **Reports (PS VR 2, SteamVR):** the pistol looks huge, close things strain the eyes, the scope quad isn't on the
@@ -645,6 +670,6 @@ PSVR 2 on SteamVR: the world pitched more and more over a session while SteamVR'
   swap ignored; each eye's own off-centre frustum on the GPU matrix where no UI is in the eyes (mode 2), the
   symmetric window elsewhere (mode 1); the submit declares what the pair's record says. "Life-size stereo" and
   "Extra depth" in our menu and Halcyon's. `[MEVR-STEREO]` logs, snapshot `"stereo"`, `tools/stereo-check.py`.
-- **[verify in headset]:** notes/next-vr-session.md step 28.
+- **[verify in headset]:** notes/next-vr-session.md step 29.
 - **Open:** a depth for the conversation UI (now at infinity); CPU-placed screen effects in mode 2 (lens flares,
   light shafts) **[verify]**; whether Umbra's camera is the same for both passes (lever 3, research/22).

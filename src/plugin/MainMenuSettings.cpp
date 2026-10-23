@@ -256,9 +256,10 @@ void Settings::Read(menu::Values& v) {
     v.numbers["hud_size"] = std::round(c.hudPanelWidthM / 1.3f * 100.0f);
     flag("reticle", c.handReticle);
     v.texts["sight_pistol"] = ms::SightKind(ini.Text("Sights", "pistol", "dot"), "dot");
-    v.texts["sight_rifle"] = ms::SightKind(ini.Text("Sights", "assaultRifle", "holo"), "holo");
+    v.texts["sight_rifle"] = ms::SightKind(ini.Text("Sights", "assaultRifle", "dot"), "dot");
     v.texts["sight_sniper"] = ms::SightKind(ini.Text("Sights", "sniperRifle", "scope 4"), "scope");
     flag("sight_assist", ini.Num("Sights", "assist", 1.0f) != 0.0f);
+    flag("sight_converge", ini.Num("Sights", "converge", 1.0f) != 0.0f);
     // Advanced: Halcyon's.
     flag("recenter_key", c.recenterKeyEnabled);
     v.numbers["look_speed"] = c.lookSensitivity;
@@ -399,6 +400,8 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         Put("Sights", "sniperRifle", ms::SightValue(v.Text(key), Narrow(previous)), true);
     } else if (key == "sight_assist") {
         Put("Sights", "assist", onOff("sight_assist"), true);
+    } else if (key == "sight_converge") {
+        Put("Sights", "converge", onOff("sight_converge"), true);
     }
     // ---- Colour ----
     else if (key == "profile") {

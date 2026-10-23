@@ -77,11 +77,19 @@ std::optional<double> Number(fs::path const& path, std::string const& section, c
     return value;
 }
 
-// A stance's keys ("pistol" / "rifle" + Trim, Line, ...). Nullopt unless its trim and line read.
+// A stance whose three aims disagreed by more than this isn't used (a half-finished or confused step).
+constexpr double kMaxSpreadDeg = 10.0;
+
+// A stance's keys ("pistol" / "rifle" + Trim, Line, ...). Nullopt unless its trim and line read and its aims agreed.
 std::optional<cal::Stance> ReadStance(fs::path const& path, std::string const& section, std::string const& prefix, int eye) {
     auto const trim = cal::ParseRotation(Read(path, section, (prefix + "Trim").c_str()));
     auto const line = cal::ParseVector(Read(path, section, (prefix + "Line").c_str()));
     if (!trim || !line || std::sqrt(line->x * line->x + line->y * line->y + line->z * line->z) > 0.6f) {
+        return std::nullopt;
+    }
+    if (auto const spread = Number(path, section, (prefix + "SpreadDeg").c_str(), 0.0, 180.0); spread && *spread > kMaxSpreadDeg) {
+        log::Warn("calibration: the {} stance in [{}] isn't used: its aims disagreed by {:.1f} degrees (more than {:.0f})", prefix, section,
+            *spread, kMaxSpreadDeg);
         return std::nullopt;
     }
     cal::Stance s;
@@ -149,10 +157,13 @@ std::string Describe(Values const& v) {
             cal::FormatVector(s->line), s->spreadDeg, s->hasLeft ? std::format(", foregrip {} m", cal::FormatVector(s->foregrip)) : "");
     };
     auto const meters = [](std::optional<double> const& m) { return m ? std::format("{:.2f} m", *m) : std::string("-"); };
-    return std::format("[Calibration.{}] ({}), {}: {} eye; {}; {}; eyes {} standing, {} crouched; arms {}, shoulders {}", v.key,
+    return std::format("[Calibration.{}] ({}), {}: {} eye; {}; {}{}; eyes {} standing, {} crouched; arms {}, shoulders {}", v.key,
         v.label.empty() ? "?" : v.label, v.when, v.pistol || v.rifle ? ((v.pistol ? v.pistol : v.rifle)->eye == 0 ? "left" : "right") : "-",
-        stance("pistol", v.pistol), stance("rifle", v.rifle), meters(v.standEye), meters(v.crouchEye), meters(v.armLength),
-        meters(v.shoulderWidth));
+        stance("pistol", v.pistol), stance("rifle", v.rifle),
+        !v.rifle && v.pistol ? " (the long guns take the pistol's grip frame, not its sight line)"
+            : !v.rifle       ? " (the long guns follow the controller's aim pose)"
+                             : "",
+        meters(v.standEye), meters(v.crouchEye), meters(v.armLength), meters(v.shoulderWidth));
 }
 
 void Load(char const* why) {
@@ -235,7 +246,17 @@ std::optional<cal::Stance> StanceFor(int weaponType) {
     if (!Usable() || weaponType < 0 || weaponType > 3) {
         return std::nullopt;
     }
-    return weaponType == 0 ? gValues.pistol : gValues.rifle;
+    if (weaponType == 0) {
+        return gValues.pistol;
+    }
+    // No rifle stance (the rifle step not finished, 2026-10-22): the pistol's grip frame, so a long gun points where
+    // this controller's grip points for the player rather than along the runtime's aim pose (9 degrees apart on the
+    // PS VR2 under SteamVR's Touch emulation). StanceBorrowed tells arm IK not to use its sight line.
+    return gValues.rifle ? gValues.rifle : gValues.pistol;
+}
+
+bool StanceBorrowed(int weaponType) {
+    return Usable() && weaponType >= 1 && weaponType <= 3 && !gValues.rifle && gValues.pistol;
 }
 
 std::optional<cal::Stance> TwoHanded() {

@@ -12,10 +12,14 @@
 #include "game/ArmIk.hpp"
 #include "game/BodyCalibration.hpp"
 #include "game/HeadTracking.hpp"
+#include "game/Sights.hpp"
 #include "game/ViewAnchor.hpp"
 #include "game/Weapon.hpp"
+#include "core/vr/TestRequest.hpp"
 
 #include <LESDK/Headers.hpp>
+
+#include <Windows.h>
 
 #include <algorithm>
 #include <atomic>
@@ -72,6 +76,27 @@ bool gLastRayValid = false;
 Path gLastPath = Path::Game;
 engine::UnrealVector gLastRayStart{};
 engine::UnrealVector gLastRayDirection{};
+
+// The last shot along the barrel, for the per-shot log and the snapshot (research/21 section 10): where it was aimed
+// (toward what the sight line hit, or along the barrel), and, after the weapon's own aim query, where it started.
+struct ShotRecord {
+    bool valid = false;
+    bool converged = false;           // aimed at the sight line's hit (else along the barrel)
+    double toSightDeg = 0.0;          // the shot's direction against the sight line
+    double toBarrelDeg = 0.0;         // ...and against the barrel
+    double sightDistanceM = 0.0;      // what the sight line hit, from the sight (game meters; the range if nothing)
+    bool sightHit = false;
+    std::string what;
+    double startOffMuzzle = -1.0;     // units between the game's StartFireLoc and our muzzle (-1: not seen yet)
+    unsigned count = 0;
+};
+ShotRecord gShot;
+std::atomic<unsigned> gConvergedShots{0};
+std::atomic<unsigned> gOtherWeaponAims{0};  // GetAdjustedAim of weapons we don't hold (squadmates), skipped
+double gSumToSight = 0.0;
+double gMaxToSight = 0.0;
+unsigned gShotsLogged = 0;
+ULONGLONG gNextShotLogMs = 0;
 
 double Distance(engine::UnrealVector const& a, engine::UnrealVector const& b) {
     return std::hypot(a.x - b.x, a.y - b.y, a.z - b.z);
@@ -151,19 +176,36 @@ bool HandRotation(FRotator const& game, FRotator& out) {
     return true;
 }
 
-// Along the held gun's barrel (its start moves to the muzzle in OnStartTrace).
+// Along the held gun's barrel (its start moves to the muzzle in OnStartTrace), or, with a sight on the gun
+// ([Sights] converge), from the muzzle toward the point the sight line hits: the shot lands under the dot.
 bool BarrelRotation(FRotator const& game, FRotator& out) {
     auto const muzzle = BarrelMuzzle();
     if (!muzzle) {
         return false;
     }
-    engine::UnrealRotation const rotation = engine::ToRotation(muzzle->barrel);
+    auto const aim = sights::ShotAlongSight(*muzzle);
+    engine::UnrealVector const direction = aim ? aim->direction : muzzle->barrel;
+    engine::UnrealRotation const rotation = engine::ToRotation(direction);
     out.Pitch = engine::Unwind(rotation.pitch, game.Pitch);
     out.Yaw = engine::Unwind(rotation.yaw, game.Yaw);
     out.Roll = 0;
     gLastRayStart = muzzle->location;
-    gLastRayDirection = muzzle->barrel;
+    gLastRayDirection = direction;
     gLastRayValid = true;
+    gShot.valid = true;
+    gShot.converged = aim.has_value();
+    gShot.toSightDeg = aim ? aim->toSightDeg : 0.0;
+    gShot.toBarrelDeg = aim ? aim->toBarrelDeg : 0.0;
+    gShot.sightDistanceM = aim ? aim->distance / 100.0 : 0.0;
+    gShot.sightHit = aim && aim->hit;
+    gShot.what = aim ? aim->what : std::string();
+    gShot.startOffMuzzle = -1.0;
+    ++gShot.count;
+    if (aim) {
+        gConvergedShots.fetch_add(1, std::memory_order_relaxed);
+        gSumToSight += aim->toSightDeg;
+        gMaxToSight = std::max(gMaxToSight, aim->toSightDeg);
+    }
     if (!gLoggedBarrel) {
         gLoggedBarrel = true;
         log::Info("hand aim: first shot along the gun barrel: game aim pitch {} yaw {} -> barrel pitch {} yaw {}; muzzle at "
@@ -231,10 +273,37 @@ void OnStartTrace(UObject* context, UFunction* /*function*/, void* parms, void* 
     }
 }
 
+// One line per shot, rate-limited (the first three per weapon, then one every two seconds): the shot against the
+// sight line and the barrel, where it started against our muzzle, and what the sight line hit.
+void LogShot() {
+    ULONGLONG const now = GetTickCount64();
+    if (gShotsLogged >= 3 && now < gNextShotLogMs) {
+        return;
+    }
+    ++gShotsLogged;
+    gNextShotLogMs = now + 2000;
+    if (gShot.converged) {
+        log::Info("hand aim: shot {}: from the muzzle ({:.2f} units from the game's start) toward what the sight line hit, {:.1f} m "
+                  "past the sight ({}): {:.3f} degrees off the sight line, {:.3f} off the barrel",
+            gShot.count, gShot.startOffMuzzle, gShot.sightDistanceM,
+            gShot.sightHit ? gShot.what : std::string("nothing within the trace: aimed at its end"), gShot.toSightDeg, gShot.toBarrelDeg);
+    } else {
+        log::Info("hand aim: shot {}: from the muzzle ({:.2f} units from the game's start) along the barrel (no sight line to converge "
+                  "on: no sight on this gun, [Sights] converge = 0, or no trace)",
+            gShot.count, gShot.startOffMuzzle);
+    }
+}
+
 // After the weapon's aim query: where this shot really starts. Along the barrel, that should be
 // the muzzle (OnStartTrace); along the controller's ray, how far shots pass beside it (once).
-void OnWeaponAim(UObject* /*context*/, UFunction* /*function*/, void* parms, void* /*result*/) {
+// Only the held weapon's: squadmates' weapons ask too (their own controllers' aim, never ours), and their
+// shots start where they stand (2026-10-23: the "273 units from the muzzle" warnings were theirs).
+void OnWeaponAim(UObject* context, UFunction* /*function*/, void* parms, void* /*result*/) {
     if (!gLastRayValid) {
+        return;
+    }
+    if (context == nullptr || reinterpret_cast<std::uintptr_t>(context) != weapon::Key()) {
+        gOtherWeaponAims.fetch_add(1, std::memory_order_relaxed);
         return;
     }
     FVector const& at = static_cast<ABioWeaponRanged_execGetAdjustedAim_Parms*>(parms)->StartFireLoc;
@@ -242,6 +311,8 @@ void OnWeaponAim(UObject* /*context*/, UFunction* /*function*/, void* parms, voi
     if (gLastPath == Path::Barrel) {
         double const off = Distance(start, gLastRayStart);
         bool const atMuzzle = off <= kAtMuzzleUnits;
+        gShot.startOffMuzzle = off;
+        LogShot();
         (atMuzzle ? gShotsAtMuzzle : gShotsElsewhere).fetch_add(1, std::memory_order_relaxed);
         bool& logged = atMuzzle ? gLoggedAtMuzzle : gLoggedElsewhere;
         if (!logged) {
@@ -382,12 +453,19 @@ void LogStats() {
     unsigned const atMuzzle = gShotsAtMuzzle.exchange(0);
     unsigned const elsewhere = gShotsElsewhere.exchange(0);
     unsigned const rays = gRaysPublished.exchange(0);
+    unsigned const converged = gConvergedShots.exchange(0);
+    unsigned const others = gOtherWeaponAims.exchange(0);
     if (gEnabled || calls > 0) {
-        log::Info("    hand aim: {}, {} aim queries: {} along the gun barrel, {} along the controller's ray, {} kept the game's aim "
-                  "(no view anchor); {} shot-start queries, {} moved to the muzzle; shots checked: {} from the muzzle, {} not; "
-                  "aim ray {} ({} published)",
-            gEnabled ? "on" : "off", calls, barrel, controller, noAnchor, starts, moved, atMuzzle, elsewhere, gRayStatus, rays);
+        log::Info("    hand aim: {}, {} aim queries: {} along the gun barrel ({} of them toward what the sight line hit{}), {} along the "
+                  "controller's ray, {} kept the game's aim (no view anchor); {} shot-start queries, {} moved to the muzzle; shots "
+                  "checked: {} from the muzzle, {} not; {} other weapons' aim queries skipped; aim ray {} ({} published)",
+            gEnabled ? "on" : "off", calls, barrel, converged,
+            converged > 0 ? std::format(", {:.3f} degrees off the sight line on average, {:.3f} at most", gSumToSight / converged, gMaxToSight)
+                          : std::string(),
+            controller, noAnchor, starts, moved, atMuzzle, elsewhere, others, gRayStatus, rays);
     }
+    gSumToSight = 0.0;
+    gMaxToSight = 0.0;
 }
 
 void Shutdown() {
@@ -406,6 +484,19 @@ void Shutdown() {
     gLoggedRayStatus.clear();
     gLastRayValid = false;
     gLastPath = Path::Game;
+    gShot = {};
+    gShotsLogged = 0;
+    gNextShotLogMs = 0;
+    gSumToSight = gMaxToSight = 0.0;
+}
+
+std::string StatusJson() {
+    namespace json = vr::test_request;
+    return std::format("{{\"enabled\": {}, \"lastShot\": {{\"valid\": {}, \"count\": {}, \"converged\": {}, \"toSightDeg\": {}, "
+                       "\"toBarrelDeg\": {}, \"sightDistanceM\": {}, \"sightHit\": {}, \"what\": {}, \"startOffMuzzle\": {}}}}}",
+        gEnabled ? "true" : "false", gShot.valid ? "true" : "false", gShot.count, gShot.converged ? "true" : "false",
+        json::JsonNumber(gShot.toSightDeg), json::JsonNumber(gShot.toBarrelDeg), json::JsonNumber(gShot.sightDistanceM),
+        gShot.sightHit ? "true" : "false", json::JsonString(gShot.what), json::JsonNumber(gShot.startOffMuzzle));
 }
 
 } // namespace mevr::game::hand_aim

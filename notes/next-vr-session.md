@@ -906,7 +906,6 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       (`main menu: [Hands] physicalCrouch = 0`), `main menu: renderer settings saved to profile ...`,
       `rmlui:` warnings if the document has a mistake. The mod: `menu pause: the game paused (the main menu is
       open; ...)` and `runs again (the main menu closed)`.
-
 26. **The rifle calibration finishes, and the orbs are where your hands are (new, 2026-10-23; HOST
     REDEPLOY).** The rifle step used to go round and round: it took three aims, judged them by the pistol's
     3 degrees, and started all three over without saying why where you could see it. Now it says why on the
@@ -976,7 +975,40 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       and `arm IK torso` lines (`body turn N of M deg, body shift N units`). Snapshots: `"torso"` in the mod's
       status.
 
-28. **Life-size stereo (new, 2026-10-23; HOST REDEPLOY, the deploy turns it on).** Your reports: the pistol
+28. **Shots on the dot, a red dot on the rifles, the sight on the model (new, 2026-10-23; HOST REDEPLOY: the dot's
+    eye box and the sight struct; the rest is the mod's and hot-reloads).** [research/21](../research/21-sights-and-scopes.md)
+    sections 9-12. Know first: Halcyon's Stereo 2 moves each eye's picture about 1.27 degrees outward and renders the
+    eyes 3.4 cm apart each, while our dot and scope are drawn at their true place; life-size stereo (step 29, on
+    in the deploy) fixes that. Until it's on, a right-eye dot reads about 1.27 degrees left of the hits (20-40 cm right
+    at 10-20 m). The stopgap, Halcyon's settings: Advanced > Stereo > Eye distance 3.1 and Convergence 0.
+    - **Pistol at a wall 10-20 m away:** raise it to your right eye, put the red dot on a mark, fire 5-10 single
+      shots: the group should sit on the dot's height (before: a few cm low at every distance), sideways as above
+      (right) unless the metric stereo (or the stopgap) is on, then on the dot. Take a snapshot (both stick clicks)
+      while the dot is on the mark.
+    - **Assault rifle and shotgun:** a red dot now (not the holo; an old settings file switches once: log `hands:
+      [Sights] shotgun and assaultRifle holo (the old default) -> dot`). Raise the gun to the cheek: the dot should
+      appear without hunting for it (the eye counts within 6 units of the window's centre, `[Sights] eyeBox`), to one
+      eye only. Fire bursts at a mark.
+    - **Sniper rifle:** look through the scope: does the round picture sit on the model's scope (its blue lens glow)?
+      Take a snapshot while looking through it; Claude reads the model's numbers from the log and sets the place.
+      Fire at a mark at 20-40 m and at 5 m: both on the crosshair's height (the shot converges).
+    - **Compare:** HUD & sights > "Shots land on the dot" off: impacts a few cm under the dot; back on.
+    - **Calibration without the rifle step:** the long guns now use the pistol stance's grip angle (log
+      `calibration: ... rifle not measured ... (the long guns take the pistol's grip frame, not its sight line)`): do
+      the rifles point where your hand points?
+    - **Logs:** per gun `sights: the <gun> model against its bore (gun units): bounds ...; Root (...); socket ...` and
+      `sights: the <gun> has a red dot sight: ... (auto: the length share, the height from the model's top) ...`;
+      `sights: the sight line's trace (Actor.Trace through ProcessEvent): the hit point came back`; `[MEVR-SIGHT]
+      first red dot reticle: the right eye looks through the window (..., eye box 0.0600 m)`; per shot `hand aim: shot
+      N: from the muzzle (0.00 units from the game's start) toward what the sight line hit, D m past the sight (...):
+      A degrees off the sight line`; the heartbeat's `hand aim: ... N of them toward what the sight line hit` and `...
+      other weapons' aim queries skipped` (squadmates: no more `a shot along the barrel started 273 units from the
+      muzzle` warnings).
+    - **Snapshot JSON:** host `"sights"` `"dotEye"`, `"eyeBox"`; mod `"sights"."place"` (`modelTop`, `model`),
+      `"sights"."converge"` (`distanceM`, `what`), `"handAim"."shots"."lastShot"` (`toSightDeg`, `startOffMuzzle`
+      about 0).
+
+29. **Life-size stereo (new, 2026-10-23; HOST REDEPLOY, the deploy turns it on).** Your reports: the pistol
     looks huge, close things strain the eyes, the scope disc isn't on the model's lens, the orbs looked closer
     than they were. Cause ([research/30](../research/30-metric-stereo.md)): Halcyon shifted each eye's picture
     1.27 degrees outward (its convergence, made divergent by swap-eyes), so everything read further away than

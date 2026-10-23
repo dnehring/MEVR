@@ -2,6 +2,8 @@
 
 #include "core/vr/AimRay.hpp"
 
+#include <string>
+
 // Aim with the right controller, on foot (the Mako turret keeps the game's aim). Two paths, by
 // rewriting BioPlayerController.GetAdjustedAimFor's result (the weapon asks it for the aim of
 // every shot):
@@ -32,6 +34,9 @@ void Tick();
 // there's a view anchor.
 vr::aim_ray::Ray AimRay();
 void LogStats();
+// For snapshots: the last shot (research/21 section 10): converged on the sight line or along the barrel, its
+// angle to the sight line and the barrel, what the sight line hit, its start against the muzzle.
+std::string StatusJson();
 void Shutdown();
 
 } // namespace mevr::game::hand_aim

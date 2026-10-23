@@ -4822,6 +4822,43 @@ void TestScopeMapping() {
     CHECK(s::Project(left, fov, onLine, u, v) && NearD(u, 0.5 + 0.5 * 0.064 / 40.0, 1e-5) && NearD(v, 0.5, 1e-5));
 }
 
+// Shots that converge on the sight line, the red-dot defaults, the sight on the model
+// (core/vr/Sights, research/21 sections 10-11).
+void TestSightShots() {
+    namespace s = mevr::vr::sights;
+    constexpr double kDeg = std::numbers::pi / 180.0;
+    // The defaults: a red dot on every gun but the sniper rifle, an eye box twice the window.
+    s::Settings const defaults;
+    CHECK(defaults.guns[1].kind == s::Kind::Dot && defaults.guns[2].kind == s::Kind::Dot && defaults.guns[3].kind == s::Kind::Scope);
+    CHECK(defaults.eyeBoxUnits > defaults.windowUnits && defaults.converge);
+
+    // Shots converge on what the sight line hits: the sight 30 units behind the muzzle and 6 above, its line along
+    // the barrel; a wall 1000 units past the sight: the shot climbs 6 units over 970.
+    XrVector3f const sight{0.0f, 6.0f, 30.0f};
+    XrVector3f const axis{0.0f, 0.0f, -1.0f};
+    XrVector3f const shot = s::ConvergedShot(sight, axis, 1000.0f);
+    CHECK(NearD(shot.y / -shot.z, 6.0 / 970.0, 1e-5) && NearD(shot.x, 0.0, 1e-6));
+    CHECK(NearD(s::AngleDeg(shot, axis), std::atan(6.0 / 970.0) / kDeg, 1e-3));
+    // It reaches the sight line's point there.
+    double const t = 970.0 / -shot.z;
+    CHECK(NearD(shot.y * t, 6.0, 1e-3));
+    // Nothing hit (the trace's end, 300 m): nearly parallel. No distance: along the line.
+    CHECK(s::AngleDeg(s::ConvergedShot(sight, axis, 30000.0f), axis) < 0.012f);
+    CHECK(NearXr(s::ConvergedShot(sight, axis, 0.0f), axis) && NearXr(s::ConvergedShot(sight, {0.0f, 0.0f, -3.0f}, -1.0f), axis));
+    // A wall right at the sight (20 units past it, 10 behind the muzzle), or closer than 20 units past the muzzle:
+    // parallel, not bent backward or steeply.
+    CHECK(NearXr(s::ConvergedShot(sight, axis, 20.0f, 20.0f), axis) && NearXr(s::ConvergedShot(sight, axis, 45.0f, 20.0f), axis));
+    CHECK(!NearXr(s::ConvergedShot(sight, axis, 60.0f, 20.0f), axis));
+    CHECK(NearD(s::AngleDeg({1.0f, 0.0f, 0.0f}, {0.0f, 2.0f, 0.0f}), 90.0, 1e-4) && s::AngleDeg({}, axis) == 180.0f);
+
+    // The sight on the model: a scope's eyepiece a lens radius under the model's top, a dot's window just above it.
+    CHECK(s::HeightOnModel(s::Kind::Scope, 9.0f, 2.0f) == 7.0f);
+    CHECK(s::HeightOnModel(s::Kind::Dot, 4.0f, 3.0f) == 5.0f);
+    CHECK(s::HeightOnModel(s::Kind::Scope, 1.5f, 2.0f) == 1.0f);  // never below the bore
+    CHECK(!s::HeightOnModel(s::Kind::Dot, 0.2f, 3.0f) && !s::HeightOnModel(s::Kind::Dot, 45.0f, 3.0f) &&
+        !s::HeightOnModel(s::Kind::None, 5.0f, 3.0f));
+}
+
 // The level camera (core/vr/ViewLevel, research/24): rotator angles, the gate, the camera modes, the
 // last-minute window, the change log and the recoil pulse.
 void TestViewLevel() {
@@ -5911,6 +5948,7 @@ int main() {
     TestSightSettings();
     TestSightGeometry();
     TestScopeMapping();
+    TestSightShots();
     TestBoneNames();
     TestIk();
     TestRigid();
