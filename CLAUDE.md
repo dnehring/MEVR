@@ -121,6 +121,12 @@ switching frameworks.
   is `TryMelee`. Claimed squeezes run before holsters; a left squeeze in the support grip's zone is the
   support grip, never a grenade. B/X stay unless
   `meleeButton`/`grenadeButton = 0` (host v14).
+- No cover snapping, physical crouch (LE1, VR on foot; `game/Posture` + `core/ik/Posture`, research/23,
+  `[Hands] noCover`, `physicalCrouch`, `crouchBelow`/`standAbove`/`crouchDwellS`): ME1 takes cover by
+  itself (BioPawn's native test, no button; A only leaves it). `engine/cover_acquire` pre-hooks that
+  test (`0xAB1430`, mod side) and skips it for the player's pawn; a cover already taken is left with
+  `TryExitCover`. A real crouch below 0.75 of the standing eye height (hysteresis 0.85, 0.2 s) is
+  `BioPawn.ShouldCrouch` (ProcessEvent), on physical changes only: L3 still toggles in between.
 - LE1 body holsters (`game/Holsters`, `core/ik/BodySlots`, research/19): a right-grip squeeze at a
   body slot draws that weapon through `SFXGameModeDefault.SwitchToWeapon` (ProcessEvent). The
   right grip holds the gun (`gripHolds = 1`): let go at its slot to holster (`TryHolster`),

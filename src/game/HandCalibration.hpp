@@ -2,6 +2,7 @@
 
 #include "core/ik/ArmLength.hpp"
 #include "core/ik/BodySlots.hpp"
+#include "core/ik/Posture.hpp"
 #include "core/ik/Rigid.hpp"
 #include "core/vr/Sights.hpp"
 #include "game/GamepadMapping.hpp"
@@ -19,7 +20,9 @@
 //           bodyFollowsHead               1: the spine puts the shoulders under the headset
 //           armStretch                    1-1.25: how far the arms may stretch to reach
 //           trackingScale                 Unreal units per meter for hands and head; 0: the view's
-//   [Arms]  armLengthM                    the player's shoulder-to-grip length (meters); 0 or absent:
+//           noCover, physicalCrouch, crouchBelow, standAbove, crouchDwellS: physical cover and
+//                                         crouch (below, GetPosture)
+//   [Arms]  armLengthM                   the player's shoulder-to-grip length (meters); 0 or absent:
 //                                         reach isn't scaled. Written by MeasureArmLength.
 //           measureRequest, measure*      the VR hands tab's T-pose sample (src/plugin/MevrMenuTab.cpp,
 //                                         contract at its top): each new measureRequest value is
@@ -191,6 +194,22 @@ struct Throwables {
     bool holdBuzz = true;
 };
 Throwables GetThrowables();
+// [Hands], physical cover and crouch (game/posture, research/23; keys appended to an older file with
+// their defaults). Both act only in VR on foot (not in the Mako, conversations, menus or cutscenes).
+//   noCover          1: the game's cover snapping is off (take cover by crouching or leaning behind things);
+//                    a cover the player is already in is left the A button's way
+//   physicalCrouch   1: crouching for real crouches Shepard (the game's crouch: a smaller target, ducked
+//                    behind low cover); standing up stands him. The crouch button (L3) still toggles it, and
+//                    stays until the next physical crouch or stand
+//   crouchBelow      crouch when the eyes drop below this fraction of the standing eye height (0.75)
+//   standAbove       stand again above this fraction (0.85)
+//   crouchDwellS     ...once the head has stayed past it this long (seconds, 0.2)
+struct Posture {
+    bool noCover = true;
+    bool physicalCrouch = true;
+    ik::posture::CrouchParams crouch;
+};
+Posture GetPosture();
 // [Sights] (appended to an older file that lacks it): gun sights (game/sights, research/21; the keys and
 // their meaning are in a new file's block and core/vr/Sights.hpp's Settings).
 vr::sights::Settings GetSights();

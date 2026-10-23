@@ -16,6 +16,7 @@
 #include "engine/BonePose.hpp"
 #include "engine/CallFunction.hpp"
 #include "engine/CodeDump.hpp"
+#include "engine/CoverAcquire.hpp"
 #include "engine/Engine.hpp"
 #include "engine/GameAdapter.hpp"
 #include "engine/NativesDump.hpp"
@@ -30,6 +31,7 @@
 #include "game/HeadSim.hpp"
 #include "game/HeadTracking.hpp"
 #include "game/Holsters.hpp"
+#include "game/Posture.hpp"
 #include "game/Reflections.hpp"
 #include "game/Sights.hpp"
 #include "game/SkeletonProbe.hpp"
@@ -94,6 +96,9 @@ bool gCallFunctionHooked = false;  // installed the first time hand aim is turne
 bool gHandAimAvailable = false;
 bool gBonePoseTried = false;  // the arm writeback hook goes in the first time arm IK is turned on
 bool gBonePoseHooked = false;
+// The cover test hook (engine/cover_acquire) goes in the first time noCover is wanted (game/posture).
+bool gCoverHookTried = false;
+bool gCoverHooked = false;
 // `]` is the one switch a player needs: once a VR session runs, every VR feature comes on with
 // it (stereo, 6DOF, hand aim, arm IK), and turning VR off (or quitting from the headset) turns
 // them off. The headset sleeping doesn't count as off. Within a session the feature keys switch
@@ -203,6 +208,7 @@ void TryInstallScriptHooks() {
     game::holsters::TryStartup();  // logs what it found; holsters stay off without it
     game::squad_weapons::TryStartup();  // likewise for the squad weapon menu
     game::throwables::TryStartup();  // and physical grenades and melee (registers its launch handlers)
+    game::posture::TryStartup();  // and physical cover and crouch
     gHandAimAvailable = game::hand_aim::TryStartup();
     game::sights::TryStartup();  // the scoped shots' aimed fire (a CallFunction handler, registered before the hook)
     if (!gHandAimAvailable) {
@@ -236,6 +242,16 @@ void EnsureBonePoseHook() {
     if (!gBonePoseTried) {
         gBonePoseTried = true;
         gBonePoseHooked = engine::bone_pose::Install(*gInit);
+    }
+}
+
+// The cover test runs for every pawn that tests for cover, so its hook only goes in once noCover is
+// first wanted (game thread, outside the pawns' tick).
+void EnsureCoverHook() {
+    using namespace mevr;
+    if (!gCoverHookTried && game::posture::WantsCoverHook()) {
+        gCoverHookTried = true;
+        gCoverHooked = engine::cover_acquire::Install(*gInit);
     }
 }
 
@@ -417,6 +433,18 @@ void PublishSight(mevr::vr::aim_ray::Ray const& ray) {
     game::sights::SetHostView(gHost->sightView());
 }
 
+// Host renderer (HostServices v10): the head's height above the floor, if the host's struct matches ours.
+std::optional<mevr::vr::floor::State> HostFloor() {
+    using namespace mevr;
+    if (!gHostOwnsVr || !MEVR_HOST_HAS(floor) || gHost->floor == nullptr || gHost->floorStateSize != sizeof(vr::floor::State) ||
+        !gHostDataOk) {
+        return std::nullopt;
+    }
+    vr::floor::State floor;
+    gHost->floor(&floor);
+    return floor;
+}
+
 // Host renderer: the body holsters' right-grip report and controller pulses (HostServices v9), the
 // grip holding the gun, the contact buzz and the floor (v10).
 mevr::game::holsters::Link HolsterLink() {
@@ -440,11 +468,7 @@ mevr::game::holsters::Link HolsterLink() {
     if (MEVR_HOST_HAS(hapticContinuous)) {
         link.hapticContinuous = gHost->hapticContinuous;
     }
-    if (MEVR_HOST_HAS(floor) && gHost->floor != nullptr && gHost->floorStateSize == sizeof(vr::floor::State) && gHostDataOk) {
-        vr::floor::State floor;
-        gHost->floor(&floor);
-        link.floor = floor;
-    }
+    link.floor = HostFloor();
     return link;
 }
 
@@ -527,7 +551,8 @@ void PublishStatus() {
         "\"armIk\": {{\"enabled\": {}, \"status\": {}, \"handSource\": {}, \"rightHandAimsGun\": {}, \"supportRequested\": {}}}, "
         "\"handAim\": {{\"enabled\": {}, \"toldHost\": {}}}, "
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
-        "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"throwables\": {}}}",
+        "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"throwables\": {}, "
+        "\"posture\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -535,7 +560,7 @@ void PublishStatus() {
         gHandAimReported ? "true" : "false", json::JsonString(type), static_cast<unsigned long long>(game::weapon::Key()),
         json::JsonString(game::weapon::Status()), game::support_grip::Held() ? "true" : "false",
         json::JsonNumber(game::support_grip::Blend()), game::holsters::StatusJson(), game::squad_weapons::StatusJson(),
-        game::sights::StatusJson(), game::throwables::StatusJson());
+        game::sights::StatusJson(), game::throwables::StatusJson(), game::posture::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -671,6 +696,7 @@ void Heartbeat() {
         game::squad_weapons::LogStats();
         game::sights::LogStats();
         game::throwables::LogStats();
+        game::posture::LogStats();
         game::skeleton_probe::Tick();
     }
     engine::scene_view::LogStats();
@@ -784,6 +810,9 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::holsters::Tick(deltaSeconds, HolsterLink());
         game::squad_weapons::Tick(deltaSeconds, SquadLink());
         game::throwables::Tick(deltaSeconds, throwablesLink);
+        // Physical cover and crouch (research/23): the cover test's hook goes in once noCover is wanted.
+        EnsureCoverHook();
+        game::posture::Tick(deltaSeconds, game::posture::Link{HostFloor()});
         game::support_grip::Tick(deltaSeconds, game::arm_ik::SupportRequested());
         PublishSupportGrip();
         game::camera_probe::Tick();
@@ -846,6 +875,12 @@ MEVR_MOD_API void MevrModShutdown() {
         removed(engine::bone_pose::Uninstall(*gInit, !exiting),
             "the UpdateSkelPose hook couldn't be removed, or a call was still inside it");
     }
+    game::posture::Shutdown(exiting);  // stands Shepard up from a crouch of ours; stops refusing cover
+    if (gInit && gCoverHooked) {
+        removed(engine::cover_acquire::Uninstall(*gInit, !exiting),
+            "the cover test hook couldn't be removed, or a call was still inside it");
+    }
+    gCoverHookTried = gCoverHooked = false;
     if (keepLoaded != nullptr && !exiting) {
         if (gHost != nullptr && gHost->version >= 5 && gHost->keepLoaded != nullptr) {
             gHost->keepLoaded(keepLoaded);  // the host pins this DLL instead of unloading it

@@ -104,3 +104,12 @@ rva,name,kind,comment
 0xC51540,ABioGrenadeProjectileBallistic::SetVelocity_impl,func,research/20: vtable 0x1312430 slot 0x840: Velocity = v; Speed = |v|; random spin; setPhysics(10 rigid body)
 0xC50880,ABioGrenadeProjectileBallistic::SetTargetPoint_impl,func,research/20: slot 0x838: a ballistic solution (flight time from the horizontal distance over the default Speed; the physics volume's gravity); then SetVelocity
 0xC506B0,ABioGrenadeProjectileBallistic::SetTargetActor_impl,func,research/20: slot 0x830: leads a moving target; then SetTargetPoint
+0xAA0C20,ABioPawn::Tick_guess,func,research/23: BioPawn's native tick; calls the cover tick (0xAB0FC0) first
+0xAB0FC0,ABioPawn::TickCover_guess,func,research/23: for the player (or bTestNPCCover) every CoverPlayerInterval (+0x97C) / CoverNPCInterval: out of cover -> TryAcquireCover (0xAB1430); in cover -> CoverTrace again: CoverType updated or the LeaveCover event (0xAA48E0)
+0xAB1430,ABioPawn::TryAcquireCover_guess,func,research/23: (this) CoverTrace; the move's angle off the normal vs CoverTestAngle (+0x990); the camera's (a controller event) vs CoverTestCameraAngle (+0x994); then CoverType (+0xA55); bInCover (+0xA40 bit 0x20); 0xAB2340; ProcessEvent(PlayerAcquiredCover). Hooked by engine/cover_acquire (noCover)
+0xAA92F0,ABioPawn::CoverTrace_guess,func,research/23: (this; FVector* outNormal; BYTE* outType; BOOL keepNormal) a pure query: none without move input (Acceleration); line checks CoverTestDistance (+0x988) ahead and to the sides; then up the wall: type 1 standing; 2 mid-level (low)
+0xAA48E0,ABioPawn::eventLeaveCover_guess,func,research/23: ProcessEvent(LeaveCover) with no parms (the cover-lost path; the AI's move code calls the same event)
+0xA9C8E0,ABioPawn::IsInCover_impl,func,research/23: execIsInCover's body: the player: CoverType (+0xA55) != 0 and CoverAction (+0xA56) != 13 (CA_Aimback); NPCs: bInCover (+0xA40 bit 0x20)
+0xAB2340,ABioPawn::UpdateCoverState_guess,func,research/23: from the cover's flags (+0x9A8) sets eCoverState (+0xA4C)
+0x4A1BF0,APawn::Crouch_guess,func,research/23: sets bIsCrouched (Pawn +0x63C bit 0x10); virtual (no direct callers)
+0x4AEEE0,APawn::UnCrouch_guess,func,research/23: clears bIsCrouched (Pawn +0x63C bit 0x10); virtual
