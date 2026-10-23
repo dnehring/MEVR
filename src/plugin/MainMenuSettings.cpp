@@ -173,7 +173,7 @@ void Settings::Read(menu::Values& v) {
     Ini ini;
     ini.pending = &pending_;
     if (!path.empty()) {
-        for (wchar_t const* s : {L"Hands", L"Holsters", L"Controls", L"Throwables", L"Sights", L"Camera", L"Arms", L"Menu"}) {
+        for (wchar_t const* s : {L"Hands", L"Holsters", L"Controls", L"Throwables", L"Sights", L"Camera", L"Arms", L"Menu", L"Comfort"}) {
             ini.sections[Narrow(s)] = ReadSection(path, s);
         }
     }
@@ -181,7 +181,14 @@ void Settings::Read(menu::Values& v) {
 
     // Comfort.
     MELEVR::Config::VrConfig const& c = MELEVR::Config::Get();
-    v.texts["walk"] = c.moveFollowsHead ? "head" : "body";
+    // [Comfort] (research/31; the mod reads it: game/comfort). Its file-only "turn = game" shows as Smooth.
+    v.texts["turn"] = ms::TurnChoice(ini.Text("Comfort", "turn", "smooth"));
+    v.texts["snap"] = ms::SnapChoice(ini.Num("Comfort", "snapDeg", 45.0f));
+    v.numbers["turn_speed"] = std::clamp(std::round(ini.Num("Comfort", "turnSpeed", 120.0f)), 60.0f, 240.0f);
+    flag("vignette", ini.Num("Comfort", "vignette", 0.0f) != 0.0f);
+    v.numbers["vignette_strength"] = std::clamp(std::round(ini.Num("Comfort", "vignetteStrength", 0.6f) * 100.0f), 10.0f, 100.0f);
+    v.texts["vignette_when"] = Lower(ini.Text("Comfort", "vignetteWhen", "turn")) == "move" ? "move" : "turn";
+    v.texts["walk"] = Lower(ini.Text("Comfort", "walk", "head")) == "hand" ? "hand" : c.moveFollowsHead ? "head" : "body";
     flag("crouch", ini.Num("Hands", "physicalCrouch", 1.0f) != 0.0f);
     flag("lifesize", ini.Num("Camera", "lifeSize", 0.0f) != 0.0f);
     flag("pause", ini.Num("Menu", "pause", 1.0f) != 0.0f);
@@ -359,7 +366,19 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     auto fixed = [&](float value, int decimals) { return std::format("{:.{}f}", value, decimals); };
     MELEVR::Config::VrConfig& c = MELEVR::Config::Get();
     // ---- Our settings file ----
-    if (key == "crouch") {
+    if (key == "turn") {
+        Put("Comfort", "turn", v.Text("turn") == "snap" ? "snap" : "smooth", true);
+    } else if (key == "snap") {
+        Put("Comfort", "snapDeg", v.Text("snap"), true);
+    } else if (key == "turn_speed") {
+        Put("Comfort", "turnSpeed", fixed(v.Number("turn_speed"), 0), final);
+    } else if (key == "vignette") {
+        Put("Comfort", "vignette", onOff("vignette"), true);
+    } else if (key == "vignette_strength") {
+        Put("Comfort", "vignetteStrength", fixed(v.Number("vignette_strength") / 100.0f, 2), final);
+    } else if (key == "vignette_when") {
+        Put("Comfort", "vignetteWhen", v.Text("vignette_when") == "move" ? "move" : "turn", true);
+    } else if (key == "crouch") {
         Put("Hands", "physicalCrouch", onOff("crouch"), true);
     } else if (key == "lifesize") {
         // As the VR hands tab's checkbox: Halcyon's lean gain follows (2: one to one with Shepard's skeleton).
@@ -420,7 +439,11 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     }
     // ---- Halcyon's config ----
     else if (key == "walk") {
-        if (v.Text("walk") == "head") {
+        // Where I look: Halcyon's moveFollowsHead (as before). Left hand: [Comfort] walk = hand, the mod's flag and the
+        // host's stick turn (research/31); moveFollowsHead stays as it is (the host takes Halcyon's turn off first).
+        bool const hand = v.Text("walk") == "hand";
+        Put("Comfort", "walk", hand ? "hand" : "head", true);
+        if (!hand && !c.moveFollowsHead) {
             c.moveFollowsHead = true;
             HalcyonChanged(false);
         }

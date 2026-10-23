@@ -837,9 +837,10 @@ void FinishArming(XrFrameEndInfo const& info, std::vector<LayerShot> layers) {
         if (l.space == reference) {
             l.located = true;
             l.poseInReference = l.pose;
-        } else if (l.name == "menu" && gMenuQuad.headLocked && gHeadValid) {
+        } else if (((l.name == "menu" && gMenuQuad.headLocked) || l.name == "vignette") && gHeadValid) {
             // Head-locked (VIEW space): placed from the head Halcyon rendered with, which is the replayed
-            // one during a replay (the runtime's VIEW space would follow the real headset).
+            // one during a replay (the runtime's VIEW space would follow the real headset). The comfort
+            // vignette (plugin/Vignette) is always in the VIEW space.
             XrPosef head = gHead[0].pose;
             head.position = {0.5f * (gHead[0].pose.position.x + gHead[1].pose.position.x),
                 0.5f * (gHead[0].pose.position.y + gHead[1].pose.position.y),

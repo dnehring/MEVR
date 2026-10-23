@@ -53,7 +53,8 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   Body & calibration (Start calibration opens `plugin/Calibration`), Display, HUD & sights, Advanced
   (Halcyon's settings in sub-tabs). Every row drives a real setting (`plugin/MainMenuSettings`: our
   `LE1MEVR.ini` key by key, Halcyon's live config saved with its own `SaveProfile` when the menu closes;
-  never a reset written over a profile) or is marked Soon. Code: `src/plugin/menu` (game-independent:
+  never a reset written over a profile; Comfort's turning, vignette and walking rows since 2026-10-23,
+  research/31) or is marked Soon. Code: `src/plugin/menu` (game-independent:
   RmlUi's own DX11 renderer wrapped for the game's context, our `chamfer`/`backdrop`/`icon` decorators,
   the data model over `core/vr/MenuSettings`' schema, the frosted backdrop from the left eye's image),
   `src/plugin/MainMenu` (the quad, input, cost). The look is `assets/menu/main.rml` + `main.rcss`
@@ -187,6 +188,21 @@ switching frameworks.
   head's pivot, `[Hands] leanM` 0.20, at most `bodyMoveMaxM` 0.75); the spine leans the head bone to the
   pivot. Re-anchors on start, recenter (host floor counter) and tracking jumps. `[Hands] bodyMove = 0`: the
   old spine-only lean. Log `torso:`; snapshot `"torso"`.
+- LE1 comfort ([research/31](research/31-comfort.md), HostServices v17; the menu's Comfort page, `[Comfort]` in
+  `ASI\LE1MEVR.ini`): on foot the mod turns the player itself (`game/Comfort`, rules in `core/vr/Comfort`,
+  unit-tested): `turn = smooth` (default, `turnSpeed` 120 deg/s, linear, no acceleration) or `snap` (`snapDeg`
+  30/45/60 per flick, re-armed near the centre, 0.25 s apart); `game` keeps the game's own (per-camera-mode
+  `SFXCameraInput`, logged). The game then sees no right-stick X from the controllers (`gamepad::kFlagModTurns`;
+  a real pad's still turns). The yaw goes into ControlRotation in the **mod's tick, before arm IK**, the pawn
+  turns with it when it faces the controller's way (combat; `Actor.SetRotation` via ProcessEvent), and
+  `view_anchor::NoteTurn` maps the view as the next camera update shows it: no frame with the arms or shoulders
+  posed for the old heading (body follow's state is in tracking space: no re-anchor). Not in the Mako, wheels,
+  squad menu, scope, cover, menus. The vignette (`vignette`, `vignetteStrength`, `vignetteWhen = turn|move`): the
+  mod sends a target each tick (`setVignette`), the host fades it over 0.15 s and draws a head-locked quad in a
+  VIEW space of its own (`plugin/Vignette`, first of our quads in `HalcyonOverlays`; nothing while unwanted; not
+  in `xr_session`'s loop). `walk = hand` (`kFlagHandWalk`): the host turns the controllers' left stick to the
+  left controller's flat yaw before Halcyon's `moveFollowsHead` turn (`WalkTowardHand` in `HalcyonBridge`). Logs
+  `comfort:`, `vignette:`, `halcyon bridge: the mod turns ...`; snapshots `"comfort"` and a `vignette` layer.
 - LE1 HUD (Halcyon's renderer, Stereo 2): the game's UI draws go to a body-locked HUD panel quad,
   and a hand reticle on the aim ray replaces the crosshair (`src/plugin/HalcyonOverlays.cpp`,
   [research/15](research/15-hud.md)). Scaleform's non-"over" blend modes (multiply...) go there too,

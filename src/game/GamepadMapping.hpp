@@ -255,6 +255,14 @@ struct Options {
     // (rbSource = b or x) is still RB. The mod clears them only on foot, so menus keep B.
     bool meleeButton = true;
     bool grenadeButton = true;
+    // Comfort (game/comfort, research/31): the mod turns the player itself (snap, or smooth at its own speed), so the
+    // game sees no right-stick X from the motion controllers (a real pad's still reaches it). Never while the squad
+    // menu or the game's wheel owns the stick. The mod sets it only on foot.
+    bool modTurns = false;
+    // The left stick's forward follows the left controller's yaw (laid flat) instead of the head's: the host turns
+    // the motion controllers' left stick before it merges them (needs the poses and Halcyon's head look, so it isn't
+    // in FromControllers). The mod sets it only on foot, outside menus and wheels.
+    bool handWalk = false;
     SupportInput support;
 };
 
@@ -276,6 +284,8 @@ inline constexpr std::uint32_t kWheelStickMask = 3u << kWheelStickShift;
 // Inverted, so 0 (an older mod, or none sent) keeps both buttons (host v14).
 inline constexpr std::uint32_t kFlagNoMeleeButton = 1u << 15;    // !Options::meleeButton
 inline constexpr std::uint32_t kFlagNoGrenadeButton = 1u << 16;  // !Options::grenadeButton
+inline constexpr std::uint32_t kFlagModTurns = 1u << 17;         // Options::modTurns (host v17)
+inline constexpr std::uint32_t kFlagHandWalk = 1u << 18;         // Options::handWalk (host v17)
 std::uint32_t ToFlags(Options const& options);
 Options FromFlags(float distance, float acquire, float release, std::uint32_t flags);
 

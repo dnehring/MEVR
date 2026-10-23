@@ -607,8 +607,8 @@ PSVR 2 on SteamVR: the world pitched more and more over a session while SteamVR'
   test strip are on the Display page.
 - **[verify in headset]:** notes/next-vr-session.md step 25 (the look and the glass, text size at 1.3 m, the
   pointer, the pause, settings holding after the menu closes, the cost line).
-- **Soon (shown, not built):** snap turning (and its angle), turn speed, a comfort vignette, walking toward the
-  left hand.
+- **Soon (shown, not built):** none since 2026-10-23 (snap and smooth turning, turn speed, the comfort vignette and
+  walking toward the left hand: below, research/31).
 - **Open:** a cylinder layer (Halcyon's instance would have to enable `XR_KHR_composition_layer_cylinder`);
   moving and resizing the game's screens in our menu (the classic menu's HUD tab has the editor); keyboard and
   mouse navigation of the menu on the desktop; LE2/LE3 (the library is game-independent; the host side is
@@ -673,3 +673,19 @@ PSVR 2 on SteamVR: the world pitched more and more over a session while SteamVR'
 - **[verify in headset]:** notes/next-vr-session.md step 29.
 - **Open:** a depth for the conversation UI (now at infinity); CPU-placed screen effects in mode 2 (lens flares,
   light shafts) **[verify]**; whether Umbra's camera is the same for both passes (lever 3, research/22).
+
+## Comfort: snap and smooth turning, the vignette, walking toward the left hand (the menu's "Soon" rows; built 2026-10-23, to test)
+
+- **Why:** the menu's Comfort page showed them as Soon (research/28).
+- **Built ([research/31](../research/31-comfort.md); HOST REDEPLOY, services v17):** `core/vr/Comfort` (the snap's
+  state machine, the smooth rate, yaw units, the camera through a turn, the vignette's fade and picture, the stick
+  turn for hand walking; `TestComfort`), `game/Comfort` (the mod turns the player in its tick before arm IK; the
+  pawn turns with it in combat; `view_anchor::NoteTurn`; the pad flags `kFlagModTurns`, `kFlagHandWalk`; the
+  vignette's target), `plugin/Vignette` (the head-locked quad, faded on the host), `HalcyonBridge`
+  (`WalkTowardHand`), the menu's rows and `[Comfort]`. The game's own turn rate isn't one number (per-camera-mode
+  `SFXCameraInput` with acceleration; Halcyon's look sensitivity is head look only): Smooth is now ours at an
+  exact deg/s; `[Comfort] turn = game` keeps the game's.
+- **[verify in headset]:** notes/next-vr-session.md step 30 (no arm or shoulder swing at a snap, in explore and
+  combat; where it must not turn; the vignette's look and cost; walking toward the hand).
+- **Open:** the game's `BioPlayerInput.ComputeStickResponse` bytecode (to match the game's feel if wanted); a
+  vignette whose aperture narrows with strength instead of only darkening; LE2/LE3.

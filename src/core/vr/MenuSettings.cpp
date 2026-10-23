@@ -89,6 +89,8 @@ std::vector<Field> const& Schema() {
         {"snap", Type::Choice, 0, "45"},
         {"turn_speed", Type::Number, 120, "", 60, 240, F::DegreesPerSec},
         {"vignette", Type::Flag, 0},
+        {"vignette_strength", Type::Number, 60, "", 10, 100, F::Percent},
+        {"vignette_when", Type::Choice, 0, "turn"},
         {"walk", Type::Choice, 0, "head"},
         {"crouch", Type::Flag, 1},
         {"lifesize", Type::Flag, 0},
@@ -278,6 +280,17 @@ std::string MirrorChoice(int presentEvery) {
 
 int MirrorPresentEvery(std::string_view choice) {
     return choice == "every" ? 1 : choice == "smooth" ? 2 : 8;
+}
+
+std::string SnapChoice(float degrees) {
+    if (!std::isfinite(degrees)) {
+        return "45";
+    }
+    return degrees < 37.5f ? "30" : degrees < 52.5f ? "45" : "60";
+}
+
+std::string TurnChoice(std::string_view value) {
+    return Lower(Trim(value)) == "snap" ? "snap" : "smooth";
 }
 
 float ColourPercent(float value) {

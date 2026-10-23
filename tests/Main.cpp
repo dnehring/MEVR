@@ -19,6 +19,7 @@
 #include "core/vr/Calibration.hpp"
 #include "core/vr/Colour.hpp"
 #include "core/vr/ColourStrip.hpp"
+#include "core/vr/Comfort.hpp"
 #include "core/vr/Haptics.hpp"
 #include "core/vr/ImageConvert.hpp"
 #include "core/vr/LayerComposite.hpp"
@@ -43,6 +44,7 @@
 #include <objbase.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
@@ -5934,7 +5936,300 @@ void TestMetricStereo() {
     }
 }
 
+// Comfort (research/31): the snap's state machine, the smooth turn, yaw units, the camera guessed through a turn (and
+// body follow across a snap), the vignette's fade and picture, walking toward the left hand, the pad flag, the menu.
+void TestComfort() {
+    namespace cf = mevr::vr::comfort;
+    namespace ms = mevr::vr::menu_settings;
+    cf::Settings settings;  // the defaults: smooth 120 deg/s, snap 45 deg past 0.7, re-arm inside 0.3, 0.25 s apart
+
+    // ---- Snap: one turn per flick, re-armed near the centre, a cooldown between ----
+    {
+        cf::SnapTurn snap;
+        double t = 0.0;
+        // Taking over with the stick already pushed: nothing until it has been let go.
+        CHECK(cf::StepSnap(snap, 1.0f, t, settings) == 0.0f);
+        CHECK(cf::StepSnap(snap, 0.9f, t += 0.011, settings) == 0.0f);
+        CHECK(cf::StepSnap(snap, 0.1f, t += 0.011, settings) == 0.0f);  // centred: armed
+        CHECK(cf::StepSnap(snap, 0.5f, t += 0.011, settings) == 0.0f);  // not far enough
+        CHECK(cf::StepSnap(snap, 0.75f, t += 0.011, settings) == 45.0f);  // a flick right
+        for (int i = 0; i < 60; ++i) {
+            CHECK(cf::StepSnap(snap, 1.0f, t += 0.011, settings) == 0.0f);  // held: once only
+        }
+        CHECK(cf::StepSnap(snap, 0.4f, t += 0.011, settings) == 0.0f);  // not back near the centre yet
+        CHECK(cf::StepSnap(snap, 0.2f, t += 0.011, settings) == 0.0f);  // re-armed
+        CHECK(cf::StepSnap(snap, -0.9f, t += 0.011, settings) == -45.0f);  // a flick left
+        // Flicked again at once: re-armed but cooling down, then it goes.
+        double const after = t;
+        CHECK(cf::StepSnap(snap, 0.0f, t += 0.011, settings) == 0.0f);
+        CHECK(cf::StepSnap(snap, -1.0f, t += 0.011, settings) == 0.0f);  // 22 ms after: too soon
+        float turned = 0.0f;
+        while (t - after < 0.3 && turned == 0.0f) {
+            turned = cf::StepSnap(snap, -1.0f, t += 0.011, settings);
+        }
+        CHECK(turned == -45.0f && t - after >= settings.snapCooldown - 1e-9);
+        // The angle follows the setting; Reset disarms.
+        cf::Settings sixty = settings;
+        sixty.snapDegrees = 60.0f;
+        snap.Reset();
+        CHECK(cf::StepSnap(snap, 0.0f, t += 1.0, sixty) == 0.0f);
+        CHECK(cf::StepSnap(snap, 1.0f, t += 0.011, sixty) == 60.0f);
+        // Not a number from the controllers: no turn.
+        snap.Reset();
+        CHECK(cf::StepSnap(snap, std::numeric_limits<float>::quiet_NaN(), t += 1.0, settings) == 0.0f);
+    }
+
+    // ---- Smooth: linear past the dead zone, the full speed at full deflection ----
+    {
+        CHECK(cf::SmoothTurnDegrees(0.1f, 1.0 / 90.0, settings) == 0.0);
+        CHECK(!cf::StickTurns(0.1f, settings) && cf::StickTurns(-0.3f, settings));
+        CHECK(NearD(cf::SmoothTurnDegrees(1.0f, 1.0 / 90.0, settings), 120.0 / 90.0, 1e-9));
+        CHECK(NearD(cf::SmoothTurnDegrees(-1.0f, 1.0 / 90.0, settings), -120.0 / 90.0, 1e-9));
+        double const half = cf::SmoothTurnDegrees(0.575f, 0.01, settings);  // halfway past the 0.15 dead zone
+        CHECK(NearD(half, 0.5 * 120.0 * 0.01, 1e-6));
+        CHECK(NearD(cf::SmoothTurnDegrees(1.0f, 2.0, settings), 12.0, 1e-9));  // a hitch: 0.1 s at most
+        // A second at full deflection at 90 ticks a second, in whole units with the remainder kept: 120 degrees.
+        cf::YawUnits units;
+        int total = 0;
+        for (int i = 0; i < 90; ++i) {
+            total += units.Take(cf::SmoothTurnDegrees(1.0f, 1.0 / 90.0, settings));
+        }
+        CHECK(Near(total, Units(120.0), 1));
+        cf::Settings slow = settings;
+        slow.turnSpeed = 10.0f;
+        units.Reset();
+        total = 0;
+        for (int i = 0; i < 900; ++i) {  // 0.011 degrees a tick: 2 units, with a remainder each time
+            total += units.Take(cf::SmoothTurnDegrees(1.0f, 1.0 / 90.0, slow));
+        }
+        CHECK(Near(total, Units(100.0), 1));
+        units.Reset();
+        CHECK(units.Take(-45.0) == -Units(45.0) && units.Take(0.0) == 0);
+    }
+
+    // ---- The camera through a turn: what arm IK maps the view with before the camera updates ----
+    {
+        // Explore: the pawn keeps its facing; only the camera's yaw turns.
+        cf::CameraGuess const still = cf::TurnCamera(1000.0, 500.0, Units(30), Units(45), false, 0.0, 0.0);
+        CHECK(still.x == 1000.0 && still.y == 500.0 && still.yaw == Units(75));
+        // Combat: the pawn turned too, so the first-person camera (on Shepard's mesh) went round his location.
+        cf::CameraGuess const round = cf::TurnCamera(110.0, 0.0, 0, Units(90), true, 100.0, 0.0);
+        CHECK(NearD(round.x, 100.0, 1e-6) && NearD(round.y, 10.0, 1e-6) && round.yaw == Units(90));  // +yaw turns X toward Y
+
+        // The view mapped from the guessed camera is the view the turned camera gives: a controller lands in the same
+        // place in the world either way, and 45 degrees round the head from where it was before the snap.
+        using namespace mevr::engine;
+        XrPosef head{};
+        head.orientation = AxisAngle(0, 1, 0, 20);  // the player looks 20 degrees left
+        head.position = {0.0f, 1.6f, 0.0f};
+        UnrealRotation const look{0, -Units(20), 0};  // Halcyon's head look (+ right)
+        UnrealVector const offset{0, 0, 0};
+        UnrealVector const camera{2000.0, -300.0, 160.0};
+        UnrealRotation const before{0, Units(10), 0};
+        cf::CameraGuess const guess = cf::TurnCamera(camera.x, camera.y, before.yaw, Units(45), false, 0.0, 0.0);
+        TrackingFrame const guessed = FromCameraView({guess.x, guess.y, camera.z}, {0, guess.yaw, 0}, look, offset, head, 100.0);
+        TrackingFrame const turned = FromCameraView(camera, {0, before.yaw + Units(45), 0}, look, offset, head, 100.0);
+        TrackingFrame const old = FromCameraView(camera, before, look, offset, head, 100.0);
+        XrVector3f const hand{0.25f, 1.2f, -0.45f};
+        UnrealVector const a = ToWorld(guessed, hand);
+        UnrealVector const b = ToWorld(turned, hand);
+        UnrealVector const c = ToWorld(old, hand);
+        CHECK(NearD(a.x, b.x, 1e-6) && NearD(a.y, b.y, 1e-6) && NearD(a.z, b.z, 1e-6));
+        double const aroundHead = std::atan2(b.y - turned.headWorld.y, b.x - turned.headWorld.x) -
+            std::atan2(c.y - old.headWorld.y, c.x - old.headWorld.x);
+        CHECK(NearD(std::remainder(aroundHead * 180.0 / std::numbers::pi, 360.0), 45.0, 1e-6));
+
+        // Body follow through a snap: its state is in tracking space, which a turn doesn't move, so it neither
+        // re-anchors nor eases (no lag, no shoulder swing); the body's facing in the world turns with the view at once.
+        using namespace mevr::ik;
+        BodyFollow follow;
+        FollowInput in;
+        in.pivot = {0.05, 1.5, -0.02};
+        in.headYaw = 0.35;  // the head turned left of the body
+        in.facingYaw = 0.35;
+        in.haveRecenters = true;
+        in.deltaSeconds = 1.0 / 90.0;
+        CHECK(follow.Update(in).anchored == FollowAnchor::Start);
+        FollowState settled{};
+        for (int i = 0; i < 90; ++i) {
+            settled = follow.Update(in);
+        }
+        FollowState const snapped = follow.Update(in);  // the tick after a snap: the same tracking-space inputs
+        CHECK(snapped.anchored == FollowAnchor::None && NearD(snapped.yaw, settled.yaw, 1e-9) &&
+              NearD(snapped.feet.x, settled.feet.x, 1e-9) && NearD(snapped.feet.z, settled.feet.z, 1e-9));
+        auto const worldYaw = [&](TrackingFrame const& frame) {
+            XrVector3f const at{0.0f, 1.5f, 0.0f};
+            XrVector3f const ahead{static_cast<float>(-std::sin(snapped.yaw)), 1.5f, static_cast<float>(-std::cos(snapped.yaw))};
+            UnrealVector const p = ToWorld(frame, at);
+            UnrealVector const q = ToWorld(frame, ahead);
+            return std::atan2(q.y - p.y, q.x - p.x) * 180.0 / std::numbers::pi;
+        };
+        CHECK(NearD(std::remainder(worldYaw(guessed) - worldYaw(old), 360.0), 45.0, 1e-4));
+    }
+
+    // ---- The vignette: the fade, what the mod asks for, the picture ----
+    {
+        cf::VignetteFade fade;
+        float const dt = 1.0f / 90.0f;
+        int frames = 0;
+        while (fade.value < 1.0f && frames < 100) {
+            fade.Step(1.0f, dt);
+            ++frames;
+        }
+        CHECK(frames >= 13 && frames <= 14);  // 0.15 s at 90 Hz
+        frames = 0;
+        while (fade.value > 0.0f && frames < 100) {
+            fade.Step(0.0f, dt);
+            ++frames;
+        }
+        CHECK(frames >= 13 && frames <= 14 && fade.value == 0.0f);
+        CHECK(fade.Step(0.6f, 0.05f) > 0.33f && fade.value < 0.34f);  // 0.05 s of 0.15: a third of the way
+        CHECK(fade.Step(0.6f, 1.0f) == 0.6f);                         // a long frame counts 0.1 s at most: there
+        CHECK(fade.Step(0.3f, 0.01f) < 0.6f && fade.value > 0.3f);    // down toward a lower target
+        CHECK(fade.Step(std::numeric_limits<float>::quiet_NaN(), 0.2f) < 0.3f);
+
+        cf::Settings on = settings;
+        on.vignette = true;
+        on.vignetteStrength = 0.7f;
+        cf::VignetteDrive drive;
+        CHECK(drive.Target(false, false, false, 0.0, on) == 0.0f);
+        CHECK(drive.Target(true, false, false, 0.1, on) == 0.7f);
+        CHECK(drive.Target(false, true, false, 0.2, on) == 0.0f);  // moving: only with "turning and moving"
+        on.vignetteWhen = cf::VignetteWhen::TurningAndMoving;
+        CHECK(drive.Target(false, true, false, 0.3, on) == 0.7f);
+        CHECK(drive.Target(false, false, true, 1.0, on) == 0.7f);  // a snap: a pulse...
+        CHECK(drive.Target(false, false, false, 1.15, on) == 0.7f);
+        CHECK(drive.Target(false, false, false, 1.25, on) == 0.0f);  // ...for 0.2 s
+        cf::Settings off = on;
+        off.vignette = false;
+        CHECK(drive.Target(true, true, true, 2.0, off) == 0.0f);
+
+        float const fov[2][4] = {{-0.9f, 0.75f, 0.8f, -0.85f}, {-0.75f, 0.9f, 0.8f, -0.85f}};
+        cf::HalfExtents const extents = cf::CoverFov(fov);
+        CHECK(extents.width > std::tan(0.9f) && extents.height > std::tan(0.85f));
+        float const wide[2][4] = {{-1.5f, 1.5f, 1.5f, -1.5f}, {-1.5f, 1.5f, 1.5f, -1.5f}};
+        CHECK(cf::CoverFov(wide).width < 4.0f);  // 75 degrees at most
+        int const size = 64;
+        std::vector<std::uint8_t> const mask = cf::VignetteMask(size, size, extents.width, extents.height);
+        CHECK(mask.size() == static_cast<std::size_t>(size * size));
+        CHECK(mask[(size / 2) * size + size / 2] == 0);  // a clear centre
+        CHECK(mask[0] == 255 && mask[size - 1] == 255);  // black corners
+        bool rising = true;
+        for (int x = size / 2 + 1; x < size; ++x) {
+            rising = rising && mask[(size / 2) * size + x] >= mask[(size / 2) * size + x - 1];
+        }
+        CHECK(rising);
+        // 30 degrees from the centre is still clear; 58 and past fully dark.
+        int const clear = size / 2 + static_cast<int>(std::tan(25.0 * std::numbers::pi / 180.0) / extents.width * size / 2);
+        CHECK(mask[(size / 2) * size + clear] == 0);
+        std::vector<std::uint32_t> pixels;
+        cf::VignettePixels(mask, 0.5f, pixels);
+        CHECK(pixels.size() == mask.size() && pixels[0] == (127u << 24) && pixels[(size / 2) * size + size / 2] == 0u);
+        cf::VignettePixels(mask, 1.0f, pixels);
+        CHECK(pixels[0] == (255u << 24) && (pixels[0] & 0x00FFFFFFu) == 0u);  // premultiplied black
+
+        // The host's CPU cost (plugin/Vignette): the 128 x 128 mask once a session, a refill per level while fading.
+        auto const t0 = std::chrono::steady_clock::now();
+        std::vector<std::uint8_t> const host = cf::VignetteMask(128, 128, extents.width, extents.height);
+        auto const t1 = std::chrono::steady_clock::now();
+        for (int level = 1; level <= 64; ++level) {
+            cf::VignettePixels(host, level / 64.0f, pixels);
+        }
+        auto const t2 = std::chrono::steady_clock::now();
+        std::printf("comfort vignette (CPU): the 128x128 mask %.3f ms once; a refill %.4f ms (64 levels, a full fade is ~14)\n",
+            std::chrono::duration<double, std::milli>(t1 - t0).count(), std::chrono::duration<double, std::milli>(t2 - t1).count() / 64.0);
+    }
+
+    // ---- Walking toward the left hand ----
+    {
+        // The left controller pointing 90 degrees left, laid flat; straight down has no flat direction.
+        float x = 0.0f, y = 0.0f, z = 0.0f;
+        XrQuaternionf const left = AxisAngle(0, 1, 0, 90);
+        cf::Forward(left.x, left.y, left.z, left.w, x, y, z);
+        CHECK(NearD(x, -1.0, 1e-5) && NearD(z, 0.0, 1e-5));
+        auto const yaw = cf::FlatYawLeft(x, y, z);
+        CHECK(yaw && NearD(*yaw, std::numbers::pi / 2.0, 1e-5));
+        XrQuaternionf const down = AxisAngle(1, 0, 0, -88);
+        cf::Forward(down.x, down.y, down.z, down.w, x, y, z);
+        CHECK(!cf::FlatYawLeft(x, y, z));
+        XrQuaternionf const tilted = AxisAngle(1, 0, 0, -60);  // 60 degrees down: still forward
+        cf::Forward(tilted.x, tilted.y, tilted.z, tilted.w, x, y, z);
+        CHECK(cf::FlatYawLeft(x, y, z) && NearD(*cf::FlatYawLeft(x, y, z), 0.0, 1e-5));
+
+        // Our turn, then Halcyon's (RotateMoveStickByHeadLook: left by its head look yaw): forward is the hand's yaw.
+        auto const halcyon = [](SHORT& sx, SHORT& sy, int yawUnits) {
+            float const a = static_cast<float>(yawUnits) * (6.2831853f / 65536.0f);
+            float const c = std::cos(a), s = std::sin(a);
+            float const lx = sx, ly = sy;
+            sx = static_cast<SHORT>(std::clamp(lx * c - ly * s, -32768.0f, 32767.0f));
+            sy = static_cast<SHORT>(std::clamp(lx * s + ly * c, -32768.0f, 32767.0f));
+        };
+        for (double const hand : {0.0, 40.0, 90.0, -70.0, 170.0}) {
+            for (double const look : {0.0, 25.0, -60.0, 120.0}) {
+                SHORT sx = 0, sy = 30000;  // forward
+                int const head = Units(look);
+                mevr::game::gamepad::RotateStick(sx, sy, cf::HandWalkUnits(hand * std::numbers::pi / 180.0, head));
+                halcyon(sx, sy, head);
+                double const went = std::atan2(-static_cast<double>(sx), static_cast<double>(sy)) * 180.0 / std::numbers::pi;  // + left
+                CHECK(NearD(std::remainder(went - hand, 360.0), 0.0, 0.2));
+                CHECK(std::hypot(static_cast<double>(sx), static_cast<double>(sy)) > 29900.0);  // the magnitude kept
+            }
+        }
+        // moveFollowsHead off (Halcyon doesn't turn it): our turn alone is the hand's.
+        SHORT sx = 0, sy = 30000;
+        mevr::game::gamepad::RotateStick(sx, sy, cf::HandWalkUnits(std::numbers::pi / 2.0, 0));
+        CHECK(sx < -29900 && std::abs(sy) < 100);  // forward became left
+    }
+
+    // ---- The pad: the game sees no right-stick X while the mod turns (not while the squad menu has the sticks) ----
+    {
+        using namespace mevr::game::gamepad;
+        mevr::vr::controllers::State state;
+        state.active = true;
+        state.right.stickX = 0.9f;
+        state.right.stickY = 0.4f;
+        state.left.stickY = 1.0f;
+        Latches latches;
+        Options options;
+        CHECK(FromControllers(state, latches, options).sThumbRX > 25000);
+        options.modTurns = true;
+        XINPUT_GAMEPAD const pad = FromControllers(state, latches, options);
+        CHECK(pad.sThumbRX == 0 && pad.sThumbRY > 10000 && pad.sThumbLY > 30000);
+        Options const back = FromFlags(-1.0f, 0.1f, 0.2f, ToFlags(options));
+        CHECK(back.modTurns && !back.handWalk);
+        options.handWalk = true;
+        options.modTurns = false;
+        CHECK(FromFlags(-1.0f, 0.1f, 0.2f, ToFlags(options)).handWalk);
+        CHECK(!FromFlags(-1.0f, 0.1f, 0.2f, kFlagLeftTrigger).modTurns);  // an older mod's flags: the game turns
+        CHECK((kFlagModTurns & (kRbSourceMask | kWheelStickMask | kFlagNoMeleeButton | kFlagNoGrenadeButton)) == 0);
+        CHECK((kFlagHandWalk & (kRbSourceMask | kWheelStickMask | kFlagModTurns)) == 0);
+    }
+
+    // ---- Settings and the menu's rows ----
+    {
+        CHECK(cf::ParseTurn(" Snap ") == cf::TurnStyle::Snap && cf::ParseTurn("game") == cf::TurnStyle::Game && !cf::ParseTurn("fast"));
+        CHECK(cf::ParseVignetteWhen("move") == cf::VignetteWhen::TurningAndMoving && cf::ParseWalk("hand") == cf::WalkToward::LeftHand);
+        cf::Settings wild;
+        wild.snapDegrees = 500.0f;
+        wild.turnSpeed = std::numeric_limits<float>::infinity();
+        wild.vignetteStrength = 3.0f;
+        wild.snapRearm = 0.9f;
+        cf::Settings const sane = cf::Sanitize(wild);
+        CHECK(sane.snapDegrees == 180.0f && sane.turnSpeed == 120.0f && sane.vignetteStrength == 1.0f &&
+              sane.snapRearm < sane.snapThreshold);
+        CHECK(ms::SnapChoice(30.0f) == "30" && ms::SnapChoice(45.0f) == "45" && ms::SnapChoice(50.0f) == "45" &&
+              ms::SnapChoice(90.0f) == "60" && ms::SnapChoice(std::numeric_limits<float>::quiet_NaN()) == "45");
+        CHECK(ms::TurnChoice("snap") == "snap" && ms::TurnChoice("game") == "smooth" && ms::TurnChoice("smooth") == "smooth");
+        for (char const* key : {"turn", "snap", "turn_speed", "vignette", "vignette_strength", "vignette_when", "walk"}) {
+            CHECK(ms::Find(key) != nullptr);
+        }
+        CHECK(ms::FormatValue(ms::Find("vignette_strength")->format, 60.0f) == "60%");
+        CHECK(ms::FormatValue(ms::Find("turn_speed")->format, 120.0f) == "120\xC2\xB0/s");
+    }
+}
+
 int main() {
+    TestComfort();
     TestMetricStereo();
     TestMenuSettings();
     TestCalibration();

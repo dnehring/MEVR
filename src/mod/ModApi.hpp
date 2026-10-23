@@ -44,7 +44,7 @@ struct Panel;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 16;
+inline constexpr int kHostServicesVersion = 17;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -199,6 +199,16 @@ struct HostServices {
     // game's own weapon wheel does (WorldInfo.PauseGame), on foot or in the Mako, and unpauses it when the menu closes.
     // Any thread.
     std::uint32_t (*mainMenu)() = nullptr;
+
+    // Version 17: comfort (game/comfort, plugin/Vignette, research/31).
+    // setSupportGrip's flags also take gamepad::kFlagModTurns (the game sees no right-stick X from the motion
+    // controllers: the mod turns the player itself, snap or smooth) and gamepad::kFlagHandWalk (the motion controllers'
+    // left stick is turned so its forward is the left controller's yaw). A v16 or older host ignores them, so the mod
+    // leaves turning to the game there.
+    // The comfort vignette, each tick: how dark the view's edges should be now (0 none .. 1 black); the host fades
+    // toward it over 0.15 s and draws it as a head-locked layer. Forgotten (faded out) when not called for 250 ms.
+    // Any thread.
+    void (*setVignette)(float amount) = nullptr;
 };
 
 } // namespace mevr

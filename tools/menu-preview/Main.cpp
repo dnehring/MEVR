@@ -400,6 +400,26 @@ int main(int argc, char** argv) {
         frames(30);
         save(std::string("section-") + section);
     }
+    // Comfort's other states (research/31): snap with its angle, the vignette on (its rows enabled), walking toward the hand.
+    model.SetText("section", "comfort");
+    model.SetText("turn", "snap");
+    model.SetText("snap", "60");
+    model.SetNumber("vignette", 1.0f);
+    model.SetText("vignette_when", "move");
+    model.SetText("walk", "hand");
+    frames(30);
+    save("section-comfort-snap");
+    if (Rml::Element* content = element("content")) {  // the page's lower half: walking toward the left hand
+        content->SetScrollTop(content->GetScrollHeight());
+        frames(10);
+        save("section-comfort-movement");
+        content->SetScrollTop(0.0f);
+    }
+    model.SetText("turn", "smooth");
+    model.SetText("snap", "45");
+    model.SetNumber("vignette", 0.0f);
+    model.SetText("vignette_when", "turn");
+    model.SetText("walk", "head");
     model.SetText("section", "advanced");
     for (char const* tab : {"tracking", "fp", "view", "stereo", "hud", "profiles", "diag"}) {
         model.SetText("advtab", tab);

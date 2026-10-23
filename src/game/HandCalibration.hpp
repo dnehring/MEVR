@@ -4,6 +4,7 @@
 #include "core/ik/BodySlots.hpp"
 #include "core/ik/Posture.hpp"
 #include "core/ik/Rigid.hpp"
+#include "core/vr/Comfort.hpp"
 #include "core/vr/Sights.hpp"
 #include "game/GamepadMapping.hpp"
 
@@ -44,6 +45,7 @@
 //   [Holsters] body holsters (below, GetHolsters).
 //   [Squad]  the squad weapon menu (below, GetSquad).
 //   [Throwables] physical grenades and melee (below, GetThrowables).
+//   [Comfort] turning, the comfort vignette, walking toward the left hand (below, GetComfort).
 namespace mevr::game::hand_calibration {
 
 // The trim for one hand (0 left, 1 right), in the grip's own axes (ik::GripTrim).
@@ -249,5 +251,18 @@ void ClearArmLength();
 
 // Checks the file at most once a second; logs when the values change; measures new samples.
 void Refresh();
+
+// [Comfort] (appended to an older file that lacks it; research/31, game/comfort): written key by key by our VR menu's
+// Comfort page too.
+//   turn              smooth (default): the mod turns the player at turnSpeed; snap: by snapDeg per flick of the right
+//                     stick; game: the game's own turn (its per-camera-mode rate and acceleration), as before
+//   snapDeg           degrees per snap (the menu: 30, 45, 60)
+//   turnSpeed         smooth: degrees a second at full deflection (the menu: 60..240)
+//   deadzone, snapThreshold, snapRearm, snapCooldownS: the stick's dead zone (smooth), how far a flick must go to snap,
+//                     how near the centre it must come back, and the least time between two snaps
+//   vignette          1: the view's edges darken while the stick turns you (vignetteWhen = turn) or also while it
+//                     moves you (move); vignetteStrength 0..1
+//   walk              head (default): the left stick walks where you look; hand: where the left controller points
+vr::comfort::Settings GetComfort();
 
 } // namespace mevr::game::hand_calibration
