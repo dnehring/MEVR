@@ -211,7 +211,14 @@ switching frameworks.
   Alignment assist (research/21 section 8): raised to the face, the gun slides so the sight line runs
   through the aiming eye (`vr::sights::AssistTarget`/`AssistSpring`, `[Sights] assist*`, arm IK's
   `Request::gunShift`, measured without its own shift); hands within `[Hands] reachNearFaceM` of the eyes
-  aren't reach-scaled by the arm-length calibration.
+  aren't reach-scaled by the arm-length calibration. **Halcyon's Stereo 2 isn't metric** (research/21 section 9):
+  each eye rendered `sfr2HalfEyeUU` from the midpoint and each image moved by half `sfr2Convergence` at submit
+  (1.27 degrees outward per eye with swap-eyes), while the runtime places our quads metrically. So the dot (one
+  eye: the nearest within `[Sights] eyeBox` of the window) and the scope's disc go where that eye's image shows the
+  point (`vr::sights::AsShown`), and the scope samples the other eye's image as drawn (`SampleViewOf`); Halcyon
+  publishes the numbers through `OverlayFrame` (`[Sights] matchStereo`). Shots converge on what the sight line hits
+  (`Actor.Trace` each tick, `[Sights] converge`, log `hand aim: shot N:`). The sight's height comes from the weapon
+  mesh's bounds (`weapon::ModelInGunFrame`); long guns without a rifle calibration borrow the pistol's grip frame.
 - LE1 squad weapons ([docs/squad-weapons-design.md](docs/squad-weapons-design.md), research/19
   sections 9-11): **pull the left trigger** (`[Controls] leftTrigger = lb`): the wheel opens at the left
   hand at once; pointing the left hand at a squadmate preselects them; letting go of the trigger gives

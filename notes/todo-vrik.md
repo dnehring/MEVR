@@ -594,3 +594,28 @@ PSVR 2 on SteamVR: the world pitched more and more over a session while SteamVR'
   moving and resizing the game's screens in our menu (the classic menu's HUD tab has the editor); keyboard and
   mouse navigation of the menu on the desktop; LE2/LE3 (the library is game-independent; the host side is
   LE1's).
+
+## Sights beside the picture, shots right of the dot (user, headset session 2026-10-22 22:2x-00:19; built 2026-10-23, to test)
+
+- **Report:** the sniper's scope window and the model's lens apart (the rifle too); sniper and pistol shots
+  reliably right of the crosshair; the assault rifle had no sight.
+- **Causes ([research/21](../research/21-sights-and-scopes.md) sections 9-12):**
+  - Halcyon's Stereo 2 isn't metric: each eye rendered 3.4 cm from the midpoint (the headset's 3.1), and each
+    finished image moved 1.27 degrees outward at submit (`sfr2Convergence` 0.012 with swap-eyes). Measured in the
+    23:51 snapshot: far content 652 px apart where the geometry says 685.6. Our one-eye dot sat on the true line,
+    the target under it was 1.27 degrees left in the right eye's image: shots right. The scope sampled the other
+    eye's shifted image; its disc sat at the true place, the model a few mm beside it and further away.
+  - Not the frames: shots and the sight both follow the drawn barrel and muzzle (shots start at the muzzle,
+    0.00 units). The "273 units from the muzzle" warnings were squadmates' shots.
+  - The assault rifle's holo needed the eye within its 3-unit window.
+- **Built:** a [MEVR] seam publishing Stereo 2's separation and per-eye shift; the dot (one eye) and the scope's
+  disc follow that eye's image (`vr::sights::AsShown`), the scope samples the source image as drawn
+  (`SampleViewOf`); shots converge on the sight line's hit (`Actor.Trace` each tick, `ConvergedShot`); an eye box
+  (6 units) for dots, dot by default on the shotgun and assault rifle; the sight's height from the mesh's bounds
+  (bones and sockets logged); long guns borrow the pistol's grip frame without a rifle stance. `[Sights] eyeBox,
+  converge, matchStereo`; menu rows under HUD & sights.
+- **[verify in headset]:** notes/next-vr-session.md step 26.
+- **Open:** the floating ring reticle and the HUD panel are still drawn at the true place for both eyes (per-eye
+  quads would put the ring on each eye's image); whether to offer metric stereo (`sfr2HalfEyeUU` 3.1,
+  `sfr2Convergence` 0) as a profile (Halcyon's settings: the user's call); the sniper's eyepiece `back` is still
+  the length-share guess (the model log gives the scope's extent).
