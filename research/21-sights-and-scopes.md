@@ -193,7 +193,9 @@ step 14.
 `enabled`; `pistol = dot`, `shotgun = holo`, `assaultRifle = holo`, `sniperRifle = scope 4` (each: none,
 dot, holo, or scope with a magnification 1-12); `<type>Place = auto` or `back, height` (gun units);
 `dotColor`, `dotSizeDeg`, `ringSizeDeg`, `windowUnits`, `frame`, `zeroM`; `lensUnits`, `reticle`,
-`reticleColor`, `source`, `focusM`, `eyeReliefM`, `resolution`; `replaceRing`, `aimedFire`.
+`reticleColor`, `source`, `focusM`, `eyeReliefM`, `resolution`; `replaceRing`, `aimedFire`; since the
+evening of 2026-10-22 the alignment assist (section 8): `assist`, `assistConeDeg`, `assistStrength`,
+`assistMaxM`, `assistRangeM`.
 
 ## 7. Risks and what's left
 
@@ -215,7 +217,66 @@ dot, holo, or scope with a magnification 1-12); `<type>Place = auto` or `back, h
   from this frame.
 - **Not done:** Overlord's ADS eye-distance assistance (sliding the gun toward the eye when aligned:
   useful if the eyepiece can't get close enough with Shepard's proportions); option 3; thermal; the
-  zoomed recoil; a dot through a scope's picture.
+  zoomed recoil; a dot through a scope's picture. (The sideways alignment assist is built: section 8.)
+
+## 8. Lining the sight up with the eye (headset session 2026-10-22, 19:52; built the same evening)
+
+**Report (user):** looking through the rifle's sight or scope, the rifle had to be moved a long way
+sideways before the eye could see through it.
+
+**What the logs show** (`LE1MEVR.log`, 19:52-19:57; the session's two snapshots were taken with the gun
+holstered and with Halcyon's menu open, so they show no sight):
+- Only the pistol's red dot and, for 0.6 s, the assault rifle's holo were looked through (the sniper
+  rifle wasn't drawn). The one geometry line: `[MEVR-SIGHT] first red dot reticle: the right eye looks
+  through the window (0.514 m behind it, 0.0296 m off the line, window radius 0.0300 m)`: the eye had to
+  come within 3 cm of the line, half a metre from the sight.
+- The sights themselves were where auto placement put them (pistol 20.4 units behind the muzzle, 4.0
+  above the bore; assault rifle 35.3 behind, 6.0 above) on guns measured as before (`grip measured`:
+  muzzle 36.8 and 49.2 units from the wrist). Nothing there is off by more than a few units.
+- **The systematic offset is the arm-length calibration:** the user's file has `[Arms] armLengthM =
+  0.723`, so arm IK scales each wrist goal's distance from Shepard's (moved) shoulder by 55.2 / (0.723 x
+  100) = **0.76** (research/14 "Arm-length calibration"; the view is 100 units per meter, life-size). Near
+  the face that pulls the drawn gun 24% of the way toward the right shoulder: with the shoulder about 18 cm
+  right of the head's centre and 20 cm below the eyes, a controller held in front of the right eye puts the
+  drawn sight about 3.5 cm further right and 2.5 cm lower (and the gun 24% nearer the shoulder along the
+  way out). To see through it, the controller had to go about 5 cm left of the eye, in front of the nose:
+  the "long way sideways". **[inference from the numbers; verify with the new heartbeat line]**
+- Also seen, separate: every draw re-measured the gun's grip and waited for the hand to hold still
+  (`grip being measured (hold still)` for 0.4-1.4 s): no aimed gun, sight or support grip until then.
+
+**Built** (mod only, hot reload):
+1. **No reach scaling near the face** (`ik::ReachWeight`, `ik::ScaledReach`; `[Hands] reachNearFaceM =
+   0.30`): a hand within 0.30 m of the eyes follows its controller 1:1, the full calibration from 0.45 m
+   (smoothstep between); a left hand holding the gun takes the gun hand's weight (blended by the support
+   grip), so the two-hand line isn't bent. Arm-length calibration still maps full reach at arm's length.
+2. **Grips remembered per gun** (`game/weapon`: per weapon mesh asset, body asset and holding bone, this
+   world): a redrawn gun is aimed at once; a still hand still re-checks it.
+3. **The alignment assist** (`vr::sights::AssistTarget`, `AssistSpring`; `game/sights`; arm IK's
+   `Request::gunShift`). Overlord slides the gun along the barrel toward the eye; ours slides it **across**
+   the sight line, since the problem here is lateral:
+   - **Measured without itself:** the sight as drawn minus the shift arm IK applied for that pose (the
+     engine poses the gun before our tick, so the shift taken the tick before), so the assist never chases
+     its own move.
+   - **The aiming eye:** of the two eyes (the view's head pose +/- 3.2 cm along its right; roll-free, so
+     about 1 cm off with a tilted head **[verify]**), the one nearest the line by angle seen from the sight,
+     kept unless the other is 1.5 degrees nearer.
+   - **When:** the eye within `assistConeDeg` (10) of the line (full within 5), the sight between 2 cm and
+     `assistRangeM` (0.65 m) ahead (full to 0.50 m), the line within 35 degrees of the head's forward (full
+     within 15): "raised to the face and looking along it". Each fades with a quintic smoothstep.
+   - **How far:** the eye's offset from the line times the weight times `assistStrength` (1), at most
+     `assistMaxM` (0.10 m). Then Overlord's critically damped spring (10/s, at most 0.25 m/s): no jump on
+     the way in or out, and it eases back when the gun is lowered.
+   - **Applied to the whole gun:** the right wrist's goal after reach scaling, and the left's by the support
+     grip's blend (a hand on the gun moves with it, so the two-hand line doesn't turn; a free hand stays).
+     The muzzle, the shots, the reticle's ray and the sight all follow the gun as drawn (shots shift by at
+     most 10 cm, parallel).
+   - **Logs:** `sights: alignment assist on: the right eye N cm left of and N cm above the sight line ...`,
+     `... off`, and in the heartbeat the aiming eye's **average offset from the unassisted line** while the
+     gun was raised: a steady value there is the sight's placement error to fix (`<type>Place`). Snapshot:
+     the mod's `"sights"."assist"`.
+   - **Risks:** a gun that moves by itself can feel pulled (`assistStrength` < 1 or `assist = 0`); with the
+     eye 10 degrees off at 0.6 m the move is capped at 10 cm; the assist follows the sight's line, so a
+     placement error is hidden rather than fixed (the heartbeat keeps measuring it).
 - **Offline check:** `mevr-sight-preview` renders the scope with the host's shader from ray-traced eye
   images (a bullseye at 40 m, the scope tube in front of the aiming eye) and the reticles; the pictures
   showed the bullseye centred and 4x magnified from the other eye, black from the aiming eye's own,

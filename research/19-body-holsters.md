@@ -20,7 +20,9 @@ This note covers:
 8. the eye height from the floor;
 9. squad weapons: how the weapon wheel applies them, and the VR menu built from [docs/squad-weapons-design.md](../docs/squad-weapons-design.md);
 10. the game's own weapon wheel opened from the VR gesture and shown at the hand: how LB opens and
-    closes it, its one ring in the HUD movie, the stick angle, and what we drive.
+    closes it, its one ring in the HUD movie, the stick angle, and what we drive;
+11. the left hand after the 2026-10-22 headset session: the left trigger opens the wheel, the left grip
+    only holds the gun, and the support grip's grab zone along the whole gun.
 
 Web sources are listed at the end and in [sources.md](sources.md). Claims marked
 **[search summary]** come from a search engine's summary of a page that didn't load directly
@@ -934,3 +936,65 @@ could be reached. Fixed in `vr_menu.cpp` (`[MEVR]`): modes 2 and 3 count as menu
 R3 held (RB, section 6) opens `SFXGameModePowerWheel` (mode 2), the same ring with 26 entries for the
 powers. The mod doesn't drive it; the host shows it on its own panel at the right hand
 (`[Squad] powerWheelAt`), cut out of the UI the same way.
+
+## 11. The left hand after the 2026-10-22 session: the trigger opens the wheel, the grip holds the gun
+
+### What the session showed (`LE1MEVR.log`, 19:52-19:57)
+
+- **The wheel opened four times from the left grip** (wheels #1-#4, 19:53:28, 19:53:36, 19:55:04,
+  19:55:54), each "held 0.35 s at nobody", each closed again with nothing given. Every one began with a
+  squeeze logged **without a distance to the foregrip** (`squad: left grip squeezed away from the gun:
+  pointing at nobody`): the gun had just been drawn and its grip wasn't measured yet (`weapon: ...: grip
+  being measured (hold still)` for 0.4-1.4 s after each draw), so no support request reached the writer,
+  the pad mapping saw no gun to hold (distance -1) and called the squeeze "away". The foregrip settled
+  0.02-0.3 s **after** each squeeze.
+- **The near-the-gun rule worked when it could:** the three squeezes with a known distance (0.20, 0.15,
+  0.21 m from the foregrip) were taken as missed grabs, no wheel. They also show the old grab radius
+  (0.12 m from the foregrip) was too small: the user's hand was 15-21 cm from it when they meant to grab.
+- **Grabs that worked** were at 0.06-0.11 m from the foregrip (LHIK, 17 units along the assault rifle's
+  barrel and 7.5 off it); while held, the heartbeat showed the gun 27-35 degrees from where the right
+  controller alone would aim it (`swing`).
+
+### The left trigger opens the wheel (user's design, 2026-10-22)
+
+The user expected the wheel on a button. Built ([docs/squad-weapons-design.md](../docs/squad-weapons-design.md)
+"The left trigger opens it"): a new pull of the left trigger (`[Controls] leftTrigger = lb`, which was
+already the wheel's button) opens the game's wheel (or our menu) at the left hand at once, pointing
+preselects, letting go confirms. The squad takes the trigger per pull on foot and in the wheels
+(`squad_menu::OwnTrigger`), so the game sees no LB then (section 6's table: LB's tap would be
+`TrySwapWeapon`, its hold has the 0.3 s delay, and its release closes the wheel before a confirming A);
+in the Mako it stays LB (the boost). The left grip away from the gun does nothing: section 6's "left
+grip away from the gun" row and section 9's "Controls" now read that the left grip is only the support
+grip (and grenades with `[Throwables] hands` left or both).
+
+Considered and not needed any more: a "near the gun" no-wheel zone for the grip (a capsule of 0.25 m
+around the gun) and requiring the hand held away from the body or extended toward the squadmate before
+the grip could open the wheel. With the trigger the grip has nothing to confuse, and a trigger pull is a
+deliberate input that needs no such guard.
+
+### The support grip's grab zone along the whole gun
+
+- **Zone** (`ik::MakeSupportZone`, `ik::DistanceToZone`; `[Controls] supportZone = capsule`): a capsule
+  along the gun's bore line from `supportFrontM` (0.10 m) ahead of the right hand to `supportPastMuzzleM`
+  (0.10 m) past the muzzle, plus a ball at the foregrip, radius `supportAcquireM` (0.18 m, was 0.12 at the
+  foregrip alone); it lets go past `supportReleaseM` (0.26, was 0.22). Meters of left-controller motion at
+  the writer's scale, as before. A file still holding the old defaults (0.12 / 0.22) is migrated once
+  (`supportZone` marks it); other numbers are kept as the radii.
+- **Where the left hand goes:** to the measured foregrip (LHIK), not to where it grabbed (chosen over
+  sliding along the barrel): the animation's own hand placement on that gun, the fingers wrapped, the
+  same place every time. Sliding would need a hand pose for every point, and with the foregrip's offset
+  below the bore it would tilt the gun as the hand slid.
+- **No swing on taking hold** (`ik::CapturedSpan`, `bone_pose::Support::hold`): at a hold's first write
+  the direction from the right hand to where the left hand took hold, in the right hand's axes, becomes
+  the span two-hand aim swings onto the line between the hands. So the gun stays put when you grab
+  (swinging the foregrip's own span onto the hands' line turned it at once by the angle between that
+  span and where the hand happened to be: with a capsule of 0.18 m that could reach 30-60 degrees near
+  the right hand), and from then on it turns with that line: a stable span for the rest of the hold. While held the distance is
+  measured on the two-hand pose, so the hand on the line never drops it; it lets go when the grip opens,
+  the hand moves 0.26 m past either end, or the hands come within 8 cm.
+- **The pad mapping is unchanged:** the mod sends the zone's distance with its radii as acquire and
+  release (`setSupportGrip`), so the host needs no redeploy.
+- **Right after a draw:** `game/weapon` now remembers each gun's grip (per weapon mesh asset, body asset
+  and holding bone, in this world), so a redrawn gun is aimed and its foregrip settles within about 0.1 s
+  instead of after the hand has held still. A squeeze in that 0.1 s still finds no gun (the host takes
+  hold only on a new squeeze): squeeze again.

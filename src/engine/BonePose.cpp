@@ -165,15 +165,16 @@ UObject const* CurrentWorld() {
     return GWorld != nullptr ? *GWorld : nullptr;
 }
 
-// The support grip on this write's goals (Request::support). Measures the left goal's distance from
-// the foregrip (at the one-hand pose while not held; at the two-hand pose while held, like Overlord's
-// grip_presenter: a correctly held rifle must not drop when the right wrist turns), then blends the
-// right hand toward the two-hand rotation and the left wrist onto the foregrip. Adapted from
-// Overlord's grip_presenter.hpp (https://github.com/Aeka0/Overlord, GPL-3.0, Aeka0).
 // The span captured when the current hold began (ik::CapturedSpan; the writer's thread).
 thread_local std::uint32_t tCapturedHold = 0;
 thread_local std::optional<ik::Vec3> tCapturedSpan;
 
+// The support grip on this write's goals (Request::support). Measures the left goal's distance from
+// the grab zone (a capsule along the gun and the foregrip; at the one-hand pose while not held; at the
+// two-hand pose while held, like Overlord's grip_presenter: a correctly held rifle must not drop when
+// the right wrist turns), then blends the right hand toward the two-hand rotation and the left wrist
+// onto the foregrip. Adapted from Overlord's grip_presenter.hpp (https://github.com/Aeka0/Overlord,
+// GPL-3.0, Aeka0).
 SupportSample ApplySupport(Support const& s, double handScale, ik::ArmGoal& left, ik::ArmGoal& right) {
     SupportSample out;
     double const unitsPerMeter = s.unitsPerMeter > 1e-6 && std::isfinite(s.unitsPerMeter) ? s.unitsPerMeter : 50.0;
@@ -183,16 +184,17 @@ SupportSample ApplySupport(Support const& s, double handScale, ik::ArmGoal& left
     ik::Vec3 const controller = left.wrist;
     double const minSpan = s.minSpanMeters * unitsPerMeter;
     // Two-hand aim swings the line from the right hand to where the left took hold (captured at the
-    // hold's first write, on the one-hand pose), not to the foregrip: no swing when taking hold.
-    if (s.hold == 0) {
-        tCapturedHold = 0;
-        tCapturedSpan.reset();
-    } else if (s.hold != tCapturedHold) {
+    // hold's first write, on the one-hand pose), not to the foregrip: no swing when taking hold. Kept
+    // while the hold blends out after a release, so letting go doesn't swing it either.
+    if (s.hold != 0 && s.hold != tCapturedHold) {
         tCapturedHold = s.hold;
         tCapturedSpan = s.twoHandAim ? ik::CapturedSpan(one, right.wrist, controller, ik::Length(span), minSpan) : std::nullopt;
+    } else if (s.hold == 0 && blend <= 0.0) {
+        tCapturedHold = 0;
+        tCapturedSpan.reset();
     }
-    ik::Vec3 const aimSpan = s.hold != 0 && tCapturedSpan ? *tCapturedSpan : span;
-    out.captured = s.hold != 0 && tCapturedSpan.has_value();
+    ik::Vec3 const aimSpan = tCapturedSpan ? *tCapturedSpan : span;
+    out.captured = tCapturedSpan.has_value();
     std::optional<ik::Quat> two;
     if (s.twoHandAim) {
         two = ik::TwoHandRotation(one, aimSpan, right.wrist, controller, minSpan);
