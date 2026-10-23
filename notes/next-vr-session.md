@@ -1029,7 +1029,12 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       lights, lens flares, light shafts: anything glowing in the wrong place in one eye? If so,
       `sfr2MetricEyeFrustum = 0` in `MELEVR.ini` (each eye then renders Halcyon's shared window, still
       life-size) and tell Claude. (c) Conversations and cutscenes: faces, the wheel and subtitles fuse?
-      (d) The edges of the view: nothing missing or popping in at the sides.
+      (d) The edges of the view: nothing missing or popping in at the sides (and no `[MEVR-STEREO] WARNING ...
+      WIDER than the CPU's culling window` in the logs). (e) Effects that rebuild positions from the screen:
+      fog and haze (bands or edges that slide with your head or differ between the eyes), ambient-occlusion
+      shadows offset from the objects they belong to, light shafts or flares away from their light. Close one
+      eye, then the other: do they sit in the same place on the world? If not, `sfr2MetricEyeFrustum = 0` and
+      tell Claude which effect (research/30, risks).
     - **Snapshots:** one on far scenery (End, or a quick tap of both stick clicks) with life-size stereo on and
       one with it off, standing still. Claude checks them with `python tools/stereo-check.py <stamp> x,y ...`
       (far points: about 0 px when metric, -30 px or so when off).

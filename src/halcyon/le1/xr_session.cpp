@@ -5067,6 +5067,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             mevrIn.fillV = ClampVrFill(cine.fillV);
             mevrIn.unitsPerMeter = kMetersToUU * mevrLeanScale;
             mevrIn.depth = cfg.sfr2MetricDepth * cineSepMul;
+            MELEVR::RenderHook::GetRenderFovHalfAngles(&mevrIn.cpuHalfH, &mevrIn.cpuHalfV);   // the culling window
             MELEVR::MevrBridge::StereoPlan mevrPlan;
             MELEVR::MevrBridge::PlanStereo(mevrIn, &mevrPlan);
             MELEVR::RenderHook::MetricPass mevrPasses[2];

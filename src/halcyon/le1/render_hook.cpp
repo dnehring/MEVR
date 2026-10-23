@@ -222,7 +222,11 @@ struct MetricSlot
 };
 MetricSlot g_metricSlots[2];
 std::atomic<int> g_metricSlotIdx{0};
-MetricSlot t_metricLatched;   // game thread only (both passes run there)
+// Deliberately NOT thread_local: both passes (the game's Draw and the replay) run on the game thread, and the
+// replay must see what the main pass latched. Game thread only.
+MetricSlot g_metricLatched;
+std::atomic<int> g_metricContainLogs{0};
+std::atomic<unsigned> g_metricUncontained{0};
 constexpr int kMetricRecordN = 32;
 std::mutex g_metricRecordMutex;
 MELEVR::RenderHook::MetricRecord g_metricRecords[kMetricRecordN];
@@ -1875,12 +1879,12 @@ bool ApplyMetricEyeOffset(void* fsv) noexcept
     if (!t_fvcReplay)
     {
         const MetricSlot& slot = g_metricSlots[g_metricSlotIdx.load(std::memory_order_acquire)];
-        t_metricLatched = slot;
+        g_metricLatched = slot;
     }
-    if (t_metricLatched.mode == 0) return false;
+    if (g_metricLatched.mode == 0) return false;
     if (!MetricGatesPass()) return true;
     const int pass = t_fvcReplay ? 1 : 0;
-    const MELEVR::RenderHook::MetricPass& p = t_metricLatched.passes[pass];
+    const MELEVR::RenderHook::MetricPass& p = g_metricLatched.passes[pass];
     float wx = 0.0f, wy = 0.0f, wz = 0.0f;
     if (!ApplyViewRelativeOffsetRawSEH(fsv, p.offsetUU[0], p.offsetUU[1], p.offsetUU[2], &wx, &wy, &wz, nullptr, nullptr))
     {
@@ -1892,8 +1896,8 @@ bool ApplyMetricEyeOffset(void* fsv) noexcept
     {
         char line[320] = {};
         sprintf_s(line, "[MEVR-STEREO] pass %d (eye %d) from its eye: right %.2f up %.2f forward %.2f uu (world %.1f,%.1f,%.1f), mode %d",
-                  pass, pass == 0 ? t_metricLatched.pass0Eye : 1 - t_metricLatched.pass0Eye,
-                  p.offsetUU[0], p.offsetUU[1], p.offsetUU[2], wx, wy, wz, t_metricLatched.mode);
+                  pass, pass == 0 ? g_metricLatched.pass0Eye : 1 - g_metricLatched.pass0Eye,
+                  p.offsetUU[0], p.offsetUU[1], p.offsetUU[2], wx, wy, wz, g_metricLatched.mode);
         LogLine(line);
     }
     return true;
@@ -1905,7 +1909,7 @@ bool ApplyMetricEyeOffset(void* fsv) noexcept
 // After ApplyHeadRotation (which recomposes the GPU matrix) and before the [INVMAT] refresh (which then
 // inverts this one). Same idea as [SFRCONV-UI]'s GPU-only edit, with the whole frustum instead of a shift.
 // The SEH-guarded write (no C++ objects in this frame). Returns 1 written, 0 orthographic (untouched), -1 fault.
-int WriteMetricFrustumRawSEH(void* fsv, const MELEVR::RenderHook::MetricPass& p, float orig[3]) noexcept
+int WriteMetricFrustumRawSEH(void* fsv, const MELEVR::RenderHook::MetricPass& p, float orig[5]) noexcept
 {
     __try
     {
@@ -1916,7 +1920,7 @@ int WriteMetricFrustumRawSEH(void* fsv, const MELEVR::RenderHook::MetricPass& p,
         float* TVPM = reinterpret_cast<float*>(base + kFsvTranslatedViewProjMatrix);
         float P[16];
         for (int i = 0; i < 16; ++i) P[i] = PM[i];
-        orig[0] = P[8]; orig[1] = P[9]; orig[2] = P[11];
+        orig[0] = P[8]; orig[1] = P[9]; orig[2] = P[11]; orig[3] = P[0]; orig[4] = P[5];   // [MEVR] + the CPU window
         const float w = (std::fabs(P[11]) > 0.01f) ? P[11] : 1.0f;   // clip w = z * P[11]
         P[0] = p.p0 * w;
         P[5] = p.p5 * w;
@@ -1933,22 +1937,48 @@ int WriteMetricFrustumRawSEH(void* fsv, const MELEVR::RenderHook::MetricPass& p,
 
 bool ApplyMetricFrustumSEH(void* fsv) noexcept
 {
-    if (t_metricLatched.mode != 2 || !MetricGatesPass()) return true;
+    if (g_metricLatched.mode != 2 || !MetricGatesPass()) return true;
     const int pass = t_fvcReplay ? 1 : 0;
-    const MELEVR::RenderHook::MetricPass& p = t_metricLatched.passes[pass];
-    float orig[3] = {};
+    const MELEVR::RenderHook::MetricPass& p = g_metricLatched.passes[pass];
+    float orig[5] = {};
     const int wrote = WriteMetricFrustumRawSEH(fsv, p, orig);
     if (wrote < 0) return false;
     if (wrote == 0) return true;
     const float orig8 = orig[0], orig9 = orig[1], orig11 = orig[2];
+    // Containment: the CPU's window (culling, Umbra) must hold this eye's frustum, or objects at that edge pop.
+    // CPU half-window tangents are P[11] / P[0] and P[11] / P[5] (Halcyon writes 1/tan for w = z).
+    const float w = (std::fabs(orig11) > 0.01f) ? orig11 : 1.0f;
+    const float cpuTanH = (std::fabs(orig[3]) > 1e-6f) ? w / orig[3] : 0.0f;
+    const float cpuTanV = (std::fabs(orig[4]) > 1e-6f) ? w / orig[4] : 0.0f;
+    const float needH = std::fmax(std::fabs(p.tan[0]), std::fabs(p.tan[1]));
+    const float needV = std::fmax(std::fabs(p.tan[2]), std::fabs(p.tan[3]));
+    const bool contained = cpuTanH >= needH * 0.999f && cpuTanV >= needV * 0.999f;
     const int n = g_metricFrustumLogs.fetch_add(1, std::memory_order_relaxed);
     if (n < 4 || (n % 3600) == 0)
     {
-        char line[320] = {};
+        char line[400] = {};
         sprintf_s(line, "[MEVR-STEREO] pass %d frustum: tan L %.4f R %.4f U %.4f D %.4f -> p0 %.4f p5 %.4f p8 %.4f p9 %.4f "
-                        "(game's own p8 %.4f p9 %.4f p11 %.4f)",
-                  pass, p.tan[0], p.tan[1], p.tan[2], p.tan[3], p.p0, p.p5, p.p8, p.p9, orig8, orig9, orig11);
+                        "(game's own p8 %.4f p9 %.4f p11 %.4f); the CPU window +-%.4f x +-%.4f %s",
+                  pass, p.tan[0], p.tan[1], p.tan[2], p.tan[3], p.p0, p.p5, p.p8, p.p9, orig8, orig9, orig11,
+                  cpuTanH, cpuTanV, contained ? "holds it" : "does NOT hold it");
         LogLine(line);
+    }
+    if (!contained)
+    {
+        const unsigned k = g_metricUncontained.fetch_add(1, std::memory_order_relaxed);
+        if (k < 4 || (k % 600) == 0)
+        {
+            char line[400] = {};
+            sprintf_s(line, "[MEVR-STEREO] WARNING pass %d renders WIDER than the CPU's culling window: the eye needs "
+                            "+-%.4f x +-%.4f (tangents), the CPU projection (P0 %.4f P5 %.4f) gives +-%.4f x +-%.4f: objects "
+                            "at that edge can pop in. Is Halcyon's FOV override off for this view? (%u views so far)",
+                      pass, needH, needV, orig[3], orig[4], cpuTanH, cpuTanV, k + 1);
+            LogLine(line);
+        }
+    }
+    else if (g_metricContainLogs.fetch_add(1, std::memory_order_relaxed) == 0)
+    {
+        LogLine("[MEVR-STEREO] containment: the CPU's culling window holds the eye's own frustum");
     }
     return true;
 }
@@ -1962,10 +1992,10 @@ void RecordMetricLatch(uint64_t arm) noexcept
     if (g_metricRecordAny && g_metricRecords[last].arm == arm) g_metricRecordNext = last;
     MELEVR::RenderHook::MetricRecord& r = g_metricRecords[g_metricRecordNext];
     r.arm = arm;
-    r.mode = MetricGatesPass() ? t_metricLatched.mode : 0;
-    r.pass0Eye = t_metricLatched.pass0Eye;
-    r.passes[0] = t_metricLatched.passes[0];
-    r.passes[1] = t_metricLatched.passes[1];
+    r.mode = MetricGatesPass() ? g_metricLatched.mode : 0;
+    r.pass0Eye = g_metricLatched.pass0Eye;
+    r.passes[0] = g_metricLatched.passes[0];
+    r.passes[1] = g_metricLatched.passes[1];
     g_metricRecordNext = (g_metricRecordNext + 1) % kMetricRecordN;
     g_metricRecordAny = true;
 }
