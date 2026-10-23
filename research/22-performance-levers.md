@@ -543,6 +543,19 @@ What's left on the CPU side, per eye: the second pass's Umbra resolve (lever 3: 
 first pass's exactly, research/30), the visible-set pre-pass (lever 2, a GPU trade), and the per-draw
 constant-buffer path.
 
+## The GPU misses too at p90: the target was bigger than the eye (2026-10-23)
+
+The 00:11 VR baseline, re-read for its spread rather than its medians: the render thread's busy p90 is 12.7 ms
+(max 17.5) and the GPU's whole-frame span p90 12.6 ms (median 9.3), both over the 11.1 ms budget, so about one
+frame in ten missed even in that ordinary spot, from either side. SteamVR's Auto throttling then flips between
+90 and 45, which is what reprojection feels like. The game rendered its stereo target at 3072x3188 per eye
+(Halcyon's "Performance" rung) while the runtime's recommended eye size, and the swapchain the image is copied
+into, is 2824x2880: 18% more pixels than are displayed. Set to match (`tools/vr-game-settings.ps1 -Game LE1
+-ResX 2824 -ResY 2880`; GamerSettings.ini ResX/ResY and MELEVR.ini sfr2ResX/Y, expectedResX/Y; the Oct 7
+backup still restores the original). To check next session: Halcyon's `[TARGETCHK] Stereo 2 target OK`, and the
+probe's GPU span at p90. The rest of the reprojection advice (fixed throttling, 120 Hz at half rate, legacy
+reprojection per taste, a depth layer for Meta runtimes) is in research/32's levers table.
+
 ## Next session: the no-code checks (about 15 minutes)
 
 Same spot each time (e.g. the Normandy's CIC, standing still, same direction), 30 s per step:

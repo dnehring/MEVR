@@ -1267,3 +1267,8 @@ Stand still in gameplay (or `tools/console.ps1 pause`) for each A/B; each step i
 5. **`tools/perf-ab.ps1 -Key pCoresOnly -Values 0,1`**.
 6. If anything looks wrong: set the key back (perf-ab restores it by itself); an exception has already turned the
    lever off for the session (the log says so). Then `tools/sample-render-thread.ps1` once more under the best setting.
+0. **Before the levers: the stereo target is now 2824x2880** (the headset's own eye size; it was 3072x3188).
+   Halcyon's log should say `[TARGETCHK] Stereo 2 target OK` at that size; if it complains or the picture looks
+   wrong, `tools/vr-game-settings.ps1 -Game LE1` puts the old rung back. In SteamVR's per-app settings try
+   Throttling "Fixed" with motion smoothing, and 120 Hz (60 real frames, smoothed) against 90 Hz: which feels
+   steadier is yours to judge; the probe's numbers are the same either way.
