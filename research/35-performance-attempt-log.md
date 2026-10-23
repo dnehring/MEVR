@@ -56,6 +56,13 @@ the same probes) with nobody in the headset. Files, backed up before the change:
 | 15 | 15:17 | `toggleocclusion` (UE3's own queries off) | second eye's instance step 1.64 → 0.35 ms, but draws 1671 → 1813 (p90 3833) and the first eye +0.55 ms: frame 6.87 → 7.13 ms | worse: the occlusion is worth more than the spin |
 | 16 | 15:21 | `ue3QueryWait` 0 (the second render's GetQueryData never waits; unready = visible) | 6.95 → 7.26 ms; draws median 1552 but p90 3714 (nearly every result unready, so the second eye draws unoccluded) | worse; off |
 | 17 | 15:28 | `perEyeViewState` 1 (Halcyon's per-eye FSceneViewStates, cine-only upstream, in gameplay) | second eye's instance step 1.9 → 0.2 ms, first eye 1.8 → 2.1 ms, draws p90 1565 → 3683 (one frame in ten draws 2.4x): render 6.95 → 7.23 ms | worse as is; the extra draws need understanding (each state's history sees every other render?) |
+| 18 | 15:36 | query-read counters per render (the GetQueryData hook counts reads, waits, reads without a result) | shared state: 151 reads an eye a frame, 91 waiting, 0 without a result. Per-eye states: the second eye makes **7,378 reads a frame, 7,202 without a result**, in the Umbra commander's results read (code 6: 1.0 ms, longest 6 ms) | with a state per eye the second eye's Umbra queries are never ready: Umbra's results read polls them for its 10 ms budget |
+| 19 | 15:37 | the four combinations of `perEyeViewState` and `umbraQueryWait`, paused | (0,1) 6.92 ms / 1561 draws; (1,1) 7.22 / 1573 (p90 3743); (1,0) 7.58 / **2927** draws (the unready Umbra queries count as visible every frame); (0,0) 6.93 / 1561 | per-eye states: the spin goes (second eye's instance step 2.1 → 0.2 ms) but Umbra's own occlusion breaks for that eye |
+| 20 | 15:44 | why: SceneRenderB picks the Umbra commander per render through 0x8C1AE0 and always passes 0, so both eyes' Umbra cameras share commander 0's query pool; with one camera (the shared state) the pool double-buffers across the two resolves (each eye reads the other's queries, 3-7 ms old: ready), with two cameras they re-issue each other's pending queries. The engine creates a second commander it never uses; hooked 0x8C1AE0 to give the second render commander 1 with `perEyeViewState` | **the game hung**: the render thread inside commander 1's resolve reading the command ring (0xD4A120) for a resolve command the game thread only queues for commander 0; the game thread waiting on the render thread | commander 1 isn't usable from the render side alone; hook left in but it should go |
+
+| 21 | 15:50 | reading: where the view's Umbra camera comes from | `ULocalPlayer::CalcSceneView` copies it from the ULocalPlayer (+0x474), not from the view state (+0x46C): both eyes keep ONE Umbra camera even with a state per eye. So the per-eye breakage (18) isn't two cameras: the commander's occluder queries are allocated from and read back through the current view's state (its occlusion query pool at +0x88), so with a state per eye the second eye reads, by index, queries that live in the other state's pool. Separating UE3's histories per eye while sharing Umbra's queries would need the commander's pool decoupled from the view state | not pursued: the spin is worth ~0.1 ms at the heavy spots (below) |
+
+Where the spin matters: it is the time between the first eye's queries and the second eye's read, so it's largest where the CPU is fast (1.6 ms of 6.9 at the save's spot) and smallest where the CPU is slow (about 0.1 ms at the worst spot: 0.51 vs 0.47 ms instance steps). Fixing it raises the light-spot headroom, not the heavy-spot frame.
 
 ## Where the second eye's time goes (save's spot, paused, 15:29)
 
@@ -76,5 +83,20 @@ the same probes) with nobody in the headset. Files, backed up before the change:
   by any of the three ways tried (no queries, no wait, a state per eye) costs more in draws than it saves (15-17). The next
   step is reading, not another switch: how UE3 reads "last frame's" query (0x762550, the occlusion history in the view state at
   +0xD10) and why a state per eye still leaves one frame in ten unoccluded.
-- Dead: sharePass 1 (deadlock by design), pCoresOnly, umbraQueryWait, UMBRA TOGGLEOCCLUSION, ue3QueryWait. Untested in VR:
-  sharePass 2 (the draw replay) needs the second eye's resolve kept first.
+- Dead: sharePass 1 (deadlock by design), pCoresOnly, umbraQueryWait, UMBRA TOGGLEOCCLUSION, ue3QueryWait, perEyeViewState
+  as is (Umbra's queries break), commander 1 for the second eye (deadlock). Untested in VR: sharePass 2 (the draw replay)
+  needs the second eye's resolve kept first.
+- The second eye's spin (attempt 14) is a light-spot cost: 1.6 ms of 6.9 at the save's spot, about 0.1 ms at the worst spot.
+  Fixing it buys headroom where there already is some. Not worth more restarts now.
+
+## Next, for the heavy spots (the ones that matter)
+
+At the worst spot (13.3-13.8 ms, ~4700 draws, two renders of 6-7 ms each) the costs by the stack sample and the levers line:
+Umbra resolve ~1.9 ms per eye (of which the occluder flush + ~380 query draws ~1.0-1.1 ms per eye), the base pass's draws,
+lights, Halcyon's present path (~0.7-1.0 ms "before the wait" plus copies and the submit). Candidates, each measurable on the
+fake headset from a save at a heavy spot:
+1. Fewer Umbra occlusion queries and occluder draws per eye (Umbra's console settings / commander limits): ~380 query draws
+   an eye at the worst spot are DrawIndexedPrimitiveUP calls each.
+2. Fewer draws at heavy spots: the engine's LOD and cull distance settings (SystemSettings), measured per setting.
+3. Halcyon's present path: what the 0.7-1.0 ms before xrWaitFrame does (the stereo capture's copies, probe-and-promote).
+Needed from the player: a save (quicksave) standing at the worst spot, so the heavy-spot numbers can be taken alone.

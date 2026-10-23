@@ -39,6 +39,13 @@ constexpr std::uintptr_t kUmbraResolveStartRva = 0x1795D40;
 // the second render spins for it: 1.3-1.6 ms a frame at a lighter spot, 0.5 at the heaviest (the fake-headset
 // measurements). ue3QueryWait = 0 clears bWait in a frame's second render: an unready query counts as visible.
 constexpr std::uintptr_t kGetQueryDataRva = 0x9A04B0;
+// 0x8C1AE0(which): SceneRenderB picks the Umbra commander (0x1798E88[which], two of them) for a scene render; in
+// gameplay always 0, so both eyes resolve on commander 0 and share its query pool. That works with the game's one
+// view state (one Umbra camera double-buffering its queries across the two resolves) and breaks with a state per
+// eye: two cameras on one pool re-issue each other's pending queries, so the second eye's results are never ready
+// (7,000 polls a frame, 2026-10-23). Giving the second render commander 1 was tried and hangs: its resolve waits in
+// the Umbra command ring for a resolve command the game thread only queues for commander 0 (research/35, 20).
+constexpr std::uintptr_t kSetCommanderRva = 0x8C1AE0;
 
 constexpr int kSlots = 6;  // render places tracked per frame (the last collects the rest)
 
@@ -87,6 +94,9 @@ tDpgLightTargets* gDpgLightTargetsOrig = nullptr;
 tCommand* gCommandOrig = nullptr;
 tGetQueryData* gGetQueryDataOrig = nullptr;
 bool gQueryDataHooked = false;
+using tSetCommander = void(std::uint8_t which);
+tSetCommander* gSetCommanderOrig = nullptr;
+bool gSetCommanderHooked = false;
 std::atomic<int> gUe3QueryWait{1};  // 1 the game's own; 0 a frame's second render never waits for a query result
 std::atomic<std::uint64_t> gQueryWaitsSkipped{0};  // reads that would have waited, this period
 std::atomic<int> gPerEyeViewState{0};  // 1: Halcyon renders each Stereo 2 eye through its own view state in gameplay too
@@ -483,12 +493,33 @@ void CommandHook(void* commander, unsigned code) {
 
 // FD3D11DynamicRHI::GetQueryData: in a frame's second scene render, with ue3QueryWait = 0, the read never waits
 // (the engine then treats the primitive as visible, as it does for any unready query without the wait).
+// Per render slot, this log period: reads, reads that asked to wait, reads that came back without a result.
+std::atomic<std::uint64_t> gQueryReads[kSlots], gQueryReadsWait[kSlots], gQueryReadsFailed[kSlots];
+
 int GetQueryDataHook(void* rhi, void* query, void* out, unsigned size, int wait) {
-    if (wait != 0 && t_renderIndex >= 1 && gUe3QueryWait.load(std::memory_order_relaxed) == 0) {
-        gQueryWaitsSkipped.fetch_add(1, std::memory_order_relaxed);
-        wait = 0;
+    int const slot = Slot(t_renderIndex);
+    gQueryReads[slot].fetch_add(1, std::memory_order_relaxed);
+    if (wait != 0) {
+        gQueryReadsWait[slot].fetch_add(1, std::memory_order_relaxed);
+        if (t_renderIndex >= 1 && gUe3QueryWait.load(std::memory_order_relaxed) == 0) {
+            gQueryWaitsSkipped.fetch_add(1, std::memory_order_relaxed);
+            wait = 0;
+        }
     }
-    return gGetQueryDataOrig(rhi, query, out, size, wait);
+    int const rc = gGetQueryDataOrig(rhi, query, out, size, wait);
+    if (rc == 0) {
+        gQueryReadsFailed[slot].fetch_add(1, std::memory_order_relaxed);
+    }
+    return rc;
+}
+
+// SceneRenderB's choice of Umbra commander for this scene render: with perEyeViewState, a frame's second render
+// takes commander 1 (its own query pool, matching its own view state's camera).
+void SetCommanderHook(std::uint8_t which) {
+    if (t_renderIndex >= 1 && gPerEyeViewState.load(std::memory_order_relaxed) != 0) {
+        which = 1;
+    }
+    gSetCommanderOrig(which);
 }
 
 std::wstring const& IniPath() {
@@ -675,6 +706,20 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
     if (skipped != 0) {
         share += std::format("; ue3QueryWait: {:.0f} query reads a frame didn't wait", static_cast<double>(skipped) / static_cast<double>(frames));
     }
+    std::string reads;
+    for (int i = 0; i < kSlots; ++i) {
+        std::uint64_t const n = gQueryReads[i].exchange(0, std::memory_order_relaxed);
+        std::uint64_t const w = gQueryReadsWait[i].exchange(0, std::memory_order_relaxed);
+        std::uint64_t const f = gQueryReadsFailed[i].exchange(0, std::memory_order_relaxed);
+        if (n != 0) {
+            reads += std::format("{}#{} {:.0f} ({:.0f} waiting, {:.0f} without a result)", reads.empty() ? "" : ", ", i,
+                static_cast<double>(n) / static_cast<double>(frames), static_cast<double>(w) / static_cast<double>(frames),
+                static_cast<double>(f) / static_cast<double>(frames));
+        }
+    }
+    if (!reads.empty()) {
+        share += "; query reads a frame: " + reads;
+    }
     draw_replay::Stats const d = draw_replay::TakeStats();
     std::uint64_t const fallbacks = gReplayFallbacks.exchange(0, std::memory_order_relaxed);
     if (gSharePass.load(std::memory_order_relaxed) == 2 || d.replays != 0 || d.failures != 0 || fallbacks != 0) {
@@ -722,6 +767,8 @@ bool Install(::LESDK::Initializer& init) {
     if (!gQueryDataHooked) {
         log::Warn("render levers: GetQueryData hook failed; ue3QueryWait has no effect");
     }
+    // Not installed: a second render on commander 1 blocks in Umbra's command ring (research/35, attempt 20).
+    (void)&SetCommanderHook;
     auto* const lightTargets = init.ResolveTyped<tDpgLightTargets>(::LESDK::Address::FromOffset(kDpgLightTargetsRva));
     gReplayHooked = gShareHooked && lightTargets != nullptr &&
         hook::Install(init, "FSceneRenderer::RenderDpgLightTargets", lightTargets, &DpgLightTargetsHook, gDpgLightTargetsOrig);
