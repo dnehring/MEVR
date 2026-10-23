@@ -11,6 +11,7 @@
 
 #include <Windows.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <format>
@@ -49,6 +50,8 @@ float gLoggedScale = -1.0f;
 bool gLoggedFrustumWhy = false;
 int gLoggedSubmitMode = -1;
 std::uint64_t gLastPlanLogMs = 0;
+int gUncontainedPlans = 0;
+std::uint64_t gLastContainWarnMs = 0;
 int gPlanChangesUnlogged = 0;
 std::uint64_t gLastSubmitLogMs = 0;
 
@@ -179,6 +182,32 @@ void PlanStereo(const StereoPlanInput& in, StereoPlan* out) noexcept {
         }
     }
 
+    // Containment (the performance review): in mode 2 the CPU's window (culling, Umbra; the render's last projection)
+    // must hold each eye's own frustum, or objects at that edge pop in. Warned when it hasn't for 10 plans in a row
+    // (a fill change takes a frame to reach the render), at most every 10 s.
+    float const cpuTanH = in.cpuHalfH > 0.0f ? std::tan(in.cpuHalfH) : 0.0f;
+    float const cpuTanV = in.cpuHalfV > 0.0f ? std::tan(in.cpuHalfV) : 0.0f;
+    float needH = 0.0f, needV = 0.0f;
+    for (int pass = 0; pass < 2; ++pass) {
+        needH = std::max(needH, std::max(std::fabs(out->passTan[pass][0]), std::fabs(out->passTan[pass][1])));
+        needV = std::max(needV, std::max(std::fabs(out->passTan[pass][2]), std::fabs(out->passTan[pass][3])));
+    }
+    bool const cpuKnown = cpuTanH > 0.0f && cpuTanV > 0.0f;
+    bool const contained = !cpuKnown || (cpuTanH >= needH * 0.999f && cpuTanV >= needV * 0.999f);
+    if (out->mode == 2 && !contained) {
+        std::uint64_t const nowMs = GetTickCount64();
+        if (++gUncontainedPlans >= 10 && nowMs - gLastContainWarnMs >= 10000) {
+            gLastContainWarnMs = nowMs;
+            LogBoth(std::format("[MEVR-STEREO] WARNING the eyes' own frusta are WIDER than the CPU's culling window: they need "
+                                "+-{:.4f} x +-{:.4f} (tangents), the render's projection gives +-{:.4f} x +-{:.4f} (1/P0, 1/P5): "
+                                "objects at that edge can pop in ({} plans in a row). Halcyon's FOV override off or "
+                                "narrower than the eyes? sfr2MetricEyeFrustum = 0 avoids it",
+                needH, needV, cpuTanH, cpuTanV, gUncontainedPlans));
+        }
+    } else {
+        gUncontainedPlans = 0;
+    }
+
     // The [MEVR-STEREO] plan line: at the first plan and whenever the mode, the eye distance or the scale changes.
     float const scale = in.unitsPerMeter * in.depth;
     bool const frustumWhy = in.eyeFrustum && in.uiInEyes;
@@ -223,6 +252,11 @@ void PlanStereo(const StereoPlanInput& in, StereoPlan* out) noexcept {
             line += std::format(" through tan ({:.3f}, {:.3f}, {:.3f}, {:.3f})", out->passTan[pass][0], out->passTan[pass][1],
                 out->passTan[pass][2], out->passTan[pass][3]);
         }
+    }
+    if (out->mode == 2) {
+        line += cpuKnown ? std::format("; the CPU window (1/P0, 1/P5) +-{:.4f} x +-{:.4f} {} the eyes' +-{:.4f} x +-{:.4f}", cpuTanH,
+                               cpuTanV, contained ? "holds" : "does NOT hold", needH, needV)
+                         : std::string("; the CPU window: no render seen yet");
     }
     if (out->mode == 1 && in.eyeFrustum) {
         line += in.uiInEyes ? "; the symmetric window because the game's UI is in the eye images (no HUD panel: "

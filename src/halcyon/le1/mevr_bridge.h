@@ -312,6 +312,9 @@ struct StereoPlanInput
     float fillH = 1.0f, fillV = 1.0f;                      // VR Fill (ClampVrFill'd)
     float unitsPerMeter = 50.0f;                           // the view's scale (Halcyon's 50 x lean gain)
     float depth = 1.0f;                                    // sfr2MetricDepth (x the cine separation scale)
+    // The CPU projection the render last used (RenderHook::GetRenderFovHalfAngles, radians; 0 = none seen yet): the
+    // culling window, which must hold each eye's own frustum in mode 2 (logged with the plan, warned when it doesn't).
+    float cpuHalfH = 0.0f, cpuHalfV = 0.0f;
 };
 struct StereoPlan
 {

@@ -160,6 +160,19 @@ stopped) declares pass 0's frustum for both eyes in mode 2.
   screen position, coronas, if ME1 has them) would be off by up to the frustum's centre shift in mode 2 (24 degrees
   at the image centre). The world, its lighting and fog (the inverse matrices are refreshed after the edit with
   `invMatrixFix`, on in the user's profile) aren't. Fallback: `sfr2MetricEyeFrustum = 0` (mode 1). **[verify]**
+- **Shaders that read the projection another way (the performance review, 2026-10-23).** Mode 2 rewrites only
+  TranslatedViewProjection. Any shader parameter that carries the projection some other way still describes the
+  symmetric window: ambient occlusion and fog that rebuild view or world positions from depth with the projection's
+  scale terms, light shafts and other screen-space effects positioned from the CPU's matrices, and
+  ScreenPositionScaleBias-style screen-to-UV mappings. Inverse matrices are only refreshed when `[INVMAT]`
+  validated them (`invMatrixFix`). Symptoms would be a misplaced or sliding effect in one eye: fog bands, AO halos
+  offset from their objects, shafts or flares away from their light. Fallback: `sfr2MetricEyeFrustum = 0`.
+  **[verify]** in the headset (step 29).
+- **Containment.** The CPU's culling window must hold each eye's own frustum, or objects at that edge pop in. By
+  construction it does (the symmetric window is the widest eye angle x the same fill), and it is checked live: the
+  render side logs the CPU window next to each pass's frustum (`the CPU window +-a x +-b holds it`) and warns
+  `[MEVR-STEREO] WARNING pass N renders WIDER than the CPU's culling window ...` per view, and the plan line adds
+  `the CPU window (1/P0, 1/P5) ... holds the eyes' ...`, warning after 10 plans in a row that don't.
 - A UI draw the HUD panel can't take (a second target kind in one frame) is mirrored into both eyes at the same
   pixels; in mode 2 those copies split. Rare; the `[MEVR-HUD]` lines name the draws.
 - The game's own projection could carry a non-zero off-centre term (`p8`/`p9`) that mode 2 overwrites: the
