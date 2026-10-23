@@ -416,3 +416,13 @@ Halcyon's recenter (yaw-only, from the base space) can never undo a rolled or pi
   sent).
 - **[verify in headset]:** a normal recenter logs `yaw-only recenter (upstream)`; a recenter while looking
   at the floor for a while logs a correction (expected: recenter again looking ahead heals it).
+
+## Grenades: the user's choices (2026-10-22)
+
+- The slot stays on the left side of the chest (`[Throwables] slot`, the default).
+- **The right hand throws:** `hands = right` is now the default. With the right grip holding the
+  gun, the player lets go of the gun, reaches across to the chest, takes a grenade and throws it. The
+  holsters treat the gun as still held while the right hand holds a grenade.
+- **Flight stays ME1's disc** (`flight = disc`, the default): re-aimed from the hand at the arc's
+  landing point. `flight = arc` (the game's unused ballistic class) stays experimental.
+

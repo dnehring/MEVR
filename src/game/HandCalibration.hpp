@@ -131,7 +131,7 @@ Squad GetSquad();
 // [Throwables] (appended to an older file that lacks it): physical grenades and melee (game/throwables,
 // research/20).
 //   enabled          1: take a grenade from a slot on the body with a grip, throw it by letting go
-//   hands            both (default) | left | right: which hands may take grenades
+//   hands            right (default) | left | both: which hands may take grenades
 //   slot             right, up, forward, radius: the grenade slot, meters from the eyes as the holsters'
 //                    slots (default the left side of the chest)
 //   throwSpeedMinMS  a release slower than this (m/s) is no throw: the grenade goes back
@@ -155,7 +155,7 @@ Squad GetSquad();
 //   hapticAmplitude  0..1 (0.5 as designed; 0: none); holdBuzz: 1 = a faint buzz while a grenade is held
 struct Throwables {
     bool enabled = true;
-    bool leftHand = true;
+    bool leftHand = false;  // right hand only by default (user, 2026-10-22)
     bool rightHand = true;
     ik::body_slots::Slot slot{"grenade", ik::body_slots::Weapon::None, {-0.13, -0.33, 0.0}, 0.10};
     double throwSpeedMin = 1.5;
