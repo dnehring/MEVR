@@ -44,7 +44,11 @@ struct Panel;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 15;
+inline constexpr int kHostServicesVersion = 16;
+
+// HostServices::mainMenu's bits (v16).
+inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
+inline constexpr std::uint32_t kMainMenuPause = 2u;  // and the player wants the game paused while it is
 
 using ProcessEventCallback = void (*)(UObject* context, UFunction* function, void* parms, void* result);
 
@@ -188,6 +192,13 @@ struct HostServices {
     // changes). The mod calls it only if calibrationStateSize matches its own sizeof(HostState).
     std::uint32_t calibrationStateSize = 0;
     void (*calibration)(vr::calibration::HostState* out) = nullptr;
+
+    // Version 16: our VR main menu (plugin/MainMenu, research/28). kMainMenuOpen while it's open (the host also
+    // publishes the controllers hidden then, as during the calibration, so an older mod stands down too), plus
+    // kMainMenuPause when the player wants the game paused meanwhile ([Menu] pause): the mod pauses it the way the
+    // game's own weapon wheel does (WorldInfo.PauseGame), on foot or in the Mako, and unpauses it when the menu closes.
+    // Any thread.
+    std::uint32_t (*mainMenu)() = nullptr;
 };
 
 } // namespace mevr

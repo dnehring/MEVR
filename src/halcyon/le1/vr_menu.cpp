@@ -29,6 +29,8 @@ namespace MELEVR::Menu
 namespace
 {
 bool g_open = false;
+// [MEVR] Our main menu (src/plugin/MainMenu.cpp) keeps the game's mouse and keyboard from it as this menu does.
+bool InputBlocked() noexcept { return g_open || MELEVR::MevrBridge::MainMenuOpen(); }
 bool g_ready = false;
 ID3D11Device* g_dev = nullptr;
 ID3D11DeviceContext* g_ctx = nullptr;
@@ -288,7 +290,7 @@ std::atomic<int> g_capturedVk{0};
 
 LRESULT CALLBACK MenuMouseLLProc(int code, WPARAM wp, LPARAM lp)
 {
-    if (code == HC_ACTION && g_open)
+    if (code == HC_ACTION && InputBlocked())   // [MEVR] upstream: g_open
     {
         switch (wp)
         {
@@ -313,7 +315,7 @@ LRESULT CALLBACK MenuMouseLLProc(int code, WPARAM wp, LPARAM lp)
 
 LRESULT CALLBACK MenuKeyLLProc(int code, WPARAM wp, LPARAM lp)
 {
-    if (code == HC_ACTION && g_open)
+    if (code == HC_ACTION && InputBlocked())   // [MEVR] upstream: g_open
     {
         const auto* k = reinterpret_cast<const KBDLLHOOKSTRUCT*>(lp);
         if (k != nullptr)
@@ -369,7 +371,7 @@ DWORD WINAPI MenuLLPumpThread(LPVOID) noexcept
 
 BOOL WINAPI HookedSetCursorPos(int x, int y) noexcept
 {
-    return g_open ? TRUE : (g_origSetCursorPos ? g_origSetCursorPos(x, y) : FALSE);
+    return InputBlocked() ? TRUE : (g_origSetCursorPos ? g_origSetCursorPos(x, y) : FALSE);   // [MEVR] upstream: g_open
 }
 
 void PatchVtableSlot(void* obj, int slot, void* hook, void** original) noexcept
@@ -407,7 +409,7 @@ HRESULT STDMETHODCALLTYPE HookedDIGetState(void* self, DWORD bytes, LPVOID data)
 {
     const HRESULT hr = g_origDIGetState ? g_origDIGetState(self, bytes, data) : E_FAIL;
     if (data == nullptr || bytes == 0) return hr;
-    if (g_open) { ZeroMemory(data, bytes); return hr; }   // menu open: whole device silenced, as before
+    if (InputBlocked()) { ZeroMemory(data, bytes); return hr; }   // menu open: whole device silenced, as before ([MEVR] was g_open)
     // Mouse state is DIMOUSESTATE (16 bytes) or DIMOUSESTATE2 (20); a keyboard is 256. Both mouse
     // layouts start with LONG lX, lY, lZ, so the axis writes below are valid for either.
     if (bytes == kDiMouseStateBytes || bytes == kDiMouseState2Bytes)
@@ -431,7 +433,7 @@ HRESULT STDMETHODCALLTYPE HookedDIGetState(void* self, DWORD bytes, LPVOID data)
 HRESULT STDMETHODCALLTYPE HookedDIGetData(void* self, DWORD cbObjectData, LPVOID data, LPDWORD count, DWORD flags) noexcept
 {
     const HRESULT hr = g_origDIGetData ? g_origDIGetData(self, cbObjectData, data, count, flags) : E_FAIL;
-    if (g_open && count != nullptr) { *count = 0; return hr; }
+    if (InputBlocked() && count != nullptr) { *count = 0; return hr; }   // [MEVR] upstream: g_open
     // Buffered path: each element is a DIDEVICEOBJECTDATA whose dwOfs says which axis it carries.
     // Zero the DATA rather than dropping the element, so sequence numbers the game may track stay intact.
     if (data != nullptr && count != nullptr && *count > 0 && cbObjectData >= sizeof(DWORD) * 2)
@@ -465,7 +467,7 @@ UINT WINAPI HookedGetRawInputData(HRAWINPUT handle, UINT command, LPVOID data, P
 {
     const UINT r = g_origGetRawInputData ? g_origGetRawInputData(handle, command, data, size, headerSize)
                                          : static_cast<UINT>(-1);
-    if (g_open || command != RID_INPUT || data == nullptr || r == static_cast<UINT>(-1)) return r;
+    if (InputBlocked() || command != RID_INPUT || data == nullptr || r == static_cast<UINT>(-1)) return r;   // [MEVR] upstream: g_open
     RAWINPUT* ri = reinterpret_cast<RAWINPUT*>(data);
     if (ri->header.dwType != RIM_TYPEMOUSE) return r;
     const MELEVR::Config::VrConfig& c = MELEVR::Config::Get();
@@ -513,7 +515,7 @@ HWND g_gameHwnd = nullptr;
 
 LRESULT CALLBACK MenuWndProc(HWND h, UINT msg, WPARAM w, LPARAM l)
 {
-    if (g_open)
+    if (InputBlocked())   // [MEVR] upstream: g_open
     {
         switch (msg)
         {

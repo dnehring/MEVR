@@ -253,6 +253,8 @@ set(MEVR_MOD_SOURCES
     src/game/HeadTracking.hpp
     src/game/Holsters.cpp
     src/game/Holsters.hpp
+    src/game/MenuPause.cpp
+    src/game/MenuPause.hpp
     src/game/Posture.cpp
     src/game/Posture.hpp
     src/game/Reflections.cpp
@@ -374,9 +376,16 @@ function(mevr_add_plugin game)
     set(host MEVR-${game})
     set(host_sources ${MEVR_HOST_SOURCES} ${MEVR_CORE_SOURCES})
     set(with_halcyon OFF)
+    set(with_main_menu OFF)
     if (MEVR_HALCYON AND game STREQUAL "LE1")
         set(with_halcyon ON)
         list(APPEND host_sources ${MEVR_HALCYON_HOST_SOURCES})
+        if (MEVR_MAIN_MENU)
+            # Our VR main menu (research/28): LE1 only for now, in the host (not hot-reloaded).
+            set(with_main_menu ON)
+            list(APPEND host_sources src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/MainMenuSettings.cpp
+                src/plugin/MainMenuSettings.hpp)
+        endif ()
     endif ()
     if (MEVR_HOT_RELOAD)
         add_library(${host} SHARED ${host_sources})
@@ -400,6 +409,10 @@ function(mevr_add_plugin game)
         # windowscodecs: WIC, the test loop's PNG snapshots (plugin/TestLoop).
         target_link_libraries(${host} PRIVATE halcyon-le1 OpenXR::openxr_loader windowscodecs)
         target_compile_definitions(${host} PRIVATE MEVR_WITH_HALCYON)
+    endif ()
+    if (with_main_menu)
+        target_link_libraries(${host} PRIVATE mevr-menu)
+        target_compile_definitions(${host} PRIVATE MEVR_WITH_MAIN_MENU)
     endif ()
     mevr_configure(${host} ${game})
     set_target_properties(${host} PROPERTIES OUTPUT_NAME "${game}MEVR" SUFFIX ".asi")
@@ -439,6 +452,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/ImageConvert.cpp
         src/core/vr/LayerComposite.cpp
         src/core/vr/MenuPointer.cpp
+        src/core/vr/MenuSettings.cpp
         src/core/vr/OverlayPlacement.cpp
         src/core/vr/PoseRecording.cpp
         src/core/vr/Recenter.cpp

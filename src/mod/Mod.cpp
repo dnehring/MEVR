@@ -33,6 +33,7 @@
 #include "game/HeadSim.hpp"
 #include "game/HeadTracking.hpp"
 #include "game/Holsters.hpp"
+#include "game/MenuPause.hpp"
 #include "game/Posture.hpp"
 #include "game/Reflections.hpp"
 #include "game/Sights.hpp"
@@ -566,6 +567,15 @@ mevr::game::body_calibration::Link BodyCalibrationLink() {
     return link;
 }
 
+// Host renderer (HostServices v16): our VR main menu's state, for its "pause while open" (research/28).
+mevr::game::menu_pause::Link MenuPauseLink() {
+    mevr::game::menu_pause::Link link;
+    if (gHostOwnsVr && MEVR_HOST_HAS(mainMenu)) {
+        link.state = gHost->mainMenu;
+    }
+    return link;
+}
+
 // Host renderer (HostServices v8): while the test loop takes a snapshot, our state for its JSON.
 void PublishStatus() {
     using namespace mevr;
@@ -589,7 +599,7 @@ void PublishStatus() {
         "\"handAim\": {{\"enabled\": {}, \"toldHost\": {}}}, "
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"throwables\": {}, "
-        "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}}}",
+        "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -598,7 +608,7 @@ void PublishStatus() {
         json::JsonString(game::weapon::Status()), game::support_grip::Held() ? "true" : "false",
         json::JsonNumber(game::support_grip::Blend()), game::holsters::StatusJson(), game::squad_weapons::StatusJson(),
         game::sights::StatusJson(), game::throwables::StatusJson(), game::posture::StatusJson(),
-        game::view_level::StatusJson(), game::body_calibration::StatusJson());
+        game::view_level::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -816,6 +826,9 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     }
     // The guided calibration's results and whether it runs, before anything uses them.
     game::body_calibration::Tick(BodyCalibrationLink());
+    if (gHooked) {
+        game::menu_pause::Tick(MenuPauseLink());  // the main menu's "pause while open"
+    }
     if (gHostOwnsVr) {
         UpdateHostHandAim();
         UpdateHostArmIk();
@@ -967,6 +980,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::camera_probe::Shutdown();
     game::view_level::Shutdown();
     game::body_calibration::Shutdown();
+    game::menu_pause::Shutdown(exiting);  // unpauses the game if the main menu paused it
     gHost = nullptr;
     gHostOwnsVr = false;
     gToldHostOwnsVr = false;

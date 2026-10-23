@@ -3968,7 +3968,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         g_menuInited = true;
     }
     const bool insDown = (cfg.menuKey > 0) && ((GetAsyncKeyState(cfg.menuKey) & 0x8000) != 0);
-    if (insDown && !g_insertKeyPrev) MELEVR::Menu::Toggle();
+    if (insDown && !g_insertKeyPrev) MELEVR::MevrBridge::OnMenuKey();   // [MEVR] our main menu (Ctrl/Shift: this one); upstream: MELEVR::Menu::Toggle()
     g_insertKeyPrev = insDown;
     // First-run: pop the menu open once so new users land on the welcome / HDR-off notice.
     {

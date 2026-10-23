@@ -19,6 +19,9 @@
 #include "plugin/Calibration.hpp"
 #include "plugin/Colour.hpp"
 #include "plugin/Halcyon.hpp"
+#if defined(MEVR_WITH_MAIN_MENU)
+#include "plugin/MainMenu.hpp"
+#endif
 #include "plugin/MevrMenu.hpp"
 #include "plugin/PerfProbe.hpp"
 #include "plugin/TestLoop.hpp"
@@ -255,10 +258,15 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
             mevr::host::calibration::SetProfile(profile);
         }
     }
-    // The guided calibration takes the controllers while it runs: everything else (the mod, our pad mapping)
-    // sees none, so holsters, grenades, melee, the squad trigger and the support grip stand down.
+    // The guided calibration takes the controllers while it runs, and our main menu while it's open: everything else
+    // (the mod, our pad mapping) sees none, so holsters, grenades, melee, the squad trigger and the support grip stand
+    // down.
     mevr::host::calibration::NoteControllers(state);
-    mevr::vr::controllers::Publish(mevr::host::calibration::Active() ? mevr::host::calibration::Hidden(state) : state);
+    bool const menuTakes = MainMenuOpen();
+#if defined(MEVR_WITH_MAIN_MENU)
+    mevr::host::main_menu::NoteControllers(state);
+#endif
+    mevr::vr::controllers::Publish(mevr::host::calibration::Active() || menuTakes ? mevr::host::calibration::Hidden(state) : state);
     TickCameraAlign();
     if (state.active && state.right.aimValid) {
         gRightAimTrackedMs.store(GetTickCount64(), std::memory_order_relaxed);
@@ -289,10 +297,16 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
             live.active && live.right.stickClick, now);
     if (chord.hold && mevr::host::calibration::Running()) {
         mevr::host::calibration::Cancel("both sticks held");  // the calibration panel's hint
+    } else if (chord.hold && MELEVR::Menu::IsOpen()) {
+        MELEVR::Menu::SetOpen(false);
+        mevr::log::Info("halcyon bridge: both sticks held: Halcyon's menu closed");
     } else if (chord.hold) {
-        bool const open = !MELEVR::Menu::IsOpen();
-        MELEVR::Menu::SetOpen(open);
-        mevr::log::Info("halcyon bridge: both sticks held: Halcyon's menu {}", open ? "opened" : "closed");
+#if defined(MEVR_WITH_MAIN_MENU)
+        mevr::host::main_menu::Toggle("both sticks held");
+#else
+        MELEVR::Menu::SetOpen(true);
+        mevr::log::Info("halcyon bridge: both sticks held: Halcyon's menu opened");
+#endif
     }
     if (chord.tap) {
         mevr::log::Info("test loop: both sticks tapped: snapshot");
@@ -300,6 +314,31 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
         request.trigger = "stick tap";
         mevr::host::testloop::RequestSnapshot(request);
     }
+}
+
+bool MainMenuOpen() noexcept {
+#if defined(MEVR_WITH_MAIN_MENU)
+    return mevr::host::main_menu::IsOpen();
+#else
+    return false;
+#endif
+}
+
+void OnMenuKey() noexcept {
+    // \ (Halcyon's menuKey in our deploy) is our menu's; with Ctrl or Shift held, Halcyon's own (a developer fallback).
+    // While Halcyon's menu is open, the key closes it as before.
+    bool const modifier = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0 || (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+#if defined(MEVR_WITH_MAIN_MENU)
+    if (!modifier && !MELEVR::Menu::IsOpen()) {
+        mevr::host::main_menu::Toggle("the menu key");
+        return;
+    }
+    if (mevr::host::main_menu::IsOpen()) {
+        mevr::host::main_menu::SetOpen(false, "Ctrl/Shift + the menu key: Halcyon's menu instead");
+    }
+#endif
+    (void)modifier;
+    MELEVR::Menu::Toggle();
 }
 
 bool FirstPersonAtBoot(bool saved) noexcept {
@@ -358,6 +397,23 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     if (index != 0 || state == nullptr) {
         return result;
     }
+#if defined(MEVR_WITH_MAIN_MENU)
+    if (mevr::host::main_menu::IsOpen()) {
+        // Our main menu: a real pad navigates it; the game sees a neutral pad (the motion controllers' and a real pad's).
+        if (result == ERROR_SUCCESS) {
+            mevr::host::main_menu::NotePad(state->Gamepad);
+        }
+        std::lock_guard lock(gPadMutex);
+        XINPUT_GAMEPAD const neutral{};
+        if (std::memcmp(&neutral, &gLastPad, sizeof neutral) != 0) {
+            gLastPad = neutral;
+            ++gPacket;
+        }
+        state->dwPacketNumber = gPacket;
+        state->Gamepad = neutral;
+        return ERROR_SUCCESS;
+    }
+#endif
     if (mevr::host::calibration::Active()) {
         // The guided calibration: the game sees a neutral pad (the motion controllers' and a real pad's alike).
         std::lock_guard lock(gPadMutex);

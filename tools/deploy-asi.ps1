@@ -31,6 +31,8 @@ if ($Remove) {
     }
     $fontsDir = Join-Path $asiDir 'fonts'
     if (Test-Path $fontsDir) { Remove-Item $fontsDir -Recurse -Confirm:$false; Write-Output "Removed $fontsDir" }
+    $menuDir = Join-Path $asiDir 'menu'
+    if (Test-Path $menuDir) { Remove-Item $menuDir -Recurse -Confirm:$false; Write-Output "Removed $menuDir" }
     return
 }
 
@@ -75,6 +77,12 @@ $fontsDir = Join-Path $asiDir 'fonts'
 New-Item -ItemType Directory -Force $fontsDir | Out-Null
 Copy-Item (Join-Path $PSScriptRoot '..\third_party\fonts\*') $fontsDir -Force
 Write-Output "Fonts: $fontsDir"
+# Our VR main menu's document and styles (assets/menu: RmlUi .rml/.rcss, research/28), next to the fonts. The menu
+# reloads them within a second of a change; [Menu] assets in <GAME>MEVR.ini can point at the repo's folder instead.
+$menuDir = Join-Path $asiDir 'menu'
+New-Item -ItemType Directory -Force $menuDir | Out-Null
+Copy-Item (Join-Path $PSScriptRoot '..\assets\menu\*') $menuDir -Force
+Write-Output "Menu: $menuDir"
 # LE1 runs Halcyon's renderer, which reads MELEVR.ini next to our ASI. Install what its release
 # package ships (reference/MassEffect1-VR/release/MELEVR.ini): the mode and resolutions only, so
 # every other setting is Halcyon's tuned code default. Not src/halcyon/le1/runtime/MELEVR.ini: that
