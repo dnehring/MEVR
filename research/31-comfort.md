@@ -163,6 +163,9 @@ Comfort vignette, Vignette when, Vignette strength (10-100%), Walk toward. "Wher
 
 - **The pawn's SetRotation in combat:** if its mesh transform only updates in the game's next tick, the arms lag
   one frame after a snap in combat (the log line says). Explore isn't affected (the pawn doesn't turn).
+- **"The pawn faces the controller's way" is a 2-degree test:** a combat stance whose pawn yaw sits further from
+  ControlRotation isn't turned by us, and the game's `UpdateRotation` turns it a tick later: a one-frame swing in
+  combat. The heartbeat's "the pawn turned with it N times" staying 0 while snapping with a gun drawn says so.
 - **A camera mode that eases its yaw** would make a snap a fast turn; none is known on foot (the zoom snap is
   dropped by the level camera).
 - **Smooth turning feels different from the game's** (no acceleration, the same rate in every mode). `turn = game`
