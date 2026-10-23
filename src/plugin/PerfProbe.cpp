@@ -719,6 +719,10 @@ namespace MELEVR::MevrBridge {
 
 std::uint32_t g_perfDraws = 0;
 
+bool PerEyeViewState() noexcept {
+    return mevr::host::render_levers::PerEyeViewState();
+}
+
 bool EarlyFrameWait() noexcept {
     static std::wstring path;
     static std::uint64_t nextReadMs = 0;

@@ -277,6 +277,12 @@ extern std::uint32_t g_perfDraws;
 // ASI\LE1MEVR.ini, default 1, re-read once a second (0: upstream's order).
 bool EarlyFrameWait() noexcept;
 
+// Render thread, per Stereo 2 pass: whether gameplay too renders each eye through its own FSceneViewState (Halcyon
+// does it in cine only). With one shared state the second eye's "previous frame" occlusion query is the first eye's
+// of the same frame, still on the GPU, and the engine spins for it: 1.3-1.6 ms a frame at a light spot (research/32).
+// [Performance] perEyeViewState in ASI\LE1MEVR.ini, default 0, re-read once a second.
+bool PerEyeViewState() noexcept;
+
 // ---- Colour correction of the eye images (src/plugin/Colour.cpp, research/27) ---------------------------------
 // Present thread. Neutral (the default for anything but a streamed Quest) changes nothing: Halcyon's own shaders,
 // its raw copy.

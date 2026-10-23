@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cctype>
 #include <cstring>
 #include <filesystem>
 #include <format>
@@ -784,13 +785,28 @@ HookEntry const kHooks[] = {
     {kCSSetUnorderedAccessViews, reinterpret_cast<void*>(&CSSetUnorderedAccessViewsHook)},
 };
 
-bool InOurModule(void const* address) {
-    HMODULE ours = nullptr, theirs = nullptr;
-    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-        reinterpret_cast<LPCWSTR>(&InOurModule), &ours);
-    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-        static_cast<LPCWSTR>(address), &theirs);
-    return ours != nullptr && ours == theirs;
+// The file name (lower case) of the module an address lies in; "" for none (a heap or a hook library's trampoline).
+std::string ModuleNameOf(void const* address) {
+    HMODULE module = nullptr;
+    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            static_cast<LPCWSTR>(address), &module) || module == nullptr) {
+        return {};
+    }
+    wchar_t path[MAX_PATH]{};
+    DWORD const n = GetModuleFileNameW(module, path, MAX_PATH);
+    if (n == 0) {
+        return {};
+    }
+    std::wstring name(path, n);
+    std::size_t const slash = name.find_last_of(L"\\/");
+    if (slash != std::wstring::npos) {
+        name.erase(0, slash + 1);
+    }
+    std::string out;
+    for (wchar_t const c : name) {
+        out += static_cast<char>(c < 128 ? std::tolower(static_cast<int>(c)) : '?');
+    }
+    return out;
 }
 
 // ---- The substitution: first-eye view bytes -> second-eye view bytes, by 16-byte chunk -------------------------
@@ -1224,14 +1240,15 @@ bool Attach(ID3D11DeviceContext* context) {
         return false;
     }
     void** const vtable = *reinterpret_cast<void***>(context);
-    // Halcyon's draw hooks (d3d_capture) must already sit in the vtable so the recorder sees the game's calls and
-    // the replay runs through them. They go in at the first Present; we're called from a Present's end.
-    if (!InOurModule(vtable[kDrawIndexed])) {
-        if (gAttachLogged.exchange(1, std::memory_order_relaxed) == 0) {
-            log::Info("draw replay: waiting for Halcyon's draw hooks before hooking the context");
-        }
-        return false;
-    }
+    // Halcyon's draw hooks (d3d_capture) sit below ours, so the recorder sees the game's calls and the replay runs
+    // through them: they go in when the swapchain is captured, before any Present, and we're called from a
+    // Present's end. They can't be seen in this vtable, though: on 2026-10-23 its DrawIndexed slot still held
+    // d3d11's own entry with Halcyon's hooks installed and working (an overlay, the EA app's igo64.dll, had given
+    // the context a private copy of the table before Halcyon patched the original; Halcyon's inline hooks on the
+    // d3d11 entries carry its capture). So no waiting on the slot: whatever it holds, our entries go above it and
+    // the calls pass down through it.
+    std::string const occupant = ModuleNameOf(vtable[kDrawIndexed]);
+    log::Info("draw replay: DrawIndexed's slot held an entry in {}", occupant.empty() ? "no module (a trampoline)" : occupant);
     DWORD old = 0;
     if (!VirtualProtect(vtable, kSlots * sizeof(void*), PAGE_READWRITE, &old)) {
         log::Warn("draw replay: VirtualProtect on the context's vtable failed ({}); off", GetLastError());

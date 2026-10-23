@@ -16,6 +16,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <cwchar>
 #include <format>
 #include <string>
 #include <vector>
@@ -32,6 +33,12 @@ namespace {
 constexpr std::uintptr_t kSceneRenderRva = 0x76EE20;
 constexpr std::uintptr_t kCommanderCommandRva = 0x8C34C0;
 constexpr std::uintptr_t kUmbraResolveStartRva = 0x1795D40;
+// FD3D11DynamicRHI::GetQueryData(this, query, out, size, bWait) (Ghidra, 2026-10-23): with bWait it polls GetData
+// until the result is ready or 0.5 s passed. UE3's per-primitive occlusion asks for "last frame's" query with
+// bWait; in Stereo 2 the second eye's "last frame" is this frame's first eye, still on the GPU (1.3 ms behind), so
+// the second render spins for it: 1.3-1.6 ms a frame at a lighter spot, 0.5 at the heaviest (the fake-headset
+// measurements). ue3QueryWait = 0 clears bWait in a frame's second render: an unready query counts as visible.
+constexpr std::uintptr_t kGetQueryDataRva = 0x9A04B0;
 
 constexpr int kSlots = 6;  // render places tracked per frame (the last collects the rest)
 
@@ -63,17 +70,26 @@ constexpr std::size_t kViewStride = 0x12F0;
 struct ByteRange {
     std::size_t begin, end;
 };
-constexpr ByteRange kViewPlainRanges[] = {{0x90, 0x140}, {0x190, 0x330}, {0x480, 0x4B0}, {0x4C0, 0x4D0}};
+// The word at +0x8C differs between a frame's two eye passes (the fake-headset run, 2026-10-23: the only
+// difference the pairing test found), so it goes with the per-pass values.
+constexpr ByteRange kViewPlainRanges[] = {{0x8C, 0x140}, {0x190, 0x330}, {0x480, 0x4B0}, {0x4C0, 0x4D0}};
+constexpr std::size_t kViewCompareEnd = 0x8C;  // the view block compared for compatibility: +0x60 to here
 
 using tSceneRender = void(void* renderer);
 using tDeleteRenderer = void*(void* renderer, std::uint64_t flags);
 using tDpgLightTargets = void(void* renderer, int dpg);
 using tCommand = void(void* commander, unsigned code);
+using tGetQueryData = int(void* rhi, void* query, void* out, unsigned size, int wait);
 
 tSceneRender* gSceneRenderOrig = nullptr;      // written before the hook goes live (core/Hook)
 tDeleteRenderer* gDeleteRendererOrig = nullptr;
 tDpgLightTargets* gDpgLightTargetsOrig = nullptr;
 tCommand* gCommandOrig = nullptr;
+tGetQueryData* gGetQueryDataOrig = nullptr;
+bool gQueryDataHooked = false;
+std::atomic<int> gUe3QueryWait{1};  // 1 the game's own; 0 a frame's second render never waits for a query result
+std::atomic<std::uint64_t> gQueryWaitsSkipped{0};  // reads that would have waited, this period
+std::atomic<int> gPerEyeViewState{0};  // 1: Halcyon renders each Stereo 2 eye through its own view state in gameplay too
 std::uint8_t* gExe = nullptr;
 bool gHooked = false;
 bool gShareHooked = false;
@@ -92,6 +108,13 @@ std::atomic<void*> gKeepCandidate{nullptr};  // the renderer whose deletion to h
 std::atomic<DWORD> gRenderThread{0};
 void* gKept = nullptr;  // a finished renderer kept for the next compatible render
 std::atomic<std::uint64_t> gShared{0}, gShareMismatches{0}, gShareUnused{0}, gShareExceptions{0};
+// Why a first render wasn't kept (diagnostics, 2026-10-23: the first VR run kept none): ineligible renders and the
+// last one's fields; renders finished without the deleter seeing the candidate; the deleter's calls and those on
+// the candidate with other flags or from another thread (the last such flags).
+std::atomic<std::uint64_t> gShareIneligible{0}, gShareNotKept{0}, gDeleteCalls{0}, gDeleteCandidateMissed{0};
+std::atomic<int> gLastIneligible5C{0}, gLastIneligibleViews{0}, gLastIneligibleFlags{0};
+std::atomic<std::uint64_t> gLastMissedFlags{0};
+std::atomic<int> gAttachFailures{0};  // Presents with a pending eye diff the recorder couldn't attach for
 
 // Render thread.
 std::atomic<int> gRenderIndex{0};  // scene renders so far this frame
@@ -148,26 +171,45 @@ std::uint8_t* View(std::uint8_t* renderer, int index) {
     return Field<std::uint8_t*>(renderer, 0x60) + static_cast<std::size_t>(index) * kViewStride;
 }
 
-// A renderer SceneRenderB takes down the Umbra branch on (no hit proxies, no wireframe), with views.
+// A renderer SceneRenderB takes down the Umbra branch on (no hit proxies), with views. Show flag 8 was excluded
+// as "wireframe" until the first VR run (2026-10-23) showed it set on every gameplay render: not that bit. A
+// wireframe render can't pair anyway (Compatible wants the same show flags).
 bool Eligible(std::uint8_t* renderer) {
     int const views = Field<int>(renderer, 0x68);
-    return Field<int>(renderer, 0x5C) != 0 && views > 0 && views <= 4 && !ShowFlag(renderer, 0x33) &&
-        !ShowFlag(renderer, 8);
+    return Field<int>(renderer, 0x5C) != 0 && views > 0 && views <= 4 && !ShowFlag(renderer, 0x33);
 }
+
+// Why the last pairing was refused (diagnostics, 2026-10-23: the first VR run refused every pair): a bit per test,
+// and for the view block at +0x60 the mask of its 4-byte words that differed.
+std::atomic<unsigned> gLastMismatch{0}, gLastMismatchWords{0};
 
 // The same scene, target, flags and views (count, view state, rectangles): only the matrices differ.
 bool Compatible(std::uint8_t* first, std::uint8_t* second) {
-    if (first == second || !Eligible(second) || Field<void*>(first, 0x00) != Field<void*>(second, 0x00) ||
-        Field<void*>(first, 0x18) != Field<void*>(second, 0x18) ||
-        std::memcmp(first + 0x28, second + 0x28, 12) != 0 || Field<int>(first, 0x68) != Field<int>(second, 0x68)) {
-        return false;
-    }
-    for (int i = 0; i < Field<int>(first, 0x68); ++i) {
-        std::uint8_t* const a = View(first, i);
-        std::uint8_t* const b = View(second, i);
-        if (Field<void*>(a, 0x08) != Field<void*>(b, 0x08) || std::memcmp(a + 0x60, b + 0x60, 0x30) != 0) {
-            return false;
+    unsigned why = 0;
+    if (first == second) why |= 1;
+    if (!Eligible(second)) why |= 2;
+    if (Field<void*>(first, 0x00) != Field<void*>(second, 0x00)) why |= 4;
+    if (Field<void*>(first, 0x18) != Field<void*>(second, 0x18)) why |= 8;
+    if (std::memcmp(first + 0x28, second + 0x28, 12) != 0) why |= 16;
+    if (Field<int>(first, 0x68) != Field<int>(second, 0x68)) why |= 32;
+    if (why == 0) {
+        for (int i = 0; i < Field<int>(first, 0x68); ++i) {
+            std::uint8_t* const a = View(first, i);
+            std::uint8_t* const b = View(second, i);
+            if (Field<void*>(a, 0x08) != Field<void*>(b, 0x08)) why |= 64;
+            unsigned words = 0;
+            for (unsigned w = 0; w < (kViewCompareEnd - 0x60) / 4; ++w) {
+                if (std::memcmp(a + 0x60 + w * 4, b + 0x60 + w * 4, 4) != 0) words |= 1u << w;
+            }
+            if (words != 0) {
+                why |= 128;
+                gLastMismatchWords.store(words, std::memory_order_relaxed);
+            }
         }
+    }
+    if (why != 0) {
+        gLastMismatch.store(why, std::memory_order_relaxed);
+        return false;
     }
     return true;
 }
@@ -275,34 +317,24 @@ void ReleaseKept() {
     }
 }
 
-// The second eye on the kept renderer: the engine's passes (mode 1), the draw replay (mode 2), or, for the eye
-// diff, the engine's passes recorded for the comparison. 0 done.
-int SecondEye(std::uint8_t* first, int mode, bool diff, draw_replay::ViewFields const& before,
-    draw_replay::ViewFields const& after) {
-    if (diff) {
-        draw_replay::BeginRecording(1);
-        int const rc = ReplaySEH(first);
-        draw_replay::EndRecording();
-        std::string const tag = draw_replay::TakeDiffTag();
-        if (rc == 0) {
-            draw_replay::WriteDiff(before, after, tag);
-        }
-        return rc;
-    }
-    std::string why;
-    if (mode == 2 && draw_replay::Attached() && !gReplayFailed.load(std::memory_order_relaxed) &&
-        draw_replay::TailReplayable(&why)) {
-        int const rc = ReplayDrawsSEH(first, before, after);
-        if (rc == 0) {
-            gReplayed.fetch_add(1, std::memory_order_relaxed);
-            return 0;
-        }
-        gReplayFailed.store(true, std::memory_order_relaxed);
-        log::Warn("render levers: the draw replay failed ({}); the engine's passes render the second eye for the rest of "
-            "the session", rc);
-    }
+// The second eye on the kept renderer: the draw replay (mode 2: 0 done, 1 an exception, 2 nothing to replay this
+// frame, so the game renders the eye itself), or the engine's passes (mode 1: 0 done, 1 an exception). Mode 1
+// left the game thread blocked inside Umbra on its first real run (2026-10-23, fake-headset session: the Umbra
+// base pass outside the commander's resolve bracket, by the stacks); it stays opt-in until that's read.
+int SecondEye(std::uint8_t* first, int mode, draw_replay::ViewFields const& before, draw_replay::ViewFields const& after) {
     if (mode == 2) {
+        std::string why;
+        if (draw_replay::Attached() && !gReplayFailed.load(std::memory_order_relaxed) && draw_replay::TailReplayable(&why)) {
+            int const rc = ReplayDrawsSEH(first, before, after);
+            if (rc == 0) {
+                gReplayed.fetch_add(1, std::memory_order_relaxed);
+                return 0;
+            }
+            gReplayFailed.store(true, std::memory_order_relaxed);
+            log::Warn("render levers: the draw replay failed ({}); the game renders both eyes for the rest of the session", rc);
+        }
         gReplayFallbacks.fetch_add(1, std::memory_order_relaxed);
+        return 2;
     }
     return ReplaySEH(first);
 }
@@ -315,6 +347,18 @@ bool ShareOrKeep(std::uint8_t* renderer, int mode, bool diff) {
         auto* const first = static_cast<std::uint8_t*>(gKept);
         gKept = nullptr;
         if (Compatible(first, renderer)) {
+            if (diff) {
+                // The eye diff: both eyes rendered by the game as usual, each recorded, so the share path's own
+                // faults can't colour the comparison; the first eye's stream was recorded around its render.
+                draw_replay::ViewFields const a = CaptureViews(first);
+                draw_replay::ViewFields const b = CaptureViews(renderer);
+                gDeleteRendererOrig(first, 1);
+                draw_replay::BeginRecording(1);
+                gSceneRenderOrig(renderer);
+                draw_replay::EndRecording();
+                draw_replay::WriteDiff(a, b, draw_replay::TakeDiffTag());
+                return true;
+            }
             draw_replay::ViewFields before, after;
             if (recorder) {
                 before = CaptureViews(first);
@@ -323,7 +367,12 @@ bool ShareOrKeep(std::uint8_t* renderer, int mode, bool diff) {
             if (recorder) {
                 after = CaptureViews(first);
             }
-            if (SecondEye(first, mode, diff, before, after) != 0) {
+            int const rc = SecondEye(first, mode, before, after);
+            if (rc == 2) {
+                gDeleteRendererOrig(first, 1);  // nothing to replay this frame: the game renders this eye itself
+                return false;
+            }
+            if (rc != 0) {
                 // Both renderers may be half-way through anything: leak them rather than free them.
                 gShareFailed.store(true, std::memory_order_relaxed);
                 gShareExceptions.fetch_add(1, std::memory_order_relaxed);
@@ -338,6 +387,10 @@ bool ShareOrKeep(std::uint8_t* renderer, int mode, bool diff) {
         gDeleteRendererOrig(first, 1);
     }
     if (!Eligible(renderer)) {
+        gShareIneligible.fetch_add(1, std::memory_order_relaxed);
+        gLastIneligible5C.store(Field<int>(renderer, 0x5C), std::memory_order_relaxed);
+        gLastIneligibleViews.store(Field<int>(renderer, 0x68), std::memory_order_relaxed);
+        gLastIneligibleFlags.store((ShowFlag(renderer, 0x33) ? 1 : 0) | (ShowFlag(renderer, 8) ? 2 : 0), std::memory_order_relaxed);
         return false;
     }
     gKeepCandidate.store(renderer, std::memory_order_relaxed);  // SceneRenderB's delete at its end: DeleteRendererHook
@@ -349,6 +402,9 @@ bool ShareOrKeep(std::uint8_t* renderer, int mode, bool diff) {
         draw_replay::EndRecording();
     }
     gKeepCandidate.store(nullptr, std::memory_order_relaxed);
+    if (gKept == nullptr) {
+        gShareNotKept.fetch_add(1, std::memory_order_relaxed);  // the render ended without its deleter's call
+    }
     return true;
 }
 
@@ -362,10 +418,14 @@ void DpgLightTargetsHook(void* renderer, int dpg) {
 }
 
 void* DeleteRendererHook(void* renderer, std::uint64_t flags) {
-    if (renderer != nullptr && renderer == gKeepCandidate.load(std::memory_order_relaxed) && (flags & 1) != 0 &&
-        GetCurrentThreadId() == gRenderThread.load(std::memory_order_relaxed)) {
-        gKept = renderer;
-        return renderer;
+    gDeleteCalls.fetch_add(1, std::memory_order_relaxed);
+    if (renderer != nullptr && renderer == gKeepCandidate.load(std::memory_order_relaxed)) {
+        if ((flags & 1) != 0 && GetCurrentThreadId() == gRenderThread.load(std::memory_order_relaxed)) {
+            gKept = renderer;
+            return renderer;
+        }
+        gDeleteCandidateMissed.fetch_add(1, std::memory_order_relaxed);
+        gLastMissedFlags.store(flags, std::memory_order_relaxed);
     }
     return gDeleteRendererOrig(renderer, flags);
 }
@@ -419,6 +479,16 @@ void CommandHook(void* commander, unsigned code) {
         while (ticks > seen && !gCounters.umbraMaxReadTicks[slot].compare_exchange_weak(seen, ticks, std::memory_order_relaxed)) {
         }
     }
+}
+
+// FD3D11DynamicRHI::GetQueryData: in a frame's second scene render, with ue3QueryWait = 0, the read never waits
+// (the engine then treats the primitive as visible, as it does for any unready query without the wait).
+int GetQueryDataHook(void* rhi, void* query, void* out, unsigned size, int wait) {
+    if (wait != 0 && t_renderIndex >= 1 && gUe3QueryWait.load(std::memory_order_relaxed) == 0) {
+        gQueryWaitsSkipped.fetch_add(1, std::memory_order_relaxed);
+        wait = 0;
+    }
+    return gGetQueryDataOrig(rhi, query, out, size, wait);
 }
 
 std::wstring const& IniPath() {
@@ -512,6 +582,7 @@ struct Snapshot {
     std::array<std::uint64_t, kSlots> renderTicks{}, renders{}, umbraMaxReadTicks{};
     std::array<std::array<std::uint64_t, kUmbraParts>, kSlots> umbraTicks{}, umbraCalls{};
     std::uint64_t shared = 0, mismatches = 0, unused = 0, exceptions = 0;
+    std::uint64_t ineligible = 0, notKept = 0, deleteCalls = 0, candidateMissed = 0;
 };
 
 Snapshot Take() {
@@ -531,6 +602,10 @@ Snapshot Take() {
     s.mismatches = Get(gShareMismatches);
     s.unused = Get(gShareUnused);
     s.exceptions = Get(gShareExceptions);
+    s.ineligible = Get(gShareIneligible);
+    s.notKept = Get(gShareNotKept);
+    s.deleteCalls = Get(gDeleteCalls);
+    s.candidateMissed = Get(gDeleteCandidateMissed);
     return s;
 }
 
@@ -577,6 +652,28 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
         share = std::format("; sharePass: {} renders on the previous one's renderer, {} didn't match, {} kept "
             "renderers unused{}", now.shared - before.shared, now.mismatches - before.mismatches,
             now.unused - before.unused, now.exceptions != 0 ? "; OFF after an exception" : "");
+        if (now.mismatches != before.mismatches) {
+            share += std::format(" (last mismatch: tests 0x{:X} = {}{}{}{}{}{}{}{}; view words 0x{:X})",
+                gLastMismatch.load(std::memory_order_relaxed),
+                (gLastMismatch.load() & 1) ? "same renderer " : "", (gLastMismatch.load() & 2) ? "ineligible " : "",
+                (gLastMismatch.load() & 4) ? "scene " : "", (gLastMismatch.load() & 8) ? "target " : "",
+                (gLastMismatch.load() & 16) ? "show flags " : "", (gLastMismatch.load() & 32) ? "view count " : "",
+                (gLastMismatch.load() & 64) ? "view state " : "", (gLastMismatch.load() & 128) ? "view block +0x60" : "",
+                gLastMismatchWords.load(std::memory_order_relaxed));
+        }
+        std::uint64_t const ineligible = now.ineligible - before.ineligible;
+        std::uint64_t const notKept = now.notKept - before.notKept;
+        if (ineligible != 0 || notKept != 0) {
+            share += std::format("; not kept: {} ineligible (last: +0x5C {}, {} views, show flags {}), {} finished without "
+                "the deleter's call ({} deleter calls, {} on the candidate with other flags or thread, last flags 0x{:X})",
+                ineligible, gLastIneligible5C.load(std::memory_order_relaxed), gLastIneligibleViews.load(std::memory_order_relaxed),
+                gLastIneligibleFlags.load(std::memory_order_relaxed), notKept, now.deleteCalls - before.deleteCalls,
+                now.candidateMissed - before.candidateMissed, gLastMissedFlags.load(std::memory_order_relaxed));
+        }
+    }
+    std::uint64_t const skipped = gQueryWaitsSkipped.exchange(0, std::memory_order_relaxed);
+    if (skipped != 0) {
+        share += std::format("; ue3QueryWait: {:.0f} query reads a frame didn't wait", static_cast<double>(skipped) / static_cast<double>(frames));
     }
     draw_replay::Stats const d = draw_replay::TakeStats();
     std::uint64_t const fallbacks = gReplayFallbacks.exchange(0, std::memory_order_relaxed);
@@ -619,6 +716,12 @@ bool Install(::LESDK::Initializer& init) {
     if (!gCommanderHooked) {
         log::Warn("render levers: commander hook failed; the Umbra resolve isn't timed and umbraQueryWait has no effect");
     }
+    auto* const getQueryData = init.ResolveTyped<tGetQueryData>(::LESDK::Address::FromOffset(kGetQueryDataRva));
+    gQueryDataHooked = getQueryData != nullptr &&
+        hook::Install(init, "FD3D11DynamicRHI::GetQueryData", getQueryData, &GetQueryDataHook, gGetQueryDataOrig);
+    if (!gQueryDataHooked) {
+        log::Warn("render levers: GetQueryData hook failed; ue3QueryWait has no effect");
+    }
     auto* const lightTargets = init.ResolveTyped<tDpgLightTargets>(::LESDK::Address::FromOffset(kDpgLightTargetsRva));
     gReplayHooked = gShareHooked && lightTargets != nullptr &&
         hook::Install(init, "FSceneRenderer::RenderDpgLightTargets", lightTargets, &DpgLightTargetsHook, gDpgLightTargetsOrig);
@@ -642,8 +745,46 @@ void Tick() {
     if (now >= nextReadMs) {
         nextReadMs = now + 1000;
         std::wstring const& path = IniPath();
-        int const queryWait = path.empty() ? 1 : (GetPrivateProfileIntW(L"Performance", L"umbraQueryWait", 1, path.c_str()) != 0 ? 1 : 0);
-        int const pCores = path.empty() ? 0 : (GetPrivateProfileIntW(L"Performance", L"pCoresOnly", 0, path.c_str()) != 0 ? 1 : 0);
+        // An empty value (`sharePass=`) is the default, not 0: GetPrivateProfileInt would read it as 0.
+        auto const readInt = [&](wchar_t const* key, int fallback) {
+            if (path.empty()) {
+                return fallback;
+            }
+            wchar_t buffer[32]{};
+            DWORD const n = GetPrivateProfileStringW(L"Performance", key, L"", buffer, 32, path.c_str());
+            if (n == 0) {
+                return fallback;
+            }
+            wchar_t* end = nullptr;
+            long const value = std::wcstol(buffer, &end, 10);
+            return end == buffer ? fallback : static_cast<int>(value);
+        };
+        static int perEye = -1;
+        int const perEyeRead = readInt(L"perEyeViewState", 0) != 0 ? 1 : 0;
+        if (perEyeRead != perEye) {
+            perEye = perEyeRead;
+            gPerEyeViewState.store(perEyeRead, std::memory_order_relaxed);
+            log::Info("render levers: {} ([Performance] perEyeViewState = {})",
+                perEyeRead != 0 ? "each Stereo 2 eye renders through its own scene view state in gameplay (its own "
+                                  "occlusion history: no spin for the other eye's queries)"
+                                : "both eyes render through the game's one scene view state (Halcyon's own; per-eye "
+                                  "states in cine only)",
+                perEyeRead);
+        }
+        static int ue3QueryWait = -1;
+        int const ue3Wait = readInt(L"ue3QueryWait", 1) != 0 ? 1 : 0;
+        if (ue3Wait != ue3QueryWait) {
+            ue3QueryWait = ue3Wait;
+            gUe3QueryWait.store(ue3Wait, std::memory_order_relaxed);
+            log::Info("render levers: {} ([Performance] ue3QueryWait = {}){}",
+                ue3Wait != 0 ? "the engine's occlusion reads wait for the GPU as the game does (a frame's second render "
+                               "spins for the first eye's queries)"
+                             : "a frame's second scene render never waits for an occlusion query result (an unready one "
+                               "counts as visible)",
+                ue3Wait, gQueryDataHooked ? "" : "; not hooked, so no effect");
+        }
+        int const queryWait = readInt(L"umbraQueryWait", 1) != 0 ? 1 : 0;
+        int const pCores = readInt(L"pCoresOnly", 0) != 0 ? 1 : 0;
         if (queryWait != umbraQueryWait) {
             umbraQueryWait = queryWait;
             gUmbraQueryWait.store(queryWait, std::memory_order_relaxed);
@@ -658,7 +799,7 @@ void Tick() {
             gPCoresOnly.store(pCores, std::memory_order_relaxed);
             ApplyAffinity(pCores != 0);
         }
-        int const shareRaw = path.empty() ? 0 : static_cast<int>(GetPrivateProfileIntW(L"Performance", L"sharePass", 0, path.c_str()));
+        int const shareRaw = readInt(L"sharePass", 0);
         int const share = shareRaw < 0 ? 0 : (shareRaw > 2 ? 2 : shareRaw);
         if (share != sharePass) {
             sharePass = share;
@@ -688,15 +829,28 @@ void OnPresentEnd(ID3D11DeviceContext* context) {
     ReleaseKept();  // a kept renderer never pairs across frames
     if (gReplayHooked && context != nullptr && !draw_replay::Attached() &&
         (gSharePass.load(std::memory_order_relaxed) == 2 || draw_replay::DiffPending())) {
-        draw_replay::Attach(context);  // once wanted; the hooks then stay
+        if (draw_replay::Attach(context)) {  // once wanted; the hooks then stay
+            gAttachFailures.store(0, std::memory_order_relaxed);
+        } else if (draw_replay::DiffPending() && gAttachFailures.fetch_add(1, std::memory_order_relaxed) + 1 >= 300) {
+            // About 3 s of Presents without the recorder: the request can't be served; drop it rather than keep it
+            // armed for the rest of the session (the reason is in the 'draw replay:' line above).
+            std::string const tag = draw_replay::TakeDiffTag();
+            gAttachFailures.store(0, std::memory_order_relaxed);
+            log::Warn("eye diff '{}': dropped, the draw recorder couldn't attach to the context", tag);
+        }
     }
     draw_replay::OnPresentEnd();
 }
 
+bool PerEyeViewState() {
+    return gPerEyeViewState.load(std::memory_order_relaxed) != 0;
+}
+
 std::string SettingsJson() {
-    return std::format("{{\"umbraQueryWait\": {}, \"pCoresOnly\": {}, \"sharePass\": {}, \"shareFailed\": {}, \"replayFailed\": {}, "
+    return std::format("{{\"umbraQueryWait\": {}, \"ue3QueryWait\": {}, \"perEyeViewState\": {}, \"pCoresOnly\": {}, \"sharePass\": {}, \"shareFailed\": {}, \"replayFailed\": {}, "
         "\"drawReplay\": {}, \"hooked\": {}}}",
-        gUmbraQueryWait.load(std::memory_order_relaxed), gPCoresOnly.load(std::memory_order_relaxed),
+        gUmbraQueryWait.load(std::memory_order_relaxed), gUe3QueryWait.load(std::memory_order_relaxed),
+        gPerEyeViewState.load(std::memory_order_relaxed), gPCoresOnly.load(std::memory_order_relaxed),
         gSharePass.load(std::memory_order_relaxed), gShareFailed.load(std::memory_order_relaxed) ? "true" : "false",
         gReplayFailed.load(std::memory_order_relaxed) ? "true" : "false", draw_replay::StatsJson(), gHooked ? "true" : "false");
 }

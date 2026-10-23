@@ -52,4 +52,8 @@ void OnPresentEnd(ID3D11DeviceContext* context);
 // {"umbraQueryWait": N, "pCoresOnly": N, "sharePass": N, ..., "hooked": bool}, for the perf probe's JSON.
 std::string SettingsJson();
 
+// [Performance] perEyeViewState: Halcyon renders each Stereo 2 eye through its own scene view state in gameplay
+// (MevrBridge::PerEyeViewState; research/32).
+bool PerEyeViewState();
+
 } // namespace mevr::host::render_levers

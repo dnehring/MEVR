@@ -19,6 +19,7 @@
 #include "logger.h"
 #include "d3d_capture.h"
 #include "le1_game.h"
+#include "mevr_bridge.h"   // [MEVR] PerEyeViewState
 #include "vr_config.h"
 
 using MELEVR::Logger::LogLine;
@@ -2327,7 +2328,10 @@ void PostProcessPerspectiveFsv(void* fsv, bool aerPrimaryView = false) noexcept
     // converges when perfectly still. Same defect class ME2's per-eye-state fix killed. Reuses the
     // Stereo-1 allocator + slots; pass0=left, pass1(replay)=right, CINE ONLY - outside cine the
     // game's own state is untouched and gameplay stays bit-identical. Knob-free ([CLEANVRCINE]).
-    if (g_sfrModeEnabled.load(std::memory_order_acquire) && SfrCineActive())
+    // [MEVR] perEyeViewState: the same per-eye states in gameplay too (research/32: with the shared state the
+    // second eye spins for the first eye's occlusion queries of the same frame; a state per eye makes each eye's
+    // "previous frame" its own, ready a frame later).
+    if (g_sfrModeEnabled.load(std::memory_order_acquire) && (SfrCineActive() || MELEVR::MevrBridge::PerEyeViewState()))
     {
         void* eyeState = replayPhase ? EnsureAllocatedViewStateSlot(g_stereoViewStateRight, "right")
                                      : EnsureAllocatedViewStateSlot(g_stereoViewStateLeft, "left");

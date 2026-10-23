@@ -61,7 +61,8 @@ try {
     }
 } finally {
     if ($original -eq $absent) {
-        [void][MevrIni.Native]::WritePrivateProfileString('Performance', $Key, $null, $ini)
+        # A real NULL deletes the key; PowerShell's $null would arrive as "" and leave `key=` behind (2026-10-23).
+        [void][MevrIni.Native]::WritePrivateProfileString('Performance', $Key, [NullString]::Value, $ini)
     } else {
         [void][MevrIni.Native]::WritePrivateProfileString('Performance', $Key, $original, $ini)
     }
