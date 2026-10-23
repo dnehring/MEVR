@@ -2,7 +2,8 @@
 // function, from outside the game (no redeploy). Suspends the thread for each sample (microseconds), walks
 // its stack with dbghelp, and prints the top frames and what is on the stack. Names come from exports and
 // our PDB; the game's exe has none (offsets).
-// Usage: mevr-stack-sampler <pid> <tid> <seconds> [intervalUs]; tools/sample-render-thread.ps1 finds both.
+// Usage: mevr-stack-sampler <pid> <tid> <seconds> [intervalUs] [raw-stacks.txt]; tools/sample-render-thread.ps1
+// finds both and groups the raw stacks by function (tools/stack-functions.py).
 #include <Windows.h>
 #include <DbgHelp.h>
 #include <timeapi.h>
@@ -14,7 +15,7 @@
 #include <algorithm>
 
 int main(int argc, char** argv) {
-    if (argc < 4) { std::printf("usage: sampler pid tid seconds [intervalUs]\n"); return 1; }
+    if (argc < 4) { std::printf("usage: mevr-stack-sampler pid tid seconds [intervalUs] [raw-stacks.txt]\n"); return 1; }
     DWORD pid = std::strtoul(argv[1], nullptr, 10), tid = std::strtoul(argv[2], nullptr, 10);
     double seconds = std::atof(argv[3]);
     int intervalUs = argc > 4 ? std::atoi(argv[4]) : 1000;
@@ -36,7 +37,7 @@ int main(int argc, char** argv) {
             STACKFRAME64 sf{}; sf.AddrPC.Offset = ctx.Rip; sf.AddrPC.Mode = AddrModeFlat;
             sf.AddrStack.Offset = ctx.Rsp; sf.AddrStack.Mode = AddrModeFlat;
             sf.AddrFrame.Offset = ctx.Rbp; sf.AddrFrame.Mode = AddrModeFlat;
-            for (int i = 0; i < 24; ++i) {
+            for (int i = 0; i < 64; ++i) {   // deep enough to keep the outer callers (24 cut them off)
                 if (!StackWalk64(IMAGE_FILE_MACHINE_AMD64, proc, th, &sf, &ctx, nullptr, SymFunctionTableAccess64, SymGetModuleBase64, nullptr)) break;
                 if (sf.AddrPC.Offset == 0) break;
                 st.push_back(sf.AddrPC.Offset);
@@ -73,5 +74,22 @@ int main(int argc, char** argv) {
     print("top frame by module", topMod, 12);
     print("top frame", top, 30);
     print("on the stack (inclusive)", incl, 45);
+    // The raw stacks (one sample per line, innermost first, "module+0xoffset"), for tools/stack-functions.py.
+    if (argc > 5) {
+        FILE* out = nullptr;
+        if (fopen_s(&out, argv[5], "w") == 0 && out != nullptr) {
+            for (auto& st : stacks) {
+                for (std::size_t i = 0; i < st.size(); ++i) {
+                    IMAGEHLP_MODULE64 m{}; m.SizeOfStruct = sizeof(m);
+                    bool const known = SymGetModuleInfo64(proc, st[i], &m) != FALSE;
+                    std::fprintf(out, "%s%s+0x%llX", i ? ";" : "", known ? m.ModuleName : "?",
+                        static_cast<unsigned long long>(known ? st[i] - m.BaseOfImage : st[i]));
+                }
+                std::fprintf(out, "\n");
+            }
+            std::fclose(out);
+            std::printf("\nraw stacks: %s\n", argv[5]);
+        }
+    }
     return 0;
 }

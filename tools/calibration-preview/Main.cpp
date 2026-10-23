@@ -10,6 +10,8 @@
 //
 //   panel-<screen>.png      the instruction panel over a dark backdrop, one per screen
 //   board.png               the target board (the second target current, the first taken)
+//   board-hint-*.png        the board with the reason an aim isn't captured, across its top
+//   marker.png              the ring at each hand's grab point
 //   orb.png, orb-active.png, dot.png   the small pictures, over grey
 //   eye-<scene>.png         the right eye's view of a scene: the quads over a simple room (a floor grid)
 
@@ -137,6 +139,12 @@ bool Save(fs::path const& path, composite::Image const& image) {
     bool const ok = mevr::png::Write(path, image.width, image.height, image.pixels.data(), &error);
     std::printf("%s: %s\n", path.filename().string().c_str(), ok ? "written" : error.c_str());
     return ok;
+}
+
+// About a unit axis by an angle (radians).
+XrQuaternionf AxisRotation(XrVector3f axis, float angle) {
+    float const s = std::sin(angle * 0.5f);
+    return {axis.x * s, axis.y * s, axis.z * s, std::cos(angle * 0.5f)};
 }
 
 // ---- The eye's view -------------------------------------------------------------------------------------
@@ -299,29 +307,58 @@ int main(int argc, char** argv) {
         v.progress = -1.0f;
         shots.push_back({"pistol-grab", v});
     }
+    std::size_t const pistolGrabShot = shots.size() - 1;
     {
         draw::PanelView v = base(draw::Screen::PistolAim);
+        v.status = "Hold still";
         v.targets = 3;
-        v.targetsDone = 1;
+        v.targetTaken[0] = true;
         v.targetCurrent = 1;
         v.progress = 0.4f;
         v.flash = 0.0f;
         shots.push_back({"pistol-aim", v});
     }
-    {
+    std::size_t const pistolAimShot = shots.size() - 1;
+    // The rifle's aims: why nothing is captured (orange), the hold, a single target to aim again, all three again.
+    auto rifleAim = [&](char const* name, char const* status, bool warn, float progress, bool t0, bool t1, bool t2, int current,
+                        char const* message) {
         draw::PanelView v = base(draw::Screen::RifleAim);
-        v.status = "Aim at the lit target";
+        v.status = status;
+        v.statusWarn = warn;
         v.targets = 3;
-        v.targetsDone = 0;
-        v.targetCurrent = 0;
-        v.progress = 0.0f;
-        v.message = "Those three aims were 4.6 degrees apart: once more, please, the same way each time.";
-        v.warn = true;
-        shots.push_back({"rifle-aim-again", v});
+        v.targetTaken[0] = t0;
+        v.targetTaken[1] = t1;
+        v.targetTaken[2] = t2;
+        v.targetCurrent = current;
+        v.progress = progress;
+        if (message != nullptr) {
+            v.message = message;
+            v.warn = true;
+        }
+        shots.push_back({name, v});
+    };
+    rifleAim("rifle-aim-look", "Look at target 1", true, 0.0f, false, false, false, 0, nullptr);
+    rifleAim("rifle-aim-shoulder", "Bring the stock to your shoulder: right hand by your cheek", true, 0.0f, true, false, false, 1, nullptr);
+    rifleAim("rifle-aim-point", "Point the rifle at target 2: it's 31 degrees off", true, 0.0f, true, false, false, 1, nullptr);
+    rifleAim("rifle-aim-grip", "Squeeze the left grip again", true, 0.0f, true, false, false, 1, nullptr);
+    rifleAim("rifle-aim-hold", "Hold still: your left hand moved", false, 0.35f, true, false, false, 1, nullptr);
+    rifleAim("rifle-aim-redo-one", "Hold still", false, 0.6f, true, false, true, 1,
+        "Aim 2 was 6.1 degrees off the other two: aim it again.");
+    rifleAim("rifle-aim-again", "Look at target 1", true, 0.0f, false, false, false, 0,
+        "Those aims were 7.4 degrees apart (even the closest two 5.2 degrees): all three again, the same way each time.");
+    std::size_t const rifleAimShot = shots.size() - 2;  // redo-one, for the eye view
+    {
+        draw::PanelView v = base(draw::Screen::RifleGrab);
+        v.status = "Left hand: the orb is 27 cm away (the ring is your hand)";
+        v.statusWarn = true;
+        v.progress = -1.0f;
+        shots.push_back({"rifle-grab-reach", v});
     }
+    std::size_t const rifleGrabShot = shots.size() - 1;
     {
         draw::PanelView v = base(draw::Screen::Check);
-        v.summary = {"Aiming eye: right (measured)", "Pistol: three aims within 1.2 degrees", "Rifle: three aims within 0.9 degrees",
+        v.summary = {"Aiming eye: right (measured)", "Pistol: three aims within 1.2 degrees",
+            "Rifle: two aims within 1.1 degrees (aim 3 left out, 6.4 degrees off)",
             "Eye height 1.68 m standing, 1.06 m crouched; arms 0.66 m, shoulders 0.39 m"};
         v.buttons = {draw::kRedoBody, draw::kRedoPistol, draw::kRedoRifle, draw::kRowBreak, draw::kSwitchEye, draw::kSave};
         v.pointer = true;
@@ -335,6 +372,7 @@ int main(int argc, char** argv) {
         v.hovered = draw::ButtonAt(v, v.pointerX, v.pointerY);
         shots.push_back({"check", v});
     }
+    std::size_t const checkShot = shots.size() - 1;
     {
         draw::PanelView v = base(draw::Screen::Saved);
         v.buttons.clear();
@@ -358,12 +396,31 @@ int main(int argc, char** argv) {
     composite::Image const boardImage =
         RenderCanvas(gpu, draw::kBoardSize, draw::kBoardSize, [&](ImDrawList* dl) { draw::DrawBoard(dl, gpu.fonts, board); });
     Save(out / "board.png", Over(boardImage, backdrop));
+    // The reasons on the board, where the player looks while aiming.
+    auto const boardWith = [&](char const* name, int current, bool done0, bool done2, char const* hint, bool warn) {
+        draw::BoardView b;
+        b.current = current;
+        b.done[0] = done0;
+        b.done[2] = done2;
+        b.hint = hint;
+        b.hintWarn = warn;
+        b.time = 0.3f;
+        composite::Image const image =
+            RenderCanvas(gpu, draw::kBoardSize, draw::kBoardSize, [&](ImDrawList* dl) { draw::DrawBoard(dl, gpu.fonts, b); });
+        Save(out / name, Over(image, backdrop));
+        return image;
+    };
+    boardWith("board-hint-shoulder.png", 1, true, false, "STOCK TO YOUR SHOULDER", true);
+    boardWith("board-hint-hold.png", 1, true, false, "HOLD STILL", false);
+    composite::Image const redoBoard = boardWith("board-hint-redo.png", 1, true, true, "AIM 2 AGAIN: 6 DEGREES OFF", true);
     draw::BoardView checkBoard;
     composite::Image const checkBoardImage =
         RenderCanvas(gpu, draw::kBoardSize, draw::kBoardSize, [&](ImDrawList* dl) { draw::DrawBoard(dl, gpu.fonts, checkBoard); });
     composite::Image const orb = Picture(draw::OrbPicture(false), draw::kOrbPixels);
     composite::Image const orbActive = Picture(draw::OrbPicture(true), draw::kOrbPixels);
     composite::Image const dot = Picture(draw::DotPicture(), draw::kDotPixels);
+    composite::Image const marker = Picture(draw::HandMarkerPicture(), draw::kMarkerPixels);
+    Save(out / "marker.png", Over(marker, grey));
     Save(out / "orb.png", Over(orb, grey));
     Save(out / "orb-active.png", Over(orbActive, grey));
     Save(out / "dot.png", Over(dot, grey));
@@ -384,7 +441,7 @@ int main(int argc, char** argv) {
     {
         XrVector3f const rest = cal::OrbRest(anchor, cal::Orb::Pistol);
         EyeView(out / "eye-pistol-grab.png", eye,
-            {panelLayer(4, false), {cal::Billboard(rest, eye.position), cal::kOrbSize, cal::kOrbSize, &orbActive}});
+            {panelLayer(pistolGrabShot, false), {cal::Billboard(rest, eye.position), cal::kOrbSize, cal::kOrbSize, &orbActive}});
     }
     // Aiming the pistol at the second target (upper left): looking at it, the orb in the hand on the line of sight.
     {
@@ -396,20 +453,43 @@ int main(int argc, char** argv) {
         XrVector3f const hand{eye.position.x + toTarget.x / length * 0.5f, eye.position.y + toTarget.y / length * 0.5f - 0.07f,
             eye.position.z + toTarget.z / length * 0.5f};
         EyeView(out / "eye-pistol-aim.png", look,
-            {boardLayer, panelLayer(5, true), {cal::Billboard(hand, look.position), cal::kOrbSize, cal::kOrbSize, &orbActive}});
+            {boardLayer, panelLayer(pistolAimShot, true), {cal::Billboard(hand, look.position), cal::kOrbSize, cal::kOrbSize, &orbActive}});
         EyeView(out / "eye-pistol-aim-ahead.png", eye,
-            {boardLayer, panelLayer(5, true), {cal::Billboard(hand, eye.position), cal::kOrbSize, cal::kOrbSize, &orbActive}});
+            {boardLayer, panelLayer(pistolAimShot, true), {cal::Billboard(hand, eye.position), cal::kOrbSize, cal::kOrbSize, &orbActive}});
     }
-    // Both rifle orbs waiting.
+    // Both rifle orbs waiting (placed for the user's measured arms), each hand's ring short of its orb; then the right
+    // orb in the hand and the left hand reaching.
     {
-        XrVector3f const rear = cal::OrbRest(anchor, cal::Orb::RifleRear);
-        XrVector3f const front = cal::OrbRest(anchor, cal::Orb::RifleFront);
-        EyeView(out / "eye-rifle-grab.png", eye,
-            {panelLayer(6, false), {cal::Billboard(rear, eye.position), cal::kOrbSize, cal::kOrbSize, &orbActive},
-                {cal::Billboard(front, eye.position), cal::kOrbSize, cal::kOrbSize, &orbActive}});
-        EyeView(out / "eye-rifle-held.png", eye,
-            {panelLayer(6, false), {cal::Billboard(rear, eye.position), cal::kOrbSize, cal::kOrbSize, &orb},
-                {cal::Billboard(front, eye.position), cal::kOrbSize, cal::kOrbSize, &orbActive}});
+        cal::BodyMeasures const body{0.73f, 0.29f};
+        XrVector3f const rear = cal::OrbRest(anchor, cal::Orb::RifleRear, body);
+        XrVector3f const front = cal::OrbRest(anchor, cal::Orb::RifleFront, body);
+        XrVector3f const rightHand{rear.x + 0.03f, rear.y - 0.03f, rear.z + 0.07f};   // 8 cm short of its orb
+        XrVector3f const leftHand{front.x - 0.06f, front.y - 0.05f, front.z + 0.18f};  // 20 cm short
+        XrPosef down = eye;  // looking down at the orbs
+        down.orientation = AxisRotation({1.0f, 0.0f, 0.0f}, -0.61f);
+        Layer const rightRing{cal::Billboard(rightHand, eye.position), cal::kHandMarkerSize, cal::kHandMarkerSize, &marker};
+        Layer const leftRing{cal::Billboard(leftHand, eye.position), cal::kHandMarkerSize, cal::kHandMarkerSize, &marker};
+        EyeView(out / "eye-rifle-grab.png", down,
+            {panelLayer(rifleGrabShot, false), {cal::Billboard(rear, eye.position), cal::kOrbSize, cal::kOrbSize, &orbActive},
+                {cal::Billboard(front, eye.position), cal::kOrbSize, cal::kOrbSize, &orbActive}, rightRing, leftRing});
+        EyeView(out / "eye-rifle-held.png", down,
+            {panelLayer(rifleGrabShot, false), {cal::Billboard(rightHand, eye.position), cal::kHeldOrbSize, cal::kHeldOrbSize, &orb},
+                {cal::Billboard(front, eye.position), cal::kOrbSize, cal::kOrbSize, &orbActive}, leftRing});
+    }
+    // Shouldering the rifle at the second target, aim 2 to redo: the board says so where the player looks.
+    {
+        XrPosef look = eye;
+        XrVector3f const target = cal::TargetPosition(anchor, 1);
+        look.orientation = *cal::LookRotation({target.x - eye.position.x, target.y - eye.position.y, target.z - eye.position.z});
+        Layer const board2{cal::BoardPose(anchor), cal::kBoardSize, cal::kBoardSize, &redoBoard};
+        XrVector3f const toTarget{target.x - eye.position.x, target.y - eye.position.y, target.z - eye.position.z};
+        float const length = std::sqrt(toTarget.x * toTarget.x + toTarget.y * toTarget.y + toTarget.z * toTarget.z);
+        XrVector3f const d{toTarget.x / length, toTarget.y / length, toTarget.z / length};
+        XrVector3f const rightHand{eye.position.x + 0.03f, eye.position.y - 0.10f, eye.position.z};
+        XrVector3f const leftHand{rightHand.x + d.x * 0.27f - 0.04f, rightHand.y + d.y * 0.27f - 0.04f, rightHand.z + d.z * 0.27f};
+        EyeView(out / "eye-rifle-aim.png", look,
+            {board2, panelLayer(rifleAimShot, true), {cal::Billboard(rightHand, look.position), cal::kHeldOrbSize, cal::kHeldOrbSize, &orb},
+                {cal::Billboard(leftHand, look.position), cal::kHeldOrbSize, cal::kHeldOrbSize, &orb}});
     }
     // The check: the dot on the centre target, the panel at the lower left.
     {
@@ -417,7 +497,7 @@ int main(int argc, char** argv) {
         XrVector3f const dotAt{target.x + 0.03f, target.y - 0.02f, target.z + 0.01f};
         Layer const checkLayer{cal::BoardPose(anchor), cal::kBoardSize, cal::kBoardSize, &checkBoardImage};
         EyeView(out / "eye-check.png", eye,
-            {checkLayer, panelLayer(7, true), {cal::Billboard(dotAt, eye.position), cal::kDotSize, cal::kDotSize, &dot}});
+            {checkLayer, panelLayer(checkShot, true), {cal::Billboard(dotAt, eye.position), cal::kDotSize, cal::kDotSize, &dot}});
     }
     // The prompt.
     EyeView(out / "eye-prompt.png", eye, {panelLayer(0, false)});

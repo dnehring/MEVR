@@ -23,6 +23,7 @@ inline constexpr unsigned kPanelHeight = 640;
 inline constexpr unsigned kBoardSize = 1024;   // the target board's canvas (square)
 inline constexpr unsigned kOrbPixels = 256;    // an orb's picture (square)
 inline constexpr unsigned kDotPixels = 128;    // the check dot's picture (square)
+inline constexpr unsigned kMarkerPixels = 128; // the hand marker's picture (square)
 
 enum ButtonId : int {
     kRowBreak = -1,  // in PanelView::buttons: the next button starts a new row
@@ -80,9 +81,10 @@ struct PanelView {
     std::string body;
     std::vector<std::string> summary;  // result rows (the check step)
     int targets = 0;              // target chips to show (the aiming steps: 3)
-    int targetsDone = 0;
+    bool targetTaken[3] = {};     // each target's aim is in (a redo opens one again)
     int targetCurrent = -1;
-    std::string status;           // what is missing (or "Hold still")
+    std::string status;           // what is missing (or "Hold still"): why nothing is being captured
+    bool statusWarn = false;      // the status is a problem to fix (orange), not progress
     float progress = -1.0f;       // 0..1: the hold-still ring; negative: none
     std::string message;          // a result or a warning
     bool warn = false;
@@ -116,6 +118,8 @@ void DrawPanel(ImDrawList* dl, Fonts const& fonts, PanelView const& view);
 struct BoardView {
     int current = -1;           // the target to aim at now (-1: none)
     bool done[3] = {};          // taken in this round
+    std::string hint;           // one short line across the top (why the aim isn't captured), "" none
+    bool hintWarn = false;      // orange (a problem) or cyan (hold still)
     float time = 0.0f;
     float flash = 0.0f;         // 0..1: a capture was just taken
 };
@@ -126,5 +130,8 @@ void DrawBoard(ImDrawList* dl, Fonts const& fonts, BoardView const& view);
 // orange one to grab; else the cyan one in the hand), the check dot.
 std::vector<std::uint32_t> OrbPicture(bool active);
 std::vector<std::uint32_t> DotPicture();
+// The ring drawn at each hand's grab point while the calibration has the controllers (Shepard's hands don't follow
+// them then): where the calibration thinks the hand is, to judge the orbs against.
+std::vector<std::uint32_t> HandMarkerPicture();
 
 } // namespace mevr::host::calibration_draw

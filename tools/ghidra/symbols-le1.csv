@@ -9,8 +9,8 @@ rva,name,kind,comment
 0x4C71A0,FViewportClient::Draw,func,research/13: Halcyon's double-render hook; ends 0x4C9434
 0x4C7A4E,Draw_ret_GameplayCalcSceneView,label,research/13: return address of the gameplay CalcSceneView call inside Draw
 0x742B70,AllocateViewState_guess,func,research/13: Halcyon calls it 'likely AllocateViewState'; 62 bytes
-0x76EE20,SceneRenderB_halcyon,func,Halcyon render_hook.cpp kSceneRenderBRva
-0x767900,SceneRenderC_halcyon,func,Halcyon render_hook.cpp kSceneRenderCRva
+0x76EE20,SceneRenderB_halcyon,func,Halcyon render_hook.cpp kSceneRenderBRva; FSceneRenderer::Render (guess): GSceneRenderTargets.Allocate (0x772EB0); InitViews (0x768090); DPG 1 (world) and 2 (foreground) passes (0x76D650/0x76D0A0); research/22
+0x767900,SceneRenderC_halcyon,func,Halcyon render_hook.cpp kSceneRenderCRva; the render command that calls SceneRenderB (vtable 0x11859F8)
 0x30EBF0,DrawChildA_halcyon,func,Halcyon render_hook.cpp: FViewportClient::Draw child (call 0x4C7A95)
 0x072A70,DrawChildB_halcyon,func,Halcyon render_hook.cpp: FViewportClient::Draw child (call 0x4C7AB4)
 0x063B00,DrawChildC_halcyon,func,Halcyon render_hook.cpp: FViewportClient::Draw child (call 0x4C7AE7)
@@ -113,3 +113,22 @@ rva,name,kind,comment
 0xAB2340,ABioPawn::UpdateCoverState_guess,func,research/23: from the cover's flags (+0x9A8) sets eCoverState (+0xA4C)
 0x4A1BF0,APawn::Crouch_guess,func,research/23: sets bIsCrouched (Pawn +0x63C bit 0x10); virtual (no direct callers)
 0x4AEEE0,APawn::UnCrouch_guess,func,research/23: clears bIsCrouched (Pawn +0x63C bit 0x10); virtual
+0x7655A0,BeginRenderingViewFamily_guess,func,research/22: called by FViewportClient::Draw; makes the FSceneRenderer (0x762E20); sets each view's Umbra camera (view +0x4D4) unless UMBRA FREEZECAMERA; renders or enqueues it
+0x768090,FSceneRenderer::InitViews_guess,func,research/22: per-view visibility; ends with Umbra's resolve (0x8BFBB0) and the Umbra-driven depth pre-pass (0x8BF8F0); about half of the VR render thread
+0x8BFBB0,UmbraResolveViews_guess,func,research/22: per view: Umbra resolveVisibility (0xD41240) with BioWare's commander (vtable 0x11D62C0)
+0xD41240,Umbra::Camera::resolveVisibility_guess,func,research/22: umbra-ob-2.6.1 (linked library); loops the resolve step 0xD478E0 while it returns true
+0xD478E0,Umbra::ResolveStep_guess,func,research/22: umbra-ob-2.6.1 internals
+0x8C34C0,UmbraCommander::command_guess,func,research/22: switch on the command: 0 begin (QPC); 1 end; 3 visible instances -> 0x8BE0B0 (marks the primitive visible); 5 and 6 flush; 9 debug lines
+0x8BF8F0,RenderUmbraDepthPrepass_guess,func,research/22: per view (Views at +0x60; stride 0x12F0) 0x8BEDB0; then scene depth resolve
+0x8BEDB0,RenderUmbraDepthPrepassView_guess,func,research/22: one view: pending occluder batches (+0x34/+0x38) then the depth pre-pass of the visible set (0x76C1D0)
+0x76C1D0,FSceneRenderer::RenderPrePass_guess,func,research/22: depth-only DPG pass: static draw lists (0x76C820); then the view's dynamic primitives
+0x76C820,RenderPrePassStaticLists_guess,func,research/22: the depth pass's static draw lists (0x748780..0x748FB0)
+0x80B7E0,FMeshDrawingPolicy::DrawMesh_guess,func,research/22: RHIDrawIndexedPrimitive (RHI vtable +0x5C8) or RHIDrawPrimitive (+0x5C0); 67 callers
+0x9B1390,FD3D11DynamicRHI::RHIEndDrawingViewport_guess,func,research/22: RHI vtable slot +0x458; the swap chain Present (Halcyon's hook and XR frame) runs below it
+0x4FD550,UpdateUmbraCamera_guess,func,research/22: on a view change sets the Umbra camera; properties 1|4 or 3|4 with UMBRA OCCLUSIONCULLING (0x1680D61)
+0x4C99D0,UEngine::Exec_part_guess,func,research/22: console commands incl. HAIRPASS; UMBRA <flag> (toggles; no flag lists them); TOGGLEOCCLUSION
+0x1680D60,GUmbraCulling_guess,data,research/22: UMBRA CULLING (bool)
+0x1680D61,GUmbraOcclusionCulling_guess,data,research/22: UMBRA OCCLUSIONCULLING (bool); read by 0x4FD550 and 0x7655A0
+0x1680D62,GUmbraHoax_guess,data,research/22: UMBRA HOAX (bool)
+0x1787798,GIgnoreAllOcclusionQueries_guess,data,research/22: TOGGLEOCCLUSION; read by InitViews (0x7681C6)
+0x1795D30,GUmbraDebugFlags_guess,data,research/22: 0x1795D30..37 = UMBRA VOXELS; CAMERAFRUSTUM; FREEZECAMERA; FREEZEOCCLUSION; OBJECTBOUNDS; OBJECTOBBS; OCCLUSIONQUERIES; MISC

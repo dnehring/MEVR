@@ -553,6 +553,25 @@ PSVR 2 on SteamVR: the world pitched more and more over a session while SteamVR'
     (`third_party/fonts`, deployed to `ASI\fonts`); the panel's small labels may need a size check in the headset;
   - LE2/LE3 can read the same section once their gun placement exists.
 
+### The rifle step looped; the left orb felt too far (user, 2026-10-23; fixed the same day, to test)
+
+- **Why (user, PSVR 2 Sense on SteamVR):** "I couldn't complete the rifle calibration, it would cycle through the
+  aim cycle"; the left orb "always felt it was too far away relative to where I was gripping it", then: "I
+  perceived the orb closer than where the game said it was".
+- **Cause ([research/25](../research/25-calibration.md) section 9):** three captured aims judged by the pistol's
+  3 degrees (on the right wrist's trim, which an imaginary rifle doesn't hold steady), then all three cleared
+  with the reason on a panel out of view; a grip dropped for a frame did the same through the grab step. No hand
+  was drawn while the controllers were hidden, and the far orb pulsed in size, 0.40 m from the near one.
+- **Fixed (host; HOST REDEPLOY):** `core/vr/Calibration`: `CheckRifleAim` / `CheckPistolAim` (reasons),
+  `kRifleStill` (4 cm / 6 degrees), `AimSet` (per-target aims, outlier-only redo, the pair after two failures,
+  4.5 degrees for the rifle), `ForegripDistance` and the orbs from the measured arms, `GrabPoint`;
+  `plugin/Calibration`: the reasons on the panel and the board, rate-limited logs, grab-press logs, the rings
+  at the hands, no restart on a dropped grip, `[Calibration] grabOffset`; unit tests; the preview's new screens.
+- **[verify in headset]:** notes/next-vr-session.md step 26.
+- **Open:** where the Sense controllers' grip origin sits under SteamVR's Touch binding (the ring and the grab
+  logs say; `grabOffset` corrects it); whether 4.5 degrees and 22 degrees suit other players (the logs give the
+  numbers); whether Halcyon's non-metric stereo makes the quads read nearer or farther than the world.
+
 ## Colour per headset (user, 2026-10-22; built the same day, to test)
 
 - **Why (user):** on the Quest 3 the game looks flat and washed out; Quest owners fix it outside the game
