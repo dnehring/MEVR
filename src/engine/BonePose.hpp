@@ -96,9 +96,9 @@ struct Request {
     int head = -1;            // the head bone: its animated position is kept for AnimatedHead()
     Support support;
     // The sight alignment assist (game/sights, research/21): the held gun moves by this (component
-    // space units), added to the right wrist's goal after reach scaling, and to the left's by the
-    // support grip's blend (a hand on the gun moves with it, so the two-hand line doesn't turn; a free
-    // left hand stays). Zero: none.
+    // space units), added to the right wrist's goal after reach scaling, and to the left's while the
+    // support grip holds (fading with its blend after a release): a hand on the gun moves with it, so the
+    // two-hand line doesn't turn; a free left hand stays. Zero: none.
     ik::Vec3 gunShift;
     // Bones the writer never writes, whatever the torso and arms did: their SpaceBases entries
     // stay the animation's (LE1: the camera hook bones `Camera` and `God`, ik::FindCameraHookBones;

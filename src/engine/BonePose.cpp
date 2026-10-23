@@ -409,8 +409,10 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
         std::isfinite(shift.z) && ik::Length(shift) > 0.0) {
         goals[1].wrist = goals[1].wrist + shift;
         if (support && haveGoal[0]) {
+            // Held: all of it (the line between the hands, and the span captured at the grab, stay as they
+            // are); blending out after a release: fading with the blend.
             double const blend = std::clamp(std::isfinite(request.support.blend) ? request.support.blend : 0.0, 0.0, 1.0);
-            goals[0].wrist = goals[0].wrist + shift * blend;
+            goals[0].wrist = goals[0].wrist + shift * (request.support.hold != 0 ? 1.0 : blend);
         }
     }
     SupportSample supportSample;

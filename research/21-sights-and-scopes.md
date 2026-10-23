@@ -266,8 +266,9 @@ holstered and with Halcyon's menu open, so they show no sight):
    - **How far:** the eye's offset from the line times the weight times `assistStrength` (1), at most
      `assistMaxM` (0.10 m). Then Overlord's critically damped spring (10/s, at most 0.25 m/s): no jump on
      the way in or out, and it eases back when the gun is lowered.
-   - **Applied to the whole gun:** the right wrist's goal after reach scaling, and the left's by the support
-     grip's blend (a hand on the gun moves with it, so the two-hand line doesn't turn; a free hand stays).
+   - **Applied to the whole gun:** the right wrist's goal after reach scaling, and the left's while the
+     support grip holds (fading with its blend after a release): a hand on the gun moves with it, so the
+     two-hand line doesn't turn; a free hand stays.
      The muzzle, the shots, the reticle's ray and the sight all follow the gun as drawn (shots shift by at
      most 10 cm, parallel).
    - **Logs:** `sights: alignment assist on: the right eye N cm left of and N cm above the sight line ...`,

@@ -948,7 +948,7 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
     } else {
         gCount = 0;
     }
-    if (newPull && game) {
+    if (newPull && game && view.valid) {
         LogPull(survey, settings);
     }
 
@@ -976,7 +976,7 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
 
     if (newPull && onFoot && !combat) {
         log::Info("squad: combat is off here (a hub): the game has no weapon wheel to open");
-    } else if (newPull && !step.enter) {
+    } else if (newPull && !step.enter && view.valid) {  // (no world view: Halcyon's menu, whose pointer clicks with it)
         log::Info("squad: the left trigger can't open the wheel now ({})", !usable ? (support_grip::Held() ? "both hands hold the gun"
                                                                                        : "no world view or controllers")
                                                                          : "not on foot");
