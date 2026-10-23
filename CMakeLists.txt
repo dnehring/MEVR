@@ -61,6 +61,32 @@ if (MEVR_MAIN_MENU)
     target_compile_definitions(rmlui-d3d11 PUBLIC NUM_MSAA_SAMPLES=4 PRIVATE NOMINMAX)
     target_link_libraries(rmlui-d3d11 PUBLIC rmlui_core d3d11 d3dcompiler)
     target_compile_options(rmlui-d3d11 PRIVATE /W3 /utf-8)
+
+    # Our side of the menu, game-independent (no Halcyon, no OpenXR): the renderer wrapper, RmlUi setup and
+    # decorators, the data model, the frosted backdrop's passes, the colour preview strip. Linked by the LE1 host
+    # and tools/menu-preview.
+    add_library(mevr-menu STATIC
+        src/core/vr/Colour.cpp
+        src/core/vr/ColourStrip.cpp
+        src/core/vr/MenuSettings.cpp
+        src/plugin/menu/MenuBackdrop.cpp
+        src/plugin/menu/MenuBackdrop.hpp
+        src/plugin/menu/MenuDecorators.cpp
+        src/plugin/menu/MenuDecorators.hpp
+        src/plugin/menu/MenuModel.cpp
+        src/plugin/menu/MenuModel.hpp
+        src/plugin/menu/MenuRenderer.cpp
+        src/plugin/menu/MenuRenderer.hpp
+        src/plugin/menu/MenuStrip.cpp
+        src/plugin/menu/MenuStrip.hpp
+        src/plugin/menu/MenuUi.cpp
+        src/plugin/menu/MenuUi.hpp
+        src/plugin/menu/StateGuard.hpp
+    )
+    target_include_directories(mevr-menu PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(mevr-menu PUBLIC rmlui-d3d11 rmlui_core d3d11 d3dcompiler)
+    target_compile_definitions(mevr-menu PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-menu PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus /Zi)
 endif ()
 
 # Halcyon's LE1 VR renderer (GPL-3.0, src/halcyon/le1) with its vendored MinHook and Dear ImGui.
@@ -492,4 +518,17 @@ if (MEVR_BUILD_TESTS)
         target_compile_definitions(mevr-calibration-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
         target_compile_options(mevr-calibration-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     endif ()
+endif ()
+
+# The VR main menu's look, offline (tools/menu-preview, research/28): every section and state as PNGs, drawn with the
+# host's own RmlUi setup, renderer, document and backdrop passes, plus the frame's CPU and GPU time.
+if (MEVR_BUILD_TESTS AND MEVR_MAIN_MENU)
+    add_executable(mevr-menu-preview
+        tools/menu-preview/Main.cpp
+        src/core/PngFile.cpp
+    )
+    target_include_directories(mevr-menu-preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(mevr-menu-preview PRIVATE mevr-menu windowscodecs ole32 d3d11)
+    target_compile_definitions(mevr-menu-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-menu-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
 endif ()
