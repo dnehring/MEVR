@@ -170,6 +170,10 @@ UObject const* CurrentWorld() {
 // grip_presenter: a correctly held rifle must not drop when the right wrist turns), then blends the
 // right hand toward the two-hand rotation and the left wrist onto the foregrip. Adapted from
 // Overlord's grip_presenter.hpp (https://github.com/Aeka0/Overlord, GPL-3.0, Aeka0).
+// The span captured when the current hold began (ik::CapturedSpan; the writer's thread).
+thread_local std::uint32_t tCapturedHold = 0;
+thread_local std::optional<ik::Vec3> tCapturedSpan;
+
 SupportSample ApplySupport(Support const& s, double handScale, ik::ArmGoal& left, ik::ArmGoal& right) {
     SupportSample out;
     double const unitsPerMeter = s.unitsPerMeter > 1e-6 && std::isfinite(s.unitsPerMeter) ? s.unitsPerMeter : 50.0;
@@ -177,15 +181,37 @@ SupportSample ApplySupport(Support const& s, double handScale, ik::ArmGoal& left
     ik::Vec3 const span = s.foregrip.translation * handScale;
     ik::Quat const one = right.rotation;
     ik::Vec3 const controller = left.wrist;
+    double const minSpan = s.minSpanMeters * unitsPerMeter;
+    // Two-hand aim swings the line from the right hand to where the left took hold (captured at the
+    // hold's first write, on the one-hand pose), not to the foregrip: no swing when taking hold.
+    if (s.hold == 0) {
+        tCapturedHold = 0;
+        tCapturedSpan.reset();
+    } else if (s.hold != tCapturedHold) {
+        tCapturedHold = s.hold;
+        tCapturedSpan = s.twoHandAim ? ik::CapturedSpan(one, right.wrist, controller, ik::Length(span), minSpan) : std::nullopt;
+    }
+    ik::Vec3 const aimSpan = s.hold != 0 && tCapturedSpan ? *tCapturedSpan : span;
+    out.captured = s.hold != 0 && tCapturedSpan.has_value();
     std::optional<ik::Quat> two;
     if (s.twoHandAim) {
-        two = ik::TwoHandRotation(one, span, right.wrist, controller, s.minSpanMeters * unitsPerMeter);
+        two = ik::TwoHandRotation(one, aimSpan, right.wrist, controller, minSpan);
     }
     ik::Quat const check = blend > 0.0 && two ? *two : one;
+    ik::Vec3 const foregripAt = right.wrist + ik::Rotate(check, span);
+    out.foregripMeters = ik::Length(controller - foregripAt) / unitsPerMeter;
     if (s.twoHandAim && !two) {
         out.distanceMeters = kCrossedMeters;  // the hands define no axis
     } else {
-        out.distanceMeters = ik::Length(controller - (right.wrist + ik::Rotate(check, span))) / unitsPerMeter;
+        // The grab zone: the capsule along the gun (as posed for the check) and the foregrip.
+        auto const zone = s.hasGun ? ik::MakeSupportZone(right.wrist, check, s.barrel, s.muzzle, s.foregrip.translation, handScale,
+                                         s.frontMeters * unitsPerMeter, s.pastMeters * unitsPerMeter)
+                                   : std::nullopt;
+        out.distanceMeters = (zone ? ik::DistanceToZone(controller, *zone) : ik::Length(controller - foregripAt)) / unitsPerMeter;
+        if (zone) {
+            ik::Vec3 const axis = ik::Normalize(zone->end - zone->start, ik::Rotate(check, s.barrel));
+            out.alongMeters = ik::Dot(controller - right.wrist, axis) / unitsPerMeter;
+        }
     }
     out.blend = blend;
     if (blend <= 0.0) {
@@ -374,6 +400,17 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
     }
     bool const support = request.support.enabled && haveGoal[0] && haveGoal[1] && goals[1].hasRotation &&
         request.arms[0].target == Target::Component && request.arms[1].target == Target::Component;
+    // The sight alignment assist: the gun (the right hand) moves, and the left hand with it as far as it
+    // holds the gun, before the support grip ties them (so its line between the hands doesn't turn).
+    ik::Vec3 const shift = request.gunShift;
+    if (haveGoal[1] && request.arms[1].target == Target::Component && std::isfinite(shift.x) && std::isfinite(shift.y) &&
+        std::isfinite(shift.z) && ik::Length(shift) > 0.0) {
+        goals[1].wrist = goals[1].wrist + shift;
+        if (support && haveGoal[0]) {
+            double const blend = std::clamp(std::isfinite(request.support.blend) ? request.support.blend : 0.0, 0.0, 1.0);
+            goals[0].wrist = goals[0].wrist + shift * blend;
+        }
+    }
     SupportSample supportSample;
     if (support) {
         double const handScale = pose[rightHand].scale > 1e-6 ? pose[rightHand].scale : 1.0;

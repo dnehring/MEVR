@@ -39,9 +39,9 @@ using menu::kWeapons;
 
 constexpr int kLeft = 0;
 constexpr int kRight = 1;
-// The left grip's latch, as the pad mapping's (game/gamepad_mapping).
-constexpr float kGripOn = 0.6f;
-constexpr float kGripOff = 0.4f;
+// The left trigger's latch, as the pad mapping's (game/gamepad_mapping: the trigger as LB).
+constexpr float kTriggerOn = 0.6f;
+constexpr float kTriggerOff = 0.4f;
 // Point at the chest: this far above the pawn's location (its collision centre), Unreal units.
 constexpr double kChestUnits = 20.0;
 // How long the game gets to show a given weapon in the squadmate's hands before we say it didn't.
@@ -122,9 +122,13 @@ std::string gLoggedSquad;
 
 menu::Machine gMachine;
 std::uint32_t gSerial = 0;
-bool gOwnGrip = false;
-bool gHaveCount = false;
-std::uint32_t gLastCount = 0;
+// The left trigger opens the wheel or menu (2026-10-22: never the left grip). Latched like the pad's;
+// the squad has it only while gTriggerOwned (decided per pull: menu::OwnTrigger), and then the game sees
+// no LB from it (AdjustPad).
+bool gTrigger = false;
+menu::TriggerOwner gTriggerOwner;
+bool gTriggerOwned = false;
+bool gToldTriggerSetting = false;
 std::uintptr_t gLastUsed = 0;
 bool gPausedByUs = false;
 bool gPublishedOpen = false;
@@ -146,7 +150,7 @@ struct Pending {
 };
 Pending gPending;
 
-// style = native: the game's own weapon wheel, held by the left grip.
+// style = native: the game's own weapon wheel, held open by the left trigger.
 wheel::Machine gWheel;
 bool gWheelPressA = false;       // the pad shows A this tick (confirming on release)
 std::uint32_t gWheelSerial = 0;  // + 1 per opening (the host places its panel afresh)
@@ -626,17 +630,15 @@ struct Survey {
     int nearest = -1;    // gMembers index nearest the left hand's ray, whatever the cone
     int preferred = -1;  // who the custom menu preselects when not pointing
     char const* preferredWhy = "";
-    float gunDistance = -1.0f;  // the left hand from the held gun's foregrip (meters; negative: no gun)
-    bool nearGun = false;       // ...within the support grip's release distance
 };
 
 // Reads the squad (names and classes once, quick slots and health now and then, every tick while
 // `busy`), maps them into tracking space, and what the left hand points at.
-Survey SurveySquad(Game const& game, double deltaSeconds, bool busy, bool newAway, vr::controllers::Hand const& left,
+Survey SurveySquad(Game const& game, double deltaSeconds, bool busy, bool newPull, vr::controllers::Hand const& left,
     vr::host_view::State const& view, hand_calibration::Squad const& settings) {
     Survey survey;
     gDetailsAge += deltaSeconds;
-    bool const details = busy || newAway || gPending.key != 0 || gDetailsAge >= kDetailsSeconds;
+    bool const details = busy || newPull || gPending.key != 0 || gDetailsAge >= kDetailsSeconds;
     if (details) {
         gDetailsAge = 0.0;
     }
@@ -717,19 +719,11 @@ Survey SurveySquad(Game const& game, double deltaSeconds, bool busy, bool newAwa
         survey.preferred = survey.nearest >= 0 ? survey.nearest : 0;
         survey.preferredWhy = survey.nearest >= 0 ? "the one nearest your pointing" : "the first in the squad";
     }
-
-    // The two-handed grip keeps priority: a squeeze near the foregrip that the mapping didn't take is a
-    // missed grab, not the menu (unless the hand points at someone).
-    gamepad::Options const pad = support_grip::PadOptions();
-    hand_calibration::Controls const controls = hand_calibration::GetControls();
-    survey.gunDistance = pad.support.distance;
-    survey.nearGun = std::isfinite(survey.gunDistance) && survey.gunDistance >= 0.0f && survey.gunDistance <= controls.releaseMeters;
     return survey;
 }
 
-void LogSqueeze(Survey const& survey, hand_calibration::Squad const& settings) {
-    log::Info("squad: left grip squeezed away from the gun{}: {}",
-        survey.nearGun ? std::format(" ({:.2f} m from the foregrip)", survey.gunDistance) : "",
+void LogPull(Survey const& survey, hand_calibration::Squad const& settings) {
+    log::Info("squad: left trigger pulled: {}",
         survey.pointed >= 0 ? std::format("pointing at {} ({:.1f} deg off, {:.1f} m)", gMembers[survey.pointed].name,
                                   gMembers[survey.pointed].angle / kDeg, gMembers[survey.pointed].distance)
         : survey.nearest >= 0 ? std::format("pointing at nobody (nearest {} at {:.0f} deg, cone {:.0f})", gMembers[survey.nearest].name,
@@ -930,7 +924,7 @@ void ReleaseWheel(char const* why) {
 }
 
 void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad const& settings,
-    vr::controllers::State const& controllers, bool newAway) {
+    vr::controllers::State const& controllers, bool newPull) {
     // Our own menu stays shut.
     if (gMachine.CurrentPhase() != menu::Phase::Idle) {
         log::Info("squad: menu closed (style is native now)");
@@ -950,12 +944,12 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
 
     Survey survey;
     if (game) {
-        survey = SurveySquad(*game, deltaSeconds, gWheel.Holding(), newAway, controllers.left, view, settings);
+        survey = SurveySquad(*game, deltaSeconds, gWheel.Holding(), newPull, controllers.left, view, settings);
     } else {
         gCount = 0;
     }
-    if (newAway && game) {
-        LogSqueeze(survey, settings);
+    if (newPull && game) {
+        LogPull(survey, settings);
     }
 
     // What the wheel highlights (any time it's up: also when LB opened it).
@@ -966,15 +960,13 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
     wheel::Input in;
     in.dt = static_cast<float>(deltaSeconds);
     in.usable = usable;
-    in.gripDown = gOwnGrip;
-    in.newAwaySqueeze = newAway;
-    in.nearGun = survey.nearGun;
+    in.triggerDown = gTrigger;
+    in.newPull = newPull;
     in.pointed = survey.pointed >= 0;
     bool const combat = game && onFoot ? CombatEnabled(*game) : true;
     in.onFoot = onFoot && combat;
     in.wheelActive = wheelActive;
     in.confirmOnRelease = settings.confirmOnRelease;
-    in.openHoldSeconds = static_cast<float>(settings.openHoldSeconds);
     in.highlightValid = pick.valid;
     in.highlightCarried = pick.valid && pick.carried && !pick.inHand;  // their weapon in hand: nothing to give
     in.choiceRecorded = pick.valid && pick.recorded;
@@ -982,14 +974,12 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
     wheel::Step const step = gWheel.Update(in);
     gWheelPressA = step.holdA;
 
-    if (step.missedGrab) {
-        log::Info("squad: a squeeze at nobody next to the gun is a missed foregrip grab, not the weapon wheel");
-    }
-    if (newAway && onFoot && !combat && !survey.nearGun) {
+    if (newPull && onFoot && !combat) {
         log::Info("squad: combat is off here (a hub): the game has no weapon wheel to open");
-    }
-    if (step.armed) {
-        log::Info("squad: keep squeezing {:.2f} s to open the weapon wheel anyway", settings.openHoldSeconds);
+    } else if (newPull && !step.enter) {
+        log::Info("squad: the left trigger can't open the wheel now ({})", !usable ? (support_grip::Held() ? "both hands hold the gun"
+                                                                                       : "no world view or controllers")
+                                                                         : "not on foot");
     }
     if (step.enter) {
         ++gWheelSerial;
@@ -1001,10 +991,10 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
         gWheelWasHolstered = game && !CallBool(game->player, gIsInCombatActionState);
         gReholsterWait = -1.0;
         bool const called = CallNoParms(defaultMode, gEnterWeaponWheel);
-        log::Info("squad: wheel #{}: {} the game's weapon wheel{} (SFXGameModeDefault.EnterWeaponWheel, what holding LB does)",
+        log::Info("squad: wheel #{}: {} the game's weapon wheel{} (SFXGameModeDefault.EnterWeaponWheel, what holding LB does; "
+                  "the left trigger, at once)",
             gWheelSerial, called ? "opening" : "can't open (no SFXGameModeDefault)",
-            gWheelPointed >= 0 ? std::format(", pointed at {}", gMembers[gWheelPointed].name)
-                               : std::format(" (held {:.2f} s at nobody)", settings.openHoldSeconds));
+            gWheelPointed >= 0 ? std::format(", pointed at {}", gMembers[gWheelPointed].name) : std::string(", pointed at nobody"));
     }
     if (gWheel.Holding()) {
         gWheelOpenedAt += deltaSeconds;
@@ -1064,7 +1054,7 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
     }
     if (step.confirmed) {
         ++gConfirms;
-        log::Info("squad: wheel #{}: grip let go: giving {} the {} (A for the game: it queues the highlighted entry)", gWheelSerial,
+        log::Info("squad: wheel #{}: trigger let go: giving {} the {} (A for the game: it queues the highlighted entry)", gWheelSerial,
             pick.name, menu::WeaponName(pick.weapon));
         ConfirmHaptic(link);
         gWheelClicked = true;
@@ -1131,7 +1121,6 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
     }
     gWheelMode = mode ? *mode : -1;
     SetWhy(gWheel.Holding() ? std::format("the game's wheel: {}", wheel::PhaseName(gWheel.CurrentPhase()))
-           : gWheel.CurrentPhase() == wheel::Phase::Arming ? std::string("arming (held at nobody)")
            : !game ? why
            : !onFoot ? std::format("ready (game mode {})", mode ? std::to_string(*mode) : std::string("?"))
                      : std::string("ready (native)"));
@@ -1265,22 +1254,30 @@ void Tick(double deltaSeconds, Link const& link) {
 
     vr::controllers::State const controllers = vr::controllers::Latest();
     vr::controllers::Hand const& left = controllers.left;
-    bool const wasDown = gOwnGrip;
-    gOwnGrip = controllers.active && (gOwnGrip ? left.squeeze > kGripOff : left.squeeze >= kGripOn);
-    // A new left squeeze that began away from the gun: the host's count.
-    bool newAway = false;
-    if (link.leftGripAway) {
-        std::uint32_t const count = *link.leftGripAway >> 1;
-        newAway = gHaveCount && count != gLastCount && (*link.leftGripAway & 1u) != 0;
-        gLastCount = count;
-        gHaveCount = true;
+    // The left trigger (2026-10-22, the user's design): a new pull opens the wheel or menu at once; letting
+    // go gives the highlighted weapon. The squad takes it per pull (menu::OwnTrigger) where it can use it
+    // (on foot or in a wheel, the feature on, [Controls] leftTrigger = lb); elsewhere it stays the game's LB
+    // (the Mako's boost, menus).
+    bool const wasDown = gTrigger;
+    gTrigger = controllers.active && (gTrigger ? left.trigger > kTriggerOff : left.trigger >= kTriggerOn);
+    hand_calibration::Controls const controls = hand_calibration::GetControls();
+    auto const mode = head_tracking::GameMode();
+    bool const modeTakesIt = mode && (*mode == 0 || *mode == 2 || *mode == 3);  // on foot, the power wheel, the weapon wheel
+    bool const wanted = settings.enabled && link.supported && gStarted && controls.leftTriggerLB && modeTakesIt;
+    if (settings.enabled && link.supported && !controls.leftTriggerLB && !gToldTriggerSetting) {
+        gToldTriggerSetting = true;
+        log::Warn("squad: the left trigger opens the squad's weapon wheel only with [Controls] leftTrigger = lb (it is {} now): "
+                  "no squad wheel", controls.leftTrigger ? "lt" : "none");
+    } else if (controls.leftTriggerLB) {
+        gToldTriggerSetting = false;
     }
-    // A squeeze at the grenade slot takes a grenade (game/throwables, research/20): not the menu's.
-    if (newAway && throwables::ClaimedLeft()) {
-        newAway = false;
-        log::Info("squad: the left squeeze took a grenade (the grenade slot): no menu");
+    bool const ownedBefore = gTriggerOwned;
+    gTriggerOwned = menu::OwnTrigger(gTriggerOwner, gTrigger, wanted);
+    if (gTriggerOwned != ownedBefore) {
+        log::Info("squad: the left trigger {}", gTriggerOwned ? "opens the squad's weapon wheel (no LB to the game)"
+                                                              : "is the game's LB again (not on foot, or the squad wheel is off)");
     }
-    (void)wasDown;
+    bool const newPull = gTrigger && !wasDown && gTriggerOwned;
     PublishWheelPanel(link, settings);  // the game's wheels at the hand, whichever way they open
 
     if (!settings.enabled) {
@@ -1314,13 +1311,12 @@ void Tick(double deltaSeconds, Link const& link) {
         log::Info("squad: style: {}", native ? "the game's own weapon wheel at the hand" : "our drawn menu at the hand");
     }
     if (native) {
-        TickNative(deltaSeconds, link, settings, controllers, newAway);
+        TickNative(deltaSeconds, link, settings, controllers, newPull);
         return;
     }
     if (gWheel.Holding()) {
         ReleaseWheel("style is custom now");
     }
-    auto const mode = head_tracking::GameMode();
     if (!mode || *mode != 0) {
         Inactive(std::format("not on foot (game mode {})", mode ? std::to_string(*mode) : std::string("unknown")), link);
         return;
@@ -1343,7 +1339,7 @@ void Tick(double deltaSeconds, Link const& link) {
 
     // The squad, this tick, and what the left hand points at.
     bool const busy = gMachine.CurrentPhase() != menu::Phase::Idle;
-    Survey const survey = SurveySquad(*game, deltaSeconds, busy, newAway, left, view, settings);
+    Survey const survey = SurveySquad(*game, deltaSeconds, busy, newPull, left, view, settings);
     int const pointed = survey.pointed;
     int const preferred = survey.preferred;
     char const* const preferredWhy = survey.preferredWhy;
@@ -1356,16 +1352,13 @@ void Tick(double deltaSeconds, Link const& link) {
             sameSquad = gMembers[i].key == gOpenKeys[i];
         }
     }
-    gUsable = sameSquad;  // an empty squad still answers a squeeze (a refusal); the machine closes on it
-
-    bool const nearGun = survey.nearGun;
+    gUsable = sameSquad;  // an empty squad still answers a pull (a refusal); the machine closes on it
 
     menu::Input in;
     in.dt = static_cast<float>(deltaSeconds);
     in.usable = gUsable && !support_grip::Held();
-    in.gripDown = gOwnGrip;
-    in.newAwaySqueeze = newAway;
-    in.nearGun = nearGun;
+    in.triggerDown = gTrigger;
+    in.newPull = newPull;
     in.pointed = pointed >= 0 ? CardOf(pointed) : -1;
     in.preferred = CardOf(preferred);
     in.memberCount = gCount;
@@ -1380,26 +1373,19 @@ void Tick(double deltaSeconds, Link const& link) {
     in.a = controllers.right.primary;
     in.b = controllers.right.secondary;
     in.confirmOnRelease = settings.confirmOnRelease;
-    in.openHoldSeconds = static_cast<float>(settings.openHoldSeconds);
     int const selectedBefore = gMachine.Selected();
     menu::Step const step = gMachine.Update(in);
 
     auto const nameOfCard = [&](int card) {
         return card >= 0 && card < gCount ? gMembers[gCardOrder[card]].name : std::string("-");
     };
-    if (newAway) {
-        LogSqueeze(survey, settings);
+    if (newPull) {
+        LogPull(survey, settings);
     }
     if (step.refused) {
         ++gRefusals;
         log::Info("squad: no squadmates to give weapons to");
         RefusedHaptic(link, kLeft);
-    }
-    if (step.missedGrab) {
-        log::Info("squad: a squeeze at nobody next to the gun is a missed foregrip grab, not the squad menu");
-    }
-    if (step.armed) {
-        log::Info("squad: keep squeezing {:.2f} s to open the menu anyway ({})", settings.openHoldSeconds, preferredWhy);
     }
     if (step.opened) {
         ++gSerial;
@@ -1410,9 +1396,8 @@ void Tick(double deltaSeconds, Link const& link) {
         }
         gPointedCard = step.openedPointing ? gMachine.Selected() : -1;
         log::Info("squad: menu #{} opened{}: {} chosen{}; cards: left {}, right {}", gSerial,
-            step.openedPointing ? " (pointed)" : std::format(" (held {:.2f} s)", settings.openHoldSeconds),
-            nameOfCard(gMachine.Selected()), step.openedPointing ? std::string() : std::format(" ({})", preferredWhy), nameOfCard(0),
-            nameOfCard(1));
+            step.openedPointing ? " (pointed)" : " (pointing at nobody)", nameOfCard(gMachine.Selected()),
+            step.openedPointing ? std::string() : std::format(" ({})", preferredWhy), nameOfCard(0), nameOfCard(1));
         OpenHaptic(link);
         if (settings.pause) {
             PauseGame(*game, true);
@@ -1442,7 +1427,7 @@ void Tick(double deltaSeconds, Link const& link) {
             ++gConfirms;
             int const member = gCardOrder[step.member];
             log::Info("squad: menu #{} confirmed ({}): {} gets the {}", gSerial,
-                wasDown && !gOwnGrip ? "grip let go" : "A", gMembers[member].name, menu::WeaponName(step.weapon));
+                wasDown && !gTrigger ? "trigger let go" : "A", gMembers[member].name, menu::WeaponName(step.weapon));
             ConfirmHaptic(link);
             Equip(*game, member, step.weapon);
         } else {
@@ -1452,12 +1437,14 @@ void Tick(double deltaSeconds, Link const& link) {
         }
         gPointedCard = -1;
     }
-    SetWhy(gMachine.IsOpen() ? "open" : gMachine.CurrentPhase() == menu::Phase::Arming ? "arming (held at nobody)" : "ready");
+    SetWhy(gMachine.IsOpen() ? "open" : "ready");
     Publish(link, gMachine.IsOpen());
     FollowPending(deltaSeconds);
 #else
     (void)deltaSeconds;
-    (void)newAway;
+    (void)newPull;
+    (void)wasDown;
+    (void)mode;
     Inactive("LE1 only", link);
 #endif
 }
@@ -1468,10 +1455,16 @@ void AdjustPad(gamepad::Options& options) {
     }
     if (options.gripShoulder && !gToldGripLB) {
         gToldGripLB = true;
-        log::Info("squad: a left grip away from the gun would be LB ([Controls] leftGripAway = lb, or supportGrip = 0), but it "
-                  "opens the squad menu now: no LB from it ([Squad] enabled = 0 gives it back)");
+        log::Info("squad: a left grip away from the gun would be LB ([Controls] leftGripAway = lb, or supportGrip = 0), but the "
+                  "weapon wheel is on the left trigger now: the left grip only holds the gun ([Squad] enabled = 0 gives LB back)");
     }
     options.gripShoulder = false;
+    // The squad has the left trigger for this pull: the game sees neither LB (no 0.3 s hold, no tap that
+    // swaps Shepard's weapon) nor LT from it; our path opens and closes the wheel.
+    if (gTriggerOwned) {
+        options.leftTriggerShoulder = false;
+        options.leftTrigger = false;
+    }
     options.squadMenu = gMachine.IsOpen();
     options.nativeWheel = gWheel.Holding();
     options.wheelStick = gWheelStick;
@@ -1487,7 +1480,6 @@ std::string StatusJson() {
     char const* phase = "idle";
     switch (gMachine.CurrentPhase()) {
     case menu::Phase::Idle: phase = "idle"; break;
-    case menu::Phase::Arming: phase = "arming"; break;
     case menu::Phase::Open: phase = "open"; break;
     }
     std::string members;
@@ -1558,9 +1550,10 @@ void Shutdown(bool processExiting) {
     gOpenCount = 0;
     gDetailsAge = 1e9;
     gLoggedSquad.clear();
-    gOwnGrip = false;
-    gHaveCount = false;
-    gLastCount = 0;
+    gTrigger = false;
+    gTriggerOwner = {};
+    gTriggerOwned = false;
+    gToldTriggerSetting = false;
     gPublishedOpen = false;
     gEnabled = false;
     gSupported = false;

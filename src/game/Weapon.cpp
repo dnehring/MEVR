@@ -11,6 +11,7 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstddef>
@@ -238,6 +239,20 @@ struct Body {
 };
 std::optional<Body> gBody;
 
+// Grips measured before, per weapon mesh asset, body asset and holding bone, in this world: a gun drawn
+// again is aimed at once instead of after the hand has held still for a moment (2026-10-22: a left grip
+// squeezed in that gap, right after a draw, found no gun to hold). A still measurement that differs
+// replaces it as before. Cleared when the world changes (assets can move).
+struct CachedGrip {
+    UObject const* weaponAsset = nullptr;
+    UObject const* bodyAsset = nullptr;
+    int bone = -1;
+    Grip grip;
+};
+std::array<CachedGrip, 8> gGripCache{};
+std::size_t gGripCacheNext = 0;
+UObject const* gGripCacheWorld = nullptr;
+
 bool gHeld = false;
 int gHeldBone = -1;
 std::optional<Grip> gGrip;
@@ -301,6 +316,33 @@ void ResetGripMeasurement() {
     gLastMeasure.reset();
     gLastHand.reset();
     gStillTicks = 0;
+}
+
+void RememberGrip(UObject const* world, UObject const* weaponAsset, UObject const* bodyAsset, int bone, Grip const& grip) {
+    if (world != gGripCacheWorld) {
+        gGripCache = {};
+        gGripCacheWorld = world;
+    }
+    for (CachedGrip& cached : gGripCache) {
+        if (cached.weaponAsset == weaponAsset && cached.bodyAsset == bodyAsset && cached.bone == bone) {
+            cached.grip = grip;
+            return;
+        }
+    }
+    gGripCache[gGripCacheNext] = {weaponAsset, bodyAsset, bone, grip};
+    gGripCacheNext = (gGripCacheNext + 1) % gGripCache.size();
+}
+
+std::optional<Grip> RecallGrip(UObject const* world, UObject const* weaponAsset, UObject const* bodyAsset, int bone) {
+    if (world != gGripCacheWorld || weaponAsset == nullptr || bodyAsset == nullptr) {
+        return std::nullopt;
+    }
+    for (CachedGrip const& cached : gGripCache) {
+        if (cached.weaponAsset == weaponAsset && cached.bodyAsset == bodyAsset && cached.bone == bone) {
+            return cached.grip;
+        }
+    }
+    return std::nullopt;
 }
 
 void Forget() {
@@ -502,6 +544,11 @@ void MeasureGrip(Live const& live, Body const& body, Muzzle const& muzzle) {
                 Degrees(grip.barrel, gGrip->barrel), text);
         }
         gGrip = grip;
+    } else {
+        return;
+    }
+    if (gResolved) {
+        RememberGrip(gResolved->world, gResolved->asset, body.asset, gHeldBone, *gGrip);
     }
 }
 
@@ -643,6 +690,13 @@ void Tick(bool wanted) {
         if (held) {
             log::Info("weapon: {} in the right hand: its mesh hangs on {} under {}{}", gResolved->name, BoneName(*body, heldBone),
                 BoneName(*body, body->hand), attachment->uniformScale ? "" : " (non-uniform attachment scale)");
+            if (!gGrip) {
+                if (auto const cached = RecallGrip(gResolved->world, gResolved->asset, body->asset, heldBone)) {
+                    gGrip = cached;
+                    log::Info("weapon: {}: grip as measured the last time it was held (aimed at once; a still hand re-checks it)",
+                        gResolved->name);
+                }
+            }
         } else {
             std::string const where = !attachment ? "its mesh isn't attached to the body"
                 : body == nullptr                 ? "body skeleton unreadable"

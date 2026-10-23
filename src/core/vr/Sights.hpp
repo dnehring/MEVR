@@ -46,6 +46,20 @@ struct Gun {
     float height = 0.0f;     // gun units above the bore line, toward the gun's top
 };
 
+// The alignment assist (research/21 section 8; Overlord's ADS eye-distance assistance adapted to the
+// sideways case): with the gun raised to the face and the aiming eye within `coneDeg` of the sight line,
+// the whole gun slides across the line so the line runs through that eye; it eases back as the gun is
+// lowered. Mod-side: the right hand's goal moves (game/arm_ik), so the muzzle, the shots and the sight
+// follow the gun as drawn.
+struct Assist {
+    bool enabled = true;
+    float coneDeg = 10.0f;    // the aiming eye within this of the sight line, seen from the sight (full within half)
+    float strength = 1.0f;    // 0..1: how much of the way to the line
+    float maxShiftM = 0.10f;  // the gun moves at most this far (tracking meters)
+    float rangeM = 0.65f;     // the sight at most this far ahead of the eye (full up to 0.15 m less)
+    float headDeg = 35.0f;    // the sight line within this of the head's forward (full within 20 degrees less)
+};
+
 struct Settings {
     bool enabled = true;
     Gun guns[kWeaponTypes] = {{Kind::Dot}, {Kind::Holo}, {Kind::Holo}, {Kind::Scope, 4.0f}};
@@ -69,6 +83,7 @@ struct Settings {
     bool replaceRing = true;            // hide the floating ring reticle while an eye looks through a sight
     bool aimedFire = true;              // the sniper rifle's shots get the game's aimed-fire accuracy while
                                         // its scope picture is up (bIsZoomed for the shot only)
+    Assist assist;
 };
 
 // The sight's place on a gun of this type when it isn't set: `back` a share of the muzzle-to-grip length
@@ -165,6 +180,40 @@ private:
 // nearest the line, within `box` (meters off the line); `current` keeps the eye it had while it stays
 // within 1.25 box and isn't clearly worse (another eye nearer by more than a quarter box).
 int AimingEye(Line const lines[2], float box, float minAlong, float maxAlong, int current);
+
+// ---- The alignment assist ----------------------------------------------------------------------------
+
+// 0 at t <= 0, 1 at t >= 1, the quintic smoothstep between (zero slope and curvature at both ends).
+float Smooth(float t);
+
+// What the assist wants this tick. `center` and `axis` are the sight as it would be WITHOUT the assist's
+// own shift (so the shift never feeds back into its goal); `eyes` the two eyes, `headForward` the head's
+// -Z (all tracking space). `currentEye` keeps the aiming eye unless the other is clearly better.
+struct AssistGoal {
+    XrVector3f shift{};    // move the gun by this (tracking meters): the sight line then runs `weight` of the
+                           // way toward the aiming eye
+    int eye = -1;          // the aiming eye (0 left, 1 right); -1: none in reach
+    float angleDeg = 0.0f; // that eye off the sight line, seen from the sight
+    float along = 0.0f;    // the sight ahead of that eye (meters)
+    float x = 0.0f;        // the eye's offset from the line along the sight's right (meters)...
+    float y = 0.0f;        // ...and its up (the gun's top)
+    float weight = 0.0f;   // 0..1: angle, distance and head alignment together, times the strength
+};
+AssistGoal AssistTarget(Assist const& settings, XrVector3f const& center, XrVector3f const& axis, XrVector3f const& up,
+    XrVector3f const eyes[2], XrVector3f const& headForward, int currentEye);
+
+// The gun's move toward the assist's goal: a critically damped spring (no overshoot, starts from rest),
+// at most `maxSpeed` meters per second (Overlord's ADS comfort transition: 10/s, 0.25 m/s).
+class AssistSpring {
+public:
+    XrVector3f Update(XrVector3f const& goal, float dt, float frequency = 10.0f, float maxSpeed = 0.25f);
+    XrVector3f Value() const { return value_; }
+    void Reset() { value_ = {}; velocity_ = {}; }
+
+private:
+    XrVector3f value_{};
+    XrVector3f velocity_{};
+};
 
 // A quad's pose and size (square, meters).
 struct Quad {
