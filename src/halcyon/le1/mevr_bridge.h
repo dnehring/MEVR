@@ -120,13 +120,6 @@ struct OverlayFrame
     float projectionOrientation[2][4] = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     float projectionPosition[2][3] = {};
     float projectionFov[2][4] = {};                      // angleLeft, angleRight, angleUp, angleDown (radians)
-    // [MEVR] How Stereo 2 drew this frame's eye images against the true eyes the layer declares (research/21
-    // section 9): each eye rendered `stereoHalfEyeUU` (UE units) either side of the eye midpoint along the view's
-    // right, and each finished image's content moved right by `imageShiftTan` (tangent units across the view) at
-    // submit (the convergence, CopyStereoPassCaptureToEyes). Valid only when the Stereo 2 pair fed the eyes.
-    bool stereoMapValid = false;
-    float stereoHalfEyeUU = 0.0f;
-    float imageShiftTan[2] = {0.0f, 0.0f};
 };
 
 // Present thread (RunFrame), once per frame after the eyes are filled, every frame (also flat and

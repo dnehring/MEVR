@@ -137,7 +137,6 @@ std::vector<Field> const& Schema() {
         {"sight_sniper", Type::Choice, 0, "scope"},
         {"sight_assist", Type::Flag, 1},
         {"sight_converge", Type::Flag, 1},
-        {"sight_stereo", Type::Flag, 1},
         // Advanced: Halcyon's renderer.
         {"recenter_key", Type::Flag, 1},
         {"look_speed", Type::Number, 1, "", 0.25f, 2, F::Times2},

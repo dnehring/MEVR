@@ -627,14 +627,14 @@ PSVR 2 on SteamVR: the world pitched more and more over a session while SteamVR'
   - Not the frames: shots and the sight both follow the drawn barrel and muzzle (shots start at the muzzle,
     0.00 units). The "273 units from the muzzle" warnings were squadmates' shots.
   - The assault rifle's holo needed the eye within its 3-unit window.
-- **Built:** a [MEVR] seam publishing Stereo 2's separation and per-eye shift; the dot (one eye) and the scope's
-  disc follow that eye's image (`vr::sights::AsShown`), the scope samples the source image as drawn
-  (`SampleViewOf`); shots converge on the sight line's hit (`Actor.Trace` each tick, `ConvergedShot`); an eye box
-  (6 units) for dots, dot by default on the shotgun and assault rifle; the sight's height from the mesh's bounds
-  (bones and sockets logged); long guns borrow the pistol's grip frame without a rifle stance. `[Sights] eyeBox,
-  converge, matchStereo`; menu rows under HUD & sights.
+- **Built:** shots converge on the sight line's hit (`Actor.Trace` each tick, `ConvergedShot`); an eye box
+  (6 units) and one eye for dots, dot by default on the shotgun and assault rifle; the sight on a bone or socket
+  named for a sight, else its height from the mesh's bounds (bones and sockets logged); long guns borrow the
+  pistol's grip frame without a rifle stance; the shot-start check skips squadmates. `[Sights] eyeBox, converge`;
+  a menu row under HUD & sights.
+- **Not ours:** the picture's 1.27 degrees per eye is fixed by a metric stereo mode in Halcyon (a separate job; a
+  per-eye quad workaround was built and removed on 2026-10-23). Until then dots and the scope read about 1.27
+  degrees left of the hits for a right aiming eye.
 - **[verify in headset]:** notes/next-vr-session.md step 27.
-- **Open:** the floating ring reticle and the HUD panel are still drawn at the true place for both eyes (per-eye
-  quads would put the ring on each eye's image); whether to offer metric stereo (`sfr2HalfEyeUU` 3.1,
-  `sfr2Convergence` 0) as a profile (Halcyon's settings: the user's call); the sniper's eyepiece `back` is still
-  the length-share guess (the model log gives the scope's extent).
+- **Open:** the sniper's eyepiece `back` is still the length-share guess unless its mesh names a sight bone (the
+  model log gives the scope's extent; set `sniperRiflePlace` from it).

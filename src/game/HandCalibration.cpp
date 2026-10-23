@@ -299,11 +299,8 @@ constexpr char const* kSightsBlock =
     "frame = 1\n"
     "; zeroM: where the sight line crosses the barrel's line (game meters); 0 = parallel to the barrel. converge: 1 = each\n"
     "; shot leaves the muzzle toward whatever the sight line hits, so it lands on the dot at any distance.\n"
-    "; matchStereo: 1 = the dot and the scope are drawn where the game's 3D picture shows the world (its eye distance and\n"
-    "; convergence aren't your headset's), so they sit on the target and on the gun.\n"
     "zeroM = 0\n"
     "converge = 1\n"
-    "matchStereo = 1\n"
     "; Scopes. lensUnits: the eyepiece's radius (gun units). reticle: duplex, mildot or dot; reticleColor: its lit\n"
     "; centre. source: other = magnify the other eye's picture (the gun's own scope model doesn't block it), same =\n"
     "; the aiming eye's. focusM: where both eyes' pictures agree (game meters). eyeReliefM: how close (meters) your eye\n"
@@ -899,9 +896,6 @@ vr::sights::Settings ReadSights(Ini const& ini) {
     if (Number(ini, "Sights", "converge", value)) {
         out.converge = value != 0.0;
     }
-    if (Number(ini, "Sights", "matchStereo", value)) {
-        out.matchStereo = value != 0.0;
-    }
     number("zeroM", out.zeroM, 0.0f, 500.0f);
     number("lensUnits", out.lensUnits, 0.5f, 10.0f);
     number("focusM", out.focusM, 2.0f, 1000.0f);
@@ -960,14 +954,13 @@ std::string Describe(vr::sights::Settings const& s) {
             : g.autoPlace         ? std::string(" (placed auto)")
                                   : std::format(" ({:.1f} back, {:.1f} up)", g.back, g.height));
     }
-    return std::format("on: {}; dot #{:06X} {:.2f} deg, ring {:.2f} deg, window {:.1f} units{}, eye box {:.1f} units, zero {}, shots {}, "
-                       "drawn {}; scope lens {:.1f} units, "
+    return std::format("on: {}; dot #{:06X} {:.2f} deg, ring {:.2f} deg, window {:.1f} units{}, eye box {:.1f} units, zero {}, shots {}; "
+                       "scope lens {:.1f} units, "
                        "{} reticle #{:06X}, {} eye's picture, focus {:.0f} m, eye relief {:.2f} m, {} px; ring reticle {}, scoped "
                        "aimed fire {}; alignment assist {}",
         guns, s.dotColor, s.dotSizeDeg, s.ringSizeDeg, s.windowUnits, s.frame ? " (framed)" : "", std::max(s.eyeBoxUnits, s.windowUnits),
         s.zeroM > 0.0f ? std::format("{:.0f} m", s.zeroM) : std::string("parallel"),
-        s.converge ? "converge on what the sight line hits" : "parallel to the sight line",
-        s.matchStereo ? "where the game's eye images show the world" : "at the true place", s.lensUnits, sv::Name(s.scopeReticle),
+        s.converge ? "converge on what the sight line hits" : "parallel to the sight line", s.lensUnits, sv::Name(s.scopeReticle),
         s.scopeColor, s.otherEye ? "the other" : "the same", s.focusM, s.eyeReliefM, s.resolution,
         s.replaceRing ? "hidden while sighting" : "kept", s.aimedFire ? "on" : "off",
         s.assist.enabled ? std::format("on (the aiming eye within {:.0f} degrees of the sight line, {:.0f}% of the way, at most {:.2f} m, "
@@ -1290,7 +1283,6 @@ void Refresh() {
         {L"Sights", "Sights", L"assistRangeM", "assistRangeM", L"0.65"},
         {L"Sights", "Sights", L"eyeBox", "eyeBox", L"6"},
         {L"Sights", "Sights", L"converge", "converge", L"1"},
-        {L"Sights", "Sights", L"matchStereo", "matchStereo", L"1"},
         {L"Hands", "Hands", L"noCover", "noCover", L"1"},
         {L"Hands", "Hands", L"physicalCrouch", "physicalCrouch", L"1"},
         {L"Hands", "Hands", L"crouchBelow", "crouchBelow", L"0.75"},

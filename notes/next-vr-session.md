@@ -940,40 +940,38 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       Claude wants these lines: the reasons say which threshold is too strict, the grab lines whether the
       grab point needs `[Calibration] grabOffset`.
 
-27. **Sights on the target and on the gun, shots on the dot (new, 2026-10-23; HOST REDEPLOY: the sight drawing and
-    Halcyon's seam; the mod's part hot-reloads).** [research/21](../research/21-sights-and-scopes.md) sections 9-12.
-    Halcyon's Stereo 2 moves each eye image about 1.3 degrees outward (its convergence) and renders the eyes 3.4 cm
-    apart each: our dot and scope now follow each eye's image, and shots aim at what the sight line hits.
+27. **Shots on the dot, a red dot on the rifles, the sight on the model (new, 2026-10-23; HOST REDEPLOY: the dot's
+    eye box and the sight struct; the rest is the mod's and hot-reloads).** [research/21](../research/21-sights-and-scopes.md)
+    sections 9-12. Know first: Halcyon's Stereo 2 moves each eye's picture about 1.27 degrees outward and renders the
+    eyes 3.4 cm apart each, while our dot and scope are drawn at their true place; a metric stereo mode in Halcyon (a
+    separate job) fixes that. Until it's on, a right-eye dot reads about 1.27 degrees left of the hits (20-40 cm right
+    at 10-20 m). The stopgap, Halcyon's settings: Advanced > Stereo > Eye distance 3.1 and Convergence 0.
     - **Pistol at a wall 10-20 m away:** raise it to your right eye, put the red dot on a mark, fire 5-10 single
-      shots. The impacts should be on the dot (before: about 20-40 cm to the right). Take a snapshot (both stick
-      clicks) while the dot is on the mark.
+      shots: the group should sit on the dot's height (before: a few cm low at every distance), sideways as above
+      (right) unless the metric stereo (or the stopgap) is on, then on the dot. Take a snapshot (both stick clicks)
+      while the dot is on the mark.
     - **Assault rifle and shotgun:** a red dot now (not the holo; an old settings file switches once: log `hands:
       [Sights] shotgun and assaultRifle holo (the old default) -> dot`). Raise the gun to the cheek: the dot should
-      appear without hunting for it (the eye counts within 6 units of the window's centre, `[Sights] eyeBox`). Fire
-      bursts at a mark: centred on the dot (the game's own spread still scatters them).
-    - **Sniper rifle:** look through the scope: the round picture should sit on the model's scope (its blue lens
-      glow under or just behind our disc, not beside it). Put the crosshair on a mark at 20-40 m and fire: on the
-      crosshair. Then a near mark (5 m): still on (the shot converges), the picture's parallax aside.
-    - **Compare:** HUD & sights > "Sights match the 3D picture" off: the dot should sit about a degree left of where
-      it was and the impacts go right again; back on. "Shots land on the dot" off: impacts a few cm under the dot.
-    - **Stereo comfort (a question for you, not a fix):** set Advanced > Stereo > Eye distance 3.1 and Convergence 0
-      (metric stereo): do near things (the gun, your hands, the calibration orbs) now sit at the same depth as our
-      quads, and is the world comfortable? Put them back after (3.4, 0.012) if it's worse.
+      appear without hunting for it (the eye counts within 6 units of the window's centre, `[Sights] eyeBox`), to one
+      eye only. Fire bursts at a mark.
+    - **Sniper rifle:** look through the scope: does the round picture sit on the model's scope (its blue lens glow)?
+      Take a snapshot while looking through it; Claude reads the model's numbers from the log and sets the place.
+      Fire at a mark at 20-40 m and at 5 m: both on the crosshair's height (the shot converges).
+    - **Compare:** HUD & sights > "Shots land on the dot" off: impacts a few cm under the dot; back on.
     - **Calibration without the rifle step:** the long guns now use the pistol stance's grip angle (log
-      `calibration: ... rifle not measured (the long guns take the pistol's grip frame, not its sight line)`): do the
-      rifles point where your hand points?
-    - **Logs:** `[MEVR-SIGHT] eye images: Stereo 2 drew the eyes 3.4 cm either side of their midpoint (the headset's
-      3.1 cm) and moved the left image -1.27 and the right +1.27 degrees ...`; `[MEVR-SIGHT] first red dot reticle:
-      the right eye looks through ... moved +1.27 degrees right ...`; per gun `sights: the <gun> model against its
-      bore (gun units): bounds ...; Root (...); socket ...` and the `sights: the <gun> has a red dot sight: ... (auto:
-      the length share, the height from the model's top) ...` line; `sights: the sight line's trace (Actor.Trace
-      through ProcessEvent): the hit point came back`; per shot `hand aim: shot N: from the muzzle (0.00 units from
-      the game's start) toward what the sight line hit, D m past the sight (...): A degrees off the sight line`; the
-      heartbeat's `hand aim: ... N of them toward what the sight line hit` and `... other weapons' aim queries
-      skipped` (squadmates; no more `a shot along the barrel started 273 units from the muzzle` warnings).
-    - **Snapshot JSON:** host `"sights"."stereo"` (`shiftDeg` about [-1.27, 1.27], `correctionDeg`), `"dotEye"`;
-      mod `"sights"."place"` (`modelTop`, `model`), `"sights"."converge"` (`distanceM`, `what`), `"handAim"."shots"
-      ."lastShot"` (`toSightDeg`, `startOffMuzzle` about 0).
+      `calibration: ... rifle not measured ... (the long guns take the pistol's grip frame, not its sight line)`): do
+      the rifles point where your hand points?
+    - **Logs:** per gun `sights: the <gun> model against its bore (gun units): bounds ...; Root (...); socket ...` and
+      `sights: the <gun> has a red dot sight: ... (auto: the length share, the height from the model's top) ...`;
+      `sights: the sight line's trace (Actor.Trace through ProcessEvent): the hit point came back`; `[MEVR-SIGHT]
+      first red dot reticle: the right eye looks through the window (..., eye box 0.0600 m)`; per shot `hand aim: shot
+      N: from the muzzle (0.00 units from the game's start) toward what the sight line hit, D m past the sight (...):
+      A degrees off the sight line`; the heartbeat's `hand aim: ... N of them toward what the sight line hit` and `...
+      other weapons' aim queries skipped` (squadmates: no more `a shot along the barrel started 273 units from the
+      muzzle` warnings).
+    - **Snapshot JSON:** host `"sights"` `"dotEye"`, `"eyeBox"`; mod `"sights"."place"` (`modelTop`, `model`),
+      `"sights"."converge"` (`distanceM`, `what`), `"handAim"."shots"."lastShot"` (`toSightDeg`, `startOffMuzzle`
+      about 0).
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR

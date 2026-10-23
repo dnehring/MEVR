@@ -260,7 +260,6 @@ void Settings::Read(menu::Values& v) {
     v.texts["sight_sniper"] = ms::SightKind(ini.Text("Sights", "sniperRifle", "scope 4"), "scope");
     flag("sight_assist", ini.Num("Sights", "assist", 1.0f) != 0.0f);
     flag("sight_converge", ini.Num("Sights", "converge", 1.0f) != 0.0f);
-    flag("sight_stereo", ini.Num("Sights", "matchStereo", 1.0f) != 0.0f);
     // Advanced: Halcyon's.
     flag("recenter_key", c.recenterKeyEnabled);
     v.numbers["look_speed"] = c.lookSensitivity;
@@ -401,8 +400,6 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         Put("Sights", "assist", onOff("sight_assist"), true);
     } else if (key == "sight_converge") {
         Put("Sights", "converge", onOff("sight_converge"), true);
-    } else if (key == "sight_stereo") {
-        Put("Sights", "matchStereo", onOff("sight_stereo"), true);
     }
     // ---- Colour ----
     else if (key == "profile") {

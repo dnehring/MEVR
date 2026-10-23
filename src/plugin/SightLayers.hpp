@@ -34,12 +34,6 @@ struct Frame {
     XrRect2Di projectionRect[2]{};
     XrPosef projectionPose[2]{};  // the pose each eye image was rendered for (as submitted)
     XrFovf projectionFov[2]{};
-    // How Stereo 2 drew the eye images (research/21 section 9; vr::sights::EyeImage): rendered stereoHalfEyeM either side
-    // of the eye midpoint, each image's content moved imageShiftTan right at submit. Not valid: the images are taken
-    // as true to the eyes.
-    bool stereoValid = false;
-    float stereoHalfEyeM = 0.0f;
-    float imageShiftTan[2]{};
 };
 
 struct Output {

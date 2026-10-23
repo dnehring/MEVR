@@ -5800,16 +5800,6 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             mevrFrame.projectionFov[e][2] = pv.fov.angleUp; mevrFrame.projectionFov[e][3] = pv.fov.angleDown;
         }
         mevrFrame.projectionValid = submitted && !forceFlatCine;
-        {   // [MEVR] Stereo 2's eye images against the true eyes (sights): the same separation the render hook got
-            // (SetSfrEnabled, outside cine) and the shift CopyStereoPassCaptureToEyes gave each eye (pass0 -conv/2 UV)
-            mevrFrame.stereoMapValid = sfrPairSubmitted && !forceFlatCine;
-            mevrFrame.stereoHalfEyeUU = std::fabs(cfg.sfr2HalfEyeUU);
-            const float span = std::tan(renderTagFov.angleRight) - std::tan(renderTagFov.angleLeft);
-            const float shift = 0.5f * cfg.sfr2Convergence * span;   // the content moves opposite to the source offset
-            const int eyeForPass0 = cfg.sfr2SwapEyes ? 1 : 0;
-            mevrFrame.imageShiftTan[eyeForPass0] = shift;
-            mevrFrame.imageShiftTan[1 - eyeForPass0] = -shift;
-        }
         const void* mevrQuads[6] = {};   // [MEVR] HUD panel, reticle, sight (two), squad menu, wheel
         const unsigned mevrQuadCount = MELEVR::MevrBridge::OverlayLayers(mevrFrame, mevrQuads, 6);
         for (unsigned i = 0; i < mevrQuadCount && layerCount < kMaxLayers - 2; ++i)

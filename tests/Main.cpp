@@ -4605,63 +4605,15 @@ void TestScopeMapping() {
     CHECK(s::Project(left, fov, onLine, u, v) && NearD(u, 0.5 + 0.5 * 0.064 / 40.0, 1e-5) && NearD(v, 0.5, 1e-5));
 }
 
-// Halcyon's stereo against the true eyes, shots that converge on the sight line, the sight on the model
-// (core/vr/Sights, research/21 sections 9-11).
-void TestSightStereoAndShots() {
+// Shots that converge on the sight line, the red-dot defaults, the sight on the model
+// (core/vr/Sights, research/21 sections 10-11).
+void TestSightShots() {
     namespace s = mevr::vr::sights;
     constexpr double kDeg = std::numbers::pi / 180.0;
     // The defaults: a red dot on every gun but the sniper rifle, an eye box twice the window.
     s::Settings const defaults;
     CHECK(defaults.guns[1].kind == s::Kind::Dot && defaults.guns[2].kind == s::Kind::Dot && defaults.guns[3].kind == s::Kind::Scope);
-    CHECK(defaults.eyeBoxUnits > defaults.windowUnits && defaults.converge && defaults.matchStereo);
-
-    // True eyes 6.2 cm apart, looking down -Z.
-    XrPosef const views[2] = {{{0.0f, 0.0f, 0.0f, 1.0f}, {-0.031f, 0.0f, 0.0f}}, {{0.0f, 0.0f, 0.0f, 1.0f}, {0.031f, 0.0f, 0.0f}}};
-    // Rendered from the true eyes, unshifted: everything where it is.
-    s::EyeImage const exact = s::MakeEyeImage(views, 1, 0.031f, 0.0f);
-    CHECK(exact.valid && NearXr(exact.renderEye, {0.031f, 0.0f, 0.0f}));
-    CHECK(NearXr(s::AsShown(exact, {0.05f, 0.02f, -0.3f}), {0.05f, 0.02f, -0.3f}, 1e-5));
-    CHECK(std::abs(s::ErrorOf(exact, {0.0f, 0.0f, -50.0f}).rightDeg) < 1e-4f);
-
-    // The user's profile (2026-10-22): rendered 3.4 cm either side, each image moved 0.6% of a +-61.5 degree view outward
-    // (swap-eyes on): the right image's content 0.0221 tangents right, the left's left.
-    float const shift = 0.006f * 2.0f * static_cast<float>(std::tan(61.5 * kDeg));
-    s::EyeImage const right = s::MakeEyeImage(views, 1, 0.034f, shift);
-    s::EyeImage const left = s::MakeEyeImage(views, 0, 0.034f, -shift);
-    CHECK(NearXr(right.renderEye, {0.034f, 0.0f, 0.0f}) && NearXr(left.renderEye, {-0.034f, 0.0f, 0.0f}));
-    // Far away (a target 50 m ahead of the right eye): about 1.27 degrees right of where it is; the left eye, left.
-    XrVector3f const farPoint{0.031f, 0.0f, -50.0f};
-    CHECK(NearD(s::ErrorOf(right, farPoint).rightDeg, std::atan(shift) / kDeg, 0.01));
-    CHECK(NearD(s::ErrorOf(left, {-0.031f, 0.0f, -50.0f}).rightDeg, -std::atan(shift) / kDeg, 0.01));
-    // So the dot must go there for that eye: same distance from the eye, turned right.
-    XrVector3f const shown = s::AsShown(right, farPoint);
-    CHECK(NearD(std::hypot(shown.x - 0.031f, shown.y, shown.z), 50.0, 1e-3) && shown.x > 0.031f + 1.0f);
-    // Close by (the gun's sight 0.3 m ahead of the right eye): the wider render pulls it 0.57 degrees left, the
-    // shift 1.27 right: about 0.7 degrees (3.6 mm) right of its true place.
-    XrVector3f const nearPoint{0.031f, 0.0f, -0.3f};
-    CHECK(NearD(s::ErrorOf(right, nearPoint).rightDeg, (std::atan(shift - 0.003f / 0.3f)) / kDeg, 0.01));
-    // Sampling the image (the scope's picture) finds the point where the compositor shows its AsShown place.
-    XrFovf const fov{static_cast<float>(-61.5 * kDeg), static_cast<float>(43.4 * kDeg), static_cast<float>(53.0 * kDeg),
-        static_cast<float>(-53.0 * kDeg)};
-    for (XrVector3f const& p : {farPoint, nearPoint, XrVector3f{-0.2f, 0.1f, -2.0f}}) {
-        float u1 = 0.0f;
-        float v1 = 0.0f;
-        float u2 = 0.0f;
-        float v2 = 0.0f;
-        CHECK(s::Project(s::SampleViewOf(right, views[1], fov), p, u1, v1));
-        CHECK(s::Project(views[1], fov, s::AsShown(right, p), u2, v2));
-        CHECK(NearD(u1, u2, 1e-4) && NearD(v1, v2, 1e-4));
-    }
-    // Without a mapping, sampling is the plain projection.
-    float u1 = 0.0f;
-    float v1 = 0.0f;
-    float u2 = 0.0f;
-    float v2 = 0.0f;
-    CHECK(s::Project(s::SampleViewOf(s::EyeImage{}, views[1], fov), farPoint, u1, v1) && s::Project(views[1], fov, farPoint, u2, v2) &&
-        NearD(u1, u2, 1e-6) && NearD(v1, v2, 1e-6));
-    CHECK(!s::MakeEyeImage(views, 2, 0.034f, 0.0f).valid);
-    CHECK(NearXr(s::AsShown(s::EyeImage{}, farPoint), farPoint));
-    CHECK(NearXr(s::AsShown(right, {0.0f, 0.0f, 1.0f}), {0.0f, 0.0f, 1.0f}));  // behind the eye: left alone
+    CHECK(defaults.eyeBoxUnits > defaults.windowUnits && defaults.converge);
 
     // Shots converge on what the sight line hits: the sight 30 units behind the muzzle and 6 above, its line along
     // the barrel; a wall 1000 units past the sight: the shot climbs 6 units over 970.
@@ -5683,7 +5635,7 @@ int main() {
     TestSightSettings();
     TestSightGeometry();
     TestScopeMapping();
-    TestSightStereoAndShots();
+    TestSightShots();
     TestBoneNames();
     TestIk();
     TestRigid();

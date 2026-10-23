@@ -16,6 +16,7 @@
 #include <LESDK/Headers.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -65,6 +66,8 @@ struct ModelPlace {
     std::uintptr_t weapon = 0;
     bool measured = false;
     std::optional<float> top;  // the model's top above the bore (gun units)
+    // A bone or socket named for a sight (scope, sight, optic, lens, eyepiece, reticle): the sight goes there.
+    std::optional<weapon::ModelPoint> named;
     std::string text;
 };
 ModelPlace gModel;
@@ -255,19 +258,32 @@ void MeasureModel(engine::UnrealVector const& topWorld) {
     std::string points;
     for (weapon::ModelPoint const& p : model->points) {
         points += std::format("{}{} ({:.1f} back, {:.1f} up, {:.1f} right)", points.empty() ? "" : "; ", p.name, p.back, p.up, p.side);
+        std::string lower = p.name;
+        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        for (char const* word : {"scope", "sight", "optic", "lens", "eyepiece", "reticle"}) {
+            if (!gModel.named && lower.find(word) != std::string::npos && std::isfinite(p.back) && std::isfinite(p.up) &&
+                p.up > 0.5 && p.up < 30.0 && p.back > -10.0 && p.back < 150.0) {
+                gModel.named = p;
+            }
+        }
     }
     gModel.text = std::format("bounds {:.1f}..{:.1f} units behind the muzzle, {:.1f}..{:.1f} above the bore, {:.1f}..{:.1f} to its right",
         model->backMin, model->backMax, model->upMin, model->upMax, model->sideMin, model->sideMax);
     log::Info("sights: the {} model against its bore (gun units): {}; {}{}", sv::WeaponName(static_cast<int>(weapon::Type())),
         gModel.text, points.empty() ? std::string("no bones or sockets") : points,
-        gModel.top ? std::format("; auto places its sight from the model's top ({:.1f} above the bore)", *gModel.top)
-                   : std::string("; its top is implausible: auto keeps the typical height"));
+        gModel.named ? std::format("; auto places its sight on '{}' ({:.1f} back, {:.1f} up)", gModel.named->name, gModel.named->back,
+                           gModel.named->up)
+        : gModel.top ? std::format("; auto places its sight from the model's top ({:.1f} above the bore)", *gModel.top)
+                     : std::string("; its top is implausible: auto keeps the typical height"));
 }
 
 // The sight's place on this gun: [Sights] <type>Place, else auto (the length share; the height from the model).
 sv::Gun PlaceFor(int type, sv::Gun const& gun, float length, float radius) {
     sv::Gun placed = sv::AutoPlace(type, gun, length);
-    if (gun.autoPlace && gModel.measured && gModel.weapon == weapon::Key() && gModel.top) {
+    if (gun.autoPlace && gModel.measured && gModel.weapon == weapon::Key() && gModel.named) {
+        placed.back = static_cast<float>(gModel.named->back);
+        placed.height = static_cast<float>(gModel.named->up);
+    } else if (gun.autoPlace && gModel.measured && gModel.weapon == weapon::Key() && gModel.top) {
         if (auto const height = sv::HeightOnModel(gun.kind == sv::Kind::None ? sv::Kind::Dot : gun.kind, *gModel.top, radius)) {
             placed.height = *height;
         }
@@ -424,7 +440,7 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
                 out.kind = static_cast<std::int32_t>(gun.kind);
                 out.weapon = type;
                 out.flags = (settings.frame && !scope ? sv::kFrame : 0u) | (settings.replaceRing ? sv::kReplaceRing : 0u) |
-                    (settings.otherEye ? sv::kOtherEye : 0u) | (settings.matchStereo ? sv::kMatchStereo : 0u);
+                    (settings.otherEye ? sv::kOtherEye : 0u);
                 out.eyeBox = std::max(settings.eyeBoxUnits, settings.windowUnits) / unitsPerMeter;
                 out.center = sv::Place(ray.origin, ray.direction, *top, placed.back / unitsPerMeter, placed.height / unitsPerMeter);
                 out.axis = sv::Zeroed(out.center, ray.origin, ray.direction, settings.zeroM * 100.0f / unitsPerMeter);
@@ -458,14 +474,16 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
                 }
                 status = std::format("the {} has a {} sight{}: {:.1f} units behind the muzzle, {:.1f} above the bore ({}; the gun is "
                                      "{:.1f} units from muzzle to grip), {} {:.1f} units ({:.3f} m at {:.1f} units per meter), eye box "
-                                     "{:.1f} units; shots {}; drawn {}",
+                                     "{:.1f} units; shots {}",
                     sv::WeaponName(type), sv::Name(gun.kind), scope ? std::format(" ({:.1f}x)", gun.zoom) : std::string(),
                     placed.back, placed.height,
-                    !gun.autoPlace ? "set" : gModel.top ? "auto: the length share, the height from the model's top" : "auto",
+                    !gun.autoPlace ? "set"
+                    : gModel.named ? "auto: on the model's sight point"
+                    : gModel.top   ? "auto: the length share, the height from the model's top"
+                                   : "auto",
                     length, scope ? "eyepiece radius" : "window radius", scope ? settings.lensUnits : settings.windowUnits, out.radius,
                     unitsPerMeter, std::max(settings.eyeBoxUnits, settings.windowUnits),
-                    settings.converge ? "converge on what the sight line hits" : "parallel to the sight line ([Sights] converge = 0)",
-                    settings.matchStereo ? "where Halcyon's eye images show the world" : "at the true place ([Sights] matchStereo = 0)");
+                    settings.converge ? "converge on what the sight line hits" : "parallel to the sight line ([Sights] converge = 0)");
             }
         }
     }

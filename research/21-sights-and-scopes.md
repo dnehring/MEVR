@@ -195,7 +195,7 @@ dot, holo, or scope with a magnification 1-12); `<type>Place = auto` or `back, h
 `dotColor`, `dotSizeDeg`, `ringSizeDeg`, `windowUnits`, `frame`, `zeroM`; `lensUnits`, `reticle`,
 `reticleColor`, `source`, `focusM`, `eyeReliefM`, `resolution`; `replaceRing`, `aimedFire`; since the
 evening of 2026-10-22 the alignment assist (section 8): `assist`, `assistConeDeg`, `assistStrength`,
-`assistMaxM`, `assistRangeM`; since 2026-10-23 (sections 9-11) `eyeBox` (6 units), `converge` (1), `matchStereo` (1),
+`assistMaxM`, `assistRangeM`; since 2026-10-23 (sections 9-11) `eyeBox` (6 units), `converge` (1),
 and the shotgun and the assault rifle default to `dot`.
 
 ## 7. Risks and what's left
@@ -344,29 +344,14 @@ content is moved 16.9 px outward: **1.26 degrees per eye**, the left image left,
   GetAdjustedAim handler counted every weapon's aim query after ours, and Ashley's and Kaidan's shots start where
   they stand. Ours: 14 of 14 from the muzzle.
 
-**Built** (2026-10-23; host redeploy for the drawing):
-- **[MEVR] seam** (`mevr_bridge.h` `OverlayFrame`, `xr_session.cpp`): each frame Halcyon says whether the Stereo 2
-  pair fed the eyes, its half separation (`sfr2HalfEyeUU`) and each image's shift in tangent units (`0.5 x
-  sfr2Convergence x` the rendered window's tangent span, signed per destination eye as the copy does). Halcyon's
-  behaviour is unchanged.
-- **Core** (`vr::sights::EyeImage`, `MakeEyeImage`, `ShownDirection`, `AsShown`, `ErrorOf`, `SampleViewOf`,
-  unit-tested): where an eye's image shows a point (projected from the render place, plus the shift), and the
-  place a quad must take so the runtime shows it there to the true eye.
-- **The dot** is drawn for one eye (the one looking through: section 11) at `AsShown` of its 50 m point: on the
-  target as that eye sees it. **The scope:** its disc at `AsShown` of the eyepiece for the aiming eye (on the
-  model), and its picture samples the source image through `SampleViewOf` (from the render place, the FOV moved by
-  the shift): the picture shows the world where it truly is, so its reticle is on the line. The window ring (both
-  eyes) stays at its true place.
-- `[Sights] matchStereo = 1` (menu: HUD & sights > "Sights match the 3D picture"); 0 draws at the true place.
-- **Logs:** `[MEVR-SIGHT] eye images: Stereo 2 drew the eyes 3.4 cm either side of their midpoint (the headset's
-  3.1 cm) and moved the left image -1.27 and the right +1.27 degrees at submit ...`; the first reticle line says how
-  far it moved the dot. Snapshot (host `"sights"`): `"stereo": {"matched", "halfEyeM", "shiftDeg", "correctedEye",
-  "correctionDeg", "correctionCm"}`, `"dotEye"`, `"eyeBox"`.
-- **Not changed (Halcyon's settings, the user's call):** the metric alternative is `sfr2HalfEyeUU` = half the IPD at
-  the view's scale (3.1) and `sfr2Convergence = 0` (the menu's Advanced > Stereo). Then nothing needs correcting and
-  the world's depth matches the hands and our quads; the cost is upstream's tuned look.
-- **Still uncorrected:** the floating ring reticle and the HUD panel (both eyes, one quad each: the right place
-  differs per eye; a dominant eye reads the ring 1.27 degrees off). Per-eye quads would fix the ring if wanted.
+**The fix is in the picture, not in our quads (decision 2026-10-23).** A per-eye workaround was built and taken out
+again the same day: drawing each one-eye quad where that eye's image shows the point (and sampling the scope's source
+image the way it was drawn) works only for one-eye quads and has to track every Stereo 2 knob. Instead a separate job
+gives Halcyon a metric stereo mode (the runtime's eye poses, its asymmetric FOVs, no convergence shift), so the game's
+picture matches our metric quads; the sights stay metric and on the model's real place (section 11). Until that mode
+is on, expect the dot, the scope and the ring reticle about 1.27 degrees left of what the bullets hit for a right
+aiming eye. A partial stopgap is the user's to try (Halcyon's settings): Advanced > Stereo > Eye distance 3.1 and
+Convergence 0 removes the shift; the symmetric render window stays.
 
 ## 10. Shots that land on the dot (built 2026-10-23)
 
@@ -397,7 +382,8 @@ content is moved 16.9 px outward: **1.26 degrees per eye**, the left image left,
 - **Built:** once per held weapon, `weapon::ModelInGunFrame` reads the mesh's bounds (`USkeletalMesh.Bounds`
   +0x60, the reference pose) and its bones and sockets in the gun's own frame (back from the muzzle, up toward the
   sight's top, right), logged as `sights: the <gun> model against its bore (gun units): bounds a..b units behind
-  the muzzle, c..d above the bore ...; Root (...); socket Flash_1 (...)`. Auto placement keeps the length share for
+  the muzzle, c..d above the bore ...; Root (...); socket Flash_1 (...)`. A bone or socket named for a sight
+  (scope, sight, optic, lens, eyepiece, reticle) is where auto puts it; otherwise auto keeps the length share for
   `back` and takes the height from the model's top (`vr::sights::HeightOnModel`): a scope's eyepiece a lens radius
   under it, a dot's window one unit over it. `<type>Place` still overrides. **[verify]** with a snapshot per gun:
   the eyepiece on the model's scope, the window ring just over the gun.
