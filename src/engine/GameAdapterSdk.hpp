@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once
 
 // The LExSDKv2-typed per-game accessors, for the modules not yet on our reflection layer

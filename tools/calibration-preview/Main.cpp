@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Renders the guided calibration's look (src/plugin/CalibrationDraw, research/25) to PNGs offline, so it can be
 // checked without the game or a headset: the host's own ImGui drawing and D3D11 backend on a device of its own
 // (hardware, else WARP), and the quads composited into an eye image the way the runtime shows them

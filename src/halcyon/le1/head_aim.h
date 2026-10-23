@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 
 // Head-aim controller plumbing - the ONE sanctioned live-game-object write path

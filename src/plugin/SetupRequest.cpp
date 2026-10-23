@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "plugin/SetupRequest.hpp"
 
 #include "core/Json.hpp"

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // The gun's sight on Halcyon's world layer (plugin/SightLayers.hpp, research/21). Present thread only.
 
 #include "plugin/SightLayers.hpp"

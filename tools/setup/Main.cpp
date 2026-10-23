@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // MEVR-Setup.exe (research/33): installs, tunes, repairs, uninstalls and launches the VR mod for Mass Effect 1 LE
 // without ME3Tweaks Mod Manager. A Win32 window drawing our in-game menu's glass style with the same RmlUi, D3D11
 // renderer, decorators, fonts and stylesheet (src/plugin/menu, assets/menu/main.rcss + setup.rml/.rcss); the work

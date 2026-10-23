@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "core/ik/TorsoPose.hpp"
 
 #include "core/ik/BoneNames.hpp"

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Measure a snapshot's stereo against the geometry it declares (research/30).
 
 For distant scenery both eyes look the same way, so a far point that sits at pixel x in the left eye's world

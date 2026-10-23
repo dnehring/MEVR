@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // bink2w64.dll's exports (src/loader, research/33): every export of RAD's Bink 2 DLL (the game's own bink2w64.dll:
 // 79 names, read from its export table with dumpbin /exports), forwarded to that DLL renamed bink2w64_original.dll,
 // with the same ordinals. The Windows loader resolves the forwarders: no code of ours runs for a Bink call.

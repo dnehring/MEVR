@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once
 
 // Names: reading the engine's name pools (research/34 section 2.2). Pure over memory: the pools

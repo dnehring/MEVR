@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // The squad weapon menu's quad (plugin/SquadPanel.hpp). Drawn (plugin/SquadPanelDraw) with ImGui in a
 // context of our own: Halcyon's menu keeps the default one; both run on the Present thread, and the
 // current context is always put back.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 // Adapted from Overlord by Aeka0 (https://github.com/Aeka0/Overlord), GPL-3.0:
 // src/client/component/vr/gameplay/hands/pose_solver.hpp (orient_arm, arm_plane_normal,
 // arm_segment_frame, elbow_pole, transformed, and solve_limb's stretch: both segments scale by

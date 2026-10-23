@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once
 
 // ABI between the host ASI (stable, loaded by LEBinkProxy) and the mod, which is either linked

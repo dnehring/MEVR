@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Renders the gun sights (src/plugin/SightPictures, core/vr/Sights) offline to PNGs, so the scope's picture
 // and the reticles can be checked without the game or a headset: the host's own shader on a D3D11 device of
 // its own (hardware, else WARP), fed with eye images ray-traced from a test scene.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "engine/Engine.hpp"
 
 #include "core/Log.hpp"

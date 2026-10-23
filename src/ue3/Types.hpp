@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once
 
 // Our own UE3 core types (research/34): just the shapes the engine's memory has, written from our

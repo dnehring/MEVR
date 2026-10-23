@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "game/Comfort.hpp"
 
 #include "core/Log.hpp"

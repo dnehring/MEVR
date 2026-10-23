@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // The guided calibration in the headset (plugin/Calibration.hpp, research/25).
 
 #include "plugin/Calibration.hpp"

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once
 
 // The game's side of our reflection layer (research/34): finds GObjects and the name pools in the

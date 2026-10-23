@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "game/Reflections.hpp"
 
 #include "core/Log.hpp"

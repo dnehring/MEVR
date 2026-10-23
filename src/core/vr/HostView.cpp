@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "core/vr/HostView.hpp"
 
 #include <Windows.h>

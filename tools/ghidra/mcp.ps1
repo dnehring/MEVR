@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 <#
 .SYNOPSIS
     Serves the local Ghidra project to an MCP client (GhidraMCP 2.0, headless, stdio).

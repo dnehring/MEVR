@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # Hand-curated LE1 (2.0.0.48602, timestamp 0x60AEEFA2) names for the Ghidra project, from our
 # source and research notes. tools/ghidra/seed.ps1 merges this with LExSDKv2's RVA table and the
 # mod's natives dump; this file is applied last, so its names win.

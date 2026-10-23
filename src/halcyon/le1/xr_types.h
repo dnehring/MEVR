@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 
 // Hand-coded OpenXR 1.0 types (XR_KHR_D3D11_enable), lifted VERBATIM from the research tree

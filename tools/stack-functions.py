@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Where a sampled thread's time goes, by the game's own functions (research/22).
 
 Reads the raw stacks mevr-stack-sampler writes (one sample per line, innermost frame first,

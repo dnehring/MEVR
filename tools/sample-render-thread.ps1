@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # Samples Halcyon's render thread in the running game (LE1): where its time goes, by module and function
 # (research/22). Gets the thread from a frame-timing capture of the running process (takes a 2 s one if the
 # latest capture is from another run), then runs mevr-stack-sampler (build it: cmake --build build --config

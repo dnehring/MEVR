@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "plugin/ProcessEventHook.hpp"
 
 #include "core/Hook.hpp"

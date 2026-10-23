@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "core/ik/Ik.hpp"
 
 #include <algorithm>

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "engine/Skeleton.hpp"
 
 #include "engine/Objects.hpp"

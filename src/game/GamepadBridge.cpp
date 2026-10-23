@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "game/GamepadBridge.hpp"
 
 #include "core/Hook.hpp"

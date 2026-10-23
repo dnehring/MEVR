@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once
 
 // Between WorldPanels.cpp (MevrBridge::PlacePanel) and the rest of the host's bridge. Present thread.

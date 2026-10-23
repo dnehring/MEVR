@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "plugin/menu/MenuRenderer.hpp"
 
 #include "plugin/menu/StateGuard.hpp"

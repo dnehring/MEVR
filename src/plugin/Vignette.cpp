@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // The comfort vignette's quad (plugin/Vignette.hpp, research/31).
 
 #include "plugin/Vignette.hpp"

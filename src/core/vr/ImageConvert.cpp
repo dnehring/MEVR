@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "core/vr/ImageConvert.hpp"
 
 #include <algorithm>

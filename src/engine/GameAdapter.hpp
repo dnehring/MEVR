@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once
 
 // Per-game differences of the same engine (docs/trilogy-design.md: one system, small adapters).

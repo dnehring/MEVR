@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // The fake MassEffect1.exe's version (tools/setup/FakeGame.cpp): the numbers the setup reads.
 #include <winres.h>
 

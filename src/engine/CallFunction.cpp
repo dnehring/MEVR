@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "engine/CallFunction.hpp"
 
 #include "core/Hook.hpp"

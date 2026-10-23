@@ -1,3 +1,4 @@
+; SPDX-License-Identifier: MIT
 ; The test stand-in for bink2w64_original.dll (tools/loader-test): the same 79 names as the game's Bink DLL;
 ; RADTimerRead returns a known value, the rest return 0.
 LIBRARY bink2w64_original

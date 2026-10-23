@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once
 
 // Research for VRIK: logs the player character's skeleton once per mesh (bone names, the

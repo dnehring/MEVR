@@ -1,5 +1,6 @@
+// SPDX-License-Identifier: MIT
 // Decompile / search / rename / comment, for tools/ghidra/decompile.ps1 (headless postScript).
-// Part of ME VR Attempt (GPL-3.0).
+// Part of ME VR Attempt.
 //
 // Arguments: <out file> <cache dir> <mode> <args...>, or one "@<file>" holding them one per line
 // (UTF-8): analyzeHeadless.bat mangles arguments with cmd's special characters, e.g. parentheses.

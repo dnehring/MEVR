@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // The guided calibration's look (plugin/CalibrationDraw.hpp): the coming main menu's style (the user's mockup,
 // 2026-10-22), Mass Effect-inspired but our own. Everything that decides the look is in this file.
 

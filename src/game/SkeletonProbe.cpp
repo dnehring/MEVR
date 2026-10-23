@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "game/SkeletonProbe.hpp"
 
 #include "core/Log.hpp"

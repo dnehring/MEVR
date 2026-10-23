@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # Asks the running game (LE1, Halcyon's Stereo 2) for an eye diff and prints it: one paired frame recorded both
 # ways (the first eye's D3D11 calls, and the engine's second-eye pass on the shared renderer), compared call by
 # call (plugin/DrawReplay, research/32 lever 4). Says whether the two streams align, which constant bytes differ

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Where each frame's time goes, from a frame-breakdown probe capture (plugin/PerfProbe, research/22).
 
 Reads %LOCALAPPDATA%\\MEVR\\perf\\<stamp>[-tag]-probe.json and its -frames.csv and -ticks.csv (written by the

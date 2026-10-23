@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "plugin/menu/MenuDecorators.hpp"
 
 #include <RmlUi/Core/ComputedValues.h>

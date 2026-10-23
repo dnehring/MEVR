@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once
 
 // The player camera's hook, logged on each change (research/18, proposal 3). LE1's active camera

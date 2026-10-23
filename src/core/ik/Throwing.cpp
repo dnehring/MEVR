@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "core/ik/Throwing.hpp"
 
 #include <algorithm>

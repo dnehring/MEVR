@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # Samples GPU and CPU load while the game runs, to tell a GPU-bound frame rate from a CPU-bound one.
 # Halcyon's log has the frame rate but not where the time goes (its [GPU] figure is the frame
 # interval). Every -IntervalSeconds while the game process lives:

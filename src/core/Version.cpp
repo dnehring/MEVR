@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "core/Version.hpp"
 
 #include <Windows.h>

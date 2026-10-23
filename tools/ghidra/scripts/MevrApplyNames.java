@@ -1,5 +1,6 @@
+// SPDX-License-Identifier: MIT
 // Applies names from CSV files (rva,name,kind,comment) to the current program.
-// Part of ME VR Attempt (GPL-3.0). Run by tools/ghidra/seed.ps1 as a headless postScript.
+// Part of ME VR Attempt. Run by tools/ghidra/seed.ps1 as a headless postScript.
 //
 // Arguments: one or more CSV paths, applied in order; a later file wins a clash at one address
 // (the earlier name stays as a secondary label). Rows:

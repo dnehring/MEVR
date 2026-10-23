@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // The headset test loop: eye snapshots, pose recording and replay (plugin/TestLoop.hpp). Host side,
 // LE1 with Halcyon's renderer. Its one seam in Halcyon's code is MevrBridge::WrapSessionFunctions
 // (src/halcyon/le1/mevr_bridge.h), called from xr_session.cpp's ResolveSessionFunctions.

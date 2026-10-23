@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # Embeds a text file as a char array: cmake -DINPUT=<file> -DOUTPUT=<out.cpp> -DSYMBOL=<name> -P EmbedText.cmake
 # writes `extern char const <name>[]` (the bytes, NUL-terminated) and `extern std::size_t const <name>Size` (the
 # byte count without the terminator) in namespace mevr::embedded. For shader headers compiled at run time

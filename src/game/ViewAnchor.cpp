@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "game/ViewAnchor.hpp"
 
 #include "core/Log.hpp"

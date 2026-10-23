@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # Shared helpers for tools/*.ps1. Dot-source it: . "$PSScriptRoot\common.ps1"
 
 $MELE_AppId = '1328670'

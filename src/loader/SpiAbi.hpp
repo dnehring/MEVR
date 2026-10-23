@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once
 
 // The binary interface ASI plugins built against LExSDKv2 expect from the bink2w64.dll proxy that loads them

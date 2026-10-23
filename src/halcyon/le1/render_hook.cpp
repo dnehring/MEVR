@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 // Modified for ME VR Attempt (GPL-3.0) since 2026-10-23: changes are marked [MEVR].
 // Upstream: jrush64/MassEffect1-VR @ 3c51514 (Copyright (C) 2026 Halcyon).
 #include "render_hook.h"

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "core/Window.hpp"
 
 #include "core/Log.hpp"

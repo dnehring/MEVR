@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "core/vr/SquadMenu.hpp"
 
 #include <Windows.h>

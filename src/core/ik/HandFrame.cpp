@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "core/ik/HandFrame.hpp"
 
 #include <cmath>

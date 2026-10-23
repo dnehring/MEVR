@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Cross-references in an x64 PE: who calls, jumps to or loads an address (or a string).
 
 For research on Mass Effect LE's exe, run it on the disassemblable copy made by

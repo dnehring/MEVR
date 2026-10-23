@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 
 // MEVR (ME VR Attempt) addition, GPL-3.0: the seams where our host plugs into Halcyon's code.

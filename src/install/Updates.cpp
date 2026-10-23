@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "install/Updates.hpp"
 
 #include "core/Json.hpp"

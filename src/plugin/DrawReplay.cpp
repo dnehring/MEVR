@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "plugin/DrawReplay.hpp"
 
 #include "core/Log.hpp"

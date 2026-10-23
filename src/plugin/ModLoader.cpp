@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "plugin/ModLoader.hpp"
 
 #include "core/Log.hpp"

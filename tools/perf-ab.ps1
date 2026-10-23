@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # A/B of one [Performance] switch in the running game (LE1, research/22 and /32): sets the key in
 # ASI\LE1MEVR.ini to each value in turn (the host re-reads it once a second), lets it settle, takes a
 # frame capture (tools/perf-probe.ps1) and prints one summary line per capture; alternates for -Rounds

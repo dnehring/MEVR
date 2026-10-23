@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 #include "core/vr/Sights.hpp"
 
 #include "core/vr/OverlayPlacement.hpp"

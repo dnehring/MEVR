@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "install/Http.hpp"
 
 #include "install/Detect.hpp"

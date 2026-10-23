@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "plugin/menu/MenuStrip.hpp"
 
 #include "core/vr/ColourStrip.hpp"

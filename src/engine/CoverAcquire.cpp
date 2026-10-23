@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "engine/CoverAcquire.hpp"
 
 #include "core/Hook.hpp"

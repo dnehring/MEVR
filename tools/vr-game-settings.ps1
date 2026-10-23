@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # Applies VR-friendly graphics settings to a game's GamerSettings.ini, or restores the original.
 #
 #   UseVSync=False    Present must not also wait for the desktop monitor's refresh: a second

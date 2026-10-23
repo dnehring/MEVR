@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Laser pointer for Halcyon's menu (src/halcyon/le1/vr_menu.cpp): a motion controller's aim ray
 // on the menu quad (head-locked, or fixed in the app space with world-locked panels) drives ImGui's mouse. The trigger is the left button, the right
 // stick scrolls, and a dot marks where the ray lands. Either hand points: the right one by default,

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # Clones (or updates) third-party repos into reference/ for reading. reference/ is gitignored.
 # Nothing in reference/ is built or run, and no code is copied from it unless its license allows
 # (see research/06-repo-licenses.md).

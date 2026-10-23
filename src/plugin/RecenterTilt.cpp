@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // A recenter that also corrects a badly tilted base space ([MEVR] seam in Halcyon's DoRecenter, rules in
 // core/vr/Recenter). Present thread throughout: DoRecenter and OverlayLayers both run in Halcyon's frame.
 

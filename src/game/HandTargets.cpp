@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "game/HandTargets.hpp"
 
 #include "core/vr/Controllers.hpp"

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 <#
 .SYNOPSIS
     Builds the local Ghidra project for an LE exe: splices the mod's decrypted .text into a copy,

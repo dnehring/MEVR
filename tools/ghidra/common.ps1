@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # Shared settings for tools/ghidra/*.ps1. Dot-source it: . "$PSScriptRoot\common.ps1"
 #
 # Everything these tools write (the spliced exe, the Ghidra project, logs, decompile output) is

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // The eye upscale (core/vr/Upscale, research/32) offline: FSR 1's EASU and RCAS, the same shader text the host
 // compiles into Halcyon's eye blit (the embedded AMD headers), run on a D3D11 device of its own (hardware, else
 // WARP) over a synthetic test image, next to a bilinear scale of the same (what Halcyon's fill does).

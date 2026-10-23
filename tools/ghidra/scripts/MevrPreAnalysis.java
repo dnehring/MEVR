@@ -1,5 +1,6 @@
+// SPDX-License-Identifier: MIT
 // Ghidra pre-script for tools/ghidra/setup.ps1: tune auto-analysis for a large UE3 exe.
-// Part of ME VR Attempt (GPL-3.0). Runs headless before the import's auto-analysis.
+// Part of ME VR Attempt. Runs headless before the import's auto-analysis.
 //
 // The exe is ~16 MB of code with ~200k functions in .pdata. The defaults are fine except the
 // slow, optional decompiler-driven passes, which would multiply the analysis time; we decompile
