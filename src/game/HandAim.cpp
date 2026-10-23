@@ -5,7 +5,7 @@
 #include "core/vr/Calibration.hpp"
 #include "core/vr/Controllers.hpp"
 #include "engine/CallFunction.hpp"
-#include "engine/GameAdapter.hpp"
+#include "engine/GameAdapterSdk.hpp"
 #include "engine/Objects.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/XrToUnreal.hpp"

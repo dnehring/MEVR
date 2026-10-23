@@ -22,6 +22,7 @@
 #include "engine/GameAdapter.hpp"
 #include "engine/NativesDump.hpp"
 #include "engine/ProcessEvent.hpp"
+#include "engine/ReflectCheck.hpp"
 #include "engine/SceneView.hpp"
 #include "game/ArmIk.hpp"
 #include "game/BodyCalibration.hpp"
@@ -47,6 +48,7 @@
 #include "game/ViewAnchor.hpp"
 #include "game/ViewLevel.hpp"
 #include "game/Weapon.hpp"
+#include "ue3/Runtime.hpp"
 
 #include <LESDK/Headers.hpp>
 #include <LESDK/Init.hpp>
@@ -97,6 +99,8 @@ bool gSightSent = false;  // a sight was published (cleared again at shutdown)
 // Host renderer (HostServices v7): it runs the two-handed grip's pad mapping.
 bool gToldNoSupportGrip = false;
 bool gHooked = false;  // ProcessEvent hook live (after the script packages loaded)
+// Our reflection layer (ue3/, research/34) found and checked against LExSDKv2 (once per load).
+bool gReflectChecked = false;
 bool gSceneViewHooked = false;
 bool gGamepadHooked = false;  // XInput hooks (once the game has loaded an XInput DLL)
 bool gCallFunctionHooked = false;  // installed the first time hand aim is turned on
@@ -202,6 +206,13 @@ void TryInstallScriptHooks() {
     // the game mode, which the probes and features use.
     if (!game::head_tracking::TryStartup(gSceneViewHooked)) {
         return;
+    }
+    // The script packages are in: find our reflection layer and prove it against LExSDKv2 before
+    // the modules that use it start (research/34).
+    if (!gReflectChecked) {
+        gReflectChecked = true;
+        ue3::runtime::Init();
+        engine::reflect_check::Run(*gInit);
     }
     if (!gHostOwnsVr && !game::reflections::TryStartup()) {
         log::Warn("reflections: SceneCaptureComponent.SetFrameRate not found; reflection fix off");
@@ -1038,6 +1049,8 @@ MEVR_MOD_API void MevrModShutdown() {
     game::reflections::Shutdown();
     engine::process_event::ClearHandlers();
     game::head_tracking::Shutdown();
+    ue3::runtime::Shutdown();
+    gReflectChecked = false;
     gInit.reset();
     log::Info("mod shut down");
     log::SetSink(nullptr);

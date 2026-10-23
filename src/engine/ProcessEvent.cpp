@@ -14,9 +14,18 @@ namespace {
 constexpr char const* kHookName = "UObject::ProcessEvent";
 
 struct Entry {
-    UFunction* function;
-    Handler handler;
+    void const* function;
+    Handler handler;              // LExSDKv2-typed modules
+    ObjectHandler objectHandler;  // modules on ue3/
 };
+
+void Run(Entry const& entry, UObject* context, UFunction* function, void* parms, void* result) {
+    if (entry.handler != nullptr) {
+        entry.handler(context, function, parms, result);
+    } else {
+        entry.objectHandler(reinterpret_cast<ue3::Object*>(context), reinterpret_cast<ue3::Function*>(function), parms, result);
+    }
+}
 
 // Matched by pointer: no per-call name lookups (docs/trilogy-design.md, rule 5).
 std::vector<Entry> gHandlers;
@@ -30,7 +39,7 @@ tProcessEvent* gProcessEventOrig = nullptr;
 void Dispatch(UObject* context, UFunction* function, void* parms, void* result) {
     for (Entry const& entry : gHandlers) {
         if (entry.function == function) {
-            entry.handler(context, function, parms, result);
+            Run(entry, context, function, parms, result);
         }
     }
 }
@@ -39,7 +48,7 @@ void ProcessEventHook(UObject* context, UFunction* function, void* parms, void* 
     gProcessEventOrig(context, function, parms, result);
     for (Entry const& entry : gHandlers) {
         if (entry.function == function) {
-            entry.handler(context, function, parms, result);
+            Run(entry, context, function, parms, result);
         }
     }
 }
@@ -47,7 +56,11 @@ void ProcessEventHook(UObject* context, UFunction* function, void* parms, void* 
 } // namespace
 
 void AddPostHandler(UFunction* function, Handler handler) {
-    gHandlers.push_back({function, handler});
+    gHandlers.push_back({function, handler, nullptr});
+}
+
+void AddPostHandler(ue3::Function* function, ObjectHandler handler) {
+    gHandlers.push_back({function, nullptr, handler});
 }
 
 void ClearHandlers() {

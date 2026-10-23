@@ -7,14 +7,23 @@ namespace LESDK {
 class Initializer;
 }
 
+namespace mevr::ue3 {
+struct Object;
+struct Function;
+}
+
 namespace mevr::engine::process_event {
 
 // Runs after the original UObject::ProcessEvent for the UFunction it was registered with.
 // Out-parameters in `parms` can be modified here.
 using Handler = void (*)(UObject* context, UFunction* function, void* parms, void* result);
 
+// The same for modules on our reflection layer (ue3/, research/34).
+using ObjectHandler = void (*)(ue3::Object* context, ue3::Function* function, void* parms, void* result);
+
 // Register handlers before Install; the table is read without locking while hooked.
 void AddPostHandler(UFunction* function, Handler handler);
+void AddPostHandler(ue3::Function* function, ObjectHandler handler);
 void ClearHandlers();
 
 // The host's ProcessEvent hook (HostServices::setProcessEventCallback). With it, Install/Uninstall

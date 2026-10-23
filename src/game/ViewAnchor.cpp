@@ -4,7 +4,7 @@
 #include "core/vr/Comfort.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/Output.hpp"
-#include "engine/GameAdapter.hpp"
+#include "engine/GameAdapterSdk.hpp"
 #include "engine/Objects.hpp"
 #include "game/HeadTracking.hpp"
 

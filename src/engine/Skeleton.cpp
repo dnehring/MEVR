@@ -174,6 +174,10 @@ ik::Affine LocalToWorld(USkeletalMeshComponent const* mesh) {
     return affine;
 }
 
+ik::Affine LocalToWorld(ue3::Object const* mesh) {
+    return LocalToWorld(reinterpret_cast<USkeletalMeshComponent const*>(mesh));
+}
+
 USkeletalMeshComponent* PoseParent(USkeletalMeshComponent const* mesh) {
 #if defined(SDK_TARGET_LE1)
     return mesh != nullptr ? mesh->ParentAnimComponent : nullptr;

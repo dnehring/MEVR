@@ -3,7 +3,7 @@
 #include "core/Log.hpp"
 #include "core/vr/TestRequest.hpp"
 
-#include <LESDK/Headers.hpp>
+#include "engine/GameAdapter.hpp"
 
 #include <Windows.h>
 
@@ -48,7 +48,7 @@ bool gToldNoHost = false;
 fs::path FilePath() {
     wchar_t buffer[MAX_PATH]{};
     GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-    return fs::path(buffer).parent_path() / L"ASI" / (SDK_TARGET_NAME_W L"MEVR.ini");
+    return fs::path(buffer).parent_path() / L"ASI" / (MEVR_GAME_NAME_W L"MEVR.ini");
 }
 
 std::string Read(fs::path const& path, std::string const& section, char const* key) {

@@ -2,7 +2,7 @@
 
 #include "core/Log.hpp"
 #include "core/ik/CameraHook.hpp"
-#include "engine/GameAdapter.hpp"
+#include "engine/GameAdapterSdk.hpp"
 #include "engine/Objects.hpp"
 #include "engine/Skeleton.hpp"
 #include "game/HeadTracking.hpp"

@@ -6310,7 +6310,11 @@ void TestUpscale() {
     CHECK(src.find("PSRcas") != std::string::npos && src.find("MEVR_EYE_OUT") != std::string::npos);
 }
 
+// tests/ReflectTests.cpp: our UE3 reflection layer (src/ue3, research/34).
+int RunReflectTests();
+
 int main() {
+    gFailures += RunReflectTests();
     TestUpscale();
     TestComfort();
     TestMetricStereo();

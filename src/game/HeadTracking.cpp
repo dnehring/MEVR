@@ -4,7 +4,7 @@
 #include "core/vr/Output.hpp"
 #include "core/vr/ViewSync.hpp"
 #include "engine/Objects.hpp"
-#include "engine/GameAdapter.hpp"
+#include "engine/GameAdapterSdk.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/SceneView.hpp"
 #include "engine/XrToUnreal.hpp"

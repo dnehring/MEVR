@@ -223,12 +223,15 @@ set(MEVR_MOD_SOURCES
     src/engine/Engine.cpp
     src/engine/Engine.hpp
     src/engine/GameAdapter.hpp
+    src/engine/GameAdapterSdk.hpp
     src/engine/NativesDump.cpp
     src/engine/NativesDump.hpp
     src/engine/Objects.cpp
     src/engine/Objects.hpp
     src/engine/ProcessEvent.cpp
     src/engine/ProcessEvent.hpp
+    src/engine/ReflectCheck.cpp
+    src/engine/ReflectCheck.hpp
     src/engine/SceneView.cpp
     src/engine/SceneView.hpp
     src/engine/Skeleton.cpp
@@ -287,12 +290,27 @@ set(MEVR_MOD_SOURCES
     src/game/Weapon.hpp
     src/mod/Mod.cpp
     src/mod/ModApi.hpp
+    # Our UE3 reflection layer (research/34)
+    src/ue3/Handles.cpp
+    src/ue3/Handles.hpp
+    src/ue3/Layout.hpp
+    src/ue3/Names.cpp
+    src/ue3/Names.hpp
+    src/ue3/Params.cpp
+    src/ue3/Params.hpp
+    src/ue3/Pattern.cpp
+    src/ue3/Pattern.hpp
+    src/ue3/Reflect.cpp
+    src/ue3/Reflect.hpp
+    src/ue3/Runtime.cpp
+    src/ue3/Runtime.hpp
+    src/ue3/Types.hpp
 )
 
 function(mevr_configure target game)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(${target} PRIVATE LESDK-${game} version d3d11 dxgi)
-    target_compile_definitions(${target} PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+    target_compile_definitions(${target} PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX MEVR_GAME_${game})
     # Same warning policy as the SDK's own consumers; the generated headers need /permissive.
     target_compile_options(${target} PRIVATE /W4 /WX /permissive /utf-8 /Zc:__cplusplus /Zi
         /wd4121 /wd4127 /wd4702)
@@ -477,6 +495,11 @@ if (MEVR_BUILD_TESTS)
     enable_testing()
     add_executable(mevr-tests
         tests/Main.cpp
+        tests/ReflectTests.cpp
+        src/ue3/Names.cpp
+        src/ue3/Params.cpp
+        src/ue3/Pattern.cpp
+        src/ue3/Reflect.cpp
         src/core/PngFile.cpp
         src/core/ik/ArmLength.cpp
         src/core/ik/ArmPose.cpp
