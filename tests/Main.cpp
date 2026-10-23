@@ -24,6 +24,7 @@
 #include "core/vr/Sights.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/TestRequest.hpp"
+#include "core/vr/ViewLevel.hpp"
 #include "core/vr/ViewSync.hpp"
 #include "core/vr/WheelCrop.hpp"
 #include "engine/XrToUnreal.hpp"
@@ -4164,7 +4165,148 @@ void TestScopeMapping() {
     CHECK(s::Project(left, fov, onLine, u, v) && NearD(u, 0.5 + 0.5 * 0.064 / 40.0, 1e-5) && NearD(v, 0.5, 1e-5));
 }
 
+// The level camera (core/vr/ViewLevel, research/22): rotator angles, the gate, the camera modes, the
+// last-minute window, the change log and the recoil pulse.
+void TestViewLevel() {
+    namespace vl = mevr::vr::view_level;
+    // Rotator components wrap: a slightly-down pitch is stored as a large positive number.
+    CHECK(vl::Signed(0) == 0 && vl::Signed(100) == 100 && vl::Signed(65436) == -100 && vl::Signed(-100) == -100);
+    CHECK(vl::Signed(32767) == 32767 && vl::Signed(32768) == -32768 && vl::Signed(65536 + 5) == 5);
+    CHECK(vl::Units(90.0) == 16384 && vl::Units(-0.5) == -91 && std::abs(vl::Degrees(16384) - 90.0) < 1e-9);
+    CHECK(vl::Correction(5461) == -5461 && vl::Correction(65536 - 200) == 200 && vl::Correction(0) == 0);
+
+    // The gate: holds only on foot, with a head-tracked view, the hand aiming, the host's head aim off,
+    // out of cover and off ladders, in an allowed camera mode; the first reason that applies is given.
+    vl::Inputs in;
+    in.headTrackedView = in.handAim = in.onFoot = in.pawn = in.cameraModeAllowed = true;
+    CHECK(vl::Decide(in) == vl::Why::Holding);
+    vl::Inputs t = in;
+    t.enabled = false;
+    t.headTrackedView = false;
+    CHECK(vl::Decide(t) == vl::Why::Off);
+    t = in;
+    t.headTrackedView = false;
+    CHECK(vl::Decide(t) == vl::Why::NoView);
+    t = in;
+    t.headAim = true;
+    CHECK(vl::Decide(t) == vl::Why::HeadAim);
+    t = in;
+    t.handAim = false;
+    CHECK(vl::Decide(t) == vl::Why::NoHandAim);
+    t = in;
+    t.onFoot = false;
+    CHECK(vl::Decide(t) == vl::Why::NotOnFoot);
+    t = in;
+    t.pawn = false;
+    CHECK(vl::Decide(t) == vl::Why::NoPawn);
+    t = in;
+    t.cover = true;
+    CHECK(vl::Decide(t) == vl::Why::Cover);
+    t = in;
+    t.ladder = true;
+    CHECK(vl::Decide(t) == vl::Why::Ladder);
+    t = in;
+    t.cameraModeAllowed = false;
+    CHECK(vl::Decide(t) == vl::Why::CameraMode);
+    for (vl::Why why : {vl::Why::Holding, vl::Why::Off, vl::Why::CameraMode}) {
+        CHECK(std::string(vl::Name(why)) != "?");
+    }
+
+    // Camera modes: on-foot explore, combat, aimed fire and sprint hold; the scope, cover, the Mako,
+    // photo and cinematic modes keep the game's pitch (exact names: VehicleTightAim isn't TightAim).
+    for (char const* mode : {"SFXCameraMode_Explore", "SFXCameraMode_ExploreStorm", "SFXCameraMode_Combat",
+             "SFXCameraMode_CombatStorm", "SFXCameraMode_TightAim"}) {
+        CHECK(vl::CameraModeAllows(mode));
+    }
+    for (char const* mode : {"SFXCameraMode_SniperAim", "SFXCameraMode_HipAimCover", "SFXCameraMode_EnterCover",
+             "SFXCameraMode_Vehicle", "SFXCameraMode_VehicleTightAim", "SFXCameraMode_VehicleTightAimEx", "SFXCameraMode_Photo",
+             "SFXCameraMode_PhotoFree", "SFXCameraMode_Cinematic", "SFXCameraMode_Interpolate", "none", ""}) {
+        CHECK(!vl::CameraModeAllows(mode));
+    }
+
+    // The window: a minute of one-second buckets. 30 seconds of rifle fire, a 0.1-degree kick per shot
+    // (18 units) put back each tick: the game moved the pitch +540 units, the hold put back -540.
+    vl::Window window;
+    double now = 1000.25;
+    int left = 0;
+    for (int i = 0; i < 30; ++i) {
+        window.Shot(now, 18);
+        int const pitch = left + 18;
+        int const delta = vl::Signed(pitch - left);
+        int const correction = vl::Correction(pitch);
+        window.Frame(now, pitch, 0, delta, correction, true);
+        left = pitch + correction;
+        now += 1.0;
+    }
+    vl::Summary s = window.Last(now - 1.0);
+    CHECK(s.any && s.shots == 30 && s.recoil == 540 && s.gameDrift == 540 && s.corrected == -540);
+    CHECK(s.minPitch == 18 && s.maxPitch == 18 && s.frames == 30 && s.heldFrames == 30 && std::abs(s.seconds - 30.0) < 1e-9);
+    // The last 10 seconds only.
+    s = window.Last(now - 1.0, 10.0);
+    CHECK(s.shots == 10 && s.recoil == 180);
+    // Without the hold the pitch climbs (as in the 2026-10-22 session): min and max as the game left it.
+    window.Clear();
+    CHECK(!window.Last(now).any);
+    left = 0;
+    for (int i = 0; i < 5; ++i) {
+        int const pitch = left + 100;
+        window.Frame(now, pitch, 0, vl::Signed(pitch - left), 0, false);
+        left = pitch;
+    }
+    s = window.Last(now);
+    CHECK(s.gameDrift == 500 && s.corrected == 0 && s.minPitch == 100 && s.maxPitch == 500 && s.heldFrames == 0);
+    // A down pitch (stored wrapped) reads as negative.
+    window.Frame(now, 65536 - 300, 65536 - 10, 0, 0, false);
+    s = window.Last(now);
+    CHECK(s.minPitch == -300 && s.minRoll == -10);
+    // Old seconds drop out of the minute; a bucket reused for a later second starts empty.
+    window.Shot(now, 50);
+    s = window.Last(now + 61.0);
+    CHECK(!s.any && s.shots == 0);
+    window.Shot(now + 64.0, 7);  // the same bucket index as `now`
+    s = window.Last(now + 64.0);
+    CHECK(s.shots == 1 && s.recoil == 7);
+    window.ZoomSnap(now + 64.0);
+    CHECK(window.Last(now + 64.0).zoomSnaps == 1);
+
+    // The change log: a line once the game's pitch moved 0.5 degrees (91 units) since the last one, at
+    // most every second; shots and their recoil counted in between.
+    vl::ChangeLog changes(91, 1.0);
+    CHECK(!changes.Feed(0.0, 0, 0));
+    changes.Shot(18);
+    CHECK(!changes.Feed(0.1, 18, 0));
+    for (int i = 0; i < 4; ++i) {
+        changes.Shot(18);
+        CHECK(!changes.Feed(0.2 + 0.1 * i, 18, 0));  // 90 units: not yet
+    }
+    changes.Shot(18);
+    CHECK(!changes.Feed(0.7, 18, 0));  // 108 units, but under a second since the start
+    CHECK(changes.Feed(1.2, 0, 0));
+    vl::ChangeLog::Line line = changes.Take(1.2);
+    CHECK(line.pitch == 108 && line.shots == 6 && line.recoil == 108 && std::abs(line.seconds - 1.2) < 1e-9);
+    CHECK(!changes.Feed(3.0, 0, 0));  // nothing moved since
+    // Put back and kicked again: the sum counts what the game did, both ways.
+    CHECK(!changes.Feed(3.1, -60, 0));
+    CHECK(changes.Feed(3.2, -40, 0));
+    line = changes.Take(3.2);
+    CHECK(line.pitch == -100 && line.shots == 0);
+    // A roll is reported from and to.
+    CHECK(changes.Feed(5.0, 0, 65536 - 200));
+    line = changes.Take(5.0);
+    CHECK(line.rollFrom == 0 && line.rollTo == -200 && line.pitch == 0);
+
+    // The recoil pulse: a rifle's kick is a short tap, a shotgun's a longer thump, scaled; 0 = none.
+    vl::Pulse const rifle = vl::RecoilPulse(0.1, 0.5);
+    vl::Pulse const shotgun = vl::RecoilPulse(3.0, 0.5);
+    CHECK(rifle.amplitude > 0.25f && rifle.amplitude < 0.35f && rifle.seconds < 0.04f);
+    CHECK(std::abs(shotgun.amplitude - 0.5f) < 1e-6f && std::abs(shotgun.seconds - 0.07f) < 1e-6f);
+    CHECK(vl::RecoilPulse(1.0, 0.0).amplitude == 0.0f && vl::RecoilPulse(1.0, -1.0).amplitude == 0.0f);
+    CHECK(vl::RecoilPulse(0.0, 1.0).amplitude > 0.0f);  // a shot whose kick wasn't seen still taps
+    CHECK(vl::RecoilPulse(10.0, 2.0).amplitude <= 1.0f);
+}
+
 int main() {
+    TestViewLevel();
     TestRecenterTilt();
     TestSightSettings();
     TestSightGeometry();

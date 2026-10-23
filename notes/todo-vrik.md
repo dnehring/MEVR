@@ -426,3 +426,29 @@ Halcyon's recenter (yaw-only, from the base space) can never undo a rolled or pi
 - **Flight stays ME1's disc** (`flight = disc`, the default): re-aimed from the hand at the arc's
   landing point. `flight = arc` (the game's unused ballistic class) stays experimental.
 
+
+## The world tilted while shooting: the level camera (user report 2026-10-22; built the same day, to test)
+
+PSVR 2 on SteamVR: the world pitched more and more over a session while SteamVR's view stayed level.
+- **Cause ([research/22](../research/22-view-level.md)):** LE1 adds each shot's recoil to the player
+  controller's rotation (`BioPlayerInput.UpdateViewRotation` in `PlayerTick`: `UpdateKickback` minus
+  `UpdateKickbackFade`, then `SetRotation`), and every assault rifle's pitch kick is permanent
+  (`RecoilFadeSpeed=0` in `BIOWeapon.ini`): the flat game expects the stick to pull it down. Halcyon's
+  `decoupledPitch` zeroes the stick's pitch, head aim is off, the hand aims: nothing does. The session's
+  snapshots show the game camera pitched about +30 degrees after 204 shots (the head looking 28 degrees
+  down to see the world level). Aim assist's zoom snap (on each switch to aimed fire) also turns the
+  controller, pitch and yaw.
+- **Built (mod only, hot-reloads):** `game/view_level` (rules in `core/vr/ViewLevel`, unit-tested):
+  a post-handler on `PlayerTick` (after input, recoil and aim assist, before the camera update) holds
+  ControlRotation's pitch and roll at 0 and drops a pending zoom-snap target; on foot, head-tracked view,
+  hand aim on, host head aim off; never in cover, on a ladder, or in the sniper scope, cover, Mako, photo
+  or cinematic camera modes. Taking hold of a pitched camera levels it at once (logged). The recoil is a
+  controller tap per shot instead (`SetWeaponRecoil` CallFunction post-handler). Settings: `[Hands]
+  levelCamera = 1`, `recoilHaptic = 0.5`. Logs: `view level:` (state changes, every 0.5 degrees the game
+  moved the pitch, the heartbeat's last-minute min/max/drift/shots).
+- **[verify in headset]:** notes/next-vr-session.md step 17 (fire for a minute, check the horizon and the
+  log).
+- **Proposed, not built:** a visual kick of the gun model only (a short decaying pitch and pull-back of
+  the right hand's target in the gun's frame); turning off aim assist's friction and adhesion while the
+  hand aims (they slow and bend the stick's turning near enemies, which the hand-aimed player doesn't
+  want); a checkbox for `levelCamera` in the VR hands tab (host change).

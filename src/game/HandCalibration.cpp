@@ -34,6 +34,8 @@ struct Values {
     double armStretch = ik::kMaxArmStretch;
     double trackingScale = 0.0;
     double armLength = 0.0;  // [Arms] armLengthM
+    bool levelCamera = true;     // [Hands] levelCamera
+    double recoilHaptic = 0.5;   // [Hands] recoilHaptic
     // [Controls]
     bool leftTrigger = false;
     bool leftTriggerLB = true;
@@ -83,6 +85,10 @@ constexpr char const* kDefaultFile =
     "armStretch = 1.25\n"
     "; trackingScale: Unreal units per meter of hand and head motion; 0 = the view's own scale.\n"
     "trackingScale = 0\n"
+    "; levelCamera: 1 keeps the game camera level on foot while the hand aims (the guns' recoil and aim assist\n"
+    "; no longer tilt the world; research/22). recoilHaptic: how strongly a shot's recoil buzzes the hand, 0..1.\n"
+    "levelCamera = 1\n"
+    "recoilHaptic = 0.5\n"
     "\n"
     "[Arms]\n"
     "; Arm-length calibration (the VR hands tab samples a T pose; the mod writes armLengthM, the\n"
@@ -358,6 +364,12 @@ Values ReadValues(Ini const& ini) {
     }
     if (Number(ini, "Hands", "trackingScale", values.trackingScale) && !(values.trackingScale > 0.0)) {
         values.trackingScale = 0.0;
+    }
+    if (Number(ini, "Hands", "levelCamera", flag)) {
+        values.levelCamera = flag != 0.0;
+    }
+    if (Number(ini, "Hands", "recoilHaptic", values.recoilHaptic)) {
+        values.recoilHaptic = std::clamp(values.recoilHaptic, 0.0, 1.0);
     }
     if (Number(ini, "Arms", "armLengthM", values.armLength) && !(values.armLength >= 0.3 && values.armLength <= 1.2)) {
         values.armLength = 0.0;
@@ -927,6 +939,14 @@ double ArmLength() {
     return gValues.armLength;
 }
 
+bool LevelCamera() {
+    return gValues.levelCamera;
+}
+
+double RecoilHaptic() {
+    return gValues.recoilHaptic;
+}
+
 Controls GetControls() {
     Controls controls;
     controls.leftTrigger = gValues.leftTrigger;
@@ -1070,6 +1090,24 @@ void Refresh() {
         ini = ReadIni(path);
         stamp = fs::last_write_time(path, ec);
     }
+    // And [Hands]' level camera and recoil haptics (2026-10-22, research/22).
+    static constexpr NewKey kNewHandsKeys[] = {
+        {L"levelCamera", "levelCamera", L"1"},
+        {L"recoilHaptic", "recoilHaptic", L"0.5"},
+    };
+    std::string addedHands;
+    for (NewKey const& k : kNewHandsKeys) {
+        auto const s = ini.find("Hands");
+        if (s != ini.end() && s->second.find(k.name) == s->second.end() &&
+            WritePrivateProfileStringW(L"Hands", k.key, k.value, path.wstring().c_str()) != 0) {
+            addedHands += std::format("{}{}", addedHands.empty() ? "" : ", ", k.name);
+        }
+    }
+    if (!addedHands.empty()) {
+        log::Info("hands: added {} (defaults) to [Hands] in {}", addedHands, path.string());
+        ini = ReadIni(path);
+        stamp = fs::last_write_time(path, ec);
+    }
     gStamp = stamp;
     gHolsters = ReadHolsters(ini);
     if (std::string const text = Describe(gHolsters); text != gHolstersText) {
@@ -1109,6 +1147,8 @@ void Refresh() {
             values.aimAtShoulder ? "with both hands and the gun at the shoulder" : "with both hands",
             values.leftTrigger ? "= LT" : values.leftTriggerLB ? "= LB (weapon wheel)" : "not sent to the game");
         log::Info("controls: a left grip away from the gun is {}", values.gripLB ? "LB (weapon wheel)" : "nothing (it only takes the gun)");
+        log::Info("hands: level camera {} (on foot while the hand aims: recoil and aim assist don't pitch the view), recoil haptic {:.2f}",
+            values.levelCamera ? "on" : "off", values.recoilHaptic);
     }
     // The menu's arm-length sample: each new measureRequest value is one T-pose sample. One
     // already there at startup with a result saved is old news.

@@ -37,6 +37,7 @@
 #include "game/SupportGrip.hpp"
 #include "game/Throwables.hpp"
 #include "game/ViewAnchor.hpp"
+#include "game/ViewLevel.hpp"
 #include "game/Weapon.hpp"
 
 #include <LESDK/Headers.hpp>
@@ -205,6 +206,7 @@ void TryInstallScriptHooks() {
     game::throwables::TryStartup();  // and physical grenades and melee (registers its launch handlers)
     gHandAimAvailable = game::hand_aim::TryStartup();
     game::sights::TryStartup();  // the scoped shots' aimed fire (a CallFunction handler, registered before the hook)
+    game::view_level::TryStartup();  // the level camera (PlayerTick and SetWeaponRecoil handlers, before the hooks)
     if (!gHandAimAvailable) {
         log::Warn("hand aim: BioPlayerController.GetAdjustedAimFor not found; hand aim unavailable");
     }
@@ -505,6 +507,27 @@ mevr::game::throwables::Link ThrowablesLink() {
     return link;
 }
 
+// The level camera (game/view_level, research/22): what it needs from the host this tick.
+mevr::game::view_level::Link ViewLevelLink() {
+    using namespace mevr;
+    game::view_level::Link link;
+    if (gHostOwnsVr) {
+        if (gHostView && gHostDataOk) {
+            vr::host_view::State const view = vr::host_view::Latest();
+            link.headTrackedView = view.valid;
+            link.headAim = view.headAim;
+        }
+        link.handAim = gHandAimReported;
+        if (gHost->version >= 9) {
+            link.haptic = gHost->hapticPulse;
+        }
+    } else {
+        link.headTrackedView = vr::output::WantsHeadTracking();
+        link.handAim = game::hand_aim::Enabled() && gCallFunctionHooked;
+    }
+    return link;
+}
+
 // Host renderer (HostServices v8): while the test loop takes a snapshot, our state for its JSON.
 void PublishStatus() {
     using namespace mevr;
@@ -527,7 +550,8 @@ void PublishStatus() {
         "\"armIk\": {{\"enabled\": {}, \"status\": {}, \"handSource\": {}, \"rightHandAimsGun\": {}, \"supportRequested\": {}}}, "
         "\"handAim\": {{\"enabled\": {}, \"toldHost\": {}}}, "
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
-        "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"throwables\": {}}}",
+        "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"throwables\": {}, "
+        "\"viewLevel\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -535,7 +559,7 @@ void PublishStatus() {
         gHandAimReported ? "true" : "false", json::JsonString(type), static_cast<unsigned long long>(game::weapon::Key()),
         json::JsonString(game::weapon::Status()), game::support_grip::Held() ? "true" : "false",
         json::JsonNumber(game::support_grip::Blend()), game::holsters::StatusJson(), game::squad_weapons::StatusJson(),
-        game::sights::StatusJson(), game::throwables::StatusJson());
+        game::sights::StatusJson(), game::throwables::StatusJson(), game::view_level::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -671,6 +695,7 @@ void Heartbeat() {
         game::squad_weapons::LogStats();
         game::sights::LogStats();
         game::throwables::LogStats();
+        game::view_level::LogStats();
         game::skeleton_probe::Tick();
     }
     engine::scene_view::LogStats();
@@ -788,6 +813,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         PublishSupportGrip();
         game::camera_probe::Tick();
         game::hand_aim::Tick();
+        game::view_level::Tick(ViewLevelLink());
         PublishAimRay();
         game::head_tracking::OnTickEnd();
     }
@@ -887,6 +913,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::throwables::Shutdown();
     game::weapon::Shutdown();
     game::camera_probe::Shutdown();
+    game::view_level::Shutdown();
     gHost = nullptr;
     gHostOwnsVr = false;
     gToldHostOwnsVr = false;

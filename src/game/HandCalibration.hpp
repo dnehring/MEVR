@@ -19,6 +19,9 @@
 //           bodyFollowsHead               1: the spine puts the shoulders under the headset
 //           armStretch                    1-1.25: how far the arms may stretch to reach
 //           trackingScale                 Unreal units per meter for hands and head; 0: the view's
+//           levelCamera                   1 (default): the game camera kept level on foot while the hand
+//                                         aims (game/view_level, research/22); 0: the game's pitch
+//           recoilHaptic                  0..1 (default 0.5): a shot's recoil as a controller pulse; 0: none
 //   [Arms]  armLengthM                    the player's shoulder-to-grip length (meters); 0 or absent:
 //                                         reach isn't scaled. Written by MeasureArmLength.
 //           measureRequest, measure*      the VR hands tab's T-pose sample (src/plugin/MevrMenuTab.cpp,
@@ -41,6 +44,10 @@ double ArmStretch();
 double TrackingScale();
 // The calibrated arm length (meters, shoulder to grip), 0 if not calibrated.
 double ArmLength();
+// [Hands] levelCamera: keep the game camera level while the hand aims (game/view_level).
+bool LevelCamera();
+// [Hands] recoilHaptic: 0..1, how strongly a shot's recoil pulses the hand (0: none).
+double RecoilHaptic();
 // [Controls] (appended to an older file that lacks it): the two-handed grip and the left trigger.
 struct Controls {
     bool leftTrigger = false;     // leftTrigger = lt: the game's LT

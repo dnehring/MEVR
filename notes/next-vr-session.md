@@ -615,6 +615,32 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       heartbeat's `throwables:` line (counts, peak hand speeds, grenades left). Problems:
       `the game didn't launch the ... grenade within 3 s`, `the weapon didn't come out within 2 s`.
 
+17. **The world stays level while you shoot (new, 2026-10-22; the mod only, it hot-reloads).** The
+    tilt you saw was the guns' recoil: LE1 kicks the game camera up with every shot and the rifles'
+    kick never comes back (a flat-screen player pulls the stick down); by the end of that session the
+    camera looked about 30 degrees up. [research/22](../research/22-view-level.md). Now, on foot with
+    the hand aiming, the camera is held level; the recoil is a tap in your hand instead.
+    - **Test:** recenter (R) looking straight ahead. Find a long straight edge (a walkway, a wall's
+      base) and note where the horizon sits. **Fire a rifle for about a minute** (bursts, hip and
+      two-handed at the shoulder). The horizon stays where it was; no slow tilt. Each shot taps the
+      right controller (the left too while both hands hold the gun). Then take an End snapshot.
+    - Also: go into cover and shoot out of it, get in the Mako, talk to someone, look through the
+      sniper scope: those keep the game's own camera as before; coming back to walking levels the
+      camera at once (one logged snap, not a slow turn).
+    - **Settings:** `[Hands] levelCamera = 1` (0 = the old behaviour: the tilt comes back) and
+      `recoilHaptic = 0.5` (0..1; 0 = no tap), added to your `LE1MEVR.ini`. Try `levelCamera = 0` for
+      a minute of firing to see the old tilt (the log then says `kept (off ...)`).
+    - **Logs (ours):** `view level: handlers on PlayerController.PlayerTick, ...` at startup;
+      `view level: holding level (camera mode SFXCameraMode_Combat, ...)` and the other states (`in
+      cover`, `a camera mode with its own pitch`, `not on foot`...); while firing, about once a second:
+      `view level: the game moved the camera's pitch +0.62 deg (...) in 1.1 s (6 shots, recoil queued
+      +0.60 deg); ControlRotation as the game left it: pitch ..., yaw ..., roll ...; put back to level`;
+      `view level: first shot seen (...)`; `view level: took hold of a camera pitched ...: levelled at
+      once`; and the heartbeat's `view level:` line: the last minute's drift (recoil and the rest),
+      min/max pitch, what the hold put back, shots, `PlayerTick posts` (must count up; else `view
+      level: no PlayerTick seen ...` and it levels a frame late) and `zoom snaps dropped`. Snapshots
+      have `"viewLevel"` in the mod's status.
+
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR
   loader (MEVR)`, its pacing lines.

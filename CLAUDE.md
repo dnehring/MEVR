@@ -120,6 +120,13 @@ switching frameworks.
   `BioGrenade.LaunchGrenadeAtPoint`), a slow one puts it back; a fast stroke with an enemy in reach
   is `TryMelee`. Claimed squeezes run before holsters and the squad menu. B/X stay unless
   `meleeButton`/`grenadeButton = 0` (host v14).
+- LE1 level camera (`game/view_level`, `core/vr/ViewLevel`, [research/22](research/22-view-level.md)):
+  each shot's recoil goes into the player controller's rotation (ControlRotation) and the rifles' pitch
+  kick never fades (`RecoilFadeSpeed=0`); with the stick's pitch off (`decoupledPitch`) the world tilted
+  (+30 degrees after 204 shots). A `PlayerTick` post-handler (before the camera update) holds its pitch and
+  roll at 0 on foot while the hand aims, and drops aim assist's zoom-snap target; not in cover, the
+  scope, the Mako or cinematic modes. The recoil is a hand pulse instead. `[Hands] levelCamera`,
+  `recoilHaptic`; log `view level:`.
 - LE1 body holsters (`game/Holsters`, `core/ik/BodySlots`, research/19): a right-grip squeeze at a
   body slot draws that weapon through `SFXGameModeDefault.SwitchToWeapon` (ProcessEvent). The
   right grip holds the gun (`gripHolds = 1`): let go at its slot to holster (`TryHolster`),
