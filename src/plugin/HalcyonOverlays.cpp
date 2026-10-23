@@ -27,6 +27,7 @@
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/WheelCrop.hpp"
 #include "plugin/Calibration.hpp"
+#include "plugin/Colour.hpp"
 #include "plugin/Halcyon.hpp"
 #include "plugin/PerfProbe.hpp"
 #include "plugin/RecenterTilt.hpp"
@@ -173,7 +174,12 @@ bool SamplesLinear(DXGI_FORMAT f) {
 // HUD panel while a wheel has a panel of its own).
 // GridPS: the most opaque pixel (that same alpha) in each cell of a coarse grid over the whole texture,
 // every 4th pixel each way: where the UI is (core/vr/WheelCrop).
+// MEVR_PANEL_OUT: the colour correction's hook (plugin/Colour, research/27), the identity here; the corrected
+// variant of PSMain is compiled with core/vr/Colour's prelude in front.
 constexpr char kPanelShader[] = R"(
+#ifndef MEVR_PANEL_OUT
+#define MEVR_PANEL_OUT(c, pos) (c)
+#endif
 Texture2D<float4> src : register(t0);
 Texture2D<float4> tint : register(t1);
 cbuffer Params : register(b0) { uint4 info; float4 params; int4 window; int4 mask; };
@@ -209,6 +215,7 @@ float4 PSMain(VSOut i) : SV_Target {
         c = saturate(c);
         c = (c <= 0.04045) ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4);
     }
+    c = MEVR_PANEL_OUT(c, i.pos);
     return float4(c * a, a);
 }
 float4 GridPS(VSOut i) : SV_Target {
@@ -234,7 +241,8 @@ static_assert(sizeof(PanelParams) == 64);
 using D3DCompileFn = HRESULT(WINAPI*)(LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MACRO*, ID3DInclude*, LPCSTR,
     LPCSTR, UINT, UINT, ID3DBlob**, ID3DBlob**);
 
-bool Compile(char const* entry, char const* profile, ComPtr<ID3DBlob>& out) {
+// `source`: kPanelShader unless given (the colour-corrected variant).
+bool Compile(char const* entry, char const* profile, ComPtr<ID3DBlob>& out, std::string const* source = nullptr) {
     static D3DCompileFn compile = [] {
         HMODULE module = LoadLibraryW(L"d3dcompiler_47.dll");
         return module != nullptr ? reinterpret_cast<D3DCompileFn>(GetProcAddress(module, "D3DCompile")) : nullptr;
@@ -244,7 +252,8 @@ bool Compile(char const* entry, char const* profile, ComPtr<ID3DBlob>& out) {
         return false;
     }
     ComPtr<ID3DBlob> errors;
-    HRESULT const hr = compile(kPanelShader, sizeof(kPanelShader) - 1, "MEVR_HudPanel", nullptr, nullptr, entry,
+    HRESULT const hr = compile(source != nullptr ? source->data() : kPanelShader,
+        source != nullptr ? source->size() : sizeof(kPanelShader) - 1, "MEVR_HudPanel", nullptr, nullptr, entry,
         profile, D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, out.ReleaseAndGetAddressOf(), errors.GetAddressOf());
     if (FAILED(hr)) {
         mevr::log::Error("overlays: shader {} failed to compile: {}", entry,
@@ -257,6 +266,7 @@ bool Compile(char const* entry, char const* profile, ComPtr<ID3DBlob>& out) {
 struct Pipeline {
     ComPtr<ID3D11VertexShader> vs;
     ComPtr<ID3D11PixelShader> ps;
+    ComPtr<ID3D11PixelShader> colourPs;  // ps with the colour correction (plugin/Colour); nullptr: never corrected
     ComPtr<ID3D11PixelShader> gridPs;
     ComPtr<ID3D11Buffer> params;
     ComPtr<ID3D11BlendState> opaque;
@@ -303,6 +313,16 @@ bool EnsurePipeline(ID3D11Device* device) {
     gPipeline.ready = ok;
     if (!ok) {
         mevr::log::Error("overlays: HUD panel pipeline creation failed");
+    }
+    if (ok) {
+        std::string const corrected = std::string(mevr::vr::colour::ShaderPrelude()) + kPanelShader;
+        ComPtr<ID3DBlob> colourBlob;
+        if (!Compile("PSMain", "ps_5_0", colourBlob, &corrected) ||
+            FAILED(device->CreatePixelShader(colourBlob->GetBufferPointer(), colourBlob->GetBufferSize(), nullptr,
+                gPipeline.colourPs.ReleaseAndGetAddressOf()))) {
+            gPipeline.colourPs.Reset();
+            mevr::log::Warn("overlays: the HUD panel's colour-corrected shader failed: the HUD stays uncorrected");
+        }
     }
     return ok;
 }
@@ -647,14 +667,20 @@ ID3D11Texture2D* Blit(ID3D11DeviceContext* context, ID3D11Device* device, QuadSw
         context->RSSetViewports(1, &viewport);
         context->IASetInputLayout(nullptr);
         context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        // The game's UI gets the eyes' colour correction (plugin/Colour), each panel its own dither pattern.
+        bool const corrected = gPipeline.colourPs != nullptr &&
+            mevr::host::colour::BeginPanel(context, &swapchain == &gPanelSwapchain ? 2u : 3u);
         context->VSSetShader(gPipeline.vs.Get(), nullptr, 0);
-        context->PSSetShader(gPipeline.ps.Get(), nullptr, 0);
+        context->PSSetShader(corrected ? gPipeline.colourPs.Get() : gPipeline.ps.Get(), nullptr, 0);
         context->GSSetShader(nullptr, nullptr, 0);
         context->HSSetShader(nullptr, nullptr, 0);
         context->DSSetShader(nullptr, nullptr, 0);
         context->PSSetShaderResources(0, 2, sources);
         context->PSSetConstantBuffers(0, 1, &constants);
         context->Draw(3, 0);
+        if (corrected) {
+            mevr::host::colour::EndPanel(context);
+        }
         drew = true;
     }
     ID3D11Texture2D* const image = swapchain.images[index];

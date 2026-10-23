@@ -26,6 +26,7 @@
 
 #include "halcyon/le1/mevr_bridge.h"
 #include "plugin/Calibration.hpp"
+#include "plugin/Colour.hpp"
 #include "plugin/MevrMenu.hpp"
 #include "plugin/PerfProbe.hpp"
 #include "plugin/TestLoop.hpp"
@@ -694,6 +695,7 @@ void BuildMenuTabs() noexcept {
     SquadSection();
     SightsSection();
     TestLoopSection();
+    mevr::host::colour::MenuSection();  // plugin/Colour (research/27)
     ImGui::EndTabItem();
 }
 

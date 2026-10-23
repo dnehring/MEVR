@@ -16,6 +16,8 @@
 #include "core/ik/TouchReference.hpp"
 #include "core/ik/TwoHand.hpp"
 #include "core/vr/Calibration.hpp"
+#include "core/vr/Colour.hpp"
+#include "core/vr/ColourStrip.hpp"
 #include "core/vr/Haptics.hpp"
 #include "core/vr/ImageConvert.hpp"
 #include "core/vr/LayerComposite.hpp"
@@ -43,6 +45,7 @@
 #include <filesystem>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <numbers>
 #include <string>
 #include <utility>
@@ -1928,6 +1931,263 @@ void TestLayerComposite() {
     CHECK((eye3.At(20, 20) & 0xFF) >= 187 && (eye3.At(20, 20) & 0xFF) <= 189);
     quad.blend = false;  // opaque: alpha ignored
     CHECK(Draw(eye3, view, quad) == 100 && eye3.At(20, 20) == Pack(255, 255, 255, 255));
+}
+
+// The colour correction (core/vr/Colour, research/27): the CPU reference the shader mirrors (tools/colour-preview
+// checks the shader against it on a GPU), the presets, the headset detection and the settings file.
+void TestColour() {
+    namespace cv = mevr::vr::colour;
+    auto grey = [](cv::Constants const& k, float v) { return cv::Grade(k, {v, v, v})[0]; };
+    auto approx = [](float a, float b, float tolerance = 1e-5f) { return std::abs(a - b) <= tolerance; };
+
+    // Neutral is the identity, and is detected as neutral (so the raw path runs).
+    CHECK(cv::IsNeutral(cv::Settings{}));
+    CHECK(cv::IsNeutral(cv::Preset(cv::Profile::Neutral)) && cv::IsNeutral(cv::Preset(cv::Profile::Auto)));
+    CHECK(!cv::IsNeutral(cv::Preset(cv::Profile::Quest)) && !cv::IsNeutral(cv::Preset(cv::Profile::Vivid)));
+    cv::Settings almost;
+    almost.contrast = 1.0003f;  // within half a slider step
+    CHECK(cv::IsNeutral(almost));
+    almost.contrast = 1.01f;
+    CHECK(!cv::IsNeutral(almost));
+    {
+        cv::Constants const k = cv::MakeConstants(cv::Settings{}, 0.0f, false, 0);
+        bool identity = true;
+        for (int i = 0; i <= 255; ++i) {
+            float const v = static_cast<float>(i) / 255.0f;
+            cv::Rgb const out = cv::Grade(k, {v, 1.0f - v, 0.5f * v});
+            identity = identity && approx(out[0], v) && approx(out[1], 1.0f - v) && approx(out[2], 0.5f * v);
+            cv::Rgb const stored = cv::Correct(k, {v, v, v}, 7, 9, false);
+            identity = identity && cv::ToUnorm8(stored[0]) == i;
+        }
+        CHECK(identity);
+    }
+
+    // Each operation: its direction, and what it keeps.
+    {
+        cv::Settings s;
+        s.contrast = 1.2f;
+        cv::Constants const k = cv::MakeConstants(s, 0.0f, false, 0);
+        CHECK(approx(grey(k, 0.0f), 0.0f) && approx(grey(k, 1.0f), 1.0f) && approx(grey(k, 0.5f), 0.5f));
+        CHECK(grey(k, 0.25f) < 0.25f && grey(k, 0.75f) > 0.75f);
+        float const slope = (grey(k, 0.501f) - grey(k, 0.499f)) / 0.002f;  // the slope at mid-grey is the setting
+        CHECK(approx(slope, 1.2f, 0.01f));
+        s.contrast = 0.8f;
+        cv::Constants const flat = cv::MakeConstants(s, 0.0f, false, 0);
+        CHECK(grey(flat, 0.25f) > 0.25f && grey(flat, 0.75f) < 0.75f && approx(grey(flat, 0.0f), 0.0f));
+    }
+    {
+        cv::Settings s;
+        s.gamma = 0.8f;  // Virtual Desktop's direction: below 1 darker
+        cv::Constants const k = cv::MakeConstants(s, 0.0f, false, 0);
+        CHECK(approx(grey(k, 0.5f), std::pow(0.5f, 1.25f)) && approx(grey(k, 0.0f), 0.0f) && approx(grey(k, 1.0f), 1.0f));
+        s.gamma = 1.25f;
+        CHECK(grey(cv::MakeConstants(s, 0.0f, false, 0), 0.5f) > 0.5f);
+    }
+    {
+        cv::Settings s;
+        s.black = -0.05f;  // deeper: 0.05 and below become black, white stays
+        cv::Constants const k = cv::MakeConstants(s, 0.0f, false, 0);
+        CHECK(approx(grey(k, 0.05f), 0.0f) && approx(grey(k, 0.03f), 0.0f) && approx(grey(k, 1.0f), 1.0f));
+        CHECK(approx(grey(k, 0.525f), 0.5f));
+        s.black = 0.05f;  // lifted
+        cv::Constants const lifted = cv::MakeConstants(s, 0.0f, false, 0);
+        CHECK(approx(grey(lifted, 0.0f), 0.05f / 1.05f) && approx(grey(lifted, 1.0f), 1.0f));
+    }
+    {
+        cv::Settings s;
+        s.brightness = 1.2f;
+        s.gain = {1.0f, 0.5f, 1.0f};
+        cv::Constants const k = cv::MakeConstants(s, 0.0f, false, 0);
+        cv::Rgb const out = cv::Grade(k, {0.5f, 0.5f, 0.9f});
+        CHECK(approx(out[0], 0.6f) && approx(out[1], 0.3f) && approx(out[2], 1.0f));  // the blue clips
+    }
+    {
+        cv::Settings s;
+        s.saturation = 0.0f;
+        cv::Constants const k = cv::MakeConstants(s, 0.0f, false, 0);
+        cv::Rgb const out = cv::Grade(k, {1.0f, 0.0f, 0.0f});
+        CHECK(approx(out[0], 0.2126f) && approx(out[1], 0.2126f) && approx(out[2], 0.2126f));
+        s.saturation = 1.5f;
+        cv::Rgb const more = cv::Grade(cv::MakeConstants(s, 0.0f, false, 0), {0.6f, 0.4f, 0.4f});
+        float const y = 0.2126f * 0.6f + 0.7152f * 0.4f + 0.0722f * 0.4f;
+        CHECK(approx(more[0], y + 1.5f * (0.6f - y)) && approx(more[1], y + 1.5f * (0.4f - y)));
+        cv::Rgb const greyStays = cv::Grade(cv::MakeConstants(s, 0.0f, false, 0), {0.3f, 0.3f, 0.3f});
+        CHECK(approx(greyStays[0], 0.3f) && approx(greyStays[2], 0.3f));
+    }
+
+    // The presets: monotonic, black and white kept, darker mid-tones, more contrast.
+    for (cv::Profile const p : {cv::Profile::Quest, cv::Profile::Vivid}) {
+        cv::Constants const k = cv::MakeConstants(cv::Preset(p), 0.0f, false, 0);
+        bool monotonic = true;
+        float last = -1.0f;
+        for (int i = 0; i <= 255; ++i) {
+            float const v = grey(k, static_cast<float>(i) / 255.0f);
+            monotonic = monotonic && v >= last;
+            last = v;
+        }
+        CHECK(monotonic);
+        CHECK(approx(grey(k, 0.0f), 0.0f) && approx(grey(k, 1.0f), 1.0f));
+        CHECK(grey(k, 0.5f) < 0.5f);
+        cv::Rgb const red = cv::Grade(k, {0.6f, 0.3f, 0.3f});
+        CHECK(red[0] - red[1] > 0.3f * 1.05f);  // more colour
+    }
+    CHECK(cv::Preset(cv::Profile::Vivid).saturation > cv::Preset(cv::Profile::Quest).saturation);
+
+    // Out-of-range values are clamped; NaN is the identity.
+    {
+        cv::Settings s;
+        s.brightness = 9.0f;
+        s.contrast = -1.0f;
+        s.saturation = std::nanf("");
+        s.gamma = 0.01f;
+        s.black = 1.0f;
+        s.gain = {0.0f, 2.0f, std::numeric_limits<float>::infinity()};
+        cv::Settings const c = cv::Clamped(s);
+        CHECK(c.brightness == 1.5f && c.contrast == 0.5f && c.saturation == 1.0f && c.gamma == 0.5f && c.black == 0.2f);
+        CHECK(c.gain[0] == 0.5f && c.gain[1] == 1.5f && c.gain[2] == 1.0f);
+    }
+
+    // The constants as the shader reads them.
+    {
+        cv::Settings s;
+        s.gamma = 0.8f;
+        s.contrast = 1.1f;
+        s.brightness = 1.2f;
+        s.gain = {1.0f, 0.9f, 1.1f};
+        cv::Constants const k = cv::MakeConstants(s, 0.5f, true, 3u);
+        CHECK(approx(k.tone[1], 1.25f) && approx(k.tone[2], 0.2f) && approx(k.gain[1], 1.08f) && approx(k.gain[2], 1.32f));
+        CHECK(approx(k.misc[0], 0.5f / 255.0f) && k.misc[1] == 1.0f && k.seed[0] == 3u);
+        CHECK(cv::MakeConstants(s, 0.5f, false, 0).misc[1] == 0.0f);
+    }
+
+    // The linear path is the encoded path wrapped in a decode and an encode.
+    {
+        cv::Constants const k = cv::MakeConstants(cv::Preset(cv::Profile::Quest), 0.0f, true, 0);
+        cv::Constants const e = cv::MakeConstants(cv::Preset(cv::Profile::Quest), 0.0f, false, 0);
+        bool same = true;
+        for (int i = 0; i <= 255; i += 5) {
+            float const v = static_cast<float>(i) / 255.0f;
+            cv::Rgb const lin = cv::Correct(k, {cv::Decode(v), cv::Decode(v), cv::Decode(v)}, 1, 1, true);
+            cv::Rgb const enc = cv::Correct(e, {v, v, v}, 1, 1, false);
+            same = same && approx(cv::Encode(lin[0]), enc[0], 2e-5f);
+        }
+        CHECK(same);
+        CHECK(approx(cv::Encode(cv::Decode(0.5f)), 0.5f) && approx(cv::Decode(1.0f), 1.0f) && cv::Encode(0.0f) == 0.0f);
+    }
+
+    // The dither: triangular in (-1, 1), mean 0, the same at the same pixel, different per seed.
+    {
+        double sum = 0.0;
+        int inner = 0;
+        bool inRange = true;
+        int const n = 256 * 256;
+        for (std::uint32_t y = 0; y < 256; ++y) {
+            for (std::uint32_t x = 0; x < 256; ++x) {
+                float const d = cv::Dither(x, y, 0);
+                inRange = inRange && d > -1.0f && d < 1.0f;
+                sum += d;
+                inner += std::abs(d) < 0.5f ? 1 : 0;
+            }
+        }
+        CHECK(inRange);
+        CHECK(std::abs(sum / n) < 0.01);
+        CHECK(std::abs(static_cast<double>(inner) / n - 0.75) < 0.02);  // triangular: 3/4 within half its reach
+        CHECK(cv::Dither(10, 20, 0) == cv::Dither(10, 20, 0) && cv::Dither(10, 20, 0) != cv::Dither(10, 20, 1));
+    }
+    // ... and what it is for: a level between two 8-bit steps averages closer to its value over an area.
+    {
+        cv::Constants const without = cv::MakeConstants(cv::Settings{}, 0.0f, false, 0);
+        cv::Constants const with = cv::MakeConstants(cv::Settings{}, 0.5f, false, 0);
+        float const v = (100.0f + 0.4f) / 255.0f;
+        double plain = 0.0;
+        double dithered = 0.0;
+        int maxStep = 0;
+        for (std::uint32_t y = 0; y < 128; ++y) {
+            for (std::uint32_t x = 0; x < 128; ++x) {
+                plain += cv::ToUnorm8(cv::Correct(without, {v, v, v}, x, y, false)[0]);
+                int const q = cv::ToUnorm8(cv::Correct(with, {v, v, v}, x, y, false)[0]);
+                dithered += q;
+                maxStep = std::max(maxStep, std::abs(q - 100));
+            }
+        }
+        double const target = 100.4;
+        CHECK(std::abs(plain / (128.0 * 128.0) - target) > 0.35);
+        CHECK(std::abs(dithered / (128.0 * 128.0) - target) < 0.15);
+        CHECK(maxStep <= 1);  // never more than one step from the value
+    }
+
+    // Profiles by name.
+    CHECK(cv::ParseProfile("Quest") == cv::Profile::Quest && cv::ParseProfile(" quest streamed ") == cv::Profile::Quest);
+    CHECK(cv::ParseProfile("AUTO") == cv::Profile::Auto && cv::ParseProfile("custom") == cv::Profile::Custom);
+    CHECK(!cv::ParseProfile("sepia").has_value());
+    for (cv::Profile const p : {cv::Profile::Auto, cv::Profile::Neutral, cv::Profile::Quest, cv::Profile::Vivid, cv::Profile::Custom}) {
+        CHECK(cv::ParseProfile(cv::Name(p)) == p);
+    }
+
+    // Headsets, as the runtimes name them (the user's PS VR2 on SteamVR in our logs; the others from research/27).
+    {
+        cv::Detection const psvr2 = cv::Detect("SteamVR/OpenXR", "SteamVR/OpenXR : playstation_vr2");
+        CHECK(psvr2.display == cv::Display::Oled && psvr2.automatic == cv::Profile::Neutral);
+        CHECK(cv::Detect("Oculus", "Meta Quest 3").automatic == cv::Profile::Quest);
+        CHECK(cv::Detect("Oculus", "Oculus Quest2").automatic == cv::Profile::Quest);
+        CHECK(cv::Detect("VirtualDesktopXR", "Meta Quest Pro").automatic == cv::Profile::Quest);
+        CHECK(cv::Detect("VirtualDesktopXR", "").automatic == cv::Profile::Quest);
+        CHECK(cv::Detect("SteamVR/OpenXR", "SteamVR/OpenXR : oculus").display == cv::Display::QuestStreamed);
+        CHECK(cv::Detect("SteamVR/OpenXR", "SteamVR/OpenXR : vrlink").automatic == cv::Profile::Quest);
+        CHECK(cv::Detect("SteamVR/OpenXR", "SteamVR/OpenXR : lighthouse").automatic == cv::Profile::Neutral);
+        CHECK(cv::Detect("SteamVR/OpenXR", "SteamVR/OpenXR : pico").automatic == cv::Profile::Neutral);
+        CHECK(cv::Detect("Oculus", "Oculus Rift S").display == cv::Display::Wired);
+        CHECK(cv::Detect("Windows Mixed Reality Runtime", "Reverb G2").automatic == cv::Profile::Neutral);
+        CHECK(cv::Detect("", "").automatic == cv::Profile::Neutral);
+        CHECK(!psvr2.why.empty());
+    }
+    CHECK(cv::HeadsetKey("SteamVR/OpenXR", "SteamVR/OpenXR : playstation_vr2") == "steamvr_openxr_playstation_vr2");
+    CHECK(cv::HeadsetKey("Oculus", "Meta Quest 3") == "oculus__meta_quest_3");
+    CHECK(cv::HeadsetKey("VirtualDesktopXR", "Meta Quest 3") == "virtualdesktopxr__meta_quest_3");
+    CHECK(cv::HeadsetKey("Oculus", "").empty());
+
+    // The settings file: [Colour] for any headset, [Colour.<key>] for this one, key by key.
+    {
+        cv::Section const parsed = cv::ParseSection("Profile = Quest ; the preset\r\nContrast=1.2\n;gamma=0.5\n\n[next]\nblack = -0.02\n");
+        CHECK(parsed.size() == 3 && parsed.at("profile") == "Quest" && parsed.at("contrast") == "1.2" && parsed.at("black") == "-0.02");
+        cv::Detection const psvr2 = cv::Detect("SteamVR/OpenXR", "SteamVR/OpenXR : playstation_vr2");
+        cv::Detection const quest = cv::Detect("Oculus", "Meta Quest 3");
+        cv::Resolved const none = cv::Resolve({}, {}, psvr2);
+        CHECK(none.chosen == cv::Profile::Auto && none.effective == cv::Profile::Neutral && cv::IsNeutral(none.settings));
+        CHECK(!none.compare && none.dither == 0.5f);
+        cv::Resolved const automatic = cv::Resolve({{"profile", "auto"}}, {}, quest);
+        CHECK(automatic.effective == cv::Profile::Quest && automatic.settings.gamma == cv::Preset(cv::Profile::Quest).gamma);
+        cv::Section const common{{"profile", "vivid"}, {"contrast", "1.3"}, {"compare", "1"}, {"dither", "7"}};
+        cv::Section const own{{"profile", "custom"}, {"saturation", "1.4"}, {"contrast", "nonsense"}};
+        cv::Resolved const custom = cv::Resolve(common, own, quest);
+        CHECK(custom.chosen == cv::Profile::Custom && custom.effective == cv::Profile::Custom);
+        CHECK(custom.settings.saturation == 1.4f && custom.settings.contrast == 1.3f);  // a bad value falls through to [Colour]
+        CHECK(custom.compare && custom.dither == 2.0f);
+        cv::Resolved const common_only = cv::Resolve(common, {{"profile", "sepia"}}, quest);
+        CHECK(common_only.chosen == cv::Profile::Vivid && common_only.settings.contrast == cv::Preset(cv::Profile::Vivid).contrast);
+        CHECK(common_only.custom.contrast == 1.3f);  // the custom values are kept for when Custom is chosen
+    }
+}
+
+void TestColourStrip() {
+    namespace cv = mevr::vr::colour;
+    cv::Strip const s = cv::TestStrip(1024, 576);
+    CHECK(s.width == 1024 && s.height == 576 && s.pixels.size() == 1024u * 576u);
+    int const band = 576 / cv::kStripBands;
+    auto at = [&](int x, int b) { return s.pixels[static_cast<std::size_t>(b * band + band / 2) * 1024 + x]; };
+    auto grey = [](std::uint32_t p) { return static_cast<int>(p & 0xFFu); };
+    CHECK(grey(at(0, 0)) == 0 && grey(at(1023, 0)) == 255 && grey(at(512, 0)) == 128);   // 17 steps
+    CHECK(grey(at(0, 1)) == 0 && grey(at(1023, 1)) == 255);                              // the ramp
+    CHECK(grey(at(0, 2)) == 0 && grey(at(1023, 2)) == 30 && grey(at(100, 2)) == 2);      // near black
+    CHECK(grey(at(0, 3)) == 225 && grey(at(1023, 3)) == 255);                            // near white
+    CHECK(at(0, 4) == (115u | (82u << 8) | (68u << 16) | 0xFF000000u));                  // dark skin
+    CHECK(at(0, 5) == (255u | 0xFF000000u) && at(1023, 5) == (128u | (128u << 8) | 0xFF000000u));  // red .. half yellow
+    bool opaque = true;
+    for (std::uint32_t const p : s.pixels) {
+        opaque = opaque && (p >> 24) == 0xFFu;
+    }
+    CHECK(opaque);
+    CHECK(cv::TestStrip(10, 10).width == 96);
 }
 
 void TestPng() {
@@ -5093,6 +5353,8 @@ int main() {
     TestWorldPanel();
     TestPoseRecording();
     TestImageConvert();
+    TestColour();
+    TestColourStrip();
     TestLayerComposite();
     TestTestRequest();
     TestFrameProbe();

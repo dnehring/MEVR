@@ -552,3 +552,23 @@ PSVR 2 on SteamVR: the world pitched more and more over a session while SteamVR'
   - Rajdhani and Titillium Web (the mockup's fonts, SIL OFL) aren't bundled: downloading them needs the
     user's go-ahead; drop them into `ASI\fonts` (or the preview's `fonts`) and they're used;
   - LE2/LE3 can read the same section once their gun placement exists.
+
+## Colour per headset (user, 2026-10-22; built the same day, to test)
+
+- **Why (user):** on the Quest 3 the game looks flat and washed out; Quest owners fix it outside the game
+  (Virtual Desktop gamma about 0.7, OpenXR Toolkit). Wanted: a correction that starts from known-good values
+  for the Quest, adjustable (the coming menu), the PS VR2 neutral.
+- **Built ([research/27](../research/27-colour.md); HOST REDEPLOY):** `core/vr/Colour` (brightness and gains,
+  contrast, saturation, mid-tones, black level on sRGB-encoded values; triangular dither; presets; headset
+  detection; the settings; the shader prelude; unit-tested), `core/vr/ColourStrip` (a test picture for the
+  coming menu), `plugin/Colour` (settings, the eye shader variants, the HUD panel's, GPU cost, the VR hands
+  tab's Colour section), seams `[MEVR] colour` in Halcyon's eye blit (`MevrBridge::EyeColour*`), and
+  `tools/colour-preview` (the shader against the CPU reference on a GPU: ctest `mevr-colour-shader`; the
+  strip through each preset). Neutral compiles to Halcyon's own bytecode and keeps its raw copy.
+- **[verify in headset]:** notes/next-vr-session.md step 24 (the Quest's system name through Steam Link; the
+  preset against compare; the cost line).
+- **Open:**
+  - the Quest streamed values are judgement calls (no published measurements of the streamed picture);
+  - the coming menu: bind "hold A" to `colour::HoldCompare()`, show `vr::colour::TestStrip()` on a quad;
+  - `XR_FB_color_space` on Meta's runtime, per-path presets (Link / Steam Link / Virtual Desktop), Pico and
+    Steam Frame presets: not done.

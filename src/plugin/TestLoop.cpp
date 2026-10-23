@@ -4,6 +4,7 @@
 
 #include "plugin/TestLoop.hpp"
 #include "plugin/Calibration.hpp"
+#include "plugin/Colour.hpp"
 #include "plugin/PerfProbe.hpp"
 #include "plugin/RecenterTilt.hpp"
 #include "plugin/SightLayers.hpp"
@@ -766,14 +767,15 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
         "  \"head\": {},\n  \"controllers\": {{\"active\": {}, \"left\": {}, \"right\": {}}},\n"
         "  \"aimRay\": {{\"valid\": {}, \"origin\": {}, \"direction\": {}, \"ageMs\": {}}},\n"
         "  \"hostView\": {{\"valid\": {}, \"headLook\": {}, \"headAim\": {}, \"lookYawUU\": {}, \"lookPitchUU\": {}, "
-        "\"offsetUU\": [{}, {}, {}], \"unitsPerMeter\": {}}},\n  \"recenter\": {},\n  \"sights\": {},\n  \"calibration\": {},\n  \"mod\": {},\n"
+        "\"offsetUU\": [{}, {}, {}], \"unitsPerMeter\": {}}},\n  \"recenter\": {},\n  \"sights\": {},\n  \"calibration\": {},\n"
+        "  \"colour\": {},\n  \"mod\": {},\n"
         "  \"layers\": [{}\n  ]",
         req::JsonString(trigger), req::JsonString(tag), gFrame, static_cast<long long>(displayTime), UnixMs(), J(gFocused),
         J(MELEVR::Menu::IsOpen()), J(gRecordingActive.load()), replay, head, J(c.active), JHand(c.left), JHand(c.right),
         J(ray.valid), JVec(ray.origin), JVec(ray.direction), ray.timeMs != 0 ? GetTickCount64() - ray.timeMs : 0,
         J(view.valid), J(view.headLook), J(view.headAim), view.lookYaw, view.lookPitch, J(view.offsetForward),
         J(view.offsetRight), J(view.offsetUp), J(view.unitsPerMeter), recenter_tilt::StatusJson(), sight_layers::StatusJson(),
-        calibration::StatusJson(), mod,
+        calibration::StatusJson(), mevr::host::colour::StatusJson(), mod,
         LayersJson(layers));
 }
 
