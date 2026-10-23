@@ -35,6 +35,7 @@ constexpr int kSlots = 6;  // render places tracked per frame (the last collects
 constexpr std::uintptr_t kDeleteRendererRva = 0x4ED700;   // FSceneRenderer deleting destructor (this, flags)
 constexpr std::uintptr_t kAllocateTargetsRva = 0x772EB0;  // GSceneRenderTargets.Allocate(this, x, y, 0)
 constexpr std::uintptr_t kWireframeStateRva = 0x8C1AE0;   // (byte): 0 on the normal path
+constexpr std::uintptr_t kDpgLightTargetsRva = 0x77BE00;  // (renderer, dpg): per light and view, into scene targets
 constexpr std::uintptr_t kPrepassViewsRva = 0x8BF8F0;     // RenderUmbraDepthPrepass(renderer)
 constexpr std::uintptr_t kTranslucencyCheckRva = 0x7666A0;
 constexpr std::uintptr_t kBeforeLightsRva = 0x759240;     // only when GSkipBeforeLights == 0
@@ -177,8 +178,10 @@ int ReplaySEH(std::uint8_t* renderer) noexcept {
         std::uint32_t const sizeX = reinterpret_cast<std::uint32_t (*)(void*)>(targetTable[0x18 / 8])(target);
         At<void (*)(void*, std::uint32_t, std::uint32_t, int)>(kAllocateTargetsRva)(
             At<void*>(kSceneRenderTargetsRva), sizeX, sizeY, 0);
-        // The visible set's depth pre-pass from these matrices. The commander's resolve armed one flag per
-        // view and the first pre-pass cleared it: arm it again.
+        // InitViews' steps after the resolve that draw per view, in its order: the world DPG's lights into
+        // the scene targets, then the visible set's depth pre-pass, from these matrices.
+        At<void (*)(void*, int)>(kDpgLightTargetsRva)(renderer, 1);
+        // The commander's resolve armed one pre-pass flag per view and the first pre-pass cleared it: arm it again.
         std::uint8_t* const commander = At<std::uint8_t**>(kCommandersRva)[*At<int*>(kCommanderIndexRva)];
         for (int i = 0; i < Field<int>(renderer, 0x68); ++i) {
             Field<int>(commander, 0x34 + static_cast<std::size_t>(i) * 8) = 1;

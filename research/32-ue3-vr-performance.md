@@ -101,12 +101,13 @@ found:
   path, +0x60/+0x68 the views (stride 0x12F0), +0xD8 set before the passes.
 - The tail it replays, as `SceneRenderB` calls it: GDynamicRHI `+0x628`; the scene frame counter `0x178779C`++;
   `+0xD8 = 1`; `0x8C1AE0(0)`; `Allocate(GSceneRenderTargets 0x167D0E0, target +0x18, target +0x20, 0)`; the pre-pass
-  `0x8BF8F0` (the commander's per-view flags, +0x34 + 8i, re-armed: the resolve sets them, the pre-pass clears
-  them); `0x7666A0`; dirty = `0x1795D38`; `0x759240` unless `0x167D49C`; DPG 1 `0x76D650(r, 1, &dirty)`,
+  `0x77BE00(r, 1)` (InitViews calls it after the resolve: per light and view into scene render targets, so it's
+  eye-dependent; `0x76CA70` calls it for DPG 2); the pre-pass `0x8BF8F0` (the commander's per-view flags,
+  +0x34 + 8i, re-armed: the resolve sets them, the pre-pass clears them); `0x7666A0`; dirty = `0x1795D38`; `0x759240` unless `0x167D49C`; DPG 1 `0x76D650(r, 1, &dirty)`,
   `0x76D0A0(r, 1, t, &dirty, 1)`; `+0x5C = 0`; `0x76CA70(r, 2, &out, &dirty, 0)`; DPG 2; `+0x5C = 1`;
   `0x76DD10(r, t, dirty)`; GDynamicRHI `+0x620`. Then both renderers are deleted.
-- Not re-run for the second eye: the Umbra resolve and its per-object callbacks, its finalisation, `0x77BE00`
-  (after the resolve in InitViews; dynamic shadow setup **[verify]**).
+- Not re-run for the second eye: the Umbra resolve and its per-object callbacks, its finalisation, and
+  InitViews' per-view setup before it (view state bookkeeping, done with identical CPU matrices by the first).
 - Pairs only renders with the same scene, render target, show flags, view count, view states and view rectangles
   (cutscenes with per-eye view states don't pair); a kept renderer with no partner is deleted at the next Present;
   an exception in the replay turns it off for the session (and leaks the two renderers rather than free them).
