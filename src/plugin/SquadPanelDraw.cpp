@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // The squad weapon menu's look (plugin/SquadPanelDraw.hpp): ImGui draw lists only, no game images. The
 // weapons are simple vector silhouettes and the squadmates get a coloured class badge with their
 // initials. Styling after the user's concept (2026-10-22): dark translucent blue panels, bevelled cards,

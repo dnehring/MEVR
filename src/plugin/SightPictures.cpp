@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Pictures for the gun's sight (plugin/SightPictures.hpp): the reticles' pixels and the scope's shader.
 
 #include "plugin/SightPictures.hpp"

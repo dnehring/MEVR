@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // The frame-breakdown probe (plugin/PerfProbe.hpp, research/22). Its seams in Halcyon's code are
 // MevrBridge::PerfPresentScope, PerfPass0Captured and g_perfDraws (src/halcyon/le1/mevr_bridge.h), and the
 // frame functions wrapped through MevrBridge::WrapSessionFunctions (plugin/TestLoop).

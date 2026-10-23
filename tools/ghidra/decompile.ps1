@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 <#
 .SYNOPSIS
     Decompiles LE functions from the local Ghidra project (tools/ghidra/setup.ps1), with their

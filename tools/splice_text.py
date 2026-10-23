@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Make a disassemblable copy of a Mass Effect LE exe from the mod's decrypted .text dump.
 
 The exe's .text is encrypted on disk (EA DRM). The mod saves the decrypted section once per exe

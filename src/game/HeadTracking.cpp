@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "game/HeadTracking.hpp"
 
 #include "core/Log.hpp"

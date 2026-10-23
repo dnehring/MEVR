@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # Runs console commands in the running game, as its own console would, and prints what they print.
 #
 # Writes %LOCALAPPDATA%\MEVR\console.request (one command per line); the mod (game/ConsoleRequest) polls it twice a

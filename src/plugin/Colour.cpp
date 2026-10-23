@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Colour correction of the eyes and the game's UI (plugin/Colour.hpp, research/27): the settings, the headset,
 // the corrected variants of Halcyon's eye shaders and their constants, the cost, the menu section.
 

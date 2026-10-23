@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // A test ASI plugin for tools/loader-test, compiled against LExSDKv2's own SPI header exactly as LE1MEVR.asi is
 // (the SDK as a submodule, nothing copied): it checks that our loader's interface (src/loader/SpiAbi.hpp) is the
 // one SDK plugins call. It hands the interface to the test host through an export.

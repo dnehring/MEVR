@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # Deploys the built plugin into the game's ASI folder.
 #
 # Hot-reload builds (MEVR_HOT_RELOAD=ON, the default): copies the small host ASI and writes

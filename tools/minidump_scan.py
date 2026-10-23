@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Crude crash triage for Windows minidumps without a debugger.
 
 Prints the exception, the faulting module+offset, the faulting thread's RIP/RSP, and a scan of

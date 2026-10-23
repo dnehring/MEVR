@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 // Adapted from Overlord by Aeka0 (https://github.com/Aeka0/Overlord), GPL-3.0:
 // src/client/component/vr/touch_controller_reference.hpp (touch_legacy_reference). Changes: our
 // own transform and quaternion types; the UE-axes form of the rotation.

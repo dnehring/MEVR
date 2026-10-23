@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "plugin/menu/MenuModel.hpp"
 
 #include "core/vr/MenuSettings.hpp"

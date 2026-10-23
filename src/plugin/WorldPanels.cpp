@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // World-locked flat panels (seam in src/halcyon/le1/mevr_bridge.h, MevrBridge::PlacePanel): Halcyon's
 // flat screen (menus, galaxy map, flat conversations, cutscenes, movies) and its Insert menu stay
 // put in the app space where they appeared, instead of riding the head (VIEW space). The placement

@@ -1,4 +1,5 @@
-// bink2w64.dll: MEVR's own ASI loader (research/33). GPL-3.0, new code: it doesn't use or copy ME3Tweaks' LEBinkProxy.
+// SPDX-License-Identifier: MIT
+// bink2w64.dll: MEVR's own ASI loader (research/33). New code: it doesn't use or copy ME3Tweaks' LEBinkProxy.
 //
 // The game imports RAD's Bink video DLL by the name bink2w64.dll. The installer renames RAD's file to
 // bink2w64_original.dll and puts this DLL in its place: every Bink export is forwarded to the original (Forwarders.hpp),

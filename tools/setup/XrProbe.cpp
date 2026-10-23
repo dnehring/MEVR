@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "XrProbe.hpp"
 
 #include <openxr/openxr.h>

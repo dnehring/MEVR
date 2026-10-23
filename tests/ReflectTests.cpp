@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Offline tests for our UE3 reflection layer (src/ue3, research/34): names, lookups, the property
 // cache, bool masks and parameter blocks over a synthetic in-memory "engine" with its own layout
 // (deliberately not LE1's: the layer must follow whatever Layout it's given).

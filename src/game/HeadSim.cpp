@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "game/HeadSim.hpp"
 
 #include <chrono>

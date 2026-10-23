@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // What each row of our main menu drives (plugin/MainMenuSettings.hpp, research/28 section 4).
 
 #include "plugin/MainMenuSettings.hpp"

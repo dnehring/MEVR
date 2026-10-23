@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 // TwoHandRotation adapts Overlord's `aimed_rotation` (src/client/component/vr/gameplay/
 // weapon_profile.hpp) and the coincident-hands rule of its grip_presenter.hpp.
 // Overlord: Copyright (C) Aeka0, https://github.com/Aeka0/Overlord, GPL-3.0. Changes: our Vec3/Quat

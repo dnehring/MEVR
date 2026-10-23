@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /*
  * MEVR's VR main menu (research/28): the approved "glass" board (MainGlass.dc.html) in RCSS.
  * Edit while the game runs: the menu reloads this file within a second of a save.

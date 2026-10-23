@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "game/BodyFollow.hpp"
 
 #include "core/Log.hpp"

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Renders the VR main menu (research/28) to PNGs offline, so its look can be checked without the game or a
 // headset: the host's own RmlUi setup, D3D11 renderer, decorators, document and data model (plugin/menu), on a
 // device of its own (hardware, else WARP), over a stand-in for the game picture blurred by the host's own

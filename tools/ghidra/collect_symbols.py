@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Write the CSV of known names that tools/ghidra/seed.ps1 applies to the Ghidra project.
 
 Sources, in the order they're applied (later ones win a name clash at one address):

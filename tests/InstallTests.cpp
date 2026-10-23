@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Offline tests for the installer's logic (research/33): JSON, INI editing that never resets a profile, the manifest
 // with backup and restore on a fake game folder under the temp directory, version and loader checks, the launch
 // arguments, MEM's IPC lines, the update check's parsing. Called from tests/Main.cpp.

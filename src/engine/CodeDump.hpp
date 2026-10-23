@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once
 
 // The exe's code is encrypted on disk (EA DRM) and only readable once the game runs. For offline

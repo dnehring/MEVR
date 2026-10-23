@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // The test stand-in for bink2w64_original.dll (tools/loader-test): every Bink export name (TestOriginal.def), so our
 // loader's forwarders resolve; RADTimerRead returns a known value the test host checks.
 

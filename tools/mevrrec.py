@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Reads a pose recording (.mevrrec, written by the game's test loop: src/core/vr/PoseRecording.hpp).
 
     python tools/mevrrec.py <file.mevrrec>             summary (duration, rate, ranges)

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Check that RVAs are real function starts, using the exe's .pdata unwind table.
 
 ME LE's .text is encrypted on disk (EA DRM, `.ooa` section), so byte signatures only work

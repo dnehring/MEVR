@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // The loader's version resource: the setup app tells our bink2w64.dll from RAD's and from ME3Tweaks' by its
 // CompanyName and ProductName (install/Detect ClassifyBink).
 #include <winres.h>
@@ -19,7 +20,7 @@ BEGIN
             VALUE "FileDescription", "MEVR ASI loader (bink2w64.dll proxy)"
             VALUE "FileVersion", "0.1.0"
             VALUE "InternalName", "bink2w64.dll"
-            VALUE "LegalCopyright", "GPL-3.0-or-later; MinHook BSD-2-Clause"
+            VALUE "LegalCopyright", "ME VR Attempt contributors, MIT; MinHook BSD-2-Clause"
             VALUE "OriginalFilename", "bink2w64.dll"
             VALUE "ProductName", "MEVR ASI loader"
             VALUE "ProductVersion", "0.1.0"

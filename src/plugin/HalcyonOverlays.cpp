@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Our quads on top of Halcyon's world layer (seams in src/halcyon/le1/mevr_bridge.h):
 // - the body-locked HUD panel: d3d_capture.cpp's draw hooks send the game's UI draws of a
 //   head-tracked frame into a panel texture instead of the eye images; here that texture goes into a

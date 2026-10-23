@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # Builds and assembles a release folder (and optionally a zip) for players (research/33). Local only: it publishes
 # and uploads nothing.
 #

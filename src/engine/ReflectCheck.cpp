@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "engine/ReflectCheck.hpp"
 
 #include "core/Log.hpp"

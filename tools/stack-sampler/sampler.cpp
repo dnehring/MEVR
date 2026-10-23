@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Samples one thread's call stack in another process (research/22): where its time goes, by module and
 // function, from outside the game (no redeploy). Suspends the thread for each sample (microseconds), walks
 // its stack with dbghelp, and prints the top frames and what is on the stack. Names come from exports and

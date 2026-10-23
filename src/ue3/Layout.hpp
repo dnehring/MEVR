@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once
 
 // Where the engine keeps the reflection fields we read: the UObject header, UField, UStruct,

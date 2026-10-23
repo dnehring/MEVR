@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once
 
 // Cached handles on the running game's reflection (research/34): declare them once (usually at

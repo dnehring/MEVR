@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once
 
 // Life-size (metric) stereo for Halcyon's Stereo 2 (research/30). Game-independent math, unit-tested in

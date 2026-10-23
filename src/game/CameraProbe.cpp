@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "game/CameraProbe.hpp"
 
 #include "core/Log.hpp"

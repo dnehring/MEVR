@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "install/Manifest.hpp"
 
 #include <Windows.h>

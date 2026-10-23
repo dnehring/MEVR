@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /*
  * MEVR-Setup.exe's page (tools/setup, research/33): the in-game menu's glass look (main.rcss, linked first) on a
  * desktop window. Only what differs is here.

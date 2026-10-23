@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Our VR main menu in the host (plugin/MainMenu.hpp, research/28): open and close, its quad, the laser pointer and the
 // pad as RmlUi's mouse and keys, the frosted backdrop from the left eye's image, and the cost while open.
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "game/HandAim.hpp"
 
 #include "core/Log.hpp"

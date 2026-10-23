@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once
 
 // Byte patterns: the fallback that finds an engine global when its compiled-in RVA doesn't check

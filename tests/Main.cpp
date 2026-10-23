@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Offline tests for the math that has to be right before it reaches a headset. No game, no
 // runtime: `ctest -C Release --test-dir build`.
 

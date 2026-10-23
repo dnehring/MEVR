@@ -10,6 +10,7 @@ a94ea18's Touch merge reached ApplyGamepadInput and was then thrown away by NewF
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ---
+SPDX-License-Identifier: GPL-3.0-only
  vr_menu.cpp | 4 ++++
  1 file changed, 4 insertions(+)
 

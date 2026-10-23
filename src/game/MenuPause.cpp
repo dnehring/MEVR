@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "game/MenuPause.hpp"
 
 #include "core/Log.hpp"

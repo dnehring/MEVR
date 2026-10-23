@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "SetupApp.hpp"
 
 #include "XrProbe.hpp"

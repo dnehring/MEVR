@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # Extracts an ME3Tweaks merge mod (.m3m) into a folder: the JSON manifest plus any embedded assets.
 # Read-only on the input. Format (v1): "M3MM", version byte, Unreal string (JSON manifest),
 # int32 asset count, then per asset: "MMV1", Unreal string name, int32 size, bytes.

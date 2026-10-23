@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // ASI entry point, loaded through the SPI interface by our own loader (src/loader, installed by MEVR-Setup) or by
 // ME3Tweaks' LEBinkProxy.
 // The host stays small and stable: version check, the engine tick hook, and the mod loader.

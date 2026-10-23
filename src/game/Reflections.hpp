@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once
 
 // Planar floor reflections (SceneCaptureReflectComponent) re-render at a throttled rate (UE3's

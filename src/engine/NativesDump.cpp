@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "engine/NativesDump.hpp"
 
 #include "core/Log.hpp"

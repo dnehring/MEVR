@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # Asks the running game (LE1, Halcyon's renderer) for eye snapshots and waits for them.
 #
 # Writes %LOCALAPPDATA%\MEVR\snapshot.request; the host polls it once a second, captures what each

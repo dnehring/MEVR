@@ -4,7 +4,8 @@ A native VR mod for **Mass Effect Legendary Edition**: first-person 6DOF, motion
 weapons, body IK, and a VR-friendly HUD. **One VR system for all three games, starting with LE1.**
 Mechanics change where VR needs them to; see [docs/trilogy-design.md](docs/trilogy-design.md).
 
-**License:** [GPL-3.0](LICENSE) (MIT until 2026-10-08; see [NOTICE.md](NOTICE.md)).
+**License:** the project as a whole is [GPL-3.0](LICENSE); our original files are MIT. Each source
+file names its licence on its first line; see [Licensing](#licensing) and [NOTICE.md](NOTICE.md).
 
 ## Approach
 
@@ -75,3 +76,28 @@ it). The current test plan and hotkeys are in [notes/next-vr-session.md](notes/n
 - [VR features plan](docs/vr-features-plan.md): gun handling, body IK, HUD, camera, conversations
 - [Stereo stage 2 design](docs/stereo-stage2-design.md): two full renders per frame
 - [Reuse and licensing](docs/reuse-and-licensing.md): what we can copy versus only learn from
+
+## Licensing
+
+- **The project as a whole is GPL-3.0** ([LICENSE](LICENSE), also
+  [LICENSES/GPL-3.0-only.txt](LICENSES/GPL-3.0-only.txt)). The host ASI links Halcyon's GPL-3.0
+  renderer, so a build of the mod is a GPL-3.0 work.
+- **Our original files are MIT** ([LICENSES/MIT.txt](LICENSES/MIT.txt)). Every source file names its
+  licence on its first line (`SPDX-License-Identifier: MIT` or `GPL-3.0-only`): go by that line, not by
+  the folder. An MIT file can be taken into any project under MIT.
+- **These files stay GPL-3.0-only**, because they contain GPL-3.0 code (neither upstream says "or later"):
+  - `src/halcyon/`: Halcyon's [MassEffect1-VR](https://github.com/jrush64/MassEffect1-VR), imported and
+    modified, together with `mevr_bridge.h`, our seam interface into it;
+  - the files adapted from [Overlord](https://github.com/Aeka0/Overlord) (Aeka0): `src/core/ik/ArmPose.*`,
+    `src/core/ik/TouchReference.*`, `src/core/ik/TwoHand.*`, `src/core/vr/Sights.*` (the alignment
+    assist's spring), `src/engine/BonePose.cpp` (`ApplySupport`) and `src/game/GamepadMapping.*`
+    (`UpdateSupportGrip`);
+  - `notes/upstream-halcyon/*.patch`: diffs of Halcyon's code.
+- **Third-party components keep their own licences:** Dear ImGui (MIT), MinHook (BSD-2-Clause) and the
+  fonts (OFL-1.1) in `third_party/`, FSR1 (MIT) in `external/fsr1`, and the submodules in `external/`.
+  [NOTICE.md](NOTICE.md) lists each one.
+- **Docs and data** (the Markdown in `docs/`, `research/` and `notes/`, and data files without an
+  identifier) are MIT unless marked otherwise.
+- New files get the right identifier on their first line; `python tools/check-spdx.py` lists the files
+  without one. Builds aren't published yet: LExSDKv2 has no licence, so binaries wait for its author's
+  permission ([docs/reuse-and-licensing.md](docs/reuse-and-licensing.md)).

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Spatial upscaling of the eye images (plugin/Upscale.hpp, research/32): FSR 1's EASU and RCAS in Halcyon's eye
 // blit, the settings, the cost.
 

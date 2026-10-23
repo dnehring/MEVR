@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Our ASI loader (src/loader, research/33) in a tiny host process, no game: this folder holds the host, our
 // bink2w64.dll, a stand-in bink2w64_original.dll with the same 79 export names and ASI\MEVRLoaderTest.asi (built
 // against LExSDKv2's SPI header). The host loads bink2w64.dll as the game does and checks:

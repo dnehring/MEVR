@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 // Modified for ME VR Attempt (GPL-3.0) since 2026-10-08: changes are marked [MEVR].
 // Upstream: jrush64/MassEffect1-VR @ 3c51514 (Copyright (C) 2026 Halcyon).
 // _CRT_SECURE_NO_WARNINGS for _wfopen/sscanf is set project-wide in the vcxproj PreprocessorDefinitions.

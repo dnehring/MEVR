@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once
 
 // A UFunction's parameter block, built from the function's own parameter properties (offsets,

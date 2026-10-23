@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once
 
 // The main menu's own RmlUi decorators (research/28), for what the approved mockup draws that RCSS can't: CSS's

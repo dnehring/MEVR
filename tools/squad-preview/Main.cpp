@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Renders the squad weapon menu (src/plugin/SquadPanelDraw) to PNGs offline, with sample squads, so its
 // look can be checked without the game or a headset: the same ImGui drawing and D3D11 backend the host
 // uses, on a D3D11 device of its own (hardware, else WARP).

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Our "VR hands" tab in Halcyon's menu (src/halcyon/le1/vr_menu.cpp calls BuildMenuTabs inside its
 // tab bar). The menu lives in the host and the arm IK in the hot-reloaded mod, so they talk through
 // the mod's settings file, <GAME>MEVR.ini next to the host ASI, which the mod re-reads within a

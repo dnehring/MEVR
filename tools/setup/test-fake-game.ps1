@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # Tests MEVR-Setup.exe's command line against a FAKE game folder (research/33); never the real game.
 #
 # Builds scratch\fakegame\Mass Effect Legendary Edition with a stand-in MassEffect1.exe (the real version number,

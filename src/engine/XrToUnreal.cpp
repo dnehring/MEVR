@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "engine/XrToUnreal.hpp"
 
 #include <cmath>

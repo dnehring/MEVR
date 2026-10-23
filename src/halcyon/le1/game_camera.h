@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 
 // Milestone 1 - minimal live camera access for the clean rebuild.

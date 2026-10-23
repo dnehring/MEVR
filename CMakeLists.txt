@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 cmake_minimum_required(VERSION 3.27)
 project(MEVR LANGUAGES C CXX)
 
@@ -542,7 +543,7 @@ target_compile_options(mevr-install PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cp
 
 # Our own ASI loader (src/loader, research/33): bink2w64.dll, a proxy for RAD's Bink DLL that forwards every export to
 # bink2w64_original.dll and loads Binaries\Win64\ASI\*.asi, offering LExSDKv2-based plugins the SPI interface they
-# expect. GPL-3.0 new code (no LEBinkProxy code), MinHook (BSD-2) for the hooks, no LExSDKv2. The setup app installs
+# expect. Our own new code (MIT; no LEBinkProxy code), MinHook (BSD-2) for the hooks, no LExSDKv2. The setup app installs
 # it when no ASI loader is there (ME3Tweaks' LEBinkProxy, if installed, is used instead).
 add_library(mevr-minhook STATIC
     third_party/minhook/src/buffer.c

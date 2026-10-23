@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 // [RESHADE] Detect a user-installed ReShade (add-on support build), register as an addon, hold the
 // effect runtime, and render enabled techniques onto each OpenXR eye at submit. No ReShade -> inert.
 // This TU MUST stay ImGui-free: reshade::register_addon does an ImGui-table version check only when

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once
 
 // Our UE3 reflection (research/34): classes, functions and properties found at run time through

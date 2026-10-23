@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once
 
 // The test loop's console (research/22): %LOCALAPPDATA%\MEVR\console.request holds console commands, one per line

@@ -3,6 +3,8 @@
 **This mod is GPL-3.0** ([LICENSE](../LICENSE), [NOTICE.md](../NOTICE.md)) since 2026-10-08. It
 was MIT before; the user chose GPL so we can build directly on Halcyon's working MassEffect1/2/3-VR
 instead of re-deriving it. Raw data: [research/06-repo-licenses.md](../research/06-repo-licenses.md).
+Our original files are MIT within that whole, and the GPL-derived ones GPL-3.0-only: each source
+file's first line says which (`SPDX-License-Identifier`; the README's Licensing section).
 
 ## Rules
 

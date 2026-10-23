@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "game/Holsters.hpp"
 
 #include "core/Log.hpp"

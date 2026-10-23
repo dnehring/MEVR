@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Frame rate and GPU time for the latest LE1 session, split by what the headset showed.
 
 Reads Halcyon's log (%LOCALAPPDATA%\\MELEVR\\MELEVR_Log.txt): [PRESENTHZ] fps (presents per second,

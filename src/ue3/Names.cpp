@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "ue3/Names.hpp"
 
 #include <charconv>

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "plugin/RenderLevers.hpp"
 
 #include "core/Hook.hpp"

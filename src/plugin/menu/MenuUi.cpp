@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "plugin/menu/MenuUi.hpp"
 
 #include "plugin/menu/MenuDecorators.hpp"

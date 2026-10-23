@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // The hot-reloadable part of MEVR. Everything that changes often lives behind these entry
 // points; the host ASI only owns the loader hookup, the engine tick and the Present hook.
 

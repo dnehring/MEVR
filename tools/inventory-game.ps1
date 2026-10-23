@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # Records the ME LE install (exe versions, sizes, hashes, ASI loader state) to notes/game-inventory.md.
 # Run after the Steam download finishes, and again after any game update or mod install.
 param(

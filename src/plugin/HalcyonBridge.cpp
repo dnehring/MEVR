@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Our side of the seams in Halcyon's renderer (src/halcyon/le1/mevr_bridge.h): the OpenXR loader,
 // controller actions on Halcyon's session, motion controllers as Xbox pad 0, the view published
 // for mapping the controllers into the world, and controller aim replacing Halcyon's head aim.

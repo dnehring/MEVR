@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // The colour correction (core/vr/Colour, research/27) offline: its shader prelude, the same text the host compiles
 // into Halcyon's eye blit and the HUD panel, run on a D3D11 device of its own (hardware, else WARP) and compared
 // with the CPU reference, pixel by pixel, on the encoded path (UNORM in, UNORM out: the game's 8-bit backbuffer)

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "core/xr/Floor.hpp"
 
 #include "core/Log.hpp"

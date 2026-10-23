@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "core/vr/OverlayPlacement.hpp"
 
 #include <algorithm>

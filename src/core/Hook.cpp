@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "core/Hook.hpp"
 
 #include "core/Log.hpp"

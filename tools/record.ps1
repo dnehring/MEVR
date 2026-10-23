@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # Starts or stops a pose recording in the running game (LE1, Halcyon's renderer): the head's eye
 # views and both controllers' poses, buttons and sticks, every headset frame, to
 # %LOCALAPPDATA%\MEVR\recordings\<stamp>.mevrrec (format: src/core/vr/PoseRecording.hpp).

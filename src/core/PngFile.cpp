@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "core/PngFile.hpp"
 
 #include <Windows.h>

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "engine/Objects.hpp"
 
 #include <LESDK/Headers.hpp>

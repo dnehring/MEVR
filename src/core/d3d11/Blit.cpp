@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "core/d3d11/Blit.hpp"
 
 #include "core/Log.hpp"

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Undo hook patches in a spliced exe where LExSDKv2 records the original first bytes.
 
 A .text dump taken while hooks were live has a 5-byte `jmp` out of the image at the start of each

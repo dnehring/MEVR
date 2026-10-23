@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "core/ik/BodyFollow.hpp"
 
 #include <algorithm>

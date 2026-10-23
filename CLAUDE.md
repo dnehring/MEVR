@@ -12,10 +12,15 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
 
 ## Licensing rules (GPL-3.0 project since 2026-10-08)
 
-- The project is GPL-3.0 (`LICENSE`, `NOTICE.md`). Code from GPL-3.0-compatible sources may be
+- The project as a whole is GPL-3.0 (`LICENSE`, `NOTICE.md`); our original files are MIT
+  (`LICENSES/MIT.txt`, README "Licensing"). Code from GPL-3.0-compatible sources may be
   copied and modified: GPL-3.0 (Halcyon's MassEffect1/2/3-VR, Overlord, h2-mod, Legendary
   Explorer) and permissive (REFramework, vrframework, MinHook, ImGui). Keep their copyright and
   license notices, and list them in `NOTICE.md`. GPL-2.0-only code is **not** compatible.
+- **SPDX line on every new file** (first line, its comment syntax): `SPDX-License-Identifier: MIT`
+  for our own code, `GPL-3.0-only` for anything in `src/halcyon/` or containing code adapted from a
+  GPL source (and then list it in `NOTICE.md`). Copying GPL code into an MIT file makes it GPL: change
+  its line. `python tools/check-spdx.py` lists files without one (`--add MIT <files>` adds it).
 - Halcyon's code lives in `src/halcyon/`: imported verbatim in its own commit, then modified, so
   `git log` shows exactly what we changed.
 - Closed binaries (e.g. the ME2VR download): never disassemble, decompile or run them. Their

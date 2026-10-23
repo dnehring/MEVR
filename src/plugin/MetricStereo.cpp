@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Life-size (metric) stereo for Halcyon's Stereo 2 (research/30): MevrBridge::PlanStereo and NoteStereoSubmit
 // ([MEVR] seams in xr_session.cpp's RunFrame), the [MEVR-STEREO] log, the snapshot's "stereo" block.
 

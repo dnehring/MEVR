@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 <#
 .SYNOPSIS
     Applies known names to the Ghidra project: the mod's natives dump (if present), LExSDKv2's

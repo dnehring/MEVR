@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # Plays a pose recording back in the running game (LE1, Halcyon's renderer) as if it were the live
 # headset and controllers: the recorded head poses (with the runtime's FOVs) and controller poses.
 # Buttons and sticks replay only with -Inputs (so a replay doesn't fire weapons unless asked).

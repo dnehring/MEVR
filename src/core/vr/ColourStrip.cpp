@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "core/vr/ColourStrip.hpp"
 
 #include <algorithm>

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include "install/GameSettings.hpp"
 
 #include <algorithm>

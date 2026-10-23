@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 struct ID3D11Texture2D;
 struct ID3D11ShaderResourceView;
