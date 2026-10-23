@@ -84,7 +84,7 @@ VR settings** to keep your calibration and renderer profiles for a later reinsta
 
 ## Licences and credits
 
-- **This project:** GPL-3.0 (`LICENSE`); third-party notices in `NOTICE.md` and `THIRD_PARTY_NOTICES.md`.
+- **This project:** GPL-3.0 (`LICENSE`); third-party notices in `NOTICE.md`.
 - **Halcyon's MassEffect1-VR renderer:** GPL-3.0. Copyright (C) 2026 Halcyon.
 - **Libraries:** MinHook (BSD-2-Clause), RmlUi (MIT), FreeType (FreeType License), the Khronos OpenXR loader
   (Apache-2.0), AMD FidelityFX FSR 1 (MIT).

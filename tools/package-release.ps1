@@ -5,7 +5,7 @@
 #     MEVR-Setup.exe        the installer (tools/setup)
 #     MEVR-Setup.ini        its settings: the update check's repository (a placeholder until there is one)
 #     README.md             docs/release-readme.md
-#     LICENSE, NOTICE.md, THIRD_PARTY_NOTICES.md
+#     LICENSE, NOTICE.md
 #     payload\LE1MEVR.asi   the monolithic mod (build-mono: -DMEVR_HOT_RELOAD=OFF)
 #     payload\bink2w64.dll  our ASI loader (src/loader)
 #     payload\fonts\*       the menu's fonts with their OFL licences
@@ -53,7 +53,7 @@ Copy-Item (Join-Path $out 'bink2w64.dll') $payload
 Copy-Item -Recurse (Join-Path $repo 'third_party\fonts') (Join-Path $payload 'fonts')
 Copy-Item -Recurse (Join-Path $repo 'assets\menu') (Join-Path $payload 'menu')
 Copy-Item (Join-Path $repo 'docs\release-readme.md') (Join-Path $dist 'README.md')
-foreach ($f in 'LICENSE', 'NOTICE.md', 'THIRD_PARTY_NOTICES.md') {
+foreach ($f in 'LICENSE', 'NOTICE.md') {
     Copy-Item (Join-Path $repo $f) $dist
 }
 $ini = "; MEVR Setup's settings.`r`n[Update]`r`n; The GitHub repository whose Releases the setup checks (the placeholder turns the check off).`r`nrepo = https://github.com/OWNER/REPO`r`n"

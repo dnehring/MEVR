@@ -328,26 +328,18 @@ Script calls to `BioEquipment.ChangeToQuickSlot` (a virtual call by name) come f
   it out, the close calls only `ApplyTacticalOrders`, and the members' AI switches.
 
 **The exec Shepard's own input uses: `SFXGameModeDefault.SwitchToWeapon(byte Slot)`.** From its
-bytecode (`Outer` is the player controller):
+bytecode (`Outer` is the player controller), in short:
+- It does nothing unless `PlayerInput.IsCombatEnabled()` and `Outer.Pawn` is a `BioPawn`.
+- **Holstered** (`!IsInCombatActionState()`, explore): `ChangeToQuickSlot(Slot)` on the pawn's
+  `m_oBehavior.m_oEquipment`, then `UpdatePrimaryAndSecondaryWeapons`, then the action state 1
+  (`BIO_ACTION_STATE_COMBAT`), which draws.
+- **Drawn:** only when the behavior `IsAbleToInstigate()`, the pawn isn't `IsSwitchingWeapons()` and
+  `Slot` differs from the equipment's `m_eQuickSlotCurrent`. It resets the active super mode's
+  reticule, acquires a `BioActiveSelectWeapon` active, sets its `m_eWeaponToSwitchTo` (the slot),
+  `m_oEquipment` and `m_oPawnBehavior`, and starts it (`StartActive`): the animated holster-and-draw.
 
-```
-if (!PlayerInput.IsCombatEnabled()) return;
-MyBP = BioPawn(Outer.Pawn); if (MyBP == None) return;
-if (!MyBP.IsInCombatActionState()) {            // holstered (explore)
-    MyBP.m_oBehavior.m_oEquipment.ChangeToQuickSlot(Slot);
-    MyBP.UpdatePrimaryAndSecondaryWeapons();
-    MyBP.m_oBehavior.SetActionState(1);          // BIO_ACTION_STATE_COMBAT: draw
-} else if (MyBP.m_oBehavior.IsAbleToInstigate() && !MyBP.IsSwitchingWeapons()
-           && Slot != m_oEquipment.m_eQuickSlotCurrent) {
-    ... ResetReticule on the active super mode ...
-    Active = BioActiveSelectWeapon(MyBP.m_oBehavior.AcquireActive(class'BioActiveSelectWeapon'));
-    Active.m_eWeaponToSwitchTo = Slot; Active.m_oEquipment = ...; Active.m_oPawnBehavior = ...;
-    MyBP.m_oBehavior.StartActive(Active);        // the animated holster-and-draw
-}
-```
-
-(A reconstruction from the references in the bytecode: the order and the constants are certain,
-the exact branch structure is our reading.)
+(Read from the references in the bytecode: the order and the constants are certain, the exact
+branch structure is our reading.)
 
 **Holster: `SFXGameModeDefault.TryHolster()`** (the holster key):
 - **holstered:** `MyBP.DrawPrimaryWeapon()`. It's a **toggle**;
@@ -750,34 +742,17 @@ From the bytecode of `SFXGame.pcc` (decompressed read-only as in [18](18-camera-
 "Method"; jump targets resolved by counting each token's in-memory size, object references being 8
 bytes in memory and 4 on disk) and GhidraMCP on the LE1 project. RVAs for 2.0.0.48602.
 
-`SFXGameModeWeaponWheel.Deactivated` (and `SFXGameModeCommand.Deactivated`, the same code):
+`SFXGameModeWeaponWheel.Deactivated` (and `SFXGameModeCommand.Deactivated`, the same code), in
+short:
+- `Super.Deactivated()`, then the game is unpaused (`WorldInfo.PauseGame(false)`).
+- **Shepard's weapon away** (`!MyBP.IsInCombatActionState()`): for each member of
+  `m_oBehavior.Squad` whose `GetMemberSwitchWeapon(Idx)` isn't 4 and whose `BioPawnBehavior` has an
+  `m_oEquipment`: `ChangeToQuickSlot` with that value, `SetMemberSwitchWeapon(Idx, 4)`, and
+  `MyBP.UpdatePrimaryAndSecondaryWeapons()`. After the loop, `MyBP.DrawPrimaryWeapon()`.
+- **Shepard's weapon out:** only `Outer.ApplyTacticalOrders()`.
+- Last, a GUI sound through the Scaleform manager.
 
-```
-Super.Deactivated();
-Outer.WorldInfo.PauseGame(false);
-MyBP = BioPawn(Outer.Pawn);
-if (MyBP != None) {
-    if (!MyBP.IsInCombatActionState()) {            // Shepard's weapon is away
-        Squad = MyBP.m_oBehavior.Squad;
-        for (Idx = 0; Idx < Squad.GetSquadSize(); ++Idx) {
-            if (Squad.GetMember(Idx) != None && Squad.GetMemberSwitchWeapon(Idx) != 4) {
-                SquadBehavior = BioPawnBehavior(Squad.GetMember(Idx).oBioComponent);
-                if (SquadBehavior != None && SquadBehavior.m_oEquipment != None) {
-                    SquadBehavior.m_oEquipment.ChangeToQuickSlot(Squad.GetMemberSwitchWeapon(Idx));
-                    Squad.SetMemberSwitchWeapon(Idx, 4);
-                    MyBP.UpdatePrimaryAndSecondaryWeapons();
-                }
-            }
-        }
-        MyBP.DrawPrimaryWeapon();
-    } else {                                         // Shepard's weapon is out
-        Outer.ApplyTacticalOrders();
-    }
-}
-Outer.GetScaleFormManager().PlayGuiSound(...);
-```
-
-(Reconstructed from the references and jumps; the order, the constants and the branch targets are
+(Read from the references and jumps; the order, the constants and the branch targets are
 certain.) So section 2's "on close" was half right: the per-member loop only runs with Shepard's
 weapon away.
 

@@ -1,3 +1,5 @@
+// Modified for ME VR Attempt (GPL-3.0) since 2026-10-08: changes are marked [MEVR].
+// Upstream: jrush64/MassEffect1-VR @ 3c51514 (Copyright (C) 2026 Halcyon).
 #pragma once
 
 // In-headset options menu (clean rebuild, Milestone 1): ImGui rendered into an OWNED D3D11 texture, which

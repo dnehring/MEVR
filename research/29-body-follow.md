@@ -29,8 +29,8 @@ So the arms joined two frames: hands in the view's, shoulders in the animation's
 
 ### 1. The pawn faces where it runs, and the spine can only twist 60 degrees
 
-ME1's explore movement (`BioPlayerController.PlayerWalking.PlayerMoveExplore`; MassFPS's replacement
-in `src/script/le1/massfps-base/.../SmoothExploreMovement.uc` keeps the rule) calls
+ME1's explore movement (`BioPlayerController.PlayerWalking.PlayerMoveExplore`; MassFPS's replacement,
+its `SmoothExploreMovement` script ([11](11-massfps.md)), keeps the rule) calls
 `SetDesiredRotation(MoveFacing)` with `MoveFacing = MoveRot`, the stick's direction, whenever the stick
 moves; standing, it keeps `MyBP.Rotation`. With Halcyon's `moveFollowsHead` the stick is turned by the
 head's look yaw (`RotateMoveStickByHeadLook`, `vr_menu.cpp`), so Shepard turns toward the head's yaw

@@ -108,8 +108,9 @@ switching frameworks.
 - `notes/game-inventory.md`: exe versions and hashes from `tools/inventory-game.ps1`. Re-run after
   game updates. All three exes are 2.0.0.48602 (the build LExSDKv2's RVAs target).
 - `mods/`: raw mod downloads (gitignored). Unpack `.m3m` merge mods with `tools/extract-m3m.ps1`.
-  The scripts we build on live in `src/script/` (e.g. `src/script/le1/massfps-base/`, MassFPS by
-  Aphar, fully permissive).
+  MassFPS by Aphar (Nexus mod 1731, fully permissive) was studied locally
+  ([research/11](research/11-massfps.md)); its files aren't in the repository: download it from Nexus
+  and extract it with `tools/extract-m3m.ps1` to read them.
 - Game install: Steam app 1328670, currently `C:\Program Files (x86)\Steam\steamapps\common\Mass Effect Legendary Edition`.
 - Dev machine: RTX 4090, Quest via the Oculus OpenXR runtime, VS 2022 Build Tools (no IDE), CMake.
 

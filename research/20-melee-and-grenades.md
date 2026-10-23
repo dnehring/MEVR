@@ -156,21 +156,14 @@ B = `Console_Melee` = `TryMelee`, X = `Console_Grenade` = `UseGrenade`, both exe
 
 ### `SFXGameModeDefault.TryMelee()` (bytecode)
 
-```
-if (!BioPlayerInput(Outer.PlayerInput).IsCombatEnabled()) return;
-MyBP = SFXPawn_Player(Outer.Pawn);
-if (MyBP != None) {
-    if (MyBP.IsSwitchingWeapons() || MyBP.IsUsingPower() || MyBP.IsThrowingGrenade() || Outer.bStorming) return;
-    if (!MyBP.IsInCombatActionState()) { MyBP.DrawPrimaryWeapon(); return; }       // weapon away: only draws
-    if (BioActiveShoot(MyBP.m_oBehavior.m_oCurrentModalActive) != None)
-        MyBP.m_oBehavior.ReleaseActiveByClass(class'BioActiveShoot');               // stops a burst
-    if (MyBP.m_oBehavior.m_oEquipment.m_eQuickSlotCurrent == 0)                     // the pistol
-        MyBP.m_oBehavior.SetCurrentPower('Pistol_Whip', Cooldown);
-    else
-        MyBP.m_oBehavior.SetCurrentPower('Rifle_Butt', Cooldown);
-    MyBP.m_oBehavior.AcquireActive(class'BioActivePower');
-}
-```
+- It does nothing unless `BioPlayerInput.IsCombatEnabled()` and the pawn is an `SFXPawn_Player`, and
+  nothing while the pawn `IsSwitchingWeapons()`, `IsUsingPower()` or `IsThrowingGrenade()`, or while
+  the controller's `bStorming` is set.
+- **Weapon away** (`!IsInCombatActionState()`): it only draws (`DrawPrimaryWeapon`).
+- Otherwise it stops a burst (when the behavior's `m_oCurrentModalActive` is a `BioActiveShoot`:
+  `ReleaseActiveByClass(class'BioActiveShoot')`), picks the power by the equipment's
+  `m_eQuickSlotCurrent`, **`Pistol_Whip` for slot 0 (the pistol), `Rifle_Butt` for any other**, sets
+  it with `SetCurrentPower`, and acquires a `BioActivePower` on the behavior.
 
 (`SetCurrentPower(name, out float fCooldownRemaining)` is native; TryMelee ignores both its result
 and the cooldown it reports. The power's own cooldown applies inside the power.)
@@ -191,16 +184,11 @@ the animation releases it. Which direction the cone faces (the pawn's rotation, 
 
 ### `SFXGameModeDefault.UseGrenade()` (bytecode)
 
-```
-if (!BioPlayerInput(Outer.PlayerInput).IsCombatEnabled()) return;
-if (Outer.bStorming) return;
-MyBP = SFXPawn_Player(Outer.Pawn);
-if (MyBP != None) {
-    if (!MyBP.IsInCombatActionState()) { MyBP.DrawPrimaryWeapon(); return; }   // weapon away: only draws
-    if (!Outer.IsAbleToInstigate()) return;
-    MyBP.m_oBehavior.AcquireActive(class'BioActiveGrenade');
-}
-```
+- It does nothing unless `BioPlayerInput.IsCombatEnabled()`, nothing while the controller's
+  `bStorming` is set, and needs an `SFXPawn_Player`.
+- **Weapon away** (`!IsInCombatActionState()`): it only draws (`DrawPrimaryWeapon`).
+- Otherwise, if the controller `IsAbleToInstigate()`, it acquires a `BioActiveGrenade` on the pawn's
+  behavior; the throw itself is native (below).
 
 ### The grenade active (native, GhidraMCP)
 
