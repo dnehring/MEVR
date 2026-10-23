@@ -633,7 +633,7 @@ PSVR 2 on SteamVR: the world pitched more and more over a session while SteamVR'
   (6 units) for dots, dot by default on the shotgun and assault rifle; the sight's height from the mesh's bounds
   (bones and sockets logged); long guns borrow the pistol's grip frame without a rifle stance. `[Sights] eyeBox,
   converge, matchStereo`; menu rows under HUD & sights.
-- **[verify in headset]:** notes/next-vr-session.md step 26.
+- **[verify in headset]:** notes/next-vr-session.md step 27.
 - **Open:** the floating ring reticle and the HUD panel are still drawn at the true place for both eyes (per-eye
   quads would put the ring on each eye's image); whether to offer metric stereo (`sfr2HalfEyeUU` 3.1,
   `sfr2Convergence` 0) as a profile (Halcyon's settings: the user's call); the sniper's eyepiece `back` is still
