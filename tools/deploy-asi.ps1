@@ -29,6 +29,8 @@ if ($Remove) {
     foreach ($p in (Join-Path $asiDir "$name.asi"), (Join-Path $asiDir "$name.pdb"), $modPathFile) {
         if (Test-Path $p) { Remove-Item $p -Confirm:$false; Write-Output "Removed $p" }
     }
+    $fontsDir = Join-Path $asiDir 'fonts'
+    if (Test-Path $fontsDir) { Remove-Item $fontsDir -Recurse -Confirm:$false; Write-Output "Removed $fontsDir" }
     return
 }
 
@@ -66,6 +68,13 @@ if ($hotReload) {
 } elseif (Test-Path $modPathFile) {
     Remove-Item $modPathFile -Confirm:$false
 }
+
+# The calibration panel's fonts (Rajdhani, Titillium Web: SIL OFL 1.1, third_party/fonts), with their
+# licences, into ASI\fonts, where src/plugin/Calibration looks; without them it falls back to Bahnschrift.
+$fontsDir = Join-Path $asiDir 'fonts'
+New-Item -ItemType Directory -Force $fontsDir | Out-Null
+Copy-Item (Join-Path $PSScriptRoot '..\third_party\fonts\*') $fontsDir -Force
+Write-Output "Fonts: $fontsDir"
 # LE1 runs Halcyon's renderer, which reads MELEVR.ini next to our ASI. Install what its release
 # package ships (reference/MassEffect1-VR/release/MELEVR.ini): the mode and resolutions only, so
 # every other setting is Halcyon's tuned code default. Not src/halcyon/le1/runtime/MELEVR.ini: that

@@ -549,8 +549,8 @@ PSVR 2 on SteamVR: the world pitched more and more over a session while SteamVR'
     still `[Sights] eyeReliefM`);
   - through SteamVR, whether PSVR 2 and a Quest over Steam Link get different keys depends on the system
     names SteamVR reports;
-  - Rajdhani and Titillium Web (the mockup's fonts, SIL OFL) aren't bundled: downloading them needs the
-    user's go-ahead; drop them into `ASI\fonts` (or the preview's `fonts`) and they're used;
+  - Rajdhani and Titillium Web (the mockup's fonts, SIL OFL) are bundled since 2026-10-22
+    (`third_party/fonts`, deployed to `ASI\fonts`); the panel's small labels may need a size check in the headset;
   - LE2/LE3 can read the same section once their gun placement exists.
 
 ## Colour per headset (user, 2026-10-22; built the same day, to test)

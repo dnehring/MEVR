@@ -69,8 +69,9 @@ in the app space, laid out on the heading the player faced at step 1.
   strokes on two opposite corners; a CALIBRATION kicker and a step chip, a six-segment progress bar
   (Height, Arms, Crouch, Pistol, Rifle, Check), the big uppercase instruction, one line of explanation,
   three target chips, a large hold-still ring, the button hints. The mockup's fonts (Rajdhani, Titillium
-  Web; SIL OFL) are used when found in `ASI\fonts`; they aren't bundled (downloading them needs the user's
-  go-ahead), so Windows' Bahnschrift stands in.
+  Web; SIL OFL 1.1) are bundled in `third_party/fonts` (downloaded from google/fonts with the user's OK,
+  2026-10-22) and deployed to `ASI\fonts`; without them Windows' Bahnschrift stands in. The preview takes
+  the folder as its second argument (`mevr-calibration-preview <out> third_party/fonts`).
 - **The check**: squeezing the right grip shows a red dot where the new pistol sight line (from the
   hand) meets the board; both grips, the rifle's. It should sit on what the player aims at.
 - **While it runs** (and Halcyon's menu is closed): the game sees a neutral pad; the host publishes the
