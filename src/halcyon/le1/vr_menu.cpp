@@ -1321,6 +1321,19 @@ void BuildUI() noexcept
             // THE Stereo section (SFR). Formerly "Stereo 2"; promoted to the one Stereo mode 2026-07-15.
             if (c.sfr2Enabled && ImGui::CollapsingHeader("Stereo", ImGuiTreeNodeFlags_DefaultOpen))
             {
+                // [MEVR] life-size stereo (research/30): each eye from its real place at the world's scale. It
+                // replaces the separation and convergence (shown disabled) with an extra-depth multiplier.
+                ImGui::Checkbox("Life-size stereo##sfr2", &c.sfr2Metric);
+                ResetBtn("sfr2Metric", c.sfr2Metric, kDefaults.sfr2Metric);
+                if (c.sfr2Metric)
+                {
+                    ImGui::SetNextItemWidth(ControlWidth());
+                    ImGui::SliderFloat("Extra depth##sfr2", &c.sfr2MetricDepth, 0.5f, 2.0f, "x%.2f");
+                    ResetBtn("sfr2MetricDepth", c.sfr2MetricDepth, kDefaults.sfr2MetricDepth);
+                    ImGui::Checkbox("Each eye's own field of view##sfr2", &c.sfr2MetricEyeFrustum);
+                    ResetBtn("sfr2MetricEyeFrustum", c.sfr2MetricEyeFrustum, kDefaults.sfr2MetricEyeFrustum);
+                }
+                ImGui::BeginDisabled(c.sfr2Metric);   // [MEVR]
                 ImGui::SetNextItemWidth(ControlWidth());
                 ImGui::SliderFloat("Stereo separation##sfr2", &c.sfr2HalfEyeUU, 0.0f, 8.0f, "%.2f uu");
                 ResetBtn("sfr2HalfEyeUU", c.sfr2HalfEyeUU, kDefaults.sfr2HalfEyeUU);
@@ -1328,6 +1341,7 @@ void BuildUI() noexcept
                 ImGui::SetNextItemWidth(ControlWidth());
                 ImGui::SliderFloat("Convergence##sfr2", &c.sfr2Convergence, -0.06f, 0.06f, "%.4f");
                 ResetBtn("sfr2Convergence", c.sfr2Convergence, kDefaults.sfr2Convergence);
+                ImGui::EndDisabled();   // [MEVR]
 
                 // Resolution slider. SFR renders a FULL frame per eye, so the target is NEAR-square: the
                 // height is width/kEyeWindowAspect, NOT width. Locking Y to X (what this did until
@@ -1369,8 +1383,10 @@ void BuildUI() noexcept
                 ResetBtn("questFovMatch", c.questFovMatch, kDefaults.questFovMatch);
 
                 // Swap eyes: user lever when depth reads inside-out.
+                ImGui::BeginDisabled(c.sfr2Metric);   // [MEVR] life-size stereo routes each eye itself
                 ImGui::Checkbox("Swap eyes##sfr2", &c.sfr2SwapEyes);
                 ResetBtn("sfr2SwapEyes", c.sfr2SwapEyes, kDefaults.sfr2SwapEyes);
+                ImGui::EndDisabled();   // [MEVR]
 
                 // [RELIEF] Depth pop: per full-frame eye at submit (AER-style +-eyeSign on the separation).
                 DrawReliefControls(c, "stereo");

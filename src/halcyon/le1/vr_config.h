@@ -581,6 +581,14 @@ struct VrConfig
     // head's up more than this many degrees from the base space's up (or rolled past 90), a recenter takes
     // the head's full orientation instead of its yaw only. 0 = upstream's yaw-only recenter, always.
     float recenterTiltDeg = 60.0f;
+    // [MEVR] Life-size (metric) stereo (src/plugin/MetricStereo.cpp, research/30). Off = upstream's Stereo 2: both
+    // passes from the head centre +- sfr2HalfEyeUU along the body's right, one symmetric FOV, sfr2Convergence as a
+    // whole-image shift at submit. On: each pass renders from the runtime's own eye position (xrLocateViews) at the
+    // view's scale (the lean's units per metre), no convergence, and in gameplay with the HUD panel taking the UI,
+    // each eye's own off-centre FOV on the GPU (the CPU's culling and UI placement keep the symmetric window).
+    bool  sfr2Metric = false;
+    float sfr2MetricDepth = 1.0f;       // "extra depth": the real eye distance times this (0.5..2)
+    bool  sfr2MetricEyeFrustum = true;  // per-eye off-centre FOV where the eye images carry no screen-space UI
 
     // ---- Menu comfort ----
     float menuDistanceM = 1.54f;   // head-locked menu quad distance in metres (rebaked 2026-08-11; further = less disparity, easier to fuse)

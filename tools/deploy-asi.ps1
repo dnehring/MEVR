@@ -111,7 +111,9 @@ if ($Game -eq 'LE1') {
             'combatHeadAim = 0', 'makoHeadAim = 0',
             # research/16: presenting the desktop mirror every frame costs a lot while focused, and
             # depth pop (P) costs about 30% while on.
-            'mirrorPresentEvery = 2', 'depthPopKeyEnabled = 0', ''
+            'mirrorPresentEvery = 2', 'depthPopKeyEnabled = 0',
+            # research/30: life-size stereo (each eye from its real place, no convergence shift).
+            'sfr2Metric = 1', ''
         )
         $lines = @('; MELE VR config - written by the in-headset menu.', '',
             '[active]', 'profile=Default', '',
@@ -131,9 +133,16 @@ if ($Game -eq 'LE1') {
     # The HUD panel's old default swing-round (50 degrees, until 2026-10-21) becomes the new 70, the
     # same rule as the world-locked panels (panelFollowDeg). Any other value is the user's.
     $fixed = $fixed -replace '(?m)^hudPanelFollowDeg = 50\.0\b', 'hudPanelFollowDeg = 70.0'
+    # Life-size stereo (research/30) on in every profile slot that doesn't have the key yet: added once, after
+    # the slot's header. A slot the player has switched it off in keeps its 0.
+    $fixed = [regex]::Replace($fixed, '(?ms)^(\[profile:[^\]\r\n]*\])(\r?\n)((?:(?!^\[).)*)', {
+        param($m)
+        if ($m.Groups[3].Value -match '(?m)^sfr2Metric\s*=') { return $m.Value }
+        return $m.Groups[1].Value + $m.Groups[2].Value + 'sfr2Metric = 1' + $m.Groups[2].Value + $m.Groups[3].Value
+    })
     if ($fixed -ne $text) {
         [IO.File]::WriteAllText($ini, $fixed)
-        Write-Output "MELEVR.ini: every profile slot on backslash with head aim off; F-key profile hotkeys off"
+        Write-Output "MELEVR.ini: every profile slot on backslash with head aim off and life-size stereo set; F-key profile hotkeys off"
     }
 }
 Write-Output "Log: $(Join-Path $bin "Logs\$name.log")"

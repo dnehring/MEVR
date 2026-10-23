@@ -976,6 +976,43 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       and `arm IK torso` lines (`body turn N of M deg, body shift N units`). Snapshots: `"torso"` in the mod's
       status.
 
+28. **Life-size stereo (new, 2026-10-23; HOST REDEPLOY, the deploy turns it on).** Your reports: the pistol
+    looks huge, close things strain the eyes, the scope disc isn't on the model's lens, the orbs looked closer
+    than they were. Cause ([research/30](../research/30-metric-stereo.md)): Halcyon shifted each eye's picture
+    1.27 degrees outward (its convergence, made divergent by swap-eyes), so everything read further away than
+    our metric quads: a pistol at 0.5 m read at 0.68 m, far things beyond infinity. Now each eye renders from
+    where it really is, at the world's own scale, with no shift. Stereo 2, on foot, first person (K).
+    - **Look at things:** hold the pistol at your face, then at arm's length; walk up to a wall, a crate, a
+      squadmate. Do sizes look right (a pistol pistol-sized, a door door-sized)? Close things easier on the
+      eyes? Far scenery comfortable (it no longer asks your eyes to diverge)?
+    - **Turn your head** 45-90 degrees to the side and look at something close: depth stays the same (it used to
+      flatten as you turned). Tilt your head sideways: no double image.
+    - **The sights:** draw the pistol and the sniper rifle: the dot and the scope picture should sit on the
+      model's sight and lens, and shots land on the dot (the 1.27-degree drift to the right should be gone).
+    - **Calibration orbs** (VR hands > Calibrate): the orb and the ring sit where your hand feels it is.
+    - **A/B:** our menu, Advanced > Stereo > Life-size stereo off brings Halcyon's old picture back at once (its
+      Eye distance, Convergence and Swap eyes reappear); on again. Which is better? "Extra depth" (1.00x = your
+      own eye distance) is there to taste.
+    - **Side effects:** (a) the HUD panel, reticle, the weapon wheels, the squad menu: unchanged? (b) the sun,
+      lights, lens flares, light shafts: anything glowing in the wrong place in one eye? If so,
+      `sfr2MetricEyeFrustum = 0` in `MELEVR.ini` (each eye then renders Halcyon's shared window, still
+      life-size) and tell Claude. (c) Conversations and cutscenes: faces, the wheel and subtitles fuse?
+      (d) The edges of the view: nothing missing or popping in at the sides.
+    - **Snapshots:** one on far scenery (End, or a quick tap of both stick clicks) with life-size stereo on and
+      one with it off, standing still. Claude checks them with `python tools/stereo-check.py <stamp> x,y ...`
+      (far points: about 0 px when metric, -30 px or so when off).
+    - **Frame timing:** `tools/perf-probe.ps1 -Tag metric`, then switch it off, `-Tag upstream`: expect no
+      difference.
+    - **Settings (`MELEVR.ini`, every profile):** `sfr2Metric = 1`, `sfr2MetricDepth = 1.00`,
+      `sfr2MetricEyeFrustum = 1`. Life-size needs Life-size movement on (lean gain 2; your active profile has
+      it); at lean gain 1 the world reads twice its size and the log says so.
+    - **Logs (Halcyon's and ours):** `[MEVR-STEREO] stereo mode 2: life-size, each eye's own frustum; eye
+      distance 0.06xx m = 6.xx uu at 100.0 uu/m ...` (mode 1 in conversations, cutscenes and with the HUD panel
+      off, with the reason); `[MEVR-STEREO] submit (pair rendered in mode 2): left eye declared at ... fov
+      (-61.5, 43.4, 53.0, -53.0) deg ...`; in Halcyon's: `[MEVR-STEREO] pass 0 (eye 0) from its eye: right
+      -3.1x ...` and `[MEVR-STEREO] pass 0 frustum: ... (game's own p8 0.0000 p9 0.0000 p11 1.0000)` (other
+      values there: tell Claude). `[VIEWFILL_RENDER_MATCH]`'s subRect should now be the whole 2824 px eye.
+
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR
   loader (MEVR)`, its pacing lines.

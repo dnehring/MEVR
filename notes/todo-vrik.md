@@ -633,3 +633,18 @@ PSVR 2 on SteamVR: the world pitched more and more over a session while SteamVR'
 - **Open:** legs that run sideways or backward under a turned body (no strafe animation in explore mode);
   moving or turning the pawn itself (room-scale, the cap) would change mechanics: ask first; the neck
   model's constants per player (the calibration's eye height could scale it).
+
+## Life-size stereo (user reports 2026-10-22/23, approved replacing Halcyon's stereo core; built 2026-10-23, to test)
+
+- **Reports (PS VR 2, SteamVR):** the pistol looks huge, close things strain the eyes, the scope quad isn't on the
+  model's lens, the calibration orbs looked closer than they were.
+- **Cause ([research/30](../research/30-metric-stereo.md), `TestMetricStereo`):** Stereo 2's submit shift is
+  divergent with swap on (1.27 degrees per eye; the sights job measured it on a snapshot), its eyes sit +-3.4 uu
+  along the body's right (not the head's; 9% too wide at 100 uu/m), one symmetric window.
+- **Built:** `sfr2Metric` (on in the deploy): each pass from its eye's real place at the view's scale, no shift,
+  swap ignored; each eye's own off-centre frustum on the GPU matrix where no UI is in the eyes (mode 2), the
+  symmetric window elsewhere (mode 1); the submit declares what the pair's record says. "Life-size stereo" and
+  "Extra depth" in our menu and Halcyon's. `[MEVR-STEREO]` logs, snapshot `"stereo"`, `tools/stereo-check.py`.
+- **[verify in headset]:** notes/next-vr-session.md step 28.
+- **Open:** a depth for the conversation UI (now at infinity); CPU-placed screen effects in mode 2 (lens flares,
+  light shafts) **[verify]**; whether Umbra's camera is the same for both passes (lever 3, research/22).

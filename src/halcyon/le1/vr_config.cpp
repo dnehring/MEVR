@@ -187,6 +187,9 @@ void ApplyKeyValue(VrConfig& c, const char* key, double val) noexcept
     if (strcmp(key, "worldLockedPanels") == 0) { c.worldLockedPanels = b; return; }   // [MEVR] world-locked panels
     if (strcmp(key, "panelFollowDeg") == 0) { c.panelFollowDeg = v; return; }
     if (strcmp(key, "recenterTiltDeg") == 0) { c.recenterTiltDeg = v; return; }   // [MEVR] tilt-correcting recenter
+    if (strcmp(key, "sfr2Metric") == 0) { c.sfr2Metric = b; return; }                 // [MEVR] life-size stereo
+    if (strcmp(key, "sfr2MetricDepth") == 0) { c.sfr2MetricDepth = (v < 0.5f) ? 0.5f : (v > 2.0f ? 2.0f : v); return; }
+    if (strcmp(key, "sfr2MetricEyeFrustum") == 0) { c.sfr2MetricEyeFrustum = b; return; }
     // Resolution watchdog: what MELE-VR.bat installed. Standalone if+return.
     if (strcmp(key, "expectedResX") == 0) { c.expectedResX = static_cast<int>(v); return; }
     if (strcmp(key, "expectedResY") == 0) { c.expectedResY = static_cast<int>(v); return; }
@@ -642,6 +645,9 @@ void WriteProfileSection(FILE* f, const char* name, const VrConfig& c) noexcept
     fprintf(f, "worldLockedPanels = %d\n",      c.worldLockedPanels ? 1 : 0);   // [MEVR] world-locked panels
     fprintf(f, "panelFollowDeg = %.1f\n",       c.panelFollowDeg);
     fprintf(f, "recenterTiltDeg = %.1f\n",      c.recenterTiltDeg);   // [MEVR] tilt-correcting recenter
+    fprintf(f, "sfr2Metric = %d\n",             c.sfr2Metric ? 1 : 0);   // [MEVR] life-size stereo (research/30)
+    fprintf(f, "sfr2MetricDepth = %.2f\n",      c.sfr2MetricDepth);
+    fprintf(f, "sfr2MetricEyeFrustum = %d\n",   c.sfr2MetricEyeFrustum ? 1 : 0);
 
     fprintf(f, "; ----- Comfort / menu -----\n");
     fprintf(f, "menuDistanceM = %.3f\n",    c.menuDistanceM);

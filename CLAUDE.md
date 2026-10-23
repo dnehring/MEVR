@@ -195,6 +195,16 @@ switching frameworks.
   guessed, then measured once per session) is cut out of the HUD panel and shown on a quad of its
   own at the left / right hand ("wheel"). Toggles: `MELEVR.ini` `hudPanel*` / `handReticle*`, our menu's
   HUD & sights and Advanced > HUD placement, or the classic menu's HUD tab; the wheel panel's in `[Squad]`.
+- LE1 life-size stereo ([research/30](research/30-metric-stereo.md), `MELEVR.ini sfr2Metric`, on in our deploy):
+  each Stereo 2 pass renders from its eye's real place (`xrLocateViews`, at the view's units per metre: Halcyon's
+  50 x lean gain, life-size at 100), no convergence shift, swap ignored (pass 0 = left). In gameplay with the HUD
+  panel taking the UI (mode 2) the GPU matrix gets each eye's own off-centre frustum and the submit declares it;
+  the CPU matrices (culling, Umbra, HUD markers) keep Halcyon's symmetric window. Where UI is in the eye images
+  (VR cine, panel off) it stays on the symmetric window (mode 1). Upstream's swap-on convergence was divergent
+  (1.27 deg per eye: far things beyond infinity, a pistol at 0.5 m read at 0.68 m). Plan and logs
+  `plugin/MetricStereo` (`[MEVR-STEREO]`), math `core/vr/MetricStereo` (unit-tested), render seams `render_hook`
+  `SetSfrMetric` / records by head-look arm; snapshot `"stereo"`; `sfr2MetricDepth` ("Extra depth"),
+  `sfr2MetricEyeFrustum = 0` for mode 1 only; `tools/stereo-check.py` measures far-scenery disparity.
 - LE1 colour per headset ([research/27](research/27-colour.md)): brightness and RGB gains, contrast,
   saturation, mid-tones (gamma) and black level, all on sRGB-ENCODED values, plus a ±0.5-step triangular
   dither (`core/vr/Colour`, unit-tested; `tools/colour-preview` checks the shader against the CPU reference:
