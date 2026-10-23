@@ -35,6 +35,7 @@ struct ID3D11Texture2D;
 //   record.request    [start|stop|toggle] [seconds=N]
 //   replay.request    <path.mevrrec | latest | stop> [loop=1] [inputs=1]
 //   perf.request      [seconds=N] [delay=seconds] [tag=word]   (the frame-breakdown probe, plugin/PerfProbe)
+//   eyediff.request   [tag=word]   (one paired frame's two D3D11 streams compared, plugin/DrawReplay)
 // %LOCALAPPDATA%\MEVR\testloop.status (JSON, rewritten once a second while it changes) says what is
 // recording or replaying and the last snapshot's JSON.
 namespace mevr::host::testloop {

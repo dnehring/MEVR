@@ -756,7 +756,7 @@ void PerfPresentBegin(ID3D11DeviceContext* context) noexcept {
 
 void PerfPresentEnd(ID3D11DeviceContext* context) noexcept {
     mevr::host::perf::Mark(mevr::vr::frame_probe::kEnd, context);
-    mevr::host::render_levers::OnPresentEnd();
+    mevr::host::render_levers::OnPresentEnd(context);
 }
 
 void PerfPass0Captured(ID3D11DeviceContext* context) noexcept {

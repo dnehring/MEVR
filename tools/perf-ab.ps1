@@ -3,8 +3,9 @@
 # frame capture (tools/perf-probe.ps1) and prints one summary line per capture; alternates for -Rounds
 # rounds so drift in the scene shows; puts the key back as it was at the end.
 #
-#   tools/perf-ab.ps1 -Key depthPrepass -Values 2,1        the game's pre-pass vs none in the second eye
-#   tools/perf-ab.ps1 -Key sharePass -Values 0,1 -Rounds 3
+#   tools/perf-ab.ps1 -Key sharePass -Values 0,1,2 -Rounds 3   the game's own / the engine's second eye on the
+#                                                             first renderer / the draw replay
+#   tools/perf-ab.ps1 -Key umbraQueryWait -Values 1,0         the game's wait for query results vs none
 #   tools/perf-ab.ps1 -Key pCoresOnly -Values 0,1 -Seconds 15
 #
 # Stand still (or freeze the world: tools/console.ps1 pause) for the comparison to mean something.

@@ -5,6 +5,7 @@
 #include "plugin/TestLoop.hpp"
 #include "plugin/Calibration.hpp"
 #include "plugin/Colour.hpp"
+#include "plugin/DrawReplay.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/MainMenu.hpp"
 #endif
@@ -1337,6 +1338,11 @@ void PollRequests() {
         log::Info("test loop: perf.request: {:.0f} s of frame timing{}", seconds,
             delay > 0.0 ? std::format(", starting in {:.1f} s", delay) : std::string());
         perf::Request(seconds, r.Get("tag"), "file", delay);
+    }
+    if (TakeRequest(BaseDir() / L"eyediff.request", text)) {
+        req::Request const r = req::Parse(text);
+        log::Info("test loop: eyediff.request: the next paired scene render's streams compared (plugin/DrawReplay)");
+        mevr::host::draw_replay::RequestDiff(r.Get("tag"));
     }
 }
 

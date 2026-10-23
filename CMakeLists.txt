@@ -361,6 +361,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/Colour.hpp
     src/plugin/CalibrationDraw.cpp
     src/plugin/CalibrationDraw.hpp
+    src/plugin/DrawReplay.cpp
+    src/plugin/DrawReplay.hpp
     src/plugin/Halcyon.cpp
     src/plugin/Halcyon.hpp
     src/plugin/HalcyonBridge.cpp

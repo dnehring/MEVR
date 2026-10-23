@@ -487,10 +487,12 @@ share is the sum of its call sites' (the sampler printed them separately).
 
 1. ~~**Umbra occlusion off, measured in place**~~ (`UMBRA OCCLUSIONCULLING`): measured below; it costs
    more than it saves.
-2. **No depth pre-pass in one eye or both:** up to ~1.3-1.5 ms of render thread per eye. The base pass
-   then shades without early-Z (GPU overdraw). Needs a hook at `0x8BF116`'s callee. Check first what
-   reads that depth: Umbra's next queries, Halcyon's scene-depth capture (`SfrOnSceneDepthClear`)
-   **[verify]**.
+2. ~~**No depth pre-pass in one eye or both:** up to ~1.3-1.5 ms of render thread per eye.~~ **Wrong name
+   (2026-10-23, research/32 "The commander, read"):** `0x8BF8F0` → `0x8BEDB0` → `0x76C1D0` is the world's opaque
+   **base pass** (colour writes on, the base-pass draw lists), not a depth pre-pass; skipping it removes the world
+   from that eye. The real depth pre-pass is the commander's occluder flush inside the resolve (`0x8B5FF0` →
+   `0x76D820`, ~5% flat), which Umbra's queries need. The `depthPrepass` switch is removed; it never ran in game.
+   Likewise `0x76D650` is the lights pass and `0x76D0A0` translucency, not "base pass" and "lights".
 3. **One visibility for both eyes:** resolve once with a frustum covering both eyes and let the second
    pass reuse it (no second Umbra resolve, ~1.2 ms). The deepest change (the commander's per-view visible
    lists, `0x8BE0B0`), so last.

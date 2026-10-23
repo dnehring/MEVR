@@ -118,11 +118,11 @@ rva,name,kind,comment
 0x8BFBB0,UmbraResolveViews_guess,func,research/22: per view: Umbra resolveVisibility (0xD41240) with BioWare's commander (vtable 0x11D62C0)
 0xD41240,Umbra::Camera::resolveVisibility_guess,func,research/22: umbra-ob-2.6.1 (linked library); loops the resolve step 0xD478E0 while it returns true
 0xD478E0,Umbra::ResolveStep_guess,func,research/22: umbra-ob-2.6.1 internals
-0x8C34C0,UmbraCommander::command_guess,func,research/22: switch on the command: 0 begin (QPC); 1 end; 3 visible instances -> 0x8BE0B0 (marks the primitive visible); 5 and 6 flush; 9 debug lines
-0x8BF8F0,RenderUmbraDepthPrepass_guess,func,research/22: per view (Views at +0x60; stride 0x12F0) 0x8BEDB0; then scene depth resolve
-0x8BEDB0,RenderUmbraDepthPrepassView_guess,func,research/22: one view: pending occluder batches (+0x34/+0x38) then the depth pre-pass of the visible set (0x76C1D0)
-0x76C1D0,FSceneRenderer::RenderPrePass_guess,func,research/22: depth-only DPG pass: static draw lists (0x76C820); then the view's dynamic primitives
-0x76C820,RenderPrePassStaticLists_guess,func,research/22: the depth pass's static draw lists (0x748780..0x748FB0)
+0x8C34C0,UmbraCommander::command_guess,func,research/22+32: vtable 0x11D62C0 slot 1; 0 begin (appSeconds as a FLOAT to 0x1795D40); 1 end (0x8B5FF0(this,1)); 3 visible instances (0x8826F0 then 0x8BE0B0); 5 flush (0x8B5FF0 occluders into depth; 0x8B6550 queries); 6 results (0x8B6330); 9 debug lines; .pdata chunks 0x8C35AE (case 3 loop) and 0x8C37A9 (cases 5/6/9); hooked by plugin/RenderLevers
+0x8BF8F0,RenderUmbraBasePass_guess,func,research/32 (corrects RenderUmbraDepthPrepass_guess): per view (Views at +0x60; stride 0x12F0) 0x8BEDB0 = the world's OPAQUE BASE PASS; then scene depth resolve
+0x8BEDB0,RenderUmbraBasePassView_guess,func,research/32 (corrects RenderUmbraDepthPrepassView_guess): one view: colour writes on (+0x538(1)); base pass 0x76C1D0 when the commander's flag +0x34+8*view is set (+0x38: a second list on the 0x1795288 path); clears the flag
+0x76C1D0,FSceneRenderer::RenderBasePassView_guess,func,research/32 (corrects RenderPrePass_guess): opaque base pass for one view and DPG: static lists (0x76C820) then dynamic primitives with opaque relevance; decals; view elements (0x744D50)
+0x76C820,RenderBasePassStaticLists_guess,func,research/32 (corrects RenderPrePassStaticLists_guess): base-pass lists +0x170..+0x9B0 (and +0x58 twins) with StaticMeshVisibilityMap (+0x554 with Umbra; +0x534 stock)
 0x80B7E0,FMeshDrawingPolicy::DrawMesh_guess,func,research/22: RHIDrawIndexedPrimitive (RHI vtable +0x5C8) or RHIDrawPrimitive (+0x5C0); 67 callers
 0x9B1390,FD3D11DynamicRHI::RHIEndDrawingViewport_guess,func,research/22: RHI vtable slot +0x458; the swap chain Present (Halcyon's hook and XR frame) runs below it
 0x4FD550,UpdateUmbraCamera_guess,func,research/22: on a view change sets the Umbra camera; properties 1|4 or 3|4 with UMBRA OCCLUSIONCULLING (0x1680D61)
@@ -132,3 +132,37 @@ rva,name,kind,comment
 0x1680D62,GUmbraHoax_guess,data,research/22: UMBRA HOAX (bool)
 0x1787798,GIgnoreAllOcclusionQueries_guess,data,research/22: TOGGLEOCCLUSION; read by InitViews (0x7681C6)
 0x1795D30,GUmbraDebugFlags_guess,data,research/22: 0x1795D30..37 = UMBRA VOXELS; CAMERAFRUSTUM; FREEZECAMERA; FREEZEOCCLUSION; OBJECTBOUNDS; OBJECTOBBS; OCCLUSIONQUERIES; MISC
+0x8BE0B0,UmbraCommander::InstanceVisible_guess,func,research/32: one instance in one view: HiddenPrimitives; draw-distance cull; UE3 occlusion 0x762550 if compact flag 0x1000 (GetOcclusionQueryResult bWait=TRUE); inline TBitArray; 0x76A570; PreRenderView (+0x68) gated by the PSI+0x140 frame stamp
+0x8826F0,FPrimitiveSceneInfoCompact::Init_guess,func,research/32: 0x50-byte compact from PSI (+8 Proxy; +0x10 Component; bounds +0x54; squared draw distances; flags PSI+0x48/+0x50; Proxy+0xBC; Component+0x168); rebuilt per instance per view (1.7% of the render thread flat: cache misses)
+0x76A570,FSceneRenderer::ProcessVisiblePrimitive_guess,func,research/32: UE3 InitViews per-primitive body for one view: relevance; static-mesh LOD and bitmaps; dynamic lists; light interactions; decals; ActorVisibilitySet add 0x765020; also called by the stock path 0x76A130
+0x762550,FSceneViewState::UpdatePrimitiveOcclusion_guess,func,research/32: history TSet viewState+0xD10; GetOcclusionQueryResult bWait=1 (spins until the GPU has the previous query); BatchPrimitive 0x759030
+0x770D10,FSceneViewState::UpdatePrimitiveFade_guess,func,research/32: maps +0xA74/+0xABC keyed by Component; only if *(0x1781404) [verify]
+0x8B5FF0,UmbraCommander::FlushOccluders_guess,func,research/32: the real depth pre-pass: new occluders into depth via 0x76D820 for DPG 2 (+0x56) and DPG 1 (+0x55); first flush sets the depth pass up (0x8B72C0); clears view+0x594 after
+0x8B6550,UmbraCommander::IssueOcclusionQueries_guess,func,research/32: one DrawIndexedPrimitiveUP per query (RHI +0x5F0/+0x5F8) inside Begin/EndOcclusionQuery (+0x580/+0x588)
+0x8B6330,UmbraCommander::ReadOcclusionQueries_guess,func,research/32: GetOcclusionQueryResult no-wait per query; a needed unready one spins (GetData + appSleep(0)) while appSeconds - float(0x1795D40) < 0.01: the float's 2 s precision makes that anything up to ~1 s; umbraQueryWait = 0 (plugin/RenderLevers) moves the stamp back
+0x8B72C0,UmbraCommander::BeginDepthPass_guess,func,research/32: first flush of a resolve: depth target 0x773FF0; viewport; view params; clear depth; colour writes off
+0x8B7690,UmbraCommander::EndQueryState_guess,func,research/32: restores state after a query batch
+0x75E580,UmbraCommander::BeginQueryState_guess,func,research/32: query render state (colour writes off)
+0x8C1BE0,UmbraCommander::MarkBasePassPending_guess,func,research/32: commander +0x34 + (view*2 + list)*4 = 1; from 0x76A570
+0x8C1AF0,UmbraCommander::MarkOccludersPending_guess,func,research/32: commander +0x54 + dpg = 1; from 0x76A570
+0x76D820,FSceneRenderer::RenderPrePassView_guess,func,research/32: UE3 RenderPrePass for one view: DrawVisible of the PositionOnlyDepth/Depth (and with Umbra +0xC0/+0x118) lists with StaticMeshOccluderMap view+0x594; dynamic occluders (bUseAsOccluder; screen radius vs GMinScreenRadiusForDepthPrepass 0x167CE28); BioWare's drawn bit PSI+0x148
+0x76E330,FSceneRenderer::RenderPrePass_guess,func,research/32: the non-Umbra pre-pass per DPG (clear; 0x76D820 per view)
+0x767570,TStaticMeshDrawList::DrawVisible_PositionOnlyDepth_guess,func,research/32: walks every element of every policy link (one bit test each), at every flush
+0x767360,TStaticMeshDrawList::DrawVisible_Depth_guess,func,research/32: same for the depth list
+0x76BDC0,FSceneRenderer::RenderBasePassDPG_guess,func,research/32: non-Umbra path: optional pre-pass 0x76E330 then 0x76C1D0 per view
+0x76D650,FSceneRenderer::RenderLightsDPG_guess,func,research/32 (was 'world DPG first pass' in research/22): 0x751BC0 RenderLights twice plus modulated shadows 0x752110
+0x751BC0,FSceneRenderer::RenderLights_guess,func,research/32: scene lights scene+0x30E8; per-view light lists view+0x98C
+0x765020,FActorVisibilitySet::Add_guess,func,research/32: TSet add per visible primitive into View+0x12DC; regrows from empty per view per frame [verify] (0.23% in realloc flat)
+0x4F6860,PrimitiveOcclusionHistorySet::Find_guess,func,research/32: Jenkins-hash TSet find; 0x28-byte elements
+0x759030,FOcclusionQueryBatcher::BatchPrimitive_guess,func,research/32: view+0x126C / +0x12A4
+0x9A03F0,FD3D11DynamicRHI::GetOcclusionQueryResult_guess,func,research/32: RHI vtable +0x268
+0x9A04B0,FD3D11DynamicRHI::GetQueryData_guess,func,research/32: ID3D11DeviceContext::GetData; with bWait spins without sleeping up to 0.5 s
+0x767B80,GetSceneFrameNumberPtr_guess,func,research/32: returns &0x178779C
+0x189C50,appSleep_guess,func,research/32: Sleep(seconds*1000)
+0x178779C,GSceneFrameNumber_guess,data,research/32: incremented per scene render (PreRenderView's stamp)
+0x17938C8,GDynamicRHI_guess,data,research/32: the RHI object (vtable +0x268 GetOcclusionQueryResult; +0x580/+0x588 Begin/EndOcclusionQuery; +0x5F0/+0x5F8 Begin/EndDrawIndexedPrimitiveUP; +0x620/+0x628 end/begin scene)
+0x1798E88,GUmbraCommanders_guess,data,research/32: 16 commanders of 0xA4 bytes (vtable 0x11D62C0; +0x34 base-pass flags per view and list; +0x54 occluder flags per DPG; +0x64 view index; +0x68 view; +0x70 family; +0x8C renderer)
+0x1795D28,GUmbraCommanderIndex_guess,data,research/32: index into 0x1798E88
+0x1795D40,GUmbraResolveStartSeconds_guess,data,research/32: FLOAT: appSeconds at the resolve's begin (command 0): the 10 ms budget of 0x8B6330 measured against it
+0x167CE28,GMinScreenRadiusForDepthPrepass_guess,data,research/32: occluder screen-size threshold of 0x76D820
+0x11D62C0,UmbraCommander_vftable_guess,label,research/32: slot 1 (+8) = 0x8C34C0 command()

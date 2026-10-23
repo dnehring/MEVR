@@ -332,9 +332,13 @@ Use it to check VR changes yourself instead of asking the user what they see
   adds whole-GPU load; `tools/sample-render-thread.ps1` samples the render thread's stack from outside
   (`mevr-stack-sampler`): where its time goes by module and function, no redeploy. Live render levers
   (`plugin/RenderLevers`, [research/32](research/32-ue3-vr-performance.md)) in `[Performance]` of `ASI\LE1MEVR.ini`:
-  `depthPrepass` (2/1/0), `pCoresOnly`, `sharePass` (experimental: the second eye renders on the first's scene
-  renderer); log `render levers:` (scene renders per frame, each one's time); `tools/perf-ab.ps1 -Key <key> -Values a,b`
-  alternates one and captures each.
+  `sharePass` (experimental; 1: the second eye renders on the first's scene renderer, no second visibility; 2: as 1
+  but the second eye is a replay of the first's recorded D3D11 calls with the view's bytes substituted,
+  `plugin/DrawReplay`), `umbraQueryWait` (0: the Umbra resolve never spins for a query result), `pCoresOnly`; log
+  `render levers:` (scene renders per frame, each one's time with its Umbra resolve's parts, the draw replay's counts);
+  `tools/perf-ab.ps1 -Key <key> -Values a,b` alternates one and captures each; `tools/eye-diff.ps1` compares one
+  frame's two eyes call by call (run it first: it says whether the replay's substitution covers the eye's constants).
+  There is no depth pre-pass to skip: `0x76C1D0` is the base pass (research/32).
 - **Console:** `tools/console.ps1 "UMBRA OCCLUSIONCULLING"` writes `console.request`; the mod (`game/ConsoleRequest`,
   hot-reloaded) runs each line through `PlayerController.ConsoleCommand` on the game thread and writes what it
   printed to `console.result` (log `console:`). Flat or in VR, wherever there is a local player: A/Bs without a restart.

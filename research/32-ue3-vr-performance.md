@@ -4,10 +4,19 @@
 within reason, radical changes included. What can Unreal Engine 3 give up per eye?
 
 Builds on [22](22-performance-levers.md) (the measurements: at 90 fps the render thread is the limit, ~10.6 ms
-of 11.1; per eye ~50% is `InitViews`: Umbra's resolve with BioWare's per-object callbacks ~21%, the depth
-pre-pass of the visible set ~25-30%; the world base pass ~11%) and [30](30-metric-stereo.md) (both passes
-hand the engine identical CPU view and projection matrices). Web research by a subagent, sources at the end
-and in [sources.md](sources.md). **[inference]** marks our reasoning, **[verify]** what one test settles.
+of 11.1; per eye ~50% is `InitViews`: Umbra's resolve with BioWare's per-object callbacks ~21%, and ~25-30%
+that 22 called the depth pre-pass of the visible set) and [30](30-metric-stereo.md) (both passes hand the
+engine identical CPU view and projection matrices). Web research by a subagent, sources at the end and in
+[sources.md](sources.md). **[inference]** marks our reasoning, **[verify]** what one test settles.
+
+**Correction (2026-10-23, a Ghidra pass on the commander, "The commander, read" below):** the 25-30% is the
+world's **opaque base pass** (`0x8BF8F0` → `0x8BEDB0` → `0x76C1D0`, which turns colour writes on and draws the
+base-pass draw lists), not a depth pre-pass. The real depth pre-pass is inside the Umbra resolve: the commander
+flushes new occluders into depth (`0x8B5FF0` → UE3's `RenderPrePass` body `0x76D820`, ~5% flat) so its queries
+can test against them. `0x76D650` (11%) is the lights pass, `0x76D0A0` (9%) translucency. The per-eye picture is
+then: base pass ~1.4 ms, the resolve ~1.2 ms (of which the occluder depth ~0.5 ms, the queries ~0.2 ms, per-object
+bookkeeping ~0.5 ms), lights ~0.6 ms, translucency ~0.5 ms. The `depthPrepass` switch built on the wrong name
+(it skipped `0x76C1D0`, i.e. the world's geometry) is removed; it never ran in game.
 
 ## What other VR injectors do about the second eye
 
@@ -70,10 +79,12 @@ and in [sources.md](sources.md). **[inference]** marks our reasoning, **[verify]
 | # | Lever | Saves (VR, per frame) | Cost / risk | State |
 |---|---|---|---|---|
 | 1 | **Second pass from the first pass's scene renderer:** keep pass 0's FSceneRenderer, give its views pass 1's matrices, re-run only the depth pre-pass and the passes; pass 1's own renderer skips `InitViews` | pass 1's visibility (~21% of a pass, ~1.1 ms); with its pre-pass dropped too ~2.5 ms | reverse engineering of `SceneRenderB`'s state; per-view state (LOD, translucency order, shadows) taken from pass 0, which is ~3 cm away | built as `sharePass`, untested (below) |
-| 2 | **No visible-set pre-pass in the second pass** (`depthPrepass = 1`) | ~1.4 ms | GPU overdraw (no early-Z; ~5 ms GPU headroom); if it feeds Umbra's queries, more draws | built, untested |
+| 2 | ~~**No visible-set pre-pass in the second pass** (`depthPrepass = 1`)~~ | ~~1.4 ms~~ | the "pre-pass" was the base pass (the correction above): the switch would have removed the world from that eye | removed |
 | 3 | **AER at 120 Hz** (Halcyon's existing mode) | ~half the render thread | ghosting on motion; our seams (HUD panel, sights) may assume Stereo 2 **[verify]** | exists |
-| 4 | **D3D11 replay of pass 0 for pass 1** | up to half the render thread | patching view constants in every constant buffer, per-view post; MGS2 still flickers | not started |
+| 4 | **D3D11 replay of pass 0 for pass 1** (`sharePass = 2`): pass 0's calls recorded at the context, re-issued for pass 1 with the view's bytes substituted | pass 1's base pass, lights and translucency above the driver: ~1-1.5 ms on top of lever 1 | what the substitution misses (the eye diff measures it); the recording's own cost (~0.3-0.5 ms, measured by the log) | built, untested ("Lever 4, built" below) |
 | 5 | **P-cores only**, SteamVR fixed throttling as a net | steadier frames | low | `pCoresOnly` built |
+| 6 | **No wait for Umbra's query results** (`umbraQueryWait = 0`) | 0 flat; in VR whatever the resolve spins for a query the GPU hasn't reached (the stamp is a float of 2 s precision: the wait, when it happens, is 0 to ~1 s) | an unready query counts as visible: a few more draws | built, untested; the log's `longest results read` says if it ever spins |
+| 7 | **UE3's own per-primitive queries waited on** (`0x762550`, `bWait = TRUE`): the second eye waits for the first eye's query of the same frame **[verify]** | unknown in VR | `UMBRA TOGGLEOCCLUSION` (console) ignores them: a zero-code A/B; lever 1 removes the second eye's wait anyway | to measure |
 
 ### Lever 1 in detail [inference, to verify in the code]
 
@@ -117,25 +128,93 @@ found:
 Measuring any of the switches: `tools/perf-ab.ps1 -Key sharePass -Values 0,1` (or `depthPrepass -Values 2,1`,
 `pCoresOnly -Values 0,1`) alternates the key in the deployed ini, captures each, and restores it.
 
-### Lever 4 in detail: what a D3D11 replay would patch (2026-10-23, from Halcyon's code)
+### Lever 4, built: the second eye as a replay of the first eye's D3D11 calls (`sharePass = 2`)
 
-- Halcyon tried draw-level stereo itself, long before Stereo 2: `d3d_capture.cpp`'s `[CAMCB96_ATLAS]` (marker-gated,
-  off) issues each scene `DrawIndexed` twice into the two halves of the target, with the **96-byte constant buffer at
-  VS slot 1** rewritten per eye. Its shape (`LooksLikeSceneCameraCb96`): rows 0-3 a projection-shaped 4x4 (the GPU's
-  TranslatedViewProjection), row 4 (0,0,0,1), row 5 a world position with w = 1 (PreViewTranslation: the eye offset
-  is applied to row 5 only). So the vertex side of UE3's view constants is one small buffer; the rest of a draw's
-  constants are per primitive or per material. Pixel-side view constants (camera position for specular, fog,
-  screen-position scale) are elsewhere and still **[verify]**: a one-frame recording of both eyes' `UpdateSubresource`
-  payloads, diffed, lists every byte that differs between the eyes, which is exactly the patch list a replay needs.
-- A replay built on `sharePass` would record the first eye's immediate-context calls between the pre-pass and
-  `0x76DD10` (Halcyon's `d3d_capture` already hooks the context's vtable: `UpdateSubresource`, `Map`/`Unmap`, the
-  `*SetConstantBuffers`, `DrawIndexed`...) and re-issue them for the second eye with the view bytes patched, instead
-  of running the DPG passes again. What it saves is the UE3 side of the second eye's draw submission (base pass +
-  lights ≈ 20% of the render thread for both eyes, ~1 ms per eye; the driver's part, ~40% of a draw's cost, stays).
-  MGS2's flicker came from replaying screen-space quads; replaying only the world passes and letting the second eye's
-  post-processing run as it does avoids that.
+What a replay has to patch, from Halcyon's code: it tried draw-level stereo itself, long before Stereo 2
+(`d3d_capture.cpp`'s `[CAMCB96_ATLAS]`, marker-gated, off): each scene `DrawIndexed` twice into the two halves of the
+target, with the **96-byte constant buffer at VS slot 1** rewritten per eye. Its shape (`LooksLikeSceneCameraCb96`):
+rows 0-3 a projection-shaped 4x4 (the GPU's TranslatedViewProjection), row 4 (0,0,0,1), row 5 a world position with
+w = 1 (PreViewTranslation: the eye offset is applied to row 5 only). So the vertex side of UE3's view constants is one
+small buffer; the rest of a draw's constants are per primitive or per material. Pixel-side view constants (camera
+position for specular, fog, screen-position scale) sit at per-shader registers and are **[verify]**: the eye diff
+below lists them.
+
+**Built (`plugin/DrawReplay`, driven by `plugin/RenderLevers`; off by default; untested in game):**
+- With `sharePass = 2` the host hooks the immediate context's vtable (65 entries, above Halcyon's own draw hooks, at
+  the first Present after the switch; they stay for the session, one thread-local read per call idle) and records the
+  frame's first scene render as the game issues it: every state set, draw, clear, copy, resolve, query, map and buffer
+  update, with the payload of each buffer update (and of each mapped buffer up to 64 KB, copied whole at its unmap).
+  Typically ~20k calls and a few MB per eye, in a reserved arena; the objects it names are AddRef'd for the frame.
+- The tail starts at the world DPG's light targets (`0x77BE00(renderer, 1)`, hooked as the mark: InitViews makes that
+  call right after the resolve), so it holds the base pass, the lights, translucency, the foreground DPG and the finish,
+  exactly what `sharePass = 1`'s engine replay runs. For the second render (a compatible one, as lever 1 pairs them) the
+  host re-issues the tail through the vtable's next entries, so Halcyon's hooks see it as the second eye's rendering
+  (its pass-0 capture keys on the scene-sized depth clear with the backbuffer dirty: the re-issued clear). The engine's
+  per-render bookkeeping around it (RHI begin/end scene, the scene frame counter, the renderer's begun flag) is done as
+  `sharePass = 1` does it; the engine's passes themselves don't run.
+- **The substitution:** the second eye's view differs from the first's only in the FSceneView fields Halcyon edits on
+  the game thread (research/30: ViewOrigin, PreViewTranslation, the translated matrices and inverses; in metric mode 2
+  the GPU frustum). Before and after lever 1 copies the second render's fields into the kept renderer, the host snapshots
+  the plain ranges; every 16-byte chunk that differs (a matrix row, and each column of any 4x4 that could start at a
+  16-byte boundary, for shaders that take matrices transposed; positions by their first 12 bytes, the chunk's own 4th
+  float kept) becomes a key → value pair. Each replayed constant-buffer payload is scanned chunk by chunk (a 64 Kbit
+  filter on the first word, then a small open-addressing table): a chunk bitwise equal to a first-eye key becomes the
+  second eye's value. Bitwise equality of 3-4 floats to a world position or a matrix row is a safe signature; chunks
+  that are products of a view matrix with something per draw (a shadow's screen-to-shadow matrix, say) aren't caught:
+  that's what the eye diff is for.
+- **Not replayed:** query begin/end (the first eye's results stay; the second eye never reads any), texture uploads
+  (one-time data), `Flush`. **Not replayable** (that frame runs as `sharePass = 1`, counted in the log): a command list
+  executed in the tail (cutscenes render on a deferred context), a compute dispatch, stream-out, indirect draws, UAVs,
+  class instances on a shader, a buffer update over 1 MB, a dynamic buffer over 64 KB discarded twice in the tail (its
+  earlier contents would be gone). A failure inside a replay (an exception, a call that can't be re-issued) turns the
+  draw replay off for the session; that eye is then rendered by the engine's passes.
+- **The eye diff** (`tools/eye-diff.ps1`, `eyediff.request`): one paired frame recorded both ways, the first eye as
+  above and the second eye's *engine* passes (lever 1's replay) through the same recorder, compared call by call:
+  whether the two streams align (same calls, same arguments and objects: if not, a replay would issue the wrong calls),
+  and for every buffer update how many 16-byte chunks differ, how many the substitution covers, and the rest listed by
+  (bound shader, offset) with both eyes' values. Written to `%LOCALAPPDATA%\MEVR\perf\<stamp>-eyediff.txt`. Works at any
+  `sharePass` (0 runs that one frame as 1). **It is the first thing to run in the headset:** it decides whether lever 4
+  is right as built, and what to add if not.
+- **To verify in the headset:** the eye diff's verdict ("aligned and fully covered"); then with `sharePass = 2`: both
+  eyes still stereo (`tools/stereo-check.py`), no flicker, shadows and specular agreeing between the eyes (the classes
+  the substitution could miss), the second render's time in `render levers:` well under the first's, and the log's
+  `draw replay:` line (replays, substitutions per replay, the recording's size, fall-backs and why).
 - The heap is not a lever: `RtlAllocateHeap` + `RtlFreeHeap` are ~2.7% of the flat render-thread samples (the
   "ntdll 15%" was mostly `NtWaitForSingleObject`, semaphores and FLS). A replacement allocator would save ~0.3 ms.
+
+## The commander, read (2026-10-23, Ghidra, a subagent's pass; decompiled C in the scratchpad, names in symbols-le1.csv)
+
+BioWare's `UmbraCommander::command` (`0x8C34C0`, vtable `0x11D62C0` slot 1) is the game's side of Umbra's resolve.
+The two addresses the sampler blamed are `.pdata` chunk starts inside it, not call sites. By command code: 0 begins a
+resolve (clears its flags; stamps `appSeconds` **as a float** at `0x1795D40`); 3 reports visible instances: per
+instance a 0x50-byte `FPrimitiveSceneInfoCompact` is rebuilt from three objects (`0x8826F0`: 1.7% of the flat render
+thread, all cache misses), the squared distance to the view origin computed, then `0x8BE0B0`: hidden-primitive and
+draw-distance checks, UE3's own per-primitive occlusion for primitives with compact flag 0x1000 (`0x762550`: a history
+TSet, `GetOcclusionQueryResult` with `bWait = TRUE`, a new query batched), UE3's InitViews per-primitive body
+(`0x76A570`: relevance, static-mesh LOD and visibility bitmaps, dynamic lists, light interactions, decals, an
+`ActorVisibilitySet` add that regrows from empty per view) and the proxy's `PreRenderView` once per scene frame; 5
+flushes the new occluders into depth (`0x8B5FF0` → UE3's `RenderPrePass` body `0x76D820`: the real depth pre-pass,
+rescanning the whole static depth lists at every flush) and issues Umbra's queries (one `DrawIndexedPrimitiveUP` per
+query inside begin/end occlusion query, `0x8B6550`); 6 reads the results (`0x8B6330`); 1 ends it (a final flush).
+
+Flat, the commander is 12.7% of the render thread: 42% of it the occluder depth pre-pass, 16% the queries and their
+reads, 40% per-object bookkeeping. Nothing in it is quadratic, allocates per object or locks per object; the
+candidates are small (the static-list rescan per flush 0.4%, the ActorVisibilitySet regrowth 0.2%, the compact rebuild
+1.7% of which maybe half avoidable) and deep. The commander is not a lever beyond lever 1, which removes it from the
+second eye entirely.
+
+**Two waits for the GPU inside the resolve, both [verify] in VR** (flat they never triggered: the GPU is ahead):
+- The results read (code 6): for a query Umbra marks as needed whose result isn't ready, it spins (`GetData`,
+  `Sleep(0)`) while `appSeconds - float(stamp) < 0.01`. The stamp is a float at ~16.7 M (UE3's `appSeconds` offset),
+  whose precision there is 2 s: the "10 ms budget" is really a random window, and when the spin happens it lasts
+  anything from nothing to about a second. In VR the second eye's queries are issued a millisecond before they're read,
+  with the GPU still on the first eye. `[Performance] umbraQueryWait = 0` moves the stamp 4 s back as soon as it's
+  written, so an unready query counts as visible instead. The `render levers:` log now times the resolve's parts per
+  render (instances, occluder flush + queries, results reads) and the longest single results read: the measurement.
+- UE3's own per-primitive queries (`0x762550`, `bWait = TRUE`, the RHI spinning without sleeping for up to 0.5 s): the
+  previous frame's query must have completed. With Stereo 2 and one view state for both eyes, the second eye's
+  "previous frame" is the first eye of the same frame, whose draws the GPU may not have reached. `UMBRA
+  TOGGLEOCCLUSION` (console, `GIgnoreAllOcclusionQueries`) is the zero-code A/B; lever 1 avoids it for the second eye.
 
 ## Sources
 

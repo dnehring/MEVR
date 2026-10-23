@@ -1246,3 +1246,24 @@ What Claude looks for:
 - the half IPD in mm;
 - the `skeleton:` lines (bones, positions, skeletal controls): Claude reads them for VRIK
   ([research/14](../research/14-vrik.md)); nothing to do in game.
+
+## Performance levers, built blind (2026-10-23, research/32): what to measure in one session
+
+All in `[Performance]` of `ASI\LE1MEVR.ini`, live within a second; the host is deployed with them (off by default).
+Stand still in gameplay (or `tools/console.ps1 pause`) for each A/B; each step is one command from the repo.
+1. **The eye diff first** (30 s): `tools/eye-diff.ps1`. Its verdict says whether the draw replay (`sharePass = 2`)
+   is right as built: "aligned and fully covered" = go; "structural mismatches" = the replay would issue the wrong
+   calls (don't use 2); "not covered" = some constants (listed by shader and offset) would be wrong in the second eye.
+2. **`tools/perf-ab.ps1 -Key sharePass -Values 0,1,2 -Rounds 2`**: the game's own / the second eye on the first
+   eye's renderer / the draw replay. Then with `sharePass = 1` and `= 2` for a minute each, look: both eyes still
+   stereo (`python tools/stereo-check.py` on a snapshot), nothing flickering or missing, shadows and highlights
+   agreeing between the eyes. Watch `render levers:` in LE1MEVR.log: "sharePass: N renders on the previous one's
+   renderer" and, for 2, "draw replay: N replays ... fell back ...".
+3. **`tools/perf-ab.ps1 -Key umbraQueryWait -Values 1,0`**: before it, read the log's `longest results read` in
+   the `render levers:` line with the game's own setting: if it's ever tens of ms or more, the Umbra resolve was
+   spinning for the GPU; 0 stops that.
+4. **`tools/console.ps1 "UMBRA TOGGLEOCCLUSION"`** then a `tools/perf-probe.ps1 -Tag noqueries` (and again to
+   toggle back): UE3's own per-primitive query wait, if any, goes away with it.
+5. **`tools/perf-ab.ps1 -Key pCoresOnly -Values 0,1`**.
+6. If anything looks wrong: set the key back (perf-ab restores it by itself); an exception has already turned the
+   lever off for the session (the log says so). Then `tools/sample-render-thread.ps1` once more under the best setting.
