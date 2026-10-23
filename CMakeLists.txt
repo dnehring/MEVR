@@ -128,6 +128,8 @@ set(MEVR_MOD_SOURCES
     src/core/ik/TwoHand.hpp
     src/core/vr/AimRay.cpp
     src/core/vr/AimRay.hpp
+    src/core/vr/Calibration.cpp
+    src/core/vr/Calibration.hpp
     src/core/vr/Controllers.cpp
     src/core/vr/Controllers.hpp
     src/core/vr/Floor.hpp
@@ -234,6 +236,8 @@ endfunction()
 set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/AimRay.cpp
     src/core/vr/AimRay.hpp
+    src/core/vr/Calibration.cpp
+    src/core/vr/Calibration.hpp
     src/core/vr/Controllers.cpp
     src/core/vr/Controllers.hpp
     src/core/vr/Floor.hpp
@@ -360,6 +364,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/Throwing.cpp
         src/core/ik/TouchReference.cpp
         src/core/ik/TwoHand.cpp
+        src/core/vr/Calibration.cpp
         src/core/vr/FrameProbe.cpp
         src/core/vr/Haptics.cpp
         src/core/vr/ImageConvert.cpp

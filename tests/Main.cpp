@@ -15,6 +15,7 @@
 #include "core/ik/TorsoPose.hpp"
 #include "core/ik/TouchReference.hpp"
 #include "core/ik/TwoHand.hpp"
+#include "core/vr/Calibration.hpp"
 #include "core/vr/Haptics.hpp"
 #include "core/vr/ImageConvert.hpp"
 #include "core/vr/LayerComposite.hpp"
@@ -4711,7 +4712,237 @@ void TestSightAssist() {
     CHECK(value.x == 0.0f && spring.Value().x == 0.0f);
 }
 
+// ---- The guided calibration (core/vr/Calibration, research/25) ---------------------------------------------
+
+namespace cal = mevr::vr::calibration;
+
+// A small deterministic noise source (no <random> state shared between tests).
+struct Noise {
+    std::uint32_t state = 12345u;
+    double Next() {  // -1..1
+        state = state * 1664525u + 1013904223u;
+        return static_cast<double>(state >> 8) / static_cast<double>(1u << 24) * 2.0 - 1.0;
+    }
+};
+
+XrVector3f V3(double x, double y, double z) {
+    return {static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)};
+}
+XrVector3f Add3(XrVector3f a, XrVector3f b) { return {a.x + b.x, a.y + b.y, a.z + b.z}; }
+XrVector3f Sub3v(XrVector3f a, XrVector3f b) { return {a.x - b.x, a.y - b.y, a.z - b.z}; }
+XrVector3f Scale3(XrVector3f a, float s) { return {a.x * s, a.y * s, a.z * s}; }
+float Len3(XrVector3f a) { return std::sqrt(a.x * a.x + a.y * a.y + a.z * a.z); }
+XrVector3f Unit3(XrVector3f a) { return Scale3(a, 1.0f / Len3(a)); }
+
+// Synthetic aims: the player stands at `head` facing `yawDeg`, aims with eye `eye` at the three targets, the gun
+// held at `trim` in the grip with its sight line `lineGun` (gun frame) from the grip, `relief` ahead of the eye.
+std::vector<cal::AimSample> SyntheticAims(XrVector3f head, double yawDeg, int eye, XrQuaternionf trim, XrVector3f lineGun, float relief,
+    double angleNoiseDeg, double positionNoise, bool rifle, XrVector3f foregripGun, XrQuaternionf leftTrim, std::uint32_t seed) {
+    Noise noise{seed};
+    cal::Anchor anchor{head, static_cast<float>(yawDeg * std::numbers::pi / 180.0)};
+    XrVector3f const right = cal::AnchorRight(anchor);
+    std::vector<cal::AimSample> samples;
+    for (int i = 0; i < cal::kTargets; ++i) {
+        cal::AimSample s;
+        s.target = cal::TargetPosition(anchor, i);
+        s.head.position = head;
+        s.head.orientation = *cal::LookRotation(Sub3v(s.target, head));
+        s.eyes[0] = Sub3v(head, Scale3(right, 0.032f));
+        s.eyes[1] = Add3(head, Scale3(right, 0.032f));
+        XrVector3f const e = s.eyes[eye];
+        XrVector3f const d = Unit3(Sub3v(s.target, e));
+        XrQuaternionf const gun = *cal::LookRotation(d);
+        XrQuaternionf const jitter = AxisAngle(noise.Next(), noise.Next(), noise.Next() + 0.01, angleNoiseDeg);
+        s.right.orientation = cal::Normalize(cal::Multiply(jitter, cal::Multiply(gun, cal::Conjugate(trim))));
+        s.right.position = Add3(Sub3v(Add3(e, Scale3(d, relief)), cal::Rotate(gun, lineGun)),
+            V3(noise.Next() * positionNoise, noise.Next() * positionNoise, noise.Next() * positionNoise));
+        if (rifle) {
+            s.hasLeft = true;
+            s.left.position = Add3(s.right.position, cal::Rotate(gun, foregripGun));
+            s.left.orientation = cal::Normalize(cal::Multiply(gun, leftTrim));
+        }
+        samples.push_back(s);
+    }
+    return samples;
+}
+
+void TestCalibration() {
+    // ---- The pistol: the trim, the line and the eye come back from noisy aims ----
+    XrQuaternionf const trim = cal::Normalize(cal::Multiply(AxisAngle(1, 0, 0, -35.0),
+        cal::Multiply(AxisAngle(0, 1, 0, 4.0), AxisAngle(0, 0, 1, 3.0))));
+    XrVector3f const lineGun{-0.012f, 0.065f, 0.0f};  // the sight line 6.5 cm above the grip, 1.2 cm to its left
+    XrVector3f const head{0.1f, 1.62f, -0.2f};
+    auto const pistol = SyntheticAims(head, 10.0, 1, trim, lineGun, 0.55f, 0.3, 0.002, false, {}, {0, 0, 0, 1}, 7u);
+    cal::EyeChoice const choice = cal::ChooseEye(pistol);
+    CHECK(choice.eye == 1);
+    CHECK(choice.lateral[1] < 0.02f && choice.lateral[0] > 0.04f);
+    cal::Stance const s = cal::Solve(pistol);
+    CHECK(s.valid && s.samples == 3 && s.eye == 1 && s.eyeMeasured);
+    CHECK(cal::AngleDeg(s.trim, trim) < 0.6f);
+    CHECK(s.spreadDeg < 1.5f);
+    CHECK(Len3(Sub3v(s.line, cal::Rotate(trim, lineGun))) < 0.006f);
+    CHECK(std::abs(s.eyeRelief - 0.55f) < 0.01f);
+    CHECK(!s.hasLeft);
+    // The calibrated line from a grip of the samples runs through the aiming eye toward its target.
+    for (cal::AimSample const& a : pistol) {
+        cal::Line const line = cal::SightLine(a.right, s);
+        XrVector3f const d = Unit3(Sub3v(a.target, a.eyes[1]));
+        CHECK(cal::DirectionAngleDeg(line.direction, d) < 0.8f);
+        XrVector3f const toEye = Sub3v(a.eyes[1], line.point);
+        float const along = toEye.x * line.direction.x + toEye.y * line.direction.y + toEye.z * line.direction.z;
+        CHECK(Len3(Sub3v(toEye, Scale3(line.direction, along))) < 0.012f);
+        XrQuaternionf const gun = cal::GunOrientation(a.right.orientation, s);
+        CHECK(cal::DirectionAngleDeg(cal::Rotate(gun, {0, 0, -1}), d) < 0.8f);
+    }
+    // The eye forced: the other one, flagged.
+    cal::Stance const forced = cal::Solve(pistol, 0);
+    CHECK(forced.valid && forced.eye == 0 && !forced.eyeMeasured);
+    // A left-eyed player.
+    auto const leftEyed = SyntheticAims(head, -20.0, 0, trim, lineGun, 0.5f, 0.2, 0.002, false, {}, {0, 0, 0, 1}, 11u);
+    CHECK(cal::ChooseEye(leftEyed).eye == 0);
+    cal::Stance const sl = cal::Solve(leftEyed);
+    CHECK(sl.valid && sl.eye == 0 && cal::AngleDeg(sl.trim, trim) < 0.6f);
+    // One aim 6 degrees off: the spread says so.
+    auto off = pistol;
+    off[2].right.orientation = cal::Normalize(cal::Multiply(AxisAngle(0, 1, 0, 6.0), off[2].right.orientation));
+    CHECK(cal::Solve(off).spreadDeg > cal::kMaxSpreadDeg);
+    // Nothing to solve.
+    CHECK(!cal::Solve(std::span<cal::AimSample const>()).valid);
+
+    // ---- The rifle: the foregrip, the left hand's trim, the hands' line and the stock ----
+    XrQuaternionf const rifleTrim = cal::Normalize(cal::Multiply(AxisAngle(1, 0, 0, -12.0), AxisAngle(0, 0, 1, -6.0)));
+    XrVector3f const foregrip{0.015f, -0.07f, -0.38f};
+    XrQuaternionf const leftTrim = cal::Normalize(cal::Multiply(AxisAngle(0, 0, 1, 75.0), AxisAngle(1, 0, 0, -20.0)));
+    auto const rifle = SyntheticAims(head, 0.0, 1, rifleTrim, {0.0f, 0.045f, 0.0f}, 0.13f, 0.25, 0.0015, true, foregrip, leftTrim, 23u);
+    cal::Stance const r = cal::Solve(rifle);
+    CHECK(r.valid && r.hasLeft && r.eye == 1);
+    CHECK(cal::AngleDeg(r.trim, rifleTrim) < 0.6f);
+    CHECK(Len3(Sub3v(r.foregrip, foregrip)) < 0.008f);
+    CHECK(cal::AngleDeg(r.leftTrim, leftTrim) < 0.8f);
+    CHECK(cal::DirectionAngleDeg(r.handsLine, Unit3(foregrip)) < 1.2f);
+    CHECK(r.handsSpreadDeg < 1.5f);
+    CHECK(std::abs(r.eyeRelief - 0.13f) < 0.01f);
+    // The stock: the right grip below the eyes, a little to the right, just ahead (the head's level frame).
+    XrVector3f stock{};
+    for (cal::AimSample const& a : rifle) {
+        XrQuaternionf const level = cal::YawRotation(cal::HeadingOf(a.head.orientation));
+        stock = Add3(stock, Scale3(cal::Rotate(cal::Conjugate(level), Sub3v(a.right.position, a.head.position)), 1.0f / 3.0f));
+    }
+    CHECK(Len3(Sub3v(r.stock, stock)) < 1e-4f);
+    CHECK(r.stock.y < -0.02f && r.stock.z < 0.0f);
+
+    // ---- Rotation helpers ----
+    XrQuaternionf const look = *cal::LookRotation({1.0f, 0.0f, -1.0f});
+    CHECK(cal::DirectionAngleDeg(cal::Rotate(look, {0, 0, -1}), {1, 0, -1}) < 0.01f);
+    CHECK(cal::Rotate(look, {0, 1, 0}).y > 0.999f);  // level: no cant
+    CHECK(!cal::LookRotation({0.0f, 1.0f, 0.0f}).has_value());
+    CHECK(std::abs(cal::HeadingOf(cal::YawRotation(0.5f)) - 0.5f) < 1e-4f);
+    XrQuaternionf const qs[] = {AxisAngle(0, 1, 0, 10), AxisAngle(0, 1, 0, 12)};
+    XrQuaternionf const flipped[] = {qs[0], {-qs[1].x, -qs[1].y, -qs[1].z, -qs[1].w}};
+    CHECK(cal::AngleDeg(*cal::Mean(flipped), AxisAngle(0, 1, 0, 11)) < 0.05f);  // sign-aligned
+
+    // ---- Applying: onto the line, and where it meets the board ----
+    cal::Line line;
+    line.point = {0.0f, 0.0f, 0.0f};
+    line.direction = {0.0f, 0.0f, -1.0f};
+    XrVector3f const shift = cal::ShiftOntoLine({0.03f, -0.04f, -2.0f}, line, 1.0f);
+    CHECK(std::abs(shift.x + 0.03f) < 1e-5f && std::abs(shift.y - 0.04f) < 1e-5f && std::abs(shift.z) < 1e-5f);
+    CHECK(std::abs(Len3(cal::ShiftOntoLine({0.03f, -0.04f, -2.0f}, line, 0.025f)) - 0.025f) < 1e-5f);
+    line.point = {0.0f, 1.6f, 0.0f};
+    XrVector3f const hit = cal::OnPlane(line, {0.0f, 1.6f, -5.0f}, {0.0f, 0.0f, 1.0f}, 0.5f, 3.0f);
+    CHECK(std::abs(hit.z + 5.0f) < 1e-4f && std::abs(hit.y - 1.6f) < 1e-4f);
+    XrVector3f const away = cal::OnPlane(line, {0.0f, 1.6f, 5.0f}, {0.0f, 0.0f, 1.0f}, 0.5f, 3.0f);  // behind: the fallback
+    CHECK(std::abs(away.z + 3.0f) < 1e-4f);
+
+    // ---- Body ----
+    CHECK(std::abs(cal::ShoulderWidth({-0.2f, 1.4f, -0.6f}, {0.19f, 1.42f, -0.62f}, {0.0f, 0.0f, -1.0f}) - 0.39f) < 1e-4f);
+    CHECK(std::abs(cal::ArmLength(1.71f, 0.39f).value_or(0.0f) - 0.66f) < 1e-4f);
+    CHECK(!cal::ArmLength(0.5f, 0.39f).has_value());
+    auto const crouch = cal::CrouchFromHeights(1.65, 1.05);
+    CHECK(crouch && std::abs(crouch->crouchBelow - (1.0 - 0.5 * 0.6 / 1.65)) < 1e-9 &&
+          std::abs(crouch->standAbove - (1.0 - 0.35 * 0.6 / 1.65)) < 1e-9);
+    CHECK(!cal::CrouchFromHeights(1.65, 1.55).has_value());  // too shallow to tell apart
+    auto const deep = cal::CrouchFromHeights(1.65, 0.5);
+    CHECK(deep && deep->crouchBelow >= 0.3 && deep->standAbove >= deep->crouchBelow + 0.02);
+
+    // ---- Holding still ----
+    cal::Stillness still;
+    cal::StillSettings const settings;
+    Noise jitter{99u};
+    XrPosef poses[cal::Stillness::kMaxPoses]{};
+    bool const used[cal::Stillness::kMaxPoses] = {true, true, false};
+    for (XrPosef& p : poses) {
+        p.orientation = {0, 0, 0, 1};
+    }
+    float held = 0.0f;
+    for (int frame = 0; frame < 100; ++frame) {
+        XrPosef now[cal::Stillness::kMaxPoses];
+        for (int i = 0; i < cal::Stillness::kMaxPoses; ++i) {
+            now[i] = poses[i];
+            now[i].position = Add3(poses[i].position, V3(jitter.Next() * 0.002, jitter.Next() * 0.002, 0.0));
+        }
+        held = still.Update(now, used, 1.0f / 90.0f, settings);
+    }
+    CHECK(held >= settings.seconds);
+    CHECK(Len3(still.Average(0).position) < 0.001f);
+    XrPosef moved[cal::Stillness::kMaxPoses];
+    for (int i = 0; i < cal::Stillness::kMaxPoses; ++i) {
+        moved[i] = poses[i];
+    }
+    moved[1].position = {0.05f, 0.0f, 0.0f};  // the right hand moved 5 cm: the hold starts over
+    CHECK(still.Update(moved, used, 1.0f / 90.0f, settings) == 0.0f);
+    moved[0].orientation = AxisAngle(0, 1, 0, 8.0);  // the head turned 8 degrees
+    still.Update(moved, used, 1.0f / 90.0f, settings);
+    CHECK(still.Held() == 0.0f);
+
+    // ---- Step criteria ----
+    CHECK(cal::LookingAhead(AxisAngle(1, 0, 0, 10.0)) && !cal::LookingAhead(AxisAngle(1, 0, 0, 30.0)));
+    XrVector3f const h{0.0f, 1.6f, 0.0f};
+    CHECK(cal::TPose(h, {-0.85f, 1.45f, 0.0f}, {0.85f, 1.45f, 0.0f}));
+    CHECK(!cal::TPose(h, {-0.3f, 1.45f, 0.0f}, {0.3f, 1.45f, 0.0f}));     // arms down or in
+    CHECK(!cal::TPose(h, {-0.85f, 0.9f, 0.0f}, {0.85f, 0.9f, 0.0f}));     // hands at the hips
+    CHECK(cal::ArmsForward(h, {-0.2f, 1.4f, -0.65f}, {0.2f, 1.4f, -0.65f}, {0, 0, -1}));
+    CHECK(!cal::ArmsForward(h, {-0.2f, 1.4f, -0.2f}, {0.2f, 1.4f, -0.65f}, {0, 0, -1}));
+    CHECK(cal::Crouched(1.65f, 1.3f) && !cal::Crouched(1.65f, 1.5f));
+    cal::AimSample const& a0 = pistol[0];
+    CHECK(cal::OnTarget(a0.head, a0.right.position, a0.target));
+    CHECK(!cal::OnTarget(a0.head, Add3(a0.right.position, {0.3f, 0.0f, 0.0f}), a0.target));  // the hand off the line of sight
+    CHECK(!cal::OnTarget(a0.head, a0.right.position, pistol[1].target));                      // looking at another target
+
+    // ---- Layout: the targets about 17 degrees across and 15 up/down; the panel clear of them ----
+    cal::Anchor const anchor{h, 0.0f};
+    XrVector3f const upperLeft = Sub3v(cal::TargetPosition(anchor, 1), h);
+    CHECK(upperLeft.x < 0.0f && upperLeft.y > 0.0f);
+    double const yawUL = std::atan2(-upperLeft.x, -upperLeft.z) * 180.0 / std::numbers::pi;
+    CHECK(yawUL > 15.0 && yawUL < 19.0);
+    XrPosef const panel = cal::PanelPose(anchor, true);
+    for (int i = 0; i < cal::kTargets; ++i) {
+        CHECK(cal::DirectionAngleDeg(Sub3v(panel.position, h), Sub3v(cal::TargetPosition(anchor, i), h)) > 22.0f);
+    }
+    // Quads face the eyes: their +Z points back at them.
+    CHECK(cal::DirectionAngleDeg(cal::Rotate(panel.orientation, {0, 0, 1}), Sub3v(h, panel.position)) < 0.1f);
+    XrPosef const board = cal::BoardPose(anchor);
+    CHECK(cal::Rotate(board.orientation, {0, 0, 1}).z > 0.999f && std::abs(board.position.z + cal::kBoardDistance) < 1e-4f);
+    cal::Anchor const turned{h, static_cast<float>(std::numbers::pi / 2.0)};  // facing -X (turned left)
+    CHECK(cal::AnchorForward(turned).x < -0.999f && cal::AnchorRight(turned).z < -0.999f);
+
+    // ---- Text ----
+    XrVector3f const v{0.0123f, -0.0456f, 1.5f};
+    auto const parsed = cal::ParseVector(cal::FormatVector(v));
+    CHECK(parsed && Len3(Sub3v(*parsed, v)) < 1e-4f);
+    auto const rotation = cal::ParseRotation(cal::FormatRotation(trim));
+    CHECK(rotation && cal::AngleDeg(*rotation, trim) < 0.01f);
+    CHECK(!cal::ParseVector("1, 2").has_value() && !cal::ParseVector("1, 2, x").has_value() && !cal::ParseRotation("0, 0, 0, 0"));
+    CHECK(cal::ProfileKey("/interaction_profiles/oculus/touch_controller", "Meta Quest 3") == "oculus_touch_controller__meta_quest_3");
+    CHECK(cal::ProfileKey("/interaction_profiles/valve/index_controller", "SteamVR/OpenXR : lighthouse") ==
+          "valve_index_controller__steamvr_openxr_lighthouse");
+    CHECK(cal::ProfileKey("", "") == "unknown");
+    CHECK(cal::ProfileLabel("/interaction_profiles/oculus/touch_controller", "Meta Quest 3") == "Touch Controller (Meta Quest 3)");
+    CHECK(cal::ListHas("a, b,c", "b") && cal::ListHas("a, b,c", "c") && !cal::ListHas("a,bb", "b") && !cal::ListHas("", "a"));
+}
+
 int main() {
+    TestCalibration();
     TestViewLevel();
     TestRecenterTilt();
     TestTriggerOwner();
