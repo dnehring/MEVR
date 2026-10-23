@@ -4139,6 +4139,44 @@ void TestTriggerOwner() {
     CHECK(!OwnTrigger(owner, true, false));    // a pull in the Mako: LB (boost)
     CHECK(!OwnTrigger(owner, true, true));     // out of the Mako mid-pull: still LB until let go
     CHECK(OwnTrigger(owner, false, true));     // let go on foot: the squad's again
+
+    // What the pad shows while the squad has it (squad_weapons::AdjustPad clears leftTriggerShoulder and
+    // leftTrigger): a pulled trigger is neither LB nor LT, with the wheel open or not; the support grip's
+    // LT (aimed fire) still comes through.
+    using namespace mevr::game::gamepad;
+    mevr::vr::controllers::State state;
+    state.active = true;
+    state.left.trigger = 1.0f;
+    Options owned;
+    owned.gripShoulder = false;
+    owned.leftTriggerShoulder = false;
+    owned.leftTrigger = false;
+    Latches latches;
+    auto pad = FromControllers(state, latches, owned);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) == 0 && pad.bLeftTrigger == 0);
+    owned.nativeWheel = true;
+    pad = FromControllers(state, latches, owned);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) == 0 && pad.bLeftTrigger == 0);
+    Options const across = FromFlags(0.05f, 0.18f, 0.26f, ToFlags(owned));
+    CHECK(!across.leftTriggerShoulder && !across.leftTrigger && across.nativeWheel);
+    // The same trigger in the Mako (not owned: [Controls] leftTrigger = lb): LB.
+    Options mako;
+    mako.gripShoulder = false;
+    mako.leftTriggerShoulder = true;
+    mako.leftTrigger = false;
+    Latches makoLatches;
+    pad = FromControllers(state, makoLatches, mako);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0 && pad.bLeftTrigger == 0);
+    // A left grip squeezed away from the gun: nothing at all (no LB), whoever has the trigger.
+    mevr::vr::controllers::State grip;
+    grip.active = true;
+    grip.left.squeeze = 1.0f;
+    Options away = owned;
+    away.nativeWheel = false;
+    away.support = {0.5f, 0.18f, 0.26f};
+    Latches gripLatches;
+    pad = FromControllers(grip, gripLatches, away);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) == 0 && pad.bLeftTrigger == 0);
 }
 
 // The support grip's grab zone: a capsule along the gun, the captured span (2026-10-22).
