@@ -17,6 +17,7 @@
 #include "game/GamepadMapping.hpp"
 #include "halcyon/le1/render_hook.h"
 #include "plugin/Calibration.hpp"
+#include "plugin/Colour.hpp"
 #include "plugin/Halcyon.hpp"
 #include "plugin/MevrMenu.hpp"
 #include "plugin/PerfProbe.hpp"
@@ -200,6 +201,10 @@ void OnSessionCreated(void* instance, void* session) noexcept {
         if (XR_SUCCEEDED(xrGetSystem(gTarget.instance, &systemInfo, &system)) &&
             XR_SUCCEEDED(xrGetSystemProperties(gTarget.instance, system, &properties))) {
             mevr::host::calibration::SetSystem(properties.systemName);
+            // The colour correction's per-headset settings and automatic profile (plugin/Colour, research/27).
+            XrInstanceProperties runtime{XR_TYPE_INSTANCE_PROPERTIES};
+            xrGetInstanceProperties(gTarget.instance, &runtime);
+            mevr::host::colour::SetHeadset(runtime.runtimeName, properties.systemName, properties.vendorId);
         }
     }
     gProfileCheckFrames = 0;

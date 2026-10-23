@@ -11,7 +11,9 @@
 
 struct ID3D11BlendState;
 struct ID3D11DepthStencilState;
+struct ID3D11Device;
 struct ID3D11DeviceContext;
+struct ID3D11PixelShader;
 struct ID3D11RenderTargetView;
 struct ID3D11Texture2D;
 
@@ -257,6 +259,22 @@ struct PerfPresentScope
 
 // Immediate-context draws, counted by d3d_capture.cpp's draw hooks (render thread; read by the probe).
 extern std::uint32_t g_perfDraws;
+
+// ---- Colour correction of the eye images (src/plugin/Colour.cpp, research/27) ---------------------------------
+// Present thread. Neutral (the default for anything but a streamed Quest) changes nothing: Halcyon's own shaders,
+// its raw copy.
+// Once the eye blit's shaders exist: compiles variants of PSLeft, PSRight and PSFill from `shaderSource` with the
+// correction at their MEVR_EYE_OUT hook.
+void EyeColourShaders(ID3D11Device* device, const char* shaderSource) noexcept;
+// The correction is on: an 8-bit source of the eye's size takes the shader blit instead of the raw copy.
+bool EyeColourActive() noexcept;
+// Right before an eye blit's draw: the pixel shader to bind, `plain` (Halcyon's) unless the correction is on, then
+// its variant with the constants bound at b1. `which`: 0 PSLeft, 1 PSRight, 2 PSFill. `linearSource`: the draw
+// writes through the eye's sRGB view (a float or _SRGB source). `eye`: 0 left, 1 right (the dither pattern).
+ID3D11PixelShader* EyeColourShader(ID3D11DeviceContext* context, int which, ID3D11PixelShader* plain, bool linearSource,
+                                   int eye) noexcept;
+// Right after that draw: puts b1 back.
+void EyeColourDone(ID3D11DeviceContext* context) noexcept;
 
 // [MENUVIS] One-shot diagnostics for Halcyon's Insert menu quad (Present thread): reads back
 // `texture` (the menu's ImGui texture, or the swapchain image right after the copy into it) a few

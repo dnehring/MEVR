@@ -238,6 +238,10 @@ endfunction()
 set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/AimRay.cpp
     src/core/vr/AimRay.hpp
+    src/core/vr/Colour.cpp
+    src/core/vr/Colour.hpp
+    src/core/vr/ColourStrip.cpp
+    src/core/vr/ColourStrip.hpp
     src/core/vr/Calibration.cpp
     src/core/vr/Calibration.hpp
     src/core/vr/Controllers.cpp
@@ -282,6 +286,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/halcyon/le1/mevr_bridge.h
     src/plugin/Calibration.cpp
     src/plugin/Calibration.hpp
+    src/plugin/Colour.cpp
+    src/plugin/Colour.hpp
     src/plugin/CalibrationDraw.cpp
     src/plugin/CalibrationDraw.hpp
     src/plugin/Halcyon.cpp
@@ -371,6 +377,8 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/TouchReference.cpp
         src/core/ik/TwoHand.cpp
         src/core/vr/Calibration.cpp
+        src/core/vr/Colour.cpp
+        src/core/vr/ColourStrip.cpp
         src/core/vr/FrameProbe.cpp
         src/core/vr/Haptics.cpp
         src/core/vr/ImageConvert.cpp
@@ -410,6 +418,21 @@ if (MEVR_BUILD_TESTS)
     target_link_libraries(mevr-sight-preview PRIVATE OpenXR::headers windowscodecs ole32 d3d11 d3dcompiler)
     target_compile_definitions(mevr-sight-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-sight-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+
+    # The colour correction, offline (tools/colour-preview, research/27): the shader (core/vr/Colour's prelude) on a
+    # D3D11 device of its own, checked against the CPU reference, and the test strip through each preset as PNGs.
+    # Also a test: the shader must match the CPU reference within one 8-bit step.
+    add_executable(mevr-colour-preview
+        tools/colour-preview/Main.cpp
+        src/core/PngFile.cpp
+        src/core/vr/Colour.cpp
+        src/core/vr/ColourStrip.cpp
+    )
+    target_include_directories(mevr-colour-preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(mevr-colour-preview PRIVATE windowscodecs ole32 d3d11 d3dcompiler)
+    target_compile_definitions(mevr-colour-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-colour-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+    add_test(NAME mevr-colour-shader COMMAND mevr-colour-preview --check)
 
     # The squad weapon menu's look, offline (tools/squad-preview): PNGs of sample squads drawn with the
     # host's own drawing code and ImGui's D3D11 backend (from the halcyon-le1 library).

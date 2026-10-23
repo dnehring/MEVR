@@ -825,6 +825,32 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       a fight (else the hand isn't aiming yet, or no gamepad input reached the game). Snapshots have
       `"viewLevel": {..., "aimAssist": {...}}`.
 
+24. **Colour per headset (new, 2026-10-22; HOST REDEPLOY).** The Quest's flat, washed-out picture gets a
+    gentle correction of its own: a little more contrast and colour, slightly deeper mid-tones, on the world
+    and the HUD. The PS VR2 stays exactly as before. [research/27](../research/27-colour.md).
+    - **PS VR2 first (nothing should change):** play a minute. The picture is the same as yesterday. Halcyon's
+      log has `[MEVR-COLOUR] headset: runtime 'SteamVR/OpenXR', system 'SteamVR/OpenXR : playstation_vr2' ...
+      automatic: neutral` and `[MEVR-COLOUR] profile auto (= neutral) ...: neutral: no correction`.
+    - **Then the Quest 3 (Steam Link, or Link):** the log names the headset (the line Claude needs: which system
+      name SteamVR gives Steam Link) and says `automatic: quest` and `correcting the eyes and the HUD panel`. In
+      a lit room and a dark one (the Normandy's lower deck, a night area), open the menu (`\` or both sticks
+      held), VR hands tab, **Colour** at the bottom: **hold "Hold to compare"** with the trigger: the picture
+      goes back to uncorrected while held. Which looks better: corrected or not? Do dark corners lose detail?
+    - **Tune it:** the profiles (Automatic, Neutral, Quest streamed, Vivid, Custom) apply at once; the sliders
+      (brightness, contrast, saturation, mid-tones: below 1 darker, black level: below 0 deeper, red/green/
+      blue) make your own values for this headset (saved as `[Colour.<headset>]` in `LE1MEVR.ini`, kept apart
+      from the PS VR2's). Tell Claude the values you end up with. Try Vivid too.
+    - Take an End snapshot (or tap both stick clicks) with the correction on and one while holding compare:
+      the PNGs show what the headset got; `"colour"` in the JSON has the profile, values and cost.
+    - **Settings:** `[Colour] profile = auto | neutral | quest | vivid | custom` (for any headset; a headset's
+      own section wins), `compare = 1` (uncorrected, for an A/B without the menu), `dither = 0.5` (8-bit steps,
+      0 off).
+    - **Logs:** ours `colour: headset: ...`, `colour: profile ...` on each change, `colour: comparing ...` /
+      `comparison let go`, and every 10 s while correcting `colour: GPU time per draw, last 10 s: eye blit with
+      the correction X ms ...` (Claude wants that number; hold compare a few seconds to get the plain blit's
+      for the difference); `colour: corrected variants of Halcyon's eye shaders ready` at the start of VR (or an
+      error: then nothing is corrected).
+
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR
   loader (MEVR)`, its pacing lines.

@@ -1063,7 +1063,8 @@ bool CopyTextureToEyeFullFrame(int eye, ID3D11Texture2D* src, float sourceX = 0.
     // [MEVR] HDR: so does any source the eye can't take raw (float scRGB): CopyResource between
     // mismatched formats is silently dropped and the eye keeps its old image.
     const bool sizeMismatch = srcDesc.Width != g_eyes[eye].width || srcDesc.Height != g_eyes[eye].height ||
-                              sourceX != 0.0f || !CopyCompatibleWithEyes(srcDesc.Format, g_eyeFormat);
+                              sourceX != 0.0f || !CopyCompatibleWithEyes(srcDesc.Format, g_eyeFormat) ||
+                              MELEVR::MevrBridge::EyeColourActive();   // [MEVR] colour: the correction is in the blit
     if (sizeMismatch)
     {
         LogEyePathOnce("fullframe", srcDesc, SamplesLinear(srcDesc.Format)
@@ -1113,7 +1114,8 @@ void CopyTextureToEye(int eye, ID3D11Texture2D* src) noexcept
 
     // [MEVR] HDR: a source the eye can't take raw (float scRGB) must blit too; see CopyTextureToEyeFullFrame.
     const bool rawCopyOk = CopyCompatibleWithEyes(srcDesc.Format, g_eyeFormat);
-    const bool sizeMismatch = srcDesc.Width != g_eyes[eye].width || srcDesc.Height != g_eyes[eye].height || !rawCopyOk;
+    const bool sizeMismatch = srcDesc.Width != g_eyes[eye].width || srcDesc.Height != g_eyes[eye].height || !rawCopyOk ||
+                              MELEVR::MevrBridge::EyeColourActive();   // [MEVR] colour: the correction is in the blit
     LogEyePathOnce("mono", srcDesc, sizeMismatch ? "shader blit" : "CopyResource (same size, 8-bit)");
     // Flat cinematics draw a 16:9 viewport inside the render target. Preserve that active image aspect instead of
     // assuming the full source texture is the visible frame.
@@ -1267,7 +1269,9 @@ bool EnsureXrAtlasBlitResources(ID3D11Texture2D* src) noexcept
     // [MEVR] HDR: colorScale.x maps a float source's SDR white to 1.0 (1 for 8-bit sources); ToEye
     // then clips hue-preserving to [0,1] before the sRGB view encodes. Values <= 1 pass unchanged,
     // so 8-bit sources stay bit-identical. PSCopy (the halving chain) stays linear and unscaled.
+    // [MEVR] colour: MEVR_EYE_OUT is the identity here; EyeColourShaders compiles variants with the correction.
     const char* shaderSrc =
+        "#ifndef MEVR_EYE_OUT\n#define MEVR_EYE_OUT(c, pos) (c)\n#endif\n"
         "Texture2D t0 : register(t0);\n"
         "SamplerState s0 : register(s0);\n"
         "cbuffer FillParams : register(b0) { float4 fillUv; float4 imageRect; float4 colorScale; };\n"
@@ -1279,13 +1283,13 @@ bool EnsureXrAtlasBlitResources(ID3D11Texture2D* src) noexcept
         "float4 ToEye(float4 c) { c.rgb *= colorScale.x; c.rgb /= max(1.0, max(c.r, max(c.g, c.b))); return c; }\n"
         // [DOWNCHAIN] plain 1:1 sample, used for the halving passes below.
         "float4 PSCopy(VSOut i) : SV_Target { return t0.Sample(s0, i.uv); }\n"
-        "float4 PSLeft(VSOut i) : SV_Target { return ToEye(t0.Sample(s0, float2(i.uv.x * 0.5, i.uv.y))); }\n"
-        "float4 PSRight(VSOut i) : SV_Target { return ToEye(t0.Sample(s0, float2(i.uv.x * 0.5 + 0.5, i.uv.y))); }\n"
+        "float4 PSLeft(VSOut i) : SV_Target { return MEVR_EYE_OUT(ToEye(t0.Sample(s0, float2(i.uv.x * 0.5, i.uv.y))), i.pos); }\n"
+        "float4 PSRight(VSOut i) : SV_Target { return MEVR_EYE_OUT(ToEye(t0.Sample(s0, float2(i.uv.x * 0.5 + 0.5, i.uv.y))), i.pos); }\n"
         "float4 PSFill(VSOut i) : SV_Target { float2 local = (i.uv - imageRect.xy) / imageRect.zw; "
         "if (local.x < 0.0 || local.x > 1.0 || local.y < 0.0 || local.y > 1.0) return float4(0.0, 0.0, 0.0, 1.0); "
         "float2 uv = fillUv.xy + local * fillUv.zw; "
         "if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return float4(0.0, 0.0, 0.0, 1.0); "
-        "return ToEye(t0.Sample(s0, uv)); }\n";
+        "return MEVR_EYE_OUT(ToEye(t0.Sample(s0, uv)), i.pos); }\n";
     ID3DBlob* vsBlob = nullptr;
     ID3DBlob* psLeftBlob = nullptr;
     ID3DBlob* psRightBlob = nullptr;
@@ -1320,6 +1324,7 @@ bool EnsureXrAtlasBlitResources(ID3D11Texture2D* src) noexcept
         LogLine("[XRATLAS_BLIT] shader create failed hr=" + std::to_string(static_cast<long>(hr)));
         return false;
     }
+    MELEVR::MevrBridge::EyeColourShaders(g_device, shaderSrc);   // [MEVR] colour
 
     // [MEVR] HDR: the staged source is no longer made here (once, in the first source's format); see
     // EnsureXrAtlasSource, called on every use below.
@@ -1669,11 +1674,13 @@ bool BlitTextureToEyeWithFill(int eye, ID3D11Texture2D* src, float sourceVScale,
         g_context->IASetInputLayout(nullptr);
         g_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         g_context->VSSetShader(g_xrAtlasVs, nullptr, 0);
-        g_context->PSSetShader(g_xrFillPs, nullptr, 0);
+        g_context->PSSetShader(MELEVR::MevrBridge::EyeColourShader(g_context, 2, g_xrFillPs,
+                                   eyeRtv == g_xrAtlasEyeRtvSrgb[eye], eye), nullptr, 0);   // [MEVR] colour
         g_context->PSSetShaderResources(0, 1, &fillSrv);
         g_context->PSSetSamplers(0, 1, &g_xrAtlasSampler);
         g_context->PSSetConstantBuffers(0, 1, &g_xrFillCb);
         g_context->Draw(3, 0);
+        MELEVR::MevrBridge::EyeColourDone(g_context);   // [MEVR] colour
 
         ID3D11ShaderResourceView* nullSrv = nullptr;
         g_context->PSSetShaderResources(0, 1, &nullSrv);
@@ -1821,7 +1828,8 @@ bool BlitAtlasHalfToEye(int eye, int sourceHalf, float sourceVScale = 1.0f, floa
             BuildFillConstants(fill, sourceHalf == 0 ? 0.0f : 0.5f, 0.5f, sourceVScale, fillH, fillV, imageMoveY,
                                0.5f * (1.0f - bandV));
             g_context->UpdateSubresource(g_xrFillCb, 0, nullptr, fill, 0, 0);
-            g_context->PSSetShader(g_xrFillPs, nullptr, 0);
+            g_context->PSSetShader(MELEVR::MevrBridge::EyeColourShader(g_context, 2, g_xrFillPs,
+                                       eyeRtv == g_xrAtlasEyeRtvSrgb[eye], eye), nullptr, 0);   // [MEVR] colour
             g_context->PSSetConstantBuffers(0, 1, &g_xrFillCb);
         }
         else
@@ -1831,11 +1839,13 @@ bool BlitAtlasHalfToEye(int eye, int sourceHalf, float sourceVScale = 1.0f, floa
                 g_context->UpdateSubresource(g_xrFillCb, 0, nullptr, fill, 0, 0);
                 g_context->PSSetConstantBuffers(0, 1, &g_xrFillCb);
             }
-            g_context->PSSetShader(g_xrAtlasPs[sourceHalf], nullptr, 0);
+            g_context->PSSetShader(MELEVR::MevrBridge::EyeColourShader(g_context, sourceHalf, g_xrAtlasPs[sourceHalf],
+                                       eyeRtv == g_xrAtlasEyeRtvSrgb[eye], eye), nullptr, 0);   // [MEVR] colour
         }
         g_context->PSSetShaderResources(0, 1, &g_xrAtlasSrv);
         g_context->PSSetSamplers(0, 1, &g_xrAtlasSampler);
         g_context->Draw(3, 0);
+        MELEVR::MevrBridge::EyeColourDone(g_context);   // [MEVR] colour
 
         ID3D11ShaderResourceView* nullSrv = nullptr;
         g_context->PSSetShaderResources(0, 1, &nullSrv);

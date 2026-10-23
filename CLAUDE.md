@@ -165,6 +165,19 @@ switching frameworks.
   guessed, then measured once per session) is cut out of the HUD panel and shown on a quad of its
   own at the left / right hand ("wheel"). Toggles: `MELEVR.ini` `hudPanel*` / `handReticle*`, or the
   Insert menu's HUD tab; the wheel panel's in `[Squad]`.
+- LE1 colour per headset ([research/27](research/27-colour.md)): brightness and RGB gains, contrast,
+  saturation, mid-tones (gamma) and black level, all on sRGB-ENCODED values, plus a ±0.5-step triangular
+  dither (`core/vr/Colour`, unit-tested; `tools/colour-preview` checks the shader against the CPU reference:
+  ctest `mevr-colour-shader`). It goes on the world eye images (the end of Halcyon's eye blit shader:
+  `[MEVR] colour` seams, `MevrBridge::EyeColour*`, variants compiled from its source with our prelude) and
+  the game's UI (HUD and wheel panels), not on our own quads or Halcyon's menu. Neutral is today's path
+  exactly (Halcyon's own bytecode, its raw copy); when on, a same-size eye takes the blit instead of the
+  raw copy. The headset (`xrGetInstanceProperties` runtime, `xrGetSystemProperties` system; the user's PS
+  VR2 is `SteamVR/OpenXR : playstation_vr2`) picks the profile Auto means: "quest" for streamed Quests,
+  "neutral" otherwise. `[Colour]` / `[Colour.<headset>]` in `ASI\LE1MEVR.ini` (`plugin/Colour`): `profile =
+  auto|neutral|quest|vivid|custom`, the custom values per headset, `compare`, `dither`; the VR hands tab's
+  Colour section edits them live; `colour::HoldCompare()` is for the coming menu's "hold A". Log
+  `[MEVR-COLOUR]` / `colour:` (the GPU cost every 10 s); snapshots show the corrected picture (`"colour"`).
 - LE1 gun sights ([research/21](research/21-sights-and-scopes.md), HostServices v13): a collimated red
   dot / holo per gun (a quad 50 m out along the sight line, `eyeVisibility` = the eye looking through the
   window) and a 4x picture-in-picture scope on the sniper rifle (a disc at the eyepiece for the aiming
