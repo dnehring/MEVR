@@ -318,6 +318,31 @@ Research and design: research/20. Test steps: notes/next-vr-session.md step 16.
   while aiming or reloading; the arc mode at all; a grenade cooldown.
 - **Open:** the grenade mesh in the hand while held; the throw animation under arm IK.
 
+## No cover snapping, physical crouch (user, 2026-10-22; built the same day, to test)
+
+The user: in VR first person Shepard sometimes snapped into cover against a wall and the view went
+third person; in VR the player takes cover physically, so the snapping should be off. And a real
+crouch only lowered the view (Halcyon's lean), never the game's crouch. Research: research/23. Test
+steps: notes/next-vr-session.md step 17.
+- **Mod (hot reload, no host change):** `engine/cover_acquire` (a pre-hook on BioPawn's native cover
+  test `0xAB1430`, refused for the player's pawn; the game's own trace says when an entry was refused),
+  `core/ik/Posture` (eye-height fraction, the hysteresis detector, the arbiter vs L3; unit-tested),
+  `game/Posture` (VR on foot only; leaves a cover it finds the A button's way, `TryExitCover`, then
+  `LeaveCover` after 2 s; `BioPawn.ShouldCrouch` through ProcessEvent; logs, status), `[Hands] noCover,
+  physicalCrouch, crouchBelow, standAbove, crouchDwellS` (appended to existing files).
+- **Decisions (mine, to confirm with the user):** physical changes act on their edges only, so L3 and
+  the game's own changes (explore movement stands Shepard up, sprint, scripts) win until the next
+  physical crouch or stand; a crouch of ours is released when the setting goes off, VR is gone for 2 s
+  or the mod unloads; standing eye height from the floor as the holsters learn it, else the recenter
+  head over `[Holsters] eyeHeightM`.
+- **[verify in headset]:** no snapping at walls and low cover; A's uses and sprint; the crouch
+  thresholds; **the view in a combat crouch** (the game's crouch camera is 45 units lower on top of
+  Halcyon's lean: the log's view probe gives the number); crouch-walking.
+- **Open:** if the crouch view drops too far, a view seam (keep the standing hook height while the
+  crouch is physical) or the crouch modes' `HookOffset`; both touch the view: decide after the
+  headset. Halcyon's first-person toggle (K) isn't visible to the mod (gated on VR on foot instead).
+  The cover damage bonus (`CoverDamageReduction`, the protected cone) is gone with cover.
+
 ## World-locked flat panels (user, 2026-10-21; built the same day, to test)
 
 The user: the HUD and flat panels should stay placed in space, not move with the head (the intro's

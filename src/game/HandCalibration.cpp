@@ -83,6 +83,17 @@ constexpr char const* kDefaultFile =
     "armStretch = 1.25\n"
     "; trackingScale: Unreal units per meter of hand and head motion; 0 = the view's own scale.\n"
     "trackingScale = 0\n"
+    "; Physical cover and crouch (VR on foot only). noCover: 1 = the game's cover snapping is off: take\n"
+    "; cover by crouching or leaning behind things (a cover you're already in is left as A leaves it).\n"
+    "; physicalCrouch: 1 = crouching for real crouches Shepard (a smaller target, ducked behind low cover);\n"
+    "; L3 still toggles it until your next crouch or stand. crouchBelow / standAbove: the eye height, as a\n"
+    "; fraction of your standing eye height, below which Shepard crouches and above which he stands again;\n"
+    "; crouchDwellS: how long (seconds) the head must stay past it first.\n"
+    "noCover = 1\n"
+    "physicalCrouch = 1\n"
+    "crouchBelow = 0.75\n"
+    "standAbove = 0.85\n"
+    "crouchDwellS = 0.2\n"
     "\n"
     "[Arms]\n"
     "; Arm-length calibration (the VR hands tab samples a T pose; the mod writes armLengthM, the\n"
@@ -741,6 +752,32 @@ std::string Describe(Throwables const& t) {
 Throwables gThrowables;
 std::string gThrowablesText;
 
+Posture ReadPosture(Ini const& ini) {
+    Posture p;
+    double value = 0.0;
+    if (Number(ini, "Hands", "noCover", value)) {
+        p.noCover = value != 0.0;
+    }
+    if (Number(ini, "Hands", "physicalCrouch", value)) {
+        p.physicalCrouch = value != 0.0;
+    }
+    Number(ini, "Hands", "crouchBelow", p.crouch.crouchBelow);
+    Number(ini, "Hands", "standAbove", p.crouch.standAbove);
+    Number(ini, "Hands", "crouchDwellS", p.crouch.dwellSeconds);
+    p.crouch = ik::posture::Sanitize(p.crouch);
+    return p;
+}
+
+std::string Describe(Posture const& p) {
+    return std::format("cover snapping {} in VR on foot; physical crouch {}", p.noCover ? "off (noCover = 1)" : "kept (noCover = 0)",
+        p.physicalCrouch ? std::format("on: crouch below {:.2f} of the standing eye height, stand above {:.2f}, after {:.2f} s",
+                               p.crouch.crouchBelow, p.crouch.standAbove, p.crouch.dwellSeconds)
+                         : std::string("off"));
+}
+
+Posture gPosture;
+std::string gPostureText;
+
 vr::sights::Settings ReadSights(Ini const& ini) {
     namespace sv = vr::sights;
     sv::Settings out;
@@ -952,6 +989,10 @@ Throwables GetThrowables() {
     return gThrowables;
 }
 
+Posture GetPosture() {
+    return gPosture;
+}
+
 vr::sights::Settings GetSights() {
     return gSights;
 }
@@ -1070,7 +1111,33 @@ void Refresh() {
         ini = ReadIni(path);
         stamp = fs::last_write_time(path, ec);
     }
+    // And [Hands]' physical cover and crouch (research/23, 2026-10-22).
+    static constexpr NewKey kNewHandsKeys[] = {
+        {L"noCover", "noCover", L"1"},
+        {L"physicalCrouch", "physicalCrouch", L"1"},
+        {L"crouchBelow", "crouchBelow", L"0.75"},
+        {L"standAbove", "standAbove", L"0.85"},
+        {L"crouchDwellS", "crouchDwellS", L"0.2"},
+    };
+    std::string addedHands;
+    for (NewKey const& k : kNewHandsKeys) {
+        auto const s = ini.find("Hands");
+        if (s != ini.end() && s->second.find(k.name) == s->second.end() &&
+            WritePrivateProfileStringW(L"Hands", k.key, k.value, path.wstring().c_str()) != 0) {
+            addedHands += std::format("{}{}", addedHands.empty() ? "" : ", ", k.name);
+        }
+    }
+    if (!addedHands.empty()) {
+        log::Info("hands: added {} (defaults) to [Hands] in {}", addedHands, path.string());
+        ini = ReadIni(path);
+        stamp = fs::last_write_time(path, ec);
+    }
     gStamp = stamp;
+    gPosture = ReadPosture(ini);
+    if (std::string const text = Describe(gPosture); text != gPostureText) {
+        gPostureText = text;
+        log::Info("posture: settings: {}", text);
+    }
     gHolsters = ReadHolsters(ini);
     if (std::string const text = Describe(gHolsters); text != gHolstersText) {
         gHolstersText = text;

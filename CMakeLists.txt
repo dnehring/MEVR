@@ -114,6 +114,8 @@ set(MEVR_MOD_SOURCES
     src/core/ik/CameraHook.hpp
     src/core/ik/Ik.cpp
     src/core/ik/Ik.hpp
+    src/core/ik/Posture.cpp
+    src/core/ik/Posture.hpp
     src/core/ik/Rigid.cpp
     src/core/ik/Rigid.hpp
     src/core/ik/TorsoPose.cpp
@@ -153,6 +155,8 @@ set(MEVR_MOD_SOURCES
     src/engine/CallFunction.hpp
     src/engine/CodeDump.cpp
     src/engine/CodeDump.hpp
+    src/engine/CoverAcquire.cpp
+    src/engine/CoverAcquire.hpp
     src/engine/Engine.cpp
     src/engine/Engine.hpp
     src/engine/GameAdapter.hpp
@@ -188,6 +192,8 @@ set(MEVR_MOD_SOURCES
     src/game/HeadTracking.hpp
     src/game/Holsters.cpp
     src/game/Holsters.hpp
+    src/game/Posture.cpp
+    src/game/Posture.hpp
     src/game/Reflections.cpp
     src/game/Reflections.hpp
     src/game/Sights.cpp
@@ -340,6 +346,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/BoneNames.cpp
         src/core/ik/CameraHook.cpp
         src/core/ik/Ik.cpp
+        src/core/ik/Posture.cpp
         src/core/ik/Rigid.cpp
         src/core/ik/TorsoPose.cpp
         src/core/ik/Throwing.cpp
