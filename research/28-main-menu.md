@@ -127,8 +127,9 @@ nothing writes defaults over a profile: Reset is for the session (below).
 | Top bar | Headset chip | `xrGetSystemProperties`/runtime names (`core/vr/MenuSettings` `HeadsetLabel`: SteamVR's driver names mapped: `playstation_vr2` = PlayStation VR2...) |
 | | Controllers chip | the calibration's interaction-profile label |
 | | Calibrated chip | `[Calibration.<key>]` saved |
-| Comfort | Turn style, Turn speed, Comfort vignette | **Soon** (no snap turn or vignette yet; the turn is the game's own) |
-| | Walk toward: Where I look | Halcyon `moveFollowsHead` (Left hand: **Soon**) |
+| Comfort | Turn style, Snap angle, Turn speed | `[Comfort] turn`, `snapDeg`, `turnSpeed` (the mod's own turn, research/31) |
+| | Comfort vignette, Vignette when, Vignette strength | `[Comfort] vignette`, `vignetteWhen`, `vignetteStrength` (research/31) |
+| | Walk toward: Where I look / Left hand | Halcyon `moveFollowsHead` / `[Comfort] walk = hand` (research/31) |
 | | Physical crouch | `[Hands] physicalCrouch` |
 | | Life-size movement | `[Camera] lifeSize` and Halcyon `leanGain` (2 / 1), as the VR hands tab |
 | | Pause while open | `[Menu] pause` (HostServices v16, `game/MenuPause`) |
@@ -203,6 +204,6 @@ Advanced's tabs, `state-hover.png` (the sweep part-way), `state-pressed.png` (th
 - **[verify]** In the headset: the glass's look (the grade's numbers are a judgement call), the text size
   at 1.3 m (16 px descriptions are about 0.75 degrees), the pointer's feel, the pause.
 - The cylinder layer (above).
-- The rows marked Soon: snap turning, a comfort vignette, walking toward the left hand.
+- The rows marked Soon: built 2026-10-23 ([31](31-comfort.md)).
 - Keyboard and mouse navigation of the menu itself (the desktop): not built (the game's mouse and
   keyboard are blocked while it's open; `\` closes it).

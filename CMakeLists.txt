@@ -187,6 +187,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/AimRay.hpp
     src/core/vr/Calibration.cpp
     src/core/vr/Calibration.hpp
+    src/core/vr/Comfort.cpp
+    src/core/vr/Comfort.hpp
     src/core/vr/Controllers.cpp
     src/core/vr/Controllers.hpp
     src/core/vr/Floor.hpp
@@ -239,6 +241,8 @@ set(MEVR_MOD_SOURCES
     src/game/BodyFollow.hpp
     src/game/BodyCalibration.cpp
     src/game/BodyCalibration.hpp
+    src/game/Comfort.cpp
+    src/game/Comfort.hpp
     src/game/CameraProbe.cpp
     src/game/CameraProbe.hpp
     src/game/ConsoleRequest.cpp
@@ -307,6 +311,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/ColourStrip.hpp
     src/core/vr/Calibration.cpp
     src/core/vr/Calibration.hpp
+    src/core/vr/Comfort.cpp
+    src/core/vr/Comfort.hpp
     src/core/vr/Controllers.cpp
     src/core/vr/Controllers.hpp
     src/core/vr/Floor.hpp
@@ -378,6 +384,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/SquadPanelDraw.hpp
     src/plugin/TestLoop.cpp
     src/plugin/TestLoop.hpp
+    src/plugin/Vignette.cpp
+    src/plugin/Vignette.hpp
     src/plugin/WorldPanels.cpp
     src/plugin/WorldPanels.hpp
 )
@@ -456,6 +464,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/TouchReference.cpp
         src/core/ik/TwoHand.cpp
         src/core/vr/Calibration.cpp
+        src/core/vr/Comfort.cpp
         src/core/vr/Colour.cpp
         src/core/vr/ColourStrip.cpp
         src/core/vr/FrameProbe.cpp

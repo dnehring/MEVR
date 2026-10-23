@@ -20,6 +20,12 @@ namespace mevr::game::view_anchor {
 void UseHostView(bool on);
 // Game thread.
 std::optional<engine::TrackingFrame> Current();
+// The mod's own turn (game/comfort, research/31) moved the player controller's yaw by `units` (and the pawn's with
+// `pawnTurned`, about its location (pivotX, pivotY)) after this tick's camera update. Until the camera updates again,
+// Current() maps the view as it will be then (the game camera turned too), so arm IK poses the hands and the body
+// for the frame that shows the turn, and a shot fired before the camera update aims from the turned view. Game
+// thread.
+void NoteTurn(int units, bool pawnTurned, double pivotX, double pivotY);
 // Heartbeat (host renderer only): what the host's latest view says.
 void LogStats();
 void Shutdown();

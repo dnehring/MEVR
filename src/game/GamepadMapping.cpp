@@ -226,6 +226,7 @@ std::uint32_t ToFlags(Options const& options) {
            (options.squadMenu ? kFlagSquadMenu : 0u) | (options.nativeWheel ? kFlagNativeWheel : 0u) |
            (options.wheelPressA ? kFlagWheelPressA : 0u) |
            (options.meleeButton ? 0u : kFlagNoMeleeButton) | (options.grenadeButton ? 0u : kFlagNoGrenadeButton) |
+           (options.modTurns ? kFlagModTurns : 0u) | (options.handWalk ? kFlagHandWalk : 0u) |
            ((static_cast<std::uint32_t>(options.wheelStick) << kWheelStickShift) & kWheelStickMask) |
            ((static_cast<std::uint32_t>(options.rbSource) << kRbSourceShift) & kRbSourceMask);
 }
@@ -243,6 +244,8 @@ Options FromFlags(float distance, float acquire, float release, std::uint32_t fl
     options.wheelPressA = (flags & kFlagWheelPressA) != 0;
     options.meleeButton = (flags & kFlagNoMeleeButton) == 0;
     options.grenadeButton = (flags & kFlagNoGrenadeButton) == 0;
+    options.modTurns = (flags & kFlagModTurns) != 0;
+    options.handWalk = (flags & kFlagHandWalk) != 0;
     std::uint32_t const stick = (flags & kWheelStickMask) >> kWheelStickShift;
     options.wheelStick = stick <= static_cast<std::uint32_t>(WheelStick::Either) ? static_cast<WheelStick>(stick) : WheelStick::Right;
     std::uint32_t const source = (flags & kRbSourceMask) >> kRbSourceShift;
@@ -317,6 +320,9 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
     pad.sThumbLY = ToAxis(l.stickY);
     pad.sThumbRX = ToAxis(r.stickX);
     pad.sThumbRY = ToAxis(r.stickY);
+    if (options.modTurns && !owning) {
+        pad.sThumbRX = 0;  // the mod turns the player (game/comfort): the game's own turn would add to it
+    }
     pad.bLeftTrigger = options.leftTrigger && !options.leftTriggerShoulder ? ToTrigger(l.trigger) : BYTE{0};
     pad.bRightTrigger = ToTrigger(r.trigger);
 

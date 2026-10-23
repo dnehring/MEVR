@@ -84,6 +84,12 @@ std::string SightValue(std::string_view kind, std::string_view previous);
 std::string MirrorChoice(int presentEvery);   // 1: "every", 2: "smooth", else "normal"
 int MirrorPresentEvery(std::string_view choice);
 
+// ---- Comfort ([Comfort], core/vr/Comfort, research/31) -----------------------------------------------------------
+// The snap angle's chip: "30", "45" or "60", whichever is nearest to the file's snapDeg.
+std::string SnapChoice(float degrees);
+// The turn style's chip: "snap" for snap, "smooth" for smooth and for the file-only "game".
+std::string TurnChoice(std::string_view value);
+
 // ---- Colour (core/vr/Colour Settings <-> the menu's sliders) --------------------------------------------------
 // Brightness, contrast and saturation read as a signed percentage of the identity (1.08 -> +8); mid-tones and
 // the black level as they are.

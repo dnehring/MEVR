@@ -1,6 +1,7 @@
 #include "game/ViewAnchor.hpp"
 
 #include "core/Log.hpp"
+#include "core/vr/Comfort.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/Output.hpp"
 #include "engine/GameAdapter.hpp"
@@ -18,6 +19,27 @@ namespace {
 
 bool gUseHostView = false;
 bool gLogged = false;
+
+// The mod's own turn since the game camera last updated (NoteTurn): the camera as it was then, and the turn.
+struct PendingTurn {
+    bool active = false;
+    int cameraYaw = 0;
+    double cameraX = 0.0;
+    double cameraY = 0.0;
+    double cameraZ = 0.0;
+    int units = 0;
+    bool pawnTurned = false;
+    double pivotX = 0.0;
+    double pivotY = 0.0;
+};
+PendingTurn gTurn;
+
+// Whether the camera is still the one the pending turn was noted against (it hasn't updated since).
+bool SameCamera(FTPOV const& pov) {
+    FVector const& at = engine::adapter::Location(pov);
+    return gTurn.active && pov.Rotation.Yaw == gTurn.cameraYaw && at.X == gTurn.cameraX && at.Y == gTurn.cameraY &&
+        at.Z == gTurn.cameraZ;
+}
 
 // Degrees between two directions (any length).
 double AngleDegrees(engine::UnrealVector const& a, engine::UnrealVector const& b) {
@@ -57,8 +79,21 @@ std::optional<engine::TrackingFrame> FromHost() {
     }
     FTPOV const& pov = controller->PlayerCamera->CameraCache.POV;
     FVector const& at = engine::adapter::Location(pov);
-    engine::UnrealRotation const camera{pov.Rotation.Pitch, pov.Rotation.Yaw, pov.Rotation.Roll};
-    engine::TrackingFrame const frame = engine::FromCameraView({at.X, at.Y, at.Z}, camera,
+    engine::UnrealRotation camera{pov.Rotation.Pitch, pov.Rotation.Yaw, pov.Rotation.Roll};
+    engine::UnrealVector location{at.X, at.Y, at.Z};
+    if (gTurn.active) {
+        if (SameCamera(pov)) {
+            // Our turn isn't in the camera yet: map the view the next frame will show.
+            vr::comfort::CameraGuess const guess =
+                vr::comfort::TurnCamera(at.X, at.Y, pov.Rotation.Yaw, gTurn.units, gTurn.pawnTurned, gTurn.pivotX, gTurn.pivotY);
+            camera.yaw = guess.yaw;
+            location.x = guess.x;
+            location.y = guess.y;
+        } else {
+            gTurn = {};  // the camera has updated: the turn is in it
+        }
+    }
+    engine::TrackingFrame const frame = engine::FromCameraView(location, camera,
         {view.lookPitch, view.lookYaw, 0}, {view.offsetForward, view.offsetRight, view.offsetUp}, view.head,
         view.unitsPerMeter);
     if (!gLogged) {
@@ -84,6 +119,29 @@ void UseHostView(bool on) {
     gUseHostView = on;
 }
 
+void NoteTurn(int units, bool pawnTurned, double pivotX, double pivotY) {
+    APlayerController* const controller = engine::LocalPlayerController();
+    if (units == 0 || controller == nullptr || controller->PlayerCamera == nullptr) {
+        return;
+    }
+    FTPOV const& pov = controller->PlayerCamera->CameraCache.POV;
+    if (!SameCamera(pov)) {
+        FVector const& at = engine::adapter::Location(pov);
+        gTurn = {};
+        gTurn.active = true;
+        gTurn.cameraYaw = pov.Rotation.Yaw;
+        gTurn.cameraX = at.X;
+        gTurn.cameraY = at.Y;
+        gTurn.cameraZ = at.Z;
+    }
+    gTurn.units += units;
+    gTurn.pawnTurned = gTurn.pawnTurned || pawnTurned;
+    if (pawnTurned) {
+        gTurn.pivotX = pivotX;
+        gTurn.pivotY = pivotY;
+    }
+}
+
 std::optional<engine::TrackingFrame> Current() {
     return gUseHostView ? FromHost() : FromOurRenderer();
 }
@@ -102,6 +160,7 @@ void LogStats() {
 void Shutdown() {
     gUseHostView = false;
     gLogged = false;
+    gTurn = {};
     vr::host_view::Reset();
 }
 

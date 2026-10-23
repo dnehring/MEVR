@@ -27,6 +27,7 @@
 #include "game/BodyCalibration.hpp"
 #include "game/BodyFollow.hpp"
 #include "game/CameraProbe.hpp"
+#include "game/Comfort.hpp"
 #include "game/ConsoleRequest.hpp"
 #include "game/GamepadBridge.hpp"
 #include "game/GamepadMapping.hpp"
@@ -578,6 +579,27 @@ mevr::game::menu_pause::Link MenuPauseLink() {
     return link;
 }
 
+// Host renderer (HostServices v17): comfort (research/31): the pad flags for our own turn and walking toward the left
+// hand, and the vignette.
+mevr::game::comfort::Link ComfortLink() {
+    using namespace mevr;
+    game::comfort::Link link;
+    if (!gHostOwnsVr) {
+        return link;  // our own renderer: no comfort options (LE2/LE3 for now)
+    }
+    if (MEVR_HOST_HAS(setVignette) && gHost->setVignette != nullptr && HostTakesSupportGrip()) {
+        link.supported = true;
+        link.setVignette = gHost->setVignette;
+    }
+    if (gHostView && gHostDataOk) {
+        link.headTrackedView = vr::host_view::Latest().valid;
+    }
+    if (MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
+        link.mainMenuOpen = (gHost->mainMenu() & kMainMenuOpen) != 0;
+    }
+    return link;
+}
+
 // Host renderer (HostServices v8): while the test loop takes a snapshot, our state for its JSON.
 void PublishStatus() {
     using namespace mevr;
@@ -601,7 +623,7 @@ void PublishStatus() {
         "\"handAim\": {{\"enabled\": {}, \"toldHost\": {}, \"shots\": {}}}, "
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"throwables\": {}, "
-        "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}, \"torso\": {}}}",
+        "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}, \"torso\": {}, \"comfort\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -611,7 +633,7 @@ void PublishStatus() {
         json::JsonNumber(game::support_grip::Blend()), game::holsters::StatusJson(), game::squad_weapons::StatusJson(),
         game::sights::StatusJson(), game::throwables::StatusJson(), game::posture::StatusJson(),
         game::view_level::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(),
-        game::body_follow::StatusJson());
+        game::body_follow::StatusJson(), game::comfort::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -749,6 +771,7 @@ void Heartbeat() {
         game::throwables::LogStats();
         game::posture::LogStats();
         game::view_level::LogStats();
+        game::comfort::LogStats();
         game::body_calibration::LogStats();
         game::skeleton_probe::Tick();
     }
@@ -861,6 +884,9 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // OnTickEnd), then which way shots go and the reticle's ray.
         game::weapon::Tick(game::hand_aim::Enabled() || game::arm_ik::Enabled());
         game::body_follow::NoteFloor(HostFloor());  // the recenter counter: the body re-anchors (research/29)
+        // Our own turn (snap or smooth) before arm IK: the view anchor then maps the view the next frame shows, so the
+        // hands and the body are posed for it (research/31). Its pad flags go out with the support grip's below.
+        game::comfort::Tick(deltaSeconds, ComfortLink());
         game::arm_ik::Tick(deltaSeconds);
         // Holsters, the squad menu and the grenades before the support grip: it publishes the pad flags,
         // theirs among them. A squeeze at the grenade slot is claimed first, so neither holsters nor the
@@ -984,6 +1010,10 @@ MEVR_MOD_API void MevrModShutdown() {
     game::weapon::Shutdown();
     game::camera_probe::Shutdown();
     game::view_level::Shutdown();
+    if (gHost != nullptr && MEVR_HOST_HAS(setVignette) && gHost->setVignette != nullptr) {
+        gHost->setVignette(0.0f);  // no vignette without the mod (the host also forgets on unload)
+    }
+    game::comfort::Shutdown();
     game::body_calibration::Shutdown();
     game::menu_pause::Shutdown(exiting);  // unpauses the game if the main menu paused it
     gHost = nullptr;

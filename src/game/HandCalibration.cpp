@@ -336,6 +336,28 @@ constexpr char const* kSightsBlock =
     "assistMaxM = 0.10\n"
     "assistRangeM = 0.65\n";
 
+// Appended to a settings file that has no [Comfort] yet (and part of a new file).
+constexpr char const* kComfortBlock =
+    "\n"
+    "[Comfort]\n"
+    "; Turning with the right stick on foot (research/31). turn: smooth = turn at turnSpeed degrees a second at full\n"
+    "; deflection; snap = turn by snapDeg degrees per flick (flick past snapThreshold, back inside snapRearm for the next,\n"
+    "; at least snapCooldownS apart); game = the game's own turn, as before. The menu's Comfort page edits these.\n"
+    "turn = smooth\n"
+    "snapDeg = 45\n"
+    "turnSpeed = 120\n"
+    "deadzone = 0.15\n"
+    "snapThreshold = 0.7\n"
+    "snapRearm = 0.3\n"
+    "snapCooldownS = 0.25\n"
+    "; vignette: 1 = the edges of your view darken while the stick turns you (vignetteWhen = turn) or also while it\n"
+    "; walks you (move), fading in and out over 0.15 s; vignetteStrength: how dark, 0..1.\n"
+    "vignette = 0\n"
+    "vignetteStrength = 0.6\n"
+    "vignetteWhen = turn\n"
+    "; walk: head = the left stick walks where you look; hand = where your left controller points (laid flat).\n"
+    "walk = head\n";
+
 fs::path FilePath() {
     wchar_t buffer[MAX_PATH]{};
     GetModuleFileNameW(nullptr, buffer, MAX_PATH);
@@ -833,6 +855,73 @@ std::string Describe(Throwables const& t) {
 Throwables gThrowables;
 std::string gThrowablesText;
 
+vr::comfort::Settings ReadComfort(Ini const& ini) {
+    namespace cf = vr::comfort;
+    cf::Settings c;
+    double value = 0.0;
+    auto const number = [&](char const* key, float& out) {
+        if (Number(ini, "Comfort", key, value)) {
+            out = static_cast<float>(value);
+        }
+    };
+    number("snapDeg", c.snapDegrees);
+    number("turnSpeed", c.turnSpeed);
+    number("deadzone", c.deadzone);
+    number("snapThreshold", c.snapThreshold);
+    number("snapRearm", c.snapRearm);
+    number("snapCooldownS", c.snapCooldown);
+    number("vignetteStrength", c.vignetteStrength);
+    if (Number(ini, "Comfort", "vignette", value)) {
+        c.vignette = value != 0.0;
+    }
+    if (auto const s = ini.find("Comfort"); s != ini.end()) {
+        auto const text = [&](char const* key) -> std::optional<std::string> {
+            auto const k = s->second.find(key);
+            return k != s->second.end() && !k->second.empty() ? std::optional<std::string>(k->second) : std::nullopt;
+        };
+        if (auto const t = text("turn")) {
+            if (auto const turn = cf::ParseTurn(*t)) {
+                c.turn = *turn;
+            } else {
+                log::Warn("comfort: can't read turn = {} (smooth, snap or game); smooth kept", *t);
+            }
+        }
+        if (auto const t = text("vignetteWhen")) {
+            if (auto const when = cf::ParseVignetteWhen(*t)) {
+                c.vignetteWhen = *when;
+            } else {
+                log::Warn("comfort: can't read vignetteWhen = {} (turn or move); turn kept", *t);
+            }
+        }
+        if (auto const t = text("walk")) {
+            if (auto const walk = cf::ParseWalk(*t)) {
+                c.walk = *walk;
+            } else {
+                log::Warn("comfort: can't read walk = {} (head or hand); head kept", *t);
+            }
+        }
+    }
+    return cf::Sanitize(c);
+}
+
+std::string Describe(vr::comfort::Settings const& c) {
+    namespace cf = vr::comfort;
+    std::string const turn = c.turn == cf::TurnStyle::Snap
+        ? std::format("snap {:.0f} deg per flick (past {:.2f}, again once back inside {:.2f}, at least {:.2f} s apart)", c.snapDegrees,
+              c.snapThreshold, c.snapRearm, c.snapCooldown)
+        : c.turn == cf::TurnStyle::Smooth ? std::format("smooth {:.0f} deg/s at full deflection (dead zone {:.2f})", c.turnSpeed, c.deadzone)
+                                          : std::string("the game's own (turn = game)");
+    std::string const vignette = c.vignette
+        ? std::format("on at {:.0f}% while {}", c.vignetteStrength * 100.0f,
+              c.vignetteWhen == cf::VignetteWhen::TurningAndMoving ? "turning or moving" : "turning")
+        : std::string("off");
+    return std::format("turning {}; vignette {}; walk toward {}", turn, vignette,
+        c.walk == cf::WalkToward::LeftHand ? "the left hand" : "where you look");
+}
+
+vr::comfort::Settings gComfort;
+std::string gComfortText;
+
 Posture ReadPosture(Ini const& ini) {
     Posture p;
     double value = 0.0;
@@ -1114,6 +1203,10 @@ Posture GetPosture() {
     return gPosture;
 }
 
+vr::comfort::Settings GetComfort() {
+    return gComfort;
+}
+
 vr::sights::Settings GetSights() {
     return gSights;
 }
@@ -1145,7 +1238,8 @@ void Refresh() {
     fs::path const path = FilePath();
     std::error_code ec;
     if (!fs::exists(path, ec)) {
-        std::ofstream(path) << kDefaultFile << kControlsBlock << kHolstersBlock << kSquadBlock << kSightsBlock << kThrowablesBlock;
+        std::ofstream(path) << kDefaultFile << kControlsBlock << kHolstersBlock << kSquadBlock << kSightsBlock << kThrowablesBlock
+                            << kComfortBlock;
         log::Info("hands: wrote default calibration to {}", path.string());
     }
     auto stamp = fs::last_write_time(path, ec);
@@ -1174,6 +1268,12 @@ void Refresh() {
     if (ini.find("Throwables") == ini.end()) {
         std::ofstream(path, std::ios::app) << kThrowablesBlock;
         log::Info("hands: added the [Throwables] defaults to {}", path.string());
+        ini = ReadIni(path);
+        stamp = fs::last_write_time(path, ec);
+    }
+    if (ini.find("Comfort") == ini.end()) {
+        std::ofstream(path, std::ios::app) << kComfortBlock;
+        log::Info("hands: added the [Comfort] defaults to {}", path.string());
         ini = ReadIni(path);
         stamp = fs::last_write_time(path, ec);
     }
@@ -1315,6 +1415,14 @@ void Refresh() {
         {L"Hands", "Hands", L"bodyMove", "bodyMove", L"1"},
         {L"Hands", "Hands", L"leanM", "leanM", L"0.20"},
         {L"Hands", "Hands", L"bodyMoveMaxM", "bodyMoveMaxM", L"0.75"},
+        // [Comfort] (2026-10-23, research/31): a section our menu started (it writes only the keys it changes).
+        {L"Comfort", "Comfort", L"turn", "turn", L"smooth"},
+        {L"Comfort", "Comfort", L"snapDeg", "snapDeg", L"45"},
+        {L"Comfort", "Comfort", L"turnSpeed", "turnSpeed", L"120"},
+        {L"Comfort", "Comfort", L"vignette", "vignette", L"0"},
+        {L"Comfort", "Comfort", L"vignetteStrength", "vignetteStrength", L"0.6"},
+        {L"Comfort", "Comfort", L"vignetteWhen", "vignetteWhen", L"turn"},
+        {L"Comfort", "Comfort", L"walk", "walk", L"head"},
     };
     std::string addedKeys;
     for (auto const& k : kNewKeys) {
@@ -1349,6 +1457,11 @@ void Refresh() {
     if (std::string const text = Describe(gThrowables); text != gThrowablesText) {
         gThrowablesText = text;
         log::Info("throwables: settings: {}", text);
+    }
+    gComfort = ReadComfort(ini);
+    if (std::string const text = Describe(gComfort); text != gComfortText) {
+        gComfortText = text;
+        log::Info("comfort: settings: {}", text);
     }
     gSights = ReadSights(ini);
     if (std::string const text = Describe(gSights); text != gSightsText) {

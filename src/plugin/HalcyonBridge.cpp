@@ -3,10 +3,12 @@
 // for mapping the controllers into the world, and controller aim replacing Halcyon's head aim.
 
 #include "halcyon/le1/mevr_bridge.h"
+#include "halcyon/le1/vr_config.h"
 #include "halcyon/le1/vr_menu.h"
 
 #include "core/Log.hpp"
 #include "core/Window.hpp"
+#include "core/vr/Comfort.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/Floor.hpp"
 #include "core/vr/FrameProbe.hpp"
@@ -84,6 +86,45 @@ std::atomic<std::uint32_t> gLeftGripReport{0};
 bool gSquadMenuLogged = false;  // under gPadMutex
 bool gNativeWheelLogged = false;  // under gPadMutex: the mod holds the game's weapon wheel (v12)
 bool gWheelPressALogged = false;  // under gPadMutex
+// Comfort (v17, game/comfort in the mod, research/31): whether the mod turns the player (logged when it changes), and
+// walking toward the left hand: whether it's on, and the left controller's last usable flat yaw (+ left, radians).
+bool gModTurnsLogged = false;  // under gPadMutex
+std::uint64_t gModTurnsLogMs = 0;  // under gPadMutex: the next change may be logged from then
+bool gHandWalkLogged = false;  // under gPadMutex
+std::uint64_t gHandWalkLogMs = 0;  // under gPadMutex
+std::optional<double> gHandYaw;  // under gPadMutex
+
+// The motion controllers' left stick turned so its forward is the left controller's yaw, laid flat (the mod's
+// kFlagHandWalk: on foot, outside menus and wheels). Halcyon's moveFollowsHead then turns the merged stick by its head
+// look yaw (RotateMoveStickByHeadLook, after this): HandWalkUnits takes that off first, so the two together turn it by
+// the hand's yaw. The pointing preselect and the support grip read the controllers' poses, never this stick.
+void WalkTowardHand(XINPUT_GAMEPAD& pad, mevr::vr::controllers::State const& controllers, bool on) {
+    namespace cf = mevr::vr::comfort;
+    if (on != gHandWalkLogged && GetTickCount64() >= gHandWalkLogMs) {  // at most every 2 s
+        gHandWalkLogged = on;
+        gHandWalkLogMs = GetTickCount64() + 2000;
+        mevr::log::Info("halcyon bridge: the left stick walks toward {}", on
+            ? "the left controller's pointing, laid flat (comfort: walk toward the left hand)"
+            : "where the player looks again (Halcyon's moveFollowsHead)");
+    }
+    if (!on) {
+        gHandYaw.reset();
+        return;
+    }
+    if (controllers.left.aimValid) {
+        XrQuaternionf const& q = controllers.left.aim.orientation;
+        float x = 0.0f, y = 0.0f, z = 0.0f;
+        cf::Forward(q.x, q.y, q.z, q.w, x, y, z);
+        if (std::optional<double> const yaw = cf::FlatYawLeft(x, y, z)) {
+            gHandYaw = yaw;  // pointing (nearly) straight up or down keeps the last one
+        }
+    }
+    if (!gHandYaw || (pad.sThumbLX == 0 && pad.sThumbLY == 0)) {
+        return;
+    }
+    int const headLook = MELEVR::Config::Get().moveFollowsHead ? MELEVR::RenderHook::HeadLookYawUU() : 0;
+    mevr::game::gamepad::RotateStick(pad.sThumbLX, pad.sThumbLY, cf::HandWalkUnits(*gHandYaw, headLook));
+}
 std::mutex gHapticMutex;  // gHaptics
 std::array<mevr::vr::haptics::Channel, 2> gHaptics;
 bool gLoggedHaptic = false;            // frame thread
@@ -440,8 +481,17 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
         options.rightGripFree = false;
         options.countKept = false;
     }
-    XINPUT_GAMEPAD pad = mevr::game::gamepad::Merge(realPad ? state->Gamepad : XINPUT_GAMEPAD{},
-        mevr::game::gamepad::FromControllers(controllers, gLatches, options));
+    XINPUT_GAMEPAD touch = mevr::game::gamepad::FromControllers(controllers, gLatches, options);
+    bool const owned = options.squadMenu || options.nativeWheel;  // the squad menu or the game's wheel has the sticks
+    WalkTowardHand(touch, controllers, options.handWalk && !owned && !MELEVR::Menu::IsOpen());
+    if (options.modTurns != gModTurnsLogged && GetTickCount64() >= gModTurnsLogMs) {  // at most every 2 s (camera blends)
+        gModTurnsLogged = options.modTurns;
+        gModTurnsLogMs = GetTickCount64() + 2000;
+        mevr::log::Info("halcyon bridge: {}", options.modTurns
+            ? "the mod turns the player (comfort: snap or its own smooth turn): the game sees no right-stick X from the motion controllers"
+            : "the game turns the player with the right stick again");
+    }
+    XINPUT_GAMEPAD pad = mevr::game::gamepad::Merge(realPad ? state->Gamepad : XINPUT_GAMEPAD{}, touch);
     gLeftGripReport.store(mevr::game::gamepad::LeftGripReport(gLatches), std::memory_order_relaxed);
     if (options.squadMenu != gSquadMenuLogged) {
         gSquadMenuLogged = options.squadMenu;

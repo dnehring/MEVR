@@ -90,7 +90,9 @@ back over several seconds. Reproduced: part 5.
   quaternion it tags the frame with (`HeadEulerDegrees(headQuatForFrame)`, `lookSensitivity` 1), so the
   tracking frame's yaw is the camera's: a stick turn turns the whole frame with no stale base yaw.
 - **`game/ViewLevel`** writes only ControlRotation's pitch and roll (`Level()`), and drops aim assist's
-  zoom snap; it never writes yaw.
+  zoom snap; it never writes yaw. (Since [31](31-comfort.md) `game/Comfort` writes the yaw of the player's own
+  snap or smooth turn, in the mod's tick before arm IK, with the view anchor told: tracking space doesn't move,
+  so the body neither re-anchors nor lags.)
 - **Feedback into the camera:** Halcyon reads no bones (no `GetBoneLocation` or SpaceBases in
   `src/halcyon/le1`); the camera's hook is the `Camera` bone, a child of `God`, which the writer never
   writes (research/18). The first/third person decision uses the head bone as animated, before our

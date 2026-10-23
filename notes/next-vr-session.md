@@ -1049,6 +1049,36 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       (-61.5, 43.4, 53.0, -53.0) deg ...`; in Halcyon's: `[MEVR-STEREO] pass 0 (eye 0) from its eye: right
       -3.1x ...` and `[MEVR-STEREO] pass 0 frustum: ... (game's own p8 0.0000 p9 0.0000 p11 1.0000)` (other
       values there: tell Claude). `[VIEWFILL_RENDER_MATCH]`'s subRect should now be the whole 2824 px eye.
+30. **Comfort: snap and smooth turning, the vignette, walking toward the left hand (new, 2026-10-23; HOST
+    REDEPLOY, services v17).** Our menu's Comfort page ([research/31](../research/31-comfort.md)). On foot, first
+    person. The default is now Smooth at 120 deg/s by the mod (no acceleration); `[Comfort] turn = game` in
+    `ASI\LE1MEVR.ini` brings the game's own turn back.
+    - **Smooth:** hold the right stick: a steady turn, the same speed in explore and combat. Turn speed 60 and
+      240: the extremes feel right? The real pad's right stick (if you have one) still turns the game's way.
+    - **Snap:** Turn style > Snap, 45 deg. Flick right, left: one turn per flick, none while held, the next after
+      letting the stick come back. 30 and 60. **Look at your hands and shoulders at the moment of a snap,
+      standing and walking, gun drawn (combat) and holstered (explore):** they must not swing round or lag a
+      frame. Snapshot right after a snap (End, or a quick tap of both stick clicks) and say what you saw.
+    - **Where it must not turn:** the Mako (the stick steers as before), the weapon and power wheels (the stick
+      picks), the squad menu, the sniper scope, cover, conversations, our menu (open it with the stick pushed:
+      nothing turns).
+    - **Vignette:** Comfort vignette on: the edges darken while turning and fade out after (0.15 s); after each
+      snap a short pulse. Vignette when > Turning and moving: also while walking with the stick (not when you
+      step for real). Strength 10% to 100%. The HUD, the reticle and the sights stay clear above it. Snapshot
+      while turning: the layer list should have `vignette`.
+    - **Walk toward > Left hand:** point the left controller left and push forward: you walk left; turn your head
+      meanwhile: the walk doesn't change. Pointing the hand at the floor keeps the last direction. The squad
+      trigger's pointing and the two-handed grip behave as before. Back to Where I look.
+    - **Frame timing:** `tools/perf-probe.ps1 -Tag vignette` while turning with the vignette on, and `-Tag novig`
+      with it off: expect no difference beyond a quad.
+    - **Logs (ours):** `comfort: settings: ...`, `comfort: the mod turns the player` / `comfort: the game turns
+      (<why>)`, `comfort: snap right 45 deg ...`, once `comfort: the pawn faced where the controller does, so it
+      turned with it (Actor.SetRotation): its mesh turned +45.0 deg at once` (if it says the mesh waits, tell
+      Claude), `comfort: the game's own stick turn in SFXCameraMode_Explore: SFXCameraInput MaxCameraRotationSpeed
+      ...` (one per camera mode: the game's own numbers), `halcyon bridge: the mod turns the player ...`,
+      `halcyon bridge: the left stick walks toward ...`, `vignette: first shown ...`, `vignette: shown in N frames
+      ..., M texture refills (X ms CPU each ...)`, and the heartbeat's `comfort:` line. No `torso: re-anchored
+      (tracking jump)` at a snap.
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR

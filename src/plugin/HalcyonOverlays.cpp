@@ -8,6 +8,7 @@
 // - the game's own weapon or power wheel on a panel of its own at a hand while one is up: its part of
 //   the HUD panel texture (core/vr/WheelCrop: a default, then measured the first time a wheel opens),
 //   cut out of the HUD panel meanwhile so it shows once (docs/squad-weapons-design.md, "Native wheel");
+// - the comfort vignette (plugin/Vignette.cpp, research/31): head-locked, under the others, only while wanted;
 // - [MENUVIS] readbacks that tell whether Halcyon's Insert menu texture has visible pixels.
 //
 // The panel texture holds premultiplied colour and coverage from the UI's "over" draws; Scaleform's other
@@ -37,6 +38,7 @@
 #include "plugin/SightLayers.hpp"
 #include "plugin/SquadPanel.hpp"
 #include "plugin/TestLoop.hpp"
+#include "plugin/Vignette.hpp"
 #include "plugin/WorldPanels.hpp"
 
 #include <d3d11.h>
@@ -1593,6 +1595,27 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
             gWheel.loggedThisOpening = true;
             mevr::log::Info("overlays: wheel panel submitted ({}x{}, {:.2f} x {:.2f} m)", gWheelSwapchain.width, gWheelSwapchain.height,
                 gWheelQuad.size.width, gWheelQuad.size.height);
+        }
+    }
+
+    // ---- The comfort vignette (plugin/Vignette, research/31): head-locked, under all of ours (first), so the HUD,
+    // the reticle and the sight stay clear. Asked for last, so it never takes a slot from the others (when it shows,
+    // the player is turning or walking: no squad menu, no wheel). Nothing at all while it isn't wanted ----
+    if (count < capacity) {
+        mevr::host::vignette::Frame vignette;
+        vignette.session = session;
+        vignette.context = context;
+        vignette.device = device.Get();
+        vignette.worldFrame = frame.worldFrame;
+        vignette.menuOpen = frame.menuOpen;
+        vignette.fovValid = frame.projectionValid;
+        std::memcpy(vignette.fov, frame.projectionFov, sizeof vignette.fov);
+        if (XrCompositionLayerQuad const* layer = mevr::host::vignette::Layer(vignette)) {
+            for (unsigned i = count; i > 0; --i) {
+                layersOut[i] = layersOut[i - 1];
+            }
+            layersOut[0] = layer;
+            ++count;
         }
     }
 
