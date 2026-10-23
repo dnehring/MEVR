@@ -14,8 +14,9 @@ GPL VR mods. Code it contains from other projects keeps its own license and noti
 | Halcyon's [MassEffect1-VR](https://github.com/jrush64/MassEffect1-VR) (Copyright (C) 2026 Halcyon), and later its ME2/ME3 siblings | `src/halcyon/` (imported verbatim, then modified; see the README there) | GPL-3.0 |
 | [Overlord](https://github.com/Aeka0/Overlord) (Aeka0): the arm orientation, elbow pole, subtree transfer and 1.25x arm stretch of `hands/pose_solver.hpp`, adapted | `src/core/ik/ArmPose.cpp` (marked in the file) | GPL-3.0 |
 | [Overlord](https://github.com/Aeka0/Overlord) (Aeka0): the canonical Touch controller frame of `touch_controller_reference.hpp` (offset and 20.6 degree pitch from the OpenXR grip), adapted | `src/core/ik/TouchReference.cpp` (marked in the file) | GPL-3.0 |
-| [Overlord](https://github.com/Aeka0/Overlord) (Aeka0): the support grip's acquire/release lease of `gameplay/support_grip.hpp` and its default distances, adapted | `src/game/GamepadMapping.cpp` (`UpdateSupportGrip`, marked in the header) | GPL-3.0 |
+| [Overlord](https://github.com/Aeka0/Overlord) (Aeka0): the support grip's acquire/release lease of `gameplay/support_grip.hpp` and its default distances, adapted | `src/game/GamepadMapping.cpp` (`UpdateSupportGrip`), `src/game/GamepadMapping.hpp` (marked at its declaration) | GPL-3.0 |
 | [Overlord](https://github.com/Aeka0/Overlord) (Aeka0): the two-hand aim of `gameplay/weapon_profile.hpp` (`aimed_rotation`) and the retain-at-the-two-hand-pose and coincident-hands rules of `grip_presenter.hpp`, adapted | `src/core/ik/TwoHand.cpp`, `src/engine/BonePose.cpp` (`ApplySupport`) (marked in the files) | GPL-3.0 |
+| [Overlord](https://github.com/Aeka0/Overlord) (Aeka0): the critically damped, speed-limited eye-distance transition of `gameplay/ads_comfort.hpp` (`transition::update`), adapted from one distance along the barrel to a vector across the sight line (the sight alignment assist, research/21 section 8) | `src/core/vr/Sights.cpp` (`AssistSpring::Update`), `src/core/vr/Sights.hpp` (`AssistSpring`, `Assist`) (marked in the files) | GPL-3.0 |
 | [OpenXR Toolkit](https://github.com/mbucchia/OpenXR-Toolkit) (Matthieu Bucchianeri): the idea of its post-processing contrast (a blend toward smoothstep), rewritten and applied per channel; no code copied | `src/core/vr/Colour.cpp` (research/27) | MIT (concept only) |
 | [MinHook](https://github.com/TsudaKageyu/minhook) (Tsuda Kageyu) | `third_party/minhook/` | BSD-2-Clause (`third_party/minhook/LICENSE.txt`) |
 | [Dear ImGui](https://github.com/ocornut/imgui) (Omar Cornut) | `third_party/imgui/` | MIT (`third_party/imgui/LICENSE.txt`) |
@@ -27,4 +28,11 @@ GPL VR mods. Code it contains from other projects keeps its own license and noti
 | [Khronos OpenXR SDK](https://github.com/KhronosGroup/OpenXR-SDK) | `external/OpenXR-SDK` (submodule) | Apache-2.0 |
 | [LExSDKv2](https://github.com/llamathings/LExSDKv2) | `external/LExSDKv2` (submodule; being replaced by `src/ue3/`, research/34) | None given (see its README) |
 | Prior art, no code taken: [LExSDKv2](https://github.com/llamathings/LExSDKv2) (llamathings and ME3Tweaks contributors) and TheFeckless' UE3 SDK generator, which showed that UE3 games can be driven through their own reflection. Our reflection layer is written from our own analysis of the engine (Ghidra and the engine's own reflection data, research/34); LExSDKv2's compiled offsets are used only as a run-time cross-check while both exist (`src/engine/ReflectCheck.cpp`) | `src/ue3/` | GPL-3.0 (ours) |
-| MassFPS (Aphar) | `src/script/le1/massfps-base/` | "Do whatever you want", no credit required (credited anyway) |
+
+[MassFPS (LE1)](https://www.nexusmods.com/masseffectlegendaryedition/mods/1731) by Aphar (Nexus mod
+1731) was studied locally; its files aren't in the repository. Its author allows any use ("do
+whatever you want", no credit required); we credit Aphar with thanks.
+
+Runtime dependencies that are not distributed with ME VR Attempt: ME3Tweaks LEBinkProxy (the ASI
+loader, installed by ME3Tweaks Mod Manager), the user's OpenXR runtime, and Windows'
+`d3dcompiler_47.dll`.

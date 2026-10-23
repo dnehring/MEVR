@@ -1,16 +1,14 @@
 # Prep checklist
 
-## Machine audit (2026-10-07)
+## What a development machine needs
 
-| Item | Status |
-|------|--------|
-| GPU | RTX 4090 |
-| Headset runtime | Oculus OpenXR runtime is active (Quest via Link); Virtual Desktop and SteamVR also installed |
-| C++ toolchain | VS 2022 **Build Tools** 17.14 with MSVC x64, CMake, Git, gh |
-| .NET | 8.0 desktop runtime present (Legendary Explorer needs it) |
-| ME LE install | `C:\Program Files (x86)\Steam\steamapps\common\Mass Effect Legendary Edition` (downloading) |
-| Free space | C: 529 GB, H: 184 GB |
-| Missing | Ghidra (+ JDK 21), RenderDoc, x64dbg, Legendary Explorer, ME3Tweaks Mod Manager |
+| Item | Notes |
+|------|-------|
+| GPU | A VR-capable one (developed on an RTX 4090) |
+| Headset runtime | An OpenXR runtime: SteamVR, Meta (Oculus) or Virtual Desktop |
+| C++ toolchain | VS 2022 Build Tools (MSVC x64), CMake, Git |
+| .NET | 8.0 desktop runtime (Legendary Explorer needs it) |
+| ME LE install | Steam app 1328670 (or the EA app) |
 
 ## Install while the download runs
 
@@ -27,7 +25,7 @@
 
 Writing freshly built DLLs and reading logs under `Program Files (x86)` triggers UAC on every
 iteration. After the download, Steam can move the game: Properties → Installed Files → Move
-install folder → `H:\SteamLibrary` (ME LE is about 120 GB; H: has 184 GB free).
+install folder → a library on another drive (ME LE is about 120 GB).
 
 ## If you use SteamVR (Steam Link, Virtual Desktop's SteamVR mode, or a SteamVR headset)
 
@@ -51,7 +49,8 @@ install folder → `H:\SteamLibrary` (ME LE is about 120 GB; H: has 184 GB free)
    `MassEffect1.exe` is FileVersion 2.0.0.48602.** LExSDKv2 hardcodes engine addresses for that
    build, and a mismatch aborts the game at plugin attach ([research/09](../research/09-me3tweaks-code-survey.md)).
 5. ~~Download MassFPS (LE1)~~. **Done 2026-10-07:** downloaded to `mods/` and extracted with
-   `tools/extract-m3m.ps1` into `src/script/le1/massfps-base/` ([research/11](../research/11-massfps.md)).
+   `tools/extract-m3m.ps1` for study ([research/11](../research/11-massfps.md)). The extracted files
+   stay local; they aren't in the repository.
 6. Open LE1's startup package and `SFXGame` in Legendary Explorer to start verifying the hypotheses
    in [vr-features-plan.md](vr-features-plan.md).
 
