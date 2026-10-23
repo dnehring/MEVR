@@ -1,11 +1,13 @@
 #include "game/Sights.hpp"
 
 #include "core/Log.hpp"
+#include "core/vr/Calibration.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/CallFunction.hpp"
 #include "engine/Objects.hpp"
+#include "game/BodyCalibration.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/ViewAnchor.hpp"
 #include "game/Weapon.hpp"
@@ -221,9 +223,14 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
             // The gun's top: arm IK rolls the gun with the right controller (its aim pose's up, as far as
             // the barrel allows), so the same up places the sight on top of it.
             vr::controllers::State const controllers = vr::controllers::Latest();
-            XrVector3f const aimUp = controllers.active && controllers.right.aimValid
+            XrVector3f aimUp = controllers.active && controllers.right.aimValid
                 ? vr::overlay::Rotate(controllers.right.aim.orientation, {0.0f, 1.0f, 0.0f})
                 : XrVector3f{0.0f, 1.0f, 0.0f};
+            // Calibrated (research/25): arm IK holds the gun level in the calibrated gun frame, so its top is that up.
+            if (auto const stance = body_calibration::StanceFor(type); stance && controllers.active && controllers.right.gripValid) {
+                aimUp = vr::calibration::Rotate(vr::calibration::GunOrientation(controllers.right.grip.orientation, *stance),
+                    {0.0f, 1.0f, 0.0f});
+            }
             auto top = sv::TopOf(ray.direction, aimUp);
             if (!top) {
                 top = sv::TopOf(ray.direction, {0.0f, 1.0f, 0.0f});
@@ -270,6 +277,25 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
     StepAssist(settings, out, nowMs);
     return out;
+}
+
+std::optional<ik::Vec3> SightInHand(weapon::Grip const& grip, ik::Vec3 const& upInHand) {
+    int const type = static_cast<int>(weapon::Type());
+    auto const muzzle = weapon::Current();
+    if (type < 0 || type >= sv::kWeaponTypes || !muzzle) {
+        return std::nullopt;
+    }
+    sv::Settings const settings = hand_calibration::GetSights();
+    engine::UnrealVector const toMuzzle{muzzle->location.x - muzzle->origin.x, muzzle->location.y - muzzle->origin.y,
+        muzzle->location.z - muzzle->origin.z};
+    sv::Gun const placed = sv::AutoPlace(type, settings.guns[type], static_cast<float>(Dot(toMuzzle, muzzle->barrel)));
+    ik::Vec3 const barrel = ik::Normalize(grip.barrel, {1.0, 0.0, 0.0});
+    ik::Vec3 up = upInHand - barrel * ik::Dot(upInHand, barrel);
+    if (!(ik::Length(up) > 1e-6)) {
+        return std::nullopt;
+    }
+    up = ik::Normalize(up);
+    return grip.muzzle - barrel * static_cast<double>(placed.back) + up * static_cast<double>(placed.height);
 }
 
 XrVector3f TakeGunShift() {

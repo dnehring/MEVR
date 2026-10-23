@@ -22,13 +22,6 @@ constexpr double kFirstPersonLeaveUnits = 75.0;
 bool gDesktopTest = false;
 bool gFirstPerson = false;
 
-// A tracking-space orientation as a world rotation: its -Z, +X, +Y become UE's X, Y, Z.
-ik::Quat WorldRotation(engine::TrackingFrame const& frame, XrQuaternionf const& orientation) {
-    engine::Basis const axes = engine::OrientationToWorld(frame, orientation);
-    return ik::FromAxes({axes.forward.x, axes.forward.y, axes.forward.z}, {axes.right.x, axes.right.y, axes.right.z},
-        {axes.up.x, axes.up.y, axes.up.z});
-}
-
 double Distance(engine::UnrealVector const& a, engine::UnrealVector const& b) {
     return std::hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 }
@@ -91,9 +84,7 @@ Targets Current(std::optional<engine::UnrealVector> const& animatedHead) {
         // The grip's -Z, +X, +Y in the world are the images of UE's X, Y, Z.
         out.hasRotation = true;
         out.rotation = WorldRotation(targets.body, hand.grip.orientation);
-        engine::UnrealVector const grip = engine::ToWorld(targets.body, hand.grip.position);
-        ik::Vec3 const back = ik::Rotate(out.rotation, {-kWristBehindGripUnits, 0.0, 0.0});
-        out.position = {grip.x + back.x, grip.y + back.y, grip.z + back.z};
+        out.position = WristFromGrip(targets.body, hand.grip);
         // The aim pose (where the controller points: a held gun's barrel follows it).
         if (hand.aimValid) {
             out.hasAim = true;
@@ -101,6 +92,18 @@ Targets Current(std::optional<engine::UnrealVector> const& animatedHead) {
         }
     }
     return targets;
+}
+
+ik::Quat WorldRotation(engine::TrackingFrame const& frame, XrQuaternionf const& orientation) {
+    engine::Basis const axes = engine::OrientationToWorld(frame, orientation);
+    return ik::FromAxes({axes.forward.x, axes.forward.y, axes.forward.z}, {axes.right.x, axes.right.y, axes.right.z},
+        {axes.up.x, axes.up.y, axes.up.z});
+}
+
+engine::UnrealVector WristFromGrip(engine::TrackingFrame const& frame, XrPosef const& grip) {
+    engine::UnrealVector const at = engine::ToWorld(frame, grip.position);
+    ik::Vec3 const back = ik::Rotate(WorldRotation(frame, grip.orientation), {-kWristBehindGripUnits, 0.0, 0.0});
+    return {at.x + back.x, at.y + back.y, at.z + back.z};
 }
 
 void SetDesktopTest(bool on) {

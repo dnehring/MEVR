@@ -4939,6 +4939,20 @@ void TestCalibration() {
     CHECK(cal::ProfileKey("", "") == "unknown");
     CHECK(cal::ProfileLabel("/interaction_profiles/oculus/touch_controller", "Meta Quest 3") == "Touch Controller (Meta Quest 3)");
     CHECK(cal::ListHas("a, b,c", "b") && cal::ListHas("a, b,c", "c") && !cal::ListHas("a,bb", "b") && !cal::ListHas("", "a"));
+
+    // ---- "At the shoulder" around a measured stock point (core/ik/TwoHand) ----
+    using mevr::ik::Vec3;
+    Vec3 const stockPoint{0.06, -0.12, 0.05};  // 6 cm right, 12 cm below the eyes, 5 cm behind them
+    mevr::ik::ShoulderZone const zone = mevr::ik::ShoulderZoneAround(stockPoint);
+    CHECK(std::abs(zone.maxDrop - 0.24) < 1e-9 && zone.minDrop == 0.0 && std::abs(zone.maxSide - 0.20) < 1e-9);
+    CHECK(std::abs(zone.minForward + 0.17) < 1e-9 && std::abs(zone.maxForward - 0.12) < 1e-9);
+    Vec3 const eyes{0.0, 1.6, 0.0};
+    Vec3 const ahead{0.0, 0.0, -1.0};
+    Vec3 const up{0.0, 1.0, 0.0};
+    CHECK(mevr::ik::Shouldered(eyes, ahead, up, eyes + stockPoint, false, zone));
+    CHECK(!mevr::ik::Shouldered(eyes, ahead, up, eyes + Vec3{0.35, -0.12, 0.05}, false, zone));  // off to the side
+    CHECK(!mevr::ik::Shouldered(eyes, ahead, up, eyes + Vec3{0.06, -0.12, -0.45}, false, zone));  // held out ahead
+    CHECK(mevr::ik::Shouldered(eyes, ahead, up, eyes + Vec3{0.06, -0.12, -0.15}, true, zone));    // inside with the margin
 }
 
 int main() {

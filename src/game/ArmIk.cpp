@@ -8,7 +8,9 @@
 #include "core/ik/HandFrame.hpp"
 #include "core/ik/TorsoPose.hpp"
 #include "core/ik/TouchReference.hpp"
+#include "core/vr/Calibration.hpp"
 #include "core/vr/Controllers.hpp"
+#include "game/BodyCalibration.hpp"
 #include "game/HandCalibration.hpp"
 #include "engine/BonePose.hpp"
 #include "engine/GameAdapter.hpp"
@@ -515,6 +517,100 @@ bool RequestSupport(USkeletalMeshComponent* mesh, SkeletonInfo const& info, std:
     return true;
 }
 
+// ---- The guided calibration (game/body_calibration, research/25) -------------------------------------------
+namespace cal = vr::calibration;
+
+// The calibrated sight line moves the gun at most this far (tracking meters) to put its sight on it.
+constexpr double kMaxStanceShiftMeters = 0.20;
+// A left hand that takes hold this close to where it sat on the rifle when calibrating (tracking meters) holds
+// the gun at the calibrated relation to the hands' line; elsewhere the grab's own line is kept (no swing).
+constexpr double kCalibratedGrabMeters = 0.08;
+std::string gLoggedStance;  // once per gun and stance: how far the sight line moved the gun
+
+double ComponentScale(ik::Affine const& worldToComponent) {
+    double const s = ik::Length(ik::TransformDirection(worldToComponent, {1.0, 0.0, 0.0}));
+    return std::isfinite(s) && s > 1e-6 ? s : 1.0;
+}
+
+// The move (component units) that puts the held gun's own sight, as it will be drawn (the right wrist at `wrist`,
+// the hand bone at `handRotation`), on the calibrated sight line from the grip: where the player's eye looked
+// when aiming the orb. Nullopt without a sight place.
+std::optional<ik::Vec3> StanceShift(weapon::Grip const& grip, ik::Vec3 const& upInHand, ik::Vec3 const& wrist, ik::Quat const& handRotation,
+    XrPosef const& gripPose, cal::Stance const& stance, hand_targets::Targets const& targets, ik::Affine const& worldToComponent) {
+    auto const sight = sights::SightInHand(grip, upInHand);
+    if (!sight) {
+        return std::nullopt;
+    }
+    ik::Vec3 const at = wrist + ik::Rotate(handRotation, *sight);
+    cal::Line const line = cal::SightLine(gripPose, stance);
+    XrVector3f const ahead{line.point.x + line.direction.x, line.point.y + line.direction.y, line.point.z + line.direction.z};
+    engine::UnrealVector const a = engine::ToWorld(targets.body, line.point);
+    engine::UnrealVector const b = engine::ToWorld(targets.body, ahead);
+    ik::Vec3 const p = ik::TransformPoint(worldToComponent, {a.x, a.y, a.z});
+    ik::Vec3 const d = ik::Normalize(ik::TransformPoint(worldToComponent, {b.x, b.y, b.z}) - p);
+    ik::Vec3 const delta = p - at;
+    ik::Vec3 shift = delta - d * ik::Dot(delta, d);
+    double const perMeter = targets.body.unitsPerMeter * ComponentScale(worldToComponent);
+    double const max = kMaxStanceShiftMeters * perMeter;
+    double const length = ik::Length(shift);
+    if (!std::isfinite(length)) {
+        return std::nullopt;
+    }
+    if (length > max) {
+        shift = shift * (max / length);
+    }
+    std::string const key = std::format("{}/{}", static_cast<unsigned long long>(weapon::Key()), cal::FormatRotation(stance.trim));
+    if (key != gLoggedStance) {
+        gLoggedStance = key;
+        // In the gun's own axes, for the log: up and right of the sight as drawn.
+        ik::Vec3 const barrel = ik::Normalize(ik::Rotate(handRotation, grip.barrel), {1.0, 0.0, 0.0});
+        ik::Vec3 const top = ik::Rotate(handRotation, upInHand);
+        ik::Vec3 const up = ik::Normalize(top - barrel * ik::Dot(top, barrel), {0.0, 0.0, 1.0});
+        ik::Vec3 const right = ik::Cross(up, barrel);
+        log::Info("calibration: the held gun follows the calibrated {} stance: its sight moves {:.1f} cm {} and {:.1f} cm {} onto your "
+                  "sight line ({:.1f} cm{})",
+            weapon::Type() == weapon::RangedType::Pistol ? "pistol" : "rifle", std::abs(ik::Dot(shift, up)) / perMeter * 100.0,
+            ik::Dot(shift, up) >= 0.0 ? "up" : "down", std::abs(ik::Dot(shift, right)) / perMeter * 100.0,
+            ik::Dot(shift, right) >= 0.0 ? "right" : "left", ik::Length(shift) / perMeter * 100.0,
+            length > max ? ", capped" : "");
+    }
+    return shift;
+}
+
+// The two-handed grip from the calibrated rifle stance: the span two-hand aim keeps (used for a hold that begins
+// with the left hand near where it sat when calibrating), and the left hand's rotation on the gun when the
+// animation offers none.
+void CalibrateSupport(engine::bone_pose::Request& request, hand_targets::Targets const& targets,
+    vr::controllers::State const& controllers, ik::Affine const& worldToComponent, ik::Quat const& componentRotation) {
+    auto const stance = body_calibration::TwoHanded();
+    if (!stance || weapon::Type() == weapon::RangedType::Pistol || !controllers.active || !controllers.right.gripValid) {
+        return;
+    }
+    XrPosef const& right = controllers.right.grip;
+    XrQuaternionf const gun = cal::GunOrientation(right.orientation, *stance);
+    XrVector3f const offset = cal::Rotate(gun, stance->foregrip);
+    XrPosef left;
+    left.position = {right.position.x + offset.x, right.position.y + offset.y, right.position.z + offset.z};
+    left.orientation = cal::Normalize(cal::Multiply(gun, stance->leftTrim));
+    engine::UnrealVector const l = hand_targets::WristFromGrip(targets.body, left);
+    engine::UnrealVector const r = hand_targets::WristFromGrip(targets.body, right);
+    ik::Quat const rightHand = request.arms[kRight].rotation;
+    engine::bone_pose::Support& s = request.support;
+    s.calibratedSpan = ik::Rotate(ik::Conjugate(rightHand),
+        ik::TransformPoint(worldToComponent, {l.x, l.y, l.z}) - ik::TransformPoint(worldToComponent, {r.x, r.y, r.z}));
+    if (controllers.left.gripValid) {
+        XrVector3f const& g = controllers.left.grip.position;
+        double const away = std::hypot(g.x - left.position.x, g.y - left.position.y, g.z - left.position.z);
+        s.useCalibratedSpan = away <= kCalibratedGrabMeters;
+    }
+    if (!s.hasRotation && gAnatomy[kLeft]) {
+        ik::Quat const grip = ik::Normalize(ik::Conjugate(componentRotation) * hand_targets::WorldRotation(targets.body, left.orientation));
+        ik::Quat const hand = ik::HandFromGrip(grip, hand_calibration::Trim(kLeft), *gAnatomy[kLeft]);
+        s.foregrip.rotation = ik::Normalize(ik::Conjugate(rightHand) * hand);
+        s.hasRotation = true;
+    }
+}
+
 void LogStatusChange() {
     if (gStatus != gLastLoggedStatus) {
         log::Info("arm IK: {}", gStatus);
@@ -750,6 +846,7 @@ void Drive(double deltaSeconds) {
         vr::controllers::State const controllers = vr::controllers::Latest();
         std::array<double, 2> fullReach{1.0, 1.0};
         std::array<double, 2> reachWeight{1.0, 1.0};
+        std::optional<ik::Vec3> stanceShift;  // the calibrated sight line's move of the gun (component units)
         for (int side : {kLeft, kRight}) {
             hand_targets::Hand const& hand = targets.hands[side];
             auto const& chain = arms[side];
@@ -761,7 +858,8 @@ void Drive(double deltaSeconds) {
             arm.wrist = ik::TransformPoint(*worldToComponent, {hand.position.x, hand.position.y, hand.position.z});
             // Arm-length calibration: the player's full reach is Shepard's full reach, except near the
             // eyes, where the hand sits on its controller (a gun at the cheek lines up with the eye).
-            if (double const player = hand_calibration::ArmLength(); player > 0.0 && gLayout.lengths[side] > 0.0) {
+            if (double const player = body_calibration::ArmLength().value_or(hand_calibration::ArmLength());
+                player > 0.0 && gLayout.lengths[side] > 0.0) {
                 fullReach[side] = std::clamp(gLayout.lengths[side] / (player * targets.body.unitsPerMeter), kMinReachScale, kMaxReachScale);
                 vr::controllers::Hand const& tracked = side == kLeft ? controllers.left : controllers.right;
                 if (controllers.active && tracked.gripValid) {
@@ -786,7 +884,15 @@ void Drive(double deltaSeconds) {
                         ? ik::GunUpInHand(grip->barrel, *gAnatomy[side], hand_calibration::GunRoll())
                         : std::nullopt;
                     LogGunHold(*grip, upInHand);
-                    ik::Quat const held = hand.hasAim ? hand.aim : ik::Normalize(hand.rotation * ik::TouchReferenceRotationUe());
+                    // Calibrated (research/25): the barrel along the sight line the player aimed the orb along, in the
+                    // right grip's frame, level at calibration (its roll follows the grip); not the runtime's aim pose.
+                    auto const stance = body_calibration::StanceFor(static_cast<int>(weapon::Type()));
+                    vr::controllers::Hand const& tracked = controllers.right;
+                    bool const calibrated = stance.has_value() && controllers.active && tracked.gripValid;
+                    ik::Quat const held = calibrated
+                        ? hand_targets::WorldRotation(targets.body, cal::GunOrientation(tracked.grip.orientation, *stance))
+                        : hand.hasAim ? hand.aim
+                                      : ik::Normalize(hand.rotation * ik::TouchReferenceRotationUe());
                     ik::Quat const aim = ik::Normalize(ik::Conjugate(*componentRotation) * held);
                     auto const rotation = upInHand ? ik::HandForBarrel(grip->barrel, *upInHand,
                                                          ik::Rotate(aim, {1.0, 0.0, 0.0}), ik::Rotate(aim, {0.0, 0.0, 1.0}))
@@ -797,6 +903,9 @@ void Drive(double deltaSeconds) {
                         gunAimed = true;
                         heldGrip = grip;
                         heldUp = upInHand;
+                        if (calibrated && upInHand) {
+                            stanceShift = StanceShift(*grip, *upInHand, arm.wrist, *rotation, tracked.grip, *stance, targets, *worldToComponent);
+                        }
                     }
                 }
             }
@@ -815,15 +924,23 @@ void Drive(double deltaSeconds) {
         }
         if (heldGrip && heldUp && arms[kLeft] && arms[kRight]) {
             supportRequested = RequestSupport(mesh, *info, pose, *heldGrip, *heldUp, targets, request);
+            if (supportRequested && componentRotation) {
+                CalibrateSupport(request, targets, controllers, *worldToComponent, *componentRotation);
+            }
         }
         // The sight alignment assist (game/sights): the held gun slides so its sight line runs through
         // the aiming eye; tracking meters through the body frame into component units.
+        // The calibrated stance's sight line first (where the gun sits in the hand), the assist on top of it (the
+        // last centimetre, measured on the gun as drawn with the stance's move in it).
         XrVector3f const shift = sights::TakeGunShift();
+        if (gunAimed && stanceShift) {
+            request.gunShift = *stanceShift;
+        }
         if (gunAimed && (shift.x != 0.0f || shift.y != 0.0f || shift.z != 0.0f)) {
             XrVector3f const& p = targets.head.position;
             engine::UnrealVector const a = engine::ToWorld(targets.body, p);
             engine::UnrealVector const b = engine::ToWorld(targets.body, {p.x + shift.x, p.y + shift.y, p.z + shift.z});
-            request.gunShift = ik::TransformDirection(*worldToComponent, {b.x - a.x, b.y - a.y, b.z - a.z});
+            request.gunShift = request.gunShift + ik::TransformDirection(*worldToComponent, {b.x - a.x, b.y - a.y, b.z - a.z});
         }
         if (!driven.empty()) {
             driven += " following the controllers";

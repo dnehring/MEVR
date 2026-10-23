@@ -178,6 +178,8 @@ set(MEVR_MOD_SOURCES
     src/engine/XrToUnreal.hpp
     src/game/ArmIk.cpp
     src/game/ArmIk.hpp
+    src/game/BodyCalibration.cpp
+    src/game/BodyCalibration.hpp
     src/game/CameraProbe.cpp
     src/game/CameraProbe.hpp
     src/game/GamepadBridge.cpp

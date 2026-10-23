@@ -6,6 +6,7 @@
 #include "core/Hotkey.hpp"
 #include "core/Log.hpp"
 #include "core/vr/AimRay.hpp"
+#include "core/vr/Calibration.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/Floor.hpp"
 #include "core/vr/HostView.hpp"
@@ -23,6 +24,7 @@
 #include "engine/ProcessEvent.hpp"
 #include "engine/SceneView.hpp"
 #include "game/ArmIk.hpp"
+#include "game/BodyCalibration.hpp"
 #include "game/CameraProbe.hpp"
 #include "game/GamepadBridge.hpp"
 #include "game/GamepadMapping.hpp"
@@ -552,6 +554,18 @@ mevr::game::view_level::Link ViewLevelLink() {
     return link;
 }
 
+// Host renderer (HostServices v15): the guided calibration's state (research/25): whether it runs (the mod stands
+// down) and which controllers' [Calibration.<key>] applies.
+mevr::game::body_calibration::Link BodyCalibrationLink() {
+    using namespace mevr;
+    game::body_calibration::Link link;
+    if (gHostOwnsVr && MEVR_HOST_HAS(calibration) && gHost->calibration != nullptr &&
+        gHost->calibrationStateSize == sizeof(vr::calibration::HostState)) {
+        link.state = gHost->calibration;
+    }
+    return link;
+}
+
 // Host renderer (HostServices v8): while the test loop takes a snapshot, our state for its JSON.
 void PublishStatus() {
     using namespace mevr;
@@ -575,7 +589,7 @@ void PublishStatus() {
         "\"handAim\": {{\"enabled\": {}, \"toldHost\": {}}}, "
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"throwables\": {}, "
-        "\"posture\": {}, \"viewLevel\": {}}}",
+        "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -584,7 +598,7 @@ void PublishStatus() {
         json::JsonString(game::weapon::Status()), game::support_grip::Held() ? "true" : "false",
         json::JsonNumber(game::support_grip::Blend()), game::holsters::StatusJson(), game::squad_weapons::StatusJson(),
         game::sights::StatusJson(), game::throwables::StatusJson(), game::posture::StatusJson(),
-        game::view_level::StatusJson());
+        game::view_level::StatusJson(), game::body_calibration::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -722,6 +736,7 @@ void Heartbeat() {
         game::throwables::LogStats();
         game::posture::LogStats();
         game::view_level::LogStats();
+        game::body_calibration::LogStats();
         game::skeleton_probe::Tick();
     }
     engine::scene_view::LogStats();
@@ -799,6 +814,8 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     if (gHooked) {
         game::head_tracking::RefreshGameMode();
     }
+    // The guided calibration's results and whether it runs, before anything uses them.
+    game::body_calibration::Tick(BodyCalibrationLink());
     if (gHostOwnsVr) {
         UpdateHostHandAim();
         UpdateHostArmIk();
@@ -949,6 +966,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::weapon::Shutdown();
     game::camera_probe::Shutdown();
     game::view_level::Shutdown();
+    game::body_calibration::Shutdown();
     gHost = nullptr;
     gHostOwnsVr = false;
     gToldHostOwnsVr = false;

@@ -81,6 +81,19 @@ bool Shouldered(Vec3 head, Vec3 headForward, Vec3 up, Vec3 grip, bool wasShoulde
            ahead <= zone.maxForward + m;
 }
 
+ShoulderZone ShoulderZoneAround(Vec3 stock, double tolerance) {
+    double const t = std::isfinite(tolerance) && tolerance > 0.0 ? tolerance : 0.12;
+    double const drop = -stock.y;
+    double const ahead = -stock.z;
+    ShoulderZone zone;
+    zone.minDrop = std::max(0.0, drop - t);
+    zone.maxDrop = drop + t;
+    zone.maxSide = std::max(std::abs(stock.x) + t, 0.20);
+    zone.minForward = ahead - t;
+    zone.maxForward = ahead + t + 0.05;
+    return zone;
+}
+
 bool OnGun(Vec3 point, Vec3 barrelInHand, Vec3 muzzleInHand) {
     if (!Finite(point) || !Finite(barrelInHand) || !Finite(muzzleInHand) || Length(barrelInHand) < 1e-9 ||
         Length(point) < kForegripMinSpan) {

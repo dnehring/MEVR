@@ -168,6 +168,7 @@ UObject const* CurrentWorld() {
 // The span captured when the current hold began (ik::CapturedSpan; the writer's thread).
 thread_local std::uint32_t tCapturedHold = 0;
 thread_local std::optional<ik::Vec3> tCapturedSpan;
+thread_local bool tCapturedCalibrated = false;
 
 // The support grip on this write's goals (Request::support). Measures the left goal's distance from
 // the grab zone (a capsule along the gun and the foregrip; at the one-hand pose while not held; at the
@@ -188,13 +189,20 @@ SupportSample ApplySupport(Support const& s, double handScale, ik::ArmGoal& left
     // while the hold blends out after a release, so letting go doesn't swing it either.
     if (s.hold != 0 && s.hold != tCapturedHold) {
         tCapturedHold = s.hold;
-        tCapturedSpan = s.twoHandAim ? ik::CapturedSpan(one, right.wrist, controller, ik::Length(span), minSpan) : std::nullopt;
+        bool const calibrated = s.useCalibratedSpan && std::isfinite(s.calibratedSpan.x) && std::isfinite(s.calibratedSpan.y) &&
+            std::isfinite(s.calibratedSpan.z) && ik::Length(s.calibratedSpan) > std::max(minSpan, 0.5);
+        tCapturedCalibrated = s.twoHandAim && calibrated;
+        tCapturedSpan = !s.twoHandAim ? std::nullopt
+            : calibrated            ? std::optional<ik::Vec3>(s.calibratedSpan)
+                                    : ik::CapturedSpan(one, right.wrist, controller, ik::Length(span), minSpan);
     } else if (s.hold == 0 && blend <= 0.0) {
         tCapturedHold = 0;
         tCapturedSpan.reset();
+        tCapturedCalibrated = false;
     }
     ik::Vec3 const aimSpan = tCapturedSpan ? *tCapturedSpan : span;
     out.captured = tCapturedSpan.has_value();
+    out.calibrated = out.captured && tCapturedCalibrated;
     std::optional<ik::Quat> two;
     if (s.twoHandAim) {
         two = ik::TwoHandRotation(one, aimSpan, right.wrist, controller, minSpan);
