@@ -53,6 +53,10 @@ public:
     void DirtyAll();
     // A value changed since the last call (the host re-renders when it did).
     bool TakeChanged();
+    // The host is feeding the player's input to the context (mouse, keys): only then does a control that changes
+    // its own value (a slider dragged) write the setting. RmlUi's sliders also report the value they were given,
+    // snapped to their step and range, when the document shows it: that must never change a setting.
+    void SetUserInput(bool on) { userInput_ = on; }
 
 private:
     void Changed(std::string const& key);
@@ -60,6 +64,7 @@ private:
     Backend* backend_ = nullptr;
     Values values_;
     bool changed_ = true;
+    bool userInput_ = false;
 };
 
 } // namespace mevr::menu

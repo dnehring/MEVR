@@ -59,8 +59,10 @@ bool Model::Bind(Rml::Context* context, Backend* backend) {
                 [this, key](Rml::Variant const& in) {
                     ms::Field const* f = ms::Find(key);
                     float const value = ms::Clamp(*f, in.Get<float>(f->number));
-                    if (std::fabs(value - values_.Number(key)) < 1e-6f) {
-                        return;  // the slider echoing what it was given
+                    if (!userInput_ || std::fabs(value - values_.Number(key)) < 1e-6f) {
+                        // The slider echoing what it was given (snapped to its step and range when the document
+                        // shows it): the setting keeps its own value.
+                        return;
                     }
                     values_.numbers[key] = value;
                     Changed(key);

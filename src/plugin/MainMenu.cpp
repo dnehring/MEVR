@@ -794,8 +794,10 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         gPauseWanted.store(g.settings->PauseWanted());
     }
     g.settings->Tick(g.live, frame.headValid, frame.head.position);
+    g.model->SetUserInput(true);  // only the player's input changes a setting through a slider
     Pointer(context, dt);
     Pad(context, now);
+    g.model->SetUserInput(false);
     if (!gOpen.load()) {
         return nullptr;  // B closed it
     }

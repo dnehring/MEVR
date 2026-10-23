@@ -410,14 +410,22 @@ int main(int argc, char** argv) {
         }
     }
 
-    // Hover: the pointer on Resume, part-way through its sweep; then on a row's toggle.
+    // Hover: the pointer on Resume, part-way through its sweep; then on a row's toggle. From here on, the player's input
+    // (until now the sliders only showed values: any "write" printed above would be a setting changed by showing it).
+    model.SetUserInput(true);
     model.SetText("section", "controls");
     frames(10);
     if (Rml::Element* resume = element("resume")) {
         Rml::Vector2i const at = centre(resume);
         rml->ProcessMouseMove(at.x, at.y, 0);
-        frames(14);  // ~0.2 s of the 0.55 s sweep
-        save("state-hover");
+        frames(1);
+        save("state-hover-sweep-1");  // the light sweep's first frames (0.55 s, cubic-out)
+        frames(2);
+        save("state-hover-sweep-2");
+        frames(2);
+        save("state-hover-sweep-3");
+        frames(4);
+        save("state-hover");  // the band across the middle
         rml->ProcessMouseButtonDown(0, 0);
         frames(8);
         save("state-pressed");
