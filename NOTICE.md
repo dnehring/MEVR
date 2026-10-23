@@ -17,7 +17,7 @@ GPL VR mods. Code it contains from other projects keeps its own license and noti
 | [Overlord](https://github.com/Aeka0/Overlord) (Aeka0): the support grip's acquire/release lease of `gameplay/support_grip.hpp` and its default distances, adapted | `src/game/GamepadMapping.cpp` (`UpdateSupportGrip`, marked in the header) | GPL-3.0 |
 | [Overlord](https://github.com/Aeka0/Overlord) (Aeka0): the two-hand aim of `gameplay/weapon_profile.hpp` (`aimed_rotation`) and the retain-at-the-two-hand-pose and coincident-hands rules of `grip_presenter.hpp`, adapted | `src/core/ik/TwoHand.cpp`, `src/engine/BonePose.cpp` (`ApplySupport`) (marked in the files) | GPL-3.0 |
 | [OpenXR Toolkit](https://github.com/mbucchia/OpenXR-Toolkit) (Matthieu Bucchianeri): the idea of its post-processing contrast (a blend toward smoothstep), rewritten and applied per channel; no code copied | `src/core/vr/Colour.cpp` (research/27) | MIT (concept only) |
-| [MinHook](https://github.com/TsudaKageyu/minhook) (Tsuda Kageyu) | `third_party/minhook/` | BSD-2-Clause (`third_party/minhook/LICENSE.txt`) |
+| [MinHook](https://github.com/TsudaKageyu/minhook) (Tsuda Kageyu), also compiled into our ASI loader `bink2w64.dll` (`src/loader`, research/33) | `third_party/minhook/` | BSD-2-Clause (`third_party/minhook/LICENSE.txt`) |
 | [Dear ImGui](https://github.com/ocornut/imgui) (Omar Cornut) | `third_party/imgui/` | MIT (`third_party/imgui/LICENSE.txt`) |
 | [Rajdhani](https://github.com/google/fonts/tree/main/ofl/rajdhani) (Copyright (c) 2014 Indian Type Foundry), SemiBold and Bold, unmodified | `third_party/fonts/` (deployed to `ASI\fonts`) | SIL OFL 1.1 (`third_party/fonts/Rajdhani-OFL.txt`) |
 | [Titillium Web](https://github.com/google/fonts/tree/main/ofl/titilliumweb) (Copyright (c) 2009-2011 Accademia di Belle Arti di Urbino and students of MA course of Visual design), Regular and SemiBold, unmodified | `third_party/fonts/` (deployed to `ASI\fonts`) | SIL OFL 1.1 (`third_party/fonts/TitilliumWeb-OFL.txt`) |
@@ -25,5 +25,20 @@ GPL VR mods. Code it contains from other projects keeps its own license and noti
 | [FreeType](https://freetype.org) 2.13.3, RmlUi's font engine. Portions of this software are copyright (c) 2024 The FreeType Project (www.freetype.org). All rights reserved. | `external/freetype` (submodule, tag VER-2-13-3) | The FreeType License (FTL, chosen of its FTL / GPLv2 dual licence; `external/freetype/docs/FTL.TXT`) |
 | [AMD FidelityFX Super Resolution 1](https://github.com/GPUOpen-Effects/FidelityFX-FSR) (Copyright (c) 2021 Advanced Micro Devices, Inc.; `ffx_a.h` also Copyright (c) 2014 Michal Drobot for the float approximations): the shader headers `ffx_a.h` and `ffx_fsr1.h`, unmodified, embedded at build time and compiled at run time for the eye upscale (core/vr/Upscale, plugin/Upscale, research/32) | `external/fsr1/` | MIT (`external/fsr1/LICENSE.txt`) |
 | [Khronos OpenXR SDK](https://github.com/KhronosGroup/OpenXR-SDK) | `external/OpenXR-SDK` (submodule) | Apache-2.0 |
-| [LExSDKv2](https://github.com/llamathings/LExSDKv2) | `external/LExSDKv2` (submodule) | None given (see its README) |
+| [LExSDKv2](https://github.com/llamathings/LExSDKv2) | `external/LExSDKv2` (submodule) | None given (see its README). **Distributing a build needs its author's permission** (it is compiled into the ASI; research/33) |
 | MassFPS (Aphar) | `src/script/le1/massfps-base/` | "Do whatever you want", no credit required (credited anyway) |
+
+## The release package and the setup (research/33)
+
+`MEVR-Setup.exe` (`tools/setup`), the install library (`src/install`) and the ASI loader (`src/loader`) are this
+project's own GPL-3.0 code. The loader is new code: it contains no ME3Tweaks LEBinkProxy code (LEBinkProxy has no
+licence and was only read for how it behaves). It forwards the game's Bink calls to RAD's DLL, which is never shipped:
+the setup renames the player's own copy to `bink2w64_original.dll`.
+
+The release ships nothing of anyone else's but the components in the table above (in the ASI, the loader, the setup and
+the fonts folder). Downloaded by the setup only when the player asks, never bundled:
+
+| What | Where it comes from | License / terms |
+|------|---------------------|-----------------|
+| [Mass Effect Modder](https://github.com/MassEffectModder/MassEffectModder) (`MassEffectModderNoGui`), run as a separate program to install texture packs | its GitHub releases, after the player confirms | GPL-3.0 |
+| Texture packs (ALOT for ME1, Improved Static Lighting, LEUITM...) | their own Nexus Mods pages, downloaded by the player | their authors' terms: no re-uploads |

@@ -94,6 +94,7 @@ private:
     std::string profMsg_;
     std::string modeNote_;
     std::string perfMsg_;
+    std::string contentMsg_;
     bool wasAligning_ = false;
 };
 

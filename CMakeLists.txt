@@ -89,6 +89,25 @@ if (MEVR_MAIN_MENU)
     target_compile_options(mevr-menu PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus /Zi)
 endif ()
 
+# MEVR-Setup.exe (tools/setup, research/33): the end user's installer, without ME3Tweaks Mod Manager. A Win32 window in
+# the in-game menu's glass style (the same RmlUi setup, renderer, decorators and stylesheet: mevr-menu, assets/menu),
+# over src/install. Also renders its pages to PNGs offline (--preview) and has a command line for scripted tests.
+if (MEVR_MAIN_MENU)
+    add_executable(MEVR-Setup WIN32
+        tools/setup/Main.cpp
+        tools/setup/SetupApp.cpp
+        tools/setup/SetupApp.hpp
+        tools/setup/XrProbe.cpp
+        tools/setup/XrProbe.hpp
+        src/core/PngFile.cpp
+    )
+    target_include_directories(MEVR-Setup PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(MEVR-Setup PRIVATE mevr-menu mevr-install OpenXR::openxr_loader windowscodecs ole32 d3d11 dxgi dwmapi shell32)
+    target_compile_definitions(MEVR-Setup PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(MEVR-Setup PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus /Zi)
+    target_link_options(MEVR-Setup PRIVATE /ENTRY:wWinMainCRTStartup /DEBUG)
+endif ()
+
 # Halcyon's LE1 VR renderer (GPL-3.0, src/halcyon/le1) with its vendored MinHook and Dear ImGui.
 # It runs inside the LE1 host: OpenXR session, Present path, stereo, first person, HUD, menu.
 option(MEVR_HALCYON "Use Halcyon's renderer for LE1" ON)
@@ -431,7 +450,7 @@ function(mevr_add_plugin game)
             # Our VR main menu (research/28): LE1 only for now, in the host (not hot-reloaded).
             set(with_main_menu ON)
             list(APPEND host_sources src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/MainMenuSettings.cpp
-                src/plugin/MainMenuSettings.hpp)
+                src/plugin/MainMenuSettings.hpp src/plugin/SetupRequest.cpp src/plugin/SetupRequest.hpp src/core/Json.cpp src/core/Json.hpp)
         endif ()
     endif ()
     if (MEVR_HOT_RELOAD)
@@ -606,6 +625,11 @@ if (MEVR_BUILD_TESTS)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:MEVR-Loader> ${loader_test_dir}/bink2w64.dll
         VERBATIM)
     add_test(NAME mevr-loader COMMAND mevr-loader-test WORKING_DIRECTORY ${loader_test_dir})
+
+    # A stand-in MassEffect1.exe with the real one's version number, for testing the setup on a fake game folder.
+    add_executable(mevr-fake-game tools/setup/FakeGame.cpp tools/setup/FakeGame.rc)
+    set_target_properties(mevr-fake-game PROPERTIES OUTPUT_NAME MassEffect1 RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/fake-game/$<CONFIG>)
+    target_compile_options(mevr-fake-game PRIVATE /W4 /WX)
 
     # The gun sights' look, offline (tools/sight-preview): the scope's picture with the host's own shader, the
     # reticles and the window ring, as PNGs from a ray-traced test scene.

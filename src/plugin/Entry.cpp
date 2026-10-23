@@ -1,4 +1,5 @@
-// ASI entry point, loaded by ME3Tweaks' LEBinkProxy through its SPI interface.
+// ASI entry point, loaded through the SPI interface by our own loader (src/loader, installed by MEVR-Setup) or by
+// ME3Tweaks' LEBinkProxy.
 // The host stays small and stable: version check, the engine tick hook, and the mod loader.
 
 #include "core/Hook.hpp"
@@ -13,6 +14,9 @@
 #include "plugin/Halcyon.hpp"
 #include "plugin/PerfProbe.hpp"
 #include "plugin/RenderLevers.hpp"
+#endif
+#if defined(MEVR_WITH_MAIN_MENU)
+#include "plugin/SetupRequest.hpp"
 #endif
 
 #include <LESDK/Headers.hpp>
@@ -61,6 +65,10 @@ void WINAPI ExitProcessHook(UINT exitCode) {
     // Nothing waits for other threads from here on, and the mod DLL stays mapped: the process is
     // going away, and a thread caught inside a hook may never run again.
     mevr::host::SetProcessExiting();
+#if defined(MEVR_WITH_MAIN_MENU)
+    // The menu's "Install after I quit" (research/33): MEVR Setup starts, waits for us to be gone.
+    mevr::host::setup_request::LaunchIfRequested();
+#endif
 #if defined(MEVR_WITH_HALCYON)
     mevr::host::halcyon::Shutdown();
 #endif

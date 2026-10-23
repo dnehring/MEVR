@@ -88,6 +88,7 @@ public:
             v.numbers["fp_up"] = -0.05f;
             v.numbers["lean_gain"] = 2.0f;
             v.numbers["panel_follow"] = 70;
+            v.texts["content_installed"] = "ALOT for ME1";  // Display > Optional content (research/33)
         }
     }
     void Write(std::string const& key, mevr::menu::Values const&, bool final) override {

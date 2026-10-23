@@ -1,0 +1,111 @@
+/*
+ * MEVR-Setup.exe's page (tools/setup, research/33): the in-game menu's glass look (main.rcss, linked first) on a
+ * desktop window. Only what differs is here.
+ */
+
+body {
+	width: 100%;
+	height: 100%;
+}
+.top { height: 84dp; padding: 0dp 32dp 0dp 36dp; }
+.brand { width: 230dp; }
+.chip.ok { color: #7CCBF2; }
+.chip.bad { color: #FFCF9E; }
+.chip span { max-width: 260dp; overflow: hidden; }
+.main { height: auto; flex: 1 1 0dp; }
+.rail { width: 270dp; padding: 18dp 0dp 18dp 18dp; }
+.navb { height: 66dp; }
+.navl { font-size: 20dp; }
+.navs { font-size: 14dp; }
+.content { padding: 26dp 40dp 20dp 40dp; }
+.stitle { font-size: 40dp; line-height: 40dp; }
+.hints { height: 46dp; padding: 0dp 36dp; font-size: 14dp; gap: 26dp; }
+.hints .grow { flex: 1 1 auto; }
+
+.i-download { decorator: icon(download); }
+.i-layers { decorator: icon(layers); }
+.i-wrench { decorator: icon(wrench); }
+.i-folder { decorator: icon(folder); }
+.i-warn { decorator: icon(warn); }
+.i-home { decorator: icon(home); }
+.i-link { decorator: icon(link); }
+.i-brand { decorator: icon(brand); }
+
+/* The welcome hero's state. */
+.hero .big.state { decorator: icon(brand); color: #7CCBF2; }
+.hero.warn { decorator: linear-gradient(120deg, rgba(240,138,126,20%), rgba(44,60,76,50%) 48%); border-color: rgba(255,170,160,30%); }
+.hero.warn .big.state { decorator: icon(warn); color: #FFB3A8; }
+
+/* Status tiles: a coloured line under the value. */
+.tile .tv.small { font-size: 24dp; line-height: 30dp; }
+.tile .ts { font-size: 15dp; color: #AEB4B9; margin-top: 2dp; line-height: 20dp; }
+.tile.good { border-color: rgba(124,203,242,40%); }
+.tile.bad { border-color: rgba(255,170,160,45%); }
+.tile.bad .tv { color: #FFC9BF; }
+
+/* A row's leading check. */
+.row .lead { width: 24dp; height: 24dp; flex: 0 0 auto; color: #7CCBF2; }
+.row .lead.off { color: #5B7186; }
+.row.warnrow { border-color: rgba(255,170,160,35%); background-color: rgba(60,26,26,45%); }
+.row.warnrow .rlab { color: #FFD9D3; }
+.row .actions { display: flex; gap: 8dp; flex: 0 0 auto; }
+
+/* Optional content cards. */
+.card {
+	padding: 18dp 22dp;
+	margin-bottom: 8dp;
+	background-color: rgba(20,30,40,50%);
+	border: 1dp rgba(255,255,255,9%);
+	box-shadow: rgba(255,255,255,8%) 0dp 1dp 0dp 0dp inset, rgba(0,0,0,25%) 0dp 10dp 30dp 0dp;
+}
+.card.installed { border-color: rgba(124,203,242,45%); }
+.card .ch { display: flex; align-items: center; gap: 12dp; }
+.card .cn { font-family: Rajdhani; font-weight: 700; font-size: 26dp; letter-spacing: 0.04em; line-height: 28dp; }
+.card .ca { font-size: 15dp; color: #AEB4B9; }
+.card .cd { font-size: 16dp; color: #D9DCDD; margin: 8dp 0dp 6dp 0dp; line-height: 22dp; }
+.card .cm { display: flex; gap: 22dp; font-size: 15dp; color: #AEB4B9; line-height: 20dp; }
+.card .cm .k { color: #7CCBF2; margin-right: 6dp; }
+.card .cs { font-size: 15dp; color: #7CCBF2; margin-top: 8dp; }
+.card .cs.warn { color: #FFCF9E; }
+.card .cb { display: flex; gap: 8dp; margin-top: 12dp; }
+.badge.cyan { color: #BFE8FA; border-color: rgba(124,203,242,50%); background-color: rgba(124,203,242,8%); }
+
+/* The log and the progress bar. */
+.log {
+	padding: 12dp 18dp;
+	font-size: 15dp;
+	line-height: 20dp;
+	color: #AEB4B9;
+	background-color: rgba(0,0,0,35%);
+	border: 1dp rgba(255,255,255,9%);
+	max-height: 220dp;
+	overflow-y: auto;
+}
+.log .err { color: #FFB3A8; }
+.progress { height: 6dp; margin: 10dp 0dp 6dp 0dp; background-color: rgba(255,255,255,8%); }
+.progress .fill { height: 6dp; decorator: linear-gradient(90deg, #7CCBF2, #FF8F3F); }
+.ptext { font-size: 15dp; color: #CBD6DD; }
+
+/* The confirmation over the page. */
+#dim {
+	position: absolute;
+	left: 0dp;
+	top: 0dp;
+	width: 100%;
+	height: 100%;
+	background-color: rgba(2,4,8,72%);
+	z-index: 50;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.dialog {
+	width: 640dp;
+	padding: 30dp 34dp;
+	decorator: chamfer(20dp #1B2B3A #0B141D rgba(150,215,245,70%) rgba(124,203,242,25%) 1dp);
+	box-shadow: rgba(0,0,0,60%) 0dp 24dp 60dp 0dp;
+}
+.dialog.danger { decorator: chamfer(20dp #2E1A1E #140B0E rgba(255,170,160,70%) rgba(240,138,126,25%) 1dp); }
+.dialog .dt { font-family: Rajdhani; font-weight: 700; font-size: 30dp; letter-spacing: 0.06em; text-transform: uppercase; }
+.dialog .dp { font-size: 17dp; color: #D9DCDD; margin: 12dp 0dp 22dp 0dp; line-height: 24dp; }
+.dialog .db { display: flex; gap: 10dp; justify-content: flex-end; }

@@ -224,6 +224,12 @@ void TestDetect() {
     ICHECK(d::ClassifyRuntime("C:\\x\\runtime.json", "SteamVR") == "SteamVR");
     ICHECK(d::ClassifyRuntime("C:\\x\\something.json", "") == "Other");
     ICHECK(d::ClassifyRuntime("", "") == "");
+    // The headset's size from Halcyon's log: the last session's line.
+    std::string const log = "2026-10-22 | [XR] recommended eye image 2064x2096; game render source ...\r\n"
+                            "2026-10-23 00:16:39.327 | [XR] recommended eye image 2824x2880; game render source 3072x3188; using eye\r\n";
+    ICHECK(d::EyeSizeFromHalcyonLog(log) == std::optional<d::EyeSize>(d::EyeSize{2824, 2880}));
+    ICHECK(!d::EyeSizeFromHalcyonLog("nothing here"));
+    ICHECK(!d::EyeSizeFromHalcyonLog("recommended eye image 0x0"));
 }
 
 void TestLaunch() {

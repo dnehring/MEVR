@@ -1,0 +1,243 @@
+<rml>
+<head>
+	<title>MEVR Setup</title>
+	<link type="text/rcss" href="main.rcss"/>
+	<link type="text/rcss" href="setup.rcss"/>
+</head>
+<!--
+	MEVR-Setup.exe (tools/setup, research/33): the installer's window in the in-game menu's glass style. Bound to the data
+	model "setup" (tools/setup/SetupApp.cpp): values by name, act('name'[, 'arg']) for the buttons.
+-->
+<body data-model="setup">
+
+<div class="top">
+	<div class="brand">
+		<div class="logo"/>
+		<div><div class="brandName">MEVR</div><div class="brandSub">Setup</div></div>
+	</div>
+	<div class="chips">
+		<div class="chip" data-class-ok="game_ok" data-class-bad="!game_ok"><div class="ico i-folder"/><span>{{chip_game}}</span></div>
+		<div class="chip" data-class-ok="xr_ok" data-class-bad="!xr_ok"><div class="ico i-headset"/><span>{{chip_xr}}</span></div>
+		<div class="chip" data-class-ok="installed"><div class="ico i-check" data-if="installed"/><div class="ico i-info" data-if="!installed"/><span>{{chip_installed}}</span></div>
+	</div>
+	<button class="btn primary" id="launch-top" data-class-disabled="!game_ok || busy || waiting" data-event-click="act('launch')"><div class="sweep"/><div class="bi i-play"/><span>Launch</span></button>
+</div>
+
+<div class="main">
+	<div class="rail">
+		<button class="navb" data-class-on="page == 'welcome'" data-event-click="page = 'welcome'"><div class="nico i-home"/><div><div class="navl">Welcome</div><div class="navs">Status</div></div></button>
+		<button class="navb" data-class-on="page == 'install'" data-event-click="page = 'install'"><div class="nico i-download"/><div><div class="navl">Install</div><div class="navs">The mod and its loader</div></div></button>
+		<button class="navb" data-class-on="page == 'content'" data-event-click="page = 'content'"><div class="nico i-layers"/><div><div class="navl">Optional content</div><div class="navs">Texture packs</div></div></button>
+		<button class="navb" data-class-on="page == 'settings'" data-event-click="page = 'settings'"><div class="nico i-sliders"/><div><div class="navl">Settings</div><div class="navs">VR game settings</div></div></button>
+		<button class="navb" data-class-on="page == 'repair'" data-event-click="page = 'repair'"><div class="nico i-wrench"/><div><div class="navl">Repair</div><div class="navs">Check the files</div></div></button>
+		<button class="navb" data-class-on="page == 'uninstall'" data-event-click="page = 'uninstall'"><div class="nico i-trash"/><div><div class="navl">Uninstall</div><div class="navs">Put the game back</div></div></button>
+		<button class="navb" data-class-on="page == 'launch'" data-event-click="page = 'launch'"><div class="nico i-play"/><div><div class="navl">Launch</div><div class="navs">Straight into ME1</div></div></button>
+	</div>
+
+	<div class="content" id="content">
+
+	<!-- Shared: a job's progress and the log, on every page while something runs or after it ran. -->
+	<div data-if="busy" class="row"><div class="lead i-timer"/><div class="rl"><div class="rlab">{{progress_text}}</div>
+		<div class="progress"><div class="fill" data-style-width="progress + '%'"/></div></div></div>
+	<div data-if="waiting" class="row warnrow"><div class="lead i-timer"/><div class="rl"><div class="rlab">Waiting for Mass Effect to close</div><div class="rdesc">{{wait_text}}</div></div></div>
+
+	<!-- ===================================================================================== Welcome -->
+	<div data-if="page == 'welcome'">
+		<div class="stitle">Mass Effect VR</div>
+		<div class="sdesc">VR for Mass Effect 1, Legendary Edition: install, tune and launch it from here.</div>
+		<div class="hero" data-class-warn="!ready">
+			<div class="big state"/>
+			<div class="herot">
+				<div class="heroh">{{hero_title}}</div>
+				<div class="herop">{{hero_text}}</div>
+			</div>
+			<button class="btn primary" data-if="!installed" data-class-disabled="!can_install || busy" data-event-click="page = 'install'"><div class="sweep"/><div class="bi i-download"/><span>Install</span></button>
+			<button class="btn primary" data-if="installed" data-class-disabled="busy || waiting" data-event-click="act('launch')"><div class="sweep"/><div class="bi i-play"/><span>Launch</span></button>
+		</div>
+		<div class="tiles">
+			<div class="tile" data-class-good="game_ok" data-class-bad="!game_ok"><div class="tl">Game</div><div class="tv small">{{game_title}}</div><div class="ts">{{game_text}}</div></div>
+			<div class="tile" data-class-good="version_ok" data-class-bad="!version_ok"><div class="tl">Game version</div><div class="tv small">{{version_title}}</div><div class="ts">{{version_text}}</div></div>
+		</div>
+		<div class="tiles last">
+			<div class="tile" data-class-good="xr_ok" data-class-bad="!xr_ok"><div class="tl">VR runtime</div><div class="tv small">{{xr_title}}</div><div class="ts">{{xr_text}}</div></div>
+			<div class="tile" data-class-good="loader_ok" data-class-bad="!loader_ok"><div class="tl">ASI loader</div><div class="tv small">{{loader_title}}</div><div class="ts">{{loader_text}}</div></div>
+		</div>
+		<div class="group">
+			<div class="gtitle"><span>Game folder</span><div class="gline"/></div>
+			<div class="row"><div class="rl"><div class="rlab">{{root_text}}</div><div class="rdesc">Found through {{source_text}}. Pick another folder if you have more than one copy.</div></div>
+				<button class="btn" data-class-disabled="busy" data-event-click="act('browse')"><div class="sweep"/><div class="bi i-folder"/><span>Change</span><div class="tick"/></button></div>
+		</div>
+		<div class="group">
+			<div class="gtitle"><span>Updates</span><div class="gline"/></div>
+			<div class="row"><div class="rl"><div class="rlab">Version {{version}}</div><div class="rdesc">{{update_text}}</div></div>
+				<button class="btn" data-if="update_url == ''" data-class-disabled="busy || !update_enabled" data-event-click="act('check_update')"><div class="sweep"/><span>Check</span><div class="tick"/></button>
+				<button class="btn" data-if="update_url != ''" data-event-click="act('open_update')"><div class="sweep"/><div class="bi i-link"/><span>Release page</span><div class="tick"/></button></div>
+		</div>
+	</div>
+
+	<!-- ===================================================================================== Install -->
+	<div data-if="page == 'install'">
+		<div class="stitle">Install</div>
+		<div class="sdesc">Everything goes into the game's own folder and is recorded, so Uninstall puts the game back exactly.</div>
+		<div data-if="!version_ok &amp;&amp; game_ok" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">This game version isn't supported</div><div class="rdesc">{{version_text}}</div></div></div>
+		<div data-if="admin_needed" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">The game's folder is protected</div><div class="rdesc">Windows doesn't let this setup write there. Restart it as administrator.</div></div>
+			<button class="btn" data-event-click="act('admin')"><div class="sweep"/><span>Restart as admin</span><div class="tick"/></button></div>
+		<div data-if="!has_payload" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">This copy can't install</div><div class="rdesc">It's the one kept in the game's folder for uninstalling and optional content. Run MEVR-Setup.exe from the download to install or repair.</div></div></div>
+		<div class="group">
+			<div class="gtitle"><span>What goes in</span><div class="gline"/></div>
+			<div class="row"><div class="lead i-check"/><div class="rl"><div class="rlab">The VR mod</div><div class="rdesc">LE1MEVR.asi, its menu and fonts, in Binaries\Win64\ASI</div></div></div>
+			<div class="row"><div class="lead i-check"/><div class="rl"><div class="rlab">ASI loader</div><div class="rdesc">{{loader_plan}}</div></div></div>
+			<div class="row"><div class="lead i-check"/><div class="rl"><div class="rlab">Renderer settings</div><div class="rdesc">Halcyon's MELEVR.ini, only if there's none yet; an existing one keeps your profiles (only the menu key and head aim are set)</div></div></div>
+			<div class="row"><div class="rl"><div class="rlab">VR game settings</div><div class="rdesc">Borderless window at the VR resolution, VSync, motion blur and film grain off, HDR off. Your values are kept for Restore.</div></div>
+				<button class="tog" data-class-on="opt_settings" data-event-click="opt_settings = !opt_settings"><div class="knob"/></button></div>
+			<div class="row" data-class-disabled="!opt_settings"><div class="rl"><div class="rlab">Render resolution</div><div class="rdesc">{{quality_text}}</div></div>
+				<div class="seg"><button class="segb" data-if="headset_known" data-class-on="quality == 'headset'" data-event-click="quality = 'headset'">Headset</button><button class="segb" data-class-on="quality == 'performance'" data-event-click="quality = 'performance'">Performance</button><button class="segb" data-class-on="quality == 'balanced'" data-event-click="quality = 'balanced'">Balanced</button><button class="segb" data-class-on="quality == 'keep'" data-event-click="quality = 'keep'">Keep</button></div></div>
+		</div>
+		<div class="group">
+			<div class="row"><div class="rl"><div class="rlab" data-if="!installed">Ready</div><div class="rlab" data-if="installed">Installed: install again to update</div><div class="rdesc">Close the game first. Takes a few seconds.</div></div>
+				<button class="btn primary" data-class-disabled="!can_install || busy || waiting" data-event-click="act('install')"><div class="sweep"/><div class="bi i-download"/><span data-if="!installed">Install</span><span data-if="installed">Update</span></button></div>
+		</div>
+	</div>
+
+	<!-- ===================================================================================== Optional content -->
+	<div data-if="page == 'content'">
+		<div class="stitle">Optional content</div>
+		<div class="sdesc">Texture packs made by others. Never bundled: each comes from its own page, under its author's terms.</div>
+		<div class="row" data-if="request_text != ''"><div class="lead i-info"/><div class="rl"><div class="rlab">Asked for from the game</div><div class="rdesc">{{request_text}}</div></div></div>
+		<div class="info"><div class="ico i-info"/><div>Texture packs change the game's files for good: they go on after every other content mod, and only a full restore of the game (or a reinstall) takes them out. Uninstalling the VR mod leaves them in place. Your VR game settings are applied again afterwards.</div></div>
+		<div class="row"><div class="lead i-wrench" data-class-off="!mem_ready"/><div class="rl"><div class="rlab">Mass Effect Modder</div><div class="rdesc">{{mem_text}}</div></div>
+			<div class="actions">
+				<button class="btn small" data-if="!mem_ready" data-class-disabled="busy" data-event-click="act('mem_download')"><div class="sweep"/><div class="bi i-download"/><span>Download</span></button>
+				<button class="btn small" data-event-click="act('mem_page')"><div class="sweep"/><div class="bi i-link"/><span>Page</span></button>
+			</div></div>
+		<div data-for="p : packs">
+			<div class="card" data-class-installed="p.installed">
+				<div class="ch"><div class="cn">{{p.name}}</div><span class="badge" data-if="p.large">Large</span><span class="badge cyan" data-if="p.installed">Installed</span></div>
+				<div class="ca">by {{p.author}}</div>
+				<div class="cd">{{p.description}}</div>
+				<div class="cm"><span><span class="k">Size</span>{{p.size}}</span><span data-if="p.requirements != ''"><span class="k">Needs</span>{{p.requirements}}</span></div>
+				<div class="cm"><span><span class="k">Terms</span>{{p.licence}}</span></div>
+				<div class="cs" data-class-warn="!p.installed &amp;&amp; p.file == ''">{{p.state}}</div>
+				<div class="cb">
+					<button class="btn small" data-event-click="act('pack_page', p.id)"><div class="sweep"/><div class="bi i-link"/><span>Open its page</span></button>
+					<button class="btn small" data-class-disabled="busy" data-event-click="act('pack_file', p.id)"><div class="sweep"/><div class="bi i-folder"/><span>Choose the download</span></button>
+					<button class="btn small" data-class-disabled="busy || waiting || p.file == '' || !mem_ready || !game_ok" data-event-click="act('pack_install', p.id)"><div class="sweep"/><div class="bi i-download"/><span>Install</span></button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- ===================================================================================== Settings -->
+	<div data-if="page == 'settings'">
+		<div class="stitle">VR game settings</div>
+		<div class="sdesc">The game's own graphics settings (GamerSettings.ini) that VR needs. Restore puts your values back.</div>
+		<div class="row warnrow" data-if="!has_gamer_settings &amp;&amp; game_ok"><div class="lead i-warn"/><div class="rl"><div class="rlab">Start the game once first</div><div class="rdesc">Its settings file is made on the first start. Start Mass Effect 1, quit, and come back.</div></div></div>
+		<div class="tiles">
+			<div class="tile"><div class="tl">Resolution</div><div class="tv small">{{cur_res}}</div></div>
+			<div class="tile"><div class="tl">Window</div><div class="tv small">{{cur_window}}</div></div>
+			<div class="tile"><div class="tl">HDR</div><div class="tv small">{{cur_hdr}}</div></div>
+		</div>
+		<div class="tiles last">
+			<div class="tile"><div class="tl">VSync</div><div class="tv small">{{cur_vsync}}</div></div>
+			<div class="tile"><div class="tl">Motion blur</div><div class="tv small">{{cur_blur}}</div></div>
+			<div class="tile"><div class="tl">Film grain</div><div class="tv small">{{cur_grain}}</div></div>
+		</div>
+		<div class="group">
+			<div class="gtitle"><span>Resolution</span><div class="gline"/></div>
+			<div class="row"><div class="rl"><div class="rlab">Render resolution</div><div class="rdesc">{{quality_text}}</div></div>
+				<div class="seg"><button class="segb" data-if="headset_known" data-class-on="quality == 'headset'" data-event-click="quality = 'headset'">Headset</button><button class="segb" data-class-on="quality == 'performance'" data-event-click="quality = 'performance'">Performance</button><button class="segb" data-class-on="quality == 'balanced'" data-event-click="quality = 'balanced'">Balanced</button><button class="segb" data-class-on="quality == 'sharp'" data-event-click="quality = 'sharp'">Sharp</button><button class="segb" data-class-on="quality == 'keep'" data-event-click="quality = 'keep'">Keep</button></div></div>
+			<div class="row"><div class="rl"><div class="rlab">Your headset's own size</div><div class="rdesc">{{headset_text}}</div></div>
+				<button class="btn" data-class-disabled="busy" data-event-click="act('detect_headset')"><div class="sweep"/><div class="bi i-headset"/><span>Detect</span><div class="tick"/></button></div>
+		</div>
+		<div class="group">
+			<div class="gtitle"><span>Picture</span><div class="gline"/></div>
+			<div class="row"><div class="rl"><div class="rlab">VSync off</div><div class="rdesc">The headset sets the pace, not the monitor</div></div><button class="tog" data-class-on="opt_vsync" data-event-click="opt_vsync = !opt_vsync"><div class="knob"/></button></div>
+			<div class="row"><div class="rl"><div class="rlab">Motion blur off</div><div class="rdesc">Every head turn would smear</div></div><button class="tog" data-class-on="opt_blur" data-event-click="opt_blur = !opt_blur"><div class="knob"/></button></div>
+			<div class="row"><div class="rl"><div class="rlab">Film grain off</div><div class="rdesc">Screen-locked noise is uncomfortable in a headset</div></div><button class="tog" data-class-on="opt_grain" data-event-click="opt_grain = !opt_grain"><div class="knob"/></button></div>
+			<div class="row"><div class="rl"><div class="rlab">HDR off</div><div class="rdesc">The headset's picture is SDR; HDR highlights would clip</div></div><button class="tog" data-class-on="opt_hdr" data-event-click="opt_hdr = !opt_hdr"><div class="knob"/></button></div>
+			<div class="hint">Always: a borderless window (stereo needs the full size), dynamic shadows off and no 60 fps cap.</div>
+		</div>
+		<div class="group">
+			<div class="row"><div class="rl"><div class="rlab" data-if="settings_applied">Applied</div><div class="rlab" data-if="!settings_applied">Not applied</div><div class="rdesc">Close the game first: it rewrites its settings when it quits.</div></div>
+				<div class="actions">
+					<button class="btn" data-class-disabled="busy || waiting || !settings_applied" data-event-click="act('restore')"><div class="sweep"/><span>Restore mine</span><div class="tick"/></button>
+					<button class="btn primary" data-class-disabled="busy || waiting || !has_gamer_settings" data-event-click="act('apply')"><div class="sweep"/><span>Apply</span></button>
+				</div></div>
+		</div>
+	</div>
+
+	<!-- ===================================================================================== Repair -->
+	<div data-if="page == 'repair'">
+		<div class="stitle">Repair</div>
+		<div class="sdesc">Checks every file the install put in and puts back what's missing or changed. Steam's "verify files" can remove the loader: this brings it back.</div>
+		<div class="group">
+			<div class="row"><div class="rl"><div class="rlab">{{repair_title}}</div><div class="rdesc">{{repair_text}}</div></div>
+				<div class="actions">
+					<button class="btn" data-class-disabled="busy || !installed" data-event-click="act('verify')"><div class="sweep"/><span>Check</span><div class="tick"/></button>
+					<button class="btn primary" data-class-disabled="busy || waiting || !installed || !has_payload" data-event-click="act('repair')"><div class="sweep"/><div class="bi i-wrench"/><span>Repair</span></button>
+				</div></div>
+		</div>
+	</div>
+
+	<!-- ===================================================================================== Uninstall -->
+	<div data-if="page == 'uninstall'">
+		<div class="stitle">Uninstall</div>
+		<div class="sdesc">Undoes the install from its record: removes what it added, puts back what it replaced, and returns your game settings.</div>
+		<div class="group">
+			<div class="row"><div class="rl"><div class="rlab">What will change</div><div class="rdesc">{{uninstall_text}}</div></div></div>
+			<div class="row"><div class="rl"><div class="rlab">Keep my VR settings</div><div class="rdesc">Your renderer profiles and calibration stay in the ASI folder for a later reinstall</div></div>
+				<button class="tog" data-class-on="keep_settings" data-event-click="keep_settings = !keep_settings"><div class="knob"/></button></div>
+			<div class="row" data-if="textures_marked"><div class="lead i-info"/><div class="rl"><div class="rlab">Texture packs stay</div><div class="rdesc">They changed the game's files for good: a full restore (or reinstall) of the game removes them.</div></div></div>
+			<div class="row"><div class="rl"><div class="rlab" data-if="installed">Ready to uninstall</div><div class="rlab" data-if="!installed">Not installed</div><div class="rdesc">Close the game first.</div></div>
+				<button class="btn danger" data-class-disabled="busy || waiting || !installed" data-event-click="act('uninstall')"><div class="sweep"/><div class="bi i-trash"/><span>Uninstall</span><div class="tick"/></button></div>
+		</div>
+	</div>
+
+	<!-- ===================================================================================== Launch -->
+	<div data-if="page == 'launch'">
+		<div class="stitle">Launch</div>
+		<div class="sdesc">Starts Mass Effect 1 directly, past the Legendary Edition launcher's game picker.</div>
+		<div class="hero">
+			<div class="big i-play"/>
+			<div class="herot">
+				<div class="heroh">Into Mass Effect</div>
+				<div class="herop">Start your VR runtime ({{xr_title}}) and put the headset on. The game uses your launcher settings (language, subtitles).</div>
+			</div>
+			<button class="btn primary" data-class-disabled="!game_ok || busy || waiting" data-event-click="act('launch')"><div class="sweep"/><div class="bi i-play"/><span>Launch</span></button>
+		</div>
+		<div class="group">
+			<div class="row"><div class="rl"><div class="rlab">Through Steam instead</div><div class="rdesc">Opens the Legendary Edition launcher; pick Mass Effect there</div></div>
+				<button class="btn" data-class-disabled="busy" data-event-click="act('launch_steam')"><div class="sweep"/><span>Steam</span><div class="tick"/></button></div>
+			<div class="hint">{{launch_text}}</div>
+		</div>
+	</div>
+
+	<!-- The job's log. -->
+	<div data-if="log_lines.size > 0 &amp;&amp; (page == 'install' || page == 'repair' || page == 'uninstall' || page == 'settings' || page == 'content')" class="group">
+		<div class="gtitle"><span>Log</span><div class="gline"/></div>
+		<div class="log"><div data-for="line : log_lines" data-class-err="line.error">{{line.text}}</div></div>
+	</div>
+
+	</div>
+</div>
+
+<div class="hints">
+	<span>v{{version}}</span>
+	<span>GPL-3.0</span>
+	<span class="grow">{{footer_text}}</span>
+	<span><span class="key">Esc</span>Close</span>
+</div>
+
+<div id="dim" data-if="confirm_open">
+	<div class="dialog" data-class-danger="confirm_danger">
+		<div class="dt">{{confirm_title}}</div>
+		<div class="dp">{{confirm_text}}</div>
+		<div class="db">
+			<button class="btn" data-event-click="act('cancel')"><div class="sweep"/><span>Cancel</span></button>
+			<button class="btn primary" data-if="!confirm_danger" data-event-click="act('confirm')"><div class="sweep"/><span>{{confirm_button}}</span></button>
+			<button class="btn danger" data-if="confirm_danger" data-event-click="act('confirm')"><div class="sweep"/><span>{{confirm_button}}</span></button>
+		</div>
+	</div>
+</div>
+</body>
+</rml>

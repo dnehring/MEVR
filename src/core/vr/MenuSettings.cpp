@@ -183,6 +183,8 @@ std::vector<Field> const& Schema() {
         {"recording", Type::Flag, 0},
         {"diag_msg", Type::Text, 0, ""},
         {"perf_msg", Type::Text, 0, ""},
+        {"content_installed", Type::Text, 0, ""},  // Display > Optional content (research/33)
+        {"content_msg", Type::Text, 0, ""},
     };
     return fields;
 }

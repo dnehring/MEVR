@@ -71,6 +71,16 @@ struct XrRuntime {
 std::string ClassifyRuntime(std::string_view manifestPath, std::string_view runtimeName);
 XrRuntime ActiveRuntime();
 
+// The headset's own eye size as the last VR session saw it: Halcyon's log (%LOCALAPPDATA%\MELEVR\MELEVR_Log.txt)
+// writes "[XR] recommended eye image 2824x2880; ..." when a session starts. The last such line, or nullopt.
+struct EyeSize {
+    int width = 0;
+    int height = 0;
+    bool operator==(EyeSize const&) const = default;
+};
+std::optional<EyeSize> EyeSizeFromHalcyonLog(std::string_view log);
+std::filesystem::path HalcyonLogPath();
+
 // ---- The machine --------------------------------------------------------------------------------------------------
 // A process with this exe name is running (e.g. L"MassEffect1.exe").
 bool ProcessRunning(wchar_t const* exeName);

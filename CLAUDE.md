@@ -280,6 +280,19 @@ switching frameworks.
   `gamepad::kFlagSquadMenu`, v11). `game/SquadWeapons` (mod) drives both; `core/vr/SquadMenu` is the
   shared, unit-tested part (the native ring's tables in `squad_menu::wheel`). Settings: `[Squad]` in
   `ASI\LE1MEVR.ini`.
+- Players' installer ([research/33](research/33-installer.md)): `MEVR-Setup.exe` (`tools/setup`, the in-game menu's
+  RmlUi glass style; pages Welcome, Install, Optional content, Settings, Repair, Uninstall, Launch) over `src/install`
+  (unit-tested): finds the game (Steam, EA app, a picked folder), checks the exe version and the OpenXR runtime,
+  installs the monolithic ASI, fonts, menu, Halcyon's release `MELEVR.ini` only if missing (then deploy-asi's per-slot
+  fixes), the VR game settings, and records it all in `ASI\MEVR-install.json` with backups and key-level ini edits, so
+  Uninstall restores the game exactly. The ASI loader is our own `bink2w64.dll` (`src/loader`, `MEVR-Loader`: 79
+  forwarded Bink exports, the SPI interface, the DRM wait by sampling `.text`; ctest `mevr-loader`), unless
+  LEBinkProxy is there. Launch starts `MassEffect1.exe` with the launcher's arguments. Texture packs: the pack's page
+  plus Mass Effect Modder's CLI, never bundled or auto-downloaded (Nexus terms). In game, Display > Optional content
+  writes `%LOCALAPPDATA%\MEVR\setup.request`; the host's ExitProcess hook starts `ASI\MEVR-Setup.exe --request`.
+  Test only on a fake game: `tools/setup/test-fake-game.ps1` (`scratch\fakegame`); pages offline:
+  `MEVR-Setup.exe --preview <folder>`. Release: `tools/package-release.ps1 [-Zip]` into `dist\` (local only).
+  **LExSDKv2 has no licence: a public release needs its author's permission.**
 - Trilogy check: `build-trilogy/` (configured with `-DMEVR_BUILD_LE2=ON -DMEVR_BUILD_LE3=ON`) must
   keep building all three games. Per-game field spellings go in `src/engine/GameAdapter.hpp`;
   per-game addresses sit next to their use (e.g. `engine/SceneView.cpp`).

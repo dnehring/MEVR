@@ -346,6 +346,32 @@ XrRuntime ActiveRuntime() {
     return r;
 }
 
+std::optional<EyeSize> EyeSizeFromHalcyonLog(std::string_view log) {
+    constexpr std::string_view kKey = "recommended eye image ";
+    std::size_t const at = log.rfind(kKey);
+    if (at == std::string_view::npos) {
+        return std::nullopt;
+    }
+    std::string_view rest = log.substr(at + kKey.size());
+    EyeSize size;
+    auto const [afterWidth, e1] = std::from_chars(rest.data(), rest.data() + rest.size(), size.width);
+    if (e1 != std::errc{} || afterWidth >= rest.data() + rest.size() || *afterWidth != 'x') {
+        return std::nullopt;
+    }
+    auto const [afterHeight, e2] = std::from_chars(afterWidth + 1, rest.data() + rest.size(), size.height);
+    (void)afterHeight;
+    if (e2 != std::errc{} || size.width < 256 || size.height < 256 || size.width > 16384 || size.height > 16384) {
+        return std::nullopt;
+    }
+    return size;
+}
+
+fs::path HalcyonLogPath() {
+    wchar_t buffer[MAX_PATH]{};
+    GetEnvironmentVariableW(L"LOCALAPPDATA", buffer, MAX_PATH);
+    return fs::path(buffer) / L"MELEVR" / L"MELEVR_Log.txt";
+}
+
 bool ProcessRunning(wchar_t const* exeName) {
     HANDLE const snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snapshot == INVALID_HANDLE_VALUE) {

@@ -10,6 +10,7 @@ following third-party work.
 | [MassFPS (LE1)](https://www.nexusmods.com/masseffectlegendaryedition/mods/1731) by Aphar | `src/script/le1/massfps-base` | Author: "You may do whatever you want with this mod, no credit or permission needed" | Script-side first-person base. Credited with thanks |
 | [REFramework](https://github.com/praydog/REFramework) (praydog) | (not yet copied) | MIT | Design reference so far. If code is copied, its MIT notice goes here |
 
-Runtime dependencies that are not distributed with MEVR: ME3Tweaks LEBinkProxy (the ASI
-loader, installed by ME3Tweaks Mod Manager), the user's OpenXR runtime, and Windows'
-`d3dcompiler_47.dll`.
+Runtime dependencies that are not distributed with MEVR: the user's OpenXR runtime and Windows'
+`d3dcompiler_47.dll`. The ASI loader is our own `bink2w64.dll` (`src/loader`, installed by
+MEVR-Setup), or ME3Tweaks' LEBinkProxy if Mod Manager installed it (used, never shipped).
+Mass Effect Modder and texture packs are downloaded only at the player's request (NOTICE.md).
