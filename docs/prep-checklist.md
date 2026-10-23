@@ -1,16 +1,14 @@
 # Prep checklist
 
-## Machine audit (2026-10-07)
+## What a development machine needs
 
-| Item | Status |
-|------|--------|
-| GPU | RTX 4090 |
-| Headset runtime | Oculus OpenXR runtime is active (Quest via Link); Virtual Desktop and SteamVR also installed |
-| C++ toolchain | VS 2022 **Build Tools** 17.14 with MSVC x64, CMake, Git, gh |
-| .NET | 8.0 desktop runtime present (Legendary Explorer needs it) |
-| ME LE install | `C:\Program Files (x86)\Steam\steamapps\common\Mass Effect Legendary Edition` (downloading) |
-| Free space | C: 529 GB, H: 184 GB |
-| Missing | Ghidra (+ JDK 21), RenderDoc, x64dbg, Legendary Explorer, ME3Tweaks Mod Manager |
+| Item | Notes |
+|------|-------|
+| GPU | A VR-capable one (developed on an RTX 4090) |
+| Headset runtime | An OpenXR runtime: SteamVR, Meta (Oculus) or Virtual Desktop |
+| C++ toolchain | VS 2022 Build Tools (MSVC x64), CMake, Git |
+| .NET | 8.0 desktop runtime (Legendary Explorer needs it) |
+| ME LE install | Steam app 1328670 (or the EA app) |
 
 ## Install while the download runs
 
@@ -27,7 +25,7 @@
 
 Writing freshly built DLLs and reading logs under `Program Files (x86)` triggers UAC on every
 iteration. After the download, Steam can move the game: Properties → Installed Files → Move
-install folder → `H:\SteamLibrary` (ME LE is about 120 GB; H: has 184 GB free).
+install folder → a library on another drive (ME LE is about 120 GB).
 
 ## If you use SteamVR (Steam Link, Virtual Desktop's SteamVR mode, or a SteamVR headset)
 
