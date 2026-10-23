@@ -2840,13 +2840,13 @@ void TestSquadMachine() {
     in.members[1] = {0x05, 0};  // pistol and assault rifle only, holds the pistol
     auto const step = [&]() { return m.Update(in); };
 
-    // Point at the right squadmate and squeeze: open at once with that card.
+    // Point at the right squadmate and pull the left trigger: open at once with that card.
     in.pointed = 1;
-    in.gripDown = true;
-    in.newAwaySqueeze = true;
+    in.triggerDown = true;
+    in.newPull = true;
     Step s = step();
     CHECK(s.opened && s.openedPointing && m.IsOpen() && m.Selected() == 1 && m.Highlighted() == -1);
-    in.newAwaySqueeze = false;
+    in.newPull = false;
     in.pointed = -1;
     // Flick up: the assault rifle (carried) is highlighted; centring keeps it.
     in.rightY = 0.9f;
@@ -2864,28 +2864,28 @@ void TestSquadMachine() {
     in.rightX = 0.0f;
     step();
     // Let go: confirmed, that card, that weapon.
-    in.gripDown = false;
+    in.triggerDown = false;
     s = step();
     CHECK(s.closed == Close::Confirmed && s.member == 1 && s.weapon == 2 && !m.IsOpen());
 
     // Let go with nothing chosen: cancelled.
-    in.gripDown = true;
-    in.newAwaySqueeze = true;
+    in.triggerDown = true;
+    in.newPull = true;
     in.pointed = 0;
     s = step();
     CHECK(s.opened && m.Selected() == 0);
-    in.newAwaySqueeze = false;
-    in.gripDown = false;
+    in.newPull = false;
+    in.triggerDown = false;
     s = step();
     CHECK(s.closed == Close::Released && s.weapon == -1);
 
     // B cancels; A confirms only with something chosen; an A held when it opened doesn't count.
-    in.gripDown = true;
-    in.newAwaySqueeze = true;
+    in.triggerDown = true;
+    in.newPull = true;
     in.a = true;
     s = step();
     CHECK(s.opened);
-    in.newAwaySqueeze = false;
+    in.newPull = false;
     s = step();
     CHECK(s.closed == Close::None);
     in.a = false;
@@ -2902,25 +2902,25 @@ void TestSquadMachine() {
     s = step();
     CHECK(s.closed == Close::Confirmed && s.member == 0 && s.weapon == 1);
     in.a = false;
-    in.gripDown = false;
+    in.triggerDown = false;
     step();
-    in.gripDown = true;
-    in.newAwaySqueeze = true;
+    in.triggerDown = true;
+    in.newPull = true;
     step();
-    in.newAwaySqueeze = false;
+    in.newPull = false;
     in.b = true;
     s = step();
     CHECK(s.closed == Close::CancelButton);
     in.b = false;
-    in.gripDown = false;
+    in.triggerDown = false;
     step();
 
     // The left stick picks the card; a weapon the new one lacks is no longer chosen.
-    in.gripDown = true;
-    in.newAwaySqueeze = true;
+    in.triggerDown = true;
+    in.newPull = true;
     in.pointed = 0;
     step();
-    in.newAwaySqueeze = false;
+    in.newPull = false;
     in.rightY = -0.9f;  // the pistol: both carry it
     step();
     in.rightY = 0.0f;
@@ -2944,19 +2944,19 @@ void TestSquadMachine() {
     s = step();
     CHECK(s.cardChanged && s.tileChanged && m.Highlighted() == -1);
     in.leftX = 0.0f;
-    in.gripDown = false;
+    in.triggerDown = false;
     s = step();
     CHECK(s.closed == Close::Released);
 
     // Sticks already pushed when it opens (walking, turning) choose nothing until they move on.
     in.leftX = -0.9f;
     in.rightY = 0.9f;
-    in.gripDown = true;
-    in.newAwaySqueeze = true;
+    in.triggerDown = true;
+    in.newPull = true;
     in.pointed = 1;
     s = step();
     CHECK(s.opened && m.Selected() == 1 && m.Highlighted() == -1);
-    in.newAwaySqueeze = false;
+    in.newPull = false;
     s = step();
     CHECK(!s.cardChanged && !s.tileChanged && m.Selected() == 1 && m.Highlighted() == -1);
     in.leftX = 0.0f;
@@ -2971,88 +2971,63 @@ void TestSquadMachine() {
     s = step();
     CHECK(s.closed == Close::Unusable && !m.IsOpen());
     in.usable = true;
-    in.gripDown = false;
+    in.triggerDown = false;
     step();
 
-    // Pointing at nobody: it arms, and opens after the hold with the preferred card.
+    // Pointing at nobody: it opens at once (the trigger is deliberate) with the preferred card.
     in.pointed = -1;
     in.preferred = 1;
-    in.openHoldSeconds = 0.3f;
-    in.gripDown = true;
-    in.newAwaySqueeze = true;
+    in.triggerDown = true;
+    in.newPull = true;
     s = step();
-    CHECK(s.armed && !s.opened && m.CurrentPhase() == Phase::Arming);
-    in.newAwaySqueeze = false;
-    in.dt = 0.1f;
-    s = step();
-    s = step();
-    CHECK(!s.opened);
-    s = step();
-    CHECK(s.opened && !s.openedPointing && m.Selected() == 1);
-    in.gripDown = false;
+    CHECK(s.opened && !s.openedPointing && m.IsOpen() && m.Selected() == 1);
+    in.newPull = false;
+    in.triggerDown = false;
     s = step();
     CHECK(s.closed == Close::Released);
-    // Let go before the hold: nothing.
-    in.gripDown = true;
-    in.newAwaySqueeze = true;
-    step();
-    in.newAwaySqueeze = false;
-    step();
-    in.gripDown = false;
+    // No preferred one: the first card.
+    in.preferred = -1;
+    in.triggerDown = true;
+    in.newPull = true;
     s = step();
-    CHECK(!s.opened && s.closed == Close::None && m.CurrentPhase() == Phase::Idle);
-    // Pointing at someone while arming opens at once with them.
-    in.gripDown = true;
-    in.newAwaySqueeze = true;
+    CHECK(s.opened && m.Selected() == 0);
+    in.newPull = false;
+    in.triggerDown = false;
     step();
-    in.newAwaySqueeze = false;
-    in.pointed = 0;
-    s = step();
-    CHECK(s.opened && s.openedPointing && m.Selected() == 0);
-    in.pointed = -1;
-    in.gripDown = false;
-    step();
-    in.dt = 0.011f;
-    // A squeeze at nobody right by the gun is a missed foregrip grab; with no squad, a refusal.
-    in.nearGun = true;
-    in.gripDown = true;
-    in.newAwaySqueeze = true;
-    s = step();
-    CHECK(s.missedGrab && m.CurrentPhase() == Phase::Idle);
-    in.nearGun = false;
-    in.gripDown = false;
-    in.newAwaySqueeze = false;
-    step();
+    // With no squad, a refusal.
     in.memberCount = 0;
-    in.gripDown = true;
-    in.newAwaySqueeze = true;
+    in.triggerDown = true;
+    in.newPull = true;
     s = step();
     CHECK(s.refused && !m.IsOpen());
     in.memberCount = 2;
-    in.gripDown = false;
-    in.newAwaySqueeze = false;
+    in.triggerDown = false;
+    in.newPull = false;
     step();
-    // Not usable: a squeeze does nothing.
+    // Not usable: a pull does nothing.
     in.usable = false;
-    in.gripDown = true;
-    in.newAwaySqueeze = true;
+    in.triggerDown = true;
+    in.newPull = true;
     in.pointed = 0;
     s = step();
-    CHECK(!s.opened && !s.armed && m.CurrentPhase() == Phase::Idle);
+    CHECK(!s.opened && m.CurrentPhase() == Phase::Idle);
     in.usable = true;
-    in.gripDown = false;
-    in.newAwaySqueeze = false;
+    // A trigger held from before (no new pull) never opens it.
+    in.newPull = false;
+    s = step();
+    CHECK(!s.opened && !m.IsOpen());
+    in.triggerDown = false;
     step();
 
-    // confirmOnRelease off: letting go keeps it open; A confirms; a new squeeze cancels; it times out.
+    // confirmOnRelease off: letting go keeps it open; A confirms; a new pull cancels; it times out.
     in.confirmOnRelease = false;
     in.idleCloseSeconds = 1.0f;
-    in.gripDown = true;
-    in.newAwaySqueeze = true;
+    in.triggerDown = true;
+    in.newPull = true;
     in.pointed = 0;
     step();
-    in.newAwaySqueeze = false;
-    in.gripDown = false;
+    in.newPull = false;
+    in.triggerDown = false;
     s = step();
     CHECK(s.closed == Close::None && m.IsOpen());
     in.rightY = 0.9f;
@@ -3062,24 +3037,24 @@ void TestSquadMachine() {
     s = step();
     CHECK(s.closed == Close::Confirmed && s.weapon == 2);
     in.a = false;
-    in.gripDown = true;
-    in.newAwaySqueeze = true;
+    in.triggerDown = true;
+    in.newPull = true;
     step();
-    in.newAwaySqueeze = false;
-    in.gripDown = false;
+    in.newPull = false;
+    in.triggerDown = false;
     step();
-    in.gripDown = true;
-    in.newAwaySqueeze = true;
+    in.triggerDown = true;
+    in.newPull = true;
     s = step();
-    CHECK(s.closed == Close::Resqueezed);
-    in.gripDown = false;
-    in.newAwaySqueeze = false;
+    CHECK(s.closed == Close::Repulled);
+    in.triggerDown = false;
+    in.newPull = false;
     step();
-    in.gripDown = true;
-    in.newAwaySqueeze = true;
+    in.triggerDown = true;
+    in.newPull = true;
     step();
-    in.newAwaySqueeze = false;
-    in.gripDown = false;
+    in.newPull = false;
+    in.triggerDown = false;
     in.dt = 0.4f;
     s = step();
     s = step();
@@ -3343,13 +3318,13 @@ void TestNativeWheelMachine() {
     in.dt = 0.02f;
     in.usable = true;
     in.onFoot = true;
-    // Pointing: the enter goes out with the squeeze; the wheel opens when the game's mode says so.
-    in.gripDown = true;
-    in.newAwaySqueeze = true;
+    // Pointing: the enter goes out with the pull; the wheel opens when the game's mode says so.
+    in.triggerDown = true;
+    in.newPull = true;
     in.pointed = true;
     wheel::Step s = m.Update(in);
     CHECK(s.enter && s.openedPointing && m.CurrentPhase() == Phase::Opening && m.Holding());
-    in.newAwaySqueeze = false;
+    in.newPull = false;
     s = m.Update(in);
     CHECK(!s.enter && !s.opened && m.CurrentPhase() == Phase::Opening);
     in.onFoot = false;
@@ -3359,7 +3334,7 @@ void TestNativeWheelMachine() {
     // Let go with a carried entry highlighted: A for a moment, then the exit once it's queued.
     in.highlightValid = true;
     in.highlightCarried = true;
-    in.gripDown = false;
+    in.triggerDown = false;
     s = m.Update(in);
     CHECK(s.holdA && s.confirmed && !s.exit && m.CurrentPhase() == Phase::Confirming);
     s = m.Update(in);
@@ -3375,42 +3350,31 @@ void TestNativeWheelMachine() {
     s = m.Update(in);
     CHECK(s.closed && m.CurrentPhase() == Phase::Idle && !m.Holding());
 
-    // At nobody: held 0.35 s; near the foregrip: a missed grab.
+    // At nobody: it opens at once too (no hold), without a preselect.
     m.Reset();
     in = {};
     in.dt = 0.1f;
     in.usable = true;
     in.onFoot = true;
-    in.gripDown = true;
-    in.newAwaySqueeze = true;
-    s = m.Update(in);
-    CHECK(s.armed && m.CurrentPhase() == Phase::Arming);
-    in.newAwaySqueeze = false;
-    m.Update(in);
-    m.Update(in);
-    CHECK(m.CurrentPhase() == Phase::Arming);
-    s = m.Update(in);
+    in.triggerDown = true;
+    in.newPull = true;
     s = m.Update(in);
     CHECK(s.enter && !s.openedPointing && m.CurrentPhase() == Phase::Opening);
+    // A trigger held from before (no new pull): nothing.
     m.Reset();
-    in.newAwaySqueeze = true;
-    in.nearGun = true;
+    in.newPull = false;
     s = m.Update(in);
-    CHECK(s.missedGrab && m.CurrentPhase() == Phase::Idle);
-    // Let go early while arming: nothing.
-    in.nearGun = false;
-    s = m.Update(in);
-    CHECK(s.armed);
-    in.newAwaySqueeze = false;
-    in.gripDown = false;
-    m.Update(in);
-    CHECK(m.CurrentPhase() == Phase::Idle);
+    CHECK(!s.enter && m.CurrentPhase() == Phase::Idle);
     // Not on foot (the Mako, a conversation): no wheel.
-    in.gripDown = true;
-    in.newAwaySqueeze = true;
+    in.newPull = true;
     in.onFoot = false;
     s = m.Update(in);
-    CHECK(!s.armed && !s.enter && m.CurrentPhase() == Phase::Idle);
+    CHECK(!s.enter && m.CurrentPhase() == Phase::Idle);
+    // Not usable (both hands on the gun, no world view): no wheel.
+    in.onFoot = true;
+    in.usable = false;
+    s = m.Update(in);
+    CHECK(!s.enter && m.CurrentPhase() == Phase::Idle);
 
     // The game never enters the wheel (combat disabled in a hub): given up after the timeout.
     m.Reset();
@@ -3418,11 +3382,11 @@ void TestNativeWheelMachine() {
     in.dt = 0.1f;
     in.usable = true;
     in.onFoot = true;
-    in.gripDown = true;
-    in.newAwaySqueeze = true;
+    in.triggerDown = true;
+    in.newPull = true;
     in.pointed = true;
     m.Update(in);
-    in.newAwaySqueeze = false;
+    in.newPull = false;
     int updates = 0;
     bool failed = false;
     while (!failed && updates < 20) {
@@ -3431,12 +3395,12 @@ void TestNativeWheelMachine() {
     }
     CHECK(failed && updates >= 6 && updates <= 7 && m.CurrentPhase() == Phase::Idle);
 
-    // A quick squeeze-and-let-go that the game still opens: shut at once, nothing given.
+    // A quick pull-and-let-go that the game still opens: shut at once, nothing given.
     m.Reset();
-    in.newAwaySqueeze = true;
+    in.newPull = true;
     m.Update(in);
-    in.newAwaySqueeze = false;
-    in.gripDown = false;
+    in.newPull = false;
+    in.triggerDown = false;
     m.Update(in);
     in.wheelActive = true;
     in.highlightValid = true;
@@ -3450,12 +3414,12 @@ void TestNativeWheelMachine() {
     in.dt = 0.02f;
     in.usable = true;
     in.onFoot = true;
-    in.gripDown = true;
-    in.newAwaySqueeze = true;
+    in.triggerDown = true;
+    in.newPull = true;
     in.pointed = true;
     in.b = true;
     m.Update(in);
-    in.newAwaySqueeze = false;
+    in.newPull = false;
     in.wheelActive = true;
     m.Update(in);
     s = m.Update(in);
@@ -3483,18 +3447,18 @@ void TestNativeWheelMachine() {
         in.dt = 0.02f;
         in.usable = true;
         in.onFoot = true;
-        in.gripDown = true;
-        in.newAwaySqueeze = true;
+        in.triggerDown = true;
+        in.newPull = true;
         in.pointed = true;
         m.Update(in);
-        in.newAwaySqueeze = false;
+        in.newPull = false;
         in.wheelActive = true;
         m.Update(in);
         in.highlightValid = true;
         in.highlightCarried = variant != 1;
         in.confirmOnRelease = variant != 0;
         in.choiceRecorded = variant == 2;
-        in.gripDown = false;
+        in.triggerDown = false;
         s = m.Update(in);
         CHECK(s.exit && !s.holdA && m.CurrentPhase() == Phase::Closing);
         CHECK(s.cancelled == (variant != 2));
@@ -3504,11 +3468,11 @@ void TestNativeWheelMachine() {
     in = {};
     in.usable = true;
     in.onFoot = true;
-    in.gripDown = true;
-    in.newAwaySqueeze = true;
+    in.triggerDown = true;
+    in.newPull = true;
     in.pointed = true;
     m.Update(in);
-    in.newAwaySqueeze = false;
+    in.newPull = false;
     in.wheelActive = true;
     m.Update(in);
     in.wheelActive = false;
@@ -4164,8 +4128,242 @@ void TestScopeMapping() {
     CHECK(s::Project(left, fov, onLine, u, v) && NearD(u, 0.5 + 0.5 * 0.064 / 40.0, 1e-5) && NearD(v, 0.5, 1e-5));
 }
 
+// The left trigger belongs to the squad wheel per pull: decided at the press, kept until let go.
+void TestTriggerOwner() {
+    using namespace mevr::vr::squad_menu;
+    TriggerOwner owner;
+    CHECK(OwnTrigger(owner, false, true));     // up, on foot: the next pull is the squad's
+    CHECK(OwnTrigger(owner, true, true));      // the press
+    CHECK(OwnTrigger(owner, true, false));     // into the Mako mid-pull: still the squad's (no LB edge)
+    CHECK(!OwnTrigger(owner, false, false));   // let go there: the game's LB from now on
+    CHECK(!OwnTrigger(owner, true, false));    // a pull in the Mako: LB (boost)
+    CHECK(!OwnTrigger(owner, true, true));     // out of the Mako mid-pull: still LB until let go
+    CHECK(OwnTrigger(owner, false, true));     // let go on foot: the squad's again
+
+    // What the pad shows while the squad has it (squad_weapons::AdjustPad clears leftTriggerShoulder and
+    // leftTrigger): a pulled trigger is neither LB nor LT, with the wheel open or not; the support grip's
+    // LT (aimed fire) still comes through.
+    using namespace mevr::game::gamepad;
+    mevr::vr::controllers::State state;
+    state.active = true;
+    state.left.trigger = 1.0f;
+    Options owned;
+    owned.gripShoulder = false;
+    owned.leftTriggerShoulder = false;
+    owned.leftTrigger = false;
+    Latches latches;
+    auto pad = FromControllers(state, latches, owned);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) == 0 && pad.bLeftTrigger == 0);
+    owned.nativeWheel = true;
+    pad = FromControllers(state, latches, owned);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) == 0 && pad.bLeftTrigger == 0);
+    Options const across = FromFlags(0.05f, 0.18f, 0.26f, ToFlags(owned));
+    CHECK(!across.leftTriggerShoulder && !across.leftTrigger && across.nativeWheel);
+    // The same trigger in the Mako (not owned: [Controls] leftTrigger = lb): LB.
+    Options mako;
+    mako.gripShoulder = false;
+    mako.leftTriggerShoulder = true;
+    mako.leftTrigger = false;
+    Latches makoLatches;
+    pad = FromControllers(state, makoLatches, mako);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0 && pad.bLeftTrigger == 0);
+    // A left grip squeezed away from the gun: nothing at all (no LB), whoever has the trigger.
+    mevr::vr::controllers::State grip;
+    grip.active = true;
+    grip.left.squeeze = 1.0f;
+    Options away = owned;
+    away.nativeWheel = false;
+    away.support = {0.5f, 0.18f, 0.26f};
+    Latches gripLatches;
+    pad = FromControllers(grip, gripLatches, away);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) == 0 && pad.bLeftTrigger == 0);
+}
+
+// The support grip's grab zone: a capsule along the gun, the captured span (2026-10-22).
+void TestSupportZone() {
+    using namespace mevr::ik;
+    // The assault rifle as the 2026-10-22 log measured it, in the right hand's axes (units).
+    Vec3 const barrel{0.190, -0.965, -0.178};
+    Vec3 const muzzle{7.2, -48.6, 3.3};
+    Vec3 const lhik{-3.8, -19.0, 3.4};
+    Quat const rear{};
+    Vec3 const at{0.0, 0.0, 0.0};
+    auto const zone = MakeSupportZone(at, rear, barrel, muzzle, lhik, 1.0, 10.0, 10.0);
+    CHECK(zone.has_value());
+    if (zone) {
+        Vec3 const b = Normalize(barrel);
+        double const muzzleAlong = Dot(muzzle, b);
+        CHECK(NearD(Dot(zone->start, b), 10.0, 1e-9));                        // 10 units ahead of the hand
+        CHECK(Length(zone->end - (muzzle + b * 10.0)) < 1e-9);                // 10 units past the muzzle
+        CHECK(Length(zone->foregrip - lhik) < 1e-9);
+        // Both ends on the bore line (through the muzzle along the barrel).
+        Vec3 const off = (zone->start - muzzle) - b * Dot(zone->start - muzzle, b);
+        CHECK(Length(off) < 1e-9);
+        // The foregrip itself, and a hand on the barrel near the muzzle: in reach of a 0.18 m radius at
+        // 100 units per meter; under the old rule (0.12 m from the foregrip) the muzzle hand missed.
+        CHECK(DistanceToZone(lhik, *zone) < 1e-9);
+        Vec3 up = Vec3{0.0, 0.0, 1.0} - b * Dot(Vec3{0.0, 0.0, 1.0}, b);
+        up = Normalize(up);
+        Vec3 const underMuzzle = muzzle - b * 5.0 - up * 12.0;
+        CHECK(DistanceToZone(underMuzzle, *zone) < 18.0);
+        CHECK(Length(underMuzzle - lhik) > 22.0);
+        // Halfway along, 15 units under the bore: in; 30 units to the side (away from the foregrip): out.
+        Vec3 const side = Normalize(Cross(b, up));
+        Vec3 const middle = muzzle - b * (0.5 * (muzzleAlong - 10.0));
+        CHECK(DistanceToZone(middle - up * 15.0, *zone) < 15.5);
+        CHECK(DistanceToZone(middle - side * 30.0, *zone) > 29.0);
+        // Far past the muzzle (40 units): out; far behind the hand: out.
+        CHECK(DistanceToZone(muzzle + b * 40.0, *zone) > 29.0);
+        CHECK(DistanceToZone(b * -30.0, *zone) > 30.0);
+    }
+    // A scaled hand bone scales the gun; a rotated one turns it; the front never passes the muzzle.
+    auto const scaled = MakeSupportZone(at, rear, barrel, muzzle, lhik, 2.0, 10.0, 10.0);
+    CHECK(scaled && Length(scaled->foregrip - lhik * 2.0) < 1e-9);
+    Quat const turned = FromTo({1.0, 0.0, 0.0}, {0.0, 1.0, 0.0});
+    auto const rotated = MakeSupportZone({5.0, 6.0, 7.0}, turned, barrel, muzzle, lhik, 1.0, 10.0, 10.0);
+    CHECK(rotated && Length(rotated->foregrip - (Vec3{5.0, 6.0, 7.0} + Rotate(turned, lhik))) < 1e-9);
+    auto const shortGun = MakeSupportZone(at, rear, {1.0, 0.0, 0.0}, {8.0, 0.0, 0.0}, {4.0, 0.0, -6.0}, 1.0, 30.0, 5.0);
+    CHECK(shortGun && Length(shortGun->start - Vec3{8.0, 0.0, 0.0}) < 1e-9 && Length(shortGun->end - Vec3{13.0, 0.0, 0.0}) < 1e-9);
+    CHECK(!MakeSupportZone(at, rear, {0.0, 0.0, 0.0}, muzzle, lhik, 1.0, 10.0, 10.0));
+    CHECK(!MakeSupportZone(at, rear, barrel, {std::nan(""), 0.0, 0.0}, lhik, 1.0, 10.0, 10.0));
+    // Segment distances: inside, beyond either end, a degenerate segment.
+    CHECK(NearD(DistanceToSegment({5.0, 3.0, 0.0}, {0.0, 0.0, 0.0}, {10.0, 0.0, 0.0}), 3.0, 1e-12));
+    CHECK(NearD(DistanceToSegment({-4.0, 3.0, 0.0}, {0.0, 0.0, 0.0}, {10.0, 0.0, 0.0}), 5.0, 1e-12));
+    CHECK(NearD(DistanceToSegment({13.0, 4.0, 0.0}, {0.0, 0.0, 0.0}, {10.0, 0.0, 0.0}), 5.0, 1e-12));
+    CHECK(NearD(DistanceToSegment({3.0, 4.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}), 5.0, 1e-12));
+
+    // The captured span: taking hold anywhere doesn't swing the gun; afterwards it turns with the hands.
+    Quat const hand = FromTo({1.0, 0.0, 0.0}, {0.6, 0.8, 0.0});
+    Vec3 const rearAt{1.0, 2.0, 3.0};
+    Vec3 const grabbed = rearAt + Vec3{30.0, 10.0, -12.0};  // the left hand took hold here
+    auto const captured = CapturedSpan(hand, rearAt, grabbed, Length(lhik), 8.0);
+    CHECK(captured.has_value());
+    if (captured) {
+        CHECK(NearD(Length(*captured), Length(lhik), 1e-9));
+        CHECK(Length(Normalize(Rotate(hand, *captured)) - Normalize(grabbed - rearAt)) < 1e-9);
+        auto const same = TwoHandRotation(hand, *captured, rearAt, grabbed, 8.0);
+        CHECK(same && AngleBetween(*same, hand) < 1e-6);   // no swing when taking hold
+        auto const raised = TwoHandRotation(hand, *captured, rearAt, grabbed + Vec3{0.0, 0.0, 10.0}, 8.0);
+        CHECK(raised && AngleBetween(*raised, hand) > 0.1);  // the left hand moves: the gun turns
+        // The foregrip's own span would have swung it at once.
+        auto const fromForegrip = TwoHandRotation(hand, lhik, rearAt, grabbed, 8.0);
+        CHECK(fromForegrip && AngleBetween(*fromForegrip, hand) > 0.2);
+    }
+    CHECK(!CapturedSpan(hand, rearAt, rearAt + Vec3{3.0, 0.0, 0.0}, 17.0, 8.0));  // hands together: no line
+    CHECK(!CapturedSpan(hand, rearAt, {std::nan(""), 0.0, 0.0}, 17.0, 8.0));
+
+    // Through the pad mapping (host side, unchanged): the zone's distance against its radii.
+    using namespace mevr::game::gamepad;
+    SupportGrip grip;
+    CHECK(UpdateSupportGrip(grip, true, SupportInput{0.15f, 0.18f, 0.26f}) == LeftGrip::Support);  // the muzzle hand
+    CHECK(UpdateSupportGrip(grip, true, SupportInput{0.24f, 0.18f, 0.26f}) == LeftGrip::Support);  // kept within release
+    CHECK(UpdateSupportGrip(grip, true, SupportInput{0.30f, 0.18f, 0.26f}) == LeftGrip::Held);     // let go past it
+    grip = {};
+    CHECK(UpdateSupportGrip(grip, true, SupportInput{0.20f, 0.18f, 0.26f}) == LeftGrip::Shoulder); // a new squeeze outside
+}
+
+// Reach scaling fades out near the eyes (a gun at the cheek sits on its controller).
+void TestReachWeight() {
+    using namespace mevr::ik;
+    CHECK(NearD(ReachWeight(0.20, 0.30), 0.0, 1e-12));
+    CHECK(NearD(ReachWeight(0.30, 0.30), 0.0, 1e-12));
+    CHECK(NearD(ReachWeight(0.375, 0.30), 0.5, 1e-12));
+    CHECK(NearD(ReachWeight(0.45, 0.30), 1.0, 1e-12));
+    CHECK(NearD(ReachWeight(0.90, 0.30), 1.0, 1e-12));
+    CHECK(ReachWeight(0.34, 0.30) < ReachWeight(0.40, 0.30));
+    CHECK(NearD(ReachWeight(0.10, 0.0), 1.0, 1e-12));          // off
+    CHECK(NearD(ReachWeight(std::nan(""), 0.30), 1.0, 1e-12));
+    CHECK(NearD(ScaledReach(0.76, 0.0), 1.0, 1e-12));
+    CHECK(NearD(ScaledReach(0.76, 1.0), 0.76, 1e-12));
+    CHECK(NearD(ScaledReach(0.76, 0.5), 0.88, 1e-12));
+    CHECK(NearD(ScaledReach(1.3, 2.0), 1.3, 1e-12));            // weight clamped
+}
+
+// The sight alignment assist: where the gun goes, and how it gets there.
+void TestSightAssist() {
+    namespace s = mevr::vr::sights;
+    CHECK(s::Smooth(-1.0f) == 0.0f && s::Smooth(0.0f) == 0.0f && s::Smooth(1.0f) == 1.0f && s::Smooth(2.0f) == 1.0f);
+    CHECK(std::abs(s::Smooth(0.5f) - 0.5f) < 1e-6f && s::Smooth(0.2f) < s::Smooth(0.3f));
+    s::Assist settings;  // cone 10 degrees, full strength, 0.10 m at most, 0.65 m range
+    XrVector3f const eyes[2] = {{-0.032f, 0.0f, 0.0f}, {0.032f, 0.0f, 0.0f}};
+    XrVector3f const ahead{0.0f, 0.0f, -1.0f};
+    XrVector3f const up{0.0f, 1.0f, 0.0f};
+    // The sight 0.3 m ahead, its line 1 cm right of and 2 cm below the right eye (4.3 degrees): full weight,
+    // and the move puts the line through that eye.
+    XrVector3f const center{0.042f, -0.02f, -0.3f};
+    s::AssistGoal goal = s::AssistTarget(settings, center, ahead, up, eyes, ahead, -1);
+    CHECK(goal.eye == 1 && std::abs(goal.weight - 1.0f) < 1e-5f);
+    CHECK(NearX(goal.shift, {-0.01f, 0.02f, 0.0f}, 1e-5));
+    CHECK(std::abs(goal.along - 0.3f) < 1e-5f && std::abs(goal.x + 0.01f) < 1e-5f && std::abs(goal.y - 0.02f) < 1e-5f);
+    XrVector3f const moved{center.x + goal.shift.x, center.y + goal.shift.y, center.z + goal.shift.z};
+    s::Line const through = s::EyeLine(eyes[1], moved, ahead, up);
+    CHECK(through.lateral < 1e-5f);
+    // Strength scales it; the cap limits it.
+    s::Assist half = settings;
+    half.strength = 0.5f;
+    CHECK(NearX(s::AssistTarget(half, center, ahead, up, eyes, ahead, -1).shift, {-0.005f, 0.01f, 0.0f}, 1e-5));
+    s::Assist capped = settings;
+    capped.maxShiftM = 0.01f;
+    goal = s::AssistTarget(capped, center, ahead, up, eyes, ahead, -1);
+    CHECK(std::abs(std::sqrt(goal.shift.x * goal.shift.x + goal.shift.y * goal.shift.y + goal.shift.z * goal.shift.z) - 0.01f) < 1e-5f);
+    // At 7.5 degrees (three quarters of the cone): half weight; past the cone: none, the eye still reported.
+    float const lateral75 = 0.3f * std::tan(7.5f * 3.14159265f / 180.0f);
+    goal = s::AssistTarget(settings, {0.032f + lateral75, 0.0f, -0.3f}, ahead, up, eyes, ahead, -1);
+    CHECK(goal.eye == 1 && std::abs(goal.weight - 0.5f) < 1e-3f);
+    float const lateral12 = 0.3f * std::tan(12.0f * 3.14159265f / 180.0f);
+    goal = s::AssistTarget(settings, {0.032f + lateral12, 0.0f, -0.3f}, ahead, up, eyes, ahead, -1);
+    CHECK(goal.eye == 1 && goal.weight == 0.0f && NearX(goal.shift, {0.0f, 0.0f, 0.0f}, 1e-9));
+    // The gun lowered or held out: the sight too far ahead (0.8 m, past 0.65): none; just past 0.5: still most.
+    CHECK(s::AssistTarget(settings, {0.042f, -0.02f, -0.8f}, ahead, up, eyes, ahead, -1).weight == 0.0f);
+    CHECK(s::AssistTarget(settings, {0.034f, 0.0f, -0.52f}, ahead, up, eyes, ahead, -1).weight > 0.9f);
+    // Looking elsewhere (the head turned 90 degrees): none.
+    CHECK(s::AssistTarget(settings, center, ahead, up, eyes, {1.0f, 0.0f, 0.0f}, -1).weight == 0.0f);
+    // The sight behind the eye: no aiming eye.
+    CHECK(s::AssistTarget(settings, {0.032f, 0.0f, 0.2f}, ahead, up, eyes, ahead, -1).eye == -1);
+    // Which eye: the nearer the line; the current one kept unless the other is clearly (1.5 degrees) nearer.
+    XrVector3f const between{0.002f, 0.0f, -0.3f};
+    CHECK(s::AssistTarget(settings, between, ahead, up, eyes, ahead, -1).eye == 1);
+    CHECK(s::AssistTarget(settings, between, ahead, up, eyes, ahead, 0).eye == 0);
+    CHECK(s::AssistTarget(settings, {0.032f, 0.0f, -0.3f}, ahead, up, eyes, ahead, 0).eye == 1);
+    // Off: nothing.
+    s::Assist off = settings;
+    off.enabled = false;
+    goal = s::AssistTarget(off, center, ahead, up, eyes, ahead, -1);
+    CHECK(goal.eye == -1 && goal.weight == 0.0f);
+
+    // The spring: from rest, never faster than 0.25 m/s, no overshoot, settles; back to zero likewise.
+    s::AssistSpring spring;
+    XrVector3f const target{0.05f, 0.0f, 0.0f};
+    XrVector3f value = spring.Update(target, 0.011f);
+    CHECK(value.x > 0.0f && value.x <= 0.25f * 0.011f + 1e-6f);
+    float last = value.x;
+    bool monotonic = true;
+    bool overshoot = false;
+    for (int i = 0; i < 300; ++i) {
+        value = spring.Update(target, 0.011f);
+        monotonic = monotonic && value.x >= last - 1e-7f;
+        overshoot = overshoot || value.x > target.x + 1e-6f;
+        last = value.x;
+    }
+    CHECK(monotonic && !overshoot && std::abs(value.x - 0.05f) < 1e-4f);
+    for (int i = 0; i < 300; ++i) {
+        value = spring.Update({0.0f, 0.0f, 0.0f}, 0.011f);
+    }
+    CHECK(std::abs(value.x) < 1e-4f);
+    // A long stall (dt clamped to 0.15 s) still moves at most 0.25 m/s; a bad goal resets.
+    spring.Reset();
+    value = spring.Update({1.0f, 0.0f, 0.0f}, 5.0f);
+    CHECK(value.x <= 0.25f * 0.15f + 1e-6f);
+    value = spring.Update({std::nanf(""), 0.0f, 0.0f}, 0.011f);
+    CHECK(value.x == 0.0f && spring.Value().x == 0.0f);
+}
+
 int main() {
     TestRecenterTilt();
+    TestTriggerOwner();
+    TestSupportZone();
+    TestReachWeight();
+    TestSightAssist();
     TestSightSettings();
     TestSightGeometry();
     TestScopeMapping();

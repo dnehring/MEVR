@@ -4,8 +4,10 @@
 
 #include <cstdint>
 
-// The squad weapon menu (docs/squad-weapons-design.md, option A): point the left hand at a squadmate,
-// squeeze the left grip, flick the right stick toward a weapon, let go. Engine-agnostic and pure
+// The squad weapon menu (docs/squad-weapons-design.md, option A): pull the left trigger (pointing the
+// left hand at a squadmate preselects them), flick the right stick toward a weapon, let go. Since
+// 2026-10-22 the left trigger opens it, at once; the left grip is only the support grip (and grenades),
+// and never opens it. Engine-agnostic and pure
 // (unit-tested in tests/Main.cpp), except Publish/Latest, which carry the menu from the mod (game
 // thread: game/SquadWeapons) to the host's renderer (Present thread: plugin/SquadPanel).
 //
@@ -73,9 +75,8 @@ struct Member {
 struct Input {
     float dt = 0.0f;              // seconds since the last step
     bool usable = false;          // the menu may be open now (on foot, a world view, tracked, a squad)
-    bool gripDown = false;        // the left grip (latched)
-    bool newAwaySqueeze = false;  // a new left-grip squeeze began away from the gun's foregrip this step
-    bool nearGun = false;         // the left hand is near the foregrip (a squeeze there is a missed grab)
+    bool triggerDown = false;     // the left trigger (latched)
+    bool newPull = false;         // a new left-trigger pull began this step (while the menu may open)
     int pointed = -1;             // the member the left hand points at (within the cone), -1: none
     int preferred = -1;           // who to preselect when not pointing (the last one used, or nearest the ray)
     int memberCount = 0;          // 0..kMaxMembers, in card order (0 = the left card)
@@ -86,8 +87,7 @@ struct Input {
     float rightY = 0.0f;
     bool a = false;               // A (confirm), B (cancel): held state; the machine takes edges
     bool b = false;
-    bool confirmOnRelease = true; // letting go of the grip confirms (or cancels with nothing chosen)
-    float openHoldSeconds = 0.35f;// pointing at nobody: the grip must stay squeezed this long to open
+    bool confirmOnRelease = true; // letting go of the trigger confirms (or cancels with nothing chosen)
     float idleCloseSeconds = 15.0f;  // with confirmOnRelease off: closes by itself after this long untouched
     RadialSettings radial;
     float cardPush = 0.6f;        // the left stick past this left or right picks that card
@@ -95,7 +95,6 @@ struct Input {
 
 enum class Phase : std::uint8_t {
     Idle,
-    Arming,  // squeezed while pointing at nobody: opens once held openHoldSeconds
     Open,
 };
 
@@ -104,7 +103,7 @@ enum class Close : std::uint8_t {
     Confirmed,      // released with a tile chosen, or A
     Released,       // released with nothing chosen
     CancelButton,   // B
-    Resqueezed,     // confirmOnRelease off: the grip squeezed again
+    Repulled,       // confirmOnRelease off: the trigger pulled again
     Unusable,       // the conditions stopped holding (mode, view, tracking, squad changed)
     Idle,           // confirmOnRelease off: untouched for idleCloseSeconds
 };
@@ -112,10 +111,8 @@ char const* CloseName(Close close);
 
 struct Step {
     bool opened = false;
-    bool openedPointing = false;  // opened at once because the hand pointed at someone
-    bool armed = false;           // a squeeze at nobody began arming
-    bool missedGrab = false;      // a squeeze at nobody near the foregrip: not the menu
-    bool refused = false;         // a squeeze that would open it, with nobody in the squad
+    bool openedPointing = false;  // opened with the squadmate the hand pointed at (else `preferred`)
+    bool refused = false;         // a pull that would open it, with nobody in the squad
     Close closed = Close::None;
     bool cardChanged = false;
     bool tileChanged = false;     // the highlight moved (to a tile or to none)
@@ -133,7 +130,6 @@ public:
     bool IsOpen() const { return phase_ == Phase::Open; }
     int Selected() const { return selected_; }
     int Highlighted() const { return highlighted_; }  // weapon type, -1: none
-    float ArmedFor() const { return armedFor_; }
 
 private:
     void OpenMenu(Input const& input, int member, Step& step);
@@ -145,9 +141,8 @@ private:
     Direction rightHeld_ = Direction::None;  // the radial's last answer
     int leftSide_ = 0;                       // the left stick's last card side (-1, 0, 1)
     bool flickRefused_ = false;              // this flick already refused (one feedback per flick)
-    float armedFor_ = 0.0f;
     float idleFor_ = 0.0f;
-    bool gripWasDown_ = false;
+    bool triggerWasDown_ = false;
     bool aWasDown_ = true;  // edges only from a press that began while open
     bool bWasDown_ = true;
 };
@@ -218,18 +213,17 @@ int StickAngleOf(Entry entry);
 int WeaponOfSlot(int slot);
 int SlotOfWeapon(int weapon);
 
-// The open/steer/close machine for the game's wheel, opened by the same gesture as the custom menu.
+// The open/steer/close machine for the game's wheel, opened like the custom menu: a new pull of the
+// left trigger opens it at once; letting go of the trigger gives the highlighted entry and closes it.
 struct Input {
     float dt = 0.0f;
     bool usable = false;          // it may open or stay open (a world view, tracked controllers, LE1 on foot or in the wheel)
-    bool gripDown = false;        // the left grip (latched)
-    bool newAwaySqueeze = false;  // a new left-grip squeeze began away from the gun's foregrip
-    bool nearGun = false;         // the hand is near the foregrip (a squeeze at nobody there is a missed grab)
-    bool pointed = false;         // the left hand points at a squadmate
+    bool triggerDown = false;     // the left trigger (latched)
+    bool newPull = false;         // a new left-trigger pull began this step
+    bool pointed = false;         // the left hand points at a squadmate (the wheel opens on their weapon)
     bool onFoot = false;          // the game is in its default mode (0): the wheel can be entered
     bool wheelActive = false;     // the game's mode is the weapon wheel (3)
     bool confirmOnRelease = true; // letting go gives the highlighted entry (an A press) before closing
-    float openHoldSeconds = 0.35f;
     bool highlightValid = false;  // the HUD highlights an entry
     bool highlightCarried = false;// ...and that member carries its weapon
     bool choiceRecorded = false;  // ...and it's already queued (the member's switch weapon is it)
@@ -238,19 +232,16 @@ struct Input {
 
 enum class Phase : std::uint8_t {
     Idle,
-    Arming,      // squeezed at nobody: opens once held openHoldSeconds
     Opening,     // EnterWeaponWheel called, waiting for the game's mode
-    Open,        // the wheel is up and the grip holds it
-    Confirming,  // the grip let go: A held, then waiting for the queue to take it
+    Open,        // the wheel is up and the trigger holds it
+    Confirming,  // the trigger let go: A held, then waiting for the queue to take it
     Closing,     // ExitWeaponWheel called, waiting for the mode to leave
 };
 char const* PhaseName(Phase phase);
 
 struct Step {
-    bool armed = false;
-    bool missedGrab = false;
     bool enter = false;          // call SFXGameModeDefault.EnterWeaponWheel now
-    bool openedPointing = false; // (with enter) at once, because the hand pointed at someone
+    bool openedPointing = false; // (with enter) the hand pointed at someone: preselect their weapon
     bool opened = false;         // the game's mode became the wheel
     bool openFailed = false;     // ...or didn't within kOpenTimeout
     bool holdA = false;          // the pad shows A this tick
@@ -281,7 +272,7 @@ private:
     Phase phase_ = Phase::Idle;
     float timer_ = 0.0f;
     bool releasedEarly_ = false;  // let go while it was still opening
-    bool gripWasDown_ = false;
+    bool triggerWasDown_ = false;
     bool bWasDown_ = true;        // B edges only from a press that began after it opened
     int exitTries_ = 0;
 };
@@ -309,5 +300,17 @@ Panel LatestPanel(std::uint64_t maxAgeMs = 1000);
 void ResetPanel();
 
 } // namespace wheel
+
+// Who gets the left trigger (pure; unit-tested; both styles): the squad's wheel or menu (the mod reads
+// it and the game sees neither LB nor LT from it) or the game's own mapping ([Controls] leftTrigger).
+// Decided when the trigger goes down and kept until it's let go, so a mode change mid-pull never turns
+// it into an LB press or release the game would take as a tap (TrySwapWeapon) or its own wheel.
+struct TriggerOwner {
+    bool down = false;
+    bool owned = false;
+};
+// One step: `pulled` the latched trigger now, `wanted` whether the squad may have it now (on foot or in
+// a wheel, the feature on). Returns whether it's the squad's this step.
+bool OwnTrigger(TriggerOwner& owner, bool pulled, bool wanted);
 
 } // namespace mevr::vr::squad_menu

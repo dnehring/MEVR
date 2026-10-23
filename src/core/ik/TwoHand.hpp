@@ -63,6 +63,33 @@ GunOffsets OffsetsOnGun(Vec3 point, Vec3 barrelInHand, Vec3 muzzleInHand);
 // units below it (against the gun's up, the thumb side) and `forward` units along the barrel.
 Vec3 UnderGrip(Vec3 barrelInHand, Vec3 upInHand, double down = 8.0, double forward = 2.0);
 
+// The support grip's grab zone (2026-10-22: a grab anywhere sensible on the gun takes it): a capsule
+// along the gun's bore line, from `frontUnits` ahead of the rear hand (along the barrel, from the
+// hand bone) to `pastUnits` past the muzzle, plus a ball around the foregrip itself, both of the
+// grab radius. Points in the caller's space (the writer: component space).
+struct SupportZone {
+    Vec3 start;     // the capsule's axis: the bore line from just ahead of the rear hand...
+    Vec3 end;       // ...to a little past the muzzle
+    Vec3 foregrip;  // where the off hand goes on the gun
+};
+// From the rear hand bone (`rearPosition`, `rearRotation`) and the gun in its axes (`barrelInHand`,
+// `muzzleInHand`, `foregripInHand`: unscaled, so `handScale` multiplies them, as the writer scales the
+// span). The start never passes the muzzle. Nullopt if anything isn't finite or there's no barrel.
+std::optional<SupportZone> MakeSupportZone(Vec3 rearPosition, Quat rearRotation, Vec3 barrelInHand, Vec3 muzzleInHand,
+    Vec3 foregripInHand, double handScale, double frontUnits, double pastUnits);
+// The distance from `point` to the segment a-b (a point segment if they coincide).
+double DistanceToSegment(Vec3 point, Vec3 a, Vec3 b);
+// How far `point` is from the zone: the nearer of the capsule's axis and the foregrip (the grab
+// radius is the caller's: within it, the grip takes the gun).
+double DistanceToZone(Vec3 point, SupportZone const& zone);
+
+// The span two-hand aim swings onto the hands' line, captured when a hold begins (in the rear hand's
+// axes): the direction from the rear hand to where the off hand took hold, `length` long. So taking
+// hold anywhere in the zone doesn't swing the gun, and from then on the barrel turns with the line
+// between the hands. Nullopt (use the foregrip's own span) when the hands are closer than
+// `minDistance` or anything isn't finite.
+std::optional<Vec3> CapturedSpan(Quat rear, Vec3 rearPosition, Vec3 supportPosition, double length, double minDistance);
+
 // The AnimTree's own off-hand IK (LE1: the SkelControlLimb `LeftArm`, LeftWrist -> LHIK;
 // research/18) by its ControlStrength: off at or below 0.01 (the engine skips it below 1e-5), on
 // at or above 0.99, blending in between; Unknown if the strength isn't finite.

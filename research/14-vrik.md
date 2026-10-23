@@ -429,6 +429,10 @@ the upper arm (twist bones) keep their offsets from the shoulder. Unit-tested.
 - With `armLengthM` set, each wrist target's distance from the (moved) shoulder is scaled by
   Shepard's arm length / (`armLengthM` x units per meter), within 0.5-3: the player's full reach
   is Shepard's full reach. 0 or absent: no scaling (hands on the controllers).
+- **Not near the face** (since 2026-10-22): a hand within `[Hands] reachNearFaceM` (0.30 m) of the
+  eyes isn't scaled, the full scale from 0.15 m further out (`ik::ReachWeight`, smoothstep); a left
+  hand holding the gun takes the gun hand's weight. With the user's 0.723 m (scale 0.76) the scaling
+  had pulled a gun at the cheek toward the shoulder, off the eye (research/21 section 8).
 - Function API for code: `hand_calibration::MeasureArmLength(ik::ArmLengthSample)` (measures,
   saves, applies; nullopt if not a T pose), `ClearArmLength()`, `ArmLength()`.
 - Logs: `hands: arm length 0.630 m (left ..., right ..., shoulder to grip, from a T pose); saved as
@@ -494,6 +498,15 @@ back with `supportGripHeld()`; stale after 250 ms: defaults). With our renderer 
 `supportAcquireM = 0.12`, `supportReleaseM = 0.22`, `sniperAims = 0` (a sniper rifle's LT is
 the game's scope camera, which Halcyon's first person leaves to the game: no LT by default
 [verify]), `leftTrigger = lt | none` (default `lt`: nothing changes until the user picks a use).
+
+**Since 2026-10-22 (late):** the grab zone is a capsule along the whole gun (`ik::MakeSupportZone`:
+the bore line from `supportFrontM` ahead of the right hand to `supportPastMuzzleM` past the muzzle, plus
+the foregrip, radius `supportAcquireM` 0.18 m, release `supportReleaseM` 0.26 m); the left hand still
+goes to the foregrip; at a hold's first write the line from the right hand to where the left took hold
+is captured as the span (`ik::CapturedSpan`), so taking hold doesn't swing the gun. A hand within
+`[Hands] reachNearFaceM` (0.30 m) of the eyes isn't reach-scaled (arm-length calibration). Details and
+the session that led to it: [research/19](19-body-holsters.md) section 11, [research/21](21-sights-and-scopes.md)
+section 8.
 
 **Does LT zoom under Halcyon?** By the code, no: in gameplay (not a flat cinematic) Halcyon's
 `xr_session.cpp` calls `RenderHook::SetTargetFovHalfAngles(headset FOV x fill,

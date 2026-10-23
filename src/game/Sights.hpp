@@ -23,8 +23,15 @@ namespace mevr::game::sights {
 // Registers the aim-error handler (before the CallFunction hook goes in). False on LE2/LE3 or when the
 // function isn't found (sights still draw; only scoped aimed fire is off).
 bool TryStartup();
-// Each tick, after hand aim's ray: the sight to publish (kind None: none), and logs what changes.
+// Each tick, after hand aim's ray: the sight to publish (kind None: none), and logs what changes. Also
+// steps the alignment assist ([Sights] assist): with the gun raised to the face and the aiming eye near
+// the sight line, the gun's goal shift that puts the line through the eye (vr::sights::AssistTarget,
+// measured on the sight without the shift already applied, then eased by vr::sights::AssistSpring).
 vr::sights::Sight Current(vr::aim_ray::Ray const& ray);
+// Arm IK, once per tick while it drives the hands: how far to move the held gun (tracking meters; zero:
+// none). The sight it then draws includes the move; Current takes it out again (two ticks later, when the
+// engine has posed the gun with it) before measuring the eye against the line.
+XrVector3f TakeGunShift();
 // The host's report for the latest frame (vr::sights::View bits), each tick.
 void SetHostView(std::uint32_t view);
 // For snapshots and the heartbeat.

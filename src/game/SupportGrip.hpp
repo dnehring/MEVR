@@ -59,6 +59,19 @@ void Measure(Candidates const& candidates);
 // The settled foregrip for the gun last measured.
 std::optional<Foregrip> Current();
 
+// The grab zone ([Controls] supportZone, 2026-10-22): a capsule along the gun (ik::MakeSupportZone) from
+// `frontMeters` ahead of the right hand to `pastMeters` past the muzzle, plus the foregrip, of radius
+// supportAcquireM (meters of left-controller motion; the writer measures, the pad mapping compares).
+struct Zone {
+    bool capsule = true;  // false: the foregrip alone (supportZone = point)
+    double frontMeters = 0.10;
+    double pastMeters = 0.10;
+};
+Zone CurrentZone();
+// Nonzero while the support grip holds, a new value for each hold (the writer captures the line between
+// the hands at its start: engine::bone_pose::Support::hold).
+std::uint32_t HoldSerial();
+
 // Each mod tick, after arm IK. `requested`: arm IK asked the writer for the support grip this tick
 // (engine::bone_pose::Support), so its distance is this gun's. Updates the distance and settings the
 // pad mapping reads, the blend arm IK uses next tick, and logs holds and releases, and each change

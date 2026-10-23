@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <format>
 #include <optional>
@@ -41,6 +42,25 @@ std::atomic<unsigned> gAimErrorCalls{0};
 std::atomic<unsigned> gAimedShots{0};
 unsigned gAimedShotsTotal = 0;
 bool gLoggedAimed = false;
+
+// The alignment assist. The spring's value is what arm IK takes next tick; the drawn gun read by hand
+// aim's ray carries what arm IK took the tick before (the engine poses the gun before our tick).
+sv::AssistSpring gSpring;
+XrVector3f gTakenNow{};   // what arm IK took this tick
+XrVector3f gTakenPrev{};  // ...and the tick before: the shift in the gun hand aim's ray reads
+sv::AssistGoal gGoal;
+int gAssistEye = -1;
+bool gAssisting = false;      // the goal's weight is up (logged on each change)
+double gLastTickMs = 0.0;
+// Heartbeat and snapshot: where the aiming eye sat against the unassisted sight line while the gun was
+// raised (a systematic offset means the sight's place on the gun is off), and the biggest shift.
+double gOffsetSumX = 0.0;
+double gOffsetSumY = 0.0;
+double gOffsetSumAngle = 0.0;
+int gOffsetTicks = 0;
+float gMaxShift = 0.0f;
+
+constexpr float kRaisedWeight = 0.05f;  // the assist counts as on from this weight
 
 // BioWeaponRanged.GetPlayerAimError's answer, after the call (CallFunction post-handler: the weapon's
 // GetAdjustedAim script asks it for every shot, research/18). With the scope's picture up, the answer
@@ -77,6 +97,72 @@ void OnAimError(UObject* context, UFunction* /*function*/, void* result) {
 
 double Dot(engine::UnrealVector const& a, engine::UnrealVector const& b) {
     return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+XrVector3f Sub3(XrVector3f a, XrVector3f b) {
+    return {a.x - b.x, a.y - b.y, a.z - b.z};
+}
+
+float Length3(XrVector3f a) {
+    return std::sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
+}
+
+void ResetAssist(char const* why) {
+    if (gAssisting) {
+        log::Info("sights: alignment assist off ({})", why);
+    }
+    gSpring.Reset();
+    gTakenNow = {};
+    gTakenPrev = {};
+    gGoal = {};
+    gAssistEye = -1;
+    gAssisting = false;
+}
+
+// The assist's step for this tick's sight (as drawn: it carries gTakenPrev).
+void StepAssist(sv::Settings const& settings, sv::Sight const& drawn, double nowMs) {
+    double const dt = gLastTickMs > 0.0 ? std::clamp((nowMs - gLastTickMs) / 1000.0, 0.0, 0.15) : 0.0;
+    gLastTickMs = nowMs;
+    auto const frame = view_anchor::Current();
+    if (!settings.assist.enabled || drawn.kind == static_cast<std::int32_t>(sv::Kind::None) || !frame) {
+        ResetAssist(!settings.assist.enabled ? "[Sights] assist = 0" : "no sight");
+        return;
+    }
+    XrPosef const& head = frame->head;
+    XrVector3f const right = vr::overlay::Rotate(head.orientation, {1.0f, 0.0f, 0.0f});
+    XrVector3f const forward = vr::overlay::Rotate(head.orientation, {0.0f, 0.0f, -1.0f});
+    // The eyes about the head's centre (the view's eye midpoint), a typical IPD apart [verify: the snapshot's
+    // eye poses are 6.4 cm apart on this headset].
+    constexpr float kHalfIpd = 0.032f;
+    XrVector3f const eyes[2] = {{head.position.x - right.x * kHalfIpd, head.position.y - right.y * kHalfIpd, head.position.z - right.z * kHalfIpd},
+        {head.position.x + right.x * kHalfIpd, head.position.y + right.y * kHalfIpd, head.position.z + right.z * kHalfIpd}};
+    // The sight without the shift already in the drawn gun, so the assist never chases itself.
+    XrVector3f const center = Sub3(drawn.center, gTakenPrev);
+    gGoal = sv::AssistTarget(settings.assist, center, drawn.axis, drawn.up, eyes, forward, gAssistEye);
+    gAssistEye = gGoal.eye;
+    XrVector3f const shift = gSpring.Update(gGoal.shift, static_cast<float>(dt));
+    gMaxShift = std::max(gMaxShift, Length3(shift));
+    bool const on = gGoal.weight >= kRaisedWeight;
+    if (on) {
+        gOffsetSumX += gGoal.x;
+        gOffsetSumY += gGoal.y;
+        gOffsetSumAngle += gGoal.angleDeg;
+        ++gOffsetTicks;
+    }
+    if (on != gAssisting) {
+        gAssisting = on;
+        if (on) {
+            log::Info("sights: alignment assist on: the {} eye {:.1f} cm {} and {:.1f} cm {} the sight line ({:.1f} degrees, the sight "
+                      "{:.2f} m ahead): the gun slides {:.1f} cm toward it ({:.0f}% weight)",
+                gGoal.eye == 0 ? "left" : "right", std::abs(gGoal.x) * 100.0f, gGoal.x >= 0.0f ? "right of" : "left of",
+                std::abs(gGoal.y) * 100.0f, gGoal.y >= 0.0f ? "above" : "below", gGoal.angleDeg, gGoal.along,
+                Length3(gGoal.shift) * 100.0f, gGoal.weight * 100.0f);
+        } else {
+            log::Info("sights: alignment assist off (the gun lowered or turned away: the eye {} degrees off the line, the sight {:.2f} m "
+                      "ahead); the gun eases back",
+                gGoal.eye >= 0 ? std::format("{:.1f}", gGoal.angleDeg) : std::string("-"), gGoal.along);
+        }
+    }
 }
 
 std::string ViewText(std::uint32_t view) {
@@ -180,7 +266,16 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
     }
     gLast = out;
     gLastWeapon = weapon::Key();
+    double const nowMs =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    StepAssist(settings, out, nowMs);
     return out;
+}
+
+XrVector3f TakeGunShift() {
+    gTakenPrev = gTakenNow;
+    gTakenNow = gSpring.Value();
+    return gTakenNow;
 }
 
 void SetHostView(std::uint32_t view) {
@@ -195,20 +290,39 @@ void SetHostView(std::uint32_t view) {
 
 std::string StatusJson() {
     namespace json = vr::test_request;
+    XrVector3f const shift = gSpring.Value();
     return std::format("{{\"kind\": {}, \"weapon\": {}, \"status\": {}, \"hostView\": {}, \"scopeUp\": {}, \"aimedShots\": {}, "
-                       "\"center\": [{}, {}, {}], \"axis\": [{}, {}, {}], \"radius\": {}, \"zoom\": {}}}",
+                       "\"center\": [{}, {}, {}], \"axis\": [{}, {}, {}], \"radius\": {}, \"zoom\": {}, \"assist\": {{\"on\": {}, "
+                       "\"eye\": {}, \"angleDeg\": {}, \"along\": {}, \"offset\": [{}, {}], \"weight\": {}, \"goal\": [{}, {}, {}], "
+                       "\"shift\": [{}, {}, {}]}}}}",
         json::JsonString(sv::Name(static_cast<sv::Kind>(gLast.kind))), json::JsonString(sv::WeaponName(gLast.weapon)),
         json::JsonString(gStatus), gHostView, gScopeUp ? "true" : "false", gAimedShotsTotal, json::JsonNumber(gLast.center.x),
         json::JsonNumber(gLast.center.y), json::JsonNumber(gLast.center.z), json::JsonNumber(gLast.axis.x),
-        json::JsonNumber(gLast.axis.y), json::JsonNumber(gLast.axis.z), json::JsonNumber(gLast.radius), json::JsonNumber(gLast.zoom));
+        json::JsonNumber(gLast.axis.y), json::JsonNumber(gLast.axis.z), json::JsonNumber(gLast.radius), json::JsonNumber(gLast.zoom),
+        gAssisting ? "true" : "false", json::JsonString(gGoal.eye == 0 ? "left" : gGoal.eye == 1 ? "right" : "none"),
+        json::JsonNumber(gGoal.angleDeg), json::JsonNumber(gGoal.along), json::JsonNumber(gGoal.x), json::JsonNumber(gGoal.y),
+        json::JsonNumber(gGoal.weight), json::JsonNumber(gGoal.shift.x), json::JsonNumber(gGoal.shift.y), json::JsonNumber(gGoal.shift.z),
+        json::JsonNumber(shift.x), json::JsonNumber(shift.y), json::JsonNumber(shift.z));
 }
 
 void LogStats() {
     unsigned const queries = gAimErrorCalls.exchange(0);
     unsigned const aimed = gAimedShots.exchange(0);
     if (gLast.kind != 0 || aimed > 0) {
-        log::Info("    sights: {}; {}; scoped aimed fire on {} of {} aim-error queries", gStatus, ViewText(gHostView), aimed, queries);
+        std::string assist = "alignment assist idle";
+        if (gOffsetTicks > 0) {
+            assist = std::format("alignment assist on {} ticks: the aiming eye sat on average {:.1f} cm {} and {:.1f} cm {} the "
+                                 "unassisted sight line ({:.1f} degrees); the gun moved at most {:.1f} cm",
+                gOffsetTicks, std::abs(gOffsetSumX / gOffsetTicks) * 100.0, gOffsetSumX >= 0.0 ? "right of" : "left of",
+                std::abs(gOffsetSumY / gOffsetTicks) * 100.0, gOffsetSumY >= 0.0 ? "above" : "below", gOffsetSumAngle / gOffsetTicks,
+                gMaxShift * 100.0f);
+        }
+        log::Info("    sights: {}; {}; scoped aimed fire on {} of {} aim-error queries; {}", gStatus, ViewText(gHostView), aimed, queries,
+            assist);
     }
+    gOffsetSumX = gOffsetSumY = gOffsetSumAngle = 0.0;
+    gOffsetTicks = 0;
+    gMaxShift = 0.0f;
 }
 
 void Shutdown() {
@@ -222,6 +336,16 @@ void Shutdown() {
     gScopeUp = false;
     gAimedShotsTotal = 0;
     gLoggedAimed = false;
+    gSpring.Reset();
+    gTakenNow = {};
+    gTakenPrev = {};
+    gGoal = {};
+    gAssistEye = -1;
+    gAssisting = false;
+    gLastTickMs = 0.0;
+    gOffsetSumX = gOffsetSumY = gOffsetSumAngle = 0.0;
+    gOffsetTicks = 0;
+    gMaxShift = 0.0f;
 }
 
 } // namespace mevr::game::sights
