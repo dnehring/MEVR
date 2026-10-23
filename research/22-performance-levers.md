@@ -406,6 +406,24 @@ automatic mode recovers by itself). If SteamVR still halves it, the frame loop i
 - Switch: `[Performance] earlyFrameWait` in `ASI\LE1MEVR.ini`, live; 0 = upstream's order (45).
   Not yet checked in the headset: head-pose latency and judder with the new order **[verify]**.
 
+## At 90 fps the render thread is the limit, and it is real work (2026-10-23 00:01)
+
+- With the early wait: median frame 11.13 ms, p90 12.5 ms; the render thread busy 10.6 ms of 11.1, so
+  heavier moments miss (fpsVR: 14-16% reprojected, 60s-70s fps in busy spots). NVIDIA's "Virtual
+  Reality pre-rendered frames" 1 -> 2 changed little.
+- **Correction:** the probe's "spinning" reading (busy time not following the draws) was wrong at 90
+  fps. An external stack sampler (`tools/sample-render-thread.ps1`, `mevr-stack-sampler`: 4,855
+  samples of the render thread over 8 s) puts the top frame in the game's exe 44%, d3d11 18%, ntdll
+  (heap, locks, timers) 15%, the NVIDIA driver 11%, our ASI 3%; waiting (`NtWaitForSingleObject`) only
+  3%. On the stack: Halcyon's Present work 11% (1.2 ms, the XR frame included), SteamVR's runtime 6%.
+  The d3d11/ntdll names are the nearest exports (no Microsoft symbols downloaded).
+- Found there: file-system calls on the render thread (~2.4%): Halcyon's `IsOpenXrDisabledForBoundary`
+  stats a marker file twice per Present, uncached. Now cached for a second. Halcyon's render-target
+  census (`[REFLCEN]`, every draw of every Stereo 2 frame) now counts only around the presents it
+  logs. The other per-draw diagnostics are already off by default.
+- Next: the settings A/B (`DetailMode=1`, `LightEnvironmentShadows=False`, `AmbientOcclusion=False`)
+  to price the scene's draws; then, if needed, sharing the eyes' CPU work (one view family).
+
 ## Next session: the no-code checks (about 15 minutes)
 
 Same spot each time (e.g. the Normandy's CIC, standing still, same direction), 30 s per step:

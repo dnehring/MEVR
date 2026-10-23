@@ -419,6 +419,12 @@ if (MEVR_BUILD_TESTS)
     target_compile_definitions(mevr-sight-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-sight-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
 
+    # Where a game thread's time goes, sampled from outside (tools/stack-sampler, research/22).
+    add_executable(mevr-stack-sampler tools/stack-sampler/sampler.cpp)
+    target_link_libraries(mevr-stack-sampler PRIVATE dbghelp winmm)
+    target_compile_definitions(mevr-stack-sampler PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-stack-sampler PRIVATE /W4 /WX /permissive- /utf-8)
+
     # The colour correction, offline (tools/colour-preview, research/27): the shader (core/vr/Colour's prelude) on a
     # D3D11 device of its own, checked against the CPU reference, and the test strip through each preset as PNGs.
     # Also a test: the shader must match the CPU reference within one 8-bit step.

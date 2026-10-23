@@ -561,7 +561,7 @@ void WriteCapture() {
         "  \"frames\": {},\n  \"ticks\": {},\n  \"files\": {{\"frames\": {}, \"ticks\": {}}},\n"
         "  \"clocks\": {{\"qpcFrequency\": {}, \"cycleFrequency\": {}, \"gpuFrequency\": {}, \"syncBegin\": {}, "
         "\"syncEnd\": {}}},\n  \"gpuTimestamps\": {},\n  \"gpuFramesDropped\": {},\n  \"accessViolations\": {},\n"
-        "  \"renderThread\": {},\n  \"gameThread\": {},\n"
+        "  \"pid\": {},\n  \"renderThread\": {},\n  \"gameThread\": {},\n"
         "  \"renderThreadBusySeconds\": {{\"fromCycles\": {}, \"fromThreadTimes\": {}}},\n"
         "  \"halcyon\": {{\"sfr2\": {}, \"dynResFraction\": {}, \"mirrorPresentEvery\": {}, \"stereoFramePacing\": {}, "
         "\"cineFpsCap\": {}, \"disableDof\": {}, \"hudPanel\": {}, \"handReticle\": {}}},\n"
@@ -570,7 +570,7 @@ void WriteCapture() {
         c.frames.size(), c.ticks.size(), req::JsonString(Utf8(framesPath.filename())),
         req::JsonString(Utf8(ticksPath.filename())), J(c.clocks.qpcFrequency), J(c.clocks.cycleFrequency),
         J(c.clocks.gpuFrequency), Sync(c.clocks.syncBegin, c.clocks), Sync(c.clocks.syncEnd, c.clocks),
-        c.gpu ? "true" : "false", c.gpuDropped, c.accessViolations, c.renderThread, c.gameThread, J(cycleSeconds),
+        c.gpu ? "true" : "false", c.gpuDropped, c.accessViolations, GetCurrentProcessId(), c.renderThread, c.gameThread, J(cycleSeconds),
         J(c.threadSecondsEnd - c.threadSecondsBegin), h.sfr2Enabled ? "true" : "false", J(h.dynResFraction),
         h.mirrorPresentEvery, h.stereoFramePacing ? "true" : "false", h.cineFpsCap ? "true" : "false",
         h.disableDof ? "true" : "false", h.hudPanel ? "true" : "false", h.handReticle ? "true" : "false",

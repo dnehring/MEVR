@@ -265,7 +265,8 @@ Use it to check VR changes yourself instead of asking the user what they see
   `-probe.json`, then `python tools/perf-probe.py [--latest]` says whether the render thread, the GPU or
   the game thread sets the pace. Seams: `MevrBridge::PerfPresentScope` / `PerfPass0Captured` /
   `g_perfDraws` and the wrapped `xrWaitFrame` / `xrBeginFrame` / `xrEndFrame`. `tools/perf-monitor.ps1`
-  adds whole-GPU load.
+  adds whole-GPU load; `tools/sample-render-thread.ps1` samples the render thread's stack from outside
+  (`mevr-stack-sampler`): where its time goes by module and function, no redeploy.
 - `testloop.status` (JSON, once a second): recording, replay, last snapshot, `framesRunning`.
 - Needs a running VR session (Halcyon only runs frames between READY and STOPPING). Not focused
   (headset off the face, VISIBLE) is fine: replay drives the view and controllers. SYNCHRONIZED or
