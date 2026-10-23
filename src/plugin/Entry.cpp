@@ -11,6 +11,7 @@
 
 #if defined(MEVR_WITH_HALCYON)
 #include "plugin/Halcyon.hpp"
+#include "plugin/PerfProbe.hpp"
 #endif
 
 #include <LESDK/Headers.hpp>
@@ -34,11 +35,18 @@ using tGameEngineTick = void(UGameEngine* self, float deltaSeconds);
 tGameEngineTick* gGameEngineTickOrig = nullptr;
 
 void GameEngineTickHook(UGameEngine* self, float deltaSeconds) {
+#if defined(MEVR_WITH_HALCYON)
+    mevr::host::perf::EngineTickBegin();
+#endif
     gGameEngineTickOrig(self, deltaSeconds);
 #if defined(MEVR_WITH_HALCYON)
+    mevr::host::perf::EngineTickEnd();
     mevr::host::halcyon::Tick(deltaSeconds);
 #endif
     mevr::host::Tick(deltaSeconds);
+#if defined(MEVR_WITH_HALCYON)
+    mevr::host::perf::HostTickEnd();
+#endif
 }
 
 // Close the XR session before Windows starts unloading DLLs: the Oculus runtime's client DLL

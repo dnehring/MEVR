@@ -22,10 +22,12 @@
 #include "core/Log.hpp"
 #include "core/vr/AimRay.hpp"
 #include "core/vr/Controllers.hpp"
+#include "core/vr/FrameProbe.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/WheelCrop.hpp"
 #include "plugin/Halcyon.hpp"
+#include "plugin/PerfProbe.hpp"
 #include "plugin/RecenterTilt.hpp"
 #include "plugin/SightLayers.hpp"
 #include "plugin/SquadPanel.hpp"
@@ -1214,6 +1216,7 @@ void ProbeTextureAlpha(ID3D11DeviceContext* context, ID3D11Texture2D* texture, c
 }
 
 unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsigned capacity) noexcept {
+    mevr::host::perf::ScopedMarks const timed(mevr::vr::frame_probe::kOverlayBegin, mevr::vr::frame_probe::kOverlayEnd);
     ID3D11DeviceContext* const context = frame.context;
     if (context == nullptr || frame.session == nullptr) {
         gArmed.store(false, std::memory_order_release);

@@ -1,6 +1,7 @@
 #include "plugin/Halcyon.hpp"
 
 #include "core/Log.hpp"
+#include "plugin/PerfProbe.hpp"
 #include "plugin/TestLoop.hpp"
 
 #include "halcyon/le1/d3d_capture.h"
@@ -58,6 +59,7 @@ void Attach() {
 
 void Tick(float deltaSeconds) {
     testloop::Tick(deltaSeconds);  // snapshot / recording keys and request files
+    perf::Tick();                  // the frame-breakdown probe: arm a request, write a finished capture
     // Upstream hooks XInput at attach (only DLLs already loaded) and once more at its menu's first
     // frame. Keep trying for the first minutes in case the game loads XInput later; it's
     // idempotent and cheap.

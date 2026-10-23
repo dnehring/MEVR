@@ -26,6 +26,7 @@
 
 #include "halcyon/le1/mevr_bridge.h"
 #include "plugin/MevrMenu.hpp"
+#include "plugin/PerfProbe.hpp"
 #include "plugin/TestLoop.hpp"
 #include "halcyon/le1/vr_config.h"
 #include "halcyon/le1/vr_menu.h"
@@ -459,11 +460,25 @@ static void TestLoopSection() {
         ImGui::SameLine();
         ImGui::Checkbox("with buttons and sticks", &gReplayWithInputs);
     }
+    namespace perf = mevr::host::perf;
+    perf::Status const p = perf::GetStatus();
+    if (p.pending) {
+        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Measuring frame timing: %.0f s of 20", p.seconds);
+    } else if (ImGui::Button("Measure frame timing (20 s)")) {
+        perf::Request(20.0, "", "menu", 3.0);  // time to close this menu: it changes what's measured
+    }
+    if (!p.pending) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("starts 3 s after the click; close the menu and play normally");
+    }
     if (!s.lastSnapshot.empty()) {
         ImGui::TextDisabled("Last snapshot: %s", s.lastSnapshot.c_str());
     }
     if (!s.lastRecording.empty()) {
         ImGui::TextDisabled("Last recording: %s", s.lastRecording.c_str());
+    }
+    if (!p.lastCapture.empty()) {
+        ImGui::TextDisabled("Last frame timing: %s", p.lastCapture.c_str());
     }
 }
 

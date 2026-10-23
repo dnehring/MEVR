@@ -24,6 +24,7 @@
 #include "core/vr/Recenter.hpp"
 #include "core/vr/Sights.hpp"
 #include "core/vr/SquadMenu.hpp"
+#include "core/vr/FrameProbe.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "core/vr/ViewLevel.hpp"
 #include "core/vr/ViewSync.hpp"
@@ -1951,6 +1952,60 @@ void TestPng() {
     if (SUCCEEDED(co)) {
         CoUninitialize();
     }
+}
+
+void TestFrameProbe() {
+    using namespace mevr::vr::frame_probe;
+    CHECK(std::string(PointName(kStart)) == "start" && std::string(PointName(kEnd)) == "end" &&
+        std::string(PointName(kPointCount)) == "?");
+    CHECK(GpuIndex(kStart) == 0 && GpuIndex(kPass0) == 1 && GpuIndex(kEnd) == 4 && GpuIndex(kWaitBegin) == -1);
+
+    Clocks clocks;
+    clocks.qpcFrequency = 1e7;
+    clocks.cycleFrequency = 3e9;
+    clocks.gpuFrequency = 1e9;
+    clocks.originQpc = 1000;
+    // One sync: its offset everywhere. Two: a straight line between them (drift).
+    clocks.syncBegin = {1000, 5.0, true};
+    CHECK(NearD(GpuOffsetAt(clocks, 999999), 5.0));
+    clocks.syncEnd = {1000 + 100'000'000, 5.002, true};  // 10 s later, 2 ms of drift
+    CHECK(NearD(GpuOffsetAt(clocks, 1000 + 50'000'000), 5.001, 1e-9));
+    clocks.syncEnd.valid = false;
+
+    Frame frame;
+    frame.qpc[kStart] = 1000 + 100'000;    // 10 ms after the origin
+    frame.qpc[kPresent] = 1000 + 180'000;  // 18 ms
+    frame.cycles[kStart] = 3'000'000;
+    frame.cycles[kPresent] = 6'000'000;    // 1 ms busy
+    frame.draws[kStart] = 0xFFFFFFF0u;
+    frame.draws[kPresent] = 0x10u;         // 32 draws across the counter's wrap
+    double const originSeconds = 1000.0 / 1e7;
+    frame.gpu[GpuIndex(kStart)] = static_cast<std::uint64_t>(std::llround((originSeconds + 0.0105 + 5.0) * 1e9));
+    frame.gpuValid = true;
+    frame.xrFrame = true;
+    frame.displayPeriodNs = 11'111'111;
+    frame.swapchainWaitQpc = 5'000;        // 0.5 ms
+    frame.accessViolations = 3;
+    frame.pass0Marks = 1;
+    std::string const header = FrameCsvHeader();
+    std::string const row = FrameCsvRow(7, frame, clocks);
+    CHECK(header.starts_with("frame,t_start,busy_start,draws_start,t_pass0,") && header.ends_with("pass0_marks\n"));
+    CHECK(std::count(header.begin(), header.end(), ',') == std::count(row.begin(), row.end(), ','));
+    CHECK(row.starts_with("7,10.0000,0.0000,0,,,,18.0000,1.0000,32,"));
+    CHECK(row.find(",10.5000,") != std::string::npos);  // the GPU start, on the CPU's clock
+    CHECK(row.ends_with(",1,1,1,11.1111,0.5000,3,1\n"));
+    frame.gpuValid = false;
+    CHECK(FrameCsvRow(7, frame, clocks).find(",10.5000,") == std::string::npos);
+
+    Tick tick;
+    tick.beginQpc = 1000 + 10'000;       // 1 ms
+    tick.engineEndQpc = 1000 + 90'000;   // the engine: 8 ms
+    tick.endQpc = 1000 + 100'000;        // ours: 1 ms
+    tick.beginCycles = 0;
+    tick.engineEndCycles = 15'000'000;   // 5 ms busy
+    tick.endCycles = 18'000'000;         // 1 ms busy
+    CHECK(TickCsvHeader() == "tick,t_begin,engine_ms,engine_busy_ms,host_ms,host_busy_ms\n");
+    CHECK(TickCsvRow(2, tick, clocks) == "2,1.0000,8.0000,5.0000,1.0000,1.0000\n");
 }
 
 void TestTestRequest() {
@@ -4726,6 +4781,7 @@ int main() {
     TestImageConvert();
     TestLayerComposite();
     TestTestRequest();
+    TestFrameProbe();
     TestPng();
     if (gFailures == 0) {
         std::printf("all tests passed\n");

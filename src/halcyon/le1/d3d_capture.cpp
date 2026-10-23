@@ -4191,6 +4191,7 @@ void SfrOnSceneDepthClear() noexcept   // render thread, from ClearDepthStencilV
 {
     if (MELEVR::D3DCapture::CaptureStereoPass(0))
     {
+        MELEVR::MevrBridge::PerfPass0Captured(g_gameContext);   // [MEVR] frame-breakdown probe
         g_sfrPass0Captured.store(true, std::memory_order_release);
         const unsigned n = g_sfrCapLogs.fetch_add(1, std::memory_order_relaxed);
         if (n < 8 || (n % 600) == 0)
@@ -5467,6 +5468,7 @@ inline void SfrNoteBackbufferDraw() noexcept
 void STDMETHODCALLTYPE DrawIndexedHook(ID3D11DeviceContext* context, UINT indexCount, UINT startIndexLocation,
                                        INT baseVertexLocation) noexcept
 {
+    ++MELEVR::MevrBridge::g_perfDraws;          // [MEVR] frame-breakdown probe
     if (g_depthMapEnabled.load(std::memory_order_relaxed)) NoteDepthDraw(context);   // DIBR/relief: attribute + mid-scene live capture ([RELIEF M0.6])
     SfrNoteBackbufferDraw();                    // [ME2PORT v2] pass-0 snapshot dirty gate
     if (SfrCaptureArmed()) ReflCenNoteDraw();   // [REFLCEN] per-RT draw census while Stereo 2 runs
@@ -5515,6 +5517,7 @@ void STDMETHODCALLTYPE DrawIndexedHook(ID3D11DeviceContext* context, UINT indexC
 
 void STDMETHODCALLTYPE DrawHook(ID3D11DeviceContext* context, UINT vertexCount, UINT startVertexLocation) noexcept
 {
+    ++MELEVR::MevrBridge::g_perfDraws;          // [MEVR] frame-breakdown probe
     SfrNoteBackbufferDraw();                    // [ME2PORT v2] pass-0 snapshot dirty gate
     if (SfrCaptureArmed()) ReflCenNoteDraw();   // [REFLCEN]
     SfrCineNoteDraw(context);                   // [CLEANVRCINE] cine pass-0 capture (backbuffer-batch trigger)
@@ -5560,6 +5563,7 @@ void STDMETHODCALLTYPE DrawIndexedInstancedHook(ID3D11DeviceContext* context, UI
                                                 UINT instanceCount, UINT startIndexLocation,
                                                 INT baseVertexLocation, UINT startInstanceLocation) noexcept
 {
+    ++MELEVR::MevrBridge::g_perfDraws;          // [MEVR] frame-breakdown probe
     if (g_depthMapEnabled.load(std::memory_order_relaxed)) NoteDepthDraw(context);   // DIBR/relief: attribute + mid-scene live capture ([RELIEF M0.6])
     SfrNoteBackbufferDraw();                    // [ME2PORT v2] pass-0 snapshot dirty gate
     if (SfrCaptureArmed()) ReflCenNoteDraw();   // [REFLCEN]
@@ -5609,6 +5613,7 @@ void STDMETHODCALLTYPE DrawInstancedHook(ID3D11DeviceContext* context, UINT vert
                                          UINT instanceCount, UINT startVertexLocation,
                                          UINT startInstanceLocation) noexcept
 {
+    ++MELEVR::MevrBridge::g_perfDraws;          // [MEVR] frame-breakdown probe
     DrawInstancedFn original = g_originalDrawInstanced;
     if (original != nullptr)
     {
@@ -6357,6 +6362,7 @@ void TickGpuTiming() noexcept
 
 HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterval, UINT flags) noexcept
 {
+    MELEVR::MevrBridge::PerfPresentScope mevrPerf(g_gameContext);   // [MEVR] frame-breakdown probe
     TickGpuTiming();
     const unsigned long long n = g_presentCount.fetch_add(1, std::memory_order_relaxed) + 1;
     g_uiDepthCaptured = false;   // [RELIEF M0.5] re-arm the once-per-present UI-latch depth capture

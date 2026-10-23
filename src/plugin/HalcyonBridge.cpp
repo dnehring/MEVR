@@ -9,6 +9,7 @@
 #include "core/Window.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/Floor.hpp"
+#include "core/vr/FrameProbe.hpp"
 #include "core/vr/Haptics.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/xr/Floor.hpp"
@@ -17,6 +18,7 @@
 #include "halcyon/le1/render_hook.h"
 #include "plugin/Halcyon.hpp"
 #include "plugin/MevrMenu.hpp"
+#include "plugin/PerfProbe.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/WorldPanels.hpp"
 
@@ -202,12 +204,18 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
         return;
     }
     gTarget.base = static_cast<XrSpace>(space);  // recentering replaces it
+    namespace probe = mevr::vr::frame_probe;
+    struct Done {  // the frame-breakdown probe: the end of this function, whichever return
+        ~Done() { mevr::host::perf::Mark(probe::kFrameBegunEnd); }
+    } const done;
+    mevr::host::perf::Mark(probe::kInputBegin);
     mevr::vr::controllers::State state;
     if (!gInputFailed) {
         gInput.Sync(gTarget, static_cast<XrTime>(predictedDisplayTime), state);
         ApplyPendingHaptics();  // the mod's holster pulses and contact buzz (HostServices v9/v10)
     }
     MeasureFloor(static_cast<XrTime>(predictedDisplayTime));
+    mevr::host::perf::Mark(probe::kInputEnd);
     bool const inputFocused = !gInputFailed && gInput.Focused();
     mevr::vr::controllers::State const live = state;
     // The test loop records the live sample, or replaces it with a recording's (plugin/TestLoop).

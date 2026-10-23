@@ -229,6 +229,14 @@ Use it to check VR changes yourself instead of asking the user what they see
   after 100 ms alone); the menu's VR hands tab ("Test loop": snapshot in 3 s, record, replay the
   last recording). There's no controller chord for recording (both grips are the gun and the
   squad menu since 2026-10-22).
+- **Frame timing** ([research/22](research/22-performance-levers.md)): `tools/perf-probe.ps1 [-Seconds 20
+  -Delay s -Tag x]` writes `perf.request` (or the VR hands tab: "Measure frame timing"); `plugin/PerfProbe`
+  records each frame's steps on the render thread (time, busy time, draws, GPU timestamps mapped onto the
+  CPU clock, access violations) and each game-thread tick into `perf\<stamp>-frames.csv`, `-ticks.csv` and
+  `-probe.json`, then `python tools/perf-probe.py [--latest]` says whether the render thread, the GPU or
+  the game thread sets the pace. Seams: `MevrBridge::PerfPresentScope` / `PerfPass0Captured` /
+  `g_perfDraws` and the wrapped `xrWaitFrame` / `xrBeginFrame` / `xrEndFrame`. `tools/perf-monitor.ps1`
+  adds whole-GPU load.
 - `testloop.status` (JSON, once a second): recording, replay, last snapshot, `framesRunning`.
 - Needs a running VR session (Halcyon only runs frames between READY and STOPPING). Not focused
   (headset off the face, VISIBLE) is fine: replay drives the view and controllers. SYNCHRONIZED or

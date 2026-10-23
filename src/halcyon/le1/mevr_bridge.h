@@ -228,13 +228,35 @@ float ForwardLeanEmphasis() noexcept;
 bool FirstPersonAtBoot(bool saved) noexcept;
 
 // ---- Test loop: eye snapshots, pose recording and replay (src/plugin/TestLoop.cpp) ------------------
-// ResolveSessionFunctions, once its session functions are resolved: replaces four of them in place
+// ResolveSessionFunctions, once its session functions are resolved: replaces some of them in place
 // (each argument points at a resolved function pointer) with wrappers that call the original. They
 // copy each swapchain image just before it's released and read the layers each xrEndFrame submits
 // (snapshots, only while one is being taken), note the head located in the app space (recording),
 // and during a replay substitute the recorded head poses in xrLocateViews, keeping the runtime's FOVs.
-void WrapSessionFunctions(void** acquireSwapchainImage, void** releaseSwapchainImage, void** endFrame,
-                          void** locateViews) noexcept;
+// The frame-breakdown probe (src/plugin/PerfProbe.cpp) times the wait, begin and end of each frame and
+// the swapchain image waits.
+void WrapSessionFunctions(void** acquireSwapchainImage, void** waitSwapchainImage, void** releaseSwapchainImage,
+                          void** waitFrame, void** beginFrame, void** endFrame, void** locateViews) noexcept;
+
+// ---- Frame-breakdown probe (src/plugin/PerfProbe.cpp, research/22) -------------------------------------
+// Render thread. Steps of the frame the probe times while it runs (one atomic load each otherwise):
+// Present's start and end (PerfPresentScope, the first line of PresentHook) and Stereo 2's first eye
+// captured. `context`: the game's immediate context, for GPU timestamps (may be nullptr).
+void PerfPresentBegin(ID3D11DeviceContext* context) noexcept;
+void PerfPresentEnd(ID3D11DeviceContext* context) noexcept;
+void PerfPass0Captured(ID3D11DeviceContext* context) noexcept;
+
+struct PerfPresentScope
+{
+    explicit PerfPresentScope(ID3D11DeviceContext* c) noexcept : context(c) { PerfPresentBegin(c); }
+    ~PerfPresentScope() { PerfPresentEnd(context); }
+    PerfPresentScope(const PerfPresentScope&) = delete;
+    PerfPresentScope& operator=(const PerfPresentScope&) = delete;
+    ID3D11DeviceContext* context;
+};
+
+// Immediate-context draws, counted by d3d_capture.cpp's draw hooks (render thread; read by the probe).
+extern std::uint32_t g_perfDraws;
 
 // [MENUVIS] One-shot diagnostics for Halcyon's Insert menu quad (Present thread): reads back
 // `texture` (the menu's ImGui texture, or the swapchain image right after the copy into it) a few

@@ -285,6 +285,14 @@ lock has to be off for this (or the frame rate only reads 45 or 90).
 
 ### Measure first: a frame breakdown in the test loop
 
+**Built (2026-10-22):** `plugin/PerfProbe` with `core/vr/FrameProbe`, `tools/perf-probe.ps1` and
+`tools/perf-probe.py` (CLAUDE.md, "Test loop"). It can't time the GPU's own work while the CPU sets the
+pace (timestamps only say when the GPU finished, and an idle GPU finishes as soon as the CPU issues);
+then it reports how far the GPU lags behind the CPU instead, and `tools/perf-monitor.ps1` gives the
+GPU's load. Built at the same time: the `MevrHudPanelDraw` prefilter (a copy of the immediate context's
+bound target, with one live check in 256 that turns it off on a disagreement) and the non-blocking
+`[BANDPROBE]` read (findings 5 and 6).
+
 What one short session should record, per frame, into `%LOCALAPPDATA%\MEVR\perf\`:
 - **Render thread** (QPC, plus `QueryThreadCycleTime` for busy time): Present entry, pass 0 and
   pass 1 captured, the time inside `xrWaitFrame`, our controller sync, the copies, `xrEndFrame`,
@@ -343,7 +351,9 @@ and the 95th percentile per segment, and say which thread or the GPU sets the pa
 
 Same spot each time (e.g. the Normandy's CIC, standing still, same direction), 30 s per step:
 1. Start the monitor before the game and leave it running:
-   `powershell -ExecutionPolicy Bypass -File "H:\ME VR Attempt\tools\perf-monitor.ps1"`.
+   `powershell -ExecutionPolicy Bypass -File "H:\ME VR Attempt\tools\perf-monitor.ps1"`. At each step
+   below, after 10 s in place, take a frame breakdown: the VR hands tab's "Measure frame timing", or
+   Claude runs `tools/perf-probe.ps1 -Tag <step>`.
 2. SteamVR > Settings > Video > Per-Application Video Settings > the game: Throttling Behavior
    Fixed, at the full refresh rate. Baseline: note the fps, or let Claude read
    `tools/perf-summary.py` and the perf CSV afterwards.

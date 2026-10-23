@@ -3,6 +3,7 @@
 // (src/halcyon/le1/mevr_bridge.h), called from xr_session.cpp's ResolveSessionFunctions.
 
 #include "plugin/TestLoop.hpp"
+#include "plugin/PerfProbe.hpp"
 #include "plugin/RecenterTilt.hpp"
 #include "plugin/SightLayers.hpp"
 
@@ -1315,6 +1316,14 @@ void PollRequests() {
             }
         }
     }
+    if (TakeRequest(BaseDir() / L"perf.request", text)) {
+        req::Request const r = req::Parse(text);
+        double const seconds = r.Number("seconds", 20.0);
+        double const delay = r.Number("delay", 0.0);
+        log::Info("test loop: perf.request: {:.0f} s of frame timing{}", seconds,
+            delay > 0.0 ? std::format(", starting in {:.1f} s", delay) : std::string());
+        perf::Request(seconds, r.Get("tag"), "file", delay);
+    }
 }
 
 std::string StatusJson(Status const& s) {
@@ -1532,8 +1541,8 @@ void SetModStatus(char const* json) {
 
 namespace MELEVR::MevrBridge {
 
-void WrapSessionFunctions(void** acquireSwapchainImage, void** releaseSwapchainImage, void** endFrame,
-    void** locateViews) noexcept {
+void WrapSessionFunctions(void** acquireSwapchainImage, void** waitSwapchainImage, void** releaseSwapchainImage,
+    void** waitFrame, void** beginFrame, void** endFrame, void** locateViews) noexcept {
     using namespace mevr::host::testloop;
     // Re-resolving hands us the real functions again; never wrap a wrapper.
     auto wrap = [](void** slot, auto& real, auto wrapper) {
@@ -1547,8 +1556,11 @@ void WrapSessionFunctions(void** acquireSwapchainImage, void** releaseSwapchainI
     wrap(releaseSwapchainImage, gRealRelease, &WrappedRelease);
     wrap(endFrame, gRealEndFrame, &WrappedEndFrame);
     wrap(locateViews, gRealLocateViews, &WrappedLocateViews);
+    // The probe's wrappers go outside ours (its xrEndFrame timing includes a snapshot's work).
+    mevr::host::perf::WrapFrameFunctions(waitSwapchainImage, waitFrame, beginFrame, endFrame);
     mevr::log::Info("test loop: wrapped Halcyon's xrAcquireSwapchainImage, xrReleaseSwapchainImage, xrEndFrame and "
-                    "xrLocateViews (snapshots, recording, replay)");
+                    "xrLocateViews (snapshots, recording, replay), and xrWaitSwapchainImage, xrWaitFrame, xrBeginFrame "
+                    "and xrEndFrame for the frame-breakdown probe");
 }
 
 } // namespace MELEVR::MevrBridge

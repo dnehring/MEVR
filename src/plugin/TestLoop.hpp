@@ -34,6 +34,7 @@ struct ID3D11Texture2D;
 //   snapshot.request  [count=N] [interval=seconds] [delay=seconds] [tag=word]
 //   record.request    [start|stop|toggle] [seconds=N]
 //   replay.request    <path.mevrrec | latest | stop> [loop=1] [inputs=1]
+//   perf.request      [seconds=N] [delay=seconds] [tag=word]   (the frame-breakdown probe, plugin/PerfProbe)
 // %LOCALAPPDATA%\MEVR\testloop.status (JSON, rewritten once a second while it changes) says what is
 // recording or replaying and the last snapshot's JSON.
 namespace mevr::host::testloop {

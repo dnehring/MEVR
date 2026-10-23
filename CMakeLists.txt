@@ -237,6 +237,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/Controllers.cpp
     src/core/vr/Controllers.hpp
     src/core/vr/Floor.hpp
+    src/core/vr/FrameProbe.cpp
+    src/core/vr/FrameProbe.hpp
     src/core/vr/Haptics.cpp
     src/core/vr/Haptics.hpp
     src/core/vr/HostView.cpp
@@ -279,6 +281,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/MevrMenu.hpp
     src/plugin/MevrMenuPointer.cpp
     src/plugin/MevrMenuTab.cpp
+    src/plugin/PerfProbe.cpp
+    src/plugin/PerfProbe.hpp
     src/plugin/RecenterTilt.cpp
     src/plugin/RecenterTilt.hpp
     src/plugin/SightLayers.cpp
@@ -356,6 +360,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/Throwing.cpp
         src/core/ik/TouchReference.cpp
         src/core/ik/TwoHand.cpp
+        src/core/vr/FrameProbe.cpp
         src/core/vr/Haptics.cpp
         src/core/vr/ImageConvert.cpp
         src/core/vr/LayerComposite.cpp
