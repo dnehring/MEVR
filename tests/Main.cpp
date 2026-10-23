@@ -24,6 +24,7 @@
 #include "core/vr/LayerComposite.hpp"
 #include "core/vr/MenuPointer.hpp"
 #include "core/vr/MenuSettings.hpp"
+#include "core/vr/MetricStereo.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/PoseRecording.hpp"
 #include "core/vr/Recenter.hpp"
@@ -5838,7 +5839,103 @@ void TestMenuSettings() {
     std::filesystem::remove(file);
 }
 
+// Life-size stereo (core/vr/MetricStereo, research/30): off-centre projections from the runtime's FOVs, the eyes'
+// offsets in game units, and how a pair reads in the headset: the metric pair exactly, Halcyon's Stereo 2 as measured.
+void TestMetricStereo() {
+    namespace mst = mevr::vr::metric_stereo;
+    auto approx = [](double a, double b, double tol) { return std::fabs(a - b) <= tol; };
+    // The PS VR2's left eye as SteamVR reports it (log 2026-10-23); the right eye mirrors it.
+    mst::Fov const left{-1.0734f, 0.7583f, 0.9257f, -0.9257f};
+    mst::Fov const right{-0.7583f, 1.0734f, 0.9257f, -0.9257f};
+
+    // Off-centre terms: the frustum's edges land on NDC +-1, straight ahead on p8 (0 for a symmetric frustum).
+    mst::Tangents const t = mst::TangentsOf(left);
+    mst::OffCentre const p = mst::Projection(t);
+    float x = 0.0f, y = 0.0f;
+    mst::Project(p, {t.left * 2.0f, t.up * 2.0f, 2.0f}, &x, &y);
+    CHECK(approx(x, -1.0, 1e-5) && approx(y, 1.0, 1e-5));
+    mst::Project(p, {t.right * 7.0f, t.down * 7.0f, 7.0f}, &x, &y);
+    CHECK(approx(x, 1.0, 1e-5) && approx(y, -1.0, 1e-5));
+    mst::Project(p, {0.0f, 0.0f, 3.0f}, &x, &y);
+    CHECK(approx(x, p.p8, 1e-6) && approx(p.p8, 0.3208, 1e-3) && approx(y, 0.0, 1e-6));   // the left eye looks right of centre
+    mst::OffCentre const sym = mst::Projection(mst::TangentsOf(mst::Fov{-0.9f, 0.9f, 0.8f, -0.8f}));
+    CHECK(approx(sym.p8, 0.0, 1e-6) && approx(sym.p9, 0.0, 1e-6) && approx(sym.p0, 1.0 / std::tan(0.9), 1e-5));
+    // The same NDC is a different direction in each eye's own frustum: 24 degrees apart either way at the centre,
+    // which is why screen-space UI in the eye images keeps the symmetric window.
+    mst::OffCentre const pr = mst::Projection(mst::TangentsOf(right));
+    double const centreL = std::atan(-p.p8 / p.p0) * 57.29578, centreR = std::atan(-pr.p8 / pr.p0) * 57.29578;
+    CHECK(approx(centreL, -24.1, 0.2) && approx(centreR, 24.1, 0.2));
+
+    // Halcyon's symmetric window holds both eyes' frusta, and the per-eye frusta are never wider than it.
+    mst::Fov const window = mst::UnionWindow(left, right, 1.0f, 1.0f);
+    CHECK(approx(window.right, 1.0734, 1e-6) && approx(window.left, -1.0734, 1e-6) && approx(window.up, 0.9257, 1e-6));
+    for (float fill : {0.8f, 1.0f, 1.2f}) {
+        mst::Fov const w = mst::UnionWindow(left, right, fill, fill);
+        for (mst::Fov const& eye : {left, right}) {
+            mst::Fov const f = mst::Filled(eye, fill, fill);
+            CHECK(f.left >= w.left - 1e-6f && f.right <= w.right + 1e-6f && f.up <= w.up + 1e-6f && f.down >= w.down - 1e-6f);
+        }
+    }
+    CHECK(mst::Filled(left, 2.0f, 2.0f).left == -mst::kMaxAngle);
+
+    // The eyes' offsets: the runtime's eye distance in game units, along the camera's axes.
+    mst::EyeInputs in;
+    in.orientation[0] = in.orientation[1] = {0.0579f, -0.2229f, -0.0184f, 0.9730f};
+    in.position[0] = {-0.1689f, -0.3938f, -0.8865f};
+    in.position[1] = {-0.1122f, -0.3977f, -0.8593f};
+    in.unitsPerMeter = 100.0f;
+    in.viewOrientation = in.orientation[0];
+    in.viewFollowsHead = false;   // head-relative: +-half the eye distance along the head's right
+    mst::EyeOffsets o = mst::BodyOffsets(in);
+    CHECK(approx(o.ipdM, 0.0630, 0.0005) && approx(o.ipdUU, 6.30, 0.05) && approx(o.cantDeg, 0.0, 0.01));
+    CHECK(approx(o.body[0].x, -3.15, 0.03) && approx(o.body[1].x, 3.15, 0.03) && approx(o.body[1].y, 0.0, 0.03) &&
+          approx(o.body[1].z, 0.0, 0.03));
+    in.viewFollowsHead = true;    // app-space deltas: the head turned ~26 degrees, so the eyes sit fore and aft too
+    o = mst::BodyOffsets(in);
+    CHECK(approx(std::sqrt(o.body[1].x * o.body[1].x + o.body[1].y * o.body[1].y + o.body[1].z * o.body[1].z), 3.15, 0.03));
+    CHECK(approx(o.body[1].x, 2.835, 0.02) && approx(o.body[1].z, -1.36, 0.02) && approx(o.body[0].x, -o.body[1].x, 1e-4));
+    in.depth = 1.5f;
+    CHECK(approx(mst::BodyOffsets(in).ipdUU, 9.45, 0.08));
+
+    // How a point straight ahead reads. The metric pair: exactly where it is.
+    double const ipd = 0.0621;   // the user's PS VR2 in the sights job's snapshot (research/21 section 12)
+    mst::RenderedPair const metric = mst::MetricPair(static_cast<float>(ipd));
+    for (double d : {0.2, 0.3, 1.0, 10.0}) {
+        CHECK(approx(mst::PerceivedDepth(metric, d, ipd), d, d * 1e-4));
+        CHECK(approx(mst::DisparityErrorArcmin(metric, d, ipd), 0.0, 0.01));
+    }
+    // Halcyon's, with the user's profile (sfr2HalfEyeUU 3.4 at 100 units per metre, convergence 0.012 over a
+    // 61.5-degree half window, swap on): the shift is divergent. 0.2 / 0.3 / 0.5 m read as 0.21 / 0.34 / 0.68 m, 1 m
+    // as 2.6 m, and anything past 1.5 m needs the eyes to diverge (2.5 degrees for the far scenery).
+    mst::RenderedPair const user = mst::HalcyonPair(3.4f, 100.0f, 0.012f, 1.0734f, true, 0.0f);
+    CHECK(approx(mst::PerceivedDepth(user, 0.2, ipd), 0.210, 0.005));
+    CHECK(approx(mst::PerceivedDepth(user, 0.3, ipd), 0.340, 0.005));
+    CHECK(approx(mst::PerceivedDepth(user, 0.5, ipd), 0.677, 0.005));
+    CHECK(approx(mst::PerceivedDepth(user, 1.0, ipd), 2.61, 0.03));
+    CHECK(mst::PerceivedDepth(user, 10.0, ipd) < 0.0);   // beyond infinity
+    CHECK(approx(mst::DisparityErrorArcmin(user, 1e6, ipd), -151.9, 0.5));
+    // Swap off: the same shift converges instead; the far scenery reads 1.4 m away.
+    mst::RenderedPair const unswapped = mst::HalcyonPair(3.4f, 100.0f, 0.012f, 1.0734f, false, 0.0f);
+    CHECK(approx(mst::PerceivedDepth(unswapped, 1e6, ipd), 1.405, 0.01));
+    CHECK(approx(mst::PerceivedDepth(unswapped, 0.3, ipd), 0.229, 0.005));
+    // Without the shift, the separation alone (6.8 uu against 6.2 cm): 9% near; with the head turned 45 degrees from
+    // the body, upstream's eyes stay on the body's right axis and the world reads 29% further.
+    mst::RenderedPair const noShift = mst::HalcyonPair(3.4f, 100.0f, 0.0f, 1.0734f, true, 0.0f);
+    CHECK(approx(mst::PerceivedDepth(noShift, 1.0, ipd), 0.913, 0.005));
+    mst::RenderedPair const turned = mst::HalcyonPair(3.4f, 100.0f, 0.0f, 1.0734f, true, 0.7854f);
+    CHECK(approx(mst::PerceivedDepth(turned, 1.0, ipd), 1.291, 0.01));
+
+    std::printf("metric stereo: a point straight ahead (m) reads at - metric / Halcyon (user: swap on) / Halcyon (swap off)"
+                " / Halcyon, head 45 deg, no shift\n");
+    for (double d : {0.2, 0.3, 0.5, 1.0, 2.0, 10.0}) {
+        std::printf("  %5.1f  %7.3f  %8.3f  %7.3f  %7.3f   (disparity error %+.1f arcmin)\n", d,
+            mst::PerceivedDepth(metric, d, ipd), mst::PerceivedDepth(user, d, ipd), mst::PerceivedDepth(unswapped, d, ipd),
+            mst::PerceivedDepth(turned, d, ipd), mst::DisparityErrorArcmin(user, d, ipd));
+    }
+}
+
 int main() {
+    TestMetricStereo();
     TestMenuSettings();
     TestCalibration();
     TestViewLevel();

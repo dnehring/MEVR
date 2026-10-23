@@ -279,6 +279,8 @@ void Settings::Read(menu::Values& v) {
     flag("fov_fill", c.vrFovFillEnabled);
     v.texts["vr_mode"] = ModeChoice(c);
     v.texts["mode_note"] = modeNote_;
+    flag("life_size", c.sfr2Metric);
+    v.numbers["extra_depth"] = c.sfr2MetricDepth;
     v.numbers["eye_distance"] = c.sfr2HalfEyeUU;
     v.numbers["convergence"] = c.sfr2Convergence;
     flag("swap_eyes", c.sfr2SwapEyes);
@@ -507,6 +509,13 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         modeNote_ = wx > 0 ? std::format("Resolution set to {} \xC3\x97 {}: restart the game to apply this mode.", wx, wy)
                            : std::string("Restart the game to apply this mode.");
         log::Info("main menu: VR mode {} ({})", mode, modeNote_);
+    } else if (key == "life_size") {
+        c.sfr2Metric = v.Flag(key);  // life-size stereo (research/30)
+        HalcyonChanged(false);
+        log::Info("main menu: life-size stereo {}", c.sfr2Metric ? "on" : "off");
+    } else if (key == "extra_depth") {
+        c.sfr2MetricDepth = v.Number(key);
+        HalcyonChanged(false);
     } else if (key == "eye_distance") {
         c.sfr2HalfEyeUU = v.Number(key);
         HalcyonChanged(false);

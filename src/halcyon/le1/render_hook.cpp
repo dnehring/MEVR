@@ -1,3 +1,5 @@
+// Modified for ME VR Attempt (GPL-3.0) since 2026-10-23: changes are marked [MEVR].
+// Upstream: jrush64/MassEffect1-VR @ 3c51514 (Copyright (C) 2026 Halcyon).
 #include "render_hook.h"
 #include "head_aim.h"
 
@@ -8,6 +10,7 @@
 #include <cstdio>
 #include <cstring>
 #include <intrin.h>
+#include <mutex>   // [MEVR] metric stereo records
 #include <string>
 
 #include <MinHook.h>
@@ -207,6 +210,26 @@ bool SfrCineActive() noexcept
            (m == 6 && g_sfrCutsceneAllowed.load(std::memory_order_acquire));
 }
 std::atomic<int> g_sfrExceptions{0};             // guarded-replay strikes; >=3 self-disarms SFR
+
+// [MEVR] Life-size (metric) stereo (research/30). The Present thread publishes one slot per frame (two slots,
+// flipped, like g_lookSlots); the main pass latches it and the replay reuses the latch ([PAIRLATCH]). Each latch
+// is recorded with its head-look arm so the submit can declare exactly what the captured pair was rendered with.
+struct MetricSlot
+{
+    int mode = 0;
+    int pass0Eye = 0;
+    MELEVR::RenderHook::MetricPass passes[2];
+};
+MetricSlot g_metricSlots[2];
+std::atomic<int> g_metricSlotIdx{0};
+MetricSlot t_metricLatched;   // game thread only (both passes run there)
+constexpr int kMetricRecordN = 32;
+std::mutex g_metricRecordMutex;
+MELEVR::RenderHook::MetricRecord g_metricRecords[kMetricRecordN];
+int g_metricRecordNext = 0;
+bool g_metricRecordAny = false;
+std::atomic<int> g_metricOffsetLogs{0};
+std::atomic<int> g_metricFrustumLogs{0};
 std::atomic_bool g_childReplayAuto{false};
 std::atomic<float> g_childReplayShiftRightUU{120.0f};
 std::atomic<uint64_t> g_childReplayAutoLastPresent{0};
@@ -1834,6 +1857,119 @@ bool ApplyConvergenceSEH(void* fsv) noexcept
     }
 }
 
+// [MEVR] Life-size stereo: the gates ApplyReplayProofOffsetSEH uses (Stereo 2 on, a game mode that replays,
+// SFR not self-disarmed). Outside them the pass renders as the game built it, exactly as upstream.
+bool MetricGatesPass() noexcept
+{
+    if (!g_sfrModeEnabled.load(std::memory_order_acquire)) return false;
+    if (!SfrModeAllowsReplay(g_sfrGameMode.load(std::memory_order_acquire))) return false;
+    return g_sfrExceptions.load(std::memory_order_acquire) < 3;
+}
+
+// [MEVR] Life-size stereo, in place of ApplyReplayProofOffsetSEH: this pass's camera moves by its eye's real
+// offset from the eye centre (the lean already moved it there), along the pre-look camera axes, the same edit
+// (ViewOrigin + PreViewTranslation) upstream makes. The main pass latches the frame's slot. Returns false when
+// metric stereo is off for this frame (the caller then runs upstream's offset).
+bool ApplyMetricEyeOffset(void* fsv) noexcept
+{
+    if (!t_fvcReplay)
+    {
+        const MetricSlot& slot = g_metricSlots[g_metricSlotIdx.load(std::memory_order_acquire)];
+        t_metricLatched = slot;
+    }
+    if (t_metricLatched.mode == 0) return false;
+    if (!MetricGatesPass()) return true;
+    const int pass = t_fvcReplay ? 1 : 0;
+    const MELEVR::RenderHook::MetricPass& p = t_metricLatched.passes[pass];
+    float wx = 0.0f, wy = 0.0f, wz = 0.0f;
+    if (!ApplyViewRelativeOffsetRawSEH(fsv, p.offsetUU[0], p.offsetUU[1], p.offsetUU[2], &wx, &wy, &wz, nullptr, nullptr))
+    {
+        LogLine("[MEVR-STEREO] eye offset failed: SEH caught a fault");
+        return true;
+    }
+    const int n = g_metricOffsetLogs.fetch_add(1, std::memory_order_relaxed);
+    if (n < 8 || (n % 3600) == 0)
+    {
+        char line[320] = {};
+        sprintf_s(line, "[MEVR-STEREO] pass %d (eye %d) from its eye: right %.2f up %.2f forward %.2f uu (world %.1f,%.1f,%.1f), mode %d",
+                  pass, pass == 0 ? t_metricLatched.pass0Eye : 1 - t_metricLatched.pass0Eye,
+                  p.offsetUU[0], p.offsetUU[1], p.offsetUU[2], wx, wy, wz, t_metricLatched.mode);
+        LogLine(line);
+    }
+    return true;
+}
+
+// [MEVR] Life-size stereo, mode 2: the GPU's matrix (TranslatedViewProjection, what the shaders read) gets this
+// eye's own off-centre frustum. The CPU's projection and ViewProjection keep Halcyon's symmetric window, which
+// contains both eyes' frusta: culling, Umbra and the HUD's projected markers see exactly what they see upstream.
+// After ApplyHeadRotation (which recomposes the GPU matrix) and before the [INVMAT] refresh (which then
+// inverts this one). Same idea as [SFRCONV-UI]'s GPU-only edit, with the whole frustum instead of a shift.
+// The SEH-guarded write (no C++ objects in this frame). Returns 1 written, 0 orthographic (untouched), -1 fault.
+int WriteMetricFrustumRawSEH(void* fsv, const MELEVR::RenderHook::MetricPass& p, float orig[3]) noexcept
+{
+    __try
+    {
+        BYTE* base = reinterpret_cast<BYTE*>(fsv);
+        const float* PM = reinterpret_cast<const float*>(base + kFsvProjectionMatrix);
+        if (std::fabs(PM[15]) > 0.01f) return 0;   // orthographic (shadow sub-view): untouched
+        const float* TVM = reinterpret_cast<const float*>(base + kFsvTranslatedViewMatrix);
+        float* TVPM = reinterpret_cast<float*>(base + kFsvTranslatedViewProjMatrix);
+        float P[16];
+        for (int i = 0; i < 16; ++i) P[i] = PM[i];
+        orig[0] = P[8]; orig[1] = P[9]; orig[2] = P[11];
+        const float w = (std::fabs(P[11]) > 0.01f) ? P[11] : 1.0f;   // clip w = z * P[11]
+        P[0] = p.p0 * w;
+        P[5] = p.p5 * w;
+        P[8] = p.p8 * w;
+        P[9] = p.p9 * w;
+        Mul4x4(TVPM, TVM, P);
+        return 1;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return -1;
+    }
+}
+
+bool ApplyMetricFrustumSEH(void* fsv) noexcept
+{
+    if (t_metricLatched.mode != 2 || !MetricGatesPass()) return true;
+    const int pass = t_fvcReplay ? 1 : 0;
+    const MELEVR::RenderHook::MetricPass& p = t_metricLatched.passes[pass];
+    float orig[3] = {};
+    const int wrote = WriteMetricFrustumRawSEH(fsv, p, orig);
+    if (wrote < 0) return false;
+    if (wrote == 0) return true;
+    const float orig8 = orig[0], orig9 = orig[1], orig11 = orig[2];
+    const int n = g_metricFrustumLogs.fetch_add(1, std::memory_order_relaxed);
+    if (n < 4 || (n % 3600) == 0)
+    {
+        char line[320] = {};
+        sprintf_s(line, "[MEVR-STEREO] pass %d frustum: tan L %.4f R %.4f U %.4f D %.4f -> p0 %.4f p5 %.4f p8 %.4f p9 %.4f "
+                        "(game's own p8 %.4f p9 %.4f p11 %.4f)",
+                  pass, p.tan[0], p.tan[1], p.tan[2], p.tan[3], p.p0, p.p5, p.p8, p.p9, orig8, orig9, orig11);
+        LogLine(line);
+    }
+    return true;
+}
+
+// [MEVR] Life-size stereo: remember what the main pass latched, under its head-look arm.
+void RecordMetricLatch(uint64_t arm) noexcept
+{
+    std::lock_guard<std::mutex> lock(g_metricRecordMutex);
+    // Several perspective views can share one Draw (one arm): the newest latch for an arm replaces its record.
+    const int last = (g_metricRecordNext + kMetricRecordN - 1) % kMetricRecordN;
+    if (g_metricRecordAny && g_metricRecords[last].arm == arm) g_metricRecordNext = last;
+    MELEVR::RenderHook::MetricRecord& r = g_metricRecords[g_metricRecordNext];
+    r.arm = arm;
+    r.mode = MetricGatesPass() ? t_metricLatched.mode : 0;
+    r.pass0Eye = t_metricLatched.pass0Eye;
+    r.passes[0] = t_metricLatched.passes[0];
+    r.passes[1] = t_metricLatched.passes[1];
+    g_metricRecordNext = (g_metricRecordNext + 1) % kMetricRecordN;
+    g_metricRecordAny = true;
+}
+
 void StampRenderedEye(int eye) noexcept
 {
     if (eye < 0 || eye > 1) return;
@@ -2169,7 +2305,7 @@ void PostProcessPerspectiveFsv(void* fsv, bool aerPrimaryView = false) noexcept
         if (!s_cineFocusLogged.exchange(true))
             LogLine("[CINEFOCUS] per-eye view states active for VR cine (pass0=left, pass1=right)");
     }
-    ApplyReplayProofOffsetSEH(fsv);
+    if (!ApplyMetricEyeOffset(fsv)) ApplyReplayProofOffsetSEH(fsv);   // [MEVR] life-size stereo, else upstream's
     ApplyViewOffsetSEH(fsv);   // base camera offset/lean, before head-look
     int aerRenderedEye = -1;
     if (aerPrimaryView)
@@ -2272,6 +2408,7 @@ void PostProcessPerspectiveFsv(void* fsv, bool aerPrimaryView = false) noexcept
                 }
             }
             g_pairArmSeq.store(pairArm, std::memory_order_release);
+            RecordMetricLatch(pairArm);   // [MEVR] life-size stereo: what this pair renders with
             // [LOOKSTEP] publish the head-look this render CONSUMED (post-blend), so the submit
             // side keeps measuring the true content evenness.
             g_pairYawPub.store(static_cast<int>(s_pairYawF), std::memory_order_relaxed);
@@ -2318,6 +2455,8 @@ void PostProcessPerspectiveFsv(void* fsv, bool aerPrimaryView = false) noexcept
     // submit are the same transform, so the world convergence is pixel-identical; the UI, rendered
     // unshifted in both passes, coincides with itself and can never double. Per-DESTINATION-eye sign,
     // so it also stays correct under swap-eyes.
+
+    ApplyMetricFrustumSEH(fsv);   // [MEVR] life-size stereo, mode 2: this eye's own frustum on the GPU matrix
 
     // [INVMAT] one-shot staleness proof: on the first view rendered with a real injected pitch (>5 deg),
     // measure how far each scan-validated inverse slot now is from inverting its edited target. err >> scan
@@ -3183,6 +3322,44 @@ bool GetLastViewRight(float* x, float* y, float* z) noexcept
     if (x) *x = g_lastRightX.load(std::memory_order_relaxed);
     if (y) *y = g_lastRightY.load(std::memory_order_relaxed);
     if (z) *z = g_lastRightZ.load(std::memory_order_relaxed);
+    return true;
+}
+// [MEVR] Life-size (metric) stereo (research/30).
+void SetSfrMetric(int mode, int pass0Eye, const MetricPass passes[2]) noexcept
+{
+    const int active = g_metricSlotIdx.load(std::memory_order_acquire);
+    MetricSlot& next = g_metricSlots[active ^ 1];
+    next.mode = (passes != nullptr && mode >= 0 && mode <= 2) ? mode : 0;
+    next.pass0Eye = (pass0Eye == 1) ? 1 : 0;
+    if (passes != nullptr)
+    {
+        next.passes[0] = passes[0];
+        next.passes[1] = passes[1];
+    }
+    g_metricSlotIdx.store(active ^ 1, std::memory_order_release);
+}
+
+bool GetMetricRecord(uint64_t arm, MetricRecord* out) noexcept
+{
+    if (out == nullptr || arm == 0) return false;
+    std::lock_guard<std::mutex> lock(g_metricRecordMutex);
+    for (int i = 0; i < kMetricRecordN; ++i)
+    {
+        if (g_metricRecords[i].arm == arm)
+        {
+            *out = g_metricRecords[i];
+            return true;
+        }
+    }
+    return false;
+}
+
+bool GetLatestMetricRecord(MetricRecord* out) noexcept
+{
+    if (out == nullptr) return false;
+    std::lock_guard<std::mutex> lock(g_metricRecordMutex);
+    if (!g_metricRecordAny) return false;
+    *out = g_metricRecords[(g_metricRecordNext + kMetricRecordN - 1) % kMetricRecordN];
     return true;
 }
 }

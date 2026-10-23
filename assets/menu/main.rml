@@ -263,11 +263,19 @@
 				<div class="gtitle"><span>Stereo</span><div class="gline"/></div>
 				<div class="row"><div class="rl"><div class="rlab">VR mode</div><div class="rdesc">Stereo renders each eye; Depth builds the second eye from one render</div><div class="note" data-if="mode_note != ''">{{mode_note}}</div></div>
 					<div class="seg"><button class="segb" data-class-on="vr_mode == 'mono'" data-event-click="pick('vr_mode','mono')">Mono</button><button class="segb" data-class-on="vr_mode == 'stereo'" data-event-click="pick('vr_mode','stereo')">Stereo</button><button class="segb" data-class-on="vr_mode == 'dibr'" data-event-click="pick('vr_mode','dibr')">Depth</button></div></div>
-				<div class="srow"><div class="slab">Eye distance</div><input type="range" min="0.5" max="8" step="0.1" data-value="eye_distance"/><div class="sval">{{eye_distance_text}}</div></div>
-				<div class="srow"><div class="slab">Convergence</div><input type="range" min="-0.02" max="0.05" step="0.001" data-value="convergence"/><div class="sval">{{convergence_text}}</div></div>
-				<div class="hint">Eye distance sets the world's scale: lower makes it feel bigger.</div>
-				<div class="row"><div class="rl"><div class="rlab">Swap eyes</div><div class="rdesc">If depth looks inside out</div></div>
-					<button class="tog" data-class-on="swap_eyes" data-event-click="toggle('swap_eyes')"><div class="knob"/></button></div>
+				<div class="row"><div class="rl"><div class="rlab">Life-size stereo</div><div class="rdesc">Each eye sees from where it really is, at the world's own scale: true depth and size</div></div>
+					<button class="tog" data-class-on="life_size" data-event-click="toggle('life_size')"><div class="knob"/></button></div>
+				<div data-if="life_size">
+					<div class="srow"><div class="slab">Extra depth</div><input type="range" min="0.5" max="2" step="0.05" data-value="extra_depth"/><div class="sval">{{extra_depth_text}}</div></div>
+					<div class="hint">1.00× is your own eye distance. More makes depth stronger and the world feel smaller.</div>
+				</div>
+				<div data-if="!life_size">
+					<div class="srow"><div class="slab">Eye distance</div><input type="range" min="0.5" max="8" step="0.1" data-value="eye_distance"/><div class="sval">{{eye_distance_text}}</div></div>
+					<div class="srow"><div class="slab">Convergence</div><input type="range" min="-0.02" max="0.05" step="0.001" data-value="convergence"/><div class="sval">{{convergence_text}}</div></div>
+					<div class="hint">Eye distance sets the world's scale: lower makes it feel bigger.</div>
+					<div class="row"><div class="rl"><div class="rlab">Swap eyes</div><div class="rdesc">If depth looks inside out</div></div>
+						<button class="tog" data-class-on="swap_eyes" data-event-click="toggle('swap_eyes')"><div class="knob"/></button></div>
+				</div>
 				<div class="row"><div class="rl"><div class="rlab">Quest field-of-view match</div><div class="rdesc">Matches the picture to a Quest's lenses over Link (no effect on SteamVR)</div></div>
 					<button class="tog" data-class-on="quest_fov" data-event-click="toggle('quest_fov')"><div class="knob"/></button></div>
 			</div>

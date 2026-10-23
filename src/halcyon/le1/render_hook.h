@@ -1,3 +1,5 @@
+// Modified for ME VR Attempt (GPL-3.0) since 2026-10-23: changes are marked [MEVR].
+// Upstream: jrush64/MassEffect1-VR @ 3c51514 (Copyright (C) 2026 Halcyon).
 #pragma once
 
 #include <cstdint>
@@ -114,4 +116,30 @@ bool GetBaseViewOrigin(float* x, float* y, float* z) noexcept;
 // Last main-view right axis in world/UE units, read from FSceneView::ViewMatrix.
 // This is the same basis used by the proven view-relative AER offset path.
 bool GetLastViewRight(float* x, float* y, float* z) noexcept;
+
+// ---- [MEVR] Life-size (metric) stereo (research/30; planned by src/plugin/MetricStereo.cpp) ----------------
+// What one Stereo 2 render pass applies (pass 0 = the game's own Draw, pass 1 = the replay).
+struct MetricPass
+{
+    float offsetUU[3] = {0.0f, 0.0f, 0.0f};   // camera right, up, forward (game units), from the lean's eye centre
+    float p0 = 1.0f, p5 = 1.0f, p8 = 0.0f, p9 = 0.0f;   // off-centre projection terms (mode 2), for w = z
+    float tan[4] = {0.0f, 0.0f, 0.0f, 0.0f};  // that frustum's left, right, up, down tangents (mode 2)
+};
+// mode 0: upstream (ApplyReplayProofOffsetSEH's +-halfEye along the body's right). 1: each pass from its eye's
+// real offset, Halcyon's symmetric projection. 2: as 1, plus each eye's own off-centre frustum written into the
+// GPU's matrix (TranslatedViewProjection) only. `pass0Eye`: the OpenXR eye pass 0 is rendered for.
+// Present thread, once per frame; the main pass latches it for both passes ([PAIRLATCH]).
+void SetSfrMetric(int mode, int pass0Eye, const MetricPass passes[2]) noexcept;
+struct MetricRecord
+{
+    uint64_t arm = 0;   // the head-look arm the main pass latched with it ([POSEEXACT])
+    int mode = 0;
+    int pass0Eye = 0;
+    MetricPass passes[2];
+};
+// What the render latched for the pair carrying head-look arm `arm` (the captured pair's
+// g_sfrPairArmThisFrame); false if that arm isn't among the last 32 latches.
+bool GetMetricRecord(uint64_t arm, MetricRecord* out) noexcept;
+// The newest latch (false before the first).
+bool GetLatestMetricRecord(MetricRecord* out) noexcept;
 }

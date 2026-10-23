@@ -351,7 +351,9 @@ gives Halcyon a metric stereo mode (the runtime's eye poses, its asymmetric FOVs
 picture matches our metric quads; the sights stay metric and on the model's real place (section 11). Until that mode
 is on, expect the dot, the scope and the ring reticle about 1.27 degrees left of what the bullets hit for a right
 aiming eye. A partial stopgap is the user's to try (Halcyon's settings): Advanced > Stereo > Eye distance 3.1 and
-Convergence 0 removes the shift; the symmetric render window stays.
+Convergence 0 removes the shift; the symmetric render window stays. (Built the same day as life-size stereo,
+[research/30](30-metric-stereo.md), `sfr2Metric`, on in the deploy; `tools/stereo-check.py` repeats this
+section's measurement on any snapshot.)
 
 ## 10. Shots that land on the dot (built 2026-10-23)
 

@@ -70,6 +70,10 @@ bool g_sfrPairFreshThisFrame = false;
 // [CAPTUREPOSE] Arm metadata carried by the exact captured pair selected for this submit. Unlike
 // RenderHook::GetPairArmSeq(), this cannot race ahead to a later render after the pixels were copied.
 uint64_t g_sfrPairArmThisFrame = 0;
+// [MEVR] life-size stereo (research/30): what the pair submitted this present was rendered with (RenderHook's
+// record for its arm, else the newest), read by the projection views' declared FOV.
+MELEVR::RenderHook::MetricRecord g_mevrPairRecord;
+bool g_mevrPairRecordValid = false;
 
 HMODULE g_loader = nullptr;
 PFN_xrGetInstanceProcAddr g_getProc = nullptr;
@@ -2330,7 +2334,13 @@ bool CopyStereoPassCaptureToEyes() noexcept
     // squashed" in Stereo 2. Full-frame copy maps whole->whole, aspect-correct.
     {
         const auto& sfrCfg = MELEVR::Config::Get();
-        const int eyeForPass0 = sfrCfg.sfr2SwapEyes ? 1 : 0;
+        // [MEVR] life-size stereo (research/30): the pair's own render record decides the routing and the shift.
+        // A metric pair was rendered from each eye's real position: no convergence, and pass 0's eye as planned
+        // (swap ignored). Upstream's pairs keep swap and the pass-bound convergence below.
+        g_mevrPairRecordValid = MELEVR::RenderHook::GetMetricRecord(pairArm, &g_mevrPairRecord) ||
+                                MELEVR::RenderHook::GetLatestMetricRecord(&g_mevrPairRecord);
+        const bool mevrMetricPair = g_mevrPairRecordValid && g_mevrPairRecord.mode != 0;
+        const int eyeForPass0 = mevrMetricPair ? g_mevrPairRecord.pass0Eye : (sfrCfg.sfr2SwapEyes ? 1 : 0);
         const int eyeForPass1 = 1 - eyeForPass0;
         // [SFRCONV FINAL 2026-07-20] convergence applied HERE, at submit - the whole finished image
         // (world + UI together) shifts by conv/2 UV, pixel-identical to a render-side NDC shift for
@@ -2341,7 +2351,7 @@ bool CopyStereoPassCaptureToEyes() noexcept
         // one. So with swap-eyes ON (which flips cameras + routing, keeping depth matched), the
         // convergence plane INVERTS - that inversion IS the visible effect ME2's swap toggle has.
         // Keying this on the destination eye instead made ME1's swap a perfect no-op ("this isn't it").
-        const float convHalfU = sfrCfg.sfr2Convergence * 0.5f;
+        const float convHalfU = mevrMetricPair ? 0.0f : sfrCfg.sfr2Convergence * 0.5f;   // [MEVR] none when metric
         // [RELIEF_SFR2] depth pop, AER-style: warp each full-frame pass by the published depth before
         // the eye copy (+- eyeSign per DESTINATION eye adds the pop on top of the real separation).
         // RenderReliefFull reuses one shared output texture, so warp+copy strictly one eye at a time.
@@ -5027,6 +5037,49 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             const float mevrLeanScale = (cfg.leanEnabled && cfg.leanGain > 0.0f) ? cfg.leanGain : 1.0f;
             MELEVR::MevrBridge::OnViewBuilt(headValid && !menuOpen && !forceFlatCine, headLookApplied, headAimApplied,
                                             mevrHeadQ, mevrHeadP, rightUU, upUU, fwdUU, kMetersToUU * mevrLeanScale);
+
+            // [MEVR] life-size stereo (research/30): each pass of the next game frame from its eye's real place, at
+            // the view's own scale (the lean's units per metre, which the hands use too); its own frustum where the
+            // game's UI isn't in the eye images (gameplay, the HUD panel taking it). Off: upstream's offsets.
+            MELEVR::MevrBridge::StereoPlanInput mevrIn;
+            mevrIn.metric = cfg.sfr2Metric;
+            mevrIn.eyeFrustum = cfg.sfr2MetricEyeFrustum;
+            mevrIn.sfr2Active = sfr2Active;
+            mevrIn.headValid = headValid;
+            mevrIn.viewFollowsHead = headLookApplied;
+            // The panel is armed only in gameplay (modes 0-4, an unreadable mode keeping the last), so this also
+            // covers conversations, cutscenes, menus and live GUIs.
+            mevrIn.uiInEyes = vrCineActive || !MELEVR::MevrBridge::HudPanelArmed();
+            mevrIn.fovOverride = cfg.vrFovFillEnabled && !forceFlatCine;
+            mevrIn.swapEyes = cfg.sfr2SwapEyes;
+            for (int e = 0; e < 2; ++e)
+            {
+                const XrView& v = g_subViews[e];
+                mevrIn.eyeOrientation[e][0] = v.pose.orientation.x; mevrIn.eyeOrientation[e][1] = v.pose.orientation.y;
+                mevrIn.eyeOrientation[e][2] = v.pose.orientation.z; mevrIn.eyeOrientation[e][3] = v.pose.orientation.w;
+                mevrIn.eyePosition[e][0] = v.pose.position.x; mevrIn.eyePosition[e][1] = v.pose.position.y;
+                mevrIn.eyePosition[e][2] = v.pose.position.z;
+                mevrIn.eyeFov[e][0] = v.fov.angleLeft; mevrIn.eyeFov[e][1] = v.fov.angleRight;
+                mevrIn.eyeFov[e][2] = v.fov.angleUp; mevrIn.eyeFov[e][3] = v.fov.angleDown;
+            }
+            for (int k = 0; k < 4; ++k) mevrIn.viewOrientation[k] = mevrHeadQ[k];
+            mevrIn.fillH = ClampVrFill(cine.fillH);
+            mevrIn.fillV = ClampVrFill(cine.fillV);
+            mevrIn.unitsPerMeter = kMetersToUU * mevrLeanScale;
+            mevrIn.depth = cfg.sfr2MetricDepth * cineSepMul;
+            MELEVR::MevrBridge::StereoPlan mevrPlan;
+            MELEVR::MevrBridge::PlanStereo(mevrIn, &mevrPlan);
+            MELEVR::RenderHook::MetricPass mevrPasses[2];
+            for (int p = 0; p < 2; ++p)
+            {
+                for (int k = 0; k < 3; ++k) mevrPasses[p].offsetUU[k] = mevrPlan.passOffsetUU[p][k];
+                mevrPasses[p].p0 = mevrPlan.passTerms[p][0];
+                mevrPasses[p].p5 = mevrPlan.passTerms[p][1];
+                mevrPasses[p].p8 = mevrPlan.passTerms[p][2];
+                mevrPasses[p].p9 = mevrPlan.passTerms[p][3];
+                for (int k = 0; k < 4; ++k) mevrPasses[p].tan[k] = mevrPlan.passTan[p][k];
+            }
+            MELEVR::RenderHook::SetSfrMetric(mevrPlan.mode, mevrPlan.pass0Eye, mevrPasses);
         }
         // ME2/ME3 parity: arm AER independently of the generic lean/base offset. Only the primary
         // ULocalPlayer branch consumes this eye and publishes its render stamp.
@@ -5431,6 +5484,12 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
 
     XrCompositionLayerProjectionView projViews[2] = {};
     const uint64_t viewFillLog = ++g_viewFillLogCounter;
+    // [MEVR] life-size stereo: the render record the eyes' images come from (the submitted pair's, or for a
+    // live-mono fallback the newest latch).
+    MELEVR::RenderHook::MetricRecord mevrLatest;
+    const MELEVR::RenderHook::MetricRecord* mevrDeclare =
+        sfrPairSubmitted ? (g_mevrPairRecordValid ? &g_mevrPairRecord : nullptr)
+                         : (MELEVR::RenderHook::GetLatestMetricRecord(&mevrLatest) ? &mevrLatest : nullptr);
     for (int e = 0; e < 2; ++e)
     {
         projViews[e].type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW_VALUE;
@@ -5445,6 +5504,21 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             viewFov.angleRight = cineZoomDeclH;
             viewFov.angleUp = cineZoomDeclV;
             viewFov.angleDown = -cineZoomDeclV;
+        }
+        // [MEVR] life-size stereo, mode 2: each eye's image is its own off-centre frustum; declare exactly that.
+        // The submitted pair's record names it. A live-mono fallback (the pair hold ran out: the replay stopped)
+        // shows the backbuffer, the game's own Draw (pass 0), in both eyes.
+        if (sfr2Active && !forceFlatCine && mevrDeclare != nullptr && mevrDeclare->mode == 2)
+        {
+            const int pass = sfrPairSubmitted ? ((e == mevrDeclare->pass0Eye) ? 0 : 1) : 0;
+            const float* t = mevrDeclare->passes[pass].tan;
+            if (t[1] - t[0] > 0.05f && t[2] - t[3] > 0.05f)
+            {
+                viewFov.angleLeft = std::atan(t[0]);
+                viewFov.angleRight = std::atan(t[1]);
+                viewFov.angleUp = std::atan(t[2]);
+                viewFov.angleDown = std::atan(t[3]);
+            }
         }
         if (aerActive && !forceFlatCine && g_aerHistPoseValid[e])
         {
@@ -5553,6 +5627,22 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
                     std::to_string(projViews[e].subImage.imageRect.offset.x) + "," +
                     std::to_string(projViews[e].subImage.imageRect.offset.y));
         }
+    }
+
+    // [MEVR] life-size stereo: what this frame declares (the [MEVR-STEREO] submit line, the snapshot's "stereo").
+    if (sfr2Active && !forceFlatCine && headValid)
+    {
+        float mevrPos[2][3], mevrQ[2][4], mevrFov[2][4];
+        for (int e = 0; e < 2; ++e)
+        {
+            mevrPos[e][0] = projViews[e].pose.position.x; mevrPos[e][1] = projViews[e].pose.position.y;
+            mevrPos[e][2] = projViews[e].pose.position.z;
+            mevrQ[e][0] = projViews[e].pose.orientation.x; mevrQ[e][1] = projViews[e].pose.orientation.y;
+            mevrQ[e][2] = projViews[e].pose.orientation.z; mevrQ[e][3] = projViews[e].pose.orientation.w;
+            mevrFov[e][0] = projViews[e].fov.angleLeft; mevrFov[e][1] = projViews[e].fov.angleRight;
+            mevrFov[e][2] = projViews[e].fov.angleUp; mevrFov[e][3] = projViews[e].fov.angleDown;
+        }
+        MELEVR::MevrBridge::NoteStereoSubmit(mevrDeclare != nullptr ? mevrDeclare->mode : 0, mevrPos, mevrQ, mevrFov);
     }
 
     // [AERBLACK] A renderable XR frame must never lose the projection layer because GetBuffer or
