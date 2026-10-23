@@ -26,6 +26,7 @@
 #include "game/ArmIk.hpp"
 #include "game/BodyCalibration.hpp"
 #include "game/CameraProbe.hpp"
+#include "game/ConsoleRequest.hpp"
 #include "game/GamepadBridge.hpp"
 #include "game/GamepadMapping.hpp"
 #include "game/HandAim.hpp"
@@ -809,6 +810,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         gGamepadHooked = true;  // the host's XInput hook feeds the controllers to the game
     }
     PollHotkeys();
+    game::console_request::Tick(deltaSeconds);  // the test loop's console.request (research/22)
     if (!gHooked || !gGamepadHooked) {
         gRetryTimer += deltaSeconds;
         if (gRetryTimer >= kStartupRetrySeconds) {

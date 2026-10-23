@@ -237,6 +237,8 @@ set(MEVR_MOD_SOURCES
     src/game/BodyCalibration.hpp
     src/game/CameraProbe.cpp
     src/game/CameraProbe.hpp
+    src/game/ConsoleRequest.cpp
+    src/game/ConsoleRequest.hpp
     src/game/GamepadBridge.cpp
     src/game/GamepadBridge.hpp
     src/game/GamepadMapping.cpp

@@ -292,6 +292,9 @@ Use it to check VR changes yourself instead of asking the user what they see
   `g_perfDraws` and the wrapped `xrWaitFrame` / `xrBeginFrame` / `xrEndFrame`. `tools/perf-monitor.ps1`
   adds whole-GPU load; `tools/sample-render-thread.ps1` samples the render thread's stack from outside
   (`mevr-stack-sampler`): where its time goes by module and function, no redeploy.
+- **Console:** `tools/console.ps1 "UMBRA OCCLUSIONCULLING"` writes `console.request`; the mod (`game/ConsoleRequest`,
+  hot-reloaded) runs each line through `PlayerController.ConsoleCommand` on the game thread and writes what it
+  printed to `console.result` (log `console:`). Flat or in VR, wherever there is a local player: A/Bs without a restart.
 - `testloop.status` (JSON, once a second): recording, replay, last snapshot, `framesRunning`.
 - Needs a running VR session (Halcyon only runs frames between READY and STOPPING). Not focused
   (headset off the face, VISIBLE) is fine: replay drives the view and controllers. SYNCHRONIZED or
