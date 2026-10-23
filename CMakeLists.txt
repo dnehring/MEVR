@@ -34,6 +34,35 @@ set(BUILD_SDK_TESTS OFF)
 set(BUILD_ALL_EXTENSIONS OFF)
 add_subdirectory(external/OpenXR-SDK EXCLUDE_FROM_ALL)
 
+# The main menu's UI library (research/28): RmlUi (MIT) with its FreeType font engine (FreeType: FTL), both
+# static, built only for what links them (the LE1 host and the menu preview). Their own warning levels.
+option(MEVR_MAIN_MENU "Build our VR main menu (RmlUi) into the LE1 host" ON)
+if (MEVR_MAIN_MENU)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    set(FT_DISABLE_ZLIB ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_BZIP2 ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_BROTLI ON CACHE BOOL "" FORCE)
+    add_subdirectory(external/freetype EXCLUDE_FROM_ALL)
+    add_library(Freetype::Freetype ALIAS freetype)
+    # RmlUi looks for FreeType with find_package; the target above is the one it links.
+    set(CMAKE_DISABLE_FIND_PACKAGE_Freetype TRUE)
+    set(RMLUI_FONT_ENGINE "freetype" CACHE STRING "" FORCE)
+    set(RMLUI_SAMPLES OFF CACHE BOOL "" FORCE)
+    set(RMLUI_LUA_BINDINGS OFF CACHE BOOL "" FORCE)
+    set(RMLUI_SVG_PLUGIN OFF CACHE BOOL "" FORCE)
+    set(RMLUI_LOTTIE_PLUGIN OFF CACHE BOOL "" FORCE)
+    set(RMLUI_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
+    add_subdirectory(external/RmlUi EXCLUDE_FROM_ALL)
+    # RmlUi's own Direct3D 11 renderer (Backends, MIT), wrapped by src/plugin/menu/MenuRenderer for the game's device.
+    add_library(rmlui-d3d11 STATIC external/RmlUi/Backends/RmlUi_Renderer_DX11.cpp)
+    target_include_directories(rmlui-d3d11 PUBLIC external/RmlUi/Backends)
+    target_compile_definitions(rmlui-d3d11 PUBLIC NUM_MSAA_SAMPLES=4 PRIVATE NOMINMAX)
+    target_link_libraries(rmlui-d3d11 PUBLIC rmlui_core d3d11 d3dcompiler)
+    target_compile_options(rmlui-d3d11 PRIVATE /W3 /utf-8)
+endif ()
+
 # Halcyon's LE1 VR renderer (GPL-3.0, src/halcyon/le1) with its vendored MinHook and Dear ImGui.
 # It runs inside the LE1 host: OpenXR session, Present path, stereo, first person, HUD, menu.
 option(MEVR_HALCYON "Use Halcyon's renderer for LE1" ON)

@@ -5,3 +5,9 @@
 [submodule "external/OpenXR-SDK"]
 	path = external/OpenXR-SDK
 	url = https://github.com/KhronosGroup/OpenXR-SDK.git
+[submodule "external/RmlUi"]
+	path = external/RmlUi
+	url = https://github.com/mikke89/RmlUi.git
+[submodule "external/freetype"]
+	path = external/freetype
+	url = https://github.com/freetype/freetype.git
