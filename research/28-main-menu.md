@@ -150,7 +150,9 @@ nothing writes defaults over a profile: Reset is for the session (below).
 | | Brightness, Contrast, Saturation, Mid-tones, Black level | the headset's Custom values (`colour::SetCustom`: live while moving, saved once at rest) |
 | | Hold A | `colour::HoldCompare` |
 | | Preview | `core/vr/ColourStrip` through `core/vr/Colour` `Correct` (the shader's CPU reference) |
-| | Render resolution Low / Performance / Balanced / Sharp / Max | Halcyon `sfr2ResX` 2048 / 3072 / 4096 / 5120 / 6144, `sfr2ResY` = width / 0.964 even, `ApplyResolutionForCurrentMode` (restart) |
+| | Render resolution Headset / Headset × 0.85 / Headset × 0.75 | the runtime's recommended eye size (Halcyon's `g_recommendedEyeWidth/Height` through `XrSession::GetResolutionStats`, as the perf probe's `"recommendedEye"`) exactly, or 0.85 / 0.75 of it rounded to even (`menu_settings::HeadsetSize`; PS VR2: 2824 × 2880, 2400 × 2448, 2118 × 2160) into Halcyon `sfr2ResX/Y` and `expectedResX/Y`, `ApplyResolutionForCurrentMode` (GamerSettings ResX/ResY, restart). Selected when `sfr2ResX/Y` equal its size (`ResolutionChoice`). Before VR has started: one disabled chip, "Headset (unknown until VR starts)" (research/32) |
+| | Fixed sizes Low / Performance / Balanced / Sharp / Max | Halcyon `sfr2ResX` 2048 / 3072 / 4096 / 5120 / 6144, `sfr2ResY` = width / 0.964 even, and `expectedResX/Y` (since 2026-10-23; before, the watchdog kept the old size), `ApplyResolutionForCurrentMode` (restart). Selected when `sfr2ResX` is the tier's width; a size no chip makes selects none |
+| | Upscale Off / FSR | `[Upscale] method` = `off` / `fsr` (plugin/Upscale re-reads it within a second: live); `sharpness` stays a file setting (research/32) |
 | | Steady cutscenes | Halcyon `cineFpsCap` |
 | HUD & sights | Distance | Halcyon `hudPanelDistanceM` |
 | | Size | Halcyon `hudPanelWidthM` (100% = 1.3 m) |
@@ -195,7 +197,8 @@ scale/offset sliders.
 
 `mevr-menu-preview [folder] [--warp]` (`tools/menu-preview`): the host's own RmlUi setup, renderer,
 decorators, document, data model and backdrop passes on a device of its own, over a stand-in scene,
-with sample values. It writes `section-<name>.png` for each section, `advanced-<tab>.png` for each of
+with sample values. It writes `section-<name>.png` for each section (and `section-display-quality.png` /
+`-quality-novr.png`: the image quality rows with the PS VR2's 2824 × 2880 known, and before VR starts), `advanced-<tab>.png` for each of
 Advanced's tabs, `state-hover.png` (the sweep part-way), `state-pressed.png` (the dip), `state-focus.png`
 (the pad's ring), `menu-alpha.png` (the texture alone) and `timing.txt`.
 

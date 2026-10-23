@@ -73,6 +73,38 @@ int QualityWidth(std::string_view key);  // 0 if unknown
 int EyeHeight(int width);
 // "3072 × 3188".
 std::string QualityText(int width);
+// "2824 × 2880": a size as the rows show it.
+std::string SizeText(int width, int height);
+
+// ---- Headset-sized targets (the runtime's recommended eye size; research/32) ----------------------------------
+// The Render resolution row's first chips: the headset's own eye size (xrEnumerateViewConfigurationViews'
+// recommendedImageRect, exactly), and 0.85 / 0.75 of it rounded to even, the sizes the FSR 1 upscale wants.
+struct HeadsetChoice {
+    char const* key;    // "headset", "headset85", "headset75"
+    float scale;        // 1, 0.85, 0.75
+};
+std::vector<HeadsetChoice> const& HeadsetChoices();
+struct Size {
+    int width = 0;
+    int height = 0;
+    bool operator==(Size const&) const = default;
+};
+// The nearest even number (at least 2).
+int RoundEven(float value);
+// What a headset chip means for this recommendation; {0, 0} for an unknown key or no recommendation yet.
+Size HeadsetSize(std::string_view key, int recommendedWidth, int recommendedHeight);
+// The chip the current target (Halcyon's sfr2ResX/Y) shows as selected: a headset chip when the target is
+// exactly its size (the headset chips win a tie with the ladder), a ladder tier when the width is the tier's,
+// otherwise "" (a size the file holds that no chip makes: none selected).
+std::string ResolutionChoice(int resX, int resY, int recommendedWidth, int recommendedHeight);
+// The headset row's description: "Headset 2824 × 2880 · × 0.85: 2400 × 2448 · × 0.75: 2118 × 2160", or a note
+// that the size is known once VR starts.
+std::string HeadsetSizesText(int recommendedWidth, int recommendedHeight);
+
+// ---- Eye upscale ([Upscale] method = off | fsr, plugin/Upscale, research/32) -----------------------------------
+// The chip a method shows: "fsr" for anything core/vr/Upscale reads as FSR 1 ("fsr", "fsr1", "easu", "on", "1"),
+// else "off".
+std::string UpscaleChoice(std::string_view method);
 
 // ---- Gun sights ([Sights] pistol, shotgun, assaultRifle, sniperRifle: none | dot | holo | scope <zoom>) ----------
 // The chip a value shows: "dot", "holo", "none" or "scope" (unknown text: the default kind given).

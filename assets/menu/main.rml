@@ -168,8 +168,12 @@
 		</div>
 		<div class="group">
 			<div class="gtitle"><span>Image quality</span><div class="gline"/></div>
-			<div class="row"><div class="rl"><div class="rlab">Render resolution</div><div class="rdesc">{{quality_text}} per eye · {{quality_note}}</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Render resolution</div><div class="rdesc">Now {{quality_text}} per eye · {{quality_note}}</div><div class="rdesc">{{headset_text}}</div></div>
+				<div class="seg"><button class="segb disabled" data-if="!headset_known">Headset (unknown until VR starts)</button><button class="segb" data-if="headset_known" data-class-on="quality == 'headset'" data-event-click="pick('quality','headset')">Headset</button><button class="segb" data-if="headset_known" data-class-on="quality == 'headset85'" data-event-click="pick('quality','headset85')">Headset × 0.85</button><button class="segb" data-if="headset_known" data-class-on="quality == 'headset75'" data-event-click="pick('quality','headset75')">Headset × 0.75</button></div></div>
+			<div class="row"><div class="rl"><div class="rlab">Fixed sizes</div><div class="rdesc">Halcyon's ladder, 2048 to 6144 wide: above your headset's size it supersamples</div></div>
 				<div class="seg"><button class="segb" data-class-on="quality == 'low'" data-event-click="pick('quality','low')">Low</button><button class="segb" data-class-on="quality == 'performance'" data-event-click="pick('quality','performance')">Performance</button><button class="segb" data-class-on="quality == 'balanced'" data-event-click="pick('quality','balanced')">Balanced</button><button class="segb" data-class-on="quality == 'sharp'" data-event-click="pick('quality','sharp')">Sharp</button><button class="segb" data-class-on="quality == 'max'" data-event-click="pick('quality','max')">Max</button></div></div>
+			<div class="row"><div class="rl"><div class="rlab">Upscale</div><div class="rdesc">Renders smaller and sharpens it back up: faster, a little softer. Pairs with Headset × 0.85.</div></div>
+				<div class="seg"><button class="segb" data-class-on="upscale == 'off'" data-event-click="pick('upscale','off')">Off</button><button class="segb" data-class-on="upscale == 'fsr'" data-event-click="pick('upscale','fsr')">FSR</button></div></div>
 			<div class="row"><div class="rl"><div class="rlab">Steady cutscenes</div><div class="rdesc">Caps cutscenes to a frame rate the headset can hold</div></div>
 				<button class="tog" data-class-on="steady_cine" data-event-click="toggle('steady_cine')"><div class="knob"/></button></div>
 		</div>
