@@ -335,6 +335,125 @@ int AimingEye(Line const lines[2], float box, float minAlong, float maxAlong, in
     return best;
 }
 
+float Smooth(float t) {
+    if (!(t > 0.0f)) {
+        return 0.0f;
+    }
+    if (t >= 1.0f) {
+        return 1.0f;
+    }
+    return t * t * t * (t * (t * 6.0f - 15.0f) + 10.0f);
+}
+
+AssistGoal AssistTarget(Assist const& s, XrVector3f const& center, XrVector3f const& axisIn, XrVector3f const& upIn,
+    XrVector3f const eyes[2], XrVector3f const& headForward, int currentEye) {
+    constexpr float kDeg = 3.14159265358979f / 180.0f;
+    constexpr float kMinAlong = 0.02f;     // the eye at the sight itself: no line to speak of
+    constexpr float kRangeFade = 0.15f;    // the distance weight fades over this, ending at rangeM
+    constexpr float kHeadFade = 20.0f;     // the head weight fades over this many degrees, ending at headDeg
+    constexpr float kEyeSwitchDeg = 1.5f;  // the other eye takes over only when this much nearer the line
+    AssistGoal goal;
+    auto const axis = Unit(axisIn);
+    if (!s.enabled || !axis || !Finite(center) || !Finite(eyes[0]) || !Finite(eyes[1]) || !(s.coneDeg > 0.0f)) {
+        return goal;
+    }
+    XrVector3f up = Sub(upIn, Scale(*axis, Dot(upIn, *axis)));
+    up = Unit(up).value_or(XrVector3f{0.0f, 1.0f, 0.0f});
+    // Each eye against the line: how far behind the sight, and its angle off the line seen from the sight.
+    Line lines[2];
+    float angles[2] = {180.0f, 180.0f};
+    bool usable[2] = {false, false};
+    for (int e = 0; e < 2; ++e) {
+        lines[e] = EyeLine(eyes[e], center, *axis, up);
+        usable[e] = std::isfinite(lines[e].along) && lines[e].along >= kMinAlong && lines[e].along <= s.rangeM;
+        if (usable[e]) {
+            angles[e] = std::atan2(lines[e].lateral, lines[e].along) / kDeg;
+        }
+    }
+    int eye = -1;
+    for (int e = 0; e < 2; ++e) {
+        if (usable[e] && (eye < 0 || angles[e] < angles[eye])) {
+            eye = e;
+        }
+    }
+    if ((currentEye == 0 || currentEye == 1) && usable[currentEye] && eye >= 0 && eye != currentEye &&
+        angles[eye] > angles[currentEye] - kEyeSwitchDeg) {
+        eye = currentEye;  // hysteresis: the other eye must be clearly nearer the line
+    }
+    if (eye < 0 || angles[eye] >= s.coneDeg) {
+        goal.eye = eye;
+        if (eye >= 0) {
+            goal.angleDeg = angles[eye];
+            goal.along = lines[eye].along;
+            goal.x = lines[eye].x;
+            goal.y = lines[eye].y;
+        }
+        return goal;
+    }
+    Line const& line = lines[eye];
+    goal.eye = eye;
+    goal.angleDeg = angles[eye];
+    goal.along = line.along;
+    goal.x = line.x;
+    goal.y = line.y;
+    // Full inside half the cone, none at its edge; full up to 0.15 m short of the range; full with the
+    // head within 20 degrees of looking along the sight, none past headDeg.
+    float const cone = Smooth((s.coneDeg - angles[eye]) / (0.5f * s.coneDeg));
+    float const range = Smooth((s.rangeM - line.along) / kRangeFade);
+    float head = 1.0f;
+    if (auto const forward = Unit(headForward)) {
+        float const off = std::acos(std::clamp(Dot(*forward, *axis), -1.0f, 1.0f)) / kDeg;
+        head = Smooth((s.headDeg - off) / kHeadFade);
+    }
+    goal.weight = std::clamp(s.strength, 0.0f, 1.0f) * cone * range * head;
+    // The eye's offset from the line, in the sight's right and up: moving the gun by it puts the line
+    // through the eye.
+    XrVector3f const right = Cross(*axis, up);
+    XrVector3f shift = Add(Scale(right, line.x * goal.weight), Scale(up, line.y * goal.weight));
+    float const length = Length(shift);
+    if (length > s.maxShiftM && length > 0.0f) {
+        shift = Scale(shift, std::max(s.maxShiftM, 0.0f) / length);
+    }
+    goal.shift = shift;
+    return goal;
+}
+
+XrVector3f AssistSpring::Update(XrVector3f const& goal, float dtIn, float frequency, float maxSpeed) {
+    if (!Finite(goal) || !std::isfinite(dtIn) || !Finite(value_) || !Finite(velocity_)) {
+        Reset();
+        return value_;
+    }
+    float const dt = std::clamp(dtIn, 0.0f, 0.15f);
+    if (dt <= 0.0f) {
+        return value_;
+    }
+    // Critically damped, speed-limited: adapted from Overlord (https://github.com/Aeka0/Overlord, GPL-3.0,
+    // Aeka0), src/client/component/vr/gameplay/ads_comfort.hpp `transition::update` (there one distance
+    // along the barrel; here a vector across the sight line). x'' = -w^2 e - 2 w x'.
+    XrVector3f const error = Sub(value_, goal);
+    XrVector3f const tangent = Add(velocity_, Scale(error, frequency));
+    float const decay = std::exp(-frequency * dt);
+    XrVector3f const next = Add(goal, Scale(Add(error, Scale(tangent, dt)), decay));
+    velocity_ = Scale(Sub(velocity_, Scale(tangent, frequency * dt)), decay);
+    float const speed = Length(velocity_);
+    if (speed > maxSpeed && speed > 0.0f) {
+        velocity_ = Scale(velocity_, maxSpeed / speed);
+    }
+    XrVector3f step = Sub(next, value_);
+    float const stepLength = Length(step);
+    float const maxStep = maxSpeed * dt;
+    if (stepLength > maxStep && stepLength > 0.0f) {
+        step = Scale(step, maxStep / stepLength);
+    }
+    value_ = Add(value_, step);
+    // Finish the tail (under 0.05 mm and 1 mm/s).
+    if (Length(Sub(goal, value_)) < 0.00005f && Length(velocity_) < 0.001f) {
+        value_ = goal;
+        velocity_ = {};
+    }
+    return value_;
+}
+
 Quad Reticle(XrVector3f const& center, XrVector3f const& axis, XrVector3f const& up, float distance, float angularSize) {
     Quad quad;
     quad.pose.position = Add(center, Scale(axis, distance));

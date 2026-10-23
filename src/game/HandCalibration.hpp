@@ -27,9 +27,13 @@
 //           measureRequest, measure*      the VR hands tab's T-pose sample (src/plugin/MevrMenuTab.cpp,
 //                                         contract at its top): each new measureRequest value is
 //                                         measured (ik::ArmLengthFromTPose) and saved as armLengthM.
-//   [Controls] supportGrip, supportAcquireM, supportReleaseM, sniperAims, leftTrigger: the
-//                                         two-handed grip (game/support_grip) and whether the left
-//                                         trigger reaches the game as LT.
+//           reachNearFaceM                within this of the eyes a hand isn't reach-scaled (1:1 with its
+//                                         controller), fading in over the next 0.15 m; 0: always scaled
+//   [Controls] supportGrip, supportZone, supportAcquireM, supportReleaseM, supportFrontM,
+//                                         supportPastMuzzleM, sniperAims, leftTrigger: the two-handed
+//                                         grip (game/support_grip: the grab zone along the gun) and
+//                                         what the left trigger is (lb: the weapon wheel, the squad's
+//                                         at the hand when [Squad] is on).
 //   [Holsters] body holsters (below, GetHolsters).
 //   [Squad]  the squad weapon menu (below, GetSquad).
 //   [Throwables] physical grenades and melee (below, GetThrowables).
@@ -44,6 +48,9 @@ double ArmStretch();
 double TrackingScale();
 // The calibrated arm length (meters, shoulder to grip), 0 if not calibrated.
 double ArmLength();
+// [Hands] reachNearFaceM: a hand this close to the eyes (meters) follows its controller 1:1 (no reach
+// scaling), so a gun at the cheek sits where the controller is; 0: off.
+double ReachNearFace();
 // [Hands] levelCamera: keep the game camera level while the hand aims (game/view_level).
 bool LevelCamera();
 // [Hands] recoilHaptic: 0..1, how strongly a shot's recoil pulses the hand (0: none).
@@ -54,8 +61,14 @@ struct Controls {
     bool leftTriggerLB = true;    // leftTrigger = lb (the default): the weapon wheel
     bool gripLB = false;          // leftGripAway = lb: a left grip away from the gun is LB
     bool supportGrip = true;      // supportGrip
-    double acquireMeters = 0.12;  // supportAcquireM
-    double releaseMeters = 0.22;  // supportReleaseM
+    // supportZone = capsule (the default since 2026-10-22): the grab zone is a capsule along the gun, from
+    // supportFrontM ahead of the right hand to supportPastMuzzleM past the muzzle, and a ball at the
+    // foregrip, all of radius supportAcquireM; it lets go past supportReleaseM. point: the foregrip alone.
+    bool supportCapsule = true;
+    double acquireMeters = 0.18;  // supportAcquireM
+    double releaseMeters = 0.26;  // supportReleaseM
+    double frontMeters = 0.10;    // supportFrontM
+    double pastMeters = 0.10;     // supportPastMuzzleM
     bool sniperAims = false;      // sniperAims: the grip holds LT with a sniper rifle too
     bool aimAtShoulder = true;    // aimAtShoulder: aimed fire (LT) needs the gun at the shoulder too
 };
@@ -94,17 +107,17 @@ struct Holsters {
 Holsters GetHolsters();
 // [Squad] (appended to an older file that lacks it; keys added later are appended with their defaults):
 // squad weapons (game/squad_weapons, docs/squad-weapons-design.md).
-//   enabled           1: point the left hand at a squadmate and squeeze the left grip (away from the gun's
-//                     foregrip) to open the menu at the hand
+//   enabled           1: pull the left trigger ([Controls] leftTrigger = lb) to open the weapon wheel at the
+//                     left hand at once; pointing the left hand at a squadmate preselects them. (Until
+//                     2026-10-22 a left-grip squeeze away from the gun opened it; the grip never does now.)
 //   style             native (default): the game's own weapon wheel (ME1's look, pause and rules), shown on
 //                     a panel at the hand; custom: our drawn menu (the fallback)
 //   pointConeDeg      how close to the left hand's aim ray a squadmate must be to be "pointed at"
 //   pointMaxM         ...and how far away at most (meters)
-//   openHoldS         pointing at nobody: the grip held this long (seconds) opens it anyway
 //   panelDistanceM    the menu's (or wheel's) centre from the hand when it opens (meters)
 //   panelWidthM       its width (meters)
-//   confirmOnRelease  1: letting go of the grip gives the chosen weapon (nothing chosen: cancels);
-//                     0: custom: it stays open after letting go (A gives it, B or a new squeeze cancels);
+//   confirmOnRelease  1: letting go of the trigger gives the chosen weapon (nothing chosen: cancels);
+//                     0: custom: it stays open after letting go (A gives it, B or a new pull cancels);
 //                     native: letting go closes it, only A (the game's own) queues a weapon
 //   pause             custom only: 1 (default) the game pauses while it's open, as ME1's wheels do; 0 it runs.
 //                     (The native wheel always pauses: it's the game's.)
@@ -121,7 +134,6 @@ struct Squad {
     bool native = true;
     double pointConeDeg = 10.0;
     double pointMaxM = 40.0;
-    double openHoldSeconds = 0.35;
     double panelDistanceM = 0.27;
     double panelWidthM = 0.40;
     bool confirmOnRelease = true;

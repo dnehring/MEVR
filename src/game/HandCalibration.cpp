@@ -33,6 +33,7 @@ struct Values {
     bool bodyFollowsHead = true;
     double armStretch = ik::kMaxArmStretch;
     double trackingScale = 0.0;
+    double reachNearFace = 0.30;  // [Hands] reachNearFaceM
     double armLength = 0.0;  // [Arms] armLengthM
     bool levelCamera = true;     // [Hands] levelCamera
     double recoilHaptic = 0.5;   // [Hands] recoilHaptic
@@ -41,8 +42,11 @@ struct Values {
     bool leftTriggerLB = true;
     bool gripLB = false;
     bool supportGrip = true;
-    double supportAcquire = 0.12;
-    double supportRelease = 0.22;
+    bool supportCapsule = true;
+    double supportAcquire = 0.18;
+    double supportRelease = 0.26;
+    double supportFront = 0.10;
+    double supportPast = 0.10;
     bool sniperAims = false;
     bool aimAtShoulder = true;
     bool operator==(Values const&) const = default;
@@ -85,6 +89,9 @@ constexpr char const* kDefaultFile =
     "armStretch = 1.25\n"
     "; trackingScale: Unreal units per meter of hand and head motion; 0 = the view's own scale.\n"
     "trackingScale = 0\n"
+    "; reachNearFaceM: with armLengthM set, a hand this close to your eyes (meters) isn't reach-scaled: it\n"
+    "; sits exactly on its controller (a gun at the cheek lines up with your eye); 0 = always scaled.\n"
+    "reachNearFaceM = 0.30\n"
     "; levelCamera: 1 keeps the game camera level on foot while the hand aims (the guns' recoil and aim assist\n"
     "; no longer tilt the world; research/24). recoilHaptic: how strongly a shot's recoil buzzes the hand, 0..1.\n"
     "levelCamera = 1\n"
@@ -98,23 +105,29 @@ constexpr char const* kDefaultFile =
 constexpr char const* kControlsBlock =
     "\n"
     "[Controls]\n"
-    "; The two-handed grip: squeeze the left grip with the left hand on the gun's foregrip (within\n"
-    "; supportAcquireM meters) to hold it with both hands; it lets go when the grip opens or the hand\n"
-    "; moves supportReleaseM away. While held, the barrel points from the right hand toward the left,\n"
-    "; and the game sees the left trigger (LT) held: aimed, focused fire. Elsewhere the left grip is LB.\n"
+    "; The two-handed grip: squeeze the left grip with the left hand anywhere on the gun to hold it with\n"
+    "; both hands: within supportAcquireM meters of the gun from supportFrontM ahead of your right hand to\n"
+    "; supportPastMuzzleM past the muzzle (supportZone = capsule; point = near the foregrip only). Shepard's\n"
+    "; left hand goes to the gun's foregrip; it lets go when the grip opens or the hand moves supportReleaseM\n"
+    "; from the gun. While held, the barrel turns with the line between your hands, and at the shoulder the\n"
+    "; game sees LT held: aimed, focused fire. Away from the gun the left grip does nothing.\n"
     "supportGrip = 1\n"
-    "supportAcquireM = 0.12\n"
-    "supportReleaseM = 0.22\n"
+    "supportZone = capsule\n"
+    "supportAcquireM = 0.18\n"
+    "supportReleaseM = 0.26\n"
+    "supportFrontM = 0.10\n"
+    "supportPastMuzzleM = 0.10\n"
     "; sniperAims: 1 also holds LT for a sniper rifle (its aimed mode is the game's scope camera).\n"
     "sniperAims = 0\n"
     "; aimAtShoulder: 1 = aimed fire (LT) needs the gun at the shoulder as well (the right hand\n"
     "; close under the eyes, near the cheek); 0 = both hands on the gun is enough.\n"
     "aimAtShoulder = 1\n"
-    "; leftTrigger: lb = the weapon wheel (the default); lt = the game's LT (aim, zoom), as before;\n"
-    "; none = the game doesn't see it. Aimed fire comes from holding the gun with both hands at the shoulder.\n"
+    "; leftTrigger: lb = the weapon wheel (the default; with [Squad] on, the trigger opens the game's wheel at\n"
+    "; your left hand at once, and letting go gives the highlighted weapon); lt = the game's LT (aim, zoom), as\n"
+    "; before; none = the game doesn't see it. Aimed fire comes from holding the gun with both hands at the shoulder.\n"
     "leftTrigger = lb\n"
     "; leftGripAway: what a left grip squeezed away from the gun does. none (the default): nothing, the\n"
-    "; grip only takes the gun; lb = the weapon wheel, as before.\n"
+    "; grip only takes the gun; lb = the weapon wheel (only with [Squad] off).\n"
     "leftGripAway = none\n";
 
 // Appended to a settings file that has no [Holsters] yet (and part of a new file).
@@ -159,17 +172,17 @@ constexpr char const* kHolstersBlock =
 constexpr char const* kSquadBlock =
     "\n"
     "[Squad]\n"
-    "; Squad weapons: point your left hand at a squadmate and squeeze the left grip (away from the gun's\n"
-    "; foregrip) to open the weapon wheel above your hand.\n"
+    "; Squad weapons: pull the left trigger to open the weapon wheel above your left hand (at once); point your\n"
+    "; left hand at a squadmate as you pull to put it on their weapon. The left grip never opens it.\n"
     "enabled = 1\n"
     "; style: native = the game's own weapon wheel (ME1's look; it pauses the game like the flat game's wheel):\n"
-    "; the right stick highlights a weapon, letting go of the grip gives it (A queues one too, B closes it\n"
+    "; the right stick highlights a weapon, letting go of the trigger gives it (A queues one too, B closes it\n"
     "; without). custom = our drawn menu: the left stick picks the squadmate, a flick of the right stick a\n"
     "; weapon; let go (or A) to give it, B cancels.\n"
     "style = native\n"
     "; wheelStick (native): the stick that steers the wheel: right (the game's own) | left | either.\n"
     "wheelStick = right\n"
-    "; wheelPreselect (native): 1 = pointing at a squadmate when you squeeze puts the wheel on their weapon in hand.\n"
+    "; wheelPreselect (native): 1 = pointing at a squadmate when you pull puts the wheel on their weapon in hand.\n"
     "wheelPreselect = 1\n"
     "; wheelPanel: 1 = the game's weapon and power wheels show on a panel of their own (however they open);\n"
     "; weaponWheelAt / powerWheelAt: where: left (hand) | right | front | hud (stays on the HUD panel).\n"
@@ -183,14 +196,12 @@ constexpr char const* kSquadBlock =
     "; (degrees); pointMaxM: how far away at most (meters).\n"
     "pointConeDeg = 10\n"
     "pointMaxM = 40\n"
-    "; openHoldS: pointing at nobody, keep the grip squeezed this long (seconds) and it opens anyway, with the\n"
-    "; squadmate you gave a weapon last (or the one nearest your pointing) chosen.\n"
-    "openHoldS = 0.35\n"
+
     "; panelDistanceM: the menu's centre from your left hand (meters); panelWidthM: its width (meters).\n"
     "panelDistanceM = 0.27\n"
     "panelWidthM = 0.40\n"
-    "; confirmOnRelease: 1 = letting go of the grip gives the chosen weapon (nothing chosen: cancels);\n"
-    "; 0 = the menu stays open when you let go: A gives it, B or a new squeeze cancels.\n"
+    "; confirmOnRelease: 1 = letting go of the trigger gives the chosen weapon (nothing chosen: cancels);\n"
+    "; 0 = the menu stays open when you let go: A gives it, B or a new pull cancels.\n"
     "confirmOnRelease = 1\n"
     "; pause (custom): 1 (the default) = the game pauses while the menu is open, like its own weapon wheel; 0 = it\n"
     "; keeps running. The native wheel always pauses (it's the game's).\n"
@@ -205,8 +216,8 @@ constexpr char const* kThrowablesBlock =
     "; Physical grenades: reach to the grenade slot on your body (the left side of the chest), squeeze a\n"
     "; grip to take a grenade, throw it by letting go while the hand moves. A slow release puts it back.\n"
     "enabled = 1\n"
-    "; hands: right (the default) | left | both. The left grip at the gun's foregrip is still the\n"
-    "; two-handed grip.\n"
+    "; hands: right (the default) | left | both. The left grip on the gun (anywhere along it) is still\n"
+    "; the two-handed grip.\n"
     "hands = right\n"
     "; slot: right, up, forward, radius in meters from your eyes, like the holsters' slots.\n"
     "slot = -0.13, -0.33, 0.00, 0.10\n"
@@ -284,7 +295,16 @@ constexpr char const* kSightsBlock =
     "; replaceRing: 1 = the floating ring reticle hides while you look through a sight.\n"
     "replaceRing = 1\n"
     "; aimedFire: 1 = looking through a scope gives the shots the game's aimed-fire accuracy (no scope camera).\n"
-    "aimedFire = 1\n";
+    "aimedFire = 1\n"
+    "; assist: 1 = with the gun raised to your face and your aiming eye within assistConeDeg of the sight line,\n"
+    "; the gun slides (at most assistMaxM meters) so the sight line runs through that eye; it lets go as you\n"
+    "; lower the gun. assistStrength: how much of the way (0..1). assistRangeM: how far the sight may be from\n"
+    "; the eye for it (meters).\n"
+    "assist = 1\n"
+    "assistConeDeg = 10\n"
+    "assistStrength = 1\n"
+    "assistMaxM = 0.10\n"
+    "assistRangeM = 0.65\n";
 
 fs::path FilePath() {
     wchar_t buffer[MAX_PATH]{};
@@ -365,6 +385,9 @@ Values ReadValues(Ini const& ini) {
     if (Number(ini, "Hands", "trackingScale", values.trackingScale) && !(values.trackingScale > 0.0)) {
         values.trackingScale = 0.0;
     }
+    if (Number(ini, "Hands", "reachNearFaceM", values.reachNearFace)) {
+        values.reachNearFace = std::clamp(values.reachNearFace, 0.0, 0.8);
+    }
     if (Number(ini, "Hands", "levelCamera", flag)) {
         values.levelCamera = flag != 0.0;
     }
@@ -386,6 +409,17 @@ Values ReadValues(Ini const& ini) {
             std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
             values.gripLB = value == "lb";
         }
+        if (auto const k = s->second.find("supportZone"); k != s->second.end()) {
+            std::string value = k->second;
+            std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (value == "capsule" || value == "gun") {
+                values.supportCapsule = true;
+            } else if (value == "point" || value == "foregrip") {
+                values.supportCapsule = false;
+            } else {
+                log::Warn("controls: can't read supportZone = {} (capsule or point); capsule kept", k->second);
+            }
+        }
     }
     if (Number(ini, "Controls", "aimAtShoulder", flag)) {
         values.aimAtShoulder = flag != 0.0;
@@ -399,6 +433,12 @@ Values ReadValues(Ini const& ini) {
     Number(ini, "Controls", "supportReleaseM", release);
     values.supportAcquire = std::clamp(acquire, 0.02, 0.5);
     values.supportRelease = std::clamp(release, values.supportAcquire, 1.0);
+    if (Number(ini, "Controls", "supportFrontM", values.supportFront)) {
+        values.supportFront = std::clamp(values.supportFront, 0.0, 0.5);
+    }
+    if (Number(ini, "Controls", "supportPastMuzzleM", values.supportPast)) {
+        values.supportPast = std::clamp(values.supportPast, 0.0, 0.5);
+    }
     if (Number(ini, "Controls", "sniperAims", flag)) {
         values.sniperAims = flag != 0.0;
     }
@@ -528,9 +568,6 @@ Squad ReadSquad(Ini const& ini) {
     if (Number(ini, "Squad", "pointMaxM", value)) {
         squad.pointMaxM = std::clamp(value, 1.0, 200.0);
     }
-    if (Number(ini, "Squad", "openHoldS", value)) {
-        squad.openHoldSeconds = std::clamp(value, 0.0, 3.0);
-    }
     if (Number(ini, "Squad", "panelDistanceM", value)) {
         squad.panelDistanceM = std::clamp(value, 0.1, 0.8);
     }
@@ -639,13 +676,14 @@ char const* PlaceName(int place) {
 std::string Describe(Squad const& s) {
     std::string const style = s.native
         ? std::format("native (the game's wheel; {} steers it, {}{})", gamepad::Name(s.wheelStick),
-              s.confirmOnRelease ? "letting go gives the highlighted weapon" : "A queues, letting go closes",
+              s.confirmOnRelease ? "letting go of the trigger gives the highlighted weapon" : "A queues, letting go closes",
               s.wheelPreselect ? ", pointing preselects" : "")
         : std::format("custom (our menu; {}; the game {} while it's open)",
               s.confirmOnRelease ? "letting go confirms" : "A confirms, letting go keeps it open", s.pause ? "pauses" : "keeps running");
-    return std::format("{}, style {}; pointing within {:.0f} degrees and {:.0f} m, or {:.2f} s held at nobody; the panel {:.2f} m from "
-                       "the hand, {:.2f} m wide; haptics {:.2f}; the game's wheels {} (weapon wheel at {}, power wheel at {}, crop {})",
-        s.enabled ? "on" : "off", style, s.pointConeDeg, s.pointMaxM, s.openHoldSeconds, s.panelDistanceM, s.panelWidthM,
+    return std::format("{}, the left trigger opens it, style {}; pointing within {:.0f} degrees and {:.0f} m preselects; the panel "
+                       "{:.2f} m from the hand, {:.2f} m wide; haptics {:.2f}; the game's wheels {} (weapon wheel at {}, power wheel at "
+                       "{}, crop {})",
+        s.enabled ? "on" : "off", style, s.pointConeDeg, s.pointMaxM, s.panelDistanceM, s.panelWidthM,
         s.hapticAmplitude, s.wheelPanel ? "on a panel of their own" : "on the HUD panel", PlaceName(s.weaponWheelAt),
         PlaceName(s.powerWheelAt),
         s.wheelCrop[2] > 0.0 ? std::format("({:.3f}, {:.3f}) {:.3f} x {:.3f}", s.wheelCrop[0], s.wheelCrop[1], s.wheelCrop[2], s.wheelCrop[3])
@@ -818,6 +856,13 @@ vr::sights::Settings ReadSights(Ini const& ini) {
     if (Number(ini, "Sights", "aimedFire", value)) {
         out.aimedFire = value != 0.0;
     }
+    if (Number(ini, "Sights", "assist", value)) {
+        out.assist.enabled = value != 0.0;
+    }
+    number("assistConeDeg", out.assist.coneDeg, 1.0f, 30.0f);
+    number("assistStrength", out.assist.strength, 0.0f, 1.0f);
+    number("assistMaxM", out.assist.maxShiftM, 0.0f, 0.25f);
+    number("assistRangeM", out.assist.rangeM, 0.15f, 1.5f);
     if (Number(ini, "Sights", "resolution", value)) {
         out.resolution = static_cast<int>(std::clamp(value, 128.0, 2048.0));
     }
@@ -858,11 +903,15 @@ std::string Describe(vr::sights::Settings const& s) {
     }
     return std::format("on: {}; dot #{:06X} {:.2f} deg, ring {:.2f} deg, window {:.1f} units{}, zero {}; scope lens {:.1f} units, "
                        "{} reticle #{:06X}, {} eye's picture, focus {:.0f} m, eye relief {:.2f} m, {} px; ring reticle {}, scoped "
-                       "aimed fire {}",
+                       "aimed fire {}; alignment assist {}",
         guns, s.dotColor, s.dotSizeDeg, s.ringSizeDeg, s.windowUnits, s.frame ? " (framed)" : "",
         s.zeroM > 0.0f ? std::format("{:.0f} m", s.zeroM) : std::string("parallel"), s.lensUnits, sv::Name(s.scopeReticle),
         s.scopeColor, s.otherEye ? "the other" : "the same", s.focusM, s.eyeReliefM, s.resolution,
-        s.replaceRing ? "hidden while sighting" : "kept", s.aimedFire ? "on" : "off");
+        s.replaceRing ? "hidden while sighting" : "kept", s.aimedFire ? "on" : "off",
+        s.assist.enabled ? std::format("on (the aiming eye within {:.0f} degrees of the sight line, {:.0f}% of the way, at most {:.2f} m, "
+                                       "the sight within {:.2f} m of the eye)",
+                               s.assist.coneDeg, s.assist.strength * 100.0f, s.assist.maxShiftM, s.assist.rangeM)
+                         : std::string("off"));
 }
 
 vr::sights::Settings gSights;
@@ -939,6 +988,10 @@ double ArmLength() {
     return gValues.armLength;
 }
 
+double ReachNearFace() {
+    return gValues.reachNearFace;
+}
+
 bool LevelCamera() {
     return gValues.levelCamera;
 }
@@ -953,8 +1006,11 @@ Controls GetControls() {
     controls.leftTriggerLB = gValues.leftTriggerLB;
     controls.gripLB = gValues.gripLB;
     controls.supportGrip = gValues.supportGrip;
+    controls.supportCapsule = gValues.supportCapsule;
     controls.acquireMeters = gValues.supportAcquire;
     controls.releaseMeters = gValues.supportRelease;
+    controls.frontMeters = gValues.supportFront;
+    controls.pastMeters = gValues.supportPast;
     controls.sniperAims = gValues.sniperAims;
     controls.aimAtShoulder = gValues.aimAtShoulder;
     return controls;
@@ -1090,21 +1146,72 @@ void Refresh() {
         ini = ReadIni(path);
         stamp = fs::last_write_time(path, ec);
     }
-    // And [Hands]' level camera and recoil haptics (2026-10-22, research/24).
-    static constexpr NewKey kNewHandsKeys[] = {
-        {L"levelCamera", "levelCamera", L"1"},
-        {L"recoilHaptic", "recoilHaptic", L"0.5"},
+    // The support grip's grab zone (2026-10-22): a file without supportZone was written for the point
+    // zone, where supportAcquireM / supportReleaseM were distances from the foregrip. They are now the
+    // capsule's radii: the old defaults (0.12 / 0.22) become the new ones (0.18 / 0.26); numbers the
+    // player set are kept (now as the radii). The marker supportZone makes it happen once.
+    if (auto const c = ini.find("Controls"); c != ini.end() && c->second.find("supportZone") == c->second.end()) {
+        std::wstring const file = path.wstring();
+        auto const old = [&](char const* key, double fallback) {
+            auto const k = c->second.find(key);
+            if (k == c->second.end()) {
+                return fallback;
+            }
+            char* end = nullptr;
+            double const v = std::strtod(k->second.c_str(), &end);
+            return end == k->second.c_str() ? fallback : v;
+        };
+        double const acquire = old("supportAcquireM", 0.12);
+        double const release = old("supportReleaseM", 0.22);
+        bool const defaults = std::abs(acquire - 0.12) < 1e-6 && std::abs(release - 0.22) < 1e-6;
+        if (defaults) {
+            WritePrivateProfileStringW(L"Controls", L"supportAcquireM", L"0.18", file.c_str());
+            WritePrivateProfileStringW(L"Controls", L"supportReleaseM", L"0.26", file.c_str());
+        }
+        WritePrivateProfileStringW(L"Controls", L"supportZone", L"capsule", file.c_str());
+        if (c->second.find("supportFrontM") == c->second.end()) {
+            WritePrivateProfileStringW(L"Controls", L"supportFrontM", L"0.10", file.c_str());
+        }
+        if (c->second.find("supportPastMuzzleM") == c->second.end()) {
+            WritePrivateProfileStringW(L"Controls", L"supportPastMuzzleM", L"0.10", file.c_str());
+        }
+        log::Info("hands: the two-handed grip's grab zone is a capsule along the gun now: {} in [Controls] of {}",
+            defaults ? "supportAcquireM 0.12 -> 0.18 and supportReleaseM 0.22 -> 0.26 (the old defaults), supportZone, supportFrontM "
+                       "and supportPastMuzzleM added"
+                     : std::format("your supportAcquireM {:.2f} and supportReleaseM {:.2f} kept, now the capsule's radii; supportZone, "
+                                   "supportFrontM and supportPastMuzzleM added", acquire, release),
+            path.string());
+        ini = ReadIni(path);
+        stamp = fs::last_write_time(path, ec);
+    }
+    // [Hands] reachNearFaceM, levelCamera and recoilHaptic (research/24), and the [Sights] alignment assist
+    // (2026-10-22), appended with their defaults.
+    static constexpr struct {
+        wchar_t const* section;
+        char const* sectionName;
+        wchar_t const* key;
+        char const* name;
+        wchar_t const* value;
+    } kNewKeys[] = {
+        {L"Hands", "Hands", L"reachNearFaceM", "reachNearFaceM", L"0.30"},
+        {L"Hands", "Hands", L"levelCamera", "levelCamera", L"1"},
+        {L"Hands", "Hands", L"recoilHaptic", "recoilHaptic", L"0.5"},
+        {L"Sights", "Sights", L"assist", "assist", L"1"},
+        {L"Sights", "Sights", L"assistConeDeg", "assistConeDeg", L"10"},
+        {L"Sights", "Sights", L"assistStrength", "assistStrength", L"1"},
+        {L"Sights", "Sights", L"assistMaxM", "assistMaxM", L"0.10"},
+        {L"Sights", "Sights", L"assistRangeM", "assistRangeM", L"0.65"},
     };
-    std::string addedHands;
-    for (NewKey const& k : kNewHandsKeys) {
-        auto const s = ini.find("Hands");
+    std::string addedKeys;
+    for (auto const& k : kNewKeys) {
+        auto const s = ini.find(k.sectionName);
         if (s != ini.end() && s->second.find(k.name) == s->second.end() &&
-            WritePrivateProfileStringW(L"Hands", k.key, k.value, path.wstring().c_str()) != 0) {
-            addedHands += std::format("{}{}", addedHands.empty() ? "" : ", ", k.name);
+            WritePrivateProfileStringW(k.section, k.key, k.value, path.wstring().c_str()) != 0) {
+            addedKeys += std::format("{}{}.{}", addedKeys.empty() ? "" : ", ", k.sectionName, k.name);
         }
     }
-    if (!addedHands.empty()) {
-        log::Info("hands: added {} (defaults) to [Hands] in {}", addedHands, path.string());
+    if (!addedKeys.empty()) {
+        log::Info("hands: added {} (defaults) to {}", addedKeys, path.string());
         ini = ReadIni(path);
         stamp = fs::last_write_time(path, ec);
     }
@@ -1135,14 +1242,22 @@ void Refresh() {
         gApplied = true;
         Apply(values);
         log::Info("hands: calibration pitch {:.1f}, yaw {:.1f}, roll {:.1f} degrees, gun roll {:.1f} degrees; body follows head {}, "
-                  "arm stretch {:.2f}, tracking scale {}, arm length {} (from {})",
+                  "arm stretch {:.2f}, tracking scale {}, arm length {} (from {}), {}",
             values.pitch, values.yaw, values.roll, values.gunRoll, values.bodyFollowsHead ? "on" : "off", values.armStretch,
             values.trackingScale > 0.0 ? std::format("{:.1f} units/m", values.trackingScale) : std::string("the view's"),
             values.armLength > 0.0 ? std::format("{:.3f} m", values.armLength) : std::string("not calibrated"),
-            path.filename().string());
-        log::Info("controls: two-handed grip {} (acquire {:.2f} m, release {:.2f} m, sniper rifles {}), aimed fire {}, "
+            path.filename().string(),
+            values.reachNearFace > 0.0
+                ? std::format("hands within {:.2f} m of the eyes unscaled (1:1 with the controllers)", values.reachNearFace)
+                : std::string("reach scaled near the face too"));
+        log::Info("controls: two-handed grip {} ({}, grab radius {:.2f} m, lets go past {:.2f} m, sniper rifles {}), aimed fire {}, "
                   "left trigger {}",
-            values.supportGrip ? "on" : "off", values.supportAcquire, values.supportRelease,
+            values.supportGrip ? "on" : "off",
+            values.supportCapsule
+                ? std::format("a capsule along the gun from {:.2f} m ahead of the right hand to {:.2f} m past the muzzle, and the foregrip",
+                      values.supportFront, values.supportPast)
+                : std::string("the foregrip alone"),
+            values.supportAcquire, values.supportRelease,
             values.sniperAims ? "aim too" : "steady only, no LT",
             values.aimAtShoulder ? "with both hands and the gun at the shoulder" : "with both hands",
             values.leftTrigger ? "= LT" : values.leftTriggerLB ? "= LB (weapon wheel)" : "not sent to the game");

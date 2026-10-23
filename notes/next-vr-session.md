@@ -430,6 +430,7 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
     `tools/deploy-asi.ps1 -Game LE1` first: with the old host the mod logs `squad: style = native,
     but the host can't show the game's wheel at the hand (services older than v12 ...): our drawn
     menu instead`.
+    - **Superseded (late 2026-10-22): the left trigger opens it, not the grip: step 17.**
     - **How:** on foot. **Point your left hand at a squadmate and squeeze the left grip** (away from
       the gun), or keep it squeezed a third of a second pointing at nobody. The game's wheel opens
       (the game pauses, as on a flat screen) on a panel about 40 cm wide above your left hand,
@@ -615,7 +616,83 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       heartbeat's `throwables:` line (counts, peak hand speeds, grenades left). Problems:
       `the game didn't launch the ... grenade within 3 s`, `the weapon didn't come out within 2 s`.
 
-17. **The world stays level while you shoot (new, 2026-10-22; the mod only, it hot-reloads).** The
+17. **The left trigger opens the squad's weapon wheel; the left grip never does (new, late 2026-10-22;
+    mod only, hot reload).** The 19:52 session's wheel openings were all left-grip squeezes right after
+    a draw (the foregrip not measured yet). Now ([docs/squad-weapons-design.md](../docs/squad-weapons-design.md)
+    "The left trigger opens it"):
+    - **How:** on foot, **pull the left trigger**: the game's wheel opens above your left hand at once
+      (the game pauses). Point your left hand at a squadmate as you pull: the wheel opens on their
+      weapon in hand. Steer with the right stick; **let go of the trigger** to give the highlighted
+      weapon (A also picks, B closes without). A quick pull and let go opens and shuts it.
+    - **The left grip:** squeezing it anywhere away from the gun does nothing at all (no wheel, no LB).
+      On the gun it's the two-handed grip (step 18).
+    - **Also check:** a quick trigger tap never swaps Shepard's weapon (the game sees no LB on foot);
+      in the Mako the left trigger is still the boost (LB); a trigger pulled in Halcyon's menu (the laser
+      pointer's click) never opens the wheel. Custom style (`[Squad] style = custom`): the same trigger
+      opens our drawn menu at once (at nobody: the squadmate you gave a weapon last).
+    - **Needs** `[Controls] leftTrigger = lb` (your file has it); otherwise logged once: `squad: the left
+      trigger opens the squad's weapon wheel only with [Controls] leftTrigger = lb ...`.
+    - **Logs (ours):** `squad: the left trigger opens the squad's weapon wheel (no LB to the game)` when
+      you're on foot (and `...is the game's LB again` in the Mako or a menu), `squad: left trigger
+      pulled: pointing at <name> (...)` / `pointing at nobody (nearest ...)`, `squad: wheel #N: opening
+      the game's weapon wheel, pointed at <name> (... the left trigger, at once)`, `squad: wheel #N:
+      trigger let go: giving <name> the <weapon>`, `squad: wheel #N: closing (ExitWeaponWheel ...);
+      queued: ...`. No `squad: left grip squeezed away from the gun` lines any more.
+
+18. **The two-handed grip takes the gun anywhere along it (new, late 2026-10-22; mod only, hot
+    reload).** The grab zone is a capsule along the gun, from 10 cm ahead of your right hand to 10 cm
+    past the muzzle, 18 cm around (it was a 12 cm ball at the foregrip). Shepard's left hand still goes
+    to the gun's foregrip, and the gun doesn't swing when you take hold: from then on it turns with
+    the line between your hands.
+    - **How:** draw the assault rifle; squeeze the left grip with the left hand anywhere on or near
+      the gun: under the barrel, near the muzzle, beside it. Each should take the gun (aimed fire at
+      the shoulder as before). It lets go when you open the grip or move the hand 26 cm off the gun.
+    - **Right after a draw:** reach for the foregrip at once. A redrawn gun is now aimed right away
+      (its grip is remembered: `weapon: ...: grip as measured the last time it was held`), so the
+      zone is there within about 0.1 s of the gun reaching the hand. A squeeze that comes before that
+      does nothing; squeeze again.
+    - **What to check:** grabs that still miss (tell Claude where the hand was); a gun that jumps when
+      you take hold (it shouldn't now); where Shepard's left hand sits on the gun; the pistol (cupped
+      under the grip).
+    - **Settings** (`[Controls]`, your file migrated: `supportAcquireM` 0.12 -> 0.18 and
+      `supportReleaseM` 0.22 -> 0.26, as they were the old defaults): `supportZone = capsule` (`point`:
+      the foregrip alone), `supportAcquireM` (the zone's radius), `supportReleaseM`, `supportFrontM =
+      0.10`, `supportPastMuzzleM = 0.10`.
+    - **Logs (ours):** `hands: the two-handed grip's grab zone is a capsule along the gun now: ...`
+      (once, the migration), `controls: two-handed grip on (a capsule along the gun from 0.10 m ahead of
+      the right hand to 0.10 m past the muzzle, and the foregrip, grab radius 0.18 m, lets go past 0.26
+      m, ...)`, `support grip: held (N m from the grab zone, N m from the foregrip, N m along the barrel
+      from the right hand; ...): the barrel turns with the line between the hands (taken where you
+      grabbed: no swing)`, the heartbeat's `support grip: ... last write N m from the grab zone (N m
+      from the foregrip, N m along), ... two-hand aim (the grab's line), swing N degrees`.
+
+19. **The sight lines up with your eye (new, late 2026-10-22; mod only, hot reload).** Two changes
+    ([research/21](../research/21-sights-and-scopes.md) section 8):
+    - **Near your face the gun sits on the controller:** your arm-length calibration (`armLengthM
+      0.723`) pulled Shepard's hands 24% toward his shoulder, which put the sight about 5 cm right of
+      where your eye was (the "move the rifle a long way sideways"). Within 30 cm of your eyes a hand
+      now follows its controller 1:1 (`[Hands] reachNearFaceM = 0.30`, fading back over 15 cm).
+    - **Alignment assist:** raise the gun to your face with your aiming eye roughly behind the sight
+      (within 10 degrees of its line): the gun slides, at most 10 cm and smoothly, so the sight line
+      runs through that eye; lower it and it eases back. Shots follow the gun as drawn.
+    - **How:** pistol (red dot), then the assault rifle (holo), then the sniper rifle (scope): bring
+      each up to your eye and look through. The dot or the scope picture should appear without hunting
+      sideways. Then hold the gun out and lower it: it should drift back without a jump.
+    - **What to check:** whether it feels like the gun is pulled (too strong? `assistStrength = 0.5`);
+      whether 10 degrees catches too much or too little (`assistConeDeg`); any wobble while aiming; the
+      gun at the cheek now where the controller is (with the calibration on).
+    - **Settings** (`[Sights]`, added to your file): `assist = 1`, `assistConeDeg = 10`, `assistStrength
+      = 1`, `assistMaxM = 0.10`, `assistRangeM = 0.65` (the sight within this of the eye); `[Hands]
+      reachNearFaceM = 0.30` (0: always scaled).
+    - **Logs (ours):** `sights: alignment assist on: the right eye N cm left of and N cm above the
+      sight line (N degrees, the sight N m ahead): the gun slides N cm toward it`, `sights: alignment
+      assist off (the gun lowered ...)`, the heartbeat's `sights: ...; alignment assist on N ticks: the
+      aiming eye sat on average N cm right of and N cm above the unassisted sight line (N degrees); the
+      gun moved at most N cm` (**a steady offset there means the sight's place on the gun is off: tell
+      Claude the numbers**), and `hands: ... hands within 0.30 m of the eyes unscaled`. Snapshot JSON:
+      the mod's `"sights"."assist"` (eye, angle, offset, goal, shift).
+
+20. **The world stays level while you shoot (new, 2026-10-22; the mod only, it hot-reloads).** The
     tilt you saw was the guns' recoil: LE1 kicks the game camera up with every shot and the rifles'
     kick never comes back (a flat-screen player pulls the stick down); by the end of that session the
     camera looked about 30 degrees up. [research/24](../research/24-view-level.md). Now, on foot with

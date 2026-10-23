@@ -1,6 +1,7 @@
 #include "game/ArmIk.hpp"
 
 #include "core/Log.hpp"
+#include "core/ik/ArmLength.hpp"
 #include "core/ik/ArmPose.hpp"
 #include "core/ik/BoneNames.hpp"
 #include "core/ik/CameraHook.hpp"
@@ -14,6 +15,7 @@
 #include "engine/Objects.hpp"
 #include "engine/Skeleton.hpp"
 #include "game/HandTargets.hpp"
+#include "game/Sights.hpp"
 #include "game/SupportGrip.hpp"
 #include "game/Weapon.hpp"
 
@@ -502,6 +504,14 @@ bool RequestSupport(USkeletalMeshComponent* mesh, SkeletonInfo const& info, std:
     s.blend = support_grip::Blend();
     double const reach = request.arms[kLeft].reachScale;
     s.unitsPerMeter = targets.body.unitsPerMeter * (std::isfinite(reach) && reach > 0.0 ? reach : 1.0);
+    // The grab zone: a capsule along the gun, not just a point at the foregrip (support_grip::Zone).
+    support_grip::Zone const zone = support_grip::CurrentZone();
+    s.hasGun = zone.capsule;
+    s.barrel = grip.barrel;
+    s.muzzle = grip.muzzle;
+    s.frontMeters = zone.frontMeters;
+    s.pastMeters = zone.pastMeters;
+    s.hold = support_grip::HoldSerial();
     return true;
 }
 
@@ -737,6 +747,9 @@ void Drive(double deltaSeconds) {
         std::span<engine::skeleton::BoneAtom const> const pose = engine::skeleton::SpaceBases(mesh);
         std::optional<weapon::Grip> heldGrip;
         std::optional<ik::Vec3> heldUp;
+        vr::controllers::State const controllers = vr::controllers::Latest();
+        std::array<double, 2> fullReach{1.0, 1.0};
+        std::array<double, 2> reachWeight{1.0, 1.0};
         for (int side : {kLeft, kRight}) {
             hand_targets::Hand const& hand = targets.hands[side];
             auto const& chain = arms[side];
@@ -746,9 +759,17 @@ void Drive(double deltaSeconds) {
             engine::bone_pose::Arm& arm = request.arms[side];
             arm.target = engine::bone_pose::Target::Component;
             arm.wrist = ik::TransformPoint(*worldToComponent, {hand.position.x, hand.position.y, hand.position.z});
-            // Arm-length calibration: the player's full reach is Shepard's full reach.
+            // Arm-length calibration: the player's full reach is Shepard's full reach, except near the
+            // eyes, where the hand sits on its controller (a gun at the cheek lines up with the eye).
             if (double const player = hand_calibration::ArmLength(); player > 0.0 && gLayout.lengths[side] > 0.0) {
-                arm.reachScale = std::clamp(gLayout.lengths[side] / (player * targets.body.unitsPerMeter), kMinReachScale, kMaxReachScale);
+                fullReach[side] = std::clamp(gLayout.lengths[side] / (player * targets.body.unitsPerMeter), kMinReachScale, kMaxReachScale);
+                vr::controllers::Hand const& tracked = side == kLeft ? controllers.left : controllers.right;
+                if (controllers.active && tracked.gripValid) {
+                    XrVector3f const& g = tracked.grip.position;
+                    XrVector3f const& h = targets.head.position;
+                    reachWeight[side] = ik::ReachWeight(std::hypot(g.x - h.x, g.y - h.y, g.z - h.z), hand_calibration::ReachNearFace());
+                }
+                arm.reachScale = ik::ScaledReach(fullReach[side], reachWeight[side]);
             }
             if (!gAnatomyTried[side]) {
                 gAnatomyTried[side] = true;
@@ -786,8 +807,23 @@ void Drive(double deltaSeconds) {
             }
             driven += driven.empty() ? kSideNames[side] : std::string(" and ") + kSideNames[side];
         }
+        // A left hand holding the gun scales like the gun hand, so the line between them (two-hand aim)
+        // isn't bent by the face rule: at the cheek both are 1:1.
+        if (double const blend = support_grip::Blend(); blend > 0.0 && request.arms[kLeft].target == engine::bone_pose::Target::Component) {
+            double const weight = reachWeight[kLeft] + (reachWeight[kRight] - reachWeight[kLeft]) * blend;
+            request.arms[kLeft].reachScale = ik::ScaledReach(fullReach[kLeft], weight);
+        }
         if (heldGrip && heldUp && arms[kLeft] && arms[kRight]) {
             supportRequested = RequestSupport(mesh, *info, pose, *heldGrip, *heldUp, targets, request);
+        }
+        // The sight alignment assist (game/sights): the held gun slides so its sight line runs through
+        // the aiming eye; tracking meters through the body frame into component units.
+        XrVector3f const shift = sights::TakeGunShift();
+        if (gunAimed && (shift.x != 0.0f || shift.y != 0.0f || shift.z != 0.0f)) {
+            XrVector3f const& p = targets.head.position;
+            engine::UnrealVector const a = engine::ToWorld(targets.body, p);
+            engine::UnrealVector const b = engine::ToWorld(targets.body, {p.x + shift.x, p.y + shift.y, p.z + shift.z});
+            request.gunShift = ik::TransformDirection(*worldToComponent, {b.x - a.x, b.y - a.y, b.z - a.z});
         }
         if (!driven.empty()) {
             driven += " following the controllers";

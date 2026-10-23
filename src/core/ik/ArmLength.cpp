@@ -1,5 +1,6 @@
 #include "core/ik/ArmLength.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 namespace mevr::ik {
@@ -25,6 +26,22 @@ std::optional<ArmLengths> ArmLengthFromTPose(ArmLengthSample const& sample, doub
         return std::nullopt;
     }
     return out;
+}
+
+double ReachWeight(double meters, double nearMeters, double fadeMeters) {
+    if (!std::isfinite(nearMeters) || !(nearMeters > 0.0) || !std::isfinite(meters)) {
+        return 1.0;
+    }
+    double const fade = std::isfinite(fadeMeters) && fadeMeters > 1e-6 ? fadeMeters : 1e-6;
+    double const t = std::clamp((meters - nearMeters) / fade, 0.0, 1.0);
+    return t * t * (3.0 - 2.0 * t);
+}
+
+double ScaledReach(double full, double weight) {
+    if (!std::isfinite(full) || !std::isfinite(weight)) {
+        return 1.0;
+    }
+    return 1.0 + (full - 1.0) * std::clamp(weight, 0.0, 1.0);
 }
 
 } // namespace mevr::ik

@@ -118,7 +118,8 @@ switching frameworks.
   `[Throwables]`): a new grip squeeze at the grenade slot (left side of the chest) takes one, a fast
   release throws it (the game's `UseGrenade`; its disc re-aimed from the hand in a post-handler of
   `BioGrenade.LaunchGrenadeAtPoint`), a slow one puts it back; a fast stroke with an enemy in reach
-  is `TryMelee`. Claimed squeezes run before holsters and the squad menu. B/X stay unless
+  is `TryMelee`. Claimed squeezes run before holsters; a left squeeze in the support grip's zone is the
+  support grip, never a grenade. B/X stay unless
   `meleeButton`/`grenadeButton = 0` (host v14).
 - LE1 level camera (`game/view_level`, `core/vr/ViewLevel`, [research/24](research/24-view-level.md)):
   each shot's recoil goes into the player controller's rotation (ControlRotation) and the rifles' pitch
@@ -150,9 +151,18 @@ switching frameworks.
   (`src/plugin/SightLayers.cpp`, pictures and shader in `SightPictures.cpp`; offline look:
   `mevr-sight-preview`). Scoped shots get the zoomed aim error via a `GetPlayerAimError` post-handler
   (`bIsZoomed` set for one native call only: never set it where the camera can see it, research/18).
+  Alignment assist (research/21 section 8): raised to the face, the gun slides so the sight line runs
+  through the aiming eye (`vr::sights::AssistTarget`/`AssistSpring`, `[Sights] assist*`, arm IK's
+  `Request::gunShift`, measured without its own shift); hands within `[Hands] reachNearFaceM` of the eyes
+  aren't reach-scaled by the arm-length calibration.
 - LE1 squad weapons ([docs/squad-weapons-design.md](docs/squad-weapons-design.md), research/19
-  sections 9-10): point the left hand at a squadmate and squeeze the left grip away from the gun's
-  foregrip. `[Squad] style = native` (default, HostServices v12): that opens the GAME's weapon wheel
+  sections 9-11): **pull the left trigger** (`[Controls] leftTrigger = lb`): the wheel opens at the left
+  hand at once; pointing the left hand at a squadmate preselects them; letting go of the trigger gives
+  the highlighted entry. The squad takes the trigger per pull on foot and in the wheels
+  (`squad_menu::OwnTrigger`: the game sees no LB then; the Mako keeps LB). **The left grip never opens
+  it** (since 2026-10-22): it's only the support grip (grab zone: a capsule along the gun,
+  `ik::MakeSupportZone`, `[Controls] supportZone`; the grab's line captured, `ik::CapturedSpan`) and
+  grenades. `[Squad] style = native` (default, HostServices v12): the GAME's weapon wheel
   (`SFXGameModeDefault.EnterWeaponWheel` through ProcessEvent; it pauses the game itself), shown at
   the left hand; the right stick steers it (`gamepad::kFlagNativeWheel`: the stick reaches the game
   once centred), letting go sends A for the highlighted entry and then `ExitWeaponWheel`; pointing

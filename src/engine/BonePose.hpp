@@ -71,6 +71,18 @@ struct Support {
     double blend = 0.0;          // 0 one-handed .. 1 both hands
     double unitsPerMeter = 50.0;  // written units per meter of left-controller motion (distance in meters)
     double minSpanMeters = 0.08;  // hands closer than this define no axis: no hold
+    // The grab zone (ik::MakeSupportZone, 2026-10-22): the gun's barrel and muzzle in the right hand
+    // bone's axes (game/weapon's grip), and how far the capsule reaches ahead of the right hand and past
+    // the muzzle (meters of left-controller motion). Without a barrel: the foregrip alone, as before.
+    bool hasGun = false;
+    ik::Vec3 barrel;
+    ik::Vec3 muzzle;
+    double frontMeters = 0.10;
+    double pastMeters = 0.10;
+    // + 1 for each new hold (0: not held). At a hold's first write the line from the right hand to where
+    // the left hand took hold is captured as the span two-hand aim swings (ik::CapturedSpan), so taking
+    // hold anywhere in the zone doesn't swing the gun; the left hand still goes to the foregrip.
+    std::uint32_t hold = 0;
 };
 
 struct Request {
@@ -83,6 +95,11 @@ struct Request {
     double maxStretch = 1.0;  // arms may stretch this much to reach (ik::ArmGoal::maxStretch)
     int head = -1;            // the head bone: its animated position is kept for AnimatedHead()
     Support support;
+    // The sight alignment assist (game/sights, research/21): the held gun moves by this (component
+    // space units), added to the right wrist's goal after reach scaling, and to the left's while the
+    // support grip holds (fading with its blend after a release): a hand on the gun moves with it, so the
+    // two-hand line doesn't turn; a free left hand stays. Zero: none.
+    ik::Vec3 gunShift;
     // Bones the writer never writes, whatever the torso and arms did: their SpaceBases entries
     // stay the animation's (LE1: the camera hook bones `Camera` and `God`, ik::FindCameraHookBones;
     // the camera reads its hook from SpaceBases, so moving one moves the view, research/18). With
@@ -93,7 +110,12 @@ struct Request {
 
 // What the writer did with Request::support on its last write.
 struct SupportSample {
-    double distanceMeters = -1.0;  // the left hand's goal from the foregrip (-1: not measured; 99: hands crossed)
+    // The left hand's goal from the grab zone (the capsule along the gun, or the foregrip; -1: not
+    // measured; 99: hands crossed).
+    double distanceMeters = -1.0;
+    double foregripMeters = -1.0;  // ...from the foregrip itself (diagnostics)
+    double alongMeters = 0.0;      // how far along the barrel from the right hand the left goal is
+    bool captured = false;         // two-hand aim swings the span captured when this hold began
     double blend = 0.0;
     bool twoHand = false;          // the barrel swung toward the left hand
     double swingDegrees = 0.0;     // how far the right hand turned for it

@@ -29,4 +29,12 @@ struct ArmLengths {
 // beside the shoulder line rather than between the hands, or a result outside 0.3-1.2 m.
 std::optional<ArmLengths> ArmLengthFromTPose(ArmLengthSample const& sample, double shoulderHalfWidth = 0.18);
 
+// How much of the arm-length calibration's reach scaling a hand gets (0..1): none within `nearMeters`
+// of the eyes (the hand sits exactly on its controller there: a gun at the cheek lines up with the eye
+// the player looks through), all of it from `nearMeters + fadeMeters` out, smoothly between. A
+// `nearMeters` of 0 (or not finite) turns it off: always 1.
+double ReachWeight(double meters, double nearMeters, double fadeMeters = 0.15);
+// The reach scale to use: 1 + (full - 1) * weight.
+double ScaledReach(double full, double weight);
+
 } // namespace mevr::ik
