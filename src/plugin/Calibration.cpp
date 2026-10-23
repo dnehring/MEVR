@@ -33,6 +33,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <format>
 #include <mutex>
 #include <optional>
@@ -254,7 +255,7 @@ struct Canvas {
 struct Gpu {
     ComPtr<ID3D11Device> device;
     ImGuiContext* imgui = nullptr;
-    ImFont* font = nullptr;
+    draw::Fonts fonts;
     Canvas panel;
     Canvas board;
     bool failed = false;
@@ -315,7 +316,12 @@ bool EnsureGpu(ID3D11Device* device, ID3D11DeviceContext* context) {
     io.LogFilename = nullptr;
     io.DisplaySize = ImVec2(static_cast<float>(draw::kPanelWidth), static_cast<float>(draw::kPanelHeight));
     std::string chosen;
-    gGpu.font = draw::LoadFont(io, chosen);
+    // Rajdhani and Titillium Web (SIL OFL) if dropped into ASI\fonts, else Windows' own.
+    std::vector<std::filesystem::path> folders;
+    if (!MELEVR::MevrBridge::SettingsPath().empty()) {
+        folders.push_back(std::filesystem::path(MELEVR::MevrBridge::SettingsPath()).parent_path() / L"fonts");
+    }
+    gGpu.fonts = draw::LoadFonts(io, folders, chosen);
     bool const ok = ImGui_ImplDX11_Init(device, context);
     ImGui::SetCurrentContext(previous);  // Halcyon's menu keeps its own
     if (!ok) {
@@ -323,7 +329,7 @@ bool EnsureGpu(ID3D11Device* device, ID3D11DeviceContext* context) {
         gGpu.failed = true;
         return false;
     }
-    log::Info("calibration: ImGui context of its own, panel {}x{}, board {}x{}, font {}", draw::kPanelWidth, draw::kPanelHeight,
+    log::Info("calibration: ImGui context of its own, panel {}x{}, board {}x{}, fonts: {}", draw::kPanelWidth, draw::kPanelHeight,
         draw::kBoardSize, draw::kBoardSize, chosen);
     return true;
 }
@@ -581,7 +587,7 @@ bool Hold(XrPosef const& head, bool right, bool left, cal::StillSettings const& 
     XrPosef const poses[cal::Stillness::kMaxPoses] = {head, gControllers.right.grip, gControllers.left.grip};
     bool const used[cal::Stillness::kMaxPoses] = {true, right, left};
     gRun.held = gRun.still.Update(poses, used, dt, settings);
-    gRun.status = gRun.held > 0.05f ? "Hold still" : "Hold still...";
+    gRun.status.clear();  // the ring says "hold still"
     return gRun.held >= settings.seconds;
 }
 
@@ -668,7 +674,6 @@ void StepAim(bool rifle, XrPosef const& head, XrVector3f const eyes[2], float dt
         return;
     }
     XrVector3f const target = cal::TargetPosition(gRun.anchor, gRun.target);
-    std::string const which = std::format("Target {} of {}", gRun.target + 1, cal::kTargets);
     bool const tracked = right.gripValid && (!rifle || left.gripValid);
     bool aimed = false;
     if (tracked) {
@@ -677,13 +682,12 @@ void StepAim(bool rifle, XrPosef const& head, XrVector3f const eyes[2], float dt
                       : cal::OnTarget(head, right.grip.position, target);
     }
     if (!aimed) {
-        NotNow(which + (tracked ? ": aim at the orange target" : ": the controllers aren't tracked"));
+        NotNow(tracked ? std::format("Waiting for your aim on target {}", gRun.target + 1) : std::string("The controllers aren't tracked"));
         return;
     }
     cal::StillSettings settings;
     settings.seconds = kHoldSeconds;
     if (!Hold(head, true, rifle, settings, dt)) {
-        gRun.status = which + ": hold still";
         return;
     }
     std::vector<cal::AimSample>& samples = rifle ? gRun.rifleSamples : gRun.pistolSamples;
@@ -772,7 +776,7 @@ void StepBody(XrPosef const& head, float dt) {
     }
     case Step::TPose: {
         if (!hands || !cal::TPose(head.position, left.grip.position, right.grip.position)) {
-            NotNow(hands ? "Both arms straight out, level with your shoulders" : "Both controllers must be tracked");
+            NotNow(hands ? "Waiting for the T pose" : "Both controllers must be tracked");
             return;
         }
         if (!Hold(head, true, true, settings, dt)) {
@@ -792,7 +796,7 @@ void StepBody(XrPosef const& head, float dt) {
     case Step::Forward: {
         XrVector3f const forward = cal::AnchorForward(gRun.anchor);
         if (!hands || !cal::ArmsForward(head.position, left.grip.position, right.grip.position, forward)) {
-            NotNow(hands ? "Both arms straight ahead, level with your shoulders" : "Both controllers must be tracked");
+            NotNow(hands ? "Waiting for both arms ahead" : "Both controllers must be tracked");
             return;
         }
         if (!Hold(head, true, true, settings, dt)) {
@@ -1019,6 +1023,34 @@ void Press(int button, XrPosef const& head) {
     }
 }
 
+// B: back a step (an aim: the last one taken; the first aim: the grab; a grab: the step before).
+bool gBack = false;  // B's latch
+void Back(XrPosef const& head) {
+    std::vector<cal::AimSample>* samples = gRun.step == Step::PistolAim ? &gRun.pistolSamples
+        : gRun.step == Step::RifleAim                                   ? &gRun.rifleSamples
+                                                                        : nullptr;
+    log::Info("calibration: B: back a step ({})", StepName(gRun.step));
+    if (samples != nullptr && !samples->empty()) {
+        samples->pop_back();
+        gRun.target = static_cast<int>(samples->size());
+        gRun.still.Reset();
+        gRun.held = 0.0f;
+        Say(std::format("Target {} again.", gRun.target + 1));
+        return;
+    }
+    switch (gRun.step) {
+    case Step::TPose: Enter(Step::Stand, head); return;
+    case Step::Forward: Enter(Step::TPose, head); return;
+    case Step::Crouch: Enter(Step::Forward, head); return;
+    case Step::PistolGrab: Enter(Step::Crouch, head); return;
+    case Step::PistolAim: Enter(Step::PistolGrab, head); return;
+    case Step::RifleGrab: Enter(Step::PistolGrab, head); return;
+    case Step::RifleAim: Enter(Step::RifleGrab, head); return;
+    case Step::Check: Enter(Step::RifleGrab, head); return;
+    default: return;
+    }
+}
+
 // Where either controller's aim ray meets the panel (right first), and a trigger click there.
 Pointer Point(XrPosef const& panelPose, float width, float height, draw::PanelView const& view, int& click) {
     Pointer p;
@@ -1069,6 +1101,11 @@ draw::PanelView PanelFor(Step step, std::uint64_t now) {
     }
     v.time = static_cast<float>(now % 100000) / 1000.0f;
     v.flash = gRun.flashAt != 0 && now - gRun.flashAt < kFlashMs ? 1.0f - static_cast<float>(now - gRun.flashAt) / kFlashMs : 0.0f;
+    if (step == Step::PistolAim || step == Step::RifleAim) {
+        v.targets = cal::kTargets;
+        v.targetsDone = static_cast<int>(step == Step::PistolAim ? gRun.pistolSamples.size() : gRun.rifleSamples.size());
+        v.targetCurrent = gRun.target;
+    }
     if (step == Step::Check) {
         cal::Stance const& any = gRun.pistol.valid ? gRun.pistol : gRun.rifle;
         if (any.valid) {
@@ -1092,17 +1129,18 @@ draw::PanelView PanelFor(Step step, std::uint64_t now) {
             v.summary.push_back(body);
         }
         v.status.clear();
-        v.buttons = {draw::kRedoBody, draw::kRedoPistol, draw::kRedoRifle, draw::kRowBreak, draw::kSave};
+        v.buttons = {draw::kRedoBody, draw::kRedoPistol, draw::kRedoRifle, draw::kRowBreak};
         if (any.valid) {
             v.buttons.push_back(draw::kSwitchEye);
         }
-        v.buttons.push_back(draw::kCancel);
+        v.buttons.push_back(draw::kSave);
     } else if (step == Step::Saved) {
         v.status.clear();
         v.message = "Saved for " + (gLabel.empty() ? std::string("these controllers") : gLabel) + ".";
         v.warn = false;
+        v.hints = false;
     } else {
-        v.buttons = {draw::kSkip, draw::kRestart, draw::kCancel};
+        v.buttons = {draw::kSkip, draw::kRestart};
     }
     return v;
 }
@@ -1154,7 +1192,8 @@ unsigned PromptLayers(Frame const& frame, XrCompositionLayerQuad const** out, un
     view.device = gLabel;
     view.title = text.title;
     view.body = text.body;
-    view.buttons = {draw::kCalibrateNow, draw::kDismiss};
+    view.buttons = {draw::kDismiss, draw::kCalibrateNow};
+    view.hints = false;
     view.time = static_cast<float>(Now() % 100000) / 1000.0f;
     float const height = cal::kPanelWidth * static_cast<float>(draw::kPanelHeight) / static_cast<float>(draw::kPanelWidth);
     XrPosef const pose = cal::PanelPose(gPrompt.anchor, false);
@@ -1177,7 +1216,7 @@ unsigned PromptLayers(Frame const& frame, XrCompositionLayerQuad const** out, un
         log::Info("calibration: the prompt was dismissed (not shown again for these controllers)");
         return 0;
     }
-    Render(frame.context, gGpu.panel, dt, [&](ImDrawList* dl) { draw::DrawPanel(dl, gGpu.font, view); });
+    Render(frame.context, gGpu.panel, dt, [&](ImDrawList* dl) { draw::DrawPanel(dl, gGpu.fonts, view); });
     if (!Submit(frame.context, kPanelChain, gGpu.panel)) {
         return 0;
     }
@@ -1312,6 +1351,13 @@ unsigned Layers(Frame const& frame, XrCompositionLayerQuad const** out, unsigned
         }
     }
 
+    // B: back a step (the hint on the panel). Both sticks held cancels (HalcyonBridge's chord).
+    bool const b = gControllers.active && gControllers.right.secondary;
+    if (b && !gBack && gRun.step != Step::Saved) {
+        Back(head);
+    }
+    gBack = b;
+
     // The step.
     switch (gRun.step) {
     case Step::Stand:
@@ -1379,7 +1425,7 @@ unsigned Layers(Frame const& frame, XrCompositionLayerQuad const** out, unsigned
         }
         board.time = view.time;
         board.flash = view.flash;
-        Render(frame.context, gGpu.board, dt, [&](ImDrawList* dl) { draw::DrawBoard(dl, gGpu.font, board); });
+        Render(frame.context, gGpu.board, dt, [&](ImDrawList* dl) { draw::DrawBoard(dl, gGpu.fonts, board); });
         if (Submit(frame.context, kBoardChain, gGpu.board)) {
             add(Quad(frame.appSpace, kBoardChain, cal::BoardPose(gRun.anchor), cal::kBoardSize, cal::kBoardSize));
         }
@@ -1388,8 +1434,8 @@ unsigned Layers(Frame const& frame, XrCompositionLayerQuad const** out, unsigned
     auto const orb = [&](bool held, XrVector3f const& at) {
         int const id = held ? kOrbHeldChain : kOrbActiveChain;
         if (EnsurePicture(frame.context, frame.device, id, draw::kOrbPixels, held ? &OrbHeld : &OrbActive)) {
-            float const pulse = held ? 1.0f : 1.0f + 0.08f * std::sin(view.time * 5.0f);
-            add(Quad(frame.appSpace, id, cal::Billboard(at, head.position), cal::kOrbSize * pulse, cal::kOrbSize * pulse));
+            float const size = held ? cal::kHeldOrbSize : cal::kOrbSize * (1.0f + 0.08f * std::sin(view.time * 5.0f));
+            add(Quad(frame.appSpace, id, cal::Billboard(at, head.position), size, size));
         }
     };
     vr::controllers::Hand const& right = gControllers.right;
@@ -1417,7 +1463,7 @@ unsigned Layers(Frame const& frame, XrCompositionLayerQuad const** out, unsigned
         }
     }
     // The panel, last: on top.
-    Render(frame.context, gGpu.panel, dt, [&](ImDrawList* dl) { draw::DrawPanel(dl, gGpu.font, view); });
+    Render(frame.context, gGpu.panel, dt, [&](ImDrawList* dl) { draw::DrawPanel(dl, gGpu.fonts, view); });
     if (Submit(frame.context, kPanelChain, gGpu.panel)) {
         add(Quad(frame.appSpace, kPanelChain, panelPose, cal::kPanelWidth, panelHeight));
     }

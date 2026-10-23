@@ -3,7 +3,10 @@
 // (hardware, else WARP), and the quads composited into an eye image the way the runtime shows them
 // (core/vr/LayerComposite), laid out by the same core/vr/Calibration functions the host uses.
 //
-//   mevr-calibration-preview [output folder]   (default: .\calibration-preview)
+//   mevr-calibration-preview [output folder] [fonts folder]   (default: .\calibration-preview; fonts: .\fonts)
+//
+// The fonts folder may hold Rajdhani-SemiBold.ttf and TitilliumWeb-Regular.ttf (SIL OFL, not bundled), the
+// menu mockup's fonts; without them Windows' Bahnschrift stands in, as in the game.
 //
 //   panel-<screen>.png      the instruction panel over a dark backdrop, one per screen
 //   board.png               the target board (the second target current, the first taken)
@@ -45,7 +48,7 @@ namespace fs = std::filesystem;
 struct Gpu {
     ComPtr<ID3D11Device> device;
     ComPtr<ID3D11DeviceContext> context;
-    ImFont* font = nullptr;
+    draw::Fonts fonts;
 };
 
 // One ImGui frame drawn by `paint` into a w x h canvas, read back as straight-alpha sRGB pixels.
@@ -230,12 +233,13 @@ int main(int argc, char** argv) {
     ImGuiIO& io = ImGui::GetIO();
     io.IniFilename = nullptr;
     std::string chosen;
-    gpu.font = draw::LoadFont(io, chosen);
+    std::vector<fs::path> folders{argc > 2 ? fs::path(argv[2]) : fs::path("fonts")};
+    gpu.fonts = draw::LoadFonts(io, folders, chosen);
     if (!ImGui_ImplDX11_Init(gpu.device.Get(), gpu.context.Get())) {
         std::printf("ImGui's D3D11 backend didn't start\n");
         return 1;
     }
-    std::printf("font: %s\n", chosen.c_str());
+    std::printf("fonts: %s\n", chosen.c_str());
 
     std::uint32_t const backdrop = image::Pack(18, 20, 26, 255);
     std::uint32_t const grey = image::Pack(70, 70, 74, 255);
@@ -257,8 +261,8 @@ int main(int argc, char** argv) {
         v.title = text.title;
         v.body = text.body;
         v.time = 0.3f;
-        v.buttons = v.prompt ? std::vector<int>{draw::kCalibrateNow, draw::kDismiss}
-                             : std::vector<int>{draw::kSkip, draw::kRestart, draw::kCancel};
+        v.buttons = v.prompt ? std::vector<int>{draw::kDismiss, draw::kCalibrateNow} : std::vector<int>{draw::kSkip, draw::kRestart};
+        v.hints = !v.prompt;
         return v;
     };
     {
@@ -285,25 +289,31 @@ int main(int argc, char** argv) {
     }
     {
         draw::PanelView v = base(draw::Screen::Crouch);
-        v.status = "Lower";
+        v.status = "Lower"; 
         v.progress = 0.0f;
         shots.push_back({"crouch", v});
     }
     {
         draw::PanelView v = base(draw::Screen::PistolGrab);
         v.status = "Squeeze the right grip at the orb";
+        v.progress = -1.0f;
         shots.push_back({"pistol-grab", v});
     }
     {
         draw::PanelView v = base(draw::Screen::PistolAim);
-        v.status = "Target 2 of 3: hold still";
+        v.targets = 3;
+        v.targetsDone = 1;
+        v.targetCurrent = 1;
         v.progress = 0.4f;
         v.flash = 0.0f;
         shots.push_back({"pistol-aim", v});
     }
     {
         draw::PanelView v = base(draw::Screen::RifleAim);
-        v.status = "Target 1 of 3: aim at the orange target";
+        v.status = "Aim at the lit target";
+        v.targets = 3;
+        v.targetsDone = 0;
+        v.targetCurrent = 0;
         v.progress = 0.0f;
         v.message = "Those three aims were 4.6 degrees apart: once more, please, the same way each time.";
         v.warn = true;
@@ -313,7 +323,7 @@ int main(int argc, char** argv) {
         draw::PanelView v = base(draw::Screen::Check);
         v.summary = {"Aiming eye: right (measured)", "Pistol: three aims within 1.2 degrees", "Rifle: three aims within 0.9 degrees",
             "Eye height 1.68 m standing, 1.06 m crouched; arms 0.66 m, shoulders 0.39 m"};
-        v.buttons = {draw::kRedoBody, draw::kRedoPistol, draw::kRedoRifle, draw::kRowBreak, draw::kSave, draw::kSwitchEye, draw::kCancel};
+        v.buttons = {draw::kRedoBody, draw::kRedoPistol, draw::kRedoRifle, draw::kRowBreak, draw::kSwitchEye, draw::kSave};
         v.pointer = true;
         auto const buttons = draw::LayoutButtons(v);
         for (auto const& b : buttons) {
@@ -328,13 +338,14 @@ int main(int argc, char** argv) {
     {
         draw::PanelView v = base(draw::Screen::Saved);
         v.buttons.clear();
+        v.hints = false;
         v.message = "Saved for " + device + ".";
         shots.push_back({"saved", v});
     }
     std::vector<composite::Image> panels;
     for (Shot const& shot : shots) {
         composite::Image const panel = RenderCanvas(gpu, draw::kPanelWidth, draw::kPanelHeight,
-            [&](ImDrawList* dl) { draw::DrawPanel(dl, gpu.font, shot.view); });
+            [&](ImDrawList* dl) { draw::DrawPanel(dl, gpu.fonts, shot.view); });
         Save(out / (std::string("panel-") + shot.name + ".png"), Over(panel, backdrop));
         panels.push_back(panel);
     }
@@ -345,11 +356,11 @@ int main(int argc, char** argv) {
     board.done[0] = true;
     board.time = 0.3f;
     composite::Image const boardImage =
-        RenderCanvas(gpu, draw::kBoardSize, draw::kBoardSize, [&](ImDrawList* dl) { draw::DrawBoard(dl, gpu.font, board); });
+        RenderCanvas(gpu, draw::kBoardSize, draw::kBoardSize, [&](ImDrawList* dl) { draw::DrawBoard(dl, gpu.fonts, board); });
     Save(out / "board.png", Over(boardImage, backdrop));
     draw::BoardView checkBoard;
     composite::Image const checkBoardImage =
-        RenderCanvas(gpu, draw::kBoardSize, draw::kBoardSize, [&](ImDrawList* dl) { draw::DrawBoard(dl, gpu.font, checkBoard); });
+        RenderCanvas(gpu, draw::kBoardSize, draw::kBoardSize, [&](ImDrawList* dl) { draw::DrawBoard(dl, gpu.fonts, checkBoard); });
     composite::Image const orb = Picture(draw::OrbPicture(false), draw::kOrbPixels);
     composite::Image const orbActive = Picture(draw::OrbPicture(true), draw::kOrbPixels);
     composite::Image const dot = Picture(draw::DotPicture(), draw::kDotPixels);

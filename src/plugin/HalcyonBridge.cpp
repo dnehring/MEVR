@@ -282,7 +282,9 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
     mevr::game::gamepad::StickChordStep const chord =
         mevr::game::gamepad::UpdateStickChord(gStickChord, live.active && live.left.stickClick,
             live.active && live.right.stickClick, now);
-    if (chord.hold) {
+    if (chord.hold && mevr::host::calibration::Running()) {
+        mevr::host::calibration::Cancel("both sticks held");  // the calibration panel's hint
+    } else if (chord.hold) {
         bool const open = !MELEVR::Menu::IsOpen();
         MELEVR::Menu::SetOpen(open);
         mevr::log::Info("halcyon bridge: both sticks held: Halcyon's menu {}", open ? "opened" : "closed");

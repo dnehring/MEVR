@@ -222,7 +222,8 @@ inline constexpr float kPanelWidth = 0.84f;  // meters (the height follows the c
 // The orbs, relative to where the eyes were when the grab step began (on the anchor's heading).
 enum class Orb { Pistol = 0, RifleRear = 1, RifleFront = 2 };
 XrVector3f OrbRest(Anchor const& stepAnchor, Orb orb);
-inline constexpr float kOrbSize = 0.085f;  // the orb's quad (meters)
+inline constexpr float kOrbSize = 0.085f;      // the orb's quad (meters)
+inline constexpr float kHeldOrbSize = 0.05f;   // ...once in the hand: small and pale, so it isn't a sight to align
 
 // A square quad facing `eye`, `size` meters across, centred on `center`.
 XrPosef Billboard(XrVector3f const& center, XrVector3f const& eye);

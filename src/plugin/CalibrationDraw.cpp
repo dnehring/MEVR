@@ -1,6 +1,5 @@
-// The guided calibration's look (plugin/CalibrationDraw.hpp). ME1's holographic UI, from the game's own
-// screens: pale blue-white strokes with a soft glow over a dark translucent blue, thin rules, bevelled
-// corners, and orange for what wants the player's attention (the step, the target, the orb to take).
+// The guided calibration's look (plugin/CalibrationDraw.hpp): the coming main menu's style (the user's mockup,
+// 2026-10-22), Mass Effect-inspired but our own. Everything that decides the look is in this file.
 
 #include "plugin/CalibrationDraw.hpp"
 
@@ -11,7 +10,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
-#include <filesystem>
+#include <cstdio>
 #include <string>
 
 namespace mevr::host::calibration_draw {
@@ -21,22 +20,23 @@ namespace cal = vr::calibration;
 
 constexpr float kPi = 3.14159265358979f;
 
+// ---- Theme (the menu mockup's palette) --------------------------------------------------------------------
 constexpr ImU32 Rgba(int r, int g, int b, int a = 255) {
     return IM_COL32(r, g, b, a);
 }
-constexpr ImU32 kFill = Rgba(8, 22, 42, 212);
-constexpr ImU32 kHeaderFill = Rgba(14, 38, 66, 225);
-constexpr ImU32 kPale = Rgba(214, 238, 255);
-constexpr ImU32 kPaleDim = Rgba(150, 196, 232, 200);
-constexpr ImU32 kPaleFaint = Rgba(120, 180, 230, 80);
-constexpr ImU32 kGlow = Rgba(110, 190, 255);
-constexpr ImU32 kText = Rgba(232, 244, 255);
-constexpr ImU32 kTextDim = Rgba(160, 196, 226);
-constexpr ImU32 kOrange = Rgba(255, 150, 40);
-constexpr ImU32 kOrangeFill = Rgba(255, 140, 30, 236);
-constexpr ImU32 kOnOrange = Rgba(34, 18, 4);
-constexpr ImU32 kButtonFill = Rgba(16, 40, 68, 230);
-constexpr ImU32 kWarn = Rgba(255, 176, 60);
+constexpr ImU32 kBackground = Rgba(0x08, 0x10, 0x1A, 236);
+constexpr ImU32 kSurface = Rgba(0x0E, 0x19, 0x26, 245);
+constexpr ImU32 kSurfaceHigh = Rgba(0x13, 0x22, 0x35, 250);
+constexpr ImU32 kText = Rgba(0xE6, 0xF2, 0xFB);
+constexpr ImU32 kTextDim = Rgba(0x9D, 0xB3, 0xC6);
+constexpr ImU32 kLine = Rgba(140, 200, 240, 46);       // rgba(140,200,240,0.18)
+constexpr ImU32 kLineStrong = Rgba(140, 200, 240, 110);
+constexpr ImU32 kCyan = Rgba(0x7C, 0xCB, 0xF2);
+constexpr ImU32 kOrange = Rgba(0xFF, 0x8F, 0x3F);
+constexpr ImU32 kOnOrange = Rgba(0x1A, 0x0E, 0x05);
+
+constexpr float kMargin = 44.0f;
+constexpr float kChamfer = 30.0f;
 
 ImU32 WithAlpha(ImU32 colour, float alpha) {
     int const a = std::clamp(static_cast<int>(alpha * 255.0f + 0.5f), 0, 255);
@@ -53,8 +53,9 @@ ImU32 Mix(ImU32 a, ImU32 b, float t) {
     return channel(IM_COL32_R_SHIFT) | channel(IM_COL32_G_SHIFT) | channel(IM_COL32_B_SHIFT) | channel(IM_COL32_A_SHIFT);
 }
 
-// A rectangle with its corners cut.
-void Bevel(ImDrawList* dl, ImVec2 a, ImVec2 b, float cut, ImU32 fill, ImU32 line, float thickness) {
+// ---- Shapes ----------------------------------------------------------------------------------------------
+// A rectangle with its corners cut (chamfered), convex, clockwise on screen.
+void Chamfer(ImDrawList* dl, ImVec2 a, ImVec2 b, float cut, ImU32 fill, ImU32 line, float thickness) {
     ImVec2 const p[8] = {{a.x + cut, a.y}, {b.x - cut, a.y}, {b.x, a.y + cut}, {b.x, b.y - cut}, {b.x - cut, b.y}, {a.x + cut, b.y},
         {a.x, b.y - cut}, {a.x, a.y + cut}};
     if ((fill & IM_COL32_A_MASK) != 0) {
@@ -65,23 +66,28 @@ void Bevel(ImDrawList* dl, ImVec2 a, ImVec2 b, float cut, ImU32 fill, ImU32 line
     }
 }
 
-// The holographic glow: the same outline wider and fainter, under the line itself.
-void GlowBevel(ImDrawList* dl, ImVec2 a, ImVec2 b, float cut, ImU32 colour, float thickness, float strength = 1.0f) {
-    for (int i = 4; i >= 1; --i) {
-        float const g = static_cast<float>(i) * 2.5f;
-        Bevel(dl, {a.x, a.y}, {b.x, b.y}, cut, 0, WithAlpha(colour, 0.10f * strength), thickness + g * 2.0f);
-    }
-    Bevel(dl, a, b, cut, 0, colour, thickness);
+// The short orange strokes on two opposite corners (top left, bottom right), along the chamfer.
+void CornerStrokes(ImDrawList* dl, ImVec2 a, ImVec2 b, float cut, float leg, ImU32 colour, float thickness) {
+    ImVec2 const topLeft[4] = {{a.x, a.y + cut + leg}, {a.x, a.y + cut}, {a.x + cut, a.y}, {a.x + cut + leg, a.y}};
+    ImVec2 const bottomRight[4] = {{b.x, b.y - cut - leg}, {b.x, b.y - cut}, {b.x - cut, b.y}, {b.x - cut - leg, b.y}};
+    dl->AddPolyline(topLeft, 4, colour, thickness, 0);
+    dl->AddPolyline(bottomRight, 4, colour, thickness, 0);
 }
 
-void GlowCircle(ImDrawList* dl, ImVec2 c, float r, ImU32 colour, float thickness, float strength = 1.0f) {
-    for (int i = 4; i >= 1; --i) {
-        dl->AddCircle(c, r, WithAlpha(colour, 0.09f * strength), 64, thickness + static_cast<float>(i) * 5.0f);
-    }
-    dl->AddCircle(c, r, colour, 64, thickness);
+void Check(ImDrawList* dl, ImVec2 c, float size, ImU32 colour, float thickness) {
+    ImVec2 const p[3] = {{c.x - size * 0.45f, c.y}, {c.x - size * 0.12f, c.y + size * 0.33f}, {c.x + size * 0.5f, c.y - size * 0.38f}};
+    dl->AddPolyline(p, 3, colour, thickness, 0);
 }
 
-float TextWidth(ImFont* font, float size, char const* text) {
+// A small target: rings and a centre dot.
+void TargetIcon(ImDrawList* dl, ImVec2 c, float r, ImU32 colour) {
+    dl->AddCircle(c, r, colour, 32, 2.5f);
+    dl->AddCircle(c, r * 0.55f, colour, 24, 2.0f);
+    dl->AddCircleFilled(c, r * 0.18f, colour, 12);
+}
+
+// ---- Text ------------------------------------------------------------------------------------------------
+float Width(ImFont* font, float size, char const* text) {
     return font->CalcTextSizeA(size, FLT_MAX, 0.0f, text).x;
 }
 
@@ -89,11 +95,29 @@ void Text(ImDrawList* dl, ImFont* font, float size, ImVec2 at, ImU32 colour, cha
     if (text == nullptr || text[0] == '\0') {
         return;
     }
-    float const width = TextWidth(font, size, text);
+    float const width = Width(font, size, text);
     dl->AddText(font, size, {std::floor(at.x - width * alignX), std::floor(at.y)}, colour, text);
 }
 
-// Wrapped to `width`; returns the height used.
+// Shrunk (to 65% at most) to fit `maxWidth`, on the same middle line.
+void FitText(ImDrawList* dl, ImFont* font, float size, ImVec2 at, ImU32 colour, char const* text, float maxWidth, float alignX = 0.0f) {
+    float const width = Width(font, size, text);
+    float const fitted = width > maxWidth && width > 0.0f ? std::max(size * maxWidth / width, size * 0.65f) : size;
+    Text(dl, font, fitted, {at.x, at.y + (size - fitted) * 0.5f}, colour, text, alignX);
+}
+
+// Letter-spaced (the kicker's caps).
+float Tracked(ImDrawList* dl, ImFont* font, float size, ImVec2 at, ImU32 colour, char const* text, float tracking) {
+    float x = at.x;
+    char glyph[2] = {0, 0};
+    for (char const* c = text; *c != '\0'; ++c) {
+        glyph[0] = *c;
+        dl->AddText(font, size, {std::floor(x), std::floor(at.y)}, colour, glyph);
+        x += Width(font, size, glyph) + tracking;
+    }
+    return x - at.x;
+}
+
 float Wrapped(ImDrawList* dl, ImFont* font, float size, ImVec2 at, ImU32 colour, std::string const& text, float width) {
     if (text.empty()) {
         return 0.0f;
@@ -103,64 +127,59 @@ float Wrapped(ImDrawList* dl, ImFont* font, float size, ImVec2 at, ImU32 colour,
     return extent.y;
 }
 
-constexpr float kButtonText = 26.0f;
-constexpr float kButtonHeight = 54.0f;
-constexpr float kButtonGap = 14.0f;
+// ---- Buttons ---------------------------------------------------------------------------------------------
+constexpr float kButtonText = 23.0f;
+constexpr float kButtonHeight = 50.0f;
+constexpr float kButtonGap = 12.0f;
 constexpr float kButtonPad = 22.0f;
-constexpr float kMarginX = 40.0f;
+constexpr float kBottom = 612.0f;  // the bottom row's lower edge
+
+bool Accent(int id) {
+    return id == kSave || id == kCalibrateNow;
+}
 
 } // namespace
+
+// ---- Words -----------------------------------------------------------------------------------------------
 
 ScreenText TextFor(Screen screen) {
     switch (screen) {
     case Screen::Prompt:
-        return {"Calibrate for these controllers?",
-            "About a minute: stand tall, stretch your arms, crouch, then aim a pistol and a rifle at three targets. "
-            "Your sights will line up with your eye, and the two-handed grip and the crouch will fit you. "
-            "You can run it any time from the VR hands tab.",
+        return {"CALIBRATE THESE CONTROLLERS?",
+            "About a minute: stand, stretch your arms, crouch, then aim a pistol and a rifle at three targets. Your "
+            "sights then line up with your eye, and the two-handed grip and the crouch fit you.",
             0};
-    case Screen::Stand:
-        return {"Stand tall, look ahead",
-            "Stand up straight where you have room to stretch your arms, and look at this panel. Hold still.", 1};
-    case Screen::TPose:
-        return {"Arms out to the sides",
-            "Hold both arms straight out to the sides, level with your shoulders, like a T. Hold still.", 2};
-    case Screen::Forward:
-        return {"Both arms straight ahead",
-            "Now point both arms straight forward, level with your shoulders, hands about as far apart as your "
-            "shoulders. Hold still.",
-            2};
-    case Screen::Crouch:
-        return {"Crouch down", "Crouch as low as you would to hide behind cover, and hold it there.", 3};
-    case Screen::PistolGrab:
-        return {"Take the pistol",
-            "Reach for the orange orb with your right hand and squeeze the grip. Keep it squeezed: the orb is your pistol.", 4};
-    case Screen::PistolAim:
-        return {"Aim the pistol",
-            "Aim with your right hand the way you aim a pistol, at the orange target. Keep it on the target until the "
-            "ring fills.",
-            4};
-    case Screen::RifleGrab:
-        return {"Take the rifle",
-            "Squeeze the near orb with your right hand and the far orb with your left. Keep both grips squeezed.", 5};
-    case Screen::RifleAim:
-        return {"Shoulder the rifle and aim",
-            "Bring it to your shoulder and look along it as you would a rifle. Aim at the orange target and hold.", 5};
+    case Screen::Stand: return {"STAND TALL, LOOK AHEAD", "Stand straight where you can stretch your arms, and look at this panel.", 1};
+    case Screen::TPose: return {"ARMS OUT TO THE SIDES", "Straight out, level with your shoulders, like a T.", 2};
+    case Screen::Forward: return {"BOTH ARMS STRAIGHT AHEAD", "Level with your shoulders, hands about a shoulder-width apart.", 2};
+    case Screen::Crouch: return {"CROUCH DOWN", "As low as you would go to hide behind cover, and hold it.", 3};
+    case Screen::PistolGrab: return {"TAKE THE PISTOL", "Squeeze the right grip at the orange orb, and keep it squeezed.", 4};
+    case Screen::PistolAim: return {"AIM AT THE LIT TARGET", "Aim the pistol the way you naturally would, and keep it on the target.", 4};
+    case Screen::RifleGrab: return {"TAKE THE RIFLE", "Right grip on the near orb, left grip on the far one. Keep both squeezed.", 5};
+    case Screen::RifleAim: return {"SHOULDER IT, AIM AT THE LIT TARGET", "Look along it as you would a rifle, and keep it on the target.", 5};
     case Screen::Check:
-        return {"Check your aim",
-            "Squeeze the right grip and aim at a target: the red dot is where your pistol now points. Squeeze both "
-            "grips for the rifle. The dot should sit on what you aim at.",
-            6};
-    case Screen::Saved:
-        return {"Saved", "Your hands, aim and body are calibrated for these controllers. The guns follow it now.", 6};
+        return {"CHECK YOUR AIM", "Squeeze the right grip (pistol) or both grips (rifle) and aim: the red dot should sit on the target.", 6};
+    case Screen::Saved: return {"SAVED", "Calibrated for these controllers. The guns follow it from now on.", 6};
     }
     return {};
 }
 
+char const* StepLabel(int pip) {
+    switch (pip) {
+    case 1: return "Height";
+    case 2: return "Arms";
+    case 3: return "Crouch";
+    case 4: return "Pistol";
+    case 5: return "Rifle";
+    case 6: return "Check";
+    default: return "";
+    }
+}
+
 char const* ButtonLabel(int id) {
     switch (id) {
-    case kSkip: return "SKIP STEP";
-    case kRestart: return "START STEP AGAIN";
+    case kSkip: return "SKIP";
+    case kRestart: return "REDO THIS STEP";
     case kCancel: return "CANCEL";
     case kSave: return "SAVE";
     case kSwitchEye: return "SWITCH EYE";
@@ -174,38 +193,29 @@ char const* ButtonLabel(int id) {
 }
 
 std::vector<Button> LayoutButtons(PanelView const& view) {
-    // Measured without a font (layout must not depend on one being loaded): about 0.56 em per character in
-    // Bahnschrift's caps, generous enough for Segoe UI.
+    // Measured without a font (the layout mustn't depend on one being loaded): generous for Rajdhani,
+    // Bahnschrift and Segoe UI caps.
     auto const width = [](int id) {
-        return static_cast<float>(std::char_traits<char>::length(ButtonLabel(id))) * kButtonText * 0.58f + 2.0f * kButtonPad;
+        return static_cast<float>(std::char_traits<char>::length(ButtonLabel(id))) * kButtonText * 0.60f + 2.0f * kButtonPad;
     };
-    float const maxRow = static_cast<float>(kPanelWidth) - 2.0f * kMarginX;
     std::vector<std::vector<int>> rows(1);
-    float used = 0.0f;
     for (int id : view.buttons) {
         if (id == kRowBreak) {
             if (!rows.back().empty()) {
                 rows.emplace_back();
-                used = 0.0f;
             }
             continue;
         }
-        float const w = width(id);
-        if (!rows.back().empty() && used + kButtonGap + w > maxRow) {
-            rows.emplace_back();
-            used = 0.0f;
-        }
-        used += (rows.back().empty() ? 0.0f : kButtonGap) + w;
         rows.back().push_back(id);
     }
     std::vector<Button> out;
-    float y1 = static_cast<float>(kPanelHeight) - 26.0f;
+    float y1 = kBottom;
     for (auto row = rows.rbegin(); row != rows.rend(); ++row) {
-        float x = kMarginX;
-        for (int id : *row) {
-            float const w = width(id);
-            out.push_back({id, x, y1 - kButtonHeight, x + w, y1});
-            x += w + kButtonGap;
+        float x1 = static_cast<float>(kPanelWidth) - kMargin;  // right-aligned: the hints keep the bottom left
+        for (auto id = row->rbegin(); id != row->rend(); ++id) {
+            float const w = width(*id);
+            out.push_back({*id, x1 - w, y1 - kButtonHeight, x1, y1});
+            x1 -= w + kButtonGap;
         }
         y1 -= kButtonHeight + kButtonGap;
     }
@@ -221,89 +231,161 @@ int ButtonAt(PanelView const& view, float x, float y) {
     return kNoButton;
 }
 
-void DrawPanel(ImDrawList* dl, ImFont* font, PanelView const& view) {
+void DrawPanel(ImDrawList* dl, Fonts const& fonts, PanelView const& view) {
+    ImFont* const heading = fonts.heading;
+    ImFont* const body = fonts.body != nullptr ? fonts.body : fonts.heading;
     float const W = static_cast<float>(kPanelWidth);
     float const H = static_cast<float>(kPanelHeight);
-    // The frame: dark translucent blue, a pale glowing outline; a capture flashes it.
-    Bevel(dl, {8.0f, 8.0f}, {W - 8.0f, H - 8.0f}, 28.0f, kFill, 0, 0.0f);
-    GlowBevel(dl, {8.0f, 8.0f}, {W - 8.0f, H - 8.0f}, 28.0f, Mix(kPaleDim, kOrange, view.flash), 2.5f, 1.0f + view.flash * 2.0f);
-    // The header: the title of the whole thing and the controllers it's for.
-    Bevel(dl, {22.0f, 20.0f}, {W - 22.0f, 78.0f}, 14.0f, kHeaderFill, 0, 0.0f);
-    Text(dl, font, 30.0f, {kMarginX, 32.0f}, kText, view.prompt ? "VR CALIBRATION" : "VR CALIBRATION");
-    std::string const device = view.device.empty() ? std::string("unknown controllers") : view.device;
-    Text(dl, font, 22.0f, {W - kMarginX, 38.0f}, kTextDim, device.c_str(), 1.0f);
-    dl->AddLine({kMarginX, 86.0f}, {kMarginX + 230.0f, 86.0f}, kOrange, 4.0f);
-    dl->AddLine({kMarginX + 238.0f, 86.0f}, {W - kMarginX, 86.0f}, kPaleFaint, 2.0f);
+    float const right = W - kMargin;
 
-    float y = 104.0f;
-    // The steps: one pip each, the current one orange.
-    if (view.step > 0 && view.steps > 0) {
+    // The frame: chamfered, a hairline, orange strokes on two corners; a capture flashes it cyan.
+    ImVec2 const a{8.0f, 8.0f};
+    ImVec2 const b{W - 8.0f, H - 8.0f};
+    Chamfer(dl, a, b, kChamfer, kBackground, 0, 0.0f);
+    if (view.flash > 0.0f) {
+        for (int i = 3; i >= 1; --i) {
+            Chamfer(dl, a, b, kChamfer, 0, WithAlpha(kCyan, 0.12f * view.flash), 2.0f + static_cast<float>(i) * 6.0f);
+        }
+    }
+    Chamfer(dl, a, b, kChamfer, 0, Mix(kLine, kCyan, view.flash), 2.0f);
+    CornerStrokes(dl, a, b, kChamfer, 46.0f, kOrange, 4.0f);
+
+    // The kicker, the controllers, the step chip.
+    float const kickerWidth = Tracked(dl, heading, 22.0f, {kMargin, 30.0f}, kCyan, "CALIBRATION", 3.5f);
+    if (!view.device.empty()) {
+        FitText(dl, body, 18.0f, {kMargin + kickerWidth + 16.0f, 33.0f}, kTextDim, view.device.c_str(), right - 190.0f - (kMargin + kickerWidth + 16.0f));
+    }
+    if (view.step > 0) {
+        char chip[32];
+        std::snprintf(chip, sizeof chip, "Step %d of %d", view.step, view.steps);
+        float const w = Width(heading, 20.0f, chip) + 28.0f;
+        Chamfer(dl, {right - w, 24.0f}, {right, 56.0f}, 8.0f, kSurfaceHigh, kLineStrong, 1.5f);
+        Text(dl, heading, 20.0f, {right - w * 0.5f, 30.0f}, kText, chip, 0.5f);
+    }
+
+    // The progress bar: done cyan with a check, the current orange, the rest a surface.
+    float y = 74.0f;
+    if (view.step > 0) {
+        float const gap = 10.0f;
+        float const segment = (right - kMargin - gap * static_cast<float>(view.steps - 1)) / static_cast<float>(view.steps);
         for (int i = 1; i <= view.steps; ++i) {
-            ImVec2 const c{kMarginX + 14.0f + static_cast<float>(i - 1) * 40.0f, y + 14.0f};
-            if (i < view.step) {
-                dl->AddNgonFilled(c, 11.0f, kPaleDim, 6);
-            } else if (i == view.step) {
-                float const pulse = 0.5f + 0.5f * std::sin(view.time * 4.0f);
-                dl->AddNgonFilled(c, 13.0f, kOrangeFill, 6);
-                dl->AddNgon(c, 17.0f + pulse * 3.0f, WithAlpha(kOrange, 0.5f), 6, 2.0f);
-            } else {
-                dl->AddNgon(c, 11.0f, kPaleDim, 6, 2.0f);
+            float const x0 = kMargin + static_cast<float>(i - 1) * (segment + gap);
+            bool const done = i < view.step;
+            bool const now = i == view.step;
+            ImU32 const fill = done ? kCyan : now ? kOrange : kSurfaceHigh;
+            Chamfer(dl, {x0, y}, {x0 + segment, y + 8.0f}, 3.0f, fill, now || done ? 0 : kLine, 1.0f);
+            float labelX = x0;
+            if (done) {
+                Check(dl, {x0 + 9.0f, y + 26.0f}, 14.0f, kCyan, 2.5f);
+                labelX += 22.0f;
             }
+            Text(dl, body, 19.0f, {labelX, y + 15.0f}, done ? kCyan : now ? kText : kTextDim, StepLabel(i));
         }
-        char text[32];
-        std::snprintf(text, sizeof text, "STEP %d OF %d", view.step, view.steps);
-        Text(dl, font, 22.0f, {kMarginX + static_cast<float>(view.steps) * 40.0f + 12.0f, y + 2.0f}, kTextDim, text);
-        y += 44.0f;
+        y += 62.0f;
     } else {
-        y += 6.0f;
+        y += 18.0f;
     }
 
-    // The title and what to do.
-    Text(dl, font, 50.0f, {kMarginX, y}, kText, view.title.c_str());
-    y += 66.0f;
-    float const textWidth = W - 2.0f * kMarginX;
-    y += Wrapped(dl, font, 31.0f, {kMarginX, y}, Mix(kText, kTextDim, 0.25f), view.body, textWidth);
+    // The instruction and its explanation.
+    FitText(dl, heading, 50.0f, {kMargin, y}, kText, view.title.c_str(), right - kMargin);
+    y += 62.0f;
+    y += Wrapped(dl, body, 26.0f, {kMargin, y}, kTextDim, view.body, right - kMargin) + 18.0f;
+
+    // The middle: the target chips, the status, the summary and the message on the left; the ring on the right.
+    bool const ring = view.progress >= 0.0f;
+    float const leftWidth = (ring ? 640.0f : right) - kMargin;
+    if (view.targets > 0) {
+        float const chip = 176.0f;
+        for (int i = 0; i < view.targets; ++i) {
+            float const x0 = kMargin + static_cast<float>(i) * (chip + 12.0f);
+            bool const done = i < view.targetsDone;
+            bool const now = i == view.targetCurrent;
+            ImU32 const accent = now ? kOrange : done ? kCyan : kTextDim;
+            Chamfer(dl, {x0, y}, {x0 + chip, y + 60.0f}, 9.0f, now ? kSurfaceHigh : kSurface, now ? kOrange : done ? WithAlpha(kCyan, 0.6f) : kLine,
+                now ? 2.5f : 1.5f);
+            if (done && !now) {
+                Check(dl, {x0 + 28.0f, y + 30.0f}, 22.0f, kCyan, 3.5f);
+            } else {
+                TargetIcon(dl, {x0 + 28.0f, y + 30.0f}, 14.0f, accent);
+            }
+            char label[16];
+            std::snprintf(label, sizeof label, "TARGET %d", i + 1);
+            Text(dl, heading, 21.0f, {x0 + 52.0f, y + 9.0f}, now ? kText : done ? kCyan : kTextDim, label);
+            Text(dl, body, 16.0f, {x0 + 52.0f, y + 33.0f}, accent, now ? "AIM NOW" : done ? "TAKEN" : "NEXT");
+        }
+        y += 78.0f;
+    }
+    if (!view.status.empty()) {
+        FitText(dl, heading, 30.0f, {kMargin, y}, view.progress > 0.0f ? kText : kCyan, view.status.c_str(), leftWidth);
+        y += 44.0f;
+    }
     for (std::string const& line : view.summary) {
-        y += 6.0f;
-        dl->AddNgonFilled({kMarginX + 6.0f, y + 15.0f}, 5.0f, kPaleDim, 6);
-        y += Wrapped(dl, font, 27.0f, {kMarginX + 22.0f, y}, kText, line, textWidth - 22.0f);
+        Chamfer(dl, {kMargin, y}, {kMargin + leftWidth, y + 38.0f}, 6.0f, kSurface, kLine, 1.0f);
+        dl->AddRectFilled({kMargin + 1.0f, y + 8.0f}, {kMargin + 4.0f, y + 30.0f}, kCyan);
+        FitText(dl, body, 21.0f, {kMargin + 16.0f, y + 7.0f}, kText, line.c_str(), leftWidth - 24.0f);
+        y += 44.0f;
     }
-
-    // The buttons from the bottom; above them the message and the hold-still ring.
-    std::vector<Button> const buttons = LayoutButtons(view);
-    float top = H - 26.0f;
-    for (Button const& b : buttons) {
-        top = std::min(top, b.y0);
-    }
-    float statusY = top - 64.0f;
     if (!view.message.empty()) {
-        float const h = font->CalcTextSizeA(28.0f, FLT_MAX, textWidth, view.message.c_str()).y;
-        statusY = std::min(statusY, top - 64.0f - h - 8.0f);
-        Wrapped(dl, font, 28.0f, {kMarginX, top - 14.0f - h}, view.warn ? kWarn : kOrange, view.message, textWidth);
+        Wrapped(dl, body, 22.0f, {kMargin, y + 4.0f}, view.warn ? kOrange : kCyan, view.message, leftWidth);
     }
-    if (!view.status.empty() || view.progress >= 0.0f) {
-        ImVec2 const c{kMarginX + 24.0f, statusY + 24.0f};
-        dl->AddCircle(c, 22.0f, kPaleFaint, 48, 4.0f);
-        if (view.progress > 0.0f) {
-            float const p = std::clamp(view.progress, 0.0f, 1.0f);
-            dl->PathArcTo(c, 22.0f, -kPi * 0.5f, -kPi * 0.5f + 2.0f * kPi * p, 48);
-            dl->PathStroke(kOrange, 6.0f);
+    if (ring) {
+        ImVec2 const c{right - 104.0f, 352.0f};
+        float const r = 84.0f;
+        dl->AddCircle(c, r, kSurfaceHigh, 96, 12.0f);
+        dl->AddCircle(c, r + 9.0f, kLine, 96, 1.5f);
+        float const p = std::clamp(view.progress, 0.0f, 1.0f);
+        if (p > 0.0f) {
+            dl->PathArcTo(c, r, -kPi * 0.5f, -kPi * 0.5f + 2.0f * kPi * p, 96);
+            dl->PathStroke(kOrange, 12.0f);
         }
-        Text(dl, font, 32.0f, {kMarginX + 64.0f, statusY + 6.0f}, view.progress > 0.0f ? kText : kTextDim, view.status.c_str());
+        Text(dl, heading, 26.0f, {c.x, c.y - 30.0f}, p > 0.0f ? kText : kTextDim, "HOLD", 0.5f);
+        Text(dl, heading, 26.0f, {c.x, c.y - 2.0f}, p > 0.0f ? kText : kTextDim, "STILL", 0.5f);
     }
 
-    for (Button const& b : buttons) {
-        bool const hovered = b.id == view.hovered;
-        bool const accent = b.id == kSave || b.id == kCalibrateNow;
-        ImU32 const line = hovered ? kOrange : accent ? kOrange : kPaleDim;
-        Bevel(dl, {b.x0, b.y0}, {b.x1, b.y1}, 10.0f, hovered ? kOrangeFill : kButtonFill, 0, 0.0f);
-        if (hovered || accent) {
-            GlowBevel(dl, {b.x0, b.y0}, {b.x1, b.y1}, 10.0f, line, 2.5f, hovered ? 1.5f : 0.8f);
-        } else {
-            Bevel(dl, {b.x0, b.y0}, {b.x1, b.y1}, 10.0f, 0, line, 2.0f);
+    // The bottom: the hints on the left, the buttons on the right.
+    std::vector<Button> const buttons = LayoutButtons(view);
+    float lineEnd = right;  // the rule over the hints stops short of a second row of buttons
+    for (Button const& button : buttons) {
+        if (button.y1 < kBottom - 1.0f) {
+            lineEnd = std::min(lineEnd, button.x0 - 16.0f);
         }
-        Text(dl, font, kButtonText, {(b.x0 + b.x1) * 0.5f, (b.y0 + b.y1) * 0.5f - kButtonText * 0.55f}, hovered ? kOnOrange : kText,
-            ButtonLabel(b.id), 0.5f);
+    }
+    dl->AddLine({kMargin, 548.0f}, {lineEnd, 548.0f}, kLine, 1.5f);
+    if (view.hints) {
+        float x = kMargin;
+        auto const hint = [&](char const* key, char const* what) {
+            float const w = Width(heading, 18.0f, key) + 20.0f;
+            Chamfer(dl, {x, 571.0f}, {x + w, 599.0f}, 5.0f, kSurfaceHigh, kLineStrong, 1.2f);
+            Text(dl, heading, 18.0f, {x + w * 0.5f, 575.0f}, kText, key, 0.5f);
+            x += w + 10.0f;
+            Text(dl, body, 19.0f, {x, 575.0f}, kTextDim, what);
+            x += Width(body, 19.0f, what) + 26.0f;
+        };
+        hint("B", "back a step");
+        hint("HOLD BOTH STICKS", "cancel");
+    }
+    for (Button const& button : buttons) {
+        bool const hovered = button.id == view.hovered;
+        ImVec2 const p0{button.x0, button.y0};
+        ImVec2 const p1{button.x1, button.y1};
+        if (Accent(button.id)) {
+            if (hovered) {
+                for (int i = 3; i >= 1; --i) {
+                    Chamfer(dl, p0, p1, 9.0f, 0, WithAlpha(kOrange, 0.14f), 2.0f + static_cast<float>(i) * 5.0f);
+                }
+            }
+            Chamfer(dl, p0, p1, 9.0f, hovered ? Mix(kOrange, Rgba(255, 255, 255), 0.18f) : kOrange, 0, 0.0f);
+            Text(dl, heading, kButtonText, {(p0.x + p1.x) * 0.5f, (p0.y + p1.y) * 0.5f - kButtonText * 0.56f}, kOnOrange, ButtonLabel(button.id), 0.5f);
+        } else {
+            if (hovered) {
+                for (int i = 3; i >= 1; --i) {
+                    Chamfer(dl, p0, p1, 9.0f, 0, WithAlpha(kCyan, 0.12f), 2.0f + static_cast<float>(i) * 5.0f);
+                }
+            }
+            Chamfer(dl, p0, p1, 9.0f, hovered ? kSurfaceHigh : kSurface, hovered ? kCyan : WithAlpha(kCyan, 0.55f), hovered ? 2.5f : 1.8f);
+            Text(dl, heading, kButtonText, {(p0.x + p1.x) * 0.5f, (p0.y + p1.y) * 0.5f - kButtonText * 0.56f}, hovered ? kCyan : kText,
+                ButtonLabel(button.id), 0.5f);
+        }
     }
 
     // Where a controller points.
@@ -311,14 +393,15 @@ void DrawPanel(ImDrawList* dl, ImFont* font, PanelView const& view) {
         ImVec2 const p{view.pointerX, view.pointerY};
         dl->AddCircle(p, 15.0f, WithAlpha(kOrange, 0.35f), 32, 7.0f);
         dl->AddCircle(p, 13.0f, kOrange, 32, 3.0f);
-        dl->AddCircleFilled(p, 3.5f, kPale, 12);
+        dl->AddCircleFilled(p, 3.5f, kText, 12);
     }
 }
 
-void DrawBoard(ImDrawList* dl, ImFont* font, BoardView const& view) {
+void DrawBoard(ImDrawList* dl, Fonts const& fonts, BoardView const& view) {
+    ImFont* const heading = fonts.heading;
     float const S = static_cast<float>(kBoardSize);
     float const perMeter = S / cal::kBoardSize;
-    // Faint corner brackets: the board's place in the room, so the targets don't float in nothing.
+    // Corner brackets (the board's place in the room), orange on two opposite corners like the panel.
     float const m = 18.0f;
     float const arm = 90.0f;
     ImVec2 const corners[4] = {{m, m}, {S - m, m}, {S - m, S - m}, {m, S - m}};
@@ -326,11 +409,9 @@ void DrawBoard(ImDrawList* dl, ImFont* font, BoardView const& view) {
         float const sx = i == 0 || i == 3 ? 1.0f : -1.0f;
         float const sy = i < 2 ? 1.0f : -1.0f;
         ImVec2 const c = corners[i];
-        for (float t : {7.0f, 3.0f}) {
-            ImU32 const col = t > 4.0f ? WithAlpha(kGlow, 0.12f) : WithAlpha(kPaleDim, 0.55f);
-            dl->AddLine(c, {c.x + sx * arm, c.y}, col, t);
-            dl->AddLine(c, {c.x, c.y + sy * arm}, col, t);
-        }
+        ImU32 const col = i == 0 || i == 2 ? kOrange : WithAlpha(kCyan, 0.55f);
+        dl->AddLine(c, {c.x + sx * arm, c.y}, col, 3.0f);
+        dl->AddLine(c, {c.x, c.y + sy * arm}, col, 3.0f);
     }
     float const r = cal::kTargetRadius * perMeter;
     for (int i = 0; i < cal::kTargets; ++i) {
@@ -338,36 +419,39 @@ void DrawBoard(ImDrawList* dl, ImFont* font, BoardView const& view) {
         bool const current = i == view.current;
         bool const done = view.done[i];
         float const pulse = current ? 0.5f + 0.5f * std::sin(view.time * 5.0f) : 0.0f;
-        ImU32 const colour = current ? Mix(kOrange, kPale, view.flash) : done ? kPaleDim : kPale;
-        float const strength = current ? 1.4f + pulse : 0.8f;
-        // A dark disc behind, so the rings read against a bright scene.
-        dl->AddCircleFilled(c, r * 1.12f, Rgba(6, 16, 30, 150), 64);
-        GlowCircle(dl, c, r, colour, 4.0f, strength);
-        GlowCircle(dl, c, r * 0.64f, colour, 3.0f, strength * 0.7f);
-        dl->AddCircle(c, r * 0.30f, colour, 48, 3.0f);
-        if (done && !current) {
-            dl->AddCircleFilled(c, r * 0.30f, WithAlpha(kPale, 0.65f), 48);
-        } else {
-            dl->AddCircleFilled(c, r * 0.09f, colour, 24);
+        ImU32 const colour = current ? Mix(kOrange, kCyan, view.flash) : kCyan;
+        dl->AddCircleFilled(c, r * 1.15f, Rgba(0x08, 0x10, 0x1A, 170), 64);  // reads against a bright scene
+        if (current) {
+            for (int g = 4; g >= 1; --g) {
+                dl->AddCircle(c, r, WithAlpha(kOrange, 0.10f + 0.05f * pulse), 64, 4.0f + static_cast<float>(g) * 6.0f);
+            }
         }
-        // Ticks outside the outer ring.
+        dl->AddCircle(c, r, colour, 64, current ? 5.0f : 3.5f);
+        dl->AddCircle(c, r * 0.62f, WithAlpha(colour, current ? 1.0f : 0.8f), 48, 3.0f);
+        dl->AddCircle(c, r * 0.28f, colour, 32, 3.0f);
+        if (done && !current) {
+            dl->AddCircleFilled(c, r * 0.28f, WithAlpha(kCyan, 0.85f), 32);
+            Check(dl, c, r * 0.32f, Rgba(0x08, 0x10, 0x1A), 4.0f);
+        } else {
+            dl->AddCircleFilled(c, r * 0.08f, colour, 16);
+        }
         for (int k = 0; k < 4; ++k) {
-            float const a = static_cast<float>(k) * kPi * 0.5f;
-            ImVec2 const d{std::cos(a), std::sin(a)};
-            dl->AddLine({c.x + d.x * r * 1.15f, c.y + d.y * r * 1.15f}, {c.x + d.x * r * 1.55f, c.y + d.y * r * 1.55f}, colour, 3.0f);
+            float const ang = static_cast<float>(k) * kPi * 0.5f;
+            ImVec2 const d{std::cos(ang), std::sin(ang)};
+            dl->AddLine({c.x + d.x * r * 1.15f, c.y + d.y * r * 1.15f}, {c.x + d.x * r * 1.5f, c.y + d.y * r * 1.5f}, colour, 3.0f);
         }
         if (current) {
-            float const grow = r * (1.75f + 0.12f * pulse);
-            dl->AddCircle(c, grow, WithAlpha(kOrange, 0.35f + 0.3f * pulse), 64, 3.0f);
-            Text(dl, font, 46.0f, {c.x, c.y + r * 1.9f}, kOrange, "AIM HERE", 0.5f);
+            dl->AddCircle(c, r * (1.75f + 0.12f * pulse), WithAlpha(kOrange, 0.35f + 0.3f * pulse), 64, 3.0f);
+            Text(dl, heading, 46.0f, {c.x, c.y + r * 1.9f}, kOrange, "AIM HERE", 0.5f);
         } else {
             char number[8];
             std::snprintf(number, sizeof number, "%d", i + 1);
-            Text(dl, font, 38.0f, {c.x, c.y + r * 1.65f}, done ? kPaleDim : kTextDim, number, 0.5f);
+            Text(dl, heading, 38.0f, {c.x, c.y + r * 1.6f}, done ? kCyan : kTextDim, number, 0.5f);
         }
     }
 }
 
+// ---- Pictures -----------------------------------------------------------------------------------------------
 namespace {
 
 // Linear light -> an sRGB byte.
@@ -388,8 +472,8 @@ std::uint32_t Pixel(float r, float g, float b, float a) {
 std::vector<std::uint32_t> OrbPicture(bool active) {
     unsigned const n = kOrbPixels;
     std::vector<std::uint32_t> pixels(static_cast<size_t>(n) * n);
-    // Linear colours: pale blue-white, or the orange accent.
-    float const base[3] = {active ? 1.0f : 0.55f, active ? 0.42f : 0.78f, active ? 0.08f : 1.0f};
+    // Linear colours: the accent orange (#FF8F3F) to grab, the highlight cyan (#7CCBF2) in the hand.
+    float const base[3] = {active ? 1.0f : 0.20f, active ? 0.27f : 0.60f, active ? 0.05f : 0.89f};
     float const sphere = 0.58f;   // the ball's radius, of the half size
     float const ring = 0.74f;     // the holographic ring around it
     for (unsigned y = 0; y < n; ++y) {
@@ -410,8 +494,7 @@ std::vector<std::uint32_t> OrbPicture(bool active) {
                 g = base[1] * shade + spec;
                 b = base[2] * shade + spec;
                 a = 0.78f + 0.22f * rim;
-                // Soft edge (one pixel).
-                a *= std::clamp((sphere - d) * static_cast<float>(n) * 0.5f, 0.0f, 1.0f);
+                a *= std::clamp((sphere - d) * static_cast<float>(n) * 0.5f, 0.0f, 1.0f);  // a one-pixel soft edge
             }
             // The ring and the glow, added over (light: they don't hide what's behind).
             float const ringLight = std::exp(-std::pow((d - ring) / 0.025f, 2.0f)) * 0.9f;
@@ -421,7 +504,6 @@ std::vector<std::uint32_t> OrbPicture(bool active) {
                 float const covered = a;
                 a = covered + (1.0f - covered) * std::min(1.0f, add);
                 float const k = a > 0.0f ? 1.0f / a : 0.0f;
-                // Straight colour of the sum (premultiplied sums, divided by the new coverage).
                 r = (r * covered + base[0] * add * 1.2f) * k;
                 g = (g * covered + base[1] * add * 1.2f) * k;
                 b = (b * covered + base[2] * add * 1.2f) * k;
@@ -454,7 +536,9 @@ std::vector<std::uint32_t> DotPicture() {
     return pixels;
 }
 
+// ---- Fonts ---------------------------------------------------------------------------------------------------
 namespace {
+
 std::string Utf8(std::wstring const& wide) {
     if (wide.empty()) {
         return {};
@@ -464,23 +548,53 @@ std::string Utf8(std::wstring const& wide) {
     WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.size()), out.data(), n, nullptr, nullptr);
     return out;
 }
-} // namespace
 
-ImFont* LoadFont(ImGuiIO& io, std::string& chosen) {
-    wchar_t windows[MAX_PATH]{};
-    GetWindowsDirectoryW(windows, MAX_PATH);
-    for (wchar_t const* name : {L"bahnschrift.ttf", L"segoeui.ttf"}) {
-        std::filesystem::path const path = std::filesystem::path(windows) / L"Fonts" / name;
+ImFont* FirstFont(ImGuiIO& io, std::vector<std::filesystem::path> const& paths, std::string& name) {
+    for (std::filesystem::path const& path : paths) {
         std::error_code ec;
         if (std::filesystem::exists(path, ec)) {
             if (ImFont* font = io.Fonts->AddFontFromFileTTF(Utf8(path.wstring()).c_str(), 48.0f)) {
-                chosen = Utf8(path.filename().wstring());
+                name = Utf8(path.filename().wstring());
                 return font;
             }
         }
     }
-    chosen = "ImGui's default font";
-    return io.Fonts->AddFontDefault();
+    return nullptr;
+}
+
+} // namespace
+
+Fonts LoadFonts(ImGuiIO& io, std::vector<std::filesystem::path> const& folders, std::string& chosen) {
+    wchar_t windows[MAX_PATH]{};
+    GetWindowsDirectoryW(windows, MAX_PATH);
+    std::filesystem::path const system = std::filesystem::path(windows) / L"Fonts";
+    std::vector<std::filesystem::path> headings;
+    std::vector<std::filesystem::path> bodies;
+    for (std::filesystem::path const& folder : folders) {
+        headings.push_back(folder / L"Rajdhani-SemiBold.ttf");
+        headings.push_back(folder / L"Rajdhani-Bold.ttf");
+        bodies.push_back(folder / L"TitilliumWeb-Regular.ttf");
+        bodies.push_back(folder / L"TitilliumWeb-SemiBold.ttf");
+    }
+    headings.push_back(system / L"bahnschrift.ttf");
+    headings.push_back(system / L"segoeui.ttf");
+    bodies.push_back(system / L"bahnschrift.ttf");
+    bodies.push_back(system / L"segoeui.ttf");
+    Fonts fonts;
+    std::string headingName;
+    std::string bodyName;
+    fonts.heading = FirstFont(io, headings, headingName);
+    fonts.body = FirstFont(io, bodies, bodyName);
+    if (fonts.heading == nullptr) {
+        fonts.heading = io.Fonts->AddFontDefault();
+        headingName = "ImGui's default";
+    }
+    if (fonts.body == nullptr) {
+        fonts.body = fonts.heading;
+        bodyName = headingName;
+    }
+    chosen = "headings " + headingName + ", text " + bodyName;
+    return fonts;
 }
 
 } // namespace mevr::host::calibration_draw
