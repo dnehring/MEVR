@@ -59,6 +59,40 @@ bool CameraModeAllows(std::string_view className);
 // The correction that levels a rotator component: what to add (signed) so it becomes 0.
 int Correction(int units);
 
+// Aim assist's friction and adhesion (research/24 section 7). With a gamepad (Touch reaches the game as
+// pad 0), BioPlayerController.ProcessViewRotation runs SFXModule_AimAssist.ProcessRotation each tick:
+// DeltaRot = (1 - ViewFriction()) * DeltaRot + ViewAdhesion(). Friction slows the stick's turn while an
+// enemy is near the camera's centre; adhesion turns the view after a target while a stick moves (looking
+// or strafing). In VR the stick only turns the body and the hand aims, so both turn the world against the
+// player: under hand aim their results are zeroed (the stick's turn passes through unchanged).
+enum class AssistWhy : std::uint8_t {
+    Removed,     // friction and adhesion zeroed: the hand aims
+    Kept,        // [Hands] aimAssist = 1: the game's
+    NoView,      // no head-tracked world view (menu, flat screen, VR off)
+    HeadAim,     // the host's head aim turns the camera: its aim, its assist
+    NoHandAim,   // the right controller doesn't aim
+    NotOnFoot,   // the Mako, conversations, cutscenes, menus, wheels
+    NoPawn,
+    CameraMode,  // the sniper scope, the Mako's, photo and cinematic cameras keep the game's
+};
+char const* Name(AssistWhy why);
+
+struct AssistInputs {
+    bool keep = false;               // [Hands] aimAssist = 1
+    bool headTrackedView = false;    // a head-tracked world view is on (the host's view, valid)
+    bool headAim = false;            // the host's head aim drives ControlRotation
+    bool handAim = false;            // the right controller aims, and the host knows
+    bool onFoot = false;             // game mode 0
+    bool pawn = false;               // the controller has a pawn
+    bool cameraModeRemoves = false;  // CameraModeRemovesAssist(the current camera mode, or its blend target)
+};
+AssistWhy DecideAssist(AssistInputs const& in);
+
+// Camera modes where the hand aims and the stick only turns (by LE1 class name): Explore, Combat, TightAim,
+// the sprint modes and cover (EnterCover, HipAimCover). The sniper scope (SniperAim), the Mako (Vehicle*),
+// photo and cinematic modes keep the game's aim assist; Interpolate: callers pass the mode it blends to.
+bool CameraModeRemovesAssist(std::string_view className);
+
 // Rolling statistics in one-second buckets: the controller's rotation as the game left it each tick
 // (before the hold), what the game changed and what the hold put back, and the shots.
 struct Summary {
@@ -75,6 +109,16 @@ struct Summary {
     int frames = 0;
     int heldFrames = 0;
     int zoomSnaps = 0;         // zoom snaps (aim assist) kept from turning the camera
+    // Aim assist, the game's values (before removal):
+    int frictionTicks = 0;     // ticks with a friction factor > 0 (a target in the soft margin)
+    int frictionTurning = 0;   // ... of them while the look stick turned: the turn would have slowed
+    int frictionRemoved = 0;   // ... of them zeroed
+    double frictionSum = 0.0;  // the factors summed (the mean: / frictionTicks)
+    double frictionMax = 0.0;  // the largest factor (0.4 = 40% of the stick's turn taken away)
+    int adhesionTicks = 0;     // ticks adhesion turned the view (a non-zero rotator)
+    int adhesionRemoved = 0;   // ... of them zeroed
+    long long adhesionYaw = 0;    // |yaw| summed (units): how far it would have turned the world
+    long long adhesionPitch = 0;  // |pitch| summed (units)
 };
 
 class Window {
@@ -84,6 +128,11 @@ public:
     void Frame(double now, int pitch, int roll, int gameDelta, int correction, bool held);
     void Shot(double now, int kick);
     void ZoomSnap(double now);
+    // Aim assist's results as the game computed them (ViewFriction's factor, ViewAdhesion's rotator in
+    // units), whether the look stick turned, and whether they were zeroed. A factor <= 0 (or NaN) and a
+    // zero rotator count nothing.
+    void Friction(double now, double factor, bool turning, bool removed);
+    void Adhesion(double now, int pitch, int yaw, bool removed);
     // The last `seconds` (at most the window: 60 s).
     Summary Last(double now, double seconds = 60.0) const;
     void Clear();
@@ -103,6 +152,15 @@ private:
         int frames = 0;
         int heldFrames = 0;
         int zoomSnaps = 0;
+        int frictionTicks = 0;
+        int frictionTurning = 0;
+        int frictionRemoved = 0;
+        double frictionSum = 0.0;
+        double frictionMax = 0.0;
+        int adhesionTicks = 0;
+        int adhesionRemoved = 0;
+        long long adhesionYaw = 0;
+        long long adhesionPitch = 0;
     };
     Bucket& At(double now);
     std::array<Bucket, 64> buckets_{};
