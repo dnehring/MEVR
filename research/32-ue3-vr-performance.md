@@ -69,7 +69,7 @@ and in [sources.md](sources.md). **[inference]** marks our reasoning, **[verify]
 
 | # | Lever | Saves (VR, per frame) | Cost / risk | State |
 |---|---|---|---|---|
-| 1 | **Second pass from the first pass's scene renderer:** keep pass 0's FSceneRenderer, give its views pass 1's matrices, re-run only the depth pre-pass and the passes; pass 1's own renderer skips `InitViews` | pass 1's visibility (~21% of a pass, ~1.1 ms); with its pre-pass dropped too ~2.5 ms | reverse engineering of `SceneRenderB`'s state; per-view state (LOD, translucency order, shadows) taken from pass 0, which is ~3 cm away | designing (below) |
+| 1 | **Second pass from the first pass's scene renderer:** keep pass 0's FSceneRenderer, give its views pass 1's matrices, re-run only the depth pre-pass and the passes; pass 1's own renderer skips `InitViews` | pass 1's visibility (~21% of a pass, ~1.1 ms); with its pre-pass dropped too ~2.5 ms | reverse engineering of `SceneRenderB`'s state; per-view state (LOD, translucency order, shadows) taken from pass 0, which is ~3 cm away | built as `sharePass`, untested (below) |
 | 2 | **No visible-set pre-pass in the second pass** (`depthPrepass = 1`) | ~1.4 ms | GPU overdraw (no early-Z; ~5 ms GPU headroom); if it feeds Umbra's queries, more draws | built, untested |
 | 3 | **AER at 120 Hz** (Halcyon's existing mode) | ~half the render thread | ghosting on motion; our seams (HUD panel, sights) may assume Stereo 2 **[verify]** | exists |
 | 4 | **D3D11 replay of pass 0 for pass 1** | up to half the render thread | patching view constants in every constant buffer, per-view post; MGS2 still flickers | not started |
@@ -87,6 +87,34 @@ in, the pre-pass re-run (it clears depth and draws from the views' matrices), an
 What has to be checked before building it: which renderer state the passes consume or mutate (they must be safe
 to run twice), where the view's inverse matrices live, what `0x7666A0` and `0x759240` do, and that nothing keeps
 pointers into pass 1's renderer.
+
+**Built (`[Performance] sharePass = 1`, `plugin/RenderLevers`, off by default; untested in game).** What the code
+found:
+- `0x4ED700` is FSceneRenderer's deleting destructor (`0x764AF0`, then frees 0x110 bytes); hooked, it holds back
+  one renderer's deletion while that renderer renders, so the frame's next scene render can use it.
+- FSceneView is the first ~0x4E4 bytes of FViewInfo (copied by `0x763450`): containers at 0x44 (a TArray), 0x140
+  (the view frustum's planes) and 0x330 (copied by `0x762C90`); plain matrices and vectors in 0x90-0x140, 0x190-0x330
+  (translated matrices, PreViewTranslation 0x250, view-projection and inverses, ViewOrigin 0x320), 0x480-0x4B0 and
+  0x4C0-0x4D0. Those four ranges are copied from the second render's views, so its own metric-stereo edits come
+  along. FViewInfo's own members start at 0x4F4 (visibility and draw lists).
+- FSceneRenderer: +0x00 scene, +0x08 the family copy (+0x18 its render target, +0x28 show flags), +0x5C the Umbra
+  path, +0x60/+0x68 the views (stride 0x12F0), +0xD8 set before the passes.
+- The tail it replays, as `SceneRenderB` calls it: GDynamicRHI `+0x628`; the scene frame counter `0x178779C`++;
+  `+0xD8 = 1`; `0x8C1AE0(0)`; `Allocate(GSceneRenderTargets 0x167D0E0, target +0x18, target +0x20, 0)`; the pre-pass
+  `0x8BF8F0` (the commander's per-view flags, +0x34 + 8i, re-armed: the resolve sets them, the pre-pass clears
+  them); `0x7666A0`; dirty = `0x1795D38`; `0x759240` unless `0x167D49C`; DPG 1 `0x76D650(r, 1, &dirty)`,
+  `0x76D0A0(r, 1, t, &dirty, 1)`; `+0x5C = 0`; `0x76CA70(r, 2, &out, &dirty, 0)`; DPG 2; `+0x5C = 1`;
+  `0x76DD10(r, t, dirty)`; GDynamicRHI `+0x620`. Then both renderers are deleted.
+- Not re-run for the second eye: the Umbra resolve and its per-object callbacks, its finalisation, `0x77BE00`
+  (after the resolve in InitViews; dynamic shadow setup **[verify]**).
+- Pairs only renders with the same scene, render target, show flags, view count, view states and view rectangles
+  (cutscenes with per-eye view states don't pair); a kept renderer with no partner is deleted at the next Present;
+  an exception in the replay turns it off for the session (and leaks the two renderers rather than free them).
+- To verify in the headset: both eyes still differ (stereo; `tools/stereo-check.py`), no flicker or missing
+  objects, the second render's time in `render levers:` drops by about a third, and nothing leaks.
+
+Measuring any of the switches: `tools/perf-ab.ps1 -Key sharePass -Values 0,1` (or `depthPrepass -Values 2,1`,
+`pCoresOnly -Values 0,1`) alternates the key in the deployed ini, captures each, and restores it.
 
 ## Sources
 

@@ -18,6 +18,13 @@ class Initializer;
 //                  0   none
 //   pCoresOnly   = 1   the game's threads only on the CPU's performance cores (hybrid CPUs, e.g. the 12900K's
 //                      P-cores); 0 leaves the affinity as the game had it
+//   sharePass    = 1   EXPERIMENTAL (research/32, lever 1): a frame's second scene render (Stereo 2's second
+//                      eye) runs on the first one's renderer: its deletion (0x4ED700) is held back, the second
+//                      render's view matrices are copied into it, and SceneRenderB's Umbra branch after
+//                      InitViews runs again (pre-pass included), so the second eye does no visibility of its
+//                      own. Only between compatible renders (same scene, target, flags, view states, rects);
+//                      an exception turns it off for the session. 0 = the game's own
+// (Hooks: the scene render, the renderer's deleting destructor, the depth pre-pass.)
 // Log lines start with "render levers:": the settings on change, and every 10 s the scene renders per frame,
 // each render's average time by its place in the frame, and the pre-pass calls and skips.
 namespace mevr::host::render_levers {

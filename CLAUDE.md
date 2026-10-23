@@ -330,7 +330,11 @@ Use it to check VR changes yourself instead of asking the user what they see
   the game thread sets the pace. Seams: `MevrBridge::PerfPresentScope` / `PerfPass0Captured` /
   `g_perfDraws` and the wrapped `xrWaitFrame` / `xrBeginFrame` / `xrEndFrame`. `tools/perf-monitor.ps1`
   adds whole-GPU load; `tools/sample-render-thread.ps1` samples the render thread's stack from outside
-  (`mevr-stack-sampler`): where its time goes by module and function, no redeploy.
+  (`mevr-stack-sampler`): where its time goes by module and function, no redeploy. Live render levers
+  (`plugin/RenderLevers`, [research/32](research/32-ue3-vr-performance.md)) in `[Performance]` of `ASI\LE1MEVR.ini`:
+  `depthPrepass` (2/1/0), `pCoresOnly`, `sharePass` (experimental: the second eye renders on the first's scene
+  renderer); log `render levers:` (scene renders per frame, each one's time); `tools/perf-ab.ps1 -Key <key> -Values a,b`
+  alternates one and captures each.
 - **Console:** `tools/console.ps1 "UMBRA OCCLUSIONCULLING"` writes `console.request`; the mod (`game/ConsoleRequest`,
   hot-reloaded) runs each line through `PlayerController.ConsoleCommand` on the game thread and writes what it
   printed to `console.result` (log `console:`). Flat or in VR, wherever there is a local player: A/Bs without a restart.
