@@ -133,7 +133,10 @@ switching frameworks.
   (+30 degrees after 204 shots). A `PlayerTick` post-handler (before the camera update) holds its pitch and
   roll at 0 on foot while the hand aims, and drops aim assist's zoom-snap target; not in cover, the
   scope, the Mako or cinematic modes. The recoil is a hand pulse instead. `[Hands] levelCamera`,
-  `recoilHaptic`; log `view level:`.
+  `recoilHaptic`; log `view level:`. Aim assist's friction and adhesion (`SFXModule_AimAssist.ViewFriction`
+  / `ViewAdhesion`, which slowed and bent the stick's turn near enemies) are zeroed by CallFunction
+  post-handlers under the same conditions (cover included; not the sniper scope or the Mako):
+  `[Hands] aimAssist = 0` (1 keeps them), log `aim assist:` (research/24 section 7).
 - LE1 body holsters (`game/Holsters`, `core/ik/BodySlots`, research/19): a right-grip squeeze at a
   body slot draws that weapon through `SFXGameModeDefault.SwitchToWeapon` (ProcessEvent). The
   right grip holds the gun (`gripHolds = 1`): let go at its slot to holster (`TryHolster`),

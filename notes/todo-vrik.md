@@ -503,6 +503,28 @@ PSVR 2 on SteamVR: the world pitched more and more over a session while SteamVR'
 - **[verify in headset]:** notes/next-vr-session.md step 21 (fire for a minute, check the horizon and the
   log).
 - **Proposed, not built:** a visual kick of the gun model only (a short decaying pitch and pull-back of
-  the right hand's target in the gun's frame); turning off aim assist's friction and adhesion while the
-  hand aims (they slow and bend the stick's turning near enemies, which the hand-aimed player doesn't
-  want); a checkbox for `levelCamera` in the VR hands tab (host change).
+  the right hand's target in the gun's frame); a checkbox for `levelCamera` in the VR hands tab (host
+  change). Aim assist's friction and adhesion: built, below.
+
+## Aim assist's friction and adhesion off while the hand aims (2026-10-22; built the same day, to test)
+
+- **Why ([research/24](../research/24-view-level.md) section 7):** with a gamepad (Touch is pad 0),
+  `BioPlayerController.ProcessViewRotation` runs `SFXModule_AimAssist.ProcessRotation` every tick:
+  `DeltaRot = (1 - ViewFriction()) * DeltaRot + ViewAdhesion()`. Friction took up to about 68% of the
+  stick's turn while an enemy sat in the soft margin of the camera's centre (`FrictionMultiplierRange`
+  0..0.38 x `GlobalFrictionFactor` 1.8); adhesion turned the view after the target's motion and
+  against the player's own strafe whenever a stick moved. The stick only turns the body in VR, so the
+  world turned slower than asked, or sideways.
+- **Built (mod only, hot-reloads):** CallFunction post-handlers in `game/view_level` zero the two
+  functions' results (the stick's turn passes through exactly), on foot, with a head-tracked view, the
+  hand aiming, the host's head aim off, in a camera mode where the hand aims (Explore, Combat, TightAim,
+  the sprint and cover modes); the sniper scope, the Mako, photo and cinematic cameras and VR off keep
+  the game's. No game state changed, nothing to restore. Setting `[Hands] aimAssist = 0` (1 keeps the
+  game's). Rules unit-tested (`vr::view_level::DecideAssist`, `CameraModeRemovesAssist`, the window).
+  Logs: `aim assist:` state lines, first friction / adhesion seen, the heartbeat's `aim assist:` line
+  (how often and how much they would have acted, the calls).
+- **[verify in headset]:** notes/next-vr-session.md step 23 (turn past and strafe past an enemy; the
+  heartbeat counts).
+- **Open:** the Target Assist option (High/Normal/Low, no Off) is native and doesn't reach friction or
+  adhesion; what it scales is unread. Magnetism (`GetAdjustedAimFor`) is already the hand's
+  (`hand_aim`).

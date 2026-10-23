@@ -347,6 +347,44 @@ and the 95th percentile per segment, and say which thread or the GPU sets the pa
 - All of this cuts GPU pixel work only. If the render thread is the limit, none of it raises the
   frame rate; the `dynResFraction` A/B decides.
 
+## First measurement: the throttle holds the GPU (2026-10-22 21:39)
+
+The frame-breakdown probe's baseline (`perf\2026-10-22_21-39-02-baseline-*`), 20 s of Stereo 2 gameplay
+on the PS VR2 at 90 Hz, standing on foot; `tools/perf-monitor.ps1` alongside. Read with
+`tools/perf-probe.py`:
+
+- **SteamVR throttles the game:** `xrWaitFrame` reports a 22.22 ms display period (2 x 11.11) on 883 of
+  905 frames; frames come every 22.18 ms (45.1 fps).
+- **The throttle works through the GPU, not the CPU.** `xrWaitFrame` returns in 0.02 ms and
+  `xrBeginFrame` in 0.01 ms. Instead the GPU is held a median **13.5 ms after each `xrEndFrame`**
+  (the same on frames with and without the mirror's present), and reaches the next frame's start
+  14.9 ms after the CPU issued it.
+- **The render thread spins while the GPU is held.** It is busy 97% of the time (21.1 ms a frame), but
+  its busy time doesn't follow the work: 18.6 ms + 0.5 µs per draw (r² 0.01; 1,500 draws: 19.1 ms,
+  3,200 draws: 19.9 ms). Most of it is waiting for the held GPU, either in the driver (its limit on
+  queued frames) or in UE3's occlusion-query readback **[verify which]**.
+- **What the frame costs, at most:** GPU 8.7 ms (median, all work between frame start and
+  `xrEndFrame`; it catches up to within 2.3-2.6 ms of the CPU); game thread 8.2 ms busy (the engine
+  8.0, ours 0.2); render thread: its real issuing work is the 21.1 ms minus the wait, about 7 ms if
+  the wait covers the hold **[inference]**. All three fit in 11.1 ms.
+- Our own steps cost little: controllers 0.18 ms, quads 0.07 ms, Halcyon's copies 0.34 ms,
+  `xrEndFrame` 0.37 ms. No access violations during the capture (the startup storm, finding 7, is
+  over by then). The capture's first eye is taken 4 times a frame, so its "left eye" split isn't the
+  boundary between the eyes.
+- perf-monitor: GPU 78% (the whole GPU, the compositor included; whether a held queue counts as busy
+  is unclear), busiest game thread 92% of a core.
+- This matches 2026-10-08: with the SteamVR dashboard up (VISIBLE, no throttle) the same scene ran at
+  90 fps with the busiest thread at 69% (7.7 ms a frame).
+
+**The likely loop [inference]:** once SteamVR throttles (a load hitch is enough), it holds the GPU; the
+render thread then spins until the GPU is free, so the game looks CPU-bound at ~20 ms a frame (SteamVR's
+own log: "ApplicationTime CPU: 20.291ms"), so SteamVR keeps throttling. Halcyon's late wait (finding 9)
+may feed it: the game never waits in `xrWaitFrame`, so SteamVR never sees idle time.
+
+**Next:** lift the throttle (Throttling Behavior: Fixed, full rate) and measure again. If the frame
+rate rises toward 90 and holds, the fix is that setting (and possibly an early `xrWaitFrame` so the
+automatic mode recovers by itself). If SteamVR still halves it, the frame loop is next.
+
 ## Next session: the no-code checks (about 15 minutes)
 
 Same spot each time (e.g. the Normandy's CIC, standing still, same direction), 30 s per step:

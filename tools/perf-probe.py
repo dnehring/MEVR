@@ -117,8 +117,10 @@ def frame_metrics(r):
             starts = issue.get('end_frame_begin') if b == 'end_frame_begin' else t[a]
             work = g[b] - max(g[a], starts if starts is not None else t[a])
             m[f'gpu_{a}_{b}'] = max(work, 0.0)
-            total += max(work, 0.0)
+            if a != 'end_frame_begin':  # after xrEndFrame the GPU can be held by the runtime: not work
+                total += max(work, 0.0)
         m['gpu_work'] = total if len(chain) >= 2 else None
+        m['gpu_held'] = m.get('gpu_end_frame_begin_end')
     m['display_period'] = r.get('display_period_ms') or None
     return m
 
@@ -165,18 +167,30 @@ def main():
     metrics = [frame_metrics(r) for r in chosen]
     get = lambda key: [m.get(key) for m in metrics]
 
+    # The headset's own period is the shortest the runtime reported; a longer median means it throttles
+    # the game (SteamVR's half-rate lock reports twice the period).
+    periods = [r.get('display_period_ms') for r in frames if r.get('display_period_ms')]
+    budget = min(periods) if periods else 1000.0 / 90.0
     period = stats(get('display_period'))
-    budget = period[0] if period else 1000.0 / 90.0
+    throttle = period[0] / budget if period else 1.0
     interval = stats(get('interval'))
-    print(f'\n{len(chosen)} {kind}; display period {budget:.2f} ms ({1000.0 / budget:.1f} Hz); '
-          f'frame interval median {interval[0]:.2f} ms ({1000.0 / interval[0]:.1f} fps)' if interval else '')
+    if interval:
+        print(f'\n{len(chosen)} {kind}; headset period {budget:.2f} ms ({1000.0 / budget:.1f} Hz); '
+              f'frame interval median {interval[0]:.2f} ms ({1000.0 / interval[0]:.1f} fps)')
+    if throttle > 1.5:
+        print(f'  The runtime is throttling the game: it asks for a frame every {period[0]:.2f} ms '
+              f'({throttle:.1f} headset periods; SteamVR\'s half-rate lock at 2).')
+    marks = stats([r.get('pass0_marks') for r in chosen])
+    if marks and marks[0] > 1:
+        print(f'  The first eye is captured {marks[0]:.0f} times a frame; "to the last left-eye capture" ends at the last '
+              'one, which is not the boundary between the eyes.')
 
     print(f'\n  {"render thread (ms)":<34} {"median":>7} {"p90":>7} {"max":>7}')
     line('frame interval', get('interval'))
-    line('game: left eye, wall', get('left_wall'), 'start -> first eye captured')
-    line('game: left eye, busy', get('left_busy'))
-    line('game: right eye + UI, wall', get('right_wall'), 'first eye -> Present')
-    line('game: right eye + UI, busy', get('right_busy'))
+    line('game: to the last left-eye capture', get('left_wall'), 'wall')
+    line('  busy', get('left_busy'))
+    line('game: from it to Present', get('right_wall'), 'wall')
+    line('  busy', get('right_busy'))
     line('game: both eyes + UI, busy', get('game_busy'))
     line('Halcyon before the wait', get('pre_wait'))
     line('xrWaitFrame, wall', get('wait_wall'), 'waiting for the runtime')
@@ -193,9 +207,28 @@ def main():
     line('busy, without the XR waits', get('render_work'), '<- the render thread\'s work')
 
     print(f'\n  {"draws":<34} {"median":>7} {"p90":>7} {"max":>7}')
-    line('left eye', get('left_draws'))
-    line('right eye + UI', get('right_draws'))
+    line('to the last left-eye capture', get('left_draws'))
+    line('from it to Present', get('right_draws'))
     line('whole frame', get('draws'))
+    # Real issuing work grows with the draws; a wait doesn't. A straight line through (draws, busy).
+    pairs = [(m.get('draws'), m.get('game_busy')) for m in metrics
+             if m.get('draws') is not None and m.get('game_busy') is not None]
+    spinning = False
+    if len(pairs) >= 20:
+        xs, ys = zip(*pairs)
+        mx, my = statistics.mean(xs), statistics.mean(ys)
+        sxx = sum((x - mx) ** 2 for x in xs)
+        syy = sum((y - my) ** 2 for y in ys)
+        if sxx > 0 and syy > 0:
+            sxy = sum((x - mx) * (y - my) for x, y in pairs)
+            slope = sxy / sxx
+            r2 = sxy * sxy / (sxx * syy)
+            print(f'  game busy = {my - slope * mx:.2f} ms + {slope * 1000.0:.2f} us per draw (r2 {r2:.2f}, '
+                  f'draws {min(xs):.0f}-{max(xs):.0f})')
+            spinning = r2 < 0.2 and (my - slope * mx) > 0.5 * my
+            if spinning:
+                print('  -> the busy time barely follows the draws: most of it is spent waiting (spinning), '
+                      'not issuing work')
 
     if meta['gpuTimestamps']:
         print(f'\n  {"GPU (ms)":<34} {"median":>7} {"p90":>7} {"max":>7}')
@@ -205,8 +238,8 @@ def main():
         line('span: left eye', get('gpu_start_pass0'), 'its work, if the GPU lags')
         line('span: right eye + UI', get('gpu_pass0_present'))
         line('span: copies and quads', get('gpu_present_end_frame_begin'), 'after xrBeginFrame')
-        line('span: after xrEndFrame (mirror)', get('gpu_end_frame_begin_end'))
-        line('span: whole frame', get('gpu_work'))
+        line('span: whole frame', get('gpu_work'), 'its work, at most')
+        line('held after xrEndFrame', get('gpu_held'), 'the runtime\'s sync (or the mirror)')
 
     print(f'\n  {"game thread (ms)":<34} {"median":>7} {"p90":>7} {"max":>7}')
     begins = [t['t_begin'] for t in ticks if t.get('t_begin') is not None]
@@ -217,9 +250,11 @@ def main():
     game_work = [(t.get('engine_busy_ms') or 0.0) + (t.get('host_busy_ms') or 0.0) for t in ticks]
     line('busy, engine + ours', game_work, '<- the game thread\'s work')
 
-    print('\nVerdict (medians against the display period):')
+    print(f'\nVerdict (medians against the headset period, {budget:.2f} ms):')
     lag = stats(get('lag_present'))
-    gpu_bound = lag is not None and lag[0] > 2.0
+    held = stats(get('gpu_held'))
+    gpu_held = held is not None and held[0] > 2.0
+    gpu_bound = lag is not None and lag[0] > 2.0 and not gpu_held
     candidates = []
     for name, values in (('render thread', get('render_work')), ('game thread', game_work)):
         s = stats(values)
@@ -227,15 +262,19 @@ def main():
             candidates.append((s[0], name))
             print(f'  {name:<14} {s[0]:6.2f} ms = {100.0 * s[0] / budget:5.1f}% of {budget:.2f} ms (p90 {s[1]:.2f})')
     gpu = stats(get('gpu_work'))
-    if lag is not None:
-        if gpu_bound and gpu:
+    if gpu:
+        print(f'  {"GPU":<14} {gpu[0]:6.2f} ms at most = {100.0 * gpu[0] / budget:5.1f}% (p90 {gpu[1]:.2f}); '
+              f'{lag[0]:.2f} ms behind the CPU at Present' if lag else '')
+        if gpu_bound:
             candidates.append((gpu[0], 'GPU'))
-            print(f'  {"GPU":<14} {gpu[0]:6.2f} ms = {100.0 * gpu[0] / budget:5.1f}% of {budget:.2f} ms '
-                  f'(p90 {gpu[1]:.2f}); it runs {lag[0]:.2f} ms behind the CPU at Present')
-        else:
-            print(f'  {"GPU":<14} keeps up: {lag[0]:.2f} ms behind the CPU at Present, so it needs less time than '
-                  'the CPU side (tools/perf-monitor.ps1 gives its load)')
-    if candidates and interval:
+    if gpu_held:
+        print(f'  -> the GPU is held {held[0]:.2f} ms after each xrEndFrame (median): the runtime\'s frame sync, '
+              'not the game\'s work.' + (' The render thread\'s busy time is mostly waiting for it (it doesn\'t follow '
+              'the draws), so the CPU numbers above are inflated by the hold.' if spinning else ''))
+    if throttle > 1.5 or gpu_held:
+        print('  -> Lift the throttle (SteamVR > Video > Per-Application Video Settings > Throttling Behavior: Fixed, '
+              'full rate) and measure again: that shows what the frame really costs.')
+    elif candidates and interval:
         worst = max(candidates)
         periods = interval[0] / budget
         if worst[0] < 0.95 * budget and periods > 1.5:

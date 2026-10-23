@@ -761,6 +761,30 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       level: no PlayerTick seen ...` and it levels a frame late) and `zoom snaps dropped`. Snapshots
       have `"viewLevel"` in the mod's status.
 
+23. **The stick turns you at its own speed near enemies (new, 2026-10-22; the mod only, it
+    hot-reloads).** ME1's controller aim assist used to slow the right stick's turn while an enemy was
+    near the middle of the view (friction) and to turn the view after a target while either stick moved
+    (adhesion: strafing past an enemy turned the world). In VR the hand aims, so on foot both are off
+    now. [research/24](../research/24-view-level.md) section 7.
+    - **Test:** in a fight, put an enemy straight ahead of your body and **turn with the right stick
+      past them**: the turn keeps the same speed as anywhere else (no sticky slow-down over the enemy).
+      Then **strafe left and right with the left stick** with an enemy ahead: the world doesn't turn to
+      follow them. Shooting with the hand is unchanged. Take an End snapshot during the fight.
+    - Also: in the Mako and through the sniper scope aim assist is the game's as before (the log says
+      `the game's friction and adhesion (not on foot)` / `(a camera mode that keeps them ...)`).
+    - **Setting:** `[Hands] aimAssist = 0` (added to your `LE1MEVR.ini`); `1` brings the game's friction
+      and adhesion back under hand aim, for an A/B: with it the turn should drag over enemies again.
+    - **Logs (ours):** `view level: handlers on ...; aim assist from SFXModule_AimAssist.ViewFriction and
+      ViewAdhesion` at startup; `aim assist: friction and adhesion removed (the hand aims; ...) (camera
+      mode ...)` and the other states when they change; `aim assist: first friction seen (...): N% of the
+      stick's turn taken away ...; removed` and `aim assist: first adhesion seen (...)`; and the heartbeat
+      line under `view level:`: `aim assist: ...; last 60 s: friction would have taken N% of the stick's
+      turn on average (M% at most) in T ticks with a target in the soft margin, K of them while the look
+      stick turned; removed in R; adhesion would have turned the view in A ticks (yaw ... deg, pitch ...
+      deg in all); removed in B; ... ViewFriction and ... ViewAdhesion calls`. The calls must count up in
+      a fight (else the hand isn't aiming yet, or no gamepad input reached the game). Snapshots have
+      `"viewLevel": {..., "aimAssist": {...}}`.
+
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR
   loader (MEVR)`, its pacing lines.

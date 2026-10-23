@@ -23,8 +23,18 @@
 // SFXInventoryManager.SetWeaponRecoil (each of the player's shots, from SFXPawn_Player.OnWeaponFired)
 // pulses the right controller, and the left too while both hands hold the gun.
 //
+// Aim assist's friction and adhesion off while the hand aims (LE1, [Hands] aimAssist = 0, the default;
+// research/24 section 7): with a gamepad, SFXModule_AimAssist.ProcessRotation scales the stick's turn by
+// 1 - ViewFriction() (an enemy near the camera's centre slows it) and adds ViewAdhesion() (the view
+// follows a target while a stick moves). The stick only turns the body in VR, so both turned the world.
+// CallFunction post-handlers on the two script functions zero their results on foot, with a head-tracked
+// view, the hand aiming and the host's head aim off, in a camera mode where the hand aims (not the sniper
+// scope, the Mako, photo or cinematic modes). Nothing in the game is changed: once the conditions end (or
+// the mod unloads) the game's values pass through again.
+//
 // Logs: the rotation as the game left it whenever its pitch or roll moved 0.5 degrees since the last line
-// (`view level:`), the hold's state changes, and a heartbeat summary of the last minute. Game thread.
+// (`view level:`), the hold's and aim assist's state changes (`aim assist:`), and heartbeat summaries of the
+// last minute (with how often friction and adhesion would have acted). Game thread.
 namespace mevr::game::view_level {
 
 // What the mod's tick knows that the handlers need (from the host, each tick).
@@ -35,8 +45,8 @@ struct Link {
     void (*haptic)(int hand, float seconds, float amplitude) = nullptr;  // HostServices v9; null: none
 };
 
-// Finds PlayerTick (every state's) and SetWeaponRecoil and registers the handlers. Call before the
-// ProcessEvent and CallFunction hooks go in. False on LE2/LE3 or if the functions aren't found.
+// Finds PlayerTick (every state's), SetWeaponRecoil and aim assist's ViewFriction and ViewAdhesion and
+// registers the handlers. Call before the ProcessEvent and CallFunction hooks go in. False on LE2/LE3.
 bool TryStartup();
 // Each mod tick.
 void Tick(Link const& link);

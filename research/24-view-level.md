@@ -2,7 +2,8 @@
 
 Bug (user, 2026-10-22, PSVR 2 on SteamVR): over a play session the world tilted more and more in
 pitch, while SteamVR's own view stayed level. This note finds the cause and records the fix
-(`game/view_level`, `core/vr/ViewLevel`, `[Hands] levelCamera`).
+(`game/view_level`, `core/vr/ViewLevel`, `[Hands] levelCamera`). Section 7: aim assist's friction and
+adhesion, turned off while the hand aims (`[Hands] aimAssist`).
 
 Sources, all read-only and local: the session's logs (ours from 19:52:38, Halcyon's
 `MELEVR_Log.txt`) and its two test-loop snapshots; `SFXGame.pcc`, `Engine.pcc` decompressed with the
@@ -60,7 +61,7 @@ ControlRotation's pitch climbs shot by shot and the head-tracked world pitches w
 
 | Candidate | Finding |
 |-----------|---------|
-| Aim assist: friction and adhesion | `BioPlayerController.ProcessViewRotation` runs `SFXModule_AimAssist.ProcessRotation` when camera mods are allowed and the input is a gamepad (Touch reaches the game as pad 0): friction scales the stick's turn near a target; adhesion adds a turn toward the target's bone (pitch too), **only while a stick moves** (looking or strafing). A small contributor, both ways; the hold covers its pitch |
+| Aim assist: friction and adhesion | `BioPlayerController.ProcessViewRotation` runs `SFXModule_AimAssist.ProcessRotation` when camera mods are allowed and the input is a gamepad (Touch reaches the game as pad 0): friction scales the stick's turn near a target; adhesion adds a turn after the target (pitch too), **only while a stick moves** (looking or strafing). A small contributor, both ways; the hold covers its pitch, and since section 7 both are off while the hand aims |
 | Aim assist: zoom snap | `BioPlayerInput.PostProcessInput` calls `SetZoomed` every tick; zoomed (our support grip holds LT), `ZoomSnap()` picks a target within 5-40 m (rifles). When the camera switches to `TightAim`, `SFXCameraSetup.GetCameraMode` starts `SFXCameraTransition_ZoomSnap`, which aims the mode at the target and **calls `PC.SetRotation`** each tick of the transition: pitch and yaw toward the enemy, inside the camera update. The support grip turned aimed fire on 21 times in under three minutes of this session. A plausible contributor (whether it fired isn't in the old logs), and a yaw jump of the world; the hold drops the target |
 | Camera modes | `SFXCameraMode.ProcessViewRotation` only recentres the pitch **toward 0** when `bRecenterCamera`; the storm modes override it with nothing. `PlayerController.LimitViewRotation` clamps to the pawn's pitch limits. Not a drift source |
 | Cover, crouch | `BioPawn.ProcessViewRotation` in cover only changes the cover action (the lean). The cover cameras and crouch change offsets. Not a drift source; cover stays outside the hold (and with [23](23-cover.md)'s `noCover`, VR on foot rarely enters it). A physical crouch is the `Combat` class's crouch instance: held |
@@ -142,3 +143,75 @@ ControlRotation's pitch climbs shot by shot and the head-tracked world pitches w
   camera with one logged snap.
 - The 0.25 factor in `GetRecoil` (what global condition) and whether the zoom snap fired in this
   session (the new heartbeat's count) are open.
+- Aim assist (section 7): turning past an enemy with the stick keeps its speed, strafing past one
+  doesn't turn the world; the heartbeat's `aim assist:` counts show what was removed.
+
+## 7. Aim assist's friction and adhesion, off while the hand aims
+
+The stick only turns the body in VR, and the hand aims; ME1's controller aim assist still acted as if
+the stick aimed. Sources as above (the `SFXGame.pcc` bytecode, `Coalesced_INT.bin`'s `BIOGame.ini` and
+`BIOWeapon.ini`, GhidraMCP).
+
+### How ME1 applies them (script, LE1)
+
+| Step | Where | What |
+|------|-------|------|
+| The gate | `BioPlayerController.ProcessViewRotation(DeltaTime, out ViewRotation, DeltaRot)`, from `UpdateRotation` inside `PlayerTick` | if `GameModeManager.AllowsCameraMods()` and (`IsConsoleBuild()` or `PlayerInput.bUsingGamepad`): the controller's `SFXModule_AimAssist` module runs `CacheCurrentAimAssistTarget()` (with a ranged weapon) and `ProcessRotation(DeltaTime, DeltaRot)`; then `PlayerController.ProcessViewRotation` adds `DeltaRot` to the rotation |
+| The target | `CacheCurrentAimAssistTarget` -> native `BioPlayerController.GetAimAssistTarget` (`execGetAimAssistTarget` `0xBADEF0` -> `0xC747F0`, named `ABioPlayerController_GetAimAssistTarget_impl`) | from the game camera's POV (`CameraCache.POV`, the body's view, not the head's or the hand's): recently rendered, hostile, living pawns with an `SFXModule_AimAssistTarget`, scored 1/distance with a bonus for the current selection; per aim box (`AimAssistRegions`: width, height, soft margin, bone) `0xC74BB0` (`AimAssistTarget_BoxSoftMargin_guess`) gives `CurrentAimAssistSoftMargin` 1 inside the box, falling to 0 across the margin. Dropped if dead or behind the camera's trace hit |
+| Combined | `SFXModule_AimAssist.ProcessRotation` (script, final) | with a ranged weapon and stats: `AdhesionRot = ViewAdhesion(dt, W)`, `FrictionFactor = ViewFriction(dt, W)`, **`DeltaRot = (1 - FrictionFactor) * DeltaRot + AdhesionRot`** |
+| Friction | `SFXModule_AimAssist.ViewFriction` (script) | 0 unless `Stats.bFrictionEnabled`, a `BioPawn` target and a soft margin > 0; then `GetRangeValueByPct(Stats.FrictionMultiplierRange, SoftMargin) * GlobalFrictionFactor`, times `GetFrictionMultiplier()` (the aim mode's) when zoomed. Also sets `LastFrictionMultiplier` / `LastFrictionTarget` (debug draw only) |
+| Adhesion | `SFXModule_AimAssist.ViewAdhesion` (script) | `rot(0,0,0)` unless `Stats.bAdhesionEnabled` and **a stick moves** (`|RawJoyLookRight, RawJoyLookUp|` or `|RemappedJoyRight|`, the strafe), a target at least `MinAdhesionDistance` away and a soft margin > 0. Then the aim point is the camera ray at the target's distance plus the target's motion this tick x `EnemyMovementAdhesionFactor` (0.75; `AimCorrectionAmount = 0` means it never pulls toward the bone itself), seen from where the camera will be after the player's own motion; the view turns toward it by `FClamp(AdhesionStrength(SoftMargin) [x zoomed multiplier] * GlobalAdhesionFactor * (LookMag + MoveMag), 0, 1)`: it follows a moving target and cancels the player's strafe past it. Returns `Rotator(new) - CamRot` |
+
+Values (`BIOGame.ini` `[SFXGame.SFXModule_AimAssist]`: `GlobalFrictionFactor=1.8`, `GlobalAdhesionFactor=0.5`,
+`EnemyMovementAdhesionFactor=0.75`; `BIOWeapon.ini` `[SFXGame.SFXWeaponStatsBase]`: friction and adhesion on,
+`FrictionMultiplierRange=(0, 0.38)`, `AdhesionStrengthRange=(0, 1)`, `MinAdhesionDistance=100`; shotguns'
+friction 0..0.25, sniper rifles' 0..0.19 and adhesion 0..0.5, scoped x0.667 / x0.5): friction takes up to
+about 68% of a rifle's stick turn over an enemy; adhesion can reach a full blend per tick while both
+sticks move.
+
+### The game's own settings
+
+- **Gameplay option "Target Assist"** (`BioGamerProfile` option 15, `EOptionTargetAssist`: High, Normal,
+  Low; `m_nDefaultTargetingAssistModifier*` in the profile): no Off, and its modifier is a native
+  (`GetTargetingAssistModifier` `0xB9CB10`, profile vtable `+0x468`) that no script calls; neither
+  friction's and adhesion's script nor `GetAimAssistTarget`'s native reads it. Not a switch for this, and
+  it is the player's saved option.
+- **`SFXGameConfig.bAimAssistEnabled`** (`BIOGame.ini`: false) only changes the camera's rotation
+  smoothing (`SFXPlayerCamera.UpdateCameraMode`, `RotationalDecay`), not aim assist.
+- **`GlobalFrictionFactor` / `GlobalAdhesionFactor`** are config values on the module (from the
+  Coalesced file, not an option). Zeroing them at runtime would remove friction exactly, but adhesion
+  would still return `Rotator(Vector(CamRot)) - CamRot` (no roll, a rounding unit), and they would have
+  to be saved and put back per module (a new one each level) and on unload. Rejected for the below.
+
+### What we do
+
+`game/view_level`, `[Hands] aimAssist = 0` (default; 1 keeps the game's): CallFunction post-handlers on
+`SFXModule_AimAssist.ViewAdhesion` and `ViewFriction` (script calls them from script, so ProcessEvent never
+sees them; the same hook as hand aim's `GetAdjustedAimFor` and the recoil's `SetWeaponRecoil`) set the
+returned rotator to 0 and the factor to 0, so `ProcessRotation` passes the stick's `DeltaRot` through
+unchanged. Only for the local player's module (its `Outer` is the controller), and only when, decided at
+each call (`vr::view_level::DecideAssist`): on foot (game mode 0: not the Mako), a head-tracked view (not
+the flat game), the hand aiming (told the host), the host's head aim off, a pawn, and a camera mode where
+the hand aims and the stick only turns: `Explore`, `ExploreStorm`, `Combat`, `CombatStorm`, `TightAim`,
+`EnterCover`, `HipAimCover` (or an `Interpolate` toward one). The sniper scope (`SniperAim`), `Vehicle*`,
+photo and cinematic modes keep the game's. Cover is in (unlike the level camera's hold): the hand aims there
+too. Nothing in the game is written, so nothing needs restoring: once a condition ends, the VR session
+stops or the mod unloads (the hook goes), the game's values pass through again. Magnetism
+(`GetAdjustedAimFor`, aimed fire) was already replaced by the hand's aim (`hand_aim`), and the zoom snap is
+dropped by the level camera (section 4).
+
+### Logs
+
+- Startup: `view level: handlers on ...; aim assist from SFXModule_AimAssist.ViewFriction and ViewAdhesion`
+  (or `aim assist: ... not found: the game's friction and adhesion stay`); the setting, whenever the ini is
+  read: `hands: aim assist's friction and adhesion off on foot while the hand aims ([Hands] aimAssist = 0)`.
+- `aim assist: friction and adhesion removed (the hand aims; ...) (camera mode ...)` and `aim assist: the
+  game's friction and adhesion (<why>)` on each change (at most every 2 s; the heartbeat counts them).
+- `aim assist: first friction seen (...): N% of the stick's turn taken away (the look stick turning);
+  removed`, `aim assist: first adhesion seen (...): it would have turned the view pitch ..., yaw ...`.
+- The heartbeat, under `view level:`: `aim assist: <state> (K state changes); last 60 s: friction would
+  have taken M% of the stick's turn on average (X% at most) in T ticks with a target in the soft margin, S
+  of them while the look stick turned; removed in R; adhesion would have turned the view in A ticks (yaw
+  ... deg, pitch ... deg in all); removed in B; F ViewFriction and G ViewAdhesion calls in all`.
+- Snapshots: `"viewLevel": {..., "aimAssist": {"keep", "why", "frictionCalls", "adhesionCalls",
+  "lastMinute": {...}}}`.

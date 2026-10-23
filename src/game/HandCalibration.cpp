@@ -37,6 +37,7 @@ struct Values {
     double armLength = 0.0;  // [Arms] armLengthM
     bool levelCamera = true;     // [Hands] levelCamera
     double recoilHaptic = 0.5;   // [Hands] recoilHaptic
+    bool aimAssist = false;      // [Hands] aimAssist
     // [Controls]
     bool leftTrigger = false;
     bool leftTriggerLB = true;
@@ -107,6 +108,10 @@ constexpr char const* kDefaultFile =
     "; no longer tilt the world; research/24). recoilHaptic: how strongly a shot's recoil buzzes the hand, 0..1.\n"
     "levelCamera = 1\n"
     "recoilHaptic = 0.5\n"
+    "; aimAssist: 0 turns the game's aim assist friction and adhesion off on foot while the hand aims (the\n"
+    "; stick's turn is never slowed or bent toward enemies; research/24); 1 keeps them. The Mako and the\n"
+    "; sniper scope keep theirs either way.\n"
+    "aimAssist = 0\n"
     "\n"
     "[Arms]\n"
     "; Arm-length calibration (the VR hands tab samples a T pose; the mod writes armLengthM, the\n"
@@ -404,6 +409,9 @@ Values ReadValues(Ini const& ini) {
     }
     if (Number(ini, "Hands", "recoilHaptic", values.recoilHaptic)) {
         values.recoilHaptic = std::clamp(values.recoilHaptic, 0.0, 1.0);
+    }
+    if (Number(ini, "Hands", "aimAssist", flag)) {
+        values.aimAssist = flag != 0.0;
     }
     if (Number(ini, "Arms", "armLengthM", values.armLength) && !(values.armLength >= 0.3 && values.armLength <= 1.2)) {
         values.armLength = 0.0;
@@ -1037,6 +1045,10 @@ double RecoilHaptic() {
     return gValues.recoilHaptic;
 }
 
+bool AimAssist() {
+    return gValues.aimAssist;
+}
+
 Controls GetControls() {
     Controls controls;
     controls.leftTrigger = gValues.leftTrigger;
@@ -1247,6 +1259,7 @@ void Refresh() {
         {L"Hands", "Hands", L"crouchBelow", "crouchBelow", L"0.75"},
         {L"Hands", "Hands", L"standAbove", "standAbove", L"0.85"},
         {L"Hands", "Hands", L"crouchDwellS", "crouchDwellS", L"0.2"},
+        {L"Hands", "Hands", L"aimAssist", "aimAssist", L"0"},
     };
     std::string addedKeys;
     for (auto const& k : kNewKeys) {
@@ -1315,6 +1328,8 @@ void Refresh() {
         log::Info("controls: a left grip away from the gun is {}", values.gripLB ? "LB (weapon wheel)" : "nothing (it only takes the gun)");
         log::Info("hands: level camera {} (on foot while the hand aims: recoil and aim assist don't pitch the view), recoil haptic {:.2f}",
             values.levelCamera ? "on" : "off", values.recoilHaptic);
+        log::Info("hands: aim assist's friction and adhesion {} on foot while the hand aims ([Hands] aimAssist = {})",
+            values.aimAssist ? "kept" : "off", values.aimAssist ? 1 : 0);
     }
     // The menu's arm-length sample: each new measureRequest value is one T-pose sample. One
     // already there at startup with a result saved is old news.
