@@ -58,10 +58,19 @@ in the app space, laid out on the heading the player faced at step 1.
   else "Those three aims were N degrees apart: once more, please" and the step starts over.
 - **Targets**: centre, upper left, lower right on a board 5 m ahead (-1.5/+1.35 m: about 17 degrees
   across and 15 up or down). The orange one is current; taken ones fill.
-- **The panel's buttons** answer a controller's aim ray and its trigger (core/vr/MenuPointer):
-  Skip step, Start step again, Cancel; at the check: Save, Switch eye, Redo body / pistol / rifle
-  (a redo returns to the check). It sits ahead for the body steps and to the lower left (27 degrees
-  left, 23 down) for the aiming ones, clear of the targets.
+- **Controls**: B goes back a step (in an aiming step, the last target taken); both sticks held cancels
+  (instead of opening Halcyon's menu while it runs); the panel's buttons answer a controller's aim ray and
+  its trigger (core/vr/MenuPointer): SKIP and REDO THIS STEP; at the check SAVE, SWITCH EYE, REDO BODY /
+  PISTOL / RIFLE (a redo returns to the check). The panel sits ahead for the body steps and to the lower
+  left (27 degrees left, 23 down) for the aiming ones, clear of the targets.
+- **The look** (`plugin/CalibrationDraw`, on its own so the coming main menu can re-skin it) follows the
+  user's menu mockup: background #08101A, surfaces #0E1926 / #132235, text #E6F2FB / #9DB3C6, hairlines
+  rgba(140,200,240,0.18), cyan #7CCBF2 for done, orange #FF8F3F for now; chamfered corners with orange
+  strokes on two opposite corners; a CALIBRATION kicker and a step chip, a six-segment progress bar
+  (Height, Arms, Crouch, Pistol, Rifle, Check), the big uppercase instruction, one line of explanation,
+  three target chips, a large hold-still ring, the button hints. The mockup's fonts (Rajdhani, Titillium
+  Web; SIL OFL) are used when found in `ASI\fonts`; they aren't bundled (downloading them needs the user's
+  go-ahead), so Windows' Bahnschrift stands in.
 - **The check**: squeezing the right grip shows a red dot where the new pistol sight line (from the
   hand) meets the board; both grips, the rifle's. It should sit on what the player aims at.
 - **While it runs** (and Halcyon's menu is closed): the game sees a neutral pad; the host publishes the
@@ -166,7 +175,7 @@ older host reads `[Calibration] last`.
 
 - **Untested in a headset.** The step criteria's thresholds (stillness 2.5 cm / 4 degrees, the T pose,
   the crouch's 25 cm) are guesses; the logs (`calibration:`) say what each capture saw.
-- **The orb in the hand** is drawn small and pale once held (5 cm), so it isn't a front sight to line up
+- **The orb in the hand** is drawn small and cyan once held (5 cm), so it isn't a front sight to line up
   on; a player who still lines it up gets a sight line through it, which the check step shows.
 - **The sight line moves Shepard's hand** (gunShift moves the wrist): with a big difference between the
   player's line and the gun's sight height, the virtual hand sits up to 20 cm off the controller.

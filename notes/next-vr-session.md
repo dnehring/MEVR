@@ -761,6 +761,46 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       level: no PlayerTick seen ...` and it levels a frame late) and `zoom snaps dropped`. Snapshots
       have `"viewLevel"` in the mod's status.
 
+22. **Calibrate your aim, hands and body (new, 2026-10-22; HOST REDEPLOY: services v15).** A guided
+    minute in the headset: stand tall, arms out (a T), arms ahead, crouch, then grab an orb for a pistol
+    and aim it naturally at three targets, then two orbs for a rifle, shoulder and aim. Where you aim
+    becomes where the guns' sights sit for your eye, the barrel's angle in your hand (instead of the
+    controller's aim pose), the left hand's place on the rifle, "at the shoulder", and the crouch
+    height. [research/25](../research/25-calibration.md).
+    - **Start it:** stand somewhere safe and roomy, on foot. Open the menu (`\` or both sticks held),
+      VR hands tab, **Calibrate** (the menu closes). Or, the first time with these controllers, a panel
+      asks "CALIBRATE THESE CONTROLLERS?" after about 8 s on foot: point at CALIBRATE NOW and pull the
+      trigger (NOT NOW won't ask again for them).
+    - **Do it:** follow the panel. Nothing needs a button: hold each pose still until the ring fills (a
+      tap in the hands says it's taken). For the aims, look at the lit target and aim the orb the way you
+      naturally aim a pistol (then a rifle at your shoulder). If three aims disagree by more than 3
+      degrees it asks again. **B** goes back a step (or the last target); **both sticks held** cancels.
+      The buttons answer a controller pointed at them and the trigger (SKIP, REDO THIS STEP).
+    - **Check, then save:** squeeze the right grip and aim at a target: a red dot shows where the new
+      pistol sight line meets the board; both grips: the rifle's. It should sit on what you aim at. Try
+      SWITCH EYE if it sits beside it (the panel says which eye it measured). Then SAVE (or REDO BODY /
+      PISTOL / RIFLE). Take an End snapshot (or tap both stick clicks) during the check, with the dot on a
+      target: the snapshot has the board, the dot, the panel and the numbers.
+    - **Then play:** draw the pistol: its sight should sit in front of your eye when you aim naturally,
+      without the assist having to slide it (`[Sights] assist = 0` for an A/B). The rifle the same at the
+      shoulder; look through the sniper scope (the complaint was that it wasn't lined up). Grab the
+      rifle's foregrip with the left hand where you held the far orb: it should take every time (the log
+      says `at your calibrated foregrip place`). Crouch: Shepard crouches about halfway down to your
+      measured crouch. Then switch controllers (Quest, if you have it at hand): it asks again for them, and
+      switching back keeps the PSVR 2 one.
+    - **Settings:** the VR hands tab: Calibrate again, the aiming eye for the next calibration
+      (measured, left, right) and "Use the calibration" (`[Calibration] use = 0` = everything as before:
+      an A/B for the guns). The results are `[Calibration.<controllers>]` in your `LE1MEVR.ini`.
+    - **Logs (ours):** `calibration: controllers ... (section [Calibration.<key>]): not calibrated` (the
+      key: profile and headset); `calibration: started`, `calibration: step ...`, one line per capture
+      (`standing: ...`, `T pose: ...`, `arms forward: ...`, `crouched ...`, `pistol aim N taken`), the
+      solves (`calibration: pistol: right eye (measured), spread 1.20 deg, trim (...), sight line ... m from
+      the grip ...`), `saved to [Calibration....]`. The mod: `calibration: the player is calibrating: ...
+      stand down`, `calibration: [Calibration.<key>] (...): right eye; pistol trim ...`, and when a gun is
+      drawn `calibration: the held gun follows the calibrated pistol stance: its sight moves N cm up and M
+      cm left onto your sight line`. Snapshots: the host's `"calibration"` (step, samples, stances) and
+      the mod's status `"calibration"`.
+
 23. **The stick turns you at its own speed near enemies (new, 2026-10-22; the mod only, it
     hot-reloads).** ME1's controller aim assist used to slow the right stick's turn while an enemy was
     near the middle of the view (friction) and to turn the view after a target while either stick moved
