@@ -1,4 +1,4 @@
-# 22: Why the world tilted while shooting, and the level camera
+# 24: Why the world tilted while shooting, and the level camera
 
 Bug (user, 2026-10-22, PSVR 2 on SteamVR): over a play session the world tilted more and more in
 pitch, while SteamVR's own view stayed level. This note finds the cause and records the fix

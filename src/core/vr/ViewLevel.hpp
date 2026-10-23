@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string_view>
 
-// Keeping the game camera level while the hand aims (research/22). LE1's guns kick the player
+// Keeping the game camera level while the hand aims (research/24). LE1's guns kick the player
 // controller's rotation (ControlRotation) up with every shot (BioPlayerInput.UpdateViewRotation adds the
 // recoil, SFXInventoryManager's natives), and the assault rifles' kick never fades (RecoilFadeSpeed 0 in
 // BIOWeapon.ini): a flat-screen player pulls the stick down to compensate. In VR the stick's pitch is

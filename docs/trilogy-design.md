@@ -46,7 +46,7 @@ and the LExASIs survey ([research/09](../research/09-me3tweaks-code-survey.md)).
    compares.
 6. **Combat:** shots follow the muzzle axis. Aiming down sights never moves the camera. Recoil
    moves the gun, never the head. (LE1's own recoil turns the player controller and so the camera:
-   `game/view_level` holds it level and turns the kick into a hand pulse, research/22.)
+   `game/view_level` holds it level and turns the kick into a hand pulse, research/24.)
 7. **Hardware truth:** a desktop or offline test passing is never reported as working in the headset.
 
 ## First-person base per game

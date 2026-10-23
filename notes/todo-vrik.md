@@ -430,7 +430,7 @@ Halcyon's recenter (yaw-only, from the base space) can never undo a rolled or pi
 ## The world tilted while shooting: the level camera (user report 2026-10-22; built the same day, to test)
 
 PSVR 2 on SteamVR: the world pitched more and more over a session while SteamVR's view stayed level.
-- **Cause ([research/22](../research/22-view-level.md)):** LE1 adds each shot's recoil to the player
+- **Cause ([research/24](../research/24-view-level.md)):** LE1 adds each shot's recoil to the player
   controller's rotation (`BioPlayerInput.UpdateViewRotation` in `PlayerTick`: `UpdateKickback` minus
   `UpdateKickbackFade`, then `SetRotation`), and every assault rifle's pitch kick is permanent
   (`RecoilFadeSpeed=0` in `BIOWeapon.ini`): the flat game expects the stick to pull it down. Halcyon's

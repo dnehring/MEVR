@@ -86,7 +86,7 @@ constexpr char const* kDefaultFile =
     "; trackingScale: Unreal units per meter of hand and head motion; 0 = the view's own scale.\n"
     "trackingScale = 0\n"
     "; levelCamera: 1 keeps the game camera level on foot while the hand aims (the guns' recoil and aim assist\n"
-    "; no longer tilt the world; research/22). recoilHaptic: how strongly a shot's recoil buzzes the hand, 0..1.\n"
+    "; no longer tilt the world; research/24). recoilHaptic: how strongly a shot's recoil buzzes the hand, 0..1.\n"
     "levelCamera = 1\n"
     "recoilHaptic = 0.5\n"
     "\n"
@@ -1090,7 +1090,7 @@ void Refresh() {
         ini = ReadIni(path);
         stamp = fs::last_write_time(path, ec);
     }
-    // And [Hands]' level camera and recoil haptics (2026-10-22, research/22).
+    // And [Hands]' level camera and recoil haptics (2026-10-22, research/24).
     static constexpr NewKey kNewHandsKeys[] = {
         {L"levelCamera", "levelCamera", L"1"},
         {L"recoilHaptic", "recoilHaptic", L"0.5"},

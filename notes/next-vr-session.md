@@ -618,7 +618,7 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
 17. **The world stays level while you shoot (new, 2026-10-22; the mod only, it hot-reloads).** The
     tilt you saw was the guns' recoil: LE1 kicks the game camera up with every shot and the rifles'
     kick never comes back (a flat-screen player pulls the stick down); by the end of that session the
-    camera looked about 30 degrees up. [research/22](../research/22-view-level.md). Now, on foot with
+    camera looked about 30 degrees up. [research/24](../research/24-view-level.md). Now, on foot with
     the hand aiming, the camera is held level; the recoil is a tap in your hand instead.
     - **Test:** recenter (R) looking straight ahead. Find a long straight edge (a walkway, a wall's
       base) and note where the horizon sits. **Fire a rifle for about a minute** (bursts, hip and

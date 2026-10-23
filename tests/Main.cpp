@@ -4165,7 +4165,7 @@ void TestScopeMapping() {
     CHECK(s::Project(left, fov, onLine, u, v) && NearD(u, 0.5 + 0.5 * 0.064 / 40.0, 1e-5) && NearD(v, 0.5, 1e-5));
 }
 
-// The level camera (core/vr/ViewLevel, research/22): rotator angles, the gate, the camera modes, the
+// The level camera (core/vr/ViewLevel, research/24): rotator angles, the gate, the camera modes, the
 // last-minute window, the change log and the recoil pulse.
 void TestViewLevel() {
     namespace vl = mevr::vr::view_level;

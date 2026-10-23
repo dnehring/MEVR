@@ -2,7 +2,7 @@
 
 #include <string>
 
-// The game camera kept level while the hand aims (research/22; the rules: core/vr/ViewLevel.hpp).
+// The game camera kept level while the hand aims (research/24; the rules: core/vr/ViewLevel.hpp).
 //
 // Why: LE1 adds each shot's recoil to the player controller's rotation (BioPlayerInput.UpdateViewRotation,
 // inside PlayerController.PlayerTick: SFXInventoryManager.UpdateKickback / UpdateKickbackFade), and the

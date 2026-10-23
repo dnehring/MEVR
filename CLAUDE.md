@@ -120,7 +120,7 @@ switching frameworks.
   `BioGrenade.LaunchGrenadeAtPoint`), a slow one puts it back; a fast stroke with an enemy in reach
   is `TryMelee`. Claimed squeezes run before holsters and the squad menu. B/X stay unless
   `meleeButton`/`grenadeButton = 0` (host v14).
-- LE1 level camera (`game/view_level`, `core/vr/ViewLevel`, [research/22](research/22-view-level.md)):
+- LE1 level camera (`game/view_level`, `core/vr/ViewLevel`, [research/24](research/24-view-level.md)):
   each shot's recoil goes into the player controller's rotation (ControlRotation) and the rifles' pitch
   kick never fades (`RecoilFadeSpeed=0`); with the stick's pitch off (`decoupledPitch`) the world tilted
   (+30 degrees after 204 shots). A `PlayerTick` post-handler (before the camera update) holds its pitch and

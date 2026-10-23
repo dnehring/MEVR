@@ -507,7 +507,7 @@ mevr::game::throwables::Link ThrowablesLink() {
     return link;
 }
 
-// The level camera (game/view_level, research/22): what it needs from the host this tick.
+// The level camera (game/view_level, research/24): what it needs from the host this tick.
 mevr::game::view_level::Link ViewLevelLink() {
     using namespace mevr;
     game::view_level::Link link;

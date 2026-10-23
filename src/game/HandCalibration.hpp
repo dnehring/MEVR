@@ -20,7 +20,7 @@
 //           armStretch                    1-1.25: how far the arms may stretch to reach
 //           trackingScale                 Unreal units per meter for hands and head; 0: the view's
 //           levelCamera                   1 (default): the game camera kept level on foot while the hand
-//                                         aims (game/view_level, research/22); 0: the game's pitch
+//                                         aims (game/view_level, research/24); 0: the game's pitch
 //           recoilHaptic                  0..1 (default 0.5): a shot's recoil as a controller pulse; 0: none
 //   [Arms]  armLengthM                    the player's shoulder-to-grip length (meters); 0 or absent:
 //                                         reach isn't scaled. Written by MeasureArmLength.
