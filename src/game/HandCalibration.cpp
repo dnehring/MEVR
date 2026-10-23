@@ -289,8 +289,8 @@ constexpr char const* kSightsBlock =
     "; the sight's window, and stays on the target wherever that eye is behind it.\n"
     "enabled = 1\n"
     "pistol = dot\n"
-    "shotgun = holo\n"
-    "assaultRifle = holo\n"
+    "shotgun = dot\n"
+    "assaultRifle = dot\n"
     "sniperRifle = scope 4\n"
     "; Where the sight sits on each gun: auto, or back, height: units behind the muzzle along the barrel, units above\n"
     "; the bore (the log's `sights:` lines say what auto chose).\n"
@@ -300,13 +300,17 @@ constexpr char const* kSightsBlock =
     "sniperRiflePlace = auto\n"
     "; dotColor: hex RRGGBB, or red, green, amber, cyan, white. dotSizeDeg, ringSizeDeg: how big the dot and the holo\n"
     "; ring look (degrees). windowUnits: the sight window's radius (gun units). frame: 1 = a faint ring marks it.\n"
+    "; eyeBox: your eye sees the dot while its line along the sight passes this close to the window's centre (gun units).\n"
     "dotColor = ff3020\n"
     "dotSizeDeg = 0.25\n"
     "ringSizeDeg = 1.6\n"
     "windowUnits = 3\n"
+    "eyeBox = 6\n"
     "frame = 1\n"
-    "; zeroM: where the sight line crosses the shot (game meters); 0 = parallel to the barrel (zeroed at infinity).\n"
+    "; zeroM: where the sight line crosses the barrel's line (game meters); 0 = parallel to the barrel. converge: 1 = each\n"
+    "; shot leaves the muzzle toward whatever the sight line hits, so it lands on the dot at any distance.\n"
     "zeroM = 0\n"
+    "converge = 1\n"
     "; Scopes. lensUnits: the eyepiece's radius (gun units). reticle: duplex, mildot or dot; reticleColor: its lit\n"
     "; centre. source: other = magnify the other eye's picture (the gun's own scope model doesn't block it), same =\n"
     "; the aiming eye's. focusM: where both eyes' pictures agree (game meters). eyeReliefM: how close (meters) your eye\n"
@@ -907,6 +911,10 @@ vr::sights::Settings ReadSights(Ini const& ini) {
     number("dotSizeDeg", out.dotSizeDeg, 0.05f, 3.0f);
     number("ringSizeDeg", out.ringSizeDeg, 0.3f, 6.0f);
     number("windowUnits", out.windowUnits, 0.5f, 20.0f);
+    number("eyeBox", out.eyeBoxUnits, 0.5f, 30.0f);
+    if (Number(ini, "Sights", "converge", value)) {
+        out.converge = value != 0.0;
+    }
     number("zeroM", out.zeroM, 0.0f, 500.0f);
     number("lensUnits", out.lensUnits, 0.5f, 10.0f);
     number("focusM", out.focusM, 2.0f, 1000.0f);
@@ -965,11 +973,13 @@ std::string Describe(vr::sights::Settings const& s) {
             : g.autoPlace         ? std::string(" (placed auto)")
                                   : std::format(" ({:.1f} back, {:.1f} up)", g.back, g.height));
     }
-    return std::format("on: {}; dot #{:06X} {:.2f} deg, ring {:.2f} deg, window {:.1f} units{}, zero {}; scope lens {:.1f} units, "
+    return std::format("on: {}; dot #{:06X} {:.2f} deg, ring {:.2f} deg, window {:.1f} units{}, eye box {:.1f} units, zero {}, shots {}; "
+                       "scope lens {:.1f} units, "
                        "{} reticle #{:06X}, {} eye's picture, focus {:.0f} m, eye relief {:.2f} m, {} px; ring reticle {}, scoped "
                        "aimed fire {}; alignment assist {}",
-        guns, s.dotColor, s.dotSizeDeg, s.ringSizeDeg, s.windowUnits, s.frame ? " (framed)" : "",
-        s.zeroM > 0.0f ? std::format("{:.0f} m", s.zeroM) : std::string("parallel"), s.lensUnits, sv::Name(s.scopeReticle),
+        guns, s.dotColor, s.dotSizeDeg, s.ringSizeDeg, s.windowUnits, s.frame ? " (framed)" : "", std::max(s.eyeBoxUnits, s.windowUnits),
+        s.zeroM > 0.0f ? std::format("{:.0f} m", s.zeroM) : std::string("parallel"),
+        s.converge ? "converge on what the sight line hits" : "parallel to the sight line", s.lensUnits, sv::Name(s.scopeReticle),
         s.scopeColor, s.otherEye ? "the other" : "the same", s.focusM, s.eyeReliefM, s.resolution,
         s.replaceRing ? "hidden while sighting" : "kept", s.aimedFire ? "on" : "off",
         s.assist.enabled ? std::format("on (the aiming eye within {:.0f} degrees of the sight line, {:.0f}% of the way, at most {:.2f} m, "
@@ -1260,6 +1270,23 @@ void Refresh() {
         ini = ReadIni(path);
         stamp = fs::last_write_time(path, ec);
     }
+    // [Sights] since 2026-10-23 (research/21 sections 9-10): a file without eyeBox predates the red-dot defaults for the
+    // shotgun and the assault rifle; their old default (holo) becomes the new one (dot), anything else is kept.
+    if (auto const s = ini.find("Sights"); s != ini.end() && s->second.find("eyebox") == s->second.end() &&
+        s->second.find("eyeBox") == s->second.end()) {
+        std::string moved;
+        for (auto const& [wkey, key] : {std::pair{L"shotgun", "shotgun"}, std::pair{L"assaultRifle", "assaultRifle"}}) {
+            auto const k = s->second.find(key);
+            std::string value = k != s->second.end() ? k->second : std::string();
+            std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (value == "holo" && WritePrivateProfileStringW(L"Sights", wkey, L"dot", path.wstring().c_str()) != 0) {
+                moved += std::format("{}{}", moved.empty() ? "" : " and ", key);
+            }
+        }
+        if (!moved.empty()) {
+            log::Info("hands: [Sights] {} holo (the old default) -> dot (the new one) in {}", moved, path.string());
+        }
+    }
     // [Hands] reachNearFaceM, the [Sights] alignment assist, [Hands]' physical cover and crouch
     // (research/23) and levelCamera / recoilHaptic (research/24) (2026-10-22), appended with their defaults.
     static constexpr struct {
@@ -1277,6 +1304,8 @@ void Refresh() {
         {L"Sights", "Sights", L"assistStrength", "assistStrength", L"1"},
         {L"Sights", "Sights", L"assistMaxM", "assistMaxM", L"0.10"},
         {L"Sights", "Sights", L"assistRangeM", "assistRangeM", L"0.65"},
+        {L"Sights", "Sights", L"eyeBox", "eyeBox", L"6"},
+        {L"Sights", "Sights", L"converge", "converge", L"1"},
         {L"Hands", "Hands", L"noCover", "noCover", L"1"},
         {L"Hands", "Hands", L"physicalCrouch", "physicalCrouch", L"1"},
         {L"Hands", "Hands", L"crouchBelow", "crouchBelow", L"0.75"},

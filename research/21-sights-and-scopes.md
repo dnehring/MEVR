@@ -195,7 +195,8 @@ dot, holo, or scope with a magnification 1-12); `<type>Place = auto` or `back, h
 `dotColor`, `dotSizeDeg`, `ringSizeDeg`, `windowUnits`, `frame`, `zeroM`; `lensUnits`, `reticle`,
 `reticleColor`, `source`, `focusM`, `eyeReliefM`, `resolution`; `replaceRing`, `aimedFire`; since the
 evening of 2026-10-22 the alignment assist (section 8): `assist`, `assistConeDeg`, `assistStrength`,
-`assistMaxM`, `assistRangeM`.
+`assistMaxM`, `assistRangeM`; since 2026-10-23 (sections 9-11) `eyeBox` (6 units), `converge` (1),
+and the shotgun and the assault rifle default to `dot`.
 
 ## 7. Risks and what's left
 
@@ -282,3 +283,121 @@ holstered and with Halcyon's menu open, so they show no sight):
   images (a bullseye at 40 m, the scope tube in front of the aiming eye) and the reticles; the pictures
   showed the bullseye centred and 4x magnified from the other eye, black from the aiming eye's own,
   the crescent off-axis with the reticle still on the bullseye, and the shrunken picture far back.
+
+## 9. The sights sit beside the game's picture: Halcyon's stereo isn't metric (headset session 2026-10-22, 22:2x-00:19)
+
+**Report (user, PS VR 2 on SteamVR, after the guided calibration):** the sniper's scope window and the model's own
+scope lens (its blue glow) were in different places, and so for the rifle; the sniper's shots landed reliably to the
+right of the crosshairs, the pistol's similarly; the assault rifle showed no sight.
+
+**What the snapshot shows.** `snapshots\2026-10-22_23-51-45-233` has no gun drawn, but it has distant scenery in both
+eyes (Eden Prime's far tower and sky). The eye images are crops of a symmetric +-61.5 degree render (2824 px wide; the
+left eye's rect is x 0-2138 for -61.5..43.4 degrees, the right's x 686-2824 for -43.4..61.5). For anything far away
+the true geometry puts it 685.6 px further right in the left image than in the right (the two crops' offset).
+Matched by normalized cross-correlation of 120 px patches at four places: **652, 649, 652, 651 px**. Each image's
+content is moved 16.9 px outward: **1.26 degrees per eye**, the left image left, the right image right.
+
+**Why (read in `src/halcyon/le1`).**
+- Stereo 2 renders each eye from the eye midpoint +- `sfr2HalfEyeUU` (3.4 UE units) along the camera's right
+  (`render_hook.cpp` `ApplyReplayProofOffsetSEH`; swap-eyes flips the sign and the routing together, so each eye
+  gets its own side). At the view's 100 units per meter that's 3.4 cm, against the headset's 3.1 (the snapshot's
+  eyes are 6.21 cm apart). Upstream calls it a world-scale knob ("render disparity moves, tags stay put").
+- At submit each finished image is shifted by half the convergence (`sfr2Convergence` 0.012) in UV:
+  `CopyStereoPassCaptureToEyes` passes `-conv/2` to pass 0 and `+conv/2` to pass 1, and the blit samples
+  `u + sourceX`, so pass 0's content moves right by 0.006 of the image. With `sfr2SwapEyes = 1` (the default),
+  pass 0 is the right eye: the right image moves right, the left image left, so far things need the eyes to
+  diverge (Halcyon's comment: with swap on "the convergence plane INVERTS"). 0.006 x 2824 = 16.9 px; in angle
+  0.006 x 2 tan(61.5) = 0.0221 tangent units, 1.27 degrees at the centre. Measured above.
+- The layer declares the runtime's true eye poses (`[EYETAG]`), so the runtime shows each image as the true eye's
+  view. Our quads (the dot, the scope disc, the window ring, the hand ring) are composited at their true, metric
+  place for those same true eyes.
+
+**What that does to a quad seen by one eye** (the right eye, which aims):
+
+| distance | image vs truth (right eye) | at that distance |
+|---|---|---|
+| 0.1 m (eyepiece) | -0.45 degrees (the 3 mm wider render wins) | 0.8 mm |
+| 0.2 m | +0.41 degrees | 1.4 mm |
+| 0.3 m (the sight) | +0.70 degrees | 3.6 mm |
+| 0.5 m | +0.93 degrees | 8 mm |
+| far (the target) | +1.27 degrees | 22 cm at 10 m, 44 cm at 20 m |
+
+- **The shots:** the dot is collimated along the true barrel; the target under it in the right eye's image is truly
+  1.27 degrees to its left. Put the dot on the target and the bullet (along the true barrel) lands 1.27 degrees to
+  the target's **right**: the report, for the pistol's dot and for anything aimed with the right eye (the floating
+  ring reticle, seen by both eyes, reads the same to a right-dominant eye).
+- **The scope:** its picture magnifies the left eye's image (`source = other`), projected with the left eye's true
+  pose: that image's content is 1.27 degrees left, so the reticle showed a point 1.27 degrees right of the true
+  line. By itself that would put scoped shots left of the reticle; the report's "right" fits the ring reticle or a
+  right-eye read, or a scope picture that wasn't up for those shots (that session's log is gone). Either way the
+  picture was 5 degrees off at 4x. **[verify]** next session.
+- **Depth:** binocularly the game's picture sits further away than our quads (at 0.4 m: 0.49 m; far things beyond
+  infinity, the eyes diverging 2.5 degrees). A quad at the model's true place reads nearer than the model: the
+  calibration orb "closer than it is", and "the blue orb for the model and then the window for the sniper sight".
+- **Hypothesis "shots and sight use different frames": refuted.** Since calibration both follow the drawn gun:
+  the barrel is grip x trim, the shots go along `weapon::Current()`'s barrel from its muzzle (log 00:17:12 `the
+  shot started at the muzzle (0.00 units off) and went along the barrel`), and the sight is placed on that same
+  muzzle and barrel (`hand_aim::AimRay`). The pistol stance's frame is 9.4 degrees right of and 6.4 below the
+  runtime's aim pose (the snapshot's controllers against `pistolTrim`), but nothing uses the aim pose with a gun
+  drawn.
+- **The "273 units from the muzzle" warnings** (00:17:13; `1216 units` at 00:14:22) weren't our shots: the
+  GetAdjustedAim handler counted every weapon's aim query after ours, and Ashley's and Kaidan's shots start where
+  they stand. Ours: 14 of 14 from the muzzle.
+
+**The fix is in the picture, not in our quads (decision 2026-10-23).** A per-eye workaround was built and taken out
+again the same day: drawing each one-eye quad where that eye's image shows the point (and sampling the scope's source
+image the way it was drawn) works only for one-eye quads and has to track every Stereo 2 knob. Instead a separate job
+gives Halcyon a metric stereo mode (the runtime's eye poses, its asymmetric FOVs, no convergence shift), so the game's
+picture matches our metric quads; the sights stay metric and on the model's real place (section 11). Until that mode
+is on, expect the dot, the scope and the ring reticle about 1.27 degrees left of what the bullets hit for a right
+aiming eye. A partial stopgap is the user's to try (Halcyon's settings): Advanced > Stereo > Eye distance 3.1 and
+Convergence 0 removes the shift; the symmetric render window stays.
+
+## 10. Shots that land on the dot (built 2026-10-23)
+
+- A real sight is zeroed: its line and the bore cross at some range. Ours was parallel (`zeroM = 0`): the bullet
+  lands the sight's height (4-7 units) under the dot at every distance. VR shooters converge instead: trace the
+  world along the sight line, and fire from the muzzle at what it hits.
+- **Where ME1 starts its traces:** the pawn's `GetWeaponStartTraceLocation` (our handler moves it to the muzzle;
+  research/14) along `GetAdjustedAim` (our `GetAdjustedAimFor` answer, plus the weapon's random aim error), traced
+  by `0xC589F0` to `GetTraceRange()`. So the shot's start is the muzzle and its direction is ours.
+- **Built:** each tick, with a sight on the held gun and `[Sights] converge = 1`, `game/sights` traces
+  `Actor.Trace` (through ProcessEvent on the pawn, which it ignores; bisection if the hit point doesn't come back,
+  as game/throwables does) from the sight's centre along its line, 300 m. At the shot, hand aim rebuilds the sight
+  line from the live muzzle (the place on the gun, the tick's top) and aims from the muzzle at the point that
+  distance along it (`vr::sights::ConvergedShot`, unit-tested; parallel when that point isn't 20 units past the
+  muzzle). Menu: HUD & sights > "Shots land on the dot".
+- **Logs:** `hand aim: shot N: from the muzzle (0.00 units from the game's start) toward what the sight line hit,
+  D m past the sight (actor): A degrees off the sight line, B off the barrel` (the first three, then every 2 s); the
+  heartbeat's `N of them toward what the sight line hit, A degrees off the sight line on average`; `sights: the
+  sight line's trace (Actor.Trace through ProcessEvent): the hit point came back`. Snapshot: the mod's
+  `"handAim"."shots"."lastShot"` and `"sights"."converge"`.
+- **Risks:** the trace may stop on something the bullet's own trace doesn't (an invisible blocking volume): the shot
+  then bends for a wrong distance, at most the sight's height over that distance. A target edge is seen a tick late.
+
+## 11. The sight on the model; a red dot that shows (built 2026-10-23)
+
+- **No sight sockets:** the assault rifle's mesh has `Flash_1`, `Flash_2`, `Tracer`, `Cooldown`, `Sabotage`, all on
+  `Root` (log 00:14:11). The other guns' lists come with the next session.
+- **Built:** once per held weapon, `weapon::ModelInGunFrame` reads the mesh's bounds (`USkeletalMesh.Bounds`
+  +0x60, the reference pose) and its bones and sockets in the gun's own frame (back from the muzzle, up toward the
+  sight's top, right), logged as `sights: the <gun> model against its bore (gun units): bounds a..b units behind
+  the muzzle, c..d above the bore ...; Root (...); socket Flash_1 (...)`. A bone or socket named for a sight
+  (scope, sight, optic, lens, eyepiece, reticle) is where auto puts it; otherwise auto keeps the length share for
+  `back` and takes the height from the model's top (`vr::sights::HeightOnModel`): a scope's eyepiece a lens radius
+  under it, a dot's window one unit over it. `<type>Place` still overrides. **[verify]** with a snapshot per gun:
+  the eyepiece on the model's scope, the window ring just over the gun.
+- **The assault rifle showed nothing:** its holo needed the eye's line within the 3-unit window (`no eye through
+  it` all session; the one hit at 00:17:21 was 2.9 cm off). Now the eye counts as looking through within `[Sights]
+  eyeBox` (6 units) of the window's centre, one eye (the nearer, with hysteresis: `vr::sights::AimingEye`), and the
+  dot stays collimated. The shotgun and the assault rifle default to `dot`; a settings file from before keeps any
+  choice but the old default `holo`, which becomes `dot` once (log `hands: [Sights] shotgun and assaultRifle holo
+  (the old default) -> dot`).
+
+## 12. A calibration without the rifle step
+
+The user's file has only the pistol stance (the rifle step kept cycling). Long guns then used the runtime's aim pose,
+9 degrees from where this controller's grip points for the player. Now (`body_calibration::StanceFor`) they take the
+pistol's grip frame but not its sight line (`StanceBorrowed`: arm IK doesn't move the gun onto a pistol's line); the
+two-handed grip and the shoulder zone still need the rifle step. A stance whose aims disagreed by more than 10 degrees
+isn't used (logged).

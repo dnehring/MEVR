@@ -219,7 +219,13 @@ switching frameworks.
   Alignment assist (research/21 section 8): raised to the face, the gun slides so the sight line runs
   through the aiming eye (`vr::sights::AssistTarget`/`AssistSpring`, `[Sights] assist*`, arm IK's
   `Request::gunShift`, measured without its own shift); hands within `[Hands] reachNearFaceM` of the eyes
-  aren't reach-scaled by the arm-length calibration.
+  aren't reach-scaled by the arm-length calibration. The dot shows to one eye, the nearest within `[Sights] eyeBox`
+  of the window. Shots converge on what the sight line hits (`Actor.Trace` each tick, `[Sights] converge`, log
+  `hand aim: shot N:`). The sight sits on the model: a bone or socket named for a sight, else the height from the
+  weapon mesh's bounds (`weapon::ModelInGunFrame`). Long guns without a rifle calibration borrow the pistol's grip
+  frame. **Our quads are metric; Halcyon's Stereo 2 isn't** (research/21 section 9: eyes rendered `sfr2HalfEyeUU`
+  from the midpoint, each image moved 1.27 degrees outward at submit by `sfr2Convergence` with swap-eyes): the fix is
+  a metric stereo mode in Halcyon (a separate job), not per-eye corrections of our quads.
 - LE1 squad weapons ([docs/squad-weapons-design.md](docs/squad-weapons-design.md), research/19
   sections 9-11): **pull the left trigger** (`[Controls] leftTrigger = lb`): the wheel opens at the left
   hand at once; pointing the left hand at a squadmate preselects them; letting go of the trigger gives

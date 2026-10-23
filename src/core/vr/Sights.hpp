@@ -62,14 +62,21 @@ struct Assist {
 
 struct Settings {
     bool enabled = true;
-    Gun guns[kWeaponTypes] = {{Kind::Dot}, {Kind::Holo}, {Kind::Holo}, {Kind::Scope, 4.0f}};
+    // Since 2026-10-23 the shotgun and the assault rifle default to a red dot (a holo's ring is busy on a gun
+    // held at the cheek; the user asked for "something like a red dot").
+    Gun guns[kWeaponTypes] = {{Kind::Dot}, {Kind::Dot}, {Kind::Dot}, {Kind::Scope, 4.0f}};
     // Dot and holo sights.
     std::uint32_t dotColor = 0xFF3020;  // 0xRRGGBB
     float dotSizeDeg = 0.25f;           // the dot's diameter as seen
     float ringSizeDeg = 1.6f;           // the holo ring's diameter as seen
-    float windowUnits = 3.0f;           // the window's radius (gun units): the eye must look through it
+    float windowUnits = 3.0f;           // the window's radius (gun units), as drawn (the ring)
+    float eyeBoxUnits = 6.0f;           // the eye counts as looking through when its line along the sight passes
+                                        // within this of the window's centre (gun units; at least windowUnits): a
+                                        // gun raised to the face shows its dot without hunting for a 3 cm window
     bool frame = true;                  // a faint ring at the window, so the sight can be found
     float zeroM = 0.0f;                 // where the sight line meets the shot (game meters); 0: parallel
+    bool converge = true;               // shots leave the muzzle toward the point the sight line hits (a world
+                                        // trace along it), so they land on the dot at any distance
     // Scopes.
     float lensUnits = 2.0f;             // the eyepiece's radius (gun units)
     ScopeReticle scopeReticle = ScopeReticle::Duplex;
@@ -89,6 +96,12 @@ struct Settings {
 // The sight's place on a gun of this type when it isn't set: `back` a share of the muzzle-to-grip length
 // (`gunLength`, gun units; <= 0 unknown: a typical length), `height` a typical height above the bore.
 Gun AutoPlace(int weapon, Gun const& gun, float gunLength);
+// The sight's height on the gun's own model (research/21 section 11), from `modelTop`: the model's highest point
+// above the bore line (gun units, from its mesh bounds, game/weapon). A scope's eyepiece centre sits a lens radius
+// (`radius`) below it, so the picture covers the top of the model's scope tube; a dot's or holo's window centre one
+// unit above it, just over the gun. Nullopt for an implausible top (not above 0.5 or above 30 units): keep the
+// typical height.
+std::optional<float> HeightOnModel(Kind kind, float modelTop, float radius);
 
 // "none", "dot", "holo", "scope" or "scope 4" (with a magnification, 1-12; `defaults` gives the zoom
 // when none is written). Nullopt: unreadable.
@@ -125,6 +138,7 @@ struct Sight {
     float focusM = 40.0f;      // tracking meters
     float eyeReliefM = 0.12f;  // tracking meters
     std::int32_t resolution = 768;
+    float eyeBox = 0.06f;      // tracking meters: an eye within this of the line looks through (dot, holo)
     std::uint64_t sequence = 0;  // set by Publish
     std::uint64_t timeMs = 0;    // GetTickCount64 at Publish
 };
@@ -254,5 +268,14 @@ XrVector3f FocusPoint(XrVector3f const& eye, XrVector3f const& direction, XrVect
 // Where `point` lands in an eye image rendered from `pose` with `fov`: u from the left edge (0) to the
 // right (1), v from the top (0) to the bottom (1). False if it's behind the eye.
 bool Project(XrPosef const& pose, XrFovf const& fov, XrVector3f const& point, float& u, float& v);
+
+// ---- Shots that land on the sight (research/21 section 10) -----------------------------------------------------
+// The shot from the muzzle toward the point the sight line reaches `distance` ahead of the sight: the sight's centre
+// at `sightFromMuzzle` (relative to the muzzle) and its line along `axis`, all in one unit (game units). Unit length;
+// `axis` itself when the distance isn't positive and finite, or when that point is less than `minAhead` in front of
+// the muzzle along the line (a wall at the sight: the shot would bend sharply, or backward).
+XrVector3f ConvergedShot(XrVector3f const& sightFromMuzzle, XrVector3f const& axis, float distance, float minAhead = 0.0f);
+// The angle between two directions (degrees; 180 if either is zero).
+float AngleDeg(XrVector3f const& a, XrVector3f const& b);
 
 } // namespace mevr::vr::sights

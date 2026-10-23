@@ -533,4 +533,34 @@ bool Project(XrPosef const& pose, XrFovf const& fov, XrVector3f const& point, fl
     return std::isfinite(u) && std::isfinite(v);
 }
 
+XrVector3f ConvergedShot(XrVector3f const& sightFromMuzzle, XrVector3f const& axis, float distance, float minAhead) {
+    XrVector3f const unitAxis = Unit(axis).value_or(XrVector3f{0.0f, 0.0f, -1.0f});
+    if (!(distance > 0.0f) || !std::isfinite(distance) || !Finite(sightFromMuzzle)) {
+        return unitAxis;
+    }
+    XrVector3f const target = Add(sightFromMuzzle, Scale(unitAxis, distance));
+    if (!(Dot(target, unitAxis) >= std::max(minAhead, 1e-3f))) {
+        return unitAxis;  // what the sight sees is level with the muzzle or behind it: no line to bend toward
+    }
+    return Unit(target).value_or(unitAxis);
+}
+
+float AngleDeg(XrVector3f const& a, XrVector3f const& b) {
+    float const lengths = Length(a) * Length(b);
+    if (!(lengths > 0.0f) || !std::isfinite(lengths)) {
+        return 180.0f;
+    }
+    // atan2 of |a x b| and a.b: accurate for the small angles the logs care about.
+    return std::atan2(Length(Cross(a, b)), Dot(a, b)) * 180.0f / 3.14159265358979f;
+}
+
+std::optional<float> HeightOnModel(Kind kind, float modelTop, float radius) {
+    if (!std::isfinite(modelTop) || !(modelTop > 0.5f) || modelTop > 30.0f || kind == Kind::None) {
+        return std::nullopt;
+    }
+    float const r = std::isfinite(radius) && radius > 0.0f ? radius : 0.0f;
+    float const height = kind == Kind::Scope ? modelTop - r : modelTop + 1.0f;
+    return std::max(height, 1.0f);
+}
+
 } // namespace mevr::vr::sights

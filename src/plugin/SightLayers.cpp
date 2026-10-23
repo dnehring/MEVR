@@ -436,7 +436,7 @@ void OnEyeReleased(XrSwapchain swapchain, ID3D11Texture2D* image) {
 }
 
 // ---- State ------------------------------------------------------------------------------------------------
-sv::Looking gLooking[2];
+int gDotEye = -1;          // the eye looking through a dot or holo sight
 int gAiming = -1;          // the eye aiming through a scope
 int gSource = -1;          // whose image it magnifies
 bool gScopeDrawn = false;  // this frame
@@ -450,8 +450,7 @@ bool gLoggedScope = false;
 bool gLoggedFrame = false;
 
 void Off() {
-    gLooking[0].Reset();
-    gLooking[1].Reset();
+    gDotEye = -1;
     gAiming = -1;
     gSource = -1;
     testloop::SetReleaseTap(XR_NULL_HANDLE, nullptr);
@@ -571,8 +570,8 @@ char const* EyeName(int eye) {
     return eye == 0 ? "left" : eye == 1 ? "right" : "none";
 }
 
-XrEyeVisibility Visibility(bool left, bool right) {
-    return left && right ? XR_EYE_VISIBILITY_BOTH : left ? XR_EYE_VISIBILITY_LEFT : XR_EYE_VISIBILITY_RIGHT;
+XrEyeVisibility VisibilityOf(int eye) {
+    return eye == 0 ? XR_EYE_VISIBILITY_LEFT : XR_EYE_VISIBILITY_RIGHT;
 }
 
 } // namespace
@@ -611,10 +610,12 @@ Output Layers(Frame const& frame) {
             gAiming = -1;
             gSource = -1;
             testloop::SetReleaseTap(XR_NULL_HANDLE, nullptr);
-            bool on[2];
-            for (int e = 0; e < 2; ++e) {
-                on[e] = gLooking[e].Update(gLines[e], sight.radius, kMinAlong, kMaxAlong);
-            }
+            // The eye looking through: the one whose line along the sight passes nearest the window's centre, within
+            // the eye box (more forgiving than the drawn window: a gun raised to the face shows its dot), kept with
+            // hysteresis. One eye only, like a real red dot seen with both eyes open (the other eye looks past it).
+            float const box = std::max(sight.eyeBox, sight.radius);
+            gDotEye = sv::AimingEye(gLines, box, kMinAlong, kMaxAlong, gDotEye);
+            bool const on[2] = {gDotEye == 0, gDotEye == 1};
             if ((sight.flags & sv::kFrame) != 0 && out.count < 2 && EnsureFrame(frame)) {
                 gFrameQuad = MakeQuad(frame.appSpace, gFrame, sv::Disc(sight.center, sight.axis, sight.up, sight.radius * kFrameScale),
                     XR_EYE_VISIBILITY_BOTH);
@@ -628,22 +629,22 @@ Output Layers(Frame const& frame) {
             DotLayout const layout = LayoutFor(sight);
             if ((on[0] || on[1]) && out.count < 2 && EnsureDot(frame, sight, layout)) {
                 sv::Quad const quad = sv::Reticle(sight.center, sight.axis, sight.up, kDotDistance, layout.quadDeg * kPi / 180.0f);
-                gDotQuad = MakeQuad(frame.appSpace, gDot, quad, Visibility(on[0], on[1]));
+                gDotQuad = MakeQuad(frame.appSpace, gDot, quad, VisibilityOf(gDotEye));
                 out.layers[out.count++] = &gDotQuad;
                 view |= (on[0] ? sv::kViewLeft : 0u) | (on[1] ? sv::kViewRight : 0u);
                 if (!gLoggedDot) {
                     gLoggedDot = true;
                     int const e = on[1] ? 1 : 0;
                     log::Info("[MEVR-SIGHT] first {} reticle: the {} eye looks through the window ({:.3f} m behind it, {:.4f} m off "
-                              "the line, window radius {:.4f} m); the reticle {:.0f} m out along the sight line, {:.2f} deg",
-                        sv::Name(kind), EyeName(e), gLines[e].along, gLines[e].lateral, sight.radius, kDotDistance, layout.quadDeg);
+                              "the line, window radius {:.4f} m, eye box {:.4f} m); the reticle {:.0f} m out along the sight line, "
+                              "{:.2f} deg",
+                        sv::Name(kind), EyeName(e), gLines[e].along, gLines[e].lateral, sight.radius, box, kDotDistance, layout.quadDeg);
                 }
             }
         } else if (kind == sv::Kind::Scope) {
-            gLooking[0].Reset();
-            gLooking[1].Reset();
-            auto const lens = sv::MakeLens(sight.center, sight.axis, sight.up, sight.radius);
+            gDotEye = -1;
             float const relief = std::max(sight.eyeReliefM, 0.01f);
+            auto const lens = sv::MakeLens(sight.center, sight.axis, sight.up, sight.radius);
             gAiming = lens ? sv::AimingEye(gLines, kScopeBox * sight.radius, 0.01f, 6.0f * relief, gAiming) : -1;
             std::optional<sv::ScopeView> scopeView;
             if (gAiming >= 0) {
@@ -702,11 +703,12 @@ std::string StatusJson() {
     };
     return std::format("{{\"kind\": \"{}\", \"weapon\": \"{}\", \"center\": [{:.4f}, {:.4f}, {:.4f}], \"axis\": [{:.4f}, {:.4f}, {:.4f}], "
                        "\"radius\": {:.4f}, \"zoom\": {:.2f}, \"eyes\": [{}, {}], \"looking\": [{}, {}], \"aimingEye\": \"{}\", "
-                       "\"sourceEye\": \"{}\", \"scopeDrawn\": {}, \"view\": {}, \"copies\": {}, \"copySize\": [{}, {}]}}",
+                       "\"sourceEye\": \"{}\", \"scopeDrawn\": {}, \"view\": {}, \"copies\": {}, \"copySize\": [{}, {}], "
+                       "\"eyeBox\": {:.4f}, \"dotEye\": \"{}\"}}",
         sv::Name(static_cast<sv::Kind>(gSight.kind)), sv::WeaponName(gSight.weapon), gSight.center.x, gSight.center.y, gSight.center.z,
         gSight.axis.x, gSight.axis.y, gSight.axis.z, gSight.radius, gSight.zoom, line(gLines[0]), line(gLines[1]),
-        gLooking[0].On() ? "true" : "false", gLooking[1].On() ? "true" : "false", EyeName(gAiming), EyeName(gSource),
-        gScopeDrawn ? "true" : "false", gView, gCopy.copies, gCopy.width, gCopy.height);
+        gDotEye == 0 ? "true" : "false", gDotEye == 1 ? "true" : "false", EyeName(gAiming), EyeName(gSource),
+        gScopeDrawn ? "true" : "false", gView, gCopy.copies, gCopy.width, gCopy.height, gSight.eyeBox, EyeName(gDotEye));
 }
 
 } // namespace mevr::host::sight_layers

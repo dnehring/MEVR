@@ -846,7 +846,9 @@ void Drive(double deltaSeconds) {
                         gunAimed = true;
                         heldGrip = grip;
                         heldUp = upInHand;
-                        if (calibrated && upInHand) {
+                        // A long gun on the pistol's stance (no rifle calibration) keeps its grip frame but not the
+                        // pistol's sight line: a pistol at arm's length says nothing about a rifle at the cheek.
+                        if (calibrated && upInHand && !body_calibration::StanceBorrowed(static_cast<int>(weapon::Type()))) {
                             stanceShift = StanceShift(*grip, *upInHand, arm.wrist, *rotation, tracked.grip, *stance, targets, *worldToComponent);
                         }
                     }

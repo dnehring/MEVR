@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 class UObject;
 
@@ -80,6 +81,26 @@ std::optional<float> AimError(UObject* weapon, float accuracy);
 // A socket of the weapon's mesh named for the off hand (logged once per weapon with all its
 // sockets), live, in the right hand bone's axes (component units). Nullopt if it has none.
 std::optional<ik::Vec3> OffHandSocketInHand();
+// The held gun's model against its bore (research/21 section 11): the corners of its mesh's bounds
+// (USkeletalMesh.Bounds, the reference pose in the mesh's space) and its bones and sockets, live, in the gun's
+// own frame: `back` behind the muzzle along the barrel, `up` above the bore toward `top` (world, the gun's
+// top as the sight uses it), `side` to the right. Nullopt without a held, verified weapon.
+struct ModelPoint {
+    std::string name;
+    double back = 0.0;
+    double up = 0.0;
+    double side = 0.0;
+};
+struct Model {
+    double backMin = 0.0;  // the bounds' extent along each axis
+    double backMax = 0.0;
+    double upMin = 0.0;
+    double upMax = 0.0;   // the model's top above the bore
+    double sideMin = 0.0;
+    double sideMax = 0.0;
+    std::vector<ModelPoint> points;  // bones, then sockets ("socket " before the name)
+};
+std::optional<Model> ModelInGunFrame(engine::UnrealVector const& top);
 // One line for status logs: which weapon and how far along it is.
 std::string const& Status();
 // Heartbeat.
