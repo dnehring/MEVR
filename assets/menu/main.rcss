@@ -304,7 +304,8 @@ button { display: inline-block; focus: auto; tab-index: auto; nav: auto; }
 }
 .slab { width: 150dp; flex: 0 0 auto; font-size: 19dp; font-weight: 600; }
 .sval { width: 90dp; flex: 0 0 auto; text-align: right; font-family: Rajdhani; font-weight: 600; font-size: 22dp; }
-input.range { display: block; flex: 1 1 0dp; width: 200dp; height: 32dp; }
+/* The pad: up and down move the focus on, left and right move the slider. */
+input.range { display: block; flex: 1 1 0dp; width: 200dp; height: 32dp; tab-index: auto; nav-up: auto; nav-down: auto; }
 input.range slidertrack {
 	margin-top: 14dp;
 	height: 4dp;

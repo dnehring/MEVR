@@ -29,6 +29,9 @@
 #include "plugin/Calibration.hpp"
 #include "plugin/Colour.hpp"
 #include "plugin/Halcyon.hpp"
+#if defined(MEVR_WITH_MAIN_MENU)
+#include "plugin/MainMenu.hpp"
+#endif
 #include "plugin/PerfProbe.hpp"
 #include "plugin/RecenterTilt.hpp"
 #include "plugin/SightLayers.hpp"
@@ -1201,6 +1204,9 @@ void OnRecentered() noexcept {
     RecenterWorldPanels();  // the world-locked flat panels too (plugin/WorldPanels.cpp)
     mevr::host::squad_panel::Recentered();  // and an open squad menu
     mevr::host::calibration::Recentered();  // and the guided calibration's layout
+#if defined(MEVR_WITH_MAIN_MENU)
+    mevr::host::main_menu::Recentered();  // and our open main menu
+#endif
     mevr::host::halcyon::NoteRecentered();  // the holsters take the standing eye height there
 }
 
@@ -1618,6 +1624,31 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
             layersOut[count++] = calibrationLayers[i];
         }
     }
+#if defined(MEVR_WITH_MAIN_MENU)
+    // ---- Our main menu (plugin/MainMenu): while it's open, its quad is the only one of ours (SteamVR may sort quads by
+    // distance, and nothing of the game's is for now). Closed, it returns at once ----
+    {
+        mevr::host::main_menu::Frame menu;
+        menu.session = session;
+        menu.appSpace = static_cast<XrSpace>(frame.appSpace);
+        menu.context = context;
+        menu.device = device.Get();
+        menu.worldFrame = frame.worldFrame;
+        menu.headValid = frame.headValid;
+        menu.head.orientation = head;
+        menu.head.position = ToVec(frame.headPosition);
+        menu.projectionValid = frame.projectionValid;
+        menu.projectionSwapchain = static_cast<XrSwapchain>(frame.projectionSwapchain[0]);
+        menu.projectionRect = {{frame.projectionRect[0][0], frame.projectionRect[0][1]}, {frame.projectionRect[0][2], frame.projectionRect[0][3]}};
+        menu.projectionPose.orientation = ToQuat(frame.projectionOrientation[0]);
+        menu.projectionPose.position = ToVec(frame.projectionPosition[0]);
+        menu.projectionFov = {frame.projectionFov[0][0], frame.projectionFov[0][1], frame.projectionFov[0][2], frame.projectionFov[0][3]};
+        if (XrCompositionLayerQuad const* layer = mevr::host::main_menu::Layer(menu); layer != nullptr && capacity > 0) {
+            count = 0;
+            layersOut[count++] = layer;
+        }
+    }
+#endif
     return count;
 }
 
