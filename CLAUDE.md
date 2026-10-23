@@ -335,6 +335,9 @@ Use it to check VR changes yourself instead of asking the user what they see
   hot-reloaded) runs each line through `PlayerController.ConsoleCommand` on the game thread and writes what it
   printed to `console.result` (log `console:`). Flat or in VR, wherever there is a local player: A/Bs without a restart.
 - `testloop.status` (JSON, once a second): recording, replay, last snapshot, `framesRunning`.
+- **Console commands:** `tools/console.ps1 "<command>" ...` runs them through the local PlayerController's
+  `ConsoleCommand` (`game/ConsoleRequest`, mod side) and prints the output. `tools/console.ps1 pause` freezes the
+  world but keeps rendering, which holds a scene still for snapshots and A/B captures.
 - Needs a running VR session (Halcyon only runs frames between READY and STOPPING). Not focused
   (headset off the face, VISIBLE) is fine: replay drives the view and controllers. SYNCHRONIZED or
   asleep: no eye images (`shouldRender` false) or no frames at all. See notes/next-vr-session.md.
