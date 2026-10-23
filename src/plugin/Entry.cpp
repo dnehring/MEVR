@@ -12,6 +12,7 @@
 #if defined(MEVR_WITH_HALCYON)
 #include "plugin/Halcyon.hpp"
 #include "plugin/PerfProbe.hpp"
+#include "plugin/RenderLevers.hpp"
 #endif
 
 #include <LESDK/Headers.hpp>
@@ -42,6 +43,7 @@ void GameEngineTickHook(UGameEngine* self, float deltaSeconds) {
 #if defined(MEVR_WITH_HALCYON)
     mevr::host::perf::EngineTickEnd();
     mevr::host::halcyon::Tick(deltaSeconds);
+    mevr::host::render_levers::Tick();
 #endif
     mevr::host::Tick(deltaSeconds);
 #if defined(MEVR_WITH_HALCYON)
@@ -129,6 +131,9 @@ SPI_IMPLEMENT_ATTACH
     }
 #endif
     HookExitProcess(init);
+#if defined(MEVR_WITH_HALCYON) && defined(SDK_TARGET_LE1)
+    mevr::host::render_levers::Install(init);  // research/22: the render thread's levers and accounting
+#endif
     mevr::log::Info("host attached");
     return true;
 }

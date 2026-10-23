@@ -372,6 +372,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/MetricStereo.hpp
     src/plugin/PerfProbe.cpp
     src/plugin/PerfProbe.hpp
+    src/plugin/RenderLevers.cpp
+    src/plugin/RenderLevers.hpp
     src/plugin/RecenterTilt.cpp
     src/plugin/RecenterTilt.hpp
     src/plugin/SightLayers.cpp

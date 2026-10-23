@@ -3,6 +3,7 @@
 // frame functions wrapped through MevrBridge::WrapSessionFunctions (plugin/TestLoop).
 
 #include "plugin/PerfProbe.hpp"
+#include "plugin/RenderLevers.hpp"
 
 #include "core/Log.hpp"
 #include "core/vr/FrameProbe.hpp"
@@ -565,7 +566,7 @@ void WriteCapture() {
         "  \"renderThreadBusySeconds\": {{\"fromCycles\": {}, \"fromThreadTimes\": {}}},\n"
         "  \"halcyon\": {{\"sfr2\": {}, \"dynResFraction\": {}, \"mirrorPresentEvery\": {}, \"stereoFramePacing\": {}, "
         "\"cineFpsCap\": {}, \"disableDof\": {}, \"hudPanel\": {}, \"handReticle\": {}, \"sfr2Metric\": {}, "
-        "\"sfr2MetricEyeFrustum\": {}}},\n"
+        "\"sfr2MetricEyeFrustum\": {}}},\n  \"renderLevers\": {},\n"
         "  \"resolution\": {{\"render\": [{}, {}], \"eye\": [{}, {}], \"recommendedEye\": [{}, {}]}}\n}}\n",
         req::JsonString(c.stamp), req::JsonString(c.tag), req::JsonString(c.trigger), J(c.seconds), J(seconds),
         c.frames.size(), c.ticks.size(), req::JsonString(Utf8(framesPath.filename())),
@@ -575,7 +576,7 @@ void WriteCapture() {
         J(c.threadSecondsEnd - c.threadSecondsBegin), h.sfr2Enabled ? "true" : "false", J(h.dynResFraction),
         h.mirrorPresentEvery, h.stereoFramePacing ? "true" : "false", h.cineFpsCap ? "true" : "false",
         h.disableDof ? "true" : "false", h.hudPanel ? "true" : "false", h.handReticle ? "true" : "false",
-        h.sfr2Metric ? "true" : "false", h.sfr2MetricEyeFrustum ? "true" : "false",
+        h.sfr2Metric ? "true" : "false", h.sfr2MetricEyeFrustum ? "true" : "false", render_levers::SettingsJson(),
         resolution.renderWidth, resolution.renderHeight, resolution.eyeWidth, resolution.eyeHeight,
         resolution.recommendedEyeWidth, resolution.recommendedEyeHeight);
     ok = ok && WriteText(jsonPath, json);  // last: the scripts wait for it
@@ -755,6 +756,7 @@ void PerfPresentBegin(ID3D11DeviceContext* context) noexcept {
 
 void PerfPresentEnd(ID3D11DeviceContext* context) noexcept {
     mevr::host::perf::Mark(mevr::vr::frame_probe::kEnd, context);
+    mevr::host::render_levers::OnPresentEnd();
 }
 
 void PerfPass0Captured(ID3D11DeviceContext* context) noexcept {
