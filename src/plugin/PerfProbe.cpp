@@ -714,6 +714,39 @@ namespace MELEVR::MevrBridge {
 
 std::uint32_t g_perfDraws = 0;
 
+bool EarlyFrameWait() noexcept {
+    static std::wstring path;
+    static std::uint64_t nextReadMs = 0;
+    static int value = -1;
+    std::uint64_t const now = GetTickCount64();
+    if (now >= nextReadMs) {
+        nextReadMs = now + 1000;
+        if (path.empty()) {  // ...\ASI\LE1MEVR.ini: the host ASI's name
+            HMODULE module = nullptr;
+            wchar_t buffer[MAX_PATH]{};
+            if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                    reinterpret_cast<LPCWSTR>(&EarlyFrameWait), &module) &&
+                GetModuleFileNameW(module, buffer, MAX_PATH) != 0) {
+                path = buffer;
+                std::size_t const dot = path.find_last_of(L'.');
+                if (dot != std::wstring::npos) {
+                    path.erase(dot);
+                }
+                path += L".ini";
+            }
+        }
+        int const read = path.empty() ? 1 : (GetPrivateProfileIntW(L"Performance", L"earlyFrameWait", 1, path.c_str()) != 0 ? 1 : 0);
+        if (read != value) {
+            value = read;
+            mevr::log::Info("frame loop: {} ([Performance] earlyFrameWait = {})",
+                value != 0 ? "xrWaitFrame for the next frame right after xrEndFrame, before the game renders it"
+                           : "xrWaitFrame at Present, after the game rendered the frame (upstream)",
+                value);
+        }
+    }
+    return value != 0;
+}
+
 void PerfPresentBegin(ID3D11DeviceContext* context) noexcept {
     mevr::host::perf::Mark(mevr::vr::frame_probe::kPresent, context);
 }
