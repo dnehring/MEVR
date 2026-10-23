@@ -208,7 +208,8 @@ inline constexpr float kBoardSize = 4.4f;       // the target board's quad, squa
 // about 17 and 15 degrees off.
 inline constexpr float kTargetX[kTargets] = {0.0f, -1.5f, 1.5f};
 inline constexpr float kTargetY[kTargets] = {0.0f, 1.35f, -1.35f};
-inline constexpr float kTargetRadius = 0.16f;   // the outer ring (meters)
+inline constexpr float kTargetRadius = 0.22f;   // the outer ring (meters): 5 degrees across at 5 m
+inline constexpr float kDotSize = 0.24f;        // the check dot's quad on the board (meters; its core is 0.8 degrees)
 // The board's centre and orientation (facing back toward the anchor).
 XrPosef BoardPose(Anchor const& anchor);
 XrVector3f TargetPosition(Anchor const& anchor, int index);

@@ -321,6 +321,23 @@ bool Input::Vibrate(Target const& target, int hand, float seconds, float amplitu
         "xrApplyHapticFeedback");
 }
 
+std::string Input::InteractionProfile(Target const& target, int hand) const {
+    if (!Matches(target) || hand < kLeft || hand > kRight) {
+        return {};
+    }
+    XrInteractionProfileState state{XR_TYPE_INTERACTION_PROFILE_STATE};
+    if (XR_FAILED(xrGetCurrentInteractionProfile(target.session, hands_[hand], &state)) ||
+        state.interactionProfile == XR_NULL_PATH) {
+        return {};
+    }
+    char text[XR_MAX_PATH_LENGTH]{};
+    std::uint32_t length = 0;
+    if (XR_FAILED(xrPathToString(target.instance, state.interactionProfile, XR_MAX_PATH_LENGTH, &length, text))) {
+        return {};
+    }
+    return text;
+}
+
 bool Input::StopVibration(Target const& target, int hand) {
     if (!Matches(target) || haptic_ == XR_NULL_HANDLE || hand < kLeft || hand > kRight) {
         return false;

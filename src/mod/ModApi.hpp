@@ -12,6 +12,9 @@ struct IDXGISwapChain;
 
 namespace mevr {
 
+namespace vr::calibration {
+struct HostState;
+}
 namespace vr::controllers {
 struct State;
 }
@@ -41,7 +44,7 @@ struct Panel;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 14;
+inline constexpr int kHostServicesVersion = 15;
 
 using ProcessEventCallback = void (*)(UObject* context, UFunction* function, void* parms, void* result);
 
@@ -176,6 +179,15 @@ struct HostServices {
     // Version 14: physical melee and grenades (game/throwables, research/20). No new fields:
     // setSupportGrip's flags also take gamepad::kFlagNoMeleeButton and kFlagNoGrenadeButton (B and X
     // kept from the game on foot); a v13 or older host ignores them, so the buttons stay.
+
+    // Version 15: the guided calibration (plugin/Calibration, game/body_calibration, research/25).
+    // The host's state (core/vr/Calibration.hpp, vr::calibration::HostState), each tick: kCalibrating while the
+    // sequence runs (the mod stands down: no holsters, grenades, melee, squad trigger, support grip or physical
+    // crouch; the host also publishes the controllers hidden then, so an older mod stands down too), the current
+    // controller type's [Calibration.<key>] section key, and a count of saves (re-read [Calibration] when it
+    // changes). The mod calls it only if calibrationStateSize matches its own sizeof(HostState).
+    std::uint32_t calibrationStateSize = 0;
+    void (*calibration)(vr::calibration::HostState* out) = nullptr;
 };
 
 } // namespace mevr

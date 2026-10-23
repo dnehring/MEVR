@@ -26,6 +26,7 @@
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/WheelCrop.hpp"
+#include "plugin/Calibration.hpp"
 #include "plugin/Halcyon.hpp"
 #include "plugin/PerfProbe.hpp"
 #include "plugin/RecenterTilt.hpp"
@@ -1173,6 +1174,7 @@ void OnRecentered() noexcept {
     gWheelRecentered.store(true, std::memory_order_release);  // an open wheel's panel is placed again
     RecenterWorldPanels();  // the world-locked flat panels too (plugin/WorldPanels.cpp)
     mevr::host::squad_panel::Recentered();  // and an open squad menu
+    mevr::host::calibration::Recentered();  // and the guided calibration's layout
     mevr::host::halcyon::NoteRecentered();  // the holsters take the standing eye height there
 }
 
@@ -1559,6 +1561,35 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
             gWheel.loggedThisOpening = true;
             mevr::log::Info("overlays: wheel panel submitted ({}x{}, {:.2f} x {:.2f} m)", gWheelSwapchain.width, gWheelSwapchain.height,
                 gWheelQuad.size.width, gWheelQuad.size.height);
+        }
+    }
+
+    // ---- The guided calibration (plugin/Calibration): while it runs, its quads are the only ones of ours (the
+    // first-run prompt goes on top of the rest) ----
+    {
+        mevr::host::calibration::Frame calibration;
+        calibration.session = session;
+        calibration.appSpace = static_cast<XrSpace>(frame.appSpace);
+        calibration.context = context;
+        calibration.device = device.Get();
+        calibration.worldFrame = frame.worldFrame;
+        calibration.menuOpen = frame.menuOpen;
+        calibration.gameMode = gLastGameMode;
+        calibration.headValid = frame.headValid;
+        calibration.head.orientation = head;
+        calibration.head.position = ToVec(frame.headPosition);
+        for (int e = 0; e < 2; ++e) {
+            calibration.eyes[e] = ToVec(frame.eyePosition[e]);
+        }
+        XrCompositionLayerQuad const* calibrationLayers[6] = {};
+        bool const running = mevr::host::calibration::Running();
+        unsigned const room = std::min<unsigned>(running ? capacity : capacity - count, 6u);
+        unsigned const added = mevr::host::calibration::Layers(calibration, calibrationLayers, room);
+        if (mevr::host::calibration::Active()) {
+            count = 0;
+        }
+        for (unsigned i = 0; i < added && count < capacity; ++i) {
+            layersOut[count++] = calibrationLayers[i];
         }
     }
     return count;
