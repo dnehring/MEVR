@@ -1116,7 +1116,25 @@ void LogDrawCensus(const char* kind, ID3D11DeviceContext* context) noexcept
 }
 
 
+bool IsOpenXrDisabledForBoundaryUncached() noexcept;
+
+// [MEVR] research/22: called twice per Present (TryPresentFlatMenu and PresentHook), and each call stats
+// a file on disk (the render-thread profile showed the file-system calls). Cached for a second, like
+// MarkerEnabled; XR on/off is decided at boot anyway.
 bool IsOpenXrDisabledForBoundary() noexcept
+{
+    static ULONGLONG s_checkedMs = 0;
+    static bool s_result = false;
+    const ULONGLONG nowMs = GetTickCount64();
+    if (s_checkedMs == 0 || nowMs - s_checkedMs >= 1000)
+    {
+        s_result = IsOpenXrDisabledForBoundaryUncached();
+        s_checkedMs = nowMs;
+    }
+    return s_result;
+}
+
+bool IsOpenXrDisabledForBoundaryUncached() noexcept
 {
     wchar_t value[16] = {};
     if (GetEnvironmentVariableW(L"MELEVR_DISABLE_OPENXR", value, static_cast<DWORD>(sizeof(value) / sizeof(value[0]))) > 0)
@@ -3267,6 +3285,10 @@ void ReflCbMaybeXray(unsigned drawsOnRt) noexcept;   // fwd ([REFLCB] block belo
 
 void ReflCenNoteDraw() noexcept                  // called per world draw (render thread)
 {
+    // [MEVR] research/22: a diagnostic, on every draw of every Stereo 2 frame. Count only around the
+    // presents ReflCenOnPresent reports (every 1800th) and while its dumps are armed.
+    if ((g_presentCount.load(std::memory_order_relaxed) % 1800) >= 4 &&
+        !g_reflCenDumpArmed.load(std::memory_order_relaxed)) return;
     if (g_currentRtvTexPtr == nullptr) return;
     for (int i = 0; i < g_reflCenCount; ++i)
     {

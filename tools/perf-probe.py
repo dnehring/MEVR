@@ -227,8 +227,8 @@ def main():
                   f'draws {min(xs):.0f}-{max(xs):.0f})')
             spinning = r2 < 0.2 and (my - slope * mx) > 0.5 * my
             if spinning:
-                print('  -> the busy time barely follows the draws: most of it is spent waiting (spinning), '
-                      'not issuing work')
+                print('  -> the busy time barely follows the draws: per-frame work that doesn\'t scale with them, or '
+                      'waiting; tools/sample-render-thread.ps1 shows which')
 
     if meta['gpuTimestamps']:
         print(f'\n  {"GPU (ms)":<34} {"median":>7} {"p90":>7} {"max":>7}')
@@ -269,9 +269,8 @@ def main():
             candidates.append((gpu[0], 'GPU'))
     if gpu_held:
         print(f'  -> the GPU is held {held[0]:.2f} ms after each xrEndFrame (median): the runtime\'s frame sync, '
-              'not the game\'s work.' + (' The render thread\'s busy time is mostly waiting for it (it doesn\'t follow '
-              'the draws), so the CPU numbers above are inflated by the hold.' if spinning else ''))
-    if throttle > 1.5 or gpu_held:
+              'not the game\'s work.')
+    if throttle > 1.5:
         print('  -> Lift the throttle (SteamVR > Video > Per-Application Video Settings > Throttling Behavior: Fixed, '
               'full rate) and measure again: that shows what the frame really costs.')
     elif candidates and interval:

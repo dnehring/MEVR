@@ -268,6 +268,11 @@ struct PerfPresentScope
 // Immediate-context draws, counted by d3d_capture.cpp's draw hooks (render thread; read by the probe).
 extern std::uint32_t g_perfDraws;
 
+// Present thread, at the end of RunFrame: whether to call xrWaitFrame for the next frame there, before the
+// game renders it (research/22), rather than at the next Present. [Performance] earlyFrameWait in
+// ASI\LE1MEVR.ini, default 1, re-read once a second (0: upstream's order).
+bool EarlyFrameWait() noexcept;
+
 // ---- Colour correction of the eye images (src/plugin/Colour.cpp, research/27) ---------------------------------
 // Present thread. Neutral (the default for anything but a streamed Quest) changes nothing: Halcyon's own shaders,
 // its raw copy.

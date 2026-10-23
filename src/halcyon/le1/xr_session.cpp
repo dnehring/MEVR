@@ -97,6 +97,9 @@ XrSpace g_appSpace = nullptr;   // LOCAL re-origined on recenter - locate + subm
 XrSpace g_viewSpace = nullptr;  // VIEW (head-locked) - the options menu quad rides this
 XrSessionState g_sessionState = 0;
 bool g_sessionRunning = false;
+// [MEVR] early frame wait (research/22): the next frame's xrWaitFrame, taken at the end of RunFrame.
+bool g_mevrEarlyFsPending = false;
+XrFrameState g_mevrEarlyFs = {};
 
 struct EyeSwapchain
 {
@@ -762,6 +765,7 @@ void PollEvents()
             {
                 g_fn.endSession(g_session);
                 g_sessionRunning = false;
+                g_mevrEarlyFsPending = false;   // [MEVR] the waited frame dies with the session
             }
             else if (g_sessionState == XR_SESSION_STATE_EXITING_VALUE ||
                      g_sessionState == XR_SESSION_STATE_LOSS_PENDING_VALUE)
@@ -3925,7 +3929,12 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     fwi.type = XR_TYPE_FRAME_WAIT_INFO_VALUE;
     XrFrameState fs = {};
     fs.type = XR_TYPE_FRAME_STATE_VALUE;
-    if (!XrSucceeded(g_fn.waitFrame(g_session, &fwi, &fs))) return;
+    if (g_mevrEarlyFsPending)   // [MEVR] early frame wait: already waited, at the end of the last frame
+    {
+        fs = g_mevrEarlyFs;
+        g_mevrEarlyFsPending = false;
+    }
+    else if (!XrSucceeded(g_fn.waitFrame(g_session, &fwi, &fs))) return;
 
     // Learn the headset's true refresh (runtime FB query first, else measured) so the pace above locks correctly.
     // Runs for AER always (pacing is core there) and for stereo when its opt-in pacing is on.
@@ -6032,6 +6041,23 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     {
         firstFrame = false;
         LogLine("[M1] first head-tracked frame submitted (world-locked projection).");
+    }
+
+    // [MEVR] early frame wait (research/22): wait for the NEXT frame now, before the game renders it,
+    // instead of at the next Present once it is already rendered (then waited, begun and ended back to
+    // back: the runtime never saw the game wait, and SteamVR held it at half rate). The next RunFrame
+    // begins the frame this wait returned. Off ([Performance] earlyFrameWait = 0): upstream's order.
+    if (MELEVR::MevrBridge::EarlyFrameWait())
+    {
+        XrFrameWaitInfo nextWait = {};
+        nextWait.type = XR_TYPE_FRAME_WAIT_INFO_VALUE;
+        XrFrameState next = {};
+        next.type = XR_TYPE_FRAME_STATE_VALUE;
+        if (XrSucceeded(g_fn.waitFrame(g_session, &nextWait, &next)))
+        {
+            g_mevrEarlyFs = next;
+            g_mevrEarlyFsPending = true;
+        }
     }
 }
 
