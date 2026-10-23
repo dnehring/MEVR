@@ -45,6 +45,11 @@ Web sources are at the end and in [sources.md](sources.md). **[inference]** mark
 7. **FSR 1 is practical, DLSS isn't (yet).** A spatial upscaler fits where Halcyon already
    stretches each eye image into SteamVR's swapchain; DLSS and FSR 2/3 need jitter and motion
    vectors this renderer doesn't make. Both only help if the GPU is the limit.
+8. **Update (2026-10-23): half of the render thread is visibility, twice.** With the early wait
+   (90 fps, render thread the limit), Ghidra on the sampled call sites shows UE3's `InitViews`
+   taking ~50% of the render thread: the game's built-in **Umbra Occlusion Booster 2.6.1** resolve
+   (~23%) and a depth pre-pass of everything visible (~25-29%), once per eye. The world's base pass is
+   ~11%. That's why the settings A/B barely moved it. See "Half of the render thread is visibility".
 
 ## The numbers
 
@@ -423,6 +428,78 @@ automatic mode recovers by itself). If SteamVR still halves it, the frame loop i
   logs. The other per-draw diagnostics are already off by default.
 - Next: the settings A/B (`DetailMode=1`, `LightEnvironmentShadows=False`, `AmbientOcclusion=False`)
   to price the scene's draws; then, if needed, sharing the eyes' CPU work (one view family).
+
+## The settings A/B barely moves it (2026-10-23 00:11-00:17)
+
+Same session, early wait on, 20 s each; the player couldn't hold one spot (the third was in combat):
+
+| Capture | Change (GamerSettings.ini, restart) | fps | Game busy, both eyes + UI: median / p90 | Draws, median |
+|---|---|---|---|---|
+| 00:11 ab-baseline | none | 86.8 | 10.03 / 11.81 ms | 2,038 |
+| 00:14 ab-detail1 | `DetailMode=1` | 89.4 | 10.05 / 11.09 ms | 2,524 |
+| 00:17 combat-noshadows | + `LightEnvironmentShadows=False` | 89.5 | 9.94 / 11.03 ms | (combat) |
+
+The medians are within 0.1 ms; only the p90 dropped (~0.7 ms), inside the noise of different spots.
+In every capture the busy time hardly follows the draws (about 7.5 ms + 1 µs per draw, r² ≤ 0.07): the
+cost is per frame and per view, not per draw. The next section says what it is.
+
+## Half of the render thread is visibility (2026-10-23, Ghidra)
+
+The sampler's inclusive list (00:01, 4,855 and 5,940 samples) is per *return address*. Mapped to
+their call sites (`.pdata`, then `tools/ghidra/decompile.ps1`; names now in `symbols-le1.csv`, `_guess`
+where inferred):
+
+| Share of render-thread samples | Return address | What |
+|---|---|---|
+| 71-73% | `0x767913` | the scene render (Halcyon's `SceneRenderB` = `FSceneRenderer::Render`), both eyes |
+| **47.5-51.9%** | `0x76F0CE` | **`InitViews`** (`0x768090`), the per-view visibility |
+| 22.8% | `0x7699D8` | Umbra's resolve per view (`UmbraResolveViews` `0x8BFBB0` → Umbra's `resolveVisibility` `0xD41240` → BioWare's commander `0x8C34C0`) |
+| 24.5-28.6% | `0x7699ED` → `0x8BF11B` | the depth pre-pass of the visible set (`0x8BF8F0` → `0x8BEDB0` → `RenderPrePass` `0x76C1D0`: static draw lists 13.6%, dynamic primitives 10.8%) |
+| 11.3% | `0x76F104` | world DPG, first pass (`0x76D650`, base pass **[verify]**) |
+| 9.0% | `0x76F119` | world DPG, second pass (`0x76D0A0`, lights/translucency **[verify]**) |
+| 10.9% | `0x9B1BD9` | `RHIEndDrawingViewport` (`0x9B1390`): the swap-chain Present, i.e. Halcyon's `PresentHook` and the XR frame |
+| 11.8% | `0x80B91E` | `DrawMesh` (`0x80B7E0`): the RHI draw calls, from every pass |
+
+At ~10.6 ms of render-thread work a frame: `InitViews` ~5.0-5.5 ms (two eyes), of which Umbra
+~2.4 ms and the pre-pass ~2.6-3.0 ms, against ~1.2 ms for the world's base pass. A function's
+share is the sum of its call sites' (the sampler printed them separately).
+
+- **The game links Umbra Occlusion Booster 2.6.1** (`m:\metr\shared\development\external\umbra-ob-2.6.1\...`
+  paths and "2006-2009 Umbra Software Ltd." in the exe; LE's own build tree). `InitViews` ends
+  (`0x7699D3`-`0x7699E8`) with `UmbraResolveViews`, `0x77BE00`, `RenderUmbraDepthPrepass`. Each view has
+  an Umbra camera (`FSceneView +0x4D4`) that `BeginRenderingViewFamily` (`0x7655A0`, called by
+  `FViewportClient::Draw`) updates on the game thread. Halcyon's Stereo 2 calls `FViewportClient::Draw`
+  twice, so Umbra resolves twice a frame and the pre-pass runs twice. Whether the two eyes share one
+  Umbra camera (its frame-to-frame coherence then sees a 6 cm jump every pass) is **[verify]**.
+- The pre-pass call that costs is the unconditional one (`0x8BF116`); the two calls that draw Umbra's
+  pending occluder batches (`0x8BEEF5`, `0x8BEF8D`, only when `0x1795288` is set) don't show up.
+- **Console switches** (`UEngine::Exec` part, `0x4C99D0`): `UMBRA` alone lists them, `UMBRA <name>`
+  toggles one: `CULLING` (`0x1680D60`), `OCCLUSIONCULLING` (`0x1680D61`), `HOAX` (`0x1680D62`), and the
+  debug views `VOXELS`, `CAMERAFRUSTUM`, `FREEZECAMERA`, `FREEZEOCCLUSION`, `OBJECTBOUNDS`, `OBJECTOBBS`,
+  `OCCLUSIONQUERIES`, `MISC` (`0x1795D30`-`37`). With `OCCLUSIONCULLING` off the camera does frustum
+  culling only (`UpdateUmbraCamera` `0x4FD550`: properties `1|4` instead of `3|4`). `TOGGLEOCCLUSION`
+  flips `GIgnoreAllOcclusionQueries` (`0x1787798`, read by `InitViews`). The first three are non-zero
+  in the file, so on by default **[verify]** in the running game.
+
+### Levers, by what they could save
+
+1. **Umbra occlusion off, measured in place:** `UMBRA OCCLUSIONCULLING`, flipped back and forth while
+   standing still. It drops the occlusion half of the resolve and draws what Umbra would have hidden
+   (more draws in the pre-pass and base pass; the GPU has ~5 ms spare). Indoors (the Normandy) it may
+   lose; it's the cheapest test there is. Needs a console: the game's own, if ME3Tweaks enabled it, or a
+   test-loop request that runs a console command through the player controller on the game thread
+   (to build; also good for other A/Bs without restarts).
+2. **No depth pre-pass in one eye or both:** up to ~1.3-1.5 ms of render thread per eye. The base pass
+   then shades without early-Z (GPU overdraw). Needs a hook at `0x8BF116`'s callee. Check first what
+   reads that depth: Umbra's next queries, Halcyon's scene-depth capture (`SfrOnSceneDepthClear`)
+   **[verify]**.
+3. **One visibility for both eyes:** resolve once with a frustum covering both eyes and let the second
+   pass reuse it (no second Umbra resolve, ~1.2 ms). The deepest change (the commander's per-view visible
+   lists, `0x8BE0B0`), so last.
+
+Tooling for the next profile: the sampler now walks 64 frames (24 cut off the outer callers) and
+writes the raw stacks; `tools/stack-functions.py` groups them by the exe's functions and `--under
+0x768090` breaks one down by callee.
 
 ## Next session: the no-code checks (about 15 minutes)
 

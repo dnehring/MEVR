@@ -3,9 +3,12 @@
 # latest capture is from another run), then runs mevr-stack-sampler (build it: cmake --build build --config
 # Release --target mevr-stack-sampler).
 #
+# The raw stacks go to %LOCALAPPDATA%\MEVR\perf\<stamp>-stacks.txt, grouped by the game's functions with
+# tools/stack-functions.py (-Under RVA drills into one function's callees).
+#
 #   tools/sample-render-thread.ps1               8 s, a sample every millisecond
-#   tools/sample-render-thread.ps1 -Seconds 20
-param([double]$Seconds = 8, [int]$IntervalUs = 1000)
+#   tools/sample-render-thread.ps1 -Seconds 20 -Under 0x76EE20
+param([double]$Seconds = 8, [int]$IntervalUs = 1000, [string]$Under = '')
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\common.ps1"
 $sampler = Join-Path $PSScriptRoot '..\build\Release\mevr-stack-sampler.exe'
@@ -22,4 +25,8 @@ if (-not $meta -or $meta.pid -ne $game.Id) {
     $meta = Get-Content -Raw -LiteralPath (Latest).FullName | ConvertFrom-Json
 }
 Write-Host "Sampling render thread $($meta.renderThread) of pid $($game.Id) for $Seconds s"
-& $sampler $game.Id $meta.renderThread $Seconds $IntervalUs
+$raw = Join-Path $dir ("{0:yyyy-MM-dd_HH-mm-ss}-stacks.txt" -f (Get-Date))
+& $sampler $game.Id $meta.renderThread $Seconds $IntervalUs $raw
+$extra = @()
+if ($Under) { $extra = @('--under', $Under) }
+& python -I "$PSScriptRoot\stack-functions.py" $raw @extra
