@@ -373,6 +373,10 @@ Use it to check VR changes yourself instead of asking the user what they see
 ## Gotchas
 
 - Don't `cd` in Bash tool calls; it moves the session's working directory. Use absolute paths.
+- **New engine access goes through our reflection layer `src/ue3/`** (research/34): `ue3::ClassRef`,
+  `FieldRef`, `FunctionRef`, `ue3::Params` + `ue3::runtime::Call`. LExSDKv2 is being removed (licence);
+  don't add new uses of it. The mod's start logs `reflect: N of M checks agree` and writes
+  `%LOCALAPPDATA%\MEVR\reflect-check.json` (our layer against LExSDKv2, while both exist).
 - **Never call LExSDKv2's generated function wrappers** (e.g. `USceneCaptureComponent::SetFrameRate`).
   All 5,301 LE1 native wrappers do `FunctionFlags |= ~0x400` (meant `&=`), which permanently sets
   every flag on that UFunction. Find the UFunction yourself and call ProcessEvent directly.

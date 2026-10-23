@@ -166,3 +166,21 @@ rva,name,kind,comment
 0x1795D40,GUmbraResolveStartSeconds_guess,data,research/32: FLOAT: appSeconds at the resolve's begin (command 0): the 10 ms budget of 0x8B6330 measured against it
 0x167CE28,GMinScreenRadiusForDepthPrepass_guess,data,research/32: occluder screen-size threshold of 0x76D820
 0x11D62C0,UmbraCommander_vftable_guess,label,research/32: slot 1 (+8) = 0x8C34C0 command()
+0x12DD20,UObject::ProcessEvent,func,research/34: Function +0xD8 flags; +0xEA ParmsSize; +0xEC ReturnValueOffset; +0xF8 Func; Children +0x70; Next +0x68; Property ArrayDim +0x70 ElementSize +0x74 PropertyFlags +0x78 Offset +0x94
+0x11ECC0,UObject::execIsA,func,research/34: Class +0x50; the class chain at +0x60 (UField SuperField); Name +0x48 compared as 8 bytes; index +0x8
+0x1252B0,UObject::execLetBool,func,research/34: GNatives[0x14]; BoolProperty BitMask and ArrayProperty Inner at +0xD0
+0x15C170,UObject::~UObject,func,research/34: clears GObjects[index] (index +0x8) and frees the slot to GObjAvailable; the byte pattern of src/engine/GameAdapter.hpp
+0x1631C0,UObject::GetPathName,func,research/34: Outer +0x40; Name +0x48; ':' after a top-level object (its outer's outer is a package)
+0x12D190,UObject::IsProbing,func,research/34: StateFrame +0x24 (ProbeMask +0x4C)
+0x079F10,UObject::IsPendingKill,func,research/34: UObject vtable +0x88; ObjectFlags +0xC bit 61
+0x0D62F0,FName::AppendString,func,research/34: pool (index >> 29) & 7 and offset index & 0x1FFFFFFF; number - 1 after '_'; the byte pattern of src/engine/GameAdapter.hpp
+0x0D6250,FNameEntry::AppendText_guess,func,research/34: the text at entry +0xC; UTF-16 when the header's bit 30 is set; null entry = None
+0x0F2330,appMalloc,func,research/34: GMalloc (0x16B6700) vtable +0x8 (size; alignment; flags)
+0x0F22F0,appFree,func,research/34: GMalloc vtable +0x20 (pointer; flags)
+0x148240,appMalloc_16_guess,func,research/34: appMalloc(size; 16; 0)
+0xFCBE18,UObject::vftable,label,research/34: +0x88 IsPendingKill; +0x250 ProcessEvent
+0x1770670,GObjects,data,research/34: TArray<UObject*> (data; count; max)
+0x1770680,GObjAvailable_guess,data,research/34: free GObjects slots (UObject::~UObject)
+0x16A2090,FName::NamePools,data,research/34: 8 pool base pointers
+0x169A080,FName::NoneEntry_guess,data,research/34: the entry a null name entry reads as (None)
+0x16B6700,GMalloc,data,research/34: FMalloc*; vtable +0x8 Malloc; +0x20 Free

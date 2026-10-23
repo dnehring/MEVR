@@ -114,12 +114,11 @@ inline std::optional<ReflectionGlobals> ReflectionGlobalsForGame() {
 #if defined(MEVR_GAME_LE1)
     ReflectionGlobals g;
     g.objectsRva = 0x1770670;
-    // UObject's destructor clears its GObjects slot: movsxd rcx,[rbx+8]; mov rax,[GObjects];
-    // mov qword [rax+rcx*8],0; lea rdx,[rbx+8]; lea rcx,[GObjAvailable]
+    // UObject's destructor, where it loads GObjects to clear the object's slot (research/34).
     g.objectsPattern = {"48 63 4B 08 48 8B 05 ?? ?? ?? ?? 48 C7 04 C8 00 00 00 00 48 8D 53 08 48 8D 0D", 4, 3, 7};
     g.namePoolsRva = 0x16A2090;
     g.namePoolCount = 8;
-    // FName::AppendString: lea rdx,[pools]; sar rax,29; and ecx,0x1FFFFFFF; and eax,7; add rcx,[rdx+rax*8]
+    // FName::AppendString, where it loads the pool array before splitting the index (research/34).
     g.namePoolsPattern = {"48 8D 15 ?? ?? ?? ?? 48 C1 F8 1D 81 E1 FF FF FF 1F 83 E0 07 48 03 0C C2", 0, 3, 7};
     g.processEventRva = 0x12DD20;
     return g;

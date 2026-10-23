@@ -506,7 +506,8 @@ void Tick(double deltaSeconds, Link const& link) {
 #if defined(MEVR_GAME_LE1)
     if (!gStarted) {
         engine::cover_acquire::Refuse(nullptr);
-        SetWhy("waiting for the script functions");
+        SetWhy(ue3::runtime::Ready() ? std::string("waiting for the script functions")
+                                     : std::format("waiting for our reflection layer ({})", ue3::runtime::Status()));
         return;
     }
     std::string why;
