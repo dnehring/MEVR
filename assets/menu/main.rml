@@ -42,11 +42,10 @@
 		<div class="sdesc">How you turn and move.</div>
 		<div class="group">
 			<div class="gtitle"><span>Turning</span><div class="gline"/></div>
-			<div class="row"><div class="rl"><div class="rlab">Turn style</div><div class="rdesc">Snap jumps by an angle per flick of the right stick; smooth turns while you hold it</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Turn style</div><div class="rdesc">Snap jumps by an angle per flick of the right stick; smooth is the game's own turn while you hold it</div></div>
 				<div class="seg"><button class="segb" data-class-on="turn == 'snap'" data-event-click="pick('turn','snap')">Snap</button><button class="segb" data-class-on="turn == 'smooth'" data-event-click="pick('turn','smooth')">Smooth</button></div></div>
 			<div class="row" data-class-disabled="turn != 'snap'"><div class="rl"><div class="rlab">Snap angle</div><div class="rdesc">How far one flick turns you</div></div>
 				<div class="seg"><button class="segb" data-class-on="snap == '30'" data-event-click="pick('snap','30')">30°</button><button class="segb" data-class-on="snap == '45'" data-event-click="pick('snap','45')">45°</button><button class="segb" data-class-on="snap == '60'" data-event-click="pick('snap','60')">60°</button></div></div>
-			<div class="srow" data-class-disabled="turn != 'smooth'"><div class="slab">Turn speed</div><input type="range" min="60" max="240" step="10" data-value="turn_speed"/><div class="sval">{{turn_speed_text}}</div></div>
 			<div class="row"><div class="rl"><div class="rlab">Comfort vignette</div><div class="rdesc">Darkens the edges of your view while the stick turns you</div></div>
 				<button class="tog" data-class-on="vignette" data-event-click="toggle('vignette')"><div class="knob"/></button></div>
 			<div class="row" data-class-disabled="!vignette"><div class="rl"><div class="rlab">Vignette when</div><div class="rdesc">Only while turning, or while the left stick walks you too</div></div>

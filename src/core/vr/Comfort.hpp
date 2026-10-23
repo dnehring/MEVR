@@ -14,8 +14,8 @@ namespace mevr::vr::comfort {
 
 // [Comfort] turn: who turns the player with the right stick on foot.
 enum class TurnStyle : std::uint8_t {
-    Game,    // the game's own turn (today's: its per-camera-mode rate, acceleration and dead zone); file only
-    Smooth,  // the mod turns at turnSpeed degrees a second at full deflection (the default)
+    Game,    // the game's own turn (its per-camera-mode rate, acceleration and dead zone): the default, the menu's Smooth
+    Smooth,  // the mod turns at turnSpeed degrees a second at full deflection; file only
     Snap,    // the mod turns by snapDegrees per flick
 };
 char const* Name(TurnStyle style);
@@ -38,7 +38,7 @@ char const* Name(WalkToward walk);
 std::optional<WalkToward> ParseWalk(std::string_view text);
 
 struct Settings {
-    TurnStyle turn = TurnStyle::Smooth;
+    TurnStyle turn = TurnStyle::Game;
     float snapDegrees = 45.0f;      // per flick (the menu offers 30, 45 and 60)
     float turnSpeed = 120.0f;       // smooth: degrees a second at full deflection
     float deadzone = 0.15f;         // smooth: a stick inside this doesn't turn (and doesn't count as turning)

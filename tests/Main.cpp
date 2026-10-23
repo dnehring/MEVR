@@ -6220,11 +6220,12 @@ void TestComfort() {
         CHECK(ms::SnapChoice(30.0f) == "30" && ms::SnapChoice(45.0f) == "45" && ms::SnapChoice(50.0f) == "45" &&
               ms::SnapChoice(90.0f) == "60" && ms::SnapChoice(std::numeric_limits<float>::quiet_NaN()) == "45");
         CHECK(ms::TurnChoice("snap") == "snap" && ms::TurnChoice("game") == "smooth" && ms::TurnChoice("smooth") == "smooth");
-        for (char const* key : {"turn", "snap", "turn_speed", "vignette", "vignette_strength", "vignette_when", "walk"}) {
+        for (char const* key : {"turn", "snap", "vignette", "vignette_strength", "vignette_when", "walk"}) {
             CHECK(ms::Find(key) != nullptr);
         }
+        CHECK(ms::Find("turn_speed") == nullptr);  // the game's turn rate can't be set: no slider
+        CHECK(cf::Settings{}.turn == cf::TurnStyle::Game);
         CHECK(ms::FormatValue(ms::Find("vignette_strength")->format, 60.0f) == "60%");
-        CHECK(ms::FormatValue(ms::Find("turn_speed")->format, 120.0f) == "120\xC2\xB0/s");
     }
 }
 

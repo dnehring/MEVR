@@ -181,10 +181,10 @@ void Settings::Read(menu::Values& v) {
 
     // Comfort.
     MELEVR::Config::VrConfig const& c = MELEVR::Config::Get();
-    // [Comfort] (research/31; the mod reads it: game/comfort). Its file-only "turn = game" shows as Smooth.
-    v.texts["turn"] = ms::TurnChoice(ini.Text("Comfort", "turn", "smooth"));
+    // [Comfort] (research/31; the mod reads it: game/comfort). Smooth is the game's own turn ("turn = game"); the
+    // file-only "turn = smooth" (the mod's steady turn) shows as Smooth too.
+    v.texts["turn"] = ms::TurnChoice(ini.Text("Comfort", "turn", "game"));
     v.texts["snap"] = ms::SnapChoice(ini.Num("Comfort", "snapDeg", 45.0f));
-    v.numbers["turn_speed"] = std::clamp(std::round(ini.Num("Comfort", "turnSpeed", 120.0f)), 60.0f, 240.0f);
     flag("vignette", ini.Num("Comfort", "vignette", 0.0f) != 0.0f);
     v.numbers["vignette_strength"] = std::clamp(std::round(ini.Num("Comfort", "vignetteStrength", 0.6f) * 100.0f), 10.0f, 100.0f);
     v.texts["vignette_when"] = Lower(ini.Text("Comfort", "vignetteWhen", "turn")) == "move" ? "move" : "turn";
@@ -367,11 +367,9 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     MELEVR::Config::VrConfig& c = MELEVR::Config::Get();
     // ---- Our settings file ----
     if (key == "turn") {
-        Put("Comfort", "turn", v.Text("turn") == "snap" ? "snap" : "smooth", true);
+        Put("Comfort", "turn", v.Text("turn") == "snap" ? "snap" : "game", true);
     } else if (key == "snap") {
         Put("Comfort", "snapDeg", v.Text("snap"), true);
-    } else if (key == "turn_speed") {
-        Put("Comfort", "turnSpeed", fixed(v.Number("turn_speed"), 0), final);
     } else if (key == "vignette") {
         Put("Comfort", "vignette", onOff("vignette"), true);
     } else if (key == "vignette_strength") {

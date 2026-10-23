@@ -1051,10 +1051,9 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       values there: tell Claude). `[VIEWFILL_RENDER_MATCH]`'s subRect should now be the whole 2824 px eye.
 30. **Comfort: snap and smooth turning, the vignette, walking toward the left hand (new, 2026-10-23; HOST
     REDEPLOY, services v17).** Our menu's Comfort page ([research/31](../research/31-comfort.md)). On foot, first
-    person. The default is now Smooth at 120 deg/s by the mod (no acceleration); `[Comfort] turn = game` in
-    `ASI\LE1MEVR.ini` brings the game's own turn back.
-    - **Smooth:** hold the right stick: a steady turn, the same speed in explore and combat. Turn speed 60 and
-      240: the extremes feel right? The real pad's right stick (if you have one) still turns the game's way.
+    person. Smooth (the default) is the game's own turn, unchanged, with no speed setting
+    (its rate can't be set); `[Comfort] turn = smooth` in `ASI\LE1MEVR.ini` tries the mod's steady turn (`turnSpeed`).
+    - **Smooth:** hold the right stick: the game's turn, as before.
     - **Snap:** Turn style > Snap, 45 deg. Flick right, left: one turn per flick, none while held, the next after
       letting the stick come back. 30 and 60. **Look at your hands and shoulders at the moment of a snap,
       standing and walking, gun drawn (combat) and holstered (explore):** they must not swing round or lag a

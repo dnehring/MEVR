@@ -254,10 +254,11 @@ void Refresh();
 
 // [Comfort] (appended to an older file that lacks it; research/31, game/comfort): written key by key by our VR menu's
 // Comfort page too.
-//   turn              smooth (default): the mod turns the player at turnSpeed; snap: by snapDeg per flick of the right
-//                     stick; game: the game's own turn (its per-camera-mode rate and acceleration), as before
+//   turn              game (default, the menu's Smooth): the game's own turn (its per-camera-mode rate and
+//                     acceleration); snap: the mod turns by snapDeg per flick of the right stick; smooth (file only):
+//                     the mod's steady turn at turnSpeed
 //   snapDeg           degrees per snap (the menu: 30, 45, 60)
-//   turnSpeed         smooth: degrees a second at full deflection (the menu: 60..240)
+//   turnSpeed         smooth (file only): degrees a second at full deflection
 //   deadzone, snapThreshold, snapRearm, snapCooldownS: the stick's dead zone (smooth), how far a flick must go to snap,
 //                     how near the centre it must come back, and the least time between two snaps
 //   vignette          1: the view's edges darken while the stick turns you (vignetteWhen = turn) or also while it

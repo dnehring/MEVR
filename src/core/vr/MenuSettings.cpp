@@ -87,7 +87,6 @@ std::vector<Field> const& Schema() {
         // Comfort.
         {"turn", Type::Choice, 0, "smooth"},
         {"snap", Type::Choice, 0, "45"},
-        {"turn_speed", Type::Number, 120, "", 60, 240, F::DegreesPerSec},
         {"vignette", Type::Flag, 0},
         {"vignette_strength", Type::Number, 60, "", 10, 100, F::Percent},
         {"vignette_when", Type::Choice, 0, "turn"},

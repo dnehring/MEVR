@@ -189,10 +189,11 @@ switching frameworks.
   pivot. Re-anchors on start, recenter (host floor counter) and tracking jumps. `[Hands] bodyMove = 0`: the
   old spine-only lean. Log `torso:`; snapshot `"torso"`.
 - LE1 comfort ([research/31](research/31-comfort.md), HostServices v17; the menu's Comfort page, `[Comfort]` in
-  `ASI\LE1MEVR.ini`): on foot the mod turns the player itself (`game/Comfort`, rules in `core/vr/Comfort`,
-  unit-tested): `turn = smooth` (default, `turnSpeed` 120 deg/s, linear, no acceleration) or `snap` (`snapDeg`
-  30/45/60 per flick, re-armed near the centre, 0.25 s apart); `game` keeps the game's own (per-camera-mode
-  `SFXCameraInput`, logged). The game then sees no right-stick X from the controllers (`gamepad::kFlagModTurns`;
+  `ASI\LE1MEVR.ini`): `turn = game` (default, the menu's Smooth) keeps the game's own turn (per-camera-mode
+  `SFXCameraInput`, logged; its rate can't be set, so the menu has no turn speed: user, 2026-10-23); with `snap`
+  (`snapDeg` 30/45/60 per flick, re-armed near the centre, 0.25 s apart) or the file-only `smooth` (`turnSpeed`
+  deg/s, linear) the mod turns the player itself on foot (`game/Comfort`, rules in `core/vr/Comfort`,
+  unit-tested). The game then sees no right-stick X from the controllers (`gamepad::kFlagModTurns`;
   a real pad's still turns). The yaw goes into ControlRotation in the **mod's tick, before arm IK**, the pawn
   turns with it when it faces the controller's way (combat; `Actor.SetRotation` via ProcessEvent), and
   `view_anchor::NoteTurn` maps the view as the next camera update shows it: no frame with the arms or shoulders

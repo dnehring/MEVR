@@ -340,12 +340,12 @@ constexpr char const* kSightsBlock =
 constexpr char const* kComfortBlock =
     "\n"
     "[Comfort]\n"
-    "; Turning with the right stick on foot (research/31). turn: smooth = turn at turnSpeed degrees a second at full\n"
-    "; deflection; snap = turn by snapDeg degrees per flick (flick past snapThreshold, back inside snapRearm for the next,\n"
-    "; at least snapCooldownS apart); game = the game's own turn, as before. The menu's Comfort page edits these.\n"
-    "turn = smooth\n"
+    "; Turning with the right stick on foot (research/31). turn: game = the game's own turn (the menu's Smooth);\n"
+    "; snap = turn by snapDeg degrees per flick (flick past snapThreshold, back inside snapRearm for the next,\n"
+    "; at least snapCooldownS apart); smooth = the mod's own steady turn at turnSpeed degrees a second (file only:\n"
+    "; the game's rate can't be set, so the menu has no speed). The menu's Comfort page edits turn and snapDeg.\n"
+    "turn = game\n"
     "snapDeg = 45\n"
-    "turnSpeed = 120\n"
     "deadzone = 0.15\n"
     "snapThreshold = 0.7\n"
     "snapRearm = 0.3\n"
@@ -1416,9 +1416,8 @@ void Refresh() {
         {L"Hands", "Hands", L"leanM", "leanM", L"0.20"},
         {L"Hands", "Hands", L"bodyMoveMaxM", "bodyMoveMaxM", L"0.75"},
         // [Comfort] (2026-10-23, research/31): a section our menu started (it writes only the keys it changes).
-        {L"Comfort", "Comfort", L"turn", "turn", L"smooth"},
+        {L"Comfort", "Comfort", L"turn", "turn", L"game"},
         {L"Comfort", "Comfort", L"snapDeg", "snapDeg", L"45"},
-        {L"Comfort", "Comfort", L"turnSpeed", "turnSpeed", L"120"},
         {L"Comfort", "Comfort", L"vignette", "vignette", L"0"},
         {L"Comfort", "Comfort", L"vignetteStrength", "vignetteStrength", L"0.6"},
         {L"Comfort", "Comfort", L"vignetteWhen", "vignetteWhen", L"turn"},

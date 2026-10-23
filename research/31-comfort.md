@@ -11,10 +11,10 @@ step 30).
 
 | Option | What it does | Where it hooks |
 |--------|--------------|----------------|
-| Turn style: Smooth (default) | The right stick turns the player at `turnSpeed` deg/s at full deflection, linear past a 0.15 dead zone | The mod (`game/Comfort`) adds the yaw to ControlRotation in its tick, before arm IK; the game sees no right-stick X from the controllers (`gamepad::kFlagModTurns`) |
-| Turn style: Snap | A flick past 0.7 turns by `snapDeg` (30/45/60) at once; the next needs the stick back inside 0.3 and 0.25 s | Same path; `vr::comfort::StepSnap` |
-| (file only) `turn = game` | The game's own turn, exactly as before | Nothing of ours runs |
-| Turn speed | Degrees a second for Smooth | `[Comfort] turnSpeed` (the game's own rate isn't one number: below) |
+| Turn style: Smooth (default, `turn = game`) | The game's own turn, exactly as before | Nothing of ours runs |
+| Turn style: Snap | A flick past 0.7 turns by `snapDeg` (30/45/60) at once; the next needs the stick back inside 0.3 and 0.25 s | The mod (`game/Comfort`, `vr::comfort::StepSnap`) adds the yaw to ControlRotation in its tick, before arm IK; the game sees no right-stick X from the controllers (`gamepad::kFlagModTurns`) |
+| (file only) `turn = smooth` | The mod's steady turn at `turnSpeed` deg/s at full deflection, linear past a 0.15 dead zone | Same path as Snap |
+| ~~Turn speed~~ | Removed (user, 2026-10-23): the game's own rate can't be set (below), so the menu has no speed | |
 | Comfort vignette | The view's edges darken (clear inside 30 degrees, dark past 58) while the stick turns you, or also while it walks you; fades in and out over 0.15 s; a 0.2 s pulse after each snap | The mod sends a target each tick (HostServices v17 `setVignette`); the host fades it and draws a head-locked quad (`plugin/Vignette`, inside `HalcyonOverlays`) |
 | Walk toward: Left hand | The left stick's forward is the left controller's pointing, laid flat | The mod sets `gamepad::kFlagHandWalk` on foot; the host turns the controllers' left stick before it merges them (`HalcyonBridge` `WalkTowardHand`) |
 | Pause while open | Unchanged (`[Menu] pause`, research/28) | |
@@ -35,9 +35,9 @@ step 30).
   the stick's X (`vr_menu.cpp`). Neither is a turn rate.
 - **Scaling the pad can't speed it up.** A full deflection is already the most the game reads; scaling the
   stick could only slow the game's turn, and its curve and dead zone would bend any mapping.
-- **So:** Smooth is now the mod's own turn at an exact rate (`turnSpeed`, 60-240 deg/s in the menu, 120 by
-  default), the same in every on-foot camera mode, linear and without acceleration (acceleration is the less
-  comfortable of the two in VR). `[Comfort] turn = game` keeps the game's own. The mod logs each camera mode's
+- **So (user, 2026-10-23):** "if the turn speed can't be changed then we should not have a setting value". The
+  menu's Smooth is the game's own turn (`turn = game`, the default) and has no speed. The mod's steady turn
+  (`turn = smooth`, `turnSpeed` deg/s, linear, no acceleration) stays as a file-only option. The mod logs each camera mode's
   `SFXCameraInput` once (`comfort: the game's own stick turn in ...`), so a session tells the game's numbers
   **[verify]**.
 
