@@ -55,6 +55,20 @@ struct TorsoGoal {
     // (a child of the root, outside the spine), which the writer never writes
     // (engine::bone_pose::Request::keep). Kept in case the hidden head ever needs pinning.
     int keepBone = -1;
+    // The whole body (research/29): this bone and its subtree (an ancestor of the spine that isn't the
+    // skeleton's root: LE1's `Root`, which carries the spine and the legs; never `God` or `Camera`, which
+    // hang beside it) moves first, rigidly:
+    // - with `bodyTurns`, it turns about the body's up through its own position by the part of the facing
+    //   turn the spine's twist limit can't take (an explore-mode pawn faces where it runs, up to 180
+    //   degrees from the player);
+    // - with `bodyMoves`, it slides horizontally (at most `maxBodyShift` units) so the bone sits over
+    //   `bodyAt`: where the player's feet are under the view.
+    // Then the spine twists and leans as before. -1: the spine alone (the old behaviour).
+    int body = -1;
+    bool bodyTurns = true;
+    bool bodyMoves = false;
+    Vec3 bodyAt;
+    double maxBodyShift = 0.0;
 };
 
 struct TorsoResult {
@@ -68,6 +82,18 @@ struct TorsoResult {
     double bendDegrees = 0.0;
     bool limited = false;  // a limit held it back
     int bonesWritten = 0;
+    int firstBone = -1;    // the lowest bone index written (the body bone when it moved, else the spine's)
+    // The whole body (TorsoGoal::body): the turn the facing asked for in all, the part the body took, and
+    // its slide (component units; wanted before the limit).
+    double wantedTurnDegrees = 0.0;
+    double bodyTurnDegrees = 0.0;
+    Vec3 bodyShift;
+    Vec3 wantedBodyShift;
+    bool shiftLimited = false;
+    // The reference point (eyes or head): animated, where the goal wanted it, and where it ended up.
+    Vec3 oldReference;
+    Vec3 goalReference;
+    Vec3 newReference;
 };
 
 // Transactional: rewrites the spine, its subtree, or nothing (`error` says why). `left` and

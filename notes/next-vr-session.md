@@ -940,7 +940,42 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       Claude wants these lines: the reasons say which threshold is too strict, the grab lines whether the
       grab point needs `[Calibration] grabOffset`.
 
-27. **Shots on the dot, a red dot on the rifles, the sight on the model (new, 2026-10-23; HOST REDEPLOY: the dot's
+27. **Shepard's body stays under you (new, 2026-10-23; the mod only, it hot-reloads).** Your report: after
+    turning your head and walking, the shoulders seemed somewhere else. Five causes, all fixed
+    ([research/29](../research/29-body-follow.md)): Shepard turns to where he runs (backing up, he faced you),
+    the camera sits up to 25 cm from where the animation put his head, physical steps never moved him, turning
+    your head leaned his spine, and a recenter left his body turned. Now his whole body (not the camera bones)
+    turns and steps under your view, and his spine only leans the last 20 cm. First person (K), on foot.
+    - **Turn and walk:** stand still, turn your real body (and head) 90 degrees right, wait a second, look
+      down: chest, hips and legs face where you face. Then walk with the stick sideways and backward (Shepard
+      would run that way): the shoulders keep facing your way, the arms come from your sides; his legs may
+      look like they run sideways (a known look, tell Claude if it bothers you).
+    - **Head turn only:** keep the body still and turn just your head left and right, nod: the shoulders don't
+      sway.
+    - **Step:** take a real step or two forward, back, to the side, and stand: Shepard steps with you and
+      straightens up within a few seconds. Lean over something without stepping: his upper body leans. Walk
+      more than about 0.75 m from where you recentered: his body stops following (the log says capped); press
+      R (or double-click the right stick) and it comes back under you.
+    - **Recenter** after turning around: the body faces forward again at once.
+    - **Arms:** with a gun out, reach forward, to the sides and up: the elbows bend from where your shoulders
+      are; no arm from the middle of the chest.
+    - **Judder check:** none of this may move the view (the camera bones are never written). If the view
+      shakes when you step or turn, `[Hands] bodyMove = 0` in `LE1MEVR.ini` brings back the old spine-only
+      body at once (no restart): tell Claude.
+    - Take an End snapshot (or tap both stick clicks) while it looks wrong, and one while it looks right.
+    - **Settings (`[Hands]`):** `bodyMove = 1` (0: the spine alone, as before), `leanM = 0.20` (how far your
+      head may lean before his feet step), `bodyMoveMaxM = 0.75` (how far his body may follow you from where
+      the game put him).
+    - **Logs (ours):** `torso: re-anchored (start | recenter | tracking jump): ...` (at a recenter, after a
+      cutscene or menu); `torso: shoulders turned off the player's | head off the view | body slide capped |
+      large correction (...): head yaw ..., body yaw ..., pawn ..., ControlRotation ..., camera ... deg; turn
+      wanted T = body X + spine Y (short Z) ...; the view D m from where the game put Shepard, body slid S m;
+      Shepard's head G m from the head's pivot; lean L m ...` (at most every 2 s; "large correction" lines
+      while backing up or after a step are expected, "short" should stay near 0); the heartbeat's `torso:`
+      and `arm IK torso` lines (`body turn N of M deg, body shift N units`). Snapshots: `"torso"` in the mod's
+      status.
+
+28. **Shots on the dot, a red dot on the rifles, the sight on the model (new, 2026-10-23; HOST REDEPLOY: the dot's
     eye box and the sight struct; the rest is the mod's and hot-reloads).** [research/21](../research/21-sights-and-scopes.md)
     sections 9-12. Know first: Halcyon's Stereo 2 moves each eye's picture about 1.27 degrees outward and renders the
     eyes 3.4 cm apart each, while our dot and scope are drawn at their true place; a metric stereo mode in Halcyon (a

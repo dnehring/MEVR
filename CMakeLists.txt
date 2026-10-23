@@ -173,6 +173,8 @@ set(MEVR_MOD_SOURCES
     src/core/ik/Posture.hpp
     src/core/ik/Rigid.cpp
     src/core/ik/Rigid.hpp
+    src/core/ik/BodyFollow.cpp
+    src/core/ik/BodyFollow.hpp
     src/core/ik/TorsoPose.cpp
     src/core/ik/TorsoPose.hpp
     src/core/ik/TouchReference.cpp
@@ -233,10 +235,14 @@ set(MEVR_MOD_SOURCES
     src/engine/XrToUnreal.hpp
     src/game/ArmIk.cpp
     src/game/ArmIk.hpp
+    src/game/BodyFollow.cpp
+    src/game/BodyFollow.hpp
     src/game/BodyCalibration.cpp
     src/game/BodyCalibration.hpp
     src/game/CameraProbe.cpp
     src/game/CameraProbe.hpp
+    src/game/ConsoleRequest.cpp
+    src/game/ConsoleRequest.hpp
     src/game/GamepadBridge.cpp
     src/game/GamepadBridge.hpp
     src/game/GamepadMapping.cpp
@@ -440,6 +446,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/Ik.cpp
         src/core/ik/Posture.cpp
         src/core/ik/Rigid.cpp
+        src/core/ik/BodyFollow.cpp
         src/core/ik/TorsoPose.cpp
         src/core/ik/Throwing.cpp
         src/core/ik/TouchReference.cpp

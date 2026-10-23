@@ -163,6 +163,10 @@ struct Hands {
 };
 std::optional<Hands> AnimatedHands();
 
+// The torso's last result (Request::torso enabled), within half a second (component space): what the
+// body turn, the slide and the spine did (research/29).
+std::optional<ik::TorsoResult> LatestTorso();
+
 // The last write's support grip result (Request::support enabled, both arm goals there), within
 // half a second.
 std::optional<SupportSample> LatestSupport();

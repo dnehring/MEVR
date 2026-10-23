@@ -25,7 +25,9 @@
 #include "engine/SceneView.hpp"
 #include "game/ArmIk.hpp"
 #include "game/BodyCalibration.hpp"
+#include "game/BodyFollow.hpp"
 #include "game/CameraProbe.hpp"
+#include "game/ConsoleRequest.hpp"
 #include "game/GamepadBridge.hpp"
 #include "game/GamepadMapping.hpp"
 #include "game/HandAim.hpp"
@@ -599,7 +601,7 @@ void PublishStatus() {
         "\"handAim\": {{\"enabled\": {}, \"toldHost\": {}, \"shots\": {}}}, "
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"throwables\": {}, "
-        "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}}}",
+        "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}, \"torso\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -608,7 +610,8 @@ void PublishStatus() {
         json::JsonString(game::weapon::Status()), game::support_grip::Held() ? "true" : "false",
         json::JsonNumber(game::support_grip::Blend()), game::holsters::StatusJson(), game::squad_weapons::StatusJson(),
         game::sights::StatusJson(), game::throwables::StatusJson(), game::posture::StatusJson(),
-        game::view_level::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson());
+        game::view_level::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(),
+        game::body_follow::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -809,6 +812,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         gGamepadHooked = true;  // the host's XInput hook feeds the controllers to the game
     }
     PollHotkeys();
+    game::console_request::Tick(deltaSeconds);  // the test loop's console.request (research/22)
     if (!gHooked || !gGamepadHooked) {
         gRetryTimer += deltaSeconds;
         if (gRetryTimer >= kStartupRetrySeconds) {
@@ -856,6 +860,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // The held gun first (arm IK aims it), then arm IK (uses this tick's view anchor, so before
         // OnTickEnd), then which way shots go and the reticle's ray.
         game::weapon::Tick(game::hand_aim::Enabled() || game::arm_ik::Enabled());
+        game::body_follow::NoteFloor(HostFloor());  // the recenter counter: the body re-anchors (research/29)
         game::arm_ik::Tick(deltaSeconds);
         // Holsters, the squad menu and the grenades before the support grip: it publishes the pad flags,
         // theirs among them. A squeeze at the grenade slot is claimed first, so neither holsters nor the

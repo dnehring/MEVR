@@ -11,6 +11,7 @@
 #include "core/vr/Calibration.hpp"
 #include "core/vr/Controllers.hpp"
 #include "game/BodyCalibration.hpp"
+#include "game/BodyFollow.hpp"
 #include "game/HandCalibration.hpp"
 #include "engine/BonePose.hpp"
 #include "engine/GameAdapter.hpp"
@@ -61,16 +62,8 @@ bool gGunAimedAndWritten = false;
 std::uint64_t gLastWrites = 0;
 // This tick's request asks the writer for the support grip (engine::bone_pose::Support).
 bool gSupportRequested = false;
-// The torso's heading (OpenXR yaw in tracking space): follows the head past a deadzone, pulled
-// toward where the hands are (ik::BodyYaw). Reset whenever the torso isn't driven.
-ik::BodyYaw gBodyYaw;
-bool gBodyYawActive = false;
 hand_targets::Anchor gLoggedAnchor = hand_targets::Anchor::None;
 double gLoggedScale = 0.0;
-// The torso heading leans this far toward the hands (both tracked, in front of the head).
-constexpr double kHandsYawWeight = 0.5;
-constexpr double kHandsMinMeters = 0.15;
-constexpr double kHandsMaxDegrees = 100.0;
 // Reach scaling from the arm-length calibration stays within these.
 constexpr double kMinReachScale = 0.5;
 constexpr double kMaxReachScale = 3.0;
@@ -408,7 +401,7 @@ std::optional<ik::BodyFrame> BodyAxes(APawn const* pawn, ik::Affine const& world
 
 void Stop(std::string status) {
     engine::bone_pose::Clear();
-    gBodyYawActive = false;
+    body_follow::Reset();
     gSupportRequested = false;
     gStatus = std::move(status);
 }
@@ -618,41 +611,6 @@ void LogStatusChange() {
     }
 }
 
-// The torso's facing in the world: the headset's yaw (with a deadzone), pulled toward the hands.
-std::optional<ik::Vec3> TorsoFacingWorld(hand_targets::Targets const& targets, double deltaSeconds) {
-    XrQuaternionf const& q = targets.head.orientation;
-    double const headYaw = ik::YawOf(q.x, q.y, q.z, q.w);
-    double yaw = headYaw;
-    vr::controllers::State const controllers = vr::controllers::Latest();
-    if (controllers.active && controllers.left.gripValid && controllers.right.gripValid) {
-        XrVector3f const& l = controllers.left.grip.position;
-        XrVector3f const& r = controllers.right.grip.position;
-        XrVector3f const& h = targets.head.position;
-        double const dx = 0.5 * (l.x + r.x) - h.x;
-        double const dz = 0.5 * (l.z + r.z) - h.z;
-        double const handsYaw = std::atan2(-dx, -dz);  // BodyYaw's convention: 0 = -Z, + = left
-        double const apart = std::abs(ik::BlendYaw(0.0, handsYaw - headYaw, 1.0)) * 180.0 / std::numbers::pi;
-        if (std::hypot(dx, dz) >= kHandsMinMeters && apart <= kHandsMaxDegrees) {
-            yaw = ik::BlendYaw(headYaw, handsYaw, kHandsYawWeight);
-        }
-    }
-    if (!gBodyYawActive) {
-        gBodyYaw.Reset(yaw);
-        gBodyYawActive = true;
-    }
-    double const body = gBodyYaw.Update(yaw, deltaSeconds);
-    // Tracking-space forward for that yaw, into the world through the body frame.
-    XrVector3f const& h = targets.head.position;
-    XrVector3f const ahead{h.x - static_cast<float>(std::sin(body)), h.y, h.z - static_cast<float>(std::cos(body))};
-    engine::UnrealVector const a = engine::ToWorld(targets.body, h);
-    engine::UnrealVector const b = engine::ToWorld(targets.body, ahead);
-    ik::Vec3 const forward{b.x - a.x, b.y - a.y, b.z - a.z};
-    if (!(ik::Length(forward) > 1e-6)) {
-        return std::nullopt;
-    }
-    return ik::Normalize(forward);
-}
-
 // First person, every few seconds: where Halcyon's camera sits relative to Shepard's head bone, in
 // the view's own axes (the headset's yaw, world up), and the MELEVR.ini camera offsets that would
 // cancel it. Halcyon's first-person camera sat about 44 units from his eyes (2026-10-08), so the
@@ -794,17 +752,21 @@ void Drive(double deltaSeconds) {
     } else if (targets.source == hand_targets::Source::Controllers) {
         LogAnchor(targets);
         LogCameraOffset(targets);
-        // The shoulders under the headset: the spine turns to the body's heading and leans so
-        // Shepard's eyes (first person) or head (third person) come to the headset.
+        // The shoulders under the headset (game/body_follow, research/29): the whole body (not God or Camera)
+        // turns and steps under the view, the spine leans Shepard's head to the head's pivot.
         bool torso = false;
         if (hand_calibration::BodyFollowsHead() && info->torso && arms[kLeft] && arms[kRight]) {
-            auto const facing = TorsoFacingWorld(targets, deltaSeconds);
-            std::array<int, 2> reference{info->head, -1};
-            if (targets.anchor == hand_targets::Anchor::View && info->eyes[kLeft] >= 0 && info->eyes[kRight] >= 0) {
-                reference = info->eyes;
+            body_follow::Bones bones;
+            bones.head = info->head;
+            bones.eyes = info->eyes;
+            int const bottom = info->torso->spine.front();
+            int const parent = bottom >= 0 ? info->bones.parents[bottom] : -1;
+            if (parent >= 0 && info->bones.parents[parent] >= 0 &&
+                ik::InSubtrees(info->bones.parents, std::vector<int>{parent}, info->cameraHooks).empty()) {
+                bones.body = parent;  // LE1: Root (God > Root > LowerBack, Pelvis); Camera hangs off God
             }
-            if (facing && reference[0] >= 0) {
-                engine::bone_pose::Torso& t = request.torso;
+            engine::bone_pose::Torso& t = request.torso;
+            if (body_follow::Fill(targets, *worldToComponent, *frame, body->pawn, bones, deltaSeconds, t.goal)) {
                 t.enabled = true;
                 t.chain = *info->torso;
                 for (int bone : t.chain.spine) {
@@ -813,30 +775,11 @@ void Drive(double deltaSeconds) {
                 for (int bone : t.chain.collars) {
                     t.keys.push_back(bone >= 0 ? info->bones.keys[bone] : 0);
                 }
-                t.goal.reference = reference;
-                if (targets.anchor == hand_targets::Anchor::View) {
-                    // First person: Shepard's eyes move as far as the headset moved from where it
-                    // was recentered (ik::TorsoGoal::relative). The head goes with the spine: the
-                    // camera hangs off the `Camera` bone, not the head (research/18), and the
-                    // writer never writes that (Request::keep). Not absolute: the view sits where
-                    // the Camera bone's animation and Halcyon's per-state offsets put it, which
-                    // wanders against the head bone by tens of units as the animation plays, so
-                    // aiming the eyes at it would bend Shepard after the animation, not the player.
-                    engine::UnrealVector const origin = engine::OriginWorld(targets.body);
-                    t.goal.head = ik::TransformDirection(*worldToComponent,
-                        {targets.headWorld.x - origin.x, targets.headWorld.y - origin.y, targets.headWorld.z - origin.z});
-                    t.goal.relative = true;
-                } else {
-                    t.goal.head = ik::TransformPoint(*worldToComponent, {targets.headWorld.x, targets.headWorld.y, targets.headWorld.z});
-                }
-                ik::Vec3 forward = ik::TransformDirection(*worldToComponent, *facing);
-                forward = forward - frame->up * ik::Dot(forward, frame->up);
-                t.goal.forward = ik::Normalize(forward, frame->forward);
                 torso = true;
             }
         }
         if (!torso) {
-            gBodyYawActive = false;
+            body_follow::Reset();
         }
         request.maxStretch = hand_calibration::ArmStretch();
         auto const componentRotation = ik::RotationOf(componentToWorld);
@@ -996,10 +939,10 @@ bool SupportRequested() {
 }
 
 std::optional<double> TorsoYaw() {
-    if (!gEnabled || !gBodyYawActive) {
+    if (!gEnabled) {
         return std::nullopt;
     }
-    return gBodyYaw.Value();
+    return body_follow::Yaw();
 }
 
 bool Toggle() {
@@ -1026,6 +969,7 @@ char const* HandSource() {
 void LogStats() {
     if (gEnabled) {
         log::Info("    arm IK: {} (hand source {})", gStatus, hand_targets::Name(gSource));
+        body_follow::LogStats();
     }
     engine::bone_pose::LogStats();
 }
@@ -1047,7 +991,7 @@ void Shutdown() {
     gIkTree = nullptr;
     gIkControl = nullptr;
     gIkSearched = false;
-    gBodyYawActive = false;
+    body_follow::Shutdown();
     gLoggedAnchor = hand_targets::Anchor::None;
     gLoggedScale = 0.0;
 }
