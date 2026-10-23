@@ -51,6 +51,8 @@ using draw::Screen;
 constexpr std::int64_t kSwapchainFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;  // the bytes are sRGB already
 constexpr float kHoldSeconds = 1.0f;
 constexpr std::uint64_t kMessageMs = 4500;
+constexpr std::uint64_t kNoteMs = 8000;       // a judgement's outcome stays up longer (the panel is off to the side)
+constexpr std::uint64_t kAimLogMs = 2000;     // an aim's reason for not capturing: logged at most this often
 constexpr std::uint64_t kFlashMs = 450;
 constexpr std::uint64_t kSavedMs = 3500;
 constexpr float kPromptAfterSeconds = 8.0f;   // world frames on foot before the first-run prompt shows
@@ -59,6 +61,7 @@ constexpr float kTickSeconds = 0.035f;        // the capture's haptic tick
 constexpr float kTickAmplitude = 0.7f;
 constexpr float kTriggerOn = 0.6f;
 constexpr float kTriggerOff = 0.4f;
+constexpr float kNearEyes = 0.15f;            // a hand's orb or ring this close to the eyes isn't drawn (meters)
 
 // ---- Across threads ----------------------------------------------------------------------------------------
 std::atomic<bool> gRunning{false};
@@ -122,6 +125,20 @@ struct Run {
     cal::Stillness still;
     float held = 0.0f;
     std::string status;
+    bool statusWarn = false;
+    std::string boardHint;        // the reason, short, across the board's top (where the player looks)
+    bool boardHintWarn = false;
+    std::string boardNote;        // a judgement's outcome ("AIM 2 AGAIN"), shown on the board until noteUntil
+    std::uint64_t noteUntil = 0;
+    // The logs of the aims' attempts (rate-limited) and the grabs.
+    std::string aimLogWhy;
+    std::uint64_t aimLogAt = 0;
+    int aimLogSkipped = 0;
+    std::uint64_t holdLogAt = 0;
+    int holdBreaks = 0;
+    float lastHeld = 0.0f;
+    bool squeezeWas[2] = {false, false};
+    XrVector3f grabOffset{};      // [Calibration] grabOffset: the grab point in the right grip's frame
     // Body.
     bool haveStand = false;
     std::optional<float> standEye;  // from the floor
@@ -133,9 +150,14 @@ struct Run {
     std::optional<float> armLength;
     std::optional<float> crouchEye;
     std::optional<float> crouchDrop;
-    // Aims.
-    std::vector<cal::AimSample> pistolSamples;
-    std::vector<cal::AimSample> rifleSamples;
+    // Aims: per target, with the redo rules (cal::AimSet); the samples behind each accepted stance (Switch eye
+    // solves them again) and a note when only two of three were kept.
+    cal::AimSet pistolAims;
+    cal::AimSet rifleAims;
+    std::vector<cal::AimSample> pistolUsed;
+    std::vector<cal::AimSample> rifleUsed;
+    std::string pistolNote;
+    std::string rifleNote;
     int target = 0;
     cal::Stance pistol;
     cal::Stance rifle;
@@ -270,7 +292,7 @@ struct Swapchain {
     bool failed = false;
     bool filled = false;  // a static picture, already in every image
 };
-enum SwapchainId { kPanelChain = 0, kBoardChain, kOrbActiveChain, kOrbHeldChain, kDotChain, kChains };
+enum SwapchainId { kPanelChain = 0, kBoardChain, kOrbActiveChain, kOrbHeldChain, kDotChain, kMarkerChain, kChains };
 std::array<Swapchain, kChains> gChains;
 XrSession gSession = XR_NULL_HANDLE;
 std::array<XrCompositionLayerQuad, 6> gQuads{};
@@ -380,6 +402,7 @@ char const* ChainName(int id) {
     case kOrbActiveChain: return "calibration-orb";
     case kOrbHeldChain: return "calibration-orb-held";
     case kDotChain: return "calibration-dot";
+    case kMarkerChain: return "calibration-hand";
     default: return "calibration-?";
     }
 }
@@ -531,10 +554,16 @@ void Tick(int hand) {
     halcyon::RequestHaptic(hand, kTickSeconds, kTickAmplitude);
 }
 
-void Say(std::string text, bool warn = false) {
+void Say(std::string text, bool warn = false, std::uint64_t ms = kMessageMs) {
     gRun.message = std::move(text);
     gRun.warn = warn;
-    gRun.messageUntil = Now() + kMessageMs;
+    gRun.messageUntil = Now() + ms;
+}
+
+// A short line on the target board, for a while (a judgement's outcome).
+void Note(std::string text, std::uint64_t ms = kNoteMs) {
+    gRun.boardNote = std::move(text);
+    gRun.noteUntil = Now() + ms;
 }
 
 void Captured(std::initializer_list<int> hands) {
@@ -544,25 +573,42 @@ void Captured(std::initializer_list<int> hands) {
     gRun.flashAt = Now();
 }
 
+cal::AimSet& AimsOf(bool rifle) {
+    return rifle ? gRun.rifleAims : gRun.pistolAims;
+}
+
 void Enter(Step step, XrPosef const& head) {
     gRun.step = step;
     gRun.still.Reset();
     gRun.held = 0.0f;
+    gRun.lastHeld = 0.0f;
     gRun.status.clear();
+    gRun.statusWarn = false;
+    gRun.boardHint.clear();
+    gRun.noteUntil = 0;
+    gRun.aimLogWhy.clear();
+    gRun.holdBreaks = 0;
     gRun.stepAnchor = {head.position, gRun.anchor.yaw};
     if (step == Step::PistolAim || step == Step::RifleAim) {
         gRun.target = 0;
-    }
-    if (step == Step::PistolAim) {
-        gRun.pistolSamples.clear();
-    }
-    if (step == Step::RifleAim) {
-        gRun.rifleSamples.clear();
+        AimsOf(step == Step::RifleAim).Reset();
     }
     if (step == Step::PistolGrab || step == Step::RifleGrab) {
         gRun.rightHeld = gRun.leftHeld = false;
     }
     log::Info("calibration: step {}", StepName(step));
+    if (step == Step::RifleGrab) {
+        cal::BodyMeasures const body{gRun.armLength, gRun.shoulderWidth};
+        XrVector3f const rear = cal::OrbRest(gRun.stepAnchor, cal::Orb::RifleRear, body);
+        XrVector3f const front = cal::OrbRest(gRun.stepAnchor, cal::Orb::RifleFront, body);
+        log::Info("calibration: rifle orbs: near ({:.3f}, {:.3f}, {:.3f}), far ({:.3f}, {:.3f}, {:.3f}): {:.3f} m along the bore ({}), "
+                  "grab reach {:.2f} / {:.2f} m",
+            rear.x, rear.y, rear.z, front.x, front.y, front.z, cal::ForegripDistance(body),
+            body.armLength ? std::format("arm {:.2f} m{}", *body.armLength,
+                                 body.shoulderWidth ? std::format(", shoulders {:.2f} m", *body.shoulderWidth) : std::string())
+                           : std::string("arms not measured"),
+            cal::kGrabReach, cal::kForegripGrabReach);
+    }
 }
 
 // After a part is done: on to the next, or back to the check after a redo.
@@ -582,19 +628,36 @@ float Distance(XrVector3f const& a, XrVector3f const& b) {
     return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z));
 }
 
+std::string Point3(XrVector3f const& v) {
+    return std::format("({:.3f}, {:.3f}, {:.3f})", v.x, v.y, v.z);
+}
+
+// A hand's grab point: where the orbs are taken, the marker drawn and the held orb shown.
+XrVector3f GrabAt(int hand) {
+    vr::controllers::Hand const& h = hand == 1 ? gControllers.right : gControllers.left;
+    return cal::GrabPoint(h.grip, gRun.grabOffset, hand == 0);
+}
+
+cal::BodyMeasures Body() {
+    return {gRun.armLength, gRun.shoulderWidth};
+}
+
 // One frame of holding still for the step; true once held long enough.
 bool Hold(XrPosef const& head, bool right, bool left, cal::StillSettings const& settings, float dt) {
     XrPosef const poses[cal::Stillness::kMaxPoses] = {head, gControllers.right.grip, gControllers.left.grip};
     bool const used[cal::Stillness::kMaxPoses] = {true, right, left};
     gRun.held = gRun.still.Update(poses, used, dt, settings);
-    gRun.status.clear();  // the ring says "hold still"
+    gRun.status = "Hold still";
+    gRun.statusWarn = false;
     return gRun.held >= settings.seconds;
 }
 
-void NotNow(std::string status) {
+void NotNow(std::string status, bool warn = true) {
     gRun.still.Reset();
     gRun.held = 0.0f;
+    gRun.lastHeld = 0.0f;
     gRun.status = std::move(status);
+    gRun.statusWarn = warn;
 }
 
 std::string Degrees(float value) {
@@ -602,18 +665,18 @@ std::string Degrees(float value) {
 }
 
 void SolveAgain() {
-    if (gRun.pistolSamples.size() == static_cast<std::size_t>(cal::kTargets)) {
-        gRun.pistol = cal::Solve(gRun.pistolSamples, gRun.eye);
+    if (!gRun.pistolUsed.empty()) {
+        gRun.pistol = cal::Solve(gRun.pistolUsed, gRun.eye);
     }
-    if (gRun.rifleSamples.size() == static_cast<std::size_t>(cal::kTargets)) {
-        gRun.rifle = cal::Solve(gRun.rifleSamples, gRun.eye);
+    if (!gRun.rifleUsed.empty()) {
+        gRun.rifle = cal::Solve(gRun.rifleUsed, gRun.eye);
     }
 }
 
 void LogStance(char const* name, cal::Stance const& s) {
-    log::Info("calibration: {}: {} eye ({}), spread {:.2f} deg, trim ({}) in the right grip, sight line {} m from the grip (grip "
-              "frame), eye relief {:.2f} m{}",
-        name, s.eye == 0 ? "left" : "right", s.eyeMeasured ? "measured" : "chosen", s.spreadDeg, cal::FormatRotation(s.trim),
+    log::Info("calibration: {}: {} eye ({}), {} aims, spread {:.2f} deg, trim ({}) in the right grip, sight line {} m from the grip "
+              "(grip frame), eye relief {:.2f} m{}",
+        name, s.eye == 0 ? "left" : "right", s.eyeMeasured ? "measured" : "chosen", s.samples, s.spreadDeg, cal::FormatRotation(s.trim),
         cal::FormatVector(s.line), s.eyeRelief,
         s.hasLeft ? std::format("; foregrip {} m (gun frame), hands line {} (spread {:.2f} deg), left trim ({}), stock {} m",
                         cal::FormatVector(s.foregrip), cal::FormatVector(s.handsLine), s.handsSpreadDeg, cal::FormatRotation(s.leftTrim),
@@ -621,27 +684,80 @@ void LogStance(char const* name, cal::Stance const& s) {
                   : std::string());
 }
 
-// Three aims taken: solved, or once more if they disagree.
-void FinishAims(bool rifle, XrPosef const& head) {
-    std::vector<cal::AimSample>& samples = rifle ? gRun.rifleSamples : gRun.pistolSamples;
-    cal::Stance const s = cal::Solve(samples, gRun.eye);
-    char const* name = rifle ? "rifle" : "pistol";
+// What a stance's line on the check screen says.
+std::string StanceSummary(bool rifle) {
+    cal::Stance const& s = rifle ? gRun.rifle : gRun.pistol;
+    std::string const& note = rifle ? gRun.rifleNote : gRun.pistolNote;
+    char const* name = rifle ? "Rifle" : "Pistol";
     if (!s.valid) {
-        log::Warn("calibration: the {} aims didn't solve: again", name);
-        Say("Those aims couldn't be measured: once more, please.", true);
-        Enter(rifle ? Step::RifleAim : Step::PistolAim, head);
+        return std::format("{}: skipped", name);
+    }
+    return s.samples >= cal::kTargets ? std::format("{}: three aims within {}", name, Degrees(s.spreadDeg))
+                                      : std::format("{}: two aims within {} ({})", name, Degrees(s.spreadDeg), note);
+}
+
+// All three aims taken: judged (cal::AimSet::Finish): kept, one aimed again, or all three again.
+void FinishAims(bool rifle, XrPosef const& head) {
+    cal::AimSet& aims = AimsOf(rifle);
+    char const* name = rifle ? "rifle" : "pistol";
+    float const limit = rifle ? cal::kMaxRifleSpreadDeg : cal::kMaxSpreadDeg;
+    std::vector<cal::AimSample> const all = aims.Samples();
+    cal::Review const r = aims.Finish(gRun.eye, limit);
+    log::Info("calibration: the {} aims judged: {} (spread {:.2f} deg, limit {:.1f}{}; failed judgements in this step {})", name,
+        cal::ResultName(r.result), r.spreadDeg, limit,
+        r.outlier >= 0 ? std::format("; farthest aim {} at {:.2f} deg from the other two, which agree within {:.2f}", r.outlier + 1,
+                             r.outlierDeg, r.pairSpreadDeg)
+                       : std::string(),
+        r.failures);
+    gRun.still.Reset();
+    gRun.held = 0.0f;
+    gRun.lastHeld = 0.0f;
+    switch (r.result) {
+    case cal::Review::Result::Accepted:
+    case cal::Review::Result::AcceptedPair: {
+        bool const pair = r.result == cal::Review::Result::AcceptedPair;
+        std::vector<cal::AimSample> used;
+        for (std::size_t i = 0; i < all.size(); ++i) {
+            if (!pair || static_cast<int>(i) != r.outlier) {
+                used.push_back(all[i]);
+            }
+        }
+        (rifle ? gRun.rifle : gRun.pistol) = r.stance;
+        (rifle ? gRun.rifleUsed : gRun.pistolUsed) = std::move(used);
+        std::string& note = rifle ? gRun.rifleNote : gRun.pistolNote;
+        note = pair ? std::format("aim {} left out, {:.1f} degrees off", r.outlier + 1, r.outlierDeg) : std::string();
+        LogStance(name, r.stance);
+        if (pair) {
+            log::Info("calibration: {}: after {} tries aim {} was still {:.2f} deg off the other two: kept the other two (spread "
+                      "{:.2f} deg); the results say so",
+                name, r.failures, r.outlier + 1, r.outlierDeg, r.stance.spreadDeg);
+            Say(std::format("{}: aim {} stayed {} off after two tries, so the other two were kept (within {}).", rifle ? "Rifle" : "Pistol",
+                    r.outlier + 1, Degrees(r.outlierDeg), Degrees(r.stance.spreadDeg)),
+                false, kNoteMs);
+        } else {
+            Say(std::format("{}: three aims within {}.", rifle ? "Rifle" : "Pistol", Degrees(r.stance.spreadDeg)));
+        }
+        Next(rifle ? Step::Check : Step::RifleGrab, head);
         return;
     }
-    LogStance(name, s);
-    if (s.spreadDeg > cal::kMaxSpreadDeg) {
-        log::Info("calibration: the {} aims were {:.1f} degrees apart (more than {:.0f}): again", name, s.spreadDeg, cal::kMaxSpreadDeg);
-        Say(std::format("Those three aims were {} apart: once more, please, the same way each time.", Degrees(s.spreadDeg)), true);
-        Enter(rifle ? Step::RifleAim : Step::PistolAim, head);
+    case cal::Review::Result::RedoOne:
+        gRun.target = r.outlier;
+        Say(std::format("Aim {} was {} off the other two: aim it again.", r.outlier + 1, Degrees(r.outlierDeg)), true, kNoteMs);
+        Note(std::format("AIM {} AGAIN: {:.0f} DEGREES OFF", r.outlier + 1, r.outlierDeg));
+        return;
+    case cal::Review::Result::RedoAll:
+        gRun.target = 0;
+        if (r.spreadDeg <= 0.0f) {
+            log::Warn("calibration: the {} aims couldn't be measured (a degenerate sight line): all three again", name);
+            Say("Those aims couldn't be measured: once more, please.", true, kNoteMs);
+        } else {
+            Say(std::format("Those aims were {} apart (even the closest two {}): all three again, the same way each time.",
+                    Degrees(r.spreadDeg), Degrees(r.pairSpreadDeg)),
+                true, kNoteMs);
+        }
+        Note("ALL THREE AGAIN, THE SAME WAY EACH TIME");
         return;
     }
-    (rifle ? gRun.rifle : gRun.pistol) = s;
-    Say(std::format("{}: three aims within {}.", rifle ? "Rifle" : "Pistol", Degrees(s.spreadDeg)));
-    Next(rifle ? Step::Check : Step::RifleGrab, head);
 }
 
 cal::AimSample Sample(XrPosef const& head, XrVector3f const eyes[2], bool left) {
@@ -650,7 +766,7 @@ cal::AimSample Sample(XrPosef const& head, XrVector3f const eyes[2], bool left) 
     s.right = gRun.still.Average(1);
     s.hasLeft = left;
     if (left) {
-        s.left = gRun.still.Average(2);
+        s.left = gRun.still.Average(2);  // where the left hand actually grips, wherever its orb was
     }
     // The eyes as they were this frame, moved with the head's average.
     XrVector3f const shift{s.head.position.x - head.position.x, s.head.position.y - head.position.y, s.head.position.z - head.position.z};
@@ -661,78 +777,222 @@ cal::AimSample Sample(XrPosef const& head, XrVector3f const eyes[2], bool left) 
     return s;
 }
 
+char const* PoseName(int pose) {
+    switch (pose) {
+    case 0: return "head";
+    case 1: return "right hand";
+    case 2: return "left hand";
+    default: return "?";
+    }
+}
+
+std::string CheckNumbers(bool rifle, cal::AimCheck const& c) {
+    return rifle ? std::format("gaze {:.1f} deg, right hand {:.2f} m from the eyes, hands {:.2f} m apart, their line {:.1f} deg off the "
+                               "target",
+                       c.gazeDeg, c.stock, c.span, c.pointDeg)
+                 : std::format("gaze {:.1f} deg, hand {:.3f} m off the line of sight, {:.2f} m ahead", c.gazeDeg, c.offLine, c.ahead);
+}
+
+// Why an aim isn't being taken, in the log: when the reason changes, else at most every kAimLogMs.
+void LogAim(bool rifle, std::string const& why, std::string const& numbers) {
+    std::uint64_t const now = Now();
+    if (why == gRun.aimLogWhy && now - gRun.aimLogAt < kAimLogMs) {
+        ++gRun.aimLogSkipped;
+        return;
+    }
+    log::Info("calibration: {} aim {}: not capturing: {}{}{}", rifle ? "rifle" : "pistol", gRun.target + 1, why,
+        numbers.empty() ? std::string() : " (" + numbers + ")",
+        gRun.aimLogSkipped > 0 ? std::format(" [{} frames since the last line]", gRun.aimLogSkipped) : std::string());
+    gRun.aimLogWhy = why;
+    gRun.aimLogAt = now;
+    gRun.aimLogSkipped = 0;
+}
+
 void StepAim(bool rifle, XrPosef const& head, XrVector3f const eyes[2], float dt) {
     vr::controllers::Hand const& right = gControllers.right;
     vr::controllers::Hand const& left = gControllers.left;
+    cal::AimSet& aims = AimsOf(rifle);
+    // A grip let go doesn't send the player back to the orbs (that used to start the three aims over): the capture
+    // just waits until it is squeezed again, anywhere.
     gRun.rightHeld = gControllers.active && Squeezed(right, gRun.rightHeld);
     if (rifle) {
         gRun.leftHeld = gControllers.active && Squeezed(left, gRun.leftHeld);
     }
-    if (!gRun.rightHeld || (rifle && !gRun.leftHeld)) {
-        Say(rifle ? "Keep both grips squeezed: take the rifle again." : "Keep the grip squeezed: take the pistol again.", true);
-        Enter(rifle ? Step::RifleGrab : Step::PistolGrab, head);
-        return;
-    }
     XrVector3f const target = cal::TargetPosition(gRun.anchor, gRun.target);
-    bool const tracked = right.gripValid && (!rifle || left.gripValid);
-    bool aimed = false;
-    if (tracked) {
-        aimed = rifle ? cal::OnTarget(head, left.grip.position, target, 20.0f, 0.25f, 0.25f) &&
-                    Distance(right.grip.position, head.position) <= 0.45f
-                      : cal::OnTarget(head, right.grip.position, target);
+    bool const tracked = gControllers.active && right.gripValid && (!rifle || left.gripValid);
+    int const n = gRun.target + 1;
+    std::string why;
+    std::string board;
+    std::string logWhy;
+    std::string numbers;
+    if (!tracked) {
+        why = "The controllers aren't tracked";
+        board = "CONTROLLERS NOT TRACKED";
+        logWhy = "untracked";
+    } else if (!gRun.rightHeld || (rifle && !gRun.leftHeld)) {
+        why = !rifle             ? "Squeeze the right grip: hold the pistol"
+            : !gRun.rightHeld && !gRun.leftHeld ? "Squeeze both grips: hold the rifle"
+            : !gRun.rightHeld    ? "Squeeze the right grip again"
+                                 : "Squeeze the left grip again";
+        board = rifle ? "SQUEEZE BOTH GRIPS" : "SQUEEZE THE GRIP";
+        logWhy = "grip released";
+    } else {
+        cal::AimCheck const c = rifle ? cal::CheckRifleAim(head, right.grip.position, left.grip.position, target)
+                                      : cal::CheckPistolAim(head, right.grip.position, target);
+        numbers = CheckNumbers(rifle, c);
+        logWhy = cal::ProblemName(c.problem);
+        switch (c.problem) {
+        case cal::AimProblem::None: break;
+        case cal::AimProblem::LookAtTarget:
+            why = std::format("Look at target {}", n);
+            board = std::format("LOOK AT TARGET {}", n);
+            break;
+        case cal::AimProblem::PistolOffLine:
+            why = "Bring the pistol up onto your line of sight";
+            board = "PISTOL UP TO YOUR EYE LINE";
+            break;
+        case cal::AimProblem::PistolTooClose:
+            why = "Hold the pistol out in front of you";
+            board = "HOLD THE PISTOL OUT";
+            break;
+        case cal::AimProblem::NotShouldered:
+            why = "Bring the stock to your shoulder: right hand by your cheek";
+            board = "STOCK TO YOUR SHOULDER";
+            break;
+        case cal::AimProblem::HandsTooClose:
+            why = "Left hand further out along the rifle";
+            board = "LEFT HAND FURTHER OUT";
+            break;
+        case cal::AimProblem::NotPointing:
+            why = std::format("Point the rifle at target {}: it's {:.0f} degrees off", n, c.pointDeg);
+            board = std::format("POINT THE RIFLE AT TARGET {}", n);
+            break;
+        }
     }
-    if (!aimed) {
-        NotNow(tracked ? std::format("Waiting for your aim on target {}", gRun.target + 1) : std::string("The controllers aren't tracked"));
+    if (!why.empty()) {
+        NotNow(why);
+        gRun.boardHint = board;
+        gRun.boardHintWarn = true;
+        LogAim(rifle, logWhy, numbers);
         return;
     }
-    cal::StillSettings settings;
+    cal::StillSettings settings = rifle ? cal::kRifleStill : cal::StillSettings{};
     settings.seconds = kHoldSeconds;
-    if (!Hold(head, true, rifle, settings, dt)) {
+    bool const done = Hold(head, true, rifle, settings, dt);
+    gRun.boardHint = "HOLD STILL";
+    gRun.boardHintWarn = false;
+    if (!done) {
+        // The hold broke: say what moved (and log it, rate-limited).
+        int const moved = gRun.still.Moved();
+        if (gRun.held == 0.0f && gRun.lastHeld > 0.0f && moved >= 0) {
+            ++gRun.holdBreaks;
+            std::uint64_t const now = Now();
+            if (now - gRun.holdLogAt >= kAimLogMs) {
+                log::Info("calibration: {} aim {}: the hold broke after {:.2f} s: the {} moved more than {:.0f} cm or {:.0f} deg ({} breaks "
+                          "on this aim)",
+                    rifle ? "rifle" : "pistol", n, gRun.still.Broke(), PoseName(moved), settings.position * 100.0f, settings.angleDeg,
+                    gRun.holdBreaks);
+                gRun.holdLogAt = now;
+            }
+        }
+        if (moved >= 0 && gRun.held < 0.5f && gRun.holdBreaks > 0) {
+            gRun.status = std::format("Hold still: your {} moved", PoseName(moved));
+        }
+        gRun.lastHeld = gRun.held;
+        gRun.aimLogWhy.clear();  // a reason that comes back after a hold is logged again
         return;
     }
-    std::vector<cal::AimSample>& samples = rifle ? gRun.rifleSamples : gRun.pistolSamples;
-    samples.push_back(Sample(head, eyes, rifle));
+    aims.Add(gRun.target, Sample(head, eyes, rifle));
     if (rifle) {
         Captured({0, 1});
     } else {
         Captured({1});
     }
-    log::Info("calibration: {} aim {} taken", rifle ? "rifle" : "pistol", samples.size());
+    {
+        cal::AimCheck const c = rifle ? cal::CheckRifleAim(head, right.grip.position, left.grip.position, target)
+                                      : cal::CheckPistolAim(head, right.grip.position, target);
+        log::Info("calibration: {} aim {} taken ({} of 3; {}; {} hold breaks before it)", rifle ? "rifle" : "pistol", n, aims.Count(),
+            CheckNumbers(rifle, c), gRun.holdBreaks);
+    }
     gRun.still.Reset();
     gRun.held = 0.0f;
-    if (static_cast<int>(samples.size()) >= cal::kTargets) {
+    gRun.lastHeld = 0.0f;
+    gRun.holdBreaks = 0;
+    gRun.aimLogWhy.clear();
+    gRun.noteUntil = 0;
+    if (aims.Next() < 0) {
         FinishAims(rifle, head);
     } else {
-        ++gRun.target;
+        gRun.target = aims.Next();
     }
 }
 
-void StepGrab(bool rifle, XrPosef const& head) {
-    vr::controllers::Hand const& right = gControllers.right;
-    vr::controllers::Hand const& left = gControllers.left;
-    XrVector3f const rear = cal::OrbRest(gRun.stepAnchor, rifle ? cal::Orb::RifleRear : cal::Orb::Pistol);
-    XrVector3f const front = cal::OrbRest(gRun.stepAnchor, cal::Orb::RifleFront);
-    // A grip takes its orb when squeezed within reach of it; it keeps it while squeezed.
-    if (gRun.rightHeld) {
-        gRun.rightHeld = gControllers.active && Squeezed(right, true);
-    } else if (gControllers.active && right.gripValid && Distance(right.grip.position, rear) <= cal::kGrabReach &&
-               Squeezed(right, false)) {
-        gRun.rightHeld = true;
-        Tick(1);
+// One hand at its orb: taken when squeezed within reach (sweeping in while squeezed counts too); kept while
+// squeezed. Each press of the grip near the step is logged with where the hand and the orb were.
+bool GrabWith(int hand, XrVector3f const& orb, float reach, bool& held, char const* orbName) {
+    vr::controllers::Hand const& h = hand == 1 ? gControllers.right : gControllers.left;
+    char const* handName = hand == 1 ? "right" : "left";
+    bool const was = gRun.squeezeWas[hand];
+    bool const squeezing = gControllers.active && Squeezed(h, was);
+    gRun.squeezeWas[hand] = squeezing;
+    if (held) {
+        held = squeezing;
+        return held;
     }
+    if (!gControllers.active || !h.gripValid) {
+        return false;
+    }
+    XrVector3f const at = GrabAt(hand);
+    float const distance = Distance(at, orb);
+    bool const take = squeezing && distance <= reach;
+    if ((squeezing && !was) || take) {
+        // The orb from the hand in the step's level frame (right, up, ahead): which way the player was short.
+        XrVector3f const delta{orb.x - at.x, orb.y - at.y, orb.z - at.z};
+        XrVector3f const r = cal::AnchorRight(gRun.stepAnchor);
+        XrVector3f const f = cal::AnchorForward(gRun.stepAnchor);
+        log::Info("calibration: {} grip {} at {}: grab point {} (grip origin {}), the {} orb at {}: {:.3f} m away (reach {:.2f}); the "
+                  "orb {:+.3f} m right, {:+.3f} m up, {:+.3f} m ahead of the hand",
+            handName, take ? "takes" : "squeezed, out of reach", StepName(gRun.step), Point3(at), Point3(h.grip.position), orbName,
+            Point3(orb), distance, reach, delta.x * r.x + delta.z * r.z, delta.y, delta.x * f.x + delta.z * f.z);
+    }
+    if (take) {
+        held = true;
+        Tick(hand);
+    }
+    return held;
+}
+
+void StepGrab(bool rifle, XrPosef const& head) {
+    XrVector3f const rear = cal::OrbRest(gRun.stepAnchor, rifle ? cal::Orb::RifleRear : cal::Orb::Pistol, Body());
+    XrVector3f const front = cal::OrbRest(gRun.stepAnchor, cal::Orb::RifleFront, Body());
+    GrabWith(1, rear, cal::kGrabReach, gRun.rightHeld, rifle ? "near" : "pistol");
     if (rifle) {
-        if (gRun.leftHeld) {
-            gRun.leftHeld = gControllers.active && Squeezed(left, true);
-        } else if (gControllers.active && left.gripValid && Distance(left.grip.position, front) <= cal::kGrabReach &&
-                   Squeezed(left, false)) {
-            gRun.leftHeld = true;
-            Tick(0);
-        }
+        GrabWith(0, front, cal::kForegripGrabReach, gRun.leftHeld, "far");
     }
     gRun.held = 0.0f;
     if (gRun.rightHeld && (!rifle || gRun.leftHeld)) {
         Captured({});
         Enter(rifle ? Step::RifleAim : Step::PistolAim, head);
+        return;
+    }
+    gRun.statusWarn = false;
+    // Squeezing out of reach: say how far (the ring marks the hand's grab point).
+    auto const short_ = [&](int hand, XrVector3f const& orb, float reach) -> std::optional<float> {
+        vr::controllers::Hand const& h = hand == 1 ? gControllers.right : gControllers.left;
+        if (!gRun.squeezeWas[hand] || !h.gripValid) {
+            return std::nullopt;
+        }
+        float const d = Distance(GrabAt(hand), orb);
+        return d > reach ? std::optional<float>(d) : std::nullopt;
+    };
+    if (auto const d = !gRun.rightHeld ? short_(1, rear, cal::kGrabReach) : std::nullopt) {
+        gRun.status = std::format("Right hand: the orb is {:.0f} cm away (the ring is your hand)", *d * 100.0f);
+        gRun.statusWarn = true;
+        return;
+    }
+    if (auto const d = rifle && !gRun.leftHeld ? short_(0, front, cal::kForegripGrabReach) : std::nullopt) {
+        gRun.status = std::format("Left hand: the orb is {:.0f} cm away (the ring is your hand)", *d * 100.0f);
+        gRun.statusWarn = true;
         return;
     }
     gRun.status = rifle ? (gRun.rightHeld ? "Now the far orb with your left grip"
@@ -849,9 +1109,13 @@ void StepBody(XrPosef const& head, float dt) {
 
 // ---- Saving ------------------------------------------------------------------------------------------------
 
-void WriteStance(std::string const& section, char const* prefix, cal::Stance const& s) {
+void WriteStance(std::string const& section, char const* prefix, cal::Stance const& s, std::string const& note) {
     std::string const p = prefix;
     WriteIni(section, (p + "Trim").c_str(), cal::FormatRotation(s.trim));
+    WriteIni(section, (p + "Aims").c_str(), std::to_string(s.samples));  // 2: one aim left out after two tries
+    if (!note.empty()) {
+        WriteIni(section, (p + "Note").c_str(), note);
+    }
     WriteIni(section, (p + "Line").c_str(), cal::FormatVector(s.line));
     WriteIni(section, (p + "SpreadDeg").c_str(), Fixed(s.spreadDeg, 2));
     WriteIni(section, (p + "EyeReliefM").c_str(), Fixed(s.eyeRelief));
@@ -871,10 +1135,12 @@ std::string ResultsLine() {
         text += std::format("{} eye ({})", any.eye == 0 ? "left" : "right", any.eyeMeasured ? "measured" : "chosen");
     }
     if (gRun.pistol.valid) {
-        text += std::format("{}pistol {:.1f} deg", text.empty() ? "" : ", ", gRun.pistol.spreadDeg);
+        text += std::format("{}pistol {:.1f} deg{}", text.empty() ? "" : ", ", gRun.pistol.spreadDeg,
+            gRun.pistolNote.empty() ? std::string() : " (two aims: " + gRun.pistolNote + ")");
     }
     if (gRun.rifle.valid) {
-        text += std::format("{}rifle {:.1f} deg", text.empty() ? "" : ", ", gRun.rifle.spreadDeg);
+        text += std::format("{}rifle {:.1f} deg{}", text.empty() ? "" : ", ", gRun.rifle.spreadDeg,
+            gRun.rifleNote.empty() ? std::string() : " (two aims: " + gRun.rifleNote + ")");
     }
     if (gRun.standEye) {
         text += std::format("{}eyes {:.2f} m", text.empty() ? "" : ", ", *gRun.standEye);
@@ -930,10 +1196,10 @@ void Save() {
         WriteIni(section, "eyeMeasured", any.eyeMeasured ? "1" : "0");
     }
     if (gRun.pistol.valid) {
-        WriteStance(section, "pistol", gRun.pistol);
+        WriteStance(section, "pistol", gRun.pistol, gRun.pistolNote);
     }
     if (gRun.rifle.valid) {
-        WriteStance(section, "rifle", gRun.rifle);
+        WriteStance(section, "rifle", gRun.rifle, gRun.rifleNote);
     }
     // The time last: the mod reads a section with a time as a calibration.
     WriteIni(section, "time", std::format("{:04}-{:02}-{:02} {:02}:{:02}", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute));
@@ -1026,15 +1292,14 @@ void Press(int button, XrPosef const& head) {
 // B: back a step (an aim: the last one taken; the first aim: the grab; a grab: the step before).
 bool gBack = false;  // B's latch
 void Back(XrPosef const& head) {
-    std::vector<cal::AimSample>* samples = gRun.step == Step::PistolAim ? &gRun.pistolSamples
-        : gRun.step == Step::RifleAim                                   ? &gRun.rifleSamples
-                                                                        : nullptr;
+    bool const aiming = gRun.step == Step::PistolAim || gRun.step == Step::RifleAim;
     log::Info("calibration: B: back a step ({})", StepName(gRun.step));
-    if (samples != nullptr && !samples->empty()) {
-        samples->pop_back();
-        gRun.target = static_cast<int>(samples->size());
+    if (aiming && AimsOf(gRun.step == Step::RifleAim).Count() > 0) {
+        gRun.target = AimsOf(gRun.step == Step::RifleAim).Back();
         gRun.still.Reset();
         gRun.held = 0.0f;
+        gRun.lastHeld = 0.0f;
+        gRun.noteUntil = 0;
         Say(std::format("Target {} again.", gRun.target + 1));
         return;
     }
@@ -1092,6 +1357,7 @@ draw::PanelView PanelFor(Step step, std::uint64_t now) {
     v.title = text.title;
     v.body = text.body;
     v.status = gRun.status;
+    v.statusWarn = gRun.statusWarn;
     v.progress = step == Step::Check || step == Step::Saved || step == Step::PistolGrab || step == Step::RifleGrab
         ? -1.0f
         : std::clamp(gRun.held / kHoldSeconds, 0.0f, 1.0f);
@@ -1103,7 +1369,9 @@ draw::PanelView PanelFor(Step step, std::uint64_t now) {
     v.flash = gRun.flashAt != 0 && now - gRun.flashAt < kFlashMs ? 1.0f - static_cast<float>(now - gRun.flashAt) / kFlashMs : 0.0f;
     if (step == Step::PistolAim || step == Step::RifleAim) {
         v.targets = cal::kTargets;
-        v.targetsDone = static_cast<int>(step == Step::PistolAim ? gRun.pistolSamples.size() : gRun.rifleSamples.size());
+        for (int i = 0; i < cal::kTargets; ++i) {
+            v.targetTaken[i] = AimsOf(step == Step::RifleAim).Has(i);
+        }
         v.targetCurrent = gRun.target;
     }
     if (step == Step::Check) {
@@ -1111,10 +1379,8 @@ draw::PanelView PanelFor(Step step, std::uint64_t now) {
         if (any.valid) {
             v.summary.push_back(std::format("Aiming eye: {} ({})", any.eye == 0 ? "left" : "right", any.eyeMeasured ? "measured" : "your choice"));
         }
-        v.summary.push_back(gRun.pistol.valid ? std::format("Pistol: three aims within {}", Degrees(gRun.pistol.spreadDeg))
-                                              : std::string("Pistol: skipped"));
-        v.summary.push_back(gRun.rifle.valid ? std::format("Rifle: three aims within {}", Degrees(gRun.rifle.spreadDeg))
-                                             : std::string("Rifle: skipped"));
+        v.summary.push_back(StanceSummary(false));
+        v.summary.push_back(StanceSummary(true));
         std::string body;
         if (gRun.standEye) {
             body += std::format("Eye height {:.2f} m standing", *gRun.standEye);
@@ -1257,11 +1523,22 @@ void Start(char const* why) {
     // [Calibration] eye = left | right: the player's choice of aiming eye; auto (or nothing): measured.
     std::string const eye = ReadIni("Calibration", "eye", "auto");
     gRun.eye = eye == "left" ? 0 : eye == "right" ? 1 : -1;
+    // [Calibration] grabOffset = x, y, z: the grab point from the grip pose's origin (meters, the right grip's frame;
+    // mirrored for the left), for a runtime whose grip origin isn't in the palm. The markers show where it is.
+    std::string const offset = ReadIni("Calibration", "grabOffset");
+    if (auto const parsed = cal::ParseVector(offset); parsed && std::abs(parsed->x) <= 0.15f && std::abs(parsed->y) <= 0.15f &&
+                                                      std::abs(parsed->z) <= 0.15f) {
+        gRun.grabOffset = *parsed;
+    } else if (!offset.empty()) {
+        log::Warn("calibration: [Calibration] grabOffset \"{}\" isn't three numbers within 0.15 m: the grip pose's origin is used", offset);
+    }
     gPaused.store(false);
     gRunning.store(true);
     gPrompt.shown = false;
-    log::Info("calibration: started ({}) for {} ([{}]); aiming eye {}", why, gLabel.empty() ? std::string("unknown controllers") : gLabel,
-        gKey.empty() ? std::string("?") : Section(gKey), gRun.eye < 0 ? "measured" : eye);
+    log::Info("calibration: started ({}) for {} ([{}]); aiming eye {}; grab point {} m from the grip origin (grip frame); rifle spread "
+              "limit {:.1f} deg, pistol {:.1f}",
+        why, gLabel.empty() ? std::string("unknown controllers") : gLabel, gKey.empty() ? std::string("?") : Section(gKey),
+        gRun.eye < 0 ? "measured" : eye, cal::FormatVector(gRun.grabOffset), cal::kMaxRifleSpreadDeg, cal::kMaxSpreadDeg);
 }
 
 void Cancel(char const* why) {
@@ -1417,11 +1694,14 @@ unsigned Layers(Frame const& frame, XrCompositionLayerQuad const** out, unsigned
     if (gRun.step == Step::PistolAim || gRun.step == Step::RifleAim || gRun.step == Step::Check) {
         draw::BoardView board;
         board.current = gRun.step == Step::Check ? -1 : gRun.target;
-        std::size_t const taken = gRun.step == Step::PistolAim ? gRun.pistolSamples.size()
-            : gRun.step == Step::RifleAim                     ? gRun.rifleSamples.size()
-                                                              : 0;
-        for (std::size_t i = 0; i < taken && i < 3; ++i) {
-            board.done[i] = true;
+        bool const aimingNow = gRun.step == Step::PistolAim || gRun.step == Step::RifleAim;
+        for (int i = 0; i < cal::kTargets && aimingNow; ++i) {
+            board.done[i] = AimsOf(gRun.step == Step::RifleAim).Has(i);
+        }
+        if (aimingNow) {
+            bool const note = now < gRun.noteUntil && gRun.held <= 0.0f;
+            board.hint = note ? gRun.boardNote : gRun.boardHint;
+            board.hintWarn = note || gRun.boardHintWarn;
         }
         board.time = view.time;
         board.flash = view.flash;
@@ -1430,24 +1710,57 @@ unsigned Layers(Frame const& frame, XrCompositionLayerQuad const** out, unsigned
             add(Quad(frame.appSpace, kBoardChain, cal::BoardPose(gRun.anchor), cal::kBoardSize, cal::kBoardSize));
         }
     }
-    // The orbs: waiting at their rest (orange), or in the hand that holds them (pale).
+    // The orbs: waiting at their rest (orange), or in the hand that holds them (pale), at its grab point. A hand without
+    // its orb shows a ring at its grab point instead: Shepard's hands don't follow the controllers while this runs, so
+    // that ring is all there is to judge an orb's distance against (research/25 section 8). Constant sizes: a quad
+    // that grows and shrinks reads as coming and going.
+    // Anything in a hand closer than kNearEyes to the eyes (the right hand at the cheek, aiming the rifle) isn't drawn:
+    // that close it would fill the view or need crossed eyes.
+    auto const nearEyes = [&](XrVector3f const& at) { return Distance(at, head.position) < kNearEyes; };
     auto const orb = [&](bool held, XrVector3f const& at) {
+        if (held && nearEyes(at)) {
+            return;
+        }
         int const id = held ? kOrbHeldChain : kOrbActiveChain;
         if (EnsurePicture(frame.context, frame.device, id, draw::kOrbPixels, held ? &OrbHeld : &OrbActive)) {
-            float const size = held ? cal::kHeldOrbSize : cal::kOrbSize * (1.0f + 0.08f * std::sin(view.time * 5.0f));
+            float const size = held ? cal::kHeldOrbSize : cal::kOrbSize;
             add(Quad(frame.appSpace, id, cal::Billboard(at, head.position), size, size));
+        }
+    };
+    auto const marker = [&](int hand) {
+        vr::controllers::Hand const& h = hand == 1 ? gControllers.right : gControllers.left;
+        if (gControllers.active && h.gripValid && !nearEyes(GrabAt(hand)) &&
+            EnsurePicture(frame.context, frame.device, kMarkerChain, draw::kMarkerPixels, &draw::HandMarkerPicture)) {
+            add(Quad(frame.appSpace, kMarkerChain, cal::Billboard(GrabAt(hand), head.position), cal::kHandMarkerSize, cal::kHandMarkerSize));
         }
     };
     vr::controllers::Hand const& right = gControllers.right;
     vr::controllers::Hand const& left = gControllers.left;
-    if (step == Step::PistolGrab || step == Step::PistolAim) {
-        bool const inHand = gRun.rightHeld && right.gripValid;
-        orb(inHand, inHand ? right.grip.position : cal::OrbRest(gRun.stepAnchor, cal::Orb::Pistol));
-    } else if (step == Step::RifleGrab || step == Step::RifleAim) {
-        bool const rightIn = gRun.rightHeld && right.gripValid;
-        bool const leftIn = gRun.leftHeld && left.gripValid;
-        orb(rightIn, rightIn ? right.grip.position : cal::OrbRest(gRun.stepAnchor, cal::Orb::RifleRear));
-        orb(leftIn, leftIn ? left.grip.position : cal::OrbRest(gRun.stepAnchor, cal::Orb::RifleFront));
+    bool const grab = step == Step::PistolGrab || step == Step::RifleGrab;
+    bool const rifleStep = step == Step::RifleGrab || step == Step::RifleAim;
+    if (step == Step::PistolGrab || step == Step::PistolAim || rifleStep) {
+        bool const rightIn = gRun.rightHeld && right.gripValid && gControllers.active;
+        if (rightIn) {
+            orb(true, GrabAt(1));
+        } else {
+            if (grab) {
+                orb(false, cal::OrbRest(gRun.stepAnchor, rifleStep ? cal::Orb::RifleRear : cal::Orb::Pistol, Body()));
+            }
+            marker(1);
+        }
+        if (rifleStep) {
+            bool const leftIn = gRun.leftHeld && left.gripValid && gControllers.active;
+            if (leftIn) {
+                orb(true, GrabAt(0));
+            } else {
+                if (grab) {
+                    orb(false, cal::OrbRest(gRun.stepAnchor, cal::Orb::RifleFront, Body()));
+                }
+                marker(0);
+            }
+        } else if (grab) {
+            marker(0);
+        }
     }
     // The check: a red dot where the new sight line meets the board (rifle with both grips, pistol with the right).
     if (step == Step::Check && gControllers.active && right.gripValid) {
@@ -1492,7 +1805,7 @@ std::string StatusJson() {
                        "\"pistolSamples\": {}, \"rifleSamples\": {}, \"pistol\": {}, \"rifle\": {}, \"rightHeld\": {}, \"leftHeld\": {}, "
                        "\"prompt\": {}}}",
         gRunning.load() ? "true" : "false", Active() ? "true" : "false", json::JsonString(StepName(gRun.step)), gRun.target,
-        json::JsonNumber(gRun.held), anchor, json::JsonString(gKey), gRun.pistolSamples.size(), gRun.rifleSamples.size(),
+        json::JsonNumber(gRun.held), anchor, json::JsonString(gKey), gRun.pistolAims.Count(), gRun.rifleAims.Count(),
         stance(gRun.pistol), stance(gRun.rifle), gRun.rightHeld ? "true" : "false", gRun.leftHeld ? "true" : "false",
         gPrompt.shown ? "true" : "false");
 }
