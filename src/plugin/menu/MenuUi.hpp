@@ -30,6 +30,7 @@ using LogFunction = std::function<void(LogLevel, std::string const&)>;
 struct UiSetup {
     ID3D11Device* device = nullptr;
     std::filesystem::path documents;              // the folder with main.rml and main.rcss
+    std::wstring document = L"main.rml";          // the document in it (the setup app: setup.rml)
     std::vector<std::filesystem::path> fontDirs;  // where Rajdhani-*.ttf and TitilliumWeb-*.ttf are
     int width = 1440;                             // the context, in dp (1 dp = 1 pixel)
     int height = 900;
@@ -74,6 +75,7 @@ private:
     Rml::Context* context_ = nullptr;
     Rml::ElementDocument* document_ = nullptr;
     std::filesystem::path documents_;
+    std::wstring documentName_ = L"main.rml";
     int width_ = 0;
     int height_ = 0;
     LogFunction log_;

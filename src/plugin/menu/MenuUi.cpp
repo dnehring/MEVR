@@ -93,6 +93,7 @@ bool Ui::Init(UiSetup const& setup) {
         return false;
     }
     documents_ = setup.documents;
+    documentName_ = setup.document.empty() ? std::wstring(L"main.rml") : setup.document;
     width_ = setup.width;
     height_ = setup.height;
     system_ = std::make_unique<System>();
@@ -174,7 +175,7 @@ bool Ui::LoadDocument() {
     }
     Rml::Factory::ClearStyleSheetCache();
     Rml::Factory::ClearTemplateCache();
-    std::filesystem::path const file = documents_ / L"main.rml";
+    std::filesystem::path const file = documents_ / documentName_;
     document_ = context_->LoadDocument(file.string());
     std::error_code ec;
     stamps_[0] = std::filesystem::last_write_time(file, ec);
@@ -196,7 +197,7 @@ bool Ui::ReloadIfChanged() {
     }
     nextCheckMs_ = now + 1000;
     std::error_code ec;
-    auto const rml = std::filesystem::last_write_time(documents_ / L"main.rml", ec);
+    auto const rml = std::filesystem::last_write_time(documents_ / documentName_, ec);
     auto const rcss = std::filesystem::last_write_time(documents_ / L"main.rcss", ec);
     if (ec || (rml == stamps_[0] && rcss == stamps_[1])) {
         return false;

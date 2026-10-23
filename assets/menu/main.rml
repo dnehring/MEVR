@@ -177,6 +177,12 @@
 			<div class="row"><div class="rl"><div class="rlab">Steady cutscenes</div><div class="rdesc">Caps cutscenes to a frame rate the headset can hold</div></div>
 				<button class="tog" data-class-on="steady_cine" data-event-click="toggle('steady_cine')"><div class="knob"/></button></div>
 		</div>
+		<div class="group">
+			<div class="gtitle"><span>Optional content</span><div class="gline"/></div>
+			<div class="row"><div class="rl"><div class="rlab">Texture packs</div><div class="rdesc">Installed: {{content_installed}}</div><div class="note" data-if="content_msg != ''">{{content_msg}}</div></div>
+				<button class="btn" data-event-click="cmd('content_request')"><div class="sweep"/><span>Install after I quit</span><div class="tick"/></button></div>
+			<div class="hint">They change the game's files, so MEVR Setup adds them while the game is closed.</div>
+		</div>
 	</div>
 
 	<!-- ===================================================================================== HUD -->

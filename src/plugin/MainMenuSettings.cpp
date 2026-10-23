@@ -13,6 +13,7 @@
 #include "plugin/Colour.hpp"
 #include "plugin/MevrMenu.hpp"
 #include "plugin/PerfProbe.hpp"
+#include "plugin/SetupRequest.hpp"
 #include "plugin/TestLoop.hpp"
 
 #include <Windows.h>
@@ -319,6 +320,8 @@ void Settings::Read(menu::Values& v) {
     v.texts["diag_msg"] = diagMsg_;
     perf::Status const p = perf::GetStatus();
     v.texts["perf_msg"] = p.pending ? std::format("Measuring: {:.0f} s of 20", p.seconds) : perfMsg_;
+    v.texts["content_installed"] = setup_request::InstalledPacksText();
+    v.texts["content_msg"] = contentMsg_;
     // The top bar.
     v.texts["chip_headset"] = headset.empty() ? std::string("Headset not started") : headset;
     v.texts["chip_controllers"] = controllers.empty() ? std::string("No controllers yet") : controllers;
@@ -648,6 +651,8 @@ void Settings::Command(std::string const& name, std::string const& argument, men
         testloop::RequestRecording(testloop::GetStatus().recording ? 0 : 1);
     } else if (name == "perf") {
         after_ = After::Perf;
+    } else if (name == "content_request") {
+        setup_request::Request(contentMsg_);  // MEVR Setup opens on Optional content after the game exits (research/33)
     } else if (name == "reset") {
         if (resetArmedMs_ == 0) {
             resetArmedMs_ = Now();

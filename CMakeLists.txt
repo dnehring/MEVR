@@ -89,6 +89,25 @@ if (MEVR_MAIN_MENU)
     target_compile_options(mevr-menu PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus /Zi)
 endif ()
 
+# MEVR-Setup.exe (tools/setup, research/33): the end user's installer, without ME3Tweaks Mod Manager. A Win32 window in
+# the in-game menu's glass style (the same RmlUi setup, renderer, decorators and stylesheet: mevr-menu, assets/menu),
+# over src/install. Also renders its pages to PNGs offline (--preview) and has a command line for scripted tests.
+if (MEVR_MAIN_MENU)
+    add_executable(MEVR-Setup WIN32
+        tools/setup/Main.cpp
+        tools/setup/SetupApp.cpp
+        tools/setup/SetupApp.hpp
+        tools/setup/XrProbe.cpp
+        tools/setup/XrProbe.hpp
+        src/core/PngFile.cpp
+    )
+    target_include_directories(MEVR-Setup PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(MEVR-Setup PRIVATE mevr-menu mevr-install OpenXR::openxr_loader windowscodecs ole32 d3d11 dxgi dwmapi shell32)
+    target_compile_definitions(MEVR-Setup PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(MEVR-Setup PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus /Zi)
+    target_link_options(MEVR-Setup PRIVATE /ENTRY:wWinMainCRTStartup /DEBUG)
+endif ()
+
 # Halcyon's LE1 VR renderer (GPL-3.0, src/halcyon/le1) with its vendored MinHook and Dear ImGui.
 # It runs inside the LE1 host: OpenXR session, Present path, stereo, first person, HUD, menu.
 option(MEVR_HALCYON "Use Halcyon's renderer for LE1" ON)
@@ -431,7 +450,7 @@ function(mevr_add_plugin game)
             # Our VR main menu (research/28): LE1 only for now, in the host (not hot-reloaded).
             set(with_main_menu ON)
             list(APPEND host_sources src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/MainMenuSettings.cpp
-                src/plugin/MainMenuSettings.hpp)
+                src/plugin/MainMenuSettings.hpp src/plugin/SetupRequest.cpp src/plugin/SetupRequest.hpp src/core/Json.cpp src/core/Json.hpp)
         endif ()
     endif ()
     if (MEVR_HOT_RELOAD)
@@ -471,12 +490,73 @@ foreach (game LE1 LE2 LE3)
     endif ()
 endforeach ()
 
+# The installer's logic (research/33): game and VR detection, the manifest with backups, INI edits that never reset a
+# profile, the VR game settings, the launch arguments, optional content (texture packs through Mass Effect Modder),
+# the update check. Linked by the setup app (tools/setup) and the tests. No game code, no LExSDKv2.
+add_library(mevr-install STATIC
+    src/core/Json.cpp
+    src/core/Json.hpp
+    src/core/Version.cpp
+    src/core/Version.hpp
+    src/install/Detect.cpp
+    src/install/Detect.hpp
+    src/install/GameSettings.cpp
+    src/install/GameSettings.hpp
+    src/install/Http.cpp
+    src/install/Http.hpp
+    src/install/Ini.cpp
+    src/install/Ini.hpp
+    src/install/Installer.cpp
+    src/install/Installer.hpp
+    src/install/Launch.cpp
+    src/install/Launch.hpp
+    src/install/Manifest.cpp
+    src/install/Manifest.hpp
+    src/install/Packs.cpp
+    src/install/Packs.hpp
+    src/install/Updates.cpp
+    src/install/Updates.hpp
+)
+target_include_directories(mevr-install PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(mevr-install PUBLIC version bcrypt winhttp shell32 ole32 advapi32)
+target_compile_definitions(mevr-install PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+target_compile_options(mevr-install PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+
+# Our own ASI loader (src/loader, research/33): bink2w64.dll, a proxy for RAD's Bink DLL that forwards every export to
+# bink2w64_original.dll and loads Binaries\Win64\ASI\*.asi, offering LExSDKv2-based plugins the SPI interface they
+# expect. GPL-3.0 new code (no LEBinkProxy code), MinHook (BSD-2) for the hooks, no LExSDKv2. The setup app installs
+# it when no ASI loader is there (ME3Tweaks' LEBinkProxy, if installed, is used instead).
+add_library(mevr-minhook STATIC
+    third_party/minhook/src/buffer.c
+    third_party/minhook/src/hde/hde64.c
+    third_party/minhook/src/hook.c
+    third_party/minhook/src/trampoline.c
+)
+target_include_directories(mevr-minhook PUBLIC third_party/minhook/include)
+target_compile_options(mevr-minhook PRIVATE /W3)
+add_library(MEVR-Loader SHARED
+    src/loader/Loader.cpp
+    src/loader/Loader.rc
+    src/loader/LoaderCore.cpp
+    src/loader/LoaderCore.hpp
+    src/loader/Forwarders.hpp
+    src/loader/SpiAbi.hpp
+)
+target_include_directories(MEVR-Loader PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(MEVR-Loader PRIVATE mevr-minhook)
+target_compile_definitions(MEVR-Loader PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS)
+target_compile_options(MEVR-Loader PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus /Zi)
+target_link_options(MEVR-Loader PRIVATE /DEBUG)
+set_target_properties(MEVR-Loader PROPERTIES OUTPUT_NAME bink2w64)
+
 # Offline tests for game-independent math (no game, no runtime needed).
 option(MEVR_BUILD_TESTS "Build the offline tests" ON)
 if (MEVR_BUILD_TESTS)
     enable_testing()
     add_executable(mevr-tests
         tests/Main.cpp
+        tests/InstallTests.cpp
+        src/loader/LoaderCore.cpp
         src/core/PngFile.cpp
         src/core/ik/ArmLength.cpp
         src/core/ik/ArmPose.cpp
@@ -518,10 +598,38 @@ if (MEVR_BUILD_TESTS)
         src/game/HeadSim.cpp
     )
     target_include_directories(mevr-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_link_libraries(mevr-tests PRIVATE OpenXR::headers windowscodecs ole32)
+    target_link_libraries(mevr-tests PRIVATE mevr-install OpenXR::headers windowscodecs ole32)
     target_compile_definitions(mevr-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_test(NAME mevr-tests COMMAND mevr-tests)
+
+    # Our ASI loader in a tiny host process (tools/loader-test, research/33): a folder like the game's Win64 with our
+    # bink2w64.dll, a stand-in bink2w64_original.dll (the same 79 export names) and a test ASI built against
+    # LExSDKv2's own SPI header; the host checks the forwarders, the attach, FindPattern and the hooks.
+    set(loader_test_dir ${CMAKE_BINARY_DIR}/loader-test/$<CONFIG>)
+    add_library(mevr-loader-test-original SHARED tools/loader-test/TestOriginal.cpp tools/loader-test/TestOriginal.def)
+    set_target_properties(mevr-loader-test-original PROPERTIES OUTPUT_NAME bink2w64_original RUNTIME_OUTPUT_DIRECTORY ${loader_test_dir})
+    target_compile_options(mevr-loader-test-original PRIVATE /W4 /WX /utf-8)
+    add_library(mevr-loader-test-asi SHARED tools/loader-test/TestAsi.cpp)
+    set_target_properties(mevr-loader-test-asi PROPERTIES OUTPUT_NAME MEVRLoaderTest SUFFIX ".asi" RUNTIME_OUTPUT_DIRECTORY ${loader_test_dir}/ASI)
+    target_include_directories(mevr-loader-test-asi PRIVATE external/LExSDKv2/External)
+    target_compile_options(mevr-loader-test-asi PRIVATE /W4 /WX /permissive /utf-8)  # the SDK's macros need /permissive, as for our ASI
+    add_executable(mevr-loader-test tools/loader-test/Main.cpp)
+    set_target_properties(mevr-loader-test PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${loader_test_dir})
+    target_include_directories(mevr-loader-test PRIVATE external/LExSDKv2/External)
+    target_compile_definitions(mevr-loader-test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-loader-test PRIVATE /W4 /WX /utf-8)
+    target_link_options(mevr-loader-test PRIVATE /INCREMENTAL:NO)
+    add_dependencies(mevr-loader-test MEVR-Loader mevr-loader-test-original mevr-loader-test-asi)
+    add_custom_command(TARGET mevr-loader-test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:MEVR-Loader> ${loader_test_dir}/bink2w64.dll
+        VERBATIM)
+    add_test(NAME mevr-loader COMMAND mevr-loader-test WORKING_DIRECTORY ${loader_test_dir})
+
+    # A stand-in MassEffect1.exe with the real one's version number, for testing the setup on a fake game folder.
+    add_executable(mevr-fake-game tools/setup/FakeGame.cpp tools/setup/FakeGame.rc)
+    set_target_properties(mevr-fake-game PROPERTIES OUTPUT_NAME MassEffect1 RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/fake-game/$<CONFIG>)
+    target_compile_options(mevr-fake-game PRIVATE /W4 /WX)
 
     # The gun sights' look, offline (tools/sight-preview): the scope's picture with the host's own shader, the
     # reticles and the window ring, as PNGs from a ray-traced test scene.

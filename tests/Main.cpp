@@ -6310,7 +6310,11 @@ void TestUpscale() {
     CHECK(src.find("PSRcas") != std::string::npos && src.find("MEVR_EYE_OUT") != std::string::npos);
 }
 
+// tests/InstallTests.cpp: the installer's logic (research/33).
+void RunInstallTests(int& failures);
+
 int main() {
+    RunInstallTests(gFailures);
     TestUpscale();
     TestComfort();
     TestMetricStereo();
