@@ -385,6 +385,27 @@ may feed it: the game never waits in `xrWaitFrame`, so SteamVR never sees idle t
 rate rises toward 90 and holds, the fix is that setting (and possibly an early `xrWaitFrame` so the
 automatic mode recovers by itself). If SteamVR still halves it, the frame loop is next.
 
+## The settings didn't free it; the early wait did (2026-10-22, 23:20-23:51)
+
+| Capture | Setting | fps | GPU held after `xrEndFrame` | GPU work | Game thread | Render thread busy |
+|---|---|---|---|---|---|---|
+| 21:39 baseline | Auto throttling | 45.1 | 13.5 ms | ≤ 8.7 ms | 8.2 ms | 21.1 ms |
+| 23:20 unthrottled | Throttling Fixed, full rate (`framesToThrottle 0`); SteamVR at 46% | 45.2 | 14.8 ms | ≤ 7.2 ms | 6.1 ms | 21.6 ms |
+| 23:25 reprojection | + Legacy Reprojection Mode off (no key seen in the file) | 45.5 | 15.7 ms | ≤ 6.3 ms | 4.6 ms | 21.3 ms |
+| **23:50 earlywait** | **`[Performance] earlyFrameWait = 1`** (b73e360) | **89.7** | 4.9 ms | ≤ 6.2 ms | 4.8 ms | 10.6 ms |
+
+- SteamVR's per-application settings changed nothing; lighter work only lengthened the hold.
+- **The cause was Halcyon's late wait** (finding 9). RunFrame now calls `xrWaitFrame` for the next
+  frame right after `xrEndFrame` (before the game renders it) and begins that frame at the next
+  Present. SteamVR then paces the game at the full 90 Hz: the median frame is 11.15 ms (p90 12.06).
+  `xrWaitFrame` itself still returns at once (0.02 ms); what changed is what SteamVR sees.
+- **Headroom is thin:** the render thread is busy 10.6 ms of 11.1 (p90 11.5); part of that is still
+  waiting for the GPU (held 4.9 ms after each frame, busy time not following the draws), so its real
+  work is less. GPU work ≤ 6.2 ms, game thread 4.8 ms. Heavier scenes (combat, effects) can miss
+  frames; the probe in those is the next measurement.
+- Switch: `[Performance] earlyFrameWait` in `ASI\LE1MEVR.ini`, live; 0 = upstream's order (45).
+  Not yet checked in the headset: head-pose latency and judder with the new order **[verify]**.
+
 ## Next session: the no-code checks (about 15 minutes)
 
 Same spot each time (e.g. the Normandy's CIC, standing still, same direction), 30 s per step:

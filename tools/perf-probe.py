@@ -271,7 +271,7 @@ def main():
         print(f'  -> the GPU is held {held[0]:.2f} ms after each xrEndFrame (median): the runtime\'s frame sync, '
               'not the game\'s work.' + (' The render thread\'s busy time is mostly waiting for it (it doesn\'t follow '
               'the draws), so the CPU numbers above are inflated by the hold.' if spinning else ''))
-    if throttle > 1.5 or gpu_held:
+    if throttle > 1.5:
         print('  -> Lift the throttle (SteamVR > Video > Per-Application Video Settings > Throttling Behavior: Fixed, '
               'full rate) and measure again: that shows what the frame really costs.')
     elif candidates and interval:
