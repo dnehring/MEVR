@@ -1,8 +1,9 @@
 # Third-party repos cloned for reading
 reference/
 
-# Raw mod downloads (extracted copies we use live under src/)
+# Raw mod downloads, and MassFPS extracted for study (never committed: game script and packages)
 mods/
+src/script/le1/massfps-base/
 
 # Local ME3Tweaks Mod Manager install
 mod-manager/

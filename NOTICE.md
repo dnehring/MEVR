@@ -27,7 +27,10 @@ GPL VR mods. Code it contains from other projects keeps its own license and noti
 | [AMD FidelityFX Super Resolution 1](https://github.com/GPUOpen-Effects/FidelityFX-FSR) (Copyright (c) 2021 Advanced Micro Devices, Inc.; `ffx_a.h` also Copyright (c) 2014 Michal Drobot for the float approximations): the shader headers `ffx_a.h` and `ffx_fsr1.h`, unmodified, embedded at build time and compiled at run time for the eye upscale (core/vr/Upscale, plugin/Upscale, research/32) | `external/fsr1/` | MIT (`external/fsr1/LICENSE.txt`) |
 | [Khronos OpenXR SDK](https://github.com/KhronosGroup/OpenXR-SDK) | `external/OpenXR-SDK` (submodule) | Apache-2.0 |
 | [LExSDKv2](https://github.com/llamathings/LExSDKv2) | `external/LExSDKv2` (submodule) | None given (see its README) |
-| MassFPS (Aphar) | `src/script/le1/massfps-base/` | "Do whatever you want", no credit required (credited anyway) |
+
+[MassFPS (LE1)](https://www.nexusmods.com/masseffectlegendaryedition/mods/1731) by Aphar (Nexus mod
+1731) was studied locally; its files aren't in the repository. Its author allows any use ("do
+whatever you want", no credit required); we credit Aphar with thanks.
 
 Runtime dependencies that are not distributed with ME VR Attempt: ME3Tweaks LEBinkProxy (the ASI
 loader, installed by ME3Tweaks Mod Manager), the user's OpenXR runtime, and Windows'

@@ -14,8 +14,9 @@ modifications from any other authors. You may do whatever you want with this mod
 permission needed. That includes … modifying it and releasing the modifications, incorporating
 its modifications into your own mod, etc."
 
-- **Raw files:** drag the `.m3m` files into ME3Tweaks Mod Manager to extract the `.uc` sources and
-  `MassFPS_LE1.pcc`.
+- **Raw files:** drag the `.m3m` files into ME3Tweaks Mod Manager (or run `tools/extract-m3m.ps1`)
+  to extract the `.uc` sources and `MassFPS_LE1.pcc`. They're read locally and aren't in the
+  repository.
 - **One exception:** compatibility with LE1 Community Patch required packaging an alternate
   version of the Community Patch's `SFXCameraMode_CombatStorm.Initialize`. That function is the
   Community Patch's work; check its terms before reusing it.
@@ -117,8 +118,8 @@ relative movement) or from the off-hand controller (hand-relative movement), and
 
 ## Verified from extracted source (2026-10-07)
 
-The mod was extracted with `tools/extract-m3m.ps1` into `src/script/le1/massfps-base/`. Every
-change targets `SFXGame.pcc`.
+The mod was extracted locally with `tools/extract-m3m.ps1` (download it from Nexus to repeat this;
+its files aren't in the repository). Every change targets `SFXGame.pcc`.
 
 - **`.m3m` format (v1):**
   - `"M3MM"` magic, then a version byte (1).
@@ -152,7 +153,8 @@ change targets `SFXGame.pcc`.
 MassFPS is the **script-side first-person foundation for LE1**, and its license lets us absorb
 it. Plan:
 
-1. Extract its raws (`.m3m` → ME3MM) into `src/script/le1/massfps-base/` with attribution.
+1. Extract its raws (`.m3m`, `tools/extract-m3m.ps1`) locally to read them (not committed); credit
+   Aphar.
 2. Keep: `bFirstPerson` camera modes and offsets (as the eye anchor), the near-clip change,
    shake/FOV removal, smooth controller-relative movement, the exploration crouch camera,
    first-person cinematic transition cameras, and the conversation and cinematic head restore.

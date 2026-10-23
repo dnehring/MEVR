@@ -67,7 +67,6 @@ it). The current test plan and hotkeys are in [notes/next-vr-session.md](notes/n
 | `mods/`      | Raw mod downloads (gitignored) |
 | `src/core/`, `src/engine/`, `src/game/`, `src/plugin/`, `src/mod/` | The native plugin: game-agnostic VR core (OpenXR, D3D11, controllers), UE3/LExSDK bridge (scene view, ProcessEvent), ME gameplay adapters (head tracking, gamepad bridge, reflections), the loader host and the hot-reloadable mod |
 | `tests/`     | Offline tests for game-independent math (ctest) |
-| `src/script/` | UnrealScript side (e.g. `le1/massfps-base/`, MassFPS by Aphar) |
 
 ## Docs
 
