@@ -436,7 +436,7 @@ void OnEyeReleased(XrSwapchain swapchain, ID3D11Texture2D* image) {
 }
 
 // ---- State ------------------------------------------------------------------------------------------------
-sv::Looking gLooking[2];
+int gDotEye = -1;          // the eye looking through a dot or holo sight
 int gAiming = -1;          // the eye aiming through a scope
 int gSource = -1;          // whose image it magnifies
 bool gScopeDrawn = false;  // this frame
@@ -448,10 +448,17 @@ int gLoggedKind = -1;
 bool gLoggedDot = false;
 bool gLoggedScope = false;
 bool gLoggedFrame = false;
+// Halcyon's stereo against the true eyes (research/21 section 9): each eye image as drawn, and how far it moved the
+// quad it last corrected (for the snapshot).
+sv::EyeImage gImages[2];
+sv::ShownError gCorrection{};
+int gCorrectedEye = -1;
+float gCorrectionCm = 0.0f;  // how far the corrected quad moved (its true place to where the image shows it)
+std::string gStereoText = "not known yet";
+std::string gLoggedStereo;
 
 void Off() {
-    gLooking[0].Reset();
-    gLooking[1].Reset();
+    gDotEye = -1;
     gAiming = -1;
     gSource = -1;
     testloop::SetReleaseTap(XR_NULL_HANDLE, nullptr);
@@ -520,8 +527,10 @@ bool RenderScope(Frame const& frame, sv::Sight const& sight, sv::Lens const& len
     if (!EnsurePipeline(frame.device) || gCopy.srv == nullptr) {
         return false;
     }
-    ScopeParams const params = MakeScopeParams(sight, lens, view, eye, frame.projectionPose[source], frame.projectionFov[source],
-        frame.projectionRect[source], gCopy.width, gCopy.height, size);
+    // The source image as Halcyon drew it (its render place and its convergence shift): the picture then shows the
+    // world where it truly is, so the reticle sits on what the sight line points at (research/21 section 9).
+    sv::SampleView const sample = sv::SampleViewOf(gImages[source], frame.projectionPose[source], frame.projectionFov[source]);
+    ScopeParams const params = MakeScopeParams(sight, lens, view, eye, sample, frame.projectionRect[source], gCopy.width, gCopy.height, size);
     std::uint32_t index = 0;
     if (!Acquire(gScope, index)) {
         return false;
@@ -571,8 +580,58 @@ char const* EyeName(int eye) {
     return eye == 0 ? "left" : eye == 1 ? "right" : "none";
 }
 
-XrEyeVisibility Visibility(bool left, bool right) {
-    return left && right ? XR_EYE_VISIBILITY_BOTH : left ? XR_EYE_VISIBILITY_LEFT : XR_EYE_VISIBILITY_RIGHT;
+XrEyeVisibility VisibilityOf(int eye) {
+    return eye == 0 ? XR_EYE_VISIBILITY_LEFT : XR_EYE_VISIBILITY_RIGHT;
+}
+
+float Distance(XrVector3f a, XrVector3f b) {
+    return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z));
+}
+
+// Each eye image as Halcyon's Stereo 2 drew it, when the sight asks for it and the host knows; logged on change.
+void UpdateImages(Frame const& frame, sv::Sight const& sight) {
+    bool const wanted = (sight.flags & sv::kMatchStereo) != 0;
+    bool const known = frame.stereoValid && frame.projectionValid;
+    for (int e = 0; e < 2; ++e) {
+        gImages[e] = wanted && known ? sv::MakeEyeImage(frame.projectionPose, e, frame.stereoHalfEyeM, frame.imageShiftTan[e])
+                                     : sv::EyeImage{};
+    }
+    if (!wanted) {
+        gStereoText = "not matched ([Sights] matchStereo = 0): the sights sit at their true place";
+    } else if (!known) {
+        gStereoText = "unknown (not a Stereo 2 frame): the sights sit at their true place";
+    } else {
+        constexpr float kDeg = 180.0f / kPi;
+        float const trueHalf = 0.5f * Distance(frame.projectionPose[0].position, frame.projectionPose[1].position);
+        gStereoText = std::format("Stereo 2 drew the eyes {:.1f} cm either side of their midpoint (the headset's {:.1f} cm) and moved "
+                                  "the left image {:+.2f} and the right {:+.2f} degrees at submit (convergence): the dot and the scope "
+                                  "are drawn where the images show the world",
+            frame.stereoHalfEyeM * 100.0f, trueHalf * 100.0f, std::atan(frame.imageShiftTan[0]) * kDeg,
+            std::atan(frame.imageShiftTan[1]) * kDeg);
+    }
+    if (gStereoText != gLoggedStereo) {
+        gLoggedStereo = gStereoText;
+        log::Info("[MEVR-SIGHT] eye images: {}", gStereoText);
+    }
+}
+
+// The true eyes' midpoint (as submitted).
+XrVector3f Mid() {
+    XrVector3f const& a = gImages[0].pose.position;
+    XrVector3f const& b = gImages[1].pose.position;
+    return {0.5f * (a.x + b.x), 0.5f * (a.y + b.y), 0.5f * (a.z + b.z)};
+}
+
+// `point` moved to where eye `eye`'s image shows it (for a quad seen by that eye only), noted for the snapshot.
+XrVector3f ForEye(int eye, XrVector3f const& point) {
+    if (eye < 0 || eye > 1 || !gImages[eye].valid) {
+        return point;
+    }
+    XrVector3f const shown = sv::AsShown(gImages[eye], point);
+    gCorrection = sv::ErrorOf(gImages[eye], point);
+    gCorrectedEye = eye;
+    gCorrectionCm = Distance(shown, point) * 100.0f;
+    return shown;
 }
 
 } // namespace
@@ -601,9 +660,13 @@ Output Layers(Frame const& frame) {
     bool const usable = kind != sv::Kind::None && frame.worldFrame && !frame.menuOpen && frame.onFoot && frame.eyesValid &&
         frame.context != nullptr && frame.device != nullptr && frame.session != XR_NULL_HANDLE && sight.radius > 0.0f;
     std::uint32_t view = 0;
+    gCorrectedEye = -1;
+    gCorrection = {};
+    gCorrectionCm = 0.0f;
     if (!usable) {
         Off();
     } else {
+        UpdateImages(frame, sight);
         for (int e = 0; e < 2; ++e) {
             gLines[e] = sv::EyeLine(frame.eyes[e].position, sight.center, sight.axis, sight.up);
         }
@@ -611,10 +674,13 @@ Output Layers(Frame const& frame) {
             gAiming = -1;
             gSource = -1;
             testloop::SetReleaseTap(XR_NULL_HANDLE, nullptr);
-            bool on[2];
-            for (int e = 0; e < 2; ++e) {
-                on[e] = gLooking[e].Update(gLines[e], sight.radius, kMinAlong, kMaxAlong);
-            }
+            // The eye looking through: the one whose line along the sight passes nearest the window's centre, within
+            // the eye box (more forgiving than the drawn window: a gun raised to the face shows its dot), kept with
+            // hysteresis. One eye only, like a real red dot seen with both eyes open (the other eye looks past it),
+            // so the dot can sit on that eye's image of the target.
+            float const box = std::max(sight.eyeBox, sight.radius);
+            gDotEye = sv::AimingEye(gLines, box, kMinAlong, kMaxAlong, gDotEye);
+            bool const on[2] = {gDotEye == 0, gDotEye == 1};
             if ((sight.flags & sv::kFrame) != 0 && out.count < 2 && EnsureFrame(frame)) {
                 gFrameQuad = MakeQuad(frame.appSpace, gFrame, sv::Disc(sight.center, sight.axis, sight.up, sight.radius * kFrameScale),
                     XR_EYE_VISIBILITY_BOTH);
@@ -627,24 +693,35 @@ Output Layers(Frame const& frame) {
             }
             DotLayout const layout = LayoutFor(sight);
             if ((on[0] || on[1]) && out.count < 2 && EnsureDot(frame, sight, layout)) {
-                sv::Quad const quad = sv::Reticle(sight.center, sight.axis, sight.up, kDotDistance, layout.quadDeg * kPi / 180.0f);
-                gDotQuad = MakeQuad(frame.appSpace, gDot, quad, Visibility(on[0], on[1]));
+                sv::Quad quad = sv::Reticle(sight.center, sight.axis, sight.up, kDotDistance, layout.quadDeg * kPi / 180.0f);
+                // Collimated on the target as that eye's image shows it (Halcyon's convergence moves each image
+                // about a degree sideways: research/21 section 9).
+                quad.pose.position = ForEye(gDotEye, quad.pose.position);
+                gDotQuad = MakeQuad(frame.appSpace, gDot, quad, VisibilityOf(gDotEye));
                 out.layers[out.count++] = &gDotQuad;
                 view |= (on[0] ? sv::kViewLeft : 0u) | (on[1] ? sv::kViewRight : 0u);
                 if (!gLoggedDot) {
                     gLoggedDot = true;
                     int const e = on[1] ? 1 : 0;
                     log::Info("[MEVR-SIGHT] first {} reticle: the {} eye looks through the window ({:.3f} m behind it, {:.4f} m off "
-                              "the line, window radius {:.4f} m); the reticle {:.0f} m out along the sight line, {:.2f} deg",
-                        sv::Name(kind), EyeName(e), gLines[e].along, gLines[e].lateral, sight.radius, kDotDistance, layout.quadDeg);
+                              "the line, window radius {:.4f} m, eye box {:.4f} m); the reticle {:.0f} m out along the sight line, "
+                              "{:.2f} deg, moved {:+.2f} degrees right and {:+.2f} up onto that eye's image",
+                        sv::Name(kind), EyeName(e), gLines[e].along, gLines[e].lateral, sight.radius, box, kDotDistance, layout.quadDeg,
+                        gCorrection.rightDeg, gCorrection.upDeg);
                 }
             }
         } else if (kind == sv::Kind::Scope) {
-            gLooking[0].Reset();
-            gLooking[1].Reset();
-            auto const lens = sv::MakeLens(sight.center, sight.axis, sight.up, sight.radius);
+            gDotEye = -1;
             float const relief = std::max(sight.eyeReliefM, 0.01f);
-            gAiming = lens ? sv::AimingEye(gLines, kScopeBox * sight.radius, 0.01f, 6.0f * relief, gAiming) : -1;
+            gAiming = sv::AimingEye(gLines, kScopeBox * sight.radius, 0.01f, 6.0f * relief, gAiming);
+            // The eyepiece where the aiming eye's image shows the gun's scope (Halcyon's stereo isn't metric: a few
+            // millimetres at the face), so the picture sits on the model; its reticle still points along the sight
+            // line (the picture is centred on the line through the eye, wherever the lens is).
+            XrVector3f const center = gAiming >= 0 ? ForEye(gAiming, sight.center) : sight.center;
+            auto const lens = sv::MakeLens(center, sight.axis, sight.up, sight.radius);
+            if (!lens) {
+                gAiming = -1;
+            }
             std::optional<sv::ScopeView> scopeView;
             if (gAiming >= 0) {
                 scopeView = sv::View(*lens, frame.eyes[gAiming].position, relief);
@@ -658,7 +735,7 @@ Output Layers(Frame const& frame) {
                 bool const fresh = gCopy.srv != nullptr && gCopy.swapchain == swapchain && gCopy.frame + 2 >= gFrameCount;
                 if (fresh && out.count < 2 &&
                     RenderScope(frame, sight, *lens, *scopeView, frame.eyes[gAiming].position, gSource)) {
-                    gScopeQuad = MakeQuad(frame.appSpace, gScope, sv::Disc(sight.center, sight.axis, sight.up, sight.radius),
+                    gScopeQuad = MakeQuad(frame.appSpace, gScope, sv::Disc(lens->center, sight.axis, sight.up, sight.radius),
                         gAiming == 0 ? XR_EYE_VISIBILITY_LEFT : XR_EYE_VISIBILITY_RIGHT);
                     out.layers[out.count++] = &gScopeQuad;
                     view |= sv::kViewScope;
@@ -702,11 +779,18 @@ std::string StatusJson() {
     };
     return std::format("{{\"kind\": \"{}\", \"weapon\": \"{}\", \"center\": [{:.4f}, {:.4f}, {:.4f}], \"axis\": [{:.4f}, {:.4f}, {:.4f}], "
                        "\"radius\": {:.4f}, \"zoom\": {:.2f}, \"eyes\": [{}, {}], \"looking\": [{}, {}], \"aimingEye\": \"{}\", "
-                       "\"sourceEye\": \"{}\", \"scopeDrawn\": {}, \"view\": {}, \"copies\": {}, \"copySize\": [{}, {}]}}",
+                       "\"sourceEye\": \"{}\", \"scopeDrawn\": {}, \"view\": {}, \"copies\": {}, \"copySize\": [{}, {}], "
+                       "\"eyeBox\": {:.4f}, \"dotEye\": \"{}\", \"stereo\": {{\"matched\": [{}, {}], \"halfEyeM\": [{:.4f}, {:.4f}], "
+                       "\"shiftDeg\": [{:.3f}, {:.3f}], \"text\": \"{}\", \"correctedEye\": \"{}\", \"correctionDeg\": [{:.3f}, {:.3f}], "
+                       "\"correctionCm\": {:.3f}}}}}",
         sv::Name(static_cast<sv::Kind>(gSight.kind)), sv::WeaponName(gSight.weapon), gSight.center.x, gSight.center.y, gSight.center.z,
         gSight.axis.x, gSight.axis.y, gSight.axis.z, gSight.radius, gSight.zoom, line(gLines[0]), line(gLines[1]),
-        gLooking[0].On() ? "true" : "false", gLooking[1].On() ? "true" : "false", EyeName(gAiming), EyeName(gSource),
-        gScopeDrawn ? "true" : "false", gView, gCopy.copies, gCopy.width, gCopy.height);
+        gDotEye == 0 ? "true" : "false", gDotEye == 1 ? "true" : "false", EyeName(gAiming), EyeName(gSource),
+        gScopeDrawn ? "true" : "false", gView, gCopy.copies, gCopy.width, gCopy.height, gSight.eyeBox, EyeName(gDotEye),
+        gImages[0].valid ? "true" : "false", gImages[1].valid ? "true" : "false",
+        gImages[0].valid ? Distance(gImages[0].renderEye, Mid()) : 0.0f, gImages[1].valid ? Distance(gImages[1].renderEye, Mid()) : 0.0f,
+        std::atan(gImages[0].shiftTan) * 180.0f / kPi, std::atan(gImages[1].shiftTan) * 180.0f / kPi, gStereoText,
+        EyeName(gCorrectedEye), gCorrection.rightDeg, gCorrection.upDeg, gCorrectionCm);
 }
 
 } // namespace mevr::host::sight_layers

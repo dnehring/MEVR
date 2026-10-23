@@ -182,6 +182,12 @@ std::size_t const kScopeShaderSize = sizeof(kScopeShader) - 1;
 
 ScopeParams MakeScopeParams(sv::Sight const& sight, sv::Lens const& lens, sv::ScopeView const& view, XrVector3f const& eye,
     XrPosef const& source, XrFovf const& fov, XrRect2Di const& rect, unsigned textureWidth, unsigned textureHeight, unsigned size) {
+    return MakeScopeParams(sight, lens, view, eye, sv::SampleViewOf(sv::EyeImage{}, source, fov), rect, textureWidth, textureHeight, size);
+}
+
+ScopeParams MakeScopeParams(sv::Sight const& sight, sv::Lens const& lens, sv::ScopeView const& view, XrVector3f const& eye,
+    sv::SampleView const& sample, XrRect2Di const& rect, unsigned textureWidth, unsigned textureHeight, unsigned size) {
+    XrPosef const& source = sample.pose;
     XrVector3f const r0 = vr::overlay::Rotate(source.orientation, {1.0f, 0.0f, 0.0f});
     XrVector3f const r1 = vr::overlay::Rotate(source.orientation, {0.0f, 1.0f, 0.0f});
     XrVector3f const r2 = vr::overlay::Rotate(source.orientation, {0.0f, 0.0f, 1.0f});
@@ -196,7 +202,7 @@ ScopeParams MakeScopeParams(sv::Sight const& sight, sv::Lens const& lens, sv::Sc
         {r0.x, r0.y, r0.z, view.pupil},
         {r1.x, r1.y, r1.z, static_cast<float>(sight.scopeReticle)},
         {r2.x, r2.y, r2.z, static_cast<float>(size)},
-        {std::tan(fov.angleLeft), std::tan(fov.angleRight), std::tan(fov.angleUp), std::tan(fov.angleDown)},
+        {sample.tanLeft, sample.tanRight, sample.tanUp, sample.tanDown},
         {static_cast<float>(rect.offset.x), static_cast<float>(rect.offset.y), static_cast<float>(rect.extent.width),
             static_cast<float>(rect.extent.height)},
         {1.0f / static_cast<float>(std::max(textureWidth, 1u)), 1.0f / static_cast<float>(std::max(textureHeight, 1u)), 0.0f, 0.0f},

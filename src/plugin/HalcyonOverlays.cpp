@@ -23,6 +23,7 @@
 #include "core/vr/AimRay.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/FrameProbe.hpp"
+#include "core/vr/HostView.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/WheelCrop.hpp"
@@ -1489,6 +1490,14 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         sightFrame.projectionPose[e].position = ToVec(frame.projectionPosition[e]);
         sightFrame.projectionFov[e] = {frame.projectionFov[e][0], frame.projectionFov[e][1], frame.projectionFov[e][2],
             frame.projectionFov[e][3]};
+        sightFrame.imageShiftTan[e] = frame.imageShiftTan[e];
+    }
+    // How Stereo 2 drew the eyes (research/21 section 9): its half separation at the view's scale (the host view's
+    // units per meter: the same scale the mod maps the hands with).
+    {
+        float const unitsPerMeter = mevr::vr::host_view::Latest().unitsPerMeter;
+        sightFrame.stereoValid = frame.stereoMapValid && unitsPerMeter > 1.0f;
+        sightFrame.stereoHalfEyeM = sightFrame.stereoValid ? frame.stereoHalfEyeUU / unitsPerMeter : 0.0f;
     }
     mevr::host::sight_layers::Output const sight = mevr::host::sight_layers::Layers(sightFrame);
     if (sight.looking && sight.replaceRing) {

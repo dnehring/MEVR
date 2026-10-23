@@ -62,5 +62,10 @@ static_assert(sizeof(ScopeParams) == 13 * 16);
 ScopeParams MakeScopeParams(vr::sights::Sight const& sight, vr::sights::Lens const& lens, vr::sights::ScopeView const& view,
     XrVector3f const& eye, XrPosef const& source, XrFovf const& fov, XrRect2Di const& rect, unsigned textureWidth,
     unsigned textureHeight, unsigned size);
+// The same with the source image as Halcyon's stereo drew it (vr::sights::SampleViewOf: its render place and the
+// shift its convergence gave it), so the picture shows the world where it truly is (research/21 section 9).
+ScopeParams MakeScopeParams(vr::sights::Sight const& sight, vr::sights::Lens const& lens, vr::sights::ScopeView const& view,
+    XrVector3f const& eye, vr::sights::SampleView const& source, XrRect2Di const& rect, unsigned textureWidth,
+    unsigned textureHeight, unsigned size);
 
 } // namespace mevr::host::sight_pictures

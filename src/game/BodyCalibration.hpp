@@ -44,8 +44,12 @@ bool Calibrating();
 
 // The stance for a weapon type (BioWeaponRanged's EBioItemWeaponRangedType: 0 pistol, 1 shotgun, 2 assault
 // rifle, 3 sniper rifle): the pistol's for pistols, the rifle's for the rest. Nullopt: not calibrated (or
-// [Calibration] use = 0): everything as before.
+// [Calibration] use = 0): everything as before. Without a rifle stance (a calibration whose rifle step wasn't
+// finished, or whose aims disagreed by more than 10 degrees), the long guns get the pistol's.
 std::optional<vr::calibration::Stance> StanceFor(int weaponType);
+// StanceFor gave a long gun the pistol's stance: its grip frame (where the barrel points) is used, its sight line (a
+// pistol at arm's length) isn't, so arm IK doesn't move the gun onto it.
+bool StanceBorrowed(int weaponType);
 // The rifle stance with both hands measured (the two-handed grip), if any.
 std::optional<vr::calibration::Stance> TwoHanded();
 

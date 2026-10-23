@@ -875,6 +875,70 @@ std::optional<ik::Vec3> OffHandSocketInHand() {
 #endif
 }
 
+std::optional<Model> ModelInGunFrame(engine::UnrealVector const& topWorld) {
+#if defined(SDK_TARGET_LE1)
+    static_assert(offsetof(USkeletalMesh, Bounds) == 0x60);
+    auto const muzzle = Current();
+    if (!muzzle) {
+        return std::nullopt;
+    }
+    std::string why;
+    auto const live = LivePointers(why);
+    if (!live || live->mesh != gResolved->mesh || live->mesh->SkeletalMesh == nullptr) {
+        return std::nullopt;
+    }
+    ik::Vec3 const origin = V(muzzle->location);
+    ik::Vec3 const barrel = ik::Normalize(V(muzzle->barrel), {1.0, 0.0, 0.0});
+    ik::Vec3 top = V(topWorld);
+    top = top - barrel * ik::Dot(top, barrel);
+    if (!(ik::Length(top) > 1e-6)) {
+        return std::nullopt;
+    }
+    top = ik::Normalize(top);
+    ik::Vec3 const side = ik::Cross(top, barrel);  // UE axes (X forward, Z up): up x forward = right
+    auto const inFrame = [&](std::string name, ik::Vec3 const& world) {
+        ik::Vec3 const d = world - origin;
+        return ModelPoint{std::move(name), -ik::Dot(d, barrel), ik::Dot(d, top), ik::Dot(d, side)};
+    };
+    ik::Affine const meshToWorld = engine::skeleton::LocalToWorld(live->mesh);
+    Model model;
+    FBoxSphereBounds const& bounds = live->mesh->SkeletalMesh->Bounds;
+    bool first = true;
+    for (int corner = 0; corner < 8; ++corner) {
+        ik::Vec3 const local{bounds.Origin.X + ((corner & 1) != 0 ? bounds.BoxExtent.X : -bounds.BoxExtent.X),
+            bounds.Origin.Y + ((corner & 2) != 0 ? bounds.BoxExtent.Y : -bounds.BoxExtent.Y),
+            bounds.Origin.Z + ((corner & 4) != 0 ? bounds.BoxExtent.Z : -bounds.BoxExtent.Z)};
+        ModelPoint const p = inFrame({}, ik::TransformPoint(meshToWorld, local));
+        if (!std::isfinite(p.back) || !std::isfinite(p.up) || !std::isfinite(p.side)) {
+            return std::nullopt;
+        }
+        model.backMin = first ? p.back : std::min(model.backMin, p.back);
+        model.backMax = first ? p.back : std::max(model.backMax, p.back);
+        model.upMin = first ? p.up : std::min(model.upMin, p.up);
+        model.upMax = first ? p.up : std::max(model.upMax, p.up);
+        model.sideMin = first ? p.side : std::min(model.sideMin, p.side);
+        model.sideMax = first ? p.side : std::max(model.sideMax, p.side);
+        first = false;
+    }
+    std::span<engine::skeleton::BoneAtom const> const pose = engine::skeleton::SpaceBases(live->mesh);
+    if (auto const bones = engine::skeleton::ReadRefSkeleton(live->mesh); bones && bones->names.size() == pose.size()) {
+        for (std::size_t i = 0; i < pose.size() && i < 64; ++i) {
+            model.points.push_back(inFrame(bones->names[i], ik::TransformPoint(meshToWorld, engine::skeleton::ToTransform(pose[i]).translation)));
+        }
+    }
+    for (auto const& named : engine::skeleton::Sockets(live->mesh)) {
+        if (auto const local = SocketInMesh(live->mesh, named.socket)) {
+            model.points.push_back(inFrame("socket " + engine::ToString(engine::skeleton::NameOf(named.name)),
+                ik::TransformPoint(meshToWorld, local->translation)));
+        }
+    }
+    return model;
+#else
+    (void)topWorld;
+    return std::nullopt;
+#endif
+}
+
 std::string const& Status() {
     return gStatus;
 }

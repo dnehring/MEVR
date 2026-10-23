@@ -62,14 +62,23 @@ struct Assist {
 
 struct Settings {
     bool enabled = true;
-    Gun guns[kWeaponTypes] = {{Kind::Dot}, {Kind::Holo}, {Kind::Holo}, {Kind::Scope, 4.0f}};
+    // Since 2026-10-23 the shotgun and the assault rifle default to a red dot (a holo's ring is busy on a gun
+    // held at the cheek; the user asked for "something like a red dot").
+    Gun guns[kWeaponTypes] = {{Kind::Dot}, {Kind::Dot}, {Kind::Dot}, {Kind::Scope, 4.0f}};
     // Dot and holo sights.
     std::uint32_t dotColor = 0xFF3020;  // 0xRRGGBB
     float dotSizeDeg = 0.25f;           // the dot's diameter as seen
     float ringSizeDeg = 1.6f;           // the holo ring's diameter as seen
-    float windowUnits = 3.0f;           // the window's radius (gun units): the eye must look through it
+    float windowUnits = 3.0f;           // the window's radius (gun units), as drawn (the ring)
+    float eyeBoxUnits = 6.0f;           // the eye counts as looking through when its line along the sight passes
+                                        // within this of the window's centre (gun units; at least windowUnits): a
+                                        // gun raised to the face shows its dot without hunting for a 3 cm window
     bool frame = true;                  // a faint ring at the window, so the sight can be found
     float zeroM = 0.0f;                 // where the sight line meets the shot (game meters); 0: parallel
+    bool converge = true;               // shots leave the muzzle toward the point the sight line hits (a world
+                                        // trace along it), so they land on the dot at any distance
+    bool matchStereo = true;            // the host draws the dot and the scope where Halcyon's stereo images show
+                                        // the world, not at their true metric place (research/21 section 9)
     // Scopes.
     float lensUnits = 2.0f;             // the eyepiece's radius (gun units)
     ScopeReticle scopeReticle = ScopeReticle::Duplex;
@@ -89,6 +98,12 @@ struct Settings {
 // The sight's place on a gun of this type when it isn't set: `back` a share of the muzzle-to-grip length
 // (`gunLength`, gun units; <= 0 unknown: a typical length), `height` a typical height above the bore.
 Gun AutoPlace(int weapon, Gun const& gun, float gunLength);
+// The sight's height on the gun's own model (research/21 section 11), from `modelTop`: the model's highest point
+// above the bore line (gun units, from its mesh bounds, game/weapon). A scope's eyepiece centre sits a lens radius
+// (`radius`) below it, so the picture covers the top of the model's scope tube; a dot's or holo's window centre one
+// unit above it, just over the gun. Nullopt for an implausible top (not above 0.5 or above 30 units): keep the
+// typical height.
+std::optional<float> HeightOnModel(Kind kind, float modelTop, float radius);
 
 // "none", "dot", "holo", "scope" or "scope 4" (with a magnification, 1-12; `defaults` gives the zoom
 // when none is written). Nullopt: unreadable.
@@ -105,6 +120,7 @@ enum Flags : std::uint32_t {
     kFrame = 1u,        // draw the window's ring
     kReplaceRing = 2u,  // hide the floating ring reticle while an eye looks through the sight
     kOtherEye = 4u,     // a scope magnifies the other eye's image
+    kMatchStereo = 8u,  // draw where Halcyon's stereo images show the world (EyeImage), not at the true place
 };
 
 struct Sight {
@@ -125,6 +141,7 @@ struct Sight {
     float focusM = 40.0f;      // tracking meters
     float eyeReliefM = 0.12f;  // tracking meters
     std::int32_t resolution = 768;
+    float eyeBox = 0.06f;      // tracking meters: an eye within this of the line looks through (dot, holo)
     std::uint64_t sequence = 0;  // set by Publish
     std::uint64_t timeMs = 0;    // GetTickCount64 at Publish
 };
@@ -254,5 +271,56 @@ XrVector3f FocusPoint(XrVector3f const& eye, XrVector3f const& direction, XrVect
 // Where `point` lands in an eye image rendered from `pose` with `fov`: u from the left edge (0) to the
 // right (1), v from the top (0) to the bottom (1). False if it's behind the eye.
 bool Project(XrPosef const& pose, XrFovf const& fov, XrVector3f const& point, float& u, float& v);
+
+// ---- Halcyon's stereo against the true eyes (research/21 section 9) -------------------------------------------
+// Stereo 2 renders each eye from its own place, the eye midpoint +/- `halfEye` along the view's right at the game's
+// scale (MELEVR.ini sfr2HalfEyeUU: a world-scale knob, not the headset's IPD), and at submit moves each finished
+// image sideways by half its convergence (sfr2Convergence, in UV of the image; with swap-eyes on, outward: the
+// measured snapshot of 2026-10-22 23:51 shows far content 33.9 px less disparity than the true geometry, 1.26
+// degrees per eye). The runtime draws our quads at their true, metric place for the true eyes. So a quad seen by
+// one eye sits on the game's picture only where that eye's image shows the point: AsShown.
+struct EyeImage {
+    bool valid = false;
+    XrPosef pose{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};  // the projection view as submitted: the direction it
+                                                                 // was rendered facing, the true eye's position
+    XrVector3f renderEye{};  // where the image was rendered from (tracking space)
+    float shiftTan = 0.0f;   // the image's content moved right by this (tangent of the angle across the view) at submit
+};
+// Eye `eye` (0 left, 1 right) of a pair submitted at `views` (each eye's pose as submitted), rendered `halfEyeM`
+// meters either side of the midpoint along the view's right, its content moved `shiftTan` right.
+EyeImage MakeEyeImage(XrPosef const views[2], int eye, float halfEyeM, float shiftTan);
+// The direction (unit, tracking space) from the true eye in which the image shows `point`. Nullopt behind the eye.
+std::optional<XrVector3f> ShownDirection(EyeImage const& image, XrVector3f const& point);
+// Where a quad seen by this eye must put `point` to cover it as the image shows it: along ShownDirection from the
+// true eye, as far from it as `point`. `point` itself when the image isn't valid or the point is behind the eye.
+XrVector3f AsShown(EyeImage const& image, XrVector3f const& point);
+// How far the image moves `point` from its true direction, seen from the true eye: + right, + up (degrees, in the
+// eye's own axes). Zero when not valid.
+struct ShownError {
+    float rightDeg = 0.0f;
+    float upDeg = 0.0f;
+};
+ShownError ErrorOf(EyeImage const& image, XrVector3f const& point);
+// The pose and tangents (left, right, up, down) to project a point into this eye's image as drawn, for sampling it
+// (the scope's picture): from the render place, the FOV's left and right moved by the shift.
+struct SampleView {
+    XrPosef pose{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
+    float tanLeft = 0.0f;
+    float tanRight = 0.0f;
+    float tanUp = 0.0f;
+    float tanDown = 0.0f;
+};
+SampleView SampleViewOf(EyeImage const& image, XrPosef const& pose, XrFovf const& fov);
+// Project through a SampleView (u from the left, v from the top; false behind the eye).
+bool Project(SampleView const& view, XrVector3f const& point, float& u, float& v);
+
+// ---- Shots that land on the sight (research/21 section 10) -----------------------------------------------------
+// The shot from the muzzle toward the point the sight line reaches `distance` ahead of the sight: the sight's centre
+// at `sightFromMuzzle` (relative to the muzzle) and its line along `axis`, all in one unit (game units). Unit length;
+// `axis` itself when the distance isn't positive and finite, or when that point is less than `minAhead` in front of
+// the muzzle along the line (a wall at the sight: the shot would bend sharply, or backward).
+XrVector3f ConvergedShot(XrVector3f const& sightFromMuzzle, XrVector3f const& axis, float distance, float minAhead = 0.0f);
+// The angle between two directions (degrees; 180 if either is zero).
+float AngleDeg(XrVector3f const& a, XrVector3f const& b);
 
 } // namespace mevr::vr::sights

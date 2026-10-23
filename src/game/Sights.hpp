@@ -40,6 +40,22 @@ XrVector3f TakeGunShift();
 // top along `upInHand`: its [Sights] place, or the weapon type's typical one (whatever the sight's kind, so the
 // guided calibration's sight line has a place on every gun). Nullopt without a held ranged weapon of known type.
 std::optional<ik::Vec3> SightInHand(weapon::Grip const& grip, ik::Vec3 const& upInHand);
+// A shot that lands on the sight (research/21 section 10; [Sights] converge): each tick the world is traced along the
+// held gun's sight line (Actor.Trace from the sight's centre), and a shot leaves the muzzle toward the point the line
+// hit, rebuilt from the gun as it is when it fires (the place on the gun, the tick's top, the live barrel). Called from
+// hand aim's GetAdjustedAimFor handler. Nullopt (the barrel's line, as before): convergence off, no sight on the held
+// gun this tick, no trace.
+struct ShotAim {
+    engine::UnrealVector direction{};    // world, unit: the shot
+    engine::UnrealVector sightLine{};    // world, unit: the sight line
+    engine::UnrealVector sightCenter{};  // world: the sight's centre
+    double distance = 0.0;               // game units from the sight's centre to what the line hit (the range if nothing)
+    bool hit = false;
+    std::string what;                    // the actor the line hit
+    double toSightDeg = 0.0;             // the shot against the sight line
+    double toBarrelDeg = 0.0;            // ...and against the barrel
+};
+std::optional<ShotAim> ShotAlongSight(weapon::Muzzle const& muzzle);
 // The host's report for the latest frame (vr::sights::View bits), each tick.
 void SetHostView(std::uint32_t view);
 // For snapshots and the heartbeat.

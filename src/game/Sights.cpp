@@ -7,6 +7,7 @@
 #include "core/vr/TestRequest.hpp"
 #include "engine/CallFunction.hpp"
 #include "engine/Objects.hpp"
+#include "engine/XrToUnreal.hpp"
 #include "game/BodyCalibration.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/ViewAnchor.hpp"
@@ -29,9 +30,46 @@ namespace sv = vr::sights;
 
 #if defined(SDK_TARGET_LE1)
 constexpr char const* kGetPlayerAimError = "Function SFXGame.BioWeaponRanged.GetPlayerAimError";
+constexpr char const* kTrace = "Function Engine.Actor.Trace";
 #endif
+// How far the sight line is traced for the shot's convergence point (game units: 300 m at the life-size view).
+constexpr double kConvergeRangeUnits = 30000.0;
+// What the sight line hits must be this far ahead of the muzzle to aim at (a wall at the sight: parallel instead).
+constexpr float kMinAheadUnits = 20.0f;
 
 UFunction* gAimErrorFunction = nullptr;
+UFunction* gTraceFunction = nullptr;
+
+// The sight as last placed, in the world (research/21 section 10): its place on the gun (gun units: `back`
+// behind the muzzle along the barrel, `height` toward `top`), so a shot can rebuild the sight line from the gun as
+// it is when it fires, and how far ahead along the line the world was hit this tick.
+struct WorldSight {
+    bool valid = false;
+    std::uintptr_t weapon = 0;
+    double back = 0.0;
+    double height = 0.0;
+    engine::UnrealVector top{};  // world, unit: the gun's top as the sight uses it
+    double zeroUnits = 0.0;      // [Sights] zeroM in game units (0: parallel)
+    bool converge = false;
+    // The tick's trace along the line from the sight's centre.
+    bool traced = false;
+    bool hit = false;
+    double distance = 0.0;       // game units from the sight's centre (the trace's range when nothing was hit)
+    std::string what;            // the actor hit
+};
+WorldSight gWorld;
+bool gLoggedTracePath = false;
+
+// Per weapon: the sight's place on the gun's own model (mesh bounds), measured once and logged.
+struct ModelPlace {
+    std::uintptr_t weapon = 0;
+    bool measured = false;
+    std::optional<float> top;  // the model's top above the bore (gun units)
+    std::string text;
+};
+ModelPlace gModel;
+sv::Gun gPlaced{};               // this tick's place (auto or set), for SightInHand
+std::uintptr_t gPlacedWeapon = 0;
 sv::Sight gLast{0};
 std::uintptr_t gLastWeapon = 0;
 std::string gStatus = "none";
@@ -99,6 +137,142 @@ void OnAimError(UObject* context, UFunction* /*function*/, void* result) {
 
 double Dot(engine::UnrealVector const& a, engine::UnrealVector const& b) {
     return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+engine::UnrealVector Add(engine::UnrealVector const& a, engine::UnrealVector const& b) {
+    return {a.x + b.x, a.y + b.y, a.z + b.z};
+}
+
+engine::UnrealVector Sub(engine::UnrealVector const& a, engine::UnrealVector const& b) {
+    return {a.x - b.x, a.y - b.y, a.z - b.z};
+}
+
+engine::UnrealVector Times(engine::UnrealVector const& a, double s) {
+    return {a.x * s, a.y * s, a.z * s};
+}
+
+double Len(engine::UnrealVector const& a) {
+    return std::sqrt(Dot(a, a));
+}
+
+XrVector3f ToXr(engine::UnrealVector const& v) {
+    return {static_cast<float>(v.x), static_cast<float>(v.y), static_cast<float>(v.z)};
+}
+
+engine::UnrealVector FromXr(XrVector3f const& v) {
+    return {v.x, v.y, v.z};
+}
+
+// A tracking-space direction in the world (the frame's axes: tracking -Z, +X and +Y).
+engine::UnrealVector DirectionToWorld(engine::TrackingFrame const& frame, XrVector3f const& v) {
+    return engine::Apply(frame.rotation, {-static_cast<double>(v.z), v.x, v.y});
+}
+
+#if defined(SDK_TARGET_LE1)
+// Actor.Trace on the player's pawn (which it ignores), directly through ProcessEvent (never the SDK's wrapper):
+// the actor hit and, if the native's out parameter came back, where.
+AActor* TraceOnce(APawn* pawn, engine::UnrealVector const& start, engine::UnrealVector const& end, engine::UnrealVector* hit) {
+    AActor_execTrace_Parms parms;
+    parms.TraceEnd = {static_cast<float>(end.x), static_cast<float>(end.y), static_cast<float>(end.z)};
+    parms.TraceStart = {static_cast<float>(start.x), static_cast<float>(start.y), static_cast<float>(start.z)};
+    parms.bTraceActors = 1;
+    pawn->ProcessEvent(gTraceFunction, &parms, nullptr);
+    if (hit != nullptr) {
+        *hit = {parms.HitLocation.X, parms.HitLocation.Y, parms.HitLocation.Z};
+    }
+    return parms.ReturnValue;
+}
+#endif
+
+// The world along the sight line: how far from the sight's centre it's hit (the range when nothing is), the actor.
+// Bisects with the hit/no-hit answer when the hit point doesn't come back (as game/throwables does).
+void TraceSightLine(engine::UnrealVector const& center, engine::UnrealVector const& axis) {
+    gWorld.traced = false;
+#if defined(SDK_TARGET_LE1)
+    APlayerController* const controller = engine::LocalPlayerController();
+    if (gTraceFunction == nullptr || controller == nullptr || controller->Pawn == nullptr) {
+        return;
+    }
+    APawn* const pawn = controller->Pawn;
+    engine::UnrealVector const end = Add(center, Times(axis, kConvergeRangeUnits));
+    engine::UnrealVector at{};
+    AActor* actor = TraceOnce(pawn, center, end, &at);
+    gWorld.traced = true;
+    gWorld.hit = actor != nullptr;
+    gWorld.distance = kConvergeRangeUnits;
+    gWorld.what.clear();
+    if (actor == nullptr) {
+        return;
+    }
+    double const along = Dot(Sub(at, center), axis);
+    bool const plausible = (at.x != 0.0 || at.y != 0.0 || at.z != 0.0) && along >= 0.0 && along <= kConvergeRangeUnits + 1.0 &&
+        Len(Sub(at, Add(center, Times(axis, along)))) < 10.0;
+    if (plausible) {
+        gWorld.distance = along;
+    } else {
+        double lo = 0.0;
+        double hi = 1.0;
+        for (int i = 0; i < 10; ++i) {
+            double const mid = 0.5 * (lo + hi);
+            if (AActor* const a = TraceOnce(pawn, center, Add(center, Times(axis, kConvergeRangeUnits * mid)), nullptr)) {
+                hi = mid;
+                actor = a;
+            } else {
+                lo = mid;
+            }
+        }
+        gWorld.distance = kConvergeRangeUnits * hi;
+    }
+    gWorld.what = engine::FullName(actor);
+    if (!gLoggedTracePath) {
+        gLoggedTracePath = true;
+        log::Info("sights: the sight line's trace (Actor.Trace through ProcessEvent): the hit point {}", plausible
+            ? "came back" : "didn't come back (a native's out parameter): found by bisecting with the hit/no-hit answer");
+    }
+#else
+    (void)center;
+    (void)axis;
+#endif
+}
+
+// The held gun's model (mesh bounds) against its bore, once per weapon: logged, and its top kept for auto placement.
+void MeasureModel(engine::UnrealVector const& topWorld) {
+    std::uintptr_t const key = weapon::Key();
+    if (gModel.weapon == key && gModel.measured) {
+        return;
+    }
+    gModel = {};
+    gModel.weapon = key;
+    auto const model = weapon::ModelInGunFrame(topWorld);
+    if (!model) {
+        return;
+    }
+    gModel.measured = true;
+    float const top = static_cast<float>(model->upMax);
+    if (std::isfinite(top) && top > 0.5f && top <= 30.0f) {
+        gModel.top = top;
+    }
+    std::string points;
+    for (weapon::ModelPoint const& p : model->points) {
+        points += std::format("{}{} ({:.1f} back, {:.1f} up, {:.1f} right)", points.empty() ? "" : "; ", p.name, p.back, p.up, p.side);
+    }
+    gModel.text = std::format("bounds {:.1f}..{:.1f} units behind the muzzle, {:.1f}..{:.1f} above the bore, {:.1f}..{:.1f} to its right",
+        model->backMin, model->backMax, model->upMin, model->upMax, model->sideMin, model->sideMax);
+    log::Info("sights: the {} model against its bore (gun units): {}; {}{}", sv::WeaponName(static_cast<int>(weapon::Type())),
+        gModel.text, points.empty() ? std::string("no bones or sockets") : points,
+        gModel.top ? std::format("; auto places its sight from the model's top ({:.1f} above the bore)", *gModel.top)
+                   : std::string("; its top is implausible: auto keeps the typical height"));
+}
+
+// The sight's place on this gun: [Sights] <type>Place, else auto (the length share; the height from the model).
+sv::Gun PlaceFor(int type, sv::Gun const& gun, float length, float radius) {
+    sv::Gun placed = sv::AutoPlace(type, gun, length);
+    if (gun.autoPlace && gModel.measured && gModel.weapon == weapon::Key() && gModel.top) {
+        if (auto const height = sv::HeightOnModel(gun.kind == sv::Kind::None ? sv::Kind::Dot : gun.kind, *gModel.top, radius)) {
+            placed.height = *height;
+        }
+    }
+    return placed;
 }
 
 XrVector3f Sub3(XrVector3f a, XrVector3f b) {
@@ -181,6 +355,10 @@ std::string ViewText(std::uint32_t view) {
 
 bool TryStartup() {
 #if defined(SDK_TARGET_LE1)
+    gTraceFunction = engine::FindFunction(L"Trace", kTrace);
+    if (gTraceFunction == nullptr) {
+        log::Warn("sights: Actor.Trace not found: shots keep the barrel's line (no convergence on the sight)");
+    }
     gAimErrorFunction = engine::FindFunction(L"GetPlayerAimError", kGetPlayerAimError);
     if (gAimErrorFunction == nullptr) {
         log::Warn("sights: BioWeaponRanged.GetPlayerAimError not found: no aimed fire through a scope (the sights still draw)");
@@ -219,7 +397,6 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
             engine::UnrealVector const toMuzzle{muzzle->location.x - muzzle->origin.x, muzzle->location.y - muzzle->origin.y,
                 muzzle->location.z - muzzle->origin.z};
             float const length = static_cast<float>(Dot(toMuzzle, muzzle->barrel));
-            sv::Gun const placed = sv::AutoPlace(type, gun, length);
             // The gun's top: arm IK rolls the gun with the right controller (its aim pose's up, as far as
             // the barrel allows), so the same up places the sight on top of it.
             vr::controllers::State const controllers = vr::controllers::Latest();
@@ -239,10 +416,16 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
                 status = "none (the barrel points straight up or down: no top)";
             } else {
                 bool const scope = gun.kind == sv::Kind::Scope;
+                engine::UnrealVector const topWorld = DirectionToWorld(*frame, *top);
+                MeasureModel(topWorld);
+                sv::Gun const placed = PlaceFor(type, gun, length, scope ? settings.lensUnits : settings.windowUnits);
+                gPlaced = placed;
+                gPlacedWeapon = weapon::Key();
                 out.kind = static_cast<std::int32_t>(gun.kind);
                 out.weapon = type;
                 out.flags = (settings.frame && !scope ? sv::kFrame : 0u) | (settings.replaceRing ? sv::kReplaceRing : 0u) |
-                    (settings.otherEye ? sv::kOtherEye : 0u);
+                    (settings.otherEye ? sv::kOtherEye : 0u) | (settings.matchStereo ? sv::kMatchStereo : 0u);
+                out.eyeBox = std::max(settings.eyeBoxUnits, settings.windowUnits) / unitsPerMeter;
                 out.center = sv::Place(ray.origin, ray.direction, *top, placed.back / unitsPerMeter, placed.height / unitsPerMeter);
                 out.axis = sv::Zeroed(out.center, ray.origin, ray.direction, settings.zeroM * 100.0f / unitsPerMeter);
                 out.up = sv::TopOf(out.axis, *top).value_or(*top);
@@ -256,13 +439,39 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
                 out.focusM = settings.focusM * 100.0f / unitsPerMeter;
                 out.eyeReliefM = settings.eyeReliefM;
                 out.resolution = settings.resolution;
+                // The same sight in the world, for the shots (research/21 section 10): the line traced this tick.
+                gWorld.valid = true;
+                gWorld.weapon = weapon::Key();
+                gWorld.back = placed.back;
+                gWorld.height = placed.height;
+                gWorld.top = topWorld;
+                gWorld.zeroUnits = settings.zeroM * 100.0;
+                gWorld.converge = settings.converge;
+                if (settings.converge) {
+                    engine::UnrealVector const center = Add(Sub(muzzle->location, Times(muzzle->barrel, placed.back)),
+                        Times(topWorld, placed.height));
+                    engine::UnrealVector const axis = FromXr(sv::Zeroed(ToXr(Sub(center, muzzle->location)), {0.0f, 0.0f, 0.0f},
+                        ToXr(muzzle->barrel), static_cast<float>(gWorld.zeroUnits)));
+                    TraceSightLine(center, axis);
+                } else {
+                    gWorld.traced = false;
+                }
                 status = std::format("the {} has a {} sight{}: {:.1f} units behind the muzzle, {:.1f} above the bore ({}; the gun is "
-                                     "{:.1f} units from muzzle to grip), {} {:.1f} units ({:.3f} m at {:.1f} units per meter)",
+                                     "{:.1f} units from muzzle to grip), {} {:.1f} units ({:.3f} m at {:.1f} units per meter), eye box "
+                                     "{:.1f} units; shots {}; drawn {}",
                     sv::WeaponName(type), sv::Name(gun.kind), scope ? std::format(" ({:.1f}x)", gun.zoom) : std::string(),
-                    placed.back, placed.height, gun.autoPlace ? "auto" : "set", length, scope ? "eyepiece radius" : "window radius",
-                    scope ? settings.lensUnits : settings.windowUnits, out.radius, unitsPerMeter);
+                    placed.back, placed.height,
+                    !gun.autoPlace ? "set" : gModel.top ? "auto: the length share, the height from the model's top" : "auto",
+                    length, scope ? "eyepiece radius" : "window radius", scope ? settings.lensUnits : settings.windowUnits, out.radius,
+                    unitsPerMeter, std::max(settings.eyeBoxUnits, settings.windowUnits),
+                    settings.converge ? "converge on what the sight line hits" : "parallel to the sight line ([Sights] converge = 0)",
+                    settings.matchStereo ? "where Halcyon's eye images show the world" : "at the true place ([Sights] matchStereo = 0)");
             }
         }
+    }
+    if (out.kind == static_cast<std::int32_t>(sv::Kind::None)) {
+        gWorld.valid = false;
+        gWorld.traced = false;
     }
     gStatus = status;
     // Logged when it changes, not with each tick's hand motion (the numbers above only change with the gun,
@@ -288,7 +497,10 @@ std::optional<ik::Vec3> SightInHand(weapon::Grip const& grip, ik::Vec3 const& up
     sv::Settings const settings = hand_calibration::GetSights();
     engine::UnrealVector const toMuzzle{muzzle->location.x - muzzle->origin.x, muzzle->location.y - muzzle->origin.y,
         muzzle->location.z - muzzle->origin.z};
-    sv::Gun const placed = sv::AutoPlace(type, settings.guns[type], static_cast<float>(Dot(toMuzzle, muzzle->barrel)));
+    // The place the sight was drawn at (the model's height included), else the type's typical one.
+    sv::Gun const placed = gPlacedWeapon != 0 && gPlacedWeapon == weapon::Key()
+        ? gPlaced
+        : sv::AutoPlace(type, settings.guns[type], static_cast<float>(Dot(toMuzzle, muzzle->barrel)));
     ik::Vec3 const barrel = ik::Normalize(grip.barrel, {1.0, 0.0, 0.0});
     ik::Vec3 up = upInHand - barrel * ik::Dot(upInHand, barrel);
     if (!(ik::Length(up) > 1e-6)) {
@@ -296,6 +508,32 @@ std::optional<ik::Vec3> SightInHand(weapon::Grip const& grip, ik::Vec3 const& up
     }
     up = ik::Normalize(up);
     return grip.muzzle - barrel * static_cast<double>(placed.back) + up * static_cast<double>(placed.height);
+}
+
+std::optional<ShotAim> ShotAlongSight(weapon::Muzzle const& muzzle) {
+    if (!gWorld.valid || !gWorld.converge || !gWorld.traced || gWorld.weapon == 0 || gWorld.weapon != weapon::Key()) {
+        return std::nullopt;
+    }
+    // The sight line from the gun as it is now (the tick's top, made square to the live barrel).
+    engine::UnrealVector const barrel = Times(muzzle.barrel, 1.0 / std::max(Len(muzzle.barrel), 1e-9));
+    engine::UnrealVector top = Sub(gWorld.top, Times(barrel, Dot(gWorld.top, barrel)));
+    double const topLength = Len(top);
+    if (!(topLength > 1e-6)) {
+        return std::nullopt;
+    }
+    top = Times(top, 1.0 / topLength);
+    engine::UnrealVector const sightFromMuzzle = Add(Times(barrel, -gWorld.back), Times(top, gWorld.height));
+    XrVector3f const axis = sv::Zeroed(ToXr(sightFromMuzzle), {0.0f, 0.0f, 0.0f}, ToXr(barrel), static_cast<float>(gWorld.zeroUnits));
+    ShotAim aim;
+    aim.direction = FromXr(sv::ConvergedShot(ToXr(sightFromMuzzle), axis, static_cast<float>(gWorld.distance), kMinAheadUnits));
+    aim.sightLine = FromXr(axis);
+    aim.sightCenter = Add(muzzle.location, sightFromMuzzle);
+    aim.distance = gWorld.distance;
+    aim.hit = gWorld.hit;
+    aim.what = gWorld.what;
+    aim.toSightDeg = sv::AngleDeg(ToXr(aim.direction), axis);
+    aim.toBarrelDeg = sv::AngleDeg(ToXr(aim.direction), ToXr(barrel));
+    return aim;
 }
 
 XrVector3f TakeGunShift() {
@@ -318,14 +556,19 @@ std::string StatusJson() {
     namespace json = vr::test_request;
     XrVector3f const shift = gSpring.Value();
     return std::format("{{\"kind\": {}, \"weapon\": {}, \"status\": {}, \"hostView\": {}, \"scopeUp\": {}, \"aimedShots\": {}, "
-                       "\"center\": [{}, {}, {}], \"axis\": [{}, {}, {}], \"radius\": {}, \"zoom\": {}, \"assist\": {{\"on\": {}, "
+                       "\"center\": [{}, {}, {}], \"axis\": [{}, {}, {}], \"radius\": {}, \"zoom\": {}, \"eyeBox\": {}, "
+                       "\"place\": {{\"back\": {}, \"height\": {}, \"modelTop\": {}, \"model\": {}}}, "
+                       "\"converge\": {{\"on\": {}, \"traced\": {}, \"hit\": {}, \"distanceM\": {}, \"what\": {}}}, \"assist\": {{\"on\": {}, "
                        "\"eye\": {}, \"angleDeg\": {}, \"along\": {}, \"offset\": [{}, {}], \"weight\": {}, \"goal\": [{}, {}, {}], "
                        "\"shift\": [{}, {}, {}]}}}}",
         json::JsonString(sv::Name(static_cast<sv::Kind>(gLast.kind))), json::JsonString(sv::WeaponName(gLast.weapon)),
         json::JsonString(gStatus), gHostView, gScopeUp ? "true" : "false", gAimedShotsTotal, json::JsonNumber(gLast.center.x),
         json::JsonNumber(gLast.center.y), json::JsonNumber(gLast.center.z), json::JsonNumber(gLast.axis.x),
         json::JsonNumber(gLast.axis.y), json::JsonNumber(gLast.axis.z), json::JsonNumber(gLast.radius), json::JsonNumber(gLast.zoom),
-        gAssisting ? "true" : "false", json::JsonString(gGoal.eye == 0 ? "left" : gGoal.eye == 1 ? "right" : "none"),
+        json::JsonNumber(gLast.eyeBox), json::JsonNumber(gPlaced.back), json::JsonNumber(gPlaced.height),
+        json::JsonNumber(gModel.top.value_or(-1.0f)), json::JsonString(gModel.text), gWorld.converge ? "true" : "false",
+        gWorld.traced ? "true" : "false", gWorld.hit ? "true" : "false", json::JsonNumber(gWorld.distance / 100.0),
+        json::JsonString(gWorld.what), gAssisting ? "true" : "false", json::JsonString(gGoal.eye == 0 ? "left" : gGoal.eye == 1 ? "right" : "none"),
         json::JsonNumber(gGoal.angleDeg), json::JsonNumber(gGoal.along), json::JsonNumber(gGoal.x), json::JsonNumber(gGoal.y),
         json::JsonNumber(gGoal.weight), json::JsonNumber(gGoal.shift.x), json::JsonNumber(gGoal.shift.y), json::JsonNumber(gGoal.shift.z),
         json::JsonNumber(shift.x), json::JsonNumber(shift.y), json::JsonNumber(shift.z));
@@ -353,6 +596,12 @@ void LogStats() {
 
 void Shutdown() {
     gAimErrorFunction = nullptr;
+    gTraceFunction = nullptr;
+    gWorld = {};
+    gLoggedTracePath = false;
+    gModel = {};
+    gPlaced = {};
+    gPlacedWeapon = 0;
     gLast = sv::Sight{0};
     gLastWeapon = 0;
     gStatus = "none";

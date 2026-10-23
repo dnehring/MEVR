@@ -192,6 +192,10 @@
 				<div class="seg"><button class="segb" data-class-on="sight_sniper == 'scope'" data-event-click="pick('sight_sniper','scope')">Scope 4×</button><button class="segb" data-class-on="sight_sniper == 'holo'" data-event-click="pick('sight_sniper','holo')">Holo</button><button class="segb" data-class-on="sight_sniper == 'none'" data-event-click="pick('sight_sniper','none')">None</button></div></div>
 			<div class="row"><div class="rl"><div class="rlab">Sight alignment help</div><div class="rdesc">Raised to your eye, the gun eases the sight onto your line of view</div></div>
 				<button class="tog" data-class-on="sight_assist" data-event-click="toggle('sight_assist')"><div class="knob"/></button></div>
+			<div class="row"><div class="rl"><div class="rlab">Shots land on the dot</div><div class="rdesc">Each shot aims at whatever the sight line points at, near or far</div></div>
+				<button class="tog" data-class-on="sight_converge" data-event-click="toggle('sight_converge')"><div class="knob"/></button></div>
+			<div class="row"><div class="rl"><div class="rlab">Sights match the 3D picture</div><div class="rdesc">The dot and the scope sit where the game draws the world, not a degree beside it</div></div>
+				<button class="tog" data-class-on="sight_stereo" data-event-click="toggle('sight_stereo')"><div class="knob"/></button></div>
 		</div>
 	</div>
 
