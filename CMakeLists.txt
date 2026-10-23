@@ -34,6 +34,61 @@ set(BUILD_SDK_TESTS OFF)
 set(BUILD_ALL_EXTENSIONS OFF)
 add_subdirectory(external/OpenXR-SDK EXCLUDE_FROM_ALL)
 
+# The main menu's UI library (research/28): RmlUi (MIT) with its FreeType font engine (FreeType: FTL), both
+# static, built only for what links them (the LE1 host and the menu preview). Their own warning levels.
+option(MEVR_MAIN_MENU "Build our VR main menu (RmlUi) into the LE1 host" ON)
+if (MEVR_MAIN_MENU)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    set(FT_DISABLE_ZLIB ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_BZIP2 ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_BROTLI ON CACHE BOOL "" FORCE)
+    add_subdirectory(external/freetype EXCLUDE_FROM_ALL)
+    add_library(Freetype::Freetype ALIAS freetype)
+    # RmlUi looks for FreeType with find_package; the target above is the one it links.
+    set(CMAKE_DISABLE_FIND_PACKAGE_Freetype TRUE)
+    set(RMLUI_FONT_ENGINE "freetype" CACHE STRING "" FORCE)
+    set(RMLUI_SAMPLES OFF CACHE BOOL "" FORCE)
+    set(RMLUI_LUA_BINDINGS OFF CACHE BOOL "" FORCE)
+    set(RMLUI_SVG_PLUGIN OFF CACHE BOOL "" FORCE)
+    set(RMLUI_LOTTIE_PLUGIN OFF CACHE BOOL "" FORCE)
+    set(RMLUI_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
+    add_subdirectory(external/RmlUi EXCLUDE_FROM_ALL)
+    # RmlUi's own Direct3D 11 renderer (Backends, MIT), wrapped by src/plugin/menu/MenuRenderer for the game's device.
+    add_library(rmlui-d3d11 STATIC external/RmlUi/Backends/RmlUi_Renderer_DX11.cpp)
+    target_include_directories(rmlui-d3d11 PUBLIC external/RmlUi/Backends)
+    target_compile_definitions(rmlui-d3d11 PUBLIC NUM_MSAA_SAMPLES=4 PRIVATE NOMINMAX)
+    target_link_libraries(rmlui-d3d11 PUBLIC rmlui_core d3d11 d3dcompiler)
+    target_compile_options(rmlui-d3d11 PRIVATE /W3 /utf-8)
+
+    # Our side of the menu, game-independent (no Halcyon, no OpenXR): the renderer wrapper, RmlUi setup and
+    # decorators, the data model, the frosted backdrop's passes, the colour preview strip. Linked by the LE1 host
+    # and tools/menu-preview.
+    add_library(mevr-menu STATIC
+        src/core/vr/Colour.cpp
+        src/core/vr/ColourStrip.cpp
+        src/core/vr/MenuSettings.cpp
+        src/plugin/menu/MenuBackdrop.cpp
+        src/plugin/menu/MenuBackdrop.hpp
+        src/plugin/menu/MenuDecorators.cpp
+        src/plugin/menu/MenuDecorators.hpp
+        src/plugin/menu/MenuModel.cpp
+        src/plugin/menu/MenuModel.hpp
+        src/plugin/menu/MenuRenderer.cpp
+        src/plugin/menu/MenuRenderer.hpp
+        src/plugin/menu/MenuStrip.cpp
+        src/plugin/menu/MenuStrip.hpp
+        src/plugin/menu/MenuUi.cpp
+        src/plugin/menu/MenuUi.hpp
+        src/plugin/menu/StateGuard.hpp
+    )
+    target_include_directories(mevr-menu PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(mevr-menu PUBLIC rmlui-d3d11 rmlui_core d3d11 d3dcompiler)
+    target_compile_definitions(mevr-menu PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-menu PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus /Zi)
+endif ()
+
 # Halcyon's LE1 VR renderer (GPL-3.0, src/halcyon/le1) with its vendored MinHook and Dear ImGui.
 # It runs inside the LE1 host: OpenXR session, Present path, stereo, first person, HUD, menu.
 option(MEVR_HALCYON "Use Halcyon's renderer for LE1" ON)
@@ -198,6 +253,8 @@ set(MEVR_MOD_SOURCES
     src/game/HeadTracking.hpp
     src/game/Holsters.cpp
     src/game/Holsters.hpp
+    src/game/MenuPause.cpp
+    src/game/MenuPause.hpp
     src/game/Posture.cpp
     src/game/Posture.hpp
     src/game/Reflections.cpp
@@ -319,9 +376,16 @@ function(mevr_add_plugin game)
     set(host MEVR-${game})
     set(host_sources ${MEVR_HOST_SOURCES} ${MEVR_CORE_SOURCES})
     set(with_halcyon OFF)
+    set(with_main_menu OFF)
     if (MEVR_HALCYON AND game STREQUAL "LE1")
         set(with_halcyon ON)
         list(APPEND host_sources ${MEVR_HALCYON_HOST_SOURCES})
+        if (MEVR_MAIN_MENU)
+            # Our VR main menu (research/28): LE1 only for now, in the host (not hot-reloaded).
+            set(with_main_menu ON)
+            list(APPEND host_sources src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/MainMenuSettings.cpp
+                src/plugin/MainMenuSettings.hpp)
+        endif ()
     endif ()
     if (MEVR_HOT_RELOAD)
         add_library(${host} SHARED ${host_sources})
@@ -345,6 +409,10 @@ function(mevr_add_plugin game)
         # windowscodecs: WIC, the test loop's PNG snapshots (plugin/TestLoop).
         target_link_libraries(${host} PRIVATE halcyon-le1 OpenXR::openxr_loader windowscodecs)
         target_compile_definitions(${host} PRIVATE MEVR_WITH_HALCYON)
+    endif ()
+    if (with_main_menu)
+        target_link_libraries(${host} PRIVATE mevr-menu)
+        target_compile_definitions(${host} PRIVATE MEVR_WITH_MAIN_MENU)
     endif ()
     mevr_configure(${host} ${game})
     set_target_properties(${host} PROPERTIES OUTPUT_NAME "${game}MEVR" SUFFIX ".asi")
@@ -384,6 +452,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/ImageConvert.cpp
         src/core/vr/LayerComposite.cpp
         src/core/vr/MenuPointer.cpp
+        src/core/vr/MenuSettings.cpp
         src/core/vr/OverlayPlacement.cpp
         src/core/vr/PoseRecording.cpp
         src/core/vr/Recenter.cpp
@@ -469,4 +538,17 @@ if (MEVR_BUILD_TESTS)
         target_compile_definitions(mevr-calibration-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
         target_compile_options(mevr-calibration-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     endif ()
+endif ()
+
+# The VR main menu's look, offline (tools/menu-preview, research/28): every section and state as PNGs, drawn with the
+# host's own RmlUi setup, renderer, document and backdrop passes, plus the frame's CPU and GPU time.
+if (MEVR_BUILD_TESTS AND MEVR_MAIN_MENU)
+    add_executable(mevr-menu-preview
+        tools/menu-preview/Main.cpp
+        src/core/PngFile.cpp
+    )
+    target_include_directories(mevr-menu-preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(mevr-menu-preview PRIVATE mevr-menu windowscodecs ole32 d3d11)
+    target_compile_definitions(mevr-menu-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-menu-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
 endif ()

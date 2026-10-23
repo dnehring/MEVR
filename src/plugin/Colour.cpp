@@ -478,6 +478,32 @@ std::string StatusJson() {
         "corrected when correcting is true (the swapchain images are copied after the correction)");
 }
 
+MenuState GetMenuState() {
+    Tick();
+    MenuState s;
+    std::lock_guard lock(gMutex);
+    s.chosen = gResolved.chosen;
+    s.effective = gResolved.effective;
+    s.settings = gResolved.settings;
+    s.custom = gResolved.custom;
+    s.detection = gDetection;
+    s.runtime = gRuntime;
+    s.system = gSystem;
+    s.compareInFile = gResolved.compare;
+    return s;
+}
+
+void SelectProfile(cv::Profile p) {
+    SetProfile(p);
+}
+
+void SetCustom(cv::Settings const& settings, bool save) {
+    SetCustomLive(settings);
+    if (save) {
+        SaveCustom();
+    }
+}
+
 void MenuSection() {
     Tick();
     ImGui::SeparatorText("Colour (the game's picture and its HUD)");

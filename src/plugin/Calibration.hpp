@@ -83,6 +83,12 @@ struct Summary {
     bool calibrated = false;   // [Calibration.<key>] has a saved calibration
     std::string when;          // its time
     std::string results;       // one line: eye, spreads, heights
+    // The saved values as written ("" when not saved): the main menu's tiles.
+    std::string eye;           // "left" / "right"
+    std::string pistolSpreadDeg;
+    std::string rifleSpreadDeg;
+    std::string standEyeM;
+    std::string crouchEyeM;
 };
 Summary GetSummary();
 

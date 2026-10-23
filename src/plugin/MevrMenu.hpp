@@ -21,6 +21,12 @@ void TakeArmSample(XrVector3f const& left, XrVector3f const& right, XrVector3f c
 
 // Camera alignment armed from the VR hands tab (MevrMenuTab.cpp): each frame, menu open or not.
 void TickCameraAlign() noexcept;
+// Arms it (the VR hands tab's "Align with the left trigger", our main menu's Align): closes Halcyon's menu; the player
+// stands naturally and pulls the left trigger. `why` names the caller in the log.
+void StartCameraAlign(char const* why) noexcept;
+// What the last alignment did ("" none yet), and whether one is armed or settling now.
+std::string CameraAlignResult() noexcept;
+bool CameraAlignBusy() noexcept;
 // While armed, the left trigger is the alignment's, not the game's.
 bool CameraAlignOwnsLeftTrigger() noexcept;
 

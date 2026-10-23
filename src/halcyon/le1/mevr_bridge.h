@@ -185,6 +185,14 @@ void RequestHudPanelReplace() noexcept;
 // Insert menu status: UI draws that went to the panel in the last world frame.
 unsigned HudPanelDrawsLastFrame() noexcept;
 
+// ---- Our VR main menu (src/plugin/MainMenu.cpp, research/28), which replaces Halcyon's menu for the player ----------
+// The menu key (cfg.menuKey: \ in our deploy) went down (xr_session.cpp): opens or closes our menu; with Ctrl or Shift
+// held (or while Halcyon's menu is open), toggles Halcyon's menu instead. Present thread.
+void OnMenuKey() noexcept;
+// Our main menu is open: Halcyon's input block (vr_menu.cpp) keeps the game's mouse and keyboard from it, as for its
+// own menu. Any thread.
+bool MainMenuOpen() noexcept;
+
 // ---- Halcyon's menu: laser pointer and our tab (src/plugin/MevrMenuPointer.cpp, MevrMenuTab.cpp) ---
 // All on the Present thread (RunFrame / RenderFrame).
 

@@ -569,6 +569,28 @@ PSVR 2 on SteamVR: the world pitched more and more over a session while SteamVR'
   preset against compare; the cost line).
 - **Open:**
   - the Quest streamed values are judgement calls (no published measurements of the streamed picture);
-  - the coming menu: bind "hold A" to `colour::HoldCompare()`, show `vr::colour::TestStrip()` on a quad;
+  - ~~the coming menu: bind "hold A" to `colour::HoldCompare()`, show `vr::colour::TestStrip()`~~ (done
+    2026-10-23: the main menu's Display page);
   - `XR_FB_color_space` on Meta's runtime, per-path presets (Link / Steam Link / Virtual Desktop), Pico and
     Steam Frame presets: not done.
+
+## Our VR main menu (user, 2026-10-22; built 2026-10-23, to test)
+
+- **Why (user):** Halcyon's ImGui menu isn't a VR menu; the approved "glass" mockup replaces it as the player's
+  menu, with Halcyon's settings kept under Advanced and its old menu only as a developer fallback.
+- **Built ([research/28](../research/28-main-menu.md); HOST REDEPLOY, services v16, `ASI\menu` deployed):**
+  RmlUi 6.3 and FreeType 2.13.3 (submodules, static); `src/plugin/menu` (RmlUi's own DX11 renderer wrapped for
+  the game's context, our chamfer/backdrop/icon decorators, the data model over `core/vr/MenuSettings`, the
+  frosted backdrop from the left eye's image, the colour preview strip); `src/plugin/MainMenu` (the quad, the
+  pointer and pad, opening with both sticks or `\`, its cost) and `MainMenuSettings` (every row to its
+  setting); `game/MenuPause` (WorldInfo.PauseGame while open, on foot or in the Mako); `assets/menu` (the
+  look, hot-reloaded); `tools/menu-preview` (PNGs of every section and state). The colour's "hold A" and the
+  test strip are on the Display page.
+- **[verify in headset]:** notes/next-vr-session.md step 25 (the look and the glass, text size at 1.3 m, the
+  pointer, the pause, settings holding after the menu closes, the cost line).
+- **Soon (shown, not built):** snap turning (and its angle), turn speed, a comfort vignette, walking toward the
+  left hand.
+- **Open:** a cylinder layer (Halcyon's instance would have to enable `XR_KHR_composition_layer_cylinder`);
+  moving and resizing the game's screens in our menu (the classic menu's HUD tab has the editor); keyboard and
+  mouse navigation of the menu on the desktop; LE2/LE3 (the library is game-independent; the host side is
+  LE1's).

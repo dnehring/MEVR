@@ -34,20 +34,41 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   `makoHeadAim = 0`; the hand aims, the head drives the view only.
 - Since 2026-10-08 LE1's VR renderer is Halcyon's (`src/halcyon/le1`, built as the `halcyon-le1`
   static library and linked into the **host** ASI, so it isn't hot-reloaded). It owns OpenXR,
-  Present, stereo (two renders per present), first person (K), head look and its Insert menu.
+  Present, stereo (two renders per present), first person (K), head look and its ImGui menu.
   Its log is `%LOCALAPPDATA%\MELEVR\MELEVR_Log.txt`; its settings are `MELEVR.ini` in
-  `Binaries\Win64\ASI`. Its keys: `\` menu (`menuKey = 220` in our deploy; upstream uses Insert;
-  both thumbsticks held opens or closes it, our addition; the open menu blocks all game input),
-  R recenter (or double-click the right stick), K first person. Our own VR hotkeys are off on LE1.
+  `Binaries\Win64\ASI`. Its keys: R recenter (or double-click the right stick), K first person; its
+  `menuKey` (`220`, `\`, in our deploy; upstream Insert) now opens **our** menu (below), and Ctrl or
+  Shift + `\` its own. Our own VR hotkeys are off on LE1.
   Recenter is yaw-only as upstream, except that a recenter the player asks for also removes a badly
   tilted base space (rolled past 90 degrees, or tilted past `recenterTiltDeg` for 1.5 s: SteamVR's
   upside-down start; [MEVR] `RecenterOrientation`, `core/vr/Recenter`, log `[MEVR-RECENTER]`).
-- Its menu takes the pad (Touch merged in as Xbox pad 0: left stick/d-pad, A, B; upstream never
-  set ImGui's `HasGamepad` backend flag, so pad nav was dead until we did) and our laser pointer
-  (`src/plugin/MevrMenuPointer.cpp`: a controller's aim ray on the menu quad, world-locked by default (`worldLockedPanels`, `src/plugin/WorldPanels.cpp`), is the mouse,
-  trigger clicks, right stick scrolls). Our own tab, "VR hands" (`src/plugin/MevrMenuTab.cpp`),
-  edits `[Hands]` and `[Squad] style` in `ASI\LE1MEVR.ini` (the mod re-reads it) and writes the arm-length sample
-  (`[Arms] measureRequest` counter plus grip/head positions; `armLengthM` is shown if present).
+- **The player's menu is ours** (since 2026-10-23, [research/28](research/28-main-menu.md)): the approved
+  glass board in RmlUi 6.3 (`external/RmlUi`, FreeType in `external/freetype`; static, in the host,
+  LE1 only, `MEVR_MAIN_MENU`). Holding both sticks or `\` opens and closes it; Resume or B close it. It's a
+  quad fixed in the room where it opens (`[Menu] distanceM`, `widthM`); the game sees no input, the mod no
+  controllers, and on foot or in the Mako the mod pauses the game (`[Menu] pause`, HostServices v16,
+  `game/MenuPause`: `WorldInfo.PauseGame` like the game's weapon wheel). Pointer: a controller's aim ray is
+  the mouse (trigger clicks, right stick scrolls, haptic ticks); the pad or left stick moves the focus, A
+  activates, B backs out then closes; on Display holding A compares the colour. Sections: Comfort, Controls,
+  Body & calibration (Start calibration opens `plugin/Calibration`), Display, HUD & sights, Advanced
+  (Halcyon's settings in sub-tabs). Every row drives a real setting (`plugin/MainMenuSettings`: our
+  `LE1MEVR.ini` key by key, Halcyon's live config saved with its own `SaveProfile` when the menu closes;
+  never a reset written over a profile) or is marked Soon. Code: `src/plugin/menu` (game-independent:
+  RmlUi's own DX11 renderer wrapped for the game's context, our `chamfer`/`backdrop`/`icon` decorators,
+  the data model over `core/vr/MenuSettings`' schema, the frosted backdrop from the left eye's image),
+  `src/plugin/MainMenu` (the quad, input, cost). The look is `assets/menu/main.rml` + `main.rcss`
+  (deployed to `ASI\menu`, reloaded within a second of a change; `[Menu] assets` can point at the repo).
+  Closed it costs nothing. Offline look: `mevr-menu-preview` (PNGs of every section and state, and the
+  frame time). Log `main menu:` (its cost every 10 s while open), `menu:`/`rmlui:`; snapshots `"mainMenu"`
+  and a `mainmenu` layer.
+- **Halcyon's own menu** is the developer fallback: Ctrl or Shift + `\`, or Advanced > Diagnostics >
+  Classic renderer menu (both thumbsticks held no longer open it). It takes the pad (Touch merged in as
+  Xbox pad 0: left stick/d-pad, A, B; upstream never set ImGui's `HasGamepad` backend flag, so pad nav
+  was dead until we did) and our laser pointer (`src/plugin/MevrMenuPointer.cpp`: a controller's aim ray
+  on the menu quad, world-locked by default (`worldLockedPanels`, `src/plugin/WorldPanels.cpp`), is the
+  mouse, trigger clicks, right stick scrolls). Our tab there, "VR hands" (`src/plugin/MevrMenuTab.cpp`),
+  edits `[Hands]` and `[Squad] style` in `ASI\LE1MEVR.ini` (the mod re-reads it) and writes the arm-length
+  sample (`[Arms] measureRequest` counter plus grip/head positions; `armLengthM` is shown if present).
 - Our seams into it are marked `[MEVR]` and declared in `src/halcyon/le1/mevr_bridge.h`
   (implemented in `src/plugin/HalcyonBridge.cpp`): static OpenXR loader, our controller actions
   on its session, Touch → Xbox pad 0 in its XInput hooks. Keep changes to its files small and
@@ -137,9 +158,10 @@ switching frameworks.
   / `ViewAdhesion`, which slowed and bent the stick's turn near enemies) are zeroed by CallFunction
   post-handlers under the same conditions (cover included; not the sniper scope or the Mako):
   `[Hands] aimAssist = 0` (1 keeps them), log `aim assist:` (research/24 section 7).
-- LE1 guided calibration ([research/25](research/25-calibration.md), HostServices v15): the VR hands tab's
-  Calibrate (or a one-time prompt for uncalibrated controllers) runs about a minute in the headset
-  (`plugin/Calibration`; look in `plugin/CalibrationDraw`, the coming main menu's style; offline look:
+- LE1 guided calibration ([research/25](research/25-calibration.md), HostServices v15): our menu's Body &
+  calibration > Start calibration (or the VR hands tab's Calibrate, or a one-time prompt for uncalibrated
+  controllers) runs about a minute in the headset
+  (`plugin/Calibration`; look in `plugin/CalibrationDraw`, the main menu's style; offline look:
   `mevr-calibration-preview`): stand tall, T pose, arms ahead, crouch, a pistol orb and two rifle orbs aimed
   at three targets (captured on a 1 s hold, no buttons; B back a step, both sticks held cancel), a red-dot
   check, save. Solved in `core/vr/Calibration` (unit-tested): the gun frame (eye-to-target line, level) in
@@ -163,8 +185,8 @@ switching frameworks.
   through a tint texture the panel's alpha is made from (they used to stay in the eyes: the doubled
   wheel). While the game's weapon or power wheel is up, its part of the UI (`core/vr/WheelCrop`:
   guessed, then measured once per session) is cut out of the HUD panel and shown on a quad of its
-  own at the left / right hand ("wheel"). Toggles: `MELEVR.ini` `hudPanel*` / `handReticle*`, or the
-  Insert menu's HUD tab; the wheel panel's in `[Squad]`.
+  own at the left / right hand ("wheel"). Toggles: `MELEVR.ini` `hudPanel*` / `handReticle*`, our menu's
+  HUD & sights and Advanced > HUD placement, or the classic menu's HUD tab; the wheel panel's in `[Squad]`.
 - LE1 colour per headset ([research/27](research/27-colour.md)): brightness and RGB gains, contrast,
   saturation, mid-tones (gamma) and black level, all on sRGB-ENCODED values, plus a ±0.5-step triangular
   dither (`core/vr/Colour`, unit-tested; `tools/colour-preview` checks the shader against the CPU reference:
@@ -175,8 +197,8 @@ switching frameworks.
   raw copy. The headset (`xrGetInstanceProperties` runtime, `xrGetSystemProperties` system; the user's PS
   VR2 is `SteamVR/OpenXR : playstation_vr2`) picks the profile Auto means: "quest" for streamed Quests,
   "neutral" otherwise. `[Colour]` / `[Colour.<headset>]` in `ASI\LE1MEVR.ini` (`plugin/Colour`): `profile =
-  auto|neutral|quest|vivid|custom`, the custom values per headset, `compare`, `dither`; the VR hands tab's
-  Colour section edits them live; `colour::HoldCompare()` is for the coming menu's "hold A". Log
+  auto|neutral|quest|vivid|custom`, the custom values per headset, `compare`, `dither`; our menu's Display
+  page (and the VR hands tab's Colour section) edits them live; holding A there is `colour::HoldCompare()`. Log
   `[MEVR-COLOUR]` / `colour:` (the GPU cost every 10 s); snapshots show the corrected picture (`"colour"`).
 - LE1 gun sights ([research/21](research/21-sights-and-scopes.md), HostServices v13): a collimated red
   dot / holo per gun (a quad 50 m out along the sight line, `eyeVisibility` = the eye looking through the
@@ -253,13 +275,14 @@ Use it to check VR changes yourself instead of asking the user what they see
   `tools/snapshot.ps1 -Delay 2`, `tools/replay.ps1 -Stop`.
 - **Player triggers:** End = snapshot, Home = recording on/off (game focused); a quick tap of both
   stick clicks = snapshot (both down within 100 ms of each other and up within 300 ms of the first
-  press; held 400 ms they open Halcyon's menu instead, never both: `gamepad::UpdateStickChord` in
+  press; held 400 ms they open our main menu instead, never both: `gamepad::UpdateStickChord` in
   `HalcyonBridge`; L3 is held back 100 ms so the tap is never a crouch, and RB from R3 starts only
-  after 100 ms alone); the menu's VR hands tab ("Test loop": snapshot in 3 s, record, replay the
-  last recording). There's no controller chord for recording (both grips are the gun and the
-  squad menu since 2026-10-22).
+  after 100 ms alone); our menu's Advanced > Diagnostics (Snapshot, Record) and the classic menu's VR
+  hands tab ("Test loop": snapshot in 3 s, record, replay the last recording). There's no controller
+  chord for recording (both grips are the gun and the squad menu since 2026-10-22).
 - **Frame timing** ([research/22](research/22-performance-levers.md)): `tools/perf-probe.ps1 [-Seconds 20
-  -Delay s -Tag x]` writes `perf.request` (or the VR hands tab: "Measure frame timing"); `plugin/PerfProbe`
+  -Delay s -Tag x]` writes `perf.request` (or our menu's Diagnostics, or the VR hands tab: "Measure frame
+  timing"); `plugin/PerfProbe`
   records each frame's steps on the render thread (time, busy time, draws, GPU timestamps mapped onto the
   CPU clock, access violations) and each game-thread tick into `perf\<stamp>-frames.csv`, `-ticks.csv` and
   `-probe.json`, then `python tools/perf-probe.py [--latest]` says whether the render thread, the GPU or

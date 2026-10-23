@@ -16,6 +16,9 @@
 #include "plugin/Calibration.hpp"
 #include "plugin/Halcyon.hpp"
 #include "plugin/TestLoop.hpp"
+#if defined(MEVR_WITH_MAIN_MENU)
+#include "plugin/MainMenu.hpp"
+#endif
 #endif
 
 #include <LESDK/Headers.hpp>
@@ -129,6 +132,13 @@ std::uint32_t HostSightView() {
 void HostCalibration(vr::calibration::HostState* out) {
     calibration::HostStateOut(out);
 }
+std::uint32_t HostMainMenu() {
+#if defined(MEVR_WITH_MAIN_MENU)
+    return main_menu::ModFlags();
+#else
+    return 0;
+#endif
+}
 HostServices const gServices{kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
     static_cast<std::uint32_t>(sizeof(vr::controllers::State)), static_cast<std::uint32_t>(sizeof(vr::host_view::State)),
     &HostSetProcessEventCallback, &HostProcessExiting, &HostKeepLoaded,
@@ -139,7 +149,7 @@ HostServices const gServices{kHostServicesVersion, kHostLog, &HostControllers, &
     static_cast<std::uint32_t>(sizeof(vr::squad_menu::View)), &HostSetSquadMenu, &HostLeftGripAway,
     static_cast<std::uint32_t>(sizeof(vr::squad_menu::wheel::Panel)), &HostSetWheelPanel,
     static_cast<std::uint32_t>(sizeof(vr::sights::Sight)), &HostSetSight, &HostSightView,
-    static_cast<std::uint32_t>(sizeof(vr::calibration::HostState)), &HostCalibration};
+    static_cast<std::uint32_t>(sizeof(vr::calibration::HostState)), &HostCalibration, &HostMainMenu};
 // A mod that's gone can't aim: Halcyon's head aim must come back, the reticle go, the pad mapping
 // forget the two-handed grip (the grip holding the gun, the squad menu's controls), the squad menu and the
 // wheel panel settings go, and the controllers stop vibrating.
