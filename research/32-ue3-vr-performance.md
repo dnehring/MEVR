@@ -117,6 +117,26 @@ found:
 Measuring any of the switches: `tools/perf-ab.ps1 -Key sharePass -Values 0,1` (or `depthPrepass -Values 2,1`,
 `pCoresOnly -Values 0,1`) alternates the key in the deployed ini, captures each, and restores it.
 
+### Lever 4 in detail: what a D3D11 replay would patch (2026-10-23, from Halcyon's code)
+
+- Halcyon tried draw-level stereo itself, long before Stereo 2: `d3d_capture.cpp`'s `[CAMCB96_ATLAS]` (marker-gated,
+  off) issues each scene `DrawIndexed` twice into the two halves of the target, with the **96-byte constant buffer at
+  VS slot 1** rewritten per eye. Its shape (`LooksLikeSceneCameraCb96`): rows 0-3 a projection-shaped 4x4 (the GPU's
+  TranslatedViewProjection), row 4 (0,0,0,1), row 5 a world position with w = 1 (PreViewTranslation: the eye offset
+  is applied to row 5 only). So the vertex side of UE3's view constants is one small buffer; the rest of a draw's
+  constants are per primitive or per material. Pixel-side view constants (camera position for specular, fog,
+  screen-position scale) are elsewhere and still **[verify]**: a one-frame recording of both eyes' `UpdateSubresource`
+  payloads, diffed, lists every byte that differs between the eyes, which is exactly the patch list a replay needs.
+- A replay built on `sharePass` would record the first eye's immediate-context calls between the pre-pass and
+  `0x76DD10` (Halcyon's `d3d_capture` already hooks the context's vtable: `UpdateSubresource`, `Map`/`Unmap`, the
+  `*SetConstantBuffers`, `DrawIndexed`...) and re-issue them for the second eye with the view bytes patched, instead
+  of running the DPG passes again. What it saves is the UE3 side of the second eye's draw submission (base pass +
+  lights ≈ 20% of the render thread for both eyes, ~1 ms per eye; the driver's part, ~40% of a draw's cost, stays).
+  MGS2's flicker came from replaying screen-space quads; replaying only the world passes and letting the second eye's
+  post-processing run as it does avoids that.
+- The heap is not a lever: `RtlAllocateHeap` + `RtlFreeHeap` are ~2.7% of the flat render-thread samples (the
+  "ntdll 15%" was mostly `NtWaitForSingleObject`, semaphores and FLS). A replacement allocator would save ~0.3 ms.
+
 ## Sources
 
 - UEVR: https://github.com/praydog/UEVR, https://docs.uevr.io/
