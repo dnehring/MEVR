@@ -480,7 +480,7 @@ static std::string ReadText(wchar_t const* section, wchar_t const* key, wchar_t 
 }
 
 static void SquadSection() {
-    ImGui::SeparatorText("Squad weapons (point, squeeze the left grip)");
+    ImGui::SeparatorText("Squad weapons (point, pull the left trigger)");
     if (Path().empty()) {
         return;
     }

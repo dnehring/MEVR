@@ -37,6 +37,8 @@ constexpr double kMinAlongForTwoHandAim = 10.0;
 constexpr double kBlendSeconds = 0.10;
 
 std::uintptr_t gGun = 0;
+std::uint32_t gHoldSerial = 0;  // the current hold's serial (0: not held)
+std::uint32_t gHolds = 0;       // holds so far (the next serial)
 std::optional<Foregrip> gForegrip;
 std::optional<Foregrip> gCandidate;
 int gStillTicks = 0;
@@ -175,6 +177,15 @@ std::optional<Foregrip> Current() {
     return gForegrip;
 }
 
+Zone CurrentZone() {
+    hand_calibration::Controls const controls = hand_calibration::GetControls();
+    return {controls.supportCapsule, controls.frontMeters, controls.pastMeters};
+}
+
+std::uint32_t HoldSerial() {
+    return gHoldSerial;
+}
+
 // The right hand's grip at the shoulder, against the headset (tracking space, meters).
 bool gShouldered = false;
 bool gLoggedAiming = false;
@@ -245,15 +256,30 @@ void Tick(double deltaSeconds, bool requested) {
     double const goal = held ? 1.0 : 0.0;
     double const step = std::clamp(deltaSeconds, 0.0, 0.05) / kBlendSeconds;
     gBlend = requested ? std::clamp(gBlend + std::clamp(goal - gBlend, -step, step), 0.0, 1.0) : 0.0;
+    if (held && gHoldSerial == 0) {
+        gHoldSerial = ++gHolds;
+        if (gHoldSerial == 0) {
+            gHoldSerial = ++gHolds;  // 0 means "not held"
+        }
+    } else if (!held) {
+        gHoldSerial = 0;
+    }
     if (held != gLoggedHeld) {
         gLoggedHeld = held;
         if (held) {
-            log::Info("support grip: held ({} m from the foregrip, from {}): {}; the left hand on the gun{}", distance,
-                gForegrip ? gForegrip->source : "?",
-                gForegrip && gForegrip->twoHandAim ? "the barrel points toward the left hand" : "the right hand keeps aiming",
+            std::string where = std::format("{:.2f} m from the grab zone", distance);
+            if (sample && sample->foregripMeters >= 0.0) {
+                where += std::format(", {:.2f} m from the foregrip, {:.2f} m along the barrel from the right hand", sample->foregripMeters,
+                    sample->alongMeters);
+            }
+            log::Info("support grip: held ({}; {}, foregrip from {}): {}; the left hand goes to the foregrip{}", where,
+                controls.supportCapsule ? "a capsule along the gun" : "the foregrip alone", gForegrip ? gForegrip->source : "?",
+                gForegrip && gForegrip->twoHandAim
+                    ? "the barrel turns with the line between the hands (taken where you grabbed: no swing)"
+                    : "the right hand keeps aiming",
                 options.supportAims ? "; the game sees LT held (focused fire)" : "; no LT (sniper rifle, sniperAims = 0)");
         } else {
-            log::Info("support grip: released ({})", distance < 0.0f ? "no gun or arm IK" : std::format("{:.2f} m from the foregrip", distance));
+            log::Info("support grip: released ({})", distance < 0.0f ? "no gun or arm IK" : std::format("{:.2f} m from the grab zone", distance));
         }
     }
 }
@@ -281,12 +307,14 @@ void LogStats() {
     }
     std::string last = "no write yet";
     if (gLastSample) {
-        last = std::format("last write {:.2f} m, blend {:.2f}, {}, swing {:.1f} degrees, left wrist {:.1f} units from its goal",
-            gLastSample->distanceMeters, gLastSample->blend, gLastSample->twoHand ? "two-hand aim" : "one-hand aim",
+        last = std::format("last write {:.2f} m from the grab zone ({:.2f} m from the foregrip, {:.2f} m along), blend {:.2f}, {}{}, "
+                           "swing {:.1f} degrees, left wrist {:.1f} units from its goal",
+            gLastSample->distanceMeters, gLastSample->foregripMeters, gLastSample->alongMeters, gLastSample->blend,
+            gLastSample->twoHand ? "two-hand aim" : "one-hand aim", gLastSample->captured ? " (the grab's line)" : "",
             gLastSample->swingDegrees, gLastSample->leftErrorUnits);
     }
     std::optional<bool> const zoomed = weapon::Zoomed();
-    log::Info("    support grip: {}, foregrip {}; nearest {}; {}; {}; bIsZoomed {}", Held() ? "HELD" : "not held",
+    log::Info("    support grip: {}, foregrip {}; nearest {} from the grab zone; {}; {}; bIsZoomed {}", Held() ? "HELD" : "not held",
         gForegrip ? gForegrip->source : "not settled", gNearest < 1e8 ? std::format("{:.2f} m", gNearest) : std::string("-"), last,
         NativeIkText(gNativeSample), zoomed ? (*zoomed ? "on" : "off") : "-");
     gNearest = 1e9;
@@ -294,6 +322,7 @@ void LogStats() {
 
 void Shutdown() {
     gGun = 0;
+    gHoldSerial = 0;
     Reset();
     gBlend = 0.0;
     gLoggedHeld = false;

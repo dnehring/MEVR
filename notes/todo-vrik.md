@@ -259,7 +259,8 @@ notes/next-vr-session.md step 12.
   in LE1MEVR.ini (appended to existing files).
 - **Decisions:** the game keeps running (`pause = 1` pauses like the wheel); opening at nobody needs
   the grip held 0.35 s (a missed foregrip grab mustn't open it); the left grip away from the gun is
-  never LB while the menu is on; recording has no controller chord (Home or the menu).
+  never LB while the menu is on; recording has no controller chord (Home or the menu). **Superseded
+  late 2026-10-22: the left trigger opens it, at once; the grip never does** (below).
 - **[verify in headset]:** the panel's place and size; the names from the class; the AI switch with
   Shepard's weapon out (animated? how long?) and the instant one with it away; the other squadmate's
   orders after `ApplyTacticalOrders`; the tap (no crouch, no menu) and the hold (menu, no snapshot);
@@ -323,7 +324,7 @@ Research and design: research/20. Test steps: notes/next-vr-session.md step 16.
 The user: in VR first person Shepard sometimes snapped into cover against a wall and the view went
 third person; in VR the player takes cover physically, so the snapping should be off. And a real
 crouch only lowered the view (Halcyon's lean), never the game's crouch. Research: research/23. Test
-steps: notes/next-vr-session.md step 17.
+steps: notes/next-vr-session.md step 20.
 - **Mod (hot reload, no host change):** `engine/cover_acquire` (a pre-hook on BioPawn's native cover
   test `0xAB1430`, refused for the player's pawn; the game's own trace says when an entry was refused),
   `core/ik/Posture` (eye-height fraction, the hysteresis detector, the arbiter vs L3; unit-tested),
@@ -420,7 +421,7 @@ notes/next-vr-session.md step 14.
 - **Open, for the user:** red dots for all guns, or iron-sight style for the pistol? Should looking through
   a dot sight count as aimed fire too? Is 4x right for the sniper rifle, 2x scope for the assault rifle?
   Overlord's eye-distance assistance (the gun slides toward the eye when aligned) if the eyepiece is hard
-  to reach.
+  to reach. (The sideways alignment assist is built: "Headset session 2026-10-22 19:52" below.)
 
 ## A recenter that fixes a tilted tracking space (user, 2026-10-22; built the same day, to test)
 
@@ -441,6 +442,34 @@ Halcyon's recenter (yaw-only, from the base space) can never undo a rolled or pi
   sent).
 - **[verify in headset]:** a normal recenter logs `yaw-only recenter (upstream)`; a recenter while looking
   at the floor for a while logs a correction (expected: recenter again looking ahead heals it).
+
+## Headset session 2026-10-22 19:52 (PSVR 2, SteamVR): three fixes (built the same evening, to test)
+
+Test steps: notes/next-vr-session.md steps 17-19. **Mod only (hot reload): no host redeploy.**
+1. **The left grip kept opening the weapon wheel.** All four openings were squeezes right after a
+   draw, before the gun's grip and foregrip were measured (no distance: "away", then 0.35 s at
+   nobody). **The user's design:** the left trigger opens the wheel at the left hand at once
+   (pointing preselects, letting go confirms; native and custom); the left grip is only the support
+   grip and grenades. The squad takes the trigger per pull on foot and in the wheels (no LB to the
+   game; the Mako keeps LB). docs/squad-weapons-design.md "The left trigger opens it", research/19
+   section 11.
+2. **The foregrip grab zone was too small** (the misses were 15-21 cm from the foregrip): a capsule
+   along the gun (10 cm ahead of the right hand to 10 cm past the muzzle, 18 cm radius, release 26
+   cm), the left hand still to the foregrip, the grab's line captured so taking hold doesn't swing
+   the gun; ini migrated (0.12/0.22 -> 0.18/0.26). Redrawn guns are aimed at once (grips remembered).
+3. **The sight didn't line up with the eye.** The logs show no placement error but the arm-length
+   calibration (0.723 m, scale 0.76) pulling the gun toward the shoulder near the face: hands within
+   0.30 m of the eyes are now 1:1 (`[Hands] reachNearFaceM`). Plus the alignment assist: raised to the
+   face with the eye within 10 degrees of the sight line, the gun slides (at most 10 cm, a damped
+   spring) so the line runs through the eye (`[Sights] assist*`). research/21 section 8.
+- **[verify in headset]:** no wheel from the grip; the trigger's wheel (open, preselect, confirm, B,
+  quick tap = no weapon swap, Mako boost); grabs anywhere on the gun, no swing on grab; the sight
+  without hunting, the assist's feel (pulled? wobble?); the heartbeat's average eye offset from the
+  unassisted sight line (a steady value = fix `<type>Place`).
+- **Open:** the support grip still needs a new squeeze if the first came before the gun was in the
+  hand (host rule; a host change could let a squeeze held from just before take hold); Halcyon's
+  left-trigger camera alignment (VR hands tab) would also open the wheel with that pull (rare);
+  Overlord's along-the-barrel eye-distance assist for the scope (not built).
 
 ## Grenades: the user's choices (2026-10-22)
 

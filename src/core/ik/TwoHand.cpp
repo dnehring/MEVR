@@ -98,6 +98,50 @@ Vec3 UnderGrip(Vec3 barrelInHand, Vec3 upInHand, double down, double forward) {
     return barrel * forward - up * down;
 }
 
+std::optional<SupportZone> MakeSupportZone(Vec3 rearPosition, Quat rearRotation, Vec3 barrelInHand, Vec3 muzzleInHand,
+    Vec3 foregripInHand, double handScale, double frontUnits, double pastUnits) {
+    if (!Finite(rearPosition) || !Finite(rearRotation) || !Finite(barrelInHand) || !Finite(muzzleInHand) ||
+        !Finite(foregripInHand) || !std::isfinite(handScale) || !std::isfinite(frontUnits) || !std::isfinite(pastUnits) ||
+        !(Length(barrelInHand) > 1e-9)) {
+        return std::nullopt;
+    }
+    double const scale = handScale > 1e-6 ? handScale : 1.0;
+    Quat const r = Normalize(rearRotation);
+    Vec3 const barrel = Normalize(Rotate(r, barrelInHand), {1.0, 0.0, 0.0});
+    Vec3 const muzzle = rearPosition + Rotate(r, muzzleInHand * scale);
+    double const muzzleAlong = Dot(muzzle - rearPosition, barrel);
+    // The bore line at `frontUnits` along the barrel from the hand (never past the muzzle).
+    double const front = std::min(std::max(frontUnits, 0.0), std::max(muzzleAlong, 0.0));
+    SupportZone zone;
+    zone.start = muzzle + barrel * (front - muzzleAlong);
+    zone.end = muzzle + barrel * std::max(pastUnits, 0.0);
+    zone.foregrip = rearPosition + Rotate(r, foregripInHand * scale);
+    return zone;
+}
+
+double DistanceToSegment(Vec3 point, Vec3 a, Vec3 b) {
+    Vec3 const ab = b - a;
+    double const lengthSquared = Dot(ab, ab);
+    double const t = lengthSquared > 1e-12 ? std::clamp(Dot(point - a, ab) / lengthSquared, 0.0, 1.0) : 0.0;
+    return Length(point - (a + ab * t));
+}
+
+double DistanceToZone(Vec3 point, SupportZone const& zone) {
+    return std::min(DistanceToSegment(point, zone.start, zone.end), Length(point - zone.foregrip));
+}
+
+std::optional<Vec3> CapturedSpan(Quat rear, Vec3 rearPosition, Vec3 supportPosition, double length, double minDistance) {
+    if (!Finite(rear) || !Finite(rearPosition) || !Finite(supportPosition) || !std::isfinite(length) || !std::isfinite(minDistance)) {
+        return std::nullopt;
+    }
+    Vec3 const delta = supportPosition - rearPosition;
+    double const distance = Length(delta);
+    if (distance < std::max(minDistance, 0.5) || !(length > 0.5)) {
+        return std::nullopt;
+    }
+    return Rotate(Conjugate(Normalize(rear)), delta) * (length / distance);
+}
+
 NativeIk ClassifyNativeIk(double strength) {
     if (!std::isfinite(strength)) {
         return NativeIk::Unknown;

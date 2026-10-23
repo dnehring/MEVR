@@ -237,7 +237,7 @@ char const* CloseName(Close close) {
     case Close::Confirmed: return "confirmed";
     case Close::Released: return "released with nothing chosen";
     case Close::CancelButton: return "cancelled (B)";
-    case Close::Resqueezed: return "cancelled (grip squeezed again)";
+    case Close::Repulled: return "cancelled (trigger pulled again)";
     case Close::Unusable: return "closed (it can't stay open here)";
     case Close::Idle: return "closed (untouched)";
     case Close::None: break;
@@ -258,7 +258,6 @@ void Machine::OpenMenu(Input const& input, int member, Step& step) {
     flickRefused_ = true;
     leftSide_ = SideOf(input.leftX, input.leftY, input.cardPush);
     idleFor_ = 0.0f;
-    armedFor_ = 0.0f;
     step.opened = true;
 }
 
@@ -272,14 +271,13 @@ void Machine::CloseMenu(Close why, Step& step) {
     highlighted_ = -1;
     rightHeld_ = Direction::None;
     flickRefused_ = false;
-    armedFor_ = 0.0f;
     idleFor_ = 0.0f;
 }
 
 Step Machine::Update(Input const& in) {
     Step step;
-    bool const gripReleased = !in.gripDown && gripWasDown_;
-    gripWasDown_ = in.gripDown;
+    bool const triggerReleased = !in.triggerDown && triggerWasDown_;
+    triggerWasDown_ = in.triggerDown;
     bool const aPressed = in.a && !aWasDown_;
     bool const bPressed = in.b && !bWasDown_;
     aWasDown_ = in.a;
@@ -289,7 +287,9 @@ Step Machine::Update(Input const& in) {
 
     switch (phase_) {
     case Phase::Idle:
-        if (!in.newAwaySqueeze || !in.usable) {
+        // A new pull opens it at once (the trigger is a deliberate input): with the squadmate the
+        // hand points at, else the preferred one.
+        if (!in.newPull || !in.usable) {
             break;
         }
         if (count == 0) {
@@ -297,28 +297,7 @@ Step Machine::Update(Input const& in) {
         } else if (pointed) {
             OpenMenu(in, in.pointed, step);
             step.openedPointing = true;
-        } else if (in.nearGun) {
-            step.missedGrab = true;
         } else {
-            phase_ = Phase::Arming;
-            armedFor_ = 0.0f;
-            step.armed = true;
-        }
-        break;
-
-    case Phase::Arming:
-        if (!in.gripDown || !in.usable || count == 0) {
-            phase_ = Phase::Idle;  // let go early: nothing
-            armedFor_ = 0.0f;
-            break;
-        }
-        if (pointed) {
-            OpenMenu(in, in.pointed, step);
-            step.openedPointing = true;
-            break;
-        }
-        armedFor_ += std::max(in.dt, 0.0f);
-        if (armedFor_ >= in.openHoldSeconds) {
             OpenMenu(in, in.preferred >= 0 && in.preferred < count ? in.preferred : 0, step);
         }
         break;
@@ -360,16 +339,16 @@ Step Machine::Update(Input const& in) {
                 }
             }
         }
-        bool const touched = d != Direction::None || side != 0 || in.gripDown || aPressed || bPressed;
+        bool const touched = d != Direction::None || side != 0 || in.triggerDown || aPressed || bPressed;
         idleFor_ = touched ? 0.0f : idleFor_ + std::max(in.dt, 0.0f);
         if (bPressed) {
             CloseMenu(Close::CancelButton, step);
         } else if (aPressed && highlighted_ >= 0) {
             CloseMenu(Close::Confirmed, step);
-        } else if (gripReleased && in.confirmOnRelease) {
+        } else if (triggerReleased && in.confirmOnRelease) {
             CloseMenu(highlighted_ >= 0 ? Close::Confirmed : Close::Released, step);
-        } else if (!in.confirmOnRelease && in.newAwaySqueeze) {
-            CloseMenu(Close::Resqueezed, step);
+        } else if (!in.confirmOnRelease && in.newPull) {
+            CloseMenu(Close::Repulled, step);
         } else if (!in.confirmOnRelease && idleFor_ >= in.idleCloseSeconds) {
             CloseMenu(Close::Idle, step);
         }
@@ -475,7 +454,6 @@ int SlotOfWeapon(int weapon) {
 char const* PhaseName(Phase phase) {
     switch (phase) {
     case Phase::Idle: return "idle";
-    case Phase::Arming: return "arming";
     case Phase::Opening: return "opening";
     case Phase::Open: return "open";
     case Phase::Confirming: return "confirming";
@@ -504,56 +482,34 @@ void Machine::BeginClose(Step& step, bool confirm, Input const& input) {
 Step Machine::Update(Input const& in) {
     Step step;
     float const dt = std::max(in.dt, 0.0f);
-    bool const gripReleased = !in.gripDown && gripWasDown_;
-    gripWasDown_ = in.gripDown;
+    bool const triggerReleased = !in.triggerDown && triggerWasDown_;
+    triggerWasDown_ = in.triggerDown;
     bool const bPressed = in.b && !bWasDown_;
     bWasDown_ = in.b;
 
     switch (phase_) {
     case Phase::Idle:
-        if (!in.newAwaySqueeze || !in.usable || !in.onFoot) {
+        // A new pull opens it at once (pointing only preselects).
+        if (!in.newPull || !in.usable || !in.onFoot) {
             break;
         }
-        if (in.pointed) {
-            phase_ = Phase::Opening;
-            timer_ = 0.0f;
-            releasedEarly_ = false;
-            step.enter = true;
-            step.openedPointing = true;
-        } else if (in.nearGun) {
-            step.missedGrab = true;
-        } else {
-            phase_ = Phase::Arming;
-            timer_ = 0.0f;
-            step.armed = true;
-        }
-        break;
-
-    case Phase::Arming:
-        if (!in.gripDown || !in.usable || !in.onFoot) {
-            phase_ = Phase::Idle;
-            break;
-        }
-        timer_ += dt;
-        if (in.pointed || timer_ >= in.openHoldSeconds) {
-            phase_ = Phase::Opening;
-            timer_ = 0.0f;
-            releasedEarly_ = false;
-            step.enter = true;
-            step.openedPointing = in.pointed;
-        }
+        phase_ = Phase::Opening;
+        timer_ = 0.0f;
+        releasedEarly_ = !in.triggerDown;
+        step.enter = true;
+        step.openedPointing = in.pointed;
         break;
 
     case Phase::Opening:
         timer_ += dt;
-        releasedEarly_ = releasedEarly_ || !in.gripDown;
+        releasedEarly_ = releasedEarly_ || !in.triggerDown;
         if (in.wheelActive) {
             phase_ = Phase::Open;
             timer_ = 0.0f;
             step.opened = true;
             bWasDown_ = true;  // a B held from before isn't a cancel
             if (releasedEarly_) {
-                BeginClose(step, false, in);  // a quick squeeze-and-let-go: open and shut, give nothing
+                BeginClose(step, false, in);  // a quick pull-and-let-go: open and shut, give nothing
             }
         } else if (timer_ >= kOpenTimeout || !in.usable) {
             phase_ = Phase::Idle;
@@ -571,7 +527,7 @@ Step Machine::Update(Input const& in) {
             timer_ = 0.0f;
             exitTries_ = 1;
             step.exit = true;
-        } else if (gripReleased || !in.gripDown || !in.usable) {
+        } else if (triggerReleased || !in.triggerDown || !in.usable) {
             BeginClose(step, in.confirmOnRelease && in.usable, in);
         }
         break;
@@ -642,5 +598,13 @@ void ResetPanel() {
 }
 
 } // namespace wheel
+
+bool OwnTrigger(TriggerOwner& owner, bool pulled, bool wanted) {
+    if (!pulled || !owner.down) {
+        owner.owned = wanted;  // up, or the press itself: decided now, then kept until it's let go
+    }
+    owner.down = pulled;
+    return owner.owned;
+}
 
 } // namespace mevr::vr::squad_menu

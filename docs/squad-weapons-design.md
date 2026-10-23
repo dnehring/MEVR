@@ -4,6 +4,29 @@
 the next section): the user wanted ME1's actual UI, its pause and its rules rather than our drawing.
 Our drawn menu ("As built" below) stays as `style = custom`.
 
+## The left trigger opens it, never the grip (user, 2026-10-22, late; built, to test)
+
+In the headset session of 2026-10-22 (19:52) the left grip kept opening the weapon wheel when the user
+reached for the gun's foregrip. The log shows all four openings were squeezes right after a draw, before
+the gun's grip and foregrip had been measured (no distance to the foregrip yet, so "away from the gun",
+then 0.35 s held "at nobody"); the squeezes that came with a known distance (0.15-0.21 m) were already
+taken as missed grabs. The user expected the wheel to be on a button, and decided:
+
+| | Now | Why |
+|-|-----|-----|
+| Open | **A new pull of the left trigger** ([Controls] `leftTrigger = lb`, the weapon wheel's button) opens the wheel at the left hand **at once**: `EnterWeaponWheel` (native) or our menu (custom). No hold, no "at nobody" delay | The trigger is a deliberate input; the grip is the hand's grab |
+| Pointing | Pointing the left hand at a squadmate as you pull preselects them (native: the HUD's kept stick angle on their weapon in hand; custom: their card). At nobody: native opens where the ring was, custom on the squadmate last given a weapon | Unchanged from the grip design |
+| Confirm | **Letting go of the trigger** gives the highlighted entry (native: an A, then `ExitWeaponWheel`; custom: the chosen tile), as letting go of the grip did (`confirmOnRelease`); A and B as before; with `confirmOnRelease = 0` the custom menu stays open and a new pull cancels | The same gesture, on the trigger |
+| The left grip | Only the support grip (and grenades with `[Throwables] hands = left/both`). Away from the gun it does nothing (no LB, no wheel) | The user's rule |
+| LB | While the squad has the trigger, the game sees **no LB** from it (`gamepad::Options::leftTriggerShoulder` cleared by `squad_weapons::AdjustPad`): our path opens and closes the wheel. The squad takes the trigger only on foot and in the two wheels (modes 0, 2, 3), decided **per pull** (`squad_menu::OwnTrigger`: at the press, kept until let go), so a mode change mid-pull never becomes an LB press or release. In the Mako (LB: boost) and menus it stays LB | **Chosen over letting the game's LB open the wheel and only adding the panel and preselect:** LB's binding is `OnHold 0.3 EnterWeaponWheel / OnTap 0.3 TrySwapWeapon` (a 0.3 s delay, and a quick pull would swap Shepard's weapon), and releasing LB closes the wheel at once (`ExitWeaponWheel`), before an A for the highlighted entry could be sent: confirm-on-release would need the host to hold LB past the trigger. Calling the execs ourselves has none of that and needs no host change (the flag already crosses the boundary) |
+| Needs | `[Squad] enabled = 1` and `[Controls] leftTrigger = lb` (logged once if not); a v11 host (v12 for the native wheel) | |
+
+Not changed: the host's pad mapping and its left-grip report (still counted, no longer read). Logs:
+`squad: the left trigger opens the squad's weapon wheel (no LB to the game)` / `...is the game's LB
+again`, `squad: left trigger pulled: pointing at ...`, `squad: wheel #N: opening ... (the left trigger,
+at once)`, `squad: wheel #N: trigger let go: giving X the Y`. Test steps: notes/next-vr-session.md
+step 17. The tables below still say "grip" where the first build used it.
+
 ## The game's own wheel (style = native; built 2026-10-22, to test)
 
 The gesture stays; what it opens is ME1's weapon wheel (`SFXGameModeWeaponWheel`, game mode 3), shown
@@ -15,7 +38,7 @@ notes/next-vr-session.md step 13.
 
 | | Built | Why |
 |-|-------|-----|
-| Open | The same gesture as before (point and squeeze the left grip away from the gun; or hold it `openHoldS` at nobody; a squeeze at nobody next to the foregrip is a missed grab), then `SFXGameModeDefault.EnterWeaponWheel()` through ProcessEvent: exactly what holding LB does once the binding's 0.3 s have passed | Holding LB through the pad would add the 0.3 s, and a squeeze let go sooner would be LB's *tap*: `TrySwapWeapon` (Shepard's weapon swapped). The exec has no such case |
+| Open | First built: point and squeeze the left grip away from the gun (or hold it `openHoldS` at nobody). **Since late 2026-10-22: a new pull of the left trigger, at once** (above). Then `SFXGameModeDefault.EnterWeaponWheel()` through ProcessEvent: exactly what holding LB does once the binding's 0.3 s have passed | Holding LB through the pad would add the 0.3 s, and a pull let go sooner would be LB's *tap*: `TrySwapWeapon` (Shepard's weapon swapped). The exec has no such case |
 | Close | Letting go of the grip: an A for the highlighted entry if there's something new to give (below), then `SFXGameModeWeaponWheel.ExitWeaponWheel()`, what releasing LB does; its `Deactivated` applies the queue. B closes without the A. If the game closes it itself (LB, the pause menu), we just follow | The wheel needs A to pick (its own rule); "let go to give" was the user's control for our menu and is the natural VR gesture |
 | Pick | The highlighted entry's A is sent through the pad (`kFlagWheelPressA`, 80 ms), then we wait (at most 0.4 s) until that member's squad entry has taken it (`GetMemberSwitchWeapon`), then exit. No A when the entry is their weapon in hand or one they don't carry, or one already queued. A by hand works as in the flat game (pick for several squadmates, then let go) | The console movie only queues on A (`selectWeaponOrPowerInTacticalMode`); waiting for the queue makes sure the exit doesn't beat it |
 | Steer | The right stick, as the game binds it (`wheelStick = left` or `either`: the left stick, on the hand that holds the grip, sent as the right stick). A stick already pushed when it opens (turning) reaches the game only after it has been centred once; the left stick never walks; B and the stick clicks are kept from the game; whatever is held when it closes stays off until let go | The wheel reads the right stick's angle; the gate stops a turn from picking an entry the moment it opens |
@@ -49,12 +72,12 @@ bevelled or hexagonal tiles, cyan outlines, amber highlight). The proposal below
 | | Built | Why |
 |-|-------|-----|
 | Open | Point the left hand at a squadmate (within `pointConeDeg` 10° of the left aim ray and `pointMaxM` 40 m; the smallest angle, a tie within a degree going to the nearer) and squeeze the left grip away from the gun's foregrip: it opens at once with that card chosen | Pointing is explicit (Arizona Sunshine 2's orders) |
-| Open without pointing | Keep the grip squeezed `openHoldS` (0.35 s): it opens with the squadmate last given a weapon, else the one nearest the ray | **Held, because** a squeeze at nobody is often a grab that missed the foregrip: opening at once would put a menu in the player's face mid-fight. A miss right next to the gun (within the support grip's release distance) never opens it, and a quick squeeze-and-let-go at nobody does nothing |
-| Who decides it's "away from the gun" | The host's pad mapping, on the new squeeze (the same decision that makes it the support grip or not), counted and reported (`HostServices::leftGripAway`, v11); the two-handed grip keeps priority, and taking it closes the menu | No race between the mod's tick and the mapping |
+| Open without pointing | First built: keep the grip squeezed `openHoldS` (0.35 s). **Since late 2026-10-22 the trigger opens it at once** with the squadmate last given a weapon, else the one nearest the ray (`openHoldS` is no longer read) | The hold guarded against grip squeezes that missed the foregrip; the trigger needs no guard |
+| Who decides it's "away from the gun" | First built: the host's pad mapping on the new left-grip squeeze (`HostServices::leftGripAway`, v11). **Now nobody needs to:** the mod reads the left trigger itself (latched like the pad's), and the squad takes it per pull | The grip is only the support grip now |
 | The squadmate | Left stick left or right picks the left or right card. The cards are ordered by where the two stand (the one further left on the left) when it opens | The concept's layout, and it matches the world |
 | The weapon | A flick of the **right** stick into a new sector (past 0.55, kept until back inside 0.35, 12° of hysteresis at the diagonals) highlights that tile; centred, the choice stays. Fixed places: assault rifle up, shotgun left, sniper rifle right, pistol down | The user's controls (the proposal had the left stick); fixed places are muscle memory, like the holsters. A stick already pushed when it opens (walking, turning) chooses nothing until it moves on |
 | Only what they carry | Tiles only for the types in their quick slots; the others are hidden (since f27cae4; first faint outlines), and a flick toward one gives a soft refusal | The user's rule |
-| Confirm / cancel | Letting go of the grip confirms the highlighted weapon, or cancels with none; A confirms (with one chosen), B cancels. `confirmOnRelease = 0`: letting go keeps it open (A gives it; B, a new squeeze or 15 s untouched cancels) | The user's controls |
+| Confirm / cancel | Letting go of the trigger (first built: the grip) confirms the highlighted weapon, or cancels with none; A confirms (with one chosen), B cancels. `confirmOnRelease = 0`: letting go keeps it open (A gives it; B, a new pull or 15 s untouched cancels) | The user's controls |
 | Input while open | The host keeps the sticks, A, B and both stick clicks from the game (`gamepad::kFlagSquadMenu`), and each one in use when it closes stays off until released or centred | The right stick turns and R3 is the power wheel; the flick and the confirming A must not leak |
 | Time | First built running (`pause = 0`); since f27cae4 (user, 2026-10-22) **`pause = 1` by default**: `WorldInfo.PauseGame` like ME1's weapon wheel, unpaused before applying, as the wheel's close does | The user wanted the flat game's pause. Slowing time (`TimeDilation`) was not built: the game sets it too, so we'd fight it |
 | The panel | A quad above the left hand: placed once when it opens, 0.27 m (`panelDistanceM`) from the grip, mostly up and a little further out from the head, level and facing the eyes, 0.40 m wide (`panelWidthM`), fixed in the room while open (not on the jittery hand); placed again on a recenter | The user's numbers |
