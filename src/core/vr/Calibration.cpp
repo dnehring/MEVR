@@ -292,6 +292,160 @@ Stance Solve(std::span<AimSample const> samples, int eye) {
     return out;
 }
 
+// ---- The three aims ----------------------------------------------------------------------------------------
+
+char const* ResultName(Review::Result result) {
+    switch (result) {
+    case Review::Result::Accepted: return "accepted";
+    case Review::Result::AcceptedPair: return "accepted-pair";
+    case Review::Result::RedoOne: return "redo-one";
+    case Review::Result::RedoAll: return "redo-all";
+    }
+    return "?";
+}
+
+void AimSet::Reset() {
+    for (auto& slot : slots_) {
+        slot.reset();
+    }
+    for (int& t : order_) {
+        t = -1;
+    }
+    taken_ = 0;
+    failures_ = 0;
+}
+
+bool AimSet::Has(int target) const {
+    return target >= 0 && target < kTargets && slots_[target].has_value();
+}
+
+int AimSet::Count() const {
+    return taken_;
+}
+
+int AimSet::Next() const {
+    for (int i = 0; i < kTargets; ++i) {
+        if (!slots_[i]) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+void AimSet::Add(int target, AimSample const& sample) {
+    if (target < 0 || target >= kTargets) {
+        return;
+    }
+    if (!slots_[target]) {
+        order_[taken_++] = target;
+    }
+    slots_[target] = sample;
+}
+
+int AimSet::Back() {
+    if (taken_ == 0) {
+        return -1;
+    }
+    int const target = order_[--taken_];
+    order_[taken_] = -1;
+    slots_[target].reset();
+    return target;
+}
+
+std::vector<AimSample> AimSet::Samples() const {
+    std::vector<AimSample> out;
+    for (auto const& slot : slots_) {
+        if (slot) {
+            out.push_back(*slot);
+        }
+    }
+    return out;
+}
+
+Review AimSet::Finish(int eye, float maxSpreadDeg) {
+    Review review;
+    std::vector<AimSample> const all = Samples();
+    review.failures = failures_;
+    auto const clearAll = [&] {
+        for (auto& slot : slots_) {
+            slot.reset();
+        }
+        for (int& t : order_) {
+            t = -1;
+        }
+        taken_ = 0;
+    };
+    Stance const full = Solve(all, eye);
+    if (!full.valid || all.size() != static_cast<std::size_t>(kTargets)) {
+        clearAll();  // can't be measured (a degenerate line): not a disagreement, not counted
+        return review;
+    }
+    review.spreadDeg = full.spreadDeg;
+    if (full.spreadDeg <= maxSpreadDeg) {
+        review.result = Review::Result::Accepted;
+        review.stance = full;
+        return review;
+    }
+    review.failures = ++failures_;
+    // Every pair on the same eye as the whole set, so the trims compare.
+    int best = -1;
+    Stance bestPair;
+    for (int leave = 0; leave < kTargets; ++leave) {
+        std::vector<AimSample> pair;
+        for (int i = 0; i < kTargets; ++i) {
+            if (i != leave) {
+                pair.push_back(all[static_cast<std::size_t>(i)]);
+            }
+        }
+        Stance const p = Solve(pair, full.eye);
+        if (p.valid && (best < 0 || p.spreadDeg < bestPair.spreadDeg)) {
+            best = leave;
+            bestPair = p;
+        }
+    }
+    if (best < 0) {
+        clearAll();
+        return review;
+    }
+    // The targets in `all` are in target order with every slot full, so the index is the target.
+    Stance const single = Solve(std::span<AimSample const>(&all[static_cast<std::size_t>(best)], 1), full.eye);
+    review.outlier = best;
+    review.outlierDeg = single.valid ? AngleDeg(single.trim, bestPair.trim) : 0.0f;
+    review.pairSpreadDeg = bestPair.spreadDeg;
+    if (bestPair.spreadDeg > maxSpreadDeg) {
+        review.result = Review::Result::RedoAll;  // even the best pair disagrees: one more aim won't fix it
+        clearAll();
+        return review;
+    }
+    if (failures_ >= 2) {
+        std::vector<AimSample> pair;
+        for (int i = 0; i < kTargets; ++i) {
+            if (i != best) {
+                pair.push_back(all[static_cast<std::size_t>(i)]);
+            }
+        }
+        review.result = Review::Result::AcceptedPair;
+        review.stance = Solve(pair, eye);  // the caller's eye choice (measured, or forced)
+        if (!review.stance.valid) {
+            review.stance = bestPair;
+        }
+        return review;
+    }
+    review.result = Review::Result::RedoOne;
+    slots_[best].reset();
+    int kept = 0;
+    for (int i = 0; i < taken_; ++i) {
+        if (order_[i] != best) {
+            order_[kept++] = order_[i];
+        }
+    }
+    for (int i = kept; i < kTargets; ++i) {
+        order_[i] = -1;
+    }
+    taken_ = kept;
+    return review;
+}
+
 // ---- Applying ----------------------------------------------------------------------------------------------
 
 XrQuaternionf GunOrientation(XrQuaternionf const& grip, Stance const& stance) {
@@ -374,6 +528,8 @@ std::optional<CrouchFractions> CrouchFromHeights(double standingEye, double crou
 // ---- Stillness ---------------------------------------------------------------------------------------------
 
 void Stillness::Reset() {
+    moved_ = -1;
+    broke_ = 0.0f;
     started_ = false;
     frames_ = 0;
     held_ = 0.0f;
@@ -381,15 +537,21 @@ void Stillness::Reset() {
 
 float Stillness::Update(XrPosef const poses[kMaxPoses], bool const used[kMaxPoses], float dt, StillSettings const& settings) {
     bool moved = !started_;
+    int culprit = -1;
     for (int i = 0; i < kMaxPoses && !moved; ++i) {
         if (used[i] != used_[i]) {
             moved = true;
         } else if (used[i]) {
             double const distance = Length(From(poses[i].position) - From(reference_[i].position));
             moved = distance > settings.position || AngleDeg(poses[i].orientation, reference_[i].orientation) > settings.angleDeg;
+            if (moved) {
+                culprit = i;
+            }
         }
     }
     if (moved) {
+        moved_ = culprit;
+        broke_ = started_ ? held_ : 0.0f;
         started_ = true;
         frames_ = 0;
         held_ = 0.0f;
@@ -488,19 +650,81 @@ bool Crouched(float standingHeight, float height, float minDrop) {
 
 bool OnTarget(XrPosef const& head, XrVector3f const& grip, XrVector3f const& target, float maxGazeDeg, float maxOffLine,
     float minAhead) {
-    V const eye = From(head.position);
-    auto const toTarget = Unit(From(target) - eye);
+    return CheckPistolAim(head, grip, target, PistolLimits{maxGazeDeg, maxOffLine, minAhead}).problem == AimProblem::None;
+}
+
+char const* ProblemName(AimProblem problem) {
+    switch (problem) {
+    case AimProblem::None: return "none";
+    case AimProblem::LookAtTarget: return "look-at-target";
+    case AimProblem::PistolOffLine: return "pistol-off-line-of-sight";
+    case AimProblem::PistolTooClose: return "pistol-not-held-out";
+    case AimProblem::NotShouldered: return "not-shouldered";
+    case AimProblem::HandsTooClose: return "hands-too-close";
+    case AimProblem::NotPointing: return "not-pointing-at-target";
+    }
+    return "?";
+}
+
+namespace {
+
+// The head's gaze from the eyes-to-target line (degrees); 180 for a degenerate line.
+float Gaze(XrPosef const& head, XrVector3f const& target, std::optional<V>& toTarget) {
+    toTarget = Unit(From(target) - From(head.position));
     if (!toTarget) {
-        return false;
+        return 180.0f;
     }
-    XrVector3f const look = Rotate(Normalize(head.orientation), {0.0f, 0.0f, -1.0f});
-    if (DirectionAngleDeg(look, To(*toTarget)) > maxGazeDeg) {
-        return false;
+    return DirectionAngleDeg(Rotate(Normalize(head.orientation), {0.0f, 0.0f, -1.0f}), To(*toTarget));
+}
+
+} // namespace
+
+AimCheck CheckPistolAim(XrPosef const& head, XrVector3f const& grip, XrVector3f const& target, PistolLimits const& limits) {
+    AimCheck out;
+    std::optional<V> toTarget;
+    out.gazeDeg = Gaze(head, target, toTarget);
+    if (toTarget) {
+        V const g = From(grip) - From(head.position);
+        double const along = Dot(g, *toTarget);
+        out.ahead = static_cast<float>(along);
+        out.offLine = static_cast<float>(Length(g - *toTarget * along));
     }
-    V const g = From(grip) - eye;
-    double const along = Dot(g, *toTarget);
-    double const off = Length(g - *toTarget * along);
-    return along >= minAhead && off <= maxOffLine;
+    if (!toTarget || out.gazeDeg > limits.maxGazeDeg) {
+        out.problem = AimProblem::LookAtTarget;
+    } else if (out.offLine > limits.maxOffLine) {
+        out.problem = AimProblem::PistolOffLine;
+    } else if (out.ahead < limits.minAhead) {
+        out.problem = AimProblem::PistolTooClose;
+    }
+    return out;
+}
+
+AimCheck CheckRifleAim(XrPosef const& head, XrVector3f const& right, XrVector3f const& left, XrVector3f const& target,
+    RifleLimits const& limits) {
+    AimCheck out;
+    std::optional<V> toTarget;
+    out.gazeDeg = Gaze(head, target, toTarget);
+    V const r = From(right);
+    V const hands = From(left) - r;
+    out.stock = static_cast<float>(Length(r - From(head.position)));
+    out.span = static_cast<float>(Length(hands));
+    out.pointDeg = DirectionAngleDeg(To(hands), To(From(target) - r));
+    if (!toTarget || out.gazeDeg > limits.maxGazeDeg) {
+        out.problem = AimProblem::LookAtTarget;
+    } else if (!(out.stock <= limits.maxStock)) {
+        out.problem = AimProblem::NotShouldered;
+    } else if (!(out.span >= limits.minSpan)) {
+        out.problem = AimProblem::HandsTooClose;
+    } else if (out.pointDeg > limits.maxPointDeg) {
+        out.problem = AimProblem::NotPointing;
+    }
+    return out;
+}
+
+XrVector3f GrabPoint(XrPosef const& grip, XrVector3f const& offset, bool leftHand) {
+    XrVector3f const local{leftHand ? -offset.x : offset.x, offset.y, offset.z};
+    XrVector3f const d = Rotate(Normalize(grip.orientation), local);
+    return {grip.position.x + d.x, grip.position.y + d.y, grip.position.z + d.z};
 }
 
 // ---- Layout ------------------------------------------------------------------------------------------------
@@ -559,10 +783,51 @@ XrPosef PanelPose(Anchor const& anchor, bool aiming) {
     return Billboard(center, anchor.eyes);
 }
 
-XrVector3f OrbRest(Anchor const& stepAnchor, Orb orb) {
+namespace {
+
+// The rifle's rear orb (right, up, forward from the eyes): the right hand of a rifle carried at low ready.
+constexpr float kRearRight = 0.13f;
+constexpr float kRearUp = -0.28f;
+constexpr float kRearForward = 0.26f;
+// The front orb from the rear one, besides the foregrip distance: a little inboard and lower (the support hand
+// under the handguard).
+constexpr float kFrontInboard = 0.03f;
+constexpr float kFrontLower = 0.04f;
+// The left shoulder from the eyes (up, forward); across: half the shoulder width.
+constexpr float kShoulderUp = -0.22f;
+constexpr float kShoulderForward = -0.02f;
+constexpr float kDefaultShoulderWidth = 0.36f;
+
+} // namespace
+
+float ForegripDistance(BodyMeasures const& body) {
+    if (!body.armLength || !std::isfinite(*body.armLength) || *body.armLength < 0.3f || *body.armLength > 1.2f) {
+        return 0.29f;
+    }
+    float const arm = *body.armLength;
+    float distance = std::clamp(0.40f * arm, 0.24f, 0.32f);
+    float const width = body.shoulderWidth && std::isfinite(*body.shoulderWidth) && *body.shoulderWidth > 0.15f && *body.shoulderWidth < 0.75f
+        ? *body.shoulderWidth
+        : kDefaultShoulderWidth;
+    // The left hand reaches it with its arm bent: within 0.85 of the arm from the left shoulder.
+    double const reach = 0.85 * arm;
+    double const dx = (kRearRight - kFrontInboard) - (-0.5 * width);
+    double const dy = (kRearUp - kFrontLower) - kShoulderUp;
+    double const room = reach * reach - dx * dx - dy * dy;
+    if (room > 0.0) {
+        double const most = kShoulderForward + std::sqrt(room) - kRearForward;
+        distance = std::min(distance, static_cast<float>(most));
+    } else {
+        distance = 0.0f;
+    }
+    return std::max(distance, 0.20f);
+}
+
+XrVector3f OrbRest(Anchor const& stepAnchor, Orb orb, BodyMeasures const& body) {
     switch (orb) {
-    case Orb::RifleRear: return AnchorPoint(stepAnchor, 0.14f, -0.32f, 0.36f);
-    case Orb::RifleFront: return AnchorPoint(stepAnchor, -0.03f, -0.36f, 0.72f);
+    case Orb::RifleRear: return AnchorPoint(stepAnchor, kRearRight, kRearUp, kRearForward);
+    case Orb::RifleFront:
+        return AnchorPoint(stepAnchor, kRearRight - kFrontInboard, kRearUp - kFrontLower, kRearForward + ForegripDistance(body));
     case Orb::Pistol: break;
     }
     return AnchorPoint(stepAnchor, 0.16f, -0.36f, 0.42f);

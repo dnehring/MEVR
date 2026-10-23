@@ -153,10 +153,14 @@ ScreenText TextFor(Screen screen) {
     case Screen::TPose: return {"ARMS OUT TO THE SIDES", "Straight out, level with your shoulders, like a T.", 2};
     case Screen::Forward: return {"BOTH ARMS STRAIGHT AHEAD", "Level with your shoulders, hands about a shoulder-width apart.", 2};
     case Screen::Crouch: return {"CROUCH DOWN", "As low as you would go to hide behind cover, and hold it.", 3};
-    case Screen::PistolGrab: return {"TAKE THE PISTOL", "Squeeze the right grip at the orange orb, and keep it squeezed.", 4};
+    case Screen::PistolGrab:
+        return {"TAKE THE PISTOL", "Squeeze the right grip at the orange orb (the ring is your hand), and keep it squeezed.", 4};
     case Screen::PistolAim: return {"AIM AT THE LIT TARGET", "Aim the pistol the way you naturally would, and keep it on the target.", 4};
-    case Screen::RifleGrab: return {"TAKE THE RIFLE", "Right grip on the near orb, left grip on the far one. Keep both squeezed.", 5};
-    case Screen::RifleAim: return {"SHOULDER IT, AIM AT THE LIT TARGET", "Look along it as you would a rifle, and keep it on the target.", 5};
+    case Screen::RifleGrab:
+        return {"TAKE THE RIFLE", "Right grip on the near orb, left grip on the far one; the rings show your hands. Keep both squeezed.", 5};
+    case Screen::RifleAim:
+        return {"SHOULDER IT, AIM AT THE LIT TARGET",
+            "Right hand at your shoulder by your cheek, left hand out where you hold a foregrip. Look along it at the target.", 5};
     case Screen::Check:
         return {"CHECK YOUR AIM", "Squeeze the right grip (pistol) or both grips (rifle) and aim: the red dot should sit on the target.", 6};
     case Screen::Saved: return {"SAVED", "Calibrated for these controllers. The guns follow it from now on.", 6};
@@ -298,7 +302,7 @@ void DrawPanel(ImDrawList* dl, Fonts const& fonts, PanelView const& view) {
         float const chip = 176.0f;
         for (int i = 0; i < view.targets; ++i) {
             float const x0 = kMargin + static_cast<float>(i) * (chip + 12.0f);
-            bool const done = i < view.targetsDone;
+            bool const done = i < 3 && view.targetTaken[i];
             bool const now = i == view.targetCurrent;
             ImU32 const accent = now ? kOrange : done ? kCyan : kTextDim;
             Chamfer(dl, {x0, y}, {x0 + chip, y + 60.0f}, 9.0f, now ? kSurfaceHigh : kSurface, now ? kOrange : done ? WithAlpha(kCyan, 0.6f) : kLine,
@@ -316,7 +320,8 @@ void DrawPanel(ImDrawList* dl, Fonts const& fonts, PanelView const& view) {
         y += 78.0f;
     }
     if (!view.status.empty()) {
-        FitText(dl, heading, 30.0f, {kMargin, y}, view.progress > 0.0f ? kText : kCyan, view.status.c_str(), leftWidth);
+        FitText(dl, heading, 30.0f, {kMargin, y}, view.statusWarn ? kOrange : view.progress > 0.0f ? kText : kCyan, view.status.c_str(),
+            leftWidth);
         y += 44.0f;
     }
     for (std::string const& line : view.summary) {
@@ -414,6 +419,15 @@ void DrawBoard(ImDrawList* dl, Fonts const& fonts, BoardView const& view) {
         dl->AddLine(c, {c.x, c.y + sy * arm}, col, 3.0f);
     }
     float const r = cal::kTargetRadius * perMeter;
+    // Why the aim isn't captured, across the top (clear of the upper left target): where the player is looking.
+    if (!view.hint.empty()) {
+        float const size = 44.0f;
+        float const maxWidth = S - 2.0f * 260.0f;
+        float const w = std::min(Width(heading, size, view.hint.c_str()), maxWidth) + 48.0f;
+        ImU32 const accent = view.hintWarn ? kOrange : kCyan;
+        Chamfer(dl, {S * 0.5f - w * 0.5f, 34.0f}, {S * 0.5f + w * 0.5f, 98.0f}, 10.0f, Rgba(0x08, 0x10, 0x1A, 210), WithAlpha(accent, 0.8f), 2.5f);
+        FitText(dl, heading, size, {S * 0.5f, 42.0f}, accent, view.hint.c_str(), maxWidth, 0.5f);
+    }
     for (int i = 0; i < cal::kTargets; ++i) {
         ImVec2 const c{S * 0.5f + cal::kTargetX[i] * perMeter, S * 0.5f - cal::kTargetY[i] * perMeter};
         bool const current = i == view.current;
@@ -531,6 +545,32 @@ std::vector<std::uint32_t> DotPicture() {
             float const g = (core * (0.12f + 0.75f * hot) + glow * (1.0f - core) * 0.10f) * k;
             float const b = (core * (0.06f + 0.6f * hot) + glow * (1.0f - core) * 0.05f) * k;
             pixels[static_cast<size_t>(y) * n + x] = Pixel(r, g, b, a);
+        }
+    }
+    return pixels;
+}
+
+std::vector<std::uint32_t> HandMarkerPicture() {
+    unsigned const n = kMarkerPixels;
+    std::vector<std::uint32_t> pixels(static_cast<size_t>(n) * n);
+    // Linear cyan (#7CCBF2): a ring with a dark edge (reads over a bright scene) and a small centre dot.
+    float const cyan[3] = {0.20f, 0.60f, 0.89f};
+    for (unsigned y = 0; y < n; ++y) {
+        for (unsigned x = 0; x < n; ++x) {
+            float const px = (static_cast<float>(x) + 0.5f) / static_cast<float>(n) * 2.0f - 1.0f;
+            float const py = (static_cast<float>(y) + 0.5f) / static_cast<float>(n) * 2.0f - 1.0f;
+            float const d = std::sqrt(px * px + py * py);
+            float const pixel = 2.0f / static_cast<float>(n);
+            auto const band = [&](float inner, float outer) {
+                return std::clamp((d - inner) / pixel + 0.5f, 0.0f, 1.0f) * std::clamp((outer - d) / pixel + 0.5f, 0.0f, 1.0f);
+            };
+            float const ring = band(0.70f, 0.86f);
+            float const edge = std::max(band(0.62f, 0.70f), band(0.86f, 0.94f));
+            float const dot = std::clamp((0.14f - d) / pixel + 0.5f, 0.0f, 1.0f);
+            float const light = std::max(ring, dot);
+            float const a = std::min(1.0f, light + edge * 0.6f * (1.0f - light));
+            float const k = a > 0.0f ? light / a : 0.0f;
+            pixels[static_cast<size_t>(y) * n + x] = Pixel(cyan[0] * k * 1.3f, cyan[1] * k * 1.3f, cyan[2] * k * 1.3f, a);
         }
     }
     return pixels;

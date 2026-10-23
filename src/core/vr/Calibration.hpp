@@ -7,6 +7,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 // The guided calibration (research/25): about a minute in the headset, started from the VR hands tab
 // (plugin/Calibration draws it and captures the samples; the mod applies the results). Everything here
@@ -97,8 +98,51 @@ struct Stance {
 // (ChooseEye). Invalid without samples or when a sample's sight line is degenerate.
 Stance Solve(std::span<AimSample const> samples, int eye = -1);
 
-// The three aims agree: the spread stays within `maxSpreadDeg`.
+// The three aims agree: the spread stays within `maxSpreadDeg`. The pistol's: the controller is the gun. The
+// rifle's is wider: two hands hold an imaginary gun, so the right wrist (whose trim this measures) has nothing
+// rigid to hold it the same way at each target.
 inline constexpr float kMaxSpreadDeg = 3.0f;
+inline constexpr float kMaxRifleSpreadDeg = 4.5f;
+
+// ---- A step's three aims, with the redo rules (research/25 section 2) -------------------------------------
+//
+// The aims are kept per target. When all three are in, Finish() judges them:
+//  - within the spread: accepted;
+//  - otherwise the aim farthest from the other two (the one whose removal leaves the most consistent pair) is
+//    the outlier: if the other two agree, only its target is aimed again; if they don't either, all three;
+//  - from the second failed judgement on, a pair that agrees is accepted (the outlier left out, with a note),
+//    so the step can't go round forever.
+struct Review {
+    enum class Result { Accepted, AcceptedPair, RedoOne, RedoAll };
+    Result result = Result::RedoAll;
+    Stance stance;           // Accepted / AcceptedPair: the stance to keep
+    float spreadDeg = 0.0f;  // all three aims' spread
+    int outlier = -1;        // the target whose aim is farthest from the other two (-1: not judged)
+    float outlierDeg = 0.0f; // its trim's angle from the other two's mean
+    float pairSpreadDeg = 0.0f;  // the other two's spread
+    int failures = 0;        // failed judgements in this step so far, this one included
+};
+char const* ResultName(Review::Result result);  // "accepted", "accepted-pair", "redo-one", "redo-all"
+
+class AimSet {
+public:
+    void Reset();                    // a new step: every target open, no failures
+    bool Has(int target) const;
+    int Count() const;
+    int Next() const;                // the first open target (0..2), -1 when all are taken
+    void Add(int target, AimSample const& sample);
+    int Back();                      // removes the aim taken last; its target, or -1 if none
+    std::vector<AimSample> Samples() const;  // in target order
+    int Failures() const { return failures_; }
+    // All three taken: judged against `maxSpreadDeg` (eye as Solve's). Clears what has to be aimed again.
+    Review Finish(int eye, float maxSpreadDeg);
+
+private:
+    std::optional<AimSample> slots_[3];
+    int order_[3] = {-1, -1, -1};  // targets in the order taken
+    int taken_ = 0;
+    int failures_ = 0;
+};
 
 // ---- Applying a stance (the mod; the check step) --------------------------------------------------------
 
@@ -143,6 +187,8 @@ struct StillSettings {
     float angleDeg = 4.0f;    // ...and this much rotation
     float seconds = 1.0f;     // held this long: captured
 };
+// A shouldered rifle held with no rifle: two arms and the head, the left arm out, sway more than a pistol.
+inline constexpr StillSettings kRifleStill{0.04f, 6.0f, 1.0f};
 
 // Up to three poses (head, right grip, left grip) held still. A pose that moves too far starts the hold
 // over from where everything is now. Averages each pose over the hold (positions mean, rotations
@@ -154,10 +200,16 @@ public:
     // Each frame. `poses[i]` with `used[i]` false is ignored. Returns the seconds held so far.
     float Update(XrPosef const poses[kMaxPoses], bool const used[kMaxPoses], float dt, StillSettings const& settings);
     float Held() const { return held_; }
+    // Which pose broke the last hold (0 head, 1 right, 2 left), -1 if none did (the first frame, or a pose
+    // joining or leaving); and how long the broken hold had lasted.
+    int Moved() const { return moved_; }
+    float Broke() const { return broke_; }
     // The average of pose `i` since the hold began (the latest pose if none).
     XrPosef Average(int i) const;
 
 private:
+    int moved_ = -1;
+    float broke_ = 0.0f;
     bool started_ = false;
     bool used_[kMaxPoses] = {};
     XrPosef reference_[kMaxPoses]{};
@@ -185,8 +237,53 @@ bool Crouched(float standingHeight, float height, float minDrop = 0.25f);
 // of the eyes along it.
 bool OnTarget(XrPosef const& head, XrVector3f const& grip, XrVector3f const& target, float maxGazeDeg = 20.0f,
     float maxOffLine = 0.18f, float minAhead = 0.12f);
-// A grip near an orb takes it (meters).
-inline constexpr float kGrabReach = 0.14f;
+
+// Why an aim isn't being captured (the panel says it, the log records it). Checked in this order.
+enum class AimProblem {
+    None,
+    LookAtTarget,   // the head doesn't look at the lit target
+    PistolOffLine,  // pistol: the hand isn't on the line of sight
+    PistolTooClose, // pistol: the hand isn't held out ahead of the eyes
+    NotShouldered,  // rifle: the right hand isn't at the shoulder, by the cheek
+    HandsTooClose,  // rifle: the left hand isn't out along the rifle
+    NotPointing,    // rifle: the line from the right hand through the left doesn't point at the target
+};
+char const* ProblemName(AimProblem problem);  // for the log: "look-at-target", ...
+struct AimCheck {
+    AimProblem problem = AimProblem::None;
+    float gazeDeg = 0.0f;   // the head's forward from the eyes-to-target line
+    float offLine = 0.0f;   // pistol: the grip's distance from the line of sight (meters)
+    float ahead = 0.0f;     // pistol: the grip ahead of the eyes along it (meters)
+    float stock = 0.0f;     // rifle: the right grip's distance from the eyes (meters)
+    float span = 0.0f;      // rifle: the left grip's distance from the right (meters)
+    float pointDeg = 0.0f;  // rifle: the right-to-left line's angle from the right grip's line to the target
+};
+struct PistolLimits {
+    float maxGazeDeg = 20.0f;
+    float maxOffLine = 0.18f;
+    float minAhead = 0.12f;
+};
+// The rifle's stance as a rifle is really held (research/25 section 2): looking at the target, the right hand at
+// the shoulder by the cheek, the right-to-left line pointing roughly at the target. The left hand sits wherever
+// the player holds a foregrip: below the sight line and to the side is fine (it isn't on the line of sight).
+struct RifleLimits {
+    float maxGazeDeg = 22.0f;
+    float maxStock = 0.40f;   // the right grip within this of the eyes' centre
+    float minSpan = 0.12f;    // the left grip at least this far from the right
+    float maxPointDeg = 22.0f;
+};
+AimCheck CheckPistolAim(XrPosef const& head, XrVector3f const& grip, XrVector3f const& target, PistolLimits const& limits = {});
+AimCheck CheckRifleAim(XrPosef const& head, XrVector3f const& right, XrVector3f const& left, XrVector3f const& target,
+    RifleLimits const& limits = {});
+
+// A grip near an orb takes it (meters): generous, a reach in the dark (the player's hand isn't drawn while the
+// calibration runs, only a marker at the grab point). The foregrip's more so.
+inline constexpr float kGrabReach = 0.16f;
+inline constexpr float kForegripGrabReach = 0.22f;
+// The point a hand grabs with: `offset` (meters, in the right grip's frame; mirrored across x for the left hand)
+// from the grip pose's origin. OpenXR puts that origin in the palm; [Calibration] grabOffset moves it if a runtime
+// doesn't (the marker shows where it is).
+XrVector3f GrabPoint(XrPosef const& grip, XrVector3f const& offset, bool leftHand);
 inline constexpr float kSqueezeOn = 0.6f;
 inline constexpr float kSqueezeOff = 0.35f;
 
@@ -219,11 +316,22 @@ XrVector3f TargetPosition(Anchor const& anchor, int index);
 XrPosef PanelPose(Anchor const& anchor, bool aiming);
 inline constexpr float kPanelWidth = 0.84f;  // meters (the height follows the canvas' aspect)
 
-// The orbs, relative to where the eyes were when the grab step began (on the anchor's heading).
+// The orbs, relative to where the eyes were when the grab step began (on the anchor's heading). The rifle's: the
+// rear one where the right hand carries a rifle at low ready, the front one a foregrip's distance ahead of it along
+// the bore, a little lower and inboard, where the support hand sits; the distance from the player's arms when steps
+// 2-3 measured them (ForegripDistance).
 enum class Orb { Pistol = 0, RifleRear = 1, RifleFront = 2 };
-XrVector3f OrbRest(Anchor const& stepAnchor, Orb orb);
-inline constexpr float kOrbSize = 0.085f;      // the orb's quad (meters)
+struct BodyMeasures {
+    std::optional<float> armLength;      // shoulder to grip (meters)
+    std::optional<float> shoulderWidth;  // across the body (meters)
+};
+// How far ahead of the right hand the left one holds a rifle: 0.29 m unmeasured, else 0.40 of the arm (0.24-0.32 m),
+// shortened until the left hand reaches it with its arm bent (0.85 of the arm from the left shoulder); at least 0.2 m.
+float ForegripDistance(BodyMeasures const& body);
+XrVector3f OrbRest(Anchor const& stepAnchor, Orb orb, BodyMeasures const& body = {});
+inline constexpr float kOrbSize = 0.085f;      // the orb's quad (meters; the ball is 0.58 of it, 5 cm, with a glow)
 inline constexpr float kHeldOrbSize = 0.05f;   // ...once in the hand: small and pale, so it isn't a sight to align
+inline constexpr float kHandMarkerSize = 0.045f;  // the ring at each hand's grab point (meters)
 
 // A square quad facing `eye`, `size` meters across, centred on `center`.
 XrPosef Billboard(XrVector3f const& center, XrVector3f const& eye);

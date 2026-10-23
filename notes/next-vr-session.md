@@ -773,8 +773,8 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       trigger (NOT NOW won't ask again for them).
     - **Do it:** follow the panel. Nothing needs a button: hold each pose still until the ring fills (a
       tap in the hands says it's taken). For the aims, look at the lit target and aim the orb the way you
-      naturally aim a pistol (then a rifle at your shoulder). If three aims disagree by more than 3
-      degrees it asks again. **B** goes back a step (or the last target); **both sticks held** cancels.
+      naturally aim a pistol (then a rifle at your shoulder). If three aims disagree (3 degrees for the
+      pistol, 4.5 for the rifle) it asks again for the one that was off (step 26). **B** goes back a step (or the last target); **both sticks held** cancels.
       The buttons answer a controller pointed at them and the trigger (SKIP, REDO THIS STEP).
     - **Check, then save:** squeeze the right grip and aim at a target: a red dot shows where the new
       pistol sight line meets the board; both grips: the rifle's. It should sit on what you aim at. Try
@@ -906,6 +906,40 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       (`main menu: [Hands] physicalCrouch = 0`), `main menu: renderer settings saved to profile ...`,
       `rmlui:` warnings if the document has a mistake. The mod: `menu pause: the game paused (the main menu is
       open; ...)` and `runs again (the main menu closed)`.
+
+26. **The rifle calibration finishes, and the orbs are where your hands are (new, 2026-10-23; HOST
+    REDEPLOY).** The rifle step used to go round and round: it took three aims, judged them by the pistol's
+    3 degrees, and started all three over without saying why where you could see it. Now it says why on the
+    panel and across the top of the target board, redoes only the aim that was off, and after two tries keeps
+    the two that agree. A ring marks each hand while it has no orb. [research/25](../research/25-calibration.md)
+    section 9.
+    - **Start:** the VR hands tab's Calibrate (or the main menu's Body > Start calibration); SKIP to the rifle
+      (or do the body first: the far orb is then placed for your arms).
+    - **The rings:** at the grab steps a small cyan ring follows each hand. Does it sit in your palm, where
+      you feel your hand? Say where it sits if not (ahead of the palm, behind it, under it). Then take the
+      orbs: does each one take when your hand (the ring) is on it, with no reaching? Is the far orb a
+      comfortable foregrip distance from the near one?
+    - **The rifle aims:** shoulder it naturally, right hand by your cheek, left hand where you'd hold a
+      foregrip (below the sight line is fine). Watch the top of the target board: it says what's missing
+      (LOOK AT TARGET 2, STOCK TO YOUR SHOULDER, POINT THE RIFLE AT TARGET 2, LEFT HAND FURTHER OUT, SQUEEZE
+      BOTH GRIPS) or HOLD STILL while the ring fills. Let go of the left grip for a moment mid-aim: it waits
+      ("Squeeze the left grip again") instead of sending you back to the orbs.
+    - **A redo:** aim one target a little off on purpose (point a hand-width beside it): after the third aim
+      the board should say AIM N AGAIN and only that target lights; aim it properly and the step finishes.
+      Do it twice in a row: it keeps the other two, and the check screen says "Rifle: two aims within ...
+      (aim N left out ...)".
+    - **The pistol** behaves the same (3 degrees).
+    - **Snapshot** during the rifle grab (End, or tap both stick clicks): `calibration-hand` quads at the
+      hands, the orbs, and the JSON's `"calibration"`.
+    - **Logs (ours):** `calibration: started ...; grab point 0.0000, 0.0000, 0.0000 m from the grip origin ...;
+      rifle spread limit 4.5 deg`, `calibration: rifle orbs: near (...), far (...): 0.28 m along the bore (arm
+      ...)`, a line per grip press (`left grip squeezed, out of reach at rifle-grab: grab point ..., the far orb
+      ... m away (reach 0.22); the orb ... right, ... up, ... ahead of the hand`, or `takes`), `rifle aim N: not
+      capturing: <reason> (gaze, right hand from the eyes, hands apart, their line off the target)` (every 2 s
+      at most), `rifle aim N: the hold broke after ... s: the left hand moved ...`, `rifle aim N taken`, `the
+      rifle aims judged: accepted | redo-one | redo-all | accepted-pair (spread ..., farthest aim ...)`.
+      Claude wants these lines: the reasons say which threshold is too strict, the grab lines whether the
+      grab point needs `[Calibration] grabOffset`.
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR

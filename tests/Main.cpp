@@ -5162,6 +5162,177 @@ void TestCalibration() {
     CHECK(Len3(Sub3v(r.stock, stock)) < 1e-4f);
     CHECK(r.stock.y < -0.02f && r.stock.z < 0.0f);
 
+    // ---- The rifle as it is really held (research/25 section 2): the right hand at the cheek, just behind the eye, the
+    // left hand on a foregrip 8 cm below the sight line and 4 cm inboard, 0.26 m out. Captured; and each reason for
+    // not capturing ----
+    XrVector3f const foregripLow{-0.04f, -0.08f + 0.045f, -0.26f};  // gun frame from the right grip (the line 4.5 cm above it)
+    auto const shouldered = SyntheticAims(head, 0.0, 1, rifleTrim, {0.0f, 0.045f, 0.0f}, -0.03f, 0.6, 0.004, true, foregripLow, leftTrim, 31u);
+    for (cal::AimSample const& a : shouldered) {
+        cal::AimCheck const c = cal::CheckRifleAim(a.head, a.right.position, a.left.position, a.target);
+        CHECK(c.problem == cal::AimProblem::None);
+        CHECK(c.stock < 0.2f && c.span > 0.25f && c.pointDeg < 15.0f);
+        // The old test (the LEFT grip within 25 cm of the line of sight and 25 cm ahead of the eyes) refused it: a left
+        // hand 0.26 m from a right hand 3 cm behind the eye is 23 cm ahead along the line.
+        CHECK(!cal::OnTarget(a.head, a.left.position, a.target, 20.0f, 0.25f, 0.25f));
+    }
+    {
+        cal::AimSample const& a = shouldered[1];
+        XrPosef away = a.head;
+        away.orientation = *cal::LookRotation(Sub3v(shouldered[2].target, a.head.position));  // looking at another target
+        CHECK(cal::CheckRifleAim(away, a.right.position, a.left.position, a.target).problem == cal::AimProblem::LookAtTarget);
+        XrVector3f const lowReady = Add3(a.right.position, {0.0f, -0.25f, -0.35f});  // carried, not shouldered
+        CHECK(cal::CheckRifleAim(a.head, lowReady, Add3(lowReady, Sub3v(a.left.position, a.right.position)), a.target).problem ==
+              cal::AimProblem::NotShouldered);
+        CHECK(cal::CheckRifleAim(a.head, a.right.position, Add3(a.right.position, {0.03f, 0.0f, -0.05f}), a.target).problem ==
+              cal::AimProblem::HandsTooClose);
+        XrVector3f const sideways = Add3(a.right.position, Scale3(cal::AnchorRight(cal::Anchor{head, 0.0f}), -0.3f));
+        cal::AimCheck const c = cal::CheckRifleAim(a.head, a.right.position, sideways, a.target);
+        CHECK(c.problem == cal::AimProblem::NotPointing && c.pointDeg > 45.0f);
+        CHECK(std::string(cal::ProblemName(c.problem)) == "not-pointing-at-target");
+    }
+    // The pistol's reasons.
+    {
+        cal::AimSample const& a = pistol[0];
+        CHECK(cal::CheckPistolAim(a.head, a.right.position, a.target).problem == cal::AimProblem::None);
+        CHECK(cal::CheckPistolAim(a.head, Add3(a.right.position, {0.0f, -0.3f, 0.0f}), a.target).problem == cal::AimProblem::PistolOffLine);
+        CHECK(cal::CheckPistolAim(a.head, Add3(a.head.position, {0.0f, -0.05f, 0.0f}), a.target).problem == cal::AimProblem::PistolTooClose);
+    }
+    // The rifle's sway: 3 cm and 5 degrees of drift hold (the pistol's 2.5 cm / 4 degrees wouldn't).
+    {
+        cal::Stillness hold;
+        XrPosef p[cal::Stillness::kMaxPoses]{};
+        for (XrPosef& q : p) {
+            q.orientation = {0, 0, 0, 1};
+        }
+        bool const all[cal::Stillness::kMaxPoses] = {true, true, true};
+        float h = 0.0f;
+        for (int frame = 0; frame <= 120; ++frame) {
+            float const t = std::min(static_cast<float>(frame) / 90.0f, 1.0f);
+            p[2].position = {0.0f, -0.03f * t, 0.0f};
+            p[2].orientation = AxisAngle(1, 0, 0, 5.0 * t);
+            h = hold.Update(p, all, 1.0f / 90.0f, cal::kRifleStill);
+        }
+        CHECK(h >= cal::kRifleStill.seconds);
+        cal::Stillness strict;
+        for (int frame = 0; frame <= 90; ++frame) {
+            float const t = static_cast<float>(frame) / 90.0f;
+            p[2].position = {0.0f, -0.03f * t, 0.0f};
+            p[2].orientation = AxisAngle(1, 0, 0, 5.0 * t);
+            strict.Update(p, all, 1.0f / 90.0f, cal::StillSettings{});
+        }
+        CHECK(strict.Held() < 1.0f && strict.Moved() == 2);  // the left hand broke it
+    }
+
+    // ---- The three aims' judgement (cal::AimSet) ----
+    auto const fill = [](cal::AimSet& set, std::vector<cal::AimSample> const& samples) {
+        for (int i = 0; i < cal::kTargets; ++i) {
+            if (!set.Has(i)) {
+                set.Add(i, samples[static_cast<std::size_t>(i)]);
+            }
+        }
+    };
+    auto const twisted = [](cal::AimSample s, double deg) {
+        s.right.orientation = cal::Normalize(cal::Multiply(AxisAngle(0, 1, 0, deg), s.right.orientation));
+        return s;
+    };
+    {
+        // Agreeing aims: accepted.
+        cal::AimSet set;
+        fill(set, shouldered);
+        CHECK(set.Count() == 3 && set.Next() == -1);
+        cal::Review const ok = set.Finish(-1, cal::kMaxRifleSpreadDeg);
+        CHECK(ok.result == cal::Review::Result::Accepted && ok.stance.valid && ok.stance.samples == 3);
+        CHECK(cal::AngleDeg(ok.stance.trim, rifleTrim) < 1.0f);
+        CHECK(Len3(Sub3v(ok.stance.foregrip, foregripLow)) < 0.012f);
+    }
+    {
+        // One aim 8 degrees off: only its target is aimed again; aimed well, accepted.
+        cal::AimSet set;
+        std::vector<cal::AimSample> bad = shouldered;
+        bad[1] = twisted(bad[1], 8.0);
+        fill(set, bad);
+        cal::Review const r1 = set.Finish(-1, cal::kMaxRifleSpreadDeg);
+        CHECK(r1.result == cal::Review::Result::RedoOne && r1.outlier == 1 && r1.failures == 1);
+        CHECK(r1.spreadDeg > cal::kMaxRifleSpreadDeg && r1.outlierDeg > 6.5f && r1.outlierDeg < 9.5f && r1.pairSpreadDeg < 1.5f);
+        CHECK(set.Count() == 2 && set.Has(0) && !set.Has(1) && set.Has(2) && set.Next() == 1);
+        set.Add(1, shouldered[1]);
+        cal::Review const r2 = set.Finish(-1, cal::kMaxRifleSpreadDeg);
+        CHECK(r2.result == cal::Review::Result::Accepted && r2.stance.samples == 3);
+    }
+    {
+        // The same aim off again: after two failed judgements the agreeing pair is kept, the outlier left out.
+        cal::AimSet set;
+        std::vector<cal::AimSample> bad = shouldered;
+        bad[2] = twisted(bad[2], -9.0);
+        fill(set, bad);
+        CHECK(set.Finish(-1, cal::kMaxRifleSpreadDeg).result == cal::Review::Result::RedoOne);
+        CHECK(set.Next() == 2);
+        set.Add(2, twisted(shouldered[2], 9.0));
+        cal::Review const rv = set.Finish(-1, cal::kMaxRifleSpreadDeg);
+        CHECK(rv.result == cal::Review::Result::AcceptedPair && rv.outlier == 2 && rv.failures == 2);
+        CHECK(rv.stance.valid && rv.stance.samples == 2 && rv.stance.spreadDeg <= cal::kMaxRifleSpreadDeg);
+        CHECK(cal::AngleDeg(rv.stance.trim, rifleTrim) < 1.0f);
+        CHECK(std::string(cal::ResultName(rv.result)) == "accepted-pair");
+    }
+    {
+        // All three far apart: no pair agrees, so all three again (the failures still count toward the fallback).
+        cal::AimSet set;
+        std::vector<cal::AimSample> bad = shouldered;
+        bad[0] = twisted(bad[0], -12.0);
+        bad[2] = twisted(bad[2], 12.0);
+        fill(set, bad);
+        cal::Review const rv = set.Finish(-1, cal::kMaxRifleSpreadDeg);
+        CHECK(rv.result == cal::Review::Result::RedoAll && set.Count() == 0 && set.Next() == 0 && set.Failures() == 1);
+        // The pistol keeps 3 degrees: the same 8-degree outlier is one target again.
+        cal::AimSet pistolSet;
+        std::vector<cal::AimSample> p = pistol;
+        p[0] = twisted(p[0], 8.0);
+        fill(pistolSet, p);
+        cal::Review const rp = pistolSet.Finish(-1, cal::kMaxSpreadDeg);
+        CHECK(rp.result == cal::Review::Result::RedoOne && rp.outlier == 0);
+    }
+    {
+        // B takes back the aim taken last, whatever its target.
+        cal::AimSet set;
+        set.Add(0, shouldered[0]);
+        set.Add(2, shouldered[2]);
+        CHECK(set.Back() == 2 && set.Count() == 1 && set.Next() == 1);
+        CHECK(set.Back() == 0 && set.Back() == -1);
+    }
+
+    // ---- The rifle's orbs: a foregrip's distance apart, within the left arm's reach ----
+    {
+        cal::Anchor const at{head, 0.0f};
+        float const unmeasured = cal::ForegripDistance({});
+        CHECK(std::abs(unmeasured - 0.29f) < 1e-6f);
+        XrVector3f const rear = cal::OrbRest(at, cal::Orb::RifleRear);
+        XrVector3f const front = cal::OrbRest(at, cal::Orb::RifleFront);
+        XrVector3f const apart = Sub3v(front, rear);
+        CHECK(std::abs(-apart.z - 0.29f) < 1e-4f && apart.y < -0.02f && apart.x < -0.02f);  // ahead, lower, inboard
+        CHECK(Len3(apart) < 0.31f);  // was 0.40 m
+        // The user's measures (arms 0.73 m, shoulders 0.29 m): 0.28 m, and the left shoulder reaches it bent.
+        float const user = cal::ForegripDistance({0.73f, 0.29f});
+        CHECK(user > 0.26f && user < 0.30f);
+        XrVector3f const userFront = cal::OrbRest(at, cal::Orb::RifleFront, {0.73f, 0.29f});
+        XrVector3f const leftShoulder = cal::AnchorPoint(at, -0.145f, -0.22f, -0.02f);
+        CHECK(Len3(Sub3v(userFront, leftShoulder)) <= 0.85f * 0.73f + 1e-3f);
+        // Short arms and broad shoulders: shorter, never below 0.2 m.
+        float const tight = cal::ForegripDistance({0.55f, 0.45f});
+        CHECK(tight >= 0.2f && tight < 0.24f);
+        CHECK(cal::ForegripDistance({std::numeric_limits<float>::quiet_NaN(), std::nullopt}) == unmeasured);
+    }
+    // The grab point: the grip's origin moved in its frame, mirrored for the left hand.
+    {
+        XrPosef grip;
+        grip.position = {0.1f, 1.2f, -0.4f};
+        grip.orientation = AxisAngle(0, 1, 0, 90.0);  // -Z (ahead) turned to -X
+        XrVector3f const gr = cal::GrabPoint(grip, {0.01f, 0.0f, -0.03f}, false);
+        CHECK(std::abs(gr.x - (0.1f - 0.03f)) < 1e-5f && std::abs(gr.z - (-0.4f - 0.01f)) < 1e-5f);
+        XrVector3f const l = cal::GrabPoint(grip, {0.01f, 0.0f, -0.03f}, true);
+        CHECK(std::abs(l.z - (-0.4f + 0.01f)) < 1e-5f);
+        CHECK(Len3(Sub3v(cal::GrabPoint(grip, {}, true), grip.position)) < 1e-6f);
+    }
+
     // ---- Rotation helpers ----
     XrQuaternionf const look = *cal::LookRotation({1.0f, 0.0f, -1.0f});
     CHECK(cal::DirectionAngleDeg(cal::Rotate(look, {0, 0, -1}), {1, 0, -1}) < 0.01f);
