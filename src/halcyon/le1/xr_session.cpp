@@ -2060,6 +2060,33 @@ void BandProbeTick(ID3D11Texture2D* backBuffer, const D3D11_TEXTURE2D_DESC& bb,
                    bool headLookApplied, bool headAimApplied) noexcept
 {
     static uint64_t s_tick = 0;
+    // [MEVR] research/22: the columns used to be read right after the copy with a waiting Map, which
+    // stalls this thread until the GPU has finished everything queued, once every 120 presents. Now the
+    // copy is read on a later present without waiting; the logged head state is the copy's.
+    static bool s_pending = false;
+    static int s_waited = 0;
+    static char s_state[256] = {};
+    if (s_pending)
+    {
+        D3D11_MAPPED_SUBRESOURCE mapped = {};
+        const HRESULT hr = g_bandStaging != nullptr
+            ? g_context->Map(g_bandStaging, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped) : E_FAIL;
+        if (hr == DXGI_ERROR_WAS_STILL_DRAWING && ++s_waited < 30) return;
+        s_pending = false;
+        if (FAILED(hr) || mapped.pData == nullptr) return;
+        BandColumnStats l = {}, r = {};
+        BandProbeAnalyzeColumn(static_cast<const BYTE*>(mapped.pData), mapped.RowPitch, g_bandStagingH, 0, &l);
+        BandProbeAnalyzeColumn(static_cast<const BYTE*>(mapped.pData), mapped.RowPitch, g_bandStagingH, 8, &r);
+        g_context->Unmap(g_bandStaging, 0);
+        char line[512] = {};
+        sprintf_s(line,
+                  "[BANDPROBE] L(edge=%.1f%% above=%.3f below=%.3f dark=%.0f%%) "
+                  "R(edge=%.1f%% above=%.3f below=%.3f dark=%.0f%%) %s",
+                  l.edgePct, l.above, l.below, l.darkPct,
+                  r.edgePct, r.above, r.below, r.darkPct, s_state);
+        LogLine(line);
+        return;
+    }
     if ((s_tick++ % 120ull) != 20ull) return;
     if (g_device == nullptr || g_context == nullptr || backBuffer == nullptr) return;
 
@@ -2121,25 +2148,14 @@ void BandProbeTick(ID3D11Texture2D* backBuffer, const D3D11_TEXTURE2D_DESC& bb,
     box.right = xR + 2;
     g_context->CopySubresourceRegion(g_bandStaging, 0, 2, 0, 0, backBuffer, 0, &box);
 
-    D3D11_MAPPED_SUBRESOURCE mapped = {};
-    if (FAILED(g_context->Map(g_bandStaging, 0, D3D11_MAP_READ, 0, &mapped)) || mapped.pData == nullptr)
-        return;
-    BandColumnStats l = {}, r = {};
-    BandProbeAnalyzeColumn(static_cast<const BYTE*>(mapped.pData), mapped.RowPitch, bb.Height, 0, &l);
-    BandProbeAnalyzeColumn(static_cast<const BYTE*>(mapped.pData), mapped.RowPitch, bb.Height, 8, &r);
-    g_context->Unmap(g_bandStaging, 0);
-
-    char line[512] = {};
-    sprintf_s(line,
-              "[BANDPROBE] L(edge=%.1f%% above=%.3f below=%.3f dark=%.0f%%) "
-              "R(edge=%.1f%% above=%.3f below=%.3f dark=%.0f%%) "
+    // [MEVR] read on a later present (above)
+    sprintf_s(s_state,
               "pitch=%.1f yaw=%.1f headLook=%d headAim=%d weapon=%d stereo=%d aer=%d flatCine=%d menu=%d bb=%ux%u",
-              l.edgePct, l.above, l.below, l.darkPct,
-              r.edgePct, r.above, r.below, r.darkPct,
               pitchDeg, yawDeg, headLookApplied ? 1 : 0, headAimApplied ? 1 : 0, weaponMode,
               stereoActive ? 1 : 0, aerActive ? 1 : 0, forceFlatCine ? 1 : 0, menuOpen ? 1 : 0,
               bb.Width, bb.Height);
-    LogLine(line);
+    s_pending = true;
+    s_waited = 0;
 }
 
 // SHARP STEREO SUBMIT (ME2 parity): copy each SBS half 1:1 into the half-size stereo eye swapchains via

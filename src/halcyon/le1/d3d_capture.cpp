@@ -3591,9 +3591,19 @@ void ReflCenOnPresent(unsigned long long present) noexcept
     g_reflCenCount = 0;
 }
 
+// [MEVR] The immediate context's own first bound target, for MevrHudPanelDraw's prefilter (research/22).
+// The g_currentRtv* above are shared with the deferred contexts' recording threads (this hook is inline,
+// so every context comes through it); these are written for g_gameContext only. Render thread.
+bool g_mevrImmRtvKnown = false;
+UINT g_mevrImmRtvWidth = 0;
+UINT g_mevrImmRtvHeight = 0;
+DXGI_FORMAT g_mevrImmRtvFormat = DXGI_FORMAT_UNKNOWN;
+
 void STDMETHODCALLTYPE OMSetRenderTargetsHook(ID3D11DeviceContext* ctx, UINT num,
                                               ID3D11RenderTargetView* const* rtvs, ID3D11DepthStencilView* dsv) noexcept
 {
+    const bool mevrImmediate = ctx != nullptr && ctx == g_gameContext;   // [MEVR]
+    if (mevrImmediate) g_mevrImmRtvKnown = false;                         // [MEVR] until read below
     g_boundDsv = dsv;
     // [RELIEF M0.1] resolve the DSV's resource once per bind - draws are attributed to the RESOURCE, so
     // a clear coming through a different DSV object onto the same texture still finds the counter.
@@ -3636,6 +3646,13 @@ void STDMETHODCALLTYPE OMSetRenderTargetsHook(ID3D11DeviceContext* ctx, UINT num
                 g_currentRtvHeight = d.Height;
                 g_currentRtvTexPtr = tex;      // identity only ([QPOST] dup keys); never dereferenced
                 g_currentRtvFormat = d.Format;
+                if (mevrImmediate)             // [MEVR]
+                {
+                    g_mevrImmRtvWidth = d.Width;
+                    g_mevrImmRtvHeight = d.Height;
+                    g_mevrImmRtvFormat = d.Format;
+                    g_mevrImmRtvKnown = true;
+                }
                 tex->Release();
             }
             res->Release();
@@ -3647,6 +3664,13 @@ void STDMETHODCALLTYPE OMSetRenderTargetsHook(ID3D11DeviceContext* ctx, UINT num
         g_currentRtvHeight = 0;
         g_currentRtvTexPtr = nullptr;
         g_currentRtvFormat = DXGI_FORMAT_UNKNOWN;
+        if (mevrImmediate)                     // [MEVR] no colour target: never the UI's
+        {
+            g_mevrImmRtvWidth = 0;
+            g_mevrImmRtvHeight = 0;
+            g_mevrImmRtvFormat = DXGI_FORMAT_UNKNOWN;
+            g_mevrImmRtvKnown = true;
+        }
     }
     if (g_originalOMSetRenderTargets != nullptr) g_originalOMSetRenderTargets(ctx, num, rtvs, dsv);
 }
@@ -4476,6 +4500,22 @@ bool MevrHudPanelDraw(ID3D11DeviceContext* ctx, DrawThunk&& draw) noexcept
             bb->Release();
         }
     }
+    // Prefilter (research/22): the immediate context's last bind (g_mevrImmRtv*, OMSetRenderTargetsHook)
+    // rules out most draws of the second pass (the FP16 scene colour, other sizes) before the live query
+    // below. One in 256 of them is checked live anyway; a disagreement turns it off for the session.
+    static bool s_prefilterOff = false;
+    static unsigned s_prefiltered = 0;
+    bool verifying = false;
+    if (!s_prefilterOff && g_mevrImmRtvKnown)
+    {
+        const bool canBeUi = g_mevrImmRtvWidth == bbW && g_mevrImmRtvHeight == bbH &&
+                             (!s_bb8Bit || g_mevrImmRtvFormat == DXGI_FORMAT_R8G8B8A8_UNORM);
+        if (!canBeUi)
+        {
+            if ((++s_prefiltered & 255u) != 0) return false;
+            verifying = true;
+        }
+    }
     ID3D11RenderTargetView* rtv = nullptr;
     ctx->OMGetRenderTargets(1, &rtv, nullptr);
     if (rtv == nullptr) return false;
@@ -4505,6 +4545,14 @@ bool MevrHudPanelDraw(ID3D11DeviceContext* ctx, DrawThunk&& draw) noexcept
     // FP16 backbuffer the UI is drawn into it, and other 8-bit targets carry post effects (and would
     // make the panel texture flip between formats within a frame).
     const bool ldrFrame = s_bb8Bit && td.Format == DXGI_FORMAT_R8G8B8A8_UNORM;
+    if (verifying && sceneSized && (isBackbuffer || ldrFrame))
+    {
+        s_prefilterOff = true;
+        LogLine("[MEVR-HUD] prefilter off: the last bind read " + std::to_string(g_mevrImmRtvWidth) + "x" +
+                std::to_string(g_mevrImmRtvHeight) + " fmt=" + std::to_string(static_cast<int>(g_mevrImmRtvFormat)) +
+                ", the live target is the UI's (" + std::to_string(td.Width) + "x" + std::to_string(td.Height) +
+                " fmt=" + std::to_string(static_cast<int>(td.Format)) + ")");
+    }
     if (!sceneSized || !(isBackbuffer || ldrFrame)) return false;
 
     ID3D11BlendState* gameBlend = nullptr;
