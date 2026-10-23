@@ -127,6 +127,13 @@ switching frameworks.
   test (`0xAB1430`, mod side) and skips it for the player's pawn; a cover already taken is left with
   `TryExitCover`. A real crouch below 0.75 of the standing eye height (hysteresis 0.85, 0.2 s) is
   `BioPawn.ShouldCrouch` (ProcessEvent), on physical changes only: L3 still toggles in between.
+- LE1 level camera (`game/view_level`, `core/vr/ViewLevel`, [research/24](research/24-view-level.md)):
+  each shot's recoil goes into the player controller's rotation (ControlRotation) and the rifles' pitch
+  kick never fades (`RecoilFadeSpeed=0`); with the stick's pitch off (`decoupledPitch`) the world tilted
+  (+30 degrees after 204 shots). A `PlayerTick` post-handler (before the camera update) holds its pitch and
+  roll at 0 on foot while the hand aims, and drops aim assist's zoom-snap target; not in cover, the
+  scope, the Mako or cinematic modes. The recoil is a hand pulse instead. `[Hands] levelCamera`,
+  `recoilHaptic`; log `view level:`.
 - LE1 body holsters (`game/Holsters`, `core/ik/BodySlots`, research/19): a right-grip squeeze at a
   body slot draws that weapon through `SFXGameModeDefault.SwitchToWeapon` (ProcessEvent). The
   right grip holds the gun (`gripHolds = 1`): let go at its slot to holster (`TryHolster`),

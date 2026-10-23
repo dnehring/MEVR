@@ -35,6 +35,8 @@ struct Values {
     double trackingScale = 0.0;
     double reachNearFace = 0.30;  // [Hands] reachNearFaceM
     double armLength = 0.0;  // [Arms] armLengthM
+    bool levelCamera = true;     // [Hands] levelCamera
+    double recoilHaptic = 0.5;   // [Hands] recoilHaptic
     // [Controls]
     bool leftTrigger = false;
     bool leftTriggerLB = true;
@@ -101,6 +103,10 @@ constexpr char const* kDefaultFile =
     "crouchBelow = 0.75\n"
     "standAbove = 0.85\n"
     "crouchDwellS = 0.2\n"
+    "; levelCamera: 1 keeps the game camera level on foot while the hand aims (the guns' recoil and aim assist\n"
+    "; no longer tilt the world; research/24). recoilHaptic: how strongly a shot's recoil buzzes the hand, 0..1.\n"
+    "levelCamera = 1\n"
+    "recoilHaptic = 0.5\n"
     "\n"
     "[Arms]\n"
     "; Arm-length calibration (the VR hands tab samples a T pose; the mod writes armLengthM, the\n"
@@ -392,6 +398,12 @@ Values ReadValues(Ini const& ini) {
     }
     if (Number(ini, "Hands", "reachNearFaceM", values.reachNearFace)) {
         values.reachNearFace = std::clamp(values.reachNearFace, 0.0, 0.8);
+    }
+    if (Number(ini, "Hands", "levelCamera", flag)) {
+        values.levelCamera = flag != 0.0;
+    }
+    if (Number(ini, "Hands", "recoilHaptic", values.recoilHaptic)) {
+        values.recoilHaptic = std::clamp(values.recoilHaptic, 0.0, 1.0);
     }
     if (Number(ini, "Arms", "armLengthM", values.armLength) && !(values.armLength >= 0.3 && values.armLength <= 1.2)) {
         values.armLength = 0.0;
@@ -1017,6 +1029,14 @@ double ReachNearFace() {
     return gValues.reachNearFace;
 }
 
+bool LevelCamera() {
+    return gValues.levelCamera;
+}
+
+double RecoilHaptic() {
+    return gValues.recoilHaptic;
+}
+
 Controls GetControls() {
     Controls controls;
     controls.leftTrigger = gValues.leftTrigger;
@@ -1205,8 +1225,8 @@ void Refresh() {
         ini = ReadIni(path);
         stamp = fs::last_write_time(path, ec);
     }
-    // [Hands] reachNearFaceM, the [Sights] alignment assist and [Hands]' physical cover and crouch
-    // (research/23) (2026-10-22), appended with their defaults.
+    // [Hands] reachNearFaceM, the [Sights] alignment assist, [Hands]' physical cover and crouch
+    // (research/23) and levelCamera / recoilHaptic (research/24) (2026-10-22), appended with their defaults.
     static constexpr struct {
         wchar_t const* section;
         char const* sectionName;
@@ -1215,6 +1235,8 @@ void Refresh() {
         wchar_t const* value;
     } kNewKeys[] = {
         {L"Hands", "Hands", L"reachNearFaceM", "reachNearFaceM", L"0.30"},
+        {L"Hands", "Hands", L"levelCamera", "levelCamera", L"1"},
+        {L"Hands", "Hands", L"recoilHaptic", "recoilHaptic", L"0.5"},
         {L"Sights", "Sights", L"assist", "assist", L"1"},
         {L"Sights", "Sights", L"assistConeDeg", "assistConeDeg", L"10"},
         {L"Sights", "Sights", L"assistStrength", "assistStrength", L"1"},
@@ -1291,6 +1313,8 @@ void Refresh() {
             values.aimAtShoulder ? "with both hands and the gun at the shoulder" : "with both hands",
             values.leftTrigger ? "= LT" : values.leftTriggerLB ? "= LB (weapon wheel)" : "not sent to the game");
         log::Info("controls: a left grip away from the gun is {}", values.gripLB ? "LB (weapon wheel)" : "nothing (it only takes the gun)");
+        log::Info("hands: level camera {} (on foot while the hand aims: recoil and aim assist don't pitch the view), recoil haptic {:.2f}",
+            values.levelCamera ? "on" : "off", values.recoilHaptic);
     }
     // The menu's arm-length sample: each new measureRequest value is one T-pose sample. One
     // already there at startup with a result saved is old news.

@@ -143,6 +143,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/SquadMenu.hpp
     src/core/vr/TestRequest.cpp
     src/core/vr/TestRequest.hpp
+    src/core/vr/ViewLevel.cpp
+    src/core/vr/ViewLevel.hpp
     src/core/vr/ViewSync.cpp
     src/core/vr/ViewSync.hpp
     src/core/xr/Input.cpp
@@ -208,6 +210,8 @@ set(MEVR_MOD_SOURCES
     src/game/Throwables.hpp
     src/game/ViewAnchor.cpp
     src/game/ViewAnchor.hpp
+    src/game/ViewLevel.cpp
+    src/game/ViewLevel.hpp
     src/game/Weapon.cpp
     src/game/Weapon.hpp
     src/mod/Mod.cpp
@@ -362,6 +366,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/Sights.cpp
         src/core/vr/SquadMenu.cpp
         src/core/vr/TestRequest.cpp
+        src/core/vr/ViewLevel.cpp
         src/core/vr/ViewSync.cpp
         src/core/vr/WheelCrop.cpp
         src/engine/XrToUnreal.cpp
