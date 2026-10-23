@@ -50,6 +50,8 @@ Web sources are at the end and in [sources.md](sources.md). **[inference]** mark
    taking ~50% of the render thread: the game's built-in **Umbra Occlusion Booster 2.6.1** resolve
    (~23%) and a depth pre-pass of everything visible (~25-29%), once per eye. The world's base pass is
    ~11%. That's why the settings A/B barely moved it. See "Half of the render thread is visibility".
+   Turning Umbra's occlusion culling off doesn't help (+81% draws, the resolve no cheaper); see "Umbra's
+   switches, measured".
 
 ## The numbers
 
@@ -483,12 +485,8 @@ share is the sum of its call sites' (the sampler printed them separately).
 
 ### Levers, by what they could save
 
-1. **Umbra occlusion off, measured in place:** `UMBRA OCCLUSIONCULLING`, flipped back and forth while
-   standing still. It drops the occlusion half of the resolve and draws what Umbra would have hidden
-   (more draws in the pre-pass and base pass; the GPU has ~5 ms spare). Indoors (the Normandy) it may
-   lose; it's the cheapest test there is. Needs a console: the game's own, if ME3Tweaks enabled it, or a
-   test-loop request that runs a console command through the player controller on the game thread
-   (to build; also good for other A/Bs without restarts).
+1. ~~**Umbra occlusion off, measured in place**~~ (`UMBRA OCCLUSIONCULLING`): measured below; it costs
+   more than it saves.
 2. **No depth pre-pass in one eye or both:** up to ~1.3-1.5 ms of render thread per eye. The base pass
    then shades without early-Z (GPU overdraw). Needs a hook at `0x8BF116`'s callee. Check first what
    reads that depth: Umbra's next queries, Halcyon's scene-depth capture (`SfrOnSceneDepthClear`)
@@ -500,6 +498,48 @@ share is the sum of its call sites' (the sampler printed them separately).
 Tooling for the next profile: the sampler now walks 64 frames (24 cut off the outer callers) and
 writes the raw stacks; `tools/stack-functions.py` groups them by the exe's functions and `--under
 0x768090` breaks one down by callee.
+
+## Umbra's switches, measured: occlusion culling pays for itself (2026-10-23 07:57-08:02)
+
+Flat (headset off: `xrGetSystem` -35, no session, so one render per frame and no Halcyon pass), in the
+user's save (Eden Prime, `BIOA_PRO00`, combat) frozen with the console's `pause` one second after it
+loaded, the camera still. Switches flipped live with `tools/console.ps1` (new: `game/ConsoleRequest`) and
+read back from memory each time; each state a 10 s frame capture, then an 8 s stack sample. The game caps
+itself at 240 fps here, so the render thread's work per frame is the measure, not fps.
+
+| Run | Switches (CULLING / OCCLUSIONCULLING / HOAX) | Draws | Render thread busy, median / p90 | InitViews / Umbra resolve / pre-pass, % of samples |
+|---|---|---|---|---|
+| on-1 | 1 / 1 / 1 | 652 | 2.21 / 2.73 ms | 52 / 21 / 31 |
+| off-1 | 1 / **0** / 1 | 1,183 | 3.06 / 3.65 ms (a 25 ms hitch) | 57 / 21 / 36 |
+| on-2 | 1 / 1 / 1 | 652 | 2.23 / 2.65 ms | 53 / 22 / 31 |
+| off-2 | 1 / **0** / 1 | 1,183 | 2.36 / 2.79 ms | 57 / 20 / 37 |
+| on-3 | 1 / 1 / 1 | 652 | 1.78 / 2.15 ms | 40 / 15 / 24 |
+| culling-off | **0** / 1 / 1 | 664 | 1.89 / 2.32 ms | 9 / - / - (UE3's own path) |
+| hoax-off | 1 / 1 / **0** | 652 | 1.87 / 2.25 ms | 45 / 16 / 29 |
+| on-4 | 1 / 1 / 1 | 652 | 2.01 / 2.38 ms | 49 / 19 / 30 |
+
+- **Defaults (verified in memory):** CULLING, OCCLUSIONCULLING and HOAX are 1 at run time (the file's
+  bytes are scrambled like `.text`); the debug views are 0; `GIgnoreAllOcclusionQueries` is 0.
+- **Occlusion culling off doesn't make Umbra cheaper:** the resolve stays ~21% of the samples. Its cost is
+  the scene walk and the commander's per-object callbacks, not the occlusion tests. What it hid gets drawn:
+  +81% draws, the pre-pass grows (31 → 36%), the frame costs +0.1-0.8 ms. Lever 1 is dead; keep it on.
+- **Umbra off altogether (`CULLING`):** `SceneRenderB` takes its other branch (`0x76BC00`, `+0x5C` = 0):
+  UE3's own visibility (InitViews 9%) with the pre-pass in the DPG loop (`0x76BDC0`). It culls nearly as
+  well (664 draws) and costs the same in all. UE3's occlusion results are a frame late per view state, which
+  two passes per frame may confuse **[verify]** in VR; not a lever unless that's worth a look.
+- **`HOAX` off:** no measurable change.
+- Run-to-run spread of the baseline in a frozen scene: 1.78-2.23 ms. Differences below ~0.3 ms need more runs.
+- **Per draw:** the hottest single function is the D3D11 RHI's constant-buffer commit (`0x99B4F0` →
+  `0x99B420`, 8.5% of samples, half of it inside the driver): before each draw it walks every stage's
+  buffers and calls `UpdateSubresource` (context vtable +0x180) on each dirty one, then `*SetConstantBuffers`.
+  In VR every such call also passes Halcyon's `UpdateSubresource` hook (5.9% of the VR samples).
+- `pause` (console) freezes the world but keeps rendering: the game thread's tick fell 1.92 → 0.62 ms. A
+  good way to hold a scene still for an A/B. `open <map>` works too, but skips the save's streaming (the
+  Normandy loaded at 316 draws).
+
+What's left on the CPU side, per eye: the second pass's Umbra resolve (lever 3: its culling inputs are the
+first pass's exactly, research/30), the visible-set pre-pass (lever 2, a GPU trade), and the per-draw
+constant-buffer path.
 
 ## Next session: the no-code checks (about 15 minutes)
 
