@@ -18,6 +18,8 @@
 //                                         mirrored for the left: yaw and roll flip sign)
 //           gunRoll                       degrees about a held gun's barrel (ik::GunUpInHand)
 //           bodyFollowsHead               1: the spine puts the shoulders under the headset
+//           bodyMove, leanM, bodyMoveMaxM 1 (default): the whole body (not God or Camera) turns and steps
+//                                         under the view (research/29, game/body_follow); 0: spine only
 //           armStretch                    1-1.25: how far the arms may stretch to reach
 //           trackingScale                 Unreal units per meter for hands and head; 0: the view's
 //           noCover, physicalCrouch, crouchBelow, standAbove, crouchDwellS: physical cover and
@@ -56,6 +58,13 @@ double ArmLength();
 // [Hands] reachNearFaceM: a hand this close to the eyes (meters) follows its controller 1:1 (no reach
 // scaling), so a gun at the cheek sits where the controller is; 0: off.
 double ReachNearFace();
+// [Hands] bodyMove, leanM, bodyMoveMaxM (game/body_follow, research/29).
+struct BodyMove {
+    bool on = true;            // the whole body turns and steps under the view
+    double leanMeters = 0.20;  // the head may lean this far from the feet before they step
+    double maxMeters = 0.75;   // the body moves at most this far from where the game put it
+};
+BodyMove GetBodyMove();
 // [Hands] levelCamera: keep the game camera level while the hand aims (game/view_level).
 bool LevelCamera();
 // [Hands] recoilHaptic: 0..1, how strongly a shot's recoil pulses the hand (0: none).

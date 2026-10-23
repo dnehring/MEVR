@@ -594,3 +594,23 @@ PSVR 2 on SteamVR: the world pitched more and more over a session while SteamVR'
   moving and resizing the game's screens in our menu (the classic menu's HUD tab has the editor); keyboard and
   mouse navigation of the menu on the desktop; LE2/LE3 (the library is game-independent; the host side is
   LE1's).
+
+## The body under the player (user report 2026-10-23; built the same day, to test)
+
+- **Report (PS VR2, SteamVR):** after head turns and walking, the shoulders seemed somewhere else; the arms
+  reached from the wrong place. Intermittent.
+- **Causes ([research/29](../research/29-body-follow.md), each reproduced in `TestBodyFollow`):** the
+  explore-mode pawn faces where it runs (head yaw plus the stick's angle with `moveFollowsHead`), the spine
+  twisted at most 60 degrees; the torso followed the animation while the hands followed the view, and the
+  view wanders up to 25 units from the animated head (log 2026-10-23 00:14-00:18); physical steps moved only
+  the view and the spine's lean couldn't follow; head turns moved the eye point the old goal followed; the
+  body yaw wasn't reset by a recenter.
+- **Built:** `core/ik/BodyFollow` (head pivot, feet that step after the head, re-anchors on start, recenter
+  and tracking jumps), `TorsoGoal::body` (the `Root` subtree turns and slides; never `God` or `Camera`),
+  `game/BodyFollow` (the goal from this tick's view; `torso:` logs; snapshot `"torso"`). `[Hands] bodyMove`,
+  `leanM`, `bodyMoveMaxM`.
+- **[verify in headset]:** notes/next-vr-session.md step 26 (turn and walk, head turns, steps, recenter, no
+  judder).
+- **Open:** legs that run sideways or backward under a turned body (no strafe animation in explore mode);
+  moving or turning the pawn itself (room-scale, the cap) would change mechanics: ask first; the neck
+  model's constants per player (the calibration's eye height could scale it).

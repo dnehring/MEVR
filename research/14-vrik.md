@@ -406,6 +406,10 @@ on screen):
 - Written in the same post-`UpdateSkelPose` pass, before the arms, which then reach from where
   the shoulders ended up; the elbow poles use the new facing. Transactional like the arms.
 - `[Hands] bodyFollowsHead = 0` turns it off (live).
+- **Since 2026-10-23 ([29](29-body-follow.md)):** in first person the whole body (the `Root` subtree, never
+  `God` or `Camera`) turns by what the spine can't (the spine keeps 30 degrees) and slides under the view
+  (the feet step after the head), and the spine leans the head bone to the head's pivot, absolutely; the
+  relative eye lean above is what `[Hands] bodyMove = 0` keeps.
 - Log: `arm IK: first write, torso (component space): shoulders (...) -> (...) (wanted (...),
   N short, limited), twist N deg, bend N deg, clavicles N/N deg, arm stretch N/N, N bones`, and
   the same in the heartbeat.
