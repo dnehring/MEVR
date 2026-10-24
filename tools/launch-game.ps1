@@ -94,7 +94,9 @@ while ((Get-Date) -lt $deadline) {
     if ($p.HasExited) { "the game exited (code $($p.ExitCode))"; exit 1 }
     $logItem = Get-Item $log -ErrorAction SilentlyContinue
     if (-not $logItem -or $logItem.LastWriteTime -lt $p.StartTime) { continue }
-    $fresh = (Test-Path $status) -and (((Get-Date) - (Get-Item $status).LastWriteTime).TotalSeconds -lt 5)
+    # Frames running: the mod's log is written every few seconds while the game runs (testloop.status proved unreliable:
+    # it stopped updating mid-session on 2026-10-24 while frames ran, and no Enter was ever sent).
+    $fresh = ((Get-Date) - $logItem.LastWriteTime).TotalSeconds -lt 8
     $onFoot = (Get-Content $log -Tail 40 | Select-String -SimpleMatch 'on foot yes' -Quiet)
     if ($fresh -and $onFoot) {
         "READY: gameplay at $(Get-Date -Format HH:mm:ss) (Enter sent $enterSent time(s))"

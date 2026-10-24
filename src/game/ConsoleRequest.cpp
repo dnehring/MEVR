@@ -5,6 +5,8 @@
 #include "engine/Legacy.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Memory.hpp"
+#include "game/Player.hpp"
+#include "core/WriteJournal.hpp"
 
 #include <Windows.h>
 
@@ -41,6 +43,53 @@ bool gToldParameters = false;
 
 ue3::Object* PlayerController() {
     return ue3::runtime::LocalPlayerController();
+}
+
+// Our own lines, for the measuring loop (research/35 attempt 42): "mevr loc" prints the player's pawn's Location and
+// Rotation, "mevr setloc X Y Z" moves the pawn there (Engine.Actor.SetLocation through ProcessEvent, on the game thread,
+// which this tick is). The console's own `getall`/`displayall` print nowhere we can read, and the game has no way to
+// jump to a known place: this is how a heavy spot is reached again and again without a person walking there.
+ue3::FunctionRef gSetLocationRef{"Engine.Actor.SetLocation"};
+
+std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
+    if (line.rfind("mevr ", 0) != 0) {
+        return std::nullopt;
+    }
+    std::istringstream words(line.substr(5));
+    std::string verb;
+    words >> verb;
+    ue3::Object* const pawn = player::Pawn(pc);
+    if (pawn == nullptr) {
+        return std::string("(no pawn)");
+    }
+    char text[160]{};
+    if (verb == "loc") {
+        std::optional<ue3::Vector> const at = player::Location(pawn);
+        std::optional<ue3::Rotator> const rot = player::Rotation(pawn);
+        if (!at || !rot) {
+            return std::string("(the pawn's Location or Rotation can't be read)");
+        }
+        std::snprintf(text, sizeof(text), "loc %.1f %.1f %.1f rot %d %d %d", at->x, at->y, at->z, rot->pitch, rot->yaw, rot->roll);
+        return std::string(text);
+    }
+    if (verb == "setloc") {
+        ue3::Vector to{};
+        if (!(words >> to.x >> to.y >> to.z)) {
+            return std::string("usage: mevr setloc X Y Z");
+        }
+        ue3::Function* const setLocation = gSetLocationRef.Get();
+        if (setLocation == nullptr) {
+            return std::string("(Engine.Actor.SetLocation not found)");
+        }
+        ue3::Params parms(ue3::runtime::Get(), setLocation);
+        parms.Set("NewLocation", to);
+        ue3::runtime::Call(pawn, setLocation, parms);  // the native through ProcessEvent (game thread: this tick)
+        write_journal::Wrote("ConsoleRequest.SetLocation", pawn, 0);
+        std::optional<ue3::Vector> const at = player::Location(pawn);
+        std::snprintf(text, sizeof(text), "moved: now %.1f %.1f %.1f", at ? at->x : 0.0f, at ? at->y : 0.0f, at ? at->z : 0.0f);
+        return std::string(text);
+    }
+    return std::string("unknown: mevr loc | mevr setloc X Y Z");
 }
 
 ue3::Function* FindConsoleCommand() {
@@ -154,9 +203,17 @@ void Tick(float deltaSeconds) {
             continue;
         }
         line.erase(0, start);
-        std::string const output = gConsoleCommand != nullptr
-            ? Run(pc, gConsoleCommand, line).value_or("(ConsoleCommand can't be run: see the log)")
-            : std::string("(ConsoleCommand not found)");
+        std::string output;
+#if defined(MEVR_GAME_LE1)
+        if (std::optional<std::string> ours = RunOurs(pc, line)) {
+            output = *ours;
+        } else
+#endif
+        {
+            output = gConsoleCommand != nullptr
+                ? Run(pc, gConsoleCommand, line).value_or("(ConsoleCommand can't be run: see the log)")
+                : std::string("(ConsoleCommand not found)");
+        }
         log::Info("console: {} -> {}", line, output.empty() ? std::string("(no output)") : output);
         result += "> " + line + "\n" + output + (output.empty() || output.back() == '\n' ? "" : "\n");
     }

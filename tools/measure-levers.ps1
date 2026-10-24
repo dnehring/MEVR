@@ -4,7 +4,7 @@
 # draw-count effects show; a still view hides them), runs tools/perf-ab.ps1 for the key, stops the replay.
 #
 #   tools/measure-levers.ps1 -Key flushFirstEye -Values 0,1 -Rounds 2 -Seconds 10
-#   tools/measure-levers.ps1 -Key perEyeOcclusion -Values 0,1 -Recording <path.mevrrec>
+#   tools/measure-levers.ps1 -Key perEyeOcclusion -Values 0,1 -Recording <path.mevrrec> -Inputs   (walking as recorded)
 #
 # Default recording: the newest in %LOCALAPPDATA%\MEVR\recordings. The game must be in gameplay (tools/launch-game.ps1
 # says READY); freeze the world first if the save is dangerous (tools/console.ps1 pause: the replay still moves the view).
@@ -13,7 +13,8 @@ param(
     [Parameter(Mandatory = $true)][string]$Values,
     [int]$Rounds = 2,
     [int]$Seconds = 10,
-    [string]$Recording = ''
+    [string]$Recording = '',
+    [switch]$Inputs   # replay the recording's buttons and sticks too: Shepard walks and shoots as the player did
 )
 $ErrorActionPreference = 'Stop'
 $tools = $PSScriptRoot
@@ -25,7 +26,7 @@ if ($Recording -eq '') {
     $Recording = $latest.FullName
 }
 "replaying $Recording in a loop"
-& (Join-Path $tools 'replay.ps1') -Path $Recording -Loop | Out-Null
+& (Join-Path $tools 'replay.ps1') -Path $Recording -Loop -Inputs:$Inputs | Out-Null
 Start-Sleep -Seconds 3
 try {
     & (Join-Path $tools 'perf-ab.ps1') -Key $Key -Values ($Values -split ',') -Rounds $Rounds -Seconds $Seconds
