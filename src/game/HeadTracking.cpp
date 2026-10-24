@@ -2,6 +2,7 @@
 #include "game/HeadTracking.hpp"
 
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
 #include "core/vr/Output.hpp"
 #include "core/vr/ViewSync.hpp"
 #include "engine/Objects.hpp"
@@ -100,6 +101,7 @@ void ApplyRotation(FRotator& rotation) {
     rotation.Yaw += gHead.yaw;
     rotation.Pitch = gHead.pitch;
     rotation.Roll = gHead.roll;
+    write_journal::Wrote("Head.view point rotation", &rotation);
     gAdjustedViews.fetch_add(1, std::memory_order_relaxed);
 }
 
@@ -124,6 +126,7 @@ void ApplyTranslation(FVector& location, int gameYaw, FRotator const& rotation) 
     location.X += static_cast<float>(offset.x);
     location.Y += static_cast<float>(offset.y);
     location.Z += static_cast<float>(offset.z);
+    write_journal::Wrote("Head.view point location", &location);
 }
 
 // The player's game mode (EGameModes), if the controller has a mode manager.
@@ -156,6 +159,7 @@ void OnUpdateCamera(UObject* context, UFunction* /*function*/, void* /*parms*/, 
         auto const headsetFov = vr::view_sync::HeadsetFov();
         if (gFovViaCamera && vr::output::WantsHeadTracking() && headsetFov) {
             camera->CameraCache.POV.FOV = *headsetFov;
+            write_journal::Wrote("Head.camera FOV", &camera->CameraCache.POV.FOV);
         }
         gCameraFov = camera->CameraCache.POV.FOV;
         return;
@@ -166,6 +170,7 @@ void OnUpdateCamera(UObject* context, UFunction* /*function*/, void* /*parms*/, 
     if (gPath == Path::Camera && gHeadsetFov) {
         // Set in the camera cache (read by script) and returned from GetFOVAngle.
         camera->CameraCache.POV.FOV = *gHeadsetFov;
+        write_journal::Wrote("Head.camera FOV", &camera->CameraCache.POV.FOV);
     }
     gCameraFov = camera->CameraCache.POV.FOV;
     if (gHeadPose) {
@@ -205,6 +210,7 @@ void OnGetFovAngle(UObject* context, UFunction* /*function*/, void* parms, void*
     bool const inView = gPath == Path::Render && engine::scene_view::InPrimaryView();
     if (gHeadsetFov && (inView || gPath == Path::Camera)) {
         p->ReturnValue = *gHeadsetFov;
+        write_journal::Wrote("Head.GetFOVAngle (PE return)", &p->ReturnValue);
         gFovOverrides.fetch_add(1, std::memory_order_relaxed);
     }
     if (inView) {

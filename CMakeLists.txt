@@ -158,9 +158,13 @@ set(MEVR_CORE_SOURCES
 )
 
 set(MEVR_HOST_SOURCES
+    src/core/Breadcrumbs.hpp
+    src/core/FixedText.hpp
     src/engine/CodeDump.cpp
     src/engine/CodeDump.hpp
     src/mod/ModApi.hpp
+    src/plugin/CrashBreadcrumbs.cpp
+    src/plugin/CrashBreadcrumbs.hpp
     src/plugin/Entry.cpp
     src/plugin/ModLoader.cpp
     src/plugin/ModLoader.hpp
@@ -168,9 +172,13 @@ set(MEVR_HOST_SOURCES
     src/plugin/PresentHook.hpp
     src/plugin/ProcessEventHook.cpp
     src/plugin/ProcessEventHook.hpp
+    src/ue3/SafeNames.cpp
+    src/ue3/SafeNames.hpp
 )
 
 set(MEVR_MOD_SOURCES
+    src/core/Breadcrumbs.hpp
+    src/core/WriteJournal.hpp
     src/core/Hotkey.cpp
     src/core/Hotkey.hpp
     src/core/d3d11/Blit.cpp
@@ -577,7 +585,9 @@ if (MEVR_BUILD_TESTS)
         tests/InstallTests.cpp
         src/loader/LoaderCore.cpp
         tests/ReflectTests.cpp
+        tests/BreadcrumbTests.cpp
         src/ue3/Names.cpp
+        src/ue3/SafeNames.cpp
         src/ue3/Params.cpp
         src/ue3/Pattern.cpp
         src/ue3/Reflect.cpp

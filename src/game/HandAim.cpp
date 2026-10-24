@@ -2,6 +2,7 @@
 #include "game/HandAim.hpp"
 
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
 #include "core/vr/AimRay.hpp"
 #include "core/vr/Calibration.hpp"
 #include "core/vr/Controllers.hpp"
@@ -220,7 +221,8 @@ bool IsLocalPlayer(UObject* context) {
     return context != nullptr && context == engine::LocalPlayerController();
 }
 
-void Apply(UObject* context, FRotator* result) {
+// `tag` names the write for the crash breadcrumbs (research/36).
+void Apply(UObject* context, FRotator* result, char const* tag) {
     gAimCalls.fetch_add(1, std::memory_order_relaxed);
     gLastRayValid = false;
     gLastPath = Path::Game;
@@ -230,10 +232,12 @@ void Apply(UObject* context, FRotator* result) {
     FRotator rotation{};
     if (BarrelRotation(*result, rotation)) {
         *result = rotation;
+        write_journal::Wrote(tag, result);
         gLastPath = Path::Barrel;
         gBarrelAims.fetch_add(1, std::memory_order_relaxed);
     } else if (HandRotation(*result, rotation)) {
         *result = rotation;
+        write_journal::Wrote(tag, result);
         gLastPath = Path::Controller;
         gControllerAims.fetch_add(1, std::memory_order_relaxed);
     }
@@ -241,12 +245,12 @@ void Apply(UObject* context, FRotator* result) {
 
 // Script-to-script calls (the weapon's fire code): `result` is the return value.
 void OnCallFunction(UObject* context, UFunction* /*function*/, void* result) {
-    Apply(context, static_cast<FRotator*>(result));
+    Apply(context, static_cast<FRotator*>(result), "HandAim.aim (CF result)");
 }
 
 // Native-to-script calls: the return value lives in the parms.
 void OnProcessEvent(UObject* context, UFunction* /*function*/, void* parms, void* /*result*/) {
-    Apply(context, &static_cast<ABioPlayerController_execGetAdjustedAimFor_Parms*>(parms)->ReturnValue);
+    Apply(context, &static_cast<ABioPlayerController_execGetAdjustedAimFor_Parms*>(parms)->ReturnValue, "HandAim.aim (PE return)");
 }
 
 #if defined(SDK_TARGET_LE1)
@@ -265,6 +269,7 @@ void OnStartTrace(UObject* context, UFunction* /*function*/, void* parms, void* 
     FVector& start = static_cast<APawn_eventGetWeaponStartTraceLocation_Parms*>(parms)->ReturnValue;
     engine::UnrealVector const game{start.X, start.Y, start.Z};
     start = {static_cast<float>(muzzle->location.x), static_cast<float>(muzzle->location.y), static_cast<float>(muzzle->location.z)};
+    write_journal::Wrote("HandAim.start trace (PE ret)", &start);
     gStartsMoved.fetch_add(1, std::memory_order_relaxed);
     if (!gLoggedStartMoved) {
         gLoggedStartMoved = true;

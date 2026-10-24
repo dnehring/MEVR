@@ -6,6 +6,7 @@
 
 #include "core/Hotkey.hpp"
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
 #include "core/vr/AimRay.hpp"
 #include "core/vr/Calibration.hpp"
 #include "core/vr/Controllers.hpp"
@@ -826,6 +827,15 @@ MEVR_MOD_API bool MevrModStartup(ISharedProxyInterface* spi, mevr::HostServices 
                   "removed; close the game and redeploy the host", gHost->version);
     }
     game::view_anchor::UseHostView(gHostOwnsVr);
+    // Crash breadcrumbs (v18, research/36): our writes into engine memory and our CallFunction handlers, kept by the
+    // host and written out if the game crashes.
+    if (MEVR_HOST_HAS(endScriptCall) && gHost->recordWrite != nullptr && gHost->beginScriptCall != nullptr &&
+        gHost->endScriptCall != nullptr) {
+        write_journal::Connect(gHost->recordWrite);
+        engine::call_function::SetBreadcrumbs(gHost->beginScriptCall, gHost->endScriptCall);
+    } else if (gHost != nullptr) {
+        log::Info("the host (services v{}) keeps no crash breadcrumbs of the mod's writes", gHost->version);
+    }
 
     // Hook names get this prefix, so the host's and the mod's hooks never collide.
     gInit = std::make_unique<::LESDK::Initializer>(spi, SDK_TARGET_NAME_A "MEVRmod");
@@ -1028,6 +1038,8 @@ MEVR_MOD_API void MevrModShutdown() {
     game::comfort::Shutdown();
     game::body_calibration::Shutdown();
     game::menu_pause::Shutdown(exiting);  // unpauses the game if the main menu paused it
+    write_journal::Connect(nullptr);
+    engine::call_function::SetBreadcrumbs(nullptr, nullptr);
     gHost = nullptr;
     gHostOwnsVr = false;
     gToldHostOwnsVr = false;

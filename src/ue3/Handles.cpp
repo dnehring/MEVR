@@ -2,6 +2,7 @@
 #include "ue3/Handles.hpp"
 
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
 
 #include <cstring>
 
@@ -71,6 +72,7 @@ bool FieldRef::WriteBool(void* base, bool value) {
     }
     auto* const word = reinterpret_cast<std::uint32_t*>(static_cast<std::uint8_t*>(base) + info->offset);
     *word = value ? (*word | info->boolMask) : (*word & ~info->boolMask);
+    write_journal::Wrote(name_, word);  // the field's name: a literal from the handle's declaration
     return true;
 }
 

@@ -2,6 +2,7 @@
 #include "game/Weapon.hpp"
 
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
 #include "core/ik/ArmPose.hpp"
 #include "engine/BonePose.hpp"
 #include "engine/Objects.hpp"
@@ -838,8 +839,12 @@ std::optional<float> ZoomedAimError(UObject* weapon, float accuracy) {
         return std::nullopt;
     }
     held->bIsZoomed = 1;  // for this one call: put back before anything else runs on this thread
+    // The bitfield's word (0x548, above) for the crash breadcrumbs.
+    void const* const zoomWord = reinterpret_cast<std::uint8_t const*>(held) + offsetof(ABioWeaponRanged, m_fMinVFXDecalIntensity) + 4;
+    write_journal::Wrote("Weapon.bIsZoomed = 1", zoomWord, 4);
     std::optional<float> const zoomed = CallAimError(held, accuracy);
     held->bIsZoomed = 0;
+    write_journal::Wrote("Weapon.bIsZoomed = 0", zoomWord, 4);
     return zoomed;
 #else
     (void)weapon;

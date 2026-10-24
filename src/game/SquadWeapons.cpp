@@ -2,6 +2,7 @@
 #include "game/SquadWeapons.hpp"
 
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/SquadMenu.hpp"
@@ -1015,7 +1016,9 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
             int const angle = wheel::StickAngleOf({member, wheel::SlotOfWeapon(weapon)});
             if (angle >= 0) {
                 hud->nLastAngle = angle;
+                write_journal::Wrote("Squad.HUD nLastAngle", &hud->nLastAngle);
                 hud->nAngle = angle;
+                write_journal::Wrote("Squad.HUD nAngle", &hud->nAngle);
                 log::Info("squad: wheel #{}: preselected {}'s {} (wheel member {}, slot {}: the HUD's kept stick angle {} deg)", gWheelSerial,
                     gMembers[gWheelPointed].name, menu::WeaponName(weapon), member, wheel::SlotOfWeapon(weapon), angle);
             } else {

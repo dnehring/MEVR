@@ -2,6 +2,7 @@
 #include "game/Throwables.hpp"
 
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
 #include "core/ik/BodySlots.hpp"
 #include "core/ik/Throwing.hpp"
 #include "core/vr/Controllers.hpp"
@@ -480,14 +481,18 @@ std::string AimDisc(ABioGrenadeProjectile* projectile) {
     engine::UnrealVector const from = FromF(disc->Location);
     SetVelocity(disc, Sub(gPending.landing, from));  // the disc keeps its own speed along it
     disc->m_vIntendedTargetLocation = ToF(gPending.landing);
+    write_journal::Wrote("Throw.disc target location", &disc->m_vIntendedTargetLocation);
     AActor* target = nullptr;
     if (gPending.landingActor != 0) {
         auto* const candidate = reinterpret_cast<AActor*>(gPending.landingActor);
         target = engine::IsAlive(candidate) ? candidate : nullptr;
     }
     disc->m_oIntendedTarget = target;
+    write_journal::Wrote("Throw.disc target", &disc->m_oIntendedTarget);
     disc->m_oHeatSeekTarget = nullptr;
+    write_journal::Wrote("Throw.disc heat seek target", &disc->m_oHeatSeekTarget);
     disc->m_vStartLocation = disc->Location;
+    write_journal::Wrote("Throw.disc start location", &disc->m_vStartLocation);
     double const meters = Len(Sub(gPending.landing, from)) / std::max(1.0, gPending.unitsPerMeter);
     return std::format("the disc re-aimed{} to {} ({:.1f} m, {}, speed {:.0f} units/s)", moved, U(gPending.landing), meters,
         target != nullptr ? engine::FullName(target) : std::string(gPending.landingHit ? "a surface" : "nothing hit: open air"),
@@ -502,12 +507,14 @@ bool LaunchArc(ABioGrenade* grenade, ABioGrenadeProjectile*& projectile, std::st
     }
     UClass* const saved = grenade->m_clsProjectile;
     grenade->m_clsProjectile = ABioGrenadeProjectileBallistic::StaticClass();
+    write_journal::Wrote("Throw.projectile class", &grenade->m_clsProjectile);
     ABioGrenade_eventLaunchGrenade_Parms parms;
     parms.vVelocity = ToF(gPending.velocity);
     gInLaunch = true;
     grenade->ProcessEvent(gLaunchGrenade, &parms, nullptr);  // the game's own spawn: MakeProjectile, then SetVelocity
     gInLaunch = false;
     grenade->m_clsProjectile = saved;
+    write_journal::Wrote("Throw.projectile class back", &grenade->m_clsProjectile);
     ABioGrenadeProjectile* const ball = parms.ReturnValue;
     if (ball == nullptr) {
         what = "the ballistic grenade didn't spawn";
@@ -577,6 +584,7 @@ void OnLaunch(UObject* context, UFunction* function, void* parms, void* /*result
             arced = LaunchArc(grenade, projectile, what);
             if (arced) {
                 std::memcpy(slot, &projectile, sizeof projectile);  // the game takes the ballistic grenade for its own
+                write_journal::Wrote("Throw.launch (PE return)", slot, sizeof projectile);
             } else {
                 what += "; the disc instead: ";
             }

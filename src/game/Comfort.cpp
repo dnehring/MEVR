@@ -2,6 +2,7 @@
 #include "game/Comfort.hpp"
 
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
 #include "core/vr/Comfort.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/TestRequest.hpp"
@@ -221,6 +222,7 @@ void Turn(ue3::Object* controller, int units) {
     }
     int const before = rotation->yaw;
     rotation->yaw = before + units;
+    write_journal::Wrote("Comfort.ControlRotation", rotation);
     ue3::Object* const pawn = ObjectField(controller, gPawn);
     std::optional<ue3::Rotator> const pawnRotation = pawn != nullptr ? gRotation.Read<ue3::Rotator>(pawn) : std::nullopt;
     bool pawnTurned = false;

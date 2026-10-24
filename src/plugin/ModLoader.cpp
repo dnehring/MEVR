@@ -3,6 +3,7 @@
 
 #include "core/Log.hpp"
 #include "mod/ModApi.hpp"
+#include "plugin/CrashBreadcrumbs.hpp"
 #include "plugin/PresentHook.hpp"
 #include "plugin/ProcessEventHook.hpp"
 
@@ -66,6 +67,13 @@ bool HostProcessExiting() {
 }
 void HostKeepLoaded(char const* reason) {
     KeepModLoaded(reason);
+}
+// v18, every game: the crash breadcrumbs (plugin/CrashBreadcrumbs).
+HostServices WithCrashBreadcrumbs(HostServices services) {
+    services.recordWrite = &crash::RecordWrite;
+    services.beginScriptCall = &crash::BeginScriptCall;
+    services.endScriptCall = &crash::EndScriptCall;
+    return services;
 }
 
 #if defined(MEVR_WITH_HALCYON)
@@ -144,7 +152,7 @@ std::uint32_t HostMainMenu() {
 void HostSetVignette(float amount) {
     vignette::SetTarget(amount);
 }
-HostServices const gServices{kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
+HostServices const gServices = WithCrashBreadcrumbs({kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
     static_cast<std::uint32_t>(sizeof(vr::controllers::State)), static_cast<std::uint32_t>(sizeof(vr::host_view::State)),
     &HostSetProcessEventCallback, &HostProcessExiting, &HostKeepLoaded,
     static_cast<std::uint32_t>(sizeof(vr::aim_ray::Ray)), &HostSetAimRay, &HostSetSupportGrip, &HostSupportGripHeld,
@@ -154,7 +162,7 @@ HostServices const gServices{kHostServicesVersion, kHostLog, &HostControllers, &
     static_cast<std::uint32_t>(sizeof(vr::squad_menu::View)), &HostSetSquadMenu, &HostLeftGripAway,
     static_cast<std::uint32_t>(sizeof(vr::squad_menu::wheel::Panel)), &HostSetWheelPanel,
     static_cast<std::uint32_t>(sizeof(vr::sights::Sight)), &HostSetSight, &HostSightView,
-    static_cast<std::uint32_t>(sizeof(vr::calibration::HostState)), &HostCalibration, &HostMainMenu, &HostSetVignette};
+    static_cast<std::uint32_t>(sizeof(vr::calibration::HostState)), &HostCalibration, &HostMainMenu, &HostSetVignette});
 // A mod that's gone can't aim: Halcyon's head aim must come back, the reticle go, the pad mapping
 // forget the two-handed grip (the grip holding the gun, the squad menu's controls), the squad menu and the
 // wheel panel settings go, and the controllers stop vibrating.
@@ -169,9 +177,9 @@ void ForgetModState() {
     vignette::Forget();
 }
 #else
-HostServices const gServices{kHostServicesVersion, kHostLog, nullptr, nullptr, nullptr, 0, 0, &HostSetProcessEventCallback,
-    &HostProcessExiting, &HostKeepLoaded, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-    static_cast<std::uint32_t>(sizeof(HostServices))};
+HostServices const gServices = WithCrashBreadcrumbs({kHostServicesVersion, kHostLog, nullptr, nullptr, nullptr, 0, 0,
+    &HostSetProcessEventCallback, &HostProcessExiting, &HostKeepLoaded, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+    nullptr, static_cast<std::uint32_t>(sizeof(HostServices))});
 void ForgetModState() {}
 #endif
 ISharedProxyInterface* gSpi = nullptr;

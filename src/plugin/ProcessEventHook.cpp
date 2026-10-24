@@ -3,6 +3,7 @@
 
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
+#include "plugin/CrashBreadcrumbs.hpp"
 
 #include <LESDK/Headers.hpp>
 #include <LESDK/Init.hpp>
@@ -24,13 +25,18 @@ std::atomic<int> gInFlight{0};
 
 // No C++ objects with destructors here, so __finally can keep the count right when an exception
 // unwinds through the callback (Halcyon calls ProcessEvent under __except in places).
+// The crash breadcrumb (research/36) is taken before the engine's call, so a dispatch that never returns is
+// in the ring: a few stores, a timestamp and an interlocked add, then two state updates.
 void ProcessEventHook(UObject* context, UFunction* function, void* parms, void* result) {
+    std::uint64_t const crumb = crash::gProcessEvents.Begin(function, context);
     gOriginal(context, function, parms, result);
     gInFlight.fetch_add(1);
     __try {
         if (Callback const callback = gCallback.load()) {
+            crash::gProcessEvents.Advance(crumb, breadcrumbs::State::Mod);
             callback(context, function, parms, result);
         }
+        crash::gProcessEvents.Advance(crumb, breadcrumbs::State::Done);
     } __finally {
         gInFlight.fetch_sub(1);
     }

@@ -3,6 +3,7 @@
 
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
 #include "core/ik/TwoHand.hpp"
 #include "engine/Skeleton.hpp"
 
@@ -490,6 +491,8 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
             bases[i] = skeleton::ToAtom(pose[i]);
         }
     }
+    write_journal::Wrote("BonePose.SpaceBases", &bases[static_cast<std::size_t>(first)],
+        static_cast<std::size_t>(count - first) * sizeof(skeleton::BoneAtom));
     gWrites.fetch_add(1, std::memory_order_relaxed);
     gTotalWrites.fetch_add(1, std::memory_order_relaxed);
     gFirstWriteReady.store(true, std::memory_order_release);

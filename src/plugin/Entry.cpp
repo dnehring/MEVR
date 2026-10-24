@@ -7,6 +7,7 @@
 #include "core/Log.hpp"
 #include "core/Version.hpp"
 #include "engine/CodeDump.hpp"
+#include "plugin/CrashBreadcrumbs.hpp"
 #include "plugin/ModLoader.hpp"
 #include "plugin/PresentHook.hpp"
 #include "plugin/ProcessEventHook.hpp"
@@ -41,6 +42,7 @@ using tGameEngineTick = void(UGameEngine* self, float deltaSeconds);
 tGameEngineTick* gGameEngineTickOrig = nullptr;
 
 void GameEngineTickHook(UGameEngine* self, float deltaSeconds) {
+    mevr::host::crash::NoteGameThread();
 #if defined(MEVR_WITH_HALCYON)
     mevr::host::perf::EngineTickBegin();
 #endif
@@ -105,6 +107,8 @@ SPI_IMPLEMENT_ATTACH
         return true;
     }
     mevr::log::Info("game version {} OK", version->ToString());
+    // What touched the engine last, written out if the process crashes (research/36).
+    mevr::host::crash::Install();
     // Research dump of the decrypted code, before our or Halcyon's hooks patch any of it.
     mevr::engine::code_dump::SaveOnce();
 #if defined(MEVR_WITH_HALCYON)
