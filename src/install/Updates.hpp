@@ -12,8 +12,10 @@ namespace mevr::install::updates {
 
 // This build's version (the mod's MEVR_VERSION).
 inline constexpr char kVersion[] = "0.1.0";
-// The placeholder until the repository exists.
+// The placeholder: "no check" (an MEVR-Setup.ini can set it to turn the check off).
 inline constexpr char kPlaceholderRepo[] = "https://github.com/OWNER/REPO";
+// The project's public repository, whose Releases the setup checks by default.
+inline constexpr char kDefaultRepo[] = "https://github.com/dnehring/MEVR";
 
 // "https://api.github.com/repos/<owner>/<repo>/releases/latest" for a repository page URL; "" for the placeholder
 // or anything that isn't https://github.com/<owner>/<repo>.
