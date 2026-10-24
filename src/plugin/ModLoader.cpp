@@ -25,6 +25,8 @@
 #endif
 #endif
 
+#include <Windows.h>
+
 #include <atomic>
 #include <filesystem>
 #include <fstream>

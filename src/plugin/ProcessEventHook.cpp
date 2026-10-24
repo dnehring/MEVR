@@ -6,6 +6,8 @@
 #include "engine/Addresses.hpp"
 #include "plugin/CrashBreadcrumbs.hpp"
 
+#include <Windows.h>
+
 #include <atomic>
 
 namespace mevr::host::process_event {
