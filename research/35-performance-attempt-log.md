@@ -79,6 +79,25 @@ Where the spin matters: it is the time between the first eye's queries and the s
 | occluder flush + queries (code 5) | 0.2 | 0.2 |
 | query results (code 6) | 0.02 | 0.03 |
 
+## The real-headset session (19:22, the PS VR2 back; the player in the headset, then away with it still)
+
+| # | when | lever / change | measured | verdict |
+|---|---|---|---|---|
+| 26 | 19:24 | the launch itself | BIOEngine.ini had `DynamicShadows=True`, `FoliageDrawRadiusMultiplier=1.0` again (identical to the 17:12 backup; the tool's values gone), GamerSettings still `False` / `0.25`; render 8.3 + 8.1 ms per render, 10.8 ms a frame (p90 11.8), draws 2084, GPU 4.9 | the engine ini is rewritten: the game writes its [SystemSettings] back (after each `scale set` at least: the file's stamp followed the command); whatever reset them at launch, a file edit can't be trusted |
+| 27 | 19:25 | `scale set DynamicShadows False`, `scale set FoliageDrawRadiusMultiplier 0.25`, live | per render 4.0 + 4.9 ms; the frame still 10.8 (p90 11.6-12.4) with the player looking at more (2234-3188 draws); BIOEngine.ini rewritten with the values at 19:25:15 | the per-render costs fell as on the fake headset; the frame sits at the budget at this spot |
+| 28 | 19:27 | render thread stack sample, the player moving | SceneRender 72% (InitViews 57%: Umbra resolve 31%, UE3 occlusion 9%; base pass 26%), RHIEndDrawingViewport 14%, GetQueryData self 9% | the known shape; a moving head doesn't change it |
+| 29 | 19:30 | eye snapshots while the player looked around: Kaidan and a structure "missing" in the left eye | **misread**: in the right eye they were at 39-53 degrees right, beyond the left eye's 43.4 degree edge (the PS VR2's eye frusta are asymmetric: left -61.5/+43.4, right -43.4/+61.5). Both eyes carry the same frame number and head pose in the JSON, so a snapshot pair is one frame; compare positions in tangent space, not pixels | no eye disagreement shown |
+| 30 | 19:32 | `TOGGLEOCCLUSION` with the player watching | the "flicker" stayed; eye 1's query reads 10479 a frame (10325 without a result), 1.4 ms of results: Umbra's reads break like the per-eye state (attempt 17) | reverted at 19:44 |
+| 31 | 19:36 | **the "shimmer every few seconds on the floor"**: 8 snapshots with the headset still on the desk, unpaused: 4 of 8 frames smeared in a wavy diagonal blur (both eyes), the rest sharp, alternating every ~3-6 s; `scale set MotionBlur False` → every frame sharp (paused, 0.0% change frame to frame); `True` again, paused → the **left eye only** blurred in 4 of 5 frames, the right sharp | **motion blur**: BIOEngine.ini `MotionBlur=True` wins over GamerSettings' `False` (same as the shadows); with one view state the "previous frame" matrix the blur's velocity comes from is the other eye's, 6.3 cm away, so near things (the floor, the hands) smear in one eye and not the other. Off for good: the mod applies it (below) |
+| 32 | 19:41-19:44 | replay of the player's 20 s head recording with 8 snapshots each, UE3 occlusion off / Umbra culling off | no eye disagreement in either set (the arm "discrepancy" at 480 px was parallax of a 40 cm object: full-size crops agree) | neither culling system shows a per-eye miss on this save's spot |
+| 33 | 19:50 | `game/SystemSettings`: the mod runs `scale set DynamicShadows False`, `MotionBlur False`, `FoliageDrawRadiusMultiplier 0.5` once a local player exists (and on a change of `[SystemSettings]` in `ASI\LE1MEVR.ini`, which overrides any key; `apply = 0` off) | hot-reloaded into the running game | the settings no longer depend on which file the launch leaves behind |
+
+What the player described and what each was: "shimmering on the floor every few seconds" = motion blur from the other eye's
+matrix (31); "foliage pops in close" = `FoliageDrawRadiusMultiplier` 0.25 (now 0.5); "hands flicker in and out" = most
+likely the same blur (a 40 cm object smears to nothing in one eye); "CPU timing poor" = the render thread at 10.8 ms median
+with 1 frame in 10 late (27). HDR: with `DynamicRange_HDR10_Float` and no Windows HDR on the desktop the game's backbuffer
+is `R8G8B8A8_UNORM` (fmt 28): no float source, the tonemap idle (research/27 7b's [verify] answered: Windows HDR is needed).
+
 ## Standing conclusions
 
 - The render thread is the limit at every spot; the GPU only matters at p90 in heavy views.

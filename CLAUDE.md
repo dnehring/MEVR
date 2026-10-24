@@ -319,12 +319,17 @@ switching frameworks.
   the headset's own eye size (2824x2880 on the user's PS VR2: the GPU was over budget at p90 rendering 18%
   more pixels than displayed, research/22). The deploy installs Halcyon's *release* `MELEVR.ini` (its tuned
   code defaults), not the older `src/halcyon/le1/runtime/MELEVR.ini`, which pins stale values.
-  **BIOEngine.ini's `[SystemSettings]` wins over GamerSettings'** for `DynamicShadows` (measured 2026-10-23,
-  research/35): the tool writes `DynamicShadows=False` and `FoliageDrawRadiusMultiplier=0.25` there too. At a
-  heavy spot those two took the render thread from 9.35 to 6.88 ms and the GPU from 8.4 to 4.9 (the grass
-  costs per instance, twice a frame in stereo; the shadows were drawing despite GamerSettings). The
-  engine's `show <category>` console toggles attribute a frame's cost by category; `scale set <key> <value>`
-  sets a SystemSettings key live (works for those two, not for DetailMode or the LOD distance scales).
+  **BIOEngine.ini's `[SystemSettings]` wins over GamerSettings'** for `DynamicShadows` and `MotionBlur` (measured
+  2026-10-23, research/35), and the game rewrites that file (after every `scale set`; a launch put the defaults
+  back once), so **the mod applies the VR values itself** (`game/SystemSettings`, hot-reloaded): `scale set
+  DynamicShadows False`, `MotionBlur False`, `FoliageDrawRadiusMultiplier 0.5` through the local player's console
+  once a player exists; `[SystemSettings]` in `ASI\LE1MEVR.ini` overrides any key (`apply = 0` off); log `system
+  settings:`. The tool writes the same three into BIOEngine.ini too. At a heavy spot shadows off and the foliage
+  radius took the render thread from 9.35 to 6.88 ms and the GPU from 8.4 to 4.9 (the grass costs per instance,
+  twice a frame in stereo; 0.25 pops the grass in too close); motion blur on smeared one eye and not the other
+  every few seconds (the blur's "previous frame" is the other eye's view: one shared view state). The engine's
+  `show <category>` console toggles attribute a frame's cost by category; `scale set <key> <value>` sets a
+  SystemSettings key live (works for those, not for DetailMode or the LOD distance scales).
 - The mod connects to Windows' active OpenXR runtime (Oculus, or SteamVR for Steam Link). The
   user currently uses Steam Link / SteamVR.
 - The game's D3D11 device is SINGLETHREADED: no deferred contexts, and all D3D/XR work happens

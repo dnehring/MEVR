@@ -60,7 +60,30 @@ std::string Run(APlayerController* pc, std::string const& command) {
     return output;
 }
 
+bool LookUp() {
+    if (!gLookedUp) {
+        gLookedUp = true;
+        gConsoleCommand = engine::FindFunction(L"ConsoleCommand", "Function Engine.PlayerController.ConsoleCommand");
+        if (gConsoleCommand == nullptr) {
+            log::Warn("console: Engine.PlayerController.ConsoleCommand not found: console commands are ignored");
+        }
+    }
+    return gConsoleCommand != nullptr;
+}
+
 } // namespace
+
+bool RunCommand(std::string const& command, std::string* output) {
+    APlayerController* const pc = engine::LocalPlayerController();
+    if (pc == nullptr || !LookUp()) {
+        return false;
+    }
+    std::string const printed = Run(pc, command);
+    if (output != nullptr) {
+        *output = printed;
+    }
+    return true;
+}
 
 void Tick(float deltaSeconds) {
     gSincePoll += deltaSeconds;
@@ -77,13 +100,7 @@ void Tick(float deltaSeconds) {
     if (pc == nullptr) {
         return;  // kept until there is a player
     }
-    if (!gLookedUp) {
-        gLookedUp = true;
-        gConsoleCommand = engine::FindFunction(L"ConsoleCommand", "Function Engine.PlayerController.ConsoleCommand");
-        if (gConsoleCommand == nullptr) {
-            log::Warn("console: Engine.PlayerController.ConsoleCommand not found: console.request is ignored");
-        }
-    }
+    LookUp();
     std::stringstream text;
     {
         std::ifstream in(directory / L"console.request", std::ios::binary);

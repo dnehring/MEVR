@@ -354,10 +354,12 @@ The user: "does VR support HDR? The colour depth is a little lacking."
   the mode; CPU reference `Tone()`; `mevr-colour-preview --check` runs every curve on an HDR ramp through
   `PSTone` against it (one 8-bit step at most); unit tests in `TestTonemap`.
 - **The game's range:** `tools/vr-game-settings.ps1 -Hdr` writes `DesiredRange = DynamicRange_HDR10_Float`
-  (`-Sdr` back; a later apply keeps the choice). **[verify]** that the float backbuffer comes without
-  Windows' HDR switch on the desktop (research/13 saw it with Windows HDR on; the explicit range may not
-  need it), what the paper white probe reports, the GPU cost of the float backbuffer, and the look in the
-  headset against the SDR picture.
+  (`-Sdr` back; a later apply keeps the choice). **Verified 2026-10-23 (the PS VR2 session, research/35
+  attempt 26):** with the explicit range and Windows' HDR switch off on the desktop the game still creates an
+  `R8G8B8A8_UNORM` backbuffer (`[HDRBLIT] backbuffer format 0 -> 28`, "encoded source, raw"): no float source,
+  the tonemap idle. The float backbuffer needs Windows HDR on for the monitor the game window is on (as
+  research/13 saw), or a hook that answers the game's HDR-support query itself (not done). Still open: the
+  paper white probe's value, the GPU cost of the float backbuffer, and the look in the headset against SDR.
 - **10-bit eyes:** not done; worth asking SteamVR for `R10G10B10A2_UNORM` swapchains once the tonemap is
   judged, for the banding the dither hides today.
 

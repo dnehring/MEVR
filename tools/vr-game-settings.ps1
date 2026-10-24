@@ -28,7 +28,7 @@
 #   DynamicShadows=False  Halcyon's default; the scene renders twice per frame. Written to BIOEngine.ini too: its
 #                     [SystemSettings] value wins over GamerSettings' (measured 2026-10-23: with False in GamerSettings and
 #                     True in BIOEngine.ini the game still drew 366 shadow draws a frame, 0.6 ms; research/35).
-#   FoliageDrawRadiusMultiplier=0.25 (BIOEngine.ini too)  Eden Prime's grass costs 2.4 ms of render thread and 3.1 ms of
+#   FoliageDrawRadiusMultiplier=0.5 (BIOEngine.ini too; 0.25 pops the grass in too close)  Eden Prime's grass costs 2.4 ms of render thread and 3.1 ms of
 #                     GPU a frame at full radius for 90 draws (per-instance work, twice per frame in stereo); a quarter
 #                     radius keeps the near grass and saves 1.7 ms CPU and 1 ms GPU (research/35).
 #   BIOEngine.ini SmoothFrameRate=FALSE  otherwise the game caps itself at 60 fps.
@@ -112,10 +112,10 @@ if ($Game -eq 'LE1') {
     $wanted['SystemSettings']['BorderlessWindow'] = 'True'
     $wanted['SystemSettings']['Fullscreen'] = 'False'
     $wanted['SystemSettings']['DynamicShadows'] = 'False'
-    $wanted['SystemSettings']['FoliageDrawRadiusMultiplier'] = '0.25'
+    $wanted['SystemSettings']['FoliageDrawRadiusMultiplier'] = '0.5'
 }
 # BIOEngine.ini [SystemSettings] keys that must be set there as well (its value wins over GamerSettings').
-$engineWanted = [ordered]@{ DynamicShadows = 'False'; FoliageDrawRadiusMultiplier = '0.25' }
+$engineWanted = [ordered]@{ DynamicShadows = 'False'; MotionBlur = 'False'; FoliageDrawRadiusMultiplier = '0.5' }
 
 function Show-Values([string]$Text) {
     foreach ($section in $wanted.Keys) {

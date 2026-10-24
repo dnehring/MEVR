@@ -31,6 +31,7 @@
 #include "game/CameraProbe.hpp"
 #include "game/Comfort.hpp"
 #include "game/ConsoleRequest.hpp"
+#include "game/SystemSettings.hpp"
 #include "game/GamepadBridge.hpp"
 #include "game/GamepadMapping.hpp"
 #include "game/HandAim.hpp"
@@ -848,6 +849,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     }
     PollHotkeys();
     game::console_request::Tick(deltaSeconds);  // the test loop's console.request (research/22)
+    game::system_settings::Tick(deltaSeconds);  // shadows, motion blur, foliage radius: `scale set` by the mod (research/35)
     if (!gHooked || !gGamepadHooked) {
         gRetryTimer += deltaSeconds;
         if (gRetryTimer >= kStartupRetrySeconds) {
