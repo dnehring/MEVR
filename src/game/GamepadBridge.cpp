@@ -97,7 +97,7 @@ bool AlreadyHooked(void* target) {
     return false;
 }
 
-void Hook(::LESDK::Initializer& init, void* target, std::string name) {
+void Hook(hook::Context& init, void* target, std::string name) {
     if (target == nullptr || AlreadyHooked(target) || gSlotCount >= kMaxSlots) {
         return;
     }
@@ -118,7 +118,7 @@ void Hook(::LESDK::Initializer& init, void* target, std::string name) {
 
 } // namespace
 
-bool TryInstall(::LESDK::Initializer& init) {
+bool TryInstall(hook::Context& init) {
     for (char const* dll : kDlls) {
         HMODULE const module = GetModuleHandleA(dll);
         if (module == nullptr) {
@@ -130,7 +130,7 @@ bool TryInstall(::LESDK::Initializer& init) {
     return gSlotCount > 0;
 }
 
-bool Uninstall(::LESDK::Initializer& init) {
+bool Uninstall(hook::Context& init) {
     bool removed = true;
     for (std::size_t i = 0; i < gSlotCount; ++i) {
         if (!hook::Uninstall(init, gSlots[i].name.c_str())) {

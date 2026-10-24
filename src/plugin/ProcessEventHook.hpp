@@ -3,11 +3,13 @@
 
 #include <cstdint>
 
-class UFunction;
-class UObject;
+namespace mevr::ue3 {
+struct Object;
+struct Function;
+}
 
-namespace LESDK {
-class Initializer;
+namespace mevr::hook {
+class Context;
 }
 
 // UObject::ProcessEvent, hooked once by the host at attach and never removed. The mod's handlers
@@ -16,12 +18,12 @@ class Initializer;
 // reload and at exit) would undo its hook or crash LEBinkProxy's hook chain walk.
 namespace mevr::host::process_event {
 
-using Callback = void (*)(UObject* context, UFunction* function, void* parms, void* result);
+using Callback = void (*)(ue3::Object* context, ue3::Function* function, void* parms, void* result);
 
 // How long clearing the callback waits for calls still inside it, by default.
 inline constexpr std::uint32_t kDrainWaitMs = 500;
 
-bool Install(::LESDK::Initializer& init);
+bool Install(hook::Context& init);
 
 // Runs after the original, on whichever thread called ProcessEvent. Clearing waits (up to
 // `waitMs`; 0 doesn't wait) until no thread is inside the old callback, so its module can be

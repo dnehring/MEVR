@@ -5,9 +5,6 @@
 #include "core/Log.hpp"
 #include "plugin/DrawReplay.hpp"
 
-#include <LESDK/Headers.hpp>
-#include <LESDK/Init.hpp>
-
 #include <Windows.h>
 #include <intrin.h>
 
@@ -914,15 +911,15 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
 
 } // namespace
 
-bool Install(::LESDK::Initializer& init) {
-    auto* const sceneRender = init.ResolveTyped<tSceneRender>(::LESDK::Address::FromOffset(kSceneRenderRva));
-    auto* const command = init.ResolveTyped<tCommand>(::LESDK::Address::FromOffset(kCommanderCommandRva));
+bool Install(hook::Context& init) {
+    auto* const sceneRender = init.ResolveTyped<tSceneRender>(kSceneRenderRva);
+    auto* const command = init.ResolveTyped<tCommand>(kCommanderCommandRva);
     if (sceneRender == nullptr || command == nullptr) {
         log::Warn("render levers: addresses not resolved; levers off");
         return false;
     }
-    gExe = init.ResolveTyped<std::uint8_t>(::LESDK::Address::FromOffset(0));
-    auto* const deleteRenderer = init.ResolveTyped<tDeleteRenderer>(::LESDK::Address::FromOffset(kDeleteRendererRva));
+    gExe = init.ResolveTyped<std::uint8_t>(0);
+    auto* const deleteRenderer = init.ResolveTyped<tDeleteRenderer>(kDeleteRendererRva);
     // The deleter first: its detour passes everything through until sharePass keeps a renderer.
     gShareHooked = gExe != nullptr && deleteRenderer != nullptr &&
         hook::Install(init, "FSceneRenderer::DeletingDestructor", deleteRenderer, &DeleteRendererHook, gDeleteRendererOrig);
@@ -938,13 +935,13 @@ bool Install(::LESDK::Initializer& init) {
     if (!gCommanderHooked) {
         log::Warn("render levers: commander hook failed; the Umbra resolve isn't timed and umbraQueryWait has no effect");
     }
-    auto* const getQueryData = init.ResolveTyped<tGetQueryData>(::LESDK::Address::FromOffset(kGetQueryDataRva));
+    auto* const getQueryData = init.ResolveTyped<tGetQueryData>(kGetQueryDataRva);
     gQueryDataHooked = getQueryData != nullptr &&
         hook::Install(init, "FD3D11DynamicRHI::GetQueryData", getQueryData, &GetQueryDataHook, gGetQueryDataOrig);
     if (!gQueryDataHooked) {
         log::Warn("render levers: GetQueryData hook failed; ue3QueryWait has no effect");
     }
-    auto* const umbraIssue = init.ResolveTyped<tUmbraIssueQueries>(::LESDK::Address::FromOffset(kUmbraIssueQueriesRva));
+    auto* const umbraIssue = init.ResolveTyped<tUmbraIssueQueries>(kUmbraIssueQueriesRva);
     gUmbraIssueQueriesHooked = umbraIssue != nullptr &&
         hook::Install(init, "UmbraCommander::IssueOcclusionQueries", umbraIssue, &UmbraIssueQueriesHook, gUmbraIssueQueriesOrig);
     if (!gUmbraIssueQueriesHooked) {
@@ -952,7 +949,7 @@ bool Install(::LESDK::Initializer& init) {
     }
     // Not installed: a second render on commander 1 blocks in Umbra's command ring (research/35, attempt 20).
     (void)&SetCommanderHook;
-    auto* const lightTargets = init.ResolveTyped<tDpgLightTargets>(::LESDK::Address::FromOffset(kDpgLightTargetsRva));
+    auto* const lightTargets = init.ResolveTyped<tDpgLightTargets>(kDpgLightTargetsRva);
     gReplayHooked = gShareHooked && lightTargets != nullptr &&
         hook::Install(init, "FSceneRenderer::RenderDpgLightTargets", lightTargets, &DpgLightTargetsHook, gDpgLightTargetsOrig);
     if (!gReplayHooked) {

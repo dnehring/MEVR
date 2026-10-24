@@ -14,8 +14,10 @@
 #include <atomic>
 #include <cstdint>
 
-class UFunction;
-class UObject;
+namespace mevr::ue3 {
+struct Object;
+struct Function;
+}
 
 namespace mevr::host::crash {
 
@@ -48,7 +50,7 @@ void AppendObject(text::Appender& out, void const* object);
 
 // HostServices v18 (mod/ModApi.hpp).
 void RecordWrite(char const* tag, void const* address, std::uint32_t size, std::uint64_t value);
-std::uint64_t BeginScriptCall(UFunction* function, UObject* object);
+std::uint64_t BeginScriptCall(ue3::Function* function, ue3::Object* object);
 void EndScriptCall(std::uint64_t token);
 
 } // namespace mevr::host::crash

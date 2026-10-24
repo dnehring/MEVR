@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: MIT
 #include "engine/ReflectCheck.hpp"
 
+#include "core/Exe.hpp"
+#include "core/Hook.hpp"
 #include "core/Log.hpp"
 #include "core/vr/TestRequest.hpp"
+#include "engine/Addresses.hpp"
 #include "engine/Engine.hpp"
 #include "engine/GameAdapter.hpp"
 #include "engine/Skeleton.hpp"
@@ -434,6 +437,49 @@ void CheckGlobals(::LESDK::Initializer& init) {
             std::format("RVA {}, [0x14] RVA {}", Hex(rva), Hex(letBool != 0 ? static_cast<long long>(letBool - found.module) : -1)),
             std::format("RVA {}", Hex(static_cast<long long>(sdk - found.module))));
     });
+}
+
+// Stage 4 (research/34): our RVA table (engine/Addresses.hpp, checked by core/Exe in this DLL at mod startup).
+// `rva` rows: the seven addresses LExSDKv2 also has a built-in for, our constant and the address core/Exe resolves
+// against LExSDKv2's (the same address, and at its RVA in the running exe). `exe` rows: every entry of the table as
+// this DLL's check found it (at its RVA, by its bytes, hooked by another module or by structure only; a moved or
+// missing one disagrees).
+void CheckRvas(::LESDK::Initializer& init) {
+    std::uintptr_t const base = exe::Base();
+    auto const rvaText = [base](void const* address) {
+        auto const a = reinterpret_cast<std::uintptr_t>(address);
+        return address != nullptr ? Hex(static_cast<long long>(a - base)) : std::string("none");
+    };
+    struct Item {
+        char const* what;
+        std::uint32_t ours;
+        ::LESDK::Address sdk;
+    };
+    Item const items[] = {
+        {"UObject::ProcessEvent", addresses::kProcessEvent, BUILTIN_PROCESSEVENT_RVA},
+        {"UObject::CallFunction", addresses::kCallFunction, BUILTIN_CALLFUNCTION_RVA},
+        {"UGameEngine::Tick", addresses::kGameEngineTick, BUILTIN_GAMEENGINETICK_RVA},
+        {"GNatives", addresses::kGNatives, BUILTIN_GNATIVES_RVA},
+        {"GObjects", addresses::kGObjects, BUILTIN_GOBJECTS_RVA},
+        {"the name pools", addresses::kNamePools, BUILTIN_SFXNAMEPOOLS_RVA},
+        {"GMalloc", addresses::kGMalloc, BUILTIN_GMALLOC_RVA},
+    };
+    for (Item const& item : items) {
+        void* const ours = exe::Resolve(item.ours);
+        void* const sdk = init.Resolve(item.sdk);
+        exe::Result const* const result = exe::Find(item.ours);
+        bool const checked = result != nullptr && exe::AtItsRva(result->status);
+        Add("rva", item.what, ours != nullptr && ours == sdk && checked,
+            std::format("RVA {}, resolved to {} ({})", Hex(item.ours), rvaText(ours),
+                result != nullptr ? exe::StatusText(result->status) : "not in our RVA table"),
+            std::format("RVA {}", rvaText(sdk)));
+    }
+    for (exe::Result const& r : exe::Results()) {
+        Add("exe", std::format("{} ({})", r.entry->name, exe::KindText(r.entry->kind)),
+            exe::AtItsRva(r.status) && r.found == r.entry->rva,
+            std::format("RVA {}: {}{}", Hex(r.entry->rva), exe::StatusText(r.status), r.why.empty() ? "" : " (" + r.why + ")"),
+            std::format("our table ({})", r.entry->user));
+    }
 }
 
 void CheckTypes() {
@@ -1086,7 +1132,9 @@ void Write(int agree, int mismatches, int notReflected) {
 
 } // namespace
 
-void Run(::LESDK::Initializer& init) {
+void Run(hook::Context& context) {
+    // LExSDKv2's resolver for its BUILTIN_*_RVA (the reference side only; FromOffset never calls the interface).
+    ::LESDK::Initializer init{reinterpret_cast<ISharedProxyInterface*>(context.Spi()), MEVR_GAME_NAME_A "MEVRreference"};
     gRows.clear();
     if (!ResolveSdkGlobals(init)) {
         log::Warn("reflect: self-check skipped: LExSDKv2's globals (the reference) didn't resolve");
@@ -1106,6 +1154,7 @@ void Run(::LESDK::Initializer& init) {
     QueryPerformanceCounter(&start);
     CheckLayout();
     CheckGlobals(init);
+    CheckRvas(init);
     CheckTypes();
     CheckClasses();
     CheckFields();
@@ -1150,7 +1199,7 @@ void Run(::LESDK::Initializer& init) {
 
 #else
 
-void Run(::LESDK::Initializer&) {}
+void Run(hook::Context&) {}
 
 #endif
 

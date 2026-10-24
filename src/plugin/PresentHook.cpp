@@ -4,8 +4,6 @@
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
 
-#include <LESDK/Init.hpp>
-
 #include <d3d11.h>
 #include <dxgi.h>
 #include <wrl/client.h>
@@ -78,7 +76,7 @@ void* FindPresent() {
 
 } // namespace
 
-bool Install(::LESDK::Initializer& init) {
+bool Install(hook::Context& init) {
     void* const target = FindPresent();
     if (target == nullptr) {
         log::Error("present hook: couldn't locate IDXGISwapChain::Present");

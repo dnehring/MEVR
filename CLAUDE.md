@@ -144,7 +144,8 @@ switching frameworks.
   `Mod.cpp` retries every second before installing the ProcessEvent hook (LE1: `ue3::runtime::Init`, then
   `Engine.Camera.UpdateCamera` through our reflection layer, research/34 stage 3; LE2/LE3: `engine/Legacy`).
   Engine reads go through `src/ue3/` (handles, `Params`); new LExSDKv2 use belongs only in `engine/Legacy`,
-  ReflectCheck's reference side and the hook plumbing until stages 4-6 remove it.
+  ReflectCheck's reference side until stage 6 removes it (the hooks and RVAs are ours since stage 4: `core/Hook`'s
+  `hook::Context`, every raw address in `engine/Addresses.hpp`, research/34).
 - Hotkeys: not F-keys (bound in game), not backtick (UE console). `]` toggles VR (the XR
   session) on and off, and with it every VR feature: once a session runs, alternate-eye stereo,
   6DOF, hand aim and arm IK all come on; VR off turns them off. The rest are dev overrides:
@@ -352,7 +353,10 @@ switching frameworks.
 - Our targets build with `/W4 /WX /permissive`. The SDK's generated code emits warnings
   (C4315, C4789) that aren't ours.
 - The LExSDKv2 submodule tracks the `RVA` branch (hardcoded RVAs for 2.0.0.48602). The plugin
-  fails closed on any other exe version.
+  fails closed on any other exe version, and (since research/34 stage 4) unless every address in
+  `engine/Addresses.hpp` is where the table says (`core/Exe`: .pdata bounds and byte patterns; the log names each one
+  that moved). A new raw address goes in that table with a pattern (`tools/rva-patterns.py`); ctest `mevr-rva-table`
+  fails if a `k...Rva` constant isn't in it.
 
 ## Test loop (LE1): see what the headset shows, replay a session
 

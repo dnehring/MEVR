@@ -1146,6 +1146,19 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       has no UStruct.Script yet); the rest of it is as before.
     - Load a save (a level change) and check arm IK picks the new pawn up within a second.
 
+34. **Our own hooks and address table (new, 2026-10-23; HOST REDEPLOY; research/34 stage 4).** The host and the mod
+    hook through our own `hook::Context` instead of LExSDKv2's, and every raw address in the exe is in one table
+    (`engine/Addresses.hpp`) checked at attach. Nothing should look or feel different. Do it with steps 32-33.
+    - **LE1MEVR.log at attach:** `game version 2.0.0.48602 OK; 39 of 39 addresses at their RVAs (...)`. If instead it
+      says `our RVA table doesn't match it (...); VR disabled`, the game is untouched: send Claude the log (the line
+      names each address and why).
+    - The mod's start: one `exe (mod):` summary line (some entries `hooked by another module`: that's the host's and
+      Halcyon's own hooks, expected), then `reflect: N of N checks agree` with **469 rows** (423 + 7 `rva` rows
+      comparing our four engine functions and three globals with LExSDKv2's + 39 `exe` rows); `"mismatches": 0`.
+    - The hook lines as before (`hooked UObject::ProcessEvent (host-owned)`, the tick, ExitProcess, the render
+      levers' `render levers:` lines); no `no SPI interface from the loader` warning with LEBinkProxy or our loader.
+    - Smoke test: hot reload still works (rebuild the mod once while in game), and quitting from the menu closes cleanly.
+
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR
   loader (MEVR)`, its pacing lines.

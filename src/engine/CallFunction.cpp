@@ -3,9 +3,7 @@
 
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
-
-// Only the hook's target and context (BUILTIN_CALLFUNCTION_RVA, LESDK::Initializer): research/34 stage 4.
-#include <LESDK/Init.hpp>
+#include "engine/Addresses.hpp"
 
 #include <atomic>
 #include <vector>
@@ -18,12 +16,11 @@ namespace {
 constexpr char const* kHookName = "UObject::CallFunction";
 
 // UObject::CallFunction(Stack, Result, Function), as the engine calls it.
-using tCallFunction = void(UObject* context, FFrame* stack, void* result, UFunction* function);
+using tCallFunction = void(ue3::Object* context, FFrame* stack, void* result, ue3::Function* function);
 
 struct Entry {
     void const* function;
-    Handler handler;              // LExSDKv2-typed modules
-    ObjectHandler objectHandler;  // modules on ue3/
+    Handler handler;
 };
 
 // Every script call passes through here, so the lookup is a short pointer scan.
@@ -35,18 +32,14 @@ tCallFunction* gCallFunctionOrig = nullptr;
 std::atomic<BeginCrumb> gBeginCrumb{nullptr};
 std::atomic<EndCrumb> gEndCrumb{nullptr};
 
-void CallFunctionHook(UObject* context, FFrame* stack, void* result, UFunction* function) {
+void CallFunctionHook(ue3::Object* context, FFrame* stack, void* result, ue3::Function* function) {
     gCallFunctionOrig(context, stack, result, function);
     for (Entry const& entry : gHandlers) {
         if (entry.function == function) {
             BeginCrumb const begin = gBeginCrumb.load(std::memory_order_relaxed);
             EndCrumb const end = gEndCrumb.load(std::memory_order_relaxed);
             std::uint64_t const crumb = begin != nullptr ? begin(function, context) : 0;
-            if (entry.handler != nullptr) {
-                entry.handler(context, function, result);
-            } else {
-                entry.objectHandler(reinterpret_cast<ue3::Object*>(context), reinterpret_cast<ue3::Function*>(function), result);
-            }
+            entry.handler(context, function, result);
             if (begin != nullptr && end != nullptr) {
                 end(crumb);
             }
@@ -56,12 +49,8 @@ void CallFunctionHook(UObject* context, FFrame* stack, void* result, UFunction* 
 
 } // namespace
 
-void AddPostHandler(UFunction* function, Handler handler) {
-    gHandlers.push_back({function, handler, nullptr});
-}
-
-void AddPostHandler(ue3::Function* function, ObjectHandler handler) {
-    gHandlers.push_back({function, nullptr, handler});
+void AddPostHandler(ue3::Function* function, Handler handler) {
+    gHandlers.push_back({function, handler});
 }
 
 void ClearHandlers() {
@@ -73,8 +62,8 @@ void SetBreadcrumbs(BeginCrumb begin, EndCrumb end) {
     gBeginCrumb.store(begin);
 }
 
-bool Install(::LESDK::Initializer& init) {
-    auto* const target = init.ResolveTyped<tCallFunction>(BUILTIN_CALLFUNCTION_RVA);
+bool Install(hook::Context& init) {
+    auto* const target = init.ResolveTyped<tCallFunction>(addresses::kCallFunction);
     if (target == nullptr) {
         log::Error("failed to resolve UObject::CallFunction");
         return false;
@@ -88,7 +77,7 @@ bool Install(::LESDK::Initializer& init) {
     return true;
 }
 
-bool Uninstall(::LESDK::Initializer& init) {
+bool Uninstall(hook::Context& init) {
     if (!gInstalled) {
         return true;
     }

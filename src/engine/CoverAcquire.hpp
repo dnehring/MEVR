@@ -3,8 +3,8 @@
 
 #include <cstdint>
 
-namespace LESDK {
-class Initializer;
+namespace mevr::hook {
+class Context;
 }
 
 // The player's cover snapping (research/23). ME1 has no cover button: BioPawn's native tick tests for
@@ -22,9 +22,9 @@ namespace mevr::engine::cover_acquire {
 
 // The hook goes in once (lazily, like engine/bone_pose): false if it couldn't (another game, not a
 // function start, LEBinkProxy refused).
-bool Install(::LESDK::Initializer& init);
+bool Install(hook::Context& init);
 // False: still live (or a call still inside it after waiting), so this module must stay loaded.
-bool Uninstall(::LESDK::Initializer& init, bool waitForCalls);
+bool Uninstall(hook::Context& init, bool waitForCalls);
 bool Installed();
 
 // The pawn whose cover tests are refused (null: none). Game thread.

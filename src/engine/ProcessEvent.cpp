@@ -3,9 +3,7 @@
 
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
-
-// Only the hook's target and context (BUILTIN_PROCESSEVENT_RVA, LESDK::Initializer): research/34 stage 4.
-#include <LESDK/Init.hpp>
+#include "engine/Addresses.hpp"
 
 #include <vector>
 
@@ -16,17 +14,8 @@ constexpr char const* kHookName = "UObject::ProcessEvent";
 
 struct Entry {
     void const* function;
-    Handler handler;              // LExSDKv2-typed modules
-    ObjectHandler objectHandler;  // modules on ue3/
+    Handler handler;
 };
-
-void Run(Entry const& entry, UObject* context, UFunction* function, void* parms, void* result) {
-    if (entry.handler != nullptr) {
-        entry.handler(context, function, parms, result);
-    } else {
-        entry.objectHandler(reinterpret_cast<ue3::Object*>(context), reinterpret_cast<ue3::Function*>(function), parms, result);
-    }
-}
 
 // Matched by pointer: no per-call name lookups (docs/trilogy-design.md, rule 5).
 std::vector<Entry> gHandlers;
@@ -34,34 +23,30 @@ bool gInstalled = false;
 SetHostCallback gHostSet = nullptr;
 bool gViaHost = false;
 
-using tProcessEvent = void(UObject* context, UFunction* function, void* parms, void* result);
+using tProcessEvent = void(ue3::Object* context, ue3::Function* function, void* parms, void* result);
 tProcessEvent* gProcessEventOrig = nullptr;
 
-void Dispatch(UObject* context, UFunction* function, void* parms, void* result) {
+void Dispatch(ue3::Object* context, ue3::Function* function, void* parms, void* result) {
     for (Entry const& entry : gHandlers) {
         if (entry.function == function) {
-            Run(entry, context, function, parms, result);
+            entry.handler(context, function, parms, result);
         }
     }
 }
 
-void ProcessEventHook(UObject* context, UFunction* function, void* parms, void* result) {
+void ProcessEventHook(ue3::Object* context, ue3::Function* function, void* parms, void* result) {
     gProcessEventOrig(context, function, parms, result);
     for (Entry const& entry : gHandlers) {
         if (entry.function == function) {
-            Run(entry, context, function, parms, result);
+            entry.handler(context, function, parms, result);
         }
     }
 }
 
 } // namespace
 
-void AddPostHandler(UFunction* function, Handler handler) {
-    gHandlers.push_back({function, handler, nullptr});
-}
-
-void AddPostHandler(ue3::Function* function, ObjectHandler handler) {
-    gHandlers.push_back({function, nullptr, handler});
+void AddPostHandler(ue3::Function* function, Handler handler) {
+    gHandlers.push_back({function, handler});
 }
 
 void ClearHandlers() {
@@ -72,14 +57,14 @@ void UseHost(SetHostCallback set) {
     gHostSet = set;
 }
 
-bool Install(::LESDK::Initializer& init) {
+bool Install(hook::Context& init) {
     if (gHostSet != nullptr) {
         gHostSet(&Dispatch);
         gInstalled = gViaHost = true;
         log::Info("ProcessEvent handlers live on the host's hook ({} handlers)", gHandlers.size());
         return true;
     }
-    auto* const target = init.ResolveTyped<tProcessEvent>(BUILTIN_PROCESSEVENT_RVA);
+    auto* const target = init.ResolveTyped<tProcessEvent>(addresses::kProcessEvent);
     if (target == nullptr) {
         log::Error("failed to resolve UObject::ProcessEvent");
         return false;
@@ -93,7 +78,7 @@ bool Install(::LESDK::Initializer& init) {
     return true;
 }
 
-bool Uninstall(::LESDK::Initializer& init) {
+bool Uninstall(hook::Context& init) {
     if (!gInstalled) {
         return true;
     }

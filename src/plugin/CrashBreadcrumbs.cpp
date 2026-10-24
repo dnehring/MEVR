@@ -6,8 +6,6 @@
 #include "engine/GameAdapter.hpp"
 #include "ue3/SafeNames.hpp"
 
-#include <LESDK/Headers.hpp>
-
 #include <Windows.h>
 
 #include <cstddef>
@@ -562,11 +560,13 @@ void Install() {
         gMemory.poolCount = globals->namePoolCount;
         gMemory.objects = gExeBase + globals->objectsRva;
         gMemory.read = &SafeRead;
-        gFrameLayout.node = static_cast<std::uint32_t>(offsetof(FFrame, Node));
-        gFrameLayout.object = static_cast<std::uint32_t>(offsetof(FFrame, Object));
-        gFrameLayout.code = static_cast<std::uint32_t>(offsetof(FFrame, Code));
-        gFrameLayout.previous = static_cast<std::uint32_t>(offsetof(FFrame, PreviousFrame));
-        gFrameLayout.structScript = static_cast<std::uint32_t>(offsetof(UStruct, Script));  // the SDK's [verify]
+        // FFrame (FOutputDevice's vtable, three DWORDs (four on LE3, still ending at 0x18), then Node, Object, Code,
+        // Locals, PreviousFrame): the same offsets in all three games. UStruct's Script (TArray<BYTE>) at 0x7C [verify].
+        gFrameLayout.node = 0x18;
+        gFrameLayout.object = 0x20;
+        gFrameLayout.code = 0x28;
+        gFrameLayout.previous = 0x38;
+        gFrameLayout.structScript = 0x7C;
         gFrameLayout.vtableLo = rdataLo;
         gFrameLayout.vtableHi = rdataHi;
         gNamed = true;
@@ -591,7 +591,7 @@ void RecordWrite(char const* tag, void const* address, std::uint32_t size, std::
     gWrites.Record(tag, address, size, value);
 }
 
-std::uint64_t BeginScriptCall(UFunction* function, UObject* object) {
+std::uint64_t BeginScriptCall(ue3::Function* function, ue3::Object* object) {
     return gScriptCalls.Begin(function, object, breadcrumbs::State::Mod);
 }
 

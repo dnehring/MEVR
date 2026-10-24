@@ -3,6 +3,7 @@
 
 #if !defined(MEVR_GAME_LE1)
 
+#include "core/Hook.hpp"
 #include "core/Log.hpp"
 #include "engine/GameAdapterSdk.hpp"
 
@@ -68,7 +69,10 @@ std::string SdkFullName(UObject* object) {
 
 } // namespace
 
-bool Init(::LESDK::Initializer& init) {
+bool Init(hook::Context& context) {
+    // LExSDKv2's resolver for its BUILTIN_*_RVA (FromOffset: the main module's base plus the offset; the interface
+    // pointer is only kept, never called for those).
+    ::LESDK::Initializer init{reinterpret_cast<ISharedProxyInterface*>(context.Spi()), MEVR_GAME_NAME_A "MEVRlegacy"};
     bool ok = true;
     ok &= Resolve(init, BUILTIN_GMALLOC_RVA, GMalloc, "GMalloc");
     ok &= Resolve(init, BUILTIN_GOBJECTS_RVA, UObject::GObjObjects, "GObjObjects");

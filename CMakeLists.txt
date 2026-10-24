@@ -109,7 +109,18 @@ if (MEVR_MAIN_MENU)
     target_link_options(MEVR-Setup PRIVATE /ENTRY:wWinMainCRTStartup /DEBUG)
 endif ()
 
-# Halcyon's LE1 VR renderer (GPL-3.0, src/halcyon/le1) with its vendored MinHook and Dear ImGui.
+# MinHook (BSD-2, third_party/minhook): one static library for every target that hooks with it: our loader, core/Hook's
+# fallback when no SPI loader attached us (host and mod), and Halcyon's renderer (so the LE1 host has one MinHook).
+add_library(mevr-minhook STATIC
+    third_party/minhook/src/buffer.c
+    third_party/minhook/src/hde/hde64.c
+    third_party/minhook/src/hook.c
+    third_party/minhook/src/trampoline.c
+)
+target_include_directories(mevr-minhook PUBLIC third_party/minhook/include)
+target_compile_options(mevr-minhook PRIVATE /W3)
+
+# Halcyon's LE1 VR renderer (GPL-3.0, src/halcyon/le1) with its vendored MinHook (mevr-minhook) and Dear ImGui.
 # It runs inside the LE1 host: OpenXR session, Present path, stereo, first person, HUD, menu.
 option(MEVR_HALCYON "Use Halcyon's renderer for LE1" ON)
 set(HALCYON_LE1_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/halcyon/le1)
@@ -128,14 +139,9 @@ add_library(halcyon-le1 STATIC
     third_party/imgui/imgui_tables.cpp
     third_party/imgui/imgui_widgets.cpp
     third_party/imgui/backends/imgui_impl_dx11.cpp
-    third_party/minhook/src/buffer.c
-    third_party/minhook/src/hde/hde64.c
-    third_party/minhook/src/hook.c
-    third_party/minhook/src/trampoline.c
 )
 target_include_directories(halcyon-le1 PUBLIC
     ${HALCYON_LE1_DIR}
-    third_party/minhook/include
     third_party/imgui
     third_party/imgui/backends
 )
@@ -144,11 +150,19 @@ set_target_properties(halcyon-le1 PROPERTIES CXX_STANDARD 17)
 target_compile_definitions(halcyon-le1 PRIVATE WIN32 _WINDOWS UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS
     MELEVR_EXPORTS MEVR_ASI)
 target_compile_options(halcyon-le1 PRIVATE /W3 /utf-8 /Zi)
-target_link_libraries(halcyon-le1 PUBLIC d3d11 dxgi Shell32 Ole32)
+target_link_libraries(halcyon-le1 PUBLIC mevr-minhook d3d11 dxgi Shell32 Ole32)
 
 set(MEVR_CORE_SOURCES
+    src/core/Exe.cpp
+    src/core/Exe.hpp
+    src/core/ExeCheck.cpp
+    src/core/ExeCheck.hpp
     src/core/Hook.cpp
     src/core/Hook.hpp
+    src/engine/Addresses.hpp
+    src/loader/SpiAbi.hpp
+    src/ue3/Pattern.cpp
+    src/ue3/Pattern.hpp
     src/core/Log.cpp
     src/core/Log.hpp
     src/core/Window.cpp
@@ -332,8 +346,6 @@ set(MEVR_MOD_SOURCES
     src/ue3/Names.hpp
     src/ue3/Params.cpp
     src/ue3/Params.hpp
-    src/ue3/Pattern.cpp
-    src/ue3/Pattern.hpp
     src/ue3/Reflect.cpp
     src/ue3/Reflect.hpp
     src/ue3/Runtime.cpp
@@ -341,9 +353,14 @@ set(MEVR_MOD_SOURCES
     src/ue3/Types.hpp
 )
 
+# NO_SDK: a target that doesn't link LExSDKv2 (the hot-reload host since research/34 stage 4; everything at stage 6).
 function(mevr_configure target game)
+    cmake_parse_arguments(PARSE_ARGV 2 arg "NO_SDK" "" "")
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_link_libraries(${target} PRIVATE LESDK-${game} version d3d11 dxgi)
+    if (NOT arg_NO_SDK)
+        target_link_libraries(${target} PRIVATE LESDK-${game})
+    endif ()
+    target_link_libraries(${target} PRIVATE mevr-minhook version d3d11 dxgi)
     target_compile_definitions(${target} PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX MEVR_GAME_${game})
     # Same warning policy as the SDK's own consumers; the generated headers need /permissive.
     target_compile_options(${target} PRIVATE /W4 /WX /permissive /utf-8 /Zc:__cplusplus /Zi
@@ -489,8 +506,10 @@ function(mevr_add_plugin game)
                 src/plugin/MainMenuSettings.hpp src/plugin/SetupRequest.cpp src/plugin/SetupRequest.hpp src/core/Json.cpp src/core/Json.hpp)
         endif ()
     endif ()
+    set(host_sdk "")
     if (MEVR_HOT_RELOAD)
         add_library(${host} SHARED ${host_sources})
+        set(host_sdk NO_SDK)  # nothing in the host includes LExSDKv2 since research/34 stage 4
 
         set(mod MEVR-${game}-mod)
         add_library(${mod} SHARED ${MEVR_MOD_SOURCES} ${MEVR_CORE_SOURCES})
@@ -516,7 +535,7 @@ function(mevr_add_plugin game)
         target_link_libraries(${host} PRIVATE mevr-menu)
         target_compile_definitions(${host} PRIVATE MEVR_WITH_MAIN_MENU)
     endif ()
-    mevr_configure(${host} ${game})
+    mevr_configure(${host} ${game} ${host_sdk})
     set_target_properties(${host} PROPERTIES OUTPUT_NAME "${game}MEVR" SUFFIX ".asi")
 endfunction()
 
@@ -560,16 +579,8 @@ target_compile_options(mevr-install PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cp
 
 # Our own ASI loader (src/loader, research/33): bink2w64.dll, a proxy for RAD's Bink DLL that forwards every export to
 # bink2w64_original.dll and loads Binaries\Win64\ASI\*.asi, offering LExSDKv2-based plugins the SPI interface they
-# expect. Our own new code (MIT; no LEBinkProxy code), MinHook (BSD-2) for the hooks, no LExSDKv2. The setup app installs
-# it when no ASI loader is there (ME3Tweaks' LEBinkProxy, if installed, is used instead).
-add_library(mevr-minhook STATIC
-    third_party/minhook/src/buffer.c
-    third_party/minhook/src/hde/hde64.c
-    third_party/minhook/src/hook.c
-    third_party/minhook/src/trampoline.c
-)
-target_include_directories(mevr-minhook PUBLIC third_party/minhook/include)
-target_compile_options(mevr-minhook PRIVATE /W3)
+# expect. Our own new code (MIT; no LEBinkProxy code), MinHook (BSD-2, mevr-minhook above) for the hooks, no LExSDKv2.
+# The setup app installs it when no ASI loader is there (ME3Tweaks' LEBinkProxy, if installed, is used instead).
 add_library(MEVR-Loader SHARED
     src/loader/Loader.cpp
     src/loader/Loader.rc
@@ -595,6 +606,11 @@ if (MEVR_BUILD_TESTS)
         src/loader/LoaderCore.cpp
         tests/ReflectTests.cpp
         tests/BreadcrumbTests.cpp
+        tests/ExeTests.cpp
+        src/core/Exe.cpp
+        src/core/ExeCheck.cpp
+        src/core/Hook.cpp
+        src/core/Log.cpp
         src/ue3/Memory.cpp
         src/ue3/Names.cpp
         src/ue3/SafeNames.cpp
@@ -642,10 +658,16 @@ if (MEVR_BUILD_TESTS)
         src/game/HeadSim.cpp
     )
     target_include_directories(mevr-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_link_libraries(mevr-tests PRIVATE mevr-install OpenXR::headers windowscodecs ole32)
+    target_link_libraries(mevr-tests PRIVATE mevr-install mevr-minhook OpenXR::headers windowscodecs ole32)
     target_compile_definitions(mevr-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_test(NAME mevr-tests COMMAND mevr-tests)
+    # Every `k...Rva = 0x...` constant in src/ is in our RVA table (engine/Addresses.hpp, research/34 stage 4).
+    find_package(Python3 COMPONENTS Interpreter)
+    if (Python3_Interpreter_FOUND)
+        add_test(NAME mevr-rva-table COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-rva-table.py
+            ${CMAKE_CURRENT_SOURCE_DIR})
+    endif ()
 
     # Our ASI loader in a tiny host process (tools/loader-test, research/33): a folder like the game's Win64 with our
     # bink2w64.dll, a stand-in bink2w64_original.dll (the same 79 export names) and a test ASI built against

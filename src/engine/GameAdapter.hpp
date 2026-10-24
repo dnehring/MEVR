@@ -8,6 +8,7 @@
 //
 // The game comes from MEVR_GAME_LE1/2/3 (CMake, mevr_configure).
 
+#include "engine/Addresses.hpp"
 #include "ue3/Layout.hpp"
 
 #include <cstdint>
@@ -117,14 +118,14 @@ struct ReflectionGlobals {
 inline std::optional<ReflectionGlobals> ReflectionGlobalsForGame() {
 #if defined(MEVR_GAME_LE1)
     ReflectionGlobals g;
-    g.objectsRva = 0x1770670;
+    g.objectsRva = addresses::kGObjects;  // the RVAs: engine/Addresses.hpp
     // UObject's destructor, where it loads GObjects to clear the object's slot (research/34).
     g.objectsPattern = {"48 63 4B 08 48 8B 05 ?? ?? ?? ?? 48 C7 04 C8 00 00 00 00 48 8D 53 08 48 8D 0D", 4, 3, 7};
-    g.namePoolsRva = 0x16A2090;
+    g.namePoolsRva = addresses::kNamePools;
     g.namePoolCount = 8;
     // FName::AppendString, where it loads the pool array before splitting the index (research/34).
     g.namePoolsPattern = {"48 8D 15 ?? ?? ?? ?? 48 C1 F8 1D 81 E1 FF FF FF 1F 83 E0 07 48 03 0C C2", 0, 3, 7};
-    g.processEventRva = 0x12DD20;
+    g.processEventRva = addresses::kProcessEvent;
     return g;
 #else
     return std::nullopt;
@@ -133,15 +134,12 @@ inline std::optional<ReflectionGlobals> ReflectionGlobalsForGame() {
 
 // GNatives, the bytecode handler table (UObject::GNatives[EX_Max], 0x1000 entries; research/34 section 2.1
 // reads execLetBool as its entry 0x14). The RVA is the one engine/skeleton's diagnostic has used since research/14
-// (LExSDKv2's BUILTIN_GNATIVES_RVA), not yet re-read in our Ghidra pass [verify]: the self-check's `global
+// (LExSDKv2's BUILTIN_GNATIVES_RVA); since stage 4 an entry of engine/Addresses.hpp whose pattern (an instruction
+// that loads it, `lea rcx, [GNatives]` before an indexed read) proves it at attach. The self-check's `global
 // GNatives` row compares it, and checks that entry 0x14 points into .text. Only the research diagnostics read
 // it (engine/natives_dump, engine/skeleton's GetBoneNames report); 0 where unknown.
 inline std::uint32_t NativesTableRva() {
-#if defined(MEVR_GAME_LE1)
-    return 0x16DD3C0;
-#else
-    return 0;
-#endif
+    return addresses::kGNatives;
 }
 
 // The engine's allocator (ue3/Memory, research/34 section 2.3): appMalloc and appFree by RVA, each
@@ -162,15 +160,15 @@ struct AllocatorGlobals {
 inline std::optional<AllocatorGlobals> AllocatorGlobalsForGame() {
 #if defined(MEVR_GAME_LE1)
     AllocatorGlobals g;
-    g.malloc = {0xF2330,
+    g.malloc = {addresses::kAppMalloc,
         "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 8B F1 41 8B D8 48 8B 0D ?? ?? ?? ?? 8B FA 48 85 C9 75 0C "
         "E8 ?? ?? ?? ?? 48 8B 0D ?? ?? ?? ?? 48 8B 01 44 8B CB 44 8B C7 8B D6",
         0x14};
-    g.free = {0xF22F0,
+    g.free = {addresses::kAppFree,
         "48 89 5C 24 08 57 48 83 EC 20 48 8B F9 8B DA 48 8B 0D ?? ?? ?? ?? 48 85 C9 75 0C E8 ?? ?? ?? ?? "
         "48 8B 0D ?? ?? ?? ?? 48 8B 01 44 8B C3 48 8B D7 48 8B 5C 24 30 48 83 C4 20 5F 48 FF 60 20",
         0x0F};
-    g.gmallocRva = 0x16B6700;
+    g.gmallocRva = addresses::kGMalloc;
     return g;
 #else
     return std::nullopt;
