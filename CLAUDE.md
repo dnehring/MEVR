@@ -400,9 +400,13 @@ Use it to check VR changes yourself instead of asking the user what they see
   `sharePass` (experimental; 1: the second eye renders on the first's scene renderer, no second visibility; 2: as 1
   but the second eye is a replay of the first's recorded D3D11 calls with the view's bytes substituted,
   `plugin/DrawReplay`), `umbraQueryWait` (0: the Umbra resolve never spins for a query result), `pCoresOnly`,
-  **`perEyeOcclusion`** (default 1, 2026-10-23, research/35 attempts 34-35: the frame's second scene render gets its own
-  copy of the engine's per-primitive occlusion history, a 0x48-byte TSet at the view state's +0xD10, swapped in around
-  it, so it reads its own previous frame's queries instead of spinning 4-5 ms for the first eye's on the GPU); log
+  `perEyeOcclusion` (**default 0** since 2026-10-24, research/35 attempts 34-37: the frame's second scene render gets its
+  own copy of the engine's per-primitive occlusion history, a 0x48-byte TSet at the view state's +0xD10, swapped in
+  around it; it removed the second eye's 4-5 ms spin for the first eye's queries, but in the headset every ~10th frame
+  then drew three times the meshes, and the wait only moved into Umbra's own result reads), **`umbraEyeMatrix`**
+  (default 1, attempt 36: Umbra's occlusion queries are drawn with the eye's matrix (+0x1D0's world-space equivalent put
+  into +0x260 around `UmbraCommander::IssueOcclusionQueries`), which fixed the objects popping with head motion in the
+  life-size stereo's mode 2; the engine's own occlusion boxes already used +0x1D0); log
   `render levers:` (scene renders per frame, each one's time with its Umbra resolve's parts, the draw replay's counts);
   `tools/perf-ab.ps1 -Key <key> -Values a,b` alternates one and captures each; `tools/eye-diff.ps1` compares one
   frame's two eyes call by call (run it first: it says whether the replay's substitution covers the eye's constants).

@@ -115,7 +115,10 @@ constexpr std::uintptr_t kStateOcclusionHistory = 0xD10;
 constexpr std::size_t kOcclusionHistoryBytes = 0x48;
 constexpr std::uintptr_t kRendererViews = 0x60;    // FSceneRenderer::Views data (FViewInfo[], 0x12F0 each), count at +0x68
 constexpr std::uintptr_t kViewState = 0x8;         // FSceneView::State
-std::atomic<int> gPerEyeOcclusion{1};
+// Off by default since 2026-10-24 (research/35, attempt 37): in the headset it made every ~10th frame draw three
+// times the meshes (p90 8,500 draws against 2,600; 22-35 ms frames, GPU 23-30 ms), and the second eye's wait only
+// moved into Umbra's own query reads (research/35 attempts 36-37). perEyeOcclusion = 1 for experiments.
+std::atomic<int> gPerEyeOcclusion{0};
 alignas(16) std::uint8_t gEyeOneHistory[kOcclusionHistoryBytes]{};  // the second eye's set while the first eye's is in the state
 void* gEyeOneHistoryState = nullptr;  // the state it belongs to
 void* gFrameFirstState = nullptr;     // render 0's state this frame
@@ -1011,7 +1014,7 @@ void Tick() {
                 umbraEyeMatrixRead, gUmbraIssueQueriesHooked ? "" : "; not hooked, so no effect");
         }
         static int perEyeOcclusion = -1;
-        int const perEyeOcclusionRead = readInt(L"perEyeOcclusion", 1) != 0 ? 1 : 0;
+        int const perEyeOcclusionRead = readInt(L"perEyeOcclusion", 0) != 0 ? 1 : 0;
         if (perEyeOcclusionRead != perEyeOcclusion) {
             perEyeOcclusion = perEyeOcclusionRead;
             gPerEyeOcclusion.store(perEyeOcclusionRead, std::memory_order_relaxed);
