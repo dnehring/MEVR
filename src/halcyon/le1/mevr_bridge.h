@@ -358,4 +358,13 @@ void NoteStereoSubmit(int mode, float const declaredPosition[2][3], float const 
 // `texture` (the menu's ImGui texture, or the swapchain image right after the copy into it) a few
 // frames later without stalling, and logs how many pixels are visible (alpha > 0). `tag` names it.
 void ProbeTextureAlpha(ID3D11DeviceContext* context, ID3D11Texture2D* texture, const char* tag) noexcept;
+
+// ProcessEvent only on the game thread (research/36, the 2026-10-23 crash): UnrealScript's VM keeps its state in
+// process-wide globals (GPropAddr, GRuntimeUCFlags...), so a script call from the Present thread races the game
+// thread's script. True on the engine tick's thread (src/plugin/GameThreadCalls).
+bool OnGameThread() noexcept;
+// Off the game thread: queues the call, with a copy of the function's parameter block (its ParmsSize bytes), for
+// the start of the next engine tick, where it runs if the object is still alive. True if queued. Return values
+// and out parameters are never filled in: for setters only.
+bool QueueProcessEvent(void* object, void* function, void const* params) noexcept;
 }
