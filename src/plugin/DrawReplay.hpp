@@ -37,6 +37,8 @@ struct ViewFields {
 // thread-local read per call). Call it only when a lever wants the recorder.
 bool Attach(ID3D11DeviceContext* context);
 bool Attached();
+// The game's immediate context once Attach saw it (null before): the render levers' flush after the first eye.
+ID3D11DeviceContext* Context();
 
 // Render thread. Records this thread's calls on the hooked context into stream 0 (the first eye's whole scene
 // render) or 1 (the second eye's engine replay, for the diff). MarkTail: the replay starts here (the world DPG's

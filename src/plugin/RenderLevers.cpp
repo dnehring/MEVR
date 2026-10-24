@@ -6,6 +6,7 @@
 #include "plugin/DrawReplay.hpp"
 
 #include <Windows.h>
+#include <d3d11.h>
 #include <intrin.h>
 
 #include <algorithm>
@@ -119,6 +120,14 @@ constexpr std::uintptr_t kViewState = 0x8;         // FSceneView::State
 // times the meshes (p90 8,500 draws against 2,600; 22-35 ms frames, GPU 23-30 ms), and the second eye's wait only
 // moved into Umbra's own query reads (research/35 attempts 36-37). perEyeOcclusion = 1 for experiments.
 std::atomic<int> gPerEyeOcclusion{0};
+
+// ---- A GPU flush after the first eye (research/35, attempt 38) --------------------------------------------------
+// The second eye's Umbra resolve issues occluder queries and waits for their results inside the same resolve, so it
+// waits for the GPU to get through the first eye's draws first (the D3D11 runtime batches them until something
+// forces a kick). ID3D11DeviceContext::Flush right after the first eye's scene render starts the GPU on it at once,
+// so by the time the second eye's resolve asks, less is queued ahead of its queries. [Performance] flushFirstEye.
+std::atomic<int> gFlushFirstEye{0};
+std::atomic<std::uint64_t> gFlushes{0};
 alignas(16) std::uint8_t gEyeOneHistory[kOcclusionHistoryBytes]{};  // the second eye's set while the first eye's is in the state
 void* gEyeOneHistoryState = nullptr;  // the state it belongs to
 void* gFrameFirstState = nullptr;     // render 0's state this frame
@@ -625,6 +634,12 @@ void SceneRenderHook(void* renderer) {
     }
     QueryPerformanceCounter(&end);
     EndEyeHistory(eyeHistory);
+    if (index == 0 && gFlushFirstEye.load(std::memory_order_relaxed) != 0) {
+        if (ID3D11DeviceContext* const context = draw_replay::Context()) {
+            context->Flush();
+            gFlushes.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
     t_renderIndex = outer;
     int const slot = Slot(index);
     Add(gCounters.renderTicks[slot], static_cast<std::uint64_t>(end.QuadPart - begin.QuadPart));
@@ -896,6 +911,10 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
         if (fixed != 0 || same != 0) {
             share += std::format("; Umbra's queries with the eye's matrix: {} renders fixed, {} already right", fixed, same);
         }
+        std::uint64_t const flushes = gFlushes.exchange(0, std::memory_order_relaxed);
+        if (flushes != 0) {
+            share += std::format("; GPU flushed after the first eye: {} frames", flushes);
+        }
     }
     draw_replay::Stats const d = draw_replay::TakeStats();
     std::uint64_t const fallbacks = gReplayFallbacks.exchange(0, std::memory_order_relaxed);
@@ -1013,6 +1032,18 @@ void Tick() {
                                           "own: the symmetric window in mode 2, off the eye's depth buffer)",
                 umbraEyeMatrixRead, gUmbraIssueQueriesHooked ? "" : "; not hooked, so no effect");
         }
+        static int flushFirstEye = -1;
+        int const flushRead = readInt(L"flushFirstEye", 0) != 0 ? 1 : 0;
+        if (flushRead != flushFirstEye) {
+            flushFirstEye = flushRead;
+            gFlushFirstEye.store(flushRead, std::memory_order_relaxed);
+            log::Info("render levers: {} ([Performance] flushFirstEye = {})",
+                flushRead != 0 ? "the GPU is flushed right after the first eye's scene render (its work starts before "
+                                 "the second eye's Umbra resolve asks for its query results)"
+                               : "no flush after the first eye (the game's own: the D3D11 runtime kicks the GPU when "
+                                 "it likes)",
+                flushRead);
+        }
         static int perEyeOcclusion = -1;
         int const perEyeOcclusionRead = readInt(L"perEyeOcclusion", 0) != 0 ? 1 : 0;
         if (perEyeOcclusionRead != perEyeOcclusion) {
@@ -1102,11 +1133,11 @@ bool PerEyeViewState() {
 }
 
 std::string SettingsJson() {
-    return std::format("{{\"umbraQueryWait\": {}, \"ue3QueryWait\": {}, \"perEyeViewState\": {}, \"perEyeOcclusion\": {}, \"umbraEyeMatrix\": {}, \"pCoresOnly\": {}, \"sharePass\": {}, \"shareFailed\": {}, \"replayFailed\": {}, "
+    return std::format("{{\"umbraQueryWait\": {}, \"ue3QueryWait\": {}, \"perEyeViewState\": {}, \"perEyeOcclusion\": {}, \"umbraEyeMatrix\": {}, \"flushFirstEye\": {}, \"pCoresOnly\": {}, \"sharePass\": {}, \"shareFailed\": {}, \"replayFailed\": {}, "
         "\"drawReplay\": {}, \"hooked\": {}}}",
         gUmbraQueryWait.load(std::memory_order_relaxed), gUe3QueryWait.load(std::memory_order_relaxed),
         gPerEyeViewState.load(std::memory_order_relaxed), gPerEyeOcclusion.load(std::memory_order_relaxed),
-        gUmbraEyeMatrix.load(std::memory_order_relaxed), gPCoresOnly.load(std::memory_order_relaxed),
+        gUmbraEyeMatrix.load(std::memory_order_relaxed), gFlushFirstEye.load(std::memory_order_relaxed), gPCoresOnly.load(std::memory_order_relaxed),
         gSharePass.load(std::memory_order_relaxed), gShareFailed.load(std::memory_order_relaxed) ? "true" : "false",
         gReplayFailed.load(std::memory_order_relaxed) ? "true" : "false", draw_replay::StatsJson(), gHooked ? "true" : "false");
 }

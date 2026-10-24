@@ -195,6 +195,7 @@ void** gVtable = nullptr;
 std::atomic<bool> gAttached{false};
 std::atomic<int> gAttachLogged{0};
 ID3D11DeviceContext* gContext = nullptr;
+ID3D11DeviceContext* gContextSeen = nullptr;  // every context Attach was given, hooked or not
 
 Stream gStreams[2];
 thread_local Stream* t_recording = nullptr;
@@ -1233,6 +1234,7 @@ std::size_t ComparableSize(Header const& h) {
 // ---- Public ---------------------------------------------------------------------------------------------------
 
 bool Attach(ID3D11DeviceContext* context) {
+    gContextSeen = context;
     if (gAttached.load(std::memory_order_acquire)) {
         return true;
     }
@@ -1273,6 +1275,10 @@ bool Attach(ID3D11DeviceContext* context) {
     gAttached.store(true, std::memory_order_release);
     log::Info("draw replay: hooked {} entries of the immediate context's vtable, above Halcyon's", hooked);
     return true;
+}
+
+ID3D11DeviceContext* Context() {
+    return gContextSeen;
 }
 
 bool Attached() {
