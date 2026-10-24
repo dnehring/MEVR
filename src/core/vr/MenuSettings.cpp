@@ -163,6 +163,7 @@ std::vector<Field> const& Schema() {
         {"mode_note", Type::Text, 0, ""},
         {"life_size", Type::Flag, 1},
         {"extra_depth", Type::Number, 1, "", 0.5f, 2, F::Times2},
+        {"eye_frustum", Type::Flag, 1},
         {"eye_distance", Type::Number, 3.4f, "", 0.5f, 8, F::Fixed1},
         {"convergence", Type::Number, 0.012f, "", -0.02f, 0.05f, F::Fixed3},
         {"swap_eyes", Type::Flag, 1},

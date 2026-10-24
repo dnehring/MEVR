@@ -299,6 +299,7 @@ void Settings::Read(menu::Values& v) {
     v.texts["mode_note"] = modeNote_;
     flag("life_size", c.sfr2Metric);
     v.numbers["extra_depth"] = c.sfr2MetricDepth;
+    flag("eye_frustum", c.sfr2MetricEyeFrustum);
     v.numbers["eye_distance"] = c.sfr2HalfEyeUU;
     v.numbers["convergence"] = c.sfr2Convergence;
     flag("swap_eyes", c.sfr2SwapEyes);
@@ -569,6 +570,10 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     } else if (key == "extra_depth") {
         c.sfr2MetricDepth = v.Number(key);
         HalcyonChanged(false);
+    } else if (key == "eye_frustum") {
+        c.sfr2MetricEyeFrustum = v.Flag(key);  // mode 2 (each eye's own frustum) or mode 1 (the symmetric window)
+        HalcyonChanged(false);
+        log::Info("main menu: each eye's own field of view {}", c.sfr2MetricEyeFrustum ? "on" : "off");
     } else if (key == "eye_distance") {
         c.sfr2HalfEyeUU = v.Number(key);
         HalcyonChanged(false);
