@@ -115,27 +115,46 @@ void Tick(float deltaSeconds) {
         return;
     }
     std::vector<Setting> const wanted = Wanted(path);
+    static std::vector<Setting> applied;  // what the game last got: a rewrite of the file with the same values is nothing
+    auto const same = [&] {
+        if (wanted.size() != applied.size()) {
+            return false;
+        }
+        for (size_t i = 0; i < wanted.size(); ++i) {
+            if (!SameKey(wanted[i].key, applied[i].key) || wanted[i].value != applied[i].value) {
+                return false;
+            }
+        }
+        return true;
+    };
+    if (gApplied && same()) {
+        gStamp = stamp;
+        gHaveStamp = !ec;
+        return;
+    }
     if (wanted.empty()) {
         if (!gToldOff) {
             gToldOff = true;
             log::Info("system settings: [SystemSettings] apply = 0: the engine's own values stay");
         }
+        applied.clear();
         gApplied = true;
         gStamp = stamp;
         gHaveStamp = !ec;
         return;
     }
-    std::string applied;
+    std::string appliedText;
     for (Setting const& s : wanted) {
         std::string output;
         if (!console_request::RunCommand("scale set " + s.key + " " + s.value, &output)) {
             return;  // no local player yet: next second
         }
-        applied += (applied.empty() ? "" : ", ") + s.key + " " + s.value + (output.empty() ? "" : " (" + Trim(output) + ")");
+        appliedText += (appliedText.empty() ? "" : ", ") + s.key + " " + s.value + (output.empty() ? "" : " (" + Trim(output) + ")");
     }
-    log::Info("system settings: scale set {}{}", applied,
-              changed && gApplied ? " (the file changed)"
+    log::Info("system settings: scale set {}{}", appliedText,
+              changed && gApplied ? " (the file's values changed)"
                                   : " (BIOEngine.ini's [SystemSettings] wins over GamerSettings' and the game rewrites it)");
+    applied = wanted;
     gApplied = true;
     gToldOff = false;
     gStamp = stamp;
