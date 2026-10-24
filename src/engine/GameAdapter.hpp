@@ -13,13 +13,16 @@
 #include <cstdint>
 #include <optional>
 
-// The game's short name as a wide string literal (file names: L"LE1" L"MEVR.ini").
+// The game's short name as a string literal (file names: L"LE1" L"MEVR.ini"; hook owners: "LE1" "MEVRmod").
 #if defined(MEVR_GAME_LE1)
 #define MEVR_GAME_NAME_W L"LE1"
+#define MEVR_GAME_NAME_A "LE1"
 #elif defined(MEVR_GAME_LE2)
 #define MEVR_GAME_NAME_W L"LE2"
+#define MEVR_GAME_NAME_A "LE2"
 #else
 #define MEVR_GAME_NAME_W L"LE3"
+#define MEVR_GAME_NAME_A "LE3"
 #endif
 
 namespace mevr::engine::adapter {
@@ -125,6 +128,19 @@ inline std::optional<ReflectionGlobals> ReflectionGlobalsForGame() {
     return g;
 #else
     return std::nullopt;
+#endif
+}
+
+// GNatives, the bytecode handler table (UObject::GNatives[EX_Max], 0x1000 entries; research/34 section 2.1
+// reads execLetBool as its entry 0x14). The RVA is the one engine/skeleton's diagnostic has used since research/14
+// (LExSDKv2's BUILTIN_GNATIVES_RVA), not yet re-read in our Ghidra pass [verify]: the self-check's `global
+// GNatives` row compares it, and checks that entry 0x14 points into .text. Only the research diagnostics read
+// it (engine/natives_dump, engine/skeleton's GetBoneNames report); 0 where unknown.
+inline std::uint32_t NativesTableRva() {
+#if defined(MEVR_GAME_LE1)
+    return 0x16DD3C0;
+#else
+    return 0;
 #endif
 }
 

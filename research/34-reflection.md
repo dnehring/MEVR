@@ -8,6 +8,9 @@ Started 2026-10-23 (the user approved the plan).
 - **Stage 2 (every `src/game` module, section 6.2) is built and unit-tested, not yet run in the game.** Its new
   pieces (the allocator, engine strings, the five new self-check rows) are **[verify]** until the next session's
   `reflect-check.json` (notes/next-vr-session.md, step 32).
+- **Stage 3 (the `engine/` and `mod/` side, section 6.3) is built and unit-tested, not yet run in the game.** The
+  self-check expects **423 rows** (410 + 13: `global World`, `global GNatives`, `class Engine.World`, ten
+  `skeleton` rows); notes/next-vr-session.md, step 33.
 
 ## 1. Why
 
@@ -217,17 +220,17 @@ By file. Names only; the offsets are the self-check's business:
 | `game/Weapon.cpp` | Pawn Weapon/Mesh, weapon meshes, m_MuzzleSocketName, bIsZoomed, SkeletalMesh.Bounds, UFunction.Func; GetMuzzleLoc, GetSocketWorldLocationAndRotation, GetRangedWeaponType, GetPlayerAimError, TickFire, GetWeaponStartTraceLocation; GWorld | **2 (done)** |
 | `game/ArmIk.cpp` | Pawn Mesh/Rotation, SkeletalMeshComponent SkeletalMesh/Animations, AnimTree.SkelControlLists, SkelControlBase (5 fields); BioPlayerController GameModes (all games, unguarded) | **2 (done)** |
 | `game/GamepadBridge.cpp` | only `LESDK::Initializer&` for its XInput hooks (its include is gone since stage 2; the type is forward-declared, an opaque hook context) | 4 |
-| `engine/Objects.*` | FindFunction(s), FullName, ToString(SFXName), LocalPlayerController (GEngine), IsAlive | 3 (becomes a thin wrapper over ue3, then goes) |
-| `engine/Skeleton.*` | SkeletalMeshComponent SpaceBases/LocalToWorld/ParentAnimComponent/Attachments (FAttachment), SkeletalMesh RefSkeleton/Sockets, SkeletalMeshSocket (5); GetBoneNames, GetBoneLocation, MatchRefBone; GNatives; FMatrix/FPlane; TArray<SFXName> freed by `~TArray`. Since stage 2 its interface takes `ue3::Object` meshes and raw name keys (no SDK type in the header); the body still reads through LExSDKv2's types | 3 (all four "native" fields turned out reflected, at the research/14 offsets: one named accessor each, through the layer) |
-| `engine/BonePose.*` | ActorComponent.Owner, GWorld, raw RVA hook; `Request::mesh` is a `ue3::Object` since stage 2 | 3 / 4 |
+| `engine/Objects.*` | FindFunction(s), FullName, ToString(SFXName), LocalPlayerController (GEngine), IsAlive | **3 (done: gone; its LExSDKv2 helpers live on in `engine/Legacy` and ReflectCheck's reference side)** |
+| `engine/Skeleton.*` | SkeletalMeshComponent SpaceBases/LocalToWorld/ParentAnimComponent/Attachments (FAttachment), SkeletalMesh RefSkeleton/Sockets, SkeletalMeshSocket (5); GetBoneNames, GetBoneLocation, MatchRefBone; GNatives; FMatrix/FPlane; TArray<SFXName> freed by `~TArray` | **3 (done: every field through the layer, the natives through `Params`, section 6.3)** |
+| `engine/BonePose.*` | ActorComponent.Owner, GWorld, raw RVA hook; `Request::mesh` is a `ue3::Object` since stage 2 | **3 (done: Owner and the world through the layer)** / 4 (the hook) |
 | `engine/Legacy.*` (new in stage 2) | LE2/LE3 only (not built for LE1): LocalPlayerController, FindFunction, PlayerController IsA, the game mode, the pawn's location, Camera PCOwner and FOV, GetPlayerViewPoint/GetFOVAngle/GetAdjustedAimFor blocks, ConsoleCommand, the reflection fix's GObjects pass | 5 (goes when LE2/LE3 have layouts) |
-| `engine/CoverAcquire.*` | Actor.Acceleration, BioPawn.CoverTestAngle, 2 raw RVAs, hook | 3 / 4 |
-| `engine/NativesDump.*` | UFunction FunctionFlags/Func/iNative, Field.SuperField, GNatives, Class/Function/Actor classes | 3 |
-| `engine/ProcessEvent.*`, `engine/CallFunction.*` | `BUILTIN_PROCESSEVENT_RVA`, `BUILTIN_CALLFUNCTION_RVA`, `FFrame`, hooks | 4 |
-| `engine/SceneView.*` | `Initializer::ModuleBase`, 4 raw RVAs per game, hook | 4 |
-| `engine/Engine.*` | `ResolveGlobals` (the 6 globals); `World()` (GWorld as an identity, for game/weapon's caches; stage 2) | 3 (goes) |
-| `engine/GameAdapterSdk.hpp` | the 4 SDK-typed per-game accessors | goes with the last user |
-| `mod/Mod.cpp`, `mod/ModApi.hpp` | `Initializer` construction, GWorld, `GObjObjects->Count()` (heartbeat), `UObject`/`UFunction` forward declarations in the host interface; since stage 2 the script-package gate (`engine::FindFunction` for Engine.Camera.UpdateCamera, before `ue3::runtime::Init`) | 3 / 4 |
+| `engine/CoverAcquire.*` | Actor.Acceleration, BioPawn.CoverTestAngle, 2 raw RVAs, hook | **3 (done: the two fields)** / 4 (the hook) |
+| `engine/NativesDump.*` | UFunction FunctionFlags/Func/iNative, Field.SuperField, GNatives, Class/Function/Actor classes | **3 (done)** |
+| `engine/ProcessEvent.*`, `engine/CallFunction.*` | `BUILTIN_PROCESSEVENT_RVA`, `BUILTIN_CALLFUNCTION_RVA`, `FFrame`, hooks | 4 (since stage 3 they include only `<LESDK/Init.hpp>`; `FFrame` and `tCallFunction` are ours, opaque) |
+| `engine/SceneView.*` | `Initializer::ModuleBase`, 4 raw RVAs per game, hook | 4 (since stage 3 `MEVR_GAME_*`, not `SDK_TARGET_*`) |
+| `engine/Engine.*` | `ResolveGlobals` (the 6 globals); `World()` (GWorld as an identity, for game/weapon's caches; stage 2) | **3 (done: `ResolveGlobals` gone, `World()` and `ObjectCount()` through the layer)** |
+| `engine/GameAdapterSdk.hpp` | the 4 SDK-typed per-game accessors | goes with `engine/Legacy` (stage 5) |
+| `mod/Mod.cpp`, `mod/ModApi.hpp` | `Initializer` construction, GWorld, `GObjObjects->Count()` (heartbeat), `UObject`/`UFunction` forward declarations in the host interface; since stage 2 the script-package gate (`engine::FindFunction` for Engine.Camera.UpdateCamera, before `ue3::runtime::Init`) | **3 (done: the gate, the heartbeat; only `<LESDK/Init.hpp>` for the `Initializer` remains)** / 4 |
 | `core/Hook.*` | `Initializer` (`OwnerName`, `ProxyInstance`) → SPI `InstallHook`/`UninstallHook` | 4 |
 | `plugin/Entry.cpp`, `plugin/ProcessEventHook.*`, `plugin/PresentHook.*`, `plugin/ModLoader.*` | SPI plugin macros, `Initializer`, `BUILTIN_GAMEENGINETICK_RVA`, `BUILTIN_PROCESSEVENT_RVA`, `SDK_TARGET_NAME_*` | 4 (host: needs a redeploy) |
 | `plugin/RenderLevers.*` | only `Initializer` and `ResolveTyped(FromOffset(rva))` for 22 raw RVAs; no UObject types | 4 (the performance session's file: coordinate) |
@@ -237,14 +240,15 @@ By file. Names only; the offsets are the self-check's business:
 `engine/ReflectCheck.cpp` runs once per mod load, right after the script packages are in
 (`Mod.cpp`, `TryInstallScriptHooks`), after `ue3::runtime::Init()`. Every row is resolved through
 our layer and compared with LExSDKv2's compiled offsets or its own lookups. 405 rows in stage 1, 410 since
-stage 2 (the five marked "stage 2" below):
+stage 2 (the five marked "stage 2" below), **423 since stage 3** (the thirteen marked "stage 3"):
 
 | Kind | What is compared |
 |------|------------------|
 | `layout` (22) | Our `Layout` constants with LExSDKv2's offsets of UObject, UField, UStruct, UProperty, Bool/Struct/Object/ArrayProperty, UFunction |
-| `global` (6) | GObjects and the name pools (address, and how we found them: rva or pattern), ProcessEvent (our vtable slot against `BUILTIN_PROCESSEVENT_RVA`), the GameEngine object against `*GEngine`, the local player controller against `engine::LocalPlayerController()`; **`allocator` (stage 2):** the GMalloc appMalloc and appFree load against LExSDKv2's `GMalloc`, with both functions' RVAs and how they were found |
+| `global` (6, 8 since stage 3) | GObjects and the name pools (address, and how we found them: rva or pattern), ProcessEvent (our vtable slot against `BUILTIN_PROCESSEVENT_RVA`), the GameEngine object against `*GEngine`, the local player controller against LExSDKv2's (`GEngine->GamePlayers[0]->Actor`); **`allocator` (stage 2):** the GMalloc appMalloc and appFree load against LExSDKv2's `GMalloc`, with both functions' RVAs and how they were found; **`World` (stage 3):** `engine::World()` against `*GWorld`, with how it was found; **`GNatives` (stage 3):** `adapter::NativesTableRva()` against `BUILTIN_GNATIVES_RVA`, and its entry 0x14 (execLetBool) inside the exe |
 | `type` (5) | Our `Rotator`/`Vector` against the engine's own struct sizes and LExSDKv2's; `Name`, `TArray`, `FString` sizes |
-| `class` (61) | `FindClass("Pkg.Name")` against `T::StaticClass()` (same pointer) |
+| `class` (61, 62 since stage 3) | `FindClass("Pkg.Name")` against `T::StaticClass()` (same pointer); **stage 3:** `Engine.World` |
+| `skeleton` (10, stage 3) | The fields `engine/skeleton` resolved through the layer (`skeleton::ResolvedFields()`, after its TryStartup) against research/14's LE1 offsets, the ones it read at until stage 3: SpaceBases 0x2B0, RefSkeleton 0xB4, LocalToWorld 0xC0, Attachments 0x3B4 and its element size 0x34, Sockets 0x144, SkeletalMeshSocket RelativeLocation 0x60, RelativeRotation 0x6C, SocketName 0x84, BoneName 0x8C. (The same fields' `field` rows compare them with LExSDKv2.) |
 | `field` (111) | `PropertyOf` against `offsetof` and `sizeof`. Bitfield bools: the offset and mask LExSDKv2 compiles, found by setting the bit in a zeroed buffer. |
 | `path` (28) | Struct members through struct properties (`Camera.CameraCache.POV.Location`), and array elements (`Attachments[].RelativeRotation`, element sizes) |
 | `function` (58) | `FindFunction("Engine.Actor.SetRotation")` against `engine::FindFunction` (same pointer); the PlayerTick set |
@@ -342,15 +346,83 @@ Deliberate differences:
 - **New stand-downs** where the old code would have read through: the grenade arc needs
   BioGrenade.m_clsProjectile and the ballistic class to resolve; arm IK's body axes need Actor.Rotation.
 
+## 6.3 Stage 3: `engine/` and `mod/` (2026-10-23)
+
+**No file in `src/engine/` or `src/mod/` includes `<LESDK/Headers.hpp>` any more, except `engine/Legacy.cpp`,
+`engine/GameAdapterSdk.hpp` and `engine/ReflectCheck.cpp`.** What moved:
+- **`engine/Objects` is gone.** Its LExSDKv2 helpers (FindFunction(s), FullName, ToString, IsAlive,
+  LocalPlayerController) were only the reference side's and LE2/LE3's: they now live in ReflectCheck (file-local,
+  `Sdk*`) and `engine/Legacy`.
+- **The startup gate** (`mod/Mod.cpp`, `ScriptPackagesLoaded`): every second, `ue3::runtime::Init()`, then
+  `FindFunction("Engine.Camera.UpdateCamera")` through the layer. `Init` is retryable now: while the game is still
+  starting (a well-formed GObjects with fewer than 1000 objects at its RVA, or Core checking out but Engine.Actor not
+  loaded) it returns false with `runtime::Pending()`, logs `reflect: not ready yet: ...; trying again` once, and
+  tries again on the next call (no pattern scan for those: cheap each second). After 600 such tries it gives up for
+  good. A layer that's off for good doesn't hold the mod back: the gate says so once and goes on (the game modules
+  stand down). LE2/LE3 gate on `legacy::FindFunction` as before.
+- **`engine::World()`** (Engine.cpp): the local player controller's `WorldInfo`'s nearest outer that IsA
+  `Engine.World` (actor → level → world; `Reflection::OuterOfA`, unit-tested), or the WorldInfo itself if no outer
+  is a World, null without a player controller. `engine::ResolveWorld()` freezes the path (the GameEngine instance,
+  `GamePlayers`, `Player.Actor`, `Actor.WorldInfo`, the World class) once, on the game thread, right after the gate;
+  `World()` only reads, so BonePose's hook can call it from any thread. `engine::ObjectCount()` serves the
+  heartbeat. `ResolveGlobals` is gone: LE1 resolves LExSDKv2's globals only in the self-check
+  (`ResolveSdkGlobals`), LE2/LE3 at startup in `legacy::Init`.
+- **`engine/Skeleton`:** every field it reads (SkeletalMesh, SpaceBases, LocalToWorld, ParentAnimComponent,
+  Attachments and FAttachment's members, RefSkeleton, Sockets, the socket's SocketName, BoneName, RelativeLocation,
+  RelativeRotation) is resolved once in `TryStartup` (kind and size checked) and frozen; the pose reads (RefBoneCount,
+  RefBoneKey, SpaceBases) keep working from the hook's thread. The element layouts (FMeshBone 0x50 with ParentIndex
+  at 0x40, FBoneAtom 0x20) stay research/14's: the reflection declares those arrays as `TArray<int>` and
+  `TArray<Matrix>`. FAttachment's stride comes from the reflection (0x34). MatchRefBone, GetBoneLocation and
+  GetBoneNames are `FunctionRef`s called with `Params`; GetBoneNames' returned array is freed through
+  `ue3::memory::Free`. Names come from `runtime::NameText`.
+- **`engine/BonePose`:** `ActorComponent.Owner` (resolved at Install and Publish, read by the hook) and the world
+  through `engine::World()`; the mesh is our `ue3::Object` throughout.
+- **`engine/CoverAcquire`:** `Actor.Acceleration` and `BioPawn.CoverTestAngle` resolved at Install.
+- **`engine/NativesDump`:** the GObjects walk, function flags, Func, iNative, outers and names through the layer;
+  GNatives at `adapter::NativesTableRva()` (new in `engine/GameAdapter.hpp`, with `MEVR_GAME_NAME_A`).
+- **Small ones:** `engine/ProcessEvent.cpp` and `engine/CallFunction.cpp` include only `<LESDK/Init.hpp>`
+  (`FFrame` is forward-declared, `tCallFunction` is ours); `engine/SceneView.cpp`, BonePose and CoverAcquire use
+  `MEVR_GAME_*` instead of LExSDKv2's `SDK_TARGET_*`.
+
+**What remains on LExSDKv2 in `engine/` and `mod/`, and why:**
+- `engine/Legacy.cpp` and `engine/GameAdapterSdk.hpp` (`Headers.hpp`, `Init.hpp`): LE2/LE3 until their layouts
+  (stage 5).
+- `engine/ReflectCheck.cpp` (`Headers.hpp`, `Init.hpp`): the reference side, until stage 6.
+- Hook plumbing, stage 4 (`<LESDK/Init.hpp>` only: `LESDK::Initializer`, `Address::FromOffset`, `BUILTIN_*_RVA`):
+  `mod/Mod.cpp` builds the `Initializer` every `Install` takes; `engine/ProcessEvent.cpp` and
+  `engine/CallFunction.cpp` resolve their targets from `BUILTIN_PROCESSEVENT_RVA` / `BUILTIN_CALLFUNCTION_RVA`;
+  `engine/BonePose.cpp`, `engine/CoverAcquire.cpp` and `engine/SceneView.cpp` resolve their raw RVAs with
+  `init.Resolve(Address::FromOffset(...))`. Left as they are on purpose (stage 4 replaces `Initializer` with our
+  own hook context, coordinated with the performance session).
+- Names only, no include: `UObject`/`UFunction` forward declarations in `engine/ProcessEvent.hpp`,
+  `engine/CallFunction.hpp` and `mod/ModApi.hpp` (the host interface's handler type), and the SDK-typed
+  `AddPostHandler` overloads nothing in `src/game` uses any more. Stage 4 can switch them to `ue3::` types (a host
+  redeploy: `HostServices::setProcessEventCallback`'s signature names them).
+
+Deliberate differences:
+- **A layer that's off for good** on LE1 no longer waits for the script packages (there's nothing left to ask);
+  before, the gate still waited through LExSDKv2. The game modules stood down either way since stage 2.
+- **The mod's startup** no longer fails on LE1 if LExSDKv2's globals don't resolve (only the self-check needs them
+  now: it then writes one failing row). LE2/LE3 still fail startup then (`legacy::Init`).
+- **`engine::World()`** is the player controller's world: null between a level's unload and its new controller,
+  where GWorld already named the new world. BonePose then rejects as "the world changed" (it did) and the weapon's
+  caches drop, as on any level change.
+- **The skeleton probe's GetBoneNames report** has lost the function's bytecode bytes: our layout has no
+  `UStruct.Script` offset yet (research/14 recorded the finding; add `structScript` to `Layout` from a Ghidra
+  reading of `UObject::ProcessInternal` if it's wanted again).
+- **The natives dump** needs the layer: on LE2/LE3 it writes nothing until stage 5.
+- **Skeleton reads stand down** (empty pose, no sockets, no attachments) when a field doesn't resolve, with one
+  `skeleton: ... not found` line, instead of reading at research/14's offsets.
+
 ## 7. The plan for the rest
 
 | Stage | Work | Effort |
 |-------|------|--------|
 | 2 | **Done (section 6.2), built and unit-tested; one in-game session to verify** (notes/next-vr-session.md, step 32: the `reflect:` lines, then a smoke test of each feature). | - |
-| 3 | `engine/`: Objects (gone: its last users are `engine/Legacy`, Skeleton, ReflectCheck and Mod.cpp's startup gate, which becomes `ue3::runtime::Init` retrying until Engine.Camera exists), Skeleton (its interface is ours already; its body reads SpaceBases, RefSkeleton, LocalToWorld, Attachments, Sockets and the socket fields through FieldRefs, all four "native" fields being reflected; MatchRefBone/GetBoneLocation/GetBoneNames through `Params`; SFXName gone), NativesDump (UFunction fields from the layout), BonePose/CoverAcquire field reads, Engine.cpp's ResolveGlobals gone. GWorld (`engine::World()`, game/weapon's caches and BonePose's request check): the `Engine.GameEngine` instance's world through reflection, or its RVA with a pattern; add a `global` row comparing it with `*GWorld` first. | 1 session |
-| 4 | **RVAs and hooks, without `LESDK::Initializer` and SPI.h** (touches the host and the performance session's `plugin/RenderLevers`; coordinate before merging). See below. | 1-2 sessions, a host redeploy |
-| 5 | LE2/LE3 layouts: a Ghidra pass per exe (the same functions: `execIsA`, `GetPathName`, `ProcessEvent`, `execLetBool`, `AppendString`, `~UObject`), their RVAs and patterns in `GameAdapter.hpp` (with appMalloc/appFree in `AllocatorGlobalsForGame`), the self-check run once per game. Then `engine/Legacy` goes: head tracking, the console request, the reflection fix and hand aim take their LE1 path (`#if defined(MEVR_GAME_LE1)` blocks become unconditional), and `game/Player` serves all three games (LE2/LE3 spell the game-mode manager `GameModeManager2`: `adapter::kGameModeManager` already does). | 1 session per game |
-| 6 | Remove LExSDKv2: the submodule, `add_subdirectory`, `LESDK-${game}` from `mevr_configure`, `SDK_TARGET_*` (CMake defines `MEVR_GAME_*` already), `engine/ReflectCheck` (or keep its pure checks as a ue3 self-test: Actor.Location is a 12-byte struct...), `GameAdapterSdk.hpp` (its last user is `engine/Legacy`); NOTICE.md updated. Stage 4 must first give `core/Hook` and the `Install(init)` signatures our own hook context (`game/GamepadBridge.hpp` still names `LESDK::Initializer`). Also the `/permissive` and SDK warning suppressions in `mevr_configure`. | half a session |
+| 3 | **Done (section 6.3), built and unit-tested; one in-game session to verify** (notes/next-vr-session.md, step 33: 423 rows, then the arm IK, socket and cover smoke tests). | - |
+| 4 | **RVAs and hooks, without `LESDK::Initializer` and SPI.h** (touches the host and the performance session's `plugin/RenderLevers`; coordinate before merging). See below. What's left in `engine/`/`mod/` for it is exactly the hook plumbing listed in section 6.3: the `Initializer` in Mod.cpp; `BUILTIN_PROCESSEVENT_RVA` / `BUILTIN_CALLFUNCTION_RVA` (move into `GameAdapter.hpp`'s RVA table with patterns: ProcessEvent's is the layer's vtable slot already, `runtime::Where().processEvent`); the raw RVAs of BonePose (1), CoverAcquire (2) and SceneView (4 per game) through `init.Resolve`; then the `UObject`/`UFunction` names in the handler types and `HostServices::setProcessEventCallback` become `ue3::Object`/`ue3::Function` (same ABI, a host redeploy). | 1-2 sessions, a host redeploy |
+| 5 | LE2/LE3 layouts: a Ghidra pass per exe (the same functions: `execIsA`, `GetPathName`, `ProcessEvent`, `execLetBool`, `AppendString`, `~UObject`), their RVAs and patterns in `GameAdapter.hpp` (with appMalloc/appFree in `AllocatorGlobalsForGame`, GNatives in `NativesTableRva`), the self-check run once per game (it is LE1-only today: `reflect_check::Run` is empty elsewhere). Then `engine/Legacy` and `engine/GameAdapterSdk.hpp` go: head tracking, the console request, the reflection fix and hand aim take their LE1 path (`#if defined(MEVR_GAME_LE1)` blocks become unconditional), `game/Player` serves all three games (LE2/LE3 spell the game-mode manager `GameModeManager2`: `adapter::kGameModeManager` already does), Mod.cpp's gate and `engine::World()` / `ObjectCount()` lose their LE2/LE3 branches, and `legacy::Init` (LExSDKv2's globals at startup) goes. Skeleton's element layouts (FMeshBone, FBoneAtom) need checking per game before `skeleton::Supported()` says yes there. | 1 session per game |
+| 6 | Remove LExSDKv2: the submodule, `add_subdirectory`, `LESDK-${game}` from `mevr_configure`, `SDK_TARGET_*` (CMake defines `MEVR_GAME_*` already; nothing outside `engine/Legacy`, `GameAdapterSdk.hpp` and `plugin/` uses `SDK_TARGET_*` since stage 3), `engine/ReflectCheck` (or keep its pure checks as a ue3 self-test: Actor.Location is a 12-byte struct, the `skeleton` rows' research/14 offsets...), `GameAdapterSdk.hpp` (gone with `engine/Legacy`); NOTICE.md updated. Stage 4 must first give `core/Hook` and the `Install(init)` signatures our own hook context (`game/GamepadBridge.hpp` still names `LESDK::Initializer`). Also the `/permissive` and SDK warning suppressions in `mevr_configure`. | half a session |
 
 ### Stage 4 design: our own RVA resolution and hook installation
 
@@ -432,6 +504,20 @@ The replacement:
     is copied with memcpy, as before.
   - **A layer failure now turns every game feature off** on LE1 (before stage 2 most ran on LExSDKv2 anyway).
     That is the intended stand-down; the `reflect:` line says why.
+- **Stage 3:**
+  - **Unverified in the game**, like stage 2. Every field it resolves already had a `field` / `path` row that agreed
+    in stage 1's session; the new rows are World, GNatives, Engine.World and the ten `skeleton` rows.
+  - **The world's identity** is our reading of UE3 (an actor's outer is its level, a level's is the world), not a
+    Ghidra reading. If it's wrong, the `global World` row says `WorldInfo (no World outer)` and World() still
+    changes on every level load (it's the WorldInfo then), so BonePose's check and the weapon's caches keep working.
+  - **Threads:** the skeleton fields, the Owner offset and the world's path are resolved on the game thread and
+    published with release/acquire flags; the UpdateSkelPose hook only reads them (and IsA's superclass walk, which
+    reads class objects only). Nothing resolves lazily on the hook's path.
+  - **The retrying gate:** a layer whose RVA check sees a small, well-formed GObjects is "pending", not off; a
+    layout so wrong that GObjects looks small would retry for 600 s before giving up (each try a 512-object sample
+    at most). Seen as `reflect: not ready yet` without a `ready` line.
+  - **GNatives' RVA** is LExSDKv2's value (research/14 used it), checked by its row only; it feeds research
+    diagnostics, never the game.
 - **Name lookups:**
   - Wrong-package fallbacks hide a typo in a package name. The note and the self-check show it.
   - Names are matched case-insensitively and ASCII only, which is all our code asks for.
@@ -460,7 +546,8 @@ The replacement:
   it.
 - **LExSDKv2's role:**
   - It is compiled into `engine/ReflectCheck.cpp`, as the reference to compare against, into
-    `engine/Legacy.cpp` (LE2/LE3 only), and into the not-yet-migrated `engine/`, `mod/`, `core/Hook` and
-    `plugin/` files (stages 3 and 4). No `src/game` file includes it since stage 2.
+    `engine/Legacy.cpp` (LE2/LE3 only), and, for the hook plumbing only (`<LESDK/Init.hpp>`), into `mod/Mod.cpp`,
+    `engine/ProcessEvent`, `CallFunction`, `SceneView`, `BonePose`, `CoverAcquire`, `core/Hook` and `plugin/`
+    (stage 4). No `src/game` file includes it since stage 2; no other `src/engine` or `src/mod` file since stage 3.
   - The inventory in section 4 lists names our own code uses, not LExSDKv2's layouts.
 - **Prior art credited in `NOTICE.md`:** LExSDKv2 and TheFeckless' UE3 SDK generator.

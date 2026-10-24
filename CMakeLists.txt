@@ -248,8 +248,6 @@ set(MEVR_MOD_SOURCES
     src/engine/Legacy.hpp
     src/engine/NativesDump.cpp
     src/engine/NativesDump.hpp
-    src/engine/Objects.cpp
-    src/engine/Objects.hpp
     src/engine/ProcessEvent.cpp
     src/engine/ProcessEvent.hpp
     src/engine/ReflectCheck.cpp

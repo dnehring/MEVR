@@ -516,6 +516,29 @@ void TestMemory() {
     CHECK(ue3::Name::FromKey(name.Key()) == name);
 }
 
+// engine::World()'s walk (research/34 stage 3): a WorldInfo's outers are its level, then the World.
+void TestOuters() {
+    World w;
+    ue3::Object* const engine = w.f.objects[2];  // the "Engine" package
+    ue3::Object* const worldClass = w.f.Make("World", w.classClass, engine);
+    ue3::Object* const levelClass = w.f.Make("Level", w.classClass, engine);
+    ue3::Object* const map = w.f.Make("Map", nullptr, nullptr);
+    ue3::Object* const theWorld = w.f.Make("TheWorld", worldClass, map);
+    ue3::Object* const level = w.f.Make("PersistentLevel", levelClass, theWorld);
+    ue3::Object* const worldInfo = w.f.Make("WorldInfo_0", w.actor, level);
+    ue3::Object* const loop = w.f.Make("Loop", w.actor, nullptr);
+    w.f.Set(loop, w.f.layout.objectOuter, loop);  // a broken chain: its own outer
+    ue3::Reflection r(w.f.Universe());
+    auto* const world = static_cast<ue3::Class*>(worldClass);
+    CHECK(r.OuterOfA(worldInfo, world) == theWorld);
+    CHECK(r.OuterOfA(worldInfo, static_cast<ue3::Class*>(levelClass)) == level);
+    CHECK(r.OuterOfA(theWorld, world) == nullptr);  // never the object itself
+    CHECK(r.OuterOfA(w.shepard, world) == nullptr);  // no World among its outers
+    CHECK(r.OuterOfA(loop, world) == nullptr);       // bounded, not endless
+    CHECK(r.OuterOfA(nullptr, world) == nullptr);
+    CHECK(r.OuterOfA(worldInfo, nullptr) == nullptr);
+}
+
 } // namespace
 
 int RunReflectTests() {
@@ -525,5 +548,6 @@ int RunReflectTests() {
     TestParams();
     TestPatterns();
     TestMemory();
+    TestOuters();
     return gFailures;
 }

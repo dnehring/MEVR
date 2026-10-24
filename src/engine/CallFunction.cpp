@@ -4,15 +4,20 @@
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
 
-#include <LESDK/Headers.hpp>
+// Only the hook's target and context (BUILTIN_CALLFUNCTION_RVA, LESDK::Initializer): research/34 stage 4.
 #include <LESDK/Init.hpp>
 
 #include <vector>
+
+struct FFrame;  // the script stack frame: passed through, never read
 
 namespace mevr::engine::call_function {
 namespace {
 
 constexpr char const* kHookName = "UObject::CallFunction";
+
+// UObject::CallFunction(Stack, Result, Function), as the engine calls it.
+using tCallFunction = void(UObject* context, FFrame* stack, void* result, UFunction* function);
 
 struct Entry {
     void const* function;

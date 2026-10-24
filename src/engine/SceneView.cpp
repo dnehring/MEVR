@@ -27,11 +27,11 @@ struct Addresses {
 
 // All verified as function starts (and the LE1 return address as inside Draw) in each exe's
 // .pdata (tools/verify_rvas.py). Source of the facts: Halcyon's MassEffect1/2/3-VR (research/13).
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
 constexpr Addresses kAddresses{0x4C5300, 0x4C7A4E, 0x4C71A0, 0x4C9434};
-#elif defined(SDK_TARGET_LE2)
+#elif defined(MEVR_GAME_LE2)
 constexpr Addresses kAddresses{0x6CEB70, 0, 0x6D0A00, 0x6D2C99};
-#elif defined(SDK_TARGET_LE3)
+#elif defined(MEVR_GAME_LE3)
 constexpr Addresses kAddresses{0x6CFFD0, 0, 0x6D1E30, 0x6D40DB};
 #else
 constexpr Addresses kAddresses{0, 0, 0, 0};

@@ -2,10 +2,8 @@
 #include "engine/NativesDump.hpp"
 
 #include "core/Log.hpp"
-#include "engine/Objects.hpp"
-
-#include <LESDK/Headers.hpp>
-#include <LESDK/Init.hpp>
+#include "engine/GameAdapter.hpp"
+#include "ue3/Runtime.hpp"
 
 #include <Windows.h>
 
@@ -21,7 +19,7 @@
 namespace mevr::engine::natives_dump {
 namespace {
 
-constexpr DWORD kFuncNative = 0x400;     // FUNC_Native
+constexpr std::uint32_t kFuncNative = 0x400;     // FUNC_Native
 constexpr std::size_t kGNativesCount = 0x1000;  // EX_Max: GNatives[EX_Max]
 
 bool gDone = false;
@@ -40,7 +38,7 @@ bool Requested() {
     wchar_t buffer[MAX_PATH]{};
     GetModuleFileNameW(nullptr, buffer, MAX_PATH);
     std::filesystem::path const ini =
-        std::filesystem::path(buffer).parent_path() / L"ASI" / (SDK_TARGET_NAME_W L"MEVR.ini");
+        std::filesystem::path(buffer).parent_path() / L"ASI" / (MEVR_GAME_NAME_W L"MEVR.ini");
     return GetPrivateProfileIntW(L"Debug", L"dumpNatives", 0, ini.c_str()) == 1;
 }
 
@@ -55,27 +53,20 @@ std::filesystem::path DumpDirectory() {
     return dir;
 }
 
-bool IsSubclassOf(UClass* klass, UClass* parent) {
-    for (UField* field = klass; field != nullptr; field = field->SuperField) {
-        if (field == parent) {
-            return true;
-        }
-    }
-    return false;
-}
-
 // "ABioWeaponRanged::execGetMuzzleLoc" (or "...::State::execName" for a state's native) and
 // "BioWeaponRanged.GetMuzzleLoc (SFXGame)".
-std::pair<std::string, std::string> Names(UFunction* function, UClass* classClass, UClass* actorClass) {
+std::pair<std::string, std::string> Names(ue3::Reflection& r, ue3::Function* function, ue3::Class* classClass, ue3::Class* actorClass) {
     std::vector<std::string> outers;  // innermost first: state, class, package
-    UClass* owner = nullptr;
-    for (UObject* outer = function->Outer; outer != nullptr; outer = outer->Outer) {
-        outers.push_back(ToString(outer->Name));
-        if (owner == nullptr && outer->IsA(classClass)) {
-            owner = static_cast<UClass*>(outer);
+    ue3::Class* owner = nullptr;
+    ue3::Object* const functionOuter = r.OuterOf(function);
+    int depth = 0;
+    for (ue3::Object* outer = functionOuter; outer != nullptr && depth < 64; outer = r.OuterOf(outer), ++depth) {
+        outers.push_back(r.NameText(outer));
+        if (owner == nullptr && r.IsA(outer, classClass)) {
+            owner = static_cast<ue3::Class*>(outer);
         }
     }
-    std::string const leaf = ToString(function->Name);
+    std::string const leaf = r.NameText(function);
     std::string script;
     for (auto it = outers.rbegin() + (outers.size() > 1 ? 1 : 0); it != outers.rend(); ++it) {
         script += *it + ".";
@@ -85,9 +76,9 @@ std::pair<std::string, std::string> Names(UFunction* function, UClass* classClas
 
     std::string cpp;
     if (owner != nullptr) {
-        cpp = (IsSubclassOf(owner, actorClass) ? "A" : "U") + ToString(owner->Name) + "::";
-        if (static_cast<UObject*>(owner) != function->Outer && function->Outer != nullptr) {
-            cpp += ToString(function->Outer->Name) + "::";  // a state
+        cpp = (r.IsChildOf(owner, actorClass) ? "A" : "U") + r.NameText(owner) + "::";
+        if (static_cast<ue3::Object*>(owner) != functionOuter && functionOuter != nullptr) {
+            cpp += r.NameText(functionOuter) + "::";  // a state
         }
     }
     cpp += "exec" + leaf;
@@ -96,12 +87,16 @@ std::pair<std::string, std::string> Names(UFunction* function, UClass* classClas
 
 } // namespace
 
-void SaveIfRequested(::LESDK::Initializer const& init) {
+void SaveIfRequested() {
     if (gDone) {
         return;
     }
     gDone = true;
     if (!Requested()) {
+        return;
+    }
+    if (!ue3::runtime::Ready()) {
+        log::Warn("natives dump: our reflection layer is off ({}): nothing written", ue3::runtime::Status());
         return;
     }
     auto const base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
@@ -120,31 +115,34 @@ void SaveIfRequested(::LESDK::Initializer const& init) {
     std::error_code error;
     std::filesystem::create_directories(dir, error);
     std::filesystem::path const file =
-        dir / std::format("natives-{}-{:08X}.csv", SDK_TARGET_NAME_A, nt->FileHeader.TimeDateStamp);
+        dir / std::format("natives-{}-{:08X}.csv", MEVR_GAME_NAME_A, nt->FileHeader.TimeDateStamp);
     std::ofstream out(file, std::ios::binary);
-    out << "# Native UFunctions of " SDK_TARGET_NAME_A " (exe timestamp " << std::format("0x{:08X}", nt->FileHeader.TimeDateStamp)
+    out << "# Native UFunctions of " MEVR_GAME_NAME_A " (exe timestamp " << std::format("0x{:08X}", nt->FileHeader.TimeDateStamp)
         << "), written by the mod (MEVR_DUMP_NATIVES). Local research data: never commit or share.\n"
            "rva,name,kind,comment\n";
 
-    UClass* const functionClass = UFunction::StaticClass();
-    UClass* const classClass = UClass::StaticClass();
-    UClass* const actorClass = AActor::StaticClass();
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Class* const functionClass = r.FunctionClass();
+    ue3::Class* const classClass = r.ClassClass();
+    ue3::Class* const actorClass = r.FindClass("Engine.Actor");
+    ue3::runtime::FlushNotes();
     std::map<std::uintptr_t, int> named;  // Func -> UFunctions pointing at it
     int functions = 0;
-    auto* const objects = UObject::GObjObjects;
-    for (int i = 0; i < static_cast<int>(objects->Count()); ++i) {
-        UObject* const object = objects->GetData()[i];
-        if (object == nullptr || !object->IsA(functionClass)) {
+    std::int32_t const count = r.ObjectCount();
+    for (std::int32_t i = 0; i < count; ++i) {
+        ue3::Object* const object = r.ObjectAt(i);
+        if (object == nullptr || !r.IsA(object, functionClass)) {
             continue;
         }
-        auto* const function = static_cast<UFunction*>(object);
-        if ((function->FunctionFlags & kFuncNative) == 0 || !inImage(function->Func)) {
+        auto* const function = static_cast<ue3::Function*>(object);
+        void* const func = r.NativeFunc(function);
+        if ((r.FunctionFlags(function) & kFuncNative) == 0 || !inImage(func)) {
             continue;
         }
-        auto const rva = reinterpret_cast<std::uintptr_t>(function->Func) - base;
-        auto const [cpp, comment] = Names(function, classClass, actorClass);
+        auto const rva = reinterpret_cast<std::uintptr_t>(func) - base;
+        auto const [cpp, comment] = Names(r, function, classClass, actorClass);
         out << std::format("0x{:X},{},func,{}; iNative {}; flags 0x{:X}\n", rva, cpp, comment,
-            static_cast<int>(function->iNative), static_cast<unsigned>(function->FunctionFlags));
+            static_cast<int>(r.NativeIndex(function)), r.FunctionFlags(function));
         ++named[rva];
         ++functions;
     }
@@ -152,7 +150,8 @@ void SaveIfRequested(::LESDK::Initializer const& init) {
     // The bytecode handlers (EX_LocalVariable, EX_NativeParm, ...) and other GNatives entries that
     // no UFunction names. The most common pointer is execUndefined.
     int handlers = 0;
-    auto* const natives = init.ResolveTyped<void*>(BUILTIN_GNATIVES_RVA);
+    std::uint32_t const nativesRva = adapter::NativesTableRva();
+    auto* const natives = nativesRva != 0 ? reinterpret_cast<void* const*>(base + nativesRva) : nullptr;
     if (natives != nullptr) {
         std::map<std::uintptr_t, std::vector<std::size_t>> slots;
         for (std::size_t i = 0; i < kGNativesCount; ++i) {

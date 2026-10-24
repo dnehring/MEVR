@@ -15,9 +15,22 @@
 #include <optional>
 #include <string>
 
+namespace LESDK {
+class Initializer;
+}
+
 namespace mevr::engine::legacy {
 
 #if !defined(MEVR_GAME_LE1)
+
+// Resolves the LExSDKv2 globals the functions below read (GMalloc, GObjObjects, the name pools, GEngine,
+// GWorld; engine/Engine's ResolveGlobals until stage 3). Mod startup; false (logged) if one fails.
+bool Init(::LESDK::Initializer& init);
+
+// *GWorld, as an identity (engine::World()).
+void const* World();
+// GObjObjects' count (the heartbeat).
+std::int32_t ObjectCount();
 
 // GEngine->GamePlayers[0]->Actor, or nullptr.
 ue3::Object* LocalPlayerController();
