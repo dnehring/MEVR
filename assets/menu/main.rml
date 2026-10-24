@@ -283,6 +283,8 @@
 				<div data-if="life_size">
 					<div class="srow"><div class="slab">Extra depth</div><input type="range" min="0.5" max="2" step="0.05" data-value="extra_depth"/><div class="sval">{{extra_depth_text}}</div></div>
 					<div class="hint">1.00× is your own eye distance. More makes depth stronger and the world feel smaller.</div>
+					<div class="row"><div class="rl"><div class="rlab">Each eye's own field of view</div><div class="rdesc">Renders each eye's real, off-centre view so the whole image is used. Off: one shared window for both eyes</div></div>
+						<button class="tog" data-class-on="eye_frustum" data-event-click="toggle('eye_frustum')"><div class="knob"/></button></div>
 				</div>
 				<div data-if="!life_size">
 					<div class="srow"><div class="slab">Eye distance</div><input type="range" min="0.5" max="8" step="0.1" data-value="eye_distance"/><div class="sval">{{eye_distance_text}}</div></div>

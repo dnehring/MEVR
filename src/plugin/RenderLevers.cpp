@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <atomic>
 #include <cstdint>
 #include <cstring>
@@ -123,6 +124,92 @@ void* gEyeOneHistoryState = nullptr;  // the state it belongs to
 void* gFrameFirstState = nullptr;     // render 0's state this frame
 bool gFrameFirstStateFresh = false;   // its set was empty at render 0: a new state
 std::atomic<std::uint64_t> gHistorySwaps{0}, gHistoryResets{0}, gHistorySkipped{0};
+
+template <typename T>
+T& Field(std::uint8_t* object, std::size_t offset);  // defined below
+
+// ---- Umbra's occlusion queries drawn with the eye's own matrix (research/35, attempt 36) -------------------------
+// UmbraCommander::IssueOcclusionQueries (0x8B6550) sets the RHI's view matrix once per render from the view's
+// ViewProjectionMatrix at +0x260 (world space) and draws its occluder test geometry with it against the depth buffer
+// the Umbra base pass drew with TranslatedViewProjection (+0x1D0). The engine's own occlusion test (0x759240) uses
+// +0x1D0 as well. In the life-size stereo's mode 2 only +0x1D0 carries the eye's off-centre frustum and +0x260 keeps
+// the symmetric window (research/30: the HUD markers), so Umbra's queries land up to 18 degrees from the geometry
+// they test and objects come and go with every head motion. Around that call the hook puts the world-space
+// equivalent of +0x1D0 into +0x260: V x P_eye = T(PreViewTranslation) x TVP, since V = T(PreViewTranslation) x TV
+// (the sign of the translation is checked against V and TV themselves on the first call). The RHI copies the matrix
+// into its constants at once, so the original bytes go back right after.
+constexpr std::uintptr_t kUmbraIssueQueriesRva = 0x8B6550;
+constexpr std::uintptr_t kCommanderView = 0x68;        // UmbraCommander's view (FViewInfo*)
+constexpr std::uintptr_t kCommanderViewParamsSet = 0x5C;  // 0 until SetViewParameters was called this render
+constexpr std::uintptr_t kViewViewMatrix = 0x90;
+constexpr std::uintptr_t kViewTranslatedViewMatrix = 0x190;
+constexpr std::uintptr_t kViewTranslatedViewProj = 0x1D0;
+constexpr std::uintptr_t kViewPreViewTranslation = 0x250;
+constexpr std::uintptr_t kViewViewProj = 0x260;
+using tUmbraIssueQueries = void(void* commander);
+tUmbraIssueQueries* gUmbraIssueQueriesOrig = nullptr;
+bool gUmbraIssueQueriesHooked = false;
+std::atomic<int> gUmbraEyeMatrix{1};
+std::atomic<std::uint64_t> gUmbraMatrixFixed{0}, gUmbraMatrixSame{0};
+int gTranslationSign = 0;  // +1: V = T(+pvt) x TV; -1: T(-pvt); 0: not known yet
+
+// T(s * pvt) x M for row vectors: rows 0-2 of M unchanged, row 3 += s * (pvt.x row0 + pvt.y row1 + pvt.z row2).
+void TranslateRows(float const* m, float const* pvt, float s, float* out) {
+    std::memcpy(out, m, sizeof(float) * 16);
+    for (int c = 0; c < 4; ++c) {
+        out[12 + c] = m[12 + c] + s * (pvt[0] * m[c] + pvt[1] * m[4 + c] + pvt[2] * m[8 + c]);
+    }
+}
+
+bool NearlySame(float const* a, float const* b) {
+    for (int i = 0; i < 16; ++i) {
+        float const scale = std::max(1.0f, std::max(std::abs(a[i]), std::abs(b[i])));
+        if (std::abs(a[i] - b[i]) > 1e-3f * scale) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void UmbraIssueQueriesHook(void* commander) {
+    auto* const c = static_cast<std::uint8_t*>(commander);
+    auto* const view = Field<std::uint8_t*>(c, kCommanderView);
+    if (gUmbraEyeMatrix.load(std::memory_order_relaxed) == 0 || view == nullptr || Field<int>(c, kCommanderViewParamsSet) != 0) {
+        gUmbraIssueQueriesOrig(commander);
+        return;
+    }
+    auto* const V = reinterpret_cast<float const*>(view + kViewViewMatrix);
+    auto* const TV = reinterpret_cast<float const*>(view + kViewTranslatedViewMatrix);
+    auto* const TVP = reinterpret_cast<float const*>(view + kViewTranslatedViewProj);
+    auto* const pvt = reinterpret_cast<float const*>(view + kViewPreViewTranslation);
+    auto* const VP = reinterpret_cast<float*>(view + kViewViewProj);
+    if (gTranslationSign == 0) {
+        float plus[16], minus[16];
+        TranslateRows(TV, pvt, 1.0f, plus);
+        TranslateRows(TV, pvt, -1.0f, minus);
+        gTranslationSign = NearlySame(plus, V) ? 1 : (NearlySame(minus, V) ? -1 : 0);
+        log::Info("render levers: the view matrix is the translated one moved by {} the pre-view translation{}",
+            gTranslationSign > 0 ? "plus" : (gTranslationSign < 0 ? "minus" : "neither"),
+            gTranslationSign == 0 ? ": umbraEyeMatrix can't act this render" : "");
+        if (gTranslationSign == 0) {
+            gUmbraIssueQueriesOrig(commander);
+            return;
+        }
+    }
+    float eye[16];
+    TranslateRows(TVP, pvt, static_cast<float>(gTranslationSign), eye);
+    if (NearlySame(eye, VP)) {
+        gUmbraMatrixSame.fetch_add(1, std::memory_order_relaxed);  // mode 1: nothing to fix
+        gUmbraIssueQueriesOrig(commander);
+        return;
+    }
+    float saved[16];
+    std::memcpy(saved, VP, sizeof(saved));
+    std::memcpy(VP, eye, sizeof(eye));
+    gUmbraIssueQueriesOrig(commander);
+    std::memcpy(VP, saved, sizeof(saved));
+    gUmbraMatrixFixed.fetch_add(1, std::memory_order_relaxed);
+}
 std::uint8_t* gExe = nullptr;
 bool gHooked = false;
 bool gShareHooked = false;
@@ -804,6 +891,11 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
             share += std::format("; second eye's own occlusion history: {} renders, {} new sets, {} on another state",
                 swaps, resets, skippedStates);
         }
+        std::uint64_t const fixed = gUmbraMatrixFixed.exchange(0, std::memory_order_relaxed);
+        std::uint64_t const same = gUmbraMatrixSame.exchange(0, std::memory_order_relaxed);
+        if (fixed != 0 || same != 0) {
+            share += std::format("; Umbra's queries with the eye's matrix: {} renders fixed, {} already right", fixed, same);
+        }
     }
     draw_replay::Stats const d = draw_replay::TakeStats();
     std::uint64_t const fallbacks = gReplayFallbacks.exchange(0, std::memory_order_relaxed);
@@ -851,6 +943,12 @@ bool Install(::LESDK::Initializer& init) {
         hook::Install(init, "FD3D11DynamicRHI::GetQueryData", getQueryData, &GetQueryDataHook, gGetQueryDataOrig);
     if (!gQueryDataHooked) {
         log::Warn("render levers: GetQueryData hook failed; ue3QueryWait has no effect");
+    }
+    auto* const umbraIssue = init.ResolveTyped<tUmbraIssueQueries>(::LESDK::Address::FromOffset(kUmbraIssueQueriesRva));
+    gUmbraIssueQueriesHooked = umbraIssue != nullptr &&
+        hook::Install(init, "UmbraCommander::IssueOcclusionQueries", umbraIssue, &UmbraIssueQueriesHook, gUmbraIssueQueriesOrig);
+    if (!gUmbraIssueQueriesHooked) {
+        log::Warn("render levers: UmbraCommander::IssueOcclusionQueries hook failed; umbraEyeMatrix has no effect");
     }
     // Not installed: a second render on commander 1 blocks in Umbra's command ring (research/35, attempt 20).
     (void)&SetCommanderHook;
@@ -902,6 +1000,18 @@ void Tick() {
                                 : "both eyes render through the game's one scene view state (Halcyon's own; per-eye "
                                   "states in cine only)",
                 perEyeRead);
+        }
+        static int umbraEyeMatrix = -1;
+        int const umbraEyeMatrixRead = readInt(L"umbraEyeMatrix", 1) != 0 ? 1 : 0;
+        if (umbraEyeMatrixRead != umbraEyeMatrix) {
+            umbraEyeMatrix = umbraEyeMatrixRead;
+            gUmbraEyeMatrix.store(umbraEyeMatrixRead, std::memory_order_relaxed);
+            log::Info("render levers: {} ([Performance] umbraEyeMatrix = {}){}",
+                umbraEyeMatrixRead != 0 ? "Umbra's occlusion queries are drawn with the eye's own matrix (the one the "
+                                          "depth buffer was drawn with) in the life-size stereo's mode 2"
+                                        : "Umbra's occlusion queries are drawn with the view's CPU matrix (the game's "
+                                          "own: the symmetric window in mode 2, off the eye's depth buffer)",
+                umbraEyeMatrixRead, gUmbraIssueQueriesHooked ? "" : "; not hooked, so no effect");
         }
         static int perEyeOcclusion = -1;
         int const perEyeOcclusionRead = readInt(L"perEyeOcclusion", 1) != 0 ? 1 : 0;
@@ -992,10 +1102,11 @@ bool PerEyeViewState() {
 }
 
 std::string SettingsJson() {
-    return std::format("{{\"umbraQueryWait\": {}, \"ue3QueryWait\": {}, \"perEyeViewState\": {}, \"perEyeOcclusion\": {}, \"pCoresOnly\": {}, \"sharePass\": {}, \"shareFailed\": {}, \"replayFailed\": {}, "
+    return std::format("{{\"umbraQueryWait\": {}, \"ue3QueryWait\": {}, \"perEyeViewState\": {}, \"perEyeOcclusion\": {}, \"umbraEyeMatrix\": {}, \"pCoresOnly\": {}, \"sharePass\": {}, \"shareFailed\": {}, \"replayFailed\": {}, "
         "\"drawReplay\": {}, \"hooked\": {}}}",
         gUmbraQueryWait.load(std::memory_order_relaxed), gUe3QueryWait.load(std::memory_order_relaxed),
-        gPerEyeViewState.load(std::memory_order_relaxed), gPerEyeOcclusion.load(std::memory_order_relaxed), gPCoresOnly.load(std::memory_order_relaxed),
+        gPerEyeViewState.load(std::memory_order_relaxed), gPerEyeOcclusion.load(std::memory_order_relaxed),
+        gUmbraEyeMatrix.load(std::memory_order_relaxed), gPCoresOnly.load(std::memory_order_relaxed),
         gSharePass.load(std::memory_order_relaxed), gShareFailed.load(std::memory_order_relaxed) ? "true" : "false",
         gReplayFailed.load(std::memory_order_relaxed) ? "true" : "false", draw_replay::StatsJson(), gHooked ? "true" : "false");
 }
