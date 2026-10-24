@@ -33,6 +33,11 @@ struct Name {
         std::memcpy(&key, this, sizeof(key));
         return key;
     }
+    static Name FromKey(std::uint64_t key) {
+        Name name;
+        std::memcpy(&name, &key, sizeof(name));
+        return name;
+    }
     friend bool operator==(Name a, Name b) { return a.index == b.index && a.number == b.number; }
 };
 static_assert(sizeof(Name) == 8);
@@ -76,5 +81,4 @@ struct Rotator {
     std::int32_t roll = 0;
 };
 static_assert(sizeof(Vector) == 12 && sizeof(Rotator) == 12 && sizeof(Vector2D) == 8);
-
 } // namespace mevr::ue3

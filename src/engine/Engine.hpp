@@ -12,4 +12,8 @@ namespace mevr::engine {
 // mod both call this. Returns false if anything fails to resolve.
 bool ResolveGlobals(::LESDK::Initializer& init);
 
+// The current world (GWorld), as an identity to compare: a new one means a level load. Stage 3 finds it
+// through our reflection layer (research/34).
+void const* World();
+
 } // namespace mevr::engine

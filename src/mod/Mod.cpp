@@ -22,6 +22,7 @@
 #include "engine/Engine.hpp"
 #include "engine/GameAdapter.hpp"
 #include "engine/NativesDump.hpp"
+#include "engine/Objects.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/ReflectCheck.hpp"
 #include "engine/SceneView.hpp"
@@ -203,17 +204,21 @@ void TryInstallScriptHooks() {
     if (!gSceneViewHooked && !gHostOwnsVr) {
         gSceneViewHooked = engine::scene_view::Install(*gInit, &game::head_tracking::OnBeforePrimaryView);
     }
+    // The script packages are in once Engine.Camera.UpdateCamera exists (head tracking's first
+    // function, the old gate): then find our reflection layer, before the modules that use it start,
+    // and prove it against LExSDKv2 (research/34).
+    if (!gReflectChecked) {
+        if (engine::FindFunction(L"UpdateCamera", "Function Engine.Camera.UpdateCamera") == nullptr) {
+            return;
+        }
+        gReflectChecked = true;
+        ue3::runtime::Init();
+        engine::reflect_check::Run(*gInit);
+    }
     // Without the scene view hook (or a head source) head tracking stays inert; it still reads
     // the game mode, which the probes and features use.
     if (!game::head_tracking::TryStartup(gSceneViewHooked)) {
         return;
-    }
-    // The script packages are in: find our reflection layer and prove it against LExSDKv2 before
-    // the modules that use it start (research/34).
-    if (!gReflectChecked) {
-        gReflectChecked = true;
-        ue3::runtime::Init();
-        engine::reflect_check::Run(*gInit);
     }
     if (!gHostOwnsVr && !game::reflections::TryStartup()) {
         log::Warn("reflections: SceneCaptureComponent.SetFrameRate not found; reflection fix off");

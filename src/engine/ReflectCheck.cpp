@@ -4,6 +4,7 @@
 #include "core/Log.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/Objects.hpp"
+#include "ue3/Memory.hpp"
 #include "ue3/Runtime.hpp"
 
 #include <LESDK/Headers.hpp>
@@ -21,6 +22,7 @@
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <new>
 #include <optional>
 #include <string>
 #include <vector>
@@ -292,6 +294,15 @@ void CheckGlobals(::LESDK::Initializer& init) {
         Add("global", "ProcessEvent", found.processEvent == sdk,
             std::format("vtable +0x{:X}: RVA {}", R().layout().processEventSlot, Hex(static_cast<long long>(found.processEvent - found.module))),
             std::format("RVA {}", Hex(static_cast<long long>(sdk - found.module))));
+    });
+    // The engine's allocator (ue3/Memory, stage 2): the GMalloc appMalloc and appFree both load, against LExSDKv2's.
+    Guard("global", "allocator", [&] {
+        auto const sdk = reinterpret_cast<std::uintptr_t>(GMalloc);
+        auto const rva = [&](std::uintptr_t a) { return Hex(a != 0 ? static_cast<long long>(a - found.module) : -1); };
+        Add("global", "allocator", found.gmalloc != 0 && found.gmalloc == sdk,
+            std::format("GMalloc RVA {} (appMalloc RVA {} by {}, appFree RVA {} by {})", rva(found.gmalloc), rva(found.appMalloc),
+                found.appMallocBy, rva(found.appFree), found.appFreeBy),
+            std::format("GMalloc RVA {}", rva(sdk)));
     });
     Guard("global", "GameEngine", [&] {
         ue3::Object* const ours = ue3::runtime::GameEngine();
@@ -686,6 +697,8 @@ void CheckParams() {
     PARAM(ABioPlayerController_execGetAdjustedAimFor_Parms, "SFXGame.BioPlayerController.GetAdjustedAimFor", ReturnValue);
     PARAM(ABioWeaponRanged_execGetAdjustedAim_Parms, "SFXGame.BioWeaponRanged.GetAdjustedAim", StartFireLoc);
     PARAM(APawn_eventGetWeaponStartTraceLocation_Parms, "Engine.Pawn.GetWeaponStartTraceLocation", ReturnValue);
+    // Stage 2: hand aim reads BioPawn's override's block through its own parameter (the old code assumed Engine.Pawn's).
+    PARAM(APawn_eventGetWeaponStartTraceLocation_Parms, "SFXGame.BioPawn.GetWeaponStartTraceLocation", ReturnValue);
     PARAM(AActor_execSetRotation_Parms, "Engine.Actor.SetRotation", NewRotation);
     PARAM(AActor_execSetRotation_Parms, "Engine.Actor.SetRotation", ReturnValue);
     PARAM(AController_eventGetPlayerViewPoint_Parms, "Engine.PlayerController.GetPlayerViewPoint", out_Location);
@@ -753,6 +766,9 @@ void CheckParams() {
     PARMS(ABioPawn_execShouldCrouch_Parms, "SFXGame.BioPawn.ShouldCrouch");
     PARMS(ABioPawn_execIsInCover_Parms, "SFXGame.BioPawn.IsInCover");
     PARMS(USFXGameModeDefault_execTryExitCover_Parms, "SFXGame.SFXGameModeDefault.TryExitCover");
+    // Stage 2: the squad wheel's calls (a 64-byte zeroed block before; the function's own block now).
+    PARMS(USFXGameModeDefault_execEnterWeaponWheel_Parms, "SFXGame.SFXGameModeDefault.EnterWeaponWheel");
+    PARMS(USFXGameModeWeaponWheel_execExitWeaponWheel_Parms, "SFXGame.SFXGameModeWeaponWheel.ExitWeaponWheel");
 }
 
 // Names, full names, IsA and IsAlive over a spread of GObjects, both ways.
@@ -838,6 +854,57 @@ void CheckSamples() {
     });
 }
 
+// Engine strings (ue3/Memory, stage 2): one of ours, built in the engine's memory, and one LExSDKv2 builds (through
+// GMalloc), each freed by the other's allocator path, so both are proven the same heap before ConsoleRequest relies on it.
+void CheckMemory() {
+    if (!ue3::memory::Ready()) {
+        Add("sample", "engine strings", false, "the engine's allocator wasn't found", "");
+        return;
+    }
+    if (ue3::runtime::Where().gmalloc != reinterpret_cast<std::uintptr_t>(GMalloc)) {
+        Add("sample", "engine strings", false, "not tried: our allocator's GMalloc isn't LExSDKv2's (the allocator row)", "");
+        return;
+    }
+    Guard("sample", "engine strings", [] {
+        std::wstring_view const text = L"MEVR reflect check";
+        std::string problem;
+        {
+            // Ours, built and freed through appMalloc/appFree.
+            ue3::memory::OwnedString ours(text);
+            ue3::FString const& s = ours.Get();
+            if (!ours.Valid() || s.data == nullptr || s.count != static_cast<std::int32_t>(text.size() + 1) ||
+                std::wstring_view(s.data, text.size()) != text || s.data[text.size()] != L'\0') {
+                problem = "our string isn't as built";
+            } else if (ue3::memory::Narrow(s) != "MEVR reflect check") {
+                problem = "our string doesn't read back";
+            }
+        }
+        if (problem.empty() && GMalloc != nullptr && *GMalloc != nullptr) {
+            // A block from appMalloc goes back through GMalloc's own Free, as the engine frees what it is handed.
+            void* const block = ue3::memory::Malloc(64);
+            if (block == nullptr) {
+                problem = "appMalloc returned nothing";
+            } else {
+                std::memset(block, 0x5A, 64);
+                (*GMalloc)->Free(block);
+            }
+        }
+        if (problem.empty()) {
+            // LExSDKv2's string (its constructor allocates through GMalloc), freed by our path.
+            alignas(FString) unsigned char storage[sizeof(FString)];
+            auto* const sdk = new (storage) FString(L"MEVR reflect check");
+            ue3::FString theirs{};
+            std::memcpy(&theirs, sdk, sizeof theirs);
+            if (ue3::memory::Narrow(theirs) != "MEVR reflect check") {
+                problem = "LExSDKv2's string doesn't read through ours";
+            }
+            ue3::memory::FreeString(theirs);  // not the SDK's destructor: the storage is just forgotten
+        }
+        Add("sample", "engine strings", problem.empty(), problem.empty() ? "built, read, freed both ways" : problem,
+            "FString (GMalloc)");
+    });
+}
+
 std::filesystem::path OutputPath() {
     wchar_t buffer[MAX_PATH]{};
     if (GetEnvironmentVariableW(L"LOCALAPPDATA", buffer, MAX_PATH) == 0) {
@@ -895,6 +962,7 @@ void Run(::LESDK::Initializer& init) {
     CheckFunctions();
     CheckParams();
     CheckSamples();
+    CheckMemory();
     ue3::runtime::FlushNotes();
     QueryPerformanceCounter(&end);
     QueryPerformanceFrequency(&frequency);

@@ -9,7 +9,9 @@
 #include <string>
 #include <vector>
 
-class UObject;
+namespace mevr::ue3 {
+struct Object;
+}
 
 // The ranged weapon the player holds, as the game draws it: where its muzzle is and which way its
 // barrel points (LE1; research/14, "Weapon and muzzle").
@@ -76,9 +78,9 @@ std::optional<bool> Zoomed();
 // (the camera, which picks the game's TightAim and sniper scope modes from it) ever sees the flag.
 // `weapon` must be the player's held ranged weapon; nullopt if not, if it's already zoomed, or LE2/LE3.
 // Game thread.
-std::optional<float> ZoomedAimError(UObject* weapon, float accuracy);
+std::optional<float> ZoomedAimError(ue3::Object* weapon, float accuracy);
 // The same native's answer as the weapon is now (not zoomed): for undoing the lerp it applies.
-std::optional<float> AimError(UObject* weapon, float accuracy);
+std::optional<float> AimError(ue3::Object* weapon, float accuracy);
 // A socket of the weapon's mesh named for the off hand (logged once per weapon with all its
 // sockets), live, in the right hand bone's axes (component units). Nullopt if it has none.
 std::optional<ik::Vec3> OffHandSocketInHand();

@@ -36,6 +36,13 @@ constexpr std::size_t kMeshBoneStride = 0x50;  // unused: Bones() finds nothing
 constexpr std::size_t kMeshBoneParentOffset = 0x40;
 #endif
 
+USkeletalMeshComponent const* Sdk(ue3::Object const* mesh) {
+    return reinterpret_cast<USkeletalMeshComponent const*>(mesh);
+}
+USkeletalMeshComponent* Sdk(ue3::Object* mesh) {
+    return reinterpret_cast<USkeletalMeshComponent*>(mesh);
+}
+
 std::uint64_t Key(SFXName const& name) {
     std::uint64_t key = 0;
     std::memcpy(&key, &name, sizeof key);
@@ -48,8 +55,9 @@ struct RawBones {
     int count = 0;
 };
 
-RawBones Bones(USkeletalMeshComponent const* mesh) {
+RawBones Bones(ue3::Object const* object) {
 #if defined(SDK_TARGET_LE1)
+    USkeletalMeshComponent const* const mesh = Sdk(object);
     if (mesh == nullptr || mesh->SkeletalMesh == nullptr) {
         return {};
     }
@@ -61,7 +69,7 @@ RawBones Bones(USkeletalMeshComponent const* mesh) {
     }
     return {data, count};
 #else
-    (void)mesh;
+    (void)object;
     return {};
 #endif
 }
@@ -107,7 +115,7 @@ BoneAtom ToAtom(ik::Transform const& t) {
         static_cast<float>(t.translation.z), static_cast<float>(t.scale)};
 }
 
-std::optional<RefSkeleton> ReadRefSkeleton(USkeletalMeshComponent const* mesh) {
+std::optional<RefSkeleton> ReadRefSkeleton(ue3::Object const* mesh) {
     RawBones const bones = Bones(mesh);
     if (bones.data == nullptr) {
         return std::nullopt;
@@ -127,12 +135,12 @@ std::optional<RefSkeleton> ReadRefSkeleton(USkeletalMeshComponent const* mesh) {
     return skeleton;
 }
 
-int RefBoneCount(USkeletalMeshComponent const* mesh) {
+int RefBoneCount(ue3::Object const* mesh) {
     RawBones const bones = Bones(mesh);
     return bones.data != nullptr ? bones.count : -1;
 }
 
-std::uint64_t RefBoneKey(USkeletalMeshComponent const* mesh, int index) {
+std::uint64_t RefBoneKey(ue3::Object const* mesh, int index) {
     RawBones const bones = Bones(mesh);
     if (bones.data == nullptr || index < 0 || index >= bones.count) {
         return 0;
@@ -140,12 +148,12 @@ std::uint64_t RefBoneKey(USkeletalMeshComponent const* mesh, int index) {
     return Key(NameAt(bones, index));
 }
 
-std::span<BoneAtom> SpaceBases(USkeletalMeshComponent* mesh) {
+std::span<BoneAtom> SpaceBases(ue3::Object* mesh) {
 #if defined(SDK_TARGET_LE1)
     if (mesh == nullptr) {
         return {};
     }
-    auto& array = mesh->SpaceBases;  // declared TArray<FMatrix>: really FBoneAtom (see header)
+    auto& array = Sdk(mesh)->SpaceBases;  // declared TArray<FMatrix>: really FBoneAtom (see header)
     auto* const data = reinterpret_cast<BoneAtom*>(array.GetData());
     int const count = static_cast<int>(array.Count());
     if (data == nullptr || count <= 0) {
@@ -158,10 +166,10 @@ std::span<BoneAtom> SpaceBases(USkeletalMeshComponent* mesh) {
 #endif
 }
 
-ik::Affine LocalToWorld(USkeletalMeshComponent const* mesh) {
+ik::Affine LocalToWorld(ue3::Object const* mesh) {
     ik::Affine affine;
 #if defined(SDK_TARGET_LE1)
-    FMatrix const& m = mesh->LocalToWorld;
+    FMatrix const& m = Sdk(mesh)->LocalToWorld;
     FPlane const* const rows[4] = {&m.XPlane, &m.YPlane, &m.ZPlane, &m.WPlane};
     for (int r = 0; r < 4; ++r) {
         affine.m[r][0] = rows[r]->X;
@@ -175,20 +183,16 @@ ik::Affine LocalToWorld(USkeletalMeshComponent const* mesh) {
     return affine;
 }
 
-ik::Affine LocalToWorld(ue3::Object const* mesh) {
-    return LocalToWorld(reinterpret_cast<USkeletalMeshComponent const*>(mesh));
-}
-
-USkeletalMeshComponent* PoseParent(USkeletalMeshComponent const* mesh) {
+ue3::Object* PoseParent(ue3::Object const* mesh) {
 #if defined(SDK_TARGET_LE1)
-    return mesh != nullptr ? mesh->ParentAnimComponent : nullptr;
+    return mesh != nullptr ? reinterpret_cast<ue3::Object*>(Sdk(mesh)->ParentAnimComponent) : nullptr;
 #else
     (void)mesh;
     return nullptr;
 #endif
 }
 
-int FindBone(USkeletalMeshComponent const* mesh, std::uint64_t key) {
+int FindBone(ue3::Object const* mesh, std::uint64_t key) {
     RawBones const bones = Bones(mesh);
     for (int i = 0; i < bones.count; ++i) {
         if (Key(NameAt(bones, i)) == key) {
@@ -216,12 +220,12 @@ static_assert(offsetof(USkeletalMeshComponent, Attachments) == 0x3B4);
 static_assert(sizeof(FAttachment) == 0x34);
 #endif
 
-std::optional<Socket> FindSocket(USkeletalMeshComponent const* mesh, std::uint64_t socketName) {
+std::optional<Socket> FindSocket(ue3::Object const* mesh, std::uint64_t socketName) {
 #if defined(SDK_TARGET_LE1)
-    if (mesh == nullptr || mesh->SkeletalMesh == nullptr || socketName == 0) {
+    if (mesh == nullptr || Sdk(mesh)->SkeletalMesh == nullptr || socketName == 0) {
         return std::nullopt;
     }
-    auto const& sockets = mesh->SkeletalMesh->Sockets;
+    auto const& sockets = Sdk(mesh)->SkeletalMesh->Sockets;
     int const count = static_cast<int>(sockets.Count());
     if (sockets.GetData() == nullptr || count <= 0 || count > 4096) {
         return std::nullopt;
@@ -250,13 +254,13 @@ std::optional<Socket> FindSocket(USkeletalMeshComponent const* mesh, std::uint64
 #endif
 }
 
-std::vector<NamedSocket> Sockets(USkeletalMeshComponent const* mesh) {
+std::vector<NamedSocket> Sockets(ue3::Object const* mesh) {
     std::vector<NamedSocket> out;
 #if defined(SDK_TARGET_LE1)
-    if (mesh == nullptr || mesh->SkeletalMesh == nullptr) {
+    if (mesh == nullptr || Sdk(mesh)->SkeletalMesh == nullptr) {
         return out;
     }
-    auto const& sockets = mesh->SkeletalMesh->Sockets;
+    auto const& sockets = Sdk(mesh)->SkeletalMesh->Sockets;
     int const count = static_cast<int>(sockets.Count());
     if (sockets.GetData() == nullptr || count <= 0 || count > 4096) {
         return out;
@@ -276,19 +280,19 @@ std::vector<NamedSocket> Sockets(USkeletalMeshComponent const* mesh) {
     return out;
 }
 
-std::optional<Attachment> FindAttachment(USkeletalMeshComponent const* mesh, UObject const* component) {
+std::optional<Attachment> FindAttachment(ue3::Object const* mesh, ue3::Object const* component) {
 #if defined(SDK_TARGET_LE1)
     if (mesh == nullptr || component == nullptr) {
         return std::nullopt;
     }
-    auto const& attachments = mesh->Attachments;
+    auto const& attachments = Sdk(mesh)->Attachments;
     int const count = static_cast<int>(attachments.Count());
     if (attachments.GetData() == nullptr || count <= 0 || count > 4096) {
         return std::nullopt;
     }
     for (int i = 0; i < count; ++i) {
         FAttachment const& entry = attachments.GetData()[i];
-        if (static_cast<UObject const*>(entry.Component) != component) {
+        if (reinterpret_cast<ue3::Object const*>(static_cast<UObject const*>(entry.Component)) != component) {
             continue;
         }
         Attachment out;
@@ -317,7 +321,7 @@ std::optional<Attachment> FindAttachment(USkeletalMeshComponent const* mesh, UOb
 #endif
 }
 
-std::optional<UnrealVector> BoneLocation(USkeletalMeshComponent* mesh, int index, Space space) {
+std::optional<UnrealVector> BoneLocation(ue3::Object* mesh, int index, Space space) {
     std::span<BoneAtom> const pose = SpaceBases(mesh);
     if (index < 0 || static_cast<std::size_t>(index) >= pose.size() || static_cast<int>(pose.size()) != RefBoneCount(mesh)) {
         return std::nullopt;
@@ -329,7 +333,10 @@ std::optional<UnrealVector> BoneLocation(USkeletalMeshComponent* mesh, int index
     return UnrealVector{at.x, at.y, at.z};
 }
 
-std::optional<UnrealVector> NativeBoneLocation(USkeletalMeshComponent* mesh, SFXName const& bone, Space space) {
+std::optional<UnrealVector> NativeBoneLocation(ue3::Object* object, std::uint64_t key, Space space) {
+    USkeletalMeshComponent* const mesh = Sdk(object);
+    SFXName bone{};
+    std::memcpy(&bone, &key, sizeof bone);
     if (gGetBoneLocation == nullptr || gMatchRefBone == nullptr || mesh == nullptr) {
         return std::nullopt;
     }
@@ -340,7 +347,7 @@ std::optional<UnrealVector> NativeBoneLocation(USkeletalMeshComponent* mesh, SFX
     match.ReturnValue = -1;  // stays -1 if the engine rejects the call
     mesh->ProcessEvent(gMatchRefBone, &match, nullptr);
     // GetBoneLocation indexes SpaceBases unchecked: only for a bone whose pose exists.
-    if (match.ReturnValue < 0 || match.ReturnValue >= static_cast<int>(SpaceBases(mesh).size())) {
+    if (match.ReturnValue < 0 || match.ReturnValue >= static_cast<int>(SpaceBases(object).size())) {
         return std::nullopt;
     }
     USkeletalMeshComponent_execGetBoneLocation_Parms parms;
@@ -350,13 +357,8 @@ std::optional<UnrealVector> NativeBoneLocation(USkeletalMeshComponent* mesh, SFX
     return UnrealVector{parms.ReturnValue.X, parms.ReturnValue.Y, parms.ReturnValue.Z};
 }
 
-SFXName NameOf(std::uint64_t key) {
-    SFXName name{};
-    std::memcpy(&name, &key, sizeof name);
-    return name;
-}
-
-std::string GetBoneNamesDiagnostic(USkeletalMeshComponent* mesh) {
+std::string GetBoneNamesDiagnostic(ue3::Object* object) {
+    USkeletalMeshComponent* const mesh = Sdk(object);
     if (gGetBoneNames == nullptr || mesh == nullptr) {
         return "GetBoneNames not found";
     }
@@ -365,7 +367,7 @@ std::string GetBoneNamesDiagnostic(USkeletalMeshComponent* mesh) {
     int const returned = static_cast<int>(parms.BoneNames.Count());
     parms.BoneNames.~TArray();  // the parms union doesn't free it
     std::string text = std::format("GetBoneNames through ProcessEvent returned {} names (RefSkeleton has {})", returned,
-        RefBoneCount(mesh));
+        RefBoneCount(object));
 #if defined(SDK_TARGET_LE1)
     auto const base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
     auto const func = reinterpret_cast<std::uintptr_t>(gGetBoneNames->Func);

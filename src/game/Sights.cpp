@@ -7,14 +7,13 @@
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/CallFunction.hpp"
-#include "engine/Objects.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/BodyCalibration.hpp"
 #include "game/HandCalibration.hpp"
+#include "game/Player.hpp"
 #include "game/ViewAnchor.hpp"
 #include "game/Weapon.hpp"
-
-#include <LESDK/Headers.hpp>
+#include "ue3/Handles.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -30,17 +29,18 @@ namespace {
 
 namespace sv = vr::sights;
 
-#if defined(SDK_TARGET_LE1)
-constexpr char const* kGetPlayerAimError = "Function SFXGame.BioWeaponRanged.GetPlayerAimError";
-constexpr char const* kTrace = "Function Engine.Actor.Trace";
+#if defined(MEVR_GAME_LE1)
+// Our reflection layer (research/34).
+ue3::FunctionRef gGetPlayerAimError{"SFXGame.BioWeaponRanged.GetPlayerAimError"};
+ue3::FunctionRef gTrace{"Engine.Actor.Trace"};
 #endif
 // How far the sight line is traced for the shot's convergence point (game units: 300 m at the life-size view).
 constexpr double kConvergeRangeUnits = 30000.0;
 // What the sight line hits must be this far ahead of the muzzle to aim at (a wall at the sight: parallel instead).
 constexpr float kMinAheadUnits = 20.0f;
 
-UFunction* gAimErrorFunction = nullptr;
-UFunction* gTraceFunction = nullptr;
+ue3::Function* gAimErrorFunction = nullptr;
+ue3::Function* gTraceFunction = nullptr;
 
 // The sight as last placed, in the world (research/21 section 10): its place on the gun (gun units: `back`
 // behind the muzzle along the barrel, `height` toward `top`), so a shot can rebuild the sight line from the gun as
@@ -110,7 +110,7 @@ constexpr float kRaisedWeight = 0.05f;  // the assist counts as on from this wei
 // GetAdjustedAim script asks it for every shot, research/18). With the scope's picture up, the answer
 // becomes the zoomed one for the same accuracy: undo the unzoomed lerp (the native's answers for accuracy
 // 0 and 1), then ask the zoomed native for that accuracy (bIsZoomed set for that call only).
-void OnAimError(UObject* context, UFunction* /*function*/, void* result) {
+void OnAimError(ue3::Object* context, ue3::Function* /*function*/, void* result) {
     gAimErrorCalls.fetch_add(1, std::memory_order_relaxed);
     if (result == nullptr || !gScopeUp || !gAimedFire || context == nullptr ||
         reinterpret_cast<std::uintptr_t>(context) != weapon::Key()) {
@@ -172,19 +172,20 @@ engine::UnrealVector DirectionToWorld(engine::TrackingFrame const& frame, XrVect
     return engine::Apply(frame.rotation, {-static_cast<double>(v.z), v.x, v.y});
 }
 
-#if defined(SDK_TARGET_LE1)
-// Actor.Trace on the player's pawn (which it ignores), directly through ProcessEvent (never the SDK's wrapper):
-// the actor hit and, if the native's out parameter came back, where.
-AActor* TraceOnce(APawn* pawn, engine::UnrealVector const& start, engine::UnrealVector const& end, engine::UnrealVector* hit) {
-    AActor_execTrace_Parms parms;
-    parms.TraceEnd = {static_cast<float>(end.x), static_cast<float>(end.y), static_cast<float>(end.z)};
-    parms.TraceStart = {static_cast<float>(start.x), static_cast<float>(start.y), static_cast<float>(start.z)};
-    parms.bTraceActors = 1;
-    pawn->ProcessEvent(gTraceFunction, &parms, nullptr);
+#if defined(MEVR_GAME_LE1)
+// Actor.Trace on the player's pawn (which it ignores), directly through ProcessEvent (never a generated wrapper),
+// with the function's own parameter block: the actor hit and, if the native's out parameter came back, where.
+ue3::Object* TraceOnce(ue3::Object* pawn, engine::UnrealVector const& start, engine::UnrealVector const& end, engine::UnrealVector* hit) {
+    ue3::Params parms(ue3::runtime::Get(), gTraceFunction);
+    parms.Set("TraceEnd", ue3::Vector{static_cast<float>(end.x), static_cast<float>(end.y), static_cast<float>(end.z)});
+    parms.Set("TraceStart", ue3::Vector{static_cast<float>(start.x), static_cast<float>(start.y), static_cast<float>(start.z)});
+    parms.SetBool("bTraceActors", true);
+    ue3::runtime::Call(pawn, gTraceFunction, parms);
     if (hit != nullptr) {
-        *hit = {parms.HitLocation.X, parms.HitLocation.Y, parms.HitLocation.Z};
+        ue3::Vector const at = parms.Get<ue3::Vector>("HitLocation").value_or(ue3::Vector{});
+        *hit = {at.x, at.y, at.z};
     }
-    return parms.ReturnValue;
+    return parms.Return<ue3::Object*>().value_or(nullptr);
 }
 #endif
 
@@ -192,15 +193,14 @@ AActor* TraceOnce(APawn* pawn, engine::UnrealVector const& start, engine::Unreal
 // Bisects with the hit/no-hit answer when the hit point doesn't come back (as game/throwables does).
 void TraceSightLine(engine::UnrealVector const& center, engine::UnrealVector const& axis) {
     gWorld.traced = false;
-#if defined(SDK_TARGET_LE1)
-    APlayerController* const controller = engine::LocalPlayerController();
-    if (gTraceFunction == nullptr || controller == nullptr || controller->Pawn == nullptr) {
+#if defined(MEVR_GAME_LE1)
+    ue3::Object* const pawn = gTraceFunction != nullptr ? player::Pawn(player::Controller()) : nullptr;
+    if (pawn == nullptr) {
         return;
     }
-    APawn* const pawn = controller->Pawn;
     engine::UnrealVector const end = Add(center, Times(axis, kConvergeRangeUnits));
     engine::UnrealVector at{};
-    AActor* actor = TraceOnce(pawn, center, end, &at);
+    ue3::Object* actor = TraceOnce(pawn, center, end, &at);
     gWorld.traced = true;
     gWorld.hit = actor != nullptr;
     gWorld.distance = kConvergeRangeUnits;
@@ -218,7 +218,7 @@ void TraceSightLine(engine::UnrealVector const& center, engine::UnrealVector con
         double hi = 1.0;
         for (int i = 0; i < 10; ++i) {
             double const mid = 0.5 * (lo + hi);
-            if (AActor* const a = TraceOnce(pawn, center, Add(center, Times(axis, kConvergeRangeUnits * mid)), nullptr)) {
+            if (ue3::Object* const a = TraceOnce(pawn, center, Add(center, Times(axis, kConvergeRangeUnits * mid)), nullptr)) {
                 hi = mid;
                 actor = a;
             } else {
@@ -227,7 +227,7 @@ void TraceSightLine(engine::UnrealVector const& center, engine::UnrealVector con
         }
         gWorld.distance = kConvergeRangeUnits * hi;
     }
-    gWorld.what = engine::FullName(actor);
+    gWorld.what = ue3::runtime::FullName(actor);
     if (!gLoggedTracePath) {
         gLoggedTracePath = true;
         log::Info("sights: the sight line's trace (Actor.Trace through ProcessEvent): the hit point {}", plausible
@@ -371,12 +371,12 @@ std::string ViewText(std::uint32_t view) {
 } // namespace
 
 bool TryStartup() {
-#if defined(SDK_TARGET_LE1)
-    gTraceFunction = engine::FindFunction(L"Trace", kTrace);
+#if defined(MEVR_GAME_LE1)
+    gTraceFunction = gTrace.Get();
     if (gTraceFunction == nullptr) {
         log::Warn("sights: Actor.Trace not found: shots keep the barrel's line (no convergence on the sight)");
     }
-    gAimErrorFunction = engine::FindFunction(L"GetPlayerAimError", kGetPlayerAimError);
+    gAimErrorFunction = gGetPlayerAimError.Get();
     if (gAimErrorFunction == nullptr) {
         log::Warn("sights: BioWeaponRanged.GetPlayerAimError not found: no aimed fire through a scope (the sights still draw)");
         return false;

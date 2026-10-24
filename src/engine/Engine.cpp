@@ -21,6 +21,10 @@ bool Resolve(::LESDK::Initializer& init, ::LESDK::Address address, T*& out, char
 
 } // namespace
 
+void const* World() {
+    return GWorld != nullptr ? *GWorld : nullptr;
+}
+
 bool ResolveGlobals(::LESDK::Initializer& init) {
     bool ok = true;
     ok &= Resolve(init, BUILTIN_GMALLOC_RVA, GMalloc, "GMalloc");

@@ -2,13 +2,14 @@
 #include "game/ConsoleRequest.hpp"
 
 #include "core/Log.hpp"
-#include "engine/Objects.hpp"
+#include "engine/Legacy.hpp"
+#include "ue3/Handles.hpp"
+#include "ue3/Memory.hpp"
 
-#include <LESDK/Headers.hpp>
+#include <Windows.h>
 
 #include <filesystem>
 #include <fstream>
-#include <new>
 #include <sstream>
 #include <string>
 
@@ -16,9 +17,9 @@ namespace mevr::game::console_request {
 namespace {
 
 constexpr float kPollSeconds = 0.5f;
+constexpr char const* kConsoleCommand = "Engine.PlayerController.ConsoleCommand";
 
 float gSincePoll = 0.0f;
-UFunction* gConsoleCommand = nullptr;
 bool gLookedUp = false;
 
 std::filesystem::path Directory() {
@@ -29,36 +30,69 @@ std::filesystem::path Directory() {
     return std::filesystem::path(buffer) / L"MEVR";
 }
 
-std::wstring Widen(std::string const& utf8) {
-    int const size = MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), nullptr, 0);
-    std::wstring wide(static_cast<size_t>(size > 0 ? size : 0), L'\0');
-    if (size > 0) {
-        MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), wide.data(), size);
-    }
-    return wide;
+#if defined(MEVR_GAME_LE1)
+
+// Our reflection layer (research/34): the function, found once in the running game.
+ue3::FunctionRef gConsoleCommand{kConsoleCommand};
+bool gToldNoMemory = false;
+bool gToldParameters = false;
+
+ue3::Object* PlayerController() {
+    return ue3::runtime::LocalPlayerController();
 }
 
-std::string Narrow(wchar_t const* chars) {
-    int const size = WideCharToMultiByte(CP_UTF8, 0, chars, -1, nullptr, 0, nullptr, nullptr);
-    if (size <= 1) {
-        return {};
-    }
-    std::string narrow(static_cast<size_t>(size - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, chars, -1, narrow.data(), size, nullptr, nullptr);
-    return narrow;
+ue3::Function* LookUp() {
+    return gConsoleCommand.Get();
 }
 
 // One command; bWriteToLog false, so what it prints comes back as the return value instead of going to the log.
-std::string Run(APlayerController* pc, std::string const& command) {
-    APlayerController_execConsoleCommand_Parms parms;  // zeroed
-    new (&parms.Command) FString(Widen(command).c_str());  // the game's allocator
-    parms.bWriteToLog = 0;
-    pc->ProcessEvent(gConsoleCommand, &parms, nullptr);  // the native directly, never the SDK's wrapper
-    std::string output = Narrow(parms.ReturnValue.Chars());
-    parms.Command.~FString();  // union members: the parms' destructor leaves them alone
-    parms.ReturnValue.~FString();
+// Both strings are in the engine's memory: ours goes in, the engine's comes back, and the block (ours) frees both.
+std::string Run(ue3::Object* pc, ue3::Function* function, std::string const& command) {
+    if (!ue3::memory::Ready()) {
+        if (!gToldNoMemory) {
+            gToldNoMemory = true;
+            log::Warn("console: the engine's allocator wasn't found (see the 'reflect:' lines): commands aren't run");
+        }
+        return "(the engine's allocator wasn't found)";
+    }
+    ue3::Params parms(ue3::runtime::Get(), function);
+    ue3::memory::OwnedString text(ue3::memory::Widen(command));
+    if (!text.Valid() || !parms.Set("Command", text.Get()) || !parms.SetBool("bWriteToLog", false) ||
+        !parms.Return<ue3::FString>()) {
+        if (!gToldParameters) {
+            gToldParameters = true;
+            log::Warn("console: ConsoleCommand's parameters aren't (Command, bWriteToLog, a string ReturnValue): commands aren't run");
+        }
+        return "(ConsoleCommand's parameters aren't as expected)";
+    }
+    ue3::runtime::Call(pc, function, parms);  // the native directly, never a generated wrapper
+    ue3::FString returned = parms.Return<ue3::FString>().value_or(ue3::FString{});
+    std::string output = ue3::memory::Narrow(returned);
+    ue3::memory::FreeString(returned);
     return output;
 }
+
+#else
+
+// LE2/LE3: LExSDKv2 until stage 5 (engine/Legacy, research/34).
+ue3::Function* gLegacyFunction = nullptr;
+
+ue3::Object* PlayerController() {
+    return engine::legacy::LocalPlayerController();
+}
+
+ue3::Function* LookUp() {
+    if (gLegacyFunction == nullptr && !gLookedUp) {
+        gLegacyFunction = engine::legacy::FindFunction(kConsoleCommand);
+    }
+    return gLegacyFunction;
+}
+
+std::string Run(ue3::Object* pc, ue3::Function* function, std::string const& command) {
+    return engine::legacy::ConsoleCommand(pc, function, command);
+}
+
+#endif
 
 } // namespace
 
@@ -73,14 +107,14 @@ void Tick(float deltaSeconds) {
     if (directory.empty() || !std::filesystem::exists(directory / L"console.request", ec)) {
         return;
     }
-    APlayerController* const pc = engine::LocalPlayerController();
+    ue3::Object* const pc = PlayerController();
     if (pc == nullptr) {
         return;  // kept until there is a player
     }
+    ue3::Function* const function = LookUp();
     if (!gLookedUp) {
         gLookedUp = true;
-        gConsoleCommand = engine::FindFunction(L"ConsoleCommand", "Function Engine.PlayerController.ConsoleCommand");
-        if (gConsoleCommand == nullptr) {
+        if (function == nullptr) {
             log::Warn("console: Engine.PlayerController.ConsoleCommand not found: console.request is ignored");
         }
     }
@@ -101,7 +135,7 @@ void Tick(float deltaSeconds) {
             continue;
         }
         line.erase(0, start);
-        std::string const output = gConsoleCommand != nullptr ? Run(pc, line) : std::string("(ConsoleCommand not found)");
+        std::string const output = function != nullptr ? Run(pc, function, line) : std::string("(ConsoleCommand not found)");
         log::Info("console: {} -> {}", line, output.empty() ? std::string("(no output)") : output);
         result += "> " + line + "\n" + output + (output.empty() || output.back() == '\n' ? "" : "\n");
     }
