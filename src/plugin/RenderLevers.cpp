@@ -100,6 +100,29 @@ bool gSetCommanderHooked = false;
 std::atomic<int> gUe3QueryWait{1};  // 1 the game's own; 0 a frame's second render never waits for a query result
 std::atomic<std::uint64_t> gQueryWaitsSkipped{0};  // reads that would have waited, this period
 std::atomic<int> gPerEyeViewState{0};  // 1: Halcyon renders each Stereo 2 eye through its own view state in gameplay too
+
+// ---- The second eye's own occlusion history (research/35, attempts 34-35) ------------------------------------------
+// FSceneViewState keeps the engine's per-primitive occlusion history as a TSet<FPrimitiveOcclusionHistory> at +0xD10:
+// 0x48 bytes (the sparse array's data, num, max; its inline allocation bits, their pointer and counts; the free list;
+// the hash's inline slot, pointer and size), elements of 0x28 (primitive, pending query, last visible time, last
+// considered time, pixel fraction, occluded, hash links), read and written by UpdatePrimitiveOcclusion (0x762550) in
+// every render's InitViews. Both Stereo 2 eyes render through one state, so a frame's second render finds the first
+// eye's query of the SAME frame as "last frame's" and spins in GetQueryData (bWait) until the GPU has drawn it: 4-5 ms
+// at a light spot (the first eye's whole render is 2.4). With a set of its own the second eye reads its own previous
+// frame's query, long finished, and draws what it saw last frame rather than what the other eye sees. The set is
+// swapped in around the frame's second scene render and out after it; the pool its queries come from (+0x88) stays
+// shared, like Umbra's. A new view state (its set empty at the frame's first render) or another state pointer drops the
+// second eye's set: its queries died with the pool (the set's memory leaks, once per level).
+constexpr std::uintptr_t kStateOcclusionHistory = 0xD10;
+constexpr std::size_t kOcclusionHistoryBytes = 0x48;
+constexpr std::uintptr_t kRendererViews = 0x60;    // FSceneRenderer::Views data (FViewInfo[], 0x12F0 each), count at +0x68
+constexpr std::uintptr_t kViewState = 0x8;         // FSceneView::State
+std::atomic<int> gPerEyeOcclusion{1};
+alignas(16) std::uint8_t gEyeOneHistory[kOcclusionHistoryBytes]{};  // the second eye's set while the first eye's is in the state
+void* gEyeOneHistoryState = nullptr;  // the state it belongs to
+void* gFrameFirstState = nullptr;     // render 0's state this frame
+bool gFrameFirstStateFresh = false;   // its set was empty at render 0: a new state
+std::atomic<std::uint64_t> gHistorySwaps{0}, gHistoryResets{0}, gHistorySkipped{0};
 std::uint8_t* gExe = nullptr;
 bool gHooked = false;
 bool gShareHooked = false;
@@ -440,11 +463,63 @@ void* DeleteRendererHook(void* renderer, std::uint64_t flags) {
     return gDeleteRendererOrig(renderer, flags);
 }
 
+// The scene view state the renderer's first view renders through (gameplay: the one state both eyes share).
+void* ViewStateOf(void* renderer) {
+    auto* const r = static_cast<std::uint8_t*>(renderer);
+    auto* const views = Field<std::uint8_t*>(r, kRendererViews);
+    if (views == nullptr || Field<int>(r, kRendererViews + 8) <= 0) {
+        return nullptr;
+    }
+    return Field<void*>(views, kViewState);
+}
+
+// Before a frame's scene render `index`: true when the second eye's own occlusion history was swapped into the state
+// (EndEyeHistory swaps it back out).
+bool BeginEyeHistory(void* renderer, int index) {
+    void* const state = ViewStateOf(renderer);
+    if (index == 0) {
+        gFrameFirstState = state;
+        gFrameFirstStateFresh = state != nullptr && Field<int>(static_cast<std::uint8_t*>(state), kStateOcclusionHistory + 8) == 0;
+        return false;
+    }
+    if (index != 1 || gPerEyeOcclusion.load(std::memory_order_relaxed) == 0 || state == nullptr) {
+        return false;
+    }
+    if (state != gFrameFirstState) {
+        gHistorySkipped.fetch_add(1, std::memory_order_relaxed);  // its own state already (Halcyon's cine states)
+        return false;
+    }
+    if (state != gEyeOneHistoryState || gFrameFirstStateFresh) {
+        std::memset(gEyeOneHistory, 0, sizeof(gEyeOneHistory));  // an empty TSet; the old one's memory is left behind
+        gEyeOneHistoryState = state;
+        gHistoryResets.fetch_add(1, std::memory_order_relaxed);
+    }
+    auto* const inState = static_cast<std::uint8_t*>(state) + kStateOcclusionHistory;
+    std::uint8_t firstEye[kOcclusionHistoryBytes];
+    std::memcpy(firstEye, inState, kOcclusionHistoryBytes);
+    std::memcpy(inState, gEyeOneHistory, kOcclusionHistoryBytes);
+    std::memcpy(gEyeOneHistory, firstEye, kOcclusionHistoryBytes);  // holds the first eye's set until the render ends
+    gHistorySwaps.fetch_add(1, std::memory_order_relaxed);
+    return true;
+}
+
+void EndEyeHistory(bool swapped) {
+    if (!swapped) {
+        return;
+    }
+    auto* const inState = static_cast<std::uint8_t*>(gEyeOneHistoryState) + kStateOcclusionHistory;
+    std::uint8_t secondEye[kOcclusionHistoryBytes];
+    std::memcpy(secondEye, inState, kOcclusionHistoryBytes);
+    std::memcpy(inState, gEyeOneHistory, kOcclusionHistoryBytes);
+    std::memcpy(gEyeOneHistory, secondEye, kOcclusionHistoryBytes);
+}
+
 void SceneRenderHook(void* renderer) {
     int const index = gRenderIndex.fetch_add(1, std::memory_order_relaxed);
     int const outer = t_renderIndex;
     t_renderIndex = index;
     gRenderThread.store(GetCurrentThreadId(), std::memory_order_relaxed);
+    bool const eyeHistory = BeginEyeHistory(renderer, index);
     LARGE_INTEGER begin{}, end{};
     QueryPerformanceCounter(&begin);
     bool handled = false;
@@ -462,6 +537,7 @@ void SceneRenderHook(void* renderer) {
         gSceneRenderOrig(renderer);
     }
     QueryPerformanceCounter(&end);
+    EndEyeHistory(eyeHistory);
     t_renderIndex = outer;
     int const slot = Slot(index);
     Add(gCounters.renderTicks[slot], static_cast<std::uint64_t>(end.QuadPart - begin.QuadPart));
@@ -720,6 +796,15 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
     if (!reads.empty()) {
         share += "; query reads a frame: " + reads;
     }
+    {
+        std::uint64_t const swaps = gHistorySwaps.exchange(0, std::memory_order_relaxed);
+        std::uint64_t const resets = gHistoryResets.exchange(0, std::memory_order_relaxed);
+        std::uint64_t const skippedStates = gHistorySkipped.exchange(0, std::memory_order_relaxed);
+        if (swaps != 0 || resets != 0 || skippedStates != 0) {
+            share += std::format("; second eye's own occlusion history: {} renders, {} new sets, {} on another state",
+                swaps, resets, skippedStates);
+        }
+    }
     draw_replay::Stats const d = draw_replay::TakeStats();
     std::uint64_t const fallbacks = gReplayFallbacks.exchange(0, std::memory_order_relaxed);
     if (gSharePass.load(std::memory_order_relaxed) == 2 || d.replays != 0 || d.failures != 0 || fallbacks != 0) {
@@ -818,6 +903,19 @@ void Tick() {
                                   "states in cine only)",
                 perEyeRead);
         }
+        static int perEyeOcclusion = -1;
+        int const perEyeOcclusionRead = readInt(L"perEyeOcclusion", 1) != 0 ? 1 : 0;
+        if (perEyeOcclusionRead != perEyeOcclusion) {
+            perEyeOcclusion = perEyeOcclusionRead;
+            gPerEyeOcclusion.store(perEyeOcclusionRead, std::memory_order_relaxed);
+            log::Info("render levers: {} ([Performance] perEyeOcclusion = {})",
+                perEyeOcclusionRead != 0 ? "a frame's second scene render keeps its own per-primitive occlusion history "
+                                           "(swapped into the shared view state around it: it reads its own previous "
+                                           "frame's queries instead of spinning for the first eye's)"
+                                         : "both scene renders share the view state's one occlusion history (the game's "
+                                           "own: the second eye waits for the first eye's queries)",
+                perEyeOcclusionRead);
+        }
         static int ue3QueryWait = -1;
         int const ue3Wait = readInt(L"ue3QueryWait", 1) != 0 ? 1 : 0;
         if (ue3Wait != ue3QueryWait) {
@@ -894,10 +992,10 @@ bool PerEyeViewState() {
 }
 
 std::string SettingsJson() {
-    return std::format("{{\"umbraQueryWait\": {}, \"ue3QueryWait\": {}, \"perEyeViewState\": {}, \"pCoresOnly\": {}, \"sharePass\": {}, \"shareFailed\": {}, \"replayFailed\": {}, "
+    return std::format("{{\"umbraQueryWait\": {}, \"ue3QueryWait\": {}, \"perEyeViewState\": {}, \"perEyeOcclusion\": {}, \"pCoresOnly\": {}, \"sharePass\": {}, \"shareFailed\": {}, \"replayFailed\": {}, "
         "\"drawReplay\": {}, \"hooked\": {}}}",
         gUmbraQueryWait.load(std::memory_order_relaxed), gUe3QueryWait.load(std::memory_order_relaxed),
-        gPerEyeViewState.load(std::memory_order_relaxed), gPCoresOnly.load(std::memory_order_relaxed),
+        gPerEyeViewState.load(std::memory_order_relaxed), gPerEyeOcclusion.load(std::memory_order_relaxed), gPCoresOnly.load(std::memory_order_relaxed),
         gSharePass.load(std::memory_order_relaxed), gShareFailed.load(std::memory_order_relaxed) ? "true" : "false",
         gReplayFailed.load(std::memory_order_relaxed) ? "true" : "false", draw_replay::StatsJson(), gHooked ? "true" : "false");
 }

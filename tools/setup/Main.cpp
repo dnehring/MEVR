@@ -203,7 +203,7 @@ mevr::menu::UiSetup MakeUiSetup(ID3D11Device* device, fs::path const& exeDir, in
 
 std::string RepoSetting(fs::path const& exeDir) {
     wchar_t buffer[512]{};
-    GetPrivateProfileStringW(L"Update", L"repo", detect::Wide(mevr::install::updates::kPlaceholderRepo).c_str(), buffer, 512,
+    GetPrivateProfileStringW(L"Update", L"repo", detect::Wide(mevr::install::updates::kDefaultRepo).c_str(), buffer, 512,
         (exeDir / L"MEVR-Setup.ini").c_str());
     return detect::Utf8(buffer);
 }
