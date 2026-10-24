@@ -1119,7 +1119,9 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       - arm IK and the two-handed grip (step 18): `arm IK: bone layout verified`, the left hand on the rifle;
       - Shepard's body (step 27): turn and lean; the heartbeat's `torso:` line has non-zero pawn, ControlRotation
         and camera yaws;
-      - the console request: `tools/console.ps1 "stat unit"` must answer (`console: stat unit -> ...`).
+      - the console request: `tools/console.ps1 "stat unit"` must answer (`console: stat unit -> ...`), and at
+        every start `system settings: scale set ...` must appear (it runs through the same engine strings: no
+        line there, or `console: the engine's allocator wasn't found`, means the allocator check failed).
     - If any feature says `our reflection layer is off`, or a feature stands down where it worked before, send
       the log: the `reflect:` lines say which lookup failed.
 

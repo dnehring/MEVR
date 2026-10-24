@@ -422,8 +422,9 @@ The replacement:
     until step 32's smoke tests.
   - **The allocator.** If appMalloc/appFree were wrong but plausible, a string freed through the wrong path
     could corrupt the heap rather than fault. Guards: the function bytes must match their pattern, both must
-    load the same GMalloc, the self-check compares it with LExSDKv2's before its own round trip, and only the
-    console request (a test-loop tool) allocates.
+    load the same GMalloc, the self-check compares it with LExSDKv2's before its own round trip. Only the
+    console request allocates, but since main's `game/SystemSettings` (merged into stage 2) that is every
+    session (`scale set` for shadows, motion blur, foliage), not only the test loop's tool.
   - **Bool results** now test the whole word, as the generated blocks did (a native may write any non-zero
     UBOOL). A bool *parameter* still goes in by its mask (1 for every one we pass).
   - **Unaligned reads.** Some fields and parameters aren't naturally aligned (Frisbee.m_oIntendedTarget at
