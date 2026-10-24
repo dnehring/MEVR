@@ -45,7 +45,7 @@ struct Panel;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 17;
+inline constexpr int kHostServicesVersion = 18;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -210,6 +210,16 @@ struct HostServices {
     // toward it over 0.15 s and draws it as a head-locked layer. Forgotten (faded out) when not called for 250 ms.
     // Any thread.
     void (*setVignette)(float amount) = nullptr;
+
+    // Version 18: crash breadcrumbs (plugin/CrashBreadcrumbs, research/36). Any thread, a few stores each; the host
+    // writes them out (with its last ProcessEvent dispatches) if the process crashes.
+    // After the mod writes engine memory: a tag (a string literal: its text is copied, its pointer only compared), the
+    // address, how many bytes, and the first 8 of them (core/WriteJournal.hpp). Repeats of a recent tag and address fold
+    // into one entry.
+    void (*recordWrite)(char const* tag, void const* address, std::uint32_t size, std::uint64_t value) = nullptr;
+    // Around each of the mod's CallFunction post-handlers (engine/CallFunction): begin returns the token for end.
+    std::uint64_t (*beginScriptCall)(UFunction* function, UObject* object) = nullptr;
+    void (*endScriptCall)(std::uint64_t token) = nullptr;
 };
 
 } // namespace mevr

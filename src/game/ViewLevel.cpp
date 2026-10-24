@@ -2,6 +2,7 @@
 #include "game/ViewLevel.hpp"
 
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "core/vr/ViewLevel.hpp"
 #include "engine/CallFunction.hpp"
@@ -278,6 +279,7 @@ bool DropZoomSnap(ue3::Object* controller) {
         if (module != nullptr && ue3::IsA(module, gAimAssistModule)) {
             if (ue3::Object** const target = gLastZoomSnapTarget.In<ue3::Object*>(module); target != nullptr && *target != nullptr) {
                 *target = nullptr;
+                write_journal::Wrote("ViewLevel.zoom snap target", target);
                 dropped = true;
             }
         }
@@ -345,6 +347,7 @@ void Level(ue3::Object* controller, bool fromModTick) {
         if (pitch != 0 || roll != 0) {
             rotation.pitch = 0;
             rotation.roll = 0;
+            write_journal::Wrote("ViewLevel.ControlRotation", &rotation);
         }
         bool const dropped = DropZoomSnap(controller);
         if (dropped && !gZoomSnapPending) {
@@ -462,6 +465,7 @@ void OnViewAdhesion(ue3::Object* context, ue3::Function* /*function*/, void* res
         turn.pitch = 0;
         turn.yaw = 0;
         turn.roll = 0;
+        write_journal::Wrote("ViewLevel.adhesion (CF result)", &turn);
     }
 }
 
@@ -484,6 +488,7 @@ void OnViewFriction(ue3::Object* context, ue3::Function* /*function*/, void* res
     }
     if (removed && factor != 0.0f) {
         factor = 0.0f;
+        write_journal::Wrote("ViewLevel.friction (CF result)", &factor);
     }
 }
 

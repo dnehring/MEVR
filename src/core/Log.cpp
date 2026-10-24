@@ -99,4 +99,27 @@ void Write(std::string_view level, std::string_view message) {
     OutputDebugStringA(line.c_str());
 }
 
+void WriteUnformatted(char const* level, char const* header, std::string_view text) {
+    bool locked = false;
+    for (int i = 0; i < 200 && !(locked = gMutex.try_lock()); ++i) {
+        Sleep(1);
+    }
+    if (gFile != nullptr) {
+        SYSTEMTIME t{};
+        GetLocalTime(&t);
+        char line[512];
+        int const n = std::snprintf(line, sizeof(line), "[%02u:%02u:%02u.%03u] [%s] %s\n", t.wHour, t.wMinute, t.wSecond,
+            t.wMilliseconds, level != nullptr ? level : "error", header != nullptr ? header : "");
+        if (n > 0) {
+            std::fwrite(line, 1, static_cast<std::size_t>(n < static_cast<int>(sizeof(line)) ? n : static_cast<int>(sizeof(line)) - 1),
+                gFile);
+        }
+        std::fwrite(text.data(), 1, text.size(), gFile);
+        std::fflush(gFile);
+    }
+    if (locked) {
+        gMutex.unlock();
+    }
+}
+
 } // namespace mevr::log

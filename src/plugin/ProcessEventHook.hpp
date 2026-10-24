@@ -29,4 +29,11 @@ bool Install(::LESDK::Initializer& init);
 // inside the callback.
 bool SetCallback(Callback callback, std::uint32_t waitMs = kDrainWaitMs);
 
+// ProcessEvent off the game thread (research/36; the game thread is crash::gGameThread, the engine tick's): the hook
+// counts such calls per function. Game thread, each tick: logs the new ones by name (each function at most every
+// 10 s), as "process event: off the game thread: ...".
+void ReportOffThread();
+// All such calls so far.
+std::uint64_t OffThreadCalls();
+
 } // namespace mevr::host::process_event

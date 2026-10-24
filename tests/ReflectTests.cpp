@@ -8,6 +8,7 @@
 #include "ue3/Params.hpp"
 #include "ue3/Pattern.hpp"
 #include "ue3/Reflect.hpp"
+#include "ue3/SafeNames.hpp"
 
 #include <cstdint>
 #include <cstdio>
@@ -541,8 +542,96 @@ void TestOuters() {
 
 } // namespace
 
+// The crash report's guarded names and script frames (ue3/SafeNames, research/36) over the same miniature engine:
+// the same text as the reflection's, and nothing found where nothing is.
+bool PlainRead(void const* address, void* out, std::size_t size) {
+    std::memcpy(out, address, size);
+    return true;
+}
+
+std::string Safe(bool (*append)(ue3::safe::Memory const&, std::uintptr_t, text::Appender&), ue3::safe::Memory const& m,
+    void const* object) {
+    char buffer[256];
+    text::Appender a(buffer, sizeof(buffer));
+    append(m, reinterpret_cast<std::uintptr_t>(object), a);
+    return std::string(a.View());
+}
+
+void TestSafeNames() {
+    World w;
+    ue3::Universe const u = w.f.Universe();
+    ue3::Reflection r(u);
+    ue3::safe::Memory m;
+    m.layout = u.layout;
+    m.poolArray = reinterpret_cast<std::uintptr_t>(u.pools.bases);
+    m.poolCount = u.pools.count;
+    m.objects = reinterpret_cast<std::uintptr_t>(u.objects);
+    m.read = &PlainRead;
+    CHECK(Safe(&ue3::safe::AppendFull, m, w.setRotation) == r.FullName(w.setRotation));
+    CHECK(Safe(&ue3::safe::AppendFull, m, w.actor) == "Class Engine.Actor");
+    CHECK(Safe(&ue3::safe::AppendPath, m, w.rotator) == r.PathName(w.rotator));
+    CHECK(Safe(&ue3::safe::AppendObjectName, m, w.numbered) == "Actor_3");
+    CHECK(Safe(&ue3::safe::AppendFull, m, nullptr) == "None");
+    ue3::Object* const wide = r.ObjectAt(r.ObjectCount() - 1);
+    CHECK(Safe(&ue3::safe::AppendObjectName, m, wide) == "WideName");
+    CHECK(ue3::safe::NameIs(m, reinterpret_cast<std::uintptr_t>(w.actor), "ACTOR"));
+    CHECK(!ue3::safe::NameIs(m, reinterpret_cast<std::uintptr_t>(w.numbered), "Actor"));
+    CHECK(ue3::safe::Listed(m, reinterpret_cast<std::uintptr_t>(w.shepard)));
+    // Not an object: a block whose "index" points at some other object's slot.
+    alignas(8) std::uint8_t stray[0x80] = {};
+    CHECK(!ue3::safe::Listed(m, reinterpret_cast<std::uintptr_t>(stray)));
+    // A reader that fails: marked, not crashed.
+    ue3::safe::Memory blind = m;
+    blind.read = [](void const*, void*, std::size_t) { return false; };
+    CHECK(Safe(&ue3::safe::AppendObjectName, blind, w.actor) == "<object?>");
+    CHECK(!ue3::safe::Listed(blind, reinterpret_cast<std::uintptr_t>(w.actor)));
+
+    // Script frames on a fake stack: SetRotation running on Shepard, its code 5 bytes into its script.
+    constexpr std::uint32_t kScript = 0x70;  // free in the fake's objects
+    std::uint8_t script[32] = {};
+    ue3::TArray<std::uint8_t> scriptArray;
+    scriptArray.data = script;
+    scriptArray.count = scriptArray.max = 32;
+    w.f.Set(w.setRotation, kScript, scriptArray);
+    ue3::safe::FrameLayout fl;
+    fl.node = 0x14;  // LE1's FFrame (pack 4)
+    fl.object = 0x1C;
+    fl.code = 0x24;
+    fl.previous = 0x34;
+    fl.structScript = kScript;
+    fl.vtableLo = 0x1000;
+    fl.vtableHi = 0x2000;
+    alignas(16) std::uint8_t stack[0x400] = {};
+    auto put = [&](std::size_t at, std::uint64_t vtable, void const* node, void const* object, void const* code) {
+        std::memcpy(stack + at, &vtable, 8);
+        std::memcpy(stack + at + fl.node, &node, 8);
+        std::memcpy(stack + at + fl.object, &object, 8);
+        std::memcpy(stack + at + fl.code, &code, 8);
+    };
+    put(0x40, 0x1800, w.setRotation, w.shepard, script + 5);
+    put(0x100, 0x1800, stray, w.shepard, nullptr);         // node not an object: skipped
+    put(0x180, 0x3000, w.setRotation, w.shepard, nullptr); // vtable out of range: skipped
+    put(0x200, 0x1010, w.actor, w.numbered, script);       // a class's frame (state code): found, code outside its script
+    put(0x280, 0x1800, w.shepard, w.actor, nullptr);       // node is a BioPawn, not a function: skipped
+    ue3::safe::Frame frames[8];
+    auto const lo = reinterpret_cast<std::uintptr_t>(stack);
+    std::size_t const n = ue3::safe::FindFrames(m, fl, lo, lo + sizeof(stack), frames, 8);
+    CHECK(n == 2);
+    if (n == 2) {
+        CHECK(frames[0].at == lo + 0x40);
+        CHECK(frames[0].node == reinterpret_cast<std::uintptr_t>(w.setRotation));
+        CHECK(frames[0].object == reinterpret_cast<std::uintptr_t>(w.shepard));
+        CHECK(frames[0].codeOffset == 5 && frames[0].scriptSize == 32);
+        CHECK(frames[1].at == lo + 0x200);
+        CHECK(frames[1].codeOffset == -1);
+    }
+    CHECK(ue3::safe::FindFrames(m, fl, lo, lo + sizeof(stack), frames, 1) == 1);
+    CHECK(ue3::safe::FindFrames(blind, fl, lo, lo + sizeof(stack), frames, 8) == 0);
+}
+
 int RunReflectTests() {
     TestNames();
+    TestSafeNames();
     TestLookups();
     TestProperties();
     TestParams();

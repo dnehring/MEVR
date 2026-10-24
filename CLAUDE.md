@@ -87,6 +87,16 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   mod's handlers run through `HostServices::setProcessEventCallback`. Halcyon hooks it too, with
   its own MinHook, on top of ours: never uninstall a hook another hooker may sit on.
   LE2/LE3 still use our own renderer until Halcyon's ME2/ME3 code is brought in.
+- **Never call ProcessEvent (or anything that runs UnrealScript) off the game thread** (the engine tick's).
+  The script VM keeps its state in process-wide globals (GPropAddr, GRuntimeUCFlags...), so a call from the
+  Present/render thread races the game thread's script. That caused the 2026-10-23 crash (Halcyon's
+  Present-thread hides; [research/36](research/36-crash-breadcrumbs.md)). Halcyon's `ProcessEventSEH`
+  (head_aim.cpp, game_camera.cpp) queues off-thread calls for the next tick (`[MEVR]` seam,
+  `MevrBridge::QueueProcessEvent`, `plugin/GameThreadCalls`). The host hook logs any other call as
+  `process event: off the game thread: <fn>`.
+- **Crash breadcrumbs** (research/36, HostServices v18): the host keeps the last 128 ProcessEvents, the mod's
+  CallFunction handlers and the mod's writes into engine memory. Every new write into engine memory gets a
+  `write_journal::Wrote("Module.what", address, size)` right after it (`core/WriteJournal.hpp`).
 
 ## How we work
 
@@ -397,6 +407,10 @@ Use it to check VR changes yourself instead of asking the user what they see
   hot-reloaded) runs each line through `PlayerController.ConsoleCommand` on the game thread and writes what it
   printed to `console.result` (log `console:`). Flat or in VR, wherever there is a local player: A/Bs without a restart.
 - `testloop.status` (JSON, once a second): recording, replay, last snapshot, `framesRunning`.
+- **After a crash:** read `%LOCALAPPDATA%\MEVR\crash-breadcrumbs.txt` (the one before is `.prev.txt`; the same text
+  is at the end of `LE1MEVR.log`). It holds the exception, the registers, the native stack, the script frames
+  (FFrames) on the faulting thread, and the last ProcessEvents, script handler calls and mod writes, with names
+  (research/36). The unhandled-exception filter writes it once per process; handled AVs don't write it.
 - **Console commands:** `tools/console.ps1 "<command>" ...` runs them through the local PlayerController's
   `ConsoleCommand` (`game/ConsoleRequest`, mod side) and prints the output. `tools/console.ps1 pause` freezes the
   world but keeps rendering, which holds a scene still for snapshots and A/B captures.

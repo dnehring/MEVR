@@ -2,6 +2,7 @@
 #include "game/HeadTracking.hpp"
 
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
 #include "core/vr/Output.hpp"
 #include "core/vr/ViewSync.hpp"
 #include "engine/Legacy.hpp"
@@ -151,6 +152,7 @@ void ApplyRotation(ue3::Rotator& rotation) {
     rotation.yaw += gHead.yaw;
     rotation.pitch = gHead.pitch;
     rotation.roll = gHead.roll;
+    write_journal::Wrote("Head.view point rotation", &rotation);
     gAdjustedViews.fetch_add(1, std::memory_order_relaxed);
 }
 
@@ -175,6 +177,7 @@ void ApplyTranslation(ue3::Vector& location, int gameYaw, ue3::Rotator const& ro
     location.x += static_cast<float>(offset.x);
     location.y += static_cast<float>(offset.y);
     location.z += static_cast<float>(offset.z);
+    write_journal::Wrote("Head.view point location", &location);
 }
 
 // The player's game mode (EGameModes), if the controller has a mode manager.
@@ -204,6 +207,7 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
         auto const headsetFov = vr::view_sync::HeadsetFov();
         if (gFovViaCamera && vr::output::WantsHeadTracking() && headsetFov) {
             *fov = *headsetFov;
+            write_journal::Wrote("Head.camera FOV", fov);
         }
         gCameraFov = *fov;
         return;
@@ -214,6 +218,7 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
     if (gPath == Path::Camera && gHeadsetFov) {
         // Set in the camera cache (read by script) and returned from GetFOVAngle.
         *fov = *gHeadsetFov;
+        write_journal::Wrote("Head.camera FOV", fov);
     }
     gCameraFov = *fov;
     if (gHeadPose) {
@@ -259,6 +264,7 @@ void OnGetFovAngle(ue3::Object* context, ue3::Function* /*function*/, void* parm
     bool const inView = gPath == Path::Render && engine::scene_view::InPrimaryView();
     if (gHeadsetFov && (inView || gPath == Path::Camera)) {
         *returned = *gHeadsetFov;
+        write_journal::Wrote("Head.GetFOVAngle (PE return)", returned);
         gFovOverrides.fetch_add(1, std::memory_order_relaxed);
     }
     if (inView) {

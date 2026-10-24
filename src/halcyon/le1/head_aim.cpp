@@ -10,6 +10,7 @@
 
 #include "le1_game.h"
 #include "logger.h"
+#include "mevr_bridge.h"   // [MEVR] OnGameThread, QueueProcessEvent
 #include "vr_config.h"
 
 // Extracted verbatim from the retired game_camera.cpp (which stays OUT of the
@@ -336,6 +337,12 @@ bool ProcessEventSEH(void* object, void* function, void* params) noexcept
 {
     if (!PointerLooksCanonicalAligned(object) || !PointerLooksCanonicalAligned(function) || params == nullptr)
         return false;
+    // [MEVR] Script runs on the game thread only: this file runs on the Present thread, whose ProcessEvent raced the
+    // game thread's UnrealScript VM globals (the 2026-10-23 crash, research/36). Queued for the next engine tick
+    // instead; every caller here is a setter (SetHidden, SetOwnerNoSee, Hide/UnHideBoneByName, the Mako turret's
+    // aim point, whose returned rotator is only logged).
+    if (!::MELEVR::MevrBridge::OnGameThread())
+        return ::MELEVR::MevrBridge::QueueProcessEvent(object, function, params);
     __try
     {
         void** vt = *reinterpret_cast<void***>(object);

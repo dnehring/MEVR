@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include <cstdint>
+
 class UFunction;
 class UObject;
 
@@ -29,6 +31,12 @@ using ObjectHandler = void (*)(ue3::Object* context, ue3::Function* function, vo
 void AddPostHandler(UFunction* function, Handler handler);
 void AddPostHandler(ue3::Function* function, ObjectHandler handler);
 void ClearHandlers();
+
+// Crash breadcrumbs (HostServices v18, research/36): called around each handler (begin's token goes to end).
+// Null (an older host): not recorded.
+using BeginCrumb = std::uint64_t (*)(UFunction* function, UObject* object);
+using EndCrumb = void (*)(std::uint64_t token);
+void SetBreadcrumbs(BeginCrumb begin, EndCrumb end);
 
 bool Install(::LESDK::Initializer& init);
 // False: the hook couldn't be removed, so this DLL must stay loaded.

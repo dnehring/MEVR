@@ -2,6 +2,7 @@
 #include "game/HandAim.hpp"
 
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
 #include "core/vr/AimRay.hpp"
 #include "core/vr/Calibration.hpp"
 #include "core/vr/Controllers.hpp"
@@ -258,7 +259,8 @@ bool IsLocalPlayer(ue3::Object* context) {
     return context != nullptr && context == LocalController();
 }
 
-void Apply(ue3::Object* context, ue3::Rotator* result) {
+// `tag` names the write for the crash breadcrumbs (research/36).
+void Apply(ue3::Object* context, ue3::Rotator* result, char const* tag) {
     gAimCalls.fetch_add(1, std::memory_order_relaxed);
     gLastRayValid = false;
     gLastPath = Path::Game;
@@ -268,10 +270,12 @@ void Apply(ue3::Object* context, ue3::Rotator* result) {
     ue3::Rotator rotation{};
     if (BarrelRotation(*result, rotation)) {
         *result = rotation;
+        write_journal::Wrote(tag, result);
         gLastPath = Path::Barrel;
         gBarrelAims.fetch_add(1, std::memory_order_relaxed);
     } else if (HandRotation(*result, rotation)) {
         *result = rotation;
+        write_journal::Wrote(tag, result);
         gLastPath = Path::Controller;
         gControllerAims.fetch_add(1, std::memory_order_relaxed);
     }
@@ -279,12 +283,12 @@ void Apply(ue3::Object* context, ue3::Rotator* result) {
 
 // Script-to-script calls (the weapon's fire code): `result` is the return value.
 void OnCallFunction(ue3::Object* context, ue3::Function* /*function*/, void* result) {
-    Apply(context, static_cast<ue3::Rotator*>(result));
+    Apply(context, static_cast<ue3::Rotator*>(result), "HandAim.aim (CF result)");
 }
 
 // Native-to-script calls: the return value lives in the parms.
 void OnProcessEvent(ue3::Object* context, ue3::Function* /*function*/, void* parms, void* /*result*/) {
-    Apply(context, AimForReturn(parms));
+    Apply(context, AimForReturn(parms), "HandAim.aim (PE return)");
 }
 
 #if defined(MEVR_GAME_LE1)
@@ -308,6 +312,7 @@ void OnStartTrace(ue3::Object* context, ue3::Function* function, void* parms, vo
     ue3::Vector& start = *at;
     engine::UnrealVector const game{start.x, start.y, start.z};
     start = {static_cast<float>(muzzle->location.x), static_cast<float>(muzzle->location.y), static_cast<float>(muzzle->location.z)};
+    write_journal::Wrote("HandAim.start trace (PE ret)", &start);
     gStartsMoved.fetch_add(1, std::memory_order_relaxed);
     if (!gLoggedStartMoved) {
         gLoggedStartMoved = true;

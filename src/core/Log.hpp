@@ -20,6 +20,11 @@ void SetSink(Sink sink);
 
 void Write(std::string_view level, std::string_view message);
 
+// For a crash handler (plugin/CrashBreadcrumbs): a header line, then `text` as it is, without allocating
+// or formatting. Waits only briefly for the log's lock (its holder may be the thread that crashed) and
+// writes without it after that. The host's file only: a sink isn't used.
+void WriteUnformatted(char const* level, char const* header, std::string_view text);
+
 template <typename... Args>
 void Info(std::format_string<Args...> fmt, Args&&... args) {
     Write("info", std::format(fmt, std::forward<Args>(args)...));

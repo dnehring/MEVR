@@ -12,6 +12,7 @@
 
 #include "le1_game.h"
 #include "logger.h"
+#include "mevr_bridge.h"   // [MEVR] OnGameThread, QueueProcessEvent
 #include "vr_config.h"
 
 // All functions here run on the game's Present thread only (called from the XR
@@ -850,6 +851,13 @@ bool ProcessEventSEH(void* object, void* function, void* params) noexcept
     {
         return false;
     }
+    // [MEVR] Script runs on the game thread only (the 2026-10-23 crash, research/36): off it, queued for the next
+    // engine tick. The callers are setters (SetHidden, SetOwnerNoSee, Hide/UnHideBoneByName);
+    // GetPrimarySkelMeshComponentSEH, the one that reads a return value, doesn't call this off the game thread.
+    if (!::MELEVR::MevrBridge::OnGameThread())
+    {
+        return ::MELEVR::MevrBridge::QueueProcessEvent(object, function, params);
+    }
     __try
     {
         void** vt = *reinterpret_cast<void***>(object);
@@ -908,6 +916,11 @@ void* GetPrimarySkelMeshComponentSEH(void* pawn) noexcept
     if (mesh != nullptr)
     {
         return mesh;
+    }
+    // [MEVR] The ProcessEvent fallback needs its return value, so it can't be queued: off the game thread, the field only.
+    if (!::MELEVR::MevrBridge::OnGameThread())
+    {
+        return nullptr;
     }
 
     static void* fn = nullptr;

@@ -2,6 +2,7 @@
 #include "game/Throwables.hpp"
 
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
 #include "core/ik/BodySlots.hpp"
 #include "core/ik/Throwing.hpp"
 #include "core/vr/Controllers.hpp"
@@ -556,6 +557,7 @@ std::string AimDisc(ue3::Object* projectile) {
     SetVelocity(disc, Sub(gPending.landing, from));  // the disc keeps its own speed along it
     if (ue3::Vector* const intended = gIntendedTargetLocation.In<ue3::Vector>(disc)) {
         *intended = ToF(gPending.landing);
+        write_journal::Wrote("Throw.disc target location", intended);
     }
     ue3::Object* target = nullptr;
     if (gPending.landingActor != 0) {
@@ -564,12 +566,15 @@ std::string AimDisc(ue3::Object* projectile) {
     }
     if (ue3::Object** const intendedTarget = gIntendedTarget.In<ue3::Object*>(disc)) {
         *intendedTarget = target;
+        write_journal::Wrote("Throw.disc target", intendedTarget);
     }
     if (ue3::Object** const heatSeek = gHeatSeekTarget.In<ue3::Object*>(disc)) {
         *heatSeek = nullptr;
+        write_journal::Wrote("Throw.disc heat seek target", heatSeek);
     }
     if (ue3::Vector* const start = gStartLocation.In<ue3::Vector>(disc)) {
         *start = player::Location(disc).value_or(*start);
+        write_journal::Wrote("Throw.disc start location", start);
     }
     double const meters = Len(Sub(gPending.landing, from)) / std::max(1.0, gPending.unitsPerMeter);
     return std::format("the disc re-aimed{} to {} ({:.1f} m, {}, speed {:.0f} units/s)", moved, U(gPending.landing), meters,
@@ -591,12 +596,14 @@ bool LaunchArc(ue3::Object* grenade, ue3::Object*& projectile, std::string& what
     }
     ue3::Class* const saved = *projectileClass;
     *projectileClass = ballistic;
+    write_journal::Wrote("Throw.projectile class", projectileClass);
     ue3::Params parms(ue3::runtime::Get(), gLaunchGrenade);
     parms.Set("vVelocity", ToF(gPending.velocity));
     gInLaunch = true;
     ue3::runtime::Call(grenade, gLaunchGrenade, parms);  // the game's own spawn: MakeProjectile, then SetVelocity
     gInLaunch = false;
     *projectileClass = saved;
+    write_journal::Wrote("Throw.projectile class back", projectileClass);
     ue3::Object* const ball = parms.Return<ue3::Object*>().value_or(nullptr);
     if (ball == nullptr) {
         what = "the ballistic grenade didn't spawn";
@@ -669,6 +676,7 @@ void OnLaunch(ue3::Object* context, ue3::Function* function, void* parms, void* 
             arced = LaunchArc(grenade, projectile, what);
             if (arced) {
                 std::memcpy(slot, &projectile, sizeof projectile);  // the game takes the ballistic grenade for its own
+                write_journal::Wrote("Throw.launch (PE return)", slot, sizeof projectile);
             } else {
                 what += "; the disc instead: ";
             }

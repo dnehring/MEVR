@@ -2,6 +2,7 @@
 #include "game/Sights.hpp"
 
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
 #include "core/vr/Calibration.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/OverlayPlacement.hpp"
@@ -135,6 +136,7 @@ void OnAimError(ue3::Object* context, ue3::Function* /*function*/, void* result)
             error, *zoomed, accuracy);
     }
     error = *zoomed;
+    write_journal::Wrote("Sights.aim error (CF result)", &error);
     gAimedShots.fetch_add(1, std::memory_order_relaxed);
     ++gAimedShotsTotal;
 }
