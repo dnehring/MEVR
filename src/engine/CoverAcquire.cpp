@@ -3,8 +3,9 @@
 
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
+#include "ue3/Runtime.hpp"
 
-#include <LESDK/Headers.hpp>
+// The hook's target is still resolved through LExSDKv2's Initializer (research/34 stage 4).
 #include <LESDK/Init.hpp>
 
 #include <Windows.h>
@@ -14,7 +15,9 @@
 #include <cmath>
 #include <cstddef>
 #include <format>
+#include <cstdint>
 #include <numbers>
+#include <optional>
 #include <string>
 
 namespace mevr::engine::cover_acquire {
@@ -31,11 +34,11 @@ constexpr char const* kHookName = "ABioPawn::TryAcquireCover";
 //   0xAA92F0  the cover trace (this, FVector* outNormal, BYTE* outType, BOOL keepNormal): line checks
 //             CoverTestDistance along the move input (none without move input), left and right of it,
 //             then up the wall: type 1 standing (high) cover, 2 mid-level (low). Writes only its outputs.
-#if defined(SDK_TARGET_LE1)
+// The refused test's description reads Actor.Acceleration and BioPawn.CoverTestAngle (research/23: +0x144 and
+// +0x990), found through our reflection layer when the hook goes in (self-check `field` rows).
+#if defined(MEVR_GAME_LE1)
 constexpr std::size_t kTryAcquireCoverRva = 0xAB1430;
 constexpr std::size_t kCoverTraceRva = 0xAA92F0;
-static_assert(offsetof(AActor, Acceleration) == 0x144);
-static_assert(offsetof(ABioPawn, CoverTestAngle) == 0x990);
 #else
 constexpr std::size_t kTryAcquireCoverRva = 0;
 constexpr std::size_t kCoverTraceRva = 0;
@@ -55,6 +58,23 @@ std::atomic<unsigned> gInReach{0};
 std::atomic<unsigned> gLastType{0};
 std::atomic<float> gLastAngle{-1.0f};
 
+// Actor.Acceleration (a Vector) and BioPawn.CoverTestAngle (a float), resolved on the game thread at Install
+// (the hook runs on the game thread too); -1: not found, refused tests aren't described then.
+std::int32_t gAccelerationOffset = -1;
+std::int32_t gCoverTestAngleOffset = -1;
+
+void ResolveFields() {
+    if (!ue3::runtime::Ready()) {
+        return;
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    std::optional<ue3::PropertyInfo> const acceleration = r.PropertyOf(r.FindClass("Engine.Actor"), "Acceleration");
+    std::optional<ue3::PropertyInfo> const angle = r.PropertyOf(r.FindClass("SFXGame.BioPawn"), "CoverTestAngle");
+    ue3::runtime::FlushNotes();
+    gAccelerationOffset = acceleration && acceleration->kind == ue3::Kind::Struct && acceleration->elementSize == 12 ? acceleration->offset : -1;
+    gCoverTestAngleOffset = angle && angle->kind == ue3::Kind::Float && angle->elementSize == 4 ? angle->offset : -1;
+}
+
 bool IsFunctionStart(void* address) {
     DWORD64 imageBase = 0;
     auto const* const entry = RtlLookupFunctionEntry(reinterpret_cast<DWORD64>(address), &imageBase, nullptr);
@@ -73,8 +93,8 @@ std::string EntryBytes(void const* address) {
 // What the refused test would have seen: the game's own trace, then the move's angle off the cover's
 // normal as the test measures it (the camera's angle is left out). Never throws into the engine.
 void Look(void* pawn) {
-#if defined(SDK_TARGET_LE1)
-    if (gTrace == nullptr) {
+#if defined(MEVR_GAME_LE1)
+    if (gTrace == nullptr || gAccelerationOffset < 0 || gCoverTestAngleOffset < 0) {
         return;
     }
     float normal[3] = {0.0f, 0.0f, 0.0f};
@@ -91,16 +111,16 @@ void Look(void* pawn) {
         gLastAngle.store(-1.0f, std::memory_order_relaxed);
         return;
     }
-    auto const* const bio = static_cast<ABioPawn const*>(pawn);
-    FVector const a = bio->Acceleration;
-    double const length = std::hypot(static_cast<double>(a.X), static_cast<double>(a.Y));
+    auto const a = ue3::Reflection::Read<ue3::Vector>(pawn, static_cast<std::uint32_t>(gAccelerationOffset));
+    auto const testAngle = ue3::Reflection::Read<float>(pawn, static_cast<std::uint32_t>(gCoverTestAngleOffset));
+    double const length = std::hypot(static_cast<double>(a.x), static_cast<double>(a.y));
     double angle = 180.0;
     if (length > 1e-6) {
-        double const dot = -(a.X * normal[0] + a.Y * normal[1]) / length;
+        double const dot = -(a.x * normal[0] + a.y * normal[1]) / length;
         angle = std::acos(std::clamp(dot, -1.0, 1.0)) * 180.0 / std::numbers::pi;
     }
     gLastAngle.store(static_cast<float>(angle), std::memory_order_relaxed);
-    bool const pushedInto = angle <= bio->CoverTestAngle;
+    bool const pushedInto = angle <= testAngle;
     gLastType.store(pushedInto ? type : 0u, std::memory_order_relaxed);
     if (pushedInto) {
         gInReach.fetch_add(1, std::memory_order_relaxed);
@@ -143,6 +163,11 @@ bool Install(::LESDK::Initializer& init) {
     }
     void* const trace = init.Resolve(::LESDK::Address::FromOffset(kCoverTraceRva));
     gTrace = trace != nullptr && IsFunctionStart(trace) ? reinterpret_cast<tCoverTrace*>(trace) : nullptr;
+    ResolveFields();
+    if (gTrace != nullptr && (gAccelerationOffset < 0 || gCoverTestAngleOffset < 0)) {
+        log::Warn("cover: Actor.Acceleration or BioPawn.CoverTestAngle not found through our reflection layer: refused entries "
+                  "won't be described");
+    }
     log::Info("cover: the cover test at {} (entry bytes {}); its trace at {}{}", target, EntryBytes(target), trace,
         gTrace != nullptr ? "" : " (not a function start: refused entries won't be described)");
     if (!hook::Install(init, kHookName, reinterpret_cast<tTryAcquireCover*>(target), &TryAcquireCoverHook, gOrig)) {

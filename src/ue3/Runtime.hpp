@@ -17,9 +17,16 @@
 
 namespace mevr::ue3::runtime {
 
-// Finds and checks everything once; later calls return the first result. Logs what it found.
+// Finds and checks everything; once it has an answer, later calls return it. Logs what it found.
+// While the game is still starting (GObjects nearly empty, Engine.u not loaded yet) it isn't an
+// answer: Init returns false with Pending() true, says so once in the log, and the next call tries
+// again (the mod calls it once a second until it's ready; research/34 stage 3). After
+// kMaxPendingTries such tries it gives up for good.
 bool Init();
 bool Ready();
+// The last Init found the game still starting: call it again later.
+bool Pending();
+inline constexpr int kMaxPendingTries = 600;
 std::string const& Status();
 // Drops the layer (the mod unloads); Init finds it again.
 void Shutdown();

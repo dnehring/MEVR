@@ -118,6 +118,19 @@ bool Reflection::IsA(Object const* object, Class const* cls) const {
     return object != nullptr && cls != nullptr && IsChildOf(ClassOf(object), cls);
 }
 
+Object* Reflection::OuterOfA(Object const* object, Class const* cls) const {
+    if (object == nullptr || cls == nullptr) {
+        return nullptr;
+    }
+    int depth = 0;
+    for (Object* outer = OuterOf(object); outer != nullptr && depth < kMaxDepth; outer = OuterOf(outer), ++depth) {
+        if (IsA(outer, cls)) {
+            return outer;
+        }
+    }
+    return nullptr;
+}
+
 bool Reflection::IsAlive(Object const* object) const {
     if (object == nullptr) {
         return false;

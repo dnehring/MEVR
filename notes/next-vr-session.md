@@ -1124,6 +1124,27 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
         line there, or `console: the engine's allocator wasn't found`, means the allocator check failed).
     - If any feature says `our reflection layer is off`, or a feature stands down where it worked before, send
       the log: the `reflect:` lines say which lookup failed.
+33. **The engine side on our layer too (new, 2026-10-23; the mod only, it hot-reloads; research/34 stage 3).** The
+    startup gate, the bones (arm IK, the gun on its socket, Shepard's body), the world's identity, the cover test's
+    description and the natives dump now read through our layer; `engine/Objects` is gone. Nothing should look
+    or feel different. Do it together with step 32 (one session covers both).
+    - **The log at startup:** `reflect: ready: ...` as before (perhaps after one `reflect: not ready yet: ...;
+      trying again` if the mod started early: the gate retries each second), then `reflect: N of N checks agree`
+      with **423 rows** (410 + 13). `reflect-check.json` must show `"mismatches": 0`; the new rows are
+      `global World` (ours must say `(WorldInfo's outer World)`, the same object as GWorld), `global GNatives`,
+      `class Engine.World` and ten `skeleton` rows (each field engine/skeleton resolved, against research/14's
+      offset: `0x2B0` SpaceBases, `0xB4` RefSkeleton, `0xC0` LocalToWorld, `0x3B4` Attachments, element size
+      `0x34`, `0x144` Sockets, `0x60` / `0x6C` / `0x84` / `0x8C` the socket fields).
+    - No `skeleton: ... not found through our reflection layer`, `world: ... not found`, `arm IK: Engine.ActorComponent.Owner
+      not found` or `cover: Actor.Acceleration ... not found` warnings.
+    - The heartbeat's `GWorld=` is non-zero in a level and `objects=` is the GObjects count (as before).
+    - **Smoke tests:** arm IK writes (`arm IK writeback: ... written`, no `rejected (last: the world changed ...)`
+      while standing in one level; one such reject right after a level load is right); the gun hangs on its
+      socket in the hand (`in the right hand: its mesh hangs on Prop01(98)`); with `noCover = 1`, walking into a
+      wall logs refused cover entries with a type and an angle (the posture heartbeat line). The skeleton
+      probe's `GetBoneNames through ProcessEvent returned 0 names` line has lost its bytecode bytes (our layout
+      has no UStruct.Script yet); the rest of it is as before.
+    - Load a save (a level change) and check arm IK picks the new pawn up within a second.
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR

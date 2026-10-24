@@ -1,52 +1,118 @@
 // SPDX-License-Identifier: MIT
 #include "engine/Skeleton.hpp"
 
-#include "engine/Objects.hpp"
-
-#include <LESDK/Headers.hpp>
+#include "core/Log.hpp"
+#include "engine/GameAdapter.hpp"
+#include "ue3/Handles.hpp"
+#include "ue3/Memory.hpp"
 
 #include <Windows.h>
 
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
 #include <format>
+#include <initializer_list>
+#include <optional>
+#include <string>
 
 namespace mevr::engine::skeleton {
 namespace {
 
-constexpr char const* kGetBoneNames = "Function Engine.SkeletalMeshComponent.GetBoneNames";
-constexpr char const* kGetBoneLocation = "Function Engine.SkeletalMeshComponent.GetBoneLocation";
-constexpr char const* kMatchRefBone = "Function Engine.SkeletalMeshComponent.MatchRefBone";
+ue3::FunctionRef gGetBoneNames{"Engine.SkeletalMeshComponent.GetBoneNames"};
+ue3::FunctionRef gGetBoneLocation{"Engine.SkeletalMeshComponent.GetBoneLocation"};
+ue3::FunctionRef gMatchRefBone{"Engine.SkeletalMeshComponent.MatchRefBone"};
 
-UFunction* gGetBoneNames = nullptr;
-UFunction* gGetBoneLocation = nullptr;
-UFunction* gMatchRefBone = nullptr;
-
-#if defined(SDK_TARGET_LE1)
+// The bones' element layouts aren't in the reflection (RefSkeleton is declared TArray<int>, SpaceBases
+// TArray<Matrix>): research/14's, LE1 only.
+#if defined(MEVR_GAME_LE1)
 constexpr bool kSupported = true;
-constexpr std::size_t kMeshBoneStride = 0x50;       // sizeof(FMeshBone)
-constexpr std::size_t kMeshBoneParentOffset = 0x40; // FMeshBone::ParentIndex
-constexpr std::uintptr_t kGNativesRva = 0x16DD3C0;  // BUILTIN_GNATIVES_RVA
-constexpr unsigned kExNativeParm = 0x29;            // EExprToken
-constexpr unsigned kExLocalOutVariable = 0x48;
 #else
 constexpr bool kSupported = false;
-constexpr std::size_t kMeshBoneStride = 0x50;  // unused: Bones() finds nothing
-constexpr std::size_t kMeshBoneParentOffset = 0x40;
 #endif
+constexpr std::size_t kMeshBoneStride = 0x50;       // sizeof(FMeshBone)
+constexpr std::size_t kMeshBoneParentOffset = 0x40; // FMeshBone::ParentIndex
+constexpr unsigned kExNativeParm = 0x29;            // EExprToken
+constexpr unsigned kExLocalOutVariable = 0x48;
 
-USkeletalMeshComponent const* Sdk(ue3::Object const* mesh) {
-    return reinterpret_cast<USkeletalMeshComponent const*>(mesh);
-}
-USkeletalMeshComponent* Sdk(ue3::Object* mesh) {
-    return reinterpret_cast<USkeletalMeshComponent*>(mesh);
+// Resolved once on the game thread (TryStartup), then only read: the UpdateSkelPose hook reads the
+// pose through these from whatever thread it runs on, so nothing here resolves lazily.
+Fields gFields;
+std::atomic<bool> gFieldsReady{false};
+bool gToldMissing = false;
+
+Fields const* Ready() {
+    return gFieldsReady.load(std::memory_order_acquire) ? &gFields : nullptr;
 }
 
-std::uint64_t Key(SFXName const& name) {
-    std::uint64_t key = 0;
-    std::memcpy(&key, &name, sizeof key);
-    return key;
+template <class T>
+T Read(void const* base, std::int32_t offset) {
+    return ue3::Reflection::Read<T>(base, static_cast<std::uint32_t>(offset));
+}
+
+// A property's offset if it's there with this kind and size (size 0: any), else -1; names what's missing.
+std::int32_t Offset(ue3::Reflection& r, ue3::Struct const* owner, char const* name, std::initializer_list<ue3::Kind> kinds,
+                    std::int32_t size, std::string& missing, std::optional<ue3::PropertyInfo>* out = nullptr) {
+    std::optional<ue3::PropertyInfo> const info = r.PropertyOf(owner, name);
+    bool kindOk = false;
+    for (ue3::Kind kind : kinds) {
+        kindOk = kindOk || (info && info->kind == kind);
+    }
+    if (!info || !kindOk || (size != 0 && info->elementSize * info->arrayDim != size)) {
+        missing += std::format("{}{}", missing.empty() ? "" : ", ", name);
+        return -1;
+    }
+    if (out != nullptr) {
+        *out = info;
+    }
+    return info->offset;
+}
+
+void ResolveFields() {
+    if (gFieldsReady.load(std::memory_order_acquire) || !ue3::runtime::Ready()) {
+        return;
+    }
+    using ue3::Kind;
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Class* const component = r.FindClass("Engine.SkeletalMeshComponent");
+    ue3::Class* const asset = r.FindClass("Engine.SkeletalMesh");
+    ue3::Class* const socket = r.FindClass("Engine.SkeletalMeshSocket");
+    ue3::runtime::FlushNotes();
+    std::string missing;
+    Fields f;
+    f.skeletalMesh = Offset(r, component, "SkeletalMesh", {Kind::Object}, 8, missing);
+    f.spaceBases = Offset(r, component, "SpaceBases", {Kind::Array}, 16, missing);
+    f.localToWorld = Offset(r, component, "LocalToWorld", {Kind::Struct}, 64, missing);
+    f.parentAnimComponent = Offset(r, component, "ParentAnimComponent", {Kind::Object, Kind::Component}, 8, missing);
+    std::optional<ue3::PropertyInfo> attachments;
+    f.attachments = Offset(r, component, "Attachments", {Kind::Array}, 16, missing, &attachments);
+    f.refSkeleton = Offset(r, asset, "RefSkeleton", {Kind::Array}, 16, missing);
+    f.sockets = Offset(r, asset, "Sockets", {Kind::Array}, 16, missing);
+    f.socketName = Offset(r, socket, "SocketName", {Kind::Name}, 8, missing);
+    f.socketBone = Offset(r, socket, "BoneName", {Kind::Name}, 8, missing);
+    f.socketLocation = Offset(r, socket, "RelativeLocation", {Kind::Struct}, 12, missing);
+    f.socketRotation = Offset(r, socket, "RelativeRotation", {Kind::Struct}, 12, missing);
+    // FAttachment: the array's element struct.
+    std::optional<ue3::PropertyInfo> const element =
+        attachments ? r.Describe(static_cast<ue3::Property const*>(attachments->typed)) : std::nullopt;
+    ue3::Struct* const entry = element ? r.StructOf(*element) : nullptr;
+    if (entry != nullptr) {
+        f.attachmentSize = element->elementSize;
+        f.attachmentComponent = Offset(r, entry, "Component", {Kind::Object, Kind::Component}, 8, missing);
+        f.attachmentBone = Offset(r, entry, "BoneName", {Kind::Name}, 8, missing);
+        f.attachmentLocation = Offset(r, entry, "RelativeLocation", {Kind::Struct}, 12, missing);
+        f.attachmentRotation = Offset(r, entry, "RelativeRotation", {Kind::Struct}, 12, missing);
+        f.attachmentScale = Offset(r, entry, "RelativeScale", {Kind::Struct}, 12, missing);
+    } else if (f.attachments >= 0) {
+        missing += std::format("{}Attachments' element struct", missing.empty() ? "" : ", ");
+    }
+    if (!missing.empty() && !gToldMissing) {
+        gToldMissing = true;
+        log::Warn("skeleton: {} not found through our reflection layer: what reads them stays off", missing);
+    }
+    gFields = f;
+    gFieldsReady.store(true, std::memory_order_release);
 }
 
 // The asset's RefSkeleton as raw bytes and a bone count.
@@ -55,27 +121,24 @@ struct RawBones {
     int count = 0;
 };
 
-RawBones Bones(ue3::Object const* object) {
-#if defined(SDK_TARGET_LE1)
-    USkeletalMeshComponent const* const mesh = Sdk(object);
-    if (mesh == nullptr || mesh->SkeletalMesh == nullptr) {
+RawBones Bones(ue3::Object const* mesh) {
+    Fields const* const f = Ready();
+    if (!kSupported || f == nullptr || mesh == nullptr || f->skeletalMesh < 0 || f->refSkeleton < 0) {
         return {};
     }
-    auto const& array = mesh->SkeletalMesh->RefSkeleton;  // declared TArray<int>: native FMeshBone data
-    auto const* const data = reinterpret_cast<std::byte const*>(array.GetData());
-    int const count = static_cast<int>(array.Count());
-    if (data == nullptr || count <= 0 || count > 4096) {
+    auto const* const asset = Read<ue3::Object const*>(mesh, f->skeletalMesh);
+    if (asset == nullptr) {
         return {};
     }
-    return {data, count};
-#else
-    (void)object;
-    return {};
-#endif
+    auto const array = Read<ue3::TArray<std::byte>>(asset, f->refSkeleton);  // native FMeshBone data
+    if (array.data == nullptr || array.count <= 0 || array.count > 4096) {
+        return {};
+    }
+    return {array.data, array.count};
 }
 
-SFXName NameAt(RawBones const& bones, int index) {
-    SFXName name{};
+std::uint64_t NameAt(RawBones const& bones, int index) {
+    std::uint64_t name = 0;
     std::memcpy(&name, bones.data + static_cast<std::size_t>(index) * kMeshBoneStride, sizeof name);
     return name;
 }
@@ -86,6 +149,21 @@ int ParentAt(RawBones const& bones, int index) {
     return parent;
 }
 
+ue3::TArray<ue3::Object*> SocketsOf(Fields const& f, ue3::Object const* mesh) {
+    if (mesh == nullptr || f.skeletalMesh < 0 || f.sockets < 0 || f.socketName < 0) {
+        return {};
+    }
+    auto const* const asset = Read<ue3::Object const*>(mesh, f.skeletalMesh);
+    if (asset == nullptr) {
+        return {};
+    }
+    auto const sockets = Read<ue3::TArray<ue3::Object*>>(asset, f.sockets);
+    if (sockets.data == nullptr || sockets.count <= 0 || sockets.count > 4096) {
+        return {};
+    }
+    return sockets;
+}
+
 } // namespace
 
 bool Supported() {
@@ -93,16 +171,22 @@ bool Supported() {
 }
 
 bool TryStartup() {
-    gGetBoneNames = FindFunction(L"GetBoneNames", kGetBoneNames);
-    gGetBoneLocation = FindFunction(L"GetBoneLocation", kGetBoneLocation);
-    gMatchRefBone = FindFunction(L"MatchRefBone", kMatchRefBone);
-    return gGetBoneLocation != nullptr && gMatchRefBone != nullptr;
+    ResolveFields();
+    return gGetBoneLocation.Get() != nullptr && gMatchRefBone.Get() != nullptr;
 }
 
 void Shutdown() {
-    gGetBoneNames = nullptr;
-    gGetBoneLocation = nullptr;
-    gMatchRefBone = nullptr;
+    gFieldsReady.store(false, std::memory_order_release);
+    gFields = {};
+    gToldMissing = false;
+    gGetBoneNames.Reset();
+    gGetBoneLocation.Reset();
+    gMatchRefBone.Reset();
+}
+
+Fields ResolvedFields() {
+    Fields const* const f = Ready();
+    return f != nullptr ? *f : Fields{};
 }
 
 ik::Transform ToTransform(BoneAtom const& atom) {
@@ -125,9 +209,9 @@ std::optional<RefSkeleton> ReadRefSkeleton(ue3::Object const* mesh) {
     skeleton.keys.reserve(bones.count);
     skeleton.parents.reserve(bones.count);
     for (int i = 0; i < bones.count; ++i) {
-        SFXName const name = NameAt(bones, i);
-        skeleton.names.push_back(ToString(name));
-        skeleton.keys.push_back(Key(name));
+        std::uint64_t const name = NameAt(bones, i);
+        skeleton.names.push_back(ue3::runtime::NameText(name));
+        skeleton.keys.push_back(name);
         // UE3 stores the root as its own parent (index 0).
         int const parent = ParentAt(bones, i);
         skeleton.parents.push_back(i == 0 ? -1 : parent);
@@ -145,57 +229,51 @@ std::uint64_t RefBoneKey(ue3::Object const* mesh, int index) {
     if (bones.data == nullptr || index < 0 || index >= bones.count) {
         return 0;
     }
-    return Key(NameAt(bones, index));
+    return NameAt(bones, index);
 }
 
 std::span<BoneAtom> SpaceBases(ue3::Object* mesh) {
-#if defined(SDK_TARGET_LE1)
-    if (mesh == nullptr) {
+    Fields const* const f = Ready();
+    if (!kSupported || f == nullptr || mesh == nullptr || f->spaceBases < 0) {
         return {};
     }
-    auto& array = Sdk(mesh)->SpaceBases;  // declared TArray<FMatrix>: really FBoneAtom (see header)
-    auto* const data = reinterpret_cast<BoneAtom*>(array.GetData());
-    int const count = static_cast<int>(array.Count());
-    if (data == nullptr || count <= 0) {
+    // Declared TArray<Matrix>: really FBoneAtom (see the header).
+    auto const array = Read<ue3::TArray<BoneAtom>>(mesh, f->spaceBases);
+    if (array.data == nullptr || array.count <= 0) {
         return {};
     }
-    return {data, static_cast<std::size_t>(count)};
-#else
-    (void)mesh;
-    return {};
-#endif
+    return {array.data, static_cast<std::size_t>(array.count)};
 }
 
 ik::Affine LocalToWorld(ue3::Object const* mesh) {
     ik::Affine affine;
-#if defined(SDK_TARGET_LE1)
-    FMatrix const& m = Sdk(mesh)->LocalToWorld;
-    FPlane const* const rows[4] = {&m.XPlane, &m.YPlane, &m.ZPlane, &m.WPlane};
-    for (int r = 0; r < 4; ++r) {
-        affine.m[r][0] = rows[r]->X;
-        affine.m[r][1] = rows[r]->Y;
-        affine.m[r][2] = rows[r]->Z;
-        affine.m[r][3] = rows[r]->W;
+    Fields const* const f = Ready();
+    if (!kSupported || f == nullptr || mesh == nullptr || f->localToWorld < 0) {
+        return affine;
     }
-#else
-    (void)mesh;
-#endif
+    // FMatrix: four FPlanes (X, Y, Z, W), row by row.
+    float m[16];
+    std::memcpy(m, static_cast<std::uint8_t const*>(static_cast<void const*>(mesh)) + f->localToWorld, sizeof m);
+    for (int r = 0; r < 4; ++r) {
+        for (int c = 0; c < 4; ++c) {
+            affine.m[r][c] = m[r * 4 + c];
+        }
+    }
     return affine;
 }
 
 ue3::Object* PoseParent(ue3::Object const* mesh) {
-#if defined(SDK_TARGET_LE1)
-    return mesh != nullptr ? reinterpret_cast<ue3::Object*>(Sdk(mesh)->ParentAnimComponent) : nullptr;
-#else
-    (void)mesh;
-    return nullptr;
-#endif
+    Fields const* const f = Ready();
+    if (!kSupported || f == nullptr || mesh == nullptr || f->parentAnimComponent < 0) {
+        return nullptr;
+    }
+    return Read<ue3::Object*>(mesh, f->parentAnimComponent);
 }
 
 int FindBone(ue3::Object const* mesh, std::uint64_t key) {
     RawBones const bones = Bones(mesh);
     for (int i = 0; i < bones.count; ++i) {
-        if (Key(NameAt(bones, i)) == key) {
+        if (NameAt(bones, i) == key) {
             return i;
         }
     }
@@ -208,117 +286,83 @@ ik::Quat FromRotator(int pitch, int yaw, int roll) {
         {axes.up.x, axes.up.y, axes.up.z});
 }
 
-#if defined(SDK_TARGET_LE1)
-// Offsets each confirmed in the code that uses them (research/14, "Weapon and muzzle").
-static_assert(offsetof(USkeletalMesh, Sockets) == 0x144);
-static_assert(offsetof(USkeletalMeshSocket, RelativeLocation) == 0x60);
-static_assert(offsetof(USkeletalMeshSocket, RelativeRotation) == 0x6C);
-static_assert(offsetof(USkeletalMeshSocket, RelativeScale) == 0x78);
-static_assert(offsetof(USkeletalMeshSocket, SocketName) == 0x84);
-static_assert(offsetof(USkeletalMeshSocket, BoneName) == 0x8C);
-static_assert(offsetof(USkeletalMeshComponent, Attachments) == 0x3B4);
-static_assert(sizeof(FAttachment) == 0x34);
-#endif
-
 std::optional<Socket> FindSocket(ue3::Object const* mesh, std::uint64_t socketName) {
-#if defined(SDK_TARGET_LE1)
-    if (mesh == nullptr || Sdk(mesh)->SkeletalMesh == nullptr || socketName == 0) {
+    Fields const* const f = Ready();
+    if (!kSupported || f == nullptr || socketName == 0 || f->socketBone < 0 || f->socketLocation < 0 || f->socketRotation < 0) {
         return std::nullopt;
     }
-    auto const& sockets = Sdk(mesh)->SkeletalMesh->Sockets;
-    int const count = static_cast<int>(sockets.Count());
-    if (sockets.GetData() == nullptr || count <= 0 || count > 4096) {
-        return std::nullopt;
-    }
-    for (int i = 0; i < count; ++i) {
-        USkeletalMeshSocket const* const socket = sockets.GetData()[i];
-        if (socket == nullptr || Key(socket->SocketName) != socketName) {
+    ue3::TArray<ue3::Object*> const sockets = SocketsOf(*f, mesh);
+    for (ue3::Object const* socket : sockets) {
+        if (socket == nullptr || Read<std::uint64_t>(socket, f->socketName) != socketName) {
             continue;
         }
         Socket out;
-        out.boneKey = Key(socket->BoneName);
+        out.boneKey = Read<std::uint64_t>(socket, f->socketBone);
         out.bone = FindBone(mesh, out.boneKey);
         if (out.bone < 0) {
             return std::nullopt;
         }
-        FRotator const& r = socket->RelativeRotation;
-        FVector const& t = socket->RelativeLocation;
-        out.relative = {FromRotator(r.Pitch, r.Yaw, r.Roll), {t.X, t.Y, t.Z}, 1.0};
+        auto const r = Read<ue3::Rotator>(socket, f->socketRotation);
+        auto const t = Read<ue3::Vector>(socket, f->socketLocation);
+        out.relative = {FromRotator(r.pitch, r.yaw, r.roll), {t.x, t.y, t.z}, 1.0};
         return out;
     }
     return std::nullopt;
-#else
-    (void)mesh;
-    (void)socketName;
-    return std::nullopt;
-#endif
 }
 
 std::vector<NamedSocket> Sockets(ue3::Object const* mesh) {
     std::vector<NamedSocket> out;
-#if defined(SDK_TARGET_LE1)
-    if (mesh == nullptr || Sdk(mesh)->SkeletalMesh == nullptr) {
+    Fields const* const f = Ready();
+    if (!kSupported || f == nullptr) {
         return out;
     }
-    auto const& sockets = Sdk(mesh)->SkeletalMesh->Sockets;
-    int const count = static_cast<int>(sockets.Count());
-    if (sockets.GetData() == nullptr || count <= 0 || count > 4096) {
-        return out;
-    }
-    for (int i = 0; i < count; ++i) {
-        USkeletalMeshSocket const* const socket = sockets.GetData()[i];
+    for (ue3::Object const* socket : SocketsOf(*f, mesh)) {
         if (socket == nullptr) {
             continue;
         }
-        if (auto found = FindSocket(mesh, Key(socket->SocketName))) {
-            out.push_back({Key(socket->SocketName), *found});
+        std::uint64_t const name = Read<std::uint64_t>(socket, f->socketName);
+        if (auto found = FindSocket(mesh, name)) {
+            out.push_back({name, *found});
         }
     }
-#else
-    (void)mesh;
-#endif
     return out;
 }
 
 std::optional<Attachment> FindAttachment(ue3::Object const* mesh, ue3::Object const* component) {
-#if defined(SDK_TARGET_LE1)
-    if (mesh == nullptr || component == nullptr) {
+    Fields const* const f = Ready();
+    if (!kSupported || f == nullptr || mesh == nullptr || component == nullptr || f->attachments < 0 || f->attachmentSize <= 0
+        || f->attachmentComponent < 0 || f->attachmentBone < 0 || f->attachmentLocation < 0 || f->attachmentRotation < 0
+        || f->attachmentScale < 0) {
         return std::nullopt;
     }
-    auto const& attachments = Sdk(mesh)->Attachments;
-    int const count = static_cast<int>(attachments.Count());
-    if (attachments.GetData() == nullptr || count <= 0 || count > 4096) {
+    auto const attachments = Read<ue3::TArray<std::uint8_t>>(mesh, f->attachments);
+    if (attachments.data == nullptr || attachments.count <= 0 || attachments.count > 4096) {
         return std::nullopt;
     }
-    for (int i = 0; i < count; ++i) {
-        FAttachment const& entry = attachments.GetData()[i];
-        if (reinterpret_cast<ue3::Object const*>(static_cast<UObject const*>(entry.Component)) != component) {
+    for (int i = 0; i < attachments.count; ++i) {
+        std::uint8_t const* const entry = attachments.data + static_cast<std::size_t>(i) * static_cast<std::size_t>(f->attachmentSize);
+        if (Read<ue3::Object const*>(entry, f->attachmentComponent) != component) {
             continue;
         }
         Attachment out;
-        out.boneKey = Key(entry.BoneName);
+        out.boneKey = Read<std::uint64_t>(entry, f->attachmentBone);
         out.bone = FindBone(mesh, out.boneKey);
         if (out.bone < 0) {
             return std::nullopt;
         }
-        FRotator const& r = entry.RelativeRotation;
-        FVector const& t = entry.RelativeLocation;
-        FVector const& s = entry.RelativeScale;
+        auto const r = Read<ue3::Rotator>(entry, f->attachmentRotation);
+        auto const t = Read<ue3::Vector>(entry, f->attachmentLocation);
+        auto const s = Read<ue3::Vector>(entry, f->attachmentScale);
         // UE3 treats a zero scale as 1.
         double scale = 1.0;
-        if (s.X != 0.0f || s.Y != 0.0f || s.Z != 0.0f) {
-            scale = s.X;
-            out.uniformScale = std::abs(s.X - s.Y) < 1e-4f && std::abs(s.X - s.Z) < 1e-4f;
+        if (s.x != 0.0f || s.y != 0.0f || s.z != 0.0f) {
+            scale = s.x;
+            out.uniformScale = std::abs(s.x - s.y) < 1e-4f && std::abs(s.x - s.z) < 1e-4f;
         }
-        out.relative = {FromRotator(r.Pitch, r.Yaw, r.Roll), {t.X, t.Y, t.Z}, out.uniformScale ? scale : 1.0};
+        out.relative = {FromRotator(r.pitch, r.yaw, r.roll), {t.x, t.y, t.z}, out.uniformScale ? scale : 1.0};
         return out;
     }
     return std::nullopt;
-#else
-    (void)mesh;
-    (void)component;
-    return std::nullopt;
-#endif
 }
 
 std::optional<UnrealVector> BoneLocation(ue3::Object* mesh, int index, Space space) {
@@ -333,58 +377,65 @@ std::optional<UnrealVector> BoneLocation(ue3::Object* mesh, int index, Space spa
     return UnrealVector{at.x, at.y, at.z};
 }
 
-std::optional<UnrealVector> NativeBoneLocation(ue3::Object* object, std::uint64_t key, Space space) {
-    USkeletalMeshComponent* const mesh = Sdk(object);
-    SFXName bone{};
-    std::memcpy(&bone, &key, sizeof bone);
-    if (gGetBoneLocation == nullptr || gMatchRefBone == nullptr || mesh == nullptr) {
+std::optional<UnrealVector> NativeBoneLocation(ue3::Object* mesh, std::uint64_t key, Space space) {
+    ue3::Function* const matchRefBone = gMatchRefBone.Get();
+    ue3::Function* const getBoneLocation = gGetBoneLocation.Get();
+    if (matchRefBone == nullptr || getBoneLocation == nullptr || mesh == nullptr) {
         return std::nullopt;
     }
-    // Called directly: the SDK's generated wrappers corrupt FunctionFlags (CLAUDE.md). Both
-    // natives return through Result, which ProcessEvent points into the parms, so they work.
-    USkeletalMeshComponent_execMatchRefBone_Parms match;
-    match.BoneName = bone;
-    match.ReturnValue = -1;  // stays -1 if the engine rejects the call
-    mesh->ProcessEvent(gMatchRefBone, &match, nullptr);
+    ue3::Name const bone = ue3::Name::FromKey(key);
+    // Called through ProcessEvent with blocks built from the functions themselves (never a generated
+    // wrapper: CLAUDE.md). Both natives return through Result, which ProcessEvent points into the block.
+    ue3::Params match(ue3::runtime::Get(), matchRefBone);
+    if (!match.Set("BoneName", bone) || !match.Set("ReturnValue", std::int32_t{-1})) {  // stays -1 if the engine rejects the call
+        return std::nullopt;
+    }
+    ue3::runtime::Call(mesh, matchRefBone, match);
+    std::int32_t const index = match.Return<std::int32_t>().value_or(-1);
     // GetBoneLocation indexes SpaceBases unchecked: only for a bone whose pose exists.
-    if (match.ReturnValue < 0 || match.ReturnValue >= static_cast<int>(SpaceBases(object).size())) {
+    if (index < 0 || index >= static_cast<int>(SpaceBases(mesh).size())) {
         return std::nullopt;
     }
-    USkeletalMeshComponent_execGetBoneLocation_Parms parms;
-    parms.BoneName = bone;
-    parms.Space = static_cast<int>(space);
-    mesh->ProcessEvent(gGetBoneLocation, &parms, nullptr);
-    return UnrealVector{parms.ReturnValue.X, parms.ReturnValue.Y, parms.ReturnValue.Z};
+    ue3::Params parms(ue3::runtime::Get(), getBoneLocation);
+    if (!parms.Set("BoneName", bone) || !parms.Set("Space", static_cast<std::int32_t>(space))) {
+        return std::nullopt;
+    }
+    ue3::runtime::Call(mesh, getBoneLocation, parms);
+    std::optional<ue3::Vector> const at = parms.Return<ue3::Vector>();
+    if (!at) {
+        return std::nullopt;
+    }
+    return UnrealVector{at->x, at->y, at->z};
 }
 
-std::string GetBoneNamesDiagnostic(ue3::Object* object) {
-    USkeletalMeshComponent* const mesh = Sdk(object);
-    if (gGetBoneNames == nullptr || mesh == nullptr) {
+std::string GetBoneNamesDiagnostic(ue3::Object* mesh) {
+    ue3::Function* const getBoneNames = gGetBoneNames.Get();
+    if (getBoneNames == nullptr || mesh == nullptr) {
         return "GetBoneNames not found";
     }
-    USkeletalMeshComponent_execGetBoneNames_Parms parms;
-    mesh->ProcessEvent(gGetBoneNames, &parms, nullptr);
-    int const returned = static_cast<int>(parms.BoneNames.Count());
-    parms.BoneNames.~TArray();  // the parms union doesn't free it
-    std::string text = std::format("GetBoneNames through ProcessEvent returned {} names (RefSkeleton has {})", returned,
-        RefBoneCount(object));
-#if defined(SDK_TARGET_LE1)
-    auto const base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
-    auto const func = reinterpret_cast<std::uintptr_t>(gGetBoneNames->Func);
-    text += std::format("; native exe+0x{:X} (execGetBoneNames 0x594950 expected), flags 0x{:X}, iNative {}", func - base,
-        static_cast<unsigned>(gGetBoneNames->FunctionFlags), gGetBoneNames->iNative);
-    // The native's own bytecode: what ProcessEvent's frame steps through for its parameters.
-    auto const& script = gGetBoneNames->Script;
-    std::string bytes;
-    for (int i = 0; i < static_cast<int>(script.Count()) && i < 12; ++i) {
-        bytes += std::format("{:02x} ", script.GetData()[i]);
+    ue3::Params parms(ue3::runtime::Get(), getBoneNames);
+    ue3::runtime::Call(mesh, getBoneNames, parms);
+    ue3::TArray<ue3::Name> names = parms.Get<ue3::TArray<ue3::Name>>("BoneNames").value_or(ue3::TArray<ue3::Name>{});
+    int const returned = names.data != nullptr ? names.count : 0;
+    if (names.data != nullptr) {
+        ue3::memory::Free(names.data);  // the block owns what the native returned (research/34 section 2.1)
     }
-    text += std::format("; bytecode {}({} bytes; 0x29 = EX_NativeParm)", bytes, script.Count());
-    auto const* const natives = reinterpret_cast<std::uintptr_t const*>(base + kGNativesRva);
-    text += std::format("; GNatives[EX_NativeParm] exe+0x{:X} (0x11F210: binds an out parm only for a non-null result), "
-                        "GNatives[EX_LocalOutVariable] exe+0x{:X}",
-        natives[kExNativeParm] - base, natives[kExLocalOutVariable] - base);
-#endif
+    std::string text = std::format("GetBoneNames through ProcessEvent returned {} names (RefSkeleton has {})", returned,
+        RefBoneCount(mesh));
+    if (kSupported) {
+        ue3::Reflection& r = ue3::runtime::Get();
+        auto const base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
+        auto const func = reinterpret_cast<std::uintptr_t>(r.NativeFunc(getBoneNames));
+        text += std::format("; native exe+0x{:X} (execGetBoneNames 0x594950 expected), flags 0x{:X}, iNative {}", func - base,
+            r.FunctionFlags(getBoneNames), r.NativeIndex(getBoneNames));
+        // The function's bytecode (UStruct.Script) isn't in our layout yet: not read since stage 3 (research/34).
+        if (std::uint32_t const rva = adapter::NativesTableRva(); rva != 0) {
+            auto const* const natives = reinterpret_cast<std::uintptr_t const*>(base + rva);
+            text += std::format("; GNatives[EX_NativeParm] exe+0x{:X} (0x11F210: binds an out parm only for a non-null result), "
+                                "GNatives[EX_LocalOutVariable] exe+0x{:X}",
+                natives[kExNativeParm] - base, natives[kExLocalOutVariable] - base);
+        }
+    }
     return text;
 }
 

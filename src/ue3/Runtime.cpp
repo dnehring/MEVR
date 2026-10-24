@@ -24,6 +24,9 @@ constexpr std::int32_t kSampleObjects = 512;
 
 bool gTried = false;
 bool gReady = false;
+bool gTransient = false;     // the last Locate failed only because the game is still starting
+int gPendingTries = 0;
+bool gToldPending = false;
 std::string gStatus = "not started";
 Reflection gReflection;
 Found gFound;
@@ -63,12 +66,18 @@ struct ObjectsCheck {
     std::int32_t count;
     std::int32_t checked;
     std::int32_t badIndex;  // first sampled slot whose object's index didn't match, or -1
+    bool tooFew;            // a well-formed array with fewer than kMinObjects: the game is still starting
 };
 
 void CheckObjects(void* context) {
     auto* c = static_cast<ObjectsCheck*>(context);
     auto const* array = reinterpret_cast<TArray<Object*> const*>(c->address);
     c->count = array->count;
+    if (array->count >= 0 && array->count < kMinObjects && array->max >= array->count
+        && (array->data != nullptr || array->count == 0)) {
+        c->tooFew = true;
+        return;
+    }
     if (array->data == nullptr || array->count < kMinObjects || array->count > kMaxObjects || array->max < array->count) {
         return;
     }
@@ -126,6 +135,7 @@ void CheckNames(void* context) {
 struct ReflectionCheck {
     Reflection* reflection;
     char const* failed;  // what didn't check out, or nullptr
+    bool transient;      // Core checks out but Engine.Actor isn't loaded yet
 };
 
 void CheckReflection(void* context) {
@@ -142,6 +152,11 @@ void CheckReflection(void* context) {
     // One property and one function deep enough to prove the UField/UStruct/UProperty/UFunction
     // offsets: Actor.Location is a 12-byte struct; Actor.SetRotation(NewRotation) starts at 0.
     Class* const actor = r.FindClass("Engine.Actor");
+    if (actor == nullptr) {
+        c->failed = "Engine.Actor isn't loaded yet";
+        c->transient = true;
+        return;
+    }
     std::optional<PropertyInfo> const location = r.PropertyOf(actor, "Location");
     if (actor == nullptr || !location || location->kind != Kind::Struct || location->elementSize != 12) {
         c->failed = "Engine.Actor.Location isn't a 12-byte struct property";
@@ -199,13 +214,18 @@ std::optional<std::uintptr_t> FromPattern(engine::adapter::GlobalPattern const& 
     return target;
 }
 
-bool TryObjects(Layout const& layout, std::uintptr_t address, std::string& why) {
-    ObjectsCheck check{&layout, address, false, 0, 0, -1};
+bool TryObjects(Layout const& layout, std::uintptr_t address, std::string& why, bool* tooFew = nullptr) {
+    ObjectsCheck check{&layout, address, false, 0, 0, -1, false};
     if (!Guarded(&CheckObjects, &check)) {
         why = "reading it faulted";
         return false;
     }
-    if (!check.ok) {
+    if (tooFew != nullptr) {
+        *tooFew = check.tooFew;
+    }
+    if (check.tooFew) {
+        why = std::format("only {} objects so far", check.count);
+    } else if (!check.ok) {
         why = check.badIndex >= 0 ? std::format("object {} has another index", check.badIndex)
                                   : std::format("{} objects, {} checked", check.count, check.checked);
     }
@@ -255,9 +275,15 @@ bool Locate() {
     std::string rvaWhy;
     std::string patternWhy;
     std::uintptr_t const objectsAtRva = gFound.module + globals->objectsRva;
-    if (TryObjects(*layout, objectsAtRva, rvaWhy)) {
+    bool tooFew = false;
+    if (TryObjects(*layout, objectsAtRva, rvaWhy, &tooFew)) {
         gFound.objects = objectsAtRva;
         gFound.objectsBy = "rva";
+    } else if (tooFew) {
+        // A well-formed, nearly empty GObjects at its RVA: the game is still starting (no pattern scan).
+        gStatus = std::format("GObjects at its RVA 0x{:X} has {}: the game is still starting", globals->objectsRva, rvaWhy);
+        gTransient = true;
+        return false;
     } else {
         std::string note;
         std::optional<std::uintptr_t> const found = FromPattern(globals->objectsPattern, note);
@@ -296,9 +322,12 @@ bool Locate() {
     }
 
     gReflection = Reflection(universe);
-    ReflectionCheck reflectionCheck{&gReflection, "it faulted"};
+    ReflectionCheck reflectionCheck{&gReflection, "it faulted", false};
     if (!Guarded(&CheckReflection, &reflectionCheck) || reflectionCheck.failed != nullptr) {
-        gStatus = std::format("the reflection layout doesn't check out: {}", reflectionCheck.failed);
+        gTransient = reflectionCheck.transient;
+        gStatus = reflectionCheck.transient
+            ? std::format("{}: the script packages are still loading", reflectionCheck.failed)
+            : std::format("the reflection layout doesn't check out: {}", reflectionCheck.failed);
         gReflection = Reflection();
         return false;
     }
@@ -406,8 +435,20 @@ bool Init() {
     if (gTried) {
         return gReady;
     }
-    gTried = true;
+    gTransient = false;
     gReady = Locate();
+    if (!gReady && gTransient && ++gPendingTries < kMaxPendingTries) {
+        if (!gToldPending) {
+            gToldPending = true;
+            log::Info("reflect: not ready yet: {}; trying again", gStatus);
+        }
+        return false;  // not an answer: the next call tries again
+    }
+    if (!gReady && gTransient) {
+        gStatus += std::format(" (still after {} tries)", gPendingTries);
+        gTransient = false;
+    }
+    gTried = true;
     if (gReady) {
         gStatus = std::format("ready: {} objects (GObjects by {}, names by {}), ProcessEvent at RVA 0x{:X}{}",
                               gReflection.ObjectCount(), gFound.objectsBy, gFound.namePoolsBy,
@@ -426,12 +467,17 @@ bool Ready() {
     return gReady;
 }
 
+bool Pending() {
+    return !gTried && gTransient;
+}
+
 std::string const& Status() {
     return gStatus;
 }
 
 void Shutdown() {
-    gTried = gReady = false;
+    gTried = gReady = gTransient = gToldPending = false;
+    gPendingTries = 0;
     memory::Use({});
     gStatus = "not started";
     gReflection = Reflection();

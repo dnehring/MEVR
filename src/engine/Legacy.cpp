@@ -3,10 +3,11 @@
 
 #if !defined(MEVR_GAME_LE1)
 
+#include "core/Log.hpp"
 #include "engine/GameAdapterSdk.hpp"
-#include "engine/Objects.hpp"
 
 #include <LESDK/Headers.hpp>
+#include <LESDK/Init.hpp>
 
 #include <Windows.h>
 
@@ -47,23 +48,75 @@ std::string Narrow(wchar_t const* chars) {
 constexpr std::uint64_t kTemplateFlags = 0x200 | 0x400;  // ClassDefaultObject | ArchetypeObject
 constexpr std::uint64_t kPendingKill = 0x2000000000000000ull;
 
+template <typename T>
+bool Resolve(::LESDK::Initializer& init, ::LESDK::Address address, T*& out, char const* name) {
+    out = init.ResolveTyped<T>(address);
+    if (out == nullptr) {
+        log::Error("failed to resolve {}", name);
+        return false;
+    }
+    return true;
+}
+
+std::string SdkFullName(UObject* object) {
+    if (object == nullptr) {
+        return "None";
+    }
+    FString const wide = object->GetFullName();
+    return Narrow(wide.Chars());
+}
+
 } // namespace
 
+bool Init(::LESDK::Initializer& init) {
+    bool ok = true;
+    ok &= Resolve(init, BUILTIN_GMALLOC_RVA, GMalloc, "GMalloc");
+    ok &= Resolve(init, BUILTIN_GOBJECTS_RVA, UObject::GObjObjects, "GObjObjects");
+    ok &= Resolve(init, BUILTIN_SFXNAMEPOOLS_RVA, SFXName::GBioNamePools, "SFXName pools");
+    ok &= Resolve(init, BUILTIN_SFXNAMEINIT_RVA, SFXName::GInitMethod, "SFXName init");
+    ok &= Resolve(init, BUILTIN_GENGINE_RVA, GEngine, "GEngine");
+    ok &= Resolve(init, BUILTIN_GWORLD_RVA, GWorld, "GWorld");
+    return ok;
+}
+
+void const* World() {
+    return GWorld != nullptr ? *GWorld : nullptr;
+}
+
+std::int32_t ObjectCount() {
+    return UObject::GObjObjects != nullptr ? static_cast<std::int32_t>(UObject::GObjObjects->Count()) : 0;
+}
+
 ue3::Object* LocalPlayerController() {
-    return reinterpret_cast<ue3::Object*>(engine::LocalPlayerController());
+    UEngine* const engine = (GEngine != nullptr) ? *GEngine : nullptr;
+    if (engine == nullptr || engine->GamePlayers.Count() == 0) {
+        return nullptr;
+    }
+    ULocalPlayer* const player = engine->GamePlayers.GetData()[0];
+    return player != nullptr ? reinterpret_cast<ue3::Object*>(player->Actor) : nullptr;
 }
 
 ue3::Function* FindFunction(char const* path) {
+    // The function with this object name and full name ("Function Engine.Camera.UpdateCamera"): a GObjects walk.
     std::string_view const full(path);
     std::size_t const dot = full.rfind('.');
     std::string_view const name = dot == std::string_view::npos ? full : full.substr(dot + 1);
     std::wstring const wide(name.begin(), name.end());  // ASCII names
     std::string const fullName = std::string("Function ") + path;
-    return reinterpret_cast<ue3::Function*>(engine::FindFunction(wide.c_str(), fullName.c_str()));
+    SFXName const target(wide.c_str(), 0);
+    UClass* const functionClass = UFunction::StaticClass();
+    auto* const objects = UObject::GObjObjects;
+    for (int i = 0; i < static_cast<int>(objects->Count()); ++i) {
+        UObject* const object = objects->GetData()[i];
+        if (object != nullptr && object->Name == target && object->IsA(functionClass) && SdkFullName(object) == fullName) {
+            return reinterpret_cast<ue3::Function*>(object);
+        }
+    }
+    return nullptr;
 }
 
 std::string FullName(ue3::Object const* object) {
-    return engine::FullName(Sdk(object));
+    return SdkFullName(Sdk(object));
 }
 
 bool IsPlayerController(ue3::Object const* object) {

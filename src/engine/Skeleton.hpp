@@ -10,21 +10,23 @@
 #include <string>
 #include <vector>
 
-// A skeletal mesh's bones, read straight from engine memory. LE1 layouts, each checked against the
-// code that uses them (research/14):
-//   USkeletalMesh::RefSkeleton        +0xB4   TArray<FMeshBone>, 0x50 bytes each: Name +0x00,
-//                                            ParentIndex +0x40 (execGetBoneName, execGetParentBoneIndex)
-//   USkeletalMeshComponent::SpaceBases +0x2B0 TArray<FBoneAtom>, component space, 0x20 bytes each:
-//                                            rotation (x, y, z, w), translation, scale
-//                                            (UpdateSkelPose, GetBoneMatrix). The SDK says FMatrix: wrong.
+// A skeletal mesh's bones, read straight from engine memory. The fields are found through our
+// reflection layer (research/34, stage 3: all four "native" ones are reflected); the self-check compares
+// them with research/14's LE1 offsets (its `skeleton` rows):
+//   USkeletalMesh::RefSkeleton        +0xB4   declared TArray<int>: native FMeshBone, 0x50 bytes each: Name
+//                                            +0x00, ParentIndex +0x40 (execGetBoneName, execGetParentBoneIndex)
+//   USkeletalMeshComponent::SpaceBases +0x2B0 declared TArray<Matrix>: FBoneAtom, component space, 0x20
+//                                            bytes each: rotation (x, y, z, w), translation, scale
+//                                            (UpdateSkelPose, GetBoneMatrix)
 //   UPrimitiveComponent::LocalToWorld  +0xC0  FMatrix
+// The two element layouts aren't in the reflection: they stay research/14's (LE1 only).
 // Names can't come from the GetBoneNames native: through ProcessEvent its out-array parameter is
 // never bound to the caller's parms (EX_NativeParm with a null result), so it returns nothing.
 // LE2/LE3: layouts not verified; everything here answers "unsupported" there.
 //
-// Meshes are SkeletalMeshComponents as our reflection layer's pointers (research/34): the modules
-// find them through ue3/; the reads here stay the research/14 offsets (stage 3 of research/34 moves
-// them behind one named accessor each).
+// Meshes are SkeletalMeshComponents as our reflection layer's pointers. The offsets are resolved once
+// (TryStartup, game thread) and then only read, so the pose reads (RefBoneCount, RefBoneKey,
+// SpaceBases) work from any thread.
 namespace mevr::ue3 {
 struct Object;
 }
@@ -33,10 +35,35 @@ namespace mevr::engine::skeleton {
 
 // This game's layouts are known (LE1).
 bool Supported();
-// Finds the natives used for cross-checks (MatchRefBone, GetBoneLocation, GetBoneNames). False
-// until the script packages have loaded. Reading bones doesn't need them.
+// Resolves the fields below through our reflection layer (once; what's missing is logged and stays
+// off), and finds the natives used for cross-checks (MatchRefBone, GetBoneLocation, GetBoneNames).
+// False until the script packages have loaded and the natives are found. Reading bones doesn't need
+// them. Game thread.
 bool TryStartup();
 void Shutdown();
+
+// The offsets this module reads, as TryStartup resolved them (-1: not found, or not resolved yet), for
+// the self-check, which compares them with research/14's.
+struct Fields {
+    std::int32_t skeletalMesh = -1;         // SkeletalMeshComponent.SkeletalMesh
+    std::int32_t spaceBases = -1;           // SkeletalMeshComponent.SpaceBases
+    std::int32_t localToWorld = -1;         // PrimitiveComponent.LocalToWorld (through the component)
+    std::int32_t parentAnimComponent = -1;  // SkeletalMeshComponent.ParentAnimComponent
+    std::int32_t attachments = -1;          // SkeletalMeshComponent.Attachments
+    std::int32_t refSkeleton = -1;          // SkeletalMesh.RefSkeleton
+    std::int32_t sockets = -1;              // SkeletalMesh.Sockets
+    std::int32_t socketName = -1;           // SkeletalMeshSocket.SocketName
+    std::int32_t socketBone = -1;           // ...BoneName
+    std::int32_t socketLocation = -1;       // ...RelativeLocation
+    std::int32_t socketRotation = -1;       // ...RelativeRotation
+    std::int32_t attachmentSize = -1;       // FAttachment, the Attachments array's element struct
+    std::int32_t attachmentComponent = -1;  // ...its Component, BoneName, RelativeLocation, RelativeRotation, RelativeScale
+    std::int32_t attachmentBone = -1;
+    std::int32_t attachmentLocation = -1;
+    std::int32_t attachmentRotation = -1;
+    std::int32_t attachmentScale = -1;
+};
+Fields ResolvedFields();
 
 // FBoneAtom as LE1 stores it.
 struct BoneAtom {
@@ -70,9 +97,9 @@ ue3::Object* PoseParent(ue3::Object const* mesh);
 // The bone with this raw name in the mesh asset's skeleton (MatchRefBone from memory), or -1.
 int FindBone(ue3::Object const* mesh, std::uint64_t key);
 
-// A socket of the mesh's asset (USkeletalMesh::Sockets +0x144, USkeletalMeshSocket: RelativeLocation
-// +0x60, RelativeRotation +0x6C, SocketName +0x84, BoneName +0x8C; USkeletalMesh::FindSocket
-// 0x5A8C70). `relative` places the socket in its bone's space the way the engine does
+// A socket of the mesh's asset (USkeletalMesh::Sockets; USkeletalMeshSocket: RelativeLocation,
+// RelativeRotation, SocketName, BoneName; research/14 read them at +0x144, +0x60, +0x6C, +0x84, +0x8C;
+// USkeletalMesh::FindSocket 0x5A8C70). `relative` places the socket in its bone's space the way the engine does
 // (GetSocketWorldLocationAndRotation 0x584640: FRotationTranslationMatrix(RelativeRotation,
 // RelativeLocation) * GetBoneMatrix(bone), no scale).
 struct Socket {
@@ -89,8 +116,8 @@ struct NamedSocket {
 };
 std::vector<NamedSocket> Sockets(ue3::Object const* mesh);
 
-// How `component` hangs on the mesh (USkeletalMeshComponent::Attachments +0x3B4, FAttachment 0x34
-// bytes: Component, BoneName, RelativeLocation, RelativeRotation, RelativeScale), as
+// How `component` hangs on the mesh (USkeletalMeshComponent::Attachments, research/14's +0x3B4;
+// FAttachment 0x34 bytes: Component, BoneName, RelativeLocation, RelativeRotation, RelativeScale), as
 // AttachComponentToSocket (0x57A120) records a socket: its bone and offset. `relative` includes the
 // scale only when it's uniform (`uniformScale`).
 struct Attachment {

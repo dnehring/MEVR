@@ -131,7 +131,10 @@ switching frameworks.
   `MEVR-LE1-mod`; the user stays in game. Changes to `src/plugin/` (the host) need the game
   closed and a redeploy. Release builds use `-DMEVR_HOT_RELOAD=OFF` (one ASI; e.g. `build-mono/`).
 - Script-level hooks must wait for the script packages to load (they aren't there at attach).
-  `Mod.cpp` retries every second before installing the ProcessEvent hook.
+  `Mod.cpp` retries every second before installing the ProcessEvent hook (LE1: `ue3::runtime::Init`, then
+  `Engine.Camera.UpdateCamera` through our reflection layer, research/34 stage 3; LE2/LE3: `engine/Legacy`).
+  Engine reads go through `src/ue3/` (handles, `Params`); new LExSDKv2 use belongs only in `engine/Legacy`,
+  ReflectCheck's reference side and the hook plumbing until stages 4-6 remove it.
 - Hotkeys: not F-keys (bound in game), not backtick (UE console). `]` toggles VR (the XR
   session) on and off, and with it every VR feature: once a session runs, alternate-eye stereo,
   6DOF, hand aim and arm IK all come on; VR off turns them off. The rest are dev overrides:
