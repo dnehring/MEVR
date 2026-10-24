@@ -8,10 +8,15 @@
 #   tools/launch-game.ps1                 start, resume the last save, wait (up to 4 minutes), say READY
 #   tools/launch-game.ps1 -Pause          ... and freeze the world (tools/console.ps1 pause) once in gameplay
 #   tools/launch-game.ps1 -Quit           close a running game through its console (the mod's console.request)
+#   tools/launch-game.ps1 -Map BIOA_STA60 open that map straight from the command line (UE3's first argument; a
+#                                         fresh Shepard at the map's player start, no save): a known place for
+#                                         measurements. In gameplay the same is tools/console.ps1 'open BIOA_STA60'.
+#                                         LE1 maps: BIOA_PRO10 Eden Prime, BIOA_STA00 Citadel docking bay, BIOA_STA20
+#                                         Presidium, BIOA_STA30 Wards, BIOA_STA60 Citadel Tower, BIOA_NOR10 Normandy.
 #
 # The mouse does nothing in VR mode (Halcyon decouples it); the keyboard works, so Enter goes through SendKeys to the
 # game's window. Exit code 1 when the game never reached gameplay.
-param([switch]$Pause, [switch]$Quit, [int]$TimeoutSeconds = 240)
+param([switch]$Pause, [switch]$Quit, [int]$TimeoutSeconds = 240, [string]$Map = '')
 $ErrorActionPreference = 'Stop'
 $tools = $PSScriptRoot
 $root = 'C:\Program Files (x86)\Steam\steamapps\common\Mass Effect Legendary Edition'
@@ -33,6 +38,7 @@ if (-not (Get-Process steam -ErrorAction SilentlyContinue)) { throw 'Steam is no
 
 $env:SteamAppId = '1328670'; $env:SteamGameId = '1328670'; $env:SteamOverlayGameId = '1328670'
 $args = '-NoHomeDir -SeekFreeLoadingPCConsole -locale int -Subtitles 20 -OVERRIDELANGUAGE=INT'
+if ($Map -ne '') { $args = $Map + ' ' + $args }
 $p = Start-Process -FilePath $exe -ArgumentList $args -WorkingDirectory $win64 -PassThru
 "started MassEffect1.exe (pid $($p.Id)) at $(Get-Date -Format HH:mm:ss)"
 Add-Type -AssemblyName Microsoft.VisualBasic

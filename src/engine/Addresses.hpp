@@ -139,6 +139,8 @@ inline constexpr Entry kTable[] = {
     {"UmbraCommander::IssueOcclusionQueries", 0x8B6550, Kind::Function,
         "40 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 60 48 C7 44 24 50 FE FF FF FF 48 89 9C 24 B8 00 00", 0, 0,
         "render levers"},
+    {"Umbra read of one query result", 0xD48380, Kind::Function, "89 91 CC 01 00 00 BA 06 00 00 00 44 89 81 C8 01", 0, 0,
+        "render levers"},
     {"Umbra resolve start stamp", 0x1795D40, Kind::Data, "66 0F 5A C0 F3 0F 11 05 ?? ?? ?? ?? E9 ?? ?? ?? ?? B2 01 48", 8,
         0x8C3540, "render levers"},
     {"GSceneRenderTargets", 0x167D0E0, Kind::Data, "96 80 00 00 00 48 8D 0D ?? ?? ?? ?? 89 94 24 90", 8, 0x1CEA75,
