@@ -25,6 +25,16 @@ the attempt-by-attempt log is `research/35-performance-attempt-log.md` (attempts
   meshes (draws 2,574 median / 8,544 p90, frames 24 ms p90). Off by default since bf38a6c. The remaining spikes
   during walking are unmeasured (a walking probe with the stack sampler is still owed).
 
+## What the player's number is (added 17:30, research/35 attempt 41)
+
+fpsVR shows SteamVR's CPU frametime: wall time from xrWaitFrame's return to xrEndFrame. The probe prints the same span as
+"poses -> submit, wall"; in gameplay it is within 0.4 ms of "busy, without the XR waits" (11.12 vs 10.72 ms at the medium
+spot), so the numbers above are the player's numbers at those spots. fpsVR's own session files (`tools/fpsvr-session.py`)
+say what the player lived: 2026-10-23's long walk 14.4 ms median, 20.6 p90; today 12.4 / 16.4. The loop's missing piece
+is still the heavy, moving spot. And fpsVR's GPU frametime is 9.5 median / 13.5 p90 ms in every real session: the GPU is
+over budget at the tail too, so items 5 and 6 (fewer draws, one submission) matter for both sides, and GPU offload is not
+free.
+
 ## The sequence, with the expected gain and the evidence for each
 
 1. **umbraShareResults** (built, a4dffb5, default 0, unmeasured). The second eye's Umbra reads that aren't ready get

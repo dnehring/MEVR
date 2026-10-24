@@ -166,6 +166,20 @@ def main():
     chosen = stereo if len(stereo) >= max(10, len(rows) // 2) else rows
     kind = 'Stereo 2 headset frames' if chosen is stereo else ('headset frames' if not args.all else 'frames')
     metrics = [frame_metrics(r) for r in chosen]
+    # What SteamVR's frame timing (fpsVR's "CPU frametime") counts: wall time from the frame's poses (xrWaitFrame's
+    # return) to its submit (xrEndFrame's return). With the early frame wait the poses come at the END of the
+    # previous Present, so the span is the previous frame's wait_end -> this frame's end_frame_end: both scene
+    # renders, every hold (Halcyon's cutscene cap, stereo pacing) and every idle between them, busy or not.
+    for prev, cur, m in zip([None] + chosen[:-1], chosen, metrics):
+        m['steamvr_cpu'] = None
+        m['hold'] = span(cur, 'present', 'begin_begin')
+        if cur.get('t_end_frame_end') is None:
+            continue
+        own_wait = span(cur, 'wait_end', 'end_frame_end')
+        if own_wait is not None and own_wait >= 0:   # the wait came before the submit: upstream's order
+            m['steamvr_cpu'] = own_wait
+        elif prev is not None and prev.get('t_wait_end') is not None and prev.get('t_end') is not None                 and cur.get('t_start') is not None:
+            m['steamvr_cpu'] = (prev['t_end'] - prev['t_wait_end']) + (cur['t_end_frame_end'] - cur['t_start'])
     get = lambda key: [m.get(key) for m in metrics]
 
     # The headset's own period is the shortest the runtime reported; a longer median means it throttles
@@ -204,8 +218,10 @@ def main():
     line('  of which swapchain waits', get('swapchain_wait'))
     line('xrEndFrame', get('end_frame'))
     line('mirror present and the rest', get('tail'))
+    line("Halcyon's hold before xrBeginFrame", get('hold'), 'cutscene cap / stereo pacing: idle fpsVR counts')
     line('busy, whole frame', get('render_busy_total'))
     line('busy, without the XR waits', get('render_work'), '<- the render thread\'s work')
+    line('poses -> submit, wall', get('steamvr_cpu'), '<- what fpsVR / SteamVR call CPU frametime')
 
     print(f'\n  {"draws":<34} {"median":>7} {"p90":>7} {"max":>7}')
     line('to the last left-eye capture', get('left_draws'))

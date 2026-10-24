@@ -392,7 +392,9 @@ Use it to check VR changes yourself instead of asking the user what they see
   records each frame's steps on the render thread (time, busy time, draws, GPU timestamps mapped onto the
   CPU clock, access violations) and each game-thread tick into `perf\<stamp>-frames.csv`, `-ticks.csv` and
   `-probe.json`, then `python tools/perf-probe.py [--latest]` says whether the render thread, the GPU or
-  the game thread sets the pace. Seams: `MevrBridge::PerfPresentScope` / `PerfPass0Captured` /
+  the game thread sets the pace. Its "poses -> submit, wall" row is what fpsVR / SteamVR call the CPU frametime
+  (xrWaitFrame's return to xrEndFrame, wall time: holds and idles count; research/35 attempt 41); `tools/fpsvr-session.py`
+  reads fpsVR's own per-session records (`%LOCALAPPDATA%psVR`) of what the player's headset sessions showed. Seams: `MevrBridge::PerfPresentScope` / `PerfPass0Captured` /
   `g_perfDraws` and the wrapped `xrWaitFrame` / `xrBeginFrame` / `xrEndFrame`. `tools/perf-monitor.ps1`
   adds whole-GPU load; `tools/sample-render-thread.ps1` samples the render thread's stack from outside
   (`mevr-stack-sampler`): where its time goes by module and function, no redeploy. Live render levers

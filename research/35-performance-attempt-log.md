@@ -134,3 +134,41 @@ fake headset from a save at a heavy spot:
 2. Fewer draws at heavy spots: the engine's LOD and cull distance settings (SystemSettings), measured per setting.
 3. Halcyon's present path: what the 0.7-1.0 ms before xrWaitFrame does (the stereo capture's copies, probe-and-promote).
 Needed from the player: a save (quicksave) standing at the worst spot, so the heavy-spot numbers can be taken alone.
+
+## Attempt 41 (2026-10-24, 17:30): what fpsVR's "CPU frametime" is, against the probe
+
+The player reads fpsVR; the probe reported "busy, without the XR waits". Are they the same thing?
+
+- fpsVR shows SteamVR's frame timing. Valve's definition of the CPU "scene" segment is the work between WaitGetPoses'
+  return and the second eye's Submit ([SteamVR/Frame Timing](https://developer.valvesoftware.com/wiki/SteamVR/Frame_Timing));
+  for an OpenXR app that is xrWaitFrame's return to xrEndFrame. It is WALL time: every idle, hold and GPU wait inside it
+  counts. In our loop ([Performance] earlyFrameWait = 1) xrWaitFrame returns at the END of the previous Present, so the
+  span is the previous frame's wait end -> this frame's submit: both scene renders, Halcyon's present path, and any hold.
+- `tools/perf-probe.py` now prints it: "poses -> submit, wall" (and "Halcyon's hold before xrBeginFrame"). At the player's
+  medium spot, paused, history off (14:57:58 capture): interval 11.16 / busy without waits 10.72 / poses -> submit 11.12 ms
+  median, p90 12.14, max 13.75. So the probe's number is within 0.4 ms of fpsVR's in gameplay: the stage of measurement
+  is not the gap. The xrWaitFrame wall there is 0.02 ms every frame: SteamVR never paces us; the render thread is busy
+  7.63 of 8.00 s (95%) and the app makes 90 fps with no slack at all (720 frames in 8.0 s).
+- fpsVR keeps its sessions in `%LOCALAPPDATA%\fpsVR\N.json` (per-frame histograms over the seconds the headset was
+  worn: `cputimes` in 0.1 ms bins, `gputimes` in 1 ms bins, `fps_ps`, `gpuusage`, `cpuusage`) and `N.bin` (one 30-byte
+  record a second). `tools/fpsvr-session.py` reads them. The player's headset sessions:
+
+  | session | worn | CPU median / p90 / mean (ms) | GPU median / p90 (ms) | fps median |
+  |---|---|---|---|---|
+  | 2026-10-24 14:48 (today: perEyeOcclusion on until 14:56, then off) | 211 s | 12.4 / 16.4 / 13.2 | 9.5 / 13.5 | 90 |
+  | 2026-10-23 20:38 | 260 s | 15.4 / 22.1 / 15.8 | 9.5 / 13.5 | 78 |
+  | 2026-10-23 20:16 (the long walk) | 1044 s | 14.4 / 20.6 / 14.9 | 9.5 / 13.5 | 82 |
+  | 2026-10-23 19:22 | 474 s | 13.4 / 21.2 / 14.9 | 9.5 / 13.5 | 86 |
+
+  That is the player's "averaging 13, spikes to the 20s" exactly, and it is walking through heavy areas, which the
+  loop has not measured yet (the stationary medium spot is the 11-12 ms band, 70% of today's frames). Today's p99 of
+  32.6 ms and the 33-34 ms bin (1%) are the perEyeOcclusion bursts before 14:56 (attempt 37).
+- **Correction to the GPU framing:** fpsVR's GPU frametime (SteamVR's, app + compositor) is 9.5 ms median and 13.5 ms
+  at p90 in every real session: the GPU is over the 11.1 ms budget at the tail too, at 2824x2880 per eye with FSR from
+  2118x2160. "GPU at 40-60%" was whole-GPU load averaged over idle gaps, not the frame's GPU time. Offloading CPU work
+  to the GPU is not free at the heavy spots; fewer draws help both.
+- A reading artefact worth knowing: in a cutscene Halcyon's `cineFpsCap` holds the Present thread (17.6 ms a frame in the
+  Citadel arrival cinematic, 17:04 capture) AFTER the early xrWaitFrame, so SteamVR counts the hold as app CPU time:
+  fpsVR shows 22 ms "CPU" there for 5.4 ms of work. The fake-headset game was sitting in that cinematic while the player
+  looked at fpsVR. Moving the hold before the early wait would make cutscenes read honestly; it changes nothing in
+  gameplay (the hold is 0.04 ms there).
