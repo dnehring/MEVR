@@ -87,6 +87,16 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   mod's handlers run through `HostServices::setProcessEventCallback`. Halcyon hooks it too, with
   its own MinHook, on top of ours: never uninstall a hook another hooker may sit on.
   LE2/LE3 still use our own renderer until Halcyon's ME2/ME3 code is brought in.
+- **Never call ProcessEvent (or anything that runs UnrealScript) off the game thread** (the engine tick's).
+  The script VM keeps its state in process-wide globals (GPropAddr, GRuntimeUCFlags...), so a call from the
+  Present/render thread races the game thread's script. That caused the 2026-10-23 crash (Halcyon's
+  Present-thread hides; [research/36](research/36-crash-breadcrumbs.md)). Halcyon's `ProcessEventSEH`
+  (head_aim.cpp, game_camera.cpp) queues off-thread calls for the next tick (`[MEVR]` seam,
+  `MevrBridge::QueueProcessEvent`, `plugin/GameThreadCalls`). The host hook logs any other call as
+  `process event: off the game thread: <fn>`.
+- **Crash breadcrumbs** (research/36, HostServices v18): the host keeps the last 128 ProcessEvents, the mod's
+  CallFunction handlers and the mod's writes into engine memory. Every new write into engine memory gets a
+  `write_journal::Wrote("Module.what", address, size)` right after it (`core/WriteJournal.hpp`).
 
 ## How we work
 
@@ -131,7 +141,10 @@ switching frameworks.
   `MEVR-LE1-mod`; the user stays in game. Changes to `src/plugin/` (the host) need the game
   closed and a redeploy. Release builds use `-DMEVR_HOT_RELOAD=OFF` (one ASI; e.g. `build-mono/`).
 - Script-level hooks must wait for the script packages to load (they aren't there at attach).
-  `Mod.cpp` retries every second before installing the ProcessEvent hook.
+  `Mod.cpp` retries every second before installing the ProcessEvent hook (LE1: `ue3::runtime::Init`, then
+  `Engine.Camera.UpdateCamera` through our reflection layer, research/34 stage 3; LE2/LE3: `engine/Legacy`).
+  Engine reads go through `src/ue3/` (handles, `Params`); new LExSDKv2 use belongs only in `engine/Legacy`,
+  ReflectCheck's reference side and the hook plumbing until stages 4-6 remove it.
 - Hotkeys: not F-keys (bound in game), not backtick (UE console). `]` toggles VR (the XR
   session) on and off, and with it every VR feature: once a session runs, alternate-eye stereo,
   6DOF, hand aim and arm IK all come on; VR off turns them off. The rest are dev overrides:
@@ -319,12 +332,17 @@ switching frameworks.
   the headset's own eye size (2824x2880 on the user's PS VR2: the GPU was over budget at p90 rendering 18%
   more pixels than displayed, research/22). The deploy installs Halcyon's *release* `MELEVR.ini` (its tuned
   code defaults), not the older `src/halcyon/le1/runtime/MELEVR.ini`, which pins stale values.
-  **BIOEngine.ini's `[SystemSettings]` wins over GamerSettings'** for `DynamicShadows` (measured 2026-10-23,
-  research/35): the tool writes `DynamicShadows=False` and `FoliageDrawRadiusMultiplier=0.25` there too. At a
-  heavy spot those two took the render thread from 9.35 to 6.88 ms and the GPU from 8.4 to 4.9 (the grass
-  costs per instance, twice a frame in stereo; the shadows were drawing despite GamerSettings). The
-  engine's `show <category>` console toggles attribute a frame's cost by category; `scale set <key> <value>`
-  sets a SystemSettings key live (works for those two, not for DetailMode or the LOD distance scales).
+  **BIOEngine.ini's `[SystemSettings]` wins over GamerSettings'** for `DynamicShadows` and `MotionBlur` (measured
+  2026-10-23, research/35), and the game rewrites that file (after every `scale set`; a launch put the defaults
+  back once), so **the mod applies the VR values itself** (`game/SystemSettings`, hot-reloaded): `scale set
+  DynamicShadows False`, `MotionBlur False`, `FoliageDrawRadiusMultiplier 0.5` through the local player's console
+  once a player exists; `[SystemSettings]` in `ASI\LE1MEVR.ini` overrides any key (`apply = 0` off); log `system
+  settings:`. The tool writes the same three into BIOEngine.ini too. At a heavy spot shadows off and the foliage
+  radius took the render thread from 9.35 to 6.88 ms and the GPU from 8.4 to 4.9 (the grass costs per instance,
+  twice a frame in stereo; 0.25 pops the grass in too close); motion blur on smeared one eye and not the other
+  every few seconds (the blur's "previous frame" is the other eye's view: one shared view state). The engine's
+  `show <category>` console toggles attribute a frame's cost by category; `scale set <key> <value>` sets a
+  SystemSettings key live (works for those, not for DetailMode or the LOD distance scales).
 - The mod connects to Windows' active OpenXR runtime (Oculus, or SteamVR for Steam Link). The
   user currently uses Steam Link / SteamVR.
 - The game's D3D11 device is SINGLETHREADED: no deferred contexts, and all D3D/XR work happens
@@ -377,7 +395,10 @@ Use it to check VR changes yourself instead of asking the user what they see
   (`plugin/RenderLevers`, [research/32](research/32-ue3-vr-performance.md)) in `[Performance]` of `ASI\LE1MEVR.ini`:
   `sharePass` (experimental; 1: the second eye renders on the first's scene renderer, no second visibility; 2: as 1
   but the second eye is a replay of the first's recorded D3D11 calls with the view's bytes substituted,
-  `plugin/DrawReplay`), `umbraQueryWait` (0: the Umbra resolve never spins for a query result), `pCoresOnly`; log
+  `plugin/DrawReplay`), `umbraQueryWait` (0: the Umbra resolve never spins for a query result), `pCoresOnly`,
+  **`perEyeOcclusion`** (default 1, 2026-10-23, research/35 attempts 34-35: the frame's second scene render gets its own
+  copy of the engine's per-primitive occlusion history, a 0x48-byte TSet at the view state's +0xD10, swapped in around
+  it, so it reads its own previous frame's queries instead of spinning 4-5 ms for the first eye's on the GPU); log
   `render levers:` (scene renders per frame, each one's time with its Umbra resolve's parts, the draw replay's counts);
   `tools/perf-ab.ps1 -Key <key> -Values a,b` alternates one and captures each; `tools/eye-diff.ps1` compares one
   frame's two eyes call by call (run it first: it says whether the replay's substitution covers the eye's constants).
@@ -386,6 +407,10 @@ Use it to check VR changes yourself instead of asking the user what they see
   hot-reloaded) runs each line through `PlayerController.ConsoleCommand` on the game thread and writes what it
   printed to `console.result` (log `console:`). Flat or in VR, wherever there is a local player: A/Bs without a restart.
 - `testloop.status` (JSON, once a second): recording, replay, last snapshot, `framesRunning`.
+- **After a crash:** read `%LOCALAPPDATA%\MEVR\crash-breadcrumbs.txt` (the one before is `.prev.txt`; the same text
+  is at the end of `LE1MEVR.log`). It holds the exception, the registers, the native stack, the script frames
+  (FFrames) on the faulting thread, and the last ProcessEvents, script handler calls and mod writes, with names
+  (research/36). The unhandled-exception filter writes it once per process; handled AVs don't write it.
 - **Console commands:** `tools/console.ps1 "<command>" ...` runs them through the local PlayerController's
   `ConsoleCommand` (`game/ConsoleRequest`, mod side) and prints the output. `tools/console.ps1 pause` freezes the
   world but keeps rendering, which holds a scene still for snapshots and A/B captures.
@@ -408,6 +433,11 @@ Use it to check VR changes yourself instead of asking the user what they see
   `FieldRef`, `FunctionRef`, `ue3::Params` + `ue3::runtime::Call`. LExSDKv2 is being removed (licence);
   don't add new uses of it. The mod's start logs `reflect: N of M checks agree` and writes
   `%LOCALAPPDATA%\MEVR\reflect-check.json` (our layer against LExSDKv2, while both exist).
+  Since stage 2 no `src/game` file includes LExSDKv2: the player's shared handles are in `game/Player`,
+  hook blocks are read through parameter handles (`FieldRef{functionRef, "ReturnValue"}`), engine
+  strings through `ue3::memory` (`OwnedString`, `FreeString`), and LE2/LE3's few all-game reads through
+  `engine/Legacy` until their layouts exist. Every class, field, function or parameter you resolve
+  needs a row in `engine/ReflectCheck`; a failed lookup stands the feature down with a log line.
 - **Never call LExSDKv2's generated function wrappers** (e.g. `USceneCaptureComponent::SetFrameRate`).
   All 5,301 LE1 native wrappers do `FunctionFlags |= ~0x400` (meant `&=`), which permanently sets
   every flag on that UFunction. Find the UFunction yourself and call ProcessEvent directly.

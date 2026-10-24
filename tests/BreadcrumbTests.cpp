@@ -3,6 +3,7 @@
 // rings' order, wrap-around and states, the write journal's folding, the fixed-buffer text, and what a record costs.
 
 #include "core/Breadcrumbs.hpp"
+#include "core/CallQueue.hpp"
 #include "core/FixedText.hpp"
 #include "core/WriteJournal.hpp"
 
@@ -199,6 +200,57 @@ void TestAppender() {
     CHECK(std::string(tiny) == "ab");
 }
 
+// The game-thread call queue (core/CallQueue): oldest first, bounded with the oldest dropped and counted, the
+// parameter block copied (the caller's goes away), a block too big refused.
+void TestCallQueue() {
+    static call_queue::Queue<4> queue;
+    static call_queue::Call out[4];
+    CHECK(queue.TakeAll(out) == 0);
+    for (std::uint32_t i = 0; i < 6; ++i) {
+        std::uint32_t parms[2] = {i, i * 10};
+        CHECK(queue.Push(reinterpret_cast<void*>(std::uintptr_t{0x100} + i), reinterpret_cast<void*>(std::uintptr_t{0x200}),
+            P(0x300), parms, sizeof(parms)));
+        parms[0] = 0xDEAD;  // the queue kept its own copy
+    }
+    CHECK(queue.Size() == 4 && queue.Pushed() == 6 && queue.Dropped() == 2);
+    std::size_t const n = queue.TakeAll(out);
+    CHECK(n == 4 && queue.Size() == 0);
+    bool ok = n == 4;
+    for (std::size_t i = 0; i < n && ok; ++i) {
+        std::uint32_t parms[2] = {};
+        std::memcpy(parms, out[i].parms, sizeof(parms));
+        std::uint32_t const want = static_cast<std::uint32_t>(i) + 2;  // calls 0 and 1 were dropped
+        ok = out[i].object == reinterpret_cast<void*>(std::uintptr_t{0x100} + want) && out[i].size == 8 && parms[0] == want &&
+            parms[1] == want * 10 && out[i].parms[8] == 0 && out[i].objectClass == P(0x300);
+    }
+    CHECK(ok);
+    std::uint8_t big[call_queue::kMaxParms + 1] = {};
+    CHECK(!queue.Push(nullptr, nullptr, nullptr, big, sizeof(big)));
+    CHECK(queue.Refused() == 1 && queue.Size() == 0);
+    CHECK(queue.Push(reinterpret_cast<void*>(std::uintptr_t{1}), nullptr, nullptr, nullptr, 0));  // no parameters
+    CHECK(queue.TakeAll(out) == 1 && out[0].size == 0);
+    // Pushes from several threads: every call either taken or counted as dropped.
+    std::vector<std::thread> threads;
+    for (int t = 0; t < 4; ++t) {
+        threads.emplace_back([] {
+            std::uint64_t value = 7;
+            for (int i = 0; i < 1000; ++i) {
+                queue.Push(reinterpret_cast<void*>(std::uintptr_t{1}), nullptr, nullptr, &value, sizeof(value));
+            }
+        });
+    }
+    std::size_t taken = 0;
+    for (int i = 0; i < 2000; ++i) {
+        taken += queue.TakeAll(out);
+    }
+    for (std::thread& t : threads) {
+        t.join();
+    }
+    taken += queue.TakeAll(out);
+    CHECK(queue.Pushed() == 6 + 1 + 4000);
+    CHECK(taken + (queue.Dropped() - 2) == 4000);
+}
+
 // What a breadcrumb costs on the hot path: ProcessEvent's Begin + two Advances, and a journal write.
 void MeasureCost() {
     static breadcrumbs::DispatchRing<128> ring;
@@ -238,6 +290,7 @@ int RunBreadcrumbTests() {
     TestWriteJournal();
     TestConcurrent();
     TestAppender();
+    TestCallQueue();
     MeasureCost();
     return gFailures;
 }

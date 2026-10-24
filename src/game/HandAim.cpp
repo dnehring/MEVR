@@ -7,19 +7,18 @@
 #include "core/vr/Calibration.hpp"
 #include "core/vr/Controllers.hpp"
 #include "engine/CallFunction.hpp"
-#include "engine/GameAdapterSdk.hpp"
-#include "engine/Objects.hpp"
+#include "engine/Legacy.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/ArmIk.hpp"
 #include "game/BodyCalibration.hpp"
 #include "game/HeadTracking.hpp"
+#include "game/Player.hpp"
 #include "game/Sights.hpp"
 #include "game/ViewAnchor.hpp"
 #include "game/Weapon.hpp"
 #include "core/vr/TestRequest.hpp"
-
-#include <LESDK/Headers.hpp>
+#include "ue3/Handles.hpp"
 
 #include <Windows.h>
 
@@ -33,25 +32,66 @@
 namespace mevr::game::hand_aim {
 namespace {
 
-constexpr char const* kGetAdjustedAimFor = "Function SFXGame.BioPlayerController.GetAdjustedAimFor";
-#if defined(SDK_TARGET_LE1)
+constexpr char const* kGetAdjustedAimFor = "SFXGame.BioPlayerController.GetAdjustedAimFor";
+
+// ---- engine access: our reflection layer on LE1 (research/34), LExSDKv2 on LE2/LE3 until stage 5
+// (engine/Legacy) -----------------------------------------------------------------------------------
+
+#if defined(MEVR_GAME_LE1)
 // The weapon's own aim query (script, called natively), which gets the shot's start (StartFireLoc):
 // diagnostics only.
-constexpr char const* kWeaponGetAdjustedAim = "Function SFXGame.BioWeaponRanged.GetAdjustedAim";
+constexpr char const* kWeaponGetAdjustedAim = "SFXGame.BioWeaponRanged.GetAdjustedAim";
 // Where shots start. BioWeaponRanged's native TickFire (0xC621E0) asks the pawn through
 // ProcessEvent (the event thunk 0xC63C10, Pawn.GetWeaponStartTraceLocation(None)), then the weapon
 // (GetAdjustedAim), and traces from the one along the other (0xC589F0). The player's pawn answers
 // with BioPawn's native override; Engine.Pawn's script version is registered too, for pawns
 // without one.
-constexpr char const* kPawnStartTrace = "Function SFXGame.BioPawn.GetWeaponStartTraceLocation";
-constexpr char const* kEnginePawnStartTrace = "Function Engine.Pawn.GetWeaponStartTraceLocation";
+constexpr char const* kPawnStartTrace = "SFXGame.BioPawn.GetWeaponStartTraceLocation";
+constexpr char const* kEnginePawnStartTrace = "Engine.Pawn.GetWeaponStartTraceLocation";
 // A shot whose start is within this of the muzzle started there (Unreal units).
 constexpr double kAtMuzzleUnits = 1.0;
+
+ue3::FunctionRef gAimForFn{kGetAdjustedAimFor};
+ue3::FieldRef gAimForReturn{gAimForFn, "ReturnValue"};
+ue3::FunctionRef gWeaponAimFn{kWeaponGetAdjustedAim};
+ue3::FieldRef gStartFireLoc{gWeaponAimFn, "StartFireLoc"};
+ue3::FunctionRef gPawnStartTraceFn{kPawnStartTrace};
+ue3::FunctionRef gEnginePawnStartTraceFn{kEnginePawnStartTrace};
+// Both functions' ReturnValue (the self-check compares them: the same place in both blocks).
+ue3::FieldRef gPawnStartReturn{gPawnStartTraceFn, "ReturnValue"};
+ue3::FieldRef gEnginePawnStartReturn{gEnginePawnStartTraceFn, "ReturnValue"};
+
+ue3::Function* FindAimFor() {
+    return gAimForFn.Get();
+}
+ue3::Object* LocalController() {
+    return player::Controller();
+}
+std::optional<ue3::Vector> PawnLocation(ue3::Object const* controller) {
+    ue3::Object* const pawn = player::Pawn(controller);
+    return pawn != nullptr ? player::Location(pawn) : std::nullopt;
+}
+ue3::Rotator* AimForReturn(void* parms) {
+    return gAimForReturn.In<ue3::Rotator>(parms);
+}
+#else
+ue3::Function* FindAimFor() {
+    return engine::legacy::FindFunction(kGetAdjustedAimFor);
+}
+ue3::Object* LocalController() {
+    return engine::legacy::LocalPlayerController();
+}
+std::optional<ue3::Vector> PawnLocation(ue3::Object const* controller) {
+    return engine::legacy::PawnLocation(controller);
+}
+ue3::Rotator* AimForReturn(void* parms) {
+    return engine::legacy::AdjustedAimReturn(parms);
+}
 #endif
 
 enum class Path { Game, Controller, Barrel };
 
-UFunction* gGetAdjustedAimFor = nullptr;
+ue3::Function* gGetAdjustedAimFor = nullptr;
 bool gEnabled = false;  // game thread
 std::atomic<unsigned> gAimCalls{0};
 std::atomic<unsigned> gBarrelAims{0};
@@ -104,18 +144,16 @@ double Distance(engine::UnrealVector const& a, engine::UnrealVector const& b) {
     return std::hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 }
 
-void LogFirstOverride(engine::TrackingFrame const& frame, FRotator const& game, FRotator const& hand,
+void LogFirstOverride(engine::TrackingFrame const& frame, ue3::Rotator const& game, ue3::Rotator const& hand,
     engine::UnrealVector const& handWorld) {
     gLoggedOverride = true;
     double distanceToPawn = -1.0;
-    APlayerController* const controller = engine::LocalPlayerController();
-    if (controller != nullptr && controller->Pawn != nullptr) {
-        FVector const& at = engine::adapter::Location(controller->Pawn);
-        distanceToPawn = std::hypot(handWorld.x - at.X, handWorld.y - at.Y, handWorld.z - at.Z);
+    if (auto const at = PawnLocation(LocalController())) {
+        distanceToPawn = std::hypot(handWorld.x - at->x, handWorld.y - at->y, handWorld.z - at->z);
     }
     log::Info("hand aim: first shot aimed by the right controller: game aim pitch {} yaw {} -> controller pitch {} yaw {}; "
               "hand at ({:.0f}, {:.0f}, {:.0f}), {:.0f} units from the head and {:.0f} from the pawn",
-        game.Pitch, game.Yaw, hand.Pitch, hand.Yaw, handWorld.x, handWorld.y, handWorld.z,
+        game.pitch, game.yaw, hand.pitch, hand.yaw, handWorld.x, handWorld.y, handWorld.z,
         Distance(handWorld, frame.headWorld), distanceToPawn);
 }
 
@@ -145,7 +183,7 @@ char const* WhyNoBarrel() {
 
 // The right controller's aim ray as a world rotation, unwound next to the game's own aim. False
 // (the game's aim stays) unless on foot with a tracked controller and a valid view anchor.
-bool HandRotation(FRotator const& game, FRotator& out) {
+bool HandRotation(ue3::Rotator const& game, ue3::Rotator& out) {
     if (!gEnabled || !head_tracking::OnFoot()) {
         return false;
     }
@@ -166,9 +204,9 @@ bool HandRotation(FRotator const& game, FRotator& out) {
     }
     engine::Basis const ray = engine::OrientationToWorld(*frame, aim.orientation);
     engine::UnrealRotation const rotation = engine::ToRotation(ray.forward);
-    out.Pitch = engine::Unwind(rotation.pitch, game.Pitch);
-    out.Yaw = engine::Unwind(rotation.yaw, game.Yaw);
-    out.Roll = 0;
+    out.pitch = engine::Unwind(rotation.pitch, game.pitch);
+    out.yaw = engine::Unwind(rotation.yaw, game.yaw);
+    out.roll = 0;
     gLastRayStart = engine::ToWorld(*frame, aim.position);
     gLastRayDirection = ray.forward;
     gLastRayValid = true;
@@ -180,7 +218,7 @@ bool HandRotation(FRotator const& game, FRotator& out) {
 
 // Along the held gun's barrel (its start moves to the muzzle in OnStartTrace), or, with a sight on the gun
 // ([Sights] converge), from the muzzle toward the point the sight line hits: the shot lands under the dot.
-bool BarrelRotation(FRotator const& game, FRotator& out) {
+bool BarrelRotation(ue3::Rotator const& game, ue3::Rotator& out) {
     auto const muzzle = BarrelMuzzle();
     if (!muzzle) {
         return false;
@@ -188,9 +226,9 @@ bool BarrelRotation(FRotator const& game, FRotator& out) {
     auto const aim = sights::ShotAlongSight(*muzzle);
     engine::UnrealVector const direction = aim ? aim->direction : muzzle->barrel;
     engine::UnrealRotation const rotation = engine::ToRotation(direction);
-    out.Pitch = engine::Unwind(rotation.pitch, game.Pitch);
-    out.Yaw = engine::Unwind(rotation.yaw, game.Yaw);
-    out.Roll = 0;
+    out.pitch = engine::Unwind(rotation.pitch, game.pitch);
+    out.yaw = engine::Unwind(rotation.yaw, game.yaw);
+    out.roll = 0;
     gLastRayStart = muzzle->location;
     gLastRayDirection = direction;
     gLastRayValid = true;
@@ -212,24 +250,24 @@ bool BarrelRotation(FRotator const& game, FRotator& out) {
         gLoggedBarrel = true;
         log::Info("hand aim: first shot along the gun barrel: game aim pitch {} yaw {} -> barrel pitch {} yaw {}; muzzle at "
                   "({:.0f}, {:.0f}, {:.0f})",
-            game.Pitch, game.Yaw, out.Pitch, out.Yaw, muzzle->location.x, muzzle->location.y, muzzle->location.z);
+            game.pitch, game.yaw, out.pitch, out.yaw, muzzle->location.x, muzzle->location.y, muzzle->location.z);
     }
     return true;
 }
 
-bool IsLocalPlayer(UObject* context) {
-    return context != nullptr && context == engine::LocalPlayerController();
+bool IsLocalPlayer(ue3::Object* context) {
+    return context != nullptr && context == LocalController();
 }
 
 // `tag` names the write for the crash breadcrumbs (research/36).
-void Apply(UObject* context, FRotator* result, char const* tag) {
+void Apply(ue3::Object* context, ue3::Rotator* result, char const* tag) {
     gAimCalls.fetch_add(1, std::memory_order_relaxed);
     gLastRayValid = false;
     gLastPath = Path::Game;
     if (result == nullptr || !IsLocalPlayer(context)) {
         return;
     }
-    FRotator rotation{};
+    ue3::Rotator rotation{};
     if (BarrelRotation(*result, rotation)) {
         *result = rotation;
         write_journal::Wrote(tag, result);
@@ -244,21 +282,21 @@ void Apply(UObject* context, FRotator* result, char const* tag) {
 }
 
 // Script-to-script calls (the weapon's fire code): `result` is the return value.
-void OnCallFunction(UObject* context, UFunction* /*function*/, void* result) {
-    Apply(context, static_cast<FRotator*>(result), "HandAim.aim (CF result)");
+void OnCallFunction(ue3::Object* context, ue3::Function* /*function*/, void* result) {
+    Apply(context, static_cast<ue3::Rotator*>(result), "HandAim.aim (CF result)");
 }
 
 // Native-to-script calls: the return value lives in the parms.
-void OnProcessEvent(UObject* context, UFunction* /*function*/, void* parms, void* /*result*/) {
-    Apply(context, &static_cast<ABioPlayerController_execGetAdjustedAimFor_Parms*>(parms)->ReturnValue, "HandAim.aim (PE return)");
+void OnProcessEvent(ue3::Object* context, ue3::Function* /*function*/, void* parms, void* /*result*/) {
+    Apply(context, AimForReturn(parms), "HandAim.aim (PE return)");
 }
 
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
 // The shot's start: the pawn's answer goes back through the parms, so rewriting it here moves the
 // trace to the muzzle. Only for the local player's pawn while shots follow the barrel.
-void OnStartTrace(UObject* context, UFunction* /*function*/, void* parms, void* /*result*/) {
-    APlayerController* const controller = engine::LocalPlayerController();
-    if (controller == nullptr || context == nullptr || context != controller->Pawn) {
+void OnStartTrace(ue3::Object* context, ue3::Function* function, void* parms, void* /*result*/) {
+    ue3::Object* const controller = player::Controller();
+    if (controller == nullptr || context == nullptr || context != player::Pawn(controller)) {
         return;
     }
     gStartQueries.fetch_add(1, std::memory_order_relaxed);
@@ -266,8 +304,13 @@ void OnStartTrace(UObject* context, UFunction* /*function*/, void* parms, void* 
     if (!muzzle) {
         return;
     }
-    FVector& start = static_cast<APawn_eventGetWeaponStartTraceLocation_Parms*>(parms)->ReturnValue;
-    engine::UnrealVector const game{start.X, start.Y, start.Z};
+    ue3::FieldRef& returned = function == gPawnStartTraceFn.Get() ? gPawnStartReturn : gEnginePawnStartReturn;
+    ue3::Vector* const at = returned.In<ue3::Vector>(parms);
+    if (at == nullptr) {
+        return;  // the parameter didn't resolve (logged once)
+    }
+    ue3::Vector& start = *at;
+    engine::UnrealVector const game{start.x, start.y, start.z};
     start = {static_cast<float>(muzzle->location.x), static_cast<float>(muzzle->location.y), static_cast<float>(muzzle->location.z)};
     write_journal::Wrote("HandAim.start trace (PE ret)", &start);
     gStartsMoved.fetch_add(1, std::memory_order_relaxed);
@@ -304,7 +347,7 @@ void LogShot() {
 // the muzzle (OnStartTrace); along the controller's ray, how far shots pass beside it (once).
 // Only the held weapon's: squadmates' weapons ask too (their own controllers' aim, never ours), and their
 // shots start where they stand (2026-10-23: the "273 units from the muzzle" warnings were theirs).
-void OnWeaponAim(UObject* context, UFunction* /*function*/, void* parms, void* /*result*/) {
+void OnWeaponAim(ue3::Object* context, ue3::Function* /*function*/, void* parms, void* /*result*/) {
     if (!gLastRayValid) {
         return;
     }
@@ -312,8 +355,12 @@ void OnWeaponAim(UObject* context, UFunction* /*function*/, void* parms, void* /
         gOtherWeaponAims.fetch_add(1, std::memory_order_relaxed);
         return;
     }
-    FVector const& at = static_cast<ABioWeaponRanged_execGetAdjustedAim_Parms*>(parms)->StartFireLoc;
-    engine::UnrealVector const start{at.X, at.Y, at.Z};
+    ue3::Vector const* const startFire = gStartFireLoc.In<ue3::Vector>(parms);
+    if (startFire == nullptr) {
+        return;  // the parameter didn't resolve (logged once)
+    }
+    ue3::Vector const& at = *startFire;
+    engine::UnrealVector const start{at.x, at.y, at.z};
     if (gLastPath == Path::Barrel) {
         double const off = Distance(start, gLastRayStart);
         bool const atMuzzle = off <= kAtMuzzleUnits;
@@ -365,19 +412,19 @@ void LogPathChange() {
 } // namespace
 
 bool TryStartup() {
-    gGetAdjustedAimFor = engine::FindFunction(L"GetAdjustedAimFor", kGetAdjustedAimFor);
+    gGetAdjustedAimFor = FindAimFor();
     if (gGetAdjustedAimFor == nullptr) {
         return false;
     }
     engine::call_function::AddPostHandler(gGetAdjustedAimFor, &OnCallFunction);
     engine::process_event::AddPostHandler(gGetAdjustedAimFor, &OnProcessEvent);
-#if defined(SDK_TARGET_LE1)
-    if (UFunction* const weaponAim = engine::FindFunction(L"GetAdjustedAim", kWeaponGetAdjustedAim)) {
+#if defined(MEVR_GAME_LE1)
+    if (ue3::Function* const weaponAim = gWeaponAimFn.Get()) {
         engine::process_event::AddPostHandler(weaponAim, &OnWeaponAim);
     }
     int startHandlers = 0;
-    for (char const* name : {kPawnStartTrace, kEnginePawnStartTrace}) {
-        if (UFunction* const start = engine::FindFunction(L"GetWeaponStartTraceLocation", name)) {
+    for (ue3::FunctionRef* ref : {&gPawnStartTraceFn, &gEnginePawnStartTraceFn}) {
+        if (ue3::Function* const start = ref->Get()) {
             engine::process_event::AddPostHandler(start, &OnStartTrace);
             ++startHandlers;
         }

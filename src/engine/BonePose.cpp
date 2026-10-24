@@ -5,9 +5,11 @@
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
 #include "core/ik/TwoHand.hpp"
+#include "engine/Engine.hpp"
 #include "engine/Skeleton.hpp"
+#include "ue3/Runtime.hpp"
 
-#include <LESDK/Headers.hpp>
+// The hook's target is still resolved through LExSDKv2's Initializer (research/34 stage 4).
 #include <LESDK/Init.hpp>
 
 #include <Windows.h>
@@ -17,11 +19,16 @@
 #include <atomic>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <format>
+#include <optional>
 #include <string>
 
 namespace mevr::engine::bone_pose {
 namespace {
+
+// The skeletal mesh component, as our reflection layer's pointer.
+using Mesh = ue3::Object;
 
 constexpr char const* kHookName = "USkeletalMeshComponent::UpdateSkelPose";
 
@@ -29,7 +36,7 @@ constexpr char const* kHookName = "USkeletalMeshComponent::UpdateSkelPose";
 // LocalAtoms to the RefSkeleton with 0x20-byte elements, blends the AnimTree into LocalAtoms and
 // calls ComposeSkeleton (0x580A60). USkeletalMeshComponent::Tick calls it at 0x58D709 with the
 // frame's DeltaTime; Attach and the various force-update paths call it with 0.
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
 constexpr std::size_t kUpdateSkelPoseRva = 0x592440;
 #else
 constexpr std::size_t kUpdateSkelPoseRva = 0;
@@ -37,7 +44,7 @@ constexpr std::size_t kUpdateSkelPoseRva = 0;
 
 // (this, DeltaTime, bTickFaceFX); callers also set r9, which the function never reads. All four
 // register arguments are passed through unchanged.
-using tUpdateSkelPose = void(USkeletalMeshComponent* self, float deltaTime, unsigned tickFaceFx, unsigned unused);
+using tUpdateSkelPose = void(Mesh* self, float deltaTime, unsigned tickFaceFx, unsigned unused);
 tUpdateSkelPose* gOrig = nullptr;  // written before the hook goes live (core/Hook)
 bool gInstalled = false;
 std::uintptr_t gModuleBase = 0;
@@ -52,11 +59,11 @@ constexpr ULONGLONG kMaxRequestAgeMs = 500;
 
 // What to write. The hook compares the mesh address lock-free, then checks the rest and copies
 // the request under the lock and works on the copy.
-std::atomic<USkeletalMeshComponent const*> gMesh{nullptr};
+std::atomic<Mesh const*> gMesh{nullptr};
 SRWLOCK gRequestLock = SRWLOCK_INIT;
 Request gRequest;
-UObject const* gRequestOwner = nullptr;  // compared by address only, never dereferenced
-UObject const* gRequestWorld = nullptr;  // GWorld when published; compared by address only
+void const* gRequestOwner = nullptr;  // compared by address only, never dereferenced
+void const* gRequestWorld = nullptr;  // engine::World() when published; compared by address only
 ULONGLONG gRequestTimeMs = 0;
 std::atomic<bool> gBroken{false};  // an access violation in the writer: writes stop for good
 
@@ -93,18 +100,18 @@ SRWLOCK gSampleLock = SRWLOCK_INIT;
 Sample gSamples[2];
 TorsoSample gTorso;
 // The torso's last result for LatestTorso (not cleared by the heartbeat).
-USkeletalMeshComponent const* gLatestTorsoMesh = nullptr;
+Mesh const* gLatestTorsoMesh = nullptr;
 ik::TorsoResult gLatestTorso;
 ULONGLONG gLatestTorsoTimeMs = 0;
 // The head bone before our writes (AnimatedHead).
-USkeletalMeshComponent const* gAnimatedMesh = nullptr;
+Mesh const* gAnimatedMesh = nullptr;
 ik::Vec3 gAnimatedHead;
 ULONGLONG gAnimatedTimeMs = 0;
 // Both hands before our writes (AnimatedHands), and the support grip's last result.
-USkeletalMeshComponent const* gHandsMesh = nullptr;
+Mesh const* gHandsMesh = nullptr;
 Hands gAnimatedHands;
 ULONGLONG gHandsTimeMs = 0;
-USkeletalMeshComponent const* gSupportMesh = nullptr;
+Mesh const* gSupportMesh = nullptr;
 SupportSample gSupport;
 ULONGLONG gSupportTimeMs = 0;
 // Hands closer than Support::minSpanMeters: the distance reported, so the hold lets go.
@@ -167,8 +174,34 @@ bool Goal(Request const& request, std::span<ik::Transform const> pose, int side,
     return std::isfinite(wrist.x) && std::isfinite(wrist.y) && std::isfinite(wrist.z);
 }
 
-UObject const* CurrentWorld() {
-    return GWorld != nullptr ? *GWorld : nullptr;
+// ActorComponent.Owner, found through our reflection layer on the game thread (Install, Publish) and only
+// read by the hook. -1: not found (no request is then published).
+std::atomic<std::int32_t> gOwnerOffset{-1};
+
+bool ResolveOwner() {
+    if (gOwnerOffset.load(std::memory_order_acquire) >= 0) {
+        return true;
+    }
+    if (!ue3::runtime::Ready()) {
+        return false;
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    std::optional<ue3::PropertyInfo> const owner = r.PropertyOf(r.FindClass("Engine.ActorComponent"), "Owner");
+    ue3::runtime::FlushNotes();
+    if (!owner || owner->elementSize != static_cast<std::int32_t>(sizeof(void*))) {
+        return false;
+    }
+    gOwnerOffset.store(owner->offset, std::memory_order_release);
+    return true;
+}
+
+void const* OwnerOf(Mesh const* mesh) {
+    std::int32_t const offset = gOwnerOffset.load(std::memory_order_acquire);
+    return mesh != nullptr && offset >= 0 ? ue3::Reflection::Read<void const*>(mesh, static_cast<std::uint32_t>(offset)) : nullptr;
+}
+
+void const* CurrentWorld() {
+    return engine::World();
 }
 
 // The span captured when the current hold began (ik::CapturedSpan; the writer's thread).
@@ -249,9 +282,9 @@ SupportSample ApplySupport(Support const& s, double handScale, ik::ArmGoal& left
 }
 
 // Copies the request for `self`, or false if there's nothing to write for it.
-bool TakeRequest(USkeletalMeshComponent const* self, Request& copy) {
-    UObject const* const owner = self->Owner;
-    UObject const* const world = CurrentWorld();
+bool TakeRequest(Mesh const* self, Request& copy) {
+    void const* const owner = OwnerOf(self);
+    void const* const world = CurrentWorld();
     ULONGLONG const now = GetTickCount64();
     char const* stale = nullptr;
     AcquireSRWLockShared(&gRequestLock);
@@ -287,22 +320,23 @@ bool TakeRequest(USkeletalMeshComponent const* self, Request& copy) {
     ReleaseSRWLockShared(&gRequestLock);
     if (stale != nullptr) {
         // Stop matching this address until the mod publishes again.
-        USkeletalMeshComponent const* expected = self;
+        Mesh const* expected = self;
         gMesh.compare_exchange_strong(expected, nullptr, std::memory_order_acq_rel);
         Reject(stale);
     }
     return matches;
 }
 
-void Write(USkeletalMeshComponent* self, float deltaTime) {
+void Write(Mesh* self, float deltaTime) {
     thread_local Request request;
     thread_local std::vector<ik::Transform> pose;
     if (!TakeRequest(self, request)) {
         return;  // republished for another mesh meanwhile
     }
     // The same skeleton as when the request was made: bone count, pose size and the chains' names.
-    int const count = skeleton::RefBoneCount(self);
-    std::span<skeleton::BoneAtom> const bases = skeleton::SpaceBases(self);
+    Mesh* const mesh = self;
+    int const count = skeleton::RefBoneCount(mesh);
+    std::span<skeleton::BoneAtom> const bases = skeleton::SpaceBases(mesh);
     if (count != request.boneCount || static_cast<int>(bases.size()) != count ||
         static_cast<int>(request.parents.size()) != count) {
         Reject(bases.empty() ? "pose not computed" : "skeleton changed (bone count)");
@@ -314,7 +348,7 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
         }
         int const bones[3] = {arm.chain.upper, arm.chain.fore, arm.chain.hand};
         for (int i = 0; i < 3; ++i) {
-            if (bones[i] < 0 || bones[i] >= count || skeleton::RefBoneKey(self, bones[i]) != arm.keys[i]) {
+            if (bones[i] < 0 || bones[i] >= count || skeleton::RefBoneKey(mesh, bones[i]) != arm.keys[i]) {
                 Reject("skeleton changed (arm bone names)");
                 return;
             }
@@ -326,7 +360,7 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
     }
     for (std::size_t k = 0; k < request.keep.size(); ++k) {
         int const bone = request.keep[k];
-        if (bone < 0 || bone >= count || skeleton::RefBoneKey(self, bone) != request.keepKeys[k]) {
+        if (bone < 0 || bone >= count || skeleton::RefBoneKey(mesh, bone) != request.keepKeys[k]) {
             Reject("skeleton changed (kept bone names)");
             return;
         }
@@ -366,11 +400,11 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
         bool same = t.keys.size() == t.chain.spine.size() + 2;
         for (std::size_t k = 0; same && k < t.chain.spine.size(); ++k) {
             int const bone = t.chain.spine[k];
-            same = bone >= 0 && bone < count && skeleton::RefBoneKey(self, bone) == t.keys[k];
+            same = bone >= 0 && bone < count && skeleton::RefBoneKey(mesh, bone) == t.keys[k];
         }
         for (int side = 0; same && side < 2; ++side) {
             int const bone = t.chain.collars[side];
-            same = bone < 0 || (bone < count && skeleton::RefBoneKey(self, bone) == t.keys[t.chain.spine.size() + side]);
+            same = bone < 0 || (bone < count && skeleton::RefBoneKey(mesh, bone) == t.keys[t.chain.spine.size() + side]);
         }
         if (!same) {
             Reject("skeleton changed (spine bone names)");
@@ -500,7 +534,7 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
 
 // No C++ objects here, so it can catch an access violation: writes then stop for good instead of
 // taking the game down.
-void WriteGuarded(USkeletalMeshComponent* self, float deltaTime) {
+void WriteGuarded(Mesh* self, float deltaTime) {
     __try {
         Write(self, deltaTime);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -510,7 +544,7 @@ void WriteGuarded(USkeletalMeshComponent* self, float deltaTime) {
     }
 }
 
-void AfterUpdateSkelPose(USkeletalMeshComponent* self, float deltaTime, std::uintptr_t caller) {
+void AfterUpdateSkelPose(Mesh* self, float deltaTime, std::uintptr_t caller) {
     gCalls.fetch_add(1, std::memory_order_relaxed);
     if (self != nullptr && self == gMesh.load(std::memory_order_acquire) && !gBroken.load(std::memory_order_relaxed)) {
         gPlayerCalls.fetch_add(1, std::memory_order_relaxed);
@@ -522,7 +556,7 @@ void AfterUpdateSkelPose(USkeletalMeshComponent* self, float deltaTime, std::uin
 
 // No C++ objects with destructors here, so __finally keeps the in-flight count right even when an
 // exception unwinds through the engine's call (a count left up would keep the mod pinned).
-void UpdateSkelPoseHook(USkeletalMeshComponent* self, float deltaTime, unsigned tickFaceFx, unsigned unused) {
+void UpdateSkelPoseHook(Mesh* self, float deltaTime, unsigned tickFaceFx, unsigned unused) {
     std::uintptr_t const caller = reinterpret_cast<std::uintptr_t>(_ReturnAddress());
     gInFlight.fetch_add(1, std::memory_order_acquire);
     __try {
@@ -592,6 +626,9 @@ bool Install(::LESDK::Initializer& init) {
         return false;
     }
     gModuleBase = reinterpret_cast<std::uintptr_t>(init.ModuleBase);
+    if (!ResolveOwner()) {
+        log::Warn("arm IK: Engine.ActorComponent.Owner not found through our reflection layer; arm writeback stays idle");
+    }
     log::Info("arm IK: UpdateSkelPose at {} (entry bytes {})", target, EntryBytes(target));
     if (!hook::Install(init, kHookName, reinterpret_cast<tUpdateSkelPose*>(target), &UpdateSkelPoseHook, gOrig)) {
         log::Error("arm IK: UpdateSkelPose hook failed");
@@ -631,11 +668,11 @@ bool Installed() {
 }
 
 void Publish(Request request) {
-    USkeletalMeshComponent const* const mesh = request.mesh;
-    UObject const* const owner = mesh != nullptr ? mesh->Owner : nullptr;
-    UObject const* const world = CurrentWorld();
+    Mesh const* const mesh = ResolveOwner() ? request.mesh : nullptr;  // without the owner check, nothing is written
+    void const* const owner = OwnerOf(mesh);
+    void const* const world = CurrentWorld();
     AcquireSRWLockExclusive(&gRequestLock);
-    if (gRequest.mesh != mesh || gRequestOwner != owner) {
+    if (gRequest.mesh != request.mesh || gRequestOwner != owner) {
         gFirstWriteLogged = false;
         gFirstWriteReady = false;
     }
@@ -676,7 +713,7 @@ void LogFirstWrite() {
 }
 
 std::optional<ik::Vec3> AnimatedHead() {
-    USkeletalMeshComponent const* const mesh = gMesh.load(std::memory_order_acquire);
+    Mesh const* const mesh = gMesh.load(std::memory_order_acquire);
     AcquireSRWLockShared(&gSampleLock);
     bool const fresh = mesh != nullptr && gAnimatedMesh == mesh && GetTickCount64() - gAnimatedTimeMs <= kMaxRequestAgeMs;
     ik::Vec3 const head = gAnimatedHead;
@@ -685,7 +722,7 @@ std::optional<ik::Vec3> AnimatedHead() {
 }
 
 std::optional<Hands> AnimatedHands() {
-    USkeletalMeshComponent const* const mesh = gMesh.load(std::memory_order_acquire);
+    Mesh const* const mesh = gMesh.load(std::memory_order_acquire);
     AcquireSRWLockShared(&gSampleLock);
     bool const fresh = mesh != nullptr && gHandsMesh == mesh && GetTickCount64() - gHandsTimeMs <= kMaxRequestAgeMs;
     Hands const hands = gAnimatedHands;
@@ -694,7 +731,7 @@ std::optional<Hands> AnimatedHands() {
 }
 
 std::optional<SupportSample> LatestSupport() {
-    USkeletalMeshComponent const* const mesh = gMesh.load(std::memory_order_acquire);
+    Mesh const* const mesh = gMesh.load(std::memory_order_acquire);
     AcquireSRWLockShared(&gSampleLock);
     bool const fresh = mesh != nullptr && gSupportMesh == mesh && GetTickCount64() - gSupportTimeMs <= kMaxRequestAgeMs;
     SupportSample const sample = gSupport;
@@ -703,7 +740,7 @@ std::optional<SupportSample> LatestSupport() {
 }
 
 std::optional<ik::TorsoResult> LatestTorso() {
-    USkeletalMeshComponent const* const mesh = gMesh.load(std::memory_order_acquire);
+    Mesh const* const mesh = gMesh.load(std::memory_order_acquire);
     AcquireSRWLockShared(&gSampleLock);
     bool const fresh = mesh != nullptr && gLatestTorsoMesh == mesh && GetTickCount64() - gLatestTorsoTimeMs <= kMaxRequestAgeMs;
     ik::TorsoResult const result = gLatestTorso;

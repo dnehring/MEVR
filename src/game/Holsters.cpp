@@ -6,15 +6,14 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/TestRequest.hpp"
-#include "engine/Engine.hpp"
-#include "engine/Objects.hpp"
+#include "engine/GameAdapter.hpp"
 #include "game/ArmIk.hpp"
 #include "game/BodyCalibration.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/HeadTracking.hpp"
+#include "game/Player.hpp"
 #include "game/Throwables.hpp"
-
-#include <LESDK/Headers.hpp>
+#include "ue3/Handles.hpp"
 
 #include <Windows.h>
 
@@ -44,19 +43,29 @@ constexpr double kResultSeconds = 3.0;
 // The standing eye height is logged again when it has moved this much (meters).
 constexpr double kEyeHeightLogStep = 0.02;
 
-#if defined(SDK_TARGET_LE1)
-static_assert(offsetof(ABioPawn, m_oBehavior) == 0x7D4);
-static_assert(offsetof(UBioPawnBehavior, m_oEquipment) == 0x424);
-static_assert(offsetof(UBioEquipment, m_QuickSlotArray) == 0x94);
-static_assert(offsetof(UBioEquipment, m_eQuickSlotCurrent) == 0xB8);
-static_assert(offsetof(ABioPlayerController, GameModeManager) == 0xA70);
-static_assert(offsetof(USFXGameModeManager, GameModes) == 0x70);
+#if defined(MEVR_GAME_LE1)
+// Our reflection layer (research/34): BioPawn.m_oBehavior +0x7D4, BioPawnBehavior.m_oEquipment +0x424,
+// BioEquipment m_QuickSlotArray +0x94 and m_eQuickSlotCurrent +0xB8, BioPlayerController.GameModeManager +0xA70,
+// SFXGameModeManager.GameModes +0x70 (research/19), found by name; engine/ReflectCheck compares each.
+ue3::ClassRef gBioWeaponRanged{"SFXGame.BioWeaponRanged"};
+ue3::ClassRef gGameModeDefault{"SFXGame.SFXGameModeDefault"};
+ue3::FieldRef gBehavior{"SFXGame.BioPawn", "m_oBehavior"};
+ue3::FieldRef gEquipment{"SFXGame.BioPawnBehavior", "m_oEquipment"};
+ue3::FieldRef gQuickSlots{"SFXGame.BioEquipment", "m_QuickSlotArray"};
+ue3::FieldRef gQuickSlotCurrent{"SFXGame.BioEquipment", "m_eQuickSlotCurrent"};
+ue3::FieldRef gGameModeManager{"SFXGame.BioPlayerController", engine::adapter::kGameModeManager};
+ue3::FieldRef gGameModes{"SFXGame.SFXGameModeManager", "GameModes"};
+ue3::FunctionRef gSwitchToWeaponFn{"SFXGame.SFXGameModeDefault.SwitchToWeapon"};
+ue3::FunctionRef gTryHolsterFn{"SFXGame.SFXGameModeDefault.TryHolster"};
+ue3::FunctionRef gIsInCombatActionStateFn{"SFXGame.BioPawn.IsInCombatActionState"};
+ue3::FunctionRef gIsSwitchingWeaponsFn{"SFXGame.BioPawn.IsSwitchingWeapons"};
+ue3::FunctionRef gGetRangedWeaponTypeFn{"SFXGame.BioWeaponRanged.GetRangedWeaponType"};
 
-UFunction* gSwitchToWeapon = nullptr;
-UFunction* gTryHolster = nullptr;
-UFunction* gIsInCombatActionState = nullptr;
-UFunction* gIsSwitchingWeapons = nullptr;
-UFunction* gGetRangedWeaponType = nullptr;
+ue3::Function* gSwitchToWeapon = nullptr;
+ue3::Function* gTryHolster = nullptr;
+ue3::Function* gIsInCombatActionState = nullptr;
+ue3::Function* gIsSwitchingWeapons = nullptr;
+ue3::Function* gGetRangedWeaponType = nullptr;
 #endif
 
 bool gStarted = false;
@@ -187,64 +196,68 @@ void Contact(Link const& link, slots::Buzz const& buzz) {
     gContactAmplitude = amplitude;
 }
 
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
 
-bool CallBool(UObject* object, UFunction* function) {
+// Through ProcessEvent with the function's own parameter block (never a generated wrapper).
+bool CallBool(ue3::Object* object, ue3::Function* function) {
     if (object == nullptr || function == nullptr) {
         return false;
     }
-    struct {
-        unsigned long ReturnValue;
-        unsigned char pad[60];
-    } parms{};
-    object->ProcessEvent(function, &parms, nullptr);  // directly: never the SDK's wrapper
-    return parms.ReturnValue != 0;
+    ue3::Params parms(ue3::runtime::Get(), function);
+    ue3::runtime::Call(object, function, parms);
+    return parms.ReturnBool().value_or(false);
 }
 
-int RangedType(ABioWeapon* weapon) {
-    if (weapon == nullptr || gGetRangedWeaponType == nullptr || !weapon->IsA(ABioWeaponRanged::StaticClass())) {
+int RangedType(ue3::Object* weapon) {
+    if (weapon == nullptr || gGetRangedWeaponType == nullptr || !ue3::IsA(weapon, gBioWeaponRanged)) {
         return -1;
     }
-    ABioWeaponRanged_execGetRangedWeaponType_Parms parms;
-    weapon->ProcessEvent(gGetRangedWeaponType, &parms, nullptr);
-    return parms.ReturnValue <= 3 ? static_cast<int>(parms.ReturnValue) : -1;
+    ue3::Params parms(ue3::runtime::Get(), gGetRangedWeaponType);
+    ue3::runtime::Call(weapon, gGetRangedWeaponType, parms);
+    std::optional<std::uint8_t> const type = parms.Return<std::uint8_t>();
+    return type && *type <= 3 ? static_cast<int>(*type) : -1;
 }
 
 struct Game {
-    ABioPlayerController* controller = nullptr;
-    ABioPawn* pawn = nullptr;
-    UBioEquipment* equipment = nullptr;
-    USFXGameModeDefault* mode = nullptr;
+    ue3::Object* controller = nullptr;  // a BioPlayerController
+    ue3::Object* pawn = nullptr;        // a BioPawn
+    ue3::Object* equipment = nullptr;   // its BioEquipment
+    ue3::Object* mode = nullptr;        // the SFXGameModeDefault
 };
 
 // The player's pawn, equipment and default game mode, live. Nullopt (with `why`) if any is missing.
 std::optional<Game> ReadGame(std::string& why) {
-    APlayerController* const pc = engine::LocalPlayerController();
-    if (pc == nullptr || !pc->IsA(ABioPlayerController::StaticClass())) {
+    if (!ue3::runtime::Ready()) {
+        why = "our reflection layer is off (see the 'reflect:' log lines)";
+        return std::nullopt;
+    }
+    ue3::Object* const pc = player::Controller();
+    if (pc == nullptr || !player::IsBioPlayerController(pc)) {
         why = "no player controller";
         return std::nullopt;
     }
     Game game;
-    game.controller = static_cast<ABioPlayerController*>(pc);
-    APawn* const pawn = pc->Pawn;
-    if (pawn == nullptr || !pawn->IsA(ABioPawn::StaticClass())) {
+    game.controller = pc;
+    ue3::Object* const pawn = player::BioPawn(pc);
+    if (pawn == nullptr) {
         why = "no player pawn (vehicle or cutscene?)";
         return std::nullopt;
     }
-    game.pawn = static_cast<ABioPawn*>(pawn);
-    UBioPawnBehavior* const behavior = game.pawn->m_oBehavior;
-    game.equipment = behavior != nullptr ? behavior->m_oEquipment : nullptr;
+    game.pawn = pawn;
+    ue3::Object* const behavior = gBehavior.Read<ue3::Object*>(pawn).value_or(nullptr);
+    game.equipment = behavior != nullptr ? gEquipment.Read<ue3::Object*>(behavior).value_or(nullptr) : nullptr;
     if (game.equipment == nullptr) {
         why = "the player pawn has no equipment";
         return std::nullopt;
     }
-    USFXGameModeManager* const manager = game.controller->GameModeManager;
-    if (manager != nullptr) {
-        for (int i = 0; i < static_cast<int>(manager->GameModes.Count()); ++i) {
-            USFXGameModeBase* const mode = manager->GameModes.GetData()[i];
-            if (mode != nullptr && mode->IsA(USFXGameModeDefault::StaticClass())) {
-                game.mode = static_cast<USFXGameModeDefault*>(mode);
-                break;
+    if (ue3::Object* const manager = gGameModeManager.Read<ue3::Object*>(pc).value_or(nullptr)) {
+        if (ue3::TArray<ue3::Object*> const* const modes = gGameModes.In<ue3::TArray<ue3::Object*>>(manager)) {
+            for (int i = 0; i < modes->Count(); ++i) {
+                ue3::Object* const mode = modes->data[i];
+                if (mode != nullptr && ue3::IsA(mode, gGameModeDefault)) {
+                    game.mode = mode;
+                    break;
+                }
             }
         }
     }
@@ -255,10 +268,15 @@ std::optional<Game> ReadGame(std::string& why) {
     return game;
 }
 
+ue3::Object* QuickSlot(Game const& game, int i) {
+    ue3::Object* const* const slot = gQuickSlots.At<ue3::Object*>(game.equipment, i);
+    return slot != nullptr ? *slot : nullptr;
+}
+
 void ReadCarried(Game const& game) {
     std::array<std::uintptr_t, slots::kSlots> weapons{};
     for (int i = 0; i < slots::kSlots; ++i) {
-        weapons[i] = reinterpret_cast<std::uintptr_t>(game.equipment->m_QuickSlotArray[i]);
+        weapons[i] = reinterpret_cast<std::uintptr_t>(QuickSlot(game, i));
     }
     if (weapons != gCarried.weapons) {
         gCarried.weapons = weapons;
@@ -266,13 +284,13 @@ void ReadCarried(Game const& game) {
         gCarried.slotOfType.fill(-1);
         std::string text;
         for (int i = 0; i < slots::kSlots; ++i) {
-            ABioWeapon* const weapon = game.equipment->m_QuickSlotArray[i];
+            ue3::Object* const weapon = QuickSlot(game, i);
             int const type = RangedType(weapon);
             gCarried.typeOfSlot[i] = type;
             if (type >= 0 && gCarried.slotOfType[type] < 0) {
                 gCarried.slotOfType[type] = i;
             }
-            text += std::format(" {}: {}{};", i, weapon != nullptr ? engine::FullName(weapon) : std::string("empty"),
+            text += std::format(" {}: {}{};", i, weapon != nullptr ? ue3::runtime::FullName(weapon) : std::string("empty"),
                 weapon != nullptr ? std::format(" ({})", slots::Name(static_cast<Weapon>(type))) : std::string());
         }
         bool matches = true;
@@ -282,7 +300,7 @@ void ReadCarried(Game const& game) {
         log::Info("holsters: the player's quick slots:{} {}", text,
             matches ? "slot = weapon type, as research/19 expects" : "NOT slot = weapon type: drawing by the weapons' own types");
     }
-    gCarried.current = game.equipment->m_eQuickSlotCurrent;
+    gCarried.current = gQuickSlotCurrent.Read<std::uint8_t>(game.equipment).value_or(0xFF);
     gCarried.drawn = CallBool(game.pawn, gIsInCombatActionState);
     gCarried.switching = CallBool(game.pawn, gIsSwitchingWeapons);
 }
@@ -302,12 +320,12 @@ bool Carries(Weapon weapon) {
 
 void Draw(Game const& game, Weapon weapon, char const* slot, Link const& link, double strength, bool holds) {
     int const quickSlot = gCarried.slotOfType[static_cast<int>(weapon)];
-    USFXGameModeDefault_execSwitchToWeapon_Parms parms;
-    parms.Slot = static_cast<unsigned char>(quickSlot);
+    ue3::Params parms(ue3::runtime::Get(), gSwitchToWeapon);
+    parms.Set("Slot", static_cast<std::uint8_t>(quickSlot));
     log::Info("holsters: grab at {}: drawing the {} (SFXGameModeDefault.SwitchToWeapon({}); was {}{}){}", slot, slots::Name(weapon),
         quickSlot, gCarried.drawn ? slots::Name(Held()) : "holstered", gCarried.switching ? ", the game is mid-switch" : "",
         holds ? "; keep the grip squeezed to hold it" : "");
-    game.mode->ProcessEvent(gSwitchToWeapon, &parms, nullptr);  // directly: never the SDK's wrapper
+    ue3::runtime::Call(game.mode, gSwitchToWeapon, parms);  // directly: never a generated wrapper
     gPending = {slots::Action::Draw, weapon, 0.0};
     gSinceDraw = 0.0;
     ++gDraws;
@@ -319,9 +337,9 @@ void Holster(Game const& game, Weapon weapon, std::string const& why, Link const
         log::Info("holsters: {}: the {} is already put away", why, slots::Name(weapon));
         return;
     }
-    USFXGameModeDefault_execTryHolster_Parms parms;
+    ue3::Params parms(ue3::runtime::Get(), gTryHolster);
     log::Info("holsters: {}: the {} goes back in its holster (SFXGameModeDefault.TryHolster)", why, slots::Name(weapon));
-    game.mode->ProcessEvent(gTryHolster, &parms, nullptr);  // directly: never the SDK's wrapper
+    ue3::runtime::Call(game.mode, gTryHolster, parms);  // directly: never a generated wrapper
     gPending = {slots::Action::Holster, weapon, 0.0};
     ++gHolsters;
     Pulse(link, slots::HolsterClick(strength));
@@ -347,7 +365,7 @@ void FollowPending(double deltaSeconds) {
     }
 }
 
-#endif  // SDK_TARGET_LE1
+#endif  // MEVR_GAME_LE1
 
 void Inactive(std::string why, Link const& link) {
     if (gMachine.InSlot() >= 0) {
@@ -445,12 +463,12 @@ char const* SlotOf(hand_calibration::Holsters const& settings, Weapon weapon) {
 } // namespace
 
 bool TryStartup() {
-#if defined(SDK_TARGET_LE1)
-    gSwitchToWeapon = engine::FindFunction(L"SwitchToWeapon", "Function SFXGame.SFXGameModeDefault.SwitchToWeapon");
-    gTryHolster = engine::FindFunction(L"TryHolster", "Function SFXGame.SFXGameModeDefault.TryHolster");
-    gIsInCombatActionState = engine::FindFunction(L"IsInCombatActionState", "Function SFXGame.BioPawn.IsInCombatActionState");
-    gIsSwitchingWeapons = engine::FindFunction(L"IsSwitchingWeapons", "Function SFXGame.BioPawn.IsSwitchingWeapons");
-    gGetRangedWeaponType = engine::FindFunction(L"GetRangedWeaponType", "Function SFXGame.BioWeaponRanged.GetRangedWeaponType");
+#if defined(MEVR_GAME_LE1)
+    gSwitchToWeapon = gSwitchToWeaponFn.Get();
+    gTryHolster = gTryHolsterFn.Get();
+    gIsInCombatActionState = gIsInCombatActionStateFn.Get();
+    gIsSwitchingWeapons = gIsSwitchingWeaponsFn.Get();
+    gGetRangedWeaponType = gGetRangedWeaponTypeFn.Get();
     gStarted = gSwitchToWeapon != nullptr && gTryHolster != nullptr && gIsInCombatActionState != nullptr &&
         gIsSwitchingWeapons != nullptr && gGetRangedWeaponType != nullptr;
     log::Info("holsters: script functions {} (SwitchToWeapon {}, TryHolster {}, IsInCombatActionState {}, IsSwitchingWeapons {}, "
@@ -506,7 +524,7 @@ void Tick(double deltaSeconds, Link const& link) {
                       "and holsters use the old squeeze-to-draw mapping; close the game and redeploy the host");
         }
     }
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
     auto const mode = gStarted ? head_tracking::GameMode() : std::nullopt;
     gHolds = holdsWanted && mode && (*mode == 0 || *mode == 2 || *mode == 3);
 #else
@@ -524,7 +542,7 @@ void Tick(double deltaSeconds, Link const& link) {
         return;
     }
     UpdateEyeHeight(settings, link, deltaSeconds);
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
     if (!gStarted) {
         Inactive("waiting for the script functions", link);
         return;
@@ -747,7 +765,7 @@ std::string StatusJson() {
         json::JsonNumber(gContactAmplitude), json::JsonString(gYawSource), json::JsonNumber(gFrame.yaw),
         json::JsonNumber(gFrame.anchor.x), json::JsonNumber(gFrame.anchor.y), json::JsonNumber(gFrame.anchor.z),
         json::JsonNumber(gEyeHeight), json::JsonString(gEyeSource), json::JsonNumber(gFloorNow),
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
         json::JsonString(slots::Name(Held())),
 #else
         json::JsonString("none"),
@@ -814,7 +832,7 @@ void Shutdown() {
     gStarted = false;
     gWhy = "not started";
     gLoggedWhy.clear();
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
     gSwitchToWeapon = gTryHolster = gIsInCombatActionState = gIsSwitchingWeapons = gGetRangedWeaponType = nullptr;
 #endif
 }

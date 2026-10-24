@@ -13,6 +13,7 @@
 #include "plugin/ProcessEventHook.hpp"
 
 #if defined(MEVR_WITH_HALCYON)
+#include "plugin/GameThreadCalls.hpp"
 #include "plugin/Halcyon.hpp"
 #include "plugin/PerfProbe.hpp"
 #include "plugin/RenderLevers.hpp"
@@ -44,6 +45,10 @@ tGameEngineTick* gGameEngineTickOrig = nullptr;
 void GameEngineTickHook(UGameEngine* self, float deltaSeconds) {
     mevr::host::crash::NoteGameThread();
 #if defined(MEVR_WITH_HALCYON)
+    // Halcyon's ProcessEvent calls from the Present thread, queued for here (script on the game thread only).
+    mevr::host::game_thread::Drain();
+#endif
+#if defined(MEVR_WITH_HALCYON)
     mevr::host::perf::EngineTickBegin();
 #endif
     gGameEngineTickOrig(self, deltaSeconds);
@@ -53,6 +58,7 @@ void GameEngineTickHook(UGameEngine* self, float deltaSeconds) {
     mevr::host::render_levers::Tick();
 #endif
     mevr::host::Tick(deltaSeconds);
+    mevr::host::process_event::ReportOffThread();
 #if defined(MEVR_WITH_HALCYON)
     mevr::host::perf::HostTickEnd();
 #endif

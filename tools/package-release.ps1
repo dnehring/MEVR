@@ -4,7 +4,7 @@
 #
 #   dist\MEVR-<version>\
 #     MEVR-Setup.exe        the installer (tools/setup)
-#     MEVR-Setup.ini        its settings: the update check's repository (a placeholder until there is one)
+#     MEVR-Setup.ini        its settings: the update check's repository (dnehring/MEVR)
 #     README.md             docs/release-readme.md
 #     LICENSE, NOTICE.md
 #     payload\LE1MEVR.asi   the monolithic mod (build-mono: -DMEVR_HOT_RELOAD=OFF)
@@ -57,7 +57,7 @@ Copy-Item (Join-Path $repo 'docs\release-readme.md') (Join-Path $dist 'README.md
 foreach ($f in 'LICENSE', 'NOTICE.md') {
     Copy-Item (Join-Path $repo $f) $dist
 }
-$ini = "; MEVR Setup's settings.`r`n[Update]`r`n; The GitHub repository whose Releases the setup checks (the placeholder turns the check off).`r`nrepo = https://github.com/OWNER/REPO`r`n"
+$ini = "; MEVR Setup's settings.`r`n[Update]`r`n; The GitHub repository whose Releases the setup checks (https://github.com/OWNER/REPO turns the check off).`r`nrepo = https://github.com/dnehring/MEVR`r`n"
 [IO.File]::WriteAllText((Join-Path $dist 'MEVR-Setup.ini'), $ini)
 
 Write-Output "Release folder: $dist"

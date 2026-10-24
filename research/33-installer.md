@@ -27,8 +27,9 @@ settle, **[untested]** code written against documentation and never run here (no
    gives direct download links to premium members' registered apps, so each entry opens the pack's own page; the
    player downloads it there and picks the file; the setup then installs it with Mass Effect Modder's command line
    (GPL-3.0, fetched from its GitHub releases after the player confirms name, size and time). **[untested]**
-6. **Update check** against GitHub Releases (`MEVR-Setup.ini [Update] repo`, a placeholder until the repository
-   exists: the check is off). **[untested]**
+6. **Update check** against GitHub Releases (`MEVR-Setup.ini [Update] repo`, default
+   `https://github.com/dnehring/MEVR`, the public repository since 2026-10-23; `https://github.com/OWNER/REPO` turns the
+   check off). **[untested]**
 7. **In game**: Display > Optional content shows the installed packs and "Install after I quit", which writes
    `%LOCALAPPDATA%\MEVR\setup.request`; the host's ExitProcess hook then starts `ASI\MEVR-Setup.exe --request
    --wait-pid <pid>`.

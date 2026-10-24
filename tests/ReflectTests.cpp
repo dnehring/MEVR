@@ -3,6 +3,7 @@
 // cache, bool masks and parameter blocks over a synthetic in-memory "engine" with its own layout
 // (deliberately not LE1's: the layer must follow whatever Layout it's given).
 
+#include "ue3/Memory.hpp"
 #include "ue3/Names.hpp"
 #include "ue3/Params.hpp"
 #include "ue3/Pattern.hpp"
@@ -11,6 +12,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -350,10 +352,15 @@ void TestParams() {
     std::optional<ue3::Rotator> const back = p.Get<ue3::Rotator>("NewRotation");
     CHECK(back && back->pitch == 1 && back->yaw == 2 && back->roll == 3);
     CHECK(p.ReturnBool() == std::optional<bool>(false));
-    // The engine writes the return value; ours reads it by its mask.
+    // The engine writes the return value as a whole UBOOL: any non-zero word is true, as script tests it.
     auto* const bytes = static_cast<std::uint8_t*>(p.Data());
     bytes[12] = 0x1;
     CHECK(p.ReturnBool() == std::optional<bool>(true));
+    bytes[12] = 0x0;
+    bytes[13] = 0x40;  // a native returning `Flags & 0x4000`
+    CHECK(p.ReturnBool() == std::optional<bool>(true));
+    bytes[13] = 0x0;
+    CHECK(p.ReturnBool() == std::optional<bool>(false));
     CHECK(!p.Return<int>());  // a bool isn't read as an int
 
     ue3::Params none(r, nullptr);
@@ -403,6 +410,134 @@ void TestPatterns() {
     // Several matches, capped.
     std::optional<pt::Compiled> const nop = pt::Compile("90");
     CHECK(nop && pt::FindAll(code, *nop, 4).size() == 4);
+}
+
+// ---- ue3::memory: the engine's allocator, faked ---------------------------------------------------
+
+struct FakeHeap {
+    int allocations = 0;
+    int frees = 0;
+    std::uint32_t lastSize = 0;
+    std::uint32_t lastAlignment = 0;
+    std::vector<void*> live;
+};
+FakeHeap gHeap;
+
+void* FakeMalloc(std::uint32_t size, std::uint32_t alignment, std::uint32_t /*flags*/) {
+    ++gHeap.allocations;
+    gHeap.lastSize = size;
+    gHeap.lastAlignment = alignment;
+    void* const p = std::malloc(size);
+    gHeap.live.push_back(p);
+    return p;
+}
+
+void FakeFree(void* pointer, std::uint32_t /*flags*/) {
+    ++gHeap.frees;
+    for (std::size_t i = 0; i < gHeap.live.size(); ++i) {
+        if (gHeap.live[i] == pointer) {
+            gHeap.live.erase(gHeap.live.begin() + static_cast<std::ptrdiff_t>(i));
+            std::free(pointer);
+            return;
+        }
+    }
+    gHeap.frees += 1000;  // not ours: a double or foreign free
+}
+
+void TestMemory() {
+    namespace mem = ue3::memory;
+    gHeap = {};
+    mem::Use({});
+    CHECK(!mem::Ready());
+    CHECK(mem::Malloc(16) == nullptr);
+    {
+        mem::OwnedString none(L"x");
+        CHECK(!none.Valid() && none.Get().data == nullptr && none.Get().count == 0);
+        mem::OwnedString empty(L"");
+        CHECK(empty.Valid() && empty.Get().data == nullptr);
+    }
+    CHECK(gHeap.allocations == 0 && gHeap.frees == 0);
+
+    mem::Use({&FakeMalloc, &FakeFree});
+    CHECK(mem::Ready());
+    {
+        mem::OwnedString hi(L"Hi");
+        ue3::FString const& s = hi.Get();
+        CHECK(hi.Valid() && s.data != nullptr && s.count == 3 && s.max == 3);
+        CHECK(s.data[0] == L'H' && s.data[1] == L'i' && s.data[2] == L'\0');
+        CHECK(gHeap.lastSize == 3 * sizeof(wchar_t) && gHeap.lastAlignment == mem::kAlignment);
+        CHECK(mem::Narrow(s) == "Hi");
+        mem::OwnedString empty(L"");
+        CHECK(empty.Valid() && empty.Get().data == nullptr && empty.Get().count == 0);
+        CHECK(gHeap.allocations == 1);
+        // Moves hand the buffer over: it is freed once, by the last owner.
+        mem::OwnedString moved(std::move(hi));
+        CHECK(moved.Get().count == 3 && hi.Get().data == nullptr);
+        mem::OwnedString assigned;
+        assigned = std::move(moved);
+        CHECK(assigned.Get().count == 3 && moved.Get().data == nullptr);
+        CHECK(gHeap.frees == 0);
+    }
+    CHECK(gHeap.allocations == 1 && gHeap.frees == 1 && gHeap.live.empty());
+    {
+        // A string the engine handed back: FreeString frees and empties it.
+        mem::OwnedString source(L"engine");
+        ue3::FString returned = source.Get();
+        auto* const copy = static_cast<wchar_t*>(mem::Malloc(sizeof(wchar_t) * 7));
+        std::memcpy(copy, returned.data, sizeof(wchar_t) * 7);
+        returned.data = copy;
+        mem::FreeString(returned);
+        CHECK(returned.data == nullptr && returned.count == 0 && returned.max == 0);
+        mem::FreeString(returned);  // already empty: nothing to free
+    }
+    CHECK(gHeap.allocations == 3 && gHeap.frees == 3 && gHeap.live.empty());
+    mem::Use({});
+
+    // UTF-8 and the engine's UTF-16.
+    CHECK(mem::Widen("stat unit") == L"stat unit");
+    CHECK(mem::Widen("\xC3\xA9") == std::wstring(1, static_cast<wchar_t>(0xE9)));
+    std::wstring const pair = mem::Widen("\xF0\x9F\x98\x80");  // U+1F600: a surrogate pair
+    CHECK(pair.size() == 2 && pair[0] == static_cast<wchar_t>(0xD83D) && pair[1] == static_cast<wchar_t>(0xDE00));
+    CHECK(mem::Widen("a\xFF" "b") == std::wstring(L"a") + static_cast<wchar_t>(0xFFFD) + L"b");
+    CHECK(mem::Widen("\xC3") == std::wstring(1, static_cast<wchar_t>(0xFFFD)));  // cut short
+    auto const narrow = [](std::wstring text) {
+        ue3::FString s;
+        s.data = text.data();
+        s.count = static_cast<std::int32_t>(text.size() + 1);
+        return mem::Narrow(s);
+    };
+    CHECK(narrow(L"Garrus") == "Garrus");
+    CHECK(narrow(std::wstring(1, static_cast<wchar_t>(0xE9))) == "\xC3\xA9");
+    CHECK(narrow(pair) == "\xF0\x9F\x98\x80");
+    CHECK(narrow(std::wstring(1, static_cast<wchar_t>(0xDC00))) == "\xEF\xBF\xBD");  // a lone low surrogate
+    CHECK(mem::Narrow(ue3::FString{}) == "");
+
+    // Names round-trip through their raw 8 bytes.
+    ue3::Name const name{0x1234, 3};
+    CHECK(ue3::Name::FromKey(name.Key()) == name);
+}
+
+// engine::World()'s walk (research/34 stage 3): a WorldInfo's outers are its level, then the World.
+void TestOuters() {
+    World w;
+    ue3::Object* const engine = w.f.objects[2];  // the "Engine" package
+    ue3::Object* const worldClass = w.f.Make("World", w.classClass, engine);
+    ue3::Object* const levelClass = w.f.Make("Level", w.classClass, engine);
+    ue3::Object* const map = w.f.Make("Map", nullptr, nullptr);
+    ue3::Object* const theWorld = w.f.Make("TheWorld", worldClass, map);
+    ue3::Object* const level = w.f.Make("PersistentLevel", levelClass, theWorld);
+    ue3::Object* const worldInfo = w.f.Make("WorldInfo_0", w.actor, level);
+    ue3::Object* const loop = w.f.Make("Loop", w.actor, nullptr);
+    w.f.Set(loop, w.f.layout.objectOuter, loop);  // a broken chain: its own outer
+    ue3::Reflection r(w.f.Universe());
+    auto* const world = static_cast<ue3::Class*>(worldClass);
+    CHECK(r.OuterOfA(worldInfo, world) == theWorld);
+    CHECK(r.OuterOfA(worldInfo, static_cast<ue3::Class*>(levelClass)) == level);
+    CHECK(r.OuterOfA(theWorld, world) == nullptr);  // never the object itself
+    CHECK(r.OuterOfA(w.shepard, world) == nullptr);  // no World among its outers
+    CHECK(r.OuterOfA(loop, world) == nullptr);       // bounded, not endless
+    CHECK(r.OuterOfA(nullptr, world) == nullptr);
+    CHECK(r.OuterOfA(worldInfo, nullptr) == nullptr);
 }
 
 } // namespace
@@ -501,5 +636,7 @@ int RunReflectTests() {
     TestProperties();
     TestParams();
     TestPatterns();
+    TestMemory();
+    TestOuters();
     return gFailures;
 }

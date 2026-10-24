@@ -17,9 +17,16 @@
 
 namespace mevr::ue3::runtime {
 
-// Finds and checks everything once; later calls return the first result. Logs what it found.
+// Finds and checks everything; once it has an answer, later calls return it. Logs what it found.
+// While the game is still starting (GObjects nearly empty, Engine.u not loaded yet) it isn't an
+// answer: Init returns false with Pending() true, says so once in the log, and the next call tries
+// again (the mod calls it once a second until it's ready; research/34 stage 3). After
+// kMaxPendingTries such tries it gives up for good.
 bool Init();
 bool Ready();
+// The last Init found the game still starting: call it again later.
+bool Pending();
+inline constexpr int kMaxPendingTries = 600;
 std::string const& Status();
 // Drops the layer (the mod unloads); Init finds it again.
 void Shutdown();
@@ -36,6 +43,12 @@ struct Found {
     char const* objectsBy = "none";   // "rva", "pattern" or "none"
     char const* namePoolsBy = "none";
     bool processEventMatchesRva = false;
+    // The engine's allocator (ue3/Memory): appMalloc, appFree and the GMalloc both load.
+    std::uintptr_t appMalloc = 0;
+    std::uintptr_t appFree = 0;
+    std::uintptr_t gmalloc = 0;
+    char const* appMallocBy = "none";
+    char const* appFreeBy = "none";
 };
 Found const& Where();
 
@@ -55,6 +68,14 @@ Object* GameEngine();
 Object* LocalPlayerController();
 // A live GObjects entry, not pending kill (see engine::IsAlive for when that check means anything).
 bool IsAlive(Object const* object);
+
+// "Class Engine.Actor" or "None" (null, or the layer is off), as the log lines print objects.
+std::string FullName(Object const* object);
+// A name's text ("Hand_R", "Foo_2"), or "None" while the layer is off.
+std::string NameText(Name name);
+inline std::string NameText(std::uint64_t key) {
+    return NameText(Name::FromKey(key));
+}
 
 // Logs and clears the reflection's notes (a class found in another package...).
 void FlushNotes();

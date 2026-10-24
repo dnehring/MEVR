@@ -126,9 +126,9 @@ LONG CALLBACK FirstChanceHandler(EXCEPTION_POINTERS* info) {
 constexpr DWORD kReadable = PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE |
     PAGE_EXECUTE_WRITECOPY;
 
-// The last region found readable (the report runs on one thread, once).
-std::uintptr_t gRegionLo = 0;
-std::uintptr_t gRegionHi = 0;
+// The last region found readable, per thread (the report, and names for the log on the game thread).
+thread_local std::uintptr_t gRegionLo = 0;
+thread_local std::uintptr_t gRegionHi = 0;
 
 bool Readable(std::uintptr_t address, std::size_t size) {
     std::uintptr_t const end = address + size;
@@ -581,6 +581,10 @@ void Install() {
         kDispatches, kDispatches, kWrites, gNamed ? "resolved at the crash" : "not resolved (pointers only)",
         gReportPath[0] != L'\0' ? "%LOCALAPPDATA%\\MEVR\\crash-breadcrumbs.txt" : "(no path)",
         reinterpret_cast<void const*>(gPreviousFilter));
+}
+
+void AppendObject(text::Appender& out, void const* object) {
+    Object(out, object);
 }
 
 void RecordWrite(char const* tag, void const* address, std::uint32_t size, std::uint64_t value) {

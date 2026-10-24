@@ -21,6 +21,7 @@
 #include "halcyon/le1/render_hook.h"
 #include "plugin/Calibration.hpp"
 #include "plugin/Colour.hpp"
+#include "plugin/GameThreadCalls.hpp"
 #include "plugin/Halcyon.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/MainMenu.hpp"
@@ -549,6 +550,14 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     state->dwPacketNumber = gPacket;
     state->Gamepad = pad;
     return ERROR_SUCCESS;
+}
+
+bool OnGameThread() noexcept {
+    return mevr::host::game_thread::OnGameThread();
+}
+
+bool QueueProcessEvent(void* object, void* function, void const* params) noexcept {
+    return mevr::host::game_thread::Queue(object, function, params);
 }
 
 } // namespace MELEVR::MevrBridge

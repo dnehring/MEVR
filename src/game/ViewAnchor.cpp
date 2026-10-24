@@ -5,11 +5,8 @@
 #include "core/vr/Comfort.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/Output.hpp"
-#include "engine/GameAdapterSdk.hpp"
-#include "engine/Objects.hpp"
 #include "game/HeadTracking.hpp"
-
-#include <LESDK/Headers.hpp>
+#include "game/Player.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -35,11 +32,26 @@ struct PendingTurn {
 };
 PendingTurn gTurn;
 
+// The local player's game camera (PlayerController.PlayerCamera's CameraCache.POV), through our
+// reflection layer (game/player). Copied: the camera moves on its own update.
+struct CameraView {
+    ue3::Vector location;
+    ue3::Rotator rotation;
+};
+
+std::optional<CameraView> GameCamera() {
+    auto const pov = player::CameraPov(player::Camera(player::Controller()));
+    if (!pov) {
+        return std::nullopt;
+    }
+    return CameraView{*pov->location, *pov->rotation};
+}
+
 // Whether the camera is still the one the pending turn was noted against (it hasn't updated since).
-bool SameCamera(FTPOV const& pov) {
-    FVector const& at = engine::adapter::Location(pov);
-    return gTurn.active && pov.Rotation.Yaw == gTurn.cameraYaw && at.X == gTurn.cameraX && at.Y == gTurn.cameraY &&
-        at.Z == gTurn.cameraZ;
+bool SameCamera(CameraView const& pov) {
+    ue3::Vector const& at = pov.location;
+    return gTurn.active && pov.rotation.yaw == gTurn.cameraYaw && at.x == gTurn.cameraX && at.y == gTurn.cameraY &&
+        at.z == gTurn.cameraZ;
 }
 
 // Degrees between two directions (any length).
@@ -74,19 +86,19 @@ std::optional<engine::TrackingFrame> FromHost() {
     if (!view.valid) {
         return std::nullopt;
     }
-    APlayerController* const controller = engine::LocalPlayerController();
-    if (controller == nullptr || controller->PlayerCamera == nullptr) {
+    auto const game = GameCamera();
+    if (!game) {
         return std::nullopt;
     }
-    FTPOV const& pov = controller->PlayerCamera->CameraCache.POV;
-    FVector const& at = engine::adapter::Location(pov);
-    engine::UnrealRotation camera{pov.Rotation.Pitch, pov.Rotation.Yaw, pov.Rotation.Roll};
-    engine::UnrealVector location{at.X, at.Y, at.Z};
+    CameraView const& pov = *game;
+    ue3::Vector const& at = pov.location;
+    engine::UnrealRotation camera{pov.rotation.pitch, pov.rotation.yaw, pov.rotation.roll};
+    engine::UnrealVector location{at.x, at.y, at.z};
     if (gTurn.active) {
         if (SameCamera(pov)) {
             // Our turn isn't in the camera yet: map the view the next frame will show.
             vr::comfort::CameraGuess const guess =
-                vr::comfort::TurnCamera(at.X, at.Y, pov.Rotation.Yaw, gTurn.units, gTurn.pawnTurned, gTurn.pivotX, gTurn.pivotY);
+                vr::comfort::TurnCamera(at.x, at.y, pov.rotation.yaw, gTurn.units, gTurn.pawnTurned, gTurn.pivotX, gTurn.pivotY);
             camera.yaw = guess.yaw;
             location.x = guess.x;
             location.y = guess.y;
@@ -121,19 +133,22 @@ void UseHostView(bool on) {
 }
 
 void NoteTurn(int units, bool pawnTurned, double pivotX, double pivotY) {
-    APlayerController* const controller = engine::LocalPlayerController();
-    if (units == 0 || controller == nullptr || controller->PlayerCamera == nullptr) {
+    if (units == 0) {
         return;
     }
-    FTPOV const& pov = controller->PlayerCamera->CameraCache.POV;
+    auto const game = GameCamera();
+    if (!game) {
+        return;
+    }
+    CameraView const& pov = *game;
     if (!SameCamera(pov)) {
-        FVector const& at = engine::adapter::Location(pov);
+        ue3::Vector const& at = pov.location;
         gTurn = {};
         gTurn.active = true;
-        gTurn.cameraYaw = pov.Rotation.Yaw;
-        gTurn.cameraX = at.X;
-        gTurn.cameraY = at.Y;
-        gTurn.cameraZ = at.Z;
+        gTurn.cameraYaw = pov.rotation.yaw;
+        gTurn.cameraX = at.x;
+        gTurn.cameraY = at.y;
+        gTurn.cameraZ = at.z;
     }
     gTurn.units += units;
     gTurn.pawnTurned = gTurn.pawnTurned || pawnTurned;

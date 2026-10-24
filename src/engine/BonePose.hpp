@@ -9,7 +9,9 @@
 #include <optional>
 #include <vector>
 
-class USkeletalMeshComponent;
+namespace mevr::ue3 {
+struct Object;
+}
 
 namespace LESDK {
 class Initializer;
@@ -25,7 +27,9 @@ class Initializer;
 //
 // The game thread publishes what to write (Publish); the hook only reads it, and writes nothing
 // unless the mesh, its owner, the world, its bone count and the chain's bone names all still
-// match and the request is recent (a level load runs no mod tick in between).
+// match and the request is recent (a level load runs no mod tick in between). The owner
+// (ActorComponent.Owner), the world (engine::World()) and the bones come through our reflection
+// layer (research/34, stage 3), resolved on the game thread and only read by the hook.
 namespace mevr::engine::bone_pose {
 
 enum class Target {
@@ -93,7 +97,7 @@ struct Support {
 };
 
 struct Request {
-    USkeletalMeshComponent const* mesh = nullptr;  // compared by address only, never dereferenced
+    ue3::Object const* mesh = nullptr;  // the SkeletalMeshComponent: compared by address only, never dereferenced
     int boneCount = 0;
     std::vector<int> parents;
     ik::BodyFrame body;  // component space

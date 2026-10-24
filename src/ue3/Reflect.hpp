@@ -107,6 +107,9 @@ public:
     bool IsA(Object const* object, Class const* cls) const;
     bool IsChildOf(Struct const* s, Struct const* parent) const;
     bool IsAlive(Object const* object) const;  // a live GObjects entry, not pending kill
+    // The nearest outer of `object` (not the object itself) that IsA `cls`, or nullptr: e.g. the World an
+    // actor's level belongs to (Actor -> Level -> World). Reads only, no caches: any thread.
+    Object* OuterOfA(Object const* object, Class const* cls) const;
 
     // The bootstrap: Core.Class is the class whose class is itself.
     Class* ClassClass();

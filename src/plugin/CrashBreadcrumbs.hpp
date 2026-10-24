@@ -9,6 +9,7 @@
 // Halcyon's own [CRASH] filter stays: ours chains to whichever filter was there before it.
 
 #include "core/Breadcrumbs.hpp"
+#include "core/FixedText.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -40,6 +41,10 @@ inline void NoteGameThread() {
 // Once, at attach: the unhandled exception filter, a first-chance recorder for fatal codes, and what name
 // resolution needs later (LE1: our reflection layout; elsewhere pointers only).
 void Install();
+
+// "Class Outer.Name [0x...]" through guarded reads (LE1; elsewhere the pointer), for log lines. Any thread, after
+// Install; slow (each read checks its page), so not for hot paths.
+void AppendObject(text::Appender& out, void const* object);
 
 // HostServices v18 (mod/ModApi.hpp).
 void RecordWrite(char const* tag, void const* address, std::uint32_t size, std::uint64_t value);

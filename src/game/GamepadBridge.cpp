@@ -8,8 +8,6 @@
 #include "game/HeadTracking.hpp"
 #include "game/SupportGrip.hpp"
 
-#include <LESDK/Init.hpp>
-
 #include <Windows.h>
 #include <Xinput.h>
 

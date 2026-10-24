@@ -22,6 +22,7 @@
 #include "engine/CoverAcquire.hpp"
 #include "engine/Engine.hpp"
 #include "engine/GameAdapter.hpp"
+#include "engine/Legacy.hpp"
 #include "engine/NativesDump.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/ReflectCheck.hpp"
@@ -32,6 +33,7 @@
 #include "game/CameraProbe.hpp"
 #include "game/Comfort.hpp"
 #include "game/ConsoleRequest.hpp"
+#include "game/SystemSettings.hpp"
 #include "game/GamepadBridge.hpp"
 #include "game/GamepadMapping.hpp"
 #include "game/HandAim.hpp"
@@ -52,7 +54,7 @@
 #include "game/Weapon.hpp"
 #include "ue3/Runtime.hpp"
 
-#include <LESDK/Headers.hpp>
+// Only for the hook context every Install takes (LESDK::Initializer: research/34 stage 4).
 #include <LESDK/Init.hpp>
 
 #include <atomic>
@@ -103,6 +105,7 @@ bool gToldNoSupportGrip = false;
 bool gHooked = false;  // ProcessEvent hook live (after the script packages loaded)
 // Our reflection layer (ue3/, research/34) found and checked against LExSDKv2 (once per load).
 bool gReflectChecked = false;
+bool gToldLayerOff = false;  // the startup gate said it goes on without the layer
 bool gSceneViewHooked = false;
 bool gGamepadHooked = false;  // XInput hooks (once the game has loaded an XInput DLL)
 bool gCallFunctionHooked = false;  // installed the first time hand aim is turned on
@@ -196,6 +199,30 @@ void WaitForThisFrameToPresent() {
     }
 }
 
+// The script packages are in once Engine.Camera.UpdateCamera exists (head tracking's first function,
+// the old gate). LE1 asks our reflection layer, retrying ue3::runtime::Init each second until it's up
+// (research/34 stage 3; before, LExSDKv2's object scan); LE2/LE3 (no layout yet) ask engine/Legacy.
+bool ScriptPackagesLoaded() {
+    using namespace mevr;
+#if defined(MEVR_GAME_LE1)
+    if (!ue3::runtime::Init()) {
+        if (ue3::runtime::Pending()) {
+            return false;  // the game is still starting: the next try is in a second
+        }
+        // Off for good (it said why): the game modules stand down, nothing is left to wait for.
+        if (!gToldLayerOff) {
+            gToldLayerOff = true;
+            log::Warn("script hooks: our reflection layer is off, so the script packages can't be waited for; going on "
+                      "without them (the game features stay off)");
+        }
+        return true;
+    }
+    return ue3::runtime::Get().FindFunction("Engine.Camera.UpdateCamera") != nullptr;
+#else
+    return engine::legacy::FindFunction("Engine.Camera.UpdateCamera") != nullptr;
+#endif
+}
+
 // Script-level hooks need Engine.u/SFXGame.u loaded, which happens after attach. Handlers are
 // registered before the ProcessEvent hook goes live so the table never changes under it.
 void TryInstallScriptHooks() {
@@ -204,17 +231,21 @@ void TryInstallScriptHooks() {
     if (!gSceneViewHooked && !gHostOwnsVr) {
         gSceneViewHooked = engine::scene_view::Install(*gInit, &game::head_tracking::OnBeforePrimaryView);
     }
+    // Once the script packages are in (our reflection layer is up by then on LE1), before the modules
+    // that use it start: the world's path, and the layer proven against LExSDKv2 (research/34).
+    if (!gReflectChecked) {
+        if (!ScriptPackagesLoaded()) {
+            return;
+        }
+        gReflectChecked = true;
+        ue3::runtime::Init();  // LE2/LE3: says once that there's no layout yet
+        engine::ResolveWorld();
+        engine::reflect_check::Run(*gInit);
+    }
     // Without the scene view hook (or a head source) head tracking stays inert; it still reads
     // the game mode, which the probes and features use.
     if (!game::head_tracking::TryStartup(gSceneViewHooked)) {
         return;
-    }
-    // The script packages are in: find our reflection layer and prove it against LExSDKv2 before
-    // the modules that use it start (research/34).
-    if (!gReflectChecked) {
-        gReflectChecked = true;
-        ue3::runtime::Init();
-        engine::reflect_check::Run(*gInit);
     }
     if (!gHostOwnsVr && !game::reflections::TryStartup()) {
         log::Warn("reflections: SceneCaptureComponent.SetFrameRate not found; reflection fix off");
@@ -765,12 +796,11 @@ void Heartbeat() {
     if (gHeartbeats == 0) {
         engine::code_dump::SaveOnce();  // the game is up, so its code is decrypted by now
     }
-    UWorld* const world = (GWorld != nullptr) ? *GWorld : nullptr;
     log::Info("heartbeat #{}: {:.1f} fps, GWorld={}, objects={}, script hooks {}",
-        ++gHeartbeats, gHeartbeatFrames / gHeartbeatElapsed, static_cast<void*>(world),
-        UObject::GObjObjects->Count(), gHooked ? "live" : "waiting for script packages");
+        ++gHeartbeats, gHeartbeatFrames / gHeartbeatElapsed, engine::World(), engine::ObjectCount(),
+        gHooked ? "live" : "waiting for script packages");
     if (gHooked) {
-        engine::natives_dump::SaveIfRequested(*gInit);  // opt-in (MEVR_DUMP_NATIVES), once
+        engine::natives_dump::SaveIfRequested();  // opt-in (MEVR_DUMP_NATIVES), once
         game::head_tracking::LogStats();
         game::reflections::LogStats();
         game::hand_aim::LogStats();
@@ -838,11 +868,14 @@ MEVR_MOD_API bool MevrModStartup(ISharedProxyInterface* spi, mevr::HostServices 
     }
 
     // Hook names get this prefix, so the host's and the mod's hooks never collide.
-    gInit = std::make_unique<::LESDK::Initializer>(spi, SDK_TARGET_NAME_A "MEVRmod");
-    if (!engine::ResolveGlobals(*gInit)) {
+    gInit = std::make_unique<::LESDK::Initializer>(spi, MEVR_GAME_NAME_A "MEVRmod");
+#if !defined(MEVR_GAME_LE1)
+    // LE2/LE3 read the engine through LExSDKv2 until they have a reflection layout (research/34 stage 5).
+    if (!engine::legacy::Init(*gInit)) {
         gInit.reset();
         return false;
     }
+#endif
     gActive = true;
     return true;
 }
@@ -858,6 +891,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     }
     PollHotkeys();
     game::console_request::Tick(deltaSeconds);  // the test loop's console.request (research/22)
+    game::system_settings::Tick(deltaSeconds);  // shadows, motion blur, foliage radius: `scale set` by the mod (research/35)
     if (!gHooked || !gGamepadHooked) {
         gRetryTimer += deltaSeconds;
         if (gRetryTimer >= kStartupRetrySeconds) {
@@ -1062,8 +1096,10 @@ MEVR_MOD_API void MevrModShutdown() {
     game::reflections::Shutdown();
     engine::process_event::ClearHandlers();
     game::head_tracking::Shutdown();
+    engine::ForgetWorld();
     ue3::runtime::Shutdown();
     gReflectChecked = false;
+    gToldLayerOff = false;
     gInit.reset();
     log::Info("mod shut down");
     log::SetSink(nullptr);

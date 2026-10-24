@@ -7,17 +7,16 @@
 #include "core/vr/HostView.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/TestRequest.hpp"
-#include "engine/Engine.hpp"
-#include "engine/GameAdapterSdk.hpp"
-#include "engine/Objects.hpp"
+#include "engine/GameAdapter.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/HeadTracking.hpp"
+#include "game/Player.hpp"
 #include "game/SupportGrip.hpp"
 #include "game/Throwables.hpp"
 #include "game/ViewAnchor.hpp"
-
-#include <LESDK/Headers.hpp>
+#include "ue3/Handles.hpp"
+#include "ue3/Memory.hpp"
 
 #include <Windows.h>
 
@@ -28,6 +27,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <format>
+#include <limits>
 #include <string>
 #include <string_view>
 
@@ -53,44 +53,88 @@ constexpr double kDetailsSeconds = 0.5;
 constexpr float kPi = 3.14159265358979f;
 constexpr float kDeg = kPi / 180.0f;
 
-#if defined(SDK_TARGET_LE1)
-static_assert(offsetof(UBioEpicPawnBehavior, Squad) == 0x2F8);
-static_assert(offsetof(UBioActorBehavior, ActorGameName) == 0xFC);
-static_assert(offsetof(UBioActorBehavior, m_oActorType) == 0x18C);
-static_assert(offsetof(UBioActorType, ActorGameName) == 0x6C);
-static_assert(offsetof(ABioBaseSquad, Members) == 0x314);
-// What SquadOrderEquipWeapon (0xC77FD0) and the switch-weapon natives (0x9E0220/0x9E0240) index: a
-// 0x74-byte entry, the pawn at +0x48, the tactical action at +0x70, the switch weapon at +0x71.
-static_assert(sizeof(FMemberData) == 0x74);
-static_assert(offsetof(FMemberData, SquadMember) == 0x48);
-static_assert(offsetof(FMemberData, eSwitchWeapon) == 0x71);
-static_assert(offsetof(UBioPawnBehavior, m_oEquipment) == 0x424);
-static_assert(offsetof(UBioEquipment, m_QuickSlotArray) == 0x94);
-static_assert(offsetof(UBioEquipment, m_eQuickSlotCurrent) == 0xB8);
+#if defined(MEVR_GAME_LE1)
+// Our reflection layer (research/34): the fields research/19 read (BioEpicPawnBehavior.Squad +0x2F8,
+// BioActorBehavior ActorGameName +0xFC and m_oActorType +0x18C, BioActorType.ActorGameName +0x6C,
+// BioBaseSquad.Members +0x314; BioPawnBehavior.m_oEquipment +0x424, BioEquipment m_QuickSlotArray +0x94 and
+// m_eQuickSlotCurrent +0xB8), found by name; engine/ReflectCheck compares each. A squad member's entry (what
+// SquadOrderEquipWeapon 0xC77FD0 and the switch-weapon natives 0x9E0220/0x9E0240 index) is 0x74 bytes: the
+// pawn at +0x48, the tactical action at +0x70, the switch weapon at +0x71; the natives read it, we don't.
+ue3::ClassRef gBioWeaponRanged{"SFXGame.BioWeaponRanged"};
+ue3::ClassRef gBioEquipment{"SFXGame.BioEquipment"};
+ue3::ClassRef gBioPlayerInput{"SFXGame.BioPlayerInput"};
+ue3::ClassRef gGameModeDefault{"SFXGame.SFXGameModeDefault"};
+ue3::ClassRef gGameModeWeaponWheel{"SFXGame.SFXGameModeWeaponWheel"};
+ue3::ClassRef gGuiManager{"SFXGame.MassEffectGuiManager"};
+ue3::ClassRef gHudHandler{"SFXGame.BioSFHandler_HUD"};
+ue3::FieldRef gBehavior{"SFXGame.BioPawn", "m_oBehavior"};
+ue3::FieldRef gSquadOf{"SFXGame.BioEpicPawnBehavior", "Squad"};
+ue3::FieldRef gEquipment{"SFXGame.BioPawnBehavior", "m_oEquipment"};
+ue3::FieldRef gQuickSlots{"SFXGame.BioEquipment", "m_QuickSlotArray"};
+ue3::FieldRef gQuickSlotCurrent{"SFXGame.BioEquipment", "m_eQuickSlotCurrent"};
+ue3::FieldRef gActorGameName{"SFXGame.BioActorBehavior", "ActorGameName"};
+ue3::FieldRef gActorType{"SFXGame.BioActorBehavior", "m_oActorType"};
+ue3::FieldRef gTypeGameName{"SFXGame.BioActorType", "ActorGameName"};
+ue3::FieldRef gTag{"Engine.Actor", "Tag"};
+ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo"};
+ue3::FieldRef gPlayerInput{"Engine.PlayerController", "PlayerInput"};
+ue3::FieldRef gCachedScaleFormManager{"Engine.PlayerController", "m_oCachedScaleFormManager"};
+ue3::FieldRef gGameModeManager{"SFXGame.BioPlayerController", engine::adapter::kGameModeManager};
+ue3::FieldRef gGameModes{"SFXGame.SFXGameModeManager", "GameModes"};
+ue3::FieldRef gCurrentMode{"SFXGame.SFXGameModeManager", "CurrentMode"};
+// The HUD's handler (MassEffectGuiManager.m_oSFHudHandler +0x1A4; BioSFHandler_HUD m_nShepardIndex +0x10C,
+// m_nHench1Index +0x110, m_nHench2Index +0x114, nAngle +0x134, nLastAngle +0x138; research/19 section 11).
+ue3::FieldRef gSfHudHandler{"SFXGame.MassEffectGuiManager", "m_oSFHudHandler"};
+ue3::FieldRef gShepardIndex{"SFXGame.BioSFHandler_HUD", "m_nShepardIndex"};
+ue3::FieldRef gHench1Index{"SFXGame.BioSFHandler_HUD", "m_nHench1Index"};
+ue3::FieldRef gHench2Index{"SFXGame.BioSFHandler_HUD", "m_nHench2Index"};
+ue3::FieldRef gAngle{"SFXGame.BioSFHandler_HUD", "nAngle"};
+ue3::FieldRef gLastAngle{"SFXGame.BioSFHandler_HUD", "nLastAngle"};
+ue3::FieldRef gHandlerPanel{"Engine.BioSFHandler", "oPanel"};
+ue3::FieldRef gUsingGamepad{"Engine.BioSFPanel", "bUsingGamepad"};
 
-UFunction* gGetSquadSize = nullptr;
-UFunction* gGetMember = nullptr;
-UFunction* gGetMemberSwitchWeapon = nullptr;
-UFunction* gSetMemberSwitchWeapon = nullptr;
-UFunction* gSquadOrderEquipWeapon = nullptr;
-UFunction* gApplyTacticalOrders = nullptr;
-UFunction* gChangeToQuickSlot = nullptr;
-UFunction* gIsInCombatActionState = nullptr;
-UFunction* gGetRangedWeaponType = nullptr;
-UFunction* gGetClass = nullptr;
-UFunction* gGetPercentHealth = nullptr;
-UFunction* gPauseGame = nullptr;
-UFunction* gEnterWeaponWheel = nullptr;
-UFunction* gExitWeaponWheel = nullptr;
-UFunction* gTryHolster = nullptr;
-UFunction* gIsSwitchingWeapons = nullptr;
+ue3::FunctionRef gGetSquadSizeFn{"SFXGame.BioBaseSquad.GetSquadSize"};
+ue3::FunctionRef gGetMemberFn{"SFXGame.BioBaseSquad.GetMember"};
+ue3::FunctionRef gGetMemberSwitchWeaponFn{"SFXGame.BioBaseSquad.GetMemberSwitchWeapon"};
+ue3::FunctionRef gSetMemberSwitchWeaponFn{"SFXGame.BioBaseSquad.SetMemberSwitchWeapon"};
+ue3::FunctionRef gSquadOrderEquipWeaponFn{"SFXGame.BioPlayerController.SquadOrderEquipWeapon"};
+ue3::FunctionRef gApplyTacticalOrdersFn{"SFXGame.BioPlayerController.ApplyTacticalOrders"};
+ue3::FunctionRef gChangeToQuickSlotFn{"SFXGame.BioEquipment.ChangeToQuickSlot"};
+ue3::FunctionRef gIsInCombatActionStateFn{"SFXGame.BioPawn.IsInCombatActionState"};
+ue3::FunctionRef gGetRangedWeaponTypeFn{"SFXGame.BioWeaponRanged.GetRangedWeaponType"};
+ue3::FunctionRef gGetClassFn{"SFXGame.BioPawnBehavior.GetClass"};
+ue3::FunctionRef gGetPercentHealthFn{"SFXGame.BioEpicPawnBehavior.GetPercentHealth"};
+ue3::FunctionRef gPauseGameFn{"Engine.WorldInfo.PauseGame"};
+ue3::FunctionRef gEnterWeaponWheelFn{"SFXGame.SFXGameModeDefault.EnterWeaponWheel"};
+ue3::FunctionRef gExitWeaponWheelFn{"SFXGame.SFXGameModeWeaponWheel.ExitWeaponWheel"};
+ue3::FunctionRef gTryHolsterFn{"SFXGame.SFXGameModeDefault.TryHolster"};
+ue3::FunctionRef gIsSwitchingWeaponsFn{"SFXGame.BioPawn.IsSwitchingWeapons"};
+ue3::FunctionRef gGetScaleFormManagerFn{"Engine.PlayerController.GetScaleFormManager"};
+ue3::FunctionRef gIsCombatEnabledFn{"SFXGame.BioPlayerInput.IsCombatEnabled"};
+
+ue3::Function* gGetSquadSize = nullptr;
+ue3::Function* gGetMember = nullptr;
+ue3::Function* gGetMemberSwitchWeapon = nullptr;
+ue3::Function* gSetMemberSwitchWeapon = nullptr;
+ue3::Function* gSquadOrderEquipWeapon = nullptr;
+ue3::Function* gApplyTacticalOrders = nullptr;
+ue3::Function* gChangeToQuickSlot = nullptr;
+ue3::Function* gIsInCombatActionState = nullptr;
+ue3::Function* gGetRangedWeaponType = nullptr;
+ue3::Function* gGetClass = nullptr;
+ue3::Function* gGetPercentHealth = nullptr;
+ue3::Function* gPauseGame = nullptr;
+ue3::Function* gEnterWeaponWheel = nullptr;
+ue3::Function* gExitWeaponWheel = nullptr;
+ue3::Function* gTryHolster = nullptr;
+ue3::Function* gIsSwitchingWeapons = nullptr;
 // The game's wheel draws Shepard's weapon (EnterWeaponWheel does). If it was put away when the wheel
 // opened, it goes back after the wheel closes (user, 2026-10-22), unless the right grip holds it then.
 bool gWheelWasHolstered = false;
 double gReholsterWait = -1.0;  // seconds waited for the drawn weapon; negative: not waiting
 constexpr double kReholsterTimeout = 3.0;
-UFunction* gGetScaleFormManager = nullptr;
-UFunction* gIsCombatEnabled = nullptr;
+ue3::Function* gGetScaleFormManager = nullptr;
+ue3::Function* gIsCombatEnabled = nullptr;
 #endif
 
 bool gStarted = false;
@@ -187,19 +231,20 @@ int CardOf(int member) {
     return -1;
 }
 
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
 
-std::string Narrow(std::wstring_view wide) {
-    if (wide.empty()) {
-        return {};
-    }
-    int const n = WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(wide.size()), nullptr, 0, nullptr, nullptr);
-    std::string out(static_cast<size_t>(std::max(n, 0)), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(wide.size()), out.data(), n, nullptr, nullptr);
-    while (!out.empty() && out.back() == '\0') {
-        out.pop_back();
-    }
-    return out;
+std::string FullName(ue3::Object const* object) {
+    return ue3::runtime::FullName(object);
+}
+
+ue3::Object* ObjectOf(ue3::FieldRef& field, ue3::Object const* object) {
+    return object != nullptr ? field.Read<ue3::Object*>(object).value_or(nullptr) : nullptr;
+}
+
+// An FString field as UTF-8 (empty if unset or unresolved).
+std::string StringOf(ue3::FieldRef& field, ue3::Object const* object) {
+    ue3::FString const* const text = object != nullptr ? field.In<ue3::FString>(object) : nullptr;
+    return text != nullptr && text->count > 0 ? ue3::memory::Narrow(*text) : std::string();
 }
 
 std::string Upper(std::string text) {
@@ -338,102 +383,110 @@ std::string Describe(MemberInfo const& m) {
         menu::WeaponName(m.current), WeaponList(m.carried));
 }
 
-bool CallBool(UObject* object, UFunction* function) {
+// Through ProcessEvent with the function's own parameter block (never a generated wrapper).
+bool CallBool(ue3::Object* object, ue3::Function* function) {
     if (object == nullptr || function == nullptr) {
         return false;
     }
-    struct {
-        unsigned long ReturnValue;
-        unsigned char pad[60];
-    } parms{};
-    object->ProcessEvent(function, &parms, nullptr);  // directly: never the SDK's wrapper
-    return parms.ReturnValue != 0;
+    ue3::Params parms(ue3::runtime::Get(), function);
+    ue3::runtime::Call(object, function, parms);
+    return parms.ReturnBool().value_or(false);
 }
 
-int SquadSize(ABioBaseSquad* squad) {
-    ABioBaseSquad_execGetSquadSize_Parms parms;
-    squad->ProcessEvent(gGetSquadSize, &parms, nullptr);
-    return parms.ReturnValue;
+int SquadSize(ue3::Object* squad) {
+    ue3::Params parms(ue3::runtime::Get(), gGetSquadSize);
+    ue3::runtime::Call(squad, gGetSquadSize, parms);
+    return parms.Return<std::int32_t>().value_or(0);
 }
 
-APawn* SquadMember(ABioBaseSquad* squad, int index) {
-    ABioBaseSquad_execGetMember_Parms parms;
-    parms.nIndex = index;
-    squad->ProcessEvent(gGetMember, &parms, nullptr);
-    return parms.ReturnValue;
+ue3::Object* SquadMember(ue3::Object* squad, int index) {
+    ue3::Params parms(ue3::runtime::Get(), gGetMember);
+    parms.Set("nIndex", std::int32_t{index});
+    ue3::runtime::Call(squad, gGetMember, parms);
+    return parms.Return<ue3::Object*>().value_or(nullptr);
 }
 
-int SwitchWeaponOf(ABioBaseSquad* squad, int index) {
-    ABioBaseSquad_execGetMemberSwitchWeapon_Parms parms;
-    parms.nIndex = index;
-    squad->ProcessEvent(gGetMemberSwitchWeapon, &parms, nullptr);
-    return parms.ReturnValue;
+int SwitchWeaponOf(ue3::Object* squad, int index) {
+    ue3::Params parms(ue3::runtime::Get(), gGetMemberSwitchWeapon);
+    parms.Set("nIndex", std::int32_t{index});
+    ue3::runtime::Call(squad, gGetMemberSwitchWeapon, parms);
+    return parms.Return<std::uint8_t>().value_or(0);
 }
 
-int RangedType(ABioWeapon* weapon) {
-    if (weapon == nullptr || gGetRangedWeaponType == nullptr || !weapon->IsA(ABioWeaponRanged::StaticClass())) {
+int RangedType(ue3::Object* weapon) {
+    if (weapon == nullptr || gGetRangedWeaponType == nullptr || !ue3::IsA(weapon, gBioWeaponRanged)) {
         return -1;
     }
-    ABioWeaponRanged_execGetRangedWeaponType_Parms parms;
-    weapon->ProcessEvent(gGetRangedWeaponType, &parms, nullptr);
-    return parms.ReturnValue <= 3 ? static_cast<int>(parms.ReturnValue) : -1;
+    ue3::Params parms(ue3::runtime::Get(), gGetRangedWeaponType);
+    ue3::runtime::Call(weapon, gGetRangedWeaponType, parms);
+    std::optional<std::uint8_t> const type = parms.Return<std::uint8_t>();
+    return type && *type <= 3 ? static_cast<int>(*type) : -1;
+}
+
+ue3::Object* QuickSlot(ue3::Object const* equipment, int i) {
+    ue3::Object* const* const slot = gQuickSlots.At<ue3::Object*>(equipment, i);
+    return slot != nullptr ? *slot : nullptr;
+}
+
+int CurrentQuickSlot(ue3::Object const* equipment) {
+    return gQuickSlotCurrent.Read<std::uint8_t>(equipment).value_or(0xFF);
 }
 
 struct Game {
-    ABioPlayerController* controller = nullptr;
-    ABioPawn* player = nullptr;
-    ABioBaseSquad* squad = nullptr;
-    std::array<ABioPawn*, kMaxMembers> pawns{};  // this tick's squadmates, in squad order
-    std::array<int, kMaxMembers> indices{};      // their squad indices
+    ue3::Object* controller = nullptr;  // a BioPlayerController
+    ue3::Object* player = nullptr;      // Shepard's BioPawn
+    ue3::Object* squad = nullptr;       // a BioBaseSquad
+    std::array<ue3::Object*, kMaxMembers> pawns{};  // this tick's squadmates (BioPawns), in squad order
+    std::array<int, kMaxMembers> indices{};         // their squad indices
     int count = 0;
 };
 
 std::optional<Game> ReadGame(std::string& why) {
-    APlayerController* const pc = engine::LocalPlayerController();
-    if (pc == nullptr || !pc->IsA(ABioPlayerController::StaticClass())) {
+    if (!ue3::runtime::Ready()) {
+        why = "our reflection layer is off (see the 'reflect:' log lines)";
+        return std::nullopt;
+    }
+    ue3::Object* const pc = player::Controller();
+    if (pc == nullptr || !player::IsBioPlayerController(pc)) {
         why = "no player controller";
         return std::nullopt;
     }
     Game game;
-    game.controller = static_cast<ABioPlayerController*>(pc);
-    APawn* const pawn = pc->Pawn;
-    if (pawn == nullptr || !pawn->IsA(ABioPawn::StaticClass())) {
+    game.controller = pc;
+    ue3::Object* const pawn = player::BioPawn(pc);
+    if (pawn == nullptr) {
         why = "no player pawn (vehicle or cutscene?)";
         return std::nullopt;
     }
-    game.player = static_cast<ABioPawn*>(pawn);
-    UBioPawnBehavior* const behavior = game.player->m_oBehavior;
-    game.squad = behavior != nullptr ? behavior->Squad : nullptr;
+    game.player = pawn;
+    ue3::Object* const behavior = ObjectOf(gBehavior, pawn);
+    game.squad = ObjectOf(gSquadOf, behavior);
     if (game.squad == nullptr) {
         why = "the player has no squad";
         return std::nullopt;
     }
     int const size = SquadSize(game.squad);
     for (int i = 0; i < size && game.count < kMaxMembers; ++i) {
-        APawn* const member = SquadMember(game.squad, i);
-        if (member == nullptr || member == pawn || !member->IsA(ABioPawn::StaticClass())) {
+        ue3::Object* const member = SquadMember(game.squad, i);
+        if (member == nullptr || member == pawn || !player::IsBioPawn(member)) {
             continue;
         }
-        game.pawns[game.count] = static_cast<ABioPawn*>(member);
+        game.pawns[game.count] = member;
         game.indices[game.count] = i;
         ++game.count;
     }
     return game;
 }
 
-void ReadName(ABioPawn* pawn, MemberInfo& m) {
-    UBioPawnBehavior* const behavior = pawn->m_oBehavior;
+void ReadName(ue3::Object* pawn, MemberInfo& m) {
+    ue3::Object* const behavior = ObjectOf(gBehavior, pawn);
     std::string behaviorName;
     std::string typeName;
     if (behavior != nullptr) {
-        if (behavior->ActorGameName.Any()) {
-            behaviorName = Narrow(static_cast<std::wstring_view>(behavior->ActorGameName));
-        }
-        if (behavior->m_oActorType != nullptr && behavior->m_oActorType->ActorGameName.Any()) {
-            typeName = Narrow(static_cast<std::wstring_view>(behavior->m_oActorType->ActorGameName));
-        }
+        behaviorName = StringOf(gActorGameName, behavior);
+        typeName = StringOf(gTypeGameName, ObjectOf(gActorType, behavior));
     }
-    std::string const tag = engine::ToString(pawn->Tag);
+    std::string const tag = ue3::runtime::NameText(gTag.Read<ue3::Name>(pawn).value_or(ue3::Name{}));
     if (char const* byClass = HenchmanByClass(m.classId)) {
         m.name = byClass;
         m.nameSource = "its class";
@@ -457,34 +510,34 @@ void ReadName(ABioPawn* pawn, MemberInfo& m) {
     m.discipline = DisciplineOf(m.classId);
     m.initials = InitialsOf(m.name);
     log::Info("squad: squadmate 0x{:X}: \"{}\" from {} (class {} = {}; ActorGameName \"{}\", actor type's \"{}\", tag \"{}\", {})",
-        m.key, m.name, m.nameSource, m.classId, m.role, behaviorName, typeName, tag, engine::FullName(pawn));
+        m.key, m.name, m.nameSource, m.classId, m.role, behaviorName, typeName, tag, FullName(pawn));
 }
 
 // The squadmate's details: class and name once, quick slots when they change, health.
-void ReadDetails(ABioPawn* pawn, MemberInfo& m, bool fresh) {
-    UBioPawnBehavior* const behavior = pawn->m_oBehavior;
+void ReadDetails(ue3::Object* pawn, MemberInfo& m, bool fresh) {
+    ue3::Object* const behavior = ObjectOf(gBehavior, pawn);
     if (fresh) {
         int classId = -1;
         if (behavior != nullptr && gGetClass != nullptr) {
-            UBioPawnBehavior_execGetClass_Parms parms;
-            behavior->ProcessEvent(gGetClass, &parms, nullptr);
-            classId = parms.ReturnValue;
+            ue3::Params parms(ue3::runtime::Get(), gGetClass);
+            ue3::runtime::Call(behavior, gGetClass, parms);
+            classId = parms.Return<std::uint8_t>().value_or(0);
         }
         m.classId = classId;
         ReadName(pawn, m);
     }
-    UBioEquipment* const equipment = behavior != nullptr ? behavior->m_oEquipment : nullptr;
+    ue3::Object* const equipment = ObjectOf(gEquipment, behavior);
     if (equipment != nullptr) {
         std::array<std::uintptr_t, kWeapons> weapons{};
         for (int i = 0; i < kWeapons; ++i) {
-            weapons[i] = reinterpret_cast<std::uintptr_t>(equipment->m_QuickSlotArray[i]);
+            weapons[i] = reinterpret_cast<std::uintptr_t>(QuickSlot(equipment, i));
         }
         if (fresh || weapons != m.weapons) {
             m.weapons = weapons;
             m.carried = 0;
             bool matches = true;
             for (int i = 0; i < kWeapons; ++i) {
-                m.typeOfSlot[i] = RangedType(equipment->m_QuickSlotArray[i]);
+                m.typeOfSlot[i] = RangedType(QuickSlot(equipment, i));
                 if (m.typeOfSlot[i] >= 0) {
                     m.carried = static_cast<std::uint8_t>(m.carried | (1u << m.typeOfSlot[i]));
                     matches = matches && m.typeOfSlot[i] == i;
@@ -493,7 +546,7 @@ void ReadDetails(ABioPawn* pawn, MemberInfo& m, bool fresh) {
             log::Info("squad: {}'s quick slots: {} ({})", m.name, WeaponList(m.carried),
                 matches ? "slot = weapon type, as the weapon wheel assumes" : "NOT slot = weapon type");
         }
-        int const slot = equipment->m_eQuickSlotCurrent;
+        int const slot = CurrentQuickSlot(equipment);
         m.current = slot >= 0 && slot < kWeapons ? m.typeOfSlot[slot] : -1;
     } else {
         m.carried = 0;
@@ -501,22 +554,27 @@ void ReadDetails(ABioPawn* pawn, MemberInfo& m, bool fresh) {
     }
     m.health = -1.0f;
     if (behavior != nullptr && gGetPercentHealth != nullptr) {
-        UBioEpicPawnBehavior_execGetPercentHealth_Parms parms;
-        behavior->ProcessEvent(gGetPercentHealth, &parms, nullptr);
-        if (std::isfinite(parms.ReturnValue)) {
-            m.health = std::clamp(parms.ReturnValue > 1.5f ? parms.ReturnValue / 100.0f : parms.ReturnValue, 0.0f, 1.0f);
+        ue3::Params parms(ue3::runtime::Get(), gGetPercentHealth);
+        ue3::runtime::Call(behavior, gGetPercentHealth, parms);
+        float const health = parms.Return<float>().value_or(std::numeric_limits<float>::quiet_NaN());
+        if (std::isfinite(health)) {
+            m.health = std::clamp(health > 1.5f ? health / 100.0f : health, 0.0f, 1.0f);
         }
     }
 }
 
+void CallPauseGame(ue3::Object* world, bool pause) {
+    ue3::Params parms(ue3::runtime::Get(), gPauseGame);
+    parms.SetBool("bPause", pause);
+    ue3::runtime::Call(world, gPauseGame, parms);
+}
+
 void PauseGame(Game const& game, bool pause) {
-    AWorldInfo* const world = game.controller->WorldInfo;
+    ue3::Object* const world = ObjectOf(gWorldInfo, game.controller);
     if (world == nullptr || gPauseGame == nullptr) {
         return;
     }
-    AWorldInfo_execPauseGame_Parms parms;
-    parms.bPause = pause ? 1 : 0;
-    world->ProcessEvent(gPauseGame, &parms, nullptr);  // what the weapon wheel's Activated/Deactivated call
+    CallPauseGame(world, pause);  // what the weapon wheel's Activated/Deactivated call
     gPausedByUs = pause;
     log::Info("squad: the game {} (WorldInfo.PauseGame, as ME1's weapon wheel)", pause ? "paused" : "runs again");
 }
@@ -527,21 +585,19 @@ void ResumeIfPaused(char const* why) {
         return;
     }
     gPausedByUs = false;
-    APlayerController* const pc = engine::LocalPlayerController();
-    if (pc == nullptr || pc->WorldInfo == nullptr || gPauseGame == nullptr) {
+    ue3::Object* const world = ObjectOf(gWorldInfo, player::Controller());
+    if (world == nullptr || gPauseGame == nullptr) {
         log::Warn("squad: the menu paused the game and closed ({}), but there's no world to unpause", why);
         return;
     }
-    AWorldInfo_execPauseGame_Parms parms;
-    parms.bPause = 0;
-    pc->WorldInfo->ProcessEvent(gPauseGame, &parms, nullptr);
+    CallPauseGame(world, false);
     log::Info("squad: the game runs again ({})", why);
 }
 
 // What the weapon wheel does for one member when it closes (SFXGameModeWeaponWheel.Deactivated).
 void Equip(Game const& game, int member, int weapon) {
     MemberInfo const& m = gMembers[member];
-    ABioPawn* const pawn = game.pawns[member];
+    ue3::Object* const pawn = game.pawns[member];
     int const index = game.indices[member];
     gLastUsed = m.key;
     if (weapon == m.current) {
@@ -558,10 +614,10 @@ void Equip(Game const& game, int member, int weapon) {
         log::Warn("squad: {}'s {} isn't in quick slot {} (the wheel passes the type as the slot, so do we)", m.name,
             menu::WeaponName(weapon), weapon);
     }
-    ABioPlayerController_execSquadOrderEquipWeapon_Parms order;
-    order.nWeapon = static_cast<unsigned char>(weapon);
-    order.pPawn = pawn;
-    game.controller->ProcessEvent(gSquadOrderEquipWeapon, &order, nullptr);  // directly: never the SDK's wrapper
+    ue3::Params order(ue3::runtime::Get(), gSquadOrderEquipWeapon);
+    order.Set("nWeapon", static_cast<std::uint8_t>(weapon));
+    order.Set("pPawn", pawn);
+    ue3::runtime::Call(game.controller, gSquadOrderEquipWeapon, order);  // directly: never a generated wrapper
     int const recorded = SwitchWeaponOf(game.squad, index);
     if (recorded != weapon) {
         gLastResult = std::format("the game didn't take the order for {} (its squad entry says {})", m.name, recorded);
@@ -572,25 +628,24 @@ void Equip(Game const& game, int member, int weapon) {
     bool const shepardArmed = CallBool(game.player, gIsInCombatActionState);
     char const* path = nullptr;
     if (shepardArmed) {
-        ABioPlayerController_execApplyTacticalOrders_Parms apply;
-        game.controller->ProcessEvent(gApplyTacticalOrders, &apply, nullptr);
+        ue3::Params apply(ue3::runtime::Get(), gApplyTacticalOrders);
+        ue3::runtime::Call(game.controller, gApplyTacticalOrders, apply);
         path = "SquadOrderEquipWeapon, then ApplyTacticalOrders (Shepard's weapon is out: the AI switches, as the wheel "
                "does in combat)";
     } else {
-        UBioPawnBehavior* const behavior = pawn->m_oBehavior;
-        UBioEquipment* const equipment = behavior != nullptr ? behavior->m_oEquipment : nullptr;
-        if (equipment == nullptr || !equipment->IsA(UBioEquipment::StaticClass())) {
+        ue3::Object* const equipment = ObjectOf(gEquipment, ObjectOf(gBehavior, pawn));
+        if (equipment == nullptr || !ue3::IsA(equipment, gBioEquipment)) {
             gLastResult = std::format("{} has no equipment", m.name);
             log::Warn("squad: {}: not switched", gLastResult);
             return;
         }
-        UBioEquipment_execChangeToQuickSlot_Parms change;
-        change.Slot = static_cast<unsigned char>(recorded);
-        equipment->ProcessEvent(gChangeToQuickSlot, &change, nullptr);
-        ABioBaseSquad_execSetMemberSwitchWeapon_Parms reset;
-        reset.nIndex = index;
-        reset.eWeapon = 4;  // STW_None: applied
-        game.squad->ProcessEvent(gSetMemberSwitchWeapon, &reset, nullptr);
+        ue3::Params change(ue3::runtime::Get(), gChangeToQuickSlot);
+        change.Set("Slot", static_cast<std::uint8_t>(recorded));
+        ue3::runtime::Call(equipment, gChangeToQuickSlot, change);
+        ue3::Params reset(ue3::runtime::Get(), gSetMemberSwitchWeapon);
+        reset.Set("nIndex", std::int32_t{index});
+        reset.Set("eWeapon", std::uint8_t{4});  // STW_None: applied
+        ue3::runtime::Call(game.squad, gSetMemberSwitchWeapon, reset);
         path = "SquadOrderEquipWeapon, then ChangeToQuickSlot and SetMemberSwitchWeapon(4) (Shepard's weapon is away: at "
                "once, as the wheel does)";
     }
@@ -678,9 +733,10 @@ Survey SurveySquad(Game const& game, double deltaSeconds, bool busy, bool newPul
         m.target.valid = false;
         m.angle = kPi;
         m.distance = -1.0f;
-        if (anchor) {
-            FVector const& at = engine::adapter::Location(game.pawns[i]);
-            m.target.position = engine::ToTracking(*anchor, engine::UnrealVector{at.X, at.Y, at.Z + kChestUnits});
+        std::optional<ue3::Vector> const location = anchor ? player::Location(game.pawns[i]) : std::nullopt;
+        if (location) {
+            ue3::Vector const& at = *location;
+            m.target.position = engine::ToTracking(*anchor, engine::UnrealVector{at.x, at.y, at.z + kChestUnits});
             m.target.valid = std::isfinite(m.target.position.x) && std::isfinite(m.target.position.y) &&
                 std::isfinite(m.target.position.z);
         }
@@ -735,31 +791,23 @@ void LogPull(Survey const& survey, hand_calibration::Squad const& settings) {
 
 // ---- style = native: the game's own weapon wheel -------------------------------------------------
 
-static_assert(offsetof(APlayerController, m_oCachedScaleFormManager) == 0x740);
-static_assert(offsetof(UMassEffectGuiManager, m_oSFHudHandler) == 0x1A4);
-static_assert(offsetof(UBioSFHandler_HUD, vInput) == 0xDC);
-static_assert(offsetof(UBioSFHandler_HUD, m_nShepardIndex) == 0x10C);
-static_assert(offsetof(UBioSFHandler_HUD, m_nHench1Index) == 0x110);
-static_assert(offsetof(UBioSFHandler_HUD, m_nHench2Index) == 0x114);
-static_assert(offsetof(UBioSFHandler_HUD, nAngle) == 0x134);
-static_assert(offsetof(UBioSFHandler_HUD, nLastAngle) == 0x138);
-
-std::optional<unsigned char> CurrentMode(ABioPlayerController* controller) {
-    USFXGameModeManager const* const modes = engine::adapter::GameModes(controller);
-    if (modes == nullptr) {
+std::optional<unsigned char> CurrentMode(ue3::Object* controller) {
+    ue3::Object* const manager = ObjectOf(gGameModeManager, controller);
+    if (manager == nullptr) {
         return std::nullopt;
     }
-    return modes->CurrentMode;
+    return gCurrentMode.Read<std::uint8_t>(manager);
 }
 
-USFXGameModeBase* FindMode(ABioPlayerController* controller, UClass* cls) {
-    USFXGameModeManager* const manager = controller->GameModeManager;
-    if (manager == nullptr || cls == nullptr) {
+ue3::Object* FindMode(ue3::Object* controller, ue3::ClassRef& cls) {
+    ue3::Object* const manager = ObjectOf(gGameModeManager, controller);
+    if (manager == nullptr || cls.Get() == nullptr) {
         return nullptr;
     }
-    for (int i = 0; i < static_cast<int>(manager->GameModes.Count()); ++i) {
-        USFXGameModeBase* const mode = manager->GameModes.GetData()[i];
-        if (mode != nullptr && mode->IsA(cls)) {
+    ue3::TArray<ue3::Object*> const* const modes = gGameModes.In<ue3::TArray<ue3::Object*>>(manager);
+    for (int i = 0; modes != nullptr && i < modes->Count(); ++i) {
+        ue3::Object* const mode = modes->data[i];
+        if (mode != nullptr && ue3::IsA(mode, cls)) {
             return mode;
         }
     }
@@ -767,41 +815,43 @@ USFXGameModeBase* FindMode(ABioPlayerController* controller, UClass* cls) {
 }
 
 // The HUD's script handler (the console HUD movie's, which draws and steers the wheel), or nullptr.
-UBioSFHandler_HUD* HudHandler(ABioPlayerController* controller) {
-    UBioSFManager* manager = nullptr;
+ue3::Object* HudHandler(ue3::Object* controller) {
+    ue3::Object* manager = nullptr;
     if (gGetScaleFormManager != nullptr) {
-        APlayerController_execGetScaleFormManager_Parms parms;
-        controller->ProcessEvent(gGetScaleFormManager, &parms, nullptr);  // directly: never the SDK's wrapper
-        manager = parms.ReturnValue;
+        ue3::Params parms(ue3::runtime::Get(), gGetScaleFormManager);
+        ue3::runtime::Call(controller, gGetScaleFormManager, parms);  // directly: never a generated wrapper
+        manager = parms.Return<ue3::Object*>().value_or(nullptr);
     }
     if (manager == nullptr) {
-        manager = controller->m_oCachedScaleFormManager;
+        manager = ObjectOf(gCachedScaleFormManager, controller);
     }
-    if (manager == nullptr || !manager->IsA(UMassEffectGuiManager::StaticClass())) {
+    if (manager == nullptr || !ue3::IsA(manager, gGuiManager)) {
         return nullptr;
     }
-    UBioSFHandler_HUD* const hud = static_cast<UMassEffectGuiManager*>(manager)->m_oSFHudHandler;
-    return hud != nullptr && hud->IsA(UBioSFHandler_HUD::StaticClass()) ? hud : nullptr;
+    ue3::Object* const hud = ObjectOf(gSfHudHandler, manager);
+    return hud != nullptr && ue3::IsA(hud, gHudHandler) ? hud : nullptr;
+}
+
+int IntOf(ue3::FieldRef& field, ue3::Object const* object, int fallback = -1) {
+    return object != nullptr ? field.Read<std::int32_t>(object).value_or(fallback) : fallback;
 }
 
 // Whether the player may fight here (EnterWeaponWheel returns at once in a hub where it's false). True
 // when it can't be told.
 bool CombatEnabled(Game const& game) {
-    UPlayerInput* const input = game.controller->PlayerInput;
-    if (gIsCombatEnabled == nullptr || input == nullptr || !input->IsA(UBioPlayerInput::StaticClass())) {
+    ue3::Object* const input = ObjectOf(gPlayerInput, game.controller);
+    if (gIsCombatEnabled == nullptr || input == nullptr || !ue3::IsA(input, gBioPlayerInput)) {
         return true;
     }
     return CallBool(input, gIsCombatEnabled);
 }
 
-bool CallNoParms(UObject* object, UFunction* function) {
+bool CallNoParms(ue3::Object* object, ue3::Function* function) {
     if (object == nullptr || function == nullptr) {
         return false;
     }
-    struct {
-        unsigned char pad[64];
-    } parms{};
-    object->ProcessEvent(function, &parms, nullptr);  // directly: never the SDK's wrapper
+    ue3::Params parms(ue3::runtime::Get(), function);
+    ue3::runtime::Call(object, function, parms);  // directly: never a generated wrapper
     return true;
 }
 
@@ -820,29 +870,28 @@ struct Pick {
 std::uint8_t ShepardCarried(Game const& game, int& current) {
     std::uint8_t carried = 0;
     current = -1;
-    UBioPawnBehavior* const behavior = game.player->m_oBehavior;
-    UBioEquipment* const equipment = behavior != nullptr ? behavior->m_oEquipment : nullptr;
+    ue3::Object* const equipment = ObjectOf(gEquipment, ObjectOf(gBehavior, game.player));
     if (equipment == nullptr) {
         return 0;
     }
     std::array<int, kWeapons> typeOfSlot{-1, -1, -1, -1};
     for (int i = 0; i < kWeapons; ++i) {
-        typeOfSlot[i] = RangedType(equipment->m_QuickSlotArray[i]);
+        typeOfSlot[i] = RangedType(QuickSlot(equipment, i));
         if (typeOfSlot[i] >= 0) {
             carried = static_cast<std::uint8_t>(carried | (1u << typeOfSlot[i]));
         }
     }
-    int const slot = equipment->m_eQuickSlotCurrent;
+    int const slot = CurrentQuickSlot(equipment);
     current = slot >= 0 && slot < kWeapons ? typeOfSlot[slot] : -1;
     return carried;
 }
 
-Pick PickOf(Game const& game, UBioSFHandler_HUD const* hud, wheel::Entry entry) {
+Pick PickOf(Game const& game, ue3::Object const* hud, wheel::Entry entry) {
     Pick pick;
     if (hud == nullptr || !entry.Valid()) {
         return pick;
     }
-    pick.squadIndex = entry.member == 0 ? hud->m_nShepardIndex : entry.member == 1 ? hud->m_nHench1Index : hud->m_nHench2Index;
+    pick.squadIndex = entry.member == 0 ? IntOf(gShepardIndex, hud) : entry.member == 1 ? IntOf(gHench1Index, hud) : IntOf(gHench2Index, hud);
     pick.weapon = wheel::WeaponOfSlot(entry.slot);
     if (pick.squadIndex < 0 || pick.squadIndex >= SquadSize(game.squad) || pick.weapon < 0) {
         return pick;  // a henchman slot the squad doesn't have (one squadmate, or the HUD's indices stale)
@@ -872,12 +921,12 @@ Pick PickOf(Game const& game, UBioSFHandler_HUD const* hud, wheel::Entry entry) 
 }
 
 // The wheel's member for a squadmate (1 or 2: the HUD's first or second henchman), or -1.
-int WheelMemberOf(Game const& game, UBioSFHandler_HUD const* hud, int member) {
+int WheelMemberOf(Game const& game, ue3::Object const* hud, int member) {
     if (hud == nullptr || member < 0 || member >= game.count) {
         return -1;
     }
     int const squadIndex = game.indices[member];
-    return squadIndex == hud->m_nHench1Index ? 1 : squadIndex == hud->m_nHench2Index ? 2 : -1;
+    return squadIndex == IntOf(gHench1Index, hud) ? 1 : squadIndex == IntOf(gHench2Index, hud) ? 2 : -1;
 }
 
 std::string Recorded(Game const& game) {
@@ -886,7 +935,7 @@ std::string Recorded(Game const& game) {
     for (int i = 0; i < size; ++i) {
         int const recorded = SwitchWeaponOf(game.squad, i);
         if (recorded >= 0 && recorded < kWeapons) {
-            APawn* const member = SquadMember(game.squad, i);
+            ue3::Object* const member = SquadMember(game.squad, i);
             std::string name = member == game.player ? std::string("Shepard") : std::format("member {}", i);
             for (int m = 0; m < gCount; ++m) {
                 if (game.indices[m] == i) {
@@ -913,14 +962,13 @@ void ReleaseWheel(char const* why) {
     }
     gWheel.Reset();
     gWheelPressA = false;
-    APlayerController* const pc = engine::LocalPlayerController();
-    if (pc == nullptr || !pc->IsA(ABioPlayerController::StaticClass())) {
+    ue3::Object* const controller = player::Controller();
+    if (controller == nullptr || !player::IsBioPlayerController(controller)) {
         return;
     }
-    auto* const controller = static_cast<ABioPlayerController*>(pc);
     auto const mode = CurrentMode(controller);
     if (mode && *mode == 3) {
-        bool const called = CallNoParms(FindMode(controller, USFXGameModeWeaponWheel::StaticClass()), gExitWeaponWheel);
+        bool const called = CallNoParms(FindMode(controller, gGameModeWeaponWheel), gExitWeaponWheel);
         log::Info("squad: the game's weapon wheel let go ({}){}", why, called ? ": closed (ExitWeaponWheel)" : ": no wheel mode to close");
     }
 }
@@ -955,8 +1003,9 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
     }
 
     // What the wheel highlights (any time it's up: also when LB opened it).
-    UBioSFHandler_HUD* const hud = (wheelActive || gWheel.Holding()) && game ? HudHandler(game->controller) : nullptr;
-    wheel::Entry const entry = wheelActive && hud != nullptr ? wheel::EntryAtStickAngle(hud->nAngle) : wheel::Entry{};
+    ue3::Object* const hud = (wheelActive || gWheel.Holding()) && game ? HudHandler(game->controller) : nullptr;
+    std::optional<std::int32_t> const hudAngle = hud != nullptr ? gAngle.Read<std::int32_t>(hud) : std::nullopt;
+    wheel::Entry const entry = wheelActive && hudAngle ? wheel::EntryAtStickAngle(*hudAngle) : wheel::Entry{};
     Pick const pick = game && wheelActive ? PickOf(*game, hud, entry) : Pick{};
 
     wheel::Input in;
@@ -989,7 +1038,7 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
         gWheelPointed = step.openedPointing && survey.pointed >= 0 ? survey.pointed : -1;
         gWheelOpenedAt = 0.0;
         gWheelClicked = false;
-        USFXGameModeBase* const defaultMode = game ? FindMode(game->controller, USFXGameModeDefault::StaticClass()) : nullptr;
+        ue3::Object* const defaultMode = game ? FindMode(game->controller, gGameModeDefault) : nullptr;
         gWheelWasHolstered = game && !CallBool(game->player, gIsInCombatActionState);
         gReholsterWait = -1.0;
         bool const called = CallNoParms(defaultMode, gEnterWeaponWheel);
@@ -1003,9 +1052,10 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
     }
     if (step.opened) {
         log::Info("squad: wheel #{} open after {:.2f} s (game mode 3; the game pauses itself); HUD handler {}{}", gWheelSerial,
-            gWheelOpenedAt, hud != nullptr ? engine::FullName(hud) : std::string("not found (no highlight, no preselect)"),
-            hud != nullptr && hud->oPanel != nullptr
-                ? std::format(", its movie {} the gamepad", hud->oPanel->bUsingGamepad ? "uses" : "doesn't use")
+            gWheelOpenedAt, hud != nullptr ? FullName(hud) : std::string("not found (no highlight, no preselect)"),
+            ObjectOf(gHandlerPanel, hud) != nullptr
+                ? std::format(", its movie {} the gamepad",
+                      gUsingGamepad.ReadBool(ObjectOf(gHandlerPanel, hud)).value_or(false) ? "uses" : "doesn't use")
                 : std::string());
         OpenHaptic(link);
         // Pointing preselects: the HUD keeps its last stick angle while the stick is centred, so set it to
@@ -1015,10 +1065,14 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
             int const weapon = gMembers[gWheelPointed].current;
             int const angle = wheel::StickAngleOf({member, wheel::SlotOfWeapon(weapon)});
             if (angle >= 0) {
-                hud->nLastAngle = angle;
-                write_journal::Wrote("Squad.HUD nLastAngle", &hud->nLastAngle);
-                hud->nAngle = angle;
-                write_journal::Wrote("Squad.HUD nAngle", &hud->nAngle);
+                if (std::int32_t* const last = gLastAngle.In<std::int32_t>(hud)) {
+                    *last = angle;
+                    write_journal::Wrote("Squad.HUD nLastAngle", last);
+                }
+                if (std::int32_t* const now = gAngle.In<std::int32_t>(hud)) {
+                    *now = angle;
+                    write_journal::Wrote("Squad.HUD nAngle", now);
+                }
                 log::Info("squad: wheel #{}: preselected {}'s {} (wheel member {}, slot {}: the HUD's kept stick angle {} deg)", gWheelSerial,
                     gMembers[gWheelPointed].name, menu::WeaponName(weapon), member, wheel::SlotOfWeapon(weapon), angle);
             } else {
@@ -1026,7 +1080,7 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
             }
         } else if (settings.wheelPreselect && gWheelPointed >= 0) {
             log::Info("squad: wheel #{}: {} isn't on the HUD's wheel (its henchmen indices {} and {}): no preselect", gWheelSerial,
-                gMembers[gWheelPointed].name, hud != nullptr ? hud->m_nHench1Index : -1, hud != nullptr ? hud->m_nHench2Index : -1);
+                gMembers[gWheelPointed].name, IntOf(gHench1Index, hud), IntOf(gHench2Index, hud));
         }
     }
     if (step.openFailed) {
@@ -1069,7 +1123,7 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
         gWheelClicked = true;
     }
     if (step.exit && game) {
-        bool const called = CallNoParms(FindMode(game->controller, USFXGameModeWeaponWheel::StaticClass()), gExitWeaponWheel);
+        bool const called = CallNoParms(FindMode(game->controller, gGameModeWeaponWheel), gExitWeaponWheel);
         log::Info("squad: wheel #{}: {} (ExitWeaponWheel, what letting go of LB does); queued: {}", gWheelSerial,
             called ? "closing" : "can't close (no SFXGameModeWeaponWheel)", Recorded(*game));
     }
@@ -1103,10 +1157,9 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
             log::Info("squad: wheel #{}: Shepard's weapon stays out (the right grip holds it)", gWheelSerial);
             gReholsterWait = -1.0;
         } else if (armed && !switching) {
-            USFXGameModeBase* const defaultMode = FindMode(game->controller, USFXGameModeDefault::StaticClass());
+            ue3::Object* const defaultMode = FindMode(game->controller, gGameModeDefault);
             if (defaultMode != nullptr) {
-                USFXGameModeDefault_execTryHolster_Parms parms;
-                defaultMode->ProcessEvent(gTryHolster, &parms, nullptr);  // directly: never the SDK's wrapper
+                CallNoParms(defaultMode, gTryHolster);  // directly: never a generated wrapper
                 log::Info("squad: wheel #{}: Shepard's weapon was away before the wheel, so it goes back "
                           "(SFXGameModeDefault.TryHolster, {:.2f} s after closing)", gWheelSerial, gReholsterWait);
             }
@@ -1130,7 +1183,7 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
                      : std::string("ready (native)"));
 }
 
-#endif  // SDK_TARGET_LE1
+#endif  // MEVR_GAME_LE1
 
 void Publish(Link const& link, bool open) {
     if (link.setMenu == nullptr) {
@@ -1165,7 +1218,7 @@ void Publish(Link const& link, bool open) {
     gPublishedOpen = open;
 }
 
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
 void ReleaseWheel(char const* why);
 #endif
 
@@ -1191,7 +1244,7 @@ void Inactive(std::string why, Link const& link) {
     if (gMachine.CurrentPhase() != menu::Phase::Idle) {
         log::Info("squad: menu closed ({})", why);
     }
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
     ResumeIfPaused(why.c_str());
     ReleaseWheel(why.c_str());
 #endif
@@ -1204,37 +1257,36 @@ void Inactive(std::string why, Link const& link) {
 } // namespace
 
 bool TryStartup() {
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
     struct Want {
-        UFunction** slot;
-        wchar_t const* name;
-        char const* full;
+        ue3::Function** slot;
+        ue3::FunctionRef* ref;
     };
     Want const wants[] = {
-        {&gGetSquadSize, L"GetSquadSize", "Function SFXGame.BioBaseSquad.GetSquadSize"},
-        {&gGetMember, L"GetMember", "Function SFXGame.BioBaseSquad.GetMember"},
-        {&gGetMemberSwitchWeapon, L"GetMemberSwitchWeapon", "Function SFXGame.BioBaseSquad.GetMemberSwitchWeapon"},
-        {&gSetMemberSwitchWeapon, L"SetMemberSwitchWeapon", "Function SFXGame.BioBaseSquad.SetMemberSwitchWeapon"},
-        {&gSquadOrderEquipWeapon, L"SquadOrderEquipWeapon", "Function SFXGame.BioPlayerController.SquadOrderEquipWeapon"},
-        {&gApplyTacticalOrders, L"ApplyTacticalOrders", "Function SFXGame.BioPlayerController.ApplyTacticalOrders"},
-        {&gChangeToQuickSlot, L"ChangeToQuickSlot", "Function SFXGame.BioEquipment.ChangeToQuickSlot"},
-        {&gIsInCombatActionState, L"IsInCombatActionState", "Function SFXGame.BioPawn.IsInCombatActionState"},
-        {&gGetRangedWeaponType, L"GetRangedWeaponType", "Function SFXGame.BioWeaponRanged.GetRangedWeaponType"},
-        {&gGetClass, L"GetClass", "Function SFXGame.BioPawnBehavior.GetClass"},
-        {&gGetPercentHealth, L"GetPercentHealth", "Function SFXGame.BioEpicPawnBehavior.GetPercentHealth"},
-        {&gPauseGame, L"PauseGame", "Function Engine.WorldInfo.PauseGame"},
-        {&gEnterWeaponWheel, L"EnterWeaponWheel", "Function SFXGame.SFXGameModeDefault.EnterWeaponWheel"},
-        {&gExitWeaponWheel, L"ExitWeaponWheel", "Function SFXGame.SFXGameModeWeaponWheel.ExitWeaponWheel"},
-        {&gTryHolster, L"TryHolster", "Function SFXGame.SFXGameModeDefault.TryHolster"},
-        {&gIsSwitchingWeapons, L"IsSwitchingWeapons", "Function SFXGame.BioPawn.IsSwitchingWeapons"},
-        {&gGetScaleFormManager, L"GetScaleFormManager", "Function Engine.PlayerController.GetScaleFormManager"},
-        {&gIsCombatEnabled, L"IsCombatEnabled", "Function SFXGame.BioPlayerInput.IsCombatEnabled"},
+        {&gGetSquadSize, &gGetSquadSizeFn},
+        {&gGetMember, &gGetMemberFn},
+        {&gGetMemberSwitchWeapon, &gGetMemberSwitchWeaponFn},
+        {&gSetMemberSwitchWeapon, &gSetMemberSwitchWeaponFn},
+        {&gSquadOrderEquipWeapon, &gSquadOrderEquipWeaponFn},
+        {&gApplyTacticalOrders, &gApplyTacticalOrdersFn},
+        {&gChangeToQuickSlot, &gChangeToQuickSlotFn},
+        {&gIsInCombatActionState, &gIsInCombatActionStateFn},
+        {&gGetRangedWeaponType, &gGetRangedWeaponTypeFn},
+        {&gGetClass, &gGetClassFn},
+        {&gGetPercentHealth, &gGetPercentHealthFn},
+        {&gPauseGame, &gPauseGameFn},
+        {&gEnterWeaponWheel, &gEnterWeaponWheelFn},
+        {&gExitWeaponWheel, &gExitWeaponWheelFn},
+        {&gTryHolster, &gTryHolsterFn},
+        {&gIsSwitchingWeapons, &gIsSwitchingWeaponsFn},
+        {&gGetScaleFormManager, &gGetScaleFormManagerFn},
+        {&gIsCombatEnabled, &gIsCombatEnabledFn},
     };
     std::string missing;
     for (Want const& w : wants) {
-        *w.slot = engine::FindFunction(w.name, w.full);
+        *w.slot = w.ref->Get();
         if (*w.slot == nullptr) {
-            missing += std::format("{}{}", missing.empty() ? "" : ", ", w.full);
+            missing += std::format("{}Function {}", missing.empty() ? "" : ", ", w.ref->Path());
         }
     }
     // Class, health and pause are nice to have; the rest is the wheel's own path.
@@ -1297,7 +1349,7 @@ void Tick(double deltaSeconds, Link const& link) {
         Inactive("the host is older than v11 (redeploy it)", link);
         return;
     }
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
     if (!gStarted) {
         Inactive("waiting for the script functions", link);
         return;
@@ -1530,7 +1582,7 @@ void LogStats() {
 }
 
 void Shutdown(bool processExiting) {
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
     if (!processExiting) {
         ResumeIfPaused("the mod is unloading with the menu open");
         ReleaseWheel("the mod is unloading");

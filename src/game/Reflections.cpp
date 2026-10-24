@@ -2,9 +2,8 @@
 #include "game/Reflections.hpp"
 
 #include "core/Log.hpp"
-#include "engine/Objects.hpp"
-
-#include <LESDK/Headers.hpp>
+#include "engine/Legacy.hpp"
+#include "ue3/Handles.hpp"
 
 #include <cstdint>
 
@@ -16,12 +15,9 @@ constexpr double kScanSeconds = 3.0;  // between passes
 // Objects examined per tick: a full pass over ~185k objects spreads over ~10 ticks instead of
 // spiking one frame (which would itself be a stutter).
 constexpr int kSliceObjects = 20000;
-constexpr char const* kSetFrameRate = "Function Engine.SceneCaptureComponent.SetFrameRate";
-// EObjectFlags. The SDK's operators truncate them to int, so test the 64-bit value directly.
-constexpr std::uint64_t kTemplateFlags = 0x200 | 0x400;  // ClassDefaultObject | ArchetypeObject
-constexpr std::uint64_t kPendingKill = 0x2000000000000000ull;
+constexpr char const* kSetFrameRate = "Engine.SceneCaptureComponent.SetFrameRate";
 
-UFunction* gSetFrameRate = nullptr;
+ue3::Function* gSetFrameRate = nullptr;
 bool gDisabled = false;
 double gTimer = kScanSeconds;  // first pass on the first tick
 int gCursor = -1;  // next object index of the running pass; -1 between passes
@@ -32,40 +28,84 @@ unsigned gRaised = 0;  // since the last LogStats
 unsigned gFailed = 0;
 unsigned gSeen = 0;  // in the last complete pass
 
-bool IsLiveInstance(UObject const* object) {
-    auto const flags = static_cast<std::uint64_t>(object->ObjectFlags);
-    return (flags & (kTemplateFlags | kPendingKill)) == 0;
+#if defined(MEVR_GAME_LE1)
+
+// Our reflection layer (research/34).
+ue3::FunctionRef gSetFrameRateRef{kSetFrameRate};
+ue3::ClassRef gReflectClass{"Engine.SceneCaptureReflectComponent"};
+ue3::FieldRef gFrameRate{"Engine.SceneCaptureComponent", "FrameRate"};
+// EObjectFlags (64-bit): ClassDefaultObject | ArchetypeObject.
+constexpr std::uint64_t kTemplateFlags = 0x200 | 0x400;
+
+ue3::Function* FindSetFrameRate() {
+    if (!ue3::runtime::Ready()) {
+        log::Warn("reflections: off: our reflection layer is off (see the 'reflect:' log lines)");
+        return nullptr;
+    }
+    return gSetFrameRateRef.Get();
 }
 
-// One slice of the current pass. The class has no subclasses (SDK), so an exact class match
-// replaces IsA's superclass walk.
-void ScanSlice() {
-    UClass* const reflectClass = USceneCaptureReflectComponent::StaticClass();
-    auto* const objects = UObject::GObjObjects;
-    int const count = static_cast<int>(objects->Count());
-    int const end = gCursor + kSliceObjects < count ? gCursor + kSliceObjects : count;
-    for (int i = gCursor; i < end && reflectClass != nullptr; ++i) {
-        UObject* const object = objects->GetData()[i];
-        if (object == nullptr || object->Class != reflectClass || !IsLiveInstance(object)) {
+// Objects [begin, begin + kSliceObjects) of the pass. The class has no subclasses, so an exact class
+// match replaces IsA's superclass walk. Returns where the pass continues; `done`: that was the end.
+int Slice(int begin, bool& done) {
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Class* const reflectClass = gReflectClass.Get();
+    int const count = ue3::runtime::Ready() ? r.ObjectCount() : 0;
+    int const end = begin + kSliceObjects < count ? begin + kSliceObjects : count;
+    done = end >= count;
+    for (int i = begin; i < end && reflectClass != nullptr; ++i) {
+        ue3::Object* const object = r.ObjectAt(i);
+        if (object == nullptr || r.ClassOf(object) != reflectClass) {
             continue;
         }
-        auto* const capture = static_cast<USceneCaptureReflectComponent*>(object);
+        if ((r.FlagsOf(object) & (kTemplateFlags | r.layout().pendingKillFlag)) != 0) {
+            continue;
+        }
+        float* const frameRate = gFrameRate.In<float>(object);
+        if (frameRate == nullptr) {
+            continue;
+        }
         ++gPassSeen;
-        if (capture->FrameRate >= kFrameRate) {
+        if (*frameRate >= kFrameRate) {
             continue;
         }
-        // Called directly: the SDK's generated wrapper corrupts FunctionFlags (CLAUDE.md).
-        USceneCaptureComponent_execSetFrameRate_Parms parms;
-        parms.NewFrameRate = kFrameRate;
-        capture->ProcessEvent(gSetFrameRate, &parms, nullptr);
-        if (capture->FrameRate >= kFrameRate) {
+        // Through ProcessEvent with the function's own block (never a generated wrapper: CLAUDE.md).
+        ue3::Params parms(r, gSetFrameRate);
+        parms.Set("NewFrameRate", kFrameRate);
+        ue3::runtime::Call(object, gSetFrameRate, parms);
+        if (*frameRate >= kFrameRate) {
             ++gPassRaised;
         } else {
             ++gPassFailed;
         }
     }
-    gCursor = end;
-    if (end < count) {
+    return end;
+}
+
+#else
+
+// LE2/LE3: LExSDKv2 until stage 5 (engine/Legacy, research/34).
+ue3::Function* FindSetFrameRate() {
+    return engine::legacy::FindFunction(kSetFrameRate);
+}
+
+int Slice(int begin, bool& done) {
+    engine::legacy::CaptureCounts counts;
+    int const end = engine::legacy::RaiseReflectionCaptures(gSetFrameRate, kFrameRate, begin, kSliceObjects, counts);
+    gPassSeen += counts.seen;
+    gPassRaised += counts.raised;
+    gPassFailed += counts.failed;
+    done = counts.done;
+    return end;
+}
+
+#endif
+
+// One slice of the current pass.
+void ScanSlice() {
+    bool done = false;
+    gCursor = Slice(gCursor, done);
+    if (!done) {
         return;
     }
     gCursor = -1;  // pass complete
@@ -82,7 +122,7 @@ void ScanSlice() {
 } // namespace
 
 bool TryStartup() {
-    gSetFrameRate = engine::FindFunction(L"SetFrameRate", kSetFrameRate);
+    gSetFrameRate = FindSetFrameRate();
     if (gSetFrameRate == nullptr) {
         return false;
     }

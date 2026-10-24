@@ -8,18 +8,17 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/TestRequest.hpp"
-#include "engine/Engine.hpp"
-#include "engine/Objects.hpp"
+#include "engine/GameAdapter.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/ArmIk.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/HeadTracking.hpp"
 #include "game/Holsters.hpp"
+#include "game/Player.hpp"
 #include "game/SupportGrip.hpp"
 #include "game/ViewAnchor.hpp"
-
-#include <LESDK/Headers.hpp>
+#include "ue3/Handles.hpp"
 
 #include <Windows.h>
 
@@ -246,85 +245,156 @@ void Quiet(Link const& link) {
     Continuous(link, kRight, 0.0f, 0.0f);
 }
 
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
 
-static_assert(offsetof(ABioGrenadeProjectileFrisbee, m_vIntendedTargetLocation) == 0x354);
-static_assert(offsetof(ABioGrenadeProjectileFrisbee, m_oHeatSeekTarget) == 0x36C);
-static_assert(offsetof(ABioGrenadeProjectileFrisbee, m_oIntendedTarget) == 0x374);
-static_assert(offsetof(ABioGrenade, m_clsProjectile) == 0x3C8);
-static_assert(offsetof(AWorldInfo, PawnList) == 0x69C);
-static_assert(offsetof(APawn, NextPawn) == 0x408);
+// Our reflection layer (research/34): the fields research/20 read (BioGrenadeProjectileFrisbee
+// m_vIntendedTargetLocation +0x354, m_oHeatSeekTarget +0x36C, m_oIntendedTarget +0x374; BioGrenade.m_clsProjectile
+// +0x3C8; WorldInfo.PawnList +0x69C; Pawn.NextPawn +0x408), found by name; engine/ReflectCheck compares each.
+ue3::ClassRef gBioPlayerInput{"SFXGame.BioPlayerInput"};
+ue3::ClassRef gGameModeDefault{"SFXGame.SFXGameModeDefault"};
+ue3::ClassRef gBioGrenade{"SFXGame.BioGrenade"};
+ue3::ClassRef gFrisbee{"SFXGame.BioGrenadeProjectileFrisbee"};
+ue3::ClassRef gBallistic{"SFXGame.BioGrenadeProjectileBallistic"};
+ue3::FieldRef gPlayerInput{"Engine.PlayerController", "PlayerInput"};
+ue3::FieldRef gStorming{"SFXGame.BioPlayerController", "bStorming"};
+ue3::FieldRef gGameModeManager{"SFXGame.BioPlayerController", engine::adapter::kGameModeManager};
+ue3::FieldRef gGameModes{"SFXGame.SFXGameModeManager", "GameModes"};
+ue3::FieldRef gBehavior{"SFXGame.BioPawn", "m_oBehavior"};
+ue3::FieldRef gEquipment{"SFXGame.BioPawnBehavior", "m_oEquipment"};
+ue3::FieldRef gQuickSlotCurrent{"SFXGame.BioEquipment", "m_eQuickSlotCurrent"};
+ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo"};
+ue3::FieldRef gOwner{"Engine.Actor", "Owner"};
+ue3::FieldRef gInstigator{"Engine.Actor", "Instigator"};
+ue3::FieldRef gPawnList{"Engine.WorldInfo", "PawnList"};
+ue3::FieldRef gWorldGravityZ{"Engine.WorldInfo", "WorldGravityZ"};
+ue3::FieldRef gNextPawn{"Engine.Pawn", "NextPawn"};
+ue3::FieldRef gProjectileSpeed{"Engine.Projectile", "Speed"};
+ue3::FieldRef gClsProjectile{"SFXGame.BioGrenade", "m_clsProjectile"};
+ue3::FieldRef gIntendedTargetLocation{"SFXGame.BioGrenadeProjectileFrisbee", "m_vIntendedTargetLocation"};
+ue3::FieldRef gIntendedTarget{"SFXGame.BioGrenadeProjectileFrisbee", "m_oIntendedTarget"};
+ue3::FieldRef gHeatSeekTarget{"SFXGame.BioGrenadeProjectileFrisbee", "m_oHeatSeekTarget"};
+ue3::FieldRef gStartLocation{"SFXGame.BioGrenadeProjectileFrisbee", "m_vStartLocation"};
 
-UFunction* gUseGrenade = nullptr;
-UFunction* gTryMelee = nullptr;
-UFunction* gGetGrenades = nullptr;
-UFunction* gIsInCombatActionState = nullptr;
-UFunction* gIsSwitchingWeapons = nullptr;
-UFunction* gIsThrowingGrenade = nullptr;
-UFunction* gIsUsingPower = nullptr;
-UFunction* gIsHostile = nullptr;
-UFunction* gIsDead = nullptr;
-UFunction* gGetPercentHealth = nullptr;
-UFunction* gIsCombatEnabled = nullptr;
-UFunction* gTrace = nullptr;
-UFunction* gSetLocation = nullptr;
-UFunction* gDestroy = nullptr;
-UFunction* gSetVelocity = nullptr;
-UFunction* gLaunchGrenade = nullptr;
-UFunction* gLaunchAtPoint = nullptr;
-UFunction* gLaunchAtActor = nullptr;
+ue3::FunctionRef gUseGrenadeFn{"SFXGame.SFXGameModeDefault.UseGrenade"};
+ue3::FunctionRef gTryMeleeFn{"SFXGame.SFXGameModeDefault.TryMelee"};
+ue3::FunctionRef gIsInCombatActionStateFn{"SFXGame.BioPawn.IsInCombatActionState"};
+ue3::FunctionRef gIsSwitchingWeaponsFn{"SFXGame.BioPawn.IsSwitchingWeapons"};
+ue3::FunctionRef gIsThrowingGrenadeFn{"SFXGame.BioPawn.IsThrowingGrenade"};
+ue3::FunctionRef gIsCombatEnabledFn{"SFXGame.BioPlayerInput.IsCombatEnabled"};
+ue3::FunctionRef gSetVelocityFn{"SFXGame.BioGrenadeProjectile.SetVelocity"};
+ue3::FunctionRef gLaunchAtPointFn{"SFXGame.BioGrenade.LaunchGrenadeAtPoint"};
+ue3::FunctionRef gTraceFn{"Engine.Actor.Trace"};
+ue3::FunctionRef gLaunchAtActorFn{"SFXGame.BioGrenade.LaunchGrenadeAtActor"};
+ue3::FunctionRef gLaunchGrenadeFn{"SFXGame.BioGrenade.LaunchGrenade"};
+ue3::FunctionRef gIsUsingPowerFn{"SFXGame.BioPawn.IsUsingPower"};
+ue3::FunctionRef gGetGrenadesFn{"SFXGame.BioPawnBehavior.GetGrenades"};
+ue3::FunctionRef gIsHostileFn{"SFXGame.BioPawn.IsHostile"};
+ue3::FunctionRef gIsDeadFn{"SFXGame.BioPawn.IsDead"};
+ue3::FunctionRef gGetPercentHealthFn{"SFXGame.BioEpicPawnBehavior.GetPercentHealth"};
+ue3::FunctionRef gSetLocationFn{"Engine.Actor.SetLocation"};
+ue3::FunctionRef gDestroyFn{"Engine.Actor.Destroy"};
+// The launch post-handlers read their own blocks (the engine's): each function's parameters.
+ue3::FieldRef gAtPointTarget{gLaunchAtPointFn, "vTarget"};
+ue3::FieldRef gAtPointReturn{gLaunchAtPointFn, "ReturnValue"};
+ue3::FieldRef gAtActorTarget{gLaunchAtActorFn, "oTarget"};
+ue3::FieldRef gAtActorReturn{gLaunchAtActorFn, "ReturnValue"};
+ue3::FieldRef gLaunchVelocity{gLaunchGrenadeFn, "vVelocity"};
+ue3::FieldRef gLaunchReturn{gLaunchGrenadeFn, "ReturnValue"};
 
-FVector ToF(engine::UnrealVector const& v) {
+ue3::Function* gUseGrenade = nullptr;
+ue3::Function* gTryMelee = nullptr;
+ue3::Function* gGetGrenades = nullptr;
+ue3::Function* gIsInCombatActionState = nullptr;
+ue3::Function* gIsSwitchingWeapons = nullptr;
+ue3::Function* gIsThrowingGrenade = nullptr;
+ue3::Function* gIsUsingPower = nullptr;
+ue3::Function* gIsHostile = nullptr;
+ue3::Function* gIsDead = nullptr;
+ue3::Function* gGetPercentHealth = nullptr;
+ue3::Function* gIsCombatEnabled = nullptr;
+ue3::Function* gTrace = nullptr;
+ue3::Function* gSetLocation = nullptr;
+ue3::Function* gDestroy = nullptr;
+ue3::Function* gSetVelocity = nullptr;
+ue3::Function* gLaunchGrenade = nullptr;
+ue3::Function* gLaunchAtPoint = nullptr;
+ue3::Function* gLaunchAtActor = nullptr;
+
+ue3::Vector ToF(engine::UnrealVector const& v) {
     return {static_cast<float>(v.x), static_cast<float>(v.y), static_cast<float>(v.z)};
 }
 
-engine::UnrealVector FromF(FVector const& v) {
-    return {v.X, v.Y, v.Z};
+engine::UnrealVector FromF(ue3::Vector const& v) {
+    return {v.x, v.y, v.z};
 }
 
-bool CallBool(UObject* object, UFunction* function) {
+std::string FullName(ue3::Object const* object) {
+    return ue3::runtime::FullName(object);
+}
+
+ue3::Object* ObjectOf(ue3::FieldRef& field, ue3::Object const* object) {
+    return object != nullptr ? field.Read<ue3::Object*>(object).value_or(nullptr) : nullptr;
+}
+
+engine::UnrealVector LocationOf(ue3::Object const* actor) {
+    return FromF(player::Location(actor).value_or(ue3::Vector{}));
+}
+
+// Through ProcessEvent with the function's own parameter block (never a generated wrapper).
+bool CallBool(ue3::Object* object, ue3::Function* function) {
     if (object == nullptr || function == nullptr) {
         return false;
     }
-    struct {
-        unsigned long ReturnValue;
-        unsigned char pad[60];
-    } parms{};
-    object->ProcessEvent(function, &parms, nullptr);  // directly: never the SDK's wrapper
-    return parms.ReturnValue != 0;
+    ue3::Params parms(ue3::runtime::Get(), function);
+    ue3::runtime::Call(object, function, parms);
+    return parms.ReturnBool().value_or(false);
+}
+
+void CallVoid(ue3::Object* object, ue3::Function* function) {
+    if (object == nullptr || function == nullptr) {
+        return;
+    }
+    ue3::Params parms(ue3::runtime::Get(), function);
+    ue3::runtime::Call(object, function, parms);
 }
 
 struct Game {
-    ABioPlayerController* controller = nullptr;
-    ABioPawn* pawn = nullptr;
-    UBioPawnBehavior* behavior = nullptr;
-    USFXGameModeDefault* mode = nullptr;
+    ue3::Object* controller = nullptr;  // a BioPlayerController
+    ue3::Object* pawn = nullptr;        // a BioPawn
+    ue3::Object* behavior = nullptr;    // its BioPawnBehavior
+    ue3::Object* mode = nullptr;        // the SFXGameModeDefault
 };
 
 std::optional<Game> ReadGame(std::string& why) {
-    APlayerController* const pc = engine::LocalPlayerController();
-    if (pc == nullptr || !pc->IsA(ABioPlayerController::StaticClass())) {
+    if (!ue3::runtime::Ready()) {
+        why = "our reflection layer is off (see the 'reflect:' log lines)";
+        return std::nullopt;
+    }
+    ue3::Object* const pc = player::Controller();
+    if (pc == nullptr || !player::IsBioPlayerController(pc)) {
         why = "no player controller";
         return std::nullopt;
     }
     Game game;
-    game.controller = static_cast<ABioPlayerController*>(pc);
-    if (pc->Pawn == nullptr || !pc->Pawn->IsA(ABioPawn::StaticClass())) {
+    game.controller = pc;
+    game.pawn = player::BioPawn(pc);
+    if (game.pawn == nullptr) {
         why = "no player pawn (vehicle or cutscene?)";
         return std::nullopt;
     }
-    game.pawn = static_cast<ABioPawn*>(pc->Pawn);
-    game.behavior = game.pawn->m_oBehavior;
+    game.behavior = ObjectOf(gBehavior, game.pawn);
     if (game.behavior == nullptr) {
         why = "the player pawn has no behavior";
         return std::nullopt;
     }
-    if (USFXGameModeManager* const manager = game.controller->GameModeManager) {
-        for (int i = 0; i < static_cast<int>(manager->GameModes.Count()); ++i) {
-            USFXGameModeBase* const mode = manager->GameModes.GetData()[i];
-            if (mode != nullptr && mode->IsA(USFXGameModeDefault::StaticClass())) {
-                game.mode = static_cast<USFXGameModeDefault*>(mode);
-                break;
+    if (ue3::Object* const manager = ObjectOf(gGameModeManager, pc)) {
+        if (ue3::TArray<ue3::Object*> const* const modes = gGameModes.In<ue3::TArray<ue3::Object*>>(manager)) {
+            for (int i = 0; i < modes->Count(); ++i) {
+                ue3::Object* const mode = modes->data[i];
+                if (mode != nullptr && ue3::IsA(mode, gGameModeDefault)) {
+                    game.mode = mode;
+                    break;
+                }
             }
         }
     }
@@ -335,9 +405,13 @@ std::optional<Game> ReadGame(std::string& why) {
     return game;
 }
 
+bool Storming(Game const& game) {
+    return gStorming.ReadBool(game.controller).value_or(false);
+}
+
 bool CombatEnabled(Game const& game) {
-    UPlayerInput* const input = game.controller->PlayerInput;
-    return input != nullptr && input->IsA(UBioPlayerInput::StaticClass()) && CallBool(input, gIsCombatEnabled);
+    ue3::Object* const input = ObjectOf(gPlayerInput, game.controller);
+    return input != nullptr && ue3::IsA(input, gBioPlayerInput) && CallBool(input, gIsCombatEnabled);
 }
 
 bool Drawn(Game const& game) {
@@ -348,28 +422,29 @@ bool UsingPower(Game const& game) {
     if (gIsUsingPower == nullptr) {
         return false;
     }
-    ABioPawn_execIsUsingPower_Parms parms;
-    parms.bIgnoreWeaponPowers = 0;
-    game.pawn->ProcessEvent(gIsUsingPower, &parms, nullptr);
-    return parms.ReturnValue != 0;
+    ue3::Params parms(ue3::runtime::Get(), gIsUsingPower);
+    parms.SetBool("bIgnoreWeaponPowers", false);
+    ue3::runtime::Call(game.pawn, gIsUsingPower, parms);
+    return parms.ReturnBool().value_or(false);
 }
 
 int GrenadesLeft(Game const& game) {
     if (gGetGrenades == nullptr) {
         return -1;
     }
-    UBioPawnBehavior_eventGetGrenades_Parms parms;
-    game.behavior->ProcessEvent(gGetGrenades, &parms, nullptr);
-    return parms.ReturnValue;
+    ue3::Params parms(ue3::runtime::Get(), gGetGrenades);
+    ue3::runtime::Call(game.behavior, gGetGrenades, parms);
+    return parms.Return<std::int32_t>().value_or(-1);
 }
 
-double Health(ABioPawn* pawn) {
-    if (pawn == nullptr || pawn->m_oBehavior == nullptr || gGetPercentHealth == nullptr) {
+double Health(ue3::Object* pawn) {
+    ue3::Object* const behavior = ObjectOf(gBehavior, pawn);
+    if (pawn == nullptr || behavior == nullptr || gGetPercentHealth == nullptr) {
         return -1.0;
     }
-    UBioEpicPawnBehavior_execGetPercentHealth_Parms parms;
-    pawn->m_oBehavior->ProcessEvent(gGetPercentHealth, &parms, nullptr);
-    return parms.ReturnValue;
+    ue3::Params parms(ue3::runtime::Get(), gGetPercentHealth);
+    ue3::runtime::Call(behavior, gGetPercentHealth, parms);
+    return parms.Return<float>().value_or(-1.0f);
 }
 
 // Why the game would refuse a grenade now (empty: it wouldn't).
@@ -377,7 +452,7 @@ std::string GrenadeRefusal(Game const& game) {
     if (!CombatEnabled(game)) {
         return "combat is disabled here (a hub or a scripted scene)";
     }
-    if (game.controller->bStorming) {
+    if (Storming(game)) {
         return "sprinting";
     }
     gGrenadesLeft = GrenadesLeft(game);
@@ -394,17 +469,17 @@ std::string GrenadeRefusal(Game const& game) {
 }
 
 // Actor.Trace (native 277) on the player's pawn, which it ignores: the actor hit, and the hit point if
-// it came back. Directly through ProcessEvent, never the SDK's wrapper.
-AActor* TraceOnce(Game const& game, engine::UnrealVector const& start, engine::UnrealVector const& end, engine::UnrealVector* hit) {
-    AActor_execTrace_Parms parms;
-    parms.TraceEnd = ToF(end);
-    parms.TraceStart = ToF(start);
-    parms.bTraceActors = 1;
-    game.pawn->ProcessEvent(gTrace, &parms, nullptr);
+// it came back. Directly through ProcessEvent with the function's own block, never a generated wrapper.
+ue3::Object* TraceOnce(Game const& game, engine::UnrealVector const& start, engine::UnrealVector const& end, engine::UnrealVector* hit) {
+    ue3::Params parms(ue3::runtime::Get(), gTrace);
+    parms.Set("TraceEnd", ToF(end));
+    parms.Set("TraceStart", ToF(start));
+    parms.SetBool("bTraceActors", true);
+    ue3::runtime::Call(game.pawn, gTrace, parms);
     if (hit != nullptr) {
-        *hit = FromF(parms.HitLocation);
+        *hit = FromF(parms.Get<ue3::Vector>("HitLocation").value_or(ue3::Vector{}));
     }
-    return parms.ReturnValue;
+    return parms.Return<ue3::Object*>().value_or(nullptr);
 }
 
 bool gLoggedTracePath = false;
@@ -413,7 +488,7 @@ bool gLoggedTracePath = false;
 // through ProcessEvent may not come back (research/08 H17): then the hit point is found by bisecting
 // the segment with the hit/no-hit answer alone (to 1/64 of it).
 bool Trace(Game const& game, engine::UnrealVector const& start, engine::UnrealVector const& end, engine::UnrealVector& hit,
-    AActor*& actor) {
+    ue3::Object*& actor) {
     if (gTrace == nullptr) {
         return false;
     }
@@ -432,7 +507,7 @@ bool Trace(Game const& game, engine::UnrealVector const& start, engine::UnrealVe
         };
         for (int i = 0; i < 6; ++i) {
             double const mid = 0.5 * (lo + hi);
-            if (AActor* const a = TraceOnce(game, start, at(mid), nullptr)) {
+            if (ue3::Object* const a = TraceOnce(game, start, at(mid), nullptr)) {
                 hi = mid;
                 actor = a;
             } else {
@@ -449,73 +524,87 @@ bool Trace(Game const& game, engine::UnrealVector const& start, engine::UnrealVe
     return true;
 }
 
-bool SetLocation(AActor* actor, engine::UnrealVector const& where) {
+bool SetLocation(ue3::Object* actor, engine::UnrealVector const& where) {
     if (actor == nullptr || gSetLocation == nullptr) {
         return false;
     }
-    AActor_execSetLocation_Parms parms;
-    parms.NewLocation = ToF(where);
-    actor->ProcessEvent(gSetLocation, &parms, nullptr);
-    return parms.ReturnValue != 0;
+    ue3::Params parms(ue3::runtime::Get(), gSetLocation);
+    parms.Set("NewLocation", ToF(where));
+    ue3::runtime::Call(actor, gSetLocation, parms);
+    return parms.ReturnBool().value_or(false);
 }
 
-void SetVelocity(ABioGrenadeProjectile* projectile, engine::UnrealVector const& velocity) {
-    ABioGrenadeProjectile_execSetVelocity_Parms parms;
-    parms.vVelocity = ToF(velocity);
-    projectile->ProcessEvent(gSetVelocity, &parms, nullptr);  // native: the class's own SetVelocity
+void SetVelocity(ue3::Object* projectile, engine::UnrealVector const& velocity) {
+    ue3::Params parms(ue3::runtime::Get(), gSetVelocity);
+    parms.Set("vVelocity", ToF(velocity));
+    ue3::runtime::Call(projectile, gSetVelocity, parms);  // native: the class's own SetVelocity
 }
 
 // The disc: from the hand, toward where the throw lands, colliding there (no homing).
-std::string AimDisc(ABioGrenadeProjectile* projectile) {
-    if (!projectile->IsA(ABioGrenadeProjectileFrisbee::StaticClass())) {
-        return std::format("a {} (not the disc): left as the game aimed it", engine::FullName(projectile));
+std::string AimDisc(ue3::Object* projectile) {
+    if (!ue3::IsA(projectile, gFrisbee)) {
+        return std::format("a {} (not the disc): left as the game aimed it", FullName(projectile));
     }
-    auto* const disc = static_cast<ABioGrenadeProjectileFrisbee*>(projectile);
-    engine::UnrealVector const spawned = FromF(disc->Location);
+    ue3::Object* const disc = projectile;
+    engine::UnrealVector const spawned = LocationOf(disc);
     std::string moved;
     if (gPending.fromHand) {
         bool const ok = SetLocation(disc, gPending.origin);
         moved = ok ? std::format(", moved {:.0f} units from where the game spawned it to the hand", Len(Sub(gPending.origin, spawned)))
                    : std::string(", couldn't be moved to the hand (blocked): from the game's spot");
     }
-    engine::UnrealVector const from = FromF(disc->Location);
+    engine::UnrealVector const from = LocationOf(disc);
     SetVelocity(disc, Sub(gPending.landing, from));  // the disc keeps its own speed along it
-    disc->m_vIntendedTargetLocation = ToF(gPending.landing);
-    write_journal::Wrote("Throw.disc target location", &disc->m_vIntendedTargetLocation);
-    AActor* target = nullptr;
-    if (gPending.landingActor != 0) {
-        auto* const candidate = reinterpret_cast<AActor*>(gPending.landingActor);
-        target = engine::IsAlive(candidate) ? candidate : nullptr;
+    if (ue3::Vector* const intended = gIntendedTargetLocation.In<ue3::Vector>(disc)) {
+        *intended = ToF(gPending.landing);
+        write_journal::Wrote("Throw.disc target location", intended);
     }
-    disc->m_oIntendedTarget = target;
-    write_journal::Wrote("Throw.disc target", &disc->m_oIntendedTarget);
-    disc->m_oHeatSeekTarget = nullptr;
-    write_journal::Wrote("Throw.disc heat seek target", &disc->m_oHeatSeekTarget);
-    disc->m_vStartLocation = disc->Location;
-    write_journal::Wrote("Throw.disc start location", &disc->m_vStartLocation);
+    ue3::Object* target = nullptr;
+    if (gPending.landingActor != 0) {
+        auto* const candidate = reinterpret_cast<ue3::Object*>(gPending.landingActor);
+        target = ue3::runtime::IsAlive(candidate) ? candidate : nullptr;
+    }
+    if (ue3::Object** const intendedTarget = gIntendedTarget.In<ue3::Object*>(disc)) {
+        *intendedTarget = target;
+        write_journal::Wrote("Throw.disc target", intendedTarget);
+    }
+    if (ue3::Object** const heatSeek = gHeatSeekTarget.In<ue3::Object*>(disc)) {
+        *heatSeek = nullptr;
+        write_journal::Wrote("Throw.disc heat seek target", heatSeek);
+    }
+    if (ue3::Vector* const start = gStartLocation.In<ue3::Vector>(disc)) {
+        *start = player::Location(disc).value_or(*start);
+        write_journal::Wrote("Throw.disc start location", start);
+    }
     double const meters = Len(Sub(gPending.landing, from)) / std::max(1.0, gPending.unitsPerMeter);
     return std::format("the disc re-aimed{} to {} ({:.1f} m, {}, speed {:.0f} units/s)", moved, U(gPending.landing), meters,
-        target != nullptr ? engine::FullName(target) : std::string(gPending.landingHit ? "a surface" : "nothing hit: open air"),
-        disc->Speed);
+        target != nullptr ? FullName(target) : std::string(gPending.landingHit ? "a surface" : "nothing hit: open air"),
+        gProjectileSpeed.Read<float>(disc).value_or(0.0f));
 }
 
 // The ballistic grenade with the hand's velocity, in place of the disc. False: it didn't spawn.
-bool LaunchArc(ABioGrenade* grenade, ABioGrenadeProjectile*& projectile, std::string& what) {
+bool LaunchArc(ue3::Object* grenade, ue3::Object*& projectile, std::string& what) {
     if (gLaunchGrenade == nullptr || gDestroy == nullptr) {
         what = "the arc needs BioGrenade.LaunchGrenade and Actor.Destroy (not found)";
         return false;
     }
-    UClass* const saved = grenade->m_clsProjectile;
-    grenade->m_clsProjectile = ABioGrenadeProjectileBallistic::StaticClass();
-    write_journal::Wrote("Throw.projectile class", &grenade->m_clsProjectile);
-    ABioGrenade_eventLaunchGrenade_Parms parms;
-    parms.vVelocity = ToF(gPending.velocity);
+    ue3::Class** const projectileClass = gClsProjectile.In<ue3::Class*>(grenade);
+    ue3::Class* const ballistic = gBallistic.Get();
+    if (projectileClass == nullptr || ballistic == nullptr) {
+        what = "BioGrenade.m_clsProjectile or BioGrenadeProjectileBallistic not found";
+        return false;
+    }
+    ue3::Class* const saved = *projectileClass;
+    *projectileClass = ballistic;
+    write_journal::Wrote("Throw.projectile class", projectileClass);
+    ue3::Params parms(ue3::runtime::Get(), gLaunchGrenade);
+    parms.Set("vVelocity", ToF(gPending.velocity));
     gInLaunch = true;
-    grenade->ProcessEvent(gLaunchGrenade, &parms, nullptr);  // the game's own spawn: MakeProjectile, then SetVelocity
+    ue3::runtime::Call(grenade, gLaunchGrenade, parms);  // the game's own spawn: MakeProjectile, then SetVelocity
     gInLaunch = false;
-    grenade->m_clsProjectile = saved;
-    write_journal::Wrote("Throw.projectile class back", &grenade->m_clsProjectile);
-    ABioGrenadeProjectile* const ball = parms.ReturnValue;
+    *projectileClass = saved;
+    write_journal::Wrote("Throw.projectile class back", projectileClass);
+    ue3::Object* const ball = parms.Return<ue3::Object*>().value_or(nullptr);
     if (ball == nullptr) {
         what = "the ballistic grenade didn't spawn";
         return false;
@@ -525,52 +614,55 @@ bool LaunchArc(ABioGrenade* grenade, ABioGrenadeProjectile*& projectile, std::st
         moved = SetLocation(ball, gPending.origin) ? ", from the hand" : ", from the game's spot (the hand's was blocked)";
         SetVelocity(ball, gPending.velocity);
     }
-    AActor_execDestroy_Parms destroy;
-    projectile->ProcessEvent(gDestroy, &destroy, nullptr);
+    ue3::Params destroy(ue3::runtime::Get(), gDestroy);
+    ue3::runtime::Call(projectile, gDestroy, destroy);
     projectile = ball;
     what = std::format("the ballistic grenade launched{} at {} ({:.0f} units/s; the disc removed{})", moved, U(gPending.velocity),
-        Len(gPending.velocity), destroy.ReturnValue != 0 ? "" : ": NOT destroyed");
+        Len(gPending.velocity), destroy.ReturnBool().value_or(false) ? "" : ": NOT destroyed");
     return true;
 }
 
 // BioGrenade.LaunchGrenadeAtPoint / LaunchGrenadeAtActor / LaunchGrenade, after the game's own: the
 // projectile it returned is ours to re-aim if the player's physical throw is waiting for it.
-void OnLaunch(UObject* context, UFunction* function, void* parms, void* /*result*/) {
-    if (gInLaunch || context == nullptr || !context->IsA(ABioGrenade::StaticClass())) {
+void OnLaunch(ue3::Object* context, ue3::Function* function, void* parms, void* /*result*/) {
+    if (gInLaunch || context == nullptr || !ue3::IsA(context, gBioGrenade)) {
         return;
     }
-    APlayerController* const pc = engine::LocalPlayerController();
-    auto* const grenade = static_cast<ABioGrenade*>(context);
-    if (pc == nullptr || pc->Pawn == nullptr || (grenade->Owner != pc->Pawn && grenade->Instigator != pc->Pawn)) {
+    ue3::Object* const pawn = player::Pawn(player::Controller());
+    ue3::Object* const grenade = context;
+    if (pawn == nullptr || (ObjectOf(gOwner, grenade) != pawn && ObjectOf(gInstigator, grenade) != pawn)) {
         return;  // a squadmate's or an enemy's
     }
-    // The return value's slot in the parms (the SDK's structs are packed: copied, never referenced).
-    std::byte* slot = nullptr;
+    // The return value's slot in the engine's block (unaligned in some: copied, never referenced).
+    void* slot = nullptr;
     std::string how;
     if (function == gLaunchAtPoint) {
-        auto* const p = static_cast<ABioGrenade_eventLaunchGrenadeAtPoint_Parms*>(parms);
-        slot = static_cast<std::byte*>(parms) + offsetof(ABioGrenade_eventLaunchGrenadeAtPoint_Parms, ReturnValue);
-        how = std::format("LaunchGrenadeAtPoint{}", U(FromF(p->vTarget)));
+        slot = gAtPointReturn.Address(parms);
+        how = std::format("LaunchGrenadeAtPoint{}", U(FromF(gAtPointTarget.Read<ue3::Vector>(parms).value_or(ue3::Vector{}))));
     } else if (function == gLaunchAtActor) {
-        auto* const p = static_cast<ABioGrenade_eventLaunchGrenadeAtActor_Parms*>(parms);
-        slot = static_cast<std::byte*>(parms) + offsetof(ABioGrenade_eventLaunchGrenadeAtActor_Parms, ReturnValue);
-        AActor* const target = p->oTarget;
-        how = std::format("LaunchGrenadeAtActor({})", target != nullptr ? engine::FullName(target) : std::string("None"));
+        slot = gAtActorReturn.Address(parms);
+        ue3::Object* target = nullptr;
+        if (void const* const at = gAtActorTarget.Address(parms)) {
+            std::memcpy(&target, at, sizeof target);
+        }
+        how = std::format("LaunchGrenadeAtActor({})", target != nullptr ? FullName(target) : std::string("None"));
     } else if (function == gLaunchGrenade) {
-        auto* const p = static_cast<ABioGrenade_eventLaunchGrenade_Parms*>(parms);
-        slot = static_cast<std::byte*>(parms) + offsetof(ABioGrenade_eventLaunchGrenade_Parms, ReturnValue);
-        how = std::format("LaunchGrenade{}", U(FromF(p->vVelocity)));
+        slot = gLaunchReturn.Address(parms);
+        how = std::format("LaunchGrenade{}", U(FromF(gLaunchVelocity.Read<ue3::Vector>(parms).value_or(ue3::Vector{}))));
     } else {
         return;
     }
-    ABioGrenadeProjectile* projectile = nullptr;
+    if (slot == nullptr) {
+        return;  // the parameter didn't resolve (logged once)
+    }
+    ue3::Object* projectile = nullptr;
     std::memcpy(&projectile, slot, sizeof projectile);
     ++gLaunches;
     if (!gPending.active || !gPending.called) {
         if (!gLoggedGameThrow) {
             gLoggedGameThrow = true;
             log::Info("throwables: a grenade thrown the game's way (the X button?): {} -> {}, left as the game aimed it (logged once)",
-                how, projectile != nullptr ? engine::FullName(projectile) : std::string("no projectile"));
+                how, projectile != nullptr ? FullName(projectile) : std::string("no projectile"));
         }
         return;
     }
@@ -595,7 +687,7 @@ void OnLaunch(UObject* context, UFunction* function, void* parms, void* /*result
         ++gAimed;
     }
     log::Info("throwables: grenade launched {:.2f} s after the {} hand's release ({} -> {}): {}", delay, HandName(gPending.hand), how,
-        projectile != nullptr ? engine::FullName(projectile) : std::string("none"), what);
+        projectile != nullptr ? FullName(projectile) : std::string("none"), what);
     gLastThrow.launch = what;
     gLastThrow.delay = delay;
     gPending = {};
@@ -603,7 +695,7 @@ void OnLaunch(UObject* context, UFunction* function, void* parms, void* /*result
 
 // The enemy a melee would hit: the nearest living hostile in reach and in front of the body.
 struct Enemy {
-    ABioPawn* pawn = nullptr;
+    ue3::Object* pawn = nullptr;  // a BioPawn
     double meters = 1e9;
     double degrees = 0.0;
 };
@@ -611,7 +703,7 @@ struct Enemy {
 Enemy FindEnemy(Game const& game, engine::TrackingFrame const& frame, ik::Vec3 headTracking, double reachMeters, double coneDegrees,
     Enemy& nearestHostile) {
     Enemy best;
-    AWorldInfo* const world = game.pawn->WorldInfo;
+    ue3::Object* const world = ObjectOf(gWorldInfo, game.pawn);
     if (world == nullptr || gIsHostile == nullptr) {
         return best;
     }
@@ -624,23 +716,23 @@ Enemy FindEnemy(Game const& game, engine::TrackingFrame const& frame, ik::Vec3 h
     front.z = 0.0;
     double const frontLength = std::max(Len(front), 1e-6);
     double const upm = frame.unitsPerMeter > 0.0 ? frame.unitsPerMeter : engine::kUnitsPerMeter;
-    engine::UnrealVector const me = FromF(game.pawn->Location);
+    engine::UnrealVector const me = LocationOf(game.pawn);
     int guard = 0;
-    for (APawn* p = world->PawnList; p != nullptr && guard < 512; p = p->NextPawn, ++guard) {
-        if (p == game.pawn || !p->IsA(ABioPawn::StaticClass())) {
+    for (ue3::Object* p = ObjectOf(gPawnList, world); p != nullptr && guard < 512; p = ObjectOf(gNextPawn, p), ++guard) {
+        if (p == game.pawn || !player::IsBioPawn(p)) {
             continue;
         }
-        auto* const other = static_cast<ABioPawn*>(p);
+        ue3::Object* const other = p;
         if (CallBool(other, gIsDead)) {
             continue;
         }
-        ABioPawn_execIsHostile_Parms hostile;
-        hostile.Other = other;
-        game.pawn->ProcessEvent(gIsHostile, &hostile, nullptr);
-        if (hostile.ReturnValue == 0) {
+        ue3::Params hostile(ue3::runtime::Get(), gIsHostile);
+        hostile.Set("Other", other);
+        ue3::runtime::Call(game.pawn, gIsHostile, hostile);
+        if (!hostile.ReturnBool().value_or(false)) {
             continue;
         }
-        engine::UnrealVector const d = Sub(FromF(other->Location), me);
+        engine::UnrealVector const d = Sub(LocationOf(other), me);
         double const flat = std::sqrt(d.x * d.x + d.y * d.y);
         double const meters = flat / upm;
         double const cosine = flat > 1e-6 ? (d.x * front.x + d.y * front.y) / (flat * frontLength) : 1.0;
@@ -653,6 +745,12 @@ Enemy FindEnemy(Game const& game, engine::TrackingFrame const& frame, ik::Vec3 h
         }
     }
     return best;
+}
+
+// The quick slot in hand (BioEquipment.m_eQuickSlotCurrent; 0 the pistol), if there's equipment.
+std::optional<std::uint8_t> CurrentQuickSlot(Game const& game) {
+    ue3::Object* const equipment = ObjectOf(gEquipment, game.behavior);
+    return equipment != nullptr ? gQuickSlotCurrent.Read<std::uint8_t>(equipment) : std::nullopt;
 }
 
 void Strike(Link const& link, Game const& game, int hand, thr::SwingStep const& stroke,
@@ -673,7 +771,7 @@ void Strike(Link const& link, Game const& game, int hand, thr::SwingStep const& 
     if (!Drawn(game)) {
         return refuse("the weapon is away: ME1's melee would only draw it");
     }
-    if (game.controller->bStorming) {
+    if (Storming(game)) {
         return refuse("sprinting");
     }
     if (CallBool(game.pawn, gIsSwitchingWeapons) || UsingPower(game) || CallBool(game.pawn, gIsThrowingGrenade)) {
@@ -687,24 +785,23 @@ void Strike(Link const& link, Game const& game, int hand, thr::SwingStep const& 
     if (settings.meleeNeedsEnemy && enemy.pawn == nullptr) {
         return refuse(nearest.pawn != nullptr
             ? std::format("no enemy within {:.1f} m and {:.0f} degrees; the nearest hostile is {} at {:.1f} m, {:.0f} degrees",
-                  settings.meleeReach, settings.meleeConeDeg, engine::FullName(nearest.pawn), nearest.meters, nearest.degrees)
+                  settings.meleeReach, settings.meleeConeDeg, FullName(nearest.pawn), nearest.meters, nearest.degrees)
             : std::string("no hostile around"));
     }
-    USFXGameModeDefault_execTryMelee_Parms parms;
-    game.mode->ProcessEvent(gTryMelee, &parms, nullptr);  // the B button's exec: directly, never the SDK's wrapper
+    CallVoid(game.mode, gTryMelee);  // the B button's exec: directly, never a generated wrapper
     gMeleeReadyAt = gTime + settings.meleeCooldown;
     ++gStrikes;
     Pulse(link, hand, thr::StrikeTick(settings.hapticAmplitude));
     std::string const target = enemy.pawn != nullptr
-        ? std::format("{} at {:.1f} m, {:.0f} degrees, health {:.0f}%", engine::FullName(enemy.pawn), enemy.meters, enemy.degrees,
+        ? std::format("{} at {:.1f} m, {:.0f} degrees, health {:.0f}%", FullName(enemy.pawn), enemy.meters, enemy.degrees,
               100.0 * Health(enemy.pawn))
         : std::string("no enemy in reach (meleeNeedsEnemy = 0)");
     gLastMelee = std::format("{} -> TryMelee; {}", what, target);
+    std::optional<std::uint8_t> const slot = CurrentQuickSlot(game);
     log::Info("throwables: melee: {} -> SFXGameModeDefault.TryMelee ({}); target {}", what,
-        game.behavior->m_oEquipment != nullptr && game.behavior->m_oEquipment->m_eQuickSlotCurrent == 0 ? "pistol whip" : "rifle butt",
-        target);
+        slot && *slot == 0 ? "pistol whip" : "rifle butt", target);
     if (enemy.pawn != nullptr) {
-        gHitWatch = {true, hand, 0.0, reinterpret_cast<std::uintptr_t>(enemy.pawn), Health(enemy.pawn), engine::FullName(enemy.pawn)};
+        gHitWatch = {true, hand, 0.0, reinterpret_cast<std::uintptr_t>(enemy.pawn), Health(enemy.pawn), FullName(enemy.pawn)};
     }
 }
 
@@ -713,8 +810,8 @@ void WatchHit(Link const& link, double deltaSeconds, double strength) {
         return;
     }
     gHitWatch.age += deltaSeconds;
-    auto* const pawn = reinterpret_cast<ABioPawn*>(gHitWatch.target);
-    bool const alive = engine::IsAlive(pawn) && pawn->IsA(ABioPawn::StaticClass());
+    auto* const pawn = reinterpret_cast<ue3::Object*>(gHitWatch.target);
+    bool const alive = ue3::runtime::IsAlive(pawn) && player::IsBioPawn(pawn);
     double const health = alive ? Health(pawn) : -1.0;
     bool const dead = alive && CallBool(pawn, gIsDead);
     if (alive && (dead || (health >= 0.0 && health < gHitWatch.health - 1e-4))) {
@@ -733,8 +830,7 @@ void WatchHit(Link const& link, double deltaSeconds, double strength) {
 }
 
 void CallUseGrenade(Game const& game) {
-    USFXGameModeDefault_execUseGrenade_Parms parms;
-    game.mode->ProcessEvent(gUseGrenade, &parms, nullptr);  // the X button's exec: directly, never the SDK's wrapper
+    CallVoid(game.mode, gUseGrenade);  // the X button's exec: directly, never a generated wrapper
     gPending.called = true;
     bool const started = CallBool(game.pawn, gIsThrowingGrenade);
     log::Info("throwables: SFXGameModeDefault.UseGrenade called {:.2f} s after the release: {}", gPending.age,
@@ -789,8 +885,12 @@ void Throw(Link const& link, Game const& game, int hand, thr::Release const& rel
     velocity = {velocity.x * settings.throwGain, velocity.y * settings.throwGain, velocity.z * settings.throwGain};
     // Gravity: real for the disc's landing (where a throw would land); the world's for the arc (it flies in it).
     double gravityZ = -kGravity * upm;
-    if (settings.arc && game.pawn->WorldInfo != nullptr && game.pawn->WorldInfo->WorldGravityZ < 0.0f) {
-        gravityZ = game.pawn->WorldInfo->WorldGravityZ;
+    if (settings.arc) {
+        ue3::Object* const world = ObjectOf(gWorldInfo, game.pawn);
+        std::optional<float> const worldGravityZ = world != nullptr ? gWorldGravityZ.Read<float>(world) : std::nullopt;
+        if (worldGravityZ && *worldGravityZ < 0.0f) {
+            gravityZ = *worldGravityZ;
+        }
     }
     std::vector<ik::Vec3> const arc = thr::ArcPoints({origin.x, origin.y, origin.z}, {velocity.x, velocity.y, velocity.z}, gravityZ,
         kArcStepSeconds, kArcSeconds, kArcDropMeters * upm);
@@ -806,12 +906,12 @@ void Throw(Link const& link, Game const& game, int hand, thr::Release const& rel
     pending.landing = arc.empty() ? origin : engine::UnrealVector{arc.back().x, arc.back().y, arc.back().z};
     for (std::size_t i = 1; i < arc.size(); ++i) {
         engine::UnrealVector hit;
-        AActor* actor = nullptr;
+        ue3::Object* actor = nullptr;
         if (Trace(game, {arc[i - 1].x, arc[i - 1].y, arc[i - 1].z}, {arc[i].x, arc[i].y, arc[i].z}, hit, actor)) {
             pending.landing = hit;
             pending.landingHit = true;
             pending.landingActor = reinterpret_cast<std::uintptr_t>(actor);
-            pending.landingName = engine::FullName(actor);
+            pending.landingName = FullName(actor);
             break;
         }
     }
@@ -837,7 +937,7 @@ void Throw(Link const& link, Game const& game, int hand, thr::Release const& rel
     }
 }
 
-#endif  // SDK_TARGET_LE1
+#endif  // MEVR_GAME_LE1
 
 void Inactive(std::string why, Link const& link) {
     if (gMachine.Holder() >= 0) {
@@ -862,44 +962,43 @@ void Inactive(std::string why, Link const& link) {
 } // namespace
 
 bool TryStartup() {
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
     struct Want {
-        UFunction** slot;
-        wchar_t const* name;
-        char const* full;
+        ue3::Function** slot;
+        ue3::FunctionRef* ref;
         bool needed;
     };
     Want const wants[] = {
-        {&gUseGrenade, L"UseGrenade", "Function SFXGame.SFXGameModeDefault.UseGrenade", true},
-        {&gTryMelee, L"TryMelee", "Function SFXGame.SFXGameModeDefault.TryMelee", true},
-        {&gIsInCombatActionState, L"IsInCombatActionState", "Function SFXGame.BioPawn.IsInCombatActionState", true},
-        {&gIsSwitchingWeapons, L"IsSwitchingWeapons", "Function SFXGame.BioPawn.IsSwitchingWeapons", true},
-        {&gIsThrowingGrenade, L"IsThrowingGrenade", "Function SFXGame.BioPawn.IsThrowingGrenade", true},
-        {&gIsCombatEnabled, L"IsCombatEnabled", "Function SFXGame.BioPlayerInput.IsCombatEnabled", true},
-        {&gSetVelocity, L"SetVelocity", "Function SFXGame.BioGrenadeProjectile.SetVelocity", true},
-        {&gLaunchAtPoint, L"LaunchGrenadeAtPoint", "Function SFXGame.BioGrenade.LaunchGrenadeAtPoint", true},
-        {&gTrace, L"Trace", "Function Engine.Actor.Trace", true},
-        {&gLaunchAtActor, L"LaunchGrenadeAtActor", "Function SFXGame.BioGrenade.LaunchGrenadeAtActor", false},
-        {&gLaunchGrenade, L"LaunchGrenade", "Function SFXGame.BioGrenade.LaunchGrenade", false},
-        {&gIsUsingPower, L"IsUsingPower", "Function SFXGame.BioPawn.IsUsingPower", false},
-        {&gGetGrenades, L"GetGrenades", "Function SFXGame.BioPawnBehavior.GetGrenades", false},
-        {&gIsHostile, L"IsHostile", "Function SFXGame.BioPawn.IsHostile", false},
-        {&gIsDead, L"IsDead", "Function SFXGame.BioPawn.IsDead", false},
-        {&gGetPercentHealth, L"GetPercentHealth", "Function SFXGame.BioEpicPawnBehavior.GetPercentHealth", false},
-        {&gSetLocation, L"SetLocation", "Function Engine.Actor.SetLocation", false},
-        {&gDestroy, L"Destroy", "Function Engine.Actor.Destroy", false},
+        {&gUseGrenade, &gUseGrenadeFn, true},
+        {&gTryMelee, &gTryMeleeFn, true},
+        {&gIsInCombatActionState, &gIsInCombatActionStateFn, true},
+        {&gIsSwitchingWeapons, &gIsSwitchingWeaponsFn, true},
+        {&gIsThrowingGrenade, &gIsThrowingGrenadeFn, true},
+        {&gIsCombatEnabled, &gIsCombatEnabledFn, true},
+        {&gSetVelocity, &gSetVelocityFn, true},
+        {&gLaunchAtPoint, &gLaunchAtPointFn, true},
+        {&gTrace, &gTraceFn, true},
+        {&gLaunchAtActor, &gLaunchAtActorFn, false},
+        {&gLaunchGrenade, &gLaunchGrenadeFn, false},
+        {&gIsUsingPower, &gIsUsingPowerFn, false},
+        {&gGetGrenades, &gGetGrenadesFn, false},
+        {&gIsHostile, &gIsHostileFn, false},
+        {&gIsDead, &gIsDeadFn, false},
+        {&gGetPercentHealth, &gGetPercentHealthFn, false},
+        {&gSetLocation, &gSetLocationFn, false},
+        {&gDestroy, &gDestroyFn, false},
     };
     std::string missing;
     bool ok = true;
     for (Want const& w : wants) {
-        *w.slot = engine::FindFunction(w.name, w.full);
+        *w.slot = w.ref->Get();
         if (*w.slot == nullptr) {
-            missing += std::format("{}{}{}", missing.empty() ? "" : ", ", w.full, w.needed ? " (needed)" : "");
+            missing += std::format("{}Function {}{}", missing.empty() ? "" : ", ", w.ref->Path(), w.needed ? " (needed)" : "");
             ok = ok && !w.needed;
         }
     }
     if (ok) {
-        for (UFunction* launch : {gLaunchAtPoint, gLaunchAtActor, gLaunchGrenade}) {
+        for (ue3::Function* launch : {gLaunchAtPoint, gLaunchAtActor, gLaunchGrenade}) {
             if (launch != nullptr) {
                 engine::process_event::AddPostHandler(launch, &OnLaunch);
             }
@@ -976,7 +1075,7 @@ void Tick(double deltaSeconds, Link const& link) {
     for (double& s : gSinceRelease) {
         s = std::min(s + std::max(deltaSeconds, 0.0), 1e9);
     }
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
     std::string why;
     auto const game = gStarted ? ReadGame(why) : std::nullopt;
     FollowPending(game ? &*game : nullptr, deltaSeconds);
@@ -1097,8 +1196,7 @@ void Tick(double deltaSeconds, Link const& link) {
                                                      "ME1 throws only with a weapon out"
                                                    : "; the weapon is away and drawForThrow = 0: the throw will wait for a weapon");
             if (!drawn && settings.drawForThrow) {
-                USFXGameModeDefault_execUseGrenade_Parms parms;
-                game->mode->ProcessEvent(gUseGrenade, &parms, nullptr);  // with the weapon away it only draws it
+                CallVoid(game->mode, gUseGrenade);  // with the weapon away it only draws it
             }
             break;
         }
@@ -1281,7 +1379,7 @@ void Shutdown() {
     gStarted = false;
     gWhy = "not started";
     gLoggedWhy.clear();
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
     gUseGrenade = gTryMelee = gGetGrenades = gIsInCombatActionState = gIsSwitchingWeapons = gIsThrowingGrenade = gIsUsingPower = nullptr;
     gIsHostile = gIsDead = gGetPercentHealth = gIsCombatEnabled = gTrace = gSetLocation = gDestroy = gSetVelocity = nullptr;
     gLaunchGrenade = gLaunchAtPoint = gLaunchAtActor = nullptr;

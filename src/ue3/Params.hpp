@@ -59,6 +59,8 @@ public:
 
     bool SetBool(std::string_view name, bool value);
     std::optional<bool> GetBool(std::string_view name) const;
+    // A bool return value as UE3 tests it: the whole 32-bit word non-zero (natives write a UBOOL), not only
+    // the mask bit; nullopt if there's no bool return value.
     std::optional<bool> ReturnBool() const;
 
 private:

@@ -46,6 +46,9 @@ enum class State : std::uint32_t {
     Done = 3,    // all of it returned
 };
 
+// The counter and the entries on cache lines of their own (padding intended).
+#pragma warning(push)
+#pragma warning(disable : 4324)
 template <class Entry, std::size_t N>
 class Ring {
     static_assert(N != 0 && (N & (N - 1)) == 0, "a power of two");
@@ -94,6 +97,7 @@ private:
     alignas(64) std::atomic<std::uint64_t> next_{0};
     alignas(64) Entry entries_[N]{};
 };
+#pragma warning(pop)
 
 // ---- dispatches: ProcessEvent (host) and the mod's CallFunction handlers -------------------------------
 

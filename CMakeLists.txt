@@ -252,10 +252,10 @@ set(MEVR_MOD_SOURCES
     src/engine/Engine.hpp
     src/engine/GameAdapter.hpp
     src/engine/GameAdapterSdk.hpp
+    src/engine/Legacy.cpp
+    src/engine/Legacy.hpp
     src/engine/NativesDump.cpp
     src/engine/NativesDump.hpp
-    src/engine/Objects.cpp
-    src/engine/Objects.hpp
     src/engine/ProcessEvent.cpp
     src/engine/ProcessEvent.hpp
     src/engine/ReflectCheck.cpp
@@ -278,6 +278,8 @@ set(MEVR_MOD_SOURCES
     src/game/CameraProbe.hpp
     src/game/ConsoleRequest.cpp
     src/game/ConsoleRequest.hpp
+    src/game/SystemSettings.cpp
+    src/game/SystemSettings.hpp
     src/game/GamepadBridge.cpp
     src/game/GamepadBridge.hpp
     src/game/GamepadMapping.cpp
@@ -296,6 +298,8 @@ set(MEVR_MOD_SOURCES
     src/game/Holsters.hpp
     src/game/MenuPause.cpp
     src/game/MenuPause.hpp
+    src/game/Player.cpp
+    src/game/Player.hpp
     src/game/Posture.cpp
     src/game/Posture.hpp
     src/game/Reflections.cpp
@@ -322,6 +326,8 @@ set(MEVR_MOD_SOURCES
     src/ue3/Handles.cpp
     src/ue3/Handles.hpp
     src/ue3/Layout.hpp
+    src/ue3/Memory.cpp
+    src/ue3/Memory.hpp
     src/ue3/Names.cpp
     src/ue3/Names.hpp
     src/ue3/Params.cpp
@@ -412,6 +418,9 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/CalibrationDraw.hpp
     src/plugin/DrawReplay.cpp
     src/plugin/DrawReplay.hpp
+    src/core/CallQueue.hpp
+    src/plugin/GameThreadCalls.cpp
+    src/plugin/GameThreadCalls.hpp
     src/plugin/Halcyon.cpp
     src/plugin/Halcyon.hpp
     src/plugin/HalcyonBridge.cpp
@@ -586,6 +595,7 @@ if (MEVR_BUILD_TESTS)
         src/loader/LoaderCore.cpp
         tests/ReflectTests.cpp
         tests/BreadcrumbTests.cpp
+        src/ue3/Memory.cpp
         src/ue3/Names.cpp
         src/ue3/SafeNames.cpp
         src/ue3/Params.cpp

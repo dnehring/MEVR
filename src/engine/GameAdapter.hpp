@@ -13,13 +13,16 @@
 #include <cstdint>
 #include <optional>
 
-// The game's short name as a wide string literal (file names: L"LE1" L"MEVR.ini").
+// The game's short name as a string literal (file names: L"LE1" L"MEVR.ini"; hook owners: "LE1" "MEVRmod").
 #if defined(MEVR_GAME_LE1)
 #define MEVR_GAME_NAME_W L"LE1"
+#define MEVR_GAME_NAME_A "LE1"
 #elif defined(MEVR_GAME_LE2)
 #define MEVR_GAME_NAME_W L"LE2"
+#define MEVR_GAME_NAME_A "LE2"
 #else
 #define MEVR_GAME_NAME_W L"LE3"
+#define MEVR_GAME_NAME_A "LE3"
 #endif
 
 namespace mevr::engine::adapter {
@@ -122,6 +125,52 @@ inline std::optional<ReflectionGlobals> ReflectionGlobalsForGame() {
     // FName::AppendString, where it loads the pool array before splitting the index (research/34).
     g.namePoolsPattern = {"48 8D 15 ?? ?? ?? ?? 48 C1 F8 1D 81 E1 FF FF FF 1F 83 E0 07 48 03 0C C2", 0, 3, 7};
     g.processEventRva = 0x12DD20;
+    return g;
+#else
+    return std::nullopt;
+#endif
+}
+
+// GNatives, the bytecode handler table (UObject::GNatives[EX_Max], 0x1000 entries; research/34 section 2.1
+// reads execLetBool as its entry 0x14). The RVA is the one engine/skeleton's diagnostic has used since research/14
+// (LExSDKv2's BUILTIN_GNATIVES_RVA), not yet re-read in our Ghidra pass [verify]: the self-check's `global
+// GNatives` row compares it, and checks that entry 0x14 points into .text. Only the research diagnostics read
+// it (engine/natives_dump, engine/skeleton's GetBoneNames report); 0 where unknown.
+inline std::uint32_t NativesTableRva() {
+#if defined(MEVR_GAME_LE1)
+    return 0x16DD3C0;
+#else
+    return 0;
+#endif
+}
+
+// The engine's allocator (ue3/Memory, research/34 section 2.3): appMalloc and appFree by RVA, each
+// checked against its pattern (the function's own first bytes, unique in .text); the pattern finds
+// them if a patch moved them. Both load GMalloc RIP-relatively at `gmallocLoad` (the instruction's
+// offset in the pattern; 3 and 7 its displacement and length): the two must agree.
+struct AllocatorFunction {
+    std::uint32_t rva = 0;
+    char const* pattern = nullptr;
+    std::uint32_t gmallocLoad = 0;
+};
+struct AllocatorGlobals {
+    AllocatorFunction malloc;  // appMalloc(size, alignment, flags): GMalloc's vtable +0x8
+    AllocatorFunction free;    // appFree(pointer, flags): GMalloc's vtable +0x20
+    std::uint32_t gmallocRva = 0;  // only to cross-check the two loads
+};
+
+inline std::optional<AllocatorGlobals> AllocatorGlobalsForGame() {
+#if defined(MEVR_GAME_LE1)
+    AllocatorGlobals g;
+    g.malloc = {0xF2330,
+        "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 8B F1 41 8B D8 48 8B 0D ?? ?? ?? ?? 8B FA 48 85 C9 75 0C "
+        "E8 ?? ?? ?? ?? 48 8B 0D ?? ?? ?? ?? 48 8B 01 44 8B CB 44 8B C7 8B D6",
+        0x14};
+    g.free = {0xF22F0,
+        "48 89 5C 24 08 57 48 83 EC 20 48 8B F9 8B DA 48 8B 0D ?? ?? ?? ?? 48 85 C9 75 0C E8 ?? ?? ?? ?? "
+        "48 8B 0D ?? ?? ?? ?? 48 8B 01 44 8B C3 48 8B D7 48 8B 5C 24 30 48 83 C4 20 5F 48 FF 60 20",
+        0x0F};
+    g.gmallocRva = 0x16B6700;
     return g;
 #else
     return std::nullopt;

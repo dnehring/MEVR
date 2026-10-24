@@ -4,7 +4,7 @@
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
 
-#include <LESDK/Headers.hpp>
+// Only the hook's target and context (BUILTIN_PROCESSEVENT_RVA, LESDK::Initializer): research/34 stage 4.
 #include <LESDK/Init.hpp>
 
 #include <vector>

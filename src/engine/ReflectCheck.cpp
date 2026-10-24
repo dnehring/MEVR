@@ -3,7 +3,10 @@
 
 #include "core/Log.hpp"
 #include "core/vr/TestRequest.hpp"
-#include "engine/Objects.hpp"
+#include "engine/Engine.hpp"
+#include "engine/GameAdapter.hpp"
+#include "engine/Skeleton.hpp"
+#include "ue3/Memory.hpp"
 #include "ue3/Runtime.hpp"
 
 #include <LESDK/Headers.hpp>
@@ -21,6 +24,7 @@
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <new>
 #include <optional>
 #include <string>
 #include <vector>
@@ -54,6 +58,99 @@ ue3::Reflection& R() {
 
 std::string Hex(long long value) {
     return value < 0 ? std::string("none") : std::format("0x{:X}", value);
+}
+
+// ---- LExSDKv2's side (the reference; engine/Objects until stage 3) -------------------------------------
+
+template <typename T>
+bool ResolveSdk(::LESDK::Initializer& init, ::LESDK::Address address, T*& out, char const* name) {
+    out = init.ResolveTyped<T>(address);
+    if (out == nullptr) {
+        log::Error("reflect: LExSDKv2's {} didn't resolve", name);
+        return false;
+    }
+    return true;
+}
+
+// The LExSDKv2 globals the reference side reads (engine/Engine's ResolveGlobals until stage 3: on LE1 only
+// this file reads them now). Each DLL linking LExSDKv2 has its own copies.
+bool ResolveSdkGlobals(::LESDK::Initializer& init) {
+    bool ok = true;
+    ok &= ResolveSdk(init, BUILTIN_GMALLOC_RVA, GMalloc, "GMalloc");
+    ok &= ResolveSdk(init, BUILTIN_GOBJECTS_RVA, UObject::GObjObjects, "GObjObjects");
+    ok &= ResolveSdk(init, BUILTIN_SFXNAMEPOOLS_RVA, SFXName::GBioNamePools, "SFXName pools");
+    ok &= ResolveSdk(init, BUILTIN_SFXNAMEINIT_RVA, SFXName::GInitMethod, "SFXName init");
+    ok &= ResolveSdk(init, BUILTIN_GENGINE_RVA, GEngine, "GEngine");
+    ok &= ResolveSdk(init, BUILTIN_GWORLD_RVA, GWorld, "GWorld");
+    return ok;
+}
+
+std::string Narrow(wchar_t const* chars) {
+    int const size = WideCharToMultiByte(CP_UTF8, 0, chars, -1, nullptr, 0, nullptr, nullptr);
+    if (size <= 1) {
+        return {};
+    }
+    std::string narrow(static_cast<size_t>(size - 1), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, chars, -1, narrow.data(), size, nullptr, nullptr);
+    return narrow;
+}
+
+std::string SdkFullName(UObject* object) {
+    if (object == nullptr) {
+        return "None";
+    }
+    FString const wide = object->GetFullName();
+    return Narrow(wide.Chars());
+}
+
+std::string SdkName(SFXName const& name) {
+    FString const wide = name.Instanced();
+    return Narrow(wide.Chars());
+}
+
+std::vector<UFunction*> SdkFunctionsNamed(wchar_t const* name) {
+    std::vector<UFunction*> found;
+    SFXName const target(name, 0);
+    UClass* const functionClass = UFunction::StaticClass();
+    auto* const objects = UObject::GObjObjects;
+    for (int i = 0; i < static_cast<int>(objects->Count()); ++i) {
+        UObject* const object = objects->GetData()[i];
+        if (object != nullptr && object->Name == target && object->IsA(functionClass)) {
+            found.push_back(static_cast<UFunction*>(object));
+        }
+    }
+    return found;
+}
+
+UFunction* SdkFunction(wchar_t const* name, std::string const& fullName) {
+    for (UFunction* function : SdkFunctionsNamed(name)) {
+        if (SdkFullName(function) == fullName) {
+            return function;
+        }
+    }
+    return nullptr;
+}
+
+bool SdkIsAlive(UObject const* object) {
+    if (object == nullptr) {
+        return false;
+    }
+    auto* const objects = UObject::GObjObjects;
+    int const index = object->ObjectInternalInteger;
+    if (index < 0 || index >= static_cast<int>(objects->Count()) || objects->GetData()[index] != object) {
+        return false;
+    }
+    constexpr std::uint64_t kPendingKill = 0x2000000000000000ull;  // EObjectFlags::PendingKill
+    return (static_cast<std::uint64_t>(object->ObjectFlags) & kPendingKill) == 0;
+}
+
+APlayerController* SdkLocalPlayerController() {
+    UEngine* const engine = (GEngine != nullptr) ? *GEngine : nullptr;
+    if (engine == nullptr || engine->GamePlayers.Count() == 0) {
+        return nullptr;
+    }
+    ULocalPlayer* const player = engine->GamePlayers.GetData()[0];
+    return player != nullptr ? player->Actor : nullptr;
 }
 
 // Runs one check with access violations caught (a wrong layout reads garbage).
@@ -128,7 +225,7 @@ void CheckClass(char const* path) {
         UClass* const sdk = T::StaticClass();
         ue3::Class* const ours = R().FindClass(path);
         Add("class", path, ours != nullptr && static_cast<void*>(ours) == static_cast<void*>(sdk),
-            ours != nullptr ? R().FullName(ours) : "not found", sdk != nullptr ? engine::FullName(sdk) : "not found");
+            ours != nullptr ? R().FullName(ours) : "not found", sdk != nullptr ? SdkFullName(sdk) : "not found");
     });
 }
 
@@ -205,7 +302,7 @@ void CheckFunction(char const* path) {
         ue3::Function* const ours = R().FindFunction(path);
         std::string_view const full(path);
         std::wstring const name = Widen(full.substr(full.rfind('.') + 1));
-        UFunction* const sdk = engine::FindFunction(name.c_str(), std::format("Function {}", path).c_str());
+        UFunction* const sdk = SdkFunction(name.c_str(), std::format("Function {}", path));
         Add("function", path, ours != nullptr && static_cast<void*>(ours) == static_cast<void*>(sdk),
             ours != nullptr ? std::format("found, ParmsSize {}", R().ParmsSize(ours)) : "not found",
             sdk != nullptr ? "found" : "not found");
@@ -293,18 +390,49 @@ void CheckGlobals(::LESDK::Initializer& init) {
             std::format("vtable +0x{:X}: RVA {}", R().layout().processEventSlot, Hex(static_cast<long long>(found.processEvent - found.module))),
             std::format("RVA {}", Hex(static_cast<long long>(sdk - found.module))));
     });
+    // The engine's allocator (ue3/Memory, stage 2): the GMalloc appMalloc and appFree both load, against LExSDKv2's.
+    Guard("global", "allocator", [&] {
+        auto const sdk = reinterpret_cast<std::uintptr_t>(GMalloc);
+        auto const rva = [&](std::uintptr_t a) { return Hex(a != 0 ? static_cast<long long>(a - found.module) : -1); };
+        Add("global", "allocator", found.gmalloc != 0 && found.gmalloc == sdk,
+            std::format("GMalloc RVA {} (appMalloc RVA {} by {}, appFree RVA {} by {})", rva(found.gmalloc), rva(found.appMalloc),
+                found.appMallocBy, rva(found.appFree), found.appFreeBy),
+            std::format("GMalloc RVA {}", rva(sdk)));
+    });
     Guard("global", "GameEngine", [&] {
         ue3::Object* const ours = ue3::runtime::GameEngine();
         UEngine* const sdk = GEngine != nullptr ? *GEngine : nullptr;
         Add("global", "GameEngine", ours != nullptr && static_cast<void*>(ours) == static_cast<void*>(sdk), R().FullName(ours),
-            sdk != nullptr ? engine::FullName(sdk) : "none");
+            sdk != nullptr ? SdkFullName(sdk) : "none");
     });
     Guard("global", "LocalPlayerController", [&] {
         ue3::Object* const ours = ue3::runtime::LocalPlayerController();
-        APlayerController* const sdk = engine::LocalPlayerController();
+        APlayerController* const sdk = SdkLocalPlayerController();
         // Both null on the main menu: that agrees too.
         Add("global", "LocalPlayerController", static_cast<void*>(ours) == static_cast<void*>(sdk), R().FullName(ours),
-            sdk != nullptr ? engine::FullName(sdk) : "None");
+            sdk != nullptr ? SdkFullName(sdk) : "None");
+    });
+    // Stage 3: engine::World() (the player controller's WorldInfo's outer World) against GWorld. Both null on the
+    // main menu's first ticks would agree too; GWorld is never null once a map is up.
+    Guard("global", "World", [&] {
+        void const* const ours = engine::World();
+        UWorld* const sdk = GWorld != nullptr ? *GWorld : nullptr;
+        Add("global", "World", ours == static_cast<void const*>(sdk),
+            std::format("{} ({})", ours != nullptr ? R().FullName(static_cast<ue3::Object const*>(ours)) : std::string("None"),
+                engine::WorldHow()),
+            sdk != nullptr ? SdkFullName(sdk) : "None");
+    });
+    // Stage 3: the GNatives RVA the research diagnostics read (engine/GameAdapter), against LExSDKv2's; its entry
+    // 0x14 (execLetBool, research/34 section 2.1) must point into the exe.
+    Guard("global", "GNatives", [&] {
+        std::uint32_t const rva = adapter::NativesTableRva();
+        auto const sdk = reinterpret_cast<std::uintptr_t>(init.Resolve(BUILTIN_GNATIVES_RVA));
+        auto const* const table = reinterpret_cast<std::uintptr_t const*>(found.module + rva);
+        std::uintptr_t const letBool = rva != 0 ? table[0x14] : 0;
+        bool const inExe = letBool > found.module && letBool - found.module < 0x4000000;
+        Add("global", "GNatives", rva != 0 && found.module + rva == sdk && inExe,
+            std::format("RVA {}, [0x14] RVA {}", Hex(rva), Hex(letBool != 0 ? static_cast<long long>(letBool - found.module) : -1)),
+            std::format("RVA {}", Hex(static_cast<long long>(sdk - found.module))));
     });
 }
 
@@ -345,6 +473,7 @@ void CheckClasses() {
     CheckClass<APlayerController>("Engine.PlayerController");
     CheckClass<ACamera>("Engine.Camera");
     CheckClass<AWorldInfo>("Engine.WorldInfo");
+    CheckClass<UWorld>("Engine.World");  // stage 3: engine::World()
     CheckClass<AInventoryManager>("Engine.InventoryManager");
     CheckClass<AWeapon>("Engine.Weapon");
     CheckClass<AProjectile>("Engine.Projectile");
@@ -553,6 +682,33 @@ void CheckPaths() {
     CheckPath("SFXGame.BioBaseSquad", {"Members", "eSwitchWeapon"}, SDK_AT(offsetof(FMemberData, eSwitchWeapon), 1));
 }
 
+// Stage 3: engine/skeleton's fields as it resolved them through our layer (TryStartup), against research/14's
+// LE1 offsets, which it read at until stage 3 (its static_asserts against LExSDKv2 before that).
+void CheckSkeleton() {
+    skeleton::TryStartup();  // resolves them now (once; the skeleton probe starts it again later)
+    skeleton::Fields const f = skeleton::ResolvedFields();
+    struct Item {
+        char const* what;
+        long long ours;
+        long long research14;
+    };
+    Item const items[] = {
+        {"SkeletalMesh.RefSkeleton", f.refSkeleton, 0xB4},
+        {"SkeletalMeshComponent.SpaceBases", f.spaceBases, 0x2B0},
+        {"PrimitiveComponent.LocalToWorld", f.localToWorld, 0xC0},
+        {"SkeletalMeshComponent.Attachments", f.attachments, 0x3B4},
+        {"Attachments[] element size", f.attachmentSize, 0x34},
+        {"SkeletalMesh.Sockets", f.sockets, 0x144},
+        {"SkeletalMeshSocket.RelativeLocation", f.socketLocation, 0x60},
+        {"SkeletalMeshSocket.RelativeRotation", f.socketRotation, 0x6C},
+        {"SkeletalMeshSocket.SocketName", f.socketName, 0x84},
+        {"SkeletalMeshSocket.BoneName", f.socketBone, 0x8C},
+    };
+    for (Item const& item : items) {
+        Add("skeleton", item.what, item.ours == item.research14, Hex(item.ours), std::format("research/14 {}", Hex(item.research14)));
+    }
+}
+
 void CheckFunctions() {
     char const* const functions[] = {
         // Weapon, HandAim, Sights
@@ -628,8 +784,8 @@ void CheckFunctions() {
             ours.push_back(R().FullName(f));
         }
         std::vector<std::string> sdk;
-        for (UFunction* f : engine::FindFunctionsNamed(L"PlayerTick")) {
-            sdk.push_back(engine::FullName(f));
+        for (UFunction* f : SdkFunctionsNamed(L"PlayerTick")) {
+            sdk.push_back(SdkFullName(f));
         }
         std::sort(ours.begin(), ours.end());
         std::sort(sdk.begin(), sdk.end());
@@ -686,6 +842,8 @@ void CheckParams() {
     PARAM(ABioPlayerController_execGetAdjustedAimFor_Parms, "SFXGame.BioPlayerController.GetAdjustedAimFor", ReturnValue);
     PARAM(ABioWeaponRanged_execGetAdjustedAim_Parms, "SFXGame.BioWeaponRanged.GetAdjustedAim", StartFireLoc);
     PARAM(APawn_eventGetWeaponStartTraceLocation_Parms, "Engine.Pawn.GetWeaponStartTraceLocation", ReturnValue);
+    // Stage 2: hand aim reads BioPawn's override's block through its own parameter (the old code assumed Engine.Pawn's).
+    PARAM(APawn_eventGetWeaponStartTraceLocation_Parms, "SFXGame.BioPawn.GetWeaponStartTraceLocation", ReturnValue);
     PARAM(AActor_execSetRotation_Parms, "Engine.Actor.SetRotation", NewRotation);
     PARAM(AActor_execSetRotation_Parms, "Engine.Actor.SetRotation", ReturnValue);
     PARAM(AController_eventGetPlayerViewPoint_Parms, "Engine.PlayerController.GetPlayerViewPoint", out_Location);
@@ -753,6 +911,9 @@ void CheckParams() {
     PARMS(ABioPawn_execShouldCrouch_Parms, "SFXGame.BioPawn.ShouldCrouch");
     PARMS(ABioPawn_execIsInCover_Parms, "SFXGame.BioPawn.IsInCover");
     PARMS(USFXGameModeDefault_execTryExitCover_Parms, "SFXGame.SFXGameModeDefault.TryExitCover");
+    // Stage 2: the squad wheel's calls (a 64-byte zeroed block before; the function's own block now).
+    PARMS(USFXGameModeDefault_execEnterWeaponWheel_Parms, "SFXGame.SFXGameModeDefault.EnterWeaponWheel");
+    PARMS(USFXGameModeWeaponWheel_execExitWeaponWheel_Parms, "SFXGame.SFXGameModeWeaponWheel.ExitWeaponWheel");
 }
 
 // Names, full names, IsA and IsAlive over a spread of GObjects, both ways.
@@ -770,7 +931,7 @@ void CheckSamples() {
             }
             ++checked;
             std::string const ours = R().NameText(reinterpret_cast<ue3::Object*>(object));
-            std::string const sdk = engine::ToString(object->Name);
+            std::string const sdk = SdkName(object->Name);
             if (ours != sdk) {
                 if (++differ <= 3) {
                     first += std::format("{}[{}] '{}' vs '{}'", first.empty() ? "" : "; ", i, ours, sdk);
@@ -778,7 +939,7 @@ void CheckSamples() {
             }
         }
         Add("sample", "names", checked > 0 && differ == 0, std::format("{} of {} differ{}", differ, checked, first.empty() ? "" : ": " + first),
-            "engine::ToString");
+            "SFXName::Instanced");
     });
     Guard("sample", "full names", [] {
         int const count = R().ObjectCount();
@@ -793,7 +954,7 @@ void CheckSamples() {
             }
             ++checked;
             std::string const ours = R().FullName(reinterpret_cast<ue3::Object*>(object));
-            std::string const sdk = engine::FullName(object);
+            std::string const sdk = SdkFullName(object);
             if (ours != sdk && ++differ <= 3) {
                 first += std::format("{}'{}' vs '{}'", first.empty() ? "" : "; ", ours, sdk);
             }
@@ -830,11 +991,62 @@ void CheckSamples() {
                 }
             }
             ++checked;
-            if (R().IsAlive(ours) != engine::IsAlive(object)) {
+            if (R().IsAlive(ours) != SdkIsAlive(object)) {
                 ++differ;
             }
         }
-        Add("sample", "IsA and IsAlive", checked > 0 && differ == 0, std::format("{} of {} differ", differ, checked), "UObject::IsA, engine::IsAlive");
+        Add("sample", "IsA and IsAlive", checked > 0 && differ == 0, std::format("{} of {} differ", differ, checked), "UObject::IsA, ObjectInternalInteger and ObjectFlags");
+    });
+}
+
+// Engine strings (ue3/Memory, stage 2): one of ours, built in the engine's memory, and one LExSDKv2 builds (through
+// GMalloc), each freed by the other's allocator path, so both are proven the same heap before ConsoleRequest relies on it.
+void CheckMemory() {
+    if (!ue3::memory::Ready()) {
+        Add("sample", "engine strings", false, "the engine's allocator wasn't found", "");
+        return;
+    }
+    if (ue3::runtime::Where().gmalloc != reinterpret_cast<std::uintptr_t>(GMalloc)) {
+        Add("sample", "engine strings", false, "not tried: our allocator's GMalloc isn't LExSDKv2's (the allocator row)", "");
+        return;
+    }
+    Guard("sample", "engine strings", [] {
+        std::wstring_view const text = L"MEVR reflect check";
+        std::string problem;
+        {
+            // Ours, built and freed through appMalloc/appFree.
+            ue3::memory::OwnedString ours(text);
+            ue3::FString const& s = ours.Get();
+            if (!ours.Valid() || s.data == nullptr || s.count != static_cast<std::int32_t>(text.size() + 1) ||
+                std::wstring_view(s.data, text.size()) != text || s.data[text.size()] != L'\0') {
+                problem = "our string isn't as built";
+            } else if (ue3::memory::Narrow(s) != "MEVR reflect check") {
+                problem = "our string doesn't read back";
+            }
+        }
+        if (problem.empty() && GMalloc != nullptr && *GMalloc != nullptr) {
+            // A block from appMalloc goes back through GMalloc's own Free, as the engine frees what it is handed.
+            void* const block = ue3::memory::Malloc(64);
+            if (block == nullptr) {
+                problem = "appMalloc returned nothing";
+            } else {
+                std::memset(block, 0x5A, 64);
+                (*GMalloc)->Free(block);
+            }
+        }
+        if (problem.empty()) {
+            // LExSDKv2's string (its constructor allocates through GMalloc), freed by our path.
+            alignas(FString) unsigned char storage[sizeof(FString)];
+            auto* const sdk = new (storage) FString(L"MEVR reflect check");
+            ue3::FString theirs{};
+            std::memcpy(&theirs, sdk, sizeof theirs);
+            if (ue3::memory::Narrow(theirs) != "MEVR reflect check") {
+                problem = "LExSDKv2's string doesn't read through ours";
+            }
+            ue3::memory::FreeString(theirs);  // not the SDK's destructor: the storage is just forgotten
+        }
+        Add("sample", "engine strings", problem.empty(), problem.empty() ? "built, read, freed both ways" : problem,
+            "FString (GMalloc)");
     });
 }
 
@@ -876,6 +1088,12 @@ void Write(int agree, int mismatches, int notReflected) {
 
 void Run(::LESDK::Initializer& init) {
     gRows.clear();
+    if (!ResolveSdkGlobals(init)) {
+        log::Warn("reflect: self-check skipped: LExSDKv2's globals (the reference) didn't resolve");
+        Add("global", "LExSDKv2", false, ue3::runtime::Status(), "its globals didn't resolve");
+        Write(0, 1, 0);
+        return;
+    }
     if (!ue3::runtime::Ready()) {
         log::Warn("reflect: self-check skipped: {}", ue3::runtime::Status());
         Add("global", "layer", false, ue3::runtime::Status(), "");
@@ -892,9 +1110,11 @@ void Run(::LESDK::Initializer& init) {
     CheckClasses();
     CheckFields();
     CheckPaths();
+    CheckSkeleton();
     CheckFunctions();
     CheckParams();
     CheckSamples();
+    CheckMemory();
     ue3::runtime::FlushNotes();
     QueryPerformanceCounter(&end);
     QueryPerformanceFrequency(&frequency);
