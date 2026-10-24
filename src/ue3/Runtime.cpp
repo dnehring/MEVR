@@ -3,6 +3,7 @@
 
 #include "core/Log.hpp"
 #include "engine/GameAdapter.hpp"
+#include "ue3/Memory.hpp"
 #include "ue3/Pattern.hpp"
 
 #include <Windows.h>
@@ -314,6 +315,82 @@ bool Locate() {
     return true;
 }
 
+// ---- the allocator (ue3/Memory) --------------------------------------------------------------
+
+// The function at `rva` if its bytes are the pattern, else the pattern's only match in .text; and the
+// GMalloc its load references. Nullopt (with `why`) if neither.
+struct FoundFunction {
+    std::uintptr_t address = 0;
+    std::uintptr_t gmalloc = 0;
+    char const* by = "none";
+};
+
+std::optional<FoundFunction> FindAllocatorFunction(engine::adapter::AllocatorFunction const& f, std::string& why) {
+    std::optional<pattern::Compiled> const compiled = pattern::Compile(f.pattern != nullptr ? f.pattern : "");
+    TextSection const text = FindText(gFound.module);
+    if (!compiled || text.begin == 0 || compiled->bytes.size() < f.gmallocLoad + 7) {
+        why = "no pattern";
+        return std::nullopt;
+    }
+    std::span<std::uint8_t const> const bytes(reinterpret_cast<std::uint8_t const*>(text.begin), text.size);
+    auto const resolve = [&](std::size_t offset, char const* by) -> std::optional<FoundFunction> {
+        std::optional<std::size_t> const target = pattern::RipTarget(bytes, offset + f.gmallocLoad, 3, 7);
+        if (!target) {
+            return std::nullopt;
+        }
+        return FoundFunction{text.begin + offset, text.begin + *target, by};
+    };
+    std::uintptr_t const atRva = gFound.module + f.rva;
+    if (atRva >= text.begin && atRva + compiled->bytes.size() <= text.begin + text.size) {
+        std::size_t const offset = atRva - text.begin;
+        std::vector<std::size_t> const here =
+            pattern::FindAll(bytes.subspan(offset, compiled->bytes.size()), *compiled, 1);
+        if (!here.empty()) {
+            if (auto found = resolve(offset, "rva")) {
+                return found;
+            }
+        }
+    }
+    std::vector<std::size_t> const hits = pattern::FindAll(bytes, *compiled, 4);
+    if (hits.size() != 1) {
+        why = std::format("not at its RVA 0x{:X}, and the pattern matches {} times", f.rva, hits.size());
+        return std::nullopt;
+    }
+    return resolve(hits.front(), "pattern");
+}
+
+void InitMemory() {
+    memory::Use({});
+    std::optional<engine::adapter::AllocatorGlobals> const globals = engine::adapter::AllocatorGlobalsForGame();
+    if (!globals) {
+        log::Warn("reflect: no allocator for this game yet (LE1 only, research/34): engine strings unavailable");
+        return;
+    }
+    std::string mallocWhy;
+    std::string freeWhy;
+    std::optional<FoundFunction> const malloc = FindAllocatorFunction(globals->malloc, mallocWhy);
+    std::optional<FoundFunction> const free = FindAllocatorFunction(globals->free, freeWhy);
+    if (!malloc || !free) {
+        log::Warn("reflect: the engine's allocator isn't found (appMalloc: {}; appFree: {}): engine strings unavailable",
+                  malloc ? "found" : mallocWhy, free ? "found" : freeWhy);
+        return;
+    }
+    if (malloc->gmalloc != free->gmalloc) {
+        log::Warn("reflect: appMalloc and appFree use different GMallocs (RVA 0x{:X} and 0x{:X}): engine strings unavailable",
+                  malloc->gmalloc - gFound.module, free->gmalloc - gFound.module);
+        return;
+    }
+    memory::Use({reinterpret_cast<memory::MallocFn>(malloc->address), reinterpret_cast<memory::FreeFn>(free->address)});
+    gFound.appMalloc = malloc->address;
+    gFound.appFree = free->address;
+    gFound.gmalloc = malloc->gmalloc;
+    gFound.appMallocBy = malloc->by;
+    gFound.appFreeBy = free->by;
+    log::Info("reflect: the engine's allocator: appMalloc at RVA 0x{:X} (by {}), appFree at RVA 0x{:X} (by {}), GMalloc at RVA 0x{:X}{}",
+              malloc->address - gFound.module, malloc->by, free->address - gFound.module, free->by,
+              malloc->gmalloc - gFound.module, malloc->gmalloc == gFound.module + globals->gmallocRva ? "" : " (not the expected RVA)");
+}
+
 } // namespace
 
 bool Guarded(void (*fn)(void*), void* context) {
@@ -337,6 +414,7 @@ bool Init() {
                               gFound.processEvent - gFound.module,
                               gFound.processEventMatchesRva ? "" : " (not the expected RVA)");
         log::Info("reflect: {}", gStatus);
+        InitMemory();
     } else {
         log::Warn("reflect: our reflection layer is off: {}", gStatus);
     }
@@ -354,6 +432,7 @@ std::string const& Status() {
 
 void Shutdown() {
     gTried = gReady = false;
+    memory::Use({});
     gStatus = "not started";
     gReflection = Reflection();
     gFound = {};
@@ -436,6 +515,14 @@ Object* LocalPlayerController() {
 
 bool IsAlive(Object const* object) {
     return gReady && gReflection.IsAlive(object);
+}
+
+std::string FullName(Object const* object) {
+    return gReady && object != nullptr ? gReflection.FullName(object) : std::string("None");
+}
+
+std::string NameText(Name name) {
+    return gReady ? gReflection.ToString(name) : std::string("None");
 }
 
 void FlushNotes() {

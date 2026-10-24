@@ -244,6 +244,8 @@ set(MEVR_MOD_SOURCES
     src/engine/Engine.hpp
     src/engine/GameAdapter.hpp
     src/engine/GameAdapterSdk.hpp
+    src/engine/Legacy.cpp
+    src/engine/Legacy.hpp
     src/engine/NativesDump.cpp
     src/engine/NativesDump.hpp
     src/engine/Objects.cpp
@@ -290,6 +292,8 @@ set(MEVR_MOD_SOURCES
     src/game/Holsters.hpp
     src/game/MenuPause.cpp
     src/game/MenuPause.hpp
+    src/game/Player.cpp
+    src/game/Player.hpp
     src/game/Posture.cpp
     src/game/Posture.hpp
     src/game/Reflections.cpp
@@ -316,6 +320,8 @@ set(MEVR_MOD_SOURCES
     src/ue3/Handles.cpp
     src/ue3/Handles.hpp
     src/ue3/Layout.hpp
+    src/ue3/Memory.cpp
+    src/ue3/Memory.hpp
     src/ue3/Names.cpp
     src/ue3/Names.hpp
     src/ue3/Params.cpp
@@ -579,6 +585,7 @@ if (MEVR_BUILD_TESTS)
         tests/InstallTests.cpp
         src/loader/LoaderCore.cpp
         tests/ReflectTests.cpp
+        src/ue3/Memory.cpp
         src/ue3/Names.cpp
         src/ue3/Params.cpp
         src/ue3/Pattern.cpp

@@ -10,7 +10,9 @@
 #include <optional>
 #include <string>
 
-class APawn;
+namespace mevr::ue3 {
+struct Object;
+}
 
 // Shepard's body under the player (research/29): where arm IK's torso goal points, every tick, from
 // this tick's headset, controllers and view. Owns the one piece of state the body needs, kept in
@@ -41,7 +43,7 @@ struct Bones {
 // Arm IK, on foot with the controllers followed: this tick's torso goal (component space). False:
 // no goal (no head bone, a degenerate view); Reset() is up to the caller then.
 bool Fill(hand_targets::Targets const& targets, ik::Affine const& worldToComponent, ik::BodyFrame const& frame,
-    APawn const* pawn, Bones const& bones, double deltaSeconds, ik::TorsoGoal& goal);
+    ue3::Object const* pawn, Bones const& bones, double deltaSeconds, ik::TorsoGoal& goal);
 // The torso isn't driven this tick: the next Fill re-anchors.
 void Reset();
 // The body's yaw (tracking space, ik::BodyYaw's convention) while the torso is driven.

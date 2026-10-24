@@ -4,10 +4,10 @@
 #include "core/Log.hpp"
 #include "core/ik/ArmPose.hpp"
 #include "engine/BonePose.hpp"
-#include "engine/Objects.hpp"
+#include "engine/Engine.hpp"
 #include "engine/Skeleton.hpp"
-
-#include <LESDK/Headers.hpp>
+#include "game/Player.hpp"
+#include "ue3/Handles.hpp"
 
 #include <Windows.h>
 
@@ -40,19 +40,28 @@ void SetStatus(std::string status) {
     gStatus = std::move(status);
 }
 
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
 
-// Each confirmed in the code that reads it (research/14, "Weapon and muzzle").
-static_assert(offsetof(APawn, Weapon) == 0x4A8);
-static_assert(offsetof(AWeapon, Mesh) == 0x394);
-static_assert(offsetof(ABioWeapon, SkelMeshComp) == 0x3E8);
-static_assert(offsetof(ABioWeaponRanged, m_MuzzleSocketName) == 0x490);
-// bIsZoomed is bit 0x4 of the bitfield word at 0x548 (the SDK; GetPlayerAimError 0xC59920 tests it):
-// the word follows this float.
-static_assert(offsetof(ABioWeaponRanged, m_fMinVFXDecalIntensity) == 0x544);
+// Our reflection layer (research/34): the fields research/14 read from the code ("Weapon and muzzle":
+// Pawn.Weapon +0x4A8, Weapon.Mesh +0x394, BioWeapon.SkelMeshComp +0x3E8, BioWeaponRanged.m_MuzzleSocketName
+// +0x490, bIsZoomed bit 0x4 of the word at +0x548, which GetPlayerAimError 0xC59920 tests), found by name;
+// engine/ReflectCheck compares each with LExSDKv2.
+ue3::ClassRef gBioWeaponRanged{"SFXGame.BioWeaponRanged"};
+ue3::FieldRef gPawnWeapon{"Engine.Pawn", "Weapon"};
+ue3::FieldRef gWeaponMesh{"Engine.Weapon", "Mesh"};
+ue3::FieldRef gSkelMeshComp{"SFXGame.BioWeapon", "SkelMeshComp"};
+ue3::FieldRef gMuzzleSocketName{"SFXGame.BioWeaponRanged", "m_MuzzleSocketName"};
+ue3::FieldRef gIsZoomed{"SFXGame.BioWeaponRanged", "bIsZoomed"};
+ue3::FieldRef gBounds{"Engine.SkeletalMesh", "Bounds"};
+ue3::FieldRef gBoundsOrigin{gBounds, "Origin"};
+ue3::FieldRef gBoundsExtent{gBounds, "BoxExtent"};
 
-constexpr char const* kGetMuzzleLoc = "Function SFXGame.BioWeaponRanged.GetMuzzleLoc";
-constexpr char const* kGetSocketWorld = "Function Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation";
+ue3::FunctionRef gGetMuzzleLocFn{"SFXGame.BioWeaponRanged.GetMuzzleLoc"};
+ue3::FunctionRef gGetSocketWorldFn{"Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation"};
+ue3::FunctionRef gGetRangedWeaponTypeFn{"SFXGame.BioWeaponRanged.GetRangedWeaponType"};
+ue3::FunctionRef gGetPlayerAimErrorFn{"SFXGame.BioWeaponRanged.GetPlayerAimError"};
+ue3::FunctionRef gTickFireFn{"SFXGame.BioWeaponRanged.TickFire"};
+ue3::FunctionRef gPawnStartTraceFn{"SFXGame.BioPawn.GetWeaponStartTraceLocation"};
 
 // Our muzzle and the native GetMuzzleLoc must agree this closely (Unreal units).
 constexpr double kVerifyTolerance = 1.0;
@@ -77,13 +86,10 @@ constexpr double kMovingUnits = 1.0;
 constexpr double kStillMuzzleUnits = 0.1;
 constexpr int kFollowSamples = 40;
 
-constexpr char const* kGetRangedWeaponType = "Function SFXGame.BioWeaponRanged.GetRangedWeaponType";
-constexpr char const* kGetPlayerAimError = "Function SFXGame.BioWeaponRanged.GetPlayerAimError";
-
-UFunction* gGetMuzzleLoc = nullptr;
-UFunction* gGetSocketWorld = nullptr;
-UFunction* gGetRangedWeaponType = nullptr;
-UFunction* gGetPlayerAimError = nullptr;  // aimed fire for scoped shots (game/sights)
+ue3::Function* gGetMuzzleLoc = nullptr;
+ue3::Function* gGetSocketWorld = nullptr;
+ue3::Function* gGetRangedWeaponType = nullptr;
+ue3::Function* gGetPlayerAimError = nullptr;  // aimed fire for scoped shots (game/sights)
 
 // A weapon-mesh socket for the off hand, by name (lowercase substrings).
 constexpr char const* kOffHandSocketWords[] = {"lefthand", "left_hand", "lhand", "lhik", "offhand", "off_hand", "support",
@@ -101,8 +107,8 @@ ik::Vec3 V(engine::UnrealVector const& v) {
     return {v.x, v.y, v.z};
 }
 
-ik::Vec3 V(FVector const& v) {
-    return {v.X, v.Y, v.Z};
+ik::Vec3 V(ue3::Vector const& v) {
+    return {v.x, v.y, v.z};
 }
 
 engine::UnrealVector U(ik::Vec3 const& v) {
@@ -125,14 +131,12 @@ double Degrees(ik::Vec3 const& a, ik::Vec3 const& b) {
     return std::acos(std::clamp(ik::Dot(a, b) / lengths, -1.0, 1.0)) * 180.0 / std::numbers::pi;
 }
 
-std::uint64_t Key(SFXName const& name) {
-    std::uint64_t key = 0;
-    std::memcpy(&key, &name, sizeof key);
-    return key;
+void const* CurrentWorld() {
+    return engine::World();
 }
 
-UObject const* CurrentWorld() {
-    return GWorld != nullptr ? *GWorld : nullptr;
+std::string FullName(ue3::Object const* object) {
+    return ue3::runtime::FullName(object);
 }
 
 // `local` (a mesh's component space) through the mesh's LocalToWorld.
@@ -146,7 +150,7 @@ Frame WorldFrame(ik::Affine const& localToWorld, ik::Transform const& local) {
 
 // The socket in its mesh's component space, from the mesh's current pose. Nullopt if the pose
 // isn't computed or the skeleton changed.
-std::optional<ik::Transform> SocketInMesh(USkeletalMeshComponent* mesh, engine::skeleton::Socket const& socket) {
+std::optional<ik::Transform> SocketInMesh(ue3::Object* mesh, engine::skeleton::Socket const& socket) {
     std::span<engine::skeleton::BoneAtom const> const pose = engine::skeleton::SpaceBases(mesh);
     if (socket.bone < 0 || static_cast<std::size_t>(socket.bone) >= pose.size() ||
         static_cast<int>(pose.size()) != engine::skeleton::RefBoneCount(mesh) ||
@@ -158,7 +162,7 @@ std::optional<ik::Transform> SocketInMesh(USkeletalMeshComponent* mesh, engine::
     return ik::Compose(socket.relative, engine::skeleton::ToTransform(pose[socket.bone]));
 }
 
-std::optional<Frame> MuzzleFrame(USkeletalMeshComponent* mesh, engine::skeleton::Socket const& socket) {
+std::optional<Frame> MuzzleFrame(ue3::Object* mesh, engine::skeleton::Socket const& socket) {
     auto const local = SocketInMesh(mesh, socket);
     if (!local) {
         return std::nullopt;
@@ -181,43 +185,46 @@ Muzzle ToMuzzle(Frame const& muzzle, ik::Affine const& meshToWorld, Axis axis) {
 
 // This tick's pointers, read from the local player. All live objects.
 struct Live {
-    APawn* pawn = nullptr;
-    USkeletalMeshComponent* body = nullptr;
-    ABioWeaponRanged* weapon = nullptr;
-    USkeletalMeshComponent* mesh = nullptr;
+    ue3::Object* pawn = nullptr;
+    ue3::Object* body = nullptr;    // the pawn's SkeletalMeshComponent
+    ue3::Object* weapon = nullptr;  // an SFXGame.BioWeaponRanged
+    ue3::Object* mesh = nullptr;    // its SkelMeshComp
 };
 
 std::optional<Live> LivePointers(std::string& why) {
-    APlayerController* const controller = engine::LocalPlayerController();
-    APawn* const pawn = controller != nullptr ? controller->Pawn : nullptr;
-    if (pawn == nullptr || !pawn->IsA(ABioPawn::StaticClass()) || pawn->Mesh == nullptr || pawn->Mesh->SkeletalMesh == nullptr) {
+    if (!ue3::runtime::Ready()) {
+        why = "our reflection layer is off (see the 'reflect:' log lines)";
+        return std::nullopt;
+    }
+    ue3::Object* const pawn = player::BioPawn(player::Controller());
+    ue3::Object* const body = player::Mesh(pawn);
+    if (pawn == nullptr || body == nullptr || player::SkeletalMesh(body) == nullptr) {
         why = "no player body";
         return std::nullopt;
     }
-    AWeapon* const weapon = pawn->Weapon;
+    ue3::Object* const weapon = gPawnWeapon.Read<ue3::Object*>(pawn).value_or(nullptr);
     if (weapon == nullptr) {
         why = "no weapon";
         return std::nullopt;
     }
-    if (!weapon->IsA(ABioWeaponRanged::StaticClass())) {
-        why = std::format("{} isn't a ranged weapon", engine::FullName(weapon));
+    if (!ue3::IsA(weapon, gBioWeaponRanged)) {
+        why = std::format("{} isn't a ranged weapon", FullName(weapon));
         return std::nullopt;
     }
-    auto* const ranged = static_cast<ABioWeaponRanged*>(weapon);
-    USkeletalMeshComponent* const mesh = ranged->SkelMeshComp;
-    if (mesh == nullptr || mesh->SkeletalMesh == nullptr) {
-        why = std::format("{} has no skeletal mesh", engine::FullName(weapon));
+    ue3::Object* const mesh = gSkelMeshComp.Read<ue3::Object*>(weapon).value_or(nullptr);
+    if (mesh == nullptr || player::SkeletalMesh(mesh) == nullptr) {
+        why = std::format("{} has no skeletal mesh", FullName(weapon));
         return std::nullopt;
     }
-    return Live{pawn, pawn->Mesh, ranged, mesh};
+    return Live{pawn, body, weapon, mesh};
 }
 
 // The weapon looked at last: compared by address only, everything else re-read live.
 struct Resolved {
-    ABioWeaponRanged const* weapon = nullptr;
-    USkeletalMeshComponent const* mesh = nullptr;
-    UObject const* asset = nullptr;
-    UObject const* world = nullptr;
+    ue3::Object const* weapon = nullptr;
+    ue3::Object const* mesh = nullptr;
+    ue3::Object const* asset = nullptr;
+    void const* world = nullptr;
     std::uint64_t socketName = 0;
     engine::skeleton::Socket socket;
     Axis axis = Axis::Socket;
@@ -232,7 +239,7 @@ std::optional<Resolved> gResolved;
 
 // The body's right hand, per skeleton asset.
 struct Body {
-    UObject const* asset = nullptr;
+    ue3::Object const* asset = nullptr;
     int boneCount = 0;
     int hand = -1;
     std::vector<int> parents;
@@ -245,14 +252,14 @@ std::optional<Body> gBody;
 // squeezed in that gap, right after a draw, found no gun to hold). A still measurement that differs
 // replaces it as before. Cleared when the world changes (assets can move).
 struct CachedGrip {
-    UObject const* weaponAsset = nullptr;
-    UObject const* bodyAsset = nullptr;
+    ue3::Object const* weaponAsset = nullptr;
+    ue3::Object const* bodyAsset = nullptr;
     int bone = -1;
     Grip grip;
 };
 std::array<CachedGrip, 8> gGripCache{};
 std::size_t gGripCacheNext = 0;
-UObject const* gGripCacheWorld = nullptr;
+void const* gGripCacheWorld = nullptr;
 
 bool gHeld = false;
 int gHeldBone = -1;
@@ -286,8 +293,8 @@ std::string BoneName(Body const& body, int bone) {
                                                                               : std::format("#{}", bone);
 }
 
-Body const* BodySkeleton(USkeletalMeshComponent* body) {
-    UObject const* const asset = body->SkeletalMesh;
+Body const* BodySkeleton(ue3::Object* body) {
+    ue3::Object const* const asset = player::SkeletalMesh(body);
     int const count = engine::skeleton::RefBoneCount(body);
     if (gBody && gBody->asset == asset && gBody->boneCount == count) {
         return &*gBody;
@@ -319,7 +326,7 @@ void ResetGripMeasurement() {
     gStillTicks = 0;
 }
 
-void RememberGrip(UObject const* world, UObject const* weaponAsset, UObject const* bodyAsset, int bone, Grip const& grip) {
+void RememberGrip(void const* world, ue3::Object const* weaponAsset, ue3::Object const* bodyAsset, int bone, Grip const& grip) {
     if (world != gGripCacheWorld) {
         gGripCache = {};
         gGripCacheWorld = world;
@@ -334,7 +341,7 @@ void RememberGrip(UObject const* world, UObject const* weaponAsset, UObject cons
     gGripCacheNext = (gGripCacheNext + 1) % gGripCache.size();
 }
 
-std::optional<Grip> RecallGrip(UObject const* world, UObject const* weaponAsset, UObject const* bodyAsset, int bone) {
+std::optional<Grip> RecallGrip(void const* world, ue3::Object const* weaponAsset, ue3::Object const* bodyAsset, int bone) {
     if (world != gGripCacheWorld || weaponAsset == nullptr || bodyAsset == nullptr) {
         return std::nullopt;
     }
@@ -358,20 +365,22 @@ void Forget() {
 
 // Diagnostic, once per weapon: whether a native with struct out parameters (OutLocation,
 // OutRotation) returns them through ProcessEvent, and the engine's socket rotation against ours.
-void LogSocketNative(USkeletalMeshComponent* mesh, SFXName const& socket, Frame const& ours) {
+void LogSocketNative(ue3::Object* mesh, ue3::Name socket, Frame const& ours) {
     if (gGetSocketWorld == nullptr) {
         return;
     }
-    USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms parms;
-    parms.InSocketName = socket;
-    parms.Space = 0;  // world
-    mesh->ProcessEvent(gGetSocketWorld, &parms, nullptr);
-    ik::Vec3 const location = V(parms.OutLocation);
-    engine::Basis const axes = engine::ToBasis(engine::UnrealRotation{parms.OutRotation.Pitch, parms.OutRotation.Yaw, parms.OutRotation.Roll});
+    // The function's own parameter block (never a generated wrapper).
+    ue3::Params parms(ue3::runtime::Get(), gGetSocketWorld);
+    parms.Set("InSocketName", socket);
+    parms.Set("Space", std::int32_t{0});  // world
+    ue3::runtime::Call(mesh, gGetSocketWorld, parms);
+    ik::Vec3 const location = V(parms.Get<ue3::Vector>("OutLocation").value_or(ue3::Vector{}));
+    ue3::Rotator const rotation = parms.Get<ue3::Rotator>("OutRotation").value_or(ue3::Rotator{});
+    engine::Basis const axes = engine::ToBasis(engine::UnrealRotation{rotation.pitch, rotation.yaw, rotation.roll});
     bool const unbound = location.x == 0.0 && location.y == 0.0 && location.z == 0.0;
     log::Info("weapon: GetSocketWorldLocationAndRotation through ProcessEvent returned {}, location {} ({:.2f} units from ours), "
               "rotation X {:.1f} degrees and Z {:.1f} degrees from ours{}",
-        parms.ReturnValue != 0, Text(location), ik::Length(location - ours.origin), Degrees(V(axes.forward), ours.x),
+        parms.ReturnBool().value_or(false), Text(location), ik::Length(location - ours.origin), Degrees(V(axes.forward), ours.x),
         Degrees(V(axes.up), ours.z), unbound ? " (out parameters not bound through ProcessEvent)" : "");
 }
 
@@ -390,17 +399,18 @@ char const* TypeName(int type) {
 // which one, if any, is named for the off hand.
 void DescribeForSupport(Live const& live, Resolved& r) {
     if (gGetRangedWeaponType != nullptr) {
-        ABioWeaponRanged_execGetRangedWeaponType_Parms parms;
-        parms.ReturnValue = 0xFF;
-        live.weapon->ProcessEvent(gGetRangedWeaponType, &parms, nullptr);  // directly: never the SDK's wrapper
-        r.rangedType = parms.ReturnValue <= 3 ? parms.ReturnValue : -1;
+        ue3::Params parms(ue3::runtime::Get(), gGetRangedWeaponType);
+        parms.Set("ReturnValue", std::uint8_t{0xFF});
+        ue3::runtime::Call(live.weapon, gGetRangedWeaponType, parms);  // directly: never a generated wrapper
+        std::uint8_t const type = parms.Return<std::uint8_t>().value_or(0xFF);
+        r.rangedType = type <= 3 ? type : -1;
     }
     std::string list;
     std::string chosen;
     for (auto const& named : engine::skeleton::Sockets(live.mesh)) {
-        std::string const name = engine::ToString(engine::skeleton::NameOf(named.name));
+        std::string const name = ue3::runtime::NameText(named.name);
         list += std::format("{}{} on {} at {}", list.empty() ? "" : "; ", name,
-            engine::ToString(engine::skeleton::NameOf(named.socket.boneKey)), Text(named.socket.relative.translation));
+            ue3::runtime::NameText(named.socket.boneKey), Text(named.socket.relative.translation));
         if (named.name == r.socketName || r.offHand) {
             continue;
         }
@@ -422,12 +432,12 @@ void DescribeForSupport(Live const& live, Resolved& r) {
 // `r` pending if the weapon's pose isn't there yet.
 void Verify(Live const& live, Resolved& r) {
     ++r.attempts;
-    std::string const socketText = engine::ToString(live.weapon->m_MuzzleSocketName);
+    std::string const socketText = ue3::runtime::NameText(r.socketName);
     auto const socket = engine::skeleton::FindSocket(live.mesh, r.socketName);
     if (!socket) {
         r.failed = true;
         log::Warn("weapon: {}: muzzle socket '{}' not found on {}: shots and the hand keep the controller's aim", r.name,
-            socketText, engine::FullName(live.mesh->SkeletalMesh));
+            socketText, FullName(player::SkeletalMesh(live.mesh)));
         return;
     }
     r.socket = *socket;
@@ -446,24 +456,25 @@ void Verify(Live const& live, Resolved& r) {
     }
     // The engine's own answer (a plain return value, which ProcessEvent passes back). Called
     // directly: the SDK's wrappers corrupt FunctionFlags (CLAUDE.md).
-    ABioWeaponRanged_execGetMuzzleLoc_Parms parms;
+    ue3::Params parms(ue3::runtime::Get(), gGetMuzzleLoc);
     float const unset = std::numeric_limits<float>::max();
-    parms.ReturnValue = {unset, unset, unset};
-    live.weapon->ProcessEvent(gGetMuzzleLoc, &parms, nullptr);
-    ik::Vec3 const native = V(parms.ReturnValue);
+    parms.Set("ReturnValue", ue3::Vector{unset, unset, unset});
+    ue3::runtime::Call(live.weapon, gGetMuzzleLoc, parms);
+    ue3::Vector const returned = parms.Return<ue3::Vector>().value_or(ue3::Vector{unset, unset, unset});
+    ik::Vec3 const native = V(returned);
     double const error = ik::Length(native - frame->origin);
-    bool const match = parms.ReturnValue.X != unset && error <= kVerifyTolerance;
+    bool const match = returned.x != unset && error <= kVerifyTolerance;
     ik::Vec3 const offset = socket->relative.translation;
     log::Info("weapon: {} (mesh {}): muzzle socket '{}' on bone {}({}), offset {}: muzzle {} vs GetMuzzleLoc {}: {} ({:.2f} units)",
-        r.name, engine::FullName(live.mesh->SkeletalMesh), socketText,
-        engine::ToString(engine::skeleton::NameOf(socket->boneKey)), socket->bone, Text(offset), Text(frame->origin), Text(native),
+        r.name, FullName(player::SkeletalMesh(live.mesh)), socketText,
+        ue3::runtime::NameText(socket->boneKey), socket->bone, Text(offset), Text(frame->origin), Text(native),
         match ? "match" : "MISMATCH", error);
     if (!match) {
         r.failed = true;
         log::Warn("weapon: {}: muzzle not verified; shots and the hand keep the controller's aim", r.name);
         return;
     }
-    LogSocketNative(live.mesh, live.weapon->m_MuzzleSocketName, *frame);
+    LogSocketNative(live.mesh, ue3::Name::FromKey(r.socketName), *frame);
 
     // The barrel: the socket's X, unless that points away from the muzzle's side of the weapon.
     ik::Affine const meshToWorld = engine::skeleton::LocalToWorld(live.mesh);
@@ -490,9 +501,10 @@ void Verify(Live const& live, Resolved& r) {
         log::Warn("weapon: {}: no barrel axis; shots and the hand keep the controller's aim", r.name);
         return;
     }
-    if (static_cast<UObject*>(live.weapon->Mesh) != static_cast<UObject*>(live.mesh)) {
+    ue3::Object* const attached = gWeaponMesh.Read<ue3::Object*>(live.weapon).value_or(nullptr);
+    if (attached != live.mesh) {
         log::Info("weapon: {}: its attached mesh ({}) isn't its muzzle mesh; held only if the muzzle mesh hangs on the hand",
-            r.name, engine::FullName(live.weapon->Mesh));
+            r.name, FullName(attached));
     }
     r.verified = true;
     DescribeForSupport(live, r);
@@ -609,28 +621,31 @@ void CheckFollow(Live const& live, Body const& body, engine::skeleton::Attachmen
         meanStill, gFollow.still, verdict);
 }
 
-#endif  // SDK_TARGET_LE1
+#endif  // MEVR_GAME_LE1
 
 } // namespace
 
 bool TryStartup() {
-#if defined(SDK_TARGET_LE1)
-    gGetMuzzleLoc = engine::FindFunction(L"GetMuzzleLoc", kGetMuzzleLoc);
-    gGetSocketWorld = engine::FindFunction(L"GetSocketWorldLocationAndRotation", kGetSocketWorld);
-    gGetRangedWeaponType = engine::FindFunction(L"GetRangedWeaponType", kGetRangedWeaponType);
-    gGetPlayerAimError = engine::FindFunction(L"GetPlayerAimError", kGetPlayerAimError);
+#if defined(MEVR_GAME_LE1)
+    if (!ue3::runtime::Ready()) {
+        log::Warn("weapon: off: our reflection layer is off (see the 'reflect:' log lines)");
+        return false;
+    }
+    gGetMuzzleLoc = gGetMuzzleLocFn.Get();
+    gGetSocketWorld = gGetSocketWorldFn.Get();
+    gGetRangedWeaponType = gGetRangedWeaponTypeFn.Get();
+    gGetPlayerAimError = gGetPlayerAimErrorFn.Get();
     // Research: where the natives behind the fire path live, to tie the code reading (TickFire's
     // body at 0xC621E0, GetMuzzleLoc's at 0xC59870) to the script functions.
     auto const base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
-    auto const where = [base](UFunction* function) {
-        return function != nullptr ? std::format("exe+0x{:X}", reinterpret_cast<std::uintptr_t>(function->Func) - base)
-                                   : std::string("not found");
+    auto const where = [base](ue3::Function* function) {
+        return function != nullptr
+            ? std::format("exe+0x{:X}", reinterpret_cast<std::uintptr_t>(ue3::runtime::Get().NativeFunc(function)) - base)
+            : std::string("not found");
     };
     log::Info("weapon: natives: BioWeaponRanged.GetMuzzleLoc {}, BioWeaponRanged.TickFire {}, BioPawn.GetWeaponStartTraceLocation {}, "
               "SkeletalMeshComponent.GetSocketWorldLocationAndRotation {}",
-        where(gGetMuzzleLoc), where(engine::FindFunction(L"TickFire", "Function SFXGame.BioWeaponRanged.TickFire")),
-        where(engine::FindFunction(L"GetWeaponStartTraceLocation", "Function SFXGame.BioPawn.GetWeaponStartTraceLocation")),
-        where(gGetSocketWorld));
+        where(gGetMuzzleLoc), where(gTickFireFn.Get()), where(gPawnStartTraceFn.Get()), where(gGetSocketWorld));
     return gGetMuzzleLoc != nullptr;
 #else
     return false;
@@ -638,7 +653,7 @@ bool TryStartup() {
 }
 
 void Tick(bool wanted) {
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
     if (!wanted) {
         if (gResolved) {
             Forget();
@@ -655,18 +670,19 @@ void Tick(bool wanted) {
         SetStatus(why);
         return;
     }
-    std::uint64_t const socketName = Key(live->weapon->m_MuzzleSocketName);
-    UObject const* const world = CurrentWorld();
+    std::uint64_t const socketName = gMuzzleSocketName.Read<ue3::Name>(live->weapon).value_or(ue3::Name{}).Key();
+    void const* const world = CurrentWorld();
+    ue3::Object const* const asset = player::SkeletalMesh(live->mesh);
     if (!gResolved || gResolved->weapon != live->weapon || gResolved->mesh != live->mesh ||
-        gResolved->asset != live->mesh->SkeletalMesh || gResolved->socketName != socketName || gResolved->world != world) {
+        gResolved->asset != asset || gResolved->socketName != socketName || gResolved->world != world) {
         Forget();
         Resolved r;
         r.weapon = live->weapon;
         r.mesh = live->mesh;
-        r.asset = live->mesh->SkeletalMesh;
+        r.asset = asset;
         r.world = world;
         r.socketName = socketName;
-        r.name = engine::FullName(live->weapon);
+        r.name = FullName(live->weapon);
         gResolved = std::move(r);
     }
     if (!gResolved->verified) {
@@ -729,13 +745,14 @@ void Tick(bool wanted) {
 }
 
 std::optional<Muzzle> Current() {
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
     if (!gResolved || !gResolved->verified || !gHeld) {
         return std::nullopt;
     }
     std::string why;
     auto const live = LivePointers(why);
-    if (!live || live->weapon != gResolved->weapon || live->mesh != gResolved->mesh || live->mesh->SkeletalMesh != gResolved->asset) {
+    if (!live || live->weapon != gResolved->weapon || live->mesh != gResolved->mesh ||
+        player::SkeletalMesh(live->mesh) != gResolved->asset) {
         return std::nullopt;
     }
     // Still in the hand: it can be put away between two ticks.
@@ -754,7 +771,7 @@ std::optional<Muzzle> Current() {
 }
 
 std::optional<Grip> RightHandGrip() {
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
     if (!gResolved || !gResolved->verified || !gHeld) {
         return std::nullopt;
     }
@@ -765,7 +782,7 @@ std::optional<Grip> RightHandGrip() {
 }
 
 std::uintptr_t Key() {
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
     return gResolved && gResolved->verified && gHeld ? reinterpret_cast<std::uintptr_t>(gResolved->weapon) : 0;
 #else
     return 0;
@@ -773,7 +790,7 @@ std::uintptr_t Key() {
 }
 
 RangedType Type() {
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
     if (gResolved && gResolved->verified && gResolved->rangedType >= 0 && gResolved->rangedType <= 3) {
         return static_cast<RangedType>(gResolved->rangedType);
     }
@@ -782,33 +799,36 @@ RangedType Type() {
 }
 
 std::optional<bool> Zoomed() {
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
     std::string why;
     auto const live = LivePointers(why);
     if (!live) {
         return std::nullopt;
     }
-    return live->weapon->bIsZoomed != 0;
+    return gIsZoomed.ReadBool(live->weapon);
 #else
     return std::nullopt;
 #endif
 }
 
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
 namespace {
 // GetPlayerAimError (0xC59920): lerp(Stats' aim-error range picked by bIsZoomed, accuracy). A native with
-// a plain float in and out, so ProcessEvent passes both (research/14). Never the SDK's wrapper.
-std::optional<float> CallAimError(ABioWeaponRanged* weapon, float accuracy) {
+// a plain float in and out, so ProcessEvent passes both (research/14). Never a generated wrapper.
+std::optional<float> CallAimError(ue3::Object* weapon, float accuracy) {
     if (gGetPlayerAimError == nullptr) {
         return std::nullopt;
     }
-    ABioWeaponRanged_execGetPlayerAimError_Parms parms;
-    parms.Accuracy = accuracy;
-    weapon->ProcessEvent(gGetPlayerAimError, &parms, nullptr);
-    return std::isfinite(parms.ReturnValue) ? std::optional<float>(parms.ReturnValue) : std::nullopt;
+    ue3::Params parms(ue3::runtime::Get(), gGetPlayerAimError);
+    if (!parms.Set("Accuracy", accuracy)) {
+        return std::nullopt;
+    }
+    ue3::runtime::Call(weapon, gGetPlayerAimError, parms);
+    std::optional<float> const error = parms.Return<float>();
+    return error && std::isfinite(*error) ? error : std::nullopt;
 }
 
-ABioWeaponRanged* HeldRanged(UObject* weapon) {
+ue3::Object* HeldRanged(ue3::Object* weapon) {
     std::string why;
     auto const live = LivePointers(why);
     if (!live || weapon == nullptr || weapon != live->weapon) {
@@ -819,9 +839,9 @@ ABioWeaponRanged* HeldRanged(UObject* weapon) {
 } // namespace
 #endif
 
-std::optional<float> AimError(UObject* weapon, float accuracy) {
-#if defined(SDK_TARGET_LE1)
-    if (ABioWeaponRanged* const held = HeldRanged(weapon)) {
+std::optional<float> AimError(ue3::Object* weapon, float accuracy) {
+#if defined(MEVR_GAME_LE1)
+    if (ue3::Object* const held = HeldRanged(weapon)) {
         return CallAimError(held, accuracy);
     }
 #else
@@ -831,16 +851,17 @@ std::optional<float> AimError(UObject* weapon, float accuracy) {
     return std::nullopt;
 }
 
-std::optional<float> ZoomedAimError(UObject* weapon, float accuracy) {
-#if defined(SDK_TARGET_LE1)
-    ABioWeaponRanged* const held = HeldRanged(weapon);
-    if (held == nullptr || held->bIsZoomed != 0) {
+std::optional<float> ZoomedAimError(ue3::Object* weapon, float accuracy) {
+#if defined(MEVR_GAME_LE1)
+    ue3::Object* const held = HeldRanged(weapon);
+    std::optional<bool> const zoomed = held != nullptr ? gIsZoomed.ReadBool(held) : std::nullopt;
+    if (!zoomed || *zoomed) {
         return std::nullopt;
     }
-    held->bIsZoomed = 1;  // for this one call: put back before anything else runs on this thread
-    std::optional<float> const zoomed = CallAimError(held, accuracy);
-    held->bIsZoomed = 0;
-    return zoomed;
+    gIsZoomed.WriteBool(held, true);  // for this one call: put back before anything else runs on this thread
+    std::optional<float> const error = CallAimError(held, accuracy);
+    gIsZoomed.WriteBool(held, false);
+    return error;
 #else
     (void)weapon;
     (void)accuracy;
@@ -849,7 +870,7 @@ std::optional<float> ZoomedAimError(UObject* weapon, float accuracy) {
 }
 
 std::optional<ik::Vec3> OffHandSocketInHand() {
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
     if (!gResolved || !gResolved->verified || !gHeld || !gResolved->offHand || !gBody || gBody->hand < 0) {
         return std::nullopt;
     }
@@ -877,15 +898,19 @@ std::optional<ik::Vec3> OffHandSocketInHand() {
 }
 
 std::optional<Model> ModelInGunFrame(engine::UnrealVector const& topWorld) {
-#if defined(SDK_TARGET_LE1)
-    static_assert(offsetof(USkeletalMesh, Bounds) == 0x60);
+#if defined(MEVR_GAME_LE1)
     auto const muzzle = Current();
     if (!muzzle) {
         return std::nullopt;
     }
     std::string why;
     auto const live = LivePointers(why);
-    if (!live || live->mesh != gResolved->mesh || live->mesh->SkeletalMesh == nullptr) {
+    ue3::Object* const asset = live ? player::SkeletalMesh(live->mesh) : nullptr;
+    // SkeletalMesh.Bounds (+0x60, research/21 section 11): the reference pose's box in the mesh's space.
+    void* const boundsAt = asset != nullptr ? gBounds.Address(asset) : nullptr;
+    ue3::Vector const* const boundsOrigin = gBoundsOrigin.In<ue3::Vector>(boundsAt);
+    ue3::Vector const* const boundsExtent = gBoundsExtent.In<ue3::Vector>(boundsAt);
+    if (!live || live->mesh != gResolved->mesh || boundsOrigin == nullptr || boundsExtent == nullptr) {
         return std::nullopt;
     }
     ik::Vec3 const origin = V(muzzle->location);
@@ -903,12 +928,12 @@ std::optional<Model> ModelInGunFrame(engine::UnrealVector const& topWorld) {
     };
     ik::Affine const meshToWorld = engine::skeleton::LocalToWorld(live->mesh);
     Model model;
-    FBoxSphereBounds const& bounds = live->mesh->SkeletalMesh->Bounds;
+    ue3::Vector const& o = *boundsOrigin;
+    ue3::Vector const& e = *boundsExtent;
     bool first = true;
     for (int corner = 0; corner < 8; ++corner) {
-        ik::Vec3 const local{bounds.Origin.X + ((corner & 1) != 0 ? bounds.BoxExtent.X : -bounds.BoxExtent.X),
-            bounds.Origin.Y + ((corner & 2) != 0 ? bounds.BoxExtent.Y : -bounds.BoxExtent.Y),
-            bounds.Origin.Z + ((corner & 4) != 0 ? bounds.BoxExtent.Z : -bounds.BoxExtent.Z)};
+        ik::Vec3 const local{o.x + ((corner & 1) != 0 ? e.x : -e.x), o.y + ((corner & 2) != 0 ? e.y : -e.y),
+            o.z + ((corner & 4) != 0 ? e.z : -e.z)};
         ModelPoint const p = inFrame({}, ik::TransformPoint(meshToWorld, local));
         if (!std::isfinite(p.back) || !std::isfinite(p.up) || !std::isfinite(p.side)) {
             return std::nullopt;
@@ -929,7 +954,7 @@ std::optional<Model> ModelInGunFrame(engine::UnrealVector const& topWorld) {
     }
     for (auto const& named : engine::skeleton::Sockets(live->mesh)) {
         if (auto const local = SocketInMesh(live->mesh, named.socket)) {
-            model.points.push_back(inFrame("socket " + engine::ToString(engine::skeleton::NameOf(named.name)),
+            model.points.push_back(inFrame("socket " + ue3::runtime::NameText(named.name),
                 ik::TransformPoint(meshToWorld, local->translation)));
         }
     }
@@ -945,7 +970,7 @@ std::string const& Status() {
 }
 
 void LogStats() {
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
     if (gStatus == "off") {
         return;
     }
@@ -962,7 +987,7 @@ void LogStats() {
 }
 
 void Shutdown() {
-#if defined(SDK_TARGET_LE1)
+#if defined(MEVR_GAME_LE1)
     Forget();
     gBody.reset();
     gGetMuzzleLoc = nullptr;

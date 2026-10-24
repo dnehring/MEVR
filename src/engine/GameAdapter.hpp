@@ -128,4 +128,37 @@ inline std::optional<ReflectionGlobals> ReflectionGlobalsForGame() {
 #endif
 }
 
+// The engine's allocator (ue3/Memory, research/34 section 2.3): appMalloc and appFree by RVA, each
+// checked against its pattern (the function's own first bytes, unique in .text); the pattern finds
+// them if a patch moved them. Both load GMalloc RIP-relatively at `gmallocLoad` (the instruction's
+// offset in the pattern; 3 and 7 its displacement and length): the two must agree.
+struct AllocatorFunction {
+    std::uint32_t rva = 0;
+    char const* pattern = nullptr;
+    std::uint32_t gmallocLoad = 0;
+};
+struct AllocatorGlobals {
+    AllocatorFunction malloc;  // appMalloc(size, alignment, flags): GMalloc's vtable +0x8
+    AllocatorFunction free;    // appFree(pointer, flags): GMalloc's vtable +0x20
+    std::uint32_t gmallocRva = 0;  // only to cross-check the two loads
+};
+
+inline std::optional<AllocatorGlobals> AllocatorGlobalsForGame() {
+#if defined(MEVR_GAME_LE1)
+    AllocatorGlobals g;
+    g.malloc = {0xF2330,
+        "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 8B F1 41 8B D8 48 8B 0D ?? ?? ?? ?? 8B FA 48 85 C9 75 0C "
+        "E8 ?? ?? ?? ?? 48 8B 0D ?? ?? ?? ?? 48 8B 01 44 8B CB 44 8B C7 8B D6",
+        0x14};
+    g.free = {0xF22F0,
+        "48 89 5C 24 08 57 48 83 EC 20 48 8B F9 8B DA 48 8B 0D ?? ?? ?? ?? 48 85 C9 75 0C E8 ?? ?? ?? ?? "
+        "48 8B 0D ?? ?? ?? ?? 48 8B 01 44 8B C3 48 8B D7 48 8B 5C 24 30 48 83 C4 20 5F 48 FF 60 20",
+        0x0F};
+    g.gmallocRva = 0x16B6700;
+    return g;
+#else
+    return std::nullopt;
+#endif
+}
+
 } // namespace mevr::engine::adapter

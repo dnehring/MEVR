@@ -9,7 +9,9 @@
 #include <optional>
 #include <vector>
 
-class USkeletalMeshComponent;
+namespace mevr::ue3 {
+struct Object;
+}
 
 namespace LESDK {
 class Initializer;
@@ -93,7 +95,7 @@ struct Support {
 };
 
 struct Request {
-    USkeletalMeshComponent const* mesh = nullptr;  // compared by address only, never dereferenced
+    ue3::Object const* mesh = nullptr;  // the SkeletalMeshComponent: compared by address only, never dereferenced
     int boneCount = 0;
     std::vector<int> parents;
     ik::BodyFrame body;  // component space

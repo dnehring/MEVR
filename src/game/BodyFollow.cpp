@@ -6,12 +6,10 @@
 #include "core/ik/Ik.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/TestRequest.hpp"
-#include "engine/Objects.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/HandCalibration.hpp"
+#include "game/Player.hpp"
 #include "engine/BonePose.hpp"
-
-#include <LESDK/Headers.hpp>
 
 #include <Windows.h>
 
@@ -204,7 +202,7 @@ void NoteFloor(std::optional<vr::floor::State> const& floor) {
 }
 
 bool Fill(hand_targets::Targets const& targets, ik::Affine const& worldToComponent, ik::BodyFrame const& frame,
-    APawn const* pawn, Bones const& bones, double deltaSeconds, ik::TorsoGoal& goal) {
+    ue3::Object const* pawn, Bones const& bones, double deltaSeconds, ik::TorsoGoal& goal) {
     hand_calibration::BodyMove const move = hand_calibration::GetBodyMove();
     XrPosef const& head = targets.head;
     ik::Quat const orientation{head.orientation.x, head.orientation.y, head.orientation.z, head.orientation.w};
@@ -293,12 +291,14 @@ bool Fill(hand_targets::Targets const& targets, ik::Affine const& worldToCompone
     if (auto const view = WorldForward(targets.body, head.position, headYaw)) {
         gLast.worldHead = std::atan2(view->y, view->x) * kDegrees;
     }
-    gLast.pawnYaw = pawn != nullptr ? UnitsToDegrees(pawn->Rotation.Yaw) : 0.0;
-    APlayerController* const controller = engine::LocalPlayerController();
-    gLast.controlYaw = controller != nullptr ? UnitsToDegrees(controller->Rotation.Yaw) : 0.0;
-    gLast.cameraYaw = controller != nullptr && controller->PlayerCamera != nullptr
-        ? UnitsToDegrees(controller->PlayerCamera->CameraCache.POV.Rotation.Yaw)
-        : 0.0;
+    // Through our reflection layer (game/player); 0 when a read isn't there, as before for a missing object.
+    auto const pawnRotation = player::Rotation(pawn);
+    gLast.pawnYaw = pawnRotation ? UnitsToDegrees(pawnRotation->yaw) : 0.0;
+    ue3::Object* const controller = player::Controller();
+    auto const controlRotation = player::Rotation(controller);
+    gLast.controlYaw = controlRotation ? UnitsToDegrees(controlRotation->yaw) : 0.0;
+    auto const pov = player::CameraPov(player::Camera(controller));
+    gLast.cameraYaw = pov ? UnitsToDegrees(pov->rotation->yaw) : 0.0;
     LogIfOff();
     return true;
 }

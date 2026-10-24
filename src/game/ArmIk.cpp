@@ -15,15 +15,13 @@
 #include "game/BodyFollow.hpp"
 #include "game/HandCalibration.hpp"
 #include "engine/BonePose.hpp"
-#include "engine/GameAdapterSdk.hpp"
-#include "engine/Objects.hpp"
 #include "engine/Skeleton.hpp"
 #include "game/HandTargets.hpp"
+#include "game/Player.hpp"
 #include "game/Sights.hpp"
 #include "game/SupportGrip.hpp"
 #include "game/Weapon.hpp"
-
-#include <LESDK/Headers.hpp>
+#include "ue3/Handles.hpp"
 
 #include <algorithm>
 #include <array>
@@ -71,7 +69,7 @@ constexpr double kMaxReachScale = 3.0;
 
 // Per skeleton asset: names, parents, arm chains. Re-resolved when the asset or its bones change.
 struct SkeletonInfo {
-    UObject const* asset = nullptr;  // compared by address only
+    ue3::Object const* asset = nullptr;  // compared by address only
     int boneCount = 0;
     engine::skeleton::RefSkeleton bones;
     std::array<std::optional<ik::ArmChain>, 2> arms;
@@ -90,8 +88,8 @@ std::optional<SkeletonInfo> gSkeleton;
 
 // The bone layout check, per mesh (addresses compared only), and which arms look like arms.
 struct LayoutCheck {
-    USkeletalMeshComponent const* mesh = nullptr;
-    UObject const* asset = nullptr;
+    ue3::Object const* mesh = nullptr;
+    ue3::Object const* asset = nullptr;
     bool passed = false;
     std::array<bool, 2> arms{};
     std::array<double, 2> lengths{};  // upper arm + forearm, animated (Unreal units)
@@ -151,19 +149,16 @@ void LogGunHold(weapon::Grip const& grip, std::optional<ik::Vec3> const& upInHan
         hand_calibration::GunRoll(), upInHand->x, upInHand->y, upInHand->z, apart);
 }
 
+// Through our reflection layer (game/player, research/34).
 struct Body {
-    APawn* pawn = nullptr;
-    USkeletalMeshComponent* mesh = nullptr;
+    ue3::Object* pawn = nullptr;  // an SFXGame.BioPawn
+    ue3::Object* mesh = nullptr;  // its SkeletalMeshComponent
 };
 
 std::optional<Body> PlayerBody() {
-    APlayerController* const controller = engine::LocalPlayerController();
-    APawn* const pawn = controller != nullptr ? controller->Pawn : nullptr;
-    if (pawn == nullptr || !pawn->IsA(ABioPawn::StaticClass()) || pawn->Mesh == nullptr) {
-        return std::nullopt;
-    }
-    USkeletalMeshComponent* const mesh = pawn->Mesh;
-    if (mesh->SkeletalMesh == nullptr) {
+    ue3::Object* const pawn = player::BioPawn(player::Controller());
+    ue3::Object* const mesh = player::Mesh(pawn);
+    if (pawn == nullptr || mesh == nullptr || player::SkeletalMesh(mesh) == nullptr) {
         return std::nullopt;
     }
     return Body{pawn, mesh};
@@ -171,12 +166,8 @@ std::optional<Body> PlayerBody() {
 
 // On-foot gameplay: no conversation, cinematic, GUI or vehicle.
 bool OnFoot() {
-    APlayerController* const controller = engine::LocalPlayerController();
-    if (controller == nullptr || !controller->IsA(ABioPlayerController::StaticClass())) {
-        return false;
-    }
-    USFXGameModeManager const* const modes = engine::adapter::GameModes(static_cast<ABioPlayerController*>(controller));
-    return modes != nullptr && modes->CurrentMode == kGameModeOnFoot;
+    std::optional<std::uint8_t> const mode = player::GameMode(player::Controller());
+    return mode && *mode == kGameModeOnFoot;
 }
 
 std::string Format(engine::UnrealVector const& v) {
@@ -244,8 +235,8 @@ void LogCameraHooks(SkeletonInfo& info) {
 }
 
 // The asset's skeleton and arm chains, resolved once per asset (logged). Nullopt: unreadable.
-SkeletonInfo const* Skeleton(USkeletalMeshComponent* mesh) {
-    UObject const* const asset = mesh->SkeletalMesh;
+SkeletonInfo const* Skeleton(ue3::Object* mesh) {
+    ue3::Object const* const asset = player::SkeletalMesh(mesh);
     int const count = engine::skeleton::RefBoneCount(mesh);
     if (gSkeleton && gSkeleton->asset == asset && gSkeleton->boneCount == count) {
         // Same address and size; also the same arm bones (a level load can put another asset there).
@@ -298,7 +289,7 @@ SkeletonInfo const* Skeleton(USkeletalMeshComponent* mesh) {
             }
         }
     }
-    log::Info("arm IK: skeleton {} ({} bones): left arm {}; right arm {}; head {}", engine::FullName(mesh->SkeletalMesh), count,
+    log::Info("arm IK: skeleton {} ({} bones): left arm {}; right arm {}; head {}", ue3::runtime::FullName(player::SkeletalMesh(mesh)), count,
         ChainText(info, info.arms[kLeft]), ChainText(info, info.arms[kRight]),
         info.head >= 0 ? std::format("{}({})", info.bones.names[info.head], info.head) : "not found");
     // The eyes: a bone named just "eye" and a side (Eye_Left), not eyeBlink, underEye or lids.
@@ -333,7 +324,7 @@ SkeletonInfo const* Skeleton(USkeletalMeshComponent* mesh) {
 
 // Our reading of SpaceBases against the engine's GetBoneLocation (component and world space),
 // for the head and both hands. Once per mesh, before the first write.
-LayoutCheck CheckLayout(USkeletalMeshComponent* mesh, SkeletonInfo const& info) {
+LayoutCheck CheckLayout(ue3::Object* mesh, SkeletonInfo const& info) {
     using engine::skeleton::Space;
     std::vector<int> bones;
     if (info.head >= 0) {
@@ -348,7 +339,7 @@ LayoutCheck CheckLayout(USkeletalMeshComponent* mesh, SkeletonInfo const& info) 
     for (int bone : bones) {
         for (Space space : {Space::Component, Space::World}) {
             auto const ours = engine::skeleton::BoneLocation(mesh, bone, space);
-            auto const native = engine::skeleton::NativeBoneLocation(mesh, engine::skeleton::NameOf(info.bones.keys[bone]), space);
+            auto const native = engine::skeleton::NativeBoneLocation(mesh, info.bones.keys[bone], space);
             double const error = ours && native ? std::hypot(ours->x - native->x, ours->y - native->y, ours->z - native->z) : -1.0;
             bool const match = error >= 0.0 && error <= kLayoutTolerance;
             log::Info("arm IK: layout check {} {}: SpaceBases {} vs GetBoneLocation {}: {}", info.bones.names[bone],
@@ -357,7 +348,7 @@ LayoutCheck CheckLayout(USkeletalMeshComponent* mesh, SkeletonInfo const& info) 
             ok = ok && match;
         }
     }
-    log::Info("arm IK: bone layout {} for {}", ok ? "verified" : "NOT verified: no writes", engine::FullName(mesh));
+    log::Info("arm IK: bone layout {} for {}", ok ? "verified" : "NOT verified: no writes", ue3::runtime::FullName(mesh));
     LayoutCheck check{mesh, info.asset, ok, {}};
     // Segment lengths from the animated pose: a wrong chain shows up here.
     std::span<engine::skeleton::BoneAtom const> const pose = engine::skeleton::SpaceBases(mesh);
@@ -380,8 +371,12 @@ LayoutCheck CheckLayout(USkeletalMeshComponent* mesh, SkeletonInfo const& info) 
 }
 
 // The body's axes in component space, from the pawn's facing.
-std::optional<ik::BodyFrame> BodyAxes(APawn const* pawn, ik::Affine const& worldToComponent) {
-    double const yaw = pawn->Rotation.Yaw * std::numbers::pi / 32768.0;
+std::optional<ik::BodyFrame> BodyAxes(ue3::Object const* pawn, ik::Affine const& worldToComponent) {
+    std::optional<ue3::Rotator> const rotation = player::Rotation(pawn);
+    if (!rotation) {
+        return std::nullopt;
+    }
+    double const yaw = rotation->yaw * std::numbers::pi / 32768.0;
     ik::Vec3 const forwardWorld{std::cos(yaw), std::sin(yaw), 0.0};
     ik::Vec3 const rightWorld{-std::sin(yaw), std::cos(yaw), 0.0};
     ik::Vec3 const upWorld{0.0, 0.0, 1.0};
@@ -410,21 +405,34 @@ void Stop(std::string status) {
 // The AnimTree's own off-hand IK, the SkelControlLimb named `LeftArm` (research/18): found by
 // name once per AnimTree, then followed by address (the lists are walked each time, so a control
 // that went away is never read).
-#if defined(SDK_TARGET_LE1)
-static_assert(offsetof(USkelControlBase, ControlStrength) == 0xA8);
-static_assert(offsetof(USkelControlBase, StrengthTarget) == 0xB4);
-#endif
+// Through our reflection layer (research/34): SkelControlBase.ControlStrength +0xA8 and StrengthTarget +0xB4
+// as research/18 read them, checked by engine/ReflectCheck.
 constexpr int kMaxControlsPerList = 32;
-UAnimTree const* gIkTree = nullptr;
-USkelControlBase const* gIkControl = nullptr;
+ue3::ClassRef gAnimTree{"Engine.AnimTree"};
+ue3::FieldRef gAnimations{"Engine.SkeletalMeshComponent", "Animations"};
+ue3::FieldRef gSkelControlLists{"Engine.AnimTree", "SkelControlLists"};
+ue3::FieldRef gControlHead{gSkelControlLists, "ControlHead"};
+ue3::FieldRef gNextControl{"Engine.SkelControlBase", "NextControl"};
+ue3::FieldRef gControlName{"Engine.SkelControlBase", "ControlName"};
+ue3::FieldRef gControlStrength{"Engine.SkelControlBase", "ControlStrength"};
+ue3::FieldRef gStrengthTarget{"Engine.SkelControlBase", "StrengthTarget"};
+ue3::FieldRef gStrengthFromAnimNode{"Engine.SkelControlBase", "bSetStrengthFromAnimNode"};
+ue3::Object const* gIkTree = nullptr;
+ue3::Object const* gIkControl = nullptr;
 bool gIkSearched = false;
 
-USkelControlBase* FindControl(UAnimTree* tree, USkelControlBase const* address, char const* name) {
-    for (FSkelControlListHead const& list : tree->SkelControlLists) {
+ue3::Object* FindControl(ue3::Object* tree, ue3::Object const* address, char const* name) {
+    auto const lists = gSkelControlLists.ElementsOf(tree);
+    if (!lists) {
+        return nullptr;
+    }
+    for (std::int32_t i = 0; i < lists->count; ++i) {
         int depth = 0;
-        for (USkelControlBase* control = list.ControlHead; control != nullptr && depth < kMaxControlsPerList;
-             control = control->NextControl, ++depth) {
-            if (address != nullptr ? control == address : engine::ToString(control->ControlName) == name) {
+        for (ue3::Object* control = gControlHead.Read<ue3::Object*>(lists->At(i)).value_or(nullptr);
+             control != nullptr && depth < kMaxControlsPerList;
+             control = gNextControl.Read<ue3::Object*>(control).value_or(nullptr), ++depth) {
+            if (address != nullptr ? control == address
+                                   : ue3::runtime::NameText(gControlName.Read<ue3::Name>(control).value_or(ue3::Name{})) == name) {
                 return control;
             }
         }
@@ -432,18 +440,17 @@ USkelControlBase* FindControl(UAnimTree* tree, USkelControlBase const* address, 
     return nullptr;
 }
 
-std::optional<support_grip::NativeIkSample> NativeLeftArmIk(USkeletalMeshComponent* mesh) {
-    UAnimNode* const animations = mesh->Animations;
-    if (animations == nullptr || !animations->IsA(UAnimTree::StaticClass())) {
+std::optional<support_grip::NativeIkSample> NativeLeftArmIk(ue3::Object* mesh) {
+    ue3::Object* const tree = gAnimations.Read<ue3::Object*>(mesh).value_or(nullptr);
+    if (tree == nullptr || !ue3::IsA(tree, gAnimTree)) {
         return std::nullopt;
     }
-    auto* const tree = static_cast<UAnimTree*>(animations);
     if (tree != gIkTree) {
         gIkTree = tree;
         gIkControl = nullptr;
         gIkSearched = false;
     }
-    USkelControlBase* control = nullptr;
+    ue3::Object* control = nullptr;
     if (gIkControl != nullptr) {
         control = FindControl(tree, gIkControl, nullptr);
         gIkSearched = gIkSearched && control != nullptr;  // it went away: look it up by name again
@@ -456,14 +463,20 @@ std::optional<support_grip::NativeIkSample> NativeLeftArmIk(USkeletalMeshCompone
     if (control == nullptr) {
         return std::nullopt;
     }
-    return support_grip::NativeIkSample{control->ControlStrength, control->StrengthTarget, control->bSetStrengthFromAnimNode != 0};
+    std::optional<float> const strength = gControlStrength.Read<float>(control);
+    std::optional<float> const target = gStrengthTarget.Read<float>(control);
+    std::optional<bool> const fromAnimNode = gStrengthFromAnimNode.ReadBool(control);
+    if (!strength || !target || !fromAnimNode) {
+        return std::nullopt;
+    }
+    return support_grip::NativeIkSample{*strength, *target, *fromAnimNode};
 }
 
 // The two-handed grip (game/support_grip): this tick's foregrip candidates, all in the right hand
 // bone's axes, and, once a foregrip has settled and the left controller is followed, the writer's
 // support request. LHIK hangs below the right hand (Prop01), so our write carries it rigidly: its
 // place in the hand's axes is the animation's either way.
-bool RequestSupport(USkeletalMeshComponent* mesh, SkeletonInfo const& info, std::span<engine::skeleton::BoneAtom const> pose,
+bool RequestSupport(ue3::Object* mesh, SkeletonInfo const& info, std::span<engine::skeleton::BoneAtom const> pose,
     weapon::Grip const& grip, ik::Vec3 const& up, hand_targets::Targets const& targets, engine::bone_pose::Request& request) {
     int const right = info.arms[kRight]->hand;
     int const count = static_cast<int>(pose.size());
@@ -674,7 +687,7 @@ void Drive(double deltaSeconds) {
     if (!OnFoot()) {
         return Stop("not on foot");
     }
-    USkeletalMeshComponent* const mesh = body->mesh;
+    ue3::Object* const mesh = body->mesh;
     if (engine::skeleton::PoseParent(mesh) != nullptr) {
         return Stop("the body mesh takes its pose from a ParentAnimComponent: not supported");
     }

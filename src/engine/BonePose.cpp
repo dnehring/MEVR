@@ -22,6 +22,13 @@
 namespace mevr::engine::bone_pose {
 namespace {
 
+ue3::Object* AsObject(USkeletalMeshComponent* mesh) {
+    return reinterpret_cast<ue3::Object*>(mesh);
+}
+ue3::Object const* AsObject(USkeletalMeshComponent const* mesh) {
+    return reinterpret_cast<ue3::Object const*>(mesh);
+}
+
 constexpr char const* kHookName = "USkeletalMeshComponent::UpdateSkelPose";
 
 // Verified as a function start in .pdata and by its code (research/14): it sizes SpaceBases and
@@ -254,7 +261,7 @@ bool TakeRequest(USkeletalMeshComponent const* self, Request& copy) {
     ULONGLONG const now = GetTickCount64();
     char const* stale = nullptr;
     AcquireSRWLockShared(&gRequestLock);
-    bool matches = gRequest.mesh == self;
+    bool matches = gRequest.mesh == AsObject(self);
     if (matches) {
         if (gRequestOwner != owner) {
             stale = "the mesh's owner changed (another component at the same address)";
@@ -300,8 +307,9 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
         return;  // republished for another mesh meanwhile
     }
     // The same skeleton as when the request was made: bone count, pose size and the chains' names.
-    int const count = skeleton::RefBoneCount(self);
-    std::span<skeleton::BoneAtom> const bases = skeleton::SpaceBases(self);
+    ue3::Object* const mesh = AsObject(self);
+    int const count = skeleton::RefBoneCount(mesh);
+    std::span<skeleton::BoneAtom> const bases = skeleton::SpaceBases(mesh);
     if (count != request.boneCount || static_cast<int>(bases.size()) != count ||
         static_cast<int>(request.parents.size()) != count) {
         Reject(bases.empty() ? "pose not computed" : "skeleton changed (bone count)");
@@ -313,7 +321,7 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
         }
         int const bones[3] = {arm.chain.upper, arm.chain.fore, arm.chain.hand};
         for (int i = 0; i < 3; ++i) {
-            if (bones[i] < 0 || bones[i] >= count || skeleton::RefBoneKey(self, bones[i]) != arm.keys[i]) {
+            if (bones[i] < 0 || bones[i] >= count || skeleton::RefBoneKey(mesh, bones[i]) != arm.keys[i]) {
                 Reject("skeleton changed (arm bone names)");
                 return;
             }
@@ -325,7 +333,7 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
     }
     for (std::size_t k = 0; k < request.keep.size(); ++k) {
         int const bone = request.keep[k];
-        if (bone < 0 || bone >= count || skeleton::RefBoneKey(self, bone) != request.keepKeys[k]) {
+        if (bone < 0 || bone >= count || skeleton::RefBoneKey(mesh, bone) != request.keepKeys[k]) {
             Reject("skeleton changed (kept bone names)");
             return;
         }
@@ -365,11 +373,11 @@ void Write(USkeletalMeshComponent* self, float deltaTime) {
         bool same = t.keys.size() == t.chain.spine.size() + 2;
         for (std::size_t k = 0; same && k < t.chain.spine.size(); ++k) {
             int const bone = t.chain.spine[k];
-            same = bone >= 0 && bone < count && skeleton::RefBoneKey(self, bone) == t.keys[k];
+            same = bone >= 0 && bone < count && skeleton::RefBoneKey(mesh, bone) == t.keys[k];
         }
         for (int side = 0; same && side < 2; ++side) {
             int const bone = t.chain.collars[side];
-            same = bone < 0 || (bone < count && skeleton::RefBoneKey(self, bone) == t.keys[t.chain.spine.size() + side]);
+            same = bone < 0 || (bone < count && skeleton::RefBoneKey(mesh, bone) == t.keys[t.chain.spine.size() + side]);
         }
         if (!same) {
             Reject("skeleton changed (spine bone names)");
@@ -628,11 +636,11 @@ bool Installed() {
 }
 
 void Publish(Request request) {
-    USkeletalMeshComponent const* const mesh = request.mesh;
+    auto const* const mesh = reinterpret_cast<USkeletalMeshComponent const*>(request.mesh);
     UObject const* const owner = mesh != nullptr ? mesh->Owner : nullptr;
     UObject const* const world = CurrentWorld();
     AcquireSRWLockExclusive(&gRequestLock);
-    if (gRequest.mesh != mesh || gRequestOwner != owner) {
+    if (gRequest.mesh != request.mesh || gRequestOwner != owner) {
         gFirstWriteLogged = false;
         gFirstWriteReady = false;
     }

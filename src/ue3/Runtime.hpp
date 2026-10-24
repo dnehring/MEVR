@@ -36,6 +36,12 @@ struct Found {
     char const* objectsBy = "none";   // "rva", "pattern" or "none"
     char const* namePoolsBy = "none";
     bool processEventMatchesRva = false;
+    // The engine's allocator (ue3/Memory): appMalloc, appFree and the GMalloc both load.
+    std::uintptr_t appMalloc = 0;
+    std::uintptr_t appFree = 0;
+    std::uintptr_t gmalloc = 0;
+    char const* appMallocBy = "none";
+    char const* appFreeBy = "none";
 };
 Found const& Where();
 
@@ -55,6 +61,14 @@ Object* GameEngine();
 Object* LocalPlayerController();
 // A live GObjects entry, not pending kill (see engine::IsAlive for when that check means anything).
 bool IsAlive(Object const* object);
+
+// "Class Engine.Actor" or "None" (null, or the layer is off), as the log lines print objects.
+std::string FullName(Object const* object);
+// A name's text ("Hand_R", "Foo_2"), or "None" while the layer is off.
+std::string NameText(Name name);
+inline std::string NameText(std::uint64_t key) {
+    return NameText(Name::FromKey(key));
+}
 
 // Logs and clears the reflection's notes (a class found in another package...).
 void FlushNotes();

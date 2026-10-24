@@ -10,10 +10,6 @@
 #include <string>
 #include <vector>
 
-class UObject;
-class USkeletalMeshComponent;
-struct SFXName;
-
 // A skeletal mesh's bones, read straight from engine memory. LE1 layouts, each checked against the
 // code that uses them (research/14):
 //   USkeletalMesh::RefSkeleton        +0xB4   TArray<FMeshBone>, 0x50 bytes each: Name +0x00,
@@ -25,6 +21,10 @@ struct SFXName;
 // Names can't come from the GetBoneNames native: through ProcessEvent its out-array parameter is
 // never bound to the caller's parms (EX_NativeParm with a null result), so it returns nothing.
 // LE2/LE3: layouts not verified; everything here answers "unsupported" there.
+//
+// Meshes are SkeletalMeshComponents as our reflection layer's pointers (research/34): the modules
+// find them through ue3/; the reads here stay the research/14 offsets (stage 3 of research/34 moves
+// them behind one named accessor each).
 namespace mevr::ue3 {
 struct Object;
 }
@@ -56,21 +56,19 @@ struct RefSkeleton {
 };
 
 // The mesh asset's reference skeleton; nullopt if unsupported or the mesh has none.
-std::optional<RefSkeleton> ReadRefSkeleton(USkeletalMeshComponent const* mesh);
+std::optional<RefSkeleton> ReadRefSkeleton(ue3::Object const* mesh);
 // Number of bones in the mesh asset's skeleton (-1 if unsupported or no asset).
-int RefBoneCount(USkeletalMeshComponent const* mesh);
+int RefBoneCount(ue3::Object const* mesh);
 // The raw name of bone `index` (0 if out of range): any thread, no allocation.
-std::uint64_t RefBoneKey(USkeletalMeshComponent const* mesh, int index);
+std::uint64_t RefBoneKey(ue3::Object const* mesh, int index);
 // The component-space pose (empty until the pose has been computed, or if unsupported).
-std::span<BoneAtom> SpaceBases(USkeletalMeshComponent* mesh);
-ik::Affine LocalToWorld(USkeletalMeshComponent const* mesh);
-// The same for modules on our reflection layer (a SkeletalMeshComponent found through ue3/).
+std::span<BoneAtom> SpaceBases(ue3::Object* mesh);
 ik::Affine LocalToWorld(ue3::Object const* mesh);
 // The component this mesh takes its pose from (ParentAnimComponent), if any.
-USkeletalMeshComponent* PoseParent(USkeletalMeshComponent const* mesh);
+ue3::Object* PoseParent(ue3::Object const* mesh);
 
 // The bone with this raw name in the mesh asset's skeleton (MatchRefBone from memory), or -1.
-int FindBone(USkeletalMeshComponent const* mesh, std::uint64_t key);
+int FindBone(ue3::Object const* mesh, std::uint64_t key);
 
 // A socket of the mesh's asset (USkeletalMesh::Sockets +0x144, USkeletalMeshSocket: RelativeLocation
 // +0x60, RelativeRotation +0x6C, SocketName +0x84, BoneName +0x8C; USkeletalMesh::FindSocket
@@ -82,14 +80,14 @@ struct Socket {
     std::uint64_t boneKey = 0;
     ik::Transform relative;
 };
-std::optional<Socket> FindSocket(USkeletalMeshComponent const* mesh, std::uint64_t socketName);
+std::optional<Socket> FindSocket(ue3::Object const* mesh, std::uint64_t socketName);
 // Every socket of the mesh's asset whose bone resolves: its raw name and placement (empty if
 // unsupported or none).
 struct NamedSocket {
     std::uint64_t name = 0;
     Socket socket;
 };
-std::vector<NamedSocket> Sockets(USkeletalMeshComponent const* mesh);
+std::vector<NamedSocket> Sockets(ue3::Object const* mesh);
 
 // How `component` hangs on the mesh (USkeletalMeshComponent::Attachments +0x3B4, FAttachment 0x34
 // bytes: Component, BoneName, RelativeLocation, RelativeRotation, RelativeScale), as
@@ -101,21 +99,21 @@ struct Attachment {
     ik::Transform relative;
     bool uniformScale = true;
 };
-std::optional<Attachment> FindAttachment(USkeletalMeshComponent const* mesh, UObject const* component);
+std::optional<Attachment> FindAttachment(ue3::Object const* mesh, ue3::Object const* component);
 
 // A UE3 rotator (Unreal units) as a rotation (FRotationMatrix's axes).
 ik::Quat FromRotator(int pitch, int yaw, int roll);
 
 enum class Space { World = 0, Component = 1 };
 // From SpaceBases (and LocalToWorld for world space). Nullopt if the bone isn't posed.
-std::optional<UnrealVector> BoneLocation(USkeletalMeshComponent* mesh, int index, Space space);
+std::optional<UnrealVector> BoneLocation(ue3::Object* mesh, int index, Space space);
 // The engine's own answer (MatchRefBone and GetBoneLocation through ProcessEvent): a cross-check
 // of the layouts above. Game thread.
-std::optional<UnrealVector> NativeBoneLocation(USkeletalMeshComponent* mesh, SFXName const& bone, Space space);
-SFXName NameOf(std::uint64_t key);
+// `bone` is the bone's raw name (RefSkeleton::keys).
+std::optional<UnrealVector> NativeBoneLocation(ue3::Object* mesh, std::uint64_t bone, Space space);
 
 // Why GetBoneNames returns nothing through ProcessEvent, as observed in this process: how many
 // names it returned, its native and bytecode, and the EX_NativeParm handler. Game thread.
-std::string GetBoneNamesDiagnostic(USkeletalMeshComponent* mesh);
+std::string GetBoneNamesDiagnostic(ue3::Object* mesh);
 
 } // namespace mevr::engine::skeleton

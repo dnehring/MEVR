@@ -4,14 +4,13 @@
 #include "core/Log.hpp"
 #include "core/vr/Output.hpp"
 #include "core/vr/ViewSync.hpp"
-#include "engine/Objects.hpp"
-#include "engine/GameAdapterSdk.hpp"
+#include "engine/Legacy.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/SceneView.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/HeadSim.hpp"
-
-#include <LESDK/Headers.hpp>
+#include "game/Player.hpp"
+#include "ue3/Handles.hpp"
 
 #include <atomic>
 #include <optional>
@@ -19,9 +18,61 @@
 namespace mevr::game::head_tracking {
 namespace {
 
-constexpr char const* kUpdateCamera = "Function Engine.Camera.UpdateCamera";
-constexpr char const* kGetPlayerViewPoint = "Function Engine.PlayerController.GetPlayerViewPoint";
-constexpr char const* kGetFovAngle = "Function Engine.PlayerController.GetFOVAngle";
+constexpr char const* kUpdateCamera = "Engine.Camera.UpdateCamera";
+constexpr char const* kGetPlayerViewPoint = "Engine.PlayerController.GetPlayerViewPoint";
+constexpr char const* kGetFovAngle = "Engine.PlayerController.GetFOVAngle";
+
+// ---- engine access: our reflection layer on LE1 (research/34), LExSDKv2 on LE2/LE3 until stage 5
+// (engine/Legacy) -----------------------------------------------------------------------------------
+
+#if defined(MEVR_GAME_LE1)
+
+ue3::FunctionRef gUpdateCameraFn{kUpdateCamera};
+ue3::FunctionRef gViewPointFn{kGetPlayerViewPoint};
+ue3::FunctionRef gFovAngleFn{kGetFovAngle};
+ue3::FieldRef gViewPointLocation{gViewPointFn, "out_Location"};
+ue3::FieldRef gViewPointRotation{gViewPointFn, "out_Rotation"};
+ue3::FieldRef gFovReturn{gFovAngleFn, "ReturnValue"};
+
+// Retried each second until the script packages are in: a miss is forgotten.
+ue3::Function* Find(ue3::FunctionRef& ref) {
+    ue3::Function* const function = ref.Get();
+    if (function == nullptr) {
+        ref.Reset();
+    }
+    return function;
+}
+
+ue3::Function* FindUpdateCamera() { return Find(gUpdateCameraFn); }
+ue3::Function* FindViewPoint() { return Find(gViewPointFn); }
+ue3::Function* FindFovAngle() { return Find(gFovAngleFn); }
+ue3::Object* LocalController() { return player::Controller(); }
+bool IsPlayerController(ue3::Object const* object) { return player::IsPlayerController(object); }
+std::optional<unsigned char> GameModeOf(ue3::Object const* controller) { return player::GameMode(controller); }
+ue3::Object* CameraOwner(ue3::Object const* camera) { return player::CameraOwner(camera); }
+float* CameraFov(ue3::Object* camera) {
+    auto const pov = player::CameraPov(camera);
+    return pov ? pov->fov : nullptr;
+}
+ue3::Vector* ViewPointLocation(void* parms) { return gViewPointLocation.In<ue3::Vector>(parms); }
+ue3::Rotator* ViewPointRotation(void* parms) { return gViewPointRotation.In<ue3::Rotator>(parms); }
+float* FovReturn(void* parms) { return gFovReturn.In<float>(parms); }
+
+#else
+
+ue3::Function* FindUpdateCamera() { return engine::legacy::FindFunction(kUpdateCamera); }
+ue3::Function* FindViewPoint() { return engine::legacy::FindFunction(kGetPlayerViewPoint); }
+ue3::Function* FindFovAngle() { return engine::legacy::FindFunction(kGetFovAngle); }
+ue3::Object* LocalController() { return engine::legacy::LocalPlayerController(); }
+bool IsPlayerController(ue3::Object const* object) { return engine::legacy::IsPlayerController(object); }
+std::optional<unsigned char> GameModeOf(ue3::Object const* controller) { return engine::legacy::GameMode(controller); }
+ue3::Object* CameraOwner(ue3::Object const* camera) { return engine::legacy::CameraOwner(camera); }
+float* CameraFov(ue3::Object* camera) { return engine::legacy::CameraFov(camera); }
+ue3::Vector* ViewPointLocation(void* parms) { return engine::legacy::ViewPointLocation(parms); }
+ue3::Rotator* ViewPointRotation(void* parms) { return engine::legacy::ViewPointRotation(parms); }
+float* FovReturn(void* parms) { return engine::legacy::FovAngleReturn(parms); }
+
+#endif
 constexpr float kDefaultHalfIpdMeters = 0.032f;
 constexpr unsigned char kGameModeDefault = 0;  // SFXGameModeManager.EGameModes: on foot, no GUI
 // Self-checks decide only after this many heartbeat windows in a row agree.
@@ -96,55 +147,52 @@ void TagFrame(XrPosef const& pose, float fov, int eye) {
     gTaggedThisTick = true;
 }
 
-void ApplyRotation(FRotator& rotation) {
-    rotation.Yaw += gHead.yaw;
-    rotation.Pitch = gHead.pitch;
-    rotation.Roll = gHead.roll;
+void ApplyRotation(ue3::Rotator& rotation) {
+    rotation.yaw += gHead.yaw;
+    rotation.pitch = gHead.pitch;
+    rotation.roll = gHead.roll;
     gAdjustedViews.fetch_add(1, std::memory_order_relaxed);
 }
 
 // Render path only: head position (6DOF) and the stereo eye offset, in world units. Records
 // where the head (without the eye offset) ended up, for mapping controllers into the world.
-void ApplyTranslation(FVector& location, int gameYaw, FRotator const& rotation) {
+void ApplyTranslation(ue3::Vector& location, int gameYaw, ue3::Rotator const& rotation) {
     engine::UnrealVector offset{};
     if (gPositional && gHeadPose) {
         offset = engine::ToUnrealOffset(gHeadPose->position, gameYaw);
     }
     if (gHeadPose) {
         // Without 6DOF the camera stands for the head wherever it is in LOCAL space.
-        gAnchor = ViewAnchor{{location.X + offset.x, location.Y + offset.y, location.Z + offset.z}, gameYaw, *gHeadPose};
+        gAnchor = ViewAnchor{{location.x + offset.x, location.y + offset.y, location.z + offset.z}, gameYaw, *gHeadPose};
     }
     if (gEye >= 0) {
-        engine::UnrealVector const right = engine::RightAxis({rotation.Pitch, rotation.Yaw, rotation.Roll});
+        engine::UnrealVector const right = engine::RightAxis({rotation.pitch, rotation.yaw, rotation.roll});
         double const meters = (gEye == 0 ? -1.0 : 1.0) * gHalfIpdMeters;
         offset.x += right.x * meters * engine::kUnitsPerMeter;
         offset.y += right.y * meters * engine::kUnitsPerMeter;
         offset.z += right.z * meters * engine::kUnitsPerMeter;
     }
-    location.X += static_cast<float>(offset.x);
-    location.Y += static_cast<float>(offset.y);
-    location.Z += static_cast<float>(offset.z);
+    location.x += static_cast<float>(offset.x);
+    location.y += static_cast<float>(offset.y);
+    location.z += static_cast<float>(offset.z);
 }
 
 // The player's game mode (EGameModes), if the controller has a mode manager.
-std::optional<unsigned char> ReadGameMode(APlayerController* controller) {
-    if (controller == nullptr || !controller->IsA(ABioPlayerController::StaticClass())) {
+std::optional<unsigned char> ReadGameMode(ue3::Object* controller) {
+    if (controller == nullptr) {
         return std::nullopt;
     }
-    USFXGameModeManager const* const modes = engine::adapter::GameModes(static_cast<ABioPlayerController*>(controller));
-    if (modes == nullptr) {
-        return std::nullopt;
-    }
-    return modes->CurrentMode;
+    return GameModeOf(controller);
 }
 
 // Once per frame, after the camera computed this frame's view (before the player view is built).
-void OnUpdateCamera(UObject* context, UFunction* /*function*/, void* /*parms*/, void* /*result*/) {
-    auto* const camera = static_cast<ACamera*>(context);
-    if (camera == nullptr || camera->PCOwner == nullptr) {
+void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
+    ue3::Object* const owner = camera != nullptr ? CameraOwner(camera) : nullptr;
+    float* const fov = owner != nullptr ? CameraFov(camera) : nullptr;
+    if (fov == nullptr) {
         return;
     }
-    gGameMode = ReadGameMode(camera->PCOwner);
+    gGameMode = ReadGameMode(owner);
     // On foot is the only mode where the move stick should follow the head (not the
     // conversation wheel, galaxy map, menus, power/weapon wheels or the Mako).
     gOnFoot = gGameMode == kGameModeDefault;
@@ -155,9 +203,9 @@ void OnUpdateCamera(UObject* context, UFunction* /*function*/, void* /*parms*/, 
         // The head is sampled at the player view instead (as late as possible).
         auto const headsetFov = vr::view_sync::HeadsetFov();
         if (gFovViaCamera && vr::output::WantsHeadTracking() && headsetFov) {
-            camera->CameraCache.POV.FOV = *headsetFov;
+            *fov = *headsetFov;
         }
-        gCameraFov = camera->CameraCache.POV.FOV;
+        gCameraFov = *fov;
         return;
     }
     BeginView();
@@ -165,9 +213,9 @@ void OnUpdateCamera(UObject* context, UFunction* /*function*/, void* /*parms*/, 
     gGameYaw.reset();  // set again if this frame's views get rotated
     if (gPath == Path::Camera && gHeadsetFov) {
         // Set in the camera cache (read by script) and returned from GetFOVAngle.
-        camera->CameraCache.POV.FOV = *gHeadsetFov;
+        *fov = *gHeadsetFov;
     }
-    gCameraFov = camera->CameraCache.POV.FOV;
+    gCameraFov = *fov;
     if (gHeadPose) {
         TagFrame(*gHeadPose, gCameraFov, -1);
     }
@@ -176,8 +224,8 @@ void OnUpdateCamera(UObject* context, UFunction* /*function*/, void* /*parms*/, 
     }
 }
 
-void OnGetPlayerViewPoint(UObject* context, UFunction* /*function*/, void* parms, void* /*result*/) {
-    if (context == nullptr || !context->IsA(APlayerController::StaticClass())) {
+void OnGetPlayerViewPoint(ue3::Object* context, ue3::Function* /*function*/, void* parms, void* /*result*/) {
+    if (context == nullptr || !IsPlayerController(context)) {
         return;
     }
     bool const inView = gPath == Path::Render && engine::scene_view::InPrimaryView();
@@ -187,29 +235,35 @@ void OnGetPlayerViewPoint(UObject* context, UFunction* /*function*/, void* parms
     if (!gActive || !(inView || gPath == Path::Camera)) {
         return;
     }
-    auto* const p = static_cast<AController_eventGetPlayerViewPoint_Parms*>(parms);
-    FRotator& rotation = engine::adapter::ViewPointRotation(*p);
-    int const gameYaw = rotation.Yaw;
+    ue3::Rotator* const rotation = ViewPointRotation(parms);
+    ue3::Vector* const location = ViewPointLocation(parms);
+    if (rotation == nullptr || location == nullptr) {
+        return;  // the parameters didn't resolve (logged once)
+    }
+    int const gameYaw = rotation->yaw;
     gGameYaw = gameYaw;
-    ApplyRotation(rotation);
+    ApplyRotation(*rotation);
     if (inView) {
-        ApplyTranslation(p->out_Location, gameYaw, rotation);
+        ApplyTranslation(*location, gameYaw, *rotation);
     }
 }
 
-void OnGetFovAngle(UObject* context, UFunction* /*function*/, void* parms, void* /*result*/) {
-    if (context == nullptr || !context->IsA(APlayerController::StaticClass())) {
+void OnGetFovAngle(ue3::Object* context, ue3::Function* /*function*/, void* parms, void* /*result*/) {
+    if (context == nullptr || !IsPlayerController(context)) {
         return;
     }
-    auto* const p = static_cast<APlayerController_eventGetFOVAngle_Parms*>(parms);
+    float* const returned = FovReturn(parms);
+    if (returned == nullptr) {
+        return;  // the parameter didn't resolve (logged once)
+    }
     bool const inView = gPath == Path::Render && engine::scene_view::InPrimaryView();
     if (gHeadsetFov && (inView || gPath == Path::Camera)) {
-        p->ReturnValue = *gHeadsetFov;
+        *returned = *gHeadsetFov;
         gFovOverrides.fetch_add(1, std::memory_order_relaxed);
     }
     if (inView) {
         gFovCallsInPrimary.fetch_add(1, std::memory_order_relaxed);
-        gRenderedFov = p->ReturnValue;
+        gRenderedFov = *returned;
     }
 }
 
@@ -301,18 +355,26 @@ void OnTickEnd() {
 }
 
 bool TryStartup(bool renderPathAvailable) {
-    UFunction* const updateCamera = engine::FindFunction(L"UpdateCamera", kUpdateCamera);
-    UFunction* const viewPoint = engine::FindFunction(L"GetPlayerViewPoint", kGetPlayerViewPoint);
-    UFunction* const fovAngle = engine::FindFunction(L"GetFOVAngle", kGetFovAngle);
+#if defined(MEVR_GAME_LE1)
+    if (!ue3::runtime::Ready()) {
+        // Stand down (no handlers, no head tracking), and let the rest of the mod start.
+        log::Warn("head tracking off: our reflection layer is off (see the 'reflect:' log lines)");
+        return true;
+    }
+#endif
+    ue3::Function* const updateCamera = FindUpdateCamera();
+    ue3::Function* const viewPoint = FindViewPoint();
+    ue3::Function* const fovAngle = FindFovAngle();
     if (updateCamera == nullptr || viewPoint == nullptr || fovAngle == nullptr) {
-        return false;  // script packages not loaded yet
+        return false;  // script packages not loaded yet (or, on LE1, our reflection layer is off)
     }
     engine::process_event::AddPostHandler(updateCamera, &OnUpdateCamera);
     engine::process_event::AddPostHandler(viewPoint, &OnGetPlayerViewPoint);
     engine::process_event::AddPostHandler(fovAngle, &OnGetFovAngle);
     gRenderPathAvailable = renderPathAvailable;
     gPath = renderPathAvailable ? Path::Render : Path::Camera;
-    log::Info("head tracking ready ({}, {}, {}); path {}", kUpdateCamera, kGetPlayerViewPoint, kGetFovAngle, Name(gPath));
+    log::Info("head tracking ready (Function {}, Function {}, Function {}); path {}", kUpdateCamera, kGetPlayerViewPoint,
+        kGetFovAngle, Name(gPath));
     return true;
 }
 
@@ -423,7 +485,7 @@ std::optional<unsigned char> GameMode() {
 }
 
 void RefreshGameMode() {
-    gGameMode = ReadGameMode(engine::LocalPlayerController());
+    gGameMode = ReadGameMode(LocalController());
     gOnFoot = gGameMode == kGameModeDefault;
 }
 
