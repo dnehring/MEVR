@@ -28,7 +28,7 @@ if ($Recording -eq '') {
 & (Join-Path $tools 'replay.ps1') -Path $Recording -Loop | Out-Null
 Start-Sleep -Seconds 3
 try {
-    & (Join-Path $tools 'perf-ab.ps1') -Key $Key -Values $Values -Rounds $Rounds -Seconds $Seconds
+    & (Join-Path $tools 'perf-ab.ps1') -Key $Key -Values ($Values -split ',') -Rounds $Rounds -Seconds $Seconds
 } finally {
     & (Join-Path $tools 'replay.ps1') -Stop | Out-Null
     'replay stopped'
