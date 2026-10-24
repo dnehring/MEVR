@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-class ISharedProxyInterface;
+namespace mevr::loader::spi {
+class Interface;
+}
 
 namespace mevr::host {
 
@@ -14,7 +16,7 @@ namespace mevr::host {
 // couldn't be removed, or a call was still inside one when the wait gave up (the mod reports
 // these through HostServices::keepLoaded; the host's own ProcessEvent callback wait counts too),
 // the DLL is pinned instead, logged as an error, and the next build loads beside it.
-void Start(ISharedProxyInterface* spi);
+void Start(loader::spi::Interface* spi);
 // Call every engine tick (game thread): checks for a new build, then ticks the mod.
 void Tick(float deltaSeconds);
 void Stop();

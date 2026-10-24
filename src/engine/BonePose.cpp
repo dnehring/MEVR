@@ -5,12 +5,10 @@
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
 #include "core/ik/TwoHand.hpp"
+#include "engine/Addresses.hpp"
 #include "engine/Engine.hpp"
 #include "engine/Skeleton.hpp"
 #include "ue3/Runtime.hpp"
-
-// The hook's target is still resolved through LExSDKv2's Initializer (research/34 stage 4).
-#include <LESDK/Init.hpp>
 
 #include <Windows.h>
 #include <intrin.h>
@@ -35,12 +33,8 @@ constexpr char const* kHookName = "USkeletalMeshComponent::UpdateSkelPose";
 // Verified as a function start in .pdata and by its code (research/14): it sizes SpaceBases and
 // LocalAtoms to the RefSkeleton with 0x20-byte elements, blends the AnimTree into LocalAtoms and
 // calls ComposeSkeleton (0x580A60). USkeletalMeshComponent::Tick calls it at 0x58D709 with the
-// frame's DeltaTime; Attach and the various force-update paths call it with 0.
-#if defined(MEVR_GAME_LE1)
-constexpr std::size_t kUpdateSkelPoseRva = 0x592440;
-#else
-constexpr std::size_t kUpdateSkelPoseRva = 0;
-#endif
+// frame's DeltaTime; Attach and the various force-update paths call it with 0. LE1 only (engine/Addresses.hpp).
+constexpr std::uint32_t kUpdateSkelPoseRva = addresses::kUpdateSkelPose;
 
 // (this, DeltaTime, bTickFaceFX); callers also set r9, which the function never reads. All four
 // register arguments are passed through unchanged.
@@ -611,7 +605,7 @@ std::string Slots(Slot (&slots)[4], bool rva) {
 
 } // namespace
 
-bool Install(::LESDK::Initializer& init) {
+bool Install(hook::Context& init) {
     if (kUpdateSkelPoseRva == 0) {
         log::Warn("arm IK: no UpdateSkelPose address for this game; arm writeback unavailable");
         return false;
@@ -620,12 +614,12 @@ bool Install(::LESDK::Initializer& init) {
         log::Warn("arm IK: bone layouts unknown for this game; arm writeback unavailable");
         return false;
     }
-    void* const target = init.Resolve(::LESDK::Address::FromOffset(kUpdateSkelPoseRva));
+    void* const target = init.Resolve(kUpdateSkelPoseRva);
     if (target == nullptr || !IsFunctionStart(target)) {
         log::Error("arm IK: UpdateSkelPose at {} is not a function start; not hooking", target);
         return false;
     }
-    gModuleBase = reinterpret_cast<std::uintptr_t>(init.ModuleBase);
+    gModuleBase = init.ModuleBase();
     if (!ResolveOwner()) {
         log::Warn("arm IK: Engine.ActorComponent.Owner not found through our reflection layer; arm writeback stays idle");
     }
@@ -639,7 +633,7 @@ bool Install(::LESDK::Initializer& init) {
     return true;
 }
 
-bool Uninstall(::LESDK::Initializer& init, bool waitForCalls) {
+bool Uninstall(hook::Context& init, bool waitForCalls) {
     if (!gInstalled) {
         return true;
     }

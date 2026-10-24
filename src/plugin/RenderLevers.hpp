@@ -5,8 +5,8 @@
 
 struct ID3D11DeviceContext;
 
-namespace LESDK {
-class Initializer;
+namespace mevr::hook {
+class Context;
 }
 
 // Render-thread levers and accounting for LE1's VR performance (research/22, "What else can go"). LE1, with
@@ -40,7 +40,7 @@ class Initializer;
 namespace mevr::host::render_levers {
 
 // At attach (exe version checked): installs the hooks. False if the first two failed (the levers are then off).
-bool Install(::LESDK::Initializer& init);
+bool Install(hook::Context& init);
 
 // Game thread, every engine tick: re-reads the switches once a second, applies the affinity, logs.
 void Tick();

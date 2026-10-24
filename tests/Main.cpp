@@ -6380,11 +6380,13 @@ void RunInstallTests(int& failures);
 // tests/ReflectTests.cpp: our UE3 reflection layer (src/ue3, research/34).
 int RunReflectTests();
 int RunBreadcrumbTests();
+int RunExeTests();
 
 int main() {
     RunInstallTests(gFailures);
     gFailures += RunReflectTests();
     gFailures += RunBreadcrumbTests();
+    gFailures += RunExeTests();
     TestUpscale();
     TestComfort();
     TestMetricStereo();

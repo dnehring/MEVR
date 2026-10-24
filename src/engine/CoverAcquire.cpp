@@ -3,10 +3,8 @@
 
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
+#include "engine/Addresses.hpp"
 #include "ue3/Runtime.hpp"
-
-// The hook's target is still resolved through LExSDKv2's Initializer (research/34 stage 4).
-#include <LESDK/Init.hpp>
 
 #include <Windows.h>
 
@@ -36,13 +34,9 @@ constexpr char const* kHookName = "ABioPawn::TryAcquireCover";
 //             then up the wall: type 1 standing (high) cover, 2 mid-level (low). Writes only its outputs.
 // The refused test's description reads Actor.Acceleration and BioPawn.CoverTestAngle (research/23: +0x144 and
 // +0x990), found through our reflection layer when the hook goes in (self-check `field` rows).
-#if defined(MEVR_GAME_LE1)
-constexpr std::size_t kTryAcquireCoverRva = 0xAB1430;
-constexpr std::size_t kCoverTraceRva = 0xAA92F0;
-#else
-constexpr std::size_t kTryAcquireCoverRva = 0;
-constexpr std::size_t kCoverTraceRva = 0;
-#endif
+// LE1 only (engine/Addresses.hpp).
+constexpr std::uint32_t kTryAcquireCoverRva = addresses::kTryAcquireCover;
+constexpr std::uint32_t kCoverTraceRva = addresses::kCoverTrace;
 
 using tTryAcquireCover = void(void* pawn);
 using tCoverTrace = int(void* pawn, float* outNormal, unsigned char* outType, int keepNormal);
@@ -148,7 +142,7 @@ void TryAcquireCoverHook(void* pawn) {
 
 } // namespace
 
-bool Install(::LESDK::Initializer& init) {
+bool Install(hook::Context& init) {
     if (gInstalled) {
         return true;
     }
@@ -156,12 +150,12 @@ bool Install(::LESDK::Initializer& init) {
         log::Warn("cover: no address for this game's cover test: cover can't be refused (only left once taken)");
         return false;
     }
-    void* const target = init.Resolve(::LESDK::Address::FromOffset(kTryAcquireCoverRva));
+    void* const target = init.Resolve(kTryAcquireCoverRva);
     if (target == nullptr || !IsFunctionStart(target)) {
         log::Error("cover: the cover test at {} is not a function start; not hooking", target);
         return false;
     }
-    void* const trace = init.Resolve(::LESDK::Address::FromOffset(kCoverTraceRva));
+    void* const trace = init.Resolve(kCoverTraceRva);
     gTrace = trace != nullptr && IsFunctionStart(trace) ? reinterpret_cast<tCoverTrace*>(trace) : nullptr;
     ResolveFields();
     if (gTrace != nullptr && (gAccelerationOffset < 0 || gCoverTestAngleOffset < 0)) {
@@ -180,7 +174,7 @@ bool Install(::LESDK::Initializer& init) {
     return true;
 }
 
-bool Uninstall(::LESDK::Initializer& init, bool waitForCalls) {
+bool Uninstall(hook::Context& init, bool waitForCalls) {
     gRefused.store(nullptr, std::memory_order_relaxed);
     if (!gInstalled) {
         return true;

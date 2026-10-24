@@ -2,6 +2,7 @@
 #include "plugin/ModLoader.hpp"
 
 #include "core/Log.hpp"
+#include "engine/GameAdapter.hpp"
 #include "mod/ModApi.hpp"
 #include "plugin/CrashBreadcrumbs.hpp"
 #include "plugin/PresentHook.hpp"
@@ -23,8 +24,6 @@
 #include "plugin/MainMenu.hpp"
 #endif
 #endif
-
-#include <LESDK/Headers.hpp>
 
 #include <atomic>
 #include <filesystem>
@@ -182,7 +181,7 @@ HostServices const gServices = WithCrashBreadcrumbs({kHostServicesVersion, kHost
     nullptr, static_cast<std::uint32_t>(sizeof(HostServices))});
 void ForgetModState() {}
 #endif
-ISharedProxyInterface* gSpi = nullptr;
+loader::spi::Interface* gSpi = nullptr;
 
 } // namespace
 
@@ -200,7 +199,7 @@ namespace {
 bool gModActive = false;
 }
 
-void Start(ISharedProxyInterface* spi) {
+void Start(loader::spi::Interface* spi) {
     gSpi = spi;
     gModActive = MevrModStartup(gSpi, &gServices);
     if (gModActive) {
@@ -259,7 +258,7 @@ fs::path HostDirectory() {
 
 fs::path ResolveSourcePath() {
     fs::path const dir = HostDirectory();
-    fs::path const pointer = dir / (SDK_TARGET_NAME_W L"MEVR.modpath");
+    fs::path const pointer = dir / (MEVR_GAME_NAME_W L"MEVR.modpath");
     std::ifstream in(pointer);
     std::string line;
     if (in && std::getline(in, line)) {
@@ -270,7 +269,7 @@ fs::path ResolveSourcePath() {
             return fs::path(std::u8string(line.begin(), line.end()));
         }
     }
-    return dir / (SDK_TARGET_NAME_W L"MEVR_mod.dll");
+    return dir / (MEVR_GAME_NAME_W L"MEVR_mod.dll");
 }
 
 bool ReadStamp(FILETIME& out) {
@@ -331,7 +330,7 @@ enum class LoadResult { Loaded, CopyFailed, Failed };
 // Copies the DLL so the original stays writable for the next build, then loads the copy.
 LoadResult Load() {
     fs::path const shadow = gShadowDir /
-        std::format(L"{}MEVR_mod.{}.dll", SDK_TARGET_NAME_W, ++gGeneration);
+        std::format(L"{}MEVR_mod.{}.dll", MEVR_GAME_NAME_W, ++gGeneration);
     if (!CopyFileW(gSourcePath.c_str(), shadow.c_str(), FALSE)) {
         return LoadResult::CopyFailed;  // usually the linker still writing; retry next poll
     }
@@ -393,7 +392,7 @@ void CheckForNewBuild() {
 
 } // namespace
 
-void Start(ISharedProxyInterface* spi) {
+void Start(loader::spi::Interface* spi) {
     gSpi = spi;
     gSourcePath = ResolveSourcePath();
 

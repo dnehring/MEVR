@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: MIT
 // ASI entry point, loaded through the SPI interface by our own loader (src/loader, installed by MEVR-Setup) or by
 // ME3Tweaks' LEBinkProxy.
-// The host stays small and stable: version check, the engine tick hook, and the mod loader.
+// The host stays small and stable: the exe gate, the engine tick hook, and the mod loader.
+//
+// The plugin side of the SPI (research/33, 34 stage 4) is ours: the five exports below, with the names, signatures
+// and values the loaders look up (loader/SpiAbi.hpp; tools/loader-test checks a plugin against the same interface).
 
+#include "core/Exe.hpp"
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
 #include "core/Version.hpp"
+#include "engine/Addresses.hpp"
 #include "engine/CodeDump.hpp"
+#include "engine/GameAdapter.hpp"
+#include "loader/SpiAbi.hpp"
 #include "plugin/CrashBreadcrumbs.hpp"
 #include "plugin/ModLoader.hpp"
 #include "plugin/PresentHook.hpp"
@@ -22,27 +29,47 @@
 #include "plugin/SetupRequest.hpp"
 #endif
 
-#include <LESDK/Headers.hpp>
-#include <LESDK/Init.hpp>
-#include <SPI.h>
+#include <Windows.h>
 
 #define MEVR_NAME_W L"MEVR"
 #define MEVR_VERSION "0.1.0"
 
-SPI_PLUGINSIDE_SUPPORT(SDK_TARGET_NAME_W MEVR_NAME_W, L"ME VR Attempt contributors", L"" MEVR_VERSION,
-    SPI_GAME_SDK_TARGET, SPI_VERSION_ANY);
-// Attach after the DRM has decrypted the exe; the SDK's RVAs point into decrypted code.
-SPI_PLUGINSIDE_POSTLOAD;
-SPI_PLUGINSIDE_ASYNCATTACH;
+namespace spi = mevr::loader::spi;
+
+#if defined(MEVR_GAME_LE1)
+constexpr spi::Game kSpiGame = spi::Game::LE1;
+#elif defined(MEVR_GAME_LE2)
+constexpr spi::Game kSpiGame = spi::Game::LE2;
+#else
+constexpr spi::Game kSpiGame = spi::Game::LE3;
+#endif
+
+// Who we are, for the loader: name, author, version, the game we're for, the oldest SPI we can use.
+extern "C" __declspec(dllexport) void SpiSupportDecl(wchar_t** name, wchar_t** author, wchar_t** version, int* gameFlags,
+    int* minVersion) {
+    *name = const_cast<wchar_t*>(MEVR_GAME_NAME_W MEVR_NAME_W);
+    *author = const_cast<wchar_t*>(L"ME VR Attempt contributors");
+    *version = const_cast<wchar_t*>(L"" MEVR_VERSION);
+    *gameFlags = spi::GameFlag(kSpiGame);
+    *minVersion = static_cast<int>(spi::kVersion);
+}
+// Attach after the DRM has decrypted the exe: our RVAs point into decrypted code.
+extern "C" __declspec(dllexport) bool SpiShouldPreload() {
+    return false;
+}
+// On a thread of its own.
+extern "C" __declspec(dllexport) bool SpiShouldSpawnThread() {
+    return true;
+}
 
 namespace {
 
-// Attach runs on LEBinkProxy's thread while the game runs: every original is written before its
+// Attach runs on the loader's thread while the game runs: every original is written before its
 // hook goes live (core/Hook), so a detour entered at once never calls through null.
-using tGameEngineTick = void(UGameEngine* self, float deltaSeconds);
+using tGameEngineTick = void(void* self, float deltaSeconds);  // UGameEngine::Tick
 tGameEngineTick* gGameEngineTickOrig = nullptr;
 
-void GameEngineTickHook(UGameEngine* self, float deltaSeconds) {
+void GameEngineTickHook(void* self, float deltaSeconds) {
     mevr::host::crash::NoteGameThread();
 #if defined(MEVR_WITH_HALCYON)
     // Halcyon's ProcessEvent calls from the Present thread, queued for here (script on the game thread only).
@@ -86,33 +113,49 @@ void WINAPI ExitProcessHook(UINT exitCode) {
     gExitProcessOrig(exitCode);
 }
 
-void HookExitProcess(::LESDK::Initializer& init) {
+void HookExitProcess(mevr::hook::Context& init) {
     auto* const target = reinterpret_cast<tExitProcess*>(GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "ExitProcess"));
     if (target == nullptr || !mevr::hook::Install(init, "ExitProcess", target, &ExitProcessHook, gExitProcessOrig)) {
         mevr::log::Warn("ExitProcess hook failed; XR may not shut down cleanly on exit");
     }
 }
 
+// The exe gate (research/34 stage 4): the supported version, and every address of our RVA table where the table
+// says (core/Exe). On another exe the table is still checked, so the log names each address a patch moved. Before
+// any hook of ours or Halcyon's patches the code (other ASIs' hooks are recognised by their jumps).
+bool ExeGate() {
+    auto const version = mevr::GetHostExeVersion();
+    bool const versionOk = version && *version == mevr::kSupportedGameVersion;
+    mevr::exe::Report const report = mevr::exe::Init(mevr::engine::addresses::Table());
+    if (!versionOk) {
+        mevr::log::Error("unsupported game version {} (need {}); VR disabled, game untouched (our RVA table: {})",
+            version ? version->ToString() : "unknown", mevr::kSupportedGameVersion.ToString(), report.summary);
+        return false;
+    }
+    if (!report.ok) {
+        mevr::log::Error("game version {}, but our RVA table doesn't match it ({}); VR disabled, game untouched",
+            version->ToString(), report.problems);
+        return false;
+    }
+    mevr::log::Info("game version {} OK; {}", version->ToString(), report.summary);
+    return true;
+}
+
 } // namespace
 
-SPI_IMPLEMENT_ATTACH
-{
-    mevr::log::Open(SDK_TARGET_NAME_W L"MEVR.log");
+extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) {
+    mevr::log::Open(MEVR_GAME_NAME_W L"MEVR.log");
 #if defined(MEVR_MONOLITHIC)
-    mevr::log::Info("MEVR {} (monolithic) attaching to {}", MEVR_VERSION, SDK_TARGET_NAME_A);
+    mevr::log::Info("MEVR {} (monolithic) attaching to {}", MEVR_VERSION, MEVR_GAME_NAME_A);
 #else
-    mevr::log::Info("MEVR {} (hot reload host) attaching to {}", MEVR_VERSION, SDK_TARGET_NAME_A);
+    mevr::log::Info("MEVR {} (hot reload host) attaching to {}", MEVR_VERSION, MEVR_GAME_NAME_A);
 #endif
     mevr::log::Info("log file: {} (pid {})", mevr::log::Path().string(), GetCurrentProcessId());
 
     // Fail closed: hardcoded RVAs are only valid for one exe build.
-    auto const version = mevr::GetHostExeVersion();
-    if (!version || *version != mevr::kSupportedGameVersion) {
-        mevr::log::Error("unsupported game version {} (need {}); VR disabled, game untouched",
-            version ? version->ToString() : "unknown", mevr::kSupportedGameVersion.ToString());
+    if (!ExeGate()) {
         return true;
     }
-    mevr::log::Info("game version {} OK", version->ToString());
     // What touched the engine last, written out if the process crashes (research/36).
     mevr::host::crash::Install();
     // Research dump of the decrypted code, before our or Halcyon's hooks patch any of it.
@@ -122,8 +165,12 @@ SPI_IMPLEMENT_ATTACH
     mevr::host::halcyon::Attach();
 #endif
 
-    static ::LESDK::Initializer init{InterfacePtr, SDK_TARGET_NAME_A "MEVR"};
-    auto* const tickTarget = init.ResolveTyped<tGameEngineTick>(BUILTIN_GAMEENGINETICK_RVA);
+    // Hook names: "<owner>_<name>", as before stage 4 ("LE1MEVR_UGameEngine::Tick").
+    static mevr::hook::Context init{InterfacePtr, MEVR_GAME_NAME_A "MEVR"};
+    if (InterfacePtr == nullptr) {
+        mevr::log::Warn("no SPI interface from the loader: hooking with our own MinHook");
+    }
+    auto* const tickTarget = init.ResolveTyped<tGameEngineTick>(mevr::engine::addresses::kGameEngineTick);
     if (tickTarget == nullptr) {
         mevr::log::Error("failed to resolve UGameEngine::Tick; VR disabled");
         return true;
@@ -150,15 +197,14 @@ SPI_IMPLEMENT_ATTACH
     }
 #endif
     HookExitProcess(init);
-#if defined(MEVR_WITH_HALCYON) && defined(SDK_TARGET_LE1)
+#if defined(MEVR_WITH_HALCYON) && defined(MEVR_GAME_LE1)
     mevr::host::render_levers::Install(init);  // research/22: the render thread's levers and accounting
 #endif
     mevr::log::Info("host attached");
     return true;
 }
 
-SPI_IMPLEMENT_DETACH
-{
+extern "C" __declspec(dllexport) bool SpiOnDetach(spi::Interface* InterfacePtr) {
     (void)InterfacePtr;
     // LEBinkProxy detaches plugins as it unloads, i.e. at process exit: treat it like ExitProcess.
     mevr::host::SetProcessExiting();

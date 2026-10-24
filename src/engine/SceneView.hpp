@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-namespace LESDK {
-class Initializer;
+namespace mevr::hook {
+class Context;
 }
 
 // ULocalPlayer::CalcSceneView, where UE3 builds each frame's view. Inside it the engine asks the
@@ -19,9 +19,9 @@ namespace mevr::engine::scene_view {
 using BeforePrimaryView = void (*)();
 
 // False if this game has no known address or the address isn't a function start.
-bool Install(::LESDK::Initializer& init, BeforePrimaryView before);
+bool Install(hook::Context& init, BeforePrimaryView before);
 // False: the hook couldn't be removed, so this DLL must stay loaded.
-bool Uninstall(::LESDK::Initializer& init);
+bool Uninstall(hook::Context& init);
 
 // True on the game thread while the frame's player view is being built.
 bool InPrimaryView();

@@ -6,10 +6,18 @@
 
 #include <cstdint>
 
-class ISharedProxyInterface;
-class UFunction;
-class UObject;
 struct IDXGISwapChain;
+
+// Since research/34 stage 4 the engine and loader pointers here are our own types (ue3::Object and ue3::Function,
+// loader::spi::Interface) instead of LExSDKv2's UObject, UFunction and ISharedProxyInterface: the same pointers,
+// passed the same way, so the ABI (and kHostServicesVersion) didn't change.
+namespace mevr::loader::spi {
+class Interface;
+}
+namespace mevr::ue3 {
+struct Object;
+struct Function;
+}
 
 namespace mevr {
 
@@ -51,7 +59,7 @@ inline constexpr int kHostServicesVersion = 18;
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
 inline constexpr std::uint32_t kMainMenuPause = 2u;  // and the player wants the game paused while it is
 
-using ProcessEventCallback = void (*)(UObject* context, UFunction* function, void* parms, void* result);
+using ProcessEventCallback = void (*)(ue3::Object* context, ue3::Function* function, void* parms, void* result);
 
 struct HostServices {
     int version = kHostServicesVersion;
@@ -218,7 +226,7 @@ struct HostServices {
     // into one entry.
     void (*recordWrite)(char const* tag, void const* address, std::uint32_t size, std::uint64_t value) = nullptr;
     // Around each of the mod's CallFunction post-handlers (engine/CallFunction): begin returns the token for end.
-    std::uint64_t (*beginScriptCall)(UFunction* function, UObject* object) = nullptr;
+    std::uint64_t (*beginScriptCall)(ue3::Function* function, ue3::Object* object) = nullptr;
     void (*endScriptCall)(std::uint64_t token) = nullptr;
 };
 
@@ -230,8 +238,9 @@ struct HostServices {
 #define MEVR_MOD_API extern "C"
 #endif
 
-// Installs the mod's hooks. Returning false means the mod stays inactive.
-MEVR_MOD_API bool MevrModStartup(ISharedProxyInterface* spi, mevr::HostServices const* host);
+// Installs the mod's hooks, through the loader's SPI interface (null: the mod's own MinHook; core/Hook). Returning
+// false means the mod stays inactive.
+MEVR_MOD_API bool MevrModStartup(mevr::loader::spi::Interface* spi, mevr::HostServices const* host);
 // Called by the host every UGameEngine::Tick, after the engine's own tick.
 MEVR_MOD_API void MevrModTick(float deltaSeconds);
 // Render thread, before each IDXGISwapChain::Present. The host guarantees this isn't running

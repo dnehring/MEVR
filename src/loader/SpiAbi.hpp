@@ -2,7 +2,9 @@
 #pragma once
 
 // The binary interface ASI plugins built against LExSDKv2 expect from the bink2w64.dll proxy that loads them
-// ("SPI", version 3), declared here from its documented shape so our loader needs no SDK code (research/33):
+// ("SPI", version 3), declared here from its documented shape so our loader needs no SDK code (research/33). Shared by
+// both sides since research/34 stage 4: the loader implements Interface, our host ASI exports the plugin side
+// (plugin/Entry.cpp) and hooks through it (core/Hook).
 //
 //   plugin exports       SpiSupportDecl(wchar_t** name, wchar_t** author, wchar_t** version, int* gameFlags, int* minSpi)
 //                        bool SpiShouldPreload()       true: attach before the DRM has decrypted the exe
@@ -36,6 +38,11 @@ enum class Game : int {
 };
 
 inline constexpr unsigned long kVersion = 3;
+
+// A plugin's SpiSupportDecl game flag for one game.
+constexpr int GameFlag(Game game) {
+    return 1 << static_cast<int>(game);
+}
 
 class Interface {
 public:

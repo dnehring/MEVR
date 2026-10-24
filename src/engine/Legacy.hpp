@@ -15,8 +15,8 @@
 #include <optional>
 #include <string>
 
-namespace LESDK {
-class Initializer;
+namespace mevr::hook {
+class Context;
 }
 
 namespace mevr::engine::legacy {
@@ -24,8 +24,10 @@ namespace mevr::engine::legacy {
 #if !defined(MEVR_GAME_LE1)
 
 // Resolves the LExSDKv2 globals the functions below read (GMalloc, GObjObjects, the name pools, GEngine,
-// GWorld; engine/Engine's ResolveGlobals until stage 3). Mod startup; false (logged) if one fails.
-bool Init(::LESDK::Initializer& init);
+// GWorld; engine/Engine's ResolveGlobals until stage 3) with LExSDKv2's own resolver, built here from the hook
+// context's loader interface (stage 4: nothing outside this file and ReflectCheck makes one). Mod startup; false
+// (logged) if one fails.
+bool Init(hook::Context& context);
 
 // *GWorld, as an identity (engine::World()).
 void const* World();

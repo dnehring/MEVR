@@ -3,8 +3,8 @@
 
 struct IDXGISwapChain;
 
-namespace LESDK {
-class Initializer;
+namespace mevr::hook {
+class Context;
 }
 
 namespace mevr::host::present {
@@ -13,7 +13,7 @@ namespace mevr::host::present {
 using Callback = void (*)(IDXGISwapChain* swapChain);
 
 // Finds IDXGISwapChain::Present through a throwaway device and hooks it via the loader's SPI.
-bool Install(::LESDK::Initializer& init);
+bool Install(hook::Context& init);
 
 // Sets or clears the callback. Clearing blocks until any in-flight callback returns, so after
 // SetCallback(nullptr) it's safe to unload the module that owned the old callback.

@@ -3,17 +3,15 @@
 
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
+#include "engine/Addresses.hpp"
 #include "plugin/CrashBreadcrumbs.hpp"
-
-#include <LESDK/Headers.hpp>
-#include <LESDK/Init.hpp>
 
 #include <atomic>
 
 namespace mevr::host::process_event {
 namespace {
 
-using tProcessEvent = void(UObject* context, UFunction* function, void* parms, void* result);
+using tProcessEvent = void(ue3::Object* context, ue3::Function* function, void* parms, void* result);
 // Written by LEBinkProxy before the hook is enabled (core/Hook): attach runs on LEBinkProxy's
 // thread while the game thread is already calling ProcessEvent.
 tProcessEvent* gOriginal = nullptr;
@@ -59,7 +57,7 @@ std::atomic<int> gInFlight{0};
 // unwinds through the callback (Halcyon calls ProcessEvent under __except in places).
 // The crash breadcrumb (research/36) is taken before the engine's call, so a dispatch that never returns is
 // in the ring: a few stores, a timestamp and an interlocked add, then two state updates.
-void ProcessEventHook(UObject* context, UFunction* function, void* parms, void* result) {
+void ProcessEventHook(ue3::Object* context, ue3::Function* function, void* parms, void* result) {
     std::uint64_t const crumb = crash::gProcessEvents.Begin(function, context);
     std::uint32_t const gameThread = crash::gGameThread.load(std::memory_order_relaxed);
     if (gameThread != 0) {
@@ -83,8 +81,8 @@ void ProcessEventHook(UObject* context, UFunction* function, void* parms, void* 
 
 } // namespace
 
-bool Install(::LESDK::Initializer& init) {
-    auto* const target = init.ResolveTyped<tProcessEvent>(BUILTIN_PROCESSEVENT_RVA);
+bool Install(hook::Context& init) {
+    auto* const target = init.ResolveTyped<tProcessEvent>(engine::addresses::kProcessEvent);
     if (target == nullptr) {
         log::Error("failed to resolve UObject::ProcessEvent");
         return false;

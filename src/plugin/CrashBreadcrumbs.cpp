@@ -6,8 +6,6 @@
 #include "engine/GameAdapter.hpp"
 #include "ue3/SafeNames.hpp"
 
-#include <LESDK/Headers.hpp>
-
 #include <Windows.h>
 
 #include <cstddef>
@@ -591,7 +589,7 @@ void RecordWrite(char const* tag, void const* address, std::uint32_t size, std::
     gWrites.Record(tag, address, size, value);
 }
 
-std::uint64_t BeginScriptCall(UFunction* function, UObject* object) {
+std::uint64_t BeginScriptCall(ue3::Function* function, ue3::Object* object) {
     return gScriptCalls.Begin(function, object, breadcrumbs::State::Mod);
 }
 

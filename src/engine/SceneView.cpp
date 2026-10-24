@@ -3,8 +3,7 @@
 
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
-
-#include <LESDK/Init.hpp>
+#include "engine/Addresses.hpp"
 
 #include <Windows.h>
 #include <intrin.h>
@@ -19,23 +18,17 @@ namespace {
 constexpr char const* kHookName = "ULocalPlayer::CalcSceneView";
 
 struct Addresses {
-    std::size_t calcSceneView;  // RVA of ULocalPlayer::CalcSceneView
-    std::size_t primaryReturn;  // RVA its gameplay call in FViewportClient::Draw returns to (0: unknown)
-    std::size_t drawStart;      // FViewportClient::Draw's range: with no known return address,
-    std::size_t drawEnd;        // any call from inside it counts as the player view
+    std::uint32_t calcSceneView;  // RVA of ULocalPlayer::CalcSceneView
+    std::uint32_t primaryReturn;  // RVA its gameplay call in FViewportClient::Draw returns to (0: unknown)
+    std::uint32_t drawStart;      // FViewportClient::Draw's range: with no known return address,
+    std::uint32_t drawEnd;        // any call from inside it counts as the player view
 };
 
-// All verified as function starts (and the LE1 return address as inside Draw) in each exe's
-// .pdata (tools/verify_rvas.py). Source of the facts: Halcyon's MassEffect1/2/3-VR (research/13).
-#if defined(MEVR_GAME_LE1)
-constexpr Addresses kAddresses{0x4C5300, 0x4C7A4E, 0x4C71A0, 0x4C9434};
-#elif defined(MEVR_GAME_LE2)
-constexpr Addresses kAddresses{0x6CEB70, 0, 0x6D0A00, 0x6D2C99};
-#elif defined(MEVR_GAME_LE3)
-constexpr Addresses kAddresses{0x6CFFD0, 0, 0x6D1E30, 0x6D40DB};
-#else
-constexpr Addresses kAddresses{0, 0, 0, 0};
-#endif
+// All verified as function starts (and the LE1 return address as inside Draw, the ends as .pdata ends) in each
+// exe's .pdata (tools/verify_rvas.py), and checked at attach (engine/Addresses.hpp). Source of the facts:
+// Halcyon's MassEffect1/2/3-VR (research/13).
+constexpr Addresses kAddresses{addresses::kCalcSceneView, addresses::kCalcSceneViewPrimaryReturn, addresses::kViewportDraw,
+    addresses::kViewportDrawEnd};
 
 using tCalcSceneView = void*(void* player, void* viewFamily, void* viewLocation, void* viewRotation,
     void* viewport, void* viewDrawer);
@@ -112,21 +105,21 @@ std::string EntryBytes(void const* address) {
 
 } // namespace
 
-bool Install(::LESDK::Initializer& init, BeforePrimaryView before) {
+bool Install(hook::Context& init, BeforePrimaryView before) {
     if (kAddresses.calcSceneView == 0) {
         log::Warn("CalcSceneView: no address for this game; render-only head tracking unavailable");
         return false;
     }
-    void* const target = init.Resolve(::LESDK::Address::FromOffset(kAddresses.calcSceneView));
+    void* const target = init.Resolve(kAddresses.calcSceneView);
     if (target == nullptr || !IsFunctionStart(target)) {
         log::Error("CalcSceneView: {} is not a function start; not hooking", target);
         return false;
     }
     log::Info("CalcSceneView at {} (entry bytes {})", target, EntryBytes(target));
-    gModuleBase = reinterpret_cast<std::uintptr_t>(init.ModuleBase);
-    gPrimaryReturn = kAddresses.primaryReturn != 0 ? gModuleBase + kAddresses.primaryReturn : 0;
-    gDrawStart = gModuleBase + kAddresses.drawStart;
-    gDrawEnd = gModuleBase + kAddresses.drawEnd;
+    gModuleBase = init.ModuleBase();
+    gPrimaryReturn = kAddresses.primaryReturn != 0 ? reinterpret_cast<std::uintptr_t>(init.Resolve(kAddresses.primaryReturn)) : 0;
+    gDrawStart = reinterpret_cast<std::uintptr_t>(init.Resolve(kAddresses.drawStart));
+    gDrawEnd = reinterpret_cast<std::uintptr_t>(init.Resolve(kAddresses.drawEnd));
     if (gPrimaryReturn == 0) {
         log::Info("CalcSceneView: player view = any call from FViewportClient::Draw (call site not pinned yet)");
     }
@@ -141,7 +134,7 @@ bool Install(::LESDK::Initializer& init, BeforePrimaryView before) {
     return true;
 }
 
-bool Uninstall(::LESDK::Initializer& init) {
+bool Uninstall(hook::Context& init) {
     if (!gInstalled) {
         return true;
     }

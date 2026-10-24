@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-namespace LESDK {
-class Initializer;
+namespace mevr::hook {
+class Context;
 }
 
 // The transition's proof (research/34 section 5): while LExSDKv2 and our reflection layer (ue3/)
@@ -14,6 +14,7 @@ class Initializer;
 // LE1 only (the layer has no layout for LE2/LE3 yet).
 namespace mevr::engine::reflect_check {
 
-void Run(::LESDK::Initializer& init);
+// `context`: the mod's hook context (its loader interface makes LExSDKv2's resolver for the reference side).
+void Run(hook::Context& context);
 
 } // namespace mevr::engine::reflect_check

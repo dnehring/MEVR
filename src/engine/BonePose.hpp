@@ -13,8 +13,8 @@ namespace mevr::ue3 {
 struct Object;
 }
 
-namespace LESDK {
-class Initializer;
+namespace mevr::hook {
+class Context;
 }
 
 // VRIK route 2 (research/14): arm IK written into the player's pose after the animation, before
@@ -135,10 +135,10 @@ struct SupportSample {
 };
 
 // LE1 only: false (logged) for other games or if the address isn't a function start.
-bool Install(::LESDK::Initializer& init);
+bool Install(hook::Context& init);
 // Removes the hook and waits (up to 200 ms, if `waitForCalls`) for calls still inside it. False
 // if the hook couldn't be removed or a call is still inside: this DLL must stay loaded.
-bool Uninstall(::LESDK::Initializer& init, bool waitForCalls);
+bool Uninstall(hook::Context& init, bool waitForCalls);
 bool Installed();
 
 // Game thread. Replaces what the hook writes (also noting the mesh's owner, the world and the

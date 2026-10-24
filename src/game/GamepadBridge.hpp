@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-namespace LESDK {
-class Initializer;
+namespace mevr::hook {
+class Context;
 }
 
 // Feeds the motion controllers (game/gamepad mapping) to the game as Xbox pad 0, by hooking
@@ -12,9 +12,9 @@ class Initializer;
 namespace mevr::game::gamepad_bridge {
 
 // Hooks every XInput DLL loaded so far. False until at least one is; call again later.
-bool TryInstall(::LESDK::Initializer& init);
+bool TryInstall(hook::Context& init);
 // False: a hook couldn't be removed, so this DLL must stay loaded.
-bool Uninstall(::LESDK::Initializer& init);
+bool Uninstall(hook::Context& init);
 
 // Logs and resets call counts (calls, motion-controller frames, real pad seen).
 void LogStats();

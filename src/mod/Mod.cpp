@@ -4,6 +4,8 @@
 
 #include "mod/ModApi.hpp"
 
+#include "core/Exe.hpp"
+#include "core/Hook.hpp"
 #include "core/Hotkey.hpp"
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
@@ -16,6 +18,7 @@
 #include "core/vr/Output.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "core/vr/ViewSync.hpp"
+#include "engine/Addresses.hpp"
 #include "engine/BonePose.hpp"
 #include "engine/CallFunction.hpp"
 #include "engine/CodeDump.hpp"
@@ -54,9 +57,6 @@
 #include "game/Weapon.hpp"
 #include "ue3/Runtime.hpp"
 
-// Only for the hook context every Install takes (LESDK::Initializer: research/34 stage 4).
-#include <LESDK/Init.hpp>
-
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -70,7 +70,7 @@ namespace {
 constexpr double kStartupRetrySeconds = 1.0;
 constexpr double kHeartbeatSeconds = 5.0;
 
-std::unique_ptr<::LESDK::Initializer> gInit;
+std::unique_ptr<mevr::hook::Context> gInit;
 std::atomic<bool> gActive{false};  // read on the render thread too
 // LE1: the host runs Halcyon's renderer (HostServices::controllers set). Then the mod does no VR
 // output, render-path head tracking, reflection fix or XInput hooking of its own (the renderer
@@ -831,7 +831,7 @@ void Heartbeat() {
 
 } // namespace
 
-MEVR_MOD_API bool MevrModStartup(ISharedProxyInterface* spi, mevr::HostServices const* host) {
+MEVR_MOD_API bool MevrModStartup(mevr::loader::spi::Interface* spi, mevr::HostServices const* host) {
     using namespace mevr;
     // Version 2 and up: fields are only appended, so read what both sides know. (The monolithic
     // build passes no logger: host and mod already share one log.)
@@ -867,8 +867,14 @@ MEVR_MOD_API bool MevrModStartup(ISharedProxyInterface* spi, mevr::HostServices 
         log::Info("the host (services v{}) keeps no crash breadcrumbs of the mod's writes", gHost->version);
     }
 
-    // Hook names get this prefix, so the host's and the mod's hooks never collide.
-    gInit = std::make_unique<::LESDK::Initializer>(spi, MEVR_GAME_NAME_A "MEVRmod");
+    // Our RVA table, checked again in this DLL (the host's gate passed it at attach; research/34 stage 4). The host's
+    // hooks are recognised by their jumps. Resolve uses these results.
+    exe::Init(engine::addresses::Table(), "exe (mod)");
+    // Hook names get this prefix, so the host's and the mod's hooks never collide ("LE1MEVRmod_UObject::CallFunction").
+    gInit = std::make_unique<hook::Context>(spi, MEVR_GAME_NAME_A "MEVRmod");
+    if (spi == nullptr) {
+        log::Warn("no SPI interface from the host: the mod hooks with its own MinHook");
+    }
 #if !defined(MEVR_GAME_LE1)
     // LE2/LE3 read the engine through LExSDKv2 until they have a reflection layout (research/34 stage 5).
     if (!engine::legacy::Init(*gInit)) {
