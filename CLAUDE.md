@@ -243,6 +243,12 @@ switching frameworks.
   auto|neutral|quest|vivid|custom`, the custom values per headset, `compare`, `dither`; our menu's Display
   page (and the VR hands tab's Colour section) edits them live; holding A there is `colour::HoldCompare()`. Log
   `[MEVR-COLOUR]` / `colour:` (the GPU cost every 10 s); snapshots show the corrected picture (`"colour"`).
+  **HDR tonemap** (research/27 section 7b, 2026-10-23): with the game in its HDR range
+  (`tools/vr-game-settings.ps1 -Hdr`: `[HDR] DesiredRange = DynamicRange_HDR10_Float`, a float scRGB backbuffer;
+  `-Sdr` back), Halcyon's blit maps the scene's paper white to 1.0 and `[Colour] tonemap = aces | hable |
+  reinhard` (`exposure` stops, `white`) takes the place of its per-pixel clip (`MEVR_TONE` in `ToEye`, the
+  `[MEVR]` seam; `clip` = Halcyon's own). An 8-bit source never gets a curve. No headset we have takes HDR
+  output (the PS VR2's PC adapter has none): the gain is the gradation above paper white, not brightness.
 - LE1 eye upscale ([research/32](research/32-ue3-vr-performance.md), `[Upscale]` in `ASI\LE1MEVR.ini`, off by
   default): with `method = fsr` and the stereo target below the headset's eye size (`tools/vr-game-settings.ps1
   -Scale 0.75`, or the main menu's Display > Headset × 0.75 / × 0.85 and Upscale > FSR), Halcyon's eye blit scales each 8-bit eye up with FSR 1 (EASU into an intermediate, RCAS into the
@@ -313,6 +319,12 @@ switching frameworks.
   the headset's own eye size (2824x2880 on the user's PS VR2: the GPU was over budget at p90 rendering 18%
   more pixels than displayed, research/22). The deploy installs Halcyon's *release* `MELEVR.ini` (its tuned
   code defaults), not the older `src/halcyon/le1/runtime/MELEVR.ini`, which pins stale values.
+  **BIOEngine.ini's `[SystemSettings]` wins over GamerSettings'** for `DynamicShadows` (measured 2026-10-23,
+  research/35): the tool writes `DynamicShadows=False` and `FoliageDrawRadiusMultiplier=0.25` there too. At a
+  heavy spot those two took the render thread from 9.35 to 6.88 ms and the GPU from 8.4 to 4.9 (the grass
+  costs per instance, twice a frame in stereo; the shadows were drawing despite GamerSettings). The
+  engine's `show <category>` console toggles attribute a frame's cost by category; `scale set <key> <value>`
+  sets a SystemSettings key live (works for those two, not for DetailMode or the LOD distance scales).
 - The mod connects to Windows' active OpenXR runtime (Oculus, or SteamVR for Steam Link). The
   user currently uses Steam Link / SteamVR.
 - The game's D3D11 device is SINGLETHREADED: no deferred contexts, and all D3D/XR work happens

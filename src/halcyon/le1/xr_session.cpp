@@ -1279,8 +1279,10 @@ bool EnsureXrAtlasBlitResources(ID3D11Texture2D* src) noexcept
     // then clips hue-preserving to [0,1] before the sRGB view encodes. Values <= 1 pass unchanged,
     // so 8-bit sources stay bit-identical. PSCopy (the halving chain) stays linear and unscaled.
     // [MEVR] colour: MEVR_EYE_OUT is the identity here; EyeColourShaders compiles variants with the correction.
+    // [MEVR] HDR tonemap: MEVR_TONE is the clip above here; the variants replace it with a curve ([Colour] tonemap).
     const char* shaderSrc =
         "#ifndef MEVR_EYE_OUT\n#define MEVR_EYE_OUT(c, pos) (c)\n#endif\n"
+        "#ifndef MEVR_TONE\n#define MEVR_TONE(c) ((c) / max(1.0, max((c).r, max((c).g, (c).b))))\n#endif\n"
         "Texture2D t0 : register(t0);\n"
         "SamplerState s0 : register(s0);\n"
         "cbuffer FillParams : register(b0) { float4 fillUv; float4 imageRect; float4 colorScale; };\n"
@@ -1289,7 +1291,7 @@ bool EnsureXrAtlasBlitResources(ID3D11Texture2D* src) noexcept
         "  float2 p = float2((id == 2) ? 3.0 : -1.0, (id == 1) ? 3.0 : -1.0);\n"
         "  VSOut o; o.pos = float4(p, 0.0, 1.0); o.uv = float2((p.x + 1.0) * 0.5, 1.0 - ((p.y + 1.0) * 0.5)); return o;\n"
         "}\n"
-        "float4 ToEye(float4 c) { c.rgb *= colorScale.x; c.rgb /= max(1.0, max(c.r, max(c.g, c.b))); return c; }\n"
+        "float4 ToEye(float4 c) { c.rgb *= colorScale.x; c.rgb = MEVR_TONE(c.rgb); return c; }\n"
         // [DOWNCHAIN] plain 1:1 sample, used for the halving passes below.
         "float4 PSCopy(VSOut i) : SV_Target { return t0.Sample(s0, i.uv); }\n"
         "float4 PSLeft(VSOut i) : SV_Target { return MEVR_EYE_OUT(ToEye(t0.Sample(s0, float2(i.uv.x * 0.5, i.uv.y))), i.pos); }\n"

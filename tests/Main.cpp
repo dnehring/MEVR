@@ -2159,6 +2159,70 @@ void TestLayerComposite() {
 
 // The colour correction (core/vr/Colour, research/27): the CPU reference the shader mirrors (tools/colour-preview
 // checks the shader against it on a GPU), the presets, the headset detection and the settings file.
+void TestTonemap() {
+    namespace cv = mevr::vr::colour;
+    auto approx = [](float a, float b, float tolerance = 1e-4f) { return std::abs(a - b) <= tolerance; };
+
+    // Names and the file's spellings.
+    CHECK(cv::ParseTonemap("aces") == cv::Tonemap::Aces && cv::ParseTonemap(" Hable ") == cv::Tonemap::Hable);
+    CHECK(cv::ParseTonemap("REINHARD") == cv::Tonemap::Reinhard && cv::ParseTonemap("off") == cv::Tonemap::Clip);
+    CHECK(cv::ParseTonemap("clip") == cv::Tonemap::Clip && !cv::ParseTonemap("filmicx").has_value());
+    CHECK(std::string(cv::Name(cv::Tonemap::Hable)) == "hable");
+    CHECK(!cv::TonemapActive(cv::Hdr{}) && cv::TonemapActive(cv::Hdr{cv::Tonemap::Aces, 0.0f, 4.0f}));
+    cv::Hdr wild{cv::Tonemap::Aces, 9.0f, 0.1f};
+    CHECK(approx(cv::ClampedHdr(wild).exposure, 3.0f) && approx(cv::ClampedHdr(wild).white, 1.0f));
+
+    // The constants carry the exposure as a multiplier and the mode in seed.y; the old overload is the clip.
+    cv::Constants const plain = cv::MakeConstants(cv::Settings{}, 0.0f, true, 0);
+    CHECK(plain.seed[1] == 0u && approx(plain.misc[2], 1.0f));
+    cv::Constants const aces = cv::MakeConstants(cv::Settings{}, 0.0f, true, 0, cv::Hdr{cv::Tonemap::Aces, 1.0f, 4.0f});
+    CHECK(aces.seed[1] == 1u && approx(aces.misc[2], 2.0f) && approx(aces.misc[3], 4.0f));
+
+    // The clip: unchanged at or below 1, divided by the largest channel above it (hue kept).
+    CHECK(approx(cv::Tone(plain, {0.25f, 0.5f, 1.0f})[1], 0.5f));
+    cv::Rgb const clipped = cv::Tone(plain, {4.0f, 2.0f, 1.0f});
+    CHECK(approx(clipped[0], 1.0f) && approx(clipped[1], 0.5f) && approx(clipped[2], 0.25f));
+    // An encoded (8-bit) source gets the clip whatever the mode: its values never pass 1.
+    cv::Constants const acesEncoded = cv::MakeConstants(cv::Settings{}, 0.0f, false, 0, cv::Hdr{cv::Tonemap::Aces, 0.0f, 4.0f});
+    CHECK(approx(cv::Tone(acesEncoded, {0.5f, 0.5f, 0.5f})[0], 0.5f));
+
+    // ACES: black stays black, monotonic, paper white lands near 0.80, highlights roll off below 1.
+    cv::Constants const aces0 = cv::MakeConstants(cv::Settings{}, 0.0f, true, 0, cv::Hdr{cv::Tonemap::Aces, 0.0f, 4.0f});
+    CHECK(approx(cv::Tone(aces0, {0.0f, 0.0f, 0.0f})[0], 0.0f));
+    CHECK(approx(cv::Tone(aces0, {1.0f, 1.0f, 1.0f})[0], 0.8038f, 0.002f));
+    float last = 0.0f;
+    bool monotonic = true;
+    for (float x = 0.0f; x <= 16.0f; x += 0.125f) {
+        float const y = cv::Tone(aces0, {x, x, x})[0];
+        monotonic = monotonic && y >= last - 1e-6f && y <= 1.0f;
+        last = y;
+    }
+    CHECK(monotonic && cv::Tone(aces0, {8.0f, 8.0f, 8.0f})[0] > 0.98f);
+    // Exposure: +1 stop doubles the input before the curve.
+    CHECK(approx(cv::Tone(aces, {0.5f, 0.5f, 0.5f})[0], cv::Tone(aces0, {1.0f, 1.0f, 1.0f})[0]));
+
+    // Hable and Reinhard: `white` reaches 1.0 exactly, below it the curve is below the identity's clip.
+    cv::Constants const hable = cv::MakeConstants(cv::Settings{}, 0.0f, true, 0, cv::Hdr{cv::Tonemap::Hable, 0.0f, 4.0f});
+    cv::Constants const reinhard = cv::MakeConstants(cv::Settings{}, 0.0f, true, 0, cv::Hdr{cv::Tonemap::Reinhard, 0.0f, 4.0f});
+    CHECK(approx(cv::Tone(hable, {4.0f, 4.0f, 4.0f})[0], 1.0f, 1e-5f));
+    CHECK(approx(cv::Tone(reinhard, {4.0f, 4.0f, 4.0f})[0], 1.0f, 1e-5f));
+    CHECK(cv::Tone(hable, {1.0f, 1.0f, 1.0f})[0] < 1.0f && cv::Tone(hable, {1.0f, 1.0f, 1.0f})[0] > 0.5f);
+    CHECK(cv::Tone(reinhard, {1.0f, 1.0f, 1.0f})[0] < 1.0f && cv::Tone(reinhard, {1.0f, 1.0f, 1.0f})[0] > 0.5f);
+    CHECK(approx(cv::Tone(hable, {0.0f, 0.0f, 0.0f})[0], 0.0f, 1e-5f) && approx(cv::Tone(reinhard, {0.0f, 0.0f, 0.0f})[0], 0.0f));
+
+    // The file: tonemap, exposure and white from [Colour], the headset's section first.
+    cv::Section common = cv::ParseSection("tonemap=aces\r\nexposure=0.5\r\nwhite=6\r\n");
+    cv::Section headset = cv::ParseSection("tonemap=hable\r\n");
+    cv::Resolved const r = cv::Resolve(common, headset, cv::Detection{});
+    CHECK(r.hdr.tonemap == cv::Tonemap::Hable && approx(r.hdr.exposure, 0.5f) && approx(r.hdr.white, 6.0f));
+    CHECK(cv::Resolve(cv::Section{}, cv::Section{}, cv::Detection{}).hdr.tonemap == cv::Tonemap::Clip);
+
+    // The shader text names the hook and the modes.
+    std::string const prelude = cv::ShaderPrelude();
+    CHECK(prelude.find("#define MEVR_TONE(c) MevrTone(c)") != std::string::npos);
+    CHECK(prelude.find("MevrAces") != std::string::npos && prelude.find("MevrHableCurve") != std::string::npos);
+}
+
 void TestColour() {
     namespace cv = mevr::vr::colour;
     auto grey = [](cv::Constants const& k, float v) { return cv::Grade(k, {v, v, v})[0]; };
@@ -6395,6 +6459,7 @@ int main() {
     TestPoseRecording();
     TestImageConvert();
     TestColour();
+    TestTonemap();
     TestColourStrip();
     TestLayerComposite();
     TestTestRequest();

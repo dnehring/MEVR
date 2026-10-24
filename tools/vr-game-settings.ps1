@@ -25,7 +25,12 @@
 #                     1440p monitor a 2048x2048 target rendered gameplay at 2009x1421, and
 #                     Halcyon's left-eye capture (which needs the scene to fill the backbuffer)
 #                     never fired, so both eyes got the same image (2026-10-08).
-#   DynamicShadows=False  Halcyon's default; the scene renders twice per frame.
+#   DynamicShadows=False  Halcyon's default; the scene renders twice per frame. Written to BIOEngine.ini too: its
+#                     [SystemSettings] value wins over GamerSettings' (measured 2026-10-23: with False in GamerSettings and
+#                     True in BIOEngine.ini the game still drew 366 shadow draws a frame, 0.6 ms; research/35).
+#   FoliageDrawRadiusMultiplier=0.25 (BIOEngine.ini too)  Eden Prime's grass costs 2.4 ms of render thread and 3.1 ms of
+#                     GPU a frame at full radius for 90 draws (per-instance work, twice per frame in stereo); a quarter
+#                     radius keeps the near grass and saves 1.7 ms CPU and 1 ms GPU (research/35).
 #   BIOEngine.ini SmoothFrameRate=FALSE  otherwise the game caps itself at 60 fps.
 # It also writes the target into Halcyon's MELEVR.ini (active profile: sfr2ResX/Y, which its
 # TARGETCHK log line compares with the live backbuffer, and expectedResX/Y, its watchdog).
@@ -45,6 +50,10 @@ param(
     # The current target scaled (0.5..1.0; even sizes), for the eye upscale ([Upscale] method = fsr in
     # ASI\LE1MEVR.ini, research/32): -Scale 0.75 from 2824x2880 gives 2118x2160.
     [double]$Scale,
+    # The game's HDR range ([HDR] DesiredRange=DynamicRange_HDR10_Float: a float scRGB backbuffer) instead of SDR, for
+    # the eye blit's tonemap ([Colour] tonemap in ASI\LE1MEVR.ini, research/27). -Sdr puts SDR back.
+    [switch]$Hdr,
+    [switch]$Sdr,
     # Prints the current values without changing anything.
     [switch]$Show
 )
@@ -62,9 +71,15 @@ $engineIni = Join-Path $GameRoot "Game\ME$n\BioGame\Config\BIOEngine.ini"
 $engineBackup = "$engineIni.mevr_backup"
 $halcyonIni = Join-Path $GameRoot "Game\ME$n\Binaries\Win64\ASI\MELEVR.ini"
 
+if ($Hdr -and $Sdr) { throw 'Give -Hdr or -Sdr, not both.' }
 $wanted = [ordered]@{
     'SystemSettings' = [ordered]@{ UseVSync = 'False'; MotionBlur = 'False'; FilmGrain = 'False'; MaxAnisotropy = '16' }
     'HDR'            = [ordered]@{ DesiredRange = 'DynamicRange_SDR' }
+}
+if ($Hdr) {
+    $wanted['HDR']['DesiredRange'] = 'DynamicRange_HDR10_Float'
+} elseif (-not $Sdr -and (Test-Path $ini) -and ([IO.File]::ReadAllText($ini) -match '(?m)^DesiredRange=DynamicRange_HDR10_Float')) {
+    $wanted['HDR']['DesiredRange'] = 'DynamicRange_HDR10_Float'   # a later apply keeps a chosen HDR range
 }
 if ($Scale) {
     if ($ResX -or $ResY) { throw 'Give -Scale or -ResX/-ResY, not both.' }
@@ -97,7 +112,10 @@ if ($Game -eq 'LE1') {
     $wanted['SystemSettings']['BorderlessWindow'] = 'True'
     $wanted['SystemSettings']['Fullscreen'] = 'False'
     $wanted['SystemSettings']['DynamicShadows'] = 'False'
+    $wanted['SystemSettings']['FoliageDrawRadiusMultiplier'] = '0.25'
 }
+# BIOEngine.ini [SystemSettings] keys that must be set there as well (its value wins over GamerSettings').
+$engineWanted = [ordered]@{ DynamicShadows = 'False'; FoliageDrawRadiusMultiplier = '0.25' }
 
 function Show-Values([string]$Text) {
     foreach ($section in $wanted.Keys) {
@@ -175,12 +193,25 @@ if ($Game -eq 'LE1') {
     # Frame-rate smoothing: one key, wherever BIOEngine.ini has it (as Halcyon's installer does).
     if (Test-Path $engineIni) {
         $engine = [IO.File]::ReadAllText($engineIni)
+        $changed = $false
         if ($engine -match '(?m)^SmoothFrameRate=TRUE') {
-            if (-not (Test-Path $engineBackup)) { Copy-Item $engineIni $engineBackup }
-            [IO.File]::WriteAllText($engineIni, [regex]::Replace($engine, '(?m)^SmoothFrameRate=\w+', 'SmoothFrameRate=FALSE'))
+            $engine = [regex]::Replace($engine, '(?m)^SmoothFrameRate=\w+', 'SmoothFrameRate=FALSE')
+            $changed = $true
             Write-Output "  BIOEngine.ini: SmoothFrameRate=FALSE (was TRUE: a 60 fps cap)"
         } else {
             Write-Output "  BIOEngine.ini: SmoothFrameRate already off"
+        }
+        foreach ($key in $engineWanted.Keys) {
+            $m = [regex]::Match($engine, "(?ms)^\[SystemSettings\]\r?\n(?:(?!^\[).)*?^$key=([^\r\n]*)")
+            if (-not $m.Success -or $m.Groups[1].Value -ne $engineWanted[$key]) {
+                $engine = Set-IniValue $engine 'SystemSettings' $key $engineWanted[$key]
+                $changed = $true
+                Write-Output ("  BIOEngine.ini: [SystemSettings] {0}={1} (was {2})" -f $key, $engineWanted[$key], $(if ($m.Success) { $m.Groups[1].Value } else { 'unset' }))
+            }
+        }
+        if ($changed) {
+            if (-not (Test-Path $engineBackup)) { Copy-Item $engineIni $engineBackup }
+            [IO.File]::WriteAllText($engineIni, $engine)
         }
     }
     # Halcyon's own copy of the target, in every profile slot (it keeps settings per slot, so a slot

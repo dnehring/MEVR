@@ -105,17 +105,23 @@ std::string Values(cv::Settings const& s) {
 
 // After gResolved changed: what the eyes get, logged when it changes (ours and Halcyon's log).
 void Publish() {
-    bool const nonNeutral = !cv::IsNeutral(gResolved.settings) && !gResolved.compare;
+    bool const tonemap = cv::TonemapActive(gResolved.hdr);
+    bool const nonNeutral = (!cv::IsNeutral(gResolved.settings) || tonemap) && !gResolved.compare;
     gNonNeutral.store(nonNeutral, std::memory_order_relaxed);
     std::string line = std::format("profile {}{} for {} [{}]: ", cv::Name(gResolved.chosen),
         gResolved.chosen == cv::Profile::Auto ? std::format(" (= {})", cv::Name(gResolved.effective)) : std::string(),
         tSystem.empty() ? std::string("a headset not known yet") : "'" + tSystem + "'",
         tKey.empty() ? std::string("Colour") : "Colour." + tKey);
-    if (cv::IsNeutral(gResolved.settings)) {
+    if (cv::IsNeutral(gResolved.settings) && !tonemap) {
         line += "neutral: no correction, the eyes and the HUD as before";
     } else {
-        line += Values(gResolved.settings) + std::format(", dither {:.2f} steps", gResolved.dither) +
+        line += (cv::IsNeutral(gResolved.settings) ? std::string("neutral grade") : Values(gResolved.settings)) +
+            std::format(", dither {:.2f} steps", gResolved.dither) +
             (gResolved.compare ? "; [Colour] compare = 1: shown uncorrected" : ": correcting the eyes and the HUD panel");
+    }
+    if (tonemap) {
+        line += std::format("; HDR tonemap {} (exposure {:+.2f} stops, white {:.1f}) on a float backbuffer, else the clip",
+            cv::Name(gResolved.hdr.tonemap), gResolved.hdr.exposure, gResolved.hdr.white);
     }
     if (line != gLastLogged) {
         gLastLogged = line;
@@ -229,7 +235,7 @@ bool Bind(ID3D11DeviceContext* context, int slot, bool linearSource, std::uint32
         }
         gHaveUploaded[slot] = false;
     }
-    cv::Constants const k = cv::MakeConstants(gResolved.settings, gResolved.dither, linearSource, seed);
+    cv::Constants const k = cv::MakeConstants(gResolved.settings, gResolved.dither, linearSource, seed, gResolved.hdr);
     if (!gHaveUploaded[slot] || std::memcmp(&k, &gUploaded[slot], sizeof k) != 0) {
         context->UpdateSubresource(gConstants[slot].Get(), 0, nullptr, &k, 0, 0);
         gUploaded[slot] = k;
@@ -469,12 +475,14 @@ std::string StatusJson() {
     return std::format("{{\"profile\": \"{}\", \"effective\": \"{}\", \"correcting\": {}, \"compare\": {}, \"headset\": "
                        "{{\"runtime\": {}, \"system\": {}, \"vendorId\": {}, \"key\": {}, \"display\": \"{}\", \"why\": {}}}, "
                        "\"settings\": {{\"brightness\": {:.3f}, \"contrast\": {:.3f}, \"saturation\": {:.3f}, \"gamma\": {:.3f}, "
-                       "\"black\": {:.3f}, \"gain\": [{:.3f}, {:.3f}, {:.3f}]}}, \"dither\": {:.2f}, \"eyeShaders\": {}, "
+                       "\"black\": {:.3f}, \"gain\": [{:.3f}, {:.3f}, {:.3f}]}}, \"dither\": {:.2f}, "
+                       "\"hdr\": {{\"tonemap\": \"{}\", \"exposure\": {:.2f}, \"white\": {:.2f}}}, \"eyeShaders\": {}, "
                        "\"costMs\": {{\"{}\": {}, \"{}\": {}, \"{}\": {}}}, \"pngs\": \"{}\"}}",
         cv::Name(gResolved.chosen), cv::Name(gResolved.effective), Correcting() && gEye.ready ? "true" : "false",
         CompareHeld() || gResolved.compare ? "true" : "false", req::JsonString(gRuntime), req::JsonString(gSystem), gVendor,
         req::JsonString(gKey), DisplayName(gDetection.display), req::JsonString(gDetection.why), s.brightness, s.contrast,
-        s.saturation, s.gamma, s.black, s.gain[0], s.gain[1], s.gain[2], gResolved.dither, gEye.ready ? "true" : "false",
+        s.saturation, s.gamma, s.black, s.gain[0], s.gain[1], s.gain[2], gResolved.dither,
+        cv::Name(gResolved.hdr.tonemap), gResolved.hdr.exposure, gResolved.hdr.white, gEye.ready ? "true" : "false",
         kTimerNames[0], ms(gAverageMs[0]), kTimerNames[1], ms(gAverageMs[1]), kTimerNames[2], ms(gAverageMs[2]),
         "corrected when correcting is true (the swapchain images are copied after the correction)");
 }

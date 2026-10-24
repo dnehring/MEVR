@@ -324,6 +324,43 @@ Why these numbers:
     correction Z ms`. The averages go into snapshots (`"costMs"`).
   - The frame probe (research/22) is unchanged.
 
+## 7b. The game's HDR range and the tonemap (2026-10-23)
+
+The user: "does VR support HDR? The colour depth is a little lacking."
+
+- **No HDR output on the headsets we have.** The PS VR2's PC adapter doesn't carry HDR (Sony lists it
+  among the features missing on PC), so SteamVR drives the panel in 8-bit SDR; a streamed Quest is 8-bit
+  too. The eye swapchains are R8G8B8A8_UNORM_SRGB whatever the game does.
+- **Where the colour goes flat.** The deploy forced the game's SDR range (`[HDR] DesiredRange =
+  DynamicRange_SDR`, Halcyon's installer does the same) because the game's HDR output is a float scRGB
+  backbuffer whose highlights the 8-bit eyes clip. In SDR the game's own tonemapper compresses the range
+  before we see the frame. The game knows four ranges (`DynamicRange_Auto`, `HDR10`, `HDR10_Float`, `SDR`)
+  and two paper whites (`PaperWhiteNitsScene`, `PaperWhiteNitsUI`, strings in the exe).
+- **What Halcyon's blit does with a float source** (`[MEVR] HDR` in `xr_session.cpp`): a probe of the
+  frame's luminance latches "HDR range seen", then `colorScale.x = 80 / PaperWhiteNitsScene` maps the
+  scene's paper white to 1.0, and `ToEye` clips each pixel hue-preserving (divided by its largest channel)
+  before the eye's sRGB view encodes. Everything above paper white is lost to white.
+- **The tonemap** takes the clip's place: `MEVR_TONE(c)` in `ToEye` (`[MEVR]` seam; the default is the
+  clip, bit for bit), defined by our prelude (`core/vr/Colour`): linear in with paper white at 1.0, linear
+  [0, 1] out, then the hardware encode, then the grade of section 4 as before. Curves: `aces` (the
+  Narkowicz fit: 1.0 → 0.80 linear = 232 encoded, 2x → 245, 4x → 252, 8x → 255), `hable` (Uncharted 2's
+  filmic, with its bias of 2, `white` reaching 1.0; 1.0 → 0.54), `reinhard` (extended, `white` reaching
+  1.0), `clip`. `exposure` in stops before the curve. Only a linear source gets a curve; an 8-bit source
+  keeps the clip, which is the identity there, so SDR play is unchanged. The HUD panel never sees it.
+- **Settings:** `[Colour]` / `[Colour.<headset>]` `tonemap`, `exposure` (-3..3), `white` (1..16; the
+  game's brightest reconstructed highlight is `MaxReconstructedNits / PaperWhiteNitsScene`, 4 here). A
+  curve other than clip makes the shader variants run even on a neutral grade (with the dither, which the
+  8-bit store of an HDR frame wants). Constants: `misc[2]` exposure multiplier, `misc[3]` white, `seed[1]`
+  the mode; CPU reference `Tone()`; `mevr-colour-preview --check` runs every curve on an HDR ramp through
+  `PSTone` against it (one 8-bit step at most); unit tests in `TestTonemap`.
+- **The game's range:** `tools/vr-game-settings.ps1 -Hdr` writes `DesiredRange = DynamicRange_HDR10_Float`
+  (`-Sdr` back; a later apply keeps the choice). **[verify]** that the float backbuffer comes without
+  Windows' HDR switch on the desktop (research/13 saw it with Windows HDR on; the explicit range may not
+  need it), what the paper white probe reports, the GPU cost of the float backbuffer, and the look in the
+  headset against the SDR picture.
+- **10-bit eyes:** not done; worth asking SteamVR for `R10G10B10A2_UNORM` swapchains once the tonemap is
+  judged, for the banding the dither hides today.
+
 ## 8. Open
 
 - **[verify]** The Quest's system name through Steam Link (`: oculus` or `: vrlink`?); the new

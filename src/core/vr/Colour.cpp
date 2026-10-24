@@ -117,6 +117,35 @@ char const* Name(Profile p) {
     return "auto";
 }
 
+char const* Name(Tonemap t) {
+    switch (t) {
+    case Tonemap::Clip: return "clip";
+    case Tonemap::Aces: return "aces";
+    case Tonemap::Hable: return "hable";
+    case Tonemap::Reinhard: return "reinhard";
+    }
+    return "clip";
+}
+
+std::optional<Tonemap> ParseTonemap(std::string_view text) {
+    std::string const t = Lower(Trim(text));
+    if (t == "clip" || t == "off" || t == "none" || t == "0") return Tonemap::Clip;
+    if (t == "aces") return Tonemap::Aces;
+    if (t == "hable" || t == "filmic" || t == "uncharted") return Tonemap::Hable;
+    if (t == "reinhard") return Tonemap::Reinhard;
+    return std::nullopt;
+}
+
+Hdr ClampedHdr(Hdr h) {
+    h.exposure = Clamp(h.exposure, -3.0f, 3.0f, 0.0f);
+    h.white = Clamp(h.white, 1.0f, 16.0f, 4.0f);
+    return h;
+}
+
+bool TonemapActive(Hdr const& h) {
+    return h.tonemap != Tonemap::Clip;
+}
+
 char const* Label(Profile p) {
     switch (p) {
     case Profile::Auto: return "Automatic";
@@ -302,11 +331,32 @@ Resolved Resolve(Section const& common, Section const& headset, Detection const&
     if (auto const d = Number(common, "dither")) {
         r.dither = std::clamp(*d, 0.0f, 2.0f);
     }
+    auto tonemapOf = [](Section const& s) -> std::optional<Tonemap> {
+        auto const it = s.find("tonemap");
+        return it == s.end() ? std::nullopt : ParseTonemap(it->second);
+    };
+    if (auto const t = tonemapOf(headset)) {
+        r.hdr.tonemap = *t;
+    } else if (auto const u = tonemapOf(common)) {
+        r.hdr.tonemap = *u;
+    }
+    if (auto const e = Number(headset, common, "exposure")) {
+        r.hdr.exposure = *e;
+    }
+    if (auto const w = Number(headset, common, "white")) {
+        r.hdr.white = *w;
+    }
+    r.hdr = ClampedHdr(r.hdr);
     return r;
 }
 
 Constants MakeConstants(Settings const& in, float ditherSteps, bool linearSource, std::uint32_t seed) {
+    return MakeConstants(in, ditherSteps, linearSource, seed, Hdr{});
+}
+
+Constants MakeConstants(Settings const& in, float ditherSteps, bool linearSource, std::uint32_t seed, Hdr const& hdrIn) {
     Settings const s = Clamped(in);
+    Hdr const h = ClampedHdr(hdrIn);
     Constants k{};
     k.tone[0] = s.black;
     k.tone[1] = 1.0f / s.gamma;
@@ -317,7 +367,10 @@ Constants MakeConstants(Settings const& in, float ditherSteps, bool linearSource
     }
     k.misc[0] = std::clamp(ditherSteps, 0.0f, 2.0f) / 255.0f;
     k.misc[1] = linearSource ? 1.0f : 0.0f;
+    k.misc[2] = std::exp2(h.exposure);
+    k.misc[3] = h.white;
     k.seed[0] = seed;
+    k.seed[1] = static_cast<std::uint32_t>(h.tonemap);
     return k;
 }
 
@@ -368,9 +421,60 @@ float4 MevrColourIn(float4 c, float2 pixel, bool linearIn) {
     [branch] if (linearIn) { x = MevrDecode(x); } else { x = saturate(x); }
     return float4(x, c.a);
 }
+float3 MevrAces(float3 x) {
+    return saturate((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14));
+}
+float3 MevrHableCurve(float3 x) {
+    const float A = 0.15, B = 0.50, C = 0.10, D = 0.20, E = 0.02, F = 0.30;
+    return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
+}
+// ToEye's clip of a float (scRGB) source, or the tonemap: linear in (paper white at 1.0), linear [0, 1] out.
+float3 MevrTone(float3 c) {
+    c = max(c, 0.0);
+    [branch] if (mevrMisc.y <= 0.5 || mevrSeed.y == 0u) { return c / max(1.0, max(c.r, max(c.g, c.b))); }
+    c *= mevrMisc.z;
+    [branch] if (mevrSeed.y == 1u) { return MevrAces(c); }
+    [branch] if (mevrSeed.y == 2u) { return saturate(MevrHableCurve(c * 2.0) / MevrHableCurve(mevrMisc.www * 2.0)); }
+    float w = mevrMisc.w;
+    return saturate(c * (1.0 + c / (w * w)) / (1.0 + c));
+}
 #define MEVR_EYE_OUT(c, pos) MevrColourIn((c), (pos).xy, mevrMisc.y > 0.5)
 #define MEVR_PANEL_OUT(c, pos) MevrColourIn(float4((c), 1.0), (pos).xy, true).rgb
+#define MEVR_TONE(c) MevrTone(c)
 )";
+}
+
+namespace {
+float AcesFit(float x) {
+    return std::clamp((x * (2.51f * x + 0.03f)) / (x * (2.43f * x + 0.59f) + 0.14f), 0.0f, 1.0f);
+}
+float HableCurve(float x) {
+    constexpr float A = 0.15f, B = 0.50f, C = 0.10f, D = 0.20f, E = 0.02f, F = 0.30f;
+    return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
+}
+} // namespace
+
+Rgb Tone(Constants const& k, Rgb c) {
+    for (float& v : c) {
+        v = std::max(v, 0.0f);
+    }
+    if (k.misc[1] <= 0.5f || k.seed[1] == 0u) {
+        float const peak = std::max(1.0f, std::max(c[0], std::max(c[1], c[2])));
+        for (float& v : c) {
+            v /= peak;
+        }
+        return c;
+    }
+    float const w = k.misc[3];
+    for (float& v : c) {
+        float const x = v * k.misc[2];
+        switch (k.seed[1]) {
+        case 1u: v = AcesFit(x); break;
+        case 2u: v = std::clamp(HableCurve(x * 2.0f) / HableCurve(w * 2.0f), 0.0f, 1.0f); break;  // the filmic bias of 2
+        default: v = std::clamp(x * (1.0f + x / (w * w)) / (1.0f + x), 0.0f, 1.0f); break;
+        }
+    }
+    return c;
 }
 
 float Encode(float linear) {

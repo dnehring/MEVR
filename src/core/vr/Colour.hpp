@@ -85,10 +85,35 @@ Detection Detect(std::string_view runtimeName, std::string_view systemName);
 // Virtual Desktop's report the same Quest name). Empty when the system isn't known.
 std::string HeadsetKey(std::string_view runtimeName, std::string_view systemName);
 
+// ---- HDR: the tonemap of a float (scRGB) source --------------------------------------------------------------
+// With the game rendering its HDR range (GamerSettings [HDR] DesiredRange = DynamicRange_HDR10_Float: a float
+// scRGB backbuffer), Halcyon's eye blit maps the scene's paper white to 1.0 and then clips each pixel to 1.0
+// (hue-preserving: divided by its largest channel), so highlights lose their gradation and the picture reads flat.
+// A curve takes the clip's place: MEVR_TONE(c) in ToEye, defined by the prelude, linear in and linear [0, 1] out,
+// before the hardware's sRGB encode and the grade above. Only a linear source gets the curve: an 8-bit source
+// never exceeds 1 and keeps the clip, which is the identity there.
+//   clip      Halcyon's own: c / max(1, max channel)
+//   aces      the ACES fit (Narkowicz 2015): paper white 1.0 -> 0.80, highlights roll off to 1 by ~16
+//   hable     Uncharted 2's filmic curve (with its exposure bias of 2), normalised so that `white` reaches 1.0;
+//             paper white 1.0 -> 0.54
+//   reinhard  the extended Reinhard x (1 + x / white^2) / (1 + x): `white` reaches 1.0
+// `exposure` is in stops (-3 .. 3), applied before the curve; `white` is a linear value (1 .. 16; the game's
+// brightest reconstructed highlight is MaxReconstructedNits / PaperWhiteNitsScene, 4 on this install).
+enum class Tonemap { Clip, Aces, Hable, Reinhard };
+struct Hdr {
+    Tonemap tonemap = Tonemap::Clip;
+    float exposure = 0.0f;  // stops
+    float white = 4.0f;     // hable and reinhard
+};
+char const* Name(Tonemap t);  // "clip", "aces", "hable", "reinhard"
+std::optional<Tonemap> ParseTonemap(std::string_view text);  // case-insensitive; "off" and "none" = clip
+Hdr ClampedHdr(Hdr h);
+bool TonemapActive(Hdr const& h);  // a curve other than clip: the shader variants must run
+
 // ---- Settings file ----------------------------------------------------------------------------------------
 // [Colour] (any headset) and [Colour.<key>] (this one): keys profile, brightness, contrast, saturation, gamma,
-// black, gainR, gainG, gainB; and in [Colour] only: compare (1: show the uncorrected picture), dither (8-bit
-// steps, 0: off). The headset's own section wins key by key. Keys are lower-case here.
+// black, gainR, gainG, gainB, tonemap, exposure, white; and in [Colour] only: compare (1: show the uncorrected
+// picture), dither (8-bit steps, 0: off). The headset's own section wins key by key. Keys are lower-case here.
 using Section = std::map<std::string, std::string>;
 struct Resolved {
     Profile chosen = Profile::Auto;      // what the file says
@@ -97,6 +122,7 @@ struct Resolved {
     Settings custom;                     // the Custom values (also when another profile is chosen)
     bool compare = false;                // [Colour] compare
     float dither = 0.5f;                 // 8-bit steps, 0 .. 2
+    Hdr hdr;                             // the tonemap (ClampedHdr)
 };
 Resolved Resolve(Section const& common, Section const& headset, Detection const& detection);
 // Lower-cased keys, trimmed values, from "key=value" lines (GetPrivateProfileSection's output, ';' comments).
@@ -107,18 +133,22 @@ Section ParseSection(std::string_view lines);
 struct Constants {
     float tone[4];       // black, 1 / gamma, contrast weight t, saturation
     float gain[4];       // gain * brightness per channel, 0
-    float misc[4];       // dither amplitude (in [0, 1] units), linear source (1/0), 0, 0
-    std::uint32_t seed[4];  // dither seed (per eye), 0, 0, 0
+    float misc[4];       // dither amplitude (in [0, 1] units), linear source (1/0), exposure multiplier, white
+    std::uint32_t seed[4];  // dither seed (per eye), tonemap (0 clip, 1 aces, 2 hable, 3 reinhard), 0, 0
 };
 static_assert(sizeof(Constants) == 64);
 Constants MakeConstants(Settings const& s, float ditherSteps, bool linearSource, std::uint32_t seed);
+Constants MakeConstants(Settings const& s, float ditherSteps, bool linearSource, std::uint32_t seed, Hdr const& hdr);
 
 // HLSL to put in front of a shader: the cbuffer at b1, MevrColourIn(colour, pixel, linear), and the hooks
-// MEVR_EYE_OUT(c, pos) (Halcyon's eye blit: c from ToEye, linear per the cbuffer) and MEVR_PANEL_OUT(c, pos)
-// (the HUD panel: unpremultiplied linear rgb). A shader without the prelude defines both as the identity.
+// MEVR_EYE_OUT(c, pos) (Halcyon's eye blit: c from ToEye, linear per the cbuffer), MEVR_PANEL_OUT(c, pos)
+// (the HUD panel: unpremultiplied linear rgb) and MEVR_TONE(c) (ToEye's clip of a float source, replaced by the
+// tonemap). A shader without the prelude defines them as the identity (and the clip).
 char const* ShaderPrelude();
 
 using Rgb = std::array<float, 3>;
+// MEVR_TONE's reference: the clip for an encoded source or tonemap clip, else exposure then the curve.
+Rgb Tone(Constants const& k, Rgb linear);
 float Encode(float linear);   // sRGB, exact piecewise
 float Decode(float encoded);
 // Steps 1-5 on encoded values, from the constants (MevrGrade).

@@ -30,6 +30,7 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -47,6 +48,8 @@ VSOut VSMain(uint id : SV_VertexID) {
     VSOut o; o.pos = float4(p, 0.0, 1.0); return o;
 }
 float4 PSMain(VSOut i) : SV_Target { return MEVR_EYE_OUT(src.Load(int3(int2(i.pos.xy), 0)), i.pos); }
+// Halcyon's ToEye for a float (scRGB) source: the tonemap hook, then the correction, into the eye's sRGB view.
+float4 PSTone(VSOut i) : SV_Target { float4 c = src.Load(int3(int2(i.pos.xy), 0)); c.rgb = MEVR_TONE(c.rgb); return MEVR_EYE_OUT(c, i.pos); }
 )";
 
 struct Gpu {
@@ -54,6 +57,7 @@ struct Gpu {
     ComPtr<ID3D11DeviceContext> context;
     ComPtr<ID3D11VertexShader> vs;
     ComPtr<ID3D11PixelShader> ps;
+    ComPtr<ID3D11PixelShader> psTone;
     ComPtr<ID3D11Buffer> constants;
     bool warp = false;
 };
@@ -82,8 +86,9 @@ bool Start(Gpu& gpu) {
     };
     ComPtr<ID3DBlob> vsBlob;
     ComPtr<ID3DBlob> psBlob;
+    ComPtr<ID3DBlob> toneBlob;
     // ps_4_0: the profile Halcyon's eye shaders (and so their variants) are compiled for.
-    if (!compile("VSMain", "vs_4_0", vsBlob) || !compile("PSMain", "ps_4_0", psBlob)) {
+    if (!compile("VSMain", "vs_4_0", vsBlob) || !compile("PSMain", "ps_4_0", psBlob) || !compile("PSTone", "ps_4_0", toneBlob)) {
         return false;
     }
     D3D11_BUFFER_DESC cb{};
@@ -92,7 +97,97 @@ bool Start(Gpu& gpu) {
     cb.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     return SUCCEEDED(gpu.device->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, gpu.vs.GetAddressOf())) &&
         SUCCEEDED(gpu.device->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, gpu.ps.GetAddressOf())) &&
+        SUCCEEDED(gpu.device->CreatePixelShader(toneBlob->GetBufferPointer(), toneBlob->GetBufferSize(), nullptr, gpu.psTone.GetAddressOf())) &&
         SUCCEEDED(gpu.device->CreateBuffer(&cb, nullptr, gpu.constants.GetAddressOf()));
+}
+
+// An HDR ramp (linear scRGB values 0..`peak`, paper white at 1.0, with a colour cast per row) through PSTone into
+// an sRGB view, against the CPU reference (Tone, then the neutral correction, then the encode). Returns the
+// largest 8-bit difference and how many channels were more than one step off.
+std::pair<int, std::size_t> CheckTone(Gpu& gpu, cv::Constants const& k, float peak) {
+    constexpr int width = 512, height = 8;
+    std::vector<float> source(static_cast<std::size_t>(width) * height * 4);
+    std::vector<cv::Rgb> input(static_cast<std::size_t>(width) * height);
+    for (int y = 0; y < height; ++y) {
+        float const cast[3] = {1.0f, y % 4 == 1 ? 0.6f : (y % 4 == 3 ? 1.0f : 0.9f), y % 4 == 2 ? 0.5f : (y % 4 == 3 ? 0.3f : 1.0f)};
+        for (int x = 0; x < width; ++x) {
+            float const v = peak * static_cast<float>(x) / static_cast<float>(width - 1);
+            std::size_t const i = static_cast<std::size_t>(y) * width + x;
+            for (int c = 0; c < 3; ++c) {
+                source[i * 4 + c] = v * cast[c];
+                input[i][c] = v * cast[c];
+            }
+            source[i * 4 + 3] = 1.0f;
+        }
+    }
+    D3D11_TEXTURE2D_DESC sourceDesc{};
+    sourceDesc.Width = width;
+    sourceDesc.Height = height;
+    sourceDesc.MipLevels = 1;
+    sourceDesc.ArraySize = 1;
+    sourceDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    sourceDesc.SampleDesc.Count = 1;
+    sourceDesc.Usage = D3D11_USAGE_IMMUTABLE;
+    sourceDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    D3D11_SUBRESOURCE_DATA data{source.data(), static_cast<UINT>(width) * 16u, 0};
+    D3D11_TEXTURE2D_DESC td = sourceDesc;
+    td.Format = DXGI_FORMAT_R8G8B8A8_TYPELESS;
+    td.Usage = D3D11_USAGE_DEFAULT;
+    td.BindFlags = D3D11_BIND_RENDER_TARGET;
+    D3D11_RENDER_TARGET_VIEW_DESC rd{};
+    rd.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    rd.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+    D3D11_TEXTURE2D_DESC sd = td;
+    sd.Usage = D3D11_USAGE_STAGING;
+    sd.BindFlags = 0;
+    sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    ComPtr<ID3D11Texture2D> src, target, staging;
+    ComPtr<ID3D11ShaderResourceView> srv;
+    ComPtr<ID3D11RenderTargetView> rtv;
+    if (FAILED(gpu.device->CreateTexture2D(&sourceDesc, &data, src.GetAddressOf())) ||
+        FAILED(gpu.device->CreateShaderResourceView(src.Get(), nullptr, srv.GetAddressOf())) ||
+        FAILED(gpu.device->CreateTexture2D(&td, nullptr, target.GetAddressOf())) ||
+        FAILED(gpu.device->CreateRenderTargetView(target.Get(), &rd, rtv.GetAddressOf())) ||
+        FAILED(gpu.device->CreateTexture2D(&sd, nullptr, staging.GetAddressOf()))) {
+        return {255, 1};
+    }
+    gpu.context->UpdateSubresource(gpu.constants.Get(), 0, nullptr, &k, 0, 0);
+    D3D11_VIEWPORT viewport{0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height), 0.0f, 1.0f};
+    ID3D11RenderTargetView* const target0 = rtv.Get();
+    ID3D11ShaderResourceView* const source0 = srv.Get();
+    ID3D11Buffer* const constants = gpu.constants.Get();
+    gpu.context->OMSetRenderTargets(1, &target0, nullptr);
+    gpu.context->RSSetViewports(1, &viewport);
+    gpu.context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    gpu.context->VSSetShader(gpu.vs.Get(), nullptr, 0);
+    gpu.context->PSSetShader(gpu.psTone.Get(), nullptr, 0);
+    gpu.context->PSSetShaderResources(0, 1, &source0);
+    gpu.context->PSSetConstantBuffers(1, 1, &constants);
+    gpu.context->Draw(3, 0);
+    gpu.context->CopyResource(staging.Get(), target.Get());
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    if (FAILED(gpu.context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+        return {255, 1};
+    }
+    int maxDiff = 0;
+    std::size_t over = 0;
+    for (int y = 0; y < height; ++y) {
+        auto const* row = reinterpret_cast<std::uint32_t const*>(static_cast<std::uint8_t const*>(mapped.pData) + y * mapped.RowPitch);
+        for (int x = 0; x < width; ++x) {
+            std::size_t const i = static_cast<std::size_t>(y) * width + x;
+            cv::Rgb const toned = cv::Tone(k, input[i]);
+            cv::Rgb const corrected = cv::Correct(k, toned, static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y), true);
+            for (int c = 0; c < 3; ++c) {
+                int const gpuValue = static_cast<int>((row[x] >> (8 * c)) & 0xFFu);
+                int const cpuValue = cv::ToUnorm8(cv::Encode(corrected[c]));
+                int const diff = std::abs(gpuValue - cpuValue);
+                maxDiff = std::max(maxDiff, diff);
+                over += diff > 1 ? 1u : 0u;
+            }
+        }
+    }
+    gpu.context->Unmap(staging.Get(), 0);
+    return {maxDiff, over};
 }
 
 // `pixels` (0xAABBGGRR) through the shader. `linear`: a float source holding the bytes decoded (the float HDR
@@ -407,6 +502,33 @@ int main(int argc, char** argv) {
             }
         }
     }
+    // The HDR tonemap: each curve on a float ramp up to 8x paper white, through ToEye's hook and the eye's sRGB
+    // view, against the CPU reference; the clip too (Halcyon's own math, which the hook must reproduce exactly).
+    {
+        struct ToneCase {
+            char const* name;
+            cv::Hdr hdr;
+        };
+        ToneCase const toneCases[] = {{"clip", cv::Hdr{}}, {"aces", cv::Hdr{cv::Tonemap::Aces, 0.0f, 4.0f}},
+            {"aces +1", cv::Hdr{cv::Tonemap::Aces, 1.0f, 4.0f}}, {"hable", cv::Hdr{cv::Tonemap::Hable, 0.0f, 4.0f}},
+            {"reinhard", cv::Hdr{cv::Tonemap::Reinhard, -0.5f, 8.0f}}};
+        for (ToneCase const& c : toneCases) {
+            for (cv::Settings const& grade : {cv::Settings{}, cv::Preset(cv::Profile::Vivid)}) {
+                cv::Constants const k = cv::MakeConstants(grade, 0.0f, true, 0u, c.hdr);
+                auto const [maxDiff, over] = CheckTone(gpu, k, 8.0f);
+                bool const pass = over == 0;
+                ok = ok && pass;
+                std::printf("tonemap %-9s %-8s: GPU vs CPU max %d step(s), %zu over one step %s\n", c.name,
+                    cv::IsNeutral(grade) ? "neutral" : "vivid", maxDiff, over, pass ? "ok" : "FAIL");
+            }
+        }
+        // ACES's shape, for the record: paper white and the brightest reconstructed highlight (4x).
+        cv::Constants const k = cv::MakeConstants(cv::Settings{}, 0.0f, true, 0u, cv::Hdr{cv::Tonemap::Aces, 0.0f, 4.0f});
+        std::printf("aces: paper white 1.0 -> %d, 2x -> %d, 4x -> %d, 8x -> %d (8-bit encoded)\n",
+            cv::ToUnorm8(cv::Encode(cv::Tone(k, {1.0f, 1.0f, 1.0f})[0])), cv::ToUnorm8(cv::Encode(cv::Tone(k, {2.0f, 2.0f, 2.0f})[0])),
+            cv::ToUnorm8(cv::Encode(cv::Tone(k, {4.0f, 4.0f, 4.0f})[0])), cv::ToUnorm8(cv::Encode(cv::Tone(k, {8.0f, 8.0f, 8.0f})[0])));
+    }
+
     // Neutral through the corrected shader (no dither) must give back the input (the raw path is what runs, but
     // the math's identity is the same).
     {
