@@ -38,6 +38,10 @@ ue3::FieldRef gFrameRate{"Engine.SceneCaptureComponent", "FrameRate"};
 constexpr std::uint64_t kTemplateFlags = 0x200 | 0x400;
 
 ue3::Function* FindSetFrameRate() {
+    if (!ue3::runtime::Ready()) {
+        log::Warn("reflections: off: our reflection layer is off (see the 'reflect:' log lines)");
+        return nullptr;
+    }
     return gSetFrameRateRef.Get();
 }
 

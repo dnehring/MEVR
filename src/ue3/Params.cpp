@@ -85,7 +85,15 @@ std::optional<bool> Params::GetBool(std::string_view name) const {
 }
 
 std::optional<bool> Params::ReturnBool() const {
-    return ReadBool(ReturnSpec());
+    // A native writes its bool result as a whole UBOOL (*(UBOOL*)Result = ...), and script tests the word for
+    // non-zero: any bit counts, not just the property's mask (the generated *_Parms blocks read it the same way).
+    ParamSpec const* const spec = ReturnSpec();
+    if (spec == nullptr || spec->boolMask == 0) {
+        return std::nullopt;
+    }
+    std::uint32_t word = 0;
+    std::memcpy(&word, Bytes() + spec->offset, sizeof(word));
+    return word != 0;
 }
 
 } // namespace mevr::ue3

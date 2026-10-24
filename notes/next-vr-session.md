@@ -1093,6 +1093,35 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
     - Before restarting, a size you picked shows selected; a larger one than the game runs at now may make
       Halcyon's old menu warn "RESOLUTION WAS RESET" until the restart (its watchdog compares with the new size).
     - Put it back: **Headset** and **Upscale > Off** (or keep what you liked), restart.
+32. **Everything on our own reflection layer (new, 2026-10-23; the mod only, it hot-reloads; research/34 stage 2).**
+    Every game module (holsters, grenades and melee, sights, hand aim, the squad wheel, arm IK, Shepard's body,
+    the weapon, the console request) now finds what it reads and calls through our layer instead of LExSDKv2.
+    Nothing should look or feel different: this step is a check that it doesn't.
+    - **The log, before anything else:** `reflect: ready: ...`, then `reflect: the engine's allocator: appMalloc at
+      RVA 0xF2330 (by rva), appFree at RVA 0xF22F0 (by rva), GMalloc at RVA 0x16B6700`, then `reflect: N of N
+      checks agree` (410 or so now: 5 new rows). `%LOCALAPPDATA%\MEVR\reflect-check.json` must show
+      `"mismatches": 0`; the new rows are `global allocator`, `sample engine strings`,
+      `param SFXGame.BioPawn.GetWeaponStartTraceLocation(ReturnValue)` and the two `parms` rows of
+      `EnterWeaponWheel` / `ExitWeaponWheel`. No `reflect: field ... not found`, `parameter ... not found` or
+      `function ... not found` warnings anywhere in the session.
+    - **Smoke test each feature, a minute each, as in its own step above:**
+      - holsters (step 12 and later): draw the pistol and the rifle from their slots, let go to holster;
+        `holsters: script functions found`, `the pistol is in hand`, `is holstered`;
+      - grenades and melee (step 16): take a grenade at the chest, throw it, put one back; strike an enemy
+        in reach; `throwables: script functions found`, `grenade launched ... the disc re-aimed`, `melee: hit`;
+      - sights (steps 14 and 28): the red dot and the sniper scope, a scoped shot (`sights: first scoped shot
+        with aimed fire`), and shots landing on the dot (`hand aim: shot N: from the muzzle ... toward what the
+        sight line hit`);
+      - hand aim: `weapon: ... muzzle ... vs GetMuzzleLoc ...: match`, `shot start moved to the muzzle`, `the
+        shot started at the muzzle`;
+      - the squad wheel (step 17): pull the left trigger, point at a squadmate, give them a weapon;
+        `squad: script functions found`, `wheel #N open`, `preselected`, `holds the ...`;
+      - arm IK and the two-handed grip (step 18): `arm IK: bone layout verified`, the left hand on the rifle;
+      - Shepard's body (step 27): turn and lean; the heartbeat's `torso:` line has non-zero pawn, ControlRotation
+        and camera yaws;
+      - the console request: `tools/console.ps1 "stat unit"` must answer (`console: stat unit -> ...`).
+    - If any feature says `our reflection layer is off`, or a feature stands down where it worked before, send
+      the log: the `reflect:` lines say which lookup failed.
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR

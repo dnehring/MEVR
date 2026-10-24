@@ -351,10 +351,15 @@ void TestParams() {
     std::optional<ue3::Rotator> const back = p.Get<ue3::Rotator>("NewRotation");
     CHECK(back && back->pitch == 1 && back->yaw == 2 && back->roll == 3);
     CHECK(p.ReturnBool() == std::optional<bool>(false));
-    // The engine writes the return value; ours reads it by its mask.
+    // The engine writes the return value as a whole UBOOL: any non-zero word is true, as script tests it.
     auto* const bytes = static_cast<std::uint8_t*>(p.Data());
     bytes[12] = 0x1;
     CHECK(p.ReturnBool() == std::optional<bool>(true));
+    bytes[12] = 0x0;
+    bytes[13] = 0x40;  // a native returning `Flags & 0x4000`
+    CHECK(p.ReturnBool() == std::optional<bool>(true));
+    bytes[13] = 0x0;
+    CHECK(p.ReturnBool() == std::optional<bool>(false));
     CHECK(!p.Return<int>());  // a bool isn't read as an int
 
     ue3::Params none(r, nullptr);
