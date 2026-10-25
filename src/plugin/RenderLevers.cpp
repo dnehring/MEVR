@@ -1236,7 +1236,7 @@ void Tick() {
                 flushRead);
         }
         static int keepBss = -1;
-        int const keepBssRead = readInt(L"keepBoundShaderStates", 0) != 0 ? 1 : 0;
+        int const keepBssRead = readInt(L"keepBoundShaderStates", 1) != 0 ? 1 : 0;
         if (keepBssRead != keepBss) {
             keepBss = keepBssRead;
             gKeepBoundShaderStates.store(keepBssRead, std::memory_order_relaxed);

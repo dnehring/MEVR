@@ -397,7 +397,15 @@ Use it to check VR changes yourself instead of asking the user what they see
   reads fpsVR's own per-session records (`%LOCALAPPDATA%psVR`) of what the player's headset sessions showed. Seams: `MevrBridge::PerfPresentScope` / `PerfPass0Captured` /
   `g_perfDraws` and the wrapped `xrWaitFrame` / `xrBeginFrame` / `xrEndFrame`. `tools/perf-monitor.ps1`
   adds whole-GPU load; `tools/sample-render-thread.ps1` samples the render thread's stack from outside
-  (`mevr-stack-sampler`): where its time goes by module and function, no redeploy. Live render levers
+  (`mevr-stack-sampler`): where its time goes by module and function, no redeploy.
+  **Measuring without a person** (research/35 attempts 40-43): `tools/fake-headset.ps1 -On` (SteamVR's null driver; `-Off`
+  gives the real headset back), `tools/launch-game.ps1` (EA's Link2EA from a scheduled task, PLAY and the title's Enter by
+  keyboard from a foreground shell; never start the game from this shell: the harness's job object breaks the EA app),
+  `tools/console.ps1 "mevr density 2000"` (the densest mesh cells), `"god" "ghost"` then `"set SFXPawn_Player Location
+  (X=..,Y=..,Z=..)"` to move Shepard (Actor.SetLocation through ProcessEvent refuses the player), `tools/spot-survey.ps1`
+  (frame time and draws per spot under a replayed head recording), `tools/measure-levers.ps1 -Key k -Values 0,1 [-Inputs]`
+  (an A/B under the replay; `-Inputs` walks and shoots as recorded), `tools/fpsvr-session.py` (what fpsVR recorded).
+  Eden Prime's heaviest cells: (-31000, 145000, 900) and (-33000, 147000, 400), 4,100 draws. Live render levers
   (`plugin/RenderLevers`, [research/32](research/32-ue3-vr-performance.md)) in `[Performance]` of `ASI\LE1MEVR.ini`:
   `sharePass` (experimental; 1: the second eye renders on the first's scene renderer, no second visibility; 2: as 1
   but the second eye is a replay of the first's recorded D3D11 calls with the view's bytes substituted,
@@ -408,7 +416,12 @@ Use it to check VR changes yourself instead of asking the user what they see
   then drew three times the meshes, and the wait only moved into Umbra's own result reads), **`umbraEyeMatrix`**
   (default 1, attempt 36: Umbra's occlusion queries are drawn with the eye's matrix (+0x1D0's world-space equivalent put
   into +0x260 around `UmbraCommander::IssueOcclusionQueries`), which fixed the objects popping with head motion in the
-  life-size stereo's mode 2; the engine's own occlusion boxes already used +0x1D0); log
+  life-size stereo's mode 2; the engine's own occlusion boxes already used +0x1D0), **`keepBoundShaderStates`** (default 1 since
+  2026-10-24, research/35 attempts 42-43: the D3D11 bound shader states the dynamic-mesh drawing policies rebuild every draw
+  (ID3D11Device::CreateInputLayout each time, 300 a frame at a heavy spot) are kept alive by one extra reference through the
+  RHI's own AddRef once their key (declaration, VS, PS) is constructed a second time; 15.8-16.5 -> 10.5-11.1 ms at the
+  heaviest Eden Prime spot in a fresh session, ~1 ms warm; the kept set plateaus near 5,000 and memory stays flat; hazard
+  noted there: a kept state outliving its vertex declaration); log
   `render levers:` (scene renders per frame, each one's time with its Umbra resolve's parts, the draw replay's counts);
   `tools/perf-ab.ps1 -Key <key> -Values a,b` alternates one and captures each; `tools/eye-diff.ps1` compares one
   frame's two eyes call by call (run it first: it says whether the replay's substitution covers the eye's constants).

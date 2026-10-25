@@ -258,3 +258,10 @@ PS) are not stable (a declaration or shader made per frame); keeping those leaks
 stable-key rule: a state is kept only when its exact key is constructed for the second time (a fixed 64K-entry hash
 table of keys seen), with "new keys / keys seen before" counters. To verify: the kept total must plateau with the
 view looping, and memory stay flat over minutes.
+
+The survey with the lever on from the start (18:37, the same spots as attempt 42's table, same still recording): heaviest
+10.7 ms at 4,508 draws (attempt 42's warm session: 10.1 at 4,134), (-33000 147000) 9.6 at 4,014 (10.6 at 4,050), the
+medium cell 8.0 at 2,707 (8.0 at 2,622), the save 7.2 at 1,320 (7.2 at 1,700). So against a warm session the lever is
+worth about 1 ms at the heavy spots and nothing at the light ones; its 5 ms is the cold case (a fresh launch, and by the
+same mechanism a new area). Default 1 since 3533081's follow-up; `keepBoundShaderStates = 0` in `[Performance]` puts the
+game's own behaviour back.

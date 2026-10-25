@@ -35,6 +35,16 @@ is still the heavy, moving spot. And fpsVR's GPU frametime is 9.5 median / 13.5 
 over budget at the tail too, so items 5 and 6 (fewer draws, one submission) matter for both sides, and GPU offload is not
 free.
 
+## What the loop found on its own (18:00-18:40, attempts 42-43)
+
+The loop now reaches Eden Prime's heavy cells by itself (`mevr density`, `set SFXPawn_Player Location`, god and ghost,
+`tools/spot-survey.ps1`). At the heaviest (4,100-4,500 draws): render thread 9.6-10.7 ms, GPU 8.7-9.8, game thread 4.5;
+items 1 and 2 below do nothing there (the second eye does not wait on the fake headset); with the target raised to
+2400x2448 the GPU goes over budget and the fpsVR-style CPU time shows the player's tail (10.3 median, 15.1 p90, 19.9
+max): at heavy spots the GPU is the limit that fpsVR reports as CPU. The stack sampler found 20% of the render thread
+rebuilding D3D11 bound shader states (input layouts) every draw: the `keepBoundShaderStates` lever (attempt 43) took the
+heavy spot from 15.8-16.5 to 10.5-11.1 ms in a fresh session, about 1 ms in a warm one. It is item 0 and on by default.
+
 ## The sequence, with the expected gain and the evidence for each
 
 1. **umbraShareResults** (built, a4dffb5, default 0, unmeasured). The second eye's Umbra reads that aren't ready get
