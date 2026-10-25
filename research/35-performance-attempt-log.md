@@ -172,3 +172,57 @@ The player reads fpsVR; the probe reported "busy, without the XR waits". Are the
   fpsVR shows 22 ms "CPU" there for 5.4 ms of work. The fake-headset game was sitting in that cinematic while the player
   looked at fpsVR. Moving the hold before the early wait would make cutscenes read honestly; it changes nothing in
   gameplay (the hold is 0.04 ms there).
+
+## Attempt 42 (2026-10-24, 17:40-18:15): the loop reaches the heavy spots by itself, and what it found there
+
+The player's sessions were on Eden Prime (BIOA_PRO00, the crash breadcrumbs); the resume save lands at a light spot.
+Pieces built to get the loop to a heavy spot without a person:
+- `mevr loc` / `mevr density [cellUU]` console lines (`game/ConsoleRequest`, mod side): the pawn's position, and every
+  live static mesh / dynamic mesh / SpeedTree actor binned into cells, densest first. On Eden Prime the dense cells are
+  2-6 km from the save: 62 meshes at (-35000, 147000), 58 at (-33000, 149000), 47 at (-33000, 147000), 45 at (-31000, 145000).
+- Moving the pawn: `Engine.Actor.SetLocation` through ProcessEvent (`mevr setloc`) returns without moving the player
+  (the native's FarMoveActor refuses; the game's own `teleport` cheat, which calls the same, works, so it is our call,
+  unresolved). What works: the console's `set SFXPawn_Player Location (X=..,Y=..,Z=..)` (one such pawn exists), with
+  `god` and `ghost` first (the game's cheats answer the console; without them the first move landed Shepard in a
+  "Critical mission failure"). `tools/spot-survey.ps1 -Spots "X Y Z,..."` does the moves, replays a head recording and
+  probes each spot.
+- The launch script's readiness check waited on `testloop.status`, which had stopped updating mid-session; it now waits
+  on the mod log's freshness (the Enter at the title was never sent before). `tools/measure-levers.ps1 -Inputs` replays
+  the walk and the shots of the 20 s recording (2026-10-23 19:26, left stick -0.95..1.0) so Shepard walks the player's
+  first 20 s from the save: 7.2 ms at 1,700 draws there (the light spot).
+
+The survey (fake headset, 2118x2160 target, head motion replayed, 6 s each; "cpu" = poses -> submit):
+
+| spot | draws | cpu median / p90 / max (ms) |
+|---|---|---|
+| -31000 145000 900 | 4,134 | 10.1 / 11.0 / 14.8 |
+| -33000 147000 400 | 4,050 | 10.6 / 11.8 / 15.1 |
+| -33000 149000 0 | 3,422 | 9.2 / 10.8 / 23.8 |
+| -35000 147000 150 | 2,622 | 8.0 / 11.0 / 16.4 |
+| -35000 149000 -400 | 2,378 | 7.5 / 9.9 / 14.5 |
+| the save's spot | 1,700 | 7.2 / 8.0 / 12.5 |
+
+At the heaviest spot (4,100 draws): render thread 9.6 ms (86% of the period), GPU 8.7 ms (78%), game thread 4.5 ms.
+**Both built levers do nothing there**: umbraShareResults 10.0 vs 10.2 ms, flushFirstEye 10.0 vs 10.2 (2 rounds of 8 s
+each, within the replay's own noise). The reason is in the levers line: the second eye's Umbra result reads wait 0.06 ms
+and the engine's occlusion step 0.4-0.6 ms per render, both renders cost the same (3.9 ms), so the second eye does not
+wait for the first eye's GPU work at this spot on the fake headset: nothing for those levers to remove.
+
+**The player's tail reproduced by GPU pressure.** With the stereo target raised to 2400x2448 (+28% pixels; the real
+headset adds the compositor's work and 2824x2880 swapchains instead) at the same spot: cpu 10.3 median but **15.1 at p90
+and 19.9 max**, the render thread's busy time rising with it (14.9 p90: it spins, it does not sleep), the GPU span 9.1 /
+14.6 / 19.1. The issuing work is unchanged; the tail is the render thread waiting for the GPU inside the scene renders,
+and fpsVR reports that wait as CPU frametime. That is the player's 13 median / 20 p90 shape (attempt 41's fpsVR table).
+So at heavy spots the GPU is the limit that shows up as "CPU": the GPU-side levers (fewer pixels, fewer draws, one
+submission for both eyes) are the ones that move it, and GPU offload makes it worse.
+
+**And a CPU cost of its own, 20% of the render thread:** the stack sampler at the heavy spot (10 s, a sample a
+millisecond, 5,270 samples) puts 20.4% of the render thread inside `0x9A89F0`, the D3D11 bound-shader-state constructor
+(it calls ID3D11Device::CreateInputLayout, vtable +0x58, with the vertex shader's bytecode), always from the cache-miss
+path of `RHICreateBoundShaderState` (`0x9AB3B0`: the cache lookup `0x8018B0` by (vertex declaration, VS, PS, GS) pointers
+missed, then `new` + the constructor). Callers: the drawing policies of the dynamic-mesh paths (0x7B96FE, 0x784BF2,
+0x744484, 0x7B9E77, 0x785B7B, 0x783B4B: base pass, depth, lighting). UE3's bound shader states are ref-counted objects
+whose cache link dies with them; dynamic meshes (foliage, SpeedTrees, skeletal meshes) build their drawing policy, and
+with it the bound shader state, every draw, so the input layout is recreated every draw of every eye: ~2 ms a frame at
+4,100 draws. Lever to build: keep every created bound shader state alive (one extra reference, bounded by the number of
+distinct (declaration, VS, PS) combinations), so the lookups hit. Expected 1.5-2 ms off every heavy frame, both eyes.

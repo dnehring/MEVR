@@ -514,6 +514,9 @@ void CheckClasses() {
     CheckClass<UFunction>("Core.Function");
     CheckClass<UClass>("Core.Class");
     CheckClass<AActor>("Engine.Actor");
+    CheckClass<AStaticMeshActorBase>("Engine.StaticMeshActorBase");
+    CheckClass<ADynamicSMActor>("Engine.DynamicSMActor");
+    CheckClass<ASpeedTreeActor>("Engine.SpeedTreeActor");
     CheckClass<APawn>("Engine.Pawn");
     CheckClass<AController>("Engine.Controller");
     CheckClass<APlayerController>("Engine.PlayerController");

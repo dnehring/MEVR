@@ -10,11 +10,15 @@
 
 #include <Windows.h>
 
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace mevr::game::console_request {
 namespace {
@@ -50,6 +54,72 @@ ue3::Object* PlayerController() {
 // which this tick is). The console's own `getall`/`displayall` print nowhere we can read, and the game has no way to
 // jump to a known place: this is how a heavy spot is reached again and again without a person walking there.
 ue3::FunctionRef gSetLocationRef{"Engine.Actor.SetLocation"};
+// "mevr density [cellUU]": where the placed meshes are. Every live static mesh actor, dynamic/interp actor and
+// SpeedTree actor in the loaded levels, binned into cells of the given side (default 2000 UU = 20 m), the densest
+// cells first: the places to measure at.
+ue3::ClassRef gStaticMeshActorBase{"Engine.StaticMeshActorBase"};
+ue3::ClassRef gDynamicSMActor{"Engine.DynamicSMActor"};
+ue3::ClassRef gSpeedTreeActor{"Engine.SpeedTreeActor"};
+
+std::string Density(ue3::Object const* pawn, float cell) {
+    ue3::Reflection& r = ue3::runtime::Get();
+    struct Cell { long long key; long long cx; long long cy; int count; float z; };
+    std::unordered_map<long long, Cell> cells;
+    int seen = 0;
+    std::int32_t const n = r.ObjectCount();
+    for (std::int32_t i = 0; i < n; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o == nullptr || !r.IsAlive(o)) {
+            continue;
+        }
+        if (!ue3::IsA(o, gStaticMeshActorBase) && !ue3::IsA(o, gDynamicSMActor) && !ue3::IsA(o, gSpeedTreeActor)) {
+            continue;
+        }
+        if (r.NameText(o).rfind("Default__", 0) == 0) {
+            continue;
+        }
+        std::optional<ue3::Vector> const at = player::Location(o);
+        if (!at || (at->x == 0.0f && at->y == 0.0f && at->z == 0.0f)) {
+            continue;
+        }
+        ++seen;
+        long long const cx = static_cast<long long>(std::floor(at->x / cell));
+        long long const cy = static_cast<long long>(std::floor(at->y / cell));
+        long long const key = cx * 1000003LL + cy;
+        Cell& c = cells[key];
+        c.key = key;
+        c.cx = cx;
+        c.cy = cy;
+        c.z += at->z;
+        ++c.count;
+    }
+    std::vector<Cell> sorted;
+    for (auto const& [key, c] : cells) {
+        sorted.push_back(c);
+    }
+    std::sort(sorted.begin(), sorted.end(), [](Cell const& a, Cell const& b) { return a.count > b.count; });
+    std::optional<ue3::Vector> const here = player::Location(pawn);
+    std::string out = std::to_string(seen) + " mesh actors in " + std::to_string(cells.size()) + " cells of " +
+                      std::to_string(static_cast<int>(cell)) + " UU";
+    if (here) {
+        long long const key = static_cast<long long>(std::floor(here->x / cell)) * 1000003LL +
+                              static_cast<long long>(std::floor(here->y / cell));
+        auto const it = cells.find(key);
+        out += "; the pawn's cell has " + std::to_string(it != cells.end() ? it->second.count : 0);
+    }
+    out += "\n";
+    int shown = 0;
+    for (Cell const& c : sorted) {
+        if (shown++ >= 12) {
+            break;
+        }
+        char line[128];
+        std::snprintf(line, sizeof(line), "  %5d meshes at %.0f %.0f (mean z %.0f)\n", c.count, (c.cx + 0.5) * cell,
+                      (c.cy + 0.5) * cell, c.z / c.count);
+        out += line;
+    }
+    return out;
+}
 
 std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
     if (line.rfind("mevr ", 0) != 0) {
@@ -86,10 +156,17 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         ue3::runtime::Call(pawn, setLocation, parms);  // the native through ProcessEvent (game thread: this tick)
         write_journal::Wrote("ConsoleRequest.SetLocation", pawn, 0);
         std::optional<ue3::Vector> const at = player::Location(pawn);
-        std::snprintf(text, sizeof(text), "moved: now %.1f %.1f %.1f", at ? at->x : 0.0f, at ? at->y : 0.0f, at ? at->z : 0.0f);
+        std::optional<bool> const ok = parms.Return<bool>();
+        std::snprintf(text, sizeof(text), "%s returned %s: now %.1f %.1f %.1f", ue3::runtime::Get().FullName(pawn).c_str(),
+                      ok ? (*ok ? "true" : "false") : "?", at ? at->x : 0.0f, at ? at->y : 0.0f, at ? at->z : 0.0f);
         return std::string(text);
     }
-    return std::string("unknown: mevr loc | mevr setloc X Y Z");
+    if (verb == "density") {
+        float cell = 2000.0f;
+        words >> cell;
+        return Density(pawn, cell > 1.0f ? cell : 2000.0f);
+    }
+    return std::string("unknown: mevr loc | mevr setloc X Y Z | mevr density [cellUU]");
 }
 
 ue3::Function* FindConsoleCommand() {
