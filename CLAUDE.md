@@ -421,7 +421,9 @@ Use it to check VR changes yourself instead of asking the user what they see
   noise, 9.1 ms against 11.4 (20%) at the heaviest cell, `replayInverse = 0` drops the inverse-matrix pair; **both eyes
   render on the symmetric window** (the plan's mode 1) because the frame's only render decides visibility for both eyes
   and its occlusion tests see only its own frustum (an object in the other eye's outer wedge stayed "occluded" under the
-  PS VR2's projections; mode 1's angular resolution is the price, a wider `-ResX` buys it back); while no record of
+  PS VR2's projections; mode 1's angular resolution is the price, a wider `-ResX` buys it back, and 24% of each eye's
+  rendered columns are never shown, so `oneDrawWindow = 0` renders each eye on its own frustum instead when the GPU is
+  the limit); while no record of
   pass 1's view matches the rendered one for 3 frames (the intro's cine camera after a level load: a view edited after
   pass 0 recorded it) the host clears `g_oneDrawStereo` and Halcyon's second Draw resumes until 30 frames match again
   (log `one Draw: ... Halcyon's second Draw resumes`, the levers line's `its health:`); **the engine's 4 MB dynamic

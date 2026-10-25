@@ -502,3 +502,28 @@ renders at that spot. The shadows are a GPU copy of 4 MB on 5% of frames: nothin
 
 Not verified: the headset itself (the user tries again); heavier combat (several wraps a tail: the cap is 4 per buffer);
 a dynamic texture mapped twice inside the tail (textures are not copied; none seen).
+
+### 2026-10-25 15:54, the headset again: the colours are gone, the sporadic jumps are the GPU at the budget
+
+The second PS VR2 session with the fix (15:54, 178 s): no colour strobe, but "the obstacle in front of me moves in and
+out of place sporadically" and the teammates "do burst motions, in roughly the same place but shifting in and out". The
+log: every frame replayed (900 of 900 a period), 0 not replayable, 154-178 in-tail ring wraps per 10 s (17-20% of the
+frames in that scene, against 4-5% at the quiet spot) all shadowed, no fallback, no fault; 18 eye captures during the
+session (`tools/snapshot.ps1 -Count 20 -Interval 0.1`) all consistent pairs, nothing stale or mono, the declared pose
+0.8-2.9 degrees behind the head as in the two-Draw sessions. fpsVR's record of the session (`tools/fpsvr-session.py
+0`): CPU 6.6 ms median, 8.5 p90; **GPU 9.5 median, 11.5 p90, 14.5 p99; 603 of 15,713 frames reprojected, 0 dropped.**
+The GPU's p90 is the 90 Hz budget (11.1 ms), so the compositor repeats a frame three or four times a second, and a
+repeated frame is exactly a near object and a moving character jumping back for an instant. Halcyon's own GPU line
+in the earlier two-Draw sessions was worse (median 10-11.2 ms, p90 12.8-13.8), so this is the user's GPU at this
+resolution, not one Draw; one Draw took the CPU's share of the stutter away and left the GPU's visible.
+
+Two things make it worse than it need be, and both are ours. The symmetric window (mode 1, forced by one Draw) renders
+123 degrees into the eye-sized target and shows 105: 24% of the columns of each eye's render are never displayed, and
+the replayed right eye pays that too. And the window's angular resolution is 15% below the eye's own. So `[Performance]
+oneDrawWindow` (default 1) lets one Draw render each eye on its own frustum instead (0): the full target shown and
+sharper, at the price of experiment 10's wedge (an object wholly inside the other eye's outer 18 degrees can stay
+occluded until the head turns). For a GPU at the budget that is the better trade; the window stays the default because
+it is the correct image. Beyond that only a lower render resolution gives the GPU headroom.
+
+fpsVR keeps its last ten sessions only, so the two-Draw sessions' reprojection counts are gone; Halcyon's GPU line is
+the comparison above.

@@ -3,6 +3,7 @@
 // ([MEVR] seams in xr_session.cpp's RunFrame), the [MEVR-STEREO] log, the snapshot's "stereo" block.
 
 #include "plugin/MetricStereo.hpp"
+#include "plugin/RenderLevers.hpp"
 
 #include "halcyon/le1/logger.h"
 #include "halcyon/le1/mevr_bridge.h"
@@ -156,7 +157,7 @@ void PlanStereo(const StereoPlanInput& in, StereoPlan* out) noexcept {
         // against the depth buffer) see only that render's frustum: an object inside the other eye's outer wedge
         // (18 degrees on a PS VR2) would stay "occluded" and never appear in the replayed eye. Both eyes then render
         // on the symmetric window, which holds both frusta, at that mode's angular resolution.
-        bool const oneDraw = g_oneDrawStereo.load(std::memory_order_relaxed);
+        bool const oneDraw = g_oneDrawStereo.load(std::memory_order_relaxed) && mevr::host::render_levers::OneDrawWindow();
         out->mode = (in.eyeFrustum && !in.uiInEyes && in.fovOverride && !oneDraw) ? 2 : 1;
         for (int pass = 0; pass < 2; ++pass) {
             int const eye = pass == 0 ? out->pass0Eye : 1 - out->pass0Eye;
@@ -269,7 +270,7 @@ void PlanStereo(const StereoPlanInput& in, StereoPlan* out) noexcept {
     if (out->mode == 1 && in.eyeFrustum) {
         line += in.uiInEyes ? "; the symmetric window because the game's UI is in the eye images (no HUD panel: "
                               "conversations, cutscenes, menus over the world)"
-            : g_oneDrawStereo.load(std::memory_order_relaxed)
+            : (g_oneDrawStereo.load(std::memory_order_relaxed) && mevr::host::render_levers::OneDrawWindow())
                 ? "; the symmetric window because one Draw a frame renders both eyes from the first render's visibility "
                   "(sharePass = 5, research/37: its occlusion tests see only its own frustum)"
                 : "; the symmetric window because Halcyon's FOV override is off";

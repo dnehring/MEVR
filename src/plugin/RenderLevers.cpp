@@ -1126,6 +1126,7 @@ std::atomic<bool> gOneDrawFaulted{false};
 // resumes (g_oneDrawStereo cleared; the engine renders the right eye as in sharePass 0) and the host only checks each
 // frame, with the views alive, whether a record would match; after 30 matches running one Draw resumes.
 std::atomic<bool> gOneDrawWanted{false};     // [Performance] sharePass = 5 and the hooks in place
+std::atomic<int> gOneDrawWindow{1};          // [Performance] oneDrawWindow: both eyes on the symmetric window (1) or each on its own frustum (0)
 std::atomic<bool> gOneDrawFallback{false};   // Halcyon's second Draw resumed by the health check
 unsigned gOneDrawMisses = 0, gOneDrawMatches = 0;   // render thread
 std::atomic<std::uint64_t> gOneDrawFallbacks{0}, gOneDrawRearms{0};
@@ -2110,6 +2111,13 @@ void Tick() {
             ApplyAffinity(pCores != 0);
         }
         draw_replay::SetInversePair(readInt(L"replayInverse", 1) != 0);
+        {
+            int const window = readInt(L"oneDrawWindow", 1) != 0 ? 1 : 0;
+            if (gOneDrawWindow.exchange(window, std::memory_order_relaxed) != window) {
+                log::Info("render levers: one Draw a frame renders both eyes on {} ([Performance] oneDrawWindow = {})",
+                    window != 0 ? "the symmetric window" : "each eye's own frustum (an object wholly inside the other eye's outer wedge can stay occluded)", window);
+            }
+        }
         int const shareRaw = readInt(L"sharePass", 0);
         int const share = shareRaw < 0 ? 0 : (shareRaw > 5 ? 5 : shareRaw);
         if (share != sharePass) {
@@ -2158,6 +2166,10 @@ void OnPresentEnd(ID3D11DeviceContext* context) {
         }
     }
     draw_replay::OnPresentEnd();
+}
+
+bool OneDrawWindow() {
+    return gOneDrawWindow.load(std::memory_order_relaxed) != 0;
 }
 
 bool PerEyeViewState() {
