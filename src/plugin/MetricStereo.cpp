@@ -13,6 +13,7 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <format>
@@ -150,7 +151,13 @@ void PlanStereo(const StereoPlanInput& in, StereoPlan* out) noexcept {
         out->ipdUU = offsets.ipdUU;
         // Each eye's own frustum only where nothing screen-space is drawn into the eye images: the same pixel then
         // looks a different way in each eye (+-24 degrees at the centre on a PS VR2), so full-frame UI would split.
-        out->mode = (in.eyeFrustum && !in.uiInEyes && in.fovOverride) ? 2 : 1;
+        // One Draw a frame (research/37, [Performance] sharePass = 5): the frame's only render decides visibility for
+        // both eyes, and its occlusion tests (the engine's own and Umbra's, bounding boxes drawn with the GPU matrix
+        // against the depth buffer) see only that render's frustum: an object inside the other eye's outer wedge
+        // (18 degrees on a PS VR2) would stay "occluded" and never appear in the replayed eye. Both eyes then render
+        // on the symmetric window, which holds both frusta, at that mode's angular resolution.
+        bool const oneDraw = g_oneDrawStereo.load(std::memory_order_relaxed);
+        out->mode = (in.eyeFrustum && !in.uiInEyes && in.fovOverride && !oneDraw) ? 2 : 1;
         for (int pass = 0; pass < 2; ++pass) {
             int const eye = pass == 0 ? out->pass0Eye : 1 - out->pass0Eye;
             out->passOffsetUU[pass][0] = offsets.body[eye].x;
@@ -262,7 +269,10 @@ void PlanStereo(const StereoPlanInput& in, StereoPlan* out) noexcept {
     if (out->mode == 1 && in.eyeFrustum) {
         line += in.uiInEyes ? "; the symmetric window because the game's UI is in the eye images (no HUD panel: "
                               "conversations, cutscenes, menus over the world)"
-                            : "; the symmetric window because Halcyon's FOV override is off";
+            : g_oneDrawStereo.load(std::memory_order_relaxed)
+                ? "; the symmetric window because one Draw a frame renders both eyes from the first render's visibility "
+                  "(sharePass = 5, research/37: its occlusion tests see only its own frustum)"
+                : "; the symmetric window because Halcyon's FOV override is off";
     }
     if (std::fabs(in.unitsPerMeter - kLifeSizeUnitsPerMeter) > 1.0f) {
         line += std::format("; NOT life-size: Shepard's skeleton is about {:.0f} uu/m, so the world reads {:.2f} times "

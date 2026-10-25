@@ -281,20 +281,22 @@ extern std::uint32_t g_perfDraws;
 // the host sets this, Stereo 2's second Draw is not made (the game thread pushes one view's Umbra commands, the
 // render thread resolves once, as the flat game) and the host renders the second eye from the first render's
 // recorded calls with the view pass 1 would have had. Pass 0's CalcSceneView records what pass 1 would get, keyed
-// by pass 0's final view origin (the render thread finds its copy of the view by it).
+// by pass 0's final view origin and forward (the render thread finds its copy of the view by them). The host clears
+// it while no record matches the rendered view (its health check, plugin/RenderLevers) and sets it again when they do.
 extern std::atomic<bool> g_oneDrawStereo;
 // Whether Stereo 2 renders the world in this game mode (its replay gates): the host records and replays only then
 // (never the title, menus or movies, whose Draws are not eye passes). Implemented in render_hook.cpp.
 bool StereoFrameActive();
 struct Pass1View
 {
-    float viewOrigin[3] = {};   // pass 0's final view origin: the key
+    float viewOrigin[3] = {};   // pass 0's final view origin: the key, with the forward below
+    float forward[3] = {};      // pass 0's view matrix, third column (the camera's forward): a turn in place differs here
     float delta[3] = {};        // pass 1's camera minus pass 0's, world units
     int mode = 0;               // the metric plan's mode (2: pass 1's own frustum terms below)
     float p0 = 1.0f, p5 = 1.0f, p8 = 0.0f, p9 = 0.0f;   // pass 1's off-centre projection terms (mode 2), for w = z
 };
 void RecordPass1View(Pass1View const& v);                        // game thread, the end of pass 0's view edits
-bool FindPass1View(float const viewOrigin[3], Pass1View* out);  // render thread, by the view origin (the newest within 50 uu)
+bool FindPass1View(float const viewOrigin[3], float const forward[3], Pass1View* out);  // render thread: the closest in origin (within 50 uu) and forward
 std::uint64_t Pass1Records();                                   // records made so far
 bool NewestPass1View(Pass1View* out);
 

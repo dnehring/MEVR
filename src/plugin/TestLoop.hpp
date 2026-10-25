@@ -85,8 +85,9 @@ void RequestSnapshot(SnapshotRequest const& request);
 // `command`: -1 toggle, 0 stop, 1 start. `seconds` > 0: stop by itself after that long.
 void RequestRecording(int command, double seconds = 0.0);
 // Loads a recording (empty path or "latest": the newest in the recordings folder) and plays it from
-// the next frame. Stops a recording in progress.
-bool StartReplay(std::wstring const& path, bool loop, bool inputs, std::string* error = nullptr);
+// the next frame. Stops a recording in progress. `fovs`: the recorded per-eye FOVs stand in for the runtime's too
+// (a real headset's asymmetric projections on the fake headset, research/37).
+bool StartReplay(std::wstring const& path, bool loop, bool inputs, bool fovs = false, std::string* error = nullptr);
 void StopReplay();
 
 struct Status {
@@ -95,6 +96,7 @@ struct Status {
     bool replaying = false;
     bool replayLoop = false;
     bool replayInputs = false;
+    bool replayFovs = false;
     double replaySeconds = 0.0;
     double replayDuration = 0.0;
     std::string replayPath;

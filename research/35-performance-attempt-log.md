@@ -416,4 +416,8 @@ frame (a `[MEVR]` seam skips Halcyon's second Draw; pass 0 records what pass 1's
 recorded and replayed in its own finish with the second view synthesised in the host: the engine's own right eye to
 within temporal noise, **9.1 ms against 11.4 (20%)** with the head moving, 7.3 against 9.2 still. Three hangs on the
 way were one bug (a read of the renderer's views after Render had freed them: a fault on the render thread ends it
-quietly and the game thread waits forever). Off by default; research/37 has the measurements and what remains.
+quietly and the game thread waits forever). Checked under the PS VR2's own per-eye projections on the fake headset
+(the replay's `-Fovs`): the synthesised eye holds, but the one render's occlusion tests see only its own frustum, so
+one-Draw renders both eyes on the symmetric window (mode 1; an object in the right eye's outer wedge was missing in
+mode 2). Its recording's cost is 33,000 hook entries a frame, not copies (maps are 17 KB a frame). Off by default;
+research/37 has the measurements and what remains.

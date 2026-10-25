@@ -102,8 +102,10 @@ time equals native and the wall time is still 1-1.5 ms worse. Removed. The list 
    draw's LocalToWorld), the second render went from 4.5 to 3.0 ms, but the recording costs ~1 ms on the first, so the
    frame is 10.9 against 11.4. The 2.5 ms that remain are the second Umbra resolve and the recording: one Draw a frame
    with the second view synthesised in the host, which is Halcyon-side work.** Done the same day as `sharePass = 5`:
-   **9.1 ms against 11.4 at the heaviest cell (20%)**, the right eye the engine's own to within temporal noise; still to
-   prove on a real headset's per-eye projections and with dynamic shadows; off by default.**
+   **9.1 ms against 11.4 at the heaviest cell (20%)**, the right eye the engine's own to within temporal noise. Proved
+   under the PS VR2's own projections on the fake headset (the replay's `-Fovs`), where the first render's visibility
+   turned out to be the limit: its occlusion tests see only its own frustum, so one-Draw renders both eyes on the
+   symmetric window (mode 1). Still to try with dynamic shadows; off by default.**
 6. **Fewer draws** at heavy spots: LOD bias and cull distance keys that `scale set` didn't take live, set at launch
    through the mod's SystemSettings applier. Visible trade-offs; 0.5-1.5 ms.
 

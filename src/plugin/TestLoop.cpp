@@ -211,6 +211,7 @@ struct Replay {
     fs::path path;
     bool loop = false;
     bool inputs = false;
+    bool fovs = false;   // the recorded per-eye FOVs too (a PS VR2 recording on the fake headset: research/37)
     bool started = false;
     XrTime start = 0;
 };
@@ -237,6 +238,7 @@ std::atomic<std::uint64_t> gRecordStartMs{0};
 std::atomic<bool> gReplayActive{false};
 std::atomic<bool> gReplayInputs{false};
 std::atomic<bool> gReplayLoop{false};
+std::atomic<bool> gReplayFovs{false};
 std::atomic<std::int64_t> gReplayPositionNs{0};
 std::atomic<std::int64_t> gReplayDurationNs{0};
 std::atomic<std::uint64_t> gLastFrameMs{0};
@@ -1095,6 +1097,7 @@ void EndReplay(char const* why) {
     gReplay.reset();
     gReplayActive.store(false, std::memory_order_relaxed);
     gReplayInputs.store(false, std::memory_order_relaxed);
+    gReplayFovs.store(false, std::memory_order_relaxed);
 }
 
 void ApplyReplay(XrTime displayTime, vr::controllers::State& state) {
@@ -1115,11 +1118,13 @@ void ApplyReplay(XrTime displayTime, vr::controllers::State& state) {
         gReplayActive.store(true, std::memory_order_relaxed);
         gReplayInputs.store(gReplay->inputs, std::memory_order_relaxed);
         gReplayLoop.store(gReplay->loop, std::memory_order_relaxed);
+        gReplayFovs.store(gReplay->fovs, std::memory_order_relaxed);
         gReplayDurationNs.store(gReplay->recording->DurationNs(), std::memory_order_relaxed);
-        log::Info("test loop: replaying {} ({} frames, {:.1f} s{}{}): the recorded head and controller poses{} stand in "
+        log::Info("test loop: replaying {} ({} frames, {:.1f} s{}{}{}): the recorded head and controller poses{} stand in "
                   "for the live ones",
             Utf8(gReplay->path), gReplay->recording->frames.size(), static_cast<double>(gReplay->recording->DurationNs()) * 1e-9,
             gReplay->loop ? ", looping" : "", gReplay->inputs ? ", with buttons and sticks" : "",
+            gReplay->fovs ? ", with the recorded per-eye FOVs" : "",
             gReplay->inputs ? " and inputs" : " (live buttons and sticks)");
     }
     if (gReplay == nullptr) {
@@ -1163,8 +1168,8 @@ void SubstituteHead(XrViewLocateInfo const& info, XrResult& result, XrViewState&
         (viewState.viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT) != 0;
     for (int e = 0; e < 2; ++e) {
         views[e].pose = f.views[e].pose;
-        if (!live) {
-            views[e].fov = f.views[e].fov;  // the runtime gave none: the recorded ones
+        if (!live || gReplay->fovs) {
+            views[e].fov = f.views[e].fov;  // the runtime gave none, or fovs=1: the recorded ones
         }
     }
     count = 2;
@@ -1327,7 +1332,7 @@ void PollRequests() {
         } else {
             std::string error;
             std::wstring const path = (r.argument.empty() || r.argument == "latest") ? std::wstring() : Widen(r.argument);
-            if (!StartReplay(path, r.Flag("loop", false), r.Flag("inputs", false), &error)) {
+            if (!StartReplay(path, r.Flag("loop", false), r.Flag("inputs", false), r.Flag("fovs", false), &error)) {
                 log::Error("test loop: replay.request {}: {}", r.argument.empty() ? "latest" : r.argument, error);
             }
         }
@@ -1351,9 +1356,10 @@ std::string StatusJson(Status const& s) {
     return std::format(
         "{{\n  \"recording\": {},\n  \"recordingSeconds\": {},\n  \"replaying\": {},\n  \"replayPath\": {},\n"
         "  \"replaySeconds\": {},\n  \"replayDuration\": {},\n  \"replayLoop\": {},\n  \"replayInputs\": {},\n"
+        "  \"replayFovs\": {},\n"
         "  \"lastRecording\": {},\n  \"lastSnapshot\": {},\n  \"snapshotsPending\": {},\n  \"framesRunning\": {}\n}}\n",
         J(s.recording), J(s.recordingSeconds), J(s.replaying), req::JsonString(s.replayPath), J(s.replaySeconds),
-        J(s.replayDuration), J(s.replayLoop), J(s.replayInputs), req::JsonString(s.lastRecording),
+        J(s.replayDuration), J(s.replayLoop), J(s.replayInputs), J(s.replayFovs), req::JsonString(s.lastRecording),
         req::JsonString(s.lastSnapshot), s.snapshotsPending, J(s.framesRunning));
 }
 
@@ -1469,7 +1475,7 @@ void RequestRecording(int command, double seconds) {
     gRecordSeconds = std::max(seconds, 0.0);
 }
 
-bool StartReplay(std::wstring const& path, bool loop, bool inputs, std::string* error) {
+bool StartReplay(std::wstring const& path, bool loop, bool inputs, bool fovs, std::string* error) {
     fs::path const file = path.empty() ? LatestRecording() : fs::path(path);
     if (file.empty()) {
         if (error != nullptr) {
@@ -1490,6 +1496,7 @@ bool StartReplay(std::wstring const& path, bool loop, bool inputs, std::string* 
     replay->path = file;
     replay->loop = loop;
     replay->inputs = inputs;
+    replay->fovs = fovs;
     std::lock_guard lock(gControlMutex);
     gReplayPending = std::move(replay);
     gReplayPathText = Utf8(file);
@@ -1513,6 +1520,7 @@ Status GetStatus() {
     s.replaying = gReplayActive.load(std::memory_order_relaxed);
     s.replayLoop = gReplayLoop.load(std::memory_order_relaxed);
     s.replayInputs = gReplayInputs.load(std::memory_order_relaxed);
+    s.replayFovs = gReplayFovs.load(std::memory_order_relaxed);
     s.replaySeconds = static_cast<double>(gReplayPositionNs.load(std::memory_order_relaxed)) * 1e-9;
     s.replayDuration = static_cast<double>(gReplayDurationNs.load(std::memory_order_relaxed)) * 1e-9;
     s.snapshotsPending = std::max(gPendingCount.load(std::memory_order_relaxed), 0);

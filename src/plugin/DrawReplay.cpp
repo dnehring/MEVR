@@ -17,6 +17,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <intrin.h>
 #include <map>
 #include <mutex>
 #include <new>
@@ -252,6 +253,9 @@ Stream gStreams[2];
 thread_local Stream* t_recording = nullptr;
 std::unordered_map<void*, BufferInfo> gBuffers;  // per frame (pointers can be reused after a release)
 std::unordered_map<void*, Mapped> gMapped;       // the last Map of each resource this frame
+// The recording's map copies, timed (research/37: 17 maps and 17 KB a frame at the heavy spot; the 7.7 MB a frame of
+// recorded constants come through UpdateSubresource from the engine's own memory, so no mapped memory is read back).
+std::atomic<std::uint64_t> gMapCopyTicks{0}, gMapCopyBytes{0}, gMapsCopied{0};
 std::vector<IUnknown*> gHeld;                    // AddRef'd for the frame
 std::array<void*, 8192> gHeldCache{};
 
@@ -530,7 +534,11 @@ void STDMETHODCALLTYPE UnmapHook(ID3D11DeviceContext* c, ID3D11Resource* resourc
         a->kind = (info.bindFlags & D3D11_BIND_CONSTANT_BUFFER) != 0 ? 1u : 0u;
         a->dataSize = static_cast<std::uint32_t>(size);
         if (size != 0) {
+            std::uint64_t const t0 = __rdtsc();
             std::memcpy(a + 1, found->second.data, size);  // the mapped memory, before it goes away
+            gMapCopyTicks.fetch_add(__rdtsc() - t0, std::memory_order_relaxed);
+            gMapCopyBytes.fetch_add(size, std::memory_order_relaxed);
+            gMapsCopied.fetch_add(1, std::memory_order_relaxed);
         }
         if (found != gMapped.end()) {
             gMapped.erase(found);
@@ -2278,6 +2286,22 @@ unsigned RecordedDraws(int stream) {
     return stream >= 0 && stream < 2 ? gStreams[stream].draws : 0u;
 }
 
+// Time-stamp counter ticks as milliseconds, the rate measured against the performance counter since the first call.
+double TicksToMs(std::uint64_t ticks) {
+    static std::uint64_t const tsc0 = __rdtsc();
+    static LARGE_INTEGER const qpc0 = [] { LARGE_INTEGER q; QueryPerformanceCounter(&q); return q; }();
+    static LARGE_INTEGER const freq = [] { LARGE_INTEGER q; QueryPerformanceFrequency(&q); return q; }();
+    std::uint64_t const tsc = __rdtsc();
+    LARGE_INTEGER qpc;
+    QueryPerformanceCounter(&qpc);
+    double const seconds = static_cast<double>(qpc.QuadPart - qpc0.QuadPart) / static_cast<double>(freq.QuadPart);
+    if (seconds < 0.5 || tsc <= tsc0 || ticks == 0) {
+        return 0.0;
+    }
+    double const rate = static_cast<double>(tsc - tsc0) / seconds;   // ticks a second
+    return static_cast<double>(ticks) / rate * 1000.0;
+}
+
 Stats TakeStats() {
     Stats s;
     s.replays = gReplays.exchange(0, std::memory_order_relaxed);
@@ -2297,6 +2321,9 @@ Stats TakeStats() {
         s.matrixHits[i] = gMatrixHits[i].exchange(0, std::memory_order_relaxed);
     }
     s.seenByOurs = gSeenByOurs.exchange(0, std::memory_order_relaxed);
+    s.mapsCopied = gMapsCopied.exchange(0, std::memory_order_relaxed);
+    s.mapCopyBytes = gMapCopyBytes.exchange(0, std::memory_order_relaxed);
+    s.mapCopyMs = TicksToMs(gMapCopyTicks.exchange(0, std::memory_order_relaxed));
     std::lock_guard<std::mutex> const lock(gBlockerMutex);
     s.lastBlocker = gLastBlocker;
     return s;

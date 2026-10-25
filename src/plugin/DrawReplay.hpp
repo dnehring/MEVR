@@ -114,6 +114,8 @@ struct Stats {
                   substitutions = 0, notReplayable = 0, replayedDraws = 0, shiftedRects = 0, matrixSubstitutions = 0,
                   rehooks = 0, notedByHalcyon = 0, seenByOurs = 0;
     std::uint64_t matrixHits[4] = {};   // TVP, TVP transposed, inverse, inverse transposed
+    std::uint64_t mapsCopied = 0, mapCopyBytes = 0;   // the recording's map copies (research/37: 17 KB a frame)
+    double mapCopyMs = 0.0;                           // time copying them into the recording
     std::string lastBlocker;
 };
 Stats TakeStats();

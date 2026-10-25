@@ -1800,6 +1800,25 @@ bool ReadFsvViewOriginSEH(void* fsv, float out[3]) noexcept
     return std::isfinite(out[0]) && std::isfinite(out[1]) && std::isfinite(out[2]);
 }
 
+// [MEVR] research/37 one-Draw: the view matrix's third column (the camera's forward), the second half of the pass-1
+// record's key (a turn in place keeps the origin and changes this).
+bool ReadFsvForwardSEH(void* fsv, float out[3]) noexcept
+{
+    if (fsv == nullptr || out == nullptr) return false;
+    __try
+    {
+        const float* m = reinterpret_cast<const float*>(reinterpret_cast<const BYTE*>(fsv) + kFsvViewMatrix);
+        out[0] = m[2];
+        out[1] = m[6];
+        out[2] = m[10];
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return false;
+    }
+    return std::isfinite(out[0]) && std::isfinite(out[1]) && std::isfinite(out[2]);
+}
+
 // [SFR] Per-pass eye offset, SYMMETRIC like regular Stereo: pass 0 renders from -halfEye,
 // the replay pass from +halfEye, using
 // the SAME tuned stereoHalfEyeUU value regular Stereo uses (published per frame by xr_session).
@@ -2591,6 +2610,7 @@ void PostProcessPerspectiveFsv(void* fsv, bool aerPrimaryView = false) noexcept
         {
             MELEVR::MevrBridge::Pass1View v;
             v.viewOrigin[0] = vo[0]; v.viewOrigin[1] = vo[1]; v.viewOrigin[2] = vo[2];
+            if (!ReadFsvForwardSEH(fsv, v.forward)) v.forward[0] = v.forward[1] = v.forward[2] = 0.0f;
             v.delta[0] = s_pass1Pending.delta[0]; v.delta[1] = s_pass1Pending.delta[1]; v.delta[2] = s_pass1Pending.delta[2];
             v.mode = s_pass1Pending.mode;
             v.p0 = s_pass1Pending.p0; v.p5 = s_pass1Pending.p5; v.p8 = s_pass1Pending.p8; v.p9 = s_pass1Pending.p9;

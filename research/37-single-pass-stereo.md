@@ -388,3 +388,80 @@ origin match); a real headset's per-eye projections (the mode 2 rebuild `TVM x P
 driver's symmetric eyes, where it is the identity case); dynamic shadows on; a watch for the black-eye transient;
 and the cost of the recording itself (1.1 ms: 7 MB of per-draw constants copied a frame), which no replay design
 avoids. `sharePass` stays 0 by default.
+
+### 2026-10-25 12:40-13:05, before the headset: the PS VR2's own projections, the recording's cost, the other states
+
+Three checks the user asked for before trying `sharePass = 5` in the PS VR2 (they could all run on the fake headset).
+
+**The replay's `fovs=1`** (`tools/replay.ps1 -Fovs`): the recorded per-eye FOVs stand in for the runtime's, so the
+null driver renders the headset's own asymmetric projections. The user's head recordings carry the PS VR2's: left
+(-61.5, 43.4, 53.0, -53.0), right (-43.4, 61.5, 53.0, -53.0) degrees. A still-head copy of the 19:34 recording (every
+frame at frame 0's pose, scratchpad `stillrec.py`) with the console's `pause` (the world frozen, still rendering) takes
+the temporal noise out of the frozen-head A/B: two captures of the same engine-rendered eye now differ by 3.7-4.2
+(they differed by 7.0 with the foliage moving), so a synthesised eye can be held to that floor.
+
+**Experiment 10: mode 2 under the PS VR2's projections.** `sharePass = 5` (A) against both engine renders (B) at the same
+pose, paused. A.right vs B.right 4.15, A.left vs B.left 4.20 (the floor), stereo 36; far-scenery residual +4.1 px
+against B's +4.6. So the rebuild `TVM x P_eye1` holds with the right eye's own off-centre term (p8 = 0.32), which the
+null driver's symmetric eyes never exercised. **But one object was missing from the one-Draw right eye**: a piece of
+geometry at the image's right edge (x 1809-2343 of 2344), inside the wedge from +43.4 to +61.5 degrees that only the
+right eye sees. Not Umbra's eye-matrix queries (`umbraEyeMatrix = 0` gave the same crop, 5.81 against 5.89), and not
+the frustum cull (the CPU window +-1.8418 x +-1.3290 holds both eyes' frusta, per the containment line): what is left
+is the occlusion test that draws bounding boxes with the GPU matrix (+0x1D0, the eye's own frustum) against the depth
+buffer, the engine's own at 0x759240, where a box outside the first render's viewport returns no pixels and the object
+stays "occluded" in the history. With two Draws, pass 1's own render saw it. **The frame's only render decides
+visibility for both eyes, and its occlusion tests see only its own frustum.** The fix is in the design, not a lever:
+one-Draw stereo renders both eyes on the symmetric window (`PlanStereo` picks mode 1 while `g_oneDrawStereo` is set,
+and says why in the `[MEVR-STEREO]` plan line). The window holds both frusta, so the first render's tests cover the
+right eye's wedge. The price is mode 1's angular resolution: on the PS VR2 the union window is 123 degrees wide against
+the eye's own 105, 15% fewer pixels per degree at the same target (`tools/vr-game-settings.ps1 -ResX` 17% wider buys it
+back for 17% more GPU pixels; the GPU had 4.9 ms of 11.1 at this spot with shadows off).
+
+**Experiment 11: both on the symmetric window** (Halcyon's `sfr2MetricEyeFrustum = 0` for the session, so B renders mode
+1 too; the same pose, paused): A.right vs B.right 3.89, A vs A2 (the same mode twice) 3.70, the right-edge crop 4.40
+against 4.18: the object is there and the eyes equal the engine's own to the floor; far scenery +1.2 px (B +2.7). The
+HUD panel comes out the same (6.1% of its pixels covered in both).
+
+**The recording's cost is not the maps.** The hypothesis was that the recorder reads the driver's mapped memory back at
+every Unmap (write-combined, slow to read). Timed: 16-17 maps, 17-18 KB, 0.05 ms a frame. The 7.7 MB a frame of
+recorded constants come through UpdateSubresource from the engine's own cached memory. A redirection of discard maps
+to cached memory was built, measured moot and removed within the hour (the map copy's timing stays in the levers line:
+`recording: N maps (KB) copied in X ms a frame`). What the recording costs is its 33,000 hook entries a frame: the
+sampled render thread (`tools/sample-render-thread.ps1`, 10 s under the head loop) has about 7% of its samples in the
+host's hooks under the RHI's set-state and draw functions and about 3% in the replay's own code, against 25% in the
+engine's render below our scene-render hook. Per-call bookkeeping, not a copy; the next cut would be fewer entries
+(redundant state calls filtered at record time), not cheaper ones.
+
+**The pass-1 record's key** carries the view's forward too (the view matrix's third column, `ReadFsvForwardSEH`), and
+the render thread picks the record closest in origin (within 50 uu) and forward. The game thread runs a frame ahead,
+so "the newest within 50 uu" paired a frame with the next frame's record whenever the head turned in place (the
+replay's stop, a recenter, a cut): the sheared right eye seen once after a replay stopped is that case.
+
+**Frame time today** (the head loop, the runtime's FOVs, the same spot): `sharePass = 5` 8.93 (10.01) and 8.61 (9.68)
+ms against 11.34 (13.36) with both engine renders; 0 frames without a record, 0 not replayable, no fault.
+
+**The sweep of the other states** (`sharePass = 5`, the head loop; scratchpad `sweep.ps1`): the game's pause menu (Esc:
+Stereo 2 stops rendering the world, mode 0, no eye images to capture, and gameplay comes back as before), our main menu
+over the world (both eyes drawn, 46/43 mean brightness against 50/49 without it), three replay stops (the head jumps
+from the recording's pose to the null driver's: the right eye present every time, 42.1 / 41.9 / 42.0 against the left's
+41.8 / 41.6 / 41.7, far scenery -7 px as that pose always read), then a level load by console (`open BIOA_PRO00`, the
+game's intro). **After the load no record matched**: the rendered view sat 70 uu from the newest of pass 0's records
+(`no pass-1 record for the view at (-7477, 13294, -34706); newest at (-7408, 13311, -34727)`, 2 records a frame at 23
+fps) for the whole text crawl, so the frame had no second eye and the right eye showed the left view (mono, not
+black). A view edited after pass 0 recorded it, by something the intro's cine path does that gameplay doesn't; not
+chased. **The design's answer is a health check**: while the render thread finds no matching record for 3 frames
+running, the host clears `g_oneDrawStereo` and Halcyon's second Draw resumes (the engine renders the right eye as in
+`sharePass = 0`; the host stops recording and only asks, in each first render's finish, whether a record would
+match); after 30 matches running one Draw resumes. Logged as `one Draw: no pass-1 record matched the rendered view
+for 3 frames running: Halcyon's second Draw resumes until they match again` and the reverse; the levers line carries
+`its health: N fallbacks, N re-arms, in the fallback now`. Verified on the same load: the fallback engaged within the
+first second after `open` and the intro ran with both engine renders and both eyes (6.6 / 5.9 mean, a dark scene). The
+re-arm has not been exercised (the intro never returned to gameplay); the check never fired in gameplay (0 misses over
+every gameplay period today). The session after that restart also showed the forced window working as a user would see
+it: `sharePass = 5` with Halcyon's per-eye frustum on gives `stereo mode 1 ... the symmetric window because one Draw a
+frame renders both eyes from the first render's visibility`, each eye's submit still declares its own FOV with its
+sub-rectangle of the window (the capture's rect 1775 px of 2344), far scenery -0.3 px.
+
+Not verified today: the re-arm after a fallback; a conversation or in-game cutscene camera under one Draw (the intro's
+cine camera is the case that fell back); dynamic shadows on; the weapon wheel and Halcyon's own menu (no key the
+scripts can send).

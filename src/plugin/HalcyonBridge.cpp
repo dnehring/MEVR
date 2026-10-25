@@ -573,18 +573,29 @@ void RecordPass1View(Pass1View const& v) {
     gPass1Ring[gPass1Next % 8] = v;
     ++gPass1Next;
 }
-bool FindPass1View(float const viewOrigin[3], Pass1View* out) {
+bool FindPass1View(float const viewOrigin[3], float const forward[3], Pass1View* out) {
     std::lock_guard<std::mutex> const lock(gPass1Mutex);
     unsigned const n = gPass1Next < 8 ? gPass1Next : 8;
+    float best = 0.0f;
+    bool found = false;
     for (unsigned i = 0; i < n; ++i) {
         Pass1View const& v = gPass1Ring[(gPass1Next + 7 - i) % 8];  // newest first
         float const dx = v.viewOrigin[0] - viewOrigin[0], dy = v.viewOrigin[1] - viewOrigin[1], dz = v.viewOrigin[2] - viewOrigin[2];
-        if (dx * dx + dy * dy + dz * dz <= 50.0f * 50.0f) {
+        float const dist2 = dx * dx + dy * dy + dz * dz;
+        if (dist2 > 50.0f * 50.0f) {
+            continue;
+        }
+        // The game thread runs a frame ahead: the frame's own record is the one whose forward matches too (a turn in
+        // place, a recenter, a cut: research/37, the sheared right eye after a replay stopped). A radian is 100 uu.
+        float const fx = v.forward[0] - forward[0], fy = v.forward[1] - forward[1], fz = v.forward[2] - forward[2];
+        float const score = dist2 + 100.0f * 100.0f * (fx * fx + fy * fy + fz * fz);
+        if (!found || score < best) {
+            best = score;
             *out = v;
-            return true;
+            found = true;
         }
     }
-    return false;
+    return found;
 }
 std::uint64_t Pass1Records() {
     std::lock_guard<std::mutex> const lock(gPass1Mutex);

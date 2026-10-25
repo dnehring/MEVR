@@ -479,7 +479,7 @@ static void TestLoopSection() {
     } else {
         if (ImGui::Button("Replay the last recording")) {
             std::string error;
-            if (!testloop::StartReplay(L"", false, gReplayWithInputs, &error)) {
+            if (!testloop::StartReplay(L"", false, gReplayWithInputs, false, &error)) {
                 mevr::log::Warn("menu: replay: {}", error);
             }
         }

@@ -374,9 +374,10 @@ Use it to check VR changes yourself instead of asking the user what they see
 - **Recording:** `tools/record.ps1 -Seconds N` (or `-Start` / `-Stop`) writes `record.request`;
   frames go to `recordings\<stamp>.mevrrec` (head eye views, both controllers' poses and inputs).
   `python tools/mevrrec.py --latest [--csv out.csv]` summarizes or dumps one.
-- **Replay:** `tools/replay.ps1 [-Path f] [-Loop] [-Inputs] [-Wait]` / `-Stop` writes
-  `replay.request` (`<path|latest|stop> [loop=1] [inputs=1]`). The recorded head (the runtime's
-  FOVs kept) and controller poses stand in for the live ones; buttons and sticks only with
+- **Replay:** `tools/replay.ps1 [-Path f] [-Loop] [-Inputs] [-Fovs] [-Wait]` / `-Stop` writes
+  `replay.request` (`<path|latest|stop> [loop=1] [inputs=1] [fovs=1]`). The recorded head (the runtime's
+  FOVs kept, or the recorded per-eye FOVs with `-Fovs`: a PS VR2 recording's asymmetric projections on the
+  fake headset, research/37) and controller poses stand in for the live ones; buttons and sticks only with
   `-Inputs`. Replay + snapshot = look at a recorded pose: `tools/replay.ps1 -Loop`,
   `tools/snapshot.ps1 -Delay 2`, `tools/replay.ps1 -Stop`.
 - **Player triggers:** End = snapshot, Home = recording on/off (game focused); a quick tap of both
@@ -417,7 +418,14 @@ Use it to check VR changes yourself instead of asking the user what they see
   replay saves; **5**: one FViewportClient::Draw a frame (Halcyon's second Draw skipped through `g_oneDrawStereo`,
   pass 0 recording what pass 1's view would be, `MevrBridge::RecordPass1View`), the first render recorded and replayed
   in its own finish hook with the second view synthesised in the host: the engine's own right eye to within temporal
-  noise, 9.1 ms against 11.4 (20%) at the heaviest cell, `replayInverse = 0` drops the inverse-matrix pair. **d3d11
+  noise, 9.1 ms against 11.4 (20%) at the heaviest cell, `replayInverse = 0` drops the inverse-matrix pair; **both eyes
+  render on the symmetric window** (the plan's mode 1) because the frame's only render decides visibility for both eyes
+  and its occlusion tests see only its own frustum (an object in the other eye's outer wedge stayed "occluded" under the
+  PS VR2's projections; mode 1's angular resolution is the price, a wider `-ResX` buys it back); while no record of
+  pass 1's view matches the rendered one for 3 frames (the intro's cine camera after a level load: a view edited after
+  pass 0 recorded it) the host clears `g_oneDrawStereo` and Halcyon's second Draw resumes until 30 frames match again
+  (log `one Draw: ... Halcyon's second Draw resumes`, the levers line's `its health:`); the recording's 1.1 ms
+  is 33,000 hook entries a frame, not copies (its maps are 17 KB a frame; the 7.7 MB are UpdateSubresource's). **d3d11
   keeps a vtable per context and swaps its draw, clear, copy and dispatch entries between variants of each method as
   the context's state changes**, so a hook in that vtable or on one variant's body misses calls: the recorder hears
   the draws through `[MEVR]` seams in Halcyon's own hooks (`MevrBridge::Record*`) and hooks the other entries inline
