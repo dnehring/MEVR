@@ -1679,6 +1679,34 @@ bool ApplyViewOffsetSEH(void* fsv) noexcept
     }
 }
 
+// [MEVR] research/37 one-Draw: what pass 1's camera would be relative to pass 0's (the same basis
+// ApplyViewRelativeOffsetRawSEH uses), kept on the game thread from pass 0's offset to the end of its view edits.
+struct Pass1Pending
+{
+    bool valid = false;
+    float delta[3] = {};
+    int mode = 0;
+    float p0 = 1.0f, p5 = 1.0f, p8 = 0.0f, p9 = 0.0f;
+};
+Pass1Pending s_pass1Pending;
+
+bool ReadWorldDeltaRawSEH(void* fsv, float r, float u, float f, float out[3]) noexcept
+{
+    __try
+    {
+        const BYTE* base = reinterpret_cast<const BYTE*>(fsv);
+        const float* VM = reinterpret_cast<const float*>(base + kFsvViewMatrix);
+        out[0] = r * VM[0] + u * VM[1] + f * VM[2];
+        out[1] = r * VM[4] + u * VM[5] + f * VM[6];
+        out[2] = r * VM[8] + u * VM[9] + f * VM[10];
+        return true;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return false;
+    }
+}
+
 bool ApplyViewRelativeOffsetRawSEH(void* fsv, float r, float u, float f,
                                    float* outWx, float* outWy, float* outWz,
                                    float* outVo, float* outPvt) noexcept
@@ -1801,6 +1829,11 @@ bool ApplyReplayProofOffsetSEH(void* fsv) noexcept
         LogLine("[REPLAYSHIFT] failed: SEH caught fault while applying replay-only offset.");
         return false;
     }
+    if (!t_fvcReplay)   // [MEVR] research/37 one-Draw: pass 1 would sit 2 x halfEye to the right of this pass
+    {
+        s_pass1Pending = Pass1Pending{};
+        s_pass1Pending.valid = ReadWorldDeltaRawSEH(fsv, 2.0f * halfEye, 0.0f, 0.0f, s_pass1Pending.delta);
+    }
 
     const int logIndex = g_replayShiftLogs.fetch_add(1, std::memory_order_acq_rel);
     if (logIndex < 16)
@@ -1871,6 +1904,16 @@ bool MetricGatesPass() noexcept
     if (!SfrModeAllowsReplay(g_sfrGameMode.load(std::memory_order_acquire))) return false;
     return g_sfrExceptions.load(std::memory_order_acquire) < 3;
 }
+}  // namespace
+namespace MELEVR::MevrBridge
+{
+bool StereoFrameActive()   // [MEVR] research/37: the host records and replays only while Stereo 2 renders the world
+{
+    return MetricGatesPass();
+}
+}  // namespace MELEVR::MevrBridge
+namespace
+{
 
 // [MEVR] Life-size stereo, in place of ApplyReplayProofOffsetSEH: this pass's camera moves by its eye's real
 // offset from the eye centre (the lean already moved it there), along the pre-look camera axes, the same edit
@@ -1882,6 +1925,7 @@ bool ApplyMetricEyeOffset(void* fsv) noexcept
     {
         const MetricSlot& slot = g_metricSlots[g_metricSlotIdx.load(std::memory_order_acquire)];
         g_metricLatched = slot;
+        s_pass1Pending = Pass1Pending{};   // [MEVR] research/37 one-Draw: nothing to record unless an offset applies
     }
     if (g_metricLatched.mode == 0) return false;
     if (!MetricGatesPass()) return true;
@@ -1892,6 +1936,17 @@ bool ApplyMetricEyeOffset(void* fsv) noexcept
     {
         LogLine("[MEVR-STEREO] eye offset failed: SEH caught a fault");
         return true;
+    }
+    if (pass == 0)   // [MEVR] research/37 one-Draw: what pass 1 would get, for the host's synthesised second view
+    {
+        const MELEVR::RenderHook::MetricPass& q = g_metricLatched.passes[1];
+        s_pass1Pending.valid = ReadWorldDeltaRawSEH(fsv, q.offsetUU[0] - p.offsetUU[0], q.offsetUU[1] - p.offsetUU[1],
+                                                    q.offsetUU[2] - p.offsetUU[2], s_pass1Pending.delta);
+        s_pass1Pending.mode = g_metricLatched.mode;
+        s_pass1Pending.p0 = q.p0;
+        s_pass1Pending.p5 = q.p5;
+        s_pass1Pending.p8 = q.p8;
+        s_pass1Pending.p9 = q.p9;
     }
     const int n = g_metricOffsetLogs.fetch_add(1, std::memory_order_relaxed);
     if (n < 8 || (n % 3600) == 0)
@@ -2527,6 +2582,32 @@ void PostProcessPerspectiveFsv(void* fsv, bool aerPrimaryView = false) noexcept
                     std::to_string(g_invSlotCount) + " inverse slots");
     }
 
+    // [MEVR] research/37 one-Draw: pass 0 records the view pass 1 would have had, keyed by this view's final origin
+    // (the render thread's copy of the view carries the same bytes).
+    if (!t_fvcReplay && s_pass1Pending.valid)
+    {
+        float vo[3] = {};
+        if (ReadFsvViewOriginSEH(fsv, vo))
+        {
+            MELEVR::MevrBridge::Pass1View v;
+            v.viewOrigin[0] = vo[0]; v.viewOrigin[1] = vo[1]; v.viewOrigin[2] = vo[2];
+            v.delta[0] = s_pass1Pending.delta[0]; v.delta[1] = s_pass1Pending.delta[1]; v.delta[2] = s_pass1Pending.delta[2];
+            v.mode = s_pass1Pending.mode;
+            v.p0 = s_pass1Pending.p0; v.p5 = s_pass1Pending.p5; v.p8 = s_pass1Pending.p8; v.p9 = s_pass1Pending.p9;
+            MELEVR::MevrBridge::RecordPass1View(v);
+            static std::atomic<int> s_logs{0};
+            const int n = s_logs.fetch_add(1, std::memory_order_relaxed);
+            if (n < 3 || (n % 3600) == 0)
+            {
+                char line[256] = {};
+                sprintf_s(line, "[MEVR] one-Draw: pass 0 recorded pass 1's view: origin (%.1f, %.1f, %.1f) delta (%.2f, %.2f, %.2f) mode %d",
+                          vo[0], vo[1], vo[2], v.delta[0], v.delta[1], v.delta[2], v.mode);
+                LogLine(line);
+            }
+        }
+        s_pass1Pending.valid = false;
+    }
+
     // Release-publish the eye only after every camera edit is complete.
     if (aerPrimaryView) StampRenderedEye(aerRenderedEye);
 }
@@ -2833,7 +2914,14 @@ void __fastcall HookFViewportClientDraw(void* self, void* viewport, void* canvas
                                    SfrM0Enabled(seq) &&
                                    !g_p1StereoEnabled.load(std::memory_order_acquire);
         const bool doReplay = t_fvcDrawDepth == 1 && !t_fvcReplay && (oneShotReplay || sfrContinuous);
-        if (doReplay)
+        if (doReplay && !oneShotReplay && MELEVR::MevrBridge::g_oneDrawStereo.load(std::memory_order_relaxed))
+        {
+            // [MEVR] research/37 one-Draw: the host makes the second eye from this Draw's recorded render; the
+            // render-side pass capture is armed as for a second Draw (the replay's pass-boundary clear takes pass 0).
+            g_sfrFrames.fetch_add(1, std::memory_order_relaxed);
+            MELEVR::D3DCapture::NotifySfrReplayEnqueued();
+        }
+        else if (doReplay)
         {
             const uint64_t sfrFrame = g_sfrFrames.fetch_add(1, std::memory_order_relaxed) + 1;
             const bool verbose = oneShotReplay || sfrFrame <= 4 || (sfrFrame % 600) == 0;

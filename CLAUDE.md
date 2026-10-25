@@ -414,10 +414,17 @@ Use it to check VR changes yourself instead of asking the user what they see
   functions return at once and its finish replays the first eye's tail with the translated view-projection replaced
   whole by `T(pvt2 - pvt1) x TVP2` (the eye lives in every draw's LocalToWorld, not in the per-view matrix); a correct
   second eye at 10.9 ms against 11.4 with both engine renders at the heaviest cell: the recording costs what the
-  replay saves. **d3d11 keeps a vtable per context and swaps its draw, clear, copy and dispatch entries between
-  variants of each method as the context's state changes**, so a hook in that vtable or on one variant's body misses
-  calls: the recorder hears the draws through `[MEVR]` seams in Halcyon's own hooks (`MevrBridge::Record*`) and hooks
-  the other entries inline per variant), `umbraQueryWait` (0: the Umbra resolve never spins for a query result), `pCoresOnly`,
+  replay saves; **5**: one FViewportClient::Draw a frame (Halcyon's second Draw skipped through `g_oneDrawStereo`,
+  pass 0 recording what pass 1's view would be, `MevrBridge::RecordPass1View`), the first render recorded and replayed
+  in its own finish hook with the second view synthesised in the host: the engine's own right eye to within temporal
+  noise, 9.1 ms against 11.4 (20%) at the heaviest cell, `replayInverse = 0` drops the inverse-matrix pair. **d3d11
+  keeps a vtable per context and swaps its draw, clear, copy and dispatch entries between variants of each method as
+  the context's state changes**, so a hook in that vtable or on one variant's body misses calls: the recorder hears
+  the draws through `[MEVR]` seams in Halcyon's own hooks (`MevrBridge::Record*`) and hooks the other entries inline
+  per variant. **A fault on the render thread inside a hook ends that thread behind the engine's own handler and the
+  game thread then waits forever** (no crash, no log line but the first-chance one `CrashBreadcrumbs` now writes, three
+  per address): after `FSceneRenderer::Render` returns, the renderer's views are freed, so read them inside the render
+  (a pass or finish hook) or at the deleter, and wrap render-thread work in SEH), `umbraQueryWait` (0: the Umbra resolve never spins for a query result), `pCoresOnly`,
   `perEyeOcclusion` (**default 0** since 2026-10-24, research/35 attempts 34-37: the frame's second scene render gets its
   own copy of the engine's per-primitive occlusion history, a 0x48-byte TSet at the view state's +0xD10, swapped in
   around it; it removed the second eye's 4-5 ms spin for the first eye's queries, but in the headset every ~10th frame

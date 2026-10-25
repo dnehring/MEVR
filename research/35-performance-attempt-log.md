@@ -411,5 +411,9 @@ correct second eye from the recorded first render (the replay's right eye is the
 temporal noise of a frozen-head A/B, far scenery metric), but the frame at the heaviest Eden Prime cell is only
 10.9 ms against 11.4 with both engine renders: UE3's D3D11 pass is mostly the API re-issue the replay still has to
 make, the recording costs about a millisecond, and the second Umbra resolve (1.4 ms) must stay while Halcyon issues
-two FViewportClient::Draw calls a frame. The remaining prize (~2.5 ms) needs one Draw a frame with the second view
-synthesised in the host, a Halcyon-side change.
+two FViewportClient::Draw calls a frame. The same day, `sharePass = 5` took that step: one FViewportClient::Draw a
+frame (a `[MEVR]` seam skips Halcyon's second Draw; pass 0 records what pass 1's view would be), the first render
+recorded and replayed in its own finish with the second view synthesised in the host: the engine's own right eye to
+within temporal noise, **9.1 ms against 11.4 (20%)** with the head moving, 7.3 against 9.2 still. Three hangs on the
+way were one bug (a read of the renderer's views after Render had freed them: a fault on the render thread ends it
+quietly and the game thread waits forever). Off by default; research/37 has the measurements and what remains.

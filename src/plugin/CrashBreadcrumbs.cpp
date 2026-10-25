@@ -10,6 +10,8 @@
 
 #include <cstddef>
 #include <cstring>
+#include <format>
+#include <string>
 #include <utility>
 
 namespace mevr::host::crash {
@@ -110,11 +112,56 @@ char const* CodeName(DWORD code) {
     }
 }
 
-// The first-chance recorder: logs nothing, decides nothing (CONTINUE_SEARCH), last in the handler list.
+// The first-chance recorder: decides nothing (CONTINUE_SEARCH), last in the handler list. It records the fatal-code
+// ones, and logs the first 400 of a process with their place (research/37: a render thread that died quietly behind
+// the engine's own handler; Halcyon's [FIRSTCHANCE] logger stops at 200, which its startup probes use up).
+std::atomic<unsigned> gFirstChanceLogged{0};
 LONG CALLBACK FirstChanceHandler(EXCEPTION_POINTERS* info) {
     if (info != nullptr && info->ExceptionRecord != nullptr && IsFatal(info->ExceptionRecord->ExceptionCode) &&
         !gReporting.load(std::memory_order_relaxed)) {
-        gFirstChances.Record(*info->ExceptionRecord);
+        EXCEPTION_RECORD const& r = *info->ExceptionRecord;
+        gFirstChances.Record(r);
+        // Three lines per address (Halcyon's startup probes fault hundreds of times at one place), 400 in all.
+        static std::uintptr_t seenAddress[32]{};
+        static unsigned seenCount[32]{};
+        static std::atomic<unsigned> seenUsed{0};
+        auto const address = reinterpret_cast<std::uintptr_t>(r.ExceptionAddress);
+        bool logIt = false;
+        unsigned const used = seenUsed.load(std::memory_order_relaxed);
+        unsigned slot = used;
+        for (unsigned i = 0; i < used && i < 32; ++i) {
+            if (seenAddress[i] == address) {
+                slot = i;
+                break;
+            }
+        }
+        if (slot < 32) {
+            if (slot == used) {
+                seenAddress[slot] = address;
+                seenCount[slot] = 0;
+                seenUsed.store(used + 1, std::memory_order_relaxed);
+            }
+            logIt = seenCount[slot]++ < 3;
+        }
+        if (logIt && gFirstChanceLogged.fetch_add(1, std::memory_order_relaxed) < 400) {
+            HMODULE module = nullptr;
+            char name[MAX_PATH] = "?";
+            std::uintptr_t rva = 0;
+            if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                    static_cast<LPCWSTR>(r.ExceptionAddress), &module) && module != nullptr) {
+                GetModuleFileNameA(module, name, MAX_PATH);
+                rva = reinterpret_cast<std::uintptr_t>(r.ExceptionAddress) - reinterpret_cast<std::uintptr_t>(module);
+            }
+            char const* base = name;
+            for (char const* c = name; *c != '\0'; ++c) {
+                if (*c == '\\' || *c == '/') base = c + 1;
+            }
+            bool const av = r.ExceptionCode == EXCEPTION_ACCESS_VIOLATION && r.NumberParameters >= 2;
+            log::Warn("first-chance {} 0x{:08X} on thread {} at {}+0x{:X}{}", CodeName(r.ExceptionCode), r.ExceptionCode,
+                breadcrumbs::ThreadId(), base, rva,
+                av ? std::format(" ({} 0x{:X})", r.ExceptionInformation[0] == 1 ? "writing" : r.ExceptionInformation[0] == 8 ? "executing" : "reading",
+                                 static_cast<std::uintptr_t>(r.ExceptionInformation[1])) : std::string());
+        }
     }
     return EXCEPTION_CONTINUE_SEARCH;
 }

@@ -48,6 +48,8 @@ struct ViewLayout {
     std::size_t translatedViewProjection = SIZE_MAX, invTranslatedViewProjection = SIZE_MAX, preViewTranslation = SIZE_MAX;
 };
 void SetViewLayout(ViewLayout const& layout);
+// Whether the substitution carries the inverse matrix pair as well (default on; [Performance] replayInverse).
+void SetInversePair(bool on);
 // The draws stream `stream` (0 or 1) recorded this frame so far.
 unsigned RecordedDraws(int stream);
 
@@ -111,6 +113,7 @@ struct Stats {
     std::uint64_t replays = 0, failures = 0, recorded = 0, recordedCalls = 0, recordedBytes = 0, replayedCalls = 0,
                   substitutions = 0, notReplayable = 0, replayedDraws = 0, shiftedRects = 0, matrixSubstitutions = 0,
                   rehooks = 0, notedByHalcyon = 0, seenByOurs = 0;
+    std::uint64_t matrixHits[4] = {};   // TVP, TVP transposed, inverse, inverse transposed
     std::string lastBlocker;
 };
 Stats TakeStats();

@@ -312,3 +312,79 @@ attempt 47).
 - Seen at every scripted quit of the measuring loop today (console `exit`): a crash at process exit in a game worker
   thread (ntdll writing 0x24, the engine's own frames below), before and after the variant hooks, so not from them;
   the breadcrumbs file is written at each. Not chased.
+
+## The one-Draw design (2026-10-25 02:30, `[Performance] sharePass = 5`)
+
+The player chose to go on. The second Umbra resolve exists only because Halcyon makes two `FViewportClient::Draw`
+calls a frame (the game thread pushes each view's Umbra commands; a Draw without a resolve deadlocks, experiment
+1). So: one Draw a frame, and the host builds the second eye's view itself.
+
+- **Halcyon, game thread** (`render_hook.cpp`, `[MEVR]` seams): in `HookFViewportClientDraw`, when the host has set
+  `MevrBridge::g_oneDrawStereo`, the second Draw (`SfrGuardedReplay`) is not made; `NotifySfrReplayEnqueued` still
+  arms the render-side pass capture and the SFR frame counter still counts, so everything downstream sees a Stereo 2
+  frame. Pass 0's view edits record what pass 1 would have had: in `ApplyMetricEyeOffset` (and upstream's
+  `ApplyReplayProofOffsetSEH` for metric mode 0) the world-space difference between pass 1's and pass 0's camera,
+  from the same view-matrix basis Halcyon uses for the offset, plus pass 1's off-centre frustum terms (mode 2); at
+  the end of `PostProcessPerspectiveFsv` (after the lean, the head rotation and the frustum) the record is keyed by
+  the view's final origin and handed to the host (`MevrBridge::RecordPass1View`, a ring of eight).
+- **Host, render thread** (`RenderLevers.cpp` mode 5): the frame's only scene render is recorded; after it returns
+  (the renderer still alive) the view fields are captured, the pass-1 record found by the renderer's view origin
+  (exact float match: the renderer's view is a byte copy of the game thread's), and the second view synthesised:
+  origin + d, pre-view translation - d, the view and world view-projection moved by -d, the GPU matrix rebuilt as
+  translated view x pass 1's projection (mode 2) or kept (symmetric), its inverse recomputed (Gauss-Jordan). Then
+  the replay as before (`ReplayDrawsSEH`), whose matrix substitution turns the first eye's uploads into the second's.
+  The replay's pass-boundary depth clear still takes Halcyon's pass-0 capture, and Present takes pass 1, as in mode 3.
+- A second render that Halcyon still makes (the flag read late, a one-shot replay) is rendered by the engine and
+  counted (`second renders Halcyon still made` in the levers line).
+
+### 2026-10-25 08:18-08:55: the one-Draw frame, and three hangs that were one bug
+
+The first run (`sharePass = 5` from launch, the heavy cell under the head loop): **one scene render a frame, no
+hang, 7.3 ms median (8.1 p90) against 11.05 with two**, the resolve 1.3 ms of the render's 5.15; but "1,361
+frames without pass 1's record": the host never matched the record to the renderer's view (an exact float match on
+the origin), so no second eye was replayed and the right eye was the stale left. Then three hangs in a row, each
+within ten seconds of mode 5 starting its replay (a tolerant 50 uu match in place): the game thread blocked in
+Umbra's command-ring writer (`0xD4A5B0`, waiting for space) or on the frame fence, and **the render thread gone from
+the process** (a full dump of each hang, `hangstacks.py`: 116-122 threads, none the render thread), with no
+exception in either log. Halcyon's `[FIRSTCHANCE]` logger stops after 200 lines, which its own startup probes use
+up, and ours recorded fatal-code first chances only into the breadcrumb ring, written on a process crash. A logged
+first chance (three per address, now in `CrashBreadcrumbs`) named it: **an access violation on the render thread
+reading +0x320 of a null pointer, nine milliseconds after the recorder attached**: `SynthesiseSecondView` reading
+the renderer's view origin after `FSceneRenderer::Render` returned, when the renderer's view array is already freed
+(the same trap experiment 2 hit; mode 3 reads the views in the deleter and replays in the second render's finish).
+What a fault on the render thread does: the engine's own thread guard swallows it and the thread exits; nothing
+presents again, the game thread waits on its fence or the ring forever, and nothing is logged. The one-Draw replay
+now runs inside the first render's finish hook (after the engine's finish: the first eye complete and in the
+backbuffer, its views alive), ends the recording there, and is wrapped in SEH that disables the mode's replay for
+the session on any fault.
+
+### 2026-10-25 09:10, the one-Draw design measured: 9.1 ms against 11.4 (the head moving), 7.3 against 9.2 (still)
+
+With the replay in the first render's finish and guarded, `sharePass = 5` ran for minutes at the heaviest cell with
+no hang and no fault, the head loop playing and then frozen, 1,024-1,323 second eyes replayed a 10 s window, every
+frame finding pass 1's record (the tolerant match: the newest record within 50 uu of the renderer's view origin;
+exact float equality never matched, the renderer's copy of the view is not byte-identical to the game thread's), no
+second render by Halcyon. The eyes under the head loop: a stereo pair (mean difference 14.8 against the engine's
+own 14.1, far scenery +1 px). Frozen-head A/B against the engine's own Stereo 2 at the same pose (`2026-10-25_09-09-28`
+one Draw, `09-09-39` sharePass 0): the two left eyes differ by 7.0 (foliage, eleven seconds apart), the replayed
+right eye and the engine's right eye by 6.4, the replayed right eye and the engine's left by 13.7: **the synthesised
+second eye is the engine's own to within the temporal noise.** (One capture earlier, two seconds after the head
+replay stopped, had a black right eye with a sheared red remnant; not reproduced fourteen seconds after the stop,
+nor on later stops: a transient at the pose jump, not chased.) The stereo check on the frozen pair read -7 px on
+seven far matches where the moving pair read +1 on eleven; the engine's own frozen pair was not checked.
+
+| frame, median (p90) | both engine renders | one Draw + replay | gain |
+|---|---|---|---|
+| the head loop playing | 11.40 (13.14) | 9.08 (10.28) | 2.3 ms, 20% |
+| the head still | 9.22 (10.95) | 7.31 (8.19) | 1.9 ms, 21% |
+
+The one render costs 7.2 ms (4.6 of engine render, ~1.1 of recording, ~1.4 of replay inside its finish); the second
+resolve (1.4) and the second render's own CPU are gone; the game thread pushes one Draw's Umbra commands and the ring
+stays balanced as in the flat game. In the headset at 90 Hz this is the heaviest spot inside the 11.1 ms budget with
+2 ms to spare where Stereo 2 was 0.3 over.
+
+Not yet done, in order of what it would take: the record's key (a frame counter through the view would replace the
+origin match); a real headset's per-eye projections (the mode 2 rebuild `TVM x P_eye1` has run only on the null
+driver's symmetric eyes, where it is the identity case); dynamic shadows on; a watch for the black-eye transient;
+and the cost of the recording itself (1.1 ms: 7 MB of per-draw constants copied a frame), which no replay design
+avoids. `sharePass` stays 0 by default.

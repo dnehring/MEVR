@@ -958,12 +958,21 @@ std::uint64_t ForegroundHook(void* renderer, int dpg, int* out, std::uint32_t* d
     return gForegroundOrig(renderer, dpg, out, dirty, flag);
 }
 void ReplaySecondEyeInFinish(std::uint8_t* renderer);
+int OneDrawSecondEyeGuarded(std::uint8_t* renderer) noexcept;
+thread_local bool t_oneDrawFinish = false;   // sharePass = 5: this render's finish ends the recording and replays
 void FinishHook(void* renderer, int translucency, std::uint32_t dirty) {
     if (t_skipPasses) {
         ReplaySecondEyeInFinish(static_cast<std::uint8_t*>(renderer));
         return;
     }
     gFinishOrig(renderer, translucency, dirty);
+    if (t_oneDrawFinish) {
+        // The first eye is finished and in the backbuffer; its views are still alive here (Render frees them before
+        // it returns). The recording ends now (the replay's own calls must not join it), then the second eye.
+        t_oneDrawFinish = false;
+        draw_replay::EndRecording();
+        OneDrawSecondEyeGuarded(static_cast<std::uint8_t*>(renderer));
+    }
 }
 
 // The frame's second render in mode 3: the engine's InitViews with its resolve, the pass functions returning at once,
@@ -1002,6 +1011,179 @@ bool SecondRenderMode3(std::uint8_t* renderer) {
     return true;
 }
 
+// ---- sharePass = 5: one FViewportClient::Draw a frame, the second eye's view synthesised (research/37) ----------
+std::atomic<std::uint64_t> gMode5Replays{0}, gMode5NoRecord{0}, gMode5NotReplayable{0}, gMode5SecondRenders{0};
+std::string gMode5LastBlocker;
+
+void Mul4(float const* a, float const* b, float* out) {  // row-major, row vectors: out = a x b
+    for (int r = 0; r < 4; ++r) {
+        for (int c = 0; c < 4; ++c) {
+            float v = 0.0f;
+            for (int k = 0; k < 4; ++k) {
+                v += a[r * 4 + k] * b[k * 4 + c];
+            }
+            out[r * 4 + c] = v;
+        }
+    }
+}
+
+bool Invert4(float const* m, float* out) {  // Gauss-Jordan in double
+    double a[4][8];
+    for (int r = 0; r < 4; ++r) {
+        for (int c = 0; c < 4; ++c) {
+            a[r][c] = m[r * 4 + c];
+            a[r][4 + c] = r == c ? 1.0 : 0.0;
+        }
+    }
+    for (int col = 0; col < 4; ++col) {
+        int pivot = col;
+        for (int r = col + 1; r < 4; ++r) {
+            if (std::abs(a[r][col]) > std::abs(a[pivot][col])) pivot = r;
+        }
+        if (std::abs(a[pivot][col]) < 1e-12) return false;
+        if (pivot != col) {
+            for (int c = 0; c < 8; ++c) std::swap(a[pivot][c], a[col][c]);
+        }
+        double const inv = 1.0 / a[col][col];
+        for (int c = 0; c < 8; ++c) a[col][c] *= inv;
+        for (int r = 0; r < 4; ++r) {
+            if (r == col) continue;
+            double const f = a[r][col];
+            if (f == 0.0) continue;
+            for (int c = 0; c < 8; ++c) a[r][c] -= f * a[col][c];
+        }
+    }
+    for (int r = 0; r < 4; ++r) {
+        for (int c = 0; c < 4; ++c) out[r * 4 + c] = static_cast<float>(a[r][4 + c]);
+    }
+    return true;
+}
+
+// The view pass 1 would have had, from pass 0's final view and what pass 0 recorded (MevrBridge::Pass1View): the
+// camera moved by the recorded delta (view origin + d, pre-view translation - d, the view and world
+// view-projection moved to match), the GPU matrix rebuilt from the translated view and pass 1's own frustum terms
+// (mode 2) or kept (symmetric), its inverse recomputed. False when pass 0 recorded nothing this frame.
+bool SynthesiseSecondView(std::uint8_t* renderer, draw_replay::ViewFields const& first, draw_replay::ViewFields& second) {
+    constexpr std::size_t kV = CapturedOffset(0x90), kP = CapturedOffset(0xD0), kTV = CapturedOffset(0x190),
+        kTVP = CapturedOffset(0x1D0), kInv = CapturedOffset(0x210), kPvt = CapturedOffset(0x250),
+        kVP = CapturedOffset(0x260), kVo = CapturedOffset(0x320);
+    static_assert(kV != SIZE_MAX && kP != SIZE_MAX && kTV != SIZE_MAX && kTVP != SIZE_MAX && kInv != SIZE_MAX &&
+        kPvt != SIZE_MAX && kVP != SIZE_MAX && kVo != SIZE_MAX, "the capture ranges must hold every matrix used");
+    if (first.views < 1 || first.perView < kVo + 16) {
+        return false;
+    }
+    auto const* const vo0 = reinterpret_cast<float const*>(View(renderer, 0) + 0x320);
+    MELEVR::MevrBridge::Pass1View p{};
+    if (!MELEVR::MevrBridge::FindPass1View(vo0, &p)) {
+        return false;
+    }
+    second = first;
+    float const d[3] = {p.delta[0], p.delta[1], p.delta[2]};
+    for (int i = 0; i < first.views; ++i) {
+        auto* const b = second.bytes.data() + static_cast<std::size_t>(i) * first.perView;
+        auto const* const a = first.bytes.data() + static_cast<std::size_t>(i) * first.perView;
+        auto* const vo = reinterpret_cast<float*>(b + kVo);
+        auto* const pvt = reinterpret_cast<float*>(b + kPvt);
+        for (int k = 0; k < 3; ++k) {
+            vo[k] += d[k];
+            pvt[k] -= d[k];
+        }
+        TranslateRows(reinterpret_cast<float const*>(a + kV), d, -1.0f, reinterpret_cast<float*>(b + kV));
+        TranslateRows(reinterpret_cast<float const*>(a + kVP), d, -1.0f, reinterpret_cast<float*>(b + kVP));
+        auto* const tvp = reinterpret_cast<float*>(b + kTVP);
+        if (p.mode == 2) {
+            float P[16];
+            std::memcpy(P, a + kP, sizeof(P));
+            if (std::abs(P[15]) <= 0.01f) {  // perspective: the off-centre terms for w = z, as Halcyon writes them
+                float const w = std::abs(P[11]) > 0.01f ? P[11] : 1.0f;
+                P[0] = p.p0 * w;
+                P[5] = p.p5 * w;
+                P[8] = p.p8 * w;
+                P[9] = p.p9 * w;
+                Mul4(reinterpret_cast<float const*>(a + kTV), P, tvp);
+            }
+        }
+        float inv[16];
+        if (Invert4(tvp, inv)) {
+            std::memcpy(b + kInv, inv, sizeof(inv));
+        }
+    }
+    return true;
+}
+
+std::atomic<bool> gOneDrawFaulted{false};
+void OneDrawSecondEye(std::uint8_t* renderer);
+int OneDrawSecondEyeGuarded(std::uint8_t* renderer) noexcept {
+    if (gOneDrawFaulted.load(std::memory_order_relaxed)) {
+        return 2;
+    }
+    __try {
+        OneDrawSecondEye(renderer);
+        return 0;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        // A fault on the render thread inside a hook ends the thread behind the engine's own handler and the game
+        // thread then waits forever (research/37): never let one out.
+        gOneDrawFaulted.store(true, std::memory_order_relaxed);
+        log::Warn("render levers: one Draw: the second eye faulted; no more replays this session");
+        return 1;
+    }
+}
+
+void OneDrawSecondEye(std::uint8_t* renderer) {
+    draw_replay::ViewFields const first = CaptureViews(renderer);
+    draw_replay::ViewFields second;
+    std::string why;
+    if (!draw_replay::TailReplayable(&why)) {
+        gMode5NotReplayable.fetch_add(1, std::memory_order_relaxed);
+        gMode5LastBlocker = why;
+        return;
+    }
+    if (!SynthesiseSecondView(renderer, first, second)) {
+        gMode5NoRecord.fetch_add(1, std::memory_order_relaxed);
+        static std::uint64_t nextLog = 0;
+        std::uint64_t const now = GetTickCount64();
+        if (now >= nextLog) {
+            nextLog = now + 5000;
+            auto const* const vo = reinterpret_cast<float const*>(View(renderer, 0) + 0x320);
+            MELEVR::MevrBridge::Pass1View newest{};
+            bool const have = MELEVR::MevrBridge::NewestPass1View(&newest);
+            log::Info("render levers: one Draw: no pass-1 record for the view at ({:.1f}, {:.1f}, {:.1f}); {} records made, newest at ({:.1f}, {:.1f}, {:.1f}) delta ({:.2f}, {:.2f}, {:.2f}) mode {}",
+                vo[0], vo[1], vo[2], MELEVR::MevrBridge::Pass1Records(), have ? newest.viewOrigin[0] : 0.0f, have ? newest.viewOrigin[1] : 0.0f,
+                have ? newest.viewOrigin[2] : 0.0f, have ? newest.delta[0] : 0.0f, have ? newest.delta[1] : 0.0f, have ? newest.delta[2] : 0.0f, have ? newest.mode : -1);
+        }
+        return;
+    }
+    {
+        // Research/37: the synthesised view, every 5 s (a frozen head gave a sheared right eye, a moving one a right one).
+        static std::uint64_t nextDump = 0;
+        std::uint64_t const now = GetTickCount64();
+        if (now >= nextDump) {
+            nextDump = now + 5000;
+            auto const row = [](std::uint8_t const* b, std::size_t at) {
+                auto const* f = reinterpret_cast<float const*>(b + at);
+                return std::format("({:.4g}, {:.4g}, {:.4g}, {:.4g})", f[0], f[1], f[2], f[3]);
+            };
+            std::uint8_t const* const a = first.bytes.data();
+            std::uint8_t const* const b = second.bytes.data();
+            constexpr std::size_t kTVP = CapturedOffset(0x1D0), kInv = CapturedOffset(0x210), kPvt = CapturedOffset(0x250),
+                kVo = CapturedOffset(0x320), kP = CapturedOffset(0xD0), kTV = CapturedOffset(0x190);
+            log::Info("render levers: one Draw synth: VO {} -> {}; pvt {} -> {}; TVP rows {} {} {} {} -> {} {} {} {}; inv row0 {} -> {}; P row0 {} row2 {} row3 {}; TVM row3 {}",
+                row(a, kVo), row(b, kVo), row(a, kPvt), row(b, kPvt),
+                row(a, kTVP), row(a, kTVP + 16), row(a, kTVP + 32), row(a, kTVP + 48),
+                row(b, kTVP), row(b, kTVP + 16), row(b, kTVP + 32), row(b, kTVP + 48),
+                row(a, kInv), row(b, kInv), row(a, kP), row(a, kP + 32), row(a, kP + 48), row(a, kTV + 48));
+        }
+    }
+    t_replayToRightHalf = false;
+    int const rc = ReplayDrawsSEH(renderer, first, second);
+    if (rc == 0) {
+        gMode5Replays.fetch_add(1, std::memory_order_relaxed);
+    } else {
+        gMode5NotReplayable.fetch_add(1, std::memory_order_relaxed);
+        gMode5LastBlocker = std::format("replay returned {}", rc);
+    }
+}
+
 std::atomic<std::uint64_t> gSecondRenderSkipped{0};
 
 void SceneRenderHook(void* renderer) {
@@ -1030,7 +1212,7 @@ void SceneRenderHook(void* renderer) {
     if (mode == 3 && gPassHooksInstalled && gReplayHooked) {
         ReleaseKept();
         if (index == 0) {
-            bool const recorder = draw_replay::Attached();
+            bool const recorder = draw_replay::Attached() && MELEVR::MevrBridge::StereoFrameActive();
             if (recorder) {
                 draw_replay::BeginRecording(0);
             }
@@ -1054,6 +1236,37 @@ void SceneRenderHook(void* renderer) {
             handled = true;
         } else if (index == 1) {
             handled = SecondRenderMode3(static_cast<std::uint8_t*>(renderer));
+        }
+    } else if (mode == 5 && gReplayHooked) {
+        // One Draw a frame (research/37): Halcyon makes no second Draw while g_oneDrawStereo is set; the first
+        // render is recorded and, with the renderer still alive, replayed at once as the second eye.
+        ReleaseKept();
+        if (index == 0) {
+            bool const recorder = draw_replay::Attached() && MELEVR::MevrBridge::StereoFrameActive();
+            if (recorder) {
+                draw_replay::BeginRecording(0);
+                t_oneDrawFinish = true;   // the finish hook ends the recording and replays, with the views alive
+            }
+            std::uint32_t const drawsBefore = MELEVR::MevrBridge::g_perfDraws;
+            gSceneRenderOrig(renderer);
+            if (recorder) {
+                if (t_oneDrawFinish) {   // the finish never ran (the render bailed): nothing to replay
+                    t_oneDrawFinish = false;
+                    draw_replay::EndRecording();
+                    gMode5NotReplayable.fetch_add(1, std::memory_order_relaxed);
+                    gMode5LastBlocker = "the render's finish never ran";
+                }
+                std::uint32_t const issued = MELEVR::MevrBridge::g_perfDraws - drawsBefore;
+                unsigned const recorded = draw_replay::RecordedDraws(0);
+                gFirstDrawsIssued.fetch_add(issued, std::memory_order_relaxed);
+                gFirstDrawsRecorded.fetch_add(recorded, std::memory_order_relaxed);
+                if (recorded < issued) {
+                    gFirstRendersShort.fetch_add(1, std::memory_order_relaxed);
+                }
+            }
+            handled = true;
+        } else {
+            gMode5SecondRenders.fetch_add(1, std::memory_order_relaxed);  // Halcyon drew twice anyway: the engine renders it
         }
     } else if (mode == 4) {
         ReleaseKept();
@@ -1534,6 +1747,19 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
             share += std::format("; the first render's draws a frame: {:.0f} issued, {:.0f} recorded ({} renders short)",
                 static_cast<double>(issued) / static_cast<double>(frames), static_cast<double>(recorded) / static_cast<double>(frames), shortRenders);
         }
+        std::uint64_t const m5 = gMode5Replays.exchange(0, std::memory_order_relaxed);
+        std::uint64_t const m5none = gMode5NoRecord.exchange(0, std::memory_order_relaxed);
+        std::uint64_t const m5no = gMode5NotReplayable.exchange(0, std::memory_order_relaxed);
+        std::uint64_t const m5second = gMode5SecondRenders.exchange(0, std::memory_order_relaxed);
+        if (m5 != 0 || m5none != 0 || m5no != 0 || m5second != 0) {
+            share += std::format("; one Draw a frame: {} second eyes replayed, {} frames without pass 1's record, {} not replayable ({}), "
+                                 "{} second renders Halcyon still made", m5, m5none, m5no, m5no != 0 ? gMode5LastBlocker : std::string("-"), m5second);
+            std::uint64_t const issued = gFirstDrawsIssued.exchange(0, std::memory_order_relaxed);
+            std::uint64_t const recorded = gFirstDrawsRecorded.exchange(0, std::memory_order_relaxed);
+            std::uint64_t const shortRenders = gFirstRendersShort.exchange(0, std::memory_order_relaxed);
+            share += std::format("; the render's draws a frame: {:.0f} issued, {:.0f} recorded ({} renders short)",
+                static_cast<double>(issued) / static_cast<double>(frames), static_cast<double>(recorded) / static_cast<double>(frames), shortRenders);
+        }
         std::uint64_t const skippedRenders = gSecondRenderSkipped.exchange(0, std::memory_order_relaxed);
         if (skippedRenders != 0) {
             share += std::format("; second scene renders not run: {}", skippedRenders);
@@ -1550,9 +1776,10 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
     if (gSharePass.load(std::memory_order_relaxed) == 2 || d.replays != 0 || d.failures != 0 || fallbacks != 0) {
         auto const per = [](std::uint64_t total, std::uint64_t n) { return n == 0 ? 0.0 : static_cast<double>(total) / static_cast<double>(n); };
         share += std::format("; draw replay: {} replays ({:.0f} calls, {:.0f} draws, {:.0f} substitutions of which {:.0f} matrices, {:.0f} rects shifted each), {} first eyes recorded "
-            "({:.0f} calls, {:.0f} KB each; {:.0f} calls through Halcyon's seams, {:.0f} DrawIndexed through our own), {} re-hooks, {} fell back to the engine's passes{}{}",
+            "({:.0f} calls, {:.0f} KB each; {:.0f} calls through Halcyon's seams, {:.0f} DrawIndexed through our own), {} re-hooks, matrix hits a replay: TVP {:.1f}, transposed {:.1f}, inverse {:.1f}, transposed {:.1f}; {} fell back to the engine's passes{}{}",
             d.replays, per(d.replayedCalls, d.replays), per(d.replayedDraws, d.replays), per(d.substitutions, d.replays), per(d.matrixSubstitutions, d.replays), per(d.shiftedRects, d.replays), d.recorded,
-            per(d.recordedCalls, d.recorded), per(d.recordedBytes, d.recorded) / 1024.0, per(d.notedByHalcyon, d.recorded), per(d.seenByOurs, d.recorded), d.rehooks, fallbacks,
+            per(d.recordedCalls, d.recorded), per(d.recordedBytes, d.recorded) / 1024.0, per(d.notedByHalcyon, d.recorded), per(d.seenByOurs, d.recorded), d.rehooks,
+            per(d.matrixHits[0], d.replays), per(d.matrixHits[1], d.replays), per(d.matrixHits[2], d.replays), per(d.matrixHits[3], d.replays), fallbacks,
             d.notReplayable != 0 && !d.lastBlocker.empty() ? std::format(" ({} not replayable: {})", d.notReplayable, d.lastBlocker) : "",
             gReplayFailed.load(std::memory_order_relaxed) ? "; the draw replay is OFF after a failure" : "");
     }
@@ -1805,15 +2032,19 @@ void Tick() {
             gPCoresOnly.store(pCores, std::memory_order_relaxed);
             ApplyAffinity(pCores != 0);
         }
+        draw_replay::SetInversePair(readInt(L"replayInverse", 1) != 0);
         int const shareRaw = readInt(L"sharePass", 0);
-        int const share = shareRaw < 0 ? 0 : (shareRaw > 4 ? 4 : shareRaw);
+        int const share = shareRaw < 0 ? 0 : (shareRaw > 5 ? 5 : shareRaw);
         if (share != sharePass) {
             sharePass = share;
             gSharePass.store(share, std::memory_order_relaxed);
+            MELEVR::MevrBridge::g_oneDrawStereo.store(share == 5 && gReplayHooked, std::memory_order_relaxed);
             log::Info("render levers: {} ([Performance] sharePass = {}){}",
                 share == 2 ? "a frame's second scene render replays the first one's draw calls on its renderer (no second "
                              "visibility, no second engine pass; research/32 lever 4)"
                 : share == 1 ? "a frame's second scene render runs on the first one's renderer (no second visibility)"
+                : share == 5 ? "one FViewportClient::Draw a frame: the second eye is the first render's recorded calls replayed with the view pass 1 would have had (research/37)"
+                : share == 3 ? "the second render keeps its Umbra resolve, its passes are the first eye's recorded calls replayed (research/37)"
                              : "every scene render does its own visibility (the game's own)",
                 share, !gShareHooked ? "; not hooked, so no effect" : (share == 2 && !gReplayHooked) ? "; its mark isn't hooked, so it runs as 1" : "");
         }
@@ -1834,7 +2065,8 @@ void OnPresentEnd(ID3D11DeviceContext* context) {
     Add(gCounters.rendersPerFrame[renders < kSlots ? renders : kSlots], 1);
     ReleaseKept();  // a kept renderer never pairs across frames
     if (gReplayHooked && context != nullptr && !draw_replay::Attached() &&
-        (gSharePass.load(std::memory_order_relaxed) == 2 || gSharePass.load(std::memory_order_relaxed) == 3 || draw_replay::DiffPending())) {
+        (gSharePass.load(std::memory_order_relaxed) == 2 || gSharePass.load(std::memory_order_relaxed) == 3 ||
+         gSharePass.load(std::memory_order_relaxed) == 5 || draw_replay::DiffPending())) {
         if (draw_replay::Attach(context, gHookInit)) {  // once wanted; the hooks then stay
             gAttachFailures.store(0, std::memory_order_relaxed);
             draw_replay::SetViewLayout({CapturedOffset(0x1D0), CapturedOffset(0x210), CapturedOffset(0x250)});

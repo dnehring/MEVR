@@ -1020,6 +1020,8 @@ namespace {
 
 ViewLayout gLayout;
 std::atomic<std::uint64_t> gMatrixSubstitutions{0};
+std::atomic<std::uint64_t> gMatrixHits[4]{};   // per matrix kind: TVP, TVP transposed, inverse, inverse transposed
+std::atomic<bool> gInversePair{true};
 int gInverseChecked = 0;  // 0 not yet, 1 an inverse was found, -1 none (no inverse pair then)
 std::size_t gInverseAt = SIZE_MAX;  // where it was found in the captured view bytes
 
@@ -1188,7 +1190,7 @@ struct Substitution {
                 log::Info("draw replay: no matrix among the captured view bytes is the inverse of the translated view-projection: no inverse pair in the substitution");
             }
         }
-        if (gInverseChecked < 0) {
+        if (gInverseChecked < 0 || !gInversePair.load(std::memory_order_relaxed)) {
             return;
         }
         auto const* const inv1 = reinterpret_cast<float const*>(a + gInverseAt);
@@ -1291,6 +1293,7 @@ struct Substitution {
                 if (o + 64 <= size && std::memcmp(data + o, m.key, 64) == 0) {
                     std::memcpy(data + o, m.value, 64);
                     ++m.used;
+                    gMatrixHits[(e->matrix - 1) & 3].fetch_add(1, std::memory_order_relaxed);
                     e->used = true;
                     ++changed;
                     if (matrixHits != nullptr) {
@@ -1905,7 +1908,6 @@ void EndRecording() {
 }
 
 void MarkTail() {
-    VariantSweep();
     if (t_recording != nullptr && t_recording->tail == SIZE_MAX) {
         t_recording->tail = t_recording->bytes.size();
         t_recording->tailEntries = t_recording->entries;  // entries before the tail; the tail's are the rest
@@ -2259,6 +2261,10 @@ void OnPresentEnd() {
     }
 }
 
+void SetInversePair(bool on) {
+    gInversePair.store(on, std::memory_order_relaxed);
+}
+
 void SetViewLayout(ViewLayout const& layout) {
     gLayout = layout;
     gInverseChecked = 0;
@@ -2287,6 +2293,9 @@ Stats TakeStats() {
     s.matrixSubstitutions = gMatrixSubstitutions.exchange(0, std::memory_order_relaxed);
     s.rehooks = gRetaken.exchange(0, std::memory_order_relaxed);
     s.notedByHalcyon = gNotedByHalcyon.exchange(0, std::memory_order_relaxed);
+    for (int i = 0; i < 4; ++i) {
+        s.matrixHits[i] = gMatrixHits[i].exchange(0, std::memory_order_relaxed);
+    }
     s.seenByOurs = gSeenByOurs.exchange(0, std::memory_order_relaxed);
     std::lock_guard<std::mutex> const lock(gBlockerMutex);
     s.lastBlocker = gLastBlocker;

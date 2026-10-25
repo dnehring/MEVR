@@ -561,6 +561,42 @@ bool QueueProcessEvent(void* object, void* function, void const* params) noexcep
     return mevr::host::game_thread::Queue(object, function, params);
 }
 
+// One FViewportClient::Draw a frame (research/37): the host's switch, and pass 0's record of pass 1's view.
+std::atomic<bool> g_oneDrawStereo{false};
+namespace {
+std::mutex gPass1Mutex;
+Pass1View gPass1Ring[8];
+unsigned gPass1Next = 0;
+} // namespace
+void RecordPass1View(Pass1View const& v) {
+    std::lock_guard<std::mutex> const lock(gPass1Mutex);
+    gPass1Ring[gPass1Next % 8] = v;
+    ++gPass1Next;
+}
+bool FindPass1View(float const viewOrigin[3], Pass1View* out) {
+    std::lock_guard<std::mutex> const lock(gPass1Mutex);
+    unsigned const n = gPass1Next < 8 ? gPass1Next : 8;
+    for (unsigned i = 0; i < n; ++i) {
+        Pass1View const& v = gPass1Ring[(gPass1Next + 7 - i) % 8];  // newest first
+        float const dx = v.viewOrigin[0] - viewOrigin[0], dy = v.viewOrigin[1] - viewOrigin[1], dz = v.viewOrigin[2] - viewOrigin[2];
+        if (dx * dx + dy * dy + dz * dz <= 50.0f * 50.0f) {
+            *out = v;
+            return true;
+        }
+    }
+    return false;
+}
+std::uint64_t Pass1Records() {
+    std::lock_guard<std::mutex> const lock(gPass1Mutex);
+    return gPass1Next;
+}
+bool NewestPass1View(Pass1View* out) {
+    std::lock_guard<std::mutex> const lock(gPass1Mutex);
+    if (gPass1Next == 0) return false;
+    *out = gPass1Ring[(gPass1Next + 7) % 8];
+    return true;
+}
+
 // The draw recorder's ear in Halcyon's draw hooks (research/37, experiment 6).
 void RecordDrawIndexed(ID3D11DeviceContext* context, UINT indexCount, UINT startIndex, INT baseVertex) {
     mevr::host::draw_replay::NoteDrawIndexed(context, indexCount, startIndex, baseVertex);
