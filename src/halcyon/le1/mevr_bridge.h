@@ -21,6 +21,10 @@ struct ID3D11SamplerState;
 struct ID3D11ShaderResourceView;
 struct ID3D11Texture2D;
 
+struct ID3D11Resource;
+struct ID3D11DepthStencilView;
+struct D3D11_BOX;
+
 namespace MELEVR::MevrBridge
 {
 // The statically linked OpenXR loader's xrGetInstanceProcAddr (upstream loads openxr_loader.dll,
@@ -271,6 +275,22 @@ struct PerfPresentScope
 
 // Immediate-context draws, counted by d3d_capture.cpp's draw hooks (render thread; read by the probe).
 extern std::uint32_t g_perfDraws;
+
+// [MEVR] The draw recorder (plugin/DrawReplay, research/37 experiment 6) hears every immediate-context call
+// d3d_capture.cpp's hooks see, whether or not its own vtable and inline hooks saw it (an overlay restores the
+// context's draw entries at every Present; the hooks here sit on d3d11's functions as well as in the vtable).
+// Each is a one-line seam at the start of the matching hook; the recorder ignores a call its own hook recorded.
+void RecordDrawIndexed(ID3D11DeviceContext* context, UINT indexCount, UINT startIndex, INT baseVertex);
+void RecordDraw(ID3D11DeviceContext* context, UINT vertexCount, UINT startVertex);
+void RecordDrawIndexedInstanced(ID3D11DeviceContext* context, UINT indexCountPerInstance, UINT instanceCount,
+    UINT startIndex, INT baseVertex, UINT startInstance);
+void RecordDrawInstanced(ID3D11DeviceContext* context, UINT vertexCountPerInstance, UINT instanceCount,
+    UINT startVertex, UINT startInstance);
+void RecordDrawAuto(ID3D11DeviceContext* context);
+void RecordUpdateSubresource(ID3D11DeviceContext* context, ID3D11Resource* resource, UINT subresource,
+    D3D11_BOX const* box, void const* data, UINT rowPitch, UINT depthPitch);
+void RecordClearDepthStencilView(ID3D11DeviceContext* context, ID3D11DepthStencilView* view, UINT flags, FLOAT depth,
+    UINT8 stencil);
 
 // Present thread, at the end of RunFrame: whether to call xrWaitFrame for the next frame there, before the
 // game renders it (research/22), rather than at the next Present. [Performance] earlyFrameWait in

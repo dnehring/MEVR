@@ -409,7 +409,15 @@ Use it to check VR changes yourself instead of asking the user what they see
   (`plugin/RenderLevers`, [research/32](research/32-ue3-vr-performance.md)) in `[Performance]` of `ASI\LE1MEVR.ini`:
   `sharePass` (experimental; 1: the second eye renders on the first's scene renderer, no second visibility; 2: as 1
   but the second eye is a replay of the first's recorded D3D11 calls with the view's bytes substituted,
-  `plugin/DrawReplay`), `umbraQueryWait` (0: the Umbra resolve never spins for a query result), `pCoresOnly`,
+  `plugin/DrawReplay`; **3** ([research/37](research/37-single-pass-stereo.md), 2026-10-25): the second render keeps
+  its Umbra resolve (two Draws with one resolve deadlock the game thread in Umbra's command ring) but its pass
+  functions return at once and its finish replays the first eye's tail with the translated view-projection replaced
+  whole by `T(pvt2 - pvt1) x TVP2` (the eye lives in every draw's LocalToWorld, not in the per-view matrix); a correct
+  second eye at 10.9 ms against 11.4 with both engine renders at the heaviest cell: the recording costs what the
+  replay saves. **d3d11 keeps a vtable per context and swaps its draw, clear, copy and dispatch entries between
+  variants of each method as the context's state changes**, so a hook in that vtable or on one variant's body misses
+  calls: the recorder hears the draws through `[MEVR]` seams in Halcyon's own hooks (`MevrBridge::Record*`) and hooks
+  the other entries inline per variant), `umbraQueryWait` (0: the Umbra resolve never spins for a query result), `pCoresOnly`,
   `perEyeOcclusion` (**default 0** since 2026-10-24, research/35 attempts 34-37: the frame's second scene render gets its
   own copy of the engine's per-primitive occlusion history, a 0x48-byte TSet at the view state's +0xD10, swapped in
   around it; it removed the second eye's 4-5 ms spin for the first eye's queries, but in the headset every ~10th frame

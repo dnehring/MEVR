@@ -4671,6 +4671,7 @@ bool MevrHudPanelDraw(ID3D11DeviceContext* ctx, DrawThunk&& draw) noexcept
 void STDMETHODCALLTYPE ClearDepthStencilViewHook(ID3D11DeviceContext* ctx, ID3D11DepthStencilView* dsv,
                                                  UINT flags, FLOAT depthVal, UINT8 stencil) noexcept
 {
+    MELEVR::MevrBridge::RecordClearDepthStencilView(ctx, dsv, flags, depthVal, stencil);   // [MEVR] draw recorder (research/37)
     DynResRtObserve(ctx, dsv);
 
     // [ME2PORT] pass boundary = MASS EFFECT 2's SFR capture design, ported 2026-07-20: snapshot the
@@ -5492,6 +5493,7 @@ void STDMETHODCALLTYPE DrawIndexedHook(ID3D11DeviceContext* context, UINT indexC
                                        INT baseVertexLocation) noexcept
 {
     ++MELEVR::MevrBridge::g_perfDraws;          // [MEVR] frame-breakdown probe
+    MELEVR::MevrBridge::RecordDrawIndexed(context, indexCount, startIndexLocation, baseVertexLocation);   // [MEVR] draw recorder (research/37)
     if (g_depthMapEnabled.load(std::memory_order_relaxed)) NoteDepthDraw(context);   // DIBR/relief: attribute + mid-scene live capture ([RELIEF M0.6])
     SfrNoteBackbufferDraw();                    // [ME2PORT v2] pass-0 snapshot dirty gate
     if (SfrCaptureArmed()) ReflCenNoteDraw();   // [REFLCEN] per-RT draw census while Stereo 2 runs
@@ -5541,6 +5543,7 @@ void STDMETHODCALLTYPE DrawIndexedHook(ID3D11DeviceContext* context, UINT indexC
 void STDMETHODCALLTYPE DrawHook(ID3D11DeviceContext* context, UINT vertexCount, UINT startVertexLocation) noexcept
 {
     ++MELEVR::MevrBridge::g_perfDraws;          // [MEVR] frame-breakdown probe
+    MELEVR::MevrBridge::RecordDraw(context, vertexCount, startVertexLocation);   // [MEVR] draw recorder (research/37)
     SfrNoteBackbufferDraw();                    // [ME2PORT v2] pass-0 snapshot dirty gate
     if (SfrCaptureArmed()) ReflCenNoteDraw();   // [REFLCEN]
     SfrCineNoteDraw(context);                   // [CLEANVRCINE] cine pass-0 capture (backbuffer-batch trigger)
@@ -5587,6 +5590,8 @@ void STDMETHODCALLTYPE DrawIndexedInstancedHook(ID3D11DeviceContext* context, UI
                                                 INT baseVertexLocation, UINT startInstanceLocation) noexcept
 {
     ++MELEVR::MevrBridge::g_perfDraws;          // [MEVR] frame-breakdown probe
+    MELEVR::MevrBridge::RecordDrawIndexedInstanced(context, indexCountPerInstance, instanceCount, startIndexLocation,
+                                                   baseVertexLocation, startInstanceLocation);   // [MEVR] draw recorder (research/37)
     if (g_depthMapEnabled.load(std::memory_order_relaxed)) NoteDepthDraw(context);   // DIBR/relief: attribute + mid-scene live capture ([RELIEF M0.6])
     SfrNoteBackbufferDraw();                    // [ME2PORT v2] pass-0 snapshot dirty gate
     if (SfrCaptureArmed()) ReflCenNoteDraw();   // [REFLCEN]
@@ -5637,6 +5642,8 @@ void STDMETHODCALLTYPE DrawInstancedHook(ID3D11DeviceContext* context, UINT vert
                                          UINT startInstanceLocation) noexcept
 {
     ++MELEVR::MevrBridge::g_perfDraws;          // [MEVR] frame-breakdown probe
+    MELEVR::MevrBridge::RecordDrawInstanced(context, vertexCountPerInstance, instanceCount, startVertexLocation,
+                                            startInstanceLocation);   // [MEVR] draw recorder (research/37)
     DrawInstancedFn original = g_originalDrawInstanced;
     if (original != nullptr)
     {
@@ -5656,6 +5663,7 @@ void STDMETHODCALLTYPE DrawInstancedHook(ID3D11DeviceContext* context, UINT vert
 
 void STDMETHODCALLTYPE DrawAutoHook(ID3D11DeviceContext* context) noexcept
 {
+    MELEVR::MevrBridge::RecordDrawAuto(context);   // [MEVR] draw recorder (research/37)
     DrawAutoFn original = g_originalDrawAuto;
     if (original != nullptr) original(context);
 }
@@ -5720,6 +5728,8 @@ void STDMETHODCALLTYPE UpdateSubresourceHook(ID3D11DeviceContext* context, ID3D1
                                              UINT dstSubresource, const D3D11_BOX* dstBox,
                                              const void* srcData, UINT srcRowPitch, UINT srcDepthPitch) noexcept
 {
+    MELEVR::MevrBridge::RecordUpdateSubresource(context, dstResource, dstSubresource, dstBox, srcData, srcRowPitch,
+                                                srcDepthPitch);   // [MEVR] draw recorder (research/37)
     // [REFLFIX] cover the UpdateSubresource write path for 96-byte camera CBs too.
     if (dstSubresource == 0 && dstResource != nullptr && srcData != nullptr && dstBox == nullptr &&
         ReflWriteTrackingWanted())

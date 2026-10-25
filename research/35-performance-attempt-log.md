@@ -403,3 +403,13 @@ With a `dxvk.conf` (`d3d11.cachedDynamicResources = a`, `d3d11.relaxedBarriers =
 equal to native, but the frame still 12.0-12.5 ms wall (poses -> submit), 1.5-1.7 ms of it the render thread waiting on
 DXVK's own worker (the `maxFrameLatency = 1` variant was the same: 12.3-12.5). So DXVK is at best equal in work and 1-1.5
 ms worse in what fpsVR shows. Removed from the game folder; the dxgi_proxy seam stays (harmless without a local dxgi.dll).
+
+## Attempt 48 (2026-10-25): single-pass stereo, the second eye from the first eye's draw calls
+
+Its own log: [research/37](37-single-pass-stereo.md). Outcome in one line: `[Performance] sharePass = 3` renders a
+correct second eye from the recorded first render (the replay's right eye is the engine's right eye to within the
+temporal noise of a frozen-head A/B, far scenery metric), but the frame at the heaviest Eden Prime cell is only
+10.9 ms against 11.4 with both engine renders: UE3's D3D11 pass is mostly the API re-issue the replay still has to
+make, the recording costs about a millisecond, and the second Umbra resolve (1.4 ms) must stay while Halcyon issues
+two FViewportClient::Draw calls a frame. The remaining prize (~2.5 ms) needs one Draw a frame with the second view
+synthesised in the host, a Halcyon-side change.

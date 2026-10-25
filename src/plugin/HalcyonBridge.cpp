@@ -27,6 +27,7 @@
 #include "plugin/MainMenu.hpp"
 #endif
 #include "plugin/MevrMenu.hpp"
+#include "plugin/DrawReplay.hpp"
 #include "plugin/PerfProbe.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/WorldPanels.hpp"
@@ -558,6 +559,32 @@ bool OnGameThread() noexcept {
 
 bool QueueProcessEvent(void* object, void* function, void const* params) noexcept {
     return mevr::host::game_thread::Queue(object, function, params);
+}
+
+// The draw recorder's ear in Halcyon's draw hooks (research/37, experiment 6).
+void RecordDrawIndexed(ID3D11DeviceContext* context, UINT indexCount, UINT startIndex, INT baseVertex) {
+    mevr::host::draw_replay::NoteDrawIndexed(context, indexCount, startIndex, baseVertex);
+}
+void RecordDraw(ID3D11DeviceContext* context, UINT vertexCount, UINT startVertex) {
+    mevr::host::draw_replay::NoteDraw(context, vertexCount, startVertex);
+}
+void RecordDrawIndexedInstanced(ID3D11DeviceContext* context, UINT indexCountPerInstance, UINT instanceCount,
+    UINT startIndex, INT baseVertex, UINT startInstance) {
+    mevr::host::draw_replay::NoteDrawIndexedInstanced(context, indexCountPerInstance, instanceCount, startIndex, baseVertex, startInstance);
+}
+void RecordDrawInstanced(ID3D11DeviceContext* context, UINT vertexCountPerInstance, UINT instanceCount, UINT startVertex,
+    UINT startInstance) {
+    mevr::host::draw_replay::NoteDrawInstanced(context, vertexCountPerInstance, instanceCount, startVertex, startInstance);
+}
+void RecordDrawAuto(ID3D11DeviceContext* context) {
+    mevr::host::draw_replay::NoteDrawAuto(context);
+}
+void RecordUpdateSubresource(ID3D11DeviceContext* context, ID3D11Resource* resource, UINT subresource, D3D11_BOX const* box,
+    void const* data, UINT rowPitch, UINT depthPitch) {
+    mevr::host::draw_replay::NoteUpdateSubresource(context, resource, subresource, box, data, rowPitch, depthPitch);
+}
+void RecordClearDepthStencilView(ID3D11DeviceContext* context, ID3D11DepthStencilView* view, UINT flags, FLOAT depth, UINT8 stencil) {
+    mevr::host::draw_replay::NoteClearDepthStencilView(context, view, flags, depth, stencil);
 }
 
 } // namespace MELEVR::MevrBridge

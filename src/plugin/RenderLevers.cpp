@@ -4,6 +4,7 @@
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
 #include "plugin/DrawReplay.hpp"
+#include "halcyon/le1/mevr_bridge.h"
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -79,7 +80,23 @@ struct ByteRange {
 // The word at +0x8C differs between a frame's two eye passes (the fake-headset run, 2026-10-23: the only
 // difference the pairing test found), so it goes with the per-pass values.
 constexpr ByteRange kViewPlainRanges[] = {{0x8C, 0x140}, {0x190, 0x330}, {0x480, 0x4B0}, {0x4C0, 0x4D0}};
+// The same without the +0x8C word, every range starting on a 16-byte boundary of the view: the draw replay's
+// substitution keys are the differing 16-byte chunks of these bytes, and a 4-byte offset at the start put every key
+// astride two matrix rows (research/37, experiment 3: 0 substitutions).
+constexpr ByteRange kViewCaptureRanges[] = {{0x90, 0x140}, {0x190, 0x330}, {0x480, 0x4B0}, {0x4C0, 0x4D0}};
 constexpr std::size_t kViewCompareEnd = 0x8C;  // the view block compared for compatibility: +0x60 to here
+
+// A view offset's place in the captured bytes (SIZE_MAX: outside the capture ranges).
+constexpr std::size_t CapturedOffset(std::size_t viewOffset) {
+    std::size_t at = 0;
+    for (ByteRange const& r : kViewCaptureRanges) {
+        if (viewOffset >= r.begin && viewOffset < r.end) {
+            return at + (viewOffset - r.begin);
+        }
+        at += r.end - r.begin;
+    }
+    return SIZE_MAX;
+}
 
 using tSceneRender = void(void* renderer);
 using tDeleteRenderer = void*(void* renderer, std::uint64_t flags);
@@ -520,6 +537,11 @@ std::atomic<int> gAttachFailures{0};  // Presents with a pending eye diff the re
 // Render thread.
 std::atomic<int> gRenderIndex{0};  // scene renders so far this frame
 thread_local int t_renderIndex = -1;
+thread_local bool t_skipPasses = false;   // sharePass = 3: the second render's pass functions return at once
+thread_local bool t_replayToRightHalf = false;   // sharePass = 3: the replay's side-by-side rects go to the right half
+draw_replay::ViewFields gFirstEyeViews;        // sharePass = 3: the first render's view fields, read at its deleter
+bool gFirstEyeViewsValid = false;
+std::atomic<void*> gCaptureCandidate{nullptr};  // the first render, whose view fields its deleter captures
 
 // The commander's commands, by what they do: 3 visible instances, 5 the occluder flush and queries, 6 the query
 // results (where the wait is), the rest (begin, end, debug).
@@ -677,14 +699,14 @@ int ReplaySEH(std::uint8_t* renderer) noexcept {
 // The view fields that may differ between the eyes (the plain ranges), for the draw replay's substitution.
 draw_replay::ViewFields CaptureViews(std::uint8_t* renderer) {
     draw_replay::ViewFields f;
-    for (ByteRange const& r : kViewPlainRanges) {
+    for (ByteRange const& r : kViewCaptureRanges) {
         f.perView += r.end - r.begin;
     }
     f.views = Field<int>(renderer, 0x68);
     f.bytes.reserve(f.perView * static_cast<std::size_t>(f.views));
     for (int i = 0; i < f.views; ++i) {
         std::uint8_t const* const v = View(renderer, i);
-        for (ByteRange const& r : kViewPlainRanges) {
+        for (ByteRange const& r : kViewCaptureRanges) {
             f.bytes.insert(f.bytes.end(), v + r.begin, v + r.end);
         }
     }
@@ -702,7 +724,7 @@ int ReplayDrawsSEH(std::uint8_t* renderer, draw_replay::ViewFields const& first,
         ++*At<int*>(kSceneFrameRva);
         Field<int>(renderer, 0xD8) = 1;
         At<void (*)(std::uint8_t)>(kWireframeStateRva)(0);
-        int const result = draw_replay::Replay(first, second);
+        int const result = draw_replay::Replay(first, second, t_replayToRightHalf);
         reinterpret_cast<void (*)(void*)>(rhiTable[0x620 / 8])(rhi);
         return result;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -815,10 +837,18 @@ void DpgLightTargetsHook(void* renderer, int dpg) {
     if (dpg == 1) {
         draw_replay::MarkTail();
     }
+    if (t_skipPasses) {
+        return;  // mode 3: the replay re-issues it (the tail starts here)
+    }
     gDpgLightTargetsOrig(renderer, dpg);
 }
 
 void* DeleteRendererHook(void* renderer, std::uint64_t flags) {
+    if (gCaptureCandidate.load(std::memory_order_relaxed) == renderer) {
+        gFirstEyeViews = CaptureViews(static_cast<std::uint8_t*>(renderer));
+        gFirstEyeViewsValid = true;
+        gCaptureCandidate.store(nullptr, std::memory_order_relaxed);
+    }
     gDeleteCalls.fetch_add(1, std::memory_order_relaxed);
     if (renderer != nullptr && renderer == gKeepCandidate.load(std::memory_order_relaxed)) {
         if ((flags & 1) != 0 && GetCurrentThreadId() == gRenderThread.load(std::memory_order_relaxed)) {
@@ -882,6 +912,98 @@ void EndEyeHistory(bool swapped) {
     std::memcpy(gEyeOneHistory, secondEye, kOcclusionHistoryBytes);
 }
 
+// ---- sharePass = 3: the second render keeps its resolve, the replay takes its passes (research/37) ---------------
+// Umbra's command streams are 512-byte buffers drained by the resolve, one frame behind the game thread's pushes: two
+// FViewportClient::Draw calls a frame need two resolves (experiment 1 froze the game with one). So the second render
+// runs the engine's InitViews (CalcSceneView was the game thread's; the resolve drains the stream) with the pass
+// functions after the resolve returning at once for it, and then re-issues the first render's recorded tail with the
+// second render's view bytes substituted. The first render is recorded (stream 0) and its view fields kept.
+std::atomic<std::uint64_t> gMode3Replays{0};
+std::atomic<std::uint64_t> gFirstDrawsIssued{0}, gFirstDrawsRecorded{0}, gFirstRendersShort{0};
+std::atomic<std::uint64_t> gMode3NotReplayable{0};
+std::atomic<std::uint64_t> gMode3PassesSkipped{0};
+std::string gMode3LastBlocker;
+bool gPassHooksInstalled = false;
+
+using tPassVoid = void(void* renderer);
+using tDpgPass = void(void* renderer, int dpg, std::uint32_t* dirty);
+using tDpgLights = void(void* renderer, int dpg, int translucency, std::uint32_t* dirty, int flag);
+using tForeground = std::uint64_t(void* renderer, int dpg, int* out, std::uint32_t* dirty, int flag);
+using tFinish = void(void* renderer, int translucency, std::uint32_t dirty);
+tPassVoid* gPrepassOrig = nullptr;
+tPassVoid* gBeforeLightsOrig = nullptr;
+tDpgPass* gDpgPassOrig = nullptr;
+tDpgLights* gDpgLightsOrig = nullptr;
+tForeground* gForegroundOrig = nullptr;
+tFinish* gFinishOrig = nullptr;
+
+void PrepassHook(void* renderer) {
+    if (t_skipPasses) { gMode3PassesSkipped.fetch_add(1, std::memory_order_relaxed); return; }
+    gPrepassOrig(renderer);
+}
+void BeforeLightsHook(void* renderer) {
+    if (t_skipPasses) { return; }
+    gBeforeLightsOrig(renderer);
+}
+void DpgPassHook(void* renderer, int dpg, std::uint32_t* dirty) {
+    if (t_skipPasses) { return; }
+    gDpgPassOrig(renderer, dpg, dirty);
+}
+void DpgLightsHook(void* renderer, int dpg, int translucency, std::uint32_t* dirty, int flag) {
+    if (t_skipPasses) { return; }
+    gDpgLightsOrig(renderer, dpg, translucency, dirty, flag);
+}
+std::uint64_t ForegroundHook(void* renderer, int dpg, int* out, std::uint32_t* dirty, int flag) {
+    if (t_skipPasses) { if (out != nullptr) *out = 0; return 0; }
+    return gForegroundOrig(renderer, dpg, out, dirty, flag);
+}
+void ReplaySecondEyeInFinish(std::uint8_t* renderer);
+void FinishHook(void* renderer, int translucency, std::uint32_t dirty) {
+    if (t_skipPasses) {
+        ReplaySecondEyeInFinish(static_cast<std::uint8_t*>(renderer));
+        return;
+    }
+    gFinishOrig(renderer, translucency, dirty);
+}
+
+// The frame's second render in mode 3: the engine's InitViews with its resolve, the pass functions returning at once,
+// and in its finish (the renderer alive, its view fields final) the replay of the first eye's tail. True = handled.
+
+void ReplaySecondEyeInFinish(std::uint8_t* renderer) {
+    draw_replay::ViewFields const second = CaptureViews(renderer);
+    std::string why;
+    if (!gFirstEyeViewsValid || gFirstEyeViews.views != second.views || gFirstEyeViews.perView != second.perView) {
+        gMode3NotReplayable.fetch_add(1, std::memory_order_relaxed);
+        gMode3LastBlocker = std::format("first-eye views {}x{} vs {}x{}", gFirstEyeViews.views, gFirstEyeViews.perView, second.views, second.perView);
+        return;
+    }
+    if (!draw_replay::Attached() || !draw_replay::TailReplayable(&why)) {
+        gMode3NotReplayable.fetch_add(1, std::memory_order_relaxed);
+        gMode3LastBlocker = why.empty() ? "recorder not attached" : why;
+        return;
+    }
+    t_skipPasses = false;   // the replay's own calls go through the pass hooks' originals untouched (none are called)
+    t_replayToRightHalf = false;  // the eyes render in turn into the whole backbuffer (Halcyon's pass-0 snapshot takes the first): no half
+    int const rc = ReplayDrawsSEH(renderer, gFirstEyeViews, second);
+    t_replayToRightHalf = false;
+    t_skipPasses = true;
+    if (rc == 0) {
+        gMode3Replays.fetch_add(1, std::memory_order_relaxed);
+    } else {
+        gMode3NotReplayable.fetch_add(1, std::memory_order_relaxed);
+        gMode3LastBlocker = std::format("replay returned {}", rc);
+    }
+}
+
+bool SecondRenderMode3(std::uint8_t* renderer) {
+    t_skipPasses = true;
+    gSceneRenderOrig(renderer);
+    t_skipPasses = false;
+    return true;
+}
+
+std::atomic<std::uint64_t> gSecondRenderSkipped{0};
+
 void SceneRenderHook(void* renderer) {
     int const index = gRenderIndex.fetch_add(1, std::memory_order_relaxed);
     int const outer = t_renderIndex;
@@ -897,10 +1019,49 @@ void SceneRenderHook(void* renderer) {
     bool handled = false;
     int mode = gSharePass.load(std::memory_order_relaxed);
     bool const diff = draw_replay::DiffPending() && draw_replay::Attached();
-    if (mode == 0 && diff) {
-        mode = 1;  // the eye diff needs a paired frame: this one runs as sharePass = 1
+    if (diff && (mode == 0 || mode == 3)) {
+        mode = 1;  // the eye diff needs a paired frame rendered by the engine: this one runs as sharePass = 1
     }
-    if (gShareHooked && mode != 0 && !gShareFailed.load(std::memory_order_relaxed)) {
+    // sharePass = 4 (research/37, experiment 1): the frame's second scene render is simply not run (no renderer kept,
+    // nothing replayed, the second eye's image stale). The test of the deadlock theory of attempts 10-11: if two
+    // FViewportClient::Draw calls with one Umbra resolve a frame deadlock the game thread in Umbra's command ring,
+    // this hangs within seconds; if it runs, the hang was the kept renderer's and the replay can take the second
+    // render's slot without a second resolve.
+    if (mode == 3 && gPassHooksInstalled && gReplayHooked) {
+        ReleaseKept();
+        if (index == 0) {
+            bool const recorder = draw_replay::Attached();
+            if (recorder) {
+                draw_replay::BeginRecording(0);
+            }
+            gFirstEyeViewsValid = false;
+            gCaptureCandidate.store(recorder ? renderer : nullptr, std::memory_order_relaxed);
+            std::uint32_t const drawsBefore = MELEVR::MevrBridge::g_perfDraws;
+            gSceneRenderOrig(renderer);
+            gCaptureCandidate.store(nullptr, std::memory_order_relaxed);
+            if (recorder) {
+                draw_replay::EndRecording();
+                // Research/37, experiment 6: how many of the render's draws (Halcyon's hooks count them all) the
+                // recorder saw; a shortfall is a frame whose vtable entries were taken from under it mid-render.
+                std::uint32_t const issued = MELEVR::MevrBridge::g_perfDraws - drawsBefore;
+                unsigned const recorded = draw_replay::RecordedDraws(0);
+                gFirstDrawsIssued.fetch_add(issued, std::memory_order_relaxed);
+                gFirstDrawsRecorded.fetch_add(recorded, std::memory_order_relaxed);
+                if (recorded < issued) {
+                    gFirstRendersShort.fetch_add(1, std::memory_order_relaxed);
+                }
+            }
+            handled = true;
+        } else if (index == 1) {
+            handled = SecondRenderMode3(static_cast<std::uint8_t*>(renderer));
+        }
+    } else if (mode == 4) {
+        ReleaseKept();
+        if (index == 1) {
+            gSecondRenderSkipped.fetch_add(1, std::memory_order_relaxed);
+            handled = true;
+        }
+    } else if (gShareHooked && mode != 0 && !gShareFailed.load(std::memory_order_relaxed)) {
         handled = ShareOrKeep(static_cast<std::uint8_t*>(renderer), mode, diff);
     } else {
         ReleaseKept();
@@ -1362,6 +1523,21 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
                 cheap, static_cast<double>(reported) / static_cast<double>(frames), static_cast<double>(filtered) / static_cast<double>(frames),
                 issuesSkipped, static_cast<double>(faked) / static_cast<double>(frames));
         }
+        std::uint64_t const m3 = gMode3Replays.exchange(0, std::memory_order_relaxed);
+        std::uint64_t const m3no = gMode3NotReplayable.exchange(0, std::memory_order_relaxed);
+        if (m3 != 0 || m3no != 0) {
+            share += std::format("; second eye replayed after its resolve: {} frames, {} not replayable ({})", m3, m3no,
+                m3no != 0 ? gMode3LastBlocker : std::string("-"));
+            std::uint64_t const issued = gFirstDrawsIssued.exchange(0, std::memory_order_relaxed);
+            std::uint64_t const recorded = gFirstDrawsRecorded.exchange(0, std::memory_order_relaxed);
+            std::uint64_t const shortRenders = gFirstRendersShort.exchange(0, std::memory_order_relaxed);
+            share += std::format("; the first render's draws a frame: {:.0f} issued, {:.0f} recorded ({} renders short)",
+                static_cast<double>(issued) / static_cast<double>(frames), static_cast<double>(recorded) / static_cast<double>(frames), shortRenders);
+        }
+        std::uint64_t const skippedRenders = gSecondRenderSkipped.exchange(0, std::memory_order_relaxed);
+        if (skippedRenders != 0) {
+            share += std::format("; second scene renders not run: {}", skippedRenders);
+        }
         std::uint64_t const shared = gUmbraShared.exchange(0, std::memory_order_relaxed);
         std::uint64_t const missing = gUmbraShareMissing.exchange(0, std::memory_order_relaxed);
         if (shared != 0 || missing != 0) {
@@ -1373,10 +1549,10 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
     std::uint64_t const fallbacks = gReplayFallbacks.exchange(0, std::memory_order_relaxed);
     if (gSharePass.load(std::memory_order_relaxed) == 2 || d.replays != 0 || d.failures != 0 || fallbacks != 0) {
         auto const per = [](std::uint64_t total, std::uint64_t n) { return n == 0 ? 0.0 : static_cast<double>(total) / static_cast<double>(n); };
-        share += std::format("; draw replay: {} replays ({:.0f} calls, {:.0f} substitutions each), {} first eyes recorded "
-            "({:.0f} calls, {:.0f} KB each), {} fell back to the engine's passes{}{}",
-            d.replays, per(d.replayedCalls, d.replays), per(d.substitutions, d.replays), d.recorded,
-            per(d.recordedCalls, d.recorded), per(d.recordedBytes, d.recorded) / 1024.0, fallbacks,
+        share += std::format("; draw replay: {} replays ({:.0f} calls, {:.0f} draws, {:.0f} substitutions of which {:.0f} matrices, {:.0f} rects shifted each), {} first eyes recorded "
+            "({:.0f} calls, {:.0f} KB each; {:.0f} calls through Halcyon's seams, {:.0f} DrawIndexed through our own), {} re-hooks, {} fell back to the engine's passes{}{}",
+            d.replays, per(d.replayedCalls, d.replays), per(d.replayedDraws, d.replays), per(d.substitutions, d.replays), per(d.matrixSubstitutions, d.replays), per(d.shiftedRects, d.replays), d.recorded,
+            per(d.recordedCalls, d.recorded), per(d.recordedBytes, d.recorded) / 1024.0, per(d.notedByHalcyon, d.recorded), per(d.seenByOurs, d.recorded), d.rehooks, fallbacks,
             d.notReplayable != 0 && !d.lastBlocker.empty() ? std::format(" ({} not replayable: {})", d.notReplayable, d.lastBlocker) : "",
             gReplayFailed.load(std::memory_order_relaxed) ? "; the draw replay is OFF after a failure" : "");
     }
@@ -1386,7 +1562,10 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
 
 } // namespace
 
+hook::Context* gHookInit = nullptr;  // the host's (Entry.cpp's static), for the draw recorder's inline hooks
+
 bool Install(hook::Context& init) {
+    gHookInit = &init;
     auto* const sceneRender = init.ResolveTyped<tSceneRender>(kSceneRenderRva);
     auto* const command = init.ResolveTyped<tCommand>(kCommanderCommandRva);
     if (sceneRender == nullptr || command == nullptr) {
@@ -1446,6 +1625,25 @@ bool Install(hook::Context& init) {
     auto* const lightTargets = init.ResolveTyped<tDpgLightTargets>(kDpgLightTargetsRva);
     gReplayHooked = gShareHooked && lightTargets != nullptr &&
         hook::Install(init, "FSceneRenderer::RenderDpgLightTargets", lightTargets, &DpgLightTargetsHook, gDpgLightTargetsOrig);
+    {
+        auto* const prepass = init.ResolveTyped<tPassVoid>(kPrepassViewsRva);
+        auto* const beforeLights = init.ResolveTyped<tPassVoid>(kBeforeLightsRva);
+        auto* const dpgPass = init.ResolveTyped<tDpgPass>(kDpgPassRva);
+        auto* const dpgLights = init.ResolveTyped<tDpgLights>(kDpgLightsRva);
+        auto* const foreground = init.ResolveTyped<tForeground>(kForegroundRva);
+        auto* const finish = init.ResolveTyped<tFinish>(kFinishRva);
+        gPassHooksInstalled = prepass != nullptr && beforeLights != nullptr && dpgPass != nullptr && dpgLights != nullptr &&
+            foreground != nullptr && finish != nullptr &&
+            hook::Install(init, "RenderUmbraBasePass", prepass, &PrepassHook, gPrepassOrig) &&
+            hook::Install(init, "before-lights pass", beforeLights, &BeforeLightsHook, gBeforeLightsOrig) &&
+            hook::Install(init, "DPG pass", dpgPass, &DpgPassHook, gDpgPassOrig) &&
+            hook::Install(init, "DPG lights", dpgLights, &DpgLightsHook, gDpgLightsOrig) &&
+            hook::Install(init, "foreground pass", foreground, &ForegroundHook, gForegroundOrig) &&
+            hook::Install(init, "scene render finish", finish, &FinishHook, gFinishOrig);
+        if (!gPassHooksInstalled) {
+            log::Warn("render levers: the pass hooks failed; sharePass = 3 has no effect");
+        }
+    }
     if (!gReplayHooked) {
         log::Warn("render levers: light-targets hook failed; sharePass = 2 runs as 1 and the eye diff is off");
     }
@@ -1608,7 +1806,7 @@ void Tick() {
             ApplyAffinity(pCores != 0);
         }
         int const shareRaw = readInt(L"sharePass", 0);
-        int const share = shareRaw < 0 ? 0 : (shareRaw > 2 ? 2 : shareRaw);
+        int const share = shareRaw < 0 ? 0 : (shareRaw > 4 ? 4 : shareRaw);
         if (share != sharePass) {
             sharePass = share;
             gSharePass.store(share, std::memory_order_relaxed);
@@ -1636,9 +1834,10 @@ void OnPresentEnd(ID3D11DeviceContext* context) {
     Add(gCounters.rendersPerFrame[renders < kSlots ? renders : kSlots], 1);
     ReleaseKept();  // a kept renderer never pairs across frames
     if (gReplayHooked && context != nullptr && !draw_replay::Attached() &&
-        (gSharePass.load(std::memory_order_relaxed) == 2 || draw_replay::DiffPending())) {
-        if (draw_replay::Attach(context)) {  // once wanted; the hooks then stay
+        (gSharePass.load(std::memory_order_relaxed) == 2 || gSharePass.load(std::memory_order_relaxed) == 3 || draw_replay::DiffPending())) {
+        if (draw_replay::Attach(context, gHookInit)) {  // once wanted; the hooks then stay
             gAttachFailures.store(0, std::memory_order_relaxed);
+            draw_replay::SetViewLayout({CapturedOffset(0x1D0), CapturedOffset(0x210), CapturedOffset(0x250)});
         } else if (draw_replay::DiffPending() && gAttachFailures.fetch_add(1, std::memory_order_relaxed) + 1 >= 300) {
             // About 3 s of Presents without the recorder: the request can't be served; drop it rather than keep it
             // armed for the rest of the session (the reason is in the 'draw replay:' line above).

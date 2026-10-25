@@ -97,6 +97,11 @@ time equals native and the wall time is still 1-1.5 ms worse. Removed. The list 
    eye's recorded D3D11 calls with the view constants swapped instead of the engine's draw submission. Expected: the
    second render from ~4.3 to ~2.5 ms at heavy spots (the resolve stays). This is the only lever for draw-bound
    frames. Risk: correctness of the constant substitution across every shader (the eye-diff tool checks it).
+   **Done 2026-10-25 as `sharePass = 3` ([research/37](../research/37-single-pass-stereo.md)): the second eye is
+   right (the whole-matrix substitution of the translated view-projection, since the engine folds the eye into every
+   draw's LocalToWorld), the second render went from 4.5 to 3.0 ms, but the recording costs ~1 ms on the first, so the
+   frame is 10.9 against 11.4. The 2.5 ms that remain are the second Umbra resolve and the recording: one Draw a frame
+   with the second view synthesised in the host, which is Halcyon-side work.**
 6. **Fewer draws** at heavy spots: LOD bias and cull distance keys that `scale set` didn't take live, set at launch
    through the mod's SystemSettings applier. Visible trade-offs; 0.5-1.5 ms.
 
