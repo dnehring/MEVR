@@ -419,5 +419,8 @@ way were one bug (a read of the renderer's views after Render had freed them: a 
 quietly and the game thread waits forever). Checked under the PS VR2's own per-eye projections on the fake headset
 (the replay's `-Fovs`): the synthesised eye holds, but the one render's occlusion tests see only its own frustum, so
 one-Draw renders both eyes on the symmetric window (mode 1; an object in the right eye's outer wedge was missing in
-mode 2). Its recording's cost is 33,000 hook entries a frame, not copies (maps are 17 KB a frame). Off by default;
-research/37 has the measurements and what remains.
+mode 2). Its recording's cost is 33,000 hook entries a frame, not copies (maps are 17 KB a frame). The first headset
+session strobed: the engine's 4 MB dynamic vertex and index rings wrap inside the recorded tail (4-5% of quiet frames,
+more in combat) and the replayed draws before the wrap read garbage; the recorder now shadows such a buffer on the GPU
+before the discard and the replay binds the shadow for them. Off by default; research/37 has the measurements and what
+remains.

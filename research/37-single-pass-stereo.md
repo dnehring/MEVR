@@ -465,3 +465,40 @@ sub-rectangle of the window (the capture's rect 1775 px of 2344), far scenery -0
 Not verified today: the re-arm after a fallback; a conversation or in-game cutscene camera under one Draw (the intro's
 cine camera is the case that fell back); dynamic shadows on; the weapon wheel and Halcyon's own menu (no key the
 scripts can send).
+
+### 2026-10-25 15:08-15:50, the headset: a strobing right eye, and the dynamic ring that wraps inside the tail
+
+The user's first PS VR2 session with `sharePass = 5` (15:08, Eden Prime's spaceport, in combat) strobed: "random red,
+green and other colours" flickering in the right eye, bad enough to stop for motion sickness. The log showed nothing:
+every frame replayed (899 of 899 a period), 0 without a record, 0 not replayable, no fault, 90 fps, the GPU at 11.1 ms
+against 12-13 in the earlier two-Draw sessions, the swapchain sequence right (acquire, wait without timeout, copy,
+release); 16 snapshots during the session caught nothing. Reproduced on the fake headset at the same spot (view origin
+(-39904, 154420, -712)) under the PS VR2 head loop: 2 of 30 one-Draw right eyes had no fog, the sky a saturated orange
+and the distance sharp, with the same frame's left eye and the previous right eye normal; 0 of 30 with both engine
+renders. At 90 Hz a few such frames a second is a strobe.
+
+**The cause.** The engine's dynamic vertex and index buffers (4 MB each: the rings every dynamic mesh, particle and
+full-screen quad is written into with NO_OVERWRITE maps, about 336 a frame) wrap with a DISCARD map. A wrap inside the
+recorded tail throws away the contents the tail's earlier draws read, and the replay, which never re-maps a large
+buffer because its data is "still there", hands those draws the post-wrap contents: garbage vertices. The fog's
+full-screen quad is among the tail's first draws, so the fog went first; in combat, with more dynamic data a frame,
+the ring wraps mid-tail far more often. At the quiet spot it was 45-62 frames per 10 s (4-5%), counted once the
+recorder told in-tail discards apart (the levers line's `large buffers discarded inside the tail: N frames`); the
+recorder's blocker had only caught a buffer discarded twice. With those frames merely blocked, the orange frames were
+gone (0 of 100) but each blocked frame still showed a stale, swapped pair (pass 0 captured at the first render's own
+clear is the previous right eye), so blocking is no answer either.
+
+**The fix: shadow copies.** At a large buffer's DISCARD map inside the tail, the recorder first issues
+`CopyResource(shadow, buffer)` on the GPU (in order, so it reads the contents before the discard; our copy is not
+recorded) into a DEFAULT buffer of the same size kept for the session (up to 4 per buffer a frame) and notes the entry
+index. The replay binds the shadow in `IASetVertexBuffers` / `IASetIndexBuffer` for the entries before that index, the
+next shadow between two discards, and the buffer itself after the last. A discard without a shadow (over the cap, or
+no buffer for it) blocks the frame, which now also counts as a miss for the health check; the re-arm takes 300 matches
+so a scene that wraps every few frames stays on Halcyon's second Draw rather than flickering between the two paths.
+Verified at the spot: 0 fog-less frames in 60 (the one frame the metric flagged was the head loop's wrap, where the
+snapshot's two eyes came from different presents: the capture tool, not the headset), every in-tail discard shadowed
+(49-62 a period), 0 not replayable, no fault; frame time 4.78 ms (p90 5.60) against 7.15 (7.92) with both engine
+renders at that spot. The shadows are a GPU copy of 4 MB on 5% of frames: nothing measurable.
+
+Not verified: the headset itself (the user tries again); heavier combat (several wraps a tail: the cap is 4 per buffer);
+a dynamic texture mapped twice inside the tail (textures are not copied; none seen).

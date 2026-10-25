@@ -1132,12 +1132,12 @@ std::atomic<std::uint64_t> gOneDrawFallbacks{0}, gOneDrawRearms{0};
 void NoteOneDrawMatch(bool matched) {
     if (matched) {
         gOneDrawMisses = 0;
-        if (gOneDrawFallback.load(std::memory_order_relaxed) && ++gOneDrawMatches >= 30) {
+        if (gOneDrawFallback.load(std::memory_order_relaxed) && ++gOneDrawMatches >= 300) {
             gOneDrawMatches = 0;
             gOneDrawFallback.store(false, std::memory_order_relaxed);
             MELEVR::MevrBridge::g_oneDrawStereo.store(gOneDrawWanted.load(std::memory_order_relaxed), std::memory_order_relaxed);
             gOneDrawRearms.fetch_add(1, std::memory_order_relaxed);
-            log::Info("render levers: one Draw: pass 1's records match the rendered view again (30 frames running): one Draw a frame resumes");
+            log::Info("render levers: one Draw: pass 1's records match the rendered view again (300 frames running): one Draw a frame resumes");
         }
     } else {
         gOneDrawMatches = 0;
@@ -1146,7 +1146,7 @@ void NoteOneDrawMatch(bool matched) {
             gOneDrawFallback.store(true, std::memory_order_relaxed);
             MELEVR::MevrBridge::g_oneDrawStereo.store(false, std::memory_order_relaxed);
             gOneDrawFallbacks.fetch_add(1, std::memory_order_relaxed);
-            log::Info("render levers: one Draw: no pass-1 record matched the rendered view for 3 frames running: Halcyon's second Draw resumes until they match again");
+            log::Info("render levers: one Draw: no second eye for 3 frames running (no matching pass-1 record, or the tail not replayable: {}): Halcyon's second Draw resumes until the frames replay again", gMode5LastBlocker.empty() ? std::string("-") : gMode5LastBlocker);
         }
     }
 }
@@ -1195,6 +1195,7 @@ void OneDrawSecondEye(std::uint8_t* renderer) {
     if (!draw_replay::TailReplayable(&why)) {
         gMode5NotReplayable.fetch_add(1, std::memory_order_relaxed);
         gMode5LastBlocker = why;
+        NoteOneDrawMatch(false);   // no second eye this frame: a miss for the health check
         return;
     }
     bool const synthesised = SynthesiseSecondView(renderer, first, second);
@@ -1853,8 +1854,10 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
             gReplayFailed.load(std::memory_order_relaxed) ? "; the draw replay is OFF after a failure" : "");
         if (d.recorded != 0) {
             // Research/37: the recording's map copies (the driver's mapped memory read back at Unmap).
-            share += std::format("; recording: {:.0f} maps ({:.0f} KB) copied in {:.2f} ms a frame",
-                per(d.mapsCopied, d.recorded), per(d.mapCopyBytes, d.recorded) / 1024.0, d.mapCopyMs / static_cast<double>(d.recorded));
+            share += std::format("; recording: {:.0f} maps ({:.0f} KB) copied in {:.2f} ms a frame, {:.1f} large maps not copied; "
+                                 "large buffers discarded inside the tail: {} frames ({} discards, {} shadowed)",
+                per(d.mapsCopied, d.recorded), per(d.mapCopyBytes, d.recorded) / 1024.0, d.mapCopyMs / static_cast<double>(d.recorded),
+                per(d.mapsSkipped, d.recorded), d.tailDiscardFrames, d.tailDiscards, d.shadowCopies);
         }
     }
     log::Info("render levers: last 10 s: {} frames; scene renders per frame {}; per render, by its place in the "

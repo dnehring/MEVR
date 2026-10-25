@@ -116,6 +116,8 @@ struct Stats {
     std::uint64_t matrixHits[4] = {};   // TVP, TVP transposed, inverse, inverse transposed
     std::uint64_t mapsCopied = 0, mapCopyBytes = 0;   // the recording's map copies (research/37: 17 KB a frame)
     double mapCopyMs = 0.0;                           // time copying them into the recording
+    std::uint64_t tailDiscardFrames = 0, tailDiscards = 0, mapsSkipped = 0;   // large dynamic buffers: discards inside the tail, maps not copied
+    std::uint64_t shadowCopies = 0;   // of those discards, the ones shadowed (a GPU copy each)
     std::string lastBlocker;
 };
 Stats TakeStats();

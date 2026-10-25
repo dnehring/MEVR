@@ -221,13 +221,25 @@ struct Stream {
     std::size_t tail = SIZE_MAX;  // byte offset of the first entry the replay re-issues
     unsigned entries = 0, tailEntries = 0, draws = 0, updates = 0, textureUpdates = 0, mapsCopied = 0, mapsSkipped = 0;
     unsigned unsupported = 0, unsupportedSlot = 0, bigUpdates = 0;
-    std::unordered_map<void*, unsigned> bigDiscards;  // large dynamic buffers discarded in the tail, per buffer
+    unsigned bigDiscardsInTail = 0;   // large dynamic buffers discarded after the tail mark (a ring that wrapped mid-tail)
+    unsigned bigDiscardsUnshadowed = 0;   // of those, without a shadow copy: the tail isn't replayable
+    std::unordered_map<void*, unsigned> bigDiscards;  // large dynamic buffers discarded, per buffer
+    // Research/37 (the strobe): a large dynamic buffer discarded inside the tail. Its contents just before the discard
+    // (what the tail's earlier draws read) were copied on the GPU into `shadow`; the replay binds the shadow for the
+    // entries before `atEntry` and the buffer itself (or its next shadow) after.
+    struct ShadowSwitch {
+        void* resource;
+        ID3D11Buffer* shadow;
+        unsigned atEntry;
+    };
+    std::vector<ShadowSwitch> shadows;
     void Clear() {
         bytes.clear();
         tail = SIZE_MAX;
         entries = tailEntries = draws = updates = textureUpdates = mapsCopied = mapsSkipped = 0;
-        unsupported = unsupportedSlot = bigUpdates = 0;
+        unsupported = unsupportedSlot = bigUpdates = bigDiscardsInTail = bigDiscardsUnshadowed = 0;
         bigDiscards.clear();
+        shadows.clear();
     }
 };
 
@@ -256,6 +268,67 @@ std::unordered_map<void*, Mapped> gMapped;       // the last Map of each resourc
 // The recording's map copies, timed (research/37: 17 maps and 17 KB a frame at the heavy spot; the 7.7 MB a frame of
 // recorded constants come through UpdateSubresource from the engine's own memory, so no mapped memory is read back).
 std::atomic<std::uint64_t> gMapCopyTicks{0}, gMapCopyBytes{0}, gMapsCopied{0};
+std::atomic<std::uint64_t> gTailDiscardFrames{0}, gTailDiscards{0}, gMapsSkipped{0};   // large dynamic buffers (research/37)
+std::atomic<std::uint64_t> gShadowCopies{0};
+
+// The shadow copies of large dynamic buffers (research/37, the strobe): one DEFAULT buffer per in-tail discard of a
+// buffer, up to kShadowsPerBuffer a frame, kept for the session (the engine's rings live as long as the device).
+constexpr unsigned kShadowsPerBuffer = 4;
+struct ShadowSet {
+    std::vector<ID3D11Buffer*> buffers;
+    std::uint32_t byteWidth = 0;
+    unsigned used = 0;   // this frame
+};
+std::unordered_map<void*, ShadowSet> gShadows;   // render thread
+thread_local std::unordered_map<void*, ID3D11Buffer*> t_shadowSub;   // during a replay: buffer -> the shadow to bind instead
+
+ID3D11Buffer* ShadowFor(ID3D11DeviceContext* c, ID3D11Resource* resource, BufferInfo const& info) {
+    ShadowSet& set = gShadows[resource];
+    if (set.byteWidth != info.byteWidth) {   // a different buffer at a reused pointer
+        for (ID3D11Buffer* b : set.buffers) {
+            b->Release();
+        }
+        set.buffers.clear();
+        set.byteWidth = info.byteWidth;
+        set.used = 0;
+    }
+    if (set.used >= kShadowsPerBuffer) {
+        return nullptr;
+    }
+    while (set.buffers.size() <= set.used) {
+        ID3D11Buffer* original = nullptr;
+        if (FAILED(resource->QueryInterface(__uuidof(ID3D11Buffer), reinterpret_cast<void**>(&original))) || original == nullptr) {
+            return nullptr;
+        }
+        D3D11_BUFFER_DESC desc{};
+        original->GetDesc(&desc);
+        original->Release();
+        desc.Usage = D3D11_USAGE_DEFAULT;
+        desc.CPUAccessFlags = 0;
+        ID3D11Device* device = nullptr;
+        c->GetDevice(&device);
+        ID3D11Buffer* shadow = nullptr;
+        HRESULT const hr = device != nullptr ? device->CreateBuffer(&desc, nullptr, &shadow) : E_FAIL;
+        if (device != nullptr) {
+            device->Release();
+        }
+        if (FAILED(hr) || shadow == nullptr) {
+            static std::atomic<int> failures{0};
+            if (failures.fetch_add(1, std::memory_order_relaxed) < 3) {
+                log::Warn("draw replay: no shadow for a {} KB dynamic buffer (bind 0x{:X}): CreateBuffer 0x{:08X}", info.byteWidth >> 10, info.bindFlags,
+                    static_cast<unsigned>(hr));
+            }
+            return nullptr;
+        }
+        set.buffers.push_back(shadow);
+        static std::atomic<int> created{0};
+        if (created.fetch_add(1, std::memory_order_relaxed) < 6) {
+            log::Info("draw replay: shadow {} of a {} KB dynamic buffer (bind 0x{:X}, misc 0x{:X}) for its discards inside the tail (research/37)",
+                set.buffers.size(), info.byteWidth >> 10, info.bindFlags, desc.MiscFlags);
+        }
+    }
+    return set.buffers[set.used++];
+}
 std::vector<IUnknown*> gHeld;                    // AddRef'd for the frame
 std::array<void*, 8192> gHeldCache{};
 
@@ -496,6 +569,25 @@ void STDMETHODCALLTYPE DrawAutoHook(ID3D11DeviceContext* c) {
 
 HRESULT STDMETHODCALLTYPE MapHook(ID3D11DeviceContext* c, ID3D11Resource* resource, UINT subresource, D3D11_MAP type,
     UINT flags, D3D11_MAPPED_SUBRESOURCE* mapped) {
+    if (t_recording != nullptr && type == D3D11_MAP_WRITE_DISCARD && subresource == 0 && t_recording->tail != SIZE_MAX) {
+        // A large dynamic buffer discarded inside the tail (a ring wrapping): the draws recorded before this point read
+        // its contents as they are now, which the discard throws away. Copy them on the GPU (in order, before the
+        // discard) into a shadow the replay binds for those draws. Our copy is not part of the recording.
+        BufferInfo const& info = Lookup(resource);
+        if (info.isBuffer && info.byteWidth > kMaxRecordedMap) {
+            Stream& s = *t_recording;
+            ID3D11Buffer* const shadow = ShadowFor(c, resource, info);
+            if (shadow != nullptr) {
+                t_recording = nullptr;
+                c->CopyResource(shadow, resource);
+                t_recording = &s;
+                s.shadows.push_back({resource, shadow, s.entries});
+                gShadowCopies.fetch_add(1, std::memory_order_relaxed);
+            } else {
+                ++s.bigDiscardsUnshadowed;
+            }
+        }
+    }
     HRESULT const hr = Next<HRESULT(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Resource*, UINT, D3D11_MAP, UINT,
         D3D11_MAPPED_SUBRESOURCE*)>(kMap)(c, resource, subresource, type, flags, mapped);
     if (t_recording != nullptr) {
@@ -525,6 +617,9 @@ void STDMETHODCALLTYPE UnmapHook(ID3D11DeviceContext* c, ID3D11Resource* resourc
             ++s.mapsSkipped;
             if (info.isBuffer && found->second.type == D3D11_MAP_WRITE_DISCARD) {
                 ++s.bigDiscards[resource];
+                if (s.tail != SIZE_MAX) {
+                    ++s.bigDiscardsInTail;   // a ring wrapped mid-tail (particles, dynamic meshes): the draws before it
+                }                            // read contents the replay cannot bring back
             }
         }
         auto* const a = RecordStruct<UnmapArgs>(s, Op::Unmap, 0, 0, size);
@@ -1408,11 +1503,10 @@ bool Blocked(Stream const& s, std::string* why) {
         if (why) *why = std::format("{} buffer update(s) over {} KB", s.bigUpdates, kMaxRecordedUpdate >> 10);
         return true;
     }
-    for (auto const& [buffer, discards] : s.bigDiscards) {
-        if (discards > 1) {
-            if (why) *why = std::format("a dynamic buffer over {} KB discarded {} times (its earlier contents are gone)", kMaxRecordedMap >> 10, discards);
-            return true;
-        }
+    if (s.bigDiscardsUnshadowed != 0) {
+        if (why) *why = std::format("{} dynamic buffer(s) over {} KB discarded inside the tail without a shadow copy (more than {} a frame, or no buffer for it)",
+            s.bigDiscardsUnshadowed, kMaxRecordedMap >> 10, kShadowsPerBuffer);
+        return true;
     }
     return false;
 }
@@ -1447,17 +1541,32 @@ bool Issue(ID3D11DeviceContext* c, Header const& h, std::uint8_t const* body, bo
         return true;
     case Op::IASetVertexBuffers: {
         auto const* const a = reinterpret_cast<VertexBuffers const*>(body);
-        auto const* const ptrs = reinterpret_cast<ID3D11Buffer* const*>(a + 1);
+        auto const* ptrs = reinterpret_cast<ID3D11Buffer* const*>(a + 1);
         auto const* const strides = reinterpret_cast<UINT const*>(ptrs + a->count);
         auto const* const offsets = strides + a->count;
+        ID3D11Buffer* shadowed[D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT];
+        if (!t_shadowSub.empty() && a->count <= D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT) {
+            for (UINT i = 0; i < a->count; ++i) {
+                auto const found = t_shadowSub.find(ptrs[i]);
+                shadowed[i] = found != t_shadowSub.end() ? found->second : ptrs[i];
+            }
+            ptrs = shadowed;
+        }
         Live<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, UINT, UINT, ID3D11Buffer* const*, UINT const*, UINT const*)>(
             kIASetVertexBuffers)(c, a->start, a->count, ptrs, strides, offsets);
         return true;
     }
     case Op::IASetIndexBuffer: {
         auto const* const a = reinterpret_cast<IndexBuffer const*>(body);
+        auto* buffer = static_cast<ID3D11Buffer*>(a->buffer);
+        if (!t_shadowSub.empty()) {
+            auto const found = t_shadowSub.find(buffer);
+            if (found != t_shadowSub.end()) {
+                buffer = found->second;
+            }
+        }
         Live<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Buffer*, DXGI_FORMAT, UINT)>(kIASetIndexBuffer)(
-            c, static_cast<ID3D11Buffer*>(a->buffer), static_cast<DXGI_FORMAT>(a->format), a->offset);
+            c, buffer, static_cast<DXGI_FORMAT>(a->format), a->offset);
         return true;
     }
     case Op::IASetPrimitiveTopology:
@@ -1902,6 +2011,9 @@ void BeginRecording(int stream) {
     }
     Stream& s = gStreams[stream];
     s.Clear();
+    for (auto& [resource, set] : gShadows) {
+        set.used = 0;
+    }
     t_recording = &s;
 }
 
@@ -1912,6 +2024,11 @@ void EndRecording() {
         gRecorded.fetch_add(1, std::memory_order_relaxed);
         gRecordedCalls.fetch_add(s->entries, std::memory_order_relaxed);
         gRecordedBytes.fetch_add(s->bytes.size(), std::memory_order_relaxed);
+        if (s->bigDiscardsInTail != 0) {
+            gTailDiscardFrames.fetch_add(1, std::memory_order_relaxed);
+            gTailDiscards.fetch_add(s->bigDiscardsInTail, std::memory_order_relaxed);
+        }
+        gMapsSkipped.fetch_add(s->mapsSkipped, std::memory_order_relaxed);
     }
 }
 
@@ -1978,19 +2095,46 @@ int Replay(ViewFields const& first, ViewFields const& second, bool rightHalf) {
                 at, s.tail, s.bytes.size(), total, drawsBeforeTail, text);
         }
     }
+    // Shadowed buffers (research/37, the strobe): until a buffer's first in-tail discard its draws bind the shadow
+    // holding the contents of that time; past each discard, the next shadow, and past the last one the buffer itself.
+    std::unordered_map<void*, std::vector<ID3D11Buffer*>> shadowLists;
+    std::unordered_map<void*, std::size_t> shadowPos;
+    t_shadowSub.clear();
+    for (Stream::ShadowSwitch const& sw : s.shadows) {
+        shadowLists[sw.resource].push_back(sw.shadow);
+    }
+    for (auto const& [resource, list] : shadowLists) {
+        t_shadowSub[resource] = list.front();
+        shadowPos[resource] = 0;
+    }
+    std::size_t nextSwitch = 0;
+    unsigned entryIndex = s.tailEntries;
     Cursor cursor = TailOf(s);
     std::uint64_t issued = 0;
     while (cursor.Next()) {
+        while (nextSwitch < s.shadows.size() && s.shadows[nextSwitch].atEntry <= entryIndex) {
+            void* const resource = s.shadows[nextSwitch++].resource;
+            std::size_t const pos = ++shadowPos[resource];
+            std::vector<ID3D11Buffer*> const& list = shadowLists[resource];
+            if (pos < list.size()) {
+                t_shadowSub[resource] = list[pos];
+            } else {
+                t_shadowSub.erase(resource);   // past its last discard: the buffer's own contents
+            }
+        }
         bool skipped = false;
         if (!Issue(gContext, *cursor.header, cursor.body, skipped)) {
             gFailures.fetch_add(1, std::memory_order_relaxed);
             log::Warn("draw replay: entry {} ({}) couldn't be re-issued; the replay is off for the session",
                 issued, kOpNames[static_cast<unsigned>(cursor.header->op)]);
             t_rightHalf = false;
+            t_shadowSub.clear();
             return 3;
         }
         ++issued;
+        ++entryIndex;
     }
+    t_shadowSub.clear();
     t_rightHalf = false;
     gReplays.fetch_add(1, std::memory_order_relaxed);
     gReplayedCalls.fetch_add(issued, std::memory_order_relaxed);
@@ -2324,6 +2468,10 @@ Stats TakeStats() {
     s.mapsCopied = gMapsCopied.exchange(0, std::memory_order_relaxed);
     s.mapCopyBytes = gMapCopyBytes.exchange(0, std::memory_order_relaxed);
     s.mapCopyMs = TicksToMs(gMapCopyTicks.exchange(0, std::memory_order_relaxed));
+    s.tailDiscardFrames = gTailDiscardFrames.exchange(0, std::memory_order_relaxed);
+    s.tailDiscards = gTailDiscards.exchange(0, std::memory_order_relaxed);
+    s.mapsSkipped = gMapsSkipped.exchange(0, std::memory_order_relaxed);
+    s.shadowCopies = gShadowCopies.exchange(0, std::memory_order_relaxed);
     std::lock_guard<std::mutex> const lock(gBlockerMutex);
     s.lastBlocker = gLastBlocker;
     return s;
