@@ -65,6 +65,13 @@ per-view work twice, at ~10.7-11 ms warm on the fake headset: `CompositeDynamicL
 trade-off), the size cull 0.3 ms invisibly, and the GPU side is the render scale. The architectural answer for the
 heaviest areas stays Depth mode.
 
+## DXVK, tried (attempt 47, 23:30-23:58)
+
+The last untried CPU lever below the engine: DXVK 3.1.1 beside the game runs the VR session correctly (a host seam makes
+it hook the game-local dxgi.dll), but at the heavy spot it is 12.0-13.5 ms against native's 10.7-11.2: its D3D11 takes
+28% of the render thread and its worker hand-off adds 1.5 ms of waiting a frame; with its dynamic-resource cache the busy
+time equals native and the wall time is still 1-1.5 ms worse. Removed. The list of CPU levers is complete.
+
 ## The sequence, with the expected gain and the evidence for each
 
 1. **umbraShareResults** (built, a4dffb5, default 0, unmeasured). The second eye's Umbra reads that aren't ready get

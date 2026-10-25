@@ -398,3 +398,8 @@ At the heavy spot, head motion replayed, 2 x 8 s:
 **DXVK is 1.5-2 ms slower on this frame.** The engine's per-draw pattern (an index buffer and topology set per draw, a
 constant buffer `UpdateSubresource` per dirty buffer, `DrawIndexedPrimitiveUP` for Umbra's ~380 occluder queries) lands
 on DXVK's upload and command-stream paths, and its worker-thread hand-off shows as the kernel share. Not a lever.
+
+With a `dxvk.conf` (`d3d11.cachedDynamicResources = a`, `d3d11.relaxedBarriers = True`): render thread busy 10.0-10.75 ms,
+equal to native, but the frame still 12.0-12.5 ms wall (poses -> submit), 1.5-1.7 ms of it the render thread waiting on
+DXVK's own worker (the `maxFrameLatency = 1` variant was the same: 12.3-12.5). So DXVK is at best equal in work and 1-1.5
+ms worse in what fpsVR shows. Removed from the game folder; the dxgi_proxy seam stays (harmless without a local dxgi.dll).
