@@ -210,6 +210,16 @@ switching frameworks.
   head's pivot, `[Hands] leanM` 0.20, at most `bodyMoveMaxM` 0.75); the spine leans the head bone to the
   pivot. Re-anchors on start, recenter (host floor counter) and tracking jumps. `[Hands] bodyMove = 0`: the
   old spine-only lean. Log `torso:`; snapshot `"torso"`.
+- LE1 weapon drawn, like exploring ([research/38](research/38-combat-stance.md), `game/CombatStance`, rules in
+  `core/vr/CombatStance`; `[Hands]` in `ASI\LE1MEVR.ini`, all on by default; our menu's Controls > Weapon drawn): VR on
+  foot, first person. `exploreStance` (A, mod): drawn and standing (not crouched, in cover or scoped), the player's
+  AnimTree `CombatMode` node composes from its NonCombat child: `engine/bone_pose`'s pre-stage writes the two child
+  weights around UpdateSkelPose and puts them back, so the tree still ticks as combat and every notify fires; it acts
+  only once the node's `NodeTickTag` showed the tree ticks before the hook (`stance: [verify]`). `constantEye` (B,
+  host): a `[MEVR]` seam in Halcyon's `FpOwnAndWrite`, `MevrBridge::ConstantFpEye`: every standing mode's Offset = its
+  own HookOffset minus the explore eye; crouch modes keep Halcyon's. `exploreRamp` (C): the combat speed ramp set to the
+  explore one (restored). `drawRate = 2` (D): the WeaponEquip node's Draw/Holster sequences play faster (their Rate
+  while playing). Logs `stance:`, `constant eye:`, `movement:`, `draw:`; snapshot `"stance"`.
 - LE1 comfort ([research/31](research/31-comfort.md), HostServices v17; the menu's Comfort page, `[Comfort]` in
   `ASI\LE1MEVR.ini`): `turn = game` (default, the menu's Smooth) keeps the game's own turn (per-camera-mode
   `SFXCameraInput`, logged; its rate can't be set, so the menu has no turn speed: user, 2026-10-23); with `snap`

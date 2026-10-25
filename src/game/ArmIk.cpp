@@ -62,6 +62,8 @@ std::uint64_t gLastWrites = 0;
 // This tick's request asks the writer for the support grip (engine::bone_pose::Support).
 bool gSupportRequested = false;
 hand_targets::Anchor gLoggedAnchor = hand_targets::Anchor::None;
+// When arm IK last placed the hands in the view's own frame (first person): FirstPerson().
+std::uint64_t gFirstPersonMs = 0;
 double gLoggedScale = 0.0;
 // Reach scaling from the arm-length calibration stays within these.
 constexpr double kMinReachScale = 0.5;
@@ -725,6 +727,7 @@ void Drive(double deltaSeconds) {
         headBone = engine::skeleton::BoneLocation(mesh, info->head, engine::skeleton::Space::World);
     }
     hand_targets::Targets const targets = hand_targets::Current(headBone);
+    gFirstPersonMs = targets.source == hand_targets::Source::Controllers && targets.anchor == hand_targets::Anchor::View ? GetTickCount64() : 0;
     gSource = targets.source;
     engine::bone_pose::Request request;
     request.mesh = mesh;
@@ -966,6 +969,10 @@ bool Toggle() {
 
 void SetEnabled(bool on) {
     gEnabled = on;
+}
+
+bool FirstPerson() {
+    return gFirstPersonMs != 0 && GetTickCount64() - gFirstPersonMs <= 500;
 }
 
 bool Enabled() {

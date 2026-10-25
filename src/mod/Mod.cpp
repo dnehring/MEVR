@@ -34,6 +34,7 @@
 #include "game/BodyCalibration.hpp"
 #include "game/BodyFollow.hpp"
 #include "game/CameraProbe.hpp"
+#include "game/CombatStance.hpp"
 #include "game/Comfort.hpp"
 #include "game/ConsoleRequest.hpp"
 #include "game/SystemSettings.hpp"
@@ -257,6 +258,7 @@ void TryInstallScriptHooks() {
         log::Warn("weapon: BioWeaponRanged.GetMuzzleLoc not found (or not LE1): shots and hands keep the controller's aim");
     }
     game::holsters::TryStartup();  // logs what it found; holsters stay off without it
+    game::combat_stance::TryStartup();  // the weapon drawn, like exploring (research/38)
     game::squad_weapons::TryStartup();  // likewise for the squad weapon menu
     game::throwables::TryStartup();  // and physical grenades and melee (registers its launch handlers)
     game::posture::TryStartup();  // and physical cover and crouch
@@ -644,6 +646,19 @@ mevr::game::comfort::Link ComfortLink() {
     return link;
 }
 
+// The weapon drawn, like exploring (game/combat_stance, research/38): VR's view and the support grip, this tick.
+mevr::game::combat_stance::Link CombatStanceLink() {
+    using namespace mevr;
+    game::combat_stance::Link link;
+    if (gHostOwnsVr) {
+        link.headTrackedView = gHostView && gHostDataOk && vr::host_view::Latest().valid;
+    } else {
+        link.headTrackedView = vr::output::WantsHeadTracking();
+    }
+    link.supportHeld = game::support_grip::Held();
+    return link;
+}
+
 // Host renderer (HostServices v8): while the test loop takes a snapshot, our state for its JSON.
 void PublishStatus() {
     using namespace mevr;
@@ -667,7 +682,7 @@ void PublishStatus() {
         "\"handAim\": {{\"enabled\": {}, \"toldHost\": {}, \"shots\": {}}}, "
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"throwables\": {}, "
-        "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}, \"torso\": {}, \"comfort\": {}}}",
+        "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -677,7 +692,7 @@ void PublishStatus() {
         json::JsonNumber(game::support_grip::Blend()), game::holsters::StatusJson(), game::squad_weapons::StatusJson(),
         game::sights::StatusJson(), game::throwables::StatusJson(), game::posture::StatusJson(),
         game::view_level::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(),
-        game::body_follow::StatusJson(), game::comfort::StatusJson());
+        game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -814,6 +829,7 @@ void Heartbeat() {
         game::throwables::LogStats();
         game::posture::LogStats();
         game::view_level::LogStats();
+        game::combat_stance::LogStats();
         game::comfort::LogStats();
         game::body_calibration::LogStats();
         game::skeleton_probe::Tick();
@@ -964,6 +980,8 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::support_grip::Tick(deltaSeconds, game::arm_ik::SupportRequested());
         PublishSupportGrip();
         game::camera_probe::Tick();
+        // The weapon drawn, like exploring (research/38): the stance for the next pose, the speed ramp, draw rates.
+        game::combat_stance::Tick(deltaSeconds, CombatStanceLink());
         game::hand_aim::Tick();
         game::view_level::Tick(ViewLevelLink());
         PublishAimRay();
@@ -1071,6 +1089,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::throwables::Shutdown();
     game::weapon::Shutdown();
     game::camera_probe::Shutdown();
+    game::combat_stance::Shutdown();  // the game's speed ramp and animation rates back, the pre-stage stopped
     game::view_level::Shutdown();
     if (gHost != nullptr && MEVR_HOST_HAS(setVignette) && gHost->setVignette != nullptr) {
         gHost->setVignette(0.0f);  // no vignette without the mod (the host also forgets on unload)

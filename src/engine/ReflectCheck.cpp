@@ -534,6 +534,8 @@ void CheckClasses() {
     CheckClass<USkeletalMesh>("Engine.SkeletalMesh");
     CheckClass<USkeletalMeshSocket>("Engine.SkeletalMeshSocket");
     CheckClass<UAnimNode>("Engine.AnimNode");
+    CheckClass<UAnimNodeBlendBase>("Engine.AnimNodeBlendBase");  // game/combat_stance (research/38)
+    CheckClass<UAnimNodeSequence>("Engine.AnimNodeSequence");
     CheckClass<UAnimTree>("Engine.AnimTree");
     CheckClass<USkelControlBase>("Engine.SkelControlBase");
     CheckClass<USkelControlLimb>("Engine.SkelControlLimb");
@@ -672,6 +674,19 @@ void CheckFields() {
     CheckField("SFXGame.BioWeaponRanged", "m_fMinVFXDecalIntensity", SDK_FIELD(ABioWeaponRanged, m_fMinVFXDecalIntensity));
     CheckField("SFXGame.BioWeaponRanged", "bIsZoomed", SDK_BOOL(ABioWeaponRanged, bIsZoomed));
     CheckField("SFXGame.BioPawnBehavior", "m_oEquipment", SDK_FIELD(UBioPawnBehavior, m_oEquipment));
+    // game/combat_stance (research/38): the AnimTree walk, the draw rate, the speed ramp, the walking speed.
+    CheckField("Engine.AnimNode", "NodeName", SDK_FIELD(UAnimNode, NodeName));
+    CheckField("Engine.AnimNode", "NodeTickTag", SDK_FIELD(UAnimNode, NodeTickTag));
+    CheckField("Engine.AnimNodeBlendBase", "Children", SDK_FIELD(UAnimNodeBlendBase, Children));
+    CheckField("Engine.AnimNodeSequence", "AnimSeqName", SDK_FIELD(UAnimNodeSequence, AnimSeqName));
+    CheckField("Engine.AnimNodeSequence", "Rate", SDK_FIELD(UAnimNodeSequence, Rate));
+    CheckField("Engine.AnimNodeSequence", "CurrentTime", SDK_FIELD(UAnimNodeSequence, CurrentTime));
+    CheckField("Engine.AnimNodeSequence", "bPlaying", SDK_BOOL(UAnimNodeSequence, bPlaying));
+    CheckField("Engine.Actor", "Velocity", SDK_FIELD(AActor, Velocity));
+    CheckField("SFXGame.BioPawnBehavior", "m_fMaxDesSpdAccelRate", SDK_FIELD(UBioPawnBehavior, m_fMaxDesSpdAccelRate));
+    CheckField("SFXGame.BioPawnBehavior", "m_fMaxDesSpdDecelRate", SDK_FIELD(UBioPawnBehavior, m_fMaxDesSpdDecelRate));
+    CheckField("SFXGame.BioPawnBehavior", "m_fMaxDesSpdTacAccelRate", SDK_FIELD(UBioPawnBehavior, m_fMaxDesSpdTacAccelRate));
+    CheckField("SFXGame.BioPawnBehavior", "m_fMaxDesSpdTacDecelRate", SDK_FIELD(UBioPawnBehavior, m_fMaxDesSpdTacDecelRate));
     CheckField("SFXGame.BioEpicPawnBehavior", "Squad", SDK_FIELD(UBioEpicPawnBehavior, Squad));
     CheckField("SFXGame.BioActorBehavior", "ActorGameName", SDK_FIELD(UBioActorBehavior, ActorGameName));
     CheckField("SFXGame.BioActorBehavior", "m_oActorType", SDK_FIELD(UBioActorBehavior, m_oActorType));
@@ -726,6 +741,10 @@ void CheckPaths() {
     CheckPath("Engine.SkeletalMeshComponent", {"Attachments", "RelativeLocation"}, SDK_AT(offsetof(FAttachment, RelativeLocation), sizeof(FVector)));
     CheckPath("Engine.SkeletalMeshComponent", {"Attachments", "RelativeRotation"}, SDK_AT(offsetof(FAttachment, RelativeRotation), sizeof(FRotator)));
     CheckPath("Engine.SkeletalMeshComponent", {"Attachments", "RelativeScale"}, SDK_AT(offsetof(FAttachment, RelativeScale), sizeof(FVector)));
+    CheckElement("Engine.AnimNodeBlendBase", "Children", sizeof(FAnimBlendChild));  // game/combat_stance (research/38)
+    CheckPath("Engine.AnimNodeBlendBase", {"Children", "Name"}, SDK_AT(offsetof(FAnimBlendChild, Name), 8));
+    CheckPath("Engine.AnimNodeBlendBase", {"Children", "Anim"}, SDK_AT(offsetof(FAnimBlendChild, Anim), 8));
+    CheckPath("Engine.AnimNodeBlendBase", {"Children", "Weight"}, SDK_AT(offsetof(FAnimBlendChild, Weight), 4));
     CheckElement("SFXGame.BioBaseSquad", "Members", sizeof(FMemberData));
     CheckPath("SFXGame.BioBaseSquad", {"Members", "SquadMember"}, SDK_AT(offsetof(FMemberData, SquadMember), 8));
     CheckPath("SFXGame.BioBaseSquad", {"Members", "eSwitchWeapon"}, SDK_AT(offsetof(FMemberData, eSwitchWeapon), 1));
@@ -776,6 +795,7 @@ void CheckFunctions() {
         "SFXGame.SFXGameModeDefault.TryMelee",
         "SFXGame.BioPawn.IsInCombatActionState",
         "SFXGame.BioPawn.IsSwitchingWeapons",
+        "SFXGame.BioPawn.GetWalkingSpeedMode",  // game/combat_stance (research/38)
         "SFXGame.BioPawn.IsThrowingGrenade",
         "SFXGame.BioPlayerInput.IsCombatEnabled",
         "SFXGame.BioGrenadeProjectile.SetVelocity",
@@ -913,6 +933,7 @@ void CheckParams() {
     // The modules' hand-built blocks: a bool return value at 0.
     CheckParam("SFXGame.BioPawn.IsInCombatActionState", "ReturnValue", SDK_AT(0, 4));
     CheckParam("SFXGame.BioPawn.IsSwitchingWeapons", "ReturnValue", SDK_AT(0, 4));
+    CheckParam("SFXGame.BioPawn.GetWalkingSpeedMode", "ReturnValue", SDK_AT(0, 1));
     CheckParam("SFXGame.BioPawn.IsThrowingGrenade", "ReturnValue", SDK_AT(0, 4));
     CheckParam("SFXGame.BioPlayerInput.IsCombatEnabled", "ReturnValue", SDK_AT(0, 4));
     CheckParam("SFXGame.BioPawn.IsDead", "ReturnValue", SDK_AT(0, 4));

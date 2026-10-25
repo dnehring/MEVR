@@ -206,6 +206,10 @@ void Settings::Read(menu::Values& v) {
     flag("throwables", ini.Num("Throwables", "enabled", 1.0f) != 0.0f);
     v.numbers["recoil_buzz"] = std::round(std::clamp(ini.Num("Hands", "recoilHaptic", 0.5f), 0.0f, 1.0f) * 100.0f);
     flag("aim_assist", ini.Num("Hands", "aimAssist", 0.0f) != 0.0f);
+    // The weapon drawn, like exploring (research/38): the mod reads exploreStance and drawRate, the host constantEye.
+    flag("explore_stance", ini.Num("Hands", "exploreStance", 1.0f) != 0.0f);
+    flag("constant_eye", ini.Num("Hands", "constantEye", 1.0f) != 0.0f);
+    v.numbers["draw_rate"] = std::clamp(ini.Num("Hands", "drawRate", 2.0f), 1.0f, 4.0f);
     // Body.
     v.numbers["trim_pitch"] = ini.Num("Hands", "handPitch", 0.0f);
     v.numbers["trim_yaw"] = ini.Num("Hands", "handYaw", 0.0f);
@@ -416,6 +420,12 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         Put("Hands", "recoilHaptic", fixed(v.Number("recoil_buzz") / 100.0f, 2), final);
     } else if (key == "aim_assist") {
         Put("Hands", "aimAssist", onOff("aim_assist"), true);
+    } else if (key == "explore_stance") {
+        Put("Hands", "exploreStance", onOff("explore_stance"), true);
+    } else if (key == "constant_eye") {
+        Put("Hands", "constantEye", onOff("constant_eye"), true);
+    } else if (key == "draw_rate") {
+        Put("Hands", "drawRate", fixed(v.Number("draw_rate"), 1), final);
     } else if (key == "trim_pitch" || key == "trim_yaw" || key == "trim_roll") {
         char const* name = key == "trim_pitch" ? "handPitch" : key == "trim_yaw" ? "handYaw" : "handRoll";
         Put("Hands", name, fixed(v.Number(key), 1), final);

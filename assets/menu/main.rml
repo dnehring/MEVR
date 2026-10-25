@@ -94,6 +94,14 @@
 			<div class="row"><div class="rl"><div class="rlab">Aim assist</div><div class="rdesc">Off: the stick turns you at the speed you ask, even near enemies</div></div>
 				<button class="tog" data-class-on="aim_assist" data-event-click="toggle('aim_assist')"><div class="knob"/></button></div>
 		</div>
+		<div class="group">
+			<div class="gtitle"><span>Weapon drawn</span><div class="gline"/></div>
+			<div class="row"><div class="rl"><div class="rlab">Body stays relaxed</div><div class="rdesc">With a gun out Shepard keeps the explore pose under you; shots, grenades and powers work as before</div></div>
+				<button class="tog" data-class-on="explore_stance" data-event-click="toggle('explore_stance')"><div class="knob"/></button></div>
+			<div class="row"><div class="rl"><div class="rlab">Steady view</div><div class="rdesc">Drawing, holstering, aiming and sprinting leave your eyes where they are</div></div>
+				<button class="tog" data-class-on="constant_eye" data-event-click="toggle('constant_eye')"><div class="knob"/></button></div>
+			<div class="srow"><div class="slab">Draw speed</div><input type="range" min="1" max="4" step="0.5" data-value="draw_rate"/><div class="sval">{{draw_rate_text}}</div></div>
+		</div>
 	</div>
 
 	<!-- ===================================================================================== Body -->

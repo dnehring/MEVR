@@ -403,6 +403,14 @@ void NoteStereoSubmit(int mode, float const declaredPosition[2][3], float const 
 // frames later without stalling, and logs how many pixels are visible (alpha > 0). `tag` names it.
 void ProbeTextureAlpha(ID3D11DeviceContext* context, ID3D11Texture2D* texture, const char* tag) noexcept;
 
+// [MEVR] The constant eye (research/38 B, src/plugin/HalcyonBridge.cpp). Present thread, in FpOwnAndWrite after the
+// liveness guard, with the Offset Halcyon is about to write for `mode` (a first-person mode FpStateForClass chose) in
+// fwd/right/up. With [Hands] constantEye = 1 in ASI\LE1MEVR.ini (default; re-read once a second) and a standing
+// on-foot mode (not a crouch mode), replaces it with the mode's own HookOffset minus the explore eye (Explore's
+// HookOffset minus fpExplore) and returns true: every standing mode then puts the eye at the same point from the hook
+// bone. False (unchanged) otherwise.
+bool ConstantFpEye(void* mode, float* fwd, float* right, float* up) noexcept;
+
 // ProcessEvent only on the game thread (research/36, the 2026-10-23 crash): UnrealScript's VM keeps its state in
 // process-wide globals (GPropAddr, GRuntimeUCFlags...), so a script call from the Present thread races the game
 // thread's script. True on the engine tick's thread (src/plugin/GameThreadCalls).

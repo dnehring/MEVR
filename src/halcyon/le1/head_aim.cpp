@@ -968,6 +968,10 @@ void FpOwnAndWrite(void* mode, const MELEVR::Config::VrConfig::FpStateCfg* st) n
         LogLine("[FPCAM] owned mode failed deep-liveness -> dropped, no write");
         return;
     }
+    // [MEVR] The constant eye (research/38 B): with [Hands] constantEye on, a standing on-foot mode's Offset is its own
+    // HookOffset minus the explore eye, so drawing, holstering, aimed fire and sprinting leave the view in place.
+    MELEVR::Config::VrConfig::FpStateCfg mevrEye = *st;
+    if (::MELEVR::MevrBridge::ConstantFpEye(mode, &mevrEye.fwd, &mevrEye.right, &mevrEye.up)) st = &mevrEye;
     // Write ONLY when the offset isn't already at target. The game does not stomp it frame-to-frame
     // (readback proved before==target), so in steady FP this writes ~never - another big cut to the
     // live-write surface. A slider change or a game reset makes before != target -> one corrective write.
