@@ -219,6 +219,92 @@ void* BoundShaderStateCtorHook(void* self, void* declaration, void* strides, voi
     return made;
 }
 
+// ---- Umbra's visibility resolved once a frame (research/35, attempt 46) ---------------------------------------
+// Both eyes share ONE Umbra camera (attempt 21: ULocalPlayer's, copied into each view at +0x4D4), so the second eye's
+// resolve traverses the same cells from the same camera and reports the same instances, then issues and waits for its
+// own occluder queries: 21% of the heavy frame, half of it pure repetition. The resolve itself must run for each eye
+// (attempts 10-11: it drains Umbra's command ring; a render that skips it deadlocks the game thread), so this keeps the
+// second eye's resolve and makes it cheap instead: the camera's parameter word (camera +0x10 -> impl, impl +0x420 ->
+// the word Umbra::Camera::resolveVisibility writes into its resolve command, 0xD4BBA0) loses the bits in
+// [Performance] umbraSecondEyeClearBits (default 2, which should be OCCLUSION_CULLING in Umbra OB 2.6; the log says
+// what the word is) for the second eye's render, so Umbra does a frustum pass and no occlusion, and the visible-
+// instance hook then lets through only the primitives the first eye's resolve reported this frame (their
+// FPrimitiveSceneInfo pointers, record +0, in a per-frame set): the second eye gets the first eye's visible set exactly.
+// [Performance] umbraSharedVisibility.
+extern thread_local int t_renderIndex;   // defined below (the render's index within the frame)
+template <typename T>
+T& Field(std::uint8_t* object, std::size_t offset);   // defined below
+constexpr std::size_t kViewUmbraCamera = 0x4D4;
+constexpr std::size_t kUmbraCameraImpl = 0x10;
+constexpr std::size_t kUmbraCameraImplParams = 0x420;
+std::atomic<int> gUmbraSharedVisibility{0};
+std::atomic<int> gUmbraSecondEyeClearBits{2};
+std::atomic<int> gUmbraParamsLogged{0};
+std::atomic<std::uint64_t> gSecondEyeReported{0};
+std::atomic<std::uint64_t> gSecondEyeFiltered{0};
+std::atomic<std::uint64_t> gSecondEyeRendersCheap{0};
+constexpr std::size_t kMaxQueryResults = 4096;
+std::uint64_t gFirstEyeQueryResults[kMaxQueryResults];
+std::size_t gFirstEyeQueryCount = 0;
+std::size_t gSecondEyeQueryIndex = 0;
+constexpr std::size_t kVisibleSetSize = 1 << 14;   // 16K slots for ~1,500 pointers a frame
+void* gFirstEyeVisible[kVisibleSetSize];
+std::size_t gFirstEyeVisibleCount = 0;
+
+std::size_t VisibleSlot(void* key) {
+    std::uint64_t h = reinterpret_cast<std::uintptr_t>(key) * 0x9E3779B97F4A7C15ull;
+    h ^= h >> 31;
+    return static_cast<std::size_t>(h) & (kVisibleSetSize - 1);
+}
+void VisibleSetClear() {
+    std::memset(gFirstEyeVisible, 0, sizeof(gFirstEyeVisible));
+    gFirstEyeVisibleCount = 0;
+}
+void VisibleSetAdd(void* key) {
+    if (key == nullptr || gFirstEyeVisibleCount >= kVisibleSetSize / 2) {
+        return;
+    }
+    std::size_t slot = VisibleSlot(key);
+    while (gFirstEyeVisible[slot] != nullptr) {
+        if (gFirstEyeVisible[slot] == key) {
+            return;
+        }
+        slot = (slot + 1) & (kVisibleSetSize - 1);
+    }
+    gFirstEyeVisible[slot] = key;
+    ++gFirstEyeVisibleCount;
+}
+bool VisibleSetHas(void* key) {
+    if (key == nullptr) {
+        return false;
+    }
+    std::size_t slot = VisibleSlot(key);
+    while (gFirstEyeVisible[slot] != nullptr) {
+        if (gFirstEyeVisible[slot] == key) {
+            return true;
+        }
+        slot = (slot + 1) & (kVisibleSetSize - 1);
+    }
+    return false;
+}
+
+// The Umbra camera's parameter word of the renderer's first view, or nullptr.
+std::uint32_t* UmbraCameraParams(std::uint8_t* renderer) {
+    auto* const views = Field<std::uint8_t*>(renderer, 0x60);
+    if (views == nullptr || Field<int>(renderer, 0x68) <= 0) {
+        return nullptr;
+    }
+    auto* const camera = Field<std::uint8_t*>(views, kViewUmbraCamera);
+    if (camera == nullptr) {
+        return nullptr;
+    }
+    auto* const impl = Field<std::uint8_t*>(camera, kUmbraCameraImpl);
+    if (impl == nullptr) {
+        return nullptr;
+    }
+    return Field<std::uint32_t*>(impl, kUmbraCameraImplParams);
+}
+
 // ---- Screen-size cull of Umbra's visible instances (research/35, attempt 45) ------------------------------------
 // The engine's [SystemSettings] cannot cut static mesh draws (2,500 of the 4,500 at the heavy spot, attempt 44) and it
 // has no cull-distance scale; it does honour each primitive's own MinDrawDistance / MaxDrawDistance in the function the
@@ -250,6 +336,18 @@ std::atomic<int> gProjectionLogged{0};
 int UmbraInstanceVisibleHook(void* commander, void* record, float distanceSq, std::uint32_t a4, std::uint32_t a5,
                              std::uint32_t a6, int a7) {
     gInstancesSeen.fetch_add(1, std::memory_order_relaxed);
+    if (record != nullptr && gUmbraSharedVisibility.load(std::memory_order_relaxed) != 0) {
+        void* const primitive = *static_cast<void**>(record);   // the FPrimitiveSceneInfo the record was built from
+        if (t_renderIndex == 0) {
+            VisibleSetAdd(primitive);
+        } else if (t_renderIndex == 1) {
+            gSecondEyeReported.fetch_add(1, std::memory_order_relaxed);
+            if (!VisibleSetHas(primitive)) {
+                gSecondEyeFiltered.fetch_add(1, std::memory_order_relaxed);
+                return 0;
+            }
+        }
+    }
     auto* const c = static_cast<std::uint8_t*>(commander);
     auto* const view = Field<std::uint8_t*>(c, kCommanderViewField);
     if (view != nullptr && record != nullptr && distanceSq > 1.0f) {
@@ -345,8 +443,17 @@ bool NearlySame(float const* a, float const* b) {
     return true;
 }
 
+std::atomic<std::uint64_t> gSecondEyeQueriesSkipped{0};
+std::atomic<std::uint64_t> gSecondEyeFakeResults{0};
+
 void UmbraIssueQueriesHook(void* commander) {
     auto* const c = static_cast<std::uint8_t*>(commander);
+    // umbraSharedVisibility = 2: the second eye issues no occluder queries (its visible set is the first eye's anyway);
+    // the results read (command 6) then answers Umbra's pending queries as "visible" without touching the GPU.
+    if (t_renderIndex == 1 && gUmbraSharedVisibility.load(std::memory_order_relaxed) >= 2) {
+        gSecondEyeQueriesSkipped.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
     auto* const view = Field<std::uint8_t*>(c, kCommanderView);
     if (gUmbraEyeMatrix.load(std::memory_order_relaxed) == 0 || view == nullptr || Field<int>(c, kCommanderViewParamsSet) != 0) {
         gUmbraIssueQueriesOrig(commander);
@@ -798,8 +905,31 @@ void SceneRenderHook(void* renderer) {
     } else {
         ReleaseKept();
     }
+    std::uint32_t* params = nullptr;
+    std::uint32_t paramsBefore = 0;
+    if (gUmbraSharedVisibility.load(std::memory_order_relaxed) != 0 && gUmbraInstanceVisibleHooked) {
+        if (index == 0) {
+            VisibleSetClear();
+            gFirstEyeQueryCount = 0;
+        } else if (index == 1) {
+            gSecondEyeQueryIndex = 0;
+            params = UmbraCameraParams(static_cast<std::uint8_t*>(renderer));
+            if (params != nullptr) {
+                paramsBefore = *params;
+                if (gUmbraParamsLogged.exchange(1, std::memory_order_relaxed) == 0) {
+                    log::Info("render levers: the Umbra camera's parameter word is 0x{:X}; the second eye's render clears 0x{:X} of it",
+                        paramsBefore, static_cast<unsigned>(gUmbraSecondEyeClearBits.load(std::memory_order_relaxed)));
+                }
+                *params = paramsBefore & ~static_cast<std::uint32_t>(gUmbraSecondEyeClearBits.load(std::memory_order_relaxed));
+                gSecondEyeRendersCheap.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+    }
     if (!handled) {
         gSceneRenderOrig(renderer);
+    }
+    if (params != nullptr) {
+        *params = paramsBefore;
     }
     QueryPerformanceCounter(&end);
     EndEyeHistory(eyeHistory);
@@ -818,10 +948,85 @@ void SceneRenderHook(void* renderer) {
 // The commander's command(): each call timed into its part for this render's place in the frame; with
 // umbraQueryWait = 0 the resolve's start stamp is moved 4 s back as soon as it's written, so the results read
 // (code 6) never spins for an unready query (it then counts as visible: a few more draws, no stall).
+// Umbra's pending occluder queries live in a ring in the resolve context (commander +8): count at +0x1C8, head at
+// +0x1CC, entries of 0x19 bytes from the pointer at +0x2168, each result a 64-bit word at +9 whose top bit is kept.
+// Mode 2 answered every pending query "visible" and that poisoned Umbra's shared occlusion state for both eyes (8,000
+// draws a frame: attempt 46). Mode 3 answers the second eye's i-th pending query with the first eye's i-th result of the
+// same frame (the reads come in many calls per resolve, so a running index per render; same occluders, same order, as
+// attempt 39 assumed), and "visible" only past the first eye's count.
+
+struct QueryRing {
+    std::uint8_t* base = nullptr;
+    int count = 0;
+    int head = 0;
+};
+QueryRing PendingQueries(std::uint8_t* commander) {
+    QueryRing ring;
+    auto* const context = Field<std::uint8_t*>(commander, 8);
+    if (context == nullptr) {
+        return ring;
+    }
+    ring.count = Field<int>(context, 0x1C8);
+    ring.head = Field<int>(context, 0x1CC);
+    ring.base = Field<std::uint8_t*>(context, 0x2168);
+    if (ring.base == nullptr || ring.count < 0 || ring.count > 1000 || ring.head < 0) {
+        ring.base = nullptr;
+    }
+    return ring;
+}
+std::uint64_t QueryResult(QueryRing const& ring, int i) {
+    std::uint64_t result = 0;
+    std::memcpy(&result, ring.base + static_cast<std::ptrdiff_t>(ring.head + i) * 0x19 + 9, sizeof(result));
+    return result;
+}
+void SetQueryResult(QueryRing const& ring, int i, std::uint64_t value) {
+    std::uint8_t* const at = ring.base + static_cast<std::ptrdiff_t>(ring.head + i) * 0x19 + 9;
+    std::uint64_t result = 0;
+    std::memcpy(&result, at, sizeof(result));
+    result = (result & 0x8000000000000000ull) | (value & 0x7FFFFFFFFFFFFFFFull);
+    std::memcpy(at, &result, sizeof(result));
+}
+// After the first eye's real read: keep what it got, in order.
+void RecordFirstEyeQueryResults(std::uint8_t* commander) {
+    QueryRing const ring = PendingQueries(commander);
+    if (ring.base == nullptr) {
+        return;
+    }
+    for (int i = 0; i < ring.count && gFirstEyeQueryCount < kMaxQueryResults; ++i) {
+        gFirstEyeQueryResults[gFirstEyeQueryCount++] = QueryResult(ring, i) & 0x7FFFFFFFFFFFFFFFull;
+    }
+}
+bool FakeSecondEyeQueryResults(std::uint8_t* commander, int mode) {
+    QueryRing const ring = PendingQueries(commander);
+    if (ring.base == nullptr) {
+        return false;
+    }
+    for (int i = 0; i < ring.count; ++i) {
+        std::uint64_t value = 1;   // visible, when the first eye had no i-th result
+        if (mode == 3 && gSecondEyeQueryIndex < gFirstEyeQueryCount) {
+            value = gFirstEyeQueryResults[gSecondEyeQueryIndex];
+        }
+        ++gSecondEyeQueryIndex;
+        SetQueryResult(ring, i, value);
+    }
+    Field<int>(commander, 0x94) = 0;   // as the game's read does first
+    gSecondEyeFakeResults.fetch_add(static_cast<std::uint64_t>(ring.count), std::memory_order_relaxed);
+    return true;
+}
+
 void CommandHook(void* commander, unsigned code) {
     LARGE_INTEGER begin{}, end{};
     QueryPerformanceCounter(&begin);
-    gCommandOrig(commander, code);
+    int const sharedMode = gUmbraSharedVisibility.load(std::memory_order_relaxed);
+    if (code == 6 && t_renderIndex == 1 && sharedMode >= 2 &&
+        FakeSecondEyeQueryResults(static_cast<std::uint8_t*>(commander), sharedMode)) {
+        // no GPU read for the second eye
+    } else {
+        gCommandOrig(commander, code);
+        if (code == 6 && t_renderIndex == 0 && sharedMode == 3) {
+            RecordFirstEyeQueryResults(static_cast<std::uint8_t*>(commander));
+        }
+    }
     if (code == 0 && gUmbraQueryWait.load(std::memory_order_relaxed) == 0) {
         *At<float*>(kUmbraResolveStartRva) -= 4.0f;
     }
@@ -1146,6 +1351,17 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
                 static_cast<double>(seen) / f, static_cast<double>(culled) / f, bins[0] / f, bins[1] / f, bins[2] / f,
                 bins[3] / f, bins[4] / f, bins[5] / f, bins[6] / f, bins[7] / f);
         }
+        std::uint64_t const reported = gSecondEyeReported.exchange(0, std::memory_order_relaxed);
+        std::uint64_t const filtered = gSecondEyeFiltered.exchange(0, std::memory_order_relaxed);
+        std::uint64_t const cheap = gSecondEyeRendersCheap.exchange(0, std::memory_order_relaxed);
+        std::uint64_t const issuesSkipped = gSecondEyeQueriesSkipped.exchange(0, std::memory_order_relaxed);
+        std::uint64_t const faked = gSecondEyeFakeResults.exchange(0, std::memory_order_relaxed);
+        if (reported != 0 || cheap != 0 || issuesSkipped != 0) {
+            share += std::format("; shared visibility: {} second-eye renders with the camera bits cleared, {:.0f} instances reported "
+                                 "a frame, {:.0f} not in the first eye's set, {} query issues skipped, {:.0f} results answered a frame",
+                cheap, static_cast<double>(reported) / static_cast<double>(frames), static_cast<double>(filtered) / static_cast<double>(frames),
+                issuesSkipped, static_cast<double>(faked) / static_cast<double>(frames));
+        }
         std::uint64_t const shared = gUmbraShared.exchange(0, std::memory_order_relaxed);
         std::uint64_t const missing = gUmbraShareMissing.exchange(0, std::memory_order_relaxed);
         if (shared != 0 || missing != 0) {
@@ -1334,6 +1550,22 @@ void Tick() {
                                   : "every visible instance is drawn (the game's own); the sizes are only counted",
                 static_cast<double>(minScreenRead) / 10.0, gUmbraInstanceVisibleHooked ? "" : "; not hooked, so no effect");
         }
+        static int umbraShared = -1;
+        int const umbraSharedRead = std::clamp(readInt(L"umbraSharedVisibility", 0), 0, 3);
+        int const clearBits = readInt(L"umbraSecondEyeClearBits", 0);
+        gUmbraSecondEyeClearBits.store(clearBits, std::memory_order_relaxed);
+        if (umbraSharedRead != umbraShared) {
+            umbraShared = umbraSharedRead;
+            gUmbraSharedVisibility.store(umbraSharedRead, std::memory_order_relaxed);
+            log::Info("render levers: {} ([Performance] umbraSharedVisibility = {}, umbraSecondEyeClearBits = 0x{:X}){}",
+                umbraSharedRead == 3 ? "the second eye issues no occluder queries (its pending ones get the first eye's results) and "
+                                       "only the first eye's visible primitives pass its visible-instance call"
+                : umbraSharedRead == 2 ? "the second eye issues no occluder queries (its pending ones are answered visible: poisons "
+                                         "Umbra, attempt 46) and only the first eye's visible primitives pass its visible-instance call"
+                : umbraSharedRead == 1 ? "only the first eye's visible primitives pass the second eye's visible-instance call"
+                                       : "each eye resolves its own Umbra visibility (the game's own)",
+                umbraSharedRead, static_cast<unsigned>(clearBits), gUmbraInstanceVisibleHooked ? "" : "; not hooked, so no effect");
+        }
         static int perEyeOcclusion = -1;
         int const perEyeOcclusionRead = readInt(L"perEyeOcclusion", 0) != 0 ? 1 : 0;
         if (perEyeOcclusionRead != perEyeOcclusion) {
@@ -1423,11 +1655,11 @@ bool PerEyeViewState() {
 }
 
 std::string SettingsJson() {
-    return std::format("{{\"umbraQueryWait\": {}, \"ue3QueryWait\": {}, \"perEyeViewState\": {}, \"perEyeOcclusion\": {}, \"umbraEyeMatrix\": {}, \"flushFirstEye\": {}, \"umbraShareResults\": {}, \"keepBoundShaderStates\": {}, \"minScreenRadiusPx\": {}, \"pCoresOnly\": {}, \"sharePass\": {}, \"shareFailed\": {}, \"replayFailed\": {}, "
+    return std::format("{{\"umbraQueryWait\": {}, \"ue3QueryWait\": {}, \"perEyeViewState\": {}, \"perEyeOcclusion\": {}, \"umbraEyeMatrix\": {}, \"flushFirstEye\": {}, \"umbraShareResults\": {}, \"keepBoundShaderStates\": {}, \"minScreenRadiusPx\": {}, \"umbraSharedVisibility\": {}, \"pCoresOnly\": {}, \"sharePass\": {}, \"shareFailed\": {}, \"replayFailed\": {}, "
         "\"drawReplay\": {}, \"hooked\": {}}}",
         gUmbraQueryWait.load(std::memory_order_relaxed), gUe3QueryWait.load(std::memory_order_relaxed),
         gPerEyeViewState.load(std::memory_order_relaxed), gPerEyeOcclusion.load(std::memory_order_relaxed),
-        gUmbraEyeMatrix.load(std::memory_order_relaxed), gFlushFirstEye.load(std::memory_order_relaxed), gUmbraShareResults.load(std::memory_order_relaxed), gKeepBoundShaderStates.load(std::memory_order_relaxed), gMinScreenRadiusTenths.load(std::memory_order_relaxed) / 10.0, gPCoresOnly.load(std::memory_order_relaxed),
+        gUmbraEyeMatrix.load(std::memory_order_relaxed), gFlushFirstEye.load(std::memory_order_relaxed), gUmbraShareResults.load(std::memory_order_relaxed), gKeepBoundShaderStates.load(std::memory_order_relaxed), gMinScreenRadiusTenths.load(std::memory_order_relaxed) / 10.0, gUmbraSharedVisibility.load(std::memory_order_relaxed), gPCoresOnly.load(std::memory_order_relaxed),
         gSharePass.load(std::memory_order_relaxed), gShareFailed.load(std::memory_order_relaxed) ? "true" : "false",
         gReplayFailed.load(std::memory_order_relaxed) ? "true" : "false", draw_replay::StatsJson(), gHooked ? "true" : "false");
 }

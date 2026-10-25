@@ -330,3 +330,42 @@ Snapshots at 0 and 8 px are indistinguishable. 32 px radius is a 64 px-wide blob
 pop-in at distance the player would notice (the earlier complaint); 64 px is obvious. **Default 0** (measure only); the
 table is the trade-off for whoever sets it (16 is subtle, 32 is 0.8 ms). The honest reading: at this spot the draws
 are not small things, so "fewer draws" ends here without visible loss.
+
+## Attempt 46 (2026-10-24, 22:00-22:25): Umbra's visibility once a frame, three ways, and why none can work
+
+The idea: both eyes share one Umbra camera (attempt 21), so the second eye's resolve repeats the first's traversal and
+reports the same instances (measured: of ~650 instances the second eye reports a frame, 3-7 are not in the first eye's
+set). The resolve must still run for each eye (attempts 10-11: skipping it deadlocks the command ring), so the lever
+(`umbraSharedVisibility`, host, off) keeps the second eye's resolve and tries to make it cheap, with the first eye's
+visible set filtering the second eye's visible-instance call (`0x8BE0B0`, record +0 = the FPrimitiveSceneInfo):
+
+| mode | what the second eye does | frame (ms) | draws |
+|---|---|---|---|
+| 0 | the game's own | 10.7-11.2 | 4,300-4,500 |
+| 1 | the filter only, plus a camera parameter word (impl +0x420, 0x87) with bits cleared: no bit changes Umbra's behaviour (0x1, 0x2, 0x4, 0x80, 0x6, 0x86 tried) | 10.9-11.2 | 4,500-4,600 |
+| 2 | no occluder query issue (`IssueOcclusionQueries` returns), its pending queries answered "visible" in the results read | 15.5-18.9 | 8,000-8,100 |
+| 3 | no issue, its pending queries answered with the first eye's results of the frame, by index | 15.7-15.9 | 7,550 |
+
+Modes 2 and 3 double the draws for BOTH eyes. The reason is the query pipeline: the ring in the resolve context
+(commander +8: count +0x1C8, head +0x1CC, 0x19-byte entries from +0x2168, the result at +9) is one pipeline across
+consecutive resolves regardless of eye: the queries issued in one resolve are read in the next (attempt 20 saw it as
+"each eye reads the other's queries"). When the second eye issues none, the first eye's next read finds nothing real and
+Umbra's shared occlusion state opens up for everyone. Answering the second eye's reads with anything but the GPU's own
+results poisons the same state. So the second eye's resolve must issue and read its own queries, and the "resolve once a
+frame" lever has no form that works; the levers log also shows the resolve's cost is mostly the engine-side callbacks
+(the instance marking and the base-pass flush batches, which are real work per view) rather than Umbra's traversal.
+
+**The other deep lever falls with it:** the opaque base pass is not a pass the engine runs after visibility, it is the
+flush batches inside the resolve (`FUN_1408b5ff0` -> `FUN_14076d820`), interleaved with the occluder queries. Replaying
+the first eye's draws for the second eye would have to skip those batches, i.e. the resolve, i.e. the deadlock; what
+could be replayed outside the resolve (lights, translucency) is ~15% of the frame and the replay re-issues the D3D11
+calls anyway, so the saving would be the engine's submission code above the RHI only: well under a millisecond, for the
+correctness risk of substituting constants in every shader. Not built.
+
+The code of modes 1-3 stays in `plugin/RenderLevers` as the record of the pipeline (default 0); `umbraSharedVisibility`
+should not be set.
+
+Also measured here, alternating three times with the still view at the heavy spot: `CompositeDynamicLights True` is
+consistently 0.3-0.5 ms cheaper on the CPU and 0.3-0.6 on the GPU (dynamic lights composited into the light
+environment: characters lit a little flatter), `LightEnvironmentShadows` is noise. The former is an option for the
+SystemSettings applier if the look is acceptable; not set.

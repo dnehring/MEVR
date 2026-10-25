@@ -54,6 +54,17 @@ game d3d11 17% + driver 11% + ntdll 12%. No [SystemSettings] key moves the draw 
 finds few tiny objects (8 px: 0.3 ms, invisible; 32 px: 0.8 ms with pop-in). What is left is deep: Umbra's resolve
 shared between the eyes, or the second eye's draws replayed with its resolve kept (items 5 and 7 below).
 
+## The deep levers, settled (22:25, attempt 46)
+
+Umbra's resolve cannot be shared between the eyes: its query pipeline runs across consecutive resolves regardless of
+eye (issued in one, read in the next), so a second eye that issues no queries, or answers its reads with anything but
+the GPU's results, opens the occlusion state for both eyes (draws double); skipping its resolve deadlocks the command
+ring (attempts 10-11). And the opaque base pass is the flush batches inside that resolve, so the second eye's draws
+cannot be replayed without skipping it. Both deep CPU levers are closed. What remains at heavy spots is the game's own
+per-view work twice, at ~10.7-11 ms warm on the fake headset: `CompositeDynamicLights True` buys 0.3-0.5 ms (a look
+trade-off), the size cull 0.3 ms invisibly, and the GPU side is the render scale. The architectural answer for the
+heaviest areas stays Depth mode.
+
 ## The sequence, with the expected gain and the evidence for each
 
 1. **umbraShareResults** (built, a4dffb5, default 0, unmeasured). The second eye's Umbra reads that aren't ready get
