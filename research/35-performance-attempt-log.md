@@ -369,3 +369,32 @@ Also measured here, alternating three times with the still view at the heavy spo
 consistently 0.3-0.5 ms cheaper on the CPU and 0.3-0.6 on the GPU (dynamic lights composited into the light
 environment: characters lit a little flatter), `LightEnvironmentShadows` is noise. The former is an option for the
 SystemSettings applier if the look is acceptable; not set.
+
+## Attempt 47 (2026-10-24, 23:30): DXVK under the game (D3D11 -> Vulkan)
+
+28% of the heavy frame's render thread is below the game (d3d11.dll 17%, the NVIDIA driver 11%), per-draw submission
+the engine cannot avoid. DXVK 3.1.1 (doitsujin/dxvk, zlib) translates D3D11 to Vulkan with a leaner path and is used on
+Windows for CPU-bound D3D11 games. Installed as `d3d11.dll` + `dxgi.dll` beside `MassEffect1.exe`. One host change was
+needed and stays ([MEVR] seam in `halcyon/le1/dxgi_proxy.cpp`): the host hooks the factory exports of the dxgi.dll it
+loads, which was always the system one; a dxgi.dll beside the game is the one the game loads by name, so it is the one
+to hook. With that, DXVK's device creates the swapchain Halcyon captures, SteamVR's OpenXR binding accepts DXVK's
+D3D11 device for its shared swapchain images, and the game plays in VR normally (snapshot checked).
+
+Launching without a person at the machine: with no foreground window on the input desktop, SendKeys ("Access is
+denied") fails, but window messages (PostMessage WM_KEYDOWN/WM_KEYUP to the launcher's and the game's windows) start the
+game and resume the save; `tools/launch-game.ps1` now does that.
+
+At the heavy spot, head motion replayed, 2 x 8 s:
+
+| | native D3D11 (attempts 43-46) | DXVK 3.1.1 |
+|---|---|---|
+| fpsVR-style cpu, median / p90 | 10.7-11.2 / 12.0-12.8 | 12.9-13.5 / 14.8-15.0 |
+| render thread busy | 10.4-10.9 | 11.7-12.2 |
+| draws | 4,300-4,500 | 4,000-4,600 |
+| GPU span | 9.8-10.2 | 10.7-11.5 |
+| per draw (regression) | 1.8 us | 1.75-1.9 us |
+| render thread by module | game 50%, d3d11 17%, driver 11%, ntdll 12% | game 45%, DXVK's d3d11 28%, ntdll 18%, driver 0% |
+
+**DXVK is 1.5-2 ms slower on this frame.** The engine's per-draw pattern (an index buffer and topology set per draw, a
+constant buffer `UpdateSubresource` per dirty buffer, `DrawIndexedPrimitiveUP` for Umbra's ~380 occluder queries) lands
+on DXVK's upload and command-stream paths, and its worker-thread hand-off shows as the kernel share. Not a lever.

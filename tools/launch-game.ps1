@@ -34,6 +34,17 @@ $win64 = Join-Path $root 'Game\ME1\Binaries\Win64'
 $exe = Join-Path $win64 'MassEffect1.exe'
 $log = Join-Path $win64 'Logs\LE1MEVR.log'
 $status = Join-Path $env:LOCALAPPDATA 'MEVR\testloop.status'
+# Keys go to the windows as messages (WM_KEYDOWN / WM_KEYUP), not as synthesized input: SendKeys needs a foreground
+# window on the input desktop and is refused ("Access is denied") when nobody is at the machine (2026-10-24 23:50).
+Add-Type @'
+using System; using System.Runtime.InteropServices;
+public static class MevrKeys { [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l); }
+'@
+function Send-KeyMessage([IntPtr]$window, [int]$vk) {
+    if ($window -eq [IntPtr]::Zero) { return $false }
+    [void][MevrKeys]::PostMessage($window, 0x100, [IntPtr]$vk, [IntPtr]0); Start-Sleep -Milliseconds 80
+    [void][MevrKeys]::PostMessage($window, 0x101, [IntPtr]$vk, [IntPtr]0xC0000001); return $true
+}
 
 if ($Quit) {
     if (-not (Get-Process MassEffect1 -ErrorAction SilentlyContinue)) { 'not running'; return }
@@ -72,12 +83,9 @@ if ($Attach) {
         $l = Get-Process MassEffectLauncher -ErrorAction SilentlyContinue
         if ($l -and -not $launcherSeen) { $launcherSeen = Get-Date; "launcher up (pid $($l.Id))" }
         if ($l -and ((Get-Date) - $launcherSeen).TotalSeconds -gt 12 -and ((Get-Date) - $lastKeys).TotalSeconds -gt 10) {
-            try {
-                [Microsoft.VisualBasic.Interaction]::AppActivate($l.Id); Start-Sleep -Milliseconds 600
-                [System.Windows.Forms.SendKeys]::SendWait(' '); Start-Sleep -Milliseconds 900
-                [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
-                $lastKeys = Get-Date; 'Space and Enter sent to the launcher (PLAY)'
-            } catch { "keys to the launcher failed: $($_.Exception.Message)" }
+            $l.Refresh()
+            if (Send-KeyMessage $l.MainWindowHandle 0x20) { Start-Sleep -Milliseconds 900; [void](Send-KeyMessage $l.MainWindowHandle 0x0D); $lastKeys = Get-Date; 'Space and Enter posted to the launcher (PLAY)' }
+            else { 'the launcher has no main window yet' }
         }
     }
     if (-not $p) { 'no MassEffect1.exe within 120 s: the EA app did not launch it (its log: %LOCALAPPDATA%\Electronic Arts\EA Desktop\Logs\EADesktopVerbose.log)'; exit 1 }
@@ -106,13 +114,9 @@ while ((Get-Date) -lt $deadline) {
     # Frames running but not on foot: the title screen (or the save's loading). Enter resumes the last save; one every
     # 12 s, from 25 s after the start.
     if ($fresh -and ((Get-Date) - $p.StartTime).TotalSeconds -gt 25 -and ((Get-Date) - $lastEnter).TotalSeconds -gt 12) {
-        try {
-            [Microsoft.VisualBasic.Interaction]::AppActivate($p.Id)
-            Start-Sleep -Milliseconds 600
-            [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
-            $enterSent++; $lastEnter = Get-Date
-            "Enter sent at $(Get-Date -Format HH:mm:ss)"
-        } catch { "Enter failed: $($_.Exception.Message)" }
+        $p.Refresh()
+        if (Send-KeyMessage $p.MainWindowHandle 0x0D) { $enterSent++; $lastEnter = Get-Date; "Enter posted at $(Get-Date -Format HH:mm:ss)" }
+        else { 'the game has no main window yet' }
     }
 }
 "TIMEOUT: no gameplay within $TimeoutSeconds s"

@@ -59,7 +59,27 @@ void LoadRealDxgiOnce() noexcept
 {
     try
     {
-        const std::wstring path = BuildSystemDxgiPath();
+        std::wstring path = BuildSystemDxgiPath();
+        // [MEVR] a dxgi.dll beside the game (DXVK's, research/35 attempt 47) is the one the game loads by name, so it
+        // is the one whose factories must be captured; the system one would never see the game's device.
+        {
+            wchar_t exePath[MAX_PATH]{};
+            if (GetModuleFileNameW(nullptr, exePath, MAX_PATH) != 0)
+            {
+                std::wstring local(exePath);
+                const size_t slash = local.find_last_of(L'\\');
+                if (slash != std::wstring::npos)
+                {
+                    local = local.substr(0, slash + 1) + L"dxgi.dll";
+                    if (GetFileAttributesW(local.c_str()) != INVALID_FILE_ATTRIBUTES)
+                    {
+                        MELEVR::Logger::LogLine("[MEVR] a dxgi.dll beside the game takes the place of the system one: " +
+                                                MELEVR::Logger::WideToUtf8(local));
+                        path = local;
+                    }
+                }
+            }
+        }
         g_realDxgi = LoadLibraryW(path.c_str());
         if (g_realDxgi == nullptr)
         {
