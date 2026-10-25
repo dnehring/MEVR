@@ -226,3 +226,35 @@ whose cache link dies with them; dynamic meshes (foliage, SpeedTrees, skeletal m
 with it the bound shader state, every draw, so the input layout is recreated every draw of every eye: ~2 ms a frame at
 4,100 draws. Lever to build: keep every created bound shader state alive (one extra reference, bounded by the number of
 distinct (declaration, VS, PS) combinations), so the lookups hit. Expected 1.5-2 ms off every heavy frame, both eyes.
+
+## Attempt 43 (2026-10-24, 18:20): bound shader states kept alive (keepBoundShaderStates)
+
+The lever (host, `plugin/RenderLevers`): a hook on the D3D11 bound-shader-state constructor (`0x9A89F0`, address table
+row "FD3D11BoundShaderState constructor"); after it, one extra reference through the RHI's own AddRef (GDynamicRHI's
+vtable slot 0x8a0, which is at RVA 0x215B10 and increments the object's int at +8: 0 -> 1 on the first kept object), on
+the handle the constructor returns (the object + 0xC). Counters in the levers line: "bound shader states: N created a
+frame, K kept this period (T in all)".
+
+What the counters showed at the heavy spot (-31000 145000 900), head motion replayed: **lever off: 300-350 bound shader
+states created a frame**; lever on: 1-2 a frame after the first seconds, 1,787 kept in the first 10 s, 4,267 after 40 s
+(still growing ~90 a second with the same 20 s of view looping, see below). Memory flat over 50 s (private 5,268 MB ± 10).
+
+Frame times, a fresh launch, the same spot, 3 x 8 s each (fpsVR's number is "frame"; medians / p90):
+
+| | round 1 | round 2 | round 3 |
+|---|---|---|---|
+| off | 12.8 / 18.7 | 15.8 / 18.1 | 16.5 / 18.3 |
+| on | 10.5 / 11.6 | 11.1 / 12.3 | 10.8 / 12.3 |
+
+**5 ms off the median and 6 off the p90 at the heavy spot.** The A/B cannot alternate: once states are kept they stay
+kept (perf-ab's alternation showed nothing after the first "on" period), so this is off-then-on in one session. The
+earlier session at this spot (attempt 42, running 23 minutes) measured 10.0 ms with the lever not yet built, against
+15.8-16.5 here in the first minute of a fresh launch: the per-creation cost is far higher while the driver's caches are
+cold (a fresh launch, a new area), i.e. the states the game rebuilds every draw cost 2 ms a frame warm (the 20% in the
+sampler) and 5+ ms cold. That matches the player's spikes when walking into new areas.
+
+Open: with the lever on the kept count grew ~90 a second with the same view looping, so some keys (vertex declaration, VS,
+PS) are not stable (a declaration or shader made per frame); keeping those leaks (an input layout each). Added the
+stable-key rule: a state is kept only when its exact key is constructed for the second time (a fixed 64K-entry hash
+table of keys seen), with "new keys / keys seen before" counters. To verify: the kept total must plateau with the
+view looping, and memory stay flat over minutes.

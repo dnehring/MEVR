@@ -136,6 +136,89 @@ std::atomic<std::uint64_t> gFlushes{0};
 // the same order from cameras 6 cm apart, so when the second eye's i-th read isn't ready, the first eye's i-th
 // result of the same frame stands in (counted per render; a read past the first eye's count falls back to the
 // wait). An unready first-eye read still waits. [Performance] umbraShareResults.
+// ---- Bound shader states kept alive (research/35, attempt 42) ---------------------------------------------------
+// The stack sampler put 20% of the render thread at the heavy spot (4,100 draws) inside the D3D11 bound-shader-state
+// constructor (0x9A89F0: ID3D11Device::CreateInputLayout with the vertex shader's bytecode), always from the cache-miss
+// path of RHICreateBoundShaderState (0x9AB3B0: the lookup by (vertex declaration, VS, PS, GS) in the cache at
+// 0x1793518 missed). A bound shader state is a ref-counted object whose cache link dies with it, and the dynamic-mesh
+// drawing policies (foliage, SpeedTrees, skeletal meshes) make theirs per draw, so the input layout is built again
+// every draw of every eye. One extra reference per created object (the RHI's own AddRef, vtable slot 0x8a0 of
+// GDynamicRHI, on the handle the constructor returns: the object + 0xC, as both the miss and the hit path return it)
+// keeps it, and its cache link, alive: the lookups hit from then on. Bounded by the distinct combinations (a cap, logged).
+// [Performance] keepBoundShaderStates.
+constexpr std::uintptr_t kBoundShaderStateCtorRva = 0x9A89F0;
+constexpr std::size_t kRhiAddRefBoundShaderStateSlot = 0x8A0;
+constexpr std::size_t kBoundShaderStateHandle = 0xC;
+constexpr std::uint64_t kKeepBoundShaderStatesCap = 200000;
+using tBoundShaderStateCtor = void*(void* self, void* declaration, void* strides, void* vs, void* ps, void* a6, void* a7,
+                                    void* a8, void* rhi);
+tBoundShaderStateCtor* gBoundShaderStateCtorOrig = nullptr;
+bool gBoundShaderStateHooked = false;
+std::atomic<int> gKeepBoundShaderStates{0};
+std::atomic<std::uint64_t> gBssCreated{0};
+std::atomic<std::uint64_t> gBssKept{0};
+std::atomic<std::uint64_t> gBssKeptTotal{0};
+std::atomic<std::uint64_t> gBssFirstTime{0};   // creations whose (declaration, VS, PS) was never constructed before
+std::atomic<std::uint64_t> gBssRepeat{0};      // creations of a key constructed before: the object had died
+std::uint8_t* gBssExe = nullptr;
+// The keys seen, as 64-bit hashes in a fixed open-addressing table (render thread only): a key constructed for the
+// second time is a stable one whose object died, worth keeping; a key never seen again (a per-frame declaration or
+// shader) is never kept, so it cannot leak. Collisions overwrite: a heuristic, not a record.
+constexpr std::size_t kBssKeyTableSize = 1 << 16;
+std::uint64_t gBssKeys[kBssKeyTableSize]{};
+
+bool BssKeySeenBefore(void* declaration, void* vs, void* ps) {
+    std::uint64_t h = reinterpret_cast<std::uintptr_t>(declaration) * 0x9E3779B97F4A7C15ull;
+    h ^= reinterpret_cast<std::uintptr_t>(vs) * 0xC2B2AE3D27D4EB4Full;
+    h ^= reinterpret_cast<std::uintptr_t>(ps) * 0x165667B19E3779F9ull;
+    h ^= h >> 29;
+    h |= 1;   // never the empty marker
+    std::size_t slot = static_cast<std::size_t>(h) & (kBssKeyTableSize - 1);
+    for (int probe = 0; probe < 8; ++probe) {
+        std::uint64_t& entry = gBssKeys[(slot + probe) & (kBssKeyTableSize - 1)];
+        if (entry == h) {
+            return true;
+        }
+        if (entry == 0) {
+            entry = h;
+            return false;
+        }
+    }
+    gBssKeys[slot] = h;   // a full run: overwrite
+    return false;
+}
+
+void* BoundShaderStateCtorHook(void* self, void* declaration, void* strides, void* vs, void* ps, void* a6, void* a7, void* a8,
+                               void* rhi) {
+    void* const made = gBoundShaderStateCtorOrig(self, declaration, strides, vs, ps, a6, a7, a8, rhi);
+    gBssCreated.fetch_add(1, std::memory_order_relaxed);
+    bool const repeat = BssKeySeenBefore(declaration, vs, ps);
+    (repeat ? gBssRepeat : gBssFirstTime).fetch_add(1, std::memory_order_relaxed);
+    if (made == nullptr || !repeat || gKeepBoundShaderStates.load(std::memory_order_relaxed) == 0 || gBssExe == nullptr) {
+        return made;
+    }
+    if (gBssKeptTotal.load(std::memory_order_relaxed) >= kKeepBoundShaderStatesCap) {
+        return made;
+    }
+    void* const dynamicRhi = *reinterpret_cast<void**>(gBssExe + kDynamicRhiRva);
+    if (dynamicRhi == nullptr) {
+        return made;
+    }
+    auto* const addRef = reinterpret_cast<void (*)(void*, void*)>(
+        (*reinterpret_cast<void***>(dynamicRhi))[kRhiAddRefBoundShaderStateSlot / sizeof(void*)]);
+    auto* const object = static_cast<std::uint8_t*>(made);
+    int const refsBefore = *reinterpret_cast<int*>(object + 8);
+    addRef(dynamicRhi, object + kBoundShaderStateHandle);
+    int const refsAfter = *reinterpret_cast<int*>(object + 8);
+    if (gBssKeptTotal.fetch_add(1, std::memory_order_relaxed) == 0) {
+        log::Info("render levers: bound shader states kept: the RHI's AddRef is at RVA 0x{:X}; the int at +8 went {} -> {} "
+                  "on the first kept object",
+            reinterpret_cast<std::uintptr_t>(addRef) - reinterpret_cast<std::uintptr_t>(gBssExe), refsBefore, refsAfter);
+    }
+    gBssKept.fetch_add(1, std::memory_order_relaxed);
+    return made;
+}
+
 constexpr std::uintptr_t kUmbraReadResultRva = 0xD48380;
 using tUmbraReadResult = void(void* ctx, int head, int count, std::uint8_t wait);
 tUmbraReadResult* gUmbraReadResultOrig = nullptr;
@@ -983,6 +1066,16 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
         if (flushes != 0) {
             share += std::format("; GPU flushed after the first eye: {} frames", flushes);
         }
+        std::uint64_t const bssCreated = gBssCreated.exchange(0, std::memory_order_relaxed);
+        std::uint64_t const bssKept = gBssKept.exchange(0, std::memory_order_relaxed);
+        std::uint64_t const bssFirst = gBssFirstTime.exchange(0, std::memory_order_relaxed);
+        std::uint64_t const bssRepeat = gBssRepeat.exchange(0, std::memory_order_relaxed);
+        if (bssCreated != 0 || bssKept != 0) {
+            share += std::format("; bound shader states: {:.1f} created a frame ({} new keys, {} keys seen before), {} kept this "
+                                 "period ({} in all)",
+                static_cast<double>(bssCreated) / static_cast<double>(frames), bssFirst, bssRepeat, bssKept,
+                gBssKeptTotal.load(std::memory_order_relaxed));
+        }
         std::uint64_t const shared = gUmbraShared.exchange(0, std::memory_order_relaxed);
         std::uint64_t const missing = gUmbraShareMissing.exchange(0, std::memory_order_relaxed);
         if (shared != 0 || missing != 0) {
@@ -1048,6 +1141,13 @@ bool Install(hook::Context& init) {
         hook::Install(init, "Umbra::ReadQueryResult", umbraRead, &UmbraReadResultHook, gUmbraReadResultOrig);
     if (!gUmbraReadResultHooked) {
         log::Warn("render levers: Umbra's query result read hook failed; umbraShareResults has no effect");
+    }
+    gBssExe = init.ResolveTyped<std::uint8_t>(0);
+    auto* const bssCtor = init.ResolveTyped<tBoundShaderStateCtor>(kBoundShaderStateCtorRva);
+    gBoundShaderStateHooked = bssCtor != nullptr &&
+        hook::Install(init, "FD3D11BoundShaderState::FD3D11BoundShaderState", bssCtor, &BoundShaderStateCtorHook, gBoundShaderStateCtorOrig);
+    if (!gBoundShaderStateHooked) {
+        log::Warn("render levers: the bound-shader-state constructor hook failed; keepBoundShaderStates has no effect");
     }
     // Not installed: a second render on commander 1 blocks in Umbra's command ring (research/35, attempt 20).
     (void)&SetCommanderHook;
@@ -1134,6 +1234,18 @@ void Tick() {
                                : "no flush after the first eye (the game's own: the D3D11 runtime kicks the GPU when "
                                  "it likes)",
                 flushRead);
+        }
+        static int keepBss = -1;
+        int const keepBssRead = readInt(L"keepBoundShaderStates", 0) != 0 ? 1 : 0;
+        if (keepBssRead != keepBss) {
+            keepBss = keepBssRead;
+            gKeepBoundShaderStates.store(keepBssRead, std::memory_order_relaxed);
+            log::Info("render levers: {} ([Performance] keepBoundShaderStates = {}){}",
+                keepBssRead != 0 ? "every D3D11 bound shader state the game creates is kept alive (one extra reference), so the "
+                                   "cache lookups hit and the input layouts aren't rebuilt per draw"
+                                 : "bound shader states live as long as the game's own references (the game's own: dynamic "
+                                   "meshes rebuild theirs, and the input layout, every draw)",
+                keepBssRead, gBoundShaderStateHooked ? "" : "; not hooked, so no effect");
         }
         static int perEyeOcclusion = -1;
         int const perEyeOcclusionRead = readInt(L"perEyeOcclusion", 0) != 0 ? 1 : 0;
@@ -1224,11 +1336,11 @@ bool PerEyeViewState() {
 }
 
 std::string SettingsJson() {
-    return std::format("{{\"umbraQueryWait\": {}, \"ue3QueryWait\": {}, \"perEyeViewState\": {}, \"perEyeOcclusion\": {}, \"umbraEyeMatrix\": {}, \"flushFirstEye\": {}, \"umbraShareResults\": {}, \"pCoresOnly\": {}, \"sharePass\": {}, \"shareFailed\": {}, \"replayFailed\": {}, "
+    return std::format("{{\"umbraQueryWait\": {}, \"ue3QueryWait\": {}, \"perEyeViewState\": {}, \"perEyeOcclusion\": {}, \"umbraEyeMatrix\": {}, \"flushFirstEye\": {}, \"umbraShareResults\": {}, \"keepBoundShaderStates\": {}, \"pCoresOnly\": {}, \"sharePass\": {}, \"shareFailed\": {}, \"replayFailed\": {}, "
         "\"drawReplay\": {}, \"hooked\": {}}}",
         gUmbraQueryWait.load(std::memory_order_relaxed), gUe3QueryWait.load(std::memory_order_relaxed),
         gPerEyeViewState.load(std::memory_order_relaxed), gPerEyeOcclusion.load(std::memory_order_relaxed),
-        gUmbraEyeMatrix.load(std::memory_order_relaxed), gFlushFirstEye.load(std::memory_order_relaxed), gUmbraShareResults.load(std::memory_order_relaxed), gPCoresOnly.load(std::memory_order_relaxed),
+        gUmbraEyeMatrix.load(std::memory_order_relaxed), gFlushFirstEye.load(std::memory_order_relaxed), gUmbraShareResults.load(std::memory_order_relaxed), gKeepBoundShaderStates.load(std::memory_order_relaxed), gPCoresOnly.load(std::memory_order_relaxed),
         gSharePass.load(std::memory_order_relaxed), gShareFailed.load(std::memory_order_relaxed) ? "true" : "false",
         gReplayFailed.load(std::memory_order_relaxed) ? "true" : "false", draw_replay::StatsJson(), gHooked ? "true" : "false");
 }
