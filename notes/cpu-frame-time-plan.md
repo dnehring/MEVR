@@ -45,6 +45,15 @@ max): at heavy spots the GPU is the limit that fpsVR reports as CPU. The stack s
 rebuilding D3D11 bound shader states (input layouts) every draw: the `keepBoundShaderStates` lever (attempt 43) took the
 heavy spot from 15.8-16.5 to 10.5-11.1 ms in a fresh session, about 1 ms in a warm one. It is item 0 and on by default.
 
+## Where the heavy spot stands after attempts 44-45 (20:10)
+
+Warm, at the heaviest Eden Prime cell, fake headset at 2118x2160: 10.6-11.0 ms fpsVR-style CPU (budget 11.1), GPU 10 ms.
+The frame: the opaque base pass 27% (4,500 draws, 2,500 of them static meshes, UE3's standard per-draw D3D11 path),
+Umbra's resolve 21% (twice a frame; sharePass 1 hangs the game: the resolve cannot be skipped), lights 15%, below the
+game d3d11 17% + driver 11% + ntdll 12%. No [SystemSettings] key moves the draw count; the size cull (minScreenRadiusPx)
+finds few tiny objects (8 px: 0.3 ms, invisible; 32 px: 0.8 ms with pop-in). What is left is deep: Umbra's resolve
+shared between the eyes, or the second eye's draws replayed with its resolve kept (items 5 and 7 below).
+
 ## The sequence, with the expected gain and the evidence for each
 
 1. **umbraShareResults** (built, a4dffb5, default 0, unmeasured). The second eye's Umbra reads that aren't ready get

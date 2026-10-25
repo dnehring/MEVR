@@ -134,6 +134,8 @@ inline constexpr Entry kTable[] = {
     {"DPG lights", 0x76D0A0, Kind::Function, "4C 8B DC 55 56 57 41 56 49 8D 6B A9 48 81 EC A8", 0, 0, "render levers"},
     {"FD3D11BoundShaderState constructor", 0x9A89F0, Kind::Function, "4C 8B DC 4D 89 4B 20 49 89 53 10 49 89 4B 08 55", 0, 0,
         "render levers"},
+    {"UmbraCommander visible instance", 0x8BE0B0, Kind::Function, "40 53 55 56 57 41 54 41 56 41 57 48 81 EC A0 00", 0, 0,
+        "render levers"},
     {"foreground pass", 0x76CA70, Kind::Function,
         "40 55 53 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 E9 ?? ?? ?? ?? 00 00 00 48 C7 45 AF FE FF FF", 0, 0,
         "render levers"},

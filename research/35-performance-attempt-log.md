@@ -303,3 +303,30 @@ game's own behaviour back.
   sweeps need the still view; occlusion levers need the moving one, and then 20 s probes (a whole loop).
   The engine has no cull-distance scale for static meshes (2,500 draws, 55% of the frame's draws, 3.7 ms): fewer static
   mesh draws needs a mechanism of our own (a screen-size cull in the visibility pass).
+
+## Attempt 45 (2026-10-24, 20:00): a screen-size cull of Umbra's visible instances (minScreenRadiusPx)
+
+The engine honours each primitive's MinDrawDistance / MaxDrawDistance in the function the Umbra commander calls for every
+visible instance (`0x8BE0B0`, "UmbraCommander visible instance" in the address table: (commander, compact primitive
+record, distance squared, ...); the record carries the FPrimitiveSceneInfo's bounds, sphere radius at +0x38; the view is
+at commander +0x68, its projection matrix at +0xD0). The lever (host, `plugin/RenderLevers`) projects the sphere radius
+at that distance (radius / distance x 1080 x projection[1][1], pixels of a 2160-high eye; the null driver's projection
+[1][1] is 1.000) and returns without marking the instance visible when it is below `[Performance] minScreenRadiusPx`.
+The levers line carries the distribution.
+
+At the heavy spot (still view, 6 s each): ~1,400 visible instances a frame, by projected radius: <1 px 12, <2 8, <4 2,
+<8 58, <16 58, <32 79, <64 178, 64 and more 700. So there are few tiny things; the draws are mid-sized and large objects.
+
+| threshold (px) | instances culled a frame | draws | frame (ms, median / p90) |
+|---|---|---|---|
+| 0 | 0 | 4,559 | 11.04 / 11.90 |
+| 4 | 7 | 4,527 | 11.15 / 12.45 |
+| 8 | 44 | 4,450 | 10.78 / 12.19 |
+| 16 | 62 | 4,388 | 10.65 / 12.08 |
+| 32 | 73 | 4,066 | 10.24 / 11.77 (GPU 8.9) |
+| 64 | 335 | 3,465 | 9.48 / 11.18 (GPU 8.1) |
+
+Snapshots at 0 and 8 px are indistinguishable. 32 px radius is a 64 px-wide blob on a 2160-high eye (3% of the height):
+pop-in at distance the player would notice (the earlier complaint); 64 px is obvious. **Default 0** (measure only); the
+table is the trade-off for whoever sets it (16 is subtle, 32 is 0.8 ms). The honest reading: at this spot the draws
+are not small things, so "fewer draws" ends here without visible loss.

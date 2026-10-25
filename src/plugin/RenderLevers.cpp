@@ -219,6 +219,63 @@ void* BoundShaderStateCtorHook(void* self, void* declaration, void* strides, voi
     return made;
 }
 
+// ---- Screen-size cull of Umbra's visible instances (research/35, attempt 45) ------------------------------------
+// The engine's [SystemSettings] cannot cut static mesh draws (2,500 of the 4,500 at the heavy spot, attempt 44) and it
+// has no cull-distance scale; it does honour each primitive's own MinDrawDistance / MaxDrawDistance in the function the
+// Umbra commander calls for every visible instance (0x8BE0B0: (commander, compact primitive record, distance squared,
+// ...): the record is the FPrimitiveSceneInfo's bounds (origin +0x20, extent +0x2C, sphere radius +0x38, from the scene
+// info's +0x54..+0x6C), the distance is from the view origin to the box, and a primitive outside its range is not
+// marked visible). This lever adds a size test in front of it: the sphere radius projected at that distance, in pixels
+// of a 2160-high eye (radius / distance x 1080 x the view's projection [1][1], the view at commander +0x68 and its
+// projection matrix at +0xD0), and an instance smaller than [Performance] minScreenRadiusPx is not marked visible: no
+// draws for it in either pass. The log carries the distribution of the projected sizes, so the threshold's cost in
+// draws is known before it is set. 0 (default) measures only.
+template <typename T>
+T& Field(std::uint8_t* object, std::size_t offset);   // defined below
+constexpr std::uintptr_t kUmbraInstanceVisibleRva = 0x8BE0B0;
+constexpr std::size_t kInstanceRecordRadius = 0x38;
+constexpr std::size_t kCommanderViewField = 0x68;
+constexpr std::size_t kViewProjectionMatrix = 0xD0;
+using tUmbraInstanceVisible = int(void* commander, void* record, float distanceSq, std::uint32_t a4, std::uint32_t a5,
+                                  std::uint32_t a6, int a7);
+tUmbraInstanceVisible* gUmbraInstanceVisibleOrig = nullptr;
+bool gUmbraInstanceVisibleHooked = false;
+std::atomic<int> gMinScreenRadiusTenths{0};   // the threshold in tenths of a pixel (an int for the atomic)
+std::atomic<std::uint64_t> gInstancesSeen{0};
+std::atomic<std::uint64_t> gInstancesCulled{0};
+constexpr int kSizeBins = 8;   // < 1, < 2, < 4, < 8, < 16, < 32, < 64, the rest (pixels of radius)
+std::atomic<std::uint64_t> gSizeBins[kSizeBins];
+std::atomic<int> gProjectionLogged{0};
+
+int UmbraInstanceVisibleHook(void* commander, void* record, float distanceSq, std::uint32_t a4, std::uint32_t a5,
+                             std::uint32_t a6, int a7) {
+    gInstancesSeen.fetch_add(1, std::memory_order_relaxed);
+    auto* const c = static_cast<std::uint8_t*>(commander);
+    auto* const view = Field<std::uint8_t*>(c, kCommanderViewField);
+    if (view != nullptr && record != nullptr && distanceSq > 1.0f) {
+        float const radius = Field<float>(static_cast<std::uint8_t*>(record), kInstanceRecordRadius);
+        float const proj11 = Field<float>(view, kViewProjectionMatrix + 0x14);
+        if (radius > 0.0f && proj11 > 0.0f && proj11 < 10.0f) {
+            float const pixels = radius / std::sqrt(distanceSq) * 1080.0f * proj11;
+            int bin = 0;
+            for (float edge = 1.0f; bin < kSizeBins - 1 && pixels >= edge; edge *= 2.0f) {
+                ++bin;
+            }
+            gSizeBins[bin].fetch_add(1, std::memory_order_relaxed);
+            if (gProjectionLogged.exchange(1, std::memory_order_relaxed) == 0) {
+                log::Info("render levers: screen-size cull sees the view's projection [1][1] = {:.3f}, first instance radius {:.1f} "
+                          "at {:.1f} UU = {:.1f} px of a 2160-high eye", proj11, radius, std::sqrt(distanceSq), pixels);
+            }
+            int const tenths = gMinScreenRadiusTenths.load(std::memory_order_relaxed);
+            if (tenths > 0 && pixels * 10.0f < static_cast<float>(tenths)) {
+                gInstancesCulled.fetch_add(1, std::memory_order_relaxed);
+                return 0;
+            }
+        }
+    }
+    return gUmbraInstanceVisibleOrig(commander, record, distanceSq, a4, a5, a6, a7);
+}
+
 constexpr std::uintptr_t kUmbraReadResultRva = 0xD48380;
 using tUmbraReadResult = void(void* ctx, int head, int count, std::uint8_t wait);
 tUmbraReadResult* gUmbraReadResultOrig = nullptr;
@@ -1076,6 +1133,19 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
                 static_cast<double>(bssCreated) / static_cast<double>(frames), bssFirst, bssRepeat, bssKept,
                 gBssKeptTotal.load(std::memory_order_relaxed));
         }
+        std::uint64_t const seen = gInstancesSeen.exchange(0, std::memory_order_relaxed);
+        std::uint64_t const culled = gInstancesCulled.exchange(0, std::memory_order_relaxed);
+        if (seen != 0) {
+            std::uint64_t bins[kSizeBins];
+            for (int b = 0; b < kSizeBins; ++b) {
+                bins[b] = gSizeBins[b].exchange(0, std::memory_order_relaxed);
+            }
+            double const f = static_cast<double>(frames);
+            share += std::format("; visible instances a frame {:.0f}, culled {:.0f}; by projected radius (px): <1 {:.0f}, <2 {:.0f}, "
+                                 "<4 {:.0f}, <8 {:.0f}, <16 {:.0f}, <32 {:.0f}, <64 {:.0f}, more {:.0f}",
+                static_cast<double>(seen) / f, static_cast<double>(culled) / f, bins[0] / f, bins[1] / f, bins[2] / f,
+                bins[3] / f, bins[4] / f, bins[5] / f, bins[6] / f, bins[7] / f);
+        }
         std::uint64_t const shared = gUmbraShared.exchange(0, std::memory_order_relaxed);
         std::uint64_t const missing = gUmbraShareMissing.exchange(0, std::memory_order_relaxed);
         if (shared != 0 || missing != 0) {
@@ -1148,6 +1218,12 @@ bool Install(hook::Context& init) {
         hook::Install(init, "FD3D11BoundShaderState::FD3D11BoundShaderState", bssCtor, &BoundShaderStateCtorHook, gBoundShaderStateCtorOrig);
     if (!gBoundShaderStateHooked) {
         log::Warn("render levers: the bound-shader-state constructor hook failed; keepBoundShaderStates has no effect");
+    }
+    auto* const instanceVisible = init.ResolveTyped<tUmbraInstanceVisible>(kUmbraInstanceVisibleRva);
+    gUmbraInstanceVisibleHooked = instanceVisible != nullptr &&
+        hook::Install(init, "UmbraCommander::InstanceVisible", instanceVisible, &UmbraInstanceVisibleHook, gUmbraInstanceVisibleOrig);
+    if (!gUmbraInstanceVisibleHooked) {
+        log::Warn("render levers: the Umbra visible-instance hook failed; minScreenRadiusPx has no effect");
     }
     // Not installed: a second render on commander 1 blocks in Umbra's command ring (research/35, attempt 20).
     (void)&SetCommanderHook;
@@ -1247,6 +1323,17 @@ void Tick() {
                                    "meshes rebuild theirs, and the input layout, every draw)",
                 keepBssRead, gBoundShaderStateHooked ? "" : "; not hooked, so no effect");
         }
+        static int minScreenTenths = -1;
+        int const minScreenRead = readInt(L"minScreenRadiusTenths", readInt(L"minScreenRadiusPx", 0) * 10);
+        if (minScreenRead != minScreenTenths) {
+            minScreenTenths = minScreenRead;
+            gMinScreenRadiusTenths.store(minScreenRead, std::memory_order_relaxed);
+            log::Info("render levers: {} ([Performance] minScreenRadiusPx = {:.1f}){}",
+                minScreenRead > 0 ? "Umbra's visible instances smaller than the threshold (sphere radius projected, pixels of "
+                                    "a 2160-high eye) are not marked visible: no draws for them"
+                                  : "every visible instance is drawn (the game's own); the sizes are only counted",
+                static_cast<double>(minScreenRead) / 10.0, gUmbraInstanceVisibleHooked ? "" : "; not hooked, so no effect");
+        }
         static int perEyeOcclusion = -1;
         int const perEyeOcclusionRead = readInt(L"perEyeOcclusion", 0) != 0 ? 1 : 0;
         if (perEyeOcclusionRead != perEyeOcclusion) {
@@ -1336,11 +1423,11 @@ bool PerEyeViewState() {
 }
 
 std::string SettingsJson() {
-    return std::format("{{\"umbraQueryWait\": {}, \"ue3QueryWait\": {}, \"perEyeViewState\": {}, \"perEyeOcclusion\": {}, \"umbraEyeMatrix\": {}, \"flushFirstEye\": {}, \"umbraShareResults\": {}, \"keepBoundShaderStates\": {}, \"pCoresOnly\": {}, \"sharePass\": {}, \"shareFailed\": {}, \"replayFailed\": {}, "
+    return std::format("{{\"umbraQueryWait\": {}, \"ue3QueryWait\": {}, \"perEyeViewState\": {}, \"perEyeOcclusion\": {}, \"umbraEyeMatrix\": {}, \"flushFirstEye\": {}, \"umbraShareResults\": {}, \"keepBoundShaderStates\": {}, \"minScreenRadiusPx\": {}, \"pCoresOnly\": {}, \"sharePass\": {}, \"shareFailed\": {}, \"replayFailed\": {}, "
         "\"drawReplay\": {}, \"hooked\": {}}}",
         gUmbraQueryWait.load(std::memory_order_relaxed), gUe3QueryWait.load(std::memory_order_relaxed),
         gPerEyeViewState.load(std::memory_order_relaxed), gPerEyeOcclusion.load(std::memory_order_relaxed),
-        gUmbraEyeMatrix.load(std::memory_order_relaxed), gFlushFirstEye.load(std::memory_order_relaxed), gUmbraShareResults.load(std::memory_order_relaxed), gKeepBoundShaderStates.load(std::memory_order_relaxed), gPCoresOnly.load(std::memory_order_relaxed),
+        gUmbraEyeMatrix.load(std::memory_order_relaxed), gFlushFirstEye.load(std::memory_order_relaxed), gUmbraShareResults.load(std::memory_order_relaxed), gKeepBoundShaderStates.load(std::memory_order_relaxed), gMinScreenRadiusTenths.load(std::memory_order_relaxed) / 10.0, gPCoresOnly.load(std::memory_order_relaxed),
         gSharePass.load(std::memory_order_relaxed), gShareFailed.load(std::memory_order_relaxed) ? "true" : "false",
         gReplayFailed.load(std::memory_order_relaxed) ? "true" : "false", draw_replay::StatsJson(), gHooked ? "true" : "false");
 }

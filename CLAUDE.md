@@ -421,7 +421,9 @@ Use it to check VR changes yourself instead of asking the user what they see
   (ID3D11Device::CreateInputLayout each time, 300 a frame at a heavy spot) are kept alive by one extra reference through the
   RHI's own AddRef once their key (declaration, VS, PS) is constructed a second time; 15.8-16.5 -> 10.5-11.1 ms at the
   heaviest Eden Prime spot in a fresh session, ~1 ms warm; the kept set plateaus near 5,000 and memory stays flat; hazard
-  noted there: a kept state outliving its vertex declaration); log
+  noted there: a kept state outliving its vertex declaration), `minScreenRadiusPx` (default 0, attempt 45: Umbra's visible
+  instances whose bounding sphere projects below that radius in pixels of a 2160-high eye are not marked visible; the levers
+  line carries the size distribution; 8 px is invisible and worth 0.3 ms at the heavy spot, 32 px 0.8 ms with pop-in); log
   `render levers:` (scene renders per frame, each one's time with its Umbra resolve's parts, the draw replay's counts);
   `tools/perf-ab.ps1 -Key <key> -Values a,b` alternates one and captures each; `tools/eye-diff.ps1` compares one
   frame's two eyes call by call (run it first: it says whether the replay's substitution covers the eye's constants).
