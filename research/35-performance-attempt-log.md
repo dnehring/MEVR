@@ -265,3 +265,41 @@ medium cell 8.0 at 2,707 (8.0 at 2,622), the save 7.2 at 1,320 (7.2 at 1,700). S
 worth about 1 ms at the heavy spots and nothing at the light ones; its 5 ms is the cold case (a fresh launch, and by the
 same mechanism a new area). Default 1 since 3533081's follow-up; `keepBoundShaderStates = 0` in `[Performance]` puts the
 game's own behaviour back.
+
+## Attempt 44 (2026-10-24, 19:40): the heavy frame attributed, and sharePass = 1 hangs
+
+- **sharePass = 1 hangs the game** the moment it takes effect (19:42:52: the log stops, no breadcrumbs, the process
+  alive and frozen; killed). Attempts 10-11's deadlock, unchanged: the second render must run its own Umbra resolve.
+- The render thread at the heavy spot (4,500 draws, keepBoundShaderStates on, 10 s of samples): 79% under
+  `FSceneRenderer::Render` (0x76EE20). Of the whole frame: **21% Umbra's resolve** (0xD413D8's subtree, twice a frame:
+  56% of it in Umbra's own code, the rest its occluder draws and query reads through the RHI), **27% the opaque base pass
+  draws** (`RenderUmbraDepthPrepass` 0x8BF8F0 -> `RenderUmbraDepthPrepassView` 0x8BEDB0 -> the base pass 0x76C1D0; the
+  function Ghidra calls InitViews_guess, 0x768090, is this Umbra prepass), the lights pass 0x76D4B0 15%, the rest
+  smaller. Below the game's code: d3d11 17%, the NVIDIA driver 11%, ntdll 12% (heap and locks).
+- The per-draw path is UE3's standard D3D11 RHI: `DrawIndexedPrimitive` (0x99CED0) does IASetIndexBuffer +
+  IASetPrimitiveTopology + DrawIndexed every call, and each dirty constant buffer goes through `UpdateSubresource`
+  (0x99B420, vtable slot 48). Nothing to batch from outside; fewer draws is the lever.
+- `show` sweep at the same spot, 5 s each (fpsVR-style cpu median; draws):
+
+  | hidden | cpu (ms) | draws |
+  |---|---|---|
+  | nothing | 12.35 | 4,581 |
+  | static meshes | 8.69 | 2,083 |
+  | skeletal meshes | 10.80 | 3,958 |
+  | foliage | 11.32 | 4,505 |
+  | particles | 11.55 | 4,271 |
+  | decals | 11.99 | 3,632 |
+  | SpeedTrees | 12.58 | 4,568 |
+  | terrain | 12.64 | 4,799 |
+
+  Static meshes are the mass: 2,500 draws, 3.7 ms (1.5 us a draw, both eyes). Decals are 950 draws for 0.4 ms.
+- `scale set` sweep at the same spot, still view (the 10 s recording), 5 s each, every key the engine's [SystemSettings]
+  offers that could cut work: **none changes the draw count** (4,480-4,540 throughout: DecalCullDistanceScale 0.5/0.25,
+  StaticDecals, SkeletalMeshLODBias 1, LensFlares, Bloom, AmbientOcclusion, DepthOfField, bAllowLightShafts, Distortion,
+  SHSecondaryLighting, MaxAnisotropy 4, DynamicLights, CompositeDynamicLights, LightEnvironmentShadows), and the cpu/gpu
+  medians drift from 12.1/11.2 to 11.2/10.1 ms over the four minutes with nothing applied (base before and after), so
+  the per-key deltas (all within 1 ms) are noise. The first sweep under the moving recording showed "-880 draws" for
+  four unrelated keys: the 5 s probe landing on a different phase of the 20 s loop, not the keys. Lesson: setting
+  sweeps need the still view; occlusion levers need the moving one, and then 20 s probes (a whole loop).
+  The engine has no cull-distance scale for static meshes (2,500 draws, 55% of the frame's draws, 3.7 ms): fewer static
+  mesh draws needs a mechanism of our own (a screen-size cull in the visibility pass).
