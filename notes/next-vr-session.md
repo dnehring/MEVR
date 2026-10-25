@@ -1158,6 +1158,39 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
     - The hook lines as before (`hooked UObject::ProcessEvent (host-owned)`, the tick, ExitProcess, the render
       levers' `render levers:` lines); no `no SPI interface from the loader` warning with LEBinkProxy or our loader.
     - Smoke test: hot reload still works (rebuild the mod once while in game), and quitting from the menu closes cleanly.
+35. **The weapon drawn, like exploring (new, 2026-10-25; HOST REDEPLOY for the steady view and the menu rows, the
+    rest is the mod; [research/38](../research/38-combat-stance.md)).** Your report: drawing a weapon put Shepard in the
+    combat stance, moved the view, changed the walking and took a moment. Four settings in `[Hands]` of
+    `ASI\LE1MEVR.ini`, all on by default and in our menu's Controls > Weapon drawn: `exploreStance` (Body stays
+    relaxed), `constantEye` (Steady view, the host's), `drawRate = 2.0` (Draw speed; 1 = the game's) and the file-only
+    `exploreRamp` (and `exploreStanceStorm`). Standing on foot, first person:
+    - **The view (B):** draw and holster each weapon, aim with the support grip, sprint with it out: the view should
+      not move. LE1MEVR.log: one `constant eye: <mode> (<class>): HookOffset (...) -> Offset (...): the eye (50.1,
+      0.0, 94.9) from the hook bone, as exploring` line per mode (Combat -> Offset (-80.1, 20.0, -4.9), CombatStorm
+      (-60.1, 40.0, -4.9), TightAim (-80.1, 20.0, -14.9)), and the `camera: mode` lines should give the same
+      forward/up from the bone in every standing mode. Crouch modes say `a crouch mode, Halcyon's Offset ... kept`.
+      Snapshot before and 1 s after a draw (`tools/snapshot.ps1`): the JSON's `hostView` position against the hook
+      bone should be the same. If the view still turns during the 0.5 s blend, that's the Interpolate mode's
+      aim-point preservation (research/38 B risks): say so.
+    - **The draw delay (D):** draw each weapon from its holster and put it back, with `drawRate = 1` first (the
+      game's) and then 2. Each gives a `draw: drew the <weapon>: action state changed at ..., IsSwitchingWeapons
+      true for N s ..., the gun reached the hand at M s; the WeaponEquip sequence played at rate R ...` line: N and M
+      should roughly halve at 2 (if not, the native ignores the rate: tell Claude; the notify fallback is next). Fire
+      right after a draw: the first shot should come sooner.
+    - **The walk (C):** walk and stop drawn and holstered, with and without the support grip (LT): the
+      `movement: walking mode <mode> (...), speed N u/s; <previous> held N s, top speed N u/s` lines say whether
+      CombatZoomed (the support grip) walks slower. `movement: combat walking ramps like exploring (accel 3.00 ->
+      1.50, decel 2.00 -> 1.50 per s)` once per level: starting and stopping drawn should feel like exploring.
+    - **The body (A):** the first lines after a level loads, before any draw: `stance: the player's AnimTree ... 1
+      CombatMode node ... WeaponEquip found (Draw: ...; Holster: ...)`, then **`stance: [verify] the tree ticks before
+      UpdateSkelPose composes (...)`**: the order research/38 couldn't check. Only then does it act; if it says
+      `ticks inside UpdateSkelPose`, the stance stays off and says why (send the log). On the first draw:
+      `stance: [verify] during a draw, in UpdateSkelPose ...: nothing moved inside the call` (or `ticked INSIDE`). Then
+      look down while drawn: standing, walking forward and strafing (the legs may run forward while you slide
+      sideways: research/38 A risks), crouch-walk (the game's combat crouch stays), throw a grenade and use a power
+      (they must still work), fire while walking. `stance: the body composes as explore for N s (... the explore
+      branch ticked K of L ticks at weight 0)`: if it says FROZEN the legs stand still while walking drawn: tell
+      Claude. `exploreStance = 0` brings the combat stance back at once. The snapshot JSON's `mod.stance` has all of it.
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR

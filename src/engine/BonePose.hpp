@@ -134,6 +134,71 @@ struct SupportSample {
     double leftErrorUnits = 0.0;   // the written left wrist from its goal (out of reach)
 };
 
+// The weapon drawn, composed as exploring (research/38 A, "tick as combat, compose as explore"). One AnimTree node,
+// CombatMode, switches Shepard's whole body between its NonCombat and Combat children. The tree ticks as the game
+// wants (weights, times and every notify of the draw, fire, grenade and power animations inside the Combat branch);
+// a pre-stage in this hook, for the published mesh only and only when `apply` (the mod's decision this tick), saves
+// the two child weights, writes NonCombat 1 / Combat 0, lets UpdateSkelPose compose the pose, and puts them back, so
+// the node's own blend is untouched next tick. Only once the order is confirmed (vr::combat_stance::OrderCheck: the
+// node's NodeTickTag moves between calls and never during one): if the tree ticked inside this function our weights
+// would feed its tick. Everything is checked on each call: the mesh, its AnimTree (Animations), each node's Children
+// buffer and count, the game thread, the age. Offsets come from our reflection layer (the mod, game/combat_stance).
+struct StanceNode {
+    void* node = nullptr;                    // a CombatMode node (an AnimNodeBlendBase)
+    std::uint8_t const* children = nullptr;  // its Children's buffer when published (compared, never freed)
+    std::int32_t childCount = 0;
+    int nonCombat = 0;  // child indices
+    int combat = 1;
+};
+struct Stance {
+    ue3::Object const* mesh = nullptr;  // compared by address
+    void const* tree = nullptr;         // the mesh's Animations when published
+    std::array<StanceNode, 4> nodes{};
+    int nodeCount = 0;
+    std::uint32_t animationsOffset = 0;  // SkeletalMeshComponent.Animations
+    std::uint32_t childrenOffset = 0;    // AnimNodeBlendBase.Children (a TArray)
+    std::uint32_t childStride = 0;       // AnimBlendChild's size
+    std::uint32_t weightOffset = 0;      // AnimBlendChild.Weight
+    std::uint32_t tickTagOffset = 0;     // AnimNode.NodeTickTag
+    bool apply = false;
+    // The [verify] probe: the player's CB_Draw sequence (nullptr: none), its CurrentTime and bPlaying.
+    void const* drawSequence = nullptr;
+    std::uint32_t currentTimeOffset = 0;
+    std::uint32_t playingOffset = 0;
+    std::uint32_t playingMask = 0;
+};
+// Game thread: what the pre-stage does from the next call on (the calls must come on this thread).
+void PublishStance(Stance const& stance);
+void ClearStance();
+// One UpdateSkelPose call on the player's mesh, seen at its start and its end (node 0's weights before our write
+// and before our restore, NodeTickTag, CB_Draw's time).
+struct StanceProbe {
+    bool valid = false;
+    float deltaTime = 0.0f;
+    float startWeights[2] = {0.0f, 0.0f};  // NonCombat, Combat
+    float endWeights[2] = {0.0f, 0.0f};
+    std::int32_t startTag = 0;
+    std::int32_t endTag = 0;
+    bool drawPlaying = false;
+    float drawStart = 0.0f;
+    float drawEnd = 0.0f;
+    bool wrote = false;
+};
+struct StanceStats {
+    int order = 0;  // vr::combat_stance::OrderCheck::Order
+    int confirmations = 0;
+    int insideCalls = 0;
+    std::uint64_t calls = 0;       // calls for the published mesh
+    std::uint64_t applied = 0;     // ...that composed as explore
+    std::uint64_t overridden = 0;  // ...where the call changed our weights (kept the call's, not restored)
+    std::uint64_t rejected = 0;    // ...where something no longer matched (the tree, a node's children, the thread)
+    char const* lastReject = nullptr;
+    bool broken = false;           // an access violation: the pre-stage stopped for good
+    StanceProbe last;              // the latest call
+    StanceProbe firstDraw;         // the first call with CB_Draw playing (once; for the one-time [verify] line)
+};
+StanceStats GetStanceStats();
+
 // LE1 only: false (logged) for other games or if the address isn't a function start.
 bool Install(hook::Context& init);
 // Removes the hook and waits (up to 200 ms, if `waitForCalls`) for calls still inside it. False

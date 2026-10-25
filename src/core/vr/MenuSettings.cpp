@@ -103,6 +103,9 @@ std::vector<Field> const& Schema() {
         {"throwables", Type::Flag, 1},
         {"recoil_buzz", Type::Number, 50, "", 0, 100, F::Percent},
         {"aim_assist", Type::Flag, 0},
+        {"explore_stance", Type::Flag, 1},  // [Hands] exploreStance (research/38 A)
+        {"constant_eye", Type::Flag, 1},    // [Hands] constantEye (B, the host)
+        {"draw_rate", Type::Number, 2, "", 1, 4, F::Times1},  // [Hands] drawRate (D)
         // Body and calibration.
         {"cal_running", Type::Flag, 0},
         {"cal_status", Type::Text, 0, "Not calibrated for these controllers yet"},

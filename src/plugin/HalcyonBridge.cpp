@@ -9,6 +9,7 @@
 
 #include "core/Log.hpp"
 #include "core/Window.hpp"
+#include "core/vr/CombatStance.hpp"
 #include "core/vr/Comfort.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/Floor.hpp"
@@ -18,6 +19,7 @@
 #include "core/xr/Floor.hpp"
 #include "core/xr/Input.hpp"
 #include "game/GamepadMapping.hpp"
+#include "halcyon/le1/le1_game.h"
 #include "halcyon/le1/render_hook.h"
 #include "plugin/Calibration.hpp"
 #include "plugin/Colour.hpp"
@@ -34,8 +36,11 @@
 
 #include <openxr/openxr.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
+#include <iterator>
 #include <cstdint>
 #include <cstring>
 #include <format>
@@ -632,6 +637,123 @@ void RecordUpdateSubresource(ID3D11DeviceContext* context, ID3D11Resource* resou
 }
 void RecordClearDepthStencilView(ID3D11DeviceContext* context, ID3D11DepthStencilView* view, UINT flags, FLOAT depth, UINT8 stencil) {
     mevr::host::draw_replay::NoteClearDepthStencilView(context, view, flags, depth, stencil);
+}
+
+} // namespace MELEVR::MevrBridge
+
+// ---- The constant eye (research/38 B) ----------------------------------------------------------------------------
+// The camera is the hook bone + HookOffset - Offset (view pitch 0; research/18). Halcyon writes each first-person
+// mode's Offset by class, so the eye drops 26 units and moves 10 back on a draw, 9 more aiming, 20 right sprinting
+// with the weapon out. With [Hands] constantEye = 1 every standing on-foot mode gets HookOffset - E instead, E the
+// explore eye (Explore's HookOffset - fpExplore): the game's blends between modes then blend equal points. Crouch
+// modes keep Halcyon's values (crouching lowers the view as before). Present thread only (FpOwnAndWrite).
+namespace MELEVR::MevrBridge {
+namespace {
+
+namespace cs = mevr::vr::combat_stance;
+
+// SFXCameraMode.HookOffset (an FVector; engine/ReflectCheck checks the field against LExSDKv2: 0xC0, next to Offset 0xB4).
+constexpr std::uintptr_t kModeHookOffset = 0xC0;
+
+struct ModeRead {
+    char cls[64] = {};
+    char obj[64] = {};
+    float hook[3] = {};
+};
+
+void CopyName(char* out, std::size_t cap, char const* text) {
+    std::size_t i = 0;
+    for (; text != nullptr && i + 1 < cap && text[i] != '\0'; ++i) {
+        out[i] = text[i];
+    }
+    out[i] = '\0';
+}
+
+// No C++ objects with destructors: it can catch an access violation.
+bool ReadModeSEH(void* mode, ModeRead* out) noexcept {
+    __try {
+        CopyName(out->cls, sizeof(out->cls), MELEVR::LE1::ClassName(mode));
+        CopyName(out->obj, sizeof(out->obj), MELEVR::LE1::ObjectName(mode));
+        for (int i = 0; i < 3; ++i) {
+            out->hook[i] = MELEVR::LE1::ReadF32(mode, kModeHookOffset + 4u * static_cast<unsigned>(i));
+        }
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+bool ConstantEyeSetting() {
+    static std::uint64_t nextReadMs = 0;
+    static bool on = true;
+    static bool logged = false;
+    std::uint64_t const now = GetTickCount64();
+    if (now >= nextReadMs) {
+        nextReadMs = now + 1000;
+        std::wstring const& path = SettingsPath();
+        bool const read = path.empty() || GetPrivateProfileIntW(L"Hands", L"constantEye", 1, path.c_str()) != 0;
+        if (!logged || read != on) {
+            logged = true;
+            mevr::log::Info("constant eye: {} ([Hands] constantEye = {}, research/38 B)",
+                read ? "on: every standing on-foot camera mode puts the eye where exploring does" : "off: Halcyon's per-mode offsets",
+                read ? 1 : 0);
+        }
+        on = read;
+    }
+    return on;
+}
+
+cs::Vec gExploreHook{0.0, 0.0, 120.0};  // the package default (research/38 B), until an Explore mode is seen
+void const* gLoggedMode = nullptr;
+float gLogged[3] = {1e9f, 1e9f, 1e9f};
+
+std::string V(cs::Vec v) {
+    return std::format("({:.1f}, {:.1f}, {:.1f})", v.x, v.y, v.z);
+}
+
+} // namespace
+
+bool ConstantFpEye(void* mode, float* fwd, float* right, float* up) noexcept {
+    if (mode == nullptr || fwd == nullptr || right == nullptr || up == nullptr || !ConstantEyeSetting()) {
+        return false;
+    }
+    ModeRead read;
+    if (!ReadModeSEH(mode, &read)) {
+        return false;
+    }
+    cs::Vec const hook{read.hook[0], read.hook[1], read.hook[2]};
+    if (!cs::PlausibleHook(hook)) {
+        return false;
+    }
+    if (cs::IsExploreMode(read.cls, read.obj)) {
+        gExploreHook = hook;
+    }
+    cs::Vec const halcyon{*fwd, *right, *up};
+    bool const applies = cs::ConstantEyeApplies(read.cls, read.obj);
+    MELEVR::Config::VrConfig::FpStateCfg const& explore = MELEVR::Config::Get().fpExplore;
+    cs::Vec const eye = cs::ExploreEye(gExploreHook, {explore.fwd, explore.right, explore.up});
+    cs::Vec const offset = applies ? cs::ConstantEyeOffset(hook, eye) : halcyon;
+    float const out[3] = {static_cast<float>(offset.x), static_cast<float>(offset.y), static_cast<float>(offset.z)};
+    // Logged once per mode change (and when the values move): the `camera: mode` lines should then read the same eye.
+    if (mode != gLoggedMode || std::fabs(out[0] - gLogged[0]) > 0.05f || std::fabs(out[1] - gLogged[1]) > 0.05f ||
+        std::fabs(out[2] - gLogged[2]) > 0.05f) {
+        gLoggedMode = mode;
+        std::copy(std::begin(out), std::end(out), std::begin(gLogged));
+        if (applies) {
+            mevr::log::Info("constant eye: {} ({}): HookOffset {} -> Offset {}: the eye {} from the hook bone, as exploring (Halcyon's {})",
+                read.obj, read.cls, V(hook), V(offset), V(eye), V(halcyon));
+        } else {
+            mevr::log::Info("constant eye: {} ({}): a crouch mode, Halcyon's Offset {} kept (HookOffset {}: the eye {} from the hook bone)",
+                read.obj, read.cls, V(halcyon), V(hook), V({hook.x - halcyon.x, hook.y - halcyon.y, hook.z - halcyon.z}));
+        }
+    }
+    if (!applies) {
+        return false;
+    }
+    *fwd = out[0];
+    *right = out[1];
+    *up = out[2];
+    return true;
 }
 
 } // namespace MELEVR::MevrBridge

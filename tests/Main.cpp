@@ -21,6 +21,7 @@
 #include "core/vr/Colour.hpp"
 #include "core/vr/ColourStrip.hpp"
 #include "core/vr/Upscale.hpp"
+#include "core/vr/CombatStance.hpp"
 #include "core/vr/Comfort.hpp"
 #include "core/vr/Haptics.hpp"
 #include "core/vr/ImageConvert.hpp"
@@ -6375,6 +6376,133 @@ void TestUpscale() {
     CHECK(src.find("PSRcas") != std::string::npos && src.find("MEVR_EYE_OUT") != std::string::npos);
 }
 
+// The weapon drawn, like exploring (core/vr/CombatStance, research/38).
+void TestCombatStance() {
+    namespace cs = mevr::vr::combat_stance;
+    // A: the decision, in priority order.
+    cs::Inputs in;
+    in.headTrackedView = in.onFoot = in.pawn = in.firstPerson = in.drawn = in.node = in.hook = in.orderKnown = true;
+    CHECK(cs::Decide(in) == cs::Why::Active);
+    cs::Inputs off = in;
+    off.enabled = false;
+    CHECK(cs::Decide(off) == cs::Why::Off);
+    cs::Inputs crouched = in;
+    crouched.crouched = true;
+    CHECK(cs::Decide(crouched) == cs::Why::Crouched);
+    crouched.drawn = false;
+    CHECK(cs::Decide(crouched) == cs::Why::Holstered);  // holstered says so first
+    cs::Inputs cover = in;
+    cover.cover = true;
+    CHECK(cs::Decide(cover) == cs::Why::Cover);
+    cs::Inputs scoped = in;
+    scoped.scoped = true;
+    CHECK(cs::Decide(scoped) == cs::Why::Scoped);
+    cs::Inputs mako = in;
+    mako.pawn = false;
+    CHECK(cs::Decide(mako) == cs::Why::NoPawn);
+    mako.onFoot = false;
+    CHECK(cs::Decide(mako) == cs::Why::NotOnFoot);
+    cs::Inputs third = in;
+    third.firstPerson = false;
+    CHECK(cs::Decide(third) == cs::Why::NotFirstPerson);
+    cs::Inputs vrOff = in;
+    vrOff.headTrackedView = false;
+    CHECK(cs::Decide(vrOff) == cs::Why::NoView);
+    cs::Inputs storm = in;
+    storm.storming = true;
+    CHECK(cs::Decide(storm) == cs::Why::Active);
+    storm.stanceWhileStorming = false;
+    CHECK(cs::Decide(storm) == cs::Why::Storming);
+    cs::Inputs order = in;
+    order.orderKnown = false;
+    CHECK(cs::Decide(order) == cs::Why::OrderUnknown);
+    order.orderKnown = true;
+    order.orderInside = true;
+    CHECK(cs::Decide(order) == cs::Why::OrderInside);
+    cs::Inputs noNode = in;
+    noNode.node = false;
+    CHECK(cs::Decide(noNode) == cs::Why::NoNode);
+    cs::Inputs noHook = in;
+    noHook.hook = false;
+    CHECK(cs::Decide(noHook) == cs::Why::NoHook);
+
+    // A: the tick order. Before: the tag moves between calls, never during one.
+    cs::OrderCheck before;
+    for (int i = 0; i < cs::OrderCheck::kNeeded + 1; ++i) {
+        before.Feed(0.011f, i, i);
+        CHECK(i < cs::OrderCheck::kNeeded ? before.Result() == cs::OrderCheck::Order::Unknown
+                                          : before.Result() == cs::OrderCheck::Order::Before);
+    }
+    // Calls with DeltaTime 0 and repeated calls without a tick in between decide nothing.
+    cs::OrderCheck idle;
+    for (int i = 0; i < 100; ++i) {
+        idle.Feed(0.0f, i, i + 1);
+        idle.Feed(0.011f, 7, 7);
+    }
+    CHECK(idle.Result() == cs::OrderCheck::Order::Unknown && idle.InsideCalls() == 0);
+    // Inside: the tag moves during the call (twice to decide), and it sticks.
+    cs::OrderCheck inside;
+    inside.Feed(0.011f, 1, 2);
+    CHECK(inside.Result() == cs::OrderCheck::Order::Unknown);
+    inside.Feed(0.011f, 2, 3);
+    CHECK(inside.Result() == cs::OrderCheck::Order::Inside);
+    for (int i = 10; i < 100; ++i) {
+        inside.Feed(0.011f, i, i);
+    }
+    CHECK(inside.Result() == cs::OrderCheck::Order::Inside);
+    // One stray tick during a call keeps Before from being concluded.
+    cs::OrderCheck stray;
+    stray.Feed(0.011f, 0, 1);
+    for (int i = 2; i < 100; ++i) {
+        stray.Feed(0.011f, i, i);
+    }
+    CHECK(stray.Result() == cs::OrderCheck::Order::Unknown);
+
+    // B: research/38's table. The explore eye from (0,0,120) and fpExplore (-50.1, 0, 25.1).
+    cs::Vec const eye = cs::ExploreEye({0, 0, 120}, {-50.1, 0, 25.1});
+    CHECK(std::fabs(eye.x - 50.1) < 1e-9 && eye.y == 0.0 && std::fabs(eye.z - 94.9) < 1e-9);
+    cs::Vec const combat = cs::ConstantEyeOffset({-30, 20, 90}, eye);
+    CHECK(std::fabs(combat.x + 80.1) < 1e-9 && std::fabs(combat.y - 20.0) < 1e-9 && std::fabs(combat.z + 4.9) < 1e-9);
+    cs::Vec const sprint = cs::ConstantEyeOffset({-10, 40, 90}, eye);
+    CHECK(std::fabs(sprint.x + 60.1) < 1e-9 && std::fabs(sprint.y - 40.0) < 1e-9 && std::fabs(sprint.z + 4.9) < 1e-9);
+    cs::Vec const aim = cs::ConstantEyeOffset({-30, 20, 80}, eye);
+    CHECK(std::fabs(aim.x + 80.1) < 1e-9 && std::fabs(aim.z + 14.9) < 1e-9);
+    cs::Vec const explore = cs::ConstantEyeOffset({0, 0, 120}, eye);  // explore itself: fpExplore again
+    CHECK(std::fabs(explore.x + 50.1) < 1e-9 && std::fabs(explore.z - 25.1) < 1e-9);
+    CHECK(cs::ConstantEyeApplies("SFXCameraMode_Combat", "CombatCam0"));
+    CHECK(cs::ConstantEyeApplies("SFXCameraMode_CombatStorm", "Default__SFXCameraMode_CombatStorm"));
+    CHECK(cs::ConstantEyeApplies("SFXCameraMode_TightAim", "CombatTightAim0"));
+    CHECK(cs::ConstantEyeApplies("SFXCameraMode_Explore", "ExploreCam0"));
+    CHECK(!cs::ConstantEyeApplies("SFXCameraMode_Combat", "CombatCrouchCam0"));  // crouch keeps today's
+    CHECK(!cs::ConstantEyeApplies("SFXCameraMode_TightAim", "CombatCrouchTightAim0"));
+    CHECK(!cs::ConstantEyeApplies("SFXCameraMode_SniperAim", "SniperCam0"));
+    CHECK(!cs::ConstantEyeApplies("SFXCameraMode_Vehicle", "MakoCam"));
+    CHECK(!cs::ConstantEyeApplies("SFXCameraMode_HipAimCover", "x"));
+    CHECK(cs::IsExploreMode("SFXCameraMode_Explore", "ExploreCam0"));
+    CHECK(!cs::IsExploreMode("SFXCameraMode_ExploreStorm", "x"));
+    CHECK(!cs::IsExploreMode("SFXCameraMode_Combat", "CombatCam0"));
+    CHECK(cs::PlausibleHook({-30, 20, 90}));
+    CHECK(!cs::PlausibleHook({std::numeric_limits<double>::quiet_NaN(), 0, 0}));
+    CHECK(!cs::PlausibleHook({0, 0, 5000}));
+
+    // C: the ramp.
+    CHECK(cs::RampNeedsWrite(3.0f, 2.0f, 1.5f, 1.5f));
+    CHECK(!cs::RampNeedsWrite(1.5f, 1.5f, 1.5f, 1.5f));
+    CHECK(!cs::RampNeedsWrite(3.0f, 2.0f, 0.0f, 1.5f));  // explore values not set yet: nothing written
+    CHECK(!cs::RampNeedsWrite(3.0f, 2.0f, std::numeric_limits<float>::infinity(), 1.5f));
+    CHECK(cs::UsableRate(1.5f) && !cs::UsableRate(-1.0f) && !cs::UsableRate(1000.0f));
+
+    // D: the draw rate.
+    CHECK(cs::ClampDrawRate(2.0) == 2.0);
+    CHECK(cs::ClampDrawRate(0.5) == 1.0);
+    CHECK(cs::ClampDrawRate(9.0) == 4.0);
+    CHECK(cs::ClampDrawRate(std::numeric_limits<double>::quiet_NaN()) == 1.0);
+    CHECK(cs::RateNeedsWrite(1.0f, 2.0));
+    CHECK(!cs::RateNeedsWrite(2.0f, 2.0));
+    CHECK(cs::RateNeedsWrite(std::numeric_limits<float>::quiet_NaN(), 2.0));
+    CHECK(std::string(cs::Name(cs::Why::Active)).find("explore") != std::string::npos);
+}
+
 // tests/InstallTests.cpp: the installer's logic (research/33).
 void RunInstallTests(int& failures);
 // tests/ReflectTests.cpp: our UE3 reflection layer (src/ue3, research/34).
@@ -6389,6 +6517,7 @@ int main() {
     gFailures += RunExeTests();
     TestUpscale();
     TestComfort();
+    TestCombatStance();
     TestMetricStereo();
     TestMenuSettings();
     TestCalibration();

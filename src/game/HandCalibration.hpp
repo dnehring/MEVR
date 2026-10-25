@@ -75,6 +75,15 @@ double RecoilHaptic();
 // [Hands] aimAssist: true (1) keeps the game's aim assist friction and adhesion while the hand aims; false
 // (0, the default) removes them there (game/view_level).
 bool AimAssist();
+// [Hands] exploreStance, exploreStanceStorm, exploreRamp, drawRate: the weapon drawn, like exploring (game/combat_stance,
+// research/38). [Hands] constantEye is the host's (Halcyon's first-person camera modes, plugin/HalcyonBridge).
+struct CombatStance {
+    bool exploreStance = true;       // the body composes as explore while drawn (A)
+    bool exploreStanceStorm = true;  // ...while sprinting too
+    bool exploreRamp = true;         // combat walking ramps like exploring (C)
+    double drawRate = 2.0;           // the draw and holster animations' rate, 1..4 (D; 1: the game's)
+};
+CombatStance GetCombatStance();
 // [Controls] (appended to an older file that lacks it): the two-handed grip and the left trigger.
 struct Controls {
     bool leftTrigger = false;     // leftTrigger = lt: the game's LT

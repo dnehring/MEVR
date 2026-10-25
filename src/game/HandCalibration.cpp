@@ -42,6 +42,10 @@ struct Values {
     double bodyMoveMaxM = 0.75;  // [Hands] bodyMoveMaxM
     double recoilHaptic = 0.5;   // [Hands] recoilHaptic
     bool aimAssist = false;      // [Hands] aimAssist
+    bool exploreStance = true;       // [Hands] exploreStance (research/38 A)
+    bool exploreStanceStorm = true;  // [Hands] exploreStanceStorm
+    bool exploreRamp = true;         // [Hands] exploreRamp (research/38 C)
+    double drawRate = 2.0;           // [Hands] drawRate (research/38 D)
     // [Controls]
     bool leftTrigger = false;
     bool leftTriggerLB = true;
@@ -123,6 +127,17 @@ constexpr char const* kDefaultFile =
     "; stick's turn is never slowed or bent toward enemies; research/24); 1 keeps them. The Mako and the\n"
     "; sniper scope keep theirs either way.\n"
     "aimAssist = 0\n"
+    "; The weapon drawn, like exploring (research/38). exploreStance: 1 = with a weapon out (standing, first person, VR\n"
+    "; on foot) Shepard's body keeps the explore pose instead of the combat stance; the game still plays its combat\n"
+    "; animations underneath, so draws, shots, grenades and powers work as before. exploreStanceStorm: 1 = also while\n"
+    "; sprinting. exploreRamp: 1 = walking with a weapon out speeds up and slows down as gently as exploring.\n"
+    "; drawRate: how fast the draw and holster animations play (1 = the game's own, up to 4). constantEye (read by\n"
+    "; the host): 1 = drawing, holstering, aimed fire and sprinting with a weapon out leave your view where it is.\n"
+    "exploreStance = 1\n"
+    "exploreStanceStorm = 1\n"
+    "exploreRamp = 1\n"
+    "drawRate = 2.0\n"
+    "constantEye = 1\n"
     "\n"
     "[Arms]\n"
     "; Arm-length calibration (the VR hands tab samples a T pose; the mod writes armLengthM, the\n"
@@ -458,6 +473,18 @@ Values ReadValues(Ini const& ini) {
     }
     if (Number(ini, "Hands", "aimAssist", flag)) {
         values.aimAssist = flag != 0.0;
+    }
+    if (Number(ini, "Hands", "exploreStance", flag)) {
+        values.exploreStance = flag != 0.0;
+    }
+    if (Number(ini, "Hands", "exploreStanceStorm", flag)) {
+        values.exploreStanceStorm = flag != 0.0;
+    }
+    if (Number(ini, "Hands", "exploreRamp", flag)) {
+        values.exploreRamp = flag != 0.0;
+    }
+    if (Number(ini, "Hands", "drawRate", values.drawRate)) {
+        values.drawRate = std::clamp(values.drawRate, 1.0, 4.0);
     }
     if (Number(ini, "Arms", "armLengthM", values.armLength) && !(values.armLength >= 0.3 && values.armLength <= 1.2)) {
         values.armLength = 0.0;
@@ -1180,6 +1207,10 @@ bool AimAssist() {
     return gValues.aimAssist;
 }
 
+CombatStance GetCombatStance() {
+    return {gValues.exploreStance, gValues.exploreStanceStorm, gValues.exploreRamp, gValues.drawRate};
+}
+
 Controls GetControls() {
     Controls controls;
     controls.leftTrigger = gValues.leftTrigger;
@@ -1424,6 +1455,12 @@ void Refresh() {
         {L"Hands", "Hands", L"bodyMove", "bodyMove", L"1"},
         {L"Hands", "Hands", L"leanM", "leanM", L"0.20"},
         {L"Hands", "Hands", L"bodyMoveMaxM", "bodyMoveMaxM", L"0.75"},
+        // The weapon drawn, like exploring (2026-10-25, research/38).
+        {L"Hands", "Hands", L"exploreStance", "exploreStance", L"1"},
+        {L"Hands", "Hands", L"exploreStanceStorm", "exploreStanceStorm", L"1"},
+        {L"Hands", "Hands", L"exploreRamp", "exploreRamp", L"1"},
+        {L"Hands", "Hands", L"drawRate", "drawRate", L"2.0"},
+        {L"Hands", "Hands", L"constantEye", "constantEye", L"1"},
         // [Comfort] (2026-10-23, research/31): a section our menu started (it writes only the keys it changes).
         {L"Comfort", "Comfort", L"turn", "turn", L"game"},
         {L"Comfort", "Comfort", L"snapDeg", "snapDeg", L"45"},
@@ -1507,6 +1544,9 @@ void Refresh() {
             values.levelCamera ? "on" : "off", values.recoilHaptic);
         log::Info("hands: aim assist's friction and adhesion {} on foot while the hand aims ([Hands] aimAssist = {})",
             values.aimAssist ? "kept" : "off", values.aimAssist ? 1 : 0);
+        log::Info("hands: weapon drawn: explore stance {}{}, explore speed ramp {}, draw and holster at {:.2f}x (research/38)",
+            values.exploreStance ? "on" : "off", values.exploreStance ? (values.exploreStanceStorm ? " (sprinting too)" : " (not sprinting)") : "",
+            values.exploreRamp ? "on" : "off", values.drawRate);
     }
     // The menu's arm-length sample: each new measureRequest value is one T-pose sample. One
     // already there at startup with a result saved is old news.

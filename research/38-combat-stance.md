@@ -37,6 +37,9 @@ Builds on [18](18-camera-and-hands.md) (the `Camera` bone, the camera formula, `
 | C. Movement | Same speeds (the player's 2DA row: 400 run, 130 walk both ways). Differences: how fast the speed ramps (explore 1.5/s up and down, combat 3/s up, 2/s down: combat is twice as snappy), facing (combat strafes around ControlRotation, explore turns the pawn toward the stick), crouch (explore stands up on any move; combat crouch-walks), sprint (500 vs 525, stamina 2.5 vs 4 s), a separate **zoomed** walking mode (our support grip holds LT) | Write the player's `BioPawnBehavior.m_fMaxDesSpdTac{Accel,Decel}Rate` to the explore values while VR is on foot (restored on unload); leave facing, sprint and crouch as the game has them. Measure the zoomed walk before changing it | Values: high. `GetMaxSpeed`'s mode table: **[verify]** |
 | D. Delay | The draw and holster are `CB_Draw` / `CB_Holster` additives on the `WeaponEquip` node, driven by a `BioActiveSelectWeapon` modal active; three AnimNotify_Script notifies run it: `SwapDrawAnim` (the gun goes from holster to hand), `FadeOutDrawAnim`, `FinishDrawAnim` (the active ends: `IsSwitchingWeapons` false). Shotgun: 0.41 / 0.67 / 0.97 s of 1.17 s; sniper 0.33 / 0.80 / 1.10 of 1.33; holster 0.61 / 0.87 / 1.17. The action state and the camera switch at once; firing waits **[verify: native CanFireWeapon]** | Play the player's `WeaponEquip` draw and holster sequences faster (`AnimNodeSequence.Rate`, `[Hands] drawRate = 2.5`): every notify still fires, in order, just sooner. Fallback: call the three notify functions ourselves. Measure first: log how long `IsSwitchingWeapons` stays true per weapon | Notify names/times: high. Rate as the lever: **[verify]** |
 
+**Built (2026-10-25):** all four, each behind a `[Hands]` setting (on by default): see "Built" under each section, and
+`notes/next-vr-session.md` step 35 for the headset session. B is step 2 (the seam), not step 1's settings.
+
 ## A. What switches the body to the combat stance
 
 ### The tree (`BIOG_Player_O`, top down, the parts that matter)
@@ -135,6 +138,31 @@ Risks:
 - **Shadow and mirrors:** the third-person shadow shows the explore pose too (intended).
 - Halcyon reads no bones (research/29), and `Camera`/`God` aren't touched: no view feedback.
 
+### Built (2026-10-25)
+
+`[Hands] exploreStance = 1` (default; `exploreStanceStorm = 1` keeps it while sprinting), the mod (hot-reloads):
+- `game/CombatStance` walks the player's AnimTree once per tree through `src/ue3` (`SkeletalMeshComponent.Animations`,
+  `AnimNodeBlendBase.Children[].Name/Anim/Weight`, `AnimNode.NodeName`; ReflectCheck rows for each) for every node named
+  `CombatMode` with children `NonCombat` and `Combat` (up to four: the postures may each have their own), and the
+  `WeaponEquip` node's `Draw` / `Holster` sequences (D). Logged once per tree: `stance: the player's AnimTree ...`.
+- The decision (`vr::combat_stance::Decide`, unit-tested) each mod tick: the setting, VR's view, on foot, a BioPawn,
+  first person (`arm_ik::FirstPerson()`: arm IK anchors the hands in the view), drawn (`IsInCombatActionState`), not
+  crouched (`Pawn.bIsCrouched`), not in cover (`CoverType` / `CoverAction`), not the sniper scope (the camera mode's
+  class), the node found, the hook in, and the order confirmed (next).
+- `engine/bone_pose`'s pre-stage (`PublishStance`): for the published mesh, on the game thread, with the mesh's tree
+  and each node's Children buffer and count unchanged, it saves the two weights, writes NonCombat 1 / Combat 0
+  (`write_journal` `BonePose.combatStance`), calls the original, and restores them if they are still ours (else counts
+  an override and keeps the call's).
+- **The [verify] is a gate, not just a log:** the pre-stage reads the node's `NodeTickTag` at the start and end of
+  every call (`vr::combat_stance::OrderCheck`). Only after 30 calls in which the tag moved between calls and never
+  during one does it write (`stance: [verify] the tree ticks before UpdateSkelPose composes`); two calls with the tag
+  moving inside the call stand it down for the session (`... ticks inside UpdateSkelPose`). The first call with
+  `CB_Draw` playing is logged once with the weights, `CB_Draw`'s `CurrentTime` and the tag at both ends.
+- Logs: `stance:` on each change of the decision, every 10 s while active (the game's weights, calls composed,
+  overrides, rejections, and whether the explore branch ticked at weight 0: the `NonCombatSpeed` [verify] above, FROZEN
+  if not), the heartbeat's `stance:` line; the snapshot's `mod.stance`.
+- Not built: `exploreStanceMoving` (the strafing legs) until the headset says the legs bother.
+
 ## B. What moves the view on draw and holster
 
 ### The numbers
@@ -208,6 +236,20 @@ may still turn the view during a blend **[verify: the yaw logged across a draw]*
 `tools/snapshot.ps1` before and 1 s after a draw (the JSON's `hostView` position against the hook bone),
 and the `camera: mode` lines (the formula's "N up of the game camera" should read 94.9 in every mode).
 
+### Built (2026-10-25)
+
+Step 2 directly (the seam covers every standing mode; crouch keeps today's values, so no `crouchDrop` choice yet).
+`[Hands] constantEye = 1` (default) in `ASI\LE1MEVR.ini`, read by the host once a second: a `[MEVR]` seam in
+Halcyon's `FpOwnAndWrite` (`head_aim.cpp`, after the liveness guard) asks `MevrBridge::ConstantFpEye`
+(`plugin/HalcyonBridge.cpp`) for the Offset to write. For a standing mode (`vr::combat_stance::ConstantEyeApplies`:
+Explore, Combat, TightAim and the sprint modes; not when the object or class name says Crouch; Halcyon already leaves out
+cover, the scope and the Mako) it returns the mode's own `HookOffset` (read at `+0xC0`) minus `E`, where `E` = the last
+Explore mode's `HookOffset` (the package's (0, 0, 120) until one is seen) minus `fpExplore`. The math is unit-tested
+against the table above. Logged once per mode change: `constant eye: CombatCam0 (SFXCameraMode_Combat): HookOffset
+(-30.0, 20.0, 90.0) -> Offset (-80.1, 20.0, -4.9): the eye (50.1, 0.0, 94.9) from the hook bone, as exploring
+(Halcyon's (-70.0, 19.9, 21.0))`; crouch modes log that they kept Halcyon's. With it on, Halcyon's `fpCombat`,
+`fpCombatStorm` and `fpCombatAim` sliders only act in the crouch modes. Host side: needs a redeploy.
+
 ## C. Movement: explore vs combat
 
 ### What the script does (`BioPlayerController.PlayerWalking`)
@@ -273,6 +315,17 @@ So the top speeds match. What "feels different":
   Both need a pre-handler or rewriting `DesiredRotation`, and the pawn's facing may gate shots
   (`BioPawn.m_fWeaponLOSThreshold 0.666` **[verify what reads it]**). Only worth it if A's sliding legs bother.
 
+### Built (2026-10-25)
+
+- `[Hands] exploreRamp = 1` (default), the mod: in VR on foot, `game/CombatStance` writes the player's
+  `BioPawnBehavior.m_fMaxDesSpdTac{Accel,Decel}Rate` to `m_fMaxDesSpd{Accel,Decel}Rate` (read each tick; written only
+  when they differ: `vr::combat_stance::RampNeedsWrite`), remembers the game's values (again if the game sets its own
+  since, e.g. `UpdateDefaultSpeeds`), and puts them back (if still ours) when off, out of VR or on foot, on a new pawn and
+  at unload. `movement: combat walking ramps like exploring (accel 3.00 -> 1.50, decel 2.00 -> 1.50 per s)`.
+- The measurement: `BioPawn.GetWalkingSpeedMode` (native, through ProcessEvent) and the pawn's horizontal `Velocity`,
+  one line per mode change: `movement: walking mode CombatZoomed (drawn, the support grip holds the gun (LT)), speed N
+  u/s; CombatRun held N s, top speed N u/s`. Nothing about the zoomed walk is changed until those lines are in.
+
 ## D. The draw and holster delay
 
 ### What plays and what gates it
@@ -324,6 +377,20 @@ So the top speeds match. What "feels different":
   BioActiveSelectWeapon" (the pawn's version checks the modal active). **Risk:** the native state machine may
   need `m_bHasAnimTicked` / the Draw state first **[verify in Ghidra before building]**.
 - With A on, the faster draw is invisible anyway (the additive isn't composed), so only the timing matters.
+
+### Built (2026-10-25)
+
+- **The measurement:** each draw, holster or switch (the action state changing, or `IsSwitchingWeapons` rising) is
+  followed until it settles: `draw: drew the shotgun: action state changed at 0.00 s, IsSwitchingWeapons true for N s
+  (from T s), the gun reached the hand at M s; the WeaponEquip sequence played at rate R to S s of its time`. The gun
+  "in the hand" is `game/weapon`'s verified weapon on the right hand (a holster: when it's gone).
+- **`[Hands] drawRate = 2.0`** (default; 1 = the game's, at most 4): each tick in VR on foot, every `Draw` / `Holster`
+  sequence under the player's `WeaponEquip` node that `bPlaying` gets `Rate = drawRate` (written again whenever the
+  native resets it), and its own rate back once it stops (or the setting goes to 1, or at unload, when the tree is still
+  the player's). Player only (the node is in the player's tree instance; the `AnimSequence` assets are untouched). The
+  notify functions are never called (the fallback above is not built). Whether the native honours `Rate` (and whether
+  `BioActiveSelectWeapon` has a timer of its own) is the headset's to say: the `draw:` lines at 1 and at 2.
+- With 2.0 instead of the proposed 2.5: the user's request named 2 as the default.
 
 ## In the headset (one session, all logs)
 

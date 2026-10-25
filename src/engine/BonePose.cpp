@@ -4,6 +4,7 @@
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
+#include "core/vr/CombatStance.hpp"
 #include "core/ik/TwoHand.hpp"
 #include "engine/Addresses.hpp"
 #include "engine/Engine.hpp"
@@ -548,13 +549,183 @@ void AfterUpdateSkelPose(Mesh* self, float deltaTime, std::uintptr_t caller) {
     }
 }
 
+// ---- The combat stance's pre-stage (research/38 A) -------------------------------------------------------------
+
+std::atomic<Mesh const*> gStanceMesh{nullptr};
+SRWLOCK gStanceLock = SRWLOCK_INIT;
+Stance gStance;
+DWORD gStanceThread = 0;
+ULONGLONG gStanceTimeMs = 0;
+std::atomic<bool> gStanceBroken{false};
+// The hook's own state: touched only on the publishing (game) thread, read by GetStanceStats on it too.
+vr::combat_stance::OrderCheck gOrder;
+StanceStats gStanceStats;
+
+// One call's state, from before the engine's call to after it.
+struct StanceCall {
+    bool active = false;
+    Stance s;
+    bool valid[4] = {false, false, false, false};
+    bool wrote[4] = {false, false, false, false};
+    float saved[4][2] = {};
+    StanceProbe probe;
+};
+
+void StanceReject(char const* why) {
+    ++gStanceStats.rejected;
+    gStanceStats.lastReject = why;
+}
+
+float* ChildWeight(Stance const& s, std::uint8_t const* children, int index) {
+    return reinterpret_cast<float*>(const_cast<std::uint8_t*>(children) + static_cast<std::size_t>(index) * s.childStride + s.weightOffset);
+}
+
+// Reads and writes the game's memory: no C++ objects with destructors, so it can catch an access violation.
+void StancePreGuarded(Mesh* self, float deltaTime, StanceCall& c) {
+    __try {
+        Stance const& s = c.s;
+        if (ue3::Reflection::Read<void const*>(self, s.animationsOffset) != s.tree) {
+            c.active = false;
+            StanceReject("the mesh's AnimTree changed");
+            return;
+        }
+        bool const write = s.apply && gOrder.Result() == vr::combat_stance::OrderCheck::Order::Before;
+        c.probe.deltaTime = deltaTime;
+        for (int i = 0; i < s.nodeCount; ++i) {
+            StanceNode const& n = s.nodes[i];
+            auto const* const array = reinterpret_cast<std::uint8_t const*>(n.node) + s.childrenOffset;
+            std::uint8_t const* const data = ue3::Reflection::Read<std::uint8_t const*>(array, 0);
+            std::int32_t const count = ue3::Reflection::Read<std::int32_t>(array, sizeof(void*));
+            if (data != n.children || count != n.childCount) {
+                StanceReject("a CombatMode node's children changed");
+                continue;
+            }
+            c.valid[i] = true;
+            float* const nonCombat = ChildWeight(s, data, n.nonCombat);
+            float* const combat = ChildWeight(s, data, n.combat);
+            c.saved[i][0] = *nonCombat;
+            c.saved[i][1] = *combat;
+            if (i == 0) {
+                c.probe.startWeights[0] = *nonCombat;
+                c.probe.startWeights[1] = *combat;
+                c.probe.startTag = ue3::Reflection::Read<std::int32_t>(n.node, s.tickTagOffset);
+                c.probe.valid = true;
+            }
+            if (write) {
+                *nonCombat = 1.0f;
+                *combat = 0.0f;
+                write_journal::Wrote("BonePose.combatStance", nonCombat, sizeof(float));
+                write_journal::Wrote("BonePose.combatStance", combat, sizeof(float));
+                c.wrote[i] = true;
+                c.probe.wrote = true;
+            }
+        }
+        if (s.drawSequence != nullptr) {
+            c.probe.drawPlaying = (ue3::Reflection::Read<std::uint32_t>(s.drawSequence, s.playingOffset) & s.playingMask) != 0;
+            c.probe.drawStart = ue3::Reflection::Read<float>(s.drawSequence, s.currentTimeOffset);
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        gStanceBroken.store(true);
+        gStanceMesh.store(nullptr);
+        c.active = false;
+        StanceReject("access violation in the pre-stage: stopped");
+    }
+}
+
+void StancePostGuarded(StanceCall& c) {
+    __try {
+        Stance const& s = c.s;
+        for (int i = 0; i < s.nodeCount; ++i) {
+            if (!c.valid[i]) {
+                continue;
+            }
+            StanceNode const& n = s.nodes[i];
+            float* const nonCombat = ChildWeight(s, n.children, n.nonCombat);
+            float* const combat = ChildWeight(s, n.children, n.combat);
+            if (i == 0) {
+                c.probe.endWeights[0] = *nonCombat;
+                c.probe.endWeights[1] = *combat;
+                c.probe.endTag = ue3::Reflection::Read<std::int32_t>(n.node, s.tickTagOffset);
+            }
+            if (!c.wrote[i]) {
+                continue;
+            }
+            if (*nonCombat == 1.0f && *combat == 0.0f) {
+                *nonCombat = c.saved[i][0];
+                *combat = c.saved[i][1];
+                write_journal::Wrote("BonePose.combatStance(restore)", nonCombat, sizeof(float));
+                write_journal::Wrote("BonePose.combatStance(restore)", combat, sizeof(float));
+            } else {
+                ++gStanceStats.overridden;  // the call changed them: its values stay
+            }
+        }
+        if (s.drawSequence != nullptr) {
+            c.probe.drawEnd = ue3::Reflection::Read<float>(s.drawSequence, s.currentTimeOffset);
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        gStanceBroken.store(true);
+        gStanceMesh.store(nullptr);
+        StanceReject("access violation after the call: stopped");
+    }
+}
+
+void StancePre(Mesh* self, float deltaTime, StanceCall& c) {
+    if (self == nullptr || self != gStanceMesh.load(std::memory_order_acquire) || gStanceBroken.load(std::memory_order_relaxed)) {
+        return;
+    }
+    DWORD thread = 0;
+    ULONGLONG published = 0;
+    AcquireSRWLockShared(&gStanceLock);
+    bool const same = gStance.mesh == self;
+    if (same) {
+        c.s = gStance;
+        thread = gStanceThread;
+        published = gStanceTimeMs;
+    }
+    ReleaseSRWLockShared(&gStanceLock);
+    if (!same || c.s.nodeCount <= 0) {
+        return;
+    }
+    if (GetCurrentThreadId() != thread) {
+        // Only on the game thread: the hook's state (the order check, the stats) lives there.
+        return;
+    }
+    ++gStanceStats.calls;
+    if (GetTickCount64() - published > kMaxRequestAgeMs) {
+        StanceReject("request too old (the mod stopped publishing)");
+        return;
+    }
+    c.active = true;
+    StancePreGuarded(self, deltaTime, c);
+}
+
+void StancePost(StanceCall& c) {
+    if (!c.active) {
+        return;
+    }
+    StancePostGuarded(c);
+    if (c.probe.valid) {
+        gOrder.Feed(c.probe.deltaTime, c.probe.startTag, c.probe.endTag);
+        gStanceStats.last = c.probe;
+        if (c.probe.drawPlaying && !gStanceStats.firstDraw.valid) {
+            gStanceStats.firstDraw = c.probe;
+        }
+    }
+    if (c.probe.wrote) {
+        ++gStanceStats.applied;
+    }
+}
+
 // No C++ objects with destructors here, so __finally keeps the in-flight count right even when an
 // exception unwinds through the engine's call (a count left up would keep the mod pinned).
 void UpdateSkelPoseHook(Mesh* self, float deltaTime, unsigned tickFaceFx, unsigned unused) {
     std::uintptr_t const caller = reinterpret_cast<std::uintptr_t>(_ReturnAddress());
     gInFlight.fetch_add(1, std::memory_order_acquire);
     __try {
+        StanceCall stance;
+        StancePre(self, deltaTime, stance);
         gOrig(self, deltaTime, tickFaceFx, unused);
+        StancePost(stance);
         AfterUpdateSkelPose(self, deltaTime, caller);
     } __finally {
         gInFlight.fetch_sub(1, std::memory_order_release);
@@ -638,6 +809,7 @@ bool Uninstall(hook::Context& init, bool waitForCalls) {
         return true;
     }
     Clear();
+    ClearStance();
     if (!hook::Uninstall(init, kHookName)) {
         return false;  // still live, and still calling gOrig
     }
@@ -651,6 +823,9 @@ bool Uninstall(hook::Context& init, bool waitForCalls) {
         log::Error("arm IK: {} UpdateSkelPose call(s) still in the hook 200 ms after unhooking", gInFlight.load());
     }
     gBroken = false;
+    gStanceBroken = false;
+    gOrder.Reset();
+    gStanceStats = {};
     gFirstWriteLogged = false;
     gFirstWriteReady = false;
     log::Info("unhooked {}", kHookName);
@@ -685,6 +860,32 @@ void Clear() {
     gRequestOwner = gRequestWorld = nullptr;
     gRequestTimeMs = 0;
     ReleaseSRWLockExclusive(&gRequestLock);
+}
+
+void PublishStance(Stance const& stance) {
+    AcquireSRWLockExclusive(&gStanceLock);
+    gStance = stance;
+    gStanceThread = GetCurrentThreadId();
+    gStanceTimeMs = GetTickCount64();
+    ReleaseSRWLockExclusive(&gStanceLock);
+    gStanceMesh.store(gBroken.load() || gStanceBroken.load() || stance.nodeCount <= 0 ? nullptr : stance.mesh, std::memory_order_release);
+}
+
+void ClearStance() {
+    gStanceMesh.store(nullptr, std::memory_order_release);
+    AcquireSRWLockExclusive(&gStanceLock);
+    gStance = {};
+    gStanceTimeMs = 0;
+    ReleaseSRWLockExclusive(&gStanceLock);
+}
+
+StanceStats GetStanceStats() {
+    StanceStats stats = gStanceStats;
+    stats.order = static_cast<int>(gOrder.Result());
+    stats.confirmations = gOrder.Confirmations();
+    stats.insideCalls = gOrder.InsideCalls();
+    stats.broken = gStanceBroken.load();
+    return stats;
 }
 
 void LogFirstWrite() {

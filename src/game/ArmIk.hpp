@@ -32,6 +32,9 @@ bool SupportRequested();
 // The torso's heading this tick (OpenXR yaw in tracking space, ik::BodyYaw's convention), while arm
 // IK turns the torso to it (game/holsters hangs the body slots off it). Nullopt otherwise.
 std::optional<double> TorsoYaw();
+// Arm IK placed the controllers in the view's own frame (first person: the view near Shepard's head bone) within the
+// last half second (game/combat_stance, research/38).
+bool FirstPerson();
 bool Toggle();
 void SetEnabled(bool on);
 bool Enabled();
