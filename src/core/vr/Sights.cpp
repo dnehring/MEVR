@@ -180,17 +180,19 @@ bool ParsePlace(std::string_view text, Gun& gun) {
         gun.autoPlace = true;
         return true;
     }
-    if (tokens.size() != 2) {
+    if (tokens.size() != 2 && tokens.size() != 3) {
         return false;
     }
     auto const back = Number(tokens[0]);
     auto const height = Number(tokens[1]);
-    if (!back || !height) {
+    auto const side = tokens.size() == 3 ? Number(tokens[2]) : std::optional<float>(0.0f);
+    if (!back || !height || !side) {
         return false;
     }
     gun.autoPlace = false;
     gun.back = std::clamp(*back, -50.0f, 300.0f);
     gun.height = std::clamp(*height, -30.0f, 50.0f);
+    gun.side = std::clamp(*side, -30.0f, 30.0f);
     return true;
 }
 
@@ -266,8 +268,50 @@ std::uint32_t LatestView(std::uint64_t maxAgeMs) {
     return gView.load(std::memory_order_relaxed);
 }
 
-XrVector3f Place(XrVector3f const& muzzle, XrVector3f const& barrel, XrVector3f const& up, float backM, float heightM) {
-    return Add(Sub(muzzle, Scale(barrel, backM)), Scale(up, heightM));
+XrVector3f Place(XrVector3f const& muzzle, XrVector3f const& barrel, XrVector3f const& up, float backM, float heightM, float sideM) {
+    XrVector3f const at = Add(Sub(muzzle, Scale(barrel, backM)), Scale(up, heightM));
+    return sideM == 0.0f ? at : Add(at, Scale(Cross(barrel, up), sideM));
+}
+
+std::optional<std::size_t> SightBone(Kind kind, std::span<std::string const> names) {
+    std::optional<std::size_t> first;
+    std::optional<std::size_t> eyepiece;
+    for (std::size_t i = 0; i < names.size(); ++i) {
+        std::string const n = Lower(names[i]);
+        if (n.rfind("socket ", 0) == 0) {
+            continue;  // sockets hang off bones; the bone itself is what moves when the gun unfolds
+        }
+        bool const sighty = n.find("scope") != std::string::npos || n.find("sight") != std::string::npos ||
+            n.find("optic") != std::string::npos || n.find("reticle") != std::string::npos || n.find("lens") != std::string::npos ||
+            n.find("eyepiece") != std::string::npos;
+        if (!sighty) {
+            continue;
+        }
+        if (!first) {
+            first = i;
+        }
+        bool const rear = n.find("eye") != std::string::npos || n.find("ocular") != std::string::npos || n.find("rear") != std::string::npos;
+        if (rear && !eyepiece) {
+            eyepiece = i;
+        }
+    }
+    return kind == Kind::Scope && eyepiece ? eyepiece : first;
+}
+
+std::optional<float> ModelTop(std::span<ModelPoint const> bones, float gunLength) {
+    float const length = std::isfinite(gunLength) && gunLength > 5.0f ? gunLength : 40.0f;
+    std::optional<float> top;
+    for (ModelPoint const& p : bones) {
+        if (!std::isfinite(p.back) || !std::isfinite(p.up) || !std::isfinite(p.side) || p.back < -2.0f || p.back > 1.6f * length ||
+            std::abs(p.side) > 8.0f || p.up > 30.0f) {
+            continue;
+        }
+        top = top ? std::max(*top, p.up) : p.up;
+    }
+    if (!top || !(*top > 0.5f)) {
+        return std::nullopt;
+    }
+    return top;
 }
 
 std::optional<XrVector3f> TopOf(XrVector3f const& barrel, XrVector3f const& up) {
@@ -498,6 +542,39 @@ std::optional<ScopeView> View(Lens const& lens, XrVector3f const& eye, float eye
     // Further back than the eye relief (and a half) the picture shrinks inside a black ring.
     float const past = line.along - 1.5f * eyeRelief;
     view.pupil = past <= 0.0f ? 1.0f : std::max(0.2f, 1.0f - past / (3.0f * eyeRelief));
+    view.px = view.qx;
+    view.py = view.qy;
+    return view;
+}
+
+float PictureRadius(float lensRadius, float along, float fieldDeg) {
+    if (!(fieldDeg > 0.0f) || !std::isfinite(fieldDeg) || !(along > 0.0f)) {
+        return lensRadius;
+    }
+    float const half = std::min(fieldDeg, 90.0f) * 0.5f * 3.14159265f / 180.0f;
+    return std::max(lensRadius, along * std::tan(half));
+}
+
+std::optional<ScopeView> VirtualView(Lens const& lens, XrVector3f const& eye, Eyepiece const& eyepiece, Lens& picture) {
+    if (!Finite(eye) || !(eyepiece.maxAlong > 0.0f) || !(eyepiece.eyeBox > 0.0f) || !(lens.radius > 0.0f)) {
+        return std::nullopt;
+    }
+    Line const line = EyeLine(eye, lens.center, lens.axis, lens.up);
+    if (!(line.along >= 0.03f) || line.along > 1.25f * eyepiece.maxAlong || line.lateral > 2.0f * eyepiece.eyeBox) {
+        return std::nullopt;
+    }
+    picture = lens;
+    picture.radius = PictureRadius(lens.radius, line.along, eyepiece.fieldDeg);
+    ScopeView view;
+    view.along = line.along;
+    view.qx = line.x / picture.radius;
+    view.qy = line.y / picture.radius;
+    view.pupil = 1.0f;
+    // The shadow: the pupil's centre goes a picture radius off for each eye box the eye is off the line (the same side
+    // as the eye, as the physical lens's), so a centred eye sees all of it and an eye an eye box off half.
+    view.px = line.x / eyepiece.eyeBox;
+    view.py = line.y / eyepiece.eyeBox;
+    view.fade = 1.0f - Smooth((line.along - eyepiece.maxAlong) / (0.25f * eyepiece.maxAlong));
     return view;
 }
 

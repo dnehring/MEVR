@@ -293,7 +293,11 @@ switching frameworks.
 - LE1 gun sights ([research/21](research/21-sights-and-scopes.md), HostServices v13): a collimated red
   dot / holo per gun (a quad 50 m out along the sight line, `eyeVisibility` = the eye looking through the
   window) and a 4x picture-in-picture scope on the sniper rifle (a disc at the eyepiece for the aiming
-  eye, magnifying the OTHER eye's image, copied as Halcyon releases it: `testloop::SetReleaseTap`). The
+  eye, magnifying the OTHER eye's image, copied as Halcyon releases it: `testloop::SetReleaseTap`). Since
+  2026-10-25 a **virtual eyepiece** (research/21 section 13): with the eye up to `[Sights] scopeMaxM` (0.70 m)
+  behind it the picture looks `scopeFieldDeg` (22) across, the zoom true across it, a dark rim, a shadow crescent
+  at `scopeEyeBoxM` (0.05 m) off the line (`vr::sights::VirtualView`; `scopeFieldDeg = 0`: the old 2 cm lens; log
+  `sights: the scope's picture was up N frames: ...`; the Sight struct grew: host and mod deploy together). The
   mod places them (`game/sights`, `[Sights]` in `ASI\LE1MEVR.ini`); the host draws them
   (`src/plugin/SightLayers.cpp`, pictures and shader in `SightPictures.cpp`; offline look:
   `mevr-sight-preview`). Scoped shots get the zoomed aim error via a `GetPlayerAimError` post-handler
@@ -303,8 +307,11 @@ switching frameworks.
   `Request::gunShift`, measured without its own shift); hands within `[Hands] reachNearFaceM` of the eyes
   aren't reach-scaled by the arm-length calibration. The dot shows to one eye, the nearest within `[Sights] eyeBox`
   of the window. Shots converge on what the sight line hits (`Actor.Trace` each tick, `[Sights] converge`, log
-  `hand aim: shot N:`). The sight sits on the model: a bone or socket named for a sight, else the height from the
-  weapon mesh's bounds (`weapon::ModelInGunFrame`). Long guns without a rifle calibration borrow the pistol's grip
+  `hand aim: shot N:`). The sight sits on the model: a bone named for a sight (`vr::sights::SightBone`; a scope's
+  eyepiece `Scope_Eye` before its front lens), followed live in the world every tick (`weapon::BoneWorld`: ME1's guns
+  unfold for a second after a draw, and the first tick's model isn't aimed yet), with its side offset; else the
+  height from the bones' top (`vr::sights::ModelTop`; the mesh bounds are a loose 15-22-unit box), re-read every
+  0.25 s. Log `sights: the <gun>'s sight sits on its '<bone>' bone: ...`. Long guns without a rifle calibration borrow the pistol's grip
   frame. **Our quads are metric; Halcyon's Stereo 2 isn't** (research/21 section 9: eyes rendered `sfr2HalfEyeUU`
   from the midpoint, each image moved 1.27 degrees outward at submit by `sfr2Convergence` with swap-eyes): the fix is
   a metric stereo mode in Halcyon (a separate job), not per-eye corrections of our quads.

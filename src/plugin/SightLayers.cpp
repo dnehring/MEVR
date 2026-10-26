@@ -449,6 +449,55 @@ int gLoggedKind = -1;
 bool gLoggedDot = false;
 bool gLoggedScope = false;
 bool gLoggedFrame = false;
+sv::ScopeView gScopeView{};  // this frame's (along 0: none)
+float gPictureRadius = 0.0f;  // the scope picture's radius this frame (meters)
+// While the scope's picture is up: where the eye was, for one line when it goes (research/21 section 13).
+int gScopeFrames = 0;
+double gScopeAlongSum = 0.0;
+float gScopeAlongMin = 0.0f;
+float gScopeAlongMax = 0.0f;
+double gScopeLateralSum = 0.0;
+double gScopeShadowSum = 0.0;  // the pupil centre's offset (picture radii): 0 = no shadow, 1 = half
+double gScopeFadeSum = 0.0;
+double gScopeDegSum = 0.0;
+
+std::string PictureText(sv::Sight const& sight, sv::ScopeView const& view, float radius) {
+    float const deg = view.along > 0.0f ? 2.0f * std::atan(radius / view.along) * 180.0f / kPi : 0.0f;
+    if (sight.scopeFieldDeg > 0.0f) {
+        return std::format("virtual eyepiece: the picture {:.1f} degrees across ({:.3f} m at the eyepiece; set {:.0f}), {:.1f} degrees of "
+                           "the world at {:.1f}x, eye box {:.3f} m, full to {:.2f} m behind it",
+            deg, 2.0f * radius, sight.scopeFieldDeg, deg / std::max(sight.zoom, 1.0f), sight.zoom, sight.scopeEyeBox, sight.scopeMaxM);
+    }
+    return std::format("physical lens: the picture {:.1f} degrees across, pupil {:.2f} (eye relief {:.2f} m)", deg, view.pupil,
+        sight.eyeReliefM);
+}
+
+void NoteScopeShown(sv::Sight const& sight, sv::ScopeView const& view, float radius, float lateral) {
+    (void)sight;
+    if (gScopeFrames == 0) {
+        gScopeAlongMin = gScopeAlongMax = view.along;
+    }
+    ++gScopeFrames;
+    gScopeAlongSum += view.along;
+    gScopeAlongMin = std::min(gScopeAlongMin, view.along);
+    gScopeAlongMax = std::max(gScopeAlongMax, view.along);
+    gScopeLateralSum += lateral;
+    gScopeShadowSum += std::sqrt(view.px * view.px + view.py * view.py);
+    gScopeFadeSum += view.fade;
+    gScopeDegSum += view.along > 0.0f ? 2.0f * std::atan(radius / view.along) * 180.0f / kPi : 0.0f;
+}
+
+// One line per look through the scope, when its picture goes.
+void FlushScopeStats() {
+    double const n = static_cast<double>(gScopeFrames);
+    log::Info("sights: the scope's picture was up {} frames: the eye {:.2f}..{:.2f} m behind the eyepiece ({:.2f} on average), {:.1f} cm "
+              "off the sight line on average, the picture {:.1f} degrees across on average, its shadow {:.2f} picture radii in "
+              "(1 = half shaded), opacity {:.2f}",
+        gScopeFrames, gScopeAlongMin, gScopeAlongMax, gScopeAlongSum / n, gScopeLateralSum / n * 100.0, gScopeDegSum / n,
+        gScopeShadowSum / n, gScopeFadeSum / n);
+    gScopeFrames = 0;
+    gScopeAlongSum = gScopeLateralSum = gScopeShadowSum = gScopeFadeSum = gScopeDegSum = 0.0;
+}
 
 void Off() {
     gDotEye = -1;
@@ -580,6 +629,9 @@ XrEyeVisibility VisibilityOf(int eye) {
 Output Layers(Frame const& frame) {
     Output out;
     ++gFrameCount;
+    if (!gScopeDrawn && gScopeFrames > 0) {
+        FlushScopeStats();
+    }
     gScopeDrawn = false;
     if (frame.session != gSession) {
         gDot.Forget();
@@ -646,11 +698,25 @@ Output Layers(Frame const& frame) {
             gDotEye = -1;
             float const relief = std::max(sight.eyeReliefM, 0.01f);
             auto const lens = sv::MakeLens(sight.center, sight.axis, sight.up, sight.radius);
-            gAiming = lens ? sv::AimingEye(gLines, kScopeBox * sight.radius, 0.01f, 6.0f * relief, gAiming) : -1;
+            // The virtual eyepiece (research/21 section 13): a picture of a set apparent size wherever the eye is
+            // behind the eyepiece, up to scopeMaxM; else the physical lens.
+            bool const virtualEyepiece = sight.scopeFieldDeg > 0.0f;
+            sv::Eyepiece const eyepiece{sight.scopeFieldDeg, std::max(sight.scopeEyeBox, 0.005f), std::max(sight.scopeMaxM, 0.1f)};
+            float const box = virtualEyepiece ? std::max(kScopeBox * sight.radius, 2.0f * eyepiece.eyeBox) : kScopeBox * sight.radius;
+            float const maxAlong = virtualEyepiece ? 1.25f * eyepiece.maxAlong : 6.0f * relief;
+            gAiming = lens ? sv::AimingEye(gLines, box, 0.01f, maxAlong, gAiming) : -1;
             std::optional<sv::ScopeView> scopeView;
+            sv::Lens picture{};
             if (gAiming >= 0) {
-                scopeView = sv::View(*lens, frame.eyes[gAiming].position, relief);
+                if (virtualEyepiece) {
+                    scopeView = sv::VirtualView(*lens, frame.eyes[gAiming].position, eyepiece, picture);
+                } else {
+                    scopeView = sv::View(*lens, frame.eyes[gAiming].position, relief);
+                    picture = *lens;
+                }
             }
+            gScopeView = scopeView.value_or(sv::ScopeView{});
+            gPictureRadius = scopeView ? picture.radius : 0.0f;
             if (scopeView && frame.projectionValid) {
                 gSource = (sight.flags & sv::kOtherEye) != 0 ? 1 - gAiming : gAiming;
                 XrSwapchain const swapchain = frame.projectionSwapchain[gSource];
@@ -659,8 +725,8 @@ Output Layers(Frame const& frame) {
                 // This frame's copy (or the last, if the eye image wasn't released again: that's what shows).
                 bool const fresh = gCopy.srv != nullptr && gCopy.swapchain == swapchain && gCopy.frame + 2 >= gFrameCount;
                 if (fresh && out.count < 2 &&
-                    RenderScope(frame, sight, *lens, *scopeView, frame.eyes[gAiming].position, gSource)) {
-                    gScopeQuad = MakeQuad(frame.appSpace, gScope, sv::Disc(sight.center, sight.axis, sight.up, sight.radius),
+                    RenderScope(frame, sight, picture, *scopeView, frame.eyes[gAiming].position, gSource)) {
+                    gScopeQuad = MakeQuad(frame.appSpace, gScope, sv::Disc(sight.center, sight.axis, sight.up, picture.radius),
                         gAiming == 0 ? XR_EYE_VISIBILITY_LEFT : XR_EYE_VISIBILITY_RIGHT);
                     out.layers[out.count++] = &gScopeQuad;
                     view |= sv::kViewScope;
@@ -669,12 +735,13 @@ Output Layers(Frame const& frame) {
                         gLoggedScope = true;
                         log::Info("[MEVR-SIGHT] first scope picture: the {} eye aims ({:.3f} m behind the eyepiece, {:.4f} m off the "
                                   "line, pupil {:.2f}), {:.1f}x from the {} eye's image ({}x{} rect at ({}, {})), focus {:.1f} m, "
-                                  "eyepiece {:.4f} m across",
+                                  "eyepiece {:.4f} m across; {}",
                             EyeName(gAiming), scopeView->along, gLines[gAiming].lateral, scopeView->pupil, sight.zoom, EyeName(gSource),
                             frame.projectionRect[gSource].extent.width, frame.projectionRect[gSource].extent.height,
                             frame.projectionRect[gSource].offset.x, frame.projectionRect[gSource].offset.y, sight.focusM,
-                            2.0f * sight.radius);
+                            2.0f * sight.radius, PictureText(sight, *scopeView, picture.radius));
                     }
+                    NoteScopeShown(sight, *scopeView, picture.radius, gLines[gAiming].lateral);
                 }
             } else {
                 gSource = -1;
@@ -705,11 +772,16 @@ std::string StatusJson() {
     return std::format("{{\"kind\": \"{}\", \"weapon\": \"{}\", \"center\": [{:.4f}, {:.4f}, {:.4f}], \"axis\": [{:.4f}, {:.4f}, {:.4f}], "
                        "\"radius\": {:.4f}, \"zoom\": {:.2f}, \"eyes\": [{}, {}], \"looking\": [{}, {}], \"aimingEye\": \"{}\", "
                        "\"sourceEye\": \"{}\", \"scopeDrawn\": {}, \"view\": {}, \"copies\": {}, \"copySize\": [{}, {}], "
-                       "\"eyeBox\": {:.4f}, \"dotEye\": \"{}\"}}",
+                       "\"eyeBox\": {:.4f}, \"dotEye\": \"{}\", \"scope\": {{\"fieldDeg\": {:.1f}, \"eyeBoxM\": {:.3f}, \"maxM\": {:.2f}, "
+                       "\"along\": {:.4f}, \"pictureRadiusM\": {:.4f}, \"pictureDeg\": {:.2f}, \"pupilCentre\": [{:.3f}, {:.3f}], "
+                       "\"fade\": {:.3f}}}}}",
         sv::Name(static_cast<sv::Kind>(gSight.kind)), sv::WeaponName(gSight.weapon), gSight.center.x, gSight.center.y, gSight.center.z,
         gSight.axis.x, gSight.axis.y, gSight.axis.z, gSight.radius, gSight.zoom, line(gLines[0]), line(gLines[1]),
         gDotEye == 0 ? "true" : "false", gDotEye == 1 ? "true" : "false", EyeName(gAiming), EyeName(gSource),
-        gScopeDrawn ? "true" : "false", gView, gCopy.copies, gCopy.width, gCopy.height, gSight.eyeBox, EyeName(gDotEye));
+        gScopeDrawn ? "true" : "false", gView, gCopy.copies, gCopy.width, gCopy.height, gSight.eyeBox, EyeName(gDotEye),
+        gSight.scopeFieldDeg, gSight.scopeEyeBox, gSight.scopeMaxM, gScopeView.along, gPictureRadius,
+        gScopeView.along > 0.0f ? 2.0f * std::atan(gPictureRadius / gScopeView.along) * 180.0f / kPi : 0.0f, gScopeView.px, gScopeView.py,
+        gScopeView.fade);
 }
 
 } // namespace mevr::host::sight_layers

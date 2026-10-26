@@ -312,8 +312,9 @@ constexpr char const* kSightsBlock =
     "shotgun = dot\n"
     "assaultRifle = dot\n"
     "sniperRifle = scope 4\n"
-    "; Where the sight sits on each gun: auto, or back, height: units behind the muzzle along the barrel, units above\n"
-    "; the bore (the log's `sights:` lines say what auto chose).\n"
+    "; Where the sight sits on each gun: auto, or back, height[, side]: units behind the muzzle along the barrel, units\n"
+    "; above the bore, units to the right (the log's `sights:` lines say what auto chose: a bone of the model named for a\n"
+    "; sight, followed live, else the bones' top).\n"
     "pistolPlace = auto\n"
     "shotgunPlace = auto\n"
     "assaultRiflePlace = auto\n"
@@ -342,6 +343,12 @@ constexpr char const* kSightsBlock =
     "focusM = 40\n"
     "eyeReliefM = 0.12\n"
     "resolution = 768\n"
+    "; The virtual eyepiece (you can't get your eye to a real scope's 8 cm): scopeFieldDeg: how wide the scope's picture\n"
+    "; looks (degrees) wherever your eye is behind the eyepiece, up to scopeMaxM meters (0 = the physical lens above);\n"
+    "; scopeEyeBoxM: your eye this far off the sight line shades half the picture.\n"
+    "scopeFieldDeg = 22\n"
+    "scopeEyeBoxM = 0.05\n"
+    "scopeMaxM = 0.70\n"
     "; replaceRing: 1 = the floating ring reticle hides while you look through a sight.\n"
     "replaceRing = 1\n"
     "; aimedFire: 1 = looking through a scope gives the shots the game's aimed-fire accuracy (no scope camera).\n"
@@ -1030,7 +1037,7 @@ vr::sights::Settings ReadSights(Ini const& ini) {
         }
         std::string const placeKey = key + "Place";
         if (auto const t = text(placeKey.c_str()); t && !sv::ParsePlace(*t, out.guns[w])) {
-            log::Warn("sights: can't read {} = {} (auto, or back, height in gun units); auto kept", placeKey, *t);
+            log::Warn("sights: can't read {} = {} (auto, or back, height[, side] in gun units); auto kept", placeKey, *t);
             out.guns[w].autoPlace = true;
         }
     }
@@ -1061,6 +1068,9 @@ vr::sights::Settings ReadSights(Ini const& ini) {
     number("lensUnits", out.lensUnits, 0.5f, 10.0f);
     number("focusM", out.focusM, 2.0f, 1000.0f);
     number("eyeReliefM", out.eyeReliefM, 0.03f, 0.5f);
+    number("scopeFieldDeg", out.scopeFieldDeg, 0.0f, 60.0f);
+    number("scopeEyeBoxM", out.scopeEyeBoxM, 0.01f, 0.20f);
+    number("scopeMaxM", out.scopeMaxM, 0.20f, 1.50f);
     if (Number(ini, "Sights", "frame", value)) {
         out.frame = value != 0.0;
     }
@@ -1113,16 +1123,19 @@ std::string Describe(vr::sights::Settings const& s) {
             g.kind == sv::Kind::Scope ? std::format(" {:.1f}x", g.zoom) : std::string(),
             g.kind == sv::Kind::None ? std::string()
             : g.autoPlace         ? std::string(" (placed auto)")
-                                  : std::format(" ({:.1f} back, {:.1f} up)", g.back, g.height));
+                                  : std::format(" ({:.1f} back, {:.1f} up, {:.1f} right)", g.back, g.height, g.side));
     }
     return std::format("on: {}; dot #{:06X} {:.2f} deg, ring {:.2f} deg, window {:.1f} units{}, eye box {:.1f} units, zero {}, shots {}; "
                        "scope lens {:.1f} units, "
-                       "{} reticle #{:06X}, {} eye's picture, focus {:.0f} m, eye relief {:.2f} m, {} px; ring reticle {}, scoped "
+                       "{} reticle #{:06X}, {} eye's picture, focus {:.0f} m, eye relief {:.2f} m, {} px, {}; ring reticle {}, scoped "
                        "aimed fire {}; alignment assist {}",
         guns, s.dotColor, s.dotSizeDeg, s.ringSizeDeg, s.windowUnits, s.frame ? " (framed)" : "", std::max(s.eyeBoxUnits, s.windowUnits),
         s.zeroM > 0.0f ? std::format("{:.0f} m", s.zeroM) : std::string("parallel"),
         s.converge ? "converge on what the sight line hits" : "parallel to the sight line", s.lensUnits, sv::Name(s.scopeReticle),
         s.scopeColor, s.otherEye ? "the other" : "the same", s.focusM, s.eyeReliefM, s.resolution,
+        s.scopeFieldDeg > 0.0f ? std::format("virtual eyepiece {:.0f} deg across to {:.2f} m, eye box {:.3f} m", s.scopeFieldDeg,
+                                     s.scopeMaxM, s.scopeEyeBoxM)
+                               : std::string("the physical lens"),
         s.replaceRing ? "hidden while sighting" : "kept", s.aimedFire ? "on" : "off",
         s.assist.enabled ? std::format("on (the aiming eye within {:.0f} degrees of the sight line, {:.0f}% of the way, at most {:.2f} m, "
                                        "the sight within {:.2f} m of the eye)",
@@ -1472,6 +1485,10 @@ void Refresh() {
         {L"Sights", "Sights", L"assistRangeM", "assistRangeM", L"0.65"},
         {L"Sights", "Sights", L"eyeBox", "eyeBox", L"6"},
         {L"Sights", "Sights", L"converge", "converge", L"1"},
+        // The scope's virtual eyepiece (2026-10-25, research/21 section 13).
+        {L"Sights", "Sights", L"scopeFieldDeg", "scopeFieldDeg", L"22"},
+        {L"Sights", "Sights", L"scopeEyeBoxM", "scopeEyeBoxM", L"0.05"},
+        {L"Sights", "Sights", L"scopeMaxM", "scopeMaxM", L"0.70"},
         {L"Hands", "Hands", L"noCover", "noCover", L"1"},
         {L"Hands", "Hands", L"physicalCrouch", "physicalCrouch", L"1"},
         {L"Hands", "Hands", L"crouchBelow", "crouchBelow", L"0.75"},

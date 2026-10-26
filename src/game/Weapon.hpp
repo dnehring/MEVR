@@ -104,6 +104,10 @@ struct Model {
     std::vector<ModelPoint> points;  // bones, then sockets ("socket " before the name)
 };
 std::optional<Model> ModelInGunFrame(engine::UnrealVector const& top);
+// The held gun's bone `index` (as ModelInGunFrame numbers its bones: the first points) in the world, live: the sight
+// rides on it while the gun unfolds and however the model is rolled (research/21 section 13). Nullopt without a held,
+// verified weapon or when its skeleton changed.
+std::optional<engine::UnrealVector> BoneWorld(std::size_t index);
 // One line for status logs: which weapon and how far along it is.
 std::string const& Status();
 // Heartbeat.

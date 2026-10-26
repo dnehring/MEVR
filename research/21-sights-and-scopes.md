@@ -196,7 +196,8 @@ dot, holo, or scope with a magnification 1-12); `<type>Place = auto` or `back, h
 `reticleColor`, `source`, `focusM`, `eyeReliefM`, `resolution`; `replaceRing`, `aimedFire`; since the
 evening of 2026-10-22 the alignment assist (section 8): `assist`, `assistConeDeg`, `assistStrength`,
 `assistMaxM`, `assistRangeM`; since 2026-10-23 (sections 9-11) `eyeBox` (6 units), `converge` (1),
-and the shotgun and the assault rifle default to `dot`.
+and the shotgun and the assault rifle default to `dot`; since 2026-10-25 (section 13) `scopeFieldDeg` (22), `scopeEyeBoxM`
+(0.05), `scopeMaxM` (0.70), and `<type>Place = back, height, side`.
 
 ## 7. Risks and what's left
 
@@ -403,3 +404,107 @@ The user's file has only the pistol stance (the rifle step kept cycling). Long g
 pistol's grip frame but not its sight line (`StanceBorrowed`: arm IK doesn't move the gun onto a pistol's line); the
 two-handed grip and the shoulder zone still need the rifle step. A stance whose aims disagreed by more than 10 degrees
 isn't used (logged).
+
+## 13. A scope too small at a real hold; the assault rifle's sight off the model (headset session 2026-10-25, 18:22-18:29)
+
+**Report (user, PS VR2 on SteamVR, life-size stereo):** the sniper scope, held up, was "very small", as if the eye had to
+be much closer than possible; the assault rifle's sight was "not aligned well at all". No snapshot that session shows a
+gun (the 18:36-18:39 series is holstered), so this is from `LE1MEVR.prev.log` (pid 21840).
+
+### The scope: why it was small
+
+- `[MEVR-SIGHT] first scope picture: the right eye aims (0.485 m behind the eyepiece, 0.0316 m off the line, pupil
+  0.20)`. The picture was the physical eyepiece: a 2-unit (2 cm at 100 units per meter) radius disc, about 4.7 degrees
+  across at 0.485 m, and past 1.5 eye reliefs (18 cm) the exit pupil shrinks it to a fifth: **under 1 degree** of
+  picture. The alignment assist lines put the eye 0.31-0.61 m behind the sight all session. A real scope's eye relief
+  is about 8 cm (this file's `eyeReliefM` 12 cm); a headset's lenses and a tracked controller can't get there.
+- **And it was on the wrong bone:** the sniper rifle's model has `Scope_Lens` (44.0 units behind the muzzle) and
+  `Scope_Eye` (59.2 behind, 7.0 up). Auto took the first bone with "scope" in its name, the front lens, 15 units
+  further from the eye than the model's eyepiece.
+
+**How VR shooters handle it (one search, 2026-10-25).** Little is documented. A
+[BetaHub feature request](https://app.betahub.io/projects/pr-7682550116/feature_requests/2669) asks for a reticle and
+picture that keep a fixed size whatever the eye's distance from the lens, saying that's how H3VR, Onward and Pavlov handle
+optics (the requester's claim, not verified), with the size a player setting. The
+[Sniper Elite VR thread](https://steamcommunity.com/app/752480/discussions/0/3049483485751256789) (section 1) prefers
+Pavlov's magnified sights to a scope whose picture follows the gun. Real-scope guides describe the opposite trend for
+glass (too much eye relief shrinks the picture), which is exactly what our physical model did. Overlord's ADS
+eye-distance assistance (section 1) slides the gun up to 15 cm toward the eye; ours can't close 30-60 cm. So: a
+**virtual eye relief**.
+
+**Built: the virtual eyepiece** (`vr::sights::VirtualView`, `PictureRadius`; host `plugin/SightLayers`, shader
+`plugin/SightPictures`; unit-tested `TestSightVirtualEyepiece`; offline `mevr-sight-preview`: `scope-virtual-*.png`,
+`eye-right-virtual-*.png`, and `eye-right-physical-45cm.png` for the old look).
+- The picture is a disc in the eyepiece's plane, centred on the eyepiece, whose radius is `along x tan(fieldDeg / 2)`
+  (never under the lens's own): it looks `[Sights] scopeFieldDeg` across (22 degrees: a 4x hunting scope's apparent
+  field is about 20-25 degrees) wherever the eye is behind it, up to `scopeMaxM` (0.70 m); it fades out by 1.25 times
+  that. Shown to the aiming eye only, as before; the other eye sees the world (both eyes open, like a real scope).
+- **The magnification stays true across the picture:** the lens point L still shows the direction `axis x along + (L -
+  Q) / zoom` (section 4): a point seen r off the centre shows the true angle atan(tan(r) / zoom). At 22 degrees and 4x
+  the picture holds 5.5 degrees of the world. The reticle stays centred on Q, the eye's line along the sight
+  (collimated).
+- **The shadow:** the exit pupil's centre goes one picture radius off for each `scopeEyeBoxM` (0.05 m) the eye is off the
+  line (on the eye's side, like the physical lens's), so a centred eye sees all of it, an eye 2.5 cm off a crescent,
+  5 cm off half, 10 cm off nothing. The aiming-eye box widens to two eye boxes. A dark rim (84-97% of the radius) frames
+  it like a tube's edge.
+- `scopeFieldDeg = 0` keeps the physical lens (`lensUnits`, `eyeReliefM`) exactly as before.
+- **Metric:** the disc is a quad at the eyepiece's real place; its content is the other eye's image projected with that
+  image's own pose and FOV (unchanged), so it agrees with life-size stereo (research/30). Its size is an angle at the
+  eye, so the view's scale doesn't change it.
+- **Resolution:** 22 degrees of picture at 4x come from 5.5 degrees of the eye image (about 24 pixels per degree): about
+  130 source pixels across, enlarged. Soft, as section 7 said; the picture texture (768) isn't the limit.
+- **Logs:** `[MEVR-SIGHT] first scope picture: ... virtual eyepiece: the picture N degrees across (... m at the
+  eyepiece; set N), N degrees of the world at 4.0x, eye box ..., full to ... m behind it`; when the picture goes, `sights:
+  the scope's picture was up N frames: the eye A..B m behind the eyepiece (C on average), D cm off the sight line on
+  average, the picture E degrees across on average, its shadow F picture radii in (1 = half shaded), opacity G`.
+  Snapshot: the host's `sights.scope` (`fieldDeg`, `along`, `pictureRadiusM`, `pictureDeg`, `pupilCentre`, `fade`).
+
+### The assault rifle's sight: the causes in the log
+
+1. **The sight's bone is animated, and was measured mid-unfold.** The rifle's model has a `Scope` bone. Its first
+   measurement (18:23:25, after the grip measurement's hold) put it at 54.9 back, 4.9 up, 3.8 right; every later draw
+   (18:25:36 onward, the grip remembered, so measured on the draw's first tick) at **48.3 back, 0.8 up, 2.2 right**, and
+   that stayed for the rest of the session, including the whole rifle-calibrated stretch (18:27:29-18:27:56). ME1's guns
+   unfold for about a second after a draw; measured once, the window sat 0.8 units over the bore, inside the receiver,
+   6.6 units behind where the unfolded part goes. **Evidence: the two log lines. Fixed.**
+2. **The model was measured against the controller's top, not the drawn gun's.** On that first tick the engine still
+   shows the gun as posed before arm IK aimed it. Bones that lie in a model's symmetry plane came out rolled about the
+   bore: the pistol's `Barrel_Upper_front`, `Barrel_Lower_front`, `Guard` and `handle` all at side = 0.59 x up (30
+   degrees), the rifle's `handle` and `Trigger_Guard` about 21 degrees (`squash_left` and `squash_right` tilted the
+   same), the sniper's 13 degrees, while arm IK's own line says the thumb-side up is 176-180 degrees from the socket's
+   up, the same every draw. And the side offset was dropped (the rifle's 3.8 units: the dot sat 3.8 cm left of the
+   bone). **Evidence: the bone lists. Fixed** by following the bone in the world (below), side included.
+3. **The model's top from the mesh bounds was 15-22 units** (pistol 15.1, shotgun 17.2, sniper 22.1) on guns whose bones
+   reach 3-7: the bounds are a loose culling box (the pistol's is 33 units tall). The pistol's and shotgun's windows sat
+   16-18 cm above the bore. **Fixed** (the top from the bones).
+4. **Two-hand aim turns the barrel off the calibrated stance.** With the support grip held, `two-hand aim (the grab's
+   line), swing 23.0 / 11.0 / 9.6 degrees`: the barrel follows the hands' line, while the calibrated rifle stance's
+   sight-line shift (`its sight moves 5.8 cm up and 2.4 cm right onto your sight line`, 18:27:29) is computed for the
+   one-handed hold. The rifle stretch was fired two-handed and says `no eye through it` in every heartbeat but one
+   (10 assist ticks, the eye 1.5 cm right of and 1.9 cm above the line, 7 degrees). **Plausible, not settled; not
+   changed** (it's the support grip's and the calibration's, VRIK's core): the next session's heartbeat lines settle it.
+5. **The eye sits about 4 cm above the sniper's sight line** (heartbeat 18:28:04-18:28:49: 3.5-4.2 cm above, under 2.5
+   cm sideways, 6-7 degrees, every 5 s). Partly causes 1-2 (the front-lens bone 2 units lower than the eyepiece bone,
+   measured in a rolled frame). The assist's 10-degree cone (full within 5) weighted it at 10-50%. **Partly fixed by the
+   bone; the next heartbeat says what remains** (a steady offset left: `assistConeDeg`, or a placement).
+6. Ruled out: the stereo (life-size, `[MEVR-STEREO] stereo mode 1`); the shots (`hand aim: shot N: from the muzzle ...
+   0.002 degrees off the sight line`: they follow the sight line as placed).
+
+**Built (mod, hot reload; the host for the scope):**
+- `vr::sights::SightBone`: a scope takes a bone named for its eyepiece ("eye", "ocular" or "rear" beside a sight word:
+  `Scope_Eye`) before the front lens; a dot the first sight-named bone; sockets never.
+- `weapon::BoneWorld`: that bone's live world place every tick (the mesh's pose and transform); the sight is placed
+  there (`back`, `height` and the new `side`, `sv::Place(..., sideM)`), so it rides the model while the gun unfolds and
+  however the model is rolled. The arm-IK stance shift (`SightInHand`) and the shots' rebuilt sight line
+  (`ShotAlongSight`) take the side too.
+- The model's bones are re-read every 0.25 s; without a sight bone the height comes from the bones' top
+  (`vr::sights::ModelTop`: the highest bone between the muzzle and 1.6 gun lengths back, within 8 units of the middle),
+  the bounds kept only for the log (`boundsTop`).
+- `<type>Place` takes a third number, the side (`back, height, side`).
+- **Logs:** the model line now says `as first drawn: it may still be unfolding and not yet aimed`, the bones' top and
+  which bone auto follows; `sights: the <gun>'s sight sits on its '<bone>' bone: B units behind the muzzle, U above the
+  bore, R to its right (still for 0.5 s, T s after the draw; it moved M units before)` once it settles (again if it
+  moves); the heartbeat's `placed B back, U up, R right`. Snapshot: the mod's `sights.place` (`side`, `bone`,
+  `boneLive`, `boneSettled`, `modelTop`, `boundsTop`).
+- **[verify]** with a snapshot per gun: the window ring on the model's sight part, the scope's picture over the model's
+  eyepiece; the rifle's settled numbers near 54.9 back, 4.9 up (the unfolded measurement).

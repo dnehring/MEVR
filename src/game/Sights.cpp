@@ -24,6 +24,7 @@
 #include <format>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace mevr::game::sights {
 namespace {
@@ -51,6 +52,7 @@ struct WorldSight {
     std::uintptr_t weapon = 0;
     double back = 0.0;
     double height = 0.0;
+    double side = 0.0;
     engine::UnrealVector top{};  // world, unit: the gun's top as the sight uses it
     double zeroUnits = 0.0;      // [Sights] zeroM in game units (0: parallel)
     bool converge = false;
@@ -63,16 +65,32 @@ struct WorldSight {
 WorldSight gWorld;
 bool gLoggedTracePath = false;
 
-// Per weapon: the sight's place on the gun's own model (mesh bounds), measured once and logged.
+// Per weapon: the sight's place on the gun's own model (research/21 sections 11 and 13). Its bones are re-read every
+// kRemeasureMs (ME1's guns unfold for a second after a draw, and the first tick's model still has the pose from before
+// arm IK aimed it); a bone named for a sight is followed live, in the world, every tick.
 struct ModelPlace {
     std::uintptr_t weapon = 0;
     bool measured = false;
-    std::optional<float> top;  // the model's top above the bore (gun units)
-    // A bone or socket named for a sight (scope, sight, optic, lens, eyepiece, reticle): the sight goes there.
-    std::optional<weapon::ModelPoint> named;
+    double measuredMs = 0.0;
+    std::optional<float> top;  // the model's top above the bore, from its bones (gun units)
+    std::optional<float> boundsTop;  // ...and from its mesh bounds (logged only: a loose culling box)
+    // A bone named for a sight (scope, sight, optic, lens, eyepiece, reticle; a scope's eyepiece first): the sight goes there.
+    std::optional<std::size_t> bone;
+    std::string boneName;
     std::string text;
+    // The bone's place in the gun's frame (live), and how it settled after the draw.
+    std::optional<sv::ModelPoint> live;
+    sv::ModelPoint reference{};
+    double stillSinceMs = 0.0;
+    double startMs = 0.0;
+    float travelled = 0.0f;  // how far the bone moved since the draw (gun units)
+    bool settledLogged = false;
+    int settleLogs = 0;
 };
 ModelPlace gModel;
+constexpr double kRemeasureMs = 250.0;
+constexpr float kSettleUnits = 0.3f;    // the bone counts as still while it stays this close
+constexpr double kSettleMs = 500.0;     // ...for this long
 sv::Gun gPlaced{};               // this tick's place (auto or set), for SightInHand
 std::uintptr_t gPlacedWeapon = 0;
 sv::Sight gLast{0};
@@ -241,52 +259,111 @@ void TraceSightLine(engine::UnrealVector const& center, engine::UnrealVector con
 #endif
 }
 
-// The held gun's model (mesh bounds) against its bore, once per weapon: logged, and its top kept for auto placement.
-void MeasureModel(engine::UnrealVector const& topWorld) {
+engine::UnrealVector Cross(engine::UnrealVector const& a, engine::UnrealVector const& b) {
+    return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
+}
+
+// A world point in the gun's frame: behind the muzzle along the barrel, above the bore toward `top`, to the right
+// (UE axes: up x forward = right).
+sv::ModelPoint InGunFrame(engine::UnrealVector const& point, weapon::Muzzle const& muzzle, engine::UnrealVector const& top) {
+    engine::UnrealVector const d = Sub(point, muzzle.location);
+    return {static_cast<float>(-Dot(d, muzzle.barrel)), static_cast<float>(Dot(d, top)), static_cast<float>(Dot(d, Cross(top, muzzle.barrel)))};
+}
+
+// The held gun's model against its bore: its bones re-read every kRemeasureMs (the top, the sight's bone), logged once
+// per weapon; the sight's bone followed every tick.
+void MeasureModel(engine::UnrealVector const& topWorld, sv::Kind kind, float length, weapon::Muzzle const& muzzle, double nowMs) {
     std::uintptr_t const key = weapon::Key();
-    if (gModel.weapon == key && gModel.measured) {
-        return;
-    }
-    gModel = {};
-    gModel.weapon = key;
-    auto const model = weapon::ModelInGunFrame(topWorld);
-    if (!model) {
-        return;
-    }
-    gModel.measured = true;
-    float const top = static_cast<float>(model->upMax);
-    if (std::isfinite(top) && top > 0.5f && top <= 30.0f) {
-        gModel.top = top;
-    }
-    std::string points;
-    for (weapon::ModelPoint const& p : model->points) {
-        points += std::format("{}{} ({:.1f} back, {:.1f} up, {:.1f} right)", points.empty() ? "" : "; ", p.name, p.back, p.up, p.side);
-        std::string lower = p.name;
-        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        for (char const* word : {"scope", "sight", "optic", "lens", "eyepiece", "reticle"}) {
-            if (!gModel.named && lower.find(word) != std::string::npos && std::isfinite(p.back) && std::isfinite(p.up) &&
-                p.up > 0.5 && p.up < 30.0 && p.back > -10.0 && p.back < 150.0) {
-                gModel.named = p;
+    bool const fresh = gModel.weapon != key || !gModel.measured;
+    if (fresh || nowMs - gModel.measuredMs >= kRemeasureMs) {
+        if (fresh) {
+            gModel = {};
+            gModel.weapon = key;
+            gModel.startMs = nowMs;
+        }
+        if (auto const model = weapon::ModelInGunFrame(topWorld)) {
+            gModel.measured = true;
+            gModel.measuredMs = nowMs;
+            // The bones come first in the list, then the sockets ("socket " before the name).
+            std::vector<std::string> names;
+            std::vector<sv::ModelPoint> bones;
+            for (weapon::ModelPoint const& p : model->points) {
+                names.push_back(p.name);
+                if (p.name.rfind("socket ", 0) != 0) {
+                    bones.push_back({static_cast<float>(p.back), static_cast<float>(p.up), static_cast<float>(p.side)});
+                }
+            }
+            gModel.top = sv::ModelTop(bones, length);
+            float const bounds = static_cast<float>(model->upMax);
+            gModel.boundsTop = std::isfinite(bounds) ? std::optional<float>(bounds) : std::nullopt;
+            if (fresh) {
+                gModel.bone = sv::SightBone(kind, names);
+                if (gModel.bone && *gModel.bone >= bones.size()) {
+                    gModel.bone.reset();
+                }
+                gModel.boneName = gModel.bone ? names[*gModel.bone] : std::string();
+                std::string points;
+                for (weapon::ModelPoint const& p : model->points) {
+                    points += std::format("{}{} ({:.1f} back, {:.1f} up, {:.1f} right)", points.empty() ? "" : "; ", p.name, p.back, p.up, p.side);
+                }
+                gModel.text = std::format("bounds {:.1f}..{:.1f} units behind the muzzle, {:.1f}..{:.1f} above the bore, {:.1f}..{:.1f} to "
+                                          "its right; bones' top {}",
+                    model->backMin, model->backMax, model->upMin, model->upMax, model->sideMin, model->sideMax,
+                    gModel.top ? std::format("{:.1f}", *gModel.top) : std::string("-"));
+                log::Info("sights: the {} model against its bore (gun units, as first drawn: it may still be unfolding and not yet "
+                          "aimed): {}; {}{}",
+                    sv::WeaponName(static_cast<int>(weapon::Type())), gModel.text, points.empty() ? std::string("no bones or sockets") : points,
+                    gModel.bone ? std::format("; auto puts its sight on the '{}' bone, followed live", gModel.boneName)
+                    : gModel.top ? std::format("; auto places its sight from the bones' top ({:.1f} above the bore; the bounds say {:.1f}, a "
+                                               "loose box)", *gModel.top, gModel.boundsTop.value_or(0.0f))
+                                 : std::string("; no plausible top: auto keeps the typical height"));
             }
         }
     }
-    gModel.text = std::format("bounds {:.1f}..{:.1f} units behind the muzzle, {:.1f}..{:.1f} above the bore, {:.1f}..{:.1f} to its right",
-        model->backMin, model->backMax, model->upMin, model->upMax, model->sideMin, model->sideMax);
-    log::Info("sights: the {} model against its bore (gun units): {}; {}{}", sv::WeaponName(static_cast<int>(weapon::Type())),
-        gModel.text, points.empty() ? std::string("no bones or sockets") : points,
-        gModel.named ? std::format("; auto places its sight on '{}' ({:.1f} back, {:.1f} up)", gModel.named->name, gModel.named->back,
-                           gModel.named->up)
-        : gModel.top ? std::format("; auto places its sight from the model's top ({:.1f} above the bore)", *gModel.top)
-                     : std::string("; its top is implausible: auto keeps the typical height"));
+    // The sight's bone, live: where it is in the gun's frame now, and when it has settled after the draw.
+    gModel.live.reset();
+    if (gModel.measured && gModel.bone) {
+        if (auto const world = weapon::BoneWorld(*gModel.bone)) {
+            sv::ModelPoint const p = InGunFrame(*world, muzzle, topWorld);
+            if (std::isfinite(p.back) && std::isfinite(p.up) && std::isfinite(p.side) && p.back > -10.0f && p.back < 200.0f &&
+                std::abs(p.up) < 30.0f && std::abs(p.side) < 30.0f) {
+                gModel.live = p;
+                float const moved = std::sqrt((p.back - gModel.reference.back) * (p.back - gModel.reference.back) +
+                    (p.up - gModel.reference.up) * (p.up - gModel.reference.up) + (p.side - gModel.reference.side) * (p.side - gModel.reference.side));
+                if (gModel.stillSinceMs == 0.0 || moved > kSettleUnits) {
+                    if (gModel.stillSinceMs != 0.0) {
+                        gModel.travelled += moved;
+                        if (gModel.settledLogged && gModel.settleLogs < 4) {
+                            gModel.settledLogged = false;  // it moves again: log where it settles next
+                        }
+                    }
+                    gModel.reference = p;
+                    gModel.stillSinceMs = nowMs;
+                } else if (!gModel.settledLogged && nowMs - gModel.stillSinceMs >= kSettleMs && gModel.settleLogs < 4) {
+                    gModel.settledLogged = true;
+                    ++gModel.settleLogs;
+                    log::Info("sights: the {}'s sight sits on its '{}' bone: {:.1f} units behind the muzzle, {:.1f} above the bore, {:.1f} "
+                              "to its right (still for {:.1f} s, {:.1f} s after the draw; it moved {:.1f} units before)",
+                        sv::WeaponName(static_cast<int>(weapon::Type())), gModel.boneName, p.back, p.up, p.side,
+                        (nowMs - gModel.stillSinceMs) / 1000.0, (nowMs - gModel.startMs) / 1000.0, gModel.travelled);
+                }
+            }
+        }
+    }
 }
 
-// The sight's place on this gun: [Sights] <type>Place, else auto (the length share; the height from the model).
+// The sight's place on this gun: [Sights] <type>Place, else auto: on the model's sight bone (live), else the length
+// share with the height from the bones' top.
 sv::Gun PlaceFor(int type, sv::Gun const& gun, float length, float radius) {
     sv::Gun placed = sv::AutoPlace(type, gun, length);
-    if (gun.autoPlace && gModel.measured && gModel.weapon == weapon::Key() && gModel.named) {
-        placed.back = static_cast<float>(gModel.named->back);
-        placed.height = static_cast<float>(gModel.named->up);
-    } else if (gun.autoPlace && gModel.measured && gModel.weapon == weapon::Key() && gModel.top) {
+    if (!gun.autoPlace || !gModel.measured || gModel.weapon != weapon::Key()) {
+        return placed;
+    }
+    if (gModel.live) {
+        placed.back = gModel.live->back;
+        placed.height = gModel.live->up;
+        placed.side = gModel.live->side;
+    } else if (gModel.top) {
         if (auto const height = sv::HeightOnModel(gun.kind == sv::Kind::None ? sv::Kind::Dot : gun.kind, *gModel.top, radius)) {
             placed.height = *height;
         }
@@ -436,7 +513,9 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
             } else {
                 bool const scope = gun.kind == sv::Kind::Scope;
                 engine::UnrealVector const topWorld = DirectionToWorld(*frame, *top);
-                MeasureModel(topWorld);
+                double const nowMs =
+                    std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
+                MeasureModel(topWorld, gun.kind, length, *muzzle, nowMs);
                 sv::Gun const placed = PlaceFor(type, gun, length, scope ? settings.lensUnits : settings.windowUnits);
                 gPlaced = placed;
                 gPlacedWeapon = weapon::Key();
@@ -445,7 +524,8 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
                 out.flags = (settings.frame && !scope ? sv::kFrame : 0u) | (settings.replaceRing ? sv::kReplaceRing : 0u) |
                     (settings.otherEye ? sv::kOtherEye : 0u);
                 out.eyeBox = std::max(settings.eyeBoxUnits, settings.windowUnits) / unitsPerMeter;
-                out.center = sv::Place(ray.origin, ray.direction, *top, placed.back / unitsPerMeter, placed.height / unitsPerMeter);
+                out.center = sv::Place(ray.origin, ray.direction, *top, placed.back / unitsPerMeter, placed.height / unitsPerMeter,
+                    placed.side / unitsPerMeter);
                 out.axis = sv::Zeroed(out.center, ray.origin, ray.direction, settings.zeroM * 100.0f / unitsPerMeter);
                 out.up = sv::TopOf(out.axis, *top).value_or(*top);
                 out.radius = (scope ? settings.lensUnits : settings.windowUnits) / unitsPerMeter;
@@ -458,34 +538,46 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
                 out.focusM = settings.focusM * 100.0f / unitsPerMeter;
                 out.eyeReliefM = settings.eyeReliefM;
                 out.resolution = settings.resolution;
+                out.scopeFieldDeg = settings.scopeFieldDeg;
+                out.scopeEyeBox = settings.scopeEyeBoxM;
+                out.scopeMaxM = settings.scopeMaxM;
                 // The same sight in the world, for the shots (research/21 section 10): the line traced this tick.
                 gWorld.valid = true;
                 gWorld.weapon = weapon::Key();
                 gWorld.back = placed.back;
                 gWorld.height = placed.height;
+                gWorld.side = placed.side;
                 gWorld.top = topWorld;
                 gWorld.zeroUnits = settings.zeroM * 100.0;
                 gWorld.converge = settings.converge;
                 if (settings.converge) {
-                    engine::UnrealVector const center = Add(Sub(muzzle->location, Times(muzzle->barrel, placed.back)),
-                        Times(topWorld, placed.height));
+                    engine::UnrealVector const center = Add(Add(Sub(muzzle->location, Times(muzzle->barrel, placed.back)),
+                        Times(topWorld, placed.height)), Times(Cross(topWorld, muzzle->barrel), placed.side));
                     engine::UnrealVector const axis = FromXr(sv::Zeroed(ToXr(Sub(center, muzzle->location)), {0.0f, 0.0f, 0.0f},
                         ToXr(muzzle->barrel), static_cast<float>(gWorld.zeroUnits)));
                     TraceSightLine(center, axis);
                 } else {
                     gWorld.traced = false;
                 }
-                status = std::format("the {} has a {} sight{}: {:.1f} units behind the muzzle, {:.1f} above the bore ({}; the gun is "
+                // Logged on change: a sight on a bone moves while the gun unfolds, so its numbers go in their own line
+                // (MeasureModel's "sits on its bone") and the heartbeat, not here.
+                status = std::format("the {} has a {} sight{}: {} ({}; the gun is "
                                      "{:.1f} units from muzzle to grip), {} {:.1f} units ({:.3f} m at {:.1f} units per meter), eye box "
-                                     "{:.1f} units; shots {}",
+                                     "{:.1f} units{}; shots {}",
                     sv::WeaponName(type), sv::Name(gun.kind), scope ? std::format(" ({:.1f}x)", gun.zoom) : std::string(),
-                    placed.back, placed.height,
+                    gModel.live && gun.autoPlace ? std::format("on the model's '{}' bone", gModel.boneName)
+                                                 : std::format("{:.1f} units behind the muzzle, {:.1f} above the bore{}", placed.back,
+                                                       placed.height, placed.side != 0.0f ? std::format(", {:.1f} right", placed.side) : std::string()),
                     !gun.autoPlace ? "set"
-                    : gModel.named ? "auto: on the model's sight point"
-                    : gModel.top   ? "auto: the length share, the height from the model's top"
+                    : gModel.live  ? "auto: followed live as the gun unfolds"
+                    : gModel.top   ? "auto: the length share, the height from the bones' top"
                                    : "auto",
                     length, scope ? "eyepiece radius" : "window radius", scope ? settings.lensUnits : settings.windowUnits, out.radius,
                     unitsPerMeter, std::max(settings.eyeBoxUnits, settings.windowUnits),
+                    scope && settings.scopeFieldDeg > 0.0f
+                        ? std::format("; virtual eyepiece: the picture {:.0f} degrees across with the eye up to {:.2f} m behind it, eye box "
+                                      "{:.3f} m", settings.scopeFieldDeg, settings.scopeMaxM, settings.scopeEyeBoxM)
+                        : std::string(),
                     settings.converge ? "converge on what the sight line hits" : "parallel to the sight line ([Sights] converge = 0)");
             }
         }
@@ -493,6 +585,10 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
     if (out.kind == static_cast<std::int32_t>(sv::Kind::None)) {
         gWorld.valid = false;
         gWorld.traced = false;
+        // The next draw measures the model again (and logs where its sight bone settles after that draw's unfolding).
+        if (gModel.weapon != 0 && gModel.weapon != weapon::Key()) {
+            gModel = {};
+        }
     }
     gStatus = status;
     // Logged when it changes, not with each tick's hand motion (the numbers above only change with the gun,
@@ -528,7 +624,9 @@ std::optional<ik::Vec3> SightInHand(weapon::Grip const& grip, ik::Vec3 const& up
         return std::nullopt;
     }
     up = ik::Normalize(up);
-    return grip.muzzle - barrel * static_cast<double>(placed.back) + up * static_cast<double>(placed.height);
+    ik::Vec3 const right = ik::Cross(up, barrel);  // UE axes: up x forward = right
+    return grip.muzzle - barrel * static_cast<double>(placed.back) + up * static_cast<double>(placed.height) +
+        right * static_cast<double>(placed.side);
 }
 
 std::optional<ShotAim> ShotAlongSight(weapon::Muzzle const& muzzle) {
@@ -543,7 +641,8 @@ std::optional<ShotAim> ShotAlongSight(weapon::Muzzle const& muzzle) {
         return std::nullopt;
     }
     top = Times(top, 1.0 / topLength);
-    engine::UnrealVector const sightFromMuzzle = Add(Times(barrel, -gWorld.back), Times(top, gWorld.height));
+    engine::UnrealVector const sightFromMuzzle =
+        Add(Add(Times(barrel, -gWorld.back), Times(top, gWorld.height)), Times(Cross(top, barrel), gWorld.side));
     XrVector3f const axis = sv::Zeroed(ToXr(sightFromMuzzle), {0.0f, 0.0f, 0.0f}, ToXr(barrel), static_cast<float>(gWorld.zeroUnits));
     ShotAim aim;
     aim.direction = FromXr(sv::ConvergedShot(ToXr(sightFromMuzzle), axis, static_cast<float>(gWorld.distance), kMinAheadUnits));
@@ -578,7 +677,8 @@ std::string StatusJson() {
     XrVector3f const shift = gSpring.Value();
     return std::format("{{\"kind\": {}, \"weapon\": {}, \"status\": {}, \"hostView\": {}, \"scopeUp\": {}, \"aimedShots\": {}, "
                        "\"center\": [{}, {}, {}], \"axis\": [{}, {}, {}], \"radius\": {}, \"zoom\": {}, \"eyeBox\": {}, "
-                       "\"place\": {{\"back\": {}, \"height\": {}, \"modelTop\": {}, \"model\": {}}}, "
+                       "\"place\": {{\"back\": {}, \"height\": {}, \"side\": {}, \"modelTop\": {}, \"boundsTop\": {}, \"bone\": {}, "
+                       "\"boneLive\": {}, \"boneSettled\": {}, \"model\": {}}}, "
                        "\"converge\": {{\"on\": {}, \"traced\": {}, \"hit\": {}, \"distanceM\": {}, \"what\": {}}}, \"assist\": {{\"on\": {}, "
                        "\"eye\": {}, \"angleDeg\": {}, \"along\": {}, \"offset\": [{}, {}], \"weight\": {}, \"goal\": [{}, {}, {}], "
                        "\"shift\": [{}, {}, {}]}}}}",
@@ -586,8 +686,9 @@ std::string StatusJson() {
         json::JsonString(gStatus), gHostView, gScopeUp ? "true" : "false", gAimedShotsTotal, json::JsonNumber(gLast.center.x),
         json::JsonNumber(gLast.center.y), json::JsonNumber(gLast.center.z), json::JsonNumber(gLast.axis.x),
         json::JsonNumber(gLast.axis.y), json::JsonNumber(gLast.axis.z), json::JsonNumber(gLast.radius), json::JsonNumber(gLast.zoom),
-        json::JsonNumber(gLast.eyeBox), json::JsonNumber(gPlaced.back), json::JsonNumber(gPlaced.height),
-        json::JsonNumber(gModel.top.value_or(-1.0f)), json::JsonString(gModel.text), gWorld.converge ? "true" : "false",
+        json::JsonNumber(gLast.eyeBox), json::JsonNumber(gPlaced.back), json::JsonNumber(gPlaced.height), json::JsonNumber(gPlaced.side),
+        json::JsonNumber(gModel.top.value_or(-1.0f)), json::JsonNumber(gModel.boundsTop.value_or(-1.0f)), json::JsonString(gModel.boneName),
+        gModel.live ? "true" : "false", gModel.settledLogged ? "true" : "false", json::JsonString(gModel.text), gWorld.converge ? "true" : "false",
         gWorld.traced ? "true" : "false", gWorld.hit ? "true" : "false", json::JsonNumber(gWorld.distance / 100.0),
         json::JsonString(gWorld.what), gAssisting ? "true" : "false", json::JsonString(gGoal.eye == 0 ? "left" : gGoal.eye == 1 ? "right" : "none"),
         json::JsonNumber(gGoal.angleDeg), json::JsonNumber(gGoal.along), json::JsonNumber(gGoal.x), json::JsonNumber(gGoal.y),
@@ -607,8 +708,8 @@ void LogStats() {
                 std::abs(gOffsetSumY / gOffsetTicks) * 100.0, gOffsetSumY >= 0.0 ? "above" : "below", gOffsetSumAngle / gOffsetTicks,
                 gMaxShift * 100.0f);
         }
-        log::Info("    sights: {}; {}; scoped aimed fire on {} of {} aim-error queries; {}", gStatus, ViewText(gHostView), aimed, queries,
-            assist);
+        log::Info("    sights: {}; placed {:.1f} back, {:.1f} up, {:.1f} right; {}; scoped aimed fire on {} of {} aim-error queries; {}",
+            gStatus, gPlaced.back, gPlaced.height, gPlaced.side, ViewText(gHostView), aimed, queries, assist);
     }
     gOffsetSumX = gOffsetSumY = gOffsetSumAngle = 0.0;
     gOffsetTicks = 0;

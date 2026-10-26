@@ -965,6 +965,27 @@ std::optional<Model> ModelInGunFrame(engine::UnrealVector const& topWorld) {
 #endif
 }
 
+std::optional<engine::UnrealVector> BoneWorld(std::size_t index) {
+#if defined(MEVR_GAME_LE1)
+    if (!Current()) {
+        return std::nullopt;
+    }
+    std::string why;
+    auto const live = LivePointers(why);
+    if (!live || live->mesh != gResolved->mesh) {
+        return std::nullopt;
+    }
+    std::span<engine::skeleton::BoneAtom const> const pose = engine::skeleton::SpaceBases(live->mesh);
+    if (index >= pose.size() || static_cast<int>(pose.size()) != engine::skeleton::RefBoneCount(live->mesh)) {
+        return std::nullopt;
+    }
+    return U(ik::TransformPoint(engine::skeleton::LocalToWorld(live->mesh), engine::skeleton::ToTransform(pose[index]).translation));
+#else
+    (void)index;
+    return std::nullopt;
+#endif
+}
+
 std::string const& Status() {
     return gStatus;
 }
