@@ -2,6 +2,7 @@
 #include "plugin/DrawReplay.hpp"
 
 #include "core/Hook.hpp"
+#include "core/Ini.hpp"
 #include "core/Log.hpp"
 
 #include <d3d11.h>
@@ -2371,7 +2372,7 @@ bool WriteDiff(ViewFields const& first, ViewFields const& second, std::string co
     }
     log::Info("draw replay: eye diff: {} pairs, {} structural mismatches, {} differing chunks ({} covered, {} not), tail {}: {}",
         pairs, structural, chunksDiffering, chunksCovered, chunksUncovered, replayable ? "replayable" : "not replayable",
-        path.string());
+        mevr::ini::Utf8(path));
     return replayable && covered;
 }
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "core/vr/TestRequest.hpp"
 
+#include <charconv>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -54,9 +55,13 @@ double Request::Number(std::string_view key, double fallback) const {
     if (it == options.end() || it->second.empty()) {
         return fallback;
     }
-    char* end = nullptr;
-    double const value = std::strtod(it->second.c_str(), &end);
-    if (end == it->second.c_str() || *end != '\0' || !std::isfinite(value)) {
+    std::string_view text = it->second;
+    if (text.front() == '+') {
+        text.remove_prefix(1);
+    }
+    double value = 0.0;  // std::from_chars: no C locale
+    auto const [end, ec] = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (ec != std::errc() || end == text.data() || end != text.data() + text.size() || !std::isfinite(value)) {
         return fallback;
     }
     return value;

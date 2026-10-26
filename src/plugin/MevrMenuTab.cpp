@@ -34,8 +34,10 @@
 #include "halcyon/le1/vr_config.h"
 #include "halcyon/le1/vr_menu.h"
 
+#include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/vr/Controllers.hpp"
+#include "engine/SettingsFile.hpp"
 
 #include "imgui.h"
 
@@ -49,6 +51,7 @@
 #include <cstdlib>
 #include <cwchar>
 #include <format>
+#include <optional>
 #include <string>
 
 namespace MELEVR::MevrBridge {
@@ -75,7 +78,11 @@ long gMeasureRequests = 0;
 bool gHaveCamera = false;
 float gCamera[3] = {0.0f, 0.0f, 0.0f};  // forward, right, up (units)
 float gCameraAppliedAt[3] = {1e9f, 1e9f, 1e9f};  // the measurement the last alignment used
-std::atomic<bool> gLifeSize{false};
+// Life-size movement is Halcyon's lean gain of 2 in the live profile (since 2026-10-26; [Camera] lifeSize, a separate
+// flag that could disagree with the profile, is no longer read).
+bool LifeSize() noexcept {
+    return std::fabs(MELEVR::Config::Get().leanGain - 2.0f) < 0.01f;
+}
 // The left-trigger alignment: armed from the tab (the menu closes, since the view isn't tracked
 // while it's open); the player stands naturally and pulls the left trigger; it recenters, waits
 // for the mod's next measurement, and moves the camera.
@@ -95,19 +102,9 @@ std::string gMeasureResult;
 
 std::wstring const& Path() {
     if (gPath.empty()) {
-        HMODULE module = nullptr;
-        wchar_t buffer[MAX_PATH]{};
-        if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                reinterpret_cast<LPCWSTR>(&Path), &module) &&
-            GetModuleFileNameW(module, buffer, MAX_PATH) != 0) {
-            gPath = buffer;
-            auto const dot = gPath.find_last_of(L'.');
-            auto const slash = gPath.find_last_of(L"\\/");
-            if (dot != std::wstring::npos && (slash == std::wstring::npos || dot > slash)) {
-                gPath.erase(dot);
-            }
-            gPath += L".ini";
-        }
+        // <exe dir>\ASI\LE1MEVR.ini, the file the mod reads (engine/SettingsFile), not <host ASI name>.ini: a renamed
+        // ASI kept the host and the mod on two different files.
+        gPath = mevr::engine::SettingsFile().wstring();
     }
     return gPath;
 }
@@ -118,19 +115,22 @@ bool ReadNumber(wchar_t const* section, wchar_t const* key, float& out) {
     if (text[0] == L'\0') {
         return false;
     }
-    wchar_t* end = nullptr;
-    double const value = std::wcstod(text, &end);
-    if (end == text || !std::isfinite(value)) {
+    std::string narrow;
+    for (wchar_t const* c = text; *c != L'\0'; ++c) {
+        narrow.push_back(*c < 128 ? static_cast<char>(*c) : '?');
+    }
+    std::optional<double> const value = mevr::ini::Number(narrow);  // locale-independent
+    if (!value) {
         return false;
     }
-    out = static_cast<float>(value);
+    out = static_cast<float>(*value);
     return true;
 }
 
-void WriteNumber(wchar_t const* section, wchar_t const* key, double value, wchar_t const* format = L"%.1f") {
-    wchar_t text[64]{};
-    std::swprintf(text, 64, format, value);
-    WritePrivateProfileStringW(section, key, text, Path().c_str());
+// `decimals` places, locale-independent (std::to_chars).
+void WriteNumber(wchar_t const* section, wchar_t const* key, double value, int decimals = 1) {
+    std::string const text = mevr::ini::Fixed(value, decimals);
+    WritePrivateProfileStringW(section, key, std::wstring(text.begin(), text.end()).c_str(), Path().c_str());
 }
 
 // Re-reads the file when it changed (by us, by the mod writing its defaults, or by hand).
@@ -159,8 +159,6 @@ void Reload(bool force) {
     gMeasureRequests = ReadNumber(L"Arms", L"measureRequest", requests) ? std::lround(requests) : 0;
     gHaveCamera = ReadNumber(L"Camera", L"measuredForward", gCamera[0]) && ReadNumber(L"Camera", L"measuredRight", gCamera[1]) &&
                   ReadNumber(L"Camera", L"measuredUp", gCamera[2]);
-    float lifeSize = 0.0f;
-    gLifeSize.store(ReadNumber(L"Camera", L"lifeSize", lifeSize) && lifeSize != 0.0f);
 }
 
 void WriteTrims(char const* why) {
@@ -219,20 +217,20 @@ void WriteArmSample(XrVector3f const& l, XrVector3f const& r, XrVector3f const* 
     Reload(true);  // the latest request counter
     float const dx = r.x - l.x, dy = r.y - l.y, dz = r.z - l.z;
     float const span = std::sqrt(dx * dx + dy * dy + dz * dz);
-    WriteNumber(L"Arms", L"measureLeftX", l.x, L"%.4f");
-    WriteNumber(L"Arms", L"measureLeftY", l.y, L"%.4f");
-    WriteNumber(L"Arms", L"measureLeftZ", l.z, L"%.4f");
-    WriteNumber(L"Arms", L"measureRightX", r.x, L"%.4f");
-    WriteNumber(L"Arms", L"measureRightY", r.y, L"%.4f");
-    WriteNumber(L"Arms", L"measureRightZ", r.z, L"%.4f");
+    WriteNumber(L"Arms", L"measureLeftX", l.x, 4);
+    WriteNumber(L"Arms", L"measureLeftY", l.y, 4);
+    WriteNumber(L"Arms", L"measureLeftZ", l.z, 4);
+    WriteNumber(L"Arms", L"measureRightX", r.x, 4);
+    WriteNumber(L"Arms", L"measureRightY", r.y, 4);
+    WriteNumber(L"Arms", L"measureRightZ", r.z, 4);
     if (head != nullptr) {
-        WriteNumber(L"Arms", L"measureHeadX", head->x, L"%.4f");
-        WriteNumber(L"Arms", L"measureHeadY", head->y, L"%.4f");
-        WriteNumber(L"Arms", L"measureHeadZ", head->z, L"%.4f");
+        WriteNumber(L"Arms", L"measureHeadX", head->x, 4);
+        WriteNumber(L"Arms", L"measureHeadY", head->y, 4);
+        WriteNumber(L"Arms", L"measureHeadZ", head->z, 4);
     }
-    WriteNumber(L"Arms", L"measureSpanM", span, L"%.4f");
+    WriteNumber(L"Arms", L"measureSpanM", span, 4);
     // The counter last, so a reader that sees it change finds the sample already written.
-    WriteNumber(L"Arms", L"measureRequest", static_cast<double>(gMeasureRequests + 1), L"%.0f");
+    WriteNumber(L"Arms", L"measureRequest", static_cast<double>(gMeasureRequests + 1), 0);
     char text[128];
     std::snprintf(text, sizeof text, "Sample %ld taken: %.2f m between the controllers.", gMeasureRequests + 1, span);
     gMeasureResult = text;
@@ -357,11 +355,9 @@ void CameraSection() {
     if (done) {
         MELEVR::Config::SaveProfile(MELEVR::Config::ActiveProfileIndex());
     }
-    bool lifeSize = gLifeSize.load();
+    bool lifeSize = LifeSize();
     if (ImGui::Checkbox("Life-size movement (crouch, lean and step 1:1 with the body)", &lifeSize)) {
-        gLifeSize.store(lifeSize);
         c.leanGain = lifeSize ? 2.0f : 1.0f;  // 100 units per metre, Shepard's skeleton scale
-        WriteNumber(L"Camera", L"lifeSize", lifeSize ? 1.0 : 0.0, L"%.0f");
         MELEVR::Config::SaveProfile(MELEVR::Config::ActiveProfileIndex());
         mevr::log::Info("menu: life-size movement {} (lean gain {:.1f}, forward emphasis {:.0f})", lifeSize ? "on" : "off",
             c.leanGain, lifeSize ? 1.0 : 3.0);
@@ -630,7 +626,7 @@ static void SightsSection() {
         std::string const value = ReadText(L"Sights", gun.key, gun.fallback);
         auto const space = value.find(' ');
         std::string const kind = value.substr(0, space);
-        float zoom = space != std::string::npos ? static_cast<float>(std::atof(value.c_str() + space + 1)) : 4.0f;
+        float zoom = space != std::string::npos ? static_cast<float>(mevr::ini::Number(std::string_view(value).substr(space + 1)).value_or(0.0)) : 4.0f;
         if (!(zoom >= 1.0f && zoom <= 12.0f)) {
             zoom = 4.0f;
         }
@@ -659,9 +655,8 @@ static void SightsSection() {
                 text.push_back(static_cast<wchar_t>(*c));
             }
             if (chosen == 3) {
-                wchar_t number[32]{};
-                std::swprintf(number, 32, L" %.1f", zoom);
-                text += number;
+                std::string const number = " " + mevr::ini::Fixed(zoom, 1);  // locale-independent
+                text += std::wstring(number.begin(), number.end());
             }
             WritePrivateProfileStringW(L"Sights", gun.key, text.c_str(), Path().c_str());
             mevr::log::Info("menu: sights: {} = {}{}", gun.label, kKinds[chosen], chosen == 3 ? std::format(" {:.1f}x", zoom) : "");
@@ -683,8 +678,7 @@ static void SightsSection() {
 }
 
 float ForwardLeanEmphasis() noexcept {
-    Reload(false);  // Present thread, like the menu; once a second at most
-    return gLifeSize.load(std::memory_order_relaxed) ? 1.0f : 3.0f;
+    return LifeSize() ? 1.0f : 3.0f;
 }
 
 void BuildMenuTabs() noexcept {

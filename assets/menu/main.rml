@@ -41,6 +41,8 @@
 			<div class="chip"><div class="ico i-controller"/><span>{{chip_controllers}}</span></div>
 			<div class="chip" data-class-ok="calibrated"><div class="ico i-check"/><span>{{chip_calibrated}}</span></div>
 		</div>
+		<!-- A failed write of the settings file (a read-only ASI folder): nothing the menu changes is kept. -->
+		<div class="note" data-if="save_msg != ''">{{save_msg}}</div>
 	</div>
 
 	<div class="content" id="content">
@@ -63,8 +65,8 @@
 		</div>
 		<div class="group">
 			<div class="gtitle"><span>Movement</span><div class="gline"/></div>
-			<div class="row"><div class="rl"><div class="rlab">Walk toward</div><div class="rdesc">What the left stick's forward means: where you look, or where your left hand points</div></div>
-				<div class="seg"><button class="segb" data-class-on="walk == 'head'" data-event-click="pick('walk','head')">Where I look</button><button class="segb" data-class-on="walk == 'hand'" data-event-click="pick('walk','hand')">Left hand</button></div></div>
+			<div class="row"><div class="rl"><div class="rlab">Walk toward</div><div class="rdesc">What the left stick's forward means: where you look, where your left hand points, or where Shepard faces</div></div>
+				<div class="seg"><button class="segb" data-class-on="walk == 'head'" data-event-click="pick('walk','head')">Where I look</button><button class="segb" data-class-on="walk == 'hand'" data-event-click="pick('walk','hand')">Left hand</button><button class="segb" data-class-on="walk == 'body'" data-event-click="pick('walk','body')">Body</button></div></div>
 			<div class="row"><div class="rl"><div class="rlab">Physical crouch</div><div class="rdesc">Crouch for real and Shepard crouches with you</div></div>
 				<button class="tog" data-class-on="crouch" data-event-click="toggle('crouch')"><div class="knob"/></button></div>
 			<div class="row"><div class="rl"><div class="rlab">Life-size movement</div><div class="rdesc">Your steps and leans move Shepard one to one</div></div>
@@ -96,7 +98,7 @@
 		</div>
 		<div class="group">
 			<div class="gtitle"><span>Combat</span><div class="gline"/></div>
-			<div class="row"><div class="rl"><div class="rlab">Physical grenades and melee</div><div class="rdesc">Take a grenade from your left chest and throw it; strike to melee</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Physical grenades and melee</div><div class="rdesc">Take a grenade from your left chest and throw it; strike to melee</div><div class="note" data-if="throwables_note != ''">{{throwables_note}}</div></div>
 				<button class="tog" data-class-on="throwables" data-event-click="toggle('throwables')"><div class="knob"/></button></div>
 			<div class="srow"><div class="slab">Recoil buzz</div><input type="range" min="0" max="100" step="5" data-value="recoil_buzz"/><div class="sval">{{recoil_buzz_text}}</div></div>
 			<div class="row"><div class="rl"><div class="rlab">Aim assist</div><div class="rdesc">Off: the stick turns you at the speed you ask, even near enemies</div></div>
@@ -137,7 +139,7 @@
 		</div>
 		<div class="group">
 			<div class="gtitle"><span>Quick fixes</span><div class="gline"/></div>
-			<div class="row"><div class="rl"><div class="rlab">Recenter</div><div class="rdesc">Face forward and level the world (also: double-click the right stick)</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Recenter</div><div class="rdesc">Turn the view to face where you look (a badly tilted start is levelled too); also: double-click the right stick</div></div>
 				<button class="btn" data-event-click="cmd('recenter')"><div class="sweep"/><div class="bi i-recenter"/><span>Recenter</span><div class="tick"/></button></div>
 			<div class="row"><div class="rl"><div class="rlab">Line up with Shepard's head</div><div class="rdesc">Closes the menu: stand naturally, then pull the left trigger</div><div class="note" data-if="align_msg != ''">{{align_msg}}</div></div>
 				<button class="btn" data-event-click="cmd('align')"><div class="sweep"/><div class="bi i-align"/><span>Align</span><div class="tick"/></button></div>
@@ -220,7 +222,7 @@
 			<div class="row"><div class="rl"><div class="rlab">Shotgun and assault rifle</div></div>
 				<div class="seg"><button class="segb" data-class-on="sight_rifle == 'dot'" data-event-click="pick('sight_rifle','dot')">Red dot</button><button class="segb" data-class-on="sight_rifle == 'holo'" data-event-click="pick('sight_rifle','holo')">Holo</button><button class="segb" data-class-on="sight_rifle == 'none'" data-event-click="pick('sight_rifle','none')">None</button></div></div>
 			<div class="row"><div class="rl"><div class="rlab">Sniper rifle</div></div>
-				<div class="seg"><button class="segb" data-class-on="sight_sniper == 'scope'" data-event-click="pick('sight_sniper','scope')">Scope 4×</button><button class="segb" data-class-on="sight_sniper == 'holo'" data-event-click="pick('sight_sniper','holo')">Holo</button><button class="segb" data-class-on="sight_sniper == 'none'" data-event-click="pick('sight_sniper','none')">None</button></div></div>
+				<div class="seg"><button class="segb" data-class-on="sight_sniper == 'scope'" data-event-click="pick('sight_sniper','scope')">Scope 4×</button><button class="segb" data-class-on="sight_sniper == 'dot'" data-event-click="pick('sight_sniper','dot')">Red dot</button><button class="segb" data-class-on="sight_sniper == 'holo'" data-event-click="pick('sight_sniper','holo')">Holo</button><button class="segb" data-class-on="sight_sniper == 'none'" data-event-click="pick('sight_sniper','none')">None</button></div></div>
 			<div class="row"><div class="rl"><div class="rlab">Sight alignment help</div><div class="rdesc">Raised to your eye, the gun eases the sight onto your line of view</div></div>
 				<button class="tog" data-class-on="sight_assist" data-event-click="toggle('sight_assist')"><div class="knob"/></button></div>
 			<div class="row"><div class="rl"><div class="rlab">Shots land on the dot</div><div class="rdesc">Each shot aims at whatever the sight line points at, near or far</div></div>
@@ -245,7 +247,7 @@
 		<div data-if="advtab == 'tracking'">
 			<div class="group">
 				<div class="gtitle"><span>Head tracking</span><div class="gline"/></div>
-				<div class="row"><div class="rl"><div class="rlab">Recenter key</div><div class="rdesc">R on the keyboard recenters, as well as a double-click of the right stick</div></div>
+				<div class="row"><div class="rl"><div class="rlab">Recenter key</div><div class="rdesc">{{recenter_key_desc}}</div></div>
 					<button class="tog" data-class-on="recenter_key" data-event-click="toggle('recenter_key')"><div class="knob"/></button></div>
 				<div class="srow"><div class="slab">Look speed</div><input type="range" min="0.25" max="2" step="0.05" data-value="look_speed"/><div class="sval">{{look_speed_text}}</div></div>
 				<div class="srow"><div class="slab">Smoothing</div><input type="range" min="0" max="0.9" step="0.05" data-value="look_smooth"/><div class="sval">{{look_smooth_text}}</div></div>
@@ -374,7 +376,7 @@
 					<button class="btn" data-event-click="cmd('perf')"><div class="sweep"/><div class="bi i-timer"/><span>Measure</span><div class="tick"/></button></div>
 				<div class="row"><div class="rl"><div class="rlab">Reset renderer settings</div><div class="rdesc">Back to Halcyon's defaults for this session; your calibration, controls and head-aim choice are kept</div><div class="note" data-if="diag_msg != ''">{{diag_msg}}</div></div>
 					<button class="btn danger" data-class-armed="reset_armed" data-event-click="cmd('reset')"><div class="sweep"/><div class="bi i-trash"/><span data-if="!reset_armed">Reset</span><span data-if="reset_armed">Confirm</span><div class="tick"/></button></div>
-				<div class="row"><div class="rl"><div class="rlab">Classic renderer menu</div><div class="rdesc">Halcyon's own menu, for what isn't here yet (also: Ctrl + \)</div></div>
+				<div class="row"><div class="rl"><div class="rlab">Classic renderer menu</div><div class="rdesc">{{classic_desc}}</div></div>
 					<button class="btn" data-event-click="cmd('classic')"><div class="sweep"/><span>Open</span><div class="tick"/></button></div>
 			</div>
 		</div>

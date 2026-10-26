@@ -13,6 +13,7 @@
 
 #include "halcyon/le1/vr_menu.h"
 
+#include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/vr/MenuPointer.hpp"
 #include "core/vr/TestRequest.hpp"
@@ -204,7 +205,7 @@ bool Init(ID3D11Device* device, ID3D11DeviceContext* context) {
     g.model = new menu::Model();
     if (!g.model->Bind(g.ui->Context(), g.settings) || !g.ui->LoadDocument()) {
         log::Error("main menu: the document didn't load from {} (deployed? see the rmlui: lines); no menu",
-            g.settings->Assets().string());
+            mevr::ini::Utf8(g.settings->Assets()));
         return false;
     }
     D3D11_QUERY_DESC qd{D3D11_QUERY_TIMESTAMP_DISJOINT, 0};
@@ -215,7 +216,7 @@ bool Init(ID3D11Device* device, ID3D11DeviceContext* context) {
     g.ready = true;
     log::Info("main menu: ready in {:.0f} ms ({}x{} canvas, documents {}, fonts {})",
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count(), kWidth, kHeight,
-        g.settings->Assets().string(), g.settings->Fonts().string());
+        mevr::ini::Utf8(g.settings->Assets()), mevr::ini::Utf8(g.settings->Fonts()));
     return true;
 }
 

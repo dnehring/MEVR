@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "engine/CodeDump.hpp"
 
+#include "core/Ini.hpp"
 #include "core/Log.hpp"
 
 #include <Windows.h>
@@ -142,7 +143,7 @@ void SaveOnce() {
         if (recorded && *recorded <= patched.size()) {
             return;
         }
-        log::Info("code dump: replacing {} ({} hook-patched function starts) with this one ({})", file.string(),
+        log::Info("code dump: replacing {} ({} hook-patched function starts) with this one ({})", ini::Utf8(file),
             recorded ? std::to_string(*recorded) : std::string("unknown"), patched.size());
     }
     std::filesystem::create_directories(dir, error);
@@ -158,13 +159,13 @@ void SaveOnce() {
     }
     info << "\n";
     if (!out || !info) {
-        log::Warn("code dump: writing {} failed", file.string());
+        log::Warn("code dump: writing {} failed", ini::Utf8(file));
         std::filesystem::remove(file, error);
         return;
     }
     log::Info("code dump: saved the decrypted .text ({} MB) to {} (local research data); {} function starts "
               "already hook-patched",
-        text->Misc.VirtualSize / (1024 * 1024), file.string(), patched.size());
+        text->Misc.VirtualSize / (1024 * 1024), ini::Utf8(file), patched.size());
 #endif
 }
 

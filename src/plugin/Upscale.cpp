@@ -11,6 +11,7 @@
 #include "core/vr/Upscale.hpp"
 #include "halcyon/le1/mevr_bridge.h"
 #include "plugin/Colour.hpp"
+#include "plugin/MevrMenu.hpp"
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -35,22 +36,7 @@ namespace cv = mevr::vr::colour;
 
 // ---- Settings ([Upscale] in ASI\LE1MEVR.ini, re-read once a second on the Present thread) --------------------
 std::wstring const& IniPath() {
-    static std::wstring path = [] {
-        HMODULE module = nullptr;
-        wchar_t buffer[MAX_PATH]{};
-        std::wstring result;
-        if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                reinterpret_cast<LPCWSTR>(&IniPath), &module) &&
-            GetModuleFileNameW(module, buffer, MAX_PATH) != 0) {
-            result = buffer;  // ...\ASI\LE1MEVR.asi -> LE1MEVR.ini
-            std::size_t const dot = result.find_last_of(L'.');
-            if (dot != std::wstring::npos) {
-                result.erase(dot);
-            }
-            result += L".ini";
-        }
-        return result;
-    }();
+    static std::wstring path = MELEVR::MevrBridge::SettingsPath();  // <exe dir>\ASI\LE1MEVR.ini, as the mod
     return path;
 }
 

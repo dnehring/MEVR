@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include "engine/NativesDump.hpp"
+#include "engine/SettingsFile.hpp"
 
+#include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "engine/GameAdapter.hpp"
 #include "ue3/Runtime.hpp"
@@ -35,10 +37,7 @@ bool Requested() {
     if (on) {
         return true;
     }
-    wchar_t buffer[MAX_PATH]{};
-    GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-    std::filesystem::path const ini =
-        std::filesystem::path(buffer).parent_path() / L"ASI" / (MEVR_GAME_NAME_W L"MEVR.ini");
+    std::filesystem::path const ini = SettingsFile();
     return GetPrivateProfileIntW(L"Debug", L"dumpNatives", 0, ini.c_str()) == 1;
 }
 
@@ -180,12 +179,12 @@ void SaveIfRequested() {
     }
     out.close();
     if (!out) {
-        log::Warn("natives dump: writing {} failed", file.string());
+        log::Warn("natives dump: writing {} failed", ini::Utf8(file));
         return;
     }
     log::Info("natives dump: {} native functions ({} distinct addresses) and {} other GNatives handlers -> {} "
               "(local research data)",
-        functions, named.size(), handlers, file.string());
+        functions, named.size(), handlers, ini::Utf8(file));
 }
 
 } // namespace mevr::engine::natives_dump

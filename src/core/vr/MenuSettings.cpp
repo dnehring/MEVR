@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include "core/vr/MenuSettings.hpp"
 
+#include "core/Ini.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -190,6 +192,11 @@ std::vector<Field> const& Schema() {
         {"perf_msg", Type::Text, 0, ""},
         {"content_installed", Type::Text, 0, ""},  // Display > Optional content (research/33)
         {"content_msg", Type::Text, 0, ""},
+        // Status and per-machine texts (2026-10-26).
+        {"save_msg", Type::Text, 0, ""},            // the top bar: the settings file couldn't be written
+        {"throwables_note", Type::Text, 0, ""},     // grenades and melee set apart in the file
+        {"recenter_key_desc", Type::Text, 0, "R on the keyboard recenters (the right stick's double-click works either way)"},
+        {"classic_desc", Type::Text, 0, "Halcyon's own menu, for what isn't here yet (also: Ctrl + the menu key)"},
     };
     return fields;
 }
@@ -339,7 +346,7 @@ std::string SightValue(std::string_view kind, std::string_view previous) {
     std::string const text = Lower(Trim(previous));
     float zoom = 4.0f;
     if (text.rfind("scope", 0) == 0 && text.size() > 5) {
-        float const parsed = static_cast<float>(std::atof(text.c_str() + 5));
+        float const parsed = static_cast<float>(ini::Number(std::string_view(text).substr(5)).value_or(0.0));
         if (parsed >= 1.0f && parsed <= 12.0f) {
             zoom = parsed;
         }
@@ -452,29 +459,9 @@ std::optional<std::string> PendingWrites::Overlay(std::string_view section, std:
 }
 
 std::map<std::string, std::string> ParseSection(std::string_view lines) {
-    std::map<std::string, std::string> out;
-    std::size_t start = 0;
-    while (start <= lines.size()) {
-        std::size_t end = lines.find('\n', start);
-        if (end == std::string_view::npos) {
-            end = lines.size();
-        }
-        std::string_view line = lines.substr(start, end - start);
-        start = end + 1;
-        std::string const trimmed = Trim(line);
-        if (trimmed.empty() || trimmed[0] == ';' || trimmed[0] == '#') {
-            continue;
-        }
-        std::size_t const eq = trimmed.find('=');
-        if (eq == std::string::npos) {
-            continue;
-        }
-        out[Lower(Trim(std::string_view(trimmed).substr(0, eq)))] = Trim(std::string_view(trimmed).substr(eq + 1));
-        if (end == lines.size()) {
-            break;
-        }
-    }
-    return out;
+    // core/Ini's reader (the mod's too): lower-cased keys, the first occurrence wins as in Win32's profile API.
+    ini::Section const section = ini::ParseKeys(lines);
+    return std::map<std::string, std::string>(section.begin(), section.end());
 }
 
 } // namespace mevr::vr::menu_settings

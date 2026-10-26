@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "game/HandCalibration.hpp"
 
+#include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/ik/ArmPose.hpp"
 #include "core/ik/HandFrame.hpp"
@@ -8,11 +9,13 @@
 #include "core/vr/Sights.hpp"
 
 #include "engine/GameAdapter.hpp"
+#include "engine/SettingsFile.hpp"
 
 #include <Windows.h>
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -135,11 +138,13 @@ constexpr char const* kDefaultFile =
     "; sprinting. exploreRamp: 1 = walking with a weapon out speeds up and slows down as gently as exploring.\n"
     "; drawRate: how fast the draw and holster animations play (1 = the game's own, up to 10). constantEye (read by\n"
     "; the host): 1 = drawing, holstering, aimed fire and sprinting with a weapon out leave your view where it is.\n"
+    "; blendFix (read by the host): 1 = a camera blend (the sniper's first draw, cover) doesn't jump your view.\n"
     "exploreStance = 0\n"
     "exploreStanceStorm = 1\n"
     "exploreRamp = 1\n"
     "drawRate = 6.0\n"
     "constantEye = 1\n"
+    "blendFix = 1\n"
     "\n"
     "[Arms]\n"
     "; Arm-length calibration (the VR hands tab samples a T pose; the mod writes armLengthM, the\n"
@@ -387,9 +392,7 @@ constexpr char const* kComfortBlock =
     "walk = head\n";
 
 fs::path FilePath() {
-    wchar_t buffer[MAX_PATH]{};
-    GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-    return fs::path(buffer).parent_path() / L"ASI" / (MEVR_GAME_NAME_W L"MEVR.ini");
+    return engine::SettingsFile();  // <exe dir>\ASI\<GAME>MEVR.ini, the host's file too
 }
 
 void Apply(Values const& values) {
@@ -404,31 +407,16 @@ std::string Strip(std::string const& text) {
     return first == std::string::npos ? std::string() : text.substr(first, last - first + 1);
 }
 
-// "[Section]" -> "key" -> value text, for "key = value" and "key=value" alike.
-using Ini = std::map<std::string, std::map<std::string, std::string>>;
+// "[Section]" -> "key" -> value text, read as Win32's profile API reads it (core/Ini: names case-insensitive, the
+// first occurrence wins, a BOM stripped, UTF-16 decoded), so the mod, the host and the key appends below agree.
+using Ini = ini::File;
+
+ini::Encoding gEncoding = ini::Encoding::Narrow;  // the settings file's, as last read
 
 Ini ReadIni(fs::path const& path) {
-    Ini ini;
-    std::ifstream in(path);
-    std::string line;
-    std::string section;
-    while (std::getline(in, line)) {
-        std::string const text = Strip(line);
-        if (text.empty() || text[0] == ';' || text[0] == '#') {
-            continue;
-        }
-        if (text[0] == '[') {
-            auto const close = text.find(']');
-            section = close == std::string::npos ? std::string() : text.substr(1, close - 1);
-            continue;
-        }
-        auto const equals = text.find('=');
-        if (equals == std::string::npos) {
-            continue;
-        }
-        ini[section][Strip(text.substr(0, equals))] = Strip(text.substr(equals + 1));
-    }
-    return ini;
+    ini::Loaded loaded = ini::Read(path);
+    gEncoding = loaded.encoding;
+    return std::move(loaded.file);
 }
 
 bool Number(Ini const& ini, char const* section, char const* key, double& out) {
@@ -440,12 +428,11 @@ bool Number(Ini const& ini, char const* section, char const* key, double& out) {
     if (k == s->second.end() || k->second.empty()) {
         return false;
     }
-    char* end = nullptr;
-    double const value = std::strtod(k->second.c_str(), &end);
-    if (end == k->second.c_str() || !std::isfinite(value)) {
+    std::optional<double> const value = ini::Number(k->second);
+    if (!value) {
         return false;
     }
-    out = value;
+    out = *value;
     return true;
 }
 
@@ -567,12 +554,11 @@ bool ReadSlot(std::string const& text, ik::body_slots::Slot& slot) {
     }
     double values[4] = {slot.offset.x, slot.offset.y, slot.offset.z, slot.radius};
     for (std::size_t i = 1; i < parts.size() && i <= 4; ++i) {
-        char* end = nullptr;
-        double const value = std::strtod(parts[i].c_str(), &end);
-        if (end == parts[i].c_str() || !std::isfinite(value)) {
+        std::optional<double> const value = ini::Number(parts[i]);
+        if (!value) {
             return false;
         }
-        values[i - 1] = value;
+        values[i - 1] = *value;
     }
     slot.weapon = *weapon;
     slot.offset = {std::clamp(values[0], -1.0, 1.0), std::clamp(values[1], -1.5, 0.5), std::clamp(values[2], -1.0, 1.0)};
@@ -767,11 +753,12 @@ Squad ReadSquad(Ini const& ini) {
     if (auto const crop = text("wheelCrop"); crop && *crop != "auto" && !crop->empty()) {
         double values[4] = {};
         int n = 0;
-        char const* p = crop->c_str();
-        while (*p != '\0' && n < 4) {
-            char* end = nullptr;
-            double const v = std::strtod(p, &end);
-            if (end == p) {
+        char const* p = crop->data();
+        char const* const last = crop->data() + crop->size();
+        while (p < last && n < 4) {
+            double v = 0.0;
+            auto const [end, ec] = std::from_chars(p, last, v);  // locale-independent
+            if (ec != std::errc() || end == p) {
                 ++p;  // separators
                 continue;
             }
@@ -873,7 +860,8 @@ Throwables ReadThrowables(Ini const& ini) {
             t.leftHand = false;
             t.rightHand = true;
         } else {
-            log::Warn("throwables: can't read hands = {} (both, left or right); both kept", *hands);
+            log::Warn("throwables: can't read hands = {} (both, left or right); {} kept", *hands,
+                t.leftHand && t.rightHand ? "both" : t.leftHand ? "left" : "right");
         }
     }
     if (auto const flight = text("flight")) {
@@ -944,21 +932,21 @@ vr::comfort::Settings ReadComfort(Ini const& ini) {
             if (auto const turn = cf::ParseTurn(*t)) {
                 c.turn = *turn;
             } else {
-                log::Warn("comfort: can't read turn = {} (smooth, snap or game); smooth kept", *t);
+                log::Warn("comfort: can't read turn = {} (smooth, snap or game); {} kept", *t, cf::Name(c.turn));
             }
         }
         if (auto const t = text("vignetteWhen")) {
             if (auto const when = cf::ParseVignetteWhen(*t)) {
                 c.vignetteWhen = *when;
             } else {
-                log::Warn("comfort: can't read vignetteWhen = {} (turn or move); turn kept", *t);
+                log::Warn("comfort: can't read vignetteWhen = {} (turn or move); {} kept", *t, cf::Name(c.vignetteWhen));
             }
         }
         if (auto const t = text("walk")) {
             if (auto const walk = cf::ParseWalk(*t)) {
                 c.walk = *walk;
             } else {
-                log::Warn("comfort: can't read walk = {} (head or hand); head kept", *t);
+                log::Warn("comfort: can't read walk = {} (head or hand); {} kept", *t, cf::Name(c.walk));
             }
         }
     }
@@ -1308,59 +1296,74 @@ void ClearArmLength() {
     log::Info("hands: arm length cleared: reach is not scaled");
 }
 
+// Appends a block of defaults with plain narrow text, which only fits an ANSI or UTF-8 file: a UTF-16 one (saved so
+// by an editor; Win32 reads it) would get bytes it reads as garbage. Then the block is left out, once warned.
+bool AppendBlock(fs::path const& path, char const* block, char const* name) {
+    if (ini::IsUtf16(gEncoding)) {
+        static bool warned = false;
+        if (!warned) {
+            warned = true;
+            log::Warn("hands: {} is saved as UTF-16: new settings blocks ([{}] ...) aren't appended to it (save it as "
+                      "ANSI or UTF-8 to get them); their defaults apply", ini::Utf8(path), name);
+        }
+        return false;
+    }
+    std::ofstream out(path, std::ios::app);
+    out << block;
+    out.close();
+    if (!out) {
+        log::Warn("hands: couldn't add the [{}] defaults to {} (read-only?); they apply without it", name, ini::Utf8(path));
+        return false;
+    }
+    log::Info("hands: added the [{}] defaults to {}", name, ini::Utf8(path));
+    return true;
+}
+
 void Refresh() {
     ULONGLONG const now = GetTickCount64();
-    if (gHaveStamp && now - gLastCheckMs < 1000) {
+    // Once a second; every 10 s while the file can't be created or read (an unwritable ASI folder): six callers a
+    // tick used to retry the create each time.
+    if (gLastCheckMs != 0 && now - gLastCheckMs < (gHaveStamp ? 1000u : 10000u)) {
         return;
     }
     gLastCheckMs = now;
     fs::path const path = FilePath();
     std::error_code ec;
     if (!fs::exists(path, ec)) {
-        std::ofstream(path) << kDefaultFile << kControlsBlock << kHolstersBlock << kSquadBlock << kSightsBlock << kThrowablesBlock
-                            << kComfortBlock;
-        log::Info("hands: wrote default calibration to {}", path.string());
+        {
+            std::ofstream out(path);
+            out << kDefaultFile << kControlsBlock << kHolstersBlock << kSquadBlock << kSightsBlock << kThrowablesBlock
+                << kComfortBlock;
+            out.close();
+            static bool warned = false;
+            if (!out || !fs::exists(path, ec)) {
+                if (!warned) {
+                    warned = true;
+                    log::Warn("hands: can't create {} (is the game's ASI folder read-only?): the defaults apply, and nothing "
+                              "the menus change is saved; tried again every 10 s", ini::Utf8(path));
+                }
+                if (!gApplied) {
+                    gApplied = true;
+                    Apply(Values{});
+                }
+                return;
+            }
+            warned = false;
+        }
+        log::Info("hands: wrote default calibration to {}", ini::Utf8(path));
     }
     auto stamp = fs::last_write_time(path, ec);
     if (ec || (gHaveStamp && stamp == gStamp)) {
         return;
     }
     Ini ini = ReadIni(path);
-    if (ini.find("Controls") == ini.end()) {
-        std::ofstream(path, std::ios::app) << kControlsBlock;  // an older file: show the new settings
-        log::Info("hands: added the [Controls] defaults to {}", path.string());
-        ini = ReadIni(path);
-        stamp = fs::last_write_time(path, ec);
-    }
-    if (ini.find("Holsters") == ini.end()) {
-        std::ofstream(path, std::ios::app) << kHolstersBlock;
-        log::Info("hands: added the [Holsters] defaults to {}", path.string());
-        ini = ReadIni(path);
-        stamp = fs::last_write_time(path, ec);
-    }
-    if (ini.find("Squad") == ini.end()) {
-        std::ofstream(path, std::ios::app) << kSquadBlock;
-        log::Info("hands: added the [Squad] defaults to {}", path.string());
-        ini = ReadIni(path);
-        stamp = fs::last_write_time(path, ec);
-    }
-    if (ini.find("Throwables") == ini.end()) {
-        std::ofstream(path, std::ios::app) << kThrowablesBlock;
-        log::Info("hands: added the [Throwables] defaults to {}", path.string());
-        ini = ReadIni(path);
-        stamp = fs::last_write_time(path, ec);
-    }
-    if (ini.find("Comfort") == ini.end()) {
-        std::ofstream(path, std::ios::app) << kComfortBlock;
-        log::Info("hands: added the [Comfort] defaults to {}", path.string());
-        ini = ReadIni(path);
-        stamp = fs::last_write_time(path, ec);
-    }
-    if (ini.find("Sights") == ini.end()) {
-        std::ofstream(path, std::ios::app) << kSightsBlock;
-        log::Info("hands: added the [Sights] defaults to {}", path.string());
-        ini = ReadIni(path);
-        stamp = fs::last_write_time(path, ec);
+    for (auto const& [name, block] : {std::pair{"Controls", kControlsBlock}, std::pair{"Holsters", kHolstersBlock},
+             std::pair{"Squad", kSquadBlock}, std::pair{"Throwables", kThrowablesBlock}, std::pair{"Comfort", kComfortBlock},
+             std::pair{"Sights", kSightsBlock}}) {
+        if (ini.find(name) == ini.end() && AppendBlock(path, block, name)) {  // an older file: show the new settings
+            ini = ReadIni(path);
+            stamp = fs::last_write_time(path, ec);
+        }
     }
     // Keys added to [Holsters] since a file was written: appended with their defaults, so the file
     // shows them (their comments are in a new file's block and research/19).
@@ -1385,7 +1388,7 @@ void Refresh() {
         }
     }
     if (!added.empty()) {
-        log::Info("hands: added {} (defaults) to [Holsters] in {}", added, path.string());
+        log::Info("hands: added {} (defaults) to [Holsters] in {}", added, ini::Utf8(path));
         ini = ReadIni(path);
         stamp = fs::last_write_time(path, ec);
     }
@@ -1408,7 +1411,7 @@ void Refresh() {
         }
     }
     if (!addedSquad.empty()) {
-        log::Info("hands: added {} (defaults) to [Squad] in {}", addedSquad, path.string());
+        log::Info("hands: added {} (defaults) to [Squad] in {}", addedSquad, ini::Utf8(path));
         ini = ReadIni(path);
         stamp = fs::last_write_time(path, ec);
     }
@@ -1423,9 +1426,7 @@ void Refresh() {
             if (k == c->second.end()) {
                 return fallback;
             }
-            char* end = nullptr;
-            double const v = std::strtod(k->second.c_str(), &end);
-            return end == k->second.c_str() ? fallback : v;
+            return ini::Number(k->second).value_or(fallback);
         };
         double const acquire = old("supportAcquireM", 0.12);
         double const release = old("supportReleaseM", 0.22);
@@ -1446,7 +1447,7 @@ void Refresh() {
                        "and supportPastMuzzleM added"
                      : std::format("your supportAcquireM {:.2f} and supportReleaseM {:.2f} kept, now the capsule's radii; supportZone, "
                                    "supportFrontM and supportPastMuzzleM added", acquire, release),
-            path.string());
+            ini::Utf8(path));
         ini = ReadIni(path);
         stamp = fs::last_write_time(path, ec);
     }
@@ -1464,7 +1465,7 @@ void Refresh() {
             }
         }
         if (!moved.empty()) {
-            log::Info("hands: [Sights] {} holo (the old default) -> dot (the new one) in {}", moved, path.string());
+            log::Info("hands: [Sights] {} holo (the old default) -> dot (the new one) in {}", moved, ini::Utf8(path));
         }
     }
     // [Hands] reachNearFaceM, the [Sights] alignment assist, [Hands]' physical cover and crouch
@@ -1505,6 +1506,7 @@ void Refresh() {
         {L"Hands", "Hands", L"exploreRamp", "exploreRamp", L"1"},
         {L"Hands", "Hands", L"drawRate", "drawRate", L"6.0"},
         {L"Hands", "Hands", L"constantEye", "constantEye", L"1"},
+        {L"Hands", "Hands", L"blendFix", "blendFix", L"1"},  // read by the host (research/38 B)
         // [Comfort] (2026-10-23, research/31): a section our menu started (it writes only the keys it changes).
         {L"Comfort", "Comfort", L"turn", "turn", L"game"},
         {L"Comfort", "Comfort", L"snapDeg", "snapDeg", L"45"},
@@ -1522,7 +1524,7 @@ void Refresh() {
         }
     }
     if (!addedKeys.empty()) {
-        log::Info("hands: added {} (defaults) to {}", addedKeys, path.string());
+        log::Info("hands: added {} (defaults) to {}", addedKeys, ini::Utf8(path));
         ini = ReadIni(path);
         stamp = fs::last_write_time(path, ec);
     }
@@ -1568,7 +1570,7 @@ void Refresh() {
             values.bodyMove ? "turns and steps" : "off", values.leanM, values.bodyMoveMaxM, values.armStretch,
             values.trackingScale > 0.0 ? std::format("{:.1f} units/m", values.trackingScale) : std::string("the view's"),
             values.armLength > 0.0 ? std::format("{:.3f} m", values.armLength) : std::string("not calibrated"),
-            path.filename().string(),
+            ini::Utf8(path.filename()),
             values.reachNearFace > 0.0
                 ? std::format("hands within {:.2f} m of the eyes unscaled (1:1 with the controllers)", values.reachNearFace)
                 : std::string("reach scaled near the face too"));
