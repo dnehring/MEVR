@@ -1900,9 +1900,9 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
         if (d.recorded != 0) {
             // Research/37: the recording's map copies (the driver's mapped memory read back at Unmap).
             share += std::format("; recording: {:.0f} maps ({:.0f} KB) copied in {:.2f} ms a frame, {:.1f} large maps not copied; "
-                                 "large buffers discarded inside the tail: {} frames ({} discards, {} shadowed); {:.0f} references held a frame",
+                                 "large buffers discarded inside the tail: {} frames ({} discards, {} shadowed); references: {:.1f} new a frame, {} held",
                 per(d.mapsCopied, d.recorded), per(d.mapCopyBytes, d.recorded) / 1024.0, d.mapCopyMs / static_cast<double>(d.recorded),
-                per(d.mapsSkipped, d.recorded), d.tailDiscardFrames, d.tailDiscards, d.shadowCopies, per(d.held, frames));
+                per(d.mapsSkipped, d.recorded), d.tailDiscardFrames, d.tailDiscards, d.shadowCopies, per(d.held, frames), d.heldSet);
         }
         if (d.eyeScissorRects != 0 || d.eyeScissorExempt != 0) {
             share += std::format("; eye scissor: {:.0f} rects a frame resolved ({:.0f} unchanged, not set), {:.0f} set again, {:.0f} exempt (the queries)",

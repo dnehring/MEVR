@@ -485,7 +485,9 @@ Use it to check VR changes yourself instead of asking the user what they see
   functions return at once and its finish replays the first eye's tail with the translated view-projection replaced
   whole by `T(pvt2 - pvt1) x TVP2` (the eye lives in every draw's LocalToWorld, not in the per-view matrix); a correct
   second eye at 10.9 ms against 11.4 with both engine renders at the heaviest cell: the recording costs what the
-  replay saves; **5**: one FViewportClient::Draw a frame (Halcyon's second Draw skipped through `g_oneDrawStereo`,
+  replay saves (the recorder holds references in a generation set, holds none for samplers, shaders and state objects,
+  and records from the tail mark, 2026-10-26; the probe's "before the wait" step counted the present path twice under
+  the early frame wait until the same day); **5**: one FViewportClient::Draw a frame (Halcyon's second Draw skipped through `g_oneDrawStereo`,
   pass 0 recording what pass 1's view would be, `MevrBridge::RecordPass1View`), the first render recorded and replayed
   in its own finish hook with the second view synthesised in the host: the engine's own right eye to within temporal
   noise, 9.1 ms against 11.4 (20%) at the heaviest cell, `replayInverse = 0` drops the inverse-matrix pair; **both eyes

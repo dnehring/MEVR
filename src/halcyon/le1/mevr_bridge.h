@@ -266,6 +266,10 @@ void WrapSessionFunctions(void** acquireSwapchainImage, void** waitSwapchainImag
 void PerfPresentBegin(ID3D11DeviceContext* context) noexcept;
 void PerfPresentEnd(ID3D11DeviceContext* context) noexcept;
 void PerfPass0Captured(ID3D11DeviceContext* context) noexcept;
+// [MEVR] finer steps of the present path (research/37, the present path trimmed): the hook's preamble done
+// (before XrSession::OnPresent) and the frame function entered (after the runtime's event poll).
+enum PerfPointId : int { kPerfPreamble = 1, kPerfFrameEntry = 2, kPerfFrameReads = 3, kPerfFrameCine = 4 };
+void PerfPoint(int point) noexcept;
 
 struct PerfPresentScope
 {

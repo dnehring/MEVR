@@ -3580,6 +3580,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     // Read FIRST (2026-07-08): it is a SECOND, independent cine signal - the camera-mode name read fails in
     // storms during cutscenes (unpossession), which made mono/crop "work sometimes, flip other times".
     const int  gameMode     = MELEVR::HeadAim::ReadGameModeSEH();
+    MELEVR::MevrBridge::PerfPoint(MELEVR::MevrBridge::kPerfFrameReads);   // [MEVR] frame-breakdown probe
     // [LIVEGUI 2026-07-17] gameMode 7 is AMBIGUOUS: real front-end/pause menus AND live in-world GUI
     // overlays (the Eden Prime bomb disarm) both report it, and the disarm got the menu treatment =
     // the "headset freezes during bomb disposal" bug. TWO discriminators are now FALSIFIED in-headset:
@@ -3746,6 +3747,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             else if (inCutsceneMode) effectiveGm = 6;
         }
         MELEVR::RenderHook::PublishGameModeForSfr(effectiveGm, cfg.cineVrConvo, cfg.cineVrCutscene, liveWorldGui);
+        MELEVR::MevrBridge::PerfPoint(MELEVR::MevrBridge::kPerfFrameCine);   // [MEVR] frame-breakdown probe
     }
     // [VRSTATE] ME2's transition log, ported. One UNCAPPED line per CHANGE of the whole flat/VR
     // decision. ME2 added it after the capped per-marker logs burned their budget at boot and went
@@ -6314,6 +6316,7 @@ void OnPresent(IDXGISwapChain* gameSwapChain) noexcept
 {
     if (!g_ready.load(std::memory_order_acquire) || g_shutdown.load(std::memory_order_relaxed)) return;
     PollEvents();
+    MELEVR::MevrBridge::PerfPoint(MELEVR::MevrBridge::kPerfFrameEntry);   // [MEVR] frame-breakdown probe
     if (g_sessionRunning) RunFrame(gameSwapChain);
     // [MIRRORTHROTTLE] published for the Present hook: true once the headset is actually being driven,
     // so the hook knows the flat mirror present is cosmetic and can be skipped. See PresentHook.

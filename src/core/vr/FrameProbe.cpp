@@ -6,7 +6,7 @@
 namespace mevr::vr::frame_probe {
 namespace {
 
-constexpr char const* kNames[kPointCount] = {"start", "pass0", "present", "wait_begin", "wait_end", "begin_begin",
+constexpr char const* kNames[kPointCount] = {"start", "pass0", "present", "preamble", "frame_entry", "frame_reads", "frame_cine", "wait_begin", "wait_end", "begin_begin",
     "begin_end", "input_begin", "input_end", "frame_begun_end", "overlay_begin", "overlay_end", "end_frame_begin",
     "end_frame_end", "end"};
 

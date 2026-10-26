@@ -92,6 +92,10 @@ time equals native and the wall time is still 1-1.5 ms worse. Removed. The list 
    7.3 to ~5 ms, medium spots another 1-2 ms; nothing at heavy spots.
 4. **Halcyon's present path** (~1.2 ms: the desktop mirror every frame, the stereo capture copies, probe-and-promote).
    Mirror every 2nd frame or off, copies trimmed. Expected 0.5-0.8 ms everywhere, certain, no visible cost.
+   **Closed 2026-10-26 (research/37): the 1.2 ms was 0.67, and the probe's "before the wait" step was the copies and
+   xrEndFrame counted twice under the early frame wait (fixed in `tools/perf-probe.py`). What is real: xrEndFrame
+   0.25, the eye copies 0.18, the rest under 0.1 each. Nothing to trim. The recorder instead: references in a
+   generation set, immutable objects not held, recording from the tail mark: 0.1-0.2 ms.**
 5. **The draw replay for the second eye** (sharePass 2, `plugin/DrawReplay`, exists, never run in VR). Keep the second
    eye's Umbra resolve (the command ring must drain or the game thread deadlocks: attempts 10-11) and replay the first
    eye's recorded D3D11 calls with the view constants swapped instead of the engine's draw submission. Expected: the

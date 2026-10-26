@@ -6510,6 +6510,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterv
     const bool openXrDisabled = IsOpenXrDisabledForBoundary();
     if (!openXrDisabled)
     {
+        MELEVR::MevrBridge::PerfPoint(MELEVR::MevrBridge::kPerfPreamble);   // [MEVR] frame-breakdown probe
         MELEVR::XrSession::OnPresent(swapChain);
     }
     else

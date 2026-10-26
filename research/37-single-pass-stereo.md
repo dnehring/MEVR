@@ -565,6 +565,37 @@ pass P draws columns a..b and rows c..d of its window`). The per-eye frustum the
 union, draws on the eye's off-centre matrix) cannot work: a query box must rasterise in the projection of the depth it
 tests against.
 
+### 2026-10-26 01:30-01:45, the present path and the recorder (task 2 of the remaining performance work)
+
+**The present path's 1.2 ms was 0.6 ms, and the 0.6 was a probe artifact.** Two new probe points inside "Halcyon
+before the wait" (`kPreamble` after the Present hook's preamble, `kFrameEntry` after the runtime's event poll, then
+`kFrameReads` and `kFrameCine` inside the frame function; `[MEVR]` seams `MevrBridge::PerfPoint`) put the preamble at
+0.01 ms, the poll at 0.03, the game-state reads and the cine decision below 0.01, and 0.9 ms between the cine decision
+and the "wait": there is no code there but change-gated logging and pacers that are off (`stereoFramePacing = 0`,
+upstream's default; `PaceDisplayLockedAer`, a Sleep-then-spin hold, only runs for the cutscene cap). The CSV showed
+why: under the early frame wait (research/22) the wrapped xrWaitFrame runs at the END of the frame function, for the
+next frame, so its mark sits after xrEndFrame's and `present -> wait_begin` spanned the whole present path, counting
+the copies and xrEndFrame twice. `tools/perf-probe.py` now ends that step at xrBeginFrame when the wait mark comes
+after xrEndFrame's. Measured right, the present path is about 0.67 ms a frame: the runtime's xrEndFrame 0.25, Halcyon's
+eye copies and layers 0.18, the tail after xrEndFrame 0.11, our controllers 0.05 and quads 0.04, the preamble and poll
+0.04. Nothing there earns a Halcyon change; `notes/cpu-frame-time-plan.md` item 4 is closed as a measurement error.
+
+**The recorder** (one Draw's 1.1 ms; the stack sample: 14.5% of the render thread in LE1MEVR, `Hold` 2.6%, `Reserve`
+1.8%, `Issue` 1.1%, the hooks and `Replay` the rest): three cuts. The recording held a reference to every resource it
+named, an AddRef per sighting outside an 8K-entry cache and a Release of every held pointer at Present's end
+(thousands of interlocked pairs a frame): now a generation set (open addressing over a dense list; AddRef on first
+sight, the sighting stamped with the frame, a sweep every 60 frames releasing what no frame in the last 60 named), 17-20
+AddRefs a frame against the thousands, 3,000-4,800 held. Samplers, shaders and the rasterizer, blend and depth-stencil
+states, the engine's cached immutable objects that cannot die inside the scene render the replay runs in, are not held
+at all (`Holds(op)`). And the recording starts at the tail mark instead of at the render's start: the entries before
+it (a fifth: 4,400 of 23,600 a frame, 0.4 MB of 5.2) were never re-issued (`t_armed`, the whole stream only while an
+eye diff is pending). Result at the heavy cell, the still PS VR2 pose looping: 19,239 calls and 4.8 MB recorded per
+first eye against 23,600 and 5.2, our module 12.5% of the render thread against 14.5, the render thread's work 9.28 ms
+against 9.37, `Hold` 2.5% (its lookup, no longer its interlocked ops). About 0.1-0.2 ms. The remaining recorder cost is
+the per-entry bookkeeping of ~19,000 entries a frame, inherent to recording; the next step would be recording less
+(the stage hooks are a third of the entries), not recording cheaper. The levers line carries `references: N new a
+frame, M held`.
+
 ### 2026-10-25 18:22, the third session (oneDrawWindow = 0): a distant light in the left eye only
 
 With each eye on its own frustum the user saw "the light from the distance" in the left eye but not the right, most on

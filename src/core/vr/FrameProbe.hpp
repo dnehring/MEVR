@@ -17,6 +17,10 @@ enum Point : int {
     kStart = 0,      // the previous Present returned
     kPass0,          // Stereo 2's first eye captured, at the clear that starts the second (the last one)
     kPresent,        // Present entered: the game's work for both eyes and the UI is issued
+    kPreamble,       // Halcyon's Present hook preamble done (GPU timing tick, the pass publish, its logs)
+    kFrameEntry,     // its frame function entered, after the runtime's event poll
+    kFrameReads,     // its game-state reads done (camera mode name, game mode)
+    kFrameCine,      // its cine decision published
     kWaitBegin,      // xrWaitFrame
     kWaitEnd,
     kBeginBegin,     // xrBeginFrame

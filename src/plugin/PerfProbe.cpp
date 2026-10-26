@@ -775,4 +775,14 @@ void PerfPass0Captured(ID3D11DeviceContext* context) noexcept {
     mevr::host::perf::Mark(mevr::vr::frame_probe::kPass0, context);
 }
 
+void PerfPoint(int point) noexcept {
+    switch (point) {
+    case kPerfPreamble: mevr::host::perf::Mark(mevr::vr::frame_probe::kPreamble); break;
+    case kPerfFrameEntry: mevr::host::perf::Mark(mevr::vr::frame_probe::kFrameEntry); break;
+    case kPerfFrameReads: mevr::host::perf::Mark(mevr::vr::frame_probe::kFrameReads); break;
+    case kPerfFrameCine: mevr::host::perf::Mark(mevr::vr::frame_probe::kFrameCine); break;
+    default: break;
+    }
+}
+
 } // namespace MELEVR::MevrBridge

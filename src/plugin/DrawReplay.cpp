@@ -266,6 +266,7 @@ ID3D11DeviceContext* gContextSeen = nullptr;  // every context Attach was given,
 
 Stream gStreams[2];
 thread_local Stream* t_recording = nullptr;
+thread_local Stream* t_armed = nullptr;   // BeginRecording done, the recording starts at MarkTail (nothing before it is replayed)
 
 // ---- The shown-columns scissor (research/37) --------------------------------------------------------------------
 // Both eyes render on the symmetric window, so each eye's image holds columns (and rows) the headset never shows:
@@ -496,9 +497,22 @@ ID3D11Buffer* ShadowFor(ID3D11DeviceContext* c, ID3D11Resource* resource, Buffer
     }
     return set.buffers[set.used++];
 }
-std::vector<IUnknown*> gHeld;                    // AddRef'd for the frame
-std::atomic<std::uint64_t> gHeldTotal{0};        // of those, per frame, for the levers line
-std::array<void*, 8192> gHeldCache{};
+// The recording holds a reference to every resource it names, so the replay never meets a freed one. Until
+// 2026-10-26 that was an AddRef per sighting not in a small cache and a Release of every held pointer at Present's
+// end: thousands of interlocked pairs a frame (2.6% of the render thread in the stack sample). Now a generation
+// set: AddRef on first sight, the sighting stamped with the frame, and every 60 frames a sweep that releases what no
+// frame in the last 60 named and rebuilds the index. A freed resource lives up to a second longer. Render thread.
+struct HeldEntry {
+    void* p;
+    std::uint32_t seen;
+};
+constexpr std::size_t kHeldSlots = 1u << 16;   // open addressing over the dense list below
+constexpr std::uint32_t kNoIndex = 0xFFFFFFFFu;
+std::vector<HeldEntry> gHeldList;
+std::vector<std::uint32_t> gHeldIndex(kHeldSlots, kNoIndex);
+std::uint32_t gHeldFrame = 1;
+std::atomic<std::uint64_t> gHeldTotal{0};        // AddRefs (first sightings) per frame, for the levers line
+std::atomic<std::uint64_t> gHeldSetSize{0};      // the set's size, for the levers line
 
 std::atomic<std::uint64_t> gReplays{0}, gFailures{0}, gRecorded{0}, gRecordedCalls{0}, gRecordedBytes{0},
     gReplayedCalls{0}, gSubstitutions{0}, gNotReplayable{0};
@@ -548,15 +562,58 @@ void Hold(void* p) {
     if (p == nullptr) {
         return;
     }
-    std::size_t const index = (reinterpret_cast<std::uintptr_t>(p) >> 4) & (gHeldCache.size() - 1);
-    if (gHeldCache[index] == p) {
+    std::size_t i = (reinterpret_cast<std::uintptr_t>(p) >> 4) & (kHeldSlots - 1);
+    for (;;) {
+        std::uint32_t const idx = gHeldIndex[i];
+        if (idx == kNoIndex) {
+            break;
+        }
+        if (gHeldList[idx].p == p) {
+            gHeldList[idx].seen = gHeldFrame;
+            return;
+        }
+        i = (i + 1) & (kHeldSlots - 1);
+    }
+    if (gHeldList.size() >= kHeldSlots / 2) {
+        return;   // never: the set stays a few thousand; past half full the probing would degrade, so hold nothing more
+    }
+    static_cast<IUnknown*>(p)->AddRef();
+    gHeldIndex[i] = static_cast<std::uint32_t>(gHeldList.size());
+    gHeldList.push_back({p, gHeldFrame});
+    gHeldTotal.fetch_add(1, std::memory_order_relaxed);
+}
+// Present's end: the frame advances; every 60 frames what no frame in the last 60 named is released and the index rebuilt.
+void SweepHeld() {
+    ++gHeldFrame;
+    gHeldSetSize.store(gHeldList.size(), std::memory_order_relaxed);
+    if (gHeldFrame % 60 != 0) {
         return;
     }
-    gHeldCache[index] = p;
-    static_cast<IUnknown*>(p)->AddRef();
-    gHeld.push_back(static_cast<IUnknown*>(p));
+    std::vector<HeldEntry> kept;
+    kept.reserve(gHeldList.size());
+    for (HeldEntry const& e : gHeldList) {
+        if (gHeldFrame - e.seen <= 60) {
+            kept.push_back(e);
+        } else {
+            static_cast<IUnknown*>(e.p)->Release();
+        }
+    }
+    gHeldList.swap(kept);
+    std::fill(gHeldIndex.begin(), gHeldIndex.end(), kNoIndex);
+    for (std::uint32_t k = 0; k < gHeldList.size(); ++k) {
+        std::size_t i = (reinterpret_cast<std::uintptr_t>(gHeldList[k].p) >> 4) & (kHeldSlots - 1);
+        while (gHeldIndex[i] != kNoIndex) {
+            i = (i + 1) & (kHeldSlots - 1);
+        }
+        gHeldIndex[i] = k;
+    }
 }
 
+// Samplers, shaders and the rasterizer, blend and depth-stencil states are the engine's cached, immutable objects:
+// none dies inside the scene render the replay runs in, so they are not held (2026-10-26: a third of the Hold calls).
+bool Holds(Op op) {
+    return op != Op::SetSamplers && op != Op::SetShader && op != Op::RSSetState;
+}
 void RecordPointers(Stream& s, Op op, std::uint8_t stage, UINT start, UINT count, void* const* ptrs, void* extra = nullptr,
     bool withExtra = false) {
     UINT const n = ptrs == nullptr ? 0 : count;
@@ -564,13 +621,18 @@ void RecordPointers(Stream& s, Op op, std::uint8_t stage, UINT start, UINT count
     auto* const body = reinterpret_cast<Pointers*>(Reserve(s, op, stage, static_cast<std::uint16_t>(n),
         sizeof(std::uint32_t) + total * sizeof(void*)));
     body->start = start;
+    bool const hold = Holds(op);
     for (UINT i = 0; i < n; ++i) {
         body->ptrs[i] = ptrs[i];
-        Hold(ptrs[i]);
+        if (hold) {
+            Hold(ptrs[i]);
+        }
     }
     if (withExtra) {
         body->ptrs[n] = extra;
-        Hold(extra);
+        if (hold) {
+            Hold(extra);
+        }
     }
 }
 
@@ -904,7 +966,6 @@ void STDMETHODCALLTYPE OMSetBlendStateHook(ID3D11DeviceContext* c, ID3D11BlendSt
             a->factor[0] = a->factor[1] = a->factor[2] = a->factor[3] = 1.0f;
         }
         a->mask = mask;
-        Hold(state);
     }
     Next<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11BlendState*, FLOAT const*, UINT)>(kOMSetBlendState)(c, state, factor, mask);
 }
@@ -912,7 +973,6 @@ void STDMETHODCALLTYPE OMSetDepthStencilStateHook(ID3D11DeviceContext* c, ID3D11
     if (t_recording != nullptr) {
         auto* const a = RecordStruct<DepthStencilArgs>(*t_recording, Op::OMSetDepthStencilState);
         *a = {state, reference};
-        Hold(state);
     }
     Next<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11DepthStencilState*, UINT)>(kOMSetDepthStencilState)(c, state, reference);
 }
@@ -2148,7 +2208,7 @@ bool Attach(ID3D11DeviceContext* context, hook::Context* hooks) {
     for (Stream& s : gStreams) {
         s.bytes.reserve(8u << 20);
     }
-    gHeld.reserve(4096);
+    gHeldList.reserve(8192);
     gAttached.store(true, std::memory_order_release);
     log::Info("draw replay: hooked {} entries of the immediate context's vtable and {} of d3d11's functions inline (the entries an "
         "overlay restores at every Present){}", hooked, inlined,
@@ -2220,12 +2280,26 @@ void BeginRecording(int stream) {
     for (auto& [resource, set] : gShadows) {
         set.used = 0;
     }
-    t_recording = &s;
+    // 2026-10-26: the entries before the tail mark (a fifth of them) are never re-issued, so the recording starts at
+    // the mark; the whole stream only when an eye diff wants to align it with the engine's own second render.
+    bool diff = false;
+    {
+        std::lock_guard<std::mutex> const lock(gDiffMutex);
+        diff = gDiffPending;
+    }
+    if (stream == 0 && !diff) {
+        t_armed = &s;
+        t_recording = nullptr;
+    } else {
+        t_armed = nullptr;
+        t_recording = &s;
+    }
 }
 
 void EndRecording() {
-    Stream* const s = t_recording;
+    Stream* const s = t_recording != nullptr ? t_recording : t_armed;   // armed but never marked: an empty stream
     t_recording = nullptr;
+    t_armed = nullptr;
     if (s == &gStreams[0]) {
         gRecorded.fetch_add(1, std::memory_order_relaxed);
         gRecordedCalls.fetch_add(s->entries, std::memory_order_relaxed);
@@ -2239,6 +2313,10 @@ void EndRecording() {
 }
 
 void MarkTail() {
+    if (t_recording == nullptr && t_armed != nullptr) {
+        t_recording = t_armed;
+        t_armed = nullptr;
+    }
     if (t_recording != nullptr && t_recording->tail == SIZE_MAX) {
         t_recording->tail = t_recording->bytes.size();
         t_recording->tailEntries = t_recording->entries;  // entries before the tail; the tail's are the rest
@@ -2611,12 +2689,7 @@ void OnPresentEnd() {
         return;
     }
     t_recording = nullptr;
-    gHeldTotal.fetch_add(gHeld.size(), std::memory_order_relaxed);
-    for (IUnknown* p : gHeld) {
-        p->Release();
-    }
-    gHeld.clear();
-    gHeldCache.fill(nullptr);
+    SweepHeld();
     gBuffers.clear();
     gMapped.clear();
     for (Stream& s : gStreams) {
@@ -2692,6 +2765,7 @@ Stats TakeStats() {
     s.eyeScissorExempt = gEyeScissorExempt.exchange(0, std::memory_order_relaxed);
     s.eyeScissorUnchanged = gEyeScissorUnchanged.exchange(0, std::memory_order_relaxed);
     s.held = gHeldTotal.exchange(0, std::memory_order_relaxed);
+    s.heldSet = gHeldSetSize.load(std::memory_order_relaxed);
     std::lock_guard<std::mutex> const lock(gBlockerMutex);
     s.lastBlocker = gLastBlocker;
     return s;

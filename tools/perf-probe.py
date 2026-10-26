@@ -81,7 +81,20 @@ def frame_metrics(r):
         m['left_draws'] = span(r, 'start', 'pass0', 'draws')
         m['right_draws'] = span(r, 'pass0', 'present', 'draws')
     m['draws'] = r.get('draws_end')
-    m['pre_wait'] = span(r, 'present', 'wait_begin')
+    # The early frame wait (research/22) calls xrWaitFrame at the END of the frame function, for the next frame:
+    # its marks then sit after xrEndFrame's, and "before the wait" would span the whole present path (the
+    # 2026-10-26 finding: a 0.6 ms step that was the copies and xrEndFrame counted twice). The frame then begins
+    # (xrBeginFrame) right after the point where the wait would have been, so that is the step's end.
+    early = r.get('t_wait_begin') is not None and r.get('t_end_frame_begin') is not None and         r.get('t_wait_begin') > r.get('t_end_frame_begin')
+    wait_point = 'begin_begin' if early else 'wait_begin'
+    m['pre_wait'] = span(r, 'present', wait_point)
+    m['preamble'] = span(r, 'present', 'preamble')
+    m['poll'] = span(r, 'preamble', 'frame_entry')
+    m['frame_pre'] = span(r, 'frame_entry', wait_point)
+    m['frame_reads'] = span(r, 'frame_entry', 'frame_reads')
+    m['frame_cine'] = span(r, 'frame_reads', 'frame_cine')
+    m['frame_pace'] = span(r, 'frame_cine', wait_point)
+    m['early_wait'] = span(r, 'end_frame_end', 'wait_begin') if early else None
     m['wait_wall'] = span(r, 'wait_begin', 'wait_end')
     m['wait_busy'] = span(r, 'wait_begin', 'wait_end', 'busy')
     m['begin_wall'] = span(r, 'begin_begin', 'begin_end')
@@ -208,7 +221,13 @@ def main():
     line('  busy', get('right_busy'))
     line('game: both eyes + UI, busy', get('game_busy'))
     line('Halcyon before the wait', get('pre_wait'))
-    line('xrWaitFrame, wall', get('wait_wall'), 'waiting for the runtime')
+    line('  its Present hook preamble', get('preamble'), 'GPU timing tick, the pass publish, logs')
+    line('  the runtime event poll', get('poll'))
+    line('  its frame function to the wait', get('frame_pre'), 'game-mode reads, pacing')
+    line('    the game-state reads', get('frame_reads'), 'camera mode name, game mode')
+    line('    the cine decision', get('frame_cine'))
+    line('    pacing to the wait', get('frame_pace'))
+    line('xrWaitFrame, wall', get('wait_wall'), 'waiting for the runtime (early: at the end of the frame, for the next)')
     line('xrWaitFrame, busy', get('wait_busy'), '~wall: it spins')
     line('xrBeginFrame, wall', get('begin_wall'))
     line('our controllers (sync, locate)', get('input'))

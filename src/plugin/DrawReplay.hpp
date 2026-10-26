@@ -128,7 +128,8 @@ struct Stats {
     std::uint64_t tailDiscardFrames = 0, tailDiscards = 0, mapsSkipped = 0;   // large dynamic buffers: discards inside the tail, maps not copied
     std::uint64_t shadowCopies = 0;   // of those discards, the ones shadowed (a GPU copy each)
     std::uint64_t eyeScissorRects = 0, eyeScissorReissued = 0, eyeScissorExempt = 0, eyeScissorUnchanged = 0;   // the shown-columns scissor
-    std::uint64_t held = 0;   // references the recording held (AddRef, Release at Present's end)
+    std::uint64_t held = 0;      // references the recording took this period (first sightings: AddRef)
+    std::uint64_t heldSet = 0;   // the held set's size (released when unseen for 60 frames)
     std::string lastBlocker;
 };
 Stats TakeStats();
