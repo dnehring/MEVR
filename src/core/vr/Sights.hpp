@@ -5,6 +5,8 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
+#include <string>
 #include <string_view>
 
 // Gun sights (research/21): a collimated red-dot or holographic sight for every gun, and a magnified
@@ -45,6 +47,7 @@ struct Gun {
     bool autoPlace = true;   // where the sight sits: from the gun's length (AutoPlace)
     float back = 0.0f;       // gun units behind the muzzle, along the barrel
     float height = 0.0f;     // gun units above the bore line, toward the gun's top
+    float side = 0.0f;       // gun units to the gun's right (a bone off the gun's middle; 0 when set by hand)
 };
 
 // The alignment assist (research/21 section 8; Overlord's ADS eye-distance assistance adapted to the
@@ -85,8 +88,16 @@ struct Settings {
     bool otherEye = true;               // scopeSource = other: magnify the other eye's image (the gun's own
                                         // scope model doesn't block it); same: the aiming eye's
     float focusM = 40.0f;               // game meters: where the two eyes' images agree (parallax)
-    float eyeReliefM = 0.12f;           // real meters from the eye to the eyepiece for a full picture
+    float eyeReliefM = 0.12f;           // real meters from the eye to the eyepiece for a full picture (fieldDeg 0 only)
     int resolution = 768;               // the scope picture's pixels across
+    // The virtual eyepiece (research/21 section 13, 2026-10-25): a headset and a controller can't bring the eye to a
+    // real scope's 8 cm eye relief, so with the aiming eye behind the eyepiece (up to `scopeMaxM`) the picture is a disc
+    // that looks `scopeFieldDeg` across from where the eye is (its apparent field: a real 4x hunting scope's is about
+    // 20-25 degrees), the magnification true across it. The eye `scopeEyeBoxM` off the sight line shades half of it.
+    // scopeFieldDeg = 0: the physical lens (lensUnits, eyeReliefM) as before.
+    float scopeFieldDeg = 22.0f;
+    float scopeEyeBoxM = 0.05f;
+    float scopeMaxM = 0.70f;
     // Both.
     bool replaceRing = true;            // hide the floating ring reticle while an eye looks through a sight
     bool aimedFire = true;              // the sniper rifle's shots get the game's aimed-fire accuracy while
@@ -107,7 +118,7 @@ std::optional<float> HeightOnModel(Kind kind, float modelTop, float radius);
 // "none", "dot", "holo", "scope" or "scope 4" (with a magnification, 1-12; `defaults` gives the zoom
 // when none is written). Nullopt: unreadable.
 std::optional<Gun> ParseGun(std::string_view text, Gun const& defaults);
-// "auto" or "back, height" (gun units).
+// "auto" or "back, height" or "back, height, side" (gun units).
 bool ParsePlace(std::string_view text, Gun& gun);
 // "ff3020", "#FF3020", or a name: red, green, amber, cyan, white.
 std::optional<std::uint32_t> ParseColor(std::string_view text);
@@ -140,6 +151,9 @@ struct Sight {
     float eyeReliefM = 0.12f;  // tracking meters
     std::int32_t resolution = 768;
     float eyeBox = 0.06f;      // tracking meters: an eye within this of the line looks through (dot, holo)
+    float scopeFieldDeg = 0.0f;  // the virtual eyepiece (Settings): 0 = the physical lens
+    float scopeEyeBox = 0.05f;   // tracking meters
+    float scopeMaxM = 0.70f;     // tracking meters
     std::uint64_t sequence = 0;  // set by Publish
     std::uint64_t timeMs = 0;    // GetTickCount64 at Publish
 };
@@ -161,8 +175,26 @@ std::uint32_t LatestView(std::uint64_t maxAgeMs = 250);
 
 // ---- Geometry ---------------------------------------------------------------------------------------
 
-// The sight's centre: `backM` behind the muzzle along the barrel, `heightM` up toward the gun's top.
-XrVector3f Place(XrVector3f const& muzzle, XrVector3f const& barrel, XrVector3f const& up, float backM, float heightM);
+// The sight's centre: `backM` behind the muzzle along the barrel, `heightM` up toward the gun's top, `sideM` to its
+// right (barrel x up).
+XrVector3f Place(XrVector3f const& muzzle, XrVector3f const& barrel, XrVector3f const& up, float backM, float heightM,
+    float sideM = 0.0f);
+
+// ---- The sight on the gun's model (research/21 sections 11 and 13) --------------------------------------------------
+// Which of the model's bones the sight goes on (an index into `names`; nullopt: none named for a sight). A scope's
+// picture belongs at its eyepiece: a name with "eye" or "ocular" or "rear" beside a scope word ("Scope_Eye") wins over
+// the front lens ("Scope_Lens"); a dot or holo takes the first sight-named bone (scope, sight, optic, reticle, lens).
+std::optional<std::size_t> SightBone(Kind kind, std::span<std::string const> names);
+// A point of the model in the gun's frame (gun units): behind the muzzle, above the bore, to the right.
+struct ModelPoint {
+    float back = 0.0f;
+    float up = 0.0f;
+    float side = 0.0f;
+};
+// The model's top above the bore from its bones (the mesh's bounds are a loose culling box: 15-22 units on guns
+// whose bones reach 3-7): the highest bone between the muzzle and the gun's back end (`gunLength` x 1.6 behind it) and
+// within 8 units of its middle. Nullopt when none is above 0.5 units.
+std::optional<float> ModelTop(std::span<ModelPoint const> bones, float gunLength);
 // The gun's top: `up` made perpendicular to the barrel (unit). Nullopt if `up` runs along the barrel.
 std::optional<XrVector3f> TopOf(XrVector3f const& barrel, XrVector3f const& up);
 // The sight line: along the barrel, or (zero > 0) from the sight to the shot's line `zero` ahead of the
@@ -256,11 +288,26 @@ std::optional<Lens> MakeLens(XrVector3f const& center, XrVector3f const& axis, X
 struct ScopeView {
     float along = 0.0f;  // the eye to the lens plane, along the axis
     float qx = 0.0f;     // where the sight line through the eye meets the lens, in lens radii from its
-    float qy = 0.0f;     //   centre (+x right, +y up): the centre of the exit pupil and of the reticle
+    float qy = 0.0f;     //   centre (+x right, +y up): the centre of the reticle
     float pupil = 1.0f;  // the exit pupil's radius (lens radii): 1 at the eye relief, smaller further back
+    float px = 0.0f;     // the exit pupil's centre (lens radii); outside it the scope's shadow. The physical lens: q
+    float py = 0.0f;
+    float fade = 1.0f;   // the picture's opacity (the virtual eyepiece fades out past its range)
 };
 // Nullopt when the eye isn't behind the lens (closer than 1 cm) or more than 6 eye reliefs back.
 std::optional<ScopeView> View(Lens const& lens, XrVector3f const& eye, float eyeRelief);
+
+// The virtual eyepiece (Settings::scopeFieldDeg). The picture's radius on the lens plane for an eye `along` behind it:
+// the radius that looks `fieldDeg` across from there, never smaller than the lens's own.
+float PictureRadius(float lensRadius, float along, float fieldDeg);
+struct Eyepiece {
+    float fieldDeg = 22.0f;  // the picture's apparent diameter
+    float eyeBox = 0.05f;    // the eye this far off the sight line: the pupil's centre a picture radius off (half shaded)
+    float maxAlong = 0.70f;  // full picture up to this far behind the eyepiece; gone at 1.25 times it
+};
+// The view through it: `lens` is the physical eyepiece; `picture` gets the same frame with the picture's radius, and
+// the view's q, p are in its radii. Nullopt when the eye is closer than 3 cm, past 1.25 maxAlong, or 2 eye boxes off.
+std::optional<ScopeView> VirtualView(Lens const& lens, XrVector3f const& eye, Eyepiece const& eyepiece, Lens& picture);
 // The direction the lens point (x, y) (lens radii) shows, magnified `zoom` times about the sight line
 // (not unit length: its component along the axis is `view.along`).
 XrVector3f LensDirection(Lens const& lens, ScopeView const& view, float x, float y, float zoom);

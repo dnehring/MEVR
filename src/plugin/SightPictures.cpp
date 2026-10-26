@@ -121,8 +121,8 @@ cbuffer Scope : register(b0) {
     float4 row2;        // w the picture's size (pixels)
     float4 tanFov;      // left, right, up, down (tangents)
     float4 rect;        // the eye image's part (pixels): x, y, width, height
-    float4 texel;       // 1 / texture width, 1 / texture height
-    float4 lit;         // the reticle's lit centre (linear)
+    float4 texel;       // 1 / texture width, 1 / texture height; zw the exit pupil's centre (lens radii)
+    float4 lit;         // the reticle's lit centre (linear); w the picture's opacity
 };
 struct VSOut { float4 pos : SV_Position; };
 VSOut VSMain(uint id : SV_VertexID) {
@@ -139,7 +139,7 @@ float4 PSMain(VSOut i) : SV_Target {
     float rim = saturate((1.0 - r) / px + 0.5);
     if (rim <= 0.0) return float4(0.0, 0.0, 0.0, 0.0);
     float2 d = lens - float2(lensRight.w, lensUp.w);
-    float pr = length(d) / max(row0.w, 0.01);
+    float pr = length(lens - texel.zw) / max(row0.w, 0.01);
     float3 c = float3(0.0, 0.0, 0.0);
     if (pr < 1.0) {
         float3 dir = lensAxis.xyz * eyeAlong.w + (lensRight.xyz * d.x + lensUp.xyz * d.y) * (lensCenter.w / max(lensAxis.w, 0.001));
@@ -174,8 +174,9 @@ float4 PSMain(VSOut i) : SV_Target {
         c = lerp(c, lit.rgb, glow);
         c *= 1.0 - smoothstep(0.82, 1.0, pr);
     }
-    c *= 1.0 - 0.5 * smoothstep(0.9, 1.0, r);
-    return float4(c * rim, rim);
+    c *= 1.0 - smoothstep(0.84, 0.97, r);  // the tube's dark rim: a scope's edge, not a hard cut
+    float a = rim * saturate(lit.w);
+    return float4(c * a, a);
 }
 )";
 
@@ -200,8 +201,8 @@ ScopeParams MakeScopeParams(sv::Sight const& sight, sv::Lens const& lens, sv::Sc
         {std::tan(fov.angleLeft), std::tan(fov.angleRight), std::tan(fov.angleUp), std::tan(fov.angleDown)},
         {static_cast<float>(rect.offset.x), static_cast<float>(rect.offset.y), static_cast<float>(rect.extent.width),
             static_cast<float>(rect.extent.height)},
-        {1.0f / static_cast<float>(std::max(textureWidth, 1u)), 1.0f / static_cast<float>(std::max(textureHeight, 1u)), 0.0f, 0.0f},
-        {lit[0], lit[1], lit[2], 1.0f},
+        {1.0f / static_cast<float>(std::max(textureWidth, 1u)), 1.0f / static_cast<float>(std::max(textureHeight, 1u)), view.px, view.py},
+        {lit[0], lit[1], lit[2], std::clamp(view.fade, 0.0f, 1.0f)},
     };
 }
 

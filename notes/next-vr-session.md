@@ -1228,6 +1228,34 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
     - Say if the view still turns a few degrees during the first draw's blend: the game's aim-point preservation
       turned the view toward the over-the-shoulder camera's aim before the write (research/38 B, not fixed here).
 
+37. **The sniper scope at a real hold, and the sights on the models (new, 2026-10-25; HOST REDEPLOY for the scope's
+    picture, the rest is the mod; [research/21](../research/21-sights-and-scopes.md) section 13).** Your report: the
+    scope was tiny when held up; the assault rifle's sight wasn't aligned. With the game closed, redeploy (the host and the
+    mod change the sight they share: a hot-reloaded mod with the old host shows no sight at all). Standing on foot:
+    - **The scope:** draw the sniper rifle, raise it to the eye at a comfortable hold (25-60 cm from the eyepiece). The
+      picture should look about as wide as a real 4x scope (22 degrees: roughly a fist at arm's length), the target 4x,
+      the duplex on what the shot hits, a dark rim at its edge, a crescent of shadow if your eye drifts off the line, and
+      it fades if you hold the gun out past 70 cm. Log: `[MEVR-SIGHT] first scope picture: ... virtual eyepiece: the
+      picture 22.0 degrees across ...` and, each time you lower it, `sights: the scope's picture was up N frames: the eye
+      A..B m behind the eyepiece (... on average), C cm off the sight line, the picture 22.0 degrees ..., its shadow S`.
+      Too big or too small: `[Sights] scopeFieldDeg` (live; 0 = the old physical lens); shadow too eager:
+      `scopeEyeBoxM` (0.05); range: `scopeMaxM` (0.70).
+    - **Where each sight sits:** draw each gun and hold it still for a second. New lines: `sights: the <gun>'s sight
+      sits on its '<bone>' bone: B units behind the muzzle, U above the bore, R to its right (still for ..., T s after the
+      draw; it moved M units before)` for the assault rifle ('Scope') and the sniper rifle (now 'Scope_Eye', the
+      eyepiece, not the front lens 'Scope_Lens'); for the pistol and shotgun the status line says `the height from the
+      bones' top` (about 4-5 units above the bore, not 16-18 from the mesh's bounds). The heartbeat's `sights:` line
+      now says `placed B back, U up, R right`.
+    - **A snapshot while aiming each gun** (a quick tap of both stick clicks, gun at the cheek, the dot or scope up):
+      the PNGs show whether the window ring and the dot sit on the model's sight and on the target; the JSON's
+      `mod.sights.place` (`side`, `bone`, `boneLive`, `boneSettled`, `modelTop` vs `boundsTop`) and the host's
+      `sights.scope` (`pictureDeg`, `along`, `pupilCentre`, `fade`).
+    - **The assault rifle two-handed:** aim it with the support grip (LT) and without. If the dot only lines up one-handed,
+      say so: the support grip's two-hand aim turns the barrel 10-23 degrees off the calibrated stance (`support grip:
+      ... swing N degrees` in the heartbeat) while the calibrated sight-line shift stays the one-handed one (research/21
+      section 13, cause 4, not changed yet). The heartbeat's `alignment assist on N ticks: the aiming eye sat on average
+      X cm ... the unassisted sight line` per gun is the number to send.
+
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR
   loader (MEVR)`, its pacing lines.

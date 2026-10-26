@@ -291,6 +291,7 @@ struct Case {
     bool otherEye;       // magnify the left eye's image
     sv::ScopeReticle reticle;
     float zoom;
+    bool virtualEyepiece = false;  // research/21 section 13: the picture 22 degrees across wherever the eye is behind it
 };
 
 } // namespace
@@ -332,16 +333,29 @@ int main(int argc, char** argv) {
         {"far-back", {0.0f, 0.0f, 0.25f}, true, sv::ScopeReticle::Duplex, 4.0f},
         {"mildot-6x", kRightEye, true, sv::ScopeReticle::MilDot, 6.0f},
         {"dot-2x", kRightEye, true, sv::ScopeReticle::Dot, 2.0f},
+        // The 2026-10-25 report: the eye 30-60 cm behind the eyepiece. The physical lens there, then the virtual eyepiece.
+        {"physical-45cm", {0.0f, 0.0f, 0.35f}, true, sv::ScopeReticle::Duplex, 4.0f},
+        {"virtual-30cm", {0.0f, 0.0f, 0.20f}, true, sv::ScopeReticle::Duplex, 4.0f, true},
+        {"virtual-45cm", {0.0f, 0.0f, 0.35f}, true, sv::ScopeReticle::Duplex, 4.0f, true},
+        {"virtual-60cm", {0.0f, 0.0f, 0.50f}, true, sv::ScopeReticle::Duplex, 4.0f, true},
+        {"virtual-45cm-off-2.5cm", {0.025f, 0.0f, 0.35f}, true, sv::ScopeReticle::Duplex, 4.0f, true},
+        {"virtual-80cm-fading", {0.0f, 0.0f, 0.70f}, true, sv::ScopeReticle::Duplex, 4.0f, true},
     };
+    sight.scopeFieldDeg = 22.0f;
+    sight.scopeEyeBox = 0.05f;
+    sight.scopeMaxM = 0.70f;
     for (Case const& c : cases) {
         sight.zoom = c.zoom;
         sight.scopeReticle = static_cast<std::int32_t>(c.reticle);
-        auto const view = sv::View(*lens, c.eye, sight.eyeReliefM);
+        sv::Lens pictureLens = *lens;
+        auto const view = c.virtualEyepiece
+            ? sv::VirtualView(*lens, c.eye, sv::Eyepiece{sight.scopeFieldDeg, sight.scopeEyeBox, sight.scopeMaxM}, pictureLens)
+            : sv::View(*lens, c.eye, sight.eyeReliefM);
         if (!view) {
             std::printf("%s: the eye isn't behind the lens\n", c.name);
             continue;
         }
-        pic::ScopeParams const params = pic::MakeScopeParams(sight, *lens, *view, c.eye, c.otherEye ? leftPose : rightPose, kFov, rect,
+        pic::ScopeParams const params = pic::MakeScopeParams(sight, pictureLens, *view, c.eye, c.otherEye ? leftPose : rightPose, kFov, rect,
             kEyeSize, kEyeSize, kScopeSize);
         std::vector<std::uint32_t> const picture =
             RenderScope(gpu, (c.otherEye ? leftSrv : rightSrv).Get(), params, kScopeSize);
@@ -354,15 +368,17 @@ int main(int argc, char** argv) {
         // eye image is the centred eye's; the case's eye only moves the picture's content.
         composite::Image eye = right;
         composite::Image const quadImage = Straight(picture, static_cast<int>(kScopeSize));
-        sv::Quad const disc = sv::Disc(sight.center, sight.axis, sight.up, sight.radius);
+        sv::Quad const disc = sv::Disc(sight.center, sight.axis, sight.up, pictureLens.radius);
         composite::Quad quad;
         quad.pose = disc.pose;
         quad.width = quad.height = disc.size;
         quad.image = &quadImage;
         composite::Draw(eye, composite::Eye{{{0.0f, 0.0f, 0.0f, 1.0f}, c.eye}, kFov}, quad);
         Save(dir, (std::string("eye-right-") + c.name + ".png").c_str(), eye.width, eye.height, eye.pixels);
-        std::printf("  %s: along %.3f m, pupil centre (%.2f, %.2f) lens radii, pupil %.2f, %.1fx\n", c.name, view->along, view->qx,
-            view->qy, view->pupil, c.zoom);
+        std::printf("  %s: along %.3f m, reticle at (%.2f, %.2f), pupil centre (%.2f, %.2f) picture radii, pupil %.2f, opacity %.2f, "
+                    "%.1fx, the picture %.1f degrees across\n",
+            c.name, view->along, view->qx, view->qy, view->px, view->py, view->pupil, view->fade, c.zoom,
+            2.0 * std::atan(pictureLens.radius / view->along) * 180.0 / 3.14159265);
     }
 
     // The reticles and the window ring.

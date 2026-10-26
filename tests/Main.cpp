@@ -4940,6 +4940,73 @@ void TestSightShots() {
     CHECK(s::HeightOnModel(s::Kind::Scope, 1.5f, 2.0f) == 1.0f);  // never below the bore
     CHECK(!s::HeightOnModel(s::Kind::Dot, 0.2f, 3.0f) && !s::HeightOnModel(s::Kind::Dot, 45.0f, 3.0f) &&
         !s::HeightOnModel(s::Kind::None, 5.0f, 3.0f));
+
+    // research/21 section 13: the sniper rifle's bones (log 2026-10-25 18:27:56): the scope's picture goes on the eyepiece
+    // bone, not the front lens; a dot takes the first sight-named bone; sockets never; nothing named: none.
+    std::vector<std::string> const sniper{"Root", "Top_Gun", "handle", "Scope_Lens", "Scope_Eye", "Butt", "socket Flash_1"};
+    CHECK(s::SightBone(s::Kind::Scope, sniper) == std::optional<std::size_t>(4));
+    CHECK(s::SightBone(s::Kind::Dot, sniper) == std::optional<std::size_t>(3));
+    std::vector<std::string> const rifle{"Root", "Butt", "handle", "Scope", "Upper_Rear"};
+    CHECK(s::SightBone(s::Kind::Dot, rifle) == std::optional<std::size_t>(3) && s::SightBone(s::Kind::Scope, rifle) == std::optional<std::size_t>(3));
+    std::vector<std::string> const pistol{"Root", "Guard", "Barrel_updown", "socket Sight_Flash"};
+    CHECK(!s::SightBone(s::Kind::Dot, pistol));
+    // The model's top from its bones (the pistol's, 2026-10-25: the bounds said 15.1): squash bones far to the side and
+    // points behind the gun's back end don't count.
+    std::vector<s::ModelPoint> const pistolBones{{27.2f, 0.9f, 0.5f}, {17.7f, -5.4f, -3.2f}, {18.3f, 2.7f, 1.6f}, {34.3f, 2.2f, 1.3f},
+        {27.1f, 9.5f, -17.8f}, {200.0f, 12.0f, 0.0f}};
+    CHECK(NearD(s::ModelTop(pistolBones, 27.2f).value_or(0.0f), 2.7, 1e-6));
+    CHECK(!s::ModelTop(std::vector<s::ModelPoint>{{10.0f, 0.2f, 0.0f}, {5.0f, -3.0f, 0.0f}}, 30.0f));
+    // A place with a side, and a set place with three numbers.
+    XrVector3f const placed = s::Place({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}, 0.4f, 0.05f, 0.02f);
+    CHECK(NearXr(placed, {0.02f, 0.05f, 0.4f}));
+    s::Gun place3;
+    CHECK(s::ParsePlace("59, 7, 1.5", place3) && !place3.autoPlace && place3.side == 1.5f && place3.height == 7.0f);
+    CHECK(s::ParsePlace("30, 6", place3) && place3.side == 0.0f);
+}
+
+// The scope's virtual eyepiece (research/21 section 13): the picture keeps its apparent size from 25 to 60 cm behind the
+// eyepiece, the magnification stays true across it, the shadow comes in with the eye off the line, and it fades past
+// its range.
+void TestSightVirtualEyepiece() {
+    namespace s = mevr::vr::sights;
+    auto const lens = s::MakeLens({0.0f, 0.0f, -0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}, 0.02f);
+    CHECK(lens.has_value());
+    if (!lens) {
+        return;
+    }
+    s::Eyepiece const ep{22.0f, 0.05f, 0.70f};
+    for (float along : {0.25f, 0.45f, 0.60f}) {
+        s::Lens picture{};
+        auto const view = s::VirtualView(*lens, {0.0f, 0.0f, -0.5f + along}, ep, picture);
+        CHECK(view.has_value());
+        if (!view) {
+            continue;
+        }
+        CHECK(NearD(view->along, along, 1e-5));
+        // 22 degrees across from the eye.
+        CHECK(NearD(2.0 * std::atan(picture.radius / view->along) * 180.0 / 3.14159265, 22.0, 1e-3));
+        CHECK(view->fade == 1.0f && view->px == 0.0f && view->py == 0.0f && view->pupil == 1.0f);
+        // The picture's edge shows the direction 11 / zoom degrees off the axis (true across the picture, x 4).
+        XrVector3f const edge = s::LensDirection(picture, *view, 1.0f, 0.0f, 4.0f);
+        double const shown = std::atan2(edge.x, -edge.z) * 180.0 / 3.14159265;
+        CHECK(NearD(shown, std::atan(std::tan(11.0 * 3.14159265 / 180.0) / 4.0) * 180.0 / 3.14159265, 1e-3));
+    }
+    // The physical lens 45 cm back: the old 2 cm disc (5 degrees), shrunk to a quarter by the pupil.
+    auto const physical = s::View(*lens, {0.0f, 0.0f, -0.05f}, 0.12f);
+    CHECK(physical && NearD(physical->pupil, 0.25, 1e-5) && physical->px == physical->qx);
+    // Never smaller than the lens itself (an eye right at it).
+    CHECK(s::PictureRadius(0.02f, 0.03f, 22.0f) == 0.02f && s::PictureRadius(0.02f, 0.5f, 0.0f) == 0.02f);
+    // The eye 2.5 cm right of the line: the pupil's centre half a picture radius right (a crescent of shadow); the
+    // reticle (q) where the eye's line meets the lens.
+    s::Lens picture{};
+    auto const off = s::VirtualView(*lens, {0.025f, 0.0f, -0.05f}, ep, picture);
+    CHECK(off && NearD(off->px, 0.5, 1e-4) && NearD(off->qx, 0.025 / picture.radius, 1e-4));
+    // Two eye boxes off, or too far back: no picture. Past the range it fades.
+    CHECK(!s::VirtualView(*lens, {0.11f, 0.0f, -0.05f}, ep, picture));
+    CHECK(!s::VirtualView(*lens, {0.0f, 0.0f, -0.5f + 0.9f}, ep, picture));
+    auto const distant = s::VirtualView(*lens, {0.0f, 0.0f, -0.5f + 0.7875f}, ep, picture);
+    CHECK(distant && distant->fade > 0.4f && distant->fade < 0.6f);
+    CHECK(!s::VirtualView(*lens, {0.0f, 0.0f, -0.48f}, ep, picture));  // closer than 3 cm
 }
 
 // The level camera (core/vr/ViewLevel, research/24): rotator angles, the gate, the camera modes, the
@@ -6701,6 +6768,7 @@ int main() {
     TestSightGeometry();
     TestScopeMapping();
     TestSightShots();
+    TestSightVirtualEyepiece();
     TestBoneNames();
     TestIk();
     TestRigid();
