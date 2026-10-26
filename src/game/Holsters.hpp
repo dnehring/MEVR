@@ -67,10 +67,14 @@ double EyeHeight();
 bool RightHandInSlot();
 double SecondsSinceDraw();
 // [Holsters] onlyHolstersDraw (default 1): only a grab at a holster draws. The game's own draws with the weapon away
-// (SFXPawn_Player.DrawPrimaryWeapon, from melee, grenade and power buttons, the wheels, the holster key's toggle) are
-// skipped on foot in VR. A draw we want from the game (a grenade thrown with the weapon away: UseGrenade draws) goes
-// between AllowGameDraw(true) and AllowGameDraw(false). Game thread.
+// (SFXPawn_Player.DrawPrimaryWeapon, from melee and grenade buttons, the weapon wheel, the holster key's toggle) are
+// skipped on foot in VR with tracked controllers (a refused one buzzes the right hand). Medi-gel (UseFirstAid) and
+// powers (TryUseMappedPower, EnterPowerWheel) still draw: deliberate actions that need combat mode. A draw we want
+// from the game (a grenade thrown with the weapon away: UseGrenade draws) goes between AllowGameDraw(true) and
+// AllowGameDraw(false). Game thread.
 void AllowGameDraw(bool begin);
+// The game's own draws are refused now (as of holsters' last tick): its weapon stays away unless a holster draws it.
+bool BlocksGameDraws();
 // For the test loop's mod status: a JSON object.
 std::string StatusJson();
 void LogStats();

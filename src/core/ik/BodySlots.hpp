@@ -98,6 +98,10 @@ struct Input {
     bool newSqueeze = false;  // a squeeze began since the last step (one the game didn't see as RB)
     bool trigger = false;
     Weapon held = Weapon::None;  // drawn now (None: holstered or unknown)
+    // The game is switching weapons (BioPawn.IsSwitchingWeapons: a draw's animation, about 0.24 s at drawRate 6).
+    // `held` turns on about 0.01 s into a draw, but the game ignores TryHolster until the switch is over, so a
+    // let-go then is kept (Returning, no grace) and acted on once the switch has finished.
+    bool switching = false;
     Holster holster = Holster::OwnSlot;
     // The grip holds the gun ([Holsters] gripHolds, research/19 "The right grip holds the gun"):
     // squeeze at a slot to draw, keep squeezing to carry, let go at the gun's own slot to holster it;
@@ -144,6 +148,8 @@ struct Step {
     Weapon weapon = Weapon::None;
     // gripHolds: the grace is waiting for the trigger to be let go (a burst never ends in a holster).
     bool returnWaitsForTrigger = false;
+    // gripHolds: ...or for the game's weapon switch (the draw's animation) to finish.
+    bool returnWaitsForSwitch = false;
 };
 
 class Machine {

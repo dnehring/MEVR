@@ -139,6 +139,9 @@ std::optional<Tonemap> ParseTonemap(std::string_view text) {
 Hdr ClampedHdr(Hdr h) {
     h.exposure = Clamp(h.exposure, -3.0f, 3.0f, 0.0f);
     h.white = Clamp(h.white, 1.0f, 16.0f, 4.0f);
+    h.hue = Clamp(h.hue, 0.0f, 1.0f, 1.0f);
+    h.desat = Clamp(h.desat, 0.0f, 1.0f, 0.15f);
+    h.sat = Clamp(h.sat, 0.0f, 1.0f, 0.7f);
     return h;
 }
 
@@ -346,6 +349,15 @@ Resolved Resolve(Section const& common, Section const& headset, Detection const&
     if (auto const w = Number(headset, common, "white")) {
         r.hdr.white = *w;
     }
+    if (auto const v = Number(headset, common, "tonehue")) {
+        r.hdr.hue = *v;
+    }
+    if (auto const v = Number(headset, common, "tonedesat")) {
+        r.hdr.desat = *v;
+    }
+    if (auto const v = Number(headset, common, "tonesat")) {
+        r.hdr.sat = *v;
+    }
     r.hdr = ClampedHdr(r.hdr);
     return r;
 }
@@ -371,6 +383,9 @@ Constants MakeConstants(Settings const& in, float ditherSteps, bool linearSource
     k.misc[3] = h.white;
     k.seed[0] = seed;
     k.seed[1] = static_cast<std::uint32_t>(h.tonemap);
+    k.hdr[0] = h.hue;
+    k.hdr[1] = h.desat;
+    k.hdr[2] = h.sat;
     return k;
 }
 
@@ -382,6 +397,7 @@ cbuffer MevrColour : register(b1) {
     float4 mevrGain;
     float4 mevrMisc;
     uint4 mevrSeed;
+    float4 mevrHdr;
 };
 float3 MevrEncode(float3 l) {
     l = saturate(l);
@@ -428,15 +444,28 @@ float3 MevrHableCurve(float3 x) {
     const float A = 0.15, B = 0.50, C = 0.10, D = 0.20, E = 0.02, F = 0.30;
     return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
 }
+float3 MevrCurve(float3 x) {
+    [branch] if (mevrSeed.y == 1u) { return MevrAces(x); }
+    [branch] if (mevrSeed.y == 2u) { return saturate(MevrHableCurve(x * 2.0) / MevrHableCurve(mevrMisc.www * 2.0)); }
+    float w = mevrMisc.w;
+    return saturate(x * (1.0 + x / (w * w)) / (1.0 + x));
+}
 // ToEye's clip of a float (scRGB) source, or the tonemap: linear in (paper white at 1.0), linear [0, 1] out.
+// The curve per channel (mevrHdr.x = 0) or on the largest channel with the pixel scaled by the ratio (hue kept),
+// moved toward the curve's grey by the path to white (mevrHdr.y), after the scene's chroma is scaled (mevrHdr.z).
 float3 MevrTone(float3 c) {
     c = max(c, 0.0);
     [branch] if (mevrMisc.y <= 0.5 || mevrSeed.y == 0u) { return c / max(1.0, max(c.r, max(c.g, c.b))); }
     c *= mevrMisc.z;
-    [branch] if (mevrSeed.y == 1u) { return MevrAces(c); }
-    [branch] if (mevrSeed.y == 2u) { return saturate(MevrHableCurve(c * 2.0) / MevrHableCurve(mevrMisc.www * 2.0)); }
-    float w = mevrMisc.w;
-    return saturate(c * (1.0 + c / (w * w)) / (1.0 + c));
+    float lum = dot(c, float3(0.2126, 0.7152, 0.0722));
+    c = max(lerp(lum.xxx, c, mevrHdr.z), 0.0);
+    float3 perChannel = MevrCurve(c);
+    float m = max(c.r, max(c.g, c.b));
+    float t = MevrCurve(m.xxx).x;
+    float3 kept = (m > 0.0) ? c * (t / m) : float3(0.0, 0.0, 0.0);
+    float g = 1.0 - 1.0 / (1.0 + mevrHdr.y * max(m - t, 0.0));
+    kept = lerp(kept, t.xxx, g);
+    return lerp(perChannel, kept, mevrHdr.x);
 }
 #define MEVR_EYE_OUT(c, pos) MevrColourIn((c), (pos).xy, mevrMisc.y > 0.5)
 #define MEVR_PANEL_OUT(c, pos) MevrColourIn(float4((c), 1.0), (pos).xy, true).rgb
@@ -466,13 +495,28 @@ Rgb Tone(Constants const& k, Rgb c) {
         return c;
     }
     float const w = k.misc[3];
-    for (float& v : c) {
-        float const x = v * k.misc[2];
+    auto const curve = [&](float x) {
         switch (k.seed[1]) {
-        case 1u: v = AcesFit(x); break;
-        case 2u: v = std::clamp(HableCurve(x * 2.0f) / HableCurve(w * 2.0f), 0.0f, 1.0f); break;  // the filmic bias of 2
-        default: v = std::clamp(x * (1.0f + x / (w * w)) / (1.0f + x), 0.0f, 1.0f); break;
+        case 1u: return AcesFit(x);
+        case 2u: return std::clamp(HableCurve(x * 2.0f) / HableCurve(w * 2.0f), 0.0f, 1.0f);  // the filmic bias of 2
+        default: return std::clamp(x * (1.0f + x / (w * w)) / (1.0f + x), 0.0f, 1.0f);
         }
+    };
+    for (float& v : c) {
+        v *= k.misc[2];
+    }
+    float const lum = 0.2126f * c[0] + 0.7152f * c[1] + 0.0722f * c[2];
+    for (float& v : c) {
+        v = std::max(lum + k.hdr[2] * (v - lum), 0.0f);   // the scene's chroma (toneSat)
+    }
+    float const m = std::max(c[0], std::max(c[1], c[2]));
+    float const t = curve(m);
+    float const g = 1.0f - 1.0f / (1.0f + k.hdr[1] * std::max(m - t, 0.0f));   // the path to white (toneDesat)
+    for (float& v : c) {
+        float const perChannel = curve(v);
+        float kept = m > 0.0f ? v * (t / m) : 0.0f;
+        kept = kept + g * (t - kept);
+        v = perChannel + k.hdr[0] * (kept - perChannel);   // toneHue
     }
     return c;
 }

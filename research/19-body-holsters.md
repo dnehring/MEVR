@@ -499,10 +499,29 @@ design (squeeze to draw, the grip is RB elsewhere).
 | let go at the gun's own slot | holstered at once (`TryHolster`); `holster = 2`: also at an empty slot |
 | let go anywhere else | it goes back after `releaseGrace` (0.3 s) unless you squeeze again; `releaseGrace = -1`: it stays out |
 | let go while firing | the grace's clock stops while the trigger is held: never in the middle of a burst |
-| let go at its slot while firing, or while the draw is still running | it goes back once the trigger is let go or the gun is out (waiting at most 2 s for a draw), with no grace |
+| let go at its slot while firing, or while the draw is still running | it goes back once the trigger is let go, the gun is out (waiting at most 2 s for a draw) and the game's switch has finished (`IsSwitchingWeapons`), with no grace; squeezing again first keeps it |
 | the game swaps or puts the gun away during the grace | the return is off |
 | a squeeze that began in a menu, a wheel or a conversation, with a gun out | taken as holding it (the host's report says the squeeze is kept from the game), so letting go still puts it away |
-| the game draws a gun by itself, grip open | left alone: only a let-go we saw acts. (`TryUseMappedPower`, `UseFirstAid`, `UseGrenade`, `TryMelee` and `EnterPowerWheel` all call `DrawPrimaryWeapon` when holstered, by their bytecode) |
+| the game draws a gun by itself, grip open | left alone: only a let-go we saw acts. (`TryUseMappedPower`, `UseFirstAid`, `UseGrenade`, `TryMelee` and `EnterPowerWheel` all call `DrawPrimaryWeapon` when holstered, by their bytecode; with `onlyHolstersDraw` most are refused, below) |
+
+**A let-go during the draw (QA, 2026-10-26):** `IsInCombatActionState` turns on about 0.01 s into a
+`SwitchToWeapon` draw, but `IsSwitchingWeapons` stays on for about 0.24 s (drawRate 6), and `TryHolster` is
+ignored while it is. Letting go at the slot in that window used to send the holster at once, the game dropped it,
+and the gun stayed out. The machine (`ik::body_slots::Input::switching`) now keeps that let-go as a return with no
+grace that waits for the switch to end (`Step::returnWaitsForSwitch`); a new squeeze cancels it. The grace away
+from the slots also stops its clock during a switch. Unit-tested (`TestBodySlotHolding`).
+
+**Only holsters draw, and its exceptions (`[Holsters] onlyHolstersDraw`, 2026-10-25/26):** the skip handler on
+`SFXPawn_Player.DrawPrimaryWeapon` (engine/call_function) refuses the game's own draws on foot in VR. Since
+2026-10-26 (QA) it refuses only with tracked controllers (`controllers.active`: a pad player in VR, or controllers
+asleep, can't reach a holster) and once the CallFunction hook is in (it goes in when hand aim first comes on; the
+log no longer claims refusals before that). Draws whose caller (the frame's `Node`) is
+`SFXGameModeDefault.UseFirstAid`, `TryUseMappedPower` or `EnterPowerWheel` go through: medi-gel and powers are
+deliberate actions that need combat mode (the lead's decision); TryMelee, UseGrenade (except our grenade grab's
+`AllowGameDraw`), EnterWeaponWheel, the weapon wheel's `Deactivated` and TryHolster's toggle stay refused, each with
+a short buzz in the right hand. The three callers are resolved by name at start (rows in engine/ReflectCheck; the
+SDK lists all three on `SFXGameModeDefault` only, LE1) and logged. "The gun came out without a holster grab" now
+compares only consecutive active ticks (it read a stale drawn state after an inactive stretch).
 
 **Why a grace, and why never mid-burst [inference]:** a hand relaxes for an instant while
 aiming, and holstering on every slip would be the error-prone release research/19 section 1
@@ -890,7 +909,10 @@ display list and ActionScript 2 bytecode), and GhidraMCP. RVAs for 2.0.0.48602, 
 
 - **Open:** the gesture (unchanged: pointing opens at once, at nobody after `openHoldS`, a missed
   foregrip grab never), then `EnterWeaponWheel()` on the controller's `SFXGameModeDefault`; the wheel is
-  open when the mode manager's `CurrentMode` is 3 (given up after 0.6 s: combat disabled in a hub).
+  open when the mode manager's `CurrentMode` is 3 (given up after 0.6 s: combat disabled in a hub). A wheel that
+  comes up later anyway (within 10 s), or any weapon wheel up when the trigger is pulled anew, is taken over
+  (`wheel::Step::adopted`, QA 2026-10-26): it used to stay open with the game paused, since the trigger is ours in
+  mode 3 and the game never saw an LB to let go of.
 - **Preselect:** pointed at a squadmate, the HUD's `nLastAngle` and `nAngle` are set to the centre of
   their weapon-in-hand's arc (their wheel member from `m_nHench1Index` / `m_nHench2Index`, the slot from
   the map above). A centred stick shows it; pushing the stick takes over **[verify]**.

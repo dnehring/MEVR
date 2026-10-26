@@ -31,9 +31,12 @@ was tried in a headset yet: everything below is **[verify]** until step 22 of
 
 ## 2. The sequence (about a minute)
 
-Started from the VR hands tab (Calibrate), or from a one-time prompt the first time VR runs on foot with
-controllers that have no calibration (`[Calibration] prompted` lists the keys it was shown for; either
-answer, or 45 s without one, records it). It closes Halcyon's menu and runs in the world, world-locked
+Started from our main menu (hold both sticks > Body & calibration > Start calibration; the VR hands tab's Calibrate
+too), or from a one-time prompt the first time VR runs on foot with controllers that have no calibration
+(`[Calibration] prompted` lists the keys it was shown for; either answer, or 45 s without one, records it). Its 8 s
+delay and 45 s timeout count only while the session has input focus (QA 2026-10-26: a headset on a desk used them
+up), its text and its log lines say where calibration lives later, and the `prompted` list is read whatever its
+length (it went through a 512-character buffer). It closes Halcyon's menu and runs in the world, world-locked
 in the app space, laid out on the heading the player faced at step 1.
 
 | Step | The panel says | Captured when (hold still 1 s: every pose within 2.5 cm and 4 degrees) | Recorded |

@@ -53,3 +53,6 @@ perf/
 
 # Claude Code's local settings and worktrees
 .claude/
+
+# Local-only research tools, never published (they rebuild a decrypted copy of the game exe from a dump)
+local-tools/

@@ -144,6 +144,10 @@ struct State {
 };
 State g;
 std::atomic<bool> gRecentered{false};
+// The watchdog's clocks (Present thread): the last VR frame that asked for our layers, and the last one that drew the
+// open menu (set at the opening too).
+std::uint64_t gLastLayerMs = 0;
+std::uint64_t gLastDrawnMs = 0;
 
 void Say(menu::LogLevel level, std::string const& text) {
     switch (level) {
@@ -723,6 +727,7 @@ void SetOpen(bool open, char const* why) {
     }
     gOpen.store(open);
     if (open) {
+        gLastDrawnMs = GetTickCount64();
         g.placed = false;
         g.needRender = true;
         g.submitted = false;
@@ -776,6 +781,7 @@ void Recentered() {
 }
 
 XrCompositionLayerQuad const* Layer(Frame const& frame) {
+    gLastLayerMs = GetTickCount64();
     if (frame.session != g.session) {
         g.swapchain = {};  // the old session's swapchain died with it
         g.session = frame.session;
@@ -794,6 +800,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         return nullptr;
     }
     std::uint64_t const now = GetTickCount64();
+    gLastDrawnMs = now;
     float const dt = g.lastFrameMs == 0 ? 1.0f / 72.0f : static_cast<float>(now - g.lastFrameMs) / 1000.0f;
     g.lastFrameMs = now;
     if (!g.placed || gRecentered.exchange(false, std::memory_order_acq_rel)) {
@@ -864,6 +871,18 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     g.quad.size = {g.width, g.height};
     Stats(now, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
     return &g.quad;
+}
+
+void OnPresent() {
+    std::uint64_t const now = GetTickCount64();
+    if (gOpen.load(std::memory_order_relaxed) && now - gLastDrawnMs > kNotDrawnMs) {
+        SetOpen(false, gLastLayerMs != 0 && now - gLastLayerMs <= kNotDrawnMs
+                ? "not drawn for over 1 s (it couldn't be shown)"
+                : "no VR frames for over 1 s: the VR session stopped or the headset sleeps; the game gets its input back");
+    }
+    if (calibration::Running() && gLastLayerMs != 0 && now - gLastLayerMs > kNotDrawnMs) {
+        calibration::Cancel("no VR frames for over 1 s: the VR session stopped or the headset sleeps");
+    }
 }
 
 std::string StatusJson() {

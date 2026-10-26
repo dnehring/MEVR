@@ -57,7 +57,11 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   LE1 only, `MEVR_MAIN_MENU`). Holding both sticks or `\` opens and closes it; Resume or B close it. It's a
   quad fixed in the room where it opens (`[Menu] distanceM`, `widthM`); the game sees no input, the mod no
   controllers, and on foot or in the Mako the mod pauses the game (`[Menu] pause`, HostServices v16,
-  `game/MenuPause`: `WorldInfo.PauseGame` like the game's weapon wheel). **Its top bar is the way into the game's own
+  `game/MenuPause`: `WorldInfo.PauseGame` like the game's weapon wheel). Buttons and triggers down when it (or the
+  calibration) closes are kept from the game until released (`gamepad::CloseLatch` in the XInput hook; the Game menu /
+  Holster press still goes through). Not drawn for over 1 s (the XR session stopped, lost or exiting; the headset
+  asleep) it closes by itself and a running calibration is cancelled (`main_menu::OnPresent`, every Present from
+  `PerfPresentEnd`), so the desktop game never stays paused with no input. **Its top bar is the way into the game's own
   menus** (since 2026-10-25, research/28 "The game's menus"; no controller menu button can be counted on, e.g. a Quest over
   Link): Game menu (the game's Start: its pause menu) and Holster (the game's Back: LE1 binds no menu to it, it holsters on
   foot and quits a bypass minigame) close our menu, and the host's XInput hook presses that button once the game reads the
@@ -193,7 +197,8 @@ switching frameworks.
   `[Hands] aimAssist = 0` (1 keeps them), log `aim assist:` (research/24 section 7).
 - LE1 guided calibration ([research/25](research/25-calibration.md), HostServices v15): our menu's Body &
   calibration > Start calibration (or the VR hands tab's Calibrate, or a one-time prompt for uncalibrated
-  controllers) runs about a minute in the headset
+  controllers: its 8 s delay and 45 s timeout count only while the session has input focus, and its text says where
+  calibration lives later) runs about a minute in the headset
   (`plugin/Calibration`; look in `plugin/CalibrationDraw`, the main menu's style; offline look:
   `mevr-calibration-preview`): stand tall, T pose, arms ahead, crouch, a pistol orb and two rifle orbs aimed
   at three targets (captured on a 1 s hold, no buttons; B back a step, both sticks held cancel), a red-dot
@@ -209,17 +214,21 @@ switching frameworks.
   or no section: everything as before. Log `calibration:`.
 - LE1 body holsters (`game/Holsters`, `core/ik/BodySlots`, research/19): a right-grip squeeze at a
   body slot draws that weapon through `SFXGameModeDefault.SwitchToWeapon` (ProcessEvent). The
-  right grip holds the gun (`gripHolds = 1`): let go at its slot to holster (`TryHolster`),
-  elsewhere it goes back after `releaseGrace`; the grip is never RB, RB (power wheel / mapped
+  right grip holds the gun (`gripHolds = 1`): let go at its slot to holster (`TryHolster`; while the draw still
+  animates, `IsSwitchingWeapons`, the game ignores it, so the holster waits for the switch's end unless the grip
+  closes again), elsewhere it goes back after `releaseGrace`; the grip is never RB, RB (power wheel / mapped
   power) is the right stick click (`powerWheel`). Contact haptics while the hand is in a slot
   (host `core/vr/Haptics`); the slots scale with the standing eye height from the floor (host
   `core/xr/Floor`, STAGE). Squad weapons: below. Settings: `[Holsters]` in `ASI\LE1MEVR.ini`.
-  **Only holsters draw** (`onlyHolstersDraw = 1`, 2026-10-25): on foot in VR the game's own draws with the weapon away
-  (`SFXPawn_Player.DrawPrimaryWeapon`: melee, grenade and power buttons, both wheels, the holster key's toggle) are
-  skipped by `engine/call_function`'s skip handler (it consumes the call's EX_EndFunctionParms; only for a script
-  function without parameters). A grenade taken with the weapon away is ours (`holsters::AllowGameDraw`). Logs
-  `holsters: the game wanted to draw your weapon (<caller>): refused` and, for a draw by any other route, `holsters: the
-  <gun> came out without a holster grab (triggers, grips)`. The shotgun's slot is the left hip (`hipLeft`, a cross-draw).
+  **Only holsters draw** (`onlyHolstersDraw = 1`, 2026-10-25): on foot in VR with tracked controllers, once the
+  CallFunction hook is in, the game's own draws with the weapon away (`SFXPawn_Player.DrawPrimaryWeapon`: melee and
+  grenade buttons, the weapon wheel, the holster key's toggle) are skipped by `engine/call_function`'s skip handler (it
+  consumes the call's EX_EndFunctionParms; only for a script function without parameters), with a short buzz in the
+  right hand. Medi-gel and powers still draw (callers `SFXGameModeDefault.UseFirstAid`, `TryUseMappedPower`,
+  `EnterPowerWheel`, matched against the skip handler's caller; the lead's decision 2026-10-26). A grenade taken with
+  the weapon away is ours (`holsters::AllowGameDraw`). Logs `holsters: the game wanted to draw your weapon (<caller>):
+  refused`, `... for <caller>: let through` and, for a draw by any other route, `holsters: the <gun> came out without a
+  holster grab (triggers, grips)`. The shotgun's slot is the left hip (`hipLeft`, a cross-draw).
 - LE1 body under the player ([research/29](research/29-body-follow.md), `core/ik/BodyFollow`, `game/BodyFollow`):
   first person, Shepard's whole body (the `Root` subtree; never `God`/`Camera`) turns by what the spine's 30
   degrees can't (the explore pawn faces where it runs) and slides under the view (feet that step after the
@@ -305,7 +314,15 @@ switching frameworks.
   log `hdr display:`), so the float backbuffer comes with Windows HDR off: the same frame as with the Windows switch,
   nothing measurable on the GPU, one Draw healthy on it, the flat window on the monitor a normal picture. ACES gives a
   warmer, deeper, unclipped frame against the game's SDR tonemap. `hdrDisplay = 0` (the default) passes the display's
-  own answer through.
+  own answer through. **The curve is applied hue-preserving** (research/27 section 7d, 2026-10-26): on the pixel's
+  largest channel with the pixel scaled by the ratio (`[Colour] toneHue`, 1; 0 per channel as before), a path to white
+  for pixels far above the curve (`toneDesat`, 0.15: the sun white, not pink), and the scene's chroma scaled before
+  the curve (`toneSat`, 0.7: the game's own SDR pass's saturation at Eden Prime, measured; 1 the scene's), because the
+  per-channel ACES fit turned the frame's oranges red at saturation 0.77 and the float frame is more saturated than
+  the game's SDR pass leaves it. **Verdict at the same pose (research/27 section 7d): the game's own SDR pass keeps
+  more gradation at both ends** (the sky at the sun 50,000 distinct colours against 19,000, the darkest patch 5,900
+  against 400 with 9% black) and carries the artists' grade; the float path is not an improvement over it until it
+  carries the game's own toe and grade. `hdrDisplay = 0` is the game's SDR pass.
 - LE1 eye upscale ([research/32](research/32-ue3-vr-performance.md), `[Upscale]` in `ASI\LE1MEVR.ini`, off by
   default): with `method = fsr` and the stereo target below the headset's eye size (`tools/vr-game-settings.ps1
   -Scale 0.75`, or the main menu's Display > Headset × 0.75 / × 0.85 and Upscale > FSR), Halcyon's eye blit scales each 8-bit eye up with FSR 1 (EASU into an intermediate, RCAS into the
@@ -350,7 +367,10 @@ switching frameworks.
   (`SFXGameModeDefault.EnterWeaponWheel` through ProcessEvent; it pauses the game itself), shown at
   the left hand; the right stick steers it (`gamepad::kFlagNativeWheel`: the stick reaches the game
   once centred), letting go sends A for the highlighted entry and then `ExitWeaponWheel`; pointing
-  preselects through the HUD's kept stick angle (`BioSFHandler_HUD.nLastAngle`). `style = custom`:
+  preselects through the HUD's kept stick angle (`BioSFHandler_HUD.nLastAngle`). A wheel nobody holds is taken over
+  (`wheel::Step::adopted`): one that opens after the 0.6 s timeout (within 10 s), or any weapon wheel up at a new pull,
+  so letting go closes it. Shepard's weapon is put back after a holstered wheel only when the game drew it (not while
+  holsters refuse the game's draws, nor after a holster draw since). `style = custom`:
   our drawn menu (left stick = squadmate, right stick flick = weapon, let go or A = give it, B =
   cancel; `plugin/SquadPanel` draws it with its own ImGui context as the "squad" quad;
   `gamepad::kFlagSquadMenu`, v11). `game/SquadWeapons` (mod) drives both; `core/vr/SquadMenu` is the
@@ -556,7 +576,8 @@ Use it to check VR changes yourself instead of asking the user what they see
   `tools/verify_rvas.py` (`.pdata` function bounds); byte checks only work in-process. The host
   saves the decrypted `.text` once per exe build to `%LOCALAPPDATA%\MEVR\dump`, at attach before
   any hook patches it (the `.txt` lists starts other ASIs already patched);
-  `tools/splice_text.py` turns it into a disassemblable copy.
+  `local-tools/splice_text.py` (gitignored, never published: it rebuilds a decrypted copy of the exe) turns it into
+  a disassemblable copy.
   Local research data: never commit or share dumps or spliced exes.
 - **Read native code with Ghidra, not dumpbin:** `tools/ghidra/decompile.ps1 0xC621E0` (RVA,
   `exe+0x...` or a name; `-Search`, `-Rename`/`-Comment -Record`) prints C, callers, callees and

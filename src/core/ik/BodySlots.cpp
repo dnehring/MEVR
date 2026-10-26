@@ -167,11 +167,12 @@ void Machine::UpdateHolding(Input const& input, Step& step) {
         if (gun != Weapon::None && input.holster != Holster::Off) {
             bool const ownSlot = inSlot_ >= 0 && input.weapon[inSlot_] == gun;
             bool const emptySlot = inSlot_ >= 0 && !input.available[inSlot_] && input.holster == Holster::OwnOrEmptySlot;
-            if ((ownSlot || emptySlot) && input.held == gun && !input.trigger) {
+            if ((ownSlot || emptySlot) && input.held == gun && !input.trigger && !input.switching) {
                 act(Action::Holster, inSlot_, gun);
             } else if (input.releaseGrace >= 0.0 || ownSlot || emptySlot) {
-                // Let go at the gun's slot while drawing or firing: it goes back once that's over, with
-                // no grace (where it was let go says what was meant).
+                // Let go at the gun's slot while drawing (the gun not out yet, or the switch still animating:
+                // the game ignores TryHolster then) or firing: it goes back once that's over, with no grace
+                // (where it was let go says what was meant). A new squeeze before then keeps it.
                 phase_ = Phase::Returning;
                 returning_ = gun;
                 returnLeft_ = ownSlot || emptySlot ? 0.0 : std::max(input.releaseGrace, 0.0);
@@ -198,6 +199,9 @@ void Machine::UpdateHolding(Input const& input, Step& step) {
         } else if (input.trigger) {
             returnAwaitsDraw_ = false;
             step.returnWaitsForTrigger = true;  // never in the middle of a burst
+        } else if (input.switching) {
+            returnAwaitsDraw_ = false;
+            step.returnWaitsForSwitch = true;  // TryHolster would be ignored mid-switch: wait for its end
         } else {
             returnAwaitsDraw_ = false;
             returnLeft_ -= std::max(input.deltaSeconds, 0.0);

@@ -148,7 +148,8 @@ ScreenText TextFor(Screen screen) {
     case Screen::Prompt:
         return {"CALIBRATE THESE CONTROLLERS?",
             "About a minute: stand, stretch your arms, crouch, then aim a pistol and a rifle at three targets. Your "
-            "sights then line up with your eye, and the two-handed grip and the crouch fit you.",
+            "sights then line up with your eye, and the two-handed grip and the crouch fit you. Later: hold both sticks, "
+            "then Body & calibration > Start calibration.",
             0};
     case Screen::Stand: return {"STAND TALL, LOOK AHEAD", "Stand straight where you can stretch your arms, and look at this panel.", 1};
     case Screen::TPose: return {"ARMS OUT TO THE SIDES", "Straight out, level with your shoulders, like a T.", 2};

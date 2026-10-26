@@ -99,11 +99,23 @@ std::string HeadsetKey(std::string_view runtimeName, std::string_view systemName
 //   reinhard  the extended Reinhard x (1 + x / white^2) / (1 + x): `white` reaches 1.0
 // `exposure` is in stops (-3 .. 3), applied before the curve; `white` is a linear value (1 .. 16; the game's
 // brightest reconstructed highlight is MaxReconstructedNits / PaperWhiteNitsScene, 4 on this install).
+// How the curve is applied (research/27 section 7d: per channel, the ACES fit turned the frame's oranges red and
+// raised their saturation; the float frame is also more saturated than the game's own SDR pass leaves it):
+//   hue    0 .. 1 (1): the curve on the pixel's largest channel, the pixel scaled by the ratio (hue and chroma
+//          kept), blended with the per-channel result (0: per channel as before)
+//   desat  0 .. 1 (0.15): the path to white of a hue-kept pixel, toward the curve's grey by
+//          1 - 1 / (1 + desat * (largest channel - its curve)): the sun goes white, not yellow
+//   sat    0 .. 1 (0.7): the scene's chroma before the curve (linear, toward Rec. 709 luminance); 0.7 is the
+//          game's own SDR pass's saturation at the reference scene (research/27 7d), 1 the scene's
+// Keys toneHue, toneDesat, toneSat.
 enum class Tonemap { Clip, Aces, Hable, Reinhard };
 struct Hdr {
     Tonemap tonemap = Tonemap::Clip;
     float exposure = 0.0f;  // stops
     float white = 4.0f;     // hable and reinhard
+    float hue = 1.0f;       // toneHue
+    float desat = 0.15f;    // toneDesat
+    float sat = 0.7f;       // toneSat
 };
 char const* Name(Tonemap t);  // "clip", "aces", "hable", "reinhard"
 std::optional<Tonemap> ParseTonemap(std::string_view text);  // case-insensitive; "off" and "none" = clip
@@ -112,7 +124,8 @@ bool TonemapActive(Hdr const& h);  // a curve other than clip: the shader varian
 
 // ---- Settings file ----------------------------------------------------------------------------------------
 // [Colour] (any headset) and [Colour.<key>] (this one): keys profile, brightness, contrast, saturation, gamma,
-// black, gainR, gainG, gainB, tonemap, exposure, white; and in [Colour] only: compare (1: show the uncorrected
+// black, gainR, gainG, gainB, tonemap, exposure, white, toneHue, toneDesat, toneSat; and in [Colour] only:
+// compare (1: show the uncorrected
 // picture), dither (8-bit steps, 0: off). The headset's own section wins key by key. Keys are lower-case here.
 using Section = std::map<std::string, std::string>;
 struct Resolved {
@@ -135,8 +148,9 @@ struct Constants {
     float gain[4];       // gain * brightness per channel, 0
     float misc[4];       // dither amplitude (in [0, 1] units), linear source (1/0), exposure multiplier, white
     std::uint32_t seed[4];  // dither seed (per eye), tonemap (0 clip, 1 aces, 2 hable, 3 reinhard), 0, 0
+    float hdr[4];        // tone hue blend, tone desat (the path to white), tone sat (before the curve), 0
 };
-static_assert(sizeof(Constants) == 64);
+static_assert(sizeof(Constants) == 80);
 Constants MakeConstants(Settings const& s, float ditherSteps, bool linearSource, std::uint32_t seed);
 Constants MakeConstants(Settings const& s, float ditherSteps, bool linearSource, std::uint32_t seed, Hdr const& hdr);
 

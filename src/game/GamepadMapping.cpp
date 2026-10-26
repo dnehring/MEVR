@@ -166,6 +166,26 @@ StickChordStep UpdateStickChord(StickChord& c, bool leftClick, bool rightClick, 
     return step;
 }
 
+void HoldCloseLatch(CloseLatch& latch) {
+    latch.buttons = 0xFFFF;
+    latch.leftTrigger = true;
+    latch.rightTrigger = true;
+}
+
+bool ApplyCloseLatch(CloseLatch& latch, XINPUT_GAMEPAD& pad) {
+    latch.buttons = static_cast<WORD>(latch.buttons & pad.wButtons);
+    latch.leftTrigger = latch.leftTrigger && pad.bLeftTrigger >= kCloseLatchTriggerOff;
+    latch.rightTrigger = latch.rightTrigger && pad.bRightTrigger >= kCloseLatchTriggerOff;
+    pad.wButtons = static_cast<WORD>(pad.wButtons & ~latch.buttons);
+    if (latch.leftTrigger) {
+        pad.bLeftTrigger = 0;
+    }
+    if (latch.rightTrigger) {
+        pad.bRightTrigger = 0;
+    }
+    return latch.buttons != 0 || latch.leftTrigger || latch.rightTrigger;
+}
+
 void StartMenuPress(MenuPress& p, WORD button, std::uint64_t nowMs) {
     p.phase = button != 0 ? MenuPress::Phase::Waiting : MenuPress::Phase::Idle;
     p.button = button;

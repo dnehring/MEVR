@@ -127,6 +127,21 @@ void StartMenuPress(MenuPress& press, WORD button, std::uint64_t nowMs);
 // One read of the pad by the game. `menuOpen`: our main menu is open now (the game sees a neutral pad).
 MenuPressStep StepMenuPress(MenuPress& press, bool menuOpen, std::uint64_t nowMs);
 
+// The buttons and triggers that are down when our main menu (or the guided calibration) gives the pad back to the game:
+// the A or B that closed it, the trigger that clicked Resume. They're kept from the game until each is let go, as the
+// squad menu's Latches::squadHeld keeps its own (a menu press, MenuPress, is OR'd in after and isn't affected).
+inline constexpr BYTE kCloseLatchTriggerOff = 30;  // XINPUT_GAMEPAD_TRIGGER_THRESHOLD: a trigger below this is let go
+struct CloseLatch {
+    WORD buttons = 0;
+    bool leftTrigger = false;
+    bool rightTrigger = false;
+};
+// Each read while the menu has the pad: everything counts as held from before.
+void HoldCloseLatch(CloseLatch& latch);
+// Each read after: what is still held from then is taken out of `pad` (a button let go is free again, also if pressed
+// anew later). True while anything is kept.
+bool ApplyCloseLatch(CloseLatch& latch, XINPUT_GAMEPAD& pad);
+
 // L3 (crouch) waits kStickJoinMs to see whether the right click joins (the chord above): a click held
 // that long alone reaches the game; one released sooner reaches it as a kRbTapMs press afterwards;
 // one the right click joins never does, nor does it come back when the right click lets go first.

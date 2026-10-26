@@ -39,6 +39,8 @@ using EndCrumb = void (*)(std::uint64_t token);
 void SetBreadcrumbs(BeginCrumb begin, EndCrumb end);
 
 bool Install(hook::Context& init);
+// The hook is in (handlers can run).
+bool Installed();
 // False: the hook couldn't be removed, so this DLL must stay loaded.
 bool Uninstall(hook::Context& init);
 
