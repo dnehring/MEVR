@@ -79,21 +79,29 @@ In the game, `\` or both thumbsticks held opens the VR menu.
 
 Before reporting, [docs/troubleshooting.md](docs/troubleshooting.md) covers the common problems; your AI assistant can read it.
 
-Open an issue at <https://github.com/dnehring/MEVR/issues> with:
+**First: Report a problem.** MEVR Setup's **Report a problem** page (or, in the game, the VR menu's **Advanced >
+Diagnostics > Report**, which runs the setup in the background) saves `MEVR-report-<date-time>.zip` on your Desktop:
+the mod's, renderer's and loader's logs, the crash breadcrumbs, your settings and install record, a listing of the
+game's Win64 and ASI folders (names and sizes only), optionally the latest snapshot and frame-timing capture, and
+`REPORT.md` first: versions, headset, GPU, the last session's errors and warnings, the crash, the settings you
+changed, and a prompt to paste into your AI assistant. Your Windows user name, profile folder, computer name and
+e-mail addresses are removed from every file. **Nothing is uploaded or sent**: you look at the zip and decide. The
+page's **Open a GitHub issue** opens the [issue form](https://github.com/dnehring/MEVR/issues/new?template=bug.yml)
+with the versions and the error filled in; attach the zip there. After a crash, the setup and the VR menu offer a
+report themselves. From a script: `MEVR-Setup.exe --report [--snapshot] [--perf]`.
 
-- **what you did** and what happened (the steps, where in the game, and what you expected);
-- **your headset and OpenXR runtime** (for example Quest 3 over Steam Link, SteamVR);
+**By hand**, open an issue at <https://github.com/dnehring/MEVR/issues> with what you did, what you expected and
+what happened, your headset and OpenXR runtime, and:
+
 - **the mod's log:** `Game\ME1\Binaries\Win64\Logs\LE1MEVR.log` (and `LE1MEVR.prev.log`, the run before; if the
   game folder isn't writable they are in `%LOCALAPPDATA%\MEVR\`);
 - **after a crash:** `%LOCALAPPDATA%\MEVR\crash-breadcrumbs.txt` (the one before is `crash-breadcrumbs.prev.txt`);
-- **the renderer's log:** `%LOCALAPPDATA%\MELEVR\MELEVR_Log.txt`;
-- **the loader's log:** `Game\ME1\Binaries\Win64\Logs\MEVRLoader.log` (with our loader).
+- **the renderer's log:** `%LOCALAPPDATA%\MELEVR\MELEVR_Log.txt` (it never resets: its end is enough);
+- **the loader's log:** `Game\ME1\Binaries\Win64\Logs\MEVRLoader.log` (ours) or `bink2w64_proxy.log` (ME3Tweaks').
 
 A snapshot helps with anything visual: Advanced > Diagnostics > Snapshot in the VR menu (or a quick tap of both
-stick clicks) saves what each eye sees to `%LOCALAPPDATA%\MEVR\snapshots`.
-
-**Logs can contain your Windows user name** in file paths. Look through them, and replace it if you prefer,
-before you attach them.
+stick clicks) saves what each eye sees to `%LOCALAPPDATA%\MEVR\snapshots`. Logs attached by hand can contain your
+Windows user name in file paths: replace it if you prefer.
 
 ## Layout
 

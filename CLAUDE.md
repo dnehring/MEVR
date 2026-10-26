@@ -403,6 +403,11 @@ switching frameworks.
   `MEVR-Setup.exe --preview <folder>`. Release: `tools/package-release.ps1 [-Zip]` into `dist\` (local only; it copies
   the third-party licence texts into `licenses\` and refuses while the ASI links LExSDKv2 unless `-LexSdkPermission`).
   **LExSDKv2 has no licence: a public release needs its author's permission.**
+- Report a problem ([research/33](research/33-installer.md) section 8): MEVR Setup's page (or `--report [--snapshot]
+  [--perf]`), the menu's Advanced > Diagnostics > Report (`plugin/ReportRequest`: starts `ASI\MEVR-Setup.exe --report
+  --from-game` at once, background priority, no window) and the crash offer (`install/ReportMarks`) write a redacted
+  `MEVR-report-<date-time>.zip` to the Desktop with REPORT.md first (`install/Report`, `install/Zip`; unit-tested). Never
+  uploads anything. Issue form: `.github/ISSUE_TEMPLATE/bug.yml`. The build's commit: `tools/cmake/BuildInfo.cmake`.
 - Trilogy check: `build-trilogy/` (configured with `-DMEVR_BUILD_LE2=ON -DMEVR_BUILD_LE3=ON`) must
   keep building all three games. Per-game field spellings go in `src/engine/GameAdapter.hpp`;
   per-game addresses sit next to their use (e.g. `engine/SceneView.cpp`).
