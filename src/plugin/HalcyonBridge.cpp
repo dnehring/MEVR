@@ -749,13 +749,19 @@ bool ReadModeSEH(void* mode, ModeRead* out) noexcept {
     }
 }
 
+// [Hands] constantEye and blendFix: read from the ini on the game thread (RefreshCameraSettings, once a second), used
+// on the Present thread: no file I/O on the render thread.
+std::atomic<bool> gConstantEyeOn{true};
+std::atomic<bool> gBlendFixOn{true};
+
 bool ConstantEyeSetting() {
-    static std::uint64_t nextReadMs = 0;
+    return gConstantEyeOn.load(std::memory_order_relaxed);
+}
+
+void RefreshConstantEyeSetting() {
     static bool on = true;
     static bool logged = false;
-    std::uint64_t const now = GetTickCount64();
-    if (now >= nextReadMs) {
-        nextReadMs = now + 1000;
+    {
         std::wstring const& path = SettingsPath();
         bool const read = path.empty() || GetPrivateProfileIntW(L"Hands", L"constantEye", 1, path.c_str()) != 0;
         if (!logged || read != on) {
@@ -765,8 +771,8 @@ bool ConstantEyeSetting() {
                 read ? 1 : 0);
         }
         on = read;
+        gConstantEyeOn.store(read, std::memory_order_relaxed);
     }
-    return on;
 }
 
 cs::Vec gExploreHook{0.0, 0.0, 120.0};  // the package default (research/38 B), until an Explore mode is seen
@@ -873,12 +879,13 @@ constexpr std::uintptr_t kInterpFlags = 0x184;           // bComplete 0x1
 constexpr std::uintptr_t kModePovRotation = 0x98 + 0x0C; // m_pov (FTPOV: Location, Rotation, FOV) .Rotation
 
 bool BlendFixSetting() {
-    static std::uint64_t nextReadMs = 0;
+    return gBlendFixOn.load(std::memory_order_relaxed);
+}
+
+void RefreshBlendFixSetting() {
     static bool on = true;
     static bool logged = false;
-    std::uint64_t const now = GetTickCount64();
-    if (now >= nextReadMs) {
-        nextReadMs = now + 1000;
+    {
         std::wstring const& path = SettingsPath();
         bool const read = path.empty() || GetPrivateProfileIntW(L"Hands", L"blendFix", 1, path.c_str()) != 0;
         if (!logged || read != on) {
@@ -889,8 +896,8 @@ bool BlendFixSetting() {
                 read ? 1 : 0);
         }
         on = read;
+        gBlendFixOn.store(read, std::memory_order_relaxed);
     }
-    return on;
 }
 
 struct BlendRead {
@@ -928,9 +935,15 @@ bool ReadBlendSEH(void* interp, void* toMode, BlendRead* out) noexcept {
     }
 }
 
-bool WriteLocationOffsetSEH(void* interp, float const value[3]) noexcept {
+// Present thread, while the game thread may start a new blend in the same object: writes only if the blend is still the
+// one read (its destination and stored offset unchanged), so a new blend's offset is never overwritten.
+bool WriteLocationOffsetSEH(void* interp, void* toMode, float const expected[3], float const value[3]) noexcept {
     __try {
         auto* target = reinterpret_cast<float*>(reinterpret_cast<std::uint8_t*>(interp) + kInterpLocationOffset);
+        if (MELEVR::LE1::ReadPtr(interp, MELEVR::LE1::kInterpolateToMode) != toMode || target[0] != expected[0] ||
+            target[1] != expected[1] || target[2] != expected[2]) {
+            return false;
+        }
         target[0] = value[0];
         target[1] = value[1];
         target[2] = value[2];
@@ -978,7 +991,7 @@ void InterpolateDestinationWritten(void* interpolateMode, void* toMode, float co
     cs::Vec const stored{blend.locationOffset[0], blend.locationOffset[1], blend.locationOffset[2]};
     cs::Vec const fixed = cs::BlendLocationOffset(stored, pitch, yaw, oldOffset, newOffset);
     float const value[3] = {static_cast<float>(fixed.x), static_cast<float>(fixed.y), static_cast<float>(fixed.z)};
-    if (!Finite3(value) || !WriteLocationOffsetSEH(interpolateMode, value)) {
+    if (!Finite3(value) || !WriteLocationOffsetSEH(interpolateMode, toMode, blend.locationOffset, value)) {
         return;
     }
     void const* const written = reinterpret_cast<std::uint8_t const*>(interpolateMode) + kInterpLocationOffset;
@@ -1007,6 +1020,17 @@ void InterpolateDestinationWritten(void* interpolateMode, void* toMode, float co
 } // namespace MELEVR::MevrBridge
 
 namespace mevr::host::halcyon {
+
+void RefreshCameraSettings() {
+    static std::uint64_t nextReadMs = 0;
+    std::uint64_t const now = GetTickCount64();
+    if (now < nextReadMs) {
+        return;
+    }
+    nextReadMs = now + 1000;
+    MELEVR::MevrBridge::RefreshConstantEyeSetting();
+    MELEVR::MevrBridge::RefreshBlendFixSetting();
+}
 
 void SetModHandAim(bool on) {
     if (MELEVR::MevrBridge::gModHandAim.exchange(on, std::memory_order_relaxed) != on) {

@@ -143,7 +143,10 @@ LONG CALLBACK FirstChanceHandler(EXCEPTION_POINTERS* info) {
             }
             logIt = seenCount[slot]++ < 3;
         }
-        if (logIt && gFirstChanceLogged.fetch_add(1, std::memory_order_relaxed) < 400) {
+        // A stack overflow runs this on the few KB past the guard page, and heap corruption would allocate on the
+        // corrupted heap: those are recorded in the ring above only (the unhandled filter reports them), never logged.
+        bool const noLog = r.ExceptionCode == EXCEPTION_STACK_OVERFLOW || r.ExceptionCode == 0xC0000374u;
+        if (logIt && !noLog && gFirstChanceLogged.fetch_add(1, std::memory_order_relaxed) < 400) {
             HMODULE module = nullptr;
             char name[MAX_PATH] = "?";
             std::uintptr_t rva = 0;

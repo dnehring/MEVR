@@ -611,6 +611,12 @@ void UpdateStance(double deltaSeconds, Link const& link, ue3::Object* controller
     bool const walk = (settings.exploreStance || cs::ClampDrawRate(settings.drawRate) > 1.0005) && link.headTrackedView && onFoot &&
         pawn != nullptr && root != nullptr;
     bool const wanted = walk && settings.exploreStance;
+    // A tree we no longer walk (a level loaded into a cutscene or conversation, the pawn gone) may be freed: its nodes
+    // are never read again, nor the rates we wrote into them restored.
+    if (!walk && gTree.tree != nullptr && (mesh != gTree.mesh || root != gTree.tree)) {
+        ForgetRates();
+        gTree = {};
+    }
     if (walk && (root != gTree.tree || mesh != gTree.mesh ||
                       (stats.rejected != gRejectsSeen && gNow - gLastWalk >= kRewalkSeconds))) {
         WalkTree(mesh, root);

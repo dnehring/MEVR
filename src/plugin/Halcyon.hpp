@@ -26,6 +26,8 @@ void Shutdown();
 // when it unloads). Combined with the right controller being tracked, this turns Halcyon's
 // on-foot combat head aim off (plugin/HalcyonBridge.cpp). Any thread.
 void SetModHandAim(bool on);
+// Game thread, each engine tick: re-reads [Hands] constantEye and blendFix (once a second) for the Present thread's seams.
+void RefreshCameraSettings();
 
 // The mod's two-handed grip input (HostServices::setSupportGrip), for the pad mapping in the XInput
 // hook; stale after 250 ms. Forget drops it now (the mod unloads). Any thread.

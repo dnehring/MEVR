@@ -822,17 +822,27 @@ void StancePost(StanceCall& c) {
 
 // No C++ objects with destructors here, so __finally keeps the in-flight count right even when an
 // exception unwinds through the engine's call (a count left up would keep the mod pinned).
+// The stance's call state is several KB: only the player's mesh, while the stance is published, pays for it (every
+// other skeletal mesh of the frame goes straight to the engine's call).
+__declspec(noinline) void UpdateSkelPoseWithStance(Mesh* self, float deltaTime, unsigned tickFaceFx, unsigned unused) {
+    StanceCall stance;
+    StancePre(self, deltaTime, stance);
+    gOrig(self, deltaTime, tickFaceFx, unused);
+    StancePost(stance);
+    if (stance.active && stance.s.hands.count > 0) {
+        StanceHandsGuarded(self, stance);
+    }
+}
+
 void UpdateSkelPoseHook(Mesh* self, float deltaTime, unsigned tickFaceFx, unsigned unused) {
     std::uintptr_t const caller = reinterpret_cast<std::uintptr_t>(_ReturnAddress());
     gInFlight.fetch_add(1, std::memory_order_acquire);
     __try {
         tStanceLeftOnGun = false;
-        StanceCall stance;
-        StancePre(self, deltaTime, stance);
-        gOrig(self, deltaTime, tickFaceFx, unused);
-        StancePost(stance);
-        if (stance.active && stance.s.hands.count > 0) {
-            StanceHandsGuarded(self, stance);
+        if (self != nullptr && self == gStanceMesh.load(std::memory_order_acquire)) {
+            UpdateSkelPoseWithStance(self, deltaTime, tickFaceFx, unused);
+        } else {
+            gOrig(self, deltaTime, tickFaceFx, unused);
         }
         AfterUpdateSkelPose(self, deltaTime, caller);
     } __finally {

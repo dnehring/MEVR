@@ -91,13 +91,18 @@ void GameEngineTickHook(void* self, float deltaSeconds) {
 #endif
 }
 
-// Close the XR session before Windows starts unloading DLLs: the Oculus runtime's client DLL
-// fail-fasts (0xc0000409) if it's torn down with a live session.
+// The game's exit. By the time it calls ExitProcess it has torn itself down (UObjects purged, its critical
+// sections deleted) while its worker threads still run; the real ExitProcess kills them first. So this hook does
+// only what can't wait and touches nothing of the game's: it must not shut the mod down here (unhooking freezes and
+// thaws every thread, the mod's shutdown reads engine memory, and a game worker meanwhile entered a deleted lock:
+// the 2026-10-25 crashes on quit, both an AV at ntdll+0x1A12D writing 0x24 on exe+0x1BA22C0, 27 ms after "game
+// exiting"). Halcyon's own ExitProcess hook ([EXITKILL]) ends the process with TerminateProcess, so the XR runtime's
+// DLLs are never unloaded with a live session; halcyon::Shutdown only tells its threads.
 using tExitProcess = void(WINAPI)(UINT exitCode);
 tExitProcess* gExitProcessOrig = nullptr;
 
 void WINAPI ExitProcessHook(UINT exitCode) {
-    mevr::log::Info("game exiting (code {}); shutting the mod down first", exitCode);
+    mevr::log::Info("game exiting (code {}); the mod stays loaded and the process ends", exitCode);
     // Nothing waits for other threads from here on, and the mod DLL stays mapped: the process is
     // going away, and a thread caught inside a hook may never run again.
     mevr::host::SetProcessExiting();
@@ -108,7 +113,6 @@ void WINAPI ExitProcessHook(UINT exitCode) {
 #if defined(MEVR_WITH_HALCYON)
     mevr::host::halcyon::Shutdown();
 #endif
-    mevr::host::Stop();
     mevr::log::Close();
     gExitProcessOrig(exitCode);
 }
@@ -206,12 +210,12 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
 
 extern "C" __declspec(dllexport) bool SpiOnDetach(spi::Interface* InterfacePtr) {
     (void)InterfacePtr;
-    // LEBinkProxy detaches plugins as it unloads, i.e. at process exit: treat it like ExitProcess.
+    // LEBinkProxy detaches plugins as it unloads, i.e. at process exit: treat it like ExitProcess (no mod shutdown:
+    // the game is torn down and the loader lock may be held, see ExitProcessHook).
     mevr::host::SetProcessExiting();
 #if defined(MEVR_WITH_HALCYON)
     mevr::host::halcyon::Shutdown();
 #endif
-    mevr::host::Stop();
     mevr::log::Info("detaching");
     mevr::log::Close();
     return true;
