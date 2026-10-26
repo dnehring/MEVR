@@ -112,22 +112,73 @@ std::string LineEnding(std::vector<Line> const& lines) {
 
 } // namespace
 
-std::optional<std::string> Get(std::string_view text, std::string_view section, std::string_view key) {
-    std::vector<Line> const lines = Split(text);
+namespace {
+
+// Every line of `key` in `section` (all of the section's bodies), in file order.
+std::vector<std::size_t> KeyLines(std::vector<Line> const& lines, std::string_view section, std::string_view key) {
+    std::vector<std::size_t> found;
     for (auto const& [begin, end] : Bodies(lines, section)) {
         for (std::size_t i = begin; i < end; ++i) {
             auto const k = ParseKey(lines[i].text);
             if (k && EqualNoCase(k->key, key)) {
-                return std::string(Trim(std::string_view(lines[i].text).substr(k->valueStart)));
+                found.push_back(i);
             }
         }
     }
-    return std::nullopt;
+    return found;
+}
+
+std::string ValueOf(Line const& line) {
+    auto const k = ParseKey(line.text);
+    return k ? std::string(Trim(std::string_view(line.text).substr(k->valueStart))) : std::string();
+}
+
+void SetValue(Line& line, std::string_view value) {
+    if (auto const k = ParseKey(line.text)) {
+        line.text = line.text.substr(0, k->valueStart) + std::string(value);
+    }
+}
+
+// The `n`th line of `key` in `section` (0 = the first), trimmed; nullopt when there are fewer.
+std::optional<std::string> GetNth(std::string_view text, std::string_view section, std::string_view key, int n) {
+    std::vector<Line> const lines = Split(text);
+    std::vector<std::size_t> const at = KeyLines(lines, section, key);
+    if (n < 0 || static_cast<std::size_t>(n) >= at.size()) {
+        return std::nullopt;
+    }
+    return ValueOf(lines[at[static_cast<std::size_t>(n)]]);
+}
+
+// Only the `n`th line of `key`: the others (a duplicate's own value) stay.
+std::string SetNth(std::string_view text, std::string_view section, std::string_view key, int n, std::string_view value) {
+    std::vector<Line> lines = Split(text);
+    std::vector<std::size_t> const at = KeyLines(lines, section, key);
+    if (n < 0 || static_cast<std::size_t>(n) >= at.size()) {
+        return std::string(text);
+    }
+    SetValue(lines[at[static_cast<std::size_t>(n)]], value);
+    return Join(lines);
+}
+
+std::string RemoveNth(std::string_view text, std::string_view section, std::string_view key, int n) {
+    std::vector<Line> lines = Split(text);
+    std::vector<std::size_t> const at = KeyLines(lines, section, key);
+    if (n < 0 || static_cast<std::size_t>(n) >= at.size()) {
+        return std::string(text);
+    }
+    lines.erase(lines.begin() + static_cast<std::ptrdiff_t>(at[static_cast<std::size_t>(n)]));
+    return Join(lines);
+}
+
+} // namespace
+
+std::optional<std::string> Get(std::string_view text, std::string_view section, std::string_view key) {
+    return GetNth(text, section, key, 0);
 }
 
 void Merge(std::vector<Edit>& edits, Edit const& edit) {
     for (Edit& e : edits) {
-        if (EqualNoCase(e.section, edit.section) && EqualNoCase(e.key, edit.key)) {
+        if (EqualNoCase(e.section, edit.section) && EqualNoCase(e.key, edit.key) && e.occurrence == edit.occurrence) {
             e.after = edit.after;
             return;
         }
@@ -138,8 +189,8 @@ void Merge(std::vector<Edit>& edits, Edit const& edit) {
 std::string Set(std::string_view text, std::string_view section, std::string_view key, std::string_view value, std::vector<Edit>* edits) {
     std::vector<Line> lines = Split(text);
     std::string const eol = LineEnding(lines);
-    auto const before = Get(text, section, key);
     auto bodies = Bodies(lines, section);
+    std::vector<std::size_t> const at = KeyLines(lines, section, key);
     if (bodies.empty()) {
         // A new section at the end, after a blank line.
         if (!lines.empty()) {
@@ -152,38 +203,39 @@ std::string Set(std::string_view text, std::string_view section, std::string_vie
         }
         lines.push_back({"[" + std::string(section) + "]", eol});
         lines.push_back({std::string(key) + "=" + std::string(value), eol});
+    } else if (!at.empty()) {
+        // Every line of the key, each recorded with its own old value (a duplicate's second value isn't lost).
+        for (std::size_t n = 0; n < at.size(); ++n) {
+            std::string const before = ValueOf(lines[at[n]]);
+            SetValue(lines[at[n]], value);
+            if (edits != nullptr && before != value) {
+                Merge(*edits, Edit{std::string(section), std::string(key), before, std::string(value), static_cast<int>(n)});
+            }
+        }
+        return Join(lines);
     } else {
-        bool found = false;
         bool spaced = false;
         for (auto const& [begin, end] : bodies) {
             for (std::size_t i = begin; i < end; ++i) {
-                auto const k = ParseKey(lines[i].text);
-                if (!k) {
-                    continue;
-                }
-                spaced = spaced || lines[i].text.find(" = ") != std::string::npos;
-                if (EqualNoCase(k->key, key)) {
-                    lines[i].text = lines[i].text.substr(0, k->valueStart) + std::string(value);
-                    found = true;
+                if (ParseKey(lines[i].text)) {
+                    spaced = spaced || lines[i].text.find(" = ") != std::string::npos;
                 }
             }
         }
-        if (!found) {
-            // After the last section body's last non-blank line.
-            auto const [begin, end] = bodies.back();
-            std::size_t at = end;
-            while (at > begin && Trim(lines[at - 1].text).empty()) {
-                --at;
-            }
-            if (at > 0 && lines[at - 1].end.empty()) {
-                lines[at - 1].end = eol;
-            }
-            std::string const line = std::string(key) + (spaced ? " = " : "=") + std::string(value);
-            lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(at), Line{line, eol});
+        // After the last section body's last non-blank line.
+        auto const [begin, end] = bodies.back();
+        std::size_t pos = end;
+        while (pos > begin && Trim(lines[pos - 1].text).empty()) {
+            --pos;
         }
+        if (pos > 0 && lines[pos - 1].end.empty()) {
+            lines[pos - 1].end = eol;
+        }
+        std::string const line = std::string(key) + (spaced ? " = " : "=") + std::string(value);
+        lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(pos), Line{line, eol});
     }
-    if (edits != nullptr && (!before || *before != value)) {
-        Merge(*edits, Edit{std::string(section), std::string(key), before, std::string(value)});
+    if (edits != nullptr) {
+        Merge(*edits, Edit{std::string(section), std::string(key), std::nullopt, std::string(value), 0});
     }
     return Join(lines);
 }
@@ -236,14 +288,14 @@ std::string DropIfEmpty(std::string_view text, std::string_view section) {
 std::string Revert(std::string_view text, std::vector<Edit> const& edits) {
     std::string out(text);
     for (auto it = edits.rbegin(); it != edits.rend(); ++it) {
-        auto const now = Get(out, it->section, it->key);
+        auto const now = GetNth(out, it->section, it->key, it->occurrence);
         if (!now || *now != it->after) {
             continue;  // the player's own value since: theirs
         }
         if (it->before) {
-            out = Set(out, it->section, it->key, *it->before);
+            out = SetNth(out, it->section, it->key, it->occurrence, *it->before);
         } else {
-            out = DropIfEmpty(Remove(out, it->section, it->key), it->section);
+            out = DropIfEmpty(RemoveNth(out, it->section, it->key, it->occurrence), it->section);
         }
     }
     return out;
@@ -298,11 +350,12 @@ std::string FixHalcyonIni(std::string_view text, std::vector<Edit>* edits) {
         if (section.rfind("profile:", 0) != 0) {
             continue;
         }
-        if (auto const v = Get(out, section, "menuKey"); v && *v != "220") {
+        // A sparse slot loads Halcyon's code defaults for what it lacks (Insert, head aim on): written in when missing.
+        if (auto const v = Get(out, section, "menuKey"); !v || *v != "220") {
             out = Set(out, section, "menuKey", "220", edits);
         }
         for (char const* key : {"combatHeadAim", "makoHeadAim"}) {
-            if (auto const v = Get(out, section, key); v && *v == "1") {
+            if (auto const v = Get(out, section, key); !v || *v == "1") {
                 out = Set(out, section, key, "0", edits);
             }
         }

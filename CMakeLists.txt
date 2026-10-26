@@ -106,7 +106,9 @@ if (MEVR_MAIN_MENU)
     target_link_libraries(MEVR-Setup PRIVATE mevr-menu mevr-install OpenXR::openxr_loader windowscodecs ole32 d3d11 dxgi dwmapi shell32)
     target_compile_definitions(MEVR-Setup PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS)
     target_compile_options(MEVR-Setup PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus /Zi)
-    target_link_options(MEVR-Setup PRIVATE /ENTRY:wWinMainCRTStartup /DEBUG)
+    # /DEPENDENTLOADFLAG:0x800 (LOAD_LIBRARY_SEARCH_SYSTEM32): its imports come from System32 only, never from the
+    # folder it was downloaded to (DLL planting); Main.cpp's SetDefaultDllDirectories covers what it loads later.
+    target_link_options(MEVR-Setup PRIVATE /ENTRY:wWinMainCRTStartup /DEBUG /DEPENDENTLOADFLAG:0x800)
 endif ()
 
 # MinHook (BSD-2, third_party/minhook): one static library for every target that hooks with it: our loader, core/Hook's

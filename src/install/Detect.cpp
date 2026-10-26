@@ -392,6 +392,31 @@ bool GameRunning() {
     return ProcessRunning(L"MassEffect1.exe") || ProcessRunning(L"MassEffectLauncher.exe");
 }
 
+bool ReadOnlyFile(fs::path const& file) {
+    DWORD const attributes = GetFileAttributesW(file.c_str());
+    return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_READONLY) != 0;
+}
+
+bool HasMelevrMarker(std::string_view bytes) {
+    // As MELE-VR.bat's `findstr /m "MELEVR"` (ASCII), and the UTF-16 spelling a version resource would use.
+    static constexpr char kWide[] = {'M', 0, 'E', 0, 'L', 0, 'E', 0, 'V', 0, 'R', 0};
+    return bytes.find("MELEVR") != std::string_view::npos || bytes.find(std::string_view(kWide, sizeof kWide)) != std::string_view::npos;
+}
+
+UpstreamHalcyon FindUpstreamHalcyon(fs::path const& win64) {
+    UpstreamHalcyon u;
+    std::error_code ec;
+    fs::path const dxgi = win64 / L"dxgi.dll";
+    if (!fs::is_regular_file(dxgi, ec) || fs::file_size(dxgi, ec) > (64u << 20)) {
+        return u;
+    }
+    if (auto const bytes = ReadFile(dxgi)) {
+        u.dxgi = HasMelevrMarker(*bytes);
+    }
+    u.openxrLoader = u.dxgi && fs::is_regular_file(win64 / L"openxr_loader.dll", ec);
+    return u;
+}
+
 bool CanWrite(fs::path const& dir) {
     fs::path const probe = dir / L"mevr-write-test.tmp";
     HANDLE const file = CreateFileW(probe.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, nullptr);

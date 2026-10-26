@@ -80,7 +80,8 @@ bool App::Bind(Rml::Context* context) {
              Flag{"settings_applied", &settingsApplied_}, Flag{"textures_marked", &texturesMarked_}, Flag{"mem_ready", &memReady_},
              Flag{"headset_known", &headsetKnown_}, Flag{"update_enabled", &updateEnabled_}, Flag{"opt_settings", &optSettings_},
              Flag{"opt_vsync", &optVsync_}, Flag{"opt_blur", &optBlur_}, Flag{"opt_grain", &optGrain_}, Flag{"opt_hdr", &optHdr_},
-             Flag{"keep_settings", &keepSettings_}, Flag{"confirm_open", &confirmOpen_}, Flag{"confirm_danger", &confirmDanger_}}) {
+             Flag{"keep_settings", &keepSettings_}, Flag{"confirm_open", &confirmOpen_}, Flag{"confirm_danger", &confirmDanger_},
+             Flag{"upstream_found", &upstreamFound_}, Flag{"gamer_read_only", &gamerReadOnly_}, Flag{"remove_local", &removeLocal_}}) {
         c.Bind(f.name, f.value);
     }
     struct Text {
@@ -98,7 +99,8 @@ bool App::Bind(Rml::Context* context) {
              Text{"repair_title", &repairTitle_}, Text{"repair_text", &repairText_}, Text{"uninstall_text", &uninstallText_},
              Text{"launch_text", &launchText_}, Text{"footer_text", &footerText_}, Text{"wait_text", &waitText_},
              Text{"request_text", &requestText_}, Text{"mem_text", &memText_}, Text{"progress_text", &progressText_},
-             Text{"confirm_title", &confirmTitle_}, Text{"confirm_text", &confirmText_}, Text{"confirm_button", &confirmButton_}}) {
+             Text{"confirm_title", &confirmTitle_}, Text{"confirm_text", &confirmText_}, Text{"confirm_button", &confirmButton_},
+             Text{"upstream_text", &upstreamText_}, Text{"local_text", &localText_}}) {
         c.Bind(t.name, t.value);
     }
     c.Bind("progress", &progress_);
@@ -197,6 +199,13 @@ void App::Refresh() {
     installed_ = status_.installed;
     adminNeeded_ = gameOk_ && !status_.canWrite;
     hasGamerSettings_ = status_.hasGamerSettings;
+    gamerReadOnly_ = status_.gamerSettingsReadOnly;
+    upstreamFound_ = gameOk_ && status_.upstream.Found();
+    upstreamText_ = upstreamFound_
+        ? std::string("Its dxgi.dll") + (status_.upstream.openxrLoader ? " and openxr_loader.dll are" : " is") +
+              " in Binaries\\Win64. This mod has Halcyon's renderer built in, and with both two would run, so Install renames " +
+              (status_.upstream.openxrLoader ? "them" : "it") + " to *.mevr-off. Uninstall puts them back. Its MELEVR.ini stays. Installing means you agree."
+        : std::string();
     settingsApplied_ = status_.gameSettings;
     texturesMarked_ = status_.texturesMarked;
     bool const binkUsable = status_.bink != detect::BinkState::Missing && status_.bink != detect::BinkState::Broken;
@@ -223,6 +232,10 @@ void App::Refresh() {
     } else if (installed_) {
         heroTitle_ = "Ready for VR";
         heroText_ = "The mod is installed. Start your VR runtime, put the headset on and launch. In game, \\ or both sticks held opens the VR menu.";
+    } else if (upstreamFound_) {
+        heroTitle_ = "Ready to install";
+        heroText_ = "Halcyon's MELE-VR is installed: Install moves its two DLLs aside (Uninstall puts them back), then puts the mod, its ASI loader and "
+                    "the VR game settings in place, recorded so it can all be undone.";
     } else {
         heroTitle_ = "Ready to install";
         heroText_ = "Everything checks out. Install puts the mod, its ASI loader and the VR game settings in place, recorded so it can all be undone.";
@@ -268,11 +281,14 @@ void App::Refresh() {
         curRes_ = curWindow_ = curHdr_ = curVsync_ = curBlur_ = curGrain_ = "-";
     }
     // Repair, Uninstall, Launch.
-    if (repairTitle_.empty()) {
-        repairTitle_ = installed_ ? "Not checked yet" : "Not installed";
-        repairText_ = installed_ ? "Check compares every file with what was installed." : "Install first.";
+    UpdateRepairStatus();
+    {
+        fs::path const local = install::LocalDataDir();
+        localText_ = local.empty() ? "Not found."
+                                   : detect::Utf8(local.wstring()) + ": snapshots, recordings, frame-timing captures, crash reports, the downloaded "
+                                     "Mass Effect Modder and texture-pack work files. Off: they stay.";
     }
-    if (installed_) {
+    if (status_.hasRecord) {
         install::Transaction tx(install::Layout{status_.root});
         tx.Load();
         int added = 0, replaced = 0, edited = 0;
@@ -296,6 +312,34 @@ void App::Refresh() {
                          : "Installs texture packs (GPL, by the ALOT team). Downloaded from its own GitHub releases when you press Download.";
     UpdatePacks();
     Dirty();
+}
+
+void App::UpdateRepairStatus() {
+    if (sample_) {
+        repairTitle_ = installed_ ? "Every file is as installed" : "Not installed";
+        repairText_ = installed_ ? "Nothing to do." : "Install first.";
+        return;
+    }
+    if (!installed_ || status_.root.empty()) {
+        repairTitle_ = "Not installed";
+        repairText_ = "Install first.";
+        return;
+    }
+    install::Transaction tx(install::Layout{status_.root});
+    if (!tx.Load() || !tx.Exists()) {
+        repairTitle_ = "Not installed";
+        repairText_ = "Install first.";
+        return;
+    }
+    auto const bad = tx.Verify();
+    repairTitle_ = bad.empty() ? "Every file is as installed" : std::format("{} file(s) need repair", bad.size());
+    repairText_.clear();
+    for (std::string const& f : bad) {
+        repairText_ += (repairText_.empty() ? "" : ", ") + fs::path(detect::Wide(f)).filename().string();
+    }
+    if (bad.empty()) {
+        repairText_ = "Nothing to do.";
+    }
 }
 
 void App::UpdatePacks() {
@@ -379,6 +423,13 @@ void App::RunJob(std::string title, std::function<void()> job) {
 }
 
 void App::Tick() {
+    if (page_ != shownPage_) {
+        shownPage_ = page_;
+        if (page_ == "repair" && !busy_) {
+            UpdateRepairStatus();  // the files as they are now, not when the setup started
+            Dirty();
+        }
+    }
     if (waiting_ && options_.waitPid != 0) {
         HANDLE const process = OpenProcess(SYNCHRONIZE, FALSE, options_.waitPid);
         bool const gone = process == nullptr || WaitForSingleObject(process, 0) != WAIT_TIMEOUT;
@@ -445,6 +496,9 @@ void App::Confirm(std::string title, std::string text, std::string button, bool 
 void App::Act(std::string const& name, std::string const& arg) {
     install::Layout const layout{status_.root};
     if (name == "confirm") {
+        if (!confirmOpen_) {
+            return;  // a key press on a dialog that isn't open
+        }
         confirmOpen_ = false;
         auto action = std::move(pending_);
         pending_ = {};
@@ -460,8 +514,8 @@ void App::Act(std::string const& name, std::string const& arg) {
         Dirty();
         return;
     }
-    if (busy_) {
-        return;
+    if (busy_ || confirmOpen_) {
+        return;  // every button below is disabled while a job runs or a dialog is open: the keyboard can't get past that
     }
     if (name == "browse") {
         if (!host_.pickFolder) {
@@ -478,7 +532,7 @@ void App::Act(std::string const& name, std::string const& arg) {
             Refresh();
         }
     } else if (name == "install") {
-        if (!canInstall_ || waiting_) {
+        if (!canInstall_ || waiting_ || !payload_) {
             return;
         }
         install::InstallOptions options;
@@ -494,37 +548,45 @@ void App::Act(std::string const& name, std::string const& arg) {
             }
         });
     } else if (name == "uninstall") {
-        bool const keep = keepSettings_;
-        Confirm("Uninstall the VR mod?",
-            keep ? "Removes the mod and its loader and puts back every file and game setting it changed. Your VR settings and calibration stay."
-                 : "Removes the mod and its loader, puts back every file and game setting it changed, and deletes your VR settings and calibration.",
-            "Uninstall", true, [this, layout, keep] {
-                RunJob("Uninstalling", [this, layout, keep] { Apply(install::Uninstall(layout, keep, options_.exe)); });
-            });
-    } else if (name == "verify") {
-        install::Transaction tx(layout);
-        if (tx.Load() && tx.Exists()) {
-            auto const bad = tx.Verify();
-            repairTitle_ = bad.empty() ? "Every file is as installed" : std::format("{} file(s) need repair", bad.size());
-            repairText_.clear();
-            for (std::string const& f : bad) {
-                repairText_ += (repairText_.empty() ? "" : ", ") + fs::path(detect::Wide(f)).filename().string();
-            }
-            if (bad.empty()) {
-                repairText_ = "Nothing to do.";
-            }
+        if (waiting_ || !installed_) {
+            return;
         }
-        Refresh();
+        bool const keep = keepSettings_;
+        bool const removeLocal = removeLocal_;
+        std::string text = keep ? "Removes the mod and its loader and puts back every file and game setting it changed. Your VR settings and calibration stay."
+                                : "Removes the mod and its loader, puts back every file and game setting it changed, and deletes your VR settings and calibration.";
+        if (removeLocal) {
+            text += " It also deletes the mod's diagnostics and downloads in %LOCALAPPDATA%\\MEVR.";
+        }
+        Confirm("Uninstall the VR mod?", text, "Uninstall", true, [this, layout, keep, removeLocal] {
+            RunJob("Uninstalling", [this, layout, keep, removeLocal] { Apply(install::Uninstall(layout, keep, options_.exe, removeLocal)); });
+        });
+    } else if (name == "verify") {
+        if (!installed_) {
+            return;
+        }
+        Refresh();  // UpdateRepairStatus: the files as they are now
     } else if (name == "repair") {
+        if (waiting_ || !installed_ || !payload_) {
+            return;
+        }
         auto const payload = *payload_;
         RunJob("Repairing", [this, layout, payload] { Apply(install::Repair(layout, payload)); });
-        repairTitle_.clear();
     } else if (name == "apply") {
+        if (waiting_ || !hasGamerSettings_) {
+            return;
+        }
         auto const choices = ChoicesFromModel();
         RunJob("Applying the VR game settings", [this, layout, choices] { Apply(install::ApplySettings(layout, choices)); });
     } else if (name == "restore") {
+        if (waiting_ || !settingsApplied_) {
+            return;
+        }
         RunJob("Restoring your settings", [this, layout] { Apply(install::RestoreSettings(layout)); });
     } else if (name == "launch") {
+        if (!gameOk_ || waiting_) {
+            return;
+        }
         if (detect::GameRunning()) {
             launchText_ = "Mass Effect is already running.";
             Refresh();
@@ -565,6 +627,9 @@ void App::Act(std::string const& name, std::string const& arg) {
                 };
             });
     } else if (name == "check_update") {
+        if (!updateEnabled_) {
+            return;
+        }
         std::string const api = install::updates::LatestReleaseApi(options_.repo);
         if (api.empty()) {
             return;
@@ -596,6 +661,9 @@ void App::Act(std::string const& name, std::string const& arg) {
             host_.openUrl(packs::kMemPage);
         }
     } else if (name == "mem_download") {
+        if (memReady_) {
+            return;
+        }
         // First what the latest release offers (its name and size), then the download once the player has seen them.
         auto asset = std::make_shared<std::optional<packs::Asset>>();
         RunJob("Looking up Mass Effect Modder's latest release", [this, asset] {
@@ -646,7 +714,7 @@ void App::Act(std::string const& name, std::string const& arg) {
     } else if (name == "pack_install") {
         packs::Pack const* p = packs::Find(arg);
         auto const it = std::find_if(packFiles_.begin(), packFiles_.end(), [&](auto const& e) { return e.first == arg; });
-        if (p == nullptr || it == packFiles_.end() || !gameOk_) {
+        if (p == nullptr || it == packFiles_.end() || !gameOk_ || waiting_ || !memReady_) {
             return;
         }
         fs::path const file = it->second;
@@ -687,6 +755,7 @@ void App::Act(std::string const& name, std::string const& arg) {
 
 void App::Sample(std::string const& state) {
     // The preview's stand-ins (tools/setup --preview): a PS VR2 on SteamVR, the Steam copy.
+    sample_ = true;
     status_ = install::Status{};
     status_.gameFound = state != "nogame";
     status_.root = L"C:\\Program Files (x86)\\Steam\\steamapps\\common\\Mass Effect Legendary Edition";
@@ -765,6 +834,7 @@ void App::Sample(std::string const& state) {
     curVsync_ = OnOff(!installed_);
     curBlur_ = OnOff(!installed_);
     curGrain_ = OnOff(!installed_);
+    UpdateRepairStatus();
     uninstallText_ = installed_ ? "41 files removed, 2 put back as they were, 2 settings files returned to your values." : "Nothing is installed.";
     memReady_ = state == "content";
     memText_ = memReady_ ? "Ready: it installs the texture packs below (GPL, from its own GitHub releases)."

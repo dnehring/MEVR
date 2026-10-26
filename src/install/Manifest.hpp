@@ -20,8 +20,8 @@
 //   renamed  `from` was renamed to `path` (the game's bink2w64.dll to bink2w64_original.dll): renamed back
 //   edited   an ini file's keys (ini::Edit): reverted key by key, only where the player hasn't changed them since
 //
-// `userData` files (Halcyon's MELEVR.ini, the mod's LE1MEVR.ini) hold the player's settings: uninstall keeps them
-// unless asked to remove everything.
+// `userData` files (Halcyon's MELEVR.ini, the mod's LE1MEVR.ini and logs, recorded at install although the mod writes
+// them later) hold the player's settings: uninstall keeps them unless asked to remove everything.
 namespace mevr::install {
 
 struct FileEntry {
@@ -126,6 +126,21 @@ public:
     // Reverts the recorded edits of one ini file (Restore for the game settings) and forgets them.
     bool RevertIni(std::string_view relative);
 
+    // A file the mod writes at run time (LE1MEVR.ini, its logs), recorded as added user data so a full uninstall
+    // deletes it and a "keep my settings" one keeps it. Only our own file names: whether or not it exists yet (one
+    // that does is from an earlier install or deploy of ours). Nothing is written. No-op if already on record.
+    bool RecordRuntimeFile(std::string_view relative);
+    // A folder that is ours though we didn't create it in this run (the Logs folder the mod will create, or one an
+    // earlier "keep my settings" uninstall left with only our files in it): removed on uninstall once empty. No-op if
+    // already on record; saved with the next Save.
+    void RecordDir(std::string_view relative);
+    // Records what's already in place without touching it (an install record that was lost): `to` as renamed from
+    // `from` (bink2w64_original.dll), or `relative` as a file we added (with its current hash).
+    bool AdoptRenamed(std::string_view from, std::string_view to);
+    bool AdoptAdded(std::string_view relative);
+    // Forgets an entry (left alone on uninstall).
+    void Forget(std::string_view relative);
+
     // Undoes everything recorded, newest first; then removes the backup folder, the folders we created (if empty) and
     // the manifest. `keepUserData`: files marked userData stay.
     bool Uninstall(bool keepUserData);
@@ -135,12 +150,12 @@ public:
 
     std::vector<std::string> const& Errors() const { return errors_; }
     std::vector<std::string> const& Log() const { return log_; }
+    void Fail(std::string message);
+    void Note(std::string message);
 
 private:
     bool EnsureParent(std::filesystem::path const& file);
     bool Backup(std::string_view relative, std::string& backupRelative);
-    void Fail(std::string message);
-    void Note(std::string message);
 
     Layout layout_;
     Manifest manifest_;

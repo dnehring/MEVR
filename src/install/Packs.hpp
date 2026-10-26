@@ -82,7 +82,10 @@ struct InstallStep {
     int percent = 0;
     std::string detail;
 };
-// Installs a downloaded pack: unpacks the archive (MEM's --unpack-archive, or takes .mem files as they are) into
+// Waits up to `timeoutMs` for MassEffect1.exe and its launcher to exit (calling `waiting` once if it has to wait).
+// False if the game still runs, or `cancel` was set.
+bool WaitForGameExit(unsigned timeoutMs, std::atomic<bool> const* cancel, std::function<void()> const& waiting);
+// Installs a downloaded pack (refused while the game runs or is still exiting): unpacks the archive (MEM's --unpack-archive, or takes .mem files as they are) into
 // %LOCALAPPDATA%\MEVR\packs\<id>, writes the .mfl, points MEM at the game (--set-game-data-path) and runs
 // --install-mods --gameid 1 --input <mfl> --verify --ipc, reporting progress. "" or an error. [untested]
 std::string InstallWithMem(Pack const& pack, std::filesystem::path const& download, std::filesystem::path const& gameRoot,

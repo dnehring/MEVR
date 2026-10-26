@@ -83,6 +83,7 @@
 		<div data-if="!version_ok &amp;&amp; game_ok" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">This game version isn't supported</div><div class="rdesc">{{version_text}}</div></div></div>
 		<div data-if="admin_needed" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">The game's folder is protected</div><div class="rdesc">Windows doesn't let this setup write there. Restart it as administrator.</div></div>
 			<button class="btn" data-event-click="act('admin')"><div class="sweep"/><span>Restart as admin</span><div class="tick"/></button></div>
+		<div data-if="upstream_found" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">Halcyon's MELE-VR is installed</div><div class="rdesc">{{upstream_text}}</div></div></div>
 		<div data-if="!has_payload" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">This copy can't install</div><div class="rdesc">It's the one kept in the game's folder for uninstalling and optional content. Run MEVR-Setup.exe from the download to install or repair.</div></div></div>
 		<div class="group">
 			<div class="gtitle"><span>What goes in</span><div class="gline"/></div>
@@ -133,6 +134,7 @@
 		<div class="stitle">VR game settings</div>
 		<div class="sdesc">The game's own graphics settings (GamerSettings.ini) that VR needs. Restore puts your values back.</div>
 		<div class="row warnrow" data-if="!has_gamer_settings &amp;&amp; game_ok"><div class="lead i-warn"/><div class="rl"><div class="rlab">Start the game once first</div><div class="rdesc">Its settings file is made on the first start. Start Mass Effect 1, quit, and come back.</div></div></div>
+		<div class="row warnrow" data-if="gamer_read_only"><div class="lead i-warn"/><div class="rl"><div class="rlab">GamerSettings.ini is read-only</div><div class="rdesc">You or a tool ticked Read-only in its Properties (Game\ME1\BioGame\Config), so nothing can be applied to it. Untick it, then Apply.</div></div></div>
 		<div class="tiles">
 			<div class="tile"><div class="tl">Resolution</div><div class="tv small">{{cur_res}}</div></div>
 			<div class="tile"><div class="tl">Window</div><div class="tv small">{{cur_window}}</div></div>
@@ -188,6 +190,8 @@
 			<div class="row"><div class="rl"><div class="rlab">What will change</div><div class="rdesc">{{uninstall_text}}</div></div></div>
 			<div class="row"><div class="rl"><div class="rlab">Keep my VR settings</div><div class="rdesc">Your renderer profiles and calibration stay in the ASI folder for a later reinstall</div></div>
 				<button class="tog" data-class-on="keep_settings" data-event-click="keep_settings = !keep_settings"><div class="knob"/></button></div>
+			<div class="row"><div class="rl"><div class="rlab">Also delete the mod's diagnostics</div><div class="rdesc">{{local_text}}</div></div>
+				<button class="tog" data-class-on="remove_local" data-event-click="remove_local = !remove_local"><div class="knob"/></button></div>
 			<div class="row" data-if="textures_marked"><div class="lead i-info"/><div class="rl"><div class="rlab">Texture packs stay</div><div class="rdesc">They changed the game's files for good: a full restore (or reinstall) of the game removes them.</div></div></div>
 			<div class="row"><div class="rl"><div class="rlab" data-if="installed">Ready to uninstall</div><div class="rlab" data-if="!installed">Not installed</div><div class="rdesc">Close the game first.</div></div>
 				<button class="btn danger" data-class-disabled="busy || waiting || !installed" data-event-click="act('uninstall')"><div class="sweep"/><div class="bi i-trash"/><span>Uninstall</span><div class="tick"/></button></div>

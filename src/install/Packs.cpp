@@ -303,6 +303,22 @@ std::string UnpackMem(fs::path const& archive) {
     return fs::exists(MemExe(), ec) ? std::string() : std::string("MassEffectModderNoGui.exe isn't in the archive");
 }
 
+bool WaitForGameExit(unsigned timeoutMs, std::atomic<bool> const* cancel, std::function<void()> const& waiting) {
+    ULONGLONG const start = GetTickCount64();
+    bool told = false;
+    while (detect::GameRunning()) {
+        if ((cancel != nullptr && *cancel) || GetTickCount64() - start > timeoutMs) {
+            return false;
+        }
+        if (!told && waiting) {
+            waiting();
+            told = true;
+        }
+        Sleep(250);
+    }
+    return true;
+}
+
 std::string InstallWithMem(Pack const& pack, fs::path const& download, fs::path const& gameRoot, std::function<void(InstallStep const&)> const& progress,
     std::atomic<bool> const* cancel) {
     std::error_code ec;
@@ -315,6 +331,11 @@ std::string InstallWithMem(Pack const& pack, fs::path const& download, fs::path 
             progress({std::move(stage), percent, std::move(detail)});
         }
     };
+    // MEM rewrites the game's packages and ini files: never while the game runs, or is still exiting and about to
+    // write its ini files ("Install after I quit" starts us while it does). Up to 60 s for it to go.
+    if (!WaitForGameExit(60000, cancel, [&] { report("Waiting for Mass Effect to close", 0, ""); })) {
+        return "Mass Effect is still running: close it, then install the pack";
+    }
     fs::path const work = LocalMevr() / L"packs" / detect::Wide(pack.id);
     fs::create_directories(work, ec);
     std::string lastError;
@@ -358,7 +379,10 @@ std::string InstallWithMem(Pack const& pack, fs::path const& download, fs::path 
     if (int const code = Run(setPath, work, onLine, cancel); code != 0) {
         return "MEM didn't accept the game folder (exit code " + std::to_string(code) + ")";
     }
-    // 3. Install, after every content mod (the caller has warned the player).
+    // 3. Install, after every content mod (the caller has warned the player). The game mustn't have started meanwhile.
+    if (detect::GameRunning()) {
+        return "Mass Effect was started while the pack was unpacked: close it, then install the pack again";
+    }
     std::string stage = "Installing textures";
     std::wstring const install = L"\"" + mem.wstring() + L"\" --install-mods --gameid 1 --input \"" + mfl.wstring() + L"\" --verify --ipc";
     int const code = Run(install, work, [&](std::string_view text) {

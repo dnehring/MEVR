@@ -360,14 +360,19 @@ switching frameworks.
   RmlUi glass style; pages Welcome, Install, Optional content, Settings, Repair, Uninstall, Launch) over `src/install`
   (unit-tested): finds the game (Steam, EA app, a picked folder), checks the exe version and the OpenXR runtime,
   installs the monolithic ASI, fonts, menu, Halcyon's release `MELEVR.ini` only if missing (then deploy-asi's per-slot
-  fixes), the VR game settings, and records it all in `ASI\MEVR-install.json` with backups and key-level ini edits, so
-  Uninstall restores the game exactly. The ASI loader is our own `bink2w64.dll` (`src/loader`, `MEVR-Loader`: 79
+  fixes), the VR game settings, and records it all in `ASI\MEVR-install.json` with backups and key-level ini edits (one
+  per line of a repeated key), so Uninstall restores the game exactly. QA fixes (research/33 section 7): Halcyon's
+  upstream MELE-VR (`dxgi.dll` marked "MELEVR", `openxr_loader.dll`) is renamed to `*.mevr-off` and put back on
+  uninstall; a `bink2w64.dll` another tool put over ours is never touched; the mod's run-time files (`LE1MEVR.ini`, its
+  logs) are recorded as user data, so a full uninstall deletes them (and `%LOCALAPPDATA%\MEVR` only when its box is
+  ticked); "installed" means the manifest has the mod; a read-only `GamerSettings.ini` is a warning, not a failure. The ASI loader is our own `bink2w64.dll` (`src/loader`, `MEVR-Loader`: 79
   forwarded Bink exports, the SPI interface, the DRM wait by sampling `.text`; ctest `mevr-loader`), unless
   LEBinkProxy is there. Launch starts `MassEffect1.exe` with the launcher's arguments. Texture packs: the pack's page
   plus Mass Effect Modder's CLI, never bundled or auto-downloaded (Nexus terms). In game, Display > Optional content
   writes `%LOCALAPPDATA%\MEVR\setup.request`; the host's ExitProcess hook starts `ASI\MEVR-Setup.exe --request`.
   Test only on a fake game: `tools/setup/test-fake-game.ps1` (`scratch\fakegame`); pages offline:
-  `MEVR-Setup.exe --preview <folder>`. Release: `tools/package-release.ps1 [-Zip]` into `dist\` (local only).
+  `MEVR-Setup.exe --preview <folder>`. Release: `tools/package-release.ps1 [-Zip]` into `dist\` (local only; it copies
+  the third-party licence texts into `licenses\` and refuses while the ASI links LExSDKv2 unless `-LexSdkPermission`).
   **LExSDKv2 has no licence: a public release needs its author's permission.**
 - Trilogy check: `build-trilogy/` (configured with `-DMEVR_BUILD_LE2=ON -DMEVR_BUILD_LE3=ON`) must
   keep building all three games. Per-game field spellings go in `src/engine/GameAdapter.hpp`;

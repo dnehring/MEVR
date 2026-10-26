@@ -254,7 +254,8 @@ button { display: inline-block; focus: auto; tab-index: auto; nav: auto; }
 	background-color: rgba(255,143,63,8%);
 	vertical-align: 2dp;
 }
-.disabled { pointer-events: none; opacity: 0.45; }
+/* Disabled: no pointer, and no keyboard or pad focus either (Tab + Enter mustn't press it). */
+.disabled { pointer-events: none; opacity: 0.45; focus: none; tab-index: none; }
 
 /* Choice rows: ivory chips when on. */
 .seg {

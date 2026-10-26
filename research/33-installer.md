@@ -105,7 +105,8 @@ autoboot (`-game N -autoterminate`) and its launcher working-directory fix.
 | Another proxy | anything else with `bink2w64_original.dll` behind it | uses it, with a note |
 | Missing / Broken | no DLL, or a proxy with no original | refuses; says to verify the game's files |
 
-Repair puts our loader back if Steam's "verify files" restored RAD's DLL over it.
+Repair puts our loader back if Steam's "verify files" restored RAD's DLL over it. A loader another tool installed in
+place of ours later is never touched by Repair or Uninstall (section 7, item 2).
 
 ## 2. Launching LE1 directly
 
@@ -228,7 +229,8 @@ Uninstalling the VR mod leaves textures in place, and says so.
   ini keys with their old and new values), the folders created, the packs, whether the game settings are on.
   - **Uninstall** goes newest first: it deletes what was added, restores backups, renames back, and reverts each ini
     key only if it still holds our value (the player's later changes stay), then removes our folders if empty.
-  - `MELEVR.ini` and `LE1MEVR.ini` are `userData`: kept if the player chooses "Keep my VR settings".
+  - `MELEVR.ini`, `LE1MEVR.ini` and the mod's logs are `userData`: kept if the player chooses "Keep my VR
+    settings", deleted otherwise (section 7, item 3).
   - **Restore** (Settings page) reverts the game settings' keys only.
   - **Repair** compares SHA-256s with what was written and copies back from the payload.
 - **Never the real game in tests**: unit tests on a folder in %TEMP%, and `tools/setup/test-fake-game.ps1` on
@@ -254,6 +256,76 @@ compares versions. A newer release only offers its page: nothing is downloaded. 
 - **BLOCKER: LExSDKv2 has no licence** (its README; CLAUDE.md). `LE1MEVR.asi` compiles it in, so distributing the
   ASI needs its author's permission. The user will ask; `docs/release-readme.md` says so.
 - RAD's Bink DLL is never shipped: the setup renames the player's own copy.
+- `tools/package-release.ps1` (QA fixes below) copies every licence text the binaries need into
+  `dist\MEVR-<v>\licenses\`: MinHook (BSD-2), Dear ImGui (MIT), RmlUi (MIT, and its `Core/Containers/LICENSE.txt`
+  for the bundled containers), FreeType (FTL), FSR 1 (MIT), the OpenXR loader (Apache-2.0) and the jsoncpp compiled
+  into it (`src/external/jsoncpp/LICENSE`: public domain / MIT), our `LICENSES/MIT.txt`, the GPL text, Halcyon's
+  licence, the fonts' OFL. The README gets the source pointer (`https://github.com/dnehring/MEVR`, tag `v<version>`,
+  GPL-3.0). **Hard gate:** it refuses to package while `MEVR-LE1.vcxproj` links `LESDK-LE1` (or can't be read),
+  unless `-LexSdkPermission` is given.
+
+## 7. QA fixes (2026-10-26)
+
+An adversarial QA pass on fake game folders found these; each is fixed, with unit tests in
+`tests/InstallTests.cpp` (`TestIni`, `TestHalcyonIni`, `TestQaFixes`) and fake-game cases (`tools/setup/
+test-fake-game.ps1`, plus a one-off script covering every item).
+
+1. **Halcyon's upstream MELE-VR** (`dxgi.dll` with the string "MELEVR", as its `MELE-VR.bat` tests with `findstr`,
+   plus `openxr_loader.dll`, in `Binaries\Win64`) wasn't detected: after our install two Halcyon renderers ran.
+   `detect::FindUpstreamHalcyon` finds it; Install (the Install page says so: installing is the consent) renames both
+   DLLs to `*.mevr-off` as recorded `renamed` entries that Uninstall puts back; its `MELEVR.ini` stays. `--keep-upstream`
+   (`InstallOptions::moveUpstreamAside = false`) refuses instead. Repair moves them aside again if they came back.
+2. **A loader installed after ours** (ME3Tweaks Mod Manager's, say) was clobbered by Repair and removed by Uninstall.
+   Now `bink2w64.dll` is touched only when it's still ours (the recorded hash, or our product name), RAD's (Steam's
+   verify) or missing; otherwise Uninstall forgets both bink entries and leaves `bink2w64.dll` and
+   `bink2w64_original.dll` as they are, and Repair leaves it, each with a log line.
+3. **A full uninstall left `ASI\LE1MEVR.ini`, the logs and the ASI folder.** The mod's run-time files
+   (`ASI\LE1MEVR.ini`, `Logs\LE1MEVR.log`, `LE1MEVR.prev.log`, `MEVRLoader.log`, and `ASI\MELEVR.ini` when it has no
+   record) are recorded at install as `added` user data (`Transaction::RecordRuntimeFile`, nothing written), so a full
+   uninstall deletes them and "Keep my VR settings" keeps them. The `Logs` folder (missing, or holding only those
+   files) and an ASI folder left by a "keep" uninstall with only our files are recorded as ours (removed once empty).
+   The Uninstall page has a box, off by default, that also deletes `%LOCALAPPDATA%\MEVR` (snapshots, recordings,
+   frame-timing captures, crash reports, the downloaded MEM and pack work files); CLI `--remove-local-data`.
+4. **A lost manifest, then a reinstall, left our loader for good** (it was backed up as "replaced" by itself). In the
+   "Ours" state without a record, Install adopts it: `bink2w64_original.dll` as renamed from `bink2w64.dll`
+   (`AdoptRenamed`) and `bink2w64.dll` as added (`AdoptAdded`), so Uninstall puts RAD's DLL back. The files our
+   install puts in the ASI folder (the ASI, fonts, menu, the setup's copy) and their folders are adopted the same way
+   (else each was "replaced" by itself and came back). What the lost record knew can't come back: the game settings'
+   old values, and `steam_appid.txt` (left: Mod Manager writes the same file).
+5. **"Installed" when only the game settings or a pack were applied.** `Status::installed` now means the manifest has
+   `modVersion` or the ASI entry (`hasRecord` says a manifest exists). Repair refuses without it.
+6. **Tab + Enter pressed disabled buttons; `Act("repair")` dereferenced an empty payload.** `.disabled` in
+   `main.rcss` now has `focus: none; tab-index: none`, and `App::Act` checks every condition the document disables a
+   button on (`busy`, `waiting`, the payload, installed, the game, MEM, the dialog being open) before doing anything.
+7. **A read-only `GamerSettings.ini` made Install FAIL** ("is the game running?"). It's detected
+   (`detect::ReadOnlyFile`): Install goes on and logs a warning (the game settings aren't marked applied), Settings >
+   Apply fails with the reason, the Settings page shows it, and write failures name a read-only file as such.
+8. **A duplicate ini key lost the player's second value** (Set changed every line but recorded the first's value;
+   Revert wrote it into all). Each line is now its own `ini::Edit` (`occurrence`, saved in the manifest) and is reverted
+   alone.
+9. **Uninstalling from the copy in the ASI folder** deleted itself even when the uninstall failed, `rmdir`ed an ASI
+   folder we hadn't created, and passed the path through `cmd /c` where `%` expands. Now: on failure the copy is
+   renamed back (for another try); `rmdir` only when the manifest's `dirs` has the ASI folder; the paths reach cmd in
+   environment variables (`%MEVR_OLD_SETUP%`, expanded once, never inside the value), with `/d`.
+10. **MEM could run while the game was still exiting** ("Install after I quit"). `packs::InstallWithMem` waits up to
+    60 s for `MassEffect1.exe` and the launcher to go (`WaitForGameExit`), refuses otherwise, and checks again before
+    `--install-mods`.
+11. **The Repair page showed the status from when the setup started.** It's recomputed on every refresh and whenever
+    the page is shown (`App::UpdateRepairStatus`, from `Tick`).
+12. **The setup loaded DLLs from its own folder** (a Downloads folder: DLL planting). `SetDefaultDllDirectories(
+    LOAD_LIBRARY_SEARCH_SYSTEM32)` first thing in `wWinMain`, and `/DEPENDENTLOADFLAG:0x800` on the link for the static
+    imports. (The OpenXR loader's runtime DLL is loaded by full path, with its own folder on a retry.)
+13. **Head aim could stay on in a sparse `MELEVR.ini` slot** (a missing key loads Halcyon's code default, on).
+    `FixHalcyonIni` adds `combatHeadAim = 0`, `makoHeadAim = 0` and `menuKey = 220` where missing, as `sfr2Metric`.
+14. **The loader could hang the game's exit** when the process ended during the 60 s DRM wait: process detach took
+    `gLogMutex` / `gPluginsMutex`, which a killed thread may hold forever. Detach now only try-locks (and skips what it
+    can't take); plugins' `SpiOnAttach` / `SpiOnDetach` run under SEH (a faulting plugin is logged and left
+    unattached); the plugin list is filled under its lock.
+15. **Packaging**: the licence texts, the source pointer and the LExSDKv2 gate (section 6).
+16. **Found while re-testing item 9: a retried uninstall could delete RAD's DLL.** An uninstall that failed half way
+    (a locked file) saved the whole record again, so the retry removed `bink2w64.dll` a second time: by then RAD's
+    own DLL, renamed back by the first try, leaving the game without one. `Transaction::Uninstall` now keeps on
+    record only what wasn't undone, and Uninstall leaves a `bink2w64.dll` that is RAD's with nothing behind it.
 
 ## Open
 

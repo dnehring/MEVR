@@ -112,6 +112,26 @@ void TestIni() {
     s2 = ini::Set(s2, "profile:Default", "sfr2Metric", "1");
     ICHECK(s2 == "[profile:Default]\nmenuKey = 220\nfpEnabled = 1\nsfr2Metric = 1\n");
     ICHECK(ini::Sections("[a]\nx=1\n[b]\n").size() == 2);
+    // A key the player's file repeats (in one section, and in a repeated section): every line is set, and each one's
+    // own value comes back on revert (QA 2026-10-26: the second value was lost).
+    std::string const dup = "[SystemSettings]\r\nUseVSync=True\r\nResX=1920\r\nUseVSync=Maybe\r\n\r\n[SystemSettings]\r\nUseVSync=1\r\n";
+    std::vector<ini::Edit> dupEdits;
+    std::string const dupSet = ini::Set(dup, "SystemSettings", "UseVSync", "False", &dupEdits);
+    ICHECK(dupEdits.size() == 3 && dupEdits[1].occurrence == 1 && dupEdits[1].before == std::optional<std::string>("Maybe"));
+    ICHECK(dupSet.find("UseVSync=True") == std::string::npos && dupSet.find("UseVSync=Maybe") == std::string::npos);
+    ICHECK(ini::Revert(dupSet, dupEdits) == dup);
+    // The player changes only the second line since: it stays theirs, the others come back.
+    std::string const dupMine = ini::Revert(std::string(dupSet).replace(dupSet.find("UseVSync=False", dupSet.find("ResX")), 14, "UseVSync=Mine"), dupEdits);
+    ICHECK(dupMine == "[SystemSettings]\r\nUseVSync=True\r\nResX=1920\r\nUseVSync=Mine\r\n\r\n[SystemSettings]\r\nUseVSync=1\r\n");
+    // Recorded edits survive the manifest's JSON with their occurrence.
+    mevr::install::Manifest m;
+    mevr::install::FileEntry f;
+    f.path = "x.ini";
+    f.action = "edited";
+    f.edits = dupEdits;
+    m.files.push_back(f);
+    auto const back = mevr::install::Manifest::FromJson(m.ToJson());
+    ICHECK(back && back->files.size() == 1 && back->files[0].edits == dupEdits);
 }
 
 void TestHalcyonIni() {
@@ -142,8 +162,20 @@ void TestHalcyonIni() {
     ICHECK(ini::Get(fixed, "profile:Custom 1", "sfr2Metric") == std::optional<std::string>("0"));
     ICHECK(ini::Get(fixed, "profile:Custom 1", "sfr2ResX") == std::optional<std::string>("2824"));
     ICHECK(ini::Get(fixed, "active", "profile") == std::optional<std::string>("Custom 1"));
-    ICHECK(edits.size() == 5);
+    // Default: hotkeys, menuKey, combatHeadAim, makoHeadAim (missing: added as 0), the follow, sfr2Metric; Custom 1
+    // (sparse): combatHeadAim and makoHeadAim added as 0.
+    ICHECK(ini::Get(fixed, "profile:Default", "makoHeadAim") == std::optional<std::string>("0"));
+    ICHECK(ini::Get(fixed, "profile:Custom 1", "combatHeadAim") == std::optional<std::string>("0"));
+    ICHECK(ini::Get(fixed, "profile:Custom 1", "makoHeadAim") == std::optional<std::string>("0"));
+    ICHECK(edits.size() == 8);
     ICHECK(ini::Revert(fixed, edits) == player);
+    // A slot with nothing but a resolution gets the menu key and no head aim (else Halcyon's defaults: Insert, head aim).
+    std::string const sparse = "[profile:Custom 2]\r\nsfr2ResX = 2824\r\n";
+    std::string const sparseFixed = ini::FixHalcyonIni(sparse);
+    ICHECK(ini::Get(sparseFixed, "profile:Custom 2", "menuKey") == std::optional<std::string>("220"));
+    ICHECK(ini::Get(sparseFixed, "profile:Custom 2", "combatHeadAim") == std::optional<std::string>("0"));
+    ICHECK(ini::Get(sparseFixed, "profile:Custom 2", "makoHeadAim") == std::optional<std::string>("0"));
+    ICHECK(sparseFixed.find("sfr2ResX = 2824\r\nmenuKey = 220\r\n") != std::string::npos);  // the slot's own spacing
     // The resolution in every slot that has the keys.
     std::string const res = ini::SetHalcyonResolution(release, 2824, 2880);
     ICHECK(ini::Get(res, "profile:Custom 3", "sfr2ResY") == std::optional<std::string>("2880"));
@@ -410,6 +442,193 @@ void TestTransaction() {
     fs::remove_all(root.parent_path(), ec);
 }
 
+// The QA pass of 2026-10-26 (research/33): Halcyon's upstream MELE-VR moved aside and back, a loader another tool put in
+// place of ours left alone by Uninstall and Repair, the mod's run-time files deleted by a full uninstall only, "installed"
+// only with the mod on record, a read-only GamerSettings.ini, the local data box. A fake game under %TEMP%.
+void TestQaFixes() {
+    using namespace mevr::install;
+    ICHECK(detect::HasMelevrMarker(std::string("MZ\0\0 ... MELEVR 1.0", 18)));
+    ICHECK(detect::HasMelevrMarker(std::string("M\0E\0L\0E\0V\0R\0", 12)));
+    ICHECK(!detect::HasMelevrMarker("ReShade dxgi.dll"));
+    if (detect::GameRunning()) {
+        std::printf("  (the game is running: TestQaFixes is skipped)\n");
+        return;
+    }
+    wchar_t temp[MAX_PATH]{};
+    GetTempPathW(MAX_PATH, temp);
+    fs::path const base = fs::path(temp) / L"mevr-install-qa";
+    fs::path const root = base / L"Mass Effect Legendary Edition";
+    std::error_code ec;
+    fs::remove_all(base, ec);
+    Layout const layout{root};
+    fs::path const payloadDir = base / L"payload";
+    Write(payloadDir / L"LE1MEVR.asi", "new ASI");
+    Write(payloadDir / L"bink2w64.dll", "our loader");
+    Write(payloadDir / L"fonts" / L"A.ttf", "font");
+    Write(payloadDir / L"menu" / L"main.rml", "<rml/>");
+    Payload const payload{payloadDir};
+    std::string const gamer = "[SystemSettings]\r\nResX=1920\r\nUseVSync=True\r\n";
+    auto fresh = [&] {
+        fs::remove_all(root, ec);
+        Write(layout.Win64() / L"MassEffect1.exe", "exe");
+        Write(layout.Win64() / L"bink2w64.dll", "a proxy");  // no version resource: "another proxy" in front of...
+        Write(layout.Win64() / L"bink2w64_original.dll", "RAD original");
+        Write(layout.Full(paths::kGamerSettings), gamer);
+    };
+    InstallOptions options;
+    options.ignoreVersion = true;
+    options.choices.target = settings::TargetFor("performance", 0, 0);
+
+    // 1. Halcyon's upstream MELE-VR in Win64: refused when asked to, else moved aside and back; its MELEVR.ini stays.
+    fresh();
+    Write(layout.Win64() / L"dxgi.dll", std::string("MZ upstream \0 MELEVR renderer", 30));
+    Write(layout.Win64() / L"openxr_loader.dll", "khronos loader");
+    Write(layout.Win64() / L"MELEVR.ini", "[profile:Default]\r\nvrMode = 2\r\n");
+    ICHECK(ReadStatus(root, "Folder").upstream.Found() && ReadStatus(root, "Folder").upstream.openxrLoader);
+    InstallOptions refuse = options;
+    refuse.moveUpstreamAside = false;
+    Outcome const refused = Install(layout, payload, refuse);
+    ICHECK(!refused.ok && !fs::exists(layout.ManifestFile()) && fs::exists(layout.Win64() / L"dxgi.dll"));
+    Outcome const in = Install(layout, payload, options);
+    ICHECK(in.ok);
+    ICHECK(!fs::exists(layout.Win64() / L"dxgi.dll") && !fs::exists(layout.Win64() / L"openxr_loader.dll"));
+    ICHECK(fs::exists(layout.Win64() / L"dxgi.dll.mevr-off") && fs::exists(layout.Win64() / L"openxr_loader.dll.mevr-off"));
+    ICHECK(fs::exists(layout.Win64() / L"MELEVR.ini"));
+    ICHECK(!ReadStatus(root, "Folder").upstream.Found());
+    {
+        Transaction tx(layout);
+        ICHECK(tx.Load() && tx.Verify().empty());  // the files moved aside aren't something Repair must bring back
+    }
+    ICHECK(Uninstall(layout, false, {}).ok);
+    ICHECK(Read(layout.Win64() / L"dxgi.dll").find("MELEVR") != std::string::npos);
+    ICHECK(Read(layout.Win64() / L"openxr_loader.dll") == "khronos loader");
+    ICHECK(!fs::exists(layout.Win64() / L"dxgi.dll.mevr-off"));
+    ICHECK(Read(layout.Win64() / L"MELEVR.ini") == "[profile:Default]\r\nvrMode = 2\r\n");
+
+    // 2. Our loader (recorded by hash), then another tool's loader in its place: Uninstall and Repair leave both DLLs.
+    fresh();
+    fs::remove(layout.Win64() / L"bink2w64_original.dll", ec);
+    Write(layout.Win64() / L"bink2w64.dll", "RAD original");
+    auto ourInstall = [&] {
+        Transaction tx(layout);
+        ICHECK(tx.Load());
+        tx.Data().modVersion = "0.1.0";
+        tx.Data().loader = "mevr";
+        ICHECK(tx.Rename(paths::kBink, paths::kBinkOriginal));
+        ICHECK(tx.CopyIn(payloadDir / L"bink2w64.dll", paths::kBink));
+        ICHECK(tx.CopyIn(payloadDir / L"LE1MEVR.asi", paths::kModAsi));
+    };
+    ourInstall();
+    Write(layout.Win64() / L"bink2w64.dll", "ME3Tweaks' loader");  // installed after us
+    Outcome const repaired = Repair(layout, payload);
+    ICHECK(repaired.ok && Read(layout.Win64() / L"bink2w64.dll") == "ME3Tweaks' loader");
+    ICHECK(Uninstall(layout, false, {}).ok);
+    ICHECK(Read(layout.Win64() / L"bink2w64.dll") == "ME3Tweaks' loader");
+    ICHECK(Read(layout.Win64() / L"bink2w64_original.dll") == "RAD original");
+    ICHECK(!fs::exists(layout.Full(paths::kModAsi)));
+    // ...and with our loader still in place, the uninstall puts RAD's DLL back.
+    fs::remove(layout.Win64() / L"bink2w64_original.dll", ec);
+    Write(layout.Win64() / L"bink2w64.dll", "RAD original");
+    ourInstall();
+    ICHECK(Uninstall(layout, false, {}).ok);
+    ICHECK(Read(layout.Win64() / L"bink2w64.dll") == "RAD original" && !fs::exists(layout.Win64() / L"bink2w64_original.dll"));
+    // ...and an uninstall that fails half way (a locked file) keeps only what's left on record: the retry doesn't
+    // remove bink2w64.dll again (by then RAD's DLL, renamed back by the first try).
+    ourInstall();
+    HANDLE const lock = CreateFileW(layout.Full(paths::kModAsi).c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+    ICHECK(lock != INVALID_HANDLE_VALUE);
+    ICHECK(!Uninstall(layout, false, {}).ok);
+    CloseHandle(lock);
+    ICHECK(Read(layout.Win64() / L"bink2w64.dll") == "RAD original" && ReadStatus(root, "Folder").installed);
+    ICHECK(Uninstall(layout, false, {}).ok);
+    ICHECK(Read(layout.Win64() / L"bink2w64.dll") == "RAD original" && !fs::exists(layout.Full(paths::kModAsi)));
+    ICHECK(!fs::exists(layout.ManifestFile()));
+
+    // 3. The mod's run-time files: kept by "keep my settings", deleted by a full uninstall (with the Logs folder the
+    // game run made, once empty). Not "installed" with only settings or a pack on record.
+    fresh();
+    ICHECK(Install(layout, payload, options).ok);
+    ICHECK(ReadStatus(root, "Folder").installed);
+    Write(layout.Full(paths::kModIni), "[Calibration]\r\n");
+    Write(layout.Win64() / L"Logs" / L"LE1MEVR.log", "log");
+    Write(layout.Win64() / L"Logs" / L"LE1MEVR.prev.log", "log");
+    ICHECK(Uninstall(layout, true, {}).ok);
+    ICHECK(fs::exists(layout.Full(paths::kModIni)) && fs::exists(layout.Win64() / L"Logs" / L"LE1MEVR.log"));
+    ICHECK(fs::exists(layout.Full(paths::kHalcyonIni)));
+    ICHECK(Install(layout, payload, options).ok);  // the files left by "keep" are on record again
+    ICHECK(Uninstall(layout, false, {}).ok);
+    ICHECK(!fs::exists(layout.Full(paths::kModIni)) && !fs::exists(layout.Full(paths::kHalcyonIni)));
+    ICHECK(!fs::exists(layout.Win64() / L"Logs") && !fs::exists(layout.Asi()));
+    ICHECK(ApplySettings(layout, options.choices).ok);
+    Status const settingsOnly = ReadStatus(root, "Folder");
+    ICHECK(settingsOnly.hasRecord && settingsOnly.gameSettings && !settingsOnly.installed);
+    ICHECK(!Repair(layout, payload).ok);  // "Not installed yet"
+    ICHECK(RestoreSettings(layout).ok && Read(layout.Full(paths::kGamerSettings)) == gamer);
+    ICHECK(RecordPack(layout, "alot-le1", "ALOT for ME1").ok && !ReadStatus(root, "Folder").installed);
+    fs::remove(layout.ManifestFile(), ec);
+
+    // 4. A read-only GamerSettings.ini: the install goes on (with a warning), Settings > Apply says why it can't.
+    fresh();
+    SetFileAttributesW(layout.Full(paths::kGamerSettings).c_str(), FILE_ATTRIBUTE_READONLY);
+    ICHECK(ReadStatus(root, "Folder").gamerSettingsReadOnly);
+    Outcome const ro = Install(layout, payload, options);
+    ICHECK(ro.ok && fs::exists(layout.Full(paths::kModAsi)) && !ReadStatus(root, "Folder").gameSettings);
+    bool warned = false;
+    for (std::string const& line : ro.log) {
+        warned = warned || (line.find("read-only") != std::string::npos && line.find("GamerSettings.ini") != std::string::npos);
+    }
+    ICHECK(warned);
+    Outcome const apply = ApplySettings(layout, options.choices);
+    ICHECK(!apply.ok && !apply.errors.empty() && apply.errors.back().find("read-only") != std::string::npos);
+    ICHECK(Read(layout.Full(paths::kGamerSettings)) == gamer);
+    SetFileAttributesW(layout.Full(paths::kGamerSettings).c_str(), FILE_ATTRIBUTE_NORMAL);
+
+    // 5. The local data box: %LOCALAPPDATA%\MEVR only when asked (here a stand-in LOCALAPPDATA).
+    wchar_t realLocal[MAX_PATH]{};
+    GetEnvironmentVariableW(L"LOCALAPPDATA", realLocal, MAX_PATH);
+    fs::path const fakeLocal = base / L"LocalAppData";
+    SetEnvironmentVariableW(L"LOCALAPPDATA", fakeLocal.c_str());
+    Write(fakeLocal / L"MEVR" / L"snapshots" / L"a.png", "png");
+    ICHECK(Uninstall(layout, false, {}, false).ok && fs::exists(fakeLocal / L"MEVR" / L"snapshots" / L"a.png"));
+    ICHECK(Install(layout, payload, options).ok);
+    ICHECK(Uninstall(layout, false, {}, true).ok && !fs::exists(fakeLocal / L"MEVR"));
+    SetEnvironmentVariableW(L"LOCALAPPDATA", realLocal);
+
+    // 6. A lost install record, then a reinstall over our loader (the built bink2w64.dll next to this exe: its version
+    // resource says MEVR): adopted, so the uninstall takes it all out and puts the original back.
+    wchar_t self[MAX_PATH]{};
+    GetModuleFileNameW(nullptr, self, MAX_PATH);
+    fs::path const builtLoader = fs::path(self).parent_path() / L"bink2w64.dll";
+    if (fs::exists(builtLoader)) {
+        fresh();
+        fs::copy_file(builtLoader, layout.Win64() / L"bink2w64.dll", fs::copy_options::overwrite_existing, ec);
+        Write(payloadDir / L"bink2w64.dll", Read(builtLoader));
+        ICHECK(ReadStatus(root, "Folder").bink == detect::BinkState::Ours);
+        InstallOptions plain = options;
+        plain.gameSettings = false;
+        ICHECK(Install(layout, payload, plain).ok);
+        fs::remove(layout.ManifestFile(), ec);
+        Outcome const again = Install(layout, payload, plain);
+        ICHECK(again.ok);
+        {
+            Transaction tx(layout);
+            ICHECK(tx.Load());
+            FileEntry const* bink = tx.Data().Find(paths::kBink);
+            FileEntry const* original = tx.Data().Find(paths::kBinkOriginal);
+            FileEntry const* asi = tx.Data().Find(paths::kModAsi);
+            ICHECK(bink != nullptr && bink->action == "added" && original != nullptr && original->action == "renamed");
+            ICHECK(asi != nullptr && asi->action == "added");
+        }
+        ICHECK(Uninstall(layout, false, {}).ok);
+        ICHECK(Read(layout.Win64() / L"bink2w64.dll") == "RAD original" && !fs::exists(layout.Win64() / L"bink2w64_original.dll"));
+        ICHECK(!fs::exists(layout.Asi()));
+        Write(payloadDir / L"bink2w64.dll", "our loader");
+    } else {
+        std::printf("  (no built bink2w64.dll next to the tests: the lost-record case is skipped)\n");
+    }
+    fs::remove_all(base, ec);
+}
+
 void TestLoaderCore() {
     namespace ld = mevr::loader;
     using G = mevr::loader::spi::Game;
@@ -462,5 +681,6 @@ void RunInstallTests(int& failures) {
     TestLaunch();
     TestPacksAndUpdates();
     TestTransaction();
+    TestQaFixes();
     TestLoaderCore();
 }
