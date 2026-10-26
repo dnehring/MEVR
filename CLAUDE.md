@@ -310,7 +310,10 @@ switching frameworks.
   for pixels far above the curve (`toneDesat`, 0.15: the sun white, not pink), and the scene's chroma scaled before
   the curve (`toneSat`, 0.7: the game's own SDR pass's saturation at Eden Prime, measured; 1 the scene's), because the
   per-channel ACES fit turned the frame's oranges red at saturation 0.77 and the float frame is more saturated than
-  the game's SDR pass leaves it. Open there: the ACES toe crushes shadows the game lifts, and the sky's warmth.
+  the game's SDR pass leaves it. **Verdict at the same pose (research/27 section 7d): the game's own SDR pass keeps
+  more gradation at both ends** (the sky at the sun 50,000 distinct colours against 19,000, the darkest patch 5,900
+  against 400 with 9% black) and carries the artists' grade; the float path is not an improvement over it until it
+  carries the game's own toe and grade. `hdrDisplay = 0` is the game's SDR pass.
 - LE1 eye upscale ([research/32](research/32-ue3-vr-performance.md), `[Upscale]` in `ASI\LE1MEVR.ini`, off by
   default): with `method = fsr` and the stereo target below the headset's eye size (`tools/vr-game-settings.ps1
   -Scale 0.75`, or the main menu's Display > Headset × 0.75 / × 0.85 and Upscale > FSR), Halcyon's eye blit scales each 8-bit eye up with FSR 1 (EASU into an intermediate, RCAS into the

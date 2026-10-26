@@ -455,6 +455,15 @@ A toe lift in linear (the Display page's black level works on encoded values) an
 float path, if its HDR pass applies one, are the next levers. The per-level grades differ, so `toneSat = 0.7` is
 Eden Prime's match, not every level's.
 
+**Against the game's own SDR pass at the same pose (the verdict):** not an improvement as it stands. The brightest
+400x400 patch (the sky at the sun): the game's pass 50,108 distinct colours, mean 159, spread 19.4; ours (hue kept,
+chroma 0.7) 18,672 colours, mean 186, spread 18.5, brighter and flatter. The darkest patch: the game's 5,853 colours,
+mean 17.6, no black pixel; ours 408 colours, mean 1.9, 9.1% black. The game's SDR tonemapper already rolls its
+highlights off with gradation (0.03% of pixels clipped) and lifts its shadows, and its grade is the artists'; the
+float path's range above paper white buys nothing the 8-bit eyes show, and our curve's toe and shoulder lose detail
+at both ends. Section 7c's "warmer, deeper, unclipped" was judged against a capture at another framing. The game's
+SDR pass (`hdrDisplay = 0`) stays the better picture until the float path carries the game's own toe and grade.
+
 ## 8. Open
 
 - **[verify]** The Quest's system name through Steam Link (`: oculus` or `: vrlink`?); the new
