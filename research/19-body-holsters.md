@@ -403,8 +403,17 @@ Offsets are right, up, forward from the anchor, in meters at a 1.65 m eye height
 |----------------|--------|-------|----|---------|--------|------|
 | `hipRight` | pistol | 0.20 | −0.62 | −0.05 | 0.14 | GoldenEye VR hips (20 / −65 / −10), Overlord waist (0.23, −0.60, r 0.16) |
 | `shoulderRight` | assault rifle | 0.18 | −0.08 | −0.20 | 0.20 | GoldenEye VR shoulders (19 / −8 / −20, r 20) |
-| `belly` | shotgun | 0.00 | −0.50 | 0.12 | 0.13 | The user's "lower midsection", front; 10-13 cm like visible front slots |
+| `hipLeft` | shotgun | −0.20 | −0.62 | 0.00 | 0.14 | A cross-draw at the left hip (2026-10-25; it was `belly` (0, −0.50, +0.12, r 0.13), the user's "lower midsection") |
 | `shoulderLeft` | sniper rifle | −0.18 | −0.08 | −0.20 | 0.20 | Mirror of the right shoulder |
+
+**The shotgun moved to the left hip (2026-10-25).** In the headset the belly slot sat in front of where the right hand
+rests and in its path to the pistol at the right hip: in four minutes of play (`LE1MEVR.prev.log`, 15:54-15:58) the
+right hand entered it 14 times without a draw, and the user found the shotgun "reliably too close to the pistol"
+(0.29 m between centres at 1.65 m, 0.33 m at their 1.86 m eye height, against 0.27 m of radii). `hipLeft`, a
+right-hand cross-draw mirroring the pistol, is 0.40 m from it (unit-tested: farther than both radii plus both exit
+margins, and a hand resting in front of the belly is in no slot). Grenades stay a left-hand squeeze at the left
+chest. An old `belly = ...` line is still read for the shotgun if the player changed it; its untouched default is
+ignored (logged). The checks below were written for the belly slot.
 
 Checks against poses that must not grab **[inference, to tune in the headset]**:
 - **The shouldered aim zone** (the support grip's "at the shoulder": the right grip 5-35 cm under

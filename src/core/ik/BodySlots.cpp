@@ -64,7 +64,9 @@ Layout DefaultLayout() {
     Layout layout;
     layout.slots[0] = {"hipRight", Weapon::Pistol, {0.20, -0.62, -0.05}, 0.14};
     layout.slots[1] = {"shoulderRight", Weapon::AssaultRifle, {0.18, -0.08, -0.20}, 0.20};
-    layout.slots[2] = {"belly", Weapon::Shotgun, {0.00, -0.50, 0.12}, 0.13};
+    // A cross-draw at the left hip (2026-10-25): the belly slot (0, -0.50, +0.12) sat in front of the right hand's rest,
+    // about 0.33 m from the pistol, and was entered a dozen times a session on the way to the hip.
+    layout.slots[2] = {"hipLeft", Weapon::Shotgun, {-0.20, -0.62, 0.00}, 0.14};
     layout.slots[3] = {"shoulderLeft", Weapon::Sniper, {-0.18, -0.08, -0.20}, 0.20};
     return layout;
 }

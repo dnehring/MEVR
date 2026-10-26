@@ -207,7 +207,7 @@ constexpr char const* kHolstersBlock =
     "; ahead and - behind. radius: how close the hand must come (shoulders are bigger: you can't see them).\n"
     "hipRight = pistol, 0.20, -0.62, -0.05, 0.14\n"
     "shoulderRight = rifle, 0.18, -0.08, -0.20, 0.20\n"
-    "belly = shotgun, 0.00, -0.50, 0.12, 0.13\n"
+    "hipLeft = shotgun, -0.20, -0.62, 0.00, 0.14\n"
     "shoulderLeft = sniper, -0.18, -0.08, -0.20, 0.20\n";
 
 // Appended to a settings file that has no [Squad] yet (and part of a new file).
@@ -617,7 +617,24 @@ Holsters ReadHolsters(Ini const& ini) {
             }
         }
         for (ik::body_slots::Slot& slot : holsters.layout.slots) {
-            if (auto const k = s->second.find(slot.name); k != s->second.end()) {
+            auto k = s->second.find(slot.name);
+            // The shotgun's slot was "belly" until 2026-10-25: a belly line with its old default values is ignored (the
+            // new hipLeft default applies), one the player changed is kept.
+            if (k == s->second.end() && std::string_view(slot.name) == "hipLeft") {
+                if (auto const belly = s->second.find("belly"); belly != s->second.end()) {
+                    ik::body_slots::Slot old = slot;
+                    bool const isOldDefault = ReadSlot(belly->second, old) && old.weapon == ik::body_slots::Weapon::Shotgun &&
+                        old.offset.x == 0.0 && old.offset.y == -0.50 && old.offset.z == 0.12 && old.radius == 0.13;
+                    if (isOldDefault) {
+                        log::Info("holsters: the old belly slot's default line is ignored: the shotgun is at the left hip "
+                                  "(hipLeft) now");
+                    } else {
+                        log::Info("holsters: your belly slot line is kept for the shotgun's slot (hipLeft is its name now)");
+                        k = belly;
+                    }
+                }
+            }
+            if (k != s->second.end()) {
                 ik::body_slots::Slot parsed = slot;
                 if (ReadSlot(k->second, parsed)) {
                     slot = parsed;

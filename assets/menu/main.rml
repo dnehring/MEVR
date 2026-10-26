@@ -77,7 +77,7 @@
 			<div class="gtitle"><span>Weapons</span><div class="gline"/></div>
 			<div class="row"><div class="rl"><div class="rlab">Grip holds the gun</div><div class="rdesc">Squeeze to carry it; let go at its holster to put it away</div></div>
 				<button class="tog" data-class-on="grip_holds" data-event-click="toggle('grip_holds')"><div class="knob"/></button></div>
-			<div class="row"><div class="rl"><div class="rlab">Body holsters</div><div class="rdesc">Pistol at the right hip, rifle over the right shoulder, shotgun at the belly, sniper over the left shoulder</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Body holsters</div><div class="rdesc">Pistol at the right hip, rifle over the right shoulder, shotgun at the left hip, sniper over the left shoulder</div></div>
 				<button class="tog" data-class-on="holsters" data-event-click="toggle('holsters')"><div class="knob"/></button></div>
 			<div class="srow"><div class="slab">Holster buzz</div><input type="range" min="0" max="100" step="5" data-value="holster_buzz"/><div class="sval">{{holster_buzz_text}}</div></div>
 		</div>

@@ -119,7 +119,7 @@ Controls GetControls();
 //                    eyeHeightM is the fallback. 0: always eyeHeightM
 //   eyeHeightM       the player's standing eye height: scales the slot offsets (1.65 = as written)
 //   hapticAmplitude  0..1, the strength of the contact haptics (0.5 as designed; 0: no vibration)
-//   hipRight, shoulderRight, belly, shoulderLeft = weapon, right, up, forward, radius
+//   hipRight, shoulderRight, hipLeft, shoulderLeft = weapon, right, up, forward, radius
 //                    weapon: pistol | shotgun | rifle | sniper | none; meters from the eyes (held
 //                    upright), in the body's frame, at a 1.65 m eye height
 struct Holsters {

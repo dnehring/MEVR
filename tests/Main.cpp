@@ -2647,6 +2647,19 @@ void TestBodySlotGeometry() {
     for (Slot const& slot : DefaultLayout().slots) {
         CHECK(Length(shouldered - SlotCenter(frame, slot, 1.0)) > slot.radius + DefaultLayout().exitMargin);
     }
+    // The shotgun is a left-hip cross-draw, well clear of the pistol (the belly slot was 0.29 m away and in the right
+    // hand's path to the hip), and a right hand resting in front of the belly is in no slot.
+    {
+        Slot const& pistol = DefaultLayout().slots[0];
+        Slot const& shotgun = DefaultLayout().slots[2];
+        CHECK(shotgun.weapon == Weapon::Shotgun && std::string_view(shotgun.name) == "hipLeft");
+        double const apart = Length(SlotCenter(frame, pistol, 1.0) - SlotCenter(frame, shotgun, 1.0));
+        CHECK(apart > pistol.radius + shotgun.radius + 2.0 * DefaultLayout().exitMargin);
+        Vec3 const resting = frame.anchor + Vec3{0.08, -0.55, -0.15};  // in front of the belly, a little right
+        for (Slot const& slot : DefaultLayout().slots) {
+            CHECK(Length(resting - SlotCenter(frame, slot, 1.0)) > slot.radius);
+        }
+    }
 
     // The anchor's height follows with a time constant; its horizontal position at once.
     Anchor anchor(0.08);

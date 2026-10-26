@@ -46,7 +46,7 @@ struct Layout {
     double exitMargin = 0.05;  // a hand leaves a slot this far past its radius; also the "near" margin
 };
 // The user's layout (research/19, "Default slots"): pistol at the right hip, assault rifle over the
-// right shoulder, shotgun at the belly, sniper rifle over the left shoulder.
+// right shoulder, shotgun at the left hip (a cross-draw; the belly until 2026-10-25), sniper rifle over the left shoulder.
 Layout DefaultLayout();
 // Offsets scale by eyeHeight / kReferenceEyeHeight, clamped to a sane range.
 double Scale(Layout const& layout);
