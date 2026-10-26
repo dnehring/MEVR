@@ -91,6 +91,16 @@ if (MEVR_MAIN_MENU)
     target_compile_options(mevr-menu PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus /Zi)
 endif ()
 
+# The build's commit (tools/cmake/BuildInfo.cmake): ${CMAKE_BINARY_DIR}/generated/mevr/BuildInfo.hpp, checked on every
+# build and rewritten only when the commit changes. The host's attach line and the problem report (install/Report) show it.
+set(MEVR_GENERATED_DIR ${CMAKE_BINARY_DIR}/generated)
+add_custom_target(mevr-build-info
+    COMMAND ${CMAKE_COMMAND} -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR} -DOUTPUT=${MEVR_GENERATED_DIR}/mevr/BuildInfo.hpp
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tools/cmake/BuildInfo.cmake
+    BYPRODUCTS ${MEVR_GENERATED_DIR}/mevr/BuildInfo.hpp
+    COMMENT "Checking the build's commit"
+    VERBATIM)
+
 # MEVR-Setup.exe (tools/setup, research/33): the end user's installer, without ME3Tweaks Mod Manager. A Win32 window in
 # the in-game menu's glass style (the same RmlUi setup, renderer, decorators and stylesheet: mevr-menu, assets/menu),
 # over src/install. Also renders its pages to PNGs offline (--preview) and has a command line for scripted tests.
@@ -516,7 +526,8 @@ function(mevr_add_plugin game)
             # Our VR main menu (research/28): LE1 only for now, in the host (not hot-reloaded).
             set(with_main_menu ON)
             list(APPEND host_sources src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/MainMenuSettings.cpp
-                src/plugin/MainMenuSettings.hpp src/plugin/SetupRequest.cpp src/plugin/SetupRequest.hpp src/core/Json.cpp src/core/Json.hpp)
+                src/plugin/MainMenuSettings.hpp src/plugin/SetupRequest.cpp src/plugin/SetupRequest.hpp src/plugin/ReportRequest.cpp
+                src/plugin/ReportRequest.hpp src/install/ReportMarks.hpp src/core/Json.cpp src/core/Json.hpp)
         endif ()
     endif ()
     set(host_sdk "")
@@ -549,6 +560,9 @@ function(mevr_add_plugin game)
         target_compile_definitions(${host} PRIVATE MEVR_WITH_MAIN_MENU)
     endif ()
     mevr_configure(${host} ${game} ${host_sdk})
+    # The commit in the attach line (tools/cmake/BuildInfo.cmake).
+    target_include_directories(${host} PRIVATE ${MEVR_GENERATED_DIR})
+    add_dependencies(${host} mevr-build-info)
     set_target_properties(${host} PROPERTIES OUTPUT_NAME "${game}MEVR" SUFFIX ".asi")
 endfunction()
 
@@ -582,11 +596,18 @@ add_library(mevr-install STATIC
     src/install/Manifest.hpp
     src/install/Packs.cpp
     src/install/Packs.hpp
+    src/install/Report.cpp
+    src/install/Report.hpp
+    src/install/ReportMarks.hpp
     src/install/Updates.cpp
     src/install/Updates.hpp
+    src/install/Zip.cpp
+    src/install/Zip.hpp
 )
-target_include_directories(mevr-install PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(mevr-install PUBLIC version bcrypt winhttp shell32 ole32 advapi32)
+target_include_directories(mevr-install PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src PRIVATE ${MEVR_GENERATED_DIR})
+add_dependencies(mevr-install mevr-build-info)
+# dxgi: the problem report's GPU and driver (install/Report).
+target_link_libraries(mevr-install PUBLIC version bcrypt winhttp shell32 ole32 advapi32 dxgi)
 target_compile_definitions(mevr-install PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 target_compile_options(mevr-install PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
 
@@ -616,6 +637,7 @@ if (MEVR_BUILD_TESTS)
     add_executable(mevr-tests
         tests/Main.cpp
         tests/InstallTests.cpp
+        tests/ReportTests.cpp
         src/loader/LoaderCore.cpp
         tests/ReflectTests.cpp
         tests/BreadcrumbTests.cpp

@@ -15,6 +15,7 @@
 #include "plugin/Colour.hpp"
 #include "plugin/MevrMenu.hpp"
 #include "plugin/PerfProbe.hpp"
+#include "plugin/ReportRequest.hpp"
 #include "plugin/SetupRequest.hpp"
 #include "plugin/TestLoop.hpp"
 
@@ -365,6 +366,10 @@ void Settings::Read(menu::Values& v) {
     v.texts["perf_msg"] = p.pending ? std::format("Measuring: {:.0f} s of 20", p.seconds) : perfMsg_;
     v.texts["content_installed"] = setup_request::InstalledPacksText();
     v.texts["content_msg"] = contentMsg_;
+    // Report a problem (research/33 section 8): the last request's outcome, and the offer after a crash.
+    std::string const reportStatus = report_request::StatusText();
+    v.texts["report_msg"] = reportStatus.empty() ? reportMsg_ : reportStatus;
+    flag("crash_offer", report_request::CrashOffer());
     // The top bar.
     v.texts["chip_headset"] = headset.empty() ? std::string("Headset not started") : headset;
     v.texts["chip_controllers"] = controllers.empty() ? std::string("No controllers yet") : controllers;
@@ -738,6 +743,11 @@ void Settings::Command(std::string const& name, std::string const& argument, men
         after_ = After::Perf;
     } else if (name == "content_request") {
         setup_request::Request(contentMsg_);  // MEVR Setup opens on Optional content after the game exits (research/33)
+    } else if (name == "report") {
+        // MEVR Setup writes the zip in its own process, now (plugin/ReportRequest): the menu stays open.
+        report_request::Request(v.Flag("report_snapshot"), v.Flag("report_perf"), reportMsg_);
+    } else if (name == "crash_dismiss") {
+        report_request::DismissCrash();
     } else if (name == "reset") {
         if (resetArmedMs_ == 0) {
             resetArmedMs_ = Now();

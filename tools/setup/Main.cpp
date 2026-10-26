@@ -13,6 +13,9 @@
 //     --status | --install [--quality headset|performance|balanced|sharp|max|keep] [--no-settings] [--ignore-version]
 //     [--source Steam] [--keep-upstream (refuse instead of moving Halcyon's MELE-VR aside)] | --uninstall [--keep-settings]
 //     [--remove-local-data] | --repair | --apply-settings [--quality q] | --restore-settings
+//     | --report [--snapshot] [--perf] [--report-dir <folder>] [--local <folder>] [--from-game]  (the problem report's zip:
+//       on the Desktop unless --report-dir; --local reads another %LOCALAPPDATA%\MEVR, for tests; --from-game: started by
+//       the in-game menu, at background priority, its report.request's choices)
 //   with --game <folder> and --payload <folder> (default: payload\ next to the exe).
 
 #include "SetupApp.hpp"
@@ -20,7 +23,10 @@
 #include "core/PngFile.hpp"
 #include "install/Detect.hpp"
 #include "install/GameSettings.hpp"
+#include "core/Json.hpp"
 #include "install/Installer.hpp"
+#include "install/Report.hpp"
+#include "install/ReportMarks.hpp"
 #include "install/Updates.hpp"
 #include "plugin/menu/MenuBackdrop.hpp"
 #include "plugin/menu/MenuRenderer.hpp"
@@ -30,6 +36,7 @@
 
 #include <Windows.h>
 #include <ShObjIdl.h>
+#include <ShlObj.h>
 #include <d3d11.h>
 #include <dwmapi.h>
 #include <dxgi1_2.h>
@@ -42,7 +49,9 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <format>
 #include <fstream>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -289,6 +298,11 @@ int Preview(fs::path const& output, bool warp) {
         {"uninstall", "installed", "uninstall"},
         {"uninstall-confirm", "confirm-uninstall", "uninstall"},
         {"launch", "installed", "launch"},
+        {"welcome-crash", "crash", "welcome"},
+        {"report", "report", "report"},
+        {"report-request", "report-request", "report"},
+        {"report-saved", "report-saved", "report"},
+        {"report-files", "report-request", "report", true},
     };
     for (Shot const& shot : shots) {
         app.Sample(shot.state);
@@ -341,7 +355,55 @@ struct Cli {
     bool keepSettings = false;
     bool removeLocalData = false;
     bool keepUpstream = false;
+    // --report
+    bool snapshot = false;
+    bool perf = false;
+    bool fromGame = false;
+    std::optional<fs::path> reportDir;
+    std::optional<fs::path> localData;
 };
+
+// --report: the problem report's zip, no window (install/Report, research/33 section 8). With --from-game (the in-game
+// menu started us while the game runs): the request file's choices, a background priority (CPU and disk), the request
+// removed; report.result tells the menu where the zip went.
+int RunReport(Cli const& cli, std::optional<fs::path> const& root, std::string const& source, std::function<void(std::string const&)> const& say) {
+    namespace report = mevr::install::report;
+    namespace marks = mevr::install::report_marks;
+    report::Options options;
+    options.gameRoot = root.value_or(fs::path());
+    options.store = source == "Steam" || source == "EA app" ? source : std::string();
+    options.snapshot = cli.snapshot;
+    options.perf = cli.perf;
+    options.outputDir = cli.reportDir.value_or(fs::path());
+    options.localData = cli.localData.value_or(fs::path());
+    fs::path const local = options.localData.empty() ? mevr::install::LocalDataDir() : options.localData;
+    if (cli.fromGame) {
+        SetPriorityClass(GetCurrentProcess(), PROCESS_MODE_BACKGROUND_BEGIN);
+        if (auto const text = mevr::install::ReadFile(marks::RequestFile(local))) {
+            if (auto const request = mevr::json::Parse(*text)) {
+                options.snapshot = options.snapshot || request->Bool("snapshot");
+                options.perf = options.perf || request->Bool("perf");
+            }
+        }
+        std::error_code ec;
+        fs::remove(marks::RequestFile(local), ec);
+    }
+    report::Bundle bundle = report::Collect(options);
+    report::Result const result = report::Write(bundle, options);
+    say("game: " + (root ? detect::Utf8(root->wstring()) : std::string("not found (local files only)")));
+    for (report::File const& f : bundle.files) {
+        say("  " + f.name + " (" + report::SizeText(f.bytes.size()) + (f.note.empty() ? "" : "; " + f.note) + ")");
+    }
+    for (std::string const& m : bundle.missing) {
+        say("  not found: " + m);
+    }
+    say(std::format("redactions: {} (user name {}, computer name {}, profile folder {}, e-mail {})", bundle.redactions.Total(),
+        bundle.redactions.userName, bundle.redactions.computerName, bundle.redactions.profilePath, bundle.redactions.email));
+    say("headline: " + report::Headline(bundle));
+    say("REPORT.md: " + report::SizeText(bundle.reportMd.size()));
+    say(result.ok ? "report: " + detect::Utf8(result.zip.wstring()) : "report FAILED: " + result.error);
+    return result.ok ? 0 : 1;
+}
 
 int RunCli(Cli const& cli) {
     std::string text;
@@ -359,6 +421,13 @@ int RunCli(Cli const& cli) {
         source = source.empty() ? installs.front().source : source;
     }
     int code = 0;
+    if (cli.command == "report") {
+        code = RunReport(cli, root, source, say);
+        if (cli.out) {
+            std::ofstream(*cli.out, std::ios::binary) << text;
+        }
+        return code;
+    }
     if (!root) {
         say("game: not found");
         code = 2;
@@ -659,6 +728,13 @@ int RunWindow(mevr::setup::Options options) {
             ShellExecuteW(nullptr, L"open", detect::Wide(url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         }
     };
+    host.revealFile = [](fs::path const& file) {
+        // Explorer on the folder, the file selected.
+        if (PIDLIST_ABSOLUTE pidl = ILCreateFromPathW(file.c_str())) {
+            SHOpenFolderAndSelectItems(pidl, 0, nullptr, 0);
+            ILFree(pidl);
+        }
+    };
     host.restartAsAdmin = [hwnd] {
         std::wstring const args = GetCommandLineW();
         // Everything after the exe's own (quoted) path.
@@ -768,10 +844,20 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             options.request = true;
         } else if (a == L"--wait-pid") {
             options.waitPid = std::wcstoul(next().c_str(), nullptr, 10);
+        } else if (a == L"--snapshot") {
+            cli.snapshot = true;
+        } else if (a == L"--perf") {
+            cli.perf = true;
+        } else if (a == L"--from-game") {
+            cli.fromGame = true;
+        } else if (a == L"--report-dir") {
+            cli.reportDir = fs::path(next());
+        } else if (a == L"--local") {
+            cli.localData = fs::path(next());
         } else if (a.rfind(L"--", 0) == 0) {
             std::wstring const name = a.substr(2);
             if (name == L"status" || name == L"install" || name == L"uninstall" || name == L"repair" || name == L"apply-settings" ||
-                name == L"restore-settings") {
+                name == L"restore-settings" || name == L"report") {
                 cli.command = detect::Utf8(name);
             }
         }

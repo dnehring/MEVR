@@ -1,0 +1,82 @@
+# SPDX-License-Identifier: MIT
+# The bug report form (research/33 section 8). MEVR Setup's "Open a GitHub issue" opens it with `title`, `version` and
+# `summary` filled in from the report (query parameters named after the field ids below; nothing personal).
+name: Bug report
+description: Something in the VR mod doesn't work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The quickest way: **MEVR Setup > Report a problem** (or in game: VR menu > Advanced > Diagnostics > Report) saves a zip on your Desktop with the logs, settings and a summary, with your user and computer names taken out. Attach it below.
+        Common problems and fixes: [the troubleshooting guide](https://github.com/dnehring/MEVR/blob/main/docs/troubleshooting.md). Your AI assistant can read it, and the zip's REPORT.md, too.
+  - type: dropdown
+    id: headset
+    attributes:
+      label: Headset
+      options:
+        - PlayStation VR2
+        - Quest 3 / 3S
+        - Quest 2 / Pro
+        - Valve Index
+        - HTC Vive / Vive Pro
+        - Pimax
+        - Bigscreen Beyond
+        - Windows Mixed Reality / HP Reverb
+        - Other (say which below)
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: VR runtime and connection
+      options:
+        - SteamVR (cable or DisplayPort)
+        - SteamVR over Steam Link
+        - Meta Quest Link / Air Link (Oculus runtime)
+        - Virtual Desktop (VDXR)
+        - Virtual Desktop through SteamVR
+        - Other (say which below)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: MEVR version
+      description: MEVR Setup shows it at the bottom left; REPORT.md has it under System.
+      placeholder: 0.1.0 (monolithic, commit 1a0622c)
+    validations:
+      required: true
+  - type: textarea
+    id: what-you-did
+    attributes:
+      label: What you did
+      description: The steps, and where in the game (planet, mission, menu).
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened instead
+      description: What you saw or felt. Screenshots or a snapshot help for anything visual.
+    validations:
+      required: true
+  - type: checkboxes
+    id: attached
+    attributes:
+      label: Report zip
+      options:
+        - label: I attached the report zip (MEVR Setup > Report a problem)
+          required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary from REPORT.md (optional)
+      description: The System and "What went wrong" parts, if you like them on the page as well as in the zip.
+      render: text

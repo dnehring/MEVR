@@ -33,6 +33,7 @@
 		<button class="navb" data-class-on="page == 'repair'" data-event-click="page = 'repair'"><div class="nico i-wrench"/><div><div class="navl">Repair</div><div class="navs">Check the files</div></div></button>
 		<button class="navb" data-class-on="page == 'uninstall'" data-event-click="page = 'uninstall'"><div class="nico i-trash"/><div><div class="navl">Uninstall</div><div class="navs">Put the game back</div></div></button>
 		<button class="navb" data-class-on="page == 'launch'" data-event-click="page = 'launch'"><div class="nico i-play"/><div><div class="navl">Launch</div><div class="navs">Straight into ME1</div></div></button>
+		<button class="navb" data-class-on="page == 'report'" data-event-click="page = 'report'"><div class="nico i-report"/><div><div class="navl">Report a problem</div><div class="navs">A zip for an issue</div></div></button>
 	</div>
 
 	<div class="content" id="content">
@@ -46,6 +47,11 @@
 	<div data-if="page == 'welcome'">
 		<div class="stitle">Mass Effect VR</div>
 		<div class="sdesc">VR for Mass Effect 1, Legendary Edition: install, tune and launch it from here.</div>
+		<div data-if="crash_offer" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">The game crashed last session</div><div class="rdesc">Create a report? It gathers the logs and the crash details into a zip on your Desktop. Nothing is sent: you look at it first.</div></div>
+			<div class="actions">
+				<button class="btn" data-class-disabled="busy" data-event-click="act('crash_dismiss')"><div class="sweep"/><span>No thanks</span><div class="tick"/></button>
+				<button class="btn primary" data-class-disabled="busy" data-event-click="act('crash_report')"><div class="sweep"/><div class="bi i-report"/><span>Create a report</span></button>
+			</div></div>
 		<div class="hero" data-class-warn="!ready">
 			<div class="big state"/>
 			<div class="herot">
@@ -73,6 +79,11 @@
 			<div class="row"><div class="rl"><div class="rlab">Version {{version}}</div><div class="rdesc">{{update_text}}</div></div>
 				<button class="btn" data-if="update_url == ''" data-class-disabled="busy || !update_enabled" data-event-click="act('check_update')"><div class="sweep"/><span>Check</span><div class="tick"/></button>
 				<button class="btn" data-if="update_url != ''" data-event-click="act('open_update')"><div class="sweep"/><div class="bi i-link"/><span>Release page</span><div class="tick"/></button></div>
+		</div>
+		<div class="group">
+			<div class="gtitle"><span>Something wrong?</span><div class="gline"/></div>
+			<div class="row"><div class="rl"><div class="rlab">Report a problem</div><div class="rdesc">Logs, settings and a summary your AI assistant can read, in one zip. You see what's in it; nothing is sent.</div></div>
+				<button class="btn" data-class-disabled="busy" data-event-click="page = 'report'"><div class="sweep"/><div class="bi i-report"/><span>Report</span><div class="tick"/></button></div>
 		</div>
 		<div class="hint">Fan project, not affiliated with EA or BioWare. © 2026 ME VR Attempt contributors · GPL-3.0, no warranty · source: github.com/dnehring/MEVR</div>
 	</div>
@@ -174,12 +185,51 @@
 	<div data-if="page == 'repair'">
 		<div class="stitle">Repair</div>
 		<div class="sdesc">Checks every file the install put in and puts back what's missing or changed. Steam's "verify files" can remove the loader: this brings it back.</div>
+		<div class="row"><div class="rl"><div class="rlab">Still not right?</div><div class="rdesc">Report a problem: a zip with the logs and a summary for an issue or your AI assistant.</div></div>
+			<button class="btn" data-class-disabled="busy" data-event-click="page = 'report'"><div class="sweep"/><div class="bi i-report"/><span>Report</span><div class="tick"/></button></div>
 		<div class="group">
 			<div class="row"><div class="rl"><div class="rlab">{{repair_title}}</div><div class="rdesc">{{repair_text}}</div></div>
 				<div class="actions">
 					<button class="btn" data-class-disabled="busy || !installed" data-event-click="act('verify')"><div class="sweep"/><span>Check</span><div class="tick"/></button>
 					<button class="btn primary" data-class-disabled="busy || waiting || !installed || !has_payload" data-event-click="act('repair')"><div class="sweep"/><div class="bi i-wrench"/><span>Repair</span></button>
 				</div></div>
+		</div>
+	</div>
+
+	<!-- ===================================================================================== Report a problem -->
+	<div data-if="page == 'report'">
+		<div class="stitle">Report a problem</div>
+		<div class="sdesc">One zip with the mod's logs, settings and a summary written for you and your AI assistant. It's saved on your PC: nothing is uploaded or sent.</div>
+		<div class="row" data-if="report_request != ''"><div class="lead i-info"/><div class="rl"><div class="rlab">Asked for from the game</div><div class="rdesc">{{report_request}}</div></div></div>
+		<div class="hero report" data-if="report_ready">
+			<div class="big i-report"/>
+			<div class="herot">
+				<div class="heroh">{{report_headline}}</div>
+				<div class="herop">{{report_redactions}}</div>
+			</div>
+			<button class="btn primary" data-class-disabled="busy || !report_ready" data-event-click="act('report_create')"><div class="sweep"/><div class="bi i-download"/><span>Create the zip</span></button>
+		</div>
+		<div data-if="report_has_zip" class="row"><div class="lead i-check"/><div class="rl"><div class="rlab">Saved</div><div class="rdesc">{{report_zip}}</div></div>
+			<button class="btn" data-event-click="act('report_reveal')"><div class="sweep"/><div class="bi i-folder"/><span>Show it</span><div class="tick"/></button></div>
+		<div class="group">
+			<div class="gtitle"><span>Also include</span><div class="gline"/></div>
+			<div class="row"><div class="rl"><div class="rlab">The latest snapshot</div><div class="rdesc">What each eye saw when you last took one (menu > Advanced > Diagnostics, or tap both stick clicks): two pictures and their data</div></div>
+				<button class="tog" data-class-disabled="busy" data-class-on="report_snapshot" data-event-click="act('report_toggle','snapshot')"><div class="knob"/></button></div>
+			<div class="row"><div class="rl"><div class="rlab">The latest frame-timing measurement</div><div class="rdesc">For stutter and low frame rates: measure first (menu > Advanced > Diagnostics > Measure frame timing)</div></div>
+				<button class="tog" data-class-disabled="busy" data-class-on="report_perf" data-event-click="act('report_toggle','perf')"><div class="knob"/></button></div>
+		</div>
+		<div class="group" data-if="report_ready">
+			<div class="gtitle"><span>What goes in</span><div class="gline"/></div>
+			<div class="files">
+				<div class="frow" data-for="f : report_files"><span class="fname">{{f.name}}</span><span class="fsize">{{f.size}}</span><span class="fnote">{{f.note}}</span></div>
+			</div>
+			<div class="hint">{{report_text}} Other mods' files are never included, only their names in the folder listing.</div>
+		</div>
+		<div class="group">
+			<div class="gtitle"><span>Then</span><div class="gline"/></div>
+			<div class="row"><div class="rl"><div class="rlab">Ask your AI assistant</div><div class="rdesc">Give it the zip (or paste REPORT.md): the prompt at its end asks for the likely cause, things to try, and help writing the issue.</div></div></div>
+			<div class="row"><div class="rl"><div class="rlab">Open a GitHub issue</div><div class="rdesc">Opens the issue form in your browser with the versions, headset and error filled in (nothing personal). Attach the zip there yourself.</div></div>
+				<button class="btn" data-class-disabled="busy || !report_ready" data-event-click="act('report_issue')"><div class="sweep"/><div class="bi i-link"/><span>Open the form</span><div class="tick"/></button></div>
 		</div>
 	</div>
 
@@ -219,7 +269,7 @@
 	</div>
 
 	<!-- The job's log. -->
-	<div data-if="log_lines.size > 0 &amp;&amp; (page == 'install' || page == 'repair' || page == 'uninstall' || page == 'settings' || page == 'content')" class="group">
+	<div data-if="log_lines.size > 0 &amp;&amp; (page == 'install' || page == 'repair' || page == 'uninstall' || page == 'settings' || page == 'content' || page == 'report')" class="group">
 		<div class="gtitle"><span>Log</span><div class="gline"/></div>
 		<div class="log"><div data-for="line : log_lines" data-class-err="line.error">{{line.text}}</div></div>
 	</div>

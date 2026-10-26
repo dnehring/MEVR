@@ -466,6 +466,19 @@ int main(int argc, char** argv) {
             mevr::png::Write(output / "menu-alpha.png", w, h, Straight(menu).data());
         }
     }
+    // Report a problem (research/33 section 8): the request answered, then the crash offer over the first section.
+    model.SetText("report_msg", "Saved to the Desktop: MEVR-report-2026-10-26-0143.zip. Open it after the game: nothing was sent.");
+    model.SetNumber("report_snapshot", 1.0f);
+    frames(30);
+    save("advanced-diag-report");
+    model.SetText("report_msg", "");
+    model.SetNumber("report_snapshot", 0.0f);
+    model.SetNumber("crash_offer", 1.0f);
+    model.SetText("section", "comfort");
+    frames(30);
+    save("state-crash-offer");
+    model.SetNumber("crash_offer", 0.0f);
+    model.SetText("section", "advanced");
 
     // Hover: the pointer on Resume, part-way through its sweep; then on a row's toggle. From here on, the player's input
     // (until now the sliders only showed values: any "write" printed above would be a setting changed by showing it).

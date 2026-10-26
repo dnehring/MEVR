@@ -192,6 +192,12 @@ std::vector<Field> const& Schema() {
         {"perf_msg", Type::Text, 0, ""},
         {"content_installed", Type::Text, 0, ""},  // Display > Optional content (research/33)
         {"content_msg", Type::Text, 0, ""},
+        // Report a problem (Diagnostics, research/33 section 8): what happened to the last request, the crash offer, and
+        // what the zip should also hold (the menu's own choices, sent with the request).
+        {"report_msg", Type::Text, 0, ""},
+        {"crash_offer", Type::Flag, 0},
+        {"report_snapshot", Type::Flag, 0, "", 0, 1, F::None, true},
+        {"report_perf", Type::Flag, 0, "", 0, 1, F::None, true},
         // Status and per-machine texts (2026-10-26).
         {"save_msg", Type::Text, 0, ""},            // the top bar: the settings file couldn't be written
         {"throwables_note", Type::Text, 0, ""},     // grenades and melee set apart in the file

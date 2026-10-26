@@ -29,6 +29,7 @@
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/SetupRequest.hpp"
 #endif
+#include "mevr/BuildInfo.hpp"  // MEVR_GIT_COMMIT (tools/cmake/BuildInfo.cmake): the attach line, read by problem reports
 
 #include <Windows.h>
 
@@ -151,9 +152,9 @@ bool ExeGate() {
 extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) {
     mevr::log::Open(MEVR_GAME_NAME_W L"MEVR.log");
 #if defined(MEVR_MONOLITHIC)
-    mevr::log::Info("MEVR {} (monolithic) attaching to {}", MEVR_VERSION, MEVR_GAME_NAME_A);
+    mevr::log::Info("MEVR {} (monolithic, commit {}) attaching to {}", MEVR_VERSION, MEVR_GIT_COMMIT, MEVR_GAME_NAME_A);
 #else
-    mevr::log::Info("MEVR {} (hot reload host) attaching to {}", MEVR_VERSION, MEVR_GAME_NAME_A);
+    mevr::log::Info("MEVR {} (hot reload host, commit {}) attaching to {}", MEVR_VERSION, MEVR_GIT_COMMIT, MEVR_GAME_NAME_A);
 #endif
     mevr::log::Info("log file: {} (pid {})", mevr::ini::Utf8(mevr::log::Path()), GetCurrentProcessId());
 

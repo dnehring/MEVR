@@ -483,6 +483,8 @@ std::vector<Icon> const& Icons() {
         v.push_back({"warn", 24.0f, 1.8f, {Closed({{12, 3}, {22, 20}, {2, 20}}), Line({{12, 9}, {12, 14}}), Line({{12, 16.5f}, {12, 17.5f}})}});
         v.push_back({"home", 24.0f, 1.8f, {Line({{3, 11}, {12, 3}, {21, 11}}), Line({{6, 9}, {6, 20}, {18, 20}, {18, 9}})}});
         v.push_back({"link", 24.0f, 2.0f, {Line({{14, 4}, {20, 4}, {20, 10}}), Line({{20, 4}, {11, 13}}), Line({{17, 14}, {17, 20}, {4, 20}, {4, 7}, {10, 7}})}});
+        // Report a problem (research/33 section 8): a flag on its pole.
+        v.push_back({"report", 24.0f, 2.0f, {Line({{5, 21}, {5, 3}}), Closed({{5, 4}, {19, 4}, {15.5f, 8.5f}, {19, 13}, {5, 13}})}});
         // The game's own menus (the top bar's Game menu and Holster).
         v.push_back({"gamemenu", 24.0f, 2.2f, {Line({{4, 6}, {20, 6}}), Line({{4, 12}, {20, 12}}), Line({{4, 18}, {20, 18}})}});
         v.push_back({"holster", 24.0f, 2.0f, {Line({{12, 2}, {12, 13}}), Line({{8, 9}, {12, 13}, {16, 9}}), Line({{5, 11}, {5, 21}, {19, 21}, {19, 11}})}});
