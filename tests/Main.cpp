@@ -3031,6 +3031,58 @@ void TestBodySlotHolding() {
     in.held = Weapon::AssaultRifle;
     CHECK(m.Update(in).action == Action::ReturnCancelled);
 
+    // Let go at the own slot while the draw still animates (held already, the game mid-switch: TryHolster would be
+    // ignored): it's kept until the switch is over, then holstered, with no grace.
+    m.Reset();
+    in = base(0.05, 1.0);
+    in.deltaSeconds = 0.011;
+    in.gripDown = in.newSqueeze = true;
+    CHECK(m.Update(in).action == Action::Draw);
+    in.newSqueeze = false;
+    in.held = Weapon::Pistol;
+    in.switching = true;
+    in.gripDown = false;
+    s = m.Update(in);
+    CHECK(s.action == Action::ReturnArmed && s.slot == 0 && m.CurrentPhase() == Phase::Returning);
+    for (int i = 0; i < 20; ++i) {  // 0.22 s of switching: nothing, and it says why
+        s = m.Update(in);
+        CHECK(s.action == Action::None && s.returnWaitsForSwitch && m.CurrentPhase() == Phase::Returning);
+    }
+    in.switching = false;
+    s = m.Update(in);
+    CHECK(s.action == Action::Return && s.weapon == Weapon::Pistol && m.CurrentPhase() == Phase::Idle);
+    // ...and a squeeze again before the switch ends keeps the gun (the deferral is off).
+    m.Reset();
+    in = base(0.05, 1.0);
+    in.gripDown = in.newSqueeze = true;
+    m.Update(in);
+    in.newSqueeze = false;
+    in.held = Weapon::Pistol;
+    in.switching = true;
+    in.gripDown = false;
+    CHECK(m.Update(in).action == Action::ReturnArmed);
+    in.gripDown = in.newSqueeze = true;
+    s = m.Update(in);
+    CHECK(s.action != Action::Return && s.action != Action::Holster && m.CurrentPhase() == Phase::Grab);
+    in.newSqueeze = false;
+    in.switching = false;
+    for (int i = 0; i < 10; ++i) {
+        CHECK(m.Update(in).action == Action::None && m.CurrentPhase() == Phase::Grab);
+    }
+    // Away from the slots the grace's clock stops while the switch runs.
+    m.Reset();
+    in = base(0.6, 1.0);
+    in.held = Weapon::Pistol;
+    in.gripDown = in.newSqueeze = true;
+    m.Update(in);
+    in.newSqueeze = in.gripDown = false;
+    in.switching = true;
+    CHECK(m.Update(in).action == Action::ReturnArmed);
+    in.deltaSeconds = 0.5;
+    CHECK(m.Update(in).action == Action::None && m.ReturnLeft() > 0.28);
+    in.switching = false;
+    CHECK(m.Update(in).action == Action::Return);
+
     // releaseGrace < 0: let go away from a slot and the gun stays out; holster = 0: never by hand.
     m.Reset();
     in = base(0.6, 1.0);
@@ -4002,6 +4054,42 @@ void TestMenuPress() {
     CHECK(s.dropped && !s.pressed);
 }
 
+void TestCloseLatch() {
+    using namespace mevr::game::gamepad;
+    CloseLatch latch;
+    // Never held: nothing is kept.
+    XINPUT_GAMEPAD pad{};
+    pad.wButtons = XINPUT_GAMEPAD_A;
+    pad.bRightTrigger = 255;
+    CHECK(!ApplyCloseLatch(latch, pad) && pad.wButtons == XINPUT_GAMEPAD_A && pad.bRightTrigger == 255);
+    // The menu had the pad; it closes with A and the right trigger down: both kept, B (not down then) isn't later.
+    HoldCloseLatch(latch);
+    pad = {};
+    pad.wButtons = XINPUT_GAMEPAD_A;
+    pad.bRightTrigger = 200;
+    pad.sThumbLX = 1234;
+    CHECK(ApplyCloseLatch(latch, pad) && pad.wButtons == 0 && pad.bRightTrigger == 0 && pad.sThumbLX == 1234);
+    pad.wButtons = XINPUT_GAMEPAD_A | XINPUT_GAMEPAD_B;
+    pad.bRightTrigger = 200;
+    CHECK(ApplyCloseLatch(latch, pad) && pad.wButtons == XINPUT_GAMEPAD_B && pad.bRightTrigger == 0);
+    // A let go: free; pressed again it reaches the game. The trigger still kept until it drops below the threshold.
+    pad.wButtons = 0;
+    pad.bRightTrigger = 40;
+    CHECK(ApplyCloseLatch(latch, pad) && pad.bRightTrigger == 0);
+    pad.bRightTrigger = 10;
+    CHECK(!ApplyCloseLatch(latch, pad) && pad.bRightTrigger == 10);
+    pad.wButtons = XINPUT_GAMEPAD_A;
+    pad.bRightTrigger = 255;
+    CHECK(!ApplyCloseLatch(latch, pad) && pad.wButtons == XINPUT_GAMEPAD_A && pad.bRightTrigger == 255);
+    // A menu press (Start, OR'd in after the latch) isn't kept even with Start held at the close.
+    HoldCloseLatch(latch);
+    pad = {};
+    pad.wButtons = XINPUT_GAMEPAD_START;
+    ApplyCloseLatch(latch, pad);
+    pad.wButtons |= XINPUT_GAMEPAD_START;  // what MergeMotionControllers does with gamepad::MenuPress's buttons
+    CHECK(pad.wButtons == XINPUT_GAMEPAD_START);
+}
+
 void TestClickGate() {
     using namespace mevr::game::gamepad;
     using Phase = ClickGate::Phase;
@@ -4267,6 +4355,73 @@ void TestNativeWheelMachine() {
         ++updates;
     }
     CHECK(failed && updates >= 6 && updates <= 7 && m.CurrentPhase() == Phase::Idle);
+    // ...but if the wheel comes up late after all (the game paused in it), it's taken over: letting go closes it.
+    in.onFoot = false;
+    in.wheelActive = true;
+    s = m.Update(in);
+    CHECK(s.opened && s.adopted && !s.enter && !s.exit && m.CurrentPhase() == Phase::Open && m.Holding());
+    in.triggerDown = false;
+    s = m.Update(in);
+    CHECK(s.exit && s.cancelled && !s.holdA && m.CurrentPhase() == Phase::Closing);
+    in.wheelActive = false;
+    in.onFoot = true;
+    CHECK(m.Update(in).closed && m.CurrentPhase() == Phase::Idle);
+    // Late with the trigger already up: shut at once, nothing given.
+    m.Reset();
+    in = {};
+    in.dt = 0.1f;
+    in.usable = true;
+    in.onFoot = true;
+    in.triggerDown = in.newPull = true;
+    m.Update(in);
+    in.newPull = false;
+    in.triggerDown = false;
+    for (int i = 0; i < 8; ++i) {
+        m.Update(in);
+    }
+    CHECK(m.CurrentPhase() == Phase::Idle);
+    in.onFoot = false;
+    in.wheelActive = true;
+    in.highlightValid = in.highlightCarried = true;
+    s = m.Update(in);
+    CHECK(s.opened && s.adopted && s.exit && !s.holdA && !s.confirmed && m.CurrentPhase() == Phase::Closing);
+    // Too late (past kLateOpenSeconds): left alone, until a new pull takes it over.
+    m.Reset();
+    in = {};
+    in.dt = 0.1f;
+    in.usable = true;
+    in.onFoot = true;
+    in.triggerDown = in.newPull = true;
+    m.Update(in);
+    in.newPull = false;
+    for (int i = 0; i < 8; ++i) {
+        m.Update(in);
+    }
+    in.dt = 1.0f;
+    for (int i = 0; i < 11; ++i) {
+        m.Update(in);
+    }
+    in.triggerDown = false;
+    in.onFoot = false;
+    in.wheelActive = true;
+    s = m.Update(in);
+    CHECK(!s.opened && !s.adopted && m.CurrentPhase() == Phase::Idle);
+    in.triggerDown = in.newPull = true;
+    s = m.Update(in);
+    CHECK(s.opened && s.adopted && !s.enter && m.CurrentPhase() == Phase::Open);
+    // A wheel up that someone else opened (a pad's LB) isn't touched without a new pull.
+    m.Reset();
+    in = {};
+    in.dt = 0.1f;
+    in.usable = true;
+    in.wheelActive = true;
+    for (int i = 0; i < 5; ++i) {
+        CHECK(!m.Update(in).opened && m.CurrentPhase() == Phase::Idle);
+    }
+    in.wheelActive = false;
+    in.onFoot = true;
+    in.triggerDown = true;  // as the failed open above left it, for the next case
+    in.pointed = true;
 
     // A quick pull-and-let-go that the game still opens: shut at once, nothing given.
     m.Reset();
@@ -6894,6 +7049,7 @@ int main() {
     TestRbFromStickClick();
     TestStickChord();
     TestMenuPress();
+    TestCloseLatch();
     TestClickGate();
     TestSquadPad();
     TestSquadPointing();

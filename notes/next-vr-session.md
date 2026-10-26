@@ -1274,6 +1274,34 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       controller's menu-like button (the Sense's Create and Options) once: `halcyon bridge: the left (or right)
       controller's menu button reached us (/input/menu/click, ...)` says which, if any, reaches the mod. Say which
       physical button you pressed for each line, or that none appeared.
+39. **QA fixes: holsters, the squad wheel, our menu, the calibration prompt (new, 2026-10-26; HOST REDEPLOY, game
+    closed, for the menu, input and prompt parts; the holster and wheel parts are the mod's).**
+    - **Let go during the draw:** squeeze at the pistol's hip slot and let go at once, still in the slot, while the
+      draw is animating. The pistol should come out and go straight back once the draw is over. Log: `let go of the
+      pistol at ...: it goes back at once ... (once the draw has finished ...)`, `waits for the game's weapon switch`,
+      then `the pistol goes back in its holster`. Squeeze again before it's out: it stays in your hand.
+    - **Medi-gel and powers with the weapon away:** holstered, press Y (medi-gel) and tap the right stick click (the
+      mapped power), and hold it (the power wheel). Each should work and draw the gun as the game does (`holsters: the
+      game draws your weapon for ...UseFirstAid: let through`). Melee (B) and the grenade button (X) with the gun away
+      should still not draw it, with a short buzz in the right hand (`refused`). At start the log lists the allowed
+      callers (`still let through from: ... (found)` three times).
+    - **Draws with the controllers off:** put the controllers down until they sleep (or play a stretch with an Xbox
+      pad): the game should draw by itself again (`holsters: the game may draw ... no tracked controllers`).
+    - **A late wheel:** hard to force; if the squad wheel ever opens late (a `didn't enter its weapon wheel` warning
+      followed by the wheel), letting go of the left trigger must close it (`taken over`). A wheel stuck open is also
+      taken over by pulling the left trigger again.
+    - **Holstered wheel, then a holster draw:** with the gun away, pull the left trigger, give a squadmate a weapon,
+      and right after the wheel closes draw from a holster: the gun must stay in your hand (`no re-holster`, or
+      `stays out (drawn from a holster ...)`).
+    - **Closing our menu:** open it, close it with B (on the top level), with A on Resume, and with the trigger on
+      Resume. Nothing should happen in the game (no jump, no shot, no melee) until you let go. Log: `kept from the game
+      until released`, then `the pad is the game's again`. Game menu and Holster must still work (step 38).
+    - **VR stops with the menu open:** open our menu, then quit SteamVR (or take the headset off until it sleeps).
+      Within a second the menu closes and the desktop game runs with mouse, keyboard and pad (`main menu: closed (no
+      VR frames for over 1 s ...)`, `menu pause: the game runs again`). Same during a calibration: it's cancelled.
+    - **The first-run prompt:** only with controllers that have no calibration (or delete `prompted` from
+      `[Calibration]`). Leave the headset on the desk for a minute on foot: the prompt must still be there when you
+      put it on (`the first-run prompt's clock waits`). Its text now says where calibration lives later.
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR

@@ -11,6 +11,7 @@
 #include "engine/XrToUnreal.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/HeadTracking.hpp"
+#include "game/Holsters.hpp"
 #include "game/Player.hpp"
 #include "game/SupportGrip.hpp"
 #include "game/Throwables.hpp"
@@ -1027,7 +1028,7 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
 
     if (newPull && onFoot && !combat) {
         log::Info("squad: combat is off here (a hub): the game has no weapon wheel to open");
-    } else if (newPull && !step.enter && view.valid) {  // (no world view: Halcyon's menu, whose pointer clicks with it)
+    } else if (newPull && !step.enter && !step.adopted && view.valid) {  // (no world view: Halcyon's menu, whose pointer clicks with it)
         log::Info("squad: the left trigger can't open the wheel now ({})", !usable ? (support_grip::Held() ? "both hands hold the gun"
                                                                                        : "no world view or controllers")
                                                                          : "not on foot");
@@ -1046,6 +1047,20 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
                   "the left trigger, at once)",
             gWheelSerial, called ? "opening" : "can't open (no SFXGameModeDefault)",
             gWheelPointed >= 0 ? std::format(", pointed at {}", gMembers[gWheelPointed].name) : std::string(", pointed at nobody"));
+    }
+    if (step.adopted) {
+        // Not opened by this pull: no preselect (the pointing was for an open that's over), and a wheel of unknown
+        // origin (a new pull) leaves Shepard's weapon as it is when it closes.
+        if (newPull) {
+            ++gWheelSerial;
+            gWheelWasHolstered = false;
+            gReholsterWait = -1.0;
+        }
+        gWheelPointed = -1;
+        gWheelClicked = false;
+        log::Info("squad: wheel #{}: the game's weapon wheel is up and nobody held it ({}): taken over, letting go of the "
+                  "left trigger closes it{}", gWheelSerial, newPull ? "a new pull" : "our open came late",
+            gTrigger ? "" : " (already let go: closing now)");
     }
     if (gWheel.Holding()) {
         gWheelOpenedAt += deltaSeconds;
@@ -1144,7 +1159,11 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
             gLastResult = std::format("{} given the {} (the game's wheel)", m.name, menu::WeaponName(gWheelGiven.weapon));
         }
         gWheelGiven = {};
-        if (gWheelWasHolstered && gTryHolster != nullptr) {
+        if (gWheelWasHolstered && gTryHolster != nullptr && holsters::BlocksGameDraws()) {
+            // The wheel's own draw was refused (only holsters draw): nothing to put back, and a watch now could put
+            // away a gun the player draws from a holster in the next seconds.
+            log::Info("squad: wheel #{}: Shepard's weapon stays away (only holsters draw): no re-holster", gWheelSerial);
+        } else if (gWheelWasHolstered && gTryHolster != nullptr) {
             gReholsterWait = 0.0;  // put Shepard's weapon back once the game has finished drawing it
         }
         gWheelWasHolstered = false;
@@ -1155,6 +1174,10 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
         bool const switching = gIsSwitchingWeapons != nullptr && CallBool(game->player, gIsSwitchingWeapons);
         if (controllers.right.squeeze > 0.5f) {
             log::Info("squad: wheel #{}: Shepard's weapon stays out (the right grip holds it)", gWheelSerial);
+            gReholsterWait = -1.0;
+        } else if (holsters::SecondsSinceDraw() < gReholsterWait) {
+            log::Info("squad: wheel #{}: Shepard's weapon stays out (drawn from a holster {:.2f} s ago, after the wheel closed)",
+                gWheelSerial, holsters::SecondsSinceDraw());
             gReholsterWait = -1.0;
         } else if (armed && !switching) {
             ue3::Object* const defaultMode = FindMode(game->controller, gGameModeDefault);
