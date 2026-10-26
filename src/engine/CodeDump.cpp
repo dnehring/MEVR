@@ -96,6 +96,11 @@ std::optional<std::size_t> RecordedPatchedCount(std::filesystem::path const& inf
 } // namespace
 
 void SaveOnce() {
+#if defined(MEVR_MONOLITHIC)
+    // Never in a players' build (the release ASI is the monolithic one): the dump is a decrypted copy of the game's
+    // DRM-protected code, local research data for development builds only (CLAUDE.md: never shared).
+    return;
+#else
     auto* const base = reinterpret_cast<std::uint8_t const*>(GetModuleHandleW(nullptr));
     auto const* const dos = reinterpret_cast<IMAGE_DOS_HEADER const*>(base);
     if (base == nullptr || dos->e_magic != IMAGE_DOS_SIGNATURE) {
@@ -160,6 +165,7 @@ void SaveOnce() {
     log::Info("code dump: saved the decrypted .text ({} MB) to {} (local research data); {} function starts "
               "already hook-patched",
         text->Misc.VirtualSize / (1024 * 1024), file.string(), patched.size());
+#endif
 }
 
 } // namespace mevr::engine::code_dump
