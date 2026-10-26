@@ -7,8 +7,13 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
 ## Git
 
 - **Commit freely.** The user gave standing permission (2026-10-07) to commit without asking.
-  Commit at natural checkpoints (milestones, verified changes). No remote is configured; ask
-  before pushing anywhere.
+  Commit at natural checkpoints (milestones, verified changes).
+- **Public repository:** `origin` is https://github.com/dnehring/MEVR (public since 2026-10-23). **The user
+  pushes**; prepare a push by checking what `origin/main..main` adds: commit emails only the no-reply address
+  (`17148851+dnehring@users.noreply.github.com`, set in this repo's config), no game data, dumps, recordings,
+  snapshots or binaries, no personal paths, no decompiled or near-whole reconstructed game code in notes, every
+  file with its SPDX line (`tools/check-spdx.py`). Push only `main`: never the local `backup/pre-rewrite-main`
+  or `worktree-agent-*` branches. `notes/publication-audit.md` stays local.
 
 ## Licensing rules (GPL-3.0 project since 2026-10-08)
 
