@@ -257,7 +257,9 @@ switching frameworks.
   panel taking the UI (mode 2) the GPU matrix gets each eye's own off-centre frustum and the submit declares it;
   the CPU matrices (culling, Umbra, HUD markers) keep Halcyon's symmetric window. Where UI is in the eye images
   (VR cine, panel off) it stays on the symmetric window (mode 1). Upstream's swap-on convergence was divergent
-  (1.27 deg per eye: far things beyond infinity, a pistol at 0.5 m read at 0.68 m). Plan and logs
+  (1.27 deg per eye: far things beyond infinity, a pistol at 0.5 m read at 0.68 m). Mode 2 misplaces what the CPU
+  projects through the symmetric window (the sun's sprite and glare: in one eye only near the edges, research/37
+  2026-10-25 18:22), the same with two Draws as with one. Plan and logs
   `plugin/MetricStereo` (`[MEVR-STEREO]`), math `core/vr/MetricStereo` (unit-tested), render seams `render_hook`
   `SetSfrMetric` / records by head-look arm; snapshot `"stereo"`; `sfr2MetricDepth` ("Extra depth"),
   `sfr2MetricEyeFrustum = 0` for mode 1 only; `tools/stereo-check.py` measures far-scenery disparity.

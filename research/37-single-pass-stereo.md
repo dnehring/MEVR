@@ -527,3 +527,22 @@ it is the correct image. Beyond that only a lower render resolution gives the GP
 
 fpsVR keeps its last ten sessions only, so the two-Draw sessions' reprojection counts are gone; Halcyon's GPU line is
 the comparison above.
+
+### 2026-10-25 18:22, the third session (oneDrawWindow = 0): a distant light in the left eye only
+
+With each eye on its own frustum the user saw "the light from the distance" in the left eye but not the right, most on
+the bridge, looking at the sky. Reproduced on the fake headset with a look-around at 25 degrees up (a synthesised
+recording turning a full circle in 40 s with the PS VR2's projections, scratchpad `sweeprec.py`), 20 captures each
+under one Draw with each eye's own frustum, one Draw with the symmetric window, and both engine renders with each
+eye's own frustum, the sun's bright region (luminance above 250) located per eye and mapped to the other eye's column
+by the per-eye fields of view (`sun.py`). **One Draw and two Draws behave the same frame by frame on the own-frustum
+setting**: where the left eye holds the sun a few degrees inside the right eye's field, the right eye shows nothing
+(two frames of the turn in both), and where both hold it, it sits at the mapped column in both. On the symmetric window
+the bright region is in both eyes at the mapped column in every frame. So this is the per-eye frustum's own limit
+(research/30: the CPU projects screen-space elements through the symmetric window, which the eye's own GPU frustum
+does not match; the sun's sprite and glare are such elements), present since that mode shipped and only noticed now;
+not one Draw's. `oneDrawWindow = 1` (the default) shows the sun in both eyes; the user's ini is back on it.
+
+Where that leaves `sharePass = 5` for a GPU at the budget: the symmetric window is the correct image, and its 24%
+of unseen columns are the price; the eye's own frustum is sharper and cheaper but misplaces the sun and loses the
+far-edge wedge. The render resolution is the lever that remains.
