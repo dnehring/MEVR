@@ -12,7 +12,7 @@ found (`symbols-le1.csv`).
 
 - Ghidra 12.1.4 (`$env:GHIDRA_INSTALL_DIR`, default `F:\downloads\ghidra_public\ghidra_12.1.4_PUBLIC`)
 - JDK 21+ (`$env:MEVR_GHIDRA_JAVA_HOME`, default the newest `C:\Program Files\Eclipse Adoptium\jdk-*`)
-- Python 3 (for `tools/splice_text.py` and `collect_symbols.py`)
+- Python 3 (for `collect_symbols.py`, and the maintainer's local `local-tools/splice_text.py`, which is not published)
 - The mod's `.text` dump: run the game once with the mod (`%LOCALAPPDATA%\MEVR\dump\MassEffect-<timestamp>.text.bin`)
 - For `mcp.ps1`: uv (`uvx`), the GhidraMCP 2.0 extension installed in Ghidra and its Python wheel
 

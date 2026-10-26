@@ -564,7 +564,8 @@ Use it to check VR changes yourself instead of asking the user what they see
   `tools/verify_rvas.py` (`.pdata` function bounds); byte checks only work in-process. The host
   saves the decrypted `.text` once per exe build to `%LOCALAPPDATA%\MEVR\dump`, at attach before
   any hook patches it (the `.txt` lists starts other ASIs already patched);
-  `tools/splice_text.py` turns it into a disassemblable copy.
+  `local-tools/splice_text.py` (gitignored, never published: it rebuilds a decrypted copy of the exe) turns it into
+  a disassemblable copy.
   Local research data: never commit or share dumps or spliced exes.
 - **Read native code with Ghidra, not dumpbin:** `tools/ghidra/decompile.ps1 0xC621E0` (RVA,
   `exe+0x...` or a name; `-Search`, `-Rename`/`-Comment -Record`) prints C, callers, callees and

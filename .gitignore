@@ -29,3 +29,6 @@ __pycache__/
 scratch/
 scratch-*.txt
 dist/
+
+# Local-only research tools, never published (they rebuild a decrypted copy of the game exe from a dump)
+local-tools/

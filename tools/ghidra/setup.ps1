@@ -46,7 +46,10 @@ $binDir = Join-Path $GhidraRoot "bin\$Game-$ts"
 $spliced = Join-Path $binDir $g.ProgramName
 if ($Force -or -not (Test-Path $spliced)) {
     New-Item -ItemType Directory -Force $binDir | Out-Null
-    & python -I "$PSScriptRoot\..\splice_text.py" $g.GameExe $dump $spliced
+    # local-tools/ is never published (it rebuilds a decrypted copy of the exe): a maintainer's local copy only.
+    $splice = Join-Path $PSScriptRoot "..\..\local-tools\splice_text.py"
+    if (-not (Test-Path $splice)) { throw "local-tools\splice_text.py is not in this checkout: it is local research tooling, not distributed with the project" }
+    & python -I $splice $g.GameExe $dump $spliced
     if ($LASTEXITCODE -ne 0) { throw 'splice_text.py failed' }
     # A dump taken after hooks went in has jmps over some prologues; undo the ones LExSDKv2 knows.
     & python -I "$PSScriptRoot\restore_prologues.py" $Game $spliced
