@@ -1,5 +1,7 @@
 # Stereo stage 2: two full renders per frame (design, not built)
 
+> **Historical plan (2026-10-07).** The current design is in [CLAUDE.md](../CLAUDE.md) and [research/](../research/README.md).
+
 Stage 1 (alternate-eye, built) shows each eye at half the frame rate, so moving objects ghost
 and flicker between eyes. Stage 2 renders both eyes from the same game instant. This plan builds
 on Halcyon's documented findings ([research/13](../research/13-existing-me-vr-mods.md)), written

@@ -16,7 +16,7 @@
 namespace mevr::install::http {
 namespace {
 
-constexpr wchar_t kAgent[] = L"MEVR-Setup/0.1 (+https://github.com)";
+constexpr wchar_t kAgent[] = L"MEVR-Setup/0.1 (+https://github.com/dnehring/MEVR)";
 
 struct Handle {
     HINTERNET h = nullptr;

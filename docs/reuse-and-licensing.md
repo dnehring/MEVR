@@ -23,10 +23,14 @@ file's first line says which (`SPDX-License-Identifier`; the README's Licensing 
 
 ## Before distributing binaries
 
-- **Unlicensed parts in the ASI.** LExSDKv2 (deliberately no license) and LEBinkProxy's `SPI.h`
-  (no license) are compiled into the ASI. GPL-3.0 section 5c needs the whole binary licensable
-  under the GPL, so ask their authors (llamathings, ME3Tweaks) for permission or a compatible
-  license before publishing builds. Sharing the source is fine.
+- **Unlicensed parts in the ASI.** LExSDKv2 (deliberately no license) is compiled into the ASI.
+  GPL-3.0 section 5c needs the whole binary licensable under the GPL, so ask its author
+  (llamathings) for permission or a compatible license before publishing builds, or finish
+  replacing it with our own reflection layer (`src/ue3/`, [research/34](../research/34-reflection.md)).
+  Sharing the source is fine. The ASI loader interface ("SPI") is no longer an issue: our host and
+  our loader declare it themselves from its documented shape (`src/loader/SpiAbi.hpp`); only the
+  offline loader test (`tools/loader-test`, never shipped) compiles LExSDKv2's `External/SPI.h`, to
+  check that SDK-built plugins load.
 - Ship `LICENSE`, `NOTICE.md` and the MinHook and Dear ImGui license files with any binary, plus
   the corresponding source (GPL-3.0 section 6).
 - Modified Halcyon files carry a dated "Modified for ME VR Attempt" header (section 5a); keep it
@@ -36,7 +40,7 @@ file's first line says which (`SPDX-License-Identifier`; the README's Licensing 
 
 | Project | License | Role for us |
 |---------|---------|-------------|
-| [MassFPS (LE1)](https://www.nexusmods.com/masseffectlegendaryedition/mods/1731) (Aphar) | "Do whatever you want … incorporating its modifications into your own mod", no credit needed | **Script-side code source.** First-person camera modes and offsets, head hiding, controller-relative movement. We credit Aphar anyway. Exception: its bundled LE1 Community Patch `CombatStorm.Initialize` variant. See [research/11](../research/11-massfps.md) |
+| [MassFPS (LE1)](https://www.nexusmods.com/masseffectlegendaryedition/mods/1731) (Aphar) | "Do whatever you want … incorporating its modifications into your own mod", no credit needed | **Studied only; none of its code or files are in the repository.** Its first-person camera modes and offsets, head hiding and controller-relative movement informed our design. We credit Aphar anyway. See [research/11](../research/11-massfps.md) |
 | [vrframework](https://github.com/elliotttate/vrframework) (elliotttate) | MIT (REFramework-derived) | **Guides plus architecture.** 17-part guide on VR-ifying a closed engine (frame timing, stereo, camera math, TAA, HUD, input). Its core is a scaffold with stubs; borrow pieces freely. See [research/12](../research/12-vr-frameworks-survey.md) |
 | [REFramework](https://github.com/praydog/REFramework) | MIT | **Code source.** Present hook, D3D11 eye textures and swapchain copy, OpenXR runtime abstraction (`src/D3D11Hook.*`, `src/mods/vr/D3D11Component.*`, `runtimes/`). Not its overlay, which is OpenVR-only. Fix the 7 bugs listed in [research/10](../research/10-vr-code-survey.md) when lifting |
 | [MassEffect1-VR](https://github.com/jrush64/MassEffect1-VR) / [2](https://github.com/jrush64/MassEffect2-VR) / [3](https://github.com/jrush64/MassEffect3-VR) (Halcyon) | GPL-3.0 | **Our rendering base.** Working 6DOF stereo VR for all three LE games (double `FViewportClient::Draw` per present, first person, HUD, pacing; gamepad/head aim, no motion controllers). Imported into `src/halcyon/`. See [research/13](../research/13-existing-me-vr-mods.md) |
@@ -45,7 +49,7 @@ file's first line says which (`SPDX-License-Identifier`; the README's Licensing 
 | TF2VR (CircuitLord) | Closed | **Feel reference.** Reload choreography, two-hand handling, comfort. Learned by playing |
 | [UEVR](https://github.com/praydog/UEVR) | All rights reserved | Concepts from public docs only. Not cloned |
 | [LExSDKv2](https://github.com/llamathings/LExSDKv2) | None (deliberate) | Submodule: UE3/ME class layouts, ProcessEvent |
-| [LExASIs](https://github.com/ME3Tweaks/LExASIs) / [LEBinkProxy](https://github.com/ME3Tweaks/LEBinkProxy) | None | Patterns for hooks, build setup and loading. LEBinkProxy is the runtime loader |
+| [LExASIs](https://github.com/ME3Tweaks/LExASIs) / [LEBinkProxy](https://github.com/ME3Tweaks/LEBinkProxy) | None | Read for patterns only (hooks, build setup, loading); no code copied. At run time the mod loads through our own loader (`bink2w64.dll`, `src/loader`, installed by MEVR-Setup), or through LEBinkProxy when ME3Tweaks Mod Manager already installed it |
 | Khronos OpenXR SDK | Apache-2.0 | Dependency (loader and headers) |
 | [Ghidra](https://github.com/NationalSecurityAgency/ghidra) 12.1.4 and [GhidraMCP](https://github.com/LaurieWired/GhidraMCP) 2.0 (LaurieWired) | Apache-2.0, both | **Local research tooling only, not in the repo and never shipped.** `tools/ghidra/` drives the installed copies (headless decompiling, and an MCP server on the same project). Our Ghidra scripts are our own code |
 | Dear ImGui, MinHook, SafetyHook, kananlib, spdlog, glm, DirectXTK | MIT, BSD-2, BSL-1.0, BSL-1.0, MIT, MIT, MIT | Likely dependencies (all permissive) |

@@ -1,5 +1,7 @@
 # One VR system for the whole trilogy
 
+> **Historical plan (2026-10-07).** The current design is in [CLAUDE.md](../CLAUDE.md) and [research/](../research/README.md).
+
 **Principle:** LE1, LE2 and LE3 share one VR interaction model. When a game's mechanics don't fit
 VR, or differ from the other two in a way that would split the design, we **change the mechanic**
 and don't fork the VR system. LE1 ships first; LE2 and LE3 should mostly need new data tables and

@@ -74,6 +74,7 @@
 				<button class="btn" data-if="update_url == ''" data-class-disabled="busy || !update_enabled" data-event-click="act('check_update')"><div class="sweep"/><span>Check</span><div class="tick"/></button>
 				<button class="btn" data-if="update_url != ''" data-event-click="act('open_update')"><div class="sweep"/><div class="bi i-link"/><span>Release page</span><div class="tick"/></button></div>
 		</div>
+		<div class="hint">Fan project, not affiliated with EA or BioWare. © 2026 ME VR Attempt contributors · GPL-3.0, no warranty · source: github.com/dnehring/MEVR</div>
 	</div>
 
 	<!-- ===================================================================================== Install -->
