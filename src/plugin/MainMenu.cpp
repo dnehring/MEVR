@@ -70,6 +70,7 @@ constexpr float kDeadBandPx = 1.5f;
 // ---- Any thread -----------------------------------------------------------------------------------------------
 std::atomic<bool> gOpen{false};
 std::atomic<bool> gPauseWanted{false};
+std::atomic<WORD> gGamePress{0};  // a pad button the menu asked to press for the game (Game menu, Holster), not yet taken
 std::mutex gPadMutex;
 XINPUT_GAMEPAD gPad{};
 std::uint64_t gPadMs = 0;
@@ -658,6 +659,17 @@ void AfterCommand(After after) {
     switch (after) {
     case After::Nothing: return;
     case After::Close: SetOpen(false, "Resume"); return;
+    case After::GameStart:
+        SetOpen(false, "Game menu");
+        gGamePress.store(XINPUT_GAMEPAD_START, std::memory_order_release);
+        log::Info("main menu: Game menu: the game's Start goes to the game once it reads the pad again (its pause menu)");
+        return;
+    case After::GameBack:
+        SetOpen(false, "Holster (Back)");
+        gGamePress.store(XINPUT_GAMEPAD_BACK, std::memory_order_release);
+        log::Info("main menu: Holster: the game's Back goes to the game once it reads the pad again (on foot it holsters; in a "
+                  "bypass minigame it quits)");
+        return;
     case After::Calibrate:
         SetOpen(false, "Start calibration");
         calibration::Start("the main menu");
@@ -747,6 +759,10 @@ void Toggle(char const* why) {
 
 void NoteControllers(vr::controllers::State const& live) {
     g.live = live;
+}
+
+WORD TakeGamePress() {
+    return gGamePress.exchange(0, std::memory_order_acq_rel);
 }
 
 void NotePad(XINPUT_GAMEPAD const& pad) {

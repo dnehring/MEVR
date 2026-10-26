@@ -17,10 +17,11 @@
 		<div class="logo"/>
 		<div><div class="brandName">MEVR</div><div class="brandSub">Settings</div></div>
 	</div>
-	<div class="chips">
-		<div class="chip"><div class="ico i-headset"/><span>{{chip_headset}}</span></div>
-		<div class="chip"><div class="ico i-controller"/><span>{{chip_controllers}}</span></div>
-		<div class="chip" data-class-ok="calibrated"><div class="ico i-check"/><span>{{chip_calibrated}}</span></div>
+	<div class="topspace"/>
+	<!-- The game's own menus: the way into them (no controller menu button can be counted on, e.g. a Quest over Link). -->
+	<div class="gamebtns">
+		<button class="btn game" id="game-menu" data-event-click="cmd('game_menu')"><div class="sweep"/><div class="bi i-gamemenu"/><div class="gl"><span class="gt">Game menu</span><span class="gs">Save, load, squad, map, options</span></div></button>
+		<button class="btn game" id="game-back" data-event-click="cmd('game_back')"><div class="sweep"/><div class="bi i-holster"/><div class="gl"><span class="gt">Holster</span><span class="gs">The game's Back: puts the gun away</span></div></button>
 	</div>
 	<button class="btn primary" id="resume" data-event-click="cmd('resume')"><div class="sweep"/><div class="bi i-play"/><span>Resume</span></button>
 </div>
@@ -33,6 +34,13 @@
 		<button class="navb" id="nav-display" data-class-on="section == 'display'" data-event-click="section = 'display'"><div class="nico i-eye"/><div><div class="navl">Display</div><div class="navs">Colour, resolution</div></div></button>
 		<button class="navb" id="nav-hud" data-class-on="section == 'hud'" data-event-click="section = 'hud'"><div class="nico i-crosshair"/><div><div class="navl">HUD &amp; sights</div><div class="navs">Panel, reticle, scopes</div></div></button>
 		<button class="navb" id="nav-advanced" data-class-on="section == 'advanced'" data-event-click="section = 'advanced'"><div class="nico i-sliders"/><div><div class="navl">Advanced</div><div class="navs">Renderer, diagnostics</div></div></button>
+		<div class="railspace"/>
+		<!-- The headset, controllers and calibration (in the top bar until the game's menus took its room). -->
+		<div class="chips">
+			<div class="chip"><div class="ico i-headset"/><span>{{chip_headset}}</span></div>
+			<div class="chip"><div class="ico i-controller"/><span>{{chip_controllers}}</span></div>
+			<div class="chip" data-class-ok="calibrated"><div class="ico i-check"/><span>{{chip_calibrated}}</span></div>
+		</div>
 	</div>
 
 	<div class="content" id="content">

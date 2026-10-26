@@ -630,6 +630,10 @@ void Settings::Command(std::string const& name, std::string const& argument, men
     log::Info("main menu: {}{}{}", name, argument.empty() ? "" : " ", argument);
     if (name == "resume") {
         after_ = After::Close;
+    } else if (name == "game_menu") {
+        after_ = After::GameStart;
+    } else if (name == "game_back") {
+        after_ = After::GameBack;
     } else if (name == "calibrate") {
         after_ = After::Calibrate;
     } else if (name == "recenter") {

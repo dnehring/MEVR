@@ -57,7 +57,12 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   LE1 only, `MEVR_MAIN_MENU`). Holding both sticks or `\` opens and closes it; Resume or B close it. It's a
   quad fixed in the room where it opens (`[Menu] distanceM`, `widthM`); the game sees no input, the mod no
   controllers, and on foot or in the Mako the mod pauses the game (`[Menu] pause`, HostServices v16,
-  `game/MenuPause`: `WorldInfo.PauseGame` like the game's weapon wheel). Pointer: a controller's aim ray is
+  `game/MenuPause`: `WorldInfo.PauseGame` like the game's weapon wheel). **Its top bar is the way into the game's own
+  menus** (since 2026-10-25, research/28 "The game's menus"; no controller menu button can be counted on, e.g. a Quest over
+  Link): Game menu (the game's Start: its pause menu) and Holster (the game's Back: LE1 binds no menu to it, it holsters on
+  foot and quits a bypass minigame) close our menu, and the host's XInput hook presses that button once the game reads the
+  pad again (`gamepad::MenuPress`, 250 ms and 8 reads after the close, held 100 ms; log `main menu: sent the game's
+  Start`). The menu button and each hand's interaction profile are only logged (`halcyon bridge:`). Pointer: a controller's aim ray is
   the mouse (trigger clicks, right stick scrolls, haptic ticks); the pad or left stick moves the focus, A
   activates, B backs out then closes; on Display holding A compares the colour. Sections: Comfort, Controls,
   Body & calibration (Start calibration opens `plugin/Calibration`), Display, HUD & sights, Advanced

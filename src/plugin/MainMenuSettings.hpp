@@ -29,6 +29,8 @@ namespace mevr::host::main_menu {
 enum class After {
     Nothing,
     Close,          // Resume
+    GameStart,      // close, then press the game's Start once it reads the pad again (its pause menu)
+    GameBack,       // close, then press the game's Back (on foot: holster; in a bypass minigame: quit it)
     Calibrate,      // close, then start the guided calibration
     Classic,        // close, then open Halcyon's menu
     Align,          // close, then arm the camera alignment (left trigger)
