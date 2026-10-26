@@ -248,6 +248,20 @@ An adversarial pass found rows that showed something other than the setting in e
 - The rail shows **"Can't save settings: the game's ASI folder is read-only"** when a write of `LE1MEVR.ini` fails
   (`MainMenuSettings::Wrote`); the Recenter key and Classic renderer menu rows name the keyboard's own keys.
 
+## Letting go of the pad (QA, 2026-10-26)
+
+- **What closed it stays the menu's:** the A on Resume, the B that closes the top level, the trigger that clicked
+  Resume and the stick clicks of the chord used to reach the game on the read after the close (a jump, a shot, a
+  crouch). The host's XInput hook now keeps every button and trigger that is down when our menu (or the guided
+  calibration) gives the pad back from the game until each is released (`gamepad::CloseLatch`, unit-tested
+  `TestCloseLatch`; log `halcyon bridge: ... kept from the game until released`). The Game menu / Holster press is OR'd
+  in after it, so it still goes through.
+- **VR stops with the menu open:** the menu kept the game paused (`kMainMenuPause`), its pad neutral and, through
+  Halcyon's `InputBlocked`, its mouse and keyboard blocked, on the desktop with nothing drawn. `main_menu::OnPresent`
+  (every Present, from `PerfPresentEnd`) closes it when its quad hasn't been drawn for over 1 s (the session
+  STOPPING, EXITING or LOSS_PENDING all end the frames; so does a sleeping headset) and cancels a running calibration
+  when no VR frame has run for that long; the pause lifts through the usual path (the mod's `game/MenuPause`).
+
 ## Checking it offline
 
 `mevr-menu-preview [folder] [--warp]` (`tools/menu-preview`): the host's own RmlUi setup, renderer,

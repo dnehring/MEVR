@@ -830,6 +830,9 @@ void CheckFunctions() {
         "SFXGame.SFXGameModeDefault.TryHolster",
         "SFXGame.SFXGameModeDefault.SwitchToWeapon",
         "SFXGame.SFXPawn_Player.DrawPrimaryWeapon",  // holsters' onlyHolstersDraw (2026-10-25)
+        "SFXGame.SFXGameModeDefault.UseFirstAid",         // ...whose draws still go through from these (2026-10-26)
+        "SFXGame.SFXGameModeDefault.TryUseMappedPower",
+        "SFXGame.SFXGameModeDefault.EnterPowerWheel",
         "Engine.PlayerController.GetScaleFormManager",
         // Posture, ViewLevel, Comfort, MenuPause (migrated in stage 1)
         "SFXGame.BioPawn.ShouldCrouch",

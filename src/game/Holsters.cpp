@@ -66,6 +66,12 @@ ue3::FunctionRef gGetRangedWeaponTypeFn{"SFXGame.BioWeaponRanged.GetRangedWeapon
 // UseGrenade, TryUseMappedPower, UseFirstAid, EnterPowerWheel, EnterWeaponWheel, the weapon wheel's close and the
 // holster key's toggle all call it. [Holsters] onlyHolstersDraw skips it (engine/call_function's skip handler).
 ue3::FunctionRef gDrawPrimaryWeaponFn{"SFXGame.SFXPawn_Player.DrawPrimaryWeapon"};
+// ...except from these callers (the lead's decision, 2026-10-26): medi-gel and powers are deliberate actions that need
+// combat mode, so their draws go through. Compared with the skip handler's caller (the calling script function).
+ue3::FunctionRef gUseFirstAidFn{"SFXGame.SFXGameModeDefault.UseFirstAid"};
+ue3::FunctionRef gTryUseMappedPowerFn{"SFXGame.SFXGameModeDefault.TryUseMappedPower"};
+ue3::FunctionRef gEnterPowerWheelFn{"SFXGame.SFXGameModeDefault.EnterPowerWheel"};
+std::array<ue3::Function*, 3> gAllowedCallers{};
 
 ue3::Function* gSwitchToWeapon = nullptr;
 ue3::Function* gTryHolster = nullptr;
@@ -108,6 +114,8 @@ bool gLoggedHoldsValue = false;
 float gContactAmplitude = 0.0f;
 float gContactPeak = 0.0f;
 bool gToldReturnWaits = false;  // this return already said it waits for the trigger
+bool gToldReturnWaitsSwitch = false;  // ...or for the weapon switch
+bool gReturnAtSlot = false;     // the return in progress was let go at the gun's own slot (no grace)
 // The eye height that scales the slots: the standing height from the floor, or the setting.
 slots::StandingHeight gStanding;
 bool gFloorSeen = false;
@@ -133,7 +141,9 @@ double gSinceAllowedDraw = 1e9;   // seconds since one closed
 unsigned gRefusedDraws = 0;       // this heartbeat period
 bool gLoggedBlock = false;
 bool gLoggedBlockValue = false;
-bool gWasDrawn = false;           // last tick's IsInCombatActionState, for draws nobody of ours asked for
+bool gWasDrawn = false;           // last active tick's IsInCombatActionState, for draws nobody of ours asked for
+bool gWasDrawnKnown = false;      // ...read on the tick before this one (only consecutive active ticks are compared)
+bool gRefusedBuzz = false;        // a draw was refused since the last tick: the right hand gets a short buzz
 
 // What the player carries, re-read each tick; the type map is rebuilt when the slots change.
 struct Carried {
@@ -398,7 +408,7 @@ void Inactive(std::string why, Link const& link) {
     gYawValid = false;
     gNear = false;
     gActive = false;
-    gWasDrawn = gCarried.drawn;  // a draw while inactive isn't reported as unasked when it becomes active
+    gWasDrawnKnown = false;  // gCarried isn't read while inactive: a draw meanwhile isn't reported as unasked
     gDistances.fill(-1.0);
     Contact(link, {});
     SetWhy(std::move(why));
@@ -485,7 +495,13 @@ bool OnDrawPrimaryWeapon(ue3::Object* context, ue3::Function* /*function*/, ue3:
     if (!gBlockDraws || gAllowedDraws > 0 || context == nullptr || context != gBlockPawn) {
         return false;
     }
+    if (caller != nullptr && std::find(gAllowedCallers.begin(), gAllowedCallers.end(), caller) != gAllowedCallers.end()) {
+        log::Info("holsters: the game draws your weapon for {}: let through (medi-gel and powers need combat mode)",
+            ue3::runtime::FullName(caller));
+        return false;
+    }
     ++gRefusedDraws;
+    gRefusedBuzz = true;
     log::Info("holsters: the game wanted to draw your weapon ({}): refused, only a grab at a holster draws "
               "([Holsters] onlyHolstersDraw = 1)",
         caller != nullptr ? ue3::runtime::FullName(caller) : std::string("called from native code"));
@@ -501,6 +517,10 @@ void AllowGameDraw(bool begin) {
     } else if (gAllowedDraws > 0 && --gAllowedDraws == 0) {
         gSinceAllowedDraw = 0.0;
     }
+}
+
+bool BlocksGameDraws() {
+    return gBlockDraws;
 }
 
 bool TryStartup() {
@@ -532,6 +552,16 @@ bool TryStartup() {
                       noParameters ? "" : native ? ", has parameters" : "has parameters"));
     } else {
         log::Warn("holsters: SFXPawn_Player.DrawPrimaryWeapon not found: the game may still draw by itself");
+    }
+    ue3::FunctionRef* const allowed[] = {&gUseFirstAidFn, &gTryUseMappedPowerFn, &gEnterPowerWheelFn};
+    std::string allowedText;
+    for (std::size_t i = 0; i < gAllowedCallers.size(); ++i) {
+        gAllowedCallers[i] = allowed[i]->Get();
+        allowedText += std::format("{}{} ({})", i > 0 ? ", " : "", allowed[i]->Path(), gAllowedCallers[i] != nullptr ? "found" : "NOT FOUND");
+    }
+    if (gDrawSkipReady) {
+        log::Info("holsters: the game's own draws are still let through from: {} (a caller not found is refused like the rest)",
+            allowedText);
     }
     return gStarted;
 #else
@@ -599,9 +629,13 @@ void Tick(double deltaSeconds, Link const& link) {
 
 #if defined(MEVR_GAME_LE1)
     // Only holsters draw: on foot (and in its two wheels) in VR, the game's own DrawPrimaryWeapon is refused for the
-    // player's pawn (OnDrawPrimaryWeapon).
+    // player's pawn (OnDrawPrimaryWeapon). Only while a holster could draw instead: tracked controllers (a pad player in
+    // VR, or controllers asleep, keeps the game's draws), and only once the CallFunction hook is in (Mod.cpp puts it in
+    // when hand aim first comes on), so the log never claims a refusal that can't happen.
     gBlockPawn = nullptr;
-    if (gDrawSkipReady && settings.enabled && settings.onlyHolstersDraw && gHolds && vr::host_view::Latest().valid) {
+    bool const hooked = engine::call_function::Installed();
+    if (gDrawSkipReady && hooked && settings.enabled && settings.onlyHolstersDraw && gHolds && controllers.active &&
+        vr::host_view::Latest().valid) {
         ue3::Object* const pc = player::Controller();
         gBlockPawn = pc != nullptr && player::IsBioPlayerController(pc) ? player::BioPawn(pc) : nullptr;
     }
@@ -609,8 +643,15 @@ void Tick(double deltaSeconds, Link const& link) {
     if (!gLoggedBlock || gBlockDraws != gLoggedBlockValue) {
         gLoggedBlock = true;
         gLoggedBlockValue = gBlockDraws;
-        log::Info("holsters: {}", gBlockDraws ? "only a grab at a holster draws a weapon (the game's own draws are refused)"
-                                              : "the game may draw the weapon by itself (onlyHolstersDraw off, not on foot, or no VR view)");
+        log::Info("holsters: {}", gBlockDraws
+                ? "only a grab at a holster draws a weapon (the game's own draws are refused, except for medi-gel and powers)"
+                : gDrawSkipReady && !hooked && settings.enabled && settings.onlyHolstersDraw
+                ? "the game may draw the weapon by itself (the script call hook isn't in yet: it goes in when hand aim comes on)"
+                : "the game may draw the weapon by itself (onlyHolstersDraw off, not on foot, no VR view or no tracked controllers)");
+    }
+    if (gRefusedBuzz) {
+        gRefusedBuzz = false;
+        Pulse(link, slots::Refused(settings.hapticAmplitude));  // the refusal, felt: no holster was reached
     }
 #endif
 
@@ -646,12 +687,13 @@ void Tick(double deltaSeconds, Link const& link) {
     ReadCarried(*game);
     // A draw nobody of ours asked for (not a holster grab, not a grenade's): what the hands were doing, so the log says
     // what drew it if DrawPrimaryWeapon wasn't the way.
-    if (gCarried.drawn && !gWasDrawn && gSinceDraw > kResultSeconds && gSinceAllowedDraw > kResultSeconds) {
+    if (gWasDrawnKnown && gCarried.drawn && !gWasDrawn && gSinceDraw > kResultSeconds && gSinceAllowedDraw > kResultSeconds) {
         log::Info("holsters: the {} came out without a holster grab (right trigger {:.2f}, grip {:.2f}; left trigger {:.2f}, "
                   "grip {:.2f}){}", slots::Name(Held()), right.trigger, right.squeeze, controllers.left.trigger,
             controllers.left.squeeze, gBlockDraws ? ": not through DrawPrimaryWeapon, so it wasn't refused" : "");
     }
     gWasDrawn = gCarried.drawn;
+    gWasDrawnKnown = true;
     gActive = true;
     SetWhy("active");
 
@@ -707,6 +749,7 @@ void Tick(double deltaSeconds, Link const& link) {
     input.newSqueeze = newSqueeze;
     input.trigger = right.trigger >= kTriggerOn;
     input.held = Held();
+    input.switching = gCarried.switching;
     input.holster = settings.holster;
     input.gripHolds = gHolds;
     input.releaseGrace = settings.releaseGrace;
@@ -737,7 +780,11 @@ void Tick(double deltaSeconds, Link const& link) {
         break;
     case slots::Action::Return:
         gToldReturnWaits = false;
-        Holster(*game, step.weapon, std::format("let go {:.2f} s ago away from {}", settings.releaseGrace, SlotOf(settings, step.weapon)),
+        gToldReturnWaitsSwitch = false;
+        Holster(*game, step.weapon, gReturnAtSlot ? std::format("let go at {} (once the draw or the burst was over)",
+                                                       SlotOf(settings, step.weapon))
+                                                  : std::format("let go {:.2f} s ago away from {}", settings.releaseGrace,
+                                                       SlotOf(settings, step.weapon)),
             link, strength);
         break;
     case slots::Action::Unavailable:
@@ -762,10 +809,14 @@ void Tick(double deltaSeconds, Link const& link) {
         break;
     case slots::Action::ReturnArmed:
         gToldReturnWaits = false;
-        log::Info("holsters: let go of the {} {}: it goes back in {} unless you squeeze again{}", slots::Name(step.weapon),
+        gToldReturnWaitsSwitch = false;
+        gReturnAtSlot = step.slot >= 0 && settings.layout.slots[step.slot].weapon == step.weapon;
+        log::Info("holsters: let go of the {} {}: it goes back {} unless you squeeze again{}", slots::Name(step.weapon),
             step.slot >= 0 ? std::format("at {}", name(step.slot)) : std::string("away from its slot"),
-            settings.releaseGrace >= 0.0 ? std::format("{:.2f} s", settings.releaseGrace) : std::string("once it's out"),
-            input.held == Weapon::None ? " (once the draw has finished)" : input.trigger ? " (once the trigger is let go)" : "");
+            gReturnAtSlot ? std::string("at once")
+            : settings.releaseGrace >= 0.0 ? std::format("in {:.2f} s", settings.releaseGrace) : std::string("once it's out"),
+            input.held == Weapon::None || input.switching ? " (once the draw has finished: the game ignores a holster mid-switch)"
+            : input.trigger ? " (once the trigger is let go)" : "");
         break;
     case slots::Action::ReturnCancelled:
         log::Info("holsters: the {} stays out ({})", slots::Name(step.weapon),
@@ -778,6 +829,10 @@ void Tick(double deltaSeconds, Link const& link) {
     if (step.returnWaitsForTrigger && !gToldReturnWaits) {
         gToldReturnWaits = true;
         log::Info("holsters: the {} waits for the trigger to be let go before it goes back (never mid-burst)", slots::Name(Held()));
+    }
+    if (step.returnWaitsForSwitch && !gToldReturnWaitsSwitch) {
+        gToldReturnWaitsSwitch = true;
+        log::Info("holsters: the {} waits for the game's weapon switch to finish before it goes back", slots::Name(Held()));
     }
     // The contact buzz, while the hand is in a slot: deeper, stronger.
     if (int const in = gMachine.InSlot(); in >= 0) {
@@ -903,6 +958,8 @@ void Shutdown() {
     gContactAmplitude = 0.0f;
     gContactPeak = 0.0f;
     gToldReturnWaits = false;
+    gToldReturnWaitsSwitch = false;
+    gReturnAtSlot = false;
     gStanding.Reset();
     gFloorSeen = false;
     gFloorNow = -1.0;
@@ -922,11 +979,14 @@ void Shutdown() {
     gRefusedDraws = 0;
     gLoggedBlock = false;
     gWasDrawn = false;
+    gWasDrawnKnown = false;
+    gRefusedBuzz = false;
     gStarted = false;
     gWhy = "not started";
     gLoggedWhy.clear();
 #if defined(MEVR_GAME_LE1)
     gSwitchToWeapon = gTryHolster = gIsInCombatActionState = gIsSwitchingWeapons = gGetRangedWeaponType = nullptr;
+    gAllowedCallers.fill(nullptr);
 #endif
 }
 

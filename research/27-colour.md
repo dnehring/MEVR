@@ -411,6 +411,62 @@ float scRGB swapchain on the SDR desktop: the flat window on the monitor keeps a
 scRGB to the desktop; highlights clip there, not in the eyes). Windows HDR can stay off; `hdrDisplay = 0`, the default,
 passes the display's own answer through. The user's ini has `hdrDisplay = 1`, `tonemap = aces`, `exposure = 0`.
 
+## 7d. The curve applied hue-preserving, and the chroma matched to the game's own pass (2026-10-26)
+
+The user, after the float backbuffer under ACES: "it almost looks saturated on red, however it's hard for me to
+tell". Measured at the heavy Eden Prime cell, the still PS VR2 pose, paused (`tonecheck.py` in the session's
+scratchpad: the left eye's HSV saturation over pixels with V >= 0.05, hue bins of 30 degrees; the SDR row is a
+separate launch with `hdrDisplay = 0` at the same paused pose):
+
+| capture | mean S | pixels S > 0.7 | red-hued share (mean S) | orange share (S) | mean luminance | crushed |
+|---|---|---|---|---|---|---|
+| the game's own SDR pass | 0.46 | 2% | 33% (0.48) | 61% (0.47) | 63.8 | 0.4% |
+| float, ACES per channel (`toneHue = 0`) | 0.67 | 58% | 49% (0.77) | 46% (0.59) | 59.0 | 4.7% |
+| float, ACES hue kept (`toneHue = 1`, `toneSat = 1`) | 0.60 | 46% | 40% (0.60) | 57% (0.62) | 60.5 | 4.7% |
+| ... hue kept, `toneSat = 0.85` | 0.53 | 25% | 49% (0.55) | 47% (0.52) | 61.4 | 4.7% |
+| ... hue kept, `toneSat = 0.7` | 0.46 | 6% | 55% (0.49) | 41% (0.43) | 62.0 | 4.8% |
+| ... hue kept, `toneSat = 0.55` | 0.38 | 0.4% | 60% (0.41) | 36% (0.34) | 62.4 | 4.9% |
+| float, Hable hue kept, `toneSat = 1` | 0.61 | 49% | 35% (0.59) | 61% (0.64) | 51.3 | 3.6% |
+| float, Hable hue kept, `toneSat = 0.7` | 0.46 | 3% | 49% (0.48) | 48% (0.46) | 52.9 | 3.6% |
+
+(The hue shares at low saturation are noise: a nearly grey pixel's hue is its dither.) Two effects. The per-channel
+ACES fit (Narkowicz 2015 on sRGB primaries, with none of the desaturation or gamut steps of the full transform) turns
+oranges red, half the lit pixels red-hued against a third under Hable or the plain clip of the same float frame, and
+raises their saturation to 0.77. And the float frame itself is more saturated than the game's own SDR pass leaves it
+(0.60 under the clip or Hable against 0.46), so the game's SDR tonemapper or its grading LUT desaturates, which the
+float path skips (not separated).
+
+**The fix** (`core/vr/Colour`, keys in `[Colour]`, the same for every curve): the curve is applied to the pixel's
+largest channel and the pixel scaled by the ratio, so hue and chroma survive, blended with the per-channel result by
+`toneHue` (0 .. 1, default 1; 0 is the old result); a hue-kept pixel far above its curve moves toward the curve's
+grey by `1 - 1 / (1 + toneDesat * (largest channel - its curve))` (`toneDesat` 0 .. 1, default 0.15: the sun's
+disc goes white instead of the pink of `toneDesat = 0`, 0.4 whiter still; the idea of the desaturation term in
+Khronos' PBR Neutral tonemapper, not its code); and the scene's chroma is scaled toward Rec. 709 luminance before the
+curve by `toneSat` (0 .. 1, default 0.7: at this scene the game's own pass's saturation, mean 0.455 against 0.462
+and the reds 0.49 against 0.48; 1 is the scene's). The CPU reference and the GPU check (`mevr-colour-shader`, three
+more cases) agree within a step; the unit tests pin the ratios kept, the per-channel result at 0, grey unchanged, the
+path to white and the chroma scale. Cost: none (GPU 4.91 ms median, 8.20 p90 under the moving head loop with one
+Draw: the day's spread). The user's ini keeps `tonemap = aces`, `toneHue = 1`, `toneDesat = 0.15`, `toneSat = 0.7`
+for the option; after the verdict below (2026-10-26, the user: with legitimate measurements the eye need not judge)
+`hdrDisplay = 0` and the game's range is SDR again (`tools/vr-game-settings.ps1 -Sdr`): the game's own pass,
+independent of the Windows HDR switch.
+
+**Open:** the game's SDR pass also lifts the shadows the ACES toe crushes (94% of pixels lit against 74%, 0.4%
+crushed against 4.7%), and its sky is a warmer, more contrasted orange where ours, hue kept, is a pale peach (the sky
+sits far above paper white, so the shoulder takes it toward the curve's grey; the game's grade warms its highlights).
+A toe lift in linear (the Display page's black level works on encoded values) and the game's own grading LUT on the
+float path, if its HDR pass applies one, are the next levers. The per-level grades differ, so `toneSat = 0.7` is
+Eden Prime's match, not every level's.
+
+**Against the game's own SDR pass at the same pose (the verdict):** not an improvement as it stands. The brightest
+400x400 patch (the sky at the sun): the game's pass 50,108 distinct colours, mean 159, spread 19.4; ours (hue kept,
+chroma 0.7) 18,672 colours, mean 186, spread 18.5, brighter and flatter. The darkest patch: the game's 5,853 colours,
+mean 17.6, no black pixel; ours 408 colours, mean 1.9, 9.1% black. The game's SDR tonemapper already rolls its
+highlights off with gradation (0.03% of pixels clipped) and lifts its shadows, and its grade is the artists'; the
+float path's range above paper white buys nothing the 8-bit eyes show, and our curve's toe and shoulder lose detail
+at both ends. Section 7c's "warmer, deeper, unclipped" was judged against a capture at another framing. The game's
+SDR pass (`hdrDisplay = 0`) stays the better picture until the float path carries the game's own toe and grade.
+
 ## 8. Open
 
 - **[verify]** The Quest's system name through Steam Link (`: oculus` or `: vrlink`?); the new

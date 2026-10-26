@@ -68,6 +68,7 @@ constexpr float kNearEyes = 0.15f;            // a hand's orb or ring this close
 std::atomic<bool> gRunning{false};
 std::atomic<bool> gPaused{false};
 std::atomic<bool> gPromptPointed{false};
+std::atomic<bool> gFocused{true};  // the session has input focus (NoteFocused): the prompt's clocks run
 std::mutex gStateMutex;  // gHost, gSummary
 cal::HostState gHost;
 Summary gSummary;
@@ -206,11 +207,20 @@ std::string ReadIni(std::string const& section, char const* key, char const* fal
     if (path.empty()) {
         return fallback;
     }
-    wchar_t text[512]{};
-    GetPrivateProfileStringW(Wide(section).c_str(), Wide(key).c_str(), Wide(fallback).c_str(), text, 512, path.c_str());
+    // Grown until the value fits ([Calibration] prompted lists every controller type ever prompted).
+    std::wstring text(1024, L'\0');
+    for (;;) {
+        DWORD const got = GetPrivateProfileStringW(Wide(section).c_str(), Wide(key).c_str(), Wide(fallback).c_str(), text.data(),
+            static_cast<DWORD>(text.size()), path.c_str());
+        if (got + 1 < text.size() || text.size() >= 65536) {
+            text.resize(got);
+            break;
+        }
+        text.assign(text.size() * 2, L'\0');
+    }
     std::string out;
-    for (wchar_t const* c = text; *c != L'\0'; ++c) {
-        out.push_back(*c < 128 ? static_cast<char>(*c) : '?');
+    for (wchar_t const c : text) {
+        out.push_back(c < 128 ? static_cast<char>(c) : '?');
     }
     return out;
 }
@@ -1423,6 +1433,9 @@ void ForgetSession(XrSession session) {
     gSession = session;
 }
 
+// Where calibration lives once the prompt is gone (the log; the prompt's own text says it too).
+constexpr char const* kWhereLater = "hold both sticks > Body & calibration > Start calibration";
+
 unsigned PromptLayers(Frame const& frame, XrCompositionLayerQuad const** out, unsigned capacity, float dt) {
     gPromptPointed.store(false);
     bool const eligible = !gKey.empty() && gKeyChecked && !gKeyCalibrated && !gKeyPrompted && !gPrompt.decided;
@@ -1434,7 +1447,10 @@ unsigned PromptLayers(Frame const& frame, XrCompositionLayerQuad const** out, un
     if (!visible) {
         return 0;
     }
-    gPrompt.worldSeconds += dt;
+    bool const focused = gFocused.load(std::memory_order_relaxed);  // worn (a headset on a desk: the clocks wait)
+    if (focused) {
+        gPrompt.worldSeconds += dt;
+    }
     if (gPrompt.worldSeconds < kPromptAfterSeconds || capacity == 0) {
         return 0;
     }
@@ -1443,11 +1459,14 @@ unsigned PromptLayers(Frame const& frame, XrCompositionLayerQuad const** out, un
         gPrompt.anchor = {frame.head.position, cal::HeadingOf(frame.head.orientation)};
         log::Info("calibration: first-run prompt for {} ([{}] has no calibration)", gLabel, Section(gKey));
     }
-    gPrompt.shownSeconds += dt;
+    if (focused) {
+        gPrompt.shownSeconds += dt;
+    }
     if (gPrompt.shownSeconds > kPromptTimeoutSeconds) {
         gPrompt.decided = true;
         RecordPrompted();
-        log::Info("calibration: the prompt timed out (not shown again for these controllers; the VR hands tab has Calibrate)");
+        log::Info("calibration: the prompt timed out after {:.0f} s in the headset (not shown again for these controllers; "
+                  "later: {})", kPromptTimeoutSeconds, kWhereLater);
         return 0;
     }
     if (!EnsureGpu(frame.device, frame.context)) {
@@ -1480,7 +1499,7 @@ unsigned PromptLayers(Frame const& frame, XrCompositionLayerQuad const** out, un
     if (click == draw::kDismiss) {
         gPrompt.decided = true;
         RecordPrompted();
-        log::Info("calibration: the prompt was dismissed (not shown again for these controllers)");
+        log::Info("calibration: the prompt was dismissed (not shown again for these controllers; later: {})", kWhereLater);
         return 0;
     }
     Render(frame.context, gGpu.panel, dt, [&](ImDrawList* dl) { draw::DrawPanel(dl, gGpu.fonts, view); });
@@ -1502,6 +1521,13 @@ bool Active() {
 
 bool OwnsTriggers() {
     return gPromptPointed.load(std::memory_order_relaxed);
+}
+
+void NoteFocused(bool focused) {
+    if (gFocused.exchange(focused, std::memory_order_relaxed) != focused && gPrompt.shown && !gPrompt.decided) {
+        log::Info("calibration: the first-run prompt's clock {} (the headset {})", focused ? "runs again" : "waits",
+            focused ? "is worn" : "isn't worn, or the session lost focus");
+    }
 }
 
 void HostStateOut(vr::calibration::HostState* out) {

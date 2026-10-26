@@ -160,6 +160,9 @@ std::string gHandProfile[2];
 bool gLoggedMenuButton[2] = {false, false};
 // A pad button our main menu presses for the game (Game menu: Start; Holster: Back), under gPadMutex.
 mevr::game::gamepad::MenuPress gMenuPress;
+// What was down when our main menu or the calibration gave the pad back: kept from the game until let go (gPadMutex).
+mevr::game::gamepad::CloseLatch gCloseLatch;
+bool gCloseLatchKept = false;  // for the log: something is being kept
 
 void ApplyPendingHaptics() {
     std::uint64_t const now = GetTickCount64();
@@ -356,6 +359,7 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
     std::uint64_t const now = GetTickCount64();
     // A replay that presses buttons needs the game window in front too (UE3 ignores pad input without it).
     bool const focused = inputFocused || mevr::host::testloop::ReplayDrivesInputs();
+    mevr::host::calibration::NoteFocused(focused);  // the first-run prompt's clocks run only while it can be seen
     if (focused && !gWasFocused) {
         gForegroundUntilMs = now + kForegroundTryMs;
         gForegroundNextMs = now;
@@ -486,6 +490,23 @@ bool ControllerAimActive() noexcept {
     return on;
 }
 
+namespace {
+// The close latch's log (gPadMutex held): once when it starts keeping something, once when all is let go.
+void NoteCloseLatch(bool kept) noexcept {
+    if (kept == gCloseLatchKept) {
+        return;
+    }
+    gCloseLatchKept = kept;
+    if (kept) {
+        mevr::log::Info("halcyon bridge: buttons {:#06x}{}{} held as our menu or the calibration let go of the pad: kept from "
+                        "the game until released", gCloseLatch.buttons, gCloseLatch.leftTrigger ? ", the left trigger" : "",
+            gCloseLatch.rightTrigger ? ", the right trigger" : "");
+    } else {
+        mevr::log::Info("halcyon bridge: what was held at the close is let go: the pad is the game's again");
+    }
+}
+} // namespace
+
 DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noexcept {
     if (index != 0 || state == nullptr) {
         return result;
@@ -523,6 +544,7 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
             mevr::host::main_menu::NotePad(state->Gamepad);
         }
         std::lock_guard lock(gPadMutex);
+        mevr::game::gamepad::HoldCloseLatch(gCloseLatch);  // what's down when it closes stays the menu's until let go
         XINPUT_GAMEPAD const neutral{};
         if (std::memcmp(&neutral, &gLastPad, sizeof neutral) != 0) {
             gLastPad = neutral;
@@ -536,6 +558,7 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     if (mevr::host::calibration::Active()) {
         // The guided calibration: the game sees a neutral pad (the motion controllers' and a real pad's alike).
         std::lock_guard lock(gPadMutex);
+        mevr::game::gamepad::HoldCloseLatch(gCloseLatch);
         XINPUT_GAMEPAD const neutral{};
         if (std::memcmp(&neutral, &gLastPad, sizeof neutral) != 0) {
             gLastPad = neutral;
@@ -548,12 +571,18 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     mevr::vr::controllers::State const controllers = mevr::vr::controllers::Latest();
     if (!controllers.active) {
         gSupportHeld.store(false, std::memory_order_relaxed);
-        if (gameButtons == 0) {
+        std::lock_guard lock(gPadMutex);
+        bool const latched = gCloseLatch.buttons != 0 || gCloseLatch.leftTrigger || gCloseLatch.rightTrigger;
+        if (gameButtons == 0 && (!latched || result != ERROR_SUCCESS)) {
+            if (latched) {
+                gCloseLatch = {};  // no real pad: nothing of it is held (and the motion controllers reach no one)
+                NoteCloseLatch(false);
+            }
             return result;
         }
-        // No motion controllers: the real pad (if any) plus the menu's button.
-        std::lock_guard lock(gPadMutex);
+        // No motion controllers: the real pad (if any), less what closed our menu, plus the menu's button.
         XINPUT_GAMEPAD pad = result == ERROR_SUCCESS ? state->Gamepad : XINPUT_GAMEPAD{};
+        NoteCloseLatch(mevr::game::gamepad::ApplyCloseLatch(gCloseLatch, pad));
         pad.wButtons |= gameButtons;
         if (std::memcmp(&pad, &gLastPad, sizeof pad) != 0) {
             gLastPad = pad;
@@ -632,6 +661,7 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
         pad.bLeftTrigger = 0;  // the calibration's first-run prompt is being pointed at: its click isn't a shot
         pad.bRightTrigger = 0;
     }
+    NoteCloseLatch(mevr::game::gamepad::ApplyCloseLatch(gCloseLatch, pad));  // the A, B or trigger that closed our menu
     pad.wButtons |= gameButtons;
     if (std::memcmp(&pad, &gLastPad, sizeof pad) != 0) {
         gLastPad = pad;

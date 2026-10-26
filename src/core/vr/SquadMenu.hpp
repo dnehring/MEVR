@@ -245,6 +245,11 @@ struct Step {
     bool openedPointing = false; // (with enter) the hand pointed at someone: preselect their weapon
     bool opened = false;         // the game's mode became the wheel
     bool openFailed = false;     // ...or didn't within kOpenTimeout
+    // (with opened) a wheel we weren't holding was taken over: one that opened after kOpenTimeout (within
+    // kLateOpenSeconds of the failed open), or any weapon wheel that's up when the trigger is pulled anew. Letting
+    // go of the trigger then closes it as usual (with the trigger already up: closed at once, nothing given), so the
+    // game is never left paused in a wheel nobody holds.
+    bool adopted = false;
     bool holdA = false;          // the pad shows A this tick
     bool confirmed = false;      // an A was sent for the highlighted entry
     bool exit = false;           // call SFXGameModeWeaponWheel.ExitWeaponWheel now
@@ -258,6 +263,7 @@ inline constexpr float kOpenTimeout = 0.6f;    // seconds for the game to enter 
 inline constexpr float kPressASeconds = 0.08f; // how long A is held for a confirm
 inline constexpr float kQueueTimeout = 0.4f;   // after A: how long to wait for the queue before closing anyway
 inline constexpr float kCloseTimeout = 0.5f;   // after an exit: how long before trying once more
+inline constexpr float kLateOpenSeconds = 10.0f; // after a failed open: a wheel that comes up this late is still ours
 
 class Machine {
 public:
@@ -276,6 +282,7 @@ private:
     bool triggerWasDown_ = false;
     bool bWasDown_ = true;        // B edges only from a press that began after it opened
     int exitTries_ = 0;
+    float lateLeft_ = 0.0f;       // seconds left in which a late-opening wheel is adopted (after openFailed)
 };
 
 // What the host shows (HostServices::setWheelPanel, v12): the game's wheels on a panel of their own

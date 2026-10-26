@@ -490,6 +490,21 @@ Step Machine::Update(Input const& in) {
 
     switch (phase_) {
     case Phase::Idle:
+        lateLeft_ = std::max(lateLeft_ - dt, 0.0f);
+        // A weapon wheel up that we don't hold: our open that came late, or (a new pull) any wheel up with nobody
+        // holding it. Taken over, so letting go of the trigger closes it and the game doesn't stay paused in it.
+        if (in.wheelActive && in.usable && (lateLeft_ > 0.0f || in.newPull)) {
+            phase_ = Phase::Open;
+            timer_ = 0.0f;
+            lateLeft_ = 0.0f;
+            step.opened = true;
+            step.adopted = true;
+            bWasDown_ = true;  // a B held from before isn't a cancel
+            if (!in.triggerDown) {
+                BeginClose(step, false, in);  // the trigger's already up: shut it, give nothing
+            }
+            break;
+        }
         // A new pull opens it at once (pointing only preselects).
         if (!in.newPull || !in.usable || !in.onFoot) {
             break;
@@ -515,6 +530,7 @@ Step Machine::Update(Input const& in) {
         } else if (timer_ >= kOpenTimeout || !in.usable) {
             phase_ = Phase::Idle;
             step.openFailed = true;
+            lateLeft_ = kLateOpenSeconds;  // EnterWeaponWheel may still take: adopt the wheel if it does
         }
         break;
 

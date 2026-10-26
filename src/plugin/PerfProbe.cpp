@@ -6,6 +6,9 @@
 #include "plugin/PerfProbe.hpp"
 #include "plugin/MevrMenu.hpp"
 #include "plugin/RenderLevers.hpp"
+#if defined(MEVR_WITH_MAIN_MENU)
+#include "plugin/MainMenu.hpp"
+#endif
 #include "plugin/Upscale.hpp"
 
 #include "core/Log.hpp"
@@ -753,6 +756,9 @@ void PerfPresentBegin(ID3D11DeviceContext* context) noexcept {
 void PerfPresentEnd(ID3D11DeviceContext* context) noexcept {
     mevr::host::perf::Mark(mevr::vr::frame_probe::kEnd, context);
     mevr::host::render_levers::OnPresentEnd(context);
+#if defined(MEVR_WITH_MAIN_MENU)
+    mevr::host::main_menu::OnPresent();  // every Present, VR frame or not: an open menu nobody can see is closed
+#endif
 }
 
 void PerfPass0Captured(ID3D11DeviceContext* context) noexcept {

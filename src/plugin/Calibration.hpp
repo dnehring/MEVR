@@ -13,8 +13,9 @@ struct ID3D11Device;
 struct ID3D11DeviceContext;
 
 // The guided calibration in the headset (research/25; the math in core/vr/Calibration, the look in
-// plugin/CalibrationDraw). About a minute, started from the VR hands tab's Calibrate button or the one-time
-// prompt the first time VR runs with controllers that have no calibration:
+// plugin/CalibrationDraw). About a minute, started from our main menu (hold both sticks > Body & calibration > Start
+// calibration), the VR hands tab's Calibrate button, or the one-time prompt the first time VR runs with controllers
+// that have no calibration:
 //   1 stand tall, look ahead (standing eye height; the heading the rest is laid out on)
 //   2 arms out to the sides, then straight ahead (the arm-length T-pose sample [Arms] measure* as the tab
 //     takes it, and the shoulder width)
@@ -52,6 +53,9 @@ void SetSystem(std::string const& systemName);
 void SetProfile(std::string const& interactionProfile);
 // Each frame, after the controller sync and the test loop (a replay's controllers stand in for live ones).
 void NoteControllers(vr::controllers::State const& state);
+// Each frame: the session has input focus (the headset is worn; or a replay drives the inputs). The first-run prompt's
+// delay and its timeout count only then, so a headset left on a desk doesn't use them up.
+void NoteFocused(bool focused);
 // What everything else sees while Active(): the same sample with no controller in it.
 vr::controllers::State Hidden(vr::controllers::State const& state);
 

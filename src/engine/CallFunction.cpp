@@ -140,6 +140,10 @@ bool Install(hook::Context& init) {
     return true;
 }
 
+bool Installed() {
+    return gInstalled;
+}
+
 bool Uninstall(hook::Context& init) {
     if (!gInstalled) {
         return true;

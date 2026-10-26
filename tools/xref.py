@@ -2,7 +2,7 @@
 """Cross-references in an x64 PE: who calls, jumps to or loads an address (or a string).
 
 For research on Mass Effect LE's exe, run it on the disassemblable copy made by
-tools/splice_text.py (the shipped exe's code is encrypted). It works on any unencrypted PE too.
+the local-only local-tools/splice_text.py (the shipped exe's code is encrypted). It works on any unencrypted PE too.
 
     python -I tools/xref.py <pe> --rva 0x4C5300                 # calls/jumps/loads of an RVA
     python -I tools/xref.py <pe> --string "SkelControlLimb"      # references to a string (ASCII or UTF-16)

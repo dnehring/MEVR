@@ -3,7 +3,7 @@
 
 // The exe's code is encrypted on disk (EA DRM) and only readable once the game runs. For offline
 // research (finding engine functions without a debugger), save the decrypted .text section once
-// per exe build to %LOCALAPPDATA%\MEVR\dump. tools/splice_text.py turns it back into a
+// per exe build to %LOCALAPPDATA%\MEVR\dump. a local-only tool (local-tools/, not published) turns it back into a
 // disassemblable copy of the exe (tools/ghidra). Local research data only: never committed or
 // shared.
 //
