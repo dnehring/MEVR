@@ -120,8 +120,10 @@ void Publish() {
             (gResolved.compare ? "; [Colour] compare = 1: shown uncorrected" : ": correcting the eyes and the HUD panel");
     }
     if (tonemap) {
-        line += std::format("; HDR tonemap {} (exposure {:+.2f} stops, white {:.1f}) on a float backbuffer, else the clip",
-            cv::Name(gResolved.hdr.tonemap), gResolved.hdr.exposure, gResolved.hdr.white);
+        line += std::format("; HDR tonemap {} (exposure {:+.2f} stops, white {:.1f}; hue kept {:.2f}, path to white {:.2f}, "
+                            "chroma {:.2f}) on a float backbuffer, else the clip",
+            cv::Name(gResolved.hdr.tonemap), gResolved.hdr.exposure, gResolved.hdr.white, gResolved.hdr.hue,
+            gResolved.hdr.desat, gResolved.hdr.sat);
     }
     if (line != gLastLogged) {
         gLastLogged = line;
@@ -476,13 +478,15 @@ std::string StatusJson() {
                        "{{\"runtime\": {}, \"system\": {}, \"vendorId\": {}, \"key\": {}, \"display\": \"{}\", \"why\": {}}}, "
                        "\"settings\": {{\"brightness\": {:.3f}, \"contrast\": {:.3f}, \"saturation\": {:.3f}, \"gamma\": {:.3f}, "
                        "\"black\": {:.3f}, \"gain\": [{:.3f}, {:.3f}, {:.3f}]}}, \"dither\": {:.2f}, "
-                       "\"hdr\": {{\"tonemap\": \"{}\", \"exposure\": {:.2f}, \"white\": {:.2f}}}, \"eyeShaders\": {}, "
+                       "\"hdr\": {{\"tonemap\": \"{}\", \"exposure\": {:.2f}, \"white\": {:.2f}, \"hue\": {:.2f}, "
+                       "\"desat\": {:.2f}, \"sat\": {:.2f}}}, \"eyeShaders\": {}, "
                        "\"costMs\": {{\"{}\": {}, \"{}\": {}, \"{}\": {}}}, \"pngs\": \"{}\"}}",
         cv::Name(gResolved.chosen), cv::Name(gResolved.effective), Correcting() && gEye.ready ? "true" : "false",
         CompareHeld() || gResolved.compare ? "true" : "false", req::JsonString(gRuntime), req::JsonString(gSystem), gVendor,
         req::JsonString(gKey), DisplayName(gDetection.display), req::JsonString(gDetection.why), s.brightness, s.contrast,
         s.saturation, s.gamma, s.black, s.gain[0], s.gain[1], s.gain[2], gResolved.dither,
-        cv::Name(gResolved.hdr.tonemap), gResolved.hdr.exposure, gResolved.hdr.white, gEye.ready ? "true" : "false",
+        cv::Name(gResolved.hdr.tonemap), gResolved.hdr.exposure, gResolved.hdr.white, gResolved.hdr.hue, gResolved.hdr.desat,
+        gResolved.hdr.sat, gEye.ready ? "true" : "false",
         kTimerNames[0], ms(gAverageMs[0]), kTimerNames[1], ms(gAverageMs[1]), kTimerNames[2], ms(gAverageMs[2]),
         "corrected when correcting is true (the swapchain images are copied after the correction)");
 }

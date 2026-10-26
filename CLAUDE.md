@@ -305,7 +305,12 @@ switching frameworks.
   log `hdr display:`), so the float backbuffer comes with Windows HDR off: the same frame as with the Windows switch,
   nothing measurable on the GPU, one Draw healthy on it, the flat window on the monitor a normal picture. ACES gives a
   warmer, deeper, unclipped frame against the game's SDR tonemap. `hdrDisplay = 0` (the default) passes the display's
-  own answer through.
+  own answer through. **The curve is applied hue-preserving** (research/27 section 7d, 2026-10-26): on the pixel's
+  largest channel with the pixel scaled by the ratio (`[Colour] toneHue`, 1; 0 per channel as before), a path to white
+  for pixels far above the curve (`toneDesat`, 0.15: the sun white, not pink), and the scene's chroma scaled before
+  the curve (`toneSat`, 0.7: the game's own SDR pass's saturation at Eden Prime, measured; 1 the scene's), because the
+  per-channel ACES fit turned the frame's oranges red at saturation 0.77 and the float frame is more saturated than
+  the game's SDR pass leaves it. Open there: the ACES toe crushes shadows the game lifts, and the sky's warmth.
 - LE1 eye upscale ([research/32](research/32-ue3-vr-performance.md), `[Upscale]` in `ASI\LE1MEVR.ini`, off by
   default): with `method = fsr` and the stereo target below the headset's eye size (`tools/vr-game-settings.ps1
   -Scale 0.75`, or the main menu's Display > Headset × 0.75 / × 0.85 and Upscale > FSR), Halcyon's eye blit scales each 8-bit eye up with FSR 1 (EASU into an intermediate, RCAS into the

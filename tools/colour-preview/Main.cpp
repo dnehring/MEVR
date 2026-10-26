@@ -511,7 +511,11 @@ int main(int argc, char** argv) {
         };
         ToneCase const toneCases[] = {{"clip", cv::Hdr{}}, {"aces", cv::Hdr{cv::Tonemap::Aces, 0.0f, 4.0f}},
             {"aces +1", cv::Hdr{cv::Tonemap::Aces, 1.0f, 4.0f}}, {"hable", cv::Hdr{cv::Tonemap::Hable, 0.0f, 4.0f}},
-            {"reinhard", cv::Hdr{cv::Tonemap::Reinhard, -0.5f, 8.0f}}};
+            {"reinhard", cv::Hdr{cv::Tonemap::Reinhard, -0.5f, 8.0f}},
+            // research/27 section 7d: per channel as before, the hue kept half way, a chroma scale on Hable.
+            {"aces flat", cv::Hdr{cv::Tonemap::Aces, 0.0f, 4.0f, 0.0f, 0.0f, 1.0f}},
+            {"aces half", cv::Hdr{cv::Tonemap::Aces, 0.0f, 4.0f, 0.5f, 0.3f, 0.9f}},
+            {"hable sat", cv::Hdr{cv::Tonemap::Hable, 0.0f, 4.0f, 1.0f, 0.15f, 0.7f}}};
         for (ToneCase const& c : toneCases) {
             for (cv::Settings const& grade : {cv::Settings{}, cv::Preset(cv::Profile::Vivid)}) {
                 cv::Constants const k = cv::MakeConstants(grade, 0.0f, true, 0u, c.hdr);

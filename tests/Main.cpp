@@ -2212,6 +2212,36 @@ void TestTonemap() {
     CHECK(cv::Tone(reinhard, {1.0f, 1.0f, 1.0f})[0] < 1.0f && cv::Tone(reinhard, {1.0f, 1.0f, 1.0f})[0] > 0.5f);
     CHECK(approx(cv::Tone(hable, {0.0f, 0.0f, 0.0f})[0], 0.0f, 1e-5f) && approx(cv::Tone(reinhard, {0.0f, 0.0f, 0.0f})[0], 0.0f));
 
+    // Hue kept (research/27 section 7d): the curve on the largest channel and the pixel scaled by the ratio, so the
+    // channels' ratios survive; hue 0 is the per-channel result; grey is the same either way.
+    cv::Hdr const defaults{};
+    CHECK(approx(defaults.hue, 1.0f) && approx(defaults.desat, 0.15f) && approx(defaults.sat, 0.7f));
+    cv::Hdr const wildHue{cv::Tonemap::Aces, 0.0f, 4.0f, 2.0f, -1.0f, 3.0f};
+    CHECK(approx(cv::ClampedHdr(wildHue).hue, 1.0f) && approx(cv::ClampedHdr(wildHue).desat, 0.0f) && approx(cv::ClampedHdr(wildHue).sat, 1.0f));
+    cv::Constants const kept = cv::MakeConstants(cv::Settings{}, 0.0f, true, 0, cv::Hdr{cv::Tonemap::Aces, 0.0f, 4.0f, 1.0f, 0.0f, 1.0f});
+    cv::Constants const perChannel = cv::MakeConstants(cv::Settings{}, 0.0f, true, 0, cv::Hdr{cv::Tonemap::Aces, 0.0f, 4.0f, 0.0f, 0.0f, 1.0f});
+    CHECK(approx(kept.hdr[0], 1.0f) && approx(kept.hdr[1], 0.0f) && approx(kept.hdr[2], 1.0f) && approx(perChannel.hdr[0], 0.0f));
+    cv::Rgb const k1 = cv::Tone(kept, {2.0f, 1.0f, 0.5f});
+    CHECK(approx(k1[0], cv::Tone(aces0, {2.0f, 2.0f, 2.0f})[0]) && approx(k1[1], 0.5f * k1[0]) && approx(k1[2], 0.25f * k1[0]));
+    cv::Rgb const p1 = cv::Tone(perChannel, {2.0f, 1.0f, 0.5f});
+    CHECK(approx(p1[0], cv::Tone(aces0, {2.0f, 2.0f, 2.0f})[0]) && approx(p1[1], cv::Tone(aces0, {1.0f, 1.0f, 1.0f})[0]));
+    CHECK(approx(p1[2], cv::Tone(aces0, {0.5f, 0.5f, 0.5f})[0]) && !approx(p1[2] / p1[0], 0.25f, 0.05f));
+    CHECK(approx(cv::Tone(kept, {3.0f, 3.0f, 3.0f})[0], cv::Tone(perChannel, {3.0f, 3.0f, 3.0f})[0]));
+    CHECK(approx(cv::Tone(kept, {0.0f, 0.0f, 0.0f})[2], 0.0f));
+    // The path to white: a pixel far above its curve moves toward the curve's grey (its largest channel stays at
+    // the curve); a pixel below the curve's value is untouched.
+    cv::Constants const toWhite = cv::MakeConstants(cv::Settings{}, 0.0f, true, 0, cv::Hdr{cv::Tonemap::Aces, 0.0f, 4.0f, 1.0f, 0.15f, 1.0f});
+    cv::Rgb const w1 = cv::Tone(toWhite, {8.0f, 4.0f, 2.0f});
+    CHECK(approx(w1[0], cv::Tone(aces0, {8.0f, 8.0f, 8.0f})[0]) && w1[2] / w1[0] > 0.55f && w1[2] / w1[0] < 0.75f);
+    cv::Rgb const w2 = cv::Tone(toWhite, {0.5f, 0.25f, 0.125f});
+    CHECK(approx(w2[1], 0.5f * w2[0]) && approx(w2[2], 0.25f * w2[0]));
+    // The chroma before the curve: half way toward Rec. 709 luminance.
+    cv::Constants const chroma = cv::MakeConstants(cv::Settings{}, 0.0f, true, 0, cv::Hdr{cv::Tonemap::Aces, 0.0f, 4.0f, 1.0f, 0.0f, 0.5f});
+    cv::Rgb const s1 = cv::Tone(chroma, {2.0f, 1.0f, 0.5f});
+    CHECK(approx(s1[1] / s1[0], 0.6852f, 0.002f) && approx(s1[2] / s1[0], 0.5278f, 0.002f));
+    cv::Resolved const r2 = cv::Resolve(cv::ParseSection("toneHue=0.5\r\ntoneDesat=0.3\r\ntoneSat=0.8\r\n"), cv::Section{}, cv::Detection{});
+    CHECK(approx(r2.hdr.hue, 0.5f) && approx(r2.hdr.desat, 0.3f) && approx(r2.hdr.sat, 0.8f));
+
     // The file: tonemap, exposure and white from [Colour], the headset's section first.
     cv::Section common = cv::ParseSection("tonemap=aces\r\nexposure=0.5\r\nwhite=6\r\n");
     cv::Section headset = cv::ParseSection("tonemap=hable\r\n");
