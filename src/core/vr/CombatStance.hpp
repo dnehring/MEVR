@@ -33,6 +33,9 @@ enum class Why : std::uint8_t {
     NoHook,          // our UpdateSkelPose hook isn't in (arm IK never turned on)
     OrderUnknown,    // waiting for OrderCheck to see the tree tick before the hook
     OrderInside,     // the tree ticks inside UpdateSkelPose: this seam can't work; stood down
+    NoHandBones,     // the arms (upper arm and everything below it: hands, fingers, Prop01, LHIK) weren't found
+    LearningHands,   // the combat pose of the arms and hands for this weapon isn't known yet: the game's pose until
+                     // it has held still (then it is kept for the weapon type, research/38 A "the arms keep combat")
 };
 char const* Name(Why why);
 
@@ -52,6 +55,8 @@ struct Inputs {
     bool hook = false;             // our UpdateSkelPose hook is in
     bool orderKnown = false;       // OrderCheck has an answer...
     bool orderInside = false;      // ...and it is "the tree ticks inside the hook"
+    bool handBones = false;        // both arms' bones found (the graft's bone set)
+    bool handPose = false;         // the combat pose of the arms and hands is known for the weapon in the hand
 };
 Why Decide(Inputs const& in);
 

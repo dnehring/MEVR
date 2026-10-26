@@ -11,7 +11,11 @@
 //    NonCombat and Combat children. Each tick the decision (drawn, standing, first person, not in cover, the scope or
 //    the Mako) goes to engine/bone_pose's pre-stage, which composes the pose from NonCombat while the tree ticks as
 //    combat (every notify fires). It waits until the hook has seen the tree tick before it (the [verify] of research/38:
-//    `stance: [verify]` lines; if the tree ticks inside UpdateSkelPose it stands down and says so).
+//    `stance: [verify]` lines; if the tree ticks inside UpdateSkelPose it stands down and says so). The arms keep the
+//    combat pose: both upper arms and everything below them (hands, fingers, Prop01 the gun hangs on, LHIK the
+//    foregrip) are put back at the combat pose's place relative to their parents (engine/bone_pose's StanceHands),
+//    learned once per skeleton asset and weapon type from calls composed as combat while the decision says
+//    LearningHands (until it holds still: core/ik/PoseGraft's StillPose). Without a learned pose: no explore compose.
 // C. Movement ([Hands] exploreRamp = 1): BioPawnBehavior's combat speed ramp (m_fMaxDesSpdTac{Accel,Decel}Rate) set to
 //    the explore values (m_fMaxDesSpd{Accel,Decel}Rate, read, not hard-coded); the game's own values come back when
 //    it's off, VR goes, the pawn changes or the mod unloads. Logged: the walking mode (BioPawn.GetWalkingSpeedMode) and

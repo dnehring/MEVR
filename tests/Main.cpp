@@ -11,6 +11,7 @@
 #include "core/ik/CameraHook.hpp"
 #include "core/ik/HandFrame.hpp"
 #include "core/ik/Ik.hpp"
+#include "core/ik/PoseGraft.hpp"
 #include "core/ik/Posture.hpp"
 #include "core/ik/Rigid.hpp"
 #include "core/ik/Throwing.hpp"
@@ -6395,7 +6396,20 @@ void TestCombatStance() {
     // A: the decision, in priority order.
     cs::Inputs in;
     in.headTrackedView = in.onFoot = in.pawn = in.firstPerson = in.drawn = in.node = in.hook = in.orderKnown = true;
+    in.handBones = in.handPose = true;
     CHECK(cs::Decide(in) == cs::Why::Active);
+    // The arms keep the combat pose: without their bones, or before it's learned for this weapon, the game's pose.
+    cs::Inputs learning = in;
+    learning.handPose = false;
+    CHECK(cs::Decide(learning) == cs::Why::LearningHands);
+    learning.handBones = false;
+    CHECK(cs::Decide(learning) == cs::Why::NoHandBones);
+    learning.orderKnown = false;
+    CHECK(cs::Decide(learning) == cs::Why::OrderUnknown);  // the order is checked first
+    learning = in;
+    learning.handPose = false;
+    learning.crouched = true;
+    CHECK(cs::Decide(learning) == cs::Why::Crouched);  // nothing is learned crouched: only the standing combat pose
     cs::Inputs off = in;
     off.enabled = false;
     CHECK(cs::Decide(off) == cs::Why::Off);
@@ -6517,6 +6531,107 @@ void TestCombatStance() {
     CHECK(std::string(cs::Name(cs::Why::Active)).find("explore") != std::string::npos);
 }
 
+// The arms keep the combat pose under the explore stance (core/ik/PoseGraft, research/38 A).
+void TestPoseGraft() {
+    using namespace mevr::ik;
+    // root(0) > spine(1) > clavicle(2) > upper(3) > fore(4) > hand(5) > prop(6) > lhik(7); finger(8) under the hand;
+    // camera(9) under the hand (a bone the graft must leave alone, with its child 10); leg(11) under the root.
+    std::vector<int> const parents{-1, 0, 1, 2, 3, 4, 5, 6, 5, 5, 9, 0};
+    std::vector<int> const camera{9};
+    std::vector<int> const arm = Subtree(parents, 3, camera);
+    CHECK((arm == std::vector<int>{3, 4, 5, 6, 7, 8}));
+    CHECK((Subtree(parents, 5) == std::vector<int>{5, 6, 7, 8, 9, 10}));
+    CHECK(Subtree(parents, 9, camera).empty());
+    CHECK(Subtree(parents, 42).empty());
+    std::vector<int> const bad{-1, 2, 0};  // bone 1's parent comes after it: never included
+    CHECK((Subtree(bad, 0) == std::vector<int>{0, 2}));
+
+    // A "combat" pose: every bone its own place and turn.
+    auto const turn = [](double degrees, Vec3 axis) {
+        double const h = degrees * std::numbers::pi / 360.0;
+        Vec3 const a = Normalize(axis);
+        return Quat{a.x * std::sin(h), a.y * std::sin(h), a.z * std::sin(h), std::cos(h)};
+    };
+    std::vector<Transform> combat(parents.size());
+    for (std::size_t i = 0; i < combat.size(); ++i) {
+        double const k = static_cast<double>(i);
+        combat[i].translation = {10.0 * k, 3.0 * k - 5.0, 2.0 * k * k};
+        combat[i].rotation = turn(17.0 * k, {1.0, 0.5 * k, -0.25});
+    }
+    std::vector<int> const armParents = ParentsOf(parents, arm);
+    CHECK((armParents == std::vector<int>{2, 3, 4, 5, 6, 5}));
+    std::vector<Transform> const relative = CaptureRelative(combat, arm, armParents);
+    CHECK(relative.size() == arm.size());
+    // An "explore" pose: the spine and clavicle elsewhere, the arm hanging differently, the prop and LHIK moved.
+    std::vector<Transform> explore = combat;
+    for (int bone : {1, 2, 3, 4, 5, 6, 7, 8, 11}) {
+        explore[static_cast<std::size_t>(bone)].translation =
+            explore[static_cast<std::size_t>(bone)].translation + Vec3{4.0, -7.0, 1.5 * bone};
+        explore[static_cast<std::size_t>(bone)].rotation =
+            Normalize(turn(9.0 + bone, {0.2, 1.0, 0.3}) * explore[static_cast<std::size_t>(bone)].rotation);
+    }
+    std::vector<Transform> const before = explore;
+    CHECK(ApplyRelative(explore, arm, armParents, relative));
+    // Every grafted bone sits in its parent's frame as in combat; the rest is the explore pose, bit for bit.
+    for (std::size_t i = 0; i < arm.size(); ++i) {
+        int const bone = arm[i];
+        int const parent = parents[static_cast<std::size_t>(bone)];
+        CHECK(NearT(Relative(explore[static_cast<std::size_t>(bone)], explore[static_cast<std::size_t>(parent)]),
+            Relative(combat[static_cast<std::size_t>(bone)], combat[static_cast<std::size_t>(parent)]), 1e-6));
+    }
+    for (int bone : {0, 1, 2, 9, 10, 11}) {
+        CHECK(NearT(explore[static_cast<std::size_t>(bone)], before[static_cast<std::size_t>(bone)], 0.0));
+    }
+    // The upper arm hangs from the explore clavicle: the hand isn't where combat had it in component space...
+    CHECK(Length(explore[5].translation - combat[5].translation) > 1.0);
+    // ...but the prop and LHIK are where combat had them relative to the hand (the gun in the hand, the foregrip on it).
+    CHECK(NearT(Relative(explore[7], explore[5]), Relative(combat[7], combat[5]), 1e-6));
+    CHECK(NearT(Relative(explore[6], explore[5]), Relative(combat[6], combat[5]), 1e-6));
+    // Bad input writes nothing.
+    std::vector<Transform> untouched = before;
+    CHECK(!ApplyRelative(untouched, arm, armParents, std::span<Transform const>(relative).first(2)));
+    std::vector<int> const rootBone{0};
+    std::vector<int> const rootParent = ParentsOf(parents, rootBone);
+    CHECK(CaptureRelative(combat, rootBone, rootParent).empty());  // the root has no parent
+    CHECK(!ApplyRelative(untouched, rootBone, rootParent, std::span<Transform const>(relative).first(1)));
+    CHECK(CaptureRelative(combat, arm, std::span<int const>(armParents).first(3)).empty());
+    for (std::size_t i = 0; i < untouched.size(); ++i) {
+        CHECK(NearT(untouched[i], before[i], 0.0));
+    }
+
+    // Difference: the largest move and turn of any element.
+    std::vector<Transform> moved = relative;
+    moved[2].translation = moved[2].translation + Vec3{0.0, 0.0, 0.5};
+    moved[4].rotation = Normalize(turn(2.0, {0.0, 0.0, 1.0}) * moved[4].rotation);
+    PoseDifference const d = Difference(relative, moved);
+    CHECK(NearD(d.units, 0.5, 1e-9) && NearD(d.degrees, 2.0, 1e-6));
+    CHECK(std::isinf(Difference(relative, std::span<Transform const>(relative).first(3)).units));
+
+    // StillPose: ten samples in a row within the limits of the one before.
+    StillPose still;
+    CHECK(still.Feed(relative, 0.011) == StillPose::State::Learning);
+    for (int i = 0; i < 9; ++i) {
+        CHECK(still.Feed(relative, 0.011) == StillPose::State::Learning);
+    }
+    CHECK(still.Feed(relative, 0.011) == StillPose::State::Still);
+    CHECK(still.StillFrames() == 10 && NearT(still.Latest()[3], relative[3], 0.0));
+    CHECK(still.Feed(moved, 0.011) == StillPose::State::Still);  // settled: further samples change nothing
+    CHECK(NearT(still.Latest()[2], relative[2], 0.0));
+    // A pose that keeps moving restarts the count; after maxSeconds the latest sample is taken anyway.
+    StillPose moving({0.3, 1.5, 10, 0.1});
+    for (int i = 0; i < 8; ++i) {
+        CHECK(moving.Feed(i % 2 == 0 ? relative : moved, 0.011) == StillPose::State::Learning);
+    }
+    CHECK(moving.StillFrames() == 0 && NearD(moving.LastDifference().units, 0.5, 1e-9));
+    StillPose::State state = StillPose::State::Learning;
+    for (int i = 0; i < 4 && state == StillPose::State::Learning; ++i) {
+        state = moving.Feed(i % 2 == 0 ? relative : moved, 0.011);
+    }
+    CHECK(state == StillPose::State::TimedOut && moving.Seconds() >= 0.1);
+    moving.Reset();
+    CHECK(moving.Current() == StillPose::State::Learning && moving.Latest().empty() && moving.StillFrames() == 0);
+}
+
 // tests/InstallTests.cpp: the installer's logic (research/33).
 void RunInstallTests(int& failures);
 // tests/ReflectTests.cpp: our UE3 reflection layer (src/ue3, research/34).
@@ -6532,6 +6647,7 @@ int main() {
     TestUpscale();
     TestComfort();
     TestCombatStance();
+    TestPoseGraft();
     TestMetricStereo();
     TestMenuSettings();
     TestCalibration();

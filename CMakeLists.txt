@@ -213,6 +213,8 @@ set(MEVR_MOD_SOURCES
     src/core/ik/Ik.hpp
     src/core/ik/Posture.cpp
     src/core/ik/Posture.hpp
+    src/core/ik/PoseGraft.cpp
+    src/core/ik/PoseGraft.hpp
     src/core/ik/Rigid.cpp
     src/core/ik/Rigid.hpp
     src/core/ik/BodyFollow.cpp
@@ -632,6 +634,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/CameraHook.cpp
         src/core/ik/Ik.cpp
         src/core/ik/Posture.cpp
+        src/core/ik/PoseGraft.cpp
         src/core/ik/Rigid.cpp
         src/core/ik/BodyFollow.cpp
         src/core/ik/TorsoPose.cpp

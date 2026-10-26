@@ -218,11 +218,17 @@ switching frameworks.
   old spine-only lean. Log `torso:`; snapshot `"torso"`.
 - LE1 weapon drawn, like exploring ([research/38](research/38-combat-stance.md), `game/CombatStance`, rules in
   `core/vr/CombatStance`; `[Hands]` in `ASI\LE1MEVR.ini`, on by default except `exploreStance`; our menu's Controls > Weapon drawn): VR on
-  foot, first person. `exploreStance` (A, mod; **off by default since 2026-10-25**: the gun's bone `Prop01` and the
-  foregrip bone `LHIK` follow the explore pose too, so the gun sat differently in the hand and the support grip missed it): drawn and standing (not crouched, in cover or scoped), the player's
-  AnimTree `CombatMode` node composes from its NonCombat child: `engine/bone_pose`'s pre-stage writes the two child
-  weights around UpdateSkelPose and puts them back, so the tree still ticks as combat and every notify fires; it acts
-  only once the node's `NodeTickTag` showed the tree ticks before the hook (`stance: [verify]`). `constantEye` (B,
+  foot, first person. `exploreStance` (A, mod; **off by default until the headset confirms the redesign**): drawn and
+  standing (not crouched, in cover or scoped), the player's AnimTree `CombatMode` node composes from its NonCombat child:
+  `engine/bone_pose`'s pre-stage writes the two child weights around UpdateSkelPose and puts them back, so the tree still
+  ticks as combat and every notify fires; it acts only once the node's `NodeTickTag` showed the tree ticks before the
+  hook (`stance: [verify]`). **The arms keep the combat pose** (2026-10-25 redesign: the explore animations also drive
+  `Prop01`, the gun's bone, and `LHIK`, the foregrip, so the gun sat differently in the hand and the foregrip wandered):
+  each upper arm and everything below it (hands, fingers, `Prop01`, `LHIK`; never `Camera`/`God`) is put back, after the
+  explore compose and before arm IK, at the combat pose's place relative to its parent (`core/ik/PoseGraft`), learned per
+  skeleton and weapon type from calls composed as combat (the first standing draw of each type shows the combat pose until
+  it holds still, about 0.15 s); AnimatedHands' left hand is the combat one on the gun. No learned pose: no explore
+  compose. `constantEye` (B,
   host): a `[MEVR]` seam in Halcyon's `FpOwnAndWrite`, `MevrBridge::ConstantFpEye`: every standing mode's Offset = its
   own HookOffset minus the explore eye; crouch modes keep Halcyon's. `exploreRamp` (C): the combat speed ramp set to the
   explore one (restored). `drawRate = 6` (D, 1..10; the animation still plays, so every notify fires): the WeaponEquip node's Draw/Holster sequences play faster (their Rate
