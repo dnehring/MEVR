@@ -158,8 +158,6 @@ constexpr unsigned kProfileCheckEvery = 90;
 // the menu button (a Quest over Link, or SteamVR's emulation, may never send it); our main menu's buttons are the way in.
 std::string gHandProfile[2];
 bool gLoggedMenuButton[2] = {false, false};
-// A pad button our main menu presses for the game (Game menu: Start; Holster: Back), under gPadMutex.
-mevr::game::gamepad::MenuPress gMenuPress;
 // What was down when our main menu or the calibration gave the pad back: kept from the game until let go (gPadMutex).
 mevr::game::gamepad::CloseLatch gCloseLatch;
 bool gCloseLatchKept = false;  // for the log: something is being kept
@@ -511,32 +509,8 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     if (index != 0 || state == nullptr) {
         return result;
     }
-    // A button our main menu presses for the game (Game menu: Start; Holster: Back), once the menu has closed and the
-    // game reads the pad again (gamepad::MenuPress): OR'd into whatever the game sees below.
-    WORD gameButtons = 0;
-    {
-        std::uint64_t const now = GetTickCount64();
-        std::lock_guard lock(gPadMutex);
-#if defined(MEVR_WITH_MAIN_MENU)
-        bool const menuOpen = mevr::host::main_menu::IsOpen();
-        if (WORD const asked = mevr::host::main_menu::TakeGamePress(); asked != 0) {
-            mevr::game::gamepad::StartMenuPress(gMenuPress, asked, now);
-        }
-#else
-        bool const menuOpen = false;
-#endif
-        mevr::game::gamepad::MenuPressStep const step = mevr::game::gamepad::StepMenuPress(gMenuPress, menuOpen, now);
-        gameButtons = step.buttons;
-        char const* const name = gMenuPress.button == XINPUT_GAMEPAD_START ? "Start (its pause menu)" : "Back (holster)";
-        if (step.pressed) {
-            mevr::log::Info("main menu: sent the game's {}: held {} ms", name, mevr::game::gamepad::kMenuPressHoldMs);
-        } else if (step.released) {
-            mevr::log::Info("main menu: the game's {} let go{}", name, step.dropped ? " (our menu opened again)" : "");
-        } else if (step.dropped) {
-            mevr::log::Warn("main menu: the game's {} not sent: {}", name,
-                menuOpen ? "our menu opened again first" : "the game didn't read the pad within 5 s");
-        }
-    }
+    // (Our main menu's Game menu and Holster buttons don't press Start or Back here: the mod calls the game's own
+    // functions on the game thread, HostServices v19, game/GameMenuRequest; research/28 "The game's menus".)
 #if defined(MEVR_WITH_MAIN_MENU)
     if (mevr::host::main_menu::IsOpen()) {
         // Our main menu: a real pad navigates it; the game sees a neutral pad (the motion controllers' and a real pad's).
@@ -573,17 +547,16 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
         gSupportHeld.store(false, std::memory_order_relaxed);
         std::lock_guard lock(gPadMutex);
         bool const latched = gCloseLatch.buttons != 0 || gCloseLatch.leftTrigger || gCloseLatch.rightTrigger;
-        if (gameButtons == 0 && (!latched || result != ERROR_SUCCESS)) {
+        if (!latched || result != ERROR_SUCCESS) {
             if (latched) {
                 gCloseLatch = {};  // no real pad: nothing of it is held (and the motion controllers reach no one)
                 NoteCloseLatch(false);
             }
             return result;
         }
-        // No motion controllers: the real pad (if any), less what closed our menu, plus the menu's button.
-        XINPUT_GAMEPAD pad = result == ERROR_SUCCESS ? state->Gamepad : XINPUT_GAMEPAD{};
+        // No motion controllers: the real pad, less what closed our menu.
+        XINPUT_GAMEPAD pad = state->Gamepad;
         NoteCloseLatch(mevr::game::gamepad::ApplyCloseLatch(gCloseLatch, pad));
-        pad.wButtons |= gameButtons;
         if (std::memcmp(&pad, &gLastPad, sizeof pad) != 0) {
             gLastPad = pad;
             ++gPacket;
@@ -662,7 +635,6 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
         pad.bRightTrigger = 0;
     }
     NoteCloseLatch(mevr::game::gamepad::ApplyCloseLatch(gCloseLatch, pad));  // the A, B or trigger that closed our menu
-    pad.wButtons |= gameButtons;
     if (std::memcmp(&pad, &gLastPad, sizeof pad) != 0) {
         gLastPad = pad;
         ++gPacket;  // the game only re-reads a pad whose packet number changed

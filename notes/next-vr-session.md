@@ -1266,9 +1266,8 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       to it and press A). Our menu closes, the game runs again, and about a third of a second later the game's pause menu
       opens. Move around in it, then close it the game's way (B, or its Resume): it should close normally and the game
       should take your controls again. Do the same in the Mako, and once with Holster with a gun drawn (it goes away).
-    - Log: `main menu: Game menu: the game's Start goes to the game once it reads the pad again`, `menu pause: the game
-      runs again (the main menu closed ...)`, then `main menu: sent the game's Start (its pause menu): held 100 ms` and
-      `main menu: the game's Start (its pause menu) let go`. A `not sent` line means the game didn't read the pad.
+    - **Superseded by step 42** (2026-10-26: the fake Start never reached the game; the buttons now call the game's own
+      functions). Check the Game menu and Holster with step 42's log lines.
     - **Diagnostics only** (nothing depends on them): `halcyon bridge: the runtime's interaction profile: left ..., right
       ...` once the controllers are bound (the PS VR2 Sense: `oculus/touch_controller` expected), and press each
       controller's menu-like button (the Sense's Create and Options) once: `halcyon bridge: the left (or right)
@@ -1295,7 +1294,7 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       `stays out (drawn from a holster ...)`).
     - **Closing our menu:** open it, close it with B (on the top level), with A on Resume, and with the trigger on
       Resume. Nothing should happen in the game (no jump, no shot, no melee) until you let go. Log: `kept from the game
-      until released`, then `the pad is the game's again`. Game menu and Holster must still work (step 38).
+      until released`, then `the pad is the game's again`. Game menu and Holster must still work (step 42).
     - **VR stops with the menu open:** open our menu, then quit SteamVR (or take the headset off until it sleeps).
       Within a second the menu closes and the desktop game runs with mouse, keyboard and pad (`main menu: closed (no
       VR frames for over 1 s ...)`, `menu pause: the game runs again`). Same during a calibration: it's cancelled.
@@ -1330,6 +1329,24 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
     - After the game: open the zip. REPORT.md first; it should name the PS VR2 (`SteamVR/OpenXR : playstation_vr2`), the
       Sense controllers' interaction profile, the render size; your user and computer names must appear nowhere (search
       the folder). MEVR Setup > Report a problem shows the same preview and Open the form opens the issue form filled in.
+42. **Game menu and Holster call the game (new, 2026-10-26; HOST AND MOD REDEPLOY together, game closed: HostServices
+    v19; [research/28](../research/28-main-menu.md) "The game's menus").** Your report: Game menu never opened the pause
+    menu (the faked Start was never pressed). Now the mod calls the game's own functions on the game thread.
+    - On foot, open our menu, press **Game menu**: our menu closes, the game runs for a moment, then the game's pause menu
+      opens (no third of a second wait any more). Move around in it, close it the game's way (B or its Resume): the game
+      takes your controls again. Log, in order: `main menu: closed (Game menu)`, `main menu: the game's pause menu: asked
+      the mod ...`, `menu pause: the game runs again ...`, `main menu request: the game's pause menu taken ...`, then
+      `main menu: opened the game's pause menu (SFXGameModeDefault.ShowMenuGui (declared on SFXGameModeBase) returned 1;
+      game mode 0)`.
+    - The same in the **Mako**: `SFXGameModeVehicle.ShowMenuGui returned 1; game mode 1`. A `didn't open (... returned
+      0 ...)` line means the game allows no pause menu there: say where you were.
+    - **Holster** with a gun drawn: it goes away (`main menu: holstered the weapon (SFXGameModeDefault.TryHolster)`).
+      With the gun away: nothing happens, never a draw (`main menu: holster: no weapon drawn, nothing to put away`). In the
+      Mako: `holster not done: not on foot (game mode 1)`.
+    - Open our menu again right after pressing Game menu (within a few frames, hard to do): `main menu request: ...
+      dropped: the main menu opened again first`, and no pause menu.
+    - Must NOT appear: `the mod has never asked for these requests` (host and mod out of step: redeploy both), `the host
+      (services older than v19)`.
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR

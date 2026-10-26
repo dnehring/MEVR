@@ -15,6 +15,7 @@
 
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
+#include "core/vr/GameMenuRequest.hpp"
 #include "core/vr/MenuPointer.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "plugin/Calibration.hpp"
@@ -71,7 +72,7 @@ constexpr float kDeadBandPx = 1.5f;
 // ---- Any thread -----------------------------------------------------------------------------------------------
 std::atomic<bool> gOpen{false};
 std::atomic<bool> gPauseWanted{false};
-std::atomic<WORD> gGamePress{0};  // a pad button the menu asked to press for the game (Game menu, Holster), not yet taken
+vr::game_menu::Slot gGameRequest;  // what the Game menu or Holster button asked the mod to do (HostServices v19), not yet taken
 std::mutex gPadMutex;
 XINPUT_GAMEPAD gPad{};
 std::uint64_t gPadMs = 0;
@@ -660,20 +661,30 @@ void Stats(std::uint64_t now, double cpuMs) {
     }
 }
 
+// The Game menu and Holster buttons: the mod calls the game's own function on the game thread once the menu's pause is
+// lifted (HostServices v19, game/GameMenuRequest; research/28 "The game's menus").
+void AskTheMod(vr::game_menu::Action action) {
+    vr::game_menu::Action const replaced = gGameRequest.Put(action);
+    log::Info("main menu: {}: asked the mod (it calls the game once the game runs again){}", vr::game_menu::Name(action),
+        replaced != vr::game_menu::Action::None ? std::format(", in place of {} (not yet taken)", vr::game_menu::Name(replaced))
+                                                : std::string());
+    if (!gGameRequest.Polled()) {
+        log::Warn("main menu: the mod has never asked for these requests (older than HostServices v19, or not running): "
+                  "nothing will happen; deploy the host and the mod together");
+    }
+}
+
 void AfterCommand(After after) {
     switch (after) {
     case After::Nothing: return;
     case After::Close: SetOpen(false, "Resume"); return;
     case After::GameStart:
         SetOpen(false, "Game menu");
-        gGamePress.store(XINPUT_GAMEPAD_START, std::memory_order_release);
-        log::Info("main menu: Game menu: the game's Start goes to the game once it reads the pad again (its pause menu)");
+        AskTheMod(vr::game_menu::Action::PauseMenu);
         return;
     case After::GameBack:
-        SetOpen(false, "Holster (Back)");
-        gGamePress.store(XINPUT_GAMEPAD_BACK, std::memory_order_release);
-        log::Info("main menu: Holster: the game's Back goes to the game once it reads the pad again (on foot it holsters; in a "
-                  "bypass minigame it quits)");
+        SetOpen(false, "Holster");
+        AskTheMod(vr::game_menu::Action::Holster);
         return;
     case After::Calibrate:
         SetOpen(false, "Start calibration");
@@ -767,8 +778,8 @@ void NoteControllers(vr::controllers::State const& live) {
     g.live = live;
 }
 
-WORD TakeGamePress() {
-    return gGamePress.exchange(0, std::memory_order_acq_rel);
+vr::game_menu::Action TakeGameRequest() {
+    return gGameRequest.Take();
 }
 
 void NotePad(XINPUT_GAMEPAD const& pad) {

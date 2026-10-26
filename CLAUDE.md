@@ -63,15 +63,17 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   quad fixed in the room where it opens (`[Menu] distanceM`, `widthM`); the game sees no input, the mod no
   controllers, and on foot or in the Mako the mod pauses the game (`[Menu] pause`, HostServices v16,
   `game/MenuPause`: `WorldInfo.PauseGame` like the game's weapon wheel). Buttons and triggers down when it (or the
-  calibration) closes are kept from the game until released (`gamepad::CloseLatch` in the XInput hook; the Game menu /
-  Holster press still goes through). Not drawn for over 1 s (the XR session stopped, lost or exiting; the headset
+  calibration) closes are kept from the game until released (`gamepad::CloseLatch` in the XInput hook). Not drawn for over 1 s (the XR session stopped, lost or exiting; the headset
   asleep) it closes by itself and a running calibration is cancelled (`main_menu::OnPresent`, every Present from
   `PerfPresentEnd`), so the desktop game never stays paused with no input. **Its top bar is the way into the game's own
   menus** (since 2026-10-25, research/28 "The game's menus"; no controller menu button can be counted on, e.g. a Quest over
-  Link): Game menu (the game's Start: its pause menu) and Holster (the game's Back: LE1 binds no menu to it, it holsters on
-  foot and quits a bypass minigame) close our menu, and the host's XInput hook presses that button once the game reads the
-  pad again (`gamepad::MenuPress`, 250 ms and 8 reads after the close, held 100 ms; log `main menu: sent the game's
-  Start`). The menu button and each hand's interaction profile are only logged (`halcyon bridge:`). Pointer: a controller's aim ray is
+  Link): Game menu (the game's pause menu) and Holster close our menu and ask the mod (HostServices v19,
+  `takeGameMenuRequest`; `core/vr/GameMenuRequest`, unit-tested), which, 2 ticks after the menu's pause is lifted, calls the
+  game's own function on the game thread (`game/GameMenuRequest`): `ShowMenuGui` (Start's `Console_Menu`) on the ACTIVE
+  game mode, looked up on that object's class so the Mako's or a wheel's override runs; `SFXGameModeDefault.TryHolster`
+  (Back's `Console_Holster`) on foot, only while a weapon is drawn (it's a toggle). No pad press: the old fake Start
+  (2026-10-25) never reached the game (2026-10-26). Logs `main menu request:`, `main menu: opened the game's pause menu
+  (<class>.ShowMenuGui returned 1; ...)`, `main menu: holstered the weapon`; snapshots `"mod"."gameMenu"`. The menu button and each hand's interaction profile are only logged (`halcyon bridge:`). Pointer: a controller's aim ray is
   the mouse (trigger clicks, right stick scrolls, haptic ticks); the pad or left stick moves the focus, A
   activates, B backs out then closes; on Display holding A compares the colour. Sections: Comfort, Controls,
   Body & calibration (Start calibration opens `plugin/Calibration`), Display, HUD & sights, Advanced

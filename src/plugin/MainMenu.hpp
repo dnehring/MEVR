@@ -2,6 +2,7 @@
 #pragma once
 
 #include "core/vr/Controllers.hpp"
+#include "core/vr/GameMenuRequest.hpp"
 
 #include <Windows.h>
 #include <Xinput.h>
@@ -41,9 +42,9 @@ void Toggle(char const* why);
 // After the controller sync (HalcyonBridge OnFrameBegun): the live controllers, before everything else is shown them
 // hidden while the menu is open.
 void NoteControllers(vr::controllers::State const& live);
-// From the XInput hook (any thread): the pad button the menu's Game menu (Start) or Holster (Back) button asked to press
-// for the game, once (0: none). The hook then presses it once the game reads the pad again (gamepad::MenuPress).
-WORD TakeGamePress();
+// HostServices v19 (any thread; the mod's tick): what the menu's Game menu or Holster button asked for, once (None:
+// nothing waiting). The mod calls the game's own function on the game thread (game/GameMenuRequest, research/28).
+vr::game_menu::Action TakeGameRequest();
 // From the XInput hook (any thread): a real pad's state (before the menu neutralises it), for pad navigation.
 void NotePad(XINPUT_GAMEPAD const& pad);
 

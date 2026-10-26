@@ -100,36 +100,10 @@ struct StickChordStep {
 // One step on the player's own clicks (never a replay's). `nowMs` a millisecond clock (nonzero).
 StickChordStep UpdateStickChord(StickChord& chord, bool leftClick, bool rightClick, std::uint64_t nowMs);
 
-// A pad button pressed for the game from our main menu (research/28 section "The game's menus": Game menu = Start, the
-// game's pause menu; Back = holster on foot, quit a bypass minigame). The menu asks; the press waits until the menu has
-// closed and the game has read the pad kMenuPressWaitPolls times over kMenuPressWaitMs (the mod lifts the menu's pause
-// on its next tick, and a button that goes down while the game is paused or not reading is lost), then holds the
-// button kMenuPressHoldMs and at least kMenuPressHoldPolls reads, then lets go. The menu opening again calls it off.
-inline constexpr std::uint64_t kMenuPressWaitMs = 250;
-inline constexpr int kMenuPressWaitPolls = 8;
-inline constexpr std::uint64_t kMenuPressHoldMs = 100;
-inline constexpr int kMenuPressHoldPolls = 3;
-inline constexpr std::uint64_t kMenuPressGiveUpMs = 5000;  // the game never read the pad: dropped
-struct MenuPress {
-    enum class Phase : std::uint8_t { Idle, Waiting, Holding };
-    Phase phase = Phase::Idle;
-    WORD button = 0;
-    std::uint64_t sinceMs = 0;  // the phase's start
-    int polls = 0;              // the game's reads in this phase (while our menu is closed)
-};
-struct MenuPressStep {
-    WORD buttons = 0;     // OR these into the pad the game reads now
-    bool pressed = false;  // the button went down on this read
-    bool released = false; // it was let go on this read
-    bool dropped = false;  // called off (the menu opened again, or no reads within kMenuPressGiveUpMs)
-};
-void StartMenuPress(MenuPress& press, WORD button, std::uint64_t nowMs);
-// One read of the pad by the game. `menuOpen`: our main menu is open now (the game sees a neutral pad).
-MenuPressStep StepMenuPress(MenuPress& press, bool menuOpen, std::uint64_t nowMs);
-
 // The buttons and triggers that are down when our main menu (or the guided calibration) gives the pad back to the game:
 // the A or B that closed it, the trigger that clicked Resume. They're kept from the game until each is let go, as the
-// squad menu's Latches::squadHeld keeps its own (a menu press, MenuPress, is OR'd in after and isn't affected).
+// squad menu's Latches::squadHeld keeps its own. (The menu's Game menu and Holster buttons press nothing on the pad:
+// the mod calls the game's functions, core/vr/GameMenuRequest.)
 inline constexpr BYTE kCloseLatchTriggerOff = 30;  // XINPUT_GAMEPAD_TRIGGER_THRESHOLD: a trigger below this is let go
 struct CloseLatch {
     WORD buttons = 0;

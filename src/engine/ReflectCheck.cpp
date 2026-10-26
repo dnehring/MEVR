@@ -566,6 +566,11 @@ void CheckClasses() {
     CheckClass<USFXGameModeBase>("SFXGame.SFXGameModeBase");
     CheckClass<USFXGameModeDefault>("SFXGame.SFXGameModeDefault");
     CheckClass<USFXGameModeWeaponWheel>("SFXGame.SFXGameModeWeaponWheel");
+    // game/GameMenuRequest (research/28): the active mode's ShowMenuGui, by CurrentMode's class.
+    CheckClass<USFXGameModeVehicle>("SFXGame.SFXGameModeVehicle");
+    CheckClass<USFXGameModePowerWheel>("SFXGame.SFXGameModePowerWheel");
+    CheckClass<USFXGameModeCommand>("SFXGame.SFXGameModeCommand");
+    CheckClass<USFXGameModePhoto>("SFXGame.SFXGameModePhoto");
     CheckClass<UBioPawnBehavior>("SFXGame.BioPawnBehavior");
     CheckClass<UBioEpicPawnBehavior>("SFXGame.BioEpicPawnBehavior");
     CheckClass<UBioActorBehavior>("SFXGame.BioActorBehavior");
@@ -657,6 +662,8 @@ void CheckFields() {
     CheckField("SFXGame.BioPlayerController", "bStorming", SDK_BOOL(ABioPlayerController, bStorming));
     CheckField("SFXGame.SFXGameModeManager", "GameModes", SDK_FIELD(USFXGameModeManager, GameModes));
     CheckField("SFXGame.SFXGameModeManager", "CurrentMode", SDK_FIELD(USFXGameModeManager, CurrentMode));
+    CheckField("SFXGame.SFXGameModeBase", "bIsActive", SDK_BOOL(USFXGameModeBase, bIsActive));  // game/GameMenuRequest
+    CheckField("SFXGame.SFXGameModeBase", "Priority", SDK_FIELD(USFXGameModeBase, Priority));
     CheckField("SFXGame.SFXInventoryManager", "WeaponRecoilOffset", SDK_FIELD(ASFXInventoryManager, WeaponRecoilOffset));
     CheckField("SFXGame.SFXInventoryManager", "TotalRecoil", SDK_FIELD(ASFXInventoryManager, TotalRecoil));
     CheckField("SFXGame.SFXModule_AimAssist", "LastZoomSnapTarget", SDK_FIELD(USFXModule_AimAssist, LastZoomSnapTarget));
@@ -848,6 +855,13 @@ void CheckFunctions() {
         "SFXGame.SFXModule_AimAssist.ViewAdhesion",
         "Engine.Actor.SetRotation",
         "Engine.WorldInfo.PauseGame",
+        // GameMenuRequest (research/28): Start's Console_Menu on each mode that declares it
+        "SFXGame.SFXGameModeBase.ShowMenuGui",
+        "SFXGame.SFXGameModeVehicle.ShowMenuGui",
+        "SFXGame.SFXGameModePowerWheel.ShowMenuGui",
+        "SFXGame.SFXGameModeWeaponWheel.ShowMenuGui",
+        "SFXGame.SFXGameModeCommand.ShowMenuGui",
+        "SFXGame.SFXGameModePhoto.ShowMenuGui",
         // HeadTracking, Reflections, ConsoleRequest, Skeleton
         "Engine.Camera.UpdateCamera",
         "Engine.PlayerController.GetPlayerViewPoint",
@@ -921,6 +935,7 @@ void CheckParams() {
     PARAM(UBioEquipment_execChangeToQuickSlot_Parms, "SFXGame.BioEquipment.ChangeToQuickSlot", Slot);
     PARAM(UBioPawnBehavior_execGetClass_Parms, "SFXGame.BioPawnBehavior.GetClass", ReturnValue);
     PARAM(AWorldInfo_execPauseGame_Parms, "Engine.WorldInfo.PauseGame", bPause);
+    PARAM(USFXGameModeBase_execShowMenuGui_Parms, "SFXGame.SFXGameModeBase.ShowMenuGui", ReturnValue);
     PARAM(APlayerController_execGetScaleFormManager_Parms, "Engine.PlayerController.GetScaleFormManager", ReturnValue);
     PARAM(USFXGameModeDefault_execSwitchToWeapon_Parms, "SFXGame.SFXGameModeDefault.SwitchToWeapon", Slot);
     PARAM(ABioPlayerController_execGetAdjustedAimFor_Parms, "SFXGame.BioPlayerController.GetAdjustedAimFor", ReturnValue);

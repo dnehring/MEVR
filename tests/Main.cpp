@@ -25,6 +25,7 @@
 #include "core/vr/Upscale.hpp"
 #include "core/vr/CombatStance.hpp"
 #include "core/vr/Comfort.hpp"
+#include "core/vr/GameMenuRequest.hpp"
 #include "core/vr/Haptics.hpp"
 #include "core/vr/ImageConvert.hpp"
 #include "core/vr/LayerComposite.hpp"
@@ -3989,70 +3990,70 @@ void TestStickChord() {
     CHECK(!s.tap && !s.hold);
 }
 
-void TestMenuPress() {
-    using namespace mevr::game::gamepad;
-    MenuPress p;
-    std::uint64_t t = 50000;
-    // Idle: nothing.
-    CHECK(StepMenuPress(p, false, t).buttons == 0);
-    // Start: nothing until 8 reads over 250 ms with the menu closed.
-    StartMenuPress(p, XINPUT_GAMEPAD_START, t);
-    for (int i = 0; i < 7; ++i) {
-        t += 50;
-        MenuPressStep const s = StepMenuPress(p, false, t);
-        CHECK(s.buttons == 0 && !s.pressed);
+void TestGameMenuRequest() {
+    using namespace mevr::vr::game_menu;
+    // The values cross the host/mod boundary: unknown ones are None.
+    CHECK(FromValue(0) == Action::None && FromValue(1) == Action::PauseMenu && FromValue(2) == Action::Holster);
+    CHECK(FromValue(3) == Action::None && FromValue(0xFFFFFFFFu) == Action::None);
+    // The slot: taken once; a newer request replaces one not yet taken; Polled once the mod has asked.
+    Slot slot;
+    CHECK(!slot.Polled());
+    CHECK(slot.Put(Action::PauseMenu) == Action::None);
+    CHECK(slot.Put(Action::Holster) == Action::PauseMenu);
+    CHECK(slot.Take() == Action::Holster);
+    CHECK(slot.Polled());
+    CHECK(slot.Take() == Action::None);
+    // Nothing taken: nothing runs.
+    Schedule s;
+    Step st = Advance(s, false, false);
+    CHECK(st.run == Action::None && st.dropped == Action::None);
+    Take(s, Action::None);
+    CHECK(s.action == Action::None);
+    // Taken while the game is still paused by the menu: waits for kSettleTicks ticks unpaused in a row.
+    Take(s, Action::PauseMenu);
+    st = Advance(s, false, true);
+    CHECK(st.run == Action::None && st.dropped == Action::None);
+    for (int i = 0; i < kSettleTicks - 1; ++i) {
+        st = Advance(s, false, false);
+        CHECK(st.run == Action::None);
     }
-    t += 10;
-    MenuPressStep s = StepMenuPress(p, false, t);  // the 8th read, 360 ms in
-    CHECK(s.pressed && s.buttons == XINPUT_GAMEPAD_START);
-    // Held at least 100 ms and 3 reads more, then let go once.
-    t += 60;
-    s = StepMenuPress(p, false, t);
-    CHECK(s.buttons == XINPUT_GAMEPAD_START && !s.released);
-    t += 60;
-    s = StepMenuPress(p, false, t);
-    CHECK(s.buttons == XINPUT_GAMEPAD_START && !s.released);  // 120 ms but only 3 reads
-    t += 10;
-    s = StepMenuPress(p, false, t);
-    CHECK(s.buttons == 0 && s.released);
-    CHECK(p.phase == MenuPress::Phase::Idle);
-    CHECK(StepMenuPress(p, false, t + 10).buttons == 0);
-    // Many fast reads still wait 250 ms (the mod's unpause), and hold 100 ms.
-    StartMenuPress(p, XINPUT_GAMEPAD_BACK, t);
-    int reads = 0;
-    std::uint64_t pressedAt = 0, releasedAt = 0;
-    for (int i = 0; i < 100 && releasedAt == 0; ++i) {
-        t += 5;
-        s = StepMenuPress(p, false, t);
-        ++reads;
-        if (s.pressed) {
-            pressedAt = t;
-            CHECK(s.buttons == XINPUT_GAMEPAD_BACK);
-        }
-        if (s.released) {
-            releasedAt = t;
-        }
+    st = Advance(s, false, false);
+    CHECK(st.run == Action::PauseMenu && st.dropped == Action::None);
+    CHECK(s.action == Action::None);
+    CHECK(Advance(s, false, false).run == Action::None);  // once only
+    // A pause in between starts the count again.
+    Take(s, Action::Holster);
+    st = Advance(s, false, false);
+    CHECK(st.run == Action::None);  // kSettleTicks is 2
+    st = Advance(s, false, true);
+    CHECK(st.run == Action::None);
+    int ticks = 0;
+    do {
+        st = Advance(s, false, false);
+        ++ticks;
+    } while (st.run == Action::None && ticks < 100);
+    CHECK(st.run == Action::Holster && ticks == kSettleTicks);
+    // Our menu opening again calls it off.
+    Take(s, Action::PauseMenu);
+    st = Advance(s, true, true);
+    CHECK(st.run == Action::None && st.dropped == Action::PauseMenu && st.reopened);
+    CHECK(s.action == Action::None);
+    // Paused for good (another pause holds): dropped after kGiveUpTicks, not reopened.
+    Take(s, Action::Holster);
+    for (int i = 0; i < kGiveUpTicks - 1; ++i) {
+        st = Advance(s, false, true);
+        CHECK(st.run == Action::None && st.dropped == Action::None);
     }
-    CHECK(pressedAt != 0 && releasedAt - pressedAt >= kMenuPressHoldMs);
-    // Reads while the menu is still open don't count; the menu opening again calls it off.
-    StartMenuPress(p, XINPUT_GAMEPAD_START, t);
-    t += 400;
-    s = StepMenuPress(p, true, t);
-    CHECK(s.dropped && s.buttons == 0 && !s.released);
-    // Opened again while held: let go.
-    StartMenuPress(p, XINPUT_GAMEPAD_START, t);
-    for (int i = 0; i < 8; ++i) {
-        t += 40;
-        s = StepMenuPress(p, false, t);
+    st = Advance(s, false, true);
+    CHECK(st.dropped == Action::Holster && !st.reopened && st.run == Action::None);
+    // A new request replaces a waiting one.
+    Take(s, Action::Holster);
+    Advance(s, false, true);
+    Take(s, Action::PauseMenu);
+    for (int i = 0; i < kSettleTicks - 1; ++i) {
+        Advance(s, false, false);
     }
-    CHECK(s.pressed);
-    s = StepMenuPress(p, true, t + 5);
-    CHECK(s.dropped && s.released && s.buttons == 0);
-    // No reads for 5 s: dropped.
-    StartMenuPress(p, XINPUT_GAMEPAD_START, t);
-    t += 6000;
-    s = StepMenuPress(p, false, t);
-    CHECK(s.dropped && !s.pressed);
+    CHECK(Advance(s, false, false).run == Action::PauseMenu);
 }
 
 void TestCloseLatch() {
@@ -4082,13 +4083,6 @@ void TestCloseLatch() {
     pad.wButtons = XINPUT_GAMEPAD_A;
     pad.bRightTrigger = 255;
     CHECK(!ApplyCloseLatch(latch, pad) && pad.wButtons == XINPUT_GAMEPAD_A && pad.bRightTrigger == 255);
-    // A menu press (Start, OR'd in after the latch) isn't kept even with Start held at the close.
-    HoldCloseLatch(latch);
-    pad = {};
-    pad.wButtons = XINPUT_GAMEPAD_START;
-    ApplyCloseLatch(latch, pad);
-    pad.wButtons |= XINPUT_GAMEPAD_START;  // what MergeMotionControllers does with gamepad::MenuPress's buttons
-    CHECK(pad.wButtons == XINPUT_GAMEPAD_START);
 }
 
 void TestClickGate() {
@@ -7091,7 +7085,7 @@ int main() {
     TestRightGripHolds();
     TestRbFromStickClick();
     TestStickChord();
-    TestMenuPress();
+    TestGameMenuRequest();
     TestCloseLatch();
     TestClickGate();
     TestSquadPad();

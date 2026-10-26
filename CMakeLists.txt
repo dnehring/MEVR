@@ -258,6 +258,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/Comfort.hpp
     src/core/vr/CombatStance.cpp
     src/core/vr/CombatStance.hpp
+    src/core/vr/GameMenuRequest.cpp
+    src/core/vr/GameMenuRequest.hpp
     src/core/vr/Controllers.cpp
     src/core/vr/Controllers.hpp
     src/core/vr/Floor.hpp
@@ -327,6 +329,8 @@ set(MEVR_MOD_SOURCES
     src/game/GamepadBridge.hpp
     src/game/GamepadMapping.cpp
     src/game/GamepadMapping.hpp
+    src/game/GameMenuRequest.cpp
+    src/game/GameMenuRequest.hpp
     src/game/HandAim.cpp
     src/game/HandCalibration.cpp
     src/game/HandCalibration.hpp
@@ -415,6 +419,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/Comfort.hpp
     src/core/vr/CombatStance.cpp
     src/core/vr/CombatStance.hpp
+    src/core/vr/GameMenuRequest.cpp
+    src/core/vr/GameMenuRequest.hpp
     src/core/vr/Controllers.cpp
     src/core/vr/Controllers.hpp
     src/core/vr/Floor.hpp
@@ -687,6 +693,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/Calibration.cpp
         src/core/vr/Comfort.cpp
         src/core/vr/CombatStance.cpp
+        src/core/vr/GameMenuRequest.cpp
         src/core/vr/Colour.cpp
         src/core/vr/ColourStrip.cpp
         src/core/vr/FrameProbe.cpp

@@ -212,18 +212,47 @@ buttons are the way into the game's menus**, not a fallback, and nothing depends
 - The PC's own hotkeys open single screens (`PC_ShowMap` M, `PC_ShowEquipment` I, `PC_ShowSquad` U, `PC_ShowJournal` J,
   `PC_ShowCodex` O: `ShowMapGui true` ...); not used: the pause menu reaches all of them.
 
-**Built.** Two buttons in the top bar before Resume (`assets/menu/main.rml` `.gamebtns`: an icon, the name, and what it
-opens on a second line): **Game menu** (`cmd('game_menu')`) and **Holster** (`cmd('game_back')`). They're ordinary
-buttons in the focus order (the pad's A, the pointer's trigger). Pressing one closes our menu (`After::GameStart` /
-`GameBack` in `plugin/MainMenuSettings`), which lifts the pause on the mod's next tick (`game/MenuPause`), and hands the
-button to the XInput hook (`main_menu::TakeGamePress`). The hook (`HalcyonBridge::MergeMotionControllers`) presses it
-with `gamepad::MenuPress` (`game/GamepadMapping`, unit-tested): it waits until the game has read the pad 8 times over
-250 ms with our menu closed (a button that goes down while the game is still paused, or before the window takes input,
-can be lost), holds it 100 ms and at least 3 reads, then lets go; it's OR'd into whatever the game sees (the
-controllers' mapping or a real pad; with no motion controllers, the real pad). Opening our menu again calls it off; no
-reads for 5 s drops it. Logs: `main menu: Game menu: the game's Start goes to the game once it reads the pad again`,
-`main menu: sent the game's Start (its pause menu): held 100 ms`, `main menu: the game's Start (its pause menu) let go`
-(Back: `Holster`, `Back (holster)`), `main menu: ... not sent: ...`.
+**Built (2026-10-25).** Two buttons in the top bar before Resume (`assets/menu/main.rml` `.gamebtns`: an icon, the name,
+and what it does on a second line): **Game menu** (`cmd('game_menu')`) and **Holster** (`cmd('game_back')`). They're
+ordinary buttons in the focus order (the pad's A, the pointer's trigger). Pressing one closes our menu (`After::GameStart`
+/ `GameBack` in `plugin/MainMenuSettings`), which lifts the pause on the mod's next tick (`game/MenuPause`).
+
+**The first way failed (2026-10-26 10:38, the user in the headset).** It faked the button: the host's XInput hook
+(`HalcyonBridge::MergeMotionControllers`) waited until the game had read the pad 8 times over 250 ms with our menu
+closed, then held Start 100 ms (`gamepad::MenuPress`). The log had `main menu: Game menu: the game's Start goes to the
+game once it reads the pad again` at 23.733, `menu pause: the game runs again` at 23.749, and nothing more until the
+player opened our menu again at 25.178 (`not sent: our menu opened again first` at 25.188): in 1.45 s of a running game
+the hook never counted 8 reads, so Start never went down. Why the reads stopped wasn't found: the game did read the pad
+10 ms after our menu opened again (that read logged the drop), and the hook is the same one that feeds the controllers
+all game, so it isn't a dead path; it looks like the game reads XInput far less often than every frame right after an
+unpause, or not at all for a while. **[verify]** if it matters again; it no longer does, because:
+
+**Built (2026-10-26): the game's own functions, no button.** Each button leaves a request in the host
+(`vr::game_menu::Slot` in `plugin/MainMenu`, `core/vr/GameMenuRequest`, unit-tested); the mod takes it each tick
+(HostServices **v19** `takeGameMenuRequest`, `game/GameMenuRequest`), waits until our menu is closed and its pause lifted
+for 2 ticks in a row (`vr::game_menu::Schedule`: our menu opening again calls it off, as does waiting 600 ticks), and then
+on the game thread, through ProcessEvent:
+- **Game menu**: `ShowMenuGui` (what Start's `Console_Menu` runs; no parameters, returns a bool, `FUNC_Exec`) on the
+  **active** game mode object, the function looked up by name on that object's class so the override runs
+  (`SFXGameModeVehicle`, `-PowerWheel`, `-WeaponWheel`, `-Command` and `-Photo` override `SFXGameModeBase`'s; on foot
+  the mode is `SFXGameModeDefault`, which doesn't). The active mode: the `GameModeManager.GameModes` entry of
+  `CurrentMode`'s class (EGameModes 0 Default, 1 Vehicle, 2 PowerWheel, 3 WeaponWheel, 4 Command); for any other mode the
+  active one (`SFXGameModeBase.bIsActive`) of the highest `Priority`. Log `main menu: opened the game's pause menu
+  (SFXGameModeDefault.ShowMenuGui (declared on SFXGameModeBase) returned 1; game mode 0)`, or `... didn't open (...
+  returned 0 ...)` (the mode allows none: `bAllowPauseMenu`).
+- **Holster**: `SFXGameModeDefault.TryHolster` (Back's `Console_Holster`), as `game/Holsters` calls it, only on foot
+  (`CurrentMode` 0) and only while `BioPawn.IsInCombatActionState` says a weapon is drawn: it's the holster key's toggle,
+  so with the weapon away it would draw (which `[Holsters] onlyHolstersDraw` forbids anyway). Logs `main menu: holstered
+  the weapon (SFXGameModeDefault.TryHolster)` or `main menu: holster: no weapon drawn, nothing to put away`. (Back also
+  quits a bypass minigame; this button doesn't: it says Holster.)
+
+The host logs `main menu: the game's pause menu: asked the mod ...` (or `holster: asked the mod ...`); the mod `main menu
+request: ... taken`, then the lines above, or `main menu request: ... dropped: the main menu opened again first`. A
+host whose mod never polled warns at the press (`the mod has never asked for these requests ...`): host and mod are
+deployed together (the release build is one ASI anyway). The pad path (`gamepad::MenuPress`) is gone, not kept as a
+fallback: it was the part that didn't work, and an older mod with this host only happens mid hot reload. Snapshots:
+the mod's JSON has `"gameMenu": {"waiting": ..., "last": ...}`. ReflectCheck rows: the five mode classes, `bIsActive`,
+`Priority`, each `ShowMenuGui` declaration and its `ReturnValue`.
 
 **Diagnostics** (the next session, notes/next-vr-session.md step 38): the interaction profile the runtime picked for
 each hand (`halcyon bridge: the runtime's interaction profile: left ..., right ...`, on change), and the first time each

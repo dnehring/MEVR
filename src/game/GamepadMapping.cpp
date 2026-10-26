@@ -186,50 +186,6 @@ bool ApplyCloseLatch(CloseLatch& latch, XINPUT_GAMEPAD& pad) {
     return latch.buttons != 0 || latch.leftTrigger || latch.rightTrigger;
 }
 
-void StartMenuPress(MenuPress& p, WORD button, std::uint64_t nowMs) {
-    p.phase = button != 0 ? MenuPress::Phase::Waiting : MenuPress::Phase::Idle;
-    p.button = button;
-    p.sinceMs = nowMs;
-    p.polls = 0;
-}
-
-MenuPressStep StepMenuPress(MenuPress& p, bool menuOpen, std::uint64_t nowMs) {
-    using Phase = MenuPress::Phase;
-    MenuPressStep step;
-    if (p.phase == Phase::Idle) {
-        return step;
-    }
-    if (menuOpen) {
-        // Opened again before the press went through (or while it was held): called off; a held button lets go.
-        step.released = p.phase == Phase::Holding;
-        step.dropped = true;
-        p.phase = Phase::Idle;
-        return step;
-    }
-    ++p.polls;
-    if (p.phase == Phase::Waiting) {
-        if (p.polls >= kMenuPressWaitPolls && nowMs - p.sinceMs >= kMenuPressWaitMs) {
-            p.phase = Phase::Holding;
-            p.sinceMs = nowMs;
-            p.polls = 1;
-            step.buttons = p.button;
-            step.pressed = true;
-        } else if (nowMs - p.sinceMs >= kMenuPressGiveUpMs) {
-            step.dropped = true;
-            p.phase = Phase::Idle;
-        }
-        return step;
-    }
-    // Holding.
-    if (p.polls > kMenuPressHoldPolls && nowMs - p.sinceMs >= kMenuPressHoldMs) {
-        step.released = true;
-        p.phase = Phase::Idle;
-        return step;
-    }
-    step.buttons = p.button;
-    return step;
-}
-
 bool GateClick(ClickGate& g, bool click, bool otherClick, std::uint64_t nowMs) {
     using Phase = ClickGate::Phase;
     bool const pressed = click && !g.down;
