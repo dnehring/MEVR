@@ -287,7 +287,11 @@ switching frameworks.
   `-Sdr` back), Halcyon's blit maps the scene's paper white to 1.0 and `[Colour] tonemap = aces | hable |
   reinhard` (`exposure` stops, `white`) takes the place of its per-pixel clip (`MEVR_TONE` in `ToEye`, the
   `[MEVR]` seam; `clip` = Halcyon's own). An 8-bit source never gets a curve. No headset we have takes HDR
-  output (the PS VR2's PC adapter has none): the gain is the gradation above paper white, not brightness.
+  output (the PS VR2's PC adapter has none): the gain is the gradation above paper white, not brightness. The float
+  backbuffer only comes with **Windows HDR on** for the monitor the game window sits on (the user's Odyssey G95SC
+  supports it; research/27 section 7c: set and read through DisplayConfig's advanced-colour info); seen 2026-10-25,
+  it costs nothing measurable on the GPU, and ACES gives a warmer, deeper, unclipped frame against the game's SDR
+  tonemap. A hook answering the game's HDR-capability query (to skip the Windows switch) is not built.
 - LE1 eye upscale ([research/32](research/32-ue3-vr-performance.md), `[Upscale]` in `ASI\LE1MEVR.ini`, off by
   default): with `method = fsr` and the stereo target below the headset's eye size (`tools/vr-game-settings.ps1
   -Scale 0.75`, or the main menu's Display > Headset × 0.75 / × 0.85 and Upscale > FSR), Halcyon's eye blit scales each 8-bit eye up with FSR 1 (EASU into an intermediate, RCAS into the

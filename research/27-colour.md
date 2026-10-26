@@ -363,6 +363,40 @@ The user: "does VR support HDR? The colour depth is a little lacking."
 - **10-bit eyes:** not done; worth asking SteamVR for `R10G10B10A2_UNORM` swapchains once the tonemap is
   judged, for the banding the dither hides today.
 
+## 7c. The float backbuffer seen, and what it costs (2026-10-25)
+
+The user: "how can we match the colour fidelity of more modern titles", and "is there any way to force HDR despite
+the host monitor not supporting it". The monitor does support it: Windows' DisplayConfig
+(`DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO` on the one active path, the Samsung Odyssey G95SC) answered
+advanced colour supported, not enabled, 8 bits; the game's `[HDR] DesiredRange = DynamicRange_HDR10_Float` was already
+in GamerSettings and every session of the day still got an 8-bit backbuffer (`[HDRBLIT] backbuffer format 0 -> 28`).
+With the switch set from a script (`DISPLAYCONFIG_DEVICE_INFO_SET_ADVANCED_COLOR_STATE`, enable 1; the display then
+reports 10 bits) the next launch made the float backbuffer: `[HDRBLIT] ... fmt=10`, `[HDRWHITE] float source white =
+250 nits (scRGB 3.125) from the game's paper white -> scale 0.3200`, the luminance probe latching the HDR range with
+5-17% of pixels over 1.0, and our `colour:` line `HDR tonemap aces (exposure +0.00 stops, white 4.0) on a float
+backbuffer`.
+
+**The look** (the heavy Eden Prime cell, the still PS VR2 pose, paused; the eye images the headset would show): against
+this morning's SDR capture the float frame under ACES is warmer and deeper, the sky a graded orange instead of the SDR
+tonemapper's flattened pink-grey, shadows darker (4.4% of pixels crushed against 1.4%), mean luminance 58 against 55,
+and nothing clipped (0.00% of pixels at 255; the clip gives 5.0%, Hable 0.07%, ACES a stop up 0.07% at mean 73). The
+SDR picture is the game's own tonemap and grade; the ACES one is ours over the scene's linear values. Which of the two
+the user prefers is theirs to say; the contact sheet is in this session's scratchpad (`hdr-sheet.png`) and was sent
+to them. The capture tool writes no `-world` image for a float source (the layers' files are null; the composited
+eye images are complete), which is worth fixing when the float path becomes the default.
+
+**The cost: none measurable.** The same cell under the moving head loop, the same save and evening (about 2,810 draws a
+frame with one Draw, 3,560 with two; the morning's probes drew 20% more and are not a baseline), both engine renders:
+GPU 7.78 ms median, 9.53 p90 with the float backbuffer against 7.92 / 9.20 with the 8-bit one; CPU 9.08 (11.16)
+against 9.27 (10.79). One Draw: 4.70 (7.98) float against 7.83 (11.35) 8-bit, but that 8-bit probe was the first after
+a relaunch and is noisy. The float passes do not show in the frame at this resolution.
+
+**Not done:** the hook that answers the game's HDR-capability query so the float backbuffer comes without Windows HDR
+on; the game's video option (`setHDROn`, `SFX_OUTPUT_HDR`, `BackBufferHDR` in the exe) follows the display's
+advertised colour space, and the exe imports no DisplayConfig call, so the query is DXGI's (the output's colour space
+or `CheckColorSpaceSupport`), to be found in Ghidra. Windows HDR was switched back off after the measurement, as the
+user had it.
+
 ## 8. Open
 
 - **[verify]** The Quest's system name through Steam Link (`: oculus` or `: vrlink`?); the new
