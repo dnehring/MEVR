@@ -16,9 +16,17 @@ option(MEVR_BUILD_LE3 "Build LE3MEVR.asi" OFF)
 # Development: a small stable host ASI plus <GAME>MEVR_mod.dll, which the host reloads whenever
 # it changes, so the game can keep running between builds. Release: one self-contained ASI.
 option(MEVR_HOT_RELOAD "Build the mod as a separate hot-reloadable DLL" ON)
+# LExSDKv2 has no licence, so a players' build of LE1 has none of it (research/34 stage 6 for LE1): the mod runs on our
+# own reflection layer, and only development builds keep LExSDKv2 for the cross-check (engine/ReflectCheck). Off by
+# default in a release (monolithic) build. LE2/LE3 still read the engine through it (not released).
+option(MEVR_LE1_LESDK "LE1: link LExSDKv2 for the reflection cross-check (development builds)" ${MEVR_HOT_RELOAD})
 
 # LExSDKv2 honors these as normal variables (CMP0077).
-set(LESDK_WITH_LE1 ${MEVR_BUILD_LE1})
+if (MEVR_BUILD_LE1 AND MEVR_LE1_LESDK)
+    set(LESDK_WITH_LE1 ON)
+else ()
+    set(LESDK_WITH_LE1 OFF)
+endif ()
 set(LESDK_WITH_LE2 ${MEVR_BUILD_LE2})
 set(LESDK_WITH_LE3 ${MEVR_BUILD_LE3})
 set(LESDK_WITH_LEL OFF)
@@ -380,6 +388,8 @@ function(mevr_configure target game)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     if (NOT arg_NO_SDK)
         target_link_libraries(${target} PRIVATE LESDK-${game})
+    else ()
+        target_compile_definitions(${target} PRIVATE MEVR_NO_LESDK)
     endif ()
     target_link_libraries(${target} PRIVATE mevr-minhook version d3d11 dxgi)
     target_compile_definitions(${target} PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX MEVR_GAME_${game})
@@ -530,14 +540,19 @@ function(mevr_add_plugin game)
                 src/plugin/ReportRequest.hpp src/install/ReportMarks.hpp src/core/Json.cpp src/core/Json.hpp)
         endif ()
     endif ()
-    set(host_sdk "")
+    # LE1 without LExSDKv2 (MEVR_LE1_LESDK off: every release build): neither the mod nor the host links it.
+    set(game_sdk "")
+    if (game STREQUAL "LE1" AND NOT MEVR_LE1_LESDK)
+        set(game_sdk NO_SDK)
+    endif ()
+    set(host_sdk ${game_sdk})
     if (MEVR_HOT_RELOAD)
         add_library(${host} SHARED ${host_sources})
         set(host_sdk NO_SDK)  # nothing in the host includes LExSDKv2 since research/34 stage 4
 
         set(mod MEVR-${game}-mod)
         add_library(${mod} SHARED ${MEVR_MOD_SOURCES} ${MEVR_CORE_SOURCES})
-        mevr_configure(${mod} ${game})
+        mevr_configure(${mod} ${game} ${game_sdk})
         target_link_libraries(${mod} PRIVATE OpenXR::openxr_loader d3dcompiler)
         target_compile_definitions(${mod} PRIVATE MEVR_MOD_DLL)
         set_target_properties(${mod} PROPERTIES OUTPUT_NAME "${game}MEVR_mod")

@@ -555,8 +555,8 @@ Look for:
 As of 2026-10-26:
 
 - **LE1 only.** LE2 and LE3 build for development but aren't playable in VR.
-- **No downloadable build yet.** The mod compiles against LExSDKv2, which has no licence; binaries wait for its
-  author's permission or for our own engine layer to replace it. Until then, players build from source.
+- **Releases:** players' builds (MEVR-Setup) go on the GitHub Releases page; before the first one, players build
+  from source.
 - **Headsets:** tested on a **Quest 3 over Steam Link** and a **PS VR2**, both through **SteamVR**. Meta's runtime
   (Link, Air Link) ran an early build (a Quest Pro, 2026-10-07) but is untested with the current renderer. Virtual
   Desktop is untested. Bindings exist for Index, HP Reverb G2, WMR, Vive wands and the simple controller, but only

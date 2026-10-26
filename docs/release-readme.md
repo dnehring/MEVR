@@ -2,10 +2,6 @@
 
 <!-- DRAFT for the GitHub release (research/33). tools/package-release.ps1 copies it into the release as README.md. -->
 
-> **Not for release yet.** The mod is built on LExSDKv2, which has no licence. Its author's permission is needed
-> before this build can be published. (Maintainers: remove this note once you have it. `tools/package-release.ps1`
-> refuses to package a build that links LExSDKv2 unless it's run with `-LexSdkPermission`.)
-
 **Source code:** https://github.com/dnehring/MEVR (tag v<version>), GPL-3.0.
 
 VR for **Mass Effect 1, Legendary Edition** on PC: stereo 3D, head tracking, and your hands as Shepard's hands. You
@@ -133,8 +129,8 @@ Logs written by hand can contain your Windows user name in file paths: replace i
   FreeType (FreeType License), the Khronos OpenXR loader (Apache-2.0) with jsoncpp (public domain / MIT), AMD
   FidelityFX FSR 1 (MIT). Their licence texts are in the `licenses` folder.
 - **Fonts:** Rajdhani and Titillium Web (SIL OFL 1.1; their licences are in `licenses` and `payload\fonts`).
-- **LExSDKv2** (the engine headers the mod is built on): no licence given; used with its author's permission
-  *(pending)*.
+- **Not included:** LExSDKv2 (no licence given). This build runs on our own reflection layer; LExSDKv2 was the
+  prior art it was checked against during development.
 - **Never included:** RAD's Bink DLL (the setup only renames your own copy), Mass Effect Modder, and any texture
   pack.
 

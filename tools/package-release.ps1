@@ -16,9 +16,9 @@
 #
 #   tools\package-release.ps1 [-Version 0.1.0] [-NoBuild] [-Zip] [-LexSdkPermission]
 #
-# LExSDKv2 (compiled into LE1MEVR.asi while research/34's removal isn't finished) has no licence: distributing the
-# build needs its author's permission first (docs/release-readme.md, research/33). The script refuses to package while
-# the ASI links it, unless -LexSdkPermission says that permission was given. Texture packs are never bundled.
+# LExSDKv2 has no licence: the release build (build-mono, MEVR_LE1_LESDK=OFF since 2026-10-26) doesn't link it. The
+# script refuses to package an ASI that does link it, unless -LexSdkPermission says its author agreed. Texture packs are
+# never bundled.
 param(
     [string]$Version = '0.1.0',
     [switch]$NoBuild,

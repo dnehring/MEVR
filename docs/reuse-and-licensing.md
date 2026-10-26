@@ -23,11 +23,12 @@ file's first line says which (`SPDX-License-Identifier`; the README's Licensing 
 
 ## Before distributing binaries
 
-- **Unlicensed parts in the ASI.** LExSDKv2 (deliberately no license) is compiled into the ASI.
-  GPL-3.0 section 5c needs the whole binary licensable under the GPL, so ask its author
-  (llamathings) for permission or a compatible license before publishing builds, or finish
-  replacing it with our own reflection layer (`src/ue3/`, [research/34](../research/34-reflection.md)).
-  Sharing the source is fine. The ASI loader interface ("SPI") is no longer an issue: our host and
+- **No unlicensed parts in the players' build (since 2026-10-26).** LExSDKv2 (deliberately no licence) is not
+  compiled into the release ASI: the release (monolithic) build sets `MEVR_LE1_LESDK=OFF`, so LE1 runs on our own
+  reflection layer (`src/ue3/`, [research/34](../research/34-reflection.md)) alone. Development (hot-reload) builds
+  still link it for the cross-check (`engine/ReflectCheck`), and LE2/LE3 still read the engine through it: neither is
+  distributed. GPL-3.0 section 5c needs the whole binary licensable under the GPL, which the release ASI now is.
+  `tools/package-release.ps1` refuses to package a build that links LExSDKv2. The ASI loader interface ("SPI") is no longer an issue: our host and
   our loader declare it themselves from its documented shape (`src/loader/SpiAbi.hpp`); only the
   offline loader test (`tools/loader-test`, never shipped) compiles LExSDKv2's `External/SPI.h`, to
   check that SDK-built plugins load.

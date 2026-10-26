@@ -402,7 +402,10 @@ switching frameworks.
   Test only on a fake game: `tools/setup/test-fake-game.ps1` (`scratch\fakegame`); pages offline:
   `MEVR-Setup.exe --preview <folder>`. Release: `tools/package-release.ps1 [-Zip]` into `dist\` (local only; it copies
   the third-party licence texts into `licenses\` and refuses while the ASI links LExSDKv2 unless `-LexSdkPermission`).
-  **LExSDKv2 has no licence: a public release needs its author's permission.**
+  **LExSDKv2 has no licence, so the players' build has none of it** (2026-10-26): the release (monolithic) build sets
+  `MEVR_LE1_LESDK=OFF` (CMake; default = `MEVR_HOT_RELOAD`), LE1 links no `LESDK-LE1` and `engine/ReflectCheck`'s
+  cross-check compiles out (`MEVR_NO_LESDK`: it logs `reflect: no LExSDKv2 cross-check in this build`). Development
+  builds keep it. Never add LExSDKv2 use to an LE1 code path.
 - Report a problem ([research/33](research/33-installer.md) section 8): MEVR Setup's page (or `--report [--snapshot]
   [--perf]`), the menu's Advanced > Diagnostics > Report (`plugin/ReportRequest`: starts `ASI\MEVR-Setup.exe --report
   --from-game` at once, background priority, no window) and the crash offer (`install/ReportMarks`) write a redacted

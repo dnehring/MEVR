@@ -34,8 +34,8 @@ settle, **[untested]** code written against documentation and never run here (no
    `%LOCALAPPDATA%\MEVR\setup.request`; the host's ExitProcess hook then starts `ASI\MEVR-Setup.exe --request
    --wait-pid <pid>`.
 8. **Packaging**: `tools/package-release.ps1` builds `build-mono` and assembles `dist\MEVR-<version>` (and a zip).
-9. **Licensing blocker**: LExSDKv2 has no licence, and the ASI compiles it in, so a public release needs its author's
-   permission (below).
+9. **Licensing**: LExSDKv2 has no licence; since 2026-10-26 the release ASI doesn't contain it (`MEVR_LE1_LESDK=OFF`,
+   research/34 stage 6 for LE1), so the release needs no permission (below).
 
 ## 1. The loader (`src/loader`)
 
@@ -253,8 +253,9 @@ compares versions. A newer release only offers its page: nothing is downloaded. 
 - **No LEBinkProxy code or binaries.** Its source was read for behaviour only (launch arguments, the SPI exports'
   names, its DRM wait idea); the loader's DRM check and everything else is our own.
 - **Mass Effect Modder** (GPL-3.0) and **texture packs** are never bundled.
-- **BLOCKER: LExSDKv2 has no licence** (its README; CLAUDE.md). `LE1MEVR.asi` compiles it in, so distributing the
-  ASI needs its author's permission. The user will ask; `docs/release-readme.md` says so.
+- **LExSDKv2 has no licence** (its README; CLAUDE.md). Resolved 2026-10-26: the release build (`build-mono`) sets
+  `MEVR_LE1_LESDK=OFF`, so `LE1MEVR.asi` contains none of it (checked: none of its strings in the binary; the
+  project doesn't link `LESDK-LE1`, so the packaging gate below passes without `-LexSdkPermission`).
 - RAD's Bink DLL is never shipped: the setup renames the player's own copy.
 - `tools/package-release.ps1` (QA fixes below) copies every licence text the binaries need into
   `dist\MEVR-<v>\licenses\`: MinHook (BSD-2), Dear ImGui (MIT), RmlUi (MIT, and its `Core/Containers/LICENSE.txt`

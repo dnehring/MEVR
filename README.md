@@ -6,10 +6,11 @@ controller aim, arm and body IK, body holsters, a two-handed rifle grip, physica
 sights and scopes, a VR main menu and a guided calibration.
 
 **Status: development preview, LE1 only.** LE2 and LE3 build (on our own early renderer) for development,
-but they aren't playable in VR. **There is no downloadable build yet:** the mod compiles in
-[LExSDKv2](https://github.com/llamathings/LExSDKv2), which has no licence, so binaries wait for its author's
-permission, or for our own reflection layer (`src/ue3`, [research/34](research/34-reflection.md)) to replace it.
-Until then, build from source.
+but they aren't playable in VR. **Downloads:** players' builds (MEVR-Setup, a one-click installer) go on the
+[Releases page](https://github.com/dnehring/MEVR/releases); until the first one is published, build from source. The
+players' build runs entirely on our own reflection layer (`src/ue3`, [research/34](research/34-reflection.md)): it
+contains none of [LExSDKv2](https://github.com/llamathings/LExSDKv2), which development builds still use for a
+cross-check.
 
 - **Headsets:** tested on a **Quest 3 over Steam Link** and a **PS VR2**, both through SteamVR. Meta's own
   runtime (Link, Air Link) ran the early mod (a Quest Pro, 2026-10-07) but hasn't been tested with the current
@@ -178,8 +179,8 @@ Windows user name in file paths: replace it if you prefer.
 - **Docs and data** (the Markdown in `docs/`, `research/` and `notes/`, and data files without an
   identifier) are MIT unless marked otherwise.
 - New files get the right identifier on their first line; `python tools/check-spdx.py` lists the files
-  without one. Builds aren't published yet: LExSDKv2 has no licence, so binaries wait for its author's
-  permission ([docs/reuse-and-licensing.md](docs/reuse-and-licensing.md)).
+  without one. LExSDKv2 has no licence: it is only a submodule for development builds, and the players' build
+  doesn't contain it ([docs/reuse-and-licensing.md](docs/reuse-and-licensing.md)).
 
 Mass Effect is a trademark of EA International (Studio and Publishing) Ltd. This is a fan project, not affiliated
 with or endorsed by EA or BioWare.

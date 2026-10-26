@@ -12,8 +12,12 @@
 #include "ue3/Memory.hpp"
 #include "ue3/Runtime.hpp"
 
+// The reference side (LExSDKv2): development builds only. A players' build (MEVR_NO_LESDK, the release ASI) has no
+// LExSDKv2 in it at all (research/34 stage 6 for LE1): the cross-check is skipped, our layer runs on its own.
+#if defined(MEVR_GAME_LE1) && !defined(MEVR_NO_LESDK)
 #include <LESDK/Headers.hpp>
 #include <LESDK/Init.hpp>
+#endif
 
 #include <Windows.h>
 
@@ -38,7 +42,7 @@
 
 namespace mevr::engine::reflect_check {
 
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) && !defined(MEVR_NO_LESDK)
 namespace {
 
 struct Row {
@@ -1230,6 +1234,13 @@ void Run(hook::Context& context) {
         }
     }
     Write(agree, mismatches, notReflected);
+}
+
+#elif defined(MEVR_GAME_LE1)
+
+void Run(hook::Context&) {
+    log::Info("reflect: no LExSDKv2 cross-check in this build (a players' build has no LExSDKv2 in it); our reflection layer "
+              "runs on its own and each feature stands down with a log line if a lookup fails");
 }
 
 #else
