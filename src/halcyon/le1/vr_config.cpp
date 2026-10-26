@@ -44,6 +44,9 @@ constexpr int kProfileCount = 4;
 const char* const kProfileNames[kProfileCount] = { "Default", "Custom 1", "Custom 2", "Custom 3" };
 
 VrConfig g_slots[kProfileCount];   // per-slot values (member initializers = defaults)
+// [MEVR] The file was there but couldn't be read at boot (locked, no permission): the slots hold code defaults, and a
+// whole-file save would write them over all four profiles. Saves are refused until a read succeeds.
+bool g_mevrReadFailed = false;
 int      g_active = 0;             // index of the slot Get() currently reflects
 
 // Profile hotkeys (GLOBAL, one VK per slot; 0 = unmapped). Persisted in the ini's [hotkeys] section,
@@ -688,9 +691,18 @@ int ReadIniIntoSlots() noexcept
     FILE* f = _wfopen(path.c_str(), L"r");
     if (f == nullptr)
     {
+        // [MEVR] A file that exists but didn't open isn't "no file": don't let a save write defaults over it.
+        g_mevrReadFailed = GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES;
+        if (g_mevrReadFailed)
+        {
+            Logger::LogLine("[config] [MEVR] MELEVR.ini at " + Logger::WideToUtf8(path) + " exists but can't be read (error " +
+                            std::to_string(GetLastError()) + ") - using defaults, and NOT saving over it this session");
+            return 0;
+        }
         Logger::LogLine("[config] no MELEVR.ini at " + Logger::WideToUtf8(path) + " - using defaults");
         return 0;
     }
+    g_mevrReadFailed = false;   // [MEVR]
 
     // Global hotkeys reset to the DEFAULT map before parse, so an ini with no [hotkeys] section (e.g. a
     // fresh install) still gets 1/2/3/4. A user who CLEARS a bind writes profileN=0, which the parse below
@@ -770,10 +782,20 @@ int ReadIniIntoSlots() noexcept
 void WriteIniFromSlots() noexcept
 {
     const std::wstring path = IniPath();
-    FILE* f = _wfopen(path.c_str(), L"w");
+    // [MEVR] Never over a file the boot couldn't read (its profiles would become code defaults); and written to a
+    // .tmp first, then moved over the old one, so a crash or a full disk mid-write never leaves half a file.
+    if (g_mevrReadFailed)
+    {
+        Logger::LogLine("[config] [MEVR] NOT saved: " + Logger::WideToUtf8(path) +
+                        " couldn't be read at launch, and saving would put defaults over all its profiles");
+        return;
+    }
+    const std::wstring finalPath = path;
+    const std::wstring tmpPath = path + L".tmp";
+    FILE* f = _wfopen(tmpPath.c_str(), L"w");
     if (f == nullptr)
     {
-        Logger::LogLine("[config] FAILED to write " + Logger::WideToUtf8(path));
+        Logger::LogLine("[config] FAILED to write " + Logger::WideToUtf8(tmpPath));
         return;
     }
     fprintf(f, "; MELE VR config - written by the in-headset menu.\n\n");
@@ -787,7 +809,16 @@ void WriteIniFromSlots() noexcept
     fprintf(f, "\n");
     for (int i = 0; i < kProfileCount; ++i)
         WriteProfileSection(f, kProfileNames[i], g_slots[i]);
-    fclose(f);
+    // [MEVR] Only a complete file replaces the old one.
+    const bool written = ferror(f) == 0;
+    if (fclose(f) != 0 || !written ||
+        !MoveFileExW(tmpPath.c_str(), finalPath.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+    {
+        Logger::LogLine("[config] [MEVR] FAILED to save " + Logger::WideToUtf8(finalPath) + " (error " +
+                        std::to_string(GetLastError()) + "); the old file is kept");
+        DeleteFileW(tmpPath.c_str());
+        return;
+    }
     Logger::LogLine("[config] saved " + Logger::WideToUtf8(path) +
                     " (active profile: " + kProfileNames[g_active] + ")");
 }

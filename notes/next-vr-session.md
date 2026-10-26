@@ -1274,6 +1274,19 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       controller's menu-like button (the Sense's Create and Options) once: `halcyon bridge: the left (or right)
       controller's menu button reached us (/input/menu/click, ...)` says which, if any, reaches the mod. Say which
       physical button you pressed for each line, or that none appeared.
+39. **Settings robustness (new, 2026-10-26; HOST REDEPLOY, game closed).** Nothing new to try in play; a few checks that
+    the fixes didn't change what you have:
+    - Start the game: `hands: calibration ...` appears once, and no `hands: wrote default calibration` (your file is
+      there). Our menu's rows show what you set (Walk toward, Life-size movement, the sniper's sight, First person's
+      Back / Right / Up). Life-size movement now follows Halcyon's lean gain in the active profile (2 = on): if it reads
+      differently than before, that's the profile's real value.
+    - Type `\` (or R, K) into another window (a browser, Discord) with the game running behind: our menu must NOT open
+      and the view must not recenter. With the game in front they work as before. Advanced > Recenter key's text names
+      your keyboard's key for R; Diagnostics > Classic renderer menu names the menu key.
+    - Change a renderer row (e.g. HUD distance), close the menu: Halcyon's log says `[config] saved ...MELEVR.ini`, and no
+      `MELEVR.ini.tmp` stays in `ASI`.
+    - The log's `halcyon bridge: the runtime's interaction profile:` line, and no `controller profile ...:` warning for
+      the Sense controllers (that warning is only for WMR, Vive or simple-controller profiles).
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR

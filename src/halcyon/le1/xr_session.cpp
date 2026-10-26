@@ -346,6 +346,7 @@ bool CreateInstance()
     // Is XR_FB_display_refresh_rate available? Enumerate FIRST - enabling an UNSUPPORTED extension makes
     // xrCreateInstance fail outright (= no VR), so this only enables it if the runtime advertises it. (AER section 15.1)
     g_hasRefreshRateExt = false;
+    bool mevrHasHpControllerExt = false;   // [MEVR] XR_EXT_hp_mixed_reality_controller: the HP Reverb G2's bindings (core/xr/Input)
     {
         PFN_xrVoidFunction enumFn = nullptr;
         if (XrSucceeded(g_getProc(nullptr, "xrEnumerateInstanceExtensionProperties", &enumFn)) && enumFn != nullptr)
@@ -360,13 +361,19 @@ bool CreateInstance()
                 {
                     for (const auto& p : props)
                         if (std::strcmp(p.extensionName, kDisplayRefreshRateExtensionName) == 0) { g_hasRefreshRateExt = true; break; }
+                    for (const auto& p : props)   // [MEVR] enabled only when advertised, like the refresh rate's
+                        if (std::strcmp(p.extensionName, "XR_EXT_hp_mixed_reality_controller") == 0) { mevrHasHpControllerExt = true; break; }
                 }
             }
         }
         LogLine(std::string("[XR] XR_FB_display_refresh_rate available: ") + (g_hasRefreshRateExt ? "yes" : "no"));
     }
 
-    const char* extensions[2] = {kD3D11ExtensionName, kDisplayRefreshRateExtensionName};
+    // [MEVR] upstream: {D3D11, refresh rate} and a count of 1 or 2; now built from what the runtime has.
+    const char* extensions[3] = {kD3D11ExtensionName, nullptr, nullptr};
+    uint32_t extensionCount = 1;
+    if (g_hasRefreshRateExt) extensions[extensionCount++] = kDisplayRefreshRateExtensionName;
+    if (mevrHasHpControllerExt) extensions[extensionCount++] = "XR_EXT_hp_mixed_reality_controller";
     XrInstanceCreateInfo info = {};
     info.type = XR_TYPE_INSTANCE_CREATE_INFO_VALUE;
     CopyAscii(info.applicationInfo.applicationName, sizeof(info.applicationInfo.applicationName), "MELEVR M0");
@@ -374,12 +381,13 @@ bool CreateInstance()
     CopyAscii(info.applicationInfo.engineName, sizeof(info.applicationInfo.engineName), "MELEVR");
     info.applicationInfo.engineVersion = 1;
     info.applicationInfo.apiVersion = MakeXrVersion(1, 0, 0);
-    info.enabledExtensionCount = g_hasRefreshRateExt ? 2u : 1u;
+    info.enabledExtensionCount = extensionCount;   // [MEVR]
     info.enabledExtensionNames = extensions;
 
     const XrResult r = reinterpret_cast<PFN_xrCreateInstance>(createInstanceFn)(&info, &g_instance);
     LogLine(std::string("[XR] xrCreateInstance (XR_KHR_D3D11_enable") +
-            (g_hasRefreshRateExt ? " + XR_FB_display_refresh_rate" : "") + "): " + FmtXr(r));
+            (g_hasRefreshRateExt ? " + XR_FB_display_refresh_rate" : "") +
+            (mevrHasHpControllerExt ? " + XR_EXT_hp_mixed_reality_controller" : "") + "): " + FmtXr(r));   // [MEVR]
     if (!XrSucceeded(r) || g_instance == nullptr)
         return false;
 
@@ -3994,7 +4002,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         MELEVR::Pchud::Install();   // PCHUD Scaleform HUD move/scale hook (idempotent; Tick retries if not ready)
         g_menuInited = true;
     }
-    const bool insDown = (cfg.menuKey > 0) && ((GetAsyncKeyState(cfg.menuKey) & 0x8000) != 0);
+    const bool insDown = (cfg.menuKey > 0) && MELEVR::MevrBridge::KeyDown(cfg.menuKey);   // [MEVR] only with the game in front; upstream: GetAsyncKeyState
     if (insDown && !g_insertKeyPrev) MELEVR::MevrBridge::OnMenuKey();   // [MEVR] our main menu (Ctrl/Shift: this one); upstream: MELEVR::Menu::Toggle()
     g_insertKeyPrev = insDown;
     // First-run: pop the menu open once so new users land on the welcome / HDR-off notice.
@@ -4235,7 +4243,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     //  the head pose is located, so lean can use the live head position.)
 
     // --- Recenter (re-origin the app space to current head) ----------------------------------------
-    const bool rDown = cfg.recenterKeyEnabled && (g_recenterKey > 0) && ((GetAsyncKeyState(g_recenterKey) & 0x8000) != 0);
+    const bool rDown = cfg.recenterKeyEnabled && (g_recenterKey > 0) && MELEVR::MevrBridge::KeyDown(g_recenterKey);   // [MEVR] game in front
     if ((rDown && !g_recenterKeyPrev) || MELEVR::Menu::ConsumeRecenterRequest() ||
         MELEVR::Menu::ConsumeRecenterCombo() || !g_haveRecentered)
     {
@@ -4254,7 +4262,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     {
         static bool s_fpKeyPrev = false;
         const int fpKey = cfg.fpToggleKey;
-        const bool fpKeyDown = cfg.fpToggleKeyEnabled && (fpKey > 0) && ((GetAsyncKeyState(fpKey) & 0x8000) != 0);
+        const bool fpKeyDown = cfg.fpToggleKeyEnabled && (fpKey > 0) && MELEVR::MevrBridge::KeyDown(fpKey);   // [MEVR] game in front
         if (fpKeyDown && !s_fpKeyPrev)
         {
             MELEVR::Config::VrConfig& mutCfg = MELEVR::Config::Get();
@@ -4270,7 +4278,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     {
         static bool s_depthPopKeyPrev = false;
         const int dpKey = cfg.depthPopKey;
-        const bool dpKeyDown = cfg.depthPopKeyEnabled && (dpKey > 0) && ((GetAsyncKeyState(dpKey) & 0x8000) != 0);
+        const bool dpKeyDown = cfg.depthPopKeyEnabled && (dpKey > 0) && MELEVR::MevrBridge::KeyDown(dpKey);   // [MEVR] game in front
         if (dpKeyDown && !s_depthPopKeyPrev)
         {
             MELEVR::Config::VrConfig& mutCfg = MELEVR::Config::Get();
@@ -4291,7 +4299,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         for (int i = 0; i < pc && i < 8; ++i)
         {
             const int vk = MELEVR::Config::ProfileHotkey(i);
-            const bool down = (vk > 0) && ((GetAsyncKeyState(vk) & 0x8000) != 0);
+            const bool down = (vk > 0) && MELEVR::MevrBridge::KeyDown(vk);   // [MEVR] game in front
             if (down && !s_profKeyPrev[i] && i != MELEVR::Config::ActiveProfileIndex())
             {
                 MELEVR::Config::LoadProfile(i);

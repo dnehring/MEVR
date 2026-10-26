@@ -118,6 +118,19 @@ bool Locate(XrSpace space, XrSpace base, XrTime time, XrPosef& out) {
 
 } // namespace
 
+std::string_view Input::ProfileLimits(std::string_view profile) {
+    if (profile.find("khr/simple_controller") != std::string_view::npos) {
+        return "no grip and no sticks (select and menu only): the guns, holsters, walking and turning don't work";
+    }
+    if (profile.find("htc/vive_controller") != std::string_view::npos) {
+        return "a trackpad for the stick, a grip button and no A/B: A, B, X and Y aren't mapped";
+    }
+    if (profile.find("microsoft/motion_controller") != std::string_view::npos) {
+        return "a grip button and no A/B: the trackpad's click is A; B, X and Y aren't mapped";
+    }
+    return {};
+}
+
 Input::Target Input::From(Session const& session) {
     return {session.Instance(), session.Handle(), session.LocalSpace(), session.InstanceGeneration(), session.Generation()};
 }
@@ -189,6 +202,59 @@ bool Input::Create(Target const& target) {
         }
     }
 
+    // HP Reverb G2 (needs XR_EXT_hp_mixed_reality_controller, which Halcyon's instance enables when the runtime has it):
+    // the Touch layout.
+    std::vector<Binding> hp;
+    for (char const* hand : {"left", "right"}) {
+        Bind(hp, trigger_, hand, "/input/trigger/value");
+        Bind(hp, squeeze_, hand, "/input/squeeze/value");
+        Bind(hp, stick_, hand, "/input/thumbstick");
+        Bind(hp, stickClick_, hand, "/input/thumbstick/click");
+        Bind(hp, gripPose_, hand, "/input/grip/pose");
+        Bind(hp, aimPose_, hand, "/input/aim/pose");
+        Bind(hp, menu_, hand, "/input/menu/click");
+        if (haptic_ != XR_NULL_HANDLE) {
+            Bind(hp, haptic_, hand, "/output/haptic");
+        }
+    }
+    Bind(hp, primary_, "left", "/input/x/click");
+    Bind(hp, secondary_, "left", "/input/y/click");
+    Bind(hp, primary_, "right", "/input/a/click");
+    Bind(hp, secondary_, "right", "/input/b/click");
+
+    // Windows Mixed Reality's own controllers (native WMR, or SteamVR without an HP binding): a squeeze button, a stick and
+    // a trackpad. No A/B: the trackpad's click is A; there is no B (our menu closes from its Resume, the game's B stays
+    // unmapped).
+    std::vector<Binding> wmr;
+    for (char const* hand : {"left", "right"}) {
+        Bind(wmr, trigger_, hand, "/input/trigger/value");
+        Bind(wmr, squeeze_, hand, "/input/squeeze/click");
+        Bind(wmr, stick_, hand, "/input/thumbstick");
+        Bind(wmr, stickClick_, hand, "/input/thumbstick/click");
+        Bind(wmr, primary_, hand, "/input/trackpad/click");
+        Bind(wmr, menu_, hand, "/input/menu/click");
+        Bind(wmr, gripPose_, hand, "/input/grip/pose");
+        Bind(wmr, aimPose_, hand, "/input/aim/pose");
+        if (haptic_ != XR_NULL_HANDLE) {
+            Bind(wmr, haptic_, hand, "/output/haptic");
+        }
+    }
+
+    // HTC Vive wands: a squeeze button and a trackpad, which stands in for the stick (its click for the stick's). No A/B.
+    std::vector<Binding> vive;
+    for (char const* hand : {"left", "right"}) {
+        Bind(vive, trigger_, hand, "/input/trigger/value");
+        Bind(vive, squeeze_, hand, "/input/squeeze/click");
+        Bind(vive, stick_, hand, "/input/trackpad");
+        Bind(vive, stickClick_, hand, "/input/trackpad/click");
+        Bind(vive, menu_, hand, "/input/menu/click");
+        Bind(vive, gripPose_, hand, "/input/grip/pose");
+        Bind(vive, aimPose_, hand, "/input/aim/pose");
+        if (haptic_ != XR_NULL_HANDLE) {
+            Bind(vive, haptic_, hand, "/output/haptic");
+        }
+    }
+
     std::vector<Binding> simple;
     for (char const* hand : {"left", "right"}) {
         Bind(simple, trigger_, hand, "/input/select/click");
@@ -202,8 +268,11 @@ bool Input::Create(Target const& target) {
 
     bool const touchOk = Suggest(instance, "/interaction_profiles/oculus/touch_controller", touch);
     bool const indexOk = Suggest(instance, "/interaction_profiles/valve/index_controller", index);
+    bool const hpOk = Suggest(instance, "/interaction_profiles/hp/mixed_reality_controller", hp);
+    bool const wmrOk = Suggest(instance, "/interaction_profiles/microsoft/motion_controller", wmr);
+    bool const viveOk = Suggest(instance, "/interaction_profiles/htc/vive_controller", vive);
     bool const simpleOk = Suggest(instance, "/interaction_profiles/khr/simple_controller", simple);
-    if (!touchOk && !indexOk && !simpleOk) {
+    if (!touchOk && !indexOk && !hpOk && !wmrOk && !viveOk && !simpleOk) {
         log::Error("OpenXR: no controller profile accepted; motion controllers unavailable");
         Release(target);
         return false;

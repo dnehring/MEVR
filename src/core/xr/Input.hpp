@@ -7,6 +7,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 namespace mevr::xr {
 
@@ -24,6 +25,8 @@ public:
         std::uint32_t sessionGeneration = 0;
     };
     static Target From(Session const& session);
+    // What a controller profile can't do with our bindings ("" for Touch, Index and the HP Reverb G2's), for a log line.
+    static std::string_view ProfileLimits(std::string_view profile);
 
     // Creates the action set and attaches it to the session. Call once per session.
     bool Create(Target const& target);

@@ -48,7 +48,12 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   Its log is `%LOCALAPPDATA%\MELEVR\MELEVR_Log.txt`; its settings are `MELEVR.ini` in
   `Binaries\Win64\ASI`. Its keys: R recenter (or double-click the right stick), K first person; its
   `menuKey` (`220`, `\`, in our deploy; upstream Insert) now opens **our** menu (below), and Ctrl or
-  Shift + `\` its own. Our own VR hotkeys are off on LE1.
+  Shift + `\` its own. Our own VR hotkeys are off on LE1. All of its key polls (menu key, R, K, P, profile keys)
+  count only with a window of the game in front (`[MEVR]` seam `MevrBridge::KeyDown`; a `\` typed in Discord
+  opened our menu). The menu names keys by the layout (`GetKeyNameText`: `\` is `^` on a German keyboard).
+  Its `MELEVR.ini` save (`vr_config.cpp WriteIniFromSlots`, `[MEVR]`) writes a `.tmp` and moves it over the file,
+  and is refused for the session if the file existed but couldn't be read at launch (it would put code defaults
+  over all four profiles).
   Recenter is yaw-only as upstream, except that a recenter the player asks for also removes a badly
   tilted base space (rolled past 90 degrees, or tilted past `recenterTiltDeg` for 1.5 s: SteamVR's
   upside-down start; [MEVR] `RecenterOrientation`, `core/vr/Recenter`, log `[MEVR-RECENTER]`).
@@ -167,7 +172,11 @@ switching frameworks.
   `-` toggles the lockstep (game thread waits for each Present; default off). These are for our
   own renderer (LE2/LE3); on LE1 Halcyon's keys apply instead.
 - Motion controllers reach the game as Xbox pad 0 (`game/GamepadBridge`, XInput hooks). Mapping
-  is in `game/GamepadMapping` (unit-tested).
+  is in `game/GamepadMapping` (unit-tested). The bindings are ours only (`core/xr/Input`, on Halcyon's session; it
+  has no action set): Touch, Index, HP Reverb G2 (`XR_EXT_hp_mixed_reality_controller`, enabled by Halcyon's
+  instance only when the runtime lists it, `[MEVR]`), WMR (`microsoft/motion_controller`: trackpad click = A, no B),
+  Vive wands (trackpad = stick, no A/B) and `khr/simple_controller` (no grip, no sticks). A limited profile logs
+  `halcyon bridge: controller profile ...: <what's missing>`. Nothing depends on a menu or system button.
 - Physical grenades and melee (LE1, `game/Throwables` + `core/ik/Throwing`, research/20,
   `[Throwables]`): a new grip squeeze at the grenade slot (left side of the chest) takes one, a fast
   release throws it (the game's `UseGrenade`; its disc re-aimed from the hand in a post-handler of
@@ -536,6 +545,16 @@ Use it to check VR changes yourself instead of asking the user what they see
 ## Gotchas
 
 - Don't `cd` in Bash tool calls; it moves the session's working directory. Use absolute paths.
+- **Our settings file is `<exe dir>\ASI\<GAME>MEVR.ini` for the host and the mod** (`engine/SettingsFile`; the host's
+  `MevrBridge::SettingsPath()` returns it, whatever the host ASI is called). **Read it with `core/Ini`** (or Win32's
+  profile API): names case-insensitive, the first section and key win (as Win32), a UTF-8 BOM stripped, UTF-16
+  decoded (the mod then appends no narrow blocks; `WritePrivateProfileStringW` handles it). Numbers in and out
+  through `ini::Number` / `ini::Fixed` / `std::format` (`std::from_chars`/`to_chars`), never `strtod`/`sscanf`/
+  `%f` (the C locale). Paths to text: `ini::Utf8(path)`, never `path.string()` (it throws for characters outside the
+  ANSI code page, e.g. a Cyrillic folder); RmlUi opens files through our UTF-8 file interface (`menu/MenuUi`). An
+  unwritable ASI folder: the mod warns once and retries every 10 s; our menu shows "Can't save settings" in its rail.
+  Halcyon's own readers (`vr_config.cpp` `sscanf %lf`, `fprintf %.3f`, `xr_session.cpp` `atof`) still use the C
+  locale, harmless while nothing calls `setlocale`.
 - **New engine access goes through our reflection layer `src/ue3/`** (research/34): `ue3::ClassRef`,
   `FieldRef`, `FunctionRef`, `ue3::Params` + `ue3::runtime::Call`. LExSDKv2 is being removed (licence);
   don't add new uses of it. The mod's start logs `reflect: N of M checks agree` and writes
