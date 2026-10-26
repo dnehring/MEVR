@@ -204,6 +204,12 @@ switching frameworks.
   power) is the right stick click (`powerWheel`). Contact haptics while the hand is in a slot
   (host `core/vr/Haptics`); the slots scale with the standing eye height from the floor (host
   `core/xr/Floor`, STAGE). Squad weapons: below. Settings: `[Holsters]` in `ASI\LE1MEVR.ini`.
+  **Only holsters draw** (`onlyHolstersDraw = 1`, 2026-10-25): on foot in VR the game's own draws with the weapon away
+  (`SFXPawn_Player.DrawPrimaryWeapon`: melee, grenade and power buttons, both wheels, the holster key's toggle) are
+  skipped by `engine/call_function`'s skip handler (it consumes the call's EX_EndFunctionParms; only for a script
+  function without parameters). A grenade taken with the weapon away is ours (`holsters::AllowGameDraw`). Logs
+  `holsters: the game wanted to draw your weapon (<caller>): refused` and, for a draw by any other route, `holsters: the
+  <gun> came out without a holster grab (triggers, grips)`. The shotgun's slot is the left hip (`hipLeft`, a cross-draw).
 - LE1 body under the player ([research/29](research/29-body-follow.md), `core/ik/BodyFollow`, `game/BodyFollow`):
   first person, Shepard's whole body (the `Root` subtree; never `God`/`Camera`) turns by what the spine's 30
   degrees can't (the explore pawn faces where it runs) and slides under the view (feet that step after the
@@ -211,14 +217,15 @@ switching frameworks.
   pivot. Re-anchors on start, recenter (host floor counter) and tracking jumps. `[Hands] bodyMove = 0`: the
   old spine-only lean. Log `torso:`; snapshot `"torso"`.
 - LE1 weapon drawn, like exploring ([research/38](research/38-combat-stance.md), `game/CombatStance`, rules in
-  `core/vr/CombatStance`; `[Hands]` in `ASI\LE1MEVR.ini`, all on by default; our menu's Controls > Weapon drawn): VR on
-  foot, first person. `exploreStance` (A, mod): drawn and standing (not crouched, in cover or scoped), the player's
+  `core/vr/CombatStance`; `[Hands]` in `ASI\LE1MEVR.ini`, on by default except `exploreStance`; our menu's Controls > Weapon drawn): VR on
+  foot, first person. `exploreStance` (A, mod; **off by default since 2026-10-25**: the gun's bone `Prop01` and the
+  foregrip bone `LHIK` follow the explore pose too, so the gun sat differently in the hand and the support grip missed it): drawn and standing (not crouched, in cover or scoped), the player's
   AnimTree `CombatMode` node composes from its NonCombat child: `engine/bone_pose`'s pre-stage writes the two child
   weights around UpdateSkelPose and puts them back, so the tree still ticks as combat and every notify fires; it acts
   only once the node's `NodeTickTag` showed the tree ticks before the hook (`stance: [verify]`). `constantEye` (B,
   host): a `[MEVR]` seam in Halcyon's `FpOwnAndWrite`, `MevrBridge::ConstantFpEye`: every standing mode's Offset = its
   own HookOffset minus the explore eye; crouch modes keep Halcyon's. `exploreRamp` (C): the combat speed ramp set to the
-  explore one (restored). `drawRate = 2` (D): the WeaponEquip node's Draw/Holster sequences play faster (their Rate
+  explore one (restored). `drawRate = 6` (D, 1..10; the animation still plays, so every notify fires): the WeaponEquip node's Draw/Holster sequences play faster (their Rate
   while playing). Logs `stance:`, `constant eye:`, `movement:`, `draw:`; snapshot `"stance"`.
 - LE1 comfort ([research/31](research/31-comfort.md), HostServices v17; the menu's Comfort page, `[Comfort]` in
   `ASI\LE1MEVR.ini`): `turn = game` (default, the menu's Smooth) keeps the game's own turn (per-camera-mode

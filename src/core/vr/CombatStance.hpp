@@ -110,7 +110,11 @@ bool RampNeedsWrite(float tacAccel, float tacDecel, float exploreAccel, float ex
 
 // ---- D. Draw delay ----------------------------------------------------------------------------------------------
 
-// [Hands] drawRate: 1 = the game's own speed; clamped to [1, 4] (NaN: 1).
+// [Hands] drawRate: 1 = the game's own speed; clamped to [1, kMaxDrawRate] (NaN: 1). The animation still plays, so every
+// notify that runs the switch fires in order (an advance issues the notifies it passes); 6 (the default since 2026-10-25)
+// finishes a 1 s draw in about 0.16 s.
+inline constexpr double kDefaultDrawRate = 6.0;
+inline constexpr double kMaxDrawRate = 10.0;
 double ClampDrawRate(double rate);
 // Whether a playing draw or holster sequence needs its Rate written (it differs from `wanted` by more than 0.001).
 bool RateNeedsWrite(float current, double wanted);

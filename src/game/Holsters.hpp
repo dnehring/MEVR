@@ -66,6 +66,11 @@ void AdjustPad(gamepad::Options& options);
 double EyeHeight();
 bool RightHandInSlot();
 double SecondsSinceDraw();
+// [Holsters] onlyHolstersDraw (default 1): only a grab at a holster draws. The game's own draws with the weapon away
+// (SFXPawn_Player.DrawPrimaryWeapon, from melee, grenade and power buttons, the wheels, the holster key's toggle) are
+// skipped on foot in VR. A draw we want from the game (a grenade thrown with the weapon away: UseGrenade draws) goes
+// between AllowGameDraw(true) and AllowGameDraw(false). Game thread.
+void AllowGameDraw(bool begin);
 // For the test loop's mod status: a JSON object.
 std::string StatusJson();
 void LogStats();

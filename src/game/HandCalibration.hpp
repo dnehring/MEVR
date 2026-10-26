@@ -78,10 +78,10 @@ bool AimAssist();
 // [Hands] exploreStance, exploreStanceStorm, exploreRamp, drawRate: the weapon drawn, like exploring (game/combat_stance,
 // research/38). [Hands] constantEye is the host's (Halcyon's first-person camera modes, plugin/HalcyonBridge).
 struct CombatStance {
-    bool exploreStance = true;       // the body composes as explore while drawn (A)
+    bool exploreStance = false;      // the body composes as explore while drawn (A; off: the gun's bones follow the pose)
     bool exploreStanceStorm = true;  // ...while sprinting too
     bool exploreRamp = true;         // combat walking ramps like exploring (C)
-    double drawRate = 2.0;           // the draw and holster animations' rate, 1..4 (D; 1: the game's)
+    double drawRate = 6.0;           // the draw and holster animations' rate, 1..10 (D; 1: the game's)
 };
 CombatStance GetCombatStance();
 // [Controls] (appended to an older file that lacks it): the two-handed grip and the left trigger.
@@ -115,6 +115,9 @@ Controls GetControls();
 //   weaponWheel      1: the game's weapon wheel stays on its button (LB) as a fallback; 0: no LB
 //                    from the left trigger or grip while holsters are on
 //   holster          0 off; 1 at the held gun's own slot; 2 also at an empty slot
+//   onlyHolstersDraw 1 (default): only a grab at a holster draws a weapon; the game's own draws when the weapon is
+//                    away (DrawPrimaryWeapon: melee, grenade and power buttons, the wheels, the holster key's toggle)
+//                    are refused on foot in VR. 0: the game draws as it likes
 //   eyeHeightFromFloor  1: scale by the standing eye height measured from the floor (host v10);
 //                    eyeHeightM is the fallback. 0: always eyeHeightM
 //   eyeHeightM       the player's standing eye height: scales the slot offsets (1.65 = as written)
@@ -128,6 +131,7 @@ struct Holsters {
     double releaseGrace = 0.3;
     gamepad::RbSource powerWheel = gamepad::RbSource::RightStickClick;
     bool weaponWheel = true;
+    bool onlyHolstersDraw = true;
     ik::body_slots::Holster holster = ik::body_slots::Holster::OwnSlot;
     bool eyeHeightFromFloor = true;
     ik::body_slots::Layout layout = ik::body_slots::DefaultLayout();

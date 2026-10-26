@@ -6,6 +6,7 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/TestRequest.hpp"
+#include "engine/CallFunction.hpp"
 #include "engine/GameAdapter.hpp"
 #include "game/ArmIk.hpp"
 #include "game/BodyCalibration.hpp"
@@ -14,6 +15,7 @@
 #include "game/Player.hpp"
 #include "game/Throwables.hpp"
 #include "ue3/Handles.hpp"
+#include "ue3/Runtime.hpp"
 
 #include <Windows.h>
 
@@ -60,6 +62,10 @@ ue3::FunctionRef gTryHolsterFn{"SFXGame.SFXGameModeDefault.TryHolster"};
 ue3::FunctionRef gIsInCombatActionStateFn{"SFXGame.BioPawn.IsInCombatActionState"};
 ue3::FunctionRef gIsSwitchingWeaponsFn{"SFXGame.BioPawn.IsSwitchingWeapons"};
 ue3::FunctionRef gGetRangedWeaponTypeFn{"SFXGame.BioWeaponRanged.GetRangedWeaponType"};
+// Every draw the game makes by itself with the weapon away (research/19 "the callers", research/20): TryMelee,
+// UseGrenade, TryUseMappedPower, UseFirstAid, EnterPowerWheel, EnterWeaponWheel, the weapon wheel's close and the
+// holster key's toggle all call it. [Holsters] onlyHolstersDraw skips it (engine/call_function's skip handler).
+ue3::FunctionRef gDrawPrimaryWeaponFn{"SFXGame.SFXPawn_Player.DrawPrimaryWeapon"};
 
 ue3::Function* gSwitchToWeapon = nullptr;
 ue3::Function* gTryHolster = nullptr;
@@ -116,6 +122,18 @@ double gLoggedEyeHeight = -1.0;
 double gSinceDraw = 1e9;
 // The right hand holds a grenade (game/throwables): logged when it changes.
 bool gLoggedGrenadeHand = false;
+
+// Only holsters draw ([Holsters] onlyHolstersDraw): the game's DrawPrimaryWeapon is skipped for the player's pawn while
+// this tick says so, unless one of ours asked for it (AllowGameDraw: a grenade thrown with the weapon away).
+bool gDrawSkipReady = false;      // the skip handler is registered
+bool gBlockDraws = false;
+ue3::Object* gBlockPawn = nullptr;
+int gAllowedDraws = 0;            // AllowGameDraw scopes open now
+double gSinceAllowedDraw = 1e9;   // seconds since one closed
+unsigned gRefusedDraws = 0;       // this heartbeat period
+bool gLoggedBlock = false;
+bool gLoggedBlockValue = false;
+bool gWasDrawn = false;           // last tick's IsInCombatActionState, for draws nobody of ours asked for
 
 // What the player carries, re-read each tick; the type map is rebuilt when the slots change.
 struct Carried {
@@ -380,6 +398,7 @@ void Inactive(std::string why, Link const& link) {
     gYawValid = false;
     gNear = false;
     gActive = false;
+    gWasDrawn = gCarried.drawn;  // a draw while inactive isn't reported as unasked when it becomes active
     gDistances.fill(-1.0);
     Contact(link, {});
     SetWhy(std::move(why));
@@ -460,7 +479,29 @@ char const* SlotOf(hand_calibration::Holsters const& settings, Weapon weapon) {
     return "its holster";
 }
 
+#if defined(MEVR_GAME_LE1)
+// engine/call_function's skip handler for SFXPawn_Player.DrawPrimaryWeapon (game thread: the script VM's).
+bool OnDrawPrimaryWeapon(ue3::Object* context, ue3::Function* /*function*/, ue3::Function* caller) {
+    if (!gBlockDraws || gAllowedDraws > 0 || context == nullptr || context != gBlockPawn) {
+        return false;
+    }
+    ++gRefusedDraws;
+    log::Info("holsters: the game wanted to draw your weapon ({}): refused, only a grab at a holster draws "
+              "([Holsters] onlyHolstersDraw = 1)",
+        caller != nullptr ? ue3::runtime::FullName(caller) : std::string("called from native code"));
+    return true;
+}
+#endif
+
 } // namespace
+
+void AllowGameDraw(bool begin) {
+    if (begin) {
+        ++gAllowedDraws;
+    } else if (gAllowedDraws > 0 && --gAllowedDraws == 0) {
+        gSinceAllowedDraw = 0.0;
+    }
+}
 
 bool TryStartup() {
 #if defined(MEVR_GAME_LE1)
@@ -474,6 +515,24 @@ bool TryStartup() {
     log::Info("holsters: script functions {} (SwitchToWeapon {}, TryHolster {}, IsInCombatActionState {}, IsSwitchingWeapons {}, "
               "GetRangedWeaponType {})", gStarted ? "found" : "MISSING: holsters off", gSwitchToWeapon != nullptr,
         gTryHolster != nullptr, gIsInCombatActionState != nullptr, gIsSwitchingWeapons != nullptr, gGetRangedWeaponType != nullptr);
+    // Only holsters draw: the game's DrawPrimaryWeapon can be skipped if it's a script function without parameters (the
+    // skip consumes just its end-of-parameters token). Registered before the CallFunction hook goes in (Mod.cpp).
+    gDrawSkipReady = false;
+    if (ue3::Function* const draw = gDrawPrimaryWeaponFn.Get()) {
+        ue3::Reflection& reflection = ue3::runtime::Get();
+        bool const native = (reflection.FunctionFlags(draw) & ue3::function_flags::kNative) != 0;
+        bool const noParameters = reflection.ParmsSize(draw) == 0 && reflection.Parameters(draw).empty();
+        if (!native && noParameters) {
+            engine::call_function::AddSkipHandler(draw, &OnDrawPrimaryWeapon);
+            gDrawSkipReady = true;
+        }
+        log::Info("holsters: SFXPawn_Player.DrawPrimaryWeapon: {}", gDrawSkipReady
+                ? "a script function without parameters: the game's own draws can be refused ([Holsters] onlyHolstersDraw)"
+                : std::format("can't be skipped safely ({}{}): the game may still draw by itself", native ? "native" : "",
+                      noParameters ? "" : native ? ", has parameters" : "has parameters"));
+    } else {
+        log::Warn("holsters: SFXPawn_Player.DrawPrimaryWeapon not found: the game may still draw by itself");
+    }
     return gStarted;
 #else
     return false;
@@ -485,6 +544,7 @@ void Tick(double deltaSeconds, Link const& link) {
     hand_calibration::Holsters const settings = hand_calibration::GetHolsters();
     gEnabled = settings.enabled;
     gSinceDraw = std::min(gSinceDraw + std::max(deltaSeconds, 0.0), 1e9);
+    gSinceAllowedDraw = std::min(gSinceAllowedDraw + std::max(deltaSeconds, 0.0), 1e9);
     gWheelOff = settings.enabled && !settings.weaponWheel;
 
     vr::controllers::State const controllers = vr::controllers::Latest();
@@ -537,6 +597,23 @@ void Tick(double deltaSeconds, Link const& link) {
                                          : std::string("the right grip is RB (gripHolds off, or not on foot)"));
     }
 
+#if defined(MEVR_GAME_LE1)
+    // Only holsters draw: on foot (and in its two wheels) in VR, the game's own DrawPrimaryWeapon is refused for the
+    // player's pawn (OnDrawPrimaryWeapon).
+    gBlockPawn = nullptr;
+    if (gDrawSkipReady && settings.enabled && settings.onlyHolstersDraw && gHolds && vr::host_view::Latest().valid) {
+        ue3::Object* const pc = player::Controller();
+        gBlockPawn = pc != nullptr && player::IsBioPlayerController(pc) ? player::BioPawn(pc) : nullptr;
+    }
+    gBlockDraws = gBlockPawn != nullptr;
+    if (!gLoggedBlock || gBlockDraws != gLoggedBlockValue) {
+        gLoggedBlock = true;
+        gLoggedBlockValue = gBlockDraws;
+        log::Info("holsters: {}", gBlockDraws ? "only a grab at a holster draws a weapon (the game's own draws are refused)"
+                                              : "the game may draw the weapon by itself (onlyHolstersDraw off, not on foot, or no VR view)");
+    }
+#endif
+
     if (!settings.enabled) {
         Inactive("off ([Holsters] enabled = 0)", link);
         return;
@@ -567,6 +644,14 @@ void Tick(double deltaSeconds, Link const& link) {
         return;
     }
     ReadCarried(*game);
+    // A draw nobody of ours asked for (not a holster grab, not a grenade's): what the hands were doing, so the log says
+    // what drew it if DrawPrimaryWeapon wasn't the way.
+    if (gCarried.drawn && !gWasDrawn && gSinceDraw > kResultSeconds && gSinceAllowedDraw > kResultSeconds) {
+        log::Info("holsters: the {} came out without a holster grab (right trigger {:.2f}, grip {:.2f}; left trigger {:.2f}, "
+                  "grip {:.2f}){}", slots::Name(Held()), right.trigger, right.squeeze, controllers.left.trigger,
+            controllers.left.squeeze, gBlockDraws ? ": not through DrawPrimaryWeapon, so it wasn't refused" : "");
+    }
+    gWasDrawn = gCarried.drawn;
     gActive = true;
     SetWhy("active");
 
@@ -784,15 +869,15 @@ void LogStats() {
             where += std::format(" {} {} hand {:.2f} m;", settings.layout.slots[i].name, V(gCenters[i] - gFrame.anchor), gDistances[i]);
         }
     }
-    log::Info("    holsters: {}; {}; yaw from {}; in {}; this period: {} entries, {} draws, {} holsters, {} refusals, nearest {}, "
-              "strongest contact buzz {:.2f}; eye height {:.2f} m from {}{}{}",
+    log::Info("    holsters: {}; {}; yaw from {}; in {}; this period: {} entries, {} draws, {} holsters, {} refusals, {} game draws refused, "
+              "nearest {}, strongest contact buzz {:.2f}; eye height {:.2f} m from {}{}{}",
         gWhy, gHolds ? std::format("the grip holds the gun (RB: {})", gamepad::Name(gRbSource)) : std::string("the grip is RB"),
         gYawSource, gMachine.InSlot() >= 0 ? settings.layout.slots[gMachine.InSlot()].name : "no slot", gEntries, gDraws,
-        gHolsters, gRefusals,
+        gHolsters, gRefusals, gRefusedDraws,
         gNearestSlot >= 0 ? std::format("{:.2f} m outside {}", gNearest, settings.layout.slots[gNearestSlot].name) : std::string("-"),
         gContactPeak, gEyeHeight, gEyeSource, gFloorNow >= 0.0 ? std::format(" (head now {:.2f} m above the floor)", gFloorNow) : std::string(),
         where.empty() ? std::string() : std::format("; slots from the anchor:{}", where));
-    gEntries = gDraws = gHolsters = gRefusals = 0;
+    gEntries = gDraws = gHolsters = gRefusals = gRefusedDraws = 0;
     gNearest = 1e9;
     gNearestSlot = -1;
     gContactPeak = 0.0f;
@@ -829,6 +914,14 @@ void Shutdown() {
     gPending = {};
     gSinceDraw = 1e9;
     gLoggedGrenadeHand = false;
+    gDrawSkipReady = false;  // engine/call_function's handlers are cleared with the rest at unload
+    gBlockDraws = false;
+    gBlockPawn = nullptr;
+    gAllowedDraws = 0;
+    gSinceAllowedDraw = 1e9;
+    gRefusedDraws = 0;
+    gLoggedBlock = false;
+    gWasDrawn = false;
     gStarted = false;
     gWhy = "not started";
     gLoggedWhy.clear();

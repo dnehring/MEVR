@@ -1196,7 +1196,11 @@ void Tick(double deltaSeconds, Link const& link) {
                                                      "ME1 throws only with a weapon out"
                                                    : "; the weapon is away and drawForThrow = 0: the throw will wait for a weapon");
             if (!drawn && settings.drawForThrow) {
-                CallVoid(game->mode, gUseGrenade);  // with the weapon away it only draws it
+                // With the weapon away it only draws it (DrawPrimaryWeapon), which holsters' onlyHolstersDraw lets through
+                // for this call: taking a grenade is ours.
+                holsters::AllowGameDraw(true);
+                CallVoid(game->mode, gUseGrenade);
+                holsters::AllowGameDraw(false);
             }
             break;
         }

@@ -4,6 +4,7 @@
 #include "core/Log.hpp"
 #include "core/ik/ArmPose.hpp"
 #include "core/ik/HandFrame.hpp"
+#include "core/vr/CombatStance.hpp"
 #include "core/vr/Sights.hpp"
 
 #include "engine/GameAdapter.hpp"
@@ -42,10 +43,10 @@ struct Values {
     double bodyMoveMaxM = 0.75;  // [Hands] bodyMoveMaxM
     double recoilHaptic = 0.5;   // [Hands] recoilHaptic
     bool aimAssist = false;      // [Hands] aimAssist
-    bool exploreStance = true;       // [Hands] exploreStance (research/38 A)
+    bool exploreStance = false;      // [Hands] exploreStance (research/38 A; off since 2026-10-25: the gun's bones follow the explore pose)
     bool exploreStanceStorm = true;  // [Hands] exploreStanceStorm
     bool exploreRamp = true;         // [Hands] exploreRamp (research/38 C)
-    double drawRate = 2.0;           // [Hands] drawRate (research/38 D)
+    double drawRate = vr::combat_stance::kDefaultDrawRate;  // [Hands] drawRate (research/38 D)
     // [Controls]
     bool leftTrigger = false;
     bool leftTriggerLB = true;
@@ -131,12 +132,12 @@ constexpr char const* kDefaultFile =
     "; on foot) Shepard's body keeps the explore pose instead of the combat stance; the game still plays its combat\n"
     "; animations underneath, so draws, shots, grenades and powers work as before. exploreStanceStorm: 1 = also while\n"
     "; sprinting. exploreRamp: 1 = walking with a weapon out speeds up and slows down as gently as exploring.\n"
-    "; drawRate: how fast the draw and holster animations play (1 = the game's own, up to 4). constantEye (read by\n"
+    "; drawRate: how fast the draw and holster animations play (1 = the game's own, up to 10). constantEye (read by\n"
     "; the host): 1 = drawing, holstering, aimed fire and sprinting with a weapon out leave your view where it is.\n"
-    "exploreStance = 1\n"
+    "exploreStance = 0\n"
     "exploreStanceStorm = 1\n"
     "exploreRamp = 1\n"
-    "drawRate = 2.0\n"
+    "drawRate = 6.0\n"
     "constantEye = 1\n"
     "\n"
     "[Arms]\n"
@@ -190,6 +191,9 @@ constexpr char const* kHolstersBlock =
     "; weaponWheel: 1 keeps the game's weapon wheel (LB: the left trigger, see leftTrigger) as a fallback;\n"
     "; 0 turns LB off while holsters are on. The wheel also picks your squad's weapons.\n"
     "weaponWheel = 1\n"
+    "; onlyHolstersDraw: 1 = only a grab at a holster draws a weapon (the game's melee, grenade and power buttons and\n"
+    "; its wheels don't draw it for you); 0 = the game draws your weapon whenever it wants one, as in the flat game.\n"
+    "onlyHolstersDraw = 1\n"
     "; holster: 1 = put the gun away at its own slot (gripHolds 1: let go there; 0: squeeze and release\n"
     "; there, leaving the slot or pulling the trigger first cancels); 2 = also at a slot you have no weapon\n"
     "; for; 0 = never by hand.\n"
@@ -484,7 +488,7 @@ Values ReadValues(Ini const& ini) {
         values.exploreRamp = flag != 0.0;
     }
     if (Number(ini, "Hands", "drawRate", values.drawRate)) {
-        values.drawRate = std::clamp(values.drawRate, 1.0, 4.0);
+        values.drawRate = vr::combat_stance::ClampDrawRate(values.drawRate);
     }
     if (Number(ini, "Arms", "armLengthM", values.armLength) && !(values.armLength >= 0.3 && values.armLength <= 1.2)) {
         values.armLength = 0.0;
@@ -577,6 +581,9 @@ Holsters ReadHolsters(Ini const& ini) {
     if (Number(ini, "Holsters", "weaponWheel", value)) {
         holsters.weaponWheel = value != 0.0;
     }
+    if (Number(ini, "Holsters", "onlyHolstersDraw", value)) {
+        holsters.onlyHolstersDraw = value != 0.0;
+    }
     if (Number(ini, "Holsters", "holster", value)) {
         int const mode = static_cast<int>(std::lround(value));
         holsters.holster = mode <= 0 ? ik::body_slots::Holster::Off
@@ -652,8 +659,9 @@ std::string Describe(Holsters const& h) {
         ? std::format("the right grip holds the gun (let go elsewhere: back after {}), RB from {}",
               h.releaseGrace >= 0.0 ? std::format("{:.2f} s", h.releaseGrace) : std::string("never"), gamepad::Name(h.powerWheel))
         : std::string("the right grip is RB except a squeeze at a slot (gripHolds 0)");
-    std::string text = std::format("{}, {}, weapon wheel {}, holster {}, eye height {} (setting {:.2f} m), haptics {:.2f}; slots:",
+    std::string text = std::format("{}, {}, weapon wheel {}, holster {}, {}, eye height {} (setting {:.2f} m), haptics {:.2f}; slots:",
         h.enabled ? "on" : "off", grip, h.weaponWheel ? "kept (LB)" : "off", static_cast<int>(h.holster),
+        h.onlyHolstersDraw ? "only holsters draw" : "the game may draw",
         h.eyeHeightFromFloor ? "from the floor" : "from the setting", h.layout.eyeHeight, h.hapticAmplitude);
     for (ik::body_slots::Slot const& slot : h.layout.slots) {
         text += std::format(" {} {} ({:.2f}, {:.2f}, {:.2f}) r {:.2f};", slot.name, ik::body_slots::Name(slot.weapon), slot.offset.x,
@@ -1352,6 +1360,7 @@ void Refresh() {
         {L"releaseGrace", "releaseGrace", L"0.3"},
         {L"powerWheel", "powerWheel", L"r3"},
         {L"eyeHeightFromFloor", "eyeHeightFromFloor", L"1"},
+        {L"onlyHolstersDraw", "onlyHolstersDraw", L"1"},  // 2026-10-25
     };
     std::string added;
     for (NewKey const& k : kNewHolsterKeys) {
@@ -1473,10 +1482,10 @@ void Refresh() {
         {L"Hands", "Hands", L"leanM", "leanM", L"0.20"},
         {L"Hands", "Hands", L"bodyMoveMaxM", "bodyMoveMaxM", L"0.75"},
         // The weapon drawn, like exploring (2026-10-25, research/38).
-        {L"Hands", "Hands", L"exploreStance", "exploreStance", L"1"},
+        {L"Hands", "Hands", L"exploreStance", "exploreStance", L"0"},
         {L"Hands", "Hands", L"exploreStanceStorm", "exploreStanceStorm", L"1"},
         {L"Hands", "Hands", L"exploreRamp", "exploreRamp", L"1"},
-        {L"Hands", "Hands", L"drawRate", "drawRate", L"2.0"},
+        {L"Hands", "Hands", L"drawRate", "drawRate", L"6.0"},
         {L"Hands", "Hands", L"constantEye", "constantEye", L"1"},
         // [Comfort] (2026-10-23, research/31): a section our menu started (it writes only the keys it changes).
         {L"Comfort", "Comfort", L"turn", "turn", L"game"},

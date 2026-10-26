@@ -822,6 +822,7 @@ void CheckFunctions() {
         "SFXGame.SFXGameModeWeaponWheel.ExitWeaponWheel",
         "SFXGame.SFXGameModeDefault.TryHolster",
         "SFXGame.SFXGameModeDefault.SwitchToWeapon",
+        "SFXGame.SFXPawn_Player.DrawPrimaryWeapon",  // holsters' onlyHolstersDraw (2026-10-25)
         "Engine.PlayerController.GetScaleFormManager",
         // Posture, ViewLevel, Comfort, MenuPause (migrated in stage 1)
         "SFXGame.BioPawn.ShouldCrouch",

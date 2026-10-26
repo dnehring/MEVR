@@ -100,7 +100,7 @@
 				<button class="tog" data-class-on="explore_stance" data-event-click="toggle('explore_stance')"><div class="knob"/></button></div>
 			<div class="row"><div class="rl"><div class="rlab">Steady view</div><div class="rdesc">Drawing, holstering, aiming and sprinting leave your eyes where they are</div></div>
 				<button class="tog" data-class-on="constant_eye" data-event-click="toggle('constant_eye')"><div class="knob"/></button></div>
-			<div class="srow"><div class="slab">Draw speed</div><input type="range" min="1" max="4" step="0.5" data-value="draw_rate"/><div class="sval">{{draw_rate_text}}</div></div>
+			<div class="srow"><div class="slab">Draw speed</div><input type="range" min="1" max="10" step="0.5" data-value="draw_rate"/><div class="sval">{{draw_rate_text}}</div></div>
 		</div>
 	</div>
 
