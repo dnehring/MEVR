@@ -110,3 +110,16 @@ body {
 .dialog .dt { font-family: Rajdhani; font-weight: 700; font-size: 30dp; letter-spacing: 0.06em; text-transform: uppercase; }
 .dialog .dp { font-size: 17dp; color: #D9DCDD; margin: 12dp 0dp 22dp 0dp; line-height: 24dp; }
 .dialog .db { display: flex; gap: 10dp; justify-content: flex-end; }
+
+/* Report a problem: the files the zip will hold. */
+.files {
+	padding: 10dp 18dp;
+	background-color: rgba(0,0,0,30%);
+	border: 1dp rgba(255,255,255,9%);
+}
+.frow { display: flex; gap: 14dp; font-size: 15dp; line-height: 22dp; color: #AEB4B9; }
+.frow .fname { flex: 0 0 300dp; color: #D9DCDD; }
+.frow .fsize { flex: 0 0 80dp; text-align: right; color: #7CCBF2; }
+.frow .fnote { flex: 1 1 auto; }
+.hero .big.i-report { decorator: icon(report); color: #FFB3A8; }
+.hero.report .heroh { font-size: 24dp; line-height: 30dp; }

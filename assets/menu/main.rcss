@@ -152,6 +152,7 @@ button { display: inline-block; focus: auto; tab-index: auto; nav: auto; }
 .i-camera { decorator: icon(camera); }
 .i-record { decorator: icon(record); }
 .i-timer { decorator: icon(timer); }
+.i-report { decorator: icon(report); }
 
 /* ---- Rail and content ---------------------------------------------------------------------------------- */
 .main { display: flex; flex: 1 1 auto; height: 744dp; }
@@ -440,3 +441,8 @@ scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc { width: 0dp;
 }
 #pointer .dot { margin: 3dp; width: 12dp; height: 12dp; border-radius: 6dp; background-color: #50C8FF; }
 #pointer.pressing .dot { background-color: #FFAA28; }
+
+/* Report a problem's crash offer (research/33 section 8): over every section until answered. */
+.row .actions { display: flex; gap: 8dp; flex: 0 0 auto; }
+.crashoffer .row { border-color: rgba(255,170,160,35%); background-color: rgba(60,26,26,45%); }
+.crashoffer .rlab { color: #FFD9D3; }

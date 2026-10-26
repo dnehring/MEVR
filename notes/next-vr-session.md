@@ -1315,6 +1315,21 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       `MELEVR.ini.tmp` stays in `ASI`.
     - The log's `halcyon bridge: the runtime's interaction profile:` line, and no `controller profile ...:` warning for
       the Sense controllers (that warning is only for WMR, Vive or simple-controller profiles).
+41. **Report a problem (new, 2026-10-26; HOST REDEPLOY, game closed; [research/33](../research/33-installer.md)
+    section 8).** The deploy must also put the new `MEVR-Setup.exe` in `ASI\` (`tools/package-release.ps1` and the setup
+    do; with `deploy-asi.ps1` only, copy `build\Release\MEVR-Setup.exe` there by hand, else the menu says the setup
+    isn't there and the request waits for the setup's next start).
+    - The attach line now names the commit: `MEVR 0.1.0 (hot reload host, commit 1a0622c...) attaching to LE1`.
+    - If `crash-breadcrumbs.txt` is newer than any report, the first menu open shows "The game crashed last session"
+      above the section: **No thanks** removes it for good (until the next crash; `report.dismissed` in
+      `%LOCALAPPDATA%\MEVR`); **Create a report** is the same as below.
+    - Advanced > Diagnostics > **Report** (try it with "With the latest snapshot" on, after a snapshot): the menu stays
+      open and the frame rate shouldn't move (the probe can confirm: a separate process at background priority); within
+      a few seconds the row says `Saved to the Desktop: MEVR-report-<date-time>.zip`. Log: `report: started MEVR Setup
+      --report`, then `report: Saved to ...`. No window may appear and the game must keep the focus.
+    - After the game: open the zip. REPORT.md first; it should name the PS VR2 (`SteamVR/OpenXR : playstation_vr2`), the
+      Sense controllers' interaction profile, the render size; your user and computer names must appear nowhere (search
+      the folder). MEVR Setup > Report a problem shows the same preview and Open the form opens the issue form filled in.
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR

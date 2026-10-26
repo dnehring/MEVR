@@ -7,6 +7,7 @@
 #include "install/Http.hpp"
 #include "install/Launch.hpp"
 #include "install/Packs.hpp"
+#include "install/ReportMarks.hpp"
 #include "install/Updates.hpp"
 
 #include <RmlUi/Core/Context.h>
@@ -68,8 +69,15 @@ bool App::Bind(Rml::Context* context) {
         line.RegisterMember("error", &LogLine::error);
     }
     c.RegisterArray<std::vector<LogLine>>();
+    if (auto file = c.RegisterStruct<ReportFileView>()) {
+        file.RegisterMember("name", &ReportFileView::name);
+        file.RegisterMember("size", &ReportFileView::size);
+        file.RegisterMember("note", &ReportFileView::note);
+    }
+    c.RegisterArray<std::vector<ReportFileView>>();
     c.Bind("packs", &packs_);
     c.Bind("log_lines", &log_);
+    c.Bind("report_files", &reportFiles_);
     struct Flag {
         char const* name;
         bool* value;
@@ -81,7 +89,9 @@ bool App::Bind(Rml::Context* context) {
              Flag{"headset_known", &headsetKnown_}, Flag{"update_enabled", &updateEnabled_}, Flag{"opt_settings", &optSettings_},
              Flag{"opt_vsync", &optVsync_}, Flag{"opt_blur", &optBlur_}, Flag{"opt_grain", &optGrain_}, Flag{"opt_hdr", &optHdr_},
              Flag{"keep_settings", &keepSettings_}, Flag{"confirm_open", &confirmOpen_}, Flag{"confirm_danger", &confirmDanger_},
-             Flag{"upstream_found", &upstreamFound_}, Flag{"gamer_read_only", &gamerReadOnly_}, Flag{"remove_local", &removeLocal_}}) {
+             Flag{"upstream_found", &upstreamFound_}, Flag{"gamer_read_only", &gamerReadOnly_}, Flag{"remove_local", &removeLocal_},
+             Flag{"report_snapshot", &reportSnapshot_}, Flag{"report_perf", &reportPerf_}, Flag{"report_ready", &reportReady_},
+             Flag{"crash_offer", &crashOffer_}, Flag{"report_has_zip", &reportHasZip_}}) {
         c.Bind(f.name, f.value);
     }
     struct Text {
@@ -100,7 +110,9 @@ bool App::Bind(Rml::Context* context) {
              Text{"launch_text", &launchText_}, Text{"footer_text", &footerText_}, Text{"wait_text", &waitText_},
              Text{"request_text", &requestText_}, Text{"mem_text", &memText_}, Text{"progress_text", &progressText_},
              Text{"confirm_title", &confirmTitle_}, Text{"confirm_text", &confirmText_}, Text{"confirm_button", &confirmButton_},
-             Text{"upstream_text", &upstreamText_}, Text{"local_text", &localText_}}) {
+             Text{"upstream_text", &upstreamText_}, Text{"local_text", &localText_}, Text{"report_text", &reportText_},
+             Text{"report_redactions", &reportRedactions_}, Text{"report_headline", &reportHeadline_}, Text{"report_zip", &reportZip_},
+             Text{"report_request", &reportRequest_}}) {
         c.Bind(t.name, t.value);
     }
     c.Bind("progress", &progress_);
@@ -185,7 +197,82 @@ void App::Start() {
         waiting_ = true;
         waitText_ = "Changes start once the game has exited.";
     }
+    // Report a problem: a request the game left (its setup copy wasn't there to answer it), or a crash since the last
+    // report and the last "no".
+    {
+        namespace marks = install::report_marks;
+        fs::path const local = install::LocalDataDir();
+        std::error_code ec;
+        if (!local.empty() && fs::exists(marks::RequestFile(local), ec)) {
+            if (auto const text = install::ReadFile(marks::RequestFile(local))) {
+                if (auto const request = json::Parse(*text)) {
+                    reportSnapshot_ = request->Bool("snapshot");
+                    reportPerf_ = request->Bool("perf");
+                }
+            }
+            fs::remove(marks::RequestFile(local), ec);
+            reportRequest_ = "You asked for a report from the game's menu. Look over what goes in, then create it.";
+            page_ = "report";
+        }
+        crashOffer_ = marks::CrashOffer(local);
+    }
     Refresh();
+}
+
+install::report::Options App::ReportOptions() const {
+    install::report::Options o;
+    o.gameRoot = gameOk_ ? status_.root : fs::path();
+    o.store = SteamGame() ? "Steam" : status_.source == "EA app" ? "EA app" : std::string();
+    o.snapshot = reportSnapshot_;
+    o.perf = reportPerf_;
+    return o;
+}
+
+void App::GatherReport() {
+    if (busy_ || sample_) {
+        return;
+    }
+    auto bundle = std::make_shared<install::report::Bundle>();
+    install::report::Options const options = ReportOptions();
+    RunJob("Gathering what the report holds", [bundle, options] { *bundle = install::report::Collect(options); });
+    jobDone_ = [this, bundle] {
+        bundle_ = bundle;
+        reportReady_ = true;
+        ShowBundle();
+    };
+}
+
+void App::ShowBundle() {
+    reportFiles_.clear();
+    if (!bundle_) {
+        return;
+    }
+    install::report::Bundle const& b = *bundle_;
+    reportFiles_.push_back({"REPORT.md", "~" + install::report::SizeText(install::report::BuildReportMd(b).size()),
+        "The summary: system, what went wrong, settings changed, a prompt for your AI assistant"});
+    std::uint64_t total = 0;
+    for (install::report::File const& f : b.files) {
+        total += f.bytes.size();
+        std::string note = f.note;
+        if (f.redactions > 0) {
+            note += std::format("{}{} redacted", note.empty() ? "" : "; ", f.redactions);
+        }
+        reportFiles_.push_back({f.name, install::report::SizeText(f.bytes.size()), note});
+    }
+    install::report::Redactions const& r = b.redactions;
+    reportRedactions_ = std::format("{} redactions: your Windows user name {} times, the computer's name {}, your profile folder {}, e-mail "
+                                    "addresses {}. They read <user>, <computer>, <profile>, <email> in the zip.",
+        r.Total(), r.userName, r.computerName, r.profilePath, r.email);
+    reportHeadline_ = install::report::Headline(b);
+    reportText_ = std::format("{} files, {} before compression.{}", b.files.size() + 1, install::report::SizeText(total),
+        b.missing.empty() ? std::string() : " Not on this PC: " + [&] {
+            std::string m;
+            for (std::string const& x : b.missing) {
+                m += (m.empty() ? "" : ", ") + x;
+            }
+            return m;
+        }() + ".");
+    Dirty();
 }
 
 void App::Refresh() {
@@ -428,6 +515,9 @@ void App::Tick() {
         if (page_ == "repair" && !busy_) {
             UpdateRepairStatus();  // the files as they are now, not when the setup started
             Dirty();
+        }
+        if (page_ == "report" && !busy_) {
+            GatherReport();  // the preview: what the zip would hold now
         }
     }
     if (waiting_ && options_.waitPid != 0) {
@@ -749,6 +839,57 @@ void App::Act(std::string const& name, std::string const& arg) {
         if (host_.restartAsAdmin) {
             host_.restartAsAdmin();
         }
+    } else if (name == "report_toggle") {
+        // A checkbox: what the zip holds changes, so the preview is gathered again.
+        if (arg == "snapshot") {
+            reportSnapshot_ = !reportSnapshot_;
+        } else if (arg == "perf") {
+            reportPerf_ = !reportPerf_;
+        }
+        GatherReport();
+    } else if (name == "report_refresh") {
+        GatherReport();
+    } else if (name == "report_create") {
+        if (!bundle_) {
+            return;
+        }
+        auto bundle = bundle_;
+        install::report::Options const options = ReportOptions();
+        auto result = std::make_shared<install::report::Result>();
+        RunJob("Writing the report", [this, bundle, options, result] {
+            *result = install::report::Write(*bundle, options);
+            Post(result->ok ? "Saved " + detect::Utf8(result->zip.filename().wstring()) + " (" + install::report::SizeText(result->bytes) +
+                                  ") to " + result->folder + ". Nothing was sent anywhere."
+                            : "Couldn't save the report: " + result->error,
+                !result->ok);
+        });
+        jobDone_ = [this, result] {
+            crashOffer_ = false;
+            reportHasZip_ = result->ok;
+            if (result->ok) {
+                reportZipPath_ = result->zip;
+                reportZip_ = "Saved to " + result->folder + ": " + detect::Utf8(result->zip.filename().wstring()) +
+                             ". Open it to see exactly what's inside; attach it to your issue or give it to your AI assistant.";
+                if (host_.revealFile) {
+                    host_.revealFile(result->zip);
+                }
+            } else {
+                reportZip_ = "Couldn't save the report: " + result->error;
+            }
+        };
+    } else if (name == "report_reveal") {
+        if (host_.revealFile && !reportZipPath_.empty()) {
+            host_.revealFile(reportZipPath_);
+        }
+    } else if (name == "report_issue") {
+        if (host_.openUrl && bundle_) {
+            host_.openUrl(install::report::IssueUrl(*bundle_));
+        }
+    } else if (name == "crash_report") {
+        page_ = "report";
+    } else if (name == "crash_dismiss") {
+        install::report_marks::Touch(install::report_marks::DismissedMark(install::LocalDataDir()), "dismissed in MEVR Setup");
+        crashOffer_ = false;
     }
     Dirty();
 }
@@ -891,6 +1032,34 @@ void App::Sample(std::string const& state) {
     }
     updateEnabled_ = false;
     updateText_ = "No release page set yet (MEVR-Setup.ini, [Update] repo).";
+    // Report a problem's stand-ins: a crash last session, a gathered preview.
+    crashOffer_ = state == "crash";
+    reportRequest_ = state == "report-request" ? "You asked for a report from the game's menu. Look over what goes in, then create it." : "";
+    reportSnapshot_ = state == "report-request";
+    reportPerf_ = false;
+    reportHasZip_ = state == "report-saved";
+    reportZip_ = reportHasZip_ ? "Saved to Desktop: MEVR-report-2026-10-26-0143.zip. Open it to see exactly what's inside; attach it to your issue or "
+                                 "give it to your AI assistant."
+                               : "";
+    reportReady_ = state.rfind("report", 0) == 0;
+    reportFiles_.clear();
+    if (reportReady_) {
+        reportFiles_ = {{"REPORT.md", "~6.2 KB", "The summary: system, what went wrong, settings changed, a prompt for your AI assistant"},
+            {"logs/LE1MEVR.log", "246.1 KB", "4 redacted"}, {"logs/LE1MEVR.prev.log", "502.1 KB", "6 redacted"},
+            {"logs/MELEVR_Log.txt", "3.0 MB", "its last session only: the first 0.5 MB and the last 2.5 MB of 9.1 MB (the file holds 182.7 MB from every session)"},
+            {"logs/MEVRLoader.log", "1.2 KB", ""}, {"logs/crash-breadcrumbs.txt", "29.4 KB", "written 2026-10-26 00:11"},
+            {"logs/reflect-check.json", "80.9 KB", "12 redacted"}, {"settings/LE1MEVR.ini", "12.7 KB", ""}, {"settings/MELEVR.ini", "9.8 KB", ""},
+            {"settings/MEVR-install.json", "6.0 KB", ""}, {"system/folders.txt", "3.1 KB", "file names and sizes"}};
+        if (reportSnapshot_) {
+            reportFiles_.push_back({"snapshot/20261026-014210.json", "18.2 KB", ""});
+            reportFiles_.push_back({"snapshot/20261026-014210-left.png", "2.1 MB", "what that eye showed"});
+            reportFiles_.push_back({"snapshot/20261026-014210-right.png", "2.1 MB", "what that eye showed"});
+        }
+        reportRedactions_ = "22 redactions: your Windows user name 4 times, the computer's name 2, your profile folder 16, e-mail addresses 0. "
+                            "They read <user>, <computer>, <profile>, <email> in the zip.";
+        reportHeadline_ = "Crash: 0xC0000005 (access violation) at ntdll.dll+0x1A12D";
+        reportText_ = "12 files, 4.1 MB before compression.";
+    }
     Dirty();
 }
 

@@ -98,6 +98,7 @@ private:
     std::string modeNote_;
     std::string perfMsg_;
     std::string contentMsg_;
+    std::string reportMsg_;
     bool wasAligning_ = false;
     // A write of the settings file failed (a read-only ASI folder or file): the menu's status line says so.
     bool saveFailed_ = false;

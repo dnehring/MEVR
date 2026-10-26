@@ -327,6 +327,74 @@ test-fake-game.ps1`, plus a one-off script covering every item).
     own DLL, renamed back by the first try, leaving the game without one. `Transaction::Uninstall` now keeps on
     record only what wasn't undone, and Uninstall leaves a `bink2w64.dll` that is RAD's with nothing behind it.
 
+## 8. Report a problem (2026-10-26)
+
+Players are expected to have an AI assistant at hand, so a bug report should be one button, and what it makes should
+read well for that assistant and for us. **Nothing is uploaded or sent automatically**: the player gets a zip on the
+Desktop, looks at it, and decides.
+
+**What the zip holds** (`src/install/Report`, its own deflate writer `src/install/Zip`, no zlib): `REPORT.md` first;
+`logs/` the mod's `LE1MEVR.log` and `.prev.log` (over 4 / 3 MB: the first 1 MB and the last 3 / 2 MB), Halcyon's
+`MELEVR_Log.txt` trimmed to its last session (it never resets: 191 MB on the dev machine; from the last
+"(Halcyon) inside" start banner, else the last `[XR] starting OpenXR session thread`, read from the file's last 48 MB,
+then at most 0.5 MB + 2.5 MB), the loader's log (`MEVRLoader.log`, or LEBinkProxy's `bink2w64_proxy.log`), the crash
+breadcrumbs (and `.prev`), `reflect-check.json`; `settings/` `LE1MEVR.ini`, `MELEVR.ini`, `MEVR-install.json`;
+`system/folders.txt` (Win64's top level and ASI's tree: names, sizes and dates only, for conflicts; no other mod's
+contents); optional `snapshot/` (the newest JSON and its eye PNGs) and `perf/` (the newest `-probe.json`,
+`-frames.csv`, `-ticks.csv`). A file the running game holds without read sharing (our loader's log: `fopen` in "w")
+is listed as locked, not included.
+
+**Redaction** before anything is written: every text file and REPORT.md. The profile folder (as written, with forward
+slashes, JSON-escaped): under `...\Users\` its last part becomes `<user>`, elsewhere all of it `<profile>`; the
+account name and the profile folder's name (a Microsoft account's folder is a truncated name) as whole words
+(3+ characters; a short name would eat the log); `%COMPUTERNAME%` and the DNS host name as `<computer>`; e-mail
+addresses (`local@domain.tld`, the TLD letters only) as `<email>`. The count per kind is shown in the preview. On
+the dev machine's real logs (with the snapshot and frame timing): 10 replacements, all the profile path; a search of
+every text entry finds neither the user nor the computer name.
+
+**REPORT.md** (under 30 KB; the caps halve until it fits): one paragraph on MEVR with the repository, the
+troubleshooting guide and the issue tracker; the system (MEVR as the log's attach line says, with the commit now baked
+in by `tools/cmake/BuildInfo.cmake`; the install record's version; MassEffect1.exe's version and the store; Windows
+from the registry, `ProductName` corrected to 11 at build 22000+; the first hardware DXGI adapter and its UMD driver
+version, with NVIDIA's own number; the active OpenXR runtime; from the logs the headset's system name, the
+interaction profile, the colour profile, the eye and render sizes); what went wrong (the last session's `[error]` and
+`[warn]` lines merged where they differ only in numbers, a module's `+0x` offset kept, counted, errors first; fewer
+for the session before and Halcyon's error/failed/exception lines); the crash (exception, faulting module+offset,
+the top native frames, the script frames; labelled "an earlier crash" when the breadcrumbs are older than the
+previous session's log, and then not the headline); the settings off their defaults (LE1MEVR.ini's player keys
+against the code's defaults, MELEVR.ini's active profile against the release file the setup installs); the files;
+and the prompt for the assistant. The parsing and assembly are pure and unit-tested (`tests/ReportTests.cpp`, with an
+inflater for our deflate stream); the fake-game script checks the zip with .NET and Expand-Archive and that nothing
+personal is left.
+
+**Where it starts:**
+- MEVR Setup's **Report a problem** page (rail, Welcome and Repair rows): the preview (files, sizes, notes, the
+  redaction count, the headline) gathered on the worker, the snapshot and frame-timing checkboxes re-gather it, then
+  Create writes the zip to the Desktop (else Documents, else `%LOCALAPPDATA%\MEVR\reports`) and opens Explorer with
+  it selected (`SHOpenFolderAndSelectItems`). **Open a GitHub issue** opens
+  `issues/new?template=bug.yml&title=...&version=...&summary=...`: the non-personal summary only (versions, Windows,
+  GPU, runtime, headset, controllers, the headline), cut to stay under 7 KB; the player attaches the zip.
+- The command line: `--report [--snapshot] [--perf] [--report-dir <folder>] [--local <folder>]` (tests use the last
+  two).
+- **In game:** Advanced > Diagnostics > Report (with "latest snapshot" and "latest frame timing" toggles).
+  `plugin/ReportRequest` (host) writes `report.request` and starts `ASI\MEVR-Setup.exe --report --from-game --game
+  <Win64>` **right away**, not at exit like Optional content: the report should hold the session as it is now, the
+  player may never quit cleanly (a hang), and a separate process at `PROCESS_MODE_BACKGROUND_BEGIN` (CPU and disk)
+  reading a few MB costs the game nothing; it has no window, so the game keeps the focus. The file write and
+  `CreateProcess` run on a short thread of their own, never in a frame. The setup writes `report.result`; the menu
+  polls it at most once a second and says "Saved to the Desktop: <name>. Open it after the game". Without the setup
+  in the ASI folder (a development deploy) the request waits and the setup opens on the page next time.
+- **After a crash:** `crash-breadcrumbs.txt` newer than `report.last` (touched by every report) and
+  `report.dismissed` (touched by No thanks) makes the setup's Welcome page and the in-game menu offer a report
+  (`install/ReportMarks`, header-only so the host doesn't link the installer library).
+
+**Impact:** the host gains `plugin/ReportRequest` (two small files, a few stats and one tiny JSON read while the
+menu is open) and the commit in its attach line; the mod nothing; the setup the page and the CLI (`mevr-install` now links `dxgi` for the GPU line).
+
+**The issue form** (`.github/ISSUE_TEMPLATE/bug.yml`, replacing `bug.md`): headset and runtime dropdowns with Other,
+the version, what you did / expected / happened, a required "I attached the report zip" checkbox, the optional
+summary. `config.yml` keeps blank issues (ideas and questions have no form yet) and links the troubleshooting guide.
+
 ## Open
 
 - **[verify]** In the game: our loader in place of LEBinkProxy (attach timing, Halcyon's DXGI hook, the log);

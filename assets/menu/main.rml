@@ -47,6 +47,15 @@
 
 	<div class="content" id="content">
 
+	<!-- The game crashed last session (crash-breadcrumbs.txt newer than the last report and the last "no"). -->
+	<div class="group crashoffer" data-if="crash_offer">
+		<div class="row"><div class="rl"><div class="rlab">The game crashed last session</div><div class="rdesc">Create a report? MEVR Setup gathers the logs and the crash details into a zip on your Desktop, in the background. Nothing is sent.</div></div>
+			<div class="actions">
+				<button class="btn" data-event-click="cmd('crash_dismiss')"><div class="sweep"/><span>No thanks</span><div class="tick"/></button>
+				<button class="btn primary" data-event-click="cmd('report')"><div class="sweep"/><div class="bi i-report"/><span>Create a report</span></button>
+			</div></div>
+	</div>
+
 	<!-- ===================================================================================== Comfort -->
 	<div data-if="section == 'comfort'">
 		<div class="stitle">Comfort</div>
@@ -368,6 +377,12 @@
 		<div data-if="advtab == 'diag'">
 			<div class="group">
 				<div class="gtitle"><span>Diagnostics</span><div class="gline"/></div>
+				<div class="row"><div class="rl"><div class="rlab">Report a problem</div><div class="rdesc">Saves the logs, settings and a summary for your AI assistant or an issue in a zip on your Desktop, in the background. Nothing is sent: open it after the game</div><div class="note" data-if="report_msg != ''">{{report_msg}}</div></div>
+					<button class="btn" data-event-click="cmd('report')"><div class="sweep"/><div class="bi i-report"/><span>Report</span><div class="tick"/></button></div>
+				<div class="row"><div class="rl"><div class="rlab">With the latest snapshot</div><div class="rdesc">Take one first (below) if the problem is something you see</div></div>
+					<button class="tog" data-class-on="report_snapshot" data-event-click="toggle('report_snapshot')"><div class="knob"/></button></div>
+				<div class="row"><div class="rl"><div class="rlab">With the latest frame timing</div><div class="rdesc">For stutter or a low frame rate: measure first (below)</div></div>
+					<button class="tog" data-class-on="report_perf" data-event-click="toggle('report_perf')"><div class="knob"/></button></div>
 				<div class="row"><div class="rl"><div class="rlab">Snapshot</div><div class="rdesc">Closes the menu and saves what each eye sees, for a bug report (also: tap both stick clicks)</div></div>
 					<button class="btn" data-event-click="cmd('snapshot')"><div class="sweep"/><div class="bi i-camera"/><span>Take</span><div class="tick"/></button></div>
 				<div class="row"><div class="rl"><div class="rlab">Record a session</div><div class="rdesc">Your head and hand movements, to replay a problem</div></div>

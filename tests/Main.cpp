@@ -6992,6 +6992,8 @@ void TestPoseGraft() {
 
 // tests/InstallTests.cpp: the installer's logic (research/33).
 void RunInstallTests(int& failures);
+// tests/ReportTests.cpp: "Report a problem" (install/Report, research/33 section 8).
+void RunReportTests(int& failures);
 // tests/ReflectTests.cpp: our UE3 reflection layer (src/ue3, research/34).
 int RunReflectTests();
 int RunBreadcrumbTests();
@@ -7038,6 +7040,7 @@ void TestIni() {
 int main() {
     TestIni();
     RunInstallTests(gFailures);
+    RunReportTests(gFailures);
     gFailures += RunReflectTests();
     gFailures += RunBreadcrumbTests();
     gFailures += RunExeTests();

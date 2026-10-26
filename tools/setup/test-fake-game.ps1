@@ -112,6 +112,55 @@ Check ((Get-Content -Raw (Join-Path $config 'GamerSettings.ini')) -match '(?m)^R
 Check ((Run-Setup @('--install', '--source', 'Steam', '--quality', 'keep')) -eq 0) 'install again (update)'
 Check ((Get-Content -Raw (Join-Path $win64 'ASI\MELEVR.ini')) -match 'sfr2HalfEyeUU = 2\.9') 'update: the player''s Halcyon value kept'
 
+# Report a problem (research/33 section 8): fake logs that name this PC's user and computer and an e-mail address, a
+# crash and a snapshot in a fake %LOCALAPPDATA%\MEVR. The zip lands in scratch; the game folder isn't touched.
+$fakeLocal = Join-Path $scratch 'fake-local\MEVR'
+$reportOut = Join-Path $scratch 'report-out'
+Remove-Item -Recurse -Force (Join-Path $scratch 'fake-local'), $reportOut -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force (Join-Path $fakeLocal 'snapshots'), (Join-Path $win64 'Logs') | Out-Null
+$who = "C:\Users\$env:USERNAME\AppData\Local\MEVR on $env:COMPUTERNAME, mail $env:USERNAME.test@example.com"
+[IO.File]::WriteAllText((Join-Path $win64 'Logs\LE1MEVR.log'),
+    "[01:00:00.000] [info] MEVR 0.1.0 (monolithic, commit abc1234) attaching to LE1`r`n[01:00:01.000] [error] could not open $who`r`n" +
+    "[01:00:02.000] [warn] late frame 12 ms`r`n[01:00:03.000] [warn] late frame 15 ms`r`n")
+[IO.File]::WriteAllText((Join-Path $fakeLocal 'crash-breadcrumbs.txt'),
+    "==== MEVR crash breadcrumbs ====`r`n2026-10-26 00:11:26.458  pid 1`r`nexception 0xC0000005 (access violation) at LE1MEVR.asi+0x1234, reading 0x0`r`n`r`nnative stack (unwound from the fault):`r`n  [0] LE1MEVR.asi+0x1234  (rsp 0x1)`r`n`r`n$who`r`n")
+[IO.File]::WriteAllText((Join-Path $fakeLocal 'snapshots\2026-10-26_01-00-00-000.json'), "{`"note`": `"$($who -replace '\\', '\\')`"}")
+[IO.File]::WriteAllBytes((Join-Path $fakeLocal 'snapshots\2026-10-26_01-00-00-000-left.png'), [byte[]](137, 80, 78, 71))
+$beforeReport = Snapshot
+Check ((Run-Setup @('--report', '--snapshot', '--report-dir', $reportOut, '--local', $fakeLocal)) -eq 0) 'report'
+$zipFile = Get-ChildItem (Join-Path $reportOut 'MEVR-report-*.zip') | Select-Object -First 1
+Check ($null -ne $zipFile) 'report: the zip is written'
+if ($zipFile) {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [IO.Compression.ZipFile]::OpenRead($zipFile.FullName)
+    $names = @($archive.Entries | ForEach-Object { $_.FullName })
+    $texts = @{}
+    foreach ($entry in $archive.Entries) {
+        $reader = New-Object IO.StreamReader($entry.Open())
+        $texts[$entry.FullName] = $reader.ReadToEnd()
+        $reader.Dispose()
+    }
+    $archive.Dispose()
+    Check ($names[0] -eq 'REPORT.md') 'report: REPORT.md first'
+    Check (($names -contains 'logs/LE1MEVR.log') -and ($names -contains 'logs/crash-breadcrumbs.txt') -and ($names -contains 'settings/MELEVR.ini') -and
+        ($names -contains 'settings/MEVR-install.json') -and ($names -contains 'system/folders.txt')) 'report: logs, settings, listing'
+    Check (($names -contains 'snapshot/2026-10-26_01-00-00-000.json') -and ($names -contains 'snapshot/2026-10-26_01-00-00-000-left.png')) 'report: the snapshot'
+    $leak = $texts.Keys | Where-Object { $_ -notlike '*.png' -and ($texts[$_] -match [regex]::Escape($env:COMPUTERNAME) -or
+        $texts[$_] -match ('\b' + [regex]::Escape($env:USERNAME) + '\b') -or $texts[$_] -match 'test@example\.com') }
+    Check (-not $leak) "report: no user name, computer name or e-mail left ($($leak -join ', '))"
+    Check ($texts['logs/LE1MEVR.log'] -match 'C:\\Users\\<user>\\AppData' -and $texts['logs/LE1MEVR.log'] -match '<computer>' -and $texts['logs/LE1MEVR.log'] -match '<email>') 'report: redacted in place'
+    $md = $texts['REPORT.md']
+    Check ($md -match 'Faulting module\+offset: LE1MEVR\.asi\+0x1234' -and $md -match '\[warn\] x2' -and $md -match 'Ask me what I was doing') 'report: REPORT.md (crash, merged warnings, prompt)'
+    Check ($md.Length -lt 30KB) 'report: REPORT.md under 30 KB'
+    $expand = Join-Path $scratch 'report-expanded'
+    Remove-Item -Recurse -Force $expand -ErrorAction SilentlyContinue
+    Expand-Archive -Path $zipFile.FullName -DestinationPath $expand
+    Check ((Get-Content -Raw (Join-Path $expand 'logs\LE1MEVR.log')) -eq $texts['logs/LE1MEVR.log']) 'report: Windows'' own unzip reads it'
+}
+Check ((Test-Path (Join-Path $fakeLocal 'report.last')) -and (Test-Path (Join-Path $fakeLocal 'report.result'))) 'report: report.last and report.result'
+Check (-not (Compare-Object $beforeReport (Snapshot))) 'report: the game folder untouched'
+# The fake log stays: the uninstall below removes the mod's run-time files and the Logs folder (on record as ours).
+
 Check ((Run-Setup @('--uninstall')) -eq 0) 'uninstall'
 $after = Snapshot
 $diff = Compare-Object $before $after

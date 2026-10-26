@@ -98,20 +98,30 @@ Read-only in the file's Properties, then use **Settings > Apply**.
 
 ## Reporting a problem
 
-Open an issue at <https://github.com/dnehring/MEVR/issues> with:
+The troubleshooting guide covers the common problems: <https://github.com/dnehring/MEVR/blob/main/docs/troubleshooting.md>
+(your AI assistant can read it).
 
-- **what you did** and what happened (the steps, where in the game, and what you expected);
-- **your headset and OpenXR runtime** (for example Quest 3 over Steam Link, SteamVR);
-- **the mod's log:** `Game\ME1\Binaries\Win64\Logs\LE1MEVR.log` (and `LE1MEVR.prev.log`, the run before);
-- **after a crash:** `%LOCALAPPDATA%\MEVR\crash-breadcrumbs.txt`;
-- **the renderer's log:** `%LOCALAPPDATA%\MELEVR\MELEVR_Log.txt`;
-- **the loader's log:** `Game\ME1\Binaries\Win64\Logs\MEVRLoader.log`.
+**The easy way: Report a problem.** In **MEVR Setup**, open **Report a problem**; in the game, the VR menu's
+**Advanced > Diagnostics > Report** does the same in the background. It saves `MEVR-report-<date-time>.zip` on your
+Desktop with the logs, your VR settings, a list of the files in the game's Win64 and ASI folders, and `REPORT.md`: a
+summary (versions, headset, GPU, the errors of the last session, the crash if there was one, the settings you changed)
+that ends with a prompt to paste into your AI assistant. Your Windows user name, the computer's name, your profile
+folder and e-mail addresses are taken out of every file first. **Nothing is uploaded or sent**: open the zip and look.
+Tick the latest snapshot (for anything visual) or frame-timing measurement (for stutter) to add them. After a crash
+the setup and the VR menu offer it by themselves.
 
-For anything visual, the VR menu's **Advanced > Diagnostics > Snapshot** saves what each eye sees to
-`%LOCALAPPDATA%\MEVR\snapshots`.
+Then **Open a GitHub issue** (on the same page) opens the issue form with the versions and the error filled in;
+attach the zip there.
 
-**Logs can contain your Windows user name** in file paths. Look through them, and replace it if you prefer, before
-you attach them.
+**By hand**, if you prefer: open an issue at <https://github.com/dnehring/MEVR/issues> with what you did, what you
+expected and what happened, your headset and OpenXR runtime, and these files:
+
+- the mod's log: `Game\ME1\Binaries\Win64\Logs\LE1MEVR.log` (and `LE1MEVR.prev.log`, the run before);
+- after a crash: `%LOCALAPPDATA%\MEVR\crash-breadcrumbs.txt`;
+- the renderer's log: `%LOCALAPPDATA%\MELEVR\MELEVR_Log.txt` (it grows across sessions: its end is enough);
+- the loader's log: `Game\ME1\Binaries\Win64\Logs\MEVRLoader.log` (`bink2w64_proxy.log` with ME3Tweaks' loader).
+
+Logs written by hand can contain your Windows user name in file paths: replace it if you prefer.
 
 ## Licences and credits
 

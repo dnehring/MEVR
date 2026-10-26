@@ -3,12 +3,14 @@
 
 #include "install/Detect.hpp"
 #include "install/Installer.hpp"
+#include "install/Report.hpp"
 
 #include <RmlUi/Core/DataModelHandle.h>
 
 #include <atomic>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -30,6 +32,11 @@ struct PackView {
     bool large = false;
 };
 
+// A file the problem report will hold (the Report page's list).
+struct ReportFileView {
+    std::string name, size, note;
+};
+
 struct LogLine {
     std::string text;
     bool error = false;
@@ -41,6 +48,7 @@ struct Host {
     std::function<std::optional<std::filesystem::path>(std::wstring const& title)> pickFile;
     std::function<void(std::string const& url)> openUrl;
     std::function<void()> restartAsAdmin;
+    std::function<void(std::filesystem::path const& file)> revealFile;  // Explorer with the file selected
 };
 
 struct Options {
@@ -86,6 +94,10 @@ private:
     // The Repair page's status, from the files as they are now (on every refresh and whenever the page is shown).
     void UpdateRepairStatus();
     void Dirty();
+    // Report a problem (install/Report): gathers what the zip would hold for the page's preview (a job), shows it.
+    void GatherReport();
+    void ShowBundle();
+    install::report::Options ReportOptions() const;
 
     Options options_;
     Host host_;
@@ -124,6 +136,13 @@ private:
     std::function<void()> pending_;  // what Confirm runs
     int headsetWidth_ = 0, headsetHeight_ = 0;
     std::vector<std::pair<std::string, std::filesystem::path>> packFiles_;  // id -> the download the player chose
+
+    // ---- Report a problem
+    std::shared_ptr<install::report::Bundle> bundle_;  // the last gathered preview: what Create writes
+    std::vector<ReportFileView> reportFiles_;
+    bool reportSnapshot_ = false, reportPerf_ = false, reportReady_ = false, crashOffer_ = false, reportHasZip_ = false;
+    std::string reportText_, reportRedactions_, reportHeadline_, reportZip_, reportRequest_;
+    std::filesystem::path reportZipPath_;
 
     // ---- The worker ----
     std::thread worker_;

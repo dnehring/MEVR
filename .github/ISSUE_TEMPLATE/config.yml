@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: MIT
+# Blank issues stay allowed: ideas, questions and anything that isn't a bug have no form of their own yet.
+blank_issues_enabled: true
+contact_links:
+  - name: Troubleshooting guide
+    url: https://github.com/dnehring/MEVR/blob/main/docs/troubleshooting.md
+    about: Common problems (no picture in the headset, the game doesn't start in VR, crashes, performance) and what to try first.
