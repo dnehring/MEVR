@@ -11,7 +11,8 @@
 //   MEVR-Setup.exe --preview <folder>      every page to PNGs, offline (no game, no window)
 //   Command line (no window; --out <file> also writes the output there):
 //     --status | --install [--quality headset|performance|balanced|sharp|max|keep] [--no-settings] [--ignore-version]
-//     [--source Steam] | --uninstall [--keep-settings] | --repair | --apply-settings [--quality q] | --restore-settings
+//     [--source Steam] [--keep-upstream (refuse instead of moving Halcyon's MELE-VR aside)] | --uninstall [--keep-settings]
+//     [--remove-local-data] | --repair | --apply-settings [--quality q] | --restore-settings
 //   with --game <folder> and --payload <folder> (default: payload\ next to the exe).
 
 #include "SetupApp.hpp"
@@ -338,6 +339,8 @@ struct Cli {
     bool noSettings = false;
     bool ignoreVersion = false;
     bool keepSettings = false;
+    bool removeLocalData = false;
+    bool keepUpstream = false;
 };
 
 int RunCli(Cli const& cli) {
@@ -391,10 +394,11 @@ int RunCli(Cli const& cli) {
                 options.setupExe = ExePath();
                 options.source = source;
                 options.ignoreVersion = cli.ignoreVersion;
+                options.moveUpstreamAside = !cli.keepUpstream;
                 report(mevr::install::Install(layout, *payload, options));
             }
         } else if (cli.command == "uninstall") {
-            report(mevr::install::Uninstall(layout, cli.keepSettings, ExePath()));
+            report(mevr::install::Uninstall(layout, cli.keepSettings, ExePath(), cli.removeLocalData));
         } else if (cli.command == "repair") {
             auto const payload = cli.payload ? std::optional<mevr::install::Payload>(mevr::install::Payload{*cli.payload})
                                              : mevr::install::FindPayload(ExePath().parent_path());
@@ -717,6 +721,9 @@ int RunWindow(mevr::setup::Options options) {
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
+    // DLLs only from System32 (and those loaded by full path): never one planted next to the setup in a Downloads
+    // folder. The link flag /DEPENDENTLOADFLAG does the same for the static imports.
+    SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32);
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     int argc = 0;
     wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
@@ -753,6 +760,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             cli.ignoreVersion = true;
         } else if (a == L"--keep-settings") {
             cli.keepSettings = true;
+        } else if (a == L"--remove-local-data") {
+            cli.removeLocalData = true;
+        } else if (a == L"--keep-upstream") {
+            cli.keepUpstream = true;
         } else if (a == L"--request") {
             options.request = true;
         } else if (a == L"--wait-pid") {

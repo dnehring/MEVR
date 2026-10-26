@@ -119,5 +119,32 @@ if ($diff) { $diff | ForEach-Object { Write-Output "  differs: $($_.SideIndicato
 Check (-not $diff) 'the fake game folder is byte for byte what it was'
 Check (-not (Test-Path (Join-Path $win64 'ASI'))) 'the ASI folder is gone (we created it)'
 
+# QA 2026-10-26 (research/33 section 7). Halcyon's upstream MELE-VR in Win64: moved aside, put back.
+[IO.File]::WriteAllBytes((Join-Path $win64 'dxgi.dll'), [Text.Encoding]::ASCII.GetBytes('MZ stand-in for upstream MELEVR dxgi.dll'))
+[IO.File]::WriteAllText((Join-Path $win64 'openxr_loader.dll'), 'stand-in')
+$beforeUpstream = Snapshot
+Check ((Run-Setup @('--install', '--source', 'Steam', '--quality', 'keep')) -eq 0) 'install over Halcyon''s MELE-VR'
+Check ((Test-Path (Join-Path $win64 'dxgi.dll.mevr-off')) -and -not (Test-Path (Join-Path $win64 'dxgi.dll'))) 'its dxgi.dll moved aside'
+Check ((Run-Setup @('--uninstall')) -eq 0) 'uninstall'
+Check (-not (Compare-Object $beforeUpstream (Snapshot))) 'its DLLs back, the folder byte for byte'
+Remove-Item (Join-Path $win64 'dxgi.dll'), (Join-Path $win64 'openxr_loader.dll')
+
+# The mod's run-time files, and a lost install record followed by a reinstall: the uninstall still takes it all out.
+Check ((Run-Setup @('--install', '--source', 'Steam', '--no-settings')) -eq 0) 'install'
+New-Item -ItemType Directory -Force (Join-Path $win64 'Logs') | Out-Null
+[IO.File]::WriteAllText((Join-Path $win64 'ASI\LE1MEVR.ini'), "[Hands]`r`n")
+[IO.File]::WriteAllText((Join-Path $win64 'Logs\LE1MEVR.log'), 'log')
+Remove-Item (Join-Path $win64 'ASI\MEVR-install.json')
+Check ((Run-Setup @('--install', '--source', 'Steam', '--no-settings')) -eq 0) 'install again without the install record'
+Check ((Run-Setup @('--uninstall')) -eq 0) 'uninstall'
+Check ((Get-FileHash (Join-Path $win64 'bink2w64.dll')).Hash -eq (Get-FileHash $BinkDll).Hash -and -not (Test-Path (Join-Path $win64 'bink2w64_original.dll'))) 'RAD''s DLL back after the lost record'
+Check (-not (Test-Path (Join-Path $win64 'ASI')) -and -not (Test-Path (Join-Path $win64 'Logs'))) 'LE1MEVR.ini, the log, ASI and Logs gone'
+# steam_appid.txt from the first install: without its record it's left (ME3Tweaks Mod Manager writes the same file).
+Check (Test-Path (Join-Path $win64 'steam_appid.txt')) 'steam_appid.txt left (no record of it)'
+Remove-Item (Join-Path $win64 'steam_appid.txt')
+$diff = Compare-Object $before (Snapshot)
+if ($diff) { $diff | ForEach-Object { Write-Output "  differs: $($_.SideIndicator) $($_.InputObject)" } }
+Check (-not $diff) 'the fake game folder is byte for byte what it was'
+
 Write-Output $(if ($failures -eq 0) { 'fake game test passed' } else { "fake game test FAILED ($failures)" })
 exit $failures

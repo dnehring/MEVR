@@ -37,7 +37,8 @@ struct Status {
     std::optional<ModuleVersion> version;
     detect::VersionCheck versionCheck = detect::VersionCheck::Missing;
     detect::BinkState bink = detect::BinkState::Missing;
-    bool installed = false;      // a manifest exists
+    bool installed = false;      // the mod is: the manifest has a mod version or the ASI (not only settings or a pack)
+    bool hasRecord = false;      // a manifest exists (perhaps only for the game settings or a pack)
     std::string installedVersion;
     std::string loader;          // the manifest's
     bool gameSettings = false;
@@ -45,6 +46,8 @@ struct Status {
     bool gameRunning = false;
     bool canWrite = true;
     bool hasGamerSettings = false;
+    bool gamerSettingsReadOnly = false;
+    detect::UpstreamHalcyon upstream;  // Halcyon's own MELE-VR in Binaries\Win64
     std::vector<PackRecord> packs;
 };
 Status ReadStatus(std::filesystem::path const& root, std::string const& source);
@@ -55,6 +58,9 @@ struct InstallOptions {
     std::filesystem::path setupExe;        // copied to ASI\MEVR-Setup.exe (for uninstall and "install after I quit")
     std::string source;                    // "Steam" writes steam_appid.txt for the Launch button
     bool ignoreVersion = false;            // install on an exe of another version (the mod stays off: fails closed)
+    // Halcyon's upstream MELE-VR found in Binaries\Win64: move its dxgi.dll and openxr_loader.dll aside (recorded as
+    // renamed to *.mevr-off, put back on uninstall; its MELEVR.ini stays). False: refuse to install while it's there.
+    bool moveUpstreamAside = true;
 };
 
 struct Outcome {
@@ -64,9 +70,11 @@ struct Outcome {
 };
 
 Outcome Install(Layout const& layout, Payload const& payload, InstallOptions const& options);
-// `keepUserData`: MELEVR.ini and LE1MEVR.ini (the renderer profiles, calibration and settings) stay for a reinstall.
-// `runningExe`: this setup's own path; if it's the copy in the ASI folder it's moved aside and deleted after exit.
-Outcome Uninstall(Layout const& layout, bool keepUserData, std::filesystem::path const& runningExe);
+// `keepUserData`: MELEVR.ini, LE1MEVR.ini and the mod's logs (the renderer profiles, calibration and settings) stay for
+// a reinstall; otherwise they're deleted. `runningExe`: this setup's own path; if it's the copy in the ASI folder it's
+// moved aside and deleted after exit (only when the uninstall succeeded). `removeLocalData`: also delete LocalDataDir()
+// (snapshots, recordings, frame-timing captures, crash reports, the downloaded Mass Effect Modder).
+Outcome Uninstall(Layout const& layout, bool keepUserData, std::filesystem::path const& runningExe, bool removeLocalData = false);
 // Puts back any of our files that are missing or changed (from the payload), the loader if it was removed, and
 // Halcyon's per-slot fixes.
 Outcome Repair(Layout const& layout, Payload const& payload);
@@ -78,5 +86,9 @@ Outcome RecordPack(Layout const& layout, std::string const& id, std::string cons
 
 // The request the in-game menu writes ("Install after I quit"): %LOCALAPPDATA%\MEVR\setup.request.
 std::filesystem::path RequestFile();
+// %LOCALAPPDATA%\MEVR: the mod's diagnostics and the setup's downloads (never in the game folder).
+std::filesystem::path LocalDataDir();
+// The mod's run-time files in the game folder (recorded at install as user data, deleted by a full uninstall).
+std::vector<std::string> RuntimeFiles();
 
 } // namespace mevr::install

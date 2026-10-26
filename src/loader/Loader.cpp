@@ -42,20 +42,37 @@ using namespace mevr::loader;
 std::mutex gLogMutex;
 FILE* gLog = nullptr;
 
+void WriteLine(char const* format, va_list args) {
+    SYSTEMTIME t{};
+    GetLocalTime(&t);
+    std::fprintf(gLog, "%02u:%02u:%02u.%03u ", t.wHour, t.wMinute, t.wSecond, t.wMilliseconds);
+    std::vfprintf(gLog, format, args);
+    std::fputc('\n', gLog);
+    std::fflush(gLog);
+}
+
 void Log(char const* format, ...) {
     std::lock_guard const lock(gLogMutex);
     if (gLog == nullptr) {
         return;
     }
-    SYSTEMTIME t{};
-    GetLocalTime(&t);
-    std::fprintf(gLog, "%02u:%02u:%02u.%03u ", t.wHour, t.wMinute, t.wSecond, t.wMilliseconds);
     va_list args;
     va_start(args, format);
-    std::vfprintf(gLog, format, args);
+    WriteLine(format, args);
     va_end(args);
-    std::fputc('\n', gLog);
-    std::fflush(gLog);
+}
+
+// At process detach: never waits for the lock. A thread killed while it held it (the process exits during the DRM
+// wait, say) never releases it, and blocking here would hang the game's exit for good.
+void TryLog(char const* format, ...) {
+    std::unique_lock lock(gLogMutex, std::try_to_lock);
+    if (!lock.owns_lock() || gLog == nullptr) {
+        return;
+    }
+    va_list args;
+    va_start(args, format);
+    WriteLine(format, args);
+    va_end(args);
 }
 
 std::string Narrow(std::wstring const& w) {
@@ -198,12 +215,28 @@ SharedInterface* gInterface = nullptr;
 std::vector<Plugin> gPlugins;
 std::mutex gPluginsMutex;
 
+// A plugin's SpiOnAttach / SpiOnDetach under SEH: a plugin that faults is logged and skipped, not the game's crash.
+// (Its own function: __try can't share a frame with objects that need unwinding.)
+bool CallGuarded(spi::AttachPoint point, spi::Interface* api, DWORD* code) {
+    __try {
+        return point(api);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        *code = GetExceptionCode();
+        return false;
+    }
+}
+
 void Attach(Plugin& plugin) {
     if (plugin.onAttach == nullptr) {
         return;
     }
     Log("attaching %s", Narrow(plugin.name).c_str());
-    bool const ok = plugin.onAttach(gInterface);
+    DWORD fault = 0;
+    bool const ok = CallGuarded(plugin.onAttach, gInterface, &fault);
+    if (fault != 0) {
+        Log("%s faulted in SpiOnAttach (exception 0x%08lX): left unattached", Narrow(plugin.name).c_str(), fault);
+        return;
+    }
     {
         std::lock_guard const lock(gPluginsMutex);
         plugin.attached = true;
@@ -345,6 +378,7 @@ DWORD WINAPI Run(void*) {
         plugin.onDetach = reinterpret_cast<spi::AttachPoint>(GetProcAddress(plugin.module, "SpiOnDetach"));
         if (decl == nullptr || plugin.onAttach == nullptr) {
             Log("loaded %s (a plain ASI)", Narrow(name).c_str());
+            std::lock_guard const lock(gPluginsMutex);
             gPlugins.push_back(plugin);
             continue;
         }
@@ -364,6 +398,7 @@ DWORD WINAPI Run(void*) {
             version ? Narrow(version).c_str() : "", author ? Narrow(author).c_str() : "", flags, minVersion,
             plugin.preload ? "before the DRM" : "after the DRM", plugin.ownThread ? "own thread" : "in order",
             plugin.attach ? "" : ": not for this game or SPI version, not attached");
+        std::lock_guard const lock(gPluginsMutex);
         gPlugins.push_back(plugin);
     }
     AttachAll(true);
@@ -390,22 +425,27 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID) {
     }
     case DLL_PROCESS_DETACH: {
         // As LEBinkProxy does (our host treats it as the process exiting; it has usually shut down in its
-        // ExitProcess hook already).
+        // ExitProcess hook already). Nothing here blocks: the process may be exiting while our thread was killed
+        // holding a lock (during the 60 s DRM wait, say), and waiting for it would hang the exit. A lock that's taken
+        // means skipping that step.
         std::vector<Plugin> attached;
         {
-            std::lock_guard const lock(gPluginsMutex);
-            for (Plugin const& p : gPlugins) {
-                if (p.attached && p.onDetach != nullptr) {
-                    attached.push_back(p);
+            std::unique_lock lock(gPluginsMutex, std::try_to_lock);
+            if (lock.owns_lock()) {
+                for (Plugin const& p : gPlugins) {
+                    if (p.attached && p.onDetach != nullptr) {
+                        attached.push_back(p);
+                    }
                 }
             }
         }
         for (Plugin const& p : attached) {
-            p.onDetach(gInterface);
+            DWORD fault = 0;
+            CallGuarded(p.onDetach, gInterface, &fault);
         }
-        Log("detached");
-        std::lock_guard const lock(gLogMutex);
-        if (gLog != nullptr) {
+        TryLog("detached");
+        std::unique_lock lock(gLogMutex, std::try_to_lock);
+        if (lock.owns_lock() && gLog != nullptr) {
             std::fclose(gLog);
             gLog = nullptr;
         }

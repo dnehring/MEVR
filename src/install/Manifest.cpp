@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include "install/Manifest.hpp"
 
+#include "install/Detect.hpp"
+
 #include <Windows.h>
 #include <bcrypt.h>
 
@@ -44,6 +46,9 @@ json::Value EditsToJson(std::vector<ini::Edit> const& edits) {
         v["key"] = e.key;
         v["before"] = e.before ? json::Value(*e.before) : json::Value();
         v["after"] = e.after;
+        if (e.occurrence != 0) {
+            v["occurrence"] = e.occurrence;
+        }
         array.Push(std::move(v));
     }
     return array;
@@ -94,6 +99,14 @@ private:
     BCRYPT_HASH_HANDLE hash_ = nullptr;
     bool ok_ = false;
 };
+
+// Why a write may have failed, for the message.
+std::string WriteFailureHint(fs::path const& file) {
+    if (detect::ReadOnlyFile(file)) {
+        return " (it's read-only: untick Read-only in its Properties)";
+    }
+    return " (is the game running, or is the folder read-only?)";
+}
 
 } // namespace
 
@@ -253,6 +266,7 @@ std::optional<Manifest> Manifest::FromJson(json::Value const& v) {
                 edit.before = ed.Get("before").AsString();
             }
             edit.after = ed.String("after");
+            edit.occurrence = static_cast<int>(ed.Number("occurrence", 0));
             f.edits.push_back(std::move(edit));
         }
         if (f.path.empty() || f.action.empty()) {
@@ -386,7 +400,7 @@ bool Transaction::WriteIn(std::string_view relative, std::string_view bytes, boo
         }
     }
     if (!WriteFileAtomic(target, bytes)) {
-        Fail("couldn't write " + std::string(relative) + " (is the game running, or is the folder read-only?)");
+        Fail("couldn't write " + std::string(relative) + WriteFailureHint(target));
         if (entry == nullptr) {
             // Nothing changed, but a backup may have been taken: keep it on record so it's cleaned up.
             if (!fresh.backup.empty()) {
@@ -466,7 +480,7 @@ bool Transaction::EditIni(std::string_view relative, std::function<std::string(s
         return true;
     }
     if (!WriteFileAtomic(target, changed)) {
-        Fail("couldn't write " + std::string(relative) + " (is the game running?)");
+        Fail("couldn't write " + std::string(relative) + WriteFailureHint(target));
         return false;
     }
     if (ours) {
@@ -510,11 +524,68 @@ bool Transaction::RevertIni(std::string_view relative) {
     return Save();
 }
 
+bool Transaction::RecordRuntimeFile(std::string_view relative) {
+    if (manifest_.Find(relative) != nullptr) {
+        return true;
+    }
+    FileEntry entry;
+    entry.path = std::string(relative);
+    entry.action = "added";
+    entry.userData = true;
+    manifest_.files.push_back(entry);
+    Note("recorded " + std::string(relative) + " (the mod's own settings or log)");
+    return Save();
+}
+
+void Transaction::RecordDir(std::string_view relative) {
+    for (std::string const& d : manifest_.dirs) {
+        if (_stricmp(d.c_str(), std::string(relative).c_str()) == 0) {
+            return;
+        }
+    }
+    manifest_.dirs.push_back(std::string(relative));
+}
+
+bool Transaction::AdoptRenamed(std::string_view from, std::string_view to) {
+    std::error_code ec;
+    if (!fs::exists(layout_.Full(to), ec)) {
+        Fail("nothing to adopt: " + std::string(to));
+        return false;
+    }
+    FileEntry entry;
+    entry.path = std::string(to);
+    entry.action = "renamed";
+    entry.from = std::string(from);
+    manifest_.files.push_back(entry);
+    Note("recorded " + std::string(to) + " as renamed from " + std::string(from) + " (no install record was left)");
+    return Save();
+}
+
+bool Transaction::AdoptAdded(std::string_view relative) {
+    if (manifest_.Find(relative) != nullptr) {
+        return true;
+    }
+    FileEntry entry;
+    entry.path = std::string(relative);
+    entry.action = "added";
+    entry.sha256 = Sha256File(layout_.Full(relative));
+    manifest_.files.push_back(entry);
+    Note("recorded " + std::string(relative) + " as ours");
+    return Save();
+}
+
+void Transaction::Forget(std::string_view relative) {
+    std::erase_if(manifest_.files, [&](FileEntry const& f) { return _stricmp(f.path.c_str(), std::string(relative).c_str()) == 0; });
+}
+
 bool Transaction::Uninstall(bool keepUserData) {
     std::error_code ec;
     bool ok = true;
-    for (auto it = manifest_.files.rbegin(); it != manifest_.files.rend(); ++it) {
-        FileEntry const& f = *it;
+    // What has been undone: dropped from the record if something else fails, so another try never undoes it twice
+    // (removing bink2w64.dll a second time would delete RAD's DLL, renamed back by the first try).
+    std::vector<bool> undone(manifest_.files.size(), false);
+    for (std::size_t n = manifest_.files.size(); n-- > 0;) {
+        FileEntry const& f = manifest_.files[n];
         fs::path const target = layout_.Full(f.path);
         if (f.action == "added") {
             if (f.userData && keepUserData) {
@@ -543,6 +614,8 @@ bool Transaction::Uninstall(bool keepUserData) {
             fs::path const original = layout_.Full(f.from);
             if (fs::exists(original, ec)) {
                 Note(f.from + " is already back; left " + f.path);
+            } else if (f.path != paths::kBinkOriginal && !fs::exists(target, ec)) {
+                Note(f.path + " is gone: nothing to rename back to " + f.from);
             } else if (!MoveFileExW(target.c_str(), original.c_str(), MOVEFILE_WRITE_THROUGH)) {
                 Fail("couldn't rename " + f.path + " back to " + f.from + " (error " + std::to_string(GetLastError()) + ")");
                 ok = false;
@@ -555,6 +628,7 @@ bool Transaction::Uninstall(bool keepUserData) {
                 if (!CopyFileW(backup.c_str(), target.c_str(), FALSE)) {
                     Fail("couldn't restore " + f.path);
                     ok = false;
+                    continue;
                 }
             }
         } else if (f.action == "edited") {
@@ -568,9 +642,18 @@ bool Transaction::Uninstall(bool keepUserData) {
                 Note("restored the values in " + f.path);
             }
         }
+        undone[n] = true;
     }
     if (!ok) {
-        Save();  // what's left stays on record for another try
+        // What's left stays on record for another try.
+        std::vector<FileEntry> left;
+        for (std::size_t n = 0; n < manifest_.files.size(); ++n) {
+            if (!undone[n]) {
+                left.push_back(manifest_.files[n]);
+            }
+        }
+        manifest_.files = std::move(left);
+        Save();
         return false;
     }
     fs::remove_all(layout_.BackupDir(), ec);
@@ -593,7 +676,8 @@ std::vector<std::string> Transaction::Verify() const {
     for (FileEntry const& f : manifest_.files) {
         fs::path const target = layout_.Full(f.path);
         if (f.action == "renamed") {
-            if (!fs::exists(target, ec)) {
+            // The game's own Bink DLL behind our loader; a file moved aside (Halcyon's upstream DLLs) isn't needed.
+            if (f.path == paths::kBinkOriginal && !fs::exists(target, ec)) {
                 bad.push_back(f.path);
             }
         } else if ((f.action == "added" || f.action == "replaced") && !f.userData && !f.sha256.empty()) {

@@ -19,6 +19,7 @@ struct Edit {
     std::string key;
     std::optional<std::string> before;  // nullopt: the key wasn't there
     std::string after;
+    int occurrence = 0;  // which line of the key (a file that repeats it): each one is recorded and reverted alone
     bool operator==(Edit const&) const = default;
 };
 
@@ -28,7 +29,7 @@ std::optional<std::string> Get(std::string_view text, std::string_view section, 
 // Sets `key` in `section` (every line of it, if the section repeats the key), adding the key after the section's last
 // line, or the section at the end of the file. New lines use the section's separator style (" = " when its keys are
 // written that way, else "=") and the file's line ending. A changed value is appended to `edits` (merged with an
-// earlier edit of the same key: its `before` is kept).
+// earlier edit of the same key: its `before` is kept), one edit per line of a repeated key, each with its own `before`.
 std::string Set(std::string_view text, std::string_view section, std::string_view key, std::string_view value,
     std::vector<Edit>* edits = nullptr);
 
@@ -51,8 +52,9 @@ void Merge(std::vector<Edit>& edits, Edit const& edit);
 // stereo, the desktop mirror every 2nd frame, depth pop off) and the F-key profile hotkeys off.
 std::string HalcyonReleaseIni();
 // Every-install fixes on an existing file, never resetting anything else: the profile hotkeys off; in every slot the
-// menu on backslash (menuKey = 220), no head aim (combatHeadAim / makoHeadAim 1 -> 0), the HUD panel's old 50 degree
-// follow becomes 70, and sfr2Metric = 1 added to a slot that has no sfr2Metric yet (a 0 the player chose stays).
+// menu on backslash (menuKey = 220, added if missing), no head aim (combatHeadAim / makoHeadAim 1 -> 0, and 0 added
+// where missing: a sparse slot would load Halcyon's code default, head aim on), the HUD panel's old 50 degree follow
+// becomes 70, and sfr2Metric = 1 added to a slot that has no sfr2Metric yet (a 0 the player chose stays).
 std::string FixHalcyonIni(std::string_view text, std::vector<Edit>* edits = nullptr);
 // Halcyon's own copy of the stereo target (sfr2ResX/Y, expectedResX/Y) in every profile slot that has those keys.
 std::string SetHalcyonResolution(std::string_view text, int width, int height, std::vector<Edit>* edits = nullptr);

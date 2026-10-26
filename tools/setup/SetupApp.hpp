@@ -83,6 +83,8 @@ private:
     bool SteamGame() const;
     install::settings::Choices ChoicesFromModel() const;
     void UpdatePacks();
+    // The Repair page's status, from the files as they are now (on every refresh and whenever the page is shown).
+    void UpdateRepairStatus();
     void Dirty();
 
     Options options_;
@@ -99,6 +101,10 @@ private:
     bool canInstall_ = false, hasPayload_ = false, adminNeeded_ = false, busy_ = false, waiting_ = false;
     bool hasGamerSettings_ = false, settingsApplied_ = false, texturesMarked_ = false, memReady_ = false, headsetKnown_ = false;
     bool updateEnabled_ = false;
+    bool upstreamFound_ = false, gamerReadOnly_ = false, removeLocal_ = false;
+    std::string upstreamText_, localText_;
+    bool sample_ = false;    // the preview's sample states: nothing is read from disk for them
+    std::string shownPage_;  // the page the last Tick saw (the document changes `page` by itself)
     std::string chipGame_, chipXr_, chipInstalled_;
     std::string heroTitle_, heroText_;
     std::string gameTitle_, gameText_, versionTitle_, versionText_, xrTitle_, xrText_, loaderTitle_, loaderText_, loaderPlan_;

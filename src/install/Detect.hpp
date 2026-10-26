@@ -62,6 +62,18 @@ enum class BinkState {
 BinkState ClassifyBink(DllIdentity const& bink, bool originalExists);
 char const* BinkStateText(BinkState state);
 
+// ---- Halcyon's upstream MELE-VR (a dxgi.dll proxy dropped into Binaries\Win64) -------------------------------------
+// Its release puts dxgi.dll, openxr_loader.dll and MELEVR.ini next to the exe; its MELE-VR.bat tells its own dxgi.dll
+// by the string "MELEVR" in it (findstr). With it and our host (which has Halcyon's renderer built in) two renderers
+// would run, so Install moves its two DLLs aside (recorded, put back on uninstall). Its MELEVR.ini stays.
+bool HasMelevrMarker(std::string_view bytes);
+struct UpstreamHalcyon {
+    bool dxgi = false;          // Win64\dxgi.dll is upstream's
+    bool openxrLoader = false;  // Win64\openxr_loader.dll next to it (only counted with upstream's dxgi.dll)
+    bool Found() const { return dxgi; }
+};
+UpstreamHalcyon FindUpstreamHalcyon(std::filesystem::path const& win64);
+
 // ---- VR -----------------------------------------------------------------------------------------------------------
 struct XrRuntime {
     std::string manifest;  // HKLM\SOFTWARE\Khronos\OpenXR\1 ActiveRuntime
@@ -89,6 +101,8 @@ bool ProcessRunning(wchar_t const* exeName);
 bool GameRunning();
 // We can create files in `dir` (else: run as administrator).
 bool CanWrite(std::filesystem::path const& dir);
+// The file has the Read-only attribute (a player or a tool set it on GamerSettings.ini to pin their values).
+bool ReadOnlyFile(std::filesystem::path const& file);
 
 std::string Utf8(std::wstring const& w);
 std::wstring Wide(std::string_view s);
