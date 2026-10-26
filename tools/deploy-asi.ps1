@@ -35,6 +35,8 @@ if ($Remove) {
     if (Test-Path $fontsDir) { Remove-Item $fontsDir -Recurse -Confirm:$false; Write-Output "Removed $fontsDir" }
     $menuDir = Join-Path $asiDir 'menu'
     if (Test-Path $menuDir) { Remove-Item $menuDir -Recurse -Confirm:$false; Write-Output "Removed $menuDir" }
+    $setupCopy = Join-Path $asiDir 'MEVR-Setup.exe'
+    if (Test-Path $setupCopy) { Remove-Item $setupCopy -Confirm:$false; Write-Output "Removed $setupCopy" }
     return
 }
 
@@ -85,6 +87,17 @@ $menuDir = Join-Path $asiDir 'menu'
 New-Item -ItemType Directory -Force $menuDir | Out-Null
 Copy-Item (Join-Path $PSScriptRoot '..\assets\menu\*') $menuDir -Force
 Write-Output "Menu: $menuDir"
+# MEVR Setup next to the ASI, as the players' install puts it: the in-game Diagnostics > Report a problem (and the
+# menu's Optional content) start ASI\MEVR-Setup.exe. Skipped while it runs (it holds its own exe open).
+$setupExe = Join-Path $out 'MEVR-Setup.exe'
+if (Test-Path $setupExe) {
+    try {
+        Copy-Item $setupExe $asiDir -Force
+        Write-Output "Setup: $(Join-Path $asiDir 'MEVR-Setup.exe')"
+    } catch {
+        Write-Warning "Couldn't copy MEVR-Setup.exe into ASI (is it running?): the in-game Report button leaves a request instead"
+    }
+}
 # LE1 runs Halcyon's renderer, which reads MELEVR.ini next to our ASI. Install what its release
 # package ships (reference/MassEffect1-VR/release/MELEVR.ini): the mode and resolutions only, so
 # every other setting is Halcyon's tuned code default. Not src/halcyon/le1/runtime/MELEVR.ini: that
