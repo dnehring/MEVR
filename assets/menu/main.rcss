@@ -119,6 +119,19 @@ button { display: inline-block; focus: auto; tab-index: auto; nav: auto; }
 .btn.primary:hover { decorator: chamfer(12dp #FFC08A #F07726 #FFEAD4 #FFA860 1dp); }
 .btn.primary .sweep { decorator: linear-gradient(105deg, rgba(255,255,255,0%) 30%, rgba(255,255,255,45%) 48%, rgba(255,255,255,0%) 66%); }
 .top .btn.primary { height: 56dp; font-size: 24dp; letter-spacing: 0.18em; }
+/* The game's own menus, next to Resume: two lines (what it is, what it opens). */
+.topspace { flex: 1 1 auto; }
+.gamebtns { display: flex; gap: 12dp; flex: 0 0 auto; }
+/* The status chips at the foot of the rail. */
+.railspace { flex: 1 1 auto; }
+.rail .chips { flex: 0 0 auto; flex-direction: column; align-items: flex-start; gap: 8dp; padding: 0dp 24dp 4dp 0dp; }
+.rail .chip { height: 34dp; padding: 0dp 14dp; font-size: 15dp; }
+.top .btn.game { height: 56dp; padding: 0dp 22dp 0dp 18dp; gap: 12dp; }
+.btn.game .bi { width: 24dp; height: 24dp; color: #7CCBF2; }
+.btn.game .gl { display: flex; flex-direction: column; justify-content: center; }
+.btn.game .gt { display: block; font-size: 20dp; line-height: 22dp; letter-spacing: 0.14em; }
+.btn.game .gs { display: block; font-family: "Titillium Web"; font-weight: 400; font-size: 13dp; line-height: 16dp;
+	letter-spacing: 0.02em; text-transform: none; color: #AEB4B9; font-effect: none; }
 .btn.danger {
 	color: #FFD9D3;
 	font-effect: glow(0dp 5dp 0dp 0dp rgba(240,138,126,45%));
@@ -133,6 +146,8 @@ button { display: inline-block; focus: auto; tab-index: auto; nav: auto; }
 .i-recenter { decorator: icon(recenter); }
 .i-align { decorator: icon(align); }
 .i-place { decorator: icon(place); }
+.i-gamemenu { decorator: icon(gamemenu); }
+.i-holster { decorator: icon(holster); }
 .i-trash { decorator: icon(trash); }
 .i-camera { decorator: icon(camera); }
 .i-record { decorator: icon(record); }

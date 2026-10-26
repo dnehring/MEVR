@@ -13,6 +13,7 @@
 //   state-hover.png          the pointer resting on Resume (its light sweep part-way) and a row hovered
 //   state-pressed.png        a button held down (the dip)
 //   state-focus.png          the pad's focus ring on a toggle
+//   state-focus-game.png     the pad's focus moved from the rail up into the top bar (the game's menus), then right, left
 //   menu-alpha.png           the menu texture alone (premultiplied, over a checkerboard)
 //   timing.txt               CPU and GPU time per frame (static, and while the pointer moves)
 
@@ -494,6 +495,19 @@ int main(int argc, char** argv) {
             std::printf("focus after right: <%s class=\"%s\">\n", focus->GetTagName().c_str(), focus->GetClassNames().c_str());
         }
         save("state-focus");
+    }
+    // The pad reaches the game's menus: up from the rail's first section, then right (Game menu, Holster, Resume).
+    if (Rml::Element* rail = ui.Document() != nullptr ? ui.Document()->QuerySelector(".navb") : nullptr) {
+        rail->Focus(true);
+        for (Rml::Input::KeyIdentifier key : {Rml::Input::KI_UP, Rml::Input::KI_RIGHT, Rml::Input::KI_LEFT}) {
+            rml->ProcessKeyDown(key, 0);
+            rml->ProcessKeyUp(key, 0);
+            frames(10);
+            Rml::Element* const focus = rml->GetFocusElement();
+            std::printf("focus after %s from the rail: %s\n", key == Rml::Input::KI_UP ? "up" : key == Rml::Input::KI_RIGHT ? "right" : "left",
+                focus != nullptr && !focus->GetId().empty() ? focus->GetId().c_str() : "(no id)");
+        }
+        save("state-focus-game");
     }
 
     // Timing: a still menu, then a moving pointer (what the headset sees while pointing).

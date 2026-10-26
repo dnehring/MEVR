@@ -152,6 +152,13 @@ bool gLoggedFloor = false;  // frame thread
 // per controller type (plugin/Calibration).
 unsigned gProfileCheckFrames = 0;
 constexpr unsigned kProfileCheckEvery = 90;
+// Diagnostics (frame thread, research/28 "The game's menus"): the profile the runtime picked for each hand, logged when
+// it changes, and the first time each controller's menu action reads true in a session. Logged only: nothing depends on
+// the menu button (a Quest over Link, or SteamVR's emulation, may never send it); our main menu's buttons are the way in.
+std::string gHandProfile[2];
+bool gLoggedMenuButton[2] = {false, false};
+// A pad button our main menu presses for the game (Game menu: Start; Holster: Back), under gPadMutex.
+mevr::game::gamepad::MenuPress gMenuPress;
 
 void ApplyPendingHaptics() {
     std::uint64_t const now = GetTickCount64();
@@ -261,6 +268,9 @@ void OnSessionCreated(void* instance, void* session) noexcept {
         }
     }
     gProfileCheckFrames = 0;
+    gHandProfile[0].clear();
+    gHandProfile[1].clear();
+    gLoggedMenuButton[0] = gLoggedMenuButton[1] = false;
     // A new session: its own floor space, vibration from scratch.
     gFloor.Create(gTarget.session);
     gSessions.fetch_add(1, std::memory_order_relaxed);
@@ -300,12 +310,26 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
         return;  // no controllers, and no replay standing in for them
     }
     if (!gInputFailed && gProfileCheckFrames++ % kProfileCheckEvery == 0) {
-        std::string profile = gInput.InteractionProfile(gTarget, 1);
-        if (profile.empty()) {
-            profile = gInput.InteractionProfile(gTarget, 0);
+        std::string const hands[2] = {gInput.InteractionProfile(gTarget, 0), gInput.InteractionProfile(gTarget, 1)};
+        if (hands[0] != gHandProfile[0] || hands[1] != gHandProfile[1]) {
+            gHandProfile[0] = hands[0];
+            gHandProfile[1] = hands[1];
+            mevr::log::Info("halcyon bridge: the runtime's interaction profile: left {}, right {} (xrGetCurrentInteractionProfile)",
+                hands[0].empty() ? "(none)" : hands[0], hands[1].empty() ? "(none)" : hands[1]);
         }
+        std::string const& profile = !hands[1].empty() ? hands[1] : hands[0];
         if (!profile.empty()) {
             mevr::host::calibration::SetProfile(profile);
+        }
+    }
+    // The player's own menu buttons (not a replay's): the first press per hand and session, for the log only.
+    for (int hand : {0, 1}) {
+        mevr::vr::controllers::Hand const& h = hand == 0 ? live.left : live.right;
+        if (live.active && h.menu && !gLoggedMenuButton[hand]) {
+            gLoggedMenuButton[hand] = true;
+            mevr::log::Info("halcyon bridge: the {} controller's menu button reached us (/input/menu/click, profile {}){}",
+                hand == 0 ? "left" : "right", gHandProfile[hand].empty() ? "(not known yet)" : gHandProfile[hand],
+                hand == 0 ? ": the game's Start (Back with the left grip)" : ": not mapped to the game");
         }
     }
     // The guided calibration takes the controllers while it runs, and our main menu while it's open: everything else
@@ -447,6 +471,32 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     if (index != 0 || state == nullptr) {
         return result;
     }
+    // A button our main menu presses for the game (Game menu: Start; Holster: Back), once the menu has closed and the
+    // game reads the pad again (gamepad::MenuPress): OR'd into whatever the game sees below.
+    WORD gameButtons = 0;
+    {
+        std::uint64_t const now = GetTickCount64();
+        std::lock_guard lock(gPadMutex);
+#if defined(MEVR_WITH_MAIN_MENU)
+        bool const menuOpen = mevr::host::main_menu::IsOpen();
+        if (WORD const asked = mevr::host::main_menu::TakeGamePress(); asked != 0) {
+            mevr::game::gamepad::StartMenuPress(gMenuPress, asked, now);
+        }
+#else
+        bool const menuOpen = false;
+#endif
+        mevr::game::gamepad::MenuPressStep const step = mevr::game::gamepad::StepMenuPress(gMenuPress, menuOpen, now);
+        gameButtons = step.buttons;
+        char const* const name = gMenuPress.button == XINPUT_GAMEPAD_START ? "Start (its pause menu)" : "Back (holster)";
+        if (step.pressed) {
+            mevr::log::Info("main menu: sent the game's {}: held {} ms", name, mevr::game::gamepad::kMenuPressHoldMs);
+        } else if (step.released) {
+            mevr::log::Info("main menu: the game's {} let go{}", name, step.dropped ? " (our menu opened again)" : "");
+        } else if (step.dropped) {
+            mevr::log::Warn("main menu: the game's {} not sent: {}", name,
+                menuOpen ? "our menu opened again first" : "the game didn't read the pad within 5 s");
+        }
+    }
 #if defined(MEVR_WITH_MAIN_MENU)
     if (mevr::host::main_menu::IsOpen()) {
         // Our main menu: a real pad navigates it; the game sees a neutral pad (the motion controllers' and a real pad's).
@@ -479,7 +529,20 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     mevr::vr::controllers::State const controllers = mevr::vr::controllers::Latest();
     if (!controllers.active) {
         gSupportHeld.store(false, std::memory_order_relaxed);
-        return result;
+        if (gameButtons == 0) {
+            return result;
+        }
+        // No motion controllers: the real pad (if any) plus the menu's button.
+        std::lock_guard lock(gPadMutex);
+        XINPUT_GAMEPAD pad = result == ERROR_SUCCESS ? state->Gamepad : XINPUT_GAMEPAD{};
+        pad.wButtons |= gameButtons;
+        if (std::memcmp(&pad, &gLastPad, sizeof pad) != 0) {
+            gLastPad = pad;
+            ++gPacket;
+        }
+        state->dwPacketNumber = gPacket;
+        state->Gamepad = pad;
+        return ERROR_SUCCESS;
     }
     bool const realPad = result == ERROR_SUCCESS;
     std::lock_guard lock(gPadMutex);
@@ -550,6 +613,7 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
         pad.bLeftTrigger = 0;  // the calibration's first-run prompt is being pointed at: its click isn't a shot
         pad.bRightTrigger = 0;
     }
+    pad.wButtons |= gameButtons;
     if (std::memcmp(&pad, &gLastPad, sizeof pad) != 0) {
         gLastPad = pad;
         ++gPacket;  // the game only re-reads a pad whose packet number changed

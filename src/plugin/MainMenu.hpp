@@ -41,6 +41,9 @@ void Toggle(char const* why);
 // After the controller sync (HalcyonBridge OnFrameBegun): the live controllers, before everything else is shown them
 // hidden while the menu is open.
 void NoteControllers(vr::controllers::State const& live);
+// From the XInput hook (any thread): the pad button the menu's Game menu (Start) or Holster (Back) button asked to press
+// for the game, once (0: none). The hook then presses it once the game reads the pad again (gamepad::MenuPress).
+WORD TakeGamePress();
 // From the XInput hook (any thread): a real pad's state (before the menu neutralises it), for pad navigation.
 void NotePad(XINPUT_GAMEPAD const& pad);
 

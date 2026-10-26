@@ -193,6 +193,46 @@ scale/offset sliders.
 - `box-shadow` covers the background and border too (they render with it into one texture, cached per
   element size).
 
+## The game's menus (2026-10-25)
+
+**Problem (user, PS VR2 Sense controllers through SteamVR).** No way into Mass Effect's own menu: every control is
+taken. The only route was the left controller's `/input/menu/click` (the Touch profile's one menu button) as the game's
+Start (`game/GamepadMapping`: `l.menu` is Start, Back with the left grip), and most players will be on a Quest over
+Link, where the controllers' menu and system buttons can't be counted on to reach an application. So **our menu's
+buttons are the way into the game's menus**, not a fallback, and nothing depends on the menu button.
+
+**What Start and Back are bound to** (re-read 2026-10-25, read-only, as research/19 section 6: `BIOInput.ini` inside
+`CookedPCConsole\Coalesced_INT.bin`):
+- `XboxTypeS_Start` = `Console_Menu` = `ShowMenuGui` in `SFXGameModeDefault`, the power and weapon wheels, the Mako
+  and photo mode: the game's pause menu (its hub: squad, journal, map, codex, equipment, save, load, options).
+- `XboxTypeS_Back` = `Console_Holster` = `TryHolster` on foot (`SFXGameModeDefault`), and `Console_MinigameQuit` =
+  `ExitMinigame` in `SFXGameModeMinigame` (the bypass minigames). No other mode binds Back (the GUI mode binds only Y,
+  photo mode; `Engine.PlayerInput` has `ReportCustomEvent`). **Back opens no menu in LE1**, so its button says what it
+  does: "Holster".
+- The PC's own hotkeys open single screens (`PC_ShowMap` M, `PC_ShowEquipment` I, `PC_ShowSquad` U, `PC_ShowJournal` J,
+  `PC_ShowCodex` O: `ShowMapGui true` ...); not used: the pause menu reaches all of them.
+
+**Built.** Two buttons in the top bar before Resume (`assets/menu/main.rml` `.gamebtns`: an icon, the name, and what it
+opens on a second line): **Game menu** (`cmd('game_menu')`) and **Holster** (`cmd('game_back')`). They're ordinary
+buttons in the focus order (the pad's A, the pointer's trigger). Pressing one closes our menu (`After::GameStart` /
+`GameBack` in `plugin/MainMenuSettings`), which lifts the pause on the mod's next tick (`game/MenuPause`), and hands the
+button to the XInput hook (`main_menu::TakeGamePress`). The hook (`HalcyonBridge::MergeMotionControllers`) presses it
+with `gamepad::MenuPress` (`game/GamepadMapping`, unit-tested): it waits until the game has read the pad 8 times over
+250 ms with our menu closed (a button that goes down while the game is still paused, or before the window takes input,
+can be lost), holds it 100 ms and at least 3 reads, then lets go; it's OR'd into whatever the game sees (the
+controllers' mapping or a real pad; with no motion controllers, the real pad). Opening our menu again calls it off; no
+reads for 5 s drops it. Logs: `main menu: Game menu: the game's Start goes to the game once it reads the pad again`,
+`main menu: sent the game's Start (its pause menu): held 100 ms`, `main menu: the game's Start (its pause menu) let go`
+(Back: `Holster`, `Back (holster)`), `main menu: ... not sent: ...`.
+
+**Diagnostics** (the next session, notes/next-vr-session.md step 38): the interaction profile the runtime picked for
+each hand (`halcyon bridge: the runtime's interaction profile: left ..., right ...`, on change), and the first time each
+controller's menu action reads true in a session (`halcyon bridge: the left controller's menu button reached us
+(/input/menu/click, profile ...)`). The menu action is read for both hands; it's bound for the left hand in the Touch
+profile (the only menu path it has: a right `/input/menu/click` there would make the runtime reject the whole Touch
+suggestion) and for both in `khr/simple_controller`; Index has none. No profile was added: a new one (Vive, WMR) could
+change which profile SteamVR picks for an emulated controller and lose A/B/X/Y.
+
 ## Checking it offline
 
 `mevr-menu-preview [folder] [--warp]` (`tools/menu-preview`): the host's own RmlUi setup, renderer,

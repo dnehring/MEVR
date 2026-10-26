@@ -1256,6 +1256,25 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       section 13, cause 4, not changed yet). The heartbeat's `alignment assist on N ticks: the aiming eye sat on average
       X cm ... the unassisted sight line` per gun is the number to send.
 
+38. **The game's own menus from our menu (new, 2026-10-25; HOST REDEPLOY, game closed; [research/28](../research/28-main-menu.md)
+    "The game's menus").** Your report: no way into Mass Effect's own menu, every button taken. Most players come over a
+    Quest and Link, where no controller menu button can be counted on, so our menu's top bar now has the way in, next to
+    Resume: **Game menu** (the game's Start: its pause menu with save, load, squad, journal, map, codex, equipment and
+    options) and **Holster** (the game's Back: on foot it holsters, in a bypass minigame it quits it; LE1 binds no menu
+    to Back).
+    - On foot, open our menu (both sticks held, or `\`) and press Game menu (point and pull the trigger, or move the focus
+      to it and press A). Our menu closes, the game runs again, and about a third of a second later the game's pause menu
+      opens. Move around in it, then close it the game's way (B, or its Resume): it should close normally and the game
+      should take your controls again. Do the same in the Mako, and once with Holster with a gun drawn (it goes away).
+    - Log: `main menu: Game menu: the game's Start goes to the game once it reads the pad again`, `menu pause: the game
+      runs again (the main menu closed ...)`, then `main menu: sent the game's Start (its pause menu): held 100 ms` and
+      `main menu: the game's Start (its pause menu) let go`. A `not sent` line means the game didn't read the pad.
+    - **Diagnostics only** (nothing depends on them): `halcyon bridge: the runtime's interaction profile: left ..., right
+      ...` once the controllers are bound (the PS VR2 Sense: `oculus/touch_controller` expected), and press each
+      controller's menu-like button (the Sense's Create and Options) once: `halcyon bridge: the left (or right)
+      controller's menu button reached us (/input/menu/click, ...)` says which, if any, reaches the mod. Say which
+      physical button you pressed for each line, or that none appeared.
+
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR
   loader (MEVR)`, its pacing lines.

@@ -3906,6 +3906,72 @@ void TestStickChord() {
     CHECK(!s.tap && !s.hold);
 }
 
+void TestMenuPress() {
+    using namespace mevr::game::gamepad;
+    MenuPress p;
+    std::uint64_t t = 50000;
+    // Idle: nothing.
+    CHECK(StepMenuPress(p, false, t).buttons == 0);
+    // Start: nothing until 8 reads over 250 ms with the menu closed.
+    StartMenuPress(p, XINPUT_GAMEPAD_START, t);
+    for (int i = 0; i < 7; ++i) {
+        t += 50;
+        MenuPressStep const s = StepMenuPress(p, false, t);
+        CHECK(s.buttons == 0 && !s.pressed);
+    }
+    t += 10;
+    MenuPressStep s = StepMenuPress(p, false, t);  // the 8th read, 360 ms in
+    CHECK(s.pressed && s.buttons == XINPUT_GAMEPAD_START);
+    // Held at least 100 ms and 3 reads more, then let go once.
+    t += 60;
+    s = StepMenuPress(p, false, t);
+    CHECK(s.buttons == XINPUT_GAMEPAD_START && !s.released);
+    t += 60;
+    s = StepMenuPress(p, false, t);
+    CHECK(s.buttons == XINPUT_GAMEPAD_START && !s.released);  // 120 ms but only 3 reads
+    t += 10;
+    s = StepMenuPress(p, false, t);
+    CHECK(s.buttons == 0 && s.released);
+    CHECK(p.phase == MenuPress::Phase::Idle);
+    CHECK(StepMenuPress(p, false, t + 10).buttons == 0);
+    // Many fast reads still wait 250 ms (the mod's unpause), and hold 100 ms.
+    StartMenuPress(p, XINPUT_GAMEPAD_BACK, t);
+    int reads = 0;
+    std::uint64_t pressedAt = 0, releasedAt = 0;
+    for (int i = 0; i < 100 && releasedAt == 0; ++i) {
+        t += 5;
+        s = StepMenuPress(p, false, t);
+        ++reads;
+        if (s.pressed) {
+            pressedAt = t;
+            CHECK(s.buttons == XINPUT_GAMEPAD_BACK);
+        }
+        if (s.released) {
+            releasedAt = t;
+        }
+    }
+    CHECK(pressedAt != 0 && releasedAt - pressedAt >= kMenuPressHoldMs);
+    // Reads while the menu is still open don't count; the menu opening again calls it off.
+    StartMenuPress(p, XINPUT_GAMEPAD_START, t);
+    t += 400;
+    s = StepMenuPress(p, true, t);
+    CHECK(s.dropped && s.buttons == 0 && !s.released);
+    // Opened again while held: let go.
+    StartMenuPress(p, XINPUT_GAMEPAD_START, t);
+    for (int i = 0; i < 8; ++i) {
+        t += 40;
+        s = StepMenuPress(p, false, t);
+    }
+    CHECK(s.pressed);
+    s = StepMenuPress(p, true, t + 5);
+    CHECK(s.dropped && s.released && s.buttons == 0);
+    // No reads for 5 s: dropped.
+    StartMenuPress(p, XINPUT_GAMEPAD_START, t);
+    t += 6000;
+    s = StepMenuPress(p, false, t);
+    CHECK(s.dropped && !s.pressed);
+}
+
 void TestClickGate() {
     using namespace mevr::game::gamepad;
     using Phase = ClickGate::Phase;
@@ -6797,6 +6863,7 @@ int main() {
     TestRightGripHolds();
     TestRbFromStickClick();
     TestStickChord();
+    TestMenuPress();
     TestClickGate();
     TestSquadPad();
     TestSquadPointing();

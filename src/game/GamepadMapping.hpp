@@ -100,6 +100,33 @@ struct StickChordStep {
 // One step on the player's own clicks (never a replay's). `nowMs` a millisecond clock (nonzero).
 StickChordStep UpdateStickChord(StickChord& chord, bool leftClick, bool rightClick, std::uint64_t nowMs);
 
+// A pad button pressed for the game from our main menu (research/28 section "The game's menus": Game menu = Start, the
+// game's pause menu; Back = holster on foot, quit a bypass minigame). The menu asks; the press waits until the menu has
+// closed and the game has read the pad kMenuPressWaitPolls times over kMenuPressWaitMs (the mod lifts the menu's pause
+// on its next tick, and a button that goes down while the game is paused or not reading is lost), then holds the
+// button kMenuPressHoldMs and at least kMenuPressHoldPolls reads, then lets go. The menu opening again calls it off.
+inline constexpr std::uint64_t kMenuPressWaitMs = 250;
+inline constexpr int kMenuPressWaitPolls = 8;
+inline constexpr std::uint64_t kMenuPressHoldMs = 100;
+inline constexpr int kMenuPressHoldPolls = 3;
+inline constexpr std::uint64_t kMenuPressGiveUpMs = 5000;  // the game never read the pad: dropped
+struct MenuPress {
+    enum class Phase : std::uint8_t { Idle, Waiting, Holding };
+    Phase phase = Phase::Idle;
+    WORD button = 0;
+    std::uint64_t sinceMs = 0;  // the phase's start
+    int polls = 0;              // the game's reads in this phase (while our menu is closed)
+};
+struct MenuPressStep {
+    WORD buttons = 0;     // OR these into the pad the game reads now
+    bool pressed = false;  // the button went down on this read
+    bool released = false; // it was let go on this read
+    bool dropped = false;  // called off (the menu opened again, or no reads within kMenuPressGiveUpMs)
+};
+void StartMenuPress(MenuPress& press, WORD button, std::uint64_t nowMs);
+// One read of the pad by the game. `menuOpen`: our main menu is open now (the game sees a neutral pad).
+MenuPressStep StepMenuPress(MenuPress& press, bool menuOpen, std::uint64_t nowMs);
+
 // L3 (crouch) waits kStickJoinMs to see whether the right click joins (the chord above): a click held
 // that long alone reaches the game; one released sooner reaches it as a kRbTapMs press afterwards;
 // one the right click joins never does, nor does it come back when the right click lets go first.
