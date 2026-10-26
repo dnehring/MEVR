@@ -446,7 +446,10 @@ curve by `toneSat` (0 .. 1, default 0.7: at this scene the game's own pass's sat
 and the reds 0.49 against 0.48; 1 is the scene's). The CPU reference and the GPU check (`mevr-colour-shader`, three
 more cases) agree within a step; the unit tests pin the ratios kept, the per-channel result at 0, grey unchanged, the
 path to white and the chroma scale. Cost: none (GPU 4.91 ms median, 8.20 p90 under the moving head loop with one
-Draw: the day's spread). The user's ini: `tonemap = aces`, `toneHue = 1`, `toneDesat = 0.15`, `toneSat = 0.7`.
+Draw: the day's spread). The user's ini keeps `tonemap = aces`, `toneHue = 1`, `toneDesat = 0.15`, `toneSat = 0.7`
+for the option; after the verdict below (2026-10-26, the user: with legitimate measurements the eye need not judge)
+`hdrDisplay = 0` and the game's range is SDR again (`tools/vr-game-settings.ps1 -Sdr`): the game's own pass,
+independent of the Windows HDR switch.
 
 **Open:** the game's SDR pass also lifts the shadows the ACES toe crushes (94% of pixels lit against 74%, 0.4%
 crushed against 4.7%), and its sky is a warmer, more contrasted orange where ours, hue kept, is a pale peach (the sky
