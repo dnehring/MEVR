@@ -65,7 +65,6 @@ struct Trims {
     float roll = 0.0f;
 };
 
-std::wstring gPath;            // ...\Binaries\Win64\ASI\LE1MEVR.ini (the host ASI's name)
 FILETIME gStamp{};
 bool gLoaded = false;
 std::uint64_t gNextCheckMs = 0;
@@ -101,12 +100,11 @@ constexpr std::uint64_t kMeasureTimeoutMs = 30000;
 std::string gMeasureResult;
 
 std::wstring const& Path() {
-    if (gPath.empty()) {
-        // <exe dir>\ASI\LE1MEVR.ini, the file the mod reads (engine/SettingsFile), not <host ASI name>.ini: a renamed
-        // ASI kept the host and the mod on two different files.
-        gPath = mevr::engine::SettingsFile().wstring();
-    }
-    return gPath;
+    // <exe dir>\ASI\LE1MEVR.ini, the file the mod reads (engine/SettingsFile), not <host ASI name>.ini: a renamed ASI
+    // kept the host and the mod on two different files. A function-local static: the game thread and the Present
+    // thread both ask first.
+    static std::wstring const path = mevr::engine::SettingsFile().wstring();
+    return path;
 }
 
 bool ReadNumber(wchar_t const* section, wchar_t const* key, float& out) {
