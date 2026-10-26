@@ -68,5 +68,11 @@ XrCompositionLayerQuad const* Layer(Frame const& frame);
 void Recentered();
 // For snapshots (plugin/TestLoop): open, where, the pointer, the cost.
 std::string StatusJson();
+// Every Present, VR frame or not (PerfPresentEnd): an open menu whose quad hasn't been drawn for kNotDrawnMs (the XR
+// session stopped, lost or exiting; the headset asleep) is closed, so the game isn't left paused with a neutral pad and
+// its mouse and keyboard blocked on the desktop; likewise a running calibration is cancelled when no VR frame has run
+// for that long.
+inline constexpr std::uint64_t kNotDrawnMs = 1000;
+void OnPresent();
 
 } // namespace mevr::host::main_menu
