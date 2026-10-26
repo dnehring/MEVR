@@ -82,7 +82,7 @@ Before reporting, [docs/troubleshooting.md](docs/troubleshooting.md) covers the 
 **First: Report a problem.** MEVR Setup's **Report a problem** page (or, in the game, the VR menu's **Advanced >
 Diagnostics > Report**, which runs the setup in the background) saves `MEVR-report-<date-time>.zip` on your Desktop:
 the mod's, renderer's and loader's logs, the crash breadcrumbs, your settings and install record, a listing of the
-game's Win64 and ASI folders (names and sizes only), optionally the latest snapshot and frame-timing capture, and
+game's Win64 and ASI folders (names, sizes and dates only), optionally the latest snapshot and frame-timing capture, and
 `REPORT.md` first: versions, headset, GPU, the last session's errors and warnings, the crash, the settings you
 changed, and a prompt to paste into your AI assistant. Your Windows user name, profile folder, computer name and
 e-mail addresses are removed from every file. **Nothing is uploaded or sent**: you look at the zip and decide. The

@@ -418,16 +418,16 @@ std::string Listing(Layout const& layout) {
             out += "  (not there)\n";
             return;
         }
-        std::vector<std::pair<std::string, std::uintmax_t>> rows;
+        std::vector<std::pair<std::string, std::string>> rows;  // name, "size  modified"
         auto take = [&](fs::directory_entry const& entry) {
             if (rows.size() >= 400) {
                 return;
             }
             std::string name = detect::Utf8(fs::relative(entry.path(), dir, ec).wstring());
             if (entry.is_directory(ec)) {
-                rows.emplace_back(name + "\\", 0);
+                rows.emplace_back(name + "\\", std::string());
             } else {
-                rows.emplace_back(name, entry.file_size(ec));
+                rows.emplace_back(name, std::format("{:>12}  {}", entry.file_size(ec), FileTimeText(entry.path())));
             }
         };
         if (recursive) {
@@ -440,14 +440,14 @@ std::string Listing(Layout const& layout) {
             }
         }
         std::sort(rows.begin(), rows.end());
-        for (auto const& [name, size] : rows) {
-            out += name.back() == '\\' ? std::format("  {}\n", name) : std::format("  {:<56} {:>12}\n", name, size);
+        for (auto const& [name, sizeAndTime] : rows) {
+            out += name.back() == '\\' ? std::format("  {}\n", name) : std::format("  {:<56} {}\n", name, sizeAndTime);
         }
         if (rows.size() >= 400) {
             out += "  (more not listed)\n";
         }
     };
-    out += "File names and sizes only: no other mod's contents are in this report.\n\n";
+    out += "File names, sizes and modified times (local) only: no other mod's contents are in this report.\n\n";
     add(layout.Win64(), false, "Game\\ME1\\Binaries\\Win64 (top level):");
     out += "\n";
     add(layout.Asi(), true, "Game\\ME1\\Binaries\\Win64\\ASI (everything):");
@@ -1240,7 +1240,7 @@ Bundle Collect(Options const& options, Redactor const& redactor) {
         addFile("settings/LE1MEVR.ini", {layout.Full(paths::kModIni)}, 0, 0);
         addFile("settings/MELEVR.ini", {layout.Full(paths::kHalcyonIni)}, 0, 0);
         addFile("settings/MEVR-install.json", {layout.ManifestFile()}, 0, 0);
-        addText("system/folders.txt", Listing(layout), 0, "file names and sizes");
+        addText("system/folders.txt", Listing(layout), 0, "file names, sizes and dates");
     }
 
     // ---- The snapshot.

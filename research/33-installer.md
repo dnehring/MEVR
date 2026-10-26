@@ -339,7 +339,7 @@ Desktop, looks at it, and decides.
 "(Halcyon) inside" start banner, else the last `[XR] starting OpenXR session thread`, read from the file's last 48 MB,
 then at most 0.5 MB + 2.5 MB), the loader's log (`MEVRLoader.log`, or LEBinkProxy's `bink2w64_proxy.log`), the crash
 breadcrumbs (and `.prev`), `reflect-check.json`; `settings/` `LE1MEVR.ini`, `MELEVR.ini`, `MEVR-install.json`;
-`system/folders.txt` (Win64's top level and ASI's tree: names and sizes only, for conflicts; no other mod's
+`system/folders.txt` (Win64's top level and ASI's tree: names, sizes and dates only, for conflicts; no other mod's
 contents); optional `snapshot/` (the newest JSON and its eye PNGs) and `perf/` (the newest `-probe.json`,
 `-frames.csv`, `-ticks.csv`). A file the running game holds without read sharing (our loader's log: `fopen` in "w")
 is listed as locked, not included.
