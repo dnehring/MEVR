@@ -4,6 +4,7 @@
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
 #include "plugin/DrawReplay.hpp"
+#include "plugin/MetricStereo.hpp"
 #include "halcyon/le1/mevr_bridge.h"
 
 #include <Windows.h>
@@ -463,7 +464,7 @@ bool NearlySame(float const* a, float const* b) {
 std::atomic<std::uint64_t> gSecondEyeQueriesSkipped{0};
 std::atomic<std::uint64_t> gSecondEyeFakeResults{0};
 
-void UmbraIssueQueriesHook(void* commander) {
+void UmbraIssueQueriesInner(void* commander) {
     auto* const c = static_cast<std::uint8_t*>(commander);
     // umbraSharedVisibility = 2: the second eye issues no occluder queries (its visible set is the first eye's anyway);
     // the results read (command 6) then answers Umbra's pending queries as "visible" without touching the GPU.
@@ -507,6 +508,12 @@ void UmbraIssueQueriesHook(void* commander) {
     gUmbraIssueQueriesOrig(commander);
     std::memcpy(VP, saved, sizeof(saved));
     gUmbraMatrixFixed.fetch_add(1, std::memory_order_relaxed);
+}
+// research/37 (the shown columns): Umbra's query boxes rasterise over the whole window, never the eye's scissor.
+void UmbraIssueQueriesHook(void* commander) {
+    draw_replay::ScissorExempt(true);
+    UmbraIssueQueriesInner(commander);
+    draw_replay::ScissorExempt(false);
 }
 std::uint8_t* gExe = nullptr;
 bool gHooked = false;
@@ -943,7 +950,9 @@ void PrepassHook(void* renderer) {
 }
 void BeforeLightsHook(void* renderer) {
     if (t_skipPasses) { return; }
+    draw_replay::ScissorExempt(true);    // the engine's own occlusion boxes: the whole window (research/37)
     gBeforeLightsOrig(renderer);
+    draw_replay::ScissorExempt(false);
 }
 void DpgPassHook(void* renderer, int dpg, std::uint32_t* dirty) {
     if (t_skipPasses) { return; }
@@ -1127,6 +1136,35 @@ std::atomic<bool> gOneDrawFaulted{false};
 // frame, with the views alive, whether a record would match; after 30 matches running one Draw resumes.
 std::atomic<bool> gOneDrawWanted{false};     // [Performance] sharePass = 5 and the hooks in place
 std::atomic<int> gOneDrawWindow{1};          // [Performance] oneDrawWindow: both eyes on the symmetric window (1) or each on its own frustum (0)
+std::atomic<int> gEyeScissor{0};             // [Performance] eyeScissor: each eye's scene draws scissored to what it shows of the window (1% of GPU at the heavy cell: off)
+float gEyeScissorLogged[2][4] = {{-1.0f, 0, 0, 0}, {-1.0f, 0, 0, 0}};
+
+// research/37 (the shown columns): the scene draws of render pass `pass` (its live render or its replay) are
+// scissored to the columns and rows that pass's eye shows of the symmetric window; the occlusion queries are exempt
+// (their hooks). Nothing where the plan has nothing to cut (mode 2, a symmetric headset, no stereo frame).
+void BeginEyeScissor(int pass) {
+    int const mode = gEyeScissor.load(std::memory_order_relaxed);   // 1 both passes; 2 pass 0 only; 3 pass 1 only (experiments)
+    if (mode == 0 || (mode == 2 && pass == 1) || (mode == 3 && pass == 0) || !MELEVR::MevrBridge::StereoFrameActive() || pass < 0 || pass > 1) {
+        return;
+    }
+    float f[4];
+    if (!mevr::host::metric_stereo::PassShownFraction(pass, f)) {
+        return;
+    }
+    bool changed = false;
+    for (int k = 0; k < 4; ++k) {
+        changed = changed || std::abs(f[k] - gEyeScissorLogged[pass][k]) > 0.002f;
+    }
+    if (changed) {
+        std::memcpy(gEyeScissorLogged[pass], f, sizeof(f));
+        log::Info("render levers: eye scissor: pass {} draws columns {:.3f}..{:.3f} and rows {:.3f}..{:.3f} of its window ({:.0f}% of its pixels)",
+            pass, f[0], f[2], f[1], f[3], 100.0f * (f[2] - f[0]) * (f[3] - f[1]));
+    }
+    draw_replay::SetEyeScissor(true, f);
+}
+void EndEyeScissor() {
+    draw_replay::SetEyeScissor(false, nullptr);
+}
 std::atomic<bool> gOneDrawFallback{false};   // Halcyon's second Draw resumed by the health check
 unsigned gOneDrawMisses = 0, gOneDrawMatches = 0;   // render thread
 std::atomic<std::uint64_t> gOneDrawFallbacks{0}, gOneDrawRearms{0};
@@ -1238,7 +1276,9 @@ void OneDrawSecondEye(std::uint8_t* renderer) {
         }
     }
     t_replayToRightHalf = false;
+    BeginEyeScissor(1);
     int const rc = ReplayDrawsSEH(renderer, first, second);
+    EndEyeScissor();
     if (rc == 0) {
         gMode5Replays.fetch_add(1, std::memory_order_relaxed);
     } else {
@@ -1315,7 +1355,9 @@ void SceneRenderHook(void* renderer) {
                 t_oneDrawCheck = true;    // the finish hook asks whether a record would match (the health check)
             }
             std::uint32_t const drawsBefore = MELEVR::MevrBridge::g_perfDraws;
+            BeginEyeScissor(0);
             gSceneRenderOrig(renderer);
+            EndEyeScissor();
             t_oneDrawCheck = false;
             if (recorder) {
                 if (t_oneDrawFinish) {   // the finish never ran (the render bailed): nothing to replay
@@ -1368,7 +1410,9 @@ void SceneRenderHook(void* renderer) {
         }
     }
     if (!handled) {
+        BeginEyeScissor(index);   // two Draws: each pass its own eye's columns (research/37, the shown columns)
         gSceneRenderOrig(renderer);
+        EndEyeScissor();
     }
     if (params != nullptr) {
         *params = paramsBefore;
@@ -1856,9 +1900,13 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
         if (d.recorded != 0) {
             // Research/37: the recording's map copies (the driver's mapped memory read back at Unmap).
             share += std::format("; recording: {:.0f} maps ({:.0f} KB) copied in {:.2f} ms a frame, {:.1f} large maps not copied; "
-                                 "large buffers discarded inside the tail: {} frames ({} discards, {} shadowed)",
+                                 "large buffers discarded inside the tail: {} frames ({} discards, {} shadowed); {:.0f} references held a frame",
                 per(d.mapsCopied, d.recorded), per(d.mapCopyBytes, d.recorded) / 1024.0, d.mapCopyMs / static_cast<double>(d.recorded),
-                per(d.mapsSkipped, d.recorded), d.tailDiscardFrames, d.tailDiscards, d.shadowCopies);
+                per(d.mapsSkipped, d.recorded), d.tailDiscardFrames, d.tailDiscards, d.shadowCopies, per(d.held, frames));
+        }
+        if (d.eyeScissorRects != 0 || d.eyeScissorExempt != 0) {
+            share += std::format("; eye scissor: {:.0f} rects a frame resolved ({:.0f} unchanged, not set), {:.0f} set again, {:.0f} exempt (the queries)",
+                per(d.eyeScissorRects, frames), per(d.eyeScissorUnchanged, frames), per(d.eyeScissorReissued, frames), per(d.eyeScissorExempt, frames));
         }
     }
     log::Info("render levers: last 10 s: {} frames; scene renders per frame {}; per render, by its place in the "
@@ -2111,6 +2159,15 @@ void Tick() {
             ApplyAffinity(pCores != 0);
         }
         draw_replay::SetInversePair(readInt(L"replayInverse", 1) != 0);
+        {
+            int const scissorRaw = readInt(L"eyeScissor", 0);
+            int const scissor = scissorRaw < 0 ? 0 : (scissorRaw > 3 ? 3 : scissorRaw);
+            if (gEyeScissor.exchange(scissor, std::memory_order_relaxed) != scissor) {
+                log::Info("render levers: {} ([Performance] eyeScissor = {})",
+                    scissor != 0 ? "each eye's scene draws are scissored to the columns and rows it shows of the window (the occlusion queries see the whole window)"
+                                 : "each eye renders its whole window", scissor);
+            }
+        }
         {
             int const window = readInt(L"oneDrawWindow", 1) != 0 ? 1 : 0;
             if (gOneDrawWindow.exchange(window, std::memory_order_relaxed) != window) {

@@ -36,6 +36,8 @@ struct Status {
     float unitsPerMeter = 0.0f;
     float depth = 1.0f;
     float eyeFov[2][4] = {};        // the runtime's, radians
+    float fillH = 1.0f, fillV = 1.0f;
+    float cpuHalfH = 0.0f, cpuHalfV = 0.0f;   // the render's last projection (radians; 0 = none seen)
     float cantDeg = 0.0f;
     bool submitted = false;
     int submitMode = 0;
@@ -119,6 +121,37 @@ std::string StatusJson() {
         J4(s.eyeFov[1]), passes, submit);
 }
 
+bool PassShownFraction(int pass, float out[4]) {
+    namespace ms = mevr::vr::metric_stereo;
+    if (out == nullptr || pass < 0 || pass > 1) {
+        return false;
+    }
+    std::lock_guard lock(gMutex);
+    if (!gStatus.planned || gStatus.plan.mode != 1) {
+        return false;
+    }
+    int const eye = pass == 0 ? gStatus.plan.pass0Eye : 1 - gStatus.plan.pass0Eye;
+    ms::Fov const window = ms::UnionWindow(ToFov(gStatus.eyeFov[0]), ToFov(gStatus.eyeFov[1]), gStatus.fillH, gStatus.fillV);
+    ms::Tangents const w = ms::TangentsOf(window);
+    float const width = w.right - w.left, height = w.up - w.down;
+    if (width <= 0.0f || height <= 0.0f) {
+        return false;
+    }
+    if (gStatus.cpuHalfH > 0.0f && gStatus.cpuHalfV > 0.0f) {   // the render's own window, once seen, must be that union
+        float const th = std::tan(gStatus.cpuHalfH), tv = std::tan(gStatus.cpuHalfV);
+        if (std::abs(th - w.right) > 0.02f * th || std::abs(tv - w.up) > 0.02f * tv) {
+            return false;
+        }
+    }
+    ms::Tangents const t = ms::TangentsOf(ms::Filled(ToFov(gStatus.eyeFov[eye]), gStatus.fillH, gStatus.fillV));
+    constexpr float margin = 0.005f;
+    out[0] = std::clamp((t.left - w.left) / width - margin, 0.0f, 1.0f);
+    out[1] = std::clamp((w.up - t.up) / height - margin, 0.0f, 1.0f);
+    out[2] = std::clamp((t.right - w.left) / width + margin, 0.0f, 1.0f);
+    out[3] = std::clamp((w.up - t.down) / height + margin, 0.0f, 1.0f);
+    return out[0] > 0.0f || out[1] > 0.0f || out[2] < 1.0f || out[3] < 1.0f;
+}
+
 } // namespace mevr::host::metric_stereo
 
 namespace MELEVR::MevrBridge {
@@ -184,6 +217,10 @@ void PlanStereo(const StereoPlanInput& in, StereoPlan* out) noexcept {
         gStatus.unitsPerMeter = in.unitsPerMeter;
         gStatus.depth = in.depth;
         gStatus.cantDeg = cantDeg;
+        gStatus.fillH = in.fillH;
+        gStatus.fillV = in.fillV;
+        gStatus.cpuHalfH = in.cpuHalfH;
+        gStatus.cpuHalfV = in.cpuHalfV;
         for (int i = 0; i < 2; ++i) {
             for (int k = 0; k < 4; ++k) {
                 gStatus.eyeFov[i][k] = in.eyeFov[i][k];

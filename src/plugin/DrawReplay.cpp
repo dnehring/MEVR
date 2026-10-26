@@ -22,6 +22,7 @@
 #include <mutex>
 #include <new>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace mevr::host::draw_replay {
@@ -66,6 +67,7 @@ enum class Op : std::uint8_t {
     CSSetUnorderedAccessViews,  // research/37: the engine unbinds compute UAVs a few times a frame
     Dispatch,                   // research/37, experiment 6: a few frames a second carry one in the tail
     Unsupported,  // the slot in `n`: the tail can't be replayed
+    ScissorExempt,              // the shown-columns scissor off (n = 1) or on again (n = 0) around the occlusion queries
     kCount
 };
 char const* const kOpNames[] = {"SetConstantBuffers", "SetShaderResources", "SetSamplers", "SetShader",
@@ -73,7 +75,8 @@ char const* const kOpNames[] = {"SetConstantBuffers", "SetShaderResources", "Set
     "DrawIndexedInstanced", "DrawInstanced", "DrawAuto", "Map", "Unmap", "UpdateSubresource", "RSSetState",
     "RSSetViewports", "RSSetScissorRects", "OMSetRenderTargets", "OMSetBlendState", "OMSetDepthStencilState",
     "ClearRenderTargetView", "ClearDepthStencilView", "CopyResource", "CopySubresourceRegion", "ResolveSubresource",
-    "GenerateMips", "Begin", "End", "SetPredication", "CSSetUnorderedAccessViews", "Dispatch", "Unsupported"};
+    "GenerateMips", "Begin", "End", "SetPredication", "CSSetUnorderedAccessViews", "Dispatch", "Unsupported",
+    "ScissorExempt"};
 static_assert(sizeof(kOpNames) / sizeof(kOpNames[0]) == static_cast<std::size_t>(Op::kCount));
 
 #pragma pack(push, 1)
@@ -263,6 +266,170 @@ ID3D11DeviceContext* gContextSeen = nullptr;  // every context Attach was given,
 
 Stream gStreams[2];
 thread_local Stream* t_recording = nullptr;
+
+// ---- The shown-columns scissor (research/37) --------------------------------------------------------------------
+// Both eyes render on the symmetric window, so each eye's image holds columns (and rows) the headset never shows:
+// a quarter of them on a PS VR2. The engine's own scissor rects are intersected with the eye's shown rect, in the
+// frame of the viewport last set (the post-process targets are smaller), on the live render and on the replay alike;
+// not around the occlusion queries, whose boxes must rasterise over the whole window (a box outside the scissor
+// would count as occluded). Render thread; the recording hooks and the replay share the state (one thread).
+thread_local bool t_eyeScissor = false;
+thread_local float t_eyeFraction[4] = {0.0f, 0.0f, 1.0f, 1.0f};   // left, top, right, bottom of the viewport
+thread_local bool t_scissorExempt = false;
+thread_local bool t_ourCall = false;   // a state or rect call the eye scissor makes itself: the hooks pass it through
+struct OurCall {
+    OurCall() { t_ourCall = true; }
+    ~OurCall() { t_ourCall = false; }
+    OurCall(OurCall const&) = delete;
+    OurCall& operator=(OurCall const&) = delete;
+};
+thread_local bool t_haveViewport = false;
+thread_local D3D11_VIEWPORT t_viewport{};
+thread_local UINT t_engineRectCount = 0;
+thread_local D3D11_RECT t_engineRects[16];
+thread_local UINT t_setRectCount = 0;        // what the eye scissor last set on the context (skipped when the same)
+thread_local D3D11_RECT t_setRects[16];
+std::atomic<std::uint64_t> gEyeScissorUnchanged{0};
+// The engine's rasterizer states keep scissoring DISABLED (10 of its 12 states; the two with it on are its light
+// bounds), so a scissor rect alone does nothing to its draws: while the eye scissor applies, a scissor-off state is
+// bound through a clone with ScissorEnable on (made once per state) and the rect set to the eye's alone; a
+// scissor-on state keeps the engine's rects, intersected.
+struct StateInfo {
+    bool scissorOn = false;
+    ID3D11RasterizerState* clone = nullptr;
+};
+thread_local std::unordered_map<void*, StateInfo> t_stateInfo;
+thread_local ID3D11RasterizerState* t_engineState = nullptr;
+thread_local bool t_engineScissorOn = false;
+std::atomic<std::uint64_t> gEyeScissorRects{0}, gEyeScissorReissued{0}, gEyeScissorExempt{0};
+using SetScissorFn = void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, UINT, D3D11_RECT const*);
+using SetStateFn = void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11RasterizerState*);
+// Sets the rects unless they are what the eye scissor last set.
+void SetRectsOnce(ID3D11DeviceContext* c, SetScissorFn set, UINT n, D3D11_RECT const* rects) {
+    if (n == t_setRectCount && n != 0 && std::memcmp(rects, t_setRects, n * sizeof(D3D11_RECT)) == 0) {
+        gEyeScissorUnchanged.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+    t_setRectCount = n < 16 ? n : 16;
+    if (t_setRectCount != 0) {
+        std::memcpy(t_setRects, rects, t_setRectCount * sizeof(D3D11_RECT));
+    }
+    set(c, n, rects);
+}
+
+bool EyeScissorApplies() {
+    return t_eyeScissor && !t_scissorExempt && t_haveViewport;
+}
+// The eye's shown rect in the current viewport's frame, rounded outward.
+D3D11_RECT EyeRect() {
+    D3D11_VIEWPORT const& v = t_viewport;
+    D3D11_RECT r;
+    r.left = static_cast<LONG>(std::floor(v.TopLeftX + t_eyeFraction[0] * v.Width));
+    r.top = static_cast<LONG>(std::floor(v.TopLeftY + t_eyeFraction[1] * v.Height));
+    r.right = static_cast<LONG>(std::ceil(v.TopLeftX + t_eyeFraction[2] * v.Width));
+    r.bottom = static_cast<LONG>(std::ceil(v.TopLeftY + t_eyeFraction[3] * v.Height));
+    return r;
+}
+// Sets the engine's rects through `set`, intersected with the eye's rect where the scissor applies.
+void SetScissorFor(ID3D11DeviceContext* c, SetScissorFn set, UINT count, D3D11_RECT const* rects) {
+    if (!EyeScissorApplies()) {
+        t_setRectCount = 0;   // the engine's own rects: not ours to skip
+        set(c, count, rects);
+        return;
+    }
+    D3D11_RECT const eye = EyeRect();
+    if (!t_engineScissorOn || count == 0 || rects == nullptr) {   // the engine's state ignores its rects: the eye's alone
+        gEyeScissorRects.fetch_add(1, std::memory_order_relaxed);
+        SetRectsOnce(c, set, 1, &eye);
+        return;
+    }
+    D3D11_RECT out[16];
+    UINT const n = count < 16 ? count : 16;
+    for (UINT i = 0; i < n; ++i) {
+        out[i].left = std::max(rects[i].left, eye.left);
+        out[i].top = std::max(rects[i].top, eye.top);
+        out[i].right = std::max(out[i].left, std::min(rects[i].right, eye.right));
+        out[i].bottom = std::max(out[i].top, std::min(rects[i].bottom, eye.bottom));
+    }
+    gEyeScissorRects.fetch_add(1, std::memory_order_relaxed);
+    SetRectsOnce(c, set, n, out);
+}
+// The engine's own rects, as it last set them (the recording path and the replay both report them here).
+void RememberRects(UINT count, D3D11_RECT const* rects) {
+    t_engineRectCount = rects == nullptr ? 0 : (count < 16 ? count : 16);
+    if (t_engineRectCount != 0) {
+        std::memcpy(t_engineRects, rects, t_engineRectCount * sizeof(D3D11_RECT));
+    }
+}
+// After the viewport, the exempt state or the eye changed: the engine's last rects set again under the new rule.
+void ReissueScissor(ID3D11DeviceContext* c, SetScissorFn set) {
+    if (t_eyeScissor && (t_engineRectCount != 0 || (!t_engineScissorOn && t_engineState != nullptr))) {
+        gEyeScissorReissued.fetch_add(1, std::memory_order_relaxed);
+        SetScissorFor(c, set, t_engineRectCount, t_engineRectCount != 0 ? t_engineRects : nullptr);
+    }
+}
+// The engine's state's scissor flag and, for a scissor-off state, its scissor-on clone (made on first sight).
+StateInfo const& InfoOf(ID3D11DeviceContext* c, ID3D11RasterizerState* state) {
+    auto const it = t_stateInfo.find(state);
+    if (it != t_stateInfo.end()) {
+        return it->second;
+    }
+    StateInfo info;
+    D3D11_RASTERIZER_DESC d{};
+    state->GetDesc(&d);
+    info.scissorOn = d.ScissorEnable != FALSE;
+    if (!info.scissorOn) {
+        ID3D11Device* device = nullptr;
+        c->GetDevice(&device);
+        if (device != nullptr) {
+            d.ScissorEnable = TRUE;
+            if (FAILED(device->CreateRasterizerState(&d, &info.clone))) {
+                info.clone = nullptr;
+            }
+            device->Release();
+        }
+    }
+    return t_stateInfo.emplace(state, info).first->second;
+}
+// Binds the engine's current state, or its scissor-on clone while the eye scissor applies.
+void ApplyState(ID3D11DeviceContext* c, SetStateFn set) {
+    if (t_engineState == nullptr) {
+        return;
+    }
+    StateInfo const& info = InfoOf(c, t_engineState);
+    set(c, EyeScissorApplies() && !info.scissorOn && info.clone != nullptr ? info.clone : t_engineState);
+}
+// The engine set a rasterizer state (live or replayed): tracked, bound through ApplyState, and the rect set again
+// when the state's scissor flag changed (a stale light rect must not clip the next scissor-off pass).
+void EngineSetState(ID3D11DeviceContext* c, ID3D11RasterizerState* state, SetStateFn setState, SetScissorFn setScissor) {
+    if (state == nullptr) {
+        t_engineState = nullptr;
+        t_engineScissorOn = false;
+        setState(c, state);
+        return;
+    }
+    bool const wasOn = t_engineScissorOn;
+    t_engineState = state;
+    t_engineScissorOn = InfoOf(c, state).scissorOn;
+    ApplyState(c, setState);
+    if (wasOn != t_engineScissorOn) {
+        ReissueScissor(c, setScissor);
+    }
+}
+// Once a session, the first rasterizer states seen: whether the engine leaves scissoring enabled (the scissor
+// rect only acts on states that do).
+std::atomic<int> gRasterizerStatesLogged{0};
+thread_local std::unordered_set<void*> t_rasterizerSeen;
+void NoteRasterizerState(ID3D11RasterizerState* state) {
+    if (state == nullptr || gRasterizerStatesLogged.load(std::memory_order_relaxed) >= 12 || !t_rasterizerSeen.insert(state).second) {
+        return;
+    }
+    D3D11_RASTERIZER_DESC d{};
+    state->GetDesc(&d);
+    gRasterizerStatesLogged.fetch_add(1, std::memory_order_relaxed);
+    log::Info("draw replay: rasterizer state {}: scissor {}, cull {}, fill {}, depth clip {}", static_cast<void*>(state),
+        d.ScissorEnable ? "enabled" : "DISABLED", static_cast<int>(d.CullMode), static_cast<int>(d.FillMode), d.DepthClipEnable ? 1 : 0);
+}
 std::unordered_map<void*, BufferInfo> gBuffers;  // per frame (pointers can be reused after a release)
 std::unordered_map<void*, Mapped> gMapped;       // the last Map of each resource this frame
 // The recording's map copies, timed (research/37: 17 maps and 17 KB a frame at the heavy spot; the 7.7 MB a frame of
@@ -330,6 +497,7 @@ ID3D11Buffer* ShadowFor(ID3D11DeviceContext* c, ID3D11Resource* resource, Buffer
     return set.buffers[set.used++];
 }
 std::vector<IUnknown*> gHeld;                    // AddRef'd for the frame
+std::atomic<std::uint64_t> gHeldTotal{0};        // of those, per frame, for the levers line
 std::array<void*, 8192> gHeldCache{};
 
 std::atomic<std::uint64_t> gReplays{0}, gFailures{0}, gRecorded{0}, gRecordedCalls{0}, gRecordedBytes{0},
@@ -749,13 +917,22 @@ void STDMETHODCALLTYPE OMSetDepthStencilStateHook(ID3D11DeviceContext* c, ID3D11
     Next<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11DepthStencilState*, UINT)>(kOMSetDepthStencilState)(c, state, reference);
 }
 void STDMETHODCALLTYPE RSSetStateHook(ID3D11DeviceContext* c, ID3D11RasterizerState* state) {
+    if (t_ourCall) {
+        Next<SetStateFn>(kRSSetState)(c, state);
+        return;
+    }
     if (t_recording != nullptr) {
         void* p = state;
         RecordPointers(*t_recording, Op::RSSetState, 0, 0, 1, &p);
     }
-    Next<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11RasterizerState*)>(kRSSetState)(c, state);
+    NoteRasterizerState(state);
+    EngineSetState(c, state, Next<SetStateFn>(kRSSetState), Next<SetScissorFn>(kRSSetScissorRects));
 }
 void STDMETHODCALLTYPE RSSetViewportsHook(ID3D11DeviceContext* c, UINT count, D3D11_VIEWPORT const* viewports) {
+    if (t_ourCall) {
+        Next<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, UINT, D3D11_VIEWPORT const*)>(kRSSetViewports)(c, count, viewports);
+        return;
+    }
     if (t_recording != nullptr) {
         UINT const n = viewports == nullptr ? 0 : count;
         auto* const out = Reserve(*t_recording, Op::RSSetViewports, 0, static_cast<std::uint16_t>(n), n * sizeof(D3D11_VIEWPORT));
@@ -764,8 +941,17 @@ void STDMETHODCALLTYPE RSSetViewportsHook(ID3D11DeviceContext* c, UINT count, D3
         }
     }
     Next<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, UINT, D3D11_VIEWPORT const*)>(kRSSetViewports)(c, count, viewports);
+    if (viewports != nullptr && count != 0) {
+        t_viewport = viewports[0];
+        t_haveViewport = true;
+        ReissueScissor(c, Next<SetScissorFn>(kRSSetScissorRects));
+    }
 }
 void STDMETHODCALLTYPE RSSetScissorRectsHook(ID3D11DeviceContext* c, UINT count, D3D11_RECT const* rects) {
+    if (t_ourCall) {
+        Next<SetScissorFn>(kRSSetScissorRects)(c, count, rects);
+        return;
+    }
     if (t_recording != nullptr) {
         UINT const n = rects == nullptr ? 0 : count;
         auto* const out = Reserve(*t_recording, Op::RSSetScissorRects, 0, static_cast<std::uint16_t>(n), n * sizeof(D3D11_RECT));
@@ -773,7 +959,8 @@ void STDMETHODCALLTYPE RSSetScissorRectsHook(ID3D11DeviceContext* c, UINT count,
             std::memcpy(out, rects, n * sizeof(D3D11_RECT));
         }
     }
-    Next<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, UINT, D3D11_RECT const*)>(kRSSetScissorRects)(c, count, rects);
+    RememberRects(count, rects);
+    SetScissorFor(c, Next<SetScissorFn>(kRSSetScissorRects), count, rects);
 }
 
 template <unsigned V>
@@ -1651,46 +1838,65 @@ bool Issue(ID3D11DeviceContext* c, Header const& h, std::uint8_t const* body, bo
             a->rowPitch, a->depthPitch);
         return true;
     }
-    case Op::RSSetState:
-        Live<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11RasterizerState*)>(kRSSetState)(
-            c, static_cast<ID3D11RasterizerState*>(reinterpret_cast<Pointers const*>(body)->ptrs[0]));
+    case Op::RSSetState: {
+        OurCall const ours;
+        EngineSetState(c, static_cast<ID3D11RasterizerState*>(reinterpret_cast<Pointers const*>(body)->ptrs[0]),
+            Live<SetStateFn>(kRSSetState), Live<SetScissorFn>(kRSSetScissorRects));
         return true;
+    }
     case Op::RSSetViewports: {
         auto const* const recorded = reinterpret_cast<D3D11_VIEWPORT const*>(body);
+        D3D11_VIEWPORT const* final = recorded;
+        UINT n = h.n;
+        D3D11_VIEWPORT shifted[16];
         if (t_rightHalf && h.n >= 1 && t_boundTargetWidth != 0 && recorded[0].Width > 0.0f &&
             static_cast<float>(t_boundTargetWidth) >= 2.0f * recorded[0].Width &&
             recorded[0].TopLeftX + recorded[0].Width <= static_cast<float>(t_boundTargetWidth) / 2.0f + 0.5f) {
-            D3D11_VIEWPORT shifted[16];
-            UINT const n = h.n < 16 ? h.n : 16;
+            n = h.n < 16 ? h.n : 16;
             std::memcpy(shifted, recorded, n * sizeof(D3D11_VIEWPORT));
             for (UINT i = 0; i < n; ++i) {
                 shifted[i].TopLeftX += recorded[0].Width;
             }
             gShiftedRects.fetch_add(1, std::memory_order_relaxed);
-            Live<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, UINT, D3D11_VIEWPORT const*)>(kRSSetViewports)(c, n, shifted);
-            return true;
+            final = shifted;
         }
-        Live<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, UINT, D3D11_VIEWPORT const*)>(kRSSetViewports)(c, h.n, recorded);
+        OurCall const ours;   // the replay's calls reach our own hooks through the vtable: tracked here, not there
+        Live<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, UINT, D3D11_VIEWPORT const*)>(kRSSetViewports)(c, n, final);
+        if (n != 0) {
+            t_viewport = final[0];
+            t_haveViewport = true;
+            ReissueScissor(c, Live<SetScissorFn>(kRSSetScissorRects));
+        }
         return true;
     }
     case Op::RSSetScissorRects: {
         auto const* const recorded = reinterpret_cast<D3D11_RECT const*>(body);
+        D3D11_RECT const* final = recorded;
+        UINT n = h.n;
+        D3D11_RECT shifted[16];
         if (t_rightHalf && h.n >= 1 && t_boundTargetWidth != 0) {
             LONG const width = recorded[0].right - recorded[0].left;
             if (width > 0 && static_cast<LONG>(t_boundTargetWidth) >= 2 * width && recorded[0].right <= static_cast<LONG>(t_boundTargetWidth / 2)) {
-                D3D11_RECT shifted[16];
-                UINT const n = h.n < 16 ? h.n : 16;
+                n = h.n < 16 ? h.n : 16;
                 std::memcpy(shifted, recorded, n * sizeof(D3D11_RECT));
                 for (UINT i = 0; i < n; ++i) {
                     shifted[i].left += width;
                     shifted[i].right += width;
                 }
                 gShiftedRects.fetch_add(1, std::memory_order_relaxed);
-                Live<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, UINT, D3D11_RECT const*)>(kRSSetScissorRects)(c, n, shifted);
-                return true;
+                final = shifted;
             }
         }
-        Live<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, UINT, D3D11_RECT const*)>(kRSSetScissorRects)(c, h.n, recorded);
+        OurCall const ours;
+        RememberRects(n, final);
+        SetScissorFor(c, Live<SetScissorFn>(kRSSetScissorRects), n, final);
+        return true;
+    }
+    case Op::ScissorExempt: {
+        OurCall const ours;
+        t_scissorExempt = h.n != 0;
+        ApplyState(c, Live<SetStateFn>(kRSSetState));
+        ReissueScissor(c, Live<SetScissorFn>(kRSSetScissorRects));
         return true;
     }
     case Op::OMSetRenderTargets: {
@@ -2059,6 +2265,7 @@ int Replay(ViewFields const& first, ViewFields const& second, bool rightHalf) {
     }
     t_rightHalf = rightHalf;
     t_boundTargetWidth = 0;
+    t_scissorExempt = false;   // the tail repeats its own toggles
     Stream const& s = gStreams[0];
     if (s.tail == SIZE_MAX) {
         return 2;
@@ -2093,6 +2300,13 @@ int Replay(ViewFields const& first, ViewFields const& second, bool rightHalf) {
             }
             log::Info("draw replay: stream 0 has {} entries, tail at byte {} of {} ({} entries), {} draws before the tail; tail ops: {}",
                 at, s.tail, s.bytes.size(), total, drawsBeforeTail, text);
+            std::string head;   // the tail's first ops, in order (research/37: where its clears and viewports sit)
+            Cursor h0 = TailOf(s);
+            for (unsigned i = 0; i < 40 && h0.Next(); ++i) {
+                head += kOpNames[static_cast<unsigned>(h0.header->op)];
+                head += ' ';
+            }
+            log::Info("draw replay: the tail begins: {}", head);
         }
     }
     // Shadowed buffers (research/37, the strobe): until a buffer's first in-tail discard its draws bind the shadow
@@ -2397,6 +2611,7 @@ void OnPresentEnd() {
         return;
     }
     t_recording = nullptr;
+    gHeldTotal.fetch_add(gHeld.size(), std::memory_order_relaxed);
     for (IUnknown* p : gHeld) {
         p->Release();
     }
@@ -2472,9 +2687,50 @@ Stats TakeStats() {
     s.tailDiscards = gTailDiscards.exchange(0, std::memory_order_relaxed);
     s.mapsSkipped = gMapsSkipped.exchange(0, std::memory_order_relaxed);
     s.shadowCopies = gShadowCopies.exchange(0, std::memory_order_relaxed);
+    s.eyeScissorRects = gEyeScissorRects.exchange(0, std::memory_order_relaxed);
+    s.eyeScissorReissued = gEyeScissorReissued.exchange(0, std::memory_order_relaxed);
+    s.eyeScissorExempt = gEyeScissorExempt.exchange(0, std::memory_order_relaxed);
+    s.eyeScissorUnchanged = gEyeScissorUnchanged.exchange(0, std::memory_order_relaxed);
+    s.held = gHeldTotal.exchange(0, std::memory_order_relaxed);
     std::lock_guard<std::mutex> const lock(gBlockerMutex);
     s.lastBlocker = gLastBlocker;
     return s;
+}
+
+void SetEyeScissor(bool active, float const fraction[4]) {
+    ID3D11DeviceContext* const c = Context();
+    if (!Attached() || c == nullptr) {
+        return;
+    }
+    t_eyeScissor = active && fraction != nullptr;
+    if (t_eyeScissor) {
+        std::memcpy(t_eyeFraction, fraction, sizeof(t_eyeFraction));
+        ApplyState(c, Next<SetStateFn>(kRSSetState));
+        ReissueScissor(c, Next<SetScissorFn>(kRSSetScissorRects));
+    } else {
+        ApplyState(c, Next<SetStateFn>(kRSSetState));   // the engine's own state and rects back
+        if (t_engineRectCount != 0) {
+            Next<SetScissorFn>(kRSSetScissorRects)(c, t_engineRectCount, t_engineRects);
+        }
+    }
+}
+
+void ScissorExempt(bool on) {
+    if (!Attached() || t_scissorExempt == on) {
+        return;
+    }
+    if (t_recording != nullptr) {
+        Reserve(*t_recording, Op::ScissorExempt, 0, on ? 1 : 0, 0);
+    }
+    t_scissorExempt = on;
+    if (on) {
+        gEyeScissorExempt.fetch_add(1, std::memory_order_relaxed);
+    }
+    ID3D11DeviceContext* const c = Context();
+    if (c != nullptr) {
+        ApplyState(c, Next<SetStateFn>(kRSSetState));
+        ReissueScissor(c, Next<SetScissorFn>(kRSSetScissorRects));
+    }
 }
 
 std::string StatsJson() {

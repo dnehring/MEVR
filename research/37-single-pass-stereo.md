@@ -528,6 +528,43 @@ it is the correct image. Beyond that only a lower render resolution gives the GP
 fpsVR keeps its last ten sessions only, so the two-Draw sessions' reprojection counts are gone; Halcyon's GPU line is
 the comparison above.
 
+### 2026-10-26 00:40-01:25, the shown columns: a per-eye scissor is worth 1% of GPU at the heavy cell (`[Performance] eyeScissor`, off)
+
+The GPU is the headset's limit (fpsVR: 13.5 ms p90 in the user's PS VR2 sessions), and with both eyes on the symmetric
+window 24% of each eye's rendered columns are never shown (the PS VR2's projections: pass 0 shows columns 0..0.762 of
+the window, pass 1 0.238..1). The idea: scissor each eye's scene draws (the live render and the replay) to the columns
+and rows it shows, and let the occlusion queries (Umbra's in `IssueOcclusionQueries`, the engine's in the before-lights
+pass, both already hooked) rasterise over the whole window, since a query box outside the scissor would read as
+occluded: the depth outside the shown columns stays cleared, so the other eye's wedge reads visible, the conservative
+answer mode 1 relies on. Built in `DrawReplay` (`SetEyeScissor`, `ScissorExempt`, an `Op::ScissorExempt` entry so the
+replay repeats the toggles), the fraction from the stereo plan (`metric_stereo::PassShownFraction`: the eye's filled
+frustum against the union window, a 0.5% margin), the engine's own rects intersected in the frame of the viewport last
+set (the post-process targets are smaller).
+
+Three things it took to make it act at all. **The engine's rasterizer states keep scissoring DISABLED** (10 of the 12
+states seen; the two with it on are its light bounds), so a scissor rect alone does nothing: a scissor-off state is
+bound through a clone with ScissorEnable on (made once per state, `InfoOf`), the rect set to the eye's alone; a
+scissor-on state keeps its rects, intersected. **The engine flips between scissor-on and scissor-off states almost
+every draw** (two-sided foliage against back-face-culled meshes), so re-setting the rect at each flip cost 0.17 ms a
+frame (1,900 calls) until the rect is set only when it differs from the one set last (`SetRectsOnce`). And **the
+replay issues its calls through the context's vtable, which is our own hook**: a clone bound by the replay re-entered
+`RSSetStateHook` as "the engine's state, scissor on", and the intersected rects re-entered `RememberRects` as the
+engine's, after which a stale light-bound rect clipped the whole replay: the replayed eye came out as the left eye's
+image wherever pass 0 had drawn (measured 0.2 levels from the left eye over the overlap, against 15-17 of parallax), in
+every variant that scissored anything. A thread-local `OurCall` makes the three hooks pass the scissor's own calls
+through. That bug also faked the first measurements (GPU 8.08 against 8.69 ms: the replay drawing nothing is cheap).
+
+**Measured right** (the heavy cell, the still PS VR2 pose looping with its FOVs, one Draw, 10 s probes alternated):
+GPU 8.38 ms median, 9.80 p90 with the scissor against 8.46, 9.98 without; CPU 9.65 against 9.59; the replayed eye
+within 4 levels of the no-scissor one (the frame-to-frame floor). About 1%. The one render's visibility needs depth
+over the whole window, so the base pass cannot be cut, and the queries over cleared depth mark more instances visible
+(820-880 a frame against 544): what remains to cut is the fill after the base pass, and this cell is draw-bound. Kept
+as `eyeScissor = 1` (0 default; 2 and 3 scissor one pass only, for experiments), logged in the levers line (`eye
+scissor: N rects a frame resolved (M unchanged, not set), K set again, E exempt`) and once per change (`eye scissor:
+pass P draws columns a..b and rows c..d of its window`). The per-eye frustum the earlier card imagined (queries on the
+union, draws on the eye's off-centre matrix) cannot work: a query box must rasterise in the projection of the depth it
+tests against.
+
 ### 2026-10-25 18:22, the third session (oneDrawWindow = 0): a distant light in the left eye only
 
 With each eye on its own frustum the user saw "the light from the distance" in the left eye but not the right, most on

@@ -493,7 +493,10 @@ Use it to check VR changes yourself instead of asking the user what they see
   and its occlusion tests see only its own frustum (an object in the other eye's outer wedge stayed "occluded" under the
   PS VR2's projections; mode 1's angular resolution is the price, a wider `-ResX` buys it back, and 24% of each eye's
   rendered columns are never shown, so `oneDrawWindow = 0` renders each eye on its own frustum instead when the GPU is
-  the limit); while no record of
+  the limit; `eyeScissor = 1` (2026-10-26, off by default) scissors each eye's scene draws to the columns it shows with
+  the occlusion queries exempt, through scissor-on clones of the engine's rasterizer states, which keep scissoring off:
+  worth 1% of GPU at the heavy cell, since the one render's visibility needs depth over the whole window and the cell
+  is draw-bound; research/37's 2026-10-26 section, with the vtable re-entrancy lesson); while no record of
   pass 1's view matches the rendered one for 3 frames (the intro's cine camera after a level load: a view edited after
   pass 0 recorded it) the host clears `g_oneDrawStereo` and Halcyon's second Draw resumes until 30 frames match again
   (log `one Draw: ... Halcyon's second Draw resumes`, the levers line's `its health:`); **the engine's 4 MB dynamic

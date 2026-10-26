@@ -107,6 +107,15 @@ std::string TakeDiffTag();
 // Render thread, at the end of each Present: frees the frame's streams and the references they hold.
 void OnPresentEnd();
 
+// research/37 (the shown columns): a per-eye scissor over the scene draws of a render or a replay. `fraction` is the
+// eye's shown region as fractions of the viewport (left, top, right, bottom, 0..1): the engine's own scissor rects
+// are intersected with it in the frame of the viewport last set, and set again whenever the viewport changes.
+// Off: the engine's own rects are put back. Render thread.
+void SetEyeScissor(bool active, float const fraction[4]);
+// Around the occlusion query issues (Umbra's, the engine's): the engine's rects pass unchanged while on (the
+// queries must see the whole window); a recording notes the toggle so the replay repeats it.
+void ScissorExempt(bool on);
+
 // Counters for the render levers' log line (reset each call): replays, their failures, the recorded calls and
 // bytes per first eye, the replayed calls, substitutions per replay, frames whose tail wasn't replayable.
 struct Stats {
@@ -118,6 +127,8 @@ struct Stats {
     double mapCopyMs = 0.0;                           // time copying them into the recording
     std::uint64_t tailDiscardFrames = 0, tailDiscards = 0, mapsSkipped = 0;   // large dynamic buffers: discards inside the tail, maps not copied
     std::uint64_t shadowCopies = 0;   // of those discards, the ones shadowed (a GPU copy each)
+    std::uint64_t eyeScissorRects = 0, eyeScissorReissued = 0, eyeScissorExempt = 0, eyeScissorUnchanged = 0;   // the shown-columns scissor
+    std::uint64_t held = 0;   // references the recording held (AddRef, Release at Present's end)
     std::string lastBlocker;
 };
 Stats TakeStats();
