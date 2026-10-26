@@ -53,7 +53,7 @@ struct Panel;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 18;
+inline constexpr int kHostServicesVersion = 19;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -228,6 +228,13 @@ struct HostServices {
     // Around each of the mod's CallFunction post-handlers (engine/CallFunction): begin returns the token for end.
     std::uint64_t (*beginScriptCall)(ue3::Function* function, ue3::Object* object) = nullptr;
     void (*endScriptCall)(std::uint64_t token) = nullptr;
+
+    // Version 19: our main menu's Game menu and Holster buttons (research/28 "The game's menus", game/GameMenuRequest).
+    // The request the menu's last button press left (vr::game_menu::Action: 0 none, 1 the game's pause menu, 2 holster),
+    // cleared by the call; the mod polls it each game tick and calls the game's own function on the game thread (the
+    // active game mode's ShowMenuGui, SFXGameModeDefault.TryHolster) once the menu's pause is lifted. Any thread. A v18
+    // or older host has no such buttons' request to give (its menu pressed Start or Back on the pad itself).
+    std::uint32_t (*takeGameMenuRequest)() = nullptr;
 };
 
 } // namespace mevr

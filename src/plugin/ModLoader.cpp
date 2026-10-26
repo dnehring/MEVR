@@ -154,7 +154,19 @@ std::uint32_t HostMainMenu() {
 void HostSetVignette(float amount) {
     vignette::SetTarget(amount);
 }
-HostServices const gServices = WithCrashBreadcrumbs({kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
+// v19: our main menu's Game menu and Holster buttons, done by the mod on the game thread (game/GameMenuRequest).
+std::uint32_t HostTakeGameMenuRequest() {
+#if defined(MEVR_WITH_MAIN_MENU)
+    return static_cast<std::uint32_t>(main_menu::TakeGameRequest());
+#else
+    return 0;
+#endif
+}
+HostServices WithGameMenuRequest(HostServices services) {
+    services.takeGameMenuRequest = &HostTakeGameMenuRequest;
+    return services;
+}
+HostServices const gServices = WithGameMenuRequest(WithCrashBreadcrumbs({kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
     static_cast<std::uint32_t>(sizeof(vr::controllers::State)), static_cast<std::uint32_t>(sizeof(vr::host_view::State)),
     &HostSetProcessEventCallback, &HostProcessExiting, &HostKeepLoaded,
     static_cast<std::uint32_t>(sizeof(vr::aim_ray::Ray)), &HostSetAimRay, &HostSetSupportGrip, &HostSupportGripHeld,
@@ -164,7 +176,7 @@ HostServices const gServices = WithCrashBreadcrumbs({kHostServicesVersion, kHost
     static_cast<std::uint32_t>(sizeof(vr::squad_menu::View)), &HostSetSquadMenu, &HostLeftGripAway,
     static_cast<std::uint32_t>(sizeof(vr::squad_menu::wheel::Panel)), &HostSetWheelPanel,
     static_cast<std::uint32_t>(sizeof(vr::sights::Sight)), &HostSetSight, &HostSightView,
-    static_cast<std::uint32_t>(sizeof(vr::calibration::HostState)), &HostCalibration, &HostMainMenu, &HostSetVignette});
+    static_cast<std::uint32_t>(sizeof(vr::calibration::HostState)), &HostCalibration, &HostMainMenu, &HostSetVignette}));
 // A mod that's gone can't aim: Halcyon's head aim must come back, the reticle go, the pad mapping
 // forget the two-handed grip (the grip holding the gun, the squad menu's controls), the squad menu and the
 // wheel panel settings go, and the controllers stop vibrating.

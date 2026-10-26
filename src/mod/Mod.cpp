@@ -38,6 +38,7 @@
 #include "game/Comfort.hpp"
 #include "game/ConsoleRequest.hpp"
 #include "game/SystemSettings.hpp"
+#include "game/GameMenuRequest.hpp"
 #include "game/GamepadBridge.hpp"
 #include "game/GamepadMapping.hpp"
 #include "game/HandAim.hpp"
@@ -625,6 +626,20 @@ mevr::game::menu_pause::Link MenuPauseLink() {
     return link;
 }
 
+// Host renderer (HostServices v19): our main menu's Game menu and Holster buttons (research/28): the request to take,
+// and whether the menu is open (v16).
+mevr::game::game_menu_request::Link GameMenuRequestLink() {
+    using namespace mevr;
+    game::game_menu_request::Link link;
+    if (gHostOwnsVr && MEVR_HOST_HAS(takeGameMenuRequest)) {
+        link.take = gHost->takeGameMenuRequest;
+    }
+    if (gHostOwnsVr && MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
+        link.menuOpen = (gHost->mainMenu() & kMainMenuOpen) != 0;
+    }
+    return link;
+}
+
 // Host renderer (HostServices v17): comfort (research/31): the pad flags for our own turn and walking toward the left
 // hand, and the vignette.
 mevr::game::comfort::Link ComfortLink() {
@@ -682,7 +697,7 @@ void PublishStatus() {
         "\"handAim\": {{\"enabled\": {}, \"toldHost\": {}, \"shots\": {}}}, "
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"throwables\": {}, "
-        "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}}}",
+        "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -691,7 +706,7 @@ void PublishStatus() {
         json::JsonString(game::weapon::Status()), game::support_grip::Held() ? "true" : "false",
         json::JsonNumber(game::support_grip::Blend()), game::holsters::StatusJson(), game::squad_weapons::StatusJson(),
         game::sights::StatusJson(), game::throwables::StatusJson(), game::posture::StatusJson(),
-        game::view_level::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(),
+        game::view_level::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson());
     gHost->setStatus(status.c_str());
 }
@@ -933,6 +948,10 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     game::body_calibration::Tick(BodyCalibrationLink());
     if (gHooked) {
         game::menu_pause::Tick(MenuPauseLink());  // the main menu's "pause while open"
+        // Its Game menu and Holster buttons, after the unpause above (research/28, HostServices v19).
+        if (gHostOwnsVr) {
+            game::game_menu_request::Tick(GameMenuRequestLink());
+        }
     }
     if (gHostOwnsVr) {
         UpdateHostHandAim();
@@ -1097,6 +1116,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::comfort::Shutdown();
     game::body_calibration::Shutdown();
     game::menu_pause::Shutdown(exiting);  // unpauses the game if the main menu paused it
+    game::game_menu_request::Shutdown();
     write_journal::Connect(nullptr);
     engine::call_function::SetBreadcrumbs(nullptr, nullptr);
     gHost = nullptr;

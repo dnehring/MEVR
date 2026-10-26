@@ -16,6 +16,8 @@ struct Link {
 };
 
 void Tick(Link const& link);
+// The game is paused by the main menu now (we paused it and haven't unpaused yet): game/GameMenuRequest waits for it.
+bool Paused();
 // Unpauses if the menu paused the game (not while the process exits).
 void Shutdown(bool exiting);
 std::string StatusJson();

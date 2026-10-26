@@ -80,6 +80,10 @@ void Tick(Link const& link) {
     gWasOpen = wanted;  // "wanted last tick": a new opening or the toggle turned on tries again
 }
 
+bool Paused() {
+    return gPaused;
+}
+
 void Shutdown(bool exiting) {
     if (gPaused && !exiting) {
         Pause(false, "the mod unloads");
