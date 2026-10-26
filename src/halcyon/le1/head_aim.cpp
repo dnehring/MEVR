@@ -1756,7 +1756,11 @@ void FirstPersonTick(bool ctrlLive, bool ctrlStable, int gameMode) noexcept
             const MELEVR::Config::VrConfig::FpStateCfg* toSt = FpStateForClass(toCls);
             if (toSt != nullptr && toSt->on)
             {
+                // [MEVR] The blend stored To's position from its Offset before this write (research/38 B): correct it.
+                float mevrBefore[3] = {}; bool mevrFp = false;
+                const bool mevrRead = ReadModeOffsetFpSEH(toMode, &mevrBefore[0], &mevrBefore[1], &mevrBefore[2], &mevrFp);
                 FpOwnAndWrite(toMode, toSt);
+                if (mevrRead) ::MELEVR::MevrBridge::InterpolateDestinationWritten(mode, toMode, mevrBefore);
                 fpActiveNow = true;   // blending INTO an FP state: keep hides up through the blend
             }
         }

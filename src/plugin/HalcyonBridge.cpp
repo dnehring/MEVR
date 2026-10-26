@@ -23,6 +23,7 @@
 #include "halcyon/le1/render_hook.h"
 #include "plugin/Calibration.hpp"
 #include "plugin/Colour.hpp"
+#include "plugin/CrashBreadcrumbs.hpp"
 #include "plugin/GameThreadCalls.hpp"
 #include "plugin/Halcyon.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
@@ -754,6 +755,159 @@ bool ConstantFpEye(void* mode, float* fwd, float* right, float* up) noexcept {
     *right = out[1];
     *up = out[2];
     return true;
+}
+
+} // namespace MELEVR::MevrBridge
+
+// ---- The blend's stored offset (research/38 B) ------------------------------------------------------------------
+// SFXCameraMode_Interpolate.InitializeTransition (script, on the game thread, inside the camera update that picks the
+// new mode) stores LocationOffset = To.m_pov.Location - From.m_pov.Location once, and each Tick puts the view at
+// To.m_pov.Location - LocationOffset * (1 - T). Halcyon writes a destination's first-person Offset on the Present thread,
+// a frame after that: for a mode it hadn't written yet the stored offset held the game's over-the-shoulder position, so
+// the view jumped by the write (1.8 m forward for the sniper rifle's first draw) and slid back over the blend. Here the
+// stored offset moves with the destination. Present thread only.
+namespace MELEVR::MevrBridge {
+namespace {
+
+// SFXCameraMode_Interpolate (engine/ReflectCheck checks each against LExSDKv2) and SFXCameraMode.m_pov.Rotation.
+constexpr std::uintptr_t kInterpRotationOffset = 0x148;  // FRotator
+constexpr std::uintptr_t kInterpLocationOffset = 0x154;  // FVector
+constexpr std::uintptr_t kInterpFrom = 0x160;            // USFXCameraMode*
+constexpr std::uintptr_t kInterpTotalTime = 0x170;       // float
+constexpr std::uintptr_t kInterpCurrentTime = 0x174;     // float
+constexpr std::uintptr_t kInterpFlags = 0x184;           // bComplete 0x1
+constexpr std::uintptr_t kModePovRotation = 0x98 + 0x0C; // m_pov (FTPOV: Location, Rotation, FOV) .Rotation
+
+bool BlendFixSetting() {
+    static std::uint64_t nextReadMs = 0;
+    static bool on = true;
+    static bool logged = false;
+    std::uint64_t const now = GetTickCount64();
+    if (now >= nextReadMs) {
+        nextReadMs = now + 1000;
+        std::wstring const& path = SettingsPath();
+        bool const read = path.empty() || GetPrivateProfileIntW(L"Hands", L"blendFix", 1, path.c_str()) != 0;
+        if (!logged || read != on) {
+            logged = true;
+            mevr::log::Info("camera blend: {} ([Hands] blendFix = {}, research/38 B)",
+                read ? "on: a camera blend's stored offset follows Halcyon's write of its destination"
+                     : "off: Halcyon's mid-blend writes move the view (upstream)",
+                read ? 1 : 0);
+        }
+        on = read;
+    }
+    return on;
+}
+
+struct BlendRead {
+    void* to = nullptr;
+    void* from = nullptr;
+    bool complete = false;
+    float currentTime = 0.0f;
+    float totalTime = 0.0f;
+    std::int32_t fromRotation[3] = {};
+    std::int32_t rotationOffset[3] = {};
+    float locationOffset[3] = {};
+    float offset[3] = {};  // the destination's Offset now (after Halcyon's write)
+};
+
+// No C++ objects with destructors: it can catch an access violation.
+bool ReadBlendSEH(void* interp, void* toMode, BlendRead* out) noexcept {
+    __try {
+        out->to = MELEVR::LE1::ReadPtr(interp, MELEVR::LE1::kInterpolateToMode);
+        out->from = MELEVR::LE1::ReadPtr(interp, kInterpFrom);
+        if (out->to != toMode || out->from == nullptr) {
+            return false;
+        }
+        out->complete = (MELEVR::LE1::ReadU32(interp, kInterpFlags) & 1u) != 0;
+        out->currentTime = MELEVR::LE1::ReadF32(interp, kInterpCurrentTime);
+        out->totalTime = MELEVR::LE1::ReadF32(interp, kInterpTotalTime);
+        for (unsigned i = 0; i < 3; ++i) {
+            out->fromRotation[i] = MELEVR::LE1::ReadI32(out->from, kModePovRotation + 4u * i);
+            out->rotationOffset[i] = MELEVR::LE1::ReadI32(interp, kInterpRotationOffset + 4u * i);
+            out->locationOffset[i] = MELEVR::LE1::ReadF32(interp, kInterpLocationOffset + 4u * i);
+            out->offset[i] = MELEVR::LE1::ReadF32(toMode, MELEVR::LE1::kSFXCameraModeOffset + 4u * i);
+        }
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+bool WriteLocationOffsetSEH(void* interp, float const value[3]) noexcept {
+    __try {
+        auto* target = reinterpret_cast<float*>(reinterpret_cast<std::uint8_t*>(interp) + kInterpLocationOffset);
+        target[0] = value[0];
+        target[1] = value[1];
+        target[2] = value[2];
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+void* ReadOuterSEH(void* object) noexcept {
+    __try {
+        return MELEVR::LE1::ReadPtr(object, MELEVR::LE1::kUObjectOuter);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return nullptr;
+    }
+}
+
+bool Finite3(float const v[3]) {
+    return std::isfinite(v[0]) && std::isfinite(v[1]) && std::isfinite(v[2]);
+}
+
+void const* gBlendLoggedTo = nullptr;
+std::uint64_t gBlendCorrections = 0;
+
+} // namespace
+
+void InterpolateDestinationWritten(void* interpolateMode, void* toMode, float const before[3]) noexcept {
+    if (interpolateMode == nullptr || toMode == nullptr || before == nullptr || !BlendFixSetting()) {
+        return;
+    }
+    BlendRead blend;
+    if (!ReadBlendSEH(interpolateMode, toMode, &blend) || blend.complete || !Finite3(before) || !Finite3(blend.offset) ||
+        !Finite3(blend.locationOffset)) {
+        return;
+    }
+    cs::Vec const oldOffset{before[0], before[1], before[2]};
+    cs::Vec const newOffset{blend.offset[0], blend.offset[1], blend.offset[2]};
+    if (!cs::OffsetMoved(oldOffset, newOffset)) {
+        return;  // nothing written this frame (Halcyon writes only when the Offset isn't at its target)
+    }
+    // The destination's rotation when the blend started: From's m_pov isn't ticked during the blend, and RotationOffset
+    // is To's rotation minus it then (rotators subtract per component).
+    std::int32_t const pitch = blend.fromRotation[0] + blend.rotationOffset[0];
+    std::int32_t const yaw = blend.fromRotation[1] + blend.rotationOffset[1];
+    cs::Vec const stored{blend.locationOffset[0], blend.locationOffset[1], blend.locationOffset[2]};
+    cs::Vec const fixed = cs::BlendLocationOffset(stored, pitch, yaw, oldOffset, newOffset);
+    float const value[3] = {static_cast<float>(fixed.x), static_cast<float>(fixed.y), static_cast<float>(fixed.z)};
+    if (!Finite3(value) || !WriteLocationOffsetSEH(interpolateMode, value)) {
+        return;
+    }
+    void const* const written = reinterpret_cast<std::uint8_t const*>(interpolateMode) + kInterpLocationOffset;
+    mevr::host::crash::RecordWrite("HalcyonBridge.blendLocationOffset", written, static_cast<std::uint32_t>(sizeof(value)),
+        mevr::breadcrumbs::FirstBytes(written, sizeof(value)));
+    ++gBlendCorrections;
+    if (toMode != gBlendLoggedTo) {
+        gBlendLoggedTo = toMode;
+        ModeRead to;
+        ModeRead interp;
+        ModeRead setup;  // the destination's Outer: its SFXCameraSetup (the sniper rifle has its own)
+        ReadModeSEH(toMode, &to);
+        ReadModeSEH(interpolateMode, &interp);
+        if (void* const outer = ReadOuterSEH(toMode)) {
+            ReadModeSEH(outer, &setup);
+        }
+        double const jump = std::hypot(fixed.x - stored.x, fixed.y - stored.y, fixed.z - stored.z);
+        mevr::log::Info("camera blend: {} toward {}.{} ({}) at {:.2f} of {:.2f} s: Halcyon wrote its Offset {} -> {} after the "
+                        "blend stored the destination's position; the stored LocationOffset {} -> {}: the view stays where it was "
+                        "(it would have jumped {:.0f} units and slid back), correction #{}",
+            interp.obj, setup.obj, to.obj, to.cls, blend.currentTime, blend.totalTime, V(oldOffset), V(newOffset), V(stored),
+            V(fixed), jump, gBlendCorrections);
+    }
 }
 
 } // namespace MELEVR::MevrBridge

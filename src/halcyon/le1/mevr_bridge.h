@@ -411,6 +411,17 @@ void ProbeTextureAlpha(ID3D11DeviceContext* context, ID3D11Texture2D* texture, c
 // bone. False (unchanged) otherwise.
 bool ConstantFpEye(void* mode, float* fwd, float* right, float* up) noexcept;
 
+// [MEVR] The blend's stored offset (research/38 B, src/plugin/HalcyonBridge.cpp). Present thread, in the first-person
+// tick's Interpolate branch, right after FpOwnAndWrite wrote the blend's destination `toMode`, with its Offset from just
+// before (`before`, forward/right/up). SFXCameraMode_Interpolate.InitializeTransition stores the destination's position
+// relative to the source once (LocationOffset), from the Offset the destination had then: a mode Halcyon hadn't written
+// yet (a fresh camera setup, like the sniper rifle's, the first draw, aim or sprint after a level load, a mode restored
+// after cover) still had the game's over-the-shoulder Offset, and writing it mid-blend jumped the view 1.8 m forward,
+// sliding back over the blend. When the Offset moved, this corrects the stored LocationOffset by the destination's own
+// move, so the blend goes from where the view was to where it ends. Off with [Hands] blendFix = 0 (upstream). Logged
+// once per newly written destination.
+void InterpolateDestinationWritten(void* interpolateMode, void* toMode, float const before[3]) noexcept;
+
 // ProcessEvent only on the game thread (research/36, the 2026-10-23 crash): UnrealScript's VM keeps its state in
 // process-wide globals (GPropAddr, GRuntimeUCFlags...), so a script call from the Present thread races the game
 // thread's script. True on the engine tick's thread (src/plugin/GameThreadCalls).

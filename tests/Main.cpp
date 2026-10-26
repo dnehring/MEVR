@@ -6512,6 +6512,45 @@ void TestCombatStance() {
     CHECK(!cs::PlausibleHook({std::numeric_limits<double>::quiet_NaN(), 0, 0}));
     CHECK(!cs::PlausibleHook({0, 0, 5000}));
 
+    // B, the blend's stored offset: the rotator's axes (65536 a turn).
+    auto closeTo = [](cs::Vec a, cs::Vec b) { return std::fabs(a.x - b.x) < 1e-6 && std::fabs(a.y - b.y) < 1e-6 && std::fabs(a.z - b.z) < 1e-6; };
+    CHECK(closeTo(cs::RotateToWorld(0, 0, {1, 2, 3}), {1, 2, 3}));
+    CHECK(closeTo(cs::RotateToWorld(0, 16384, {1, 0, 0}), {0, 1, 0}));    // yaw 90: forward is +Y
+    CHECK(closeTo(cs::RotateToWorld(0, 16384, {0, 1, 0}), {-1, 0, 0}));   // and right is -X
+    CHECK(closeTo(cs::RotateToWorld(16384, 0, {1, 0, 0}), {0, 0, 1}));    // pitch 90: forward is up
+    CHECK(closeTo(cs::RotateToWorld(16384, 0, {0, 0, 1}), {-1, 0, 0}));   // and up is back
+    CHECK(closeTo(cs::RotateToWorld(0, -16384, {1, 0, 0}), cs::RotateToWorld(0, 49152, {1, 0, 0})));
+    {
+        // The sniper's first draw (2026-10-25 18:27:55): the destination's vanilla Offset (90, -22, 25), written to the
+        // constant eye's (-80.1, 20, -4.9) after the blend began. Model GetCameraLocation = hook - R * Offset.
+        auto camera = [](cs::Vec hook, std::int32_t pitch, std::int32_t yaw, cs::Vec offset) {
+            cs::Vec const r = cs::RotateToWorld(pitch, yaw, offset);
+            return cs::Vec{hook.x - r.x, hook.y - r.y, hook.z - r.z};
+        };
+        std::int32_t const pitch = -1200;
+        std::int32_t const yaw = -28136;
+        cs::Vec const fromHook{-39316.0, 154792.0, -690.0};
+        cs::Vec const toHook{-39346.0, 154780.0, -720.0};
+        cs::Vec const from = camera(fromHook, pitch, yaw, {-50.1, 0, 25.1});
+        cs::Vec const vanilla{90, -22, 25};
+        cs::Vec const written{-80.1, 20, -4.9};
+        cs::Vec const toThen = camera(toHook, pitch, yaw, vanilla);
+        cs::Vec const stored{toThen.x - from.x, toThen.y - from.y, toThen.z - from.z};
+        cs::Vec const toNow = camera(toHook, pitch, yaw, written);
+        cs::Vec const fixed = cs::BlendLocationOffset(stored, pitch, yaw, vanilla, written);
+        // At T = 0 the view (To - LocationOffset) is From's camera again, and with the game's stored offset it isn't.
+        CHECK(closeTo({toNow.x - fixed.x, toNow.y - fixed.y, toNow.z - fixed.z}, from));
+        double const jump = std::hypot(toNow.x - stored.x - from.x, toNow.y - stored.y - from.y, toNow.z - stored.z - from.z);
+        CHECK(jump > 170.0 && jump < 185.0);  // the 1.8 m the log measured
+        // What InitializeTransition would have stored with the written Offset.
+        CHECK(closeTo(fixed, {toNow.x - from.x, toNow.y - from.y, toNow.z - from.z}));
+        // An unchanged Offset leaves it alone.
+        CHECK(closeTo(cs::BlendLocationOffset(stored, pitch, yaw, written, written), stored));
+    }
+    CHECK(cs::OffsetMoved({90, -22, 25}, {-80.1, 20, -4.9}));
+    CHECK(!cs::OffsetMoved({-80.1, 20, -4.9}, {-80.1, 20.005, -4.9}));
+    CHECK(!cs::OffsetMoved({0, 0, 0}, {std::numeric_limits<double>::quiet_NaN(), 0, 0}));
+
     // C: the ramp.
     CHECK(cs::RampNeedsWrite(3.0f, 2.0f, 1.5f, 1.5f));
     CHECK(!cs::RampNeedsWrite(1.5f, 1.5f, 1.5f, 1.5f));

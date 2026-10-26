@@ -302,6 +302,83 @@ against the table above. Logged once per mode change: `constant eye: CombatCam0 
 (Halcyon's (-70.0, 19.9, 21.0))`; crouch modes log that they kept Halcyon's. With it on, Halcyon's `fpCombat`,
 `fpCombatStorm` and `fpCombatAim` sliders only act in the crouch modes. Host side: needs a redeploy.
 
+### The blend's stored offset: the jump on a first draw (2026-10-25)
+
+User (headset): "when I take out the sniper, it seems to move me forward/back". `LE1MEVR.prev.log` 18:27:55.588: the draw
+starts `SFXCameraMode_Interpolate_42` toward `SFXGameModeDefault_1.SFXCameraSetup_2.SFXCameraMode_Combat_36` (the sniper
+rifle's own camera setup; the other guns use `SFXCameraSetup_1`). At .611 arm IK logs `body anchor: third person ...
+view 184 units from Shepard's animated head bone`, first person again at .921; the blend ends at 56.100. Halcyon's log:
+`[FPCAM] owned mode ... vanilla=(90,-22,25)` at 55.600 and the next `[FPCAM] write` reads the target back, and our
+`constant eye: SFXCameraMode_Combat ...` line at .601. So Halcyon **did** write the destination, within a frame. The
+hypothesis (the destination never written) was half right: it had the over-the-shoulder Offset **when the blend
+started**, and the blend never looks at it again.
+
+**How the blend works** (SFXGame.pcc script, the scratch bytecode printer of the "Sources" above; native parts from
+[18](18-camera-and-hands.md)):
+- `SFXPlayerCamera.UpdateViewTarget` → `PickCameraMode` → `SFXGameModeManager.GetCameraMode` (→ the active
+  `SFXCameraSetup`'s `GetCameraMode` / `GetCombatCamera` / `GetExploreCameraMode`) → `SetBehavior(NewMode, Transition,
+  Time, PreserveTarget)`, all script on the game thread inside the camera update. `SetBehavior` calls
+  `Mode.Initialize()`, makes a new `SFXCameraMode_Interpolate` from the template and calls
+  `InitializeTransition(PreviousBehavior, Mode, Time, PreserveTarget)`, then switches to it. `PreserveTarget` is 1
+  (0 for `bInstantTransition` modes).
+- `InitializeTransition`: `bFirstPerson = From.bFirstPerson && To.bFirstPerson`; `From`/`To` (`+0x160`/`+0x168`);
+  with `PreserveTarget` and not `bDisableAimPointPreservation` it traces along the current camera (`Trace`: from
+  `CameraCache.POV`, 10000 units) and, on a hit, `AimPointDistance` and `AimPoint`, `To.AimAtPoint(V)` twice and
+  `To.DoCameraCollision`; unless the collision pulled it in (`CollisionDistance > 0.5`), the hit is closer than
+  `MinAimPointPreservationDistance`, or steep (`AimZDistance > AimPointDistance * 0.5`), `To` keeps the aimed rotation;
+  otherwise (and with no hit) `To.m_pov.Rotation = From.m_pov.Rotation` and `To.m_pov.Location = To.GetCameraLocation()`.
+  Then `PC.SetRotation(To.m_pov.Rotation)`, and once: **`RotationOffset = To.m_pov.Rotation - From.m_pov.Rotation`
+  (`+0x148`), `LocationOffset = To.m_pov.Location - From.m_pov.Location` (`+0x154`)**.
+- `SFXCameraMode.AimAtPoint(V)` turns the mode's yaw and pitch so that its camera (`GetCameraLocation`, from its own
+  Offset) looks at `V`: the parallax between the From camera and the To camera becomes a turn of the controller.
+- `Tick(dt)`: `CurrentTime += dt` (`bComplete` at `TotalTime`), `To.Tick(dt)` (its `m_pov` from the controller's
+  rotation and `GetCameraLocation()`), `From` is **not** ticked; `T = Interpolate(CurrentTime / TotalTime)` (the
+  `Curve`); `m_pov.Location = To.m_pov.Location - Lerp(LocationOffset, 0, T)`, the rotation the same with
+  `RotationOffset`; FOV and the camera input's sensitivities lerp From → To. `GetActorCameraHook` lerps the two hooks.
+  `UpdateCameraMode` switches to `To` once `bComplete`.
+
+So the view starts exactly at From's camera and ends at To's, whatever To's Offset is **at the start**. Halcyon writes
+Offsets on the Present thread a frame later. For a destination it already owned (written in an earlier blend) nothing
+changes. For a fresh one (vanilla `(90, -22, 25)`: the eye 120 behind and 42 right of the hook point), its write moves
+`To` by `-R(pitch, yaw) * (new - old)`, 178 units, and the stored offset doesn't follow: the view is suddenly 1.78 m
+ahead of the eye and slides back over the rest of the blend. The arm IK line's 184 is that plus the head's place.
+
+Which transitions: every blend into a mode Halcyon hasn't written yet. Halcyon's owned table starts empty with each
+level's new mode objects, and a mode it releases (cover, a state turned off) or restores (save menu, first person off)
+gets its vanilla Offset back. Seen in the logs: the sniper rifle's first draw (`SFXCameraSetup_2`, a setup of its own;
+vanilla (90, -22, 25)), the first draw after a load (`SFXCameraSetup_1.SFXCameraMode_Combat_18`, owned at 18:35:22.284
+with the same vanilla; the controllers weren't tracked then, so no arm IK line), the first tight aim (`TightAim_7`,
+vanilla (50, -20, 15): `body anchor: third person ... 110 units` at 18:23:45.158, back at .191, its 0.08 s blend), and the
+first combat crouch (`Combat_19`). The first sprints (`ExploreStorm`, `CombatStorm`) work the same way. The level's first
+Explore comes from a cinematic: that blend glides from the cinematic camera, and its write (vanilla (200, 0, 40)) jumped
+it 250 units too. Upstream's first person runs the same code, so it has the same jump.
+
+**Built:** a `[MEVR]` seam in Halcyon's first-person tick (`head_aim.cpp`, the Interpolate branch): it reads the
+destination's Offset before `FpOwnAndWrite` and then calls `MevrBridge::InterpolateDestinationWritten` (`plugin/
+HalcyonBridge.cpp`). When the Offset moved (more than 0.01 on any axis, Halcyon's own test) and the blend isn't complete,
+it moves the stored `LocationOffset` by the destination's own move: `LocationOffset - R * (new - old)`, R the
+destination's rotation at the start (`From.m_pov.Rotation + RotationOffset`: From isn't ticked, so that is exact), which
+is what `InitializeTransition` would have stored with the new Offset (`vr::combat_stance::BlendLocationOffset`,
+unit-tested with the sniper's numbers). The view stays at From's camera and glides to To's: with the constant eye both
+are the same point, so it doesn't move. `[Hands] blendFix = 1` (default; 0 = upstream), read once a second; logged once
+per newly written destination: `camera blend: <interpolate> toward <setup>.<mode> (<class>) at <t> of <total> s: Halcyon
+wrote its Offset (...) -> (...) after the blend stored the destination's position; the stored LocationOffset (...) -> (...):
+the view stays where it was (it would have jumped N units and slid back), correction #K`. The write goes into the crash
+breadcrumbs (`HalcyonBridge.blendLocationOffset`). Host side: a redeploy with the game closed.
+
+Not fixed, by design or for later:
+- **The turn.** When the trace hits and the conditions above allow it, `AimAtPoint` turned the controller by the
+  parallax between From's camera and the over-the-shoulder one (a few degrees at a few metres) before Halcyon's write,
+  and the blend glides the view through that turn. The real fix is writing the destination before
+  `InitializeTransition` runs, on the game thread (a pre-call on `SFXCameraMode.Initialize`, which `SetBehavior` calls
+  on the new mode just before), with Halcyon's ownership table made safe for it, or owning every first-person mode of
+  the player's camera setups ahead of time (the game mode's `CameraSetup +0xD0`, each weapon's `CameraSetup`). Both
+  are larger changes to Halcyon; check in the headset first whether the turn is noticeable **[verify]**.
+- Between `InitializeTransition` and Halcyon's write (a frame) the game's own blend moves toward the shoulder camera by
+  T(1 frame / 0.5 s) of 178 units, a few units (6 at 90 Hz with a quarter-sine curve): not noticeable. If the game thread reads `LocationOffset` while the Present
+  thread writes it, one frame can mix them (a race Halcyon's own Offset writes already have).
+- From a mode Halcyon doesn't write (cover, the scope) the blend still glides from that camera, as upstream.
+
 ## C. Movement: explore vs combat
 
 ### What the script does (`BioPlayerController.PlayerWalking`)

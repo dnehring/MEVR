@@ -658,6 +658,13 @@ void CheckFields() {
     CheckField("SFXGame.SFXModule_AimAssist", "LastZoomSnapTarget", SDK_FIELD(USFXModule_AimAssist, LastZoomSnapTarget));
     CheckField("SFXGame.SFXCameraNativeBase", "CurrentCameraMode", SDK_FIELD(ASFXCameraNativeBase, CurrentCameraMode));
     CheckField("SFXGame.SFXCameraMode_Interpolate", "To", SDK_FIELD(USFXCameraMode_Interpolate, To));
+    // The host's blend fix (plugin/HalcyonBridge, research/38 B) reads these at fixed offsets.
+    CheckField("SFXGame.SFXCameraMode_Interpolate", "From", SDK_FIELD(USFXCameraMode_Interpolate, From));
+    CheckField("SFXGame.SFXCameraMode_Interpolate", "RotationOffset", SDK_FIELD(USFXCameraMode_Interpolate, RotationOffset));
+    CheckField("SFXGame.SFXCameraMode_Interpolate", "LocationOffset", SDK_FIELD(USFXCameraMode_Interpolate, LocationOffset));
+    CheckField("SFXGame.SFXCameraMode_Interpolate", "TotalTime", SDK_FIELD(USFXCameraMode_Interpolate, TotalTime));
+    CheckField("SFXGame.SFXCameraMode_Interpolate", "CurrentTime", SDK_FIELD(USFXCameraMode_Interpolate, CurrentTime));
+    CheckField("SFXGame.SFXCameraMode_Interpolate", "bComplete", SDK_BOOL(USFXCameraMode_Interpolate, bComplete));
     CheckField("SFXGame.SFXCameraMode", "Input", SDK_FIELD(USFXCameraMode, Input));
     CheckField("SFXGame.SFXCameraMode", "m_pov", SDK_FIELD(USFXCameraMode, m_pov));
     CheckField("SFXGame.SFXCameraMode", "Offset", SDK_FIELD(USFXCameraMode, Offset));
