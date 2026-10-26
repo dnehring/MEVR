@@ -77,6 +77,8 @@ In the game, `\` or both thumbsticks held opens the VR menu.
 
 ## Reporting a bug
 
+Before reporting, [docs/troubleshooting.md](docs/troubleshooting.md) covers the common problems; your AI assistant can read it.
+
 Open an issue at <https://github.com/dnehring/MEVR/issues> with:
 
 - **what you did** and what happened (the steps, where in the game, and what you expected);
@@ -125,6 +127,8 @@ before you attach them.
 - [Squad weapons design](docs/squad-weapons-design.md): giving squadmates weapons from the left hand
 - [Reuse and licensing](docs/reuse-and-licensing.md): what we can copy versus only learn from
 - [Release README](docs/release-readme.md): the players' README for a future release
+- [Troubleshooting](docs/troubleshooting.md): symptoms, the log lines that confirm them, and fixes (for players and
+  their AI assistants)
 - Historical plans (2026-10-07): [trilogy design](docs/trilogy-design.md), [VR features plan](docs/vr-features-plan.md),
   [stereo stage 2 design](docs/stereo-stage2-design.md)
 
