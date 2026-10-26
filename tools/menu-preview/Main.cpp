@@ -424,6 +424,11 @@ int main(int argc, char** argv) {
         save("section-comfort-movement");
         content->SetScrollTop(0.0f);
     }
+    // A read-only ASI folder: the rail's status line (2026-10-26).
+    model.SetText("save_msg", "Can't save settings: the game's ASI folder is read-only");
+    frames(10);
+    save("state-save-failed");
+    model.SetText("save_msg", "");
     // Display's image quality rows (research/32): Headset × 0.85 with FSR, then before VR has started (no recommendation).
     model.SetText("section", "display");
     model.SetText("quality", "headset85");

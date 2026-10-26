@@ -99,6 +99,9 @@ private:
     std::string perfMsg_;
     std::string contentMsg_;
     bool wasAligning_ = false;
+    // A write of the settings file failed (a read-only ASI folder or file): the menu's status line says so.
+    bool saveFailed_ = false;
+    void Wrote(bool ok, std::string_view what);
 };
 
 } // namespace mevr::host::main_menu

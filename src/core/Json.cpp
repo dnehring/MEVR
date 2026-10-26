@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "core/Json.hpp"
 
+#include <charconv>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -160,9 +161,9 @@ private:
             return Fail("bad number");
         }
         std::string const number(text_.substr(start, pos_ - start));
-        char* end = nullptr;
-        double const value = std::strtod(number.c_str(), &end);
-        if (end == nullptr || *end != '\0' || !std::isfinite(value)) {
+        double value = 0.0;  // std::from_chars: no C locale
+        auto const [end, ec] = std::from_chars(number.data(), number.data() + number.size(), value);
+        if (ec != std::errc() || end != number.data() + number.size() || !std::isfinite(value)) {
             return Fail("bad number");
         }
         out = Value(value);

@@ -73,6 +73,8 @@ private:
     std::unique_ptr<Renderer> renderer_;
     struct System;
     std::unique_ptr<System> system_;
+    struct Files;  // UTF-8 paths opened wide (_wfopen): any folder name
+    std::unique_ptr<Files> files_;
     Rml::Context* context_ = nullptr;
     Rml::ElementDocument* document_ = nullptr;
     std::filesystem::path documents_;

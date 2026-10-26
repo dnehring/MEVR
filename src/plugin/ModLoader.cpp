@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "plugin/ModLoader.hpp"
 
+#include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "engine/GameAdapter.hpp"
 #include "mod/ModApi.hpp"
@@ -339,7 +340,7 @@ LoadResult Load() {
 
     HMODULE const module = LoadLibraryW(shadow.c_str());
     if (module == nullptr) {
-        log::Error("LoadLibrary failed for {} (error {})", shadow.string(), GetLastError());
+        log::Error("LoadLibrary failed for {} (error {})", ini::Utf8(shadow), GetLastError());
         return LoadResult::Failed;
     }
     auto const startup = reinterpret_cast<MevrModStartupFn>(GetProcAddress(module, "MevrModStartup"));
@@ -358,7 +359,7 @@ LoadResult Load() {
     }
     gMod = {module, shadow, tick, shutdown};
     present::SetCallback(onPresent);
-    log::Info("mod generation {} loaded from {}", gGeneration, gSourcePath.string());
+    log::Info("mod generation {} loaded from {}", gGeneration, ini::Utf8(gSourcePath));
     return LoadResult::Loaded;
 }
 
@@ -403,7 +404,7 @@ void Start(loader::spi::Interface* spi) {
     gShadowDir = fs::path(localAppData) / L"MEVR" / L"shadow";
     CleanShadowDirectory();
 
-    log::Info("hot reload: watching {}", gSourcePath.string());
+    log::Info("hot reload: watching {}", ini::Utf8(gSourcePath));
     FILETIME stamp{};
     if (!ReadStamp(stamp)) {
         log::Warn("mod DLL not found yet; it will load when it appears");

@@ -67,6 +67,7 @@ if (MEVR_MAIN_MENU)
     # decorators, the data model, the frosted backdrop's passes, the colour preview strip. Linked by the LE1 host
     # and tools/menu-preview.
     add_library(mevr-menu STATIC
+        src/core/Ini.cpp
         src/core/vr/Colour.cpp
         src/core/vr/ColourStrip.cpp
         src/core/vr/MenuSettings.cpp
@@ -156,6 +157,8 @@ target_link_libraries(halcyon-le1 PUBLIC mevr-minhook d3d11 dxgi Shell32 Ole32)
 
 set(MEVR_CORE_SOURCES
     src/core/Exe.cpp
+    src/core/Ini.cpp
+    src/core/Ini.hpp
     src/core/Exe.hpp
     src/core/ExeCheck.cpp
     src/core/ExeCheck.hpp
@@ -620,6 +623,7 @@ if (MEVR_BUILD_TESTS)
         src/core/Exe.cpp
         src/core/ExeCheck.cpp
         src/core/Hook.cpp
+        src/core/Ini.cpp
         src/core/Log.cpp
         src/ue3/Memory.cpp
         src/ue3/Names.cpp

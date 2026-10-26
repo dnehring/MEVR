@@ -9,6 +9,7 @@
 #include "halcyon/le1/vr_menu.h"
 #include "halcyon/le1/xr_session.h"
 
+#include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "plugin/Calibration.hpp"
 #include "plugin/Colour.hpp"
@@ -80,15 +81,35 @@ std::string Lower(std::string_view text) {
 }
 
 std::optional<float> Number(std::optional<std::string> const& text) {
-    if (!text || text->empty()) {
+    if (!text) {
         return std::nullopt;
     }
-    char* end = nullptr;
-    double const v = std::strtod(text->c_str(), &end);
-    if (end == text->c_str() || !std::isfinite(v)) {
-        return std::nullopt;
+    std::optional<double> const v = ini::Number(*text);  // locale-independent
+    return v ? std::optional<float>(static_cast<float>(*v)) : std::nullopt;
+}
+
+// A key's name on this keyboard layout (GetKeyNameText): the menu key is \ in our deploy, which is ^ on a German one.
+std::string KeyName(int vk) {
+    if (vk <= 0) {
+        return "(none)";
     }
-    return static_cast<float>(v);
+    UINT const scan = MapVirtualKeyW(static_cast<UINT>(vk), MAPVK_VK_TO_VSC);
+    LONG param = static_cast<LONG>(scan << 16);
+    switch (vk) {
+    case VK_INSERT: case VK_DELETE: case VK_HOME: case VK_END: case VK_PRIOR: case VK_NEXT:
+    case VK_LEFT: case VK_RIGHT: case VK_UP: case VK_DOWN: case VK_DIVIDE: case VK_NUMLOCK:
+        param |= 1 << 24;  // extended keys
+        break;
+    default: break;
+    }
+    wchar_t name[64]{};
+    int const n = scan != 0 ? GetKeyNameTextW(param, name, 64) : 0;
+    if (n <= 0) {
+        return std::format("key {}", vk);
+    }
+    char utf8[192]{};
+    int const bytes = WideCharToMultiByte(CP_UTF8, 0, name, n, utf8, static_cast<int>(sizeof utf8) - 1, nullptr, nullptr);
+    return bytes > 0 ? std::string(utf8, static_cast<std::size_t>(bytes)) : std::format("key {}", vk);
 }
 
 std::string Fixed(std::string const& text, int decimals) {
@@ -157,10 +178,11 @@ void Settings::ReadMenuSection() {
     auto const menu = ReadSection(path, L"Menu");
     if (menu.find("pause") == menu.end()) {
         // The section the player may edit by hand: its keys written once, each on its own (never the whole file).
-        WritePrivateProfileStringW(L"Menu", L"pause", L"1", path.c_str());
-        WritePrivateProfileStringW(L"Menu", L"distanceM", L"1.30", path.c_str());
-        WritePrivateProfileStringW(L"Menu", L"widthM", L"1.45", path.c_str());
-        WritePrivateProfileStringW(L"Menu", L"assets", L"", path.c_str());
+        bool ok = WritePrivateProfileStringW(L"Menu", L"pause", L"1", path.c_str()) != 0;
+        ok = WritePrivateProfileStringW(L"Menu", L"distanceM", L"1.30", path.c_str()) != 0 && ok;
+        ok = WritePrivateProfileStringW(L"Menu", L"widthM", L"1.45", path.c_str()) != 0 && ok;
+        ok = WritePrivateProfileStringW(L"Menu", L"assets", L"", path.c_str()) != 0 && ok;
+        Wrote(ok, "[Menu]'s defaults");
     }
     Ini ini;
     ini.sections["Menu"] = menu;
@@ -191,9 +213,11 @@ void Settings::Read(menu::Values& v) {
     flag("vignette", ini.Num("Comfort", "vignette", 0.0f) != 0.0f);
     v.numbers["vignette_strength"] = std::clamp(std::round(ini.Num("Comfort", "vignetteStrength", 0.6f) * 100.0f), 10.0f, 100.0f);
     v.texts["vignette_when"] = Lower(ini.Text("Comfort", "vignetteWhen", "turn")) == "move" ? "move" : "turn";
+    // "body": Halcyon's moveFollowsHead off (the stick walks where Shepard faces), a chip of its own.
     v.texts["walk"] = Lower(ini.Text("Comfort", "walk", "head")) == "hand" ? "hand" : c.moveFollowsHead ? "head" : "body";
     flag("crouch", ini.Num("Hands", "physicalCrouch", 1.0f) != 0.0f);
-    flag("lifesize", ini.Num("Camera", "lifeSize", 0.0f) != 0.0f);
+    // Life-size movement is Halcyon's lean gain of 2 in the live profile (what's in effect), not a key of ours.
+    flag("lifesize", std::fabs(c.leanGain - 2.0f) < 0.01f);
     flag("pause", ini.Num("Menu", "pause", 1.0f) != 0.0f);
     // Controls.
     flag("grip_holds", ini.Num("Holsters", "gripHolds", 1.0f) != 0.0f);
@@ -203,7 +227,15 @@ void Settings::Read(menu::Values& v) {
         std::string const lt = Lower(ini.Text("Controls", "leftTrigger", "lb"));
         v.texts["left_trigger"] = lt == "lt" ? "lt" : lt == "lb" ? "lb" : "none";
     }
-    flag("throwables", ini.Num("Throwables", "enabled", 1.0f) != 0.0f);
+    {
+        // One row for both: on when both are; set apart in the file, the row says so.
+        bool const grenades = ini.Num("Throwables", "enabled", 1.0f) != 0.0f;
+        bool const melee = ini.Num("Throwables", "melee", 1.0f) != 0.0f;
+        flag("throwables", grenades && melee);
+        v.texts["throwables_note"] = grenades == melee ? std::string()
+                                   : grenades           ? std::string("Grenades on, melee off (set in the file): switching sets both")
+                                                        : std::string("Melee on, grenades off (set in the file): switching sets both");
+    }
     v.numbers["recoil_buzz"] = std::round(std::clamp(ini.Num("Hands", "recoilHaptic", 0.5f), 0.0f, 1.0f) * 100.0f);
     flag("aim_assist", ini.Num("Hands", "aimAssist", 0.0f) != 0.0f);
     // The weapon drawn, like exploring (research/38): the mod reads exploreStance and drawRate, the host constantEye.
@@ -268,7 +300,8 @@ void Settings::Read(menu::Values& v) {
     int const recommendedH = static_cast<int>(resolution.recommendedEyeHeight);
     v.texts["quality"] = ms::ResolutionChoice(c.sfr2ResX, c.sfr2ResY, recommendedW, recommendedH);
     v.texts["quality_text"] = ms::SizeText(c.sfr2ResX, c.sfr2ResY);
-    v.texts["quality_note"] = "applies after a restart";
+    v.texts["quality_note"] = noSave_ ? "not saved: the renderer settings were reset this session (Profiles > Save keeps it)"
+                                      : "applies after a restart";
     flag("headset_known", recommendedW > 0 && recommendedH > 0);
     v.texts["headset_text"] = ms::HeadsetSizesText(recommendedW, recommendedH);
     v.texts["upscale"] = ms::UpscaleChoice(ini.Text("Upscale", "method", "off"));
@@ -284,6 +317,9 @@ void Settings::Read(menu::Values& v) {
     flag("sight_converge", ini.Num("Sights", "converge", 1.0f) != 0.0f);
     // Advanced: Halcyon's.
     flag("recenter_key", c.recenterKeyEnabled);
+    v.texts["recenter_key_desc"] = std::format("{} on the keyboard recenters, with the game window in front (the right stick's "
+                                               "double-click works either way)", KeyName(c.recenterKey));
+    v.texts["classic_desc"] = std::format("Halcyon's own menu, for what isn't here yet (also: Ctrl + {})", KeyName(c.menuKey));
     v.numbers["look_speed"] = c.lookSensitivity;
     v.numbers["look_smooth"] = c.headLookSmoothing;
     flag("vr_convo", c.cineVrConvo);
@@ -292,9 +328,10 @@ void Settings::Read(menu::Values& v) {
     flag("flat_galaxy", c.galaxyFlat);
     flag("fp_on", c.fpEnabled);
     flag("fp_hide_head", c.fpHideHead);
-    v.numbers["fp_back"] = c.flatScreenDistance;
-    v.numbers["fp_right"] = c.cameraOffsetRight;
-    v.numbers["fp_up"] = c.cameraOffsetUp;
+    // What's in effect: Halcyon applies the distance and the offset only while their switches are on.
+    v.numbers["fp_back"] = c.screenDistanceEnabled ? c.flatScreenDistance : 0.0f;
+    v.numbers["fp_right"] = c.cameraOffsetEnabled ? c.cameraOffsetRight : 0.0f;
+    v.numbers["fp_up"] = c.cameraOffsetEnabled ? c.cameraOffsetUp : 0.0f;
     flag("lean", c.leanEnabled);
     v.numbers["lean_gain"] = c.leanGain;
     v.numbers["flat_size"] = c.menuMonoQuadWidth;
@@ -332,6 +369,21 @@ void Settings::Read(menu::Values& v) {
     v.texts["chip_headset"] = headset.empty() ? std::string("Headset not started") : headset;
     v.texts["chip_controllers"] = controllers.empty() ? std::string("No controllers yet") : controllers;
     v.texts["chip_calibrated"] = cal.calibrated ? "Calibrated" : "Not calibrated";
+    v.texts["save_msg"] = saveFailed_ ? "Can't save settings: the game's ASI folder is read-only" : "";
+}
+
+void Settings::Wrote(bool ok, std::string_view what) {
+    DWORD const error = ok ? 0 : GetLastError();
+    if (ok == !saveFailed_) {
+        return;
+    }
+    saveFailed_ = !ok;
+    if (ok) {
+        log::Info("main menu: the settings file is writable again ({})", what);
+    } else {
+        log::Warn("main menu: can't write {} to {} (error {}): the game's ASI folder or the file is read-only; the menu's "
+                  "changes apply for this session only", what, ini::Utf8(File()), error);
+    }
 }
 
 void Settings::Put(char const* section, char const* key, std::string const& value, bool now) {
@@ -348,8 +400,10 @@ void Settings::Flush(bool all) {
         if (path.empty()) {
             continue;
         }
-        WritePrivateProfileStringW(Wide(edit.section).c_str(), Wide(edit.key).c_str(), Wide(edit.value).c_str(), path.c_str());
-        log::Info("main menu: [{}] {} = {}", edit.section, edit.key, edit.value);
+        bool const ok =
+            WritePrivateProfileStringW(Wide(edit.section).c_str(), Wide(edit.key).c_str(), Wide(edit.value).c_str(), path.c_str()) != 0;
+        Wrote(ok, std::format("[{}] {}", edit.section, edit.key));
+        log::Info("main menu: [{}] {} = {}{}", edit.section, edit.key, edit.value, ok ? "" : " (NOT saved)");
     }
     if (colourDirty_ && (all || now - colourChangedMs_ >= kColourRestMs)) {
         colourDirty_ = false;
@@ -397,10 +451,8 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     } else if (key == "crouch") {
         Put("Hands", "physicalCrouch", onOff("crouch"), true);
     } else if (key == "lifesize") {
-        // As the VR hands tab's checkbox: Halcyon's lean gain follows (2: one to one with Shepard's skeleton).
-        bool const on = v.Flag("lifesize");
-        Put("Camera", "lifeSize", on ? "1" : "0", true);
-        c.leanGain = on ? 2.0f : 1.0f;
+        // As the VR hands tab's checkbox: Halcyon's lean gain (2: one to one with Shepard's skeleton), saved in its profile.
+        c.leanGain = v.Flag("lifesize") ? 2.0f : 1.0f;
         HalcyonChanged(false);
     } else if (key == "pause") {
         Put("Menu", "pause", onOff("pause"), true);
@@ -465,10 +517,13 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     else if (key == "walk") {
         // Where I look: Halcyon's moveFollowsHead (as before). Left hand: [Comfort] walk = hand, the mod's flag and the
         // host's stick turn (research/31); moveFollowsHead stays as it is (the host takes Halcyon's turn off first).
-        bool const hand = v.Text("walk") == "hand";
+        // Shepard's body: moveFollowsHead off (Halcyon's own), [Comfort] walk = head.
+        std::string const walk = v.Text("walk");
+        bool const hand = walk == "hand";
+        bool const body = walk == "body";
         Put("Comfort", "walk", hand ? "hand" : "head", true);
-        if (!hand && !c.moveFollowsHead) {
-            c.moveFollowsHead = true;
+        if (!hand && c.moveFollowsHead == body) {
+            c.moveFollowsHead = !body;
             HalcyonChanged(false);
         }
     } else if (key == "quality") {
@@ -493,7 +548,9 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
             c.expectedResY = size.height;
             HalcyonChanged(true);  // as Halcyon's slider: saved, and GamerSettings.ini written for the next launch
             int wx = 0, wy = 0;
-            MELEVR::Config::ApplyResolutionForCurrentMode(&wx, &wy);
+            if (!noSave_) {  // after a Reset the profile isn't saved: GamerSettings.ini stays with it (Profiles > Save writes both)
+                MELEVR::Config::ApplyResolutionForCurrentMode(&wx, &wy);
+            }
             log::Info("main menu: render resolution {} ({}x{}), GamerSettings.ini {}", choice, c.sfr2ResX, c.sfr2ResY,
                 wx > 0 ? std::format("set to {}x{}", wx, wy) : std::string("unchanged (auto-set per mode is off)"));
         } else {
@@ -569,8 +626,11 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         c.stereoEnabled = false;
         HalcyonChanged(true);
         int wx = 0, wy = 0;
-        MELEVR::Config::ApplyResolutionForCurrentMode(&wx, &wy);
-        modeNote_ = wx > 0 ? std::format("Resolution set to {} \xC3\x97 {}: restart the game to apply this mode.", wx, wy)
+        if (!noSave_) {  // as the resolution: GamerSettings.ini only with the profile
+            MELEVR::Config::ApplyResolutionForCurrentMode(&wx, &wy);
+        }
+        modeNote_ = noSave_ ? std::string("Not saved: the renderer settings were reset this session (Profiles > Save keeps it).")
+                  : wx > 0 ? std::format("Resolution set to {} \xC3\x97 {}: restart the game to apply this mode.", wx, wy)
                            : std::string("Restart the game to apply this mode.");
         log::Info("main menu: VR mode {} ({})", mode, modeNote_);
     } else if (key == "life_size") {
@@ -661,6 +721,11 @@ void Settings::Command(std::string const& name, std::string const& argument, men
             } else {
                 MELEVR::Config::SaveProfile(slot);
                 halcyonDirty_ = false;
+                if (slot == MELEVR::Config::ActiveProfileIndex()) {
+                    noSave_ = false;  // saved by hand: the session's settings are the profile's now
+                    int wx = 0, wy = 0;
+                    MELEVR::Config::ApplyResolutionForCurrentMode(&wx, &wy);  // GamerSettings.ini follows the saved target
+                }
                 profMsg_ = std::format("Saved into {}.", MELEVR::Config::ProfileName(slot));
             }
             log::Info("main menu: {}", profMsg_);

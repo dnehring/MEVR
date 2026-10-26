@@ -200,6 +200,10 @@ unsigned HudPanelDrawsLastFrame() noexcept;
 // The menu key (cfg.menuKey: \ in our deploy) went down (xr_session.cpp): opens or closes our menu; with Ctrl or Shift
 // held (or while Halcyon's menu is open), toggles Halcyon's menu instead. Present thread.
 void OnMenuKey() noexcept;
+// A hotkey is down and the game has the keyboard (a window of this process is in the foreground): GetAsyncKeyState
+// alone sees keys typed into any program (a \ typed in Discord opened our menu and paused the game). Halcyon's key
+// polls (menu key, R, K, P, the profile keys) go through it. Any thread.
+bool KeyDown(int vk) noexcept;
 // Our main menu is open: Halcyon's input block (vr_menu.cpp) keeps the game's mouse and keyboard from it, as for its
 // own menu. Any thread.
 bool MainMenuOpen() noexcept;

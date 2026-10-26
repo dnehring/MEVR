@@ -8,6 +8,7 @@
 
 #include "core/Exe.hpp"
 #include "core/Hook.hpp"
+#include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/Version.hpp"
 #include "engine/Addresses.hpp"
@@ -154,7 +155,7 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
 #else
     mevr::log::Info("MEVR {} (hot reload host) attaching to {}", MEVR_VERSION, MEVR_GAME_NAME_A);
 #endif
-    mevr::log::Info("log file: {} (pid {})", mevr::log::Path().string(), GetCurrentProcessId());
+    mevr::log::Info("log file: {} (pid {})", mevr::ini::Utf8(mevr::log::Path()), GetCurrentProcessId());
 
     // Fail closed: hardcoded RVAs are only valid for one exe build.
     if (!ExeGate()) {

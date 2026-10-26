@@ -3,6 +3,7 @@
 
 #include "core/Log.hpp"
 #include "engine/GameAdapter.hpp"
+#include "engine/SettingsFile.hpp"
 #include "game/ConsoleRequest.hpp"
 
 #include <Windows.h>
@@ -32,9 +33,7 @@ bool gHaveStamp = false;
 bool gToldOff = false;
 
 fs::path FilePath() {
-    wchar_t buffer[MAX_PATH]{};
-    GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-    return fs::path(buffer).parent_path() / L"ASI" / (MEVR_GAME_NAME_W L"MEVR.ini");
+    return engine::SettingsFile();  // <exe dir>\ASI\<GAME>MEVR.ini, the host's file too
 }
 
 std::string Narrow(std::wstring_view wide) {

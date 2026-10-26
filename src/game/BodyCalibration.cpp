@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MIT
 #include "game/BodyCalibration.hpp"
 
+#include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/vr/TestRequest.hpp"
 
 #include "engine/GameAdapter.hpp"
+#include "engine/SettingsFile.hpp"
 
 #include <Windows.h>
 
@@ -47,9 +49,7 @@ std::string gLoggedText;
 bool gToldNoHost = false;
 
 fs::path FilePath() {
-    wchar_t buffer[MAX_PATH]{};
-    GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-    return fs::path(buffer).parent_path() / L"ASI" / (MEVR_GAME_NAME_W L"MEVR.ini");
+    return engine::SettingsFile();  // <exe dir>\ASI\<GAME>MEVR.ini, the host's file too
 }
 
 std::string Read(fs::path const& path, std::string const& section, char const* key) {
@@ -70,9 +70,8 @@ std::optional<double> Number(fs::path const& path, std::string const& section, c
     if (text.empty()) {
         return std::nullopt;
     }
-    char* end = nullptr;
-    double const value = std::strtod(text.c_str(), &end);
-    if (end == text.c_str() || !std::isfinite(value) || value < lo || value > hi) {
+    std::optional<double> const value = ini::Number(text);  // locale-independent
+    if (!value || *value < lo || *value > hi) {
         return std::nullopt;
     }
     return value;

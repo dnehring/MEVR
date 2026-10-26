@@ -3,6 +3,7 @@
 
 #include "core/vr/OverlayPlacement.hpp"
 
+#include <charconv>
 #include <Windows.h>
 
 #include <algorithm>
@@ -62,9 +63,9 @@ std::vector<std::string> Tokens(std::string_view text) {
 }
 
 std::optional<float> Number(std::string const& text) {
-    char* end = nullptr;
-    float const value = std::strtof(text.c_str(), &end);
-    if (end == text.c_str() || *end != '\0' || !std::isfinite(value)) {
+    float value = 0.0f;  // std::from_chars: no C locale
+    auto const [end, ec] = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (ec != std::errc() || end == text.data() || end != text.data() + text.size() || !std::isfinite(value)) {
         return std::nullopt;
     }
     return value;

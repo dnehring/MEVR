@@ -233,6 +233,21 @@ profile (the only menu path it has: a right `/input/menu/click` there would make
 suggestion) and for both in `khr/simple_controller`; Index has none. No profile was added: a new one (Vive, WMR) could
 change which profile SteamVR picks for an emulated controller and lose A/B/X/Y.
 
+## Rows that show what's in effect (2026-10-26, QA)
+
+An adversarial pass found rows that showed something other than the setting in effect; each now reads the real value:
+- **Life-size movement** is Halcyon's `leanGain` of 2 in the live profile (the separate `[Camera] lifeSize` key could
+  disagree with a loaded profile; it's no longer read, by the menu or the VR hands tab's forward emphasis).
+- **First person's Back / Right / Up** read 0 while Halcyon's `screenDistanceEnabled` / `cameraOffsetEnabled` are off
+  (moving one turns its switch on, as before).
+- **Walk toward** has a third chip, **Body** (Halcyon's `moveFollowsHead = 0`), which used to light none.
+- **Sniper rifle** has a Red dot chip (`sniperRifle = dot` lit none).
+- **Physical grenades and melee** is on only when both are; set apart in the file, the row says which (it writes both).
+- **After Reset** (not saved over the profile) the render resolution and VR mode no longer write GamerSettings.ini
+  alone: the note says Profiles > Save keeps it, and saving into the active slot writes both.
+- The rail shows **"Can't save settings: the game's ASI folder is read-only"** when a write of `LE1MEVR.ini` fails
+  (`MainMenuSettings::Wrote`); the Recenter key and Classic renderer menu rows name the keyboard's own keys.
+
 ## Letting go of the pad (QA, 2026-10-26)
 
 - **What closed it stays the menu's:** the A on Resume, the B that closes the top level, the trigger that clicked

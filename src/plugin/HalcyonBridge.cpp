@@ -320,6 +320,12 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
             gHandProfile[1] = hands[1];
             mevr::log::Info("halcyon bridge: the runtime's interaction profile: left {}, right {} (xrGetCurrentInteractionProfile)",
                 hands[0].empty() ? "(none)" : hands[0], hands[1].empty() ? "(none)" : hands[1]);
+            for (int hand : {0, 1}) {
+                std::string_view const limits = mevr::xr::Input::ProfileLimits(hands[hand]);
+                if (!limits.empty() && (hand == 0 || hands[1] != hands[0])) {
+                    mevr::log::Warn("halcyon bridge: controller profile {}: {}", hands[hand], limits);
+                }
+            }
         }
         std::string const& profile = !hands[1].empty() ? hands[1] : hands[0];
         if (!profile.empty()) {
@@ -428,6 +434,18 @@ bool FirstPersonAtBoot(bool saved) noexcept {
 
 void SetGameWindow(HWND window) noexcept {
     gGameWindow.store(window);
+}
+
+bool KeyDown(int vk) noexcept {
+    if (vk <= 0 || (GetAsyncKeyState(vk) & 0x8000) == 0) {
+        return false;
+    }
+    HWND const foreground = GetForegroundWindow();
+    DWORD process = 0;
+    if (foreground != nullptr) {
+        GetWindowThreadProcessId(foreground, &process);
+    }
+    return process == GetCurrentProcessId();  // the game's window (or its console), not another program's
 }
 
 void OnViewBuilt(bool worldView, bool headLook, bool headAim, float const headOrientation[4],

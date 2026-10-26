@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "core/vr/Calibration.hpp"
 
+#include <format>
 #include <algorithm>
 #include <cctype>
 #include <charconv>
@@ -837,15 +838,11 @@ XrVector3f OrbRest(Anchor const& stepAnchor, Orb orb, BodyMeasures const& body) 
 // ---- Text --------------------------------------------------------------------------------------------------
 
 std::string FormatVector(XrVector3f const& v) {
-    char text[96];
-    std::snprintf(text, sizeof text, "%.4f, %.4f, %.4f", v.x, v.y, v.z);
-    return text;
+    return std::format("{:.4f}, {:.4f}, {:.4f}", v.x, v.y, v.z);  // std::format: no C locale (snprintf's %f had one)
 }
 
 std::string FormatRotation(XrQuaternionf const& q) {
-    char text[128];
-    std::snprintf(text, sizeof text, "%.6f, %.6f, %.6f, %.6f", q.x, q.y, q.z, q.w);
-    return text;
+    return std::format("{:.6f}, {:.6f}, {:.6f}, {:.6f}", q.x, q.y, q.z, q.w);
 }
 
 namespace {

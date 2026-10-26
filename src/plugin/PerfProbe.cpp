@@ -4,6 +4,7 @@
 // frame functions wrapped through MevrBridge::WrapSessionFunctions (plugin/TestLoop).
 
 #include "plugin/PerfProbe.hpp"
+#include "plugin/MevrMenu.hpp"
 #include "plugin/RenderLevers.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/MainMenu.hpp"
@@ -733,19 +734,8 @@ bool EarlyFrameWait() noexcept {
     std::uint64_t const now = GetTickCount64();
     if (now >= nextReadMs) {
         nextReadMs = now + 1000;
-        if (path.empty()) {  // ...\ASI\LE1MEVR.ini: the host ASI's name
-            HMODULE module = nullptr;
-            wchar_t buffer[MAX_PATH]{};
-            if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                    reinterpret_cast<LPCWSTR>(&EarlyFrameWait), &module) &&
-                GetModuleFileNameW(module, buffer, MAX_PATH) != 0) {
-                path = buffer;
-                std::size_t const dot = path.find_last_of(L'.');
-                if (dot != std::wstring::npos) {
-                    path.erase(dot);
-                }
-                path += L".ini";
-            }
+        if (path.empty()) {
+            path = MELEVR::MevrBridge::SettingsPath();  // <exe dir>\ASI\LE1MEVR.ini, as the mod
         }
         int const read = path.empty() ? 1 : (GetPrivateProfileIntW(L"Performance", L"earlyFrameWait", 1, path.c_str()) != 0 ? 1 : 0);
         if (read != value) {

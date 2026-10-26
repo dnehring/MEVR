@@ -2,6 +2,7 @@
 // Offline tests for the math that has to be right before it reaches a headset. No game, no
 // runtime: `ctest -C Release --test-dir build`.
 
+#include "core/Ini.hpp"
 #include "core/PngFile.hpp"
 #include "core/ik/ArmLength.hpp"
 #include "core/ik/ArmPose.hpp"
@@ -6996,7 +6997,46 @@ int RunReflectTests();
 int RunBreadcrumbTests();
 int RunExeTests();
 
+// core/Ini: the one reader of our settings file, as Win32's profile API reads it.
+void TestIni() {
+    namespace ini = mevr::ini;
+    // Case-insensitive names, the first occurrence wins (a repeated section is ignored as a whole), comments skipped.
+    std::string const text = "\xEF\xBB\xBF[Hands]\r\n; note\r\ndrawRate = 3\r\nDRAWRATE = 6\r\n  handPitch=-4.5 \r\n"
+                             "[hands]\r\nleanM = 0.4\r\n[Sights]\r\n#c\r\neyeBox = 6\r\nbroken\r\n";
+    ini::File const file = ini::Parse(text);
+    CHECK(file.size() == 2);
+    CHECK(ini::Get(file, "HANDS", "drawrate") == std::optional<std::string>("3"));
+    CHECK(ini::GetNumber(file, "Hands", "HandPitch") == std::optional<double>(-4.5));
+    CHECK(!ini::Get(file, "Hands", "leanM"));  // in the repeated [hands]: Win32 doesn't see it
+    CHECK(ini::Get(file, "sights", "EYEBOX") == std::optional<std::string>("6"));
+    CHECK(file.find("Hands") != file.end() && file.find("Hands")->second.count("drawRate") == 1);
+    // The BOM doesn't hide the first section.
+    CHECK(ini::Parse("\xEF\xBB\xBF[Comfort]\nturn=snap\n").count("comfort") == 1);
+    // Encodings.
+    CHECK(ini::Detect("\xEF\xBB\xBF[a]") == ini::Encoding::Utf8Bom);
+    CHECK(ini::Detect("[a]\nb=1") == ini::Encoding::Narrow);
+    std::string const utf16le("\xFF\xFE[\0H\0]\0\n\0k\0=\0" "\x34\0", 16);
+    CHECK(ini::Detect(utf16le) == ini::Encoding::Utf16Le);
+    CHECK(ini::IsUtf16(ini::Detect(std::string("[\0H\0]\0", 6))));
+    CHECK(ini::Decode(utf16le, ini::Encoding::Utf16Le) == "[H]\nk=4");
+    CHECK(ini::GetNumber(ini::Parse(ini::Decode(utf16le, ini::Encoding::Utf16Le)), "h", "K") == std::optional<double>(4.0));
+    std::string const utf16be("\xFE\xFF\0[\0x\0]\x04\x1F", 10);  // "[x]" and U+041F (Cyrillic)
+    CHECK(ini::Decode(utf16be, ini::Encoding::Utf16Be) == "[x]\xD0\x9F");
+    // Numbers: no locale, a leading '+', trailing text, nothing.
+    CHECK(ini::Number("0.5") == std::optional<double>(0.5));
+    CHECK(ini::Number(" +2 ") == std::optional<double>(2.0));
+    CHECK(ini::Number("1.25 ; note") == std::optional<double>(1.25));
+    CHECK(!ini::Number("") && !ini::Number("abc") && !ini::Number("inf"));
+    CHECK(ini::Fixed(0.5, 2) == "0.50" && ini::Fixed(-0.001, 2) == "0.00" && ini::Fixed(-1.26, 1) == "-1.3");
+    // Paths outside the ANSI code page as UTF-8.
+    CHECK(ini::Utf8(std::filesystem::path(L"C:\\\x0418\x0433\x0440\x044B\\\x6E38\x620F")) ==
+          "C:\\\xD0\x98\xD0\xB3\xD1\x80\xD1\x8B\\\xE6\xB8\xB8\xE6\x88\x8F");
+    // ParseSection (the host's GetPrivateProfileSection output) shares it: the first key wins.
+    CHECK(mevr::vr::menu_settings::ParseSection("a=1\nA=2\n").at("a") == "1");
+}
+
 int main() {
+    TestIni();
     RunInstallTests(gFailures);
     gFailures += RunReflectTests();
     gFailures += RunBreadcrumbTests();

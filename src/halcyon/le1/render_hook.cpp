@@ -3410,7 +3410,7 @@ void NotifyPresentTick() noexcept
         return;
     }
 
-    const bool f9Down = (GetAsyncKeyState(VK_F8) & 0x8000) != 0;
+    const bool f9Down = MELEVR::MevrBridge::KeyDown(VK_F8);   // [MEVR] game in front; upstream: GetAsyncKeyState
     const bool wasDown = g_f9WasDown.exchange(f9Down, std::memory_order_acq_rel);
     if (f9Down && !wasDown)
     {

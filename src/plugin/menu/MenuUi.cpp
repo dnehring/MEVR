@@ -9,7 +9,9 @@
 #include <Windows.h>
 
 #include <chrono>
+#include <cstdio>
 #include <format>
+#include <string>
 #include <system_error>
 
 namespace mevr::menu {
@@ -49,6 +51,57 @@ struct Ui::System final : Rml::SystemInterface {
 namespace {
 
 bool gRmlInitialised = false;
+
+// A path as UTF-8, the text RmlUi takes (never path::string(): that throws for characters outside the ANSI code
+// page, e.g. a Cyrillic or Chinese folder name on an English Windows).
+std::string Utf8(std::filesystem::path const& path) {
+    try {
+        std::u8string const u = path.u8string();
+        return std::string(u.begin(), u.end());
+    } catch (...) {
+        return {};
+    }
+}
+
+std::wstring Wide(std::string const& utf8) {
+    if (utf8.empty()) {
+        return {};
+    }
+    int const n = MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), nullptr, 0);
+    std::wstring out(static_cast<std::size_t>(n > 0 ? n : 0), L'\0');
+    if (n > 0) {
+        MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), out.data(), n);
+    }
+    return out;
+}
+
+} // namespace
+
+// RmlUi's own file interface opens paths with the ANSI fopen; ours takes them as UTF-8 and opens them wide.
+struct Ui::Files final : Rml::FileInterface {
+    Rml::FileHandle Open(Rml::String const& path) override {
+        FILE* file = nullptr;
+        if (_wfopen_s(&file, Wide(path).c_str(), L"rb") != 0) {
+            return 0;
+        }
+        return reinterpret_cast<Rml::FileHandle>(file);
+    }
+    void Close(Rml::FileHandle file) override {
+        std::fclose(reinterpret_cast<FILE*>(file));
+    }
+    size_t Read(void* buffer, size_t size, Rml::FileHandle file) override {
+        return std::fread(buffer, 1, size, reinterpret_cast<FILE*>(file));
+    }
+    bool Seek(Rml::FileHandle file, long offset, int origin) override {
+        return std::fseek(reinterpret_cast<FILE*>(file), offset, origin) == 0;
+    }
+    size_t Tell(Rml::FileHandle file) override {
+        long const at = std::ftell(reinterpret_cast<FILE*>(file));
+        return at < 0 ? 0 : static_cast<size_t>(at);
+    }
+};
+
+namespace {
 
 std::uint64_t NowMs() {
     return GetTickCount64();
@@ -101,6 +154,8 @@ bool Ui::Init(UiSetup const& setup) {
     system_->log = setup.log;
     system_->clock = setup.clock;
     renderer_ = std::make_unique<Renderer>(setup.device);
+    files_ = std::make_unique<Files>();
+    Rml::SetFileInterface(files_.get());
     Rml::SetSystemInterface(system_.get());
     Rml::SetRenderInterface(renderer_.get());
     if (!Rml::Initialise()) {
@@ -130,14 +185,14 @@ bool Ui::Init(UiSetup const& setup) {
             std::error_code ec;
             std::filesystem::path const file = dir / face.file;
             if (std::filesystem::exists(file, ec) &&
-                Rml::LoadFontFace(file.string(), face.family, Rml::Style::FontStyle::Normal, face.weight, loaded == 0)) {
+                Rml::LoadFontFace(Utf8(file), face.family, Rml::Style::FontStyle::Normal, face.weight, loaded == 0)) {
                 found = true;
                 ++loaded;
                 break;
             }
         }
         if (!found) {
-            say(LogLevel::Warn, std::format("menu: font {} not found", std::filesystem::path(face.file).string()));
+            say(LogLevel::Warn, std::format("menu: font {} not found", Utf8(face.file)));
         }
     }
     if (loaded == 0) {
@@ -148,9 +203,9 @@ bool Ui::Init(UiSetup const& setup) {
         for (wchar_t const* file : {L"bahnschrift.ttf", L"segoeui.ttf"}) {
             std::error_code ec;
             if (std::filesystem::exists(fonts / file, ec)) {
-                Rml::LoadFontFace((fonts / file).string(), "Titillium Web", Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Auto, true);
-                Rml::LoadFontFace((fonts / file).string(), "Rajdhani", Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Auto, false);
-                say(LogLevel::Warn, std::format("menu: the bundled fonts are missing; using {}", std::filesystem::path(file).string()));
+                Rml::LoadFontFace(Utf8(fonts / file), "Titillium Web", Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Auto, true);
+                Rml::LoadFontFace(Utf8(fonts / file), "Rajdhani", Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Auto, false);
+                say(LogLevel::Warn, std::format("menu: the bundled fonts are missing; using {}", Utf8(file)));
                 break;
             }
         }
@@ -161,7 +216,7 @@ bool Ui::Init(UiSetup const& setup) {
         return false;
     }
     say(LogLevel::Info, std::format("menu: RmlUi {} ready, {}x{}, {} font faces, documents in {}", Rml::GetVersion(), width_, height_,
-        loaded, documents_.string()));
+        loaded, Utf8(documents_)));
     return true;
 }
 
@@ -177,13 +232,13 @@ bool Ui::LoadDocument() {
     Rml::Factory::ClearStyleSheetCache();
     Rml::Factory::ClearTemplateCache();
     std::filesystem::path const file = documents_ / documentName_;
-    document_ = context_->LoadDocument(file.string());
+    document_ = context_->LoadDocument(Utf8(file));
     std::error_code ec;
     stamps_[0] = std::filesystem::last_write_time(file, ec);
     stamps_[1] = std::filesystem::last_write_time(documents_ / L"main.rcss", ec);
     if (document_ == nullptr) {
         if (log_) {
-            log_(LogLevel::Error, std::format("menu: {} didn't load (see the rmlui: lines)", file.string()));
+            log_(LogLevel::Error, std::format("menu: {} didn't load (see the rmlui: lines)", Utf8(file)));
         }
         return false;
     }
