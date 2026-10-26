@@ -1191,6 +1191,24 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       (they must still work), fire while walking. `stance: the body composes as explore for N s (... the explore
       branch ticked K of L ticks at weight 0)`: if it says FROZEN the legs stand still while walking drawn: tell
       Claude. `exploreStance = 0` brings the combat stance back at once. The snapshot JSON's `mod.stance` has all of it.
+    - **The body, redesigned (A, mod only, hot reload; `exploreStance` is OFF by default until this passes: set
+      `[Hands] exploreStance = 1`).** The first try moved the gun in the hand (the explore animations drive `Prop01`
+      and `LHIK` too); now the arms, hands, fingers and gun bones keep the combat pose and only the body below them
+      relaxes. First a baseline with `exploreStance = 0`: hold the pistol with the left hand under its grip and the
+      shotgun and assault rifle by their foregrips, note how the hands sit and the `support grip: held (N m from the
+      grab zone, M m from the foregrip ...)` lines. Then `exploreStance = 1` and the same:
+      - LE1MEVR.log once: `stance: with the explore stance the arms keep the combat pose: N bones of M (...): left ...,
+        right ...; gun and IK bones among them: Prop01(98), LHIK(109)...; never touched: Camera(...), God(...)`.
+      - On the first standing draw of each weapon type: a short moment of the combat pose, then `stance: learned the
+        combat pose of the arms for the <weapon> (held still: ...)`. `STILL MOVING, taken anyway` means it never
+        held still for 10 frames: tell Claude what you were doing (firing, walking).
+      - Then: **the pistol's left hand and the shotgun's foregrip line up exactly as with the stance off**, the gun
+        sits in the hand the same, the `support grip: held` distances match the baseline, and while drawn and
+        standing there are **no `support grip: foregrip moved` and no `weapon: grip moved` lines** (the first try
+        had 243 and 7). The 10 s line says `K calls composed as explore, K with the arms put back` (a `WITHOUT`
+        count: send the log).
+      - Look down: the legs and hips relaxed as exploring, the elbows as before. Then walk, strafe, fire, throw a
+        grenade, use a power, switch weapons (a second draw of a type goes straight to explore).
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR

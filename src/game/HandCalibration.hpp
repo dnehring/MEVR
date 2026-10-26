@@ -78,7 +78,7 @@ bool AimAssist();
 // [Hands] exploreStance, exploreStanceStorm, exploreRamp, drawRate: the weapon drawn, like exploring (game/combat_stance,
 // research/38). [Hands] constantEye is the host's (Halcyon's first-person camera modes, plugin/HalcyonBridge).
 struct CombatStance {
-    bool exploreStance = false;      // the body composes as explore while drawn (A; off: the gun's bones follow the pose)
+    bool exploreStance = false;      // the body composes as explore while drawn, the arms as combat (A; off until the headset confirms)
     bool exploreStanceStorm = true;  // ...while sprinting too
     bool exploreRamp = true;         // combat walking ramps like exploring (C)
     double drawRate = 6.0;           // the draw and holster animations' rate, 1..10 (D; 1: the game's)

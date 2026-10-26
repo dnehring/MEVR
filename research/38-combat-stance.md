@@ -163,6 +163,58 @@ Risks:
   if not), the heartbeat's `stance:` line; the snapshot's `mod.stance`.
 - Not built: `exploreStanceMoving` (the strafing legs) until the headset says the legs bother.
 
+### In the headset: the gun no longer sat in the hand (2026-10-25), and the redesign
+
+User, headset, `exploreStance = 1`: the hands no longer lined up with the grips: the pistol's left hand under the grip
+and the shotgun's foregrip were off, the assault rifle a little. Switched off by default (56a720e).
+
+**Cause (confirmed from the logs, `LE1MEVR.prev.log` 18:22-18:29 with the stance on, `LE1MEVR.log` 18:34- with it off):
+the explore animations also drive the bones under the right wrist**, and VRIK carries them rigidly with the hand, so
+whatever the composed pose had there is what the player gets:
+- `Prop01` (the gun's mesh hangs on it, under `RightWrist`): `weapon: grip moved by 2.9 units, 4.4 degrees` when the
+  stance came on (18:23:34), back by 3.3 / 4.7 a moment later, and so on: **7 `grip moved` lines with the stance, 0
+  without** (the grip stays at muzzle (7.1, -48.6, 3.3) in both sessions while composed as combat).
+- `LHIK` (under `Prop01`; the support grip's foregrip): steady at (-3.8, -19.0, 3.3) in the right hand's axes while
+  composed as combat; with the stance it wanders with the explore walk cycle ((-6.6, -21.1, 6.3), (-0.5, -10.4, 8.9),
+  (-5.6, -4.2, 17.9), ...; "too short along the barrel to aim with" for most of them): **243 `support grip: foregrip
+  moved` lines with the stance, 0 without.**
+- The animated left hand: the AnimTree's own `LeftArm` IK stays at strength 1 (its strength follows
+  `AddCombatIdleOffset`'s weight, which the tick computes: unchanged, as A predicted) but reaches for the explore pose's
+  `LHIK` near the hip: `the animated left wrist is 18.1 units from LHIK (not there)` (18:24:11), so the foregrip's
+  rotation fell back to the controller's.
+- The fingers and the arms' elbow poles (VRIK's elbow follows the animated bend plane) come from the explore pose too.
+
+**Redesign, option (b) of three:**
+- (a) Compose twice per call (explore, then combat for the arm bones): UpdateSkelPose also ticks FaceFX, runs the
+  skeletal controls (the LeftArm IK, leg IKs) and rebuilds SpaceBases; without Ghidra its other side effects are
+  unknown, and it doubles the player's tree blend. Rejected.
+- (c) Something in the tree (a per-bone blend at CombatMode): there is none; adding one means a new AnimNode. Rejected.
+- **(b) Built: one explore compose, then the arms put back from a learned combat pose.** Each upper arm and everything
+  below it (forearm, twist bones, hand, fingers, `Prop01`, `LHIK`; `ik::FindCameraHookBones`' `Camera`/`God` and
+  their subtrees excluded) goes back, parents first, to its combat place relative to its parent
+  (`core/ik/PoseGraft`: `Subtree`, `CaptureRelative`, `ApplyRelative`), in the hook after the call (skeletal controls
+  done) and before arm IK reads the pose. Relative to the parent, so the upper arm hangs from the explore clavicle
+  (the torso stays relaxed) and VRIK then writes the arms as before: the gun in the hand, the foregrip on it, the
+  fingers and the elbow poles are the combat pose's. The left hand that the AnimTree's LeftArm IK held on the gun in
+  combat is reported to `AnimatedHands()` at its combat place relative to the right hand, so the support grip's
+  foregrip rotation is the combat one.
+- **Learning:** the combat pose is learned per skeleton asset (full name) and weapon type (the animations are per type)
+  from calls composed as combat: the decision says `LearningHands` when everything else says Active (standing, drawn,
+  first person, the order confirmed), the gun is in the hand and the draw is over; the hook captures each such call
+  with CombatMode fully on Combat (the game's weights 0/1), and `ik::StillPose` takes it once it holds still (10 frames
+  within 0.3 units and 1.5 degrees, or after 2 s anyway, logged as STILL MOVING). Then the decision is Active. So the
+  first standing draw of each weapon type per session shows the combat pose for about 0.15 s after the draw; later
+  draws go straight to explore. Kept in the mod (hot reload relearns).
+- **Fail closed:** the pre-stage writes the explore weights only with a learned pose whose bones (index, parent, name)
+  all match the mesh this call; a pose that can't be put back after the call is counted (`WITHOUT` in the logs).
+- Logs: `stance: with the explore stance the arms keep the combat pose: N bones of M (...)` once per skeleton (which
+  gun and IK bones), `stance: learned the combat pose of the arms for <weapon> (...)` with `Prop01`/`LHIK` relative to
+  their parents and the left hand from the right, the 10 s line's `K with the arms put back at their combat pose`, the
+  heartbeat's `captured as combat`; the snapshot's `mod.stance.arms`.
+- [verify] in the headset: the support grip's foregrip no longer moves (no `foregrip moved` lines while drawn and
+  standing), no `weapon: grip moved` lines, the `support grip: held (... m from the grab zone ...)` distances as with the
+  stance off, and the pistol's and shotgun's left hand where it was.
+
 ## B. What moves the view on draw and holster
 
 ### The numbers

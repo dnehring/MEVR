@@ -5,6 +5,7 @@
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
 #include "core/vr/CombatStance.hpp"
+#include "core/ik/PoseGraft.hpp"
 #include "core/ik/TwoHand.hpp"
 #include "engine/Addresses.hpp"
 #include "engine/Engine.hpp"
@@ -21,7 +22,9 @@
 #include <cstdint>
 #include <format>
 #include <optional>
+#include <span>
 #include <string>
+#include <vector>
 
 namespace mevr::engine::bone_pose {
 namespace {
@@ -198,6 +201,12 @@ void const* OwnerOf(Mesh const* mesh) {
 void const* CurrentWorld() {
     return engine::World();
 }
+
+// The explore stance's left hand on the gun for this call (StanceHands::leftInRight; set by the stance's hands stage,
+// read by Write for AnimatedHands; the hook's thread). Reset at the start of every hook call.
+thread_local bool tStanceLeftOnGun = false;
+thread_local int tStanceRightHand = -1;
+thread_local ik::Transform tStanceLeftInRight;
 
 // The span captured when the current hold began (ik::CapturedSpan; the writer's thread).
 thread_local std::uint32_t tCapturedHold = 0;
@@ -380,9 +389,13 @@ void Write(Mesh* self, float deltaTime) {
     int const leftHand = request.arms[0].chain.hand;
     int const rightHand = request.arms[1].chain.hand;
     if (leftHand >= 0 && leftHand < count && rightHand >= 0 && rightHand < count) {
+        // Composed as explore with the arms put back: the left hand where the AnimTree's off-hand IK held it on the gun
+        // in the combat pose (the explore pose's off-hand IK reached for where the explore animation had LHIK).
+        ik::Transform const left = tStanceLeftOnGun && tStanceRightHand == rightHand ? ik::Compose(tStanceLeftInRight, pose[rightHand])
+                                                                                      : pose[leftHand];
         AcquireSRWLockExclusive(&gSampleLock);
         gHandsMesh = self;
-        gAnimatedHands = {pose[leftHand], pose[rightHand]};
+        gAnimatedHands = {left, pose[rightHand]};
         gHandsTimeMs = GetTickCount64();
         ReleaseSRWLockExclusive(&gSampleLock);
     }
@@ -580,6 +593,25 @@ float* ChildWeight(Stance const& s, std::uint8_t const* children, int index) {
     return reinterpret_cast<float*>(const_cast<std::uint8_t*>(children) + static_cast<std::size_t>(index) * s.childStride + s.weightOffset);
 }
 
+HandCapture gHandCapture;  // game thread
+
+// The arms' bones as published: in range, parents first, the same names (no C++ objects: called under __try).
+bool HandsMatch(Mesh const* self, StanceHands const& h) {
+    int const count = skeleton::RefBoneCount(self);
+    if (h.count <= 0 || h.count > kMaxStanceHandBones || count <= 0) {
+        return false;
+    }
+    for (int i = 0; i < h.count; ++i) {
+        int const bone = h.bones[static_cast<std::size_t>(i)];
+        int const parent = h.parents[static_cast<std::size_t>(i)];
+        if (bone < 0 || bone >= count || parent < 0 || parent >= bone || skeleton::RefBoneKey(self, bone) != h.keys[static_cast<std::size_t>(i)]) {
+            return false;
+        }
+    }
+    return h.leftHand >= 0 && h.leftHand < count && h.rightHand >= 0 && h.rightHand < count &&
+        skeleton::RefBoneKey(self, h.leftHand) == h.leftKey && skeleton::RefBoneKey(self, h.rightHand) == h.rightKey;
+}
+
 // Reads and writes the game's memory: no C++ objects with destructors, so it can catch an access violation.
 void StancePreGuarded(Mesh* self, float deltaTime, StanceCall& c) {
     __try {
@@ -589,7 +621,13 @@ void StancePreGuarded(Mesh* self, float deltaTime, StanceCall& c) {
             StanceReject("the mesh's AnimTree changed");
             return;
         }
-        bool const write = s.apply && gOrder.Result() == vr::combat_stance::OrderCheck::Order::Before;
+        // Only with the arms' combat pose to put back after the call (research/38 A: without it the gun's bones follow
+        // the explore animations).
+        bool write = s.apply && gOrder.Result() == vr::combat_stance::OrderCheck::Order::Before;
+        if (write && !(s.hands.apply && HandsMatch(self, s.hands))) {
+            write = false;
+            StanceReject("the arms' bones changed (not composed as explore)");
+        }
         c.probe.deltaTime = deltaTime;
         for (int i = 0; i < s.nodeCount; ++i) {
             StanceNode const& n = s.nodes[i];
@@ -669,6 +707,72 @@ void StancePostGuarded(StanceCall& c) {
     }
 }
 
+// After the call (the pose composed, skeletal controls applied) and before arm IK: the arms back at their combat pose
+// (a call composed as explore), or the combat pose learned (a call composed as combat, CombatMode fully on Combat).
+void StanceHandsWork(Mesh* self, StanceCall& c) {
+    StanceHands const& h = c.s.hands;
+    bool const graft = c.probe.wrote && h.apply;
+    bool const capture = !c.probe.wrote && h.capture && c.valid[0] && c.saved[0][0] <= 0.001f && c.saved[0][1] >= 0.999f;
+    if (!graft && !capture) {
+        return;
+    }
+    std::span<skeleton::BoneAtom> const bases = skeleton::SpaceBases(self);
+    if (static_cast<int>(bases.size()) != skeleton::RefBoneCount(self) || !HandsMatch(self, h)) {
+        StanceReject(bases.empty() ? "the pose isn't computed (the arms not put back)" : "the arms' bones changed after the call");
+        gStanceStats.notGrafted += graft ? 1 : 0;
+        return;
+    }
+    thread_local std::vector<ik::Transform> pose;
+    pose.resize(bases.size());
+    for (std::size_t i = 0; i < bases.size(); ++i) {
+        pose[i] = skeleton::ToTransform(bases[i]);
+    }
+    std::span<int const> const bones(h.bones.data(), static_cast<std::size_t>(h.count));
+    std::span<int const> const parents(h.parents.data(), static_cast<std::size_t>(h.count));
+    if (capture) {
+        std::vector<ik::Transform> const relative = ik::CaptureRelative(pose, bones, parents);
+        if (relative.size() != bones.size()) {
+            return;
+        }
+        std::copy(relative.begin(), relative.end(), gHandCapture.relative.begin());
+        gHandCapture.count = h.count;
+        gHandCapture.leftInRight = ik::Relative(pose[static_cast<std::size_t>(h.leftHand)], pose[static_cast<std::size_t>(h.rightHand)]);
+        ++gHandCapture.serial;
+        ++gStanceStats.captured;
+        return;
+    }
+    if (!ik::ApplyRelative(pose, bones, parents, std::span<ik::Transform const>(h.relative.data(), static_cast<std::size_t>(h.count)))) {
+        ++gStanceStats.notGrafted;
+        StanceReject("the arms' combat pose didn't fit");
+        return;
+    }
+    int lowest = h.bones[0];
+    int highest = h.bones[0];
+    for (int bone : bones) {
+        bases[static_cast<std::size_t>(bone)] = skeleton::ToAtom(pose[static_cast<std::size_t>(bone)]);
+        lowest = (std::min)(lowest, bone);
+        highest = (std::max)(highest, bone);
+    }
+    write_journal::Wrote("BonePose.combatStanceArms", &bases[static_cast<std::size_t>(lowest)],
+        static_cast<std::size_t>(highest - lowest + 1) * sizeof(skeleton::BoneAtom));
+    ++gStanceStats.grafted;
+    if (h.hasLeftInRight) {
+        tStanceLeftOnGun = true;
+        tStanceRightHand = h.rightHand;
+        tStanceLeftInRight = h.leftInRight;
+    }
+}
+
+void StanceHandsGuarded(Mesh* self, StanceCall& c) {
+    __try {
+        StanceHandsWork(self, c);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        gStanceBroken.store(true);
+        gStanceMesh.store(nullptr);
+        StanceReject("access violation putting the arms back: stopped");
+    }
+}
+
 void StancePre(Mesh* self, float deltaTime, StanceCall& c) {
     if (self == nullptr || self != gStanceMesh.load(std::memory_order_acquire) || gStanceBroken.load(std::memory_order_relaxed)) {
         return;
@@ -722,10 +826,14 @@ void UpdateSkelPoseHook(Mesh* self, float deltaTime, unsigned tickFaceFx, unsign
     std::uintptr_t const caller = reinterpret_cast<std::uintptr_t>(_ReturnAddress());
     gInFlight.fetch_add(1, std::memory_order_acquire);
     __try {
+        tStanceLeftOnGun = false;
         StanceCall stance;
         StancePre(self, deltaTime, stance);
         gOrig(self, deltaTime, tickFaceFx, unused);
         StancePost(stance);
+        if (stance.active && stance.s.hands.count > 0) {
+            StanceHandsGuarded(self, stance);
+        }
         AfterUpdateSkelPose(self, deltaTime, caller);
     } __finally {
         gInFlight.fetch_sub(1, std::memory_order_release);
@@ -826,6 +934,7 @@ bool Uninstall(hook::Context& init, bool waitForCalls) {
     gStanceBroken = false;
     gOrder.Reset();
     gStanceStats = {};
+    gHandCapture = {};
     gFirstWriteLogged = false;
     gFirstWriteReady = false;
     log::Info("unhooked {}", kHookName);
@@ -877,6 +986,10 @@ void ClearStance() {
     gStance = {};
     gStanceTimeMs = 0;
     ReleaseSRWLockExclusive(&gStanceLock);
+}
+
+HandCapture const& LatestHandCapture() {
+    return gHandCapture;
 }
 
 StanceStats GetStanceStats() {

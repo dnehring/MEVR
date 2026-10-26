@@ -43,6 +43,8 @@ char const* Name(Why why) {
     case Why::NoHook: return "the UpdateSkelPose hook isn't in (arm IK never turned on)";
     case Why::OrderUnknown: return "waiting to see the AnimTree tick before UpdateSkelPose";
     case Why::OrderInside: return "the AnimTree ticks inside UpdateSkelPose: this seam can't compose as explore; stood down";
+    case Why::NoHandBones: return "the arms' bones weren't found: their combat pose can't be kept";
+    case Why::LearningHands: return "learning the combat pose of the arms and hands for this weapon (the game's pose until it holds still)";
     }
     return "?";
 }
@@ -89,6 +91,12 @@ Why Decide(Inputs const& in) {
     }
     if (in.orderInside) {
         return Why::OrderInside;
+    }
+    if (!in.handBones) {
+        return Why::NoHandBones;
+    }
+    if (!in.handPose) {
+        return Why::LearningHands;
     }
     return Why::Active;
 }

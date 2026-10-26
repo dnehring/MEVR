@@ -3,9 +3,13 @@
 
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
+#include "core/ik/ArmPose.hpp"
+#include "core/ik/CameraHook.hpp"
+#include "core/ik/PoseGraft.hpp"
 #include "core/vr/CombatStance.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/BonePose.hpp"
+#include "engine/Skeleton.hpp"
 #include "game/ArmIk.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/HeadTracking.hpp"
@@ -117,7 +121,45 @@ unsigned gNonCombatTicked = 0;
 unsigned gNonCombatTicks = 0;
 std::uint64_t gAppliedAtLog = 0;
 std::uint64_t gOverriddenAtLog = 0;
+std::uint64_t gGraftedAtLog = 0;
+std::uint64_t gNotGraftedAtLog = 0;
 std::string gModeClass = "none";
+
+// ---- A: the arms keep the combat pose (research/38 A, "Redesign") ------------------------------------------------
+
+// The arms' bones, per skeleton asset: each upper arm and everything below it (forearm, twist bones, hand, fingers,
+// Prop01, LHIK...), without the camera hook bones (Camera, God) and their subtrees, parents first.
+struct Arms {
+    ue3::Object const* asset = nullptr;  // compared by address only
+    int boneCount = 0;
+    std::string assetName;
+    bool ok = false;
+    std::string why = "not looked up";
+    std::vector<int> bones;
+    std::vector<int> parents;
+    std::vector<std::uint64_t> keys;
+    std::vector<std::string> names;
+    int leftHand = -1;
+    int rightHand = -1;
+    std::uint64_t leftKey = 0;
+    std::uint64_t rightKey = 0;
+};
+Arms gArms;
+
+// The combat pose of the arms, learned per skeleton asset and weapon type (the animations are per weapon type).
+struct Learned {
+    std::string key;                   // asset | weapon
+    std::vector<std::uint64_t> keys;   // the bones it was learned for
+    std::vector<ik::Transform> relative;
+    ik::Transform leftInRight;
+};
+std::vector<Learned> gLearned;
+int gHandIndex = -1;           // the one in use (gLearned), -1: none
+std::string gLastWeaponKey;    // the last weapon key with a gun in the hand (a switch between guns keeps it)
+ik::StillPose gLearn;
+std::string gLearnKey;
+std::uint64_t gLearnSerial = 0;
+bool gLearning = false;        // captures requested this tick
 
 // ---- C: the ramp --------------------------------------------------------------------------------------------------
 
@@ -332,6 +374,173 @@ void WalkTree(ue3::Object const* mesh, ue3::Object* root) {
     }
 }
 
+std::string BoneText(Arms const& arms, int bone) {
+    auto const at = std::find(arms.bones.begin(), arms.bones.end(), bone);
+    return at != arms.bones.end() ? std::format("{}({})", arms.names[static_cast<std::size_t>(at - arms.bones.begin())], bone)
+                                  : std::format("bone {}", bone);
+}
+
+// The arms' bones of the mesh's skeleton asset (once per asset; logged).
+void ResolveArms(ue3::Object* mesh) {
+    ue3::Object const* const asset = mesh != nullptr ? player::SkeletalMesh(mesh) : nullptr;
+    int const count = mesh != nullptr ? engine::skeleton::RefBoneCount(mesh) : -1;
+    if (asset == nullptr || count <= 0) {
+        gArms = {};
+        gArms.why = "no skeleton";
+        return;
+    }
+    if (gArms.asset == asset && gArms.boneCount == count) {
+        // Same address and size; also the same hand bones (a level load can put another asset there).
+        if (!gArms.ok || (engine::skeleton::RefBoneKey(mesh, gArms.leftHand) == gArms.leftKey &&
+                             engine::skeleton::RefBoneKey(mesh, gArms.rightHand) == gArms.rightKey)) {
+            return;
+        }
+    }
+    Arms arms;
+    arms.asset = asset;
+    arms.boneCount = count;
+    arms.assetName = ue3::runtime::FullName(asset);
+    std::optional<engine::skeleton::RefSkeleton> const skeleton = engine::skeleton::ReadRefSkeleton(mesh);
+    if (!skeleton || static_cast<int>(skeleton->names.size()) != count) {
+        arms.why = "the skeleton couldn't be read";
+        gArms = std::move(arms);
+        log::Warn("stance: {}: {}; the explore stance can't keep the arms' combat pose, so it stays off", gArms.assetName, gArms.why);
+        return;
+    }
+    std::vector<int> const hooks = ik::FindCameraHookBones(skeleton->names);
+    std::array<std::optional<ik::ArmChain>, 2> chains;
+    std::array<std::vector<int>, 2> subtrees;
+    for (int side : {0, 1}) {
+        chains[side] = ik::FindArmChain(skeleton->names, skeleton->parents, side);
+        if (chains[side]) {
+            subtrees[side] = ik::Subtree(skeleton->parents, chains[side]->upper, hooks);
+        }
+    }
+    if (!chains[0] || !chains[1] || subtrees[0].empty() || subtrees[1].empty()) {
+        arms.why = "an arm wasn't found";
+    } else {
+        arms.bones = subtrees[0];
+        arms.bones.insert(arms.bones.end(), subtrees[1].begin(), subtrees[1].end());
+        std::sort(arms.bones.begin(), arms.bones.end());  // parents come before children in the skeleton
+        arms.bones.erase(std::unique(arms.bones.begin(), arms.bones.end()), arms.bones.end());
+        arms.parents = ik::ParentsOf(skeleton->parents, arms.bones);
+        for (int bone : arms.bones) {
+            arms.keys.push_back(skeleton->keys[static_cast<std::size_t>(bone)]);
+            arms.names.push_back(skeleton->names[static_cast<std::size_t>(bone)]);
+        }
+        arms.leftHand = chains[0]->hand;
+        arms.rightHand = chains[1]->hand;
+        arms.leftKey = skeleton->keys[static_cast<std::size_t>(arms.leftHand)];
+        arms.rightKey = skeleton->keys[static_cast<std::size_t>(arms.rightHand)];
+        if (static_cast<int>(arms.bones.size()) > engine::bone_pose::kMaxStanceHandBones) {
+            arms.why = std::format("{} arm bones, more than {}", arms.bones.size(), engine::bone_pose::kMaxStanceHandBones);
+        } else {
+            arms.ok = true;
+            arms.why.clear();
+        }
+    }
+    gArms = std::move(arms);
+    gHandIndex = -1;
+    gLearn.Reset();
+    gLearnKey.clear();
+    if (!gArms.ok) {
+        log::Warn("stance: {}: {}; the explore stance can't keep the arms' combat pose, so it stays off", gArms.assetName, gArms.why);
+        return;
+    }
+    std::string props;
+    for (std::size_t i = 0; i < gArms.bones.size(); ++i) {
+        std::string const lower = Lower(gArms.names[i]);
+        if (lower.find("prop") != std::string::npos || lower.find("ik") != std::string::npos || lower.find("weapon") != std::string::npos) {
+            props += std::format("{}{}({})", props.empty() ? "" : ", ", gArms.names[i], gArms.bones[i]);
+        }
+    }
+    std::string excluded;
+    for (int bone : hooks) {
+        excluded += std::format("{}{}({})", excluded.empty() ? "" : ", ", skeleton->names[static_cast<std::size_t>(bone)], bone);
+    }
+    log::Info("stance: with the explore stance the arms keep the combat pose: {} bones of {} ({}): left {} and {} below it, right {} "
+              "and {} below it; gun and IK bones among them: {}; never touched: {}",
+        gArms.bones.size(), count, gArms.assetName, BoneText(gArms, chains[0]->upper), subtrees[0].size() - 1,
+        BoneText(gArms, chains[1]->upper), subtrees[1].size() - 1, props.empty() ? "none" : props, excluded.empty() ? "no camera hook bones" : excluded);
+}
+
+// The weapon whose arms pose applies: the gun in the hand by type, else the last one (between guns).
+std::string WeaponKey() {
+    if (weapon::Key() != 0) {
+        gLastWeaponKey = std::format("{}|{}", gArms.assetName, WeaponName(weapon::Type()));
+    }
+    return gLastWeaponKey;
+}
+
+int FindLearned(std::string const& key) {
+    for (std::size_t i = 0; i < gLearned.size(); ++i) {
+        if (gLearned[i].key == key && gLearned[i].keys == gArms.keys) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+std::string RelativeText(std::vector<ik::Transform> const& relative, ik::Transform const& leftInRight) {
+    std::string text;
+    for (std::size_t i = 0; i < gArms.bones.size() && i < relative.size(); ++i) {
+        std::string const lower = Lower(gArms.names[i]);
+        if (lower.find("prop") != std::string::npos || lower == "lhik") {
+            ik::Vec3 const t = relative[i].translation;
+            text += std::format("{}{} at ({:.1f}, {:.1f}, {:.1f}) on {}", text.empty() ? "" : "; ", gArms.names[i], t.x, t.y, t.z,
+                BoneText(gArms, gArms.parents[i]));
+        }
+    }
+    ik::Vec3 const l = leftInRight.translation;
+    return text + std::format("{}the left hand {:.1f} units from the right ({:.1f}, {:.1f}, {:.1f})", text.empty() ? "" : "; ",
+                      ik::Length(l), l.x, l.y, l.z);
+}
+
+// Learning the arms' combat pose for `key` while the decision says LearningHands: one capture per call composed as
+// combat (the hook's), settled by StillPose (it holds still for 10 frames, or 2 s pass), then kept.
+void UpdateLearning(double deltaSeconds, std::string const& key, bool capturing) {
+    engine::bone_pose::HandCapture const& capture = engine::bone_pose::LatestHandCapture();
+    if (!capturing || key != gLearnKey) {
+        // Starts (or stops) learning: only captures from now on count.
+        gLearn.Reset();
+        gLearnKey = capturing ? key : std::string();
+        gLearnSerial = capture.serial;
+        return;
+    }
+    if (capture.serial == gLearnSerial || capture.count != static_cast<int>(gArms.bones.size())) {
+        return;
+    }
+    gLearnSerial = capture.serial;
+    std::vector<ik::Transform> sample(capture.relative.begin(), capture.relative.begin() + capture.count);
+    sample.push_back(capture.leftInRight);
+    ik::StillPose::State const state = gLearn.Feed(sample, deltaSeconds);
+    if (state == ik::StillPose::State::Learning) {
+        return;
+    }
+    Learned learned;
+    learned.key = key;
+    learned.keys = gArms.keys;
+    learned.relative = gLearn.Latest();
+    learned.leftInRight = learned.relative.back();
+    learned.relative.pop_back();
+    ik::PoseDifference const d = gLearn.LastDifference();
+    log::Info("stance: learned the combat pose of the arms for {} ({}: {:.2f} s, {}): {}; from now on the body composes as explore "
+              "with these arms",
+        key.substr(key.find('|') + 1), state == ik::StillPose::State::Still ? "held still" : "STILL MOVING, taken anyway",
+        gLearn.Seconds(),
+        state == ik::StillPose::State::Still ? std::format("{} frames within 0.3 units and 1.5 degrees", gLearn.StillFrames())
+                                             : std::format("the last frame moved {:.2f} units, {:.2f} degrees", d.units, d.degrees),
+        RelativeText(learned.relative, learned.leftInRight));
+    int const existing = FindLearned(key);
+    if (existing >= 0) {
+        gLearned[static_cast<std::size_t>(existing)] = std::move(learned);
+    } else {
+        gLearned.push_back(std::move(learned));
+    }
+    gLearn.Reset();
+    gLearnKey.clear();
+}
+
 // The camera mode's class (or the one it blends to), for the scope test.
 std::string CameraModeClass(ue3::Object* controller) {
     ue3::Object* const base = gPlayerCamera.Read<ue3::Object*>(controller).value_or(nullptr);
@@ -394,7 +603,7 @@ void LogVerify(engine::bone_pose::StanceStats const& stats) {
     }
 }
 
-void UpdateStance(Link const& link, ue3::Object* controller, ue3::Object* pawn, ue3::Object* mesh, bool onFoot) {
+void UpdateStance(double deltaSeconds, Link const& link, ue3::Object* controller, ue3::Object* pawn, ue3::Object* mesh, bool onFoot) {
     hand_calibration::CombatStance const settings = hand_calibration::GetCombatStance();
     engine::bone_pose::StanceStats const stats = engine::bone_pose::GetStanceStats();
     ue3::Object* const root = mesh != nullptr ? gAnimations.Read<ue3::Object*>(mesh).value_or(nullptr) : nullptr;
@@ -427,9 +636,21 @@ void UpdateStance(Link const& link, ue3::Object* controller, ue3::Object* pawn, 
     in.hook = engine::bone_pose::Installed();
     in.orderKnown = stats.order != static_cast<int>(cs::OrderCheck::Order::Unknown);
     in.orderInside = stats.order == static_cast<int>(cs::OrderCheck::Order::Inside);
+    // The arms keep the combat pose: their bones, and the pose learned for the weapon in the hand.
+    if (wanted) {
+        ResolveArms(mesh);
+    }
+    std::string const weaponKey = wanted && gArms.ok ? WeaponKey() : std::string();
+    gHandIndex = weaponKey.empty() ? -1 : FindLearned(weaponKey);
+    in.handBones = wanted && gArms.ok;
+    in.handPose = gHandIndex >= 0;
     gWhy = cs::Decide(in);
     LogWhy(gWhy, stats);
     LogVerify(stats);
+    // Learned from calls composed as combat, with the gun in the hand and the draw over.
+    bool const capturing = gWhy == cs::Why::LearningHands && !gSwitching && weapon::Key() != 0;
+    gLearning = capturing;
+    UpdateLearning(deltaSeconds, weaponKey, capturing);
 
     // Published whenever the tree is known and VR is on foot, so the order check runs before the first draw.
     if (in.node && in.hook && !stats.broken) {
@@ -455,6 +676,27 @@ void UpdateStance(Link const& link, ue3::Object* controller, ue3::Object* pawn, 
             s.weightOffset = static_cast<std::uint32_t>(weight->offset);
             s.tickTagOffset = static_cast<std::uint32_t>(tag->offset);
             s.apply = gWhy == cs::Why::Active;
+            if (gArms.ok && in.handBones) {
+                engine::bone_pose::StanceHands& h = s.hands;
+                h.count = static_cast<int>(gArms.bones.size());
+                for (std::size_t i = 0; i < gArms.bones.size(); ++i) {
+                    h.bones[i] = gArms.bones[i];
+                    h.parents[i] = gArms.parents[i];
+                    h.keys[i] = gArms.keys[i];
+                }
+                h.leftHand = gArms.leftHand;
+                h.rightHand = gArms.rightHand;
+                h.leftKey = gArms.leftKey;
+                h.rightKey = gArms.rightKey;
+                h.capture = capturing;
+                Learned const* const learned = gHandIndex >= 0 ? &gLearned[static_cast<std::size_t>(gHandIndex)] : nullptr;
+                if (s.apply && learned != nullptr && learned->relative.size() == gArms.bones.size()) {
+                    h.apply = true;
+                    std::copy(learned->relative.begin(), learned->relative.end(), h.relative.begin());
+                    h.hasLeftInRight = true;
+                    h.leftInRight = learned->leftInRight;
+                }
+            }
             if (!gTree.draws.empty() && time != nullptr && playing != nullptr && playing->kind == ue3::Kind::Bool) {
                 s.drawSequence = gTree.draws.front();
                 s.currentTimeOffset = static_cast<std::uint32_t>(time->offset);
@@ -485,14 +727,18 @@ void UpdateStance(Link const& link, ue3::Object* controller, ue3::Object* pawn, 
     if (gWhy == cs::Why::Active && gNow - gActiveLogAt >= kActiveLogSeconds) {
         gActiveLogAt = gNow;
         log::Info("stance: the body composes as explore for {:.0f} s (CombatMode weights NonCombat/Combat {} taken from the game's; "
-                  "{} calls composed as explore, {} where the call changed our weights, {} rejected{}; the explore branch ticked "
-                  "{} of {} ticks at weight 0{})",
+                  "{} calls composed as explore, {} with the arms put back at their combat pose{}, {} where the call changed our "
+                  "weights, {} rejected{}; the explore branch ticked {} of {} ticks at weight 0{})",
             gNow - gActiveSince, stats.last.valid ? Weights(stats.last.startWeights) : std::string("?/?"),
-            stats.applied - gAppliedAtLog, stats.overridden - gOverriddenAtLog, stats.rejected,
+            stats.applied - gAppliedAtLog, stats.grafted - gGraftedAtLog,
+            stats.notGrafted != gNotGraftedAtLog ? std::format(", {} WITHOUT", stats.notGrafted - gNotGraftedAtLog) : std::string(),
+            stats.overridden - gOverriddenAtLog, stats.rejected,
             stats.lastReject != nullptr ? std::format(", last: {}", stats.lastReject) : std::string(), gNonCombatTicked, gNonCombatTicks,
             gNonCombatTicks > 0 && gNonCombatTicked == 0 ? ": FROZEN (its nodes skip their tick at weight 0: the legs won't walk)" : "");
         gAppliedAtLog = stats.applied;
         gOverriddenAtLog = stats.overridden;
+        gGraftedAtLog = stats.grafted;
+        gNotGraftedAtLog = stats.notGrafted;
         gNonCombatTicked = gNonCombatTicks = 0;
     }
 }
@@ -763,13 +1009,13 @@ void Tick(double deltaSeconds, Link const& link) {
         if (gEvent.open) {
             gEvent = {};
         }
-        UpdateStance(link, controller, nullptr, nullptr, onFoot);
+        UpdateStance(deltaSeconds, link, controller, nullptr, nullptr, onFoot);
         UpdateRamp(link, nullptr, onFoot);
         return;
     }
     gDrawn = CallBool(pawn, gIsInCombatActionState);
     gSwitching = CallBool(pawn, gIsSwitchingWeapons);
-    UpdateStance(link, controller, pawn, mesh, onFoot);
+    UpdateStance(deltaSeconds, link, controller, pawn, mesh, onFoot);
     UpdateRamp(link, pawn, onFoot);
     if (onFoot) {
         UpdateWalk(pawn, link);
@@ -789,13 +1035,19 @@ std::string StatusJson() {
     namespace json = vr::test_request;
     engine::bone_pose::StanceStats const stats = engine::bone_pose::GetStanceStats();
     hand_calibration::CombatStance const settings = hand_calibration::GetCombatStance();
+    std::string learned;
+    for (Learned const& l : gLearned) {
+        learned += std::format("{}{}", learned.empty() ? "" : ", ", json::JsonString(l.key));
+    }
     return std::format(
         "{{\"exploreStance\": {}, \"active\": {}, \"why\": {}, \"order\": {}, \"confirmations\": {}, \"insideCalls\": {}, "
         "\"combatModeNodes\": {}, \"gameWeights\": [{}, {}], \"composed\": {}, \"overridden\": {}, \"rejected\": {}, \"broken\": {}, "
         "\"cameraMode\": {}, \"drawn\": {}, \"switching\": {}, "
         "\"ramp\": {{\"enabled\": {}, \"state\": {}, \"written\": {}, \"savedAccel\": {}, \"savedDecel\": {}}}, "
         "\"walk\": {{\"mode\": {}, \"speed\": {}}}, "
-        "\"draw\": {{\"rate\": {}, \"sequences\": {}, \"written\": {}}}}}",
+        "\"draw\": {{\"rate\": {}, \"sequences\": {}, \"written\": {}}}, "
+        "\"arms\": {{\"bones\": {}, \"why\": {}, \"learned\": [{}], \"inUse\": {}, \"learning\": {}, \"grafted\": {}, "
+        "\"notGrafted\": {}, \"captured\": {}}}}}",
         settings.exploreStance ? "true" : "false", gWhy == cs::Why::Active ? "true" : "false", json::JsonString(cs::Name(gWhy)),
         json::JsonString(cs::Name(static_cast<cs::OrderCheck::Order>(stats.order))), stats.confirmations, stats.insideCalls,
         gTree.combat.size(), json::JsonNumber(stats.last.startWeights[0]), json::JsonNumber(stats.last.startWeights[1]), stats.applied,
@@ -804,7 +1056,9 @@ std::string StatusJson() {
         json::JsonNumber(gRamp.savedAccel), json::JsonNumber(gRamp.savedDecel),
         json::JsonString(gWalkMode >= 0 && gWalkMode < static_cast<int>(std::size(kWalkModes)) ? kWalkModes[gWalkMode] : "unknown"),
         json::JsonNumber(gSpeed), json::JsonNumber(cs::ClampDrawRate(settings.drawRate)), gTree.draws.size() + gTree.holsters.size(),
-        gRates.size());
+        gRates.size(), gArms.ok ? gArms.bones.size() : 0, json::JsonString(gArms.ok ? std::string("found") : gArms.why), learned,
+        json::JsonString(gHandIndex >= 0 ? gLearned[static_cast<std::size_t>(gHandIndex)].key : std::string("none")),
+        gLearning ? "true" : "false", stats.grafted, stats.notGrafted, stats.captured);
 }
 
 void LogStats() {
@@ -812,11 +1066,15 @@ void LogStats() {
         return;
     }
     engine::bone_pose::StanceStats const stats = engine::bone_pose::GetStanceStats();
-    log::Info("    stance: {}; order: {} ({} confirmations, {} inside); {} calls, {} composed as explore, {} overridden, {} rejected{}{}; "
-              "ramp: {}{}; draw rate writes this period: {}",
+    log::Info("    stance: {}; order: {} ({} confirmations, {} inside); {} calls, {} composed as explore ({} with the arms' combat "
+              "pose put back, {} without), {} captured as combat, {} overridden, {} rejected{}{}; arms: {}; ramp: {}{}; draw rate writes "
+              "this period: {}",
         cs::Name(gWhy), cs::Name(static_cast<cs::OrderCheck::Order>(stats.order)), stats.confirmations, stats.insideCalls, stats.calls,
-        stats.applied, stats.overridden, stats.rejected,
+        stats.applied, stats.grafted, stats.notGrafted, stats.captured, stats.overridden, stats.rejected,
         stats.lastReject != nullptr ? std::format(" (last: {})", stats.lastReject) : std::string(), stats.broken ? ", STOPPED after a fault" : "",
+        gArms.ok ? std::format("{} bones, the combat pose learned for {} weapon type{}{}", gArms.bones.size(), gLearned.size(),
+                       gLearned.size() == 1 ? "" : "s", gLearning ? ", learning" : "")
+                 : gArms.why,
         gRampWhy, gRamp.written ? std::format(" (written; the game's accel {:.2f}, decel {:.2f})", gRamp.savedAccel, gRamp.savedDecel)
                                 : std::string(),
         gRateWrites);
@@ -849,7 +1107,15 @@ void Shutdown() {
     gLoggedFirstDraw = false;
     gHaveNonCombatTag = false;
     gNonCombatTicked = gNonCombatTicks = 0;
-    gAppliedAtLog = gOverriddenAtLog = 0;
+    gAppliedAtLog = gOverriddenAtLog = gGraftedAtLog = gNotGraftedAtLog = 0;
+    gArms = {};
+    gLearned.clear();
+    gHandIndex = -1;
+    gLastWeaponKey.clear();
+    gLearn.Reset();
+    gLearnKey.clear();
+    gLearnSerial = 0;
+    gLearning = false;
     gRejectsSeen = 0;
     gLastWalk = -1e9;
     gWalkMode = -1;

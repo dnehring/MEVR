@@ -150,6 +150,41 @@ struct StanceNode {
     int nonCombat = 0;  // child indices
     int combat = 1;
 };
+// The arms keep the combat pose (research/38 A, "Redesign"): the explore animations also move the arms, the hands,
+// the fingers and the bones the gun hangs on (Prop01 under RightWrist, LHIK under it: the support grip's foregrip),
+// so the gun sat differently in the hand and the foregrip wandered. Each arm from its upper arm down (the camera hook
+// bones excluded) is put back, after the explore pose is composed (skeletal controls included) and before arm IK reads
+// it, at the combat pose's place relative to the bone it hangs from (core/ik/PoseGraft): learned from calls composed
+// as combat (`capture`), kept per weapon type by the mod. The left hand that the AnimTree's own off-hand IK (LeftArm)
+// would have held on the gun is reported to AnimatedHands() at the combat place relative to the right hand.
+inline constexpr int kMaxStanceHandBones = 96;
+struct StanceHands {
+    int count = 0;  // 0: no graft and no capture
+    std::array<int, kMaxStanceHandBones> bones{};  // parents first
+    std::array<int, kMaxStanceHandBones> parents{};
+    std::array<std::uint64_t, kMaxStanceHandBones> keys{};  // RefSkeleton names, checked each call
+    int leftHand = -1;  // the hand bones (AnimatedHands' left on the gun)
+    int rightHand = -1;
+    std::uint64_t leftKey = 0;
+    std::uint64_t rightKey = 0;
+    // Graft: when the call composed as explore, each bone goes to relative[i] in its parent's frame.
+    bool apply = false;
+    std::array<ik::Transform, kMaxStanceHandBones> relative{};
+    bool hasLeftInRight = false;
+    ik::Transform leftInRight;  // the left hand bone in the right hand bone's frame, as combat had it
+    // Learn: when the call composed as combat with CombatMode fully on Combat (the game's weights), its relative
+    // transforms go to LatestHandCapture().
+    bool capture = false;
+};
+// One call composed as combat: what StanceHands::capture learns.
+struct HandCapture {
+    std::uint64_t serial = 0;  // + 1 per capture (0: none yet)
+    int count = 0;
+    std::array<ik::Transform, kMaxStanceHandBones> relative{};
+    ik::Transform leftInRight;
+};
+// Game thread (the hook runs there for the published mesh): the latest capture.
+HandCapture const& LatestHandCapture();
 struct Stance {
     ue3::Object const* mesh = nullptr;  // compared by address
     void const* tree = nullptr;         // the mesh's Animations when published
@@ -166,6 +201,7 @@ struct Stance {
     std::uint32_t currentTimeOffset = 0;
     std::uint32_t playingOffset = 0;
     std::uint32_t playingMask = 0;
+    StanceHands hands;
 };
 // Game thread: what the pre-stage does from the next call on (the calls must come on this thread).
 void PublishStance(Stance const& stance);
@@ -192,6 +228,9 @@ struct StanceStats {
     std::uint64_t applied = 0;     // ...that composed as explore
     std::uint64_t overridden = 0;  // ...where the call changed our weights (kept the call's, not restored)
     std::uint64_t rejected = 0;    // ...where something no longer matched (the tree, a node's children, the thread)
+    std::uint64_t grafted = 0;     // ...composed as explore with the arms put back at their combat pose
+    std::uint64_t captured = 0;    // ...composed as combat and captured for StanceHands
+    std::uint64_t notGrafted = 0;  // ...composed as explore without the arms put back (the pose was missing or rejected)
     char const* lastReject = nullptr;
     bool broken = false;           // an access violation: the pre-stage stopped for good
     StanceProbe last;              // the latest call
