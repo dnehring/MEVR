@@ -101,6 +101,24 @@ bool IsExploreMode(std::string_view className, std::string_view objectName);
 // A HookOffset worth using: finite, within 1000 units.
 bool PlausibleHook(Vec hook);
 
+// The game's camera blend (SFXCameraMode_Interpolate, research/38 B "The blend's stored offset"). InitializeTransition
+// stores LocationOffset = To.m_pov.Location - From.m_pov.Location ONCE, from the destination's Offset at that moment;
+// each Tick then puts the view at To.m_pov.Location - LocationOffset * (1 - T). A destination Halcyon hasn't written yet
+// still has the game's over-the-shoulder Offset then, so writing it during the blend moves To 1.8 m but not the stored
+// offset: the view jumps that far and slides back over the blend.
+//
+// `local` (forward, right, up) in world space through an Unreal rotator's axes (65536 units a turn, roll 0: what
+// GetCameraLocation uses, research/18): forward (cp cy, cp sy, sp), right (-sy, cy, 0), up (-sp cy, -sp sy, cp).
+Vec RotateToWorld(std::int32_t pitch, std::int32_t yaw, Vec local);
+// GetCameraLocation is hook - R(pitch, yaw, 0) * Offset, R the destination's rotation when the blend started (From's
+// frozen m_pov.Rotation plus the blend's RotationOffset). After the destination's Offset changed from `oldOffset` to
+// `newOffset`, the LocationOffset the transition would have stored with the new one (world units): the view stays where
+// it was and the blend ends where it ends.
+Vec BlendLocationOffset(Vec locationOffset, std::int32_t pitch, std::int32_t yaw, Vec oldOffset, Vec newOffset);
+// Whether an Offset write is big enough to correct the blend for (any component more than 0.01 units, as Halcyon's
+// own write test).
+bool OffsetMoved(Vec oldOffset, Vec newOffset);
+
 // ---- C. Movement ------------------------------------------------------------------------------------------------
 
 // The combat speed ramp (BioPawnBehavior.m_fMaxDesSpdTac{Accel,Decel}Rate) set to the explore values

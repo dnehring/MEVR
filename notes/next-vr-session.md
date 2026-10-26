@@ -1191,6 +1191,23 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       (they must still work), fire while walking. `stance: the body composes as explore for N s (... the explore
       branch ticked K of L ticks at weight 0)`: if it says FROZEN the legs stand still while walking drawn: tell
       Claude. `exploreStance = 0` brings the combat stance back at once. The snapshot JSON's `mod.stance` has all of it.
+36. **No jump on a first draw (new, 2026-10-25; HOST REDEPLOY, game closed; [research/38](../research/38-combat-stance.md)
+    B, "The blend's stored offset").** Your report: taking out the sniper rifle moved you forward and back. The game's camera
+    blend stores where its destination is when it starts; a camera mode Halcyon hadn't written yet (the sniper rifle has
+    its own camera setup; every first draw, aim and sprint after a level load too) was still over the shoulder then, so
+    the view jumped 1.8 m forward and slid back over 0.3-0.5 s. Now the host moves the stored offset with Halcyon's write
+    (`[Hands] blendFix = 1`, the default; 0 = upstream's jump).
+    - Load a save (or change level), then **draw the sniper rifle first**, before any other weapon. Then holster it, draw
+      the pistol, aim with the support grip (LT) and sprint with it out, each for the first time since the load.
+    - LE1MEVR.log: **`arm IK: body anchor: third person` must not appear** around any of them (it did, "view 184 units
+      from Shepard's animated head bone", for 0.3 s on the sniper's draw).
+    - Instead, once per newly written destination: `camera blend: SFXCameraMode_Interpolate_N toward
+      SFXCameraSetup_2.SFXCameraMode_Combat_M (SFXCameraMode_Combat) at 0.01 of 0.50 s: Halcyon wrote its Offset (90.0,
+      -22.0, 25.0) -> (-80.1, 20.0, -4.9) after the blend stored the destination's position; the stored LocationOffset
+      ... -> ...: the view stays where it was (it would have jumped ~178 units and slid back), correction #K`. The time
+      should be a frame or two into the blend (0.01-0.03 s); the jump about 178 for Combat, about 140 for TightAim.
+    - Say if the view still turns a few degrees during the first draw's blend: the game's aim-point preservation
+      turned the view toward the over-the-shoulder camera's aim before the write (research/38 B, not fixed here).
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR

@@ -130,6 +130,31 @@ Vec ConstantEyeOffset(Vec modeHook, Vec eye) {
     return {modeHook.x - eye.x, modeHook.y - eye.y, modeHook.z - eye.z};
 }
 
+Vec RotateToWorld(std::int32_t pitch, std::int32_t yaw, Vec local) {
+    constexpr double kPi = 3.14159265358979323846;
+    constexpr double kUnit = 2.0 * kPi / 65536.0;
+    double const p = static_cast<double>(pitch % 65536) * kUnit;
+    double const y = static_cast<double>(yaw % 65536) * kUnit;
+    double const sp = std::sin(p);
+    double const cp = std::cos(p);
+    double const sy = std::sin(y);
+    double const cy = std::cos(y);
+    return {local.x * cp * cy - local.y * sy - local.z * sp * cy,
+            local.x * cp * sy + local.y * cy - local.z * sp * sy,
+            local.x * sp + local.z * cp};
+}
+
+Vec BlendLocationOffset(Vec locationOffset, std::int32_t pitch, std::int32_t yaw, Vec oldOffset, Vec newOffset) {
+    // To moves by -R * (new - old); the stored offset (To - From) moves with it.
+    Vec const moved = RotateToWorld(pitch, yaw, {newOffset.x - oldOffset.x, newOffset.y - oldOffset.y, newOffset.z - oldOffset.z});
+    return {locationOffset.x - moved.x, locationOffset.y - moved.y, locationOffset.z - moved.z};
+}
+
+bool OffsetMoved(Vec oldOffset, Vec newOffset) {
+    return std::fabs(newOffset.x - oldOffset.x) > 0.01 || std::fabs(newOffset.y - oldOffset.y) > 0.01 ||
+           std::fabs(newOffset.z - oldOffset.z) > 0.01;
+}
+
 bool ConstantEyeApplies(std::string_view className, std::string_view objectName) {
     if (Contains(className, "Crouch") || Contains(objectName, "Crouch")) {
         return false;
