@@ -99,7 +99,7 @@ bool App::Bind(Rml::Context* context) {
         std::string* value;
     };
     for (Text const& t : {Text{"page", &page_}, Text{"version", &version_}, Text{"chip_game", &chipGame_}, Text{"chip_xr", &chipXr_},
-             Text{"chip_installed", &chipInstalled_}, Text{"hero_title", &heroTitle_}, Text{"hero_text", &heroText_},
+             Text{"chip_installed", &chipInstalled_}, Text{"install_title", &installTitle_}, Text{"install_button", &installButton_}, Text{"hero_title", &heroTitle_}, Text{"hero_text", &heroText_},
              Text{"game_title", &gameTitle_}, Text{"game_text", &gameText_}, Text{"version_title", &versionTitle_},
              Text{"version_text", &versionText_}, Text{"xr_title", &xrTitle_}, Text{"xr_text", &xrText_}, Text{"loader_title", &loaderTitle_},
              Text{"loader_text", &loaderText_}, Text{"loader_plan", &loaderPlan_}, Text{"root_text", &rootText_},
@@ -176,7 +176,8 @@ void App::Start() {
         }
     }
     updateEnabled_ = !install::updates::LatestReleaseApi(options_.repo).empty();
-    updateText_ = updateEnabled_ ? "Not checked yet." : "No release page set yet (MEVR-Setup.ini, [Update] repo).";
+    updateText_ = updateEnabled_ ? "Check asks GitHub for the newest release and links its page; nothing downloads by itself."
+                             : "No release page set yet (MEVR-Setup.ini, [Update] repo).";
     if (options_.request) {
         page_ = "content";
         if (auto const text = install::ReadFile(install::RequestFile())) {
@@ -304,6 +305,26 @@ void App::Refresh() {
     chipGame_ = gameOk_ ? "Mass Effect 1 LE" : "Game not found";
     chipXr_ = xrOk_ ? xr_.kind : "No VR runtime";
     chipInstalled_ = installed_ ? "Installed " + status_.installedVersion : "Not installed";
+    // Install's label: it puts this setup's version in place, so it's an update only when that is newer.
+    std::string const mine = install::updates::kVersion;
+    std::string const theirs = status_.installedVersion;
+    int const order = installed_ && !theirs.empty() ? install::updates::CompareVersions(theirs, mine) : 0;
+    if (!installed_) {
+        installTitle_ = "Ready";
+        installButton_ = "Install";
+    } else if (theirs.empty()) {
+        installTitle_ = std::format("Installed: install again to put this setup's version ({}) in place", mine);
+        installButton_ = "Reinstall";
+    } else if (order < 0) {
+        installTitle_ = std::format("Installed {}: this setup updates it to {}", theirs, mine);
+        installButton_ = "Update";
+    } else if (order == 0) {
+        installTitle_ = std::format("Installed {}, the same version as this setup: install again to replace its files", theirs);
+        installButton_ = "Reinstall";
+    } else {
+        installTitle_ = std::format("Installed {} is newer than this setup ({}): installing goes back to {}", theirs, mine, mine);
+        installButton_ = std::format("Install {}", mine);
+    }
     rootText_ = gameOk_ ? detect::Utf8(status_.root.wstring()) : "No game folder";
     sourceText_ = status_.source.empty() ? "nothing yet" : status_.source;
 

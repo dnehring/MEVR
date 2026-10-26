@@ -118,6 +118,9 @@ private:
     bool sample_ = false;    // the preview's sample states: nothing is read from disk for them
     std::string shownPage_;  // the page the last Tick saw (the document changes `page` by itself)
     std::string chipGame_, chipXr_, chipInstalled_;
+    // The Install page's last row: what Install does now, from the installed version against this setup's (an update,
+    // the same version again, or going back), never "update" by default.
+    std::string installTitle_, installButton_;
     std::string heroTitle_, heroText_;
     std::string gameTitle_, gameText_, versionTitle_, versionText_, xrTitle_, xrText_, loaderTitle_, loaderText_, loaderPlan_;
     std::string rootText_, sourceText_, updateText_, updateUrl_;

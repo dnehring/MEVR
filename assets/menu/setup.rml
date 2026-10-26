@@ -108,8 +108,8 @@
 				<div class="seg"><button class="segb" data-if="headset_known" data-class-on="quality == 'headset'" data-event-click="quality = 'headset'">Headset</button><button class="segb" data-class-on="quality == 'performance'" data-event-click="quality = 'performance'">Performance</button><button class="segb" data-class-on="quality == 'balanced'" data-event-click="quality = 'balanced'">Balanced</button><button class="segb" data-class-on="quality == 'keep'" data-event-click="quality = 'keep'">Keep</button></div></div>
 		</div>
 		<div class="group">
-			<div class="row"><div class="rl"><div class="rlab" data-if="!installed">Ready</div><div class="rlab" data-if="installed">Installed: install again to update</div><div class="rdesc">Close the game first. Takes a few seconds.</div></div>
-				<button class="btn primary" data-class-disabled="!can_install || busy || waiting" data-event-click="act('install')"><div class="sweep"/><div class="bi i-download"/><span data-if="!installed">Install</span><span data-if="installed">Update</span></button></div>
+			<div class="row"><div class="rl"><div class="rlab">{{install_title}}</div><div class="rdesc">Close the game first. Takes a few seconds.</div></div>
+				<button class="btn primary" data-class-disabled="!can_install || busy || waiting" data-event-click="act('install')"><div class="sweep"/><div class="bi i-download"/><span>{{install_button}}</span></button></div>
 		</div>
 	</div>
 
