@@ -35,6 +35,7 @@
 #include "plugin/TestLoop.hpp"
 #include "plugin/WorldPanels.hpp"
 
+#include <dxgi1_6.h>   // [MEVR] research/27 7c: the HDR-display answer
 #include <openxr/openxr.h>
 
 #include <algorithm>
@@ -755,6 +756,35 @@ bool ConstantFpEye(void* mode, float* fwd, float* right, float* up) noexcept {
     *right = out[1];
     *up = out[2];
     return true;
+}
+
+// [MEVR] research/27 7c: the game's HDR-capability answer. The game (0x1409a0050) takes DXGI_OUTPUT_DESC1::ColorSpace
+// == HDR10 as "HDR capable" and, windowed, drops an HDR range to SDR otherwise; so an SDR desktop never gets the float
+// backbuffer. With [Colour] hdrDisplay = 1 the SDR answer becomes HDR10 (10 bits, 1000 nits if the display gives no
+// luminance): the game then creates its R16G16B16A16_FLOAT scRGB swapchain, which DXGI accepts on an SDR desktop
+// (the game window on the monitor looks washed; the eyes get our tonemap).
+void HdrDisplayDesc(DXGI_OUTPUT_DESC1* desc) {
+    static std::atomic<int> logs{0};
+    std::wstring const& path = SettingsPath();
+    bool const force = !path.empty() && GetPrivateProfileIntW(L"Colour", L"hdrDisplay", 0, path.c_str()) != 0;
+    bool const hdr = desc->ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
+    if (force && !hdr) {
+        int const was = static_cast<int>(desc->ColorSpace);
+        desc->ColorSpace = DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
+        desc->BitsPerColor = 10;
+        if (desc->MaxLuminance <= 0.0f) {
+            desc->MinLuminance = 0.005f;
+            desc->MaxLuminance = 1000.0f;
+            desc->MaxFullFrameLuminance = 1000.0f;
+        }
+        if (logs.fetch_add(1, std::memory_order_relaxed) < 3) {
+            mevr::log::Info("hdr display: the display reports colour space {} (SDR); answered HDR10 to the game ([Colour] hdrDisplay = 1): "
+                            "its HDR range makes the float backbuffer without Windows HDR (research/27 7c)", was);
+        }
+    } else if (logs.fetch_add(1, std::memory_order_relaxed) < 3) {
+        mevr::log::Info("hdr display: the display reports colour space {} ({}), {} bits per colour, {:.0f} nits; [Colour] hdrDisplay = {}",
+            static_cast<int>(desc->ColorSpace), hdr ? "HDR10" : "SDR", desc->BitsPerColor, desc->MaxLuminance, force ? 1 : 0);
+    }
 }
 
 } // namespace MELEVR::MevrBridge

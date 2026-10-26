@@ -11,6 +11,8 @@
 #include <atomic>
 #include <cstdint>
 
+struct DXGI_OUTPUT_DESC1;   // [MEVR] dxgi1_6.h's, for HdrDisplayDesc below (research/27 7c)
+
 struct ID3D11BlendState;
 struct ID3D11Buffer;
 struct ID3D11DepthStencilState;
@@ -287,6 +289,10 @@ extern std::atomic<bool> g_oneDrawStereo;
 // Whether Stereo 2 renders the world in this game mode (its replay gates): the host records and replays only then
 // (never the title, menus or movies, whose Draws are not eye passes). Implemented in render_hook.cpp.
 bool StereoFrameActive();
+// [MEVR] research/27 7c: the game's HDR-capability query is IDXGIOutput6::GetDesc1's ColorSpace; with
+// [Colour] hdrDisplay = 1 the host rewrites an SDR answer to HDR10 so the game's HDR range makes the float backbuffer
+// without Windows HDR. Called from d3d_capture's GetDesc1 hook with the real description.
+void HdrDisplayDesc(::DXGI_OUTPUT_DESC1* desc);
 struct Pass1View
 {
     float viewOrigin[3] = {};   // pass 0's final view origin: the key, with the forward below

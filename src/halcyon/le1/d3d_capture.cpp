@@ -9,6 +9,7 @@
 #include <dxgi.h>
 #include <dxgi1_2.h>
 #include <dxgi1_4.h>
+#include <dxgi1_6.h>   // [MEVR] IDXGIOutput6::GetDesc1 (research/27 7c)
 
 #include <atomic>
 #include <algorithm>
@@ -2683,6 +2684,18 @@ bool IsPrimaryRect(const RECT& r) noexcept
            static_cast<UINT>(r.bottom - r.top) == g_realPrimaryH;
 }
 
+// [MEVR] research/27 7c: IDXGIOutput6::GetDesc1 (vtable slot 27). The game reads its HDR capability from
+// DXGI_OUTPUT_DESC1::ColorSpace == HDR10 (0x1409a0050; windowed, an HDR range falls back to SDR without it). The
+// host answers it for an SDR desktop when [Colour] hdrDisplay = 1, so the float backbuffer comes without Windows HDR.
+using GetDesc1Fn = HRESULT(STDMETHODCALLTYPE*)(IDXGIOutput6*, DXGI_OUTPUT_DESC1*);
+GetDesc1Fn g_origOutputGetDesc1 = nullptr;
+void** g_outputGetDesc1Slot = nullptr;
+HRESULT STDMETHODCALLTYPE OutputGetDesc1Hook(IDXGIOutput6* self, DXGI_OUTPUT_DESC1* desc) noexcept
+{
+    const HRESULT hr = (g_origOutputGetDesc1 != nullptr) ? g_origOutputGetDesc1(self, desc) : E_FAIL;
+    if (SUCCEEDED(hr) && desc != nullptr) MELEVR::MevrBridge::HdrDisplayDesc(desc);
+    return hr;
+}
 HRESULT STDMETHODCALLTYPE OutputGetDescHook(IDXGIOutput* self, DXGI_OUTPUT_DESC* desc) noexcept
 {
     // NO REWRITE HERE, deliberately. DXGI's own GetDesc calls GetMonitorInfoW internally, so it already
@@ -7989,6 +8002,16 @@ void TryInstallFactoryHooks(void* factory, REFIID requestedFactoryId) noexcept
                 HookSlot(ovt, 9, reinterpret_cast<void*>(&FindClosestMatchingModeHook),
                          reinterpret_cast<void**>(&g_origFindClosestMatchingMode), &g_findClosestModeSlot,
                          "IDXGIOutput::FindClosestMatchingMode");
+                // [MEVR] research/27 7c: the HDR-capability answer (only where the output is an IDXGIOutput6).
+                IDXGIOutput6* output6 = nullptr;
+                if (SUCCEEDED(output->QueryInterface(__uuidof(IDXGIOutput6), reinterpret_cast<void**>(&output6))) &&
+                    output6 != nullptr)
+                {
+                    HookSlot(*reinterpret_cast<void***>(output6), 27, reinterpret_cast<void*>(&OutputGetDesc1Hook),
+                             reinterpret_cast<void**>(&g_origOutputGetDesc1), &g_outputGetDesc1Slot,
+                             "IDXGIOutput6::GetDesc1");
+                    output6->Release();
+                }
                 output->Release();
             }
             adapter->Release();

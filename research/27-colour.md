@@ -391,11 +391,25 @@ GPU 7.78 ms median, 9.53 p90 with the float backbuffer against 7.92 / 9.20 with 
 against 9.27 (10.79). One Draw: 4.70 (7.98) float against 7.83 (11.35) 8-bit, but that 8-bit probe was the first after
 a relaunch and is noisy. The float passes do not show in the frame at this resolution.
 
-**Not done:** the hook that answers the game's HDR-capability query so the float backbuffer comes without Windows HDR
-on; the game's video option (`setHDROn`, `SFX_OUTPUT_HDR`, `BackBufferHDR` in the exe) follows the display's
-advertised colour space, and the exe imports no DisplayConfig call, so the query is DXGI's (the output's colour space
-or `CheckColorSpaceSupport`), to be found in Ghidra. Windows HDR was switched back off after the measurement, as the
-user had it.
+**The hook (the same evening): `[Colour] hdrDisplay = 1`.** The game's capability query is `IDXGIOutput6::GetDesc1`
+(vtable slot 27): `0x1409a0050` takes `DXGI_OUTPUT_DESC1::ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020`
+(12) as "HDR capable", and the windowed branch (`0x1409a4510`) drops an HDR range to SDR without it (the settings
+struct's range at +0x3b4: Auto 1, SDR 2, HDR10 6, HDR10_Float 7; range 7 is the R16G16B16A16_FLOAT swapchain with the
+scRGB colour space, 1). The exe imports no DisplayConfig call; the game's video option (`setHDROn`, `SFX_OUTPUT_HDR`,
+`BackBufferHDR`) follows the same answer. Halcyon's `d3d_capture` already patches that output's vtable (GetDesc,
+FindClosestMatchingMode) when the factory hands it out; a `[MEVR]` seam there queries `IDXGIOutput6` from the same
+output and hooks slot 27 (`OutputGetDesc1Hook` -> `MevrBridge::HdrDisplayDesc` in `plugin/HalcyonBridge`): the real
+answer first, then, with the key set and the answer SDR, colour space HDR10, 10 bits per colour, and 0.005-1000 nits
+only where the display gives no luminance. Seen with Windows HDR off: the hook's log `hdr display: the display reports
+colour space 0 (SDR); answered HDR10 to the game` three times at 23:22:25, the game's swapchain created 16 ms after
+the last, `[HDRBLIT] backbuffer format 0 -> 10`, the luminance probe latching the HDR range (6-8% of pixels over 1.0),
+our `colour:` line on a float backbuffer, and the same still capture as the Windows-HDR-on one above (mean luminance
+58.5 against 58.3, nothing clipped, 4.3% of pixels crushed against 4.4%, 24,466 against 26,474 distinct colours in the
+bright crop: temporal noise). One Draw stays healthy on it (903 second eyes replayed in 10 s, none without a record),
+and the moving head loop costs what it did (one Draw: GPU 5.33 ms median, 9.92 p90; CPU 7.94, 11.01). DXGI takes the
+float scRGB swapchain on the SDR desktop: the flat window on the monitor keeps a normal picture (the compositor maps
+scRGB to the desktop; highlights clip there, not in the eyes). Windows HDR can stay off; `hdrDisplay = 0`, the default,
+passes the display's own answer through. The user's ini has `hdrDisplay = 1`, `tonemap = aces`, `exposure = 0`.
 
 ## 8. Open
 
