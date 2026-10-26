@@ -30,5 +30,29 @@ scratch/
 scratch-*.txt
 dist/
 
+# Local-only notes (never published)
+notes/publication-audit.md
+
+# Game files, binaries and local research data (never committed: the game's content, DRM-protected code,
+# builds, and the test loop's captures). Nothing tracked matches these; add a `!` exception if that changes.
+*.pcc
+*.tfc
+*.bik
+*.m3m
+*.afc
+*.tlk
+*.exe
+*.dll
+*.asi
+*.pdb
+*.text.bin
+*.mevrrec
+snapshots/
+recordings/
+perf/
+
+# Claude Code's local settings and worktrees
+.claude/
+
 # Local-only research tools, never published (they rebuild a decrypted copy of the game exe from a dump)
 local-tools/

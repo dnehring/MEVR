@@ -1,4 +1,8 @@
-# Prep checklist
+# Developer machine setup
+
+What a contributor's machine needs to build, deploy and debug the mod. Players don't need any of
+this: they run `MEVR-Setup.exe` (`tools/setup`, [research/33](../research/33-installer.md)), which
+installs the mod and our own ASI loader without Mod Manager.
 
 ## What a development machine needs
 
@@ -10,11 +14,11 @@
 | .NET | 8.0 desktop runtime (Legendary Explorer needs it) |
 | ME LE install | Steam app 1328670 (or the EA app) |
 
-## Install while the download runs
+## Tools
 
 | Tool | Why | Where |
 |------|-----|-------|
-| ME3Tweaks Mod Manager | Installs LEBinkProxy (the ASI loader), makes vanilla backups, packages mods | https://me3tweaks.com/modmanager/ |
+| ME3Tweaks Mod Manager (optional) | Vanilla backups, packaging mods, and its ASI loader (LEBinkProxy), which the mod also loads through. Not needed for loading: MEVR-Setup installs our own loader | https://me3tweaks.com/modmanager/ |
 | Legendary Explorer | Decompile and compile UnrealScript; inspect packages, AnimTrees, Scaleform movies, conversations | https://github.com/ME3Tweaks/LegendaryExplorer/releases |
 | RenderDoc | Frame captures: find the view/projection constant buffers, the HUD pass, and post-process passes | https://renderdoc.org/ |
 | Ghidra + JDK 21 | Static analysis of `MassEffect1.exe` (native camera/view code) | https://ghidra-sre.org/, https://adoptium.net/ |
@@ -24,7 +28,7 @@
 ## Optional: move the install off Program Files
 
 Writing freshly built DLLs and reading logs under `Program Files (x86)` triggers UAC on every
-iteration. After the download, Steam can move the game: Properties → Installed Files → Move
+iteration. Steam can move the game: Properties → Installed Files → Move
 install folder → a library on another drive (ME LE is about 120 GB).
 
 ## If you use SteamVR (Steam Link, Virtual Desktop's SteamVR mode, or a SteamVR headset)
@@ -38,16 +42,19 @@ install folder → a library on another drive (ME LE is about 120 GB).
   - The old per-game Steam option "Use Desktop Game Theatre while SteamVR is active" (Properties
     → General) was removed with SteamVR 2.1 in late 2023. Don't look for it.
 
-## When the download finishes
+## First setup of a game install
 
 1. Launch LE1 once from Steam, without mods, and get in-game. This confirms the EA App handoff
    works and generates config files.
-2. **Make a vanilla backup** in ME3Tweaks Mod Manager before installing anything.
-3. Install the ASI loader through Mod Manager (Tools → ASI Mod Manager). That installs LEBinkProxy.
-   Then `tools/deploy-asi.ps1` can copy our plugin in.
+2. **Make a vanilla backup** (ME3Tweaks Mod Manager, or a copy of the folder) before installing anything.
+3. Install an ASI loader: run `MEVR-Setup.exe` from a package built by `tools/package-release.ps1`
+   (`dist\MEVR-<version>`) and press Install, which puts our own `bink2w64.dll` in place (`src/loader`); or use Mod
+   Manager's Tools → ASI Mod Manager, which installs LEBinkProxy. Then `tools/deploy-asi.ps1` copies
+   the development build in.
 4. Run `tools/inventory-game.ps1` to record exe versions and hashes in `notes/`. **Check that
-   `MassEffect1.exe` is FileVersion 2.0.0.48602.** LExSDKv2 hardcodes engine addresses for that
-   build, and a mismatch aborts the game at plugin attach ([research/09](../research/09-me3tweaks-code-survey.md)).
+   `MassEffect1.exe` is FileVersion 2.0.0.48602.** LExSDKv2 and our RVA table (`engine/Addresses.hpp`)
+   hardcode engine addresses for that build; on any other version the plugin logs `unsupported game
+   version`, leaves the game untouched and stays off ([research/09](../research/09-me3tweaks-code-survey.md)).
 5. ~~Download MassFPS (LE1)~~. **Done 2026-10-07:** downloaded to `mods/` and extracted with
    `tools/extract-m3m.ps1` for study ([research/11](../research/11-massfps.md)). The extracted files
    stay local; they aren't in the repository.

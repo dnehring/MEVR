@@ -7,7 +7,8 @@
 # the host itself changes (that needs the game closed, since the loaded ASI is locked).
 # Monolithic builds: copies the single ASI.
 #
-# Requires the ME3Tweaks ASI loader (LEBinkProxy), installed via ME3Tweaks Mod Manager.
+# Requires an ASI loader: our own bink2w64.dll (src/loader, installed by MEVR-Setup) or ME3Tweaks' LEBinkProxy
+# (installed by ME3Tweaks Mod Manager). Both keep the game's own DLL as bink2w64_original.dll.
 param(
     [ValidateSet('LE1', 'LE2', 'LE3')] [string]$Game = 'LE1',
     [ValidateSet('Release', 'Debug', 'RelWithDebInfo')] [string]$Config = 'Release',
@@ -38,7 +39,7 @@ if ($Remove) {
 }
 
 if (-not (Test-Path (Join-Path $bin 'bink2w64_original.dll'))) {
-    throw "ASI loader not installed in $bin. Install it with ME3Tweaks Mod Manager first."
+    throw "ASI loader not installed in $bin. Install it first: MEVR-Setup (our loader) or ME3Tweaks Mod Manager (LEBinkProxy)."
 }
 
 $BuildDir = (Resolve-Path $BuildDir).Path

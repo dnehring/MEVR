@@ -1,5 +1,22 @@
 # Milestone log
 
+## The original plan (2026-10-07, as the README showed it then)
+
+Historical: frozen on 2026-10-07 and moved here from the README. Since 2026-10-08 the LE1 renderer is
+Halcyon's and our work is the VRIK; the current state is in [CLAUDE.md](../CLAUDE.md) and
+[research/](../research/README.md).
+
+| #  | Milestone                                                 | Status on 2026-10-07 |
+|----|-----------------------------------------------------------|------------|
+| M0 | ASI loads in LE1, checks the exe version, hooks the engine tick, logs a heartbeat | **Done 2026-10-07** |
+| M1 | Plugin controls the game camera                           | **Done 2026-10-07** (hot-reload dev loop + yaw sweep) |
+| M2 | Game mirrored onto a virtual screen in the headset        | **Done 2026-10-07** (Oculus and SteamVR/Steam Link) |
+| M3 | Head tracking drives the camera (mono)                    | **Done 2026-10-07**; vertical judder fix (render-only head path) built, untested |
+| M4 | True stereo with per-eye projection                       | Stage 1 (alternate-eye) built, untested. Stage 2 (two full renders per frame, research/13) next |
+| M5 | HUD on composition layers, conversation/cutscene handling | Hard |
+| M6 | Motion-controlled weapons, body IK, holsters, reloads     | Hard. Groundwork built: Touch controllers read via OpenXR and fed to the game as an Xbox pad |
+| M7 | Port to LE2 and LE3 (adapters plus data tables)           | Medium |
+
 ## M0: plugin loads and hooks the engine (LE1). **Passed 2026-10-07**
 
 - **Setup:**

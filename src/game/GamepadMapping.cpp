@@ -36,6 +36,7 @@ void Stronger(SHORT ax, SHORT ay, SHORT bx, SHORT by, SHORT& outX, SHORT& outY) 
 
 } // namespace
 
+// Adapted from Overlord (Aeka0, GPL-3.0): see the note at its declaration in GamepadMapping.hpp and NOTICE.md.
 LeftGrip UpdateSupportGrip(SupportGrip& grip, bool gripDown, SupportInput const& input) {
     bool const available = std::isfinite(input.distance) && input.distance >= 0.0f && std::isfinite(input.acquire) &&
         std::isfinite(input.release) && input.acquire > 0.0f && input.release >= input.acquire;

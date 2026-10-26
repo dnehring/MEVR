@@ -25,7 +25,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ALLOWED = ('MIT', 'GPL-3.0-only')
 
 # Third-party code and data with their own licences, and the licence texts themselves.
-SKIP_PREFIXES = ('third_party/', 'external/', 'src/script/', 'LICENSES/', 'reference/', 'mods/')
+SKIP_PREFIXES = ('third_party/', 'external/', 'LICENSES/', 'reference/', 'mods/')
 
 # The comment syntax per file type: (start, end). Types not listed here aren't checked.
 COMMENT = {

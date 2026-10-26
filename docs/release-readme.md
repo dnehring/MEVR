@@ -16,6 +16,8 @@ Halcyon's MassEffect1-VR renderer.
 - **A PC VR headset** and its OpenXR runtime, set as the active one: SteamVR, the Meta app (Quest over Link), or
   Virtual Desktop.
 - Windows 10 or 11 (64-bit) and a recent GPU. VR renders the game twice per frame.
+- **Tested:** Quest 3 (Steam Link) and PS VR2, both through SteamVR. Other headsets and runtimes may work but are
+  untested.
 
 You **don't** need ME3Tweaks Mod Manager. If you already use it, that's fine: the setup finds its ASI loader and uses
 it.
@@ -82,11 +84,29 @@ VR settings** to keep your calibration and renderer profiles for a later reinsta
   - the loader: `Game\ME1\Binaries\Win64\Logs\MEVRLoader.log`
   - the renderer: `%LOCALAPPDATA%\MELEVR\MELEVR_Log.txt`
 
+## Reporting a problem
+
+Open an issue at <https://github.com/dnehring/MEVR/issues> with:
+
+- **what you did** and what happened (the steps, where in the game, and what you expected);
+- **your headset and OpenXR runtime** (for example Quest 3 over Steam Link, SteamVR);
+- **the mod's log:** `Game\ME1\Binaries\Win64\Logs\LE1MEVR.log` (and `LE1MEVR.prev.log`, the run before);
+- **after a crash:** `%LOCALAPPDATA%\MEVR\crash-breadcrumbs.txt`;
+- **the renderer's log:** `%LOCALAPPDATA%\MELEVR\MELEVR_Log.txt`;
+- **the loader's log:** `Game\ME1\Binaries\Win64\Logs\MEVRLoader.log`.
+
+For anything visual, the VR menu's **Advanced > Diagnostics > Snapshot** saves what each eye sees to
+`%LOCALAPPDATA%\MEVR\snapshots`.
+
+**Logs can contain your Windows user name** in file paths. Look through them, and replace it if you prefer, before
+you attach them.
+
 ## Licences and credits
 
 - **This project:** GPL-3.0 (`LICENSE`); third-party notices in `NOTICE.md`.
 - **Halcyon's MassEffect1-VR renderer:** GPL-3.0. Copyright (C) 2026 Halcyon.
-- **Libraries:** MinHook (BSD-2-Clause), RmlUi (MIT), FreeType (FreeType License), the Khronos OpenXR loader
+- **Overlord** by Aeka0 (GPL-3.0): parts of the arm IK, two-hand aim, support grip and sight assist.
+- **Libraries:** Dear ImGui (MIT), MinHook (BSD-2-Clause), RmlUi (MIT), FreeType (FreeType License), the Khronos OpenXR loader
   (Apache-2.0), AMD FidelityFX FSR 1 (MIT).
 - **Fonts:** Rajdhani and Titillium Web (SIL OFL 1.1; their licences are in `payload\fonts`).
 - **LExSDKv2** (the engine headers the mod is built on): no licence given; used with its author's permission

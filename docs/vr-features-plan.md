@@ -1,5 +1,7 @@
 # VR features plan
 
+> **Historical plan (2026-10-07).** The current design is in [CLAUDE.md](../CLAUDE.md) and [research/](../research/README.md).
+
 Items marked **[verify]** are hypotheses based on stock UE3/UDK. Confirm them in Legendary Explorer
 (LEX) once the game is installed, since BioWare's fork may differ.
 
