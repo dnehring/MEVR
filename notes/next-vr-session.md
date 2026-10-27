@@ -1415,6 +1415,13 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       healthy: `one Draw: ...` with no fallback while scoped). The levers line only counts the capture's render (it runs
       untimed, outside the eye bookkeeping), so the off/on differences in render-thread busy and GPU span are its cost;
       `tools/sample-render-thread.ps1` while scoped says how much of it is Umbra's resolve.
+    - **Three checks against the one-Draw path** (the perf session, 2026-10-27): with the scope up, the levers line's
+      `first eyes recorded (N calls` stays where it was (about 19,200 at the heavy cell): if N jumps by the capture's draws,
+      the capture renders INSIDE the eye render and is being recorded and replayed (tell the perf session). Halcyon's
+      `[PASSCAP] pass=0 copied ... src=2118x2160` stays the eye size: 1024x1024 there means the capture's clear was taken
+      for the pass boundary. The capture's Umbra resolve is in no slot of the levers line, so its cost is the render
+      thread's "busy, without the XR waits" in `tools/perf-probe.py`, scopeCapture 1 against 0 (expect 1-1.5 ms at a heavy
+      spot from the resolve alone).
     - Put `scopeCapture = 0` back unless the cost is acceptable.
 
 What Claude looks for:
