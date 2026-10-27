@@ -8,6 +8,7 @@
 #                                                             first renderer / the draw replay
 #   tools/perf-ab.ps1 -Key umbraQueryWait -Values 1,0         the game's wait for query results vs none
 #   tools/perf-ab.ps1 -Key pCoresOnly -Values 0,1 -Seconds 15
+#   tools/perf-ab.ps1 -Section Sights -Key scopeCapture -Values 0,1   the scope's zoomed render off / on (research/39)
 #
 # Stand still (or freeze the world: tools/console.ps1 pause) for the comparison to mean something.
 param(
@@ -15,7 +16,8 @@ param(
     [string[]]$Values = @('0', '1'),
     [int]$Rounds = 2,
     [double]$Seconds = 10,
-    [double]$Settle = 3
+    [double]$Settle = 3,
+    [string]$Section = 'Performance'   # another section of LE1MEVR.ini, e.g. Sights for scopeCapture (research/39)
 )
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\common.ps1"
@@ -32,14 +34,14 @@ $ini = Join-Path (Get-MELEBinDir (Find-MELEInstall).Root 'LE1') 'ASI\LE1MEVR.ini
 if (-not (Test-Path $ini)) { throw "No $ini (deploy first: tools/deploy-asi.ps1 -Game LE1)" }
 $absent = [string][char]1  # GetPrivateProfileString's default: the key isn't there
 $buffer = New-Object System.Text.StringBuilder 256
-[void][MevrIni.Native]::GetPrivateProfileString('Performance', $Key, $absent, $buffer, 256, $ini)
+[void][MevrIni.Native]::GetPrivateProfileString($Section, $Key, $absent, $buffer, 256, $ini)
 $original = $buffer.ToString()
 
 $rows = @()
 try {
     for ($round = 1; $round -le $Rounds; ++$round) {
         foreach ($value in $Values) {
-            [void][MevrIni.Native]::WritePrivateProfileString('Performance', $Key, $value, $ini)
+            [void][MevrIni.Native]::WritePrivateProfileString($Section, $Key, $value, $ini)
             Start-Sleep -Seconds $Settle
             $tag = "$Key$value-r$round"
             $report = & "$PSScriptRoot\perf-probe.ps1" -Seconds $Seconds -Tag $tag 2>&1 | Out-String
@@ -62,10 +64,10 @@ try {
 } finally {
     if ($original -eq $absent) {
         # A real NULL deletes the key; PowerShell's $null would arrive as "" and leave `key=` behind (2026-10-23).
-        [void][MevrIni.Native]::WritePrivateProfileString('Performance', $Key, [NullString]::Value, $ini)
+        [void][MevrIni.Native]::WritePrivateProfileString($Section, $Key, [NullString]::Value, $ini)
     } else {
-        [void][MevrIni.Native]::WritePrivateProfileString('Performance', $Key, $original, $ini)
+        [void][MevrIni.Native]::WritePrivateProfileString($Section, $Key, $original, $ini)
     }
 }
-Write-Host "`n(medians / p90, ms; [Performance] $Key restored)"
+Write-Host "`n(medians / p90, ms; [$Section] $Key restored)"
 $rows | Format-Table -AutoSize

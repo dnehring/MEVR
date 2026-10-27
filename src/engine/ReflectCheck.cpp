@@ -545,6 +545,12 @@ void CheckClasses() {
     CheckClass<USkelControlLimb>("Engine.SkelControlLimb");
     CheckClass<USceneCaptureComponent>("Engine.SceneCaptureComponent");
     CheckClass<USceneCaptureReflectComponent>("Engine.SceneCaptureReflectComponent");
+    // The scope capture (game/ScopeCapture, research/39).
+    CheckClass<USceneCapture2DComponent>("Engine.SceneCapture2DComponent");
+    CheckClass<ASceneCaptureActor>("Engine.SceneCaptureActor");
+    CheckClass<ASceneCapture2DActor>("Engine.SceneCapture2DActor");
+    CheckClass<UTexture>("Engine.Texture");
+    CheckClass<UTextureRenderTarget2D>("Engine.TextureRenderTarget2D");
     CheckClass<UEngine>("Engine.Engine");
     CheckClass<UGameEngine>("Engine.GameEngine");
     CheckClass<UPlayer>("Engine.Player");
@@ -647,6 +653,30 @@ void CheckFields() {
     CheckField("Engine.SkelControlLimb", "JointAxis", SDK_FIELD(USkelControlLimb, JointAxis));
     CheckField("Engine.SkelControlLimb", "bInvertJointAxis", SDK_BOOL(USkelControlLimb, bInvertJointAxis));
     CheckField("Engine.SceneCaptureComponent", "FrameRate", SDK_FIELD(USceneCaptureComponent, FrameRate));
+    // The scope capture (game/ScopeCapture, research/39).
+    CheckField("Engine.SceneCaptureComponent", "MaxUpdateDist", SDK_FIELD(USceneCaptureComponent, MaxUpdateDist));
+    CheckField("Engine.SceneCaptureComponent", "PostProcess", SDK_FIELD(USceneCaptureComponent, PostProcess));
+    CheckField("Engine.SceneCaptureComponent", "bEnabled", SDK_BOOL(USceneCaptureComponent, bEnabled));
+    CheckField("Engine.SceneCaptureComponent", "bEnablePostProcess", SDK_BOOL(USceneCaptureComponent, bEnablePostProcess));
+    CheckField("Engine.SceneCaptureComponent", "bEnableFog", SDK_BOOL(USceneCaptureComponent, bEnableFog));
+    CheckField("Engine.SceneCaptureComponent", "bEnableParticles", SDK_BOOL(USceneCaptureComponent, bEnableParticles));
+    CheckField("Engine.SceneCaptureComponent", "bUseMainScenePostProcessSettings",
+        SDK_BOOL(USceneCaptureComponent, bUseMainScenePostProcessSettings));
+    CheckField("Engine.SceneCaptureComponent", "bSkipUpdateIfTextureUsersOccluded",
+        SDK_BOOL(USceneCaptureComponent, bSkipUpdateIfTextureUsersOccluded));
+    CheckField("Engine.SceneCaptureComponent", "bSkipUpdateIfOwnerOccluded", SDK_BOOL(USceneCaptureComponent, bSkipUpdateIfOwnerOccluded));
+    CheckField("Engine.SceneCapture2DComponent", "TextureTarget", SDK_FIELD(USceneCapture2DComponent, TextureTarget));
+    CheckField("Engine.SceneCapture2DComponent", "FieldOfView", SDK_FIELD(USceneCapture2DComponent, FieldOfView));
+    CheckField("Engine.SceneCaptureActor", "SceneCapture", SDK_FIELD(ASceneCaptureActor, SceneCapture));
+    CheckField("Engine.Actor", "bStatic", SDK_BOOL(AActor, bStatic));
+    CheckField("Engine.Actor", "bNoDelete", SDK_BOOL(AActor, bNoDelete));
+    CheckField("Engine.Texture", "Resource", SDK_FIELD(UTexture, Resource));
+    CheckField("Engine.TextureRenderTarget2D", "SizeX", SDK_FIELD(UTextureRenderTarget2D, SizeX));
+    CheckField("Engine.TextureRenderTarget2D", "SizeY", SDK_FIELD(UTextureRenderTarget2D, SizeY));
+    CheckField("Engine.TextureRenderTarget2D", "Format", SDK_FIELD(UTextureRenderTarget2D, Format));
+    CheckField("Engine.PlayerController", "Player", SDK_FIELD(APlayerController, Player));
+    CheckField("Engine.LocalPlayer", "PlayerPostProcess", SDK_FIELD(ULocalPlayer, PlayerPostProcess));
+    CheckField("Engine.Engine", "DefaultPostProcess", SDK_FIELD(UEngine, DefaultPostProcess));
     CheckField("Engine.Engine", "GamePlayers", SDK_FIELD(UEngine, GamePlayers));
     CheckField("Engine.Player", "Actor", SDK_FIELD(UPlayer, Actor));
     CheckField("Engine.BioSFHandler", "oPanel", SDK_FIELD(UBioSFHandler, oPanel));
@@ -867,6 +897,13 @@ void CheckFunctions() {
         "Engine.PlayerController.GetPlayerViewPoint",
         "Engine.PlayerController.GetFOVAngle",
         "Engine.SceneCaptureComponent.SetFrameRate",
+        // ScopeCapture (research/39)
+        "Engine.Actor.Spawn",
+        "Engine.Actor.ForceUpdateComponents",
+        "Engine.TextureRenderTarget2D.Create",
+        "Engine.SceneCaptureComponent.SetEnabled",
+        "Engine.SceneCapture2DComponent.SetView",
+        "Engine.SceneCapture2DComponent.SetCaptureParameters",
         "Engine.PlayerController.ConsoleCommand",
         "Engine.SkeletalMeshComponent.GetBoneNames",
         "Engine.SkeletalMeshComponent.GetBoneLocation",
@@ -949,6 +986,27 @@ void CheckParams() {
     PARAM(AController_eventGetPlayerViewPoint_Parms, "Engine.PlayerController.GetPlayerViewPoint", out_Rotation);
     PARAM(APlayerController_eventGetFOVAngle_Parms, "Engine.PlayerController.GetFOVAngle", ReturnValue);
     PARAM(USceneCaptureComponent_execSetFrameRate_Parms, "Engine.SceneCaptureComponent.SetFrameRate", NewFrameRate);
+    // ScopeCapture (research/39).
+    PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", SpawnClass);
+    PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", SpawnOwner);
+    PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", SpawnLocation);
+    PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", bNoCollisionFail);
+    PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", ReturnValue);
+    PARAM(AActor_execForceUpdateComponents_Parms, "Engine.Actor.ForceUpdateComponents", bCollisionUpdate);
+    PARAM(AActor_execForceUpdateComponents_Parms, "Engine.Actor.ForceUpdateComponents", bTransformOnly);
+    PARAM(UTextureRenderTarget2D_execCreate_Parms, "Engine.TextureRenderTarget2D.Create", InSizeX);
+    PARAM(UTextureRenderTarget2D_execCreate_Parms, "Engine.TextureRenderTarget2D.Create", InSizeY);
+    PARAM(UTextureRenderTarget2D_execCreate_Parms, "Engine.TextureRenderTarget2D.Create", InFormat);
+    PARAM(UTextureRenderTarget2D_execCreate_Parms, "Engine.TextureRenderTarget2D.Create", InClearColor);
+    PARAM(UTextureRenderTarget2D_execCreate_Parms, "Engine.TextureRenderTarget2D.Create", bOnlyRenderOnce);
+    PARAM(UTextureRenderTarget2D_execCreate_Parms, "Engine.TextureRenderTarget2D.Create", ReturnValue);
+    PARAM(USceneCaptureComponent_execSetEnabled_Parms, "Engine.SceneCaptureComponent.SetEnabled", bEnable);
+    PARAM(USceneCapture2DComponent_execSetView_Parms, "Engine.SceneCapture2DComponent.SetView", NewLocation);
+    PARAM(USceneCapture2DComponent_execSetView_Parms, "Engine.SceneCapture2DComponent.SetView", NewRotation);
+    PARAM(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters", NewTextureTarget);
+    PARAM(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters", NewFOV);
+    PARAM(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters", NewNearPlane);
+    PARAM(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters", NewFarPlane);
     PARAM(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand", Command);
     PARAM(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand", bWriteToLog);
     PARAM(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand", ReturnValue);
@@ -1004,6 +1062,12 @@ void CheckParams() {
     PARMS(AController_eventGetPlayerViewPoint_Parms, "Engine.PlayerController.GetPlayerViewPoint");
     PARMS(APlayerController_eventGetFOVAngle_Parms, "Engine.PlayerController.GetFOVAngle");
     PARMS(USceneCaptureComponent_execSetFrameRate_Parms, "Engine.SceneCaptureComponent.SetFrameRate");
+    PARMS(AActor_execSpawn_Parms, "Engine.Actor.Spawn");
+    PARMS(AActor_execForceUpdateComponents_Parms, "Engine.Actor.ForceUpdateComponents");
+    PARMS(UTextureRenderTarget2D_execCreate_Parms, "Engine.TextureRenderTarget2D.Create");
+    PARMS(USceneCaptureComponent_execSetEnabled_Parms, "Engine.SceneCaptureComponent.SetEnabled");
+    PARMS(USceneCapture2DComponent_execSetView_Parms, "Engine.SceneCapture2DComponent.SetView");
+    PARMS(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters");
     PARMS(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand");
     PARMS(USkeletalMeshComponent_execMatchRefBone_Parms, "Engine.SkeletalMeshComponent.MatchRefBone");
     PARMS(USkeletalMeshComponent_execGetBoneLocation_Parms, "Engine.SkeletalMeshComponent.GetBoneLocation");

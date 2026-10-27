@@ -6,6 +6,7 @@
 #include "core/ik/Posture.hpp"
 #include "core/ik/Rigid.hpp"
 #include "core/vr/Comfort.hpp"
+#include "core/vr/ScopeCapture.hpp"
 #include "core/vr/Sights.hpp"
 #include "game/GamepadMapping.hpp"
 
@@ -250,6 +251,9 @@ Posture GetPosture();
 // [Sights] (appended to an older file that lacks it): gun sights (game/sights, research/21; the keys and
 // their meaning are in a new file's block and core/vr/Sights.hpp's Settings).
 vr::sights::Settings GetSights();
+// [Sights] scopeCapture* (research/39): the scope's real zoomed render (game/ScopeCapture); core/vr/ScopeCapture.hpp's
+// Settings says what each key does.
+vr::scope_capture::Settings GetScopeCapture();
 // Where Halcyon's first-person camera sits from Shepard's head bone with the headset at the
 // recenter point (units: forward, right, up in the view's yaw), for the menu's "Put the camera at
 // Shepard's eyes" button (src/plugin/MevrMenuTab.cpp). Written as [Camera] measuredForward,

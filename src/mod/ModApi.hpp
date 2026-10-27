@@ -39,6 +39,9 @@ struct State;
 namespace vr::sights {
 struct Sight;
 }
+namespace vr::scope_capture {
+struct Capture;
+}
 namespace vr::squad_menu {
 struct View;
 namespace wheel {
@@ -53,7 +56,7 @@ struct Panel;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 19;
+inline constexpr int kHostServicesVersion = 20;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -235,6 +238,14 @@ struct HostServices {
     // active game mode's ShowMenuGui, SFXGameModeDefault.TryHolster) once the menu's pause is lifted. Any thread. A v18
     // or older host has no such buttons' request to give (its menu pressed Start or Back on the pad itself).
     std::uint32_t (*takeGameMenuRequest)() = nullptr;
+
+    // Version 20: the scope's real zoomed render (game/ScopeCapture, plugin/ScopeCaptureSource, research/39).
+    // The mod's scene capture, each tick (core/vr/ScopeCapture.hpp, vr::scope_capture::Capture: its render target's
+    // FTextureResource, size, format and the pose it renders from): while it's kCapturing and fresh, the host's scope
+    // picture samples it instead of the other eye's copy. The mod calls it only if scopeCaptureSize matches its own
+    // sizeof(Capture); with a v19 or older host it never spawns a capture. Any thread.
+    std::uint32_t scopeCaptureSize = 0;
+    void (*setScopeCapture)(vr::scope_capture::Capture const* capture) = nullptr;
 };
 
 } // namespace mevr

@@ -3,6 +3,7 @@
 
 #include <openxr/openxr.h>
 
+#include <cstdint>
 #include <string>
 
 struct ID3D11Device;
@@ -35,6 +36,7 @@ struct Frame {
     XrRect2Di projectionRect[2]{};
     XrPosef projectionPose[2]{};  // the pose each eye image was rendered for (as submitted)
     XrFovf projectionFov[2]{};
+    std::uint64_t pairArm = 0;    // the submitted pair's Draw (Halcyon's arm; 0 unknown): the scope capture's pose
 };
 
 struct Output {

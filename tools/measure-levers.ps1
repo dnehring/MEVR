@@ -14,7 +14,8 @@ param(
     [int]$Rounds = 2,
     [int]$Seconds = 10,
     [string]$Recording = '',
-    [switch]$Inputs   # replay the recording's buttons and sticks too: Shepard walks and shoots as the player did
+    [switch]$Inputs,   # replay the recording's buttons and sticks too: Shepard walks and shoots as the player did
+    [string]$Section = 'Performance'   # the key's section of LE1MEVR.ini (Sights for scopeCapture, research/39)
 )
 $ErrorActionPreference = 'Stop'
 $tools = $PSScriptRoot
@@ -29,7 +30,7 @@ if ($Recording -eq '') {
 & (Join-Path $tools 'replay.ps1') -Path $Recording -Loop -Inputs:$Inputs | Out-Null
 Start-Sleep -Seconds 3
 try {
-    & (Join-Path $tools 'perf-ab.ps1') -Key $Key -Values ($Values -split ',') -Rounds $Rounds -Seconds $Seconds
+    & (Join-Path $tools 'perf-ab.ps1') -Section $Section -Key $Key -Values ($Values -split ',') -Rounds $Rounds -Seconds $Seconds
 } finally {
     & (Join-Path $tools 'replay.ps1') -Stop | Out-Null
     'replay stopped'

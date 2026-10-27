@@ -123,6 +123,7 @@ cbuffer Scope : register(b0) {
     float4 rect;        // the eye image's part (pixels): x, y, width, height
     float4 texel;       // 1 / texture width, 1 / texture height; zw the exit pupil's centre (lens radii)
     float4 lit;         // the reticle's lit centre (linear); w the picture's opacity
+    float4 decode;      // x: each sample raised to this (1: linear already; research/39's 8-bit capture: 2.2)
 };
 struct VSOut { float4 pos : SV_Position; };
 VSOut VSMain(uint id : SV_VertexID) {
@@ -151,8 +152,10 @@ float4 PSMain(VSOut i) : SV_Target {
             float ty = e.y / -e.z;
             float su = (tx - tanFov.x) / (tanFov.y - tanFov.x);
             float sv = (tanFov.z - ty) / (tanFov.z - tanFov.w);
-            if (su >= 0.0 && su <= 1.0 && sv >= 0.0 && sv <= 1.0)
+            if (su >= 0.0 && su <= 1.0 && sv >= 0.0 && sv <= 1.0) {
                 c = eyeImage.SampleLevel(linearClamp, (rect.xy + float2(su, sv) * rect.zw) * texel.xy, 0).rgb;
+                if (decode.x != 1.0) c = pow(max(c, 0.0), decode.x);
+            }
         }
         float style = row1.w;
         float ink = 0.0;
@@ -183,7 +186,8 @@ float4 PSMain(VSOut i) : SV_Target {
 std::size_t const kScopeShaderSize = sizeof(kScopeShader) - 1;
 
 ScopeParams MakeScopeParams(sv::Sight const& sight, sv::Lens const& lens, sv::ScopeView const& view, XrVector3f const& eye,
-    XrPosef const& source, XrFovf const& fov, XrRect2Di const& rect, unsigned textureWidth, unsigned textureHeight, unsigned size) {
+    XrPosef const& source, XrFovf const& fov, XrRect2Di const& rect, unsigned textureWidth, unsigned textureHeight, unsigned size,
+    float decodeGamma) {
     XrVector3f const r0 = vr::overlay::Rotate(source.orientation, {1.0f, 0.0f, 0.0f});
     XrVector3f const r1 = vr::overlay::Rotate(source.orientation, {0.0f, 1.0f, 0.0f});
     XrVector3f const r2 = vr::overlay::Rotate(source.orientation, {0.0f, 0.0f, 1.0f});
@@ -203,6 +207,7 @@ ScopeParams MakeScopeParams(sv::Sight const& sight, sv::Lens const& lens, sv::Sc
             static_cast<float>(rect.extent.height)},
         {1.0f / static_cast<float>(std::max(textureWidth, 1u)), 1.0f / static_cast<float>(std::max(textureHeight, 1u)), view.px, view.py},
         {lit[0], lit[1], lit[2], std::clamp(view.fade, 0.0f, 1.0f)},
+        {std::isfinite(decodeGamma) && decodeGamma > 0.0f ? decodeGamma : 1.0f, 0.0f, 0.0f, 0.0f},
     };
 }
 

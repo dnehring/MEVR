@@ -367,7 +367,13 @@ constexpr char const* kSightsBlock =
     "assistConeDeg = 10\n"
     "assistStrength = 1\n"
     "assistMaxM = 0.10\n"
-    "assistRangeM = 0.65\n";
+    "assistRangeM = 0.65\n"
+    "; scopeCapture: 1 = the scope shows a real zoomed render of the world (the engine's scene capture, only while your eye\n"
+    "; is behind the scope; research/39) instead of the other eye's picture enlarged; 0 until its frame cost is measured.\n"
+    "; scopeCaptureSize: its pixels across. scopeCaptureRate: renders a second at most (150: every frame, never twice in one).\n"
+    "scopeCapture = 0\n"
+    "scopeCaptureSize = 1024\n"
+    "scopeCaptureRate = 150\n";
 
 // Appended to a settings file that has no [Comfort] yet (and part of a new file).
 constexpr char const* kComfortBlock =
@@ -1135,6 +1141,58 @@ std::string Describe(vr::sights::Settings const& s) {
 vr::sights::Settings gSights;
 std::string gSightsText;
 
+// [Sights] scopeCapture* (research/39), beside the sights' own keys.
+vr::scope_capture::Settings ReadScopeCapture(Ini const& ini) {
+    vr::scope_capture::Settings out;
+    double value = 0.0;
+    if (Number(ini, "Sights", "scopeCapture", value)) {
+        out.enabled = value != 0.0;
+    }
+    if (Number(ini, "Sights", "scopeCaptureSize", value)) {
+        out.size = static_cast<int>(std::clamp(value, 256.0, 2048.0));
+    }
+    auto const number = [&](char const* key, float& into, float lo, float hi) {
+        if (Number(ini, "Sights", key, value)) {
+            into = static_cast<float>(std::clamp(value, static_cast<double>(lo), static_cast<double>(hi)));
+        }
+    };
+    number("scopeCaptureRate", out.rate, 1.0f, 1000.0f);
+    number("scopeCaptureMargin", out.margin, 0.0f, 1.0f);
+    number("scopeCaptureNear", out.nearUnits, 0.0f, 500.0f);
+    number("scopeCaptureFar", out.farUnits, 0.0f, 10000000.0f);
+    number("scopeCaptureHold", out.holdSeconds, 0.0f, 5.0f);
+    if (Number(ini, "Sights", "scopeCapturePost", value)) {
+        out.postProcess = value != 0.0;
+    }
+    if (auto const s = ini.find("Sights"); s != ini.end()) {
+        if (auto const k = s->second.find("scopeCaptureFormat"); k != s->second.end() && !k->second.empty()) {
+            std::string lower = k->second;
+            std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (lower == "float") {
+                out.floatTarget = true;
+            } else if (lower == "rgba8") {
+                out.floatTarget = false;
+            } else {
+                log::Warn("scope capture: can't read scopeCaptureFormat = {} (float or rgba8); float kept", k->second);
+            }
+        }
+    }
+    return out;
+}
+
+std::string Describe(vr::scope_capture::Settings const& s) {
+    if (!s.enabled) {
+        return "off ([Sights] scopeCapture = 0): the scope magnifies the other eye's picture";
+    }
+    return std::format("on: {} px {} render target, {:.0f} renders a second at most, post process {}, field margin {:.0f}%, near plane "
+                       "{:.0f} units past the muzzle, far plane {}, kept on {:.1f} s after the eye leaves",
+        s.size, s.floatTarget ? "float (FloatRGBA)" : "8-bit (A8R8G8B8)", s.rate, s.postProcess ? "on" : "off", s.margin * 100.0f,
+        s.nearUnits, s.farUnits > 0.0f ? std::format("{:.0f} units", s.farUnits) : std::string("the engine's (0)"), s.holdSeconds);
+}
+
+vr::scope_capture::Settings gScopeCapture;
+std::string gScopeCaptureText;
+
 Sample ReadSample(Ini const& ini) {
     Sample sample;
     double request = 0.0;
@@ -1276,6 +1334,10 @@ vr::comfort::Settings GetComfort() {
 
 vr::sights::Settings GetSights() {
     return gSights;
+}
+
+vr::scope_capture::Settings GetScopeCapture() {
+    return gScopeCapture;
 }
 
 std::optional<ik::ArmLengths> MeasureArmLength(ik::ArmLengthSample const& sample) {
@@ -1491,6 +1553,10 @@ void Refresh() {
         {L"Sights", "Sights", L"scopeFieldDeg", "scopeFieldDeg", L"22"},
         {L"Sights", "Sights", L"scopeEyeBoxM", "scopeEyeBoxM", L"0.05"},
         {L"Sights", "Sights", L"scopeMaxM", "scopeMaxM", L"0.70"},
+        // The scope's real zoomed render (2026-10-27, research/39), off until measured.
+        {L"Sights", "Sights", L"scopeCapture", "scopeCapture", L"0"},
+        {L"Sights", "Sights", L"scopeCaptureSize", "scopeCaptureSize", L"1024"},
+        {L"Sights", "Sights", L"scopeCaptureRate", "scopeCaptureRate", L"150"},
         {L"Hands", "Hands", L"noCover", "noCover", L"1"},
         {L"Hands", "Hands", L"physicalCrouch", "physicalCrouch", L"1"},
         {L"Hands", "Hands", L"crouchBelow", "crouchBelow", L"0.75"},
@@ -1558,6 +1624,11 @@ void Refresh() {
     if (std::string const text = Describe(gSights); text != gSightsText) {
         gSightsText = text;
         log::Info("sights: settings: {}", text);
+    }
+    gScopeCapture = ReadScopeCapture(ini);
+    if (std::string const text = Describe(gScopeCapture); text != gScopeCaptureText) {
+        gScopeCaptureText = text;
+        log::Info("scope capture: settings: {}", text);
     }
     gHaveStamp = true;
     Values const values = ReadValues(ini);

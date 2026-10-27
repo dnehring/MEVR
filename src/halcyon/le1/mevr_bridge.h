@@ -131,7 +131,14 @@ struct OverlayFrame
     float projectionOrientation[2][4] = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     float projectionPosition[2][3] = {};
     float projectionFov[2][4] = {};                      // angleLeft, angleRight, angleUp, angleDown (radians)
+    // [MEVR] research/39: the head-look arm the submitted pair was rendered with ([CAPTUREPOSE] g_sfrPairArmThisFrame;
+    // 0 unknown): which Draw it came from, and so which pose the scope's scene capture rendered (NoteDrawArm).
+    std::uint64_t pairArm = 0;
 };
+
+// [MEVR] research/39: game thread, each Draw's main pass when it latches its pair arm ([POSEEXACT]): the scope capture
+// (src/plugin/ScopeCaptureSource.cpp) notes which of the mod's capture poses that Draw renders.
+void NoteDrawArm(std::uint64_t arm) noexcept;
 
 // Present thread (RunFrame), once per frame after the eyes are filled, every frame (also flat and
 // menu frames): copies the HUD panel texture into its swapchain, places the panel and the reticle,
