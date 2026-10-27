@@ -565,6 +565,20 @@ pass P draws columns a..b and rows c..d of its window`). The per-eye frustum the
 union, draws on the eye's off-centre matrix) cannot work: a query box must rasterise in the projection of the depth it
 tests against.
 
+### 2026-10-27, scene renders that are not eye renders take no eye index (for the scope's SceneCapture2D)
+
+The sights session is building a zoomed scope through the engine's SceneCapture2DComponent. One Draw records the
+frame's first scene render and replays it, and the Umbra and history levers key on the render's index within the
+frame, so a capture that renders before the eye render in a frame would take index 0, be recorded as the eye, and trip
+the health fallback. `SceneRenderHook` now reads the renderer's view-family render target (FSceneRenderer +0x18, its
+size from the FRenderTarget vtable, as the sharePass 3 replay reads them) and learns the eye renders' target from 30
+consecutive index-0 renders while Stereo 2 renders the world (2344x2392 on the fake headset: the eye-sized target);
+after that a render into another target, or of a size a quarter off, runs untouched with index -1 (no recording or
+replay, every eye check false, the stats slot 0) and is counted as a capture in the levers line (`captures (scene
+renders into another target, no eye index): N a frame`; the first five logged with their target and size). Thirty
+stereo frames without a render into the learned target (a viewport resize) relearn it. Verified at the heavy cell:
+the target learned once and stable, no capture classified, one Draw healthy (821 of 821 second eyes replayed).
+
 ### 2026-10-26 01:30-01:45, the present path and the recorder (task 2 of the remaining performance work)
 
 **The present path's 1.2 ms was 0.6 ms, and the 0.6 was a probe artifact.** Two new probe points inside "Halcyon

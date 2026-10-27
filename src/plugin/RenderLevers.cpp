@@ -1290,10 +1290,94 @@ void OneDrawSecondEye(std::uint8_t* renderer) {
 
 std::atomic<std::uint64_t> gSecondRenderSkipped{0};
 
+// ---- Scene renders that are not eye renders (2026-10-27, the scope's SceneCapture2D) -----------------------------
+// One Draw records the frame's first scene render and replays it, and the Umbra and history levers key on the render's
+// index within the frame, so a scene render into another target (a SceneCapture2D's texture, a reflection capture's)
+// must not take an eye's index. The eye renders' target and its size (FSceneRenderer +0x18, the view family's
+// FRenderTarget; GetSizeX/Y at vtable +0x18/+0x20, as the sharePass 3 replay reads them) are learned from 30
+// consecutive index-0 renders while Stereo 2 renders the world; after that a render into another target, or of a size a
+// quarter off, runs untouched with index -1 (no recording or replay, every eye check false, the stats slot 0) and is
+// counted as a capture. If no render hits the learned target for 30 stereo frames (a viewport resize) it is relearned.
+struct RenderTargetInfo {
+    void* target = nullptr;
+    std::uint32_t sizeX = 0, sizeY = 0;
+};
+RenderTargetInfo TargetInfoSEH(void* renderer) noexcept {
+    RenderTargetInfo info;
+    __try {
+        void* const target = Field<void*>(static_cast<std::uint8_t*>(renderer), 0x18);
+        if (target != nullptr) {
+            void** const table = *reinterpret_cast<void***>(target);
+            info.target = target;
+            info.sizeX = reinterpret_cast<std::uint32_t (*)(void*)>(table[0x18 / 8])(target);
+            info.sizeY = reinterpret_cast<std::uint32_t (*)(void*)>(table[0x20 / 8])(target);
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        info.target = nullptr;
+        info.sizeX = info.sizeY = 0;
+    }
+    return info;
+}
+constexpr int kEyeTargetStable = 30;
+RenderTargetInfo gEyeTarget;        // the eye renders' target, once learned
+int gEyeTargetStable = 0;           // consecutive index-0 stereo renders agreeing on it
+bool gEyeSeenThisFrame = false;     // an index-0 stereo render ran this frame
+bool gStereoRenderThisFrame = false;   // any scene render ran while Stereo 2 renders the world
+int gFramesWithoutEye = 0;
+std::atomic<std::uint64_t> gCaptureRenders{0};
+int gCaptureLogs = 0;
+
+bool IsCaptureRender(RenderTargetInfo const& t) {
+    if (gEyeTargetStable < kEyeTargetStable || t.target == nullptr) {
+        return false;
+    }
+    if (t.target != gEyeTarget.target) {
+        return true;
+    }
+    auto const off = [](std::uint32_t a, std::uint32_t b) { return a > b ? a - b : b - a; };
+    return off(t.sizeX, gEyeTarget.sizeX) > gEyeTarget.sizeX / 4 || off(t.sizeY, gEyeTarget.sizeY) > gEyeTarget.sizeY / 4;
+}
+
+void LearnEyeTarget(RenderTargetInfo const& t) {
+    gEyeSeenThisFrame = true;
+    if (t.target == nullptr) {
+        return;
+    }
+    if (t.target == gEyeTarget.target && t.sizeX == gEyeTarget.sizeX && t.sizeY == gEyeTarget.sizeY) {
+        if (gEyeTargetStable < kEyeTargetStable && ++gEyeTargetStable == kEyeTargetStable) {
+            log::Info("render levers: the eye renders' target learned: {} ({}x{}); a scene render into another target, or of a "
+                      "size a quarter off, runs as a capture with no eye index",
+                t.target, t.sizeX, t.sizeY);
+        }
+    } else {
+        gEyeTarget = t;
+        gEyeTargetStable = 1;
+    }
+}
+
 void SceneRenderHook(void* renderer) {
+    RenderTargetInfo const targetInfo = TargetInfoSEH(renderer);
+    bool const stereoNow = MELEVR::MevrBridge::StereoFrameActive();
+    gStereoRenderThisFrame = gStereoRenderThisFrame || stereoNow;
+    if (stereoNow && IsCaptureRender(targetInfo)) {
+        gCaptureRenders.fetch_add(1, std::memory_order_relaxed);
+        if (gCaptureLogs < 5) {
+            ++gCaptureLogs;
+            log::Info("render levers: a scene render into target {} ({}x{}) ran as a capture: no eye index (the eyes render into {} {}x{})",
+                targetInfo.target, targetInfo.sizeX, targetInfo.sizeY, gEyeTarget.target, gEyeTarget.sizeX, gEyeTarget.sizeY);
+        }
+        int const outerCapture = t_renderIndex;
+        t_renderIndex = -1;
+        gSceneRenderOrig(renderer);
+        t_renderIndex = outerCapture;
+        return;
+    }
     int const index = gRenderIndex.fetch_add(1, std::memory_order_relaxed);
     int const outer = t_renderIndex;
     t_renderIndex = index;
+    if (index == 0 && stereoNow) {
+        LearnEyeTarget(targetInfo);
+    }
     gRenderThread.store(GetCurrentThreadId(), std::memory_order_relaxed);
     bool const eyeHistory = BeginEyeHistory(renderer, index);
     t_umbraQueryIndex = 0;
@@ -1895,6 +1979,10 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
                 per(d.eyeScissorRects, frames), per(d.eyeScissorUnchanged, frames), per(d.eyeScissorReissued, frames), per(d.eyeScissorExempt, frames));
         }
     }
+    if (std::uint64_t const captures = gCaptureRenders.exchange(0, std::memory_order_relaxed); captures != 0) {
+        share += std::format("; captures (scene renders into another target, no eye index): {:.2f} a frame",
+            frames != 0 ? static_cast<double>(captures) / static_cast<double>(frames) : 0.0);
+    }
     log::Info("render levers: last 10 s: {} frames; scene renders per frame {}; per render, by its place in the "
         "frame: {}{}", frames, perFrame.empty() ? "-" : perFrame, perRender.empty() ? "-" : perRender, share);
 }
@@ -2191,6 +2279,16 @@ void Tick() {
 
 void OnPresentEnd(ID3D11DeviceContext* context) {
     int const renders = gRenderIndex.exchange(0, std::memory_order_relaxed);
+    if (gEyeSeenThisFrame) {
+        gFramesWithoutEye = 0;
+    } else if (gStereoRenderThisFrame && gEyeTargetStable >= kEyeTargetStable && ++gFramesWithoutEye >= 30) {
+        log::Info("render levers: no scene render into the eye renders' target for 30 frames: relearning it");
+        gEyeTarget = RenderTargetInfo{};
+        gEyeTargetStable = 0;
+        gFramesWithoutEye = 0;
+    }
+    gEyeSeenThisFrame = false;
+    gStereoRenderThisFrame = false;
     Add(gCounters.frames, 1);
     Add(gCounters.rendersPerFrame[renders < kSlots ? renders : kSlots], 1);
     ReleaseKept();  // a kept renderer never pairs across frames
