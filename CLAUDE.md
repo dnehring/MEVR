@@ -353,10 +353,19 @@ switching frameworks.
   2026-10-27 **scopes are pulled to the eye** (research/21 section 14, mod only): raised, a scoped gun slides back along its
   line (the assist's weights and spring, at most `[Sights] scopePullMaxM` 0.15) until the model's eyepiece is
   `scopeReliefM` (0.12 m; never inside the near plane, `LocalPlayer.NearClipPlane` 10 units, + 2 cm) from the aiming eye,
-  and the picture is that eyepiece seen from there (`<type>Lens`, gun units); the assault rifle has a 1.5x scope on its
-  `Scope` housing; `<type>Hide` bones (sniper `Scope_Lens`, its glow [verify]) are hidden while the picture is up
-  (`game/scope_parts`: HideBone through ProcessEvent, shown again on a switch, holster or unload; the gun's materials
-  logged once per model). The
+  and the picture is that eyepiece seen from there (`<type>Lens`, gun units); `<type>Hide` bones (sniper `Scope_Lens`, its
+  glow [verify]) are hidden while the picture is up (`game/scope_parts`: HideBone through ProcessEvent, shown again on a
+  switch, holster or unload; the gun's materials logged once per model). Since 2026-10-27 (later) **a scope's picture
+  only while aiming down the sight** (research/21 section 15, mod only; `core/vr/Ads`, Overlord's ADS, GPL-3.0): Overlord's
+  corridor (the centre eye 0.15-1.5 m behind the muzzle, 9 cm beside the bore, -2.5/+16 cm, 30 degrees; exit 0.10-1.7,
+  13 cm, -6/+22, 40), 100 ms dwell each way, plus our reach (the eye within `[Sights] adsReachM` 0.40 m of the sight, 0.50
+  to leave), all on the gun WITHOUT the assist's move; below ADS the mod publishes no scope (kind None: no picture, the
+  model's own lens, no scope capture), `scopeMaxM` only with `ads = 0`. The assist's 10-degree cone is gone: Overlord's
+  continuous approach weight (angle 5-45 degrees, smooth corridor edges) x distance weight drives the sideways move (dots
+  and holos at most `assistDotMaxM` 0.03) and the pull (dot none, holo 5 cm, scope under 3x 10 cm, scopes
+  `scopePullMaxM`; under ADS `scopeAdsPullMaxM` 0.35 with Overlord's thermal spring, 24/s, 0.9 m/s, so the eye reaches the
+  relief). Logs `sights: ADS on/off (...)`; snapshot `sights.ads`. The assault rifle is a red dot again (`scope 1.5`, the
+  day-old migrated value, back to `dot` once; marker `ads`). The
   mod places them (`game/sights`, `[Sights]` in `ASI\LE1MEVR.ini`); the host draws them
   (`src/plugin/SightLayers.cpp`, pictures and shader in `SightPictures.cpp`; offline look:
   `mevr-sight-preview`). Scoped shots get the zoomed aim error via a `GetPlayerAimError` post-handler

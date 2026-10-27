@@ -617,3 +617,111 @@ feels right (about 11.5 cm, half a second) and the gun goes back when lowered; t
 and no more (`sniperRifleLens`); `Scope_Lens` is the glow and hiding it leaves the rest of the scope (else the material
 lines name the glowing material); the assault rifle's picture sits on its housing's rear (`HousingToEyepiece`,
 `assaultRifleLens`); nothing stays hidden after a switch, a holster or a hot reload.
+
+## 15. Aiming down the sight: the scope only at the eye, Overlord's ADS (headset session 2026-10-27, built the same day)
+
+**Report (user, headset, 2026-10-27):** the assault rifle shouldn't zoom: "it should just be a red dot", but it "doesn't
+line up perfectly"; "I would almost expect when I pull the rifle up to my eye, that's when I would start seeing the scope.
+Instead right now I just see that little circle, which the scope kind of lives in." And: can we pull in better systems
+from Overlord?
+
+**What the log shows** (`LE1MEVR.log`, `sights:` lines 14:52-14:57):
+- **The assist's gate flickered.** `alignment assist on ... 8.5 degrees` then `off ... 9.1 degrees` 20 ms later, again
+  and again, every 0.02-1 s: the aiming eye sat at the edge of section 8's 10-degree cone (full within 5), where the
+  weight runs from 0 to 0.2 over one degree. The sideways slide (up to 10 cm) and section 14's pull (up to 15 cm) both
+  rode that weight.
+- **The picture at arm's length.** The scope's picture was up with the eye 0.45-0.57 m behind the eyepiece and about 9 cm
+  off its line, its shadow about 1.9 picture radii in (almost all shaded): the "little circle". `scopeMaxM` 0.70 (section
+  13) let it show that far back.
+- **The pull too short.** Even at its 15 cm limit the eye stayed 0.16-0.20 m behind the eyepiece (relief 0.12 never
+  reached): the model's eyepiece sits 7 cm ahead of the hand (section 14), so a hold "at the eye" is 0.31-0.35 m from it.
+  The picture was then about 15 degrees across, smaller than the eyepiece's 18.9 at the relief.
+
+### Overlord's ADS (reference/Overlord, GPL-3.0; adapted, `src/core/vr/Ads.*`, NOTICE.md)
+
+`docs/vr-native-ads.md` ("Controls", "ADS eye-distance assistance", "Physical-lens image magnifier") and
+`src/client/component/vr/gameplay/`:
+- **A corridor with dwell and hysteresis** (`ads_alignment.hpp` `measure`/`inside`, `controller_ads.hpp`
+  `ads_policy::consume`): the centre eye against the muzzle in the muzzle's frame, measured on the gun WITHOUT the ADS
+  translation (`hands::sub(muzzle.position, muzzle.ads_translation)`), so the assistance can't feed its own gate. Entry:
+  the head 0.15-1.5 m behind the muzzle, within 9 cm of the bore line sideways, 2.5 cm below to 16 cm above it, facing
+  within 30 degrees of the barrel; exit 0.10-1.7 m, 13 cm, -6/+22 cm, 40 degrees. The far depth is extended by
+  sight-to-muzzle + 0.60 m (`sight_reach_meters`) past 1.5 m, so long barrels don't use up the reach. 100 ms in (out)
+  before ADS turns on (off); 40 ms for the thermal.
+- **A continuous approach weight** (`ads_alignment::approach`): quintic smoothstep of the head-to-barrel angle (full at
+  5 degrees, none at 45) times smooth corridor edges between the entry and exit limits, independent of the ADS latch;
+  times a distance weight (`ads_comfort::distance_weight`: the eye to the rear lens, full within 0.30 m, none at 0.60;
+  thermal 0.50 / 0.70). The product drives the eye-distance transition, a critically damped spring with a speed limit
+  (`transition::update`: 10/s, 0.25 m/s; thermal 24/s, 0.9 m/s), which section 8 already took over.
+- **Per-optic pull** (`ads_comfort::distance`, `measure_eye`): red dots and iron sights none, holographic 5 cm, the 4x
+  ACOG 10 cm, scopes 15 cm, the thermal 45 cm; the goal is `clamp(depth - relief, 0, distance)` with an 8 cm relief (5
+  for the thermal): never pushing a close optic away.
+- **The optic's image only while ADS is active** (`optic_view.hpp` `view::active`; the doc's magnifier): below it the
+  scope model is shown as authored, its lens part visible. The picture is the physical rear lens with a circular exit
+  pupil on the aiming axis and "scope shadow" outside it.
+
+### What we built (mod only: `core/vr/Ads`, `core/vr/Sights`, `game/sights`, `game/hand_calibration`; the menu's default)
+
+1. **The assault rifle is a red dot again** (`assaultRifle = dot`; `Settings::guns[2]` a dot that keeps the model's
+   1.6-unit eyepiece for `scope 1.5`). One-time migration back: a file without the new key `ads` whose value is exactly
+   `scope 1.5` (section 14's migration wrote it; case, spaces and `1.50` aside: `vr::sights::MigrateAssaultRifle`)
+   becomes `dot` (`hands: [Sights] assaultRifle scope 1.5 (section 14's default) -> dot`); any other value is kept and
+   logged. Section 14's own migration (dot -> scope 1.5) is gone. The menu's chip row starts with Red dot; "Scope 1.5x"
+   stays selectable.
+2. **ADS for scopes** (`vr::ads::Measure`, `Inside`, `Policy`; `[Sights] ads = 1`): Overlord's corridor, dwell and
+   hysteresis exactly, on the centre eye (the head pose's position) against the muzzle and sight minus the shift arm IK
+   applied the tick before (`gTakenPrev`, as section 8's assist), plus **our reach**: the centre eye within `adsReachM`
+   (0.40 m) of the sight's centre to come on, 0.50 m to go off. Overlord's far depth alone (1.5 m behind the muzzle, the
+   sniper's eyepiece 0.59 m behind it) would admit the eye 0.9 m back: arm's length, the report's "little circle". 0.40
+   is between the report's two holds, casual (0.45-0.57 m from the eyepiece: never ADS) and up to the eye (0.31-0.35:
+   ADS), and the pull's own move never counts (the unassisted gun). **The scope is published only under ADS**: below it
+   the mod sends the host no sight (kind None), so there is no picture, the model's own lens shows (game/scope_parts
+   hides `<type>Hide` only while the picture is up, now also requiring ADS), the ring reticle stays on the aim ray, and
+   the scope capture (research/39) doesn't render. Under ADS the published `scopeMaxM` is the reach's exit + 0.10 m, so
+   the host's own range never cuts the picture; `[Sights] scopeMaxM` applies only with `ads = 0` (section 13's gate).
+3. **The continuous weight replaces the cone** (`vr::sights::AssistTarget(..., weight, ...)`; `Assist::coneDeg`,
+   `rangeM`, `headDeg` removed): weight = `vr::ads::Approach` x `vr::ads::DistanceWeight(eye to sight, ADS)`, times
+   `assistStrength`, for the sideways move and the pull of every sight, through the same spring. The aiming eye is still
+   the one nearer the line by angle with 1.5 degrees of hysteresis. A red dot or holo keeps a sideways alignment, gentle:
+   at most `assistDotMaxM` (0.03 m; scopes `assistMaxM` 0.10). Pulls (Overlord's): a dot none, a holo 5 cm, a scope under
+   3x 10 cm, other scopes `scopePullMaxM` (0.15). `assistConeDeg` and `assistRangeM` are no longer read (left in files,
+   no longer added, marked unused in a new file's comments).
+4. **The pull reaches the relief under ADS**: the limit becomes `scopeAdsPullMaxM` (0.35 m) with Overlord's thermal spring
+   (24/s, 0.9 m/s), also while a pull past the ordinary limit eases back. From the session's "at the eye" hold (0.31-0.35 m)
+   the eyepiece comes to the 0.12 m relief in about a third of a second; 0.35 covers a hold up to 0.47 m (the reach's exit
+   is 0.50). The hands follow (arm IK's `gunShift`, both wrists while the support grip holds): with the sniper's eyepiece
+   ahead of its grip, the right hand ends about 5 cm in front of and below the eye **[verify: how that feels]**.
+   **Relief: kept at `scopeReliefM` 0.12 m**, floored at the near plane + 2 cm (`ReliefFor`), which with the default
+   10-unit near plane at 100 units per meter is the same 0.12. Overlord's 8 cm would put the eyepiece 2 cm inside the
+   near plane (the tube cut for both eyes, section 14), so max(near + 2 cm, 0.08) = 0.12 either way; the line `sights: the
+   camera's near plane is ...` says which.
+5. **The picture at the eyepiece**: unchanged from section 14 (the host's virtual eyepiece with the field the model's
+   eyepiece subtends at the relief, `PulledFieldDeg`: at the relief the picture is the eyepiece, its rim the tube's), now
+   that the eye actually gets there; the exit-pupil shadow stays (`scopeEyeBoxM`). Nothing on the host changed.
+6. **Logs**: `sights: ADS on (the centre eye D m behind the muzzle, L cm beside the bore, H cm above it, the head F degrees
+   off the barrel, R m from the sight; inside the entry corridor for 100 ms): the scope's picture shows and the scope may be
+   pulled 0.35 m toward the eye, to 0.12 m in front of it (W m wanted now, the right eye A m behind the eyepiece); approach
+   weight X`; `sights: ADS off (<which exit limits failed, with their numbers>; outside the exit corridor for 100 ms) after
+   T s: ... pulled at most N cm: the eye A m behind the eyepiece before, B m after (relief 0.12 m[: the pull's limit was
+   reached])`; `alignment assist on/off` now with hysteresis on the weight (on from 0.10, off below 0.02) and the
+   approach and distance weights; the heartbeat adds `ADS N times, on M ticks: the aiming eye E m behind the pulled
+   eyepiece on average`. The host's `the scope's picture was up N frames: the eye A..B m behind the eyepiece` should now
+   read about 0.12. Snapshot: the mod's `sights.ads` (`gate`, `active`, `entering`, `leaving`, `heldS`, `depthM`,
+   `lateralM`, `heightM`, `facingDeg`, `eyeToSightM`, `sightToMuzzleM`, `approach`, `distanceWeight`, `weight`,
+   `pullLimitM`, `fastSpring`).
+7. **Settings** (`[Sights]`, appended to older files): `ads = 1`, `adsReachM = 0.40` (0..1.2; 0 = Overlord's corridor
+   alone), `scopeAdsPullMaxM = 0.35` (0..0.5), `assistDotMaxM = 0.03` (0..0.1).
+
+**Unit tests** (`tests/Main.cpp`): `TestAds` (each corridor limit between entry and exit, the far extension, the reach,
+the approach weight's halves and its smoothness across the session's 8.5-9.1 degrees, the distance weights, the per-optic
+pulls, the latch's 100 ms in and out and its immunity to every-tick flicker, and the session's holds through the whole
+gate), `TestSightPullReachesRelief` (the session's 0.47 m hold: 15 cm leaves the eye at 0.32 m, ADS's 35 cm with the
+fast spring reaches 0.12 m in 0.6 s; the picture at the relief is the eyepiece), `TestSightAssist` (the weight continuous,
+no jumps), `TestSightSettings` (the defaults, the migration's exact match).
+
+**[verify] next session (notes/next-vr-session.md step 45):** the picture appears only with the rifle at the eye and
+never at a casual hold (`ADS on` lines' reach near 0.3-0.4 m); no ADS flicker (`ADS on`/`off` seconds apart, not
+milliseconds); the eye reaches the relief (the host's picture-up line about 0.12 m); the 35 cm pull and the hand at the
+chin feel acceptable (else `scopeAdsPullMaxM` lower); the lens part is hidden only while the picture shows; the assault
+rifle's dot lines up (`alignment assist on` with a gentle move, the heartbeat's average offset); `adsReachM` might want
+0.45 for players who hold the gun further out.

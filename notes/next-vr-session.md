@@ -1423,6 +1423,45 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       thread's "busy, without the XR waits" in `tools/perf-probe.py`, scopeCapture 1 against 0 (expect 1-1.5 ms at a heavy
       spot from the resolve alone).
     - Put `scopeCapture = 0` back unless the cost is acceptable.
+45. **Aiming down the sight: the scope only at the eye, the assault rifle a red dot again (new, 2026-10-27, later; the ADS,
+    the assist and the pull are the mod's (hot reload: rebuild `MEVR-LE1-mod`); the menu's chip order is the host's, so a
+    redeploy with the game closed for that only; the sight the two share is unchanged; [research/21](../research/21-sights-and-scopes.md)
+    section 15). Replaces step 43's assault rifle scope.** Your report: the rifle should just be a red dot but it didn't line
+    up; the scope should appear when you pull the rifle up to your eye, not as a little circle before that.
+    - At start: `hands: [Sights] assaultRifle scope 1.5 (section 14's default) -> dot (a red dot again ...)` once (or `...
+      kept (your choice; the default is dot)` if you had set something else), then `hands: added Sights.ads, Sights.adsReachM,
+      Sights.scopeAdsPullMaxM, Sights.assistDotMaxM (defaults)` and the settings line ending `a scope's picture only while
+      aiming down it (ADS: Overlord's corridor, the eyes within 0.40 m of the eyepiece, 0.50 m to leave); alignment assist on
+      (as raised: ...)`.
+    - **The sniper at a casual hold** (the gun in front of you, not at the eye): NO picture, the model's own scope with its
+      lens (blue glow included), the ring reticle on the aim ray. No `sights: ADS on` line. If the picture shows here, send
+      the `ADS on` line: its `m from the sight` number says how far your eye was (raise or lower `adsReachM`, 0.40, live).
+    - **Bring it up to the eye**: after a tenth of a second the gun slides toward your face (fast: about a third of a second,
+      the hands with it; the right hand ends near the chin) and the picture sits on the eyepiece, filling it, the tube's rim
+      around it. Log: `sights: ADS on (the centre eye D m behind the muzzle, L cm beside the bore, H cm above it, the head F
+      degrees off the barrel, R m from the sight; ...): the scope's picture shows and the scope may be pulled 0.35 m toward
+      the eye, to 0.12 m in front of it (...)`. Then the host's per-look line `sights: the scope's picture was up N frames: the
+      eye A..B m behind the eyepiece`: A and the average should be near **0.12** (it was 0.45-0.57 last time, and 0.16-0.20
+      at the old 15 cm limit).
+    - **Lower it**: 0.1 s later `sights: ADS off (<which limit, with the numbers>; ...) after T s: the scope's picture goes
+      and the scope eases back; pulled at most N cm: the eye A m behind the eyepiece before, B m after (relief 0.12 m)`. The
+      lens part comes back (`showed 'Scope_Lens' again`).
+    - **No flicker**: hold the scope at the eye and move a little, turn your head a bit: `ADS on` / `ADS off` lines should be
+      seconds apart, never milliseconds (last time `alignment assist on/off` toggled every 20 ms). The heartbeat's `ADS N
+      times, on M ticks: the aiming eye E m behind the pulled eyepiece on average` (E near 0.12).
+    - **Too much motion?** The 35 cm pull and the hand at the chin are the price of the model's eyepiece sitting ahead of
+      the hand. If it's uncomfortable: `scopeAdsPullMaxM` lower (0.25: the eye stops about 0.10 m short when you hold it
+      at 0.47 m), or `scopeReliefM` larger; say how it felt.
+    - **The assault rifle**: a red dot again (the menu's HUD & sights row starts with Red dot; Scope 1.5× is still there).
+      Raise it: the dot shows to the aiming eye, and the rifle slides at most 3 cm sideways toward it, smoothly
+      (`sights: alignment assist on: ... (N% weight: approach A, distance D)`; on/off lines seconds apart). Is the dot on the
+      model's sight and does it line up now? The heartbeat's `the aiming eye sat on average X cm left of and Y cm above the
+      unassisted sight line` is the placement error; send it with a snapshot (both stick clicks tapped, rifle raised).
+    - **A snapshot under ADS and one just below it** (the sniper): the JSON's `mod.sights.ads` (`active`, `eyeToSightM`,
+      `depthM`, `lateralM`, `heightM`, `facingDeg`, `approach`, `weight`, `pullLimitM`, `fastSpring`) and the host's
+      `sights.scope.along` near 0.12 under ADS; below it `active: false` and no scope layer.
+    - Must NOT happen: the picture at arm's length; ADS turning on with the gun at the hip (the corridor's height and
+      sideways limits); the lens part hidden without the picture; the gun pushed away from the face.
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR
