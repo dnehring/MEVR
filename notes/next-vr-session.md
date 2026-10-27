@@ -1347,6 +1347,44 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       dropped: the main menu opened again first`, and no pause menu.
     - Must NOT appear: `the mod has never asked for these requests` (host and mod out of step: redeploy both), `the host
       (services older than v19)`.
+43. **Scopes pulled to the eye, the assault rifle's scope, the sniper's lens hidden (new, 2026-10-27; the pull, the
+    hidden lens and the logs are the mod's (hot reload); the menu's new chip is the host's, so redeploy both with the game
+    closed; the sight the two share is unchanged; [research/21](../research/21-sights-and-scopes.md) section 14).** Your
+    report: the sniper's picture didn't line up with its scope (it was twice the eyepiece), a blue light glowed on the
+    model, and the assault rifle's scope showed a dot floating on its back.
+    - At start: `hands: [Sights] assaultRifle dot (the old default) -> scope 1.5 ...` once (or `... kept (your choice ...)`),
+      then `hands: added Sights.scopeReliefM, ...` and the settings line `assault rifle scope 1.5x ... (eyepiece radius 1.6
+      units)`, `sniper rifle scope 4.0x ... hides 'Scope_Lens' while its picture is up`.
+    - **The sniper:** draw it, raise it to the eye as you held it last time (the eye about 23 cm behind the eyepiece). The
+      gun should slide toward your face by about 11 cm over half a second (the hand and the support hand with it), and the
+      picture should sit exactly on the model's eyepiece, the tube's rim around it, no blue around its edge. Lower the gun:
+      it slides back. Logs: `sights: the camera's near plane is 10.0 units (LocalPlayer.NearClipPlane; 0.100 m at 100.0 units
+      per meter): a scope is pulled to 0.120 m ...; the sniper rifle's eyepiece (2.0 units, 4.0 cm across) then looks 18.9
+      degrees across` (if it says `UE3's default: the field wasn't read`, say so); per raise `alignment assist on: ...; the
+      scope is pulled N cm back along its line, to 0.12 m in front of the eye` and, when lowered, `... the scope was pulled at
+      most N cm: the eye A m behind the eyepiece before, B m after`; the heartbeat `the scope pulled N cm toward the eye on
+      average`. If the picture is bigger or smaller than the model's eyepiece, the eyepiece radius is the guess to fix:
+      `[Sights] sniperRifleLens` (2, live; bigger = a bigger picture). Too close or too far: `scopeReliefM` (0.12); too much
+      motion: `scopePullMaxM` (0.15; 0 = no pull, the old 22-degree picture).
+    - **The blue glow:** with the picture up the model's `Scope_Lens` part should be gone (`sights: the sniper rifle's scope
+      picture is up: hid 'Scope_Lens' while it shows ([Sights] sniperRifleHide)`), and back when you lower it (`sights:
+      showed 'Scope_Lens' again (the scope's picture went)`). If the glow stays, it's another part: the log lists the gun's
+      materials once per model (`sights: the sniper rifle model is ...`, then `... mesh materials [N]: ...` with each
+      material instance's scalars and vectors: a vector named like emissive or glow, or a blue one, is the suspect). Send
+      those lines; `sniperRifleHide` takes other bone names (the model's bones are in the `sights: the sniper rifle model
+      against its bore` line). A whole scope vanishing means the hidden bone carries more than the lens: `sniperRifleHide =
+      none`.
+    - **The assault rifle:** draw it (the menu's HUD & sights row now reads Scope 1.5×), raise it the same way: the gun slides
+      back, a 1.5x picture sits on the rifle's own scope housing. `sights: the assault rifle's sight sits on its 'Scope' bone`
+      as before; the eyepiece is placed 1.5 units behind that bone (a guess that it's the housing's middle). Picture too big
+      for the housing: `assaultRifleLens` (1.6); on the housing's front or floating behind it: `assaultRiflePlace = back,
+      height, side` (the bone line's numbers, `back` + 1.5 to start).
+    - **A snapshot with each scoped gun raised** (a quick tap of both stick clicks, picture up, held still): the left and
+      right PNGs show the picture against the model's eyepiece; the JSON's `mod.sights.assist.pull` (`reliefM`, `goalM`,
+      `nearUnits`, `nearFromGame`, `raisePulledM`, `raiseEyeBeforeM`, `raiseEyeAfterM`), `mod.sights.parts.hidden`, and the
+      host's `sights.scope` (`along` near 0.12, `pictureRadiusM` = the eyepiece's radius).
+    - Must NOT happen: a gun left without its lens after a weapon switch, a holster or a hot reload (`showed ... again (another
+      gun / the gun was put away / the mod unloads)` each time); the gun pushed away from the face.
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR

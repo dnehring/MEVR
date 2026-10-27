@@ -316,7 +316,7 @@ constexpr char const* kSightsBlock =
     "enabled = 1\n"
     "pistol = dot\n"
     "shotgun = dot\n"
-    "assaultRifle = dot\n"
+    "assaultRifle = scope 1.5\n"
     "sniperRifle = scope 4\n"
     "; Where the sight sits on each gun: auto, or back, height[, side]: units behind the muzzle along the barrel, units\n"
     "; above the bore, units to the right (the log's `sights:` lines say what auto chose: a bone of the model named for a\n"
@@ -355,6 +355,15 @@ constexpr char const* kSightsBlock =
     "scopeFieldDeg = 22\n"
     "scopeEyeBoxM = 0.05\n"
     "scopeMaxM = 0.70\n"
+    "; The pull: raised to your eye, a scoped gun slides back along its line (at most scopePullMaxM meters) until the\n"
+    "; model's eyepiece is scopeReliefM in front of your eye (never inside the camera's near plane); the picture then\n"
+    "; sits on the model's eyepiece. scopePullMaxM = 0: no pull. <gun>Lens: the model's eyepiece radius (gun units).\n"
+    "; <gun>Hide: the model's bones hidden while the scope's picture is up (none: nothing).\n"
+    "scopeReliefM = 0.12\n"
+    "scopePullMaxM = 0.15\n"
+    "assaultRifleLens = 1.6\n"
+    "sniperRifleLens = 2\n"
+    "sniperRifleHide = Scope_Lens\n"
     "; replaceRing: 1 = the floating ring reticle hides while you look through a sight.\n"
     "replaceRing = 1\n"
     "; aimedFire: 1 = looking through a scope gives the shots the game's aimed-fire accuracy (no scope camera).\n"
@@ -1029,6 +1038,15 @@ vr::sights::Settings ReadSights(Ini const& ini) {
             log::Warn("sights: can't read {} = {} (auto, or back, height[, side] in gun units); auto kept", placeKey, *t);
             out.guns[w].autoPlace = true;
         }
+        // A scope's eyepiece radius and the model's parts hidden while its picture is up (research/21 section 14).
+        std::string const lensKey = key + "Lens";
+        if (Number(ini, "Sights", lensKey.c_str(), value)) {
+            out.guns[w].lens = static_cast<float>(std::clamp(value, 0.5, 10.0));
+        }
+        std::string const hideKey = key + "Hide";
+        if (auto const s = section->second.find(hideKey); s != section->second.end()) {
+            out.guns[w].hide = s->second;  // empty: nothing hidden (the key there without a value)
+        }
     }
     auto const color = [&](char const* key, std::uint32_t& into) {
         if (auto const t = text(key)) {
@@ -1060,6 +1078,8 @@ vr::sights::Settings ReadSights(Ini const& ini) {
     number("scopeFieldDeg", out.scopeFieldDeg, 0.0f, 60.0f);
     number("scopeEyeBoxM", out.scopeEyeBoxM, 0.01f, 0.20f);
     number("scopeMaxM", out.scopeMaxM, 0.20f, 1.50f);
+    number("scopeReliefM", out.scopeReliefM, 0.0f, 0.50f);
+    number("scopePullMaxM", out.scopePullMaxM, 0.0f, 0.30f);
     if (Number(ini, "Sights", "frame", value)) {
         out.frame = value != 0.0;
     }
@@ -1108,11 +1128,15 @@ std::string Describe(vr::sights::Settings const& s) {
     std::string guns;
     for (int w = 0; w < sv::kWeaponTypes; ++w) {
         sv::Gun const& g = s.guns[w];
-        guns += std::format("{}{} {}{}{}", guns.empty() ? "" : ", ", sv::WeaponName(w), sv::Name(g.kind),
+        guns += std::format("{}{} {}{}{}{}", guns.empty() ? "" : ", ", sv::WeaponName(w), sv::Name(g.kind),
             g.kind == sv::Kind::Scope ? std::format(" {:.1f}x", g.zoom) : std::string(),
             g.kind == sv::Kind::None ? std::string()
             : g.autoPlace         ? std::string(" (placed auto)")
-                                  : std::format(" ({:.1f} back, {:.1f} up, {:.1f} right)", g.back, g.height, g.side));
+                                  : std::format(" ({:.1f} back, {:.1f} up, {:.1f} right)", g.back, g.height, g.side),
+            g.kind == sv::Kind::Scope
+                ? std::format(" (eyepiece radius {:.1f} units{})", sv::LensUnits(s, w),
+                      sv::ParseBoneList(g.hide).empty() ? std::string() : std::format(", hides '{}' while its picture is up", g.hide))
+                : std::string());
     }
     return std::format("on: {}; dot #{:06X} {:.2f} deg, ring {:.2f} deg, window {:.1f} units{}, eye box {:.1f} units, zero {}, shots {}; "
                        "scope lens {:.1f} units, "
@@ -1122,8 +1146,12 @@ std::string Describe(vr::sights::Settings const& s) {
         s.zeroM > 0.0f ? std::format("{:.0f} m", s.zeroM) : std::string("parallel"),
         s.converge ? "converge on what the sight line hits" : "parallel to the sight line", s.lensUnits, sv::Name(s.scopeReticle),
         s.scopeColor, s.otherEye ? "the other" : "the same", s.focusM, s.eyeReliefM, s.resolution,
-        s.scopeFieldDeg > 0.0f ? std::format("virtual eyepiece {:.0f} deg across to {:.2f} m, eye box {:.3f} m", s.scopeFieldDeg,
-                                     s.scopeMaxM, s.scopeEyeBoxM)
+        s.scopeFieldDeg > 0.0f ? std::format("virtual eyepiece {:.0f} deg across to {:.2f} m, eye box {:.3f} m{}", s.scopeFieldDeg,
+                                     s.scopeMaxM, s.scopeEyeBoxM,
+                                     s.scopePullMaxM > 0.0f && s.scopeReliefM > 0.0f
+                                         ? std::format(", pulled to {:.2f} m from the eye (at most {:.2f} m): the picture is the eyepiece "
+                                                       "seen from there", s.scopeReliefM, s.scopePullMaxM)
+                                         : std::string(", no pull"))
                                : std::string("the physical lens"),
         s.replaceRing ? "hidden while sighting" : "kept", s.aimedFire ? "on" : "off",
         s.assist.enabled ? std::format("on (the aiming eye within {:.0f} degrees of the sight line, {:.0f}% of the way, at most {:.2f} m, "
@@ -1466,6 +1494,23 @@ void Refresh() {
         }
         if (!moved.empty()) {
             log::Info("hands: [Sights] {} holo (the old default) -> dot (the new one) in {}", moved, ini::Utf8(path));
+            ini = ReadIni(path);
+            stamp = fs::last_write_time(path, ec);
+        }
+    }
+    // [Sights] since 2026-10-27 (research/21 section 14): a file without scopeReliefM predates the assault rifle's scope;
+    // its old default (dot) becomes the new one (scope 1.5) once, any other choice is the player's and kept.
+    if (auto const s = ini.find("Sights"); s != ini.end() && s->second.find("scopeReliefM") == s->second.end()) {
+        auto const k = s->second.find("assaultRifle");
+        std::string value = k != s->second.end() ? k->second : std::string();
+        std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (value == "dot" && WritePrivateProfileStringW(L"Sights", L"assaultRifle", L"scope 1.5", path.wstring().c_str()) != 0) {
+            log::Info("hands: [Sights] assaultRifle dot (the old default) -> scope 1.5 (the new one: a low-power scope on the rifle's "
+                      "own scope) in {}", ini::Utf8(path));
+            ini = ReadIni(path);
+            stamp = fs::last_write_time(path, ec);
+        } else if (k != s->second.end()) {
+            log::Info("hands: [Sights] assaultRifle = {} kept (your choice; the new default is scope 1.5)", k->second);
         }
     }
     // [Hands] reachNearFaceM, the [Sights] alignment assist, [Hands]' physical cover and crouch
@@ -1491,6 +1536,13 @@ void Refresh() {
         {L"Sights", "Sights", L"scopeFieldDeg", "scopeFieldDeg", L"22"},
         {L"Sights", "Sights", L"scopeEyeBoxM", "scopeEyeBoxM", L"0.05"},
         {L"Sights", "Sights", L"scopeMaxM", "scopeMaxM", L"0.70"},
+        // The scope's pull to the eye, per-gun eyepieces and the hidden lens (2026-10-27, research/21 section 14). The
+        // marker scopeReliefM comes after the assault rifle's migration above.
+        {L"Sights", "Sights", L"scopeReliefM", "scopeReliefM", L"0.12"},
+        {L"Sights", "Sights", L"scopePullMaxM", "scopePullMaxM", L"0.15"},
+        {L"Sights", "Sights", L"assaultRifleLens", "assaultRifleLens", L"1.6"},
+        {L"Sights", "Sights", L"sniperRifleLens", "sniperRifleLens", L"2"},
+        {L"Sights", "Sights", L"sniperRifleHide", "sniperRifleHide", L"Scope_Lens"},
         {L"Hands", "Hands", L"noCover", "noCover", L"1"},
         {L"Hands", "Hands", L"physicalCrouch", "physicalCrouch", L"1"},
         {L"Hands", "Hands", L"crouchBelow", "crouchBelow", L"0.75"},

@@ -351,6 +351,8 @@ set(MEVR_MOD_SOURCES
     src/game/Posture.hpp
     src/game/Reflections.cpp
     src/game/Reflections.hpp
+    src/game/ScopeParts.cpp
+    src/game/ScopeParts.hpp
     src/game/Sights.cpp
     src/game/Sights.hpp
     src/game/SkeletonProbe.cpp

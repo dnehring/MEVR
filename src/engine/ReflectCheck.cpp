@@ -538,6 +538,8 @@ void CheckClasses() {
     CheckClass<USkeletalMesh>("Engine.SkeletalMesh");
     CheckClass<USkeletalMeshSocket>("Engine.SkeletalMeshSocket");
     CheckClass<UAnimNode>("Engine.AnimNode");
+    CheckClass<UMaterialInstance>("Engine.MaterialInstance");  // game/scope_parts' material log (research/21 section 14)
+    CheckClass<UMaterialInstanceConstant>("Engine.MaterialInstanceConstant");
     CheckClass<UAnimNodeBlendBase>("Engine.AnimNodeBlendBase");  // game/combat_stance (research/38)
     CheckClass<UAnimNodeSequence>("Engine.AnimNodeSequence");
     CheckClass<UAnimTree>("Engine.AnimTree");
@@ -628,6 +630,15 @@ void CheckFields() {
     CheckField("Engine.SkeletalMesh", "Bounds", SDK_FIELD(USkeletalMesh, Bounds));
     CheckField("Engine.SkeletalMesh", "RefSkeleton", SDK_FIELD(USkeletalMesh, RefSkeleton), true);
     CheckField("Engine.SkeletalMesh", "Sockets", SDK_FIELD(USkeletalMesh, Sockets));
+    // game/sights' near plane and game/scope_parts' material log (research/21 section 14).
+    CheckField("Engine.PlayerController", "Player", SDK_FIELD(APlayerController, Player));
+    CheckField("Engine.LocalPlayer", "NearClipPlane", SDK_FIELD(ULocalPlayer, NearClipPlane));
+    CheckField("Engine.MeshComponent", "Materials", SDK_FIELD(UMeshComponent, Materials));
+    CheckField("Engine.SkeletalMesh", "Materials", SDK_FIELD(USkeletalMesh, Materials), true);
+    CheckField("Engine.MaterialInstance", "Parent", SDK_FIELD(UMaterialInstance, Parent));
+    CheckField("Engine.MaterialInstanceConstant", "ScalarParameterValues", SDK_FIELD(UMaterialInstanceConstant, ScalarParameterValues));
+    CheckField("Engine.MaterialInstanceConstant", "VectorParameterValues", SDK_FIELD(UMaterialInstanceConstant, VectorParameterValues));
+    CheckField("Engine.MaterialInstanceConstant", "TextureParameterValues", SDK_FIELD(UMaterialInstanceConstant, TextureParameterValues));
     CheckField("Engine.SkeletalMeshSocket", "SocketName", SDK_FIELD(USkeletalMeshSocket, SocketName));
     CheckField("Engine.SkeletalMeshSocket", "BoneName", SDK_FIELD(USkeletalMeshSocket, BoneName));
     CheckField("Engine.SkeletalMeshSocket", "RelativeLocation", SDK_FIELD(USkeletalMeshSocket, RelativeLocation));
@@ -763,6 +774,15 @@ void CheckPaths() {
     CheckPath("Engine.AnimNodeBlendBase", {"Children", "Name"}, SDK_AT(offsetof(FAnimBlendChild, Name), 8));
     CheckPath("Engine.AnimNodeBlendBase", {"Children", "Anim"}, SDK_AT(offsetof(FAnimBlendChild, Anim), 8));
     CheckPath("Engine.AnimNodeBlendBase", {"Children", "Weight"}, SDK_AT(offsetof(FAnimBlendChild, Weight), 4));
+    CheckElement("Engine.MaterialInstanceConstant", "ScalarParameterValues", sizeof(FScalarParameterValue));  // game/scope_parts
+    CheckPath("Engine.MaterialInstanceConstant", {"ScalarParameterValues", "ParameterName"}, SDK_AT(offsetof(FScalarParameterValue, ParameterName), 8));
+    CheckPath("Engine.MaterialInstanceConstant", {"ScalarParameterValues", "ParameterValue"}, SDK_AT(offsetof(FScalarParameterValue, ParameterValue), 4));
+    CheckElement("Engine.MaterialInstanceConstant", "VectorParameterValues", sizeof(FVectorParameterValue));
+    CheckPath("Engine.MaterialInstanceConstant", {"VectorParameterValues", "ParameterName"}, SDK_AT(offsetof(FVectorParameterValue, ParameterName), 8));
+    CheckPath("Engine.MaterialInstanceConstant", {"VectorParameterValues", "ParameterValue"}, SDK_AT(offsetof(FVectorParameterValue, ParameterValue), 16));
+    CheckElement("Engine.MaterialInstanceConstant", "TextureParameterValues", sizeof(FTextureParameterValue));
+    CheckPath("Engine.MaterialInstanceConstant", {"TextureParameterValues", "ParameterName"}, SDK_AT(offsetof(FTextureParameterValue, ParameterName), 8));
+    CheckPath("Engine.MaterialInstanceConstant", {"TextureParameterValues", "ParameterValue"}, SDK_AT(offsetof(FTextureParameterValue, ParameterValue), 8));
     CheckElement("SFXGame.BioBaseSquad", "Members", sizeof(FMemberData));
     CheckPath("SFXGame.BioBaseSquad", {"Members", "SquadMember"}, SDK_AT(offsetof(FMemberData, SquadMember), 8));
     CheckPath("SFXGame.BioBaseSquad", {"Members", "eSwitchWeapon"}, SDK_AT(offsetof(FMemberData, eSwitchWeapon), 1));
@@ -808,6 +828,9 @@ void CheckFunctions() {
         "Engine.Pawn.GetWeaponStartTraceLocation",
         "SFXGame.BioPlayerController.GetAdjustedAimFor",
         "Engine.Actor.Trace",
+        "Engine.SkeletalMeshComponent.HideBone",  // game/scope_parts (research/21 section 14)
+        "Engine.SkeletalMeshComponent.UnHideBone",
+        "Engine.SkeletalMeshComponent.IsBoneHidden",
         // Throwables
         "SFXGame.SFXGameModeDefault.UseGrenade",
         "SFXGame.SFXGameModeDefault.TryMelee",
@@ -910,6 +933,11 @@ void CheckParams() {
     PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", TraceStart);
     PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", bTraceActors);
     PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", ReturnValue);
+    PARAM(USkeletalMeshComponent_execHideBone_Parms, "Engine.SkeletalMeshComponent.HideBone", BoneIndex);
+    PARAM(USkeletalMeshComponent_execHideBone_Parms, "Engine.SkeletalMeshComponent.HideBone", PhysBodyOption);
+    PARAM(USkeletalMeshComponent_execUnHideBone_Parms, "Engine.SkeletalMeshComponent.UnHideBone", BoneIndex);
+    PARAM(USkeletalMeshComponent_execIsBoneHidden_Parms, "Engine.SkeletalMeshComponent.IsBoneHidden", BoneIndex);
+    PARAM(USkeletalMeshComponent_execIsBoneHidden_Parms, "Engine.SkeletalMeshComponent.IsBoneHidden", ReturnValue);
     PARAM(ABioGrenade_eventLaunchGrenadeAtActor_Parms, "SFXGame.BioGrenade.LaunchGrenadeAtActor", oTarget);
     PARAM(ABioGrenade_eventLaunchGrenadeAtActor_Parms, "SFXGame.BioGrenade.LaunchGrenadeAtActor", ReturnValue);
     PARAM(ABioGrenade_eventLaunchGrenade_Parms, "SFXGame.BioGrenade.LaunchGrenade", vVelocity);

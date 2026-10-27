@@ -12,6 +12,8 @@
 //   eye-left.png, eye-right.png        the two eye images (what the scope samples)
 //   scope-<case>.png                    the scope's picture over grey (its alpha as coverage)
 //   eye-right-<case>.png                the right eye with the picture drawn in where the eyepiece is
+//   eye-right-pulled-*.png              pulled to the eye (research/21 section 14): the model's eyepiece (a glowing blue
+//                                       lens in a dark tube, alone in *-model.png) with the picture drawn on it
 //   dot.png, holo.png, frame.png        the reticles and the window ring over grey
 //   eye-right-dot.png                   the right eye looking through a red dot sight
 
@@ -64,14 +66,27 @@ std::uint32_t Rgb(float r, float g, float b) {  // linear in, sRGB bytes out, op
     return byte(r) | (byte(g) << 8) | (byte(b) << 16) | 0xFF000000u;
 }
 
+// The scope tube's rear face in the scene: a dark disc of `rim` radius at `z` (on the right eye's line), and with `lens`
+// a glowing blue eyepiece of that radius in its middle (the model's lens the pulled picture must cover; section 14).
+struct Tube {
+    float z = kEyepiece.z;
+    float rim = 0.025f;
+    float lens = 0.0f;
+};
+Tube gTube;
+
 // The test scene, seen along a ray from `o` in direction `d` (not unit).
 std::uint32_t Trace(XrVector3f o, XrVector3f d) {
-    // The scope tube's rear face: a dark disc 2.5 cm across at the eyepiece, facing back.
+    // The scope tube's rear face, facing back.
     if (d.z < 0.0f) {
-        float const t = (kEyepiece.z - o.z) / d.z;
+        float const t = (gTube.z - o.z) / d.z;
         float const x = o.x + d.x * t - kEyepiece.x;
         float const y = o.y + d.y * t - kEyepiece.y;
-        if (t > 0.0f && x * x + y * y < 0.025f * 0.025f) {
+        float const r2 = x * x + y * y;
+        if (t > 0.0f && r2 < gTube.lens * gTube.lens) {
+            return Rgb(0.10f, 0.45f, 1.0f);  // the model's glowing lens
+        }
+        if (t > 0.0f && r2 < gTube.rim * gTube.rim) {
             return Rgb(0.02f, 0.02f, 0.025f);
         }
     }
@@ -380,6 +395,69 @@ int main(int argc, char** argv) {
             c.name, view->along, view->qx, view->qy, view->px, view->py, view->pupil, view->fade, c.zoom,
             2.0 * std::atan(pictureLens.radius / view->along) * 180.0 / 3.14159265);
     }
+
+    // Pulled to the eye (research/21 section 14): the model's eyepiece (a glowing blue lens in a dark tube) on the right
+    // eye's line, the picture drawn on it as the host does with the field PulledFieldDeg gives (the eyepiece seen from the
+    // relief), at the relief and with the pull at its limit; the rifle's 1.5x on its smaller eyepiece; and the 2026-10-26
+    // report's hold without the pull (22 degrees at 0.235 m: the picture spills well past the eyepiece).
+    struct Pulled {
+        char const* name;
+        float eyepieceM;   // the eyepiece this far in front of the right eye
+        float lensM;       // the model's eyepiece radius
+        float rimM;        // the tube's rear face around it
+        float zoom;
+        float fieldDeg;    // 0: PulledFieldDeg(lens, relief)
+    };
+    constexpr float kRelief = 0.12f;
+    Pulled const pulledCases[] = {
+        {"pulled-sniper-4x", kRelief, 0.020f, 0.028f, 4.0f, 0.0f},
+        {"pulled-sniper-at-limit", 0.165f, 0.020f, 0.028f, 4.0f, 0.0f},  // 0.315 m held, pulled 0.15
+        {"pulled-rifle-1.5x", kRelief, 0.016f, 0.022f, 1.5f, 0.0f},
+        {"unpulled-sniper-23cm", 0.235f, 0.020f, 0.028f, 4.0f, 22.0f},
+    };
+    for (Pulled const& c : pulledCases) {
+        gTube = Tube{-c.eyepieceM, c.rimM, c.lensM};
+        composite::Image const aiming = EyeImage(kRightEye);
+        composite::Image const other = EyeImage(kLeftEye);
+        ComPtr<ID3D11ShaderResourceView> const otherSrv = Upload(gpu, other);
+        sv::Sight s = sight;
+        s.center = {0.0f, 0.0f, -c.eyepieceM};
+        s.radius = c.lensM;
+        s.zoom = c.zoom;
+        s.scopeReticle = static_cast<std::int32_t>(c.zoom < 2.0f ? sv::ScopeReticle::Dot : sv::ScopeReticle::Duplex);
+        s.scopeFieldDeg = c.fieldDeg > 0.0f ? c.fieldDeg : sv::PulledFieldDeg(c.lensM, kRelief);
+        auto const pulledLens = sv::MakeLens(s.center, s.axis, s.up, s.radius);
+        sv::Lens pictureLens = *pulledLens;
+        auto const view = sv::VirtualView(*pulledLens, kRightEye, sv::Eyepiece{s.scopeFieldDeg, s.scopeEyeBox, s.scopeMaxM}, pictureLens);
+        if (!view) {
+            std::printf("%s: no view\n", c.name);
+            continue;
+        }
+        pic::ScopeParams const params =
+            pic::MakeScopeParams(s, pictureLens, *view, kRightEye, leftPose, kFov, rect, kEyeSize, kEyeSize, kScopeSize);
+        std::vector<std::uint32_t> const picture = RenderScope(gpu, otherSrv.Get(), params, kScopeSize);
+        if (picture.empty()) {
+            std::printf("%s: render failed\n", c.name);
+            continue;
+        }
+        Save(dir, (std::string("scope-") + c.name + ".png").c_str(), kScopeSize, kScopeSize, OverGrey(picture));
+        composite::Image eye = aiming;
+        Save(dir, (std::string("eye-right-") + c.name + "-model.png").c_str(), eye.width, eye.height, eye.pixels);
+        composite::Image const quadImage = Straight(picture, static_cast<int>(kScopeSize));
+        sv::Quad const disc = sv::Disc(s.center, s.axis, s.up, pictureLens.radius);
+        composite::Quad quad;
+        quad.pose = disc.pose;
+        quad.width = quad.height = disc.size;
+        quad.image = &quadImage;
+        composite::Draw(eye, composite::Eye{rightPose, kFov}, quad);
+        Save(dir, (std::string("eye-right-") + c.name + ".png").c_str(), eye.width, eye.height, eye.pixels);
+        std::printf("  %s: the eyepiece %.3f m ahead, its lens %.1f cm across (%.1f degrees), the picture %.1f cm across (%.1f degrees; "
+                    "field %.1f), %.1fx\n",
+            c.name, c.eyepieceM, 2.0f * c.lensM * 100.0f, 2.0 * std::atan(c.lensM / c.eyepieceM) * 180.0 / 3.14159265,
+            2.0f * pictureLens.radius * 100.0f, 2.0 * std::atan(pictureLens.radius / view->along) * 180.0 / 3.14159265, s.scopeFieldDeg,
+            c.zoom);
+    }
+    gTube = Tube{};
 
     // The reticles and the window ring.
     sv::Sight dot;

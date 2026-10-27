@@ -986,6 +986,19 @@ std::optional<engine::UnrealVector> BoneWorld(std::size_t index) {
 #endif
 }
 
+ue3::Object* HeldMesh() {
+#if defined(MEVR_GAME_LE1)
+    if (!Current()) {
+        return nullptr;
+    }
+    std::string why;
+    auto const live = LivePointers(why);
+    return live && live->mesh == gResolved->mesh ? live->mesh : nullptr;
+#else
+    return nullptr;
+#endif
+}
+
 std::string const& Status() {
     return gStatus;
 }

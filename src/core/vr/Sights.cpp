@@ -75,15 +75,27 @@ struct Typical {
     float share;   // of the muzzle-to-grip length, behind the muzzle
     float height;  // above the bore (gun units)
     float length;  // the muzzle-to-grip length when unknown (gun units)
+    float housing; // a scope on a bone that isn't its eyepiece: the eyepiece this far behind the bone (gun units)
 };
 // Pistol and assault rifle lengths from the 2026-10-21 log (Flash_1 27.2 and 39.2 units ahead of the
 // mesh's root); the shotgun's and the sniper rifle's are guesses, as are all the heights [verify].
+// The housing offsets are guesses too [verify]: the assault rifle's `Scope` bone (39.6 behind the muzzle, 9.1 up,
+// 2026-10-26) is taken as the middle of a short sight housing, its rear 1.5 units further back.
 constexpr Typical kTypical[kWeaponTypes] = {
-    {0.75f, 4.0f, 27.0f},  // pistol: on the slide, above the hand
-    {0.85f, 5.0f, 35.0f},  // shotgun
-    {0.90f, 6.0f, 39.0f},  // assault rifle: just ahead of the grip
-    {1.05f, 7.0f, 55.0f},  // sniper rifle: the eyepiece a little behind the grip
+    {0.75f, 4.0f, 27.0f, 1.0f},  // pistol: on the slide, above the hand
+    {0.85f, 5.0f, 35.0f, 1.5f},  // shotgun
+    {0.90f, 6.0f, 39.0f, 1.5f},  // assault rifle: just ahead of the grip
+    {1.05f, 7.0f, 55.0f, 2.0f},  // sniper rifle: the eyepiece a little behind the grip
 };
+
+bool HasSightWord(std::string const& n) {
+    return n.find("scope") != std::string::npos || n.find("sight") != std::string::npos || n.find("optic") != std::string::npos ||
+        n.find("reticle") != std::string::npos || n.find("lens") != std::string::npos || n.find("eyepiece") != std::string::npos;
+}
+
+bool HasRearWord(std::string const& n) {
+    return n.find("eye") != std::string::npos || n.find("ocular") != std::string::npos || n.find("rear") != std::string::npos;
+}
 
 std::mutex gMutex;
 Sight gLatest{0};
@@ -197,6 +209,90 @@ bool ParsePlace(std::string_view text, Gun& gun) {
     return true;
 }
 
+std::vector<std::string> ParseBoneList(std::string_view text) {
+    std::vector<std::string> out;
+    for (std::string const& token : Tokens(text)) {
+        std::string const lower = Lower(token);
+        if (lower == "none" || lower == "off" || lower == "0") {
+            continue;
+        }
+        if (std::none_of(out.begin(), out.end(), [&](std::string const& o) { return Lower(o) == lower; })) {
+            out.push_back(token);
+        }
+    }
+    return out;
+}
+
+float LensUnits(Settings const& settings, int weapon) {
+    if (weapon >= 0 && weapon < kWeaponTypes && settings.guns[weapon].lens > 0.0f && std::isfinite(settings.guns[weapon].lens)) {
+        return settings.guns[weapon].lens;
+    }
+    return settings.lensUnits;
+}
+
+float HousingToEyepiece(int weapon) {
+    return weapon >= 0 && weapon < kWeaponTypes ? kTypical[weapon].housing : 0.0f;
+}
+
+bool IsEyepieceName(std::string_view name) {
+    std::string const n = Lower(name);
+    return n.rfind("socket ", 0) != 0 && HasSightWord(n) && HasRearWord(n);
+}
+
+HideChoice PartsToHide(std::span<std::string const> names, std::span<int const> parents, std::optional<std::size_t> sightBone,
+    std::span<std::string const> wanted) {
+    HideChoice out;
+    // The sight's bone and every bone above it: hiding one would collapse the sight onto it.
+    std::vector<bool> protectedBone(names.size(), false);
+    if (sightBone && *sightBone < names.size()) {
+        std::size_t at = *sightBone;
+        for (std::size_t guard = 0; guard <= names.size(); ++guard) {
+            protectedBone[at] = true;
+            int const parent = at < parents.size() ? parents[at] : -1;
+            if (parent < 0 || static_cast<std::size_t>(parent) >= names.size() || static_cast<std::size_t>(parent) == at) {
+                break;
+            }
+            at = static_cast<std::size_t>(parent);
+        }
+    }
+    for (std::string const& want : wanted) {
+        std::string const w = Lower(want);
+        std::optional<std::size_t> found;
+        for (std::size_t i = 0; i < names.size(); ++i) {
+            std::string const n = Lower(names[i]);
+            if (n.rfind("socket ", 0) != 0 && n == w) {
+                found = i;
+                break;
+            }
+        }
+        if (!found) {
+            out.skipped.push_back(want + " (not on this model)");
+        } else if (*found == 0 || (*found < parents.size() && parents[*found] < 0)) {
+            out.skipped.push_back(names[*found] + " (the model's root)");
+        } else if (protectedBone[*found]) {
+            out.skipped.push_back(names[*found] + (sightBone && *found == *sightBone ? " (the sight's own bone)" : " (the sight hangs on it)"));
+        } else if (std::find(out.bones.begin(), out.bones.end(), *found) == out.bones.end()) {
+            out.bones.push_back(*found);
+        }
+    }
+    return out;
+}
+
+float ReliefFor(float reliefM, float nearUnits, float unitsPerMeter, float marginM) {
+    float relief = std::isfinite(reliefM) && reliefM > 0.0f ? reliefM : 0.0f;
+    if (std::isfinite(nearUnits) && nearUnits > 0.0f && std::isfinite(unitsPerMeter) && unitsPerMeter > 0.0f) {
+        relief = std::max(relief, nearUnits / unitsPerMeter + std::max(marginM, 0.0f));
+    }
+    return relief;
+}
+
+float PulledFieldDeg(float lensM, float reliefM) {
+    if (!(lensM > 0.0f) || !(reliefM > 0.0f) || !std::isfinite(lensM) || !std::isfinite(reliefM)) {
+        return 0.0f;
+    }
+    return 2.0f * std::atan(lensM / reliefM) * 180.0f / 3.14159265f;
+}
+
 std::optional<std::uint32_t> ParseColor(std::string_view text) {
     std::vector<std::string> const tokens = Tokens(text);
     if (tokens.size() != 1) {
@@ -282,17 +378,13 @@ std::optional<std::size_t> SightBone(Kind kind, std::span<std::string const> nam
         if (n.rfind("socket ", 0) == 0) {
             continue;  // sockets hang off bones; the bone itself is what moves when the gun unfolds
         }
-        bool const sighty = n.find("scope") != std::string::npos || n.find("sight") != std::string::npos ||
-            n.find("optic") != std::string::npos || n.find("reticle") != std::string::npos || n.find("lens") != std::string::npos ||
-            n.find("eyepiece") != std::string::npos;
-        if (!sighty) {
+        if (!HasSightWord(n)) {
             continue;
         }
         if (!first) {
             first = i;
         }
-        bool const rear = n.find("eye") != std::string::npos || n.find("ocular") != std::string::npos || n.find("rear") != std::string::npos;
-        if (rear && !eyepiece) {
+        if (HasRearWord(n) && !eyepiece) {
             eyepiece = i;
         }
     }
@@ -392,7 +484,7 @@ float Smooth(float t) {
 }
 
 AssistGoal AssistTarget(Assist const& s, XrVector3f const& center, XrVector3f const& axisIn, XrVector3f const& upIn,
-    XrVector3f const eyes[2], XrVector3f const& headForward, int currentEye) {
+    XrVector3f const eyes[2], XrVector3f const& headForward, int currentEye, Pull const& pull) {
     constexpr float kDeg = 3.14159265358979f / 180.0f;
     constexpr float kMinAlong = 0.02f;     // the eye at the sight itself: no line to speak of
     constexpr float kRangeFade = 0.15f;    // the distance weight fades over this, ending at rangeM
@@ -459,6 +551,12 @@ AssistGoal AssistTarget(Assist const& s, XrVector3f const& center, XrVector3f co
     float const length = Length(shift);
     if (length > s.maxShiftM && length > 0.0f) {
         shift = Scale(shift, std::max(s.maxShiftM, 0.0f) / length);
+    }
+    // A scope's pull: back along the line toward the eye, until the sight is the relief ahead of it (never away).
+    if (pull.reliefM > 0.0f && pull.maxM > 0.0f && std::isfinite(pull.reliefM) && std::isfinite(pull.maxM)) {
+        float const want = std::clamp(line.along - pull.reliefM, 0.0f, pull.maxM);
+        goal.pull = want * goal.weight;
+        shift = Sub(shift, Scale(*axis, goal.pull));
     }
     goal.shift = shift;
     return goal;

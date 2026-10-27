@@ -143,7 +143,7 @@ std::vector<Field> const& Schema() {
         {"hud_size", Type::Number, 100, "", 70, 140, F::Percent},
         {"reticle", Type::Flag, 1},
         {"sight_pistol", Type::Choice, 0, "dot"},
-        {"sight_rifle", Type::Choice, 0, "dot"},
+        {"sight_rifle", Type::Choice, 0, "scope"},  // the assault rifle's (scope: its own, 1.5x; the shotgun keeps its dot)
         {"sight_sniper", Type::Choice, 0, "scope"},
         {"sight_assist", Type::Flag, 1},
         {"sight_converge", Type::Flag, 1},
@@ -345,12 +345,12 @@ std::string SightKind(std::string_view value, std::string_view fallback) {
     return std::string(fallback);
 }
 
-std::string SightValue(std::string_view kind, std::string_view previous) {
+std::string SightValue(std::string_view kind, std::string_view previous, float fallbackZoom) {
     if (kind != "scope") {
         return std::string(kind);
     }
     std::string const text = Lower(Trim(previous));
-    float zoom = 4.0f;
+    float zoom = fallbackZoom >= 1.0f && fallbackZoom <= 12.0f ? fallbackZoom : 4.0f;
     if (text.rfind("scope", 0) == 0 && text.size() > 5) {
         float const parsed = static_cast<float>(ini::Number(std::string_view(text).substr(5)).value_or(0.0));
         if (parsed >= 1.0f && parsed <= 12.0f) {

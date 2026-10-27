@@ -40,7 +40,7 @@ step 14.
 - `optic_catalog.hpp`: rear-lens radii 10.5-20.4 mm. `ads_alignment.hpp`: the ADS corridor (eye
   0.15-1.5 m behind the muzzle, within 9 cm sideways, 30 degrees, 100 ms dwell; exit 40 degrees).
 - `vr-native-ads.md` "ADS eye-distance assistance": while aimed two-handed, the gun slides up to 15 cm
-  toward the eye for sniper scopes (5 cm holographic), keeping 8 cm clearance. Not done here (section 7).
+  toward the eye for sniper scopes (5 cm holographic), keeping 8 cm clearance. Built here for scopes (section 14).
 
 ### Elsewhere
 
@@ -197,7 +197,9 @@ dot, holo, or scope with a magnification 1-12); `<type>Place = auto` or `back, h
 evening of 2026-10-22 the alignment assist (section 8): `assist`, `assistConeDeg`, `assistStrength`,
 `assistMaxM`, `assistRangeM`; since 2026-10-23 (sections 9-11) `eyeBox` (6 units), `converge` (1),
 and the shotgun and the assault rifle default to `dot`; since 2026-10-25 (section 13) `scopeFieldDeg` (22), `scopeEyeBoxM`
-(0.05), `scopeMaxM` (0.70), and `<type>Place = back, height, side`.
+(0.05), `scopeMaxM` (0.70), and `<type>Place = back, height, side`; since 2026-10-27 (section 14) `assaultRifle = scope 1.5`,
+`scopeReliefM` (0.12), `scopePullMaxM` (0.15), `<type>Lens` (gun units; assault rifle 1.6, sniper rifle 2, else `lensUnits`)
+and `<type>Hide` (sniper rifle `Scope_Lens`).
 
 ## 7. Risks and what's left
 
@@ -217,9 +219,8 @@ and the shotgun and the assault rifle default to `dot`; since 2026-10-25 (sectio
   picture (the other eye sees the aiming eye's picture at its own angle: rivalry, not breakage).
 - **Latency:** the sight comes from the last game tick (like the gun model in the eye image), the eyes
   from this frame.
-- **Not done:** Overlord's ADS eye-distance assistance (sliding the gun toward the eye when aligned:
-  useful if the eyepiece can't get close enough with Shepard's proportions); option 3; thermal; the
-  zoomed recoil; a dot through a scope's picture. (The sideways alignment assist is built: section 8.)
+- **Not done:** option 3; thermal; the zoomed recoil; a dot through a scope's picture. (The sideways
+  alignment assist is built: section 8; Overlord's ADS eye-distance assistance, for scopes: section 14.)
 
 ## 8. Lining the sight up with the eye (headset session 2026-10-22, 19:52; built the same evening)
 
@@ -508,3 +509,111 @@ eye-distance assistance (section 1) slides the gun up to 15 cm toward the eye; o
   `boneLive`, `boneSettled`, `modelTop`, `boundsTop`).
 - **[verify]** with a snapshot per gun: the window ring on the model's sight part, the scope's picture over the model's
   eyepiece; the rifle's settled numbers near 54.9 back, 4.9 up (the unfolded measurement).
+
+## 14. Scopes pulled to the eye; the assault rifle's scope; the sniper's lens hidden (built 2026-10-27)
+
+**Report (user, PS VR2 on SteamVR, life-size stereo, 2026-10-26):** the sniper rifle shows "a blue light that shines on the
+model itself" with the gun at the face; the scope's picture doesn't line up with the model's scope; the assault rifle (the
+starting rifle) has a scope on its model, and its red dot floated on the back of the housing.
+
+**What the log shows.** `sights: the scope's picture was up N frames: the eye 0.23..0.24 m behind the eyepiece`: at that
+hold section 13's 22-degree virtual eyepiece is a disc about 9 cm across over a model eyepiece about 4 cm across. The
+cause is the model: the sniper's `Scope_Eye` is 59.2 units behind the muzzle (7.0 up), its grip (`handle`) 66.6, so the
+eyepiece sits about 7 cm AHEAD of the hand, where a real rifle's is behind it, about 8 cm from the eye. `Scope_Lens` is 51.4
+back, 3.2 up. The assault rifle's `Scope` bone settles at 39.6 back, 9.1 up, about 0 to the side, its grip at 39.2: a sight
+housing right over the hand, with a red dot in front of it, not through it.
+
+**Decisions (user, 2026-10-27).** "Pull to the lens": a scope raised to the eye slides back along the sight line toward
+the eye (Overlord's ADS eye-distance assistance, up to 15 cm, section 1) until the model's eyepiece is at a comfortable
+virtual eye relief, and the picture is drawn on the model's own eyepiece, framed by its tube (the H3VR / Pavlov / Onward
+look); the virtual hand moving about 13 cm toward the eye is accepted. The assault rifle gets a low-power scope, about
+1.5x, the same way. The sniper's glowing lens part hides while the picture is up.
+
+### The near plane
+
+- The camera's near plane is the local player's `NearClipPlane`: 10 game units by default (Halcyon's render hook read it
+  live next to `DynamicResolutionFraction`: `NearClipPlane == 10.0`; MassFPS pulls it in to 1, research/11). Life-size
+  stereo only replaces the projection's x and y terms (`core/vr/MetricStereo` `OffCentre`), so the engine's near plane
+  stands. At the life-size 100 units per meter that's **0.10 m**; at Halcyon's own 50 units per meter, 0.20 m.
+- Anything nearer than that to an eye is cut away: an eyepiece pulled inside it loses the tube's rear for both eyes (the
+  aiming eye sees our picture on top, but the tube around it is cut; the other eye sees the cut).
+- So the relief is `max(scopeReliefM, near / unitsPerMeter + 2 cm)` (`vr::sights::ReliefFor`): **0.12 m** with the
+  defaults at life-size (the setting and the floor agree). From the reported hold (0.235 m) the pull is 11.5 cm; the
+  user's expected 13 cm would put the eyepiece 5 mm past the near plane. The mod reads the field each tick through our
+  reflection layer (`Engine.PlayerController.Player`, `Engine.LocalPlayer.NearClipPlane`) and logs it: **[verify]** the
+  line says `LocalPlayer.NearClipPlane`, not `UE3's default`, and that this field is what the projection uses (nothing
+  here has checked it; a visible cut of the tube at 0.12 m would say it isn't).
+- Pulling the near plane in (as MassFPS does) would allow a shorter relief; not done (it changes the whole view's depth
+  precision, and nothing has asked for it).
+
+### Built (mod: `game/sights`, `game/scope_parts`, `core/vr/Sights`; unit-tested)
+
+1. **The pull** (`vr::sights::AssistTarget` with a `Pull`): for a scope, besides the sideways move, the gun slides back
+   along the sight line by `clamp(along - relief, 0, scopePullMaxM) x weight`, where `along` is the aiming eye's
+   distance to the eyepiece measured on the gun without the assist's own move, and the weight is the sideways move's
+   (the 10-degree cone, the range, the head, `assistStrength`). Never forward, never past the relief. The sideways move
+   keeps its own 10 cm cap. The same spring eases both in and out (10/s, at most 0.25 m/s: the 11.5 cm take about half a
+   second); lowered, the gun eases back. Off with `assist = 0` or `scopePullMaxM = 0`; dots never pull.
+   - **The hands follow** as for the sideways move (`engine/BonePose`): arm IK adds `Request::gunShift` to the right
+     wrist's goal after reach scaling, and to the left wrist's while the support grip holds (fading with its blend after a
+     release), before the support grip ties the hands; a free left hand stays. The muzzle, the shots, the reticle's ray
+     and the sight follow the gun as drawn (the shots start 11.5 cm nearer the face, along the same line).
+   - **Logs:** `sights: the camera's near plane is N units (...): a scope is pulled to R m in front of the eye ([Sights]
+     scopeReliefM ..., at least the near plane + 2 cm), at most M m; the <gun>'s eyepiece (L units, D cm across) then looks
+     F degrees across` when any of it changes; `alignment assist on: ...; the scope is pulled N cm back along its line, to
+     R m in front of the eye`; `alignment assist off ...; the scope was pulled at most N cm: the eye A m behind the
+     eyepiece before, B m after (relief R m[: the pull's limit was reached])`; the heartbeat's `the scope pulled N cm
+     toward the eye on average`. Snapshot: the mod's `sights.assist.pull` (`reliefM`, `maxM`, `goalM`, `nearUnits`,
+     `nearFromGame`, `raisePulledM`, `raiseEyeBeforeM`, `raiseEyeAfterM`).
+2. **The picture on the eyepiece.** Our picture is a quad composited over the eye image with no depth: drawn bigger than
+   the model's eyepiece it covers the tube, smaller it leaves the eyepiece's own (glowing) face showing around it. So
+   with the pull the picture's apparent size is what the model's eyepiece subtends from the relief, `2 atan(lens /
+   relief)` (`vr::sights::PulledFieldDeg`), sent to the host as the sight's `scopeFieldDeg`. The host's virtual eyepiece
+   (section 13, `PictureRadius = max(lens, along x tan(field / 2))`) then gives exactly the eyepiece at the relief and
+   nearer, and the same angle further back: when the pull can't reach (the eye more than relief + 15 cm back) the picture
+   grows past the eyepiece rather than shrinking (section 13's fallback, never tiny). Numbers at life-size: the sniper's
+   eyepiece 2 units (4 cm across) looks 18.9 degrees at 0.12 m; held at 0.315 m and pulled 15 cm, the picture is 5.5 cm on
+   a 4 cm eyepiece; the assault rifle's 1.6 units (3.2 cm) looks 15.2 degrees. `scopePullMaxM = 0` keeps section 13's 22
+   degrees. **No host change for the picture:** the sight the mod and the host share is the same struct, only its
+   `scopeFieldDeg` is chosen by the mod; the picture's source image and `RenderScope`'s sampling are untouched (a separate
+   job replaces the source with a real zoomed render).
+3. **Per-gun eyepieces** (`[Sights] <type>Lens`, gun units; `vr::sights::LensUnits`; else the old global `lensUnits`): sniper
+   rifle 2 (the old global, which the report's "about 4 cm" eyepiece came from), assault rifle 1.6. Both are guesses from
+   the bones **[verify]** with a snapshot: the picture should cover the model's eyepiece and no more.
+4. **The assault rifle's scope:** `assaultRifle = scope 1.5` by default (the parser takes decimals; zoom 1-12). A file
+   from before keeps any choice but the old default `dot`, which becomes `scope 1.5` once (`hands: [Sights] assaultRifle
+   dot (the old default) -> scope 1.5`; the marker is the new key `scopeReliefM`). Its eyepiece: the `Scope` bone isn't
+   named for an eyepiece, so it's taken as the housing's middle and the picture goes `HousingToEyepiece` (1.5 units for
+   the rifle, 2 sniper, 1.5 shotgun, 1 pistol) behind it **[verify]**: on the housing's rear in a snapshot, else
+   `assaultRiflePlace`. As for any scope, its shots get the zoomed aim error while its picture is up (section 4, the same
+   spread as the support grip's LT).
+5. **The sniper's glowing lens hidden** (`game/scope_parts`): while the held gun's scope picture is up (the host's
+   `sightView`), the bones in `[Sights] <type>Hide` (sniper rifle `Scope_Lens` **[verify]**: which bone carries the glow is
+   a guess) are hidden with `SkeletalMeshComponent.HideBone` (index, `PBO_None`), shown again with `UnHideBone` 0.15 s after
+   the picture goes, on a weapon switch or holster, when the list or the sight's bone changes, and when the mod unloads
+   (hot reload: the host's tick, the game thread). Through our reflection layer and ProcessEvent on the game thread (rows in
+   `engine/ReflectCheck`), never a generated wrapper; by index rather than `HideBoneByName` because the bones are known by
+   index already and `IsBoneHidden` (same class) tells a bone the game hid itself, which is then left alone. Never hidden
+   (`vr::sights::PartsToHide`): the root, the sight's own bone and its ancestors (a hidden bone is drawn collapsed and its
+   children with it **[verify]**: the sight would move). Logs: `sights: the sniper rifle's scope picture is up: hid
+   'Scope_Lens' while it shows ([Sights] sniperRifleHide)[; not hidden: ...]` once per model, `sights: showed 'Scope_Lens'
+   again (<why>)` (the first three, and always when the mesh is gone); snapshot `sights.parts`.
+6. **The material log**, once per weapon model: `sights: the <gun> model is <mesh>`, then each of the component's material
+   overrides and the mesh's materials with, for a `MaterialInstanceConstant` (and its parents, 3 deep), the scalar, vector
+   (RGBA) and texture parameters by name. A blue vector or an emissive-named one identifies the glow, and so the part
+   (`<type>Hide`) or a parameter to change, if the bone guess is wrong.
+7. **The menu:** HUD & sights' "Shotgun and assault rifle" row has a Scope 1.5× chip: it writes the assault rifle's
+   (`scope 1.5`, or its earlier zoom) and leaves the shotgun's; the other chips set both (host: `plugin/MainMenuSettings`,
+   `assets/menu/main.rml`; `MenuSettings::SightValue` takes the fallback zoom).
+
+**Offline check** (`mevr-sight-preview`): the scene's tube now has a glowing blue eyepiece; `eye-right-pulled-sniper-4x.png`
+shows the picture exactly on it with the tube's rim around and no blue (`-model.png` the model alone),
+`eye-right-pulled-sniper-at-limit.png` the picture 5.5 cm on the 4 cm eyepiece (over most of the rim),
+`eye-right-pulled-rifle-1.5x.png` the rifle's, and `eye-right-unpulled-sniper-23cm.png` the report's hold without the pull
+(a 9 cm picture well past the tube).
+
+**[verify] next session (notes/next-vr-session.md step 43):** the near plane line (read from the game, 10 units); the pull
+feels right (about 11.5 cm, half a second) and the gun goes back when lowered; the picture covers the sniper's eyepiece
+and no more (`sniperRifleLens`); `Scope_Lens` is the glow and hiding it leaves the rest of the scope (else the material
+lines name the glowing material); the assault rifle's picture sits on its housing's rear (`HousingToEyepiece`,
+`assaultRifleLens`); nothing stays hidden after a switch, a holster or a hot reload.

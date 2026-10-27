@@ -1096,7 +1096,7 @@ MEVR_MOD_API void MevrModShutdown() {
     }
     gSightSent = false;
     gToldNoSight = false;
-    game::sights::Shutdown();
+    game::sights::Shutdown(exiting);  // shows the scope's hidden lens part again (game/scope_parts)
     if (HostTakesSupportGrip()) {
         // No grip without the mod, LT back on the trigger (the host also forgets on unload).
         gHost->setSupportGrip(-1.0f, 0.12f, 0.22f, game::gamepad::kFlagLeftTrigger | game::gamepad::kFlagSupportAims);

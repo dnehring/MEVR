@@ -8,6 +8,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 // Gun sights (research/21): a collimated red-dot or holographic sight for every gun, and a magnified
 // scope by picture-in-picture for the sniper rifle (optionally the assault rifle). The mod (game/sights)
@@ -48,7 +49,18 @@ struct Gun {
     float back = 0.0f;       // gun units behind the muzzle, along the barrel
     float height = 0.0f;     // gun units above the bore line, toward the gun's top
     float side = 0.0f;       // gun units to the gun's right (a bone off the gun's middle; 0 when set by hand)
+    // Scopes (research/21 section 14): the model's eyepiece radius (gun units; 0: Settings::lensUnits), and the model's
+    // bones hidden while the scope's picture is up (`<type>Hide`: names, comma separated; the sniper's glowing lens).
+    float lens = 0.0f;
+    std::string hide;
 };
+// A scope with its magnification, eyepiece radius (gun units; 0: lensUnits) and the bones hidden while its picture is up.
+inline Gun ScopeGun(float zoom, float lens, char const* hide) {
+    Gun gun{Kind::Scope, zoom};
+    gun.lens = lens;
+    gun.hide = hide;
+    return gun;
+}
 
 // The alignment assist (research/21 section 8; Overlord's ADS eye-distance assistance adapted to the
 // sideways case): with the gun raised to the face and the aiming eye within `coneDeg` of the sight line,
@@ -64,11 +76,21 @@ struct Assist {
     float headDeg = 35.0f;    // the sight line within this of the head's forward (full within 20 degrees less)
 };
 
+// The scope's pull to the eye (research/21 section 14; Overlord's ADS eye-distance assistance, which slides the gun
+// up to 15 cm toward the eye): for a scope, the assist also slides the gun back along the sight line so the model's
+// eyepiece comes to `reliefM` in front of the aiming eye, by at most `maxM`, never away from the eye. Weighted like
+// the sideways move (the same cone, range and head weights) and eased by the same spring. Zero: no pull.
+struct Pull {
+    float reliefM = 0.0f;  // tracking meters: where the eyepiece should end up in front of the eye
+    float maxM = 0.0f;     // tracking meters: the gun moves at most this far toward the eye
+};
+
 struct Settings {
     bool enabled = true;
-    // Since 2026-10-23 the shotgun and the assault rifle default to a red dot (a holo's ring is busy on a gun
-    // held at the cheek; the user asked for "something like a red dot").
-    Gun guns[kWeaponTypes] = {{Kind::Dot}, {Kind::Dot}, {Kind::Dot}, {Kind::Scope, 4.0f}};
+    // Since 2026-10-23 the shotgun defaults to a red dot (a holo's ring is busy on a gun held at the cheek; the user
+    // asked for "something like a red dot"); since 2026-10-27 the assault rifle to a 1.5x scope on its model's scope
+    // (research/21 section 14). Eyepiece radii and the hidden lens bone are guesses from the bones [verify].
+    Gun guns[kWeaponTypes] = {{Kind::Dot}, {Kind::Dot}, ScopeGun(1.5f, 1.6f, ""), ScopeGun(4.0f, 2.0f, "Scope_Lens")};
     // Dot and holo sights.
     std::uint32_t dotColor = 0xFF3020;  // 0xRRGGBB
     float dotSizeDeg = 0.25f;           // the dot's diameter as seen
@@ -98,6 +120,12 @@ struct Settings {
     float scopeFieldDeg = 22.0f;
     float scopeEyeBoxM = 0.05f;
     float scopeMaxM = 0.70f;
+    // The pull to the eye (research/21 section 14, 2026-10-27): raised to the eye, a scoped gun slides back along the
+    // sight line until the model's eyepiece is `scopeReliefM` in front of the aiming eye (never nearer than the camera's
+    // near plane plus 2 cm), at most `scopePullMaxM`; the picture then sits on the model's eyepiece (it looks what the
+    // eyepiece subtends from there, wherever the eye is). scopePullMaxM = 0: no pull, the virtual eyepiece as before.
+    float scopeReliefM = 0.12f;
+    float scopePullMaxM = 0.15f;
     // Both.
     bool replaceRing = true;            // hide the floating ring reticle while an eye looks through a sight
     bool aimedFire = true;              // the sniper rifle's shots get the game's aimed-fire accuracy while
@@ -115,9 +143,18 @@ Gun AutoPlace(int weapon, Gun const& gun, float gunLength);
 // typical height.
 std::optional<float> HeightOnModel(Kind kind, float modelTop, float radius);
 
-// "none", "dot", "holo", "scope" or "scope 4" (with a magnification, 1-12; `defaults` gives the zoom
-// when none is written). Nullopt: unreadable.
+// "none", "dot", "holo", "scope" or "scope 4" (with a magnification, 1-12, decimals allowed: "scope 1.5"; `defaults`
+// gives the zoom when none is written). Nullopt: unreadable.
 std::optional<Gun> ParseGun(std::string_view text, Gun const& defaults);
+// A list of bone names ("Scope_Lens, Scope_Glow"; "none" or empty: no bones), for `<type>Hide`.
+std::vector<std::string> ParseBoneList(std::string_view text);
+// The eyepiece's radius on this gun (gun units): its own `lens`, else `lensUnits`.
+float LensUnits(Settings const& settings, int weapon);
+// How far behind a scope's bone its eyepiece sits when the bone isn't named for the eyepiece (a housing's middle, as
+// the assault rifle's `Scope`; gun units, per weapon type) [verify with a snapshot].
+float HousingToEyepiece(int weapon);
+// Whether a bone's name says it's a scope's eyepiece ("eye", "ocular" or "rear" beside a sight word: `Scope_Eye`).
+bool IsEyepieceName(std::string_view name);
 // "auto" or "back, height" or "back, height, side" (gun units).
 bool ParsePlace(std::string_view text, Gun& gun);
 // "ff3020", "#FF3020", or a name: red, green, amber, cyan, white.
@@ -195,6 +232,16 @@ struct ModelPoint {
 // whose bones reach 3-7): the highest bone between the muzzle and the gun's back end (`gunLength` x 1.6 behind it) and
 // within 8 units of its middle. Nullopt when none is above 0.5 units.
 std::optional<float> ModelTop(std::span<ModelPoint const> bones, float gunLength);
+// Which of the model's bones to hide while the scope's picture is up (research/21 section 14): each name of `wanted`
+// found among `names` (case-insensitive; the bones only, sockets skipped), except the root, the sight's own bone and
+// its ancestors (hiding a bone collapses its children onto it [verify]: the sight would move). `parents` as the
+// reference skeleton gives them (-1: none). What was skipped and why goes into `skipped` (one entry per name).
+struct HideChoice {
+    std::vector<std::size_t> bones;    // indices into `names`
+    std::vector<std::string> skipped;  // "Foo (not on this model)", "Root (the sight hangs on it)"
+};
+HideChoice PartsToHide(std::span<std::string const> names, std::span<int const> parents, std::optional<std::size_t> sightBone,
+    std::span<std::string const> wanted);
 // The gun's top: `up` made perpendicular to the barrel (unit). Nullopt if `up` runs along the barrel.
 std::optional<XrVector3f> TopOf(XrVector3f const& barrel, XrVector3f const& up);
 // The sight line: along the barrel, or (zero > 0) from the sight to the shot's line `zero` ahead of the
@@ -245,9 +292,19 @@ struct AssistGoal {
     float x = 0.0f;        // the eye's offset from the line along the sight's right (meters)...
     float y = 0.0f;        // ...and its up (the gun's top)
     float weight = 0.0f;   // 0..1: angle, distance and head alignment together, times the strength
+    float pull = 0.0f;     // of `shift`: how far the gun moves back along the line toward the eye (a scope's pull, meters)
 };
+// `pull` (a scope only): the gun also slides back along the sight line toward the aiming eye, `pull.maxM` at most,
+// until the sight is `pull.reliefM` ahead of it, times the same weight (never forward, never past the relief).
 AssistGoal AssistTarget(Assist const& settings, XrVector3f const& center, XrVector3f const& axis, XrVector3f const& up,
-    XrVector3f const eyes[2], XrVector3f const& headForward, int currentEye);
+    XrVector3f const eyes[2], XrVector3f const& headForward, int currentEye, Pull const& pull = {});
+// The eye relief the pull aims for: `reliefM`, but at least the camera's near plane (`nearUnits` game units at
+// `unitsPerMeter`) plus `marginM`, so the eyepiece and the tube around it aren't cut by the near plane for either eye.
+float ReliefFor(float reliefM, float nearUnits, float unitsPerMeter, float marginM = 0.02f);
+// With the pull, the picture's apparent size (degrees across) is what the model's eyepiece (`lensM` radius) subtends from
+// `reliefM`: at the relief the picture is the eyepiece itself (the tube frames it), further back it keeps that angle
+// (the virtual eyepiece's growth, PictureRadius), so it's never smaller. 0 for a bad input.
+float PulledFieldDeg(float lensM, float reliefM);
 
 // The gun's move toward the assist's goal: a critically damped spring (no overshoot, starts from rest),
 // at most `maxSpeed` meters per second (Overlord's ADS comfort transition: 10/s, 0.25 m/s).
@@ -297,8 +354,8 @@ struct ScopeView {
 // Nullopt when the eye isn't behind the lens (closer than 1 cm) or more than 6 eye reliefs back.
 std::optional<ScopeView> View(Lens const& lens, XrVector3f const& eye, float eyeRelief);
 
-// The virtual eyepiece (Settings::scopeFieldDeg). The picture's radius on the lens plane for an eye `along` behind it:
-// the radius that looks `fieldDeg` across from there, never smaller than the lens's own.
+// The virtual eyepiece (Settings::scopeFieldDeg; with the pull, PulledFieldDeg). The picture's radius on the lens plane
+// for an eye `along` behind it: the radius that looks `fieldDeg` across from there, never smaller than the lens's own.
 float PictureRadius(float lensRadius, float along, float fieldDeg);
 struct Eyepiece {
     float fieldDeg = 22.0f;  // the picture's apparent diameter
