@@ -3,6 +3,7 @@
 
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
+#include "core/vr/Ads.hpp"
 #include "core/vr/Calibration.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/OverlayPlacement.hpp"
@@ -119,8 +120,28 @@ XrVector3f gTakenNow{};   // what arm IK took this tick
 XrVector3f gTakenPrev{};  // ...and the tick before: the shift in the gun hand aim's ray reads
 sv::AssistGoal gGoal;
 int gAssistEye = -1;
-bool gAssisting = false;      // the goal's weight is up (logged on each change)
+bool gAssisting = false;      // the goal's weight is up (logged on each change, with hysteresis)
 double gLastTickMs = 0.0;
+
+// Aiming down the sight (research/21 section 15; vr::ads, Overlord's corridor, dwell and hysteresis): measured on the gun
+// without the assist's move, each tick a sight is drawn. A scope with [Sights] ads = 1 shows its picture (and hides its
+// lens part) only under ADS; the continuous approach weight drives the sideways move and the pull for every sight.
+namespace ads = vr::ads;
+ads::Policy gAdsPolicy;
+ads::Sample gAdsSample;
+bool gAdsGate = false;        // this tick's sight is a scope whose picture waits for ADS
+bool gAds = false;            // ADS is on (a scope's only: gAdsGate)
+float gApproach = 0.0f;       // ads::Approach this tick
+float gDistanceWeight = 0.0f; // ads::DistanceWeight this tick
+float gPullLimit = 0.0f;      // this tick's pull limit (meters)
+bool gFastSpring = false;     // the spring's ADS profile this tick
+double gAdsSinceMs = 0.0;
+int gAdsOnsHeartbeat = 0;
+int gAdsTicksHeartbeat = 0;
+double gAdsEyeSumHeartbeat = 0.0;  // the aiming eye's distance to the pulled eyepiece while ADS was on
+constexpr float kAdsReachHysteresisM = 0.10f;  // [Sights] adsReachM to come on, this much further to go off
+constexpr float kAssistOnWeight = 0.10f;       // the alignment assist's log line: on from this weight...
+constexpr float kAssistOffWeight = 0.02f;      // ...off below this
 // Heartbeat and snapshot: where the aiming eye sat against the unassisted sight line while the gun was
 // raised (a systematic offset means the sight's place on the gun is off), and the biggest shift.
 double gOffsetSumX = 0.0;
@@ -129,10 +150,8 @@ double gOffsetSumAngle = 0.0;
 int gOffsetTicks = 0;
 float gMaxShift = 0.0f;
 
-constexpr float kRaisedWeight = 0.05f;  // the assist counts as on from this weight
-
-// The scope's pull to the eye (research/21 section 14): this tick's (zero for a dot, or with the pull off), the near
-// plane it was floored on, and per raise how far it pulled.
+// The pull to the eye (research/21 sections 14-15): this tick's (relief and limit; zero with the pull off), the near
+// plane it was floored on, and per raise (or ADS) how far it pulled.
 sv::Pull gPull;
 float gNearUnits = kDefaultNearUnits;
 bool gNearRead = false;        // the near plane came from the game (else the default)
@@ -404,7 +423,74 @@ float Length3(XrVector3f a) {
     return std::sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
 }
 
+// Why a sample is outside the ADS exit corridor (and our reach): the ADS off line.
+std::string OutsideText(ads::Sample const& s, float reachExit) {
+    if (!s.valid) {
+        return "no measurement";
+    }
+    ads::Corridor const& c = ads::kExit;
+    std::string out;
+    auto const add = [&](std::string const& text) { out += (out.empty() ? "" : ", ") + text; };
+    float const farLimit = c.farDepth + ads::FarExtension(std::max(s.sightToMuzzle, 0.0f));
+    if (s.depth < c.nearDepth) {
+        add(std::format("the eye {:.2f} m behind the muzzle (under {:.2f})", s.depth, c.nearDepth));
+    }
+    if (s.depth > farLimit) {
+        add(std::format("the eye {:.2f} m behind the muzzle (past {:.2f})", s.depth, farLimit));
+    }
+    if (s.lateral > c.lateral) {
+        add(std::format("{:.1f} cm beside the bore (past {:.0f})", s.lateral * 100.0f, c.lateral * 100.0f));
+    }
+    if (s.height < c.below) {
+        add(std::format("{:.1f} cm below the bore (past {:.0f})", -s.height * 100.0f, -c.below * 100.0f));
+    }
+    if (s.height > c.above) {
+        add(std::format("{:.1f} cm above the bore (past {:.0f})", s.height * 100.0f, c.above * 100.0f));
+    }
+    if (s.facingDeg > c.facingDeg) {
+        add(std::format("the head {:.0f} degrees off the barrel (past {:.0f})", s.facingDeg, c.facingDeg));
+    }
+    if (reachExit > 0.0f && s.eyeToSight > reachExit) {
+        add(std::format("the eye {:.2f} m from the sight (past {:.2f})", s.eyeToSight, reachExit));
+    }
+    return out.empty() ? std::string("back inside") : out;
+}
+
+std::string SampleText(ads::Sample const& s) {
+    return std::format("the centre eye {:.2f} m behind the muzzle, {:.1f} cm beside the bore, {:.1f} cm {} it, the head {:.1f} "
+                       "degrees off the barrel, {:.2f} m from the sight",
+        s.depth, s.lateral * 100.0f, std::abs(s.height) * 100.0f, s.height >= 0.0f ? "above" : "below", s.facingDeg, s.eyeToSight);
+}
+
+float ReachExit(sv::Settings const& settings) {
+    return settings.adsReachM > 0.0f ? settings.adsReachM + kAdsReachHysteresisM : 0.0f;
+}
+
+// How far this sight may slide toward the eye (research/21 section 15, Overlord's per-optic distances): a red dot none, a
+// holo 5 cm, a low-power scope (under 3x) 10 cm and other scopes scopePullMaxM (15 cm), all no further than the relief;
+// a scope under ADS scopeAdsPullMaxM (35 cm). scopePullMaxM = 0: no scope pulls.
+float PullLimit(sv::Settings const& settings, sv::Sight const& sight, bool adsOn) {
+    if (!settings.assist.enabled) {
+        return 0.0f;
+    }
+    switch (static_cast<sv::Kind>(sight.kind)) {
+    case sv::Kind::Holo: return ads::PullDistance(ads::Optic::Holographic);
+    case sv::Kind::Scope: {
+        if (!(settings.scopePullMaxM > 0.0f) || !(settings.scopeReliefM > 0.0f)) {
+            return 0.0f;
+        }
+        float const before = sight.zoom < 3.0f ? std::min(ads::PullDistance(ads::Optic::LowPower), settings.scopePullMaxM)
+                                               : settings.scopePullMaxM;
+        return adsOn ? std::max(before, settings.scopeAdsPullMaxM) : before;
+    }
+    default: return 0.0f;
+    }
+}
+
 void ResetAssist(char const* why) {
+    if (gAds) {
+        log::Info("sights: ADS off ({}): the scope's picture goes; the scope was pulled at most {:.1f} cm", why, gRaisePullMax * 100.0f);
+    }
     if (gAssisting) {
         log::Info("sights: alignment assist off ({})", why);
     }
@@ -414,15 +500,21 @@ void ResetAssist(char const* why) {
     gGoal = {};
     gAssistEye = -1;
     gAssisting = false;
+    gAdsPolicy.Reset();
+    gAdsSample = {};
+    gAdsGate = false;
+    gAds = false;
+    gApproach = gDistanceWeight = gPullLimit = 0.0f;
+    gFastSpring = false;
 }
 
-// The assist's step for this tick's sight (as drawn: it carries gTakenPrev).
-void StepAssist(sv::Settings const& settings, sv::Sight const& drawn, double nowMs) {
+// The assist's step for this tick's sight (as drawn: it carries gTakenPrev), and the ADS latch.
+void StepAssist(sv::Settings const& settings, sv::Sight const& drawn, vr::aim_ray::Ray const& ray, double nowMs) {
     double const dt = gLastTickMs > 0.0 ? std::clamp((nowMs - gLastTickMs) / 1000.0, 0.0, 0.15) : 0.0;
     gLastTickMs = nowMs;
     auto const frame = view_anchor::Current();
-    if (!settings.assist.enabled || drawn.kind == static_cast<std::int32_t>(sv::Kind::None) || !frame) {
-        ResetAssist(!settings.assist.enabled ? "[Sights] assist = 0" : "no sight");
+    if (drawn.kind == static_cast<std::int32_t>(sv::Kind::None) || !frame) {
+        ResetAssist("no sight");
         return;
     }
     XrPosef const& head = frame->head;
@@ -433,22 +525,68 @@ void StepAssist(sv::Settings const& settings, sv::Sight const& drawn, double now
     constexpr float kHalfIpd = 0.032f;
     XrVector3f const eyes[2] = {{head.position.x - right.x * kHalfIpd, head.position.y - right.y * kHalfIpd, head.position.z - right.z * kHalfIpd},
         {head.position.x + right.x * kHalfIpd, head.position.y + right.y * kHalfIpd, head.position.z + right.z * kHalfIpd}};
-    // The sight without the shift already in the drawn gun, so the assist never chases itself.
+    // The sight and the muzzle without the shift already in the drawn gun, so neither the assist nor ADS chases itself.
     XrVector3f const center = Sub3(drawn.center, gTakenPrev);
+    XrVector3f const muzzle = Sub3(ray.origin, gTakenPrev);
     bool const scope = drawn.kind == static_cast<std::int32_t>(sv::Kind::Scope);
-    gGoal = sv::AssistTarget(settings.assist, center, drawn.axis, drawn.up, eyes, forward, gAssistEye, scope ? gPull : sv::Pull{});
+    // ADS (Overlord's corridor on the centre eye, its dwell and hysteresis, and our reach to the sight).
+    gAdsSample = ads::Measure(head.position, forward, muzzle, center, ray.direction, drawn.up);
+    bool const wasAds = gAds;
+    gAdsGate = scope && settings.ads;
+    if (gAdsGate) {
+        ads::Reach const reach{settings.adsReachM, ReachExit(settings)};
+        gAds = gAdsPolicy.Update(ads::Inside(gAdsSample, gAdsPolicy.Active(), reach), static_cast<float>(dt));
+    } else {
+        gAdsPolicy.Reset();
+        gAds = false;
+    }
+    // The continuous weight: how raised the gun is (Overlord's approach), times how near the sight is to the eye.
+    gApproach = ads::Approach(gAdsSample);
+    gDistanceWeight = ads::DistanceWeight(gAdsSample.eyeToSight, gAds);
+    float const weight = settings.assist.enabled ? gApproach * gDistanceWeight : 0.0f;
+    gPullLimit = gPull.reliefM > 0.0f ? PullLimit(settings, drawn, gAds) : 0.0f;
+    gPull.maxM = gPullLimit;
+    sv::Assist assist = settings.assist;
+    if (!scope) {
+        assist.maxShiftM = std::min(assist.maxShiftM, assist.dotMaxShiftM);  // a dot's or holo's sideways move is gentle
+    }
+    gGoal = sv::AssistTarget(assist, center, drawn.axis, drawn.up, eyes, weight, gAssistEye, gPull);
     gAssistEye = gGoal.eye;
-    XrVector3f const shift = gSpring.Update(gGoal.shift, static_cast<float>(dt));
+    // The spring: Overlord's ADS transition, its faster (thermal) profile while ADS pulls further and while a pull past the
+    // ordinary limit eases back.
+    auto const along = [&](XrVector3f const& v) { return std::max(0.0f, -(v.x * drawn.axis.x + v.y * drawn.axis.y + v.z * drawn.axis.z)); };
+    float const ordinary = gPull.reliefM > 0.0f ? PullLimit(settings, drawn, false) : 0.0f;
+    gFastSpring = gAds || along(gSpring.Value()) > ordinary + 0.01f;
+    ads::SpringProfile const profile = gFastSpring ? ads::kFastSpring : ads::kNormalSpring;
+    XrVector3f shift{};
+    if (settings.assist.enabled) {
+        shift = gSpring.Update(gGoal.shift, static_cast<float>(dt), profile.frequency, profile.maxSpeed);
+    } else {
+        gSpring.Reset();
+    }
     gMaxShift = std::max(gMaxShift, Length3(shift));
     // How much of the spring's move is the pull (back along the line toward the eye), and where that leaves the eye.
-    float const pulled = scope ? std::max(0.0f, -(shift.x * drawn.axis.x + shift.y * drawn.axis.y + shift.z * drawn.axis.z)) : 0.0f;
-    bool const on = gGoal.weight >= kRaisedWeight;
-    if (on) {
-        gOffsetSumX += gGoal.x;
-        gOffsetSumY += gGoal.y;
-        gOffsetSumAngle += gGoal.angleDeg;
-        ++gOffsetTicks;
-        if (scope && gPull.maxM > 0.0f) {
+    float const pulled = along(shift);
+    bool const on = gAssisting ? gGoal.weight >= kAssistOffWeight : gGoal.weight >= kAssistOnWeight;
+    if (gAds && !wasAds) {
+        gRaisePullMax = 0.0f;
+        gRaiseAlongBefore = gRaiseAlongAfter = gGoal.along;
+        gAdsSinceMs = nowMs;
+        ++gAdsOnsHeartbeat;
+        log::Info("sights: ADS on ({}; inside the entry corridor for {:.0f} ms): the scope's picture shows and the scope may be pulled "
+                  "{:.2f} m toward the eye, to {:.2f} m in front of it ({:.2f} m wanted now, the {} eye {:.2f} m behind the eyepiece); "
+                  "approach weight {:.2f}",
+            SampleText(gAdsSample), ads::kDwellS * 1000.0f, gPullLimit, gPull.reliefM,
+            std::clamp(gGoal.along - gPull.reliefM, 0.0f, gPullLimit), gGoal.eye == 0 ? "left" : "right", gGoal.along, gApproach);
+    }
+    if (on || gAds) {
+        if (on) {
+            gOffsetSumX += gGoal.x;
+            gOffsetSumY += gGoal.y;
+            gOffsetSumAngle += gGoal.angleDeg;
+            ++gOffsetTicks;
+        }
+        if (gPullLimit > 0.0f) {
             gPullSumHeartbeat += pulled;
             ++gPullTicksHeartbeat;
             if (pulled >= gRaisePullMax) {
@@ -458,28 +596,37 @@ void StepAssist(sv::Settings const& settings, sv::Sight const& drawn, double now
             }
         }
     }
+    if (gAds) {
+        ++gAdsTicksHeartbeat;
+        gAdsEyeSumHeartbeat += gGoal.along - pulled;
+    }
+    if (!gAds && wasAds) {
+        log::Info("sights: ADS off ({}; outside the exit corridor for {:.0f} ms) after {:.1f} s: the scope's picture goes and the scope "
+                  "eases back; pulled at most {:.1f} cm: the eye {:.2f} m behind the eyepiece before, {:.2f} m after (relief {:.2f} m{})",
+            OutsideText(gAdsSample, ReachExit(settings)), ads::kDwellS * 1000.0f, (nowMs - gAdsSinceMs) / 1000.0, gRaisePullMax * 100.0f,
+            gRaiseAlongBefore, gRaiseAlongAfter, gPull.reliefM,
+            gRaiseAlongBefore - gPull.reliefM > PullLimit(settings, drawn, true) + 0.005f ? ": the pull's limit was reached" : "");
+    }
     if (on != gAssisting) {
         gAssisting = on;
         if (on) {
-            gRaisePullMax = 0.0f;
-            gRaiseAlongBefore = gRaiseAlongAfter = gGoal.along;
+            if (!gAds) {
+                gRaisePullMax = 0.0f;
+                gRaiseAlongBefore = gRaiseAlongAfter = gGoal.along;
+            }
             log::Info("sights: alignment assist on: the {} eye {:.1f} cm {} and {:.1f} cm {} the sight line ({:.1f} degrees, the sight "
-                      "{:.2f} m ahead): the gun slides {:.1f} cm toward it ({:.0f}% weight){}",
+                      "{:.2f} m ahead): the gun slides {:.1f} cm toward it ({:.0f}% weight: approach {:.2f}, distance {:.2f}){}",
                 gGoal.eye == 0 ? "left" : "right", std::abs(gGoal.x) * 100.0f, gGoal.x >= 0.0f ? "right of" : "left of",
                 std::abs(gGoal.y) * 100.0f, gGoal.y >= 0.0f ? "above" : "below", gGoal.angleDeg, gGoal.along,
-                Length3(gGoal.shift) * 100.0f, gGoal.weight * 100.0f,
-                scope && gPull.maxM > 0.0f
-                    ? std::format("; the scope is pulled {:.1f} cm back along its line, to {:.2f} m in front of the eye (relief {:.2f} m, at "
-                                  "most {:.2f} m)", gGoal.pull * 100.0f, gGoal.along - gGoal.pull, gPull.reliefM, gPull.maxM)
-                    : std::string());
+                Length3(gGoal.shift) * 100.0f, gGoal.weight * 100.0f, gApproach, gDistanceWeight,
+                gPullLimit > 0.0f ? std::format("; pulled {:.1f} cm back along its line (at most {:.2f} m, to {:.2f} m in front of the eye)",
+                                        gGoal.pull * 100.0f, gPullLimit, gPull.reliefM)
+                                  : std::string());
         } else {
-            log::Info("sights: alignment assist off (the gun lowered or turned away: the eye {} degrees off the line, the sight {:.2f} m "
-                      "ahead); the gun eases back{}",
-                gGoal.eye >= 0 ? std::format("{:.1f}", gGoal.angleDeg) : std::string("-"), gGoal.along,
-                scope && gPull.maxM > 0.0f
-                    ? std::format("; the scope was pulled at most {:.1f} cm: the eye {:.2f} m behind the eyepiece before, {:.2f} m after "
-                                  "(relief {:.2f} m{})", gRaisePullMax * 100.0f, gRaiseAlongBefore, gRaiseAlongAfter, gPull.reliefM,
-                          gRaiseAlongBefore - gPull.reliefM > gPull.maxM + 0.005f ? ": the pull's limit was reached" : "")
+            log::Info("sights: alignment assist off (the gun lowered or turned away: {}); the gun eases back{}", SampleText(gAdsSample),
+                gPullLimit > 0.0f || gRaisePullMax > 0.0f
+                    ? std::format("; pulled at most {:.1f} cm: the eye {:.2f} m behind the sight before, {:.2f} m after", gRaisePullMax * 100.0f,
+                          gRaiseAlongBefore, gRaiseAlongAfter)
                     : std::string());
         }
     }
@@ -606,28 +753,42 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
                 out.scopeFieldDeg = settings.scopeFieldDeg;
                 out.scopeEyeBox = settings.scopeEyeBoxM;
                 out.scopeMaxM = settings.scopeMaxM;
-                // The pull to the eye (research/21 section 14): the eyepiece comes to the relief in front of the aiming
-                // eye, and the picture is the model's eyepiece seen from there (the host's virtual eyepiece with the field
-                // the eyepiece subtends at the relief: exactly the eyepiece once pulled, that angle wherever the eye is).
+                // Aiming down the sight gates a scope's picture (research/21 section 15): the mod publishes the scope only
+                // under ADS, whose reach ends at adsReachM + 0.10 m, so the host's own range (scopeMaxM) is set past that and
+                // never cuts the picture under ADS.
+                if (scope && settings.ads) {
+                    float const reach = ReachExit(settings);
+                    out.scopeMaxM = reach > 0.0f ? reach + 0.10f : std::max(settings.scopeMaxM, 1.2f);
+                }
+                // The pull to the eye (research/21 sections 14-15): the sight comes to the relief in front of the aiming eye
+                // (scopes, and a holo by 5 cm), and a scope's picture is the model's eyepiece seen from there (the host's
+                // virtual eyepiece with the field the eyepiece subtends at the relief: exactly the eyepiece once pulled).
+                // How far it may slide this tick (ADS or not) is StepAssist's (PullLimit).
                 gPull = {};
-                bool const pullOn = scope && settings.assist.enabled && settings.scopePullMaxM > 0.0f && settings.scopeReliefM > 0.0f;
+                bool const scopePull = scope && settings.scopePullMaxM > 0.0f && settings.scopeReliefM > 0.0f;
+                bool const pullOn = settings.assist.enabled && (scopePull || gun.kind == sv::Kind::Holo);
                 if (pullOn) {
                     gNearUnits = NearUnits();
                     gPull.reliefM = sv::ReliefFor(settings.scopeReliefM, gNearUnits, unitsPerMeter);
-                    gPull.maxM = settings.scopePullMaxM;
-                    if (settings.scopeFieldDeg > 0.0f) {
+                    if (scope && settings.scopeFieldDeg > 0.0f) {
                         out.scopeFieldDeg = sv::PulledFieldDeg(out.radius, gPull.reliefM);
                     }
-                    std::string const key = std::format("{:.1f} {} {:.1f} {:.3f} {:.2f} {} {:.2f}", gNearUnits, gNearRead, unitsPerMeter,
-                        gPull.reliefM, gPull.maxM, type, lensUnits);
+                    float const ordinary = PullLimit(settings, out, false);
+                    float const underAds = scope && settings.ads ? PullLimit(settings, out, true) : ordinary;
+                    std::string const key = std::format("{:.1f} {} {:.1f} {:.3f} {:.2f} {:.2f} {} {:.2f} {}", gNearUnits, gNearRead, unitsPerMeter,
+                        gPull.reliefM, ordinary, underAds, type, lensUnits, static_cast<int>(gun.kind));
                     if (key != gLoggedRelief) {
                         gLoggedRelief = key;
-                        log::Info("sights: the camera's near plane is {:.1f} units ({}; {:.3f} m at {:.1f} units per meter): a scope is pulled "
-                                  "to {:.3f} m in front of the eye ([Sights] scopeReliefM {:.2f}, at least the near plane + 2 cm), at most "
-                                  "{:.2f} m; the {}'s eyepiece ({:.1f} units, {:.1f} cm across) then looks {:.1f} degrees across",
+                        log::Info("sights: the camera's near plane is {:.1f} units ({}; {:.3f} m at {:.1f} units per meter): the {}'s {} is "
+                                  "pulled to {:.3f} m in front of the eye ([Sights] scopeReliefM {:.2f}, at least the near plane + 2 cm; "
+                                  "Overlord's 8 cm would cut the tube), at most {:.2f} m{}{}",
                             gNearUnits, gNearRead ? "LocalPlayer.NearClipPlane" : "UE3's default: the field wasn't read",
-                            gNearUnits / unitsPerMeter, unitsPerMeter, gPull.reliefM, settings.scopeReliefM, gPull.maxM, sv::WeaponName(type),
-                            lensUnits, 2.0f * out.radius * 100.0f, sv::PulledFieldDeg(out.radius, gPull.reliefM));
+                            gNearUnits / unitsPerMeter, unitsPerMeter, sv::WeaponName(type), scope ? "scope" : "holo", gPull.reliefM,
+                            settings.scopeReliefM, ordinary,
+                            underAds != ordinary ? std::format(", {:.2f} m while aiming down it (ADS)", underAds) : std::string(),
+                            scope ? std::format("; its eyepiece ({:.1f} units, {:.1f} cm across) then looks {:.1f} degrees across", lensUnits,
+                                        2.0f * out.radius * 100.0f, sv::PulledFieldDeg(out.radius, gPull.reliefM))
+                                  : std::string());
                     }
                 }
                 // The same sight in the world, for the shots (research/21 section 10): the line traced this tick.
@@ -652,7 +813,7 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
                 // (MeasureModel's "sits on its bone") and the heartbeat, not here.
                 status = std::format("the {} has a {} sight{}: {} ({}; the gun is "
                                      "{:.1f} units from muzzle to grip), {} {:.1f} units ({:.3f} m at {:.1f} units per meter), eye box "
-                                     "{:.1f} units{}; shots {}",
+                                     "{:.1f} units{}{}; shots {}",
                     sv::WeaponName(type), sv::Name(gun.kind), scope ? std::format(" ({:.1f}x)", gun.zoom) : std::string(),
                     gModel.live && gun.autoPlace ? std::format("on the model's '{}' bone", gModel.boneName)
                                                  : std::format("{:.1f} units behind the muzzle, {:.1f} above the bore{}", placed.back,
@@ -666,10 +827,13 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
                     scope && out.scopeFieldDeg > 0.0f
                         ? std::format("; virtual eyepiece: the picture {:.1f} degrees across{} with the eye up to {:.2f} m behind it, eye box "
                                       "{:.3f} m", out.scopeFieldDeg,
-                              gPull.maxM > 0.0f ? std::format(" (the eyepiece seen from {:.3f} m: pulled there, at most {:.2f} m)",
-                                                      gPull.reliefM, gPull.maxM)
-                                                : std::string(),
-                              settings.scopeMaxM, settings.scopeEyeBoxM)
+                              gPull.reliefM > 0.0f ? std::format(" (the eyepiece seen from {:.3f} m, where it's pulled)", gPull.reliefM)
+                                                   : std::string(),
+                              out.scopeMaxM, settings.scopeEyeBoxM)
+                        : std::string(),
+                    scope && settings.ads
+                        ? std::format("; the picture only while aiming down it (ADS: the centre eye within {:.2f} m of the eyepiece and in "
+                                      "Overlord's corridor for {:.0f} ms)", settings.adsReachM, ads::kDwellS * 1000.0f)
                         : std::string(),
                     settings.converge ? "converge on what the sight line hits" : "parallel to the sight line ([Sights] converge = 0)");
             }
@@ -694,8 +858,14 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
     gLastWeapon = weapon::Key();
     double const nowMs =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
-    StepAssist(settings, out, nowMs);
-    return out;
+    StepAssist(settings, out, ray, nowMs);
+    // A scope waiting for ADS isn't published: the host draws no picture (the model's own lens shows, the ring reticle
+    // stays), and game/scope_capture doesn't render. The shots, the assist and the model keep the sight as placed.
+    sv::Sight published = out;
+    if (gAdsGate && !gAds) {
+        published.kind = static_cast<std::int32_t>(sv::Kind::None);
+    }
+    return published;
 }
 
 std::optional<ik::Vec3> SightInHand(weapon::Grip const& grip, ik::Vec3 const& upInHand) {
@@ -757,8 +927,10 @@ XrVector3f TakeGunShift() {
 
 void SetHostView(std::uint32_t view) {
     gHostView = view;
+    // Under ADS only, when the picture waits for it (research/21 section 15): the lens part hides and aimed fire applies
+    // only while the picture the host drew is the one ADS asked for.
     gScopeUp = (view & sv::kViewScope) != 0 && gLast.kind == static_cast<std::int32_t>(sv::Kind::Scope) &&
-        gLastWeapon != 0 && gLastWeapon == weapon::Key();
+        gLastWeapon != 0 && gLastWeapon == weapon::Key() && (!gAdsGate || gAds);
     if (view != gLoggedHostView) {
         gLoggedHostView = view;
         log::Info("sights: {}", ViewText(view));
@@ -774,6 +946,23 @@ void SetHostView(std::uint32_t view) {
     scope_parts::Update(gScopeUp, gHideList, ownModel ? gModel.bone : std::nullopt, type);
 }
 
+namespace {
+
+std::string AdsJson() {
+    namespace json = vr::test_request;
+    ads::Sample const& s = gAdsSample;
+    return std::format("{{\"gate\": {}, \"active\": {}, \"entering\": {}, \"leaving\": {}, \"heldS\": {}, \"valid\": {}, \"depthM\": {}, "
+                       "\"lateralM\": {}, \"heightM\": {}, \"facingDeg\": {}, \"eyeToSightM\": {}, \"sightToMuzzleM\": {}, "
+                       "\"approach\": {}, \"distanceWeight\": {}, \"weight\": {}, \"pullLimitM\": {}, \"fastSpring\": {}}}",
+        gAdsGate ? "true" : "false", gAds ? "true" : "false", gAdsPolicy.Entering() ? "true" : "false",
+        gAdsPolicy.Leaving() ? "true" : "false", json::JsonNumber(gAdsPolicy.Held()), s.valid ? "true" : "false", json::JsonNumber(s.depth),
+        json::JsonNumber(s.lateral), json::JsonNumber(s.height), json::JsonNumber(s.facingDeg), json::JsonNumber(s.eyeToSight),
+        json::JsonNumber(s.sightToMuzzle), json::JsonNumber(gApproach), json::JsonNumber(gDistanceWeight),
+        json::JsonNumber(gApproach * gDistanceWeight), json::JsonNumber(gPullLimit), gFastSpring ? "true" : "false");
+}
+
+} // namespace
+
 std::string StatusJson() {
     namespace json = vr::test_request;
     XrVector3f const shift = gSpring.Value();
@@ -784,7 +973,8 @@ std::string StatusJson() {
                        "\"converge\": {{\"on\": {}, \"traced\": {}, \"hit\": {}, \"distanceM\": {}, \"what\": {}}}, \"assist\": {{\"on\": {}, "
                        "\"eye\": {}, \"angleDeg\": {}, \"along\": {}, \"offset\": [{}, {}], \"weight\": {}, \"goal\": [{}, {}, {}], "
                        "\"shift\": [{}, {}, {}], \"pull\": {{\"reliefM\": {}, \"maxM\": {}, \"goalM\": {}, \"nearUnits\": {}, "
-                       "\"nearFromGame\": {}, \"raisePulledM\": {}, \"raiseEyeBeforeM\": {}, \"raiseEyeAfterM\": {}}}}}, \"parts\": {}}}",
+                       "\"nearFromGame\": {}, \"raisePulledM\": {}, \"raiseEyeBeforeM\": {}, \"raiseEyeAfterM\": {}}}}}, \"ads\": {}, "
+                       "\"parts\": {}}}",
         json::JsonString(sv::Name(static_cast<sv::Kind>(gLast.kind))), json::JsonString(sv::WeaponName(gLast.weapon)),
         json::JsonString(gStatus), gHostView, gScopeUp ? "true" : "false", gAimedShotsTotal, json::JsonNumber(gLast.center.x),
         json::JsonNumber(gLast.center.y), json::JsonNumber(gLast.center.z), json::JsonNumber(gLast.axis.x),
@@ -798,7 +988,8 @@ std::string StatusJson() {
         json::JsonNumber(gGoal.weight), json::JsonNumber(gGoal.shift.x), json::JsonNumber(gGoal.shift.y), json::JsonNumber(gGoal.shift.z),
         json::JsonNumber(shift.x), json::JsonNumber(shift.y), json::JsonNumber(shift.z), json::JsonNumber(gPull.reliefM),
         json::JsonNumber(gPull.maxM), json::JsonNumber(gGoal.pull), json::JsonNumber(gNearUnits), gNearRead ? "true" : "false",
-        json::JsonNumber(gRaisePullMax), json::JsonNumber(gRaiseAlongBefore), json::JsonNumber(gRaiseAlongAfter), scope_parts::StatusJson());
+        json::JsonNumber(gRaisePullMax), json::JsonNumber(gRaiseAlongBefore), json::JsonNumber(gRaiseAlongAfter), AdsJson(),
+        scope_parts::StatusJson());
 }
 
 void LogStats() {
@@ -813,8 +1004,14 @@ void LogStats() {
                 std::abs(gOffsetSumY / gOffsetTicks) * 100.0, gOffsetSumY >= 0.0 ? "above" : "below", gOffsetSumAngle / gOffsetTicks,
                 gMaxShift * 100.0f);
             if (gPullTicksHeartbeat > 0) {
-                assist += std::format(", the scope pulled {:.1f} cm toward the eye on average", gPullSumHeartbeat / gPullTicksHeartbeat * 100.0f);
+                assist += std::format(", the sight pulled {:.1f} cm toward the eye on average", gPullSumHeartbeat / gPullTicksHeartbeat * 100.0f);
             }
+        }
+        if (gAdsGate || gAdsTicksHeartbeat > 0) {
+            assist += gAdsTicksHeartbeat > 0
+                ? std::format("; ADS {} times, on {} ticks: the aiming eye {:.2f} m behind the pulled eyepiece on average", gAdsOnsHeartbeat,
+                      gAdsTicksHeartbeat, gAdsEyeSumHeartbeat / gAdsTicksHeartbeat)
+                : std::string("; no ADS");
         }
         log::Info("    sights: {}; placed {:.1f} back, {:.1f} up, {:.1f} right; {}; scoped aimed fire on {} of {} aim-error queries; {}",
             gStatus, gPlaced.back, gPlaced.height, gPlaced.side, ViewText(gHostView), aimed, queries, assist);
@@ -824,6 +1021,9 @@ void LogStats() {
     gMaxShift = 0.0f;
     gPullSumHeartbeat = 0.0f;
     gPullTicksHeartbeat = 0;
+    gAdsOnsHeartbeat = 0;
+    gAdsTicksHeartbeat = 0;
+    gAdsEyeSumHeartbeat = 0.0;
 }
 
 void Shutdown(bool exiting) {
@@ -863,6 +1063,16 @@ void Shutdown(bool exiting) {
     gOffsetSumX = gOffsetSumY = gOffsetSumAngle = 0.0;
     gOffsetTicks = 0;
     gMaxShift = 0.0f;
+    gAdsPolicy.Reset();
+    gAdsSample = {};
+    gAdsGate = false;
+    gAds = false;
+    gApproach = gDistanceWeight = gPullLimit = 0.0f;
+    gFastSpring = false;
+    gAdsSinceMs = 0.0;
+    gAdsOnsHeartbeat = 0;
+    gAdsTicksHeartbeat = 0;
+    gAdsEyeSumHeartbeat = 0.0;
 }
 
 } // namespace mevr::game::sights

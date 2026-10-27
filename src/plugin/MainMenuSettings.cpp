@@ -312,7 +312,7 @@ void Settings::Read(menu::Values& v) {
     v.numbers["hud_size"] = std::round(c.hudPanelWidthM / 1.3f * 100.0f);
     flag("reticle", c.handReticle);
     v.texts["sight_pistol"] = ms::SightKind(ini.Text("Sights", "pistol", "dot"), "dot");
-    v.texts["sight_rifle"] = ms::SightKind(ini.Text("Sights", "assaultRifle", "scope 1.5"), "scope");
+    v.texts["sight_rifle"] = ms::SightKind(ini.Text("Sights", "assaultRifle", "dot"), "dot");
     v.texts["sight_sniper"] = ms::SightKind(ini.Text("Sights", "sniperRifle", "scope 4"), "scope");
     flag("sight_assist", ini.Num("Sights", "assist", 1.0f) != 0.0f);
     flag("sight_converge", ini.Num("Sights", "converge", 1.0f) != 0.0f);
@@ -489,11 +489,11 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     } else if (key == "sight_pistol") {
         Put("Sights", "pistol", ms::SightValue(v.Text(key), ""), true);
     } else if (key == "sight_rifle") {
-        // A scope is the assault rifle's own (its model has one: research/21 section 14), 1.5x unless it had another
-        // zoom; the shotgun has none and keeps its sight. Any other chip sets both.
+        // A red dot by default (research/21 section 15). A scope is the assault rifle's own (its model has one: section 14),
+        // 1.5x unless it had another zoom; the shotgun has none and keeps its sight. Any other chip sets both.
         std::wstring const& path = MELEVR::MevrBridge::SettingsPath();
         wchar_t previous[64]{};
-        GetPrivateProfileStringW(L"Sights", L"assaultRifle", L"scope 1.5", previous, 64, path.c_str());
+        GetPrivateProfileStringW(L"Sights", L"assaultRifle", L"dot", previous, 64, path.c_str());
         if (v.Text(key) != "scope") {
             Put("Sights", "shotgun", ms::SightValue(v.Text(key), ""), true);
         }

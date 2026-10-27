@@ -187,6 +187,18 @@ std::optional<Gun> ParseGun(std::string_view text, Gun const& defaults) {
     return gun;
 }
 
+std::optional<std::string> MigrateAssaultRifle(std::string_view value) {
+    std::vector<std::string> const tokens = Tokens(value);
+    if (tokens.size() != 2 || Lower(tokens[0]) != "scope") {
+        return std::nullopt;
+    }
+    auto const zoom = Number(tokens[1]);
+    if (!zoom || std::abs(*zoom - 1.5f) > 1e-4f) {
+        return std::nullopt;
+    }
+    return std::string("dot");
+}
+
 bool ParsePlace(std::string_view text, Gun& gun) {
     std::vector<std::string> const tokens = Tokens(text);
     if (tokens.size() == 1 && Lower(tokens[0]) == "auto") {
@@ -484,15 +496,14 @@ float Smooth(float t) {
 }
 
 AssistGoal AssistTarget(Assist const& s, XrVector3f const& center, XrVector3f const& axisIn, XrVector3f const& upIn,
-    XrVector3f const eyes[2], XrVector3f const& headForward, int currentEye, Pull const& pull) {
+    XrVector3f const eyes[2], float weightIn, int currentEye, Pull const& pull) {
     constexpr float kDeg = 3.14159265358979f / 180.0f;
     constexpr float kMinAlong = 0.02f;     // the eye at the sight itself: no line to speak of
-    constexpr float kRangeFade = 0.15f;    // the distance weight fades over this, ending at rangeM
-    constexpr float kHeadFade = 20.0f;     // the head weight fades over this many degrees, ending at headDeg
+    constexpr float kMaxAlong = 1.5f;      // an eye further back than this isn't aiming through it
     constexpr float kEyeSwitchDeg = 1.5f;  // the other eye takes over only when this much nearer the line
     AssistGoal goal;
     auto const axis = Unit(axisIn);
-    if (!s.enabled || !axis || !Finite(center) || !Finite(eyes[0]) || !Finite(eyes[1]) || !(s.coneDeg > 0.0f)) {
+    if (!s.enabled || !axis || !Finite(center) || !Finite(eyes[0]) || !Finite(eyes[1])) {
         return goal;
     }
     XrVector3f up = Sub(upIn, Scale(*axis, Dot(upIn, *axis)));
@@ -503,7 +514,7 @@ AssistGoal AssistTarget(Assist const& s, XrVector3f const& center, XrVector3f co
     bool usable[2] = {false, false};
     for (int e = 0; e < 2; ++e) {
         lines[e] = EyeLine(eyes[e], center, *axis, up);
-        usable[e] = std::isfinite(lines[e].along) && lines[e].along >= kMinAlong && lines[e].along <= s.rangeM;
+        usable[e] = std::isfinite(lines[e].along) && lines[e].along >= kMinAlong && lines[e].along <= kMaxAlong;
         if (usable[e]) {
             angles[e] = std::atan2(lines[e].lateral, lines[e].along) / kDeg;
         }
@@ -518,14 +529,7 @@ AssistGoal AssistTarget(Assist const& s, XrVector3f const& center, XrVector3f co
         angles[eye] > angles[currentEye] - kEyeSwitchDeg) {
         eye = currentEye;  // hysteresis: the other eye must be clearly nearer the line
     }
-    if (eye < 0 || angles[eye] >= s.coneDeg) {
-        goal.eye = eye;
-        if (eye >= 0) {
-            goal.angleDeg = angles[eye];
-            goal.along = lines[eye].along;
-            goal.x = lines[eye].x;
-            goal.y = lines[eye].y;
-        }
+    if (eye < 0) {
         return goal;
     }
     Line const& line = lines[eye];
@@ -534,16 +538,11 @@ AssistGoal AssistTarget(Assist const& s, XrVector3f const& center, XrVector3f co
     goal.along = line.along;
     goal.x = line.x;
     goal.y = line.y;
-    // Full inside half the cone, none at its edge; full up to 0.15 m short of the range; full with the
-    // head within 20 degrees of looking along the sight, none past headDeg.
-    float const cone = Smooth((s.coneDeg - angles[eye]) / (0.5f * s.coneDeg));
-    float const range = Smooth((s.rangeM - line.along) / kRangeFade);
-    float head = 1.0f;
-    if (auto const forward = Unit(headForward)) {
-        float const off = std::acos(std::clamp(Dot(*forward, *axis), -1.0f, 1.0f)) / kDeg;
-        head = Smooth((s.headDeg - off) / kHeadFade);
+    float const weight = std::isfinite(weightIn) ? std::clamp(weightIn, 0.0f, 1.0f) : 0.0f;
+    goal.weight = std::clamp(s.strength, 0.0f, 1.0f) * weight;
+    if (!(goal.weight > 0.0f)) {
+        return goal;
     }
-    goal.weight = std::clamp(s.strength, 0.0f, 1.0f) * cone * range * head;
     // The eye's offset from the line, in the sight's right and up: moving the gun by it puts the line
     // through the eye.
     XrVector3f const right = Cross(*axis, up);
@@ -552,7 +551,7 @@ AssistGoal AssistTarget(Assist const& s, XrVector3f const& center, XrVector3f co
     if (length > s.maxShiftM && length > 0.0f) {
         shift = Scale(shift, std::max(s.maxShiftM, 0.0f) / length);
     }
-    // A scope's pull: back along the line toward the eye, until the sight is the relief ahead of it (never away).
+    // The pull: back along the line toward the eye, until the sight is the relief ahead of it (never away).
     if (pull.reliefM > 0.0f && pull.maxM > 0.0f && std::isfinite(pull.reliefM) && std::isfinite(pull.maxM)) {
         float const want = std::clamp(line.along - pull.reliefM, 0.0f, pull.maxM);
         goal.pull = want * goal.weight;

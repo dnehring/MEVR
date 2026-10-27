@@ -13,7 +13,9 @@
 //   scope-<case>.png                    the scope's picture over grey (its alpha as coverage)
 //   eye-right-<case>.png                the right eye with the picture drawn in where the eyepiece is
 //   eye-right-pulled-*.png              pulled to the eye (research/21 section 14): the model's eyepiece (a glowing blue
-//                                       lens in a dark tube, alone in *-model.png) with the picture drawn on it
+//                                       lens in a dark tube, alone in *-model.png) with the picture drawn on it; since
+//                                       section 15 the picture shows only under ADS, so *-model.png is also what a
+//                                       scope looks like below ADS
 //   scope-capture-<case>.png            the scope's picture from a scope capture (research/39), and <case>-target.png
 //                                       the capture's own render target (traced from the eyepiece, 1024 px)
 //   dot.png, holo.png, frame.png        the reticles and the window ring over grey
@@ -420,6 +422,9 @@ int main(int argc, char** argv) {
     Pulled const pulledCases[] = {
         {"pulled-sniper-4x", kRelief, 0.020f, 0.028f, 4.0f, 0.0f},
         {"pulled-sniper-at-limit", 0.165f, 0.020f, 0.028f, 4.0f, 0.0f},  // 0.315 m held, pulled 0.15
+        // The 2026-10-27 session at section 14's 15 cm limit (the eye 0.16-0.20 m back); under ADS (section 15) the 35 cm
+        // pull brings the same hold to the relief: pulled-sniper-4x.
+        {"pulled-sniper-old-limit-18cm", 0.18f, 0.020f, 0.028f, 4.0f, 0.0f},
         {"pulled-rifle-1.5x", kRelief, 0.016f, 0.022f, 1.5f, 0.0f},
         {"unpulled-sniper-23cm", 0.235f, 0.020f, 0.028f, 4.0f, 22.0f},
     };

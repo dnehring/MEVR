@@ -61,25 +61,29 @@ inline Gun ScopeGun(float zoom, float lens, char const* hide) {
     gun.hide = hide;
     return gun;
 }
+// A red dot on a gun whose model has a scope's eyepiece of this radius (used when the player picks `scope` for it).
+inline Gun DotGun(float lens) {
+    Gun gun{Kind::Dot};
+    gun.lens = lens;
+    return gun;
+}
 
 // The alignment assist (research/21 section 8; Overlord's ADS eye-distance assistance adapted to the
-// sideways case): with the gun raised to the face and the aiming eye within `coneDeg` of the sight line,
-// the whole gun slides across the line so the line runs through that eye; it eases back as the gun is
-// lowered. Mod-side: the right hand's goal moves (game/arm_ik), so the muzzle, the shots and the sight
-// follow the gun as drawn.
+// sideways case): with the gun raised to the face, the whole gun slides across the sight line toward the aiming eye by
+// the eye's offset times a continuous weight (since 2026-10-27 Overlord's ADS approach weight, vr::ads::Approach times
+// vr::ads::DistanceWeight, research/21 section 15; before it a 10-degree cone around the line). Mod-side: the right
+// hand's goal moves (game/arm_ik), so the muzzle, the shots and the sight follow the gun as drawn.
 struct Assist {
     bool enabled = true;
-    float coneDeg = 10.0f;    // the aiming eye within this of the sight line, seen from the sight (full within half)
-    float strength = 1.0f;    // 0..1: how much of the way to the line
-    float maxShiftM = 0.10f;  // the gun moves at most this far (tracking meters)
-    float rangeM = 0.65f;     // the sight at most this far ahead of the eye (full up to 0.15 m less)
-    float headDeg = 35.0f;    // the sight line within this of the head's forward (full within 20 degrees less)
+    float strength = 1.0f;       // 0..1: how much of the way to the line
+    float maxShiftM = 0.10f;     // the gun moves sideways at most this far (tracking meters): scopes
+    float dotMaxShiftM = 0.03f;  // ...and red dots and holos (gentle: their eye box already forgives)
 };
 
-// The scope's pull to the eye (research/21 section 14; Overlord's ADS eye-distance assistance, which slides the gun
-// up to 15 cm toward the eye): for a scope, the assist also slides the gun back along the sight line so the model's
-// eyepiece comes to `reliefM` in front of the aiming eye, by at most `maxM`, never away from the eye. Weighted like
-// the sideways move (the same cone, range and head weights) and eased by the same spring. Zero: no pull.
+// The pull to the eye (research/21 sections 14-15; Overlord's ADS eye-distance assistance): the assist also slides the
+// gun back along the sight line so the sight comes to `reliefM` in front of the aiming eye, by at most `maxM` (per sight:
+// Overlord's 5 cm for a holo, 10 cm low power, 15 cm scopes; a scope under ADS further), never away from the eye.
+// Weighted like the sideways move and eased by the same spring. Zero: no pull.
 struct Pull {
     float reliefM = 0.0f;  // tracking meters: where the eyepiece should end up in front of the eye
     float maxM = 0.0f;     // tracking meters: the gun moves at most this far toward the eye
@@ -88,9 +92,10 @@ struct Pull {
 struct Settings {
     bool enabled = true;
     // Since 2026-10-23 the shotgun defaults to a red dot (a holo's ring is busy on a gun held at the cheek; the user
-    // asked for "something like a red dot"); since 2026-10-27 the assault rifle to a 1.5x scope on its model's scope
-    // (research/21 section 14). Eyepiece radii and the hidden lens bone are guesses from the bones [verify].
-    Gun guns[kWeaponTypes] = {{Kind::Dot}, {Kind::Dot}, ScopeGun(1.5f, 1.6f, ""), ScopeGun(4.0f, 2.0f, "Scope_Lens")};
+    // asked for "something like a red dot"). The assault rifle was a 1.5x scope on its model's scope for a day
+    // (research/21 section 14) and is a red dot again (section 15: the player wants a dot there); its eyepiece radius stays
+    // for `assaultRifle = scope 1.5`. Eyepiece radii and the hidden lens bone are guesses from the bones [verify].
+    Gun guns[kWeaponTypes] = {{Kind::Dot}, {Kind::Dot}, DotGun(1.6f), ScopeGun(4.0f, 2.0f, "Scope_Lens")};
     // Dot and holo sights.
     std::uint32_t dotColor = 0xFF3020;  // 0xRRGGBB
     float dotSizeDeg = 0.25f;           // the dot's diameter as seen
@@ -126,6 +131,13 @@ struct Settings {
     // eyepiece subtends from there, wherever the eye is). scopePullMaxM = 0: no pull, the virtual eyepiece as before.
     float scopeReliefM = 0.12f;
     float scopePullMaxM = 0.15f;
+    // Aiming down the sight (research/21 section 15, 2026-10-27; vr::ads, Overlord's corridor, dwell and hysteresis, plus
+    // `adsReachM`: the centre eye within this of the sight to come on, 0.10 m further to go off). A scope's picture shows,
+    // and its lens part hides, only under ADS; the pull may then reach `scopeAdsPullMaxM` with the faster spring. ads = 0:
+    // the picture whenever an eye is behind the eyepiece within scopeMaxM (section 13), the pull at scopePullMaxM.
+    bool ads = true;
+    float adsReachM = 0.40f;
+    float scopeAdsPullMaxM = 0.35f;
     // Both.
     bool replaceRing = true;            // hide the floating ring reticle while an eye looks through a sight
     bool aimedFire = true;              // the sniper rifle's shots get the game's aimed-fire accuracy while
@@ -155,6 +167,9 @@ float LensUnits(Settings const& settings, int weapon);
 float HousingToEyepiece(int weapon);
 // Whether a bone's name says it's a scope's eyepiece ("eye", "ocular" or "rear" beside a sight word: `Scope_Eye`).
 bool IsEyepieceName(std::string_view name);
+// The one-time move back of the assault rifle's sight (research/21 section 15): `assaultRifle = scope 1.5`, exactly what
+// section 14's migration wrote (case, spaces and "1.50" aside), becomes "dot"; anything else is the player's: nullopt.
+std::optional<std::string> MigrateAssaultRifle(std::string_view value);
 // "auto" or "back, height" or "back, height, side" (gun units).
 bool ParsePlace(std::string_view text, Gun& gun);
 // "ff3020", "#FF3020", or a name: red, green, amber, cyan, white.
@@ -281,8 +296,9 @@ int AimingEye(Line const lines[2], float box, float minAlong, float maxAlong, in
 float Smooth(float t);
 
 // What the assist wants this tick. `center` and `axis` are the sight as it would be WITHOUT the assist's
-// own shift (so the shift never feeds back into its goal); `eyes` the two eyes, `headForward` the head's
-// -Z (all tracking space). `currentEye` keeps the aiming eye unless the other is clearly better.
+// own shift (so the shift never feeds back into its goal); `eyes` the two eyes (tracking space). `weight` (0..1) is how
+// raised the gun is (vr::ads::Approach x vr::ads::DistanceWeight), times `settings.strength` here. `currentEye` keeps the
+// aiming eye unless the other is clearly better.
 struct AssistGoal {
     XrVector3f shift{};    // move the gun by this (tracking meters): the sight line then runs `weight` of the
                            // way toward the aiming eye
@@ -291,13 +307,14 @@ struct AssistGoal {
     float along = 0.0f;    // the sight ahead of that eye (meters)
     float x = 0.0f;        // the eye's offset from the line along the sight's right (meters)...
     float y = 0.0f;        // ...and its up (the gun's top)
-    float weight = 0.0f;   // 0..1: angle, distance and head alignment together, times the strength
-    float pull = 0.0f;     // of `shift`: how far the gun moves back along the line toward the eye (a scope's pull, meters)
+    float weight = 0.0f;   // 0..1: the given weight times the strength
+    float pull = 0.0f;     // of `shift`: how far the gun moves back along the line toward the eye (meters)
 };
-// `pull` (a scope only): the gun also slides back along the sight line toward the aiming eye, `pull.maxM` at most,
-// until the sight is `pull.reliefM` ahead of it, times the same weight (never forward, never past the relief).
+// `pull`: the gun also slides back along the sight line toward the aiming eye, `pull.maxM` at most, until the sight is
+// `pull.reliefM` ahead of it, times the same weight (never forward, never past the relief). The sideways move is capped
+// at `settings.maxShiftM` on its own.
 AssistGoal AssistTarget(Assist const& settings, XrVector3f const& center, XrVector3f const& axis, XrVector3f const& up,
-    XrVector3f const eyes[2], XrVector3f const& headForward, int currentEye, Pull const& pull = {});
+    XrVector3f const eyes[2], float weight, int currentEye, Pull const& pull = {});
 // The eye relief the pull aims for: `reliefM`, but at least the camera's near plane (`nearUnits` game units at
 // `unitsPerMeter`) plus `marginM`, so the eyepiece and the tube around it aren't cut by the near plane for either eye.
 float ReliefFor(float reliefM, float nearUnits, float unitsPerMeter, float marginM = 0.02f);

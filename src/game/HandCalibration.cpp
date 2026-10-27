@@ -316,7 +316,7 @@ constexpr char const* kSightsBlock =
     "enabled = 1\n"
     "pistol = dot\n"
     "shotgun = dot\n"
-    "assaultRifle = scope 1.5\n"
+    "assaultRifle = dot\n"
     "sniperRifle = scope 4\n"
     "; Where the sight sits on each gun: auto, or back, height[, side]: units behind the muzzle along the barrel, units\n"
     "; above the bore, units to the right (the log's `sights:` lines say what auto chose: a bone of the model named for a\n"
@@ -350,17 +350,24 @@ constexpr char const* kSightsBlock =
     "eyeReliefM = 0.12\n"
     "resolution = 768\n"
     "; The virtual eyepiece (you can't get your eye to a real scope's 8 cm): scopeFieldDeg: how wide the scope's picture\n"
-    "; looks (degrees) wherever your eye is behind the eyepiece, up to scopeMaxM meters (0 = the physical lens above);\n"
-    "; scopeEyeBoxM: your eye this far off the sight line shades half the picture.\n"
+    "; looks (degrees) wherever your eye is behind the eyepiece (0 = the physical lens above); scopeEyeBoxM: your eye this\n"
+    "; far off the sight line shades half the picture. scopeMaxM: with ads = 0 only, how far behind the eyepiece it shows.\n"
     "scopeFieldDeg = 22\n"
     "scopeEyeBoxM = 0.05\n"
     "scopeMaxM = 0.70\n"
-    "; The pull: raised to your eye, a scoped gun slides back along its line (at most scopePullMaxM meters) until the\n"
-    "; model's eyepiece is scopeReliefM in front of your eye (never inside the camera's near plane); the picture then\n"
-    "; sits on the model's eyepiece. scopePullMaxM = 0: no pull. <gun>Lens: the model's eyepiece radius (gun units).\n"
-    "; <gun>Hide: the model's bones hidden while the scope's picture is up (none: nothing).\n"
+    "; Aiming down the sight (ADS): ads = 1 shows a scope's picture only once you bring the gun up to your eye (your\n"
+    "; head behind the gun, looking along it, your eyes within adsReachM meters of the eyepiece, for a tenth of a second;\n"
+    "; it goes when you lower it). Below that you see the gun's own scope. ads = 0: the picture whenever an eye is behind\n"
+    "; the eyepiece (up to scopeMaxM). The pull: raised to your eye, a gun slides back along its line until its sight is\n"
+    "; scopeReliefM in front of your eye (never inside the camera's near plane): a holo 5 cm at most, a low-power scope\n"
+    "; (under 3x) 10 cm, other scopes scopePullMaxM, and a scope under ADS scopeAdsPullMaxM (faster); the picture then\n"
+    "; sits on the model's eyepiece. scopePullMaxM = 0: no scope pulls. <gun>Lens: the model's eyepiece radius (gun\n"
+    "; units). <gun>Hide: the model's bones hidden while the scope's picture is up (none: nothing).\n"
+    "ads = 1\n"
+    "adsReachM = 0.40\n"
     "scopeReliefM = 0.12\n"
     "scopePullMaxM = 0.15\n"
+    "scopeAdsPullMaxM = 0.35\n"
     "assaultRifleLens = 1.6\n"
     "sniperRifleLens = 2\n"
     "sniperRifleHide = Scope_Lens\n"
@@ -368,15 +375,14 @@ constexpr char const* kSightsBlock =
     "replaceRing = 1\n"
     "; aimedFire: 1 = looking through a scope gives the shots the game's aimed-fire accuracy (no scope camera).\n"
     "aimedFire = 1\n"
-    "; assist: 1 = with the gun raised to your face and your aiming eye within assistConeDeg of the sight line,\n"
-    "; the gun slides (at most assistMaxM meters) so the sight line runs through that eye; it lets go as you\n"
-    "; lower the gun. assistStrength: how much of the way (0..1). assistRangeM: how far the sight may be from\n"
-    "; the eye for it (meters).\n"
+    "; assist: 1 = as you raise the gun to your face and look along it, it slides so the sight line runs through your\n"
+    "; aiming eye, more the more it's raised (at most assistMaxM meters for a scope, assistDotMaxM for a red dot or holo),\n"
+    "; and lets go as you lower it; also the pull above. assistStrength: how much of the way (0..1).\n"
+    "; assistConeDeg and assistRangeM are no longer used (since 2026-10-27 the ADS approach decides how raised the gun is).\n"
     "assist = 1\n"
-    "assistConeDeg = 10\n"
     "assistStrength = 1\n"
     "assistMaxM = 0.10\n"
-    "assistRangeM = 0.65\n"
+    "assistDotMaxM = 0.03\n"
     "; scopeCapture: 1 = the scope shows a real zoomed render of the world (the engine's scene capture, only while your eye\n"
     "; is behind the scope; research/39) instead of the other eye's picture enlarged; 0 until its frame cost is measured.\n"
     "; scopeCaptureSize: its pixels across. scopeCaptureRate: renders a second at most (150: every frame, never twice in one).\n"
@@ -1086,6 +1092,11 @@ vr::sights::Settings ReadSights(Ini const& ini) {
     number("scopeMaxM", out.scopeMaxM, 0.20f, 1.50f);
     number("scopeReliefM", out.scopeReliefM, 0.0f, 0.50f);
     number("scopePullMaxM", out.scopePullMaxM, 0.0f, 0.30f);
+    number("scopeAdsPullMaxM", out.scopeAdsPullMaxM, 0.0f, 0.50f);
+    if (Number(ini, "Sights", "ads", value)) {
+        out.ads = value != 0.0;
+    }
+    number("adsReachM", out.adsReachM, 0.0f, 1.20f);  // 0: Overlord's corridor alone
     if (Number(ini, "Sights", "frame", value)) {
         out.frame = value != 0.0;
     }
@@ -1098,10 +1109,10 @@ vr::sights::Settings ReadSights(Ini const& ini) {
     if (Number(ini, "Sights", "assist", value)) {
         out.assist.enabled = value != 0.0;
     }
-    number("assistConeDeg", out.assist.coneDeg, 1.0f, 30.0f);
     number("assistStrength", out.assist.strength, 0.0f, 1.0f);
     number("assistMaxM", out.assist.maxShiftM, 0.0f, 0.25f);
-    number("assistRangeM", out.assist.rangeM, 0.15f, 1.5f);
+    number("assistDotMaxM", out.assist.dotMaxShiftM, 0.0f, 0.10f);
+    // assistConeDeg, assistRangeM: unused since 2026-10-27 (the ADS approach weight, research/21 section 15); left in files.
     if (Number(ini, "Sights", "resolution", value)) {
         out.resolution = static_cast<int>(std::clamp(value, 128.0, 2048.0));
     }
@@ -1147,22 +1158,26 @@ std::string Describe(vr::sights::Settings const& s) {
     return std::format("on: {}; dot #{:06X} {:.2f} deg, ring {:.2f} deg, window {:.1f} units{}, eye box {:.1f} units, zero {}, shots {}; "
                        "scope lens {:.1f} units, "
                        "{} reticle #{:06X}, {} eye's picture, focus {:.0f} m, eye relief {:.2f} m, {} px, {}; ring reticle {}, scoped "
-                       "aimed fire {}; alignment assist {}",
+                       "aimed fire {}; {}; alignment assist {}",
         guns, s.dotColor, s.dotSizeDeg, s.ringSizeDeg, s.windowUnits, s.frame ? " (framed)" : "", std::max(s.eyeBoxUnits, s.windowUnits),
         s.zeroM > 0.0f ? std::format("{:.0f} m", s.zeroM) : std::string("parallel"),
         s.converge ? "converge on what the sight line hits" : "parallel to the sight line", s.lensUnits, sv::Name(s.scopeReticle),
         s.scopeColor, s.otherEye ? "the other" : "the same", s.focusM, s.eyeReliefM, s.resolution,
-        s.scopeFieldDeg > 0.0f ? std::format("virtual eyepiece {:.0f} deg across to {:.2f} m, eye box {:.3f} m{}", s.scopeFieldDeg,
-                                     s.scopeMaxM, s.scopeEyeBoxM,
+        s.scopeFieldDeg > 0.0f ? std::format("virtual eyepiece {:.0f} deg across {}, eye box {:.3f} m{}", s.scopeFieldDeg,
+                                     s.ads ? std::string("under ADS") : std::format("to {:.2f} m", s.scopeMaxM), s.scopeEyeBoxM,
                                      s.scopePullMaxM > 0.0f && s.scopeReliefM > 0.0f
-                                         ? std::format(", pulled to {:.2f} m from the eye (at most {:.2f} m): the picture is the eyepiece "
-                                                       "seen from there", s.scopeReliefM, s.scopePullMaxM)
+                                         ? std::format(", pulled to {:.2f} m from the eye (at most {:.2f} m, {:.2f} m under ADS): the picture "
+                                                       "is the eyepiece seen from there", s.scopeReliefM, s.scopePullMaxM,
+                                               s.ads ? std::max(s.scopePullMaxM, s.scopeAdsPullMaxM) : s.scopePullMaxM)
                                          : std::string(", no pull"))
                                : std::string("the physical lens"),
         s.replaceRing ? "hidden while sighting" : "kept", s.aimedFire ? "on" : "off",
-        s.assist.enabled ? std::format("on (the aiming eye within {:.0f} degrees of the sight line, {:.0f}% of the way, at most {:.2f} m, "
-                                       "the sight within {:.2f} m of the eye)",
-                               s.assist.coneDeg, s.assist.strength * 100.0f, s.assist.maxShiftM, s.assist.rangeM)
+        s.ads ? std::format("a scope's picture only while aiming down it (ADS: Overlord's corridor, the eyes within {:.2f} m of the "
+                            "eyepiece, {:.2f} m to leave)", s.adsReachM, s.adsReachM > 0.0f ? s.adsReachM + 0.10f : 0.0f)
+              : std::string("a scope's picture whenever an eye is behind it (ads = 0)"),
+        s.assist.enabled ? std::format("on (as raised: Overlord's ADS approach weight; {:.0f}% of the way, at most {:.2f} m for a scope, "
+                                       "{:.2f} m for a dot or holo)",
+                               s.assist.strength * 100.0f, s.assist.maxShiftM, s.assist.dotMaxShiftM)
                          : std::string("off"));
 }
 
@@ -1560,19 +1575,24 @@ void Refresh() {
             stamp = fs::last_write_time(path, ec);
         }
     }
-    // [Sights] since 2026-10-27 (research/21 section 14): a file without scopeReliefM predates the assault rifle's scope;
-    // its old default (dot) becomes the new one (scope 1.5) once, any other choice is the player's and kept.
-    if (auto const s = ini.find("Sights"); s != ini.end() && s->second.find("scopeReliefM") == s->second.end()) {
+    // [Sights] since 2026-10-27 (research/21 section 15): the assault rifle is a red dot again. Section 14's one-day
+    // migration had turned its old default (dot) into `scope 1.5`; a file without the marker `ads` gets exactly that value
+    // back to dot once (vr::sights::MigrateAssaultRifle), any other choice is the player's and kept. (A file from before
+    // section 14 keeps its dot: that migration is gone.)
+    if (auto const s = ini.find("Sights"); s != ini.end() && s->second.find("ads") == s->second.end()) {
         auto const k = s->second.find("assaultRifle");
-        std::string value = k != s->second.end() ? k->second : std::string();
-        std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        if (value == "dot" && WritePrivateProfileStringW(L"Sights", L"assaultRifle", L"scope 1.5", path.wstring().c_str()) != 0) {
-            log::Info("hands: [Sights] assaultRifle dot (the old default) -> scope 1.5 (the new one: a low-power scope on the rifle's "
-                      "own scope) in {}", ini::Utf8(path));
-            ini = ReadIni(path);
-            stamp = fs::last_write_time(path, ec);
-        } else if (k != s->second.end()) {
-            log::Info("hands: [Sights] assaultRifle = {} kept (your choice; the new default is scope 1.5)", k->second);
+        if (k != s->second.end()) {
+            if (auto const back = vr::sights::MigrateAssaultRifle(k->second)) {
+                std::wstring const value(back->begin(), back->end());
+                if (WritePrivateProfileStringW(L"Sights", L"assaultRifle", value.c_str(), path.wstring().c_str()) != 0) {
+                    log::Info("hands: [Sights] assaultRifle {} (section 14's default) -> {} (a red dot again; research/21 section 15) in {}",
+                        k->second, *back, ini::Utf8(path));
+                    ini = ReadIni(path);
+                    stamp = fs::last_write_time(path, ec);
+                }
+            } else if (vr::sights::ParseGun(k->second, vr::sights::Gun{}).value_or(vr::sights::Gun{}).kind != vr::sights::Kind::Dot) {
+                log::Info("hands: [Sights] assaultRifle = {} kept (your choice; the default is dot)", k->second);
+            }
         }
     }
     // [Hands] reachNearFaceM, the [Sights] alignment assist, [Hands]' physical cover and crouch
@@ -1588,10 +1608,8 @@ void Refresh() {
         {L"Hands", "Hands", L"levelCamera", "levelCamera", L"1"},
         {L"Hands", "Hands", L"recoilHaptic", "recoilHaptic", L"0.5"},
         {L"Sights", "Sights", L"assist", "assist", L"1"},
-        {L"Sights", "Sights", L"assistConeDeg", "assistConeDeg", L"10"},
         {L"Sights", "Sights", L"assistStrength", "assistStrength", L"1"},
         {L"Sights", "Sights", L"assistMaxM", "assistMaxM", L"0.10"},
-        {L"Sights", "Sights", L"assistRangeM", "assistRangeM", L"0.65"},
         {L"Sights", "Sights", L"eyeBox", "eyeBox", L"6"},
         {L"Sights", "Sights", L"converge", "converge", L"1"},
         // The scope's virtual eyepiece (2026-10-25, research/21 section 13).
@@ -1602,6 +1620,12 @@ void Refresh() {
         // marker scopeReliefM comes after the assault rifle's migration above.
         {L"Sights", "Sights", L"scopeReliefM", "scopeReliefM", L"0.12"},
         {L"Sights", "Sights", L"scopePullMaxM", "scopePullMaxM", L"0.15"},
+        // Aiming down the sight (2026-10-27, research/21 section 15). The marker ads comes after the assault rifle's
+        // migration above.
+        {L"Sights", "Sights", L"ads", "ads", L"1"},
+        {L"Sights", "Sights", L"adsReachM", "adsReachM", L"0.40"},
+        {L"Sights", "Sights", L"scopeAdsPullMaxM", "scopeAdsPullMaxM", L"0.35"},
+        {L"Sights", "Sights", L"assistDotMaxM", "assistDotMaxM", L"0.03"},
         {L"Sights", "Sights", L"assaultRifleLens", "assaultRifleLens", L"1.6"},
         {L"Sights", "Sights", L"sniperRifleLens", "sniperRifleLens", L"2"},
         {L"Sights", "Sights", L"sniperRifleHide", "sniperRifleHide", L"Scope_Lens"},

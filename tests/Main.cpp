@@ -36,6 +36,7 @@
 #include "core/vr/PoseRecording.hpp"
 #include "core/vr/Recenter.hpp"
 #include "core/vr/ScopeCapture.hpp"
+#include "core/vr/Ads.hpp"
 #include "core/vr/Sights.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/FrameProbe.hpp"
@@ -5015,12 +5016,21 @@ void TestSightSettings() {
     CHECK(s::ParseGun("", none) == std::nullopt);
     gun = s::ParseGun("none", s::Gun{s::Kind::Dot});
     CHECK(gun && gun->kind == s::Kind::None);
-    // The assault rifle's low-power scope (research/21 section 14): decimals read, the defaults a 1.5x scope with its own
-    // eyepiece; the sniper's hides its glowing lens.
+    // The assault rifle's low-power scope (research/21 section 14): decimals read. Its default is a red dot again (section
+    // 15) that keeps the model's eyepiece radius for `scope 1.5`; the sniper's hides its glowing lens.
     gun = s::ParseGun("scope 1.5", s::Gun{s::Kind::Dot});
     CHECK(gun && gun->kind == s::Kind::Scope && gun->zoom == 1.5f);
     s::Settings const defaults;
-    CHECK(defaults.guns[2].kind == s::Kind::Scope && defaults.guns[2].zoom == 1.5f && defaults.guns[2].hide.empty());
+    CHECK(defaults.guns[2].kind == s::Kind::Dot && defaults.guns[2].lens == 1.6f && defaults.guns[2].hide.empty());
+    gun = s::ParseGun("scope 1.5", defaults.guns[2]);
+    CHECK(gun && gun->kind == s::Kind::Scope && gun->zoom == 1.5f && gun->lens == 1.6f);
+    CHECK(defaults.ads && defaults.adsReachM == 0.40f && defaults.scopeAdsPullMaxM == 0.35f && defaults.scopePullMaxM == 0.15f);
+    // The one-time move back (section 15): exactly section 14's `scope 1.5` becomes dot; anything else is the player's.
+    CHECK(s::MigrateAssaultRifle("scope 1.5") == std::optional<std::string>("dot"));
+    CHECK(s::MigrateAssaultRifle(" Scope  1.50 ") == std::optional<std::string>("dot"));
+    CHECK(!s::MigrateAssaultRifle("scope 2") && !s::MigrateAssaultRifle("scope") && !s::MigrateAssaultRifle("dot") &&
+          !s::MigrateAssaultRifle("holo") && !s::MigrateAssaultRifle("none") && !s::MigrateAssaultRifle("scope 1.5 x") &&
+          !s::MigrateAssaultRifle(""));
     CHECK(defaults.guns[3].kind == s::Kind::Scope && defaults.guns[3].zoom == 4.0f && defaults.guns[3].hide == "Scope_Lens");
     CHECK(s::LensUnits(defaults, 2) == 1.6f && s::LensUnits(defaults, 3) == 2.0f && s::LensUnits(defaults, 0) == defaults.lensUnits);
     gun = s::ParseGun("dot", defaults.guns[3]);  // a parsed kind keeps the gun's lens and hide list
@@ -5182,10 +5192,10 @@ void TestScopeMapping() {
 void TestSightShots() {
     namespace s = mevr::vr::sights;
     constexpr double kDeg = std::numbers::pi / 180.0;
-    // The defaults: a red dot on the pistol and the shotgun, scopes on the rifles (since 2026-10-27, section 14), an eye box
-    // twice the window.
+    // The defaults: a red dot on the pistol, the shotgun and the assault rifle (again since section 15), a scope on the
+    // sniper rifle, an eye box twice the window.
     s::Settings const defaults;
-    CHECK(defaults.guns[0].kind == s::Kind::Dot && defaults.guns[1].kind == s::Kind::Dot && defaults.guns[2].kind == s::Kind::Scope &&
+    CHECK(defaults.guns[0].kind == s::Kind::Dot && defaults.guns[1].kind == s::Kind::Dot && defaults.guns[2].kind == s::Kind::Dot &&
           defaults.guns[3].kind == s::Kind::Scope);
     CHECK(defaults.eyeBoxUnits > defaults.windowUnits && defaults.converge);
 
@@ -5781,70 +5791,75 @@ void TestSightAssist() {
     namespace s = mevr::vr::sights;
     CHECK(s::Smooth(-1.0f) == 0.0f && s::Smooth(0.0f) == 0.0f && s::Smooth(1.0f) == 1.0f && s::Smooth(2.0f) == 1.0f);
     CHECK(std::abs(s::Smooth(0.5f) - 0.5f) < 1e-6f && s::Smooth(0.2f) < s::Smooth(0.3f));
-    s::Assist settings;  // cone 10 degrees, full strength, 0.10 m at most, 0.65 m range
+    s::Assist settings;  // full strength, 0.10 m at most (a scope), 0.03 m for a dot
+    CHECK(settings.maxShiftM == 0.10f && settings.dotMaxShiftM == 0.03f);
     XrVector3f const eyes[2] = {{-0.032f, 0.0f, 0.0f}, {0.032f, 0.0f, 0.0f}};
     XrVector3f const ahead{0.0f, 0.0f, -1.0f};
     XrVector3f const up{0.0f, 1.0f, 0.0f};
-    // The sight 0.3 m ahead, its line 1 cm right of and 2 cm below the right eye (4.3 degrees): full weight,
-    // and the move puts the line through that eye.
+    // The sight 0.3 m ahead, its line 1 cm right of and 2 cm below the right eye, the gun fully raised (weight 1): the move
+    // puts the line through that eye.
     XrVector3f const center{0.042f, -0.02f, -0.3f};
-    s::AssistGoal goal = s::AssistTarget(settings, center, ahead, up, eyes, ahead, -1);
+    s::AssistGoal goal = s::AssistTarget(settings, center, ahead, up, eyes, 1.0f, -1);
     CHECK(goal.eye == 1 && std::abs(goal.weight - 1.0f) < 1e-5f);
     CHECK(NearX(goal.shift, {-0.01f, 0.02f, 0.0f}, 1e-5));
     CHECK(std::abs(goal.along - 0.3f) < 1e-5f && std::abs(goal.x + 0.01f) < 1e-5f && std::abs(goal.y - 0.02f) < 1e-5f);
     XrVector3f const moved{center.x + goal.shift.x, center.y + goal.shift.y, center.z + goal.shift.z};
     s::Line const through = s::EyeLine(eyes[1], moved, ahead, up);
     CHECK(through.lateral < 1e-5f);
-    // Strength scales it; the cap limits it.
+    // The weight is continuous (no cone to toggle around): half raised, half the way; strength scales it; the cap limits it.
+    CHECK(NearX(s::AssistTarget(settings, center, ahead, up, eyes, 0.5f, -1).shift, {-0.005f, 0.01f, 0.0f}, 1e-5));
+    float lastLength = 0.0f;
+    bool increasing = true;
+    for (int i = 0; i <= 20; ++i) {
+        s::AssistGoal const g = s::AssistTarget(settings, center, ahead, up, eyes, static_cast<float>(i) / 20.0f, -1);
+        float const length = std::sqrt(g.shift.x * g.shift.x + g.shift.y * g.shift.y);
+        increasing = increasing && length >= lastLength - 1e-7f && length - lastLength < 0.0012f;  // no jumps
+        lastLength = length;
+    }
+    CHECK(increasing);
     s::Assist half = settings;
     half.strength = 0.5f;
-    CHECK(NearX(s::AssistTarget(half, center, ahead, up, eyes, ahead, -1).shift, {-0.005f, 0.01f, 0.0f}, 1e-5));
+    CHECK(NearX(s::AssistTarget(half, center, ahead, up, eyes, 1.0f, -1).shift, {-0.005f, 0.01f, 0.0f}, 1e-5));
     s::Assist capped = settings;
     capped.maxShiftM = 0.01f;
-    goal = s::AssistTarget(capped, center, ahead, up, eyes, ahead, -1);
+    goal = s::AssistTarget(capped, center, ahead, up, eyes, 1.0f, -1);
     CHECK(std::abs(std::sqrt(goal.shift.x * goal.shift.x + goal.shift.y * goal.shift.y + goal.shift.z * goal.shift.z) - 0.01f) < 1e-5f);
-    // At 7.5 degrees (three quarters of the cone): half weight; past the cone: none, the eye still reported.
-    float const lateral75 = 0.3f * std::tan(7.5f * 3.14159265f / 180.0f);
-    goal = s::AssistTarget(settings, {0.032f + lateral75, 0.0f, -0.3f}, ahead, up, eyes, ahead, -1);
-    CHECK(goal.eye == 1 && std::abs(goal.weight - 0.5f) < 1e-3f);
-    float const lateral12 = 0.3f * std::tan(12.0f * 3.14159265f / 180.0f);
-    goal = s::AssistTarget(settings, {0.032f + lateral12, 0.0f, -0.3f}, ahead, up, eyes, ahead, -1);
+    // Not raised: no move, the eye still reported; bad weights are none.
+    goal = s::AssistTarget(settings, center, ahead, up, eyes, 0.0f, -1);
     CHECK(goal.eye == 1 && goal.weight == 0.0f && NearX(goal.shift, {0.0f, 0.0f, 0.0f}, 1e-9));
-    // The gun lowered or held out: the sight too far ahead (0.8 m, past 0.65): none; just past 0.5: still most.
-    CHECK(s::AssistTarget(settings, {0.042f, -0.02f, -0.8f}, ahead, up, eyes, ahead, -1).weight == 0.0f);
-    CHECK(s::AssistTarget(settings, {0.034f, 0.0f, -0.52f}, ahead, up, eyes, ahead, -1).weight > 0.9f);
-    // Looking elsewhere (the head turned 90 degrees): none.
-    CHECK(s::AssistTarget(settings, center, ahead, up, eyes, {1.0f, 0.0f, 0.0f}, -1).weight == 0.0f);
-    // The sight behind the eye: no aiming eye.
-    CHECK(s::AssistTarget(settings, {0.032f, 0.0f, 0.2f}, ahead, up, eyes, ahead, -1).eye == -1);
+    CHECK(s::AssistTarget(settings, center, ahead, up, eyes, std::nanf(""), -1).weight == 0.0f);
+    CHECK(std::abs(s::AssistTarget(settings, center, ahead, up, eyes, 3.0f, -1).weight - 1.0f) < 1e-6f);
+    // The sight behind the eye, or far out at arm's length and beyond: no aiming eye.
+    CHECK(s::AssistTarget(settings, {0.032f, 0.0f, 0.2f}, ahead, up, eyes, 1.0f, -1).eye == -1);
+    CHECK(s::AssistTarget(settings, {0.032f, 0.0f, -1.8f}, ahead, up, eyes, 1.0f, -1).eye == -1);
     // Which eye: the nearer the line; the current one kept unless the other is clearly (1.5 degrees) nearer.
     XrVector3f const between{0.002f, 0.0f, -0.3f};
-    CHECK(s::AssistTarget(settings, between, ahead, up, eyes, ahead, -1).eye == 1);
-    CHECK(s::AssistTarget(settings, between, ahead, up, eyes, ahead, 0).eye == 0);
-    CHECK(s::AssistTarget(settings, {0.032f, 0.0f, -0.3f}, ahead, up, eyes, ahead, 0).eye == 1);
+    CHECK(s::AssistTarget(settings, between, ahead, up, eyes, 1.0f, -1).eye == 1);
+    CHECK(s::AssistTarget(settings, between, ahead, up, eyes, 1.0f, 0).eye == 0);
+    CHECK(s::AssistTarget(settings, {0.032f, 0.0f, -0.3f}, ahead, up, eyes, 1.0f, 0).eye == 1);
     // Off: nothing.
     s::Assist off = settings;
     off.enabled = false;
-    goal = s::AssistTarget(off, center, ahead, up, eyes, ahead, -1);
+    goal = s::AssistTarget(off, center, ahead, up, eyes, 1.0f, -1);
     CHECK(goal.eye == -1 && goal.weight == 0.0f);
 
-    // A scope's pull (research/21 section 14): the eyepiece 0.235 m ahead of the right eye, on its line: the gun slides
+    // The pull (research/21 sections 14-15): the eyepiece 0.235 m ahead of the right eye, on its line: the gun slides
     // 0.115 m back along the line, so the eyepiece ends 0.12 m in front of the eye; nothing sideways.
     s::Pull const pull{0.12f, 0.15f};
-    goal = s::AssistTarget(settings, {0.032f, 0.0f, -0.235f}, ahead, up, eyes, ahead, -1, pull);
+    goal = s::AssistTarget(settings, {0.032f, 0.0f, -0.235f}, ahead, up, eyes, 1.0f, -1, pull);
     CHECK(goal.eye == 1 && std::abs(goal.weight - 1.0f) < 1e-5f && std::abs(goal.pull - 0.115f) < 1e-5f);
     CHECK(NearX(goal.shift, {0.0f, 0.0f, 0.115f}, 1e-5));
     // With the sideways offset too: both, the pull along the line, the sideways move capped on its own.
-    goal = s::AssistTarget(settings, {0.042f, -0.02f, -0.3f}, ahead, up, eyes, ahead, -1, pull);
+    goal = s::AssistTarget(settings, {0.042f, -0.02f, -0.3f}, ahead, up, eyes, 1.0f, -1, pull);
     CHECK(NearX(goal.shift, {-0.01f, 0.02f, 0.15f}, 1e-5) && std::abs(goal.pull - 0.15f) < 1e-5f);  // 0.18 wanted: capped at 0.15
     // Never away from the eye: an eyepiece already nearer than the relief stays.
-    goal = s::AssistTarget(settings, {0.032f, 0.0f, -0.08f}, ahead, up, eyes, ahead, -1, pull);
+    goal = s::AssistTarget(settings, {0.032f, 0.0f, -0.08f}, ahead, up, eyes, 1.0f, -1, pull);
     CHECK(goal.pull == 0.0f && NearX(goal.shift, {0.0f, 0.0f, 0.0f}, 1e-6));
-    // Weighted like the sideways move: at three quarters of the cone, half the pull.
-    goal = s::AssistTarget(settings, {0.032f + lateral75, 0.0f, -0.3f}, ahead, up, eyes, ahead, -1, pull);
-    CHECK(std::abs(goal.weight - 0.5f) < 1e-3f && std::abs(goal.pull - 0.5f * 0.15f) < 1e-3f);
-    // No pull asked (a dot sight): none.
-    CHECK(s::AssistTarget(settings, {0.032f, 0.0f, -0.235f}, ahead, up, eyes, ahead, -1).pull == 0.0f);
+    // Weighted like the sideways move: half raised, half the pull.
+    goal = s::AssistTarget(settings, {0.032f, 0.0f, -0.3f}, ahead, up, eyes, 0.5f, -1, pull);
+    CHECK(std::abs(goal.pull - 0.5f * 0.15f) < 1e-5f);
+    // No pull asked (a red dot): none.
+    CHECK(s::AssistTarget(settings, {0.032f, 0.0f, -0.235f}, ahead, up, eyes, 1.0f, -1).pull == 0.0f);
     // The relief: at least the near plane (10 units at 100 per meter: 0.10 m) plus 2 cm; at 50 units per meter 0.22 m.
     CHECK(std::abs(s::ReliefFor(0.12f, 10.0f, 100.0f) - 0.12f) < 1e-6f && std::abs(s::ReliefFor(0.08f, 10.0f, 100.0f) - 0.12f) < 1e-6f);
     CHECK(std::abs(s::ReliefFor(0.12f, 10.0f, 50.0f) - 0.22f) < 1e-6f && s::ReliefFor(0.12f, 0.0f, 100.0f) == 0.12f);
@@ -5874,6 +5889,190 @@ void TestSightAssist() {
     CHECK(value.x <= 0.25f * 0.15f + 1e-6f);
     value = spring.Update({std::nanf(""), 0.0f, 0.0f}, 0.011f);
     CHECK(value.x == 0.0f && spring.Value().x == 0.0f);
+    // The ADS profile (Overlord's thermal transition: 24/s, at most 0.9 m/s): 0.35 m in well under a second, never faster.
+    spring.Reset();
+    bool tooFast = false;
+    float previous = 0.0f;
+    int ticks = 0;
+    for (; ticks < 200 && std::abs(spring.Value().x - 0.35f) > 0.002f; ++ticks) {
+        value = spring.Update({0.35f, 0.0f, 0.0f}, 0.011f, mevr::vr::ads::kFastSpring.frequency, mevr::vr::ads::kFastSpring.maxSpeed);
+        tooFast = tooFast || value.x - previous > 0.9f * 0.011f + 1e-6f || value.x > 0.35f + 1e-6f;
+        previous = value.x;
+    }
+    CHECK(!tooFast && ticks * 0.011f < 0.75f);
+}
+
+// The pull reaching the relief (research/21 section 15): the session's hold, the eyepiece 0.47 m ahead of the aiming eye
+// on its line, with the assist measured on the gun without its own move each tick (as game/sights does). With section 14's
+// 15 cm the eye stayed 0.32 m behind the eyepiece; with ADS's 35 cm and the fast spring it reaches the 0.12 m relief.
+void TestSightPullReachesRelief() {
+    namespace s = mevr::vr::sights;
+    namespace ads = mevr::vr::ads;
+    XrVector3f const eyes[2] = {{-0.032f, 0.0f, 0.0f}, {0.032f, 0.0f, 0.0f}};
+    XrVector3f const ahead{0.0f, 0.0f, -1.0f};
+    XrVector3f const up{0.0f, 1.0f, 0.0f};
+    XrVector3f const unassisted{0.032f, 0.0f, -0.47f};
+    auto const run = [&](float maxM, ads::SpringProfile profile, float seconds) {
+        s::AssistSpring spring;
+        s::Pull const pull{0.12f, maxM};
+        for (float t = 0.0f; t < seconds; t += 0.011f) {
+            s::AssistGoal const goal = s::AssistTarget(s::Assist{}, unassisted, ahead, up, eyes, 1.0f, 1, pull);
+            spring.Update(goal.shift, 0.011f, profile.frequency, profile.maxSpeed);
+        }
+        XrVector3f const shift = spring.Value();
+        XrVector3f const drawn{unassisted.x + shift.x, unassisted.y + shift.y, unassisted.z + shift.z};
+        return s::EyeLine(eyes[1], drawn, ahead, up).along;
+    };
+    CHECK(std::abs(run(0.15f, ads::kNormalSpring, 3.0f) - 0.32f) < 0.002f);
+    CHECK(std::abs(run(0.35f, ads::kFastSpring, 0.6f) - 0.12f) < 0.003f);
+    // Further back than the cap reaches: the cap holds (0.60 m: 0.25 m from the eye).
+    s::AssistSpring spring;
+    for (int i = 0; i < 200; ++i) {
+        spring.Update(s::AssistTarget(s::Assist{}, {0.032f, 0.0f, -0.60f}, ahead, up, eyes, 1.0f, 1, s::Pull{0.12f, 0.35f}).shift, 0.011f,
+            ads::kFastSpring.frequency, ads::kFastSpring.maxSpeed);
+    }
+    CHECK(std::abs(spring.Value().z - 0.35f) < 0.002f);
+    // The picture at the relief is the model's eyepiece itself (section 14): 2 cm radius at 0.12 m, 18.9 degrees.
+    CHECK(std::abs(s::PulledFieldDeg(0.02f, 0.12f) - 18.92f) < 0.05f);
+    CHECK(std::abs(s::PictureRadius(0.02f, 0.12f, s::PulledFieldDeg(0.02f, 0.12f)) - 0.02f) < 1e-5f);
+}
+
+// Aiming down the sight (core/vr/Ads, Overlord's corridor, dwell and hysteresis; research/21 section 15).
+void TestAds() {
+    namespace ads = mevr::vr::ads;
+    XrVector3f const head{0.0f, 0.0f, 0.0f};
+    XrVector3f const forward{0.0f, 0.0f, -1.0f};
+    XrVector3f const barrel{0.0f, 0.0f, -1.0f};
+    XrVector3f const top{0.0f, 1.0f, 0.0f};
+    // A sniper rifle up to the eye: the muzzle 0.9 m ahead, 2 cm right of and 6 cm below the centre eye; the eyepiece 0.30 m
+    // ahead (0.6 m behind the muzzle).
+    XrVector3f const muzzle{0.02f, -0.06f, -0.9f};
+    XrVector3f const sight{0.02f, -0.01f, -0.3f};
+    ads::Sample sample = ads::Measure(head, forward, muzzle, sight, barrel, top);
+    CHECK(sample.valid && std::abs(sample.depth - 0.9f) < 1e-5f && std::abs(sample.lateral - 0.02f) < 1e-5f &&
+          std::abs(sample.height - 0.06f) < 1e-5f && sample.facingDeg < 0.05f && std::abs(sample.sightToMuzzle - 0.6f) < 1e-5f &&
+          std::abs(sample.sightDepth - 0.3f) < 1e-5f && std::abs(sample.eyeToSight - std::sqrt(0.02f * 0.02f + 0.01f * 0.01f + 0.09f)) < 1e-5f);
+    CHECK(ads::Inside(sample, false) && ads::Inside(sample, true) && std::abs(ads::Approach(sample) - 1.0f) < 1e-6f);
+    // Either side of the bore counts; a bad pose isn't a sample.
+    CHECK(std::abs(ads::Measure(head, forward, {-0.02f, -0.06f, -0.9f}, sight, barrel, top).lateral - 0.02f) < 1e-5f);
+    CHECK(!ads::Measure(head, forward, muzzle, sight, barrel, barrel).valid);
+    CHECK(!ads::Measure({std::nanf(""), 0.0f, 0.0f}, forward, muzzle, sight, barrel, top).valid);
+
+    // Each limit: outside the entry corridor, inside the exit one (the hysteresis), and outside both.
+    auto with = [&](auto change) {
+        ads::Sample v = sample;
+        change(v);
+        return v;
+    };
+    ads::Reach const none{0.0f, 0.0f};
+    auto const between = [&](ads::Sample const& v) { return !ads::Inside(v, false, none) && ads::Inside(v, true, none); };
+    auto const outside = [&](ads::Sample const& v) { return !ads::Inside(v, false, none) && !ads::Inside(v, true, none); };
+    CHECK(between(with([](ads::Sample& v) { v.facingDeg = 35.0f; })) && outside(with([](ads::Sample& v) { v.facingDeg = 41.0f; })));
+    CHECK(between(with([](ads::Sample& v) { v.lateral = 0.11f; })) && outside(with([](ads::Sample& v) { v.lateral = 0.14f; })));
+    CHECK(between(with([](ads::Sample& v) { v.height = -0.04f; })) && outside(with([](ads::Sample& v) { v.height = -0.07f; })));
+    CHECK(between(with([](ads::Sample& v) { v.height = 0.19f; })) && outside(with([](ads::Sample& v) { v.height = 0.23f; })));
+    CHECK(between(with([](ads::Sample& v) { v.depth = 0.12f; })) && outside(with([](ads::Sample& v) { v.depth = 0.09f; })));
+    // The far depth: 1.5 m (1.7 to leave), extended by however much the sight sits behind the muzzle past 0.9 m.
+    CHECK(ads::FarExtension(0.6f) == 0.0f && std::abs(ads::FarExtension(1.2f) - 0.3f) < 1e-6f);
+    CHECK(between(with([](ads::Sample& v) { v.depth = 1.6f; })) && outside(with([](ads::Sample& v) { v.depth = 1.75f; })));
+    CHECK(ads::Inside(with([](ads::Sample& v) { v.depth = 1.75f; v.sightToMuzzle = 1.2f; }), false, none));
+    // Our reach: the eyes within 0.40 m of the sight to come on, 0.50 m to stay (the corridor alone allowed arm's length).
+    auto const reachBetween = [&](float m) {
+        ads::Sample const v = with([&](ads::Sample& x) { x.eyeToSight = m; });
+        return !ads::Inside(v, false) && ads::Inside(v, true);
+    };
+    CHECK(ads::Inside(with([](ads::Sample& v) { v.eyeToSight = 0.39f; }), false) && reachBetween(0.45f) &&
+          !ads::Inside(with([](ads::Sample& v) { v.eyeToSight = 0.55f; }), true));
+    CHECK(!ads::Inside(ads::Sample{}, false) && !ads::Inside(ads::Sample{}, true));
+
+    // The approach weight: continuous. The angle full within 5 degrees, half at 25, none at 45; each corridor edge half
+    // way between the entry and the exit limit; the eye's distance (Overlord's 0.30 / 0.60 m, ADS's 0.50 / 0.70 m).
+    CHECK(std::abs(ads::Approach(with([](ads::Sample& v) { v.facingDeg = 5.0f; })) - 1.0f) < 1e-6f);
+    CHECK(std::abs(ads::Approach(with([](ads::Sample& v) { v.facingDeg = 25.0f; })) - 0.5f) < 1e-5f);
+    CHECK(ads::Approach(with([](ads::Sample& v) { v.facingDeg = 45.0f; })) == 0.0f);
+    CHECK(std::abs(ads::Approach(with([](ads::Sample& v) { v.lateral = 0.11f; })) - 0.5f) < 1e-4f);
+    CHECK(std::abs(ads::Approach(with([](ads::Sample& v) { v.height = 0.19f; })) - 0.5f) < 1e-4f);
+    CHECK(ads::Approach(with([](ads::Sample& v) { v.height = -0.07f; })) == 0.0f);  // a gun held at the hip, parallel
+    float previous = 1.0f;
+    bool smooth = true;
+    for (int step = 0; step <= 100; ++step) {
+        float const deg = 0.5f * static_cast<float>(step);
+        float const w = ads::Approach(with([&](ads::Sample& v) { v.facingDeg = deg; }));
+        smooth = smooth && w <= previous + 1e-7f && previous - w < 0.03f;  // the session's 8.5 <-> 9.1 degrees: no jump
+        previous = w;
+    }
+    CHECK(smooth);
+    CHECK(ads::DistanceWeight(0.30f, false) == 1.0f && std::abs(ads::DistanceWeight(0.45f, false) - 0.5f) < 1e-5f &&
+          ads::DistanceWeight(0.60f, false) == 0.0f);
+    CHECK(ads::DistanceWeight(0.50f, true) == 1.0f && std::abs(ads::DistanceWeight(0.60f, true) - 0.5f) < 1e-5f &&
+          ads::DistanceWeight(0.70f, true) == 0.0f && ads::DistanceWeight(-1.0f, false) == 0.0f);
+    // Overlord's per-optic pull and the clearance to the relief.
+    CHECK(ads::PullDistance(ads::Optic::Unchanged) == 0.0f && ads::PullDistance(ads::Optic::Holographic) == 0.05f &&
+          ads::PullDistance(ads::Optic::LowPower) == 0.10f && ads::PullDistance(ads::Optic::Scope) == 0.15f);
+    CHECK(std::abs(ads::Clearance(0.47f, 0.12f, 0.35f) - 0.35f) < 1e-6f && std::abs(ads::Clearance(0.30f, 0.12f, 0.35f) - 0.18f) < 1e-6f &&
+          ads::Clearance(0.10f, 0.12f, 0.35f) == 0.0f && ads::Clearance(0.3f, 0.12f, 0.0f) == 0.0f);
+
+    // The latch: 100 ms inside turns it on, 100 ms outside off; a change of mind within the dwell restarts it.
+    ads::Policy policy;
+    for (int i = 0; i < 9; ++i) {
+        CHECK(!policy.Update(true, 0.011f));
+    }
+    CHECK(policy.Entering() && !policy.Active());
+    policy.Update(false, 0.011f);
+    CHECK(!policy.Entering() && !policy.Active());
+    int on = -1;
+    for (int i = 0; i < 20 && on < 0; ++i) {
+        if (policy.Update(true, 0.011f)) {
+            on = i;
+        }
+    }
+    CHECK(on == 10);  // the first inside tick starts the clock; ten more of 11 ms reach 100 ms
+    // Out for a moment (under the dwell): it stays on.
+    for (int i = 0; i < 5; ++i) {
+        CHECK(policy.Update(false, 0.011f));
+    }
+    CHECK(policy.Leaving());
+    CHECK(policy.Update(true, 0.011f) && !policy.Leaving());
+    // Flicking every tick (the session's toggling around its threshold): never turns off once on, never on from off.
+    for (int i = 0; i < 100; ++i) {
+        CHECK(policy.Update(i % 2 == 0, 0.011f));
+    }
+    for (int i = 0; i < 11; ++i) {
+        policy.Update(false, 0.011f);
+    }
+    CHECK(!policy.Active());
+    for (int i = 0; i < 100; ++i) {
+        CHECK(!policy.Update(i % 2 == 0, 0.011f));
+    }
+    policy.Reset();
+    CHECK(!policy.Active() && !policy.Entering() && !policy.Leaving());
+
+    // The whole gate on the session's numbers (LE1MEVR.log 14:52-14:57): the eye 0.45-0.57 m behind the eyepiece at a
+    // casual hold never shows the picture; brought up to 0.33 m it comes on after 100 ms, and the pull's own move (0.33 m
+    // -> 0.12 m on the ASSISTED gun) can't turn it off because the gate is measured on the unassisted gun; lowered past
+    // 0.50 m it goes 100 ms later.
+    policy.Reset();
+    ads::Reach const reach{};
+    auto const tick = [&](float eyeToSight) {
+        ads::Sample const v = with([&](ads::Sample& x) { x.eyeToSight = eyeToSight; });
+        return policy.Update(ads::Inside(v, policy.Active(), reach), 0.011f);
+    };
+    bool casual = false;
+    for (int i = 0; i < 200; ++i) {
+        casual = casual || tick(0.45f + 0.12f * static_cast<float>(i % 13) / 12.0f);
+    }
+    CHECK(!casual);
+    for (int i = 0; i < 12; ++i) {
+        tick(0.33f);
+    }
+    CHECK(policy.Active());
+    for (int i = 0; i < 100; ++i) {
+        CHECK(tick(0.33f + 0.1f * static_cast<float>(i % 2)));  // 0.33 / 0.43: inside the exit reach
+    }
+    for (int i = 0; i < 11; ++i) {
+        tick(0.55f);
+    }
+    CHECK(!policy.Active());
 }
 
 // ---- The guided calibration (core/vr/Calibration, research/25) ---------------------------------------------
@@ -7237,6 +7436,8 @@ int main() {
     TestSupportZone();
     TestReachWeight();
     TestSightAssist();
+    TestSightPullReachesRelief();
+    TestAds();
     TestSightSettings();
     TestSightGeometry();
     TestScopeMapping();
