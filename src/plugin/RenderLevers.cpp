@@ -1327,8 +1327,23 @@ int gFramesWithoutEye = 0;
 std::atomic<std::uint64_t> gCaptureRenders{0};
 int gCaptureLogs = 0;
 
+// While the target is being learned, a capture that renders before the eye render would be learned as the eye (2026-10-27,
+// the review of the scope capture): so the eye is the LARGEST target seen, from the first frame: a render into a target
+// smaller than three quarters of it, either way, is a capture even before the learning settles, and a larger one restarts
+// the learning from itself.
+bool SmallerThanEye(RenderTargetInfo const& t) {
+    return gEyeTarget.target != nullptr && t.target != nullptr &&
+           (t.sizeX * 4 < gEyeTarget.sizeX * 3 || t.sizeY * 4 < gEyeTarget.sizeY * 3);
+}
+
 bool IsCaptureRender(RenderTargetInfo const& t) {
-    if (gEyeTargetStable < kEyeTargetStable || t.target == nullptr) {
+    if (t.target == nullptr) {
+        return false;
+    }
+    if (SmallerThanEye(t)) {
+        return true;
+    }
+    if (gEyeTargetStable < kEyeTargetStable) {
         return false;
     }
     if (t.target != gEyeTarget.target) {
