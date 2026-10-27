@@ -1617,6 +1617,9 @@ void CommandHook(void* commander, unsigned code) {
         *At<float*>(kUmbraResolveStartRva) -= 4.0f;
     }
     QueryPerformanceCounter(&end);
+    if (t_renderIndex < 0) {
+        return;   // a capture render (no eye index, 2026-10-27): its resolve is not an eye's, so no slot's stats
+    }
     int const slot = Slot(t_renderIndex);
     int const part = UmbraPart(code);
     auto const ticks = static_cast<std::uint64_t>(end.QuadPart - begin.QuadPart);
@@ -1635,6 +1638,9 @@ void CommandHook(void* commander, unsigned code) {
 std::atomic<std::uint64_t> gQueryReads[kSlots], gQueryReadsWait[kSlots], gQueryReadsFailed[kSlots];
 
 int GetQueryDataHook(void* rhi, void* query, void* out, unsigned size, int wait) {
+    if (t_renderIndex < 0) {
+        return gGetQueryDataOrig(rhi, query, out, size, wait);   // a capture render: the engine's own read, no slot's stats
+    }
     int const slot = Slot(t_renderIndex);
     gQueryReads[slot].fetch_add(1, std::memory_order_relaxed);
     if (wait != 0) {
