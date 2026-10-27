@@ -35,6 +35,7 @@
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/PoseRecording.hpp"
 #include "core/vr/Recenter.hpp"
+#include "core/vr/ScopeCapture.hpp"
 #include "core/vr/Sights.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/FrameProbe.hpp"
@@ -5295,6 +5296,125 @@ void TestSightVirtualEyepiece() {
     CHECK(nearer && NearD(picture.radius, 0.02, 1e-6));
 }
 
+// The scope's real zoomed render (research/39): the capture's field, its camera, the pose history, and the picture
+// sampling it through the same projection the eye copy uses.
+void TestScopeCapture() {
+    namespace c = mevr::vr::scope_capture;
+    namespace s = mevr::vr::sights;
+    constexpr double kDeg = 180.0 / 3.14159265358979;
+    // 22 degrees at 4x hold 5.5 degrees of the world (true magnification: tan(11) / 4); the margin widens the tangent.
+    double const world = 2.0 * std::atan(std::tan(11.0 / kDeg) / 4.0) * kDeg;
+    CHECK(NearD(c::FovDeg(22.0f, 4.0f, 0.0f), world, 1e-3));
+    CHECK(NearD(std::tan(c::FovDeg(22.0f, 4.0f, 0.25f) / 2.0 / kDeg), 1.25 * std::tan(world / 2.0 / kDeg), 1e-5));
+    CHECK(NearD(c::FovDeg(22.0f, 1.5f, 0.0f), 2.0 * std::atan(std::tan(11.0 / kDeg) / 1.5) * kDeg, 1e-3));
+    CHECK(c::FovDeg(22.0f, 0.5f, 0.0f) == c::FovDeg(22.0f, 1.0f, 0.0f));  // never wider than the unmagnified picture
+    CHECK(c::FovDeg(std::numeric_limits<float>::quiet_NaN(), 4.0f, 0.0f) == 10.0f);
+    CHECK(NearD(c::TanHalf(90.0f), 1.0, 1e-6));
+    CHECK(c::PictureDeg(22.0f, 0.02f) == 22.0f);
+    CHECK(NearD(c::PictureDeg(0.0f, 0.02f), 2.0 * std::atan(0.4) * kDeg, 1e-3));  // the physical lens seen from 5 cm
+    CHECK(c::NearPlaneUnits(59.0f, 20.0f) == 79.0f && c::NearPlaneUnits(-5.0f, 0.0f) == 10.0f);
+    // The camera looks along `forward` with its up toward `up`.
+    {
+        XrVector3f const forward{0.3f, -0.1f, -0.9f};
+        auto const q = c::CameraOrientation(forward, {0.0f, 1.0f, 0.0f});
+        CHECK(q.has_value());
+        if (q) {
+            XrVector3f const look = mevr::vr::overlay::Rotate(*q, {0.0f, 0.0f, -1.0f});
+            XrVector3f const up = mevr::vr::overlay::Rotate(*q, {0.0f, 1.0f, 0.0f});
+            float const n = std::sqrt(forward.x * forward.x + forward.y * forward.y + forward.z * forward.z);
+            CHECK(NearD(look.x, forward.x / n, 1e-5) && NearD(look.y, forward.y / n, 1e-5) && NearD(look.z, forward.z / n, 1e-5));
+            CHECK(up.y > 0.9f && NearD(up.x * look.x + up.y * look.y + up.z * look.z, 0.0, 1e-5));
+        }
+        CHECK(!c::CameraOrientation({0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}));
+        CHECK(!c::CameraOrientation({0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}));
+    }
+    // The publish history and which pose a Draw rendered.
+    {
+        c::Reset();
+        c::Capture first{};
+        first.state = c::kCapturing;
+        first.pose.position = {1.0f, 0.0f, 0.0f};
+        c::Publish(first);
+        std::uint64_t const s1 = c::LatestSequence();
+        c::NoteDrawArm(77);   // the Draw that latched arm 77 renders publish s1
+        c::NoteDrawArm(77);   // another view of the same Draw
+        c::Capture second = first;
+        second.pose.position = {2.0f, 0.0f, 0.0f};
+        c::Publish(second);
+        c::NoteDrawArm(78);
+        auto const forArm = c::SequenceForArm(77);
+        CHECK(forArm && *forArm == s1);
+        auto const rendered = forArm ? c::BySequence(*forArm) : std::nullopt;
+        CHECK(rendered && rendered->pose.position.x == 1.0f);
+        CHECK(c::SequenceForArm(78) && *c::SequenceForArm(78) == s1 + 1);
+        CHECK(!c::SequenceForArm(0) && !c::SequenceForArm(99));
+        CHECK(c::Latest().state == c::kCapturing && c::Latest().pose.position.x == 2.0f);
+        for (int i = 0; i < c::kHistory; ++i) {
+            c::Publish(second);
+        }
+        CHECK(!c::BySequence(s1));  // fell out of the history
+        c::Reset();
+        CHECK(c::Latest().state == c::kOff && !c::SequenceForArm(77));
+    }
+    // The D3D texture behind the resource: a fake object graph (resource -> RHI object -> texture).
+    {
+        std::uint64_t memory[64] = {};
+        auto const addr = [&](int i) { return reinterpret_cast<std::uint64_t>(&memory[i]); };
+        std::uint64_t const texture = addr(40);
+        memory[0] = 0x140001000ull;  // the resource's vtable (an image address: not a texture)
+        memory[3] = addr(20);        // resource +0x18: the RHI reference
+        memory[20] = 0x140002000ull;  // its vtable
+        memory[22] = texture;         // RHI object +0x10: the D3D texture
+        auto const read = [&](std::uint64_t a) -> std::optional<std::uint64_t> {
+            if (a < addr(0) || a >= addr(64)) {
+                return std::nullopt;
+            }
+            return *reinterpret_cast<std::uint64_t const*>(a);
+        };
+        auto const isTexture = [&](std::uint64_t p) { return p == texture; };
+        c::TexturePath const path = c::FindTexture(addr(0), read, isTexture);
+        CHECK(path.Valid() && path.first == 0x18 && path.second == 0x10 && path.texture == texture);
+        CHECK(c::FindTexture(addr(0), read, isTexture, path).texture == texture);  // through the hint
+        CHECK(!c::FindTexture(addr(0), read, [](std::uint64_t) { return false; }).Valid());
+        CHECK(!c::FindTexture(0, read, isTexture).Valid());
+        memory[5] = texture;  // a direct reference at +0x28: the first in address order (+0x18's) still wins
+        CHECK(c::FindTexture(addr(0), read, isTexture).first == 0x18);
+    }
+    // The picture samples the capture through the same projection as the eye copy: the sight line lands at the capture's
+    // centre, and the picture's edge (11 degrees seen, 4x) inside its frustum with the margin's room.
+    {
+        auto const lens = s::MakeLens({0.0f, 0.0f, -0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}, 0.02f);
+        CHECK(lens.has_value());
+        if (!lens) {
+            return;
+        }
+        s::Eyepiece const ep{22.0f, 0.05f, 0.70f};
+        XrVector3f const eye{0.0f, 0.0f, -0.2f};
+        s::Lens picture{};
+        auto const view = s::VirtualView(*lens, eye, ep, picture);
+        CHECK(view.has_value());
+        auto const orientation = c::CameraOrientation({0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f});
+        CHECK(orientation.has_value());
+        if (!view || !orientation) {
+            return;
+        }
+        float const fov = c::FovDeg(22.0f, 4.0f, 0.25f);
+        float const t = c::TanHalf(fov);
+        float const half = std::atan(t);
+        XrPosef const capture{*orientation, {0.0f, 0.0f, -0.5f}};
+        XrFovf const frustum{-half, half, half, -half};
+        float u = 0.0f;
+        float v = 0.0f;
+        XrVector3f const centre = s::FocusPoint(eye, s::LensDirection(picture, *view, 0.0f, 0.0f, 4.0f), lens->axis, 40.0f);
+        CHECK(s::Project(capture, frustum, centre, u, v) && NearD(u, 0.5, 1e-4) && NearD(v, 0.5, 1e-4));
+        XrVector3f const edge = s::FocusPoint(eye, s::LensDirection(picture, *view, 1.0f, 0.0f, 4.0f), lens->axis, 40.0f);
+        // (0.3 m of parallax between the eye and the capture at 40 m: under 1%.)
+        CHECK(s::Project(capture, frustum, edge, u, v) && NearD(u, 0.5 + 0.5 / 1.25, 5e-3) && NearD(v, 0.5, 1e-4));
+        XrVector3f const top = s::FocusPoint(eye, s::LensDirection(picture, *view, 0.0f, 1.0f, 4.0f), lens->axis, 40.0f);
+        CHECK(s::Project(capture, frustum, top, u, v) && v < 0.5f);  // the picture's top is the texture's top
+    }
+}
+
 // The level camera (core/vr/ViewLevel, research/24): rotator angles, the gate, the camera modes, the
 // last-minute window, the change log and the recoil pulse.
 void TestViewLevel() {
@@ -7120,6 +7240,7 @@ int main() {
     TestScopeMapping();
     TestSightShots();
     TestSightVirtualEyepiece();
+    TestScopeCapture();
     TestBoneNames();
     TestIk();
     TestRigid();

@@ -16,6 +16,7 @@
 #include "core/vr/FrameProbe.hpp"
 #include "core/vr/Haptics.hpp"
 #include "core/vr/HostView.hpp"
+#include "core/vr/ScopeCapture.hpp"
 #include "core/xr/Floor.hpp"
 #include "core/xr/Input.hpp"
 #include "game/GamepadMapping.hpp"
@@ -473,6 +474,10 @@ void OnViewBuilt(bool worldView, bool headLook, bool headAim, float const headOr
             view.lookYaw, view.lookPitch, headAim ? "on" : "off", offsetForwardUU, offsetRightUU, offsetUpUU,
             unitsPerMeter, headPosition[0], headPosition[1], headPosition[2]);
     }
+}
+
+void NoteDrawArm(std::uint64_t arm) noexcept {
+    mevr::vr::scope_capture::NoteDrawArm(arm);  // research/39: which capture pose this Draw renders
 }
 
 bool ControllerAimActive() noexcept {

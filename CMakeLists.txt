@@ -269,6 +269,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/Output.hpp
     src/core/vr/OverlayPlacement.cpp
     src/core/vr/OverlayPlacement.hpp
+    src/core/vr/ScopeCapture.cpp
+    src/core/vr/ScopeCapture.hpp
     src/core/vr/Sights.cpp
     src/core/vr/Sights.hpp
     src/core/vr/SquadMenu.cpp
@@ -353,6 +355,8 @@ set(MEVR_MOD_SOURCES
     src/game/Reflections.hpp
     src/game/ScopeParts.cpp
     src/game/ScopeParts.hpp
+    src/game/ScopeCapture.cpp
+    src/game/ScopeCapture.hpp
     src/game/Sights.cpp
     src/game/Sights.hpp
     src/game/SkeletonProbe.cpp
@@ -449,6 +453,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/PoseRecording.hpp
     src/core/vr/Recenter.cpp
     src/core/vr/Recenter.hpp
+    src/core/vr/ScopeCapture.cpp
+    src/core/vr/ScopeCapture.hpp
     src/core/vr/Sights.cpp
     src/core/vr/Sights.hpp
     src/core/vr/SquadMenu.cpp
@@ -494,6 +500,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/RenderLevers.hpp
     src/plugin/RecenterTilt.cpp
     src/plugin/RecenterTilt.hpp
+    src/plugin/ScopeCaptureSource.cpp
+    src/plugin/ScopeCaptureSource.hpp
     src/plugin/SightLayers.cpp
     src/plugin/SightLayers.hpp
     src/plugin/SightPictures.cpp
@@ -708,6 +716,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/OverlayPlacement.cpp
         src/core/vr/PoseRecording.cpp
         src/core/vr/Recenter.cpp
+        src/core/vr/ScopeCapture.cpp
         src/core/vr/Sights.cpp
         src/core/vr/SquadMenu.cpp
         src/core/vr/TestRequest.cpp
@@ -767,6 +776,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/ImageConvert.cpp
         src/core/vr/LayerComposite.cpp
         src/core/vr/OverlayPlacement.cpp
+        src/core/vr/ScopeCapture.cpp
         src/core/vr/Sights.cpp
         src/plugin/SightPictures.cpp
     )

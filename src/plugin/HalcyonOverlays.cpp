@@ -1482,6 +1482,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     sightFrame.onFoot = gLastGameMode == 0;
     sightFrame.eyesValid = frame.headValid;
     sightFrame.projectionValid = frame.projectionValid;
+    sightFrame.pairArm = frame.pairArm;  // the scope capture's pose for this pair (research/39)
     for (int e = 0; e < 2; ++e) {
         sightFrame.eyes[e].orientation = ToQuat(frame.eyeOrientation[e]);
         sightFrame.eyes[e].position = ToVec(frame.eyePosition[e]);

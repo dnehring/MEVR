@@ -2518,6 +2518,7 @@ void PostProcessPerspectiveFsv(void* fsv, bool aerPrimaryView = false) noexcept
             }
             g_pairArmSeq.store(pairArm, std::memory_order_release);
             RecordMetricLatch(pairArm);   // [MEVR] life-size stereo: what this pair renders with
+            MELEVR::MevrBridge::NoteDrawArm(pairArm);   // [MEVR] research/39: the scope capture's pose this Draw renders
             // [LOOKSTEP] publish the head-look this render CONSUMED (post-blend), so the submit
             // side keeps measuring the true content evenness.
             g_pairYawPub.store(static_cast<int>(s_pairYawF), std::memory_order_relaxed);

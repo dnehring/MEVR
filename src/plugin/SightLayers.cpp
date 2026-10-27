@@ -6,6 +6,7 @@
 #include "core/Log.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/Sights.hpp"
+#include "plugin/ScopeCaptureSource.hpp"
 #include "plugin/SightPictures.hpp"
 #include "plugin/TestLoop.hpp"
 
@@ -460,6 +461,8 @@ double gScopeLateralSum = 0.0;
 double gScopeShadowSum = 0.0;  // the pupil centre's offset (picture radii): 0 = no shadow, 1 = half
 double gScopeFadeSum = 0.0;
 double gScopeDegSum = 0.0;
+bool gFromCapture = false;   // this frame's picture samples the scope capture (research/39), not the eye copy
+int gCaptureFrames = 0;      // ...frames of this look through the scope that did
 
 std::string PictureText(sv::Sight const& sight, sv::ScopeView const& view, float radius) {
     float const deg = view.along > 0.0f ? 2.0f * std::atan(radius / view.along) * 180.0f / kPi : 0.0f;
@@ -492,10 +495,11 @@ void FlushScopeStats() {
     double const n = static_cast<double>(gScopeFrames);
     log::Info("sights: the scope's picture was up {} frames: the eye {:.2f}..{:.2f} m behind the eyepiece ({:.2f} on average), {:.1f} cm "
               "off the sight line on average, the picture {:.1f} degrees across on average, its shadow {:.2f} picture radii in "
-              "(1 = half shaded), opacity {:.2f}",
+              "(1 = half shaded), opacity {:.2f}; {} of them from the scope capture",
         gScopeFrames, gScopeAlongMin, gScopeAlongMax, gScopeAlongSum / n, gScopeLateralSum / n * 100.0, gScopeDegSum / n,
-        gScopeShadowSum / n, gScopeFadeSum / n);
+        gScopeShadowSum / n, gScopeFadeSum / n, gCaptureFrames);
     gScopeFrames = 0;
+    gCaptureFrames = 0;
     gScopeAlongSum = gScopeLateralSum = gScopeShadowSum = gScopeFadeSum = gScopeDegSum = 0.0;
 }
 
@@ -556,9 +560,31 @@ bool EnsureFrame(Frame const& frame) {
     return true;
 }
 
+// What the scope's picture samples: the eye copy (the other eye's image as rendered) or the scope capture (research/39).
+struct PictureSource {
+    ID3D11ShaderResourceView* srv = nullptr;
+    UINT width = 0;
+    UINT height = 0;
+    XrPosef pose{};
+    XrFovf fov{};
+    XrRect2Di rect{};
+    float decodeGamma = 1.0f;
+};
+
+PictureSource EyeCopySource(Frame const& frame, int source) {
+    return {gCopy.srv.Get(), gCopy.width, gCopy.height, frame.projectionPose[source], frame.projectionFov[source],
+        frame.projectionRect[source], 1.0f};
+}
+
+PictureSource CaptureSource(scope_capture_source::Source const& capture) {
+    float const half = std::atan(capture.tanHalf);
+    return {capture.srv, capture.width, capture.height, capture.pose, XrFovf{-half, half, half, -half},
+        XrRect2Di{{0, 0}, {static_cast<std::int32_t>(capture.width), static_cast<std::int32_t>(capture.height)}}, capture.decodeGamma};
+}
+
 // Draws the scope's picture into its swapchain; false if anything is missing.
 bool RenderScope(Frame const& frame, sv::Sight const& sight, sv::Lens const& lens, sv::ScopeView const& view, XrVector3f const& eye,
-    int source) {
+    PictureSource const& source) {
     std::uint32_t const size = static_cast<std::uint32_t>(std::clamp(sight.resolution, 128, 2048));
     if (gScope.handle != XR_NULL_HANDLE && gScope.width != size) {
         gScope.Destroy();
@@ -566,11 +592,11 @@ bool RenderScope(Frame const& frame, sv::Sight const& sight, sv::Lens const& len
     if (gScope.handle == XR_NULL_HANDLE && (gScope.failed || !Create(frame.session, size, size, gScope, "scope picture", "scope"))) {
         return false;
     }
-    if (!EnsurePipeline(frame.device) || gCopy.srv == nullptr) {
+    if (!EnsurePipeline(frame.device) || source.srv == nullptr) {
         return false;
     }
-    ScopeParams const params = MakeScopeParams(sight, lens, view, eye, frame.projectionPose[source], frame.projectionFov[source],
-        frame.projectionRect[source], gCopy.width, gCopy.height, size);
+    ScopeParams const params = MakeScopeParams(sight, lens, view, eye, source.pose, source.fov, source.rect, source.width, source.height,
+        size, source.decodeGamma);
     std::uint32_t index = 0;
     if (!Acquire(gScope, index)) {
         return false;
@@ -590,7 +616,7 @@ bool RenderScope(Frame const& frame, sv::Sight const& sight, sv::Lens const& len
         D3D11_VIEWPORT viewport{0.0f, 0.0f, static_cast<float>(size), static_cast<float>(size), 0.0f, 1.0f};
         float const blendFactor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
         ID3D11RenderTargetView* target = rtv.Get();
-        ID3D11ShaderResourceView* image = gCopy.srv.Get();
+        ID3D11ShaderResourceView* image = source.srv;
         ID3D11Buffer* constants = gPipeline.params.Get();
         ID3D11SamplerState* sampler = gPipeline.sampler.Get();
         c->OMSetRenderTargets(1, &target, nullptr);
@@ -633,11 +659,13 @@ Output Layers(Frame const& frame) {
         FlushScopeStats();
     }
     gScopeDrawn = false;
+    gFromCapture = false;
     if (frame.session != gSession) {
         gDot.Forget();
         gFrame.Forget();
         gScope.Forget();
         gCopy.swapchain = XR_NULL_HANDLE;
+        scope_capture_source::Forget();
         gSession = frame.session;
         Off();
     }
@@ -720,12 +748,21 @@ Output Layers(Frame const& frame) {
             if (scopeView && frame.projectionValid) {
                 gSource = (sight.flags & sv::kOtherEye) != 0 ? 1 - gAiming : gAiming;
                 XrSwapchain const swapchain = frame.projectionSwapchain[gSource];
-                testloop::SetReleaseTap(swapchain, &OnEyeReleased);  // next frame's copy
+                // The scope's real zoomed render (research/39), when the mod captures and its texture is found; else the
+                // eye copy, as before. The copy is taken only while the capture can't be used (next frame's copy).
+                auto const capture = scope_capture_source::ForFrame(frame.device, sight.weapon, frame.pairArm);
+                gFromCapture = capture.has_value();
+                testloop::SetReleaseTap(capture ? XR_NULL_HANDLE : swapchain, capture ? nullptr : &OnEyeReleased);
                 view |= gAiming == 0 ? sv::kViewLeft : sv::kViewRight;
                 // This frame's copy (or the last, if the eye image wasn't released again: that's what shows).
-                bool const fresh = gCopy.srv != nullptr && gCopy.swapchain == swapchain && gCopy.frame + 2 >= gFrameCount;
+                bool const fresh =
+                    capture.has_value() || (gCopy.srv != nullptr && gCopy.swapchain == swapchain && gCopy.frame + 2 >= gFrameCount);
+                PictureSource const source = capture ? CaptureSource(*capture) : EyeCopySource(frame, gSource);
                 if (fresh && out.count < 2 &&
-                    RenderScope(frame, sight, picture, *scopeView, frame.eyes[gAiming].position, gSource)) {
+                    RenderScope(frame, sight, picture, *scopeView, frame.eyes[gAiming].position, source)) {
+                    if (gFromCapture) {
+                        ++gCaptureFrames;
+                    }
                     gScopeQuad = MakeQuad(frame.appSpace, gScope, sv::Disc(sight.center, sight.axis, sight.up, picture.radius),
                         gAiming == 0 ? XR_EYE_VISIBILITY_LEFT : XR_EYE_VISIBILITY_RIGHT);
                     out.layers[out.count++] = &gScopeQuad;
@@ -734,11 +771,11 @@ Output Layers(Frame const& frame) {
                     if (!gLoggedScope) {
                         gLoggedScope = true;
                         log::Info("[MEVR-SIGHT] first scope picture: the {} eye aims ({:.3f} m behind the eyepiece, {:.4f} m off the "
-                                  "line, pupil {:.2f}), {:.1f}x from the {} eye's image ({}x{} rect at ({}, {})), focus {:.1f} m, "
+                                  "line, pupil {:.2f}), {:.1f}x from {} ({}x{} rect at ({}, {})), focus {:.1f} m, "
                                   "eyepiece {:.4f} m across; {}",
-                            EyeName(gAiming), scopeView->along, gLines[gAiming].lateral, scopeView->pupil, sight.zoom, EyeName(gSource),
-                            frame.projectionRect[gSource].extent.width, frame.projectionRect[gSource].extent.height,
-                            frame.projectionRect[gSource].offset.x, frame.projectionRect[gSource].offset.y, sight.focusM,
+                            EyeName(gAiming), scopeView->along, gLines[gAiming].lateral, scopeView->pupil, sight.zoom,
+                            gFromCapture ? std::string("the scope capture") : std::format("the {} eye's image", EyeName(gSource)),
+                            source.rect.extent.width, source.rect.extent.height, source.rect.offset.x, source.rect.offset.y, sight.focusM,
                             2.0f * sight.radius, PictureText(sight, *scopeView, picture.radius));
                     }
                     NoteScopeShown(sight, *scopeView, picture.radius, gLines[gAiming].lateral);
@@ -774,14 +811,14 @@ std::string StatusJson() {
                        "\"sourceEye\": \"{}\", \"scopeDrawn\": {}, \"view\": {}, \"copies\": {}, \"copySize\": [{}, {}], "
                        "\"eyeBox\": {:.4f}, \"dotEye\": \"{}\", \"scope\": {{\"fieldDeg\": {:.1f}, \"eyeBoxM\": {:.3f}, \"maxM\": {:.2f}, "
                        "\"along\": {:.4f}, \"pictureRadiusM\": {:.4f}, \"pictureDeg\": {:.2f}, \"pupilCentre\": [{:.3f}, {:.3f}], "
-                       "\"fade\": {:.3f}}}}}",
+                       "\"fade\": {:.3f}}}, \"pictureSource\": \"{}\", \"capture\": {}}}",
         sv::Name(static_cast<sv::Kind>(gSight.kind)), sv::WeaponName(gSight.weapon), gSight.center.x, gSight.center.y, gSight.center.z,
         gSight.axis.x, gSight.axis.y, gSight.axis.z, gSight.radius, gSight.zoom, line(gLines[0]), line(gLines[1]),
         gDotEye == 0 ? "true" : "false", gDotEye == 1 ? "true" : "false", EyeName(gAiming), EyeName(gSource),
         gScopeDrawn ? "true" : "false", gView, gCopy.copies, gCopy.width, gCopy.height, gSight.eyeBox, EyeName(gDotEye),
         gSight.scopeFieldDeg, gSight.scopeEyeBox, gSight.scopeMaxM, gScopeView.along, gPictureRadius,
         gScopeView.along > 0.0f ? 2.0f * std::atan(gPictureRadius / gScopeView.along) * 180.0f / kPi : 0.0f, gScopeView.px, gScopeView.py,
-        gScopeView.fade);
+        gScopeView.fade, !gScopeDrawn ? "none" : gFromCapture ? "capture" : "eye copy", scope_capture_source::StatusJson());
 }
 
 } // namespace mevr::host::sight_layers

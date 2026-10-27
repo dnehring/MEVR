@@ -49,6 +49,7 @@
 #include "game/MenuPause.hpp"
 #include "game/Posture.hpp"
 #include "game/Reflections.hpp"
+#include "game/ScopeCapture.hpp"
 #include "game/Sights.hpp"
 #include "game/SkeletonProbe.hpp"
 #include "game/SquadWeapons.hpp"
@@ -102,6 +103,7 @@ bool gToldNoAimRay = false;
 bool gAimRaySent = false;  // a ray was published (cleared again at shutdown)
 bool gToldNoSight = false;
 bool gSightSent = false;  // a sight was published (cleared again at shutdown)
+float gTickSeconds = 0.0f;  // this tick's delta, for what runs deep in the tick (the scope capture's hold)
 // Host renderer (HostServices v7): it runs the two-handed grip's pad mapping.
 bool gToldNoSupportGrip = false;
 bool gHooked = false;  // ProcessEvent hook live (after the script packages loaded)
@@ -485,7 +487,15 @@ void PublishSight(mevr::vr::aim_ray::Ray const& ray) {
     vr::sights::Sight const sight = game::sights::Current(ray);
     gHost->setSight(&sight);
     gSightSent = true;
-    game::sights::SetHostView(gHost->sightView());
+    std::uint32_t const view = gHost->sightView();
+    game::sights::SetHostView(view);
+    // The scope's real zoomed render (HostServices v20, research/39): pointed along this tick's sight.
+    game::scope_capture::Link link;
+    if (MEVR_HOST_HAS(setScopeCapture) && gHost->setScopeCapture != nullptr &&
+        gHost->scopeCaptureSize == sizeof(vr::scope_capture::Capture)) {
+        link.publish = gHost->setScopeCapture;
+    }
+    game::scope_capture::Tick(gTickSeconds, sight, ray, view, link);
 }
 
 // Host renderer (HostServices v10): the head's height above the floor, if the host's struct matches ours.
@@ -696,7 +706,7 @@ void PublishStatus() {
         "\"armIk\": {{\"enabled\": {}, \"status\": {}, \"handSource\": {}, \"rightHandAimsGun\": {}, \"supportRequested\": {}}}, "
         "\"handAim\": {{\"enabled\": {}, \"toldHost\": {}, \"shots\": {}}}, "
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
-        "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"throwables\": {}, "
+        "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, "
         "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
@@ -705,7 +715,7 @@ void PublishStatus() {
         gHandAimReported ? "true" : "false", game::hand_aim::StatusJson(), json::JsonString(type), static_cast<unsigned long long>(game::weapon::Key()),
         json::JsonString(game::weapon::Status()), game::support_grip::Held() ? "true" : "false",
         json::JsonNumber(game::support_grip::Blend()), game::holsters::StatusJson(), game::squad_weapons::StatusJson(),
-        game::sights::StatusJson(), game::throwables::StatusJson(), game::posture::StatusJson(),
+        game::sights::StatusJson(), game::scope_capture::StatusJson(), game::throwables::StatusJson(), game::posture::StatusJson(),
         game::view_level::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson());
     gHost->setStatus(status.c_str());
@@ -841,6 +851,7 @@ void Heartbeat() {
         game::holsters::LogStats();
         game::squad_weapons::LogStats();
         game::sights::LogStats();
+        game::scope_capture::LogStats();
         game::throwables::LogStats();
         game::posture::LogStats();
         game::view_level::LogStats();
@@ -922,6 +933,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     if (!gActive) {
         return;
     }
+    gTickSeconds = deltaSeconds;
     if (gHostOwnsVr) {
         MirrorHostState();
         gGamepadHooked = true;  // the host's XInput hook feeds the controllers to the game
@@ -1096,6 +1108,12 @@ MEVR_MOD_API void MevrModShutdown() {
     }
     gSightSent = false;
     gToldNoSight = false;
+    // Disables and destroys the scope's scene capture (game thread: the host unloads the mod from its tick), unless
+    // the process is exiting. Before sights' shutdown and the reflection layer's.
+    game::scope_capture::Shutdown(exiting);
+    if (gHost != nullptr && MEVR_HOST_HAS(setScopeCapture) && gHost->setScopeCapture != nullptr) {
+        gHost->setScopeCapture(nullptr);  // the host forgets it too (also on unload)
+    }
     game::sights::Shutdown(exiting);  // shows the scope's hidden lens part again (game/scope_parts)
     if (HostTakesSupportGrip()) {
         // No grip without the mod, LT back on the trigger (the host also forgets on unload).

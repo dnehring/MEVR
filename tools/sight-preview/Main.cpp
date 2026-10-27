@@ -14,12 +14,15 @@
 //   eye-right-<case>.png                the right eye with the picture drawn in where the eyepiece is
 //   eye-right-pulled-*.png              pulled to the eye (research/21 section 14): the model's eyepiece (a glowing blue
 //                                       lens in a dark tube, alone in *-model.png) with the picture drawn on it
+//   scope-capture-<case>.png            the scope's picture from a scope capture (research/39), and <case>-target.png
+//                                       the capture's own render target (traced from the eyepiece, 1024 px)
 //   dot.png, holo.png, frame.png        the reticles and the window ring over grey
 //   eye-right-dot.png                   the right eye looking through a red dot sight
 
 #include "core/PngFile.hpp"
 #include "core/vr/LayerComposite.hpp"
 #include "core/vr/OverlayPlacement.hpp"
+#include "core/vr/ScopeCapture.hpp"
 #include "core/vr/Sights.hpp"
 #include "plugin/SightPictures.hpp"
 
@@ -120,18 +123,23 @@ std::uint32_t Trace(XrVector3f o, XrVector3f d) {
     return colour;
 }
 
-composite::Image EyeImage(XrVector3f eye) {
+// The scene from `eye` looking along -Z through `fov`, `size` pixels square.
+composite::Image TraceImage(XrVector3f eye, XrFovf const& fov, int size) {
     composite::Image image;
-    image.width = image.height = kEyeSize;
-    image.pixels.resize(static_cast<size_t>(kEyeSize) * kEyeSize);
-    for (int y = 0; y < kEyeSize; ++y) {
-        for (int x = 0; x < kEyeSize; ++x) {
-            float const u = (static_cast<float>(x) + 0.5f) / kEyeSize;
-            float const v = (static_cast<float>(y) + 0.5f) / kEyeSize;
-            image.pixels[static_cast<size_t>(y) * kEyeSize + x] = Trace(eye, composite::EyeRay(kFov, u, v));
+    image.width = image.height = size;
+    image.pixels.resize(static_cast<size_t>(size) * size);
+    for (int y = 0; y < size; ++y) {
+        for (int x = 0; x < size; ++x) {
+            float const u = (static_cast<float>(x) + 0.5f) / size;
+            float const v = (static_cast<float>(y) + 0.5f) / size;
+            image.pixels[static_cast<size_t>(y) * size + x] = Trace(eye, composite::EyeRay(fov, u, v));
         }
     }
     return image;
+}
+
+composite::Image EyeImage(XrVector3f eye) {
+    return TraceImage(eye, kFov, kEyeSize);
 }
 
 // Premultiplied sRGB pixels over a mid grey (for looking at a quad's own picture).
@@ -458,6 +466,49 @@ int main(int argc, char** argv) {
             c.zoom);
     }
     gTube = Tube{};
+    // The scope capture (research/39): the engine renders the scope's own narrow field from the eyepiece into a 1024-pixel
+    // target, and the same shader samples that instead of the other eye's image (its pose and square frustum, the whole
+    // texture). Traced here from the eyepiece (the scope tube's face lies on the near plane, as the capture's near plane
+    // past the muzzle leaves the gun out).
+    {
+        namespace capture = mevr::vr::scope_capture;
+        constexpr int kCaptureSize = 1024;
+        struct CaptureCase {
+            char const* name;
+            XrVector3f eye;
+            float zoom;
+        };
+        CaptureCase const captureCases[] = {
+            {"capture-virtual-45cm", {0.0f, 0.0f, 0.35f}, 4.0f},
+            {"capture-virtual-45cm-off-2.5cm", {0.025f, 0.0f, 0.35f}, 4.0f},
+            {"capture-virtual-30cm-1.5x", {0.0f, 0.0f, 0.20f}, 1.5f},
+        };
+        for (CaptureCase const& c : captureCases) {
+            sight.zoom = c.zoom;
+            sight.scopeReticle = static_cast<std::int32_t>(sv::ScopeReticle::Duplex);
+            sv::Lens pictureLens = *lens;
+            auto const view = sv::VirtualView(*lens, c.eye, sv::Eyepiece{sight.scopeFieldDeg, sight.scopeEyeBox, sight.scopeMaxM}, pictureLens);
+            auto const orientation = capture::CameraOrientation(sight.axis, sight.up);
+            if (!view || !orientation) {
+                continue;
+            }
+            float const half = std::atan(capture::TanHalf(capture::FovDeg(sight.scopeFieldDeg, c.zoom, 0.25f)));
+            XrFovf const frustum{-half, half, half, -half};
+            composite::Image const target = TraceImage(kEyepiece, frustum, kCaptureSize);
+            Save(dir, (std::string(c.name) + "-target.png").c_str(), target.width, target.height, target.pixels);
+            ComPtr<ID3D11ShaderResourceView> const targetSrv = Upload(gpu, target);
+            XrRect2Di const whole{{0, 0}, {kCaptureSize, kCaptureSize}};
+            pic::ScopeParams const params = pic::MakeScopeParams(sight, pictureLens, *view, c.eye, XrPosef{*orientation, kEyepiece}, frustum,
+                whole, kCaptureSize, kCaptureSize, kScopeSize);
+            std::vector<std::uint32_t> const picture = RenderScope(gpu, targetSrv.Get(), params, kScopeSize);
+            if (picture.empty()) {
+                continue;
+            }
+            Save(dir, (std::string("scope-") + c.name + ".png").c_str(), kScopeSize, kScopeSize, OverGrey(picture));
+            std::printf("  %s: the capture %.2f degrees across (%d px: %.0f px per degree of the world; these eye images have 19, the headset's about 24), %.1fx\n",
+                c.name, 2.0 * half * 180.0 / 3.14159265, kCaptureSize, kCaptureSize / (2.0 * half * 180.0 / 3.14159265), c.zoom);
+        }
+    }
 
     // The reticles and the window ring.
     sv::Sight dot;

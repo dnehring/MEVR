@@ -54,14 +54,16 @@ struct ScopeParams {
     float rect[4];
     float texel[4];
     float lit[4];
+    float decode[4];  // x: each sample raised to this (1: already linear); research/39's 8-bit capture without an sRGB view
 };
-static_assert(sizeof(ScopeParams) == 13 * 16);
+static_assert(sizeof(ScopeParams) == 14 * 16);
 
 // The constants for one picture: the aiming eye at `eye` looking through `lens` (`view`), the source eye
 // image rendered from `source` with `fov`, its part `rect` of a `textureWidth` x `textureHeight` texture,
-// into a `size`-pixel square.
+// into a `size`-pixel square. The source may also be the scope's scene capture (research/39): its own pose, its square
+// frustum and the whole texture; `decodeGamma` 1 unless its samples are gamma-encoded.
 ScopeParams MakeScopeParams(vr::sights::Sight const& sight, vr::sights::Lens const& lens, vr::sights::ScopeView const& view,
     XrVector3f const& eye, XrPosef const& source, XrFovf const& fov, XrRect2Di const& rect, unsigned textureWidth,
-    unsigned textureHeight, unsigned size);
+    unsigned textureHeight, unsigned size, float decodeGamma = 1.0f);
 
 } // namespace mevr::host::sight_pictures

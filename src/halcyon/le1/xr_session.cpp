@@ -5909,6 +5909,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             mevrFrame.projectionFov[e][2] = pv.fov.angleUp; mevrFrame.projectionFov[e][3] = pv.fov.angleDown;
         }
         mevrFrame.projectionValid = submitted && !forceFlatCine;
+        mevrFrame.pairArm = g_sfrPairArmThisFrame;   // [MEVR] research/39: which Draw the submitted pair (and the scope capture) came from
         const void* mevrQuads[6] = {};   // [MEVR] HUD panel, reticle, sight (two), squad menu, wheel
         const unsigned mevrQuadCount = MELEVR::MevrBridge::OverlayLayers(mevrFrame, mevrQuads, 6);
         for (unsigned i = 0; i < mevrQuadCount && layerCount < kMaxLayers - 2; ++i)
