@@ -250,6 +250,8 @@ set(MEVR_MOD_SOURCES
     src/core/ik/Throwing.hpp
     src/core/ik/TwoHand.cpp
     src/core/ik/TwoHand.hpp
+    src/core/vr/Ads.cpp
+    src/core/vr/Ads.hpp
     src/core/vr/AimRay.cpp
     src/core/vr/AimRay.hpp
     src/core/vr/Calibration.cpp
@@ -700,6 +702,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/Throwing.cpp
         src/core/ik/TouchReference.cpp
         src/core/ik/TwoHand.cpp
+        src/core/vr/Ads.cpp
         src/core/vr/Calibration.cpp
         src/core/vr/Comfort.cpp
         src/core/vr/CombatStance.cpp
