@@ -485,7 +485,13 @@ void Tick(float deltaSeconds, sv::Sight const& sight, vr::aim_ray::Ray const& ra
     }
     if (gState.actor != nullptr && (!Still(gState.actor, gActorClass) || !Still(gState.component, gComponentClass) ||
                                        !Still(gState.target, gTargetClass))) {
-        Forget("its actor, component or render target is gone");
+        // An actor still there goes too (Destroy calls only on what is still ours): kept after its render target was
+        // collected, it would go on capturing beside the new one made next.
+        if (Still(gState.actor, gActorClass)) {
+            Destroy("its component or render target is gone");
+        } else {
+            Forget("its actor is gone");
+        }
     }
     if (gFailed && gFailedWorld != engine::World()) {
         gFailed = false;
