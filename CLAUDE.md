@@ -513,8 +513,9 @@ Use it to check VR changes yourself instead of asking the user what they see
   and records from the tail mark, 2026-10-26; the probe's "before the wait" step counted the present path twice under
   the early frame wait until the same day); **5**: one FViewportClient::Draw a frame (Halcyon's second Draw skipped through `g_oneDrawStereo`,
   pass 0 recording what pass 1's view would be, `MevrBridge::RecordPass1View`), the first render recorded and replayed
-  in its own finish hook with the second view synthesised in the host: the engine's own right eye to within temporal
-  noise, 9.1 ms against 11.4 (20%) at the heaviest cell, `replayInverse = 0` drops the inverse-matrix pair; **both eyes
+  in its own finish hook with the second view synthesised in the host (a scene render into another target than the eye renders', a
+  SceneCapture2D's, takes no eye index and runs untouched, counted as a capture in the levers line, 2026-10-27): the
+  engine's own right eye to within temporal noise, 9.1 ms against 11.4 (20%) at the heaviest cell, `replayInverse = 0` drops the inverse-matrix pair; **both eyes
   render on the symmetric window** (the plan's mode 1) because the frame's only render decides visibility for both eyes
   and its occlusion tests see only its own frustum (an object in the other eye's outer wedge stayed "occluded" under the
   PS VR2's projections; mode 1's angular resolution is the price, a wider `-ResX` buys it back, and 24% of each eye's
