@@ -349,7 +349,14 @@ switching frameworks.
   2026-10-25 a **virtual eyepiece** (research/21 section 13): with the eye up to `[Sights] scopeMaxM` (0.70 m)
   behind it the picture looks `scopeFieldDeg` (22) across, the zoom true across it, a dark rim, a shadow crescent
   at `scopeEyeBoxM` (0.05 m) off the line (`vr::sights::VirtualView`; `scopeFieldDeg = 0`: the old 2 cm lens; log
-  `sights: the scope's picture was up N frames: ...`; the Sight struct grew: host and mod deploy together). The
+  `sights: the scope's picture was up N frames: ...`; the Sight struct grew: host and mod deploy together). Since
+  2026-10-27 **scopes are pulled to the eye** (research/21 section 14, mod only): raised, a scoped gun slides back along its
+  line (the assist's weights and spring, at most `[Sights] scopePullMaxM` 0.15) until the model's eyepiece is
+  `scopeReliefM` (0.12 m; never inside the near plane, `LocalPlayer.NearClipPlane` 10 units, + 2 cm) from the aiming eye,
+  and the picture is that eyepiece seen from there (`<type>Lens`, gun units); the assault rifle has a 1.5x scope on its
+  `Scope` housing; `<type>Hide` bones (sniper `Scope_Lens`, its glow [verify]) are hidden while the picture is up
+  (`game/scope_parts`: HideBone through ProcessEvent, shown again on a switch, holster or unload; the gun's materials
+  logged once per model). The
   mod places them (`game/sights`, `[Sights]` in `ASI\LE1MEVR.ini`); the host draws them
   (`src/plugin/SightLayers.cpp`, pictures and shader in `SightPictures.cpp`; offline look:
   `mevr-sight-preview`). Scoped shots get the zoomed aim error via a `GetPlayerAimError` post-handler

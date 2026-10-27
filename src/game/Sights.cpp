@@ -12,6 +12,7 @@
 #include "game/BodyCalibration.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/Player.hpp"
+#include "game/ScopeParts.hpp"
 #include "game/ViewAnchor.hpp"
 #include "game/Weapon.hpp"
 #include "ue3/Handles.hpp"
@@ -35,7 +36,12 @@ namespace sv = vr::sights;
 // Our reflection layer (research/34).
 ue3::FunctionRef gGetPlayerAimError{"SFXGame.BioWeaponRanged.GetPlayerAimError"};
 ue3::FunctionRef gTrace{"Engine.Actor.Trace"};
+// The camera's near plane (research/21 section 14): LocalPlayer.NearClipPlane, 10 units by default (Halcyon's render hook
+// read it live; MassFPS pulls it in to 1, research/11). The scope's pull never brings the eyepiece inside it.
+ue3::FieldRef gControllerPlayer{"Engine.PlayerController", "Player"};
+ue3::FieldRef gNearClipPlane{"Engine.LocalPlayer", "NearClipPlane"};
 #endif
+constexpr float kDefaultNearUnits = 10.0f;  // UE3's default near plane, when the field can't be read
 // How far the sight line is traced for the shot's convergence point (game units: 300 m at the life-size view).
 constexpr double kConvergeRangeUnits = 30000.0;
 // What the sight line hits must be this far ahead of the muzzle to aim at (a wall at the sight: parallel instead).
@@ -124,6 +130,21 @@ int gOffsetTicks = 0;
 float gMaxShift = 0.0f;
 
 constexpr float kRaisedWeight = 0.05f;  // the assist counts as on from this weight
+
+// The scope's pull to the eye (research/21 section 14): this tick's (zero for a dot, or with the pull off), the near
+// plane it was floored on, and per raise how far it pulled.
+sv::Pull gPull;
+float gNearUnits = kDefaultNearUnits;
+bool gNearRead = false;        // the near plane came from the game (else the default)
+std::string gLoggedRelief;     // the relief line, logged when it changes
+float gRaisePullMax = 0.0f;    // this raise: the most the gun was pulled (meters)
+float gRaiseAlongBefore = 0.0f;  // ...the eye's distance to the unpulled eyepiece then
+float gRaiseAlongAfter = 0.0f;   // ...and to the pulled one
+float gPullSumHeartbeat = 0.0f;
+int gPullTicksHeartbeat = 0;
+// The held gun's [Sights] <type>Hide, parsed when it changes.
+std::string gHideText;
+std::vector<std::string> gHideList;
 
 // BioWeaponRanged.GetPlayerAimError's answer, after the call (CallFunction post-handler: the weapon's
 // GetAdjustedAim script asks it for every shot, research/18). With the scope's picture up, the answer
@@ -363,6 +384,10 @@ sv::Gun PlaceFor(int type, sv::Gun const& gun, float length, float radius) {
         placed.back = gModel.live->back;
         placed.height = gModel.live->up;
         placed.side = gModel.live->side;
+        // A scope on a housing's bone (the assault rifle's `Scope`), not its eyepiece's: the eyepiece is at its rear.
+        if (gun.kind == sv::Kind::Scope && !sv::IsEyepieceName(gModel.boneName)) {
+            placed.back += sv::HousingToEyepiece(type);
+        }
     } else if (gModel.top) {
         if (auto const height = sv::HeightOnModel(gun.kind == sv::Kind::None ? sv::Kind::Dot : gun.kind, *gModel.top, radius)) {
             placed.height = *height;
@@ -410,31 +435,69 @@ void StepAssist(sv::Settings const& settings, sv::Sight const& drawn, double now
         {head.position.x + right.x * kHalfIpd, head.position.y + right.y * kHalfIpd, head.position.z + right.z * kHalfIpd}};
     // The sight without the shift already in the drawn gun, so the assist never chases itself.
     XrVector3f const center = Sub3(drawn.center, gTakenPrev);
-    gGoal = sv::AssistTarget(settings.assist, center, drawn.axis, drawn.up, eyes, forward, gAssistEye);
+    bool const scope = drawn.kind == static_cast<std::int32_t>(sv::Kind::Scope);
+    gGoal = sv::AssistTarget(settings.assist, center, drawn.axis, drawn.up, eyes, forward, gAssistEye, scope ? gPull : sv::Pull{});
     gAssistEye = gGoal.eye;
     XrVector3f const shift = gSpring.Update(gGoal.shift, static_cast<float>(dt));
     gMaxShift = std::max(gMaxShift, Length3(shift));
+    // How much of the spring's move is the pull (back along the line toward the eye), and where that leaves the eye.
+    float const pulled = scope ? std::max(0.0f, -(shift.x * drawn.axis.x + shift.y * drawn.axis.y + shift.z * drawn.axis.z)) : 0.0f;
     bool const on = gGoal.weight >= kRaisedWeight;
     if (on) {
         gOffsetSumX += gGoal.x;
         gOffsetSumY += gGoal.y;
         gOffsetSumAngle += gGoal.angleDeg;
         ++gOffsetTicks;
+        if (scope && gPull.maxM > 0.0f) {
+            gPullSumHeartbeat += pulled;
+            ++gPullTicksHeartbeat;
+            if (pulled >= gRaisePullMax) {
+                gRaisePullMax = pulled;
+                gRaiseAlongBefore = gGoal.along;
+                gRaiseAlongAfter = gGoal.along - pulled;
+            }
+        }
     }
     if (on != gAssisting) {
         gAssisting = on;
         if (on) {
+            gRaisePullMax = 0.0f;
+            gRaiseAlongBefore = gRaiseAlongAfter = gGoal.along;
             log::Info("sights: alignment assist on: the {} eye {:.1f} cm {} and {:.1f} cm {} the sight line ({:.1f} degrees, the sight "
-                      "{:.2f} m ahead): the gun slides {:.1f} cm toward it ({:.0f}% weight)",
+                      "{:.2f} m ahead): the gun slides {:.1f} cm toward it ({:.0f}% weight){}",
                 gGoal.eye == 0 ? "left" : "right", std::abs(gGoal.x) * 100.0f, gGoal.x >= 0.0f ? "right of" : "left of",
                 std::abs(gGoal.y) * 100.0f, gGoal.y >= 0.0f ? "above" : "below", gGoal.angleDeg, gGoal.along,
-                Length3(gGoal.shift) * 100.0f, gGoal.weight * 100.0f);
+                Length3(gGoal.shift) * 100.0f, gGoal.weight * 100.0f,
+                scope && gPull.maxM > 0.0f
+                    ? std::format("; the scope is pulled {:.1f} cm back along its line, to {:.2f} m in front of the eye (relief {:.2f} m, at "
+                                  "most {:.2f} m)", gGoal.pull * 100.0f, gGoal.along - gGoal.pull, gPull.reliefM, gPull.maxM)
+                    : std::string());
         } else {
             log::Info("sights: alignment assist off (the gun lowered or turned away: the eye {} degrees off the line, the sight {:.2f} m "
-                      "ahead); the gun eases back",
-                gGoal.eye >= 0 ? std::format("{:.1f}", gGoal.angleDeg) : std::string("-"), gGoal.along);
+                      "ahead); the gun eases back{}",
+                gGoal.eye >= 0 ? std::format("{:.1f}", gGoal.angleDeg) : std::string("-"), gGoal.along,
+                scope && gPull.maxM > 0.0f
+                    ? std::format("; the scope was pulled at most {:.1f} cm: the eye {:.2f} m behind the eyepiece before, {:.2f} m after "
+                                  "(relief {:.2f} m{})", gRaisePullMax * 100.0f, gRaiseAlongBefore, gRaiseAlongAfter, gPull.reliefM,
+                          gRaiseAlongBefore - gPull.reliefM > gPull.maxM + 0.005f ? ": the pull's limit was reached" : "")
+                    : std::string());
         }
     }
+}
+
+// The camera's near plane in game units: the local player's NearClipPlane, else UE3's default.
+float NearUnits() {
+#if defined(MEVR_GAME_LE1)
+    ue3::Object* const pc = player::Controller();
+    ue3::Object* const localPlayer = pc != nullptr ? gControllerPlayer.Read<ue3::Object*>(pc).value_or(nullptr) : nullptr;
+    if (auto const plane = localPlayer != nullptr ? gNearClipPlane.Read<float>(localPlayer) : std::nullopt;
+        plane && std::isfinite(*plane) && *plane > 0.0f && *plane < 200.0f) {
+        gNearRead = true;
+        return *plane;
+    }
+#endif
+    gNearRead = false;
+    return kDefaultNearUnits;
 }
 
 std::string ViewText(std::uint32_t view) {
@@ -472,6 +535,7 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
     gAimedFire = settings.aimedFire;
     sv::Sight out{};
     out.kind = static_cast<std::int32_t>(sv::Kind::None);
+    gPull = {};  // set below for a scope with the pull on
     std::string status;
     int const type = static_cast<int>(weapon::Type());
     if (!settings.enabled) {
@@ -512,11 +576,12 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
                 status = "none (the barrel points straight up or down: no top)";
             } else {
                 bool const scope = gun.kind == sv::Kind::Scope;
+                float const lensUnits = sv::LensUnits(settings, type);
                 engine::UnrealVector const topWorld = DirectionToWorld(*frame, *top);
                 double const nowMs =
                     std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
                 MeasureModel(topWorld, gun.kind, length, *muzzle, nowMs);
-                sv::Gun const placed = PlaceFor(type, gun, length, scope ? settings.lensUnits : settings.windowUnits);
+                sv::Gun const placed = PlaceFor(type, gun, length, scope ? lensUnits : settings.windowUnits);
                 gPlaced = placed;
                 gPlacedWeapon = weapon::Key();
                 out.kind = static_cast<std::int32_t>(gun.kind);
@@ -528,7 +593,7 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
                     placed.side / unitsPerMeter);
                 out.axis = sv::Zeroed(out.center, ray.origin, ray.direction, settings.zeroM * 100.0f / unitsPerMeter);
                 out.up = sv::TopOf(out.axis, *top).value_or(*top);
-                out.radius = (scope ? settings.lensUnits : settings.windowUnits) / unitsPerMeter;
+                out.radius = (scope ? lensUnits : settings.windowUnits) / unitsPerMeter;
                 out.zoom = scope ? gun.zoom : 1.0f;
                 out.dotSizeDeg = settings.dotSizeDeg;
                 out.ringSizeDeg = settings.ringSizeDeg;
@@ -541,6 +606,30 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
                 out.scopeFieldDeg = settings.scopeFieldDeg;
                 out.scopeEyeBox = settings.scopeEyeBoxM;
                 out.scopeMaxM = settings.scopeMaxM;
+                // The pull to the eye (research/21 section 14): the eyepiece comes to the relief in front of the aiming
+                // eye, and the picture is the model's eyepiece seen from there (the host's virtual eyepiece with the field
+                // the eyepiece subtends at the relief: exactly the eyepiece once pulled, that angle wherever the eye is).
+                gPull = {};
+                bool const pullOn = scope && settings.assist.enabled && settings.scopePullMaxM > 0.0f && settings.scopeReliefM > 0.0f;
+                if (pullOn) {
+                    gNearUnits = NearUnits();
+                    gPull.reliefM = sv::ReliefFor(settings.scopeReliefM, gNearUnits, unitsPerMeter);
+                    gPull.maxM = settings.scopePullMaxM;
+                    if (settings.scopeFieldDeg > 0.0f) {
+                        out.scopeFieldDeg = sv::PulledFieldDeg(out.radius, gPull.reliefM);
+                    }
+                    std::string const key = std::format("{:.1f} {} {:.1f} {:.3f} {:.2f} {} {:.2f}", gNearUnits, gNearRead, unitsPerMeter,
+                        gPull.reliefM, gPull.maxM, type, lensUnits);
+                    if (key != gLoggedRelief) {
+                        gLoggedRelief = key;
+                        log::Info("sights: the camera's near plane is {:.1f} units ({}; {:.3f} m at {:.1f} units per meter): a scope is pulled "
+                                  "to {:.3f} m in front of the eye ([Sights] scopeReliefM {:.2f}, at least the near plane + 2 cm), at most "
+                                  "{:.2f} m; the {}'s eyepiece ({:.1f} units, {:.1f} cm across) then looks {:.1f} degrees across",
+                            gNearUnits, gNearRead ? "LocalPlayer.NearClipPlane" : "UE3's default: the field wasn't read",
+                            gNearUnits / unitsPerMeter, unitsPerMeter, gPull.reliefM, settings.scopeReliefM, gPull.maxM, sv::WeaponName(type),
+                            lensUnits, 2.0f * out.radius * 100.0f, sv::PulledFieldDeg(out.radius, gPull.reliefM));
+                    }
+                }
                 // The same sight in the world, for the shots (research/21 section 10): the line traced this tick.
                 gWorld.valid = true;
                 gWorld.weapon = weapon::Key();
@@ -572,11 +661,15 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
                     : gModel.live  ? "auto: followed live as the gun unfolds"
                     : gModel.top   ? "auto: the length share, the height from the bones' top"
                                    : "auto",
-                    length, scope ? "eyepiece radius" : "window radius", scope ? settings.lensUnits : settings.windowUnits, out.radius,
+                    length, scope ? "eyepiece radius" : "window radius", scope ? lensUnits : settings.windowUnits, out.radius,
                     unitsPerMeter, std::max(settings.eyeBoxUnits, settings.windowUnits),
-                    scope && settings.scopeFieldDeg > 0.0f
-                        ? std::format("; virtual eyepiece: the picture {:.0f} degrees across with the eye up to {:.2f} m behind it, eye box "
-                                      "{:.3f} m", settings.scopeFieldDeg, settings.scopeMaxM, settings.scopeEyeBoxM)
+                    scope && out.scopeFieldDeg > 0.0f
+                        ? std::format("; virtual eyepiece: the picture {:.1f} degrees across{} with the eye up to {:.2f} m behind it, eye box "
+                                      "{:.3f} m", out.scopeFieldDeg,
+                              gPull.maxM > 0.0f ? std::format(" (the eyepiece seen from {:.3f} m: pulled there, at most {:.2f} m)",
+                                                      gPull.reliefM, gPull.maxM)
+                                                : std::string(),
+                              settings.scopeMaxM, settings.scopeEyeBoxM)
                         : std::string(),
                     settings.converge ? "converge on what the sight line hits" : "parallel to the sight line ([Sights] converge = 0)");
             }
@@ -670,6 +763,15 @@ void SetHostView(std::uint32_t view) {
         gLoggedHostView = view;
         log::Info("sights: {}", ViewText(view));
     }
+    // The model's parts hidden while the scope's picture is up (the sniper's glowing lens; research/21 section 14).
+    int const type = static_cast<int>(weapon::Type());
+    std::string const hide = type >= 0 && type < sv::kWeaponTypes ? hand_calibration::GetSights().guns[type].hide : std::string();
+    if (hide != gHideText) {
+        gHideText = hide;
+        gHideList = sv::ParseBoneList(hide);
+    }
+    bool const ownModel = gModel.measured && gModel.weapon != 0 && gModel.weapon == weapon::Key();
+    scope_parts::Update(gScopeUp, gHideList, ownModel ? gModel.bone : std::nullopt, type);
 }
 
 std::string StatusJson() {
@@ -681,7 +783,8 @@ std::string StatusJson() {
                        "\"boneLive\": {}, \"boneSettled\": {}, \"model\": {}}}, "
                        "\"converge\": {{\"on\": {}, \"traced\": {}, \"hit\": {}, \"distanceM\": {}, \"what\": {}}}, \"assist\": {{\"on\": {}, "
                        "\"eye\": {}, \"angleDeg\": {}, \"along\": {}, \"offset\": [{}, {}], \"weight\": {}, \"goal\": [{}, {}, {}], "
-                       "\"shift\": [{}, {}, {}]}}}}",
+                       "\"shift\": [{}, {}, {}], \"pull\": {{\"reliefM\": {}, \"maxM\": {}, \"goalM\": {}, \"nearUnits\": {}, "
+                       "\"nearFromGame\": {}, \"raisePulledM\": {}, \"raiseEyeBeforeM\": {}, \"raiseEyeAfterM\": {}}}}}, \"parts\": {}}}",
         json::JsonString(sv::Name(static_cast<sv::Kind>(gLast.kind))), json::JsonString(sv::WeaponName(gLast.weapon)),
         json::JsonString(gStatus), gHostView, gScopeUp ? "true" : "false", gAimedShotsTotal, json::JsonNumber(gLast.center.x),
         json::JsonNumber(gLast.center.y), json::JsonNumber(gLast.center.z), json::JsonNumber(gLast.axis.x),
@@ -693,7 +796,9 @@ std::string StatusJson() {
         json::JsonString(gWorld.what), gAssisting ? "true" : "false", json::JsonString(gGoal.eye == 0 ? "left" : gGoal.eye == 1 ? "right" : "none"),
         json::JsonNumber(gGoal.angleDeg), json::JsonNumber(gGoal.along), json::JsonNumber(gGoal.x), json::JsonNumber(gGoal.y),
         json::JsonNumber(gGoal.weight), json::JsonNumber(gGoal.shift.x), json::JsonNumber(gGoal.shift.y), json::JsonNumber(gGoal.shift.z),
-        json::JsonNumber(shift.x), json::JsonNumber(shift.y), json::JsonNumber(shift.z));
+        json::JsonNumber(shift.x), json::JsonNumber(shift.y), json::JsonNumber(shift.z), json::JsonNumber(gPull.reliefM),
+        json::JsonNumber(gPull.maxM), json::JsonNumber(gGoal.pull), json::JsonNumber(gNearUnits), gNearRead ? "true" : "false",
+        json::JsonNumber(gRaisePullMax), json::JsonNumber(gRaiseAlongBefore), json::JsonNumber(gRaiseAlongAfter), scope_parts::StatusJson());
 }
 
 void LogStats() {
@@ -707,6 +812,9 @@ void LogStats() {
                 gOffsetTicks, std::abs(gOffsetSumX / gOffsetTicks) * 100.0, gOffsetSumX >= 0.0 ? "right of" : "left of",
                 std::abs(gOffsetSumY / gOffsetTicks) * 100.0, gOffsetSumY >= 0.0 ? "above" : "below", gOffsetSumAngle / gOffsetTicks,
                 gMaxShift * 100.0f);
+            if (gPullTicksHeartbeat > 0) {
+                assist += std::format(", the scope pulled {:.1f} cm toward the eye on average", gPullSumHeartbeat / gPullTicksHeartbeat * 100.0f);
+            }
         }
         log::Info("    sights: {}; placed {:.1f} back, {:.1f} up, {:.1f} right; {}; scoped aimed fire on {} of {} aim-error queries; {}",
             gStatus, gPlaced.back, gPlaced.height, gPlaced.side, ViewText(gHostView), aimed, queries, assist);
@@ -714,9 +822,21 @@ void LogStats() {
     gOffsetSumX = gOffsetSumY = gOffsetSumAngle = 0.0;
     gOffsetTicks = 0;
     gMaxShift = 0.0f;
+    gPullSumHeartbeat = 0.0f;
+    gPullTicksHeartbeat = 0;
 }
 
-void Shutdown() {
+void Shutdown(bool exiting) {
+    scope_parts::Shutdown(exiting);  // the hidden lens comes back before the mod goes (game thread: the host's tick)
+    gPull = {};
+    gNearUnits = kDefaultNearUnits;
+    gNearRead = false;
+    gLoggedRelief.clear();
+    gRaisePullMax = gRaiseAlongBefore = gRaiseAlongAfter = 0.0f;
+    gPullSumHeartbeat = 0.0f;
+    gPullTicksHeartbeat = 0;
+    gHideText.clear();
+    gHideList.clear();
     gAimErrorFunction = nullptr;
     gTraceFunction = nullptr;
     gWorld = {};

@@ -108,6 +108,9 @@ std::optional<Model> ModelInGunFrame(engine::UnrealVector const& top);
 // rides on it while the gun unfolds and however the model is rolled (research/21 section 13). Nullopt without a held,
 // verified weapon or when its skeleton changed.
 std::optional<engine::UnrealVector> BoneWorld(std::size_t index);
+// The held, verified gun's mesh component (its SkelMeshComp), or nullptr: for game/scope_parts, which hides a part of
+// the model while the scope's picture is up (research/21 section 14). Game thread.
+ue3::Object* HeldMesh();
 // One line for status logs: which weapon and how far along it is.
 std::string const& Status();
 // Heartbeat.

@@ -110,8 +110,8 @@ std::string UpscaleChoice(std::string_view method);
 // ---- Gun sights ([Sights] pistol, shotgun, assaultRifle, sniperRifle: none | dot | holo | scope <zoom>) ----------
 // The chip a value shows: "dot", "holo", "none" or "scope" (unknown text: the default kind given).
 std::string SightKind(std::string_view value, std::string_view fallback);
-// What a chip writes: "scope" keeps the zoom it had (4 if none).
-std::string SightValue(std::string_view kind, std::string_view previous);
+// What a chip writes: "scope" keeps the zoom it had (`zoom` if none: 4 for the sniper rifle, 1.5 for the assault rifle).
+std::string SightValue(std::string_view kind, std::string_view previous, float zoom = 4.0f);
 
 // ---- Desktop mirror (Halcyon's mirrorPresentEvery: present the flat mirror every Nth frame) ---------------------
 std::string MirrorChoice(int presentEvery);   // 1: "every", 2: "smooth", else "normal"

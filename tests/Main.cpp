@@ -5014,6 +5014,31 @@ void TestSightSettings() {
     CHECK(s::ParseGun("", none) == std::nullopt);
     gun = s::ParseGun("none", s::Gun{s::Kind::Dot});
     CHECK(gun && gun->kind == s::Kind::None);
+    // The assault rifle's low-power scope (research/21 section 14): decimals read, the defaults a 1.5x scope with its own
+    // eyepiece; the sniper's hides its glowing lens.
+    gun = s::ParseGun("scope 1.5", s::Gun{s::Kind::Dot});
+    CHECK(gun && gun->kind == s::Kind::Scope && gun->zoom == 1.5f);
+    s::Settings const defaults;
+    CHECK(defaults.guns[2].kind == s::Kind::Scope && defaults.guns[2].zoom == 1.5f && defaults.guns[2].hide.empty());
+    CHECK(defaults.guns[3].kind == s::Kind::Scope && defaults.guns[3].zoom == 4.0f && defaults.guns[3].hide == "Scope_Lens");
+    CHECK(s::LensUnits(defaults, 2) == 1.6f && s::LensUnits(defaults, 3) == 2.0f && s::LensUnits(defaults, 0) == defaults.lensUnits);
+    gun = s::ParseGun("dot", defaults.guns[3]);  // a parsed kind keeps the gun's lens and hide list
+    CHECK(gun && gun->kind == s::Kind::Dot && gun->hide == "Scope_Lens" && gun->lens == 2.0f);
+    CHECK(s::ParseBoneList(" Scope_Lens, Scope_Glow;scope_lens ") == std::vector<std::string>({"Scope_Lens", "Scope_Glow"}));
+    CHECK(s::ParseBoneList("none").empty() && s::ParseBoneList("").empty());
+    CHECK(s::IsEyepieceName("Scope_Eye") && s::IsEyepieceName("rear_sight") && !s::IsEyepieceName("Scope") &&
+          !s::IsEyepieceName("Scope_Lens") && !s::IsEyepieceName("socket Scope_Eye") && !s::IsEyepieceName("Eye_L"));
+    CHECK(s::HousingToEyepiece(2) > 0.0f && s::HousingToEyepiece(-1) == 0.0f);
+    // The parts to hide: found by name (case aside), never the root, the sight's bone or what it hangs on.
+    std::vector<std::string> const bones{"Root", "Body", "Scope_Lens", "Scope_Eye", "Scope", "socket Flash_1"};
+    std::vector<int> const parents{-1, 0, 1, 1, 1, -1};
+    std::vector<std::string> const wanted{"scope_lens", "Body", "Root", "Missing", "Scope_Eye", "socket Flash_1"};
+    s::HideChoice const choice = s::PartsToHide(bones, parents, std::size_t{3}, wanted);
+    CHECK(choice.bones == std::vector<std::size_t>({2}));
+    CHECK(choice.skipped.size() == 5 && choice.skipped[0] == "Body (the sight hangs on it)" && choice.skipped[1] == "Root (the model's root)" &&
+          choice.skipped[2] == "Missing (not on this model)" && choice.skipped[3] == "Scope_Eye (the sight's own bone)" &&
+          choice.skipped[4] == "socket Flash_1 (not on this model)");
+    CHECK(s::PartsToHide(bones, parents, std::nullopt, std::vector<std::string>{"Body", "Scope"}).bones == std::vector<std::size_t>({1, 4}));
 
     s::Gun place;
     CHECK(s::ParsePlace("30, 6", place) && !place.autoPlace && place.back == 30.0f && place.height == 6.0f);
@@ -5156,9 +5181,11 @@ void TestScopeMapping() {
 void TestSightShots() {
     namespace s = mevr::vr::sights;
     constexpr double kDeg = std::numbers::pi / 180.0;
-    // The defaults: a red dot on every gun but the sniper rifle, an eye box twice the window.
+    // The defaults: a red dot on the pistol and the shotgun, scopes on the rifles (since 2026-10-27, section 14), an eye box
+    // twice the window.
     s::Settings const defaults;
-    CHECK(defaults.guns[1].kind == s::Kind::Dot && defaults.guns[2].kind == s::Kind::Dot && defaults.guns[3].kind == s::Kind::Scope);
+    CHECK(defaults.guns[0].kind == s::Kind::Dot && defaults.guns[1].kind == s::Kind::Dot && defaults.guns[2].kind == s::Kind::Scope &&
+          defaults.guns[3].kind == s::Kind::Scope);
     CHECK(defaults.eyeBoxUnits > defaults.windowUnits && defaults.converge);
 
     // Shots converge on what the sight line hits: the sight 30 units behind the muzzle and 6 above, its line along
@@ -5253,6 +5280,19 @@ void TestSightVirtualEyepiece() {
     auto const distant = s::VirtualView(*lens, {0.0f, 0.0f, -0.5f + 0.7875f}, ep, picture);
     CHECK(distant && distant->fade > 0.4f && distant->fade < 0.6f);
     CHECK(!s::VirtualView(*lens, {0.0f, 0.0f, -0.48f}, ep, picture));  // closer than 3 cm
+
+    // Pulled to the eye (research/21 section 14): the field is what the 2 cm eyepiece subtends from 0.12 m (18.9 degrees),
+    // so with the eye at the relief the picture is the eyepiece itself; further back (the pull at its limit) it keeps that
+    // angle, never smaller; nearer, the eyepiece.
+    float const pulledDeg = s::PulledFieldDeg(0.02f, 0.12f);
+    CHECK(NearD(pulledDeg, 2.0 * std::atan(0.02 / 0.12) * 180.0 / 3.14159265, 1e-3) && s::PulledFieldDeg(0.0f, 0.12f) == 0.0f);
+    s::Eyepiece const pulled{pulledDeg, 0.05f, 0.70f};
+    auto const atRelief = s::VirtualView(*lens, {0.0f, 0.0f, -0.5f + 0.12f}, pulled, picture);
+    CHECK(atRelief && NearD(picture.radius, 0.02, 1e-5));
+    auto const fartherBack = s::VirtualView(*lens, {0.0f, 0.0f, -0.5f + 0.24f}, pulled, picture);
+    CHECK(fartherBack &&NearD(picture.radius, 0.04, 1e-5) && NearD(2.0 * std::atan(picture.radius / 0.24) * 180.0 / 3.14159265, pulledDeg, 1e-3));
+    auto const nearer = s::VirtualView(*lens, {0.0f, 0.0f, -0.5f + 0.08f}, pulled, picture);
+    CHECK(nearer && NearD(picture.radius, 0.02, 1e-6));
 }
 
 // The level camera (core/vr/ViewLevel, research/24): rotator angles, the gate, the camera modes, the
@@ -5665,6 +5705,27 @@ void TestSightAssist() {
     off.enabled = false;
     goal = s::AssistTarget(off, center, ahead, up, eyes, ahead, -1);
     CHECK(goal.eye == -1 && goal.weight == 0.0f);
+
+    // A scope's pull (research/21 section 14): the eyepiece 0.235 m ahead of the right eye, on its line: the gun slides
+    // 0.115 m back along the line, so the eyepiece ends 0.12 m in front of the eye; nothing sideways.
+    s::Pull const pull{0.12f, 0.15f};
+    goal = s::AssistTarget(settings, {0.032f, 0.0f, -0.235f}, ahead, up, eyes, ahead, -1, pull);
+    CHECK(goal.eye == 1 && std::abs(goal.weight - 1.0f) < 1e-5f && std::abs(goal.pull - 0.115f) < 1e-5f);
+    CHECK(NearX(goal.shift, {0.0f, 0.0f, 0.115f}, 1e-5));
+    // With the sideways offset too: both, the pull along the line, the sideways move capped on its own.
+    goal = s::AssistTarget(settings, {0.042f, -0.02f, -0.3f}, ahead, up, eyes, ahead, -1, pull);
+    CHECK(NearX(goal.shift, {-0.01f, 0.02f, 0.15f}, 1e-5) && std::abs(goal.pull - 0.15f) < 1e-5f);  // 0.18 wanted: capped at 0.15
+    // Never away from the eye: an eyepiece already nearer than the relief stays.
+    goal = s::AssistTarget(settings, {0.032f, 0.0f, -0.08f}, ahead, up, eyes, ahead, -1, pull);
+    CHECK(goal.pull == 0.0f && NearX(goal.shift, {0.0f, 0.0f, 0.0f}, 1e-6));
+    // Weighted like the sideways move: at three quarters of the cone, half the pull.
+    goal = s::AssistTarget(settings, {0.032f + lateral75, 0.0f, -0.3f}, ahead, up, eyes, ahead, -1, pull);
+    CHECK(std::abs(goal.weight - 0.5f) < 1e-3f && std::abs(goal.pull - 0.5f * 0.15f) < 1e-3f);
+    // No pull asked (a dot sight): none.
+    CHECK(s::AssistTarget(settings, {0.032f, 0.0f, -0.235f}, ahead, up, eyes, ahead, -1).pull == 0.0f);
+    // The relief: at least the near plane (10 units at 100 per meter: 0.10 m) plus 2 cm; at 50 units per meter 0.22 m.
+    CHECK(std::abs(s::ReliefFor(0.12f, 10.0f, 100.0f) - 0.12f) < 1e-6f && std::abs(s::ReliefFor(0.08f, 10.0f, 100.0f) - 0.12f) < 1e-6f);
+    CHECK(std::abs(s::ReliefFor(0.12f, 10.0f, 50.0f) - 0.22f) < 1e-6f && s::ReliefFor(0.12f, 0.0f, 100.0f) == 0.12f);
 
     // The spring: from rest, never faster than 0.25 m/s, no overshoot, settles; back to zero likewise.
     s::AssistSpring spring;
@@ -6200,6 +6261,8 @@ void TestMenuSettings() {
     CHECK(ms::SightValue("scope", "scope 2.5") == "scope 2.5");
     CHECK(ms::SightValue("scope", "holo") == "scope 4");
     CHECK(ms::SightValue("scope", "scope 99") == "scope 4");
+    CHECK(ms::SightValue("scope", "dot", 1.5f) == "scope 1.5" && ms::SightValue("scope", "scope 3", 1.5f) == "scope 3");
+    CHECK(ms::SightKind("scope 1.5", "dot") == "scope");
 
     // The desktop mirror, the colour sliders, the chips.
     CHECK(ms::MirrorChoice(1) == "every" && ms::MirrorChoice(2) == "smooth" && ms::MirrorChoice(8) == "normal");

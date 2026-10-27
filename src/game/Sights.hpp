@@ -31,7 +31,8 @@ bool TryStartup();
 // Each tick, after hand aim's ray: the sight to publish (kind None: none), and logs what changes. Also
 // steps the alignment assist ([Sights] assist): with the gun raised to the face and the aiming eye near
 // the sight line, the gun's goal shift that puts the line through the eye (vr::sights::AssistTarget,
-// measured on the sight without the shift already applied, then eased by vr::sights::AssistSpring).
+// measured on the sight without the shift already applied, then eased by vr::sights::AssistSpring); for a scope it also
+// pulls the gun back along the line until the eyepiece is [Sights] scopeReliefM in front of the eye (research/21 s. 14).
 vr::sights::Sight Current(vr::aim_ray::Ray const& ray);
 // Arm IK, once per tick while it drives the hands: how far to move the held gun (tracking meters; zero:
 // none). The sight it then draws includes the move; Current takes it out again (two ticks later, when the
@@ -57,11 +58,13 @@ struct ShotAim {
     double toBarrelDeg = 0.0;            // ...and against the barrel
 };
 std::optional<ShotAim> ShotAlongSight(weapon::Muzzle const& muzzle);
-// The host's report for the latest frame (vr::sights::View bits), each tick.
+// The host's report for the latest frame (vr::sights::View bits), each tick. Also hides the held gun's [Sights]
+// <type>Hide bones while its scope's picture is up (game/scope_parts).
 void SetHostView(std::uint32_t view);
 // For snapshots and the heartbeat.
 std::string StatusJson();
 void LogStats();
-void Shutdown();
+// Unhides what game/scope_parts hid (unless the process is exiting; game thread) and forgets everything.
+void Shutdown(bool exiting);
 
 } // namespace mevr::game::sights
