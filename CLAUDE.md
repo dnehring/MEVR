@@ -367,6 +367,22 @@ switching frameworks.
   frame. **Our quads are metric; Halcyon's Stereo 2 isn't** (research/21 section 9: eyes rendered `sfr2HalfEyeUU`
   from the midpoint, each image moved 1.27 degrees outward at submit by `sfr2Convergence` with swap-eyes): the fix is
   a metric stereo mode in Halcyon (a separate job), not per-eye corrections of our quads.
+- LE1 scope capture ([research/39](research/39-scope-capture.md), HostServices v20; **off by default**, `[Sights]
+  scopeCapture = 0`, until its frame cost is measured): the scope's picture from a real zoomed render instead of the other
+  eye's image enlarged. The mod (`game/ScopeCapture`, hot-reloaded) spawns a `SceneCapture2DActor` (Actor.Spawn on the
+  player controller; the class's `bStatic`/`bNoDelete` defaults cleared for the call if set) with a
+  `TextureRenderTarget2D` of its own (`Create` on its default object; `scopeCaptureSize` 1024, FloatRGBA), the update
+  skips off, the player's post-process chain, `FrameRate` `scopeCaptureRate` (150: once a frame under Halcyon's two Draws,
+  whichever clock the engine compares); enabled only while an eye is behind a scope (the host's `sightView` bits, held 0.5
+  s), pointed along the sight line each tick (`SetView` then `ForceUpdateComponents`, the field `2 atan(1.25 tan(11
+  deg) / zoom)`, the near plane 20 units past the muzzle), destroyed at shutdown, forgotten on a level change. It renders
+  through `FSceneRenderer::Render` before the eye render, into its own target, so RenderLevers runs it with index -1 (a
+  "capture" in the levers line). The host (`plugin/ScopeCaptureSource`) finds the render target's ID3D11Texture2D behind
+  `UTexture.Resource` by a guarded search (vtable in d3d11.dll, QueryInterface, the size; Ghidra's offsets later), keeps a
+  reference, and SightLayers samples it with the pose the presented Draw rendered (`[MEVR]` seams `NoteDrawArm` at the
+  pair-arm latch in `render_hook.cpp` and `OverlayFrame::pairArm` in `xr_session.cpp`), else the eye copy as before; the
+  reticle stays collimated. Logs `scope capture:`, `scope capture source:`; snapshots `"mod"."scopeCapture"`,
+  `"sights"."pictureSource"`/`"capture"`; offline `mevr-sight-preview`'s `scope-capture-*.png`.
 - LE1 squad weapons ([docs/squad-weapons-design.md](docs/squad-weapons-design.md), research/19
   sections 9-11): **pull the left trigger** (`[Controls] leftTrigger = lb`): the wheel opens at the left
   hand at once; pointing the left hand at a squadmate preselects them; letting go of the trigger gives

@@ -1,0 +1,216 @@
+# 39: The scope's real zoomed render (2026-10-27)
+
+**Question.** The sniper scope's picture (research/21 sections 4 and 13) magnifies the OTHER eye's already-rendered image
+4x: 22 degrees of picture show 5.5 degrees of the world, about 130 source pixels (the eye swapchain has about 24 per
+degree) stretched over about 530 headset pixels, and whatever the eye image went through (FSR's RCAS, research/32) is
+magnified too. The user approved a real zoomed render: the engine's own `SceneCapture2DComponent` rendering the scope's
+field into a small render target, only while the picture is up, sampled by the host instead of the eye copy. **Off by
+default** (`[Sights] scopeCapture = 0`) until its frame cost is measured in game.
+
+**Built** (mod `game/ScopeCapture`, host `plugin/ScopeCaptureSource` + `plugin/SightLayers`, shared `core/vr/ScopeCapture`,
+HostServices **v20**, two `[MEVR]` seams in Halcyon). Nothing here was run in the game: every engine-side claim below
+is **[verify]** until the measurement session (notes/next-vr-session.md step 44).
+
+## 1. Sources and what could not be read
+
+- **LExSDKv2's LE1 headers** (read only, for layouts and signatures; no LExSDKv2 in the code): `USceneCaptureComponent`
+  (`CaptureInfo` 0x98, `ViewState` 0xA0, `UmbraCamera` 0xA8, `PostProcess` 0xB0, `FrameRate` 0xC0, `MaxUpdateDist` 0xC4,
+  the bool word at 0xD0: `bEnabled`, `bEnablePostProcess`, `bEnableFog`, `bEnableParticles`,
+  `bUseMainScenePostProcessSettings`, `bSkipUpdateIfTextureUsersOccluded`, `bSkipUpdateIfOwnerOccluded`,
+  `bSkipRenderingDepthPrepass`), `USceneCapture2DComponent` (`ViewMatrix` 0xE0, `ProjMatrix` 0x120, `TextureTarget` 0x160,
+  `FieldOfView` 0x168, `NearPlane`, `FarPlane`, `bUpdateMatrices`; `SetView`, `SetCaptureParameters`),
+  `ASceneCaptureActor.SceneCapture` 0x284, `ASceneCapture2DActor`, `UTexture.Resource` 0xA0 (the FTextureResource*),
+  `UTextureRenderTarget2D` (`SizeX`, `SizeY`, `Format`; static `Create(InSizeX, InSizeY, InFormat, InClearColor,
+  bOnlyRenderOnce)`), LE1's `Actor.Spawn` (with LE1's extra `pActorType` and `bFindSafeLocation`), `Actor.Destroy`,
+  `Actor.ForceUpdateComponents(bCollisionUpdate, bTransformOnly)`, `SceneCaptureComponent.SetEnabled`, EPixelFormat
+  (`PF_A8R8G8B8` 2, `PF_FloatRGBA` 10). The code resolves all of it through `src/ue3`, with rows in `engine/ReflectCheck`.
+- **Halcyon** (`src/halcyon/le1`): `pchud.cpp` `[REFLRATE]` and `d3d_capture.cpp` `[REFLCEN]` (LE1's planar floor
+  reflections are SceneCaptureReflectComponents, throttled by `FrameRate`, re-rendering on "only ~60% of frames" at the
+  stock 60 against 60 presents: so a capture's update is decided per frame by elapsed time), `render_hook.cpp`
+  (`HookCalcSceneView` at 0x4C5300, the gameplay call site 0x4C7A4E, `[POSEEXACT]` pair arms), `d3d_capture.cpp`
+  `[ME2PORT]` (the pass-0 snapshot at every scene-sized depth clear with the backbuffer dirty) and `[UBERFILL]`.
+- **The perf session's classification** (main c2872e4, research/37 2026-10-27): `SceneRenderHook` (FSceneRenderer::Render,
+  0x76EE20) reads the renderer's view-family render target (+0x18) and size, learns the eye target, and runs any render
+  into another target with index -1, counted as `captures (scene renders into another target, no eye index): N a frame`.
+- **UE3 engine behaviour** (UDK-era design, from general knowledge, no source in this repository): where captures render,
+  how `FrameRate` throttles them, what `SetView` does. **Every such statement is [verify].**
+- **Ghidra was not available this session**: the GhidraMCP server could not open the project (`Project 'LE1' ... is
+  locked`; the lock dates from 2026-10-25 15:19 and two `ghidra-mcp` processes from that afternoon are still running).
+  Nothing was decompiled. The two things Ghidra should settle next are marked **[Ghidra]**: where `RenderSceneCaptures`
+  is called and what `FSceneCaptureProbe::UpdateRequired` compares, and the FTextureRenderTarget2DResource -> RHI ->
+  ID3D11Texture2D offsets (replaced for now by a validated run-time search, section 4).
+
+## 2. Creating the capture from the mod (question 1)
+
+- **No component can be constructed through ProcessEvent** (script's `new` is an opcode, not a function), so the mod
+  **spawns a `SceneCapture2DActor`** (`Actor.Spawn` on the player controller, owner the controller, at the sight's world
+  place, `bNoCollisionFail`), whose `SceneCapture` is a `SceneCapture2DComponent` made from the class's template. If the
+  class's defaults say `bStatic` or `bNoDelete` (Spawn refuses those) [verify which], the two bits are cleared on its
+  default object for the one call and put back (journaled writes); the spawned actor copies the cleared values, so
+  `Destroy` works on it. The log says which (`SceneCapture2DActor's defaults say ...`).
+- **The render target:** `TextureRenderTarget2D.Create` is static: called on its class's default object (as script's
+  `.static.` call does), `scopeCaptureSize` square (1024), `PF_FloatRGBA` by default (`scopeCaptureFormat = rgba8` for
+  `PF_A8R8G8B8`), clear colour black, `bOnlyRenderOnce` false. The default objects are found once by class and the
+  `RF_ClassDefaultObject` flag (a GObjects walk at creation only).
+- **Never skipped by the engine's own tests:** `bSkipUpdateIfTextureUsersOccluded` = 0 (no material uses our texture,
+  so it would always count as occluded), `bSkipUpdateIfOwnerOccluded` = 0 (the actor has nothing visible),
+  `MaxUpdateDist` = 1e7 (the actor stays where it was spawned while the player walks; a huge distance never stops it,
+  whether the engine reads 0 as "no limit" or "never") [verify the captures keep coming after walking 50 m].
+- **Colour:** the capture gets **the player's own post-process chain** (`LocalPlayer.PlayerPostProcess`, else
+  `Engine.DefaultPostProcess`) with `bEnablePostProcess` and `bUseMainScenePostProcessSettings` on (`scopeCapturePost =
+  0`: none), fog and particles on. With a float target the post chain's output is linear like the game's FP16 backbuffer
+  (research/27), read through an `R16G16B16A16_FLOAT` view and written to the scope's sRGB swapchain exactly as the eye
+  copy's linear samples were. An 8-bit target holds gamma-encoded colour (UE3's copy applies the display gamma, 2.2
+  [verify]): read through an sRGB view if the texture is typeless, else decoded in the shader (`decode.x = 2.2`). **The
+  capture does not get Halcyon's eye blit** (research/27's colour correction, the HDR tonemap): with the colour profile
+  neutral (the PS VR2's) that is the same picture; with another profile the scope's colours differ from the eye around
+  it by that correction [verify with a snapshot].
+- **Life:** created on the first tick an eye is behind a scope (the host's `sightView` left/right bits), disabled
+  (`SetEnabled(false)`: no probe, nothing rendered) `scopeCaptureHold` (0.5 s) after the eye leaves, enabled again when
+  it returns; a new size or format makes a new render target (the old one goes with the garbage). A new level: the old
+  world's objects are forgotten unread (`engine::World()` changed, or any of the three no longer alive and of its class).
+  `scopeCapture = 0` destroys it; the mod's shutdown (hot reload, on the game thread) disables and destroys it; at
+  process exit nothing is called.
+
+## 3. When the engine renders it, and how often (question 3)
+
+- **Where [verify, Ghidra]:** in UE3 a scene's captures render inside the main view family's render command, before
+  that family's own scene renderer (`RenderSceneCaptures`, then `Render`), when the family's show flags include scene
+  capture updates (the game's view does). Each capture renders through its own `FSceneRenderer::Render` (0x76EE20), so
+  RenderLevers' hook sees it: **before the eye render in the same command, so it would have taken index 0**. Since
+  c2872e4 it runs with index -1 (another target, 1024 against the eye's 2824x2880): no recording or replay, no eye
+  bookkeeping, counted as a capture. Halcyon's own command (`SceneRenderC`, 0x767900, "the render command that calls
+  SceneRenderB") is the probable caller [Ghidra: confirm the capture loop sits there].
+- **How often:** a capture checks the time since its last render against `1 / FrameRate` on the family's clock (world
+  or real time [Ghidra]). Under Halcyon's **two `FViewportClient::Draw`s a frame** both Draws carry the same tick's
+  world time and the second follows the first by a few milliseconds of game-thread time, so with `FrameRate` 150
+  (`scopeCaptureRate`, 6.7 ms) the first Draw renders it and the second skips it whichever clock is compared, and every
+  frame renders it up to 144 Hz. With **`sharePass = 5`** (one Draw) there is one chance a frame anyway. Expected: the
+  levers line's `captures ... 1 a frame` while scoped, 0 otherwise. If it reads 2, the engine doesn't throttle per family
+  the way assumed: lower `scopeCaptureRate` to just above the headset rate (e.g. 100 at 90 Hz).
+- **Why not 1000 (Halcyon's reflection value):** if the engine compares real time, the second Draw is more than 1 ms
+  after the first and would render the capture again (a full second capture a frame).
+
+## 4. The texture on the render thread (question 4)
+
+- The mod publishes the render target's `UTexture.Resource` (the FTextureRenderTarget2DResource*, read through
+  reflection on the game thread), its size, format, a generation (a new render target) and the pose. The host, on the
+  render thread, follows the engine's RHI references to the ID3D11Texture2D. **Without Ghidra's offsets** it searches:
+  each 8-byte slot of the resource's first 0x100 bytes, the pointer itself and each slot of its pointee's first 0x80
+  bytes (`vr::scope_capture::FindTexture`, unit-tested on a fake object graph). Every read is SEH-guarded; a candidate is
+  asked anything only if its vtable lies in d3d11.dll's image (or the debug layer's) and the object itself doesn't; then
+  `QueryInterface(ID3D11Texture2D)`, and it must be exactly the render target's size, one sample, one layer, bindable as a
+  shader resource. The first match in address order wins; the path found (`resource +0xA -> +0xB`) is logged and tried
+  first for the next render target. The host keeps its own reference (the engine may release the texture while the
+  scope still shows it: the picture never reads freed memory) and makes the view (section 2's formats). **Fails closed:**
+  not found in 240 frames, an unknown format, or a failed view: the log says so once per render target and the scope
+  keeps the eye copy, exactly as before. [Ghidra: replace the search with the two offsets and a byte-pattern-free
+  check once read; record them here.]
+- **Recognising the capture's render (for the perf session):** its view family's render target is the FRenderTarget
+  inside that resource (FTextureRenderTargetResource derives from FTexture and FRenderTarget), its size the capture's
+  (1024 square by default), one view. `scope_capture_source::ActiveResource()` (the resource while the picture was last
+  up) and `ActiveTexture()` (the D3D texture found) expose it to the host.
+
+## 5. Per tick, latency and sync (questions 2 and 5)
+
+- **Pose:** each tick the sight's centre and line (tracking space, `game/sights`) go through the view anchor's
+  tracking frame into the world: `SetView(location, rotation)` with the rotator of the world sight line (roll 0: the
+  picture's up is the world's, like an optical scope's image; the reticle rolls with the gun as before), then
+  `Actor.ForceUpdateComponents(false, true)` so the new view leaves for the render thread now, not at the actor's next
+  tick (an actor the game never ticks might never send it); after `SetEnabled` or `SetCaptureParameters` (which re-attach
+  the component, deferred) the same call with `bTransformOnly` false sends the re-attach too [verify: the picture follows
+  the gun without a lag of a second tick, and appears the frame after enabling]. The pose the host samples with is the
+  tracking pose of that same rotator's axes.
+- **Field:** the capture's field is `2 atan((1 + margin) tan(picture / 2) / zoom)`: at the virtual eyepiece's 22 degrees
+  and 4x, 5.50 degrees of the world, 6.95 with the 25% margin (an eye off the sight line moves the reticle and what is
+  sampled); 18.4 degrees for a 1.5x assault-rifle scope. The physical lens (`scopeFieldDeg = 0`) uses the lens seen from
+  5 cm. `SetCaptureParameters` only when the field changes by 0.05 degrees or the near plane by 5 units.
+- **Near plane:** the capture sits at the sight's centre (the eyepiece), so the gun's own model (the scope tube, the
+  barrel) lies ahead of it: the near plane is `scopeCaptureNear` (20 units) past the muzzle along the line (about 80 units
+  for the sniper rifle), nothing closer shows in the picture (a real scope can't focus that close either). Far plane
+  `scopeCaptureFar = 0`: the engine's own (an infinite projection when not beyond the near plane [verify: a black picture
+  means 0 was taken literally; set e.g. 1000000]).
+- **Which pose the texture was rendered with.** The mod points the capture at tick N; the next Draw (tick N+1, before the
+  mod's tick N+1) renders it; that frame's Present usually runs after the mod's tick N+1 has published again. Sampling
+  with the latest pose would shift the world by one tick of gun motion (at 30 degrees a second, 0.33 degrees of world, 1.3
+  degrees in a 4x picture). So: a `[MEVR]` seam where each Draw's main pass latches its pair arm (`render_hook.cpp`,
+  next to `RecordMetricLatch`) notes the capture publish current at that moment (`NoteDrawArm`); the submit passes the
+  presented pair's arm (`OverlayFrame::pairArm` = Halcyon's own `g_sfrPairArmThisFrame`, `xr_session.cpp`); the host
+  samples with that publish's pose (`SequenceForArm`, `BySequence`; the last 32). A Draw whose publish wasn't capturing
+  yet (just enabled) shows no capture picture (the eye copy's fallback blinks for a frame instead of showing an empty
+  texture). Without an arm (no Stereo 2 latch): the publish before the latest, after 3 ticks enabled. Snapshot
+  `framesFromArm` against `framesUsed` says which path ran.
+- **What still lags:** the capture's content is one game frame older than the eyes' head pose, like the gun model in the
+  eye image (research/21 section 7's latency note); the world in the picture is placed with the pose it was rendered from,
+  so it stays put under head motion. **The reticle stays collimated:** it is still drawn on the lens about the current
+  eye's line along the current sight (Q), exactly as before; only the image under it is the capture.
+- **The picture's sampling** is the existing shader unchanged in its geometry: per lens point, the magnified direction
+  from the eye, its point `focusM` ahead, projected into the source with that source's pose and FOV. For the capture the
+  source is its own pose, a square frustum (`tanHalf`) and the whole texture, so the "plain centred texture" falls out
+  of it (the sight line lands on the centre, unit-tested) and an eye off the line, the shadow, the rim and the fade work
+  as before. Parallax: the capture sits on the sight line 30-60 cm ahead of the eye, under 1% at 40 m.
+
+## 6. Halcyon's hooks and the capture's view (the perf session's point 5)
+
+- **No seam needed for the view:** Halcyon's FOV override, head look, metric per-pass eye offset and frustum
+  (`PostProcessPerspectiveFsv`, `ApplyMetricEyeOffset`, `ApplyMetricFrustumSEH`) all run inside its `CalcSceneView` hook
+  (`ULocalPlayer::CalcSceneView`, 0x4C5300, game thread). A capture's view is built by its probe on the render thread
+  without `ULocalPlayer::CalcSceneView` [verify, Ghidra: the probe's capture path never calls 0x4C5300]. The log's
+  `[MEVR-STEREO] pass N ...` counts and the capture's picture (no doubled offset, no widened field) confirm it.
+- **`[ME2PORT]` pass-0 snapshots:** UE3 renders captures into the shared scene render targets, so the capture's depth
+  clear may be "scene-sized" and take a pass-0 snapshot while the backbuffer is dirty from the last frame. The eye
+  renders' own clears re-snapshot after it (the last snapshot before Present wins), as with the floor reflections'
+  captures, which this path already lives with (`11 -> 2 snapshots per present`) [verify: no stale eye with the scope up].
+- **`[UBERFILL]`** keys on the uber composite shader with a per-frame dedupe; a post-processed capture draws that shader
+  first in the frame. It is only active while `SetStereoUiActive` (SBS stereo), not in Stereo 2 [verify].
+- **Umbra:** the capture has its own `UmbraCamera` and `ViewState` (component fields 0xA8, 0xA0), so it runs its own
+  visibility and Umbra resolve on the render thread (the heavy cell's eye resolve costs 1.3-1.5 ms). A 7-degree frustum
+  should walk far fewer cells and portals than a 108-degree one, but nothing found here lets a capture skip Umbra short
+  of the global console switches. Measure it: RenderLevers counts the capture's render but doesn't time it (it runs
+  outside the eye bookkeeping), so the off/on A/B gives its whole cost and `tools/sample-render-thread.ps1` its Umbra
+  share.
+
+## 7. Cost, expected (to be measured)
+
+- GPU: 1024 x 1024 = 1.05 Mpixel against 8.1 Mpixel per eye at 2824x2880: about 13% of one eye's pixel work, plus the
+  post chain at that size. CPU (render thread): a scene render's fixed costs (InitViews, Umbra's resolve, lights) plus
+  the draws of what a 7-degree frustum holds (a fraction of an eye's 4,100 at the heavy cell, but each far object at a
+  higher LOD: the zoom quarters the LOD distance). Guess: +1-3 ms of render thread at the heavy cell while scoped,
+  nothing when not. **Unknown until measured.**
+- Resolution: 1024 over 6.95 degrees is 147 pixels per degree of the world; the picture shows 22 degrees in about 530
+  headset pixels (24 per degree), i.e. the 5.5 degrees of world need about 530 x 1.25 = 660 capture pixels. 1024 is
+  1.5x oversampled; `scopeCaptureSize = 640` is the first cost lever if the GPU is short.
+- Offline look: `mevr-sight-preview` now writes `scope-capture-virtual-45cm.png`, `...-off-2.5cm.png`,
+  `...-30cm-1.5x.png` and each capture target: the same geometry as `scope-virtual-45cm.png`, sharp instead of blocky.
+
+## 8. Settings (`[Sights]` in `ASI\LE1MEVR.ini`, live)
+
+`scopeCapture` (0), `scopeCaptureSize` (1024, 256-2048), `scopeCaptureRate` (150), written to older files; file-only:
+`scopeCapturePost` (1), `scopeCaptureFormat` (float | rgba8), `scopeCaptureMargin` (0.25), `scopeCaptureNear` (20 units
+past the muzzle), `scopeCaptureFar` (0), `scopeCaptureHold` (0.5 s).
+
+## 9. Logs and snapshots
+
+- Mod: `scope capture: settings: ...`; `created <actor> with <component> ... disabled until an eye is behind the scope`;
+  `render target ... (WxH, format F, resource 0x...)`; `post process on, the player's chain ...`; `enabled (the eye is
+  behind the 4x scope): field 6.95 degrees, near plane N units` and `disabled ...` (the first five; then the heartbeat's
+  `scope capture: ...; enabled N times ...`); `off: <reason>` (a failure, with what was missing); `destroyed ...`,
+  `forgot the capture (a new level)`. Snapshot `"mod"."scopeCapture"`.
+- Host: `scope capture source: the render target's D3D11 texture: resource 0x... +0xA -> +0xB = 0x..., WxH format F ...`
+  (or `no ... texture found ...`), `first scope picture from the capture (... pose from the presented Draw's arm)`;
+  `[MEVR-SIGHT] first scope picture: ... from the scope capture`; the scope's per-look line ends `N of them from the scope
+  capture`. Snapshot `"sights"."pictureSource"` (`capture`/`eye copy`) and `"sights"."capture"` (`state`, `path`,
+  `framesUsed`, `framesFromArm`, `framesNotReady`).
+- RenderLevers (perf session): `render levers: a scene render into target ... ran as a capture` (the first five) and the
+  levers line's `captures ...: N a frame`.
+
+## 10. [verify] list
+
+1. Spawn works (the defaults' flags), the component is a SceneCapture2DComponent, Create returns a target.
+2. The capture renders once a frame while scoped and never when not (levers line), under two Draws and under sharePass 5.
+3. The texture search finds it (the log's path), the view's format, and the colours match the eye around the picture.
+4. The picture is right side up, unmirrored, centred on the reticle, the world in it steady when the head moves and the
+   gun is still (pose from the arm), and when the gun moves (the ForceUpdateComponents path).
+5. The near plane keeps the gun out; the far plane 0 isn't taken literally; fog and post look like the eye.
+6. Nothing changes in the eye images with the scope up (no stale pass 0, no change in bloom).
+7. Its cost (step 44).

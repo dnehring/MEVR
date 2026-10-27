@@ -1347,6 +1347,37 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       dropped: the main menu opened again first`, and no pause menu.
     - Must NOT appear: `the mod has never asked for these requests` (host and mod out of step: redeploy both), `the host
       (services older than v19)`.
+44. **The scope's real zoomed render: is it right, and what does it cost (new, 2026-10-27; HOST AND MOD REDEPLOY together,
+    game closed: HostServices v20; [research/39](../research/39-scope-capture.md)).** Off by default (`[Sights]
+    scopeCapture = 0`); everything below turns it on by hand and back off at the end.
+    - **First, does it work** (headset on, Eden Prime, the sniper rifle drawn): set `scopeCapture = 1` in `ASI\LE1MEVR.ini`
+      (live), raise the scope to the eye. The picture should be sharp (no blocky pixels), right side up, unmirrored, the
+      reticle on what the gun points at. Hold still, then sweep slowly: the world in the picture stays put while the head
+      moves, and follows the gun without a jump. `tools/snapshot.ps1` while scoped, and once with `scopeCapture = 0` at
+      the same pose (the eye-copy picture to compare).
+      Log, in order: `scope capture: created ... SceneCapture2DActor ... disabled until an eye is behind the scope`, a
+      `render target ... (1024x1024, format 10 ...)` line, `post process on, the player's chain ...`, `enabled (the eye is
+      behind the 4x scope): field 6.95 degrees, near plane ~80 units`, then the host's `scope capture source: the render
+      target's D3D11 texture: resource 0x... +0x.. -> +0x.. = 0x..., 1024x1024 format ..` and `first scope picture from
+      the capture (... pose from the presented Draw's arm)`. The per-look line ends `N of them from the scope capture`.
+      **Bad signs:** `scope capture: off: <reason>` (what was missing), `no 1024x1024 D3D11 texture found` (the host keeps
+      the old picture: say so, the offsets need Ghidra), a black picture (try `scopeCaptureFar = 1000000`), the gun's own
+      scope tube filling the picture (raise `scopeCaptureNear`), colours unlike the world around the picture (try
+      `scopeCapturePost = 0`), the picture a frame behind when sweeping.
+    - **Once a frame?** The `render levers:` line: `captures (scene renders into another target, no eye index): 1 a frame`
+      while scoped, 0 when not (and the capture's first-five lines `a scene render into target ... ran as a capture`). 2 a
+      frame: set `scopeCaptureRate = 100` and look again. Lower the gun: `scope capture: disabled ... nothing rendered`
+      after half a second, and the count back to 0.
+    - **The cost, at the heavy Eden Prime cell** (-31000, 145000, 900; research/35's measuring loop): first record the
+      scope held up for 20 s in the headset (`tools/record.ps1 -Seconds 20` with the eye behind the scope, standing at the
+      cell). Then (fake headset or the real one) `tools/measure-levers.ps1 -Section Sights -Key scopeCapture -Values 0,1
+      -Rounds 3` replays it (head and controllers: the eye stays behind the scope) and prints frame, render-thread busy, GPU
+      span and draws for off and on. Repeat with `-Key scopeCaptureSize -Values 640,1024` (scopeCapture = 1) to see the
+      GPU share. Do it once with `sharePass = 5` and once with `sharePass = 0` (the one-Draw health line must stay
+      healthy: `one Draw: ...` with no fallback while scoped). The levers line only counts the capture's render (it runs
+      untimed, outside the eye bookkeeping), so the off/on differences in render-thread busy and GPU span are its cost;
+      `tools/sample-render-thread.ps1` while scoped says how much of it is Umbra's resolve.
+    - Put `scopeCapture = 0` back unless the cost is acceptable.
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR
