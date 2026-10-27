@@ -89,7 +89,7 @@ struct State {
     ue3::Object* target = nullptr;
     int targetSize = 0;
     bool targetFloat = true;
-    std::uint64_t generation = 0;
+    std::uint64_t generation = 0;  // gGenerations' value for `target`
     bool enabled = false;
     std::uint32_t enabledTicks = 0;
     float fovDeg = 0.0f;
@@ -100,6 +100,10 @@ struct State {
     bool reattach = false;  // SetEnabled / SetCaptureParameters re-attach the component (deferred): the next flush is full
 };
 State gState;
+// Every render target this mod made gets a new generation, also across re-creations (a new level, the setting off and
+// on): the host keeps its view of a texture until the generation or the resource changes, and the allocator may hand a
+// new level's FTextureResource the old one's address (gState is reset on each creation, so its count can't be it).
+std::uint64_t gGenerations = 0;
 bool gFailed = false;       // stood down until the level changes or the setting is turned off and on
 std::string gFailure;
 void const* gFailedWorld = nullptr;
@@ -296,7 +300,7 @@ bool NewTarget(sc::Settings const& settings) {
     gState.target = target;
     gState.targetSize = settings.size;
     gState.targetFloat = settings.floatTarget;
-    ++gState.generation;
+    gState.generation = ++gGenerations;
     log::Info("scope capture: render target {} ({}x{}, format {}{}, resource 0x{:X})", ue3::runtime::FullName(target),
         gSizeX.Read<std::int32_t>(target).value_or(-1), gSizeY.Read<std::int32_t>(target).value_or(-1),
         static_cast<int>(gFormat.Read<std::uint8_t>(target).value_or(0)), settings.floatTarget ? ": FloatRGBA" : ": A8R8G8B8",

@@ -18,6 +18,7 @@ constexpr float kDegToRad = kPi / 180.0f;
 std::mutex gMutex;
 Capture gHistory[kHistory];
 std::uint64_t gSequence = 0;
+std::uint64_t gResets = 0;
 
 constexpr int kArms = 32;
 struct ArmEntry {
@@ -126,6 +127,12 @@ void Reset() {
     for (ArmEntry& a : gArms) {
         a = ArmEntry{};
     }
+    ++gResets;
+}
+
+std::uint64_t Resets() {
+    std::lock_guard lock(gMutex);
+    return gResets;
 }
 
 void NoteDrawArm(std::uint64_t arm) {

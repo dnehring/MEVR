@@ -90,6 +90,10 @@ Capture Latest(std::uint64_t maxAgeMs = 250);
 std::optional<Capture> BySequence(std::uint64_t sequence);
 std::uint64_t LatestSequence();
 void Reset();
+// How many times Reset ran (the mod unloaded or shut its capture down): the host's view of a render target's texture
+// is dropped when this changes, since a reloaded mod counts its generations from 1 again and a new render target may
+// get a freed one's address.
+std::uint64_t Resets();
 
 // Which publish a Draw renders the capture with (host). The mod points the capture at tick N and forces the update out,
 // so the next Draw (tick N+1, before the mod's tick N+1) renders publish N: the newest when that Draw's main pass latches

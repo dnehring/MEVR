@@ -127,6 +127,7 @@ Resolved gResolved;
 sc::TexturePath gHint;  // the path found last time: the same engine build lays every render target out alike
 std::atomic<std::uint64_t> gActiveResource{0};
 std::atomic<std::uint64_t> gActiveTexture{0};
+std::uint64_t gSeenResets = 0;  // vr::scope_capture::Resets() when gResolved was last valid for it
 unsigned gFramesUsed = 0;
 unsigned gFramesFromArm = 0;
 unsigned gFramesNotReady = 0;
@@ -219,6 +220,11 @@ bool Resolve(ID3D11Device* device, sc::Capture const& capture) {
 } // namespace
 
 std::optional<Source> ForFrame(ID3D11Device* device, int weapon, std::uint64_t pairArm) {
+    // The mod went (hot reload, unload): its next render target may repeat the old generation at the old address.
+    if (std::uint64_t const resets = sc::Resets(); resets != gSeenResets) {
+        gSeenResets = resets;
+        Forget();
+    }
     sc::Capture const latest = sc::Latest(200);
     if (latest.state != sc::kCapturing || latest.resource == 0 || latest.width == 0 || latest.height == 0) {
         gActiveResource.store(0, std::memory_order_relaxed);

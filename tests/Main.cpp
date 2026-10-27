@@ -5353,8 +5353,10 @@ void TestScopeCapture() {
             c::Publish(second);
         }
         CHECK(!c::BySequence(s1));  // fell out of the history
+        std::uint64_t const resets = c::Resets();
         c::Reset();
         CHECK(c::Latest().state == c::kOff && !c::SequenceForArm(77));
+        CHECK(c::Resets() == resets + 1);  // the host drops its texture view: a reloaded mod's generations start again
     }
     // The D3D texture behind the resource: a fake object graph (resource -> RHI object -> texture).
     {
