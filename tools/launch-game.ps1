@@ -12,6 +12,11 @@
 # `-game 1 -autoterminate` (no PLAY). The chain is started from a scheduled task, never from this shell: a process
 # spawned here sits in the harness's job object, and the EA app it spawns then fails every launch with "Create
 # Process: Access is denied" (its proxy needs to break away from the job). The task runs with the user's own token.
+# The same failure comes back whenever the EA app ITSELF sits in a job: EASteamLauncher.log then reads "[PROCESS] Create
+# Process: Access is denied ... breakaway=[true] ... OS ErrorCode: 0x5" for MassEffectLauncher.exe and the EA app reports
+# "Game launch error: [9] (LaunchFailed)" (2026-10-27 15:05 to 2026-10-28, EADesktop.exe in a job per IsProcessInJob; a
+# Play in Steam still works, because that EASteamLauncher descends from steam.exe, outside the job). Quit the EA app
+# (tray icon, Exit) and start it from the Start menu, never from a task or this shell, then this route works again.
 #
 #   tools/launch-game.ps1                 start, resume the last save, wait (up to 4 minutes), say READY
 #   tools/launch-game.ps1 -Pause          ... and freeze the world (tools/console.ps1 pause) once in gameplay
