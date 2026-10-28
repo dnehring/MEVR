@@ -13,6 +13,12 @@
 #   Steam\config\steamvr.vrsettings: steamvr.forcedDriver = "null", steamvr.activateMultipleDrivers = false,
 #     driver_playstation_vr2.enable = false, power.pauseCompositorOnStandby = false, power.turnOffScreensTimeout = 36000
 #     (without the power keys the null headset goes to standby 5 s after each wake and the session never leaves READY).
+#   Steam\config\chaperone_info.vrchap: a universe "2" (the null driver's) at the zero pose with a 1 x 1 m play area.
+#     Without it the chaperone's calibration state is 201 (universe uninitialised) and vrmonitor launches room setup the
+#     first time the universe appears after a SteamVR start; room setup is a scene app, so vrserver sends the running
+#     scene app (the game) a Quit event and KILLS it 5 s later ("Kill process MassEffect1 because it didn't quit in
+#     time"; the game died at the title with no crash record, 2026-10-27 19:45, 22:35 and 22:36). A second launch
+#     survived because the game then evicted room setup (which exits at once with no real headset).
 # The game must not be running while the driver changes.
 param([switch]$On, [switch]$Off, [switch]$Status, [int]$Width = 2824, [int]$Height = 2880)
 $ErrorActionPreference = 'Stop'
@@ -20,11 +26,36 @@ $ErrorActionPreference = 'Stop'
 $steam = 'C:\Program Files (x86)\Steam'
 $nullSettings = Join-Path $steam 'steamapps\common\SteamVR\drivers\null\resources\settings\default.vrsettings'
 $vrSettings = Join-Path $steam 'config\steamvr.vrsettings'
+$chaperone = Join-Path $steam 'config\chaperone_info.vrchap'
 $vrStartup = Join-Path $steam 'steamapps\common\SteamVR\bin\win64\vrstartup.exe'
 $backupDir = Join-Path $env:LOCALAPPDATA 'MEVR\fake-headset'
+$nullUniverse = '2'   # the null driver's chaperone universe ("Update ZeroPose for the chaperone universe 2" in vrserver.txt)
 
 function Read-Json($path) { Get-Content -LiteralPath $path -Raw | ConvertFrom-Json }
-function Write-Json($path, $obj) { $obj | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $path -Encoding utf8 }
+function Write-Json($path, $obj) {
+    # UTF-8 without a BOM: SteamVR's own reader writes none
+    [IO.File]::WriteAllText($path, ($obj | ConvertTo-Json -Depth 10), (New-Object Text.UTF8Encoding $false))
+}
+function Has-NullUniverse($chap) { [bool]($chap.universes | Where-Object { "$($_.universeID)" -eq $nullUniverse }) }
+function New-NullUniverse {
+    # a 1 x 1 m square around the zero pose, walls 2.43 m high (the user's own entry's shape), standing and seated at
+    # the identity, the zero pose SteamVR used for this universe before it was registered
+    $w = 0.5; $h = 2.43
+    $corners = @(@(-$w, -$w), @(-$w, $w), @($w, $w), @($w, -$w))
+    $walls = @()
+    for ($i = 0; $i -lt 4; $i++) {
+        $a = $corners[$i]; $b = $corners[($i + 1) % 4]
+        $walls += , @(@($a[0], 0, $a[1]), @($a[0], $h, $a[1]), @($b[0], $h, $b[1]), @($b[0], 0, $b[1]))
+    }
+    [pscustomobject]@{
+        collision_bounds = $walls
+        play_area        = @(1, 1)
+        seated           = [pscustomobject]@{ translation = @(0, 0, 0); yaw = 0 }
+        standing         = [pscustomobject]@{ translation = @(0, 0, 0); yaw = 0 }
+        time             = (Get-Date).ToString('ddd MMM dd HH:mm:ss yyyy', [Globalization.CultureInfo]::InvariantCulture)
+        universeID       = $nullUniverse
+    }
+}
 function Set-Member($obj, $name, $value) {
     if ($null -eq $obj.PSObject.Properties[$name]) { $obj | Add-Member -NotePropertyName $name -NotePropertyValue $value }
     else { $obj.$name = $value }
@@ -46,6 +77,7 @@ if ($Status -or -not ($On -or $Off)) {
     $psvr = if ($s.PSObject.Properties['driver_playstation_vr2'] -and $s.driver_playstation_vr2.PSObject.Properties['enable']) { $s.driver_playstation_vr2.enable } else { '(default)' }
     "null driver enable: $($n.driver_null.enable) ($($n.driver_null.renderWidth)x$($n.driver_null.renderHeight) @ $($n.driver_null.displayFrequency) Hz)"
     "steamvr.forcedDriver: $forced; driver_playstation_vr2.enable: $psvr"
+    "chaperone universe $nullUniverse (the null driver's) registered: $(if (Test-Path -LiteralPath $chaperone) { Has-NullUniverse (Read-Json $chaperone) } else { 'no chaperone file' })"
     "SteamVR running: $([bool](Get-Process vrserver -ErrorAction SilentlyContinue)); game running: $([bool](Get-Process MassEffect1 -ErrorAction SilentlyContinue))"
     return
 }
@@ -76,8 +108,20 @@ if ($On) {
     Set-Member $pw 'pauseCompositorOnStandby' $false
     Set-Member $pw 'turnOffScreensTimeout' 36000
     Write-Json $vrSettings $s
+    # the null driver's universe, so vrmonitor never launches room setup over the game (see the header)
+    $chapBackup = Join-Path $backupDir 'chaperone_info.vrchap'
+    if (Test-Path -LiteralPath $chaperone) {
+        if (-not (Test-Path -LiteralPath $chapBackup)) { Copy-Item -LiteralPath $chaperone $chapBackup }
+        $c = Read-Json $chaperone
+    } else {
+        $c = [pscustomobject]@{ jsonid = 'chaperone_info'; universes = @(); version = 5 }
+    }
+    if (-not (Has-NullUniverse $c)) {
+        $c.universes = @($c.universes) + @(New-NullUniverse)
+        Write-Json $chaperone $c
+    }
     Start-Process -FilePath $vrStartup | Out-Null
-    "fake headset ON: null driver ${Width}x${Height} @ 90 Hz, the PS VR2 driver off, standby off; SteamVR starting (backups in $backupDir)"
+    "fake headset ON: null driver ${Width}x${Height} @ 90 Hz, the PS VR2 driver off, standby off, chaperone universe $nullUniverse registered; SteamVR starting (backups in $backupDir)"
 }
 if ($Off) {
     Stop-SteamVR
@@ -91,5 +135,12 @@ if ($Off) {
         if ($s.PSObject.Properties['power']) { $s.power.PSObject.Properties.Remove('pauseCompositorOnStandby'); $s.power.PSObject.Properties.Remove('turnOffScreensTimeout') }
         Write-Json $vrSettings $s
     }
-    "fake headset OFF: the user's SteamVR settings restored; SteamVR stopped (start it with the headset on)"
+    $chapBackup = Join-Path $backupDir 'chaperone_info.vrchap'
+    if (Test-Path -LiteralPath $chapBackup) { Copy-Item -LiteralPath $chapBackup $chaperone -Force }
+    elseif (Test-Path -LiteralPath $chaperone) {
+        $c = Read-Json $chaperone
+        $c.universes = @($c.universes | Where-Object { "$($_.universeID)" -ne $nullUniverse })
+        Write-Json $chaperone $c
+    }
+    "fake headset OFF: the user's SteamVR settings and chaperone restored; SteamVR stopped (start it with the headset on)"
 }

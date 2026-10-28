@@ -526,7 +526,8 @@ Use it to check VR changes yourself instead of asking the user what they see
   adds whole-GPU load; `tools/sample-render-thread.ps1` samples the render thread's stack from outside
   (`mevr-stack-sampler`): where its time goes by module and function, no redeploy.
   **Measuring without a person** (research/35 attempts 40-43): `tools/fake-headset.ps1 -On` (SteamVR's null driver; `-Off`
-  gives the real headset back), `tools/launch-game.ps1` (EA's Link2EA from a scheduled task, PLAY and the title's Enter by
+  gives the real headset back; it also registers the null driver's chaperone universe "2", else vrmonitor launches room setup
+  after every SteamVR start and vrserver kills the game at the title 5 s later, silently: research/35 "Setup for measuring"), `tools/launch-game.ps1` (EA's Link2EA from a scheduled task, PLAY and the title's Enter by
   keyboard from a foreground shell; never start the game from this shell: the harness's job object breaks the EA app),
   `tools/console.ps1 "mevr density 2000"` (the densest mesh cells), `"god" "ghost"` then `"set SFXPawn_Player Location
   (X=..,Y=..,Z=..)"` to move Shepard (Actor.SetLocation through ProcessEvent refuses the player), `tools/spot-survey.ps1`

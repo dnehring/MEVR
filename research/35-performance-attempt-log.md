@@ -19,6 +19,15 @@ the same probes) with nobody in the headset. Files, backed up before the change:
   `driver_playstation_vr2.enable = false` (else the PS VR2's overlay complains "headset off"), and **`power.pauseCompositorOnStandby
   = false`, `turnOffScreensTimeout = 36000`**: SteamVR puts the null headset in standby 5 s after each wake and pauses the
   compositor, so without this the session never leaves READY and Halcyon never runs a frame (three launches lost to it).
+- `Steam\config\chaperone_info.vrchap`: a universe `"2"` (the null driver's: vrserver logs "Update ZeroPose for the chaperone
+  universe 2" when the game connects on it) at the zero pose with a 1 x 1 m play area (2026-10-27, since `fake-headset.ps1 -On`).
+  **Without it SteamVR kills the game at the title**: the file knows only the real headset's universe, so the chaperone's
+  calibration state is 201 (universe uninitialised), vrmonitor logs "Launching room setup, because calibration state was 201"
+  the first time the universe appears after a SteamVR start, room setup is a scene app, and vrserver sends the running scene
+  app a Quit event and ends it 5 s later ("Kill process MassEffect1 because it didn't quit in time"): the game vanished 2 s
+  after the title with no crash record and nothing in either log (19:45, 22:35, 22:36). The next launch survived, because the
+  game then evicted room setup (which exits at once with no real headset); so it only bit after every SteamVR restart, and
+  looked like a key press or the EA app.
 - Then SteamVR restarted (`vrstartup.exe`). `steam://rungameid/1328670` from a shell never produced the launcher; ME3Tweaks Mod
   Manager's Start Game → the launcher's PLAY → Enter at the press-any-key screen (which resumes the last save) does, driven by
   computer use. The mouse does nothing in VR mode (Halcyon decouples it); the keyboard works.
