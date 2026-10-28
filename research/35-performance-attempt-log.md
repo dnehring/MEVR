@@ -433,3 +433,35 @@ session strobed: the engine's 4 MB dynamic vertex and index rings wrap inside th
 more in combat) and the replayed draws before the wrap read garbage; the recorder now shadows such a buffer on the GPU
 before the discard and the replay binds the shadow for them. Off by default; research/37 has the measurements and what
 remains.
+
+## Attempt 49 (2026-10-27 to 28): the "shifting assets" flicker is the game's motion blur, on after the level loads
+
+The user's report (deeper in the game, the Citadel save): the environment shifts up and down and in different directions,
+each asset its own way, in both eyes, without a CPU frame-time spike. Measured on the fake headset with the save's own
+head recording replayed (`psvr2-sweep.mevrrec`, a 40 s yaw sweep with the recorded head sway) and the desktop mirror
+grabbed at 29 frames a second: the large stucco slab flips, as a whole surface, between its speckled look and a smooth
+look streaked along one diagonal, in runs of 1-4 frames (`scratchpad/hf.py`: the frame's high-frequency energy,
+thresholded; "transitions" per 4 s grab). Ruled out one by one, each by the same pan at the same phase:
+
+| what was changed | transitions in 4 s | note |
+|---|---|---|
+| nothing (one-Draw stereo, the user's settings) | 35-51 | the baseline, two sessions |
+| FSR off, kept shader states off (fresh session) | same | |
+| no mod D3D11 hooks at all (`sharePass = 0` from the first frame, 0 attach lines) | 20-21 | our hooks are out |
+| the runtime's constant FOVs instead of the recorded per-frame ones | 30-57 | Halcyon's FOV match is out |
+| every static mesh forced to LOD 0 (`set StaticMeshComponent ForcedLodModel 1`) | 47 | mesh LOD is out (if `set` took) |
+| every texture's mips forced resident | 56 | texture streaming is out (same caveat) |
+| **`scale set MotionBlur True`, then `scale set MotionBlur False`** | 51, then **3** | the 3 are the pan's one content change |
+| depth of field off, on; Umbra occlusion culling toggled twice (all after the blur toggle) | 1-3 | stays fixed |
+
+The streaked look is the stucco smeared along a direction, the signature of motion blur, not of a coarser mip
+(`burst-left-slab.png`, the left eye 6 frames apart). The blur's velocity in stereo comes from the other eye's view
+(one shared view state, research/35 2026-10-23), so every surface smears its own way, which is the "different
+directions"; it comes and goes in runs because the per-pixel velocity crosses the blur's threshold with the head's sway.
+`MotionBlur=False` stands in BIOEngine.ini's `[SystemSettings]` and GamerSettings, and the mod's `scale set MotionBlur
+False` ran at the title (16:01:35) before the save loaded (16:01:4x): the loaded level rendered with the blur anyway,
+and a second `scale set MotionBlur False` there changed nothing, while True then False turned it off. Dynamic
+resolution is not involved (`[DynamicResolution] Enabled=False`, min = max = 100). Fix: `game/SystemSettings` applies
+its values again after every level change (`engine::World()` differs) and sends each boolean through its opposite
+first. The console's `getall` prints nothing in LE, so the LOD and mip-resident rows above show only that those
+commands didn't change the flicker, not that they took; `set SFXPawn_Player Location` is known to work.

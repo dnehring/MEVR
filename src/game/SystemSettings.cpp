@@ -2,6 +2,7 @@
 #include "game/SystemSettings.hpp"
 
 #include "core/Log.hpp"
+#include "engine/Engine.hpp"
 #include "engine/GameAdapter.hpp"
 #include "engine/SettingsFile.hpp"
 #include "game/ConsoleRequest.hpp"
@@ -31,6 +32,7 @@ bool gApplied = false;
 fs::file_time_type gStamp{};
 bool gHaveStamp = false;
 bool gToldOff = false;
+void const* gAppliedWorld = nullptr;  // the world the settings last went to: a new level gets them again
 
 fs::path FilePath() {
     return engine::SettingsFile();  // <exe dir>\ASI\<GAME>MEVR.ini, the host's file too
@@ -54,6 +56,20 @@ std::string Trim(std::string s) {
 
 bool SameKey(std::string const& a, std::string const& b) {
     return _stricmp(a.c_str(), b.c_str()) == 0;
+}
+
+// A boolean's opposite, or empty for a number. The values are sent through the opposite first: `scale set MotionBlur
+// False` with False already stored changed nothing in the renderer, while True then False turned the blur off (the
+// "assets shift in different directions" flicker of 2026-10-27, measured 2026-10-28: a surface smeared along its own
+// screen velocity on some frames; look-flips over a 4 s pan 40-57 before, 1-3 after; research/35).
+std::string Opposite(std::string const& value) {
+    if (SameKey(value, "False")) {
+        return "True";
+    }
+    if (SameKey(value, "True")) {
+        return "False";
+    }
+    return {};
 }
 
 // The built-in values, then the file's section over them (a key the file sets replaces the built-in one; apply = 0
@@ -110,7 +126,10 @@ void Tick(float deltaSeconds) {
     std::error_code ec;
     fs::file_time_type const stamp = fs::last_write_time(path, ec);
     bool const changed = !ec && (!gHaveStamp || stamp != gStamp);
-    if (gApplied && !changed) {
+    // A new level (the save loaded after the title's menu world, a map change) renders with the blur again: apply again.
+    void const* const world = engine::World();
+    bool const newLevel = gApplied && world != nullptr && world != gAppliedWorld;
+    if (gApplied && !changed && !newLevel) {
         return;
     }
     std::vector<Setting> const wanted = Wanted(path);
@@ -126,7 +145,7 @@ void Tick(float deltaSeconds) {
         }
         return true;
     };
-    if (gApplied && same()) {
+    if (gApplied && same() && !newLevel) {
         gStamp = stamp;
         gHaveStamp = !ec;
         return;
@@ -138,23 +157,33 @@ void Tick(float deltaSeconds) {
         }
         applied.clear();
         gApplied = true;
+        gAppliedWorld = world;
         gStamp = stamp;
         gHaveStamp = !ec;
         return;
     }
     std::string appliedText;
     for (Setting const& s : wanted) {
+        std::string const opposite = Opposite(s.value);
+        if (!opposite.empty()) {
+            std::string ignored;
+            if (!console_request::RunCommand("scale set " + s.key + " " + opposite, &ignored)) {
+                return;  // no local player yet: next second
+            }
+        }
         std::string output;
         if (!console_request::RunCommand("scale set " + s.key + " " + s.value, &output)) {
             return;  // no local player yet: next second
         }
         appliedText += (appliedText.empty() ? "" : ", ") + s.key + " " + s.value + (output.empty() ? "" : " (" + Trim(output) + ")");
     }
-    log::Info("system settings: scale set {}{}", appliedText,
-              changed && gApplied ? " (the file's values changed)"
-                                  : " (BIOEngine.ini's [SystemSettings] wins over GamerSettings' and the game rewrites it)");
+    log::Info("system settings: scale set {} (booleans through their opposite first){}", appliedText,
+              newLevel              ? " (a new level: applied again)"
+              : changed && gApplied ? " (the file's values changed)"
+                                    : " (BIOEngine.ini's [SystemSettings] wins over GamerSettings' and the game rewrites it)");
     applied = wanted;
     gApplied = true;
+    gAppliedWorld = world;
     gToldOff = false;
     gStamp = stamp;
     gHaveStamp = !ec;

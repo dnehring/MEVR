@@ -463,7 +463,11 @@ switching frameworks.
   2026-10-23, research/35), and the game rewrites that file (after every `scale set`; a launch put the defaults
   back once), so **the mod applies the VR values itself** (`game/SystemSettings`, hot-reloaded): `scale set
   DynamicShadows False`, `MotionBlur False`, `FoliageDrawRadiusMultiplier 0.5` through the local player's console
-  once a player exists; `[SystemSettings]` in `ASI\LE1MEVR.ini` overrides any key (`apply = 0` off); log `system
+  once a player exists, **again after every level change, each boolean through its opposite first** (research/35
+  attempt 49, 2026-10-28: the save's level rendered with the blur although the ini and the title's `scale set` said
+  off, and the same `False` there did nothing while True then False turned it off; in stereo the blur's velocity is
+  the other eye's view, so every surface smeared its own way in runs of frames: the "assets shift in different
+  directions" report); `[SystemSettings]` in `ASI\LE1MEVR.ini` overrides any key (`apply = 0` off); log `system
   settings:`. The tool writes the same three into BIOEngine.ini too. At a heavy spot shadows off and the foliage
   radius took the render thread from 9.35 to 6.88 ms and the GPU from 8.4 to 4.9 (the grass costs per instance,
   twice a frame in stereo; 0.25 pops the grass in too close); motion blur on smeared one eye and not the other
