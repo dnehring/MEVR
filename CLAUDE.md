@@ -140,6 +140,12 @@ switching frameworks.
   assumptions **[verify]** and update the hypothesis table in `research/08-ue3-hypotheses.md` as
   they're confirmed or refuted.
 - `docs/`: plans and decisions. Keep them consistent with `research/`.
+- `docs/knowledge/`: the knowledge bundle ([Open Knowledge Format](https://okf.md/spec/): markdown with YAML
+  frontmatter, `type` the only required key). `gotchas/` holds every problem that bit twice or cost hours: the symptom
+  in every wording it had, the cause, the fastest check, the fix in place, the dates it bit (`bitten`). **When a
+  symptom sounds familiar, read `docs/knowledge/gotchas/index.md` before investigating; when one bites again, add the
+  date and the new wording there.** New ones follow `docs/knowledge/how-to-write.md`; `python tools/check-okf.py
+  docs/knowledge` (ctest `mevr-okf`) checks the bundle.
 - `reference/`: read-only third-party clones (gitignored). Recreate with `tools/fetch-references.ps1`.
 - `notes/game-inventory.md`: exe versions and hashes from `tools/inventory-game.ps1`. Re-run after
   game updates. All three exes are 2.0.0.48602 (the build LExSDKv2's RVAs target).
@@ -622,6 +628,9 @@ Use it to check VR changes yourself instead of asking the user what they see
 
 ## Gotchas
 
+- **The long forms live in [docs/knowledge/gotchas](docs/knowledge/gotchas/index.md)** (OKF, since 2026-10-30, after
+  motion blur bit a third time under a third name): symptom, cause, check, fix in place, the dates each bit. Read it
+  when something looks familiar; add the date when it bites again. The bullets below are the short forms.
 - Don't `cd` in Bash tool calls; it moves the session's working directory. Use absolute paths.
 - **Our settings file is `<exe dir>\ASI\<GAME>MEVR.ini` for the host and the mod** (`engine/SettingsFile`; the host's
   `MevrBridge::SettingsPath()` returns it, whatever the host ASI is called). **Read it with `core/Ini`** (or Win32's

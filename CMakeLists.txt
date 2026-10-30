@@ -741,6 +741,10 @@ if (MEVR_BUILD_TESTS)
     if (Python3_Interpreter_FOUND)
         add_test(NAME mevr-rva-table COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-rva-table.py
             ${CMAKE_CURRENT_SOURCE_DIR})
+        # The knowledge bundle (docs/knowledge, Open Knowledge Format): a typed frontmatter on every concept, complete
+        # indexes, resolving links, dated log headings (docs/knowledge/how-to-write.md).
+        add_test(NAME mevr-okf COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-okf.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/docs/knowledge)
     endif ()
 
     # Our ASI loader in a tiny host process (tools/loader-test, research/33): a folder like the game's Win64 with our
