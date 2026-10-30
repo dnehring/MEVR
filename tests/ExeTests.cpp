@@ -198,7 +198,7 @@ void TestTables() {
     namespace a1 = engine::addresses::le1;
     for (std::uint32_t rva : {a1::kProcessEvent, a1::kCallFunction, a1::kGameEngineTick, a1::kCalcSceneView,
              a1::kCalcSceneViewPrimaryReturn, a1::kViewportDraw, a1::kViewportDrawEnd, a1::kUpdateSkelPose,
-             a1::kTryAcquireCover, a1::kCoverTrace, a1::kGObjects, a1::kNamePools, a1::kGMalloc, a1::kAppMalloc,
+             a1::kTryAcquireCover, a1::kCoverTrace, a1::kUpdateSelection, a1::kGObjects, a1::kNamePools, a1::kGMalloc, a1::kAppMalloc,
              a1::kAppFree, a1::kGNatives}) {
         CHECK(listed(a1::kTable, rva));
     }

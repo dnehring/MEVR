@@ -6,6 +6,7 @@
 #include "core/ik/Posture.hpp"
 #include "core/ik/Rigid.hpp"
 #include "core/vr/Comfort.hpp"
+#include "core/vr/InteractLabel.hpp"
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/Sights.hpp"
 #include "game/GamepadMapping.hpp"
@@ -48,6 +49,7 @@
 //   [Squad]  the squad weapon menu (below, GetSquad).
 //   [Throwables] physical grenades and melee (below, GetThrowables).
 //   [Comfort] turning, the comfort vignette, walking toward the left hand (below, GetComfort).
+//   [Interact] what A uses and its prompt at the object (below, GetInteract).
 namespace mevr::game::hand_calibration {
 
 // The trim for one hand (0 left, 1 right), in the grip's own axes (ik::GripTrim).
@@ -283,5 +285,9 @@ void Refresh();
 //                     moves you (move); vignetteStrength 0..1
 //   walk              head (default): the left stick walks where you look; hand: where the left controller points
 vr::comfort::Settings GetComfort();
+
+// [Interact] (research/40): A uses what the head looks at (gaze), the game's prompt big at the object (label,
+// labelHeightDeg, combatLabel), the prompt's part of the HUD by hand (crop = x y width height).
+vr::interact::Settings GetInteract();
 
 } // namespace mevr::game::hand_calibration

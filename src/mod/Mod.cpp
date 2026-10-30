@@ -23,6 +23,7 @@
 #include "engine/CallFunction.hpp"
 #include "engine/CodeDump.hpp"
 #include "engine/CoverAcquire.hpp"
+#include "engine/SelectionGaze.hpp"
 #include "engine/Engine.hpp"
 #include "engine/GameAdapter.hpp"
 #include "engine/Legacy.hpp"
@@ -45,6 +46,7 @@
 #include "game/HandTargets.hpp"
 #include "game/HeadSim.hpp"
 #include "game/HeadTracking.hpp"
+#include "game/Interact.hpp"
 #include "game/Holsters.hpp"
 #include "game/MenuPause.hpp"
 #include "game/Posture.hpp"
@@ -119,6 +121,8 @@ bool gBonePoseHooked = false;
 // The cover test hook (engine/cover_acquire) goes in the first time noCover is wanted (game/posture).
 bool gCoverHookTried = false;
 bool gCoverHooked = false;
+bool gSelectionHookTried = false;
+bool gSelectionHooked = false;
 // `]` is the one switch a player needs: once a VR session runs, every VR feature comes on with
 // it (stereo, 6DOF, hand aim, arm IK), and turning VR off (or quitting from the headset) turns
 // them off. The headset sleeping doesn't count as off. Within a session the feature keys switch
@@ -312,6 +316,16 @@ void EnsureCoverHook() {
     }
 }
 
+// The selection update runs once a tick on the player controller; its hook goes in once A's gaze is first wanted
+// (game thread, outside the controller's tick; research/40).
+void EnsureSelectionHook() {
+    using namespace mevr;
+    if (!gSelectionHookTried && game::interact::WantsHook()) {
+        gSelectionHookTried = true;
+        gSelectionHooked = engine::selection_gaze::Install(*gInit);
+    }
+}
+
 void SetVrFeatures(bool on) {
     using namespace mevr;
     gVrFeatures = on;
@@ -496,6 +510,17 @@ void PublishSight(mevr::vr::aim_ray::Ray const& ray) {
         link.publish = gHost->setScopeCapture;
     }
     game::scope_capture::Tick(gTickSeconds, sight, ray, view, link);
+}
+
+// Host renderer (HostServices v21): the interaction prompt at the object, if the host's Label matches ours.
+mevr::game::interact::Link InteractLink() {
+    using namespace mevr;
+    game::interact::Link link;
+    if (gHostOwnsVr && MEVR_HOST_HAS(setInteractLabel) && gHost->setInteractLabel != nullptr &&
+        gHost->interactLabelSize == sizeof(vr::interact::Label)) {
+        link.publish = gHost->setInteractLabel;
+    }
+    return link;
 }
 
 // Host renderer (HostServices v10): the head's height above the floor, if the host's struct matches ours.
@@ -707,7 +732,7 @@ void PublishStatus() {
         "\"handAim\": {{\"enabled\": {}, \"toldHost\": {}, \"shots\": {}}}, "
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, "
-        "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}}}",
+        "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -717,7 +742,8 @@ void PublishStatus() {
         json::JsonNumber(game::support_grip::Blend()), game::holsters::StatusJson(), game::squad_weapons::StatusJson(),
         game::sights::StatusJson(), game::scope_capture::StatusJson(), game::throwables::StatusJson(), game::posture::StatusJson(),
         game::view_level::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
-        game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson());
+        game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
+        game::interact::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -857,6 +883,7 @@ void Heartbeat() {
         game::view_level::LogStats();
         game::combat_stance::LogStats();
         game::comfort::LogStats();
+        game::interact::LogStats();
         game::body_calibration::LogStats();
         game::skeleton_probe::Tick();
     }
@@ -1016,6 +1043,9 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::hand_aim::Tick();
         game::view_level::Tick(ViewLevelLink());
         PublishAimRay();
+        // What A uses: from where the head looks, and its prompt at the object (research/40).
+        EnsureSelectionHook();
+        game::interact::Tick(deltaSeconds, gSelectionHooked, InteractLink());
         game::head_tracking::OnTickEnd();
     }
     PublishStatus();
@@ -1079,6 +1109,12 @@ MEVR_MOD_API void MevrModShutdown() {
             "the cover test hook couldn't be removed, or a call was still inside it");
     }
     gCoverHookTried = gCoverHooked = false;
+    game::interact::Shutdown(InteractLink());  // no more swaps, the host's label hidden
+    if (gInit && gSelectionHooked) {
+        removed(engine::selection_gaze::Uninstall(*gInit, !exiting),
+            "the selection update hook couldn't be removed, or a call was still inside it");
+    }
+    gSelectionHookTried = gSelectionHooked = false;
     if (keepLoaded != nullptr && !exiting) {
         if (gHost != nullptr && gHost->version >= 5 && gHost->keepLoaded != nullptr) {
             gHost->keepLoaded(keepLoaded);  // the host pins this DLL instead of unloading it

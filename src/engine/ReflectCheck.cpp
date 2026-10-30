@@ -593,6 +593,7 @@ void CheckClasses() {
     CheckClass<ABioGrenadeProjectileBallistic>("SFXGame.BioGrenadeProjectileBallistic");
     CheckClass<UMassEffectGuiManager>("SFXGame.MassEffectGuiManager");
     CheckClass<UBioSFHandler_HUD>("SFXGame.BioSFHandler_HUD");
+    CheckClass<UBioPlayerSelection>("SFXGame.BioPlayerSelection");  // game/interact (research/40)
     CheckClass<UBioSFHandler_PCHUD>("SFXGame.BioSFHandler_PCHUD");
 }
 
@@ -766,6 +767,13 @@ void CheckFields() {
     CheckField("SFXGame.BioSFHandler_HUD", "m_nHench2Index", SDK_FIELD(UBioSFHandler_HUD, m_nHench2Index));
     CheckField("SFXGame.BioSFHandler_HUD", "nAngle", SDK_FIELD(UBioSFHandler_HUD, nAngle));
     CheckField("SFXGame.BioSFHandler_HUD", "nLastAngle", SDK_FIELD(UBioSFHandler_HUD, nLastAngle));
+    // game/interact (research/40): what A would use, and where it is.
+    CheckField("SFXGame.BioPlayerController", "m_oPlayerSelection", SDK_FIELD(ABioPlayerController, m_oPlayerSelection));
+    CheckField("SFXGame.BioPlayerSelection", "m_oCurrentSelectionTarget", SDK_FIELD(UBioPlayerSelection, m_oCurrentSelectionTarget));
+    CheckField("SFXGame.BioPlayerSelection", "m_bCurrentSelectionIsCombatTarget",
+        SDK_BOOL(UBioPlayerSelection, m_bCurrentSelectionIsCombatTarget));
+    CheckField("Engine.Actor", "CollisionComponent", SDK_FIELD(AActor, CollisionComponent));
+    CheckField("Engine.PrimitiveComponent", "Bounds", SDK_FIELD(UPrimitiveComponent, Bounds), true);
 }
 
 void CheckPaths() {
@@ -775,6 +783,10 @@ void CheckPaths() {
     CheckPath("Engine.Actor", {"Location", "X"}, SDK_AT(offsetof(AActor, Location) + offsetof(FVector, X), 4));
     CheckPath("Engine.Actor", {"Location", "Y"}, SDK_AT(offsetof(AActor, Location) + offsetof(FVector, Y), 4));
     CheckPath("Engine.Actor", {"Location", "Z"}, SDK_AT(offsetof(AActor, Location) + offsetof(FVector, Z), 4));
+    CheckPath("Engine.PrimitiveComponent", {"Bounds", "Origin"},
+        SDK_AT(offsetof(UPrimitiveComponent, Bounds) + offsetof(FBoxSphereBounds, Origin), sizeof(FVector)));
+    CheckPath("Engine.PrimitiveComponent", {"Bounds", "BoxExtent"},
+        SDK_AT(offsetof(UPrimitiveComponent, Bounds) + offsetof(FBoxSphereBounds, BoxExtent), sizeof(FVector)));
     CheckPath("Engine.Camera", {"CameraCache", "POV"}, SDK_AT(offsetof(ACamera, CameraCache) + offsetof(FTCameraCache, POV), sizeof(FTPOV)));
     CheckPath("Engine.Camera", {"CameraCache", "POV", "Location"},
         SDK_AT(offsetof(ACamera, CameraCache) + offsetof(FTCameraCache, POV) + offsetof(FTPOV, Location), sizeof(FVector)));

@@ -1462,6 +1462,26 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       `sights.scope.along` near 0.12 under ADS; below it `active: false` and no scope layer.
     - Must NOT happen: the picture at arm's length; ADS turning on with the gun at the hip (the corridor's height and
       sideways limits); the lens part hidden without the picture; the gun pushed away from the face.
+46. **Using things with A: from where you look, the prompt big at the object (new, 2026-10-30; HOST AND MOD REDEPLOY
+    together, game closed: HostServices v21; [research/40](../research/40-interaction.md)).** Your report: the prompt is far
+    too small and A doesn't reliably work. The game chose what A uses from its camera, which follows your body and the stick,
+    not your head; its prompt sat 0.4 degrees tall at the top of the HUD panel.
+    - At start: `interact: settings: A uses what you look at; the prompt at the object, 6.0 deg tall`, then `hooked
+      UBioPlayerSelection::UpdateSelection` once you're on foot in VR.
+    - **Look at a usable object** (a crate, a locker, a door, a squadmate) without turning your body toward it: its name and
+      action float just above it, big, facing you, and leave the HUD panel's top. Log `interact: A would use <object>, D m
+      away (chosen from where you look)` and `[MEVR-INTERACT] the prompt at the object: ...`.
+    - **A glyph**: far away the action is grey with no A (the game's own use range); walk closer and the A appears; press A.
+      If A still does nothing with the A showing, send the log around it.
+    - **Turn your head between two objects**: the label follows what you look at; the heartbeat's `interact: N selection
+      updates (M from your gaze ...)` should have M close to N.
+    - **Size and height**: is the label readable without being in the way? `[Interact] labelHeightDeg` (6) changes it live;
+      over people, is it above the head and not in the face?
+    - **Enemies** keep the HUD's health bar unless `[Interact] combatLabel = 1` (then it floats over the enemy). Do powers
+      still go where you expect? On foot they now take the target you look at.
+    - A snapshot with a label up (both stick clicks tapped): the JSON's `mod.interact` and a `-label.png`.
+    - Must NOT happen: the game's view jumping or the world turning (the head's view goes into the camera only inside the
+      selection's own call); a label with nothing selected; the label at the wrong object.
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR

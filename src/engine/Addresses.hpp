@@ -63,6 +63,8 @@ inline constexpr std::uint32_t kUpdateSkelPose = 0x592440;
 // BioPawn's cover acquisition test and its cover trace (engine/CoverAcquire; research/23).
 inline constexpr std::uint32_t kTryAcquireCover = 0xAB1430;
 inline constexpr std::uint32_t kCoverTrace = 0xAA92F0;
+// BioPlayerSelection's native UpdateSelection body (engine/SelectionGaze; research/40).
+inline constexpr std::uint32_t kUpdateSelection = 0xC79D70;
 // Our reflection layer's globals (ue3/Runtime, engine/GameAdapter; research/34 section 2.3).
 inline constexpr std::uint32_t kGObjects = 0x1770670;
 inline constexpr std::uint32_t kNamePools = 0x16A2090;
@@ -93,6 +95,8 @@ inline constexpr Entry kTable[] = {
         "mod (cover)"},
     {"ABioPawn::CoverTrace", kCoverTrace, Kind::Function, "48 8B C4 48 89 58 08 48 89 70 10 55 57 41 56 48 8D A8 A8 FE", 0, 0,
         "mod (cover)"},
+    {"UBioPlayerSelection::UpdateSelection", kUpdateSelection, Kind::Function, "40 55 53 57 41 54 41 55 41 57 48 8D AC 24 78 FF",
+        0, 0, "mod (interaction)"},
     // Our reflection layer's globals and the engine's allocator (ue3/Runtime has its own patterns too).
     {"GObjects", kGObjects, Kind::Data, "48 63 4B 08 48 8B 05 ?? ?? ?? ?? 48 C7 04 C8 00 00 00 00 48 8D 53 08 48 8D 0D", 7,
         0x15C1AF, "mod (reflection), host (crash breadcrumbs)"},
@@ -178,6 +182,7 @@ inline constexpr std::uint32_t kViewportDrawEnd = 0x6D2C99;
 inline constexpr std::uint32_t kUpdateSkelPose = 0;
 inline constexpr std::uint32_t kTryAcquireCover = 0;
 inline constexpr std::uint32_t kCoverTrace = 0;
+inline constexpr std::uint32_t kUpdateSelection = 0;
 inline constexpr std::uint32_t kGObjects = 0;  // LE2's reflection layout: stage 5
 inline constexpr std::uint32_t kNamePools = 0;
 inline constexpr std::uint32_t kGMalloc = 0;
@@ -208,6 +213,7 @@ inline constexpr std::uint32_t kViewportDrawEnd = 0x6D40DB;
 inline constexpr std::uint32_t kUpdateSkelPose = 0;
 inline constexpr std::uint32_t kTryAcquireCover = 0;
 inline constexpr std::uint32_t kCoverTrace = 0;
+inline constexpr std::uint32_t kUpdateSelection = 0;
 inline constexpr std::uint32_t kGObjects = 0;  // LE3's reflection layout: stage 5
 inline constexpr std::uint32_t kNamePools = 0;
 inline constexpr std::uint32_t kGMalloc = 0;

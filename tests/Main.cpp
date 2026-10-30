@@ -28,6 +28,7 @@
 #include "core/vr/GameMenuRequest.hpp"
 #include "core/vr/Haptics.hpp"
 #include "core/vr/ImageConvert.hpp"
+#include "core/vr/InteractLabel.hpp"
 #include "core/vr/LayerComposite.hpp"
 #include "core/vr/MenuPointer.hpp"
 #include "core/vr/MenuSettings.hpp"
@@ -5938,6 +5939,61 @@ void TestSightPullReachesRelief() {
 }
 
 // Aiming down the sight (core/vr/Ads, Overlord's corridor, dwell and hysteresis; research/21 section 15).
+// The interaction prompt at the object (core/vr/InteractLabel, research/40).
+void TestInteractLabel() {
+    namespace il = mevr::vr::interact;
+    auto close = [](double a, double b, double tolerance) { return std::abs(a - b) <= tolerance; };
+    // The band in stage pixels (384..896, 30..100), the stage across the frame's width: the measured 2344x2392 HUD frame.
+    il::Rect const crop = il::DefaultCrop(2344, 2392);
+    CHECK(close(crop.x, 0.3, 1e-6) && close(crop.width, 0.4, 1e-6));
+    CHECK(close(crop.y, 30.0 * 2344.0 / 1280.0 / 2392.0, 1e-6) && close(crop.height, 70.0 * 2344.0 / 1280.0 / 2392.0, 1e-6));
+    // The text measured on that frame (y 0.034..0.063 of its height) lies inside the band.
+    CHECK(crop.y < 0.034f && crop.y + crop.height > 0.063f);
+    CHECK(!il::DefaultCrop(0, 100).Valid());
+    il::Pixels const px = il::ToPixels(crop, 2344, 2392);
+    CHECK(px.x == 703 && px.width >= 937 && px.width <= 939 && px.y == 54 && px.height >= 128 && px.height <= 130);
+    // A band past the frame is clipped, never empty.
+    il::Pixels const edge = il::ToPixels({0.98f, 0.98f, 0.1f, 0.1f}, 100, 100);
+    CHECK(edge.x + edge.width <= 100 && edge.y + edge.height <= 100 && edge.width >= 8 && edge.height >= 8);
+    CHECK(il::ToPixels(crop, 4, 4).width == 0);
+
+    // The quad keeps its angular height at any distance and faces the head.
+    for (float distance : {0.5f, 2.0f, 8.0f}) {
+        il::Quad quad;
+        CHECK(il::Place({0.0f, 1.6f, -distance}, {0.0f, 1.6f, 0.0f}, 6.0f, 4.0f, quad));
+        double const angle = 2.0 * std::atan(quad.height / 2.0 / distance) * 180.0 / 3.14159265358979;
+        CHECK(close(angle, 6.0, 1e-3) && close(quad.width, quad.height * 4.0f, 1e-5));
+        XrVector3f const front = mevr::vr::overlay::Rotate(quad.pose.orientation, {0.0f, 0.0f, 1.0f});
+        CHECK(close(front.z, 1.0, 1e-5));  // +Z toward the head
+        XrVector3f const up = mevr::vr::overlay::Rotate(quad.pose.orientation, {0.0f, 1.0f, 0.0f});
+        CHECK(close(up.y, 1.0, 1e-5));  // no roll
+    }
+    il::Quad degenerate;
+    CHECK(!il::Place({0.0f, 1.6f, 0.0f}, {0.0f, 1.6f, 0.0f}, 6.0f, 4.0f, degenerate));
+    CHECK(!il::Place({0.0f, 1.6f, -1.0f}, {0.0f, 1.6f, 0.0f}, 6.0f, 0.0f, degenerate));
+
+    // Above the bounds' top, the top capped over the middle, never far over the eyes.
+    il::Point const crate = il::LabelPoint({10.0, 20.0, 30.0}, 20.0, 150.0, 8.0, 50.0, 10.0);
+    CHECK(crate.x == 10.0 && crate.y == 20.0 && close(crate.z, 58.0, 1e-9));
+    il::Point const door = il::LabelPoint({0.0, 0.0, 100.0}, 200.0, 150.0, 8.0, 50.0, 10.0);
+    CHECK(close(door.z, 158.0, 1e-9));  // 100 + 50 + 8, under the eyes' 150 + 10 cap
+    il::Point const tall = il::LabelPoint({0.0, 0.0, 140.0}, 45.0, 150.0, 8.0, 50.0, 10.0);
+    CHECK(close(tall.z, 160.0, 1e-9));  // capped at the eyes + 10
+    il::Point const high = il::LabelPoint({0.0, 0.0, 400.0}, 45.0, 150.0, 8.0, 50.0, 10.0);
+    CHECK(close(high.z, 400.0, 1e-9));  // above the eyes already: its middle, not pulled down below it
+
+    // Published labels age out.
+    il::Reset();
+    CHECK(!il::Latest().visible && il::Latest().size == 0);
+    il::Label label;
+    label.visible = true;
+    label.serial = 7;
+    il::Publish(label);
+    il::Label const latest = il::Latest();
+    CHECK(latest.visible && latest.serial == 7 && latest.size == sizeof(il::Label) && latest.sequence != 0);
+    il::Reset();
+}
+
 void TestAds() {
     namespace ads = mevr::vr::ads;
     XrVector3f const head{0.0f, 0.0f, 0.0f};
@@ -7438,6 +7494,7 @@ int main() {
     TestSightAssist();
     TestSightPullReachesRelief();
     TestAds();
+    TestInteractLabel();
     TestSightSettings();
     TestSightGeometry();
     TestScopeMapping();

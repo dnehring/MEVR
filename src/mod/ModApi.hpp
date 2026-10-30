@@ -42,6 +42,9 @@ struct Sight;
 namespace vr::scope_capture {
 struct Capture;
 }
+namespace vr::interact {
+struct Label;
+}
 namespace vr::squad_menu {
 struct View;
 namespace wheel {
@@ -56,7 +59,7 @@ struct Panel;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 20;
+inline constexpr int kHostServicesVersion = 21;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -246,6 +249,14 @@ struct HostServices {
     // sizeof(Capture); with a v19 or older host it never spawns a capture. Any thread.
     std::uint32_t scopeCaptureSize = 0;
     void (*setScopeCapture)(vr::scope_capture::Capture const* capture) = nullptr;
+
+    // Version 21: the interaction prompt at the object (game/Interact, plugin/HalcyonOverlays, research/40).
+    // The mod's label each tick (core/vr/InteractLabel.hpp, vr::interact::Label: whether to show it, where the selected
+    // object is in tracking space, its size, the HUD band by hand): while it's visible and fresh the host cuts the
+    // game's target status widget out of the HUD panel and shows it at the object. The mod calls it only if
+    // interactLabelSize matches its own sizeof(Label). Any thread.
+    std::uint32_t interactLabelSize = 0;
+    void (*setInteractLabel)(vr::interact::Label const* label) = nullptr;
 };
 
 } // namespace mevr

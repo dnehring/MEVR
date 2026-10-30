@@ -293,6 +293,17 @@ switching frameworks.
   guessed, then measured once per session) is cut out of the HUD panel and shown on a quad of its
   own at the left / right hand ("wheel"). Toggles: `MELEVR.ini` `hudPanel*` / `handReticle*`, our menu's
   HUD & sights and Advanced > HUD placement, or the classic menu's HUD tab; the wheel panel's in `[Squad]`.
+- LE1 using things with A ([research/40](research/40-interaction.md), HostServices v21; `[Interact]` in `ASI\LE1MEVR.ini`):
+  the game chooses what A uses in `BioPlayerSelection`'s native UpdateSelection (`0xC79D70`) from the player camera's
+  `CameraCache.POV` (a cone around its forward, half its FOV, the distance-scaled selection angle, line of sight), which
+  follows the body and the stick, not the head. `engine/SelectionGaze` (mod) hooks it and, for that call only, puts the
+  head's world place and forward into the POV (put back in `__finally`, journalled; `gaze = 1`). The game's prompt is the
+  HUD's target status widget at the top centre (name, action, the A glyph only in use range): `game/Interact` sends the
+  selected object's place (above its collision bounds' top, capped) to the host (`setInteractLabel`), and
+  `plugin/HalcyonOverlays` cuts the widget's band (`vr::interact::DefaultCrop`: stage x 384..896, y 30..100, or `crop`)
+  out of the HUD panel onto a quad at the object, facing the eyes, `labelHeightDeg` (6) tall at any distance (`label = 1`;
+  combat targets stay on the HUD unless `combatLabel = 1`). Logs `interact:`, `[MEVR-INTERACT]`; snapshot `"mod"."interact"`,
+  a `label` layer.
 - LE1 life-size stereo ([research/30](research/30-metric-stereo.md), `MELEVR.ini sfr2Metric`, on in our deploy):
   each Stereo 2 pass renders from its eye's real place (`xrLocateViews`, at the view's units per metre: Halcyon's
   50 x lean gain, life-size at 100), no convergence shift, swap ignored (pass 0 = left). In gameplay with the HUD

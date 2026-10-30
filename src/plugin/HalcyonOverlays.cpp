@@ -9,6 +9,8 @@
 // - the game's own weapon or power wheel on a panel of its own at a hand while one is up: its part of
 //   the HUD panel texture (core/vr/WheelCrop: a default, then measured the first time a wheel opens),
 //   cut out of the HUD panel meanwhile so it shows once (docs/squad-weapons-design.md, "Native wheel");
+// - the game's interaction prompt (the target status widget: the object's name, its action and the A glyph) cut out
+//   of the HUD panel and shown big at the object the mod says A would use (core/vr/InteractLabel, research/40);
 // - the comfort vignette (plugin/Vignette.cpp, research/31): head-locked, under the others, only while wanted;
 // - [MENUVIS] readbacks that tell whether Halcyon's Insert menu texture has visible pixels.
 //
@@ -25,6 +27,7 @@
 #include "core/vr/AimRay.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/FrameProbe.hpp"
+#include "core/vr/InteractLabel.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/WheelCrop.hpp"
@@ -935,6 +938,33 @@ XrPosef PlaceWheel(int place, float distance, XrPosef const& head, char const*& 
     return mevr::vr::squad_menu::PlaceAtHand(spot, head.position, distance);
 }
 
+// ---- The interaction prompt at the object (Present thread; research/40) ----------------------------------------
+namespace il = mevr::vr::interact;
+
+QuadSwapchain gLabelSwapchain;
+XrCompositionLayerQuad gLabelQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+
+struct LabelState {
+    bool shown = false;               // a label went out last frame
+    std::uint32_t serial = 0;         // the mod's selection it was logged for
+    std::uint32_t lastLabelSize = 0;  // the mod's Label size last seen (to log a mismatch once)
+};
+LabelState gLabel;
+
+// The mod's latest label, or none (a struct of another size: host and mod from different builds).
+il::Label LabelWanted() {
+    il::Label latest = il::Latest();
+    if (latest.size == sizeof(il::Label)) {
+        return latest;
+    }
+    if (latest.size != 0 && latest.size != gLabel.lastLabelSize) {
+        gLabel.lastLabelSize = latest.size;
+        mevr::log::Warn("overlays: the mod's interaction label is {} bytes, the host's {}: no label; rebuild both", latest.size,
+            sizeof(il::Label));
+    }
+    return il::Label{};
+}
+
 // A ring with a centre dot, light cyan with a dark rim so it reads on bright and dark backgrounds.
 // Premultiplied, sRGB-encoded (the swapchain's format).
 std::vector<std::uint32_t> ReticlePixels() {
@@ -1268,6 +1298,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         gPanelSwapchain.Forget();
         gReticleSwapchain.Forget();
         gWheelSwapchain.Forget();
+        gLabelSwapchain.Forget();
         gSession = session;
     }
     auto const& cfg = MELEVR::Config::Get();
@@ -1350,6 +1381,19 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         hudMask = {static_cast<INT>(cropPx.x), static_cast<INT>(cropPx.y), static_cast<INT>(cropPx.x + cropPx.width),
             static_cast<INT>(cropPx.y + cropPx.height)};
     }
+    // The interaction prompt at the object (never with a wheel up: both take their part out of the same panel).
+    il::Label const label = LabelWanted();
+    bool const labelWanted = label.visible && !wheelWanted && engaged && gameplay && gLastGameMode == 0 && frame.worldFrame &&
+        !frame.menuOpen && frame.headValid && gPanel.texture != nullptr && gPanel.tintSrv != nullptr && !gLabelSwapchain.failed &&
+        device != nullptr;
+    il::Rect const labelRect = label.crop[2] > 0.0f && label.crop[3] > 0.0f
+        ? il::Rect{label.crop[0], label.crop[1], label.crop[2], label.crop[3]}
+        : il::DefaultCrop(gPanel.width, gPanel.height);
+    il::Pixels const labelPx = il::ToPixels(labelRect, gPanel.width, gPanel.height);
+    if (labelWanted && labelPx.width > 0) {
+        hudMask = {static_cast<INT>(labelPx.x), static_cast<INT>(labelPx.y), static_cast<INT>(labelPx.x + labelPx.width),
+            static_cast<INT>(labelPx.y + labelPx.height)};
+    }
 
     bool panelShown = false;
     if (frame.worldFrame && engaged && gameplay && gPanel.texture != nullptr && count < capacity && device != nullptr) {
@@ -1380,6 +1424,39 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                 gNextPanelLogMs = now + 30000;
             }
         }
+    }
+    // The prompt's part of the UI on a quad at the object, facing the eyes, the same angular size at any distance.
+    if (labelWanted && panelShown && labelPx.width > 0 && count < capacity) {
+        il::Quad quad;
+        float const aspect = static_cast<float>(labelPx.width) / static_cast<float>(labelPx.height);
+        if (il::Place(label.position, ToVec(frame.headPosition), label.heightDeg, aspect, quad) &&
+            EnsureSwapchain(gLabelSwapchain, labelPx.width, labelPx.height, "interaction label", "label") &&
+            Blit(context, device.Get(), gLabelSwapchain, {labelPx.x, labelPx.y, labelPx.width, labelPx.height}, 1, Mask{},
+                frame.floatWhiteScale) != nullptr) {
+            gLabelQuad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
+            gLabelQuad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied
+            gLabelQuad.space = static_cast<XrSpace>(frame.appSpace);
+            gLabelQuad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+            gLabelQuad.subImage.swapchain = gLabelSwapchain.handle;
+            gLabelQuad.subImage.imageRect = {{0, 0}, {static_cast<int32_t>(labelPx.width), static_cast<int32_t>(labelPx.height)}};
+            gLabelQuad.pose = quad.pose;
+            gLabelQuad.size = {quad.width, quad.height};
+            layersOut[count++] = &gLabelQuad;
+            if (!gLabel.shown || gLabel.serial != label.serial) {
+                char line[320];
+                std::snprintf(line, sizeof line,
+                    "[MEVR-INTERACT] the prompt at the object: (%.2f, %.2f, %.2f) m, %.2f x %.2f m (%.1f deg tall); the UI's part "
+                    "(%u, %u) %ux%u of %ux%u (%s)", quad.pose.position.x, quad.pose.position.y, quad.pose.position.z, quad.width,
+                    quad.height, label.heightDeg, labelPx.x, labelPx.y, labelPx.width, labelPx.height, gPanel.width, gPanel.height,
+                    label.crop[2] > 0.0f ? "[Interact] crop" : "the game's own place");
+                LogBoth(line);
+            }
+            gLabel.shown = true;
+            gLabel.serial = label.serial;
+        }
+    } else if (gLabel.shown) {
+        gLabel.shown = false;
+        LogBoth("[MEVR-INTERACT] the prompt at the object is gone");
     }
     // A HUD-only picture of where the UI is, now and then, until the wheel's place has been measured.
     bool const autoCrop = !(wheelSettings.crop[2] > 0.0f && wheelSettings.crop[3] > 0.0f);

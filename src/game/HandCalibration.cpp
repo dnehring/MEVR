@@ -6,6 +6,7 @@
 #include "core/ik/ArmPose.hpp"
 #include "core/ik/HandFrame.hpp"
 #include "core/vr/CombatStance.hpp"
+#include "core/vr/InteractLabel.hpp"
 #include "core/vr/Sights.hpp"
 
 #include "engine/GameAdapter.hpp"
@@ -411,6 +412,22 @@ constexpr char const* kComfortBlock =
     "vignetteWhen = turn\n"
     "; walk: head = the left stick walks where you look; hand = where your left controller points (laid flat).\n"
     "walk = head\n";
+
+// Appended to a settings file that has no [Interact] yet (and part of a new file).
+constexpr char const* kInteractBlock =
+    "\n"
+    "[Interact]\n"
+    "; Using things with A (research/40). gaze: 1 = the game picks what A uses from where you look (0: from where the\n"
+    "; game's camera faces, the body and the stick). label: 1 = the game's prompt (the object's name, and the action\n"
+    "; with the A button once you're close enough) shown big at the object instead of small on the HUD; labelHeightDeg:\n"
+    "; its size (degrees of your view; the name's letters are about a seventh of it). combatLabel: 1 = an enemy's name\n"
+    "; and health bars at the enemy too. crop = x y width height (fractions of the HUD frame) sets the prompt's part of\n"
+    "; the HUD by hand; empty: the game's own place.\n"
+    "gaze = 1\n"
+    "label = 1\n"
+    "labelHeightDeg = 6\n"
+    "combatLabel = 0\n"
+    "crop =\n";
 
 fs::path FilePath() {
     return engine::SettingsFile();  // <exe dir>\ASI\<GAME>MEVR.ini, the host's file too
@@ -992,6 +1009,62 @@ std::string Describe(vr::comfort::Settings const& c) {
 vr::comfort::Settings gComfort;
 std::string gComfortText;
 
+vr::interact::Settings ReadInteract(Ini const& ini) {
+    vr::interact::Settings i;
+    double value = 0.0;
+    if (Number(ini, "Interact", "gaze", value)) {
+        i.gaze = value != 0.0;
+    }
+    if (Number(ini, "Interact", "label", value)) {
+        i.label = value != 0.0;
+    }
+    if (Number(ini, "Interact", "combatLabel", value)) {
+        i.combatLabel = value != 0.0;
+    }
+    if (Number(ini, "Interact", "labelHeightDeg", value)) {
+        i.heightDeg = static_cast<float>(std::clamp(value, 1.0, 30.0));
+    }
+    if (auto const s = ini.find("Interact"); s != ini.end()) {
+        if (auto const k = s->second.find("crop"); k != s->second.end() && !k->second.empty()) {
+            float parts[4] = {};
+            int n = 0;
+            std::string const& text = k->second;
+            for (std::size_t at = 0; at < text.size() && n < 4;) {
+                std::size_t const end = text.find_first_of(" ,\t", at);
+                std::string const token = text.substr(at, end == std::string::npos ? std::string::npos : end - at);
+                if (!token.empty()) {
+                    if (auto const v = ini::Number(token)) {
+                        parts[n++] = static_cast<float>(*v);
+                    } else {
+                        n = -1;
+                        break;
+                    }
+                }
+                at = end == std::string::npos ? text.size() : end + 1;
+            }
+            if (n == 4 && parts[2] > 0.0f && parts[3] > 0.0f && parts[0] >= 0.0f && parts[1] >= 0.0f && parts[0] + parts[2] <= 1.0f &&
+                parts[1] + parts[3] <= 1.0f) {
+                std::copy(parts, parts + 4, i.crop);
+            } else {
+                log::Warn("interact: can't read crop = {} (x y width height, fractions of the HUD frame); the game's own place kept",
+                    text);
+            }
+        }
+    }
+    return i;
+}
+
+std::string Describe(vr::interact::Settings const& i) {
+    return std::format("A uses what {}; the prompt {}{}{}", i.gaze ? "you look at" : "the game's camera faces",
+        i.label ? std::format("at the object, {:.1f} deg tall", i.heightDeg) : std::string("on the HUD only"),
+        i.label && i.combatLabel ? ", enemies' too" : "",
+        i.crop[2] > 0.0f ? std::format(", band ({:.3f}, {:.3f}) {:.3f} x {:.3f} by hand", i.crop[0], i.crop[1], i.crop[2], i.crop[3])
+                         : std::string());
+}
+
+vr::interact::Settings gInteract;
+std::string gInteractText;
+
 Posture ReadPosture(Ini const& ini) {
     Posture p;
     double value = 0.0;
@@ -1375,6 +1448,10 @@ vr::comfort::Settings GetComfort() {
     return gComfort;
 }
 
+vr::interact::Settings GetInteract() {
+    return gInteract;
+}
+
 vr::sights::Settings GetSights() {
     return gSights;
 }
@@ -1438,7 +1515,7 @@ void Refresh() {
         {
             std::ofstream out(path);
             out << kDefaultFile << kControlsBlock << kHolstersBlock << kSquadBlock << kSightsBlock << kThrowablesBlock
-                << kComfortBlock;
+                << kComfortBlock << kInteractBlock;
             out.close();
             static bool warned = false;
             if (!out || !fs::exists(path, ec)) {
@@ -1464,7 +1541,7 @@ void Refresh() {
     Ini ini = ReadIni(path);
     for (auto const& [name, block] : {std::pair{"Controls", kControlsBlock}, std::pair{"Holsters", kHolstersBlock},
              std::pair{"Squad", kSquadBlock}, std::pair{"Throwables", kThrowablesBlock}, std::pair{"Comfort", kComfortBlock},
-             std::pair{"Sights", kSightsBlock}}) {
+             std::pair{"Sights", kSightsBlock}, std::pair{"Interact", kInteractBlock}}) {
         if (ini.find(name) == ini.end() && AppendBlock(path, block, name)) {  // an older file: show the new settings
             ini = ReadIni(path);
             stamp = fs::last_write_time(path, ec);
@@ -1695,6 +1772,11 @@ void Refresh() {
     if (std::string const text = Describe(gComfort); text != gComfortText) {
         gComfortText = text;
         log::Info("comfort: settings: {}", text);
+    }
+    gInteract = ReadInteract(ini);
+    if (std::string const text = Describe(gInteract); text != gInteractText) {
+        gInteractText = text;
+        log::Info("interact: settings: {}", text);
     }
     gSights = ReadSights(ini);
     if (std::string const text = Describe(gSights); text != gSightsText) {
