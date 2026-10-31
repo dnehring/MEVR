@@ -10,6 +10,7 @@
 #include "core/ik/BodySlots.hpp"
 #include "core/ik/BoneNames.hpp"
 #include "core/ik/CameraHook.hpp"
+#include "core/ik/Fingers.hpp"
 #include "core/ik/HandFrame.hpp"
 #include "core/ik/Ik.hpp"
 #include "core/ik/PoseGraft.hpp"
@@ -6984,6 +6985,211 @@ void TestPoseGraft() {
     CHECK(moving.Current() == StillPose::State::Learning && moving.Latest().empty() && moving.StillFrames() == 0);
 }
 
+// Fingers that follow the controllers (core/ik/Fingers, research/43): a synthetic right hand, turned in component
+// space, with the LE1 rig's bone names.
+void TestFingers() {
+    using namespace mevr::ik;
+    namespace fg = mevr::ik::fingers;
+    auto const turn = [](double degrees, Vec3 axis) {
+        double const h = degrees * std::numbers::pi / 360.0;
+        Vec3 const a = Normalize(axis);
+        return Quat{a.x * std::sin(h), a.y * std::sin(h), a.z * std::sin(h), std::cos(h)};
+    };
+    // root(0) > wrist(1); thumb 2-4, index 5-7, middle 8-10, ring 11-13, pinky 14-16 (knuckle, joint, tip); Prop01(17) under the
+    // wrist; an end bone (18) under the index tip (carried, never a joint); Camera(19) off the root.
+    std::vector<std::string> const names{"Root", "RightWrist", "RightThumbFinger", "RightThumbFinger1", "RightThumbFinger2",
+        "RightIndexFinger", "RightIndexFinger1", "RightIndexFinger2", "RightMiddleFinger", "RightMiddleFinger1", "RightMiddleFinger2",
+        "RightRingFinger", "RightRingFinger1", "RightRingFinger2", "RightPinkFinger", "RightPinkFinger1", "RightPinkFinger2", "Prop01",
+        "RightIndexFingerEnd", "Camera"};
+    std::vector<int> const parents{-1, 0, 1, 2, 3, 1, 5, 6, 1, 8, 9, 1, 11, 12, 1, 14, 15, 1, 7, 0};
+    fg::HandBones const bones = fg::FindHand(names, parents, 1);
+    CHECK(bones.hand == 1 && bones.Found() == 5);
+    CHECK((bones.fingers[fg::kThumb].joints == std::array<int, 3>{2, 3, 4}) && bones.fingers[fg::kThumb].count == 3);
+    CHECK((bones.fingers[fg::kIndex].joints == std::array<int, 3>{5, 6, 7}) && bones.fingers[fg::kIndex].count == 3);
+    CHECK((bones.fingers[fg::kMiddle].joints == std::array<int, 3>{8, 9, 10}));
+    CHECK((bones.fingers[fg::kRing].joints == std::array<int, 3>{11, 12, 13}));
+    CHECK((bones.fingers[fg::kPinky].joints == std::array<int, 3>{14, 15, 16}));
+    std::array<int, fg::kMaxBones> all{};
+    CHECK(bones.All(all) == 16 && all[0] == 1 && all[1] == 2 && all[4] == 5 && all[15] == 16);
+    CHECK(fg::FindHand(names, parents, 17).Found() == 0);  // nothing under Prop01
+    CHECK(fg::FindHand(names, parents, 42).hand == -1);
+    // A joint whose parent isn't the one before ends its chain.
+    std::vector<int> gap = parents;
+    gap[13] = 1;  // RightRingFinger2 hangs off the wrist
+    CHECK(fg::FindHand(names, gap, 1).fingers[fg::kRing].count == 2 && fg::FindHand(names, gap, 1).fingers[fg::kRing].joints[2] == -1);
+
+    // The hand's own layout: fingers along -Z, the knuckles from the pinky (x 0) to the index (x 6), the thumb's base ahead of them
+    // and toward +Y, each finger's rest pose curling slightly toward +Y: the palm faces +Y. Prop01 sits on the back of the hand.
+    std::vector<Vec3> local(names.size());
+    auto const finger = [&](int knuckle, double x, double restCurl) {
+        local[static_cast<std::size_t>(knuckle)] = {x, 0.0, -8.0};
+        local[static_cast<std::size_t>(knuckle) + 1] = {x, restCurl, -12.0};
+        local[static_cast<std::size_t>(knuckle) + 2] = {x, 3.0 * restCurl, -14.5};
+    };
+    finger(5, 6.0, 0.3);
+    finger(8, 4.0, 0.3);
+    finger(11, 2.0, 0.3);
+    finger(14, 0.0, 0.3);
+    local[2] = {7.0, 2.5, -2.0};
+    local[3] = {8.5, 3.5, -4.5};
+    local[4] = {9.0, 4.0, -6.5};
+    local[17] = {2.0, -1.0, -3.0};
+    local[18] = {6.0, 1.2, -16.0};
+    Transform const hand{turn(37.0, {0.3, 1.0, -0.2}), {120.0, -30.0, 90.0}, 1.0};
+    auto const build = [&](std::vector<Vec3> const& layout, Transform const& wrist) {
+        std::vector<Transform> pose(names.size());
+        pose[1] = wrist;
+        for (std::size_t i = 2; i < pose.size(); ++i) {
+            if (i == 19) {
+                pose[i] = {Quat{}, {0.0, 0.0, 50.0}, 1.0};  // the Camera bone: off the root, rigid to it
+                continue;
+            }
+            // Bone rotations are whatever the rig had; only the positions carry the measurement.
+            pose[i].rotation = Normalize(turn(5.0 * static_cast<double>(i), {1.0, 0.2, 0.1}) * wrist.rotation);
+            pose[i].translation = Apply(wrist, layout[i]);
+        }
+        return pose;
+    };
+    std::vector<Transform> const pose = build(local, hand);
+    auto const axes = fg::MeasureAxes(pose, bones);
+    CHECK(axes.has_value());
+    if (!axes) {
+        return;
+    }
+    // The palm from the thumb's base, agreed by every finger's rest curl; the index curls about the knuckle line (+X).
+    CHECK(axes->palmFromThumb && axes->palm.y > 0.99 && axes->restCurlAgree == 4 && axes->restCurlDisagree == 0);
+    for (int f = 0; f < fg::kFingerCount; ++f) {
+        CHECK(axes->valid[static_cast<std::size_t>(f)] && NearD(Length(axes->axis[static_cast<std::size_t>(f)]), 1.0, 1e-9));
+    }
+    CHECK(axes->axis[fg::kIndex].x > 0.99 && std::abs(Dot(axes->axis[fg::kIndex], axes->palm)) < 1e-6);
+    CHECK(std::abs(Dot(axes->axis[fg::kThumb], Normalize(local[3] - local[2]))) < 1e-6);
+
+    // Curl 0: nothing written, the pose untouched.
+    std::vector<Transform> zero = pose;
+    CHECK(fg::Apply(zero, parents, bones, *axes, fg::Curl{}, 70.0) == 0);
+    for (std::size_t i = 0; i < zero.size(); ++i) {
+        CHECK(NearT(zero[i], pose[i], 0.0));
+    }
+    // Curl 1: every joint turned 70 degrees about the finger's axis through its own origin, the thumb's 70 x kThumbScale, the
+    // end bone carried with the index tip, the wrist, Prop01, Camera and the root untouched.
+    fg::Curl full;
+    full.finger = {1.0, 1.0, 1.0, 1.0, 1.0};
+    std::vector<Transform> fist = pose;
+    CHECK(fg::Apply(fist, parents, bones, *axes, full, 70.0) == 16);
+    for (int bone : {0, 1, 17, 19}) {
+        CHECK(NearT(fist[static_cast<std::size_t>(bone)], pose[static_cast<std::size_t>(bone)], 0.0));
+    }
+    for (int f = 0; f < fg::kFingerCount; ++f) {
+        fg::Chain const& chain = bones.fingers[static_cast<std::size_t>(f)];
+        Vec3 const axis = Rotate(hand.rotation, axes->axis[static_cast<std::size_t>(f)]);
+        double const degrees = 70.0 * (f == fg::kThumb ? fg::kThumbScale : 1.0);
+        int const knuckle = chain.joints[0];
+        CHECK(NearV(fist[static_cast<std::size_t>(knuckle)].translation, pose[static_cast<std::size_t>(knuckle)].translation, 1e-9));
+        for (int k = 0; k < chain.count; ++k) {
+            int const joint = chain.joints[static_cast<std::size_t>(k)];
+            Quat const expected = Normalize(fg::AboutAxis(axis, degrees * (k + 1)) * pose[static_cast<std::size_t>(joint)].rotation);
+            CHECK(AngleBetween(fist[static_cast<std::size_t>(joint)].rotation, expected) < 1e-9);
+        }
+        // The first joint swings about the knuckle by the knuckle's turn alone.
+        int const joint1 = chain.joints[1];
+        Vec3 const arm = pose[static_cast<std::size_t>(joint1)].translation - pose[static_cast<std::size_t>(knuckle)].translation;
+        CHECK(NearV(fist[static_cast<std::size_t>(joint1)].translation,
+            pose[static_cast<std::size_t>(knuckle)].translation + Rotate(fg::AboutAxis(axis, degrees), arm), 1e-9));
+    }
+    CHECK(NearT(Relative(fist[18], fist[7]), Relative(pose[18], pose[7]), 1e-9));
+    // Toward the palm, monotonically: the index's first joint rises over the palm plane with the curl (the tip arcs back toward
+    // the knuckle plane past 3 x 70 degrees, as a real fist's does), and the tip's direction from the knuckle turns further from
+    // the rest direction; a negative curl (the index lifted off a trigger) goes the other way.
+    auto const tipOverPalm = [&](std::vector<Transform> const& p) {
+        Vec3 const inHand = Rotate(Conjugate(hand.rotation), p[6].translation - p[5].translation);
+        return Dot(inHand, axes->palm);
+    };
+    auto const tipAngle = [&](std::vector<Transform> const& p) {
+        Vec3 const rest = pose[7].translation - pose[5].translation;
+        Vec3 const now = p[7].translation - p[5].translation;
+        return std::acos(std::clamp(Dot(Normalize(rest), Normalize(now)), -1.0, 1.0));
+    };
+    double lastOver = tipOverPalm(pose);
+    double lastAngle = tipAngle(pose);
+    for (double c : {0.25, 0.5, 0.75, 1.0}) {
+        fg::Curl curl;
+        curl.finger[fg::kIndex] = c;
+        std::vector<Transform> p = pose;
+        CHECK(fg::Apply(p, parents, bones, *axes, curl, 70.0) == 4);  // the index chain and its end bone
+        CHECK(tipOverPalm(p) > lastOver && tipAngle(p) > lastAngle);
+        lastOver = tipOverPalm(p);
+        lastAngle = tipAngle(p);
+        // Only the index moved.
+        for (int bone : {2, 3, 4, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17}) {
+            CHECK(NearT(p[static_cast<std::size_t>(bone)], pose[static_cast<std::size_t>(bone)], 0.0));
+        }
+    }
+    fg::Curl lifted;
+    lifted.finger[fg::kIndex] = -0.5;
+    std::vector<Transform> off = pose;
+    CHECK(fg::Apply(off, parents, bones, *axes, lifted, 70.0) == 4);
+    CHECK(tipOverPalm(off) < tipOverPalm(pose));
+    CHECK(AngleBetween(off[5].rotation, Normalize(fg::AboutAxis(Rotate(hand.rotation, axes->axis[fg::kIndex]), -35.0) * pose[5].rotation)) < 1e-9);
+    // The thumb closes toward the middle finger's first joint; a curl past 1 is clamped.
+    CHECK(Length(fist[4].translation - fist[9].translation) < Length(pose[4].translation - pose[9].translation));
+    fg::Curl over;
+    over.finger = {2.0, 2.0, 2.0, 2.0, 2.0};
+    std::vector<Transform> clamped = pose;
+    CHECK(fg::Apply(clamped, parents, bones, *axes, over, 70.0) == 16);
+    for (std::size_t i = 0; i < clamped.size(); ++i) {
+        CHECK(NearT(clamped[i], fist[i], 1e-9));
+    }
+    // Bad input writes nothing.
+    std::vector<Transform> untouched = pose;
+    CHECK(fg::Apply(untouched, std::span<int const>(parents).first(5), bones, *axes, full, 70.0) == 0);
+    fg::HandBones noHand = bones;
+    noHand.hand = -1;
+    CHECK(fg::Apply(untouched, parents, noHand, *axes, full, 70.0) == 0);
+    CHECK(fg::Apply(untouched, parents, bones, *axes, full, std::numeric_limits<double>::quiet_NaN()) == 0);
+    for (std::size_t i = 0; i < untouched.size(); ++i) {
+        CHECK(NearT(untouched[i], pose[i], 0.0));
+    }
+
+    // Without a thumb the rest pose's own curl picks the palm side; with straight fingers too, nothing does.
+    fg::HandBones thumbless = bones;
+    thumbless.fingers[fg::kThumb] = {};
+    auto const fromCurl = fg::MeasureAxes(pose, thumbless);
+    CHECK(fromCurl && !fromCurl->palmFromThumb && fromCurl->palm.y > 0.99 && !fromCurl->valid[fg::kThumb] && fromCurl->valid[fg::kIndex]);
+    std::vector<Vec3> straight = local;
+    for (int knuckle : {5, 8, 11, 14}) {
+        straight[static_cast<std::size_t>(knuckle) + 1].y = 0.0;
+        straight[static_cast<std::size_t>(knuckle) + 2].y = 0.0;
+    }
+    CHECK(!fg::MeasureAxes(build(straight, hand), thumbless));
+    CHECK(fg::MeasureAxes(build(straight, hand), bones).has_value());  // the thumb still tells
+    // A left hand, mirrored in Y: the thumb sits toward -Y and the rest curl bends that way, so the palm faces -Y and a positive
+    // curl still closes the fingers toward it.
+    std::vector<std::string> leftNames = names;
+    for (std::string& name : leftNames) {
+        if (name.rfind("Right", 0) == 0) {
+            name = "Left" + name.substr(5);
+        }
+    }
+    std::vector<Vec3> leftLocal = local;
+    for (Vec3& p : leftLocal) {
+        p.y = -p.y;
+    }
+    fg::HandBones const leftBones = fg::FindHand(leftNames, parents, 1);
+    CHECK(leftBones.Found() == 5);
+    std::vector<Transform> const leftPose = build(leftLocal, hand);
+    auto const leftAxes = fg::MeasureAxes(leftPose, leftBones);
+    CHECK(leftAxes && leftAxes->palmFromThumb && leftAxes->palm.y < -0.99 && leftAxes->axis[fg::kIndex].x < -0.99);
+    if (leftAxes) {
+        std::vector<Transform> leftFist = leftPose;
+        CHECK(fg::Apply(leftFist, parents, leftBones, *leftAxes, full, 70.0) == 16);
+        Vec3 const before = Rotate(Conjugate(hand.rotation), leftPose[6].translation - leftPose[5].translation);
+        Vec3 const after = Rotate(Conjugate(hand.rotation), leftFist[6].translation - leftFist[5].translation);
+        CHECK(Dot(after, leftAxes->palm) > Dot(before, leftAxes->palm) + 3.0);  // 4 units x sin 70 from a 0.3 rest curl
+    }
+    // AboutAxis is Rotate's right-handed turn: +90 about Z takes X to Y.
+    CHECK(NearV(Rotate(fg::AboutAxis({0.0, 0.0, 1.0}, 90.0), {1.0, 0.0, 0.0}), {0.0, 1.0, 0.0}, 1e-9));
+}
+
 // tests/InstallTests.cpp: the installer's logic (research/33).
 void RunInstallTests(int& failures);
 // tests/ReportTests.cpp: "Report a problem" (install/Report, research/33 section 8).
@@ -7042,6 +7248,7 @@ int main() {
     TestComfort();
     TestCombatStance();
     TestPoseGraft();
+    TestFingers();
     TestMetricStereo();
     TestMenuSettings();
     TestCalibration();

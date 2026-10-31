@@ -84,6 +84,12 @@ struct CombatStance {
     double drawRate = 6.0;           // the draw and holster animations' rate, 1..10 (D; 1: the game's)
 };
 CombatStance GetCombatStance();
+// [Hands] fingers, fingerCurlDeg: the fingers follow the controllers' trigger and grip (game/fingers, research/43).
+struct Fingers {
+    bool on = true;          // fingers = 1
+    double curlDeg = 70.0;   // the turn of each finger joint at a full curl, degrees (0..120)
+};
+Fingers GetFingers();
 // [Controls] (appended to an older file that lacks it): the two-handed grip and the left trigger.
 struct Controls {
     bool leftTrigger = false;     // leftTrigger = lt: the game's LT

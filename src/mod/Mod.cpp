@@ -39,6 +39,7 @@
 #include "game/ConsoleRequest.hpp"
 #include "game/SystemSettings.hpp"
 #include "game/GameMenuRequest.hpp"
+#include "game/Fingers.hpp"
 #include "game/GamepadBridge.hpp"
 #include "game/GamepadMapping.hpp"
 #include "game/HandAim.hpp"
@@ -697,7 +698,8 @@ void PublishStatus() {
         "\"handAim\": {{\"enabled\": {}, \"toldHost\": {}, \"shots\": {}}}, "
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"throwables\": {}, "
-        "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}}}",
+        "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, "
+        "\"fingers\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -707,7 +709,7 @@ void PublishStatus() {
         json::JsonNumber(game::support_grip::Blend()), game::holsters::StatusJson(), game::squad_weapons::StatusJson(),
         game::sights::StatusJson(), game::throwables::StatusJson(), game::posture::StatusJson(),
         game::view_level::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
-        game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson());
+        game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(), game::fingers::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -845,6 +847,7 @@ void Heartbeat() {
         game::posture::LogStats();
         game::view_level::LogStats();
         game::combat_stance::LogStats();
+        game::fingers::LogStats();
         game::comfort::LogStats();
         game::body_calibration::LogStats();
         game::skeleton_probe::Tick();
@@ -1109,6 +1112,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::weapon::Shutdown();
     game::camera_probe::Shutdown();
     game::combat_stance::Shutdown();  // the game's speed ramp and animation rates back, the pre-stage stopped
+    game::fingers::Shutdown();
     game::view_level::Shutdown();
     if (gHost != nullptr && MEVR_HOST_HAS(setVignette) && gHost->setVignette != nullptr) {
         gHost->setVignette(0.0f);  // no vignette without the mod (the host also forgets on unload)
