@@ -37,6 +37,10 @@ bool TryStartup();
 // scope with [Sights] ads = 1 is published only under ADS (else kind None: no picture, the model's own lens), and its pull
 // may then reach scopeAdsPullMaxM with the faster spring.
 vr::sights::Sight Current(vr::aim_ray::Ray const& ray);
+// The held gun's top in tracking space (unit, perpendicular to the ray's direction), as the sight uses it: the right
+// controller's up as arm IK rolls the gun, or the calibrated gun frame's. Nullopt without a valid ray or with the
+// barrel straight up or down. For game/HudPieces (the weapon panel above the receiver).
+std::optional<XrVector3f> GunTop(vr::aim_ray::Ray const& ray);
 // Arm IK, once per tick while it drives the hands: how far to move the held gun (tracking meters; zero:
 // none). The sight it then draws includes the move; Current takes it out again (two ticks later, when the
 // engine has posed the gun with it) before measuring the eye against the line.

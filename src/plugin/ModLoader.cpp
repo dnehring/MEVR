@@ -15,6 +15,7 @@
 #include "core/vr/Calibration.hpp"
 #include "core/vr/Floor.hpp"
 #include "core/vr/HostView.hpp"
+#include "core/vr/HudPieces.hpp"
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/Sights.hpp"
@@ -193,7 +194,20 @@ HostServices WithInteractLabel(HostServices services) {
     services.setInteractLabel = &HostSetInteractLabel;
     return services;
 }
-HostServices const gServices = WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithCrashBreadcrumbs({kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
+// v22: HUD pieces on the body (game/HudPieces, plugin/HalcyonOverlays, research/41).
+void HostSetHudPieces(vr::hud_pieces::Pieces const* pieces) {
+    if (pieces != nullptr) {
+        vr::hud_pieces::Publish(*pieces);
+    } else {
+        vr::hud_pieces::Reset();
+    }
+}
+HostServices WithHudPieces(HostServices services) {
+    services.hudPiecesSize = static_cast<std::uint32_t>(sizeof(vr::hud_pieces::Pieces));
+    services.setHudPieces = &HostSetHudPieces;
+    return services;
+}
+HostServices const gServices = WithHudPieces(WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithCrashBreadcrumbs({kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
     static_cast<std::uint32_t>(sizeof(vr::controllers::State)), static_cast<std::uint32_t>(sizeof(vr::host_view::State)),
     &HostSetProcessEventCallback, &HostProcessExiting, &HostKeepLoaded,
     static_cast<std::uint32_t>(sizeof(vr::aim_ray::Ray)), &HostSetAimRay, &HostSetSupportGrip, &HostSupportGripHeld,
@@ -203,7 +217,7 @@ HostServices const gServices = WithInteractLabel(WithScopeCapture(WithGameMenuRe
     static_cast<std::uint32_t>(sizeof(vr::squad_menu::View)), &HostSetSquadMenu, &HostLeftGripAway,
     static_cast<std::uint32_t>(sizeof(vr::squad_menu::wheel::Panel)), &HostSetWheelPanel,
     static_cast<std::uint32_t>(sizeof(vr::sights::Sight)), &HostSetSight, &HostSightView,
-    static_cast<std::uint32_t>(sizeof(vr::calibration::HostState)), &HostCalibration, &HostMainMenu, &HostSetVignette}))));
+    static_cast<std::uint32_t>(sizeof(vr::calibration::HostState)), &HostCalibration, &HostMainMenu, &HostSetVignette})))));
 // A mod that's gone can't aim: Halcyon's head aim must come back, the reticle go, the pad mapping
 // forget the two-handed grip (the grip holding the gun, the squad menu's controls), the squad menu and the
 // wheel panel settings go, and the controllers stop vibrating.
@@ -215,6 +229,7 @@ void ForgetModState() {
     vr::sights::Reset();
     vr::scope_capture::Reset();  // the scope's picture goes back to the eye copy
     vr::interact::Reset();  // no prompt at the object without the mod
+    vr::hud_pieces::Reset();  // the weapon panel back on the HUD (the wrist piece needs no mod)
     halcyon::ForgetSupportGrip();
     halcyon::ForgetHaptics();
     vignette::Forget();

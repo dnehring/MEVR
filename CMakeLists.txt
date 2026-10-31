@@ -266,6 +266,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/Controllers.hpp
     src/core/vr/Floor.hpp
     src/core/vr/HostView.cpp
+    src/core/vr/HudPieces.cpp
+    src/core/vr/HudPieces.hpp
     src/core/vr/InteractLabel.cpp
     src/core/vr/InteractLabel.hpp
     src/core/vr/HostView.hpp
@@ -349,6 +351,8 @@ set(MEVR_MOD_SOURCES
     src/game/HeadSim.hpp
     src/game/HeadTracking.cpp
     src/game/HeadTracking.hpp
+    src/game/HudPieces.cpp
+    src/game/HudPieces.hpp
     src/game/Interact.cpp
     src/game/Interact.hpp
     src/game/Holsters.cpp
@@ -446,6 +450,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/Haptics.cpp
     src/core/vr/Haptics.hpp
     src/core/vr/HostView.cpp
+    src/core/vr/HudPieces.cpp
+    src/core/vr/HudPieces.hpp
     src/core/vr/InteractLabel.cpp
     src/core/vr/InteractLabel.hpp
     src/core/vr/HostView.hpp
@@ -715,6 +721,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/Comfort.cpp
         src/core/vr/CombatStance.cpp
         src/core/vr/GameMenuRequest.cpp
+        src/core/vr/HudPieces.cpp
         src/core/vr/InteractLabel.cpp
         src/core/vr/Colour.cpp
         src/core/vr/ColourStrip.cpp

@@ -6,6 +6,7 @@
 #include "core/ik/Posture.hpp"
 #include "core/ik/Rigid.hpp"
 #include "core/vr/Comfort.hpp"
+#include "core/vr/HudPieces.hpp"
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/Sights.hpp"
@@ -289,5 +290,10 @@ vr::comfort::Settings GetComfort();
 // [Interact] (research/40): A uses what the head looks at (gaze), the game's prompt big at the object (label,
 // labelHeightDeg, combatLabel), the prompt's part of the HUD by hand (crop = x y width height).
 vr::interact::Settings GetInteract();
+
+// [Hud] (research/41): the player's status on the left wrist (wristStatus, wristWidthM, wristOffset) and the weapon
+// panel on the gun (gunStatus, gunWidthM, gunBackM, gunUpM), their bands by hand (wristCrop, gunCrop). The host reads
+// the same section for its quads; the mod uses gunStatus and the gun anchor's offsets.
+vr::hud_pieces::Settings GetHud();
 
 } // namespace mevr::game::hand_calibration
