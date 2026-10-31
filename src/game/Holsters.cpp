@@ -523,6 +523,30 @@ bool BlocksGameDraws() {
     return gBlockDraws;
 }
 
+std::string DrawByName(std::string_view name) {
+    std::optional<Weapon> const weapon = slots::ParseWeapon(name);
+    if (!weapon || *weapon == Weapon::None) {
+        return "usage: mevr weapon pistol|shotgun|assault|sniper";
+    }
+#if !defined(MEVR_GAME_LE1)
+    return "mevr weapon: LE1 only (the body holsters)";
+#else
+    if (!gStarted) {
+        return "the holsters aren't started (no script functions yet)";
+    }
+    std::string why;
+    std::optional<Game> const game = ReadGame(why);
+    if (!game) {
+        return why;
+    }
+    if (!Carries(*weapon)) {
+        return std::format("no {} is carried (the holsters haven't read the quick slots, or it isn't equipped)", slots::Name(*weapon));
+    }
+    Draw(*game, *weapon, "the console", Link{}, 0.0, false);
+    return std::format("drawing the {}", slots::Name(*weapon));
+#endif
+}
+
 bool TryStartup() {
 #if defined(MEVR_GAME_LE1)
     gSwitchToWeapon = gSwitchToWeaponFn.Get();

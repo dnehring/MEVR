@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 
 // Body holsters (research/19): the right hand reaches to a slot on the body and squeezes the grip
 // to draw that slot's weapon. With [Holsters] gripHolds = 1 (the default) the right grip then holds
@@ -75,6 +76,9 @@ double SecondsSinceDraw();
 void AllowGameDraw(bool begin);
 // The game's own draws are refused now (as of holsters' last tick): its weapon stays away unless a holster draws it.
 bool BlocksGameDraws();
+// The measuring loop's draw (`mevr weapon <pistol|shotgun|assault|sniper>` through tools/console.ps1, game/ConsoleRequest):
+// the holsters' own draw of a carried weapon, no grab, no haptics. Returns what happened, for the console's result.
+std::string DrawByName(std::string_view name);
 // For the test loop's mod status: a JSON object.
 std::string StatusJson();
 void LogStats();

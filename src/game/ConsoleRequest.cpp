@@ -5,6 +5,7 @@
 #include "engine/Legacy.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Memory.hpp"
+#include "game/Holsters.hpp"
 #include "game/Player.hpp"
 #include "core/WriteJournal.hpp"
 
@@ -166,7 +167,17 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         words >> cell;
         return Density(pawn, cell > 1.0f ? cell : 2000.0f);
     }
-    return std::string("unknown: mevr loc | mevr setloc X Y Z | mevr density [cellUU]");
+    if (verb == "weapon") {
+        std::string which;
+        words >> which;
+#if defined(MEVR_GAME_LE1)
+        return holsters::DrawByName(which);  // the holsters' draw (SwitchToWeapon), for the measuring loop's scoped runs
+#else
+        (void)which;
+        return std::string("mevr weapon: LE1 only (the body holsters)");
+#endif
+    }
+    return std::string("unknown: mevr loc | mevr setloc X Y Z | mevr density [cellUU] | mevr weapon <pistol|shotgun|assault|sniper>");
 }
 
 ue3::Function* FindConsoleCommand() {
