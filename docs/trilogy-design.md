@@ -86,3 +86,7 @@ Game-mechanic rows marked **[verify]** come from memory and should be checked in
 
 Record each mechanic change here when it's implemented: what changed, why, the toggle name, and
 which games it applies to.
+
+| Date | Game | Change | Why | Toggle |
+|---|---|---|---|---|
+| 2026-10-31 | LE1 | **The vent** ([research/45](../research/45-vent.md)): with a weapon drawn, the left grip squeezed on the gun's receiver (over and just ahead of the right hand, behind the foregrip) and pulled back and away in one fast stroke, letting go, sets the held weapon's heat to zero and clears its overheat at once (the game's cool-down effect plays), with a pulse in both hands; once per 4 s and only with heat above 0.3 of the overheat. The game's own overheat and cool-down are untouched otherwise | The "Ammo" row above: ME1's heat is a passive wait; a physical rack gives the hands something to do with it, as the heat-sink reload will in LE2/LE3 | `[Vent] enabled` (1 by default; `ventCooldownS`, `ventMinHeat`, `ventMaxHeat`, `ventSpeedMS`, `ventTravelM`, `ventHoldMaxS`, `effect`, `zone*`, `hapticAmplitude` in `ASI\LE1MEVR.ini`) |

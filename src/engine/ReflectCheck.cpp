@@ -691,6 +691,9 @@ void CheckFields() {
     CheckField("SFXGame.BioWeaponRanged", "m_MuzzleSocketName", SDK_FIELD(ABioWeaponRanged, m_MuzzleSocketName));
     CheckField("SFXGame.BioWeaponRanged", "m_fMinVFXDecalIntensity", SDK_FIELD(ABioWeaponRanged, m_fMinVFXDecalIntensity));
     CheckField("SFXGame.BioWeaponRanged", "bIsZoomed", SDK_BOOL(ABioWeaponRanged, bIsZoomed));
+    // Vent (research/45)
+    CheckField("SFXGame.BioWeaponRanged", "m_fCurrentHeat", SDK_FIELD(ABioWeaponRanged, m_fCurrentHeat));
+    CheckField("SFXGame.BioWeaponRanged", "m_bOverheated", SDK_BOOL(ABioWeaponRanged, m_bOverheated));
     CheckField("SFXGame.BioPawnBehavior", "m_oEquipment", SDK_FIELD(UBioPawnBehavior, m_oEquipment));
     // game/combat_stance (research/38): the AnimTree walk, the draw rate, the speed ramp, the walking speed.
     CheckField("Engine.AnimNode", "NodeName", SDK_FIELD(UAnimNode, NodeName));
@@ -827,6 +830,8 @@ void CheckFunctions() {
         "SFXGame.BioEpicPawnBehavior.GetPercentHealth",
         "Engine.Actor.SetLocation",
         "Engine.Actor.Destroy",
+        // Vent (research/45)
+        "SFXGame.BioWeaponRanged.DoCoolDownEffect",
         // SquadWeapons, Holsters
         "SFXGame.BioBaseSquad.GetSquadSize",
         "SFXGame.BioBaseSquad.GetMember",
@@ -985,6 +990,7 @@ void CheckParams() {
     PARMS(UBioEpicPawnBehavior_execGetPercentHealth_Parms, "SFXGame.BioEpicPawnBehavior.GetPercentHealth");
     PARMS(AActor_execSetLocation_Parms, "Engine.Actor.SetLocation");
     PARMS(AActor_execDestroy_Parms, "Engine.Actor.Destroy");
+    PARMS(ABioWeaponRanged_eventDoCoolDownEffect_Parms, "SFXGame.BioWeaponRanged.DoCoolDownEffect");
     PARMS(ABioBaseSquad_execGetSquadSize_Parms, "SFXGame.BioBaseSquad.GetSquadSize");
     PARMS(ABioBaseSquad_execGetMember_Parms, "SFXGame.BioBaseSquad.GetMember");
     PARMS(ABioBaseSquad_execGetMemberSwitchWeapon_Parms, "SFXGame.BioBaseSquad.GetMemberSwitchWeapon");

@@ -789,6 +789,23 @@ std::uintptr_t Key() {
 #endif
 }
 
+ue3::Object* HeldObject() {
+#if defined(MEVR_GAME_LE1)
+    if (Key() == 0) {
+        return nullptr;
+    }
+    // Resolved keeps the weapon by address only: the live one from the pawn must still be it.
+    std::string why;
+    auto const live = LivePointers(why);
+    if (!live || live->weapon != gResolved->weapon || !ue3::runtime::IsAlive(live->weapon)) {
+        return nullptr;
+    }
+    return live->weapon;
+#else
+    return nullptr;
+#endif
+}
+
 RangedType Type() {
 #if defined(MEVR_GAME_LE1)
     if (gResolved && gResolved->verified && gResolved->rangedType >= 0 && gResolved->rangedType <= 3) {
