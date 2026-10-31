@@ -5,6 +5,7 @@
 #include "engine/Legacy.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Memory.hpp"
+#include "game/CockpitProbe.hpp"
 #include "game/Holsters.hpp"
 #include "game/Player.hpp"
 #include "core/WriteJournal.hpp"
@@ -177,7 +178,12 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         return std::string("mevr weapon: LE1 only (the body holsters)");
 #endif
     }
-    return std::string("unknown: mevr loc | mevr setloc X Y Z | mevr density [cellUU] | mevr weapon <pistol|shotgun|assault|sniper>");
+    if (verb == "cockpit") {
+        std::string rest;
+        std::getline(words, rest);
+        return cockpit_probe::Command(rest);  // the in-game cockpit's experiment (research/47)
+    }
+    return std::string("unknown: mevr loc | mevr setloc X Y Z | mevr density [cellUU] | mevr weapon <pistol|shotgun|assault|sniper> | mevr cockpit ...");
 }
 
 ue3::Function* FindConsoleCommand() {

@@ -553,6 +553,15 @@ void CheckClasses() {
     CheckClass<ASceneCapture2DActor>("Engine.SceneCapture2DActor");
     CheckClass<UTexture>("Engine.Texture");
     CheckClass<UTextureRenderTarget2D>("Engine.TextureRenderTarget2D");
+    // The cockpit probe (game/CockpitProbe, research/47).
+    CheckClass<AInterpActor>("Engine.InterpActor");
+    CheckClass<AKActor>("Engine.KActor");
+    CheckClass<AKActorSpawnable>("Engine.KActorSpawnable");
+    CheckClass<AStaticMeshActor>("Engine.StaticMeshActor");
+    CheckClass<UStaticMesh>("Engine.StaticMesh");
+    CheckClass<UStaticMeshComponent>("Engine.StaticMeshComponent");
+    CheckClass<UMaterial>("Engine.Material");
+    CheckClass<UMaterialExpressionTextureSampleParameter>("Engine.MaterialExpressionTextureSampleParameter");
     CheckClass<UEngine>("Engine.Engine");
     CheckClass<UGameEngine>("Engine.GameEngine");
     CheckClass<UPlayer>("Engine.Player");
@@ -688,6 +697,22 @@ void CheckFields() {
     CheckField("Engine.Actor", "bStatic", SDK_BOOL(AActor, bStatic));
     CheckField("Engine.Actor", "bNoDelete", SDK_BOOL(AActor, bNoDelete));
     CheckField("Engine.Texture", "Resource", SDK_FIELD(UTexture, Resource));
+    // The cockpit probe (game/CockpitProbe, research/47).
+    CheckField("Engine.Actor", "bMovable", SDK_BOOL(AActor, bMovable));
+    CheckField("Engine.Actor", "Base", SDK_FIELD(AActor, Base));
+    CheckField("Engine.DynamicSMActor", "StaticMeshComponent", SDK_FIELD(ADynamicSMActor, StaticMeshComponent));
+    CheckField("Engine.DynamicSMActor", "LightEnvironment", SDK_FIELD(ADynamicSMActor, LightEnvironment));
+    CheckField("Engine.StaticMeshActor", "StaticMeshComponent", SDK_FIELD(AStaticMeshActor, StaticMeshComponent));
+    CheckField("Engine.StaticMeshComponent", "StaticMesh", SDK_FIELD(UStaticMeshComponent, StaticMesh));
+    CheckField("Engine.MaterialInstance", "bHasStaticPermutationResource", SDK_BOOL(UMaterialInstance, bHasStaticPermutationResource));
+    CheckField("Engine.Material", "Expressions", SDK_FIELD(UMaterial, Expressions));
+    CheckField("Engine.Material", "EmissiveColor", SDK_FIELD(UMaterial, EmissiveColor));
+    CheckField("Engine.Material", "BlendMode", SDK_FIELD(UMaterial, BlendMode));
+    CheckField("Engine.Material", "LightingModel", SDK_FIELD(UMaterial, LightingModel));
+    CheckField("Engine.Material", "bUsedWithStaticLighting", SDK_BOOL(UMaterial, bUsedWithStaticLighting));
+    CheckField("Engine.Material", "bUsedWithLightEnvironments", SDK_BOOL(UMaterial, bUsedWithLightEnvironments));
+    CheckField("Engine.MaterialExpressionTextureSampleParameter", "ParameterName", SDK_FIELD(UMaterialExpressionTextureSampleParameter, ParameterName));
+    CheckPath("Engine.Material", {"EmissiveColor", "Expression"}, SDK_AT(offsetof(UMaterial, EmissiveColor) + offsetof(FMaterialInput, Expression), 8));
     CheckField("Engine.TextureRenderTarget2D", "SizeX", SDK_FIELD(UTextureRenderTarget2D, SizeX));
     CheckField("Engine.TextureRenderTarget2D", "SizeY", SDK_FIELD(UTextureRenderTarget2D, SizeY));
     CheckField("Engine.TextureRenderTarget2D", "Format", SDK_FIELD(UTextureRenderTarget2D, Format));
@@ -965,6 +990,26 @@ void CheckFunctions() {
         "Engine.SceneCaptureComponent.SetEnabled",
         "Engine.SceneCapture2DComponent.SetView",
         "Engine.SceneCapture2DComponent.SetCaptureParameters",
+        // The cockpit probe (research/47)
+        "Engine.Actor.SetDrawScale",
+        "Engine.Actor.SetPhysics",
+        "Engine.Actor.SetCollision",
+        "Engine.Actor.SetHidden",
+        "Engine.Actor.SetBase",
+        "Engine.Actor.SetHardAttach",
+        "Engine.PrimitiveComponent.SetActorCollision",
+        "Engine.PrimitiveComponent.SetBlockRigidBody",
+        "Engine.PrimitiveComponent.SetTraceBlocking",
+        "Engine.StaticMeshComponent.SetStaticMesh",
+        "Engine.MeshComponent.GetMaterial",
+        "Engine.MeshComponent.SetMaterial",
+        "Engine.MeshComponent.GetNumElements",
+        "Engine.MeshComponent.GetUnscaledBounds",
+        "Engine.MeshComponent.CreateAndSetMaterialInstanceConstant",
+        "Engine.MaterialInstanceConstant.SetParent",
+        "Engine.MaterialInstanceConstant.SetTextureParameterValue",
+        "Engine.MaterialInterface.GetTextureParameterValue",
+        "Engine.LightEnvironmentComponent.SetEnabled",
         "Engine.PlayerController.ConsoleCommand",
         "Engine.SkeletalMeshComponent.GetBoneNames",
         "Engine.SkeletalMeshComponent.GetBoneLocation",
@@ -1079,6 +1124,39 @@ void CheckParams() {
     PARAM(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters", NewFOV);
     PARAM(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters", NewNearPlane);
     PARAM(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters", NewFarPlane);
+    // The cockpit probe (research/47).
+    PARAM(AActor_execSetDrawScale_Parms, "Engine.Actor.SetDrawScale", NewScale);
+    PARAM(AActor_execSetPhysics_Parms, "Engine.Actor.SetPhysics", newPhysics);
+    PARAM(AActor_execSetCollision_Parms, "Engine.Actor.SetCollision", bNewColActors);
+    PARAM(AActor_execSetCollision_Parms, "Engine.Actor.SetCollision", bNewBlockActors);
+    PARAM(AActor_execSetCollision_Parms, "Engine.Actor.SetCollision", bNewIgnoreEncroachers);
+    PARAM(AActor_execSetHidden_Parms, "Engine.Actor.SetHidden", bNewHidden);
+    PARAM(AActor_execSetBase_Parms, "Engine.Actor.SetBase", NewBase);
+    PARAM(AActor_execSetBase_Parms, "Engine.Actor.SetBase", NewFloor);
+    PARAM(AActor_execSetHardAttach_Parms, "Engine.Actor.SetHardAttach", bNewHardAttach);
+    PARAM(UPrimitiveComponent_execSetActorCollision_Parms, "Engine.PrimitiveComponent.SetActorCollision", NewCollideActors);
+    PARAM(UPrimitiveComponent_execSetActorCollision_Parms, "Engine.PrimitiveComponent.SetActorCollision", NewBlockActors);
+    PARAM(UPrimitiveComponent_execSetBlockRigidBody_Parms, "Engine.PrimitiveComponent.SetBlockRigidBody", bNewBlockRigidBody);
+    PARAM(UPrimitiveComponent_execSetTraceBlocking_Parms, "Engine.PrimitiveComponent.SetTraceBlocking", NewBlockZeroExtent);
+    PARAM(UPrimitiveComponent_execSetTraceBlocking_Parms, "Engine.PrimitiveComponent.SetTraceBlocking", NewBlockNonZeroExtent);
+    PARAM(UStaticMeshComponent_execSetStaticMesh_Parms, "Engine.StaticMeshComponent.SetStaticMesh", NewMesh);
+    PARAM(UStaticMeshComponent_execSetStaticMesh_Parms, "Engine.StaticMeshComponent.SetStaticMesh", bForce);
+    PARAM(UStaticMeshComponent_execSetStaticMesh_Parms, "Engine.StaticMeshComponent.SetStaticMesh", ReturnValue);
+    PARAM(UMeshComponent_execGetMaterial_Parms, "Engine.MeshComponent.GetMaterial", ElementIndex);
+    PARAM(UMeshComponent_execGetMaterial_Parms, "Engine.MeshComponent.GetMaterial", ReturnValue);
+    PARAM(UMeshComponent_execSetMaterial_Parms, "Engine.MeshComponent.SetMaterial", ElementIndex);
+    PARAM(UMeshComponent_execSetMaterial_Parms, "Engine.MeshComponent.SetMaterial", Material);
+    PARAM(UMeshComponent_execGetNumElements_Parms, "Engine.MeshComponent.GetNumElements", ReturnValue);
+    PARAM(UMeshComponent_execGetUnscaledBounds_Parms, "Engine.MeshComponent.GetUnscaledBounds", UnscaledBounds);
+    PARAM(UMeshComponent_execCreateAndSetMaterialInstanceConstant_Parms, "Engine.MeshComponent.CreateAndSetMaterialInstanceConstant", ElementIndex);
+    PARAM(UMeshComponent_execCreateAndSetMaterialInstanceConstant_Parms, "Engine.MeshComponent.CreateAndSetMaterialInstanceConstant", ReturnValue);
+    PARAM(UMaterialInstanceConstant_execSetParent_Parms, "Engine.MaterialInstanceConstant.SetParent", NewParent);
+    PARAM(UMaterialInstanceConstant_execSetTextureParameterValue_Parms, "Engine.MaterialInstanceConstant.SetTextureParameterValue", ParameterName);
+    PARAM(UMaterialInstanceConstant_execSetTextureParameterValue_Parms, "Engine.MaterialInstanceConstant.SetTextureParameterValue", Value);
+    PARAM(UMaterialInterface_execGetTextureParameterValue_Parms, "Engine.MaterialInterface.GetTextureParameterValue", ParameterName);
+    PARAM(UMaterialInterface_execGetTextureParameterValue_Parms, "Engine.MaterialInterface.GetTextureParameterValue", OutValue);
+    PARAM(UMaterialInterface_execGetTextureParameterValue_Parms, "Engine.MaterialInterface.GetTextureParameterValue", ReturnValue);
+    PARAM(ULightEnvironmentComponent_execSetEnabled_Parms, "Engine.LightEnvironmentComponent.SetEnabled", bNewEnabled);
     PARAM(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand", Command);
     PARAM(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand", bWriteToLog);
     PARAM(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand", ReturnValue);
@@ -1142,6 +1220,25 @@ void CheckParams() {
     PARMS(USceneCaptureComponent_execSetEnabled_Parms, "Engine.SceneCaptureComponent.SetEnabled");
     PARMS(USceneCapture2DComponent_execSetView_Parms, "Engine.SceneCapture2DComponent.SetView");
     PARMS(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters");
+    PARMS(AActor_execSetDrawScale_Parms, "Engine.Actor.SetDrawScale");
+    PARMS(AActor_execSetPhysics_Parms, "Engine.Actor.SetPhysics");
+    PARMS(AActor_execSetCollision_Parms, "Engine.Actor.SetCollision");
+    PARMS(AActor_execSetHidden_Parms, "Engine.Actor.SetHidden");
+    PARMS(AActor_execSetBase_Parms, "Engine.Actor.SetBase");
+    PARMS(AActor_execSetHardAttach_Parms, "Engine.Actor.SetHardAttach");
+    PARMS(UPrimitiveComponent_execSetActorCollision_Parms, "Engine.PrimitiveComponent.SetActorCollision");
+    PARMS(UPrimitiveComponent_execSetBlockRigidBody_Parms, "Engine.PrimitiveComponent.SetBlockRigidBody");
+    PARMS(UPrimitiveComponent_execSetTraceBlocking_Parms, "Engine.PrimitiveComponent.SetTraceBlocking");
+    PARMS(UStaticMeshComponent_execSetStaticMesh_Parms, "Engine.StaticMeshComponent.SetStaticMesh");
+    PARMS(UMeshComponent_execGetMaterial_Parms, "Engine.MeshComponent.GetMaterial");
+    PARMS(UMeshComponent_execSetMaterial_Parms, "Engine.MeshComponent.SetMaterial");
+    PARMS(UMeshComponent_execGetNumElements_Parms, "Engine.MeshComponent.GetNumElements");
+    PARMS(UMeshComponent_execGetUnscaledBounds_Parms, "Engine.MeshComponent.GetUnscaledBounds");
+    PARMS(UMeshComponent_execCreateAndSetMaterialInstanceConstant_Parms, "Engine.MeshComponent.CreateAndSetMaterialInstanceConstant");
+    PARMS(UMaterialInstanceConstant_execSetParent_Parms, "Engine.MaterialInstanceConstant.SetParent");
+    PARMS(UMaterialInstanceConstant_execSetTextureParameterValue_Parms, "Engine.MaterialInstanceConstant.SetTextureParameterValue");
+    PARMS(UMaterialInterface_execGetTextureParameterValue_Parms, "Engine.MaterialInterface.GetTextureParameterValue");
+    PARMS(ULightEnvironmentComponent_execSetEnabled_Parms, "Engine.LightEnvironmentComponent.SetEnabled");
     PARMS(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand");
     PARMS(USkeletalMeshComponent_execMatchRefBone_Parms, "Engine.SkeletalMeshComponent.MatchRefBone");
     PARMS(USkeletalMeshComponent_execGetBoneLocation_Parms, "Engine.SkeletalMeshComponent.GetBoneLocation");
