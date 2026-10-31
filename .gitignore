@@ -56,3 +56,6 @@ perf/
 
 # Local-only research tools, never published (they rebuild a decrypted copy of the game exe from a dump)
 local-tools/
+
+# Cockpit concept art and generated models: not in git until their licence is settled
+concept/

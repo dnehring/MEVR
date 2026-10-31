@@ -31,7 +31,8 @@ from mathutils.bvhtree import BVHTree
 ASSETS = {
     "joystick": {"moving": "grip", "moveAboveZ": 0.40, "ring": True, "twistDeg": 45.0},
     # slide: how far the handle may go along X from where it was modelled, measured from the slot's ends on the base's
-    # height map (research/47); the midpoint is the throttle's neutral.
+    # height map; the midpoint is the throttle's neutral. Pushing away from the seat is forward, pulling back reverse;
+    # the switch panel (+X) is assumed to face the seat, so forward is -X.
     "throtle-control": {"moving": "handle", "moveAboveZ": 0.30, "ring": False, "slide": (-0.06, 0.32)},
 }
 
@@ -242,7 +243,7 @@ def Run(root, previews):
                 c = sum(foot, Vector()) / len(foot)
                 pivot = Vector((c.x, c.y, mlo.z))
                 lift, clash = FitSlide(o.data, fixed, moving, cfg["slide"])
-                info["motion"] = {"kind": "slide", "axis": [1.0, 0.0, 0.0], "min": cfg["slide"][0], "max": cfg["slide"][1],
+                info["motion"] = {"kind": "slide", "axis": [1.0, 0.0, 0.0], "forward": [-1.0, 0.0, 0.0], "min": cfg["slide"][0], "max": cfg["slide"][1],
                                   "neutral": (cfg["slide"][0] + cfg["slide"][1]) / 2, "lift": lift, "clashes": clash}
             bm.free()
             source_tris = sum(len(p.vertices) - 2 for p in o.data.polygons)
