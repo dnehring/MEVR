@@ -304,6 +304,39 @@ switching frameworks.
   out of the HUD panel onto a quad at the object, facing the eyes, `labelHeightDeg` (6) tall at any distance (`label = 1`;
   combat targets stay on the HUD unless `combatLabel = 1`). Logs `interact:`, `[MEVR-INTERACT]`; snapshot `"mod"."interact"`,
   a `label` layer.
+- LE1 fingers ([research/43](research/43-fingers.md), `core/ik/Fingers`, `game/Fingers`; `[Hands] fingers`, `fingerCurlDeg` 70): first
+  person with tracked controllers, each hand's index curls with its trigger and the other fingers with its grip (thumb x 0.35),
+  applied in `engine/BonePose` after arm IK (`Request::fingers`, inside its one journalled SpaceBases write). Weapon drawn: the right
+  hand keeps the animation's grip but the index rests off the trigger (-0.5 curl) until squeezed; the left hand on the foregrip is
+  untouched. Bones `{Left,Right}{Thumb,Index,Middle,Ring,Pink}Finger[1,2]` under `LeftWrist`/`RightWrist`; the flexion axes are
+  measured from the rest pose (palm plane from the knuckles, palm side from the thumb). **Side finding (2026-10-31):
+  `BonePose::TakeRequest` never copied `Request::gunShift`** since 24fed58, so the sight assist and the scope pull never reached the
+  pose until then. Logs `fingers:`; snapshot `"mod"."fingers"`.
+- LE1 HUD pieces ([research/41](research/41-hud-pieces.md), HostServices v22 `setHudPieces`; `core/vr/HudPieces`, `game/HudPieces`,
+  host in `HalcyonOverlays`; `[Hud]` in `ASI\LE1MEVR.ini`): the HUD's player status (health/shield arc, squad portraits, medi-gel;
+  bottom CENTRE of the HUD) on a quad at the left wrist (`wristStatus`, `wristWidthM` 0.08, `wristOffset` in the left grip's axes),
+  and the weapon panel (gun silhouette, heat strip, grenades; bottom left) over the gun's receiver (`gunStatus`, `gunBackM` 0.15,
+  `gunUpM` 0.04; the mod publishes the anchor from the aim ray and `sights::GunTop`). Both masked out of the HUD panel (the panel
+  shader takes three masks now); the radar and power bar stay. The HUD frame is ~1306 stage px tall and its bottom widgets are
+  anchored to the frame's bottom, so the crops are bottom-anchored (`DefaultWristCrop`/`DefaultGunCrop`; `wristCrop`/`gunCrop` by
+  hand). Logs `hud pieces:`, `[MEVR-HUD] ... wrist/gun`; snapshot `"mod"."hudPieces"`, layers `wrist`, `gun`.
+- LE1 vent ([research/45](research/45-vent.md), `core/ik/Vent`, `game/Vent`; `[Vent]`; a mechanic change, docs/trilogy-design.md's
+  change log): weapon drawn, the left grip squeezed in the receiver zone (a box in the gun's frame over and ahead of the right hand,
+  `zone*`) of a HOT gun (heat >= `ventMinHeat` 0.3 of `ventMaxHeat` 1.0 [verify the scale: the log says what heat each overheat
+  happened at]) then racked back fast (`ventSpeedMS` 1, `ventTravelM` 0.05) and released: `BioWeaponRanged.m_fCurrentHeat = 0`,
+  `m_bOverheated = false` (journalled), `DoCoolDownEffect` through ProcessEvent, both hands pulse, `ventCooldownS` 4. Arbitration:
+  while the left hand is in a hot gun's receiver zone and no support grip is held, `support_grip` reports the squeeze "away from the
+  gun" (`vent::MasksSupportZone`), so it reaches the mod: grenades first, then the vent; a cool gun's receiver is the support grip.
+  No game function cools a weapon. Logs `vent:`; snapshot `"mod"."vent"`.
+- LE1 game pointer ([research/42](research/42-game-pointer.md), host `plugin/GamePointer`, math `core/vr/GamePointer`; `[Pointer]`):
+  while Halcyon shows the game as its flat quad (`menuFlat` mode 7, `galaxyFlat` mode 9; `flatCine = 0` keeps flat conversations and
+  cutscenes out), a controller's aim ray on it is the game's mouse: the hit's UV is the window's client pixel (the backbuffer fills
+  the quad edge to edge), sent as `WM_MOUSEMOVE`/`WM_LBUTTON*`/`WM_MOUSEWHEEL` posted to the game window (`moveMessages`) and as
+  `SetCursorPos` (`setCursor`), `sendInput = 1` for clicks by SendInput (foreground only); the trigger latches 0.6/0.4, the right
+  stick is the wheel (`wheelPerSecond` 6), a dot (`dotDeg` 0.6) 5 mm in front of the quad. Not while our menu, Halcyon's menu or
+  the calibration is up. One `[MEVR]` seam: `MevrBridge::OnFlatQuad` from `xr_session.cpp`'s flat quad block. Which of the two
+  mouse paths LE's Scaleform menus take is [verify]. The VR dialogue wheel (in the eye images) is not covered. Logs `game pointer:`;
+  snapshot `"gamePointer"`, layer `gamepointer`.
 - LE1 life-size stereo ([research/30](research/30-metric-stereo.md), `MELEVR.ini sfr2Metric`, on in our deploy):
   each Stereo 2 pass renders from its eye's real place (`xrLocateViews`, at the view's units per metre: Halcyon's
   50 x lean gain, life-size at 100), no convergence shift, swap ignored (pass 0 = left). In gameplay with the HUD

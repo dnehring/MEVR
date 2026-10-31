@@ -1483,6 +1483,38 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
     - Must NOT happen: the game's view jumping or the world turning (the head's view goes into the camera only inside the
       selection's own call); a label with nothing selected; the label at the wrong object.
 
+47. **Five features built blind for QA (new, 2026-10-31; HOST AND MOD REDEPLOY together, game closed: HostServices v22).**
+    Built and unit-tested without the headset; each has its own section in `ASI\LE1MEVR.ini` and can be turned off there
+    if it misbehaves. Try them in this order; the fix in (a) changes how the gun sits before anything else.
+    - **(a) The sight assist and the scope pull now reach the pose** ([research/43](../research/43-fingers.md), a side finding:
+      since 2026-10-22 the writer never copied the gun's shift, so the alignment assist, the calibrated gun move and the scope
+      pull were computed and logged but never moved the gun: your "the pull too short"). Raise a pistol to your eye: the dot
+      should slide onto your sight line (up to 3 cm); raise the sniper and the eyepiece should come back toward your eye to
+      0.12 m, the picture filling it. Must NOT happen: the gun creeping away from your hand when it isn't raised. If the
+      shift feels wrong, `[Sights] assist = 0` is the old behaviour.
+    - **(b) Fingers** ([research/43](../research/43-fingers.md), `[Hands] fingers`, `fingerCurlDeg` 70): with the weapon away,
+      squeeze the grip (three fingers close) and the trigger (the index closes); with it drawn the right index rests off the
+      trigger until you squeeze. Check the fingers close INTO the palm, not backwards (log `fingers: ... palm ...` says which
+      way it decided); that 70 degrees doesn't clip the fingers through the palm (lower it live); the thumb.
+    - **(c) Health, shields and squad on your left wrist; the heat strip and grenades on the gun**
+      ([research/41](../research/41-hud-pieces.md), `[Hud]`): look at the back of your left wrist for the status arc
+      (`wristWidthM` 0.08, `wristOffset` x y z metres in the grip's axes: tune until it sits on the forearm); the weapon panel
+      floats over the gun's receiver (`gunBackM` 0.15 behind the muzzle, `gunUpM` 0.04 above). Both leave the HUD panel's
+      bottom (the radar stays). Does the sniper's scope hide the gun panel? Logs `[MEVR-HUD] the player's status on the left
+      wrist`, `the weapon panel on the gun`; snapshot layers `wrist` and `gun`.
+    - **(d) Vent a hot gun** ([research/45](../research/45-vent.md), `[Vent]`; a mechanic change, off with `enabled = 0`): fire
+      until the heat strip is well up, then with the LEFT hand squeeze the grip just above and ahead of your right hand (the
+      receiver, not the foregrip) and rack it back fast, letting go: the heat drops to nothing, both hands pulse, the game's
+      cool-down sound plays; 4 s before the next. A squeeze on a cool gun buzzes and is just the two-handed grip. **Read the
+      first overheat's log line** `vent: the <weapon> overheated at heat X`: if X isn't near 1.0, set `ventMaxHeat = X`. Logs
+      `vent: ... let go at ...: no vent (too slow | ...)` say why a rack didn't count; `zone*` and `ventSpeedMS` tune it.
+    - **(e) Point at the game's menus** ([research/42](../research/42-game-pointer.md), `[Pointer] gameMenus`): open the
+      inventory, the journal, the map and the galaxy map: a dot follows your controller's ray on the flat screen, the trigger
+      clicks, the right stick scrolls. The menu's button glyphs will flip to the mouse layout: expected. If the dot moves but
+      clicks don't land, try `[Pointer] sendInput = 1`; if nothing moves at all, send the log around `game pointer:` (it says
+      which path it sends and the pixel). The dialogue wheel is NOT covered (it's in the eye images; the stick still picks).
+    - A snapshot with the gun drawn and hot: `mod.fingers`, `mod.hudPieces`, `mod.vent`, `gamePointer` in the JSON.
+
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR
   loader (MEVR)`, its pacing lines.
