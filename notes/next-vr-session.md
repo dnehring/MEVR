@@ -1483,7 +1483,8 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
     - Must NOT happen: the game's view jumping or the world turning (the head's view goes into the camera only inside the
       selection's own call); a label with nothing selected; the label at the wrong object.
 
-47. **Five features built blind for QA (new, 2026-10-31; HOST AND MOD REDEPLOY together, game closed: HostServices v22).**
+47. **Four features built blind for QA, and a fix (new, 2026-10-31; HOST AND MOD REDEPLOY together, game closed: HostServices v22;
+    the Mako is step 48).**
     Built and unit-tested without the headset; each has its own section in `ASI\LE1MEVR.ini` and can be turned off there
     if it misbehaves. Try them in this order; the fix in (a) changes how the gun sits before anything else.
     - **(a) The sight assist and the scope pull now reach the pose** ([research/43](../research/43-fingers.md), a side finding:
@@ -1514,6 +1515,13 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       clicks don't land, try `[Pointer] sendInput = 1`; if nothing moves at all, send the log around `game pointer:` (it says
       which path it sends and the pixel). The dialogue wheel is NOT covered (it's in the eye images; the stick still picks).
     - A snapshot with the gun drawn and hot: `mod.fingers`, `mod.hudPieces`, `mod.vent`, `gamePointer` in the JSON.
+    - **Not smoke-tested on the fake headset** (2026-10-31 night: the EA app refused every scripted launch, see
+      docs/knowledge/gotchas/ea-launcher-in-a-job-object.md), so the first run is yours: read the start of `LE1MEVR.log` for
+      `hands: fingers`, `hud pieces: settings`, `vent: settings`, `game pointer:` and `mako: settings`, and for any
+      `reflect:` line naming a missing class or field (a new feature stands down with its own warning).
+    - **Scope capture cost** (step 44, still open; `tools/make-ads-recording.py` writes a synthetic recording with the sniper
+      at the eye, `mevr weapon sniper` draws it): `tools/measure-levers.ps1 -Section Sights -Key scopeCapture -Values 0,1
+      -Recording <that file> -Inputs` on the fake headset, when someone can press Play.
 
 48. **The Mako: the turret follows your hand, the reticle, the vignette (new, 2026-10-31; HOST AND MOD REDEPLOY, game closed;
     [research/44](../research/44-mako.md), `[Mako]`).** Built blind. In the Mako: point the right controller and fire: do the
