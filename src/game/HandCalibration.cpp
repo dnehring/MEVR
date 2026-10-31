@@ -51,6 +51,8 @@ struct Values {
     bool exploreStanceStorm = true;  // [Hands] exploreStanceStorm
     bool exploreRamp = true;         // [Hands] exploreRamp (research/38 C)
     double drawRate = vr::combat_stance::kDefaultDrawRate;  // [Hands] drawRate (research/38 D)
+    bool fingers = true;          // [Hands] fingers (research/43)
+    double fingerCurlDeg = 70.0;  // [Hands] fingerCurlDeg
     // [Controls]
     bool leftTrigger = false;
     bool leftTriggerLB = true;
@@ -146,6 +148,12 @@ constexpr char const* kDefaultFile =
     "drawRate = 6.0\n"
     "constantEye = 1\n"
     "blendFix = 1\n"
+    "; Fingers (research/43). fingers: 1 = in first person with tracked controllers each hand's index finger curls with its\n"
+    "; controller's trigger and the other fingers with its grip (the thumb a little); with the weapon drawn the right hand\n"
+    "; keeps its hold on the gun and only the index finger moves (off the trigger until you squeeze it), and the left hand\n"
+    "; too while it holds the foregrip. fingerCurlDeg: how far each finger joint turns at a full curl, degrees (0-120).\n"
+    "fingers = 1\n"
+    "fingerCurlDeg = 70\n"
     "\n"
     "[Arms]\n"
     "; Arm-length calibration (the VR hands tab samples a T pose; the mod writes armLengthM, the\n"
@@ -522,6 +530,12 @@ Values ReadValues(Ini const& ini) {
     }
     if (Number(ini, "Hands", "drawRate", values.drawRate)) {
         values.drawRate = vr::combat_stance::ClampDrawRate(values.drawRate);
+    }
+    if (Number(ini, "Hands", "fingers", flag)) {
+        values.fingers = flag != 0.0;
+    }
+    if (Number(ini, "Hands", "fingerCurlDeg", values.fingerCurlDeg)) {
+        values.fingerCurlDeg = std::clamp(values.fingerCurlDeg, 0.0, 120.0);
     }
     if (Number(ini, "Arms", "armLengthM", values.armLength) && !(values.armLength >= 0.3 && values.armLength <= 1.2)) {
         values.armLength = 0.0;
@@ -1412,6 +1426,10 @@ CombatStance GetCombatStance() {
     return {gValues.exploreStance, gValues.exploreStanceStorm, gValues.exploreRamp, gValues.drawRate};
 }
 
+Fingers GetFingers() {
+    return {gValues.fingers, gValues.fingerCurlDeg};
+}
+
 Controls GetControls() {
     Controls controls;
     controls.leftTrigger = gValues.leftTrigger;
@@ -1726,6 +1744,9 @@ void Refresh() {
         {L"Hands", "Hands", L"drawRate", "drawRate", L"6.0"},
         {L"Hands", "Hands", L"constantEye", "constantEye", L"1"},
         {L"Hands", "Hands", L"blendFix", "blendFix", L"1"},  // read by the host (research/38 B)
+        // Fingers that follow the controllers (research/43).
+        {L"Hands", "Hands", L"fingers", "fingers", L"1"},
+        {L"Hands", "Hands", L"fingerCurlDeg", "fingerCurlDeg", L"70"},
         // [Comfort] (2026-10-23, research/31): a section our menu started (it writes only the keys it changes).
         {L"Comfort", "Comfort", L"turn", "turn", L"game"},
         {L"Comfort", "Comfort", L"snapDeg", "snapDeg", L"45"},
@@ -1822,6 +1843,8 @@ void Refresh() {
         log::Info("hands: weapon drawn: explore stance {}{}, explore speed ramp {}, draw and holster at {:.2f}x (research/38)",
             values.exploreStance ? "on" : "off", values.exploreStance ? (values.exploreStanceStorm ? " (sprinting too)" : " (not sprinting)") : "",
             values.exploreRamp ? "on" : "off", values.drawRate);
+        log::Info("hands: fingers {} ({:.0f} degrees per joint at a full curl; research/43)", values.fingers ? "follow the controllers" : "off",
+            values.fingerCurlDeg);
     }
     // The menu's arm-length sample: each new measureRequest value is one T-pose sample. One
     // already there at startup with a result saved is old news.

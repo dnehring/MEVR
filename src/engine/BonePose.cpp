@@ -112,6 +112,10 @@ ULONGLONG gHandsTimeMs = 0;
 Mesh const* gSupportMesh = nullptr;
 SupportSample gSupport;
 ULONGLONG gSupportTimeMs = 0;
+// The fingers' last result (LatestFingers).
+Mesh const* gFingersMesh = nullptr;
+FingersSample gFingers;
+ULONGLONG gFingersTimeMs = 0;
 // Hands closer than Support::minSpanMeters: the distance reported, so the hold lets go.
 constexpr double kCrossedMeters = 99.0;
 bool gFirstWriteLogged = false;  // game thread
@@ -318,6 +322,10 @@ bool TakeRequest(Mesh const* self, Request& copy) {
         copy.maxStretch = gRequest.maxStretch;
         copy.head = gRequest.head;
         copy.support = gRequest.support;
+        // Never copied since 24fed58 (2026-10-22): the writer's thread-local copy kept its zero, so the sight alignment
+        // assist and the calibrated stance's move of the gun never reached the pose (found 2026-10-31, research/43).
+        copy.gunShift = gRequest.gunShift;
+        copy.fingers = gRequest.fingers;
         copy.keep.assign(gRequest.keep.begin(), gRequest.keep.end());
         copy.keepKeys.assign(gRequest.keepKeys.begin(), gRequest.keepKeys.end());
     }
@@ -509,6 +517,45 @@ void Write(Mesh* self, float deltaTime) {
         gSupportMesh = self;
         gSupport = supportSample;
         gSupportTimeMs = GetTickCount64();
+        ReleaseSRWLockExclusive(&gSampleLock);
+    }
+    // The fingers, on the hands as solved (research/43): each joint turned in place, its children carried.
+    bool anyFingers = false;
+    FingersSample fingersSample;
+    for (int side : {0, 1}) {
+        FingerHand const& hand = request.fingers.hands[side];
+        if (!hand.enabled) {
+            continue;
+        }
+        anyFingers = true;
+        std::array<int, ik::fingers::kMaxBones> bones{};
+        int const n = hand.bones.All(bones);
+        bool same = n == hand.keyCount && n > 0;
+        for (int i = 0; same && i < n; ++i) {
+            int const bone = bones[static_cast<std::size_t>(i)];
+            same = bone >= 0 && bone < count && skeleton::RefBoneKey(mesh, bone) == hand.keys[static_cast<std::size_t>(i)];
+        }
+        if (!same) {
+            fingersSample.skipped[side] = true;
+            Reject("skeleton changed (finger bone names)");
+            continue;
+        }
+        int const written = ik::fingers::Apply(pose, request.parents, hand.bones, hand.axes, hand.curl, request.fingers.fullCurlDegrees);
+        fingersSample.bonesWritten[side] = written;
+        if (written > 0) {
+            for (int f = 0; f < ik::fingers::kFingerCount; ++f) {
+                int const knuckle = hand.bones.fingers[static_cast<std::size_t>(f)].joints[0];
+                if (knuckle >= 0 && hand.bones.fingers[static_cast<std::size_t>(f)].count > 0) {
+                    first = (std::min)(first, knuckle);
+                }
+            }
+        }
+    }
+    if (anyFingers) {
+        AcquireSRWLockExclusive(&gSampleLock);
+        gFingersMesh = self;
+        gFingers = fingersSample;
+        gFingersTimeMs = GetTickCount64();
         ReleaseSRWLockExclusive(&gSampleLock);
     }
     if (first >= count) {
@@ -1055,6 +1102,15 @@ std::optional<SupportSample> LatestSupport() {
     SupportSample const sample = gSupport;
     ReleaseSRWLockShared(&gSampleLock);
     return fresh ? std::optional<SupportSample>(sample) : std::nullopt;
+}
+
+std::optional<FingersSample> LatestFingers() {
+    Mesh const* const mesh = gMesh.load(std::memory_order_acquire);
+    AcquireSRWLockShared(&gSampleLock);
+    bool const fresh = mesh != nullptr && gFingersMesh == mesh && GetTickCount64() - gFingersTimeMs <= kMaxRequestAgeMs;
+    FingersSample const sample = gFingers;
+    ReleaseSRWLockShared(&gSampleLock);
+    return fresh ? std::optional<FingersSample>(sample) : std::nullopt;
 }
 
 std::optional<ik::TorsoResult> LatestTorso() {

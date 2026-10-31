@@ -13,6 +13,7 @@
 #include "core/vr/Controllers.hpp"
 #include "game/BodyCalibration.hpp"
 #include "game/BodyFollow.hpp"
+#include "game/Fingers.hpp"
 #include "game/HandCalibration.hpp"
 #include "engine/BonePose.hpp"
 #include "engine/Skeleton.hpp"
@@ -400,6 +401,7 @@ std::optional<ik::BodyFrame> BodyAxes(ue3::Object const* pawn, ik::Affine const&
 void Stop(std::string status) {
     engine::bone_pose::Clear();
     body_follow::Reset();
+    fingers::Stop("arm IK isn't driving");
     gSupportRequested = false;
     gStatus = std::move(status);
 }
@@ -766,6 +768,7 @@ void Drive(double deltaSeconds) {
         request.arms[kRight].target = engine::bone_pose::Target::Chest;
         request.arms[kRight].wrist = kDesktopWrist;
         driven = "right hand held in front of the chest (desktop test)";
+        fingers::Stop("desktop test");
     } else if (targets.source == hand_targets::Source::Controllers) {
         LogAnchor(targets);
         LogCameraOffset(targets);
@@ -904,6 +907,18 @@ void Drive(double deltaSeconds) {
             engine::UnrealVector const b = engine::ToWorld(targets.body, {p.x + shift.x, p.y + shift.y, p.z + shift.z});
             request.gunShift = request.gunShift + ik::TransformDirection(*worldToComponent, {b.x - a.x, b.y - a.y, b.z - a.z});
         }
+        // The fingers (game/fingers, research/43): on the hands as they will be written, from this tick's controllers.
+        fingers::Skeleton fingerSkeleton;
+        fingerSkeleton.asset = info->asset;
+        fingerSkeleton.names = info->bones.names;
+        fingerSkeleton.parents = info->bones.parents;
+        fingerSkeleton.keys = info->bones.keys;
+        fingerSkeleton.hands = {arms[kLeft] ? arms[kLeft]->hand : -1, arms[kRight] ? arms[kRight]->hand : -1};
+        fingers::Inputs fingerInputs;
+        fingerInputs.firstPerson = targets.anchor == hand_targets::Anchor::View;
+        fingerInputs.weaponDrawn = gunAimed || weapon::Key() != 0;
+        fingerInputs.leftOnGun = support_grip::Held();
+        fingers::Fill(request, fingerSkeleton, pose, controllers, fingerInputs);
         if (!driven.empty()) {
             driven += " following the controllers";
             if (request.torso.enabled) {
@@ -1013,6 +1028,7 @@ void Shutdown() {
     gIkControl = nullptr;
     gIkSearched = false;
     body_follow::Shutdown();
+    fingers::Shutdown();
     gLoggedAnchor = hand_targets::Anchor::None;
     gLoggedScale = 0.0;
 }

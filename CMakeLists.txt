@@ -232,6 +232,8 @@ set(MEVR_MOD_SOURCES
     src/core/ik/BoneNames.hpp
     src/core/ik/CameraHook.cpp
     src/core/ik/CameraHook.hpp
+    src/core/ik/Fingers.cpp
+    src/core/ik/Fingers.hpp
     src/core/ik/Ik.cpp
     src/core/ik/Ik.hpp
     src/core/ik/Posture.cpp
@@ -339,6 +341,8 @@ set(MEVR_MOD_SOURCES
     src/game/GamepadMapping.hpp
     src/game/GameMenuRequest.cpp
     src/game/GameMenuRequest.hpp
+    src/game/Fingers.cpp
+    src/game/Fingers.hpp
     src/game/HandAim.cpp
     src/game/HandCalibration.cpp
     src/game/HandCalibration.hpp
@@ -705,6 +709,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/HandFrame.cpp
         src/core/ik/BoneNames.cpp
         src/core/ik/CameraHook.cpp
+        src/core/ik/Fingers.cpp
         src/core/ik/Ik.cpp
         src/core/ik/Posture.cpp
         src/core/ik/PoseGraft.cpp

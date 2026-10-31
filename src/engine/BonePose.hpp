@@ -2,6 +2,7 @@
 #pragma once
 
 #include "core/ik/ArmPose.hpp"
+#include "core/ik/Fingers.hpp"
 #include "core/ik/TorsoPose.hpp"
 
 #include <array>
@@ -96,6 +97,23 @@ struct Support {
     ik::Vec3 calibratedSpan;
 };
 
+// Fingers that follow the controllers (game/fingers, research/43): after the arms are solved, each enabled hand's
+// finger joints turn by `curl` x `fullCurlDegrees` about their measured flexion axes (core/ik/Fingers), carrying
+// what hangs below them, inside the same SpaceBases write. The bones are checked by name on every call like the
+// chains'; a hand whose names changed is skipped (logged as a rejection).
+struct FingerHand {
+    bool enabled = false;
+    ik::fingers::HandBones bones;
+    std::array<std::uint64_t, ik::fingers::kMaxBones> keys{};  // RefSkeleton names of bones.All(), in that order
+    int keyCount = 0;
+    ik::fingers::HandAxes axes;
+    ik::fingers::Curl curl;  // -1..1 per finger (negative extends)
+};
+struct Fingers {
+    std::array<FingerHand, 2> hands;  // 0 left, 1 right
+    double fullCurlDegrees = 70.0;
+};
+
 struct Request {
     ue3::Object const* mesh = nullptr;  // the SkeletalMeshComponent: compared by address only, never dereferenced
     int boneCount = 0;
@@ -111,6 +129,7 @@ struct Request {
     // support grip holds (fading with its blend after a release): a hand on the gun moves with it, so the
     // two-hand line doesn't turn; a free left hand stays. Zero: none.
     ik::Vec3 gunShift;
+    Fingers fingers;
     // Bones the writer never writes, whatever the torso and arms did: their SpaceBases entries
     // stay the animation's (LE1: the camera hook bones `Camera` and `God`, ik::FindCameraHookBones;
     // the camera reads its hook from SpaceBases, so moving one moves the view, research/18). With
@@ -279,5 +298,12 @@ std::optional<ik::TorsoResult> LatestTorso();
 // The last write's support grip result (Request::support enabled, both arm goals there), within
 // half a second.
 std::optional<SupportSample> LatestSupport();
+
+// What the writer did with Request::fingers on its last write (any hand enabled), within half a second.
+struct FingersSample {
+    std::array<int, 2> bonesWritten{0, 0};  // per hand: bones turned or carried (0: nothing, or the hand was skipped)
+    std::array<bool, 2> skipped{false, false};  // the hand's bone names no longer matched
+};
+std::optional<FingersSample> LatestFingers();
 
 } // namespace mevr::engine::bone_pose
