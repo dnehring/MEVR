@@ -6,7 +6,7 @@ tags: [launch, ea-app, steam, test-loop]
 status: stable
 timestamp: 2026-10-30T19:53:43Z
 generated: { by: claude-code/fable-5.1, at: 2026-10-30T19:53:43Z }
-bitten: [2026-10-24, 2026-10-28]
+bitten: [2026-10-24, 2026-10-28, 2026-10-31]
 ---
 
 # Symptom
@@ -28,6 +28,15 @@ breakaway, CreateProcess is denied. Two ways in:
 # Check
 
 Whether EADesktop.exe is in a job object (IsProcessInJob). The EA log's launch error.
+
+# What does NOT get the EA app out of its job (2026-10-31, 01:14-01:30, three tries, each "Access is denied" again)
+
+Killing EADesktop.exe and starting EALauncher.exe (a) with `Start-Process explorer.exe <exe>` (the new explorer.exe
+sits in our job and launches the child itself), (b) through WMI `Win32_Process.Create` (the new EADesktop still read
+IsProcessInJob = true), (c) through the real shell's ShellWindows COM object (`Document.Application.ShellExecute` on the
+desktop window). The EA app may put itself in a job of its own, so IsProcessInJob alone is not the test: the EA log's
+launch error is. With nobody at the keyboard (and the desktop-control request denied) there was no launch that night;
+the only known routes stay a Play in Steam by a person or computer use, then `-Attach`.
 
 # Fix in place
 
