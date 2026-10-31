@@ -322,6 +322,9 @@ bool TakeRequest(Mesh const* self, Request& copy) {
         copy.maxStretch = gRequest.maxStretch;
         copy.head = gRequest.head;
         copy.support = gRequest.support;
+        // Never copied since 24fed58 (2026-10-22): the writer's thread-local copy kept its zero, so the sight alignment
+        // assist and the calibrated stance's move of the gun never reached the pose (found 2026-10-31, research/43).
+        copy.gunShift = gRequest.gunShift;
         copy.fingers = gRequest.fingers;
         copy.keep.assign(gRequest.keep.begin(), gRequest.keep.end());
         copy.keepKeys.assign(gRequest.keepKeys.begin(), gRequest.keepKeys.end());
