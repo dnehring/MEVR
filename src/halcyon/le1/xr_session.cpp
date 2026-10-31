@@ -5853,8 +5853,12 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
                                  : (inGalaxyMode ? PanelKind::GalaxyMap
                                  : (inConversationMode ? PanelKind::Conversation : PanelKind::Cutscene));
             const float viewPos[3] = {flatCineQuad.pose.position.x, flatCineQuad.pose.position.y, flatCineQuad.pose.position.z};
-            mevrApplyPanelPose(flatCineQuad, MELEVR::MevrBridge::PlacePanel(kind, viewPos, g_viewSpace, g_appSpace, headValid,
-                                                                            mevrHeadQ, mevrHeadP));
+            const MELEVR::MevrBridge::PanelPose flatPlaced = MELEVR::MevrBridge::PlacePanel(kind, viewPos, g_viewSpace, g_appSpace,
+                                                                                            headValid, mevrHeadQ, mevrHeadP);
+            mevrApplyPanelPose(flatCineQuad, flatPlaced);
+            // [MEVR] the game pointer's target (src/plugin/GamePointer.cpp, research/42): a controller's ray on it is the mouse
+            MELEVR::MevrBridge::OnFlatQuad(kind, mevrHeadQ, mevrHeadP, flatPlaced, flatCineQuad.size.width, flatCineQuad.size.height,
+                                           headValid);
         }
         layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&flatCineQuad);
     }

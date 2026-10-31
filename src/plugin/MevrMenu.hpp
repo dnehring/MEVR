@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include <Windows.h>
+
 #include <openxr/openxr.h>
 
 #include <string>
@@ -14,6 +16,10 @@ bool LatestMenuHead(XrPosef& head, unsigned maxAgeMs = 250) noexcept;
 
 // The mod's settings file, <GAME>MEVR.ini next to the host ASI (MevrMenuTab.cpp); empty if unknown.
 std::wstring const& SettingsPath() noexcept;
+
+// The game's window (the swapchain's output window, SetGameWindow), nullptr until Halcyon has seen it. Any thread.
+// The game pointer (GamePointer.cpp) posts the mouse to it.
+HWND GameWindow() noexcept;
 
 // An arm-length T-pose sample, written as the tab's "Measure arm length" writes it ([Arms] measure* and then
 // measureRequest + 1; the mod measures armLengthM from it): grip and head positions in the controllers'

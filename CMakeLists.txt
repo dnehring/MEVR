@@ -426,6 +426,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/Floor.hpp
     src/core/vr/FrameProbe.cpp
     src/core/vr/FrameProbe.hpp
+    src/core/vr/GamePointer.cpp
+    src/core/vr/GamePointer.hpp
     src/core/vr/Upscale.cpp
     src/core/vr/Upscale.hpp
     src/core/Embedded.hpp
@@ -475,6 +477,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/DrawReplay.cpp
     src/plugin/DrawReplay.hpp
     src/core/CallQueue.hpp
+    src/plugin/GamePointer.cpp
+    src/plugin/GamePointer.hpp
     src/plugin/GameThreadCalls.cpp
     src/plugin/GameThreadCalls.hpp
     src/plugin/Halcyon.cpp
@@ -697,6 +701,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/Colour.cpp
         src/core/vr/ColourStrip.cpp
         src/core/vr/FrameProbe.cpp
+        src/core/vr/GamePointer.cpp
         src/core/vr/Haptics.cpp
         src/core/vr/ImageConvert.cpp
         src/core/vr/LayerComposite.cpp

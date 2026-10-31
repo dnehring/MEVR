@@ -218,6 +218,13 @@ bool MainMenuOpen() noexcept;
 void OnMenuQuad(float const headOrientation[4], float const headPosition[3], PanelPose const& placed, float width,
                 float height) noexcept;
 
+// [MEVR] The flat screen (the game's menus, the galaxy map, flat conversations, cutscenes and movies) each frame it is
+// submitted (xr_session.cpp): where it is, for the game pointer (src/plugin/GamePointer.cpp, research/42), which makes
+// a controller's aim ray on it the game's mouse. `kind`: which flat screen; the rest as OnMenuQuad, plus whether the
+// head pose is valid (a head-locked quad has no place in the app space without it).
+void OnFlatQuad(PanelKind kind, float const headOrientation[4], float const headPosition[3], PanelPose const& placed,
+                float width, float height, bool headValid) noexcept;
+
 struct MenuPointer
 {
     bool hit = false;    // a controller's aim ray is on the menu (or holds a press that began there)
