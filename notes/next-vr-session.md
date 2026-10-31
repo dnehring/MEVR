@@ -1515,6 +1515,15 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       which path it sends and the pixel). The dialogue wheel is NOT covered (it's in the eye images; the stick still picks).
     - A snapshot with the gun drawn and hot: `mod.fingers`, `mod.hudPieces`, `mod.vent`, `gamePointer` in the JSON.
 
+48. **The Mako: the turret follows your hand, the reticle, the vignette (new, 2026-10-31; HOST AND MOD REDEPLOY, game closed;
+    [research/44](../research/44-mako.md), `[Mako]`).** Built blind. In the Mako: point the right controller and fire: do the
+    cannon and the machine gun hit where the ray points, and does the TURRET MODEL turn with your hand (not the camera)? If
+    the model lags or snaps back, send the heartbeat's `mako:` line (its held/changed counts per seam say whether the game
+    re-aims after us). The hand reticle should show on the ray; if the Mako's own crosshair is still there too, say so
+    (doubled). Driving fast or turning should bring the comfort vignette if `[Comfort] vignette` is on. `handAim = 0` gives
+    the game's aim back; `turretSeam` picks the seams (7 = all). Log `mako: the game aims the turret (...)` says when we
+    stand aside (no world view, menu, controller untracked).
+
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR
   loader (MEVR)`, its pacing lines.

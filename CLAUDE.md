@@ -337,6 +337,16 @@ switching frameworks.
   the calibration is up. One `[MEVR]` seam: `MevrBridge::OnFlatQuad` from `xr_session.cpp`'s flat quad block. Which of the two
   mouse paths LE's Scaleform menus take is [verify]. The VR dialogue wheel (in the eye images) is not covered. Logs `game pointer:`;
   snapshot `"gamePointer"`, layer `gamepointer`.
+- LE1 Mako ([research/44](research/44-mako.md), `game/Mako`; `[Mako]` in `ASI\LE1MEVR.ini`): game mode 1 with a
+  `BioVehicleBase` pawn, the right controller's aim ray (or the pistol calibration's line) traced in the world (`Actor.Trace`,
+  `aimRangeM` 200) is the aim point: shots through HandAim's `GetAdjustedAimFor` handler (direction from the start the
+  `BioVehicleWheeled.GetWeaponStartTraceLocation` post-handler saw), the turret model through the game's own
+  `BioVehicleBehaviorBase.SetDesiredTurretAimPoint` (ProcessEvent) at three seams (`turretSeam` bits: the mod's tick, a
+  `BioVehicleWheeled.Tick` post-handler, a bone_pose pre-stage rewriting `BioSkelControl_TurretConstrained.DesiredBoneRotation`
+  before UpdateSkelPose, journalled `BonePose.makoTurret`); the heartbeat's held/changed counts say which seam the game
+  overrides [verify]. The hand reticle shows in mode 1 on a valid mod ray (host, `HalcyonOverlays`); `core/vr/Comfort`'s
+  `VehicleMotion` (speed, yaw rate with the 65536 wrap) drives the vignette in the Mako (`vignetteWhen` applies). Halcyon's
+  `makoHeadAim = 0` stays. Logs `mako:`; snapshot `"mod"."mako"`.
 - LE1 life-size stereo ([research/30](research/30-metric-stereo.md), `MELEVR.ini sfr2Metric`, on in our deploy):
   each Stereo 2 pass renders from its eye's real place (`xrLocateViews`, at the view's units per metre: Halcyon's
   50 x lean gain, life-size at 100), no convergence shift, swap ignored (pass 0 = left). In gameplay with the HUD
