@@ -51,6 +51,7 @@
 #include "game/Interact.hpp"
 #include "game/Mako.hpp"
 #include "game/Holsters.hpp"
+#include "game/CockpitProbe.hpp"
 #include "game/MenuPause.hpp"
 #include "game/Posture.hpp"
 #include "game/Reflections.hpp"
@@ -787,7 +788,7 @@ void PublishStatus() {
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, "
         "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
-        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}}}",
+        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"cockpitProbe\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -798,7 +799,7 @@ void PublishStatus() {
         game::sights::StatusJson(), game::scope_capture::StatusJson(), game::throwables::StatusJson(), game::vent::StatusJson(), game::posture::StatusJson(),
         game::view_level::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
-        game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson());
+        game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::cockpit_probe::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -933,6 +934,7 @@ void Heartbeat() {
         game::squad_weapons::LogStats();
         game::sights::LogStats();
         game::scope_capture::LogStats();
+        game::cockpit_probe::LogStats();
         game::throwables::LogStats();
         game::vent::LogStats();
         game::posture::LogStats();
@@ -1115,6 +1117,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // What A uses: from where the head looks, and its prompt at the object (research/40).
         EnsureSelectionHook();
         game::interact::Tick(deltaSeconds, gSelectionHooked, InteractLink());
+        game::cockpit_probe::Tick();  // nothing until a `mevr cockpit` line asks (research/47)
         game::head_tracking::OnTickEnd();
     }
     PublishStatus();
@@ -1216,6 +1219,7 @@ MEVR_MOD_API void MevrModShutdown() {
     gToldNoSight = false;
     // Disables and destroys the scope's scene capture (game thread: the host unloads the mod from its tick), unless
     // the process is exiting. Before sights' shutdown and the reflection layer's.
+    game::cockpit_probe::Shutdown(exiting);  // what it spawned, on the game thread; before the reflection layer's
     game::scope_capture::Shutdown(exiting);
     if (gHost != nullptr && MEVR_HOST_HAS(setScopeCapture) && gHost->setScopeCapture != nullptr) {
         gHost->setScopeCapture(nullptr);  // the host forgets it too (also on unload)
