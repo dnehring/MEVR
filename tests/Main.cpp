@@ -26,6 +26,7 @@
 #include "core/vr/CombatStance.hpp"
 #include "core/vr/Comfort.hpp"
 #include "core/vr/GameMenuRequest.hpp"
+#include "core/vr/GamePointer.hpp"
 #include "core/vr/Haptics.hpp"
 #include "core/vr/ImageConvert.hpp"
 #include "core/vr/InteractLabel.hpp"
@@ -1842,6 +1843,185 @@ void TestMenuPointer() {
     aim.orientation = AxisAngle(0, 1, 0, 90);
     XrVector3f const forward = AimDirection(aim);
     CHECK(NearD(forward.x, -1.0) && NearD(forward.z, 0.0));
+}
+
+// The game pointer (research/42): a controller's ray on the flat screen as the game's mouse.
+void TestGamePointer() {
+    using namespace mevr::vr::game_pointer;
+    XrPosef const identity{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
+    // The flat screen as Halcyon places it head-locked for a level head at 1.6 m: 2.35 m wide, 16:9, 1.4 m ahead.
+    XrPosef head{};
+    head.orientation = {0.0f, 0.0f, 0.0f, 1.0f};
+    head.position = {0.0f, 1.6f, 0.0f};
+    XrPosef local{};
+    local.orientation = {0.0f, 0.0f, 0.0f, 1.0f};
+    local.position = {0.0f, 0.0f, -1.4f};
+    float const w = 2.35f, h = 2.35f * 9.0f / 16.0f;
+    Quad const quad = mevr::vr::menu_pointer::InTracking(head, local, w, h);
+
+    // UV to a pixel: the top-left corner is (0, 0), the bottom-right the last pixel, the middle the middle.
+    int x = -1, y = -1;
+    ToPixel(0.0f, 0.0f, 2560, 1440, x, y);
+    CHECK(x == 0 && y == 0);
+    ToPixel(1.0f, 1.0f, 2560, 1440, x, y);
+    CHECK(x == 2559 && y == 1439);
+    ToPixel(0.5f, 0.5f, 2560, 1440, x, y);
+    CHECK(x == 1280 && y == 720);
+    ToPixel(-0.5f, 2.0f, 100, 50, x, y);  // out of range input is clamped
+    CHECK(x == 0 && y == 49);
+    ToPixel(0.5f, 0.5f, 0, 0, x, y);      // a degenerate area never divides by zero
+    CHECK(x == 0 && y == 0);
+
+    // The point on the quad: the middle is the centre; (0, 0) the top-left corner, in the tracking space.
+    XrVector3f const centre = PointOnQuad(quad, 0.5f, 0.5f);
+    CHECK(NearXr(centre, {0.0f, 1.6f, -1.4f}));
+    XrVector3f const corner = PointOnQuad(quad, 0.0f, 0.0f);
+    CHECK(NearXr(corner, {-w / 2.0f, 1.6f + h / 2.0f, -1.4f}));
+    // A dot of 0.6 degrees at 1.4 m is about 1.5 cm.
+    CHECK(NearD(DotSize({0.0f, 1.6f, 0.0f}, centre, 0.6f * 3.14159265f / 180.0f), 0.01466, 1e-4));
+
+    // The pointer's state machine. The right hand beside the head, aimed at the quad's middle.
+    Settings settings;
+    settings.smoothing = 1.0f;  // no smoothing: exact pixels
+    Pointer pointer(settings);
+    Input in;
+    in.active = true;
+    in.width = 2560;
+    in.height = 1440;
+    in.dt = 1.0f / 90.0f;
+    in.hands[1].aimValid = true;
+    in.hands[1].aim.orientation = {0.0f, 0.0f, 0.0f, 1.0f};  // -Z: straight at the quad
+    in.hands[1].aim.position = {0.0f, 1.6f, -0.2f};
+    Output out = pointer.Step(quad, in);
+    CHECK(out.hit && out.onQuad && out.hand == 1 && out.moved && !out.pressed && !out.pressEdge);
+    CHECK(out.x == 1280 && out.y == 720 && NearD(out.distance, 1.2));
+    CHECK(NearXr(out.point, centre));
+    // The same aim again: within the dead band, no move.
+    out = pointer.Step(quad, in);
+    CHECK(out.hit && !out.moved && out.x == 1280 && out.y == 720);
+    // Aimed a little to the right and down (more than a pixel): a move, and the pixel to the right and below.
+    in.hands[1].aim.position = {0.02f, 1.59f, -0.2f};
+    out = pointer.Step(quad, in);
+    CHECK(out.hit && out.moved && out.x > 1280 && out.y > 720);
+    int const heldX = out.x, heldY = out.y;
+    // The trigger: below the on-threshold nothing, at it a press (one edge), held no edge, down to the off-threshold
+    // still held, below it released (one edge).
+    in.hands[1].trigger = 0.5f;
+    out = pointer.Step(quad, in);
+    CHECK(!out.pressed && !out.pressEdge);
+    in.hands[1].trigger = 0.6f;
+    out = pointer.Step(quad, in);
+    CHECK(out.pressed && out.pressEdge && out.x == heldX && out.y == heldY);
+    out = pointer.Step(quad, in);
+    CHECK(out.pressed && !out.pressEdge);
+    in.hands[1].trigger = 0.45f;
+    out = pointer.Step(quad, in);
+    CHECK(out.pressed && !out.pressEdge);
+    in.hands[1].trigger = 0.3f;
+    out = pointer.Step(quad, in);
+    CHECK(!out.pressed && out.pressEdge);
+    // A press that slides off the quad is held until the trigger lets go, and the button up comes at the last point.
+    in.hands[1].trigger = 1.0f;
+    out = pointer.Step(quad, in);
+    CHECK(out.pressed && out.pressEdge);
+    in.hands[1].aim.orientation = AxisAngle(0, 1, 0, 80);  // far off to the left
+    out = pointer.Step(quad, in);
+    CHECK(out.hit && !out.onQuad && out.pressed && !out.pressEdge && !out.moved);
+    in.hands[1].trigger = 0.0f;
+    out = pointer.Step(quad, in);
+    CHECK(!out.hit && !out.pressed && out.pressEdge && out.left);
+    out = pointer.Step(quad, in);
+    CHECK(!out.hit && !out.pressEdge && !out.left);
+    // A press can't start off the quad.
+    in.hands[1].trigger = 1.0f;
+    out = pointer.Step(quad, in);
+    CHECK(!out.hit && !out.pressed && !out.pressEdge);
+    in.hands[1].trigger = 0.0f;
+    pointer.Step(quad, in);
+
+    // The other hand takes over when it is on the quad and the pointing one isn't; the pointing hand keeps it while on.
+    in.hands[0].aimValid = true;
+    in.hands[0].aim.orientation = {0.0f, 0.0f, 0.0f, 1.0f};
+    in.hands[0].aim.position = {-0.3f, 1.5f, -0.2f};
+    out = pointer.Step(quad, in);
+    CHECK(out.hit && out.hand == 0 && out.moved && out.x < 1280 && out.y > 720);
+    in.hands[1].aim.orientation = {0.0f, 0.0f, 0.0f, 1.0f};  // the right hand is back on the quad too
+    out = pointer.Step(quad, in);
+    CHECK(out.hit && out.hand == 0);
+    // ... unless it pulls its trigger on the quad while the left doesn't.
+    in.hands[1].trigger = 1.0f;
+    out = pointer.Step(quad, in);
+    CHECK(out.hit && out.hand == 1 && out.pressed && out.pressEdge && out.x > 1280);
+    // Through the press the hand stays, even with the left trigger pulled.
+    in.hands[0].trigger = 1.0f;
+    out = pointer.Step(quad, in);
+    CHECK(out.hand == 1 && out.pressed);
+    in.hands[0].trigger = 0.0f;
+    in.hands[1].trigger = 0.0f;
+    pointer.Step(quad, in);
+
+    // The wheel: the right stick forward accumulates notches at wheelPerSecond (8 here, at 16 steps a second: an
+    // exact half notch a step); six steps at full deflection give 3, in whole notches as they come; inside the dead
+    // zone nothing, and letting go drops the fraction.
+    in.hands[0].aimValid = false;
+    Settings wheelSettings = settings;
+    wheelSettings.wheelPerSecond = 8.0f;
+    pointer = Pointer(wheelSettings);
+    in.dt = 1.0f / 16.0f;
+    in.rightStickY = 1.0f;
+    int notches = 0;
+    for (int i = 0; i < 6; ++i) {
+        notches += pointer.Step(quad, in).wheelNotches;
+    }
+    CHECK(notches == 3);
+    in.rightStickY = -1.0f;
+    notches = 0;
+    for (int i = 0; i < 2; ++i) {
+        notches += pointer.Step(quad, in).wheelNotches;
+    }
+    CHECK(notches == -1);
+    in.rightStickY = 0.15f;
+    notches = 0;
+    for (int i = 0; i < 90; ++i) {
+        notches += pointer.Step(quad, in).wheelNotches;
+    }
+    CHECK(notches == 0);
+
+    // No controllers, or no quad: everything released; an open press reports its button up once.
+    in.rightStickY = 0.0f;
+    in.hands[1].trigger = 1.0f;
+    out = pointer.Step(quad, in);
+    CHECK(out.pressed && out.pressEdge);
+    in.active = false;
+    out = pointer.Step(quad, in);
+    CHECK(!out.hit && !out.pressed && out.pressEdge && out.left);
+    in.active = true;
+    out = pointer.Step(quad, in);  // the trigger is still pulled: a fresh latch closes it again, a new press
+    CHECK(out.pressed && out.pressEdge);
+    Quad none;
+    out = pointer.Step(none, in);
+    CHECK(!out.hit && out.pressEdge && !out.pressed);
+    out = pointer.Release();
+    CHECK(!out.pressEdge);
+
+    // World-locked: the quad fixed in the room where it appeared (yawed 90 degrees left of the tracking space's
+    // forward, 1.4 m along -X), the hand pointing at it from the head's place: the middle.
+    XrPosef placed{};
+    placed.orientation = AxisAngle(0, 1, 0, 90);
+    placed.position = {-1.4f, 1.6f, 0.0f};
+    Quad const world = mevr::vr::menu_pointer::InTracking(identity, placed, w, h);
+    Pointer pointer2(settings);
+    in.hands[1].trigger = 0.0f;
+    in.hands[1].aim.position = {0.0f, 1.6f, 0.0f};
+    in.hands[1].aim.orientation = AxisAngle(0, 1, 0, 90);  // -Z turned to -X
+    out = pointer2.Step(world, in);
+    CHECK(out.hit && out.x == 1280 && out.y == 720 && NearD(out.distance, 1.4));
+    CHECK(NearXr(out.point, {-1.4f, 1.6f, 0.0f}));
+    // Aimed toward the quad's right edge (the player's right when facing -X is -Z; a smaller yaw turns -Z that
+    // way): u past the middle.
+    in.hands[1].aim.orientation = AxisAngle(0, 1, 0, 70);
+    out = pointer2.Step(world, in);
+    CHECK(out.hit && out.x > 1280 && out.u > 0.5f);
 }
 
 XrPosef HeadAt(double yawDeg, XrVector3f position, double pitchDeg = 0.0) {
@@ -7559,6 +7739,7 @@ int main() {
     TestTwoHand();
     TestOverlayPlacement();
     TestMenuPointer();
+    TestGamePointer();
     TestWorldPanel();
     TestPoseRecording();
     TestImageConvert();

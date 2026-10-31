@@ -33,6 +33,7 @@
 #include "core/vr/WheelCrop.hpp"
 #include "plugin/Calibration.hpp"
 #include "plugin/Colour.hpp"
+#include "plugin/GamePointer.hpp"
 #include "plugin/Halcyon.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/MainMenu.hpp"
@@ -456,6 +457,7 @@ struct QuadSwapchain {
 XrSession gSession = XR_NULL_HANDLE;
 QuadSwapchain gPanelSwapchain;
 QuadSwapchain gReticleSwapchain;
+QuadSwapchain gPointerDotSwapchain;   // the game pointer's dot (plugin/GamePointer, research/42)
 UINT gPanelFactor = 2;
 
 bool CreateSwapchain(XrSession session, std::uint32_t width, std::uint32_t height, QuadSwapchain& out,
@@ -1038,6 +1040,79 @@ bool EnsureReticle(ID3D11DeviceContext* context, ID3D11Device* device) {
     return true;
 }
 
+// The game pointer's dot (plugin/GamePointer, research/42): a filled light dot over a half-transparent dark rim, the
+// menu pointer's look (MevrMenuPointer.cpp), premultiplied; one static image like the reticle's.
+constexpr UINT kPointerDotSize = 64;
+
+std::vector<std::uint32_t> PointerDotPixels() {
+    std::vector<std::uint32_t> pixels(static_cast<size_t>(kPointerDotSize) * kPointerDotSize);
+    auto encode = [](float linear) {
+        float const c = linear <= 0.0031308f ? linear * 12.92f : 1.055f * std::pow(linear, 1.0f / 2.4f) - 0.055f;
+        return static_cast<std::uint32_t>(std::clamp(c, 0.0f, 1.0f) * 255.0f + 0.5f);
+    };
+    float const px = 2.0f / static_cast<float>(kPointerDotSize);
+    auto disc = [px](float d, float radius) { return std::clamp((radius - d) / px + 0.5f, 0.0f, 1.0f); };
+    for (UINT y = 0; y < kPointerDotSize; ++y) {
+        for (UINT x = 0; x < kPointerDotSize; ++x) {
+            float const u = (static_cast<float>(x) + 0.5f) * px - 1.0f;
+            float const v = (static_cast<float>(y) + 0.5f) * px - 1.0f;
+            float const d = std::sqrt(u * u + v * v);
+            float const light = disc(d, 0.62f);
+            float const rimAlpha = 0.75f * disc(d, 0.95f);
+            float const a = light + rimAlpha * (1.0f - light);
+            float const r = light * 0.31f, g = light * 0.78f, b = light * 1.0f;
+            pixels[static_cast<size_t>(y) * kPointerDotSize + x] =
+                encode(r) | (encode(g) << 8) | (encode(b) << 16) | (static_cast<std::uint32_t>(a * 255.0f + 0.5f) << 24);
+        }
+    }
+    return pixels;
+}
+
+bool EnsurePointerDot(ID3D11DeviceContext* context, ID3D11Device* device) {
+    if (gPointerDotSwapchain.handle != XR_NULL_HANDLE) {
+        return true;
+    }
+    if (gPointerDotSwapchain.failed ||
+        !CreateSwapchain(gSession, kPointerDotSize, kPointerDotSize, gPointerDotSwapchain, "game pointer dot")) {
+        return false;
+    }
+    std::vector<std::uint32_t> const pixels = PointerDotPixels();
+    D3D11_TEXTURE2D_DESC td{};
+    td.Width = kPointerDotSize;
+    td.Height = kPointerDotSize;
+    td.MipLevels = 1;
+    td.ArraySize = 1;
+    td.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    td.SampleDesc.Count = 1;
+    td.Usage = D3D11_USAGE_IMMUTABLE;
+    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    D3D11_SUBRESOURCE_DATA data{pixels.data(), kPointerDotSize * 4, 0};
+    ComPtr<ID3D11Texture2D> source;
+    if (FAILED(device->CreateTexture2D(&td, &data, source.GetAddressOf()))) {
+        mevr::log::Error("overlays: game pointer dot texture creation failed");
+        gPointerDotSwapchain.Destroy();
+        gPointerDotSwapchain.failed = true;
+        return false;
+    }
+    for (size_t i = 0; i < gPointerDotSwapchain.images.size(); ++i) {
+        std::uint32_t index = 0;
+        if (!AcquireImage(gPointerDotSwapchain, index)) {
+            mevr::log::Error("overlays: game pointer dot swapchain image acquire failed");
+            gPointerDotSwapchain.Destroy();
+            gPointerDotSwapchain.failed = true;
+            return false;
+        }
+        context->CopyResource(gPointerDotSwapchain.images[index], source.Get());
+        ReleaseImage(gPointerDotSwapchain);
+    }
+    mevr::host::testloop::NameSwapchain(gPointerDotSwapchain.handle, "gamepointer");
+    mevr::host::testloop::SetStaticImage(gPointerDotSwapchain.handle, kPointerDotSize, kPointerDotSize, pixels);
+    return true;
+}
+
+XrCompositionLayerQuad gPointerDotQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+bool gLoggedPointerDot = false;
+
 XrVector3f ToVec(float const v[3]) { return {v[0], v[1], v[2]}; }
 XrQuaternionf ToQuat(float const q[4]) { return {q[0], q[1], q[2], q[3]}; }
 
@@ -1297,6 +1372,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     if (session != gSession) {
         gPanelSwapchain.Forget();
         gReticleSwapchain.Forget();
+        gPointerDotSwapchain.Forget();
         gWheelSwapchain.Forget();
         gLabelSwapchain.Forget();
         gSession = session;
@@ -1649,6 +1725,36 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     // The sight's quads, on top of the ring.
     for (unsigned i = 0; i < sight.count && count < capacity; ++i) {
         layersOut[count++] = sight.layers[i];
+    }
+
+    // ---- The game pointer (plugin/GamePointer, research/42): on a flat frame (the game's menus, the galaxy map), a
+    // controller's ray on the flat screen is the game's mouse; its dot sits on the quad, above it in layer order.
+    // Stepped every frame (it releases what it holds when the flat screen goes away) ----
+    {
+        mevr::host::game_pointer::Frame pointerFrame;
+        pointerFrame.appSpace = static_cast<XrSpace>(frame.appSpace);
+        pointerFrame.halcyonMenuOpen = frame.menuOpen;
+        pointerFrame.headValid = frame.headValid;
+        pointerFrame.head = ToVec(frame.headPosition);
+        mevr::host::game_pointer::Dot dot;
+        if (mevr::host::game_pointer::Step(pointerFrame, dot) && count < capacity && device != nullptr &&
+            EnsurePointerDot(context, device.Get())) {
+            gPointerDotQuad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
+            gPointerDotQuad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied
+            gPointerDotQuad.space = static_cast<XrSpace>(frame.appSpace);
+            gPointerDotQuad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+            gPointerDotQuad.subImage.swapchain = gPointerDotSwapchain.handle;
+            gPointerDotQuad.subImage.imageRect = {{0, 0}, {static_cast<int32_t>(kPointerDotSize), static_cast<int32_t>(kPointerDotSize)}};
+            gPointerDotQuad.pose = dot.pose;
+            float const size = dot.pressed ? dot.size * 0.8f : dot.size;  // a press shrinks it a little
+            gPointerDotQuad.size = {size, size};
+            layersOut[count++] = &gPointerDotQuad;
+            if (!gLoggedPointerDot) {
+                gLoggedPointerDot = true;
+                mevr::log::Info("overlays: first game pointer dot at ({:.2f}, {:.2f}, {:.2f}) m, {:.3f} m across", dot.pose.position.x,
+                    dot.pose.position.y, dot.pose.position.z, dot.size);
+            }
+        }
     }
 
     // ---- The squad weapon menu, at the left hand (plugin/SquadPanel): last, on top of ours ----

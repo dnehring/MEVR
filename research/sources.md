@@ -149,6 +149,8 @@
 - Local, read-only: the game's `bink2w64_original.dll` export table (dumpbin), `bink2w64.dll`'s version resource, the exe's section table, our decrypted `.text` dump
 - Not found: whether Steam's "verify files" fully undoes a MEM texture install; what the EA app build needs to start the exe directly; a documented Steam launch option that skips the launcher's picker
 
+- Game pointer (research/42), Win32 mouse input: [WM_MOUSEWHEEL](https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-mousewheel) (screen coordinates, `WHEEL_DELTA` multiples), [WM_MOUSEMOVE](https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-mousemove) (client coordinates, `MK_LBUTTON`), [SendInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput) (the foreground thread's input queue), [SetCursorPos](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setcursorpos) (clamped to the screen); Halcyon's `vr_menu.cpp` input block for what the game's window procedure and `SetCursorPos` see
+
 ## Searched, nothing relevant found
 - "vorpX Mass Effect Legendary Edition profile": no vorpX information
 - "Modern Warfare 2 Campaign Remastered VR mod AI" (standard search): nothing; the GitHub-targeted search found Overlord

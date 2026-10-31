@@ -435,6 +435,10 @@ void SetGameWindow(HWND window) noexcept {
     gGameWindow.store(window);
 }
 
+HWND GameWindow() noexcept {
+    return gGameWindow.load();
+}
+
 bool KeyDown(int vk) noexcept {
     if (vk <= 0 || (GetAsyncKeyState(vk) & 0x8000) == 0) {
         return false;
