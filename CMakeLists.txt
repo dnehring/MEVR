@@ -351,6 +351,8 @@ set(MEVR_MOD_SOURCES
     src/game/HeadTracking.hpp
     src/game/Interact.cpp
     src/game/Interact.hpp
+    src/game/Mako.cpp
+    src/game/Mako.hpp
     src/game/Holsters.cpp
     src/game/Holsters.hpp
     src/game/MenuPause.cpp

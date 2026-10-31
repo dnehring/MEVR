@@ -47,6 +47,7 @@
 #include "game/HeadSim.hpp"
 #include "game/HeadTracking.hpp"
 #include "game/Interact.hpp"
+#include "game/Mako.hpp"
 #include "game/Holsters.hpp"
 #include "game/MenuPause.hpp"
 #include "game/Posture.hpp"
@@ -270,6 +271,7 @@ void TryInstallScriptHooks() {
     game::throwables::TryStartup();  // and physical grenades and melee (registers its launch handlers)
     game::posture::TryStartup();  // and physical cover and crouch
     gHandAimAvailable = game::hand_aim::TryStartup();
+    game::mako::TryStartup();  // the Mako's turret aimed by the controller (research/44: the vehicle's Tick and shot-start handlers)
     game::sights::TryStartup();  // the scoped shots' aimed fire (a CallFunction handler, registered before the hook)
     game::view_level::TryStartup();  // the level camera (PlayerTick and SetWeaponRecoil handlers, before the hooks)
     if (!gHandAimAvailable) {
@@ -696,6 +698,21 @@ mevr::game::comfort::Link ComfortLink() {
     return link;
 }
 
+// The Mako (game/mako, research/44): VR's view and whether our menu is open, this tick.
+mevr::game::mako::Link MakoLink() {
+    using namespace mevr;
+    game::mako::Link link;
+    if (gHostOwnsVr) {
+        link.headTrackedView = gHostView && gHostDataOk && vr::host_view::Latest().valid;
+        if (MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
+            link.mainMenuOpen = (gHost->mainMenu() & kMainMenuOpen) != 0;
+        }
+    } else {
+        link.headTrackedView = vr::output::WantsHeadTracking();
+    }
+    return link;
+}
+
 // The weapon drawn, like exploring (game/combat_stance, research/38): VR's view and the support grip, this tick.
 mevr::game::combat_stance::Link CombatStanceLink() {
     using namespace mevr;
@@ -732,7 +749,8 @@ void PublishStatus() {
         "\"handAim\": {{\"enabled\": {}, \"toldHost\": {}, \"shots\": {}}}, "
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, "
-        "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}}}",
+        "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
+        "\"mako\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -743,7 +761,7 @@ void PublishStatus() {
         game::sights::StatusJson(), game::scope_capture::StatusJson(), game::throwables::StatusJson(), game::posture::StatusJson(),
         game::view_level::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
-        game::interact::StatusJson());
+        game::interact::StatusJson(), game::mako::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -884,6 +902,7 @@ void Heartbeat() {
         game::combat_stance::LogStats();
         game::comfort::LogStats();
         game::interact::LogStats();
+        game::mako::LogStats();
         game::body_calibration::LogStats();
         game::skeleton_probe::Tick();
     }
@@ -1020,6 +1039,9 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // OnTickEnd), then which way shots go and the reticle's ray.
         game::weapon::Tick(game::hand_aim::Enabled() || game::arm_ik::Enabled());
         game::body_follow::NoteFloor(HostFloor());  // the recenter counter: the body re-anchors (research/29)
+        // The Mako (research/44): the controller's aim for the turret and the vehicle's motion, before comfort reads it
+        // for the vignette and hand aim publishes the ray.
+        game::mako::Tick(deltaSeconds, MakoLink());
         // Our own turn (snap or smooth) before arm IK: the view anchor then maps the view the next frame shows, so the
         // hands and the body are posed for it (research/31). Its pad flags go out with the support grip's below.
         game::comfort::Tick(deltaSeconds, ComfortLink());
@@ -1168,6 +1190,7 @@ MEVR_MOD_API void MevrModShutdown() {
         gHost->setVignette(0.0f);  // no vignette without the mod (the host also forgets on unload)
     }
     game::comfort::Shutdown();
+    game::mako::Shutdown();  // the turret's pose seam cleared, the vehicle forgotten
     game::body_calibration::Shutdown();
     game::menu_pause::Shutdown(exiting);  // unpauses the game if the main menu paused it
     game::game_menu_request::Shutdown();

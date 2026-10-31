@@ -429,6 +429,28 @@ constexpr char const* kInteractBlock =
     "combatLabel = 0\n"
     "crop =\n";
 
+// Appended to a settings file that has no [Mako] yet (and part of a new file).
+constexpr char const* kMakoBlock =
+    "\n"
+    "[Mako]\n"
+    "; The Mako in VR (research/44). handAim: 1 = the cannon and machine gun fire where your right controller points\n"
+    "; (at what its ray hits), not where the camera faces. turret: 1 = the turret model turns there too, through the\n"
+    "; game's own turret aim; turretSeam: 1 = asked after each frame, 2 = asked inside the vehicle's own tick, 3 = both\n"
+    "; (the log says which one the game lets stand). reticle: 1 = the hand reticle shows in the Mako, on the controller's\n"
+    "; ray. vignette: 1 = the comfort vignette ([Comfort] vignette, vignetteWhen) also while the Mako turns (turnRate\n"
+    "; degrees a second) or, with vignetteWhen = move, drives (moveSpeed units a second; 100 units = 1 m). aimRangeM: how\n"
+    "; far the ray is traced. calibratedLine: 1 = a saved pistol calibration's line stands in for the controller's own\n"
+    "; aim pose, as on foot.\n"
+    "handAim = 1\n"
+    "turret = 1\n"
+    "turretSeam = 3\n"
+    "reticle = 1\n"
+    "vignette = 1\n"
+    "moveSpeed = 150\n"
+    "turnRate = 20\n"
+    "aimRangeM = 200\n"
+    "calibratedLine = 1\n";
+
 fs::path FilePath() {
     return engine::SettingsFile();  // <exe dir>\ASI\<GAME>MEVR.ini, the host's file too
 }
@@ -1065,6 +1087,50 @@ std::string Describe(vr::interact::Settings const& i) {
 vr::interact::Settings gInteract;
 std::string gInteractText;
 
+Mako ReadMako(Ini const& ini) {
+    Mako m;
+    double value = 0.0;
+    if (Number(ini, "Mako", "handAim", value)) {
+        m.handAim = value != 0.0;
+    }
+    if (Number(ini, "Mako", "turret", value)) {
+        m.turret = value != 0.0;
+    }
+    if (Number(ini, "Mako", "turretSeam", value)) {
+        m.turretSeam = static_cast<int>(std::clamp(value, 0.0, 3.0));
+    }
+    if (Number(ini, "Mako", "reticle", value)) {
+        m.reticle = value != 0.0;
+    }
+    if (Number(ini, "Mako", "vignette", value)) {
+        m.vignette = value != 0.0;
+    }
+    if (Number(ini, "Mako", "moveSpeed", value)) {
+        m.moveSpeed = static_cast<float>(std::clamp(value, 1.0, 100000.0));
+    }
+    if (Number(ini, "Mako", "turnRate", value)) {
+        m.turnRate = static_cast<float>(std::clamp(value, 0.1, 3600.0));
+    }
+    if (Number(ini, "Mako", "aimRangeM", value)) {
+        m.aimRangeM = static_cast<float>(std::clamp(value, 5.0, 2000.0));
+    }
+    if (Number(ini, "Mako", "calibratedLine", value)) {
+        m.calibratedLine = value != 0.0;
+    }
+    return m;
+}
+
+std::string Describe(Mako const& m) {
+    return std::format("the controller aims the turret {} (model {}, seam {}), reticle {}, vignette {} (moving from {:.0f} units/s, "
+                       "turning from {:.0f} deg/s), ray traced {:.0f} m, calibrated line {}",
+        m.handAim ? "on" : "off", m.turret ? "turned" : "the game's",
+        m.turretSeam == 3 ? "both" : m.turretSeam == 2 ? "the vehicle's tick" : m.turretSeam == 1 ? "the mod's tick" : "none",
+        m.reticle ? "on" : "off", m.vignette ? "on" : "off", m.moveSpeed, m.turnRate, m.aimRangeM, m.calibratedLine ? "used" : "ignored");
+}
+
+Mako gMako;
+std::string gMakoText;
+
 Posture ReadPosture(Ini const& ini) {
     Posture p;
     double value = 0.0;
@@ -1452,6 +1518,10 @@ vr::interact::Settings GetInteract() {
     return gInteract;
 }
 
+Mako GetMako() {
+    return gMako;
+}
+
 vr::sights::Settings GetSights() {
     return gSights;
 }
@@ -1515,7 +1585,7 @@ void Refresh() {
         {
             std::ofstream out(path);
             out << kDefaultFile << kControlsBlock << kHolstersBlock << kSquadBlock << kSightsBlock << kThrowablesBlock
-                << kComfortBlock << kInteractBlock;
+                << kComfortBlock << kInteractBlock << kMakoBlock;
             out.close();
             static bool warned = false;
             if (!out || !fs::exists(path, ec)) {
@@ -1541,7 +1611,7 @@ void Refresh() {
     Ini ini = ReadIni(path);
     for (auto const& [name, block] : {std::pair{"Controls", kControlsBlock}, std::pair{"Holsters", kHolstersBlock},
              std::pair{"Squad", kSquadBlock}, std::pair{"Throwables", kThrowablesBlock}, std::pair{"Comfort", kComfortBlock},
-             std::pair{"Sights", kSightsBlock}, std::pair{"Interact", kInteractBlock}}) {
+             std::pair{"Sights", kSightsBlock}, std::pair{"Interact", kInteractBlock}, std::pair{"Mako", kMakoBlock}}) {
         if (ini.find(name) == ini.end() && AppendBlock(path, block, name)) {  // an older file: show the new settings
             ini = ReadIni(path);
             stamp = fs::last_write_time(path, ec);
@@ -1777,6 +1847,11 @@ void Refresh() {
     if (std::string const text = Describe(gInteract); text != gInteractText) {
         gInteractText = text;
         log::Info("interact: settings: {}", text);
+    }
+    gMako = ReadMako(ini);
+    if (std::string const text = Describe(gMako); text != gMakoText) {
+        gMakoText = text;
+        log::Info("mako: settings: {}", text);
     }
     gSights = ReadSights(ini);
     if (std::string const text = Describe(gSights); text != gSightsText) {

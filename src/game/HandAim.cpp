@@ -13,6 +13,7 @@
 #include "game/ArmIk.hpp"
 #include "game/BodyCalibration.hpp"
 #include "game/HeadTracking.hpp"
+#include "game/Mako.hpp"
 #include "game/Player.hpp"
 #include "game/Sights.hpp"
 #include "game/ViewAnchor.hpp"
@@ -273,6 +274,13 @@ void Apply(ue3::Object* context, ue3::Rotator* result, char const* tag) {
         write_journal::Wrote(tag, result);
         gLastPath = Path::Barrel;
         gBarrelAims.fetch_add(1, std::memory_order_relaxed);
+    } else if (gEnabled && mako::ShotRotation(*result, rotation)) {
+        // The Mako (research/44): the vehicle's cannon and machine gun ask this function too; game/mako aims them from the
+        // gun's start toward what the right controller's ray hits. Not a ray of ours for the shot-start diagnostics.
+        *result = rotation;
+        write_journal::Wrote("HandAim.aim (Mako)", result);
+        gLastPath = Path::Game;
+        gLastRayValid = false;
     } else if (HandRotation(*result, rotation)) {
         *result = rotation;
         write_journal::Wrote(tag, result);
@@ -455,6 +463,18 @@ void Tick() {
 
 vr::aim_ray::Ray AimRay() {
     vr::aim_ray::Ray ray;
+    if (gEnabled) {
+        // The Mako (research/44): the right controller's ray while it aims the turret (no gun model there).
+        if (auto const turret = mako::AimRay()) {
+            gRayStatus = "the right controller's ray (the Mako)";
+            if (gRayStatus != gLoggedRayStatus) {
+                log::Info("hand aim: aim ray {}", gRayStatus);
+                gLoggedRayStatus = gRayStatus;
+            }
+            gRaysPublished.fetch_add(1, std::memory_order_relaxed);
+            return *turret;
+        }
+    }
     char const* why = gEnabled ? WhyNoBarrel() : "hand aim off";
     std::optional<weapon::Muzzle> muzzle;
     std::optional<engine::TrackingFrame> frame;

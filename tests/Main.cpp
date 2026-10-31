@@ -7068,6 +7068,88 @@ void TestComfort() {
         CHECK((kFlagHandWalk & (kRbSourceMask | kWheelStickMask | kFlagModTurns)) == 0);
     }
 
+    // ---- The Mako's motion (research/44): moving and turning with hysteresis, the yaw wrap, the smoothing ----
+    {
+        cf::VehicleThresholds const t;  // 150 units/s, 20 deg/s, off at 60%
+        cf::VehicleMotion motion;
+        double const dt = 1.0 / 90.0;
+        // Standing still, then a straight drive: moving, not turning.
+        cf::VehicleMotionResult r = motion.Step(0.0f, 0.0f, 0.0f, 1000, dt, t);
+        CHECK(!r.moving && !r.turning && r.speed == 0.0 && r.yawRate == 0.0);
+        r = motion.Step(300.0f, 0.0f, 0.0f, 1000, dt, t);
+        CHECK(r.moving && !r.turning && NearD(r.speed, 300.0, 1e-9));
+        // Slowing: still moving at 100 (above 90, the 60% stop), off at 80.
+        r = motion.Step(100.0f, 0.0f, 0.0f, 1000, dt, t);
+        CHECK(r.moving);
+        r = motion.Step(80.0f, 0.0f, 0.0f, 1000, dt, t);
+        CHECK(!r.moving);
+        // ...and not on again at 100 (below 150).
+        r = motion.Step(100.0f, 0.0f, 0.0f, 1000, dt, t);
+        CHECK(!r.moving);
+        // Speed is the vector's length, whichever way it points (a jump counts).
+        r = motion.Step(0.0f, 0.0f, -200.0f, 1000, dt, t);
+        CHECK(r.moving);
+
+        // Turning: 30 degrees a second of yaw for a while. The rate is smoothed (0.1 s), so one frame isn't enough.
+        motion.Reset();
+        int yaw = 0;
+        int const step = static_cast<int>(std::lround(30.0 * dt * 65536.0 / 360.0));  // 30 deg/s
+        r = motion.Step(0.0f, 0.0f, 0.0f, yaw, dt, t);
+        CHECK(!r.turning);  // the first step has no rate
+        yaw += step;
+        r = motion.Step(0.0f, 0.0f, 0.0f, yaw, dt, t);
+        CHECK(!r.turning && r.yawRate > 0.0 && r.yawRate < 30.0);  // one frame: part of the way
+        for (int i = 0; i < 60; ++i) {
+            yaw += step;
+            r = motion.Step(0.0f, 0.0f, 0.0f, yaw, dt, t);
+        }
+        CHECK(r.turning && NearD(r.yawRate, 30.0, 0.5));
+        // The yaw's wrap at 65536 is no jump: keep turning across it.
+        motion.Reset();
+        yaw = 65536 - 3 * step;
+        motion.Step(0.0f, 0.0f, 0.0f, yaw, dt, t);
+        for (int i = 0; i < 60; ++i) {
+            yaw = (yaw + step) & 0xFFFF;
+            r = motion.Step(0.0f, 0.0f, 0.0f, yaw, dt, t);
+        }
+        CHECK(r.turning && NearD(r.yawRate, 30.0, 0.5));
+        // A signed yaw (the engine's rotators go negative too) wraps the same way, turning left.
+        motion.Reset();
+        yaw = 100;
+        motion.Step(0.0f, 0.0f, 0.0f, yaw, dt, t);
+        for (int i = 0; i < 60; ++i) {
+            yaw -= step;
+            r = motion.Step(0.0f, 0.0f, 0.0f, yaw, dt, t);
+        }
+        CHECK(r.turning && NearD(r.yawRate, -30.0, 0.5));
+        // Stopping the turn: off once the smoothed rate falls under 12 (60% of 20), after a few frames.
+        int frames = 0;
+        while (r.turning && frames < 100) {
+            r = motion.Step(0.0f, 0.0f, 0.0f, yaw, dt, t);
+            ++frames;
+        }
+        CHECK(!r.turning && frames > 1 && frames < 30);
+        // A single frame's jump (a landing) at a huge rate counts only as far as the smoothing lets it.
+        motion.Reset();
+        motion.Step(0.0f, 0.0f, 0.0f, 0, dt, t);
+        r = motion.Step(0.0f, 0.0f, 0.0f, 1820, dt, t);  // 10 degrees in one frame: 900 deg/s raw
+        CHECK(r.yawRate < 150.0);
+        // A long or broken frame time is clamped (no division by zero, no infinite rate).
+        motion.Reset();
+        motion.Step(0.0f, 0.0f, 0.0f, 0, 0.0, t);
+        r = motion.Step(0.0f, 0.0f, 0.0f, 182, 0.0, t);
+        CHECK(std::isfinite(r.yawRate));
+        r = motion.Step(std::numeric_limits<float>::quiet_NaN(), 0.0f, 0.0f, 182, std::numeric_limits<double>::infinity(), t);
+        CHECK(std::isfinite(r.speed) && std::isfinite(r.yawRate) && !r.moving);
+        // Sanitizing wild thresholds.
+        cf::VehicleThresholds wild;
+        wild.moveSpeed = -5.0f;
+        wild.turnRate = std::numeric_limits<float>::quiet_NaN();
+        wild.stop = 4.0f;
+        cf::VehicleThresholds const sane = cf::SanitizeVehicle(wild);
+        CHECK(sane.moveSpeed == 1.0f && sane.turnRate == 20.0f && sane.stop == 1.0f);
+    }
+
     // ---- Settings and the menu's rows ----
     {
         CHECK(cf::ParseTurn(" Snap ") == cf::TurnStyle::Snap && cf::ParseTurn("game") == cf::TurnStyle::Game && !cf::ParseTurn("fast"));

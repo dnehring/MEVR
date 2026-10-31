@@ -127,6 +127,37 @@ struct HalfExtents {
 };
 HalfExtents CoverFov(float const fov[2][4]);
 
+// ---- The Mako's motion (research/44): the vignette while the vehicle moves or turns ------------------------------
+
+// Thresholds for a vehicle's motion to count as moving or turning, with hysteresis (on at the threshold, off at
+// `stop` of it), so a Mako idling at the edge doesn't flicker the vignette.
+struct VehicleThresholds {
+    float moveSpeed = 150.0f;     // Unreal units a second (about 1.5 m/s)
+    float turnRate = 20.0f;       // degrees a second of yaw
+    float stop = 0.6f;            // off below this fraction of the threshold
+    float yawSmoothing = 0.1f;    // seconds: the yaw rate's low-pass time constant (one frame of noise doesn't count)
+};
+VehicleThresholds SanitizeVehicle(VehicleThresholds thresholds);
+
+struct VehicleMotionResult {
+    bool moving = false;
+    bool turning = false;
+    double speed = 0.0;     // units a second
+    double yawRate = 0.0;   // degrees a second (+ right), smoothed
+};
+
+// Steps from the vehicle's velocity (Unreal units a second) and its yaw (Unreal units, 65536 a turn; the wrap
+// handled) over `seconds` (clamped to 1 ms .. 0.1 s). The first step after a Reset has no yaw rate.
+struct VehicleMotion {
+    bool hasYaw = false;
+    int lastYaw = 0;
+    double yawRate = 0.0;
+    bool moving = false;
+    bool turning = false;
+    VehicleMotionResult Step(float vx, float vy, float vz, int yawUnits, double seconds, VehicleThresholds const& thresholds);
+    void Reset();
+};
+
 // ---- Walking toward the left hand -------------------------------------------------------------------------------
 
 // The yaw (radians, + to the left, 0 = tracking -Z) of a direction (OpenXR: +Y up, -Z ahead) laid flat on the

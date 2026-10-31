@@ -1581,13 +1581,16 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     // Where the weapon points: the mod's aim ray (muzzle and barrel) once it publishes one, else the
     // right controller's aim pose. While it has a ray, the game's screen-centre crosshair is hidden
     // (held half a second so a flickering ray doesn't make it blink).
-    bool const reticleMode = cfg.handReticle && handAim && gLastGameMode == 0;  // on foot only (not the Mako)
+    // On foot; in the Mako (game mode 1, research/44) only on a ray the mod publishes (the controller's, while it aims the
+    // turret), never the controller fallback: the game's own turret aim shows its own crosshair otherwise.
+    mevr::vr::aim_ray::Ray const ray = mevr::vr::aim_ray::Latest();
+    bool const producer = ray.sequence != 0 && now - ray.timeMs < 1000;
+    bool const makoRay = gLastGameMode == 1 && producer && ray.valid;
+    bool const reticleMode = cfg.handReticle && handAim && (gLastGameMode == 0 || makoRay);
     XrVector3f origin{};
     XrVector3f direction{};
     int source = 0;
     if (reticleMode) {
-        mevr::vr::aim_ray::Ray const ray = mevr::vr::aim_ray::Latest();
-        bool const producer = ray.sequence != 0 && now - ray.timeMs < 1000;
         if (producer) {
             if (ray.valid) {
                 origin = ray.origin;

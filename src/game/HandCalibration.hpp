@@ -50,6 +50,7 @@
 //   [Throwables] physical grenades and melee (below, GetThrowables).
 //   [Comfort] turning, the comfort vignette, walking toward the left hand (below, GetComfort).
 //   [Interact] what A uses and its prompt at the object (below, GetInteract).
+//   [Mako]   the Mako in VR: the turret aimed by the right controller, the reticle, the vignette (below, GetMako).
 namespace mevr::game::hand_calibration {
 
 // The trim for one hand (0 left, 1 right), in the grip's own axes (ik::GripTrim).
@@ -289,5 +290,30 @@ vr::comfort::Settings GetComfort();
 // [Interact] (research/40): A uses what the head looks at (gaze), the game's prompt big at the object (label,
 // labelHeightDeg, combatLabel), the prompt's part of the HUD by hand (crop = x y width height).
 vr::interact::Settings GetInteract();
+
+// [Mako] (research/44): the Mako in VR (game/mako).
+//   handAim          1: the cannon and machine gun fire where the right controller points (the shot's direction
+//                    rewritten in BioPlayerController.GetAdjustedAimFor, toward what the controller's ray hits)
+//   turret           1: the turret model turns to it, through the game's own SetDesiredTurretAimPoint
+//   turretSeam       where that call is made: 1 the mod's tick (after the world tick), 2 after the vehicle's own
+//                    Tick (inside the world tick), 3 both (default; the log says which one the game lets stand)
+//   reticle          1: the controller's ray goes to the host as the aim ray (its hand reticle in the Mako)
+//   vignette         1: the comfort vignette ([Comfort] vignette, vignetteWhen) also while the Mako turns or moves
+//   moveSpeed        Unreal units a second from which the Mako counts as moving (vignetteWhen = move)
+//   turnRate         degrees a second of yaw from which it counts as turning
+//   aimRangeM        how far the controller's ray is traced for the aim point (meters)
+//   calibratedLine   1: a saved pistol calibration's line stands in for the controller's aim pose, as on foot
+struct Mako {
+    bool handAim = true;
+    bool turret = true;
+    int turretSeam = 3;
+    bool reticle = true;
+    bool vignette = true;
+    float moveSpeed = 150.0f;
+    float turnRate = 20.0f;
+    float aimRangeM = 200.0f;
+    bool calibratedLine = true;
+};
+Mako GetMako();
 
 } // namespace mevr::game::hand_calibration
