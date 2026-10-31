@@ -338,7 +338,7 @@ vr::hud_pieces::Settings GetHud();
 //                    rewritten in BioPlayerController.GetAdjustedAimFor, toward what the controller's ray hits)
 //   turret           1: the turret model turns to it, through the game's own SetDesiredTurretAimPoint
 //   turretSeam       where that call is made: 1 the mod's tick (after the world tick), 2 after the vehicle's own
-//                    Tick (inside the world tick), 3 both (default; the log says which one the game lets stand)
+//                    Tick (inside the world tick), 4 the pose stage; add them (default 3; the log says which one the game lets stand)
 //   reticle          1: the controller's ray goes to the host as the aim ray (its hand reticle in the Mako)
 //   vignette         1: the comfort vignette ([Comfort] vignette, vignetteWhen) also while the Mako turns or moves
 //   moveSpeed        Unreal units a second from which the Mako counts as moving (vignetteWhen = move)

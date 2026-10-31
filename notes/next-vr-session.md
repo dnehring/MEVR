@@ -1529,7 +1529,7 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
     the model lags or snaps back, send the heartbeat's `mako:` line (its held/changed counts per seam say whether the game
     re-aims after us). The hand reticle should show on the ray; if the Mako's own crosshair is still there too, say so
     (doubled). Driving fast or turning should bring the comfort vignette if `[Comfort] vignette` is on. `handAim = 0` gives
-    the game's aim back; `turretSeam` picks the seams (7 = all). Log `mako: the game aims the turret (...)` says when we
+    the game's aim back; `turretSeam` picks the seams (bits; the default 3 leaves the pose seam off: if the model doesn't follow, try 7). Log `mako: the game aims the turret (...)` says when we
     stand aside (no world view, menu, controller untracked).
 
 What Claude looks for:

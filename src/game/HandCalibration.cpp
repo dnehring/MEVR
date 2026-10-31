@@ -492,7 +492,7 @@ constexpr char const* kMakoBlock =
     "[Mako]\n"
     "; The Mako in VR (research/44). handAim: 1 = the cannon and machine gun fire where your right controller points\n"
     "; (at what its ray hits), not where the camera faces. turret: 1 = the turret model turns there too, through the\n"
-    "; game's own turret aim; turretSeam: 1 = asked after each frame, 2 = asked inside the vehicle's own tick, 3 = both\n"
+    "; game's own turret aim; turretSeam: 1 = asked after each frame, 2 = asked inside the vehicle's own tick, 4 = written before the pose; add them (3 = the first two, 7 = all)\n"
     "; (the log says which one the game lets stand). reticle: 1 = the hand reticle shows in the Mako, on the controller's\n"
     "; ray. vignette: 1 = the comfort vignette ([Comfort] vignette, vignetteWhen) also while the Mako turns (turnRate\n"
     "; degrees a second) or, with vignetteWhen = move, drives (moveSpeed units a second; 100 units = 1 m). aimRangeM: how\n"
@@ -1213,7 +1213,7 @@ Mako ReadMako(Ini const& ini) {
         m.turret = value != 0.0;
     }
     if (Number(ini, "Mako", "turretSeam", value)) {
-        m.turretSeam = static_cast<int>(std::clamp(value, 0.0, 3.0));
+        m.turretSeam = static_cast<int>(std::clamp(value, 0.0, 7.0));
     }
     if (Number(ini, "Mako", "reticle", value)) {
         m.reticle = value != 0.0;
@@ -1240,7 +1240,8 @@ std::string Describe(Mako const& m) {
     return std::format("the controller aims the turret {} (model {}, seam {}), reticle {}, vignette {} (moving from {:.0f} units/s, "
                        "turning from {:.0f} deg/s), ray traced {:.0f} m, calibrated line {}",
         m.handAim ? "on" : "off", m.turret ? "turned" : "the game's",
-        m.turretSeam == 3 ? "both" : m.turretSeam == 2 ? "the vehicle's tick" : m.turretSeam == 1 ? "the mod's tick" : "none",
+        std::format("{}{}{}{}", (m.turretSeam & 1) != 0 ? "the mod's tick " : "", (m.turretSeam & 2) != 0 ? "the vehicle's tick " : "",
+            (m.turretSeam & 4) != 0 ? "the pose " : "", m.turretSeam == 0 ? "none" : ""),
         m.reticle ? "on" : "off", m.vignette ? "on" : "off", m.moveSpeed, m.turnRate, m.aimRangeM, m.calibratedLine ? "used" : "ignored");
 }
 
