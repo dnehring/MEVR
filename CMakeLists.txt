@@ -272,6 +272,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/HostView.cpp
     src/core/vr/HudPieces.cpp
     src/core/vr/HudPieces.hpp
+    src/core/vr/MakoControls.cpp
+    src/core/vr/MakoControls.hpp
     src/core/vr/InteractLabel.cpp
     src/core/vr/InteractLabel.hpp
     src/core/vr/HostView.hpp
@@ -362,6 +364,8 @@ set(MEVR_MOD_SOURCES
     src/game/Interact.cpp
     src/game/Interact.hpp
     src/game/Mako.cpp
+    src/game/MakoControls.cpp
+    src/game/MakoControls.hpp
     src/game/Mako.hpp
     src/game/Holsters.cpp
     src/game/Holsters.hpp
@@ -464,6 +468,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/HostView.cpp
     src/core/vr/HudPieces.cpp
     src/core/vr/HudPieces.hpp
+    src/core/vr/MakoControls.cpp
+    src/core/vr/MakoControls.hpp
     src/core/vr/InteractLabel.cpp
     src/core/vr/InteractLabel.hpp
     src/core/vr/HostView.hpp
@@ -738,6 +744,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/CombatStance.cpp
         src/core/vr/GameMenuRequest.cpp
         src/core/vr/HudPieces.cpp
+        src/core/vr/MakoControls.cpp
         src/core/vr/InteractLabel.cpp
         src/core/vr/Colour.cpp
         src/core/vr/ColourStrip.cpp
@@ -824,6 +831,17 @@ if (MEVR_BUILD_TESTS)
     target_link_libraries(mevr-sight-preview PRIVATE OpenXR::headers windowscodecs ole32 d3d11 d3dcompiler)
     target_compile_definitions(mevr-sight-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-sight-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+
+    # The Mako's lever and stick, offline (tools/mako-preview, research/46): PNGs with the host's own pixels.
+    add_executable(mevr-mako-preview
+        tools/mako-preview/Main.cpp
+        src/core/PngFile.cpp
+        src/core/vr/MakoControls.cpp
+    )
+    target_include_directories(mevr-mako-preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(mevr-mako-preview PRIVATE OpenXR::headers windowscodecs ole32)
+    target_compile_definitions(mevr-mako-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-mako-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
 
     # Where a game thread's time goes, sampled from outside (tools/stack-sampler, research/22).
     add_executable(mevr-stack-sampler tools/stack-sampler/sampler.cpp)

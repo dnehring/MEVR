@@ -506,7 +506,29 @@ constexpr char const* kMakoBlock =
     "moveSpeed = 150\n"
     "turnRate = 20\n"
     "aimRangeM = 200\n"
-    "calibratedLine = 1\n";
+    "calibratedLine = 1\n"
+    "; Physical controls (research/46). controls: 1 = a throttle lever at your left knee (grip it, push forward or pull\n"
+    "; back; it stays where you leave it; X is jump and upright, Y is boost while held) and a drive stick at your right knee\n"
+    "; (grip it, TWIST it to steer; it springs back; the trigger fires the machine gun, A the cannon, the thumbstick aims the\n"
+    "; turret while held; let go and your hand aims it). Until you grab one the game's own controls work as always; 0 = they\n"
+    "; stay. grabRadiusM: how near a hand must be. stickTwistDeg: the twist for full lock; stickDeadZoneDeg: the twist that\n"
+    "; steers nothing; stickInvert: 1 = twist the other way. throttleTravelM: hand travel from neutral to full;\n"
+    "; throttleDetent: the neutral notch, a fraction of the travel. leverOffset, stickOffset: where they sit from your head\n"
+    "; when you enter the Mako or recenter (meters: right, up, forward). stickAimRate: degrees a second at a full thumbstick.\n"
+    "; rumble: the engine's vibration at full speed (0 = none). cameraFollow: 1 = while you drive with them the chase camera\n"
+    "; keeps its angle to the Mako.\n"
+    "controls = 1\n"
+    "grabRadiusM = 0.15\n"
+    "stickTwistDeg = 42\n"
+    "stickDeadZoneDeg = 4\n"
+    "stickInvert = 0\n"
+    "throttleTravelM = 0.15\n"
+    "throttleDetent = 0.08\n"
+    "leverOffset = -0.20 -0.55 0.25\n"
+    "stickOffset = 0.20 -0.55 0.25\n"
+    "stickAimRate = 90\n"
+    "rumble = 0.12\n"
+    "cameraFollow = 1\n";
 
 fs::path FilePath() {
     return engine::SettingsFile();  // <exe dir>\ASI\<GAME>MEVR.ini, the host's file too
@@ -1233,6 +1255,53 @@ Mako ReadMako(Ini const& ini) {
     if (Number(ini, "Mako", "calibratedLine", value)) {
         m.calibratedLine = value != 0.0;
     }
+    // The physical controls (research/46).
+    vr::mako_controls::Settings& c = m.controlSettings;
+    if (Number(ini, "Mako", "controls", value)) {
+        c.controls = value != 0.0;
+    }
+    if (Number(ini, "Mako", "grabRadiusM", value)) {
+        c.grabRadiusM = static_cast<float>(std::clamp(value, 0.02, 1.0));
+    }
+    if (Number(ini, "Mako", "stickTwistDeg", value)) {
+        c.stickTwistDeg = static_cast<float>(std::clamp(value, 5.0, 170.0));
+    }
+    if (Number(ini, "Mako", "stickDeadZoneDeg", value)) {
+        c.stickDeadZoneDeg = static_cast<float>(std::clamp(value, 0.0, 30.0));
+    }
+    if (Number(ini, "Mako", "stickInvert", value)) {
+        c.stickInvert = value != 0.0;
+    }
+    if (Number(ini, "Mako", "throttleTravelM", value)) {
+        c.throttleTravelM = static_cast<float>(std::clamp(value, 0.03, 0.6));
+    }
+    if (Number(ini, "Mako", "throttleDetent", value)) {
+        c.throttleDetent = static_cast<float>(std::clamp(value, 0.0, 0.5));
+    }
+    if (Number(ini, "Mako", "stickAimRate", value)) {
+        c.stickAimRate = static_cast<float>(std::clamp(value, 1.0, 720.0));
+    }
+    if (Number(ini, "Mako", "rumble", value)) {
+        c.rumble = static_cast<float>(std::clamp(value, 0.0, 1.0));
+    }
+    if (Number(ini, "Mako", "cameraFollow", value)) {
+        c.cameraFollow = value != 0.0;
+    }
+    auto const offset = [&ini](char const* key, XrVector3f& out) {
+        auto const text = ini::Get(ini, "Mako", key);
+        if (!text) {
+            return;
+        }
+        float numbers[3] = {};
+        if (vr::hud_pieces::ParseNumbers(*text, 3, numbers) && std::abs(numbers[0]) <= 2.0f && std::abs(numbers[1]) <= 2.0f &&
+            std::abs(numbers[2]) <= 2.0f) {
+            out = {numbers[0], numbers[1], numbers[2]};
+        } else {
+            log::Warn("hands: [Mako] {} = {} isn't three numbers (meters: right, up, forward; each within 2): its default kept", key, *text);
+        }
+    };
+    offset("leverOffset", c.leverOffset);
+    offset("stickOffset", c.stickOffset);
     return m;
 }
 
@@ -1241,7 +1310,8 @@ std::string Describe(Mako const& m) {
                        "turning from {:.0f} deg/s), ray traced {:.0f} m, calibrated line {}",
         m.handAim ? "on" : "off", m.turret ? "turned" : "the game's",
         m.turretSeam == 3 ? "both" : m.turretSeam == 2 ? "the vehicle's tick" : m.turretSeam == 1 ? "the mod's tick" : "none",
-        m.reticle ? "on" : "off", m.vignette ? "on" : "off", m.moveSpeed, m.turnRate, m.aimRangeM, m.calibratedLine ? "used" : "ignored");
+        m.reticle ? "on" : "off", m.vignette ? "on" : "off", m.moveSpeed, m.turnRate, m.aimRangeM, m.calibratedLine ? "used" : "ignored") +
+        "; " + vr::mako_controls::Describe(m.controlSettings);
 }
 
 Mako gMako;
@@ -1934,6 +2004,19 @@ void Refresh() {
         {L"Comfort", "Comfort", L"vignetteStrength", "vignetteStrength", L"0.6"},
         {L"Comfort", "Comfort", L"vignetteWhen", "vignetteWhen", L"turn"},
         {L"Comfort", "Comfort", L"walk", "walk", L"head"},
+        // The physical Mako controls (2026-10-31, research/46).
+        {L"Mako", "Mako", L"controls", "controls", L"1"},
+        {L"Mako", "Mako", L"grabRadiusM", "grabRadiusM", L"0.15"},
+        {L"Mako", "Mako", L"stickTwistDeg", "stickTwistDeg", L"42"},
+        {L"Mako", "Mako", L"stickDeadZoneDeg", "stickDeadZoneDeg", L"4"},
+        {L"Mako", "Mako", L"stickInvert", "stickInvert", L"0"},
+        {L"Mako", "Mako", L"throttleTravelM", "throttleTravelM", L"0.15"},
+        {L"Mako", "Mako", L"throttleDetent", "throttleDetent", L"0.08"},
+        {L"Mako", "Mako", L"leverOffset", "leverOffset", L"-0.20 -0.55 0.25"},
+        {L"Mako", "Mako", L"stickOffset", "stickOffset", L"0.20 -0.55 0.25"},
+        {L"Mako", "Mako", L"stickAimRate", "stickAimRate", L"90"},
+        {L"Mako", "Mako", L"rumble", "rumble", L"0.12"},
+        {L"Mako", "Mako", L"cameraFollow", "cameraFollow", L"1"},
     };
     std::string addedKeys;
     for (auto const& k : kNewKeys) {

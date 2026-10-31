@@ -31,6 +31,7 @@
 #include "core/vr/GamePointer.hpp"
 #include "core/vr/Haptics.hpp"
 #include "core/vr/HudPieces.hpp"
+#include "core/vr/MakoControls.hpp"
 #include "core/vr/ImageConvert.hpp"
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/LayerComposite.hpp"
@@ -6308,6 +6309,377 @@ void TestInteractLabel() {
 }
 
 // HUD pieces on the body (core/vr/HudPieces, research/41).
+void TestMakoControls() {
+    namespace mc = mevr::vr::mako_controls;
+    namespace gp = mevr::game::gamepad;
+    auto const close = [](double a, double b, double tolerance = 1e-3) { return std::abs(a - b) <= tolerance; };
+    auto const about = [](XrVector3f const& axis, float degrees) {
+        float const half = degrees * 3.14159265f / 360.0f;
+        return XrQuaternionf{axis.x * std::sin(half), axis.y * std::sin(half), axis.z * std::sin(half), std::cos(half)};
+    };
+    auto const times = [](XrQuaternionf const& a, XrQuaternionf const& b) {
+        return XrQuaternionf{a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y, a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+            a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w, a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z};
+    };
+    XrQuaternionf const identity{0.0f, 0.0f, 0.0f, 1.0f};
+    // A grip held like a joystick: its -Z (the tube the fingers close around) straight up.
+    XrQuaternionf const upright = about({1.0f, 0.0f, 0.0f}, 90.0f);
+    {
+        XrVector3f const axis = mc::StickAxis(upright);
+        CHECK(close(axis.y, 1.0) && close(axis.x, 0.0) && close(axis.z, 0.0));
+        // Swing-twist: a turn about the axis counts; a swing about a perpendicular axis doesn't; both at once: the twist.
+        XrVector3f const up{0.0f, 1.0f, 0.0f};
+        CHECK(close(mc::TwistDegrees(upright, times(about(up, 30.0f), upright), up), 30.0, 0.01));
+        CHECK(close(mc::TwistDegrees(upright, times(about({1.0f, 0.0f, 0.0f}, 50.0f), upright), up), 0.0, 0.01));
+        CHECK(close(mc::TwistDegrees(upright, times(about({0.0f, 0.0f, 1.0f}, 170.0f), upright), up), 0.0, 0.01));
+        CHECK(close(mc::TwistDegrees(identity, about(up, -20.0f), up), -20.0, 0.01));
+        // Both signs of one rotation's quaternion are the same twist.
+        XrQuaternionf q = about(up, 25.0f);
+        q = {-q.x, -q.y, -q.z, -q.w};
+        CHECK(close(mc::TwistDegrees(identity, q, up), 25.0, 0.01));
+    }
+    mc::Settings settings;
+    mc::Settings inverted = settings;
+    inverted.stickInvert = true;
+    CHECK(close(mc::SteerFromTwist(0.0f, settings), 0.0));
+    CHECK(close(mc::SteerFromTwist(3.9f, settings), 0.0));   // inside the dead zone
+    CHECK(close(mc::SteerFromTwist(-42.0f, settings), 1.0));  // clockwise from above: right
+    CHECK(close(mc::SteerFromTwist(42.0f, settings), -1.0));
+    CHECK(close(mc::SteerFromTwist(120.0f, settings), -1.0));  // clamped
+    CHECK(close(mc::SteerFromTwist(-23.0f, settings), 0.5));   // halfway between the dead zone and the lock
+    CHECK(close(mc::SteerFromTwist(-42.0f, inverted), -1.0));
+    CHECK(close(mc::ThrottleFromLever(0.05f, 0.08f), 0.0));
+    CHECK(close(mc::ThrottleFromLever(-0.05f, 0.08f), 0.0));
+    CHECK(close(mc::ThrottleFromLever(1.0f, 0.08f), 1.0));
+    CHECK(close(mc::ThrottleFromLever(-1.0f, 0.08f), -1.0));
+    CHECK(close(mc::ThrottleFromLever(0.54f, 0.08f), 0.5));
+
+    // Placement: from the head's position and flat yaw.
+    XrPosef head{identity, {0.3f, 1.2f, -0.5f}};
+    {
+        mc::Seat seat;
+        CHECK(mc::PlaceSeat(head, settings, seat));
+        CHECK(close(seat.forward.z, -1.0) && close(seat.right.x, 1.0));
+        CHECK(close(seat.leverBase.x, 0.1) && close(seat.leverBase.y, 0.65) && close(seat.leverBase.z, -0.75));
+        CHECK(close(seat.stickBase.x, 0.5) && close(seat.stickBase.y, 0.65) && close(seat.stickBase.z, -0.75));
+        // Looking down at an angle and turned 90 degrees left: the yaw alone counts.
+        XrPosef turned = head;
+        turned.orientation = times(about({0.0f, 1.0f, 0.0f}, 90.0f), about({1.0f, 0.0f, 0.0f}, -40.0f));
+        CHECK(mc::PlaceSeat(turned, settings, seat));
+        CHECK(close(seat.forward.x, -1.0) && close(seat.forward.y, 0.0) && close(seat.right.z, -1.0));
+        // Straight down: no yaw to go by.
+        XrPosef down = head;
+        down.orientation = about({1.0f, 0.0f, 0.0f}, -90.0f);
+        mc::Seat const untouched = seat;
+        CHECK(!mc::PlaceSeat(down, settings, seat));
+        CHECK(seat.forward.x == untouched.forward.x);
+        // The picture's quad: its top edge along forward, its front up.
+        XrPosef const flat = mc::FlatPose({1.0f, 2.0f, 3.0f}, {-1.0f, 0.0f, 0.0f});
+        XrQuaternionf const q = flat.orientation;
+        auto const rotate = [&](XrVector3f v) {
+            XrQuaternionf const r = times(times(q, {v.x, v.y, v.z, 0.0f}), {-q.x, -q.y, -q.z, q.w});
+            return XrVector3f{r.x, r.y, r.z};
+        };
+        XrVector3f const top = rotate({0.0f, 1.0f, 0.0f});
+        XrVector3f const front = rotate({0.0f, 0.0f, 1.0f});
+        CHECK(close(top.x, -1.0) && close(top.y, 0.0) && close(top.z, 0.0));
+        CHECK(close(front.y, 1.0));
+        CHECK(flat.position.y == 2.0f);
+    }
+
+    // A session: hands at the controls.
+    mc::Seat seat;
+    CHECK(mc::PlaceSeat(head, settings, seat));
+    auto const input = [&](float leftForward, float leftSqueeze, XrQuaternionf const& rightTurn, float rightSqueeze, XrVector3f rightMove = {0.0f, 0.0f, 0.0f}) {
+        mc::Input in;
+        in.deltaSeconds = 0.05;
+        in.headValid = true;
+        in.head = head;
+        in.left.tracked = true;
+        in.left.grip.orientation = identity;
+        in.left.grip.position = {seat.leverBase.x + 0.03f, seat.leverBase.y + 0.02f, seat.leverBase.z - leftForward};  // off by a little
+        in.left.squeeze = leftSqueeze;
+        in.right.tracked = true;
+        in.right.grip.orientation = times(rightTurn, upright);
+        in.right.grip.position = {seat.stickBase.x + 0.05f + rightMove.x, seat.stickBase.y - 0.02f + rightMove.y, seat.stickBase.z + rightMove.z};
+        in.right.squeeze = rightSqueeze;
+        return in;
+    };
+    XrVector3f const up{0.0f, 1.0f, 0.0f};
+    {
+        mc::Controls c;
+        // Near, no grip: not driving, nothing goes to the game's physics.
+        mc::Output out = c.Step(input(0.0f, 0.0f, identity, 0.0f), settings);
+        CHECK(out.placed && out.replaced && out.leverNear && out.stickNear && !out.driving && !out.leverHeld && !out.stickHeld);
+        CHECK(close(out.throttle, 0.0) && close(out.steer, 0.0));
+        // A grab never jerks: off the spot and with the hand turned any way.
+        XrQuaternionf const turned = about(up, 37.0f);
+        out = c.Step(input(0.0f, 1.0f, turned, 1.0f), settings);
+        CHECK(out.driving && out.leverGrabbed && out.stickGrabbed && out.leverHeld && out.stickHeld);
+        CHECK(close(out.throttle, 0.0) && close(out.steer, 0.0) && close(out.twistDeg, 0.0));
+        CHECK(out.hapticCount == 2);
+        // The arm swings and moves with no twist: nothing steers. (The grab pose was `turned`.)
+        out = c.Step(input(0.0f, 1.0f, times(about({1.0f, 0.0f, 0.0f}, 35.0f), turned), 1.0f, {0.2f, 0.1f, -0.2f}), settings);
+        CHECK(close(out.steer, 0.0) && std::abs(out.twistDeg) < 4.0f);
+        out = c.Step(input(0.0f, 1.0f, turned, 1.0f), settings);
+        CHECK(close(out.twistDeg, 0.0, 0.1));
+        // Twist clockwise from above to the limit: full right, a buzz at the lock; more clamps.
+        for (int i = 0; i < 10; ++i) {
+            out = c.Step(input(0.0f, 1.0f, times(about(up, -42.0f), turned), 1.0f), settings);
+        }
+        CHECK(close(out.steer, 1.0));
+        out = c.Step(input(0.0f, 1.0f, times(about(up, -80.0f), turned), 1.0f), settings);
+        CHECK(close(out.steer, 1.0));
+        // A wrap past half a turn doesn't flip the sign.
+        for (float twist : {-120.0f, -170.0f, -190.0f, -230.0f}) {
+            out = c.Step(input(0.0f, 1.0f, times(about(up, twist), turned), 1.0f), settings);
+            CHECK(out.steer > 0.99f);
+            CHECK(out.twistDeg < -100.0f);
+        }
+        // Back through the wrap to the other lock.
+        for (float twist : {-170.0f, -120.0f, -60.0f, 0.0f, 60.0f}) {
+            out = c.Step(input(0.0f, 1.0f, times(about(up, twist), turned), 1.0f), settings);
+        }
+        for (int i = 0; i < 10; ++i) {
+            out = c.Step(input(0.0f, 1.0f, times(about(up, 60.0f), turned), 1.0f), settings);
+        }
+        CHECK(close(out.steer, -1.0));
+
+        // The lever: pushed forward half its travel past the notch, it follows the hand along the seat's forward only.
+        out = c.Step(input(0.08f, 1.0f, turned, 1.0f, {0.0f, 0.0f, 0.0f}), settings);
+        CHECK(close(out.lever, 0.08f / 0.15f));
+        CHECK(close(out.throttle, (0.08 / 0.15 - 0.08) / 0.92));
+        // Independence: the lever moved, the steering didn't, and vice versa.
+        CHECK(out.steer < 0.0f);
+        // Letting go: the stick springs back, the throttle stays.
+        float const held = out.throttle;
+        out = c.Step(input(0.08f, 0.0f, turned, 1.0f), settings);
+        CHECK(!out.leverHeld && out.stickHeld && close(out.throttle, held));
+        for (int i = 0; i < 10; ++i) {
+            out = c.Step(input(0.0f, 0.0f, turned, 0.0f), settings);  // the hands wander off; it stays
+        }
+        CHECK(!out.stickHeld && close(out.steer, 0.0) && close(out.throttle, held) && out.driving);
+        // A squeeze far from a control grabs nothing; moving in with it held doesn't either.
+        mc::Input away = input(0.08f, 0.0f, identity, 0.0f);
+        away.left.grip.position.x += 1.0f;
+        away.left.squeeze = 1.0f;
+        away.right.grip.position.x += 1.0f;
+        away.right.squeeze = 1.0f;
+        out = c.Step(away, settings);
+        CHECK(!out.leverHeld && !out.stickHeld && !out.leverNear && !out.stickNear);
+        out = c.Step(input(0.08f, 1.0f, identity, 1.0f), settings);
+        CHECK(!out.leverHeld && !out.stickHeld && out.leverNear && out.stickNear);
+        out = c.Step(input(0.08f, 0.0f, identity, 0.0f), settings);
+        // The grab point moves with the lever: re-grabbing where it was left doesn't move it, pulling back through
+        // the notch gives a tick.
+        out = c.Step(input(0.08f, 1.0f, identity, 0.0f), settings);
+        CHECK(out.leverHeld && close(out.throttle, held));
+        out = c.Step(input(0.0f, 1.0f, identity, 0.0f), settings);
+        CHECK(close(out.lever, 0.0) && close(out.throttle, 0.0));
+        bool ticked = false;
+        for (int i = 0; i < out.hapticCount; ++i) {
+            ticked = ticked || (out.haptics[i].hand == 0 && out.haptics[i].seconds < 0.05f);
+        }
+        CHECK(ticked);
+        // Full reverse, clamped: no wind-up past the end.
+        out = c.Step(input(-0.5f, 1.0f, identity, 0.0f), settings);
+        CHECK(close(out.throttle, -1.0));
+        out = c.Step(input(-0.5f + 0.15f, 1.0f, identity, 0.0f), settings);
+        CHECK(close(out.lever, 0.0));
+    }
+    // Every safety stop: throttle and steering to zero, the holds gone, the drive over until the next grab.
+    for (mc::Stop const stop : {mc::Stop::LeftMako, mc::Stop::Menu, mc::Stop::Calibration, mc::Stop::Tracking, mc::Stop::Level, mc::Stop::Unload}) {
+        mc::Controls c;
+        c.Step(input(0.0f, 0.0f, identity, 0.0f), settings);
+        c.Step(input(0.0f, 1.0f, identity, 1.0f), settings);
+        mc::Output out{};
+        for (int i = 0; i < 5; ++i) {
+            out = c.Step(input(0.1f, 1.0f, about(up, -30.0f), 1.0f), settings);
+        }
+        CHECK(out.driving && out.throttle > 0.3f && out.steer > 0.3f);
+        mc::Input in = input(0.1f, 1.0f, about(up, -30.0f), 1.0f);
+        in.stop = stop;
+        out = c.Step(in, settings);
+        CHECK(out.stopped == stop);
+        CHECK(!out.driving && out.throttle == 0.0f && out.steer == 0.0f && out.lever == 0.0f && !out.leverHeld && !out.stickHeld);
+        // Once: the next stop step reports nothing new.
+        out = c.Step(in, settings);
+        CHECK(out.stopped == mc::Stop::None && !out.driving);
+        // Afterwards the grip still held isn't a new squeeze: nothing moves until it's let go and squeezed again.
+        out = c.Step(input(0.1f, 1.0f, about(up, -30.0f), 1.0f), settings);
+        CHECK(!out.driving && !out.leverHeld && !out.stickHeld && out.throttle == 0.0f);
+        out = c.Step(input(0.0f, 0.0f, identity, 0.0f), settings);
+        out = c.Step(input(0.0f, 1.0f, identity, 1.0f), settings);
+        CHECK(out.driving && out.leverHeld && out.stickHeld && close(out.throttle, 0.0) && close(out.steer, 0.0));
+    }
+    // Tracking: a moment of it lost keeps the drive; over the grace it stops.
+    {
+        mc::Controls c;
+        c.Step(input(0.0f, 0.0f, identity, 0.0f), settings);
+        c.Step(input(0.0f, 1.0f, identity, 1.0f), settings);
+        mc::Output out = c.Step(input(0.1f, 1.0f, identity, 1.0f), settings);
+        float const before = out.throttle;
+        CHECK(before > 0.3f);
+        mc::Input lost = input(0.5f, 1.0f, identity, 1.0f);
+        lost.left.tracked = false;
+        for (int i = 0; i < 8; ++i) {  // 0.4 s
+            out = c.Step(lost, settings);
+            CHECK(out.driving && close(out.throttle, before));  // an untracked hand moves nothing
+        }
+        for (int i = 0; i < 4; ++i) {  // past 0.5 s
+            out = c.Step(lost, settings);
+        }
+        CHECK(!out.driving && out.throttle == 0.0f);
+    }
+    // A recenter: placed again, the holds let go, the lever where it was.
+    {
+        mc::Controls c;
+        mc::Input in = input(0.0f, 0.0f, identity, 0.0f);
+        in.haveRecenters = true;
+        in.recenters = 3;
+        c.Step(in, settings);
+        in = input(0.0f, 1.0f, identity, 1.0f);
+        in.haveRecenters = true;
+        in.recenters = 3;
+        c.Step(in, settings);
+        in = input(0.1f, 1.0f, identity, 1.0f);
+        in.haveRecenters = true;
+        in.recenters = 3;
+        mc::Output out = c.Step(in, settings);
+        float const before = out.throttle;
+        CHECK(!out.replaced && before > 0.3f);
+        in.recenters = 4;
+        in.head.position.x += 1.0f;
+        out = c.Step(in, settings);
+        CHECK(out.replaced && !out.leverHeld && !out.stickHeld && out.driving && close(out.throttle, before));
+        CHECK(close(c.CurrentSeat().leverBase.x, seat.leverBase.x + 1.0f));
+        in.recenters = 4;
+        out = c.Step(in, settings);
+        CHECK(!out.replaced);
+    }
+    // The thumbstick's turret aim, while the stick is held; seeded at the grab.
+    {
+        float yaw = 170.0f;
+        float pitch = 0.0f;
+        mc::StepAim(yaw, pitch, 1.0f, 0.0f, 90.0f, 0.25);  // 22.5 degrees: wraps
+        CHECK(close(yaw, -167.5, 0.01) && close(pitch, 0.0));
+        mc::StepAim(yaw, pitch, 0.1f, 0.1f, 90.0f, 0.25);  // inside the dead zone
+        CHECK(close(yaw, -167.5, 0.01) && close(pitch, 0.0));
+        for (int i = 0; i < 20; ++i) {
+            mc::StepAim(yaw, pitch, 0.0f, 1.0f, 90.0f, 0.25);
+        }
+        CHECK(close(pitch, mc::kAimPitchMaxDeg));
+        mc::Controls c;
+        c.Step(input(0.0f, 0.0f, identity, 0.0f), settings);
+        c.SeedAim(20.0f, -5.0f);
+        mc::Input in = input(0.0f, 0.0f, identity, 1.0f);
+        in.stickX = 1.0f;
+        mc::Output out = c.Step(in, settings);
+        CHECK(out.stickGrabbed && close(out.aimYawDeg, 24.5, 0.01) && close(out.aimPitchDeg, -5.0));
+        in.right.squeeze = 0.0f;
+        out = c.Step(in, settings);  // let go: it no longer moves
+        CHECK(close(out.aimYawDeg, 24.5, 0.01));
+    }
+    // The rumble: only in a holding hand, rising with the engine's speed.
+    {
+        mc::Controls c;
+        c.Step(input(0.0f, 0.0f, identity, 0.0f), settings);
+        mc::Input in = input(0.0f, 1.0f, identity, 0.0f);
+        in.engineSpeed = 0.5f;
+        mc::Output out = c.Step(in, settings);
+        CHECK(close(out.rumbleLeft, 0.06) && out.rumbleRight == 0.0f);
+    }
+    // The picture changes only when it should.
+    CHECK(mc::LeverKey(0.5f, 0.08f, false, false) == mc::LeverKey(0.5001f, 0.08f, false, false));
+    CHECK(mc::LeverKey(0.5f, 0.08f, false, false) != mc::LeverKey(0.6f, 0.08f, false, false));
+    CHECK(mc::LeverKey(0.5f, 0.08f, false, false) != mc::LeverKey(0.5f, 0.08f, true, false));
+    CHECK(mc::StickKey(-0.5f, false, false) != mc::StickKey(0.5f, false, false));
+    CHECK(mc::LeverPixels(0.0f, 0.15f, 0.08f, false, false).size() == size_t{mc::kLeverPixelsWide} * mc::kLeverPixelsLong);
+    CHECK(mc::StickPixels(0.0f, false, true).size() == size_t{mc::kStickPixels} * mc::kStickPixels);
+
+    // The pad mapping's side.
+    {
+        CHECK(gp::FromFlags(-1.0f, 0.1f, 0.2f, gp::kFlagMakoDrive).makoDrive);
+        gp::Options options;
+        options.makoLever = true;
+        options.makoStick = true;
+        gp::Options const back = gp::FromFlags(-1.0f, 0.1f, 0.2f, gp::ToFlags(options));
+        CHECK(back.makoLever && back.makoStick && !back.makoDrive);
+
+        mevr::vr::controllers::State state;
+        state.active = true;
+        state.timeMs = 1000;
+        gp::Latches latches;
+        // Without the flags: as always.
+        state.left.stickY = 0.8f;
+        state.left.primary = true;
+        state.left.secondary = true;
+        state.right.primary = true;
+        state.right.stickX = 0.6f;
+        gp::Options plain;
+        XINPUT_GAMEPAD pad = gp::FromControllers(state, latches, plain);
+        CHECK(pad.sThumbLY > 0 && pad.sThumbRX > 0);
+        CHECK((pad.wButtons & XINPUT_GAMEPAD_X) != 0 && (pad.wButtons & XINPUT_GAMEPAD_Y) != 0 && (pad.wButtons & XINPUT_GAMEPAD_A) != 0);
+        CHECK((pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) == 0);
+        // A press keeps its meaning: those already down don't change when the controls are taken.
+        gp::Options driving;
+        driving.makoDrive = driving.makoLever = driving.makoStick = true;
+        pad = gp::FromControllers(state, latches, driving);
+        CHECK(pad.sThumbLX == 0 && pad.sThumbLY == 0 && pad.sThumbRX == 0 && pad.sThumbRY == 0);
+        CHECK((pad.wButtons & XINPUT_GAMEPAD_X) != 0 && (pad.wButtons & XINPUT_GAMEPAD_Y) != 0 && (pad.wButtons & XINPUT_GAMEPAD_A) != 0);
+        // New presses while held: X jumps, Y boosts, A fires the cannon; the trigger stays the gun.
+        state.left.primary = state.left.secondary = state.right.primary = false;
+        pad = gp::FromControllers(state, latches, driving);
+        CHECK((pad.wButtons & (XINPUT_GAMEPAD_X | XINPUT_GAMEPAD_Y | XINPUT_GAMEPAD_A)) == 0);
+        state.left.primary = true;
+        state.right.trigger = 1.0f;
+        pad = gp::FromControllers(state, latches, driving);
+        CHECK((pad.wButtons & XINPUT_GAMEPAD_A) != 0 && (pad.wButtons & XINPUT_GAMEPAD_X) == 0 && pad.bRightTrigger == 255);
+        state.left.primary = false;
+        state.left.secondary = true;
+        pad = gp::FromControllers(state, latches, driving);
+        CHECK((pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0 && (pad.wButtons & XINPUT_GAMEPAD_Y) == 0);
+        state.left.secondary = false;
+        state.right.primary = true;
+        pad = gp::FromControllers(state, latches, driving);
+        CHECK((pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0 && (pad.wButtons & XINPUT_GAMEPAD_A) == 0);
+        // Letting go of the control mid-press: still the cannon until released; then A again.
+        pad = gp::FromControllers(state, latches, plain);
+        CHECK((pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0 && (pad.wButtons & XINPUT_GAMEPAD_A) == 0);
+        state.right.primary = false;
+        pad = gp::FromControllers(state, latches, plain);
+        state.right.primary = true;
+        pad = gp::FromControllers(state, latches, plain);
+        CHECK((pad.wButtons & XINPUT_GAMEPAD_A) != 0 && (pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) == 0);
+        // The thumbstick pushed at the moment the hand lets go stays the turret's until centred.
+        state.right.primary = false;
+        state.right.stickX = 0.9f;
+        pad = gp::FromControllers(state, latches, driving);
+        CHECK(pad.sThumbRX == 0);
+        pad = gp::FromControllers(state, latches, plain);
+        CHECK(pad.sThumbRX == 0);
+        state.right.stickX = 0.0f;
+        pad = gp::FromControllers(state, latches, plain);
+        state.right.stickX = 0.9f;
+        pad = gp::FromControllers(state, latches, plain);
+        CHECK(pad.sThumbRX > 0);
+        // A squeeze at a control isn't RB, and stays off it while kept (the holsters' seam).
+        gp::Latches grip;
+        gp::Options atControl;
+        atControl.rightGripFree = true;
+        state.right.squeeze = 1.0f;
+        pad = gp::FromControllers(state, grip, atControl);
+        CHECK((pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) == 0);
+        pad = gp::FromControllers(state, grip, plain);
+        CHECK((pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) == 0);
+        state.right.squeeze = 0.0f;
+        gp::FromControllers(state, grip, plain);
+        state.right.squeeze = 1.0f;
+        pad = gp::FromControllers(state, grip, plain);
+        CHECK((pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0);  // away from it: the cannon, as today
+    }
+}
+
 void TestHudPieces() {
     namespace hp = mevr::vr::hud_pieces;
     auto close = [](double a, double b, double tolerance) { return std::abs(a - b) <= tolerance; };
@@ -8198,6 +8570,7 @@ int main() {
     TestSightPullReachesRelief();
     TestAds();
     TestInteractLabel();
+    TestMakoControls();
     TestHudPieces();
     TestSightSettings();
     TestSightGeometry();
