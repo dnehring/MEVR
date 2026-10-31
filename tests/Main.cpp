@@ -30,6 +30,7 @@
 #include "core/vr/GameMenuRequest.hpp"
 #include "core/vr/GamePointer.hpp"
 #include "core/vr/Haptics.hpp"
+#include "core/vr/HudPieces.hpp"
 #include "core/vr/ImageConvert.hpp"
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/LayerComposite.hpp"
@@ -6306,6 +6307,108 @@ void TestInteractLabel() {
     il::Reset();
 }
 
+// HUD pieces on the body (core/vr/HudPieces, research/41).
+void TestHudPieces() {
+    namespace hp = mevr::vr::hud_pieces;
+    auto close = [](double a, double b, double tolerance) { return std::abs(a - b) <= tolerance; };
+    // The bands are anchored to the frame's bottom: the same stage offsets on the 2344x2392 frame (1306 stage px tall)
+    // and the 1536x1594 one (1328 tall), where the pieces sit 22 stage px lower.
+    for (auto const [w, h] : {std::pair{2344u, 2392u}, std::pair{1536u, 1594u}, std::pair{1059u, 1080u}}) {
+        double const scale = w / 1280.0;  // frame px per stage px
+        double const stageH = h / scale;
+        hp::Rect const wrist = hp::DefaultWristCrop(w, h);
+        CHECK(close(wrist.x, 440.0 / 1280.0, 1e-6) && close(wrist.width, 400.0 / 1280.0, 1e-6));
+        CHECK(close(wrist.y * stageH, stageH - 165.0, 0.01) && close((wrist.y + wrist.height) * stageH, stageH - 25.0, 0.01));
+        hp::Rect const gun = hp::DefaultGunCrop(w, h);
+        CHECK(close(gun.x, 56.0 / 1280.0, 1e-6) && close(gun.width, 168.0 / 1280.0, 1e-6));
+        CHECK(close(gun.y * stageH, stageH - 145.0, 0.01) && close((gun.y + gun.height) * stageH, stageH - 10.0, 0.01));
+        // The measured content (alpha > 40: the arc x 459..817, the bottom 152..34; the weapon panel x 69..200, the bottom
+        // 133..40) lies inside each band, and the bands stay clear of each other and of the radar (x 1100..1212).
+        CHECK(wrist.x * 1280.0 < 459.0 && (wrist.x + wrist.width) * 1280.0 > 817.0);
+        CHECK(gun.x * 1280.0 < 69.0 && (gun.x + gun.width) * 1280.0 > 200.0 && (gun.x + gun.width) * 1280.0 < wrist.x * 1280.0);
+        CHECK((wrist.x + wrist.width) * 1280.0 < 1100.0);
+        hp::Pixels const px = hp::ToPixels(wrist, w, h);
+        CHECK(px.width >= 8 && px.height >= 8 && px.x + px.width <= w && px.y + px.height <= h);
+    }
+    CHECK(!hp::DefaultWristCrop(0, 100).Valid() && !hp::DefaultGunCrop(100, 0).Valid());
+    // On the 2344x2392 frame the status band is pixels (806, 2090) 732 x 257 or so.
+    hp::Pixels const status = hp::ToPixels(hp::DefaultWristCrop(2344, 2392), 2344, 2392);
+    CHECK(status.x == 805 || status.x == 806);
+    CHECK(status.y >= 2089 && status.y <= 2091 && status.y + status.height >= 2345 && status.y + status.height <= 2347);
+
+    // A hand-set crop wins over the default.
+    hp::Settings byHand;
+    byHand.gunCrop = {0.1f, 0.8f, 0.2f, 0.1f};
+    CHECK(hp::GunCrop(byHand, 2344, 2392).x == 0.1f && close(hp::WristCrop(byHand, 2344, 2392).x, 440.0 / 1280.0, 1e-6));
+
+    // The quad keeps its metric width, takes its height from the band's aspect, faces the head and stands upright.
+    hp::Quad quad;
+    CHECK(hp::Place({0.3f, 1.2f, -0.4f}, {0.0f, 1.6f, 0.0f}, 0.08f, 2.5f, quad));
+    CHECK(close(quad.width, 0.08, 1e-6) && close(quad.height, 0.032, 1e-6));
+    XrVector3f const front = mevr::vr::overlay::Rotate(quad.pose.orientation, {0.0f, 0.0f, 1.0f});
+    XrVector3f const toHead{-0.3f, 0.4f, 0.4f};
+    float const len = std::sqrt(toHead.x * toHead.x + toHead.y * toHead.y + toHead.z * toHead.z);
+    CHECK(close(front.x, toHead.x / len, 1e-5) && close(front.y, toHead.y / len, 1e-5) && close(front.z, toHead.z / len, 1e-5));
+    XrVector3f const right = mevr::vr::overlay::Rotate(quad.pose.orientation, {1.0f, 0.0f, 0.0f});
+    CHECK(close(right.y, 0.0, 1e-5));  // no roll: the quad's X stays level
+    // Leaning with the gun's top: a gun rolled 90 degrees (its top to the right) rolls the quad with it.
+    hp::Quad rolled;
+    CHECK(hp::Place({0.0f, 1.2f, -0.5f}, {0.0f, 1.2f, 0.0f}, 0.06f, 1.2f, rolled, {1.0f, 0.0f, 0.0f}));
+    XrVector3f const up = mevr::vr::overlay::Rotate(rolled.pose.orientation, {0.0f, 1.0f, 0.0f});
+    CHECK(close(up.x, 1.0, 1e-5));
+    // An up along the facing falls back to the world's.
+    hp::Quad along;
+    CHECK(hp::Place({0.0f, 1.2f, -0.5f}, {0.0f, 1.2f, 0.0f}, 0.06f, 1.2f, along, {0.0f, 0.0f, 1.0f}));
+    CHECK(close(mevr::vr::overlay::Rotate(along.pose.orientation, {0.0f, 1.0f, 0.0f}).y, 1.0, 1e-5));
+    hp::Quad degenerate;
+    CHECK(!hp::Place({0.0f, 1.6f, 0.0f}, {0.0f, 1.6f, 0.0f}, 0.08f, 2.5f, degenerate));
+    CHECK(!hp::Place({0.0f, 1.6f, -1.0f}, {0.0f, 1.6f, 0.0f}, 0.0f, 2.5f, degenerate));
+
+    // The wrist point: the offset in the grip's axes. An identity grip adds it as it is; a grip turned 90 degrees about
+    // Y (its -Z now pointing -X) carries the offset round with it.
+    XrPosef grip{{0.0f, 0.0f, 0.0f, 1.0f}, {1.0f, 1.0f, -0.5f}};
+    XrVector3f const plain = hp::WristPoint(grip, {-0.03f, 0.06f, 0.05f});
+    CHECK(close(plain.x, 0.97, 1e-6) && close(plain.y, 1.06, 1e-6) && close(plain.z, -0.45, 1e-6));
+    float const s = std::sqrt(0.5f);
+    grip.orientation = {0.0f, s, 0.0f, s};  // +90 degrees about +Y: +X -> -Z, +Z -> +X
+    XrVector3f const turned = hp::WristPoint(grip, {-0.03f, 0.06f, 0.05f});
+    CHECK(close(turned.x, 1.05, 1e-5) && close(turned.y, 1.06, 1e-6) && close(turned.z, -0.47, 1e-5));
+
+    // The gun point: behind the muzzle along the barrel, up toward the gun's top.
+    XrVector3f const anchor = hp::GunPoint({0.0f, 1.0f, -1.0f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}, 0.15f, 0.04f);
+    CHECK(close(anchor.x, 0.0, 1e-6) && close(anchor.y, 1.04, 1e-6) && close(anchor.z, -0.85, 1e-6));
+
+    // Settings: defaults, values, and bad values kept out with a word each.
+    hp::Settings const defaults = hp::ReadSettings(mevr::ini::File{});
+    CHECK(defaults.wristStatus && defaults.gunStatus && close(defaults.wristWidthM, 0.08, 1e-6) && close(defaults.gunWidthM, 0.06, 1e-6));
+    CHECK(close(defaults.wristOffset.x, -0.03, 1e-6) && close(defaults.wristOffset.y, 0.06, 1e-6) && close(defaults.wristOffset.z, 0.05, 1e-6));
+    CHECK(close(defaults.gunBackM, 0.15, 1e-6) && close(defaults.gunUpM, 0.04, 1e-6) && !defaults.wristCrop.Valid() && !defaults.gunCrop.Valid());
+    mevr::ini::File const file = mevr::ini::Parse("[Hud]\nwristStatus = 0\ngunWidthM = 0.1\nwristOffset = 0.01, -0.02, 0.03\n"
+                                                  "gunCrop = 0.05 0.85 0.15 0.12\nwristCrop = 0.9 0.9 0.5 0.5\ngunBackM = abc\n");
+    std::string problems;
+    hp::Settings const read = hp::ReadSettings(file, &problems);
+    CHECK(!read.wristStatus && read.gunStatus && close(read.gunWidthM, 0.1, 1e-6) && close(read.wristWidthM, 0.08, 1e-6));
+    CHECK(close(read.wristOffset.x, 0.01, 1e-6) && close(read.wristOffset.y, -0.02, 1e-6) && close(read.wristOffset.z, 0.03, 1e-6));
+    CHECK(read.gunCrop.Valid() && close(read.gunCrop.y, 0.85, 1e-6) && close(read.gunCrop.height, 0.12, 1e-6));
+    CHECK(!read.wristCrop.Valid() && close(read.gunBackM, 0.15, 1e-6));  // past the frame's edge; not a number
+    CHECK(problems.find("wristCrop") != std::string::npos && problems.find("gunBackM") != std::string::npos);
+    float three[3] = {};
+    CHECK(hp::ParseNumbers("1 2 3", 3, three) && three[2] == 3.0f);
+    CHECK(!hp::ParseNumbers("1 2", 3, three) && !hp::ParseNumbers("1 2 3 4", 3, three) && !hp::ParseNumbers("1 x 3", 3, three));
+    CHECK(hp::Describe(read).find("on the HUD only") != std::string::npos);
+
+    // Published pieces age out.
+    hp::Reset();
+    CHECK(!hp::Latest().gunVisible && hp::Latest().size == 0);
+    hp::Pieces pieces;
+    pieces.gunVisible = true;
+    pieces.serial = 3;
+    hp::Publish(pieces);
+    hp::Pieces const latest = hp::Latest();
+    CHECK(latest.gunVisible && latest.serial == 3 && latest.size == sizeof(hp::Pieces) && latest.sequence != 0);
+    hp::Reset();
+}
+
 void TestAds() {
     namespace ads = mevr::vr::ads;
     XrVector3f const head{0.0f, 0.0f, 0.0f};
@@ -8013,6 +8116,7 @@ int main() {
     TestSightPullReachesRelief();
     TestAds();
     TestInteractLabel();
+    TestHudPieces();
     TestSightSettings();
     TestSightGeometry();
     TestScopeMapping();

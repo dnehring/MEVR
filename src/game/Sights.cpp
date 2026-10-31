@@ -657,7 +657,32 @@ std::string ViewText(std::uint32_t view) {
     return eyes + ((view & sv::kViewScope) != 0 ? " sees the scope's picture" : " looks through it");
 }
 
+// The gun's top for a barrel along `direction`: arm IK rolls the gun with the right controller (its aim pose's up, as
+// far as the barrel allows), so the same up places the sight on top of it. Calibrated (research/25): arm IK holds the
+// gun level in the calibrated gun frame, so its top is that up. Nullopt when the barrel points straight up or down.
+std::optional<XrVector3f> TopFor(int type, XrVector3f const& direction) {
+    vr::controllers::State const controllers = vr::controllers::Latest();
+    XrVector3f aimUp = controllers.active && controllers.right.aimValid
+        ? vr::overlay::Rotate(controllers.right.aim.orientation, {0.0f, 1.0f, 0.0f})
+        : XrVector3f{0.0f, 1.0f, 0.0f};
+    if (auto const stance = body_calibration::StanceFor(type); stance && controllers.active && controllers.right.gripValid) {
+        aimUp = vr::calibration::Rotate(vr::calibration::GunOrientation(controllers.right.grip.orientation, *stance), {0.0f, 1.0f, 0.0f});
+    }
+    auto top = sv::TopOf(direction, aimUp);
+    if (!top) {
+        top = sv::TopOf(direction, {0.0f, 1.0f, 0.0f});
+    }
+    return top;
+}
+
 } // namespace
+
+std::optional<XrVector3f> GunTop(vr::aim_ray::Ray const& ray) {
+    if (!ray.valid) {
+        return std::nullopt;
+    }
+    return TopFor(static_cast<int>(weapon::Type()), ray.direction);
+}
 
 bool TryStartup() {
 #if defined(MEVR_GAME_LE1)
@@ -704,21 +729,7 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
             engine::UnrealVector const toMuzzle{muzzle->location.x - muzzle->origin.x, muzzle->location.y - muzzle->origin.y,
                 muzzle->location.z - muzzle->origin.z};
             float const length = static_cast<float>(Dot(toMuzzle, muzzle->barrel));
-            // The gun's top: arm IK rolls the gun with the right controller (its aim pose's up, as far as
-            // the barrel allows), so the same up places the sight on top of it.
-            vr::controllers::State const controllers = vr::controllers::Latest();
-            XrVector3f aimUp = controllers.active && controllers.right.aimValid
-                ? vr::overlay::Rotate(controllers.right.aim.orientation, {0.0f, 1.0f, 0.0f})
-                : XrVector3f{0.0f, 1.0f, 0.0f};
-            // Calibrated (research/25): arm IK holds the gun level in the calibrated gun frame, so its top is that up.
-            if (auto const stance = body_calibration::StanceFor(type); stance && controllers.active && controllers.right.gripValid) {
-                aimUp = vr::calibration::Rotate(vr::calibration::GunOrientation(controllers.right.grip.orientation, *stance),
-                    {0.0f, 1.0f, 0.0f});
-            }
-            auto top = sv::TopOf(ray.direction, aimUp);
-            if (!top) {
-                top = sv::TopOf(ray.direction, {0.0f, 1.0f, 0.0f});
-            }
+            auto const top = TopFor(type, ray.direction);
             if (!top) {
                 status = "none (the barrel points straight up or down: no top)";
             } else {

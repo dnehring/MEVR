@@ -7,6 +7,7 @@
 #include "core/ik/Rigid.hpp"
 #include "core/ik/Vent.hpp"
 #include "core/vr/Comfort.hpp"
+#include "core/vr/HudPieces.hpp"
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/Sights.hpp"
@@ -325,5 +326,10 @@ struct Vent {
     ik::vent::Zone zone;
 };
 Vent GetVent();
+
+// [Hud] (research/41): the player's status on the left wrist (wristStatus, wristWidthM, wristOffset) and the weapon
+// panel on the gun (gunStatus, gunWidthM, gunBackM, gunUpM), their bands by hand (wristCrop, gunCrop). The host reads
+// the same section for its quads; the mod uses gunStatus and the gun anchor's offsets.
+vr::hud_pieces::Settings GetHud();
 
 } // namespace mevr::game::hand_calibration

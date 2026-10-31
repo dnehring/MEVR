@@ -11,6 +11,10 @@
 //   cut out of the HUD panel meanwhile so it shows once (docs/squad-weapons-design.md, "Native wheel");
 // - the game's interaction prompt (the target status widget: the object's name, its action and the A glyph) cut out
 //   of the HUD panel and shown big at the object the mod says A would use (core/vr/InteractLabel, research/40);
+// - the HUD pieces on the body (core/vr/HudPieces, research/41): the player's status (the health and shield arc, the
+//   squad's portraits, the medi-gel count) on the back of the left wrist, a fixed offset from the left grip pose, and
+//   the weapon panel (the gun, its heat strip, the grenade count) on the drawn gun where the mod says it is, both cut
+//   out of the HUD panel meanwhile ([Hud] in ASI\LE1MEVR.ini, read here);
 // - the comfort vignette (plugin/Vignette.cpp, research/31): head-locked, under the others, only while wanted;
 // - [MENUVIS] readbacks that tell whether Halcyon's Insert menu texture has visible pixels.
 //
@@ -23,10 +27,12 @@
 #include "halcyon/le1/pchud.h"
 #include "halcyon/le1/vr_config.h"
 
+#include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/vr/AimRay.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/FrameProbe.hpp"
+#include "core/vr/HudPieces.hpp"
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/SquadMenu.hpp"
@@ -38,6 +44,7 @@
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/MainMenu.hpp"
 #endif
+#include "plugin/MevrMenu.hpp"
 #include "plugin/PerfProbe.hpp"
 #include "plugin/RecenterTilt.hpp"
 #include "plugin/SightLayers.hpp"
@@ -65,6 +72,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <format>
 #include <string>
 #include <vector>
@@ -180,8 +188,8 @@ bool SamplesLinear(DXGI_FORMAT f) {
 // The alpha is the coverage of the "over" draws combined with the tint (what the other blend modes left
 // of the world behind): 1 - (1 - coverage) * tint. 8-bit UNORM panels hold the game's gamma-encoded
 // blend: un-premultiply, decode, re-premultiply. Float (scRGB) panels: scale so SDR white is 1.0 and
-// clip keeping the hue, like the eye blit. Pixels inside the mask rectangle come out transparent (the
-// HUD panel while a wheel has a panel of its own).
+// clip keeping the hue, like the eye blit. Pixels inside any of the three mask rectangles come out transparent (the
+// HUD panel while a wheel, the interaction prompt or a HUD piece has a quad of its own).
 // GridPS: the most opaque pixel (that same alpha) in each cell of a coarse grid over the whole texture,
 // every 4th pixel each way: where the UI is (core/vr/WheelCrop).
 // MEVR_PANEL_OUT: the colour correction's hook (plugin/Colour, research/27), the identity here; the corrected
@@ -192,7 +200,7 @@ constexpr char kPanelShader[] = R"(
 #endif
 Texture2D<float4> src : register(t0);
 Texture2D<float4> tint : register(t1);
-cbuffer Params : register(b0) { uint4 info; float4 params; int4 window; int4 mask; };
+cbuffer Params : register(b0) { uint4 info; float4 params; int4 window; int4 masks[3]; };
 struct VSOut { float4 pos : SV_Position; };
 VSOut VSMain(uint id : SV_VertexID) {
     float2 p = float2((id == 2) ? 3.0 : -1.0, (id == 1) ? 3.0 : -1.0);
@@ -204,8 +212,11 @@ float Behind(int2 q) {
 float4 PSMain(VSOut i) : SV_Target {
     uint f = max(info.x, 1u);
     int2 base = window.xy + int2(i.pos.xy) * int(f);
-    if (mask.z > mask.x && base.x >= mask.x && base.x < mask.z && base.y >= mask.y && base.y < mask.w)
-        return float4(0, 0, 0, 0);
+    [unroll] for (int m = 0; m < 3; ++m) {
+        int4 mask = masks[m];
+        if (mask.z > mask.x && base.x >= mask.x && base.x < mask.z && base.y >= mask.y && base.y < mask.w)
+            return float4(0, 0, 0, 0);
+    }
     float4 sum = 0;
     float behind = 0;
     [loop] for (uint y = 0; y < f; ++y)
@@ -244,9 +255,9 @@ struct PanelParams {
     std::uint32_t info[4];  // factor, source width, source height, 0
     float params[4];        // linear source (1/0), white scale, 0, 0
     std::int32_t window[4]; // blit: the window's origin (source pixels), 0, 0; grid: 0, 0, cell width, cell height
-    std::int32_t mask[4];   // x0, y0, x1, y1 (source pixels); x1 <= x0: none
+    std::int32_t masks[3][4];  // each x0, y0, x1, y1 (source pixels); x1 <= x0: none
 };
-static_assert(sizeof(PanelParams) == 64);
+static_assert(sizeof(PanelParams) == 96);
 
 using D3DCompileFn = HRESULT(WINAPI*)(LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MACRO*, ID3DInclude*, LPCSTR,
     LPCSTR, UINT, UINT, ID3DBlob**, ID3DBlob**);
@@ -629,7 +640,7 @@ std::uint64_t gSightSeenMs = 0;    // an eye last looked through the gun's sight
 std::uint64_t gNextPanelLogMs = 0;
 
 // One blit of a window of the panel texture (and its tint) into a swapchain image, `factor` times
-// smaller; pixels inside `mask` come out transparent. Returns the image written (released), or nullptr.
+// smaller; pixels inside any of `masks` come out transparent. Returns the image written (released), or nullptr.
 struct Window {
     UINT x = 0;
     UINT y = 0;
@@ -642,9 +653,21 @@ struct Mask {
     INT x1 = 0;  // x1 <= x0: none
     INT y1 = 0;
 };
+// Up to three rectangles cut out of a blit (the shader's masks): a wheel or the interaction prompt, the wrist piece, the
+// gun piece.
+struct Masks {
+    static constexpr unsigned kMax = 3;
+    Mask rects[kMax];
+    unsigned count = 0;
+    void Add(UINT x, UINT y, UINT width, UINT height) {
+        if (count < kMax && width > 0 && height > 0) {
+            rects[count++] = {static_cast<INT>(x), static_cast<INT>(y), static_cast<INT>(x + width), static_cast<INT>(y + height)};
+        }
+    }
+};
 
 ID3D11Texture2D* Blit(ID3D11DeviceContext* context, ID3D11Device* device, QuadSwapchain& swapchain, Window const& window,
-    UINT factor, Mask const& mask, float whiteScale, bool probe = false) {
+    UINT factor, Masks const& masks, float whiteScale, bool probe = false) {
     if (!EnsurePipeline(device) || gPanel.srv == nullptr || gPanel.tintSrv == nullptr) {
         return nullptr;
     }
@@ -663,7 +686,13 @@ ID3D11Texture2D* Blit(ID3D11DeviceContext* context, ID3D11Device* device, QuadSw
     if (rtv != nullptr) {
         PanelParams params{{factor, gPanel.width, gPanel.height, 0},
             {SamplesLinear(gPanel.format) ? 1.0f : 0.0f, IsFloatFormat(gPanel.format) ? whiteScale : 1.0f, 0.0f, 0.0f},
-            {static_cast<std::int32_t>(window.x), static_cast<std::int32_t>(window.y), 0, 0}, {mask.x0, mask.y0, mask.x1, mask.y1}};
+            {static_cast<std::int32_t>(window.x), static_cast<std::int32_t>(window.y), 0, 0}, {}};
+        for (unsigned m = 0; m < masks.count && m < Masks::kMax; ++m) {
+            params.masks[m][0] = masks.rects[m].x0;
+            params.masks[m][1] = masks.rects[m].y0;
+            params.masks[m][2] = masks.rects[m].x1;
+            params.masks[m][3] = masks.rects[m].y1;
+        }
         context->UpdateSubresource(gPipeline.params.Get(), 0, nullptr, &params, 0, 0);
         StateGuard guard(context);
         D3D11_VIEWPORT viewport{0.0f, 0.0f, static_cast<float>(swapchain.width), static_cast<float>(swapchain.height), 0.0f, 1.0f};
@@ -718,7 +747,7 @@ bool EnsureSwapchain(QuadSwapchain& swapchain, std::uint32_t width, std::uint32_
     return true;
 }
 
-bool RenderPanel(ID3D11DeviceContext* context, ID3D11Device* device, float whiteScale, Mask const& mask) {
+bool RenderPanel(ID3D11DeviceContext* context, ID3D11Device* device, float whiteScale, Masks const& masks) {
     UINT const factor = std::clamp<UINT>(static_cast<UINT>(std::lround(gPanel.width / 1400.0)), 2u, 4u);
     std::uint32_t const width = std::max<std::uint32_t>(gPanel.width / factor, 16);
     std::uint32_t const height = std::max<std::uint32_t>(gPanel.height / factor, 16);
@@ -728,7 +757,7 @@ bool RenderPanel(ID3D11DeviceContext* context, ID3D11Device* device, float white
     gPanelFactor = factor;
     bool const probe = !gProbedPanel && gPanelDrawsLastFrame.load(std::memory_order_relaxed) > 0;
     ID3D11Texture2D* const image =
-        Blit(context, device, gPanelSwapchain, {0, 0, gPanel.width, gPanel.height}, factor, mask, whiteScale, probe);
+        Blit(context, device, gPanelSwapchain, {0, 0, gPanel.width, gPanel.height}, factor, masks, whiteScale, probe);
     gProbedPanel = gProbedPanel || (probe && image != nullptr);
     return image != nullptr;
 }
@@ -819,7 +848,7 @@ void CaptureGrid(ID3D11DeviceContext* context, ID3D11Device* device, bool wheelS
     }
     std::int32_t const cellW = static_cast<std::int32_t>((gPanel.width + kGridColumns - 1) / kGridColumns);
     std::int32_t const cellH = static_cast<std::int32_t>((gPanel.height + kGridRows - 1) / kGridRows);
-    PanelParams params{{1, gPanel.width, gPanel.height, 0}, {0.0f, 1.0f, 0.0f, 0.0f}, {0, 0, cellW, cellH}, {0, 0, 0, 0}};
+    PanelParams params{{1, gPanel.width, gPanel.height, 0}, {0.0f, 1.0f, 0.0f, 0.0f}, {0, 0, cellW, cellH}, {}};
     context->UpdateSubresource(gPipeline.params.Get(), 0, nullptr, &params, 0, 0);
     {
         StateGuard guard(context);
@@ -965,6 +994,96 @@ il::Label LabelWanted() {
             sizeof(il::Label));
     }
     return il::Label{};
+}
+
+// ---- HUD pieces on the body (Present thread; research/41) ------------------------------------------------------
+// The player's status on the left wrist (from the left grip pose, host only) and the weapon panel on the gun (where
+// the mod says, HostServices v22). [Hud] is read here from the settings file, once a second while it changes.
+namespace hp = mevr::vr::hud_pieces;
+
+QuadSwapchain gWristSwapchain;
+QuadSwapchain gGunSwapchain;
+XrCompositionLayerQuad gWristQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+XrCompositionLayerQuad gGunQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+
+struct PiecesState {
+    bool wristShown = false;          // the wrist piece went out last frame
+    bool gunShown = false;            // the gun piece went out last frame
+    std::uint32_t gunSerial = 0;      // the mod's weapon it was logged for
+    std::uint32_t lastPiecesSize = 0; // the mod's Pieces size last seen (to log a mismatch once)
+    std::uint64_t nextLogMs = 0;      // the wrist's place, now and then
+};
+PiecesState gPieces;
+
+hp::Settings gHudSettings;
+std::string gHudSettingsText;
+std::uint64_t gHudSettingsNextMs = 0;
+FILETIME gHudSettingsStamp{};
+bool gHudSettingsLoaded = false;
+
+// [Hud] from ASI\LE1MEVR.ini (the mod's file too): re-read within a second of a change.
+hp::Settings const& HudSettings(std::uint64_t now) {
+    if (now < gHudSettingsNextMs) {
+        return gHudSettings;
+    }
+    gHudSettingsNextMs = now + 1000;
+    std::wstring const& path = SettingsPath();
+    WIN32_FILE_ATTRIBUTE_DATA data{};
+    if (path.empty() || !GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data)) {
+        return gHudSettings;
+    }
+    if (gHudSettingsLoaded && CompareFileTime(&data.ftLastWriteTime, &gHudSettingsStamp) == 0) {
+        return gHudSettings;
+    }
+    gHudSettingsStamp = data.ftLastWriteTime;
+    gHudSettingsLoaded = true;
+    mevr::ini::Loaded const loaded = mevr::ini::Read(std::filesystem::path(path));
+    std::string problems;
+    gHudSettings = hp::ReadSettings(loaded.file, &problems);
+    if (!problems.empty()) {
+        mevr::log::Warn("overlays: [Hud] {}", problems);
+    }
+    if (std::string const text = hp::Describe(gHudSettings); text != gHudSettingsText) {
+        gHudSettingsText = text;
+        LogBoth("[MEVR-HUD] pieces: " + text);
+    }
+    return gHudSettings;
+}
+
+// The mod's latest pieces, or none (a struct of another size: host and mod from different builds).
+hp::Pieces PiecesWanted() {
+    hp::Pieces latest = hp::Latest();
+    if (latest.size == sizeof(hp::Pieces)) {
+        return latest;
+    }
+    if (latest.size != 0 && latest.size != gPieces.lastPiecesSize) {
+        gPieces.lastPiecesSize = latest.size;
+        mevr::log::Warn("overlays: the mod's HUD pieces are {} bytes, the host's {}: the weapon panel stays on the HUD; rebuild both",
+            latest.size, sizeof(hp::Pieces));
+    }
+    return hp::Pieces{};
+}
+
+// One HUD piece's quad: its band blitted into its swapchain (1:1), the quad placed. False if anything failed.
+bool ShowPiece(ID3D11DeviceContext* context, ID3D11Device* device, QuadSwapchain& swapchain, XrCompositionLayerQuad& quad,
+    char const* what, char const* name, hp::Pixels const& px, XrVector3f const& position, XrVector3f const& head, float widthM,
+    XrVector3f const& up, void* appSpace, float whiteScale) {
+    hp::Quad placed;
+    float const aspect = static_cast<float>(px.width) / static_cast<float>(px.height);
+    if (px.width == 0 || px.height == 0 || !hp::Place(position, head, widthM, aspect, placed, up) ||
+        !EnsureSwapchain(swapchain, px.width, px.height, what, name) ||
+        Blit(context, device, swapchain, {px.x, px.y, px.width, px.height}, 1, Masks{}, whiteScale) == nullptr) {
+        return false;
+    }
+    quad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
+    quad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied
+    quad.space = static_cast<XrSpace>(appSpace);
+    quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+    quad.subImage.swapchain = swapchain.handle;
+    quad.subImage.imageRect = {{0, 0}, {static_cast<int32_t>(px.width), static_cast<int32_t>(px.height)}};
+    quad.pose = placed.pose;
+    quad.size = {placed.width, placed.height};
+    return true;
 }
 
 // A ring with a centre dot, light cyan with a dark rim so it reads on bright and dark backgrounds.
@@ -1375,6 +1494,8 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         gPointerDotSwapchain.Forget();
         gWheelSwapchain.Forget();
         gLabelSwapchain.Forget();
+        gWristSwapchain.Forget();
+        gGunSwapchain.Forget();
         gSession = session;
     }
     auto const& cfg = MELEVR::Config::Get();
@@ -1452,10 +1573,9 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         cropRect = crop::DefaultCrop(gPanel.width, gPanel.height);
     }
     crop::Pixels const cropPx = crop::ToPixels(cropRect, gPanel.width, gPanel.height);
-    Mask hudMask;
+    Masks hudMasks;
     if (wheelWanted) {
-        hudMask = {static_cast<INT>(cropPx.x), static_cast<INT>(cropPx.y), static_cast<INT>(cropPx.x + cropPx.width),
-            static_cast<INT>(cropPx.y + cropPx.height)};
+        hudMasks.Add(cropPx.x, cropPx.y, cropPx.width, cropPx.height);
     }
     // The interaction prompt at the object (never with a wheel up: both take their part out of the same panel).
     il::Label const label = LabelWanted();
@@ -1467,14 +1587,31 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         : il::DefaultCrop(gPanel.width, gPanel.height);
     il::Pixels const labelPx = il::ToPixels(labelRect, gPanel.width, gPanel.height);
     if (labelWanted && labelPx.width > 0) {
-        hudMask = {static_cast<INT>(labelPx.x), static_cast<INT>(labelPx.y), static_cast<INT>(labelPx.x + labelPx.width),
-            static_cast<INT>(labelPx.y + labelPx.height)};
+        hudMasks.Add(labelPx.x, labelPx.y, labelPx.width, labelPx.height);
+    }
+    // The HUD pieces on the body (research/41): on foot only, with the HUD on the panel, never with a wheel up. The wrist
+    // needs the left controller tracked; the gun needs the mod's anchor (a drawn gun aimed along its barrel).
+    hp::Settings const& hud = HudSettings(now);
+    hp::Pieces const pieces = PiecesWanted();
+    mevr::vr::controllers::State const pieceControllers = mevr::vr::controllers::Latest();
+    bool const piecesAllowed = !wheelWanted && engaged && gameplay && gLastGameMode == 0 && frame.worldFrame && !frame.menuOpen &&
+        frame.headValid && gPanel.texture != nullptr && gPanel.tintSrv != nullptr && device != nullptr;
+    bool const wristWanted = piecesAllowed && hud.wristStatus && !gWristSwapchain.failed && pieceControllers.active &&
+        pieceControllers.left.gripValid;
+    bool const gunWanted = piecesAllowed && hud.gunStatus && !gGunSwapchain.failed && pieces.gunVisible;
+    hp::Pixels const wristPx = hp::ToPixels(hp::WristCrop(hud, gPanel.width, gPanel.height), gPanel.width, gPanel.height);
+    hp::Pixels const gunPx = hp::ToPixels(hp::GunCrop(hud, gPanel.width, gPanel.height), gPanel.width, gPanel.height);
+    if (wristWanted && wristPx.width > 0) {
+        hudMasks.Add(wristPx.x, wristPx.y, wristPx.width, wristPx.height);
+    }
+    if (gunWanted && gunPx.width > 0) {
+        hudMasks.Add(gunPx.x, gunPx.y, gunPx.width, gunPx.height);
     }
 
     bool panelShown = false;
     if (frame.worldFrame && engaged && gameplay && gPanel.texture != nullptr && count < capacity && device != nullptr) {
         gPanelDrawsLastFrame.store(draws, std::memory_order_relaxed);
-        if (RenderPanel(context, device.Get(), frame.floatWhiteScale, hudMask)) {
+        if (RenderPanel(context, device.Get(), frame.floatWhiteScale, hudMasks)) {
             float const width = std::clamp(cfg.hudPanelWidthM, 0.3f, 4.0f);
             gPanelQuad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
             gPanelQuad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied
@@ -1507,7 +1644,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         float const aspect = static_cast<float>(labelPx.width) / static_cast<float>(labelPx.height);
         if (il::Place(label.position, ToVec(frame.headPosition), label.heightDeg, aspect, quad) &&
             EnsureSwapchain(gLabelSwapchain, labelPx.width, labelPx.height, "interaction label", "label") &&
-            Blit(context, device.Get(), gLabelSwapchain, {labelPx.x, labelPx.y, labelPx.width, labelPx.height}, 1, Mask{},
+            Blit(context, device.Get(), gLabelSwapchain, {labelPx.x, labelPx.y, labelPx.width, labelPx.height}, 1, Masks{},
                 frame.floatWhiteScale) != nullptr) {
             gLabelQuad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
             gLabelQuad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied
@@ -1533,6 +1670,53 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     } else if (gLabel.shown) {
         gLabel.shown = false;
         LogBoth("[MEVR-INTERACT] the prompt at the object is gone");
+    }
+    // The player's status on the back of the left wrist: a small quad a fixed offset from the left grip pose, facing the
+    // eyes, upright (research/41).
+    XrVector3f const headPosition = ToVec(frame.headPosition);
+    if (wristWanted && panelShown && wristPx.width > 0 && count < capacity) {
+        XrVector3f const at = hp::WristPoint(pieceControllers.left.grip, hud.wristOffset);
+        if (ShowPiece(context, device.Get(), gWristSwapchain, gWristQuad, "wrist status", "wrist", wristPx, at, headPosition,
+                hud.wristWidthM, {0.0f, 0.0f, 0.0f}, frame.appSpace, frame.floatWhiteScale)) {
+            layersOut[count++] = &gWristQuad;
+            if (!gPieces.wristShown || now >= gPieces.nextLogMs) {
+                char line[320];
+                std::snprintf(line, sizeof line,
+                    "[MEVR-HUD] the player's status on the left wrist: (%.2f, %.2f, %.2f) m, %.3f x %.3f m; the UI's part (%u, %u) %ux%u "
+                    "of %ux%u (%s)", gWristQuad.pose.position.x, gWristQuad.pose.position.y, gWristQuad.pose.position.z,
+                    gWristQuad.size.width, gWristQuad.size.height, wristPx.x, wristPx.y, wristPx.width, wristPx.height, gPanel.width,
+                    gPanel.height, hud.wristCrop.Valid() ? "[Hud] wristCrop" : "the measured band");
+                LogBoth(line);
+                gPieces.nextLogMs = now + 60000;
+            }
+            gPieces.wristShown = true;
+        }
+    } else if (gPieces.wristShown) {
+        gPieces.wristShown = false;
+        LogBoth(std::string("[MEVR-HUD] the player's status is back on the HUD panel") +
+            (!pieceControllers.active || !pieceControllers.left.gripValid ? " (the left controller isn't tracked)" : ""));
+    }
+    // The weapon panel on the gun, where the mod says the held gun is (above the receiver, behind the sights), facing the
+    // eyes, leaning with the gun's top.
+    if (gunWanted && panelShown && gunPx.width > 0 && count < capacity) {
+        if (ShowPiece(context, device.Get(), gGunSwapchain, gGunQuad, "gun status", "gun", gunPx, pieces.gunAnchor, headPosition,
+                hud.gunWidthM, pieces.gunUp, frame.appSpace, frame.floatWhiteScale)) {
+            layersOut[count++] = &gGunQuad;
+            if (!gPieces.gunShown || gPieces.gunSerial != pieces.serial) {
+                char line[320];
+                std::snprintf(line, sizeof line,
+                    "[MEVR-HUD] the weapon panel on the gun: (%.2f, %.2f, %.2f) m, %.3f x %.3f m; the UI's part (%u, %u) %ux%u of %ux%u "
+                    "(%s)", gGunQuad.pose.position.x, gGunQuad.pose.position.y, gGunQuad.pose.position.z, gGunQuad.size.width,
+                    gGunQuad.size.height, gunPx.x, gunPx.y, gunPx.width, gunPx.height, gPanel.width, gPanel.height,
+                    hud.gunCrop.Valid() ? "[Hud] gunCrop" : "the measured band");
+                LogBoth(line);
+            }
+            gPieces.gunShown = true;
+            gPieces.gunSerial = pieces.serial;
+        }
+    } else if (gPieces.gunShown) {
+        gPieces.gunShown = false;
+        LogBoth("[MEVR-HUD] the weapon panel is back on the HUD panel");
     }
     // A HUD-only picture of where the UI is, now and then, until the wheel's place has been measured.
     bool const autoCrop = !(wheelSettings.crop[2] > 0.0f && wheelSettings.crop[3] > 0.0f);
@@ -1573,7 +1757,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         std::uint32_t const width = std::max<std::uint32_t>(cropPx.width / factor, 16);
         std::uint32_t const height = std::max<std::uint32_t>(cropPx.height / factor, 16);
         if (EnsureSwapchain(gWheelSwapchain, width, height, "wheel panel", "wheel") &&
-            Blit(context, device.Get(), gWheelSwapchain, {cropPx.x, cropPx.y, cropPx.width, cropPx.height}, factor, Mask{},
+            Blit(context, device.Get(), gWheelSwapchain, {cropPx.x, cropPx.y, cropPx.width, cropPx.height}, factor, Masks{},
                 frame.floatWhiteScale) != nullptr) {
             float const quadWidth = std::clamp(wheelSettings.width, 0.15f, 1.5f);
             gWheelQuad = {XR_TYPE_COMPOSITION_LAYER_QUAD};

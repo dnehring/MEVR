@@ -5796,7 +5796,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     proj.views = projViews;
 
     // [MEVR] room for the world, our HUD panel, reticle, sight and hand quads, the menu and SteamVR's placeholder
-    constexpr uint32_t kMaxLayers = 10;
+    constexpr uint32_t kMaxLayers = 12;   // [MEVR] 10 until the wrist and gun HUD pieces (research/41)
     const XrCompositionLayerBaseHeader* layers[kMaxLayers] = {};
     uint32_t layerCount = 0;
     XrCompositionLayerQuad flatCineQuad = {};
@@ -5914,8 +5914,8 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         }
         mevrFrame.projectionValid = submitted && !forceFlatCine;
         mevrFrame.pairArm = g_sfrPairArmThisFrame;   // [MEVR] research/39: which Draw the submitted pair (and the scope capture) came from
-        const void* mevrQuads[6] = {};   // [MEVR] HUD panel, reticle, sight (two), squad menu, wheel
-        const unsigned mevrQuadCount = MELEVR::MevrBridge::OverlayLayers(mevrFrame, mevrQuads, 6);
+        const void* mevrQuads[8] = {};   // [MEVR] HUD panel, reticle, sight (two), squad menu, wheel, label, wrist and gun pieces
+        const unsigned mevrQuadCount = MELEVR::MevrBridge::OverlayLayers(mevrFrame, mevrQuads, 8);
         for (unsigned i = 0; i < mevrQuadCount && layerCount < kMaxLayers - 2; ++i)
             layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(mevrQuads[i]);
         if (mevrQuadCount > 0 && cfg.hudPanelDistanceM < mevrNearestQuadM) mevrNearestQuadM = cfg.hudPanelDistanceM;

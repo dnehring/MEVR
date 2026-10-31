@@ -47,6 +47,7 @@
 #include "game/HandTargets.hpp"
 #include "game/HeadSim.hpp"
 #include "game/HeadTracking.hpp"
+#include "game/HudPieces.hpp"
 #include "game/Interact.hpp"
 #include "game/Holsters.hpp"
 #include "game/MenuPause.hpp"
@@ -427,6 +428,7 @@ bool HostTakesAimRay() {
 }
 
 void PublishSight(mevr::vr::aim_ray::Ray const& ray);  // below, with the other v10+ services
+mevr::vr::aim_ray::Ray gTickAimRay;  // this tick's ray as published (invalid until PublishAimRay sends one): for the HUD pieces
 
 // Host renderer: the gun's aim ray (muzzle and barrel, tracking space) for its reticle, every
 // tick; `valid` false whenever shots don't follow the barrel.
@@ -447,6 +449,7 @@ void PublishAimRay() {
     vr::aim_ray::Ray const ray = game::hand_aim::AimRay();
     gHost->setAimRay(&ray);
     gAimRaySent = true;
+    gTickAimRay = ray;
     PublishSight(ray);
 }
 
@@ -522,6 +525,18 @@ mevr::game::interact::Link InteractLink() {
     if (gHostOwnsVr && MEVR_HOST_HAS(setInteractLabel) && gHost->setInteractLabel != nullptr &&
         gHost->interactLabelSize == sizeof(vr::interact::Label)) {
         link.publish = gHost->setInteractLabel;
+    }
+    return link;
+}
+
+// Host renderer (HostServices v22): the HUD pieces on the body (the weapon panel on the gun), if the host's Pieces
+// matches ours.
+mevr::game::hud_pieces::Link HudPiecesLink() {
+    using namespace mevr;
+    game::hud_pieces::Link link;
+    if (gHostOwnsVr && MEVR_HOST_HAS(setHudPieces) && gHost->setHudPieces != nullptr &&
+        gHost->hudPiecesSize == sizeof(vr::hud_pieces::Pieces)) {
+        link.publish = gHost->setHudPieces;
     }
     return link;
 }
@@ -755,7 +770,7 @@ void PublishStatus() {
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, "
         "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
-        "\"fingers\": {}}}",
+        "\"fingers\": {}, \"hudPieces\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -766,7 +781,7 @@ void PublishStatus() {
         game::sights::StatusJson(), game::scope_capture::StatusJson(), game::throwables::StatusJson(), game::vent::StatusJson(), game::posture::StatusJson(),
         game::view_level::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
-        game::interact::StatusJson(), game::fingers::StatusJson());
+        game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -1072,7 +1087,10 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::combat_stance::Tick(deltaSeconds, CombatStanceLink());
         game::hand_aim::Tick();
         game::view_level::Tick(ViewLevelLink());
+        gTickAimRay = {};
         PublishAimRay();
+        // The weapon panel on the gun (research/41): from this tick's ray.
+        game::hud_pieces::Tick(gTickAimRay, HudPiecesLink());
         // What A uses: from where the head looks, and its prompt at the object (research/40).
         EnsureSelectionHook();
         game::interact::Tick(deltaSeconds, gSelectionHooked, InteractLink());
@@ -1140,6 +1158,7 @@ MEVR_MOD_API void MevrModShutdown() {
     }
     gCoverHookTried = gCoverHooked = false;
     game::interact::Shutdown(InteractLink());  // no more swaps, the host's label hidden
+    game::hud_pieces::Shutdown(HudPiecesLink());  // the weapon panel back on the HUD
     if (gInit && gSelectionHooked) {
         removed(engine::selection_gaze::Uninstall(*gInit, !exiting),
             "the selection update hook couldn't be removed, or a call was still inside it");

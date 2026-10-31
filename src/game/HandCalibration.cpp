@@ -466,6 +466,26 @@ constexpr char const* kVentBlock =
     "zoneBelowM = 0.03\n"
     "zoneSideM = 0.09\n";
 
+// Appended to a settings file that has no [Hud] yet (and part of a new file).
+constexpr char const* kHudBlock =
+    "\n"
+    "[Hud]\n"
+    "; HUD pieces on the body (research/41). wristStatus: 1 = your health and shields (the arc with the squad's portraits\n"
+    "; and the medi-gel count) on the back of your left wrist, wristWidthM wide (meters); wristOffset = x y z moves it, in\n"
+    "; the left controller's grip axes (meters: x out of the palm, y toward the elbow, z down the handle). gunStatus: 1 =\n"
+    "; the weapon panel (the gun, its heat strip, the grenade count) on the drawn gun, gunWidthM wide, gunBackM behind the\n"
+    "; muzzle and gunUpM above the bore. wristCrop / gunCrop = x y width height (fractions of the HUD frame) set a piece's\n"
+    "; part of the HUD by hand; empty: the measured place.\n"
+    "wristStatus = 1\n"
+    "wristWidthM = 0.08\n"
+    "wristOffset = -0.03 0.06 0.05\n"
+    "gunStatus = 1\n"
+    "gunWidthM = 0.06\n"
+    "gunBackM = 0.15\n"
+    "gunUpM = 0.04\n"
+    "wristCrop =\n"
+    "gunCrop =\n";
+
 fs::path FilePath() {
     return engine::SettingsFile();  // <exe dir>\ASI\<GAME>MEVR.ini, the host's file too
 }
@@ -1148,6 +1168,19 @@ std::string Describe(Vent const& v) {
 Vent gVent;
 std::string gVentText;
 
+// [Hud] (research/41): the shared reader (core/vr/HudPieces), its complaints logged here.
+vr::hud_pieces::Settings ReadHud(Ini const& ini) {
+    std::string problems;
+    vr::hud_pieces::Settings const s = vr::hud_pieces::ReadSettings(ini, &problems);
+    if (!problems.empty()) {
+        log::Warn("hud pieces: [Hud] {}", problems);
+    }
+    return s;
+}
+
+vr::hud_pieces::Settings gHud;
+std::string gHudText;
+
 Posture ReadPosture(Ini const& ini) {
     Posture p;
     double value = 0.0;
@@ -1543,6 +1576,10 @@ Vent GetVent() {
     return gVent;
 }
 
+vr::hud_pieces::Settings GetHud() {
+    return gHud;
+}
+
 vr::sights::Settings GetSights() {
     return gSights;
 }
@@ -1606,7 +1643,7 @@ void Refresh() {
         {
             std::ofstream out(path);
             out << kDefaultFile << kControlsBlock << kHolstersBlock << kSquadBlock << kSightsBlock << kThrowablesBlock
-                << kComfortBlock << kInteractBlock << kVentBlock;
+                << kComfortBlock << kInteractBlock << kVentBlock << kHudBlock;
             out.close();
             static bool warned = false;
             if (!out || !fs::exists(path, ec)) {
@@ -1632,7 +1669,7 @@ void Refresh() {
     Ini ini = ReadIni(path);
     for (auto const& [name, block] : {std::pair{"Controls", kControlsBlock}, std::pair{"Holsters", kHolstersBlock},
              std::pair{"Squad", kSquadBlock}, std::pair{"Throwables", kThrowablesBlock}, std::pair{"Comfort", kComfortBlock},
-             std::pair{"Sights", kSightsBlock}, std::pair{"Interact", kInteractBlock}, std::pair{"Vent", kVentBlock}}) {
+             std::pair{"Sights", kSightsBlock}, std::pair{"Interact", kInteractBlock}, std::pair{"Vent", kVentBlock}, std::pair{"Hud", kHudBlock}}) {
         if (ini.find(name) == ini.end() && AppendBlock(path, block, name)) {  // an older file: show the new settings
             ini = ReadIni(path);
             stamp = fs::last_write_time(path, ec);
@@ -1876,6 +1913,11 @@ void Refresh() {
     if (std::string const text = Describe(gVent); text != gVentText) {
         gVentText = text;
         log::Info("vent: settings: {}", text);
+    }
+    gHud = ReadHud(ini);
+    if (std::string const text = vr::hud_pieces::Describe(gHud); text != gHudText) {
+        gHudText = text;
+        log::Info("hud pieces: settings: {}", text);
     }
     gSights = ReadSights(ini);
     if (std::string const text = Describe(gSights); text != gSightsText) {

@@ -45,6 +45,9 @@ struct Capture;
 namespace vr::interact {
 struct Label;
 }
+namespace vr::hud_pieces {
+struct Pieces;
+}
 namespace vr::squad_menu {
 struct View;
 namespace wheel {
@@ -59,7 +62,7 @@ struct Panel;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 21;
+inline constexpr int kHostServicesVersion = 22;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -257,6 +260,14 @@ struct HostServices {
     // interactLabelSize matches its own sizeof(Label). Any thread.
     std::uint32_t interactLabelSize = 0;
     void (*setInteractLabel)(vr::interact::Label const* label) = nullptr;
+
+    // Version 22: HUD pieces on the body (game/HudPieces, plugin/HalcyonOverlays, research/41). The mod's pieces each
+    // tick (core/vr/HudPieces.hpp, vr::hud_pieces::Pieces: whether a gun is drawn on foot and where its weapon panel
+    // goes in tracking space): while fresh and visible the host cuts the game's weapon panel out of the HUD panel and
+    // shows it on the gun. The wrist piece (the player's status at the left grip) needs nothing from the mod. The mod
+    // calls it only if hudPiecesSize matches its own sizeof(Pieces). Any thread.
+    std::uint32_t hudPiecesSize = 0;
+    void (*setHudPieces)(vr::hud_pieces::Pieces const* pieces) = nullptr;
 };
 
 } // namespace mevr
