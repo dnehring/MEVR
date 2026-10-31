@@ -881,6 +881,71 @@ void StancePost(StanceCall& c) {
     }
 }
 
+// ---- The Mako's turret (research/44): the controls' DesiredBoneRotation re-asserted before the vehicle's pose ----
+std::atomic<Mesh const*> gTurretMesh{nullptr};
+SRWLOCK gTurretLock = SRWLOCK_INIT;
+Turret gTurret;
+DWORD gTurretThread = 0;
+ULONGLONG gTurretTimeMs = 0;
+std::atomic<bool> gTurretBroken{false};
+TurretStats gTurretStats;  // the publishing (game) thread only
+
+void TurretReject(char const* why) {
+    ++gTurretStats.rejected;
+    gTurretStats.lastReject = why;
+}
+
+void TurretPreGuarded(Mesh* self, Turret const& t) {
+    __try {
+        if (ue3::Reflection::Read<void const*>(self, t.animationsOffset) != t.tree) {
+            TurretReject("the vehicle mesh's AnimTree changed");
+            return;
+        }
+        for (int i = 0; i < t.count; ++i) {
+            TurretControl const& c = t.controls[i];
+            if (c.control == nullptr) {
+                continue;
+            }
+            auto* const rotation = reinterpret_cast<std::int32_t*>(static_cast<std::uint8_t*>(c.control) + t.rotationOffset);
+            rotation[0] = c.pitch;
+            rotation[1] = c.yaw;
+            rotation[2] = c.roll;
+            write_journal::Wrote("BonePose.makoTurret", rotation, 3 * sizeof(std::int32_t));
+        }
+        ++gTurretStats.written;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        gTurretBroken.store(true);
+        gTurretMesh.store(nullptr);
+        TurretReject("access violation in the turret stage: stopped");
+    }
+}
+
+void TurretPre(Mesh* self) {
+    if (self == nullptr || self != gTurretMesh.load(std::memory_order_acquire) || gTurretBroken.load(std::memory_order_relaxed)) {
+        return;
+    }
+    Turret t;
+    DWORD thread = 0;
+    ULONGLONG published = 0;
+    AcquireSRWLockShared(&gTurretLock);
+    bool const same = gTurret.mesh == self;
+    if (same) {
+        t = gTurret;
+        thread = gTurretThread;
+        published = gTurretTimeMs;
+    }
+    ReleaseSRWLockShared(&gTurretLock);
+    if (!same || t.count <= 0 || GetCurrentThreadId() != thread) {
+        return;  // only on the game thread: the stats live there
+    }
+    ++gTurretStats.calls;
+    if (GetTickCount64() - published > kMaxRequestAgeMs) {
+        TurretReject("request too old (the mod stopped publishing)");
+        return;
+    }
+    TurretPreGuarded(self, t);
+}
+
 // No C++ objects with destructors here, so __finally keeps the in-flight count right even when an
 // exception unwinds through the engine's call (a count left up would keep the mod pinned).
 // The stance's call state is several KB: only the player's mesh, while the stance is published, pays for it (every
@@ -900,6 +965,9 @@ void UpdateSkelPoseHook(Mesh* self, float deltaTime, unsigned tickFaceFx, unsign
     gInFlight.fetch_add(1, std::memory_order_acquire);
     __try {
         tStanceLeftOnGun = false;
+        if (self != nullptr && self == gTurretMesh.load(std::memory_order_acquire)) {
+            TurretPre(self);  // the Mako's turret controls, before its pose (research/44)
+        }
         if (self != nullptr && self == gStanceMesh.load(std::memory_order_acquire)) {
             UpdateSkelPoseWithStance(self, deltaTime, tickFaceFx, unused);
         } else {
@@ -989,6 +1057,7 @@ bool Uninstall(hook::Context& init, bool waitForCalls) {
     }
     Clear();
     ClearStance();
+    ClearTurret();
     if (!hook::Uninstall(init, kHookName)) {
         return false;  // still live, and still calling gOrig
     }
@@ -1061,6 +1130,29 @@ void ClearStance() {
 
 HandCapture const& LatestHandCapture() {
     return gHandCapture;
+}
+
+void PublishTurret(Turret const& turret) {
+    AcquireSRWLockExclusive(&gTurretLock);
+    gTurret = turret;
+    gTurretThread = GetCurrentThreadId();
+    gTurretTimeMs = GetTickCount64();
+    ReleaseSRWLockExclusive(&gTurretLock);
+    gTurretMesh.store(gTurretBroken.load() || turret.count <= 0 ? nullptr : turret.mesh, std::memory_order_release);
+}
+
+void ClearTurret() {
+    gTurretMesh.store(nullptr, std::memory_order_release);
+    AcquireSRWLockExclusive(&gTurretLock);
+    gTurret = {};
+    gTurretTimeMs = 0;
+    ReleaseSRWLockExclusive(&gTurretLock);
+}
+
+TurretStats GetTurretStats() {
+    TurretStats stats = gTurretStats;
+    stats.broken = gTurretBroken.load();
+    return stats;
 }
 
 StanceStats GetStanceStats() {

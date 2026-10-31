@@ -10,6 +10,7 @@
 #include "engine/Skeleton.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/HeadTracking.hpp"
+#include "game/Mako.hpp"
 #include "game/SquadWeapons.hpp"
 #include "game/ViewAnchor.hpp"
 #include "ue3/Handles.hpp"
@@ -359,11 +360,15 @@ void Tick(double deltaSeconds, Link const& link) {
     gHandWalk = link.supported && gSettings.walk == cf::WalkToward::LeftHand && link.headTrackedView && !link.mainMenuOpen && onFoot &&
         !squad;
 
-    // The vignette: while the stick turns the player (ours or the game's), or moves him; and after each snap.
-    bool const inPlay = link.headTrackedView && !link.mainMenuOpen && onFoot && !squad && tracked;
-    bool const turning = inPlay && (gOwn ? (gSettings.turn == cf::TurnStyle::Smooth ? turnedThisTick : false)
-                                         : cf::StickTurns(stickX, gSettings));
-    bool const moving = inPlay && std::hypot(moveX, moveY) > gSettings.moveThreshold;
+    // The vignette: while the stick turns the player (ours or the game's), or moves him; and after each snap. In the
+    // Mako (research/44, [Mako] vignette): while the vehicle turns or drives (game/mako measures its yaw rate and speed).
+    mako::Motion const vehicle = mako::CurrentMotion();
+    bool const inMako = vehicle.inVehicle && vehicle.wanted;
+    bool const inPlay = link.headTrackedView && !link.mainMenuOpen && (onFoot || inMako) && !squad && tracked;
+    bool const turning = inPlay && (onFoot ? (gOwn ? (gSettings.turn == cf::TurnStyle::Smooth ? turnedThisTick : false)
+                                                   : cf::StickTurns(stickX, gSettings))
+                                           : vehicle.turning);
+    bool const moving = inPlay && (onFoot ? std::hypot(moveX, moveY) > gSettings.moveThreshold : vehicle.moving);
     float const vignette = gVignette.Target(turning, moving, snapped, now, gSettings);
     if (link.setVignette != nullptr) {
         link.setVignette(vignette);

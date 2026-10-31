@@ -594,6 +594,11 @@ void CheckClasses() {
     CheckClass<UMassEffectGuiManager>("SFXGame.MassEffectGuiManager");
     CheckClass<UBioSFHandler_HUD>("SFXGame.BioSFHandler_HUD");
     CheckClass<UBioPlayerSelection>("SFXGame.BioPlayerSelection");  // game/interact (research/40)
+    // game/mako (research/44): the Mako's turret aimed by the controller.
+    CheckClass<ABioVehicleBase>("SFXGame.BioVehicleBase");
+    CheckClass<ABioVehicleWheeled>("SFXGame.BioVehicleWheeled");
+    CheckClass<UBioVehicleBehaviorBase>("SFXGame.BioVehicleBehaviorBase");
+    CheckClass<UBioSkelControl_TurretConstrained>("SFXGame.BioSkelControl_TurretConstrained");
     CheckClass<UBioSFHandler_PCHUD>("SFXGame.BioSFHandler_PCHUD");
 }
 
@@ -746,6 +751,13 @@ void CheckFields() {
     CheckField("Engine.AnimNodeSequence", "CurrentTime", SDK_FIELD(UAnimNodeSequence, CurrentTime));
     CheckField("Engine.AnimNodeSequence", "bPlaying", SDK_BOOL(UAnimNodeSequence, bPlaying));
     CheckField("Engine.Actor", "Velocity", SDK_FIELD(AActor, Velocity));
+    // game/mako (research/44)
+    CheckField("SFXGame.BioVehicleBase", "m_oBehavior", SDK_FIELD(ABioVehicleBase, m_oBehavior));
+    CheckField("SFXGame.BioVehicleBehaviorBase", "m_aVehicleWeaponInfo", SDK_FIELD(UBioVehicleBehaviorBase, m_aVehicleWeaponInfo));
+    CheckField("SFXGame.BioSkelControl_TurretConstrained", "DesiredBoneRotation",
+        SDK_FIELD(UBioSkelControl_TurretConstrained, DesiredBoneRotation));
+    CheckField("SFXGame.BioSkelControl_TurretConstrained", "bConstrainYaw", SDK_BOOL(UBioSkelControl_TurretConstrained, bConstrainYaw));
+    CheckField("SFXGame.BioSkelControl_TurretConstrained", "bConstrainPitch", SDK_BOOL(UBioSkelControl_TurretConstrained, bConstrainPitch));
     CheckField("SFXGame.BioPawnBehavior", "m_fMaxDesSpdAccelRate", SDK_FIELD(UBioPawnBehavior, m_fMaxDesSpdAccelRate));
     CheckField("SFXGame.BioPawnBehavior", "m_fMaxDesSpdDecelRate", SDK_FIELD(UBioPawnBehavior, m_fMaxDesSpdDecelRate));
     CheckField("SFXGame.BioPawnBehavior", "m_fMaxDesSpdTacAccelRate", SDK_FIELD(UBioPawnBehavior, m_fMaxDesSpdTacAccelRate));
@@ -807,6 +819,11 @@ void CheckPaths() {
     CheckPath("Engine.SkeletalMesh", {"Bounds", "BoxExtent"},
         SDK_AT(offsetof(USkeletalMesh, Bounds) + offsetof(FBoxSphereBounds, BoxExtent), sizeof(FVector)));
     CheckElement("Engine.AnimTree", "SkelControlLists", sizeof(FSkelControlListHead));
+    // game/mako (research/44): the turret each vehicle weapon sits on.
+    CheckElement("SFXGame.BioVehicleBehaviorBase", "m_aVehicleWeaponInfo", sizeof(FBioVehicleWeaponInfo));
+    CheckPath("SFXGame.BioVehicleBehaviorBase", {"m_aVehicleWeaponInfo", "oVehicleWeaponPtr"},
+        SDK_AT(offsetof(FBioVehicleWeaponInfo, oVehicleWeaponPtr), 8));
+    CheckPath("SFXGame.BioVehicleBehaviorBase", {"m_aVehicleWeaponInfo", "nTurretIndex"}, SDK_AT(offsetof(FBioVehicleWeaponInfo, nTurretIndex), 4));
     CheckPath("Engine.AnimTree", {"SkelControlLists", "BoneName"}, SDK_AT(offsetof(FSkelControlListHead, BoneName), 8));
     CheckPath("Engine.AnimTree", {"SkelControlLists", "ControlHead"}, SDK_AT(offsetof(FSkelControlListHead, ControlHead), 8));
     CheckElement("Engine.SkeletalMeshComponent", "Attachments", sizeof(FAttachment));
@@ -928,6 +945,10 @@ void CheckFunctions() {
         // GameMenuRequest (research/28): Start's Console_Menu on each mode that declares it
         "SFXGame.SFXGameModeBase.ShowMenuGui",
         "SFXGame.SFXGameModeVehicle.ShowMenuGui",
+        // Mako (research/44): the game's own turret aim, the vehicle's Tick and its shot start
+        "SFXGame.BioVehicleBehaviorBase.SetDesiredTurretAimPoint",
+        "SFXGame.BioVehicleWheeled.Tick",
+        "SFXGame.BioVehicleWheeled.GetWeaponStartTraceLocation",
         "SFXGame.SFXGameModePowerWheel.ShowMenuGui",
         "SFXGame.SFXGameModeWeaponWheel.ShowMenuGui",
         "SFXGame.SFXGameModeCommand.ShowMenuGui",
@@ -1025,6 +1046,12 @@ void CheckParams() {
     PARAM(APawn_eventGetWeaponStartTraceLocation_Parms, "Engine.Pawn.GetWeaponStartTraceLocation", ReturnValue);
     // Stage 2: hand aim reads BioPawn's override's block through its own parameter (the old code assumed Engine.Pawn's).
     PARAM(APawn_eventGetWeaponStartTraceLocation_Parms, "SFXGame.BioPawn.GetWeaponStartTraceLocation", ReturnValue);
+    // Mako (research/44)
+    PARAM(APawn_eventGetWeaponStartTraceLocation_Parms, "SFXGame.BioVehicleWheeled.GetWeaponStartTraceLocation", ReturnValue);
+    PARAM(UBioVehicleBehaviorBase_execSetDesiredTurretAimPoint_Parms, "SFXGame.BioVehicleBehaviorBase.SetDesiredTurretAimPoint", nTurretIndex);
+    PARAM(UBioVehicleBehaviorBase_execSetDesiredTurretAimPoint_Parms, "SFXGame.BioVehicleBehaviorBase.SetDesiredTurretAimPoint",
+        vTargetLocation);
+    PARAM(UBioVehicleBehaviorBase_execSetDesiredTurretAimPoint_Parms, "SFXGame.BioVehicleBehaviorBase.SetDesiredTurretAimPoint", ReturnValue);
     PARAM(AActor_execSetRotation_Parms, "Engine.Actor.SetRotation", NewRotation);
     PARAM(AActor_execSetRotation_Parms, "Engine.Actor.SetRotation", ReturnValue);
     PARAM(AController_eventGetPlayerViewPoint_Parms, "Engine.PlayerController.GetPlayerViewPoint", out_Location);
@@ -1102,6 +1129,7 @@ void CheckParams() {
     PARMS(APlayerController_execGetScaleFormManager_Parms, "Engine.PlayerController.GetScaleFormManager");
     PARMS(USFXGameModeDefault_execSwitchToWeapon_Parms, "SFXGame.SFXGameModeDefault.SwitchToWeapon");
     PARMS(ABioPlayerController_execGetAdjustedAimFor_Parms, "SFXGame.BioPlayerController.GetAdjustedAimFor");
+    PARMS(UBioVehicleBehaviorBase_execSetDesiredTurretAimPoint_Parms, "SFXGame.BioVehicleBehaviorBase.SetDesiredTurretAimPoint");  // Mako
     PARMS(ABioWeaponRanged_execGetAdjustedAim_Parms, "SFXGame.BioWeaponRanged.GetAdjustedAim");
     PARMS(APawn_eventGetWeaponStartTraceLocation_Parms, "Engine.Pawn.GetWeaponStartTraceLocation");
     PARMS(AActor_execSetRotation_Parms, "Engine.Actor.SetRotation");

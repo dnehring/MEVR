@@ -267,6 +267,37 @@ struct StanceStats {
 };
 StanceStats GetStanceStats();
 
+// The Mako's turret (research/44, game/mako): right before UpdateSkelPose composes the vehicle's pose, its turret's
+// BioSkelControl_TurretConstrained controls get back the DesiredBoneRotation the game's own SetDesiredTurretAimPoint
+// computed for our aim point this tick, so whatever the game set after our call doesn't stand at pose time. Checked
+// on each call: the mesh (by address), its AnimTree (Animations), the game thread, the age; the controls are written
+// at the offset the mod resolved (BioSkelControl_TurretConstrained.DesiredBoneRotation), inside SEH.
+struct TurretControl {
+    void* control = nullptr;  // a BioSkelControl_TurretConstrained (compared and written, never freed here)
+    std::int32_t pitch = 0;
+    std::int32_t yaw = 0;
+    std::int32_t roll = 0;
+};
+struct Turret {
+    ue3::Object const* mesh = nullptr;  // the vehicle's SkeletalMeshComponent, compared by address
+    void const* tree = nullptr;         // its Animations when published
+    std::uint32_t animationsOffset = 0;
+    std::uint32_t rotationOffset = 0;   // DesiredBoneRotation
+    std::array<TurretControl, 4> controls{};
+    int count = 0;
+};
+// Game thread: what the pre-stage writes from the next call on (the calls must come on this thread); Clear stops it.
+void PublishTurret(Turret const& turret);
+void ClearTurret();
+struct TurretStats {
+    std::uint64_t calls = 0;     // UpdateSkelPose calls for the published mesh
+    std::uint64_t written = 0;   // ...where the controls were written
+    std::uint64_t rejected = 0;  // ...where something no longer matched
+    char const* lastReject = nullptr;
+    bool broken = false;         // an access violation: the stage stopped for good
+};
+TurretStats GetTurretStats();
+
 // LE1 only: false (logged) for other games or if the address isn't a function start.
 bool Install(hook::Context& init);
 // Removes the hook and waits (up to 200 ms, if `waitForCalls`) for calls still inside it. False

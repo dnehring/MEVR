@@ -223,6 +223,53 @@ HalfExtents CoverFov(float const fov[2][4]) {
     return {std::tan(horizontal) * 1.05f + 0.04f, std::tan(vertical) * 1.05f + 0.02f};
 }
 
+VehicleThresholds SanitizeVehicle(VehicleThresholds t) {
+    t.moveSpeed = std::clamp(Finite(t.moveSpeed, 150.0f), 1.0f, 100000.0f);
+    t.turnRate = std::clamp(Finite(t.turnRate, 20.0f), 0.1f, 3600.0f);
+    t.stop = std::clamp(Finite(t.stop, 0.6f), 0.0f, 1.0f);
+    t.yawSmoothing = std::clamp(Finite(t.yawSmoothing, 0.1f), 0.0f, 2.0f);
+    return t;
+}
+
+VehicleMotionResult VehicleMotion::Step(float vx, float vy, float vz, int yawUnits, double seconds, VehicleThresholds const& thresholds) {
+    VehicleThresholds const t = SanitizeVehicle(thresholds);
+    double const dt = std::clamp(std::isfinite(seconds) ? seconds : 0.0, 0.001, 0.1);
+    double const speed = std::isfinite(vx) && std::isfinite(vy) && std::isfinite(vz)
+        ? std::sqrt(static_cast<double>(vx) * vx + static_cast<double>(vy) * vy + static_cast<double>(vz) * vz)
+        : 0.0;
+    if (hasYaw) {
+        // The yaw's change since the last step, the shortest way round (the engine keeps it in 0..65535 or signed).
+        int delta = (yawUnits - lastYaw) & 0xFFFF;
+        if (delta >= 0x8000) {
+            delta -= 0x10000;
+        }
+        double const rate = static_cast<double>(delta) / kUnitsPerDegree / dt;
+        // A first-order low-pass: a single frame's jump (a landing, a collision) doesn't count by itself.
+        double const alpha = t.yawSmoothing > 0.0f ? 1.0 - std::exp(-dt / static_cast<double>(t.yawSmoothing)) : 1.0;
+        yawRate += (rate - yawRate) * alpha;
+    } else {
+        yawRate = 0.0;
+        hasYaw = true;
+    }
+    lastYaw = yawUnits;
+    double const moveOn = t.moveSpeed;
+    double const moveOff = t.moveSpeed * t.stop;
+    moving = speed >= moveOn || (moving && speed >= moveOff);
+    double const turnOn = t.turnRate;
+    double const turnOff = t.turnRate * t.stop;
+    double const turn = std::abs(yawRate);
+    turning = turn >= turnOn || (turning && turn >= turnOff);
+    return {moving, turning, speed, yawRate};
+}
+
+void VehicleMotion::Reset() {
+    hasYaw = false;
+    lastYaw = 0;
+    yawRate = 0.0;
+    moving = false;
+    turning = false;
+}
+
 std::optional<double> FlatYawLeft(float x, float y, float z) {
     double const flat = std::hypot(static_cast<double>(x), static_cast<double>(z));
     double const length = std::sqrt(flat * flat + static_cast<double>(y) * y);
