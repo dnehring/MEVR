@@ -12,6 +12,7 @@
 #include "game/Holsters.hpp"
 #include "game/SquadWeapons.hpp"
 #include "game/Throwables.hpp"
+#include "game/Vent.hpp"
 #include "game/ViewAnchor.hpp"
 #include "game/Weapon.hpp"
 
@@ -49,6 +50,7 @@ int gStillTicks = 0;
 bool gLoggedGun = false;  // the diagnostics line for gGun
 double gBlend = 0.0;
 bool gLoggedHeld = false;
+bool gLoggedMasked = false;  // the grab zone hidden from the pad mapping for the vent (game/vent)
 bool gRequested = false;
 
 std::atomic<bool> gHeld{false};
@@ -244,6 +246,18 @@ void Tick(double deltaSeconds, bool requested) {
         gNearest = std::min(gNearest, static_cast<double>(distance));
         gLastSample = sample;
     }
+    // The vent's receiver (game/vent, research/45): while the left hand is at the receiver of a hot gun and nothing
+    // holds the support grip, the pad mapping sees no grab zone, so a squeeze there counts as away from the gun and
+    // the mod gets it (the pad mapping takes the support grip on a NEW squeeze only). A held grip is never let go for it.
+    bool const masked = distance >= 0.0f && !gHeld.load(std::memory_order_relaxed) && vent::MasksSupportZone();
+    if (masked) {
+        distance = -1.0f;
+    }
+    if (masked != gLoggedMasked) {
+        gLoggedMasked = masked;
+        log::Info("support grip: the grab zone is {} the pad mapping ({})", masked ? "hidden from" : "back for",
+            masked ? "the left hand is at the receiver of a hot gun: a squeeze vents it" : "the hand left the receiver, or the gun is cool");
+    }
     gDistance.store(distance, std::memory_order_relaxed);
     gAcquire.store(static_cast<float>(controls.acquireMeters), std::memory_order_relaxed);
     gRelease.store(static_cast<float>(controls.releaseMeters), std::memory_order_relaxed);
@@ -359,6 +373,7 @@ void Shutdown() {
     Reset();
     gBlend = 0.0;
     gLoggedHeld = false;
+    gLoggedMasked = false;
     gRequested = false;
     gHeld.store(false);
     gDistance.store(-1.0f);

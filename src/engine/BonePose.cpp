@@ -267,7 +267,21 @@ SupportSample ApplySupport(Support const& s, double handScale, ik::ArmGoal& left
         out.distanceMeters = (zone ? ik::DistanceToZone(controller, *zone) : ik::Length(controller - foregripAt)) / unitsPerMeter;
         if (zone) {
             ik::Vec3 const axis = ik::Normalize(zone->end - zone->start, ik::Rotate(check, s.barrel));
-            out.alongMeters = ik::Dot(controller - right.wrist, axis) / unitsPerMeter;
+            ik::Vec3 const rel = controller - right.wrist;
+            out.alongMeters = ik::Dot(rel, axis) / unitsPerMeter;
+            // The gun's frame for the vent's receiver zone (core/ik/Vent): its top squared against the axis, its
+            // right from the two (component space is left-handed: right = up x forward).
+            if (s.hasUp && ik::Length(s.up) > 1e-6) {
+                ik::Vec3 top = ik::Rotate(check, s.up);
+                top = top - axis * ik::Dot(top, axis);
+                if (ik::Length(top) > 1e-6) {
+                    top = ik::Normalize(top);
+                    ik::Vec3 const side = ik::Cross(top, axis);
+                    out.upMeters = ik::Dot(rel, top) / unitsPerMeter;
+                    out.sideMeters = ik::Dot(rel, side) / unitsPerMeter;
+                    out.gunFrame = true;
+                }
+            }
         }
     }
     out.blend = blend;

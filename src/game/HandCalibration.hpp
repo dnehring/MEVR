@@ -5,6 +5,7 @@
 #include "core/ik/BodySlots.hpp"
 #include "core/ik/Posture.hpp"
 #include "core/ik/Rigid.hpp"
+#include "core/ik/Vent.hpp"
 #include "core/vr/Comfort.hpp"
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/ScopeCapture.hpp"
@@ -50,6 +51,7 @@
 //   [Throwables] physical grenades and melee (below, GetThrowables).
 //   [Comfort] turning, the comfort vignette, walking toward the left hand (below, GetComfort).
 //   [Interact] what A uses and its prompt at the object (below, GetInteract).
+//   [Vent]  the physical vent of a hot gun (below, GetVent).
 namespace mevr::game::hand_calibration {
 
 // The trim for one hand (0 left, 1 right), in the grip's own axes (ik::GripTrim).
@@ -295,5 +297,33 @@ vr::comfort::Settings GetComfort();
 // [Interact] (research/40): A uses what the head looks at (gaze), the game's prompt big at the object (label,
 // labelHeightDeg, combatLabel), the prompt's part of the HUD by hand (crop = x y width height).
 vr::interact::Settings GetInteract();
+// [Vent] (appended to an older file that lacks it; research/45, game/vent): the physical vent of a hot gun, a
+// mechanic change (docs/trilogy-design.md "Ammo").
+//   enabled          1: with a weapon drawn, squeeze the left grip on the gun's receiver (over and just ahead of
+//                    the right hand) and pull it back and away in one fast stroke, letting go: the heat is gone
+//   ventCooldownS    seconds between vents
+//   ventMinHeat      the gun's heat (as a fraction of ventMaxHeat) under which there's nothing to vent
+//   ventMaxHeat      the heat at which ME1's guns overheat (BioWeaponRanged.m_fCurrentHeat's scale: 1.0 [verify];
+//                    the log says what heat each overheat happened at)
+//   ventSpeedMS      the hand's speed at the release, relative to the gun (m/s)
+//   ventTravelM      how far back along the gun the hand must have come (m)
+//   ventHoldMaxS     a squeeze held longer is a grip, not a rack
+//   effect           1: the game's own cool-down effect (BioWeaponRanged.DoCoolDownEffect) plays on a vent
+//   hapticAmplitude  0..1 (0.5 as designed; 0: none); both hands pulse on a vent
+//   zoneBackM, zoneFrontM, zoneAboveM, zoneBelowM, zoneSideM: the receiver zone in the gun's frame, meters from
+//                    the right hand (core/ik/Vent Zone)
+struct Vent {
+    bool enabled = true;
+    double cooldownS = 4.0;
+    double minHeat = 0.3;
+    double maxHeat = 1.0;
+    double speedMin = 1.0;
+    double travel = 0.05;
+    double holdMax = 1.5;
+    bool effect = true;
+    double hapticAmplitude = 0.5;
+    ik::vent::Zone zone;
+};
+Vent GetVent();
 
 } // namespace mevr::game::hand_calibration

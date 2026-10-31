@@ -20,6 +20,7 @@
 #include "core/ik/TorsoPose.hpp"
 #include "core/ik/TouchReference.hpp"
 #include "core/ik/TwoHand.hpp"
+#include "core/ik/Vent.hpp"
 #include "core/vr/Calibration.hpp"
 #include "core/vr/Colour.hpp"
 #include "core/vr/ColourStrip.hpp"
@@ -4914,6 +4915,136 @@ void TestThrowGrip() {
     CHECK(!thr::UpdateGrip(slow, 0.4f, 0.0, params));
 }
 
+// The physical vent (core/ik/Vent, research/45): the left hand on the gun's receiver, a fast pull back, let go.
+void TestVent() {
+    namespace vnt = mevr::ik::vent;
+    vnt::Zone const zone;
+    vnt::Params params;
+    // The zone: a box around the right hand in the gun's frame, with a shallow bottom (a pistol's cupped support hand is below).
+    CHECK(vnt::InZone({0.05, 0.05, 0.02}, zone));
+    CHECK(vnt::InZone({-0.05, 0.0, -0.02}, zone));
+    CHECK(!vnt::InZone({0.20, 0.05, 0.0}, zone));    // the foregrip, ahead
+    CHECK(!vnt::InZone({0.0, -0.08, 0.0}, zone));    // under the grip
+    CHECK(!vnt::InZone({0.05, 0.05, 0.12}, zone));   // too far beside
+    CHECK(!vnt::InZone({0.15, 0.0, 0.0}, zone) && vnt::InZone({0.15, 0.0, 0.0}, zone, 0.02));  // hysteresis
+    CHECK(!vnt::InZone({std::numeric_limits<double>::quiet_NaN(), 0.0, 0.0}, zone));
+    // Refusals.
+    CHECK(std::string(vnt::Refusal(0.1, 0.0, params)) == "the gun is cool");
+    CHECK(std::string(vnt::Refusal(0.8, 1.0, params)) == "cooldown");
+    CHECK(std::string(vnt::Refusal(-1.0, 0.0, params)) == "the heat is unknown");
+    CHECK(vnt::Refusal(0.3, 0.0, params) == nullptr);
+
+    double const dt = 1.0 / 90.0;
+    double t = 0.0;
+    vnt::Machine machine;
+    auto step = [&](vnt::OnGun p, float squeeze, bool newSqueeze, double heat = 0.8, bool valid = true) {
+        vnt::Input in;
+        in.now = t;
+        in.onGunValid = valid;
+        in.onGun = p;
+        in.newSqueeze = newSqueeze;
+        in.squeeze = squeeze;
+        in.heat = heat;
+        vnt::Step const s = machine.Update(in, zone, params);
+        t += dt;
+        return s;
+    };
+    // The hand rests at `p` with the grip open (the test's hand teleports between places; a rest keeps that jump out of the
+    // release window, and the machine clips the window to the hold anyway).
+    auto settle = [&](vnt::OnGun p) {
+        for (int i = 0; i < 14; ++i) {
+            step(p, 0.0f, false);
+        }
+    };
+    // The hand comes to the receiver (entered), a new squeeze there takes it, nothing else does.
+    settle({0.30, 0.0, 0.0});
+    CHECK(!machine.InZone());
+    CHECK(step({0.30, 0.0, 0.0}, 1.0f, true).event == vnt::Event::None);  // a squeeze at the foregrip: not ours
+    vnt::Step s = step({0.06, 0.05, 0.02}, 0.0f, false);
+    CHECK(s.entered && machine.InZone() && !machine.Holding());
+    settle({0.06, 0.05, 0.02});
+    CHECK(step({0.06, 0.05, 0.02}, 1.0f, false).event == vnt::Event::None);  // an old squeeze moving in takes nothing
+    s = step({0.06, 0.05, 0.02}, 1.0f, true);
+    CHECK(s.event == vnt::Event::Grabbed && machine.Holding());
+    // A rack: back along the gun at ~1.5 m/s for 80 ms (0.12 m), letting go. Vented, and the cooldown starts.
+    vnt::OnGun p{0.06, 0.05, 0.02};
+    for (int i = 0; i < 7; ++i) {
+        p.along -= 1.5 * dt;
+        p.up += 0.3 * dt;
+        CHECK(step(p, 1.0f, false).event == vnt::Event::None);
+    }
+    p.along -= 1.5 * dt;
+    s = step(p, 0.0f, false);
+    CHECK(s.event == vnt::Event::Vented);
+    CHECK(s.release.valid && s.release.speed > 1.2 && s.release.speed < 1.9);
+    CHECK(s.back > 1.2 && s.travel > 0.10);
+    CHECK(!machine.Holding() && machine.Vents() == 1 && machine.CooldownLeft(t) > 3.5);
+    // Within the cooldown a new squeeze is refused.
+    s = step({0.06, 0.05, 0.02}, 1.0f, true);
+    CHECK(s.event == vnt::Event::Refused && std::string(s.why) == "cooldown");
+    t += 5.0;
+    step({0.06, 0.05, 0.02}, 0.0f, false);  // the long gap restarts the history
+    // A cool gun: refused.
+    s = step({0.06, 0.05, 0.02}, 1.0f, true, 0.1);
+    CHECK(s.event == vnt::Event::Refused && std::string(s.why) == "the gun is cool");
+    // A slow release: nothing.
+    settle({0.06, 0.05, 0.02});
+    CHECK(step({0.06, 0.05, 0.02}, 1.0f, true).event == vnt::Event::Grabbed);
+    p = {0.06, 0.05, 0.02};
+    for (int i = 0; i < 9; ++i) {
+        p.along -= 0.2 * dt;
+        step(p, 1.0f, false);
+    }
+    s = step(p, 0.0f, false);
+    CHECK(s.event == vnt::Event::Slow && std::string(s.why) == "too slow" && machine.Vents() == 1);
+    // A fast stroke FORWARD along the gun (toward the muzzle) is no rack.
+    settle({0.0, 0.05, 0.02});
+    CHECK(step({0.0, 0.05, 0.02}, 1.0f, true).event == vnt::Event::Grabbed);
+    p = {0.0, 0.05, 0.02};
+    for (int i = 0; i < 7; ++i) {
+        p.along += 1.5 * dt;
+        step(p, 1.0f, false);
+    }
+    s = step(p, 0.0f, false);
+    CHECK(s.event == vnt::Event::Slow && std::string(s.why) == "not back along the gun");
+    // Pulled straight away from the gun (up), no backward component: no rack either.
+    settle({0.04, 0.05, 0.02});
+    CHECK(step({0.04, 0.05, 0.02}, 1.0f, true).event == vnt::Event::Grabbed);
+    p = {0.04, 0.05, 0.02};
+    for (int i = 0; i < 7; ++i) {
+        p.up += 1.5 * dt;
+        step(p, 1.0f, false);
+    }
+    s = step(p, 0.0f, false);
+    CHECK(s.event == vnt::Event::Slow && std::string(s.why) == "not back along the gun");
+    // Held too long: lapsed, and the release afterwards does nothing; the next squeeze works again.
+    for (int i = 0; i < 5; ++i) {
+        step({0.06, 0.05, 0.02}, 0.0f, false);
+    }
+    CHECK(step({0.06, 0.05, 0.02}, 1.0f, true).event == vnt::Event::Grabbed);
+    bool lapsed = false;
+    for (int i = 0; i < 160 && !lapsed; ++i) {
+        lapsed = step({0.06, 0.05, 0.02}, 1.0f, false).event == vnt::Event::Lapsed;
+    }
+    CHECK(lapsed && !machine.Holding());
+    p = {0.06, 0.05, 0.02};
+    for (int i = 0; i < 7; ++i) {
+        p.along -= 1.5 * dt;
+        step(p, 1.0f, false);
+    }
+    CHECK(step(p, 0.0f, false).event == vnt::Event::None && machine.Vents() == 1);
+    // The gun's frame goes away while held: lost.
+    for (int i = 0; i < 5; ++i) {
+        step({0.06, 0.05, 0.02}, 0.0f, false);
+    }
+    CHECK(step({0.06, 0.05, 0.02}, 1.0f, true).event == vnt::Event::Grabbed);
+    s = step({0.06, 0.05, 0.02}, 1.0f, false, 0.8, false);
+    CHECK(s.event == vnt::Event::Lost && !machine.Holding() && !machine.InZone());
+    // Haptics scale with the strength and clamp.
+    CHECK(vnt::VentPulse(0.5).amplitude > 0.8f && vnt::VentPulse(0.0).amplitude == 0.0f && vnt::VentPulse(2.0).amplitude <= 1.0f);
+    CHECK(vnt::EdgeTick(0.5).amplitude < vnt::VentPulse(0.5).amplitude);
+}
+
 void TestGrenadeMachine() {
     namespace thr = mevr::ik::throwing;
     using mevr::ik::Vec3;
@@ -7931,6 +8062,7 @@ int main() {
     TestThrowVelocity();
     TestThrowGrip();
     TestGrenadeMachine();
+    TestVent();
     TestSwing();
     TestArcPoints();
     TestFaceButtonsOff();

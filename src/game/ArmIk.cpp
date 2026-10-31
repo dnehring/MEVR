@@ -522,6 +522,8 @@ bool RequestSupport(ue3::Object* mesh, SkeletonInfo const& info, std::span<engin
     s.hasGun = zone.capsule;
     s.barrel = grip.barrel;
     s.muzzle = grip.muzzle;
+    s.hasUp = true;  // the gun's top (its roll in the hand): the vent's receiver zone is measured in that frame
+    s.up = up;
     s.frontMeters = zone.frontMeters;
     s.pastMeters = zone.pastMeters;
     s.hold = support_grip::HoldSerial();

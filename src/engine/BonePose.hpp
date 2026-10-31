@@ -85,6 +85,11 @@ struct Support {
     ik::Vec3 muzzle;
     double frontMeters = 0.10;
     double pastMeters = 0.10;
+    // The gun's top in the right hand bone's axes (ik::GunUpInHand; the roll arm IK gives the gun): with it the
+    // writer also measures the left goal's place above and beside the bore (SupportSample::upMeters, sideMeters,
+    // the vent's receiver zone, core/ik/Vent).
+    bool hasUp = false;
+    ik::Vec3 up;
     // + 1 for each new hold (0: not held). At a hold's first write the line from the right hand to where
     // the left hand took hold is captured as the span two-hand aim swings (ik::CapturedSpan), so taking
     // hold anywhere in the zone doesn't swing the gun; the left hand still goes to the foregrip.
@@ -145,6 +150,11 @@ struct SupportSample {
     double distanceMeters = -1.0;
     double foregripMeters = -1.0;  // ...from the foregrip itself (diagnostics)
     double alongMeters = 0.0;      // how far along the barrel from the right hand the left goal is
+    // The left goal in the gun's frame (core/ik/Vent): `alongMeters`, and with Support::hasUp its height above the
+    // bore and its distance beside it (+ to the gun's right); `gunFrame` says all three were measured this write.
+    bool gunFrame = false;
+    double upMeters = 0.0;
+    double sideMeters = 0.0;
     bool captured = false;         // two-hand aim swings the span captured when this hold began
     bool calibrated = false;       // ...which is the guided calibration's (Support::useCalibratedSpan)
     double blend = 0.0;

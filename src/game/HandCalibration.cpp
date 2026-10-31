@@ -436,6 +436,35 @@ constexpr char const* kInteractBlock =
     "labelHeightDeg = 6\n"
     "combatLabel = 0\n"
     "crop =\n";
+// Appended to a settings file that has no [Vent] yet (and part of a new file).
+constexpr char const* kVentBlock =
+    "\n"
+    "[Vent]\n"
+    "; The physical vent (research/45; a mechanic change, docs/trilogy-design.md): with a weapon drawn, squeeze the\n"
+    "; left grip on the gun's receiver (over and just ahead of your right hand, behind the foregrip) and pull it back\n"
+    "; and away in one fast stroke, letting go, like racking a slide: the gun's heat is gone at once. Both hands pulse.\n"
+    "enabled = 1\n"
+    "; ventCooldownS: seconds between vents. ventMinHeat: below this much heat (0..1 of the overheat) there's nothing\n"
+    "; to vent (a squeeze there is just a grip). ventMaxHeat: the heat at which the gun overheats (the game's scale; the\n"
+    "; log line 'vent: ... overheated at' says what it saw).\n"
+    "ventCooldownS = 4\n"
+    "ventMinHeat = 0.3\n"
+    "ventMaxHeat = 1.0\n"
+    "; ventSpeedMS: how fast the hand must leave (m/s, relative to the gun). ventTravelM: how far back along the gun\n"
+    "; it must have come (m). ventHoldMaxS: a squeeze held longer than this is a grip, not a rack.\n"
+    "ventSpeedMS = 1.0\n"
+    "ventTravelM = 0.05\n"
+    "ventHoldMaxS = 1.5\n"
+    "; effect: 1 = the game's own cool-down effect plays on a vent. hapticAmplitude: 0..1 (0.5 as designed, 0 = none).\n"
+    "effect = 1\n"
+    "hapticAmplitude = 0.5\n"
+    "; The receiver zone, meters from your right hand in the gun's frame: behind it, ahead of it, above the bore, below\n"
+    "; it (shallow: a hand cupped under a pistol's grip stays the two-handed grip), to either side.\n"
+    "zoneBackM = 0.06\n"
+    "zoneFrontM = 0.14\n"
+    "zoneAboveM = 0.14\n"
+    "zoneBelowM = 0.03\n"
+    "zoneSideM = 0.09\n";
 
 fs::path FilePath() {
     return engine::SettingsFile();  // <exe dir>\ASI\<GAME>MEVR.ini, the host's file too
@@ -1078,6 +1107,46 @@ std::string Describe(vr::interact::Settings const& i) {
 
 vr::interact::Settings gInteract;
 std::string gInteractText;
+Vent ReadVent(Ini const& ini) {
+    Vent v;
+    double value = 0.0;
+    auto const flag = [&](char const* key, bool& out) {
+        if (Number(ini, "Vent", key, value)) {
+            out = value != 0.0;
+        }
+    };
+    auto const number = [&](char const* key, double& out, double lo, double hi) {
+        if (Number(ini, "Vent", key, value)) {
+            out = std::clamp(value, lo, hi);
+        }
+    };
+    flag("enabled", v.enabled);
+    number("ventCooldownS", v.cooldownS, 0.0, 60.0);
+    number("ventMinHeat", v.minHeat, 0.0, 1.0);
+    number("ventMaxHeat", v.maxHeat, 0.01, 1000.0);
+    number("ventSpeedMS", v.speedMin, 0.2, 6.0);
+    number("ventTravelM", v.travel, 0.0, 0.5);
+    number("ventHoldMaxS", v.holdMax, 0.2, 10.0);
+    flag("effect", v.effect);
+    number("hapticAmplitude", v.hapticAmplitude, 0.0, 1.0);
+    number("zoneBackM", v.zone.backMeters, 0.0, 0.5);
+    number("zoneFrontM", v.zone.frontMeters, 0.0, 0.5);
+    number("zoneAboveM", v.zone.aboveMeters, 0.0, 0.5);
+    number("zoneBelowM", v.zone.belowMeters, 0.0, 0.5);
+    number("zoneSideM", v.zone.sideMeters, 0.0, 0.5);
+    return v;
+}
+
+std::string Describe(Vent const& v) {
+    return std::format("{}: cooldown {:.1f} s, from {:.2f} of the overheat ({:.2f}); a rack at {:.1f} m/s over {:.2f} m, held at most "
+                       "{:.1f} s; zone {:.2f} behind .. {:.2f} ahead, {:.2f} above .. {:.2f} below, {:.2f} beside; effect {}; haptics {:.2f}",
+        v.enabled ? "on" : "off", v.cooldownS, v.minHeat, v.maxHeat, v.speedMin, v.travel, v.holdMax, v.zone.backMeters,
+        v.zone.frontMeters, v.zone.aboveMeters, v.zone.belowMeters, v.zone.sideMeters, v.effect ? "the game's" : "none",
+        v.hapticAmplitude);
+}
+
+Vent gVent;
+std::string gVentText;
 
 Posture ReadPosture(Ini const& ini) {
     Posture p;
@@ -1470,6 +1539,10 @@ vr::interact::Settings GetInteract() {
     return gInteract;
 }
 
+Vent GetVent() {
+    return gVent;
+}
+
 vr::sights::Settings GetSights() {
     return gSights;
 }
@@ -1533,7 +1606,7 @@ void Refresh() {
         {
             std::ofstream out(path);
             out << kDefaultFile << kControlsBlock << kHolstersBlock << kSquadBlock << kSightsBlock << kThrowablesBlock
-                << kComfortBlock << kInteractBlock;
+                << kComfortBlock << kInteractBlock << kVentBlock;
             out.close();
             static bool warned = false;
             if (!out || !fs::exists(path, ec)) {
@@ -1559,7 +1632,7 @@ void Refresh() {
     Ini ini = ReadIni(path);
     for (auto const& [name, block] : {std::pair{"Controls", kControlsBlock}, std::pair{"Holsters", kHolstersBlock},
              std::pair{"Squad", kSquadBlock}, std::pair{"Throwables", kThrowablesBlock}, std::pair{"Comfort", kComfortBlock},
-             std::pair{"Sights", kSightsBlock}, std::pair{"Interact", kInteractBlock}}) {
+             std::pair{"Sights", kSightsBlock}, std::pair{"Interact", kInteractBlock}, std::pair{"Vent", kVentBlock}}) {
         if (ini.find(name) == ini.end() && AppendBlock(path, block, name)) {  // an older file: show the new settings
             ini = ReadIni(path);
             stamp = fs::last_write_time(path, ec);
@@ -1798,6 +1871,11 @@ void Refresh() {
     if (std::string const text = Describe(gInteract); text != gInteractText) {
         gInteractText = text;
         log::Info("interact: settings: {}", text);
+    }
+    gVent = ReadVent(ini);
+    if (std::string const text = Describe(gVent); text != gVentText) {
+        gVentText = text;
+        log::Info("vent: settings: {}", text);
     }
     gSights = ReadSights(ini);
     if (std::string const text = Describe(gSights); text != gSightsText) {

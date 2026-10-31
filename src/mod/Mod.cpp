@@ -58,6 +58,7 @@
 #include "game/SquadWeapons.hpp"
 #include "game/SupportGrip.hpp"
 #include "game/Throwables.hpp"
+#include "game/Vent.hpp"
 #include "game/ViewAnchor.hpp"
 #include "game/ViewLevel.hpp"
 #include "game/Weapon.hpp"
@@ -269,6 +270,7 @@ void TryInstallScriptHooks() {
     game::combat_stance::TryStartup();  // the weapon drawn, like exploring (research/38)
     game::squad_weapons::TryStartup();  // likewise for the squad weapon menu
     game::throwables::TryStartup();  // and physical grenades and melee (registers its launch handlers)
+    game::vent::TryStartup();  // and the physical vent of a hot gun (research/45)
     game::posture::TryStartup();  // and physical cover and crouch
     gHandAimAvailable = game::hand_aim::TryStartup();
     game::sights::TryStartup();  // the scoped shots' aimed fire (a CallFunction handler, registered before the hook)
@@ -620,6 +622,25 @@ mevr::game::throwables::Link ThrowablesLink() {
     return link;
 }
 
+// Host renderer: the physical vent (research/45): the left grip's report (v11) and the controller pulses (v9/v10).
+mevr::game::vent::Link VentLink() {
+    using namespace mevr;
+    game::vent::Link link;
+    if (!gHostOwnsVr) {
+        return link;
+    }
+    if (gHost->version >= 9) {
+        link.haptic = gHost->hapticPulse;
+    }
+    if (MEVR_HOST_HAS(leftGripAway) && gHost->leftGripAway != nullptr) {
+        link.leftGrip = gHost->leftGripAway();
+    }
+    if (MEVR_HOST_HAS(hapticPulseHz)) {
+        link.hapticHz = gHost->hapticPulseHz;
+    }
+    return link;
+}
+
 // The level camera (game/view_level, research/24): what it needs from the host this tick.
 mevr::game::view_level::Link ViewLevelLink() {
     using namespace mevr;
@@ -732,7 +753,7 @@ void PublishStatus() {
         "\"armIk\": {{\"enabled\": {}, \"status\": {}, \"handSource\": {}, \"rightHandAimsGun\": {}, \"supportRequested\": {}}}, "
         "\"handAim\": {{\"enabled\": {}, \"toldHost\": {}, \"shots\": {}}}, "
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
-        "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, "
+        "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, "
         "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
         "\"fingers\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
@@ -742,7 +763,7 @@ void PublishStatus() {
         gHandAimReported ? "true" : "false", game::hand_aim::StatusJson(), json::JsonString(type), static_cast<unsigned long long>(game::weapon::Key()),
         json::JsonString(game::weapon::Status()), game::support_grip::Held() ? "true" : "false",
         json::JsonNumber(game::support_grip::Blend()), game::holsters::StatusJson(), game::squad_weapons::StatusJson(),
-        game::sights::StatusJson(), game::scope_capture::StatusJson(), game::throwables::StatusJson(), game::posture::StatusJson(),
+        game::sights::StatusJson(), game::scope_capture::StatusJson(), game::throwables::StatusJson(), game::vent::StatusJson(), game::posture::StatusJson(),
         game::view_level::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
         game::interact::StatusJson(), game::fingers::StatusJson());
@@ -881,6 +902,7 @@ void Heartbeat() {
         game::sights::LogStats();
         game::scope_capture::LogStats();
         game::throwables::LogStats();
+        game::vent::LogStats();
         game::posture::LogStats();
         game::view_level::LogStats();
         game::combat_stance::LogStats();
@@ -1032,9 +1054,14 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // squad menu take it.
         game::throwables::Link const throwablesLink = ThrowablesLink();
         game::throwables::Claim(throwablesLink);
+        // The vent (research/45) claims a left squeeze at the receiver of a hot gun that the grenades didn't take; its
+        // tick runs before the support grip's, which hides its grab zone from the pad while the hand is there.
+        game::vent::Link const ventLink = VentLink();
+        game::vent::Claim(ventLink);
         game::holsters::Tick(deltaSeconds, HolsterLink());
         game::squad_weapons::Tick(deltaSeconds, SquadLink());
         game::throwables::Tick(deltaSeconds, throwablesLink);
+        game::vent::Tick(deltaSeconds, ventLink);
         // Physical cover and crouch (research/23): the cover test's hook goes in once noCover is wanted.
         EnsureCoverHook();
         game::posture::Tick(deltaSeconds, game::posture::Link{HostFloor()});
@@ -1163,6 +1190,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::holsters::Shutdown();
     game::squad_weapons::Shutdown(exiting);  // unpauses the game if its menu paused it
     game::throwables::Shutdown();
+    game::vent::Shutdown();
     game::weapon::Shutdown();
     game::camera_probe::Shutdown();
     game::combat_stance::Shutdown();  // the game's speed ramp and animation rates back, the pre-stage stopped

@@ -254,6 +254,8 @@ set(MEVR_MOD_SOURCES
     src/core/ik/TwoHand.hpp
     src/core/vr/Ads.cpp
     src/core/vr/Ads.hpp
+    src/core/ik/Vent.cpp
+    src/core/ik/Vent.hpp
     src/core/vr/AimRay.cpp
     src/core/vr/AimRay.hpp
     src/core/vr/Calibration.cpp
@@ -379,6 +381,8 @@ set(MEVR_MOD_SOURCES
     src/game/SupportGrip.hpp
     src/game/Throwables.cpp
     src/game/Throwables.hpp
+    src/game/Vent.cpp
+    src/game/Vent.hpp
     src/game/ViewAnchor.cpp
     src/game/ViewAnchor.hpp
     src/game/ViewLevel.cpp
@@ -720,6 +724,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/TouchReference.cpp
         src/core/ik/TwoHand.cpp
         src/core/vr/Ads.cpp
+        src/core/ik/Vent.cpp
         src/core/vr/Calibration.cpp
         src/core/vr/Comfort.cpp
         src/core/vr/CombatStance.cpp
