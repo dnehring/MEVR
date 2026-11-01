@@ -54,6 +54,8 @@ ue3::ClassRef gTargetClass{"Engine.TextureRenderTarget2D"};
 ue3::FunctionRef gSpawn{"Engine.Actor.Spawn"};
 ue3::FunctionRef gDestroy{"Engine.Actor.Destroy"};
 ue3::FunctionRef gSetLocation{"Engine.Actor.SetLocation"};
+ue3::FieldRef gActorLocation{"Engine.Actor", "Location"};
+ue3::FieldRef gActorRotation{"Engine.Actor", "Rotation"};
 ue3::FunctionRef gSetRotation{"Engine.Actor.SetRotation"};
 ue3::FunctionRef gSetDrawScale{"Engine.Actor.SetDrawScale"};
 ue3::FunctionRef gSetPhysics{"Engine.Actor.SetPhysics"};
@@ -408,18 +410,24 @@ bool Place() {
         static_cast<float>(eye->location.z + eye->forward.z * out)};
     engine::UnrealRotation const facing = engine::ToRotation({-eye->forward.x, -eye->forward.y, -eye->forward.z});
     ue3::Rotator const rotation{facing.pitch + gSettings.rotation.pitch, facing.yaw + gSettings.rotation.yaw, facing.roll + gSettings.rotation.roll};
-    ue3::Params move = ParamsOf(gSetLocation);
-    move.Set("NewLocation", location);
-    Call(gState.actor, gSetLocation, move);
-    bool const moved = move.ReturnBool().value_or(false);
-    ue3::Params turn = ParamsOf(gSetRotation);
-    turn.Set("NewRotation", rotation);
-    Call(gState.actor, gSetRotation, turn);
-    bool const turned = turn.ReturnBool().value_or(false);
+    // Written, not SetLocation/SetRotation: those go through UWorld::FarMoveActor's collision test, which refuses a spot
+    // the actor would encroach on (a cockpit around the player always would; research/47).
+    ue3::Vector* const atField = gActorLocation.In<ue3::Vector>(gState.actor);
+    ue3::Rotator* const turnField = gActorRotation.In<ue3::Rotator>(gState.actor);
+    bool const moved = atField != nullptr;
+    bool const turned = turnField != nullptr;
+    if (atField != nullptr) {
+        *atField = location;
+        write_journal::Wrote("CockpitProbe.location", atField, sizeof(*atField));
+    }
+    if (turnField != nullptr) {
+        *turnField = rotation;
+        write_journal::Wrote("CockpitProbe.rotation", turnField, sizeof(*turnField));
+    }
     FlushActor(gState.actor, true);  // out now, before the next Draw renders it (research/39 section 5)
     if ((!moved || !turned) && !gLoggedMoveFailure) {
         gLoggedMoveFailure = true;
-        gLastError = std::format("SetLocation returned {}, SetRotation {} on {}", moved, turned, ue3::runtime::FullName(gState.actor));
+        gLastError = std::format("Location field {}, Rotation field {} on {}", moved, turned, ue3::runtime::FullName(gState.actor));
         log::Warn("cockpit probe: {} (logged once)", gLastError);
     }
     if (!gLoggedFirstPlace) {
@@ -1013,7 +1021,7 @@ ue3::Object* CreateTarget(int width, int height, bool floatTarget) {
         return nullptr;
     }
     ue3::Params p = ParamsOf(gCreateTarget);
-    std::uint8_t const format = static_cast<std::uint8_t>(floatTarget ? sc::kPixelFormatFloatRGBA : sc::kPixelFormatA8R8G8B8);
+    std::uint8_t const format = static_cast<std::uint8_t>(floatTarget ? sc::kPixelFormatFloatRGB : sc::kPixelFormatA8R8G8B8);
     p.Set("InSizeX", static_cast<std::int32_t>(width));
     p.Set("InSizeY", static_cast<std::int32_t>(height));
     p.Set("InFormat", format);
@@ -1102,7 +1110,7 @@ std::string DoScreen(std::istringstream& words) {
         gState.targetHeight = height;
         gState.targetFloat = floatTarget;
         log::Info("cockpit probe: render target {} ({}x{} {})", ue3::runtime::FullName(target), gSizeX.Read<std::int32_t>(target).value_or(-1),
-            gSizeY.Read<std::int32_t>(target).value_or(-1), floatTarget ? "FloatRGBA" : "A8R8G8B8");
+            gSizeY.Read<std::int32_t>(target).value_or(-1), floatTarget ? "FloatRGB" : "A8R8G8B8");
     }
     if (gState.captureActor == nullptr) {
         ue3::Object* const actor = SpawnActor(controller, gCaptureActor.Get(), player::Location(controller).value_or(ue3::Vector{}));
@@ -1145,7 +1153,7 @@ std::string DoScreen(std::istringstream& words) {
     PointCapture();
     FlushActor(gState.captureActor, false);  // the re-attach too (research/39 section 5)
     report += std::format("capture {} into a {}x{} {} target at {:.0f} renders a second at most\n", ue3::runtime::FullName(gState.captureActor), width, height,
-        floatTarget ? "FloatRGBA" : "A8R8G8B8", gSettings.captureRate);
+        floatTarget ? "FloatRGB" : "A8R8G8B8", gSettings.captureRate);
     return report + ApplyMaterial();
 }
 

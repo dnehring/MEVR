@@ -210,7 +210,7 @@ ue3::Object* CreateTarget(int size, bool floatTarget) {
         return nullptr;
     }
     ue3::Params p(ue3::runtime::Get(), gCreate.Get());
-    std::uint8_t const format = static_cast<std::uint8_t>(floatTarget ? sc::kPixelFormatFloatRGBA : sc::kPixelFormatA8R8G8B8);
+    std::uint8_t const format = static_cast<std::uint8_t>(floatTarget ? sc::kPixelFormatFloatRGB : sc::kPixelFormatA8R8G8B8);
     bool const ok = p.Set("InSizeX", static_cast<std::int32_t>(size)) && p.Set("InSizeY", static_cast<std::int32_t>(size)) &&
         p.Set("InFormat", format) && p.Set("InClearColor", LinearColor{}) && p.SetBool("bOnlyRenderOnce", false);
     if (!ok || !Call(defaults, gCreate, p)) {
@@ -303,7 +303,7 @@ bool NewTarget(sc::Settings const& settings) {
     gState.generation = ++gGenerations;
     log::Info("scope capture: render target {} ({}x{}, format {}{}, resource 0x{:X})", ue3::runtime::FullName(target),
         gSizeX.Read<std::int32_t>(target).value_or(-1), gSizeY.Read<std::int32_t>(target).value_or(-1),
-        static_cast<int>(gFormat.Read<std::uint8_t>(target).value_or(0)), settings.floatTarget ? ": FloatRGBA" : ": A8R8G8B8",
+        static_cast<int>(gFormat.Read<std::uint8_t>(target).value_or(0)), settings.floatTarget ? ": FloatRGB" : ": A8R8G8B8",
         gResource.Read<std::uint64_t>(target).value_or(0));
     return true;
 }
@@ -550,7 +550,7 @@ void Tick(float deltaSeconds, sv::Sight const& sight, vr::aim_ray::Ray const& ra
     if (capturing) {
         out.state = sc::kCapturing;
         out.weapon = sight.weapon;
-        out.pixelFormat = gState.targetFloat ? sc::kPixelFormatFloatRGBA : sc::kPixelFormatA8R8G8B8;
+        out.pixelFormat = gState.targetFloat ? sc::kPixelFormatFloatRGB : sc::kPixelFormatA8R8G8B8;
         out.width = static_cast<std::uint32_t>(gSizeX.Read<std::int32_t>(gState.target).value_or(gState.targetSize));
         out.height = static_cast<std::uint32_t>(gSizeY.Read<std::int32_t>(gState.target).value_or(gState.targetSize));
         out.resource = gResource.Read<std::uint64_t>(gState.target).value_or(0);

@@ -30,7 +30,7 @@ struct Settings {
                                    // every frame up to 144 Hz but never twice in one (Halcyon's two Draws of a frame are a few
                                    // ms apart, whichever clock the engine compares: research/39 section 3)
     bool postProcess = true;       // scopeCapturePost: the player's post-process chain (tonemap, bloom) on the capture
-    bool floatTarget = true;       // scopeCaptureFormat = float (PF_FloatRGBA, linear) | rgba8 (PF_A8R8G8B8, gamma)
+    bool floatTarget = true;       // scopeCaptureFormat = float (PF_FloatRGB, linear) | rgba8 (PF_A8R8G8B8, gamma)
     float margin = 0.25f;          // scopeCaptureMargin: the capture's field past the picture's (share of its half-angle)
     float nearUnits = 20.0f;       // scopeCaptureNear: the near plane this far past the muzzle (game units)
     float farUnits = 0.0f;         // scopeCaptureFar: 0 = the engine's infinite far plane [verify]
@@ -39,7 +39,7 @@ struct Settings {
 
 // EPixelFormat (Engine.Texture's enum, LE1): the two the capture may use.
 inline constexpr std::int32_t kPixelFormatA8R8G8B8 = 2;
-inline constexpr std::int32_t kPixelFormatFloatRGBA = 10;
+inline constexpr std::int32_t kPixelFormatFloatRGB = 9;  // execCreate takes only 2, 3 (G8) and 9: FloatRGBA (10) returns None (research/47)
 
 // The capture's full field of view (degrees; square) for a scope picture that looks `pictureDeg` across at `zoom`: the
 // picture shows `pictureDeg / zoom` of the world (true magnification across it: tan(half) / zoom), plus `margin` of that

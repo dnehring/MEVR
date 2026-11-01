@@ -1485,7 +1485,7 @@ std::string Describe(vr::scope_capture::Settings const& s) {
     }
     return std::format("on: {} px {} render target, {:.0f} renders a second at most, post process {}, field margin {:.0f}%, near plane "
                        "{:.0f} units past the muzzle, far plane {}, kept on {:.1f} s after the eye leaves",
-        s.size, s.floatTarget ? "float (FloatRGBA)" : "8-bit (A8R8G8B8)", s.rate, s.postProcess ? "on" : "off", s.margin * 100.0f,
+        s.size, s.floatTarget ? "float (FloatRGB)" : "8-bit (A8R8G8B8)", s.rate, s.postProcess ? "on" : "off", s.margin * 100.0f,
         s.nearUnits, s.farUnits > 0.0f ? std::format("{:.0f} units", s.farUnits) : std::string("the engine's (0)"), s.holdSeconds);
 }
 

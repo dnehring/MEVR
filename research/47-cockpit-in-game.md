@@ -203,3 +203,12 @@ are then:
 7. The render target reaches the screen, with the capture at about one render per three frames (`captures`), at what cost.
 8. `attach`: the hard attach holds on foot and on the Mako, and the hull doesn't shake against it.
 9. `clear`, a level change, hot reload: nothing left behind, no crash after the GC; a save with it up.
+
+## First run (2026-10-31, fake headset, Eden Prime, the save's level; `god` on, an idle Shepard dies there)
+
+- **A spawned mesh works.** `InterpActor` spawned (its `bNoDelete` default cleared for the call), any loaded StaticMesh on it, placed from the head every tick: in both eyes with the right disparity, in front of the world, under two Draws and under `sharePass = 5`'s replay (one Draw kept running with it up). The stand-in rendered black with the light environment on: its lighting is still to look at.
+- **`SetLocation`/`SetRotation` return false** on it: `execSetLocation` goes through `UWorld::FarMoveActor`, whose collision test refuses a spot the actor encroaches on (read in Ghidra; the same refusal CLAUDE.md notes for the player). The probe writes `Actor.Location` and `Rotation` and flushes the components instead.
+- **`TextureRenderTarget2D.Create` takes only formats 2 (A8R8G8B8), 3 (G8) and 9 (FloatRGB)** (`execCreate`'s format check, Ghidra). FloatRGBA (10), which research/39's scope capture asked for, returns None, so the scope capture could not have created its target: fixed to 9, not yet run.
+- **Material:** `EngineMaterials.EmissiveTexturedMaterial` (unlit, opaque, `Texture` wired into emissive) is loaded in the level and took the render target (a MIC over it; its purple clear colour showed on the mesh). `EngineMaterials.ScreenMaterial` (`ScreenTex`) is the same kind.
+- **The capture breaks the eyes: the open problem.** With a capture enabled, the left eye image shows the capture's view (full size, the chase camera's) and the right eye is black under `sharePass = 0`, or the normal view under `sharePass = 5` (Halcyon's second Draw back on: `no pass-1 record`). The screen stays purple: nothing lands in the render target. The levers line counts 2 scene renders a frame and no capture. So Halcyon or the levers take the capture's render for an eye. research/39 section 6's "no seam needed" doesn't hold; the scope capture would do the same.
+
