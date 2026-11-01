@@ -16,6 +16,9 @@ namespace mevr::game::cockpit_probe {
 
 // One `mevr cockpit ...` line without the two first words; what it answers goes to console.result. Game thread.
 std::string Command(std::string const& line);
+// `mevr vehicle [enter]`: game mode, map, the pawn, the nearest vehicle (what a console `open <map>` produced); `enter`
+// calls BioEnterVehicle on the closest one. Game thread.
+std::string VehicleCommand(std::string const& line);
 // Each mod tick, late (the view anchor current).
 void Tick();
 // Snapshot JSON ("cockpitProbe").

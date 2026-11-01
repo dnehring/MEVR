@@ -562,6 +562,8 @@ void CheckClasses() {
     CheckClass<UStaticMeshComponent>("Engine.StaticMeshComponent");
     CheckClass<UMaterial>("Engine.Material");
     CheckClass<UMaterialExpressionTextureSampleParameter>("Engine.MaterialExpressionTextureSampleParameter");
+    CheckClass<UTexture2D>("Engine.Texture2D");
+    CheckClass<USFXSaveGame>("SFXGame.SFXSaveGame");
     CheckClass<UEngine>("Engine.Engine");
     CheckClass<UGameEngine>("Engine.GameEngine");
     CheckClass<UPlayer>("Engine.Player");
@@ -716,6 +718,23 @@ void CheckFields() {
     CheckField("Engine.TextureRenderTarget2D", "SizeX", SDK_FIELD(UTextureRenderTarget2D, SizeX));
     CheckField("Engine.TextureRenderTarget2D", "SizeY", SDK_FIELD(UTextureRenderTarget2D, SizeY));
     CheckField("Engine.TextureRenderTarget2D", "Format", SDK_FIELD(UTextureRenderTarget2D, Format));
+    CheckField("Engine.TextureRenderTarget2D", "bForceLinearGamma", SDK_BOOL(UTextureRenderTarget2D, bForceLinearGamma));
+    CheckField("Engine.SceneCapture2DComponent", "bUpdateMatrices", SDK_BOOL(USceneCapture2DComponent, bUpdateMatrices));
+    CheckField("Engine.SceneCapture2DComponent", "ViewMatrix", SDK_FIELD(USceneCapture2DComponent, ViewMatrix));
+    CheckField("Engine.MeshComponent", "Materials", SDK_FIELD(UMeshComponent, Materials));
+    CheckField("Engine.PrimitiveComponent", "LightEnvironment", SDK_FIELD(UPrimitiveComponent, LightEnvironment));
+    CheckField("Engine.LightEnvironmentComponent", "bEnabled", SDK_BOOL(ULightEnvironmentComponent, bEnabled));
+    CheckField("Engine.Texture", "SRGB", SDK_BOOL(UTexture, SRGB));
+    CheckField("Engine.Texture", "NeverStream", SDK_BOOL(UTexture, NeverStream));
+    CheckField("Engine.Texture", "LODGroup", SDK_FIELD(UTexture, LODGroup));
+    CheckField("Engine.Texture2D", "SizeX", SDK_FIELD(UTexture2D, SizeX));
+    CheckField("Engine.Texture2D", "SizeY", SDK_FIELD(UTexture2D, SizeY));
+    CheckField("Engine.Texture2D", "Format", SDK_FIELD(UTexture2D, Format));
+    CheckField("Engine.Texture2D", "RequestedMips", SDK_FIELD(UTexture2D, RequestedMips));
+    CheckField("Engine.Texture2D", "ResidentMips", SDK_FIELD(UTexture2D, ResidentMips));
+    CheckField("Engine.Texture2D", "MipTailBaseIdx", SDK_FIELD(UTexture2D, MipTailBaseIdx));
+    CheckField("Engine.Texture2D", "Mips", SDK_FIELD(UTexture2D, Mips));
+    CheckPath("Engine.MaterialInstanceConstant", {"TextureParameterValues", "ParameterValue"}, SDK_AT(offsetof(FTextureParameterValue, ParameterValue), 8));
     CheckField("Engine.PlayerController", "Player", SDK_FIELD(APlayerController, Player));
     CheckField("Engine.LocalPlayer", "PlayerPostProcess", SDK_FIELD(ULocalPlayer, PlayerPostProcess));
     CheckField("Engine.Engine", "DefaultPostProcess", SDK_FIELD(UEngine, DefaultPostProcess));
@@ -1011,6 +1030,8 @@ void CheckFunctions() {
         "Engine.MaterialInstanceConstant.SetTextureParameterValue",
         "Engine.MaterialInterface.GetTextureParameterValue",
         "Engine.LightEnvironmentComponent.SetEnabled",
+        "SFXGame.BioPlayerController.BioEnterVehicle",
+        "SFXGame.SFXSaveGame.FindClosestDrivableVehicle",
         "Engine.PlayerController.ConsoleCommand",
         "Engine.SkeletalMeshComponent.GetBoneNames",
         "Engine.SkeletalMeshComponent.GetBoneLocation",
@@ -1162,6 +1183,10 @@ void CheckParams() {
     PARAM(UMaterialInterface_execGetTextureParameterValue_Parms, "Engine.MaterialInterface.GetTextureParameterValue", OutValue);
     PARAM(UMaterialInterface_execGetTextureParameterValue_Parms, "Engine.MaterialInterface.GetTextureParameterValue", ReturnValue);
     PARAM(ULightEnvironmentComponent_execSetEnabled_Parms, "Engine.LightEnvironmentComponent.SetEnabled", bNewEnabled);
+    PARAM(ABioPlayerController_execBioEnterVehicle_Parms, "SFXGame.BioPlayerController.BioEnterVehicle", oVehicle);
+    PARAM(ABioPlayerController_execBioEnterVehicle_Parms, "SFXGame.BioPlayerController.BioEnterVehicle", ReturnValue);
+    PARAM(USFXSaveGame_execFindClosestDrivableVehicle_Parms, "SFXGame.SFXSaveGame.FindClosestDrivableVehicle", Pawn);
+    PARAM(USFXSaveGame_execFindClosestDrivableVehicle_Parms, "SFXGame.SFXSaveGame.FindClosestDrivableVehicle", ReturnValue);
     PARAM(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand", Command);
     PARAM(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand", bWriteToLog);
     PARAM(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand", ReturnValue);

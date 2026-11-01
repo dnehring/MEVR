@@ -79,15 +79,13 @@ is **[verify]** until the measurement session (notes/next-vr-session.md step 44)
   A capture calls 0x76BC00 (or its Umbra form) itself, so **the c2872e4 classification below never saw one**: RenderLevers'
   hook on 0x76EE20 isn't on a capture's path. A hook on the loop's per-capture thunk (0x742C80) now gives it index -1 and
   takes it out of the eye's recording, one-Draw finish and scissor, and counts it when its finish runs.
-- **How often:** a capture checks the time since its last render against `1 / FrameRate` on the family's clock (world
-  or real time [Ghidra]). Under Halcyon's **two `FViewportClient::Draw`s a frame** both Draws carry the same tick's
-  world time and the second follows the first by a few milliseconds of game-thread time, so with `FrameRate` 150
-  (`scopeCaptureRate`, 6.7 ms) the first Draw renders it and the second skips it whichever clock is compared, and every
-  frame renders it up to 144 Hz. With **`sharePass = 5`** (one Draw) there is one chance a frame anyway. Expected: the
-  levers line's `captures ... 1 a frame` while scoped, 0 otherwise. If it reads 2, the engine doesn't throttle per family
-  the way assumed: lower `scopeCaptureRate` to just above the headset rate (e.g. 100 at 90 Hz).
-- **Why not 1000 (Halcyon's reflection value):** if the engine compares real time, the second Draw is more than 1 ms
-  after the first and would render the capture again (a full second capture a frame).
+- **How often (corrected 2026-10-31, read in Ghidra, research/47):** a capture compares the family's **world time** with
+  its probe's last render time against `1 / FrameRate` (0x501E10), but **each `SetView` plus component update builds a
+  new probe, whose last render time is 0: it renders at its next chance whatever `FrameRate` says.** This capture
+  re-points every tick, so `scopeCaptureRate` doesn't throttle it: one render per tick's new probe, and under two Draws the
+  second Draw finds the same probe already rendered at that world time only if the time test holds [verify: the levers
+  line's `captures` while scoped, 1 expected, under two Draws and under `sharePass = 5`]. To lower the rate, re-point less
+  often. Each new probe also starts with a new view state, so no occlusion history.
 
 ## 4. The texture on the render thread (question 4)
 
@@ -118,7 +116,10 @@ is **[verify]** until the measurement session (notes/next-vr-session.md step 44)
   tick (an actor the game never ticks might never send it); after `SetEnabled` or `SetCaptureParameters` (which re-attach
   the component, deferred) the same call with `bTransformOnly` false sends the re-attach too [verify: the picture follows
   the gun without a lag of a second tick, and appears the frame after enabling]. The pose the host samples with is the
-  tracking pose of that same rotator's axes.
+  tracking pose of that same rotator's axes. **Corrected 2026-10-31 (research/47):** `SetView` alone never worked: the
+  component's `bUpdateMatrices` defaults to true, and each component update then overwrites `ViewMatrix` from the actor,
+  which stands where it was spawned. `ConfigureComponent` now clears it. The render thread reads a copy of the view in
+  the probe, so an update making a new probe is what sends it.
 - **Field:** the capture's field is `2 atan((1 + margin) tan(picture / 2) / zoom)`: at the virtual eyepiece's 22 degrees
   and 4x, 5.50 degrees of the world, 6.95 with the 25% margin (an eye off the sight line moves the reticle and what is
   sampled); 18.4 degrees for a 1.5x assault-rifle scope. The physical lens (`scopeFieldDeg = 0`) uses the lens seen from
@@ -153,7 +154,7 @@ is **[verify]** until the measurement session (notes/next-vr-session.md step 44)
 - **No seam needed for the view:** Halcyon's FOV override, head look, metric per-pass eye offset and frustum
   (`PostProcessPerspectiveFsv`, `ApplyMetricEyeOffset`, `ApplyMetricFrustumSEH`) all run inside its `CalcSceneView` hook
   (`ULocalPlayer::CalcSceneView`, 0x4C5300, game thread). A capture's view is built by its probe on the render thread
-  (0x4EE4B0) without it (read in Ghidra, 2026-10-31).
+  (0x4EE4B0) without it (read in Ghidra, 2026-10-31). The view's problem was the engine's own `bUpdateMatrices` (section 5).
 - **But this section's first conclusion, that a capture needs no seam at all, was wrong** (first run, research/47): with a
   post-process chain the capture's final pass bound the global backbuffer (0x773D30) and skipped the view family's target,
   so the picture went to the eye and the render target stayed at its clear colour. This scope capture's `scopeCapturePost =

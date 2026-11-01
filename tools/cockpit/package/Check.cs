@@ -123,6 +123,9 @@ internal static class Check
             Report(texture.Mips.Select((m, i) => m.SizeX == Math.Max(4, texture.Mips[0].SizeX >> i) && m.SizeY == Math.Max(4, texture.Mips[0].SizeY >> i)
                 && m.Mip.Length == m.SizeX / 4 * (m.SizeY / 4) * 8).All(ok => ok),
                 $"{export.ObjectName.Instanced}: each mip half the last down to a 4x4 block, each of its DXT1 size; GUID {texture.TextureGuid}");
+            // The bulk data's offset lies inside the export, as the game's own (absolute in the uncompressed package).
+            Report(texture.Mips.Where(m => m.StorageType == StorageTypes.pccUnc).All(m => m.DataOffset > export.DataOffset && m.DataOffset < export.DataOffset + export.DataSize),
+                $"{export.ObjectName.Instanced}: mip offsets inside the export ({export.DataOffset}..{export.DataOffset + export.DataSize}): first {texture.Mips[0].DataOffset}");
             // The mean colour survived the compression with its channels in the right order.
             int top = texture.Mips.FindIndex(m => m.SizeX <= 64);
             var mip = texture.Mips[top];
