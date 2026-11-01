@@ -49,7 +49,7 @@ is **[verify]** until the measurement session (notes/next-vr-session.md step 44)
   default object for the one call and put back (journaled writes); the spawned actor copies the cleared values, so
   `Destroy` works on it. The log says which (`SceneCapture2DActor's defaults say ...`).
 - **The render target:** `TextureRenderTarget2D.Create` is static: called on its class's default object (as script's
-  `.static.` call does), `scopeCaptureSize` square (1024), `PF_FloatRGBA` by default (`scopeCaptureFormat = rgba8` for
+  `.static.` call does), `scopeCaptureSize` square (1024), `PF_FloatRGB` by default (9: `execCreate` refuses FloatRGBA, research/47; `scopeCaptureFormat = rgba8` for
   `PF_A8R8G8B8`), clear colour black, `bOnlyRenderOnce` false. The default objects are found once by class and the
   `RF_ClassDefaultObject` flag (a GObjects walk at creation only).
 - **Never skipped by the engine's own tests:** `bSkipUpdateIfTextureUsersOccluded` = 0 (no material uses our texture,
@@ -74,13 +74,11 @@ is **[verify]** until the measurement session (notes/next-vr-session.md step 44)
 
 ## 3. When the engine renders it, and how often (question 3)
 
-- **Where [verify, Ghidra]:** in UE3 a scene's captures render inside the main view family's render command, before
-  that family's own scene renderer (`RenderSceneCaptures`, then `Render`), when the family's show flags include scene
-  capture updates (the game's view does). Each capture renders through its own `FSceneRenderer::Render` (0x76EE20), so
-  RenderLevers' hook sees it: **before the eye render in the same command, so it would have taken index 0**. Since
-  c2872e4 it runs with index -1 (another target, 1024 against the eye's 2824x2880): no recording or replay, no eye
-  bookkeeping, counted as a capture. Halcyon's own command (`SceneRenderC`, 0x767900, "the render command that calls
-  SceneRenderB") is the probable caller [Ghidra: confirm the capture loop sits there].
+- **Where (read in Ghidra, 2026-10-31, research/47 "Why a capture took an eye"):** the loop over a scene's captures sits at
+  the top of 0x76EE20, the view family's render command, before that family's own `FSceneRenderer::Render` (0x76BC00).
+  A capture calls 0x76BC00 (or its Umbra form) itself, so **the c2872e4 classification below never saw one**: RenderLevers'
+  hook on 0x76EE20 isn't on a capture's path. A hook on the loop's per-capture thunk (0x742C80) now gives it index -1 and
+  takes it out of the eye's recording, one-Draw finish and scissor, and counts it when its finish runs.
 - **How often:** a capture checks the time since its last render against `1 / FrameRate` on the family's clock (world
   or real time [Ghidra]). Under Halcyon's **two `FViewportClient::Draw`s a frame** both Draws carry the same tick's
   world time and the second follows the first by a few milliseconds of game-thread time, so with `FrameRate` 150
@@ -155,12 +153,16 @@ is **[verify]** until the measurement session (notes/next-vr-session.md step 44)
 - **No seam needed for the view:** Halcyon's FOV override, head look, metric per-pass eye offset and frustum
   (`PostProcessPerspectiveFsv`, `ApplyMetricEyeOffset`, `ApplyMetricFrustumSEH`) all run inside its `CalcSceneView` hook
   (`ULocalPlayer::CalcSceneView`, 0x4C5300, game thread). A capture's view is built by its probe on the render thread
-  without `ULocalPlayer::CalcSceneView` [verify, Ghidra: the probe's capture path never calls 0x4C5300]. The log's
-  `[MEVR-STEREO] pass N ...` counts and the capture's picture (no doubled offset, no widened field) confirm it.
-- **`[ME2PORT]` pass-0 snapshots:** UE3 renders captures into the shared scene render targets, so the capture's depth
-  clear may be "scene-sized" and take a pass-0 snapshot while the backbuffer is dirty from the last frame. The eye
-  renders' own clears re-snapshot after it (the last snapshot before Present wins), as with the floor reflections'
-  captures, which this path already lives with (`11 -> 2 snapshots per present`) [verify: no stale eye with the scope up].
+  (0x4EE4B0) without it (read in Ghidra, 2026-10-31).
+- **But this section's first conclusion, that a capture needs no seam at all, was wrong** (first run, research/47): with a
+  post-process chain the capture's final pass bound the global backbuffer (0x773D30) and skipped the view family's target,
+  so the picture went to the eye and the render target stayed at its clear colour. This scope capture's `scopeCapturePost =
+  1` would have done the same; `plugin/RenderLevers` now binds the capture's own target there. No Halcyon change.
+- **`[ME2PORT]` pass-0 snapshots:** captures render into the shared scene render targets (`Allocate` only grows them), so
+  the capture's depth clear is scene-sized and takes a pass-0 snapshot while the backbuffer is dirty. That copy is the
+  previous Draw's finished eye, the right image, and the eye's own clear then finds it clean. The floor reflections live
+  with the same. **This held only once the capture stopped writing the backbuffer itself**: before that, the eye's clear
+  copied the capture's picture as pass 0 (research/47) [verify: no stale eye with the scope up].
 - **`[UBERFILL]`** keys on the uber composite shader with a per-frame dedupe; a post-processed capture draws that shader
   first in the frame. It is only active while `SetStereoUiActive` (SBS stereo), not in Stereo 2 [verify].
 - **Umbra:** the capture has its own `UmbraCamera` and `ViewState` (component fields 0xA8, 0xA0), so it runs its own

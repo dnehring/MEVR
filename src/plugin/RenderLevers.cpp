@@ -3,6 +3,7 @@
 
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
+#include "core/vr/SceneCaptureScope.hpp"
 #include "plugin/DrawReplay.hpp"
 #include "plugin/MetricStereo.hpp"
 #include "plugin/MevrMenu.hpp"
@@ -64,6 +65,8 @@ constexpr std::uintptr_t kDpgPassRva = 0x76D650;          // (renderer, dpg, uin
 constexpr std::uintptr_t kDpgLightsRva = 0x76D0A0;        // (renderer, dpg, flag, uint* dirty, arg5): translucency etc.
 constexpr std::uintptr_t kForegroundRva = 0x76CA70;       // (renderer, 2, int* out, uint* dirty, arg5)
 constexpr std::uintptr_t kFinishRva = 0x76DD10;           // (renderer, flag, dirty)
+constexpr std::uintptr_t kCaptureSceneRva = 0x742C80;     // (capture info, main renderer): per capture, in the loop at the top of 0x76EE20 (research/47)
+constexpr std::uintptr_t kBeginBackBufferRva = 0x773D30;  // GSceneRenderTargets.BeginRenderingBackBuffer: the uber post's final pass (research/47)
 constexpr std::uintptr_t kSceneRenderTargetsRva = 0x167D0E0;
 constexpr std::uintptr_t kDynamicRhiRva = 0x17938C8;      // GDynamicRHI; vtable +0x628 begin, +0x620 end
 constexpr std::uintptr_t kSceneFrameRva = 0x178779C;      // incremented per scene render
@@ -839,9 +842,21 @@ bool ShareOrKeep(std::uint8_t* renderer, int mode, bool diff) {
     return true;
 }
 
+// A scene capture renders inside the eye's render command (research/47): these say so for the pass hooks below. The
+// renderer is noted as soon as a pass hook sees it, because the backbuffer hook has no other way to its view family.
+thread_local int t_captureDepth = 0;
+thread_local void* t_captureRenderer = nullptr;
+thread_local std::uint32_t t_captureDraws = 0;    // MevrBridge::g_perfDraws spent inside captures, this eye render
+void NoteCaptureRenderer(void* renderer) {
+    if (t_captureDepth > 0) {
+        t_captureRenderer = renderer;
+    }
+}
+
 // 0x77BE00 (renderer, dpg): the world DPG's call is where the draw replay's tail starts (InitViews makes it right
 // after the Umbra resolve, before the pre-pass; ReplaySEH makes it first).
 void DpgLightTargetsHook(void* renderer, int dpg) {
+    NoteCaptureRenderer(renderer);
     if (dpg == 1) {
         draw_replay::MarkTail();
     }
@@ -938,6 +953,8 @@ using tDpgPass = void(void* renderer, int dpg, std::uint32_t* dirty);
 using tDpgLights = void(void* renderer, int dpg, int translucency, std::uint32_t* dirty, int flag);
 using tForeground = std::uint64_t(void* renderer, int dpg, int* out, std::uint32_t* dirty, int flag);
 using tFinish = void(void* renderer, int translucency, std::uint32_t dirty);
+using tCaptureScene = void(void* captureInfo, void* mainRenderer);
+using tBeginBackBuffer = void(void* targets, int flags);
 tPassVoid* gPrepassOrig = nullptr;
 tPassVoid* gBeforeLightsOrig = nullptr;
 tDpgPass* gDpgPassOrig = nullptr;
@@ -956,14 +973,17 @@ void BeforeLightsHook(void* renderer) {
     draw_replay::ScissorExempt(false);
 }
 void DpgPassHook(void* renderer, int dpg, std::uint32_t* dirty) {
+    NoteCaptureRenderer(renderer);
     if (t_skipPasses) { return; }
     gDpgPassOrig(renderer, dpg, dirty);
 }
 void DpgLightsHook(void* renderer, int dpg, int translucency, std::uint32_t* dirty, int flag) {
+    NoteCaptureRenderer(renderer);
     if (t_skipPasses) { return; }
     gDpgLightsOrig(renderer, dpg, translucency, dirty, flag);
 }
 std::uint64_t ForegroundHook(void* renderer, int dpg, int* out, std::uint32_t* dirty, int flag) {
+    NoteCaptureRenderer(renderer);
     if (t_skipPasses) { if (out != nullptr) *out = 0; return 0; }
     return gForegroundOrig(renderer, dpg, out, dirty, flag);
 }
@@ -972,7 +992,14 @@ int OneDrawSecondEyeGuarded(std::uint8_t* renderer) noexcept;
 int OneDrawCheckGuarded(std::uint8_t* renderer) noexcept;   // the fallback's health check (below)
 thread_local bool t_oneDrawFinish = false;   // sharePass = 5: this render's finish ends the recording and replays
 thread_local bool t_oneDrawCheck = false;    // sharePass = 5 in the fallback: this render's finish checks the record match
+void CaptureFinished(void* renderer);   // below: a capture's render reached its finish (counted, logged)
 void FinishHook(void* renderer, int translucency, std::uint32_t dirty) {
+    if (t_captureDepth > 0) {   // never the eye's finish: the eye's one-Draw flags were cleared for the capture
+        NoteCaptureRenderer(renderer);
+        gFinishOrig(renderer, translucency, dirty);
+        CaptureFinished(renderer);
+        return;
+    }
     if (t_skipPasses) {
         ReplaySecondEyeInFinish(static_cast<std::uint8_t*>(renderer));
         return;
@@ -1292,8 +1319,9 @@ std::atomic<std::uint64_t> gSecondRenderSkipped{0};
 
 // ---- Scene renders that are not eye renders (2026-10-27, the scope's SceneCapture2D) -----------------------------
 // One Draw records the frame's first scene render and replays it, and the Umbra and history levers key on the render's
-// index within the frame, so a scene render into another target (a SceneCapture2D's texture, a reflection capture's)
-// must not take an eye's index. The eye renders' target and its size (FSceneRenderer +0x18, the view family's
+// index within the frame, so a scene render into another target must not take an eye's index. (Captures themselves don't
+// come through here: they render nested in the eye's command, CaptureSceneHook below, research/47. This stays for any
+// other render through 0x76EE20 into another target, and its learned eye target names the eyes in the capture's log line.) The eye renders' target and its size (FSceneRenderer +0x18, the view family's
 // FRenderTarget; GetSizeX/Y at vtable +0x18/+0x20, as the sharePass 3 replay reads them) are learned from 30
 // consecutive index-0 renders while Stereo 2 renders the world; after that a render into another target, or of a size a
 // quarter off, runs untouched with index -1 (no recording or replay, every eye check false, the stats slot 0) and is
@@ -1390,6 +1418,7 @@ void SceneRenderHook(void* renderer) {
     int const index = gRenderIndex.fetch_add(1, std::memory_order_relaxed);
     int const outer = t_renderIndex;
     t_renderIndex = index;
+    t_captureDraws = 0;
     if (index == 0 && stereoNow) {
         LearnEyeTarget(targetInfo);
     }
@@ -1428,7 +1457,7 @@ void SceneRenderHook(void* renderer) {
                 draw_replay::EndRecording();
                 // Research/37, experiment 6: how many of the render's draws (Halcyon's hooks count them all) the
                 // recorder saw; a shortfall is a frame whose vtable entries were taken from under it mid-render.
-                std::uint32_t const issued = MELEVR::MevrBridge::g_perfDraws - drawsBefore;
+                std::uint32_t const issued = vr::scene_capture::EyeDrawsIssued(MELEVR::MevrBridge::g_perfDraws, drawsBefore, t_captureDraws);
                 unsigned const recorded = draw_replay::RecordedDraws(0);
                 gFirstDrawsIssued.fetch_add(issued, std::memory_order_relaxed);
                 gFirstDrawsRecorded.fetch_add(recorded, std::memory_order_relaxed);
@@ -1466,7 +1495,7 @@ void SceneRenderHook(void* renderer) {
                     gMode5NotReplayable.fetch_add(1, std::memory_order_relaxed);
                     gMode5LastBlocker = "the render's finish never ran";
                 }
-                std::uint32_t const issued = MELEVR::MevrBridge::g_perfDraws - drawsBefore;
+                std::uint32_t const issued = vr::scene_capture::EyeDrawsIssued(MELEVR::MevrBridge::g_perfDraws, drawsBefore, t_captureDraws);
                 unsigned const recorded = draw_replay::RecordedDraws(0);
                 gFirstDrawsIssued.fetch_add(issued, std::memory_order_relaxed);
                 gFirstDrawsRecorded.fetch_add(recorded, std::memory_order_relaxed);
@@ -1529,6 +1558,97 @@ void SceneRenderHook(void* renderer) {
     int const slot = Slot(index);
     Add(gCounters.renderTicks[slot], static_cast<std::uint64_t>(end.QuadPart - begin.QuadPart));
     Add(gCounters.renders[slot], 1);
+}
+
+// ---- Scene captures (research/47 "Why a capture took an eye") ---------------------------------------------------------
+// 0x76EE20 (the hook above; RenderViewFamily on the render thread, whatever its table name says) runs the scene's capture
+// loop at its top and then the eye's FSceneRenderer::Render (0x76BC00). A capture calls 0x76BC00 itself, so it never comes
+// through SceneRenderHook: it is not a third render but a render nested in the eye's, with the eye's index, the eye's
+// armed recording and the eye's one-Draw finish. And with a post-process chain, the uber effect's final pass binds the
+// game's global backbuffer (0x773D30), not the view family's target, then marks the view so FinishRenderViewTarget doesn't
+// copy to the family's target either: the capture's picture lands in the backbuffer, stretched (its quad covers the
+// family's size in clip space), the render target keeps its clear colour, and Halcyon's pass-0 snapshot takes it.
+tCaptureScene* gCaptureSceneOrig = nullptr;
+tBeginBackBuffer* gBeginBackBufferOrig = nullptr;
+std::atomic<std::uint64_t> gCaptureFinalsBound{0};
+int gCaptureBindLogs = 0;
+int gCaptureBindFailures = 0;
+
+void CaptureSceneHook(void* captureInfo, void* mainRenderer) {
+    namespace sc = vr::scene_capture;
+    sc::EyeRenderState const eye{t_renderIndex, t_skipPasses, t_oneDrawFinish, t_oneDrawCheck};
+    sc::EyeRenderState const during = sc::DuringCapture(eye);
+    draw_replay::CaptureSuspend const suspended = draw_replay::SuspendForCapture();
+    void* const outerRenderer = t_captureRenderer;
+    t_renderIndex = during.renderIndex;
+    t_skipPasses = during.skipPasses;
+    t_oneDrawFinish = during.oneDrawFinish;
+    t_oneDrawCheck = during.oneDrawCheck;
+    t_captureRenderer = nullptr;
+    ++t_captureDepth;
+    std::uint32_t const drawsBefore = MELEVR::MevrBridge::g_perfDraws;
+    gCaptureSceneOrig(captureInfo, mainRenderer);
+    t_captureDraws += MELEVR::MevrBridge::g_perfDraws - drawsBefore;
+    --t_captureDepth;
+    t_captureRenderer = outerRenderer;
+    t_renderIndex = eye.renderIndex;
+    t_skipPasses = eye.skipPasses;
+    t_oneDrawFinish = eye.oneDrawFinish;
+    t_oneDrawCheck = eye.oneDrawCheck;
+    draw_replay::ResumeAfterCapture(suspended);
+}
+
+void CaptureFinished(void* renderer) {
+    gCaptureRenders.fetch_add(1, std::memory_order_relaxed);
+    if (gCaptureLogs < 5) {
+        ++gCaptureLogs;
+        RenderTargetInfo const t = TargetInfoSEH(renderer);
+        log::Info("render levers: a scene render into target {} ({}x{}) ran as a capture: no eye index (the eyes render into {} {}x{})",
+            t.target, t.sizeX, t.sizeY, gEyeTarget.target, gEyeTarget.sizeX, gEyeTarget.sizeY);
+    }
+}
+
+// As 0x773D30 does for the backbuffer: the target (RHI vtable +0x520: surface, no depth) and the viewport over it (+0x340).
+// The family's target's GetRenderTargetSurface (vtable +8) returns a reference to its surface.
+bool BindCaptureFinalSEH(RenderTargetInfo const& t) noexcept {
+    __try {
+        void** const table = *reinterpret_cast<void***>(t.target);
+        void* const* const surface = reinterpret_cast<void* const* (*)(void*)>(table[0x8 / 8])(t.target);
+        if (surface == nullptr || *surface == nullptr) {
+            return false;
+        }
+        void* const rhi = *At<void**>(kDynamicRhiRva);
+        void** const rhiTable = *reinterpret_cast<void***>(rhi);
+        reinterpret_cast<void (*)(void*, void*, void*)>(rhiTable[0x520 / 8])(rhi, *surface, nullptr);
+        reinterpret_cast<void (*)(void*, std::uint32_t, std::uint32_t, float, std::uint32_t, std::uint32_t, float)>(rhiTable[0x340 / 8])(
+            rhi, 0, 0, 0.0f, t.sizeX, t.sizeY, 1.0f);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+void BeginBackBufferHook(void* targets, int flags) {
+    if (t_captureDepth > 0) {
+        RenderTargetInfo const t = t_captureRenderer != nullptr ? TargetInfoSEH(t_captureRenderer) : RenderTargetInfo{};
+        if (vr::scene_capture::ChooseFinalTarget(t_captureDepth, t.target != nullptr, t.sizeX, t.sizeY) ==
+                vr::scene_capture::FinalTarget::CaptureTarget &&
+            BindCaptureFinalSEH(t)) {
+            gCaptureFinalsBound.fetch_add(1, std::memory_order_relaxed);
+            if (gCaptureBindLogs < 3) {
+                ++gCaptureBindLogs;
+                log::Info("render levers: a capture's final post-process pass bound its own target {} ({}x{}), not the backbuffer",
+                    t.target, t.sizeX, t.sizeY);
+            }
+            return;
+        }
+        if (gCaptureBindFailures < 5) {
+            ++gCaptureBindFailures;
+            log::Warn("render levers: a capture's final pass found no target of its own (renderer {}, target {}): it goes to the backbuffer",
+                t_captureRenderer, t.target);
+        }
+    }
+    gBeginBackBufferOrig(targets, flags);
 }
 
 // The commander's command(): each call timed into its part for this render's place in the frame; with
@@ -2001,8 +2121,8 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
         }
     }
     if (std::uint64_t const captures = gCaptureRenders.exchange(0, std::memory_order_relaxed); captures != 0) {
-        share += std::format("; captures (scene renders into another target, no eye index): {:.2f} a frame",
-            frames != 0 ? static_cast<double>(captures) / static_cast<double>(frames) : 0.0);
+        share += std::format("; captures (scene renders into another target, no eye index): {:.2f} a frame, {} post-process finals into their own target",
+            frames != 0 ? static_cast<double>(captures) / static_cast<double>(frames) : 0.0, gCaptureFinalsBound.exchange(0, std::memory_order_relaxed));
     }
     log::Info("render levers: last 10 s: {} frames; scene renders per frame {}; per render, by its place in the "
         "frame: {}{}", frames, perFrame.empty() ? "-" : perFrame, perRender.empty() ? "-" : perRender, share);
@@ -2094,6 +2214,19 @@ bool Install(hook::Context& init) {
     }
     if (!gReplayHooked) {
         log::Warn("render levers: light-targets hook failed; sharePass = 2 runs as 1 and the eye diff is off");
+    }
+    // Scene captures (research/47). Without these a capture's post-process final overwrites the backbuffer as in the stock
+    // engine, and takes an eye: a capture is only ever spawned by our own cockpit probe and scope capture, so warn and go on.
+    {
+        auto* const captureScene = init.ResolveTyped<tCaptureScene>(kCaptureSceneRva);
+        auto* const beginBackBuffer = init.ResolveTyped<tBeginBackBuffer>(kBeginBackBufferRva);
+        bool const backBufferHooked = beginBackBuffer != nullptr &&
+            hook::Install(init, "FSceneRenderTargets::BeginRenderingBackBuffer", beginBackBuffer, &BeginBackBufferHook, gBeginBackBufferOrig);
+        bool const captureHooked = captureScene != nullptr && backBufferHooked &&
+            hook::Install(init, "scene capture's CaptureScene", captureScene, &CaptureSceneHook, gCaptureSceneOrig);
+        if (!captureHooked) {
+            log::Warn("render levers: the scene capture hooks failed; a capture with post process would overwrite an eye");
+        }
     }
     gHooked = true;
     log::Info("render levers: hooked the scene render, its deleter{}{}", gCommanderHooked ? ", the Umbra commander" : "",

@@ -40,6 +40,7 @@
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/PoseRecording.hpp"
 #include "core/vr/Recenter.hpp"
+#include "core/vr/SceneCaptureScope.hpp"
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/Ads.hpp"
 #include "core/vr/Sights.hpp"
@@ -5622,6 +5623,25 @@ void TestSightVirtualEyepiece() {
 
 // The scope's real zoomed render (research/39): the capture's field, its camera, the pose history, and the picture
 // sampling it through the same projection the eye copy uses.
+void TestSceneCaptureScope() {
+    namespace sc = mevr::vr::scene_capture;
+    // A capture's passes run with no eye: index -1, no skipped passes, and the eye's one-Draw finish isn't theirs.
+    sc::EyeRenderState const eye{0, true, true, true};
+    sc::EyeRenderState const during = sc::DuringCapture(eye);
+    CHECK(during.renderIndex == -1);
+    CHECK(!during.skipPasses);
+    CHECK(!during.oneDrawFinish && !during.oneDrawCheck);
+    // The final pass: an eye's goes to the backbuffer; a capture's to its own target, once that is known and has a size.
+    CHECK(sc::ChooseFinalTarget(0, true, 512, 288) == sc::FinalTarget::Backbuffer);
+    CHECK(sc::ChooseFinalTarget(1, true, 512, 288) == sc::FinalTarget::CaptureTarget);
+    CHECK(sc::ChooseFinalTarget(1, false, 512, 288) == sc::FinalTarget::Backbuffer);
+    CHECK(sc::ChooseFinalTarget(1, true, 0, 288) == sc::FinalTarget::Backbuffer);
+    // The recorder's expected draws leave out the captures' (the counter wraps safely, and never goes below zero).
+    CHECK(sc::EyeDrawsIssued(5100, 100, 1000) == 4000);
+    CHECK(sc::EyeDrawsIssued(100, 0xFFFFFF00u, 0) == 356);
+    CHECK(sc::EyeDrawsIssued(100, 50, 60) == 0);
+}
+
 void TestScopeCapture() {
     namespace c = mevr::vr::scope_capture;
     namespace s = mevr::vr::sights;
@@ -8205,6 +8225,7 @@ int main() {
     TestSightShots();
     TestSightVirtualEyepiece();
     TestScopeCapture();
+    TestSceneCaptureScope();
     TestBoneNames();
     TestIk();
     TestRigid();

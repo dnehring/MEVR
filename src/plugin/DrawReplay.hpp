@@ -85,6 +85,18 @@ void BeginRecording(int stream);
 void EndRecording();
 void MarkTail();
 
+// Render thread. A scene capture renders inside the eye's render (research/47): none of its calls may join the eye's
+// recording, its world pass may not mark the eye's tail, and the eye's scissor doesn't apply to its target. Suspend when
+// a capture starts (nothing recorded, no mark, no scissor), Resume with the same value when it ends.
+struct CaptureSuspend {
+    void* recording = nullptr;
+    void* armed = nullptr;
+    bool scissor = false;
+    float fraction[4] = {0.0f, 0.0f, 1.0f, 1.0f};
+};
+CaptureSuspend SuspendForCapture();
+void ResumeAfterCapture(CaptureSuspend const& suspended);
+
 // Stream 0's tail can be re-issued: it was marked and holds nothing the replay can't repeat (a command list, a
 // compute dispatch, an unsupported call, a large dynamic buffer discarded twice). `why` names what blocks it.
 bool TailReplayable(std::string* why);

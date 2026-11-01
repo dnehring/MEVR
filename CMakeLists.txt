@@ -279,6 +279,7 @@ set(MEVR_MOD_SOURCES
     src/core/vr/Output.hpp
     src/core/vr/OverlayPlacement.cpp
     src/core/vr/OverlayPlacement.hpp
+    src/core/vr/SceneCaptureScope.hpp
     src/core/vr/ScopeCapture.cpp
     src/core/vr/ScopeCapture.hpp
     src/core/vr/Sights.cpp
@@ -483,6 +484,7 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/PoseRecording.hpp
     src/core/vr/Recenter.cpp
     src/core/vr/Recenter.hpp
+    src/core/vr/SceneCaptureScope.hpp
     src/core/vr/ScopeCapture.cpp
     src/core/vr/ScopeCapture.hpp
     src/core/vr/Sights.cpp
@@ -754,6 +756,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/OverlayPlacement.cpp
         src/core/vr/PoseRecording.cpp
         src/core/vr/Recenter.cpp
+        src/core/vr/SceneCaptureScope.hpp
         src/core/vr/ScopeCapture.cpp
         src/core/vr/Sights.cpp
         src/core/vr/SquadMenu.cpp
@@ -818,6 +821,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/ImageConvert.cpp
         src/core/vr/LayerComposite.cpp
         src/core/vr/OverlayPlacement.cpp
+        src/core/vr/SceneCaptureScope.hpp
         src/core/vr/ScopeCapture.cpp
         src/core/vr/Sights.cpp
         src/plugin/SightPictures.cpp
