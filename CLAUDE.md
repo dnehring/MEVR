@@ -347,6 +347,15 @@ switching frameworks.
   overrides [verify]. The hand reticle shows in mode 1 on a valid mod ray (host, `HalcyonOverlays`); `core/vr/Comfort`'s
   `VehicleMotion` (speed, yaw rate with the 65536 wrap) drives the vignette in the Mako (`vignetteWhen` applies). Halcyon's
   `makoHeadAim = 0` stays. Logs `mako:`; snapshot `"mod"."mako"`.
+- LE1 Mako controls, stage 1 ([research/46](research/46-mako-controls.md), HostServices v23 `setMakoControls`; `core/vr/MakoControls`, `game/MakoControls`;
+  `[Mako] controls`): a grabbed throttle lever (left, holds its place, X jump, Y boost) and twist stick (right, springs back, trigger machine gun, A cannon,
+  thumbstick turret) at the seat, drawn as two flat quads; the values overwrite `Vehicle.Throttle`/`Steering` in a `BioVehicleBase.SetInputs` post-handler.
+  Not yet run in the game: no save or direct level load has reached drivable Mako gameplay (research/47 "Third run").
+- LE1 cockpit, in progress ([research/47](research/47-cockpit-in-game.md); `game/CockpitProbe`, `mevr cockpit ...`, `mevr vehicle ...`, inert until called): `tools/cockpit`
+  splits and packages our models (`concept/`, gitignored, licence unsettled) with the Legendary Explorer nightly in `mod-manager/`; the package goes in `CookedPCConsole` with
+  a `PCConsoleTOC.bin` entry (undo in `%LOCALAPPDATA%/MEVR/cockpit-install/UNDO.txt`). A scene capture nests inside the eye's render command: `RenderLevers` hooks `0x742C80` and
+  `0x773D30` so it takes no eye index and its final post pass binds its own target. Set `bUpdateMatrices` false or `SetView` is overwritten by the actor's transform.
+  `TextureRenderTarget2D.Create` takes only formats 2, 3 and 9. `Actor.SetLocation` refuses a spot it encroaches on (`FarMoveActor`): write `Location` and flush.
 - LE1 life-size stereo ([research/30](research/30-metric-stereo.md), `MELEVR.ini sfr2Metric`, on in our deploy):
   each Stereo 2 pass renders from its eye's real place (`xrLocateViews`, at the view's units per metre: Halcyon's
   50 x lean gain, life-size at 100), no convergence shift, swap ignored (pass 0 = left). In gameplay with the HUD
@@ -447,7 +456,7 @@ switching frameworks.
   scopeCapture = 0`, until its frame cost is measured): the scope's picture from a real zoomed render instead of the other
   eye's image enlarged. The mod (`game/ScopeCapture`, hot-reloaded) spawns a `SceneCapture2DActor` (Actor.Spawn on the
   player controller; the class's `bStatic`/`bNoDelete` defaults cleared for the call if set) with a
-  `TextureRenderTarget2D` of its own (`Create` on its default object; `scopeCaptureSize` 1024, FloatRGBA), the update
+  `TextureRenderTarget2D` of its own (`Create` on its default object; `scopeCaptureSize` 1024, FloatRGB), the update
   skips off, the player's post-process chain, `FrameRate` `scopeCaptureRate` (150: once a frame under Halcyon's two Draws,
   whichever clock the engine compares); enabled only while an eye is behind a scope (the host's `sightView` bits, held 0.5
   s), pointed along the sight line each tick (`SetView` then `ForceUpdateComponents`, the field `2 atan(1.25 tan(11

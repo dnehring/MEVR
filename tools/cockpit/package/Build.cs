@@ -212,6 +212,9 @@ internal static class Build
         props.AddOrReplaceProp(new IntProperty(width, "OriginalSizeX"));
         props.AddOrReplaceProp(new IntProperty(height, "OriginalSizeY"));
         props.AddOrReplaceProp(new IntProperty(0, "MipTailBaseIdx"));
+        // Unset, the game read LODGroup 27 and made only the smallest mip resident: the whole model one flat colour. APL_1024 is the
+        // game's own group for props, up to 4096 in BIOEngine.ini's TextureLODSettings (research/47).
+        props.AddOrReplaceProp(new EnumProperty("TEXTUREGROUP_APL_1024", "TextureGroup", pcc.Game, "LODGroup"));
         foreach (string message in texture.Replace(image, props, isPackageStored: true, forcedNewFormat: PixelFormat.DXT1, forceMipping: true))
         {
             Console.WriteLine($"  {name}: {message}");

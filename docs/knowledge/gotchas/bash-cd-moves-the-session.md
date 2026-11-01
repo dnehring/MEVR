@@ -6,7 +6,7 @@ tags: [tooling, claude-code]
 status: stable
 timestamp: 2026-10-30T19:53:43Z
 generated: { by: claude-code/fable-5.1, at: 2026-10-30T19:53:43Z }
-bitten: [2026-10-30]
+bitten: [2026-10-30, 2026-10-31]
 ---
 
 # Symptom
