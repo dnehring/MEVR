@@ -197,6 +197,11 @@ struct Latches {
     // game sees no steering, so a stick pushed while turning or walking doesn't pick an entry).
     bool wheelWas = false;
     bool wheelArmed = false;
+    // The physical Mako controls' buttons (Options::makoLever, makoStick): which are down, and which of those presses began
+    // as the control's (decided when each went down, so letting go of the control mid-press never turns a held Y into the
+    // game's Y, or a held X into "leave the world").
+    std::uint8_t makoDown = 0;
+    std::uint8_t makoAs = 0;
 };
 
 // Which stick steers the game's weapon wheel while the left grip holds it open (Options::wheelStick).
@@ -280,6 +285,14 @@ struct Options {
     // the motion controllers' left stick before it merges them (needs the poses and Halcyon's head look, so it isn't
     // in FromControllers). The mod sets it only on foot, outside menus and wheels.
     bool handWalk = false;
+    // The physical Mako controls (game/MakoControls, research/46). makoDrive: the mod drives, so the game sees no left stick
+    // from the motion controllers (a real pad's still reaches it; the mod's values overwrite the result anyway). makoLever:
+    // the left hand holds the throttle lever: X is the game's A (jump jets; upright when flipped), Y the game's LB (boost).
+    // makoStick: the right hand holds the drive stick: the right stick is the turret's (kept from the game until centred), A
+    // is the game's RB (the cannon); the trigger stays RT (the machine gun). Set only in the Mako.
+    bool makoDrive = false;
+    bool makoLever = false;
+    bool makoStick = false;
     SupportInput support;
 };
 
@@ -303,6 +316,9 @@ inline constexpr std::uint32_t kFlagNoMeleeButton = 1u << 15;    // !Options::me
 inline constexpr std::uint32_t kFlagNoGrenadeButton = 1u << 16;  // !Options::grenadeButton
 inline constexpr std::uint32_t kFlagModTurns = 1u << 17;         // Options::modTurns (host v17)
 inline constexpr std::uint32_t kFlagHandWalk = 1u << 18;         // Options::handWalk (host v17)
+inline constexpr std::uint32_t kFlagMakoDrive = 1u << 19;        // Options::makoDrive (host v23)
+inline constexpr std::uint32_t kFlagMakoLever = 1u << 20;        // Options::makoLever (host v23)
+inline constexpr std::uint32_t kFlagMakoStick = 1u << 21;        // Options::makoStick (host v23)
 std::uint32_t ToFlags(Options const& options);
 Options FromFlags(float distance, float acquire, float release, std::uint32_t flags);
 

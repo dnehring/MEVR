@@ -2,6 +2,7 @@
 #pragma once
 
 #include "core/vr/AimRay.hpp"
+#include "game/MakoControls.hpp"
 #include "ue3/Types.hpp"
 
 #include <optional>
@@ -27,6 +28,7 @@ namespace mevr::game::mako {
 struct Link {
     bool headTrackedView = false;  // the host shows a head-tracked world view
     bool mainMenuOpen = false;     // our VR main menu (the host hides the controllers then)
+    mako_controls::Link controls;  // the physical lever and stick (research/46)
 };
 
 // Registers the ProcessEvent post-handlers (the vehicle's Tick and its shot-start query); call before the hooks go

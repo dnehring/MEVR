@@ -48,6 +48,9 @@ struct Label;
 namespace vr::hud_pieces {
 struct Pieces;
 }
+namespace vr::mako_controls {
+struct View;
+}
 namespace vr::squad_menu {
 struct View;
 namespace wheel {
@@ -62,7 +65,7 @@ struct Panel;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 22;
+inline constexpr int kHostServicesVersion = 23;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -268,6 +271,14 @@ struct HostServices {
     // calls it only if hudPiecesSize matches its own sizeof(Pieces). Any thread.
     std::uint32_t hudPiecesSize = 0;
     void (*setHudPieces)(vr::hud_pieces::Pieces const* pieces) = nullptr;
+
+    // Version 23: physical Mako controls (game/MakoControls, plugin/HalcyonOverlays, research/46). The lever and the stick
+    // to draw, each tick (core/vr/MakoControls.hpp, vr::mako_controls::View: where they sit in tracking space, the lever's
+    // position, the steering, a hand in reach or holding); null forgets them. setSupportGrip's flags also take
+    // gamepad::kFlagMakoDrive, kFlagMakoLever and kFlagMakoStick; a v22 or older host ignores them, so the mod stands the
+    // controls down there. The mod publishes only if makoControlsSize matches its own sizeof(View). Any thread.
+    std::uint32_t makoControlsSize = 0;
+    void (*setMakoControls)(vr::mako_controls::View const* view) = nullptr;
 };
 
 } // namespace mevr

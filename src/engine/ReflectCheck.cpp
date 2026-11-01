@@ -610,6 +610,10 @@ void CheckClasses() {
     CheckClass<ABioVehicleWheeled>("SFXGame.BioVehicleWheeled");
     CheckClass<UBioVehicleBehaviorBase>("SFXGame.BioVehicleBehaviorBase");
     CheckClass<UBioSkelControl_TurretConstrained>("SFXGame.BioSkelControl_TurretConstrained");
+    // game/MakoControls (research/46): which simulation the vehicle runs.
+    CheckClass<USVehicleSimCar>("Engine.SVehicleSimCar");
+    CheckClass<USVehicleSimTank>("Engine.SVehicleSimTank");
+    CheckClass<UBioSVehicleSimTank>("SFXGame.BioSVehicleSimTank");
     CheckClass<UBioSFHandler_PCHUD>("SFXGame.BioSFHandler_PCHUD");
 }
 
@@ -802,6 +806,23 @@ void CheckFields() {
         SDK_FIELD(UBioSkelControl_TurretConstrained, DesiredBoneRotation));
     CheckField("SFXGame.BioSkelControl_TurretConstrained", "bConstrainYaw", SDK_BOOL(UBioSkelControl_TurretConstrained, bConstrainYaw));
     CheckField("SFXGame.BioSkelControl_TurretConstrained", "bConstrainPitch", SDK_BOOL(UBioSkelControl_TurretConstrained, bConstrainPitch));
+    // game/MakoControls (research/46)
+    CheckField("Engine.Vehicle", "Throttle", SDK_FIELD(AVehicle, Throttle));
+    CheckField("Engine.Vehicle", "Steering", SDK_FIELD(AVehicle, Steering));
+    CheckField("Engine.SVehicle", "SimObj", SDK_FIELD(ASVehicle, SimObj));
+    CheckField("Engine.SVehicle", "MaxSpeed", SDK_FIELD(ASVehicle, MaxSpeed));
+    CheckField("Engine.SVehicle", "ForwardVel", SDK_FIELD(ASVehicle, ForwardVel));
+    CheckField("Engine.SVehicle", "OutputGas", SDK_FIELD(ASVehicle, OutputGas));
+    CheckField("Engine.SVehicle", "OutputSteering", SDK_FIELD(ASVehicle, OutputSteering));
+    CheckField("Engine.SVehicle", "OutputBrake", SDK_FIELD(ASVehicle, OutputBrake));
+    CheckField("Engine.SVehicleSimCar", "ActualSteering", SDK_FIELD(USVehicleSimCar, ActualSteering));
+    CheckField("Engine.SVehicleSimTank", "LeftTrackVel", SDK_FIELD(USVehicleSimTank, LeftTrackVel));
+    CheckField("Engine.SVehicleSimTank", "RightTrackVel", SDK_FIELD(USVehicleSimTank, RightTrackVel));
+    CheckField("Engine.SVehicleSimTank", "TurnInPlaceThrottle", SDK_FIELD(USVehicleSimTank, TurnInPlaceThrottle));
+    CheckField("SFXGame.BioSVehicleSimTank", "m_fCurrentInputYaw", SDK_FIELD(UBioSVehicleSimTank, m_fCurrentInputYaw));
+    CheckField("SFXGame.BioVehicleBehaviorBase", "m_bPowertrainEnabled", SDK_BOOL(UBioVehicleBehaviorBase, m_bPowertrainEnabled));
+    CheckField("SFXGame.BioVehicleBehaviorBase", "m_bIsPaused", SDK_BOOL(UBioVehicleBehaviorBase, m_bIsPaused));
+    CheckField("SFXGame.BioPlayerController", "bUseCameraRelativeVehicleSteering", SDK_BOOL(ABioPlayerController, bUseCameraRelativeVehicleSteering));
     CheckField("SFXGame.BioPawnBehavior", "m_fMaxDesSpdAccelRate", SDK_FIELD(UBioPawnBehavior, m_fMaxDesSpdAccelRate));
     CheckField("SFXGame.BioPawnBehavior", "m_fMaxDesSpdDecelRate", SDK_FIELD(UBioPawnBehavior, m_fMaxDesSpdDecelRate));
     CheckField("SFXGame.BioPawnBehavior", "m_fMaxDesSpdTacAccelRate", SDK_FIELD(UBioPawnBehavior, m_fMaxDesSpdTacAccelRate));
@@ -993,6 +1014,8 @@ void CheckFunctions() {
         "SFXGame.BioVehicleBehaviorBase.SetDesiredTurretAimPoint",
         "SFXGame.BioVehicleWheeled.Tick",
         "SFXGame.BioVehicleWheeled.GetWeaponStartTraceLocation",
+        // MakoControls (research/46): where the sticks' values reach the vehicle
+        "SFXGame.BioVehicleBase.SetInputs",
         "SFXGame.SFXGameModePowerWheel.ShowMenuGui",
         "SFXGame.SFXGameModeWeaponWheel.ShowMenuGui",
         "SFXGame.SFXGameModeCommand.ShowMenuGui",

@@ -33,6 +33,7 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/FrameProbe.hpp"
 #include "core/vr/HudPieces.hpp"
+#include "core/vr/MakoControls.hpp"
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/SquadMenu.hpp"
@@ -1086,6 +1087,77 @@ bool ShowPiece(ID3D11DeviceContext* context, ID3D11Device* device, QuadSwapchain
     return true;
 }
 
+// ---- The Mako's lever and stick (research/46): two quads lying flat at the seat, drawn on the CPU when the picture changes ----
+namespace mc = mevr::vr::mako_controls;
+
+struct ControlQuad {
+    QuadSwapchain swapchain;
+    ComPtr<ID3D11Texture2D> upload;
+    std::uint32_t key = 0xFFFFFFFFu;  // the picture in the swapchain's last released image
+    XrCompositionLayerQuad quad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+
+    void Forget() {
+        swapchain.Forget();
+        key = 0xFFFFFFFFu;
+    }
+};
+ControlQuad gLeverQuad;
+ControlQuad gStickQuad;
+bool gMakoControlsShown = false;
+std::uint32_t gMakoViewSize = 0;  // a mismatch already logged
+
+// The picture into the quad's swapchain if it changed. False if anything failed (the quad isn't shown).
+template <class Pixels>
+bool UpdateControl(ID3D11DeviceContext* context, ID3D11Device* device, ControlQuad& control, std::uint32_t width, std::uint32_t height,
+    std::uint32_t key, char const* what, char const* name, Pixels const& pixels) {
+    if (!EnsureSwapchain(control.swapchain, width, height, what, name)) {
+        return false;
+    }
+    if (key == control.key) {
+        return true;
+    }
+    if (control.upload == nullptr) {
+        D3D11_TEXTURE2D_DESC td{};
+        td.Width = width;
+        td.Height = height;
+        td.MipLevels = 1;
+        td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_DEFAULT;
+        if (FAILED(device->CreateTexture2D(&td, nullptr, control.upload.GetAddressOf()))) {
+            mevr::log::Error("overlays: {} texture creation failed", what);
+            control.swapchain.Destroy();
+            control.swapchain.failed = true;
+            return false;
+        }
+    }
+    std::vector<std::uint32_t> image = pixels();
+    context->UpdateSubresource(control.upload.Get(), 0, nullptr, image.data(), width * 4, 0);
+    std::uint32_t index = 0;
+    if (!AcquireImage(control.swapchain, index)) {
+        return false;
+    }
+    context->CopyResource(control.swapchain.images[index], control.upload.Get());
+    ReleaseImage(control.swapchain);
+    control.key = key;
+    // Snapshots draw it from these pixels: the image is released only when the picture changes.
+    mevr::host::testloop::SetStaticImage(control.swapchain.handle, width, height, std::move(image));
+    return true;
+}
+
+void PlaceControl(ControlQuad& control, XrVector3f const& at, XrVector3f const& forward, std::uint32_t width, std::uint32_t height, float widthM,
+    float lengthM, void* appSpace) {
+    control.quad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
+    control.quad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied
+    control.quad.space = static_cast<XrSpace>(appSpace);
+    control.quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+    control.quad.subImage.swapchain = control.swapchain.handle;
+    control.quad.subImage.imageRect = {{0, 0}, {static_cast<int32_t>(width), static_cast<int32_t>(height)}};
+    control.quad.pose = mc::FlatPose(at, forward);
+    control.quad.size = {widthM, lengthM};
+}
+
 // A ring with a centre dot, light cyan with a dark rim so it reads on bright and dark backgrounds.
 // Premultiplied, sRGB-encoded (the swapchain's format).
 std::vector<std::uint32_t> ReticlePixels() {
@@ -1496,6 +1568,8 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         gLabelSwapchain.Forget();
         gWristSwapchain.Forget();
         gGunSwapchain.Forget();
+        gLeverQuad.Forget();
+        gStickQuad.Forget();
         gSession = session;
     }
     auto const& cfg = MELEVR::Config::Get();
@@ -1836,6 +1910,48 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         gSightSeenMs = now;
     }
     bool const sightHidesRing = gSightSeenMs != 0 && now - gSightSeenMs < 300;
+
+    // ---- The Mako's lever and stick (research/46): under the reticle ----
+    {
+        mc::View const view = mc::Latest();
+        if (view.size != 0 && view.size != sizeof(mc::View) && view.size != gMakoViewSize) {
+            gMakoViewSize = view.size;
+            mevr::log::Warn("overlays: the mod's Mako controls are {} bytes, the host's {}: not drawn; rebuild both", view.size, sizeof(mc::View));
+        }
+        bool const wanted = view.size == sizeof(mc::View) && view.visible && frame.worldFrame && !frame.menuOpen && frame.headValid &&
+            gLastGameMode == 1 && device != nullptr;
+        bool shown = false;
+        if (wanted && count + 2 <= capacity) {
+            bool const lever = !gLeverQuad.swapchain.failed &&
+                UpdateControl(context, device.Get(), gLeverQuad, mc::kLeverPixelsWide, mc::kLeverPixelsLong,
+                    mc::LeverKey(view.lever, view.detent, view.leverNear, view.leverHeld), "Mako lever", "makolever",
+                    [&view] { return mc::LeverPixels(view.lever, view.travelM, view.detent, view.leverNear, view.leverHeld); });
+            bool const stick = !gStickQuad.swapchain.failed &&
+                UpdateControl(context, device.Get(), gStickQuad, mc::kStickPixels, mc::kStickPixels,
+                    mc::StickKey(view.steer, view.stickNear, view.stickHeld), "Mako stick", "makostick",
+                    [&view] { return mc::StickPixels(view.steer, view.stickNear, view.stickHeld); });
+            if (lever) {
+                PlaceControl(gLeverQuad, view.leverBase, view.forward, mc::kLeverPixelsWide, mc::kLeverPixelsLong, mc::kLeverWidthM, mc::kLeverLengthM, frame.appSpace);
+                layersOut[count++] = &gLeverQuad.quad;
+            }
+            if (stick) {
+                PlaceControl(gStickQuad, view.stickBase, view.forward, mc::kStickPixels, mc::kStickPixels, mc::kStickSizeM, mc::kStickSizeM, frame.appSpace);
+                layersOut[count++] = &gStickQuad.quad;
+            }
+            shown = lever || stick;
+        }
+        if (shown != gMakoControlsShown) {
+            gMakoControlsShown = shown;
+            if (shown) {
+                char line[256];
+                std::snprintf(line, sizeof line, "[MEVR-MAKO] the lever and the stick are drawn: lever at (%.2f, %.2f, %.2f), stick at (%.2f, %.2f, %.2f) m",
+                    view.leverBase.x, view.leverBase.y, view.leverBase.z, view.stickBase.x, view.stickBase.y, view.stickBase.z);
+                LogBoth(line);
+            } else {
+                LogBoth("[MEVR-MAKO] the lever and the stick are gone");
+            }
+        }
+    }
 
     // ---- Hand reticle ----
     // Where the weapon points: the mod's aim ray (muzzle and barrel) once it publishes one, else the

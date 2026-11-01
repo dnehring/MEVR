@@ -587,6 +587,7 @@ void Tick(double deltaSeconds, Link const& link) {
             ForgetVehicle();
         }
         gAim.valid = false;
+        mako_controls::Tick(deltaSeconds, link.controls, nullptr, controller, nullptr);  // throttle and steering to zero, the pad back
         LogWhy(Why::NotInMako, now);
         return;
     }
@@ -638,6 +639,11 @@ void Tick(double deltaSeconds, Link const& link) {
             gCounts.motionTicks);
     }
 
+    // The physical lever and stick (research/46): the vehicle's inputs and, while the right hand holds the stick, the
+    // thumbstick's ray for the turret instead of the hand's.
+    mako_controls::StickAim const stickAim =
+        mako_controls::Tick(deltaSeconds, link.controls, pawn, controller, gAim.valid ? &gAim.direction : nullptr);
+
     // The aim.
     Why why = Why::Aiming;
     vr::controllers::State const controllers = vr::controllers::Latest();
@@ -687,7 +693,17 @@ void Tick(double deltaSeconds, Link const& link) {
     next.direction = Times(next.direction, 1.0 / length);
     next.trackOrigin = aim.position;
     next.trackDirection = engine::DirectionToTracking(*frame, next.direction);
+    if (stickAim.valid) {
+        next.origin = stickAim.origin;
+        next.direction = stickAim.direction;
+        next.calibrated = false;
+    }
     TraceAim(pawn, next, static_cast<double>(gSettings.aimRangeM) * engine::kUnitsPerMeter);
+    if (stickAim.valid) {
+        // The reticle: on the line from the head to what the thumbstick's ray hits, so it sits on the target at any distance.
+        next.trackOrigin = frame->head.position;
+        next.trackDirection = engine::DirectionToTracking(*frame, Sub(next.target, engine::ToWorld(*frame, frame->head.position)));
+    }
     gAim = next;
     ++gCounts.aims;
     if (!gLoggedFirstAim) {

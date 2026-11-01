@@ -8,6 +8,7 @@
 #include "core/ik/Vent.hpp"
 #include "core/vr/Comfort.hpp"
 #include "core/vr/HudPieces.hpp"
+#include "core/vr/MakoControls.hpp"
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/Sights.hpp"
@@ -355,6 +356,7 @@ struct Mako {
     float turnRate = 20.0f;
     float aimRangeM = 200.0f;
     bool calibratedLine = true;
+    vr::mako_controls::Settings controlSettings;  // the physical lever and stick (research/46)
 };
 Mako GetMako();
 

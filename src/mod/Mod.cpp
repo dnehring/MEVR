@@ -277,6 +277,7 @@ void TryInstallScriptHooks() {
     game::posture::TryStartup();  // and physical cover and crouch
     gHandAimAvailable = game::hand_aim::TryStartup();
     game::mako::TryStartup();  // the Mako's turret aimed by the controller (research/44: the vehicle's Tick and shot-start handlers)
+    game::mako_controls::TryStartup();  // the Mako's physical lever and stick (research/46: the SetInputs handlers)
     game::sights::TryStartup();  // the scoped shots' aimed fire (a CallFunction handler, registered before the hook)
     game::view_level::TryStartup();  // the level camera (PlayerTick and SetWeaponRecoil handlers, before the hooks)
     if (!gHandAimAvailable) {
@@ -745,6 +746,22 @@ mevr::game::mako::Link MakoLink() {
         if (MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
             link.mainMenuOpen = (gHost->mainMenu() & kMainMenuOpen) != 0;
         }
+        // The physical lever and stick (research/46). A host before v23 ignores their pad flags: they stay off there.
+        link.controls.headTrackedView = link.headTrackedView;
+        link.controls.mainMenuOpen = link.mainMenuOpen;
+        if (MEVR_HOST_HAS(setMakoControls) && gHost->setMakoControls != nullptr) {
+            link.controls.supported = true;
+            if (gHost->makoControlsSize == sizeof(vr::mako_controls::View)) {
+                link.controls.publish = gHost->setMakoControls;
+            }
+        }
+        link.controls.floor = HostFloor();
+        if (gHost->version >= 9) {
+            link.controls.hapticPulse = gHost->hapticPulse;
+        }
+        if (MEVR_HOST_HAS(hapticContinuous)) {
+            link.controls.hapticContinuous = gHost->hapticContinuous;
+        }
     } else {
         link.headTrackedView = vr::output::WantsHeadTracking();
     }
@@ -788,7 +805,7 @@ void PublishStatus() {
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, "
         "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
-        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"cockpitProbe\": {}}}",
+        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"cockpitProbe\": {}, \"makoControls\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -799,7 +816,7 @@ void PublishStatus() {
         game::sights::StatusJson(), game::scope_capture::StatusJson(), game::throwables::StatusJson(), game::vent::StatusJson(), game::posture::StatusJson(),
         game::view_level::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
-        game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::cockpit_probe::StatusJson());
+        game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::cockpit_probe::StatusJson(), game::mako_controls::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -944,6 +961,7 @@ void Heartbeat() {
         game::comfort::LogStats();
         game::interact::LogStats();
         game::mako::LogStats();
+        game::mako_controls::LogStats();
         game::body_calibration::LogStats();
         game::skeleton_probe::Tick();
     }
@@ -1244,6 +1262,8 @@ MEVR_MOD_API void MevrModShutdown() {
         gHost->setVignette(0.0f);  // no vignette without the mod (the host also forgets on unload)
     }
     game::comfort::Shutdown();
+    // The physical controls: throttle and steering zero, the picture gone. Their pad flags went with setSupportGrip's reset above.
+    game::mako_controls::Shutdown(exiting, gHost != nullptr && MEVR_HOST_HAS(setMakoControls) ? gHost->setMakoControls : nullptr);
     game::mako::Shutdown();  // the turret's pose seam cleared, the vehicle forgotten
     game::body_calibration::Shutdown();
     game::menu_pause::Shutdown(exiting);  // unpauses the game if the main menu paused it

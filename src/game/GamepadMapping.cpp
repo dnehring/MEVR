@@ -249,6 +249,7 @@ std::uint32_t ToFlags(Options const& options) {
            (options.wheelPressA ? kFlagWheelPressA : 0u) |
            (options.meleeButton ? 0u : kFlagNoMeleeButton) | (options.grenadeButton ? 0u : kFlagNoGrenadeButton) |
            (options.modTurns ? kFlagModTurns : 0u) | (options.handWalk ? kFlagHandWalk : 0u) |
+           (options.makoDrive ? kFlagMakoDrive : 0u) | (options.makoLever ? kFlagMakoLever : 0u) | (options.makoStick ? kFlagMakoStick : 0u) |
            ((static_cast<std::uint32_t>(options.wheelStick) << kWheelStickShift) & kWheelStickMask) |
            ((static_cast<std::uint32_t>(options.rbSource) << kRbSourceShift) & kRbSourceMask);
 }
@@ -268,6 +269,9 @@ Options FromFlags(float distance, float acquire, float release, std::uint32_t fl
     options.grenadeButton = (flags & kFlagNoGrenadeButton) == 0;
     options.modTurns = (flags & kFlagModTurns) != 0;
     options.handWalk = (flags & kFlagHandWalk) != 0;
+    options.makoDrive = (flags & kFlagMakoDrive) != 0;
+    options.makoLever = (flags & kFlagMakoLever) != 0;
+    options.makoStick = (flags & kFlagMakoStick) != 0;
     std::uint32_t const stick = (flags & kWheelStickMask) >> kWheelStickShift;
     options.wheelStick = stick <= static_cast<std::uint32_t>(WheelStick::Either) ? static_cast<WheelStick>(stick) : WheelStick::Right;
     std::uint32_t const source = (flags & kRbSourceMask) >> kRbSourceShift;
@@ -290,6 +294,10 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
         (input.right.secondary ? kSquadB : 0) | (input.left.stickClick ? kSquadL3 : 0) | (input.right.stickClick ? kSquadR3 : 0));
     bool const owning = options.squadMenu || options.nativeWheel;
     latches.squadHeld = owning ? active : static_cast<std::uint8_t>(latches.squadHeld & active);
+    // The Mako's drive stick held: the thumbstick is the turret's, and stays so until centred after the hand lets go.
+    if (options.makoStick && (active & kSquadRightStick) != 0) {
+        latches.squadHeld = static_cast<std::uint8_t>(latches.squadHeld | kSquadRightStick);
+    }
     // The game's own weapon wheel: one stick steers it (as the game's right stick), once it has been
     // centred since the wheel opened; nothing else of the sticks, B or the clicks reaches the game.
     float steerX = 0.0f;
@@ -344,6 +352,12 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
     pad.sThumbRY = ToAxis(r.stickY);
     if (options.modTurns && !owning) {
         pad.sThumbRX = 0;  // the mod turns the player (game/comfort): the game's own turn would add to it
+    }
+    if (options.makoDrive) {
+        pad.sThumbLX = pad.sThumbLY = 0;  // the mod drives the Mako (game/MakoControls)
+    }
+    if (options.makoStick) {
+        pad.sThumbRX = pad.sThumbRY = 0;  // ...and the thumbstick aims its turret (also inside the "pushed" radius above)
     }
     pad.bLeftTrigger = options.leftTrigger && !options.leftTriggerShoulder ? ToTrigger(l.trigger) : BYTE{0};
     pad.bRightTrigger = ToTrigger(r.trigger);
@@ -430,6 +444,25 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
     if (GateClick(latches.leftClick, l.stickClick, r.stickClick, state.timeMs)) buttons |= XINPUT_GAMEPAD_LEFT_THUMB;
     if (r.stickClick) buttons |= XINPUT_GAMEPAD_RIGHT_THUMB;
     if (l.menu) buttons |= leftGrip ? XINPUT_GAMEPAD_BACK : XINPUT_GAMEPAD_START;
+    // The Mako's held controls: each press keeps the meaning it began with.
+    auto const asControl = [&latches](bool down, std::uint8_t mask, bool wanted) {
+        if (down && (latches.makoDown & mask) == 0) {
+            latches.makoAs = static_cast<std::uint8_t>(wanted ? (latches.makoAs | mask) : (latches.makoAs & ~mask));
+        } else if (!down) {
+            latches.makoAs = static_cast<std::uint8_t>(latches.makoAs & ~mask);
+        }
+        latches.makoDown = static_cast<std::uint8_t>(down ? (latches.makoDown | mask) : (latches.makoDown & ~mask));
+        return (latches.makoAs & mask) != 0;
+    };
+    if (asControl(r.primary, 4, options.makoStick)) {
+        buttons = static_cast<WORD>((buttons & ~XINPUT_GAMEPAD_A) | XINPUT_GAMEPAD_RIGHT_SHOULDER);  // the cannon
+    }
+    if (asControl(l.primary, 1, options.makoLever)) {
+        buttons = static_cast<WORD>((buttons & ~XINPUT_GAMEPAD_X) | XINPUT_GAMEPAD_A);  // jump jets, upright when flipped
+    }
+    if (asControl(l.secondary, 2, options.makoLever)) {
+        buttons = static_cast<WORD>((buttons & ~XINPUT_GAMEPAD_Y) | XINPUT_GAMEPAD_LEFT_SHOULDER);  // boost
+    }
     pad.wButtons = buttons;
     return pad;
 }
