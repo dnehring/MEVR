@@ -9,6 +9,8 @@ src/script/le1/massfps-base/
 mod-manager/
 
 # Build output
+tools/cockpit/package/bin/
+tools/cockpit/package/obj/
 build/
 build-*/
 out/

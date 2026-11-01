@@ -991,6 +991,7 @@ void CheckFunctions() {
         "Engine.SceneCapture2DComponent.SetView",
         "Engine.SceneCapture2DComponent.SetCaptureParameters",
         // The cockpit probe (research/47)
+        "Core.Object.DynamicLoadObject",
         "Engine.Actor.SetDrawScale",
         "Engine.Actor.SetPhysics",
         "Engine.Actor.SetCollision",
@@ -1125,6 +1126,10 @@ void CheckParams() {
     PARAM(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters", NewNearPlane);
     PARAM(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters", NewFarPlane);
     // The cockpit probe (research/47).
+    PARAM(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject", ObjectName);
+    PARAM(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject", ObjectClass);
+    PARAM(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject", MayFail);
+    PARAM(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject", ReturnValue);
     PARAM(AActor_execSetDrawScale_Parms, "Engine.Actor.SetDrawScale", NewScale);
     PARAM(AActor_execSetPhysics_Parms, "Engine.Actor.SetPhysics", newPhysics);
     PARAM(AActor_execSetCollision_Parms, "Engine.Actor.SetCollision", bNewColActors);
@@ -1220,6 +1225,7 @@ void CheckParams() {
     PARMS(USceneCaptureComponent_execSetEnabled_Parms, "Engine.SceneCaptureComponent.SetEnabled");
     PARMS(USceneCapture2DComponent_execSetView_Parms, "Engine.SceneCapture2DComponent.SetView");
     PARMS(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters");
+    PARMS(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject");
     PARMS(AActor_execSetDrawScale_Parms, "Engine.Actor.SetDrawScale");
     PARMS(AActor_execSetPhysics_Parms, "Engine.Actor.SetPhysics");
     PARMS(AActor_execSetCollision_Parms, "Engine.Actor.SetCollision");

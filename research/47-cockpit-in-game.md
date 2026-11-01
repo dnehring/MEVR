@@ -174,6 +174,8 @@ frame at the default rate; RenderLevers keeps a capture out of the eye bookkeepi
 
 ## 5. What this says about packages [verify]
 
+(The first run's answers and the loader's rules are in "Packaging our models" and "Loading a package" at the end.)
+
 If the run works, the run itself shows the install needs nothing for the **mechanism**. For the real art the requirements
 are then:
 
@@ -254,3 +256,97 @@ A stock game never meets this: its captures are reflections with no post chain.
 | `one Draw: no pass-1 record` while a capture is up under `sharePass = 5` | The eye's own view missed: the suspension isn't covering something; the record's position against the log's view says whose it is |
 
 A capture target as wide as the eye in `R8G8B8A8_UNORM` would pass Halcyon's backbuffer-dirty gate (it compares width and format, not identity) and take extra pass-0 copies; below the eye's width it can't.
+
+## Packaging our models (2026-10-31; tool run, not yet loaded by the game)
+
+`tools/cockpit/package` (C#, `net10.0-windows` because LegendaryExplorerCore's texture code needs `System.Drawing.Common`; GPL-3.0 since it calls LegendaryExplorerCore; references Legendary Explorer's nightly 6.5.0.6686 by path, `-p:LexDir=` or `--lex-dir` to override; nothing of it, and no model, texture or package, goes in git):
+
+```powershell
+dotnet build tools/cockpit/package/CockpitPackage.csproj -c Release
+dotnet tools/cockpit/package/bin/Release/net10.0-windows/cockpit-package.dll build --assets "<checkout>\concept\assets"
+```
+
+It writes `build/cockpit/BIOG_MEVR_Cockpit.pcc` and `.pcc.json` (every object's full name, triangles, vertices, material slots, texture) and then runs its own `check`. `--out`, `--max-texture N` (default 4096), `check <pcc> --assets <folder>`, `inspect <pcc> [--filter t] [--props] [--bin]`, `survey <CookedPCConsole>` (what the game's own objects hold, which is what the decisions below were compared with). It takes about 15 s.
+
+**The run:** about 25.6 million bytes (24.4 MB, compressed as the game's are; a few hundred bytes differ between runs, the GUIDs being new), 17 exports, 6 imports, "All checks passed".
+
+| Object (`BIOG_MEVR_Cockpit.`...) | Triangles | glb vertices | Welded | In the mesh | Slots |
+|---|---|---|---|---|---|
+| `Joystick_Base` | 11,468 | 34,404 | 17,364 | 24,520 | `Joystick_MIC`, `Backing_MIC` |
+| `Joystick_Grip` | 11,240 | 33,720 | 15,118 | 22,307 | `Joystick_MIC`, `Backing_MIC` |
+| `Throttle_Base` | 11,314 | 33,942 | 26,962 | 29,397 | `Throttle_MIC`, `Backing_MIC` |
+| `Throttle_Handle` | 9,320 | 27,960 | 21,695 | 23,824 | `Throttle_MIC`, `Backing_MIC` |
+| `Chair` | 23,160 | 69,480 | 45,051 | 45,103 | `Chair_MIC`, `Backing_MIC` |
+| `Front_Cockpit` | 19,269 | 57,807 | 12,717 | 12,807 | `Front_Cockpit_MIC` |
+| `Front_Cockpit_Backing` | 21,511 | 64,533 | 64,239 | 64,242 | `Backing_MIC` |
+
+plus `Joystick_Diff`, `Throttle_Diff`, `Chair_Diff`, `Front_Cockpit_Diff` (4096x4096 DXT1, 13 mips, 10.7 MB each, stored in the package) and `Backing_Diff` (4x4, the backing's dark grey).
+
+What the importer and the game forced, against what was asked:
+
+- **The object names can't start `MEVR_Cockpit.` in a file called `BIOG_MEVR_Cockpit.pcc`.** The first part of a loaded path is the package the engine looks for as a file (next section), so the objects sit at the top of the package and are `BIOG_MEVR_Cockpit.Joystick_Grip`. `--out MEVR_Cockpit.pcc` would give `MEVR_Cockpit.Joystick_Grip`; no code depends on the `BIOG_` prefix that I found.
+- **`Front_Cockpit` is two meshes.** A static mesh's index buffer is 16-bit and its elements have no base vertex; the file's two primitives weld to 76,956 vertices. So a model over 65,535 is split by material: `<name>` and `<name>_Backing`, the same origin and transform. Place both. LEC casts indices to 16 bits without looking, so the unwelded chair (69,480) would have been silently corrupt.
+- **Welding is ours:** the glbs are mostly unindexed triangle soup. Only exact duplicates of position, normal and UV merge; corners keep their order. LEC's MikkTSpace then adds vertices where tangents split ("in the mesh" above).
+- **Scale and axes:** LEC multiplies by 100 and swaps axes: glTF (x, y, z) becomes (x, z, y) x 100, so 1 glTF unit is 100 Unreal units. A mesh's origin is its glb's origin: the importer ignores the node's translation, and the detached parts' vertices are already relative to their pivot, so **each moving part's origin is its pivot**. `detached/manifest.json`'s pivots and axes in the same (x, z, y) x 100. The actor's scale does the rest.
+- **What LEC leaves to fix, compared with `survey` (the game's meshes in 40 of its `_ART` packages):** the field after the LODs is the LOD count on every one (LEC writes 0; we write it). 1 UV at stride 12 occurs in the game. The position buffer's unknown field is 0 or 1 in the game, left as LEC's 1. The winding is the game's: the share of faces whose geometric normal agrees with its vertex normals is 0.0-2.1% on ours and median 0.0%, max 1.0% on the game's (the sign in Unreal's coordinates).
+- **Textures:** DXT1 with no alpha, through LEC's `Texture2D.Replace` as package-stored, `NeverStream` (the game's own package-stored textures are the same shape), group `TEXTUREGROUP_Vehicle` because BIOEngine.ini gives it `MaxLODSize=4096` where `TEXTUREGROUP_World` has 1024. The last mips read 4x4, 4x4, 4x4: so do the game's. `check` compares the mean colour after compression (channels in the right order).
+- **Parent:** the instances' parent is an import of `EngineMaterials.EmissiveTexturedMaterial`, parameter `Texture`, its expression GUID copied from the game. **There is no `EngineMaterials.pcc`**: that material is a forced export inside `Startup_INT.pcc` (`Unlit`, not TwoSided), always loaded, so the import resolves by name; the tool reads Startup_INT to confirm parameter and path. The repaired models' inward backing shell is `Backing_MIC` (or its own mesh): one-sided surfaces with the shell behind them, which is what the repair was for.
+- **Package flags** as the game's: `AllowDownload, Cooked, DisallowLazyLoading, RequireImportsAlreadyLoaded`, plus `Compressed` from LEC's save. Every object `Public, LoadForClient, LoadForServer, LoadForEdit, Standalone`.
+- **Collision:** the elements' collision flags are off, no body setup, and LEC's `UseSimpleBoxCollision` left in (the probe's actor has collision off anyway).
+- **What `check` can't say:** that the game accepts it. Everything above is against LEC's reading and the game's other packages.
+
+**A lit parent, later (candidates, not solved):** the instance only needs a parent whose shaders are cooked for what we draw. `EngineBuildings.BuildingQuadMaterial` (Startup_INT; `DiffuseTexture`, `WindowMask`, `SpecularTexture`) and `EngineBuildings.ProcBuildingRoofMaster` (`BaseTexture`, `VariationTexture`, `MaskTexture`) are always loaded and lit; `BIOG_APL_MASTER_MATERIAL.APL__MASTER__Mat` (in BIOC_Materials.pcc; `Diffuse`, `Emissive`, `Specular`, `OpacityMask`, `SpecularPower`) has the right parameters. To find out: whether a parent is loaded in every level (`Startup_INT`'s always is; `BIOC_Materials` is listed as a `Package=` in BIOEngine.ini's `[Engine.PackagesToAlwaysCook]`, not read further), whether its cooked shader maps cover the static mesh's vertex factory with a light environment and no lightmap (`bUsedWithSkeletalMesh`-style flags are no guide: a level's meshes use these with lightmaps), and what its other parameters do at their defaults. The glb's normal map (`front-cockpit` has one) needs a BC5 texture and a parent that takes it.
+
+## Loading a package (2026-10-31; from the engine, not yet tried in the game)
+
+`mevr cockpit load <Package.Object> [class]` (class default `Engine.StaticMesh`) runs `Core.Object.DynamicLoadObject` (static native, ProcessEvent on the player controller, game thread, `MayFail` set, ReflectCheck rows) and says what came back. `mevr cockpit mesh` with no name then shows what `load` returned, and `mesh <Package.Object>` goes to the loader by itself if nothing loaded has that exact path. **Run them in one console call:** nothing holds a loaded object until a component does, and the next garbage collection may take it [verify].
+
+Read in Ghidra (RVAs of 2.0.0.48602, prose only):
+
+- **`execDynamicLoadObject` (`0x11FC40`)** calls `StaticLoadObject` (`0x170790`): it splits the path, looks for the object in memory, then calls the package loader on the path's **outermost** name with no file name given (`0x162460`, `GetPackageLinker`'s role), and creates the object from that package's linker. Under seek-free loading it also tries `<Top>.SeekFreeShaderCache` (quietly, by the load flags) first: none in ours is fine, the game's shipping packages don't all have one [verify].
+- **`FindPackageFile` (`0xB33450`, slot +0x10 of the object created in appInit)** is not the path-scanning cache of older UE3. It makes up to four candidate names (the name and language variants), adds each of `[Core.System] Extensions` (`upk`, `u`, `sfm`, `pcc`) when the name has no extension, and asks the file manager (slot +0xD8).
+- **That file manager slot (`0x9F31F0` -> `0x9EB7C0`) looks only in the mounted tables of contents.** It walks the list at the file manager's +0x30, and answers with the table's prefix plus the entry's relative path. There is no directory scan and no check on disk: **a package whose name no mounted TOC lists does not exist for the loader, wherever it sits.** `[Core.System] Paths` doesn't matter here.
+- **Mounting (`0x9F2AA0`, parser `0x9F2C40`, format check `0xCD7DB0`)** has one caller, the file manager's start (`0x9EE020`), which mounts `<BioGame>\PCConsoleTOC.bin` with the prefix `..\..\`, once. **So a TOC change needs a game restart, and a DLC folder is no simpler:** nothing mounts a second table in this build. (`0x80C250`, which enumerates `DLC_*`, doesn't touch the TOC.) `BioGame\DLC` doesn't exist in this install either.
+- **Opening** (`0xE7B20` -> `0xEA2E0`) is plain `CreateFile` with the size from `GetFileSize`, so the TOC's size field isn't what bounds that reader. Write the right one regardless: the async reader wasn't read.
+
+The table is by the file's bare name: bucket = hash(name) mod buckets, the hash LEC's `TOCCreator` has. Checked on the installed file: **all 9,112 entries sit in the bucket that hash gives** (`BioGame\CookedPCConsole\Startup_INT.pcc` with its true size, flags 0).
+
+### What to do (the game closed; a game update or a file verify can undo it)
+
+```powershell
+$game = "C:\Program Files (x86)\Steam\steamapps\common\Mass Effect Legendary Edition\Game\ME1\BioGame"
+$tool = "tools\cockpit\package\bin\Release\net10.0-windows\cockpit-package.dll"
+Copy-Item "$game\PCConsoleTOC.bin" "<backups>\PCConsoleTOC.bin"          # 1. keep the original
+Copy-Item "build\cockpit\BIOG_MEVR_Cockpit.pcc" "$game\CookedPCConsole\" # 2. the package beside the game's
+dotnet $tool toc --toc "<backups>\PCConsoleTOC.bin" --out "scratch\PCConsoleTOC.new.bin" --add "build\cockpit\BIOG_MEVR_Cockpit.pcc"
+Copy-Item "scratch\PCConsoleTOC.new.bin" "$game\PCConsoleTOC.bin"        # 3. the TOC with one entry more
+```
+
+The `toc` verb never writes over its input; it refuses a table its hash doesn't describe. Rebuilding the package changes its size: run steps 2 and 3 again. ME3Tweaks Mod Manager's AutoTOC rebuilds the table from the folder, and would keep the file listed while it's there.
+
+**Undo:** `Remove-Item "$game\CookedPCConsole\BIOG_MEVR_Cockpit.pcc"`, and `Copy-Item "<backups>\PCConsoleTOC.bin" "$game\PCConsoleTOC.bin"` (or `toc --remove BIOG_MEVR_Cockpit.pcc`: on copies, adding then removing gave back the original byte for byte, SHA-256 `21B24FD0...`). The mod needs no undo: `load` is inert until asked. A save made with the mesh up: `clear` first (section 6's item 9 is still open).
+
+**In the game (a rebuilt `LE1MEVR_mod.dll` hot-reloads into the host deployed now; no HostServices change):**
+
+```powershell
+tools/console.ps1 "mevr cockpit load BIOG_MEVR_Cockpit.Front_Cockpit" "mevr cockpit mesh" "mevr cockpit dist 2"
+tools/snapshot.ps1 -Tag cockpit-ours
+tools/console.ps1 "mevr cockpit mesh BIOG_MEVR_Cockpit.Joystick_Grip"
+```
+
+| What comes back | Means |
+|---|---|
+| `DynamicLoadObject returned None`, and the game's log says the package wasn't found | The TOC step: the entry's name, or the game wasn't restarted |
+| The package is found, an import fails | `RequireImportsAlreadyLoaded` and the import's path; the object list of `check` |
+| A crash in the load | `crash-breadcrumbs.txt`; the mesh binary's fields against `survey`; try a `Backing_Diff`-only load (`load BIOG_MEVR_Cockpit.Backing_MIC Engine.MaterialInstanceConstant`) to split mesh from texture |
+| The mesh in LEC's checker-grey default | The instance didn't resolve its parent |
+| Black | The parent's parameter didn't take the texture: `materials`, the instance's `TextureParameterValues` |
+| The right colours, but inside out or the backing showing | One-sided faces and the winding; compare with the mean above |
+
+### Outside the game folder? [verify]
+
+Nothing in the loader cares where the file is, only what a mounted table says. So two routes exist that weren't tried: **(a)** the TOC entry's relative path can walk out of the folder (`--as ..\..\..\..\..\somewhere\BIOG_MEVR_Cockpit.pcc`, relative to `Binaries\Win64`), which still edits `PCConsoleTOC.bin`; **(b)** the mod could call the mount function itself (`0x9F2AA0`: the file manager, a folder holding a `PCConsoleTOC.bin` of our own, a prefix, a priority) to add a second table from `ASI\`, with **nothing changed in the install at all**. (b) is the shape for players: a new raw address (a row in `engine/Addresses.hpp`) and a native call at a safe moment, so it isn't in this test; the list insert takes the file manager's lock, so it looks safe after start, and whether anything caches earlier answers isn't known.
+
+### What only the game can tell
+
+That a package LEC made loads at all under this engine; that the linker takes our summary (no `NoExportsData`, `Protected` or `ServerSideOnly`, flags the game's have and ours don't); whether `Standalone` keeps the objects over a level change or they must be loaded again; DXT1 at 4096 in `TEXTUREGROUP_Vehicle` showing its top mip; the cost of 4 x 10.7 MB of never-streamed texture; and how a 65-thousand-vertex backing draws in stereo.
