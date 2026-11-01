@@ -1127,7 +1127,8 @@ void PointCapture() {
     ue3::Params view = ParamsOf(gCaptureSetView);
     view.Set("NewLocation", ue3::Vector{static_cast<float>(from.x), static_cast<float>(from.y), static_cast<float>(from.z)});
     view.Set("NewRotation", ue3::Rotator{look.pitch, look.yaw, look.roll});
-    if (Call(gState.captureComponent, gCaptureSetView, view) && FlushActor(gState.captureActor, true)) {
+    // A full re-attach: with a transform-only update the capture kept the view it was attached with (research/47).
+    if (Call(gState.captureComponent, gCaptureSetView, view) && FlushActor(gState.captureActor, false)) {
         ++gState.pointedTicks;
     }
 }
