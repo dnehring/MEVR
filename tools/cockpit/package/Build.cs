@@ -223,7 +223,7 @@ internal static class Build
         return export;
     }
 
-    private static ExportEntry AddInstance(IMEPackage pcc, string name, IEntry parent, ExportEntry texture, Guid expressionGuid)
+    private static ExportEntry AddInstance(IMEPackage pcc, string name, IEntry parent, ExportEntry texture, Guid expressionGuid, Guid parentLightingGuid)
     {
         ExportEntry export = ExportCreator.CreateExport(pcc, new NameReference(name, 0), "MaterialInstanceConstant", indexed: false);
         MakeLoadable(export);
@@ -236,14 +236,18 @@ internal static class Build
             new ObjectProperty(texture.UIndex, "ParameterValue"),
         };
         props.AddOrReplaceProp(new ArrayProperty<StructProperty>(new[] { new StructProperty("TextureParameterValue", value) }, "TextureParameterValues"));
+        // The instance's own and its parent's GUIDs, as every instance of the game's holds them.
+        props.AddOrReplaceProp(CommonStructs.GuidProp(parentLightingGuid, "ParentLightingGuid"));
+        props.AddOrReplaceProp(CommonStructs.GuidProp(Guid.NewGuid(), "m_Guid"));
         props.AddOrReplaceProp(CommonStructs.GuidProp(Guid.NewGuid(), "LightingGuid"));
         export.WriteProperties(props);
         return export;
     }
 
     // The parameter's expression GUID in the game's own material; zero (what many of the game's instances hold) if the game isn't here.
-    public static Guid ParentExpressionGuid(string gamePath, out string note)
+    public static Guid ParentExpressionGuid(string gamePath, out string note, out Guid parentLightingGuid)
     {
+        parentLightingGuid = Guid.Empty;
         string startup = System.IO.Path.Combine(gamePath, "BioGame", "CookedPCConsole", "Startup_INT.pcc");
         note = "the game's Startup_INT.pcc wasn't read: the instance's ExpressionGUID is zero";
         if (!File.Exists(startup))
@@ -265,6 +269,7 @@ internal static class Build
             throw new InvalidDataException($"{ParentMaterial}'s parameter is '{parameter}', not '{ParameterName}'");
         }
         Guid guid = props.GetProp<StructProperty>("ExpressionGUID") is { } g ? CommonStructs.GetGuid(g) : Guid.Empty;
+        parentLightingGuid = material.GetProperties().GetProp<StructProperty>("LightingGuid") is { } l ? CommonStructs.GetGuid(l) : Guid.Empty;
         note = $"{material.InstancedFullPath} in Startup_INT.pcc: parameter {parameter}, expression GUID {guid}; " + string.Join(", ", material.GetProperties().Where(p => p is BoolProperty or EnumProperty).Select(Verbs.Describe));
         return guid;
     }
@@ -284,7 +289,7 @@ internal static class Build
         File.Delete(outPath);
         string packageName = System.IO.Path.GetFileNameWithoutExtension(outPath);
 
-        Guid expressionGuid = ParentExpressionGuid(gamePath, out string parentNote);
+        Guid expressionGuid = ParentExpressionGuid(gamePath, out string parentNote, out Guid parentLightingGuid);
         Console.WriteLine($"Parent: {parentNote}");
 
         using IMEPackage pcc = MEPackageHandler.CreateAndOpenPackage(outPath, MEGame.LE1, forceLoadFromDisk: true);
@@ -295,7 +300,7 @@ internal static class Build
         var textures = new Dictionary<string, (ExportEntry Texture, ExportEntry Instance, int Width, int Height)>();
         var backingImage = LecImage.LoadFromRaw(SolidBgr(4, 4, new Vector3(0.035f, 0.04f, 0.044f)), PixelFormat.RGB, 4, 4);
         ExportEntry backingTexture = AddTexture(pcc, "Backing_Diff", backingImage, 4, 4);
-        ExportEntry backingInstance = AddInstance(pcc, "Backing_MIC", parent, backingTexture, expressionGuid);
+        ExportEntry backingInstance = AddInstance(pcc, "Backing_MIC", parent, backingTexture, expressionGuid, parentLightingGuid);
 
         foreach (ModelSource source in Sources(assets))
         {
@@ -325,7 +330,7 @@ internal static class Build
             {
                 LecImage image = Pixels(encoded, maxTexture, out int width, out int height, out Vector3 mean);
                 ExportEntry texture = AddTexture(pcc, source.Group + "_Diff", image, width, height);
-                ExportEntry instance = AddInstance(pcc, source.Group + "_MIC", parent, texture, expressionGuid);
+                ExportEntry instance = AddInstance(pcc, source.Group + "_MIC", parent, texture, expressionGuid, parentLightingGuid);
                 made = (texture, instance, width, height);
                 textures.Add(hash, made);
                 Console.WriteLine($"  texture {texture.InstancedFullPath} {width}x{height} DXT1 ({new UTextureInfo(texture).Summary}), source mean RGB {mean.X:F1} {mean.Y:F1} {mean.Z:F1}");
@@ -374,6 +379,7 @@ internal static class Build
         ApplyCookedFlags(pcc);
         pcc.Save();
         pcc.Dispose();
+        FixMipOffsets(outPath);
 
         var listing = new Dictionary<string, object>
         {
@@ -389,6 +395,20 @@ internal static class Build
         File.WriteAllText(json, JsonSerializer.Serialize(listing, new JsonSerializerOptions { WriteIndented = true }));
         Console.WriteLine($"Wrote {outPath} ({new FileInfo(outPath).Length / 1048576.0:F1} MB) and {json}");
         return Check.Run(outPath, assets, gamePath);
+    }
+
+    // Each mip's bulk data says where it sits in the uncompressed package. LEC writes it from the export's place in the file at
+    // the time it serializes, which is 0 for an export that was never saved: every offset came out relative to the export, the
+    // game's own are absolute (research/47). So: saved once (each export has its place), written again, saved. The sizes don't
+    // change, so the places hold; Check.cs fails the build otherwise.
+    private static void FixMipOffsets(string path)
+    {
+        using IMEPackage pcc = MEPackageHandler.OpenMEPackage(path, forceLoadFromDisk: true);
+        foreach (ExportEntry export in pcc.Exports.Where(e => e.ClassName == "Texture2D"))
+        {
+            export.WriteBinary(ObjectBinary.From<UTexture2D>(export));
+        }
+        pcc.Save();
     }
 
     // The flags of the game's own cooked packages (research/47): without Cooked a seek-free engine treats it as a source package.

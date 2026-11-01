@@ -354,9 +354,99 @@ That a package LEC made loads at all under this engine; that the linker takes ou
 ## Second run (2026-10-31 19:40, fake headset, same level, `god` on, `sharePass = 5`, all of the above deployed)
 
 - **Our package loads.** With `BIOG_MEVR_Cockpit.pcc` in `CookedPCConsole` and an entry in `PCConsoleTOC.bin`, `mevr cockpit load BIOG_MEVR_Cockpit.Front_Cockpit` returned the StaticMesh and `mevr cockpit mesh` showed it in both eyes with correct disparity. Install record and undo: `UNDO.txt` in `%LOCALAPPDATA%/MEVR/cockpit-install`.
-- **Its own material draws black** (the MIC over `EmissiveTexturedMaterial` with our DXT1 texture). So did a game stand-in with its own material in the first run, so the cause isn't settled: the texture's mips, the MIC's parameter or the probe's handling. Open.
+- **Its own material draws black** (the MIC over `EmissiveTexturedMaterial` with our DXT1 texture). So did a game stand-in with its own material in the first run, so the cause isn't settled: the texture's mips, the MIC's parameter or the probe's handling. Open (narrowed in the next section).
 - **The capture fix holds.** With a capture up, both eyes are the normal view, one Draw stays on (1 scene render a frame), the levers line counts captures at 1.00 a frame and logs `ran as a capture` and the post-process finals into their own target. The black right eye from the first run wasn't seen in this mode; `sharePass = 0` was not rerun.
 - **A live picture reaches the mesh:** on `EngineBuildings.BuildingQuadMesh` through a MIC over `EmissiveTexturedMaterial`, the render target's image shows on the quad in the world, in both eyes, darker than the eye image.
-- **The capture's view doesn't follow `SetView`:** `chase 10 8` and `chase 12 10` left the picture the same, also with a full re-attach (`ForceUpdateComponents` with `bTransformOnly` false) every tick. It shows a close view with Shepard's hand, not 6 m behind and 3 m up. Whether the picture updates at all wasn't separated from that. The scope capture sets its view the same way, so it may have the same problem. Next: where the probe's render reads its view (`SetView`'s native body, the capture's view fields, and whether Halcyon's view hooks reach the capture's render).
+- **The capture's view doesn't follow `SetView`:** `chase 10 8` and `chase 12 10` left the picture the same, also with a full re-attach (`ForceUpdateComponents` with `bTransformOnly` false) every tick. It shows a close view with Shepard's hand, not 6 m behind and 3 m up. Whether the picture updates at all wasn't separated from that. The scope capture sets its view the same way, so it had the same problem. The cause is in the next section (`bUpdateMatrices`).
 - **Cost, roughly:** `#0` in the levers line (the render thread's scene render, with the capture nested in it) went from 2.97 ms to 4.7-5.4 ms at a light spot with a 512x288 capture every frame. One spot, no A/B; not a measurement to plan on.
 - `FrameRate` 30 didn't reduce the capture rate: it ran once a frame.
+
+## The capture's view, its rate and the black mesh (2026-10-31, read in Ghidra and from the packages; changes built, not run)
+
+### Why the view didn't follow SetView: `bUpdateMatrices` (read, and the picture fits; [verify] by the run below)
+
+- `SetView` (`0x4FFBF0`) writes the component's `ViewMatrix` and sets `bNeedsSceneUpdate`. That's all. The render thread never reads the component: the **probe**, built on the game thread by the component's virtual at vtable +0x338 (`0x4F2060`), holds **a copy** of `ViewMatrix` (+0x90) and `ProjMatrix` (+0xD0), and `0x4EE4B0` builds the capture's view from those. A new view reaches the render thread only as a new probe.
+- A new probe comes from `SetParentToWorld` (`0x4FE250`, +0x2C8), which every update of the component runs (a re-attach; a transform update too by UE3's `ConditionalUpdateTransform`, from memory, not read here [verify]; `Actor.ForceUpdateComponents` at `0x2CDEB0`/`0x2D6130` only marks the components and runs the actor's update), or from the component's Tick (`0x500910`) when `bNeedsSceneUpdate` is set.
+- **But `SetParentToWorld` first overwrites `ViewMatrix` from the actor's transform when `bUpdateMatrices` (+0x174 bit 0) is set, and that is the class's default** (`Default__SceneCapture2DComponent` in Engine.pcc: `bUpdateMatrices True`; the actor's template doesn't change it). So `SetView` then `ForceUpdateComponents` wrote our view and threw it away in the same call, and the new probe carried the actor's. The actor stands where it was spawned, at the controller's place with rotation zero: **inside Shepard, looking along +X. That's the close view with the hand**, the same for every `chase`. It updated all along.
+- `SetCaptureParameters` (`0x505E10`) sets the bit for its one call to compute `ProjMatrix` (`0x501B70`) and puts it back, so the projection doesn't depend on the bit. Probe creation also calls `0x501B70`, gated by the bit: with it off the matrix stays what `SetCaptureParameters` made.
+- **Nothing of ours touches it.** Halcyon's view hooks run in `ULocalPlayer::CalcSceneView` (`0x4C5300`), which no capture passes (`0x4EE4B0` builds its view itself); RenderLevers' capture scope changes index, passes, recorder and target, no matrix. No `[MEVR]` change, no host change.
+
+**The fix (mod):** `bUpdateMatrices = false` on the component, once, before anything else, in `game/CockpitProbe` and `game/ScopeCapture`. Then `SetView` and a transform-only update, which is what `ScopeCapture` already sends. `mevr cockpit info` prints where `ViewMatrix` looks from against what was last asked.
+
+### Why FrameRate didn't throttle: each SetView makes a new probe
+
+`0x501E10` (UpdateRequired) compares the family's world time with the probe's last render time (+0x54) against `1 / FrameRate` (+0x70, from the constructor `0x4ECB00`), and **a new probe's last render time is 0**, so it renders at its next chance. A probe rebuilt each tick renders each frame whatever the rate. So research/39 section 3's clock reasoning doesn't decide anything for a capture that moves. (The test's other way out, the global `0x1782CD8`, is set only by `CalcSceneView`'s dynamic resolution change: not this.)
+
+So **for a moving capture, the rate is how often the mod re-points it.** The probe's `Tick` now calls `SetView` at `rate` a second; `mevr cockpit aim 0` stops that, and the engine's own throttle then holds for a still view. A new probe also starts with a new view state (`0x4EE4B0` allocates one for a probe without one), so a capture moved every render has no occlusion history and no temporal state: a real cost the cockpit should measure. If it matters, the way out is writing the live probe's matrices instead of rebuilding it (the probe's place on the component isn't read yet, and the write would race the render thread: not built). The scope capture re-points each tick at 150, which is one render a frame, as research/39 wanted, on that same fresh state.
+
+### The darker picture: not established; two candidates and the reading that splits them
+
+- **The eye's post runs over the capture's post.** The chain tonemaps the capture; the result then enters the eye's scene as emissive and goes through the eye's tonemap again. Applying a filmic curve to an already tonemapped value darkens it. `mevr cockpit post 0` takes the capture's chain away.
+- **Gamma on the 8-bit target.** `Default__Texture` has `SRGB True`, so an `rgba8` target's values are decoded on sampling. If this build's final pass writes linear values when it binds our target (the backbuffer it's written for is FP16 scRGB), they're decoded once too often. `screen ... float` avoids the question, `screen ... rgba8 linear` sets `bForceLinearGamma`.
+
+A format or material change isn't needed before those readings; `float` is the default and the run used `rgba8`.
+
+### The black mesh: narrowed, not solved
+
+Measured in the snapshot of the second run (`2026-10-31_19-41-30-291`, `-left-world.png`): the mesh's inside is **a constant (32.5, 30.1, 26.0) of 255, spread 4.2, no structure at all** (stretched five times it's even grain), against a texture with white panels and red marks whose mean is (55.5, 54.9, 53.7). The same mesh under the render target's instance (`2026-10-31_19-42-01-381`) shows the picture across its UVs. So:
+
+| | Finding | Evidence |
+|---|---|---|
+| Ruled out | The mesh: geometry, UVs, vertex factory | The render target's picture maps across it |
+| Ruled out | The parent's shaders on this mesh | Same parent, same mesh, drawing |
+| Ruled out | The probe losing the material | `status`'s `material None` is only **our override's** slot; `SetStaticMesh` leaves `Materials` empty and the element's own instance draws. `status` now says so, `info` reads it |
+| Unlikely (UE3's behaviour, not read here) | A missing parent or parameter | Either should show the parent's `EngineResources.DefaultTexture`, or the default material, not a constant [verify: `info`] |
+| Ruled out | Mip count | `0x2674D0`: `RequestedMips` is the mip count limited by `GMaxTextureMipCount` (14 here, `0x997857`) for a NeverStream texture; all 13 |
+| Open | **The texture's GPU copy is empty, or the instance's value isn't the texture** | The constant looks like black plus the scene's post (bloom, grain); not proved. A flat lowest mip would look the same |
+
+The stand-in of the first run is a different case until shown otherwise: a lit material with no light. `info` prints the light environment.
+
+**One real defect found in the package, fixed:** every mip's bulk offset was relative to its export (293 for a texture whose data starts at 38,111,834); the game's are absolute in the uncompressed package. LEC serializes with the export's place in the file, 0 before the first save. `Build.cs` now saves, writes the textures' binaries again and saves (`Check.cs` fails otherwise; all mips inside their exports on the real models). **This fixes the cockpit only if the bulk data is read lazily**, which `DisallowLazyLoading` should exclude [verify: `info` prints `attached to the linker` or `read inline`], and a lazy read at 293 would have given noise rather than a constant. So it's a correction, not the expected cure. Also added, for parity with the game's instances: `m_Guid`, `ParentLightingGuid` (the parent's). Compared and the same as the game's: the instance has no binary (the game's non-static instances too; only static permutations have one), the import's shape, texture properties and mip sizes.
+
+### New verbs
+
+- `mevr cockpit info`: each element's material chain with its parameters, each texture's `Resource`, `SRGB`, `NeverStream`, `LODGroup`, size, format, `RequestedMips`/`ResidentMips`, the first and last mip's bulk flags, size, offset and whether it's attached; the engine's own `GetTextureParameterValue`; the light environment; the capture's `bUpdateMatrices`, `FrameRate`, where `ViewMatrix` looks from.
+- `mevr cockpit texture <Package.Object>`: a new instance of ours over `EngineMaterials.EmissiveTexturedMaterial` (`Texture`, unless `material`/`param` were set) with that texture, in place of the render target. No name: back to the render target.
+- `mevr cockpit aim 0|1`, `post 0|1`, `screen ... linear`. `chase` re-points at once, also under `aim 0`.
+- `mevr vehicle`: map (the top of WorldInfo's path), game mode, the pawn and whether it's a `BioVehicleBase`, `FindClosestDrivableVehicle`'s answer, the nearest live vehicle and its distance. `mevr vehicle enter`: `BioPlayerController.BioEnterVehicle` on the first answer, else the nearest. `FindClosestDrivableVehicle` is a native of `SFXSaveGame`, not a static one: it's asked only of a live SFXSaveGame, never a default object, and only with a BioPawn [verify whether one exists then, and whether entering works outside the game's own trigger].
+
+### Next run
+
+The mod hot-reloads (`MEVR-LE1-mod`; no host change, no HostServices bump). **The package must be installed again with the game closed** (research/47 "What to do": the file, then the TOC, its size changed). The view and rate lines don't need it. All `[verify]`:
+
+```powershell
+tools/console.ps1 "mevr cockpit mesh EngineBuildings.BuildingQuadMesh" "mevr cockpit screen 512 288 float" "mevr cockpit info"
+tools/snapshot.ps1 -Tag view-1
+tools/console.ps1 "mevr cockpit chase 12 10" "mevr cockpit info"
+tools/snapshot.ps1 -Tag view-2
+tools/console.ps1 "mevr cockpit aim 0" "mevr cockpit rate 10"     # then the log's levers line, about 10 s on
+tools/console.ps1 "mevr cockpit aim 1" "mevr cockpit rate 30"     # the levers line again
+tools/console.ps1 "mevr cockpit post 0"
+tools/snapshot.ps1 -Tag post-off
+tools/console.ps1 "mevr cockpit post 1" "mevr cockpit screen 512 288 rgba8"
+tools/snapshot.ps1 -Tag rgba8
+tools/console.ps1 "mevr cockpit screen 512 288 rgba8 linear"
+tools/snapshot.ps1 -Tag rgba8-linear
+tools/console.ps1 "mevr cockpit clear"
+tools/console.ps1 "mevr cockpit load BIOG_MEVR_Cockpit.Front_Cockpit" "mevr cockpit mesh" "mevr cockpit info"
+tools/snapshot.ps1 -Tag ours-own
+tools/console.ps1 "mevr cockpit texture BIOG_MEVR_Cockpit.Front_Cockpit_Diff" "mevr cockpit info"
+tools/snapshot.ps1 -Tag ours-texture
+tools/console.ps1 "mevr cockpit texture EngineResources.DefaultTexture"
+tools/snapshot.ps1 -Tag game-texture
+tools/console.ps1 "mevr cockpit clear" "mevr vehicle"
+```
+
+| Reading | Means |
+|---|---|
+| `info`: `ViewMatrix looks from` = `last asked`; view-1 shows the pawn from behind and above; view-2 differs | A is fixed |
+| They agree but the picture stays the old view | The update isn't making a new probe: the transform-only route isn't what's assumed; `FlushActor(.., false)` in `PointCapture` |
+| They differ, `bUpdateMatrices 0` | Something else writes `ViewMatrix`: look for it there, the bit is innocent |
+| Levers `captures`: about 0.11 a frame at 90 Hz under `aim 0` + `rate 10`; about 0.33 under `aim 1` + `rate 30` | Rate understood. Still 1.00 under `aim 0`: the probe is rebuilt by something else, or the world-time test isn't what was read |
+| `post-off` as bright as the eye, others darker | The double post: use no chain for a world screen |
+| `float` as bright as the eye, `rgba8` darker, `rgba8 linear` as bright | Target gamma: float, or `bForceLinearGamma` |
+| `ours-texture` shows the panels | The texture is good, **our package's instance is the fault**: `info`'s chain and parameter lines on `ours-own` against this |
+| `ours-texture` constant, `game-texture` shows a pattern | **The texture is bad**: `info`'s `Resource`, `ResidentMips`, flags; lazy or inline |
+| `game-texture` constant too | The test is wrong: an instance doesn't reach the mesh that way; `screen`'s path works, compare |
+| `info`: `Resource NULL` | The resource never made: `UpdateResource` didn't run for this load path |
+| `info`: `attached to the linker (lazy)` and own texture now right | The offsets were the cause after all |

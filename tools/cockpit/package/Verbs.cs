@@ -146,10 +146,17 @@ internal static class Verbs
                     }
                 }
             }
+            if (options.Has("bin") && export.ClassName == "MaterialInstanceConstant")
+            {
+                byte[] binary = export.GetBinaryData();
+                Console.WriteLine($"    binary {binary.Length} bytes: {Convert.ToHexString(binary.AsSpan(0, Math.Min(binary.Length, 48)))}");
+            }
             if (options.Has("bin") && export.ClassName == "Texture2D")
             {
                 var tex = ObjectBinary.From<UTexture2D>(export);
                 Console.WriteLine($"    unk1 {tex.Unk1} guid {tex.TextureGuid} mips: " + string.Join(", ", tex.Mips.Select(m => $"{m.SizeX}x{m.SizeY} {m.StorageType} {m.CompressedSize}")));
+                // Where the bulk data says it is, against where this export's data sits in the uncompressed package.
+                Console.WriteLine($"    export data at {export.DataOffset}, {export.DataSize} bytes; mip offsets: " + string.Join(", ", tex.Mips.Select(m => m.DataOffset.ToString())));
             }
         }
         return 0;

@@ -16,8 +16,10 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <format>
 #include <initializer_list>
 #include <optional>
@@ -51,6 +53,12 @@ ue3::ClassRef gTextureParameterExpression{"Engine.MaterialExpressionTextureSampl
 ue3::ClassRef gCaptureActor{"Engine.SceneCapture2DActor"};
 ue3::ClassRef gCaptureComponent{"Engine.SceneCapture2DComponent"};
 ue3::ClassRef gTargetClass{"Engine.TextureRenderTarget2D"};
+ue3::ClassRef gTexture{"Engine.Texture"};
+ue3::ClassRef gTexture2D{"Engine.Texture2D"};
+ue3::ClassRef gVehicleBase{"SFXGame.BioVehicleBase"};
+ue3::ClassRef gBioPawn{"SFXGame.BioPawn"};
+ue3::ClassRef gBioController{"SFXGame.BioPlayerController"};
+ue3::ClassRef gSaveGame{"SFXGame.SFXSaveGame"};
 
 ue3::FunctionRef gDynamicLoadObject{"Core.Object.DynamicLoadObject"};
 ue3::FunctionRef gSpawn{"Engine.Actor.Spawn"};
@@ -84,6 +92,8 @@ ue3::FunctionRef gCaptureSetEnabled{"Engine.SceneCaptureComponent.SetEnabled"};
 ue3::FunctionRef gCaptureSetFrameRate{"Engine.SceneCaptureComponent.SetFrameRate"};
 ue3::FunctionRef gCaptureSetView{"Engine.SceneCapture2DComponent.SetView"};
 ue3::FunctionRef gCaptureSetParameters{"Engine.SceneCapture2DComponent.SetCaptureParameters"};
+ue3::FunctionRef gEnterVehicle{"SFXGame.BioPlayerController.BioEnterVehicle"};
+ue3::FunctionRef gFindClosestVehicle{"SFXGame.SFXSaveGame.FindClosestDrivableVehicle"};
 
 ue3::FieldRef gStatic{"Engine.Actor", "bStatic"};
 ue3::FieldRef gNoDelete{"Engine.Actor", "bNoDelete"};
@@ -99,6 +109,7 @@ ue3::FieldRef gParent{"Engine.MaterialInstance", "Parent"};
 ue3::FieldRef gStaticPermutation{"Engine.MaterialInstance", "bHasStaticPermutationResource"};
 ue3::FieldRef gTextureValues{"Engine.MaterialInstanceConstant", "TextureParameterValues"};
 ue3::FieldRef gTextureValueName{gTextureValues, "ParameterName"};
+ue3::FieldRef gTextureValueObject{gTextureValues, "ParameterValue"};
 ue3::FieldRef gExpressions{"Engine.Material", "Expressions"};
 ue3::FieldRef gEmissive{"Engine.Material", "EmissiveColor"};
 ue3::FieldRef gEmissiveExpression{gEmissive, "Expression"};
@@ -122,6 +133,28 @@ ue3::FieldRef gSizeY{"Engine.TextureRenderTarget2D", "SizeY"};
 ue3::FieldRef gPlayer{"Engine.PlayerController", "Player"};
 ue3::FieldRef gPlayerPostProcess{"Engine.LocalPlayer", "PlayerPostProcess"};
 ue3::FieldRef gDefaultPostProcess{"Engine.Engine", "DefaultPostProcess"};
+// On by default: every SetParentToWorld (each update of the component) overwrites ViewMatrix from the actor. Off, SetView holds (research/47).
+ue3::FieldRef gUpdateMatrices{"Engine.SceneCapture2DComponent", "bUpdateMatrices"};
+ue3::FieldRef gViewMatrix{"Engine.SceneCapture2DComponent", "ViewMatrix"};
+ue3::FieldRef gForceLinearGamma{"Engine.TextureRenderTarget2D", "bForceLinearGamma"};
+ue3::FieldRef gTargetFormat{"Engine.TextureRenderTarget2D", "Format"};
+// What `info` reads.
+ue3::FieldRef gMeshMaterials{"Engine.MeshComponent", "Materials"};
+ue3::FieldRef gPrimitiveLightEnvironment{"Engine.PrimitiveComponent", "LightEnvironment"};
+ue3::FieldRef gLightEnvironmentEnabled{"Engine.LightEnvironmentComponent", "bEnabled"};
+ue3::FieldRef gTextureResource{"Engine.Texture", "Resource"};
+ue3::FieldRef gTextureSrgb{"Engine.Texture", "SRGB"};
+ue3::FieldRef gTextureNeverStream{"Engine.Texture", "NeverStream"};
+ue3::FieldRef gTextureLodGroup{"Engine.Texture", "LODGroup"};
+ue3::FieldRef gTexture2DSizeX{"Engine.Texture2D", "SizeX"};
+ue3::FieldRef gTexture2DSizeY{"Engine.Texture2D", "SizeY"};
+ue3::FieldRef gTexture2DFormat{"Engine.Texture2D", "Format"};
+ue3::FieldRef gTexture2DRequestedMips{"Engine.Texture2D", "RequestedMips"};
+ue3::FieldRef gTexture2DResidentMips{"Engine.Texture2D", "ResidentMips"};
+ue3::FieldRef gTexture2DMipTail{"Engine.Texture2D", "MipTailBaseIdx"};
+ue3::FieldRef gTexture2DMips{"Engine.Texture2D", "Mips"};
+// For `mevr vehicle`.
+ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo"};
 
 // EObjectFlags: RF_ClassDefaultObject.
 constexpr std::uint64_t kClassDefaultFlag = 0x200;
@@ -180,6 +213,8 @@ struct Settings {
     std::string spawnClass;     // `spawnclass`: only that one
     std::string materialName;   // `material`: the parent, by name
     std::string paramName;      // `param`: the texture parameter, by name
+    bool aim = true;            // `aim 0`: no more SetView, so the probe lives on and FrameRate throttles it (research/47)
+    bool postProcess = true;    // `post 0`: the capture without the post chain
 };
 Settings gSettings;
 
@@ -196,6 +231,7 @@ struct State {
     ue3::Name parameter{};
     bool parameterSet = false;
     ue3::Object* target = nullptr;
+    ue3::Object* shownTexture = nullptr;  // `texture`: put on the instance instead of the render target
     int targetWidth = 512;
     int targetHeight = 288;
     bool targetFloat = true;
@@ -203,6 +239,8 @@ struct State {
     ue3::Object* captureComponent = nullptr;
     std::uint32_t placedTicks = 0;
     std::uint32_t pointedTicks = 0;
+    double lastPointed = -1.0;
+    ue3::Vector askedView{};
 };
 State gState;
 ue3::Object* gLoadedMesh = nullptr;  // what `load` last returned; nothing holds it: checked alive before use
@@ -210,6 +248,10 @@ std::string gLastError = "none";
 bool gLoggedMoveFailure = false;
 bool gLoggedFirstPlace = false;
 bool gLoggedFlatFallback = false;
+
+double Now() {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
 
 ue3::Reflection& R() {
     return ue3::runtime::Get();
@@ -1042,9 +1084,10 @@ std::string ApplyMaterial() {
     gState.parent = row->object;
     gState.parameter = *parameter;
     gState.parameterSet = true;
+    ue3::Object* const shown = gState.shownTexture != nullptr ? gState.shownTexture : gState.target;
     ue3::Params value = ParamsOf(gSetTextureParameter);
     value.Set("ParameterName", *parameter);
-    value.Set("Value", gState.target);
+    value.Set("Value", shown);
     Call(gState.mic, gSetTextureParameter, value);
     FlushActor(gState.actor, false);
     // Read back: the instance holds it. It says nothing about the parent using it: the snapshot does.
@@ -1053,16 +1096,17 @@ std::string ApplyMaterial() {
     Call(gState.mic, gGetTextureParameter, read);
     bool const found = read.ReturnBool().value_or(false);
     ue3::Object* const held = read.Get<ue3::Object*>("OutValue").value_or(nullptr);
-    std::string const report = std::format("the instance {} over {} ({}): {}; {} = the render target on {} element{}; read back: {}, {}",
-        ue3::runtime::FullName(gState.mic), R().PathName(row->object), how, RowText(*row), ue3::runtime::NameText(*parameter), elements, elements == 1 ? "" : "s",
-        found ? "found" : "not found", held == gState.target ? "it is our target" : ue3::runtime::FullName(held));
+    std::string const report = std::format("the instance {} over {} ({}): {}; {} = {} on {} element{}; read back: {}, {}",
+        ue3::runtime::FullName(gState.mic), R().PathName(row->object), how, RowText(*row), ue3::runtime::NameText(*parameter),
+        shown == gState.target ? std::string("the render target") : ue3::runtime::FullName(shown), elements, elements == 1 ? "" : "s", found ? "found" : "not found",
+        held == shown ? "it is what we set" : ue3::runtime::FullName(held));
     log::Info("cockpit probe: {}", report);
     gLastError = "none";
     return report;
 }
 
 void ReapplyMaterial() {
-    if (gState.target != nullptr && gState.mic != nullptr) {
+    if ((gState.target != nullptr || gState.shownTexture != nullptr) && gState.mic != nullptr) {
         MicOnAllElements();
     }
 }
@@ -1124,13 +1168,25 @@ void PointCapture() {
     double const up = static_cast<double>(gSettings.chaseUpM) * engine::kUnitsPerMeter;
     engine::UnrealVector const from{at->x - forward.x * back, at->y - forward.y * back, at->z + up};
     engine::UnrealRotation const look = engine::ToRotation({at->x - from.x, at->y - from.y, at->z - from.z});
+    gState.askedView = {static_cast<float>(from.x), static_cast<float>(from.y), static_cast<float>(from.z)};
     ue3::Params view = ParamsOf(gCaptureSetView);
-    view.Set("NewLocation", ue3::Vector{static_cast<float>(from.x), static_cast<float>(from.y), static_cast<float>(from.z)});
+    view.Set("NewLocation", gState.askedView);
     view.Set("NewRotation", ue3::Rotator{look.pitch, look.yaw, look.roll});
-    // A full re-attach: with a transform-only update the capture kept the view it was attached with (research/47).
-    if (Call(gState.captureComponent, gCaptureSetView, view) && FlushActor(gState.captureActor, false)) {
+    // The update makes the engine's new probe, which carries the view to the render thread (the probe holds a copy). A new
+    // probe has no last render time, so it renders at its next chance whatever FrameRate says: how often this runs is what
+    // sets the rate of a moving capture (research/47).
+    if (Call(gState.captureComponent, gCaptureSetView, view) && FlushActor(gState.captureActor, true)) {
         ++gState.pointedTicks;
     }
+    gState.lastPointed = Now();
+}
+
+// The capture's post chain, or none (`post 0`): the picture then reaches the eye through the eye's own post only.
+void ApplyPost(ue3::Object* controller) {
+    ue3::Object* const chain = gSettings.postProcess ? PlayerPostProcessChain(controller) : nullptr;
+    gEnablePostProcess.WriteBool(gState.captureComponent, chain != nullptr);
+    gUseMainPostProcess.WriteBool(gState.captureComponent, chain != nullptr);
+    WriteField(gPostProcess, gState.captureComponent, chain, "CockpitProbe.PostProcess");
 }
 
 std::string DoScreen(std::istringstream& words) {
@@ -1143,11 +1199,14 @@ std::string DoScreen(std::istringstream& words) {
     int width = 512;
     int height = 288;
     bool floatTarget = true;
+    bool linear = false;
     for (std::string word; words >> word;) {
         if (word == "rgba8") {
             floatTarget = false;
         } else if (word == "float") {
             floatTarget = true;
+        } else if (word == "linear") {
+            linear = true;
         } else {
             std::istringstream size(word);
             int w = 0;
@@ -1156,7 +1215,7 @@ std::string DoScreen(std::istringstream& words) {
                 width = w;
                 height = h;
             } else {
-                return "usage: mevr cockpit screen [W H] [float|rgba8]";
+                return "usage: mevr cockpit screen [W H] [float|rgba8] [linear]";
             }
         }
     }
@@ -1183,6 +1242,8 @@ std::string DoScreen(std::istringstream& words) {
         log::Info("cockpit probe: render target {} ({}x{} {})", ue3::runtime::FullName(target), gSizeX.Read<std::int32_t>(target).value_or(-1),
             gSizeY.Read<std::int32_t>(target).value_or(-1), floatTarget ? "FloatRGB" : "A8R8G8B8");
     }
+    gForceLinearGamma.WriteBool(gState.target, linear);
+    gState.shownTexture = nullptr;
     if (gState.captureActor == nullptr) {
         ue3::Object* const actor = SpawnActor(controller, gCaptureActor.Get(), player::Location(controller).value_or(ue3::Vector{}));
         if (!ue3::IsA(actor, gCaptureActor)) {
@@ -1200,11 +1261,9 @@ std::string DoScreen(std::istringstream& words) {
         gSkipUsersOccluded.WriteBool(component, false);
         gSkipOwnerOccluded.WriteBool(component, false);
         WriteField(gMaxUpdateDist, component, kMaxUpdateDist, "CockpitProbe.MaxUpdateDist");
-        ue3::Object* const chain = PlayerPostProcessChain(controller);
-        gEnablePostProcess.WriteBool(component, chain != nullptr);
-        gUseMainPostProcess.WriteBool(component, chain != nullptr);
-        WriteField(gPostProcess, component, chain, "CockpitProbe.PostProcess");
-        log::Info("cockpit probe: capture {} with {}; post process {}", ue3::runtime::FullName(actor), ue3::runtime::FullName(component), ue3::runtime::FullName(chain));
+        gUpdateMatrices.WriteBool(component, false);  // or each component update puts the view back on the actor (research/47)
+        ApplyPost(controller);
+        log::Info("cockpit probe: capture {} with {}; post process {}", ue3::runtime::FullName(actor), ue3::runtime::FullName(component), gSettings.postProcess);
     }
     ue3::Params parameters = ParamsOf(gCaptureSetParameters);
     parameters.Set("NewTextureTarget", gState.target);
@@ -1291,7 +1350,7 @@ std::string StatusLine() {
         target = std::format("{}x{} {}", gSizeX.Read<std::int32_t>(gState.target).value_or(-1), gSizeY.Read<std::int32_t>(gState.target).value_or(-1),
             gState.targetFloat ? "float" : "rgba8");
     }
-    return std::format("actor {} ({}, {}), mesh {}, scale {:.2f}, {:.2f} m, material {} over {}, parameter {}, {}, capture {} at {:.0f}/s, "
+    return std::format("actor {} ({}, {}), mesh {}, scale {:.2f}, {:.2f} m, our override instance {} over {} (None: the mesh's own material, see `info`), parameter {}, {}, capture {} at {:.0f}/s, "
                        "ticks placed {} pointed {} (renders: the levers line's `captures`), last error: {}",
         ue3::runtime::FullName(gState.actor), gState.kind[0] != '\0' ? gState.kind : "-", mode, ue3::runtime::FullName(gState.mesh), gSettings.scale, gSettings.distanceM,
         ue3::runtime::FullName(gState.mic), ue3::runtime::FullName(gState.parent), gState.parameterSet ? ue3::runtime::NameText(gState.parameter) : std::string("-"), target,
@@ -1306,10 +1365,288 @@ std::string Rest(std::istringstream& words) {
 }
 
 constexpr char const* kUsage =
-    "mevr cockpit: load <Package.Object> [class] | mesh [name or Package.Object] | list [filter] | classes | spawnclass [name] | screen [W H] [float|rgba8] | materials [filter] | material [name] | param [name] | "
-    "scale S | dist M | rot P Y R | follow 0|1 | attach | detach | chase BACK UP | rate N | status | clear";
+    "mevr cockpit: load <Package.Object> [class] | mesh [name or Package.Object] | list [filter] | classes | spawnclass [name] | screen [W H] [float|rgba8] [linear] | materials [filter] | material [name] | param [name] | "
+    "texture [Package.Object] | info | scale S | dist M | rot P Y R | follow 0|1 | attach | detach | chase BACK UP | rate N | aim 0|1 | post 0|1 | status | clear";
+
+// ---- `texture`, `info`: separating a bad texture from a bad instance from a bad mesh (research/47) -------------------
+
+// `texture <Package.Object>` shows one texture on a new instance of ours over the plain emissive material, in place of the
+// render target; no name: back to the render target. So: our texture on our instance over the game's parent, against the
+// package's own instance, on any mesh.
+std::string DoTexture(std::string const& path) {
+    if (gState.actor == nullptr) {
+        return Refuse("nothing to put it on: mevr cockpit mesh first");
+    }
+    if (path.empty()) {
+        gState.shownTexture = nullptr;
+        return gState.target != nullptr ? ApplyMaterial() : std::string("back to the render target; there isn't one yet: mevr cockpit screen");
+    }
+    if (auto const missing = MissingClass({&gTexture})) {
+        return Refuse(*missing);
+    }
+    ue3::Object* const loaded = LoadObject(path, gTexture.Get());
+    if (!ue3::IsA(loaded, gTexture)) {
+        return Refuse(std::format("DynamicLoadObject returned None for {} as a Texture", path));
+    }
+    gState.shownTexture = loaded;
+    if (gSettings.materialName.empty() && gSettings.paramName.empty()) {
+        gSettings.materialName = "EngineMaterials.EmissiveTexturedMaterial";
+        gSettings.paramName = "Texture";
+    }
+    return ApplyMaterial();
+}
+
+// A mip's bulk data, by the offsets UTexture2D::Serialize and its bulk data code use (research/47). A read that faults says so.
+struct MipBulk {
+    std::uint32_t flags = 0;
+    std::int32_t elements = 0;
+    std::int32_t sizeOnDisk = 0;
+    std::int32_t offsetInFile = 0;
+    bool holdsData = false;
+    bool attached = false;  // to the linker's archive: lazily loaded, and then OffsetInFile is what gets read
+    std::int32_t sizeX = 0;
+    std::int32_t sizeY = 0;
+};
+
+bool ReadMipBulk(void const* const* mipsData, std::int32_t index, MipBulk* out) {
+    __try {
+        auto const* const mip = static_cast<std::uint8_t const*>(mipsData[index]);
+        if (mip == nullptr) {
+            return false;
+        }
+        out->flags = *reinterpret_cast<std::uint32_t const*>(mip + 0x08);
+        out->elements = *reinterpret_cast<std::int32_t const*>(mip + 0x0C);
+        out->offsetInFile = *reinterpret_cast<std::int32_t const*>(mip + 0x10);
+        out->sizeOnDisk = *reinterpret_cast<std::int32_t const*>(mip + 0x14);
+        out->holdsData = *reinterpret_cast<void const* const*>(mip + 0x28) != nullptr;
+        std::uint64_t archive = 0;
+        std::memcpy(&archive, mip + 0x34, sizeof(archive));  // unaligned
+        out->attached = archive != 0;
+        out->sizeX = *reinterpret_cast<std::int32_t const*>(mip + 0x44);
+        out->sizeY = *reinterpret_cast<std::int32_t const*>(mip + 0x48);
+        return true;
+    } __except (1) {
+        return false;
+    }
+}
+
+std::string TextureText(ue3::Object* texture) {
+    if (texture == nullptr) {
+        return "None";
+    }
+    std::string out = std::format("{}: Resource {}, SRGB {}, NeverStream {}, LODGroup {}", ue3::runtime::FullName(texture),
+        gTextureResource.Read<void*>(texture).value_or(nullptr) != nullptr ? "set" : "NULL", gTextureSrgb.ReadBool(texture).value_or(false) ? 1 : 0,
+        gTextureNeverStream.ReadBool(texture).value_or(false) ? 1 : 0, static_cast<int>(gTextureLodGroup.Read<std::uint8_t>(texture).value_or(255)));
+    if (ue3::IsA(texture, gTargetClass)) {
+        out += std::format(", render target {}x{} format {} bForceLinearGamma {}", gSizeX.Read<std::int32_t>(texture).value_or(-1), gSizeY.Read<std::int32_t>(texture).value_or(-1),
+            static_cast<int>(gTargetFormat.Read<std::uint8_t>(texture).value_or(255)), gForceLinearGamma.ReadBool(texture).value_or(false) ? 1 : 0);
+    }
+    if (!ue3::IsA(texture, gTexture2D)) {
+        return out;
+    }
+    out += std::format(", {}x{} format {}, RequestedMips {}, ResidentMips {}, MipTailBaseIdx {}", gTexture2DSizeX.Read<std::int32_t>(texture).value_or(-1),
+        gTexture2DSizeY.Read<std::int32_t>(texture).value_or(-1), static_cast<int>(gTexture2DFormat.Read<std::uint8_t>(texture).value_or(255)),
+        gTexture2DRequestedMips.Read<std::int32_t>(texture).value_or(-1), gTexture2DResidentMips.Read<std::int32_t>(texture).value_or(-1),
+        gTexture2DMipTail.Read<std::int32_t>(texture).value_or(-1));
+    // Mips is an indirect array: { pointers, count, max }.
+    if (auto const* const mips = static_cast<std::uint8_t const*>(gTexture2DMips.Address(texture))) {
+        void const* const* const data = *reinterpret_cast<void const* const* const*>(mips);
+        std::int32_t const count = *reinterpret_cast<std::int32_t const*>(mips + 8);
+        out += std::format(", {} mips", count);
+        for (std::int32_t i = 0; data != nullptr && i < count && i < 16; i += (i == 0 ? std::max(count - 1, 1) : count)) {  // the first and the last
+            MipBulk bulk;
+            out += ReadMipBulk(data, i, &bulk) ? std::format("; mip {}: {}x{}, bulk flags 0x{:X}, {} bytes, on disk {} at {}, data {}, {}", i, bulk.sizeX, bulk.sizeY, bulk.flags, bulk.elements,
+                                                     bulk.sizeOnDisk, bulk.offsetInFile, bulk.holdsData ? "held" : "handed to the resource or never read",
+                                                     bulk.attached ? "attached to the linker (lazy)" : "not attached (read inline)")
+                                               : std::format("; mip {}: unreadable", i);
+        }
+    }
+    return out;
+}
+
+// What the element draws: the chain up to the Material, every texture parameter on the way, each texture's state.
+std::string MaterialChainText(ue3::Object* material) {
+    std::string out;
+    ue3::Object* current = material;
+    for (int depth = 0; depth < 8 && current != nullptr; ++depth) {
+        out += std::format("\n      {}", ue3::runtime::FullName(current));
+        if (ue3::IsA(current, gMaterial)) {
+            out += std::format(" lighting {} blend {} static-lighting {} light-environments {}", static_cast<int>(gLightingModel.Read<std::uint8_t>(current).value_or(255)),
+                static_cast<int>(gBlendMode.Read<std::uint8_t>(current).value_or(255)), gUsedStaticLighting.ReadBool(current).value_or(false) ? 1 : 0,
+                gUsedLightEnvironments.ReadBool(current).value_or(false) ? 1 : 0);
+            MaterialRow const row = Analyze(current);
+            out += std::format(" textures: {}{}", NamesText(row.parameters), row.emissive ? std::format("; wired into emissive: {}", ue3::runtime::NameText(*row.emissive)) : std::string());
+            return out;
+        }
+        if (ue3::IsA(current, gMic)) {
+            if (auto const values = gTextureValues.ElementsOf(current)) {
+                for (std::int32_t i = 0; i < values->count; ++i) {
+                    auto const name = gTextureValueName.Read<ue3::Name>(values->At(i));
+                    ue3::Object* const value = gTextureValueObject.Read<ue3::Object*>(values->At(i)).value_or(nullptr);
+                    out += std::format("\n        {} = {}", name ? ue3::runtime::NameText(*name) : std::string("?"), TextureText(value));
+                }
+            } else {
+                out += "\n        (no TextureParameterValues)";
+            }
+        }
+        if (!ue3::IsA(current, gMaterialInstance)) {
+            return out;
+        }
+        current = gParent.Read<ue3::Object*>(current).value_or(nullptr);
+        if (current == nullptr) {
+            out += "\n      its Parent is None: the instance's parent didn't resolve";
+        }
+    }
+    return out;
+}
+
+// Where a world-to-view matrix looks from: p * M = 0, M's upper 3x3 a rotation.
+ue3::Vector ViewLocation(float const* m) {
+    return {-(m[12] * m[0] + m[13] * m[1] + m[14] * m[2]), -(m[12] * m[4] + m[13] * m[5] + m[14] * m[6]), -(m[12] * m[8] + m[13] * m[9] + m[14] * m[10])};
+}
+
+// `info`: the live state of the mesh's material and of the capture, read on the game thread.
+std::string Info() {
+    std::string out;
+    if (gState.actor == nullptr) {
+        out = "no mesh up\n";
+    } else {
+        ue3::Params count = ParamsOf(gGetNumElements);
+        Call(gState.component, gGetNumElements, count);
+        int const elements = count.Return<std::int32_t>().value_or(0);
+        auto const overrides = gMeshMaterials.ElementsOf(gState.component);
+        ue3::Object* const environment = gPrimitiveLightEnvironment.Read<ue3::Object*>(gState.component).value_or(nullptr);
+        out += std::format("mesh {} on {} ({}): {} element{}, {} component override{}, light environment {}{}\n", ue3::runtime::FullName(gState.mesh), ue3::runtime::FullName(gState.component),
+            gState.kind, elements, elements == 1 ? "" : "s", overrides ? overrides->count : 0, overrides && overrides->count == 1 ? "" : "s", ue3::runtime::FullName(environment),
+            environment != nullptr ? std::format(" enabled {}", gLightEnvironmentEnabled.ReadBool(environment).value_or(false) ? 1 : 0) : std::string());
+        for (int i = 0; i < elements && i < 8; ++i) {
+            ue3::Params get = ParamsOf(gGetMaterial);
+            get.Set("ElementIndex", i);
+            Call(gState.component, gGetMaterial, get);
+            ue3::Object* const material = get.Return<ue3::Object*>().value_or(nullptr);
+            out += std::format("  element {}: {}", i, material != nullptr ? MaterialChainText(material) : std::string("None: GetMaterial returned nothing"));
+            // The engine's own answer for each name the chain knows.
+            if (material != nullptr) {
+                for (ue3::Name const name : Analyze(material).parameters) {
+                    ue3::Params read = ParamsOf(gGetTextureParameter);
+                    read.Set("ParameterName", name);
+                    Call(material, gGetTextureParameter, read);
+                    out += std::format("\n      GetTextureParameterValue({}): {}, {}", ue3::runtime::NameText(name), read.ReturnBool().value_or(false) ? "found" : "not found",
+                        ue3::runtime::FullName(read.Get<ue3::Object*>("OutValue").value_or(nullptr)));
+                }
+            }
+            out += "\n";
+        }
+    }
+    if (gState.captureComponent != nullptr) {
+        out += std::format("capture {}: bUpdateMatrices {}, enabled {}, FrameRate {:.1f}, post process {}, aim {}, pointed {} times\n  target {}\n", ue3::runtime::FullName(gState.captureComponent),
+            gUpdateMatrices.ReadBool(gState.captureComponent).value_or(true) ? 1 : 0, gCaptureEnabled.ReadBool(gState.captureComponent).value_or(false) ? 1 : 0,
+            gFrameRate.Read<float>(gState.captureComponent).value_or(-1.0f), gEnablePostProcess.ReadBool(gState.captureComponent).value_or(false) ? 1 : 0, gSettings.aim ? 1 : 0,
+            gState.pointedTicks, TextureText(gState.target));
+        if (void const* const matrix = gViewMatrix.Address(gState.captureComponent)) {
+            ue3::Vector const from = ViewLocation(static_cast<float const*>(matrix));
+            out += std::format("  ViewMatrix looks from {:.0f} {:.0f} {:.0f}; last asked {:.0f} {:.0f} {:.0f}\n", from.x, from.y, from.z, gState.askedView.x, gState.askedView.y, gState.askedView.z);
+        }
+    }
+    log::Info("cockpit probe: info:\n{}", out);
+    return out;
+}
+
+// ---- `mevr vehicle` -------------------------------------------------------------------------------------------------
+
+float DistanceSquared(ue3::Vector const& a, ue3::Vector const& b) {
+    return (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z);
+}
+
+// FindClosestDrivableVehicle is a native of SFXSaveGame: asked of a live one only (what it reads of its object isn't known,
+// so never of a default object). Else, or if it answers None: the nearest live BioVehicleBase, whatever state that one is in.
+struct VehicleFind {
+    ue3::Object* engineAnswer = nullptr;
+    bool engineAsked = false;
+    ue3::Object* nearest = nullptr;
+    float nearestM = 0.0f;
+};
+
+VehicleFind FindVehicle(ue3::Object* pawn) {
+    VehicleFind find;
+    if (pawn == nullptr) {
+        return find;
+    }
+    ue3::Object* save = nullptr;
+    ForEachLive(gSaveGame.Get(), [&](ue3::Object* object) {
+        save = save != nullptr ? save : object;
+    });
+    if (save != nullptr && gFindClosestVehicle.Get() != nullptr && ue3::IsA(pawn, gBioPawn)) {
+        ue3::Params p = ParamsOf(gFindClosestVehicle);
+        p.Set("Pawn", pawn);
+        find.engineAsked = Call(save, gFindClosestVehicle, p);
+        find.engineAnswer = p.Return<ue3::Object*>().value_or(nullptr);
+    }
+    ue3::Vector const at = player::Location(pawn).value_or(ue3::Vector{});
+    float best = 0.0f;
+    ForEachLive(gVehicleBase.Get(), [&](ue3::Object* vehicle) {
+        auto const there = player::Location(vehicle);
+        if (there) {
+            float const distance = DistanceSquared(at, *there);
+            if (find.nearest == nullptr || distance < best) {
+                find.nearest = vehicle;
+                best = distance;
+            }
+        }
+    });
+    find.nearestM = std::sqrt(best) / static_cast<float>(engine::kUnitsPerMeter);
+    return find;
+}
+
+// The top of WorldInfo's path is the persistent map's package.
+std::string MapName(ue3::Object* controller) {
+    ue3::Object* const world = gWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr);
+    if (world == nullptr) {
+        return "(no WorldInfo)";
+    }
+    std::string const path = R().PathName(world);
+    return path.substr(0, path.find('.'));
+}
 
 } // namespace
+
+std::string VehicleCommand(std::string const& line) {
+    if (!ue3::runtime::Ready()) {
+        return "mevr vehicle: our reflection layer is off (see the 'reflect:' lines)";
+    }
+    ue3::Object* const controller = player::Controller();
+    if (controller == nullptr) {
+        return "mevr vehicle: no player controller";
+    }
+    ue3::Object* const pawn = player::Pawn(controller);
+    std::istringstream words(line);
+    std::string verb;
+    words >> verb;
+    VehicleFind const find = FindVehicle(pawn);
+    ue3::Object* const target = find.engineAnswer != nullptr ? find.engineAnswer : find.nearest;
+    if (verb == "enter") {
+        if (auto const missing = MissingFunction({&gEnterVehicle})) {
+            return Refuse(*missing);
+        }
+        if (!ue3::IsA(controller, gBioController)) {
+            return Refuse(std::format("{} isn't a BioPlayerController", ue3::runtime::FullName(controller)));
+        }
+        if (target == nullptr) {
+            return Refuse(std::format("no vehicle in {}", MapName(controller)));
+        }
+        ue3::Params p = ParamsOf(gEnterVehicle);
+        p.Set("oVehicle", target);
+        bool const called = Call(controller, gEnterVehicle, p);
+        std::string const report = std::format("BioEnterVehicle({}): called {}, returned {}; `mevr vehicle` says what it did", ue3::runtime::FullName(target), called,
+            p.ReturnBool().value_or(false));
+        log::Info("mevr vehicle: {}", report);
+        return report;
+    }
+    auto const mode = player::GameMode(controller);
+    return std::format("map {}, game mode {}, pawn {} (BioVehicleBase: {}), closest drivable {} ({}), nearest vehicle {} at {:.1f} m", MapName(controller), mode ? std::to_string(*mode) : std::string("?"),
+        ue3::runtime::FullName(pawn), pawn != nullptr && ue3::IsA(pawn, gVehicleBase) ? "yes" : "no", ue3::runtime::FullName(find.engineAnswer),
+        find.engineAsked ? "FindClosestDrivableVehicle's answer" : "not asked: no live SFXSaveGame or not on foot", ue3::runtime::FullName(find.nearest), find.nearestM);
+}
 
 std::string Command(std::string const& line) {
     if (!ue3::runtime::Ready()) {
@@ -1341,9 +1678,15 @@ std::string Command(std::string const& line) {
     if (verb == "materials") {
         return ListMaterials(Rest(words));
     }
+    if (verb == "texture") {
+        return DoTexture(Rest(words));
+    }
+    if (verb == "info") {
+        return Info();
+    }
     if (verb == "material" || verb == "param") {
         (verb == "material" ? gSettings.materialName : gSettings.paramName) = Rest(words);
-        if (gState.target == nullptr) {
+        if (gState.target == nullptr && gState.shownTexture == nullptr) {
             return std::format("{} set; it applies on mevr cockpit screen", verb);
         }
         return ApplyMaterial();
@@ -1391,7 +1734,27 @@ std::string Command(std::string const& line) {
         }
         gSettings.chaseBackM = back;
         gSettings.chaseUpM = up;
+        if (gState.captureActor != nullptr) {
+            PointCapture();  // even under `aim 0`: one new view
+        }
         return StatusLine();
+    }
+    if (verb == "aim") {
+        int on = 1;
+        words >> on;
+        gSettings.aim = on != 0;
+        return std::format("{}: the capture's probe {}", gSettings.aim ? "re-pointed at `rate` a second" : "left where it is",
+            gSettings.aim ? "is rebuilt each time, so each one renders" : "lives on, so FrameRate throttles it (the levers line's captures against `rate`)");
+    }
+    if (verb == "post") {
+        int on = 1;
+        words >> on;
+        gSettings.postProcess = on != 0;
+        if (gState.captureComponent != nullptr) {
+            ApplyPost(player::Controller());
+            FlushActor(gState.captureActor, false);
+        }
+        return std::format("the capture's post chain {}", gSettings.postProcess ? "on" : "off");
     }
     if (verb == "rate") {
         float rate = 0.0f;
@@ -1424,7 +1787,8 @@ void Tick() {
     if (gState.actor != nullptr && gSettings.follow && !gState.attached && Place()) {
         ++gState.placedTicks;
     }
-    if (gState.captureActor != nullptr) {
+    // Not every tick unless the rate asks: each SetView makes the engine build a new probe, with a new view state.
+    if (gState.captureActor != nullptr && gSettings.aim && gSettings.captureRate > 0.0f && Now() - gState.lastPointed >= 1.0 / static_cast<double>(gSettings.captureRate)) {
         PointCapture();
     }
 }
@@ -1456,19 +1820,23 @@ void Shutdown(bool exiting) {
     gLastError = "none";
     gLoggedMoveFailure = gLoggedFirstPlace = gLoggedFlatFallback = false;
     for (ue3::ClassRef* const c : {&gActorClass, &gInterpActor, &gKActor, &gKActorSpawnable, &gStaticMeshActor, &gDynamicSmActor, &gStaticMesh, &gStaticMeshComponent,
-             &gMaterial, &gMaterialInstance, &gMic, &gTextureParameterExpression, &gCaptureActor, &gCaptureComponent, &gTargetClass}) {
+             &gMaterial, &gMaterialInstance, &gMic, &gTextureParameterExpression, &gCaptureActor, &gCaptureComponent, &gTargetClass, &gTexture, &gTexture2D, &gVehicleBase, &gBioPawn,
+             &gBioController, &gSaveGame}) {
         c->Reset();
     }
     for (ue3::FunctionRef* const f : {&gDynamicLoadObject, &gSpawn, &gDestroy, &gSetLocation, &gSetRotation, &gSetDrawScale, &gSetPhysics, &gSetCollision, &gSetHidden, &gSetBase, &gSetHardAttach,
              &gForceUpdate, &gSetActorCollision, &gSetBlockRigidBody, &gSetTraceBlocking, &gSetStaticMesh, &gGetMaterial, &gSetMaterial, &gGetNumElements, &gGetUnscaledBounds,
              &gCreateMic, &gSetParent, &gSetTextureParameter, &gGetTextureParameter, &gLightEnvironmentSetEnabled, &gCreateTarget, &gCaptureSetEnabled, &gCaptureSetFrameRate,
-             &gCaptureSetView, &gCaptureSetParameters}) {
+             &gCaptureSetView, &gCaptureSetParameters, &gEnterVehicle, &gFindClosestVehicle}) {
         f->Reset();
     }
     for (ue3::FieldRef* const f : {&gStatic, &gNoDelete, &gMovable, &gPhysics, &gBase, &gDynamicComponent, &gDynamicLightEnvironment, &gStaticActorComponent, &gComponentMesh,
              &gBounds, &gParent, &gStaticPermutation, &gTextureValues, &gTextureValueName, &gExpressions, &gEmissive, &gEmissiveExpression, &gBlendMode, &gLightingModel,
              &gUsedStaticLighting, &gUsedLightEnvironments, &gExpressionParameterName, &gSceneCapture, &gCaptureEnabled, &gEnablePostProcess, &gUseMainPostProcess,
-             &gSkipUsersOccluded, &gSkipOwnerOccluded, &gMaxUpdateDist, &gPostProcess, &gFrameRate, &gSizeX, &gSizeY, &gPlayer, &gPlayerPostProcess, &gDefaultPostProcess}) {
+             &gSkipUsersOccluded, &gSkipOwnerOccluded, &gMaxUpdateDist, &gPostProcess, &gFrameRate, &gSizeX, &gSizeY, &gPlayer, &gPlayerPostProcess, &gDefaultPostProcess, &gUpdateMatrices,
+             &gViewMatrix, &gForceLinearGamma, &gTargetFormat, &gMeshMaterials, &gPrimitiveLightEnvironment, &gLightEnvironmentEnabled, &gTextureResource, &gTextureSrgb, &gTextureNeverStream,
+             &gTextureLodGroup, &gTexture2DSizeX, &gTexture2DSizeY, &gTexture2DFormat, &gTexture2DRequestedMips, &gTexture2DResidentMips, &gTexture2DMipTail, &gTexture2DMips, &gWorldInfo,
+             &gTextureValueObject}) {
         f->Reset();
     }
 }
@@ -1477,6 +1845,10 @@ void Shutdown(bool exiting) {
 
 std::string Command(std::string const& /*line*/) {
     return "mevr cockpit: LE1 only";
+}
+
+std::string VehicleCommand(std::string const& /*line*/) {
+    return "mevr vehicle: LE1 only";
 }
 
 void Tick() {}

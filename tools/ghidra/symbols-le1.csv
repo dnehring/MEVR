@@ -196,3 +196,12 @@ rva,name,kind,comment
 0x279360,FUberPostProcessSceneProxy::Render_guess,func,research/47: final effect binds 0x773D30 and sets view +0x4B4
 0x27A100,FSFXUberPostProcessSceneProxy::Render_guess,func,research/47: as 0x279360
 0x75B2E0,FSceneRenderer::FinishRenderViewTarget_guess,func,research/47: copies to the family target; returns early when view +0x4B4 is set
+0x4FFBF0,USceneCapture2DComponent::SetView_body,func,research/47: writes ViewMatrix and bNeedsSceneUpdate only
+0x4FE250,USceneCapture2DComponent::SetParentToWorld_guess,func,research/47: bUpdateMatrices overwrites ViewMatrix from the actor; removes and adds the capture
+0x500910,USceneCaptureComponent::Tick_guess,func,research/47: rebuilds the capture on bNeedsSceneUpdate
+0x4F2060,USceneCapture2DComponent::CreateProbe_guess,func,research/47: vtable +0x338; the probe copies ViewMatrix and ProjMatrix
+0x501B70,USceneCapture2DComponent::UpdateProjMatrix_guess,func,research/47: gated by bUpdateMatrices; SetCaptureParameters sets the bit for the call
+0x4ECB00,FSceneCaptureProbe::FSceneCaptureProbe_guess,func,research/47: last render time 0; +0x70 is 1/FrameRate
+0x2674D0,UTexture2D::CreateResource_guess,func,research/47: RequestedMips
+0x260880,FTexture2DResource::FTexture2DResource_guess,func,research/47: takes each resident mip's bulk data
+0x26E5A0,FTexture2DResource::InitRHI_guess,func,research/47: copies the mips into the RHI texture; a null mip stays unwritten

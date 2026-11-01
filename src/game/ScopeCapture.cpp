@@ -60,6 +60,7 @@ ue3::FieldRef gPostProcess{"Engine.SceneCaptureComponent", "PostProcess"};
 ue3::FieldRef gFrameRate{"Engine.SceneCaptureComponent", "FrameRate"};
 ue3::FieldRef gTextureTarget{"Engine.SceneCapture2DComponent", "TextureTarget"};
 ue3::FieldRef gFieldOfView{"Engine.SceneCapture2DComponent", "FieldOfView"};
+ue3::FieldRef gUpdateMatrices{"Engine.SceneCapture2DComponent", "bUpdateMatrices"};
 ue3::FieldRef gResource{"Engine.Texture", "Resource"};
 ue3::FieldRef gSizeX{"Engine.TextureRenderTarget2D", "SizeX"};
 ue3::FieldRef gSizeY{"Engine.TextureRenderTarget2D", "SizeY"};
@@ -276,6 +277,8 @@ bool SetFrameRate(float rate) {
 // The capture's own settings on its component, before SetCaptureParameters re-attaches it (the probe takes them then).
 void ConfigureComponent(ue3::Object* controller, sc::Settings const& settings) {
     ue3::Object* const c = gState.component;
+    // On by default: each component update would put ViewMatrix back on the actor, which stays where it was spawned (research/47).
+    WriteBool(gUpdateMatrices, c, false, "ScopeCapture.bUpdateMatrices");
     WriteBool(gSkipUsersOccluded, c, false, "ScopeCapture.bSkipUpdateIfTextureUsersOccluded");  // nothing renders our texture
     WriteBool(gSkipOwnerOccluded, c, false, "ScopeCapture.bSkipUpdateIfOwnerOccluded");        // nor the invisible actor
     WriteField(gMaxUpdateDist, c, kMaxUpdateDist, "ScopeCapture.MaxUpdateDist");
@@ -638,7 +641,7 @@ void Shutdown(bool exiting) {
     }
     for (ue3::FieldRef* f : {&gSceneCapture, &gStatic, &gNoDelete, &gLocation, &gEnabled, &gEnablePostProcess, &gEnableFog,
              &gEnableParticles, &gUseMainPostProcess, &gSkipUsersOccluded, &gSkipOwnerOccluded, &gMaxUpdateDist, &gPostProcess, &gFrameRate,
-             &gTextureTarget, &gFieldOfView, &gResource, &gSizeX, &gSizeY, &gFormat, &gPlayer, &gPlayerPostProcess, &gDefaultPostProcess}) {
+             &gTextureTarget, &gFieldOfView, &gUpdateMatrices, &gResource, &gSizeX, &gSizeY, &gFormat, &gPlayer, &gPlayerPostProcess, &gDefaultPostProcess}) {
         f->Reset();
     }
 #else
