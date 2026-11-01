@@ -2313,6 +2313,28 @@ void EndRecording() {
     }
 }
 
+CaptureSuspend SuspendForCapture() {
+    CaptureSuspend s;
+    s.recording = t_recording;
+    s.armed = t_armed;
+    t_recording = nullptr;
+    t_armed = nullptr;
+    s.scissor = t_eyeScissor;
+    if (s.scissor) {
+        std::memcpy(s.fraction, t_eyeFraction, sizeof(s.fraction));
+        SetEyeScissor(false, nullptr);
+    }
+    return s;
+}
+
+void ResumeAfterCapture(CaptureSuspend const& suspended) {
+    t_recording = static_cast<Stream*>(suspended.recording);
+    t_armed = static_cast<Stream*>(suspended.armed);
+    if (suspended.scissor) {
+        SetEyeScissor(true, suspended.fraction);
+    }
+}
+
 void MarkTail() {
     if (t_recording == nullptr && t_armed != nullptr) {
         t_recording = t_armed;

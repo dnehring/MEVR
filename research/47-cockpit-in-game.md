@@ -212,3 +212,45 @@ are then:
 - **Material:** `EngineMaterials.EmissiveTexturedMaterial` (unlit, opaque, `Texture` wired into emissive) is loaded in the level and took the render target (a MIC over it; its purple clear colour showed on the mesh). `EngineMaterials.ScreenMaterial` (`ScreenTex`) is the same kind.
 - **The capture breaks the eyes: the open problem.** With a capture enabled, the left eye image shows the capture's view (full size, the chase camera's) and the right eye is black under `sharePass = 0`, or the normal view under `sharePass = 5` (Halcyon's second Draw back on: `no pass-1 record`). The screen stays purple: nothing lands in the render target. The levers line counts 2 scene renders a frame and no capture. So Halcyon or the levers take the capture's render for an eye. research/39 section 6's "no seam needed" doesn't hold; the scope capture would do the same.
 
+
+## Why a capture took an eye (2026-10-31, read in Ghidra; fix built, not run)
+
+**Where a capture renders.** `0x76EE20`, which `plugin/RenderLevers` and Halcyon call the scene render, is really the render thread's *view family* command: hit proxies, or else (show flag 8) a loop over the scene's captures, then the eye's `FSceneRenderer::Render` (`0x76BC00`, or its Umbra form), then the renderer's delete. Each capture's probe builds its own family on the render target, its own renderer and view, and calls `0x76BC00` or its Umbra form (`0x76ECD0`) **directly**, then copies the target's surface to its texture (RHI `+0x210`). So:
+
+- **Why two renders a frame and no capture:** a capture never passes `0x76EE20`, so `SceneRenderHook` never sees it and `IsCaptureRender` had nothing to look at. It isn't a third render beside the eye's: it is nested inside the eye's command, before the eye's own passes, **with the eye's `t_renderIndex`, the eye's armed recording and the eye's one-Draw flags**. research/39 section 3's "its own `FSceneRenderer::Render`, so RenderLevers' hook sees it" had the wrong function.
+- **Why `no pass-1 record` under `sharePass = 5`:** the pass hooks are `0x76BC00`'s callees, so the capture's world pass marked the eye's replay tail, and the capture's finish took `t_oneDrawFinish`: it ended the recording and looked for a pass-1 record of **the capture's** view. Three misses later Halcyon's second Draw resumed. (Reflection captures walk the same loop, so the same applied to them: the `no pass-1 record` at a floor-reflecting level may be this too [verify].)
+
+**Where the picture went.** The capture's view family has the render target (the renderer's `+0x18`), and `FinishRenderViewTarget` (`0x75B2E0`) would copy to it. But with a post-process chain, which both the probe and the scope capture ask for:
+
+- The uber post effect's render (`0x279360`, its sibling `0x27A100`), when it is the group's final effect and the family resolves, binds **the game's global backbuffer** through `FSceneRenderTargets` (`0x773D30`, BeginRenderingBackBuffer: the scene targets' own surface reference, and a viewport of the scene buffer's size), never asking the view family.
+- It draws a quad whose clip space is computed from the **family's** target size, so it fills whatever is bound; the UVs are the capture's rect in the scene buffer. On the backbuffer: **the capture's view, 512x288 pixels stretched over the whole eye**. The snapshot's blocks and vertical stretch show it (2026-10-31_18-03-15).
+- It then sets the view's `+0x4B4`, and `FinishRenderViewTarget` returns at once when that's set (no dynamic resolution running): **nothing is written to the family's target, the render target keeps its clear colour.** The probe's resolve copies the purple surface to the purple texture.
+
+A stock game never meets this: its captures are reflections with no post chain.
+
+**Why the left eye.** Halcyon's pass 0 is the backbuffer copied at a scene-sized depth clear with the backbuffer dirty, the last such copy before Present winning. A capture in the second Draw's command dirties the backbuffer with its composite, and the eye's clear right after copies that as pass 0: left = the capture. (That the capture does run in the second Draw is inferred from the picture: the update test reads a last-render time only the render thread writes, so the game thread's Draw 2 can still find one due [verify].) Halcyon has no fault here and needs no change.
+
+**Not explained: the right eye black under `sharePass = 0`** (`-right-world.png` black too), against the normal picture under `sharePass = 5`'s fallback. What differs between those two is the stereo mode (2 with its off-centre frustum, against 1) and nothing in the capture's path I could read. Treat it as open: the run below says whether it goes with the rest.
+
+**The fix (host, `plugin/RenderLevers`, no Halcyon change):**
+
+1. A hook on `0x742C80`, the thunk the capture loop calls per capture: for its duration the render index is -1, the passes run (`t_skipPasses` off), the one-Draw flags are cleared, and the recorder and the eye scissor are suspended (`draw_replay::SuspendForCapture`). All put back after. Rules in `core/vr/SceneCaptureScope` (unit-tested). This covers every probe type, so reflection captures stop touching the eye's recording too.
+2. A hook on `0x773D30`: inside a capture it binds the capture's own target (`+0x18`'s surface, RHI `+0x520`) and a viewport of its size (RHI `+0x340`) instead of the backbuffer; everywhere else it is one thread-local compare. The uber quad then fills the target as the engine meant, `+0x4B4` keeps the finish out of it, and the probe's resolve carries it to the texture. The post chain stays on, so a capture keeps the game's look.
+3. A capture is counted when its finish runs (the levers line's `captures ...`, the `ran as a capture` line), and the eye's "draws the recorder missed" no longer counts the capture's draws.
+
+**What this doesn't touch:** the capture's scene-sized depth clear still takes a pass-0 copy when the backbuffer is dirty, as reflections' do; the eye's own clear then finds it clean and the copy stays the previous Draw's finished eye, which is the right image. Its 512x288 draws don't dirty it (the gate compares the width with the eye's).
+
+**FloatRGB in the scope's search:** `plugin/ScopeCaptureSource` checks size, samples, layers and bindability, never format, so the search doesn't reject it. `ViewFormat` reads `R11G11B10_FLOAT`, `R16G16B16A16_FLOAT` and `R32G32B32A32_FLOAT`, the mappings UE3's D3D11 has for it; which one this build uses wasn't read (the pixel-format table is filled at run time): the `scope capture source:` line says, and an unknown format keeps the eye copy with a warning. R11G11B10 has no alpha (reads 1) and no negative values, which suits a linear colour picture.
+
+**Check in the game** (host redeployed): `tools/console.ps1 "mevr cockpit screen 512 288 rgba8"`, then `tools/snapshot.ps1`, under `sharePass = 0` and `5`:
+
+| Log, eyes, screen | Means |
+|---|---|
+| `render levers: a capture's final post-process pass bound its own target ... (512x288)`, `ran as a capture`, levers line `captures ...: about 0.3 a frame`; both eyes normal; the mesh shows the chase view | Fixed: the route works |
+| Eyes normal, the mesh still purple, `bound its own target` logged | The bind works and the texture isn't reached: the resolve (RHI `+0x210`) or a material matter |
+| Eyes normal, purple, `ran as a capture` but no `bound` line | The uber effect isn't the final here (no post chain?): `FinishRenderViewTarget` should then have copied: look at the view's `+0x4B4` |
+| `a capture's final pass found no target of its own` | A pass hook didn't note the renderer (`gPassHooksInstalled`?) |
+| Right eye still black at `sharePass = 0`, left normal | The open question above, on its own: compare `sfr2MetricEyeFrustum = 0` (mode 1): if that clears it, the cause is in mode 2's frustum with a capture |
+| `one Draw: no pass-1 record` while a capture is up under `sharePass = 5` | The eye's own view missed: the suspension isn't covering something; the record's position against the log's view says whose it is |
+
+A capture target as wide as the eye in `R8G8B8A8_UNORM` would pass Halcyon's backbuffer-dirty gate (it compares width and format, not identity) and take extra pass-0 copies; below the eye's width it can't.

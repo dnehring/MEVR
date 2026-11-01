@@ -185,3 +185,14 @@ rva,name,kind,comment
 0x16A2090,FName::NamePools,data,research/34: 8 pool base pointers
 0x169A080,FName::NoneEntry_guess,data,research/34: the entry a null name entry reads as (None)
 0x16B6700,GMalloc,data,research/34: FMalloc*; vtable +0x8 Malloc; +0x20 Free
+0x76BC00,FSceneRenderer::Render,func,research/47: what a scene capture calls directly; the render command 0x76EE20 calls it (or its Umbra form) after the capture loop
+0x76EE20,RenderViewFamily_RenderThread_guess,func,research/47: hit proxies or capture loop then Render then the renderer deleted; RenderLevers calls it FSceneRenderer::Render
+0x742C80,FCaptureSceneInfo::CaptureScene_guess,func,research/47: thunk the capture loop calls per capture: probe vtable +8
+0x4EE4B0,FSceneCaptureProbe2D::CaptureScene_guess,func,research/47: view family on the render target; Render or its Umbra form; RHICopyToResolveTarget
+0x4EFC00,FSceneCaptureProbeReflect::CaptureScene_guess,func,research/47
+0x4FD550,FSceneCaptureProbe2D::UpdateUmbraCamera_guess,func,research/47: probe vtable +0x40; game thread from BeginRenderingViewFamily
+0x501E10,FSceneCaptureProbe::UpdateRequired_guess,func,research/47: FrameRate against the family world time
+0x773D30,FSceneRenderTargets::BeginRenderingBackBuffer_guess,func,research/47: binds the global backbuffer whatever the view family target
+0x279360,FUberPostProcessSceneProxy::Render_guess,func,research/47: final effect binds 0x773D30 and sets view +0x4B4
+0x27A100,FSFXUberPostProcessSceneProxy::Render_guess,func,research/47: as 0x279360
+0x75B2E0,FSceneRenderer::FinishRenderViewTarget_guess,func,research/47: copies to the family target; returns early when view +0x4B4 is set
