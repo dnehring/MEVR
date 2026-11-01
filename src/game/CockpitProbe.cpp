@@ -10,6 +10,7 @@
 #include "game/Player.hpp"
 #include "game/ViewAnchor.hpp"
 #include "ue3/Handles.hpp"
+#include "ue3/Memory.hpp"
 #include "ue3/Params.hpp"
 #include "ue3/Runtime.hpp"
 
@@ -51,6 +52,7 @@ ue3::ClassRef gCaptureActor{"Engine.SceneCapture2DActor"};
 ue3::ClassRef gCaptureComponent{"Engine.SceneCapture2DComponent"};
 ue3::ClassRef gTargetClass{"Engine.TextureRenderTarget2D"};
 
+ue3::FunctionRef gDynamicLoadObject{"Core.Object.DynamicLoadObject"};
 ue3::FunctionRef gSpawn{"Engine.Actor.Spawn"};
 ue3::FunctionRef gDestroy{"Engine.Actor.Destroy"};
 ue3::FunctionRef gSetLocation{"Engine.Actor.SetLocation"};
@@ -203,6 +205,7 @@ struct State {
     std::uint32_t pointedTicks = 0;
 };
 State gState;
+ue3::Object* gLoadedMesh = nullptr;  // what `load` last returned; nothing holds it: checked alive before use
 std::string gLastError = "none";
 bool gLoggedMoveFailure = false;
 bool gLoggedFirstPlace = false;
@@ -535,8 +538,34 @@ std::string ListMeshes(std::string const& filter) {
     return out;
 }
 
-// By exact path or object name, else the best row whose path holds the text; empty: the best row of all.
+// A package's object through the engine's own loader, by "Package.Object" (research/47 "Loading a package"): the top of the
+// path must be a package file the TOC lists. The class only narrows what counts as found. May block for the load; on the
+// game thread like everything here. Nothing holds the object until a component shows it: the next garbage collection may
+// take it, so `load` and `mesh` belong in one console call.
+ue3::Object* LoadObject(std::string const& path, ue3::Class* cls) {
+    ue3::Object* const controller = player::Controller();
+    if (controller == nullptr || cls == nullptr || gDynamicLoadObject.Get() == nullptr) {
+        return nullptr;
+    }
+    ue3::memory::OwnedString text(ue3::memory::Widen(path));
+    if (!text.Valid()) {
+        return nullptr;
+    }
+    ue3::Params p = ParamsOf(gDynamicLoadObject);
+    if (!p.Set("ObjectName", text.Get()) || !p.Set("ObjectClass", cls) || !p.SetBool("MayFail", true)) {
+        log::Warn("cockpit probe: Core.Object.DynamicLoadObject's parameters aren't (ObjectName, ObjectClass, MayFail)");
+        return nullptr;
+    }
+    Call(controller, gDynamicLoadObject, p);
+    return p.Return<ue3::Object*>().value_or(nullptr);
+}
+
+// By exact path or object name, else the best row whose path holds the text; a dotted path nothing loaded matches exactly
+// goes to the engine's loader; empty: what `load` last returned, else the best row of all.
 ue3::Object* FindMesh(std::string const& name) {
+    if (name.empty() && gLoadedMesh != nullptr && ue3::runtime::IsAlive(gLoadedMesh) && ue3::IsA(gLoadedMesh, gStaticMesh)) {
+        return gLoadedMesh;
+    }
     std::string const lower = Lower(name);
     std::vector<MeshRow> const rows = MeshRows(lower);
     for (MeshRow const& row : rows) {
@@ -544,7 +573,48 @@ ue3::Object* FindMesh(std::string const& name) {
             return row.mesh;
         }
     }
+    if (name.find('.') != std::string::npos) {
+        if (ue3::Object* const loaded = LoadObject(name, gStaticMesh.Get()); ue3::IsA(loaded, gStaticMesh)) {
+            log::Info("cockpit probe: loaded {}", ue3::runtime::FullName(loaded));
+            gLoadedMesh = loaded;
+            return loaded;
+        }
+    }
     return rows.empty() ? nullptr : rows.front().mesh;
+}
+
+// `load <Package.Object> [class]`: only the load, and what it brought. Default class: Engine.StaticMesh.
+std::string DoLoad(std::istringstream& words) {
+    std::string path;
+    std::string className = "Engine.StaticMesh";
+    words >> path >> className;
+    if (path.empty()) {
+        return "usage: mevr cockpit load <Package.Object> [class, default Engine.StaticMesh]";
+    }
+    if (auto const missing = MissingFunction({&gDynamicLoadObject})) {
+        return Refuse(*missing);
+    }
+    ue3::Class* const cls = R().FindClass(className);
+    if (cls == nullptr) {
+        return Refuse(std::format("no class {}", className));
+    }
+    std::int32_t const before = R().ObjectCount();
+    ue3::Object* const loaded = LoadObject(path, cls);
+    if (loaded == nullptr) {
+        return Refuse(std::format("DynamicLoadObject returned None for {} ({}): the package isn't in the TOC, or the object isn't in it, or an import failed: see the game's log and research/47 \"Loading a package\"",
+            path, className));
+    }
+    bool const isMesh = ue3::IsA(loaded, gStaticMesh);
+    if (isMesh) {
+        gLoadedMesh = loaded;
+    }
+    std::string report = std::format("loaded {}; {} objects before, {} now", ue3::runtime::FullName(loaded), before, R().ObjectCount());
+    if (isMesh) {
+        report += "; mevr cockpit mesh (with no name) shows it. Same console call: nothing holds it until then";
+    }
+    log::Info("cockpit probe: {}", report);
+    gLastError = "none";
+    return report;
 }
 
 // A flat mesh's flat axis decides how it faces the head, until `rot` says otherwise: +Y's normal after a -90 degrees
@@ -1235,7 +1305,7 @@ std::string Rest(std::istringstream& words) {
 }
 
 constexpr char const* kUsage =
-    "mevr cockpit: mesh [name] | list [filter] | classes | spawnclass [name] | screen [W H] [float|rgba8] | materials [filter] | material [name] | param [name] | "
+    "mevr cockpit: load <Package.Object> [class] | mesh [name or Package.Object] | list [filter] | classes | spawnclass [name] | screen [W H] [float|rgba8] | materials [filter] | material [name] | param [name] | "
     "scale S | dist M | rot P Y R | follow 0|1 | attach | detach | chase BACK UP | rate N | status | clear";
 
 } // namespace
@@ -1248,6 +1318,9 @@ std::string Command(std::string const& line) {
     std::istringstream words(line);
     std::string verb;
     words >> verb;
+    if (verb == "load") {
+        return DoLoad(words);
+    }
     if (verb == "mesh") {
         return DoMesh(Rest(words));
     }
@@ -1378,13 +1451,14 @@ void Shutdown(bool exiting) {
     }
     gState = State{};
     gSettings = Settings{};
+    gLoadedMesh = nullptr;
     gLastError = "none";
     gLoggedMoveFailure = gLoggedFirstPlace = gLoggedFlatFallback = false;
     for (ue3::ClassRef* const c : {&gActorClass, &gInterpActor, &gKActor, &gKActorSpawnable, &gStaticMeshActor, &gDynamicSmActor, &gStaticMesh, &gStaticMeshComponent,
              &gMaterial, &gMaterialInstance, &gMic, &gTextureParameterExpression, &gCaptureActor, &gCaptureComponent, &gTargetClass}) {
         c->Reset();
     }
-    for (ue3::FunctionRef* const f : {&gSpawn, &gDestroy, &gSetLocation, &gSetRotation, &gSetDrawScale, &gSetPhysics, &gSetCollision, &gSetHidden, &gSetBase, &gSetHardAttach,
+    for (ue3::FunctionRef* const f : {&gDynamicLoadObject, &gSpawn, &gDestroy, &gSetLocation, &gSetRotation, &gSetDrawScale, &gSetPhysics, &gSetCollision, &gSetHidden, &gSetBase, &gSetHardAttach,
              &gForceUpdate, &gSetActorCollision, &gSetBlockRigidBody, &gSetTraceBlocking, &gSetStaticMesh, &gGetMaterial, &gSetMaterial, &gGetNumElements, &gGetUnscaledBounds,
              &gCreateMic, &gSetParent, &gSetTextureParameter, &gGetTextureParameter, &gLightEnvironmentSetEnabled, &gCreateTarget, &gCaptureSetEnabled, &gCaptureSetFrameRate,
              &gCaptureSetView, &gCaptureSetParameters}) {
