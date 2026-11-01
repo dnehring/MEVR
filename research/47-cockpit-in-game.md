@@ -350,3 +350,13 @@ Nothing in the loader cares where the file is, only what a mounted table says. S
 ### What only the game can tell
 
 That a package LEC made loads at all under this engine; that the linker takes our summary (no `NoExportsData`, `Protected` or `ServerSideOnly`, flags the game's have and ours don't); whether `Standalone` keeps the objects over a level change or they must be loaded again; DXT1 at 4096 in `TEXTUREGROUP_Vehicle` showing its top mip; the cost of 4 x 10.7 MB of never-streamed texture; and how a 65-thousand-vertex backing draws in stereo.
+
+## Second run (2026-10-31 19:40, fake headset, same level, `god` on, `sharePass = 5`, all of the above deployed)
+
+- **Our package loads.** With `BIOG_MEVR_Cockpit.pcc` in `CookedPCConsole` and an entry in `PCConsoleTOC.bin`, `mevr cockpit load BIOG_MEVR_Cockpit.Front_Cockpit` returned the StaticMesh and `mevr cockpit mesh` showed it in both eyes with correct disparity. Install record and undo: `UNDO.txt` in `%LOCALAPPDATA%/MEVR/cockpit-install`.
+- **Its own material draws black** (the MIC over `EmissiveTexturedMaterial` with our DXT1 texture). So did a game stand-in with its own material in the first run, so the cause isn't settled: the texture's mips, the MIC's parameter or the probe's handling. Open.
+- **The capture fix holds.** With a capture up, both eyes are the normal view, one Draw stays on (1 scene render a frame), the levers line counts captures at 1.00 a frame and logs `ran as a capture` and the post-process finals into their own target. The black right eye from the first run wasn't seen in this mode; `sharePass = 0` was not rerun.
+- **A live picture reaches the mesh:** on `EngineBuildings.BuildingQuadMesh` through a MIC over `EmissiveTexturedMaterial`, the render target's image shows on the quad in the world, in both eyes, darker than the eye image.
+- **The capture's view doesn't follow `SetView`:** `chase 10 8` and `chase 12 10` left the picture the same, also with a full re-attach (`ForceUpdateComponents` with `bTransformOnly` false) every tick. It shows a close view with Shepard's hand, not 6 m behind and 3 m up. Whether the picture updates at all wasn't separated from that. The scope capture sets its view the same way, so it may have the same problem. Next: where the probe's render reads its view (`SetView`'s native body, the capture's view fields, and whether Halcyon's view hooks reach the capture's render).
+- **Cost, roughly:** `#0` in the levers line (the render thread's scene render, with the capture nested in it) went from 2.97 ms to 4.7-5.4 ms at a light spot with a 512x288 capture every frame. One spot, no A/B; not a measurement to plan on.
+- `FrameRate` 30 didn't reduce the capture rate: it ran once a frame.
