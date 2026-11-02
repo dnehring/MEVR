@@ -48,6 +48,7 @@ internal static class Build
     // "TEXTUREGROUP_Environment" with instance number 1025 (UE3 stores a "_1024" suffix as the number plus one).
     public static readonly NameReference TextureGroup = new("TEXTUREGROUP_Environment", 1025);
     public const string BackingSuffix = "_Backing";
+    public const string ScreenMaterial = "Screen";  // a glTF material of this name is the live screen: an instance of its own
     private const int MaxIndexableVertices = 65535;             // the index buffer is 16-bit, and elements have no base vertex
 
     // The object names, the file names they come from, which texture they share, and where the file is: "detached"
@@ -337,7 +338,8 @@ internal static class Build
         IEntry parent = ExportCreator.CreateImport(pcc, "Material", ParentMaterial, parentPackage);
 
         var report = new List<Dictionary<string, object>>();
-        var textures = new Dictionary<string, (ExportEntry Texture, ExportEntry Instance, int Width, int Height)>();
+        var textures = new Dictionary<string, (ExportEntry Texture, int Width, int Height)>();
+        var instances = new Dictionary<string, ExportEntry>();
         var backingImage = LecImage.LoadFromRaw(SolidBgr(4, 4, new Vector3(0.035f, 0.04f, 0.044f)), PixelFormat.RGB, 4, 4);
         ExportEntry backingTexture = AddTexture(pcc, "Backing_Diff", backingImage, 4, 4);
         ExportEntry backingInstance = AddInstance(pcc, "Backing_MIC", parent, backingTexture, expressionGuid, parentLightingGuid);
@@ -363,19 +365,42 @@ internal static class Build
                 Console.WriteLine($"  over {MaxIndexableVertices} vertices: split into {string.Join(" and ", parts.Select(q => $"{q.Name} ({q.Primitives.Sum(p => p.Positions.Count)})"))}");
             }
 
-            // The instance of the first primitive with an image; images are shared between the two parts of a detached model.
-            int imageIndex = welded.Select(p => p.BaseColorImage).FirstOrDefault(i => i.HasValue) ?? throw new InvalidDataException($"{source.Name} has no base colour image");
-            byte[] encoded = model.LogicalImages[imageIndex].Content.Content.ToArray();
-            string hash = Convert.ToHexString(SHA256.HashData(encoded));
-            if (!textures.TryGetValue(hash, out var made))
+            // A texture per image, shared by every model with the same bytes (the two parts of a detached model, the hull's two
+            // sides): the model's first image is <Group>_Diff with the instance <Group>_MIC, another <Group>_<material>_Diff and
+            // _MIC (the console's idle screens). The live screen (material "Screen") gets an instance of its own,
+            // <Group>_Screen_MIC, whose texture the mod replaces with the capture's (research/48).
+            int mainImage = welded.Select(p => p.BaseColorImage).FirstOrDefault(i => i.HasValue) ?? throw new InvalidDataException($"{source.Name} has no base colour image");
+            (ExportEntry Texture, int Width, int Height) Texture(int imageIndex, string suffix)
             {
-                LecImage image = Pixels(encoded, maxTexture, out int width, out int height, out Vector3 mean);
-                ExportEntry texture = AddTexture(pcc, source.Group + "_Diff", image, width, height);
-                ExportEntry instance = AddInstance(pcc, source.Group + "_MIC", parent, texture, expressionGuid, parentLightingGuid);
-                made = (texture, instance, width, height);
-                textures.Add(hash, made);
-                Console.WriteLine($"  texture {texture.InstancedFullPath} {width}x{height} DXT1 ({new UTextureInfo(texture).Summary}), source mean RGB {mean.X:F1} {mean.Y:F1} {mean.Z:F1}");
+                byte[] encoded = model.LogicalImages[imageIndex].Content.Content.ToArray();
+                string hash = Convert.ToHexString(SHA256.HashData(encoded));
+                if (!textures.TryGetValue(hash, out var made))
+                {
+                    LecImage image = Pixels(encoded, maxTexture, out int width, out int height, out Vector3 mean);
+                    made = (AddTexture(pcc, source.Group + suffix + "_Diff", image, width, height), width, height);
+                    textures.Add(hash, made);
+                    Console.WriteLine($"  texture {made.Texture.InstancedFullPath} {width}x{height} DXT1 ({new UTextureInfo(made.Texture).Summary}), source mean RGB {mean.X:F1} {mean.Y:F1} {mean.Z:F1}");
+                }
+                return made;
             }
+            ExportEntry Instance(WeldedPrimitive primitive)
+            {
+                bool screen = primitive.MaterialName == ScreenMaterial;
+                if (!primitive.BaseColorImage.HasValue && !screen)
+                {
+                    return backingInstance;
+                }
+                string suffix = primitive.BaseColorImage == mainImage ? "" : "_" + primitive.MaterialName;
+                ExportEntry texture = primitive.BaseColorImage.HasValue ? Texture(primitive.BaseColorImage.Value, suffix).Texture : backingTexture;
+                string name = source.Group + (screen ? "_" + ScreenMaterial : suffix) + "_MIC";
+                if (!instances.TryGetValue(name, out ExportEntry instance))
+                {
+                    instance = AddInstance(pcc, name, parent, texture, expressionGuid, parentLightingGuid);
+                    instances.Add(name, instance);
+                }
+                return instance;
+            }
+            var main = Texture(mainImage, "");
 
             foreach ((string partName, List<WeldedPrimitive> primitives) in parts)
             {
@@ -395,7 +420,7 @@ internal static class Build
                 }
                 for (int i = 0; i < lod.Elements.Length; ++i)
                 {
-                    lod.Elements[i].Material = (primitives[i].BaseColorImage.HasValue ? made.Instance : backingInstance).UIndex;
+                    lod.Elements[i].Material = Instance(primitives[i]).UIndex;
                     // No collision: the actor's is off, and there's no body setup.
                     lod.Elements[i].EnableCollision = false;
                     lod.Elements[i].OldEnableCollision = false;
@@ -412,8 +437,8 @@ internal static class Build
                     ["weldedVertices"] = primitives.Sum(p => p.Positions.Count),
                     ["meshVertices"] = (int)lod.NumVertices,
                     ["materialSlots"] = lod.Elements.Select(e => pcc.GetEntry(e.Material).ObjectName.Instanced).ToArray(),
-                    ["texture"] = made.Texture.ObjectName.Instanced,
-                    ["textureSize"] = new[] { made.Width, made.Height },
+                    ["texture"] = main.Texture.ObjectName.Instanced,
+                    ["textureSize"] = new[] { main.Width, main.Height },
                 });
             }
         }

@@ -91,12 +91,17 @@ def Surface(mesh, kinds, kind):
 
 
 def Classes(mesh, kinds):
-    """Per vertex: 1 only front faces, 2 only backing faces, 3 both or on an open or non-manifold edge (locked)."""
+    """Per vertex: 1 only front faces, 2 only backing faces, 3 both, between two materials (a screen's outline) or on an
+    open or non-manifold edge (locked)."""
     cls = np.zeros(len(mesh.vertices), np.int8)
+    material = np.full(len(mesh.vertices), -1, np.int32)
     for p in mesh.polygons:
         bit = 1 if kinds[min(p.material_index, len(kinds) - 1)] else 2
         for v in p.vertices:
             cls[v] |= bit
+            if material[v] not in (-1, p.material_index):
+                cls[v] = 3
+            material[v] = p.material_index
     bm = bmesh.new()
     bm.from_mesh(mesh)
     for e in bm.edges:

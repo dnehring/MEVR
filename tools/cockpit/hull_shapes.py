@@ -3,7 +3,7 @@
 
 Every face carries a surface class (its material index into CLASSES) and UVs into that class's trim of the side pane's
 atlas (UV layer "trim"). The pieces: profiles swept along paths with mitred corners (window frames, the roof's edge,
-beams), panels set into a surface, chamfered floor plates. Bake() then gives the shell a texture of its own on a fresh
+beams), panels set into a surface, chamfered floor plates; Display() paints an idle screen. Bake() then gives the shell a texture of its own on a fresh
 unwrap: the classes' colours, ambient occlusion and a soft light from a point inside the cockpit. The game draws the cockpit unlit
 (EmissiveTexturedMaterial, research/47), so without baked shading a bevel would look as flat as the face beside it; the
 Tripo parts' textures carry their lighting the same way.
@@ -368,12 +368,7 @@ def Bake(o, atlas, trims, tints, path, occluders, points, size=4096, light=(0.0,
     lit = np.clip((normal * to).sum(-1) / dist, 0, 1) / (1 + (dist / reach) ** 2)
     linear = albedo * ((0.30 + 0.70 * ao) * (0.40 + 0.75 * lit))[..., None]
     linear[~covered] = 0.008
-    srgb = np.where(linear <= 0.0031308, linear * 12.92, 1.055 * np.power(np.clip(linear, 0.0031308, None), 1 / 2.4) - 0.055)
-    final = bpy.data.images.new("shell-baked", size, size, alpha=False)
-    final.pixels.foreach_set(np.concatenate([np.clip(srgb, 0, 1), np.ones((size, size, 1))], -1).astype(np.float32).ravel())
-    final.filepath_raw = path
-    final.file_format = "PNG"
-    final.save()
+    final = Png(linear, "shell-baked", path)
     bpy.data.images.remove(target)
     # the shell's one material: the baked image on the unwrap
     me.materials.clear()
@@ -391,3 +386,50 @@ def Bake(o, atlas, trims, tints, path, occluders, points, size=4096, light=(0.0,
     me.uv_layers.remove(me.uv_layers["trim"])
     return {"size": size, "device": device, "facesSeen": len(seen), "faces": len(me.polygons),
             "texelsCovered": round(float(covered.mean()), 3), "seconds": round(time.time() - start, 1)}
+
+
+def Png(linear, name, path):
+    """A linear RGB array (rows bottom first, as Blender's pixels) saved as an sRGB PNG, and the image."""
+    h, w = linear.shape[:2]
+    srgb = np.where(linear <= 0.0031308, linear * 12.92, 1.055 * np.power(np.clip(linear, 0.0031308, None), 1 / 2.4) - 0.055)
+    image = bpy.data.images.new(name, w, h, alpha=False)
+    image.pixels.foreach_set(np.concatenate([np.clip(srgb, 0, 1), np.ones((h, w, 1))], -1).astype(np.float32).ravel())
+    image.filepath_raw = path
+    image.file_format = "PNG"
+    image.save()
+    return image
+
+
+def Display(width, height, aspect, bars=()):
+    """An idle screen in the game's orange interface style, as linear RGB (rows bottom first) for a screen `aspect` times
+    as wide as it is tall, whatever the image's own size: a dark amber field warming toward a thin glowing frame with cut
+    corners just inside the edge, brackets at an inner frame's corners, and short lit bars on the edges named in `bars`
+    ("top", "bottom"). Sizes are fractions of the screen's height."""
+    y, x = np.mgrid[0:height, 0:width].astype(np.float32)
+    px = ((x + 0.5) / width - 0.5) * aspect
+    py = (y + 0.5) / height - 0.5
+    ax, ay = np.abs(px), np.abs(py)
+
+    def Box(a, b, c):
+        """Signed distance to a rectangle of half sizes a and b with its corners cut by c (negative inside)."""
+        return np.maximum(np.maximum(ax - a, ay - b), (ax + ay - (a + b - c)) / math.sqrt(2))
+
+    def Line(d, width):
+        return np.exp(-(d / width) ** 2)
+
+    orange = np.array([1.0, 0.36, 0.06], np.float32)
+    outer = Box(aspect / 2 - 0.055, 0.5 - 0.055, 0.13)
+    inner = Box(aspect / 2 - 0.115, 0.5 - 0.115, 0.07)
+    corners = (ax > aspect / 2 - 0.115 - 0.16) & (ay > 0.5 - 0.115 - 0.16)
+    glow = np.where(outer < 0, np.exp(outer / 0.06), np.exp(-outer / 0.03))
+    light = Line(outer, 0.005) + 0.10 * glow + 0.45 * Line(inner, 0.0035) * corners
+    core = np.zeros_like(px)
+    for edge in bars:
+        centre = (0.5 - 0.055) * (1 if edge == "top" else -1)
+        bar = np.maximum(ax - aspect * 0.13, np.abs(py - centre) - 0.012)
+        light = light + np.where(bar < 0, 1.6, 1.6 * np.exp(-bar / 0.02))
+        core = np.maximum(core, Line(np.maximum(bar, 0), 0.006))
+    field = np.array([0.022, 0.0085, 0.0035], np.float32)  # sRGB about (0.16, 0.09, 0.05), the concept's screens' brown
+    hot = np.array([1.0, 0.8, 0.5], np.float32)  # the bars' near-white cores
+    return np.clip(field[None, None] * (1 + 1.5 * glow[..., None]) + orange[None, None] * light[..., None]
+                   + hot[None, None] * core[..., None], 0, 1)

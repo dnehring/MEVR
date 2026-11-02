@@ -261,6 +261,32 @@ The previews' difference rows show thin edge lines and a few slivers.
     13 mips resident, and Hull_Shell shows its texture and the window frames from outside.
   - Nothing is placed around the player yet.
 
+## 10. The console's screens (the user: the centre one shows the live third-person view; the others glow orange like the
+Normandy's interface screens)
+
+- **Found on the placed console** (`hull_assemble.Screens`): for each region (centre, left, right), the largest dark flat
+  patch facing the seat, then every face in its plane within its bounds.
+  - Centre: 213 faces, 0.350 x 0.123 hull units, vertical, facing the seat.
+  - Left: 52 faces, 0.250 x 0.101. Right: 46 faces, 0.239 x 0.098. Both on the console's angled wings; the Tripo
+    console isn't quite symmetric.
+- **Own materials:** the centre on "Screen", the wings on "Display". Their UVs run 0 to 1 across each screen's rectangle,
+  u to the pilot's right and v up. The glTF export turns v downward, as a render target's rows run, so a capture shows
+  upright and unmirrored. `assembled/manifest.json` `screens` has each one's corners (bottom left, bottom right, top
+  right, top left as the pilot sees them), normal, axes and size.
+- **Idle look** (`hull_shapes.Display`, drawn for each screen's own shape on a 1024 x 512 image), judged against crops of
+  the lit concept's screens:
+  - a dark amber-brown field (sRGB about 0.16, 0.09, 0.05);
+  - a thin orange frame with cut corners just inside the edge, with a narrow glow;
+  - brackets at an inner frame's corners;
+  - short lit bars with near-white cores on the edges: top and bottom for the centre, the bottom for the wings.
+  The centre shows it until the mod puts the capture there.
+- **Decimation:** `game_ready.py` now also locks every vertex between two materials, so the screens' outlines stay exact.
+  Console: 27,316 → 13,676 triangles.
+- **Package:** a texture per image now (`Hull_Console_Screen_Diff`, `Hull_Console_Display_Diff`, 1024 x 512), and the
+  "Screen" material gets an instance of its own. `Hull_Console`'s slots: 0 `Hull_Console_MIC` (its atlas), 1
+  `Hull_Console_Screen_MIC` (the live view: its `Texture` parameter takes the capture), 2 `Hull_Console_Display_MIC`.
+  Test build: all checks passed, 36.2 MB.
+
 ## 5. Not done
 
 - **Not seen from the seat in the game:** the meshes load and draw textured (section 9), but nothing is placed around the

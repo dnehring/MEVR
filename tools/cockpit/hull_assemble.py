@@ -39,7 +39,7 @@ from mathutils.bvhtree import BVHTree
 from mathutils.geometry import intersect_ray_tri
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from hull_shapes import QUAD, Bake, Builder, Chamfered, Clip, Corners, Newell, Plate, Slab, Sweep, Visible  # noqa: E402
+from hull_shapes import QUAD, Bake, Builder, Chamfered, Clip, Corners, Display, Newell, Plate, Png, Slab, Sweep, Visible  # noqa: E402
 
 TEMPLATE = "hull full -bad.glb"
 PANE = "side pane.glb"
@@ -193,6 +193,92 @@ def PillarEdge(pane):
     co = np.array([v.co[:] for v in me.vertices])
     cap = co[(co[:, 2] > ZH + 0.02) & (co[:, 0] < XRAIL - 0.01)]
     return Front(ZL + 0.03), Front(ZC - 0.01), float(lo[1]), float(cap[:, 1].max())
+
+
+# The console's screens, by where each one's middle lies in x: the centre one shows the live third-person view (the
+# user's choice, 2026-11-02), the others idle screens in the game's orange interface style.
+SCREENS = (("centre", (-0.1, 0.1), "Screen"), ("left", (-0.5, -0.15), "Display"), ("right", (0.15, 0.5), "Display"))
+SCREEN_PIXELS = (1024, 512)  # the idle screens' images; the design is drawn for each screen's own shape
+
+
+def Screens(console, folder):
+    """The console's screens on materials of their own: "Screen" for the live view, "Display" for the idle ones, each
+    with an image of its idle state. A screen is the largest dark flat patch facing the seat in its region, and every
+    face in that plane within its bounds; its UVs run 0 to 1 across its rectangle, u to the pilot's right and v up (the
+    glTF export turns v downward, as a render target's rows run). Returns each screen's rectangle in hull coordinates."""
+    me = console.data
+    atlas = next(n.image for m in me.materials for n in m.node_tree.nodes if n.type == "TEX_IMAGE" and n.image)
+    w, h = atlas.size
+    px = np.empty(w * h * 4, np.float32)
+    atlas.pixels.foreach_get(px)
+    px = px.reshape(h, w, 4)
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    uv = bm.loops.layers.uv.active
+    eye = Vector(EYE)
+    facing = {f for f in bm.faces if f.normal.dot((eye - f.calc_center_median()).normalized()) > 0.3}
+
+    def Lum(f):
+        u = sum(l[uv].uv.x for l in f.loops) / len(f.loops)
+        v = sum(l[uv].uv.y for l in f.loops) / len(f.loops)
+        r, g, b = px[int((v % 1) * (h - 1)), int((u % 1) * (w - 1)), :3]
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+    patches, seen = [], set()
+    for f in facing:
+        if f in seen:
+            continue
+        stack, patch = [f], []
+        seen.add(f)
+        while stack:
+            g = stack.pop()
+            patch.append(g)
+            for e in g.edges:
+                for k in e.link_faces:
+                    if k in facing and k not in seen and k.normal.dot(f.normal) > 0.996:
+                        seen.add(k)
+                        stack.append(k)
+        area = sum(g.calc_area() for g in patch)
+        centre = sum((g.calc_center_median() * g.calc_area() for g in patch), Vector()) / area
+        patches.append((area, centre, patch, sum(Lum(g) * g.calc_area() for g in patch) / area))
+    Z = Vector((0, 0, 1))
+    found = {}
+    for name, (x0, x1), material in SCREENS:
+        area, centre, seed, _ = max((p for p in patches if x0 < p[1].x < x1 and p[3] < 0.22), key=lambda p: p[0])
+        n = sum((g.normal * g.calc_area() for g in seed), Vector()).normalized()
+        u = Z.cross(n).normalized()
+        u = u if u.x > 0 else -u
+        v = n.cross(u)
+        lo = [min(c.co.dot(a) for g in seed for c in g.verts) - 0.012 for a in (u, v)]
+        hi = [max(c.co.dot(a) for g in seed for c in g.verts) + 0.012 for a in (u, v)]
+        faces = [f for f in facing if abs((f.calc_center_median() - centre).dot(n)) < 0.003 and f.normal.dot(n) > 0.98
+                 and all(lo[i] <= f.calc_center_median().dot(a) <= hi[i] for i, a in enumerate((u, v)))]
+        u0, u1 = min(c.co.dot(u) for f in faces for c in f.verts), max(c.co.dot(u) for f in faces for c in f.verts)
+        v0, v1 = min(c.co.dot(v) for f in faces for c in f.verts), max(c.co.dot(v) for f in faces for c in f.verts)
+        if material not in [m.name for m in me.materials]:
+            aspect = (u1 - u0) / (v1 - v0)
+            image = Png(Display(*SCREEN_PIXELS, aspect, bars=("top", "bottom") if material == "Screen" else ("bottom",)),
+                        material, os.path.join(folder, f"screen-{material.lower()}.png"))
+            m = bpy.data.materials.new(material)
+            m.use_nodes = True
+            bsdf = next(k for k in m.node_tree.nodes if k.type == "BSDF_PRINCIPLED")
+            tex = m.node_tree.nodes.new("ShaderNodeTexImage")
+            tex.image = image
+            m.node_tree.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+            me.materials.append(m)
+        index = [m.name for m in me.materials].index(material)
+        for f in faces:
+            f.material_index = index
+            for l in f.loops:
+                l[uv].uv = ((l.vert.co.dot(u) - u0) / (u1 - u0), (l.vert.co.dot(v) - v0) / (v1 - v0))
+        origin = n * centre.dot(n)  # the rectangle on the screen's plane
+        corner = [origin + u * a + v * b for a, b in ((u0, v0), (u1, v0), (u1, v1), (u0, v1))]
+        found[name] = {"material": material, "faces": len(faces), "width": round(u1 - u0, 4), "height": round(v1 - v0, 4),
+                       "corners": [[round(c, 4) for c in p] for p in corner], "normal": [round(c, 4) for c in n],
+                       "u": [round(c, 4) for c in u], "v": [round(c, 4) for c in v]}
+    bm.to_mesh(me)
+    bm.free()
+    return found
 
 
 def Hull2(points):
@@ -670,6 +756,7 @@ def Run(folder):
 
     pieces = {"side-left": Placed("side-left", pane_src, pbm, left), "side-right": Placed("side-right", pane_src, pbm, right, mirrored=True),
               "console": Placed("console", console_src, cbm, console_m)}
+    screens = Screens(pieces["console"], out)
     # the panes' windows are open (their back skin is culled from inside): where, to cut the shell's walls behind them
     right, rim, area = PaneOpening(pieces["side-right"])
     shell, windows, dims = Shell(PillarEdge(pieces["side-right"]), (right, rim))
@@ -745,6 +832,9 @@ def Run(folder):
         "shellConstants": {"W": W, "ZW": ZW, "XC": XC, "ZC": ZC, "YR": YR, "YP": YP, "XP": XP, "YC": YC, "XF": XF, "YF": YF, "ZL": ZL, "YT": YT,
                            "ZH": ZH, "ZR": ZR, "XRAIL": XRAIL, "XWALL": XWALL, **dims},
         "bake": bake,
+        "screens": {"convention": "u to the pilot's right, v up; the glTF's v runs down (its texture's rows), so a render "
+                                  "target shows upright and unmirrored", "corners": "bottom left, bottom right, top right, "
+                                  "top left as the pilot sees them", **screens},
         "paneFitToTemplateInterior": fit, "shellFromTemplateInterior": shell_fit,
         "triangles": {k: sum(len(p.vertices) - 2 for p in o.data.polygons) for k, o in pieces.items()},
         "templateInteriorCovered": coverage, "raysLeavingFromSeat": {"eye": EYE, **escapes},
