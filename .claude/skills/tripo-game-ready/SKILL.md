@@ -135,11 +135,29 @@ Then add the model:
 
 ## Placing parts against a reference mesh (the hull, next)
 
-`concept/assets/hull reconstruction/` holds a full hull (`hull full -bad.glb`), separate parts (front console, side
-pane) and reference renders. The full mesh is a **template for placement only**, never shipped. Fit each part to it
-by measured distances (part-to-template deviation, as `game_ready.Deviation`), record each part's transform in a
-manifest, and check with renders against the template from fixed views. Write that stage as
-`tools/cockpit/<name>.py` with this skill's conventions, then update this section with what it measured.
+`tools/cockpit/hull_assemble.py` (research/48) builds the hull from `concept/assets/hull reconstruction/`. The full
+mesh (`hull full -bad.glb`) is a **template for placement only**, never shipped. The parts (console, side pane) are
+placed against it, the open areas are modelled, and `assembled/` gets each piece, `hull.glb`, `manifest.json` and
+`previews/`.
+
+- **Fit against the template's interior, never the whole mesh.** The interior is the faces hit by rays from points
+  inside it. Use only the part's faces toward the room, and hold the scale to a plausible range. Against the whole
+  template, the side panes sank into the wall at scale 0.30: a thin shell scores any small part well.
+- **A better score can be the wrong place.** The right pane's own fit beat the left's (75% against 47% within 1 cm)
+  at the wrong scale. Choose by an x-section or seat render against the template, and mirror symmetric parts.
+- **One scale can't match both a part's width and its height** when Tripo made the part and the template separately
+  (the console). Place such a part by a stated rule (centred, on the floor, back to the front) and say so.
+- **Pin the chosen place as constants** with their provenance. `--refit` prints the candidates again: the best five
+  agreed within 0.007 in scale.
+- **Model fillers from the placed parts' measured bounds,** so they follow a change of placement. Use slabs, prisms and
+  boxes with every edge shared (no T-junctions), outward faces, and mirrored sides with reversed winding.
+- **Texture fillers from a part's own atlas:** find plain and bolted rectangles (a 32 px block scan for low variance,
+  then a look) and tile them. The fillers then share that part's material and texture.
+- **Measure closure with rays from the seat**, by the face of the box each escaping ray leaves through: only the rear
+  should be open.
+
+The parts are raw Tripo output (console 3,209 boundary edges, pane 526; 27,000 triangles each). They go through the
+repair stage and `game_ready.py` before the packager.
 
 ## Checked and not used (2026-11-02)
 
