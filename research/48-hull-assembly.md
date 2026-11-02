@@ -362,7 +362,26 @@ Normandy's interface screens)
   grade, presumably) turns the warm-white panels lavender (255, 239, 218 in the texture).
 - **Lifted:** ambient 0.07 → 0.18 (what the dark surfaces keep), the screens' glow on the console 3 → 5, the ceiling
   lamps 1.1 → 1.4 W, and the lamps' glow warmer (1, 0.8, 0.55) against the game's cooling. Texture means (sRGB):
-  shell 25 → 29, console 21 → 27, panes 24 → 31. Build: all checks passed, 33.0 MB. Re-measuring in the game is next.
+  shell 25 → 29, console 21 → 27, panes 24 → 31. Build: all checks passed, 33.0 MB.
+- **Measured again** (the same head pose, the frame anchor identical; 49cd60c):
+
+  | Region | Before | After the lift | Target |
+  |---|---|---|---|
+  | Ceiling | 8.1 | 10.3 | 31 |
+  | Console desk | 41.8 | 50.7 | 72 |
+  | Pane frame | 60.9 | 65.7 | 67 |
+
+  The lamp's top 10% went from (205, 194, 209) to (204, 188, 190): no longer lavender, but not warm. The game's tone
+  caps the panel's red near 205.
+- **Why the ceiling barely moved:** that region is mostly the spine's recessed underside and the dark ceiling plates,
+  whose albedo (the dark trim at 0.9, the recess at 0.35 of it) was too low for any fill to lift.
+- **Next round:**
+  - albedo of the dark surfaces up: tints PLATE 1.3, DARK 1.5, SEAM 0.6;
+  - ambient 0.32;
+  - the lamps' glow (1, 0.79, 0.28).
+  The lamp colour is set against the game's shift at Eden Prime (red x 0.80, blue x 0.98) and is tuned to that
+  level's grade: elsewhere it may read warmer. Texture means (sRGB): shell 37, console 33, panes 37. Build: all
+  checks passed, 33.8 MB.
 
 ## 5. Not done
 

@@ -117,8 +117,8 @@ TRIMS = {"PLATE": PLATE, "DARK": DARK, "LIGHT": LIGHT, "RED": RED, "SEAM": DARK,
 LAMP_POWER = {"ceiling": 1.4, "rearCeiling": 0.8, "wall": 0.35, "floor": 0.15, "door": 0.4, "foot": 0.05, "spine": 0.0}
 FILL = ((0.05, 0.044, 0.04), 0.6)  # the world's colour and strength: what the room's dark corners keep
 SCREEN_GLOW = 5.0  # the console's screens' emission while baking: their orange on the desk and the frames
-AMBIENT = 0.18  # what every baked surface keeps without a lamp facing it (times its albedo): the concept's dark ceiling still reads
-TINTS = {"PLATE": 1.0, "DARK": 0.9, "LIGHT": 2.2, "RED": 1.0, "SEAM": 0.35}
+AMBIENT = 0.32  # what every baked surface keeps without a lamp facing it (times its albedo): the concept's dark ceiling still reads
+TINTS = {"PLATE": 1.3, "DARK": 1.5, "LIGHT": 2.2, "RED": 1.0, "SEAM": 0.6}
 SLAB = 0.02  # the shell's thickness
 SEAM = 0.012  # how deep the floor's seams go: the base under the plates, where the walls start
 # The scale and the furniture (proposed 2026-11-02, the user to confirm the scale): 3 m per hull unit makes the cabin 2.5 m
