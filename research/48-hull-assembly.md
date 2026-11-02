@@ -253,13 +253,18 @@ The previews' difference rows show thin edge lines and a few slivers.
 
 - **Axes:** the shell's extents confirm the importer's axes. The hull's rear (y -0.425) is at Unreal y +42.5, so the
   hull's forward is the package's -Y, its right +X, up +Z.
-- **Installed:** the in-game session installs and checks packages. The package it installed for its texture test
-  already holds these four meshes. In the same commit, its change of the textures' LOD group from APL_1024 (read as
-  group 27, only the 4x4 mip resident) to Environment_1024 (research/47).
+- **Installed:** the in-game session installs and checks packages. In the same commit came its change of the textures'
+  LOD group from APL_1024 (read as group 27, only the 4x4 mip resident) to Environment_1024 (research/47).
+  - That only took effect in its 89b4bfe: written as the name `TEXTUREGROUP_Environment` with number 1025, as the game's
+    packages store it (the skill's trap 10).
+  - **In the game** (that session, fake headset, Eden Prime, ffa726d's build with that fix): every 4096 texture has all
+    13 mips resident, and Hull_Shell shows its texture and the window frames from outside.
+  - Nothing is placed around the player yet.
 
 ## 5. Not done
 
-- **Not seen in the game yet:** the in-game session installs and checks.
+- **Not seen from the seat in the game:** the meshes load and draw textured (section 9), but nothing is placed around the
+  player until the scale and the eye point are decided.
 - **Not decided** (the user's call):
   - the metric scale (the in-game session assumes a 1.6 m cabin for now, about 190 Unreal units per hull unit,
     adjustable at run time);

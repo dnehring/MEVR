@@ -66,8 +66,8 @@ manifest, never writing what they read). Throwaway inspection goes in the scratc
 - **Import:** glTF (x, y, z) becomes (x, z, y) x 100. A mesh's origin is its glb's origin and the node's translation is
   ignored, so a moving part's vertices must be relative to its pivot. `detach_controls` makes them so; keep node
   transforms on export (`export_apply=False`, modifiers applied to the mesh first).
-- **Textures:** the base colour only, DXT1, `--max-texture` (4096), group set by `Build.cs`. The models carry 1,600 to
-  1,970 texels per model unit.
+- **Textures:** the base colour only, DXT1, `--max-texture` (4096), in `TEXTUREGROUP_Environment_1024` (`Build.TextureGroup`:
+  all 13 mips resident in game, 2026-11-02). The models carry 1,600 to 1,970 texels per model unit.
 - **Collision:** none (the probe's actor has it off). **LODs:** none; the cockpit is always within arm's reach.
 
 ## Decimation (game_ready.py)
@@ -117,6 +117,13 @@ same-pose measurements, not by a look.
    savings come from the triangles.
 9. **Never cut faces when splitting parts:** the models hold parts as separate surfaces joined only at shared positions,
    so split by position-welded islands (`detach_controls.Islands`).
+10. **A numbered name goes in as a name and a number** (found by the in-game session, 89b4bfe). UE3 stores a trailing
+    `_N` as instance number N + 1, so the game's packages hold `TEXTUREGROUP_Environment_1024` as the name
+    `TEXTUREGROUP_Environment` with number 1025. Written through LEC as one name with number 0, the enum lookup failed:
+    the texture read LODGroup 27, past the end of LE1's 27 groups (0 to 26), and kept only its 4x4 mip, so the whole
+    model showed one colour. Give any enum value or name ending in `_<digits>` as `new NameReference(stem, N + 1)`, and
+    check it in game (`mevr cockpit info`: LODGroup, RequestedMips, ResidentMips). The first constant,
+    `TEXTUREGROUP_Vehicle`, isn't one of LE1's groups at all.
 
 ## Inspecting a new model
 
