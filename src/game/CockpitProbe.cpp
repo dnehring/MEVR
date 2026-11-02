@@ -99,6 +99,7 @@ ue3::FunctionRef gFindClosestVehicle{"SFXGame.SFXSaveGame.FindClosestDrivableVeh
 ue3::FieldRef gStatic{"Engine.Actor", "bStatic"};
 ue3::FieldRef gNoDelete{"Engine.Actor", "bNoDelete"};
 ue3::FieldRef gMovable{"Engine.Actor", "bMovable"};
+ue3::FieldRef gRole{"Engine.Actor", "Role"};
 ue3::FieldRef gPhysics{"Engine.Actor", "Physics"};
 ue3::FieldRef gBase{"Engine.Actor", "Base"};
 ue3::FieldRef gDynamicComponent{"Engine.DynamicSMActor", "StaticMeshComponent"};
@@ -371,7 +372,10 @@ void DestroyActor(ue3::Object* actor, char const* why) {
     ue3::Params p = ParamsOf(gDestroy);
     Call(actor, gDestroy, p);
     bool const destroyed = p.ReturnBool().value_or(false);
-    log::Info("cockpit probe: destroying {} ({}): Destroy returned {}", ue3::runtime::FullName(actor), why, destroyed ? "true" : "false");
+    // UWorld::DestroyActor refuses a bStatic or bNoDelete actor, and one whose Role isn't ROLE_Authority (3).
+    log::Info("cockpit probe: destroying {} ({}): Destroy returned {} (bStatic {}, bNoDelete {}, Role {})", ue3::runtime::FullName(actor), why,
+        destroyed ? "true" : "false", gStatic.ReadBool(actor).value_or(false) ? 1 : 0, gNoDelete.ReadBool(actor).value_or(false) ? 1 : 0,
+        static_cast<int>(gRole.Read<std::uint8_t>(actor).value_or(255)));
     if (!destroyed && ue3::runtime::IsAlive(actor)) {
         ue3::Params hide = ParamsOf(gSetHidden);
         hide.SetBool("bNewHidden", true);
@@ -2048,7 +2052,7 @@ void Shutdown(bool exiting) {
              &gCaptureSetView, &gCaptureSetParameters, &gEnterVehicle, &gFindClosestVehicle}) {
         f->Reset();
     }
-    for (ue3::FieldRef* const f : {&gStatic, &gNoDelete, &gMovable, &gPhysics, &gBase, &gDynamicComponent, &gDynamicLightEnvironment, &gStaticActorComponent, &gComponentMesh,
+    for (ue3::FieldRef* const f : {&gStatic, &gNoDelete, &gMovable, &gRole, &gPhysics, &gBase, &gDynamicComponent, &gDynamicLightEnvironment, &gStaticActorComponent, &gComponentMesh,
              &gBounds, &gParent, &gStaticPermutation, &gTextureValues, &gTextureValueName, &gExpressions, &gEmissive, &gEmissiveExpression, &gBlendMode, &gLightingModel,
              &gUsedStaticLighting, &gUsedLightEnvironments, &gExpressionParameterName, &gSceneCapture, &gCaptureEnabled, &gEnablePostProcess, &gUseMainPostProcess,
              &gSkipUsersOccluded, &gSkipOwnerOccluded, &gMaxUpdateDist, &gPostProcess, &gFrameRate, &gSizeX, &gSizeY, &gPlayer, &gPlayerPostProcess, &gDefaultPostProcess, &gUpdateMatrices,

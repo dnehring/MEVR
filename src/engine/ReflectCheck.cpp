@@ -705,6 +705,7 @@ void CheckFields() {
     CheckField("Engine.Texture", "Resource", SDK_FIELD(UTexture, Resource));
     // The cockpit probe (game/CockpitProbe, research/47).
     CheckField("Engine.Actor", "bMovable", SDK_BOOL(AActor, bMovable));
+    CheckField("Engine.Actor", "Role", SDK_FIELD(AActor, Role));
     CheckField("Engine.Actor", "Base", SDK_FIELD(AActor, Base));
     CheckField("Engine.DynamicSMActor", "StaticMeshComponent", SDK_FIELD(ADynamicSMActor, StaticMeshComponent));
     CheckField("Engine.DynamicSMActor", "LightEnvironment", SDK_FIELD(ADynamicSMActor, LightEnvironment));

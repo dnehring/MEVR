@@ -524,3 +524,10 @@ next step.
 **A bug on the way:** `parts clear` first asked `Still()`, which checks the single mesh's world (empty after `clear`), so it
 removed nothing and each rerun stacked another cockpit (37 actors by the controls check). Parts now check the frame's world, and
 `parts sweep` destroys every spawnable actor showing a `BIOG_MEVR_Cockpit` mesh: what a hot reload or a lost list leaves behind.
+
+**`Actor.Destroy` returns false for every actor the probe spawns** (78 of 78 in the sweeps, the capture actor too), with
+`bStatic 0`, `bNoDelete 0`, `Role 3` read on each: so not the engine's first two refusals (`UWorld::DestroyActor`, `0x3FACD0`:
+static or no-delete, then not `ROLE_Authority`). It is the third branch, BioWare's: through a virtual on the actor
+(vtable +0x6D0) to an object whose member is of an Engine class, it sets a flag and calls a method on another object instead,
+then returns 0, which looks like a deferred destroy **[verify]**. The probe's fallback hides the actor, so nothing stays in view.
+But a hidden actor still shows our mesh, so a later sweep counts it again (41 after 37).
