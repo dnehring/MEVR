@@ -20,7 +20,7 @@ from mathutils.bvhtree import BVHTree
 CLASSES = ("PLATE", "DARK", "LIGHT", "RED", "SEAM", "LAMP", "LAMP_ORANGE", "LAMP_BLUE")
 # The lamps' classes glow in their colour (linear) instead of taking light: warm white panels, orange strips, blue-white
 # floor lights, as the lit concept's.
-GLOW = {"LAMP": (1.0, 0.79, 0.28), "LAMP_ORANGE": (1.0, 0.45, 0.12), "LAMP_BLUE": (0.62, 0.8, 1.0)}
+GLOW = {"LAMP": (1.0, 0.8, 0.55), "LAMP_ORANGE": (1.0, 0.45, 0.12), "LAMP_BLUE": (0.62, 0.8, 1.0)}
 # The side pane's atlas, which the shell's trims come from and the parts share, leans blue (mean sRGB 64, 64, 75); the
 # lit concept's metal is a neutral to warm grey. Albedo is multiplied by this before the light.
 BALANCE = (1.0, 1.0, 0.86)

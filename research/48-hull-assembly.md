@@ -382,6 +382,16 @@ Normandy's interface screens)
   The lamp colour is set against the game's shift at Eden Prime (red x 0.80, blue x 0.98) and is tuned to that
   level's grade: elsewhere it may read warmer. Texture means (sRGB): shell 37, console 33, panes 37. Build: all
   checks passed, 33.8 MB.
+- **That round read darker, not lighter** (4287b1c): ceiling 10.0, desk 30.3 (from 50.7), frame 62.6, lamp mean
+  70.7, its top 10% (125, 112, 79).
+  - **Not the game's exposure:** the view outside through the windshield stayed at 78 in all three snapshots.
+  - **The game's display darkens saturated warm colours.** The same lamp texel showed as (205, 194, 209) when it was
+    (255, 239, 218), and (125, 112, 79) when it was (255, 230, 144). The yellow light also tinted every lit surface,
+    so the desk and ceiling went olive and darker on screen, though their textures were lighter.
+  - Where in the game's pipeline this happens (the level's grade, the tone curve, the mod's colour path) isn't known
+    yet. Judge colour in the game, not in Blender.
+- **Fourth round,** to separate the two changes: the second round's lamp colour (1, 0.8, 0.55), with the third
+  round's albedo and ambient kept. Build: all checks passed, 33.8 MB.
 
 ## 5. Not done
 
