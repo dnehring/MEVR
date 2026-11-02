@@ -493,3 +493,13 @@ tools/console.ps1 "mevr cockpit clear" "mevr vehicle"
   game: `LODGroup 18`, `RequestedMips 13`, `ResidentMips 13` for every 4096 texture. The front cockpit shows its panel lines and
   highlights instead of one dark colour. The hull's shell, loaded the same way, shows its texture and window frames.
 - **Any enum value with a numeric suffix** written through LEC has to be split the same way, or the game reads the enum's end.
+
+## The live view on the console's screen (2026-11-02 15:40, fake headset, Eden Prime)
+
+`Hull_Console` (research/48, commit 9a9161f) has the centre screen as material slot 1 (`Hull_Console_Screen_MIC` over
+`EmissiveTexturedMaterial`, UVs 0 to 1 with v = 0 at the top). The probe's new `mevr cockpit element 1` puts its instance on
+that slot only (`element all`: every slot, as before), over the slot's own instance as parent. The lines:
+`load BIOG_MEVR_Cockpit.Hull_Console`, `mesh`, `dist 1.2`, `rot 0 -90 0` (the screen faces the package's +Y: yaw -90 turns it
+to the head), `element 1`, `post 0`, `screen 768 270 float` (the screen's 2.85:1), `chase 6 3`. **Result:** the chase view of
+Shepard and the squad fills the centre screen, upright and not mirrored, with no flip in the material; the wing screens and the
+console's atlas keep their own materials.

@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -215,6 +216,7 @@ struct Settings {
     std::string paramName;      // `param`: the texture parameter, by name
     bool aim = true;            // `aim 0`: no more SetView, so the probe lives on and FrameRate throttles it (research/47)
     bool postProcess = true;    // `post 0`: the capture without the post chain
+    int element = -1;           // `element N`: our instance on that material slot only (a console's screen); -1 every slot
 };
 Settings gSettings;
 
@@ -996,7 +998,7 @@ std::optional<MaterialRow> PickParent(std::string& why) {
         return std::nullopt;
     }
     ue3::Params get = ParamsOf(gGetMaterial);
-    get.Set("ElementIndex", 0);
+    get.Set("ElementIndex", std::max(gSettings.element, 0));
     Call(gState.component, gGetMaterial, get);
     if (ue3::Object* const own = get.Return<ue3::Object*>().value_or(nullptr); own != nullptr && own != gState.mic) {
         MaterialRow row = Analyze(own);
@@ -1024,12 +1026,13 @@ bool EnsureMic(ue3::Object* fallbackBase, std::string& failure) {
         failure = "the parent has no Material at the end of its chain";
         return false;
     }
+    int const element = std::max(gSettings.element, 0);
     ue3::Params plain = ParamsOf(gSetMaterial);
-    plain.Set("ElementIndex", 0);
+    plain.Set("ElementIndex", element);
     plain.Set("Material", fallbackBase);
     Call(gState.component, gSetMaterial, plain);
     ue3::Params create = ParamsOf(gCreateMic);
-    create.Set("ElementIndex", 0);
+    create.Set("ElementIndex", element);
     Call(gState.component, gCreateMic, create);
     ue3::Object* const mic = create.Return<ue3::Object*>().value_or(nullptr);
     if (!ue3::IsA(mic, gMic)) {
@@ -1041,11 +1044,19 @@ bool EnsureMic(ue3::Object* fallbackBase, std::string& failure) {
     return true;
 }
 
-// Every element of the mesh shows the instance (a mesh of several parts is one picture this way, or the picture many times).
+// Every element of the mesh shows the instance (a mesh of several parts is one picture this way, or the picture many times),
+// or only `element`'s (a console whose screen is a material slot of its own).
 int MicOnAllElements() {
     ue3::Params count = ParamsOf(gGetNumElements);
     Call(gState.component, gGetNumElements, count);
     int const elements = count.Return<std::int32_t>().value_or(1);
+    if (gSettings.element >= 0 && gSettings.element < elements) {
+        ue3::Params set = ParamsOf(gSetMaterial);
+        set.Set("ElementIndex", gSettings.element);
+        set.Set("Material", gState.mic);
+        Call(gState.component, gSetMaterial, set);
+        return 1;
+    }
     for (int i = 0; i < elements && i < 64; ++i) {
         ue3::Params set = ParamsOf(gSetMaterial);
         set.Set("ElementIndex", i);
@@ -1366,7 +1377,7 @@ std::string Rest(std::istringstream& words) {
 
 constexpr char const* kUsage =
     "mevr cockpit: load <Package.Object> [class] | mesh [name or Package.Object] | list [filter] | classes | spawnclass [name] | screen [W H] [float|rgba8] [linear] | materials [filter] | material [name] | param [name] | "
-    "texture [Package.Object] | info | scale S | dist M | rot P Y R | follow 0|1 | attach | detach | chase BACK UP | rate N | aim 0|1 | post 0|1 | status | clear";
+    "texture [Package.Object] | info | element N|all | scale S | dist M | rot P Y R | follow 0|1 | attach | detach | chase BACK UP | rate N | aim 0|1 | post 0|1 | status | clear";
 
 // ---- `texture`, `info`: separating a bad texture from a bad instance from a bad mesh (research/47) -------------------
 
@@ -1690,6 +1701,16 @@ std::string Command(std::string const& line) {
             return std::format("{} set; it applies on mevr cockpit screen", verb);
         }
         return ApplyMaterial();
+    }
+    if (verb == "element") {
+        std::string which;
+        words >> which;
+        int index = -1;
+        if (which != "all" && (std::from_chars(which.data(), which.data() + which.size(), index).ec != std::errc{} || index < 0)) {
+            return "usage: mevr cockpit element <material slot>|all (before screen or texture; clear to start over)";
+        }
+        gSettings.element = which == "all" ? -1 : index;
+        return std::format("our instance goes on {}; it applies on the next screen or texture", gSettings.element < 0 ? std::string("every slot") : std::format("slot {} only", gSettings.element));
     }
     if (verb == "scale" || verb == "dist") {
         float value = 0.0f;
