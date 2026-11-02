@@ -392,6 +392,30 @@ Normandy's interface screens)
     yet. Judge colour in the game, not in Blender.
 - **Fourth round,** to separate the two changes: the second round's lamp colour (1, 0.8, 0.55), with the third
   round's albedo and ambient kept. Build: all checks passed, 33.8 MB.
+- **Measured (2f58016):** ceiling 15.8, desk 57.4, frame 67.4, lamp as round two. The yellow was the whole cause of
+  round three's drop, and the lighter surfaces and fill now show.
+- **Where the colour goes** (the in-game session, `show postprocess` off and on at the same frame):
+
+  | Region | Post on | Post off | On/off |
+  |---|---|---|---|
+  | Ceiling | 15.8 | 26.6 | 0.59 |
+  | Desk | 57.3 | 83.8 | 0.68 |
+  | Frame | 67.4 | 105.8 | 0.64 |
+  | Lamp | 122.4 | 165.8 | 0.74 |
+
+  With the post chain off, the lamp's top 10% is (255, 229, 194): the texel as baked. The material is unlit, so the
+  texture reaches the screen unchanged, and all the darkening and the cool shift are **the level's grade** (its
+  post-process volume: tint, desaturation, highlights and shadows) and the tone curve. That takes about 35% off
+  mid-greys, lifts blue against red, and crushes saturated warm colours most. The mod's colour path is neutral on the
+  fake headset (`[MEVR-COLOUR] profile auto (= neutral)`).
+- **What the targets mean depends on a decision, the user's:**
+  - Graded with the level, as now: tune each region to its target divided by the grade. At Eden Prime that is about
+    ceiling 53, desk 106, frame 105 with post off; the frame is there. That holds for Eden Prime only; every level
+    grades differently.
+  - Kept out of the level's grade (the mod drawing the cockpit apart, the in-game session's side): the textures
+    themselves should then match the concept, about ceiling 31, desk 72, frame 67 with post off. The frame would come
+    down, not up.
+  Tuning waits on that.
 
 ## 5. Not done
 

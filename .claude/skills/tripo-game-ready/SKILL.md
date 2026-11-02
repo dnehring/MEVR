@@ -66,6 +66,11 @@ manifest, never writing what they read). Throwaway inspection goes in the scratc
 - **Import:** glTF (x, y, z) becomes (x, z, y) x 100. A mesh's origin is its glb's origin and the node's translation is
   ignored, so a moving part's vertices must be relative to its pivot. `detach_controls` makes them so; keep node
   transforms on export (`export_apply=False`, modifiers applied to the mesh first).
+- **Colour on screen is the texture through the level's grade.** The material is unlit, so with the post-process
+  chain off (`show postprocess`) the texels reach the screen as baked. With it on, each level's grade and tone curve
+  apply. At Eden Prime that took about 35% off mid-greys, lifted blue and halved saturated warm colours
+  (research/48 section 13). Judge colour in the game, measured at a fixed head pose; Blender's previews show the
+  texture only.
 - **Textures:** the base colour only, DXT1, `--max-texture` (4096), in `TEXTUREGROUP_Environment_1024` (`Build.TextureGroup`:
   all 13 mips resident in game, 2026-11-02). The models carry 1,600 to 1,970 texels per model unit.
 - **Collision:** none (the probe's actor has it off). **LODs:** none; the cockpit is always within arm's reach.
