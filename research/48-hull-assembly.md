@@ -348,6 +348,21 @@ Normandy's interface screens)
   - Texture means (sRGB 0-255): shell 25, console 21, panes 24.
   - Each run's bakes take about 75 s on OptiX.
 - **Package:** `build/cockpit-hull/BIOG_MEVR_Cockpit.pcc` (32.1 MB, exit 0).
+- **In the game** (the in-game session, fake headset, Eden Prime, from the seat; grey level 0-255 of the left eye's
+  world image, against the same regions of the lit concept):
+
+  | Region | Lit concept | In game, 29a7c83 |
+  |---|---|---|
+  | Ceiling centre | 31 | 9 |
+  | Console desk | 72 | 42 |
+  | Light frames | 67 | 72 |
+  | Lamp panel | 248 (p90) | 205, 194, 209 |
+
+  The frames were on target. The dark surfaces were 1.7 to 3.4 times too dark, and the game's tone (Eden Prime's
+  grade, presumably) turns the warm-white panels lavender (255, 239, 218 in the texture).
+- **Lifted:** ambient 0.07 → 0.18 (what the dark surfaces keep), the screens' glow on the console 3 → 5, the ceiling
+  lamps 1.1 → 1.4 W, and the lamps' glow warmer (1, 0.8, 0.55) against the game's cooling. Texture means (sRGB):
+  shell 25 → 29, console 21 → 27, panes 24 → 31. Build: all checks passed, 33.0 MB. Re-measuring in the game is next.
 
 ## 5. Not done
 

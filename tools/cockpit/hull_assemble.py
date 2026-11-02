@@ -114,10 +114,10 @@ DARK = (0.0, 0.0078125, 0.0234375, 0.4296875)
 TRIMS = {"PLATE": PLATE, "DARK": DARK, "LIGHT": LIGHT, "RED": RED, "SEAM": DARK, "LAMP": LIGHT, "LAMP_ORANGE": LIGHT, "LAMP_BLUE": LIGHT}
 # The lit concept's lamps (mako-interior-plain-front-2.png), each a glowing panel in the shell and an area light for
 # the bake, by kind: its class and power (W, in hull units). The world adds a dim warm fill.
-LAMP_POWER = {"ceiling": 1.1, "rearCeiling": 0.8, "wall": 0.35, "floor": 0.15, "door": 0.4, "foot": 0.05, "spine": 0.0}
+LAMP_POWER = {"ceiling": 1.4, "rearCeiling": 0.8, "wall": 0.35, "floor": 0.15, "door": 0.4, "foot": 0.05, "spine": 0.0}
 FILL = ((0.05, 0.044, 0.04), 0.6)  # the world's colour and strength: what the room's dark corners keep
-SCREEN_GLOW = 3.0  # the console's screens' emission while baking: their orange on the desk and the frames
-AMBIENT = 0.07  # what every baked surface keeps without a lamp facing it (times its albedo): the concept's dark ceiling still reads
+SCREEN_GLOW = 5.0  # the console's screens' emission while baking: their orange on the desk and the frames
+AMBIENT = 0.18  # what every baked surface keeps without a lamp facing it (times its albedo): the concept's dark ceiling still reads
 TINTS = {"PLATE": 1.0, "DARK": 0.9, "LIGHT": 2.2, "RED": 1.0, "SEAM": 0.35}
 SLAB = 0.02  # the shell's thickness
 SEAM = 0.012  # how deep the floor's seams go: the base under the plates, where the walls start
