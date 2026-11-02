@@ -109,7 +109,21 @@ TRIMS = {"PLATE": PLATE, "DARK": DARK, "LIGHT": LIGHT, "RED": RED, "SEAM": DARK}
 TINTS = {"PLATE": 1.0, "DARK": 1.0, "LIGHT": 2.6, "RED": 1.0, "SEAM": 0.35}
 SLAB = 0.02  # the shell's thickness
 SEAM = 0.012  # how deep the floor's seams go: the base under the plates, where the walls start
-EYE = (0.0, -0.22, 0.36)  # where the previews and the enclosure rays look from: the seat, in the hull's units
+# The scale and the furniture (proposed 2026-11-02, the user to confirm the scale): 3 m per hull unit makes the cabin 2.5 m
+# wide between the panes, the ceiling 1.66 m high and the console's ledge 0.9 m. The chair and the controls keep Codex's
+# arrangement (concept/assets/cockpit/finish_20261031_v001: RuntimeBindings.json and Cockpit_Preview.glb's nodes), in
+# metres from the chair's origin, each turned about z as Codex turned it; the chair stands with its front clear of the
+# console.
+METRES_PER_UNIT = 3.0
+CHAIR_AT = (0.0, -0.19, 0.0)
+FURNITURE = (  # name, game_ready.py's files, metres per model unit, offset from the chair's origin (metres), turn about z
+    ("chair", ("chair",), 1.2206, (0.0, 0.0, 0.0), 90.0),
+    ("throttle", ("throtle-control-base", "throtle-control-handle"), 0.29, (-0.58, 0.25, 0.54), -90.0),
+    ("joystick", ("joystick-base", "joystick-grip"), 0.29, (0.58, 0.25, 0.54), -90.0),
+)
+EYE_FROM_CHAIR = (0.0, -0.13, 1.21)  # metres: Codex's ANCHOR_PilotEye
+# the pilot's eye: the previews and the enclosure rays look from it
+EYE = tuple(round(c + e / METRES_PER_UNIT, 4) for c, e in zip(CHAIR_AT, EYE_FROM_CHAIR))
 VIEW = ((0.0, -0.52, 0.25), 13.0)  # the concept image's viewpoint (eye, lens mm), matched by eye
 
 
@@ -281,6 +295,38 @@ def Screens(console, folder):
     return found
 
 
+def Furnish(assets):
+    """The chair and the controls from game_ready.py's files, placed (FURNITURE). Returns the objects; each file's place
+    for the mod (its origin, the moving parts' pivot, in hull coordinates, the turn, the scale, a moving part's axis);
+    and a pedestal under each control: (x, y, half width, half depth, top)."""
+    detached = json.load(open(os.path.join(assets, "detached", "manifest.json"), encoding="utf-8"))
+    objects, placed, pedestals = [], {}, []
+    for name, files, metres, offset, turn in FURNITURE:
+        scale = metres / METRES_PER_UNIT
+        rotation = Matrix.Rotation(math.radians(turn), 4, "Z")
+        at = Matrix.Translation(Vector(CHAIR_AT) + Vector(offset) / METRES_PER_UNIT) @ rotation @ Matrix.Scale(scale, 4)
+        for i, file in enumerate(files):
+            before = set(bpy.data.objects)
+            bpy.ops.import_scene.gltf(filepath=os.path.join(assets, "game-ready", file + ".glb"))
+            o = next(x for x in bpy.data.objects if x not in before and x.type == "MESH")
+            o.matrix_world = at @ o.matrix_world
+            objects.append(o)
+            entry = {"origin": [round(c, 5) for c in o.matrix_world.translation], "turnDeg": turn,
+                     "hullUnitsPerModelUnit": round(scale, 5)}
+            asset = next((k for k in detached if file.startswith(k)), None)
+            if asset and i == 1:
+                axis = rotation.to_3x3() @ Vector(detached[asset]["motion"]["axis"])
+                entry["motion"] = {**{k: v for k, v in detached[asset]["motion"].items() if k not in ("axis", "ringCentre", "clashes")},
+                                   "axis": [round(c, 5) for c in axis], "unitsAreModel": True}
+            placed[file] = entry
+            if len(files) > 1 and i == 0:
+                co = np.array([(o.matrix_world @ v.co)[:] for v in o.data.vertices])
+                lo, hi = co.min(0), co.max(0)
+                pedestals.append((float(lo[0] + hi[0]) / 2, float(lo[1] + hi[1]) / 2, float(hi[0] - lo[0]) * 0.32,
+                                  float(hi[1] - lo[1]) * 0.32, float(lo[2]) + 0.003))
+    return objects, placed, pedestals
+
+
 def Hull2(points):
     """Convex hull of 2D points, counter-clockwise (monotone chain)."""
     pts = sorted(set(points))
@@ -407,7 +453,7 @@ def Area(polygon):
     return 0.5 * abs(sum(p[0] * q[1] - q[0] * p[1] for p, q in zip(polygon, polygon[1:] + polygon[:1])))
 
 
-def Shell(pillar, opening):
+def Shell(pillar, opening, pedestals=()):
     """The template's shell, clean: from the measured constants above and the panes' own frame, symmetric about x = 0.
 
     The frame line (ZH, the panes' top rail) runs round the cockpit: the panes' rails, then the shell's own rail with the
@@ -417,7 +463,8 @@ def Shell(pillar, opening):
     Each A-pillar frames its side window's rear; light frames with mitred corners line the rest of every opening. The
     side walls behind the panes are cut where the panes' windows are (`opening`: the right one and how far out its frame
     reaches) and lined in light. Only those walls go through the boolean: the shell's pieces overlap, and the exact
-    solver drops faces it finds inside another piece."""
+    solver drops faces it finds inside another piece. `pedestals` (from Furnish) stand from the floor's base up under
+    the controls."""
     b, walls = Builder(TRIMS), Builder(TRIMS)
     X, Y, Z = Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))
     low, high, pane_rear, cap_front = pillar
@@ -520,6 +567,10 @@ def Shell(pillar, opening):
         Reveal(b, right, rim, W + SLAB + 0.01)
     b.mirror = False
     windows += [right, left]
+    # the controls' pedestals: chamfered columns, their edges light
+    for x, y, hx, hy, top in pedestals:
+        Sweep(b, [Vector((x, y, -SEAM)), Vector((x, y, top))], Vector((0, 1, 0)), Chamfered(-hx, hx, -hy, hy, min(hx, hy) * 0.3),
+              ["LIGHT", "PLATE"] * 4)
     bmesh.ops.remove_doubles(b.bm, verts=b.bm.verts, dist=1e-6)
     me = bpy.data.meshes.new("shell")
     b.bm.to_mesh(me)
@@ -757,14 +808,15 @@ def Run(folder):
     pieces = {"side-left": Placed("side-left", pane_src, pbm, left), "side-right": Placed("side-right", pane_src, pbm, right, mirrored=True),
               "console": Placed("console", console_src, cbm, console_m)}
     screens = Screens(pieces["console"], out)
+    furniture, placed, pedestals = Furnish(os.path.dirname(folder))
     # the panes' windows are open (their back skin is culled from inside): where, to cut the shell's walls behind them
     right, rim, area = PaneOpening(pieces["side-right"])
-    shell, windows, dims = Shell(PillarEdge(pieces["side-right"]), (right, rim))
+    shell, windows, dims = Shell(PillarEdge(pieces["side-right"]), (right, rim), pedestals)
     # the shell's own texture: its classes' trims with occlusion (the parts' too) and a soft light baked in
     template.hide_render = True
     atlas = next(n.image for m in pieces["side-right"].data.materials for n in m.node_tree.nodes if n.type == "TEX_IMAGE" and n.image)
     inside = [(x, y, z) for x in (-0.22, 0.0, 0.22) for y in (-0.36, -0.2, -0.04, 0.1) for z in (0.12, 0.3, 0.42)]
-    bake = Bake(shell, atlas, TRIMS, TINTS, os.path.join(out, "shell.png"), [pieces[k] for k in ("side-left", "side-right", "console")], inside)
+    bake = Bake(shell, atlas, TRIMS, TINTS, os.path.join(out, "shell.png"), [pieces[k] for k in ("side-left", "side-right", "console")] + furniture, inside)
     dims["paneWindow"] = {"area": round(area, 4), "frameReachesX": round(rim, 4), "corners": len(right),
                           "y": [round(min(p.y for p in right), 3), round(max(p.y for p in right), 3)],
                           "z": [round(min(p.z for p in right), 3), round(max(p.z for p in right), 3)]}
@@ -811,16 +863,16 @@ def Run(folder):
 
     for name, o in pieces.items():
         Export([o], os.path.join(out, name + ".glb"))
-    Export(list(pieces.values()), os.path.join(out, "hull.glb"))
-    every = [template] + list(pieces.values())
+    Export(list(pieces.values()) + furniture, os.path.join(out, "hull.glb"))
+    every = [template] + list(pieces.values()) + furniture
     Outside()
     with tempfile.TemporaryDirectory() as scratch:
         before = Render([template], scratch, "template", every)
         parts_only = Render([pieces[k] for k in ("side-left", "side-right", "console")], scratch, "parts", every)
-        after = Render(list(pieces.values()), scratch, "hull", every)
+        after = Render(list(pieces.values()) + furniture, scratch, "hull", every)
         concept = next((f for f in sorted(os.listdir(folder)) if f.startswith("Enclosed") and f.endswith(".png")), None)
         if concept:
-            Concept(os.path.join(folder, concept), [template], list(pieces.values()), every, scratch, os.path.join(out, "previews", "concept.png"))
+            Concept(os.path.join(folder, concept), [template], list(pieces.values()) + furniture, every, scratch, os.path.join(out, "previews", "concept.png"))
     Sheet([before[:4], parts_only[:4], after[:4]], os.path.join(out, "previews", "seat.png"))
     Sheet([before[4:] + after[4:]], os.path.join(out, "previews", "outside.png"))
 
@@ -831,6 +883,10 @@ def Run(folder):
                        "console": {"file": CONSOLE, "matrix": [list(r) for r in console_m]}},
         "shellConstants": {"W": W, "ZW": ZW, "XC": XC, "ZC": ZC, "YR": YR, "YP": YP, "XP": XP, "YC": YC, "XF": XF, "YF": YF, "ZL": ZL, "YT": YT,
                            "ZH": ZH, "ZR": ZR, "XRAIL": XRAIL, "XWALL": XWALL, **dims},
+        "scale": {"metresPerHullUnit": METRES_PER_UNIT, "status": "proposed 2026-11-02, the user to confirm"},
+        "eye": {"hull": list(EYE), "fromChairMetres": list(EYE_FROM_CHAIR)},
+        "furniture": {"note": "each file's origin (a moving part's pivot) in hull coordinates, turned about z, scaled by "
+                              "hullUnitsPerModelUnit; motion values in model units", **placed},
         "bake": bake,
         "screens": {"convention": "u to the pilot's right, v up; the glTF's v runs down (its texture's rows), so a render "
                                   "target shows upright and unmirrored", "corners": "bottom left, bottom right, top right, "

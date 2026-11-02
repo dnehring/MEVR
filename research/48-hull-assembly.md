@@ -287,6 +287,23 @@ Normandy's interface screens)
   `Hull_Console_Screen_MIC` (the live view: its `Texture` parameter takes the capture), 2 `Hull_Console_Display_MIC`.
   Test build: all checks passed, 36.2 MB.
 
+## 11. The chair and the controls (the user: the asset needs the chair, the joystick and the throttle)
+
+- **Scale, proposed (the user to confirm): 3 m per hull unit.** The cabin is then 2.5 m wide between the panes, the
+  ceiling 1.66 m high, the frame line 1.49 m, the console's ledge 0.9 m. The in-game session's provisional 1.6 m cabin
+  would have put the ceiling at 1.07 m, below a seated eye.
+- **Arrangement:** Codex's (`concept/assets/cockpit/finish_20261031_v001`: `RuntimeBindings.json` and
+  `Cockpit_Preview.glb`'s nodes), in metres from the chair's origin, each part turned about z as Codex turned it.
+  - Chair: 1.22 m per model unit, turned +90 degrees.
+  - Throttle and joystick: 0.29 m per model unit, turned -90 degrees, 0.58 m to either side, 0.25 m ahead, 0.54 m up.
+  - Pilot's eye: 0.13 m behind and 1.21 m above the chair's origin.
+- **Placement:** the chair's origin is at (0, -0.19, 0), its front clear of the console. That puts the eye at
+  (0, -0.233, 0.403) hull units; the previews and the closure rays now look from there.
+- **Pedestals:** the controls stand on chamfered columns in the shell, under each base's middle third.
+- **For the mod:** `assembled/manifest.json` `furniture` gives each game-ready file's origin (a moving part's pivot) in
+  hull coordinates, its turn, its scale (hull units per model unit) and a moving part's axis.
+- **Closure from the new eye:** windows 4.6%, open rear 22.0%, no leak.
+
 ## 5. Not done
 
 - **Not seen from the seat in the game:** the meshes load and draw textured (section 9), but nothing is placed around the
