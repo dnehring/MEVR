@@ -148,6 +148,11 @@ so the new shell follows it. The parts (console, side pane) are placed in it, an
   - each front side window runs from its pillar to the windshield's frame;
   - the roof ends at the pillar's top, and a beam joins the pillar tops;
   - the pillar's line is read from the part (`PillarEdge`: its light and red faces), so the shell follows the part.
+- **Check what the game draws, with back faces culled.** A Tripo part's window can be an opening backed by a skin that faces
+  outward, invisible from inside. Probe and measure closure with rays that skip faces seen from behind (`Visible`), and
+  sort escaping rays into windows, the open rear and leaks.
+- **Use an exact boolean only on a simple closed piece** (the side wall slab), never on the whole shell: on overlapping
+  slabs the solver drops faces it finds inside another slab (a wall vanished, and rays leaked under the windshield).
 - **Place a structural part by its features, not its overall surface match.** The panes' interior fit matched the wall's
   general surfaces yet left their pillar and window 0.12 behind the template's. Sections at the feature showed it.
 - **Judge a version against the concept from its viewpoint** (`previews/concept.png`) and against the template from the seat.

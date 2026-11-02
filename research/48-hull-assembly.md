@@ -120,6 +120,33 @@ From the concept's viewpoint, each red-striped A-pillar rises from the end of th
 dark side window between it and the windshield, and the panes' octagonal windows behind it. The panes' pointed pillar feet
 stop just above the windows' sills: that's the pane's own shape.
 
+## 7. Open windows (the user's third step: "convert the window sections into actual windows")
+
+- **The side panes' octagonal windows were already open.** The pane has a back skin behind the octagon, about 0.42 out,
+  whose faces point outward. From inside it is culled, so the game draws the octagon as an opening. The shell's plated side
+  wall right behind it (x 0.463) filled it, so it read as a panel.
+  - A ray probe along +x from the room that skips faces seen from behind (`Visible`, as the game culls them) finds the
+    opening: 0.035 square units, y -0.207 to 0.021, z 0.246 to 0.422. Its front edge slants with the A-pillar. The pane's
+    own frame around it reaches x 0.416.
+  - A probe that counted every face found nothing open: facing matters.
+- **The shell's side walls (and their ceiling chamfers) are cut there** with an exact boolean, and a light lining carries the
+  pane's white frame from 0.416 out through the wall (`Reveal`).
+  - **Only those walls go through the boolean.** Run on the whole shell, which is overlapping closed slabs, the exact solver
+    dropped about 200 triangles it found inside other slabs. Among them was the wall under the windshield, and 0.4% of the
+    seat's rays leaked out under the windshield. With the cut limited to the walls: no leak, 1,044 triangles.
+- **The windshield and the front side windows have no glass now.** Each opening is lined by light bars through the shell's
+  thickness: all round the windshield; the sill, the roof's beam and the pillar's edge for the side windows.
+- **The closure check counts what the game would show** (back faces culled) and sorts each escaping ray: through a window,
+  through the open rear, or a leak with the box face it leaves by and where.
+  - Result: 4.3% through the windows, 19.1% through the rear, no leak.
+  - The template, checked the same way: 15.4% through the floor, 3.1% through the front, 2.5% through the ceiling, 1.2%
+    through the sides, 23.1% through the rear.
+- **Previews** have a sky colour and a ground below the floor, so the openings read as windows. In the game, the world would
+  show through them, or whatever the Mako's own model puts in front of the eye: research/47.
+
+The template's interior is now within 2 cm of the hull for 84% and within 6 cm for 98%, less than before because its window
+areas are open now.
+
 ## 5. Not done
 
 - **The parts are raw Tripo output:** the console has 3,209 boundary and 3,509 non-manifold edges, the pane 526 and 872, and

@@ -35,6 +35,7 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
+from mathutils.geometry import intersect_ray_tri
 
 TEMPLATE = "hull full -bad.glb"
 PANE = "side pane.glb"
@@ -235,9 +236,10 @@ def PolySlab(b, points, toward, depth, trim, sides=DARK):
         b.Face([p, p - n * depth, q - n * depth, q], Fit(sides))
 
 
-def Frame(b, points, toward, bar, out, trim=LIGHT, edges=None):
+def Frame(b, points, toward, bar, out, trim=LIGHT, edges=None, depth=0.0):
     """Light bars along a convex polygon's edges (all, or those numbered in `edges`: k runs from point k to k + 1),
-    `bar` wide inside it, standing `out` toward the room."""
+    `bar` wide inside it, standing `out` toward the room and reaching `depth` behind the polygon: an open window's
+    frame lines the opening through the wall."""
     pts = [Vector(p) for p in points]
     room = Vector(toward).normalized()
     centre = sum(pts, Vector()) / len(pts)
@@ -250,9 +252,9 @@ def Frame(b, points, toward, bar, out, trim=LIGHT, edges=None):
             w = -w
         n = e.cross(w)
         if n.dot(room) > 0:
-            Box(b, (0, 0, 0), ((q - p).length, bar, out), trim, axes=(p, e, w, n))
+            Box(b, (0, 0, -depth), ((q - p).length, bar, out), trim, axes=(p, e, w, n))
         else:  # the same bar in a right-handed frame
-            Box(b, (0, -bar, 0), ((q - p).length, 0, out), trim, axes=(p, e, -w, e.cross(-w)))
+            Box(b, (0, -bar, -depth), ((q - p).length, 0, out), trim, axes=(p, e, -w, e.cross(-w)))
 
 
 def PillarEdge(pane):
@@ -285,11 +287,135 @@ def PillarEdge(pane):
     return Front(ZL + 0.03), Front(ZC - 0.01), float(lo[1])
 
 
-def Shell(material_source, pillar):
+def Visible(tree, origin, d, far=3.0):
+    """The first face a ray sees from its front, as the game draws them (back faces culled); None if it sees none."""
+    p = Vector(origin)
+    for _ in range(64):
+        hit = tree.ray_cast(p, d, far)
+        if hit[0] is None:
+            return None
+        if hit[1].dot(d) < 0:
+            return hit
+        p = hit[0] + d * 1e-5
+    return None
+
+
+def Hull2(points):
+    """Convex hull of 2D points, counter-clockwise (monotone chain)."""
+    pts = sorted(set(points))
+
+    def Half(seq):
+        out = []
+        for p in seq:
+            while len(out) >= 2 and (out[-1][0] - out[-2][0]) * (p[1] - out[-2][1]) - (out[-1][1] - out[-2][1]) * (p[0] - out[-2][0]) <= 0:
+                out.pop()
+            out.append(p)
+        return out
+    lower, upper = Half(pts), Half(reversed(pts))
+    return lower[:-1] + upper[:-1]
+
+
+def PaneOpening(pane):
+    """The right pane's window as the game draws it: where a ray from the room along +x sees no face from its front (the
+    pane's back skin behind the octagon is culled from inside). The largest such region away from the pane's edges, as
+    a convex polygon on the side wall's face (x = W), and how far out the pane's own frame around it reaches."""
+    bm = bmesh.new()
+    bm.from_mesh(pane.data)
+    tree = BVHTree.FromBMesh(bm)
+    bm.free()
+    lo, hi = Bounds(pane)
+    step = 0.004
+    ys, zs = np.arange(lo[1], hi[1], step), np.arange(0.0, hi[2], step)
+    d = Vector((1, 0, 0))
+    seen = np.full((len(zs), len(ys)), np.nan)  # x of the first face seen; nan where open
+    for i, z in enumerate(zs):
+        for j, y in enumerate(ys):
+            hit = Visible(tree, (0.2, y, z), d)
+            if hit is not None:
+                seen[i, j] = hit[0].x
+    open_ = np.isnan(seen)
+    label = np.zeros(open_.shape, int)
+    best = (0, None)
+    for i0, j0 in zip(*np.nonzero(open_)):
+        if label[i0, j0]:
+            continue
+        label[i0, j0] = n = label.max() + 1
+        stack, cells, edge = [(i0, j0)], [], False
+        while stack:
+            i, j = stack.pop()
+            cells.append((i, j))
+            edge |= i in (0, len(zs) - 1) or j in (0, len(ys) - 1)
+            for a, b in ((i + 1, j), (i - 1, j), (i, j + 1), (i, j - 1)):
+                if 0 <= a < len(zs) and 0 <= b < len(ys) and open_[a, b] and not label[a, b]:
+                    label[a, b] = n
+                    stack.append((a, b))
+        if not edge and len(cells) > best[0]:
+            best = (len(cells), cells)
+    cells = best[1]
+    corners = [(ys[j] + dy, zs[i] + dz) for i, j in cells for dy in (-step / 2, step / 2) for dz in (-step / 2, step / 2)]
+    rim = [seen[a, b] for i, j in cells for a, b in ((i + 1, j), (i - 1, j), (i, j + 1), (i, j - 1))
+           if 0 <= a < len(zs) and 0 <= b < len(ys) and not open_[a, b]]
+    return [Vector((W, y, z)) for y, z in Hull2(corners)], float(np.percentile(rim, 10)), len(cells) * step * step
+
+
+def Prism(polygon, x0, x1):
+    """A closed prism over a polygon in (y, z), from x0 to x1, faces outward."""
+    b = Builder()
+    a = [Vector((x0, p.y, p.z)) for p in polygon]
+    c = [Vector((x1, p.y, p.z)) for p in polygon]
+    centre = (sum(a, Vector()) + sum(c, Vector())) / (2 * len(a))
+    faces = [a, c] + [[a[k], a[(k + 1) % len(a)], c[(k + 1) % len(a)], c[k]] for k in range(len(a))]
+    for f in faces:
+        b.Face(f, [(0, 0)] * len(f), toward=sum(f, Vector()) / len(f) - centre)
+    bmesh.ops.remove_doubles(b.bm, verts=b.bm.verts, dist=1e-7)
+    return b.bm
+
+
+def Cut(o, prisms):
+    """Subtracts closed prisms from the object (an exact boolean), applied."""
+    bm = bmesh.new()
+    for p in prisms:
+        me = bpy.data.meshes.new("cut")
+        p.to_mesh(me)
+        p.free()
+        bm.from_mesh(me)
+        bpy.data.meshes.remove(me)
+    me = bpy.data.meshes.new("cutter")
+    bm.to_mesh(me)
+    bm.free()
+    cutter = bpy.data.objects.new("cutter", me)
+    bpy.context.scene.collection.objects.link(cutter)
+    mod = o.modifiers.new("cut", "BOOLEAN")
+    mod.operation = "DIFFERENCE"
+    mod.solver = "EXACT"
+    mod.object = cutter
+    new = bpy.data.meshes.new_from_object(o.evaluated_get(bpy.context.evaluated_depsgraph_get()))
+    o.modifiers.remove(mod)
+    old = o.data
+    o.data = new
+    bpy.data.meshes.remove(old)
+    bpy.data.objects.remove(cutter)
+    bpy.data.meshes.remove(me)
+
+
+def Reveal(b, polygon, x0, x1):
+    """The light lining of a window through the wall: the polygon's edges carried from x0 out to x1, facing its axis."""
+    centre = sum(polygon, Vector()) / len(polygon)
+    for p, q in zip(polygon, polygon[1:] + polygon[:1]):
+        quad = [Vector((x0, p.y, p.z)), Vector((x0, q.y, q.z)), Vector((x1, q.y, q.z)), Vector((x1, p.y, p.z))]
+        mid = (p + q) / 2
+        b.Face(quad, Fit(LIGHT), toward=Vector((0, centre.y - mid.y, centre.z - mid.z)))
+
+
+def Shell(material_source, pillar, opening):
     """The template's shell, clean: from the measured constants above and the panes' A-pillars, symmetric about x = 0.
     Each A-pillar carries the roof (the side's ceiling chamfer ends at its top) and frames the front side window, which
-    runs from it to the windshield's frame between the ledge and the roof."""
+    runs from it to the windshield's frame between the ledge and the roof. The side walls behind the panes are cut
+    where the panes' windows are (`opening`: the right one and how far out its frame reaches) and lined in light.
+    Only those walls go through the boolean: the shell's slabs overlap, and the exact solver drops faces it finds
+    inside another slab."""
     b = Builder()
+    walls = Builder()
     X, Y, Z = Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))
     XT = XP - (YT - YC) * (XP - XF) / (YF - YC)  # the windshield's top corners lie on the front chamfers
     low, high, pane_rear = pillar
@@ -307,11 +433,11 @@ def Shell(material_source, pillar):
     PolySlab(b, [(-XC, YP_, ZC), (XC, YP_, ZC), (XT, YT, ZC), (-XT, YT, ZC)], -Z, SLAB, DARK)
     # the wall under the windshield, behind the console, facing back
     Slab(b, Vector((-XF, YF, 0)), X * 2 * XF, Z * ZL, SLAB)
-    # the windshield: glass leaning back between the chamfers, in a light frame
+    # the windshield: an opening leaning back between the chamfers, lined by a light frame through the shell
     shield = [(-XF, YF, ZL), (XF, YF, ZL), (XT, YT, ZC), (-XT, YT, ZC)]
     room = Vector((0, -(ZC - ZL), -(YF - YT))).normalized()
-    PolySlab(b, shield, room, SLAB, GLASS)
-    Frame(b, [Vector(p) for p in shield], room, 0.018, 0.012)
+    Frame(b, [Vector(p) for p in shield], room, 0.018, 0.012, depth=SLAB + 0.005)
+    windows = [[Vector(p) for p in shield]]
     # the ceiling's lowered centre (plates underneath) and the ribs either side of it, dark as the concept's
     half, bottom, y0, y1 = CHANNEL
     Slab(b, Vector((-half, y0, bottom)), Y * (y1 - y0), X * 2 * half, ZC - bottom, size=0.16, sides=DARK)
@@ -322,9 +448,9 @@ def Shell(material_source, pillar):
     Box(b, (-XC, YR, ZC - 0.045), (XC, YR + 0.04, ZC), LIGHT)
     Box(b, (-XC, YP_ - 0.02, ZC - 0.04), (XC, YP_ + 0.02, ZC), LIGHT)
     for mirror in (False, True):
-        b.mirror = mirror
-        Slab(b, Vector((W, YR, 0)), Z * ZW, Y * (YP_ - YR), SLAB)                         # side wall, facing in
-        Slab(b, Vector((W, YR, ZW)), Vector((XC - W, 0, ZC - ZW)), Y * (YP_ - YR), SLAB)  # its chamfer into the ceiling
+        b.mirror = walls.mirror = mirror
+        Slab(walls, Vector((W, YR, 0)), Z * ZW, Y * (YP_ - YR), SLAB)                         # side wall, facing in
+        Slab(walls, Vector((W, YR, ZW)), Vector((XC - W, 0, ZC - ZW)), Y * (YP_ - YR), SLAB)  # its chamfer into the ceiling
         PolySlab(b, [(XP, YP_, 0), (W, YP_, 0), (W, YP_, ZW), (XC, YP_, ZC)], -Y, SLAB, DARK)  # the step, behind the pillar
         PolySlab(b, [(XP, YP_, 0), (XP, YC, 0), (XP, YC, ZL), (XP, YP_, ZC)], -X, SLAB, DARK)  # the pillar zone, behind it
         # the rear portal where the panes (moved forward) leave the wall bare: a light post and its band on the chamfer
@@ -335,14 +461,30 @@ def Shell(material_source, pillar):
         # the front chamfer below the ledge
         p0, p1 = Vector((XP, YC, 0)), Vector((XF, YF, 0))
         Slab(b, p0, Z * ZL, p1 - p0, SLAB)
-        # the front side window: glass from the A-pillar to the windshield's frame, the ledge to the roof (two flat
-        # triangles: its corners aren't in one plane), a light sill below it and the roof's beam above it
+        # the front side window: an opening from the A-pillar to the windshield's frame, the ledge to the roof, lined
+        # by a light frame: the sill, the roof's beam, the pillar's edge (the windshield's frame lines its front)
         corners = [p0 + Z * ZL, p1 + Z * ZL, Vector((XT, YT, ZC)), pt]
         room = -Newell(corners).normalized() if Newell(corners).x > 0 else Newell(corners).normalized()
-        for tri in ((corners[0], corners[1], corners[2]), (corners[0], corners[2], corners[3])):
-            PolySlab(b, tri, room, SLAB, GLASS)
-        Frame(b, corners, room, 0.018, 0.012, edges=(0, 2))
+        Frame(b, corners, room, 0.018, 0.012, edges=(0, 2, 3), depth=SLAB + 0.005)
+        windows.append([Vector((-c.x, c.y, c.z)) if mirror else c for c in corners])
+    b.mirror = walls.mirror = False
+    # the side walls, cut for the panes' windows, and the light lining that carries each pane's frame out through them
+    right, rim = opening
+    left = [Vector((-p.x, p.y, p.z)) for p in right]
+    bmesh.ops.remove_doubles(walls.bm, verts=walls.bm.verts, dist=1e-6)
+    me = bpy.data.meshes.new("walls")
+    walls.bm.to_mesh(me)
+    walls.bm.free()
+    wall = bpy.data.objects.new("walls", me)
+    bpy.context.scene.collection.objects.link(wall)
+    Cut(wall, [Prism(right, rim - 0.01, W + SLAB + 0.03), Prism(left, -(W + SLAB + 0.03), -(rim - 0.01))])
+    b.bm.from_mesh(wall.data)
+    bpy.data.meshes.remove(wall.data)
+    for mirror in (False, True):
+        b.mirror = mirror
+        Reveal(b, right, rim, W + SLAB + 0.01)
     b.mirror = False
+    windows += [right, left]
     bmesh.ops.remove_doubles(b.bm, verts=b.bm.verts, dist=1e-6)
     me = bpy.data.meshes.new("shell")
     b.bm.to_mesh(me)
@@ -352,7 +494,7 @@ def Shell(material_source, pillar):
     o = bpy.data.objects.new("shell", me)
     bpy.context.scene.collection.objects.link(o)
     o.data.shade_flat()
-    return o, {"XT": XT, "pillarTopY": YP_, "pillarFoot": [round(c, 4) for c in low], "pillarTop": [round(c, 4) for c in high]}
+    return o, windows, {"XT": XT, "pillarTopY": YP_, "pillarFoot": [round(c, 4) for c in low], "pillarTop": [round(c, 4) for c in high]}
 
 
 def Fibonacci(n):
@@ -378,20 +520,31 @@ def Tree(objects):
     return tree
 
 
-def Escapes(tree, eye, lo, hi):
-    """The share of rays from the eye that hit nothing, by the face of the box (lo, hi) they leave it through: the rear
-    is the cockpit's open back, any other face a hole."""
+def Escapes(tree, eye, lo, hi, windows=()):
+    """The share of rays from the eye that see nothing (back faces culled, as the game draws), by where they leave:
+    through a window (polygons), out of the box (lo, hi) by its rear (the cockpit's open back), or by another face of
+    the box (a leak)."""
     dirs = Fibonacci(4000)
     names = (("left", "right"), ("rear", "front"), ("floor", "ceiling"))
-    out = {}
+    tris = [(w[0], w[k], w[k + 1]) for w in windows for k in range(1, len(w) - 1)]
+    out, where = {}, []
     for d in dirs.tolist():
-        if tree.ray_cast(Vector(eye), Vector(d))[0] is not None:
+        if Visible(tree, eye, Vector(d)) is not None:
             continue
-        exits = [((hi[a] if d[a] > 0 else lo[a]) - eye[a]) / d[a] if abs(d[a]) > 1e-9 else math.inf for a in range(3)]
-        a = int(np.argmin(exits))
-        face = names[a][d[a] > 0]
-        out[face] = out.get(face, 0) + 1
-    return {k: round(v / len(dirs), 4) for k, v in sorted(out.items())}
+        if any(intersect_ray_tri(a, b, c, Vector(d), Vector(eye), True) for a, b, c in tris):
+            key = "windows"
+        else:
+            exits = [((hi[a] if d[a] > 0 else lo[a]) - eye[a]) / d[a] if abs(d[a]) > 1e-9 else math.inf for a in range(3)]
+            a = int(np.argmin(exits))
+            face = names[a][d[a] > 0]
+            key = "rear" if face == "rear" else "leak " + face
+            if face != "rear":
+                where.append([round(eye[i] + d[i] * exits[a], 3) for i in range(3)])
+        out[key] = out.get(key, 0) + 1
+    result = {k: round(v / len(dirs), 4) for k, v in sorted(out.items())}
+    if where:
+        result["leaksLeaveAt"] = where[:12]
+    return result
 
 
 def Interior(template_bm, template_tree):
@@ -469,6 +622,21 @@ def Refit(itree, tlo, thi, bm, turn, facing, scales):
         found.append({"scale": round(s, 4), "centre": [round(x, 4) for x in t], "p50": round(float(np.percentile(d, 50)), 4),
                       "within1cm": round(float((d < 0.01).mean()), 3), "relative70": round(float(np.percentile(d, 70) / s), 4)})
     return sorted(found, key=lambda r: r["relative70"])
+
+
+def Outside():
+    """For the previews only: a sky colour and a ground below the floor, so the open windows read as windows."""
+    sc = bpy.context.scene
+    if sc.world is None:
+        sc.world = bpy.data.worlds.new("sky")
+    sc.world.color = (0.52, 0.64, 0.78)
+    me = bpy.data.meshes.new("ground")
+    s = 30.0
+    me.from_pydata([(-s, -s, -0.08), (s, -s, -0.08), (s, s, -0.08), (-s, s, -0.08)], [], [(0, 1, 2, 3)])
+    material = bpy.data.materials.new("ground")
+    material.diffuse_color = (0.42, 0.36, 0.28, 1.0)
+    me.materials.append(material)
+    sc.collection.objects.link(bpy.data.objects.new("ground", me))
 
 
 def Render(objects, folder, tag, scene_objects):
@@ -554,7 +722,12 @@ def Run(folder):
 
     pieces = {"side-left": Placed("side-left", pane_src, pbm, left), "side-right": Placed("side-right", pane_src, pbm, right, mirrored=True),
               "console": Placed("console", console_src, cbm, console_m)}
-    shell, dims = Shell(pieces["side-right"], PillarEdge(pieces["side-right"]))
+    # the panes' windows are open (their back skin is culled from inside): where, to cut the shell's walls behind them
+    right, rim, area = PaneOpening(pieces["side-right"])
+    shell, windows, dims = Shell(pieces["side-right"], PillarEdge(pieces["side-right"]), (right, rim))
+    dims["paneWindow"] = {"area": round(area, 4), "frameReachesX": round(rim, 4), "corners": len(right),
+                          "y": [round(min(p.y for p in right), 3), round(max(p.y for p in right), 3)],
+                          "z": [round(min(p.z for p in right), 3), round(max(p.z for p in right), 3)]}
     pieces["shell"] = shell
 
     # how the pane fits the template's interior at its pinned place, and how much of that interior the hull covers
@@ -593,12 +766,14 @@ def Run(folder):
                 area[k] += a if dist <= k else 0.0
         coverage[label] = {f"within{k:g}": round(v / total, 3) for k, v in area.items()}
     box = ((-W - 0.03, YR, -SLAB), (W + 0.03, 0.6, ZC + SLAB))
-    escapes = {"template": Escapes(ttree, EYE, tlo, thi), "parts": Escapes(parts_tree, EYE, *box), "hull": Escapes(hull_tree, EYE, *box)}
+    escapes = {"template": Escapes(ttree, EYE, tlo, thi), "parts": Escapes(parts_tree, EYE, *box),
+               "hull": Escapes(hull_tree, EYE, *box, windows=windows)}
 
     for name, o in pieces.items():
         Export([o], os.path.join(out, name + ".glb"))
     Export(list(pieces.values()), os.path.join(out, "hull.glb"))
     every = [template] + list(pieces.values())
+    Outside()
     with tempfile.TemporaryDirectory() as scratch:
         before = Render([template], scratch, "template", every)
         parts_only = Render([pieces[k] for k in ("side-left", "side-right", "console")], scratch, "parts", every)
