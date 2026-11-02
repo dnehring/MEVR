@@ -56,7 +56,10 @@ CONSOLE_CENTRE = (0.0, 0.2749, 0.1473)
 # The template's shell, measured by rays from inside it on 2026-11-02 (research/48): x across, y forward, z up.
 W, ZW = 0.463, 0.412       # the side walls' inner face; the height where their chamfer into the ceiling starts
 XC, ZC = 0.39, 0.48        # the chamfer's top edge; the ceiling
-YR = -0.425                # the open rear
+YR = -0.425                # the template's open rear: the portal arch stands here
+YB = -0.62                 # the rear wall, closing the cabin 0.59 m behind the arch at 3 m per unit (the user, 2026-11-02:
+                           # the contours carried on to a rear section, as Codex's assembly did)
+DOOR = (0.14, 0.48, 0.05)  # the rear wall's door: half width, height, its top corners' cut (0.84 x 1.44 m)
 YP, XP = 0.06, 0.39        # the side walls step in to the pillar zone here (the template's; the shell takes the
                            # panes' A-pillar tops instead, PillarEdge)
 YC = 0.175                 # the front chamfers start here, at XP
@@ -84,6 +87,9 @@ OVERLAP = 0.015
 WINDOW = [(-0.004, -0.032), (0.024, -0.032), (0.024, -0.008), (0.018, -0.002), (0.018, 0.004), (0.012, 0.012),
           (0.0, 0.012), (-0.004, 0.008), (-0.004, -0.032)]
 WINDOW_CLASSES = ["DARK", "SEAM", "SEAM", "LIGHT", "LIGHT", "LIGHT", "LIGHT", "DARK"]
+# The rear door's frame, as WINDOW but heavier: a 30 mm light face standing 15 mm proud, lining the wall's thickness.
+DOOR_FRAME = [(-0.006, -0.03), (0.03, -0.03), (0.03, 0.0), (0.024, 0.015), (0.0, 0.015), (-0.006, 0.009), (-0.006, -0.03)]
+DOOR_FRAME_CLASSES = ["DARK", "SEAM", "LIGHT", "LIGHT", "LIGHT", "DARK"]
 # The ceiling's spine and slats, as profiles (side, down from ZR negative): the template's lowered centre and ribs,
 # raised with the roof. The spine's upper tier, and its lower tier with a recess underneath; each slat a louvre whose
 # face slopes toward the cockpit's middle, a light edge along its foot (x, depth for each).
@@ -435,6 +441,25 @@ def Reveal(b, polygon, x0, x1):
         b.Face(quad, "LIGHT", toward=Vector((0, centre.y - mid.y, centre.z - mid.z)), uvs=QUAD)
 
 
+def RearWall(b):
+    """The rear wall at YB: the room's section (the floor, the walls, the caps' profile, the ceiling) round a door's
+    opening, with panels set in either side; the opening framed in light (a chamfered face standing proud, lining the
+    wall's thickness); two leaves set back in it, each with a panel."""
+    Y = Vector((0, 1, 0))
+    hw, dh, dc = DOOR
+    side = [Vector((XRAIL - s, YB, ZH + u)) for s, u in CAP]  # from the wall's top up to the ceiling
+    for mirror in (False, True):
+        b.mirror = mirror
+        Slab(b, [Vector((hw, YB, -SEAM)), Vector((XWALL, YB, -SEAM))] + side + [Vector((hw, YB, ZR))], Y, SLAB, inset=(0.008, 0.006, 0.03))
+        b.Face([(hw - dc, YB, dh), (hw, YB, dh), (hw, YB, dh - dc)], "PLATE", toward=Y)  # the opening's cut corner
+        leaf = [(0.0, YB - 0.015, -SEAM), (hw, YB - 0.015, -SEAM), (hw, YB - 0.015, dh - dc), (hw - dc, YB - 0.015, dh), (0.0, YB - 0.015, dh)]
+        Slab(b, leaf, Y, 0.02, inset=(0.01, 0.005, 0.03))
+    b.mirror = False
+    Slab(b, [(-hw, YB, dh), (hw, YB, dh), (hw, YB, ZR), (-hw, YB, ZR)], Y, SLAB, "DARK")
+    opening = [Vector(p) for p in ((-hw, YB, 0), (hw, YB, 0), (hw, YB, dh - dc), (hw - dc, YB, dh), (-hw + dc, YB, dh), (-hw, YB, dh - dc))]
+    Sweep(b, Inward(opening, Y), Y, DOOR_FRAME, DOOR_FRAME_CLASSES, closed=True)
+
+
 def Inward(points, up):
     """A loop's points in the order whose sides (up x direction) point into it."""
     pts = [Vector(p) for p in points]
@@ -473,12 +498,12 @@ def Shell(pillar, opening, pedestals=()):
     yh = YF - (ZH - ZL) * lean                    # the windshield's top edge, on the frame line
     xh = XP - (yh - YC) * (XP - XF) / (YF - YC)   # its top corners lie on the front chamfers
     # floor: chamfered plates over a dark base, the seams between them 8 mm wide and SEAM deep; the walls start on the base
-    rear = [(-W, YR), (W, YR), (W, YP_), (-W, YP_)]
+    rear = [(-W, YB), (W, YB), (W, YP_), (-W, YP_)]
     front = [(-XP, YP_), (XP, YP_), (XP, YC), (XF, YF), (-XF, YF), (-XP, YC)]
     for piece in (rear, front):
         Slab(b, [(x, y, -SEAM) for x, y in piece], Z, SLAB, "SEAM", "DARK")
     columns = (-W, -0.27, -0.12, 0.12, 0.27, W)
-    rows = np.arange(YR, YF + 0.2, 0.2)
+    rows = np.arange(YB, YF + 0.2, 0.2)
     for x0, x1 in zip(columns, columns[1:]):
         for y0, y1 in zip(rows, rows[1:]):
             cell = [(x0 + 0.004, y0 + 0.004), (x1 - 0.004, y0 + 0.004), (x1 - 0.004, y1 - 0.004), (x0 + 0.004, y1 - 0.004)]
@@ -501,39 +526,42 @@ def Shell(pillar, opening, pedestals=()):
     # the ceiling: plates from the rear to the caps' front end, then up to that front edge; its back
     xc = edge[0].x
     cols = (-xc - OVERLAP, -0.143, 0.0, 0.143, xc + OVERLAP)  # over the caps' top, as the joints with the panes
-    rows = np.linspace(YR, edge[0].y, 4)
+    rows = np.linspace(YB, edge[0].y, 5)
     for x0, x1 in zip(cols, cols[1:]):
         for y0, y1 in zip(rows, rows[1:]):
             b.Face([(x0, y0, ZR), (x1, y0, ZR), (x1, y1, ZR), (x0, y1, ZR)], "PLATE", toward=-Z)
     b.Face(edge + [Vector((x, edge[0].y, ZR)) for x in cols[1:-1]], "PLATE", toward=-Z)
-    b.Face([Vector((xc, YR, ZR + SLAB))] + [p + Z * SLAB for p in edge] + [Vector((-xc, YR, ZR + SLAB))], "DARK", toward=Z)
+    b.Face([Vector((xc, YB, ZR + SLAB))] + [p + Z * SLAB for p in edge] + [Vector((-xc, YB, ZR + SLAB))], "DARK", toward=Z)
     # the spine, two tiers, the lower recessed underneath, and the louvred slats either side: from the portal to the
-    # ceiling's front edge, each end sloping up into the ceiling at 45 degrees
-    def Beam(x, reach, profile, classes, depth):
-        ya, yb = YR + 0.055 + 1.414 * depth, FrontAt(edge, x + reach) - 1.414 * depth
-        Sweep(b, [Vector((x, ya - depth, ZR + depth)), Vector((x, ya, ZR)), Vector((x, yb, ZR)), Vector((x, yb + depth, ZR + depth))],
-              Z, profile, classes)
+    # ceiling's front edge, and behind the portal from the rear wall to it. Each end that meets the ceiling slopes up
+    # into it at 45 degrees; at the rear wall they run on into it.
+    def Beam(x, profile, classes, depth, rear, front, into_wall=False):
+        ya, yb = rear + 1.414 * depth, front - 1.414 * depth
+        start = [Vector((x, rear - 0.01, ZR))] if into_wall else [Vector((x, ya - depth, ZR + depth)), Vector((x, ya, ZR))]
+        Sweep(b, start + [Vector((x, yb, ZR)), Vector((x, yb + depth, ZR + depth))], Z, profile, classes)
 
-    Beam(0.0, 0.12, SPINE_UPPER, "DARK", 0.028)
-    Beam(0.0, 0.085, SPINE, SPINE_CLASSES, 0.088)
-    for x, depth in SLATS:
-        for mirror in (False, True):
-            b.mirror = mirror
-            Beam(x, 0.016, Louvre(depth), SLAT_CLASSES, depth)
-    b.mirror = False
-    # the portal arch at the open rear: a light chamfered beam up the walls, along the caps and across under the roof
+    for rear, front, wall in ((YR + 0.055, None, False), (YB, YR, True)):
+        Beam(0.0, SPINE_UPPER, "DARK", 0.028, rear, front or FrontAt(edge, 0.12), wall)
+        Beam(0.0, SPINE, SPINE_CLASSES, 0.088, rear, front or FrontAt(edge, 0.085), wall)
+        for x, depth in SLATS:
+            for mirror in (False, True):
+                b.mirror = mirror
+                Beam(x, Louvre(depth), SLAT_CLASSES, depth, rear, front or FrontAt(edge, x + 0.016), wall)
+        b.mirror = False
+    # the portal arch at the template's rear: a light chamfered beam up the walls, along the caps and across under the roof
     portal = [Vector((-XWALL, YR, -SEAM)), Vector((-XWALL, YR, ZH)), Vector((-0.30, YR, ZR)), Vector((0.30, YR, ZR)),
               Vector((XWALL, YR, ZH)), Vector((XWALL, YR, -SEAM))]
     Sweep(b, portal, Y, Chamfered(0.0, 0.05, 0.0, 0.055, 0.01), "LIGHT")
     for mirror in (False, True):
         b.mirror = walls.mirror = mirror
-        # behind the panes: the side wall with a panel set in, the rail and cap carried back to the portal
-        Slab(b, [(XWALL, YR, -SEAM), (XWALL, pane_rear, -SEAM), (XWALL, pane_rear, ZH), (XWALL, YR, ZH)], -X, SLAB,
-             inset=(0.008, 0.006, 0.02))
-        Sweep(b, [Vector((XRAIL, YR, ZH)), Vector((XRAIL, pane_rear + OVERLAP, ZH))], Z, CAP_SWEPT, CAP_CLASSES)
+        # behind the panes: the side wall, a panel set in either side of the portal, the rail and cap carried back to
+        # the rear wall
+        for y0, y1 in ((YB, YR), (YR, pane_rear)):
+            Slab(b, [(XWALL, y0, -SEAM), (XWALL, y1, -SEAM), (XWALL, y1, ZH), (XWALL, y0, ZH)], -X, SLAB, inset=(0.008, 0.006, 0.02))
+        Sweep(b, [Vector((XRAIL, YB, ZH)), Vector((XRAIL, pane_rear + OVERLAP, ZH))], Z, CAP_SWEPT, CAP_CLASSES)
         # the side wall behind the pane (cut below for its window), on back behind the rear wall and up behind the cap,
         # which close the corners round the pane's rear end
-        Slab(walls, [(W, YR, -SEAM), (W, YP_, -SEAM), (W, YP_, ZR), (W, YR, ZR)], -X, SLAB)
+        Slab(walls, [(W, YB, -SEAM), (W, YP_, -SEAM), (W, YP_, ZR), (W, YB, ZR)], -X, SLAB)
         # behind the A-pillar: the step in to the pillar zone, and the pillar zone's wall up to the window's rear edge
         Slab(b, [(XP, YP_, -SEAM), (W, YP_, -SEAM), (W, YP_, ZH), (XP, YP_, ZH)], -Y, SLAB, "DARK")
         Slab(b, [(XP, YP_, -SEAM), (XP, YC, -SEAM), (XP, YC, ZL), (XP, YP_, ZH)], -X, SLAB, "DARK")
@@ -567,6 +595,7 @@ def Shell(pillar, opening, pedestals=()):
         Reveal(b, right, rim, W + SLAB + 0.01)
     b.mirror = False
     windows += [right, left]
+    RearWall(b)
     # the controls' pedestals: chamfered columns, their edges light
     for x, y, hx, hy, top in pedestals:
         Sweep(b, [Vector((x, y, -SEAM)), Vector((x, y, top))], Vector((0, 1, 0)), Chamfered(-hx, hx, -hy, hy, min(hx, hy) * 0.3),
@@ -605,7 +634,7 @@ def Tree(objects):
     return tree
 
 
-def Escapes(tree, eye, lo, hi, windows=()):
+def Escapes(tree, eye, lo, hi, windows=(), open_rear=True):
     """The share of rays from the eye that see nothing (back faces culled, as the game draws), by where they leave:
     through a window (polygons), out of the box (lo, hi) by its rear (the cockpit's open back), or by another face of
     the box (a leak)."""
@@ -622,8 +651,8 @@ def Escapes(tree, eye, lo, hi, windows=()):
             exits = [((hi[a] if d[a] > 0 else lo[a]) - eye[a]) / d[a] if abs(d[a]) > 1e-9 else math.inf for a in range(3)]
             a = int(np.argmin(exits))
             face = names[a][d[a] > 0]
-            key = "rear" if face == "rear" else "leak " + face
-            if face != "rear":
+            key = "rear" if face == "rear" and open_rear else "leak " + face
+            if key != "rear":
                 where.append([round(eye[i] + d[i] * exits[a], 3) for i in range(3)])
         out[key] = out.get(key, 0) + 1
     result = {k: round(v / len(dirs), 4) for k, v in sorted(out.items())}
@@ -857,9 +886,9 @@ def Run(folder):
             for k in area:
                 area[k] += a if dist <= k else 0.0
         coverage[label] = {f"within{k:g}": round(v / total, 3) for k, v in area.items()}
-    box = ((-W - 0.03, YR, -SLAB), (W + 0.03, 0.6, ZR + SLAB + 0.01))
+    box = ((-W - 0.03, YB - 0.03, -SLAB), (W + 0.03, 0.6, ZR + SLAB + 0.01))
     escapes = {"template": Escapes(ttree, EYE, tlo, thi), "parts": Escapes(parts_tree, EYE, *box),
-               "hull": Escapes(hull_tree, EYE, *box, windows=windows)}
+               "hull": Escapes(hull_tree, EYE, *box, windows=windows, open_rear=False)}
 
     for name, o in pieces.items():
         Export([o], os.path.join(out, name + ".glb"))

@@ -304,6 +304,24 @@ Normandy's interface screens)
   hull coordinates, its turn, its scale (hull units per model unit) and a moving part's axis.
 - **Closure from the new eye:** windows 4.6%, open rear 22.0%, no leak.
 
+## 12. The rear section (the user: the contours continue to a rear section, as Codex's assembly did)
+
+- **The cabin now runs on to a rear wall at y -0.62,** 0.195 hull units (0.59 m) behind the template's open rear. The
+  portal arch stays at y -0.425 as a structural rib framing the rear section.
+- **Carried back:**
+  - the floor's plates;
+  - the side walls, with a panel set in either side of the arch;
+  - the rail and the panes' cap profile;
+  - the ceiling with its plates;
+  - a second run of the spine and the slats, from the rear wall to the arch. At the arch their ends slope up into the
+    ceiling; at the rear wall they run on into it.
+- **The rear wall** follows the room's section (the floor, the walls, the caps' profile, the ceiling) round a door
+  0.28 x 0.48 hull units (0.84 x 1.44 m) with cut top corners. Panels are set in either side; a light frame (30 mm,
+  standing 15 mm proud) lines the opening; two leaves with panels stand 15 mm back in it.
+- **Closed:** from the eye, rays leave only through the windows (4.6%). The first build had a 4 mm slit between the
+  leaves (0.05% of rays); now they meet.
+- **Shell:** 3,055 triangles; the bake uses 72% of its texels.
+
 ## 5. Not done
 
 - **Not seen from the seat in the game:** the meshes load and draw textured (section 9), but nothing is placed around the
