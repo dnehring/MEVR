@@ -6,7 +6,7 @@ tags: [le1, rendering, stereo, system-settings, recurring]
 status: stable
 timestamp: 2026-10-30T19:53:43Z
 generated: { by: claude-code/fable-5.1, at: 2026-10-30T19:53:43Z }
-bitten: [2026-10-07, 2026-10-23, 2026-10-28]
+bitten: [2026-10-07, 2026-10-23, 2026-10-28, 2026-11-02]
 ---
 
 # Symptom
@@ -18,6 +18,7 @@ The player described it differently every time, which is why it was not recognis
 | 2026-10-07 | "vertical judder" on head turns | every head turn smeared: the blur reads head rotation as camera motion |
 | 2026-10-23 | "shimmering on the floor every few seconds" | 4 of 8 snapshots smeared in a wavy diagonal blur, the rest sharp, alternating every 3-6 s; paused, the LEFT eye only blurred in 4 of 5 frames |
 | 2026-10-28 | "the assets shift up and down and in different directions, each its own way, in both eyes, no CPU frame-time spike" | a large surface flips between its speckled look and a smooth look streaked along one diagonal, in runs of 1-4 frames |
+| 2026-11-02 | (no player: the test loop) "the cockpit's near surfaces doubled sideways, the scene outside sharp" | after a fresh launch from Steam, two snapshots 20 s apart both smeared the cockpit parts at arm's length; the log had `(a new level: applied again)` 16 s before; `scale set MotionBlur True` then `False` by hand made the next snapshot sharp. A region's mean grey was the same smeared and sharp (within 1.5), so brightness measurements survive it, edges don't |
 
 Frame times do not change. Eye snapshots (`tools/snapshot.ps1 -Count 8`) show the smear directly.
 
@@ -62,8 +63,9 @@ resolution. Do not start there.
 changes, each boolean goes through its opposite first (`scale set MotionBlur True`, then `False`; the same for
 `DynamicShadows`), then `FoliageDrawRadiusMultiplier 0.5`. `[SystemSettings]` in `ASI\LE1MEVR.ini` overrides any key;
 `apply = 0` turns it off. Measured clean on 2026-10-28 in the running session: look flips over a 4 s pan 40-57 before,
-1-3 after (the 1-3 are the pan's one content change). Not yet checked from a fresh launch: the "a new level: applied
-again" path has only run after a hot reload.
+1-3 after (the 1-3 are the pan's one content change). **From a fresh launch it did not hold** (2026-11-02): the log
+said "a new level: applied again" at the save's load and the blur was on; the same two lines by hand turned it off.
+Until that is understood, after each launch run the two `scale set` lines yourself before judging a picture.
 
 If it comes back a fourth time, measure before reasoning: a replayed head recording, the desktop mirror grabbed for 4 s,
 the frame's high-frequency energy thresholded and its transitions counted (research/35 attempt 49 describes the setup).
