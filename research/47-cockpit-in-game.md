@@ -515,7 +515,12 @@ at their manifest places with yaw 90 - `turnDeg`, the throttle's handle at its n
 unit (not yet confirmed by the user).
 
 **Result:** from the head, the cockpit stands as modelled: the windshield and the two angled side windows with Eden Prime
-through them, the ceiling's ribs, the console with its orange-framed screens, the side panes. With every part lifted 0.45 m for
-a look down: the chair's seat and armrests run forward under the eye, as they should. The throttle's and joystick's turn
-(`--yaw-sign`) isn't judged yet: they sit at the frame's edges from this head pose. The cockpit is fixed where it was anchored;
-following the Mako is the next step.
+through them, the ceiling's ribs, the console with its orange-framed screens, the side panes. Moved 0.6 m ahead, the chair shows
+its backrest's back (it faces forward). The controls alone, brought ahead and up into view: both switch panels face the pilot,
+the throttle's lever stands at the base's far end at neutral, the joystick's thumb buttons face the pilot, as in the hull's
+renders: `--yaw-sign 1` (yaw 90 - `turnDeg`) is right. The cockpit is fixed where it was anchored; following the Mako is the
+next step.
+
+**A bug on the way:** `parts clear` first asked `Still()`, which checks the single mesh's world (empty after `clear`), so it
+removed nothing and each rerun stacked another cockpit (37 actors by the controls check). Parts now check the frame's world, and
+`parts sweep` destroys every spawnable actor showing a `BIOG_MEVR_Cockpit` mesh: what a hot reload or a lost list leaves behind.

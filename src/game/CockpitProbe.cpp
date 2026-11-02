@@ -869,9 +869,14 @@ void PlacePart(Part const& part) {
     FlushActor(part.actor, false);
 }
 
+// Still() asks about the single mesh's world; the parts have the frame's.
+bool PartAlive(Part const& part) {
+    return part.actor != nullptr && gAnchor.world == engine::World() && ue3::runtime::IsAlive(part.actor) && ue3::IsA(part.actor, gActorClass);
+}
+
 void ClearParts(char const* why) {
     for (Part const& part : gParts) {
-        if (gAnchor.world == engine::World() && Still(part.actor, gActorClass)) {
+        if (PartAlive(part)) {
             DestroyActor(part.actor, why);
         }
     }
@@ -940,7 +945,32 @@ std::string DoPart(std::istringstream& words) {
     return report;
 }
 
+// Every actor of the spawnable kinds whose mesh comes from our package: parts a hot reload or a lost list left behind.
+int SweepCockpitActors() {
+    std::vector<ue3::Object*> found;
+    for (std::size_t i = 0; i < kAutomatic; ++i) {
+        ActorKind const& kind = kKinds[i];
+        ForEachLive(kind.cls->Get(), [&](ue3::Object* actor) {
+            ue3::Object* const component = kind.component->Read<ue3::Object*>(actor).value_or(nullptr);
+            ue3::Object* const mesh = component != nullptr ? gComponentMesh.Read<ue3::Object*>(component).value_or(nullptr) : nullptr;
+            if (mesh != nullptr && Lower(R().PathName(mesh)).starts_with("biog_mevr_cockpit.") && actor != gState.actor) {
+                found.push_back(actor);
+            }
+        });
+    }
+    for (ue3::Object* const actor : found) {
+        DestroyActor(actor, "mevr cockpit parts sweep");
+    }
+    gParts.clear();
+    gAnchor = {};
+    return static_cast<int>(found.size());
+}
+
 std::string DoParts(std::string const& what) {
+    if (what == "sweep") {
+        int const count = SweepCockpitActors();
+        return std::format("{} actor{} showing our package's meshes destroyed", count, count == 1 ? "" : "s");
+    }
     if (what == "clear") {
         std::size_t const count = gParts.size();
         ClearParts("mevr cockpit parts clear");
@@ -1520,7 +1550,7 @@ std::string Rest(std::istringstream& words) {
 }
 
 constexpr char const* kUsage =
-    "mevr cockpit: load <Package.Object> [class] | mesh [name or Package.Object] | part <Package.Object> RIGHT FORWARD UP YAW M_PER_UNIT | parts [clear] | anchor | list [filter] | classes | spawnclass [name] | screen [W H] [float|rgba8] [linear] | materials [filter] | material [name] | param [name] | "
+    "mevr cockpit: load <Package.Object> [class] | mesh [name or Package.Object] | part <Package.Object> RIGHT FORWARD UP YAW M_PER_UNIT | parts [clear|sweep] | anchor | list [filter] | classes | spawnclass [name] | screen [W H] [float|rgba8] [linear] | materials [filter] | material [name] | param [name] | "
     "texture [Package.Object] | info | element N|all | scale S | dist M | rot P Y R | follow 0|1 | attach | detach | chase BACK UP | rate N | aim 0|1 | post 0|1 | status | clear";
 
 // ---- `texture`, `info`: separating a bad texture from a bad instance from a bad mesh (research/47) -------------------
@@ -1828,7 +1858,7 @@ std::string Command(std::string const& line) {
             return Refuse("no head or camera to anchor the parts to");
         }
         for (Part const& part : gParts) {
-            if (Still(part.actor, gActorClass)) {
+            if (PartAlive(part)) {
                 PlacePart(part);
             }
         }
