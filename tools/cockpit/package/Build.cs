@@ -85,8 +85,11 @@ internal static class Build
         return found.Count > 0 ? found.OrderBy(f => f.Version).ThenBy(f => f.Path, StringComparer.Ordinal).Last().Path : System.IO.Path.Combine(assets, name + ".glb");
     }
 
-    public static List<ModelSource> Sources(string assets)
+    // tools/cockpit/game_ready.py's model wins when its manifest says it was made from the file the rule above picks
+    // (the source's SHA-256); one made from another file stops the build. raw: the repaired and detached models as they are.
+    public static List<ModelSource> Sources(string assets, bool raw = false)
     {
+        Dictionary<string, string> ready = raw ? null : GameReady(assets);
         var sources = new List<ModelSource>();
         foreach (var model in Models)
         {
@@ -95,9 +98,28 @@ internal static class Build
             {
                 throw new FileNotFoundException($"Missing model {model.File}: {path}");
             }
+            if (ready != null && ready.TryGetValue(model.File, out string sourceSha))
+            {
+                if (!string.Equals(sourceSha, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))), StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidDataException($"game-ready/{model.File}.glb was made from another {path}: run tools/cockpit/game_ready.py again, or build with --raw");
+                }
+                path = System.IO.Path.Combine(assets, "game-ready", model.File + ".glb");
+            }
             sources.Add(new ModelSource(model.Name, path, model.Group));
         }
         return sources;
+    }
+
+    private static Dictionary<string, string> GameReady(string assets)
+    {
+        string manifest = System.IO.Path.Combine(assets, "game-ready", "manifest.json");
+        if (!File.Exists(manifest))
+        {
+            return null;
+        }
+        using JsonDocument doc = JsonDocument.Parse(File.ReadAllText(manifest));
+        return doc.RootElement.GetProperty("models").EnumerateObject().ToDictionary(m => m.Name, m => m.Value.GetProperty("sourceSha256").GetString());
     }
 
     // Exact duplicates only (the same position, normal and UV bits): nothing moves, the corners keep their order.
@@ -305,7 +327,8 @@ internal static class Build
         ExportEntry backingTexture = AddTexture(pcc, "Backing_Diff", backingImage, 4, 4);
         ExportEntry backingInstance = AddInstance(pcc, "Backing_MIC", parent, backingTexture, expressionGuid, parentLightingGuid);
 
-        foreach (ModelSource source in Sources(assets))
+        bool raw = options.Has("raw");
+        foreach (ModelSource source in Sources(assets, raw))
         {
             ModelRoot model = ModelRoot.Load(source.Path, SharpGLTF.Validation.ValidationMode.Skip);
             List<WeldedPrimitive> welded = Weld(model);
@@ -397,7 +420,7 @@ internal static class Build
         string json = outPath + ".json";
         File.WriteAllText(json, JsonSerializer.Serialize(listing, new JsonSerializerOptions { WriteIndented = true }));
         Console.WriteLine($"Wrote {outPath} ({new FileInfo(outPath).Length / 1048576.0:F1} MB) and {json}");
-        return Check.Run(outPath, assets, gamePath);
+        return Check.Run(outPath, assets, gamePath, raw);
     }
 
     // Each mip's bulk data says where it sits in the uncompressed package. LEC writes it from the export's place in the file at

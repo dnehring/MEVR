@@ -459,3 +459,22 @@ tools/console.ps1 "mevr cockpit clear" "mevr vehicle"
 - **`open BIOA_UNC20` from the console loads a Mako level**, no modding tool. `mevr vehicle` found `BioVehicleWheeled` 15.5 m away. The level's squad selection screen comes up first (game mode 7). `mevr vehicle enter` made the Mako the pawn while that screen was up.
 - **Accepting the squad made Shepard the pawn again in game mode 6 (cinematic) on a black screen**, and it stayed so for 40 s or more: the level's arrival sequence is waiting on something a direct load doesn't provide. Space then Escape left the game with no pawn. So a direct load doesn't reach drivable Mako gameplay yet, and none of the Mako features have run. Next to try: enter the vehicle while the squad screen is up and close the screen another way (its handler's `ConfirmParty`/`FinalizeParty`, the game mode manager), read how the level's sequence continues, or a save with the Mako.
 - **Posted mouse messages drive the game's menus:** `WM_MOUSEMOVE` highlights a button, and `WM_LBUTTONDOWN`/`UP` clicked Accept Squad and the confirmation. One click 120 ms after the press did nothing on the second dialog; a move, 900 ms, then a 300 ms press worked. So the game pointer's route works, but it may need the hover to settle first [verify in the headset]. The cursor was also set with `SetCursorPos` for the first of them.
+
+## Game-ready models (2026-11-02; packaged and checked, not yet loaded by the game)
+
+`tools/cockpit/game_ready.py` (headless Blender 5.2, MIT) sits between the detached/repaired models and the packager. The procedure, its traps and the numbers to judge a run by are the `tripo-game-ready` skill (`.claude/skills`). It reads the six files the packager reads and writes `concept/assets/game-ready/<file>.glb`, `manifest.json` and `previews/` (source, result, difference). It takes 21 s.
+
+- **What it does:** each surface (the textured front, the repair's inward backing) is decimated by edge collapse on its own, with the vertices where they meet locked. The front keeps the fewest triangles within 0.0005 of the model's diagonal (99th percentile both ways, maximum within 4 times that); the backing is held to 0.002. Normals are then smooth by angle (30 degrees). The models are normalised to about one unit each, so a tolerance can't be in metres.
+- **Result:** 107,282 → 64,742 triangles and 203,146 → 95,233 vertices after the packager's weld. **`Front_Cockpit` is one mesh again** (25,377 welded, 26,322 after LEC's tangents), so there is no `Front_Cockpit_Backing`. Per model: joystick base 10,632 triangles, grip 8,606, throttle base 6,398, handle 5,434, chair 17,192, front cockpit 16,480. The package is 24.4 MB against 25.6 (the textures are most of it). Its `check`: all passed, including the winding (0.0% of faces agree with their vertex normals, as before).
+- **Kept, measured:**
+  - the base colour's bytes;
+  - boundary and non-manifold edges (0, and the chair's 1);
+  - every locked vertex;
+  - texel density (1,602 to 1,968 per unit, within 3%);
+  - the controls' clearance (0 intersecting face pairs at every motion sample, before and after);
+  - eight culled, flat-textured orthographic renders per model: silhouette IoU 0.994 to 0.9999, 1 to 4% of pixels off by more than 16/255, all along edges.
+- **The packager:** it prefers `game-ready/<file>.glb` when the manifest's `sourceSha256` is the file its own rule picks, and stops with a message otherwise (tested). `--raw` packages the repaired and detached models. A build to `--out build/cockpit-gameready/...` left the installed package alone.
+- **Measured, not assumed:**
+  - Tripo's normals cost little. Kept (`--keep-normals`), the chair welds to 29,941 against 27,028 and the front cockpit to 25,360 against 25,377: the vertex savings come from the triangles.
+  - An empty vertex group on Blender's Decimate modifier locks nothing (no weights layer): the joystick, whose backing is all junction rims, lost 120 junction vertices until that pass was skipped.
+- **Not established:** how it looks in the game. Install the game-ready package (research/47 "What to do", the game closed), load it with the console lines of "Next run", and compare a snapshot with `previews/`.

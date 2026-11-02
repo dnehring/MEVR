@@ -1,0 +1,156 @@
+---
+name: tripo-game-ready
+description: Turns Tripo (AI-generated) .glb models into game-ready LE1 cockpit assets with headless Blender, from inspection through repair, splitting moving parts, decimation under measured tolerances and the UE3 package to the in-game check, every step judged by numbers and renders. Use when adding, fixing, reducing or packaging a Tripo or other AI-generated model, when a cockpit model looks wrong in the game, or before placing parts against a reference mesh (the hull).
+---
+
+# Tripo models to game-ready (LE1 cockpit)
+
+The cockpit's models come from Tripo: `concept/assets/` (gitignored; their licence is unsettled, so nothing of them, their
+renders or the package goes in git or to an outside service). They reach the game through a chain of stages. Each stage
+reads the previous one's files and never writes them, writes its own folder with a `manifest.json`, and prints `RESULT`
+lines. research/47 is the record ("Packaging our models", "Game-ready models").
+
+| Stage | Tool | Writes | It's done when |
+|---|---|---|---|
+| Inspect | a throwaway bpy script in the scratchpad (below) | nothing | you know the meshes, materials, images, welded and boundary counts |
+| Repair (watertight) | the outside repair pipeline; its report, recipe and ledgers are in `repairs/<date>/` | `repairs/<date>/<asset>/vNNN/Repaired.glb` (+ `.blend`), `CURRENT.json` | 0 boundary and non-manifold edges, winding consistent (`ASSET_REPAIR_REPORT.md`) |
+| Moving parts | `tools/cockpit/detach_controls.py`, then `check_controls.py` | `detached/<asset>-<part>.glb`, `manifest.json` (pivot, axis, motion) | parts' triangles add up to the source's; no clash over the motion |
+| Game-ready | `tools/cockpit/game_ready.py` | `game-ready/<file>.glb`, `manifest.json`, `previews/<file>.png` | every RESULT line within tolerance, locked vertices all kept, previews clean |
+| Package | `tools/cockpit/package` (`build`) | `build/cockpit/BIOG_MEVR_Cockpit.pcc` + `.json` | `All checks passed` |
+| In game | research/47 "Next run": `tools/console.ps1 "mevr cockpit ..."`, `tools/snapshot.ps1` | snapshots | the snapshot shows the model as the previews do |
+
+"Newest" is one rule in all three tools (`detach_controls.Newest`, `Build.Newest`): the highest `vNNN` under
+`repairs/<date>/<asset>/`, else the file beside `repairs/`. The packager prefers `game-ready/<file>.glb`, but only when
+`game-ready/manifest.json` was made from the file that rule picks (its `sourceSha256`). Otherwise it stops: run
+`game_ready.py` again, or build with `--raw` to package the repaired and detached models as they are.
+
+## Running Blender
+
+Headless, from the shell, always: no GUI, no Blender MCP for batch work (the Higgsfield bridge's `bl_*` tools and
+mcp-for-blender drive a live GUI session and are for looking, not for the pipeline).
+
+```powershell
+& 'C:\Program Files\Blender Foundation\Blender 5.2\blender.exe' -b --factory-startup --python tools/cockpit/game_ready.py -- concept/assets
+dotnet build tools/cockpit/package/CockpitPackage.csproj -c Release
+dotnet tools/cockpit/package/bin/Release/net10.0-windows/cockpit-package.dll build --assets concept/assets
+```
+
+Filter the output with `Select-String 'RESULT|Traceback|Error'`: Blender prints a line per render. A test build that
+must not replace the installed package goes elsewhere with `--out build/cockpit-<tag>/BIOG_MEVR_Cockpit.pcc`. The
+package in the game changes only with the game closed (research/47 "What to do").
+
+New scripts go in `tools/cockpit/` (SPDX `MIT` first line, a docstring with the command line, `RESULT` lines, a
+manifest, never writing what they read). Throwaway inspection goes in the scratchpad.
+
+## What a Tripo model is (measured 2026-10-31 to 11-02)
+
+- **Triangle soup:** 3 vertices per triangle, unindexed. Weld by position first (`bmesh.ops.remove_doubles`,
+  1e-6 of the diagonal); UVs and normals live on the corners and survive it.
+- **Normalised to about one unit:** the joystick base is as wide as the chair is tall. Each model's metric scale is
+  unknown and the actor's scale sets it in the game, so tolerances are a fraction of each model's diagonal, never metres.
+- **One textured material:** a 4096² base-colour JPEG (the front cockpit adds a 2048² normal map and a
+  metallic-roughness PNG). The texture has lighting baked in.
+- **One-sided sheets with holes.** The repair closed them with an inward backing shell 0.0005 units behind the front
+  (material `Authored inward backing`, no image; dark grey in the game), or with thin rims where sheets meet (the
+  joystick's backing is only rims). Front and backing share junction vertices.
+- **Many more welded vertices than positions:** the packager's weld (exact position, normal and UV) gave 2.6 to 4.7
+  times the position-welded count on the repaired models.
+
+## The game's side
+
+- `EngineMaterials.EmissiveTexturedMaterial`: **unlit and one-sided.** Normals, normal maps and the texture's baked
+  lighting change nothing on screen yet, and back faces are culled. Normal-map baking and delighting wait for a lit
+  parent (research/47 "A lit parent, later").
+- **16-bit indices, no base vertex:** at most 65,535 vertices a mesh after the packager's weld and LEC's tangent splits
+  (+0.3 to 4%). Above that, `Build.cs` splits the backing off as `<name>_Backing` (the front cockpit before game-ready).
+- **Import:** glTF (x, y, z) becomes (x, z, y) x 100. A mesh's origin is its glb's origin and the node's translation is
+  ignored, so a moving part's vertices must be relative to its pivot. `detach_controls` makes them so; keep node
+  transforms on export (`export_apply=False`, modifiers applied to the mesh first).
+- **Textures:** the base colour only, DXT1, `--max-texture` (4096), group set by `Build.cs`. The models carry 1,600 to
+  1,970 texels per model unit.
+- **Collision:** none (the probe's actor has it off). **LODs:** none; the cockpit is always within arm's reach.
+
+## Decimation (game_ready.py)
+
+Each surface is decimated on its own by edge collapse, with everything else locked. The front keeps the fewest
+triangles whose deviation from its source stays within `--tolerance` (0.0005 of the diagonal: 99th percentile both
+ways, maximum at most 4 times that). The backing uses `--backing-tolerance` (0.002). At a 25 px/degree headset and arm's
+length that is under about 2 pixels. Result on 2026-11-02, 21 s for all six:
+
+| Model | Front tris | Backing tris | Welded vertices | Worst view IoU |
+|---|---|---|---|---|
+| joystick-base | 10,582 → 9,746 | 886 (rims, untouched) | 17,364 → 15,147 | 0.9999 |
+| joystick-grip | 10,530 → 7,896 | 710 (rims, untouched) | 15,118 → 10,139 | 0.9988 |
+| throtle-control-base | 5,373 → 3,465 | 5,941 → 2,933 | 26,962 → 9,945 | 0.9978 |
+| throtle-control-handle | 4,466 → 3,442 | 4,854 → 1,992 | 21,695 → 7,597 | 0.9943 |
+| chair | 10,972 → 9,698 | 12,188 → 7,494 | 45,051 → 27,028 | 0.9979 |
+| front-cockpit | 19,269 → 10,545 | 21,511 → 5,935 | 76,956 → 25,377 (one mesh now) | 0.9978 |
+
+Overall 107,282 → 64,742 triangles and 203,146 → 95,233 welded vertices, with the base-colour bytes, watertightness
+and the controls' clearance unchanged.
+
+**Judge a run** by its RESULT lines, then `previews/<file>.png`. Its rows are the source, the result and their
+difference (the colour difference x 4 in red where both cover, yellow where only one does). Thin red lines along
+texture edges and silhouettes are sub-pixel shifts and fine. A red patch means the texture swam, and yellow beyond the
+thinnest stalks means the silhouette moved: lower the tolerance for that model. Report the numbers; the user decides by
+same-pose measurements, not by a look.
+
+## Traps (each one bit, or nearly)
+
+1. **Decimating front and backing together** collapses the 0.0005-unit rims first and fuses the shells. Lock the
+   junction vertices and decimate each surface alone.
+2. **An empty vertex group locks nothing.** With no vertex in any group, the mesh has no weights and the Decimate
+   modifier collapses freely: the joystick lost 120 junction vertices. Skip a surface with no free vertices, and
+   check the locked positions afterwards (`game_ready.py` refuses to write otherwise).
+3. **Vertex groups live on the mesh in Blender 5.x:** remove the group before swapping in the decimated mesh
+   (`DeformGroup 'free' not in object`).
+4. **A modifier ratio is a share of the whole mesh.** With the backing locked, ratio 0.5 took the throttle handle's
+   front from 4,466 to 256 triangles. Ratio = (total - mine + share x mine) / total.
+5. **The glTF exporter rebuilds a packed metallic-roughness image** (a warning about "more than one shader node tex
+   image"). The base colour's bytes come through unchanged; compare the base colour only, since it's all the packager
+   reads.
+6. **A backing crossing the front is invisible.** Both are one-sided, and where the front faces the eye the backing
+   faces away. Verify with culled renders, not by worrying.
+7. **Count welded vertices as .NET does:** -0.0 equals +0.0 there. Byte-exact counts come out dozens too high (chair
+   45,107 against the packager's 45,051).
+8. **Keeping Tripo's normals costs little:** the chair 11% more welded vertices, the front cockpit none. The vertex
+   savings come from the triangles.
+9. **Never cut faces when splitting parts:** the models hold parts as separate surfaces joined only at shared positions,
+   so split by position-welded islands (`detach_controls.Islands`).
+
+## Inspecting a new model
+
+In the scratchpad, import, weld by position, and print as JSON per object:
+- vertices (raw and welded), faces;
+- triangles and area per material;
+- boundary and non-manifold edges, and edges between materials (junctions);
+- bounds, node transform, UV layers;
+- custom normals present;
+- each image's size and where it is linked.
+
+Then add the model:
+1. Repair it if it has boundary edges.
+2. If it has moving parts, add it to `detach_controls.ASSETS`.
+3. Add its file to `game_ready.MODELS` and to `Build.Models`, and run the chain.
+
+## Placing parts against a reference mesh (the hull, next)
+
+`concept/assets/hull reconstruction/` holds a full hull (`hull full -bad.glb`), separate parts (front console, side
+pane) and reference renders. The full mesh is a **template for placement only**, never shipped. Fit each part to it
+by measured distances (part-to-template deviation, as `game_ready.Deviation`), record each part's transform in a
+manifest, and check with renders against the template from fixed views. Write that stage as
+`tools/cockpit/<name>.py` with this skill's conventions, then update this section with what it measured.
+
+## Checked and not used (2026-11-02)
+
+- **Higgsfield bridge's Blender skills:** scene building for shots. Its modelling module's geometry checklist and
+  decimate notes agree with the above.
+- **arjun988/blender-skills** (MIT): checklists without code. Bake numbers: cage 0.01 to 0.05 m, margin 16 px.
+- **God-601/blender-mcp-master:** beta, unread scripts, and an interview gate that blocks batch runs.
+- **ahujasid mcp-for-blender:** a live GUI bridge running arbitrary Python over an unauthenticated socket.
+- **Tripo's own add-on and MCP:** generation only.
+- **Tripo's API** (`/v3/mesh/decimate` retopology with quads and texture bake, `/v3/mesh/segment`): paid (10 to
+  40 credits) and untested. Worth one comparison against `game_ready.py` on a model, by the same RESULT measures, before
+  relying on it.
+
+None replaces headless scripts that measure their own results.

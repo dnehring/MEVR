@@ -94,7 +94,7 @@ internal static class Check
         }
     }
 
-    public static int Run(string path, string assets, string gamePath)
+    public static int Run(string path, string assets, string gamePath, bool raw = false)
     {
         failures = 0;
         Console.WriteLine($"Checking {path}");
@@ -146,7 +146,7 @@ internal static class Check
                 $"{export.ObjectName.Instanced}: parent {parent?.InstancedFullPath}, {value?.GetProp<NameProperty>("ParameterName")?.Value.Instanced} = {texture?.ObjectName.Instanced}, binary {export.GetBinaryData().Length} bytes");
         }
 
-        Dictionary<string, ModelSource> sources = assets != null ? Build.Sources(assets).ToDictionary(s => s.Name) : new Dictionary<string, ModelSource>();
+        Dictionary<string, ModelSource> sources = assets != null ? Build.Sources(assets, raw).ToDictionary(s => s.Name) : new Dictionary<string, ModelSource>();
         foreach (ExportEntry export in pcc.Exports.Where(e => e.ClassName == "StaticMesh"))
         {
             StaticMesh mesh = ObjectBinary.From<StaticMesh>(export);

@@ -34,7 +34,7 @@ internal static class Verbs
             case "build":
                 return Build.Run(options, game);
             case "check":
-                return Check.Run(Path.GetFullPath(options.Positional.First()), options.Get("assets"), game);
+                return Check.Run(Path.GetFullPath(options.Positional.First()), options.Get("assets"), game, options.Has("raw"));
             case "toc":
                 return Toc.Run(options);
             default:

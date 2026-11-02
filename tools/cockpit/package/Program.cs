@@ -15,9 +15,11 @@ internal static class Program
     private const string Usage = """
         cockpit-package: our cockpit .glb models into one LE1 package (research/47).
 
-          build   --assets <concept/assets> [--out <file.pcc>] [--max-texture N] [--repo <repo root>]
+          build   --assets <concept/assets> [--out <file.pcc>] [--max-texture N] [--repo <repo root>] [--raw]
                   Default out: <repo>/build/cockpit/BIOG_MEVR_Cockpit.pcc, with <out>.json listing the objects.
-          check   <file.pcc> [--assets <concept/assets>]
+                  Takes <assets>/game-ready/ (tools/cockpit/game_ready.py) when it was made from the current models;
+                  --raw takes the repaired and detached models instead.
+          check   <file.pcc> [--assets <concept/assets>] [--raw]
                   Reopens a package and validates it (the build runs this at its end).
           inspect <file.pcc> [--filter text] [--props] [--bin]
                   Lists exports and imports; with --props each one's properties.
@@ -86,7 +88,7 @@ internal sealed class Options
     public string Verb;
     public List<string> Positional = new();
     private readonly Dictionary<string, string> named = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly HashSet<string> Flags = new(StringComparer.OrdinalIgnoreCase) { "props", "bin" };
+    private static readonly HashSet<string> Flags = new(StringComparer.OrdinalIgnoreCase) { "props", "bin", "raw" };
 
     public string Get(string name) => named.TryGetValue(name, out string value) ? value : null;
     public bool Has(string name) => named.ContainsKey(name);

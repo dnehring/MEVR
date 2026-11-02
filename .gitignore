@@ -53,8 +53,9 @@ snapshots/
 recordings/
 perf/
 
-# Claude Code's local settings and worktrees
-.claude/
+# Claude Code's local settings and worktrees; its project skills are shared
+.claude/*
+!.claude/skills/
 
 # Local-only research tools, never published (they rebuild a decrypted copy of the game exe from a dump)
 local-tools/
