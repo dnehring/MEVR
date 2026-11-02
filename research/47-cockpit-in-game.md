@@ -503,3 +503,19 @@ that slot only (`element all`: every slot, as before), over the slot's own insta
 to the head), `element 1`, `post 0`, `screen 768 270 float` (the screen's 2.85:1), `chase 6 3`. **Result:** the chase view of
 Shepard and the squad fills the centre screen, upright and not mirrored, with no flip in the material; the wing screens and the
 console's atlas keep their own materials.
+
+## The cockpit in one frame (2026-11-02 15:45, fake headset, Eden Prime)
+
+The probe's `part <Package.Object> <right> <forward> <up> <yaw> <metres per package unit>` spawns an actor of its own per mesh,
+placed in one frame: the head's place and flat heading at the first `part` (or `anchor`), offsets in metres, the yaw on top of
+the frame's, the draw scale from metres per package unit times the view's units per metre. `parts` lists them, `parts clear`
+removes them. `tools/cockpit/place.py` writes the lines from the hull's manifest (research/48): the cockpit's eye point
+(hull 0, -0.2333, 0.4033) on the head, the four hull meshes at yaw 90 (the package's forward is -Y), the chair and the controls
+at their manifest places with yaw 90 - `turnDeg`, the throttle's handle at its neutral slide, all at the proposed 3 m per hull
+unit (not yet confirmed by the user).
+
+**Result:** from the head, the cockpit stands as modelled: the windshield and the two angled side windows with Eden Prime
+through them, the ceiling's ribs, the console with its orange-framed screens, the side panes. With every part lifted 0.45 m for
+a look down: the chair's seat and armrests run forward under the eye, as they should. The throttle's and joystick's turn
+(`--yaw-sign`) isn't judged yet: they sit at the frame's edges from this head pose. The cockpit is fixed where it was anchored;
+following the Mako is the next step.

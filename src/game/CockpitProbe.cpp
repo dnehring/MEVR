@@ -693,28 +693,28 @@ void ApplyScale() {
 }
 
 // No collision of any kind (it would stop the player and catch shots), no physics; its light environment on, if it has one.
-void MakeHarmless(ActorKind const& kind) {
+void MakeHarmless(ActorKind const& kind, ue3::Object* actor, ue3::Object* meshComponent) {
     ue3::Params physics = ParamsOf(gSetPhysics);
     physics.Set("newPhysics", kPhysNone);
-    Call(gState.actor, gSetPhysics, physics);
+    Call(actor, gSetPhysics, physics);
     ue3::Params collision = ParamsOf(gSetCollision);
     collision.SetBool("bNewColActors", false);
     collision.SetBool("bNewBlockActors", false);
     collision.SetBool("bNewIgnoreEncroachers", true);
-    Call(gState.actor, gSetCollision, collision);
+    Call(actor, gSetCollision, collision);
     ue3::Params component = ParamsOf(gSetActorCollision);
     component.SetBool("NewCollideActors", false);
     component.SetBool("NewBlockActors", false);
-    Call(gState.component, gSetActorCollision, component);
+    Call(meshComponent, gSetActorCollision, component);
     ue3::Params rigid = ParamsOf(gSetBlockRigidBody);
     rigid.SetBool("bNewBlockRigidBody", false);
-    Call(gState.component, gSetBlockRigidBody, rigid);
+    Call(meshComponent, gSetBlockRigidBody, rigid);
     ue3::Params trace = ParamsOf(gSetTraceBlocking);
     trace.SetBool("NewBlockZeroExtent", false);
     trace.SetBool("NewBlockNonZeroExtent", false);
-    Call(gState.component, gSetTraceBlocking, trace);
+    Call(meshComponent, gSetTraceBlocking, trace);
     if (kind.lightEnvironment != nullptr) {
-        if (ue3::Object* const environment = kind.lightEnvironment->Read<ue3::Object*>(gState.actor).value_or(nullptr)) {
+        if (ue3::Object* const environment = kind.lightEnvironment->Read<ue3::Object*>(actor).value_or(nullptr)) {
             ue3::Params on = ParamsOf(gLightEnvironmentSetEnabled);
             on.SetBool("bNewEnabled", true);
             Call(environment, gLightEnvironmentSetEnabled, on);
@@ -756,7 +756,7 @@ bool SpawnMeshActor(ue3::Object* controller, ue3::Vector const& at, std::string&
         report += std::format("{}: defaults {}: spawned {} with {} (the actor: bStatic {}, bNoDelete {}, bMovable {})\n", kind.label, flags,
             ue3::runtime::FullName(actor), ue3::runtime::FullName(component), gStatic.ReadBool(actor).value_or(false) ? 1 : 0,
             gNoDelete.ReadBool(actor).value_or(false) ? 1 : 0, gMovable.ReadBool(actor).value_or(false) ? 1 : 0);
-        MakeHarmless(kind);
+        MakeHarmless(kind, actor, component);
         return true;
     }
     return false;
@@ -811,6 +811,150 @@ std::string DoMesh(std::string const& name) {
     log::Info("cockpit probe: {}", report);
     gLastError = "none";
     return report;
+}
+
+// ---- Parts: a cockpit of several meshes in one frame ----------------------------------------------------------------
+
+// The frame: where the head was at `anchor` (or the first `part`), its flat heading. Each part sits at an offset from it in
+// metres (right, forward, up), turned by its yaw on top of the frame's, scaled in metres per package unit. A placement
+// tool (tools/cockpit/place.py) writes these lines from the models' manifests: the cockpit's eye point on the head.
+struct Anchor {
+    bool set = false;
+    void const* world = nullptr;
+    engine::UnrealVector at{};
+    double yaw = 0.0;  // radians, the head's flat forward
+    double unitsPerMeter = engine::kUnitsPerMeter;
+};
+Anchor gAnchor;
+
+struct Part {
+    ue3::Object* actor = nullptr;
+    ue3::Object* component = nullptr;
+    ue3::Object* mesh = nullptr;
+    engine::UnrealVector offsetM{};  // right, forward, up
+    float yawDeg = 0.0f;
+    float metersPerUnit = 0.01f;
+};
+std::vector<Part> gParts;
+
+bool SetAnchor() {
+    std::optional<Eye> const eye = HeadNow();
+    if (!eye) {
+        return false;
+    }
+    gAnchor = {true, engine::World(), eye->location, std::atan2(eye->forward.y, eye->forward.x), eye->unitsPerMeter};
+    return true;
+}
+
+void PlacePart(Part const& part) {
+    double const c = std::cos(gAnchor.yaw);
+    double const s = std::sin(gAnchor.yaw);
+    double const upm = gAnchor.unitsPerMeter;
+    // Unreal: X forward, Y right, Z up; yaw turns X toward Y.
+    ue3::Vector const location{static_cast<float>(gAnchor.at.x + (c * part.offsetM.y - s * part.offsetM.x) * upm),
+        static_cast<float>(gAnchor.at.y + (s * part.offsetM.y + c * part.offsetM.x) * upm), static_cast<float>(gAnchor.at.z + part.offsetM.z * upm)};
+    constexpr double kUnitsPerRadian = 65536.0 / (2.0 * 3.14159265358979323846);
+    ue3::Rotator const rotation{0, static_cast<int>(std::lround(gAnchor.yaw * kUnitsPerRadian + part.yawDeg * 65536.0 / 360.0)), 0};
+    if (ue3::Vector* const atField = gActorLocation.In<ue3::Vector>(part.actor)) {
+        *atField = location;
+        write_journal::Wrote("CockpitProbe.partLocation", atField, sizeof(*atField));
+    }
+    if (ue3::Rotator* const turnField = gActorRotation.In<ue3::Rotator>(part.actor)) {
+        *turnField = rotation;
+        write_journal::Wrote("CockpitProbe.partRotation", turnField, sizeof(*turnField));
+    }
+    ue3::Params scale = ParamsOf(gSetDrawScale);
+    scale.Set("NewScale", static_cast<float>(part.metersPerUnit * upm));
+    Call(part.actor, gSetDrawScale, scale);
+    FlushActor(part.actor, false);
+}
+
+void ClearParts(char const* why) {
+    for (Part const& part : gParts) {
+        if (gAnchor.world == engine::World() && Still(part.actor, gActorClass)) {
+            DestroyActor(part.actor, why);
+        }
+    }
+    gParts.clear();
+    gAnchor = {};
+}
+
+// `part <Package.Object> <right m> <forward m> <up m> <yaw deg> <metres per package unit>`: loads the mesh if it isn't, spawns an
+// actor of its own for it and places it in the frame.
+std::string DoPart(std::istringstream& words) {
+    std::string path;
+    Part part;
+    if (!(words >> path >> part.offsetM.x >> part.offsetM.y >> part.offsetM.z >> part.yawDeg >> part.metersPerUnit) || !(part.metersPerUnit > 0.0f)) {
+        return "usage: mevr cockpit part <Package.Object> <right m> <forward m> <up m> <yaw deg> <metres per package unit>";
+    }
+    if (auto const missing = MissingFunction({&gSpawn, &gDestroy, &gSetDrawScale, &gForceUpdate, &gSetStaticMesh, &gSetCollision})) {
+        return Refuse(*missing);
+    }
+    ue3::Object* const controller = player::Controller();
+    if (controller == nullptr) {
+        return Refuse("no player controller");
+    }
+    if (gAnchor.set && gAnchor.world != engine::World()) {
+        gParts.clear();
+        gAnchor = {};
+    }
+    if (!gAnchor.set && !SetAnchor()) {
+        return Refuse("no head or camera to anchor the parts to");
+    }
+    ue3::Object* mesh = FindMesh(path);
+    if (mesh == nullptr || Lower(R().PathName(mesh)) != Lower(path)) {
+        mesh = LoadObject(path, gStaticMesh.Get());
+    }
+    if (!ue3::IsA(mesh, gStaticMesh)) {
+        return Refuse(std::format("no StaticMesh {} (is the package installed and in the TOC?)", path));
+    }
+    ue3::Vector const at{static_cast<float>(gAnchor.at.x), static_cast<float>(gAnchor.at.y), static_cast<float>(gAnchor.at.z)};
+    for (std::size_t i = 0; i < kAutomatic && part.actor == nullptr; ++i) {
+        ActorKind const& kind = kKinds[i];
+        ue3::Object* const actor = SpawnActor(controller, kind.cls->Get(), at);
+        ue3::Object* const component = ue3::IsA(actor, *kind.cls) ? kind.component->Read<ue3::Object*>(actor).value_or(nullptr) : nullptr;
+        if (!ue3::IsA(component, gStaticMeshComponent)) {
+            if (actor != nullptr) {
+                DestroyActor(actor, "no StaticMeshComponent");
+            }
+            continue;
+        }
+        MakeHarmless(kind, actor, component);
+        part.actor = actor;
+        part.component = component;
+    }
+    if (part.actor == nullptr) {
+        return Refuse("no actor could be spawned for the part");
+    }
+    ue3::Params set = ParamsOf(gSetStaticMesh);
+    set.Set("NewMesh", mesh);
+    set.SetBool("bForce", true);
+    Call(part.component, gSetStaticMesh, set);
+    part.mesh = mesh;
+    PlacePart(part);
+    gParts.push_back(part);
+    std::string const report = std::format("part {}: {} at right {:.3f} forward {:.3f} up {:.3f} m, yaw {:.1f}, {:.5f} m a unit (draw scale {:.3f}); {} part{}",
+        gParts.size(), ue3::runtime::FullName(mesh), part.offsetM.x, part.offsetM.y, part.offsetM.z, part.yawDeg, part.metersPerUnit,
+        part.metersPerUnit * gAnchor.unitsPerMeter, gParts.size(), gParts.size() == 1 ? "" : "s");
+    log::Info("cockpit probe: {}", report);
+    return report;
+}
+
+std::string DoParts(std::string const& what) {
+    if (what == "clear") {
+        std::size_t const count = gParts.size();
+        ClearParts("mevr cockpit parts clear");
+        return std::format("{} part{} removed", count, count == 1 ? "" : "s");
+    }
+    std::string out = gAnchor.set ? std::format("frame at {:.0f} {:.0f} {:.0f}, heading {:.1f} deg, {:.1f} units a metre\n", gAnchor.at.x, gAnchor.at.y, gAnchor.at.z,
+                                        gAnchor.yaw * 180.0 / 3.14159265358979323846, gAnchor.unitsPerMeter)
+                                  : std::string("no frame yet: the first part or `anchor` takes the head\n");
+    for (std::size_t i = 0; i < gParts.size(); ++i) {
+        Part const& p = gParts[i];
+        out += std::format("  {} {}: right {:.3f} forward {:.3f} up {:.3f} m, yaw {:.1f}, {:.5f} m a unit\n", i + 1, ue3::runtime::FullName(p.mesh), p.offsetM.x, p.offsetM.y,
+            p.offsetM.z, p.yawDeg, p.metersPerUnit);
+    }
+    return out;
 }
 
 // ---- Materials -----------------------------------------------------------------------------------------------------
@@ -1376,7 +1520,7 @@ std::string Rest(std::istringstream& words) {
 }
 
 constexpr char const* kUsage =
-    "mevr cockpit: load <Package.Object> [class] | mesh [name or Package.Object] | list [filter] | classes | spawnclass [name] | screen [W H] [float|rgba8] [linear] | materials [filter] | material [name] | param [name] | "
+    "mevr cockpit: load <Package.Object> [class] | mesh [name or Package.Object] | part <Package.Object> RIGHT FORWARD UP YAW M_PER_UNIT | parts [clear] | anchor | list [filter] | classes | spawnclass [name] | screen [W H] [float|rgba8] [linear] | materials [filter] | material [name] | param [name] | "
     "texture [Package.Object] | info | element N|all | scale S | dist M | rot P Y R | follow 0|1 | attach | detach | chase BACK UP | rate N | aim 0|1 | post 0|1 | status | clear";
 
 // ---- `texture`, `info`: separating a bad texture from a bad instance from a bad mesh (research/47) -------------------
@@ -1673,6 +1817,23 @@ std::string Command(std::string const& line) {
     if (verb == "mesh") {
         return DoMesh(Rest(words));
     }
+    if (verb == "part") {
+        return DoPart(words);
+    }
+    if (verb == "parts") {
+        return DoParts(Rest(words));
+    }
+    if (verb == "anchor") {
+        if (!SetAnchor()) {
+            return Refuse("no head or camera to anchor the parts to");
+        }
+        for (Part const& part : gParts) {
+            if (Still(part.actor, gActorClass)) {
+                PlacePart(part);
+            }
+        }
+        return DoParts({});
+    }
     if (verb == "list") {
         return ListMeshes(Rest(words));
     }
@@ -1795,6 +1956,7 @@ std::string Command(std::string const& line) {
     }
     if (verb == "clear") {
         ClearAll("mevr cockpit clear");
+        ClearParts("mevr cockpit clear");
         return "cleared (the render target and the instance go with the garbage)";
     }
     return kUsage;
@@ -1835,6 +1997,11 @@ void Shutdown(bool exiting) {
     if (!exiting && (gState.actor != nullptr || gState.captureActor != nullptr) && ue3::runtime::Ready()) {
         ClearAll("the mod shuts down");
     }
+    if (!exiting && !gParts.empty() && ue3::runtime::Ready()) {
+        ClearParts("the mod shuts down");
+    }
+    gParts.clear();
+    gAnchor = {};
     gState = State{};
     gSettings = Settings{};
     gLoadedMesh = nullptr;
