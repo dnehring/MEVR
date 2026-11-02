@@ -39,7 +39,7 @@ from mathutils.bvhtree import BVHTree
 from mathutils.geometry import intersect_ray_tri
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from hull_shapes import QUAD, Bake, Builder, Chamfered, Clip, Corners, Display, Newell, Plate, Png, Slab, Sweep, Visible  # noqa: E402
+from hull_shapes import GLOW, QUAD, Bake, Builder, Chamfered, Clip, Corners, Display, Newell, Plate, Png, Relight, ScreenGlow, Slab, Sweep, Visible  # noqa: E402
 
 TEMPLATE = "hull full -bad.glb"
 PANE = "side pane.glb"
@@ -111,8 +111,14 @@ PLATE = (2075 / 4096, 2952 / 4096, 2392 / 4096, 3460 / 4096)  # a plate with fou
 LIGHT = (0.71875, 0.15625, 0.7265625, 0.1875)
 RED = (0.7109375, 0.296875, 0.71875, 0.3359375)
 DARK = (0.0, 0.0078125, 0.0234375, 0.4296875)
-TRIMS = {"PLATE": PLATE, "DARK": DARK, "LIGHT": LIGHT, "RED": RED, "SEAM": DARK}
-TINTS = {"PLATE": 1.0, "DARK": 1.0, "LIGHT": 2.6, "RED": 1.0, "SEAM": 0.35}
+TRIMS = {"PLATE": PLATE, "DARK": DARK, "LIGHT": LIGHT, "RED": RED, "SEAM": DARK, "LAMP": LIGHT, "LAMP_ORANGE": LIGHT, "LAMP_BLUE": LIGHT}
+# The lit concept's lamps (mako-interior-plain-front-2.png), each a glowing panel in the shell and an area light for
+# the bake, by kind: its class and power (W, in hull units). The world adds a dim warm fill.
+LAMP_POWER = {"ceiling": 1.1, "rearCeiling": 0.8, "wall": 0.35, "floor": 0.15, "door": 0.4, "foot": 0.05, "spine": 0.0}
+FILL = ((0.05, 0.044, 0.04), 0.6)  # the world's colour and strength: what the room's dark corners keep
+SCREEN_GLOW = 3.0  # the console's screens' emission while baking: their orange on the desk and the frames
+AMBIENT = 0.07  # what every baked surface keeps without a lamp facing it (times its albedo): the concept's dark ceiling still reads
+TINTS = {"PLATE": 1.0, "DARK": 0.9, "LIGHT": 2.2, "RED": 1.0, "SEAM": 0.35}
 SLAB = 0.02  # the shell's thickness
 SEAM = 0.012  # how deep the floor's seams go: the base under the plates, where the walls start
 # The scale and the furniture (proposed 2026-11-02, the user to confirm the scale): 3 m per hull unit makes the cabin 2.5 m
@@ -316,6 +322,7 @@ def Furnish(assets):
             bpy.ops.import_scene.gltf(filepath=os.path.join(assets, "game-ready", file + ".glb"))
             o = next(x for x in bpy.data.objects if x not in before and x.type == "MESH")
             o.matrix_world = at @ o.matrix_world
+            o.name = file
             objects.append(o)
             entry = {"origin": [round(c, 5) for c in o.matrix_world.translation], "turnDeg": turn,
                      "hullUnitsPerModelUnit": round(scale, 5)}
@@ -460,6 +467,83 @@ def RearWall(b):
     Sweep(b, Inward(opening, Y), Y, DOOR_FRAME, DOOR_FRAME_CLASSES, closed=True)
 
 
+def Lamp(b, lights, kind, cls, centre, u, v, n, half_u, half_v, proud=0.003):
+    """A lamp on a surface facing `n`: a dark housing `proud` deep and a glowing face just in front of it, and the area
+    light (centre, facing, axes, size, colour, power) that stands for it in the bake."""
+    c, u, v, n = Vector(centre), Vector(u), Vector(v), Vector(n)
+    rim = 0.004
+    housing = [c + u * a * (half_u + rim) + v * bb * (half_v + rim) + n * proud for a, bb in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+    Slab(b, housing, n, proud + 0.002, "DARK", "DARK")
+    b.Face([c + u * a * half_u + v * bb * half_v + n * (proud + 0.0008) for a, bb in ((-1, -1), (1, -1), (1, 1), (-1, 1))], cls, toward=n)
+    if LAMP_POWER[kind]:
+        sign = -1 if b.mirror else 1
+        flip = lambda w: Vector((sign * w.x, w.y, w.z))
+        lights.append((flip(c + n * (proud + 0.002)), flip(n), flip(u), (2 * half_u, 2 * half_v), GLOW[cls], LAMP_POWER[kind]))
+
+
+def Lamps(b, wall, spine_end):
+    """The lit concept's lamps, mirrored in x: a fixture on the ceiling over the louvres, a smaller one over the rear
+    section, a strip on each pane's lower wall, an orange strip on the floor along the wall's foot, small lamps along
+    the spine's sides, blue-white lights at the portal's feet, a strip over the door. `wall`: the panes' face (x) at
+    the strip's height and at the floor. Returns the area lights."""
+    lights = []
+    X, Y, Z = Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))
+    hw, dh, _ = DOOR
+    for mirror in (False, True):
+        b.mirror = mirror
+        # ceiling fixtures: a housing under the louvres, its face glowing
+        for kind, y0, y1 in (("ceiling", -0.06, 0.08), ("rearCeiling", -0.58, -0.47)):
+            box = [Vector((x, y, ZR - 0.042)) for x, y in ((0.165, y0), (0.265, y0), (0.265, y1), (0.165, y1))]
+            Slab(b, box, -Z, 0.04, "DARK", "DARK")
+            Lamp(b, lights, kind, "LAMP", ((0.215, (y0 + y1) / 2, ZR - 0.042)), X, Y, -Z, 0.042, (y1 - y0) / 2 - 0.008, proud=0.001)
+        # the pane's lower wall and the floor along it
+        Lamp(b, lights, "wall", "LAMP", (wall["strip"], -0.14, 0.16), Y, Z, -X, 0.055, 0.016)
+        Lamp(b, lights, "floor", "LAMP_ORANGE", (wall["floor"] - 0.016, -0.12, 0.0), Y, X, Z, 0.17, 0.005, proud=0.0015)
+        # small lamps along the spine's lower tier
+        for y in (spine_end - 0.13, spine_end - 0.09, spine_end - 0.05):
+            Lamp(b, lights, "spine", "LAMP", (0.085, y, 0.501), Y, Z, X, 0.012, 0.011, proud=0.0015)
+        # the portal's feet
+        Lamp(b, lights, "foot", "LAMP_BLUE", (XWALL - 0.027, YR + 0.055, 0.028), X, Z, Y, 0.014, 0.012, proud=0.001)
+    b.mirror = False
+    Lamp(b, lights, "door", "LAMP", (0.0, YB, dh + 0.045), X, Z, Y, 0.08, 0.008)
+    return lights
+
+
+def LightRig(lights):
+    """The lamps' area lights and the world's fill, for a bake; returns the objects to remove after."""
+    sc = bpy.context.scene
+    if sc.world is None:
+        sc.world = bpy.data.worlds.new("fill")
+    sc.world.use_nodes = True
+    background = next(n for n in sc.world.node_tree.nodes if n.type == "BACKGROUND")
+    background.inputs["Color"].default_value = FILL[0] + (1.0,)
+    background.inputs["Strength"].default_value = FILL[1]
+    made = []
+    for centre, n, u, (su, sv), colour, power in lights:
+        light = bpy.data.lights.new("lamp", "AREA")
+        light.shape = "RECTANGLE"
+        light.size, light.size_y = su, sv
+        light.energy = power
+        light.color = colour
+        o = bpy.data.objects.new("lamp", light)
+        z = -n.normalized()  # an area light shines along its -z
+        x = (u - z * u.dot(z)).normalized()
+        o.matrix_world = Matrix((x, z.cross(x), z)).transposed().to_4x4()
+        o.location = centre
+        sc.collection.objects.link(o)
+        made.append(o)
+    return made
+
+
+def PaneFace(pane, y, z):
+    """The x where a ray from the room along +x first meets the right pane's face at (y, z)."""
+    bm = bmesh.new()
+    bm.from_mesh(pane.data)
+    hit = Visible(BVHTree.FromBMesh(bm), (0.0, y, z), Vector((1, 0, 0)))
+    bm.free()
+    return hit[0].x
+
+
 def Inward(points, up):
     """A loop's points in the order whose sides (up x direction) point into it."""
     pts = [Vector(p) for p in points]
@@ -478,7 +562,7 @@ def Area(polygon):
     return 0.5 * abs(sum(p[0] * q[1] - q[0] * p[1] for p, q in zip(polygon, polygon[1:] + polygon[:1])))
 
 
-def Shell(pillar, opening, pedestals=()):
+def Shell(pillar, opening, pedestals=(), pane_face=None):
     """The template's shell, clean: from the measured constants above and the panes' own frame, symmetric about x = 0.
 
     The frame line (ZH, the panes' top rail) runs round the cockpit: the panes' rails, then the shell's own rail with the
@@ -489,7 +573,8 @@ def Shell(pillar, opening, pedestals=()):
     side walls behind the panes are cut where the panes' windows are (`opening`: the right one and how far out its frame
     reaches) and lined in light. Only those walls go through the boolean: the shell's pieces overlap, and the exact
     solver drops faces it finds inside another piece. `pedestals` (from Furnish) stand from the floor's base up under
-    the controls."""
+    the controls. With `pane_face` (the panes' face, PaneFace) the lamps go in too (Lamps); their area lights come back
+    with the shell."""
     b, walls = Builder(TRIMS), Builder(TRIMS)
     X, Y, Z = Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))
     low, high, pane_rear, cap_front = pillar
@@ -596,6 +681,7 @@ def Shell(pillar, opening, pedestals=()):
     b.mirror = False
     windows += [right, left]
     RearWall(b)
+    lights = Lamps(b, pane_face, FrontAt(edge, 0.085) - 1.414 * 0.088) if pane_face else []
     # the controls' pedestals: chamfered columns, their edges light
     for x, y, hx, hy, top in pedestals:
         Sweep(b, [Vector((x, y, -SEAM)), Vector((x, y, top))], Vector((0, 1, 0)), Chamfered(-hx, hx, -hy, hy, min(hx, hy) * 0.3),
@@ -607,7 +693,7 @@ def Shell(pillar, opening, pedestals=()):
     o = bpy.data.objects.new("shell", me)
     bpy.context.scene.collection.objects.link(o)
     o.data.shade_flat()
-    return o, windows, {"windshieldTop": [round(xh, 4), round(yh, 4)], "pillarTopY": YP_, "capFront": round(cap_front, 4),
+    return o, windows, lights, {"windshieldTop": [round(xh, 4), round(yh, 4)], "pillarTopY": YP_, "capFront": round(cap_front, 4),
                         "paneRear": round(pane_rear, 4), "pillarFoot": [round(c, 4) for c in low], "pillarTop": [round(c, 4) for c in high]}
 
 
@@ -840,12 +926,23 @@ def Run(folder):
     furniture, placed, pedestals = Furnish(os.path.dirname(folder))
     # the panes' windows are open (their back skin is culled from inside): where, to cut the shell's walls behind them
     right, rim, area = PaneOpening(pieces["side-right"])
-    shell, windows, dims = Shell(PillarEdge(pieces["side-right"]), (right, rim), pedestals)
-    # the shell's own texture: its classes' trims with occlusion (the parts' too) and a soft light baked in
+    wall = {"strip": PaneFace(pieces["side-right"], -0.14, 0.16) - 0.001, "floor": PaneFace(pieces["side-right"], -0.12, 0.012)}
+    shell, windows, lights, dims = Shell(PillarEdge(pieces["side-right"]), (right, rim), pedestals, wall)
+    # the light baked in: the shell's own texture (its classes' trims), then the console's and the panes' textures, lit
+    # by the lamps and the screens' glow (the parts and the furniture cast shadows and bounce light)
     template.hide_render = True
     atlas = next(n.image for m in pieces["side-right"].data.materials for n in m.node_tree.nodes if n.type == "TEX_IMAGE" and n.image)
-    inside = [(x, y, z) for x in (-0.22, 0.0, 0.22) for y in (-0.36, -0.2, -0.04, 0.1) for z in (0.12, 0.3, 0.42)]
-    bake = Bake(shell, atlas, TRIMS, TINTS, os.path.join(out, "shell.png"), [pieces[k] for k in ("side-left", "side-right", "console")] + furniture, inside)
+    inside = [(x, y, z) for x in (-0.22, 0.0, 0.22) for y in (-0.55, -0.36, -0.2, -0.04, 0.1) for z in (0.12, 0.3, 0.42)]
+    rig = LightRig(lights)
+    screens_glow = [m for m in pieces["console"].data.materials if m.name in ("Screen", "Display")]
+    ScreenGlow(screens_glow, SCREEN_GLOW)
+    bake = Bake(shell, atlas, TRIMS, TINTS, os.path.join(out, "shell.png"), [pieces[k] for k in ("side-left", "side-right", "console")] + furniture,
+                inside, ambient=AMBIENT)
+    bake["relit"] = {k: Relight(pieces[k], os.path.join(out, k + "-lit.png"), ambient=AMBIENT) for k in ("console", "side-right")}
+    bake["lamps"] = {"power": LAMP_POWER, "fill": FILL, "screenGlow": SCREEN_GLOW, "ambient": AMBIENT, "lights": len(lights)}
+    ScreenGlow(screens_glow, 0.0)
+    for o in rig:
+        bpy.data.objects.remove(o)
     dims["paneWindow"] = {"area": round(area, 4), "frameReachesX": round(rim, 4), "corners": len(right),
                           "y": [round(min(p.y for p in right), 3), round(max(p.y for p in right), 3)],
                           "z": [round(min(p.z for p in right), 3), round(max(p.z for p in right), 3)]}

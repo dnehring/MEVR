@@ -117,6 +117,9 @@ same-pose measurements, not by a look.
    savings come from the triangles.
 9. **Never cut faces when splitting parts:** the models hold parts as separate surfaces joined only at shared positions,
    so split by position-welded islands (`detach_controls.Islands`).
+11. **`Mesh.materials.clear()` sets every face's material index to 0** (Blender 5.2). Read them with
+    `polygons.foreach_get("material_index", ...)` first and set them back after the new slots are in; else per-face
+    classes silently collapse to the first material (the hull's tints and lamps did, research/48 section 13).
 10. **A numbered name goes in as a name and a number** (found by the in-game session, 89b4bfe). UE3 stores a trailing
     `_N` as instance number N + 1, so the game's packages hold `TEXTUREGROUP_Environment_1024` as the name
     `TEXTUREGROUP_Environment` with number 1025. Written through LEC as one name with number 0, the enum lookup failed:

@@ -4,7 +4,7 @@
 Every face carries a surface class (its material index into CLASSES) and UVs into that class's trim of the side pane's
 atlas (UV layer "trim"). The pieces: profiles swept along paths with mitred corners (window frames, the roof's edge,
 beams), panels set into a surface, chamfered floor plates; Display() paints an idle screen. Bake() then gives the shell a texture of its own on a fresh
-unwrap: the classes' colours, ambient occlusion and a soft light from a point inside the cockpit. The game draws the cockpit unlit
+unwrap: the classes' colours, lit by the cockpit's lamps (direct and bounced), with ambient occlusion. The game draws the cockpit unlit
 (EmissiveTexturedMaterial, research/47), so without baked shading a bevel would look as flat as the face beside it; the
 Tripo parts' textures carry their lighting the same way.
 """
@@ -17,7 +17,13 @@ import numpy as np
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
-CLASSES = ("PLATE", "DARK", "LIGHT", "RED", "SEAM")
+CLASSES = ("PLATE", "DARK", "LIGHT", "RED", "SEAM", "LAMP", "LAMP_ORANGE", "LAMP_BLUE")
+# The lamps' classes glow in their colour (linear) instead of taking light: warm white panels, orange strips, blue-white
+# floor lights, as the lit concept's.
+GLOW = {"LAMP": (1.0, 0.86, 0.7), "LAMP_ORANGE": (1.0, 0.45, 0.12), "LAMP_BLUE": (0.62, 0.8, 1.0)}
+# The side pane's atlas, which the shell's trims come from and the parts share, leans blue (mean sRGB 64, 64, 75); the
+# lit concept's metal is a neutral to warm grey. Albedo is multiplied by this before the light.
+BALANCE = (1.0, 1.0, 0.86)
 QUAD = ((0, 0), (1, 0), (1, 1), (0, 1))
 
 
@@ -272,20 +278,23 @@ def Cycles(samples):
     return "CPU"
 
 
-def Bake(o, atlas, trims, tints, path, occluders, points, size=4096, light=(0.0, -0.15, 0.15), reach=0.6, distance=0.05):
+def Bake(o, atlas, trims, tints, path, occluders, points, size=4096, distance=0.05, samples=512, exposure=1.0, ambient=0.0):
     """Gives `o` a texture of its own, written to `path` (PNG), and returns what it did.
 
     A fresh unwrap ("bake") of the faces seen from `points` (the rest share one dark texel in a corner); the atlas
-    through each class's trim UVs times its tint (`tints`, linear), times ambient occlusion within `distance` (the
-    occluders count) and a light at the point `light`, by the angle to it and fading with distance (`reach`: where it
-    has halved). Faces turned to the cockpit's middle so read apart from faces turned away, which in the unlit game is
-    all a bevel has. Afterwards `o` has one material with that image, the unwrap as its
-    only UVs, and every face's material index 0."""
+    through each class's trim UVs times its tint (`tints`, linear) as albedo, lit by the scene's lights (direct and
+    bounced, the occluders casting shadows and bouncing too), times `exposure`, darkened in corners by ambient
+    occlusion within `distance`, plus `ambient` times the albedo (in the occlusion) so what no lamp faces still shows;
+    the lamps' classes glow in their colour (GLOW). Faces turned to the lamps then read
+    apart from faces turned away, which in the unlit game is all a bevel has. Afterwards `o` has one material with that
+    image, the unwrap as its only UVs, and every face's material index 0."""
     start = time.time()
     me = o.data
     seen = Seen(o, occluders, points)
     # the bake materials: the atlas through the trim UVs, tinted, into the target image
     target = bpy.data.images.new("bake-target", size, size, alpha=True, float_buffer=True)
+    classes = np.empty(len(me.polygons), np.int32)
+    me.polygons.foreach_get("material_index", classes)  # Mesh.materials.clear() sets every face's index to 0
     me.materials.clear()
     targets = []
     for cls in CLASSES:
@@ -299,17 +308,24 @@ def Bake(o, atlas, trims, tints, path, occluders, points, size=4096, light=(0.0,
         tex.image = atlas
         tint = nt.nodes.new("ShaderNodeHueSaturation")
         tint.inputs["Value"].default_value = tints.get(cls, 1.0)
-        bsdf = nt.nodes.new("ShaderNodeBsdfDiffuse")
         out = nt.nodes.new("ShaderNodeOutputMaterial")
-        nt.links.new(uv.outputs["UV"], tex.inputs["Vector"])
-        nt.links.new(tex.outputs["Color"], tint.inputs["Color"])
-        nt.links.new(tint.outputs["Color"], bsdf.inputs["Color"])
-        nt.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+        if cls in GLOW:
+            bsdf = nt.nodes.new("ShaderNodeEmission")
+            bsdf.inputs["Color"].default_value = GLOW[cls] + (1.0,)
+            nt.links.new(bsdf.outputs["Emission"], out.inputs["Surface"])
+        else:
+            bsdf = nt.nodes.new("ShaderNodeBsdfDiffuse")
+            balance = Balanced(nt, tex.outputs["Color"])
+            nt.links.new(uv.outputs["UV"], tex.inputs["Vector"])
+            nt.links.new(balance, tint.inputs["Color"])
+            nt.links.new(tint.outputs["Color"], bsdf.inputs["Color"])
+            nt.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
         node = nt.nodes.new("ShaderNodeTexImage")
         node.image = target
         nt.nodes.active = node
         targets.append(node)
         me.materials.append(m)
+    me.polygons.foreach_set("material_index", classes)
     # the unwrap: seen faces packed into all but a corner, the rest on one point in it
     layer = me.uv_layers.new(name="bake")
     me.uv_layers.active = layer
@@ -344,29 +360,15 @@ def Bake(o, atlas, trims, tints, path, occluders, points, size=4096, light=(0.0,
     if sc.world is None:
         sc.world = bpy.data.worlds.new("bake")
     sc.world.light_settings.distance = distance
+    covered = passes["DIFFUSE"][..., 3] > 0.5
+    albedo = passes.pop("DIFFUSE")[..., :3]
     Pass("AO", 128)
-    Pass("NORMAL", 1, normal_space="OBJECT")
-    # each texel's position, as emission (0.5 + p / 2)
-    for m, node in zip(me.materials, targets):
-        nt = m.node_tree
-        geometry = nt.nodes.new("ShaderNodeNewGeometry")
-        scale = nt.nodes.new("ShaderNodeVectorMath")
-        scale.operation = "MULTIPLY_ADD"
-        scale.inputs[1].default_value = (0.5, 0.5, 0.5)
-        scale.inputs[2].default_value = (0.5, 0.5, 0.5)
-        emission = nt.nodes.new("ShaderNodeEmission")
-        nt.links.new(geometry.outputs["Position"], scale.inputs[0])
-        nt.links.new(scale.outputs["Vector"], emission.inputs["Color"])
-        nt.links.new(emission.outputs["Emission"], next(n for n in nt.nodes if n.type == "OUTPUT_MATERIAL").inputs["Surface"])
-        nt.nodes.active = node
+    ao = passes.pop("AO")[..., 0]
     Pass("EMIT", 1)
-    albedo, covered = passes["DIFFUSE"][..., :3], passes["DIFFUSE"][..., 3] > 0.5
-    ao = passes["AO"][..., 0]
-    normal = passes["NORMAL"][..., :3] * 2 - 1
-    to = np.array(light, np.float32) - (passes["EMIT"][..., :3] - 0.5) * 2
-    dist = np.linalg.norm(to, axis=-1) + 1e-6
-    lit = np.clip((normal * to).sum(-1) / dist, 0, 1) / (1 + (dist / reach) ** 2)
-    linear = albedo * ((0.30 + 0.70 * ao) * (0.40 + 0.75 * lit))[..., None]
+    glow = passes.pop("EMIT")[..., :3]
+    Pass("DIFFUSE", samples, pass_filter={"DIRECT", "INDIRECT", "COLOR"})
+    lit = passes.pop("DIFFUSE")[..., :3]
+    linear = (lit * exposure * (0.6 + 0.4 * ao)[..., None] + albedo * (ambient * ao)[..., None] + glow).astype(np.float32)
     linear[~covered] = 0.008
     final = Png(linear, "shell-baked", path)
     bpy.data.images.remove(target)
@@ -384,7 +386,7 @@ def Bake(o, atlas, trims, tints, path, occluders, points, size=4096, light=(0.0,
     for p in me.polygons:
         p.material_index = 0
     me.uv_layers.remove(me.uv_layers["trim"])
-    return {"size": size, "device": device, "facesSeen": len(seen), "faces": len(me.polygons),
+    return {"size": size, "device": device, "samples": samples, "exposure": exposure, "facesSeen": len(seen), "faces": len(me.polygons),
             "texelsCovered": round(float(covered.mean()), 3), "seconds": round(time.time() - start, 1)}
 
 
@@ -433,3 +435,74 @@ def Display(width, height, aspect, bars=()):
     hot = np.array([1.0, 0.8, 0.5], np.float32)  # the bars' near-white cores
     return np.clip(field[None, None] * (1 + 1.5 * glow[..., None]) + orange[None, None] * light[..., None]
                    + hot[None, None] * core[..., None], 0, 1)
+
+
+def Relight(o, path, size=4096, samples=256, exposure=1.0, ambient=0.0, keep=("Screen", "Display")):
+    """`o`'s textured material with the scene's light baked in, on its own UVs: its image is the albedo (a Tripo
+    texture already carries a soft light of its own), lit as Bake lights the shell (with the same `ambient`), written to `path`. The material
+    then uses the new image; materials named in `keep` (the screens) are left as they are. Every object sharing that
+    material (the mirrored pane) shows it too. Returns what it did."""
+    start = time.time()
+    me = o.data
+    main = next(m for m in me.materials if m.name not in keep and any(n.type == "TEX_IMAGE" and n.image for n in m.node_tree.nodes))
+    source = next(n for n in main.node_tree.nodes if n.type == "TEX_IMAGE" and n.image)
+    target = bpy.data.images.new(o.name + "-target", size, size, alpha=True, float_buffer=True)
+    spare = bpy.data.images.new("spare", 8, 8, alpha=True, float_buffer=True)
+    added = []
+    for m in me.materials:
+        nt = m.node_tree
+        node = nt.nodes.new("ShaderNodeTexImage")
+        node.image = target if m is main else spare
+        added.append((nt, node))
+        if m is main:
+            bsdf = nt.nodes.new("ShaderNodeBsdfDiffuse")
+            nt.links.new(Balanced(nt, source.outputs["Color"]), bsdf.inputs["Color"])
+            added.append((nt, bsdf.inputs["Color"].links[0].from_node))
+            nt.links.new(bsdf.outputs["BSDF"], next(n for n in nt.nodes if n.type == "OUTPUT_MATERIAL").inputs["Surface"])
+            added.append((nt, bsdf))
+        nt.nodes.active = node
+    bpy.ops.object.select_all(action="DESELECT")
+    o.select_set(True)
+    bpy.context.view_layer.objects.active = o
+    device = Cycles(samples)
+    passes = []
+    for filters in ({"COLOR"}, {"DIRECT", "INDIRECT", "COLOR"}):
+        target.pixels.foreach_set(np.zeros(size * size * 4, np.float32))
+        bpy.context.scene.cycles.samples = 4 if len(filters) == 1 else samples
+        bpy.ops.object.bake(type="DIFFUSE", pass_filter=filters, margin=8)
+        px = np.empty(size * size * 4, np.float32)
+        target.pixels.foreach_get(px)
+        passes.append(px.reshape(size, size, 4))
+    covered = passes[1][..., 3] > 0.5
+    linear = passes[1][..., :3] * exposure + passes[0][..., :3] * ambient
+    linear[~covered] = 0.008
+    lit = Png(linear, o.name + "-lit", path)
+    for nt, node in added:
+        nt.nodes.remove(node)
+    nt = main.node_tree
+    bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    nt.links.new(bsdf.outputs["BSDF"], next(n for n in nt.nodes if n.type == "OUTPUT_MATERIAL").inputs["Surface"])
+    source.image = lit
+    bpy.data.images.remove(target)
+    bpy.data.images.remove(spare)
+    return {"size": size, "device": device, "samples": samples, "exposure": exposure,
+            "texelsCovered": round(float(covered.mean()), 3), "seconds": round(time.time() - start, 1)}
+
+
+def Balanced(nt, colour):
+    """`colour` (a socket) times BALANCE, as a new node's output."""
+    node = nt.nodes.new("ShaderNodeVectorMath")
+    node.operation = "MULTIPLY"
+    node.inputs[1].default_value = BALANCE
+    nt.links.new(colour, node.inputs[0])
+    return node.outputs["Vector"]
+
+
+def ScreenGlow(materials, strength):
+    """The screens' materials (Principled, an image as base colour) emitting that image at `strength` (0: off), so a
+    bake lights what is round them."""
+    for m in materials:
+        bsdf = next(n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+        image = next(n for n in m.node_tree.nodes if n.type == "TEX_IMAGE" and n.image)
+        m.node_tree.links.new(image.outputs["Color"], bsdf.inputs["Emission Color"])
+        bsdf.inputs["Emission Strength"].default_value = strength

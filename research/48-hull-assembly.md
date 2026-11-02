@@ -322,6 +322,33 @@ Normandy's interface screens)
   leaves (0.05% of rays); now they meet.
 - **Shell:** 3,055 triangles; the bake uses 72% of its texels.
 
+## 13. Lit like the concept (the user: the interior should look very like `mako-interior-plain-front-2.png`)
+
+- **Lamps, each a glowing panel in the shell and an area light for the bake:**
+  - a fixture over the louvres on each side, and a smaller one over the rear section;
+  - a strip on each pane's lower wall (its face measured with a ray);
+  - an orange strip on the floor along each wall's foot;
+  - small lamps on the spine's sides;
+  - blue-white lights at the portal's feet;
+  - a strip over the door.
+  Plus a dim warm world fill, and the console's screens emitting their orange.
+- **The light is baked in** (the game draws everything unlit). Into the shell's texture as direct and bounced light,
+  times its occlusion, plus a small ambient (0.07 of the albedo) so the dark ceiling still reads, plus the lamps' glow.
+  Into the console's and the panes' own textures too (`hull_shapes.Relight`): their images are the albedo, baked on
+  their own UVs, which overlap on only 2-3% of the texels. The two panes share one re-baked texture; the lighting is
+  symmetric.
+- **The atlas leans blue** (mean sRGB 64, 64, 75), so albedo is multiplied by (1, 1, 0.86) before the warm light. Warm
+  light on the blue-grey textures had turned them pink.
+- **Bug found on the way: in Blender 5.2, `Mesh.materials.clear()` sets every face's material index to 0.** Since the
+  first bake the per-class tints never applied: the classes only differed through their atlas rectangles. Bake now
+  saves and restores the indices; the lamps' glow showed only after that.
+- **Result:** with the furniture hidden, from the concept's viewpoint, the room is dark and warm: glowing ceiling
+  panels, orange floor strips, the orange screens, light frames and red-striped pillars. The concept's finer detail
+  (pipes, the spine's lamp clusters, the console's lit strips and keypads, glossy floor) isn't modelled yet.
+  - Texture means (sRGB 0-255): shell 25, console 21, panes 24.
+  - Each run's bakes take about 75 s on OptiX.
+- **Package:** `build/cockpit-hull/BIOG_MEVR_Cockpit.pcc` (32.1 MB, exit 0).
+
 ## 5. Not done
 
 - **Not seen from the seat in the game:** the meshes load and draw textured (section 9), but nothing is placed around the
