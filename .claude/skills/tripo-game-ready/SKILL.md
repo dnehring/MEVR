@@ -133,7 +133,7 @@ Then add the model:
 2. If it has moving parts, add it to `detach_controls.ASSETS`.
 3. Add its file to `game_ready.MODELS` and to `Build.Models`, and run the chain.
 
-## Placing parts against a reference mesh (the hull, next)
+## Placing parts against a reference mesh (the hull)
 
 `tools/cockpit/hull_assemble.py` (research/48) builds the hull from `concept/assets/hull reconstruction/`. The full
 mesh (`hull full -bad.glb`) is never shipped, but it is **close to the intended shape, only messy** (the user, 2026-11-02),
@@ -142,12 +142,34 @@ so the new shell follows it. The parts (console, side pane) are placed in it, an
 
 - **Rebuild the template's envelope; don't box the parts in.** Take x, y and z sections, plus ray fans from inside.
   Pin the walls, chamfers, windshield slope and ceiling as constants with the date they were measured.
-- **Model windows as flat dark panes in light frames,** as the parts do: never a flat wall where the concept has glass.
+- **Windows are openings in light frames** (the user, 2026-11-02): never a flat wall where the concept has glass. A part
+  may model its window as a flat solid; the shell's own windows are open, framed by a swept profile (light face, dark
+  gasket lining the opening) with mitred corners.
 - **Build the shell around a part's structure; don't set the part in front of it.** The side panes' red-striped pillars are
   the A-pillars (the user, 2026-11-02):
   - each front side window runs from its pillar to the windshield's frame;
-  - the roof ends at the pillar's top, and a beam joins the pillar tops;
+  - the frame line passes the pillar tops (below);
   - the pillar's line is read from the part (`PillarEdge`: its light and red faces), so the shell follows the part.
+- **Let the parts' frame set the roof, not the template's ceiling.** The template's ceiling (z 0.48) sat 2 cm below the
+  panes' top rail (0.497 to 0.509) and 7 cm below their caps' inner lip (0.553), so it hid the top of every window frame:
+  "the roof cuts into the window frames" (the user, 2026-11-02). Measure a part's frame in sections with each face's class
+  from its texture colour (light, red, dark), then carry its profile on where the part ends: the panes' cap profile runs
+  round the front along the side windows' tops and the windshield's header and back to the open rear, so one light line
+  goes portal, rail, A-pillar, window tops. Nothing of the roof may hang below that line (the old ribs crossed the side
+  windows); the spine and slats end where the cap profile meets the ceiling, sloping up into it.
+- **Model with profiles, not boxes** ("everything looks very generic", the user, 2026-11-02). `hull_shapes.py`: sweep a
+  profile along a path with mitred corners (frames, rails, the roof's edge, beams, the portal arch); set panels in with a
+  chamfered step; chamfer floor plates over a dark base. Each face carries a class (plate, dark, light, red, seam).
+- **Bake the shell a texture of its own** (`hull_shapes.Bake`): the game draws the cockpit unlit, so a bevel shows only
+  if its colour differs. A fresh unwrap of the faces seen from inside, the classes' atlas trims, ambient occlusion within
+  0.05 (the parts occlude too) and a point light in the cockpit's middle, so faces turned to the room read apart from
+  faces turned away. 4096 square on OptiX: 20 seconds. Pick the device with `get_devices_for_type("OPTIX")`: the general
+  device scan crashed in Intel's `ze_loader.dll`.
+- **Overlap a joint with a part, just under its surface:** 15 mm into the part, 0.5 mm below it. The part's ends aren't
+  straight (the panes' caps end 2 to 8 mm apart across their width), so butting leaves cracks that show the sky, and a
+  coincident surface flickers. Start walls on the floor's base, below the plates' seams, not on the plates' top.
+- **Hunt leaks with rays from several eyes where no window can be** (above the frame line, along the panes' length).
+  4,000 rays from the seat missed a 4 mm crack that a 60,000-ray probe from five eyes found.
 - **Check what the game draws, with back faces culled.** A Tripo part's window can be an opening backed by a skin that faces
   outward, invisible from inside. Probe and measure closure with rays that skip faces seen from behind (`Visible`), and
   sort escaping rays into windows, the open rear and leaks.
@@ -167,11 +189,10 @@ so the new shell follows it. The parts (console, side pane) are placed in it, an
   fitted (0.752, 42% within 1 cm) against the interior faces in front, kept centred, from many starts.
 - **Pin the chosen place as constants** with their provenance. `--refit` prints the candidates again: the best five
   agreed within 0.007 in scale.
-- **Build the shell with every edge shared** (no T-junctions), from slabs, polygon slabs and boxes. Wind faces toward a
-  stated direction, and reverse the winding on mirrored sides. Make neighbours meet on exact lines, for example the
-  windshield's corners on the chamfer walls.
-- **Texture fillers from a part's own atlas:** find plain and bolted rectangles (a 32 px block scan for low variance,
-  then a look) and tile them. The fillers then share that part's material and texture.
+- **Wind faces toward a stated direction** and reverse the winding on mirrored sides. Within a piece, share edges; make
+  neighbours meet on exact lines (the windshield's corners on the chamfer walls).
+- **Take the shell's surfaces from a part's own atlas:** find plain and bolted rectangles (a 32 px block scan for low
+  variance, then a look). They are the bake's source, tinted per class, so the shell's tone stays the part's.
 - **Measure closure with rays from the seat**, by the face of the box each escaping ray leaves through: only the rear
   should be open.
 

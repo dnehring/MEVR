@@ -147,10 +147,71 @@ stop just above the windows' sills: that's the pane's own shape.
 The template's interior is now within 2 cm of the hull for 84% and within 6 cm for 98%, less than before because its window
 areas are open now.
 
+## 8. The roof on the panes' frame, and the shell modelled (the user's fourth step)
+
+The user: the roof cuts into the window frames, so the continuous shape doesn't show; and the features look generic, not
+like advanced modelling.
+
+**Why the roof cut the frames.** Sections of the placed right pane, each face classed by its texture's colour (light, red,
+dark), and rays fanned from the room (`hull_assemble.PillarEdge` and section probes, 2026-11-02):
+- **The pane's light frame goes higher than the template's ceiling.** Its rear post chamfers in to a top rail, a light
+  band from (0.399, 0.497) to (0.394, 0.509) along y -0.31 to 0.03, and the A-pillar's top meets that rail.
+- **Above the rail, the pane has its own cap:** a dark soffit rising inward from (0.394, 0.509) to (0.287, 0.540), then a
+  lip up to 0.553 at x 0.286. The cap runs from y -0.308 to about 0.030; its front end varies 2 to 8 mm across its width.
+- **The shell's ceiling was the template's, z 0.48,** with its chamfer from (0.463, 0.412) to (0.39, 0.48). The chamfer
+  came through the pane's wall face under the rail (x 0.416 at z 0.456), and the ceiling hid the rail and the cap.
+- **The ribs crossed the side windows.** The ribs hung 0.028 below the ceiling out to x 0.32 and forward to y 0.165,
+  across the side windows' tops, and a light beam crossed between the pillar tops.
+
+**What changed** (`tools/cockpit/hull_assemble.py`, with the modelling pieces in `tools/cockpit/hull_shapes.py`):
+- **A frame line at the panes' rail (ZH 0.497) runs all round.** The shell sweeps the panes' cap profile (rail, soffit,
+  lip) from each pane's cap along the side window's top to the windshield's header and across, and back from the panes
+  to the open rear. The light line goes portal arch, rail, A-pillar, window tops, unbroken. Every window's top edge is
+  on it; the windshield, its lean kept, now reaches it at (±0.330, 0.257).
+- **The roof rests on the caps' lip (ZR 0.553):** 7 cm above the template's ceiling, 2.5 cm above at the rail.
+- **Ceiling:** the template's lowered centre and ribs, raised with the roof, as a two-tier spine (its lower tier
+  recessed underneath, its bottom at 0.465) and four louvred slats a side. Each slat has a face sloping toward the
+  middle and a light foot. Every beam's ends slope up into the ceiling at 45 degrees, at the portal and at the
+  ceiling's front edge, so nothing hangs below the frame line.
+- **Openings:** the windshield and the side windows are framed by one swept profile with mitred corners: a light face
+  12 mm proud, chamfered, stepping to a dark gasket that lines the opening through the wall. The side windows' frames
+  run along the sill, up behind the pillar and along the top, and end inside the windshield's frame.
+- **Rear:** a light chamfered portal arch at the open rear follows the walls, the caps and the ceiling. Behind the
+  panes, a side wall with a panel set in.
+- **Floor:** chamfered plates (corners cut 2 cm, top edge bevelled 5 mm) over a dark base, with 8 mm seams 12 mm deep.
+  The walls start on the base, below the seams.
+- **Its own texture.** The game draws the cockpit unlit, so a bevel is invisible unless its colour differs.
+  `hull_shapes.Bake` unwraps the faces seen from inside (the rest share one dark texel) and bakes four passes on the
+  GPU: the classes' trims of the side pane's atlas (tinted per class), ambient occlusion within 0.05 with the parts
+  occluding, object normals and positions. It combines them with a point light in the cockpit's middle. The result is
+  `assembled/shell.png`, 4096 square, 71% of its texels used, about 24 s with OptiX. Choosing the device by scanning
+  all of them crashed Blender in Intel's `ze_loader.dll`; listing OptiX devices alone works.
+
+**Joints.**
+- **The first build leaked the sky at two joints.** Between the pane's cap and the shell's rail: the shell's copy began
+  at the cap's outermost vertex, 2 to 8 mm past where the soffit ends in its middle. And at the pane's rear end. A
+  60,000-ray probe from five eyes, counting only rays that cross the side above the frame line, found 8 to 13 per eye.
+  The 4,000 rays from the seat had missed them.
+- **The fix overlaps instead of butting:** the shell's copies run 15 mm into the panes, 0.5 mm below their surface, so
+  neither a crack nor a flickering coincident face is left. Then no ray.
+- **A 12 mm crack along the front chamfer wall's foot** (the walls started on the plates' top, the seams go below it)
+  let one seat ray in 4,000 out. The walls now start on the base.
+
+**Result:**
+- **Rays from the seat** leave only through the windows (4.8%) and the open rear (22.6%). None leak.
+- **Shell:** 2,113 triangles (1,044 before).
+- **The template's interior** is within 2 cm of the hull for 69% and within 6 cm for 93% (84% and 98% before): the roof
+  now stands above the template's ceiling on purpose.
+- **From the concept's viewpoint:** a louvred ceiling converging forward around the spine, the red-striped A-pillars
+  running into the light rail, framed windows and a plated floor.
+
 ## 5. Not done
 
 - **The parts are raw Tripo output:** the console has 3,209 boundary and 3,509 non-manifold edges, the pane 526 and 872, and
   27,000 triangles each. Before packaging they need the repair stage, then `game_ready.py`.
 - **Not packaged and not in the game.**
-- **The tone:** darker plates would need a texture of the shell's own.
+- **The tone:** the shell has a texture of its own now (section 8), tinted from the pane's atlas so it matches the parts;
+  the concept's darker grade would mean darkening the parts too.
+- **The roof's height** follows the panes, 7 cm above the template's ceiling. Keeping the template's height would mean
+  scaling the panes down or cutting their caps.
 - **Not placed:** the seat, and how the hull relates to `front-cockpit` (research/47).
