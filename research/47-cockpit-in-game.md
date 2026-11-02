@@ -455,7 +455,7 @@ tools/console.ps1 "mevr cockpit clear" "mevr vehicle"
 
 - **The capture's view is fixed:** with `bUpdateMatrices` off, the panel shows the chase view and `chase 12 10` changes it.
 - **The darker picture is the post chain run twice:** `post 0` is about as bright as the eye image. `rgba8 linear` is much darker than `rgba8`. A world screen should run without the capture's post chain.
-- **Our mesh and its instance are fine; our texture was the fault:** `mevr cockpit texture EngineResources.DefaultTexture` shows that texture across the model, while `texture BIOG_MEVR_Cockpit.Front_Cockpit_Diff` stays one flat colour. `info` read `Resource set`, `LODGroup 27`, `RequestedMips 1`, `ResidentMips 1`, 13 mips, inline. The package set no `LODGroup`. It now sets `TEXTUREGROUP_APL_1024` (the props' group, `MaxLODSize` 4096 in BIOEngine.ini); that this cures it is **[verify]**: the rebuilt package is installed but hasn't run.
+- **Our mesh and its instance are fine; our texture was the fault:** `mevr cockpit texture EngineResources.DefaultTexture` shows that texture across the model, while `texture BIOG_MEVR_Cockpit.Front_Cockpit_Diff` stays one flat colour. `info` read `Resource set`, `LODGroup 27`, `RequestedMips 1`, `ResidentMips 1`, 13 mips, inline. The package set no usable `LODGroup`; the cause and the fix are in "Fourth run".
 - **`open BIOA_UNC20` from the console loads a Mako level**, no modding tool. `mevr vehicle` found `BioVehicleWheeled` 15.5 m away. The level's squad selection screen comes up first (game mode 7). `mevr vehicle enter` made the Mako the pawn while that screen was up.
 - **Accepting the squad made Shepard the pawn again in game mode 6 (cinematic) on a black screen**, and it stayed so for 40 s or more: the level's arrival sequence is waiting on something a direct load doesn't provide. Space then Escape left the game with no pawn. So a direct load doesn't reach drivable Mako gameplay yet, and none of the Mako features have run. Next to try: enter the vehicle while the squad screen is up and close the screen another way (its handler's `ConfirmParty`/`FinalizeParty`, the game mode manager), read how the level's sequence continues, or a save with the Mako.
 - **Posted mouse messages drive the game's menus:** `WM_MOUSEMOVE` highlights a button, and `WM_LBUTTONDOWN`/`UP` clicked Accept Squad and the confirmation. One click 120 ms after the press did nothing on the second dialog; a move, 900 ms, then a 300 ms press worked. So the game pointer's route works, but it may need the hover to settle first [verify in the headset]. The cursor was also set with `SetCursorPos` for the first of them.
@@ -478,3 +478,18 @@ tools/console.ps1 "mevr cockpit clear" "mevr vehicle"
   - Tripo's normals cost little. Kept (`--keep-normals`), the chair welds to 29,941 against 27,028 and the front cockpit to 25,360 against 25,377: the vertex savings come from the triangles.
   - An empty vertex group on Blender's Decimate modifier locks nothing (no weights layer): the joystick, whose backing is all junction rims, lost 120 junction vertices until that pass was skipped.
 - **Not established:** how it looks in the game. Install the game-ready package (research/47 "What to do", the game closed), load it with the console lines of "Next run", and compare a snapshot with `previews/`.
+
+## Fourth run (2026-11-02 14:40, fake headset, Eden Prime): the texture's LOD group
+
+- **`TEXTUREGROUP_APL_1024` changed nothing:** `info` still read `LODGroup 27`, `RequestedMips 1`. Neither did
+  `TEXTUREGROUP_Environment_1024`, although Eden Prime's own `BIOA_PRO10_T.pro10_bunkertrims01_diff` in that group read
+  `LODGroup 18`, `RequestedMips 12` of 12 in the same game.
+- **The cause is how the name was stored.** LE1's `TextureGroup` enum has 27 values (0 to 26, LEC's LE1 database), so 27 is one
+  past the last: the game's lookup of our value failed. The game's packages store `Environment_1024` as the name
+  `TEXTUREGROUP_Environment` with instance number 1025 (and `_512` as 513, `VFX_1024` as `TEXTUREGROUP_VFX` 1025). Ours stored
+  the whole string as one name with number 0, which matches no enum entry. The earlier "unset" build had the same fault: it named
+  `TEXTUREGROUP_Vehicle`, which isn't in LE1's enum at all.
+- **Fixed in `tools/cockpit/package/Build.cs`** (`Build.TextureGroup`, a `NameReference("TEXTUREGROUP_Environment", 1025)`). In the
+  game: `LODGroup 18`, `RequestedMips 13`, `ResidentMips 13` for every 4096 texture. The front cockpit shows its panel lines and
+  highlights instead of one dark colour. The hull's shell, loaded the same way, shows its texture and window frames.
+- **Any enum value with a numeric suffix** written through LEC has to be split the same way, or the game reads the enum's end.

@@ -44,7 +44,9 @@ internal static class Build
     public const string ParentPackage = "EngineMaterials";
     public const string ParentMaterial = "EmissiveTexturedMaterial";
     public const string ParameterName = "Texture";
-    public const string TextureGroup = "TEXTUREGROUP_Vehicle";  // BIOEngine.ini: MaxLODSize 4096
+    // TEXTUREGROUP_Environment_1024 (BIOEngine.ini: MaxLODSize 4096), as the game's packages name it: the name
+    // "TEXTUREGROUP_Environment" with instance number 1025 (UE3 stores a "_1024" suffix as the number plus one).
+    public static readonly NameReference TextureGroup = new("TEXTUREGROUP_Environment", 1025);
     public const string BackingSuffix = "_Backing";
     private const int MaxIndexableVertices = 65535;             // the index buffer is 16-bit, and elements have no base vertex
 
@@ -239,17 +241,17 @@ internal static class Build
 
     private static ExportEntry AddTexture(IMEPackage pcc, string name, LecImage image, int width, int height)
     {
-        ExportEntry export = Texture2D.CreateTexture(pcc, new NameReference(name, 0), width, height, PixelFormat.DXT1, true, null, new NameReference(TextureGroup, 0));
+        ExportEntry export = Texture2D.CreateTexture(pcc, new NameReference(name, 0), width, height, PixelFormat.DXT1, true, null, TextureGroup);
         MakeLoadable(export);
         var texture = new Texture2D(export);
         PropertyCollection props = export.GetProperties();
         props.AddOrReplaceProp(new IntProperty(width, "OriginalSizeX"));
         props.AddOrReplaceProp(new IntProperty(height, "OriginalSizeY"));
         props.AddOrReplaceProp(new IntProperty(0, "MipTailBaseIdx"));
-        // The LOD group decides how many mips the game makes resident. APL_1024 read as LODGroup 27 with RequestedMips 1 (only the
-        // 4x4 mip: the whole model one flat colour), although BIOEngine.ini lists it up to 4096; Environment_1024, the group of
-        // Eden Prime's own trims, reads as 18 and keeps every mip (research/47).
-        props.AddOrReplaceProp(new EnumProperty("TEXTUREGROUP_Environment_1024", "TextureGroup", pcc.Game, "LODGroup"));
+        // The LOD group decides how many mips the game makes resident. Written as the one name "TEXTUREGROUP_Environment_1024"
+        // (number 0), the game's enum didn't find it and the texture got index 27, past the enum's last group: RequestedMips 1,
+        // only the 4x4 mip, the whole model one flat colour (research/47).
+        props.AddOrReplaceProp(new EnumProperty(TextureGroup, "TextureGroup", pcc.Game, "LODGroup"));
         foreach (string message in texture.Replace(image, props, isPackageStored: true, forcedNewFormat: PixelFormat.DXT1, forceMipping: true))
         {
             Console.WriteLine($"  {name}: {message}");

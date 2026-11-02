@@ -359,7 +359,8 @@ switching frameworks.
   meshes on the hull's origin, [research/48](research/48-hull-assembly.md)) with the Legendary Explorer nightly in `mod-manager/`; the package goes in `CookedPCConsole` with
   a `PCConsoleTOC.bin` entry (undo in `%LOCALAPPDATA%/MEVR/cockpit-install/UNDO.txt`). A scene capture nests inside the eye's render command: `RenderLevers` hooks `0x742C80` and
   `0x773D30` so it takes no eye index and its final post pass binds its own target. Set `bUpdateMatrices` false or `SetView` is overwritten by the actor's transform.
-  `TextureRenderTarget2D.Create` takes only formats 2, 3 and 9. `Actor.SetLocation` refuses a spot it encroaches on (`FarMoveActor`): write `Location` and flush.
+  `TextureRenderTarget2D.Create` takes only formats 2, 3 and 9. An enum value with a numeric suffix goes in a package as the name and
+  the suffix plus one (`TEXTUREGROUP_Environment`, 1025), or the game reads past the enum's end (`LODGroup 27`: one mip resident, the model one colour). `Actor.SetLocation` refuses a spot it encroaches on (`FarMoveActor`): write `Location` and flush.
 - LE1 life-size stereo ([research/30](research/30-metric-stereo.md), `MELEVR.ini sfr2Metric`, on in our deploy):
   each Stereo 2 pass renders from its eye's real place (`xrLocateViews`, at the view's units per metre: Halcyon's
   50 x lean gain, life-size at 100), no convergence shift, swap ignored (pass 0 = left). In gameplay with the HUD
