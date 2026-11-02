@@ -205,11 +205,68 @@ dark), and rays fanned from the room (`hull_assemble.PillarEdge` and section pro
 - **From the concept's viewpoint:** a louvred ceiling converging forward around the spine, the red-striped A-pillars
   running into the light rail, framed windows and a plated floor.
 
+## 9. Game-ready and in a package (same day, after the user approved section 8)
+
+**No outside repair for the hull's parts.** The console still has 3,209 boundary and 3,509 non-manifold edges, the pane 526
+and 872. But from inside they are closed:
+- **Probe:** rays from 27 points in the cockpit (64,352 hits), taking the first face each meets without culling.
+- **Result:** apart from the panes' windows, a part is seen from behind on 0.02 to 0.04% of them: console 23 rays, side
+  panes 15 and 19, at their ends and the windows' edges. That is where the game would show what is behind it. The
+  panes' windows themselves are 1.6% each, and meant.
+- **Why skip the repair:** its method, an inward backing 0.0005 behind every sheet, would face into the room behind the
+  panes' outward-facing back skin and close their windows. So the parts go straight to `game_ready.py`, which locks the
+  vertices on open edges.
+
+**game_ready.py** now takes the hull's placed parts from `assembled/` (its `MODELS` rows name a source: detached, the
+newest repair, or a path). The shell isn't decimated: it is built low and clean.
+
+| Part | Triangles | Packager's welded vertices | Deviation (of the diagonal) | Worst view's silhouette overlap |
+|---|---|---|---|---|
+| hull-console | 27,316 → 13,306 | 36,933 → 22,419 | p99 0.00035, max 0.00162 | 0.9986 |
+| hull-side-left | 27,023 → 4,339 | 35,374 → 8,014 | p99 0.00050, max 0.00085 | 0.9965 |
+| hull-side-right | 27,023 → 4,429 | 35,374 → 8,146 | p99 0.00050, max 0.00079 | 0.9922 |
+
+The previews' difference rows show thin edge lines and a few slivers.
+
+**The joints after decimation.**
+- **Method:** rays from six eyes (40,000 each), once with the raw parts and once with the game-ready ones (the same
+  shell); a ray that escapes only with the game-ready parts is a crack the decimation opened.
+- **Found:** 1 to 4 such rays per eye, at two corners: the pane's rear end (the outer wall ended there exactly, and
+  stopped at the frame line) and the caps' inner lip (the ceiling stopped at it).
+- **Fixed in the shell:** the outer wall now runs back to the open rear and up to the ceiling, behind the cap; the
+  ceiling reaches 15 mm over the caps.
+- **Left:** the only rays that still escape with the game-ready parts alone pass window openings (a side window past
+  the pillar, the edge of the pane's window). From the seat: windows 4.8%, open rear 22.6%, no leak.
+
+**The package.**
+- **Build.cs's `Models`** name a source per row too, and the hull is four meshes: `Hull_Shell`, `Hull_Console`,
+  `Hull_Side_Left` and `Hull_Side_Right` (the two sides share one texture, `Hull_Side_Diff`). All four share the hull's
+  origin.
+- **Test build** `build/cockpit-hull/BIOG_MEVR_Cockpit.pcc` (37.9 MB): all checks passed.
+
+| Mesh | Vertices | Triangles |
+|---|---|---|
+| Hull_Shell | 3,822 | 2,113 |
+| Hull_Console | 22,676 | 13,306 |
+| Hull_Side_Left | 8,215 | 4,339 |
+| Hull_Side_Right | 8,339 | 4,429 |
+
+- **Axes:** the shell's extents confirm the importer's axes. The hull's rear (y -0.425) is at Unreal y +42.5, so the
+  hull's forward is the package's -Y, its right +X, up +Z.
+- **Installed:** the in-game session installs and checks packages. The package it installed for its texture test
+  already holds these four meshes. In the same commit, its change of the textures' LOD group from APL_1024 (read as
+  group 27, only the 4x4 mip resident) to Environment_1024 (research/47).
+
 ## 5. Not done
 
-- **The parts are raw Tripo output:** the console has 3,209 boundary and 3,509 non-manifold edges, the pane 526 and 872, and
-  27,000 triangles each. Before packaging they need the repair stage, then `game_ready.py`.
-- **Not packaged and not in the game.**
+- **Not seen in the game yet:** the in-game session installs and checks.
+- **Not decided** (the user's call):
+  - the metric scale (the in-game session assumes a 1.6 m cabin for now, about 190 Unreal units per hull unit,
+    adjustable at run time);
+  - the pilot's eye point and the seat;
+  - which console screen shows the live third-person view: it needs a material slot of its own, which the console
+    doesn't have;
+  - the controls' place relative to the hull.
 - **The tone:** the shell has a texture of its own now (section 8), tinted from the pane's atlas so it matches the parts;
   the concept's darker grade would mean darkening the parts too.
 - **The roof's height** follows the panes, 7 cm above the template's ceiling. Keeping the template's height would mean

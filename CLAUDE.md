@@ -355,7 +355,8 @@ switching frameworks.
   splits, decimates (`game_ready.py`: the packager prefers `concept/assets/game-ready/` made from the current models, `--raw` skips it) and packages our models
   (`concept/`, gitignored, licence unsettled; the whole procedure is the `tripo-game-ready` skill; `hull_assemble.py` builds the hull: a clean shell modelled to the messy
   Tripo template's shape and the side panes' frame, open framed windows, the roof on the panes' caps, swept profiles from
-  `hull_shapes.py` and a baked texture of its own, the Tripo parts placed in it, [research/48](research/48-hull-assembly.md)) with the Legendary Explorer nightly in `mod-manager/`; the package goes in `CookedPCConsole` with
+  `hull_shapes.py` and a baked texture of its own, the Tripo parts placed in it and made game-ready, packaged as four `Hull_*`
+  meshes on the hull's origin, [research/48](research/48-hull-assembly.md)) with the Legendary Explorer nightly in `mod-manager/`; the package goes in `CookedPCConsole` with
   a `PCConsoleTOC.bin` entry (undo in `%LOCALAPPDATA%/MEVR/cockpit-install/UNDO.txt`). A scene capture nests inside the eye's render command: `RenderLevers` hooks `0x742C80` and
   `0x773D30` so it takes no eye index and its final post pass binds its own target. Set `bUpdateMatrices` false or `SetView` is overwritten by the actor's transform.
   `TextureRenderTarget2D.Create` takes only formats 2, 3 and 9. `Actor.SetLocation` refuses a spot it encroaches on (`FarMoveActor`): write `Location` and flush.

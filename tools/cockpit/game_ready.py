@@ -5,7 +5,8 @@ packager welds well, and the measurements that say so (research/47 "Game-ready m
     blender -b --factory-startup --python tools/cockpit/game_ready.py -- <assets folder>
         [--tolerance 0.0005] [--backing-tolerance 0.002] [--smooth-deg 30] [--keep-normals]
 
-Reads what tools/cockpit/package reads (detached/<part>.glb for the controls, else the newest repair) and writes
+Reads what tools/cockpit/package reads (detached/<part>.glb for the controls, the newest repair, or the hull's pieces
+as tools/cockpit/hull_assemble.py placed them) and writes
 <assets>/game-ready/<file>.glb, which the packager then prefers, game-ready/manifest.json and game-ready/previews/.
 Nothing it reads is changed.
 
@@ -45,9 +46,12 @@ from mathutils.bvhtree import BVHTree
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from detach_controls import Newest, Sha  # noqa: E402  the packager's rule for which repair is current
 
-# What tools/cockpit/package/Build.cs packages: (file, from detached/).
-MODELS = [("joystick-base", True), ("joystick-grip", True), ("throtle-control-base", True), ("throtle-control-handle", True),
-          ("chair", False), ("front-cockpit", False)]
+# What tools/cockpit/package/Build.cs packages and from where: detached/<file>.glb, the newest repair, or a path under the
+# assets folder. The hull's shell isn't here: it is built low and clean, and the packager takes it as it is.
+HULL = "hull reconstruction/assembled/"
+MODELS = [("joystick-base", "detached"), ("joystick-grip", "detached"), ("throtle-control-base", "detached"),
+          ("throtle-control-handle", "detached"), ("chair", "repair"), ("front-cockpit", "repair"),
+          ("hull-console", HULL + "console.glb"), ("hull-side-left", HULL + "side-left.glb"), ("hull-side-right", HULL + "side-right.glb")]
 # detach_controls.py's moving parts: (base, moving) per asset.
 PAIRS = {"joystick": ("joystick-base", "joystick-grip"), "throtle-control": ("throtle-control-base", "throtle-control-handle")}
 MAX_VERTICES = 65535  # Build.cs MaxIndexableVertices
@@ -355,8 +359,14 @@ def Export(o, path):
     bpy.ops.export_scene.gltf(filepath=path, use_selection=True, export_format="GLB", export_image_format="AUTO", export_apply=False)
 
 
-def Model(root, name, detached, options, scratch):
-    src = os.path.join(root, "detached", name + ".glb") if detached else Newest(root, name)
+def Source(root, name, source):
+    if source == "detached":
+        return os.path.join(root, "detached", name + ".glb")
+    return Newest(root, name) if source == "repair" else os.path.join(root, *source.split("/"))
+
+
+def Model(root, name, source, options, scratch):
+    src = Source(root, name, source)
     out = os.path.join(root, "game-ready", name + ".glb")
     o = Import(src)
     frame = Frame(o)
@@ -440,8 +450,8 @@ def Run(root, options):
     os.makedirs(os.path.join(root, "game-ready", "previews"), exist_ok=True)
     manifest = {"options": options, "models": {}, "controls": {}}
     with tempfile.TemporaryDirectory() as scratch:
-        for name, detached in MODELS:
-            info = Model(root, name, detached, options, scratch)
+        for name, source in MODELS:
+            info = Model(root, name, source, options, scratch)
             manifest["models"][name] = info
             f, b, p, r = info["front"], info["backing"], info["packager"], info["renders"].values()
             dev = f["final"]

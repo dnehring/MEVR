@@ -75,7 +75,8 @@ XWALL = 0.413   # the panes' wall face under the rail
 CAP = [(XRAIL - XWALL, 0.0), (0.0, 0.0), (0.005, 0.012), (0.025, 0.014), (0.096, 0.036), (0.112, 0.043), (0.113, ZR - ZH)]
 CAP_CLASSES = ["DARK", "LIGHT", "LIGHT", "DARK", "DARK", "DARK"]
 # The shell's copies run 0.5 mm below it (all but the edge on the ceiling) and 15 mm into the panes' ends, so the joints
-# neither crack nor flicker: the panes' caps end 2 to 8 mm apart across their width.
+# neither crack nor flicker: the panes' caps end 2 to 8 mm apart across their width, and game_ready.py moves their
+# surfaces by up to 1.7 mm. The ceiling reaches as far over the caps.
 CAP_SWEPT = [(s, u - 0.0005) for s, u in CAP[:-1]] + CAP[-1:]
 OVERLAP = 0.015
 # An open window's frame: (into the opening, toward the room) from the opening's edge on the wall's room face. A light
@@ -366,7 +367,7 @@ def Shell(pillar, opening):
     edge = [r[-1] for r in Sweep(b, line, Z, CAP_SWEPT, CAP_CLASSES)]
     # the ceiling: plates from the rear to the caps' front end, then up to that front edge; its back
     xc = edge[0].x
-    cols = (-xc, -0.143, 0.0, 0.143, xc)
+    cols = (-xc - OVERLAP, -0.143, 0.0, 0.143, xc + OVERLAP)  # over the caps' top, as the joints with the panes
     rows = np.linspace(YR, edge[0].y, 4)
     for x0, x1 in zip(cols, cols[1:]):
         for y0, y1 in zip(rows, rows[1:]):
@@ -397,8 +398,9 @@ def Shell(pillar, opening):
         Slab(b, [(XWALL, YR, -SEAM), (XWALL, pane_rear, -SEAM), (XWALL, pane_rear, ZH), (XWALL, YR, ZH)], -X, SLAB,
              inset=(0.008, 0.006, 0.02))
         Sweep(b, [Vector((XRAIL, YR, ZH)), Vector((XRAIL, pane_rear + OVERLAP, ZH))], Z, CAP_SWEPT, CAP_CLASSES)
-        # the side wall behind the pane (cut below for its window)
-        Slab(walls, [(W, pane_rear, -SEAM), (W, YP_, -SEAM), (W, YP_, ZH), (W, pane_rear, ZH)], -X, SLAB)
+        # the side wall behind the pane (cut below for its window), on back behind the rear wall and up behind the cap,
+        # which close the corners round the pane's rear end
+        Slab(walls, [(W, YR, -SEAM), (W, YP_, -SEAM), (W, YP_, ZR), (W, YR, ZR)], -X, SLAB)
         # behind the A-pillar: the step in to the pillar zone, and the pillar zone's wall up to the window's rear edge
         Slab(b, [(XP, YP_, -SEAM), (W, YP_, -SEAM), (W, YP_, ZH), (XP, YP_, ZH)], -Y, SLAB, "DARK")
         Slab(b, [(XP, YP_, -SEAM), (XP, YC, -SEAM), (XP, YC, ZL), (XP, YP_, ZH)], -X, SLAB, "DARK")

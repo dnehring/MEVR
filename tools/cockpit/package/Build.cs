@@ -48,15 +48,22 @@ internal static class Build
     public const string BackingSuffix = "_Backing";
     private const int MaxIndexableVertices = 65535;             // the index buffer is 16-bit, and elements have no base vertex
 
-    // The object names, the file names they come from, which texture they share.
-    private static readonly (string File, string Name, string Group, bool Detached)[] Models =
+    // The object names, the file names they come from, which texture they share, and where the file is: "detached"
+    // (detached/<file>.glb), "repair" (Newest below) or a path under the assets folder. The hull's pieces share its origin
+    // (tools/cockpit/hull_assemble.py); the two side panes share one texture.
+    private const string Hull = "hull reconstruction/assembled/";
+    private static readonly (string File, string Name, string Group, string Source)[] Models =
     {
-        ("joystick-base", "Joystick_Base", "Joystick", true),
-        ("joystick-grip", "Joystick_Grip", "Joystick", true),
-        ("throtle-control-base", "Throttle_Base", "Throttle", true),
-        ("throtle-control-handle", "Throttle_Handle", "Throttle", true),
-        ("chair", "Chair", "Chair", false),
-        ("front-cockpit", "Front_Cockpit", "Front_Cockpit", false),
+        ("joystick-base", "Joystick_Base", "Joystick", "detached"),
+        ("joystick-grip", "Joystick_Grip", "Joystick", "detached"),
+        ("throtle-control-base", "Throttle_Base", "Throttle", "detached"),
+        ("throtle-control-handle", "Throttle_Handle", "Throttle", "detached"),
+        ("chair", "Chair", "Chair", "repair"),
+        ("front-cockpit", "Front_Cockpit", "Front_Cockpit", "repair"),
+        ("hull-shell", "Hull_Shell", "Hull_Shell", Hull + "shell.glb"),
+        ("hull-console", "Hull_Console", "Hull_Console", Hull + "console.glb"),
+        ("hull-side-left", "Hull_Side_Left", "Hull_Side", Hull + "side-left.glb"),
+        ("hull-side-right", "Hull_Side_Right", "Hull_Side", Hull + "side-right.glb"),
     };
 
     // The rule of tools/cockpit/detach_controls.py: the highest vNNN under repairs/<date>/<name>/, else the file beside repairs/.
@@ -85,7 +92,7 @@ internal static class Build
         return found.Count > 0 ? found.OrderBy(f => f.Version).ThenBy(f => f.Path, StringComparer.Ordinal).Last().Path : System.IO.Path.Combine(assets, name + ".glb");
     }
 
-    // tools/cockpit/game_ready.py's model wins when its manifest says it was made from the file the rule above picks
+    // tools/cockpit/game_ready.py's model wins when its manifest says it was made from the file the model's source picks
     // (the source's SHA-256); one made from another file stops the build. raw: the repaired and detached models as they are.
     public static List<ModelSource> Sources(string assets, bool raw = false)
     {
@@ -93,7 +100,12 @@ internal static class Build
         var sources = new List<ModelSource>();
         foreach (var model in Models)
         {
-            string path = model.Detached ? System.IO.Path.Combine(assets, "detached", model.File + ".glb") : Newest(assets, model.File);
+            string path = model.Source switch
+            {
+                "detached" => System.IO.Path.Combine(assets, "detached", model.File + ".glb"),
+                "repair" => Newest(assets, model.File),
+                _ => System.IO.Path.Combine(assets, model.Source),
+            };
             if (!File.Exists(path))
             {
                 throw new FileNotFoundException($"Missing model {model.File}: {path}");
@@ -234,9 +246,10 @@ internal static class Build
         props.AddOrReplaceProp(new IntProperty(width, "OriginalSizeX"));
         props.AddOrReplaceProp(new IntProperty(height, "OriginalSizeY"));
         props.AddOrReplaceProp(new IntProperty(0, "MipTailBaseIdx"));
-        // Unset, the game read LODGroup 27 and made only the smallest mip resident: the whole model one flat colour. APL_1024 is the
-        // game's own group for props, up to 4096 in BIOEngine.ini's TextureLODSettings (research/47).
-        props.AddOrReplaceProp(new EnumProperty("TEXTUREGROUP_APL_1024", "TextureGroup", pcc.Game, "LODGroup"));
+        // The LOD group decides how many mips the game makes resident. APL_1024 read as LODGroup 27 with RequestedMips 1 (only the
+        // 4x4 mip: the whole model one flat colour), although BIOEngine.ini lists it up to 4096; Environment_1024, the group of
+        // Eden Prime's own trims, reads as 18 and keeps every mip (research/47).
+        props.AddOrReplaceProp(new EnumProperty("TEXTUREGROUP_Environment_1024", "TextureGroup", pcc.Game, "LODGroup"));
         foreach (string message in texture.Replace(image, props, isPackageStored: true, forcedNewFormat: PixelFormat.DXT1, forceMipping: true))
         {
             Console.WriteLine($"  {name}: {message}");

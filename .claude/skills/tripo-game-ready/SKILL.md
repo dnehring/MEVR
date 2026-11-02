@@ -196,8 +196,14 @@ so the new shell follows it. The parts (console, side pane) are placed in it, an
 - **Measure closure with rays from the seat**, by the face of the box each escaping ray leaves through: only the rear
   should be open.
 
-The parts are raw Tripo output (console 3,209 boundary edges, pane 526; 27,000 triangles each). They go through the
-repair stage and `game_ready.py` before the packager.
+**The hull's parts skip the outside repair.** They are raw Tripo output (console 3,209 boundary edges, pane 526), yet
+seen from inside they are closed: from 27 points in the cockpit, under 0.05% of rays meet a part from behind. The
+repair's inward backing would face into the room behind the panes' outward-facing back skin and close their windows.
+`game_ready.py` takes them from `assembled/` (a `MODELS` row's source can be a path), locking the open edges. The shell
+goes to the packager as built. **Check the joints again after decimating:** cast the same rays with the raw and the
+game-ready parts. A ray that escapes only with the game-ready ones is a crack. Two corners opened by under 1 mm and
+needed the shell's walls to overlap further (research/48 section 9). The package carries the hull as `Hull_Shell`,
+`Hull_Console`, `Hull_Side_Left` and `Hull_Side_Right`, on the hull's origin; the hull's forward is the package's -Y.
 
 ## Checked and not used (2026-11-02)
 
