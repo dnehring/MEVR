@@ -21,6 +21,10 @@ for a screen, and a ceiling raised 7% onto the panes' tops. The front is meant t
 flat solid (that's how the parts model them). And the template is close to the intended geometry, only messy. So the shell now
 follows the template.
 
+**The user's second correction:** the side panes' slanted light pillars with the red stripe are the **A-pillars**. They
+carry the roof and frame the windows, and the second version treated them as features. They ended in free tips in front of a
+plain wall, and a small window sat beside them, framed by nothing. Section 6 is the fix.
+
 ## 1. The template's shape
 
 Sections in x, y and z, and ray fans from inside it, give the envelope (x across, y forward, z up; the constants at the top of
@@ -88,6 +92,33 @@ areas are the floor (the template has none) and the walls behind the panes.
 
 The whole room is lighter than the concept art, because the parts' textures are. The shell's plates are a repeated plate from
 the pane, flatter than the concept's panels.
+
+## 6. The A-pillars carry the roof and frame the side windows
+
+- **The panes moved 0.12 forward.** The interior fit had matched the wall's general surfaces, not its features.
+  - Sections at x 0.43 put the template's slanted pillar edge 0.10 to 0.13 ahead of the pane's: (y 0.055, z 0.51) to
+    (0.23, 0.21), against (-0.08, 0.55) to (0.17, 0.12).
+  - A two-way fit on the pillar-and-window band alone (right wall, z 0.25 to 0.48) put it 0.08 to 0.14 ahead. That fit's
+    landscape is flat: its top eight results are within 0.002 of each other.
+  - The pane's whole-wall match drops from 31% to 22% within 1 cm. The pillar and the octagonal window are now where the
+    template has them, and the panes' rear ends leave 0.12 of bare wall at the open back.
+- **The pillar is read from the pane:** its light and red faces above the ledge, in the pane's front 0.35 (`PillarEdge`).
+  - Its foot is at (0.258, 0.221, 0.326), its top at (0.392, 0.082, 0.463).
+  - The roof meets it at y 0.067, just behind its front face: the side wall, its chamfer into the ceiling and the step to the
+    pillar zone end there.
+- **The front side window is one glass** from the pillar to the windshield's frame, from the ledge to the roof. It is two flat
+  triangles, because its corners aren't in one plane. It shares its edges with the chamfer wall below, the windshield's side
+  edge and the ceiling's front edge. The pillar's foot lies forward of the glass's rear corner, so the pillar overlaps the glass:
+  it is the window's frame on that side, with a light sill below and a light beam above.
+- **The roof rests on the pillars:** a light beam joins the two pillar tops under the ceiling.
+- **Light portal posts** stand at the open back, where the panes left the wall bare: the concept's foreground pillars.
+
+**Result:** the template's interior is within 2 cm of the hull for 89.6% and within 6 cm for 100%. Only the rear is open
+(19.1% of the rays from the seat). The shell is 884 triangles.
+
+From the concept's viewpoint, each red-striped A-pillar rises from the end of the console's ledge to the roof beam, with the
+dark side window between it and the windshield, and the panes' octagonal windows behind it. The panes' pointed pillar feet
+stop just above the windows' sills: that's the pane's own shape.
 
 ## 5. Not done
 

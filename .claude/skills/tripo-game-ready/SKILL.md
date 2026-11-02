@@ -143,6 +143,13 @@ so the new shell follows it. The parts (console, side pane) are placed in it, an
 - **Rebuild the template's envelope; don't box the parts in.** Take x, y and z sections, plus ray fans from inside.
   Pin the walls, chamfers, windshield slope and ceiling as constants with the date they were measured.
 - **Model windows as flat dark panes in light frames,** as the parts do: never a flat wall where the concept has glass.
+- **Build the shell around a part's structure; don't set the part in front of it.** The side panes' red-striped pillars are
+  the A-pillars (the user, 2026-11-02):
+  - each front side window runs from its pillar to the windshield's frame;
+  - the roof ends at the pillar's top, and a beam joins the pillar tops;
+  - the pillar's line is read from the part (`PillarEdge`: its light and red faces), so the shell follows the part.
+- **Place a structural part by its features, not its overall surface match.** The panes' interior fit matched the wall's
+  general surfaces yet left their pillar and window 0.12 behind the template's. Sections at the feature showed it.
 - **Judge a version against the concept from its viewpoint** (`previews/concept.png`) and against the template from the seat.
   The first version, a box with a raised ceiling and a flat front, was rejected on sight.
 
