@@ -353,8 +353,8 @@ switching frameworks.
   Not yet run in the game: no save or direct level load has reached drivable Mako gameplay (research/47 "Third run").
 - LE1 cockpit, in progress ([research/47](research/47-cockpit-in-game.md); `game/CockpitProbe`, `mevr cockpit ...`, `mevr vehicle ...`, inert until called): `tools/cockpit`
   splits, decimates (`game_ready.py`: the packager prefers `concept/assets/game-ready/` made from the current models, `--raw` skips it) and packages our models
-  (`concept/`, gitignored, licence unsettled; the whole procedure is the `tripo-game-ready` skill; `hull_assemble.py` builds the hull from Tripo parts placed against a
-  template plus modelled fillers, [research/48](research/48-hull-assembly.md)) with the Legendary Explorer nightly in `mod-manager/`; the package goes in `CookedPCConsole` with
+  (`concept/`, gitignored, licence unsettled; the whole procedure is the `tripo-game-ready` skill; `hull_assemble.py` builds the hull: a clean shell modelled to the messy
+  Tripo template's shape, windows as flat dark panes, the Tripo parts placed in it, [research/48](research/48-hull-assembly.md)) with the Legendary Explorer nightly in `mod-manager/`; the package goes in `CookedPCConsole` with
   a `PCConsoleTOC.bin` entry (undo in `%LOCALAPPDATA%/MEVR/cockpit-install/UNDO.txt`). A scene capture nests inside the eye's render command: `RenderLevers` hooks `0x742C80` and
   `0x773D30` so it takes no eye index and its final post pass binds its own target. Set `bUpdateMatrices` false or `SetView` is overwritten by the actor's transform.
   `TextureRenderTarget2D.Create` takes only formats 2, 3 and 9. `Actor.SetLocation` refuses a spot it encroaches on (`FarMoveActor`): write `Location` and flush.

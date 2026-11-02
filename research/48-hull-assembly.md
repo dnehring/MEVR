@@ -2,18 +2,40 @@
 
 **Question.** The Mako cockpit's hull exists as one rough Tripo mesh, `concept/assets/hull reconstruction/hull full -bad.glb`:
 46,635 triangles, 118 islands, 3,650 boundary and 4,145 non-manifold edges. Two better Tripo parts exist: `front computer
-console.glb` and `side pane.glb`, made from the concept images in the same folder. **Can the template place the parts, and can
-what they leave open be modelled, so that the result is one closed cockpit?**
+console.glb` and `side pane.glb`, made from the concept images in the same folder. **Can the hull be rebuilt clean, close to the
+template's shape and looking like the concept (`Enclosed Armored Sci‑Fi Cockpit.png`; a windowed version from the user), with the
+parts in it?**
 
 **Built:** `tools/cockpit/hull_assemble.py` (headless Blender 5.2, MIT; the `tripo-game-ready` skill's "Placing parts against
 a reference mesh"). It writes `assembled/` beside the inputs (gitignored like all of `concept/`):
 - each piece as a `.glb` in the hull's coordinates, and `hull.glb`;
 - `manifest.json`;
-- `previews/seat.png` (the template, the parts and the hull from the seat) and `previews/outside.png`.
+- `previews/seat.png` (the template, the parts and the hull from the seat);
+- `previews/outside.png`;
+- `previews/concept.png` (the concept image beside the hull and the template, from its viewpoint).
 
 `--refit` prints the side pane's candidate places.
 
-## 1. Placing the parts
+**The user's correction of the first version** (same day): it boxed the parts in with flat walls, a flat front with a frame
+for a screen, and a ceiling raised 7% onto the panes' tops. The front is meant to be windows, as in the concept. Windows may be
+flat solid (that's how the parts model them). And the template is close to the intended geometry, only messy. So the shell now
+follows the template.
+
+## 1. The template's shape
+
+Sections in x, y and z, and ray fans from inside it, give the envelope (x across, y forward, z up; the constants at the top of
+the script):
+- **The walls.** The side walls' inner face is at x ±0.463 up to z 0.412, then a chamfer runs into the ceiling at (±0.39, 0.48).
+  The rear is open at y -0.425.
+- **The plan is a hexagon.** The side walls step in to x ±0.39 at y 0.06: that's the zone of the red pillars, which the side
+  pane brings. Front chamfers run from (±0.39, 0.175) to (±0.245, 0.374), with window holes in their upper half.
+- **The windshield leans back about 56 degrees.** At x = 0 it runs from (y 0.328, z 0.388) to (0.252, 0.503); the shell takes
+  it from the ledge (y 0.374, z 0.30) to the ceiling (y 0.267, z 0.48). Its top corners lie on the front chamfers.
+- **The ceiling** has a lowered centre (half width 0.09, bottom z 0.408, y -0.2 to 0.05 in the template) and longitudinal ribs
+  either side. The roof's outside is at 0.516.
+- **The template has no floor.**
+
+## 2. Placing the parts
 
 Every Tripo model is normalised to about one unit across: the template is 1.0 x 0.85 x 0.516, the console 1.0 x 0.76 x 0.41,
 the side pane 1.0 x 0.39 x 0.97. So each part needs its own scale, and the side pane is the left wall turned a quarter turn
@@ -24,52 +46,53 @@ about z (its room side faces -y as made).
 | Fit against the whole template: a distance field (1 cm grid), a coarse search over scale and position with the distance relative to the part's size, then trimmed ICP (scale and position, rotation fixed) | **Wrong.** Both panes sank into the template's wall at scale 0.30, coming through the outside in a render. A thin shell scores any small part well. |
 | The same against the template's **interior** only (the faces hit by rays from 18 points inside it: 4,483 faces, 2.91 square units), with only the part's faces toward the room, and the scale held to 0.40 to 0.65 | **The left pane at 0.595** matches the inner wall's octagonal window, slanted pillar and ledge in an x-section: 47% of its room side within 1 cm. **The right pane** went to 0.40 with a *better* score (75% within 1 cm), and the render shows it wrong. |
 | The right pane | **The left pane mirrored.** The template's bounds are symmetric in x (±0.4998), and the two panes' whole-template fits mirrored each other within 0.003. |
-| The console's fit | It stopped at its lower scale bound (0.6) and came out through the front by 0.055. The template's console is wider and lower than the model, so no single scale matches both. **Placed by rule instead:** scale 0.6, centred, on the floor, its back on the template's front (y 0.425). Its wing tips reach \|x\| 0.30. |
+| The console against the whole interior, then by rule (0.6, back at the front) | Stopped at the scale bound. Its screen face then sat 0.13 nearer the seat than the template's (y 0.16 against 0.29). |
+| The console against the interior faces **in front only** (y > -0.05, z < 0.33, \|x\| < 0.42), centred, from 175 starts | **0.752** (42% within 1 cm), centre (0, 0.275, 0.147): the top at 0.30, as the template's ledge. The best scales spread 0.75 to 0.79. Its deep back passes behind the wall under the windshield, unseen. |
 
-`--refit` reproduces the pinned place: its five best candidates agree within 0.007 in scale and 0.008 in position. At the pane's
-place, the panes reach z 0.577, above the template's top (0.516). The new ceiling therefore goes on the panes (0.554): the cockpit
-is 7% taller than the template.
+`--refit` reproduces the pane's place: its five best candidates agree within 0.007 in scale and 0.008 in position. The panes'
+top caps (z 0.577) end above the shell's ceiling chamfer, hidden.
 
-## 2. What the parts leave open
+## 3. The shell (904 triangles)
 
-Of the template's interior, the parts alone come within 2 cm of 31% and within 6 cm of 66%. What's open, in square units:
-- the ceiling: 0.76;
-- the front above the console, and the front corners: 0.56;
-- the side walls around the panes: 0.27 and 0.33;
-- the rear edge: 0.09.
+Modelled from the constants. Every edge is shared, so the shell is closed except at the open rear:
+- **Floor:** the hexagon in three slabs.
+- **Ceiling:** at 0.48, with the lowered channel (plates underneath) and 4 ribs a side, dark as in the concept.
+- **Side walls:** behind the panes, with their chamfers into the ceiling, the step and the pillar-zone walls.
+- **Front chamfers:** plates below the ledge. Above it, a wall up to the windshield's edge with an **angled window** whose top
+  follows that edge.
+- **Windshield:** flat glass leaning back, in a light frame.
+- **Under the windshield:** a wall behind the console.
+- **Rear:** a beam under the ceiling at the open back.
 
-The template has **no floor**: 15% of the rays from the seat leave it downward.
-
-## 3. The fillers (1,034 triangles)
-
-Modelled from the placed parts' measured bounds, all slabs 0.02 thick:
-- the **floor**;
-- the **ceiling**, with 7 transverse ribs and a lowered centre (0.035 deep, 0.18 wide);
-- the **front wall**, with a light frame (0.48 x 0.23) around a dark inset where a screen can go: research/47's live screen;
-- the **front corners**: prisms from the console's side to the wall, chamfered toward the seat, a light pillar face and a red stripe;
-- the **side skins** behind the panes, which show above the panes' low front ends.
-
-The room faces are tiled with a bolted plate cut from the side pane's own atlas (u 0.5066-0.5840, v 0.7207-0.8447, 317 x 508 px).
-Light frame, red stripe and plain dark strips come from the same atlas. So the fillers use the pane's material and image: no
-texture of their own, and the packager would share the pane's texture with them (it hashes the image).
+Windows are flat dark panes, 0.003 units proud of their wall, in light frames 0.016 to 0.018 units wide (the hull's units have
+no metric scale yet). The shell is tiled with the side pane's
+own atlas (a bolted plate; light, dark and the pane's window glass), so it uses the pane's material and image, and the packager
+would share the texture (it hashes the image).
 
 ## 4. Result
 
-- **Coverage:** the hull comes within 2 cm of 55% of the template's interior and within 6 cm of 85%. The rest is where the design
-  departs from the template on purpose: the higher ceiling, and the closed front where the template has a windshield.
-- **Closed:** of 4,000 rays from the seat (0, -0.22, 0.36), only those through the open rear leave (23.9%). The template lets
-  15.4% out through the floor, 0.6% through the front and 0.9% through the sides.
-- **Look:** in the previews, the pieces read as one cockpit with the concept's layout. The fillers are plain repeated plates,
-  flat beside the parts' detail.
+| | Box version (first) | Template-shaped shell |
+|---|---|---|
+| Template's interior within 2 cm of the hull | 55% | **89%** |
+| Within 6 cm | 85% | **99.9%** |
+| The shell's inside within 2 cm / 5 cm of the template's (area) | not measured | 52% / 79%; median 1.9 cm, p90 8.5 cm |
+| Rays from the seat (0, -0.22, 0.36) leaving | only by the rear: 23.9% | only by the rear: 19.0% |
+
+The template lets 15.4% out through its missing floor, 0.6% through the front and 0.9% through the sides. The shell's far
+areas are the floor (the template has none) and the walls behind the panes.
+
+**Look,** from the concept's viewpoint: the layout matches.
+- **Front:** the windshield in its frame over the console's ledge, the angled windows between it and the red-striped pillars.
+- **Ceiling:** the dark ribs either side of the channel.
+- **Floor:** plates.
+
+The whole room is lighter than the concept art, because the parts' textures are. The shell's plates are a repeated plate from
+the pane, flatter than the concept's panels.
 
 ## 5. Not done
 
 - **The parts are raw Tripo output:** the console has 3,209 boundary and 3,509 non-manifold edges, the pane 526 and 872, and
   27,000 triangles each. Before packaging they need the repair stage, then `game_ready.py`.
 - **Not packaged and not in the game.**
-- **Design choices that are the user's:**
-  - a closed front against the template's windshield;
-  - the ceiling height;
-  - the console's scale;
-  - the open rear;
-  - how the hull relates to the seat and to `front-cockpit` (research/47).
+- **The tone:** darker plates would need a texture of the shell's own.
+- **Not placed:** the seat, and how the hull relates to `front-cockpit` (research/47).

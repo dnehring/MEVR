@@ -136,21 +136,28 @@ Then add the model:
 ## Placing parts against a reference mesh (the hull, next)
 
 `tools/cockpit/hull_assemble.py` (research/48) builds the hull from `concept/assets/hull reconstruction/`. The full
-mesh (`hull full -bad.glb`) is a **template for placement only**, never shipped. The parts (console, side pane) are
-placed against it, the open areas are modelled, and `assembled/` gets each piece, `hull.glb`, `manifest.json` and
-`previews/`.
+mesh (`hull full -bad.glb`) is never shipped, but it is **close to the intended shape, only messy** (the user, 2026-11-02),
+so the new shell follows it. The parts (console, side pane) are placed in it, and `assembled/` gets each piece,
+`hull.glb`, `manifest.json` and `previews/` (with `concept.png`, the concept image beside the hull from its viewpoint).
+
+- **Rebuild the template's envelope; don't box the parts in.** Take x, y and z sections, plus ray fans from inside.
+  Pin the walls, chamfers, windshield slope and ceiling as constants with the date they were measured.
+- **Model windows as flat dark panes in light frames,** as the parts do: never a flat wall where the concept has glass.
+- **Judge a version against the concept from its viewpoint** (`previews/concept.png`) and against the template from the seat.
+  The first version, a box with a raised ceiling and a flat front, was rejected on sight.
 
 - **Fit against the template's interior, never the whole mesh.** The interior is the faces hit by rays from points
   inside it. Use only the part's faces toward the room, and hold the scale to a plausible range. Against the whole
   template, the side panes sank into the wall at scale 0.30: a thin shell scores any small part well.
 - **A better score can be the wrong place.** The right pane's own fit beat the left's (75% against 47% within 1 cm)
   at the wrong scale. Choose by an x-section or seat render against the template, and mirror symmetric parts.
-- **One scale can't match both a part's width and its height** when Tripo made the part and the template separately
-  (the console). Place such a part by a stated rule (centred, on the floor, back to the front) and say so.
+- **Fit a part against its own region of the template** when the whole interior pulls it elsewhere. The console only
+  fitted (0.752, 42% within 1 cm) against the interior faces in front, kept centred, from many starts.
 - **Pin the chosen place as constants** with their provenance. `--refit` prints the candidates again: the best five
   agreed within 0.007 in scale.
-- **Model fillers from the placed parts' measured bounds,** so they follow a change of placement. Use slabs, prisms and
-  boxes with every edge shared (no T-junctions), outward faces, and mirrored sides with reversed winding.
+- **Build the shell with every edge shared** (no T-junctions), from slabs, polygon slabs and boxes. Wind faces toward a
+  stated direction, and reverse the winding on mirrored sides. Make neighbours meet on exact lines, for example the
+  windshield's corners on the chamfer walls.
 - **Texture fillers from a part's own atlas:** find plain and bolted rectangles (a 32 px block scan for low variance,
   then a look) and tile them. The fillers then share that part's material and texture.
 - **Measure closure with rays from the seat**, by the face of the box each escaping ray leaves through: only the rear
