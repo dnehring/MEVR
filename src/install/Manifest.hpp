@@ -4,6 +4,7 @@
 #include "core/Json.hpp"
 #include "install/Ini.hpp"
 
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -19,10 +20,18 @@
 //   replaced a file that was there: its original is in the backup folder, put back on uninstall
 //   renamed  `from` was renamed to `path` (the game's bink2w64.dll to bink2w64_original.dll): renamed back
 //   edited   an ini file's keys (ini::Edit): reverted key by key, only where the player hasn't changed them since
+//   toc      entries of PCConsoleTOC.bin (install/Toc, the cockpit's package): each taken out again, or its size put back
 //
 // `userData` files (Halcyon's MELEVR.ini, the mod's LE1MEVR.ini and logs, recorded at install although the mod writes
 // them later) hold the player's settings: uninstall keeps them unless asked to remove everything.
 namespace mevr::install {
+
+// One entry we set in PCConsoleTOC.bin.
+struct TocEdit {
+    std::string name;                    // "BioGame\CookedPCConsole\BIOG_MEVR_Cockpit.pcc"
+    std::optional<std::uint32_t> before;  // its size before us; none: we added it
+    std::uint32_t after = 0;             // the size we wrote
+};
 
 struct FileEntry {
     std::string path;
@@ -32,6 +41,7 @@ struct FileEntry {
     std::string sha256;  // added, replaced: what we wrote (Repair compares against it)
     bool userData = false;
     std::vector<ini::Edit> edits;  // edited
+    std::vector<TocEdit> toc;      // toc
 };
 
 struct PackRecord {
@@ -86,6 +96,11 @@ inline constexpr char kGamerSettings[] = "Game/ME1/BioGame/Config/GamerSettings.
 inline constexpr char kEngineIni[] = "Game/ME1/BioGame/Config/BIOEngine.ini";
 inline constexpr char kSteamAppId[] = "Game/ME1/Binaries/Win64/steam_appid.txt";
 inline constexpr char kExe[] = "Game/ME1/Binaries/Win64/MassEffect1.exe";
+inline constexpr char kToc[] = "Game/ME1/BioGame/PCConsoleTOC.bin";
+inline constexpr char kCockpitPackage[] = "Game/ME1/BioGame/CookedPCConsole/BIOG_MEVR_Cockpit.pcc";
+inline constexpr char kCockpitScript[] = "Game/ME1/Binaries/Win64/ASI/cockpit/cockpit.txt";
+// The cockpit package's name in the TOC (relative to the game's ME1 folder, as the TOC's own entries are).
+inline constexpr char kCockpitTocName[] = "BioGame\\CookedPCConsole\\BIOG_MEVR_Cockpit.pcc";
 } // namespace paths
 
 // SHA-256 of a file as lower-case hex; "" if it can't be read.
@@ -125,6 +140,9 @@ public:
     bool EditIni(std::string_view relative, std::function<std::string(std::string_view, std::vector<ini::Edit>*)> const& edit);
     // Reverts the recorded edits of one ini file (Restore for the game settings) and forgets them.
     bool RevertIni(std::string_view relative);
+    // Sets `name`'s entry in the TOC at `relative` to `size` (added if missing), recorded so uninstall takes it out again (or
+    // puts back the size it had). Refuses a TOC whose entries aren't where our hash puts them.
+    bool SetTocEntry(std::string_view relative, std::string_view name, std::uint32_t size);
 
     // A file the mod writes at run time (LE1MEVR.ini, its logs), recorded as added user data so a full uninstall
     // deletes it and a "keep my settings" one keeps it. Only our own file names: whether or not it exists yet (one

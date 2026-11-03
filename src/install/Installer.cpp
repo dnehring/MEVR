@@ -246,7 +246,29 @@ bool Preflight(Layout const& layout, Outcome& out) {
     return true;
 }
 
+// The Mako's cockpit (research/47): the package, its TOC entry (without one the game never loads it) and the script the mod runs
+// on entering the Mako. Again on Repair (a "verify files" puts the game's own TOC back). A release without it: nothing.
+bool InstallCockpit(Transaction& tx, Payload const& payload) {
+    if (!payload.HasCockpit()) {
+        tx.Note("this release has no cockpit: the Mako keeps the game's chase camera");
+        return true;
+    }
+    std::error_code ec;
+    std::uintmax_t const size = fs::file_size(payload.CockpitPackage(), ec);
+    if (ec || size > 0xFFFFFFFFull) {
+        tx.Fail("the cockpit's package in the release can't be read");
+        return false;
+    }
+    return tx.CopyIn(payload.CockpitPackage(), paths::kCockpitPackage) && tx.CopyIn(payload.CockpitScript(), paths::kCockpitScript) &&
+        tx.SetTocEntry(paths::kToc, paths::kCockpitTocName, static_cast<std::uint32_t>(size));
+}
+
 } // namespace
+
+bool Payload::HasCockpit() const {
+    std::error_code ec;
+    return fs::exists(CockpitPackage(), ec) && fs::exists(CockpitScript(), ec);
+}
 
 bool Payload::Valid() const {
     std::error_code ec;
@@ -350,6 +372,7 @@ Outcome Install(Layout const& layout, Payload const& payload, InstallOptions con
     ok = ok && tx.CopyIn(payload.Asi(), paths::kModAsi);
     ok = ok && CopyTree(tx, payload.Fonts(), std::string(paths::kAsi) + "/fonts");
     ok = ok && CopyTree(tx, payload.Menu(), std::string(paths::kAsi) + "/menu");
+    ok = ok && InstallCockpit(tx, payload);
     if (ok && !options.setupExe.empty() && fs::exists(options.setupExe, ec) &&
         !fs::equivalent(options.setupExe, layout.Full(paths::kSetupExe), ec)) {
         ok = tx.CopyIn(options.setupExe, paths::kSetupExe);
@@ -508,6 +531,7 @@ Outcome Repair(Layout const& layout, Payload const& payload) {
             ok = tx.CopyIn(source, path) && ok;
         }
     }
+    ok = InstallCockpit(tx, payload) && ok;
     if (fs::exists(layout.Full(paths::kHalcyonIni), ec)) {
         ok = EditUnlessReadOnly(tx, paths::kHalcyonIni, "MELEVR.ini",
                  [](std::string_view text, std::vector<ini::Edit>* edits) { return ini::FixHalcyonIni(text, edits); }, nullptr) && ok;

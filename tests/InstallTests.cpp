@@ -13,14 +13,18 @@
 #include "install/Launch.hpp"
 #include "install/Manifest.hpp"
 #include "install/Packs.hpp"
+#include "install/Toc.hpp"
 #include "install/Updates.hpp"
 #include "loader/LoaderCore.hpp"
 
 #include <Windows.h>
 
+#include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <string>
 
 namespace {
@@ -629,6 +633,92 @@ void TestQaFixes() {
     fs::remove_all(base, ec);
 }
 
+// PCConsoleTOC.bin (install/Toc, research/47 "Players get it").
+void TestToc() {
+    namespace toc = mevr::install::toc;
+    // Where the game's own TOC (5126 buckets) keeps these: the first bucket, the last, and where the packager put ours.
+    ICHECK(toc::Hash("BIOA_END80_00_DSG.pcc") % 5126 == 0);
+    ICHECK(toc::Hash("BIOA_WAR30_02_PLC.pcc") % 5126 == 5125);
+    ICHECK(toc::Hash("BIOG_MEVR_Cockpit.pcc") % 5126 == 1558);
+    ICHECK(toc::Hash("biog_mevr_cockpit.PCC") == toc::Hash("BIOG_MEVR_Cockpit.pcc"));
+    // A small TOC built the game's way, written, read back, edited.
+    toc::File file;
+    file.buckets.resize(7);
+    for (char const* bare : {"A.pcc", "Bb.pcc", "Ccc.pcc", "Dddd.pcc", "Startup.pcc"}) {
+        toc::Entry e;
+        e.name = std::string("BioGame\\CookedPCConsole\\") + bare;
+        e.size = static_cast<std::uint32_t>(e.name.size() * 1000);
+        file.buckets[toc::Hash(bare) % 7].push_back(e);
+    }
+    ICHECK(toc::Consistent(file));
+    std::string const bytes = toc::Serialize(file);
+    ICHECK(bytes.size() % 4 == 0);
+    auto const back = toc::Parse(bytes);
+    ICHECK(back.has_value() && toc::Serialize(*back) == bytes);
+    if (!back) {
+        return;
+    }
+    toc::File edited = *back;
+    std::string const name = "BioGame\\CookedPCConsole\\BIOG_MEVR_Cockpit.pcc";
+    ICHECK(!toc::Find(edited, name));
+    ICHECK(!toc::Set(edited, name, 29338932));  // added
+    ICHECK(toc::Consistent(edited));
+    auto const reread = toc::Parse(toc::Serialize(edited));
+    ICHECK(reread && toc::Find(*reread, "biogame\\cookedpcconsole\\biog_mevr_cockpit.pcc") == std::optional<std::uint32_t>(29338932));
+    ICHECK(toc::Set(edited, name, 5) == std::optional<std::uint32_t>(29338932));  // updated
+    ICHECK(toc::Remove(edited, name) && !toc::Remove(edited, name));
+    ICHECK(toc::Serialize(edited) == bytes);  // out again: byte for byte the TOC before
+    // An entry in the wrong bucket: not a TOC we edit.
+    toc::File wrong = *back;
+    toc::Entry stray;
+    stray.name = "BioGame\\CookedPCConsole\\A.pcc";
+    wrong.buckets[(toc::Hash("A.pcc") + 1) % 7].push_back(stray);
+    ICHECK(!toc::Consistent(wrong));
+    ICHECK(!toc::Parse("not a toc"));
+    // The game's own file, when given (MEVR_TOC_FILE): read and written back byte for byte.
+    if (wchar_t real[MAX_PATH]{}; GetEnvironmentVariableW(L"MEVR_TOC_FILE", real, MAX_PATH) > 0) {
+        auto const game = mevr::install::ReadFile(fs::path(real));
+        auto const parsed = game ? toc::Parse(*game) : std::nullopt;
+        ICHECK(parsed && toc::Consistent(*parsed) && toc::Serialize(*parsed) == *game);
+        std::printf("  TOC round trip of the game's own file: %s\n", parsed && toc::Serialize(*parsed) == *game ? "identical" : "DIFFERENT");
+    }
+
+    // Through the manifest: set, verify, uninstall takes it out again (a fake game folder; no game needed).
+    wchar_t temp[MAX_PATH]{};
+    GetTempPathW(MAX_PATH, temp);
+    fs::path const base = fs::path(temp) / L"mevr-install-toc";
+    std::error_code ec;
+    fs::remove_all(base, ec);
+    mevr::install::Layout const layout{base / L"Mass Effect Legendary Edition"};
+    namespace paths = mevr::install::paths;
+    Write(layout.Full(paths::kToc), bytes);
+    {
+        mevr::install::Transaction tx(layout);
+        ICHECK(tx.Load());
+        ICHECK(tx.SetTocEntry(paths::kToc, paths::kCockpitTocName, 1234));
+        ICHECK(tx.Verify().empty());
+    }
+    auto const installed = toc::Parse(Read(layout.Full(paths::kToc)));
+    ICHECK(installed && toc::Find(*installed, paths::kCockpitTocName) == std::optional<std::uint32_t>(1234));
+    {
+        // Steam's "verify files" puts the game's TOC back: Verify reports it for Repair.
+        Write(layout.Full(paths::kToc), bytes);
+        mevr::install::Transaction tx(layout);
+        ICHECK(tx.Load());
+        auto const bad = tx.Verify();
+        ICHECK(bad.size() == 1 && bad[0] == paths::kToc);
+        ICHECK(tx.SetTocEntry(paths::kToc, paths::kCockpitTocName, 1234) && tx.Verify().empty());
+        // The manifest survives a reload with the entry's record.
+        mevr::install::Transaction again(layout);
+        ICHECK(again.Load());
+        auto const* entry = again.Data().Find(paths::kToc);
+        ICHECK(entry != nullptr && entry->action == "toc" && entry->toc.size() == 1 && !entry->toc[0].before && entry->toc[0].after == 1234);
+        ICHECK(again.Uninstall(false));
+    }
+    ICHECK(Read(layout.Full(paths::kToc)) == bytes);
+    fs::remove_all(base, ec);
+}
+
 void TestLoaderCore() {
     namespace ld = mevr::loader;
     using G = mevr::loader::spi::Game;
@@ -683,4 +773,5 @@ void RunInstallTests(int& failures) {
     TestTransaction();
     TestQaFixes();
     TestLoaderCore();
+    TestToc();
 }

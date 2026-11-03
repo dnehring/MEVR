@@ -13,8 +13,11 @@
 #     payload\bink2w64.dll  our ASI loader (src/loader)
 #     payload\fonts\*       the menu's fonts with their OFL licences
 #     payload\menu\*        the in-game menu's documents and the setup's own page
+#     payload\cockpit\*     the Mako's cockpit (research/47): BIOG_MEVR_Cockpit.pcc (-CockpitPackage, default the hull
+#                           packaging's build\cockpit-hull) and cockpit.txt (tools/cockpit/place.py --script); MEVR Setup
+#                           puts the package in CookedPCConsole with its PCConsoleTOC.bin entry. -NoCockpit leaves it out.
 #
-#   tools\package-release.ps1 [-Version 0.1.0] [-NoBuild] [-Zip] [-LexSdkPermission]
+#   tools\package-release.ps1 [-Version 0.1.0] [-NoBuild] [-Zip] [-LexSdkPermission] [-CockpitPackage <pcc>] [-NoCockpit]
 #
 # LExSDKv2 has no licence: the release build (build-mono, MEVR_LE1_LESDK=OFF since 2026-10-26) doesn't link it. The
 # script refuses to package an ASI that does link it, unless -LexSdkPermission says its author agreed. Texture packs are
@@ -23,7 +26,9 @@ param(
     [string]$Version = '0.1.0',
     [switch]$NoBuild,
     [switch]$Zip,
-    [switch]$LexSdkPermission
+    [switch]$LexSdkPermission,
+    [string]$CockpitPackage = '',
+    [switch]$NoCockpit
 )
 
 $ErrorActionPreference = 'Stop'
@@ -88,6 +93,18 @@ Copy-Item (Join-Path $out 'LE1MEVR.asi') $payload
 Copy-Item (Join-Path $out 'bink2w64.dll') $payload
 Copy-Item -Recurse (Join-Path $repo 'third_party\fonts') (Join-Path $payload 'fonts')
 Copy-Item -Recurse (Join-Path $repo 'assets\menu') (Join-Path $payload 'menu')
+if (-not $NoCockpit) {
+    if (-not $CockpitPackage) { $CockpitPackage = Join-Path $repo 'build\cockpit-hull\BIOG_MEVR_Cockpit.pcc' }
+    if (-not (Test-Path $CockpitPackage)) {
+        throw "No cockpit package at $CockpitPackage (tools/cockpit/package build, research/48): pass -CockpitPackage, or -NoCockpit"
+    }
+    $cockpitDir = Join-Path $payload 'cockpit'
+    New-Item -ItemType Directory -Force $cockpitDir | Out-Null
+    Copy-Item $CockpitPackage (Join-Path $cockpitDir 'BIOG_MEVR_Cockpit.pcc')
+    python (Join-Path $repo 'tools\cockpit\place.py') --script (Join-Path $cockpitDir 'cockpit.txt')
+    if ($LASTEXITCODE -ne 0) { throw 'place.py --script failed (it reads the hull manifest under concept/assets)' }
+    Write-Output ("Cockpit: {0} ({1:N1} MB)" -f $CockpitPackage, ((Get-Item $CockpitPackage).Length / 1MB))
+}
 $readme = Get-Content -Raw (Join-Path $repo 'docs\release-readme.md')
 $readme = $readme.Replace('<version>', $Version)
 [IO.File]::WriteAllText((Join-Path $dist 'README.md'), $readme)

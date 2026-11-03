@@ -17,7 +17,8 @@ namespace mevr::install {
 
 // What the release ships next to MEVR-Setup.exe (tools/package-release.ps1): payload\LE1MEVR.asi (the monolithic
 // build), payload\bink2w64.dll (our loader, src/loader), payload\fonts\*, payload\menu\* (the in-game menu's
-// documents and the setup's own).
+// documents and the setup's own), and optionally payload\cockpit\ (the Mako's cockpit: BIOG_MEVR_Cockpit.pcc and cockpit.txt;
+// research/47): the package goes in CookedPCConsole with its entry in PCConsoleTOC.bin, the script in ASI\cockpit.
 struct Payload {
     std::filesystem::path dir;
     bool Valid() const;
@@ -25,6 +26,9 @@ struct Payload {
     std::filesystem::path Loader() const { return dir / L"bink2w64.dll"; }
     std::filesystem::path Fonts() const { return dir / L"fonts"; }
     std::filesystem::path Menu() const { return dir / L"menu"; }
+    std::filesystem::path CockpitPackage() const { return dir / L"cockpit" / L"BIOG_MEVR_Cockpit.pcc"; }
+    std::filesystem::path CockpitScript() const { return dir / L"cockpit" / L"cockpit.txt"; }
+    bool HasCockpit() const;
 };
 // `exeDir`\payload, or `exeDir` itself if it holds the files. nullopt when neither does (the copy installed in the
 // game's ASI folder has no payload: it can uninstall and add packs, not install or repair).

@@ -672,6 +672,8 @@ add_library(mevr-install STATIC
     src/install/Report.cpp
     src/install/Report.hpp
     src/install/ReportMarks.hpp
+    src/install/Toc.cpp
+    src/install/Toc.hpp
     src/install/Updates.cpp
     src/install/Updates.hpp
     src/install/Zip.cpp

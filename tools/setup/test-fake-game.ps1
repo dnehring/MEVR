@@ -3,7 +3,8 @@
 #
 # Builds scratch\fakegame\Mass Effect Legendary Edition with a stand-in MassEffect1.exe (the real version number,
 # tools/setup/FakeGame), a copy of RAD's bink2w64 DLL (the real game's bink2w64_original.dll, read only, or -BinkDll)
-# as bink2w64.dll, and small GamerSettings.ini / BIOEngine.ini files; then runs status, install, a tamper + repair,
+# as bink2w64.dll, a copy of the game's PCConsoleTOC.bin (the one before the cockpit's test install, if kept, else the
+# game's), and small GamerSettings.ini / BIOEngine.ini files; then runs status, install, a tamper + repair,
 # restore and apply of the game settings, and uninstall, and checks the folder is byte for byte what it was.
 #
 #   tools\setup\test-fake-game.ps1 [-Build build] [-Payload <folder>] [-BinkDll <path>]
@@ -60,13 +61,25 @@ if (-not $Payload) {
     Copy-Item (Join-Path $Build 'Release\bink2w64.dll') $Payload
     Copy-Item -Recurse (Join-Path $repo 'third_party\fonts') (Join-Path $Payload 'fonts')
     Copy-Item -Recurse (Join-Path $repo 'assets\menu') (Join-Path $Payload 'menu')
+    # The Mako's cockpit (research/47), when its package is built: into CookedPCConsole with a TOC entry.
+    $cockpitPackage = Join-Path $repo 'build\cockpit-hull\BIOG_MEVR_Cockpit.pcc'
+    if (Test-Path $cockpitPackage) {
+        New-Item -ItemType Directory -Force (Join-Path $Payload 'cockpit') | Out-Null
+        Copy-Item $cockpitPackage (Join-Path $Payload 'cockpit')
+        python (Join-Path $repo 'tools\cockpit\place.py') --script (Join-Path $Payload 'cockpit\cockpit.txt') | Out-Null
+    }
 }
+$withCockpit = Test-Path (Join-Path $Payload 'cockpit\BIOG_MEVR_Cockpit.pcc')
 
 # The fake game.
 Remove-Item -Recurse -Force (Join-Path $scratch 'fakegame') -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $win64, $config | Out-Null
 Copy-Item $fakeExe $win64
 Copy-Item $BinkDll (Join-Path $win64 'bink2w64.dll')
+$gameToc = Join-Path $env:LOCALAPPDATA 'MEVR\cockpit-install\PCConsoleTOC.bin.original'
+if (-not (Test-Path $gameToc)) { $gameToc = Join-Path (Split-Path (Split-Path $BinkDll)) '..\BioGame\PCConsoleTOC.bin' }
+$toc = Join-Path $root 'Game\ME1\BioGame\PCConsoleTOC.bin'
+Copy-Item $gameToc $toc
 $gamer = "[SystemSettings]`r`nFullscreen=True`r`nResX=2560`r`nResY=1440`r`nUseVSync=True`r`nMotionBlur=True`r`nFilmGrain=True`r`nDynamicShadows=True`r`n`r`n[HDR]`r`nDesiredRange=DynamicRange_HDR`r`n"
 [IO.File]::WriteAllText((Join-Path $config 'GamerSettings.ini'), $gamer)
 [IO.File]::WriteAllText((Join-Path $config 'BIOEngine.ini'), "[Engine.GameEngine]`r`nSmoothFrameRate=TRUE`r`nMaxSmoothedFrameRate=62`r`n")
@@ -89,6 +102,12 @@ Check ($melevr -match '(?m)^menuKey = 220' -and $melevr -match '(?m)^sfr2ResX = 
 $g = Get-Content -Raw (Join-Path $config 'GamerSettings.ini')
 Check ($g -match '(?m)^ResX=3072' -and $g -match '(?m)^ResY=3188' -and $g -match '(?m)^BorderlessWindow=True' -and $g -match '(?m)^UseVSync=False' -and $g -match 'DynamicRange_SDR') 'GamerSettings.ini: the VR values'
 Check ((Get-Content -Raw (Join-Path $config 'BIOEngine.ini')) -match 'SmoothFrameRate=FALSE') 'BIOEngine.ini: no 60 fps cap'
+if ($withCockpit) {
+    Check (Test-Path (Join-Path $root 'Game\ME1\BioGame\CookedPCConsole\BIOG_MEVR_Cockpit.pcc')) 'the cockpit''s package'
+    Check (Test-Path (Join-Path $win64 'ASI\cockpit\cockpit.txt')) 'the cockpit''s script'
+    $tocInstalled = (Get-FileHash $toc).Hash
+    Check ($tocInstalled -ne (Get-FileHash $gameToc).Hash -and (Get-Item $toc).Length -eq (Get-Item $gameToc).Length + 76) 'PCConsoleTOC.bin: one entry more'
+}
 
 # The player tunes Halcyon in game (a value we never touch): it must survive everything below.
 $melevr = $melevr -replace '(?m)^sfr2HalfEyeUU = .*$', 'sfr2HalfEyeUU = 2.9'
@@ -98,7 +117,9 @@ if ($melevr -notmatch 'sfr2HalfEyeUU') { $melevr = $melevr -replace '\[profile:D
 # Steam's "verify files" puts RAD's DLL back, and a menu file goes missing: Repair.
 Copy-Item $BinkDll (Join-Path $win64 'bink2w64.dll') -Force
 Remove-Item (Join-Path $win64 'ASI\menu\main.rcss')
+if ($withCockpit) { Copy-Item $gameToc $toc -Force }
 Check ((Run-Setup @('--repair')) -eq 0) 'repair'
+if ($withCockpit) { Check ((Get-FileHash $toc).Hash -eq $tocInstalled) 'repair: the cockpit''s TOC entry back' }
 Check ((Get-Item (Join-Path $win64 'bink2w64.dll')).VersionInfo.ProductName -eq 'MEVR ASI loader') 'repair: our loader back'
 Check (Test-Path (Join-Path $win64 'ASI\menu\main.rcss')) 'repair: the menu file back'
 Check ((Get-Content -Raw (Join-Path $win64 'ASI\MELEVR.ini')) -match 'sfr2HalfEyeUU = 2\.9') 'repair: the player''s Halcyon value kept'

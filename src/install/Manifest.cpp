@@ -2,10 +2,12 @@
 #include "install/Manifest.hpp"
 
 #include "install/Detect.hpp"
+#include "install/Toc.hpp"
 
 #include <Windows.h>
 #include <bcrypt.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <ctime>
@@ -217,6 +219,19 @@ json::Value Manifest::ToJson() const {
         if (!f.edits.empty()) {
             e["edits"] = EditsToJson(f.edits);
         }
+        if (!f.toc.empty()) {
+            json::Value toc = json::Value::Array();
+            for (TocEdit const& t : f.toc) {
+                json::Value te = json::Value::Object();
+                te["name"] = t.name;
+                if (t.before) {
+                    te["before"] = static_cast<double>(*t.before);
+                }
+                te["after"] = static_cast<double>(t.after);
+                toc.Push(std::move(te));
+            }
+            e["toc"] = std::move(toc);
+        }
         fileArray.Push(std::move(e));
     }
     v["files"] = std::move(fileArray);
@@ -268,6 +283,17 @@ std::optional<Manifest> Manifest::FromJson(json::Value const& v) {
             edit.after = ed.String("after");
             edit.occurrence = static_cast<int>(ed.Number("occurrence", 0));
             f.edits.push_back(std::move(edit));
+        }
+        for (json::Value const& te : e.Get("toc").Items()) {
+            TocEdit t;
+            t.name = te.String("name");
+            if (te.Get("before").GetKind() == json::Value::Kind::Number) {
+                t.before = static_cast<std::uint32_t>(te.Number("before", 0));
+            }
+            t.after = static_cast<std::uint32_t>(te.Number("after", 0));
+            if (!t.name.empty()) {
+                f.toc.push_back(std::move(t));
+            }
         }
         if (f.path.empty() || f.action.empty()) {
             return std::nullopt;
@@ -501,6 +527,44 @@ bool Transaction::EditIni(std::string_view relative, std::function<std::string(s
     return Save();
 }
 
+bool Transaction::SetTocEntry(std::string_view relative, std::string_view name, std::uint32_t size) {
+    fs::path const target = layout_.Full(relative);
+    auto const bytes = ReadFile(target);
+    auto file = bytes ? toc::Parse(*bytes) : std::nullopt;
+    if (!file) {
+        Fail(std::string(relative) + " is missing or not a TOC: verify the game's files in Steam or the EA app");
+        return false;
+    }
+    if (!toc::Consistent(*file)) {
+        Fail(std::string(relative) + " isn't laid out as this setup expects: left as it is (the cockpit won't load)");
+        return false;
+    }
+    std::optional<std::uint32_t> const before = toc::Set(*file, name, size);
+    if (before && *before == size) {
+        Note(std::string(name) + " is already in " + std::string(relative));
+    } else if (!WriteFileAtomic(target, toc::Serialize(*file))) {
+        Fail("couldn't write " + std::string(relative) + WriteFailureHint(target));
+        return false;
+    } else {
+        Note((before ? "updated " : "added ") + std::string(name) + " in " + std::string(relative));
+    }
+    FileEntry* entry = manifest_.Find(relative);
+    if (entry == nullptr) {
+        FileEntry fresh;
+        fresh.path = std::string(relative);
+        fresh.action = "toc";
+        manifest_.files.push_back(fresh);
+        entry = &manifest_.files.back();
+    }
+    auto const it = std::find_if(entry->toc.begin(), entry->toc.end(), [&](TocEdit const& t) { return t.name == name; });
+    if (it == entry->toc.end()) {
+        entry->toc.push_back(TocEdit{std::string(name), before, size});  // the first `before` is the game's own
+    } else {
+        it->after = size;
+    }
+    return Save();
+}
+
 bool Transaction::RevertIni(std::string_view relative) {
     FileEntry* entry = manifest_.Find(relative);
     if (entry == nullptr || entry->action != "edited") {
@@ -631,6 +695,26 @@ bool Transaction::Uninstall(bool keepUserData) {
                     continue;
                 }
             }
+        } else if (f.action == "toc") {
+            auto const bytes = ReadFile(target);
+            auto file = bytes ? toc::Parse(*bytes) : std::nullopt;
+            if (!file) {
+                Note(f.path + " is missing or unreadable: no entries to take out");
+            } else {
+                for (TocEdit const& t : f.toc) {
+                    if (t.before) {
+                        toc::Set(*file, t.name, *t.before);
+                    } else {
+                        toc::Remove(*file, t.name);
+                    }
+                }
+                if (!WriteFileAtomic(target, toc::Serialize(*file))) {
+                    Fail("couldn't take our entries out of " + f.path);
+                    ok = false;
+                    continue;
+                }
+                Note("took our entries out of " + f.path);
+            }
         } else if (f.action == "edited") {
             if (auto const text = ReadFile(target)) {
                 std::string const reverted = ini::Revert(*text, f.edits);
@@ -679,6 +763,15 @@ std::vector<std::string> Transaction::Verify() const {
             // The game's own Bink DLL behind our loader; a file moved aside (Halcyon's upstream DLLs) isn't needed.
             if (f.path == paths::kBinkOriginal && !fs::exists(target, ec)) {
                 bad.push_back(f.path);
+            }
+        } else if (f.action == "toc") {
+            auto const bytes = ReadFile(target);
+            auto const file = bytes ? toc::Parse(*bytes) : std::nullopt;
+            for (TocEdit const& t : f.toc) {
+                if (!file || toc::Find(*file, t.name) != std::optional<std::uint32_t>(t.after)) {
+                    bad.push_back(f.path);
+                    break;
+                }
             }
         } else if ((f.action == "added" || f.action == "replaced") && !f.userData && !f.sha256.empty()) {
             if (Sha256File(target) != f.sha256) {
