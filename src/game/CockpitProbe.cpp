@@ -286,6 +286,7 @@ struct AimScreen {
 AimScreen gAim;
 void ClearAim(char const* why);
 void HideFromCaptures();
+std::string MapName(ue3::Object* controller);
 ue3::Object* gLoadedMesh = nullptr;  // what `load` last returned; nothing holds it: checked alive before use
 std::string gLastError = "none";
 bool gLoggedMoveFailure = false;
@@ -1038,6 +1039,107 @@ std::string DoParts(std::string const& what) {
             p.offsetM.z, p.yawDeg, p.metersPerUnit, gState.part && gState.actor == p.actor ? " (the screen)" : "");
     }
     return out;
+}
+
+// `loaded <Package.Object> ...`: whether each object is in memory now, without loading anything (research/48 section 25: what
+// a package may import under RequireImportsAlreadyLoaded).
+std::string DoLoaded(std::istringstream& words) {
+    std::vector<std::pair<std::string, ue3::Object*>> wanted;
+    for (std::string word; words >> word;) {
+        wanted.emplace_back(Lower(word), nullptr);
+    }
+    if (wanted.empty()) {
+        return "usage: mevr cockpit loaded <Package.Object> [...]";
+    }
+    std::int32_t const count = R().ObjectCount();
+    for (std::int32_t i = 0; i < count; ++i) {
+        ue3::Object* const object = R().ObjectAt(i);
+        if (object == nullptr) {
+            continue;
+        }
+        std::string const name = Lower(R().NameText(object));
+        for (auto& [path, found] : wanted) {
+            if (found == nullptr && path.size() > name.size() && path.ends_with(name) && path[path.size() - name.size() - 1] == '.' &&
+                Lower(R().PathName(object)) == path) {
+                found = object;
+            }
+        }
+    }
+    std::string out = std::format("in {}:", MapName(player::Controller()));
+    for (auto const& [path, found] : wanted) {
+        out += std::format("\n  {}: {}", path, found != nullptr ? std::format("loaded ({})", ue3::runtime::FullName(found)) : std::string("not loaded"));
+    }
+    log::Info("cockpit probe: {}", out);
+    return out;
+}
+
+// `variant lit|glow|base`: each part's elements to the package's `<instance>_Lit_MIC` or `_Glow_MIC` (research/48 section 25), or
+// back to the plain `<instance>_MIC`; an element without that variant keeps what it shows, and our own instances (the screens',
+// the aim's) are left alone.
+std::string DoVariant(std::string const& which) {
+    std::string const suffix = which == "lit" ? "_lit_mic" : which == "glow" ? "_glow_mic" : which == "base" ? "_mic" : "";
+    if (suffix.empty()) {
+        return "usage: mevr cockpit variant lit|glow|base";
+    }
+    if (auto const missing = MissingFunction({&gGetMaterial, &gSetMaterial, &gGetNumElements})) {
+        return Refuse(*missing);
+    }
+    int swapped = 0;
+    int kept = 0;
+    std::string swaps;
+    for (Part const& part : gParts) {
+        if (!PartAlive(part)) {
+            continue;
+        }
+        ue3::Params count = ParamsOf(gGetNumElements);
+        Call(part.component, gGetNumElements, count);
+        int const elements = count.Return<std::int32_t>().value_or(0);
+        bool changed = false;
+        for (int i = 0; i < elements; ++i) {
+            ue3::Params get = ParamsOf(gGetMaterial);
+            get.Set("ElementIndex", i);
+            Call(part.component, gGetMaterial, get);
+            std::string const path = R().PathName(get.Return<ue3::Object*>().value_or(nullptr));
+            std::string base = Lower(path);
+            if (!base.starts_with("biog_mevr_cockpit.")) {
+                ++kept;
+                continue;
+            }
+            for (std::string_view const variant : {std::string_view("_lit_mic"), std::string_view("_glow_mic")}) {
+                if (base.ends_with(variant)) {
+                    base = base.substr(0, base.size() - variant.size()) + "_mic";
+                }
+            }
+            if (!base.ends_with("_mic")) {
+                ++kept;
+                continue;
+            }
+            std::string const target = base.substr(0, base.size() - 4) + suffix;
+            if (target == Lower(path)) {
+                continue;
+            }
+            ue3::Object* const material = LoadObject(target, gMic.Get());
+            if (!ue3::IsA(material, gMaterialInstance)) {
+                ++kept;
+                continue;
+            }
+            ue3::Params set = ParamsOf(gSetMaterial);
+            set.Set("ElementIndex", i);
+            set.Set("Material", material);
+            Call(part.component, gSetMaterial, set);
+            ++swapped;
+            changed = true;
+            if (swaps.size() < 1500) {
+                swaps += std::format("\n  {} [{}] -> {}", R().NameText(part.mesh), i, R().PathName(material));
+            }
+        }
+        if (changed) {
+            FlushActor(part.actor, false);
+        }
+    }
+    std::string const report = std::format("variant {}: {} element{} swapped, {} kept{}", which, swapped, swapped == 1 ? "" : "s", kept, swaps);
+    log::Info("cockpit probe: {}", report);
+    return report;
 }
 
 // `screenpart <Package.Object>`: the screen goes on that part (the hull's console) instead of a mesh of its own; it stays where the
@@ -1995,7 +2097,7 @@ std::string Rest(std::istringstream& words) {
 }
 
 constexpr char const* kUsage =
-    "mevr cockpit: load <Package.Object> [class] | mesh [name or Package.Object] | part <Package.Object> RIGHT FORWARD UP YAW M_PER_UNIT | parts [clear|sweep] | screenpart <Package.Object> | aimscreen [W H] [fov DEG] | aimreticle [DEG] | capturehide [0|1|2|3] | anchor | list [filter] | classes | spawnclass [name] | screen [W H] [float|rgba8] [linear] | materials [filter] | material [name] | param [name] | "
+    "mevr cockpit: load <Package.Object> [class] | mesh [name or Package.Object] | part <Package.Object> RIGHT FORWARD UP YAW M_PER_UNIT | parts [clear|sweep] | screenpart <Package.Object> | variant lit|glow|base | loaded <Package.Object> ... | aimscreen [W H] [fov DEG] | aimreticle [DEG] | capturehide [0|1|2|3] | anchor | list [filter] | classes | spawnclass [name] | screen [W H] [float|rgba8] [linear] | materials [filter] | material [name] | param [name] | "
     "texture [Package.Object] | info | element N|all | scale S | dist M | rot P Y R | follow 0|1 | attach | detach | chase BACK UP | rate N | aim 0|1 | post 0|1 | status | clear";
 
 // ---- `texture`, `info`: separating a bad texture from a bad instance from a bad mesh (research/47) -------------------
@@ -2339,6 +2441,12 @@ std::string Command(std::string const& line) {
     }
     if (verb == "screenpart") {
         return DoScreenPart(Rest(words));
+    }
+    if (verb == "variant") {
+        return DoVariant(Rest(words));
+    }
+    if (verb == "loaded") {
+        return DoLoaded(words);
     }
     if (verb == "anchor") {
         if (!SetAnchor()) {

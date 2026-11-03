@@ -630,3 +630,20 @@ and a detail pass (three baked pages on `Hull_Shell`, labels, stripes, handles, 
   `0x140500CB0` (flags, a trace-actor swap) and the world's line check `0x140408E30`; why nothing comes back is open **[verify]**.
   `game/Sights` (shot convergence), `game/Mako` (the turret's aim point) and `game/Throwables` use the same call; none has been seen
   hitting in the game. On a miss the reticle sits at most 50 m out.
+
+## Lit and glowing instances, and what glass may import (2026-11-03 00:45, fake headset, Eden Prime, hull 59ae138)
+
+59ae138 (research/48 section 25): `Hull_Shell` has six elements (three pages, then their lamps' faces), and every element has an
+optional `<instance>_Lit_MIC` over `EngineDebugMaterials.TexturePaint_2Tex_Color` (Phong; the baked image as emissive, a dark diffuse,
+a grey specular) and the lamps and idle side screens a `_Glow_MIC` over `EngineBuildings.ProcBuildingSimpleMaterial` (the image x 3).
+
+- **`loaded <Package.Object> ...`** (probe): whether objects are in memory, without loading. `BIOG_APL_MASTER_MATERIAL.APL__MASTER__Mat`,
+  `BIOG_Humanoid_MASTER_MTR_R.Human.HMF_VSR_MASTER_MAT` and `BIOA_JUG00_T.JUG00_GLASS01` are all loaded at the title (`entrymenu`, as soon
+  as a player exists) and in `BIOA_PRO00`. A Mako level (`BIOA_UNC20`) not checked yet.
+- **`variant lit|glow|base`** (probe): each placed part's elements to the package's variant by name (our own screen instances left alone).
+  `lit` swapped 16 elements, `glow` 5 (on top of lit). Same pose, post on:
+  - **Lit renders** (no default checkerboard) **and looks like the unlit one**: the region means change by under 0.2, 2,825 pixels differ by
+    more than 20 grey levels. No highlights: whatever the parts' light environment gathers inside the cabin barely shows under the dark diffuse.
+  - **Glow brightens the lamps** (their brightest 1%: RGB 155, 122, 110 -> 227, 210, 213) with no visible bloom halo.
+- **This build is darker than b486139 at the same views:** ahead the whole picture's mean grey 56.0 -> 35.1 (the top third, the ceiling,
+  37.2 -> 24.2); over the left shoulder 50.3 -> 28.3. The idle centre screen's opening: RGB 14.8, 10.2, 7.8 (5969f57: 37, 26, 19).
