@@ -50,7 +50,7 @@ from detach_controls import Newest, Sha  # noqa: E402  the packager's rule for w
 # assets folder. The hull's shell isn't here: it is built low and clean, and the packager takes it as it is.
 HULL = "hull reconstruction/assembled/"
 MODELS = [("joystick-base", "detached"), ("joystick-grip", "detached"), ("throtle-control-base", "detached"),
-          ("throtle-control-handle", "detached"), ("chair", "repair"), ("front-cockpit", "repair"),
+          ("throtle-control-handle", "detached"), ("chair", "repair"),
           ("hull-console", HULL + "console.glb"), ("hull-side-left", HULL + "side-left.glb"), ("hull-side-right", HULL + "side-right.glb")]
 # detach_controls.py's moving parts: (base, moving) per asset.
 PAIRS = {"joystick": ("joystick-base", "joystick-grip"), "throtle-control": ("throtle-control-base", "throtle-control-handle")}

@@ -234,6 +234,12 @@ so the new shell follows it. The parts (console, side pane) are placed in it, an
   light strut taken for the windshield's posts was the A-pillar's lower beam (rays from the concept's camera), which the
   concept has light too; a wall lamp stood behind the console's wing from every viewpoint (research/48 section 21).
   Before modelling a feature, cast rays along the wall or from the views that matter to find what is open there.
+- **Lay out a seat and its controls from a seated body, not from inherited anchors** (research/48 section 22). Measure the
+  chair (cushion height, the backrest's front at hip and eye height, the armrests) with rays, then check: the eye's gap to
+  the headrest against the game's near plane (7 to 11 cm let it cut into the backrest in the game); shoulder to grip
+  under an arm's 0.69 m with the elbow bent (0.66 m was an outstretched arm); the knees and heels clear of the console.
+  Publish the eye, hip point and grip points for the game side, which seats Shepard and places the grabs from them, and
+  a moving part's travel, which its grab's travel has to match.
 - **Fit a screen's panel to the opening the eye sees, not to the model's screen faces** (research/48 section 20). Tripo's
   screen runs on under its bezel and folds unevenly, so a rectangle round its faces sat off-centre in the trim (19 and
   37 mm of bare screen either side, in hull units; the user saw it). Rays straight at the screen read the model's own

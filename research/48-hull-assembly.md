@@ -791,36 +791,67 @@ No decimation or packaging until the user approves the modelling.
 - **Not matched:** the concept's lamps and panels on the lower side walls beside its console. Ours there are behind the
   wings, and the rear section carries them instead.
 
+## 22. The seat and the HOTAS for a seated Shepard (the user: the hull replaces the front cockpit; the seat "where it would make sense if sitting in the mako vehicle along with the hotas"; in VR Shepard sits in it, so the hands meet the real models)
+
+- **`Front_Cockpit` is out of the package** (`Build.cs`, `game_ready.py`): the hull replaces it.
+- **What the game showed** (d4d3373, research/47 "The hull of d4d3373 with its live screen"): over either shoulder the
+  chair's backrest filled half the view, dark, with light triangles through it. The eye (Codex's anchor, 0.13 m behind the
+  chair's origin) was 7 to 11 cm from the headrest: inside the game's near plane, which cut into the backrest and showed
+  its inward backing. A head can't be there either.
+- **Laid out for a seated adult in this chair** (the cushion 0.45 m high, the backrest reclined about 30 degrees; the chair
+  keeps Codex's place and size, its front clear of the console):
+  - **the eye** 0.10 m further forward (`EYE_FROM_CHAIR` (0, -0.03, 1.21)): 0.21 m in front of the headrest, hull
+    (0, -0.2, 0.4033);
+  - **the HOTAS on the armrests' front sections**, each base dropped onto the armrest's top (`Furnish`). Codex's stood 0.58
+    m out, beyond the armrests: shoulder to grip 0.66 m, an outstretched arm. Now 0.50 m, the elbows bent just over the
+    armrests (a stick figure solved to the grips, `scratchpad` review renders);
+  - **the floor stands are gone**: nothing stands under the controls now;
+  - **the legs** fit: the knees 0.51 m and the heels 0.63 m ahead of the eye, in the console's foot well (open to 1.0 m ahead
+    of the eye under its middle).
+- **`pilot` in the manifest**, for the game side to seat Shepard and place the grabs:
+  - eye, hip point (H-point), knees, heels and both grip points, in hull units and from the eye in metres (right, up,
+    forward: the mod's `leverOffset`/`stickOffset` convention);
+  - the stick's grip (0.375, -0.415, 0.314) and the throttle's at neutral (-0.362, -0.446, 0.286), against the mod's defaults
+    (±0.20, -0.55, 0.25);
+  - the throttle model's travel either side of neutral, 0.055 m (the mod's `throttleTravelM` is 0.15: the hand would leave
+    the handle), and the stick's twist limit, 45 degrees (the mod's full lock 42);
+  - the eye's distance from the headrest.
+- **The idle screens' fill about 2.5 times brighter.** Eden Prime's grade took the first fill, sRGB (41, 23, 12), to (25, 17,
+  12), against the concept's (39, 26, 23).
+- **The cockpit's outer size** at 3 m per hull unit (the four hull meshes' bounds): 2.96 m wide, 3.4 m long, 2.0 m high,
+  for the game side to hold against the Mako's body.
+- **Result:**
+  - shell 7,944 triangles (8,388 with the stands);
+  - the leak probe (19 eyes) finds no escape; decimated, the joints as in section 18;
+  - package 29.2 MB (34.5 with `Front_Cockpit`), all checks passed;
+  - not yet seen in the game.
+
 ## 5. Not done
 
 (Brought up to date 2026-11-02, after section 21.)
 
 - **What the game side relies on** (keep it, or change both sides together):
   - the package `BIOG_MEVR_Cockpit` and its mesh names: `Hull_Shell`, `Hull_Console`, `Hull_Side_Left`, `Hull_Side_Right`,
-    `Chair`, `Joystick_Base`, `Joystick_Grip`, `Throttle_Base`, `Throttle_Handle` (and `Front_Cockpit`);
+    `Chair`, `Joystick_Base`, `Joystick_Grip`, `Throttle_Base`, `Throttle_Handle` (`Front_Cockpit` is gone, section 22);
   - the frame: hull units times 100, forward on -Y, so a hull mesh takes yaw 90 (`tools/cockpit/place.py`);
   - `Hull_Console`'s material slot 1 is the live screen (`Screen`, UVs 0 to 1, v = 0 at the top), slot 2 the idle
     screens (`Display`). The probe's `element 1` puts the capture there;
   - the manifest's `eye.hull`, `scale.metresPerHullUnit` and each furniture file's `origin`, `turnDeg`, `motion` and
-    `hullUnitsPerModelUnit` (place.py);
+    `hullUnitsPerModelUnit` (place.py); and `pilot` (section 22): where Shepard sits and where the hands grab;
   - the unlit `EmissiveTexturedMaterial`: everything seen is the baked texture, so a moved chair or lamp means baking
     again (the chair's shadow is on the floor).
-- **The game side's last run (research/47, 2026-11-02) used an earlier build.** Not seen in the game since: the screens
-  fitted to their trim (sections 19, 20), the console grown and moved (17, 18), the walls, floor, stands and the parts of
-  section 21. The package has to be installed again (research/47 "What to do", the game closed).
-- **The live screen is now 2.24 times as wide as tall** (manifest `screens.centre`: 0.3605 x 0.161). The probe's capture was
-  sized for the earlier screen, 2.85:1 (`screen 768 270`); at that size the picture shows squeezed sideways. About
-  `screen 768 343` fits now.
-- **In the game, still to do** (the game side): follow the Mako with the cockpit (it stays where it was anchored), reach
-  drivable Mako gameplay at all (no save or level load has yet), the Mako's own mesh and camera against the cockpit
-  [verify], the controls' 3D models under the hands (research/46 draws them as flat quads), and what the cockpit costs
+- **In the game** (the game side): d4d3373 seen there (research/47 "The hull of d4d3373 with its live screen"): the live
+  screen at `screen 768 343` (the screen is 2.24:1) fits its opening. Since then: the seat, the HOTAS and the brighter idle
+  screens (section 22), to install again (research/47 "What to do", the game closed).
+- **Still to do in the game** (the game side): Shepard seated in the chair in the Mako (the user, 2026-11-02: in VR we are
+  the real model, the hands on the real controls) from `pilot`; the grabs at `pilot`'s grip points with the throttle's
+  travel; follow the Mako with the cockpit (it stays where it was anchored); reach drivable Mako gameplay at all (no save
+  or level load has yet); the Mako's own mesh and the chase capture against the cockpit [verify]; what the cockpit costs
   a frame in stereo.
-- **Not decided** (the user's call):
-  - the metric scale: 3 m per hull unit proposed (the cabin 2.5 m wide, the ceiling 1.66 m, the eye 1.21 m over the
-    floor), best judged in the headset;
-  - whether the hull replaces `Front_Cockpit` (then it can leave the package: a 4096 texture, 10.7 MB resident);
-  - the controls' place relative to the hull and the seat (from Codex's anchors for now).
-- **Texture memory:** seven 4096 DXT1 textures, all mips resident (`NeverStream`), about 75 MB. Not measured against the
+- **Not decided** (the user's call): the metric scale, 3 m per hull unit proposed (the cabin 2.5 m wide inside, the
+  ceiling 1.66 m, the eye 1.21 m over the floor). The cockpit must fit inside the Mako's body at it: the Mako's outer size
+  is the game side's to measure.
+- **Texture memory:** six 4096 DXT1 textures, all mips resident (`NeverStream`), about 64 MB. Not measured against the
   frame yet.
 - **The tone:** the concept is darker and warmer; in the game the level's grade changes ours too (section 13). Tune it
   against in-game snapshots, not renders.

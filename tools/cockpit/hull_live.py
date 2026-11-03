@@ -133,7 +133,7 @@ def Make(before, furniture, overrides):
     pbm.free()
     cbm.free()
     screens = H.Screens(pieces["console"], SCRATCH)
-    made, placed, pedestals = H.Furnish(os.path.dirname(FOLDER))
+    made, placed, pilot = H.Furnish(os.path.dirname(FOLDER))
     if not furniture:
         for o in made:
             bpy.data.objects.remove(o)
@@ -142,7 +142,7 @@ def Make(before, furniture, overrides):
     wall = {"floor": [H.PaneFace(pieces["side-right"], y, 0.012) for y in H.FLOOR_STRIPS]}
     pillar = H.PillarEdge(pieces["side-right"])
     cut = {k: H.CutPillar(pieces[k], H.WindowPlane(pillar), mirrored=k == "side-left") for k in ("side-left", "side-right")}
-    shell, windows, lights, dims = H.Shell(pillar, (opening, rim), pedestals, wall,
+    shell, windows, lights, dims = H.Shell(pillar, (opening, rim), wall,
                                            {"desk": H.DeskShelf(pieces["console"]), "screen": screens["centre"],
                                             "bezel": H.Bezel(pieces["console"], screens["centre"]),
                                             "column": H.Column(pieces["console"], screens["centre"])})
@@ -185,7 +185,7 @@ def Make(before, furniture, overrides):
         o.name = "LIVE_" + o.name.split(".")[0]
     tris = {o.name: sum(len(p.vertices) - 2 for p in o.data.polygons) for o in keep}
     return {"objects": sorted(o.name for o in keep), "triangles": tris, "paneCut": cut,
-            "dims": {k: v for k, v in dims.items() if k != "paneWindow"}, "lights": len(lights)}
+            "dims": {k: v for k, v in dims.items() if k != "paneWindow"}, "lights": len(lights), "pilot": pilot}
 
 
 def Overlay(camname, tag, hide=("chair", "joystick", "throtle"), only=None):

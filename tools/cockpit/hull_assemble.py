@@ -201,21 +201,26 @@ TINTS = {"PLATE": 1.3, "DARK": 1.5, "LIGHT": 2.2, "RED": 0.55, "SEAM": 0.6, "MET
 SLAB = 0.02  # the shell's thickness
 SEAM = 0.012  # how deep the floor's seams go: the base under the plates, where the walls start
 # The scale and the furniture (proposed 2026-11-02, the user to confirm the scale): 3 m per hull unit makes the cabin 2.5 m
-# wide between the panes, the ceiling 1.66 m high and the console's ledge 0.9 m. The chair and the controls keep Codex's
-# arrangement (concept/assets/cockpit/finish_20261031_v001: RuntimeBindings.json and Cockpit_Preview.glb's nodes), in
-# metres from the chair's origin, each turned about z as Codex turned it; the chair stands with its front clear of the
-# console.
+# wide between the panes, the ceiling 1.66 m high and the console's ledge 0.9 m. The chair, the throttle and the stick are
+# the Mako driver's seat with a HOTAS (the user, 2026-11-02: the seat "where it would make sense if sitting in the mako
+# vehicle along with the hotas"; Shepard sits in it in VR, so the hands meet the real models): the chair keeps Codex's
+# place and size (concept/assets/cockpit/finish_20261031_v001), in the middle, its front clear of the console and the legs
+# room under it; the controls on its armrests' front sections, where a forearm on the armrest brings the hand (they stood
+# 0.58 m out, beyond the armrests, at the end of an outstretched arm), each dropped onto the armrest's top (Furnish). Offsets
+# in metres from the chair's origin, each turned about z as Codex turned it (research/48 section 22).
 METRES_PER_UNIT = 3.0
 CHAIR_AT = (0.0, -0.19, 0.0)
 FURNITURE = (  # name, game_ready.py's files, metres per model unit, offset from the chair's origin (metres), turn about z
     ("chair", ("chair",), 1.2206, (0.0, 0.0, 0.0), 90.0),
-    ("throttle", ("throtle-control-base", "throtle-control-handle"), 0.29, (-0.58, 0.25, 0.54), -90.0),
-    ("joystick", ("joystick-base", "joystick-grip"), 0.29, (0.58, 0.25, 0.54), -90.0),
+    ("throttle", ("throtle-control-base", "throtle-control-handle"), 0.29, (-0.363, 0.27, 0.645), -90.0),
+    ("joystick", ("joystick-base", "joystick-grip"), 0.29, (0.375, 0.27, 0.645), -90.0),
 )
-EYE_FROM_CHAIR = (0.0, -0.13, 1.21)  # metres: Codex's ANCHOR_PilotEye
-# A control's pedestal: a column under its base, this share of the base's width and depth either side of its middle (the
-# concept has none; slim, so the console reads as the concept's).
-PEDESTAL = 0.22
+ON_ARMREST = 0.002  # a control's base above the armrest's highest point under it
+# The seated pilot's eye, from the chair's origin: a seated adult with the back against this chair's reclined backrest (the
+# cushion's top 0.48 m, the eye 0.73 m above it; 0.17 m in front of the headrest, the back of a head resting on it). Codex's
+# anchor (0, -0.13, 1.21) put the eye 7 to 11 cm from the headrest: the head inside the backrest, and in the game, looking
+# over a shoulder, the near plane cut into it (the game side, 2026-11-02).
+EYE_FROM_CHAIR = (0.0, -0.03, 1.21)
 # the pilot's eye: the previews and the enclosure rays look from it
 EYE = tuple(round(c + e / METRES_PER_UNIT, 4) for c, e in zip(CHAIR_AT, EYE_FROM_CHAIR))
 VIEW = ((0.0, -0.52, 0.25), 13.0)  # the concept image's viewpoint (eye, lens mm), matched by eye
@@ -694,21 +699,36 @@ def Screens(console, folder):
 
 
 def Furnish(assets):
-    """The chair and the controls from game_ready.py's files, placed (FURNITURE). Returns the objects; each file's place
-    for the mod (its origin, the moving parts' pivot, in hull coordinates, the turn, the scale, a moving part's axis);
-    and a pedestal under each control: (x, y, half width, half depth, top)."""
+    """The chair and the controls from game_ready.py's files, placed (FURNITURE), each control's base dropped onto the
+    chair's armrest (its highest point under the base, ON_ARMREST above it). Returns the objects; each file's place for
+    the mod (its origin, the moving parts' pivot, in hull coordinates, the turn, the scale, a moving part's axis); and the
+    seated pilot (Pilot)."""
     detached = json.load(open(os.path.join(assets, "detached", "manifest.json"), encoding="utf-8"))
-    objects, placed, pedestals = [], {}, []
+    objects, placed, parts = [], {}, {}
+    chair = None
     for name, files, metres, offset, turn in FURNITURE:
         scale = metres / METRES_PER_UNIT
         rotation = Matrix.Rotation(math.radians(turn), 4, "Z")
         at = Matrix.Translation(Vector(CHAIR_AT) + Vector(offset) / METRES_PER_UNIT) @ rotation @ Matrix.Scale(scale, 4)
-        for i, file in enumerate(files):
+        mine = []
+        for file in files:
             before = set(bpy.data.objects)
             bpy.ops.import_scene.gltf(filepath=os.path.join(assets, "game-ready", file + ".glb"))
             o = next(x for x in bpy.data.objects if x not in before and x.type == "MESH")
             o.matrix_world = at @ o.matrix_world
             o.name = file
+            mine.append(o)
+        if name == "chair":
+            chair = np.array([(mine[0].matrix_world @ v.co)[:] for v in mine[0].data.vertices])
+        else:  # on the armrest: the base's footprint, the chair's highest point under it
+            base = np.array([(mine[0].matrix_world @ v.co)[:] for v in mine[0].data.vertices])
+            lo, hi = base.min(0), base.max(0)
+            under = chair[(chair[:, 0] >= lo[0]) & (chair[:, 0] <= hi[0]) & (chair[:, 1] >= lo[1]) & (chair[:, 1] <= hi[1])]
+            lift = Matrix.Translation((0.0, 0.0, float(under[:, 2].max()) + ON_ARMREST / METRES_PER_UNIT - float(lo[2])))
+            for o in mine:
+                o.matrix_world = lift @ o.matrix_world
+        parts[name] = mine
+        for i, (file, o) in enumerate(zip(files, mine)):
             objects.append(o)
             entry = {"origin": [round(c, 5) for c in o.matrix_world.translation], "turnDeg": turn,
                      "hullUnitsPerModelUnit": round(scale, 5)}
@@ -718,12 +738,54 @@ def Furnish(assets):
                 entry["motion"] = {**{k: v for k, v in detached[asset]["motion"].items() if k not in ("axis", "ringCentre", "clashes")},
                                    "axis": [round(c, 5) for c in axis], "unitsAreModel": True}
             placed[file] = entry
-            if len(files) > 1 and i == 0:
-                co = np.array([(o.matrix_world @ v.co)[:] for v in o.data.vertices])
-                lo, hi = co.min(0), co.max(0)
-                pedestals.append((float(lo[0] + hi[0]) / 2, float(lo[1] + hi[1]) / 2, float(hi[0] - lo[0]) * PEDESTAL,
-                                  float(hi[1] - lo[1]) * PEDESTAL, float(lo[2]) + 0.003))
-    return objects, placed, pedestals
+    return objects, placed, Pilot(parts, placed)
+
+
+def Pilot(parts, placed):
+    """The seated pilot the furniture is laid out for, for the game side (Shepard seated, the VR head at the eye, the hands
+    on the controls): in hull units, and from the eye in metres along the seat's right, up and forward (the mod's
+    `leverOffset`/`stickOffset` convention). The hip point (H-point) 0.13 m in front of the backrest at 0.12 m above the
+    cushion's top, 0.07 m above it; knees and heels of a seated adult (thigh 0.45 m, shin 0.45 m); each hand's grip
+    point: the stick's grip at 40% of its height, the throttle's handle at neutral; how far the eye is from the headrest
+    and the throttle's travel either side of neutral."""
+    M = METRES_PER_UNIT
+    chair = parts["chair"][0]
+    bm = bmesh.new()
+    bm.from_mesh(chair.data)
+    bm.transform(chair.matrix_world)
+    tree = BVHTree.FromBMesh(bm)
+    bm.free()
+    eye = Vector(EYE)
+    seat = tree.ray_cast(Vector((0.0, eye.y + 0.15 / M, 1.0)), Vector((0, 0, -1)))[0]
+    back = lambda z: tree.ray_cast(Vector((0.0, 0.5, z)), Vector((0, -1, 0)))[0].y
+    hip = Vector((0.0, back(seat.z + 0.12 / M) + 0.13 / M, seat.z + 0.07 / M))
+    knee_y, knee_z = hip.y + 0.43 / M, hip.z - 0.02 / M
+    points = {"eye": eye, "hPoint": hip}
+    for side, x in (("Left", -0.11 / M), ("Right", 0.11 / M)):
+        points["knee" + side] = Vector((x, knee_y, knee_z))
+        points["heel" + side] = Vector((x, knee_y + 0.12 / M, 0.0))
+    stick = parts["joystick"][1]
+    grip = np.array([(stick.matrix_world @ v.co)[:] for v in stick.data.vertices])
+    lo, hi = grip.min(0), grip.max(0)
+    points["stickGrip"] = Vector(((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, lo[2] + 0.4 * (hi[2] - lo[2])))
+    handle = parts["throttle"][1]
+    motion = placed["throtle-control-handle"]["motion"]
+    h = np.array([(handle.matrix_world @ v.co)[:] for v in handle.data.vertices])
+    lo, hi = h.min(0), h.max(0)
+    unit = placed["throtle-control-handle"]["hullUnitsPerModelUnit"]
+    axis = Vector(motion["axis"])
+    points["throttleGrip"] = Vector(((lo + hi) / 2).tolist()) + axis * motion["neutral"] * unit
+    out = {"hull": {k: [round(c, 4) for c in p] for k, p in points.items()},
+           "fromEyeMetres": {k: [round((p - eye).x * M, 3), round((p - eye).z * M, 3), round((p - eye).y * M, 3)]
+                             for k, p in points.items() if k != "eye"},
+           "convention": "fromEyeMetres: right, up, forward from the eye, as the mod's [Mako] leverOffset/stickOffset",
+           "eyeToHeadrestMetres": round((eye.y - back(eye.z)) * M, 3),
+           "seatTopMetres": round(seat.z * M, 3),
+           "throttleTravelMetres": {"forward": round((motion["neutral"] - motion["min"]) * unit * M, 3),
+                                    "back": round((motion["max"] - motion["neutral"]) * unit * M, 3),
+                                    "forwardIsHull": [round(-c, 4) for c in axis]},
+           "stickTwistLimitDeg": placed["joystick-grip"]["motion"]["limitDeg"]}
+    return out
 
 
 def Hull2(points):
@@ -884,27 +946,6 @@ def SideWall(b, y0, y1):
     Slab(b, [(face, y0 + m, ledge1 + 0.012), (face, y1 - m, ledge1 + 0.012), (face, y1 - m, ZH - 0.012), (face, y0 + m, ZH - 0.012)],
          -X, 0.014, inset=(0.008, 0.005, 0.012))
     Grille(b, (face + 0.005, mid + 0.04, 0.4), Y, Z, -X, 0.04, 0.03, 6)
-
-
-def Stand(b, x, y, hx, hy, top):
-    """A control's stand, made as the console's legs are (the concept has no free posts; the user, 2026-11-02, wants the
-    controls): a base plate bolted to the floor, a chamfered column hx by hy either side of (x, y) with a groove down its
-    front and back, and a mounting head under the control's base at `top`."""
-    Z = Vector((0, 0, 1))
-    c, w, d, plate, head = 0.004, hx * 0.35, 0.003, 0.012, 0.006
-    rect = lambda ax, ay: [(x - ax, y - ay), (x + ax, y - ay), (x + ax, y + ay), (x - ax, y + ay)]
-    Plate(b, Corners(rect(hx + plate, hy + plate), 0.006), 0.005, 0.0015, 0.006, top="DARK", edge="LIGHT")
-    for px, py in rect(hx + plate - 0.006, hy + plate - 0.006):
-        Pipe(b, [Vector((px, py, 0.005)), Vector((px, py, 0.007))], 0.0022, Vector((1, 0, 0)), "LIGHT", sides=6)
-    column = [(hx - c, -hy), (hx, -hy + c), (hx, hy - c), (hx - c, hy), (w, hy), (w, hy - d), (-w, hy - d), (-w, hy),
-              (-hx + c, hy), (-hx, hy - c), (-hx, -hy + c), (-hx + c, -hy), (-w, -hy), (-w, -hy + d), (w, -hy + d), (w, -hy)]
-    # dark, light at its chamfers, as the console's legs (light faces made the stands the brightest thing before the
-    # console, where the concept has none)
-    classes = ["LIGHT", "DARK", "LIGHT", "DARK", "SEAM", "SEAM", "SEAM", "DARK", "LIGHT", "DARK", "LIGHT", "DARK", "SEAM", "SEAM",
-               "SEAM", "DARK"]
-    Sweep(b, [Vector((x, y, 0.004)), Vector((x, y, top - 0.008))], Vector((0, 1, 0)), column + column[:1], classes)
-    Plate(b, Corners(rect(hx + head, hy + head), 0.005), top, 0.0015, 0.008, top="DARK", edge="LIGHT")
-    b.Face([Vector((px, py, top - 0.008)) for px, py in reversed(Corners(rect(hx + head, hy + head), 0.005))], "DARK", toward=-Z)
 
 
 def Lamp(b, lights, kind, cls, centre, u, v, n, half_u, half_v, proud=0.003):
@@ -1174,7 +1215,7 @@ def Area(polygon):
     return 0.5 * abs(sum(p[0] * q[1] - q[0] * p[1] for p, q in zip(polygon, polygon[1:] + polygon[:1])))
 
 
-def Shell(pillar, opening, pedestals=(), pane_face=None, console=None):
+def Shell(pillar, opening, pane_face=None, console=None):
     """The template's shell, clean: from the measured constants above and the panes' own frame, symmetric about x = 0.
 
     The frame line (ZH, the panes' top rail) runs along the side walls: the panes' rails, then the shell's own rail with
@@ -1187,8 +1228,7 @@ def Shell(pillar, opening, pedestals=(), pane_face=None, console=None):
     corners line the rest of every opening, the windshield's dark (the concept's slim posts). The
     side walls behind the panes are cut where the panes' windows are (`opening`: the right one and how far out its frame
     reaches) and lined in light. Only those walls go through the boolean: the shell's pieces overlap, and the exact
-    solver drops faces it finds inside another piece. `pedestals` (from Furnish) stand from the floor's base up under
-    the controls. With `pane_face` (the panes' face, PaneFace) the lamps go in too (Lamps); their area lights come back
+    solver drops faces it finds inside another piece. With `pane_face` (the panes' face, PaneFace) the lamps go in too (Lamps); their area lights come back
     with the shell."""
     b, walls = Builder(TRIMS), Builder(TRIMS)
     X, Y, Z = Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))
@@ -1325,9 +1365,6 @@ def Shell(pillar, opening, pedestals=(), pane_face=None, console=None):
     lights = Lamps(b, pane_face, corner, drop) if pane_face else []
     if console:
         Details(b, edge, console["desk"], console["screen"], console["bezel"], console["column"], spine_end)
-    # the controls' stands (Stand)
-    for x, y, hx, hy, height in pedestals:
-        Stand(b, x, y, hx, hy, height)
     bmesh.ops.remove_doubles(b.bm, verts=b.bm.verts, dist=1e-6)
     me = bpy.data.meshes.new("shell")
     b.bm.to_mesh(me)
@@ -1555,14 +1592,14 @@ def Run(folder):
     pieces = {"side-left": Placed("side-left", pane_src, pbm, left), "side-right": Placed("side-right", pane_src, pbm, right, mirrored=True),
               "console": Placed("console", console_src, cbm, console_m)}
     screens = Screens(pieces["console"], out)
-    furniture, placed, pedestals = Furnish(os.path.dirname(folder))
+    furniture, placed, pilot = Furnish(os.path.dirname(folder))
     # the panes' windows are open (their back skin is culled from inside): where, to cut the shell's walls behind them
     right, rim, area = PaneOpening(pieces["side-right"])
     wall = {"floor": [PaneFace(pieces["side-right"], y, 0.012) for y in FLOOR_STRIPS]}
     # the panes' own A-pillars go; the shell's take their place
     pillar = PillarEdge(pieces["side-right"])
     pane_cut = {k: CutPillar(pieces[k], WindowPlane(pillar), mirrored=k == "side-left") for k in ("side-left", "side-right")}
-    shell, windows, lights, dims = Shell(pillar, (right, rim), pedestals, wall,
+    shell, windows, lights, dims = Shell(pillar, (right, rim), wall,
                                          {"desk": DeskShelf(pieces["console"]), "screen": screens["centre"],
                                           "bezel": Bezel(pieces["console"], screens["centre"]),
                                           "column": Column(pieces["console"], screens["centre"])})
@@ -1650,6 +1687,7 @@ def Run(folder):
         "paneCutFaces": pane_cut,
         "scale": {"metresPerHullUnit": METRES_PER_UNIT, "status": "proposed 2026-11-02, the user to confirm"},
         "eye": {"hull": list(EYE), "fromChairMetres": list(EYE_FROM_CHAIR)},
+        "pilot": pilot,
         "furniture": {"note": "each file's origin (a moving part's pivot) in hull coordinates, turned about z, scaled by "
                               "hullUnitsPerModelUnit; motion values in model units", **placed},
         "bake": bake,

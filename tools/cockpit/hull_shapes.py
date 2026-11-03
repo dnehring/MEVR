@@ -510,7 +510,9 @@ def Display(width, height, aspect, bars=(), outline=None):
         bar = np.maximum(ax - aspect * 0.13, np.abs(py - centre) - 0.012)
         light = light + np.where(bar < 0, 1.6, 1.6 * np.exp(-bar / 0.02))
         core = np.maximum(core, Line(np.maximum(bar, 0), 0.006))
-    field = np.array([0.022, 0.0085, 0.0035], np.float32)  # sRGB about (0.16, 0.09, 0.05), the concept's screens' brown
+    # sRGB about (0.25, 0.16, 0.1): the concept's screens' brown (39, 26, 23) once the game's grade has darkened it (Eden
+    # Prime's took the first fill, (41, 23, 12), to (25, 17, 12): the game side, 2026-11-02)
+    field = np.array([0.052, 0.022, 0.011], np.float32)
     hot = np.array([1.0, 0.8, 0.5], np.float32)  # the bars' near-white cores
     return np.clip(field[None, None] * (1 + 1.5 * glow[..., None]) + orange[None, None] * light[..., None]
                    + hot[None, None] * core[..., None], 0, 1)

@@ -53,7 +53,8 @@ internal static class Build
 
     // The object names, the file names they come from, which texture they share, and where the file is: "detached"
     // (detached/<file>.glb), "repair" (Newest below) or a path under the assets folder. The hull's pieces share its origin
-    // (tools/cockpit/hull_assemble.py); the two side panes share one texture.
+    // (tools/cockpit/hull_assemble.py); the two side panes share one texture. The hull replaces the earlier front cockpit
+    // (the user, 2026-11-02), which is no longer packaged.
     private const string Hull = "hull reconstruction/assembled/";
     private static readonly (string File, string Name, string Group, string Source)[] Models =
     {
@@ -62,7 +63,6 @@ internal static class Build
         ("throtle-control-base", "Throttle_Base", "Throttle", "detached"),
         ("throtle-control-handle", "Throttle_Handle", "Throttle", "detached"),
         ("chair", "Chair", "Chair", "repair"),
-        ("front-cockpit", "Front_Cockpit", "Front_Cockpit", "repair"),
         ("hull-shell", "Hull_Shell", "Hull_Shell", Hull + "shell.glb"),
         ("hull-console", "Hull_Console", "Hull_Console", Hull + "console.glb"),
         ("hull-side-left", "Hull_Side_Left", "Hull_Side", Hull + "side-left.glb"),
