@@ -352,7 +352,9 @@ switching frameworks.
   thumbstick turret) at the seat, drawn as two flat quads; the values overwrite `Vehicle.Throttle`/`Steering` in a `BioVehicleBase.SetInputs` post-handler.
   **The stick tilts** (2026-11-03, research/47 "The stick tilts"): the hand's travel from the grab as a tilt; left/right steer, forward/back pitch the
   Mako's rigid body while the jets (`bJumpJetsOn`) or booster fire (`thrusterPitchDeg`); their fuel is partly given back while they fire
-  (`thrusterBurnScale` 0.4: 2.5x as long; LE1's jets have 0.7 s); `stickTwist = 1` is stage 1's twist. `mevr vehicle jets <s>` fires them for tests.
+  (`thrusterBurnScale` 0.4: 2.5x as long; LE1's jets have 0.7 s); `stickTwist = 1` is stage 1's twist. The tilt steers up to `tiltSteerMax` (0.5), the twist adds to it and alone spins the Mako on the spot at
+  zero throttle (`spinRateDeg`; the body's turn axes measured: research/47 "Which way the body turns"); the jump is only the lever's X. `mevr vehicle jets <s>`
+  fires them for tests, `mevr vehicle angvel [body] X Y Z` measures the body's turn.
   **Reaching the Mako without a save** (research/47 "Reaching the Mako"): `tools/mako-start.ps1` (`open BIOA_UNC20`, then `mevr vehicle party`:
   the squad screen's own `FinalizeParty`, after which the level's rover drop makes the Mako the pawn, game mode 1). Never `mevr vehicle enter`
   before the drop. The controls haven't been grabbed in the game yet (the fake headset's controllers aren't tracked).

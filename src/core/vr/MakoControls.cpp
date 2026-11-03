@@ -237,6 +237,7 @@ void Controls::StopAll(Stop stop, Output& out) {
     steer_ = 0.0f;
     twist_ = 0.0f;
     tiltRight_ = tiltForward_ = pitch_ = 0.0f;
+    spin_ = 0.0f;
     leverHeld_ = false;
     stickHeld_ = false;
     leverInDetent_ = true;
@@ -363,10 +364,13 @@ Output Controls::Step(Input const& in, Settings const& settings) {
                 tiltRight_ = Approach(tiltRight_, 0.0f, back);
                 tiltForward_ = Approach(tiltForward_, 0.0f, back);
             }
-            float const target = !stickHeld_            ? 0.0f
-                                 : settings.stickTwist ? SteerFromTwist(twist_, settings)
-                                                       : std::clamp(FromTilt(tiltRight_, settings) + SteerFromTwist(twist_, settings), -1.0f, 1.0f);
-            steer_ = Approach(steer_, target, (stickHeld_ ? kSteerRateHeld : kSteerRateReturn) * dt);
+            // The tilt steers up to tiltSteerMax; the twist adds to it (to full lock, or against it), and alone it spins.
+            float const twistPart = stickHeld_ ? SteerFromTwist(twist_, settings) : 0.0f;
+            float const tiltPart = stickHeld_ && !settings.stickTwist ? FromTilt(tiltRight_, settings) * std::clamp(settings.tiltSteerMax, 0.0f, 1.0f) : 0.0f;
+            float const target = std::clamp(tiltPart + twistPart, -1.0f, 1.0f);
+            float const rate = (stickHeld_ ? kSteerRateHeld : kSteerRateReturn) * dt;
+            steer_ = Approach(steer_, target, rate);
+            spin_ = Approach(spin_, twistPart, rate);
             pitch_ = settings.stickTwist ? 0.0f : FromTilt(tiltForward_, settings, settings.stickPitchDeadZoneDeg);
             if (!stickHeld_) {
                 twist_ = 0.0f;
@@ -394,9 +398,10 @@ Output Controls::Step(Input const& in, Settings const& settings) {
     }
     out.lever = lever_;
     out.throttle = ThrottleFromLever(lever_, settings.throttleDetent);
-    if (stickHeld_ && steer_ != 0.0f && std::abs(out.throttle) < settings.steerInPlaceBelow) {
-        out.throttle = 0.0f;  // turning on the spot
+    if (stickHeld_ && spin_ != 0.0f && std::abs(out.throttle) < settings.steerInPlaceBelow) {
+        out.throttle = 0.0f;  // the twist turning the Mako on the spot
     }
+    out.spin = spin_;
     out.steer = steer_;
     out.twistDeg = twist_;
     out.tiltRightDeg = tiltRight_;

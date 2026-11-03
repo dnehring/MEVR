@@ -1045,3 +1045,11 @@ yaw and roll change 0.25 s later, the Mako in the air on a burst of its jets (`m
 With it: three 2 s jet bursts with the stabiliser held pitch within 1.1 degrees and roll within 10 (it also righted the Mako from 81 degrees
 on its side); the spin (lever at neutral, the stick hard right then left, `make-drive-recording.py --controls --spin`, new) ran at +47 deg/s
 for +48 asked and -47 for -48. Both back on by default.
+
+## Tilt and twist split (2026-11-03, the user)
+
+The tilt and the twist had both fed the steering, summed. The user: the tilt should steer but limited, the twist amplify it, and the
+twist spin the Mako. Now (`core/vr/MakoControls`, unit-tested): the tilt steers up to `[Mako] tiltSteerMax` (0.5) of full lock, the twist
+adds to it (to full lock, or against it back toward centre), and the twist alone is `Output::spin`, which with the lever under
+`steerInPlaceBelow` sends exactly zero throttle and turns the Mako on the spot (`game/MakoControls` `SpinInPlace`). A tilt at standstill
+is the tank's own pivot, so a drifting hand never spins the Mako.

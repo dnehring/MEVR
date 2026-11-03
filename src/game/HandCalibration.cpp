@@ -545,6 +545,7 @@ constexpr char const* kMakoBlock =
     "thrusterRateDeg = 60\n"
     "stickPitchDeadZoneDeg = 8\n"
     "steerInPlaceBelow = 0.2\n"
+    "tiltSteerMax = 0.5\n"
     "spinRateDeg = 60\n";
 
 // Appended to a settings file that has no [Cockpit] yet (and part of a new file).
@@ -1331,6 +1332,9 @@ Mako ReadMako(Ini const& ini) {
     }
     if (Number(ini, "Mako", "stickPitchDeadZoneDeg", value)) {
         c.stickPitchDeadZoneDeg = static_cast<float>(std::clamp(value, 0.0, 30.0));
+    }
+    if (Number(ini, "Mako", "tiltSteerMax", value)) {
+        c.tiltSteerMax = static_cast<float>(std::clamp(value, 0.0, 1.0));
     }
     if (Number(ini, "Mako", "steerInPlaceBelow", value)) {
         c.steerInPlaceBelow = static_cast<float>(std::clamp(value, 0.0, 1.0));
