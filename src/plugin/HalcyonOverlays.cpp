@@ -49,6 +49,7 @@
 #include "plugin/PerfProbe.hpp"
 #include "plugin/RecenterTilt.hpp"
 #include "plugin/SightLayers.hpp"
+#include "plugin/Spectator.hpp"
 #include "plugin/SquadPanel.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/Vignette.hpp"
@@ -1927,6 +1928,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     sightFrame.eyesValid = frame.headValid;
     sightFrame.projectionValid = frame.projectionValid;
     sightFrame.pairArm = frame.pairArm;  // the scope capture's pose for this pair (research/39)
+    mevr::host::spectator::NoteFrame(frame.pairArm, frame.floatWhiteScale);  // and the spectator camera's (research/49)
     for (int e = 0; e < 2; ++e) {
         sightFrame.eyes[e].orientation = ToQuat(frame.eyeOrientation[e]);
         sightFrame.eyes[e].position = ToVec(frame.eyePosition[e]);

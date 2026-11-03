@@ -285,6 +285,41 @@ std::optional<Source> ForFrame(ID3D11Device* device, int weapon, std::uint64_t p
     return out;
 }
 
+ID3D11Texture2D* FindTargetTexture(std::uint64_t resource, unsigned width, unsigned height, sc::TexturePath& hint, D3D11_TEXTURE2D_DESC* desc) {
+    Modules const modules{ImageOf(L"d3d11.dll"), ImageOf(L"d3d11_3SDKLayers.dll"), ImageOf(L"D3D11SDKLayers.dll")};
+    if (modules.d3d11.begin == 0 || resource == 0 || desc == nullptr) {
+        return nullptr;
+    }
+    ID3D11Texture2D* found = nullptr;
+    auto const read = [](std::uint64_t address) -> std::optional<std::uint64_t> {
+        std::uint64_t value = 0;
+        return ReadRaw(address, &value) ? std::optional<std::uint64_t>(value) : std::nullopt;
+    };
+    auto const isTexture = [&](std::uint64_t candidate) {
+        if (ID3D11Texture2D* const t = ProbeRaw(candidate, &modules, width, height, desc)) {
+            if (found != nullptr) {
+                found->Release();
+            }
+            found = t;
+            return true;
+        }
+        return false;
+    };
+    sc::TexturePath const path = sc::FindTexture(resource, read, isTexture, hint);
+    if (!path.Valid() || found == nullptr) {
+        if (found != nullptr) {
+            found->Release();
+        }
+        return nullptr;
+    }
+    hint = path;
+    return found;
+}
+
+bool CaptureViewFormat(DXGI_FORMAT format, DXGI_FORMAT& view, float& decode) {
+    return ViewFormat(format, view, decode);
+}
+
 std::uint64_t ActiveResource() {
     return gActiveResource.load(std::memory_order_relaxed);
 }

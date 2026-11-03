@@ -15,6 +15,7 @@
 #include "plugin/PerfProbe.hpp"
 #include "plugin/RecenterTilt.hpp"
 #include "plugin/SightLayers.hpp"
+#include "plugin/Spectator.hpp"
 
 #include "halcyon/le1/mevr_bridge.h"
 #include "halcyon/le1/vr_menu.h"
@@ -777,7 +778,7 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
         "  \"aimRay\": {{\"valid\": {}, \"origin\": {}, \"direction\": {}, \"ageMs\": {}}},\n"
         "  \"hostView\": {{\"valid\": {}, \"headLook\": {}, \"headAim\": {}, \"lookYawUU\": {}, \"lookPitchUU\": {}, "
         "\"offsetUU\": [{}, {}, {}], \"unitsPerMeter\": {}}},\n  \"recenter\": {},\n  \"sights\": {},\n  \"calibration\": {},\n"
-        "  \"colour\": {},\n  \"stereo\": {},\n  \"mainMenu\": {},\n  \"gamePointer\": {},\n  \"mod\": {},\n"
+        "  \"colour\": {},\n  \"stereo\": {},\n  \"mainMenu\": {},\n  \"gamePointer\": {},\n  \"spectator\": {},\n  \"mod\": {},\n"
         "  \"layers\": [{}\n  ]",
         req::JsonString(trigger), req::JsonString(tag), gFrame, static_cast<long long>(displayTime), UnixMs(), J(gFocused),
         J(MELEVR::Menu::IsOpen()), J(gRecordingActive.load()), replay, head, J(c.active), JHand(c.left), JHand(c.right),
@@ -790,18 +791,19 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
 #else
         std::string("null"),
 #endif
-        game_pointer::StatusJson(), mod, LayersJson(layers));
+        game_pointer::StatusJson(), spectator::StatusJson(), mod, LayersJson(layers));
 }
+
+void LocateQuads(std::vector<LayerShot>& layers, XrSpace reference, XrTime displayTime);
+XrSpace ReferenceOf(std::vector<LayerShot> const& layers);
+
+// The spectator's picture as a snapshot source: a handle no runtime swapchain has.
+XrSwapchain const kSpectatorSwapchain = reinterpret_cast<XrSwapchain>(static_cast<std::uintptr_t>(0x5EC7A7025EC7A70ull));
+bool gSpectatorStaged = false;  // staged in this frame's xrEndFrame (Present thread)
 
 // The capture's last armed frame: what was submitted, where the quads are, the metadata.
 void FinishArming(XrFrameEndInfo const& info, std::vector<LayerShot> layers) {
-    // The eyes' space: the projection layer's (Halcyon's app space); the quads are located in it.
-    XrSpace reference = gAppSpace;
-    for (LayerShot const& l : layers) {
-        if (l.projection) {
-            reference = l.space;
-        }
-    }
+    XrSpace const reference = ReferenceOf(layers);
     auto job = std::make_shared<Job>();
     job->stamp = gCapture.stamp;
     for (LayerShot const& l : layers) {
@@ -815,6 +817,32 @@ void FinishArming(XrFrameEndInfo const& info, std::vector<LayerShot> layers) {
         job->eyes[1] = {gHead[1].pose, gHead[1].fov};
         job->eyesValid = true;
     }
+    LocateQuads(layers, reference, info.displayTime);
+    for (LayerShot& l : layers) {
+        if (!l.projection && l.name != "reticle") {  // the reticle never changes: it's in the composites only
+            l.file = std::format("{}-{}.png", gCapture.stamp, l.name);
+        }
+    }
+    // The spectator's picture (plugin/Spectator, research/49), staged this frame by the wrapped xrEndFrame: a layer of
+    // its own, never composited into the eyes.
+    if (gSpectatorStaged) {
+        LayerShot shot;
+        shot.name = "spectator";
+        shot.file = std::format("{}-spectator.png", gCapture.stamp);
+        shot.swapchain = kSpectatorSwapchain;
+        layers.push_back(shot);
+    }
+    job->meta = MetaJson(layers, info.displayTime, gCapture.trigger);
+    job->layers = std::move(layers);
+    gCapture.job = std::move(job);
+    gArmed.store(false, std::memory_order_relaxed);
+    gCapture.phase = Phase::Staged;
+    gCapture.stagedFrames = 0;
+}
+
+// Names each quad (its swapchain's name, the menu, else quadN) and locates it in `reference` (the eyes' space):
+// snapshots and the spectator's composite (plugin/Spectator) see the same layers in the same places.
+void LocateQuads(std::vector<LayerShot>& layers, XrSpace reference, XrTime displayTime) {
     int quadIndex = 0;
     std::vector<std::string> usedNames;
     for (LayerShot& l : layers) {
@@ -836,9 +864,6 @@ void FinishArming(XrFrameEndInfo const& info, std::vector<LayerShot> layers) {
             l.name += std::format("-{}", quadIndex);
         }
         usedNames.push_back(l.name);
-        if (l.name != "reticle") {  // the reticle never changes: it's in the composites only
-            l.file = std::format("{}-{}.png", gCapture.stamp, l.name);
-        }
         if (l.space == reference) {
             l.located = true;
             l.poseInReference = l.pose;
@@ -854,7 +879,7 @@ void FinishArming(XrFrameEndInfo const& info, std::vector<LayerShot> layers) {
             l.poseInReference = Compose(head, l.pose);
         } else {
             XrSpaceLocation location{XR_TYPE_SPACE_LOCATION};
-            l.located = XR_SUCCEEDED(xrLocateSpace(l.space, reference, info.displayTime, &location)) &&
+            l.located = XR_SUCCEEDED(xrLocateSpace(l.space, reference, displayTime, &location)) &&
                 (location.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT) != 0 &&
                 (location.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) != 0;
             if (l.located) {
@@ -862,12 +887,39 @@ void FinishArming(XrFrameEndInfo const& info, std::vector<LayerShot> layers) {
             }
         }
     }
-    job->meta = MetaJson(layers, info.displayTime, gCapture.trigger);
-    job->layers = std::move(layers);
-    gCapture.job = std::move(job);
-    gArmed.store(false, std::memory_order_relaxed);
-    gCapture.phase = Phase::Staged;
-    gCapture.stagedFrames = 0;
+}
+
+// The eyes' space: the projection layer's (Halcyon's app space); the quads are located in it.
+XrSpace ReferenceOf(std::vector<LayerShot> const& layers) {
+    XrSpace reference = gAppSpace;
+    for (LayerShot const& l : layers) {
+        if (l.projection) {
+            reference = l.space;
+        }
+    }
+    return reference;
+}
+
+// The spectator camera (plugin/Spectator, research/49): this frame's quads, located, composited over its capture; the
+// picture staged for a snapshot armed this frame.
+void SpectatorEndFrame(XrFrameEndInfo const& info) {
+    gSpectatorStaged = false;
+    std::vector<LayerShot> layers = ParseLayers(info);
+    LocateQuads(layers, ReferenceOf(layers), info.displayTime);
+    std::vector<XrSwapchain> projection;
+    std::vector<spectator::Layer> quads;
+    for (LayerShot const& l : layers) {
+        if (l.projection) {
+            projection.push_back(l.swapchain);
+        } else if (l.located) {
+            quads.push_back({l.swapchain, l.rect, l.poseInReference, l.size, l.flags, l.visibility, l.name});
+        }
+    }
+    ID3D11Texture2D* const picture = spectator::OnEndFrame(projection, quads);
+    if (picture != nullptr && gArmed.load(std::memory_order_relaxed)) {
+        StageImage(kSpectatorSwapchain, picture);
+        gSpectatorStaged = true;
+    }
 }
 
 void OnEndFrameArmed(XrFrameEndInfo const& info) {
@@ -1194,7 +1246,8 @@ XrResult XRAPI_CALL WrappedRelease(XrSwapchain swapchain, XrSwapchainImageReleas
     bool const armed = gArmed.load(std::memory_order_relaxed);
     bool const onPresent = OnPresentThread();
     bool const tapped = onPresent && gTap != nullptr && swapchain == gTapSwapchain;  // both written on that thread
-    if ((armed || tapped) && onPresent) {
+    bool const spectating = onPresent && spectator::Wanted();
+    if ((armed || tapped || spectating) && onPresent) {
         ID3D11Texture2D* const image = ReleasingImage(swapchain);
         if (armed) {
             StageImage(swapchain, image);
@@ -1202,11 +1255,21 @@ XrResult XRAPI_CALL WrappedRelease(XrSwapchain swapchain, XrSwapchainImageReleas
         if (tapped && image != nullptr) {
             gTap(swapchain, image);
         }
+        if (spectating) {
+            spectator::OnImageReleased(swapchain, image);  // research/49: its copy for the spectator's picture
+        }
     }
     return gRealRelease(swapchain, info);
 }
 
 XrResult XRAPI_CALL WrappedEndFrame(XrSession session, XrFrameEndInfo const* info) {
+    if (info != nullptr && OnPresentThread()) {
+        if (spectator::Wanted()) {
+            SpectatorEndFrame(*info);  // before the snapshot's arming, which may take its picture
+        } else {
+            gSpectatorStaged = false;
+        }
+    }
     if (gArmed.load(std::memory_order_relaxed) && info != nullptr && OnPresentThread()) {
         OnEndFrameArmed(*info);
     }
@@ -1404,6 +1467,21 @@ void OnImageWritten(XrSwapchain swapchain, ID3D11Texture2D* image) {
     if (gArmed.load(std::memory_order_relaxed) && OnPresentThread()) {
         StageImage(swapchain, image);
     }
+    if (spectator::Wanted() && OnPresentThread()) {
+        spectator::OnImageReleased(swapchain, image);  // research/49
+    }
+}
+
+bool CopyStaticImage(XrSwapchain swapchain, std::uint32_t& width, std::uint32_t& height, std::vector<std::uint32_t>& pixels) {
+    std::lock_guard lock(gSwapchainMutex);
+    auto const it = gSwapchains.find(swapchain);
+    if (it == gSwapchains.end() || !it->second.isStatic) {
+        return false;
+    }
+    width = it->second.staticWidth;
+    height = it->second.staticHeight;
+    pixels = it->second.staticPixels;
+    return true;
 }
 
 void SetStaticImage(XrSwapchain swapchain, std::uint32_t width, std::uint32_t height, std::vector<std::uint32_t> pixels) {

@@ -13,6 +13,7 @@
 
 struct DXGI_OUTPUT_DESC1;   // [MEVR] dxgi1_6.h's, for HdrDisplayDesc below (research/27 7c)
 
+struct IDXGISwapChain;     // [MEVR] research/49: SpectatorMirror below
 struct ID3D11BlendState;
 struct ID3D11Buffer;
 struct ID3D11DepthStencilState;
@@ -144,6 +145,10 @@ struct OverlayFrame
 // [MEVR] research/39: game thread, each Draw's main pass when it latches its pair arm ([POSEEXACT]): the scope capture
 // (src/plugin/ScopeCaptureSource.cpp) notes which of the mod's capture poses that Draw renders.
 void NoteDrawArm(std::uint64_t arm) noexcept;
+
+// [MEVR] research/49: Present thread, in PresentHook right before the window's Present (after the XR frame): the
+// spectator camera's picture (src/plugin/Spectator.cpp) into the backbuffer in place of the eye mirror, when on.
+void SpectatorMirror(IDXGISwapChain* swapChain) noexcept;
 
 // Present thread (RunFrame), once per frame after the eyes are filled, every frame (also flat and
 // menu frames): copies the HUD panel texture into its swapchain, places the panel and the reticle,

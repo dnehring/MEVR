@@ -6,21 +6,32 @@
 #   <stamp>-left.png, <stamp>-right.png   what each eye shows (world + HUD panel + reticle + squad menu + menu)
 #   <stamp>-left-world.png, ...           the world layer alone (when a quad was drawn over it)
 #   <stamp>-hud.png, -squad.png, -menu.png the quad layers on their own
+#   <stamp>-spectator.png                 the spectator camera's 16:9 picture, while it runs (research/49)
 #   <stamp>.json                          head, controllers, aim ray, the mod's arm IK / weapon state
 # The JSON is written last, so this script waits for it. Prints the paths it finds.
 #
 #   tools/snapshot.ps1                         one snapshot now
 #   tools/snapshot.ps1 -Count 5 -Interval 0.5  five, half a second apart
 #   tools/snapshot.ps1 -Delay 3 -Tag aim       one in three seconds, "-aim" in the file names
+#   tools/snapshot.ps1 -Spectator              the spectator's still too: turns the camera on through the console
+#                                              (mevr spectator on) if [Spectator] enabled = 0, and warns if it's missing
 param(
     [int]$Count = 1,
     [double]$Interval = 1.0,
     [double]$Delay = 0.0,
     [string]$Tag = '',
-    [int]$TimeoutSeconds = 0
+    [int]$TimeoutSeconds = 0,
+    [switch]$Spectator
 )
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\common.ps1"
+
+if ($Spectator) {
+    # Turned on through the console (the mod's override, until [Spectator] enabled changes); a second for the capture to
+    # spawn and render. Turning it on twice is harmless.
+    & "$PSScriptRoot\console.ps1" 'mevr spectator on' | Out-Host
+    if ($Delay -lt 2.0) { $Delay = 2.0 }
+}
 
 $dir = Join-Path $MevrDataDir 'snapshots'
 $since = Get-Date
@@ -55,5 +66,9 @@ foreach ($json in $found) {
     Write-Host $json.FullName
     foreach ($file in $meta.files) { Write-Host "  $(Join-Path $dir $file)" }
     foreach ($problem in $meta.errors) { Write-Warning "  $problem" }
+    if ($Spectator -and -not ($meta.files | Where-Object { $_ -like '*-spectator.png' })) {
+        $why = if ($meta.spectator) { $meta.spectator.state } else { 'the host has no spectator (older than HostServices v24?)' }
+        Write-Warning "  No spectator picture: $why"
+    }
 }
 if ($found.Count -lt $Count) { exit 1 }

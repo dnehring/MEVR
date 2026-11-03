@@ -6595,6 +6595,13 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterv
     // [TEARING] force syncInterval=0 (as always) AND, when allowed+supported, DXGI_PRESENT_ALLOW_TEARING so the
     // present rate is not bound to the monitor's composition rate. g_forceTearThisPresent was decided at the top.
     const UINT presentFlags = g_forceTearThisPresent ? (flags | kDxgiPresentAllowTearing) : flags;
+    // [MEVR] research/49: the spectator camera's picture in the window instead of the eye mirror. Not a game draw:
+    // the pass-0 snapshot's backbuffer-dirty gate ([ME2PORT v2]) is put back as it was.
+    {
+        const bool mevrDirty = g_sfrBbDirty.load(std::memory_order_relaxed);
+        MELEVR::MevrBridge::SpectatorMirror(swapChain);
+        g_sfrBbDirty.store(mevrDirty, std::memory_order_relaxed);
+    }
     return original(swapChain, 0, presentFlags);
 }
 // Caller must hold g_hookMutex.

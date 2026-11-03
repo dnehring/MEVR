@@ -33,6 +33,7 @@
 #include "plugin/MevrMenu.hpp"
 #include "plugin/DrawReplay.hpp"
 #include "plugin/PerfProbe.hpp"
+#include "plugin/Spectator.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/WorldPanels.hpp"
 
@@ -251,6 +252,7 @@ void OnSessionCreated(void* instance, void* session) noexcept {
     ++gTarget.instanceGeneration;
     ++gTarget.sessionGeneration;
     mevr::host::testloop::OnSessionCreated(gTarget.session);
+    mevr::host::spectator::OnSessionCreated();  // its swapchain copies went with the old session
     gInputFailed = !gInput.Create(gTarget);
     if (gInputFailed) {
         mevr::log::Error("halcyon bridge: controller actions failed; motion controllers unavailable");
@@ -482,6 +484,11 @@ void OnViewBuilt(bool worldView, bool headLook, bool headAim, float const headOr
 
 void NoteDrawArm(std::uint64_t arm) noexcept {
     mevr::vr::scope_capture::NoteDrawArm(arm);  // research/39: which capture pose this Draw renders
+    mevr::host::spectator::NoteDrawArm(arm);    // research/49: the same for the spectator camera's capture
+}
+
+void SpectatorMirror(IDXGISwapChain* swapChain) noexcept {
+    mevr::host::spectator::MirrorPresent(swapChain);  // research/49: the spectator's picture in the desktop window
 }
 
 bool CockpitLook() noexcept {

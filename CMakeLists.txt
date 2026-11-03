@@ -554,6 +554,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/SightLayers.hpp
     src/plugin/SightPictures.cpp
     src/plugin/SightPictures.hpp
+    src/plugin/Spectator.cpp
+    src/plugin/Spectator.hpp
     src/plugin/SquadPanel.cpp
     src/plugin/SquadPanel.hpp
     src/plugin/Upscale.cpp

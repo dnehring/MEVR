@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "core/vr/ScopeCapture.hpp"
+
+#include <d3d11.h>
 #include <openxr/openxr.h>
 
 #include <cstdint>
@@ -45,5 +48,14 @@ void Forget();
 
 // Snapshot JSON (the host's "sights"."capture").
 std::string StatusJson();
+
+// Shared with the spectator camera (plugin/Spectator, research/49): the D3D11 texture of `width` x `height` behind a render
+// target's FTextureResource*, by the guarded search above (`hint` tried first, updated on success). Returns it with a
+// reference of its own (the caller releases it), its description and the path found; null if none validates.
+ID3D11Texture2D* FindTargetTexture(std::uint64_t resource, unsigned width, unsigned height, vr::scope_capture::TexturePath& hint,
+    D3D11_TEXTURE2D_DESC* desc);
+// The view format a capture's texture is read through, and the gamma the shader decodes it with (1: none). False for a
+// format nobody reads.
+bool CaptureViewFormat(DXGI_FORMAT format, DXGI_FORMAT& view, float& decode);
 
 } // namespace mevr::host::scope_capture_source

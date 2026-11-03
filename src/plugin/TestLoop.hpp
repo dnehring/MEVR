@@ -55,6 +55,8 @@ void OnImageWritten(XrSwapchain swapchain, ID3D11Texture2D* image);
 // A swapchain whose images never change once filled (the reticle): its pixels (premultiplied
 // sRGB RGBA8, 0xAABBGGRR), drawn into snapshots instead of a copy.
 void SetStaticImage(XrSwapchain swapchain, std::uint32_t width, std::uint32_t height, std::vector<std::uint32_t> pixels);
+// A static image's pixels (SetStaticImage), copied; false if `swapchain` has none (the spectator camera, plugin/Spectator).
+bool CopyStaticImage(XrSwapchain swapchain, std::uint32_t& width, std::uint32_t& height, std::vector<std::uint32_t>& pixels);
 // Something else that wants one swapchain's image right before Halcyon releases it (the gun sights'
 // scope copies the eye image it magnifies: plugin/SightLayers). One at a time; `tap` nullptr (or a null
 // swapchain) clears it. Present thread.
