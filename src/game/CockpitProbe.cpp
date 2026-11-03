@@ -155,6 +155,7 @@ ue3::FieldRef gUseMainPostProcess{"Engine.SceneCaptureComponent", "bUseMainScene
 ue3::FieldRef gSkipUsersOccluded{"Engine.SceneCaptureComponent", "bSkipUpdateIfTextureUsersOccluded"};
 ue3::FieldRef gSkipOwnerOccluded{"Engine.SceneCaptureComponent", "bSkipUpdateIfOwnerOccluded"};
 ue3::FieldRef gMaxUpdateDist{"Engine.SceneCaptureComponent", "MaxUpdateDist"};
+ue3::FieldRef gMaxViewDistance{"Engine.SceneCaptureComponent", "MaxViewDistanceOverride"};
 ue3::FieldRef gPostProcess{"Engine.SceneCaptureComponent", "PostProcess"};
 ue3::FieldRef gFrameRate{"Engine.SceneCaptureComponent", "FrameRate"};
 ue3::FieldRef gSizeX{"Engine.TextureRenderTarget2D", "SizeX"};
@@ -299,6 +300,7 @@ struct Settings {
     float chaseBackM = 6.0f;
     float chaseUpM = 3.0f;
     float captureRate = 30.0f;  // about every third frame at 90 Hz (engine time: research/39 section 3)
+    float viewDistM = 0.0f;     // `capturedist`: the screens' captures draw nothing further (MaxViewDistanceOverride); 0 the engine's
     std::string spawnClass;     // `spawnclass`: only that one
     std::string materialName;   // `material`: the parent, by name
     std::string paramName;      // `param`: the texture parameter, by name
@@ -1820,6 +1822,7 @@ std::string DoScreen(std::istringstream& words) {
         gSkipUsersOccluded.WriteBool(component, false);
         gSkipOwnerOccluded.WriteBool(component, false);
         WriteField(gMaxUpdateDist, component, kMaxUpdateDist, "CockpitProbe.MaxUpdateDist");
+        WriteField(gMaxViewDistance, component, static_cast<float>(gSettings.viewDistM * engine::kUnitsPerMeter), "CockpitProbe.MaxViewDistance");
         gUpdateMatrices.WriteBool(component, false);  // or each component update puts the view back on the actor (research/47)
         ApplyPost(controller);
         log::Info("cockpit probe: capture {} with {}; post process {}", ue3::runtime::FullName(actor), ue3::runtime::FullName(component), gSettings.postProcess);
@@ -2655,6 +2658,7 @@ std::string DoAimScreen(std::istringstream& words) {
         gSkipUsersOccluded.WriteBool(component, false);
         gSkipOwnerOccluded.WriteBool(component, false);
         WriteField(gMaxUpdateDist, component, kMaxUpdateDist, "CockpitProbe.AimMaxUpdateDist");
+        WriteField(gMaxViewDistance, component, static_cast<float>(gSettings.viewDistM * engine::kUnitsPerMeter), "CockpitProbe.AimMaxViewDistance");
         gUpdateMatrices.WriteBool(component, false);
         gEnablePostProcess.WriteBool(component, false);  // as `post 0`: the eye's own post is enough for a screen in the world
         gUseMainPostProcess.WriteBool(component, false);
@@ -3622,6 +3626,21 @@ std::string Command(std::string const& line) {
         }
         return StatusLine();
     }
+    if (verb == "capturedist") {
+        // How far the screens' captures draw (each capture renders the world again: at heavy views they took frames over budget).
+        float metres = -1.0f;
+        if (!(words >> metres) || metres < 0.0f) {
+            return "usage: mevr cockpit capturedist <metres: the screens draw nothing further; 0 = the engine's own>";
+        }
+        gSettings.viewDistM = metres;
+        float const units = static_cast<float>(metres * engine::kUnitsPerMeter);
+        for (ue3::Object* const component : {gState.captureComponent, gAim.captureComponent}) {
+            if (component != nullptr) {
+                WriteField(gMaxViewDistance, component, units, "CockpitProbe.MaxViewDistance");
+            }
+        }
+        return std::format("the screens' captures draw up to {}", metres > 0.0f ? std::format("{:.0f} m", metres) : std::string("the engine's distance"));
+    }
     if (verb == "status") {
         return StatusLine();
     }
@@ -3937,10 +3956,14 @@ void Tick(std::optional<std::uint32_t> recenters) {
         ++gState.placedTicks;
     }
     // Not every tick unless the rate asks: each SetView makes the engine build a new probe, with a new view state.
+    // The two screens never render in the same frame: on the same clock they did, and that frame drew the world three times (16% of
+    // a drive's frames over 11.1 ms against 0.7% without the cockpit, research/47 "The cockpit's cost over a drive").
+    bool pointed = false;
     if (gState.captureActor != nullptr && gSettings.aim && gSettings.captureRate > 0.0f && Now() - gState.lastPointed >= 1.0 / static_cast<double>(gSettings.captureRate)) {
         PointCapture();
+        pointed = true;
     }
-    if (gAim.captureActor != nullptr && gSettings.captureRate > 0.0f && Now() - gAim.lastPointed >= 1.0 / static_cast<double>(gSettings.captureRate)) {
+    if (!pointed && gAim.captureActor != nullptr && gSettings.captureRate > 0.0f && Now() - gAim.lastPointed >= 1.0 / static_cast<double>(gSettings.captureRate)) {
         PointAim();
     }
 }
@@ -4002,7 +4025,7 @@ void Shutdown(bool exiting) {
     for (ue3::FieldRef* const f : {&gStatic, &gDeleteMe, &gNoDelete, &gMovable, &gRole, &gPhysics, &gBase, &gDynamicComponent, &gDynamicLightEnvironment, &gStaticActorComponent, &gComponentMesh,
              &gBounds, &gParent, &gStaticPermutation, &gTextureValues, &gTextureValueName, &gExpressions, &gEmissive, &gEmissiveExpression, &gBlendMode, &gLightingModel,
              &gUsedStaticLighting, &gUsedLightEnvironments, &gExpressionParameterName, &gSceneCapture, &gCaptureEnabled, &gEnablePostProcess, &gUseMainPostProcess,
-             &gSkipUsersOccluded, &gSkipOwnerOccluded, &gMaxUpdateDist, &gPostProcess, &gFrameRate, &gSizeX, &gSizeY, &gPlayer, &gPlayerPostProcess, &gDefaultPostProcess, &gUpdateMatrices,
+             &gSkipUsersOccluded, &gSkipOwnerOccluded, &gMaxUpdateDist, &gMaxViewDistance, &gPostProcess, &gFrameRate, &gSizeX, &gSizeY, &gPlayer, &gPlayerPostProcess, &gDefaultPostProcess, &gUpdateMatrices,
              &gViewMatrix, &gForceLinearGamma, &gTargetFormat, &gMeshMaterials, &gPrimitiveLightEnvironment, &gLightEnvironmentEnabled, &gTextureResource, &gTextureSrgb, &gTextureNeverStream,
              &gTextureLodGroup, &gTexture2DSizeX, &gTexture2DSizeY, &gTexture2DFormat, &gTexture2DRequestedMips, &gTexture2DResidentMips, &gTexture2DMipTail, &gTexture2DMips, &gWorldInfo,
              &gTextureValueObject, &gRemoteEventName, &gStreamingLevels, &gStreamPackage, &gStreamLoaded, &gStreamShouldLoad, &gStreamShouldShow, &gStreamVisible,

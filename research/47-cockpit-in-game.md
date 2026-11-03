@@ -1099,3 +1099,33 @@ with the release's own setup (`-Build build-mono`) and payload: 65 checks pass. 
 record, then an uninstall, left the cockpit behind** (its script, its package and its TOC entry: the second install found them without a
 record and took them for the player's, to put back). `AdoptOurFiles` now adopts the cockpit's folder, script and package with the rest of
 the ASI folder, and `Transaction::AdoptTocEntry` records our package's TOC entry as added; the folder is byte for byte the game's again.
+
+## A normal save, a death and its reload (2026-11-03 16:30-16:40, fake headset, the user's save on Trebin, `BIOA_UNC20`)
+
+The game started from Steam and the launcher's Resume card (John Shepard, Soldier, Trebin): the save loaded straight into the Mako and the
+cockpit came in by itself, in the same tick as `mako: driving` (the parts, the screens, Shepard `shown in the seat`, the ride seated).
+`mevr vehicle die` (the vehicle behaviour's `ReactToDeath`, what a fatal hit runs) took the game to "Critical Mission Failure" and the
+cockpit out in the same tick; its "Resume Last Save" (`mevr vehicle resume`) loaded the save again and the cockpit and Shepard were back
+0.4 s after `mako: driving`. Done four more times by the drive A/B below, each time the same. Not done: a death actually caused by enemy
+fire (the path from the hit to `ReactToDeath` is the game's own and doesn't touch the cockpit).
+
+## The cockpit's cost over a drive (2026-11-03 16:37-16:57, fake headset, Trebin from the save)
+
+A 30 s probe over the same replayed 40 s drive (`make-drive-recording.py 40 --controls --hands-from`: full throttle, turning right,
+left, straight on) from the save each time (die, resume), so each run covers the same ground (give or take the physics). The single heavy
+spot measured before (UNC52) had hidden it: at the heavier views (3,000-6,500 draws a frame) the cockpit put frames over budget.
+
+| run | render thread busy, median / p90 / max (ms) | GPU span, median / p90 (ms) |
+| --- | --- | --- |
+| cockpit off (`[Cockpit] enabled = 0`) | 3.36 / 5.56 / 22.6 | 5.08 / 7.11 |
+| cockpit on, both screens on one clock | 4.76 / **11.07** / 30.6 | 4.71 / **12.17** |
+| on, the screens staggered | 4.02 / 9.19 / 40.6; 3.46 / 7.95 / 35.9 | 4.37 / 9.53; 4.37 / 7.82 |
+| staggered, captures to 250 m | 2.86 / 5.21; 3.56 / 8.24; 3.25 / 6.20 | 3.76 / 5.21; 4.25 / 8.35; 4.11 / 6.11 |
+| staggered, captures to 600 m | 3.52 / 8.01 / 35.6 | 4.11 / 8.25 |
+
+The two screens' captures ran on the same 30 Hz clock, so every third frame rendered the world three times. They are staggered now (a
+tick that points the chase screen's capture leaves the turret's for the next), which takes the p90 back under budget with nothing to
+see. `mevr cockpit capturedist <m>` (a cockpit script line too) sets the captures' `SceneCaptureComponent.MaxViewDistanceOverride`: 250
+m gains a little more but drops the far ridgeline from the centre screen, and the runs' spread (the drive's route differs with the
+physics) is as large as the gain, so it stays off (0, the engine's distance). The max column is hitches (level streaming, the first
+frames after a load) present without the cockpit too.
