@@ -75,7 +75,8 @@ internal static class Build
     };
     // A dark diffuse left the lit instances looking unlit in the game (the game side, 2026-11-03): a mid one shows whether
     // light reaches the parts at all, and a stronger specular whether highlights do.
-    private const float LitSpecular = 1.6f, LitSpecPower = 24.0f, GlowBrightness = 4.0f;
+    // Glow: x4 brightened the lamps without a halo in the game (2026-11-03), so the small lamps try x10; the screens x2.
+    private const float LitSpecular = 1.6f, LitSpecPower = 24.0f, GlowLamps = 10.0f, GlowScreens = 2.0f;
 
     // The windows' glass (research/48 section 26), over materials in BIOC_Materials, which the game side found in memory at
     // the title, in Eden Prime and in a Mako level: the helmet visors' (unlit, translucent, one-sided; opacity rises toward
@@ -87,9 +88,9 @@ internal static class Build
         ["VSR_Opacity"] = new("18862473-f1f5-475c-bc76-073ad9580d23"), ["VSR_CubeMap_Intensity"] = new("14bc4ff7-c0ef-4418-9093-f08b6fbf5e03"),
         ["VSR_Colour_01"] = new("36a0530d-3b2f-426c-b4b5-3dae8740a7b5"), ["VSR_Colour_02"] = new("bedd8add-8855-4c95-8280-1a62f6cb7e48"),
     };
-    // Face on the pane lets half the opacity through, at grazing the whole; the cube's sheen and a faint grey on top, the
-    // fresnel at least 0.15.
-    private const float GlassOpacity = 0.22f, GlassCube = 0.4f;
+    // Face on the pane takes half the opacity, at grazing the whole; the cube's sheen and a faint grey on top, the fresnel at
+    // least 0.15. At 0.22 and 0.4 it read nearly clear from the seat (4% darker, no sheen: the game side, 2026-11-03).
+    private const float GlassOpacity = 0.32f, GlassCube = 1.0f;
     private static readonly float[] GlassTint = { 0.03f, 0.035f, 0.04f, 1f }, GlassFresnel = { 0.15f, 0f, 0f, 1f };
     // Which elements get a glow variant: the shell's lamps (hull_shapes.Bake puts them on materials of their own) and the
     // console's idle screens.
@@ -457,7 +458,7 @@ internal static class Build
                 float[] one = { 1f, 1f, 1f, 1f };
                 AddInstance(pcc, glow, glowParent, Guid.Empty,
                     new[] { ("DiffuseTexture", texture, GlowGuids["DiffuseTexture"]), ("LightTexture", white, GlowGuids["LightTexture"]) },
-                    new[] { ("LightmapBrightness", GlowBrightness, GlowGuids["LightmapBrightness"]) },
+                    new[] { ("LightmapBrightness", material.StartsWith("lamp", StringComparison.Ordinal) ? GlowLamps : GlowScreens, GlowGuids["LightmapBrightness"]) },
                     new[] { ("WallSpecColor", one, GlowGuids["WallSpecColor"]), ("WindowSpecColor", one, GlowGuids["WindowSpecColor"]) });
                 made.Add(glow);
             }

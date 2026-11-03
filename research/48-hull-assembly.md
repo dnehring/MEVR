@@ -946,6 +946,14 @@ No decimation or packaging until the user approves the modelling.
   packages, on the game side's finding; not yet checked at the main menu reached from inside a game).
 - **The lamps** are in the manifest (`lamps`: centre, facing, size, colour, power), for real lights in the game to match the
   baked ones: the light environment alone brings the level's light, not the cabin's.
+- **In the game** (66d3a38; research/47 "Window glass"): the package loads with the BIOC_Materials imports; the darkness
+  doesn't come back at the same pose (the ceiling 37.2, the idle screen (37, 26, 19)), so it was that session's state;
+  the visor glass at 0.22 reads nearly clear (the view 4% darker, no sheen face on) and the level glass's hexagonal frost
+  bends the world (13% darker), too much for a windshield; lit at the retuned values is still identical to unlit (the
+  light environment gathers almost nothing in the closed cabin); glow at 4 brightens the lamps, still no halo.
+- **So:** the glass at opacity 0.32 and its cube at 1.0 (the game side's guess); the lamps' glow at 10 and the idle
+  screens' at 2. The lit instances stay in the package unused: lit shading needs lights inside the cabin (`lamps`), a
+  question of their stereo cost that the game side takes up once the Mako drives.
 
 ## 5. Not done
 
