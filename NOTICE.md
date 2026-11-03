@@ -24,6 +24,11 @@ GPL VR mods.
 - **Third-party code keeps its own licence** (the table below): `third_party/`, `external/fsr1` and the
   submodules carry no identifier of ours.
 - Docs and data files without an identifier (Markdown, notes, research) are MIT unless marked.
+- **The Mako cockpit's models** (`concept/assets/game-ready/` and the eleven source models the packager reads under
+  `concept/assets/`, on Git LFS; research/47 and 48) are MIT: Tripo-generated parts
+  (made on the project owner's paid Max subscription, so the generating user holds all rights to them under Tripo's
+  Terms of User Agreement section 5.2.2, 2025-07-11) and our own hull geometry; see the README there. The raw
+  outputs, concept images and working files are not in the repository.
 
 Code it contains from other projects keeps its own license and notices:
 
@@ -41,6 +46,7 @@ Code it contains from other projects keeps its own license and notices:
 | [Dear ImGui](https://github.com/ocornut/imgui) (Omar Cornut) | `third_party/imgui/` | MIT (`third_party/imgui/LICENSE.txt`) |
 | [Rajdhani](https://github.com/google/fonts/tree/main/ofl/rajdhani) (Copyright (c) 2014 Indian Type Foundry), SemiBold and Bold, unmodified | `third_party/fonts/` (deployed to `ASI\fonts`) | SIL OFL 1.1 (`third_party/fonts/Rajdhani-OFL.txt`) |
 | [Titillium Web](https://github.com/google/fonts/tree/main/ofl/titilliumweb) (Copyright (c) 2009-2011 Accademia di Belle Arti di Urbino and students of MA course of Visual design), Regular and SemiBold, unmodified | `third_party/fonts/` (deployed to `ASI\fonts`) | SIL OFL 1.1 (`third_party/fonts/TitilliumWeb-OFL.txt`) |
+| [Tripo](https://www.tripo3d.ai) (Holymolly Ltd): the generated chair, front cockpit, joystick, throttle, console and side-pane parts of the Mako cockpit, repaired, split and decimated by `tools/cockpit`; generated on a paid (Max) subscription, under which section 5.2.2 of Tripo's Terms of User Agreement (2025-07-11) gives the user all rights to the outputs, including distribution and licensing | `concept/assets/game-ready/` (its README) and the packager's source models under `concept/assets/` (Git LFS) | MIT (ours; Tripo keeps only a non-exclusive licence to display them in its service) |
 | [RmlUi](https://github.com/mikke89/RmlUi) 6.3 (Copyright (c) 2008-2014 CodePoint Ltd, Shift Technology Ltd, and contributors; (c) 2019-2026 The RmlUi Team, and contributors): the UI library of our VR main menu, and its Direct3D 11 renderer (`Backends/RmlUi_Renderer_DX11.cpp`, compiled from the submodule, wrapped by `src/plugin/menu/MenuRenderer.cpp`) | `external/RmlUi` (submodule, tag 6.3) | MIT (`external/RmlUi/LICENSE.txt`) |
 | [FreeType](https://freetype.org) 2.13.3, RmlUi's font engine. Portions of this software are copyright (c) 2024 The FreeType Project (www.freetype.org). All rights reserved. | `external/freetype` (submodule, tag VER-2-13-3) | The FreeType License (FTL, chosen of its FTL / GPLv2 dual licence; `external/freetype/docs/FTL.TXT`) |
 | [AMD FidelityFX Super Resolution 1](https://github.com/GPUOpen-Effects/FidelityFX-FSR) (Copyright (c) 2021 Advanced Micro Devices, Inc.; `ffx_a.h` also Copyright (c) 2014 Michal Drobot for the float approximations): the shader headers `ffx_a.h` and `ffx_fsr1.h`, unmodified, embedded at build time and compiled at run time for the eye upscale (core/vr/Upscale, plugin/Upscale, research/32) | `external/fsr1/` | MIT (`external/fsr1/LICENSE.txt`) |

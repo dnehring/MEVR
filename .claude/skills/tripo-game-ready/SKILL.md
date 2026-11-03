@@ -5,8 +5,10 @@ description: Turns Tripo (AI-generated) .glb models into game-ready LE1 cockpit 
 
 # Tripo models to game-ready (LE1 cockpit)
 
-The cockpit's models come from Tripo: `concept/assets/` (gitignored; their licence is unsettled, so nothing of them, their
-renders or the package goes in git or to an outside service). They reach the game through a chain of stages. Each stage
+The cockpit's models come from Tripo: `concept/assets/` (gitignored except `game-ready/` and the eleven source models the
+packager reads, in git on Git LFS since 2026-11-03: the models' licence is settled, MIT, see game-ready's README and
+`NOTICE.md`; the raw outputs, renders, working files and the package stay local). They reach the game through a chain of
+stages. Each stage
 reads the previous one's files and never writes them, writes its own folder with a `manifest.json`, and prints `RESULT`
 lines. research/47 is the record ("Packaging our models", "Game-ready models").
 

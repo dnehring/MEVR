@@ -40,7 +40,8 @@ Each line is checked in the game (fake headset with replays where it can be, the
 10. **Cost:** at a heavy Mako spot, the cockpit (the parts' per-frame updates, both captures) measured with `tools/perf-probe.ps1`
     against the cockpit off, and the frame within the headset's budget (90 Hz: 11.1 ms) on the dev machine.
 11. **Players get it:** the monolithic release build (no LExSDKv2) does all of the above, and MEVR Setup installs and uninstalls the
-    package with its TOC entry. Needs the models' licence settled first (see Blockers).
+    package with its TOC entry. The models' licence is settled (2026-11-03: `NOTICE.md`,
+    `concept/assets/game-ready/README.md`).
 
 ## The work
 
@@ -61,13 +62,16 @@ Each line is checked in the game (fake headset with replays where it can be, the
 - Lights inside the cabin if the lit materials are wanted; displays for the HUD pieces if they go on the console.
 - Anything the in-game checks above show (clipping, scale, the screens' size and placement).
 
-**The user:** the headset drives (items 5, 6, 7, 9), the models' licence, the push.
+**The user:** the headset drives (items 5, 6, 7, 9), the push.
 
 ## Blockers
 
 - **Actor.Trace never hits** through ProcessEvent (research/47 "The aim reticle"; task chip "Find why Actor.Trace via ProcessEvent never
   hits"): the right screen's reticle, the Mako's aim point and the sights all need a working trace.
-- **The models' licence is unsettled** (`concept/` is gitignored): until it is, nothing of the cockpit ships to players (item 11).
+- ~~The models' licence~~ Settled 2026-11-03: the Tripo parts were generated on the owner's paid Max subscription (Tripo's
+  Terms 5.2.2: all rights the user's), released MIT with our hull geometry; `concept/assets/game-ready/` and the
+  packager's eleven source models are in git on Git LFS (`NOTICE.md`, the folder's README). The raw outputs, concept
+  images and working files stay local.
 
 ## Order
 

@@ -1,0 +1,4 @@
+# Git LFS for the Mako cockpit's models and renders (concept/assets): large binaries the hull build rewrites every
+# iteration (research/48). Clone with git-lfs installed, or these come down as pointer files.
+concept/assets/**/*.glb filter=lfs diff=lfs merge=lfs -text
+concept/assets/**/*.png filter=lfs diff=lfs merge=lfs -text

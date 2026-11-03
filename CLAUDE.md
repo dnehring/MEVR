@@ -355,7 +355,7 @@ switching frameworks.
   before the drop. The controls haven't been grabbed in the game yet (the fake headset's controllers aren't tracked).
 - LE1 cockpit, in progress ([research/47](research/47-cockpit-in-game.md); `game/CockpitProbe`, `mevr cockpit ...`, `mevr vehicle ...`, inert until called): `tools/cockpit`
   splits, decimates (`game_ready.py`: the packager prefers `concept/assets/game-ready/` made from the current models, `--raw` skips it) and packages our models
-  (`concept/`, gitignored, licence unsettled; the whole procedure is the `tripo-game-ready` skill; `hull_assemble.py` builds the hull: a clean shell modelled to the messy
+  (`concept/`, gitignored except `assets/game-ready/` and the packager's eleven source models, in git on Git LFS since 2026-11-03: MIT, generated on the owner's paid Tripo plan, `NOTICE.md`; the whole procedure is the `tripo-game-ready` skill; `hull_assemble.py` builds the hull: a clean shell modelled to the messy
   Tripo template's shape and the side panes' frame, open framed windows, the roof on the panes' caps, swept profiles from
   `hull_shapes.py` and a baked texture of its own, the Tripo parts placed in it and made game-ready, packaged as four `Hull_*`
   meshes on the hull's origin, [research/48](research/48-hull-assembly.md)) with the Legendary Explorer nightly in `mod-manager/`; the package goes in `CookedPCConsole` with

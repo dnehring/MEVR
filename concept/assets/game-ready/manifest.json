@@ -1,0 +1,1930 @@
+{
+ "options": {
+  "tolerance": 0.0005,
+  "backing-tolerance": 0.002,
+  "smooth-deg": 30.0,
+  "keep-normals": false
+ },
+ "models": {
+  "joystick-base": {
+   "source": "detached/joystick-base.glb",
+   "sourceSha256": "90e5d13baeebe5ff238d89333e3b8d7a2582ba90aab8f7cfafa5b9574b42880d",
+   "diagonal": 1.3817634051157315,
+   "edges": {
+    "source": {
+     "boundary": 0,
+     "nonManifold": 0
+    },
+    "result": {
+     "boundary": 0,
+     "nonManifold": 0
+    }
+   },
+   "texel": {
+    "source": 1966.5151227286965,
+    "result": 1956.5247276385198
+   },
+   "front": {
+    "triangles": [
+     10582,
+     9746
+    ],
+    "deviation": {
+     "p50": 1.4901161193847656e-08,
+     "p99": 0.0001492773613426835,
+     "max": 0.0004864083311986178,
+     "sourceToResultMax": 0.000422630924731493,
+     "resultToSourceMax": 0.0004864083311986178
+    },
+    "tolerance": 0.0006908817025578658,
+    "tries": [
+     {
+      "share": 0.1732,
+      "triangles": 1832,
+      "p99": 0.014731254056096085,
+      "max": 0.03306880593299866,
+      "passes": false
+     },
+     {
+      "share": 0.4162,
+      "triangles": 4404,
+      "p99": 0.0033783005643636074,
+      "max": 0.03413628786802292,
+      "passes": false
+     },
+     {
+      "share": 0.6451,
+      "triangles": 6826,
+      "p99": 0.0010805643559433549,
+      "max": 0.03366369754076004,
+      "passes": false
+     },
+     {
+      "share": 0.8032,
+      "triangles": 8498,
+      "p99": 0.00046887404198059823,
+      "max": 0.030255822464823723,
+      "passes": false
+     },
+     {
+      "share": 0.8962,
+      "triangles": 9482,
+      "p99": 0.00019405578656005713,
+      "max": 0.02267543599009514,
+      "passes": false
+     },
+     {
+      "share": 0.9467,
+      "triangles": 10016,
+      "p99": 0.00010220741205557718,
+      "max": 0.000391255016438663,
+      "passes": true
+     },
+     {
+      "share": 0.9211,
+      "triangles": 9746,
+      "p99": 0.0001492773613426835,
+      "max": 0.0004864083311986178,
+      "passes": true
+     },
+     {
+      "share": 0.9086,
+      "triangles": 9614,
+      "p99": 0.0001788394310278821,
+      "max": 0.02267543599009514,
+      "passes": false
+     },
+     {
+      "share": 0.9148,
+      "triangles": 9680,
+      "p99": 0.0001652830019884282,
+      "max": 0.02267543599009514,
+      "passes": false
+     }
+    ],
+    "final": {
+     "p50": 1.4901161193847656e-08,
+     "p99": 0.0001492773613426835,
+     "max": 0.0004864083311986178,
+     "sourceToResultMax": 0.000422630924731493,
+     "resultToSourceMax": 0.0004864083311986178
+    }
+   },
+   "backing": {
+    "triangles": [
+     886,
+     886
+    ],
+    "deviation": null,
+    "tolerance": 0.002763526810231463,
+    "tries": [],
+    "skipped": "no vertex of its own",
+    "final": {
+     "p50": 4.7706993910878737e-08,
+     "p99": 0.0001467051182407887,
+     "max": 0.0003562206693459302,
+     "sourceToResultMax": 0.00033650684054009616,
+     "resultToSourceMax": 0.0003562206693459302
+    }
+   },
+   "lockedKept": [
+    886,
+    886
+   ],
+   "normals": "smooth, sharp above 30 degrees",
+   "output": "game-ready/joystick-base.glb",
+   "packager": {
+    "source": {
+     "primitives": [
+      {
+       "material": "tripo_mat_a87a98ce-da63-4861-ab41-09db3dc5f793",
+       "triangles": 10582,
+       "welded": 14846,
+       "baseColor": "8f511cdffb36e6d2b6a20391f05f1c7d62c3e7c6f6acd60ca6733e09d3427b32"
+      },
+      {
+       "material": "Authored inward backing",
+       "triangles": 886,
+       "welded": 2518,
+       "baseColor": null
+      }
+     ],
+     "welded": 17364
+    },
+    "result": {
+     "primitives": [
+      {
+       "material": "tripo_mat_a87a98ce-da63-4861-ab41-09db3dc5f793",
+       "triangles": 9746,
+       "welded": 13341,
+       "baseColor": "8f511cdffb36e6d2b6a20391f05f1c7d62c3e7c6f6acd60ca6733e09d3427b32"
+      },
+      {
+       "material": "Authored inward backing",
+       "triangles": 886,
+       "welded": 1806,
+       "baseColor": null
+      }
+     ],
+     "welded": 15147
+    },
+    "limit": 65535
+   },
+   "baseColorUnchanged": true,
+   "renders": {
+    "front": {
+     "silhouetteIoU": 0.9999259971878931,
+     "colourDiffMean": 0.16048698127269745,
+     "colourDiffP99": 2.999999761581421,
+     "pixelsOver16": 0.0011471284783895795
+    },
+    "back": {
+     "silhouetteIoU": 0.999963001331952,
+     "colourDiffMean": 0.06393606960773468,
+     "colourDiffP99": 1.9999998807907104,
+     "pixelsOver16": 0.000296000296000296
+    },
+    "left": {
+     "silhouetteIoU": 1.0,
+     "colourDiffMean": 1.4841384887695312,
+     "colourDiffP99": 23.000001907348633,
+     "pixelsOver16": 0.018713241846373196
+    },
+    "right": {
+     "silhouetteIoU": 1.0,
+     "colourDiffMean": 0.4997103810310364,
+     "colourDiffP99": 11.999999046325684,
+     "pixelsOver16": 0.005659788760639957
+    },
+    "top": {
+     "silhouetteIoU": 0.9999533544015953,
+     "colourDiffMean": 0.8112515211105347,
+     "colourDiffP99": 18.999998092651367,
+     "pixelsOver16": 0.01232667436354943
+    },
+    "bottom": {
+     "silhouetteIoU": 0.9999533554894758,
+     "colourDiffMean": 0.009772480465471745,
+     "colourDiffP99": 0.0,
+     "pixelsOver16": 4.6646686336019404e-05
+    },
+    "front-right": {
+     "silhouetteIoU": 1.0,
+     "colourDiffMean": 0.5463321805000305,
+     "colourDiffP99": 13.999999046325684,
+     "pixelsOver16": 0.007626251018574622
+    },
+    "back-left": {
+     "silhouetteIoU": 0.9999384425977224,
+     "colourDiffMean": 0.7052039504051208,
+     "colourDiffP99": 13.999999046325684,
+     "pixelsOver16": 0.007941393745382911
+    }
+   }
+  },
+  "joystick-grip": {
+   "source": "detached/joystick-grip.glb",
+   "sourceSha256": "606c07b7f4fb7a896edc5a2c8e5c7692e74d99a69b3126a0a7789ea5a87adc71",
+   "diagonal": 0.8784391413096011,
+   "edges": {
+    "source": {
+     "boundary": 0,
+     "nonManifold": 0
+    },
+    "result": {
+     "boundary": 0,
+     "nonManifold": 0
+    }
+   },
+   "texel": {
+    "source": 1967.889937536447,
+    "result": 1962.605948084157
+   },
+   "front": {
+    "triangles": [
+     10530,
+     7896
+    ],
+    "deviation": {
+     "p50": 1.6009635146474466e-05,
+     "p99": 0.0004286750950268478,
+     "max": 0.0012141603510826826,
+     "sourceToResultMax": 0.0011008575093001127,
+     "resultToSourceMax": 0.0012141603510826826
+    },
+    "tolerance": 0.00043921957065480056,
+    "tries": [
+     {
+      "share": 0.1732,
+      "triangles": 1822,
+      "p99": 0.006193661573342982,
+      "max": 0.013154879212379456,
+      "passes": false
+     },
+     {
+      "share": 0.4162,
+      "triangles": 4382,
+      "p99": 0.0017284946423023952,
+      "max": 0.004517925437539816,
+      "passes": false
+     },
+     {
+      "share": 0.6451,
+      "triangles": 6792,
+      "p99": 0.0006780953495763253,
+      "max": 0.0014371403958648443,
+      "passes": false
+     },
+     {
+      "share": 0.8032,
+      "triangles": 8456,
+      "p99": 0.00034178137779235874,
+      "max": 0.0006925659836269915,
+      "passes": true
+     },
+     {
+      "share": 0.7198,
+      "triangles": 7578,
+      "p99": 0.0004893161373911428,
+      "max": 0.0012141603510826826,
+      "passes": false
+     },
+     {
+      "share": 0.7604,
+      "triangles": 8006,
+      "p99": 0.000413381161342842,
+      "max": 0.0012141603510826826,
+      "passes": true
+     },
+     {
+      "share": 0.7398,
+      "triangles": 7790,
+      "p99": 0.0004553898036829216,
+      "max": 0.0012141603510826826,
+      "passes": false
+     },
+     {
+      "share": 0.75,
+      "triangles": 7896,
+      "p99": 0.0004286750950268478,
+      "max": 0.0012141603510826826,
+      "passes": true
+     },
+     {
+      "share": 0.7449,
+      "triangles": 7842,
+      "p99": 0.00044679632934276054,
+      "max": 0.0012141603510826826,
+      "passes": false
+     }
+    ],
+    "final": {
+     "p50": 1.6009635146474466e-05,
+     "p99": 0.0004286750950268478,
+     "max": 0.0012141603510826826,
+     "sourceToResultMax": 0.0011008575093001127,
+     "resultToSourceMax": 0.0012141603510826826
+    }
+   },
+   "backing": {
+    "triangles": [
+     710,
+     710
+    ],
+    "deviation": null,
+    "tolerance": 0.0017568782826192023,
+    "tries": [],
+    "skipped": "no vertex of its own",
+    "final": {
+     "p50": 1.666000493116826e-08,
+     "p99": 1.1130616003356512e-05,
+     "max": 6.986341759329662e-05,
+     "sourceToResultMax": 6.986341759329662e-05,
+     "resultToSourceMax": 5.1736802561208606e-05
+    }
+   },
+   "lockedKept": [
+    709,
+    709
+   ],
+   "normals": "smooth, sharp above 30 degrees",
+   "output": "game-ready/joystick-grip.glb",
+   "packager": {
+    "source": {
+     "primitives": [
+      {
+       "material": "tripo_mat_a87a98ce-da63-4861-ab41-09db3dc5f793",
+       "triangles": 10530,
+       "welded": 13088,
+       "baseColor": "8f511cdffb36e6d2b6a20391f05f1c7d62c3e7c6f6acd60ca6733e09d3427b32"
+      },
+      {
+       "material": "Authored inward backing",
+       "triangles": 710,
+       "welded": 2030,
+       "baseColor": null
+      }
+     ],
+     "welded": 15118
+    },
+    "result": {
+     "primitives": [
+      {
+       "material": "tripo_mat_a87a98ce-da63-4861-ab41-09db3dc5f793",
+       "triangles": 7896,
+       "welded": 8779,
+       "baseColor": "8f511cdffb36e6d2b6a20391f05f1c7d62c3e7c6f6acd60ca6733e09d3427b32"
+      },
+      {
+       "material": "Authored inward backing",
+       "triangles": 710,
+       "welded": 1360,
+       "baseColor": null
+      }
+     ],
+     "welded": 10139
+    },
+    "limit": 65535
+   },
+   "baseColorUnchanged": true,
+   "renders": {
+    "front": {
+     "silhouetteIoU": 0.9992318293757484,
+     "colourDiffMean": 1.8719786405563354,
+     "colourDiffP99": 23.999998092651367,
+     "pixelsOver16": 0.019897347773984216
+    },
+    "back": {
+     "silhouetteIoU": 0.9992547088847735,
+     "colourDiffMean": 1.8888009786605835,
+     "colourDiffP99": 21.000001907348633,
+     "pixelsOver16": 0.019211210306249293
+    },
+    "left": {
+     "silhouetteIoU": 0.9988390467283692,
+     "colourDiffMean": 1.2004973888397217,
+     "colourDiffP99": 14.999999046325684,
+     "pixelsOver16": 0.008329835663319666
+    },
+    "right": {
+     "silhouetteIoU": 0.9989034026769876,
+     "colourDiffMean": 2.116690158843994,
+     "colourDiffP99": 23.000003814697266,
+     "pixelsOver16": 0.020212456814439315
+    },
+    "top": {
+     "silhouetteIoU": 0.9995603949682131,
+     "colourDiffMean": 2.5649380683898926,
+     "colourDiffP99": 24.000003814697266,
+     "pixelsOver16": 0.023952095808383235
+    },
+    "bottom": {
+     "silhouetteIoU": 0.9995265952050857,
+     "colourDiffMean": 0.9444162249565125,
+     "colourDiffP99": 13.999999046325684,
+     "pixelsOver16": 0.007375080347779018
+    },
+    "front-right": {
+     "silhouetteIoU": 0.9990990771628235,
+     "colourDiffMean": 2.3185319900512695,
+     "colourDiffP99": 25.999998092651367,
+     "pixelsOver16": 0.023201403782413726
+    },
+    "back-left": {
+     "silhouetteIoU": 0.9992177445809887,
+     "colourDiffMean": 1.8183999061584473,
+     "colourDiffP99": 19.999998092651367,
+     "pixelsOver16": 0.0164907318551442
+    }
+   }
+  },
+  "throtle-control-base": {
+   "source": "detached/throtle-control-base.glb",
+   "sourceSha256": "df274aa041fceb5e47b3fb43dc49945709bbaef7f8dbdd6dd600f09f93df1b82",
+   "diagonal": 1.2724390070273575,
+   "edges": {
+    "source": {
+     "boundary": 0,
+     "nonManifold": 0
+    },
+    "result": {
+     "boundary": 0,
+     "nonManifold": 0
+    }
+   },
+   "texel": {
+    "source": 1632.7470880974909,
+    "result": 1625.7594804066068
+   },
+   "front": {
+    "triangles": [
+     5373,
+     3465
+    ],
+    "deviation": {
+     "p50": 5.960464477539063e-08,
+     "p99": 0.0006327544234227395,
+     "max": 0.0021572972182184458,
+     "sourceToResultMax": 0.0021572972182184458,
+     "resultToSourceMax": 0.0012591799022629857
+    },
+    "tolerance": 0.0006362195035136787,
+    "tries": [
+     {
+      "share": 0.1732,
+      "triangles": 929,
+      "p99": 0.014310036581009633,
+      "max": 0.022600825875997543,
+      "passes": false
+     },
+     {
+      "share": 0.4162,
+      "triangles": 2235,
+      "p99": 0.002663532793521884,
+      "max": 0.004596765618771315,
+      "passes": false
+     },
+     {
+      "share": 0.6451,
+      "triangles": 3465,
+      "p99": 0.0006327544234227395,
+      "max": 0.0021572972182184458,
+      "passes": true
+     },
+     {
+      "share": 0.5182,
+      "triangles": 2783,
+      "p99": 0.001144384557846934,
+      "max": 0.0027654110454022884,
+      "passes": false
+     },
+     {
+      "share": 0.5782,
+      "triangles": 3105,
+      "p99": 0.0008823536656564105,
+      "max": 0.0027654110454022884,
+      "passes": false
+     },
+     {
+      "share": 0.6107,
+      "triangles": 3281,
+      "p99": 0.0007002403453225272,
+      "max": 0.0021572972182184458,
+      "passes": false
+     },
+     {
+      "share": 0.6277,
+      "triangles": 3371,
+      "p99": 0.0006694409379269931,
+      "max": 0.0021572972182184458,
+      "passes": false
+     },
+     {
+      "share": 0.6363,
+      "triangles": 3419,
+      "p99": 0.0006560528720729061,
+      "max": 0.0021572972182184458,
+      "passes": false
+     },
+     {
+      "share": 0.6407,
+      "triangles": 3441,
+      "p99": 0.000652960865409114,
+      "max": 0.0021572972182184458,
+      "passes": false
+     }
+    ],
+    "final": {
+     "p50": 5.960464477539063e-08,
+     "p99": 0.0006327544234227395,
+     "max": 0.0021572972182184458,
+     "sourceToResultMax": 0.0021572972182184458,
+     "resultToSourceMax": 0.0012591799022629857
+    }
+   },
+   "backing": {
+    "triangles": [
+     5941,
+     2933
+    ],
+    "deviation": {
+     "p50": 5.202483225730248e-05,
+     "p99": 0.0017545350675936815,
+     "max": 0.0047600604593753815,
+     "sourceToResultMax": 0.0047600604593753815,
+     "resultToSourceMax": 0.0037093092687427998
+    },
+    "tolerance": 0.002544878014054715,
+    "tries": [
+     {
+      "share": 0.1732,
+      "triangles": 1171,
+      "p99": 0.07371490933001043,
+      "max": 0.10033506155014038,
+      "passes": false
+     },
+     {
+      "share": 0.4162,
+      "triangles": 2471,
+      "p99": 0.003785400113556537,
+      "max": 0.006885410286486149,
+      "passes": false
+     },
+     {
+      "share": 0.6451,
+      "triangles": 3831,
+      "p99": 0.000821001760195944,
+      "max": 0.0022804634645581245,
+      "passes": true
+     },
+     {
+      "share": 0.5182,
+      "triangles": 3077,
+      "p99": 0.0016214976960327537,
+      "max": 0.0028622904792428017,
+      "passes": true
+     },
+     {
+      "share": 0.4644,
+      "triangles": 2757,
+      "p99": 0.0028369398182258036,
+      "max": 0.006973184645175934,
+      "passes": false
+     },
+     {
+      "share": 0.4905,
+      "triangles": 2913,
+      "p99": 0.002636052395682784,
+      "max": 0.0047600604593753815,
+      "passes": false
+     },
+     {
+      "share": 0.5042,
+      "triangles": 2995,
+      "p99": 0.001686455139424656,
+      "max": 0.0030341544188559055,
+      "passes": true
+     },
+     {
+      "share": 0.4973,
+      "triangles": 2953,
+      "p99": 0.0017244951287284523,
+      "max": 0.0047600604593753815,
+      "passes": true
+     },
+     {
+      "share": 0.4939,
+      "triangles": 2933,
+      "p99": 0.0017545350675936815,
+      "max": 0.0047600604593753815,
+      "passes": true
+     }
+    ],
+    "final": {
+     "p50": 5.202483225730248e-05,
+     "p99": 0.0017545350675936815,
+     "max": 0.0047600604593753815,
+     "sourceToResultMax": 0.0047600604593753815,
+     "resultToSourceMax": 0.0037093092687427998
+    }
+   },
+   "lockedKept": [
+    499,
+    499
+   ],
+   "normals": "smooth, sharp above 30 degrees",
+   "output": "game-ready/throtle-control-base.glb",
+   "packager": {
+    "source": {
+     "primitives": [
+      {
+       "material": "tripo_mat_87ad6e41-3513-4f07-9c68-384901550f2f",
+       "triangles": 5373,
+       "welded": 9281,
+       "baseColor": "b532cdcf5ff93c050cf634dd78c384401ca9e47e8c51a0580d872796b267e985"
+      },
+      {
+       "material": "Authored inward backing",
+       "triangles": 5941,
+       "welded": 17681,
+       "baseColor": null
+      }
+     ],
+     "welded": 26962
+    },
+    "result": {
+     "primitives": [
+      {
+       "material": "tripo_mat_87ad6e41-3513-4f07-9c68-384901550f2f",
+       "triangles": 3465,
+       "welded": 5325,
+       "baseColor": "b532cdcf5ff93c050cf634dd78c384401ca9e47e8c51a0580d872796b267e985"
+      },
+      {
+       "material": "Authored inward backing",
+       "triangles": 2933,
+       "welded": 4620,
+       "baseColor": null
+      }
+     ],
+     "welded": 9945
+    },
+    "limit": 65535
+   },
+   "baseColorUnchanged": true,
+   "renders": {
+    "front": {
+     "silhouetteIoU": 0.9977606819084769,
+     "colourDiffMean": 1.3146064281463623,
+     "colourDiffP99": 22.0000057220459,
+     "pixelsOver16": 0.016108597285067874
+    },
+    "back": {
+     "silhouetteIoU": 0.9979051540434138,
+     "colourDiffMean": 0.9961634278297424,
+     "colourDiffP99": 16.000001907348633,
+     "pixelsOver16": 0.010061891490824858
+    },
+    "left": {
+     "silhouetteIoU": 0.9985389154256814,
+     "colourDiffMean": 1.6219820976257324,
+     "colourDiffP99": 20.999998092651367,
+     "pixelsOver16": 0.01637683606280601
+    },
+    "right": {
+     "silhouetteIoU": 0.99842661272196,
+     "colourDiffMean": 2.60231876373291,
+     "colourDiffP99": 33.999996185302734,
+     "pixelsOver16": 0.03810220621341738
+    },
+    "top": {
+     "silhouetteIoU": 0.9996968778417702,
+     "colourDiffMean": 1.950341820716858,
+     "colourDiffP99": 24.999998092651367,
+     "pixelsOver16": 0.021321462043111528
+    },
+    "bottom": {
+     "silhouetteIoU": 0.9996968778417702,
+     "colourDiffMean": 0.09724902361631393,
+     "colourDiffP99": 0.9999999403953552,
+     "pixelsOver16": 0.00042725618832350186
+    },
+    "front-right": {
+     "silhouetteIoU": 0.9991166458396173,
+     "colourDiffMean": 2.127487897872925,
+     "colourDiffP99": 29.0000057220459,
+     "pixelsOver16": 0.027063161753606624
+    },
+    "back-left": {
+     "silhouetteIoU": 0.9989979047098478,
+     "colourDiffMean": 1.7284104824066162,
+     "colourDiffP99": 24.000001907348633,
+     "pixelsOver16": 0.020791537479482036
+    }
+   }
+  },
+  "throtle-control-handle": {
+   "source": "detached/throtle-control-handle.glb",
+   "sourceSha256": "e180566fcd7fbcd8fde5497deb073869cf4c4d395f488fa640e9f20a3890f4e5",
+   "diagonal": 0.9101011071261592,
+   "edges": {
+    "source": {
+     "boundary": 0,
+     "nonManifold": 0
+    },
+    "result": {
+     "boundary": 0,
+     "nonManifold": 0
+    }
+   },
+   "texel": {
+    "source": 1604.7816094514633,
+    "result": 1601.561500526494
+   },
+   "front": {
+    "triangles": [
+     4466,
+     3442
+    ],
+    "deviation": {
+     "p50": 4.715196382676368e-06,
+     "p99": 0.00042772265616804385,
+     "max": 0.0007726445328444242,
+     "sourceToResultMax": 0.0007201469852589071,
+     "resultToSourceMax": 0.0007726445328444242
+    },
+    "tolerance": 0.00045505055356307963,
+    "tries": [
+     {
+      "share": 0.1732,
+      "triangles": 772,
+      "p99": 0.0074676405172795085,
+      "max": 0.008640595711767673,
+      "passes": false
+     },
+     {
+      "share": 0.4162,
+      "triangles": 1858,
+      "p99": 0.0016763993259519346,
+      "max": 0.0026040696538984776,
+      "passes": false
+     },
+     {
+      "share": 0.6451,
+      "triangles": 2880,
+      "p99": 0.0007425617432454601,
+      "max": 0.0012487199855968356,
+      "passes": false
+     },
+     {
+      "share": 0.8032,
+      "triangles": 3586,
+      "p99": 0.00038463440723717217,
+      "max": 0.0006234931643120944,
+      "passes": true
+     },
+     {
+      "share": 0.7198,
+      "triangles": 3214,
+      "p99": 0.0005817170965019617,
+      "max": 0.001077334163710475,
+      "passes": false
+     },
+     {
+      "share": 0.7604,
+      "triangles": 3394,
+      "p99": 0.0004879316268488774,
+      "max": 0.0009000127320177853,
+      "passes": false
+     },
+     {
+      "share": 0.7815,
+      "triangles": 3490,
+      "p99": 0.00042012037360109424,
+      "max": 0.0007726445328444242,
+      "passes": true
+     },
+     {
+      "share": 0.7709,
+      "triangles": 3442,
+      "p99": 0.00042772265616804385,
+      "max": 0.0007726445328444242,
+      "passes": true
+     },
+     {
+      "share": 0.7656,
+      "triangles": 3418,
+      "p99": 0.000482900156930555,
+      "max": 0.0009000127320177853,
+      "passes": false
+     }
+    ],
+    "final": {
+     "p50": 4.715196382676368e-06,
+     "p99": 0.00042772265616804385,
+     "max": 0.0007726445328444242,
+     "sourceToResultMax": 0.0007201469852589071,
+     "resultToSourceMax": 0.0007726445328444242
+    }
+   },
+   "backing": {
+    "triangles": [
+     4854,
+     1992
+    ],
+    "deviation": {
+     "p50": 0.0004094951000297442,
+     "p99": 0.0018135224375873825,
+     "max": 0.003166989656165242,
+     "sourceToResultMax": 0.003166989656165242,
+     "resultToSourceMax": 0.0029374079313129187
+    },
+    "tolerance": 0.0018202022142523185,
+    "tries": [
+     {
+      "share": 0.1732,
+      "triangles": 840,
+      "p99": 0.011262196591123942,
+      "max": 0.020066319033503532,
+      "passes": false
+     },
+     {
+      "share": 0.4162,
+      "triangles": 2020,
+      "p99": 0.0017644993087742487,
+      "max": 0.003166989656165242,
+      "passes": true
+     },
+     {
+      "share": 0.2685,
+      "triangles": 1302,
+      "p99": 0.004456154122017326,
+      "max": 0.005897688213735819,
+      "passes": false
+     },
+     {
+      "share": 0.3343,
+      "triangles": 1622,
+      "p99": 0.002726065339520576,
+      "max": 0.004363561049103737,
+      "passes": false
+     },
+     {
+      "share": 0.373,
+      "triangles": 1810,
+      "p99": 0.0021410214062780168,
+      "max": 0.003166989656165242,
+      "passes": false
+     },
+     {
+      "share": 0.394,
+      "triangles": 1912,
+      "p99": 0.0019541779160499612,
+      "max": 0.003166989656165242,
+      "passes": false
+     },
+     {
+      "share": 0.4049,
+      "triangles": 1964,
+      "p99": 0.0018594784534070666,
+      "max": 0.003166989656165242,
+      "passes": false
+     },
+     {
+      "share": 0.4105,
+      "triangles": 1992,
+      "p99": 0.0018135224375873825,
+      "max": 0.003166989656165242,
+      "passes": true
+     },
+     {
+      "share": 0.4077,
+      "triangles": 1978,
+      "p99": 0.0018515298550482843,
+      "max": 0.003166989656165242,
+      "passes": false
+     }
+    ],
+    "final": {
+     "p50": 0.0004094951000297442,
+     "p99": 0.0018135224375873825,
+     "max": 0.003166989656165242,
+     "sourceToResultMax": 0.003166989656165242,
+     "resultToSourceMax": 0.0029374079313129187
+    }
+   },
+   "lockedKept": [
+    194,
+    194
+   ],
+   "normals": "smooth, sharp above 30 degrees",
+   "output": "game-ready/throtle-control-handle.glb",
+   "packager": {
+    "source": {
+     "primitives": [
+      {
+       "material": "tripo_mat_87ad6e41-3513-4f07-9c68-384901550f2f",
+       "triangles": 4466,
+       "welded": 7151,
+       "baseColor": "b532cdcf5ff93c050cf634dd78c384401ca9e47e8c51a0580d872796b267e985"
+      },
+      {
+       "material": "Authored inward backing",
+       "triangles": 4854,
+       "welded": 14544,
+       "baseColor": null
+      }
+     ],
+     "welded": 21695
+    },
+    "result": {
+     "primitives": [
+      {
+       "material": "tripo_mat_87ad6e41-3513-4f07-9c68-384901550f2f",
+       "triangles": 3442,
+       "welded": 4669,
+       "baseColor": "b532cdcf5ff93c050cf634dd78c384401ca9e47e8c51a0580d872796b267e985"
+      },
+      {
+       "material": "Authored inward backing",
+       "triangles": 1992,
+       "welded": 2928,
+       "baseColor": null
+      }
+     ],
+     "welded": 7597
+    },
+    "limit": 65535
+   },
+   "baseColorUnchanged": true,
+   "renders": {
+    "front": {
+     "silhouetteIoU": 0.994566482962043,
+     "colourDiffMean": 0.9672988653182983,
+     "colourDiffP99": 16.999998092651367,
+     "pixelsOver16": 0.010848357137282447
+    },
+    "back": {
+     "silhouetteIoU": 0.9943375736891096,
+     "colourDiffMean": 1.0959513187408447,
+     "colourDiffP99": 16.0000057220459,
+     "pixelsOver16": 0.010453233481550823
+    },
+    "left": {
+     "silhouetteIoU": 0.999012426960744,
+     "colourDiffMean": 0.6812752485275269,
+     "colourDiffP99": 10.999999046325684,
+     "pixelsOver16": 0.004407282313205371
+    },
+    "right": {
+     "silhouetteIoU": 0.9989712780841083,
+     "colourDiffMean": 1.396424651145935,
+     "colourDiffP99": 16.240238189697266,
+     "pixelsOver16": 0.010668534003377682
+    },
+    "top": {
+     "silhouetteIoU": 0.9992898332528478,
+     "colourDiffMean": 1.159304141998291,
+     "colourDiffP99": 13.000000953674316,
+     "pixelsOver16": 0.006282335550628234
+    },
+    "bottom": {
+     "silhouetteIoU": 0.9993183173800665,
+     "colourDiffMean": 0.4330500662326813,
+     "colourDiffP99": 6.999999523162842,
+     "pixelsOver16": 0.0021317113378620358
+    },
+    "front-right": {
+     "silhouetteIoU": 0.9992526956336073,
+     "colourDiffMean": 1.3716168403625488,
+     "colourDiffP99": 15.210942268371582,
+     "pixelsOver16": 0.009401709401709401
+    },
+    "back-left": {
+     "silhouetteIoU": 0.9991538786969731,
+     "colourDiffMean": 1.1945033073425293,
+     "colourDiffP99": 14.999999046325684,
+     "pixelsOver16": 0.007775510989645483
+    }
+   }
+  },
+  "chair": {
+   "source": "repairs/2026-10-31_v001/chair/v004/Repaired.glb",
+   "sourceSha256": "aa8757c80054c2aa58ceebecf7ddbea127bb017475950444993ef35145d3cd2f",
+   "diagonal": 1.5157232298235128,
+   "edges": {
+    "source": {
+     "boundary": 0,
+     "nonManifold": 1
+    },
+    "result": {
+     "boundary": 0,
+     "nonManifold": 1
+    }
+   },
+   "texel": {
+    "source": 1685.7694735625546,
+    "result": 1637.0202479646935
+   },
+   "front": {
+    "triangles": [
+     10972,
+     9698
+    ],
+    "deviation": {
+     "p50": 1.4901161193847656e-08,
+     "p99": 0.0006687931320630015,
+     "max": 0.0029963841661810875,
+     "sourceToResultMax": 0.0029963841661810875,
+     "resultToSourceMax": 0.001508268527686596
+    },
+    "tolerance": 0.0007578616149117565,
+    "tries": [
+     {
+      "share": 0.1732,
+      "triangles": 1900,
+      "p99": 0.017755358349531906,
+      "max": 0.03465820476412773,
+      "passes": false
+     },
+     {
+      "share": 0.4162,
+      "triangles": 4566,
+      "p99": 0.005042722644284369,
+      "max": 0.0147321205586195,
+      "passes": false
+     },
+     {
+      "share": 0.6451,
+      "triangles": 7078,
+      "p99": 0.0021890845499001445,
+      "max": 0.010355121456086636,
+      "passes": false
+     },
+     {
+      "share": 0.8032,
+      "triangles": 8812,
+      "p99": 0.0012750140985008335,
+      "max": 0.003864353522658348,
+      "passes": false
+     },
+     {
+      "share": 0.8962,
+      "triangles": 9832,
+      "p99": 0.0005824814218794937,
+      "max": 0.0029963841661810875,
+      "passes": true
+     },
+     {
+      "share": 0.8484,
+      "triangles": 9308,
+      "p99": 0.0011872565909288835,
+      "max": 0.0029963841661810875,
+      "passes": false
+     },
+     {
+      "share": 0.872,
+      "triangles": 9566,
+      "p99": 0.0009420766256516821,
+      "max": 0.0029963841661810875,
+      "passes": false
+     },
+     {
+      "share": 0.884,
+      "triangles": 9698,
+      "p99": 0.0006687931320630015,
+      "max": 0.0029963841661810875,
+      "passes": true
+     },
+     {
+      "share": 0.878,
+      "triangles": 9632,
+      "p99": 0.000887443242245356,
+      "max": 0.0029963841661810875,
+      "passes": false
+     }
+    ],
+    "final": {
+     "p50": 1.4901161193847656e-08,
+     "p99": 0.0006687931320630015,
+     "max": 0.0029963841661810875,
+     "sourceToResultMax": 0.0029963841661810875,
+     "resultToSourceMax": 0.001508268527686596
+    }
+   },
+   "backing": {
+    "triangles": [
+     12188,
+     7494
+    ],
+    "deviation": {
+     "p50": 0.000296441197860986,
+     "p99": 0.003006996011827142,
+     "max": 0.01211739331483841,
+     "sourceToResultMax": 0.01211739331483841,
+     "resultToSourceMax": 0.005593587644398212
+    },
+    "tolerance": 0.003031446459647026,
+    "tries": [
+     {
+      "share": 0.1732,
+      "triangles": 2110,
+      "p99": 0.03734761789441111,
+      "max": 0.06899421662092209,
+      "passes": false
+     },
+     {
+      "share": 0.4162,
+      "triangles": 5072,
+      "p99": 0.006510960543528202,
+      "max": 0.015960240736603737,
+      "passes": false
+     },
+     {
+      "share": 0.6451,
+      "triangles": 7862,
+      "p99": 0.002570061071310195,
+      "max": 0.01211739331483841,
+      "passes": true
+     },
+     {
+      "share": 0.5182,
+      "triangles": 6314,
+      "p99": 0.004225537702441227,
+      "max": 0.015875734388828278,
+      "passes": false
+     },
+     {
+      "share": 0.5782,
+      "triangles": 7046,
+      "p99": 0.003332894879858941,
+      "max": 0.01211739331483841,
+      "passes": false
+     },
+     {
+      "share": 0.6107,
+      "triangles": 7442,
+      "p99": 0.003042653349693865,
+      "max": 0.01211739331483841,
+      "passes": false
+     },
+     {
+      "share": 0.6277,
+      "triangles": 7650,
+      "p99": 0.0027532512228935963,
+      "max": 0.01211739331483841,
+      "passes": true
+     },
+     {
+      "share": 0.6191,
+      "triangles": 7546,
+      "p99": 0.002872745969798421,
+      "max": 0.01211739331483841,
+      "passes": true
+     },
+     {
+      "share": 0.6149,
+      "triangles": 7494,
+      "p99": 0.003006996011827142,
+      "max": 0.01211739331483841,
+      "passes": true
+     }
+    ],
+    "final": {
+     "p50": 0.000296441197860986,
+     "p99": 0.003006996011827142,
+     "max": 0.01211739331483841,
+     "sourceToResultMax": 0.01211739331483841,
+     "resultToSourceMax": 0.005593587644398212
+    }
+   },
+   "lockedKept": [
+    754,
+    754
+   ],
+   "normals": "smooth, sharp above 30 degrees",
+   "output": "game-ready/chair.glb",
+   "packager": {
+    "source": {
+     "primitives": [
+      {
+       "material": "tripo_mat_0272c2cf-9d55-44ea-b187-e240b102a4ae",
+       "triangles": 10972,
+       "welded": 8685,
+       "baseColor": "266f0f9cc06046f3425b34869396e756a839b3c0c1de015e018ba1d8153d4da9"
+      },
+      {
+       "material": "Authored inward backing",
+       "triangles": 12188,
+       "welded": 36366,
+       "baseColor": null
+      }
+     ],
+     "welded": 45051
+    },
+    "result": {
+     "primitives": [
+      {
+       "material": "tripo_mat_0272c2cf-9d55-44ea-b187-e240b102a4ae",
+       "triangles": 9698,
+       "welded": 14278,
+       "baseColor": "266f0f9cc06046f3425b34869396e756a839b3c0c1de015e018ba1d8153d4da9"
+      },
+      {
+       "material": "Authored inward backing",
+       "triangles": 7494,
+       "welded": 12750,
+       "baseColor": null
+      }
+     ],
+     "welded": 27028
+    },
+    "limit": 65535
+   },
+   "baseColorUnchanged": true,
+   "renders": {
+    "front": {
+     "silhouetteIoU": 0.9979071920151326,
+     "colourDiffMean": 0.8335149884223938,
+     "colourDiffP99": 15.000006675720215,
+     "pixelsOver16": 0.009034079451502319
+    },
+    "back": {
+     "silhouetteIoU": 0.9980070859167405,
+     "colourDiffMean": 0.8764951229095459,
+     "colourDiffP99": 15.000014305114746,
+     "pixelsOver16": 0.009318837364100288
+    },
+    "left": {
+     "silhouetteIoU": 0.9997488744192721,
+     "colourDiffMean": 0.9075267314910889,
+     "colourDiffP99": 13.00000286102295,
+     "pixelsOver16": 0.005651744864088992
+    },
+    "right": {
+     "silhouetteIoU": 0.9997488789237668,
+     "colourDiffMean": 2.0041086673736572,
+     "colourDiffP99": 29.000011444091797,
+     "pixelsOver16": 0.02310894215587771
+    },
+    "top": {
+     "silhouetteIoU": 0.999881404174573,
+     "colourDiffMean": 1.3756039142608643,
+     "colourDiffP99": 18.999998092651367,
+     "pixelsOver16": 0.013843468831014793
+    },
+    "bottom": {
+     "silhouetteIoU": 0.9998644642100805,
+     "colourDiffMean": 1.5778335332870483,
+     "colourDiffP99": 25.0000057220459,
+     "pixelsOver16": 0.01592761407729976
+    },
+    "front-right": {
+     "silhouetteIoU": 0.9987380590534086,
+     "colourDiffMean": 1.3568742275238037,
+     "colourDiffP99": 20.000001907348633,
+     "pixelsOver16": 0.014985802209149083
+    },
+    "back-left": {
+     "silhouetteIoU": 0.9988797110657793,
+     "colourDiffMean": 1.0228495597839355,
+     "colourDiffP99": 15.999999046325684,
+     "pixelsOver16": 0.00930715278126517
+    }
+   }
+  },
+  "hull-console": {
+   "source": "hull reconstruction/assembled/console.glb",
+   "sourceSha256": "4de38b521b346f531a153831463bb0457fab57fba3ff754fddef49c08c3eea00",
+   "diagonal": 1.1080541224260232,
+   "edges": {
+    "source": {
+     "boundary": 3236,
+     "nonManifold": 3536
+    },
+    "result": {
+     "boundary": 3236,
+     "nonManifold": 3536
+    }
+   },
+   "texel": {
+    "source": 1996.9671867454306,
+    "result": 1986.0124873643092
+   },
+   "front": {
+    "triangles": [
+     27337,
+     13317
+    ],
+    "deviation": {
+     "p50": 2.6547146262601018e-05,
+     "p99": 0.00037940387584967566,
+     "max": 0.0019771642982959747,
+     "sourceToResultMax": 0.0019771642982959747,
+     "resultToSourceMax": 0.0007571455207653344
+    },
+    "tolerance": 0.0005540270612130116,
+    "tries": [
+     {
+      "share": 0.1732,
+      "triangles": 4853,
+      "p99": 0.05889284793287526,
+      "max": 0.0789174884557724,
+      "passes": false
+     },
+     {
+      "share": 0.4162,
+      "triangles": 11377,
+      "p99": 0.0005963053629966454,
+      "max": 0.002905595349147916,
+      "passes": false
+     },
+     {
+      "share": 0.6451,
+      "triangles": 17635,
+      "p99": 0.00020050892504514203,
+      "max": 0.0019118437776342034,
+      "passes": true
+     },
+     {
+      "share": 0.5182,
+      "triangles": 14163,
+      "p99": 0.00033379007654730277,
+      "max": 0.0019771642982959747,
+      "passes": true
+     },
+     {
+      "share": 0.4644,
+      "triangles": 12693,
+      "p99": 0.00044809341430664075,
+      "max": 0.0029615615494549274,
+      "passes": false
+     },
+     {
+      "share": 0.4905,
+      "triangles": 13409,
+      "p99": 0.0003746152098756284,
+      "max": 0.0019771642982959747,
+      "passes": true
+     },
+     {
+      "share": 0.4773,
+      "triangles": 13047,
+      "p99": 0.0004079451033612716,
+      "max": 0.0029615615494549274,
+      "passes": false
+     },
+     {
+      "share": 0.4839,
+      "triangles": 13227,
+      "p99": 0.00038464654353447295,
+      "max": 0.0029615615494549274,
+      "passes": false
+     },
+     {
+      "share": 0.4872,
+      "triangles": 13317,
+      "p99": 0.00037940387584967566,
+      "max": 0.0019771642982959747,
+      "passes": true
+     }
+    ],
+    "final": {
+     "p50": 2.6547146262601018e-05,
+     "p99": 0.00037940387584967566,
+     "max": 0.0019771642982959747,
+     "sourceToResultMax": 0.0019771642982959747,
+     "resultToSourceMax": 0.0007571455207653344
+    }
+   },
+   "backing": null,
+   "lockedKept": [
+    3294,
+    3294
+   ],
+   "normals": "smooth, sharp above 30 degrees",
+   "output": "game-ready/hull-console.glb",
+   "packager": {
+    "source": {
+     "primitives": [
+      {
+       "material": "tripo_90be3d2d_fcf4_47a1_87de_1fa1b5282c79",
+       "triangles": 27316,
+       "welded": 37079,
+       "baseColor": "ae14024e997d8f36d2e6a7026614123c99fd2e0eb1aaefb7243e07e5fe29f135"
+      },
+      {
+       "material": "Screen",
+       "triangles": 8,
+       "welded": 10,
+       "baseColor": "2fd4e6e29a27759ab6b9835fb7aa4a4bd3f5778cce8b86fa5da9b6ae0644e28b"
+      },
+      {
+       "material": "Display",
+       "triangles": 6,
+       "welded": 8,
+       "baseColor": "548f3605f0a30e4f5a38cb232a8c24bd7f60ba878d375dd5aea615bafa55d550"
+      },
+      {
+       "material": "Aim",
+       "triangles": 7,
+       "welded": 9,
+       "baseColor": "fae6753f6dadb844f79c2e8910e552ab6c3c7e4b70b3429fb813e56ffe56bea9"
+      }
+     ],
+     "welded": 37106
+    },
+    "result": {
+     "primitives": [
+      {
+       "material": "tripo_90be3d2d_fcf4_47a1_87de_1fa1b5282c79",
+       "triangles": 13296,
+       "welded": 22402,
+       "baseColor": "ae14024e997d8f36d2e6a7026614123c99fd2e0eb1aaefb7243e07e5fe29f135"
+      },
+      {
+       "material": "Screen",
+       "triangles": 8,
+       "welded": 10,
+       "baseColor": "2fd4e6e29a27759ab6b9835fb7aa4a4bd3f5778cce8b86fa5da9b6ae0644e28b"
+      },
+      {
+       "material": "Display",
+       "triangles": 6,
+       "welded": 8,
+       "baseColor": "548f3605f0a30e4f5a38cb232a8c24bd7f60ba878d375dd5aea615bafa55d550"
+      },
+      {
+       "material": "Aim",
+       "triangles": 7,
+       "welded": 9,
+       "baseColor": "fae6753f6dadb844f79c2e8910e552ab6c3c7e4b70b3429fb813e56ffe56bea9"
+      }
+     ],
+     "welded": 22429
+    },
+    "limit": 65535
+   },
+   "baseColorUnchanged": true,
+   "renders": {
+    "front": {
+     "silhouetteIoU": 0.9998279684991207,
+     "colourDiffMean": 0.7659586668014526,
+     "colourDiffP99": 9.000006675720215,
+     "pixelsOver16": 0.0029632745139273903
+    },
+    "back": {
+     "silhouetteIoU": 0.9997707386037981,
+     "colourDiffMean": 0.7321039438247681,
+     "colourDiffP99": 6.999999523162842,
+     "pixelsOver16": 0.0012230078348939423
+    },
+    "left": {
+     "silhouetteIoU": 0.9991872121376321,
+     "colourDiffMean": 0.5829718708992004,
+     "colourDiffP99": 7.000001907348633,
+     "pixelsOver16": 0.0019251626898047723
+    },
+    "right": {
+     "silhouetteIoU": 0.9993225666594407,
+     "colourDiffMean": 0.4367797374725342,
+     "colourDiffP99": 5.999999523162842,
+     "pixelsOver16": 0.00037961983784809785
+    },
+    "top": {
+     "silhouetteIoU": 0.999562800574605,
+     "colourDiffMean": 0.9978755116462708,
+     "colourDiffP99": 8.999999046325684,
+     "pixelsOver16": 0.0029211447138215445
+    },
+    "bottom": {
+     "silhouetteIoU": 0.9989875858744124,
+     "colourDiffMean": 0.7110006809234619,
+     "colourDiffP99": 7.999999523162842,
+     "pixelsOver16": 0.0009893106194049659
+    },
+    "front-right": {
+     "silhouetteIoU": 0.9994846357018617,
+     "colourDiffMean": 0.7546728849411011,
+     "colourDiffP99": 7.999999523162842,
+     "pixelsOver16": 0.0019013857557202707
+    },
+    "back-left": {
+     "silhouetteIoU": 0.9992191857222532,
+     "colourDiffMean": 0.7502152919769287,
+     "colourDiffP99": 7.949219226837158,
+     "pixelsOver16": 0.0018339552833859598
+    }
+   }
+  },
+  "hull-side-left": {
+   "source": "hull reconstruction/assembled/side-left.glb",
+   "sourceSha256": "18c3abfceeaed60d14ae7a2a3a6adbde358a898703031dd749f344108d94e4a0",
+   "diagonal": 0.8510456978800914,
+   "edges": {
+    "source": {
+     "boundary": 789,
+     "nonManifold": 1125
+    },
+    "result": {
+     "boundary": 789,
+     "nonManifold": 1125
+    }
+   },
+   "texel": {
+    "source": 2964.111995532055,
+    "result": 2924.6263197095864
+   },
+   "front": {
+    "triangles": [
+     24508,
+     4482
+    ],
+    "deviation": {
+     "p50": 5.9893689467571676e-05,
+     "p99": 0.0004149212347692812,
+     "max": 0.0006843507289886475,
+     "sourceToResultMax": 0.0005667592631652951,
+     "resultToSourceMax": 0.0006843507289886475
+    },
+    "tolerance": 0.0004255228489400457,
+    "tries": [
+     {
+      "share": 0.1732,
+      "triangles": 4244,
+      "p99": 0.0004464884824119515,
+      "max": 0.0006917198188602924,
+      "passes": false
+     },
+     {
+      "share": 0.4162,
+      "triangles": 10198,
+      "p99": 0.00010019450179242998,
+      "max": 0.00047948790597729385,
+      "passes": true
+     },
+     {
+      "share": 0.2685,
+      "triangles": 6580,
+      "p99": 0.00021368592177168483,
+      "max": 0.0005068858154118061,
+      "passes": true
+     },
+     {
+      "share": 0.2156,
+      "triangles": 5284,
+      "p99": 0.0003093281714245679,
+      "max": 0.0006004528841003776,
+      "passes": true
+     },
+     {
+      "share": 0.1933,
+      "triangles": 4736,
+      "p99": 0.00040106237865984625,
+      "max": 0.0006049685762263834,
+      "passes": true
+     },
+     {
+      "share": 0.183,
+      "triangles": 4482,
+      "p99": 0.0004149212347692812,
+      "max": 0.0006843507289886475,
+      "passes": true
+     },
+     {
+      "share": 0.178,
+      "triangles": 4362,
+      "p99": 0.0004357354177045636,
+      "max": 0.0008272305130958557,
+      "passes": false
+     },
+     {
+      "share": 0.1805,
+      "triangles": 4422,
+      "p99": 0.0004263944737613203,
+      "max": 0.0006917198188602924,
+      "passes": false
+     },
+     {
+      "share": 0.1817,
+      "triangles": 4452,
+      "p99": 0.00042566753021674276,
+      "max": 0.0006917198188602924,
+      "passes": false
+     }
+    ],
+    "final": {
+     "p50": 5.9893689467571676e-05,
+     "p99": 0.0004149212347692812,
+     "max": 0.0006843507289886475,
+     "sourceToResultMax": 0.0005667592631652951,
+     "resultToSourceMax": 0.0006843507289886475
+    }
+   },
+   "backing": null,
+   "lockedKept": [
+    961,
+    961
+   ],
+   "normals": "smooth, sharp above 30 degrees",
+   "output": "game-ready/hull-side-left.glb",
+   "packager": {
+    "source": {
+     "primitives": [
+      {
+       "material": "tripo_3d029b3f_89cb_476d_bb19_d870746d248b",
+       "triangles": 24508,
+       "welded": 31598,
+       "baseColor": "6e3dc66f9d82545895a732f73bd2f25141e9169dfab6d878fb021b1fea864317"
+      }
+     ],
+     "welded": 31598
+    },
+    "result": {
+     "primitives": [
+      {
+       "material": "tripo_3d029b3f_89cb_476d_bb19_d870746d248b",
+       "triangles": 4482,
+       "welded": 8087,
+       "baseColor": "6e3dc66f9d82545895a732f73bd2f25141e9169dfab6d878fb021b1fea864317"
+      }
+     ],
+     "welded": 8087
+    },
+    "limit": 65535
+   },
+   "baseColorUnchanged": true,
+   "renders": {
+    "front": {
+     "silhouetteIoU": 0.9973949287947204,
+     "colourDiffMean": 0.9009664058685303,
+     "colourDiffP99": 13.00000286102295,
+     "pixelsOver16": 0.007617969702246213
+    },
+    "back": {
+     "silhouetteIoU": 0.9967627063774684,
+     "colourDiffMean": 0.6575728058815002,
+     "colourDiffP99": 6.999999523162842,
+     "pixelsOver16": 0.000974342318934719
+    },
+    "left": {
+     "silhouetteIoU": 0.9977132486388385,
+     "colourDiffMean": 0.4778258800506592,
+     "colourDiffP99": 4.999999523162842,
+     "pixelsOver16": 0.0006184741877978681
+    },
+    "right": {
+     "silhouetteIoU": 0.9995459511613718,
+     "colourDiffMean": 1.1185321807861328,
+     "colourDiffP99": 11.00000286102295,
+     "pixelsOver16": 0.004911633189012705
+    },
+    "top": {
+     "silhouetteIoU": 0.9972726077812829,
+     "colourDiffMean": 0.7562687993049622,
+     "colourDiffP99": 7.999999523162842,
+     "pixelsOver16": 0.0003954001779300801
+    },
+    "bottom": {
+     "silhouetteIoU": 0.9998748004632383,
+     "colourDiffMean": 0.5962435603141785,
+     "colourDiffP99": 7.999999523162842,
+     "pixelsOver16": 0.0018782282047268744
+    },
+    "front-right": {
+     "silhouetteIoU": 0.9987468279081425,
+     "colourDiffMean": 1.0888515710830688,
+     "colourDiffP99": 11.999999046325684,
+     "pixelsOver16": 0.004422974371843533
+    },
+    "back-left": {
+     "silhouetteIoU": 0.9951680210849989,
+     "colourDiffMean": 0.7352068424224854,
+     "colourDiffP99": 8.999999046325684,
+     "pixelsOver16": 0.0018391819318767013
+    }
+   }
+  },
+  "hull-side-right": {
+   "source": "hull reconstruction/assembled/side-right.glb",
+   "sourceSha256": "53f22e6b4dabd8f5842abb888800ad42da0e68e17f552411969db7160f89182f",
+   "diagonal": 0.8510456978800914,
+   "edges": {
+    "source": {
+     "boundary": 789,
+     "nonManifold": 1125
+    },
+    "result": {
+     "boundary": 789,
+     "nonManifold": 1125
+    }
+   },
+   "texel": {
+    "source": 2964.1119942292103,
+    "result": 2924.0088736396447
+   },
+   "front": {
+    "triangles": [
+     24508,
+     4422
+    ],
+    "deviation": {
+     "p50": 6.258272696868517e-05,
+     "p99": 0.00042148333042860034,
+     "max": 0.0006668904097750783,
+     "sourceToResultMax": 0.0006668904097750783,
+     "resultToSourceMax": 0.000609247013926506
+    },
+    "tolerance": 0.0004255228489400457,
+    "tries": [
+     {
+      "share": 0.1732,
+      "triangles": 4244,
+      "p99": 0.00044454054994275805,
+      "max": 0.0007524923421442509,
+      "passes": false
+     },
+     {
+      "share": 0.4162,
+      "triangles": 10198,
+      "p99": 0.00010116800243849873,
+      "max": 0.0004862382775172591,
+      "passes": true
+     },
+     {
+      "share": 0.2685,
+      "triangles": 6580,
+      "p99": 0.0002158585385768675,
+      "max": 0.00045469513861462474,
+      "passes": true
+     },
+     {
+      "share": 0.2156,
+      "triangles": 5284,
+      "p99": 0.0003147595535847361,
+      "max": 0.0005853573093190789,
+      "passes": true
+     },
+     {
+      "share": 0.1933,
+      "triangles": 4736,
+      "p99": 0.0004007336060749379,
+      "max": 0.0006664097309112549,
+      "passes": true
+     },
+     {
+      "share": 0.183,
+      "triangles": 4482,
+      "p99": 0.00041507655259920284,
+      "max": 0.0006668904097750783,
+      "passes": true
+     },
+     {
+      "share": 0.178,
+      "triangles": 4362,
+      "p99": 0.0004386757421889344,
+      "max": 0.0007524923421442509,
+      "passes": false
+     },
+     {
+      "share": 0.1805,
+      "triangles": 4422,
+      "p99": 0.00042148333042860034,
+      "max": 0.0006668904097750783,
+      "passes": true
+     },
+     {
+      "share": 0.1792,
+      "triangles": 4392,
+      "p99": 0.0004278164907009345,
+      "max": 0.0006668904097750783,
+      "passes": false
+     }
+    ],
+    "final": {
+     "p50": 6.258272696868517e-05,
+     "p99": 0.00042148333042860034,
+     "max": 0.0006668904097750783,
+     "sourceToResultMax": 0.0006668904097750783,
+     "resultToSourceMax": 0.000609247013926506
+    }
+   },
+   "backing": null,
+   "lockedKept": [
+    961,
+    961
+   ],
+   "normals": "smooth, sharp above 30 degrees",
+   "output": "game-ready/hull-side-right.glb",
+   "packager": {
+    "source": {
+     "primitives": [
+      {
+       "material": "tripo_3d029b3f_89cb_476d_bb19_d870746d248b",
+       "triangles": 24508,
+       "welded": 31598,
+       "baseColor": "6e3dc66f9d82545895a732f73bd2f25141e9169dfab6d878fb021b1fea864317"
+      }
+     ],
+     "welded": 31598
+    },
+    "result": {
+     "primitives": [
+      {
+       "material": "tripo_3d029b3f_89cb_476d_bb19_d870746d248b",
+       "triangles": 4422,
+       "welded": 8005,
+       "baseColor": "6e3dc66f9d82545895a732f73bd2f25141e9169dfab6d878fb021b1fea864317"
+      }
+     ],
+     "welded": 8005
+    },
+    "limit": 65535
+   },
+   "baseColorUnchanged": true,
+   "renders": {
+    "front": {
+     "silhouetteIoU": 0.9975692334404028,
+     "colourDiffMean": 0.8605865240097046,
+     "colourDiffP99": 10.999999046325684,
+     "pixelsOver16": 0.005090940736228353
+    },
+    "back": {
+     "silhouetteIoU": 0.9964917962003454,
+     "colourDiffMean": 0.6685262322425842,
+     "colourDiffP99": 7.000003337860107,
+     "pixelsOver16": 0.0008665980609868385
+    },
+    "left": {
+     "silhouetteIoU": 0.9994325677726866,
+     "colourDiffMean": 1.1213290691375732,
+     "colourDiffP99": 11.999999046325684,
+     "pixelsOver16": 0.004442678097455041
+    },
+    "right": {
+     "silhouetteIoU": 0.9963075586446568,
+     "colourDiffMean": 0.4700239896774292,
+     "colourDiffP99": 4.999999523162842,
+     "pixelsOver16": 0.0004360148245040331
+    },
+    "top": {
+     "silhouetteIoU": 0.9972718906126742,
+     "colourDiffMean": 0.7897564172744751,
+     "colourDiffP99": 8.0,
+     "pixelsOver16": 0.000560297946672819
+    },
+    "bottom": {
+     "silhouetteIoU": 0.9998748004632383,
+     "colourDiffMean": 0.5829394459724426,
+     "colourDiffP99": 6.999999523162842,
+     "pixelsOver16": 0.0021599624354359053
+    },
+    "front-right": {
+     "silhouetteIoU": 0.9913235713606542,
+     "colourDiffMean": 0.6952497959136963,
+     "colourDiffP99": 8.00000286102295,
+     "pixelsOver16": 0.0010071217897992951
+    },
+    "back-left": {
+     "silhouetteIoU": 0.9983070626715537,
+     "colourDiffMean": 1.076377272605896,
+     "colourDiffP99": 10.999999046325684,
+     "pixelsOver16": 0.003259903190753729
+    }
+   }
+  }
+ },
+ "controls": {
+  "joystick": {
+   "source": {
+    "-45 deg": 0,
+    "-22.5 deg": 0,
+    "+0 deg": 0,
+    "+22.5 deg": 0,
+    "+45 deg": 0
+   },
+   "result": {
+    "-45 deg": 0,
+    "-22.5 deg": 0,
+    "+0 deg": 0,
+    "+22.5 deg": 0,
+    "+45 deg": 0
+   }
+  },
+  "throtle-control": {
+   "source": {
+    "-0.060": 0,
+    "+0.130": 0,
+    "+0.000": 0,
+    "+0.320": 0
+   },
+   "result": {
+    "-0.060": 0,
+    "+0.130": 0,
+    "+0.000": 0,
+    "+0.320": 0
+   }
+  }
+ },
+ "seconds": 25.1
+}
