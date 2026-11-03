@@ -627,6 +627,8 @@ void CheckFields() {
     CheckField("Engine.Actor", "Modules", SDK_FIELD(AActor, Modules));
     CheckField("Engine.Actor", "WorldInfo", SDK_FIELD(AActor, WorldInfo));
     CheckField("Engine.Actor", "Owner", SDK_FIELD(AActor, Owner));
+    CheckField("Engine.Actor", "AllComponents", SDK_FIELD(AActor, AllComponents));  // the cockpit probe's `ride`
+    CheckField("Engine.PrimitiveComponent", "bOwnerNoSee", SDK_BOOL(UPrimitiveComponent, bOwnerNoSee));
     CheckField("Engine.Actor", "Instigator", SDK_FIELD(AActor, Instigator));
     CheckField("Engine.Actor", "Tag", SDK_FIELD(AActor, Tag));
     CheckField("Engine.Actor", "Acceleration", SDK_FIELD(AActor, Acceleration));

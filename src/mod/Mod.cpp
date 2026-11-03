@@ -278,6 +278,7 @@ void TryInstallScriptHooks() {
     gHandAimAvailable = game::hand_aim::TryStartup();
     game::mako::TryStartup();  // the Mako's turret aimed by the controller (research/44: the vehicle's Tick and shot-start handlers)
     game::mako_controls::TryStartup();  // the Mako's physical lever and stick (research/46: the SetInputs handlers)
+    game::cockpit_probe::TryStartup();  // the cockpit riding in the Mako (research/47: a camera-update handler, inert until asked)
     game::sights::TryStartup();  // the scoped shots' aimed fire (a CallFunction handler, registered before the hook)
     game::view_level::TryStartup();  // the level camera (PlayerTick and SetWeaponRecoil handlers, before the hooks)
     if (!gHandAimAvailable) {

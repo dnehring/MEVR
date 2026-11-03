@@ -19,6 +19,8 @@ std::string Command(std::string const& line);
 // `mevr vehicle [enter]`: game mode, map, the pawn, the nearest vehicle (what a console `open <map>` produced); `enter`
 // calls BioEnterVehicle on the closest one. Game thread.
 std::string VehicleCommand(std::string const& line);
+// Registers the camera update's post-handler `ride` uses (inert until asked), before the ProcessEvent hook goes in.
+bool TryStartup();
 // Each mod tick, late (the view anchor current).
 void Tick();
 // Snapshot JSON ("cockpitProbe").

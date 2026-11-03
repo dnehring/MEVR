@@ -723,3 +723,42 @@ controllers or the headset.
 persistent level's streaming levels: loaded, should load, visible, should show, load pending), `mevr vehicle party` (above), `mevr vehicle
 event <EventName>` (fires the level's `SeqEvent_RemoteEvent`s of that name through `SequenceEvent.CheckActivate`, originator the WorldInfo,
 instigator the pawn; for stepping a stalled script, not needed here).
+
+## Riding in the Mako (2026-11-03 09:56, fake headset, `BIOA_UNC20`, hull 8dcf26f)
+
+The user's decision (2026-11-03): the cockpit stays with the Mako (it pitches and rolls with it: "we need to feel like we're actually
+driving the mako"), and the third-person view is the display inside it.
+
+**How (`mevr cockpit ride`, mod, hot-reloaded):** a post-handler of `Engine.Camera.UpdateCamera` (registered at the mod's start, inert until
+asked). The game fills `Camera.CameraCache.POV` there, and `PlayerController.GetPlayerViewPoint` reads it back for the view through
+`Camera.GetCameraViewPoint`; Halcyon builds both eyes from that view, its head look turning about the camera's own axes and its head offset
+moving along them. So while the Mako is the pawn (game mode 1), in that handler:
+- the game's chase POV is kept, and the centre screen's capture is pointed at it (`PointCapture`), so the screen is the game's own
+  third-person camera, the same frame;
+- the parts are put in the vehicle's frame: the cockpit's eye at `eyeM` (right, forward, up from the vehicle's origin; default 0, 1.0,
+  0.8 m), each part at its manifest offset from the eye along the vehicle's axes, turned by the vehicle's full rotation then its own yaw
+  (`engine::BasisRotation`, new, unit-tested, roll included); location and rotation written, journalled, `ForceUpdateComponents`;
+- the camera goes to the eye with the vehicle's rotation, minus the **seat**: the head's offset from the game camera (the host view's
+  forward, right, up) when the ride began in this vehicle, or at `ride seat`. Wherever the head was when the player got in becomes the
+  cockpit's eye; leaning moves it from there. The fake headset's head sits 0.34 m behind its tracking centre: without the seat the eye
+  was inside the seat's back;
+- the vehicle's own primitives (`Actor.AllComponents`, 14 on the Mako) get `bOwnerNoSee`: out of the eyes (their view actor is the
+  pawn, the vehicle), still in the captures. The parts are owned by the vehicle with `bOnlyOwnerSee` (capturehide 2, rerun on entry): in the
+  eyes, out of the screens. All put back on `ride off`, leaving the vehicle, a level change, the mod's unload.
+
+**The run:** `tools/mako-start.ps1`, the parts from `tools/cockpit/place.py`, the screen on `Hull_Console` element 1, `ride`. The eye sees
+the cockpit and the planet through the windshield, the console's screen the chase view of the Mako (its body is not in the eyes). Driven by
+`tools/make-drive-recording.py` (new: a seated head, the left stick forward, then left, then right) replayed with `-Inputs`: forward speed
+850-1,550 units/s, the Mako climbed a slope and rolled hard, the cockpit stayed fixed around the eye while the horizon tilted through the
+windshield, and the screen showed the same moment from outside. The camera was moved every game frame (about 200 a second under two Draws),
+10 parts placed each time.
+
+**Open:**
+- The chase camera turns with the controller's rotation (the right stick), not the Mako: while the game drives, the screen can show the Mako
+  from the side. `[Mako] cameraFollow` only acts while our controls drive.
+- Comfort of the full roll with real head motion [verify in the headset]; the vignette's `turnRate` is the lever.
+- The HUD panel quad can sit over the console's screen; the Mako's HUD pieces want their own places in the cockpit.
+- The aim screen and its reticle still use the on-foot stand-in (the head's view): next, the turret's aim.
+- Shepard isn't in the seat yet; the lever's and the stick's quads (MakoControls) are placed from the head at entry, which is now the
+  cockpit's eye, so they should meet the models' grips [verify with tracked controllers].
+- The frame cost of the parts' per-frame updates and the two captures in stereo isn't measured.

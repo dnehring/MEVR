@@ -70,6 +70,8 @@ Basis Compose(Basis const& parent, Basis const& local);
 Basis Inverse(Basis const& basis);
 // The rotator (roll 0) that looks along `direction`, which needn't be unit length.
 UnrealRotation ToRotation(UnrealVector const& direction);
+// The rotator whose ToBasis is `basis` (orthonormal), roll included: ToBasis's inverse.
+UnrealRotation BasisRotation(Basis const& basis);
 // `angle` moved by whole turns to within half a turn of `reference` (Unreal units), so a rotator
 // written back next to the game's own keeps its winding.
 int Unwind(int angle, int reference);

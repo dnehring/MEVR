@@ -118,6 +118,21 @@ void TestXrToUnreal() {
     // (right ear up); UE3 roll positive tilts the right ear down.
     auto const tilt = ToUnrealRotation(AxisAngle(0, 0, 1, 20));
     CHECK(Near(tilt.roll, -Units(20)) && Near(tilt.pitch, 0) && Near(tilt.yaw, 0));
+
+    // A rotator's axes and back, roll included (the cockpit riding in the Mako, research/47).
+    using mevr::engine::UnrealRotation;
+    for (UnrealRotation const r : {UnrealRotation{0, 0, 0}, UnrealRotation{Units(10), Units(-120), Units(25)}, UnrealRotation{Units(-30), Units(170), Units(-60)},
+             UnrealRotation{Units(45), Units(30), Units(170)}}) {
+        UnrealRotation const back = mevr::engine::BasisRotation(mevr::engine::ToBasis(r));
+        CHECK(Near(back.pitch, r.pitch) && Near(mevr::engine::Unwind(back.yaw, r.yaw), r.yaw) && Near(mevr::engine::Unwind(back.roll, r.roll), r.roll));
+    }
+    // A part's yaw in a pitched and rolled vehicle: the composed frame turns as the vehicle, then the part.
+    {
+        using namespace mevr::engine;
+        Basis const vehicle = ToBasis(UnrealRotation{Units(15), Units(90), Units(10)});
+        UnrealRotation const composed = BasisRotation(Compose(vehicle, ToBasis(UnrealRotation{0, 0, 0})));
+        CHECK(Near(composed.pitch, Units(15)) && Near(composed.yaw, Units(90)) && Near(composed.roll, Units(10)));
+    }
 }
 
 void TestHeadSim() {

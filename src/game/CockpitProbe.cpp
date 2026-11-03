@@ -3,9 +3,11 @@
 
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
+#include "core/vr/HostView.hpp"
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/Engine.hpp"
+#include "engine/ProcessEvent.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/Player.hpp"
 #include "game/ViewAnchor.hpp"
@@ -183,6 +185,11 @@ ue3::FieldRef gStreamPending{"Engine.LevelStreaming", "bHasLoadRequestPending"};
 // `mevr vehicle party`: the squad screen's own "A on the confirmation" (FinalizeParty), which hides the panel.
 ue3::ClassRef gPartySelection{"SFXGame.BioSFHandler_PartySelection"};
 ue3::FunctionRef gFinalizeParty{"SFXGame.BioSFHandler_PartySelection.FinalizeParty"};
+// `ride`: the camera's update (a post-handler, registered at startup) and the vehicle's components hidden from the eyes.
+ue3::FunctionRef gUpdateCamera{"Engine.Camera.UpdateCamera"};
+ue3::ClassRef gPrimitiveComponent{"Engine.PrimitiveComponent"};
+ue3::FieldRef gAllComponents{"Engine.Actor", "AllComponents"};
+ue3::FieldRef gOwnerNoSee{"Engine.PrimitiveComponent", "bOwnerNoSee"};
 
 // EObjectFlags: RF_ClassDefaultObject.
 constexpr std::uint64_t kClassDefaultFlag = 0x200;
@@ -273,6 +280,27 @@ struct State {
     ue3::Vector askedView{};
 };
 State gState;
+
+// `ride`: the cockpit rides in the Mako (research/47 "Riding in the Mako"). In the camera's update, while the Mako is the pawn:
+// the game's own chase view is kept for the centre screen, the parts are put in the vehicle's frame (pitch and roll too), and
+// the camera moves to the cockpit's eye with the vehicle's rotation, so the head looks round a cockpit that is the Mako.
+struct Ride {
+    bool on = false;
+    engine::UnrealVector eyeM{0.0, 1.0, 0.8};  // the cockpit's eye from the vehicle's origin: right, forward, up (metres)
+    bool riding = false;                       // this tick's camera was moved
+    // The head's offset from the game camera (the host's view: forward, right, up, world units) when the ride began in this
+    // vehicle, or at `ride seat`: where the head was then is the cockpit's eye; leaning moves it from there.
+    bool seated = false;
+    engine::UnrealVector seat{};
+    ue3::Object* vehicle = nullptr;            // the vehicle whose components are hidden from the eyes
+    std::vector<std::pair<ue3::Object*, bool>> hidden;  // each primitive component and its bOwnerNoSee before
+    bool chaseValid = false;
+    ue3::Vector chaseLocation{};
+    ue3::Rotator chaseRotation{};
+    std::uint32_t cameraTicks = 0;
+    std::uint32_t partPlacements = 0;
+};
+Ride gRide;
 
 // `aimscreen`: a second capture along the aim, on its own slot of the screen part (Hull_Console's slot 3, the right screen).
 struct AimScreen {
@@ -1532,8 +1560,20 @@ void WriteField(ue3::FieldRef& field, ue3::Object* object, T value, char const* 
     }
 }
 
-// Behind and above the pawn (or the Mako), looking at it: the stand-in for the third-person view.
+// Behind and above the pawn (or the Mako), looking at it: the stand-in for the third-person view. Riding in the Mako: the
+// game's own chase camera, as its camera update left it before `ride` moved the camera into the cockpit.
 void PointCapture() {
+    if (gRide.riding && gRide.chaseValid) {
+        gState.askedView = gRide.chaseLocation;
+        ue3::Params view = ParamsOf(gCaptureSetView);
+        view.Set("NewLocation", gRide.chaseLocation);
+        view.Set("NewRotation", gRide.chaseRotation);
+        if (Call(gState.captureComponent, gCaptureSetView, view) && FlushActor(gState.captureActor, true)) {
+            ++gState.pointedTicks;
+        }
+        gState.lastPointed = Now();
+        return;
+    }
     ue3::Object* const controller = player::Controller();
     ue3::Object* const pawn = controller != nullptr ? player::Pawn(controller) : nullptr;
     auto const at = pawn != nullptr ? player::Location(pawn) : std::nullopt;
@@ -1726,6 +1766,168 @@ void HideFromCaptures() {
         Call(part.component, gSetOnlyOwnerSee, onlySee);
         FlushActor(part.actor, false);  // the scene's copy of the owner chain is made when the component attaches
     }
+}
+
+// ---- Riding in the Mako ---------------------------------------------------------------------------------------------
+
+// The vehicle's own primitives out of the eyes (the eyes' view actor is the pawn, the vehicle: bOwnerNoSee), still in the
+// captures' pictures (a capture's view actor is neither): the chase screen shows the Mako, the eyes see the cockpit.
+void HideVehicle(ue3::Object* vehicle) {
+    auto const components = gAllComponents.ElementsOf(vehicle);
+    if (!components) {
+        return;
+    }
+    gRide.vehicle = vehicle;
+    for (std::int32_t i = 0; i < components->count; ++i) {
+        ue3::Object* const component = *static_cast<ue3::Object**>(components->At(i));
+        if (!ue3::IsA(component, gPrimitiveComponent)) {
+            continue;
+        }
+        gRide.hidden.emplace_back(component, gOwnerNoSee.ReadBool(component).value_or(false));
+        ue3::Params noSee = ParamsOf(gSetOwnerNoSee);
+        noSee.SetBool("bNewOwnerNoSee", true);
+        Call(component, gSetOwnerNoSee, noSee);
+    }
+    log::Info("cockpit probe: ride: {} of {}'s components hidden from the eyes", gRide.hidden.size(), ue3::runtime::FullName(vehicle));
+}
+
+void ShowVehicle() {
+    if (gRide.vehicle != nullptr && ue3::runtime::IsAlive(gRide.vehicle)) {
+        for (auto const& [component, before] : gRide.hidden) {
+            if (ue3::runtime::IsAlive(component)) {
+                ue3::Params noSee = ParamsOf(gSetOwnerNoSee);
+                noSee.SetBool("bNewOwnerNoSee", before);
+                Call(component, gSetOwnerNoSee, noSee);
+            }
+        }
+    }
+    gRide.vehicle = nullptr;
+    gRide.hidden.clear();
+}
+
+// A part in the vehicle's frame: its offset from the eye along the vehicle's axes, its yaw on top of the vehicle's rotation.
+void PlacePartIn(Part const& part, engine::Basis const& frame, engine::UnrealVector const& eye, double upm) {
+    engine::UnrealVector const offset = engine::Apply(frame, {part.offsetM.y * upm, part.offsetM.x * upm, part.offsetM.z * upm});
+    engine::UnrealRotation const turned = engine::BasisRotation(engine::Compose(frame, engine::ToBasis(engine::UnrealRotation{0, static_cast<int>(std::lround(part.yawDeg * 65536.0 / 360.0)), 0})));
+    if (ue3::Vector* const atField = gActorLocation.In<ue3::Vector>(part.actor)) {
+        *atField = {static_cast<float>(eye.x + offset.x), static_cast<float>(eye.y + offset.y), static_cast<float>(eye.z + offset.z)};
+        write_journal::Wrote("CockpitProbe.rideLocation", atField, sizeof(*atField));
+    }
+    if (ue3::Rotator* const turnField = gActorRotation.In<ue3::Rotator>(part.actor)) {
+        *turnField = {turned.pitch, turned.yaw, turned.roll};
+        write_journal::Wrote("CockpitProbe.rideRotation", turnField, sizeof(*turnField));
+    }
+    FlushActor(part.actor, true);
+}
+
+// After the camera's update (the vehicle has moved for this frame; the view isn't built yet).
+void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
+    if (!gRide.on) {
+        return;
+    }
+    ue3::Object* const controller = player::Controller();
+    if (camera == nullptr || controller == nullptr || player::CameraOwner(camera) != controller) {
+        return;
+    }
+    ue3::Object* const pawn = player::Pawn(controller);
+    auto const mode = player::GameMode(controller);
+    auto const pov = player::CameraPov(camera);
+    auto const at = pawn != nullptr ? player::Location(pawn) : std::nullopt;
+    auto const turn = pawn != nullptr ? player::Rotation(pawn) : std::nullopt;
+    gRide.riding = false;
+    if (!ue3::IsA(pawn, gVehicleBase) || mode != 1 || !pov || pov->location == nullptr || pov->rotation == nullptr || !at || !turn) {
+        return;
+    }
+    gRide.chaseLocation = *pov->location;
+    gRide.chaseRotation = *pov->rotation;
+    gRide.chaseValid = true;
+    engine::Basis const frame = engine::ToBasis(engine::UnrealRotation{turn->pitch, turn->yaw, turn->roll});
+    double const upm = gAnchor.set ? gAnchor.unitsPerMeter : engine::kUnitsPerMeter;
+    engine::UnrealVector const lift = engine::Apply(frame, {gRide.eyeM.y * upm, gRide.eyeM.x * upm, gRide.eyeM.z * upm});
+    engine::UnrealVector const eye{at->x + lift.x, at->y + lift.y, at->z + lift.z};
+    for (Part const& part : gParts) {
+        if (PartAlive(part)) {
+            PlacePartIn(part, frame, eye, upm);
+            ++gRide.partPlacements;
+        }
+    }
+    if (!gRide.seated) {
+        vr::host_view::State const view = vr::host_view::Latest();
+        gRide.seat = view.valid ? engine::UnrealVector{view.offsetForward, view.offsetRight, view.offsetUp} : engine::UnrealVector{};
+        gRide.seated = true;
+        log::Info("cockpit probe: ride: seated with the head {:.2f} m forward, {:.2f} m right, {:.2f} m up of the tracking centre{}", gRide.seat.x / upm, gRide.seat.y / upm,
+            gRide.seat.z / upm, view.valid ? "" : " (no host view: none)");
+    }
+    // The renderer puts the head at the camera plus its offset: the camera goes where that lands the seated head on the eye.
+    engine::UnrealVector const seat = engine::Apply(frame, gRide.seat);
+    *pov->location = {static_cast<float>(eye.x - seat.x), static_cast<float>(eye.y - seat.y), static_cast<float>(eye.z - seat.z)};
+    write_journal::Wrote("CockpitProbe.rideCameraLocation", pov->location, sizeof(*pov->location));
+    *pov->rotation = {turn->pitch, engine::Unwind(turn->yaw, pov->rotation->yaw), turn->roll};
+    write_journal::Wrote("CockpitProbe.rideCameraRotation", pov->rotation, sizeof(*pov->rotation));
+    gRide.riding = true;
+    ++gRide.cameraTicks;
+}
+
+// Each mod tick: the vehicle's body hidden while riding, shown again otherwise; the parts owned by the vehicle (the pawn) so the
+// eyes see them and the captures don't.
+void RideTick() {
+    if (!gRide.on && gRide.vehicle == nullptr) {
+        return;
+    }
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const pawn = controller != nullptr ? player::Pawn(controller) : nullptr;
+    bool const inVehicle = gRide.on && ue3::IsA(pawn, gVehicleBase) && player::GameMode(controller) == 1;
+    if (gRide.vehicle != nullptr && (!inVehicle || pawn != gRide.vehicle)) {
+        ShowVehicle();
+    }
+    if (inVehicle && gRide.vehicle == nullptr) {
+        gRide.seated = false;  // a new seat with each entry
+        HideVehicle(pawn);
+        HideFromCaptures();  // the owner is now the vehicle
+    }
+}
+
+std::string DoRide(std::istringstream& words) {
+    std::string first;
+    if (!(words >> first)) {
+        ue3::Object* const controller = player::Controller();
+        ue3::Object* const pawn = controller != nullptr ? player::Pawn(controller) : nullptr;
+        auto const at = pawn != nullptr ? player::Location(pawn) : std::nullopt;
+        auto const turn = pawn != nullptr ? player::Rotation(pawn) : std::nullopt;
+        auto const deg = [](int units) { return units * 360.0 / 65536.0; };
+        return std::format("ride {}: eye at right {:.2f} forward {:.2f} up {:.2f} m from the vehicle's origin; {} camera ticks moved, {} part placements, riding now {}, {} components hidden\n"
+                           "  vehicle at {:.0f} {:.0f} {:.0f}, pitch {:.1f} yaw {:.1f} roll {:.1f}; the game's chase camera at {:.0f} {:.0f} {:.0f}, pitch {:.1f} yaw {:.1f} roll {:.1f}",
+            gRide.on ? "on" : "off", gRide.eyeM.x, gRide.eyeM.y, gRide.eyeM.z, gRide.cameraTicks, gRide.partPlacements, gRide.riding, gRide.hidden.size(),
+            at ? at->x : 0.0f, at ? at->y : 0.0f, at ? at->z : 0.0f, turn ? deg(turn->pitch) : 0.0, turn ? deg(turn->yaw) : 0.0, turn ? deg(turn->roll) : 0.0,
+            gRide.chaseLocation.x, gRide.chaseLocation.y, gRide.chaseLocation.z, deg(gRide.chaseRotation.pitch), deg(gRide.chaseRotation.yaw), deg(gRide.chaseRotation.roll));
+    }
+    // Three numbers are the eye's place (and on); a lone 0 or `off` stops, a lone 1 or `on` starts.
+    engine::UnrealVector eye{};
+    std::istringstream again(first);
+    bool const placed = static_cast<bool>(again >> eye.x) && static_cast<bool>(words >> eye.y >> eye.z);
+    if (first == "seat") {
+        gRide.seated = false;
+        return "ride: the head's place now becomes the cockpit's eye at the next frame";
+    }
+    if (!placed && (first == "0" || first == "off")) {
+        gRide.on = false;
+        ShowVehicle();
+        return "ride off: the camera is the game's again, the Mako shown";
+    }
+    if (!placed && first != "1" && first != "on") {
+        return "usage: mevr cockpit ride [on | off | <right m> <forward m> <up m>]";
+    }
+    if (auto const missing = MissingFunction({&gSetOwnerNoSee, &gForceUpdate, &gUpdateCamera})) {
+        return Refuse(*missing);
+    }
+    if (placed) {
+        gRide.eyeM = eye;
+    }
+    gRide.on = true;
+    std::string const report = std::format("ride on: the camera at the cockpit's eye, right {:.2f} forward {:.2f} up {:.2f} m from the vehicle's origin, while the Mako is the pawn",
+        gRide.eyeM.x, gRide.eyeM.y, gRide.eyeM.z);
+    log::Info("cockpit probe: {}", report);
+    return report;
 }
 
 // ---- The aim screen -------------------------------------------------------------------------------------------------
@@ -2112,7 +2314,7 @@ std::string Rest(std::istringstream& words) {
 }
 
 constexpr char const* kUsage =
-    "mevr cockpit: load <Package.Object> [class] | mesh [name or Package.Object] | part <Package.Object> RIGHT FORWARD UP YAW M_PER_UNIT | parts [clear|sweep] | screenpart <Package.Object> | variant lit|glow|alt|base | loaded <Package.Object> ... | aimscreen [W H] [fov DEG] | aimreticle [DEG] | capturehide [0|1|2|3] | anchor | list [filter] | classes | spawnclass [name] | screen [W H] [float|rgba8] [linear] | materials [filter] | material [name] | param [name] | "
+    "mevr cockpit: ride [on|off|RIGHT FORWARD UP] | load <Package.Object> [class] | mesh [name or Package.Object] | part <Package.Object> RIGHT FORWARD UP YAW M_PER_UNIT | parts [clear|sweep] | screenpart <Package.Object> | variant lit|glow|alt|base | loaded <Package.Object> ... | aimscreen [W H] [fov DEG] | aimreticle [DEG] | capturehide [0|1|2|3] | anchor | list [filter] | classes | spawnclass [name] | screen [W H] [float|rgba8] [linear] | materials [filter] | material [name] | param [name] | "
     "texture [Package.Object] | info | element N|all | scale S | dist M | rot P Y R | follow 0|1 | attach | detach | chase BACK UP | rate N | aim 0|1 | post 0|1 | status | clear";
 
 // ---- `texture`, `info`: separating a bad texture from a bad instance from a bad mesh (research/47) -------------------
@@ -2691,6 +2893,9 @@ std::string Command(std::string const& line) {
     if (verb == "status") {
         return StatusLine();
     }
+    if (verb == "ride") {
+        return DoRide(words);
+    }
     if (verb == "clear") {
         ClearAll("mevr cockpit clear");
         ClearParts("mevr cockpit clear");
@@ -2699,7 +2904,18 @@ std::string Command(std::string const& line) {
     return kUsage;
 }
 
+bool TryStartup() {
+    ue3::Function* const update = ue3::runtime::Ready() ? gUpdateCamera.Get() : nullptr;
+    if (update == nullptr) {
+        log::Warn("cockpit probe: Engine.Camera.UpdateCamera not found: `ride` can't move the camera");
+        return false;
+    }
+    engine::process_event::AddPostHandler(update, &OnUpdateCamera);  // inert until `mevr cockpit ride`
+    return true;
+}
+
 void Tick() {
+    RideTick();
     if (gState.actor == nullptr && gState.captureActor == nullptr) {
         return;
     }
@@ -2734,6 +2950,11 @@ void LogStats() {
 }
 
 void Shutdown(bool exiting) {
+    gRide.on = false;
+    if (!exiting && ue3::runtime::Ready()) {
+        ShowVehicle();
+    }
+    gRide = Ride{};
     if (!exiting && (gState.actor != nullptr || gState.captureActor != nullptr) && ue3::runtime::Ready()) {
         ClearAll("the mod shuts down");
     }
@@ -2749,13 +2970,13 @@ void Shutdown(bool exiting) {
     gLoggedMoveFailure = gLoggedFirstPlace = gLoggedFlatFallback = false;
     for (ue3::ClassRef* const c : {&gActorClass, &gInterpActor, &gKActor, &gKActorSpawnable, &gStaticMeshActor, &gDynamicSmActor, &gStaticMesh, &gStaticMeshComponent,
              &gMaterial, &gMaterialInstance, &gMic, &gTextureParameterExpression, &gCaptureActor, &gCaptureComponent, &gTargetClass, &gTexture, &gTexture2D, &gVehicleBase, &gBioPawn,
-             &gBioController, &gSaveGame, &gRemoteEvent, &gPartySelection}) {
+             &gBioController, &gSaveGame, &gRemoteEvent, &gPartySelection, &gPrimitiveComponent}) {
         c->Reset();
     }
     for (ue3::FunctionRef* const f : {&gDynamicLoadObject, &gSpawn, &gDestroy, &gSetLocation, &gSetRotation, &gSetDrawScale, &gSetPhysics, &gSetCollision, &gSetHidden, &gSetBase, &gSetHardAttach,
              &gForceUpdate, &gSetActorCollision, &gSetBlockRigidBody, &gSetTraceBlocking, &gSetStaticMesh, &gGetMaterial, &gSetMaterial, &gGetNumElements, &gGetUnscaledBounds,
              &gCreateMic, &gSetParent, &gSetTextureParameter, &gGetTextureParameter, &gLightEnvironmentSetEnabled, &gCreateTarget, &gCaptureSetEnabled, &gCaptureSetFrameRate,
-             &gCaptureSetView, &gCaptureSetParameters, &gEnterVehicle, &gFindClosestVehicle, &gCheckActivate, &gFinalizeParty}) {
+             &gCaptureSetView, &gCaptureSetParameters, &gEnterVehicle, &gFindClosestVehicle, &gCheckActivate, &gFinalizeParty, &gUpdateCamera}) {
         f->Reset();
     }
     for (ue3::FieldRef* const f : {&gStatic, &gNoDelete, &gMovable, &gRole, &gPhysics, &gBase, &gDynamicComponent, &gDynamicLightEnvironment, &gStaticActorComponent, &gComponentMesh,
@@ -2765,7 +2986,7 @@ void Shutdown(bool exiting) {
              &gViewMatrix, &gForceLinearGamma, &gTargetFormat, &gMeshMaterials, &gPrimitiveLightEnvironment, &gLightEnvironmentEnabled, &gTextureResource, &gTextureSrgb, &gTextureNeverStream,
              &gTextureLodGroup, &gTexture2DSizeX, &gTexture2DSizeY, &gTexture2DFormat, &gTexture2DRequestedMips, &gTexture2DResidentMips, &gTexture2DMipTail, &gTexture2DMips, &gWorldInfo,
              &gTextureValueObject, &gRemoteEventName, &gStreamingLevels, &gStreamPackage, &gStreamLoaded, &gStreamShouldLoad, &gStreamShouldShow, &gStreamVisible,
-             &gStreamPending}) {
+             &gStreamPending, &gAllComponents, &gOwnerNoSee}) {
         f->Reset();
     }
 }
@@ -2774,6 +2995,10 @@ void Shutdown(bool exiting) {
 
 std::string Command(std::string const& /*line*/) {
     return "mevr cockpit: LE1 only";
+}
+
+bool TryStartup() {
+    return false;
 }
 
 std::string VehicleCommand(std::string const& /*line*/) {

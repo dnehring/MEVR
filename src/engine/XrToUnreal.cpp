@@ -149,6 +149,15 @@ UnrealRotation ToRotation(UnrealVector const& direction) {
         ToUnits(std::atan2(direction.y, direction.x)), 0};
 }
 
+UnrealRotation BasisRotation(Basis const& basis) {
+    UnrealRotation rotation = ToRotation(basis.forward);
+    // ToBasis' right axis is cos(roll) * (its right at roll 0) - sin(roll) * (its up at roll 0).
+    Basis const level = ToBasis(UnrealRotation{rotation.pitch, rotation.yaw, 0});
+    auto const dot = [](UnrealVector const& a, UnrealVector const& b) { return a.x * b.x + a.y * b.y + a.z * b.z; };
+    rotation.roll = ToUnits(std::atan2(-dot(basis.right, level.up), dot(basis.right, level.right)));
+    return rotation;
+}
+
 int Unwind(int angle, int reference) {
     long long delta = (static_cast<long long>(angle) - reference) % 65536;
     if (delta > 32768) {
