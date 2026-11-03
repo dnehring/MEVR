@@ -230,6 +230,10 @@ so the new shell follows it. The parts (console, side pane) are placed in it, an
   small folds: the screens' 0.98 normal test left dark lines across a stretched screen. When a concept's room is
   "smaller around" a part than a seated eye allows, move the part instead: the console stood 0.1 nearer the seat
   (`CONSOLE_SHIFT`, section 18) and filled the room camera's view as the concept's, at no cost to the windshield.
+- **Name a difference from the concept only after rays say what it is**, and **put a part where something sees it.** A
+  light strut taken for the windshield's posts was the A-pillar's lower beam (rays from the concept's camera), which the
+  concept has light too; a wall lamp stood behind the console's wing from every viewpoint (research/48 section 21).
+  Before modelling a feature, cast rays along the wall or from the views that matter to find what is open there.
 - **Fit a screen's panel to the opening the eye sees, not to the model's screen faces** (research/48 section 20). Tripo's
   screen runs on under its bezel and folds unevenly, so a rectangle round its faces sat off-centre in the trim (19 and
   37 mm of bare screen either side, in hull units; the user saw it). Rays straight at the screen read the model's own

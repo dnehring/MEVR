@@ -754,6 +754,43 @@ No decimation or packaging until the user approves the modelling.
   - package 36.2 MB, all checks passed (the `Display` texture 1024 x 1024);
   - not yet seen in the game.
 
+## 21. More of the concept's parts (the user: "Please continue on modeling")
+
+- **The side walls.** The concept's lower side walls (a lamp in a framed housing under a ledge, a bolted panel, a skirting,
+  white strips in the floor at their foot) stand beside its console's ends. Ours there are behind the console's wings:
+  between the portal's front face (y -0.31) and the wings (from y -0.18 at desk height) only the pane's rear post and
+  7 cm of its lower wall show (rays along +x). The lamp on the pane's lower wall (y -0.14) stood behind a wing. So:
+  - the rear section's side walls (`SideWall`, y -0.62 to -0.38, each one plain panel before) carry the concept's wall:
+    a skirting 8 mm proud with a light top chamfer, a bolted panel set in up to z 0.195, an amber lamp (0.15 x 0.022,
+    the bake's "wall" light) in a dark housing on a framed plate, a ledge 30 mm proud with light faces at z 0.25, and a
+    panel set in above with the vent;
+  - two pale strips in the floor at the panes' foot in front of the portal, as the concept's (the orange strip along
+    the wall ran under the wing); the lamp behind the wing is gone.
+- **The columns beside the centre screen** carry the concept's lit 3 x 3 keypad near the top and a vent below it
+  (`Column`: the flat face found by rays, the longest run of samples at one depth across, then up and down through its
+  middle; the first try latched on a sliver before the column's bevel).
+- **Vents under the spine's upper tier**, behind its lamps, as the concept's either side of its spine. From the seat the
+  lower tier hides them; from the concept's lower viewpoint they show.
+- **The windshield's frame is dark all round** (its one light chamfer is dark too). The light struts seen from the console
+  camera, from the console's ends up to the ceiling's corners, are the A-pillars' lower beams (rays from that camera),
+  which the concept has light as well; listed as the windshield's posts before, wrongly.
+- **The corner plates' lamps** fit their plate now. The plate is a narrow triangle (sides 0.126, 0.171, 0.172), and the
+  lamp placed by its middle hung 9 mm over the front side window's top edge. It is the largest rectangle along the
+  plate's top edge 6 mm in from every edge: 0.099 x 0.022 (0.104 x 0.032). The concept's larger lamp doesn't fit there.
+  Read through the console-fitted camera, the concept's lamps are at our corner plates.
+- **The controls' stands** are dark with light chamfers, as the console's legs: with light faces they were the brightest
+  thing in front of the console, where the concept has nothing.
+- **Checked and left:** the floor already reads as the concept's (three runs, the side runs out of step, small cuts where
+  the plates meet, bolts at their corners).
+- **Result:**
+  - shell 8,388 triangles (7,340);
+  - from the seat 5.8% of rays leave, all through the windows; the leak probe (19 eyes) finds no escape;
+  - decimated, the console 27,337 to 13,317; the joints as in section 18;
+  - package 36.2 MB, all checks passed;
+  - not yet seen in the game.
+- **Not matched:** the concept's lamps and panels on the lower side walls beside its console. Ours there are behind the
+  wings, and the rear section carries them instead.
+
 ## 5. Not done
 
 - **Not seen from the seat in the game:** the meshes load and draw textured (section 9), but nothing is placed around the

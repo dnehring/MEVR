@@ -139,12 +139,13 @@ def Make(before, furniture, overrides):
             bpy.data.objects.remove(o)
         made = []
     opening, rim, area = H.PaneOpening(pieces["side-right"])
-    wall = {"strip": H.PaneFace(pieces["side-right"], -0.14, 0.16) - 0.001, "floor": H.PaneFace(pieces["side-right"], -0.12, 0.012)}
+    wall = {"floor": [H.PaneFace(pieces["side-right"], y, 0.012) for y in H.FLOOR_STRIPS]}
     pillar = H.PillarEdge(pieces["side-right"])
     cut = {k: H.CutPillar(pieces[k], H.WindowPlane(pillar), mirrored=k == "side-left") for k in ("side-left", "side-right")}
     shell, windows, lights, dims = H.Shell(pillar, (opening, rim), pedestals, wall,
                                            {"desk": H.DeskShelf(pieces["console"]), "screen": screens["centre"],
-                                            "bezel": H.Bezel(pieces["console"], screens["centre"])})
+                                            "bezel": H.Bezel(pieces["console"], screens["centre"]),
+                                            "column": H.Column(pieces["console"], screens["centre"])})
     for cls in hull_shapes.CLASSES:  # flat colours near the baked look, so the classes read in the Workbench views
         m = bpy.data.materials.new("LIVE_" + cls)
         m.diffuse_color = CLASS_COLOURS[cls] + (1.0,)

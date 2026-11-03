@@ -161,15 +161,17 @@ CONDUITS, CONDUIT_R, STRAP = (0.148, 0.174, 0.2), 0.0095, 0.15
 # The ceiling lamps' housings over the cabin: wedges under the ceiling between the conduits and the caps' lip, their
 # sloped face (and lamp) turned to the room's middle: (inner x on the ceiling, outer x, drop at the outer face).
 FIXTURE = (0.222, 0.283, 0.034)
-# The windshield's frame: as WINDOW, but its face dark with a light chamfer along the glass, the concept's slim posts
-# between the windshield and the front side windows.
-SHIELD_CLASSES = ["DARK", "SEAM", "SEAM", "DARK", "LIGHT", "DARK", "DARK", "DARK"]
+# The windshield's frame: as WINDOW, but dark all round, the concept's slim posts between the windshield and the front
+# side windows (with a light chamfer along the glass, the posts read from the seat as light struts to the ceiling's
+# corners).
+SHIELD_CLASSES = ["DARK", "SEAM", "SEAM", "DARK", "DARK", "DARK", "DARK", "DARK"]
 # The floor as the lit concept's (the user, 2026-11-02): large flat plates in three runs, the middle one as wide as the
 # console's middle and the side runs' rows half a row out of step, the seams 3 mm grooves (FLOOR_SEAM either side), the
 # plates' corners cut by FLOOR_CORNER where they meet, their top edges bevelled FLOOR_BEVEL. (They were 0.15 by 0.2
 # tiles with 8 mm seams, 20 mm corners and a 5 mm bevel: chunky beside the concept's.)
 FLOOR_COLUMNS, FLOOR_ROW = (-0.16, 0.16), 0.166
 FLOOR_SEAM, FLOOR_CORNER, FLOOR_BEVEL = 0.0015, 0.012, 0.002
+FLOOR_STRIPS = (-0.275, -0.222)  # y of the pale strips along the panes' foot in front of the portal, as the concept's
 # The portal arch, bolder, as the concept's frames down the side walls: (into the room, along the cabin) from its line,
 # 65 mm proud and 70 deep, chamfered, a dark groove down its face.
 PORTAL = [(0.0, 0.0), (0.052, 0.0), (0.065, 0.013), (0.065, 0.031), (0.061, 0.031), (0.061, 0.039), (0.065, 0.039),
@@ -855,6 +857,35 @@ def RearWall(b):
     Sweep(b, Inward(opening, Y), Y, DOOR_FRAME, DOOR_FRAME_CLASSES, closed=True)
 
 
+# The rear section's side walls in the lit concept's wall language (its lower side walls; ours, beside the console, are
+# behind its wings): heights of the skirting's top, the lower panel's top, the ledge's foot and top; the lamp's half
+# length, half height and centre height, in a framed housing under the ledge.
+SIDE_WALL = (0.03, 0.195, 0.25, 0.268)
+SIDE_LAMP = (0.075, 0.011, 0.222)
+
+
+def SideWall(b, y0, y1):
+    """A rear-section side wall at XWALL from y0 to y1, facing -x (mirrored by the builder): the wall, a skirting along
+    the floor, a bolted panel set in, the lamp's framed housing (its lamp: Lamps), a ledge, a panel set in above with a
+    grille. Each piece stands proud of the wall, so the wall stays whole behind them."""
+    X, Y, Z = Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))
+    skirt, low, ledge0, ledge1 = SIDE_WALL
+    half, tall, height = SIDE_LAMP
+    mid, m = (y0 + y1) / 2, 0.012
+    Slab(b, [(XWALL, y0, -SEAM), (XWALL, y1, -SEAM), (XWALL, y1, ZH), (XWALL, y0, ZH)], -X, SLAB, "DARK")
+    along = [Vector((XWALL, y0, 0)), Vector((XWALL, y1, 0))]  # swept members: side -x (into the room), up z
+    Sweep(b, along, Z, Chamfered(0.0, 0.008, -SEAM, skirt, 0.003), ["DARK", "DARK", "LIGHT", "LIGHT", "DARK", "DARK", "DARK", "DARK"])
+    Slab(b, [(XWALL - 0.012, y0 + m, skirt + 0.006), (XWALL - 0.012, y1 - m, skirt + 0.006), (XWALL - 0.012, y1 - m, low),
+             (XWALL - 0.012, y0 + m, low)], -X, 0.016, inset=(0.01, 0.006, 0.01))
+    frame = [(XWALL - 0.004, mid + a * (half + 0.016), height + bb * (tall + 0.014)) for a, bb in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+    Slab(b, frame, -X, 0.008, "PLATE", "LIGHT")
+    Sweep(b, along, Z, Chamfered(0.0, 0.03, ledge0, ledge1, 0.005), ["DARK", "LIGHT", "LIGHT", "LIGHT", "DARK", "DARK", "DARK", "DARK"])
+    face = XWALL - 0.010
+    Slab(b, [(face, y0 + m, ledge1 + 0.012), (face, y1 - m, ledge1 + 0.012), (face, y1 - m, ZH - 0.012), (face, y0 + m, ZH - 0.012)],
+         -X, 0.014, inset=(0.008, 0.005, 0.012))
+    Grille(b, (face + 0.005, mid + 0.04, 0.4), Y, Z, -X, 0.04, 0.03, 6)
+
+
 def Stand(b, x, y, hx, hy, top):
     """A control's stand, made as the console's legs are (the concept has no free posts; the user, 2026-11-02, wants the
     controls): a base plate bolted to the floor, a chamfered column hx by hy either side of (x, y) with a groove down its
@@ -867,8 +898,10 @@ def Stand(b, x, y, hx, hy, top):
         Pipe(b, [Vector((px, py, 0.005)), Vector((px, py, 0.007))], 0.0022, Vector((1, 0, 0)), "LIGHT", sides=6)
     column = [(hx - c, -hy), (hx, -hy + c), (hx, hy - c), (hx - c, hy), (w, hy), (w, hy - d), (-w, hy - d), (-w, hy),
               (-hx + c, hy), (-hx, hy - c), (-hx, -hy + c), (-hx + c, -hy), (-w, -hy), (-w, -hy + d), (w, -hy + d), (w, -hy)]
-    classes = ["LIGHT", "DARK", "LIGHT", "LIGHT", "SEAM", "SEAM", "SEAM", "LIGHT", "LIGHT", "DARK", "LIGHT", "LIGHT", "SEAM", "SEAM",
-               "SEAM", "LIGHT"]
+    # dark, light at its chamfers, as the console's legs (light faces made the stands the brightest thing before the
+    # console, where the concept has none)
+    classes = ["LIGHT", "DARK", "LIGHT", "DARK", "SEAM", "SEAM", "SEAM", "DARK", "LIGHT", "DARK", "LIGHT", "DARK", "SEAM", "SEAM",
+               "SEAM", "DARK"]
     Sweep(b, [Vector((x, y, 0.004)), Vector((x, y, top - 0.008))], Vector((0, 1, 0)), column + column[:1], classes)
     Plate(b, Corners(rect(hx + head, hy + head), 0.005), top, 0.0015, 0.008, top="DARK", edge="LIGHT")
     b.Face([Vector((px, py, top - 0.008)) for px, py in reversed(Corners(rect(hx + head, hy + head), 0.005))], "DARK", toward=-Z)
@@ -920,11 +953,11 @@ def Drop(b, front):
 
 def Lamps(b, wall, corner, drop):
     """The lit concept's lamps, mirrored in x: a lamp on each corner plate over the front side windows (`corner`: the
-    right plate's corners, Shell), lamps in wedge housings over the cabin and the rear section, a strip on each pane's
-    lower wall, an orange strip on the floor along the wall's foot, a strip and two indicators on the drop panel at the
-    spine's front (`drop`: its face, Drop) and lamps along the spine's underside behind it, blue-white lights at the
-    portal's feet, a strip over the door. `wall`: the panes' face (x) at the strip's height and at the floor. Returns
-    the area lights."""
+    right plate's corners, Shell), lamps in wedge housings over the cabin and the rear section, an orange strip in each
+    rear-section side wall's housing (SideWall), pale strips in the floor along the panes' foot, a strip and two
+    indicators on the drop panel at the spine's front (`drop`: its face, Drop) and lamps along the spine's underside
+    behind it, blue-white lights at the portal's feet, a strip over the door. `wall`: "floor", the panes' face (x) at
+    the floor at each of FLOOR_STRIPS. Returns the area lights."""
     lights = []
     X, Y, Z = Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))
     hw, dh, _ = DOOR
@@ -934,15 +967,24 @@ def Lamps(b, wall, corner, drop):
     along = (top - E).normalized()
     for mirror in (False, True):
         b.mirror = mirror
-        # the corner plate's lamp, along its top edge, a third of the way down to its lower edge
-        centre = (D + E + top) / 3 + (E + top - 2 * D).normalized() * 0.01
-        Lamp(b, lights, "ceiling", "LAMP", centre, along, n.cross(along), n, 0.052, 0.016)
+        # the corner plate's lamp: along its top edge (on the ceiling), as long as the triangle holds it 6 mm in from
+        # every edge (one placed by the plate's middle hung 9 mm over the front side window's top edge)
+        perp = n.cross(along)
+        perp = perp if perp.dot(D - E) > 0 else -perp
+        span, dx, dy = (top - E).length, (D - E).dot(along), (D - E).dot(perp)
+        rim, margin, half_v = 0.004, 0.006, 0.011
+        w0, w1 = margin, margin + 2 * (half_v + rim)
+        a0, a1 = dx / dy * w1 + margin, span - (span - dx) / dy * w1 - margin
+        Lamp(b, lights, "ceiling", "LAMP", E + along * (a0 + a1) / 2 + perp * (w0 + w1) / 2, along, perp, n, (a1 - a0) / 2 - rim, half_v)
         for kind, y0, y1 in (("midCeiling", -0.27, -0.13), ("rearCeiling", -0.58, -0.47)):
             c, slope, m = Wedge(b, y0, y1)
             Lamp(b, lights, kind, "LAMP", c, Y, slope, m, (y1 - y0) / 2 - 0.012, 0.02, proud=0.001)
-        # the pane's lower wall and the floor along it
-        Lamp(b, lights, "wall", "LAMP", (wall["strip"], -0.14, 0.16), Y, Z, -X, 0.055, 0.016)
-        Lamp(b, lights, "floor", "LAMP_ORANGE", (wall["floor"] - 0.016, -0.12, 0.0), Y, X, Z, 0.17, 0.005, proud=0.0015)
+        # the rear section's side wall (SideWall's framed housing); short pale strips in the floor along the panes' foot
+        # in front of the portal, where the console's wings leave it open (a lamp on the pane's lower wall stood behind
+        # the wing)
+        Lamp(b, lights, "wall", "LAMP_ORANGE", (XWALL - 0.004, (YB + YR) / 2, SIDE_LAMP[2]), Y, Z, -X, SIDE_LAMP[0], SIDE_LAMP[1], proud=0.008)
+        for y, x in zip(FLOOR_STRIPS, wall["floor"]):
+            Lamp(b, lights, "floor", "LAMP", (x - 0.014, y, 0.0), Y, X, Z, 0.021, 0.0035, proud=0.0015)
         # lamps along the spine's underside behind the drop panel, on its lower flats
         rear = drop[0].y - 0.03
         for y in (rear - 0.1, rear - 0.06, rear - 0.02):
@@ -981,23 +1023,34 @@ def Conduits(b, y0, y1, rise):
             Sweep(b, [Vector((x, y, z - r - 0.003)), Vector((x, y, ZR))], Vector((0, 1, 0)), Chamfered(-0.003, 0.003, -0.006, 0.006, 0.001), "DARK")
 
 
-def Details(b, edge, desk, screen, bezel, spine_end):
+def Details(b, edge, desk, screen, bezel, column, spine_end):
     """The lit concept's smaller parts: the conduits either side of the spine (Conduits), behind the portal from the rear
-    wall and in front of it up into the ceiling short of the windshield; louvred vents on the rear section's walls,
-    beside the door and on the spine's sides; a keypad on each desk shelf (`desk`: the right shelf's top, DeskShelf); lit
-    bars on the centre screen's bezel above and below it (`screen`: its corners; `bezel`: how far the bezel's face stands
-    in front of the screen, Bezel)."""
+    wall and in front of it up into the ceiling short of the windshield; louvred vents beside the door, on the spine's
+    sides and under its upper tier behind its lamps; a keypad on each desk shelf (`desk`: the right shelf's top,
+    DeskShelf); a lit keypad over a vent on each column beside the centre screen (`column`: the right one's face,
+    Column); lit bars on the centre screen's bezel above and below it (`screen`: its corners; `bezel`: how far the
+    bezel's face stands in front of the screen, Bezel). (The rear section's side walls carry their own vents, SideWall.)"""
     X, Y, Z = Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))
     hw, dh, _ = DOOR
+    at, facing, half_x, half_z = column
+    u = Z.cross(facing).normalized()
+    v = facing.cross(u)
+    key, gap = 0.009, 0.0035
+    pad = (3 * key + 4 * gap) / 2
     for mirror in (False, True):
         b.mirror = mirror
-        Conduits(b, YB, YR, False)
         Conduits(b, YR + PORTAL_DEPTH, FrontAt(edge, CONDUITS[-1]) - SPINE_CLEAR, True)
-        Grille(b, (XWALL, -0.52, 0.12), Y, Z, -X, 0.035, 0.03, 6)
+        Conduits(b, YB, YR, False)
         Grille(b, (0.25, YB, 0.36), X, Z, Y, 0.045, 0.035, 7)
         Grille(b, (0.085, spine_end - 0.3, ZR - 0.038), Y, Z, X, 0.03, 0.008, 3, proud=0.003)
+        Grille(b, (0.0995, spine_end - 0.2, ZR - 0.028), X, Y, -Z, 0.011, 0.035, 7, proud=0.004)
         x0, y0, x1, y1, z = desk
         Keypad(b, ((x0 + x1) / 2 - 0.01, y0 + 0.035, z), X, Y, Z, 4, 3, 0.011, 0.004)
+        # the column beside the centre screen: a 3 x 3 keypad near its top, a vent below it
+        top = at + v * (half_z - pad - 0.008)
+        Keypad(b, top, u, v, facing, 3, 3, key, gap)
+        vent = (half_z - pad - 0.008) - pad - 0.012
+        Grille(b, at + v * ((vent - half_z + 0.006) / 2), u, v, facing, half_x - 0.006, (vent + half_z - 0.006) / 2, 5, proud=0.004)
     b.mirror = False
     bl, br, tr, tl = [Vector(c) for c in screen["corners"]]
     n = Vector(screen["normal"])
@@ -1016,6 +1069,43 @@ def Bezel(console, screen):
     hit = Visible(BVHTree.FromBMesh(bm), at + n * 0.2, -n)
     bm.free()
     return float((hit[0] - at).dot(n))
+
+
+def Column(console, screen):
+    """The flat face of the column right of the centre screen, where the lit concept has a keypad over a vent: rays
+    along the screen's normal, in 2 mm steps outward from its right edge at its middle height, the longest run landing
+    on faces turned the same way within 3 mm of each other's depth; then up and down through that run's middle. Returns
+    the face's centre, normal and half sizes (across, up)."""
+    bl, br, tr, tl = [Vector(c) for c in screen["corners"]]
+    n = Vector(screen["normal"])
+    bm = bmesh.new()
+    bm.from_mesh(console.data)
+    tree = BVHTree.FromBMesh(bm)
+    bm.free()
+    step = 0.002
+
+    def Depth(x, z):
+        hit = Visible(tree, Vector((x, br.y, z)) + n * 0.3, -n)
+        return None if hit is None or hit[1].dot(n) < 0.95 else hit[0].dot(n)
+
+    def Longest(samples):
+        """The longest run of consecutive (position, depth) samples on one face: its first and last positions."""
+        runs, run = [], []
+        for at, d in samples:
+            if d is not None and run and abs(d - run[0][1]) < 0.003:
+                run.append((at, d))
+                continue
+            runs.append(run)
+            run = [(at, d)] if d is not None else []
+        runs.append(run)
+        best = max(runs, key=len)
+        return best[0][0], best[-1][0]
+    z_mid = (br.z + tr.z) / 2
+    x0, x1 = Longest([(br.x + step * k, Depth(br.x + step * k, z_mid)) for k in range(1, 60)])
+    xc = (x0 + x1) / 2
+    z0, z1 = Longest([(z_mid + step * k, Depth(xc, z_mid + step * k)) for k in range(-60, 60)])
+    hit = Visible(tree, Vector((xc, br.y, (z0 + z1) / 2)) + n * 0.3, -n)
+    return hit[0], hit[1].normalized(), (x1 - x0) / 2, (z1 - z0) / 2
 
 
 def DeskShelf(console):
@@ -1194,10 +1284,10 @@ def Shell(pillar, opening, pedestals=(), pane_face=None, console=None):
     b.mirror = False
     for mirror in (False, True):
         b.mirror = walls.mirror = mirror
-        # behind the panes: the side wall, a panel set in either side of the portal, the rail and cap carried back to
-        # the rear wall
-        for y0, y1 in ((YB, YR), (YR, pane_rear)):
-            Slab(b, [(XWALL, y0, -SEAM), (XWALL, y1, -SEAM), (XWALL, y1, ZH), (XWALL, y0, ZH)], -X, SLAB, inset=(0.008, 0.006, 0.02))
+        # behind the panes: the side wall (the rear section's in the concept's wall language, SideWall; a panel set in
+        # behind the portal), the rail and cap carried back to the rear wall
+        SideWall(b, YB, YR)
+        Slab(b, [(XWALL, YR, -SEAM), (XWALL, pane_rear, -SEAM), (XWALL, pane_rear, ZH), (XWALL, YR, ZH)], -X, SLAB, inset=(0.008, 0.006, 0.02))
         Sweep(b, [Vector((XRAIL, YB, ZH)), Vector((XRAIL, pane_rear + OVERLAP, ZH))], Z, CAP_SWEPT, CAP_CLASSES)
         # the side wall behind the pane (cut below for its window), on back behind the rear wall and up behind the cap,
         # which close the corners round the pane's rear end
@@ -1234,7 +1324,7 @@ def Shell(pillar, opening, pedestals=(), pane_face=None, console=None):
     RearWall(b)
     lights = Lamps(b, pane_face, corner, drop) if pane_face else []
     if console:
-        Details(b, edge, console["desk"], console["screen"], console["bezel"], spine_end)
+        Details(b, edge, console["desk"], console["screen"], console["bezel"], console["column"], spine_end)
     # the controls' stands (Stand)
     for x, y, hx, hy, height in pedestals:
         Stand(b, x, y, hx, hy, height)
@@ -1468,13 +1558,14 @@ def Run(folder):
     furniture, placed, pedestals = Furnish(os.path.dirname(folder))
     # the panes' windows are open (their back skin is culled from inside): where, to cut the shell's walls behind them
     right, rim, area = PaneOpening(pieces["side-right"])
-    wall = {"strip": PaneFace(pieces["side-right"], -0.14, 0.16) - 0.001, "floor": PaneFace(pieces["side-right"], -0.12, 0.012)}
+    wall = {"floor": [PaneFace(pieces["side-right"], y, 0.012) for y in FLOOR_STRIPS]}
     # the panes' own A-pillars go; the shell's take their place
     pillar = PillarEdge(pieces["side-right"])
     pane_cut = {k: CutPillar(pieces[k], WindowPlane(pillar), mirrored=k == "side-left") for k in ("side-left", "side-right")}
     shell, windows, lights, dims = Shell(pillar, (right, rim), pedestals, wall,
                                          {"desk": DeskShelf(pieces["console"]), "screen": screens["centre"],
-                                          "bezel": Bezel(pieces["console"], screens["centre"])})
+                                          "bezel": Bezel(pieces["console"], screens["centre"]),
+                                          "column": Column(pieces["console"], screens["centre"])})
     # the light baked in: the shell's own texture (its classes' trims), then the console's and the panes' textures, lit
     # by the lamps and the screens' glow (the parts and the furniture cast shadows and bounce light)
     template.hide_render = True
