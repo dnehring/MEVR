@@ -169,6 +169,20 @@ ue3::FieldRef gTexture2DMipTail{"Engine.Texture2D", "MipTailBaseIdx"};
 ue3::FieldRef gTexture2DMips{"Engine.Texture2D", "Mips"};
 // For `mevr vehicle`.
 ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo"};
+// `mevr vehicle levels` and `event` (research/47 "Reaching the Mako"): the level's streaming and its script's remote events.
+ue3::ClassRef gRemoteEvent{"Engine.SeqEvent_RemoteEvent"};
+ue3::FieldRef gRemoteEventName{"Engine.SeqEvent_RemoteEvent", "EventName"};
+ue3::FunctionRef gCheckActivate{"Engine.SequenceEvent.CheckActivate"};
+ue3::FieldRef gStreamingLevels{"Engine.WorldInfo", "StreamingLevels"};
+ue3::FieldRef gStreamPackage{"Engine.LevelStreaming", "PackageName"};
+ue3::FieldRef gStreamLoaded{"Engine.LevelStreaming", "LoadedLevel"};
+ue3::FieldRef gStreamShouldLoad{"Engine.LevelStreaming", "bShouldBeLoaded"};
+ue3::FieldRef gStreamShouldShow{"Engine.LevelStreaming", "bShouldBeVisible"};
+ue3::FieldRef gStreamVisible{"Engine.LevelStreaming", "bIsVisible"};
+ue3::FieldRef gStreamPending{"Engine.LevelStreaming", "bHasLoadRequestPending"};
+// `mevr vehicle party`: the squad screen's own "A on the confirmation" (FinalizeParty), which hides the panel.
+ue3::ClassRef gPartySelection{"SFXGame.BioSFHandler_PartySelection"};
+ue3::FunctionRef gFinalizeParty{"SFXGame.BioSFHandler_PartySelection.FinalizeParty"};
 
 // EObjectFlags: RF_ClassDefaultObject.
 constexpr std::uint64_t kClassDefaultFlag = 0x200;
@@ -2414,6 +2428,80 @@ std::string VehicleCommand(std::string const& line) {
         log::Info("mevr vehicle: {}", report);
         return report;
     }
+    if (verb == "levels") {
+        // The persistent level's streaming levels: which are loaded and shown (a direct `open` of a Mako level stalls
+        // before the rover drop, research/47 "Reaching the Mako").
+        ue3::Object* const world = gWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr);
+        auto const levels = gStreamingLevels.ElementsOf(world);
+        if (!levels) {
+            return Refuse(std::format("no streaming levels in {}", MapName(controller)));
+        }
+        std::string report = std::format("{}: {} streaming levels (loaded / should load / visible / should show / load pending)\n", MapName(controller), levels->count);
+        for (std::int32_t i = 0; i < levels->count; ++i) {
+            ue3::Object* const level = *static_cast<ue3::Object**>(levels->At(i));
+            if (level == nullptr) {
+                continue;
+            }
+            auto const name = gStreamPackage.Read<ue3::Name>(level);
+            auto flag = [&](ue3::FieldRef& field) { return field.ReadBool(level).value_or(false) ? '1' : '0'; };
+            report += std::format("  {} {} {} {} {} {}\n", name ? ue3::runtime::NameText(*name) : std::string("?"),
+                gStreamLoaded.Read<ue3::Object*>(level).value_or(nullptr) != nullptr ? '1' : '0', flag(gStreamShouldLoad), flag(gStreamVisible), flag(gStreamShouldShow),
+                flag(gStreamPending));
+        }
+        log::Info("mevr vehicle: {}", report);
+        return report;
+    }
+    if (verb == "party") {
+        // Accepts the squad screen as its confirmation box's A does: the members picked so far go into the party (none
+        // picked: Shepard alone) and the panel hides, so the level's script goes on past ShowPartySelectionGUI.
+        if (auto const missing = MissingFunction({&gFinalizeParty})) {
+            return Refuse(*missing);
+        }
+        int handlers = 0;
+        int called = 0;
+        ForEachLive(gPartySelection.Get(), [&](ue3::Object* handler) {
+            ++handlers;
+            ue3::Params p = ParamsOf(gFinalizeParty);
+            p.SetBool("bAPressed", true);
+            p.Set("nContext", 0);
+            p.SetBool("bYPressed", false);
+            called += Call(handler, gFinalizeParty, p) ? 1 : 0;
+        });
+        std::string const report = std::format("squad screen: {} handler{}, FinalizeParty(A) called on {}", handlers, handlers == 1 ? "" : "s", called);
+        log::Info("mevr vehicle: {}", report);
+        return report;
+    }
+    if (verb == "event") {
+        // Fires the level script's remote events of that name, as a SeqAct_ActivateRemoteEvent would (originator the
+        // WorldInfo, instigator the pawn). For stepping a level's script past a stall; nothing else uses it.
+        std::string wanted;
+        words >> wanted;
+        if (wanted.empty()) {
+            return Refuse("mevr vehicle event <EventName>");
+        }
+        if (auto const missing = MissingFunction({&gCheckActivate})) {
+            return Refuse(*missing);
+        }
+        ue3::Object* const world = gWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr);
+        int found = 0;
+        int fired = 0;
+        ForEachLive(gRemoteEvent.Get(), [&](ue3::Object* event) {
+            auto const name = gRemoteEventName.Read<ue3::Name>(event);
+            if (!name || Lower(ue3::runtime::NameText(*name)) != Lower(wanted)) {
+                return;
+            }
+            ++found;
+            ue3::Params p = ParamsOf(gCheckActivate);
+            p.Set("InOriginator", world);
+            p.Set("InInstigator", pawn != nullptr ? pawn : controller);
+            if (Call(event, gCheckActivate, p) && p.ReturnBool().value_or(false)) {
+                ++fired;
+            }
+        });
+        std::string const report = std::format("remote event {}: {} listener{}, {} activated", wanted, found, found == 1 ? "" : "s", fired);
+        log::Info("mevr vehicle: {}", report);
+        return report;
+    }
     auto const mode = player::GameMode(controller);
     return std::format("map {}, game mode {}, pawn {} (BioVehicleBase: {}), closest drivable {} ({}), nearest vehicle {} at {:.1f} m", MapName(controller), mode ? std::to_string(*mode) : std::string("?"),
         ue3::runtime::FullName(pawn), pawn != nullptr && ue3::IsA(pawn, gVehicleBase) ? "yes" : "no", ue3::runtime::FullName(find.engineAnswer),
@@ -2661,13 +2749,13 @@ void Shutdown(bool exiting) {
     gLoggedMoveFailure = gLoggedFirstPlace = gLoggedFlatFallback = false;
     for (ue3::ClassRef* const c : {&gActorClass, &gInterpActor, &gKActor, &gKActorSpawnable, &gStaticMeshActor, &gDynamicSmActor, &gStaticMesh, &gStaticMeshComponent,
              &gMaterial, &gMaterialInstance, &gMic, &gTextureParameterExpression, &gCaptureActor, &gCaptureComponent, &gTargetClass, &gTexture, &gTexture2D, &gVehicleBase, &gBioPawn,
-             &gBioController, &gSaveGame}) {
+             &gBioController, &gSaveGame, &gRemoteEvent, &gPartySelection}) {
         c->Reset();
     }
     for (ue3::FunctionRef* const f : {&gDynamicLoadObject, &gSpawn, &gDestroy, &gSetLocation, &gSetRotation, &gSetDrawScale, &gSetPhysics, &gSetCollision, &gSetHidden, &gSetBase, &gSetHardAttach,
              &gForceUpdate, &gSetActorCollision, &gSetBlockRigidBody, &gSetTraceBlocking, &gSetStaticMesh, &gGetMaterial, &gSetMaterial, &gGetNumElements, &gGetUnscaledBounds,
              &gCreateMic, &gSetParent, &gSetTextureParameter, &gGetTextureParameter, &gLightEnvironmentSetEnabled, &gCreateTarget, &gCaptureSetEnabled, &gCaptureSetFrameRate,
-             &gCaptureSetView, &gCaptureSetParameters, &gEnterVehicle, &gFindClosestVehicle}) {
+             &gCaptureSetView, &gCaptureSetParameters, &gEnterVehicle, &gFindClosestVehicle, &gCheckActivate, &gFinalizeParty}) {
         f->Reset();
     }
     for (ue3::FieldRef* const f : {&gStatic, &gNoDelete, &gMovable, &gRole, &gPhysics, &gBase, &gDynamicComponent, &gDynamicLightEnvironment, &gStaticActorComponent, &gComponentMesh,
@@ -2676,7 +2764,8 @@ void Shutdown(bool exiting) {
              &gSkipUsersOccluded, &gSkipOwnerOccluded, &gMaxUpdateDist, &gPostProcess, &gFrameRate, &gSizeX, &gSizeY, &gPlayer, &gPlayerPostProcess, &gDefaultPostProcess, &gUpdateMatrices,
              &gViewMatrix, &gForceLinearGamma, &gTargetFormat, &gMeshMaterials, &gPrimitiveLightEnvironment, &gLightEnvironmentEnabled, &gTextureResource, &gTextureSrgb, &gTextureNeverStream,
              &gTextureLodGroup, &gTexture2DSizeX, &gTexture2DSizeY, &gTexture2DFormat, &gTexture2DRequestedMips, &gTexture2DResidentMips, &gTexture2DMipTail, &gTexture2DMips, &gWorldInfo,
-             &gTextureValueObject}) {
+             &gTextureValueObject, &gRemoteEventName, &gStreamingLevels, &gStreamPackage, &gStreamLoaded, &gStreamShouldLoad, &gStreamShouldShow, &gStreamVisible,
+             &gStreamPending}) {
         f->Reset();
     }
 }

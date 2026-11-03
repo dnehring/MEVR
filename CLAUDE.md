@@ -350,7 +350,9 @@ switching frameworks.
 - LE1 Mako controls, stage 1 ([research/46](research/46-mako-controls.md), HostServices v23 `setMakoControls`; `core/vr/MakoControls`, `game/MakoControls`;
   `[Mako] controls`): a grabbed throttle lever (left, holds its place, X jump, Y boost) and twist stick (right, springs back, trigger machine gun, A cannon,
   thumbstick turret) at the seat, drawn as two flat quads; the values overwrite `Vehicle.Throttle`/`Steering` in a `BioVehicleBase.SetInputs` post-handler.
-  Not yet run in the game: no save or direct level load has reached drivable Mako gameplay (research/47 "Third run").
+  **Reaching the Mako without a save** (research/47 "Reaching the Mako"): `tools/mako-start.ps1` (`open BIOA_UNC20`, then `mevr vehicle party`:
+  the squad screen's own `FinalizeParty`, after which the level's rover drop makes the Mako the pawn, game mode 1). Never `mevr vehicle enter`
+  before the drop. The controls haven't been grabbed in the game yet (the fake headset's controllers aren't tracked).
 - LE1 cockpit, in progress ([research/47](research/47-cockpit-in-game.md); `game/CockpitProbe`, `mevr cockpit ...`, `mevr vehicle ...`, inert until called): `tools/cockpit`
   splits, decimates (`game_ready.py`: the packager prefers `concept/assets/game-ready/` made from the current models, `--raw` skips it) and packages our models
   (`concept/`, gitignored, licence unsettled; the whole procedure is the `tripo-game-ready` skill; `hull_assemble.py` builds the hull: a clean shell modelled to the messy

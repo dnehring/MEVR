@@ -688,3 +688,38 @@ about +5 face-on. Turned 70 degrees, the side windows show no sheen in a still f
 **8dcf26f** (01:18, same pose; the glow x 7, the fresnel floor back at 0.15): the halo stays, a little softer than at x 10 (the lamps'
 area mean grey 66.1, unlit 51.7, x 10 73), and **the spill over the windshield is the same as at x 10** (114.2, 91.4, 86.3; unlit 102.9,
 80.7, 75.8). The spill doesn't scale with the factor between 7 and 10: whatever is over the bloom threshold spreads alike.
+
+## Reaching the Mako (2026-11-03 09:27, fake headset, Eden Prime then `BIOA_UNC20`)
+
+The third run's stall (game mode 6 on black after the squad screen) is solved: **a direct `open BIOA_UNC20` reaches drivable Mako
+gameplay** once the squad screen is accepted through its own handler. `tools/mako-start.ps1` does the whole thing.
+
+**How the level arrives** (its Kismet read with Legendary Explorer's library, a local reader; prose only): once the exterior layer is in
+(`BioSeqEvt_ForegroundStreamingDone`), `BIOA_UNC20_00_DSG` asks the plot whether the rover has landed. No: black screen, then
+`BioSeqAct_ShowPartySelectionGUI`. That action finishes when no panel tagged `PartySelect` is left (its `UpdateOp`). Its output turns
+cinematic mode on, plays the loading movie and sets the streaming state `Cinematic` (the `BIOA_UNC20_CIN` layer). When that layer is
+in, the plot is marked landed and the remote event `UNC_RoverCutscene` fires. The CIN layer's sequence plays the drop and the landing
+(two matinees, 8.3 s and 5.3 s), enters the vehicle tagged `UNC_DefaultRover` (`BioSeqAct_EnterVehicle`), teleports it to
+`UNC_PlayerStart`, autosaves, turns cinematic mode off and fires `RE_CINEMATIC_COMPLETE`, which streams the CIN layer out again.
+
+**What differed from the third run:** there, `mevr vehicle enter` had made the Mako the pawn while the squad screen was up, and the screen was
+then accepted by posted mouse clicks. Here nothing entered the vehicle by hand, and the screen was accepted by the handler's own
+confirmation, `BioSFHandler_PartySelection.FinalizeParty(bAPressed = true)` (what the confirmation box's A calls), which hides the panel. Which of
+the two broke the third run isn't known: most likely the early enter, since the drop's own `BioSeqAct_EnterVehicle` then finds the player already
+driving [verify]. The `mevr vehicle party` verb (new) calls `FinalizeParty` on the live handler through ProcessEvent, with no squad picked
+(Shepard alone). It needs no window input.
+
+**The run:** at 09:27:36 `party`; at 09:27:42 game mode 6 and `BIOA_UNC20_CIN` loaded and visible (`mevr vehicle levels`, new); at 09:27:51
+the mod's `mako: driving BioVehicleWheeled ... (behavior found, 1 turret from the weapons' info, 2 turret controls in the AnimTree, the
+vehicle's Tick hooked, its shot start hooked)`; at 09:27:53 game mode 1 with the Mako as the pawn, the CIN layer streamed out. The eye
+shows the game's chase camera behind the Mako, the HUD's vehicle silhouette and our hand reticle.
+
+**First facts from research/46 section 7:** `mako controls: simulation is BioSVehicleSimTank`, `TurnInPlaceThrottle 0.25`; `placed from the
+head` (the lever and the stick in tracking space). The turret's two controls are `TurretYawController` and `TurretPitchController`. The fake headset's
+controllers aren't tracked, so the game aims the turret and nothing was grabbed; the controls' checks need a replay with tracked
+controllers or the headset.
+
+**New probe verbs** (mod, hot-reloaded; their classes, fields and functions have ReflectCheck rows): `mevr vehicle levels` (the
+persistent level's streaming levels: loaded, should load, visible, should show, load pending), `mevr vehicle party` (above), `mevr vehicle
+event <EventName>` (fires the level's `SeqEvent_RemoteEvent`s of that name through `SequenceEvent.CheckActivate`, originator the WorldInfo,
+instigator the pawn; for stepping a stalled script, not needed here).

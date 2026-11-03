@@ -564,6 +564,8 @@ void CheckClasses() {
     CheckClass<UMaterialExpressionTextureSampleParameter>("Engine.MaterialExpressionTextureSampleParameter");
     CheckClass<UTexture2D>("Engine.Texture2D");
     CheckClass<USFXSaveGame>("SFXGame.SFXSaveGame");
+    CheckClass<USeqEvent_RemoteEvent>("Engine.SeqEvent_RemoteEvent");  // `mevr vehicle event`
+    CheckClass<UBioSFHandler_PartySelection>("SFXGame.BioSFHandler_PartySelection");  // `mevr vehicle party`
     CheckClass<UEngine>("Engine.Engine");
     CheckClass<UGameEngine>("Engine.GameEngine");
     CheckClass<UPlayer>("Engine.Player");
@@ -641,6 +643,15 @@ void CheckFields() {
     CheckField("Engine.Camera", "CameraCache", SDK_FIELD(ACamera, CameraCache));
     CheckField("Engine.Camera", "PCOwner", SDK_FIELD(ACamera, PCOwner));
     CheckField("Engine.WorldInfo", "PawnList", SDK_FIELD(AWorldInfo, PawnList));
+    // `mevr vehicle levels` and `event` (the cockpit probe, research/47)
+    CheckField("Engine.WorldInfo", "StreamingLevels", SDK_FIELD(AWorldInfo, StreamingLevels));
+    CheckField("Engine.LevelStreaming", "PackageName", SDK_FIELD(ULevelStreaming, PackageName));
+    CheckField("Engine.LevelStreaming", "LoadedLevel", SDK_FIELD(ULevelStreaming, LoadedLevel));
+    CheckField("Engine.LevelStreaming", "bShouldBeLoaded", SDK_BOOL(ULevelStreaming, bShouldBeLoaded));
+    CheckField("Engine.LevelStreaming", "bShouldBeVisible", SDK_BOOL(ULevelStreaming, bShouldBeVisible));
+    CheckField("Engine.LevelStreaming", "bIsVisible", SDK_BOOL(ULevelStreaming, bIsVisible));
+    CheckField("Engine.LevelStreaming", "bHasLoadRequestPending", SDK_BOOL(ULevelStreaming, bHasLoadRequestPending));
+    CheckField("Engine.SeqEvent_RemoteEvent", "EventName", SDK_FIELD(USeqEvent_RemoteEvent, EventName));
     CheckField("Engine.WorldInfo", "WorldGravityZ", SDK_FIELD(AWorldInfo, WorldGravityZ));
     CheckField("Engine.PlayerInput", "RawJoyLookRight", SDK_FIELD(UPlayerInput, RawJoyLookRight));
     CheckField("Engine.PlayerInput", "RawJoyLookUp", SDK_FIELD(UPlayerInput, RawJoyLookUp));
@@ -1065,6 +1076,8 @@ void CheckFunctions() {
         "Engine.PrimitiveComponent.SetOnlyOwnerSee",
         "SFXGame.BioPlayerController.BioEnterVehicle",
         "SFXGame.SFXSaveGame.FindClosestDrivableVehicle",
+        "Engine.SequenceEvent.CheckActivate",
+        "SFXGame.BioSFHandler_PartySelection.FinalizeParty",
         "Engine.PlayerController.ConsoleCommand",
         "Engine.SkeletalMeshComponent.GetBoneNames",
         "Engine.SkeletalMeshComponent.GetBoneLocation",
@@ -1223,6 +1236,12 @@ void CheckParams() {
     PARAM(ABioPlayerController_execBioEnterVehicle_Parms, "SFXGame.BioPlayerController.BioEnterVehicle", ReturnValue);
     PARAM(USFXSaveGame_execFindClosestDrivableVehicle_Parms, "SFXGame.SFXSaveGame.FindClosestDrivableVehicle", Pawn);
     PARAM(USFXSaveGame_execFindClosestDrivableVehicle_Parms, "SFXGame.SFXSaveGame.FindClosestDrivableVehicle", ReturnValue);
+    PARAM(USequenceEvent_execCheckActivate_Parms, "Engine.SequenceEvent.CheckActivate", InOriginator);
+    PARAM(USequenceEvent_execCheckActivate_Parms, "Engine.SequenceEvent.CheckActivate", InInstigator);
+    PARAM(USequenceEvent_execCheckActivate_Parms, "Engine.SequenceEvent.CheckActivate", ReturnValue);
+    PARAM(UBioSFHandler_PartySelection_execFinalizeParty_Parms, "SFXGame.BioSFHandler_PartySelection.FinalizeParty", bAPressed);
+    PARAM(UBioSFHandler_PartySelection_execFinalizeParty_Parms, "SFXGame.BioSFHandler_PartySelection.FinalizeParty", nContext);
+    PARAM(UBioSFHandler_PartySelection_execFinalizeParty_Parms, "SFXGame.BioSFHandler_PartySelection.FinalizeParty", bYPressed);
     PARAM(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand", Command);
     PARAM(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand", bWriteToLog);
     PARAM(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand", ReturnValue);
@@ -1296,6 +1315,8 @@ void CheckParams() {
     PARMS(AActor_execSetOwner_Parms, "Engine.Actor.SetOwner");
     PARMS(UPrimitiveComponent_execSetOwnerNoSee_Parms, "Engine.PrimitiveComponent.SetOwnerNoSee");
     PARMS(UPrimitiveComponent_execSetOnlyOwnerSee_Parms, "Engine.PrimitiveComponent.SetOnlyOwnerSee");
+    PARMS(USequenceEvent_execCheckActivate_Parms, "Engine.SequenceEvent.CheckActivate");
+    PARMS(UBioSFHandler_PartySelection_execFinalizeParty_Parms, "SFXGame.BioSFHandler_PartySelection.FinalizeParty");
     PARMS(UPrimitiveComponent_execSetActorCollision_Parms, "Engine.PrimitiveComponent.SetActorCollision");
     PARMS(UPrimitiveComponent_execSetBlockRigidBody_Parms, "Engine.PrimitiveComponent.SetBlockRigidBody");
     PARMS(UPrimitiveComponent_execSetTraceBlocking_Parms, "Engine.PrimitiveComponent.SetTraceBlocking");
