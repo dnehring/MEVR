@@ -391,6 +391,10 @@ struct SeatedDriver {
     std::vector<std::pair<ue3::Object*, ue3::Object*>> lit;  // each primitive lit by the vehicle's light environment, and its own
     bool haveHips = false;
     ik::Vec3 hips{};  // the hips' midpoint in the mesh's component space (game/arm_ik)
+    // Shown only while arm IK poses it seated (its last NoteSeatHips within 0.5 s): without tracked controllers arm IK is off and
+    // the animation would stand Shepard up through the cockpit's eye (2026-11-03, BIOA_UNC52 with no replay).
+    double posedAt = -1.0;
+    bool visible = false;
     std::uint32_t placements = 0;
     std::uint32_t shown = 0;
 };
@@ -1992,8 +1996,7 @@ void ShowDriver(ue3::Object* vehicle) {
             }
         }
     }
-    SetActorHidden(driver, false);
-    FlushActor(driver, false);
+    FlushActor(driver, false);  // the actor stays hidden until arm IK poses it (SeatTick)
     ++gSeated.shown;
     log::Info("cockpit probe: seat: {} shown in the seat (it was {}hidden, owned by {}{}); {} primitives eyes-only, {} of the head's meshes hidden; "
               "its light environment {}",
@@ -2062,6 +2065,15 @@ void SeatTick(ue3::Object* vehicle) {
     }
     if (want && gSeated.pawn == nullptr) {
         ShowDriver(vehicle);
+    }
+    if (gSeated.pawn != nullptr) {
+        bool const posed = gSeated.posedAt >= 0.0 && Now() - gSeated.posedAt < 0.5;
+        if (posed != gSeated.visible) {
+            SetActorHidden(gSeated.pawn, !posed);
+            FlushActor(gSeated.pawn, false);
+            gSeated.visible = posed;
+            log::Info("cockpit probe: seat: Shepard {}", posed ? "in view, posed seated by arm IK" : "hidden again: arm IK isn't posing the seat (no tracked controllers, or arm IK off)");
+        }
     }
 }
 
@@ -3624,6 +3636,7 @@ void NoteSeatHips(ue3::Object const* mesh, ik::Vec3 const& hips) {
     if (mesh != nullptr && mesh == gSeated.mesh) {
         gSeated.hips = hips;
         gSeated.haveHips = true;
+        gSeated.posedAt = Now();
     }
 }
 
