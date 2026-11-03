@@ -43,6 +43,25 @@ Each line is checked in the game (fake headset with replays where it can be, the
     package with its TOC entry. The models' licence is settled (2026-11-03: `NOTICE.md`,
     `concept/assets/game-ready/README.md`).
 
+## Status (2026-11-03 12:30; research/47)
+
+| Check | State |
+|---|---|
+| 1. In and out by itself | Done on the fake headset: the drop cutscene (no cockpit through modes 8, 7, 6; built at mode 1), exit, level load, a save loaded in the Mako, the setting off, the pawn's death (`suicide`). A death by enemy fire and the game-over reload: [verify] |
+| 2. The view | Done on the fake headset: fixed at speed and on slopes, no Mako body in the eyes, no terrain in the cabin on a 16 s drive. A nose into a wall: [verify] in the headset |
+| 3. The centre screen | Done: the game's chase view, trailing, 30 a second |
+| 4. The right screen | Done: along the turret, the reticle on the traced point, R3 zoom 30/12/5 degrees |
+| 5. Driving | Done with synthetic tracked hands (lever, the stick now tilting, the models following, the haptics sent); the feel needs the user's headset |
+| 6. Aiming | Done: shots land at the reticle |
+| 7. Shepard seated | Done: the hips on the H-point, legs to the heels, the hands on the grips while held, shown only while posed; no Camera/God write |
+| 8. The HUD | Done: the Mako's status and radar on the left display, the rest high in the windshield |
+| 9. Comfort | Needs the user's headset |
+| 10. Cost | Done: within 11.1 ms at p90 at `BIOA_UNC52` (the heaviest uncharted world) with the cockpit riding |
+| 11. Players get it | Done: the release build, the package and script in the payload, MEVR Setup's install, repair and uninstall with the TOC entry, tested on the fake game |
+
+Also asked for on 2026-11-03: the stick tilts (left/right steers, forward/back pitches the Mako while the thrusters fire) and the
+thrusters last 2.5 times as long (research/47 "The stick tilts").
+
 ## The work
 
 **Mod (this session's side):**

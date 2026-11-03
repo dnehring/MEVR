@@ -960,3 +960,18 @@ trails. At the drop's landing, the Mako parked, a still replayed head with track
 Within the 11.1 ms budget (90 Hz) at the p90 too, riding or not; the render thread sets the pace. The cockpit's cost here is within
 the runs' spread at the median (about 0.2 ms of GPU) and up to 3 ms at the p90 in one of the two pairs (the two captures' frames). The
 user's PS VR2 renders more pixels than the fake headset's 2160-high eyes: the headset run of item 9 says the rest.
+
+## Players get it (2026-11-03 12:25; item 11)
+
+- **The release build** (`build-mono`: monolithic, `MEVR_LE1_LESDK=OFF`) builds with everything above: the cockpit, the seat, the tilting
+  stick and the thrusters are mod code under our reflection layer, with no LExSDKv2 use. `tools/package-release.ps1` packages it
+  (it refuses an ASI that links LExSDKv2) and now ships `payload\cockpit\`: the hull packaging's `BIOG_MEVR_Cockpit.pcc` (28 MB) and
+  `cockpit.txt` from `place.py --script` (`-CockpitPackage`, `-NoCockpit`).
+- **MEVR Setup** (`src/install`): Install copies the package into `CookedPCConsole` and the script into `ASI\cockpit`, and adds the package to
+  `PCConsoleTOC.bin` (`install/Toc`: the game's TOC read and written back byte for byte, checked against the game's own file; the entry in
+  the bucket of its bare name's hash, Legendary Explorer's TOCCreator hash, GPL-3.0). The manifest's new `toc` record takes the entry out
+  again on uninstall (or puts back a size that was there before), instead of restoring a whole-file backup that would undo other mods'
+  TOC entries. Verify reports a TOC that lost the entry, so Repair adds it back after Steam's "verify files".
+- **Tested on the fake game** (`tools/setup/test-fake-game.ps1 -Build build-mono`, the game's own TOC copied in): install (the package, the
+  script, the TOC one entry longer), repair after the game's TOC was put back (the entry back), restore and apply of the settings, an
+  update over the top, report, uninstall: the fake game folder byte for byte what it was, TOC included. Every check passed.
