@@ -719,6 +719,41 @@ No decimation or packaging until the user approves the modelling.
   - package 36.1 MB, all checks passed;
   - not yet seen in the game.
 
+## 20. Each screen's panel in its trim (the user: "the actual display is not nearly centred within its own trim")
+
+- **What it was:** section 19 fitted each panel round the model's screen faces. Those aren't what the eye takes for the
+  screen: Tripo's screen runs on under the bezel at one end, folds back at the other, and is painted a darker band
+  along some edges. Face-on (rays straight at each screen, the console's texture where they land), the committed panels
+  left part of the opening as bare model screen:
+  - left screen 5.3%, most of it at its inner end, while its outer end reached the trim;
+  - right screen 6.3%, most at its inner end;
+  - centre 8.8%, all round;
+  - and the side openings aren't rectangles: their short sides lean and each has one cut corner (the outer top), so a
+    rectangular frame in the image couldn't keep an even distance from the trim either.
+- **Now (`Opening`, `Screens`):**
+  - the opening is found as the eye takes it: the cells darker than the trim's paint (luminance 0.225 as stored: the
+    screens about 0.18, the bands painted round them about 0.1, the trim 0.25 to 0.55), not raised more than 6 mm from
+    the screen's plane, joined to the middle. Without the height limit the centre's opening ran out over the raised
+    trim's dark top at its corners. A band of the screens' own shade alone missed the darker band at the side screens'
+    ends;
+  - the panel is the opening's outline (its convex hull, the raster's steps smoothed out within 1.5 mm) grown 1.5 mm
+    under the trim. A rectangle round it lay over the trim's light bevel where the trim leans or cuts a corner;
+  - each idle image's frames follow the outline at the design's insets, their corners cut as a rectangle's were, the
+    brackets at the outline's corners (bends over 30 degrees) and the lit bar on the outline's bottom at the middle;
+  - the side screens' images are stacked in the one `Display` texture (1024 x 1024, the left screen below), so the
+    package keeps its materials; the live screen's UVs still span 0 to 1 over the rectangle round its panel (the
+    manifest's `corners`; `panel` lists the panel's own corners).
+- **Result** (face-on, the same check before and after):
+  - bare model screen: left 0.6%, right 0.5%, centre 0.9% (a thin line under the centre's top lip);
+  - the panel over light trim paint: a hairline along the edges, under 1 mm on average (the tuck over a lip that isn't
+    raised there);
+  - the panels' rectangles: left 0.293 x 0.116 (0.272 x 0.107), right 0.296 x 0.118 (0.262 x 0.110), centre 0.361 x
+    0.161 (0.347 x 0.145); the centre's aspect 2.24.
+  - rebuilt with the bake: the leak probe (19 eyes) finds no escape; decimated, the console 27,337 to 13,317 triangles,
+    its panels whole (21 triangles, their vertices on open edges are locked); the joints as in section 18;
+  - package 36.2 MB, all checks passed (the `Display` texture 1024 x 1024);
+  - not yet seen in the game.
+
 ## 5. Not done
 
 - **Not seen from the seat in the game:** the meshes load and draw textured (section 9), but nothing is placed around the

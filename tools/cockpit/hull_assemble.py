@@ -37,7 +37,7 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
-from mathutils.geometry import intersect_ray_tri
+from mathutils.geometry import barycentric_transform, intersect_ray_tri
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from hull_shapes import (GLOW, QUAD, Bake, Builder, Chamfered, Clip, Corners, Cross, Display, Grille, Inset, Keypad, Newell,  # noqa: E402
@@ -519,33 +519,84 @@ def Pillar(b, plane, top):
 # The console's screens, by where each one's middle lies in x: the centre one shows the live third-person view (the
 # user's choice, 2026-11-02), the others idle screens in the game's orange interface style.
 SCREENS = (("centre", (-0.1, 0.1), "Screen"), ("left", (-0.5, -0.15), "Display"), ("right", (0.15, 0.5), "Display"))
-SCREEN_PIXELS = (1024, 512)  # the idle screens' images; the design is drawn for each screen's own shape
+SCREEN_PIXELS = (1024, 512)  # each idle screen's image; the design is drawn for each screen's own shape
 SCREEN_PROUD, SCREEN_TUCK = 0.0015, 0.0015  # each screen's panel: in front of the model's screen, under the bezel
+# The openings, found face-on (Opening): the raster's step (hull units); the trim's paint, at or above this luminance
+# as stored (the screens about 0.18, the bands painted round them about 0.1, the trim 0.25 to 0.55); and how far in
+# front of the screen's plane a dark face still counts as the screen's (dark paint runs over the raised trim's top at
+# the centre screen's corners, out to the console's dark surroundings).
+SCREEN_STEP, SCREEN_TRIM, SCREEN_RAISED = 0.0005, 0.225, 0.006
+
+
+def Opening(tree, texel, centre, n, h, w, name):
+    """A screen's opening as the pilot takes it: rays straight at it (along -n, back faces culled) read the console's own
+    texture where they land; the opening is the cells darker than the trim's paint and not raised from the screen's
+    plane, joined to the middle. Returns its convex outline in (h, w) from `centre`, counter-clockwise, the same with
+    the raster's steps smoothed out (for the image's frames), and its number of cells."""
+    samples = {}
+
+    def Open(i, j):
+        if (i, j) not in samples:
+            hit = Visible(tree, centre + (h * i + w * j) * SCREEN_STEP + n * 0.05, -n)
+            samples[(i, j)] = hit is not None and texel(hit) < SCREEN_TRIM and (hit[0] - centre).dot(n) < SCREEN_RAISED
+        return samples[(i, j)]
+    start = next(((i, j) for r in range(40) for i in range(-r, r + 1) for j in range(-r, r + 1) if max(abs(i), abs(j)) == r and Open(i, j)), None)
+    if start is None:
+        raise RuntimeError(f"the {name} screen: no screen texel near its middle")
+    cells, stack = set(), [start]
+    while stack:
+        i, j = stack.pop()
+        if (i, j) in cells or not Open(i, j):
+            continue
+        if abs(i) * SCREEN_STEP > 0.25 or abs(j) * SCREEN_STEP > 0.12:
+            raise RuntimeError(f"the {name} screen's opening runs out past its trim")
+        cells.add((i, j))
+        stack += [(i + 1, j), (i - 1, j), (i, j + 1), (i, j - 1)]
+    rim = [(i, j) for i, j in cells if not all(k in cells for k in ((i + 1, j), (i - 1, j), (i, j + 1), (i, j - 1)))]
+    outline = Hull2([((i + di) * SCREEN_STEP, (j + dj) * SCREEN_STEP) for i, j in rim for di in (-0.5, 0.5) for dj in (-0.5, 0.5)])
+    smooth = list(outline)
+    while len(smooth) > 3:  # drop the corners the raster's steps make: those within 3 steps of the line past them
+        far = [abs((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / max(math.hypot(cx - ax, cy - ay), 1e-12)
+               for (ax, ay), (bx, by), (cx, cy) in zip(smooth[-1:] + smooth[:-1], smooth, smooth[1:] + smooth[:1])]
+        k = min(range(len(smooth)), key=far.__getitem__)
+        if far[k] >= 3 * SCREEN_STEP:
+            break
+        del smooth[k]
+    return outline, smooth, len(cells)
 
 
 def Screens(console, folder):
     """The console's screens as panels of their own: "Screen" for the live view, "Display" for the idle ones, each with
-    an image of its idle state. A screen is the largest dark flat patch facing the seat in its region and the faces joined
-    to it near its plane; its panel is the rectangle round them along the screen's own long edge, just in front of the
-    model's screen, its UVs 0 to 1 across it, u to the pilot's right and v up (the glTF export turns v downward, as a
-    render target's rows run). Returns each screen's rectangle in hull coordinates."""
+    an image of its idle state whose frames follow the screen's opening. A screen is the largest dark flat patch facing
+    the seat in its region; its opening is what its trim leaves of it face-on (Opening); its panel is the rectangle round
+    the opening along the screen's own long edge, just in front of the model's screen and its edges under the trim, u to
+    the pilot's right and v up (the glTF export turns v downward, as a render target's rows run). The live screen's
+    UVs are 0 to 1; the idle screens' images are stacked in one, each panel on its own. Returns each screen's rectangle in
+    hull coordinates."""
     me = console.data
     atlas = next(n.image for m in me.materials for n in m.node_tree.nodes if n.type == "TEX_IMAGE" and n.image)
-    w, h = atlas.size
-    px = np.empty(w * h * 4, np.float32)
+    tw, th = atlas.size
+    px = np.empty(tw * th * 4, np.float32)
     atlas.pixels.foreach_get(px)
-    px = px.reshape(h, w, 4)
+    px = px.reshape(th, tw, 4)
+    lum = 0.2126 * px[..., 0] + 0.7152 * px[..., 1] + 0.0722 * px[..., 2]
     bm = bmesh.new()
     bm.from_mesh(me)
     uv = bm.loops.layers.uv.active
+    tris = bm.calc_loop_triangles()
+    tree = BVHTree.FromPolygons([v.co.copy() for v in bm.verts], [[l.vert.index for l in t] for t in tris])
     eye = Vector(EYE)
     facing = {f for f in bm.faces if f.normal.dot((eye - f.calc_center_median()).normalized()) > 0.3}
 
     def Lum(f):
         u = sum(l[uv].uv.x for l in f.loops) / len(f.loops)
         v = sum(l[uv].uv.y for l in f.loops) / len(f.loops)
-        r, g, b = px[int((v % 1) * (h - 1)), int((u % 1) * (w - 1)), :3]
-        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+        return float(lum[int((v % 1) * (th - 1)), int((u % 1) * (tw - 1))])
+
+    def Texel(hit):
+        t = tris[hit[2]]
+        q = barycentric_transform(hit[0], *(l.vert.co for l in t), *(l[uv].uv.to_3d() for l in t))
+        return float(lum[int((q.y % 1) * (th - 1)), int((q.x % 1) * (tw - 1))])
 
     patches, seen = [], set()
     for f in facing:
@@ -565,25 +616,16 @@ def Screens(console, folder):
         centre = sum((g.calc_center_median() * g.calc_area() for g in patch), Vector()) / area
         patches.append((area, centre, patch, sum(Lum(g) * g.calc_area() for g in patch) / area))
     Z = Vector((0, 0, 1))
-    found = {}
+    fits = []
     for name, (x0, x1), material in SCREENS:
         area, centre, seed, _ = max((p for p in patches if x0 < p[1].x < x1 and p[3] < 0.22), key=lambda p: p[0])
         n = sum((g.normal * g.calc_area() for g in seed), Vector()).normalized()
-        # the screen: the seed and the faces joined to it near its plane, then a rectangle along its own long edge (the
-        # side screens are slanted: a level one took in bezel corners)
-        region, stack = set(seed), list(seed)
-        while stack:
-            g = stack.pop()
-            for e in g.edges:
-                for k in e.link_faces:
-                    if k not in region and abs((k.calc_center_median() - centre).dot(n)) < 0.002 and k.normal.dot(n) > 0.95:
-                        region.add(k)
-                        stack.append(k)
         h = Z.cross(n).normalized()
         w = n.cross(h)
-        # the smallest rectangle round the region's outline (its long sides on the screen's straight edges; a principal
-        # axis followed the ragged border and tilted one side screen's panel off its bezel)
-        hull = Hull2([(round(c.co.dot(h), 6), round(c.co.dot(w), 6)) for g in region for c in g.verts])
+        # the opening as the eye takes it: the screen's faces themselves left the panel off-centre in its trim (the
+        # model's screen runs on under the bezel and folds, unevenly round it; the user, 2026-11-02)
+        hull, smooth, cells = Opening(tree, Texel, centre, n, h, w, name)
+        # the smallest rectangle round it (its long sides on the screen's straight edges; the side screens are slanted)
         best = None
         for (ax, ay), (bx, by) in zip(hull, hull[1:] + hull[:1]):
             d = math.hypot(bx - ax, by - ay)
@@ -599,16 +641,27 @@ def Screens(console, folder):
         u = h * ex + w * ey if long_along else h * -ey + w * ex
         u = u if u.x > 0 else -u
         v = n.cross(u)
-        u0, u1 = min(c.co.dot(u) for g in region for c in g.verts), max(c.co.dot(u) for g in region for c in g.verts)
-        v0, v1 = min(c.co.dot(v) for g in region for c in g.verts), max(c.co.dot(v) for g in region for c in g.verts)
-        u0, u1, v0, v1 = u0 - SCREEN_TUCK, u1 + SCREEN_TUCK, v0 - SCREEN_TUCK, v1 + SCREEN_TUCK
+        # the panel: the opening's outline SCREEN_TUCK larger, so its edges go under the trim (a rectangle round it lay
+        # over the trim's light bevel where the trim leans or cuts a corner)
+        origin = centre + n * SCREEN_PROUD
+        outline = [(h * s + w * t).dot(u) for s, t in smooth], [(h * s + w * t).dot(v) for s, t in smooth]
+        outline = list(zip(*outline))
+        panel = Offset([origin + u * a + v * b for a, b in outline], n, -SCREEN_TUCK)
+        a, b = [(p - origin).dot(u) for p in panel], [(p - origin).dot(v) for p in panel]
+        fits.append((name, material, origin, n, u, v, (min(a), max(a), min(b), max(b)), outline, panel, cells))
+    found = {}
+    for material in ("Screen", "Display"):
+        group = [f for f in fits if f[1] == material]
         # found by a tag, not by name: in a session that already has a material of that name (hull_live.py), Blender
         # adds a suffix to the new one's
         mine = [k for k, m in enumerate(me.materials) if m.get("screen") == material]
         if not mine:
-            aspect = (u1 - u0) / (v1 - v0)
-            image = Png(Display(*SCREEN_PIXELS, aspect, bars=("top", "bottom") if material == "Screen" else ("bottom",)),
-                        material, os.path.join(folder, f"screen-{material.lower()}.png"))
+            tiles = []
+            for name, _, _, _, _, _, (u0, u1, v0, v1), outline, _, _ in group:
+                middle, height = ((u0 + u1) / 2, (v0 + v1) / 2), v1 - v0
+                tiles.append(Display(*SCREEN_PIXELS, (u1 - u0) / height, bars=("top", "bottom") if material == "Screen" else ("bottom",),
+                                     outline=[((a - middle[0]) / height, (b - middle[1]) / height) for a, b in outline]))
+            image = Png(np.concatenate(tiles, 0), material, os.path.join(folder, f"screen-{material.lower()}.png"))
             m = bpy.data.materials.new(material)
             m.use_nodes = True
             bsdf = next(k for k in m.node_tree.nodes if k.type == "BSDF_PRINCIPLED")
@@ -618,18 +671,21 @@ def Screens(console, folder):
             m["screen"] = material
             me.materials.append(m)
             mine = [len(me.materials) - 1]
-        # the screen's own flat panel SCREEN_PROUD in front of the model's screen, its edges SCREEN_TUCK under the bezel:
-        # the model's screen is not one clean face (ragged triangles round its border, folds across it that the grown
-        # console tilts), and textured in place its edges showed jagged and its glow distorted (the user, 2026-11-02)
-        origin = n * (centre.dot(n) + SCREEN_PROUD)
-        corner = [origin + u * a + v * b for a, b in ((u0, v0), (u1, v0), (u1, v1), (u0, v1))]
-        panel = bm.faces.new([bm.verts.new(p) for p in corner])
-        panel.material_index = mine[0]
-        for loop, t in zip(panel.loops, QUAD):
-            loop[uv].uv = t
-        found[name] = {"material": material, "faces": len(region), "width": round(u1 - u0, 4), "height": round(v1 - v0, 4),
-                       "corners": [[round(c, 4) for c in p] for p in corner], "normal": [round(c, 4) for c in n],
-                       "u": [round(c, 4) for c in u], "v": [round(c, 4) for c in v]}
+        for slot, (name, _, origin, n, u, v, (u0, u1, v0, v1), _, panel, cells) in enumerate(group):
+            # the screen's own flat panel SCREEN_PROUD in front of the model's screen: the model's screen is not one clean
+            # face (ragged triangles round its border, folds across it that the grown console tilts), and textured in
+            # place its edges showed jagged and its glow distorted (the user, 2026-11-02). Its UVs span the rectangle
+            # round it, in the slot-th of the material's stacked images.
+            face = bm.faces.new([bm.verts.new(p) for p in panel])
+            face.material_index = mine[0]
+            for loop in face.loops:
+                p = loop.vert.co - origin
+                loop[uv].uv = ((p.dot(u) - u0) / (u1 - u0), (slot + (p.dot(v) - v0) / (v1 - v0)) / len(group))
+            corner = [origin + u * a + v * b for a, b in ((u0, v0), (u1, v0), (u1, v1), (u0, v1))]
+            found[name] = {"material": material, "openingCells": cells, "width": round(u1 - u0, 4), "height": round(v1 - v0, 4),
+                           "corners": [[round(c, 4) for c in p] for p in corner], "normal": [round(c, 4) for c in n],
+                           "u": [round(c, 4) for c in u], "v": [round(c, 4) for c in v], "panel": [[round(c, 4) for c in p] for p in panel],
+                           "imageRows": [slot / len(group), (slot + 1) / len(group)]}
     bm.to_mesh(me)
     bm.free()
     return found
@@ -1508,7 +1564,9 @@ def Run(folder):
         "bake": bake,
         "screens": {"convention": "u to the pilot's right, v up; the glTF's v runs down (its texture's rows), so a render "
                                   "target shows upright and unmirrored", "corners": "bottom left, bottom right, top right, "
-                                  "top left as the pilot sees them", **screens},
+                                  "top left as the pilot sees them: the rectangle the UVs span (the panel, its opening's "
+                                  "outline, may cut its corners)", "imageRows": "the share of its material's image the "
+                                  "screen's UVs take, bottom first", **screens},
         "paneFitToTemplateInterior": fit, "shellFromTemplateInterior": shell_fit,
         "triangles": {k: sum(len(p.vertices) - 2 for p in o.data.polygons) for k, o in pieces.items()},
         "templateInteriorCovered": coverage, "raysLeavingFromSeat": {"eye": EYE, **escapes},

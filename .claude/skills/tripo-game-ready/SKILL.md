@@ -230,6 +230,12 @@ so the new shell follows it. The parts (console, side pane) are placed in it, an
   small folds: the screens' 0.98 normal test left dark lines across a stretched screen. When a concept's room is
   "smaller around" a part than a seated eye allows, move the part instead: the console stood 0.1 nearer the seat
   (`CONSOLE_SHIFT`, section 18) and filled the room camera's view as the concept's, at no cost to the windshield.
+- **Fit a screen's panel to the opening the eye sees, not to the model's screen faces** (research/48 section 20). Tripo's
+  screen runs on under its bezel and folds unevenly, so a rectangle round its faces sat off-centre in the trim (19 and
+  37 mm of bare screen either side, in hull units; the user saw it). Rays straight at the screen read the model's own
+  texture: the opening is the dark cells not raised from the screen's plane, joined to the middle (dark paint runs over
+  the raised trim at corners). The panel is that outline grown 1.5 mm under the trim, and the image's frame follows the
+  outline. Check face-on, per cell: the panel over light trim paint, and dark model screen still showing.
 
 - **Fit against the template's interior, never the whole mesh.** The interior is the faces hit by rays from points
   inside it. Use only the part's faces toward the room, and hold the scale to a plausible range. Against the whole

@@ -456,32 +456,57 @@ def Png(linear, name, path):
     return image
 
 
-def Display(width, height, aspect, bars=()):
+def Display(width, height, aspect, bars=(), outline=None):
     """An idle screen in the game's orange interface style, as linear RGB (rows bottom first) for a screen `aspect` times
     as wide as it is tall, whatever the image's own size: a dark amber field warming toward a thin glowing frame with cut
     corners just inside the edge, brackets at an inner frame's corners, and short lit bars on the edges named in `bars`
-    ("top", "bottom"). Sizes are fractions of the screen's height."""
+    ("top", "bottom"). Sizes are fractions of the screen's height, from the image's middle. `outline`: the opening the
+    image shows through (a convex polygon, counter-clockwise), which the frames then follow; the image's edge if None."""
     y, x = np.mgrid[0:height, 0:width].astype(np.float32)
     px = ((x + 0.5) / width - 0.5) * aspect
     py = (y + 0.5) / height - 0.5
     ax, ay = np.abs(px), np.abs(py)
+    outline = outline or [(-aspect / 2, -0.5), (aspect / 2, -0.5), (aspect / 2, 0.5), (-aspect / 2, 0.5)]
+    sides = []
+    for (x0, y0), (x1, y1) in zip(outline, outline[1:] + outline[:1]):
+        length = math.hypot(x1 - x0, y1 - y0)
+        sides.append(((x0, y0), ((y1 - y0) / length, (x0 - x1) / length)))
 
-    def Box(a, b, c):
-        """Signed distance to a rectangle of half sizes a and b with its corners cut by c (negative inside)."""
-        return np.maximum(np.maximum(ax - a, ay - b), (ax + ay - (a + b - c)) / math.sqrt(2))
+    def Edge(qx, qy):
+        """Signed distance to the outline (negative inside; exact inside a convex polygon)."""
+        return np.max([(qx - x0) * nx + (qy - y0) * ny for (x0, y0), (nx, ny) in sides], axis=0)
+
+    def Frame(inset, cut):
+        """Signed distance to the outline moved `inset` inward, its corners (where it turns more than 60 degrees) cut by
+        `cut` along each side, as a rectangle's would be."""
+        d = Edge(px, py)
+        for (_, (n0x, n0y)), ((cx, cy), (n1x, n1y)) in zip(sides, sides[1:] + sides[:1]):  # (cx, cy): the corner
+            if n0x * n1x + n0y * n1y > 0.5:
+                continue
+            mx, my = n0x + n1x, n0y + n1y
+            m = math.hypot(mx, my)
+            d = np.maximum(d, ((px - cx) * mx + (py - cy) * my) / m + (cut + 2 * inset) / math.sqrt(2) - inset)
+        return d + inset
 
     def Line(d, width):
         return np.exp(-(d / width) ** 2)
 
     orange = np.array([1.0, 0.36, 0.06], np.float32)
-    outer = Box(aspect / 2 - 0.055, 0.5 - 0.055, 0.13)
-    inner = Box(aspect / 2 - 0.115, 0.5 - 0.115, 0.07)
-    corners = (ax > aspect / 2 - 0.115 - 0.16) & (ay > 0.5 - 0.115 - 0.16)
+    outer = Frame(0.055, 0.13)
+    inner = Frame(0.115, 0.07)
+    # the brackets: the inner frame near the outline's corners (where it bends more than 30 degrees), about 0.16 along
+    # each side from the inner frame's corner
+    corners = np.zeros_like(px, dtype=bool)
+    for (_, (n0x, n0y)), ((cx, cy), (n1x, n1y)) in zip(sides, sides[1:] + sides[:1]):
+        if n0x * n1x + n0y * n1y < math.cos(math.radians(30)):
+            corners |= (px - cx) ** 2 + (py - cy) ** 2 < 0.3 ** 2
     glow = np.where(outer < 0, np.exp(outer / 0.06), np.exp(-outer / 0.03))
     light = Line(outer, 0.005) + 0.10 * glow + 0.45 * Line(inner, 0.0035) * corners
     core = np.zeros_like(px)
+    up = np.linspace(-0.6, 0.6, 4801)
+    inside = up[Edge(np.zeros_like(up), up) <= 0]  # the outline's span up the middle, where the bars sit
     for edge in bars:
-        centre = (0.5 - 0.055) * (1 if edge == "top" else -1)
+        centre = inside.max() - 0.055 if edge == "top" else inside.min() + 0.055
         bar = np.maximum(ax - aspect * 0.13, np.abs(py - centre) - 0.012)
         light = light + np.where(bar < 0, 1.6, 1.6 * np.exp(-bar / 0.02))
         core = np.maximum(core, Line(np.maximum(bar, 0), 0.006))
