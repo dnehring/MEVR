@@ -39,8 +39,8 @@ from mathutils.bvhtree import BVHTree
 from mathutils.geometry import intersect_ray_tri
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from hull_shapes import (GLOW, QUAD, Bake, Builder, Chamfered, Clip, Corners, Display, Grille, Keypad, Newell, Pipe, Plate, Png,  # noqa: E402
-                         Relight, ScreenGlow, Slab, Sweep, Visible)
+from hull_shapes import (GLOW, QUAD, Bake, Builder, Chamfered, Clip, Corners, Cross, Display, Grille, Inset, Keypad, Newell,  # noqa: E402
+                         Offset, Pipe, Plate, Png, Relight, Rings, ScreenGlow, Slab, Sweep, Visible)
 
 TEMPLATE = "hull full -bad.glb"
 PANE = "side pane.glb"
@@ -91,6 +91,35 @@ WINDOW_CLASSES = ["DARK", "SEAM", "SEAM", "LIGHT", "LIGHT", "LIGHT", "LIGHT", "D
 # The rear door's frame, as WINDOW but heavier: a 30 mm light face standing 15 mm proud, lining the wall's thickness.
 DOOR_FRAME = [(-0.006, -0.03), (0.03, -0.03), (0.03, 0.0), (0.024, 0.015), (0.0, 0.015), (-0.006, 0.009), (-0.006, -0.03)]
 DOOR_FRAME_CLASSES = ["DARK", "SEAM", "LIGHT", "LIGHT", "LIGHT", "DARK"]
+# The A-pillars (the user, 2026-11-02: the side pane's own pillar ended in the air, 15 cm above the console). Ours is
+# the front side window's rear edge, in the window's plane (through the windshield's side edge and the window's top
+# rear corner, WindowPlane): a beam from the cap down to a knee, then flatter to its foot on the sill, where a shoulder
+# on the console's outer end carries it to the floor. KNEE: the front edge's knee (y, z); FOOT_Y: its foot on the sill.
+KNEE, FOOT_Y = (0.11, 0.42), 0.265
+# The beam's profile: (side, toward the room) from its front edge on the window's plane, the side negative toward its
+# rear: 65 mm wide, chamfered, a 20 mm channel 3 mm deep along its face. The channel is red in two lengths above the
+# knee, as the concept's stripes, and a plate below it. It is 40 mm deep, 24 of them behind the plane, so its room face
+# stands 16 mm into the room: near the sill the plane passes 2 to 3 cm outside the console's right screen housing, and a
+# beam standing 36 mm in sat on the housing's rim (the user, 2026-11-02: "the base of the pillar looks to collide with
+# the control desk").
+PILLAR = [(0.0, -0.024), (0.0, 0.007), (-0.009, 0.016), (-0.02, 0.016), (-0.022, 0.013), (-0.042, 0.013), (-0.044, 0.016),
+          (-0.056, 0.016), (-0.065, 0.007), (-0.065, -0.024), (0.0, -0.024)]
+PILLAR_CLASSES = ["DARK", "LIGHT", "LIGHT", "SEAM", "RED", "SEAM", "LIGHT", "LIGHT", "DARK", "DARK"]
+CHANNEL = 4  # the channel's floor among the profile's edges
+# The bands round the beam where it meets the cap, at the knee and on the shoulder: 6 mm proud of it all round.
+COLLAR = Chamfered(-0.071, 0.006, -0.024, 0.022, 0.004)
+COLLAR_CLASSES = ["DARK", "DARK", "LIGHT", "LIGHT", "LIGHT", "DARK", "DARK", "DARK"]
+# The web behind the beam: its face this far behind the window's plane (the beam stands 34 mm proud of it).
+WEB = -0.018
+# The shoulder under the foot, on the console's outer flat top: its rear and front y, and how far its room face stands in
+# from the window's sill (in x), clear of the right screen housing's outer step (x 0.26 near the foot).
+SHOULDER = (0.12, 0.275, 0.02)
+# The panes lose their own pillar: everything in front of PANE_CUT above their side console's top (PANE_CONSOLE), and
+# the pillar's foot below that, where it stands in front of the web, over the shoulder (CutPillar).
+PANE_CUT, PANE_CONSOLE = 0.024, 0.346
+# The old foot's rear end, behind the shoulder: from this y to the shoulder, inboard of this x (the side console's
+# inner face, which stays).
+FOOT_CUT = (0.07, 0.357)
 # The ceiling's spine and slats, as profiles (side, down from ZR negative): the template's lowered centre and ribs,
 # raised with the roof. The spine's upper tier, and its lower tier with a recess underneath; each slat a louvre whose
 # face slopes toward the cockpit's middle, a light edge along its foot (x, depth for each).
@@ -220,6 +249,158 @@ def PillarEdge(pane):
     co = np.array([v.co[:] for v in me.vertices])
     cap = co[(co[:, 2] > ZH + 0.02) & (co[:, 0] < XRAIL - 0.01)]
     return Front(ZL + 0.03), Front(ZC - 0.01), float(lo[1]), float(cap[:, 1].max())
+
+
+def WindowPlane(pillar):
+    """The right front side window's plane: through the windshield's side edge (B on the sill, C on the frame line) and
+    the window's top rear corner D, where the cap turns from along the pane toward the windshield (PillarEdge's top).
+    Returns B, C, D, the plane's normal toward the room and the plane's x at (y, z)."""
+    yh = YF - (ZH - ZL) * (YF - YT) / (ZC - ZL)
+    B = Vector((XF, YF, ZL))
+    C = Vector((XP - (yh - YC) * (XP - XF) / (YF - YC), yh, ZH))
+    D = Vector((XRAIL, pillar[1].y - 0.015, ZH))
+    n = (C - B).cross(D - C).normalized()
+    n = -n if n.x > 0 else n
+    return B, C, D, n, lambda y, z: B.x - (n.y * (y - B.y) + n.z * (z - B.z)) / n.x
+
+
+def CutPillar(pane, plane, mirrored=False):
+    """Removes the pane's own A-pillar with the web under it and its foot (the shell's Pillar takes their place): every
+    face in front of PANE_CUT above PANE_CONSOLE; below that from z 0.26 up, in front of the shoulder's rear end where it
+    stands in front of the web, and behind it (from FOOT_CUT's y) inboard of the side console's inner face (`plane`:
+    WindowPlane, for the right pane; `mirrored`: the left). The faces near the cut are split on its planes first, so what
+    is left ends on them; the Tripo mesh is open, so an exact boolean is no use."""
+    B, _, _, n, X = plane
+    sign = -1 if mirrored else 1
+    bm = bmesh.new()
+    bm.from_mesh(pane.data)
+    planes = [((0, PANE_CUT, 0), (0, 1, 0)), ((0, 0, PANE_CONSOLE), (0, 0, 1)), ((0, 0, 0.26), (0, 0, 1)), ((0, SHOULDER[0], 0), (0, 1, 0)),
+              ((sign * (B.x + WEB * n.x + 0.003), B.y, B.z), (sign * n.x, n.y, n.z)), ((0, FOOT_CUT[0], 0), (0, 1, 0)),
+              ((sign * FOOT_CUT[1], 0, 0), (1, 0, 0))]
+    for co, no in planes:
+        faces = [f for f in bm.faces if max(v.co.y for v in f.verts) > PANE_CUT - 0.005 and max(v.co.z for v in f.verts) > 0.25]
+        geom = list({v for f in faces for v in f.verts}) + list({e for f in faces for e in f.edges}) + faces
+        bmesh.ops.bisect_plane(bm, geom=geom, plane_co=co, plane_no=no, dist=1e-6)
+    gone = []
+    for f in bm.faces:
+        c = f.calc_center_median()
+        if c.y > PANE_CUT and c.z > PANE_CONSOLE:
+            gone.append(f)
+        elif c.y > SHOULDER[0] and 0.26 < c.z <= PANE_CONSOLE and sign * c.x < X(c.y, c.z) + WEB * n.x + 0.003:
+            gone.append(f)
+        elif c.y > FOOT_CUT[0] and 0.26 < c.z <= PANE_CONSOLE and sign * c.x < FOOT_CUT[1]:
+            gone.append(f)
+    bmesh.ops.delete(bm, geom=gone, context="FACES")
+    bm.to_mesh(pane.data)
+    bm.free()
+    Smooth(pane)
+    return len(gone)
+
+
+def Turned(plane, path):
+    """Whether a path down the pillar must run bottom up for Sweep's side to point toward the window (PILLAR's
+    convention: the profile's side is negative toward the beam's rear)."""
+    _, C, D, n, _ = plane
+    return n.cross(Vector(path[1]) - Vector(path[0])).dot(C - D) < 0
+
+
+def Beam(b, plane, path, profile, classes):
+    """A profile swept down the pillar (`path` from its top), its side toward the window; `classes` as Sweep's, per
+    segment from the top. Returns the rings, top first."""
+    if not Turned(plane, path):
+        return Sweep(b, path, plane[3], profile, classes)
+    per_segment = isinstance(classes, list) and isinstance(classes[0], list)
+    return Sweep(b, path[::-1], plane[3], profile, classes[::-1] if per_segment else classes)[::-1]
+
+
+def Keep(polygon, a, c, inside):
+    """A 2D polygon cut by the line through a and c, keeping the side the point `inside` is on."""
+    side = lambda p: (c[0] - a[0]) * (p[1] - a[1]) - (c[1] - a[1]) * (p[0] - a[0])
+    sign = 1 if side(inside) > 0 else -1
+    out = []
+    for p, q in zip(polygon, polygon[1:] + polygon[:1]):
+        if sign * side(p) >= 0:
+            out.append(tuple(p))
+        if side(p) * side(q) < 0:
+            out.append(Cross(p, q, a, c))
+    return out
+
+
+def Shoulder(b, outline, top, bevel=0.006):
+    """A block from the floor's base up to `top` over a convex outline ((x, y), counter-clockwise): its top's edge
+    bevelled light; each side long enough a panel set in, the others dark."""
+    up = Vector((0, 0, 1))
+    rim = [Vector((x, y, top - bevel)) for x, y in outline]
+    face = [p + up * bevel for p in Offset(rim, up, bevel)]
+    b.Face(face, "PLATE", toward=up)
+    centre = sum(rim, Vector()) / len(rim)
+    for k in range(len(rim)):
+        q = (k + 1) % len(rim)
+        b.Face([rim[k], rim[q], face[q], face[k]], "LIGHT", toward=up, uvs=QUAD)
+        side = [rim[k], rim[q], Vector((rim[q].x, rim[q].y, -SEAM)), Vector((rim[k].x, rim[k].y, -SEAM))]
+        out = (rim[k] + rim[q]) / 2 - centre
+        out.z = 0.0
+        if (rim[q] - rim[k]).length > 0.05:
+            Inset(b, side, out, 0.008, 0.005, 0.012, surface="DARK", ring="DARK", face="PLATE")
+        else:
+            b.Face(side, "DARK", toward=out, uvs=QUAD)
+
+
+def Pillar(b, plane):
+    """The right A-pillar (b's mirror makes the left): the beam along its front edge from the cap through the knee to
+    the sill, a collar where it meets the cap, a band round the knee and a boot where it stands on the shoulder; the
+    web behind it, parallel to the window's plane from the pane's cut to the beam, standing on the pane's side console
+    and on the shoulder; the shoulder, from the floor to the sill under the foot, on the console's outer end;
+    the window's frame along its sill and top (the beam frames its rear edge, the windshield's frame its front).
+    Returns the window's opening, a convex polygon in its plane: the windshield's corner on the sill, the foot, the
+    knee, the top, the windshield's corner on the frame line."""
+    B, C, D, n, X = plane
+    At = lambda y, z: Vector((X(y, z), y, z))
+    knee, foot = At(*KNEE), At(FOOT_Y, ZL)
+    up, down = (D - knee).normalized(), (foot - knee).normalized()
+    # the beam, from 16 mm up inside the cap (the collar's end, 4 mm further, caps it) to its foot on the sill, where its
+    # square end lies inside the shoulder (carried on along the beam, it stood out past the shoulder over the console's
+    # rim); its channel red down to the knee in two lengths, a plate below
+    gap = (D + knee) / 2
+    path = [D + up * 0.016, D, gap + up * 0.008, gap - up * 0.008, knee, foot]
+    channel = {c: PILLAR_CLASSES[:CHANNEL] + [c] + PILLAR_CLASSES[CHANNEL + 1:] for c in ("RED", "SEAM", "PLATE")}
+    Beam(b, plane, path, PILLAR, [channel[c] for c in ("RED", "RED", "SEAM", "RED", "PLATE")])
+    Beam(b, plane, [D + up * 0.02, D - up * 0.03], COLLAR, COLLAR_CLASSES)
+    Beam(b, plane, [knee + up * 0.012, knee, knee + down * 0.012], [(s, u - 0.003) for s, u in COLLAR], COLLAR_CLASSES)
+    Beam(b, plane, [foot - down * 0.04, foot], COLLAR, COLLAR_CLASSES)
+    # the web, WEB behind the window's plane and 12 mm in under the beam, split into convex panels by the knee and where
+    # the old foot was cut (FOOT_CUT): behind that it stands on the pane's side console, in front of it it comes down to
+    # the sill behind the side console's inner face and onto the shoulder
+    turned = Turned(plane, path)
+    _, rings = Rings(path[::-1] if turned else path, n, [(min(s for s, _ in PILLAR) + 0.012, 0.0)])
+    line = [r[0].yz for r in (rings[::-1] if turned else rings)]
+    top, bend, low = line[1], line[4], line[5]
+    rear, y0 = FOOT_CUT[0], PANE_CUT - 0.004
+    for rect, (a, c) in (([(y0, bend[1]), (1.0, bend[1]), (1.0, ZH + 0.004), (y0, ZH + 0.004)], (top, bend)),
+                         ([(y0, PANE_CONSOLE), (rear, PANE_CONSOLE), (rear, bend[1]), (y0, bend[1])], (bend, low)),
+                         ([(rear, ZL), (1.0, ZL), (1.0, bend[1]), (rear, bend[1])], (bend, low))):
+        panel = Keep(rect, a, c, (y0, ZL))
+        if len(panel) >= 3 and Area(panel) > 2e-4:
+            Slab(b, [At(y, z) + n * WEB for y, z in panel], n, SLAB, inset=(0.006, 0.004, 0.006) if Area(panel) > 0.0015 else None)
+    # the shoulder: its room face SHOULDER[2] in from the sill, out 4 mm into the side wall and the front chamfer
+    y0, y1, inward = SHOULDER
+    chamfer = Vector((XP + 0.004 - (y1 - YC) * (XP - XF) / (YF - YC), y1, ZL))
+    Shoulder(b, [(X(y0, ZL) - inward, y0), (XP + 0.004, y0), (XP + 0.004, YC), chamfer.xy, (X(y1, ZL) - inward, y1)], ZL)
+    # in front of it, the sill outside the glass: from the window's plane out to the front chamfer
+    b.Face([At(y1, ZL), chamfer, B], "PLATE", toward=Vector((0, 0, 1)))
+    # an end plate over the pane's post and rail where CutPillar cut them, facing forward (the Tripo mesh is open there,
+    # so an eye in front of the pillar looked into it), from inside the post's room face out to the web, under the cap
+    y = PANE_CUT + 0.001
+    out = lambda z: X(y, z) + WEB * n.x + 0.005
+    b.Face([(0.35, y, PANE_CONSOLE), (out(PANE_CONSOLE), y, PANE_CONSOLE), (out(ZH + 0.006), y, ZH + 0.006), (0.35, y, ZH + 0.006)], "DARK",
+           toward=Vector((0, 1, 0)))
+    # the window's frame along the sill and the top, each run 12 mm on into the beam
+    window = [B, foot, knee, D, C]
+    on = lambda p, q: p + (p - q).normalized() * 0.012
+    runs = [[B, on(foot, B)], [on(D, C), C]]
+    for run in runs if Inward(window, n)[1] == foot else [r[::-1] for r in runs]:
+        Sweep(b, run, n, WINDOW, WINDOW_CLASSES)
+    return window
 
 
 # The console's screens, by where each one's middle lies in x: the centre one shows the live third-person view (the
@@ -632,6 +813,7 @@ def Shell(pillar, opening, pedestals=(), pane_face=None, console=None):
     X, Y, Z = Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))
     low, high, pane_rear, cap_front = pillar
     YP_ = high.y - 0.015  # the A-pillar's top, just behind its front face: the side window's top rear corner
+    plane = WindowPlane(pillar)
     lean = (YF - YT) / (ZC - ZL)
     yh = YF - (ZH - ZL) * lean                    # the windshield's top edge, on the frame line
     xh = XP - (yh - YC) * (XP - XF) / (YF - YC)   # its top corners lie on the front chamfers
@@ -657,9 +839,11 @@ def Shell(pillar, opening, pedestals=(), pane_face=None, console=None):
     Sweep(b, Inward(shield, room), room, WINDOW, WINDOW_CLASSES, closed=True)
     windows = [shield]
     # the frame line round the front: the rail and the panes' cap profile, from one pane's cap along the side window's
-    # top, the windshield's header and back to the other's; the ceiling's front edge is where it ends
-    line = [Vector((XRAIL, cap_front - OVERLAP, ZH)), Vector((XRAIL, YP_, ZH)), Vector((xh, yh, ZH)),
-            Vector((-xh, yh, ZH)), Vector((-XRAIL, YP_, ZH)), Vector((-XRAIL, cap_front - OVERLAP, ZH))]
+    # top, the windshield's header and back to the other's; the ceiling's front edge is where it ends. It starts OVERLAP
+    # into the panes' caps, which end at their pillar's cut (CutPillar)
+    start = min(cap_front, PANE_CUT) - OVERLAP
+    line = [Vector((XRAIL, start, ZH)), Vector((XRAIL, YP_, ZH)), Vector((xh, yh, ZH)),
+            Vector((-xh, yh, ZH)), Vector((-XRAIL, YP_, ZH)), Vector((-XRAIL, start, ZH))]
     edge = [r[-1] for r in Sweep(b, line, Z, CAP_SWEPT, CAP_CLASSES)]
     # the ceiling: plates from the rear to the caps' front end, then up to that front edge; its back
     xc = edge[0].x
@@ -706,15 +890,10 @@ def Shell(pillar, opening, pedestals=(), pane_face=None, console=None):
         # the front chamfer below the ledge
         p0, p1 = Vector((XP, YC, 0)), Vector((XF, YF, 0))
         Slab(b, [p0 - Z * SEAM, p1 - Z * SEAM, p1 + Z * ZL, p0 + Z * ZL], Vector((p0.y - p1.y, p1.x - p0.x, 0)), SLAB, "DARK")
-        # the front side window, from the A-pillar to the windshield's frame and from the ledge to the frame line. Its
-        # frame runs along the sill, up behind the pillar and along the top; the windshield's frame is its front edge
-        corners = [p0 + Z * ZL, p1 + Z * ZL, Vector((xh, yh, ZH)), Vector((XRAIL, YP_, ZH))]
-        n = Newell(corners).normalized()
-        room = n if n.x < 0 else -n
-        path = Inward(corners, room)
-        cut = next(k for k in range(4) if {tuple(path[k]), tuple(path[k - 1])} == {tuple(corners[1]), tuple(corners[2])})
-        Sweep(b, path[cut:] + path[:cut], room, WINDOW, WINDOW_CLASSES)
-        windows.append([Vector((-c.x, c.y, c.z)) for c in corners] if mirror else corners)
+        # the A-pillar and the front side window in front of it, from the pillar to the windshield's frame and from the
+        # ledge to the frame line (Pillar)
+        window = Pillar(b, plane)
+        windows.append([Vector((-c.x, c.y, c.z)) for c in window] if mirror else window)
     b.mirror = walls.mirror = False
     # the side walls, cut for the panes' windows, and the light lining that carries each pane's frame out through them
     right, rim = opening
@@ -749,7 +928,8 @@ def Shell(pillar, opening, pedestals=(), pane_face=None, console=None):
     bpy.context.scene.collection.objects.link(o)
     o.data.shade_flat()
     return o, windows, lights, {"windshieldTop": [round(xh, 4), round(yh, 4)], "pillarTopY": YP_, "capFront": round(cap_front, 4),
-                        "paneRear": round(pane_rear, 4), "pillarFoot": [round(c, 4) for c in low], "pillarTop": [round(c, 4) for c in high]}
+                        "paneRear": round(pane_rear, 4),
+                        "pillar": {k: [round(c, 4) for c in p] for k, p in zip(("foot", "knee", "top"), window[1:4])}}
 
 
 def Fibonacci(n):
@@ -982,7 +1162,10 @@ def Run(folder):
     # the panes' windows are open (their back skin is culled from inside): where, to cut the shell's walls behind them
     right, rim, area = PaneOpening(pieces["side-right"])
     wall = {"strip": PaneFace(pieces["side-right"], -0.14, 0.16) - 0.001, "floor": PaneFace(pieces["side-right"], -0.12, 0.012)}
-    shell, windows, lights, dims = Shell(PillarEdge(pieces["side-right"]), (right, rim), pedestals, wall,
+    # the panes' own A-pillars go; the shell's take their place
+    pillar = PillarEdge(pieces["side-right"])
+    pane_cut = {k: CutPillar(pieces[k], WindowPlane(pillar), mirrored=k == "side-left") for k in ("side-left", "side-right")}
+    shell, windows, lights, dims = Shell(pillar, (right, rim), pedestals, wall,
                                          {"desk": DeskShelf(pieces["console"]), "screen": screens["centre"],
                                           "bezel": Bezel(pieces["console"], screens["centre"])})
     # the light baked in: the shell's own texture (its classes' trims), then the console's and the panes' textures, lit
@@ -1066,6 +1249,7 @@ def Run(folder):
                        "console": {"file": CONSOLE, "matrix": [list(r) for r in console_m]}},
         "shellConstants": {"W": W, "ZW": ZW, "XC": XC, "ZC": ZC, "YR": YR, "YP": YP, "XP": XP, "YC": YC, "XF": XF, "YF": YF, "ZL": ZL, "YT": YT,
                            "ZH": ZH, "ZR": ZR, "XRAIL": XRAIL, "XWALL": XWALL, **dims},
+        "paneCutFaces": pane_cut,
         "scale": {"metresPerHullUnit": METRES_PER_UNIT, "status": "proposed 2026-11-02, the user to confirm"},
         "eye": {"hull": list(EYE), "fromChairMetres": list(EYE_FROM_CHAIR)},
         "furniture": {"note": "each file's origin (a moving part's pivot) in hull coordinates, turned about z, scaled by "

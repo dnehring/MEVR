@@ -160,11 +160,23 @@ so the new shell follows it. The parts (console, side pane) are placed in it, an
 - **Windows are openings in light frames** (the user, 2026-11-02): never a flat wall where the concept has glass. A part
   may model its window as a flat solid; the shell's own windows are open, framed by a swept profile (light face, dark
   gasket lining the opening) with mitred corners.
-- **Build the shell around a part's structure; don't set the part in front of it.** The side panes' red-striped pillars are
-  the A-pillars (the user, 2026-11-02):
-  - each front side window runs from its pillar to the windshield's frame;
-  - the frame line passes the pillar tops (below);
-  - the pillar's line is read from the part (`PillarEdge`: its light and red faces), so the shell follows the part.
+- **Build the shell around a part's structure; don't set the part in front of it.** The frame line passes the pillar tops
+  (below), and the top of the side panes' red-striped pillar is read from the part (`PillarEdge`: its light and red faces).
+- **Replace a part's structural feature that doesn't land; don't adapt it.** The panes' own A-pillars ended in a wedge
+  15 cm above the console ("it looks like just a hanging feature", the user, 2026-11-02). The shell's own pillar replaces
+  each (`Pillar`, research/48 section 15): a profile with a red channel, swept from the cap through a knee to a shoulder
+  that stands on the floor, collars at the joints, a web panel behind it, and the front side window's rear edge on its
+  front edge. Every member has to end on something: a collar into the cap, a boot on a block, a block on the floor.
+- **Check a new member against the parts it lands near**, not only by eye: `BVHTree.overlap` between the shell and the part
+  (which shell faces cross it, at what height), and a height map of the part's top from rays straight down (where it is
+  level, where a rim steps). The first shoulder looked fine in renders yet cut through the console's screen housing ("the
+  base of the pillar looks to collide with the control desk", the user, 2026-11-02); the map showed a level ledge
+  beside the housing to stand it on.
+- **Cut a Tripo part by splitting and deleting:** split its faces on the cut's planes (`bmesh.ops.bisect_plane` on the faces
+  near the cut), then delete the faces on the far side (`CutPillar`). The mesh is open, so an exact boolean keeps what it
+  should remove and adds the cutter's walls, and the cut leaves open polylines that `triangle_fill` can't close: cover a cut
+  end the room can see with a plate in the shell. A cut also moves the part's ends: re-derive every joint overlap from the
+  cut (the cap's overlap fell from 15 mm to 3 and leaked).
 - **Let the parts' frame set the roof, not the template's ceiling.** The template's ceiling (z 0.48) sat 2 cm below the
   panes' top rail (0.497 to 0.509) and 7 cm below their caps' inner lip (0.553), so it hid the top of every window frame:
   "the roof cuts into the window frames" (the user, 2026-11-02). Measure a part's frame in sections with each face's class

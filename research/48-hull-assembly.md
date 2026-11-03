@@ -464,6 +464,63 @@ The user, after round four (2026-11-02):
 - **Seen from above the seat:** the worn bake reads on the console, but the chair (white and red, black fabric, high
   contrast) is still the richest thing in view against the room's low-contrast grey.
 
+## 15. Our own A-pillars (the user: the pillar "looks like it's just a hanging feature and not a true structural element")
+
+- **What was wrong** (renders from the seat, across the cabin and under the foot; rays down from the foot):
+  - the A-pillar was the side pane's own: Tripo's diagonal from the pane's top rail to a wedge;
+  - the wedge stopped 0.05 (15 cm) above the console and 0.05 in front of the pane's side console, with the front side
+    window's sky under and around it;
+  - only its top joined anything (the pane's own rail, then the cap);
+  - the front side window behind it was a twisted quad, from the chamfer at the sill to the side wall at the top: its top
+    rear corner lay 0.056 off the plane of its other three corners.
+- **The panes lose their pillar** (`CutPillar`):
+  - everything in front of y 0.024 above the side console's top (0.346);
+  - below that, the wedge's foot: in front of the shoulder's rear end (y 0.12) where it stands in front of the web, and
+    from y 0.07 inboard of the side console's inner face (x 0.357);
+  - 4,035 faces of each pane's 27,023 after the split;
+  - the faces near the cut are split on its seven planes (`bmesh.ops.bisect_plane`), then deleted on the far side;
+  - an exact boolean was tried first: on the open Tripo mesh it kept the pillar and added the cutter's walls;
+  - the cut leaves open polylines, not loops (the pane is an open shell), so `triangle_fill` closes nothing. A dark end
+    plate in the shell covers the post's and rail's cut ends, facing forward.
+- **The front side window is one plane** (`WindowPlane`): through the windshield's side edge and the window's top rear corner
+  (where the cap turns from along the pane to the windshield), normal (-0.921, -0.334, 0.200). Its sill runs from the
+  windshield's corner back and in, 0.043 inside the chamfer wall at the foot, the old pillar's line.
+- **The pillar** (`Pillar`) is that window's rear edge, in its plane:
+  - from the top corner (0.399, 0.067, 0.497) down to a knee at (0.367, 0.11, 0.42), then flatter to its foot on the sill
+    at (0.285, 0.265, 0.30): 35 degrees from vertical above the knee, 56 below;
+  - a 65 mm (20 cm) wide chamfered profile with a 20 mm channel along its face: red in two lengths above the knee, as the
+    concept's stripes, a plate below;
+  - a collar where it goes up into the cap, a band round the knee, a boot where it stands on the shoulder;
+  - behind it a web panel 18 mm behind the window's plane, from the pane's cut to the beam. It stands on the pane's side
+    console, and in front of the old foot's cut it comes down to the sill;
+  - the shoulder: a block from the floor to the sill (0.30) under the foot, on the console's outer flat top, its top's edge
+    light and its long sides panels set in;
+  - the window's frame runs along its sill and top; the beam frames its rear edge, the windshield's frame its front.
+- **The console** (the user: "the base of the pillar looks to collide with the control desk"):
+  - in the first build the shoulder stood 45 mm in from the sill and the beam 36 mm. Near the sill the window's plane passes
+    only 2 to 3 cm outside the right screen housing's outer step (x 0.26 there), so the shoulder cut through the housing
+    and the boot sat on its rim;
+  - the beam is now 40 mm deep with 24 mm of it behind the plane, so its room face stands 16 mm in;
+  - the shoulder's room face stands 20 mm in (x 0.265 at its front), on the console's outer flat, beside the housing;
+  - the beam ends square at the sill inside the shoulder, its boot above;
+  - check: no shell face crosses the console above z 0.20. The only overlaps are the shoulder's walls going down through
+    the console's outer top to the floor.
+- **The cap's overlap:** cutting the panes' caps at y 0.024 left the shell's cap 3 mm of overlap instead of 15, and rays from
+  eyes in front of the pillar left through the joint. The frame line now starts OVERLAP behind the cut.
+- **Leaks:** probed with rays from 19 eyes over the cabin's front and rear, 76,000 rays, back faces culled. The one left is a
+  single ray at the rear wall's top corner, from an eye at the console's height, unrelated to the pillar.
+- **Result:**
+  - shell 5,597 triangles (788 more);
+  - each pane 24,500 raw and 4,421 game-ready (from 27,023);
+  - from the seat 4.5% of rays leave, all through the windows;
+  - after decimating, the joints are unchanged from five of six eyes. The sixth gains two rays at the rear edge of the left
+    pane's open window: an edge moved, not a crack;
+  - package 34.2 MB, all checks passed;
+  - not yet seen in the game.
+- **Rounded edges were tried for the realism the user asked for next** ("mostly additive modeling, so it doesn't look real").
+  A 3-segment, 4 mm bevel on every hard edge of the shell took it from 5,600 to 34,000 triangles and was hard to tell apart
+  in lit renders. The additive look comes from flat bases with separate pieces stacked on them, not from sharp edges.
+
 ## 5. Not done
 
 - **Not seen from the seat in the game:** the meshes load and draw textured (section 9), but nothing is placed around the

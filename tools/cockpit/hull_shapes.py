@@ -82,26 +82,14 @@ def Chamfered(s0, s1, u0, u1, c):
     return pts + pts[:1]
 
 
-def Sweep(b, path, up, profile, classes, closed=False):
-    """A profile swept along a polyline, mitred at its corners.
-
-    `profile`: (side, up) points, where `up` is the given direction (one vector, or a list with one per path point)
-    made square to the path, and `side` is up x the path's direction. Each profile edge's faces point to its right in
-    those axes, so a counter-clockwise loop (last point = first) is a beam's outside and an open strip faces the side to
-    its right. `classes`: one, or one per profile edge. `closed`: the path is a loop; else a loop profile's ends are
-    capped. Returns the rings: the profile's points at each path point."""
+def Rings(path, up, points, closed=False):
+    """Where Sweep puts (side, up) points along a polyline: each segment's frame (direction, side, up) and, at each
+    path point, the points' places, mitred where two segments meet."""
     P = [Vector(p) for p in path]
     n = len(P)
     ups = [Vector(u) for u in up] if isinstance(up, list) else [Vector(up)] * n
-    loop = len(profile) > 2 and tuple(profile[0]) == tuple(profile[-1])
-    pts = profile[:-1] if loop else profile
-    m = len(pts)
-    edges = m if loop else m - 1
-    if isinstance(classes, str):
-        classes = [classes] * edges
-    segments = list(range(n if closed else n - 1))
     frames = []
-    for k in segments:
+    for k in range(n if closed else n - 1):
         t = (P[(k + 1) % n] - P[k]).normalized()
         u = ups[k] + ups[(k + 1) % n]
         u = (u - t * u.dot(t)).normalized()
@@ -115,16 +103,38 @@ def Sweep(b, path, up, profile, classes, closed=False):
             mu = (before[2] + after[2]) / (1 + before[2].dot(after[2]))
         else:
             ms, mu = (before or after)[1], (before or after)[2]
-        rings.append([P[i] + ms * s + mu * u for s, u in pts])
-    for k, (t, s, u) in zip(segments, frames):
-        r0, r1 = rings[k], rings[(k + 1) % n]
+        rings.append([P[i] + ms * s + mu * u for s, u in points])
+    return frames, rings
+
+
+def Sweep(b, path, up, profile, classes, closed=False):
+    """A profile swept along a polyline, mitred at its corners.
+
+    `profile`: (side, up) points, where `up` is the given direction (one vector, or a list with one per path point)
+    made square to the path, and `side` is up x the path's direction. Each profile edge's faces point to its right in
+    those axes, so a counter-clockwise loop (last point = first) is a beam's outside and an open strip faces the side to
+    its right. `classes`: one, or one per profile edge, or a list of either with one per path segment. `closed`: the
+    path is a loop; else a loop profile's ends are capped. Returns the rings: the profile's points at each path point."""
+    loop = len(profile) > 2 and tuple(profile[0]) == tuple(profile[-1])
+    pts = profile[:-1] if loop else profile
+    m = len(pts)
+    edges = m if loop else m - 1
+    frames, rings = Rings(path, up, pts, closed)
+    per_segment = isinstance(classes, list) and isinstance(classes[0], list)
+
+    def Classes(k):
+        c = classes[k] if per_segment else classes
+        return [c] * edges if isinstance(c, str) else c
+
+    for k, (t, s, u) in enumerate(frames):
+        r0, r1 = rings[k], rings[(k + 1) % len(rings)]
         for j in range(edges):
             j1 = (j + 1) % m
             ds, du = pts[j1][0] - pts[j][0], pts[j1][1] - pts[j][1]
-            b.Face([r0[j], r1[j], r1[j1], r0[j1]], classes[j], toward=s * du - u * ds, uvs=QUAD)
+            b.Face([r0[j], r1[j], r1[j1], r0[j1]], Classes(k)[j], toward=s * du - u * ds, uvs=QUAD)
     if loop and not closed:
-        b.Face(rings[0], classes[0], toward=-frames[0][0])
-        b.Face(rings[-1], classes[0], toward=frames[-1][0])
+        b.Face(rings[0], Classes(0)[0], toward=-frames[0][0])
+        b.Face(rings[-1], Classes(len(frames) - 1)[0], toward=frames[-1][0])
     return rings
 
 
