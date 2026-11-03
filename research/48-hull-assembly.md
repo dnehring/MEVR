@@ -966,7 +966,13 @@ No decimation or packaging until the user approves the modelling.
   grey levels face on, the glow at 10 about 12 more, spilling over the windshield below the lamp bar. No sheen shows on the
   side panes at a grazing angle in a still frame.
 - **Now:** `VSR_Colour_02.r` back at 0.15; the glass stays at opacity 0.32 and cube 3; the lamps' glow at 7, between 4
-  (no halo) and 10 (a halo that spills over the view out). The lit instances stay in the package unused: lit shading needs lights inside the cabin (`lamps`), a
+  (no halo) and 10 (a halo that spills over the view out).
+- **In the game** (8dcf26f): at 7 the halo stays, a little softer (the lamps' mean grey 66 against 73 at 10, 52 unlit),
+  and the spill over the windshield is the same as at 10 ((114.2, 91.4, 86.3) against (114.2, 92.3, 86.9); unlit lamps
+  (102.9, 80.7, 75.8)): what passes the bloom's threshold spreads alike, and lower would lose the halo first. **Settled:**
+  glow 7, the spill kept as the cabin's light on the glass; the glass at opacity 0.32, cube 3, `VSR_Colour_02.r` 0.15. To
+  keep the windshield clear instead, the lamps over it (the spine's drop panel, right above the windshield's top) would
+  have to stay unlit on materials of their own while the others glow. The lit instances stay in the package unused: lit shading needs lights inside the cabin (`lamps`), a
   question of their stereo cost that the game side takes up once the Mako drives.
 
 ## 5. Not done
