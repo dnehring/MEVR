@@ -55,7 +55,7 @@ Each line is checked in the game (fake headset with replays where it can be, the
 - The lever's and the stick's grab points on the models' grips in the cockpit's frame; the models moved by the controls' state.
 - Shepard seated: done 2026-11-03 (research/47 "Shepard in the seat"): the driver shown eyes-only on the H-point, legs and hands by IK.
 - The HUD pieces' places in the cockpit (research/41's crops) and the HUD panel moved off the screens while riding.
-- Measurements: the frame cost (item 10), comfort settings in the headset.
+- Measurements: the frame cost (item 10: done on the fake headset at `BIOA_UNC52`, research/47), comfort settings in the headset.
 
 **Asset Modeling (the models, the package, research/48):**
 - The lever and the stick as separately movable pieces with their pivots; the seat's `hPoint`, knee and heel points in the manifest.

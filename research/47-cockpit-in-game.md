@@ -893,3 +893,43 @@ control`, every wrist 0.0 units from its target (the stick's grip at component (
 (`mevr vehicle exit`): `out of the seat (no longer driving)`, Shepard on foot as before; entering again shows the seat again. Seen from the
 eye, looking down, the shoulders fill the lower view (the hips under the eye at the manifest's 0.69 m: Shepard's own hip-to-eye is
 about the same).
+
+Only while posed (2026-11-03 12:03, `BIOA_UNC52`): with no replay running the fake headset has no tracked controllers, arm IK stays off,
+nothing poses the driver, and the animation stood Shepard up with the hips' fallback (the actor's origin) on the H-point: the torso filled
+the eye. The driver now stays hidden until arm IK's seated pose reports in (`NoteSeatHips`), and hides again 0.5 s after it stops (log
+`seat: Shepard in view, posed seated by arm IK` / `hidden again`).
+
+## In and out by itself: a cutscene, a death, a level load (2026-11-03 11:58-12:03, fake headset)
+
+- **The game's drop cutscene** (`tools/mako-start.ps1`, BIOA_UNC20, then BIOA_UNC52): through game modes 8, 7 and 6 (the squad screen, the
+  drop's cinematic) nothing of the cockpit is built; at mode 1 with the Mako as the pawn the script runs (the parts, the screens, the HUD,
+  the seat) within the same tick as the mod's `mako: driving` line. A new level first forgets the old world's parts (`a new level: forgot
+  what it spawned`).
+- **The pawn's death** (the console's `suicide` while riding): the Mako's pawn is gone, the cockpit parks itself (`out of the Mako: the cockpit
+  is parked`), Shepard is put back (`out of the seat (no longer driving)`), the HUD goes back to the panel and the eyes get the game's own
+  camera with the Mako's body visible again. The cheat leaves the controller without a pawn rather than running ME1's game-over; a death
+  by enemy fire and the game-over screen's reload are [verify] (the reload of a save made in the Mako was checked before: "The cockpit by
+  itself").
+
+## Terrain and the cabin (2026-11-03 12:00, fake headset, `BIOA_UNC20`)
+
+A 16 s drive with the cockpit's own controls (`make-drive-recording.py --controls`: full throttle, twisted one way, then the other) and a
+snapshot every 2.5 s: up and down the landing's slopes, turning beside a cliff, the Mako pitched and rolled. No terrain or level geometry
+in the cabin in any of them: the windshield, the side panes and the screens show the outside only through the glass. The cabin is bigger
+than the Mako (research/48), so a nose into a wall or a steep bank can still bring the ground through the floor or the nose [verify in the
+headset].
+
+## The cockpit's cost at a heavy Mako spot (2026-11-03 12:04-12:06, fake headset, `BIOA_UNC52`)
+
+`BIOA_UNC52` is the heaviest uncharted world by its packages (225 MB against `BIOA_UNC20`'s 89 MB): rocky terrain, flying objects with
+trails. At the drop's landing, the Mako parked, a still replayed head with tracked hands (so the seated Shepard is drawn too),
+`tools/perf-probe.ps1 -Seconds 15`, riding against parked (`[Cockpit] enabled = 0`), alternated twice:
+
+| | frame interval median (p90) | GPU median (p90) | render thread pace |
+|---|---|---|---|
+| riding | 7.24 (8.67), 7.23 (9.90) ms | 4.33 (7.22), 4.79 (8.15) ms | 4.80, 5.41 ms |
+| parked | 7.24 (8.64), 7.21 (7.54) ms | 4.41 (7.40), 4.34 (4.98) ms | 4.90, 3.85 ms |
+
+Within the 11.1 ms budget (90 Hz) at the p90 too, riding or not; the render thread sets the pace. The cockpit's cost here is within
+the runs' spread at the median (about 0.2 ms of GPU) and up to 3 ms at the p90 in one of the two pairs (the two captures' frames). The
+user's PS VR2 renders more pixels than the fake headset's 2160-high eyes: the headset run of item 9 says the rest.
