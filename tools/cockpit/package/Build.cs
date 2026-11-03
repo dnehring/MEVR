@@ -50,6 +50,9 @@ internal static class Build
     public const string BackingSuffix = "_Backing";
     public const string ScreenMaterial = "Screen";  // a glTF material of this name is the live screen: an instance of its own
     private const int MaxIndexableVertices = 65535;             // the index buffer is 16-bit, and elements have no base vertex
+    // A texture size cap per group, below --max-texture: the controls are small, and at 4096 they had 6,800 to 9,300 texels a
+    // metre where a hand on them sees about 3,000 (research/48 section 24); 2048 keeps 3,400 to 4,600 and frees 16 MB.
+    private static readonly Dictionary<string, int> GroupMaxTexture = new() { ["Joystick"] = 2048, ["Throttle"] = 2048 };
 
     // The object names, the file names they come from, which texture they share, and where the file is: "detached"
     // (detached/<file>.glb), "repair" (Newest below) or a path under the assets folder. The hull's pieces share its origin
@@ -67,6 +70,7 @@ internal static class Build
         ("hull-console", "Hull_Console", "Hull_Console", Hull + "console.glb"),
         ("hull-side-left", "Hull_Side_Left", "Hull_Side", Hull + "side-left.glb"),
         ("hull-side-right", "Hull_Side_Right", "Hull_Side", Hull + "side-right.glb"),
+        ("aim-reticle", "Aim_Reticle", "Aim_Reticle", Hull + "aim-reticle.glb"),  // the game's aiming capture's reticle (research/48 section 24)
     };
 
     // The rule of tools/cockpit/detach_controls.py: the highest vNNN under repairs/<date>/<name>/, else the file beside repairs/.
@@ -376,7 +380,8 @@ internal static class Build
                 string hash = Convert.ToHexString(SHA256.HashData(encoded));
                 if (!textures.TryGetValue(hash, out var made))
                 {
-                    LecImage image = Pixels(encoded, maxTexture, out int width, out int height, out Vector3 mean);
+                    int cap = Math.Min(maxTexture, GroupMaxTexture.TryGetValue(source.Group, out int groupCap) ? groupCap : maxTexture);
+                    LecImage image = Pixels(encoded, cap, out int width, out int height, out Vector3 mean);
                     made = (AddTexture(pcc, source.Group + suffix + "_Diff", image, width, height), width, height);
                     textures.Add(hash, made);
                     Console.WriteLine($"  texture {made.Texture.InstancedFullPath} {width}x{height} DXT1 ({new UTextureInfo(made.Texture).Summary}), source mean RGB {mean.X:F1} {mean.Y:F1} {mean.Z:F1}");

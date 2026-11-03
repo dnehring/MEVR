@@ -17,7 +17,8 @@ import numpy as np
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
-CLASSES = ("PLATE", "DARK", "LIGHT", "RED", "SEAM", "LAMP", "LAMP_ORANGE", "LAMP_BLUE", "METAL")
+# DECAL: labels and stripes, UVs straight into the decal atlas (tools/cockpit/decals.py), which the bake takes for them.
+CLASSES = ("PLATE", "DARK", "LIGHT", "RED", "SEAM", "LAMP", "LAMP_ORANGE", "LAMP_BLUE", "METAL", "DECAL")
 # The lamps' classes glow in their colour (linear) instead of taking light: warm white panels, orange strips, blue-white
 # floor lights, as the lit concept's.
 GLOW = {"LAMP": (1.0, 0.8, 0.55), "LAMP_ORANGE": (1.0, 0.45, 0.12), "LAMP_BLUE": (0.62, 0.8, 1.0)}
@@ -47,8 +48,23 @@ def Local(points):
     return [((x - lo[0]) / max(hi[0] - lo[0], 1e-9), (y - lo[1]) / max(hi[1] - lo[1], 1e-9)) for x, y in c]
 
 
+def Metric(points):
+    """A planar polygon's own plane coordinates (its first edge's direction, then across), in the points' units."""
+    u = (points[1] - points[0]).normalized()
+    v = Newell(points).normalized().cross(u)
+    return [((p - points[0]).dot(u), (p - points[0]).dot(v)) for p in points]
+
+
+# The classes whose trim the bake repeats across a face at the atlas's own density (Bake), so a long member or a wall
+# shows the trim's grain at its size: fitted once to each face, a 32-texel strip lay smeared across a metre (research/48
+# section 24). PLATE maps the bolted plate once per face (its bolts at the corners); the lamps glow without a texture.
+TILED = ("DARK", "LIGHT", "RED", "SEAM", "METAL")
+TRIM_DENSITY = 3000.0  # atlas texels a hull unit (about 1,000 a metre, the side pane's own texture on its surface)
+
+
 class Builder:
-    """Faces with a class each and UVs into its trim (`trims`: class -> atlas rectangle). With `mirror` set, x is
+    """Faces with a class each and UVs into its trim (`trims`: class -> atlas rectangle): for a TILED class the face's
+    plane coordinates in hull units (the bake repeats the trim), else from 0 to 1 across the trim. With `mirror` set, x is
     negated and the winding reversed, which keeps faces outward."""
 
     def __init__(self, trims):
@@ -58,10 +74,10 @@ class Builder:
         self.mirror = False
 
     def Face(self, points, cls, toward=None, uvs=None):
-        """`uvs`: from 0 to 1 across the trim (by default the polygon's own plane); `toward` (before mirroring): the
-        face is wound to point that way."""
+        """`uvs`: from 0 to 1 across the trim (by default the polygon's own plane; a TILED class always takes the plane's
+        coordinates); `toward` (before mirroring): the face is wound to point that way."""
         points = [Vector(p) for p in points]
-        uvs = list(uvs or Local(points))
+        uvs = list(Metric(points) if cls in TILED else uvs or Local(points))
         if toward is not None and Newell(points).dot(Vector(toward)) < 0:
             points.reverse()
             uvs.reverse()
@@ -72,7 +88,7 @@ class Builder:
         f.material_index = CLASSES.index(cls)
         u0, v0, u1, v1 = self.trims[cls]
         for loop, (a, c) in zip(f.loops, uvs):
-            loop[self.uv].uv = (u0 + (u1 - u0) * a, v0 + (v1 - v0) * c)
+            loop[self.uv].uv = (a, c) if cls in TILED else (u0 + (u1 - u0) * a, v0 + (v1 - v0) * c)
         return f
 
 
@@ -332,66 +348,105 @@ def Cycles(samples):
     return "CPU"
 
 
-def Bake(o, atlas, trims, tints, path, occluders, points, size=4096, distance=0.05, samples=512, exposure=1.0, ambient=0.0):
+def Bake(o, atlas, trims, tints, path, occluders, points, size=4096, distance=0.05, samples=512, exposure=1.0, ambient=0.0,
+         pages=1, eye=None, decals=None):
     """Gives `o` a texture of its own, written to `path` (PNG), and returns what it did.
 
     A fresh unwrap ("bake") of the faces seen from `points` (the rest share one dark texel in a corner); the atlas
-    through each class's trim UVs times its tint (`tints`, linear) as albedo, lit by the scene's lights (direct and
-    bounced, the occluders casting shadows and bouncing too), times `exposure`, darkened in corners by ambient
-    occlusion within `distance`, plus `ambient` times the albedo (in the occlusion) so what no lamp faces still shows;
-    the lamps' classes glow in their colour (GLOW). Faces turned to the lamps then read
-    apart from faces turned away, which in the unlit game is all a bevel has. Afterwards `o` has one material with that
-    image, the unwrap as its only UVs, and every face's material index 0."""
+    through each class's trim UVs times its tint (`tints`, linear) as albedo, a TILED class's trim repeated across the
+    face at TRIM_DENSITY (mirrored at each repeat, so no seam), lit by the scene's lights (direct and bounced, the
+    occluders casting shadows and bouncing too), times `exposure`, darkened in corners by ambient occlusion within
+    `distance`, plus `ambient` times the albedo (in the occlusion) so what no lamp faces still shows; the lamps' classes
+    glow in their colour (GLOW). Faces turned to the lamps then read apart from faces turned away, which in the unlit game
+    is all a bevel has. `decals`: the decal atlas's image, which the DECAL faces take instead of the atlas (no wear).
+
+    `pages`: images of `size` the seen faces are spread over, each unwrapped on its own, cut by distance from `eye` so
+    each page carries the same area weighted by 1/distance²: the nearer faces get more texels, about in proportion to how
+    near they are. Written to `path`, then <path>-2.png, -3...; afterwards `o` has a material per page ("shell",
+    "shell2", ...) with its image, the unwrap as its only UVs, and each face on its page's material."""
     start = time.time()
     me = o.data
     seen = Seen(o, occluders, points)
-    # the bake materials: the atlas through the trim UVs, tinted, into the target image
-    target = bpy.data.images.new("bake-target", size, size, alpha=True, float_buffer=True)
+    page = {i: 0 for i in seen}
+    if pages > 1:
+        e = Vector(eye)
+        order = sorted(seen, key=lambda i: (me.polygons[i].center - e).length)
+        weight = [me.polygons[i].area / max((me.polygons[i].center - e).length, 0.05) ** 2 for i in order]
+        total, run = sum(weight), 0.0
+        for i, w in zip(order, weight):
+            page[i] = min(int(run / total * pages), pages - 1)
+            run += w
+    # the bake materials, a set per page: the atlas through the trim UVs, tinted, into the page's target image
+    targets = [bpy.data.images.new(f"bake-target-{k}", size, size, alpha=True, float_buffer=True) for k in range(pages)]
     classes = np.empty(len(me.polygons), np.int32)
     me.polygons.foreach_get("material_index", classes)  # Mesh.materials.clear() sets every face's index to 0
     me.materials.clear()
-    targets = []
-    for cls in CLASSES:
-        m = bpy.data.materials.new("bake-" + cls)
-        m.use_nodes = True
-        nt = m.node_tree
-        nt.nodes.clear()
-        uv = nt.nodes.new("ShaderNodeUVMap")
-        uv.uv_map = "trim"
-        tex = nt.nodes.new("ShaderNodeTexImage")
-        tex.image = atlas
-        tint = nt.nodes.new("ShaderNodeHueSaturation")
-        tint.inputs["Value"].default_value = tints.get(cls, 1.0)
-        out = nt.nodes.new("ShaderNodeOutputMaterial")
-        if cls in GLOW:
-            bsdf = nt.nodes.new("ShaderNodeEmission")
-            bsdf.inputs["Color"].default_value = GLOW[cls] + (1.0,)
-            nt.links.new(bsdf.outputs["Emission"], out.inputs["Surface"])
-        else:
-            bsdf = nt.nodes.new("ShaderNodeBsdfDiffuse")
-            balance = Worn(nt, tex.outputs["Color"])
-            nt.links.new(uv.outputs["UV"], tex.inputs["Vector"])
-            nt.links.new(balance, tint.inputs["Color"])
-            nt.links.new(tint.outputs["Color"], bsdf.inputs["Color"])
-            nt.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
-        node = nt.nodes.new("ShaderNodeTexImage")
-        node.image = target
-        nt.nodes.active = node
-        targets.append(node)
-        me.materials.append(m)
-    me.polygons.foreach_set("material_index", classes)
-    # the unwrap: seen faces packed into all but a corner, the rest on one point in it
+    aw, ah = atlas.size
+    for k in range(pages):
+        for cls in CLASSES:
+            m = bpy.data.materials.new(f"bake-{cls}-{k}")
+            m.use_nodes = True
+            nt = m.node_tree
+            nt.nodes.clear()
+            uv = nt.nodes.new("ShaderNodeUVMap")
+            uv.uv_map = "trim"
+            tex = nt.nodes.new("ShaderNodeTexImage")
+            tex.image = decals if cls == "DECAL" and decals else atlas
+            tint = nt.nodes.new("ShaderNodeHueSaturation")
+            tint.inputs["Value"].default_value = tints.get(cls, 1.0)
+            out = nt.nodes.new("ShaderNodeOutputMaterial")
+            if cls in GLOW:
+                bsdf = nt.nodes.new("ShaderNodeEmission")
+                bsdf.inputs["Color"].default_value = GLOW[cls] + (1.0,)
+                nt.links.new(bsdf.outputs["Emission"], out.inputs["Surface"])
+            else:
+                coords = uv.outputs["UV"]
+                if cls in TILED:  # hull units to repeats of the trim, mirrored back and forth, into its rectangle (a texel in)
+                    u0, v0, u1, v1 = trims[cls]
+                    u0, v0, u1, v1 = u0 + 1 / aw, v0 + 1 / ah, u1 - 1 / aw, v1 - 1 / ah
+                    scale = nt.nodes.new("ShaderNodeVectorMath")
+                    scale.operation = "DIVIDE"
+                    scale.inputs[1].default_value = ((u1 - u0) * aw / TRIM_DENSITY, (v1 - v0) * ah / TRIM_DENSITY, 1.0)
+                    nt.links.new(coords, scale.inputs[0])
+                    split = nt.nodes.new("ShaderNodeSeparateXYZ")
+                    nt.links.new(scale.outputs["Vector"], split.inputs[0])
+                    join = nt.nodes.new("ShaderNodeCombineXYZ")
+                    for axis in ("X", "Y"):
+                        bounce = nt.nodes.new("ShaderNodeMath")
+                        bounce.operation = "PINGPONG"
+                        bounce.inputs[1].default_value = 1.0
+                        nt.links.new(split.outputs[axis], bounce.inputs[0])
+                        nt.links.new(bounce.outputs["Value"], join.inputs[axis])
+                    place = nt.nodes.new("ShaderNodeVectorMath")
+                    place.operation = "MULTIPLY_ADD"
+                    place.inputs[1].default_value = (u1 - u0, v1 - v0, 0.0)
+                    place.inputs[2].default_value = (u0, v0, 0.0)
+                    nt.links.new(join.outputs["Vector"], place.inputs[0])
+                    coords = place.outputs["Vector"]
+                bsdf = nt.nodes.new("ShaderNodeBsdfDiffuse")
+                balance = tex.outputs["Color"] if cls == "DECAL" else Worn(nt, tex.outputs["Color"])
+                nt.links.new(coords, tex.inputs["Vector"])
+                nt.links.new(balance, tint.inputs["Color"])
+                nt.links.new(tint.outputs["Color"], bsdf.inputs["Color"])
+                nt.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+            node = nt.nodes.new("ShaderNodeTexImage")
+            node.image = targets[k]
+            nt.nodes.active = node
+            me.materials.append(m)
+    me.polygons.foreach_set("material_index", classes + np.array([page.get(i, 0) for i in range(len(me.polygons))], np.int32) * len(CLASSES))
+    # the unwrap: each page's seen faces packed into all but a corner, the rest on one point in it
     layer = me.uv_layers.new(name="bake")
     me.uv_layers.active = layer
     bpy.ops.object.select_all(action="DESELECT")
     o.select_set(True)
     bpy.context.view_layer.objects.active = o
     bpy.ops.object.mode_set(mode="EDIT")
-    bm = bmesh.from_edit_mesh(me)
-    for f in bm.faces:
-        f.select = f.index in seen
-    bmesh.update_edit_mesh(me)
-    bpy.ops.uv.smart_project(angle_limit=math.radians(60), island_margin=0.004)
+    for k in range(pages):
+        bm = bmesh.from_edit_mesh(me)
+        for f in bm.faces:
+            f.select = page.get(f.index, -1) == k
+        bmesh.update_edit_mesh(me)
+        bpy.ops.uv.smart_project(angle_limit=math.radians(60), island_margin=0.004)
     bpy.ops.object.mode_set(mode="OBJECT")
     data = me.uv_layers["bake"].data
     for p in me.polygons:
@@ -403,45 +458,54 @@ def Bake(o, atlas, trims, tints, path, occluders, points, size=4096, distance=0.
     passes = {}
 
     def Pass(kind, samples, **kw):
-        target.pixels.foreach_set(np.zeros(size * size * 4, np.float32))
+        for t in targets:
+            t.pixels.foreach_set(np.zeros(size * size * 4, np.float32))
         sc.cycles.samples = samples
         bpy.ops.object.bake(type=kind, uv_layer="bake", margin=16, **kw)
-        px = np.empty(size * size * 4, np.float32)
-        target.pixels.foreach_get(px)
-        passes[kind] = px.reshape(size, size, 4)
+        passes[kind] = []
+        for t in targets:
+            px = np.empty(size * size * 4, np.float32)
+            t.pixels.foreach_get(px)
+            passes[kind].append(px.reshape(size, size, 4))
 
     Pass("DIFFUSE", 4, pass_filter={"COLOR"})
     if sc.world is None:
         sc.world = bpy.data.worlds.new("bake")
     sc.world.light_settings.distance = distance
-    covered = passes["DIFFUSE"][..., 3] > 0.5
-    albedo = passes.pop("DIFFUSE")[..., :3]
+    covered = [p[..., 3] > 0.5 for p in passes["DIFFUSE"]]
+    albedo = [p[..., :3] for p in passes.pop("DIFFUSE")]
     Pass("AO", 128)
-    ao = passes.pop("AO")[..., 0]
+    ao = [p[..., 0] for p in passes.pop("AO")]
     Pass("EMIT", 1)
-    glow = passes.pop("EMIT")[..., :3]
+    glow = [p[..., :3] for p in passes.pop("EMIT")]
     Pass("DIFFUSE", samples, pass_filter={"DIRECT", "INDIRECT", "COLOR"})
-    lit = passes.pop("DIFFUSE")[..., :3]
-    linear = (lit * exposure * (0.6 + 0.4 * ao)[..., None] + albedo * (ambient * ao)[..., None] + glow).astype(np.float32)
-    linear[~covered] = 0.008
-    final = Png(linear, "shell-baked", path)
-    bpy.data.images.remove(target)
-    # the shell's one material: the baked image on the unwrap
+    lit = [p[..., :3] for p in passes.pop("DIFFUSE")]
+    finals = []
+    for k in range(pages):
+        linear = (lit[k] * exposure * (0.6 + 0.4 * ao[k])[..., None] + albedo[k] * (ambient * ao[k])[..., None] + glow[k]).astype(np.float32)
+        linear[~covered[k]] = 0.008
+        finals.append(Png(linear, f"shell-baked-{k + 1}", path if k == 0 else path.replace(".png", f"-{k + 1}.png")))
+    for t in targets:
+        bpy.data.images.remove(t)
+    # the shell's materials: each page's baked image on the unwrap
     me.materials.clear()
-    m = bpy.data.materials.new("shell")
-    m.use_nodes = True
-    nt = m.node_tree
-    bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
-    tex = nt.nodes.new("ShaderNodeTexImage")
-    tex.image = final
-    nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
-    nt.nodes.active = tex
-    me.materials.append(m)
+    for k, image in enumerate(finals):
+        m = bpy.data.materials.new("shell" if k == 0 else f"shell{k + 1}")
+        m.use_nodes = True
+        nt = m.node_tree
+        bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+        tex = nt.nodes.new("ShaderNodeTexImage")
+        tex.image = image
+        nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+        nt.nodes.active = tex
+        me.materials.append(m)
     for p in me.polygons:
-        p.material_index = 0
+        p.material_index = page.get(p.index, 0)
     me.uv_layers.remove(me.uv_layers["trim"])
-    return {"size": size, "device": device, "samples": samples, "exposure": exposure, "facesSeen": len(seen), "faces": len(me.polygons),
-            "texelsCovered": round(float(covered.mean()), 3), "seconds": round(time.time() - start, 1)}
+    areas = [sum(me.polygons[i].area for i in seen if page[i] == k) for k in range(pages)]
+    return {"size": size, "pages": pages, "device": device, "samples": samples, "exposure": exposure, "facesSeen": len(seen),
+            "faces": len(me.polygons), "texelsCovered": [round(float(c.mean()), 3) for c in covered],
+            "pageAreas": [round(a, 4) for a in areas], "seconds": round(time.time() - start, 1)}
 
 
 def Png(linear, name, path):
@@ -454,6 +518,12 @@ def Png(linear, name, path):
     image.file_format = "PNG"
     image.save()
     return image
+
+
+# The gun sight, in fractions of a screen's height from its middle: the ring's radius, the dot's, the cross's arms (from,
+# to), the range ticks along the horizontal (where, half height). The aiming screen's idle image and the game's reticle
+# mesh (hull_assemble.AimReticle) draw the same one.
+RETICLE = {"ring": 0.12, "dot": 0.009, "cross": (0.05, 0.22), "ticks": ((0.3, 0.05), (0.38, 0.032), (0.46, 0.0224))}
 
 
 def Display(width, height, aspect, bars=(), outline=None, reticle=False):
@@ -513,11 +583,12 @@ def Display(width, height, aspect, bars=(), outline=None, reticle=False):
         core = np.maximum(core, Line(np.maximum(bar, 0), 0.006))
     if reticle:
         r = np.hypot(px, py)
-        light = light + 0.9 * Line(r - 0.12, 0.004) + 0.9 * Line(r, 0.009)
-        for along, across in ((ax, ay), (ay, ax)):  # the cross's four arms, 0.05 to 0.22 from the middle
-            light = light + 0.9 * Line(np.maximum(np.maximum(0.05 - along, along - 0.22), across - 0.002), 0.002)
-        for tick in (0.3, 0.38, 0.46):  # range ticks along the horizontal, shorter outward
-            light = light + 0.6 * Line(np.maximum(np.abs(ax - tick) - 0.002, ay - (0.05 - 0.6 * (tick - 0.3))), 0.002)
+        light = light + 0.9 * Line(r - RETICLE["ring"], 0.004) + 0.9 * Line(r, RETICLE["dot"])
+        a0, a1 = RETICLE["cross"]
+        for along, across in ((ax, ay), (ay, ax)):  # the cross's four arms
+            light = light + 0.9 * Line(np.maximum(np.maximum(a0 - along, along - a1), across - 0.002), 0.002)
+        for tick, half in RETICLE["ticks"]:  # range ticks along the horizontal, shorter outward
+            light = light + 0.6 * Line(np.maximum(np.abs(ax - tick) - 0.002, ay - half), 0.002)
     # sRGB about (0.25, 0.16, 0.1): the concept's screens' brown (39, 26, 23) once the game's grade has darkened it (Eden
     # Prime's took the first fill, (41, 23, 12), to (25, 17, 12): the game side, 2026-11-02)
     field = np.array([0.052, 0.022, 0.011], np.float32)

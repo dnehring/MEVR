@@ -29,6 +29,7 @@ the hull from outside, and the hull beside the concept image from its viewpoint)
 import json
 import math
 import os
+import subprocess
 import sys
 import tempfile
 
@@ -41,7 +42,7 @@ from mathutils.geometry import barycentric_transform, intersect_ray_tri
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from hull_shapes import (GLOW, QUAD, Bake, Builder, Chamfered, Clip, Corners, Cross, Display, Grille, Inset, Keypad, Newell,  # noqa: E402
-                         Offset, Pipe, Plate, Png, Relight, Rings, ScreenGlow, Slab, Sweep, Visible)
+                         Offset, Pipe, Plate, Png, RETICLE, Relight, Rings, ScreenGlow, Slab, Sweep, Visible)
 
 TEMPLATE = "hull full -bad.glb"
 PANE = "side pane.glb"
@@ -186,17 +187,23 @@ STRINGER_CLASSES = ["DARK", "DARK", "LIGHT", "LIGHT", "LIGHT", "DARK", "DARK", "
 
 # Rectangles (u0, v0, u1, v1) of the side pane's 4096 x 4096 atlas, by surface class, and each class's tint in the bake.
 PLATE = (2075 / 4096, 2952 / 4096, 2392 / 4096, 3460 / 4096)  # a plate with four bolts and a bevelled edge, 317 x 508 px
-LIGHT = (0.71875, 0.15625, 0.7265625, 0.1875)
+# LIGHT and DARK: plain square patches of painted metal (320 and 224 px, no panel edge in them, the mean colours of the
+# strips they replace), since the bake repeats them across each face (hull_shapes.TILED): the old 32-px strips, repeated,
+# streaked a member every 3 cm (research/48 section 24).
+LIGHT = (1344 / 4096, 1 - 800 / 4096, 1664 / 4096, 1 - 480 / 4096)
 RED = (0.7109375, 0.296875, 0.71875, 0.3359375)
-DARK = (0.0, 0.0078125, 0.0234375, 0.4296875)
+DARK = (3424 / 4096, 1 - 3424 / 4096, 3648 / 4096, 1 - 3200 / 4096)
 TRIMS = {"PLATE": PLATE, "DARK": DARK, "LIGHT": LIGHT, "RED": RED, "SEAM": DARK, "LAMP": LIGHT, "LAMP_ORANGE": LIGHT, "LAMP_BLUE": LIGHT,
-         "METAL": LIGHT}
+         "METAL": LIGHT, "DECAL": (0.0, 0.0, 1.0, 1.0)}  # DECAL: the decal atlas's own UVs (Decal)
 # The lit concept's lamps (mako-interior-plain-front-2.png), each a glowing panel in the shell and an area light for
 # the bake, by kind: its class and power (W, in hull units). The world adds a dim warm fill.
 LAMP_POWER = {"ceiling": 1.2, "midCeiling": 0.8, "rearCeiling": 0.8, "wall": 0.35, "floor": 0.15, "door": 0.4, "foot": 0.05, "spine": 0.0}
 FILL = ((0.05, 0.044, 0.04), 0.6)  # the world's colour and strength: what the room's dark corners keep
 SCREEN_GLOW = 5.0  # the console's screens' emission while baking: their orange on the desk and the frames
 AMBIENT = 0.32  # what every baked surface keeps without a lamp facing it (times its albedo): the concept's dark ceiling still reads
+# The shell's baked texture pages (4096 each), the nearer faces on more texels (hull_shapes.Bake): on one page the shell had
+# about 330 texels a metre where the headset resolves about 1,000 at arm's length (research/48 section 24).
+SHELL_PAGES = 3
 TINTS = {"PLATE": 1.3, "DARK": 1.5, "LIGHT": 2.2, "RED": 0.55, "SEAM": 0.6, "METAL": 1.1}  # METAL: the conduits, mid grey
 SLAB = 0.02  # the shell's thickness
 SEAM = 0.012  # how deep the floor's seams go: the base under the plates, where the walls start
@@ -701,6 +708,58 @@ def Screens(console, folder):
     return found
 
 
+RETICLE_STRIP = 0.025  # the reticle mesh's strips, a fortieth of its one unit across (the game side's ask)
+
+
+def AimReticle(folder):
+    """The gun sight as a mesh for the game's aiming capture (packaged as Aim_Reticle; the game side places it at the traced
+    aim point, scaled with distance, hidden from the eyes): the aiming screen's idle sight (RETICLE) as flat strips, one
+    model unit across (100 package units), centred on the origin in the y-z plane, facing +x and -x (the package's +X),
+    in the screens' orange (one flat texel, its image written to `folder`). A capture replaces the screen's own image, so the
+    reticle has to be in the world for the capture to see it."""
+    s = 0.5 / (RETICLE["ticks"][-1][0] + RETICLE_STRIP)  # the outermost tick at the edge
+    w = RETICLE_STRIP / 2
+    shapes = []
+    ring, k = RETICLE["ring"] * s, 48
+    for i in range(k):
+        a, c = 2 * math.pi * i / k, 2 * math.pi * (i + 1) / k
+        shapes.append([((ring - w) * math.cos(a), (ring - w) * math.sin(a)), ((ring + w) * math.cos(a), (ring + w) * math.sin(a)),
+                       ((ring + w) * math.cos(c), (ring + w) * math.sin(c)), ((ring - w) * math.cos(c), (ring - w) * math.sin(c))])
+    dot = max(RETICLE["dot"] * s, w * 1.2)
+    shapes.append([(dot * math.cos(2 * math.pi * i / 12), dot * math.sin(2 * math.pi * i / 12)) for i in range(12)])
+    a0, a1 = (c * s for c in RETICLE["cross"])
+    for sy, sz in ((1, 0), (-1, 0), (0, 1), (0, -1)):  # the cross's arms
+        if sy:
+            shapes.append([(sy * a0, -w), (sy * a1, -w), (sy * a1, w), (sy * a0, w)])
+        else:
+            shapes.append([(-w, sz * a0), (w, sz * a0), (w, sz * a1), (-w, sz * a1)])
+    for tick, half in RETICLE["ticks"]:
+        for sy in (1, -1):
+            h = max(half * s, w * 1.5)
+            shapes.append([(sy * tick * s - w * 0.8, -h), (sy * tick * s + w * 0.8, -h), (sy * tick * s + w * 0.8, h), (sy * tick * s - w * 0.8, h)])
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.new("UVMap")
+    for shape in shapes:
+        for facing in (1, -1):  # both sides: the camera may see it from behind
+            pts = [Vector((0.0, y, z)) for y, z in shape]
+            pts = pts if Newell(pts).x * facing > 0 else pts[::-1]
+            f = bm.faces.new([bm.verts.new(p) for p in pts])
+            for loop in f.loops:
+                loop[uv].uv = (0.5, 0.5)
+    me = bpy.data.meshes.new("aim-reticle")
+    bm.to_mesh(me)
+    bm.free()
+    m = bpy.data.materials.new("Aim_Reticle")
+    m.use_nodes = True
+    tex = m.node_tree.nodes.new("ShaderNodeTexImage")
+    tex.image = Png(np.ones((8, 8, 3), np.float32) * np.array([1.0, 0.36, 0.06], np.float32), "aim-reticle", os.path.join(folder, "aim-reticle.png"))
+    m.node_tree.links.new(tex.outputs["Color"], next(n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED").inputs["Base Color"])
+    me.materials.append(m)
+    o = bpy.data.objects.new("aim-reticle", me)
+    bpy.context.scene.collection.objects.link(o)
+    return o
+
+
 def Furnish(assets):
     """The chair and the controls from game_ready.py's files, placed (FURNITURE), each control's base dropped onto the
     chair's armrest (its highest point under the base, ON_ARMREST above it). Returns the objects; each file's place for
@@ -949,6 +1008,90 @@ def SideWall(b, y0, y1):
     Slab(b, [(face, y0 + m, ledge1 + 0.012), (face, y1 - m, ledge1 + 0.012), (face, y1 - m, ZH - 0.012), (face, y0 + m, ZH - 0.012)],
          -X, 0.014, inset=(0.008, 0.005, 0.012))
     Grille(b, (face + 0.005, mid + 0.04, 0.4), Y, Z, -X, 0.04, 0.03, 6)
+
+
+def DecalAtlas(folder):
+    """The decal atlas (tools/cockpit/decals.py, run with the system Python, which has PIL) drawn into <folder>/decals:
+    each decal's rectangle and aspect, and the image's path."""
+    out = os.path.join(folder, "decals")
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "decals.py")
+    subprocess.run(["python", "-I", script, out], check=True)
+    with open(os.path.join(out, "decals.json"), encoding="utf-8") as f:
+        return json.load(f)["decals"], os.path.join(out, "decals.png")
+
+
+def Decal(b, decals, name, centre, facing, right, width, proud=0.0012):
+    """A decal from the atlas (`decals`: DecalAtlas's rectangles): a quad `width` across along `right` (the way its text
+    reads), as tall as the decal's aspect makes it, `proud` in front of the surface at `centre` facing `facing`. Never
+    mirrored by the builder: mirrored text reads backwards, so each side's decal is placed on its own."""
+    d = decals[name]
+    u0, v0, u1, v1 = d["uv"]
+    n, r = Vector(facing).normalized(), Vector(right).normalized()
+    up = n.cross(r)
+    c, half_w, half_h = Vector(centre) + n * proud, r * width / 2, up * width / d["aspect"] / 2
+    mirror, b.mirror = b.mirror, False
+    b.Face([c - half_w - half_h, c + half_w - half_h, c + half_w + half_h, c - half_w + half_h], "DECAL", toward=n,
+           uvs=[(u0, v0), (u1, v0), (u1, v1), (u0, v1)])
+    b.mirror = mirror
+
+
+def Decor(b, decals):
+    """What a working cabin carries (the user, 2026-11-03: the details a game of this kind has; research/48 section 24):
+    labels, panel numbers and hazard stripes from the decal atlas (`decals`), grab handles on the portal's posts, cable
+    bundles in the rear corners, a switch bank on each rear-section side wall beside its vent."""
+    X, Y, Z = Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))
+    hw, dh, dc = DOOR
+    mid = (YB + YR) / 2
+    post = XWALL - max(s for s, _ in PORTAL)  # the portal posts' room faces
+    if decals:
+        for s, vent, number, post_number in ((1, "vent-a", "r-01", "p-03"), (-1, "vent-b", "l-01", "p-04")):
+            facing, right = -X * s, -Y * s  # into the room; reading left to right as one faces the wall
+            Decal(b, decals, vent, (s * (XWALL - 0.005), mid + 0.04, 0.355), facing, right, 0.07)
+            Decal(b, decals, number, (s * (XWALL - 0.006), YR - 0.07, 0.15), facing, right, 0.05)
+            Decal(b, decals, "hazard-post", (s * post, YR + 0.035, 0.05), facing, right, 0.042)
+            Decal(b, decals, post_number, (s * post, YR + 0.035, 0.24), facing, right, 0.04)
+        Decal(b, decals, "caution", (XWALL - 0.006, mid, 0.11), -X, -Y, 0.13)
+        Decal(b, decals, "hatch", (0.0, YB - 0.015, dh - dc - 0.025), Y, -X, 0.16)
+        Decal(b, decals, "hazard", (0.0, YB + 0.05, 0.0), Z, X, 0.26)
+        Decal(b, decals, "hazard-long", (0.0, YR + PORTAL_DEPTH + 0.02, 0.0), Z, X, 0.6)
+        Decal(b, decals, "life", (0.25, YB, 0.31), Y, -X, 0.09)
+        Decal(b, decals, "comms", (-0.25, YB, 0.31), Y, -X, 0.09)
+    for mirror in (False, True):
+        b.mirror = mirror
+        # a grab handle up each portal post's room face, over its groove
+        x, y = post + 0.002, YR + 0.035
+        Pipe(b, [Vector((x, y, 0.29)), Vector((x - 0.014, y, 0.3)), Vector((x - 0.014, y, 0.4)), Vector((x, y, 0.41))], 0.0045, Y, "METAL", sides=8)
+        # cables up the rear corner, in front of the rear wall and clear of the side wall's ledge, clamped
+        for cx, cy in ((XWALL - 0.058, YB + 0.0125), (XWALL - 0.05, YB + 0.0175), (XWALL - 0.042, YB + 0.0125)):
+            Pipe(b, [Vector((cx, cy, 0.03)), Vector((cx, cy, ZH - 0.012))], 0.0035, Y, "DARK", sides=8)
+            for z in (0.1, 0.22, 0.34, 0.46):
+                Pipe(b, [Vector((cx, cy, z)), Vector((cx, cy, z + 0.006))], 0.0055, Y, "LIGHT", sides=8)
+        # a switch bank on the rear-section side wall's upper panel, two orange indicators over it
+        Keypad(b, (XWALL - 0.005, mid - 0.06, 0.4), -Y, Z, -X, 4, 2, 0.008, 0.004, cls="LIGHT")
+        Keypad(b, (XWALL - 0.005, mid - 0.06, 0.428), -Y, Z, -X, 2, 1, 0.005, 0.004)
+    b.mirror = False
+
+
+WINDOW_LIGHT = ((0.95, 0.96, 1.0), 4.0)  # daylight through each window in the bake: colour, power a square hull unit of opening
+
+
+def WindowLights(windows):
+    """Soft daylight through each window opening, for the bake: an area light across it, just inside, facing into the
+    room (the world outside lit the cabin through nothing before; research/48 section 24)."""
+    room = Vector((0.0, -0.1, 0.25))
+    out = []
+    for w in windows:
+        pts = [Vector(p) for p in w]
+        c = sum(pts, Vector()) / len(pts)
+        n = Newell(pts).normalized()
+        n = n if n.dot(room - c) > 0 else -n
+        u = (pts[1] - pts[0]).normalized()
+        v = n.cross(u)
+        a, b = [(p - c).dot(u) for p in pts], [(p - c).dot(v) for p in pts]
+        su, sv = max(a) - min(a), max(b) - min(b)
+        at = c + u * (max(a) + min(a)) / 2 + v * (max(b) + min(b)) / 2 + n * 0.01
+        out.append((at, n, u, (su * 0.9, sv * 0.9), WINDOW_LIGHT[0], WINDOW_LIGHT[1] * su * sv))
+    return out
 
 
 def Lamp(b, lights, kind, cls, centre, u, v, n, half_u, half_v, proud=0.003):
@@ -1218,7 +1361,7 @@ def Area(polygon):
     return 0.5 * abs(sum(p[0] * q[1] - q[0] * p[1] for p, q in zip(polygon, polygon[1:] + polygon[:1])))
 
 
-def Shell(pillar, opening, pane_face=None, console=None):
+def Shell(pillar, opening, pane_face=None, console=None, decals=None):
     """The template's shell, clean: from the measured constants above and the panes' own frame, symmetric about x = 0.
 
     The frame line (ZH, the panes' top rail) runs along the side walls: the panes' rails, then the shell's own rail with
@@ -1368,6 +1511,7 @@ def Shell(pillar, opening, pane_face=None, console=None):
     lights = Lamps(b, pane_face, corner, drop) if pane_face else []
     if console:
         Details(b, edge, console["desk"], console["screen"], console["bezel"], console["column"], spine_end)
+    Decor(b, decals)
     bmesh.ops.remove_doubles(b.bm, verts=b.bm.verts, dist=1e-6)
     me = bpy.data.meshes.new("shell")
     b.bm.to_mesh(me)
@@ -1602,20 +1746,21 @@ def Run(folder):
     # the panes' own A-pillars go; the shell's take their place
     pillar = PillarEdge(pieces["side-right"])
     pane_cut = {k: CutPillar(pieces[k], WindowPlane(pillar), mirrored=k == "side-left") for k in ("side-left", "side-right")}
+    decals, decal_image = DecalAtlas(out)
     shell, windows, lights, dims = Shell(pillar, (right, rim), wall,
                                          {"desk": DeskShelf(pieces["console"]), "screen": screens["centre"],
                                           "bezel": Bezel(pieces["console"], screens["centre"]),
-                                          "column": Column(pieces["console"], screens["centre"])})
+                                          "column": Column(pieces["console"], screens["centre"])}, decals)
     # the light baked in: the shell's own texture (its classes' trims), then the console's and the panes' textures, lit
     # by the lamps and the screens' glow (the parts and the furniture cast shadows and bounce light)
     template.hide_render = True
     atlas = next(n.image for m in pieces["side-right"].data.materials for n in m.node_tree.nodes if n.type == "TEX_IMAGE" and n.image)
     inside = [(x, y, z) for x in (-0.22, 0.0, 0.22) for y in (-0.55, -0.36, -0.2, -0.04, 0.1) for z in (0.12, 0.3, 0.42)]
-    rig = LightRig(lights)
+    rig = LightRig(lights + WindowLights(windows))
     screens_glow = [m for m in pieces["console"].data.materials if m.get("screen")]
     ScreenGlow(screens_glow, SCREEN_GLOW)
     bake = Bake(shell, atlas, TRIMS, TINTS, os.path.join(out, "shell.png"), [pieces[k] for k in ("side-left", "side-right", "console")] + furniture,
-                inside, ambient=AMBIENT)
+                inside, ambient=AMBIENT, pages=SHELL_PAGES, eye=EYE, decals=bpy.data.images.load(decal_image))
     bake["relit"] = {k: Relight(pieces[k], os.path.join(out, k + "-lit.png"), ambient=AMBIENT) for k in ("console", "side-right")}
     bake["lamps"] = {"power": LAMP_POWER, "fill": FILL, "screenGlow": SCREEN_GLOW, "ambient": AMBIENT, "lights": len(lights)}
     ScreenGlow(screens_glow, 0.0)
@@ -1668,6 +1813,9 @@ def Run(folder):
     for name, o in pieces.items():
         Export([o], os.path.join(out, name + ".glb"))
     Export(list(pieces.values()) + furniture, os.path.join(out, "hull.glb"))
+    reticle = AimReticle(out)
+    Export([reticle], os.path.join(out, "aim-reticle.glb"))
+    bpy.data.objects.remove(reticle)
     every = [template] + list(pieces.values()) + furniture
     Outside()
     with tempfile.TemporaryDirectory() as scratch:

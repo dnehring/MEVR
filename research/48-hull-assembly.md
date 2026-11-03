@@ -841,7 +841,51 @@ No decimation or packaging until the user approves the modelling.
 - **The Mako's size** (the user): we only enter and leave the Mako through full blackout transitions, so the cockpit
   needn't fit inside its body; it has to feel real in the game. The game side's measurement stays a note.
 - **Result:** rebuilt with the bake, no leaks, decimated (the panels whole: 8, 6 and 7 triangles), joints as in section 18,
-  package 29.2 MB, all checks passed. The pilot's points are unchanged. Not yet seen in the game.
+  package 29.2 MB, all checks passed. The pilot's points are unchanged. In the game (research/47 "The aiming screen and
+  the cockpit out of the captures"): `aimscreen 768 306` fills the right screen with a second capture.
+
+## 24. Toward the game's own surfaces (the user, 2026-11-03: texture resolution, shading, detail, glass and lights; not a remodel of the console)
+
+- **What the game shows** (the game side's snapshots at the headset's resolution, beside Eden Prime's own scenery): the
+  layout reads as a cockpit; the surfaces don't. They are matte and soft up close, with no highlights, and the frame
+  members show smeared streaks.
+- **Texture resolution, measured** (texels per metre of surface, from the built meshes' UVs): the shell about 250 over all
+  its faces (about 330 over the ones seen), the console 630, the side panes 990, the chair 2,000, the stick 6,760, the
+  throttle 9,260. The headset resolves about 1,000 a metre at arm's length (about 18 pixels a degree) and 500 at 2 m. The
+  shell is most of what one sees: 59 m² of it are seen, nearly all 1 to 2 m from the eye.
+  - **The controls' textures are capped at 2048** (`Build.cs` `GroupMaxTexture`): 3,400 and 4,600 texels a metre left,
+    16 MB freed.
+  - **The shell bakes onto three 4096 pages** (`SHELL_PAGES`, `Bake`'s `pages`): the seen faces, cut by distance from the
+    eye so that each page carries the same area weighted by 1/distance², each unwrapped on its own; one bake pass fills
+    every page (each face's material bakes into its page's image).
+  - **The trims repeat across each face at the atlas's own density** (`TILED`, `TRIM_DENSITY` 3,000 texels a hull unit,
+    about 1,000 a metre), mirrored at each repeat so no seam shows. Fitted once to each face, a 32-texel strip of the atlas
+    lay smeared across a metre of member. A bolted plate still maps its plate once (its bolts at the corners).
+- **Detail** (`Decor`): a decal atlas (`tools/cockpit/decals.py`: drawn with PIL by the system Python, which Blender's
+  lacks; Rajdhani Bold, SIL OFL; generic markings, none of the game's insignia) baked into the shell like the trims:
+  - labels: VENT A2 and VENT B2 under the rear-section vents, panel numbers R-01, L-01, P-03 and P-04, CAUTION HIGH
+    VOLTAGE, REAR HATCH, LIFE SUPPORT and COMMS RELAY under the rear wall's vents. Each side's text is placed on its own,
+    never mirrored (it would read backwards);
+  - hazard stripes on the portal posts' feet, in front of the hatch and across the portal's threshold;
+  - grab handles up the portal posts, clamped cable bundles up the rear corners, and a switch bank with two orange
+    indicators beside each rear-section vent.
+- **Daylight through the windows** in the bake (`WindowLights`): a soft area light across each opening, just inside and
+  facing the room (`WINDOW_LIGHT`, a cool white). The world outside lit the cabin through nothing before.
+- **`Aim_Reticle`** (the game side's ask: a capture replaces the aiming screen's image, so the reticle has to be in the
+  world): the idle sight (`RETICLE`, shared with the screen's image) as flat strips a fortieth of its width, one model
+  unit across (97 package units), centred on the origin in the package's Y-Z plane, both sides, 252 triangles, an orange
+  texel on `EmissiveTexturedMaterial`.
+- **The trims' patches:** repeated, the old 32-texel strips streaked a member every 3 cm, so LIGHT and DARK take plain
+  square patches of the atlas now (320 and 224 texels, no panel edge in them, the mean colours of the strips: found by
+  a search over the atlas for windows of that colour with no edges).
+- **Result:**
+  - the shell's pages: 1,340 texels a metre on its nearest 4.4 m², 860 on the next 17.5 m², 600 on the farthest 35.5 m²
+    (about 330 on one page before); shell 9,020 triangles (7,944) with the detail;
+  - the bake takes 169 s (three pages, 15 lamps and the windows' daylight);
+  - the leak probe (19 eyes) finds no escape; decimated, the joints as in section 18;
+  - package 28.0 MB (29.2), all checks passed; about 71 MB of textures resident (75);
+  - not yet seen in the game.
+- **Shading, glass and the lamps' glow** wait for which of the game's own materials can carry them (section 25).
 
 ## 5. Not done
 

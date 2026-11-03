@@ -38,7 +38,7 @@ CONCEPT = "mako-interior-plain-front-2.png"
 # section 16). The two disagree: the concept is not one consistent space.
 VIEWS = {"CAM_Concept": ((0.0, -0.52, 0.25), 0.0201), "CAM_ConsoleFit": ((0.0, -0.2924, 0.1911), 0.0016)}  # eye, pitch down (rad)
 CLASS_COLOURS = {"PLATE": (0.13, 0.125, 0.13), "DARK": (0.06, 0.058, 0.062), "LIGHT": (0.42, 0.39, 0.4), "RED": (0.2, 0.004, 0.008),
-                 "SEAM": (0.02, 0.02, 0.022), "LAMP": (1.0, 0.85, 0.6), "LAMP_ORANGE": (1.0, 0.5, 0.15), "LAMP_BLUE": (0.7, 0.85, 1.0), "METAL": (0.2, 0.19, 0.19)}
+                 "SEAM": (0.02, 0.02, 0.022), "LAMP": (1.0, 0.85, 0.6), "LAMP_ORANGE": (1.0, 0.5, 0.15), "LAMP_BLUE": (0.7, 0.85, 1.0), "METAL": (0.2, 0.19, 0.19), "DECAL": (0.5, 0.36, 0.1)}
 
 
 def Cameras():
@@ -142,10 +142,11 @@ def Make(before, furniture, overrides):
     wall = {"floor": [H.PaneFace(pieces["side-right"], y, 0.012) for y in H.FLOOR_STRIPS]}
     pillar = H.PillarEdge(pieces["side-right"])
     cut = {k: H.CutPillar(pieces[k], H.WindowPlane(pillar), mirrored=k == "side-left") for k in ("side-left", "side-right")}
+    decals, _ = H.DecalAtlas(SCRATCH)
     shell, windows, lights, dims = H.Shell(pillar, (opening, rim), wall,
                                            {"desk": H.DeskShelf(pieces["console"]), "screen": screens["centre"],
                                             "bezel": H.Bezel(pieces["console"], screens["centre"]),
-                                            "column": H.Column(pieces["console"], screens["centre"])})
+                                            "column": H.Column(pieces["console"], screens["centre"])}, decals)
     for cls in hull_shapes.CLASSES:  # flat colours near the baked look, so the classes read in the Workbench views
         m = bpy.data.materials.new("LIVE_" + cls)
         m.diffuse_color = CLASS_COLOURS[cls] + (1.0,)
