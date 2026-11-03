@@ -456,12 +456,13 @@ def Png(linear, name, path):
     return image
 
 
-def Display(width, height, aspect, bars=(), outline=None):
+def Display(width, height, aspect, bars=(), outline=None, reticle=False):
     """An idle screen in the game's orange interface style, as linear RGB (rows bottom first) for a screen `aspect` times
     as wide as it is tall, whatever the image's own size: a dark amber field warming toward a thin glowing frame with cut
     corners just inside the edge, brackets at an inner frame's corners, and short lit bars on the edges named in `bars`
     ("top", "bottom"). Sizes are fractions of the screen's height, from the image's middle. `outline`: the opening the
-    image shows through (a convex polygon, counter-clockwise), which the frames then follow; the image's edge if None."""
+    image shows through (a convex polygon, counter-clockwise), which the frames then follow; the image's edge if None.
+    `reticle`: an idle gun sight in the middle (a ring, a cross open at its centre, a dot, range ticks either side)."""
     y, x = np.mgrid[0:height, 0:width].astype(np.float32)
     px = ((x + 0.5) / width - 0.5) * aspect
     py = (y + 0.5) / height - 0.5
@@ -510,6 +511,13 @@ def Display(width, height, aspect, bars=(), outline=None):
         bar = np.maximum(ax - aspect * 0.13, np.abs(py - centre) - 0.012)
         light = light + np.where(bar < 0, 1.6, 1.6 * np.exp(-bar / 0.02))
         core = np.maximum(core, Line(np.maximum(bar, 0), 0.006))
+    if reticle:
+        r = np.hypot(px, py)
+        light = light + 0.9 * Line(r - 0.12, 0.004) + 0.9 * Line(r, 0.009)
+        for along, across in ((ax, ay), (ay, ax)):  # the cross's four arms, 0.05 to 0.22 from the middle
+            light = light + 0.9 * Line(np.maximum(np.maximum(0.05 - along, along - 0.22), across - 0.002), 0.002)
+        for tick in (0.3, 0.38, 0.46):  # range ticks along the horizontal, shorter outward
+            light = light + 0.6 * Line(np.maximum(np.abs(ax - tick) - 0.002, ay - (0.05 - 0.6 * (tick - 0.3))), 0.002)
     # sRGB about (0.25, 0.16, 0.1): the concept's screens' brown (39, 26, 23) once the game's grade has darkened it (Eden
     # Prime's took the first fill, (41, 23, 12), to (25, 17, 12): the game side, 2026-11-02)
     field = np.array([0.052, 0.022, 0.011], np.float32)
@@ -518,7 +526,7 @@ def Display(width, height, aspect, bars=(), outline=None):
                    + hot[None, None] * core[..., None], 0, 1)
 
 
-def Relight(o, path, size=4096, samples=256, exposure=1.0, ambient=0.0, keep=("Screen", "Display")):
+def Relight(o, path, size=4096, samples=256, exposure=1.0, ambient=0.0, keep=("Screen", "Display", "Aim")):
     """`o`'s textured material with the scene's light baked in, on its own UVs: its image is the albedo (a Tripo
     texture already carries a soft light of its own), lit as Bake lights the shell (with the same `ambient`), written to `path`. The material
     then uses the new image; materials named in `keep` (the screens) are left as they are. Every object sharing that

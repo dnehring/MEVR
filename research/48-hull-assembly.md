@@ -824,7 +824,24 @@ No decimation or packaging until the user approves the modelling.
   - shell 7,944 triangles (8,388 with the stands);
   - the leak probe (19 eyes) finds no escape; decimated, the joints as in section 18;
   - package 29.2 MB (34.5 with `Front_Cockpit`), all checks passed;
-  - not yet seen in the game.
+  - in the game (research/47 "The hull of 5969f57"): over either shoulder the backrest shows its fabric and nothing through
+    it (the near plane is 10 units, 0.10 m at the view's 100 units a metre); the idle centre screen reads (37, 26, 19) with
+    post processing; the mod's `[Mako] leverOffset`/`stickOffset` are now `pilot`'s grips and `throttleTravelM` 0.055.
+
+## 23. The aiming picture on the right screen (the user: "We do need a HUD to indicate aiming in game. I imagine the right display could also show the current aiming picture, since the center will show the mako in 3d person mode")
+
+- **The right screen is a material of its own, `Aim`**, as the centre's `Screen`: slot 3 of `Hull_Console`
+  (`Hull_Console_Aim_MIC` over `EmissiveTexturedMaterial`, `Hull_Console_Aim_Diff`), its UVs 0 to 1 over the rectangle round
+  its panel. The slots: 0 the console, 1 `Screen` (the live third-person view), 2 `Display` (the left screen, idle), 3 `Aim`.
+  The left screen's image is no longer stacked with the right's.
+- **Its idle image is a gun sight** in the orange style (`Display(reticle=True)`: a ring, a cross open at its middle, a dot,
+  range ticks), its frames following the opening as the others'. The live picture (the turret's view) and the reticle
+  over it are the game side's: a capture replaces the image, so the image's sight shows only while there is none.
+- **The screen is 2.51 times as wide as tall** (manifest `screens.right`: 0.2955 x 0.1176): about 768 x 306 for a capture.
+- **The Mako's size** (the user): we only enter and leave the Mako through full blackout transitions, so the cockpit
+  needn't fit inside its body; it has to feel real in the game. The game side's measurement stays a note.
+- **Result:** rebuilt with the bake, no leaks, decimated (the panels whole: 8, 6 and 7 triangles), joints as in section 18,
+  package 29.2 MB, all checks passed. The pilot's points are unchanged. Not yet seen in the game.
 
 ## 5. Not done
 
@@ -834,8 +851,9 @@ No decimation or packaging until the user approves the modelling.
   - the package `BIOG_MEVR_Cockpit` and its mesh names: `Hull_Shell`, `Hull_Console`, `Hull_Side_Left`, `Hull_Side_Right`,
     `Chair`, `Joystick_Base`, `Joystick_Grip`, `Throttle_Base`, `Throttle_Handle` (`Front_Cockpit` is gone, section 22);
   - the frame: hull units times 100, forward on -Y, so a hull mesh takes yaw 90 (`tools/cockpit/place.py`);
-  - `Hull_Console`'s material slot 1 is the live screen (`Screen`, UVs 0 to 1, v = 0 at the top), slot 2 the idle
-    screens (`Display`). The probe's `element 1` puts the capture there;
+  - `Hull_Console`'s material slots: 1 the live third-person screen (`Screen`, UVs 0 to 1, v = 0 at the top), 2 the left
+    idle screen (`Display`), 3 the right, aiming screen (`Aim`, UVs 0 to 1, section 23). The probe's `element 1` puts the
+    capture on the centre;
   - the manifest's `eye.hull`, `scale.metresPerHullUnit` and each furniture file's `origin`, `turnDeg`, `motion` and
     `hullUnitsPerModelUnit` (place.py); and `pilot` (section 22): where Shepard sits and where the hands grab;
   - the unlit `EmissiveTexturedMaterial`: everything seen is the baked texture, so a moved chair or lamp means baking
@@ -848,9 +866,10 @@ No decimation or packaging until the user approves the modelling.
   travel; follow the Mako with the cockpit (it stays where it was anchored); reach drivable Mako gameplay at all (no save
   or level load has yet); the Mako's own mesh and the chase capture against the cockpit [verify]; what the cockpit costs
   a frame in stereo.
-- **Not decided** (the user's call): the metric scale, 3 m per hull unit proposed (the cabin 2.5 m wide inside, the
-  ceiling 1.66 m, the eye 1.21 m over the floor). The cockpit must fit inside the Mako's body at it: the Mako's outer size
-  is the game side's to measure.
+- **The scale:** 3 m per hull unit proposed (the cabin 2.5 m wide inside, the ceiling 1.66 m, the eye 1.21 m over the
+  floor). It has to feel real in the game; the cockpit needn't fit inside the Mako's body, which is only entered and left
+  through full blackout transitions (the user, 2026-11-02). Judged in the headset.
+- **The aiming picture** on the right screen (section 23): the turret's view and a reticle over it, the game side's.
 - **Texture memory:** six 4096 DXT1 textures, all mips resident (`NeverStream`), about 64 MB. Not measured against the
   frame yet.
 - **The tone:** the concept is darker and warmer; in the game the level's grade changes ours too (section 13). Tune it

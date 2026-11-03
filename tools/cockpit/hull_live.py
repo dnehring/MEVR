@@ -83,12 +83,12 @@ def Clear():
         if data is not None and data.users == 0 and isinstance(data, bpy.types.Mesh):
             bpy.data.meshes.remove(data)
         n += 1
-    made = ("LIVE_", "Screen", "Display", "tripo")  # what a live build makes; only orphans of those go
+    made = ("LIVE_", "Screen", "Display", "Aim", "tripo")  # what a live build makes; only orphans of those go
     for m in list(bpy.data.materials):
         if m.name.startswith(made) and m.users == 0:
             bpy.data.materials.remove(m)
     for i in list(bpy.data.images):
-        if i.name.startswith(("Screen", "Display")) and i.users == 0:
+        if i.name.startswith(("Screen", "Display", "Aim")) and i.users == 0:
             bpy.data.images.remove(i)
     for me in list(bpy.data.meshes):
         if me.users == 0 and me.name.startswith(("tripo", "side-", "console", "shell", "walls", "cut")):
@@ -157,7 +157,7 @@ def Make(before, furniture, overrides):
             bsdf.inputs["Emission Color"].default_value = hull_shapes.GLOW[cls] + (1.0,)
             bsdf.inputs["Emission Strength"].default_value = 6.0
         shell.data.materials.append(m)
-    bpy.app.driver_namespace["LIVE_LAST"] = {"lights": lights, "screens": [m for m in pieces["console"].data.materials if m.name.startswith(("Screen", "Display"))]}
+    bpy.app.driver_namespace["LIVE_LAST"] = {"lights": lights, "screens": [m for m in pieces["console"].data.materials if m.get("screen")]}
     pieces["shell"] = shell
     live = Collection("LIVE_Hull")
     rig = bpy.data.objects.get("RIG_Live")

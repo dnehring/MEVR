@@ -524,8 +524,11 @@ def Pillar(b, plane, top):
 
 
 # The console's screens, by where each one's middle lies in x: the centre one shows the live third-person view (the
-# user's choice, 2026-11-02), the others idle screens in the game's orange interface style.
-SCREENS = (("centre", (-0.1, 0.1), "Screen"), ("left", (-0.5, -0.15), "Display"), ("right", (0.15, 0.5), "Display"))
+# user's choice, 2026-11-02), the right one the gun's aiming picture (the user, 2026-11-02: "the right display could also
+# show the current aiming picture"), each a material of its own for the mod's capture; the left an idle screen in the
+# game's orange interface style. Each image is drawn for its screen's shape; the aiming screen's is an idle sight.
+SCREENS = (("centre", (-0.1, 0.1), "Screen"), ("left", (-0.5, -0.15), "Display"), ("right", (0.15, 0.5), "Aim"))
+SCREEN_LOOK = {"Screen": {"bars": ("top", "bottom")}, "Display": {"bars": ("bottom",)}, "Aim": {"bars": (), "reticle": True}}
 SCREEN_PIXELS = (1024, 512)  # each idle screen's image; the design is drawn for each screen's own shape
 SCREEN_PROUD, SCREEN_TUCK = 0.0015, 0.0015  # each screen's panel: in front of the model's screen, under the bezel
 # The openings, found face-on (Opening): the raster's step (hull units); the trim's paint, at or above this luminance
@@ -577,9 +580,9 @@ def Screens(console, folder):
     an image of its idle state whose frames follow the screen's opening. A screen is the largest dark flat patch facing
     the seat in its region; its opening is what its trim leaves of it face-on (Opening); its panel is the rectangle round
     the opening along the screen's own long edge, just in front of the model's screen and its edges under the trim, u to
-    the pilot's right and v up (the glTF export turns v downward, as a render target's rows run). The live screen's
-    UVs are 0 to 1; the idle screens' images are stacked in one, each panel on its own. Returns each screen's rectangle in
-    hull coordinates."""
+    the pilot's right and v up (the glTF export turns v downward, as a render target's rows run). Each screen's UVs span
+    its material's image over the rectangle round its panel (a material shared by several screens would stack their
+    images, each on its own rows). Returns each screen's rectangle in hull coordinates."""
     me = console.data
     atlas = next(n.image for m in me.materials for n in m.node_tree.nodes if n.type == "TEX_IMAGE" and n.image)
     tw, th = atlas.size
@@ -657,7 +660,7 @@ def Screens(console, folder):
         a, b = [(p - origin).dot(u) for p in panel], [(p - origin).dot(v) for p in panel]
         fits.append((name, material, origin, n, u, v, (min(a), max(a), min(b), max(b)), outline, panel, cells))
     found = {}
-    for material in ("Screen", "Display"):
+    for material in SCREEN_LOOK:  # the material slots in this order: Screen 1, Display 2, Aim 3 (the mod's `element`)
         group = [f for f in fits if f[1] == material]
         # found by a tag, not by name: in a session that already has a material of that name (hull_live.py), Blender
         # adds a suffix to the new one's
@@ -666,7 +669,7 @@ def Screens(console, folder):
             tiles = []
             for name, _, _, _, _, _, (u0, u1, v0, v1), outline, _, _ in group:
                 middle, height = ((u0 + u1) / 2, (v0 + v1) / 2), v1 - v0
-                tiles.append(Display(*SCREEN_PIXELS, (u1 - u0) / height, bars=("top", "bottom") if material == "Screen" else ("bottom",),
+                tiles.append(Display(*SCREEN_PIXELS, (u1 - u0) / height, **SCREEN_LOOK[material],
                                      outline=[((a - middle[0]) / height, (b - middle[1]) / height) for a, b in outline]))
             image = Png(np.concatenate(tiles, 0), material, os.path.join(folder, f"screen-{material.lower()}.png"))
             m = bpy.data.materials.new(material)
@@ -1609,7 +1612,7 @@ def Run(folder):
     atlas = next(n.image for m in pieces["side-right"].data.materials for n in m.node_tree.nodes if n.type == "TEX_IMAGE" and n.image)
     inside = [(x, y, z) for x in (-0.22, 0.0, 0.22) for y in (-0.55, -0.36, -0.2, -0.04, 0.1) for z in (0.12, 0.3, 0.42)]
     rig = LightRig(lights)
-    screens_glow = [m for m in pieces["console"].data.materials if m.name in ("Screen", "Display")]
+    screens_glow = [m for m in pieces["console"].data.materials if m.get("screen")]
     ScreenGlow(screens_glow, SCREEN_GLOW)
     bake = Bake(shell, atlas, TRIMS, TINTS, os.path.join(out, "shell.png"), [pieces[k] for k in ("side-left", "side-right", "console")] + furniture,
                 inside, ambient=AMBIENT)
