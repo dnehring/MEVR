@@ -82,9 +82,10 @@ def Chamfered(s0, s1, u0, u1, c):
     return pts + pts[:1]
 
 
-def Rings(path, up, points, closed=False):
+def Rings(path, up, points, closed=False, ends=(None, None)):
     """Where Sweep puts (side, up) points along a polyline: each segment's frame (direction, side, up) and, at each
-    path point, the points' places, mitred where two segments meet."""
+    path point, the points' places, mitred where two segments meet. `ends`: for an open path, a plane (point, normal) or
+    None for each end; an end's points move along their segment onto it (a member cut to stand flush on a plate)."""
     P = [Vector(p) for p in path]
     n = len(P)
     ups = [Vector(u) for u in up] if isinstance(up, list) else [Vector(up)] * n
@@ -103,23 +104,30 @@ def Rings(path, up, points, closed=False):
             mu = (before[2] + after[2]) / (1 + before[2].dot(after[2]))
         else:
             ms, mu = (before or after)[1], (before or after)[2]
-        rings.append([P[i] + ms * s + mu * u for s, u in points])
+        ring = [P[i] + ms * s + mu * u for s, u in points]
+        plane = None if closed else ends[0] if i == 0 else ends[1] if i == n - 1 else None
+        if plane:
+            c, m = Vector(plane[0]), Vector(plane[1])
+            t = (before or after)[0]
+            ring = [q + t * ((c - q).dot(m) / t.dot(m)) for q in ring]
+        rings.append(ring)
     return frames, rings
 
 
-def Sweep(b, path, up, profile, classes, closed=False):
+def Sweep(b, path, up, profile, classes, closed=False, ends=(None, None)):
     """A profile swept along a polyline, mitred at its corners.
 
     `profile`: (side, up) points, where `up` is the given direction (one vector, or a list with one per path point)
     made square to the path, and `side` is up x the path's direction. Each profile edge's faces point to its right in
     those axes, so a counter-clockwise loop (last point = first) is a beam's outside and an open strip faces the side to
     its right. `classes`: one, or one per profile edge, or a list of either with one per path segment. `closed`: the
-    path is a loop; else a loop profile's ends are capped. Returns the rings: the profile's points at each path point."""
+    path is a loop; else a loop profile's ends are capped, square to the path or on `ends`' planes (Rings). Returns the
+    rings: the profile's points at each path point."""
     loop = len(profile) > 2 and tuple(profile[0]) == tuple(profile[-1])
     pts = profile[:-1] if loop else profile
     m = len(pts)
     edges = m if loop else m - 1
-    frames, rings = Rings(path, up, pts, closed)
+    frames, rings = Rings(path, up, pts, closed, ends)
     per_segment = isinstance(classes, list) and isinstance(classes[0], list)
 
     def Classes(k):

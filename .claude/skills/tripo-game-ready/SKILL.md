@@ -166,7 +166,9 @@ so the new shell follows it. The parts (console, side pane) are placed in it, an
   15 cm above the console ("it looks like just a hanging feature", the user, 2026-11-02). The shell's own pillar replaces
   each (`Pillar`, research/48 section 15): a profile with a red channel, swept from the cap through a knee to a shoulder
   that stands on the floor, collars at the joints, a web panel behind it, and the front side window's rear edge on its
-  front edge. Every member has to end on something: a collar into the cap, a boot on a block, a block on the floor.
+  front edge. Every member ends on something, joined the way a fabricator would: a collar into the cap, a level cut on a
+  bolted base plate with gussets, a block on the floor. A sleeve pushed into a block reads as a collision ("it didn't
+  look like it was manufactured", the user); `Sweep`'s `ends` cut a member on a plane.
 - **Check a new member against the parts it lands near**, not only by eye: `BVHTree.overlap` between the shell and the part
   (which shell faces cross it, at what height), and a height map of the part's top from rays straight down (where it is
   level, where a rim steps). The first shoulder looked fine in renders yet cut through the console's screen housing ("the

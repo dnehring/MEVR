@@ -490,11 +490,14 @@ The user, after round four (2026-11-02):
     at (0.285, 0.265, 0.30): 35 degrees from vertical above the knee, 56 below;
   - a 65 mm (20 cm) wide chamfered profile with a 20 mm channel along its face: red in two lengths above the knee, as the
     concept's stripes, a plate below;
-  - a collar where it goes up into the cap, a band round the knee, a boot where it stands on the shoulder;
+  - a collar where it goes up into the cap and a band round the knee;
+  - its foot (`Foot`) cut level at the sill and standing on a 5 mm base plate, bolted at the corners, with two gussets in
+    the acute angle under it. A slanted sleeve round the beam's square end, pushed into the shoulder, came first: "it
+    didn't look like it was manufactured, it just looks like it has another collision" (the user);
   - behind it a web panel 18 mm behind the window's plane, from the pane's cut to the beam. It stands on the pane's side
     console, and in front of the old foot's cut it comes down to the sill;
-  - the shoulder: a block from the floor to the sill (0.30) under the foot, on the console's outer flat top, its top's edge
-    light and its long sides panels set in;
+  - the shoulder: a block from the floor to the plate (5 mm under the sill) under the foot, on the console's outer flat top,
+    its top's edge light and its long sides panels set in;
   - the window's frame runs along its sill and top; the beam frames its rear edge, the windshield's frame its front.
 - **The console** (the user: "the base of the pillar looks to collide with the control desk"):
   - in the first build the shoulder stood 45 mm in from the sill and the beam 36 mm. Near the sill the window's plane passes
@@ -502,7 +505,7 @@ The user, after round four (2026-11-02):
     and the boot sat on its rim;
   - the beam is now 40 mm deep with 24 mm of it behind the plane, so its room face stands 16 mm in;
   - the shoulder's room face stands 20 mm in (x 0.265 at its front), on the console's outer flat, beside the housing;
-  - the beam ends square at the sill inside the shoulder, its boot above;
+  - the beam ends on its base plate at the sill's level (above);
   - check: no shell face crosses the console above z 0.20. The only overlaps are the shoulder's walls going down through
     the console's outer top to the floor.
 - **The cap's overlap:** cutting the panes' caps at y 0.024 left the shell's cap 3 mm of overlap instead of 15, and rays from
@@ -510,8 +513,8 @@ The user, after round four (2026-11-02):
 - **Leaks:** probed with rays from 19 eyes over the cabin's front and rear, 76,000 rays, back faces culled. The one left is a
   single ray at the rear wall's top corner, from an eye at the console's height, unrelated to the pillar.
 - **Result:**
-  - shell 5,597 triangles (788 more);
-  - each pane 24,500 raw and 4,421 game-ready (from 27,023);
+  - shell 5,837 triangles (1,028 more);
+  - each pane 24,508 raw and about 4,450 game-ready (from 27,023);
   - from the seat 4.5% of rays leave, all through the windows;
   - after decimating, the joints are unchanged from five of six eyes. The sixth gains two rays at the rear edge of the left
     pane's open window: an edge moved, not a crack;

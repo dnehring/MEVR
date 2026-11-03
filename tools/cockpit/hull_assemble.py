@@ -111,6 +111,10 @@ COLLAR = Chamfered(-0.071, 0.006, -0.024, 0.022, 0.004)
 COLLAR_CLASSES = ["DARK", "DARK", "LIGHT", "LIGHT", "LIGHT", "DARK", "DARK", "DARK"]
 # The web behind the beam: its face this far behind the window's plane (the beam stands 34 mm proud of it).
 WEB = -0.018
+# The foot (the user, 2026-11-02: a slanted sleeve where the beam met the shoulder "looks like it has another
+# collision"): the beam cut level and standing on a base plate this thick, bolted to the shoulder, two gussets this long
+# under it.
+FOOT_PLATE, GUSSET = 0.005, 0.04
 # The shoulder under the foot, on the console's outer flat top: its rear and front y, and how far its room face stands in
 # from the window's sill (in x), clear of the right screen housing's outer step (x 0.26 near the foot).
 SHOULDER = (0.12, 0.275, 0.02)
@@ -275,7 +279,7 @@ def CutPillar(pane, plane, mirrored=False):
     bm = bmesh.new()
     bm.from_mesh(pane.data)
     planes = [((0, PANE_CUT, 0), (0, 1, 0)), ((0, 0, PANE_CONSOLE), (0, 0, 1)), ((0, 0, 0.26), (0, 0, 1)), ((0, SHOULDER[0], 0), (0, 1, 0)),
-              ((sign * (B.x + WEB * n.x + 0.003), B.y, B.z), (sign * n.x, n.y, n.z)), ((0, FOOT_CUT[0], 0), (0, 1, 0)),
+              ((sign * (B.x + WEB * n.x + 0.01), B.y, B.z), (sign * n.x, n.y, n.z)), ((0, FOOT_CUT[0], 0), (0, 1, 0)),
               ((sign * FOOT_CUT[1], 0, 0), (1, 0, 0))]
     for co, no in planes:
         faces = [f for f in bm.faces if max(v.co.y for v in f.verts) > PANE_CUT - 0.005 and max(v.co.z for v in f.verts) > 0.25]
@@ -286,7 +290,7 @@ def CutPillar(pane, plane, mirrored=False):
         c = f.calc_center_median()
         if c.y > PANE_CUT and c.z > PANE_CONSOLE:
             gone.append(f)
-        elif c.y > SHOULDER[0] and 0.26 < c.z <= PANE_CONSOLE and sign * c.x < X(c.y, c.z) + WEB * n.x + 0.003:
+        elif c.y > SHOULDER[0] and 0.26 < c.z <= PANE_CONSOLE and sign * c.x < X(c.y, c.z) + WEB * n.x + 0.01:
             gone.append(f)
         elif c.y > FOOT_CUT[0] and 0.26 < c.z <= PANE_CONSOLE and sign * c.x < FOOT_CUT[1]:
             gone.append(f)
@@ -304,13 +308,13 @@ def Turned(plane, path):
     return n.cross(Vector(path[1]) - Vector(path[0])).dot(C - D) < 0
 
 
-def Beam(b, plane, path, profile, classes):
-    """A profile swept down the pillar (`path` from its top), its side toward the window; `classes` as Sweep's, per
-    segment from the top. Returns the rings, top first."""
+def Beam(b, plane, path, profile, classes, ends=(None, None)):
+    """A profile swept down the pillar (`path` from its top), its side toward the window; `classes` and `ends` as
+    Sweep's, per segment and end from the top. Returns the rings, top first."""
     if not Turned(plane, path):
-        return Sweep(b, path, plane[3], profile, classes)
+        return Sweep(b, path, plane[3], profile, classes, ends=ends)
     per_segment = isinstance(classes, list) and isinstance(classes[0], list)
-    return Sweep(b, path[::-1], plane[3], profile, classes[::-1] if per_segment else classes)[::-1]
+    return Sweep(b, path[::-1], plane[3], profile, classes[::-1] if per_segment else classes, ends=ends[::-1])[::-1]
 
 
 def Keep(polygon, a, c, inside):
@@ -346,9 +350,42 @@ def Shoulder(b, outline, top, bevel=0.006):
             b.Face(side, "DARK", toward=out, uvs=QUAD)
 
 
+def Foot(b, plane, foot, down):
+    """Where the beam (cut level at the sill, its front edge's foot at `foot`, running `down`) stands on the shoulder: a
+    base plate round its footprint, its top on the sill's level, bolted at the corners; two gussets in the acute angle
+    under the beam, near its room face and its back."""
+    n = plane[3]
+    Z = Vector((0, 0, 1))
+    w = n.cross(down).normalized()
+    w = w if w.z > 0 else -w  # in the window's plane, square to the beam, toward its front edge
+    h = Vector((down.x, down.y, 0)).normalized()  # the beam's way across the floor
+    c = Z.cross(h)
+    width = -min(s for s, _ in PILLAR)
+    u0, u1 = min(u for _, u in PILLAR), max(u for _, u in PILLAR)
+    Cut = lambda p: p + down * ((ZL - p.z) / down.z)  # along the beam onto the sill's level
+    footprint = [Cut(foot + w * s + n * u) for s in (0.0, -width) for u in (u0, u1)]
+    room = 1 if c.dot(n) > 0 else -1  # which way along c the room is
+    for u, out in ((u1 - 0.004, room), (u0 + 0.004, -room)):
+        p0 = Cut(foot - w * width + n * u)
+        p1 = p0 - down * GUSSET
+        p2 = Vector((p1.x, p1.y, ZL))
+        Slab(b, [p0, p1, p2], c * out, 0.005, "LIGHT", "DARK")
+        footprint.append(p2)
+    along, across = [p.dot(h) for p in footprint], [p.dot(c) for p in footprint]
+    a0, a1, c0, c1 = min(along) - 0.008, max(along) + 0.008, min(across) - 0.006, max(across) + 0.006
+    corners = [h * a + c * k for a, k in ((a0, c0), (a1, c0), (a1, c1), (a0, c1))]
+    centre = sum(corners, Vector()) / 4
+    corners.sort(key=lambda p: math.atan2(p.y - centre.y, p.x - centre.x))
+    Plate(b, [(p.x, p.y) for p in corners], ZL, 0.0015, FOOT_PLATE + 0.003, top="DARK", edge="LIGHT")
+    b.Face([p + Z * (ZL - FOOT_PLATE - 0.003) for p in corners], "DARK", toward=-Z)  # its underside, where it overhangs
+    for p in corners:
+        q = p + (centre - p).normalized() * 0.008 + Z * ZL
+        Pipe(b, [q, q + Z * 0.0025], 0.003, Vector((1, 0, 0)), "LIGHT")
+
+
 def Pillar(b, plane):
     """The right A-pillar (b's mirror makes the left): the beam along its front edge from the cap through the knee to
-    the sill, a collar where it meets the cap, a band round the knee and a boot where it stands on the shoulder; the
+    the sill, a collar where it meets the cap, a band round the knee, and its foot cut level on a base plate (Foot); the
     web behind it, parallel to the window's plane from the pane's cut to the beam, standing on the pane's side console
     and on the shoulder; the shoulder, from the floor to the sill under the foot, on the console's outer end;
     the window's frame along its sill and top (the beam frames its rear edge, the windshield's frame its front).
@@ -358,16 +395,15 @@ def Pillar(b, plane):
     At = lambda y, z: Vector((X(y, z), y, z))
     knee, foot = At(*KNEE), At(FOOT_Y, ZL)
     up, down = (D - knee).normalized(), (foot - knee).normalized()
-    # the beam, from 16 mm up inside the cap (the collar's end, 4 mm further, caps it) to its foot on the sill, where its
-    # square end lies inside the shoulder (carried on along the beam, it stood out past the shoulder over the console's
-    # rim); its channel red down to the knee in two lengths, a plate below
+    # the beam, from 16 mm up inside the cap (the collar's end, 4 mm further, caps it) down to the sill, cut level there
+    # to stand on its base plate; its channel red down to the knee in two lengths, a plate below
     gap = (D + knee) / 2
-    path = [D + up * 0.016, D, gap + up * 0.008, gap - up * 0.008, knee, foot]
+    path = [D + up * 0.016, D, gap + up * 0.008, gap - up * 0.008, knee, foot + down * 0.03]
     channel = {c: PILLAR_CLASSES[:CHANNEL] + [c] + PILLAR_CLASSES[CHANNEL + 1:] for c in ("RED", "SEAM", "PLATE")}
-    Beam(b, plane, path, PILLAR, [channel[c] for c in ("RED", "RED", "SEAM", "RED", "PLATE")])
+    Beam(b, plane, path, PILLAR, [channel[c] for c in ("RED", "RED", "SEAM", "RED", "PLATE")], ends=(None, ((0, 0, ZL), (0, 0, 1))))
     Beam(b, plane, [D + up * 0.02, D - up * 0.03], COLLAR, COLLAR_CLASSES)
     Beam(b, plane, [knee + up * 0.012, knee, knee + down * 0.012], [(s, u - 0.003) for s, u in COLLAR], COLLAR_CLASSES)
-    Beam(b, plane, [foot - down * 0.04, foot], COLLAR, COLLAR_CLASSES)
+    Foot(b, plane, foot, down)
     # the web, WEB behind the window's plane and 12 mm in under the beam, split into convex panels by the knee and where
     # the old foot was cut (FOOT_CUT): behind that it stands on the pane's side console, in front of it it comes down to
     # the sill behind the side console's inner face and onto the shoulder
@@ -378,14 +414,14 @@ def Pillar(b, plane):
     rear, y0 = FOOT_CUT[0], PANE_CUT - 0.004
     for rect, (a, c) in (([(y0, bend[1]), (1.0, bend[1]), (1.0, ZH + 0.004), (y0, ZH + 0.004)], (top, bend)),
                          ([(y0, PANE_CONSOLE), (rear, PANE_CONSOLE), (rear, bend[1]), (y0, bend[1])], (bend, low)),
-                         ([(rear, ZL), (1.0, ZL), (1.0, bend[1]), (rear, bend[1])], (bend, low))):
+                         ([(rear, ZL - FOOT_PLATE), (1.0, ZL - FOOT_PLATE), (1.0, bend[1]), (rear, bend[1])], (bend, low))):
         panel = Keep(rect, a, c, (y0, ZL))
         if len(panel) >= 3 and Area(panel) > 2e-4:
             Slab(b, [At(y, z) + n * WEB for y, z in panel], n, SLAB, inset=(0.006, 0.004, 0.006) if Area(panel) > 0.0015 else None)
     # the shoulder: its room face SHOULDER[2] in from the sill, out 4 mm into the side wall and the front chamfer
     y0, y1, inward = SHOULDER
     chamfer = Vector((XP + 0.004 - (y1 - YC) * (XP - XF) / (YF - YC), y1, ZL))
-    Shoulder(b, [(X(y0, ZL) - inward, y0), (XP + 0.004, y0), (XP + 0.004, YC), chamfer.xy, (X(y1, ZL) - inward, y1)], ZL)
+    Shoulder(b, [(X(y0, ZL) - inward, y0), (XP + 0.004, y0), (XP + 0.004, YC), chamfer.xy, (X(y1, ZL) - inward, y1)], ZL - FOOT_PLATE)
     # in front of it, the sill outside the glass: from the window's plane out to the front chamfer
     b.Face([At(y1, ZL), chamfer, B], "PLATE", toward=Vector((0, 0, 1)))
     # an end plate over the pane's post and rail where CutPillar cut them, facing forward (the Tripo mesh is open there,
