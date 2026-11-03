@@ -36,6 +36,18 @@ constexpr float kRumbleHz = 60.0f;
 constexpr float kRumbleSeconds = 0.1f;   // asked again each tick, so it stops by itself if the mod stalls
 constexpr double kStickRayUp = 150.0;    // the thumbstick's ray starts this far above the vehicle's origin (units): about the turret
 constexpr double kDegrees = 180.0 / std::numbers::pi;
+// SetRBAngularVelocity takes radians a second (PhysX's units; the body is capped near 7 rad/s): degrees made both rate
+// controllers 57 times too strong, and the spin swung between +200 and -164 deg/s for 60 asked (2026-11-03, the headset).
+constexpr float kRadiansPerDegree = std::numbers::pi_v<float> / 180.0f;
+
+// A world angular velocity (degrees a second, about UE's axes) as SetRBAngularVelocity needs it: radians, and X and Z negated.
+// The engine converts the vector to PhysX like a position (Y mirrored), but a rotation axis under a mirror also changes sign,
+// so turns about world X and Z came out reversed while Y was right (2026-11-03, the headset: the "level" stabiliser rolled the
+// Mako to 180 degrees and the spin ran at +166 deg/s for -17 asked; the one pitch test had happened to face along X).
+ue3::Vector AngularVelocity(double x, double y, double z) {
+    return ue3::Vector{static_cast<float>(-x * kRadiansPerDegree), static_cast<float>(y * kRadiansPerDegree),
+        static_cast<float>(-z * kRadiansPerDegree)};
+}
 
 #if defined(MEVR_GAME_LE1)
 // Our reflection layer (ue3/, research/34); every row is checked by engine/ReflectCheck.
@@ -121,6 +133,10 @@ struct Counts {
     float worstPitchDeg = 0.0f;  // the largest |pitch error| and |roll| seen while stabilising
     float worstRollDeg = 0.0f;
     float targetPitchDeg = 0.0f; // the last target
+    unsigned spins = 0;          // spins on the spot begun
+    unsigned spinTicks = 0;      // ticks spinning
+    float spinRateDeg = 0.0f;    // the last yaw rate seen, and the one asked for
+    float spinTargetDeg = 0.0f;
 } gCounts;
 
 #if defined(MEVR_GAME_LE1)
@@ -179,6 +195,89 @@ void HoldJets(ue3::Object* controller) {
     }
 }
 
+// Spinning on the spot (the user, 2026-11-03). With the throttle at exactly 0 and steering, BioSVehicleSimTank applies its own
+// TurnInPlaceThrottle (0.25) as gas with the torque split by the steering: both tracks run forward (757 and 212 at full right),
+// so the Mako pivots forward instead of turning in place. While the mod drives that gas is 0 (put back when it stops), and the
+// body is turned about its up axis by a rate controller as the thrusters' stabiliser: the wanted yaw rate steer x spinRateDeg
+// (+ right: the yaw grows), the change toward it from the rate seen since the last tick. A body that answers the other way for
+// 0.3 s flips the sign (logged): the yaw axis's sign is assumed from the pitch's and roll's, measured [verify].
+struct Spin {
+    ue3::Object* sim = nullptr;  // the simulation whose TurnInPlaceThrottle we set to 0, and what it was
+    float turnInPlace = 0.0f;
+    bool haveYaw = false;
+    float yawDeg = 0.0f;
+    float sign = 1.0f;
+    float wrongS = 0.0f;
+    bool active = false;
+};
+Spin gSpin;
+
+void RestoreTurnInPlace() {
+    if (gSpin.sim != nullptr && ue3::runtime::IsAlive(gSpin.sim)) {
+        if (float* const field = gTurnInPlace.In<float>(gSpin.sim)) {
+            *field = gSpin.turnInPlace;
+            write_journal::Wrote("MakoControls.TurnInPlaceThrottle", field);
+        }
+    }
+    gSpin = {};
+}
+
+void SpinInPlace(ue3::Object* vehicle, double deltaSeconds, float spinRateDeg) {
+    ue3::Object* const sim = gSimIsTank ? gSimObj.Read<ue3::Object*>(vehicle).value_or(nullptr) : nullptr;
+    if (sim == nullptr || !(spinRateDeg > 0.0f) || !gOut.driving) {
+        if (gSpin.sim != nullptr) {
+            RestoreTurnInPlace();
+        }
+        return;
+    }
+    if (gSpin.sim != sim) {
+        RestoreTurnInPlace();
+        gSpin.sim = sim;
+        gSpin.turnInPlace = gTurnInPlace.Read<float>(sim).value_or(0.25f);
+        log::Info("mako controls: steering at zero throttle spins the Mako on the spot (up to {:.0f} deg/s; the tank's own turn-in-place "
+                  "gas {:.2f} off while you drive)", spinRateDeg, gSpin.turnInPlace);
+    }
+    if (float* const field = gTurnInPlace.In<float>(sim); field != nullptr && *field != 0.0f) {
+        *field = 0.0f;
+        write_journal::Wrote("MakoControls.TurnInPlaceThrottle", field);
+    }
+    bool const want = gOut.stickHeld && gOut.throttle == 0.0f && gOut.steer != 0.0f && gSetAngularVelocity.Get() != nullptr;
+    auto const rotation = gRotation.Read<ue3::Rotator>(vehicle);
+    ue3::Object* const mesh = gVehicleMesh.Read<ue3::Object*>(vehicle).value_or(nullptr);
+    if (!want || !rotation || mesh == nullptr) {
+        gSpin.haveYaw = false;
+        gSpin.active = false;
+        return;
+    }
+    float const dt = static_cast<float>(std::clamp(deltaSeconds, 0.001, 0.1));
+    float const yaw = static_cast<float>(SignedUnits(rotation->yaw) * 360.0 / 65536.0);
+    float const rate = gSpin.haveYaw ? std::remainder(yaw - gSpin.yawDeg, 360.0f) / dt : 0.0f;
+    gSpin.haveYaw = true;
+    gSpin.yawDeg = yaw;
+    if (!gSpin.active) {
+        gSpin.active = true;
+        ++gCounts.spins;
+    }
+    float const target = gOut.steer * spinRateDeg;
+    // The safety: turning hard the other way from the one asked for, for long, is the axis's sign.
+    gSpin.wrongS = std::abs(target) > 20.0f && std::abs(rate) > 20.0f && rate * target < 0.0f ? gSpin.wrongS + dt : 0.0f;
+    if (gSpin.wrongS > 0.3f) {
+        gSpin.sign = -gSpin.sign;
+        gSpin.wrongS = 0.0f;
+        log::Warn("mako controls: the spin answered the other way ({:+.0f} deg/s for {:+.0f} asked): the up axis's sign flipped", rate, target);
+    }
+    constexpr float kRateGain = 0.35f;
+    float const add = std::clamp((target - rate) * kRateGain, -spinRateDeg, spinRateDeg) * gSpin.sign;
+    engine::Basis const axes = engine::ToBasis(engine::UnrealRotation{rotation->pitch, rotation->yaw, rotation->roll});
+    ue3::Params parms(ue3::runtime::Get(), gSetAngularVelocity.Get());
+    parms.Set("NewAngVel", AngularVelocity(axes.up.x * add, axes.up.y * add, axes.up.z * add));
+    parms.SetBool("bAddToCurrent", true);
+    ue3::runtime::Call(mesh, gSetAngularVelocity.Get(), parms);
+    ++gCounts.spinTicks;
+    gCounts.spinRateDeg = rate;
+    gCounts.spinTargetDeg = target;
+}
+
 // The vehicle's attitude last tick while stabilising (its pitch and roll, degrees), for the rates.
 struct Attitude {
     bool have = false;
@@ -223,9 +322,8 @@ void StabilizeOnThrusters(ue3::Object* vehicle, double deltaSeconds, hand_calibr
     float const addRoll = std::clamp((wantRollRate - rollRate) * kRateGain, -limit, limit);
     engine::Basis const axes = engine::ToBasis(engine::UnrealRotation{rotation->pitch, rotation->yaw, rotation->roll});
     ue3::Params parms(ue3::runtime::Get(), gSetAngularVelocity.Get());
-    parms.Set("NewAngVel", ue3::Vector{static_cast<float>(axes.right.x * addPitch + axes.forward.x * addRoll),
-                                       static_cast<float>(axes.right.y * addPitch + axes.forward.y * addRoll),
-                                       static_cast<float>(axes.right.z * addPitch + axes.forward.z * addRoll)});
+    parms.Set("NewAngVel", AngularVelocity(axes.right.x * addPitch + axes.forward.x * addRoll, axes.right.y * addPitch + axes.forward.y * addRoll,
+                               axes.right.z * addPitch + axes.forward.z * addRoll));
     parms.SetBool("bAddToCurrent", true);
     ue3::runtime::Call(mesh, gSetAngularVelocity.Get(), parms);
     ++gCounts.held;
@@ -458,6 +556,7 @@ StickAim Tick(double deltaSeconds, Link const& link, ue3::Object* vehicle, ue3::
                 log::Info("mako controls: stopped ({}): throttle and steering zero, the game's own controls are back until the next grab",
                     mc::Name(left.stopped));
             }
+            RestoreTurnInPlace();
             gVehicle = nullptr;
             gVehicleBehavior = nullptr;
             gHaveYaw = false;
@@ -506,6 +605,7 @@ StickAim Tick(double deltaSeconds, Link const& link, ue3::Object* vehicle, ue3::
     }
     LogSimulation(vehicle, controller);
     StabilizeOnThrusters(vehicle, deltaSeconds, settings);
+    SpinInPlace(vehicle, deltaSeconds, settings.spinRateDeg);
 
     // The physics' values for this tick. Steering: the game's is + left (PlayerDriving's ProcessDrive passes -InStrafe)
     // [verify the sign in the headset; [Mako] stickInvert flips the twist].
@@ -658,6 +758,10 @@ void LogStats() {
         gOutputSteering.Read<float>(gVehicle).value_or(0.0f), gOutputBrake.Read<float>(gVehicle).value_or(0.0f), gForwardVel.Read<float>(gVehicle).value_or(0.0f),
         sim != nullptr ? gActualSteering.Read<float>(sim).value_or(0.0f) : 0.0f, tank, gCounts.handlerCalls, gCounts.handlerEvents, gCounts.written, gCounts.gated,
         gCounts.tickWrites, static_cast<double>(gCounts.cameraUnits) * 360.0 / 65536.0);
+    if (gCounts.spinTicks > 0) {
+        log::Info("    mako controls: spun on the spot {} times ({} ticks); the last yaw rate {:+.0f} deg/s for {:+.0f} asked", gCounts.spins,
+            gCounts.spinTicks, gCounts.spinRateDeg, gCounts.spinTargetDeg);
+    }
     if (gCounts.jets + gCounts.boost > 0) {
         log::Info("    mako controls: thrusters: jump jets on {} ticks, booster {}, {:.2f} s of fuel given back; held level on {} (the worst pitch error "
                   "{:.1f} deg, roll {:.1f} deg; the last target pitch {:+.1f})",
@@ -675,6 +779,10 @@ void Shutdown(bool exiting, void (*publish)(vr::mako_controls::View const* view)
     gJetsUntilMs = 0;
     gJetsController = nullptr;
     gAttitude = {};
+    if (!exiting) {
+        RestoreTurnInPlace();
+    }
+    gSpin = {};
     gLoggedFuel = false;
     if (publish != nullptr) {
         publish(nullptr);

@@ -456,7 +456,8 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
         latches.makoDown = static_cast<std::uint8_t>(down ? (latches.makoDown | mask) : (latches.makoDown & ~mask));
         return (latches.makoAs & mask) != 0;
     };
-    if (asControl(r.primary, 4, options.makoStick)) {
+    bool const cannon = asControl(r.primary, 4, options.makoStick);
+    if (cannon) {
         buttons = static_cast<WORD>((buttons & ~XINPUT_GAMEPAD_A) | XINPUT_GAMEPAD_RIGHT_SHOULDER);  // the cannon
     }
     bool const jets = asControl(l.primary, 1, options.makoLever);
@@ -473,6 +474,9 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
         if (l.primary && !jets) buttons = static_cast<WORD>(buttons & ~XINPUT_GAMEPAD_X);
         if (l.secondary && !boost) buttons = static_cast<WORD>(buttons & ~XINPUT_GAMEPAD_Y);
         if (!options.makoLever) pad.bLeftTrigger = 0;
+        // The jump is the lever's X only: the right hand's A off the stick reached the game as its jump (the Mako's A) and fired
+        // the jets by surprise (the user, 2026-11-03). On the stick, A is the cannon.
+        if (r.primary && !cannon && !jets) buttons = static_cast<WORD>(buttons & ~XINPUT_GAMEPAD_A);
     }
     pad.wButtons = buttons;
     return pad;

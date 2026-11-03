@@ -540,11 +540,12 @@ constexpr char const* kMakoBlock =
     "rumble = 0.12\n"
     "cameraFollow = 1\n"
     "thrusterBurnScale = 0.4\n"
-    "thrusterStabilize = 1\n"
+    "thrusterStabilize = 0\n"
     "thrusterPitchDeg = 20\n"
     "thrusterRateDeg = 60\n"
     "stickPitchDeadZoneDeg = 8\n"
-    "steerInPlaceBelow = 0.2\n";
+    "steerInPlaceBelow = 0.2\n"
+    "spinRateDeg = 0\n";
 
 // Appended to a settings file that has no [Cockpit] yet (and part of a new file).
 constexpr char const* kCockpitBlock =
@@ -1321,6 +1322,9 @@ Mako ReadMako(Ini const& ini) {
     }
     if (Number(ini, "Mako", "thrusterPitchDeg", value)) {
         m.thrusterPitchDeg = static_cast<float>(std::clamp(value, 0.0, 45.0));
+    }
+    if (Number(ini, "Mako", "spinRateDeg", value)) {
+        m.spinRateDeg = static_cast<float>(std::clamp(value, 0.0, 180.0));
     }
     if (Number(ini, "Mako", "thrusterRateDeg", value)) {
         m.thrusterRateDeg = static_cast<float>(std::clamp(value, 10.0, 180.0));

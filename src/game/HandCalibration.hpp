@@ -360,9 +360,12 @@ struct Mako {
     // While they fire the Mako is held level (roll 0) and at the pitch the stick asks for: thrusterPitchDeg at a full forward or
     // back tilt (0: always level), turning at most thrusterRateDeg a second; thrusterStabilize = 0: none of it.
     float thrusterBurnScale = 0.4f;
-    bool thrusterStabilize = true;
+    bool thrusterStabilize = false;  // off until its axes are measured (it rolled the Mako over in the headset, 2026-11-03)
     float thrusterPitchDeg = 20.0f;
     float thrusterRateDeg = 60.0f;
+    // Steering with the throttle at zero spins the Mako on the spot at up to this many degrees a second (the user, 2026-11-03:
+    // the tank simulation's own turn in place drove both tracks forward and pivoted); 0: the game's pivot.
+    float spinRateDeg = 0.0f;  // off until its axis is measured (it spun the wrong way in the headset, 2026-11-03)
     vr::mako_controls::Settings controlSettings;  // the physical lever and stick (research/46)
 };
 Mako GetMako();

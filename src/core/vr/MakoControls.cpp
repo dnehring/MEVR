@@ -335,16 +335,19 @@ Output Controls::Step(Input const& in, Settings const& settings) {
                 Add(out, 1, 0.03f, 0.35f);
             }
             if (stickHeld_ && rightTracked) {
-                if (settings.stickTwist) {
-                    // Unwrapped: past half a turn the raw angle jumps by a whole turn, the steering must not.
-                    float const raw = TwistDegrees(grabOrientation_, in.right.grip.orientation, axis_);
-                    twist_ += std::remainder(raw - twistRaw_, 360.0f);
-                    twistRaw_ = raw;
-                } else {
-                    if (stickSettle_ > 0.0f) {
-                        stickSettle_ -= dt;
-                        stickGrab_ = in.right.grip.position;  // the squeeze settling: no tilt yet
-                    }
+                if (!settings.stickTwist && stickSettle_ > 0.0f) {
+                    stickSettle_ -= dt;
+                    stickGrab_ = in.right.grip.position;  // the squeeze settling: no tilt or twist yet
+                    grabOrientation_ = in.right.grip.orientation;
+                    axis_ = StickAxis(grabOrientation_);
+                    twist_ = twistRaw_ = 0.0f;
+                }
+                // The twist (the steering in twist mode; added to the tilt's otherwise, the user, 2026-11-03: turning the stick
+                // about its axis did nothing). Unwrapped: past half a turn the raw angle jumps by a whole turn, the steering must not.
+                float const raw = TwistDegrees(grabOrientation_, in.right.grip.orientation, axis_);
+                twist_ += std::remainder(raw - twistRaw_, 360.0f);
+                twistRaw_ = raw;
+                if (!settings.stickTwist) {
                     // Held past full tilt, the stick stops there (the hand's further travel tilts nothing).
                     float rightDeg = 0.0f;
                     float forwardDeg = 0.0f;
@@ -360,7 +363,9 @@ Output Controls::Step(Input const& in, Settings const& settings) {
                 tiltRight_ = Approach(tiltRight_, 0.0f, back);
                 tiltForward_ = Approach(tiltForward_, 0.0f, back);
             }
-            float const target = !stickHeld_ ? 0.0f : settings.stickTwist ? SteerFromTwist(twist_, settings) : FromTilt(tiltRight_, settings);
+            float const target = !stickHeld_            ? 0.0f
+                                 : settings.stickTwist ? SteerFromTwist(twist_, settings)
+                                                       : std::clamp(FromTilt(tiltRight_, settings) + SteerFromTwist(twist_, settings), -1.0f, 1.0f);
             steer_ = Approach(steer_, target, (stickHeld_ ? kSteerRateHeld : kSteerRateReturn) * dt);
             pitch_ = settings.stickTwist ? 0.0f : FromTilt(tiltForward_, settings, settings.stickPitchDeadZoneDeg);
             if (!stickHeld_) {

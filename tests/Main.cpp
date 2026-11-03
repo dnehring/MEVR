@@ -6504,8 +6504,15 @@ void TestMakoControls() {
         for (int i = 0; i < 3; ++i) {
             out = c.Step(input(0.0f, 0.0f, identity, 1.0f), tilting);  // back where it grabbed: the zero follows it here
         }
-        out = c.Step(input(0.0f, 0.0f, about(up, 60.0f), 1.0f), tilting);  // a twist alone steers nothing now
-        CHECK(close(out.steer, 0.0) && close(out.tiltRightDeg, 0.0));
+        // A twist steers too, on top of the tilt (2026-11-03): counter-clockwise from above, past full lock, is full left.
+        for (int i = 0; i < 4; ++i) {
+            out = c.Step(input(0.0f, 0.0f, about(up, 60.0f), 1.0f), tilting);
+        }
+        CHECK(close(out.steer, -1.0) && close(out.tiltRightDeg, 0.0));
+        for (int i = 0; i < 4; ++i) {
+            out = c.Step(input(0.0f, 0.0f, identity, 1.0f), tilting);  // turned back
+        }
+        CHECK(close(out.steer, 0.0));
         for (int i = 0; i < 10; ++i) {
             out = c.Step(input(0.0f, 0.0f, identity, 1.0f, {0.05f, 0.0f, 0.0f}), tilting);  // 27 degrees right: past full lock
         }
@@ -6762,8 +6769,9 @@ void TestMakoControls() {
         driving.makoDrive = driving.makoLever = driving.makoStick = true;
         pad = gp::FromControllers(state, latches, driving);
         CHECK(pad.sThumbLX == 0 && pad.sThumbLY == 0 && pad.sThumbRX == 0 && pad.sThumbRY == 0);
-        // ...except the left hand's: while the mod drives, X and Y reach the game only as the lever's (since 2026-11-03).
-        CHECK((pad.wButtons & XINPUT_GAMEPAD_X) == 0 && (pad.wButtons & XINPUT_GAMEPAD_Y) == 0 && (pad.wButtons & XINPUT_GAMEPAD_A) != 0);
+        // ...except that while the mod drives, X and Y reach the game only as the lever's, and the right A only as the stick's
+        // cannon: never the game's jump (both since 2026-11-03).
+        CHECK((pad.wButtons & (XINPUT_GAMEPAD_X | XINPUT_GAMEPAD_Y | XINPUT_GAMEPAD_A)) == 0);
         {
             // The left trigger too: driving with the lever let go, it reaches the game as nothing; on the lever, as itself.
             gp::Latches other;
