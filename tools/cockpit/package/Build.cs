@@ -75,8 +75,9 @@ internal static class Build
     };
     // A dark diffuse left the lit instances looking unlit in the game (the game side, 2026-11-03): a mid one shows whether
     // light reaches the parts at all, and a stronger specular whether highlights do.
-    // Glow: x4 brightened the lamps without a halo in the game (2026-11-03), so the small lamps try x10; the screens x2.
-    private const float LitSpecular = 1.6f, LitSpecPower = 24.0f, GlowLamps = 10.0f, GlowScreens = 2.0f;
+    // Glow: x4 brightened the lamps without a halo in the game, x10 bloomed but spilled over the windshield below the lamp bar
+    // (+12 grey levels on the view out; the game side, 2026-11-03): x7 between; the screens x2.
+    private const float LitSpecular = 1.6f, LitSpecPower = 24.0f, GlowLamps = 7.0f, GlowScreens = 2.0f;
 
     // The windows' glass (research/48 section 26), over materials in BIOC_Materials, which the game side found in memory at
     // the title, in Eden Prime and in a Mako level: the helmet visors' (unlit, translucent, one-sided; opacity rises toward
@@ -92,9 +93,9 @@ internal static class Build
     // least 0.15. At 0.22 and 0.4 it read nearly clear from the seat (4% darker, no sheen: the game side, 2026-11-03).
     // At 0.32 and 1.0 still nearly clear (no sheen, 2026-11-03): the cube's sheen brighter, the view kept clear.
     private const float GlassOpacity = 0.32f, GlassCube = 3.0f;
-    // The fresnel's floor (VSR_Colour_02.r) low, so the cube's sheen stays at grazing angles (the side panes, the edges): at
-    // 0.15 with the cube at 3 it lay as a milky haze over the windshield's middle (the game side, 2026-11-03).
-    private static readonly float[] GlassTint = { 0.03f, 0.035f, 0.04f, 1f }, GlassFresnel = { 0.03f, 0f, 0f, 1f };
+    // VSR_Colour_02.r (read as the fresnel's floor) at 0.03 changed nothing in the game: the haze over the windshield was the
+    // lamps' bloom (the game side, 2026-11-03).
+    private static readonly float[] GlassTint = { 0.03f, 0.035f, 0.04f, 1f }, GlassFresnel = { 0.15f, 0f, 0f, 1f };
     // Which elements get a glow variant: the shell's lamps (hull_shapes.Bake puts them on materials of their own) and the
     // console's idle screens.
     private static bool Glows(string material) => material.StartsWith("lamp", StringComparison.Ordinal) || material is "Display" or "Aim";

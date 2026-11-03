@@ -960,8 +960,13 @@ No decimation or packaging until the user approves the modelling.
 - **In the game** (136f457): the lamps glow with no variant; `variant base` swaps exactly the three lamp elements back. The
   glass at cube 3 shows its sheen, but as a pale haze over the windshield's middle (the view brighter, (114, 92, 87)
   against (97, 74, 67), a dark crate behind it washed toward grey), where a fresnel's sheen belongs at grazing angles.
-- **So:** the fresnel's floor (`VSR_Colour_02.r`) at 0.03 (0.15): face on the sheen is a fifth of what it was, at grazing
-  angles (the side panes, the windshield's edges) the same. The lit instances stay in the package unused: lit shading needs lights inside the cabin (`lamps`), a
+- **So I tried** `VSR_Colour_02.r` (read as the fresnel's floor) at 0.03 (0.15). **In the game** (f858dda) it changed
+  nothing (the windshield's middle (114.2, 92.3, 86.9) against (114.3, 92.3, 86.9)), and most of the haze was the lamps'
+  bloom, not the glass: the same pose with the lamps unlit reads (102.6, 80.4, 75.5). The glass at cube 3 adds about 5
+  grey levels face on, the glow at 10 about 12 more, spilling over the windshield below the lamp bar. No sheen shows on the
+  side panes at a grazing angle in a still frame.
+- **Now:** `VSR_Colour_02.r` back at 0.15; the glass stays at opacity 0.32 and cube 3; the lamps' glow at 7, between 4
+  (no halo) and 10 (a halo that spills over the view out). The lit instances stay in the package unused: lit shading needs lights inside the cabin (`lamps`), a
   question of their stereo cost that the game side takes up once the Mako drives.
 
 ## 5. Not done
