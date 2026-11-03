@@ -3,6 +3,7 @@
 
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
+#include "core/ik/Rigid.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/ScopeCapture.hpp"
@@ -10,6 +11,7 @@
 #include "engine/Engine.hpp"
 #include "core/Ini.hpp"
 #include "engine/ProcessEvent.hpp"
+#include "engine/Skeleton.hpp"
 #include "engine/SettingsFile.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/HandCalibration.hpp"
@@ -213,12 +215,21 @@ ue3::FieldRef gVehicleDriver{"Engine.Vehicle", "Driver"};
 ue3::FieldRef gPawnHealth{"Engine.Pawn", "Health"};
 ue3::FieldRef gPlayersOnly{"Engine.WorldInfo", "bPlayersOnly"};  // BioExitVehicle's native refuses while it's set
 ue3::FieldRef gPlayersOnlyPending{"Engine.WorldInfo", "bPlayersOnlyPending"};
+ue3::FieldRef gHiddenField{"Engine.Actor", "bHidden"};
+ue3::FieldRef gHiddenGame{"Engine.PrimitiveComponent", "HiddenGame"};
 ue3::FunctionRef gPlaceExitingDriver{"SFXGame.BioVehicleBase.PlaceExitingDriver"};
 // `ride`: the camera's update (a post-handler, registered at startup) and the vehicle's components hidden from the eyes.
 ue3::FunctionRef gUpdateCamera{"Engine.Camera.UpdateCamera"};
 ue3::ClassRef gPrimitiveComponent{"Engine.PrimitiveComponent"};
 ue3::FieldRef gAllComponents{"Engine.Actor", "AllComponents"};
 ue3::FieldRef gOwnerNoSee{"Engine.PrimitiveComponent", "bOwnerNoSee"};
+// The seated driver (docs/mako-cockpit-goal.md item 7): its primitives eyes-only, its head's meshes hidden.
+ue3::FieldRef gOnlyOwnerSee{"Engine.PrimitiveComponent", "bOnlyOwnerSee"};
+ue3::FunctionRef gPrimitiveSetHidden{"Engine.PrimitiveComponent.SetHidden"};
+ue3::FunctionRef gSetLightEnvironment{"Engine.PrimitiveComponent.SetLightEnvironment"};
+std::array<ue3::FieldRef, 5> gHeadMeshes{ue3::FieldRef{"SFXGame.BioPawn", "m_oHeadMesh"}, ue3::FieldRef{"SFXGame.BioPawn", "m_oHairMesh"},
+    ue3::FieldRef{"SFXGame.BioPawn", "m_oHeadGearMesh"}, ue3::FieldRef{"SFXGame.BioPawn", "m_oVisorMesh"},
+    ue3::FieldRef{"SFXGame.BioPawn", "m_oFacePlateMesh"}};
 
 // EObjectFlags: RF_ClassDefaultObject.
 constexpr std::uint64_t kClassDefaultFlag = 0x200;
@@ -349,6 +360,41 @@ struct HudLayout {
     float panelWidthM = 0.0f;
 };
 HudLayout gHudLayout;
+
+// `seat hip R F U knees R F U R F U heels R F U R F U grips R F U R F U`: the pilot's points from the cockpit's eye (metres: right,
+// forward, up; place.py --script from the manifest's pilot): the hips' H-point, each knee and heel, the lever's and the stick's
+// grips (left, right), the lever's at neutral.
+struct SeatLayout {
+    bool set = false;
+    engine::UnrealVector hipM{};
+    std::array<engine::UnrealVector, 2> kneeM{};
+    std::array<engine::UnrealVector, 2> heelM{};
+    std::array<engine::UnrealVector, 2> gripM{};
+};
+SeatLayout gSeatLayout;
+
+// Shepard in the seat (docs/mako-cockpit-goal.md item 7, research/47 "Shepard in the seat"). In the Mako the game keeps the
+// driver hidden at the vehicle's origin, based on it, PHYS_None (`mevr vehicle why`). While riding with [Cockpit] seated and a
+// `seat` layout: shown to the eyes only (owned by the vehicle, the eyes' view actor; bOnlyOwnerSee on each primitive keeps it
+// out of the captures), the head's meshes hidden (the eye is inside the head), placed each camera update with its hips on the
+// H-point and the vehicle's rotation; game/arm_ik poses the legs to the heels and the hands to the controls (CurrentSeat).
+struct SeatedDriver {
+    ue3::Object* pawn = nullptr;
+    ue3::Object* vehicle = nullptr;
+    ue3::Object* mesh = nullptr;
+    void const* world = nullptr;  // a new level: the old pointers are never called
+    bool wasHidden = true;
+    ue3::Object* ownerBefore = nullptr;
+    bool ownerSet = false;
+    std::vector<std::pair<ue3::Object*, bool>> onlyOwner;  // each primitive and its bOnlyOwnerSee before
+    std::vector<std::pair<ue3::Object*, bool>> head;       // the head's meshes and their HiddenGame before
+    std::vector<std::pair<ue3::Object*, ue3::Object*>> lit;  // each primitive lit by the vehicle's light environment, and its own
+    bool haveHips = false;
+    ik::Vec3 hips{};  // the hips' midpoint in the mesh's component space (game/arm_ik)
+    std::uint32_t placements = 0;
+    std::uint32_t shown = 0;
+};
+SeatedDriver gSeated;
 
 // `aimscreen`: a second capture along the aim, on its own slot of the screen part (Hull_Console's slot 3, the right screen).
 struct AimScreen {
@@ -1874,6 +1920,217 @@ void ShowVehicle() {
     gRide.hidden.clear();
 }
 
+// ---- Shepard in the seat ---------------------------------------------------------------------------------------------
+
+void SetComponentHidden(ue3::Object* component, bool hidden) {
+    ue3::Params p = ParamsOf(gPrimitiveSetHidden);
+    p.SetBool("NewHidden", hidden);
+    Call(component, gPrimitiveSetHidden, p);
+}
+
+void SetOnlyOwnerSee(ue3::Object* component, bool only) {
+    ue3::Params p = ParamsOf(gSetOnlyOwnerSee);
+    p.SetBool("bNewOnlyOwnerSee", only);
+    Call(component, gSetOnlyOwnerSee, p);
+}
+
+void SetActorHidden(ue3::Object* actor, bool hidden) {
+    ue3::Params p = ParamsOf(gSetHidden);
+    p.SetBool("bNewHidden", hidden);
+    Call(actor, gSetHidden, p);
+}
+
+void SetLightEnvironmentOf(ue3::Object* component, ue3::Object* environment) {
+    ue3::Params p = ParamsOf(gSetLightEnvironment);
+    p.Set("NewLightEnvironment", environment);
+    Call(component, gSetLightEnvironment, p);
+}
+
+void ShowDriver(ue3::Object* vehicle) {
+    ue3::Object* const driver = gVehicleDriver.Read<ue3::Object*>(vehicle).value_or(nullptr);
+    if (driver == nullptr || !ue3::runtime::IsAlive(driver)) {
+        return;
+    }
+    gSeated = {};
+    gSeated.pawn = driver;
+    gSeated.vehicle = vehicle;
+    gSeated.world = engine::World();
+    gSeated.mesh = gPawnMesh.Read<ue3::Object*>(driver).value_or(nullptr);
+    gSeated.wasHidden = gHiddenField.ReadBool(driver).value_or(true);
+    gSeated.ownerBefore = gOwnerField.Read<ue3::Object*>(driver).value_or(nullptr);
+    for (ue3::FieldRef& field : gHeadMeshes) {
+        ue3::Object* const part = field.Read<ue3::Object*>(driver).value_or(nullptr);
+        bool const listed = std::any_of(gSeated.head.begin(), gSeated.head.end(), [&](auto const& h) { return h.first == part; });
+        if (part != nullptr && !listed && ue3::runtime::IsAlive(part)) {
+            gSeated.head.emplace_back(part, gHiddenGame.ReadBool(part).value_or(false));
+            SetComponentHidden(part, true);
+        }
+    }
+    if (gSeated.ownerBefore != vehicle) {
+        SetOwnerOf(driver, vehicle);
+        gSeated.ownerSet = true;
+    }
+    if (auto const components = gAllComponents.ElementsOf(driver)) {
+        for (std::int32_t i = 0; i < components->count; ++i) {
+            ue3::Object* const component = *static_cast<ue3::Object**>(components->At(i));
+            if (ue3::IsA(component, gPrimitiveComponent)) {
+                gSeated.onlyOwner.emplace_back(component, gOnlyOwnerSee.ReadBool(component).value_or(false));
+                SetOnlyOwnerSee(component, true);
+            }
+        }
+    }
+    // The driver's own light environment, inside the vehicle, drew it black (2026-11-03): lit by the vehicle's instead, as UE3 lights
+    // what a pawn carries with the pawn's.
+    ue3::Object* const vehicleMesh = gPawnMesh.Read<ue3::Object*>(vehicle).value_or(nullptr);
+    ue3::Object* const vehicleLight = vehicleMesh != nullptr ? gPrimitiveLightEnvironment.Read<ue3::Object*>(vehicleMesh).value_or(nullptr) : nullptr;
+    if (vehicleLight != nullptr && gSetLightEnvironment.Get() != nullptr) {
+        for (auto const& [component, before] : gSeated.onlyOwner) {
+            ue3::Object* const own = gPrimitiveLightEnvironment.Read<ue3::Object*>(component).value_or(nullptr);
+            if (own != nullptr && own != vehicleLight) {
+                gSeated.lit.emplace_back(component, own);
+                SetLightEnvironmentOf(component, vehicleLight);
+            }
+        }
+    }
+    SetActorHidden(driver, false);
+    FlushActor(driver, false);
+    ++gSeated.shown;
+    log::Info("cockpit probe: seat: {} shown in the seat (it was {}hidden, owned by {}{}); {} primitives eyes-only, {} of the head's meshes hidden; "
+              "its light environment {}",
+        ue3::runtime::FullName(driver), gSeated.wasHidden ? "" : "not ", ue3::runtime::FullName(gSeated.ownerBefore),
+        gSeated.ownerSet ? ", now the vehicle" : "", gSeated.onlyOwner.size(), gSeated.head.size(),
+        gSeated.lit.empty() ? std::string("its own (no vehicle light environment)") : std::format("the vehicle's ({} {})",
+            ue3::runtime::FullName(vehicleLight), gSeated.lit.size() == 1 ? "primitive" : std::format("{} primitives", gSeated.lit.size())));
+}
+
+// Undone as found. Still the vehicle's driver (the cockpit turned off, a cutscene): hidden again at the vehicle's origin, as the
+// game keeps it; out of the vehicle the game has already shown and placed it, so only the components' flags go back.
+void HideDriver() {
+    if (gSeated.pawn == nullptr) {
+        return;
+    }
+    ue3::Object* const driver = gSeated.pawn;
+    if (ue3::runtime::IsAlive(driver)) {
+        for (auto const& [part, before] : gSeated.head) {
+            if (ue3::runtime::IsAlive(part)) {
+                SetComponentHidden(part, before);
+            }
+        }
+        for (auto const& [component, before] : gSeated.onlyOwner) {
+            if (ue3::runtime::IsAlive(component)) {
+                SetOnlyOwnerSee(component, before);
+            }
+        }
+        for (auto const& [component, own] : gSeated.lit) {
+            if (ue3::runtime::IsAlive(component) && ue3::runtime::IsAlive(own)) {
+                SetLightEnvironmentOf(component, own);
+            }
+        }
+        ue3::Object* const vehicle = gSeated.vehicle;
+        bool const driving = vehicle != nullptr && ue3::runtime::IsAlive(vehicle) && gVehicleDriver.Read<ue3::Object*>(vehicle).value_or(nullptr) == driver;
+        if (gSeated.ownerSet && gOwnerField.Read<ue3::Object*>(driver).value_or(nullptr) == vehicle) {
+            SetOwnerOf(driver, gSeated.ownerBefore);
+        }
+        if (driving) {
+            if (auto const at = player::Location(vehicle); at) {
+                if (ue3::Vector* const atField = gActorLocation.In<ue3::Vector>(driver)) {
+                    *atField = {at->x, at->y, at->z};
+                    write_journal::Wrote("CockpitProbe.driverLocation", atField, sizeof(*atField));
+                }
+            }
+            SetActorHidden(driver, gSeated.wasHidden);
+        }
+        FlushActor(driver, false);
+        log::Info("cockpit probe: seat: {} out of the seat ({})", ue3::runtime::FullName(driver), driving ? "still the driver: hidden again" : "no longer driving");
+    }
+    gSeated = {};
+}
+
+// Each mod tick from RideTick: `vehicle` is the Mako the cockpit rides in now (null: not riding).
+void SeatTick(ue3::Object* vehicle) {
+    bool const want = vehicle != nullptr && hand_calibration::GetCockpit().seated && gSeatLayout.set && gPrimitiveSetHidden.Get() != nullptr &&
+        gSetOnlyOwnerSee.Get() != nullptr && gSetHidden.Get() != nullptr;
+    if (gSeated.pawn != nullptr && gSeated.world != engine::World()) {
+        gSeated = {};
+    }
+    if (gSeated.pawn != nullptr) {
+        bool const same = want && gSeated.vehicle == vehicle && gVehicleDriver.Read<ue3::Object*>(vehicle).value_or(nullptr) == gSeated.pawn &&
+            ue3::runtime::IsAlive(gSeated.pawn);
+        if (!same) {
+            HideDriver();
+        }
+    }
+    if (want && gSeated.pawn == nullptr) {
+        ShowDriver(vehicle);
+    }
+}
+
+// In the camera's update, after the parts: the driver's hips on the H-point, with the vehicle's rotation. The hips' place in
+// the actor's own axes comes from where the mesh is now (before the first pose sample, the actor's origin: its collision
+// centre, about the pelvis).
+void PlaceDriver(engine::Basis const& frame, engine::UnrealVector const& eye, double upm, ue3::Rotator const& turn) {
+    ue3::Object* const driver = gSeated.pawn;
+    if (driver == nullptr || !ue3::runtime::IsAlive(driver)) {
+        return;
+    }
+    ue3::Vector* const atField = gActorLocation.In<ue3::Vector>(driver);
+    ue3::Rotator* const turnField = gActorRotation.In<ue3::Rotator>(driver);
+    if (atField == nullptr || turnField == nullptr) {
+        return;
+    }
+    engine::UnrealVector local{};
+    if (gSeated.haveHips && gSeated.mesh != nullptr) {
+        ik::Vec3 const hips = ik::TransformPoint(engine::skeleton::LocalToWorld(gSeated.mesh), gSeated.hips);
+        engine::Basis const was = engine::ToBasis(engine::UnrealRotation{turnField->pitch, turnField->yaw, turnField->roll});
+        local = engine::Apply(engine::Inverse(was), {hips.x - atField->x, hips.y - atField->y, hips.z - atField->z});
+    }
+    engine::UnrealVector const hipOffset = engine::Apply(frame, {gSeatLayout.hipM.y * upm, gSeatLayout.hipM.x * upm, gSeatLayout.hipM.z * upm});
+    engine::UnrealVector const back = engine::Apply(frame, local);
+    *atField = {static_cast<float>(eye.x + hipOffset.x - back.x), static_cast<float>(eye.y + hipOffset.y - back.y),
+        static_cast<float>(eye.z + hipOffset.z - back.z)};
+    write_journal::Wrote("CockpitProbe.driverLocation", atField, sizeof(*atField));
+    *turnField = turn;
+    write_journal::Wrote("CockpitProbe.driverRotation", turnField, sizeof(*turnField));
+    FlushActor(driver, true);
+    ++gSeated.placements;
+}
+
+// `seat hip R F U knees R F U R F U heels R F U R F U grips R F U R F U`
+std::string DoSeat(std::istringstream& words) {
+    SeatLayout layout;
+    std::string name;
+    int found = 0;
+    auto const read = [&](engine::UnrealVector& v) { return static_cast<bool>(words >> v.x >> v.y >> v.z); };
+    while (words >> name) {
+        bool ok = false;
+        if (name == "hip") {
+            ok = read(layout.hipM);
+        } else if (name == "knees") {
+            ok = read(layout.kneeM[0]) && read(layout.kneeM[1]);
+        } else if (name == "heels") {
+            ok = read(layout.heelM[0]) && read(layout.heelM[1]);
+        } else if (name == "grips") {
+            ok = read(layout.gripM[0]) && read(layout.gripM[1]);
+        }
+        if (!ok) {
+            return "usage: mevr cockpit seat hip R F U knees R F U R F U heels R F U R F U grips R F U R F U (metres from the cockpit's eye: "
+                   "right, forward, up; left then right; the grips are the lever's and the stick's)";
+        }
+        ++found;
+    }
+    if (found != 4) {
+        return Refuse("seat: hip, knees, heels and grips are all needed");
+    }
+    layout.set = true;
+    gSeatLayout = layout;
+    std::string const report = std::format("seat: the hips at ({:.2f} {:.2f} {:.2f}), the heels at ({:.2f} {:.2f} {:.2f}) and ({:.2f} {:.2f} {:.2f}) m from the eye; "
+                                           "Shepard sits there while riding ([Cockpit] seated = {})",
+        layout.hipM.x, layout.hipM.y, layout.hipM.z, layout.heelM[0].x, layout.heelM[0].y, layout.heelM[0].z, layout.heelM[1].x, layout.heelM[1].y,
+        layout.heelM[1].z, hand_calibration::GetCockpit().seated ? 1 : 0);
+    log::Info("cockpit probe: {}", report);
+    return report;
+}
+
 // A part in the vehicle's frame: its offset from the eye along the vehicle's axes, its yaw on top of the vehicle's rotation.
 void PlacePartIn(Part const& part, engine::Basis const& frame, engine::UnrealVector const& eye, double upm) {
     mako_controls::Pose const pose = part.motion != Part::Motion::None ? mako_controls::CurrentPose() : mako_controls::Pose{};
@@ -1923,6 +2180,9 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
             ++gRide.partPlacements;
         }
     }
+    if (gSeated.pawn != nullptr && gSeated.vehicle == pawn) {
+        PlaceDriver(frame, eye, upm, *turn);
+    }
     if (!gRide.seated) {
         // Until the host has a view (the first frames after a load, VR off), no seat: the head counts from the tracking centre.
         vr::host_view::State const view = vr::host_view::Latest();
@@ -1950,7 +2210,7 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
 // Each mod tick: the vehicle's body hidden while riding, shown again otherwise; the parts owned by the vehicle (the pawn) so the
 // eyes see them and the captures don't.
 void RideTick() {
-    if (!gRide.on && gRide.vehicle == nullptr) {
+    if (!gRide.on && gRide.vehicle == nullptr && gSeated.pawn == nullptr) {
         return;
     }
     ue3::Object* const controller = player::Controller();
@@ -1973,6 +2233,7 @@ void RideTick() {
         HideVehicle(pawn);
         HideFromCaptures();  // the owner is now the vehicle
     }
+    SeatTick(inVehicle ? pawn : nullptr);
 }
 
 // `hud status R F U W radar R F U W panel R F U W`
@@ -2022,7 +2283,10 @@ std::string DoRide(std::istringstream& words) {
                            "  vehicle at {:.0f} {:.0f} {:.0f}, pitch {:.1f} yaw {:.1f} roll {:.1f}; the game's chase camera at {:.0f} {:.0f} {:.0f}, pitch {:.1f} yaw {:.1f} roll {:.1f}",
             gRide.on ? "on" : "off", gRide.eyeM.x, gRide.eyeM.y, gRide.eyeM.z, gRide.cameraTicks, gRide.partPlacements, gRide.riding, gRide.hidden.size(),
             at ? at->x : 0.0f, at ? at->y : 0.0f, at ? at->z : 0.0f, turn ? deg(turn->pitch) : 0.0, turn ? deg(turn->yaw) : 0.0, turn ? deg(turn->roll) : 0.0,
-            gRide.chaseLocation.x, gRide.chaseLocation.y, gRide.chaseLocation.z, deg(gRide.chaseRotation.pitch), deg(gRide.chaseRotation.yaw), deg(gRide.chaseRotation.roll));
+            gRide.chaseLocation.x, gRide.chaseLocation.y, gRide.chaseLocation.z, deg(gRide.chaseRotation.pitch), deg(gRide.chaseRotation.yaw), deg(gRide.chaseRotation.roll)) +
+            std::format("\n  seat: {}{}, {} placements, the hips {}", gSeatLayout.set ? "" : "no layout; ",
+                gSeated.pawn != nullptr ? ue3::runtime::FullName(gSeated.pawn) + " shown" : std::string("nobody shown"), gSeated.placements,
+                gSeated.haveHips ? std::format("at ({:.1f} {:.1f} {:.1f}) in the mesh", gSeated.hips.x, gSeated.hips.y, gSeated.hips.z) : std::string("not sampled yet"));
     }
     // Three numbers are the eye's place (and on); a lone 0 or `off` stops, a lone 1 or `on` starts.
     engine::UnrealVector eye{};
@@ -2860,7 +3124,20 @@ std::string VehicleCommand(std::string const& line) {
         std::string report = std::format("driver {} (health {}); WorldInfo.bPlayersOnly {}; ", ue3::runtime::FullName(driver),
             driver != nullptr ? std::to_string(gPawnHealth.Read<std::int32_t>(driver).value_or(-1)) : std::string("-"),
             world != nullptr ? (gPlayersOnly.ReadBool(world).value_or(false) ? "1" : "0") : "?");
-        if (gPlaceExitingDriver.Get() != nullptr) {
+        if (driver != nullptr) {
+            // Where the game keeps Shepard while driving (item 7 of docs/mako-cockpit-goal.md): hidden, based on what, where.
+            auto const at = player::Location(driver);
+            auto const vat = player::Location(pawn);
+            ue3::Object* const mesh = gPawnMesh.Read<ue3::Object*>(driver).value_or(nullptr);
+            report += std::format("the driver: bHidden {}, Base {}, Physics {}, {:.0f} units from the vehicle's origin ({:.0f} {:.0f} {:.0f}), mesh {} (HiddenGame {}); ",
+                gHiddenField.ReadBool(driver).value_or(false) ? 1 : 0, ue3::runtime::FullName(gBase.Read<ue3::Object*>(driver).value_or(nullptr)),
+                static_cast<int>(gPhysics.Read<std::uint8_t>(driver).value_or(255)),
+                at && vat ? std::sqrt(DistanceSquared(*at, *vat)) : -1.0, at ? at->x - (vat ? vat->x : 0.0f) : 0.0f, at ? at->y - (vat ? vat->y : 0.0f) : 0.0f,
+                at ? at->z - (vat ? vat->z : 0.0f) : 0.0f, ue3::runtime::FullName(mesh), mesh != nullptr && gHiddenGame.ReadBool(mesh).value_or(false) ? 1 : 0);
+        }
+        std::string place;
+        words >> place;
+        if (place == "place" && gPlaceExitingDriver.Get() != nullptr) {  // it moves the driver where it would get out
             ue3::Params p = ParamsOf(gPlaceExitingDriver);
             bool const called = Call(pawn, gPlaceExitingDriver, p);
             report += std::format("PlaceExitingDriver: called {}, returned {} (true: a place found, the driver moved there)", called, p.ReturnBool().value_or(false));
@@ -3171,6 +3448,9 @@ std::string Command(std::string const& line) {
     if (verb == "hud") {
         return DoHud(words);
     }
+    if (verb == "seat") {
+        return DoSeat(words);
+    }
     if (verb == "clear") {
         ClearAll("mevr cockpit clear");
         ClearParts("mevr cockpit clear");
@@ -3314,6 +3594,39 @@ bool Riding() {
     return gRide.on && gRide.riding;
 }
 
+std::optional<Seat> CurrentSeat() {
+    if (gSeated.pawn == nullptr || gSeated.mesh == nullptr || !Riding() || !gRide.haveEye || !gSeatLayout.set || gSeated.world != engine::World()) {
+        return std::nullopt;
+    }
+    auto const at = [](engine::UnrealVector const& m) {
+        engine::UnrealVector const off = engine::Apply(gRide.frame, {m.y * gRide.upm, m.x * gRide.upm, m.z * gRide.upm});
+        return engine::UnrealVector{gRide.eyeWorld.x + off.x, gRide.eyeWorld.y + off.y, gRide.eyeWorld.z + off.z};
+    };
+    Seat seat;
+    seat.driver = gSeated.pawn;
+    seat.mesh = gSeated.mesh;
+    mako_controls::Pose const pose = mako_controls::CurrentPose();
+    seat.held[0] = pose.leverHeld;
+    seat.held[1] = pose.stickHeld;
+    for (int side : {0, 1}) {
+        seat.knee[side] = at(gSeatLayout.kneeM[static_cast<std::size_t>(side)]);
+        seat.heel[side] = at(gSeatLayout.heelM[static_cast<std::size_t>(side)]);
+        engine::UnrealVector grip = gSeatLayout.gripM[static_cast<std::size_t>(side)];
+        if (side == 0) {
+            grip.y += static_cast<double>(pose.lever * pose.travelM);  // the lever's grip travels with it, as its model
+        }
+        seat.grip[side] = at(grip);
+    }
+    return seat;
+}
+
+void NoteSeatHips(ue3::Object const* mesh, ik::Vec3 const& hips) {
+    if (mesh != nullptr && mesh == gSeated.mesh) {
+        gSeated.hips = hips;
+        gSeated.haveHips = true;
+    }
+}
+
 void FillHud(vr::hud_pieces::Pieces& pieces) {
     if (!Riding() || !gRide.haveEye || !gHudLayout.set) {
         return;
@@ -3413,7 +3726,11 @@ void Shutdown(bool exiting) {
     gRide.on = false;
     if (!exiting && ue3::runtime::Ready()) {
         ShowVehicle();
+        if (gSeated.world == engine::World()) {
+            HideDriver();
+        }
     }
+    gSeated = {};
     gRide = Ride{};
     gAuto = {};
     gLoggedNoScript = false;
@@ -3448,7 +3765,7 @@ void Shutdown(bool exiting) {
              &gViewMatrix, &gForceLinearGamma, &gTargetFormat, &gMeshMaterials, &gPrimitiveLightEnvironment, &gLightEnvironmentEnabled, &gTextureResource, &gTextureSrgb, &gTextureNeverStream,
              &gTextureLodGroup, &gTexture2DSizeX, &gTexture2DSizeY, &gTexture2DFormat, &gTexture2DRequestedMips, &gTexture2DResidentMips, &gTexture2DMipTail, &gTexture2DMips, &gWorldInfo,
              &gTextureValueObject, &gRemoteEventName, &gStreamingLevels, &gStreamPackage, &gStreamLoaded, &gStreamShouldLoad, &gStreamShouldShow, &gStreamVisible,
-             &gStreamPending, &gAllComponents, &gOwnerNoSee, &gVehicleDriver, &gPawnHealth, &gPlayersOnly, &gPlayersOnlyPending}) {
+             &gStreamPending, &gAllComponents, &gOwnerNoSee, &gVehicleDriver, &gPawnHealth, &gPlayersOnly, &gPlayersOnlyPending, &gHiddenField, &gHiddenGame}) {
         f->Reset();
     }
 }
@@ -3468,6 +3785,12 @@ bool Riding() {
 }
 
 void FillHud(vr::hud_pieces::Pieces& /*pieces*/) {}
+
+std::optional<Seat> CurrentSeat() {
+    return std::nullopt;
+}
+
+void NoteSeatHips(ue3::Object const* /*mesh*/, ik::Vec3 const& /*hips*/) {}
 
 std::string VehicleCommand(std::string const& /*line*/) {
     return "mevr vehicle: LE1 only";

@@ -536,10 +536,12 @@ constexpr char const* kCockpitBlock =
     "[Cockpit]\n"
     "; The Mako's cockpit (research/47). enabled: 1 = in the Mako you sit in the cockpit, the Mako's third-person view on its\n"
     "; centre screen (needs the cockpit's package installed); 0 = the game's chase camera as before. script: the cockpit's\n"
-    "; layout, from this folder. followCamera: 1 = the screen's chase camera turns with the Mako.\n"
+    "; layout, from this folder. followCamera: 1 = the screen's chase camera turns with the Mako. seated: 1 = Shepard sits in\n"
+    "; the chair under you, the hands on the lever and stick while you hold them.\n"
     "enabled = 1\n"
     "script = cockpit\\cockpit.txt\n"
-    "followCamera = 1\n";
+    "followCamera = 1\n"
+    "seated = 1\n";
 
 // Appended to a settings file that has no [Game] yet (and part of a new file).
 constexpr char const* kGameBlock =
@@ -1350,11 +1352,15 @@ Cockpit ReadCockpit(Ini const& ini) {
     if (Number(ini, "Cockpit", "followCamera", value)) {
         c.followCamera = value != 0.0;
     }
+    if (Number(ini, "Cockpit", "seated", value)) {
+        c.seated = value != 0.0;
+    }
     return c;
 }
 
 std::string Describe(Cockpit const& c) {
-    return std::format("{}, script {}, the chase camera {}", c.enabled ? "on" : "off", c.script, c.followCamera ? "follows the Mako" : "the game's");
+    return std::format("{}, script {}, the chase camera {}{}", c.enabled ? "on" : "off", c.script, c.followCamera ? "follows the Mako" : "the game's",
+        c.seated ? ", Shepard seated" : "");
 }
 
 Cockpit gCockpit;

@@ -472,6 +472,8 @@ Pose CurrentPose() {
     if (gInMako) {
         pose.lever = gOut.lever;
         pose.steer = gOut.steer;
+        pose.leverHeld = gOut.leverHeld;
+        pose.stickHeld = gOut.stickHeld;
     }
     return pose;
 }

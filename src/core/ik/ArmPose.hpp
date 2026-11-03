@@ -32,6 +32,11 @@ struct ArmChain {
 // `parents[i]` is bone i's parent (-1 for the root).
 std::optional<ArmChain> FindArmChain(std::span<std::string const> names, std::span<int const> parents, int side);
 
+// The leg on `side` as the same three joints (upper = hip, fore = knee, hand = ankle): the ankle by name (ankle, foot),
+// then its nearest ancestors named like a knee (knee, calf, shin, lowerleg) and a hip (hip, thigh, upperleg, upleg),
+// skipping helpers (LE1: LeftHip-Swivel, LFIK). Without such names, none: a leg is only posed when it's named as one.
+std::optional<ArmChain> FindLegChain(std::span<std::string const> names, std::span<int const> parents, int side);
+
 // Body axes in the pose's space (unit, orthogonal).
 struct BodyFrame {
     Vec3 forward{1.0, 0.0, 0.0};
@@ -49,6 +54,10 @@ struct ArmGoal {
     // Out of reach, both segments may lengthen by up to this factor so the hand still lands on the
     // target (Overlord's max_arm_stretch_ratio, 1.25). 1: no stretch. Clamped to [1, 1.25].
     double maxStretch = 1.0;
+    // The direction the middle joint bends toward (its part across the reach is used); else ElbowPoleDirection. A leg's
+    // knee (FindLegChain) takes one: forward and up for a seated leg.
+    bool hasPole = false;
+    Vec3 pole;
 };
 
 struct ArmResult {

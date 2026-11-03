@@ -364,10 +364,12 @@ Mako GetMako();
 //   enabled       1: entering the Mako runs the cockpit's script (the parts, the screens, the ride); leaving it clears them
 //   script        that script, from the ASI folder: `mevr cockpit` lines without those two words (tools/cockpit/place.py --script)
 //   followCamera  1: while riding, the game's chase camera (the centre screen) keeps its angle to the Mako as it turns
+//   seated        1: Shepard sits in the cockpit's chair under the player, the hands on the controls while held (research/47)
 struct Cockpit {
     bool enabled = true;
     std::string script = "cockpit\\cockpit.txt";
     bool followCamera = true;
+    bool seated = true;
 };
 Cockpit GetCockpit();
 

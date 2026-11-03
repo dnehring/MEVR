@@ -631,6 +631,14 @@ void CheckFields() {
     CheckField("Engine.Actor", "AllComponents", SDK_FIELD(AActor, AllComponents));  // the cockpit probe's `ride`
     CheckField("Engine.Actor", "bDeleteMe", SDK_BOOL(AActor, bDeleteMe));
     CheckField("Engine.Vehicle", "Driver", SDK_FIELD(AVehicle, Driver));  // `mevr vehicle why`
+    CheckField("Engine.Actor", "bHidden", SDK_BOOL(AActor, bHidden));
+    CheckField("Engine.PrimitiveComponent", "HiddenGame", SDK_BOOL(UPrimitiveComponent, HiddenGame));
+    CheckField("Engine.PrimitiveComponent", "bOnlyOwnerSee", SDK_BOOL(UPrimitiveComponent, bOnlyOwnerSee));  // the seated driver
+    CheckField("SFXGame.BioPawn", "m_oHeadMesh", SDK_FIELD(ABioPawn, m_oHeadMesh));
+    CheckField("SFXGame.BioPawn", "m_oHairMesh", SDK_FIELD(ABioPawn, m_oHairMesh));
+    CheckField("SFXGame.BioPawn", "m_oHeadGearMesh", SDK_FIELD(ABioPawn, m_oHeadGearMesh));
+    CheckField("SFXGame.BioPawn", "m_oVisorMesh", SDK_FIELD(ABioPawn, m_oVisorMesh));
+    CheckField("SFXGame.BioPawn", "m_oFacePlateMesh", SDK_FIELD(ABioPawn, m_oFacePlateMesh));
     CheckField("Engine.Pawn", "Health", SDK_FIELD(APawn, Health));
     CheckField("Engine.WorldInfo", "bPlayersOnly", SDK_BOOL(AWorldInfo, bPlayersOnly));
     CheckField("Engine.WorldInfo", "bPlayersOnlyPending", SDK_BOOL(AWorldInfo, bPlayersOnlyPending));
@@ -1066,6 +1074,8 @@ void CheckFunctions() {
         "Engine.Actor.SetPhysics",
         "Engine.Actor.SetCollision",
         "Engine.Actor.SetHidden",
+        "Engine.PrimitiveComponent.SetHidden",
+        "Engine.PrimitiveComponent.SetLightEnvironment",
         "Engine.Actor.SetBase",
         "Engine.Actor.SetHardAttach",
         "Engine.PrimitiveComponent.SetActorCollision",
@@ -1222,6 +1232,8 @@ void CheckParams() {
     PARAM(AActor_execSetCollision_Parms, "Engine.Actor.SetCollision", bNewBlockActors);
     PARAM(AActor_execSetCollision_Parms, "Engine.Actor.SetCollision", bNewIgnoreEncroachers);
     PARAM(AActor_execSetHidden_Parms, "Engine.Actor.SetHidden", bNewHidden);
+    PARAM(UPrimitiveComponent_execSetHidden_Parms, "Engine.PrimitiveComponent.SetHidden", NewHidden);
+    PARAM(UPrimitiveComponent_execSetLightEnvironment_Parms, "Engine.PrimitiveComponent.SetLightEnvironment", NewLightEnvironment);
     PARAM(AActor_execSetBase_Parms, "Engine.Actor.SetBase", NewBase);
     PARAM(AActor_execSetBase_Parms, "Engine.Actor.SetBase", NewFloor);
     PARAM(AActor_execSetHardAttach_Parms, "Engine.Actor.SetHardAttach", bNewHardAttach);
@@ -1334,6 +1346,8 @@ void CheckParams() {
     PARMS(AActor_execSetPhysics_Parms, "Engine.Actor.SetPhysics");
     PARMS(AActor_execSetCollision_Parms, "Engine.Actor.SetCollision");
     PARMS(AActor_execSetHidden_Parms, "Engine.Actor.SetHidden");
+    PARMS(UPrimitiveComponent_execSetHidden_Parms, "Engine.PrimitiveComponent.SetHidden");
+    PARMS(UPrimitiveComponent_execSetLightEnvironment_Parms, "Engine.PrimitiveComponent.SetLightEnvironment");
     PARMS(AActor_execSetBase_Parms, "Engine.Actor.SetBase");
     PARMS(AActor_execSetHardAttach_Parms, "Engine.Actor.SetHardAttach");
     PARMS(AActor_execSetOwner_Parms, "Engine.Actor.SetOwner");

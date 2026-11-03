@@ -53,7 +53,7 @@ Each line is checked in the game (fake headset with replays where it can be, the
 - The turret's view for the right screen, from the turret's bone along `SetDesiredTurretAimPoint`'s aim; the reticle on the traced point.
 - Seat on recenter (the host's floor counter), and the seat kept through a level's own camera changes.
 - The lever's and the stick's grab points on the models' grips in the cockpit's frame; the models moved by the controls' state.
-- Shepard seated: what the game does with the driver's pawn in the Mako [verify], then the pose and arm IK in the cockpit's frame.
+- Shepard seated: done 2026-11-03 (research/47 "Shepard in the seat"): the driver shown eyes-only on the H-point, legs and hands by IK.
 - The HUD pieces' places in the cockpit (research/41's crops) and the HUD panel moved off the screens while riding.
 - Measurements: the frame cost (item 10), comfort settings in the headset.
 

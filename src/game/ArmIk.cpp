@@ -13,6 +13,7 @@
 #include "core/vr/Controllers.hpp"
 #include "game/BodyCalibration.hpp"
 #include "game/BodyFollow.hpp"
+#include "game/CockpitProbe.hpp"
 #include "game/Fingers.hpp"
 #include "game/HandCalibration.hpp"
 #include "engine/BonePose.hpp"
@@ -76,6 +77,7 @@ struct SkeletonInfo {
     int boneCount = 0;
     engine::skeleton::RefSkeleton bones;
     std::array<std::optional<ik::ArmChain>, 2> arms;
+    std::array<std::optional<ik::ArmChain>, 2> legs;  // hip, knee, ankle (ik::FindLegChain): the Mako's seated driver
     int head = -1;
     // Per hand: the middle, index and pinky finger base bones (-1: not found), for the hand frame.
     std::array<std::array<int, 3>, 2> fingers{{{-1, -1, -1}, {-1, -1, -1}}};
@@ -267,6 +269,7 @@ SkeletonInfo const* Skeleton(ue3::Object* mesh) {
     info.bones = std::move(*bones);
     for (int side : {kLeft, kRight}) {
         info.arms[side] = ik::FindArmChain(info.bones.names, info.bones.parents, side);
+        info.legs[side] = ik::FindLegChain(info.bones.names, info.bones.parents, side);
     }
     for (int i = 0; i < count; ++i) {
         if (ik::IsHeadBone(info.bones.names[i])) {
@@ -292,9 +295,17 @@ SkeletonInfo const* Skeleton(ue3::Object* mesh) {
             }
         }
     }
-    log::Info("arm IK: skeleton {} ({} bones): left arm {}; right arm {}; head {}", ue3::runtime::FullName(player::SkeletalMesh(mesh)), count,
+    log::Info("arm IK: skeleton {} ({} bones): left arm {}; right arm {}; head {}; legs {} and {}", ue3::runtime::FullName(player::SkeletalMesh(mesh)), count,
         ChainText(info, info.arms[kLeft]), ChainText(info, info.arms[kRight]),
-        info.head >= 0 ? std::format("{}({})", info.bones.names[info.head], info.head) : "not found");
+        info.head >= 0 ? std::format("{}({})", info.bones.names[info.head], info.head) : "not found", ChainText(info, info.legs[kLeft]),
+        ChainText(info, info.legs[kRight]));
+    if (!info.legs[kLeft] || !info.legs[kRight]) {
+        std::string names;
+        for (std::string const& name : info.bones.names) {
+            names += names.empty() ? name : ", " + name;
+        }
+        log::Info("arm IK: no leg chain by name for the seated driver: the bones are {}", names);
+    }
     // The eyes: a bone named just "eye" and a side (Eye_Left), not eyeBlink, underEye or lids.
     for (int i = 0; i < count; ++i) {
         std::vector<std::string> const tokens = ik::NameTokens(info.bones.names[i]);
@@ -681,10 +692,141 @@ void LogAnchor(hand_targets::Targets const& targets) {
         targets.body.unitsPerMeter);
 }
 
+// The ankle above the seat layout's heel point (on the floor), in metres.
+constexpr double kAnkleAboveHeelM = 0.08;
+
+// The Mako's seated driver (research/47 "Shepard in the seat"): game/cockpit_probe shows the driver and puts its hips on the
+// chair; here the legs reach the heels with the knees toward the layout's knees, and the hands go where the controllers are,
+// on a held control's grip. The torso keeps the animation's.
+void DriveSeated(cockpit_probe::Seat const& seat) {
+    ue3::Object* const mesh = seat.mesh;
+    if (player::SkeletalMesh(mesh) == nullptr || engine::skeleton::PoseParent(mesh) != nullptr) {
+        return Stop("seated: the driver's mesh isn't usable");
+    }
+    SkeletonInfo const* const info = Skeleton(mesh);
+    if (info == nullptr) {
+        return Stop("seated: skeleton unreadable");
+    }
+    if (static_cast<int>(engine::skeleton::SpaceBases(mesh).size()) != info->boneCount) {
+        return Stop("seated: pose not computed yet");
+    }
+    if (gLayout.mesh != mesh || gLayout.asset != info->asset) {
+        gLayout = CheckLayout(mesh, *info);
+    }
+    if (!gLayout.passed) {
+        return Stop("seated: bone layout not verified (see the layout check lines)");
+    }
+    ik::Affine const componentToWorld = engine::skeleton::LocalToWorld(mesh);
+    auto const worldToComponent = ik::InverseAffine(componentToWorld);
+    auto const frame = worldToComponent ? BodyAxes(seat.driver, *worldToComponent) : std::nullopt;
+    auto const componentRotation = ik::RotationOf(componentToWorld);
+    if (!frame || !componentRotation) {
+        return Stop("seated: component transform unusable");
+    }
+    std::span<engine::skeleton::BoneAtom const> const pose = engine::skeleton::SpaceBases(mesh);
+    auto const toComponent = [&](engine::UnrealVector const& v) { return ik::TransformPoint(*worldToComponent, {v.x, v.y, v.z}); };
+    // The hips' midpoint as animated: the placement puts it on the H-point.
+    if (info->legs[kLeft] && info->legs[kRight]) {
+        ik::Vec3 const left = engine::skeleton::ToTransform(pose[static_cast<std::size_t>(info->legs[kLeft]->upper)]).translation;
+        ik::Vec3 const right = engine::skeleton::ToTransform(pose[static_cast<std::size_t>(info->legs[kRight]->upper)]).translation;
+        cockpit_probe::NoteSeatHips(mesh, (left + right) * 0.5);
+    }
+    engine::bone_pose::Request request;
+    request.mesh = mesh;
+    request.boneCount = info->boneCount;
+    request.parents = info->bones.parents;
+    request.body = *frame;
+    request.head = info->head;
+    request.keep = info->cameraHooks;
+    for (int bone : info->cameraHooks) {
+        request.keepKeys.push_back(info->bones.keys[bone]);
+    }
+    request.maxStretch = hand_calibration::ArmStretch();
+    std::string driven;
+    ik::Vec3 const up = frame->up;
+    for (int side : {kLeft, kRight}) {
+        auto const& chain = info->legs[side];
+        if (!chain) {
+            continue;
+        }
+        engine::bone_pose::Leg& leg = request.legs[side];
+        leg.enabled = true;
+        leg.chain = *chain;
+        leg.keys[0] = info->bones.keys[chain->upper];
+        leg.keys[1] = info->bones.keys[chain->fore];
+        leg.keys[2] = info->bones.keys[chain->hand];
+        double const ankleUnits = kAnkleAboveHeelM * engine::kUnitsPerMeter;
+        leg.ankle = toComponent(seat.heel[side]) + up * ankleUnits;
+        leg.knee = toComponent(seat.knee[side]);
+    }
+    if (request.legs[kLeft].enabled || request.legs[kRight].enabled) {
+        driven = "legs seated";
+    }
+    // The hands: the view's frame (the controllers where the player sees them), a held control's grip instead of the controller.
+    hand_targets::Targets const targets = hand_targets::Current(std::nullopt, true);
+    vr::controllers::State const controllers = vr::controllers::Latest();
+    gSource = targets.source;
+    if (targets.source == hand_targets::Source::Controllers) {
+        for (int side : {kLeft, kRight}) {
+            hand_targets::Hand const& hand = targets.hands[side];
+            auto const& chain = info->arms[side];
+            if (!hand.valid || !chain || !gLayout.arms[side]) {
+                continue;
+            }
+            engine::bone_pose::Arm& arm = request.arms[side];
+            arm.chain = *chain;
+            arm.keys[0] = info->bones.keys[chain->upper];
+            arm.keys[1] = info->bones.keys[chain->fore];
+            arm.keys[2] = info->bones.keys[chain->hand];
+            arm.target = engine::bone_pose::Target::Component;
+            engine::UnrealVector wrist = hand.position;
+            vr::controllers::Hand const& tracked = side == kLeft ? controllers.left : controllers.right;
+            if (seat.held[side] && tracked.gripValid) {
+                // The wrist where it sits behind the controller's grip, moved with the grip onto the control's.
+                engine::UnrealVector const grip = engine::ToWorld(targets.body, tracked.grip.position);
+                wrist = {seat.grip[side].x + wrist.x - grip.x, seat.grip[side].y + wrist.y - grip.y, seat.grip[side].z + wrist.z - grip.z};
+            }
+            arm.wrist = toComponent(wrist);
+            if (!gAnatomyTried[side]) {
+                gAnatomyTried[side] = true;
+                gAnatomy[side] = HandAnatomy(*info, pose, side, chain->hand);
+            }
+            if (hand.hasRotation && gAnatomy[side]) {
+                ik::Quat const grip = ik::Normalize(ik::Conjugate(*componentRotation) * hand.rotation);
+                arm.hasRotation = true;
+                arm.rotation = ik::HandFromGrip(grip, hand_calibration::Trim(side), *gAnatomy[side]);
+            }
+            driven += std::format("{}{} hand {}", driven.empty() ? "" : ", ", kSideNames[side], seat.held[side] ? "on its control" : "on its controller");
+        }
+        fingers::Skeleton fingerSkeleton;
+        fingerSkeleton.asset = info->asset;
+        fingerSkeleton.names = info->bones.names;
+        fingerSkeleton.parents = info->bones.parents;
+        fingerSkeleton.keys = info->bones.keys;
+        fingerSkeleton.hands = {info->arms[kLeft] ? info->arms[kLeft]->hand : -1, info->arms[kRight] ? info->arms[kRight]->hand : -1};
+        fingers::Inputs fingerInputs;
+        fingerInputs.firstPerson = true;
+        fingers::Fill(request, fingerSkeleton, pose, controllers, fingerInputs);
+    } else {
+        fingers::Stop("seated without controllers");
+    }
+    body_follow::Reset();
+    if (driven.empty()) {
+        return Stop("seated: no leg chains and no hand targets");
+    }
+    engine::bone_pose::Publish(std::move(request));
+    gStatus = "seated in the Mako: " + driven;
+}
+
 void Drive(double deltaSeconds) {
     hand_calibration::Refresh();
     if (!engine::bone_pose::Installed()) {
         return Stop("writeback hook not installed (see the log above)");
+    }
+    if (!OnFoot()) {
+        if (auto const seat = cockpit_probe::CurrentSeat()) {
+            return DriveSeated(*seat);
+        }
     }
     auto const body = PlayerBody();
     if (!body) {

@@ -864,3 +864,32 @@ its left half, the radar on its right half, 2 cm off it toward the seat.
 Measured: looking ahead the centre screen is clear (the crosshair's small remainder sits up in the windshield); turned down-left, the left
 display shows the Mako's silhouette and the radar. The quads are compositor layers without depth: the throttle model in front of the
 display is drawn under the radar.
+
+## Shepard in the seat (2026-11-03 11:43-11:50, fake headset, `BIOA_UNC20`; mod only)
+
+What the game does with the driver (`mevr vehicle why`, which since then moves the driver with `PlaceExitingDriver` only when asked,
+`why place`): in the Mako Shepard's pawn stays the vehicle's `Driver`, hidden (`bHidden` 1), based on the vehicle, `PHYS_None`, at the
+vehicle's origin, owned by it, its body mesh not hidden. Nothing of it reaches the eyes.
+
+The seat ([Cockpit] `seated`, default 1; the script's `seat hip ... knees ... heels ... grips ...` line, written by `place.py --script`
+from the manifest's `pilot.fromEyeMetres`, which reads right, up, forward; the mod takes right, forward, up):
+- `game/cockpit_probe` (`SeatTick` from `RideTick`): while riding, the driver is shown (`Actor.SetHidden` false), each of its primitives
+  `bOnlyOwnerSee` (owned by the vehicle, the eyes' view actor: in the eyes, out of both captures), the head's five meshes
+  (`BioPawn.m_oHeadMesh`, hair, head gear, visor, face plate) hidden (`PrimitiveComponent.SetHidden`; the eye is inside the head), and lit by
+  the vehicle's light environment (`PrimitiveComponent.SetLightEnvironment`): with its own, on, it drew black inside the hull. In each
+  camera update, after the parts, its Location and Rotation are written (the vehicle's rotation; the hips' midpoint as animated, in the
+  actor's axes, onto the H-point) and flushed. Leaving the Mako, a cutscene or the setting off undoes it as found; still the driver, it goes
+  back hidden at the vehicle's origin.
+- `game/arm_ik` (`DriveSeated`, when not on foot and the cockpit has a seat): a bone-pose request for the driver's mesh. The legs are the
+  arm solver's two-bone IK (`ik::FindLegChain`: LE1's `LeftHip > LeftKnee > LeftAnkle`, `RightHip > RightKnee > RightAnkle`), the ankle 8 cm
+  above the layout's heel, the knee bending toward the layout's knee (`ik::ArmGoal::pole`, new, unit-tested). The hands follow the
+  controllers in the view's frame (`hand_targets::Current(..., inView)`); a held control moves the wrist with the controller's grip onto
+  that control's grip (the lever's travelling with it). Fingers as on foot. The torso keeps the animation's; Camera and God are kept.
+
+Measured: from in front of the seat looking back (`make-drive-recording.py --head-at 0 0.25 0.6 --look 180 -35`) Shepard sits in the chair,
+thighs along the seat, knees bent, no head, the hands at the stick and the lever; from the side the right arm reaches down to the stick.
+With the synthetic hands grabbing at 1 s the status goes from `left hand on its controller, right hand on its controller` to `on its
+control`, every wrist 0.0 units from its target (the stick's grip at component (24, 40, 127), the hips at (3, 1, 99)). Exit
+(`mevr vehicle exit`): `out of the seat (no longer driving)`, Shepard on foot as before; entering again shows the seat again. Seen from the
+eye, looking down, the shoulders fill the lower view (the hips under the eye at the manifest's 0.69 m: Shepard's own hip-to-eye is
+about the same).

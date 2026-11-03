@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "core/ik/Rigid.hpp"
 #include "core/vr/HudPieces.hpp"
+#include "engine/XrToUnreal.hpp"
 
 #include <cstdint>
 #include <optional>
 #include <string>
+
+namespace mevr::ue3 {
+struct Object;
+}
 
 // An experiment, not a feature (research/47): can the mod, at run time and with nothing in the game's install changed, put
 // a static mesh the game has already loaded into the world, move it every tick with the player or the Mako, and show a
@@ -32,6 +38,20 @@ void FillHud(vr::hud_pieces::Pieces& pieces);
 // Each mod tick, late (the view anchor current). Also the cockpit by itself ([Cockpit]): in on entering the Mako, out on leaving.
 // `recenters`: the host's recenter count (core/vr/Floor), if known: a change while riding takes a new seat.
 void Tick(std::optional<std::uint32_t> recenters);
+// Shepard in the cockpit's seat (docs/mako-cockpit-goal.md item 7): while riding with [Cockpit] seated and a `seat` layout, the
+// driver is shown to the eyes and placed on the chair. Where game/arm_ik puts the legs and hands, in the world (this frame's
+// cockpit). Nullopt: not seated.
+struct Seat {
+    ue3::Object* driver = nullptr;
+    ue3::Object* mesh = nullptr;
+    engine::UnrealVector knee[2]{};  // 0 left, 1 right
+    engine::UnrealVector heel[2]{};
+    bool held[2]{};                  // the left hand holds the lever, the right the stick
+    engine::UnrealVector grip[2]{};  // where those grips are now
+};
+std::optional<Seat> CurrentSeat();
+// game/arm_ik: the hips' midpoint in the driver mesh's component space (as animated), which the placement puts on the H-point.
+void NoteSeatHips(ue3::Object const* mesh, ik::Vec3 const& hips);
 // Snapshot JSON ("cockpitProbe").
 std::string StatusJson();
 // Heartbeat line (while something is up).

@@ -369,6 +369,10 @@ switching frameworks.
   **In the Mako by itself** (`[Cockpit]`, research/47 "The cockpit by itself"): entering runs `ASI\cockpit\cockpit.txt` (`tools/cockpit/place.py
   --script`), leaving parks it. **`[Game] pauseUnfocused = 0`** (`game/FocusPause`) undoes ME1's freeze while the window has no focus
   (`bPlayersOnly`; it also refused the Mako's exit); the pad reaches the game only with focus, the cockpit's controls without.
+  **Shepard in the seat** (`[Cockpit] seated`, research/47 "Shepard in the seat"): the script's `seat` line; the driver (hidden by the game
+  at the vehicle's origin) is shown eyes-only (`bOnlyOwnerSee`, owned by the vehicle), its head's meshes hidden, lit by the vehicle's light
+  environment (its own drew it black), its hips put on the H-point each camera update; `arm_ik::DriveSeated` poses the legs (two-bone IK,
+  `ik::FindLegChain`, a knee pole) and the hands (controllers, a held control's grip).
 - LE1 life-size stereo ([research/30](research/30-metric-stereo.md), `MELEVR.ini sfr2Metric`, on in our deploy):
   each Stereo 2 pass renders from its eye's real place (`xrLocateViews`, at the view's units per metre: Halcyon's
   50 x lean gain, life-size at 100), no convergence shift, swap ignored (pass 0 = left). In gameplay with the HUD

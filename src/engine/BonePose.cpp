@@ -340,6 +340,7 @@ bool TakeRequest(Mesh const* self, Request& copy) {
         // assist and the calibrated stance's move of the gun never reached the pose (found 2026-10-31, research/43).
         copy.gunShift = gRequest.gunShift;
         copy.fingers = gRequest.fingers;
+        copy.legs = gRequest.legs;
         copy.keep.assign(gRequest.keep.begin(), gRequest.keep.end());
         copy.keepKeys.assign(gRequest.keepKeys.begin(), gRequest.keepKeys.end());
     }
@@ -376,6 +377,18 @@ void Write(Mesh* self, float deltaTime) {
         for (int i = 0; i < 3; ++i) {
             if (bones[i] < 0 || bones[i] >= count || skeleton::RefBoneKey(mesh, bones[i]) != arm.keys[i]) {
                 Reject("skeleton changed (arm bone names)");
+                return;
+            }
+        }
+    }
+    for (Leg const& leg : request.legs) {
+        if (!leg.enabled) {
+            continue;
+        }
+        int const bones[3] = {leg.chain.upper, leg.chain.fore, leg.chain.hand};
+        for (int i = 0; i < 3; ++i) {
+            if (bones[i] < 0 || bones[i] >= count || skeleton::RefBoneKey(mesh, bones[i]) != leg.keys[i]) {
+                Reject("skeleton changed (leg bone names)");
                 return;
             }
         }
@@ -532,6 +545,23 @@ void Write(Mesh* self, float deltaTime) {
         gSupport = supportSample;
         gSupportTimeMs = GetTickCount64();
         ReleaseSRWLockExclusive(&gSampleLock);
+    }
+    // The legs (the seated driver): the ankle to its place, the knee bending toward its point.
+    for (int side : {0, 1}) {
+        Leg const& leg = request.legs[side];
+        if (!leg.enabled) {
+            continue;
+        }
+        ik::ArmGoal goal;
+        goal.wrist = leg.ankle;
+        goal.hasPole = true;
+        goal.pole = leg.knee - pose[leg.chain.upper].translation;
+        ik::ArmResult const result = ik::PoseArm(pose, request.parents, leg.chain, side, body, goal);
+        if (!result.ok) {
+            Reject(result.error);
+            continue;
+        }
+        first = (std::min)(first, leg.chain.upper);
     }
     // The fingers, on the hands as solved (research/43): each joint turned in place, its children carried.
     bool anyFingers = false;

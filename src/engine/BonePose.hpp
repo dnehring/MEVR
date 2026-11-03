@@ -119,6 +119,16 @@ struct Fingers {
     double fullCurlDegrees = 70.0;
 };
 
+// A leg (ik::FindLegChain: hip, knee, ankle) posed by the same two-bone solve as an arm: the ankle to `ankle`, the knee
+// bending toward `knee` (component space). The Mako's seated driver (research/47 "Shepard in the seat").
+struct Leg {
+    bool enabled = false;
+    ik::ArmChain chain;
+    std::uint64_t keys[3] = {};  // RefSkeleton names of the hip, knee and ankle
+    ik::Vec3 ankle;
+    ik::Vec3 knee;
+};
+
 struct Request {
     ue3::Object const* mesh = nullptr;  // the SkeletalMeshComponent: compared by address only, never dereferenced
     int boneCount = 0;
@@ -135,6 +145,8 @@ struct Request {
     // two-hand line doesn't turn; a free left hand stays. Zero: none.
     ik::Vec3 gunShift;
     Fingers fingers;
+    std::array<Leg, 2> legs;  // 0 left, 1 right
+
     // Bones the writer never writes, whatever the torso and arms did: their SpaceBases entries
     // stay the animation's (LE1: the camera hook bones `Camera` and `God`, ik::FindCameraHookBones;
     // the camera reads its hook from SpaceBases, so moving one moves the view, research/18). With

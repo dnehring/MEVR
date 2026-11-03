@@ -65,6 +65,8 @@ struct Pose {
     float travelM = 0.055f;
     float steer = 0.0f;
     float lockDeg = 42.0f;
+    bool leverHeld = false;  // the left hand holds the lever (Shepard's left hand goes on it)
+    bool stickHeld = false;  // the right hand holds the stick
 };
 Pose CurrentPose();
 

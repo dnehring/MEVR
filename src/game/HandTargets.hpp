@@ -58,7 +58,8 @@ struct Targets {
 //   writes, which move it), so the hands go around Shepard, not the camera, and leaning moves the
 //   view, not the hands. Without a head bone, where the view puts the origin.
 // - The wrist sits 7 units behind the grip, along the grip's -Z (in Shepard's units).
-Targets Current(std::optional<engine::UnrealVector> const& animatedHead);
+// `inView`: the view's own frame whatever the head bone (the Mako's seated driver: the hands where the controllers are).
+Targets Current(std::optional<engine::UnrealVector> const& animatedHead, bool inView = false);
 
 // Set by the mod every tick: true while there's no headset to follow (our renderer: no VR session;
 // the host's: no headset session seen yet). Arm IK then holds the right hand in front of the chest.

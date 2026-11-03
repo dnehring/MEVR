@@ -29,7 +29,7 @@ double Distance(engine::UnrealVector const& a, engine::UnrealVector const& b) {
 
 } // namespace
 
-Targets Current(std::optional<engine::UnrealVector> const& animatedHead) {
+Targets Current(std::optional<engine::UnrealVector> const& animatedHead, bool inView) {
     Targets targets;
     if (gDesktopTest) {
         targets.source = Source::DesktopTest;
@@ -59,7 +59,7 @@ Targets Current(std::optional<engine::UnrealVector> const& animatedHead) {
     } else {
         gFirstPerson = false;
     }
-    if (gFirstPerson) {
+    if (inView || gFirstPerson) {
         // The view's own frame, scaled about the live head: the controllers exactly where the
         // player sees them.
         targets.anchor = Anchor::View;

@@ -65,6 +65,18 @@ bool IsUpperArm(Tokens const& tokens) {
     return !IsForearm(tokens) && (HasAny(tokens, {"upperarm", "shoulder", "arm", "humerus"}));
 }
 
+bool IsAnkle(Tokens const& tokens) {
+    return HasAny(tokens, {"ankle", "foot"});
+}
+
+bool IsKnee(Tokens const& tokens) {
+    return HasAny(tokens, {"knee", "calf", "shin", "lowerleg"}) || (Has(tokens, "leg") && Has(tokens, "lower"));
+}
+
+bool IsHip(Tokens const& tokens) {
+    return !IsKnee(tokens) && (HasAny(tokens, {"hip", "thigh", "upperleg", "upleg"}) || (Has(tokens, "leg") && Has(tokens, "upper")));
+}
+
 // The nearest ancestor of `bone` (at most `maxSteps` up) that `accept` takes, or -1.
 int NearestAncestor(std::span<int const> parents, int bone, int maxSteps, std::function<bool(int)> const& accept) {
     int current = parents[bone];
@@ -201,6 +213,38 @@ std::optional<ArmChain> FindArmChain(std::span<std::string const> names, std::sp
     return std::nullopt;
 }
 
+std::optional<ArmChain> FindLegChain(std::span<std::string const> names, std::span<int const> parents, int side) {
+    int const count = static_cast<int>(names.size());
+    if (count == 0 || parents.size() != names.size()) {
+        return std::nullopt;
+    }
+    for (int i = 0; i < count; ++i) {
+        if (parents[i] < -1 || parents[i] >= i) {
+            return std::nullopt;
+        }
+    }
+    std::vector<Tokens> tokens(names.size());
+    for (int i = 0; i < count; ++i) {
+        tokens[i] = NameTokens(names[i]);
+    }
+    constexpr int kMaxSteps = 4;
+    for (int ankle = 0; ankle < count; ++ankle) {
+        if (IsHelper(tokens[ankle]) || !IsAnkle(tokens[ankle]) || SideOf(tokens[ankle]) != side) {
+            continue;
+        }
+        int const knee = NearestAncestor(parents, ankle, kMaxSteps, [&](int i) {
+            return !IsHelper(tokens[i]) && IsKnee(tokens[i]) && SideOf(tokens[i]) == side;
+        });
+        int const hip = knee < 0 ? -1 : NearestAncestor(parents, knee, kMaxSteps, [&](int i) {
+            return !IsHelper(tokens[i]) && IsHip(tokens[i]) && SideOf(tokens[i]) == side;
+        });
+        if (knee >= 0 && hip >= 0) {
+            return ArmChain{hip, knee, ankle};
+        }
+    }
+    return std::nullopt;
+}
+
 Vec3 ElbowPoleDirection(Vec3 reach, BodyFrame const& body, int side) {
     Vec3 const direction = Normalize(reach, body.forward);
     Vec3 const outward = side == 1 ? body.right : body.right * -1.0;
@@ -265,7 +309,14 @@ ArmResult PoseArm(std::span<Transform> pose, std::span<int const> parents, ArmCh
     }
 
     Vec3 const reach = goal.wrist - shoulder;
-    Vec3 const pole = ElbowPoleDirection(Length(reach) > 1e-6 ? reach : body.forward, body, side);
+    Vec3 pole = ElbowPoleDirection(Length(reach) > 1e-6 ? reach : body.forward, body, side);
+    if (goal.hasPole && Finite(goal.pole) && Length(reach) > 1e-6) {
+        Vec3 const along = Normalize(reach);
+        Vec3 const across = goal.pole - along * Dot(goal.pole, along);
+        if (Length(across) > 1e-6) {
+            pole = Normalize(across);
+        }
+    }
     // Overlord's stretch: out of reach, both segments lengthen together, up to the limit.
     double const limit = std::isfinite(goal.maxStretch) ? std::clamp(goal.maxStretch, 1.0, kMaxArmStretch) : 1.0;
     double const stretch = std::clamp((Length(reach) + 1e-3) / (upperLength + lowerLength), 1.0, limit);

@@ -969,6 +969,22 @@ void TestArmChains() {
     CHECK(real && real->upper == 3 && real->fore == 4 && real->hand == 5);
     // A child listed before its parent is rejected (walks could loop).
     CHECK(!FindArmChain(plain, std::vector<int>{-1, 0, 4, 2, 3}, 1));
+
+    // Legs (the seated driver, research/47): LE1's names with the limb controls' swivel and IK bones beside them.
+    using mevr::ik::FindLegChain;
+    std::vector<std::string> const legs{"Root", "Pelvis", "LeftHip", "LeftHip-Swivel", "LeftKnee", "LeftAnkle", "LeftToe", "LFIK",
+        "RightHip", "RightKnee", "RightAnkle", "RFIK"};
+    std::vector<int> const legParents{-1, 0, 1, 1, 2, 4, 5, 0, 1, 8, 9, 0};
+    auto const leftLeg = FindLegChain(legs, legParents, 0);
+    CHECK(leftLeg && leftLeg->upper == 2 && leftLeg->fore == 4 && leftLeg->hand == 5);
+    auto const rightLeg = FindLegChain(legs, legParents, 1);
+    CHECK(rightLeg && rightLeg->upper == 8 && rightLeg->fore == 9 && rightLeg->hand == 10);
+    std::vector<std::string> const mixLegs{"Hips", "LeftUpLeg", "LeftLeg", "LeftFoot"};
+    CHECK(!FindLegChain(mixLegs, std::vector<int>{-1, 0, 1, 2}, 0));  // "LeftLeg" alone isn't a knee: no guessing
+    std::vector<std::string> const bipLegs{"Bip01", "Bip01 L Thigh", "Bip01 L Calf", "Bip01 L Foot"};
+    auto const bip = FindLegChain(bipLegs, std::vector<int>{-1, 0, 1, 2}, 0);
+    CHECK(bip && bip->upper == 1 && bip->fore == 2 && bip->hand == 3);
+    CHECK(!FindLegChain(bipLegs, std::vector<int>{-1, 0, 1, 2}, 1));
 }
 
 void TestArmPose() {
@@ -1080,6 +1096,19 @@ void TestArmPose() {
     CHECK(poleLeft.y < 0.0 && poleLeft.z < 0.0);
     Vec3 const overhead = ElbowPoleDirection({0, 0, 1}, body, 1);
     CHECK(std::abs(overhead.z) < 1e-9 && NearD(Length(overhead), 1.0));
+
+    // A given pole: the middle joint bends toward it (a seated leg's knee up and forward), the end still on the target.
+    pose = before;
+    goal = {};
+    goal.wrist = {35, 10, 130};
+    goal.hasPole = true;
+    goal.pole = {0, 0, 1};
+    CHECK(PoseArm(pose, parents, chain, 1, body, goal).ok);
+    CHECK(NearV(pose[5].translation, goal.wrist, 1e-6));
+    Vec3 const toward = Normalize(goal.wrist - shoulder);
+    Vec3 const bent = (pose[4].translation - shoulder) - toward * Dot(pose[4].translation - shoulder, toward);
+    Vec3 const upAcross = Normalize(goal.pole - toward * Dot(goal.pole, toward));
+    CHECK(Dot(Normalize(bent), upAcross) > 0.999);
 }
 
 // Out of reach, the arm stretches up to 1.25x (Overlord) so the hand lands on the target.

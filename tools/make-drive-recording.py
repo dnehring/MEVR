@@ -13,7 +13,9 @@ unfocused too): both hands go to the lever and the stick (their places for a hea
 1 s, the lever is pushed full forward by 2.5 s, the stick twisted 35 degrees one way from 4 s, the other from 8 s, back at 12 s.
 Play it once (no -Loop): a loop lets go of both at its end. --eye-height: the seated head's height in tracking space (default
 1.2; the controls are placed from the head when the Mako is entered, so use the head's height then: 0 on the fake headset).
---look: the head turned YAW degrees (+ right) and PITCH (+ up), e.g. to watch the controls' models (the hands don't turn)."""
+--look: the head turned YAW degrees (+ right) and PITCH (+ up), e.g. to watch the controls' models (the hands don't turn).
+--head-at R U F: the head moved R metres right, U up and F forward of the seat (the hands stay), e.g. `--head-at 0 0.25 0.55
+--look 180 -35` to look back at the seated Shepard (research/47 "Shepard in the seat")."""
 import math
 import struct
 import sys
@@ -59,7 +61,12 @@ def main():
     if "--look" in sys.argv:
         at = sys.argv.index("--look")
         look = (float(sys.argv[at + 1]), float(sys.argv[at + 2]))
-    taken = {i + 1 for i, a in enumerate(sys.argv) if a == "--eye-height"} | {i + k for i, a in enumerate(sys.argv) if a == "--look" for k in (1, 2)}
+    head_at = (0.0, 0.0, 0.0)
+    if "--head-at" in sys.argv:
+        at = sys.argv.index("--head-at")
+        head_at = tuple(float(v) for v in sys.argv[at + 1:at + 4])
+    taken = ({i + 1 for i, a in enumerate(sys.argv) if a == "--eye-height"} | {i + k for i, a in enumerate(sys.argv) if a == "--look" for k in (1, 2)} |
+             {i + k for i, a in enumerate(sys.argv) if a == "--head-at" for k in (1, 2, 3)})
     args = [a for i, a in enumerate(sys.argv) if i > 0 and not a.startswith("--") and i not in taken]
     out = args[0]
     seconds = float(args[1]) if len(args) > 1 else (16.0 if controls else 12.0)
@@ -69,7 +76,8 @@ def main():
     q = (0.0, 0.0, 0.0, 1.0)  # the hands: pointing ahead
     head = head_orientation(*look)
     right_axis = (math.cos(math.radians(look[0])), 0.0, math.sin(math.radians(look[0])))  # the head's right, laid flat
-    eyes = [(*head, side * ipd / 2 * right_axis[0], eye_h, side * ipd / 2 * right_axis[2]) for side in (-1, 1)]
+    eyes = [(*head, head_at[0] + side * ipd / 2 * right_axis[0], eye_h + head_at[1], -head_at[2] + side * ipd / 2 * right_axis[2])
+            for side in (-1, 1)]
     valid = (1 << 4) | (1 << 5)  # gripValid, aimValid
     frames = []
     n = int(seconds * hz)
