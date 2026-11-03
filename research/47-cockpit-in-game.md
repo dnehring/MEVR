@@ -826,3 +826,18 @@ drops pad input without focus is open **[verify]**; a player with the game in fr
   the eye sees the seat's armrest, the joystick model and the right screen with the turret's view and its reticle.
 - **Loading a save inside the Mako** (the drop's own autosave, through the launcher's Resume) put the player in the cockpit by itself,
   seated, both screens up.
+
+## The cockpit's frame cost (2026-11-03 11:12, fake headset, `BIOA_UNC20` at the landing, the Mako parked, a still replayed head)
+
+`tools/perf-probe.ps1 -Seconds 15`, the cockpit riding (parts, the chase and the aim captures at 30 a second) against parked
+(`[Cockpit] enabled = 0`: the game's chase view in the eyes), alternated twice:
+
+| | frame interval median (p90) | GPU median (p90) | render thread busy median |
+|---|---|---|---|
+| riding | 7.30 (14.13), 7.45 (15.34) ms | 5.76 (14.75) ms | 3.88 ms |
+| parked | 7.99 (16.06), 8.19 (16.41) ms | 7.67 (16.14) ms | 4.83 ms |
+
+**The cockpit costs nothing net: the frame is cheaper with it.** The cabin hides most of the planet from the eyes, which saves more than
+the two captures cost. The GPU sets the pace either way, with the median well inside the 11.1 ms budget (90 Hz). The p90 is over the
+budget in both, so it isn't the cockpit's. This level is light; item 10 of docs/mako-cockpit-goal.md wants a heavy Mako spot (a busier Mako
+level, enemies, the cannon), still to be measured.
