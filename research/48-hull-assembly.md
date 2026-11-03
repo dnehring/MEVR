@@ -417,6 +417,36 @@ Normandy's interface screens)
     down, not up.
   Tuning waits on that.
 
+## 14. Richer: the chair's material language and the concept's smaller parts
+
+The user, after round four (2026-11-02):
+- the level's grading is to be considered for every level (the cockpit stays in it);
+- the seats' materials look different from the interior and are much richer in detail;
+- the interior still looks very plain.
+
+- **The atlases were no source for detail.** The Tripo atlases are fragmented islands with their own shading baked in,
+  so tiling crops of them would bring island edges with them. The chair's atlas shows what "richer" means: warm grey
+  metal with chipped edges and rust specks, white armour with worn edges and stencil decals, orange and blue
+  indicator lights. The pane's and the console's atlases are cleaner and lean blue.
+- **Wear in the bake** (`hull_shapes.Worn`, on the shell's classes and on the console's and panes' own images before
+  the light), from vector maths, map range and textures only:
+  - a slightly warm balance (1, 0.98, 0.82);
+  - paint value varied at low frequency (±12%);
+  - convex edges chipped toward bare metal (0.3, 0.29, 0.27), where a 4 mm bevel's normal turns from the true one,
+    broken up by noise. The first noise scale (60) chipped half of every edge, in dashes like stitching; now it is 30,
+    thresholded to sparse patches;
+  - small rust specks;
+  - grime from the occlusion, as before.
+- **The concept's smaller parts** (`hull_assemble.Details`):
+  - a pipe on brackets along each side of the ceiling, by the caps' lip;
+  - louvred vents on the rear section's side walls, beside the door and on the spine's sides (`Grille`);
+  - a 4 x 3 keypad of orange keys on each desk shelf (`Keypad`; the shelf's top found on the console: `DeskShelf`);
+  - lit orange bars on the centre screen's bezel above and below it, on the bezel's face 9 mm in front of the screen
+    (`Bezel`, a ray).
+- **Shell:** 4,809 triangles. Build: all checks passed, 34.6 MB.
+- **Not done:** the chair and the controls still carry Tripo's own lighting, not the cockpit's lamps. Further
+  detail: decals and markings, panel lines on the large panels, the spine's lamp clusters.
+
 ## 5. Not done
 
 - **Not seen from the seat in the game:** the meshes load and draw textured (section 9), but nothing is placed around the

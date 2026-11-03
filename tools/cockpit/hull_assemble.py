@@ -39,7 +39,8 @@ from mathutils.bvhtree import BVHTree
 from mathutils.geometry import intersect_ray_tri
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from hull_shapes import GLOW, QUAD, Bake, Builder, Chamfered, Clip, Corners, Display, Newell, Plate, Png, Relight, ScreenGlow, Slab, Sweep, Visible  # noqa: E402
+from hull_shapes import (GLOW, QUAD, Bake, Builder, Chamfered, Clip, Corners, Display, Grille, Keypad, Newell, Pipe, Plate, Png,  # noqa: E402
+                         Relight, ScreenGlow, Slab, Sweep, Visible)
 
 TEMPLATE = "hull full -bad.glb"
 PANE = "side pane.glb"
@@ -509,6 +510,58 @@ def Lamps(b, wall, spine_end):
     return lights
 
 
+def Details(b, edge, desk, screen, bezel, spine_end):
+    """The lit concept's smaller parts: a pipe on brackets along each side of the ceiling, by the caps' lip; louvred vents
+    on the rear section's walls, beside the door and on the spine's sides; a keypad on each desk shelf (`desk`: the
+    right shelf's top, DeskShelf); lit bars on the centre screen's bezel above and below it (`screen`: its corners;
+    `bezel`: how far the bezel's face stands in front of the screen, Bezel)."""
+    X, Y, Z = Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))
+    hw, dh, _ = DOOR
+    for mirror in (False, True):
+        b.mirror = mirror
+        x = 0.274
+        front = FrontAt(edge, x + 0.01) - 0.02
+        Pipe(b, [Vector((x, YB - 0.01, ZR - 0.011)), Vector((x, front, ZR - 0.011)), Vector((x, front + 0.03, ZR + 0.02))], 0.008, Z)
+        for y in np.arange(YB + 0.06, front - 0.02, 0.12):
+            Sweep(b, [Vector((x, y - 0.006, ZR - 0.011)), Vector((x, y + 0.006, ZR - 0.011))], Z, Chamfered(-0.012, 0.012, -0.012, 0.012, 0.003), "LIGHT")
+        Grille(b, (XWALL, -0.52, 0.12), Y, Z, -X, 0.035, 0.03, 6)
+        Grille(b, (0.25, YB, 0.36), X, Z, Y, 0.045, 0.035, 7)
+        Grille(b, (0.085, spine_end - 0.22, 0.501), Y, Z, X, 0.03, 0.013, 3, proud=0.003)
+        x0, y0, x1, y1, z = desk
+        Keypad(b, ((x0 + x1) / 2 - 0.01, y0 + 0.035, z), X, Y, Z, 4, 3, 0.011, 0.004)
+    b.mirror = False
+    bl, br, tr, tl = [Vector(c) for c in screen["corners"]]
+    n = Vector(screen["normal"])
+    for z, edge_ in ((tl.z + 0.0037, tl), (bl.z - 0.0037, bl)):
+        centre = Vector((0.0, edge_.y, z)) + n * (bezel + 0.0012)
+        Slab(b, [centre + X * a * 0.05 + Z * bb * 0.0022 for a, bb in ((-1, -1), (1, -1), (1, 1), (-1, 1))], n, 0.002, "LAMP_ORANGE", "DARK")
+
+
+def Bezel(console, screen):
+    """How far the centre screen's bezel stands in front of the screen just above its top edge (a ray toward it)."""
+    bl, br, tr, tl = [Vector(c) for c in screen["corners"]]
+    n = Vector(screen["normal"])
+    at = (tl + tr) / 2 + Vector((0, 0, 0.004))
+    bm = bmesh.new()
+    bm.from_mesh(console.data)
+    hit = Visible(BVHTree.FromBMesh(bm), at + n * 0.2, -n)
+    bm.free()
+    return float((hit[0] - at).dot(n))
+
+
+def DeskShelf(console):
+    """The right desk shelf's flat top in front of the centre screen: (x0, y0, x1, y1, z), its largest upward patch with
+    0.05 < x < 0.2 and 0.08 < z < 0.2."""
+    bm = bmesh.new()
+    bm.from_mesh(console.data)
+    up = [f for f in bm.faces if f.normal.z > 0.97 and 0.05 < f.calc_center_median().x < 0.2 and 0.08 < f.calc_center_median().z < 0.2]
+    z = max(set(round(f.calc_center_median().z, 3) for f in up), key=lambda h: sum(f.calc_area() for f in up if round(f.calc_center_median().z, 3) == h))
+    top = [f for f in up if abs(f.calc_center_median().z - z) < 0.003]
+    co = np.array([v.co[:] for f in top for v in f.verts])
+    bm.free()
+    return float(co[:, 0].min()), float(co[:, 1].min()), float(co[:, 0].max()), float(co[:, 1].max()), float(co[:, 2].max())
+
+
 def LightRig(lights):
     """The lamps' area lights and the world's fill, for a bake; returns the objects to remove after."""
     sc = bpy.context.scene
@@ -562,7 +615,7 @@ def Area(polygon):
     return 0.5 * abs(sum(p[0] * q[1] - q[0] * p[1] for p, q in zip(polygon, polygon[1:] + polygon[:1])))
 
 
-def Shell(pillar, opening, pedestals=(), pane_face=None):
+def Shell(pillar, opening, pedestals=(), pane_face=None, console=None):
     """The template's shell, clean: from the measured constants above and the panes' own frame, symmetric about x = 0.
 
     The frame line (ZH, the panes' top rail) runs round the cockpit: the panes' rails, then the shell's own rail with the
@@ -682,6 +735,8 @@ def Shell(pillar, opening, pedestals=(), pane_face=None):
     windows += [right, left]
     RearWall(b)
     lights = Lamps(b, pane_face, FrontAt(edge, 0.085) - 1.414 * 0.088) if pane_face else []
+    if console:
+        Details(b, edge, console["desk"], console["screen"], console["bezel"], FrontAt(edge, 0.085) - 1.414 * 0.088)
     # the controls' pedestals: chamfered columns, their edges light
     for x, y, hx, hy, top in pedestals:
         Sweep(b, [Vector((x, y, -SEAM)), Vector((x, y, top))], Vector((0, 1, 0)), Chamfered(-hx, hx, -hy, hy, min(hx, hy) * 0.3),
@@ -927,7 +982,9 @@ def Run(folder):
     # the panes' windows are open (their back skin is culled from inside): where, to cut the shell's walls behind them
     right, rim, area = PaneOpening(pieces["side-right"])
     wall = {"strip": PaneFace(pieces["side-right"], -0.14, 0.16) - 0.001, "floor": PaneFace(pieces["side-right"], -0.12, 0.012)}
-    shell, windows, lights, dims = Shell(PillarEdge(pieces["side-right"]), (right, rim), pedestals, wall)
+    shell, windows, lights, dims = Shell(PillarEdge(pieces["side-right"]), (right, rim), pedestals, wall,
+                                         {"desk": DeskShelf(pieces["console"]), "screen": screens["centre"],
+                                          "bezel": Bezel(pieces["console"], screens["centre"])})
     # the light baked in: the shell's own texture (its classes' trims), then the console's and the panes' textures, lit
     # by the lamps and the screens' glow (the parts and the furniture cast shadows and bounce light)
     template.hide_render = True

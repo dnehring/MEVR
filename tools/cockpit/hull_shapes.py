@@ -23,7 +23,10 @@ CLASSES = ("PLATE", "DARK", "LIGHT", "RED", "SEAM", "LAMP", "LAMP_ORANGE", "LAMP
 GLOW = {"LAMP": (1.0, 0.8, 0.55), "LAMP_ORANGE": (1.0, 0.45, 0.12), "LAMP_BLUE": (0.62, 0.8, 1.0)}
 # The side pane's atlas, which the shell's trims come from and the parts share, leans blue (mean sRGB 64, 64, 75); the
 # lit concept's metal is a neutral to warm grey. Albedo is multiplied by this before the light.
-BALANCE = (1.0, 1.0, 0.86)
+BALANCE = (1.0, 0.98, 0.82)
+# The chair's painted metal (its Tripo texture): chipped edges, rust specks, uneven paint. The shell and the re-baked
+# parts get the same wear in the bake, so the room and the furniture read as one material (the user, 2026-11-02).
+WEAR = {"edge": 0.004, "chip": (0.3, 0.29, 0.27), "rust": (0.12, 0.06, 0.03), "vary": 0.25}
 QUAD = ((0, 0), (1, 0), (1, 1), (0, 1))
 
 
@@ -123,6 +126,39 @@ def Sweep(b, path, up, profile, classes, closed=False):
         b.Face(rings[0], classes[0], toward=-frames[0][0])
         b.Face(rings[-1], classes[0], toward=frames[-1][0])
     return rings
+
+
+def Grille(b, centre, u, v, n, half_u, half_v, slats, proud=0.006):
+    """A louvred vent standing on a surface facing n: a dark housing `proud` deep, its well dark, and `slats` bars
+    across it (along u) with dark gaps between them."""
+    c, u, v, n = Vector(centre), Vector(u), Vector(v), Vector(n)
+    rim = min(half_u, half_v) * 0.18
+    outer = [c + u * a * half_u + v * bb * half_v + n * proud for a, bb in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+    Inset(b, outer, n, rim, proud * 0.7, surface="DARK", ring="DARK", face="SEAM")
+    for p, q in zip(outer, outer[1:] + outer[:1]):  # the housing's sides, down to the surface
+        b.Face([p, q, q - n * proud, p - n * proud], "DARK", toward=(p + q) / 2 - c - n * proud, uvs=QUAD)
+    step = 2 * (half_v - rim) / slats
+    for k in range(slats):
+        at = c + v * (-half_v + rim + step * (k + 0.5)) + n * (proud * 0.5)
+        Sweep(b, [at - u * (half_u - rim), at + u * (half_u - rim)], n,
+              Chamfered(-step * 0.33, step * 0.33, -proud * 0.22, proud * 0.22, min(step * 0.1, 0.0008)), "DARK")
+
+
+def Pipe(b, path, radius, up, cls="DARK"):
+    """A pipe along a polyline: an octagon swept with mitred bends, its ends capped."""
+    ring = [(radius * math.cos(math.pi * k / 4), radius * math.sin(math.pi * k / 4)) for k in range(8)]
+    Sweep(b, path, up, ring + ring[:1], cls)
+
+
+def Keypad(b, centre, u, v, n, cols, rows, key, gap, cls="LAMP_ORANGE"):
+    """A keypad on a surface facing n: a dark plate 3 mm proud with `cols` x `rows` glowing keys on it."""
+    c, u, v, n = Vector(centre), Vector(u), Vector(v), Vector(n)
+    hu, hv = (cols * key + (cols + 1) * gap) / 2, (rows * key + (rows + 1) * gap) / 2
+    Slab(b, [c + u * a * hu + v * bb * hv + n * 0.003 for a, bb in ((-1, -1), (1, -1), (1, 1), (-1, 1))], n, 0.004, "DARK", "DARK")
+    for i in range(cols):
+        for j in range(rows):
+            k = c + u * (-hu + gap + key / 2 + i * (key + gap)) + v * (-hv + gap + key / 2 + j * (key + gap)) + n * 0.0035
+            b.Face([k + u * a * key / 2 + v * bb * key / 2 for a, bb in ((-1, -1), (1, -1), (1, 1), (-1, 1))], cls, toward=n)
 
 
 def Offset(points, toward, d):
@@ -315,7 +351,7 @@ def Bake(o, atlas, trims, tints, path, occluders, points, size=4096, distance=0.
             nt.links.new(bsdf.outputs["Emission"], out.inputs["Surface"])
         else:
             bsdf = nt.nodes.new("ShaderNodeBsdfDiffuse")
-            balance = Balanced(nt, tex.outputs["Color"])
+            balance = Worn(nt, tex.outputs["Color"])
             nt.links.new(uv.outputs["UV"], tex.inputs["Vector"])
             nt.links.new(balance, tint.inputs["Color"])
             nt.links.new(tint.outputs["Color"], bsdf.inputs["Color"])
@@ -456,8 +492,9 @@ def Relight(o, path, size=4096, samples=256, exposure=1.0, ambient=0.0, keep=("S
         added.append((nt, node))
         if m is main:
             bsdf = nt.nodes.new("ShaderNodeBsdfDiffuse")
-            nt.links.new(Balanced(nt, source.outputs["Color"]), bsdf.inputs["Color"])
-            added.append((nt, bsdf.inputs["Color"].links[0].from_node))
+            worn = Worn(nt, source.outputs["Color"])
+            nt.links.new(worn, bsdf.inputs["Color"])
+            added += [(nt, n) for n in nt.nodes if n.get("worn")]
             nt.links.new(bsdf.outputs["BSDF"], next(n for n in nt.nodes if n.type == "OUTPUT_MATERIAL").inputs["Surface"])
             added.append((nt, bsdf))
         nt.nodes.active = node
@@ -489,13 +526,71 @@ def Relight(o, path, size=4096, samples=256, exposure=1.0, ambient=0.0, keep=("S
             "texelsCovered": round(float(covered.mean()), 3), "seconds": round(time.time() - start, 1)}
 
 
-def Balanced(nt, colour):
-    """`colour` (a socket) times BALANCE, as a new node's output."""
-    node = nt.nodes.new("ShaderNodeVectorMath")
-    node.operation = "MULTIPLY"
-    node.inputs[1].default_value = BALANCE
-    nt.links.new(colour, node.inputs[0])
-    return node.outputs["Vector"]
+def Worn(nt, colour):
+    """`colour` (a socket) as the chair's painted metal reads: times BALANCE; its value varied at low frequency
+    (WEAR "vary"); its convex edges chipped toward bare metal (where a bevel's normal, `edge` wide, turns from the
+    true one, broken up by noise); small rust specks. Built from vector maths, map range and textures only. The new
+    nodes are tagged "worn". Returns the output socket."""
+    made = []
+
+    def Node(kind, **inputs):
+        node = nt.nodes.new(kind)
+        node["worn"] = True
+        made.append(node)
+        for k, v in inputs.items():
+            node.inputs[k].default_value = v
+        return node
+
+    def Vec(op, a, b=None, scale=None):
+        node = Node("ShaderNodeVectorMath")
+        node.operation = op
+        nt.links.new(a, node.inputs[0])
+        if b is not None:
+            if isinstance(b, tuple):
+                node.inputs[1].default_value = b
+            else:
+                nt.links.new(b, node.inputs[1])
+        if scale is not None:
+            nt.links.new(scale, node.inputs["Scale"])
+        return node.outputs["Vector"] if op != "DOT_PRODUCT" else node.outputs["Value"]
+
+    def Range(value, lo, hi, to_lo=0.0, to_hi=1.0):
+        node = Node("ShaderNodeMapRange", **{"From Min": lo, "From Max": hi, "To Min": to_lo, "To Max": to_hi})
+        node.clamp = True
+        nt.links.new(value, node.inputs["Value"])
+        return node.outputs["Result"]
+
+    def Mix(a, b, factor):  # a + (b - a) * factor
+        return Vec("ADD", a, Vec("SCALE", Vec("SUBTRACT", b, a), scale=factor))
+
+    def Times(a, b):
+        node = Node("ShaderNodeMath")
+        node.operation = "MULTIPLY"
+        nt.links.new(a, node.inputs[0])
+        nt.links.new(b, node.inputs[1])
+        return node.outputs["Value"]
+
+    where = Node("ShaderNodeTexCoord").outputs["Object"]
+
+    def Noise(scale, detail):
+        node = Node("ShaderNodeTexNoise", Scale=scale, Detail=detail)
+        nt.links.new(where, node.inputs["Vector"])
+        return node.outputs["Fac"]
+
+    base = Vec("MULTIPLY", colour, BALANCE)
+    base = Vec("SCALE", base, scale=Range(Noise(6.0, 3.0), 0.3, 0.7, 1 - WEAR["vary"] / 2, 1 + WEAR["vary"] / 2))
+    bevel = Node("ShaderNodeBevel", Radius=WEAR["edge"])
+    edge = Range(Vec("DOT_PRODUCT", bevel.outputs["Normal"], Node("ShaderNodeNewGeometry").outputs["Normal"]), 0.995, 0.93)
+    chips = Times(edge, Range(Noise(30.0, 10.0), 0.56, 0.64))
+    chip = Node("ShaderNodeRGB")
+    chip.outputs["Color"].default_value = WEAR["chip"] + (1.0,)
+    worn = Mix(base, chip.outputs["Color"], chips)
+    voronoi = Node("ShaderNodeTexVoronoi", Scale=140.0)
+    nt.links.new(where, voronoi.inputs["Vector"])
+    specks = Times(Range(voronoi.outputs["Distance"], 0.06, 0.0), Range(Noise(9.0, 4.0), 0.55, 0.65))
+    rust = Node("ShaderNodeRGB")
+    rust.outputs["Color"].default_value = WEAR["rust"] + (1.0,)
+    return Mix(worn, rust.outputs["Color"], specks)
 
 
 def ScreenGlow(materials, strength):
