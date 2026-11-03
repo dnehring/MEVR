@@ -17,7 +17,7 @@ import numpy as np
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
-CLASSES = ("PLATE", "DARK", "LIGHT", "RED", "SEAM", "LAMP", "LAMP_ORANGE", "LAMP_BLUE")
+CLASSES = ("PLATE", "DARK", "LIGHT", "RED", "SEAM", "LAMP", "LAMP_ORANGE", "LAMP_BLUE", "METAL")
 # The lamps' classes glow in their colour (linear) instead of taking light: warm white panels, orange strips, blue-white
 # floor lights, as the lit concept's.
 GLOW = {"LAMP": (1.0, 0.8, 0.55), "LAMP_ORANGE": (1.0, 0.45, 0.12), "LAMP_BLUE": (0.62, 0.8, 1.0)}
@@ -162,9 +162,9 @@ def Grille(b, centre, u, v, n, half_u, half_v, slats, proud=0.006):
               Chamfered(-step * 0.33, step * 0.33, -proud * 0.22, proud * 0.22, min(step * 0.1, 0.0008)), "DARK")
 
 
-def Pipe(b, path, radius, up, cls="DARK"):
-    """A pipe along a polyline: an octagon swept with mitred bends, its ends capped."""
-    ring = [(radius * math.cos(math.pi * k / 4), radius * math.sin(math.pi * k / 4)) for k in range(8)]
+def Pipe(b, path, radius, up, cls="DARK", sides=8):
+    """A pipe along a polyline: a polygon of `sides` swept with mitred bends, its ends capped."""
+    ring = [(radius * math.cos(2 * math.pi * k / sides), radius * math.sin(2 * math.pi * k / sides)) for k in range(sides)]
     Sweep(b, path, up, ring + ring[:1], cls)
 
 

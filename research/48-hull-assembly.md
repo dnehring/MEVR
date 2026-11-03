@@ -524,6 +524,77 @@ The user, after round four (2026-11-02):
   A 3-segment, 4 mm bevel on every hard edge of the shell took it from 5,600 to 34,000 triangles and was hard to tell apart
   in lit renders. The additive look comes from flat bases with separate pieces stacked on them, not from sharp edges.
 
+## 16. Toward the concept, reviewed in the live Blender (the user: "do your best to match the concept")
+
+The user's critique of the pillar work ("all of these repairs ... are not considering the entire structure as a whole"),
+and their direction: work through the Higgsfield bridge and plan the design as one structure that matches the concept.
+
+- **The live Blender.** The Higgsfield bridge drives the user's own Blender session (`bl_execute` runs Python in it).
+  `tools/cockpit/hull_live.py` builds `hull_assemble`'s geometry there in 1.5 s (no bake) into `LIVE_Hull`, beside the
+  concept's two cameras. It renders overlays with the concept, EEVEE views lit by the build's own lamp list, and the
+  pillar zone's blocked angles. The script stays the build of record. The bridge first failed to authenticate: a
+  Blender from 2026-10-31 still held its port with a stale secret; it was closed with the user's leave.
+- **The concept's camera, two ways.** By eye against the room (walls, portal, floor): (0, -0.52, 0.25), 13 mm. Fitted to
+  the console's centre screen (Gauss-Newton on its four corners; Tripo made the console from the concept, so it is the
+  one object both share): (0, -0.292, 0.191), 13 mm, level, 1.2 px rms. They disagree. The concept's console is about
+  1.38 times larger against its room than ours, so the concept is not one consistent space:
+  - through the room camera, the concept's windshield reaches the ceiling and ours stopped at the frame line;
+  - through the console camera, our windshield's side frames sit on the concept's dark posts, and its top was already at
+    the concept's;
+  - the user chose the taller front ("do your best to match the concept"), which also gives the pilot more view.
+- **The front's top steps up to the ceiling** (`ShieldTop`):
+  - the windshield's side edges carried on to ZR: top corners at (±0.355, 0.224, 0.553). They lie on the front side
+    windows' plane too (its B and C are on the same edge line), so each front side window stays one plane;
+  - the frame line (the panes' cap profile) now ends at each A-pillar's top;
+  - a corner plate spans from there over the front side window: from the cap's end at the pillar's top (the rail's room
+    edge and the caps' lip on the ceiling) to the windshield's top corner. A lamp sits on it, where the concept has its
+    angled ceiling lamps;
+  - the ceiling runs forward to the windshield's top edge;
+  - the windshield's frame is dark with a light chamfer, the concept's slim posts; the side windows' frames stay light.
+- **The ceiling, as the concept's.** The louvred slats are gone:
+  - the spine's lower tier hangs 60 mm, not 88. At 88 it came within 19 cm of the pilot's eye and filled the top of the
+    view; at 60 it clears it by 29 cm;
+  - its recess floor is in bolted panels 0.15 long: each swept length maps the atlas's bolted plate once;
+  - it ends square 3 cm short of the windshield's frame, over a drop panel whose rear face slopes 32 degrees toward the
+    pilot, with a lit strip and two orange indicators: the concept's lit spine front;
+  - from the seat only ceiling faces turned down or toward the pilot show, and the eye sits inside the spine's width, so
+    its sides never do. The spine's three lamps a side moved from its side faces to its underside;
+  - conduits: three 19 mm pipes (12-sided) either side at x 0.148 to 0.2, mid-grey (a new class, METAL), on dark straps
+    every 0.15. They end in flanges at the rear wall and the portal and rise into the ceiling short of the windshield.
+    The old single pipe ran through the portal's beam;
+  - lamps: the corner plates' (1.2 W), and wedge housings with their sloped face to the middle, over the cabin
+    (0.8 W, y -0.27 to -0.13) and the rear section (0.8 W).
+- **Slimmer A-pillars** (the user: "They would obscure a lot in our model"). Measured from the eye with rays every
+  quarter degree, back faces culled:
+  - before: at eye level the pillar zone blocked 43.75 to 66.5 degrees right of ahead (22.75): beam, web and the pane's own
+    frame;
+  - the beam is 40 mm wide, not 65 (12 cm). Its knee and foot sit 25 mm further back, so the front side window grows by the
+    difference; the top joint stays;
+  - the pillar zone's wall (x 0.39, from the template's layout) stood outside the new glass and blocked the view through
+    the front side window's lower rear part: it now stops at the sill. Cutting the step at the pillar's top too let
+    rays through the panes' windows out sideways (the leak probe), and no line of sight through the front side window
+    reaches it, so it stays;
+  - after: blocked 47 to 66.5 degrees (19.5); the pane's own frame accounts for the last 10;
+  - a quarter window behind the beam, in place of the web, opened only a 1 degree slit at eye level (its frame filled the
+    rest) and was dropped. The web stays, as the concept's dark panels behind its pillars;
+  - checked against the console with `BVHTree.overlap`: nothing in the pillar's region crosses it.
+- **Smaller changes:**
+  - the controls' pedestals are 0.22 of their base either side, not 0.32;
+  - the red is darker (tint 0.55, from 1.0). The concept's stripe is about (115, 7, 13) beside (158, 138, 147) on the
+    pillar's light face; the game showed ours at (219, 14, 15). Baked and drawn unlit it is now (115, 3, 4).
+- **Result:**
+  - shell 7,168 triangles (5,837);
+  - from the seat 5.8% of rays leave, all through the windows (4.5%: the windows are bigger);
+  - the leak probe (19 eyes) finds only the one ray at the rear wall's top corner from section 15. Its first run found
+    two real leaks: the cap, now ending at the pillar's top, was an open strip there (rays from near the console went up
+    through it: it has an end face now), and the step cut above;
+  - after decimating, the joints are as in section 15;
+  - package 36.3 MB, all checks passed;
+  - not yet seen in the game.
+- **Not matched, the next lever (the user's call):** around the same console, the concept's room is smaller. Through
+  the console-fitted camera its side walls close in at the console's ends and its A-pillars stand on them; ours stand
+  well outside the frame. Matching it means a larger console in our room (about 1.38 times), or a narrower room.
+
 ## 5. Not done
 
 - **Not seen from the seat in the game:** the meshes load and draw textured (section 9), but nothing is placed around the

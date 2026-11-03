@@ -208,6 +208,21 @@ so the new shell follows it. The parts (console, side pane) are placed in it, an
   general surfaces yet left their pillar and window 0.12 behind the template's. Sections at the feature showed it.
 - **Judge a version against the concept from its viewpoint** (`previews/concept.png`) and against the template from the seat.
   The first version, a box with a raised ceiling and a flat front, was rejected on sight.
+- **Fit the concept's camera to a part the concept and the hull share** (the console: Tripo made it from the concept), by
+  its screens' corners. An AI concept is not one consistent space: a camera matched by eye to the room (walls, portal)
+  and one fitted to the console disagreed by 0.23 in depth and 0.06 in height, and a feature read through each gave
+  opposite answers (the windshield's top above the ceiling through one, at the frame line through the other). Read the
+  front, near the console, through the fitted camera; say which reading a change rests on; judge the seat's view last.
+- **Review in the user's live Blender** (the Higgsfield bridge, the user's choice on 2026-11-02): `tools/cockpit/hull_live.py`
+  runs `hull_assemble`'s geometry inside the session in 1.5 s (no bake) beside the concept cameras, renders overlays with
+  the concept and EEVEE views lit by the build's own lamp list. The script stays the build of record.
+- **From the seat only ceiling faces turned down or toward the pilot show**, and a spine wider than the eye's offset never
+  shows its sides: lamps go on undersides and on a face sloped toward the seat (the spine's drop panel). A ceiling member
+  hanging within 20 cm of the eye fills the top of the view (the spine hung to 19 cm above it: cut to 29).
+- **Measure what a pillar blocks** at eye level: rays from the eye in azimuth steps, back faces culled, the blocked bands
+  before and after. When a window plane moves, walls built for the old one can stand outside the new glass and block
+  the view through it (one did); cut only what a line of sight through the glass reaches, then probe for leaks
+  (research/48 section 16).
 
 - **Fit against the template's interior, never the whole mesh.** The interior is the faces hit by rays from points
   inside it. Use only the part's faces toward the room, and hold the scale to a plausible range. Against the whole

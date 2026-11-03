@@ -9,9 +9,10 @@
 The template (`hull full -bad.glb`: the whole cockpit as one Tripo mesh) is close to the intended shape but messy:
 holes for windows, stray struts, lumps. It is never shipped. The shell follows its measured envelope (the constants
 below, from rays cast inside it) and the panes' own frame: a floor of chamfered plates, the roof on the panes' caps
-with a central spine and slats, a frame line at the panes' top rail that runs round the front (the A-pillars' tops,
-the side windows' tops, the windshield's header) with the panes' cap profile above it, open windows in chamfered light
-frames with mitred corners, a portal arch at the open rear. Its faces are classed (plate, dark, light, red, seam) with
+with a central spine, conduits and lamps as the lit concept's, a frame line at the panes' top rail along the side walls
+to the A-pillars' tops, where the front's top steps up to the ceiling (the windshield's top edge is the ceiling's front
+edge, a corner plate over each front side window), open windows in chamfered frames with mitred corners, a portal arch
+at the open rear. Its faces are classed (plate, dark, light, red, seam, metal) with
 UVs into the side pane's atlas, and hull_shapes.Bake gives it a texture of its own from them, with occlusion and a soft
 light baked in (the game draws it unlit).
 
@@ -95,19 +96,21 @@ DOOR_FRAME_CLASSES = ["DARK", "SEAM", "LIGHT", "LIGHT", "LIGHT", "DARK"]
 # the front side window's rear edge, in the window's plane (through the windshield's side edge and the window's top
 # rear corner, WindowPlane): a beam from the cap down to a knee, then flatter to its foot on the sill, where a shoulder
 # on the console's outer end carries it to the floor. KNEE: the front edge's knee (y, z); FOOT_Y: its foot on the sill.
-KNEE, FOOT_Y = (0.11, 0.42), 0.265
+# The knee and the foot sit 25 mm further back than the first pillar's (the user, 2026-11-02: the pillars "would
+# obscure a lot"), the beam narrower, so the front side window grows by the difference.
+KNEE, FOOT_Y = (0.0906, 0.4034), 0.2242
 # The beam's profile: (side, toward the room) from its front edge on the window's plane, the side negative toward its
-# rear: 65 mm wide, chamfered, a 20 mm channel 3 mm deep along its face. The channel is red in two lengths above the
-# knee, as the concept's stripes, and a plate below it. It is 40 mm deep, 24 of them behind the plane, so its room face
-# stands 16 mm into the room: near the sill the plane passes 2 to 3 cm outside the console's right screen housing, and a
-# beam standing 36 mm in sat on the housing's rim (the user, 2026-11-02: "the base of the pillar looks to collide with
-# the control desk").
-PILLAR = [(0.0, -0.024), (0.0, 0.007), (-0.009, 0.016), (-0.02, 0.016), (-0.022, 0.013), (-0.042, 0.013), (-0.044, 0.016),
-          (-0.056, 0.016), (-0.065, 0.007), (-0.065, -0.024), (0.0, -0.024)]
+# rear: 40 mm wide (it was 65), chamfered, a 12 mm channel 3 mm deep along its face. The channel is red in two lengths
+# above the knee, as the concept's stripes, and a plate below it. It is 37 mm deep, 24 of them behind the plane, so its
+# room face stands 13 mm into the room: near the sill the plane passes 2 to 3 cm outside the console's right screen
+# housing, and a beam standing 36 mm in sat on the housing's rim (the user, 2026-11-02: "the base of the pillar looks to
+# collide with the control desk").
+PILLAR = [(0.0, -0.024), (0.0, 0.006), (-0.006, 0.013), (-0.012, 0.013), (-0.014, 0.01), (-0.026, 0.01), (-0.028, 0.013),
+          (-0.034, 0.013), (-0.04, 0.006), (-0.04, -0.024), (0.0, -0.024)]
 PILLAR_CLASSES = ["DARK", "LIGHT", "LIGHT", "SEAM", "RED", "SEAM", "LIGHT", "LIGHT", "DARK", "DARK"]
 CHANNEL = 4  # the channel's floor among the profile's edges
 # The bands round the beam where it meets the cap, at the knee and on the shoulder: 6 mm proud of it all round.
-COLLAR = Chamfered(-0.071, 0.006, -0.024, 0.022, 0.004)
+COLLAR = Chamfered(-0.046, 0.006, -0.024, 0.019, 0.004)
 COLLAR_CLASSES = ["DARK", "DARK", "LIGHT", "LIGHT", "LIGHT", "DARK", "DARK", "DARK"]
 # The web behind the beam: its face this far behind the window's plane (the beam stands 34 mm proud of it).
 WEB = -0.018
@@ -124,20 +127,30 @@ PANE_CUT, PANE_CONSOLE = 0.024, 0.346
 # The old foot's rear end, behind the shoulder: from this y to the shoulder, inboard of this x (the side console's
 # inner face, which stays).
 FOOT_CUT = (0.07, 0.357)
-# The ceiling's spine and slats, as profiles (side, down from ZR negative): the template's lowered centre and ribs,
-# raised with the roof. The spine's upper tier, and its lower tier with a recess underneath; each slat a louvre whose
-# face slopes toward the cockpit's middle, a light edge along its foot (x, depth for each).
+# The ceiling, as the lit concept's (the user, 2026-11-02: "do your best to match the concept"): a spine down the middle,
+# conduits either side of it, lamps in the corners. The spine's profiles (side, down from ZR negative): its upper tier,
+# and its lower tier with a recess underneath. The spine and the conduits end SPINE_CLEAR behind the windshield's top
+# edge, clear of its frame; the spine's front carries a drop panel (DROP: its length, how much deeper than the spine,
+# the length of its sloped rear face), a lit face toward the pilot: from the seat only faces turned down or back show,
+# and the eye sits inside the spine's width, so its sides never do.
+# The lower tier hangs 60 mm (it hung 88: 19 cm above the pilot's eye, and it filled the top of the view), its recess
+# floor in bolted panels SPINE_PANEL long (the concept's).
 SPINE_UPPER = Chamfered(-0.12, 0.12, -0.028, 0.004, 0.006)
-SPINE = [(0.085, -0.028), (-0.085, -0.028), (-0.085, -0.076), (-0.073, -0.088), (-0.05, -0.088), (-0.045, -0.082),
-         (0.045, -0.082), (0.05, -0.088), (0.073, -0.088), (0.085, -0.076), (0.085, -0.028)]
-SPINE_CLASSES = ["DARK", "PLATE", "LIGHT", "DARK", "SEAM", "SEAM", "SEAM", "DARK", "LIGHT", "PLATE"]
-SLATS = ((0.14, 0.030), (0.175, 0.026), (0.21, 0.022), (0.245, 0.018))
-SLAT_CLASSES = ["DARK", "DARK", "LIGHT", "DARK", "DARK"]
-
-
-def Louvre(depth):
-    """A slat's profile (side toward the middle, up): a vertical outer face, a light foot, a face sloping up inward."""
-    return [(0.016, 0.004), (-0.016, 0.004), (-0.016, -depth), (-0.006, -depth), (0.016, -0.004), (0.016, 0.004)]
+SPINE_DEPTH = 0.06
+SPINE = [(0.085, -0.028), (-0.085, -0.028), (-0.085, -0.048), (-0.073, -0.06), (-0.05, -0.06), (-0.045, -0.054),
+         (0.045, -0.054), (0.05, -0.06), (0.073, -0.06), (0.085, -0.048), (0.085, -0.028)]
+SPINE_CLASSES = ["DARK", "DARK", "LIGHT", "DARK", "SEAM", "PLATE", "SEAM", "DARK", "LIGHT", "DARK"]
+SPINE_PANEL = 0.15
+SPINE_CLEAR = 0.03
+DROP = (0.1, 0.014, 0.035)
+# Three pipes either side of the spine (x of each, their radius), hung under the ceiling on straps STRAP apart.
+CONDUITS, CONDUIT_R, STRAP = (0.148, 0.174, 0.2), 0.0095, 0.15
+# The ceiling lamps' housings over the cabin: wedges under the ceiling between the conduits and the caps' lip, their
+# sloped face (and lamp) turned to the room's middle: (inner x on the ceiling, outer x, drop at the outer face).
+FIXTURE = (0.222, 0.283, 0.034)
+# The windshield's frame: as WINDOW, but its face dark with a light chamfer along the glass, the concept's slim posts
+# between the windshield and the front side windows.
+SHIELD_CLASSES = ["DARK", "SEAM", "SEAM", "DARK", "LIGHT", "DARK", "DARK", "DARK"]
 
 
 # Rectangles (u0, v0, u1, v1) of the side pane's 4096 x 4096 atlas, by surface class, and each class's tint in the bake.
@@ -145,14 +158,15 @@ PLATE = (2075 / 4096, 2952 / 4096, 2392 / 4096, 3460 / 4096)  # a plate with fou
 LIGHT = (0.71875, 0.15625, 0.7265625, 0.1875)
 RED = (0.7109375, 0.296875, 0.71875, 0.3359375)
 DARK = (0.0, 0.0078125, 0.0234375, 0.4296875)
-TRIMS = {"PLATE": PLATE, "DARK": DARK, "LIGHT": LIGHT, "RED": RED, "SEAM": DARK, "LAMP": LIGHT, "LAMP_ORANGE": LIGHT, "LAMP_BLUE": LIGHT}
+TRIMS = {"PLATE": PLATE, "DARK": DARK, "LIGHT": LIGHT, "RED": RED, "SEAM": DARK, "LAMP": LIGHT, "LAMP_ORANGE": LIGHT, "LAMP_BLUE": LIGHT,
+         "METAL": LIGHT}
 # The lit concept's lamps (mako-interior-plain-front-2.png), each a glowing panel in the shell and an area light for
 # the bake, by kind: its class and power (W, in hull units). The world adds a dim warm fill.
-LAMP_POWER = {"ceiling": 1.4, "rearCeiling": 0.8, "wall": 0.35, "floor": 0.15, "door": 0.4, "foot": 0.05, "spine": 0.0}
+LAMP_POWER = {"ceiling": 1.2, "midCeiling": 0.8, "rearCeiling": 0.8, "wall": 0.35, "floor": 0.15, "door": 0.4, "foot": 0.05, "spine": 0.0}
 FILL = ((0.05, 0.044, 0.04), 0.6)  # the world's colour and strength: what the room's dark corners keep
 SCREEN_GLOW = 5.0  # the console's screens' emission while baking: their orange on the desk and the frames
 AMBIENT = 0.32  # what every baked surface keeps without a lamp facing it (times its albedo): the concept's dark ceiling still reads
-TINTS = {"PLATE": 1.3, "DARK": 1.5, "LIGHT": 2.2, "RED": 1.0, "SEAM": 0.6}
+TINTS = {"PLATE": 1.3, "DARK": 1.5, "LIGHT": 2.2, "RED": 0.55, "SEAM": 0.6, "METAL": 1.1}  # METAL: the conduits, mid grey
 SLAB = 0.02  # the shell's thickness
 SEAM = 0.012  # how deep the floor's seams go: the base under the plates, where the walls start
 # The scale and the furniture (proposed 2026-11-02, the user to confirm the scale): 3 m per hull unit makes the cabin 2.5 m
@@ -168,6 +182,9 @@ FURNITURE = (  # name, game_ready.py's files, metres per model unit, offset from
     ("joystick", ("joystick-base", "joystick-grip"), 0.29, (0.58, 0.25, 0.54), -90.0),
 )
 EYE_FROM_CHAIR = (0.0, -0.13, 1.21)  # metres: Codex's ANCHOR_PilotEye
+# A control's pedestal: a column under its base, this share of the base's width and depth either side of its middle (the
+# concept has none; slim, so the console reads as the concept's).
+PEDESTAL = 0.22
 # the pilot's eye: the previews and the enclosure rays look from it
 EYE = tuple(round(c + e / METRES_PER_UNIT, 4) for c, e in zip(CHAIR_AT, EYE_FROM_CHAIR))
 VIEW = ((0.0, -0.52, 0.25), 13.0)  # the concept image's viewpoint (eye, lens mm), matched by eye
@@ -266,6 +283,15 @@ def WindowPlane(pillar):
     n = (C - B).cross(D - C).normalized()
     n = -n if n.x > 0 else n
     return B, C, D, n, lambda y, z: B.x - (n.y * (y - B.y) + n.z * (z - B.z)) / n.x
+
+
+def ShieldTop():
+    """The right top corner of the windshield, on the ceiling (the user, 2026-11-02: the front's top rises to the
+    ceiling as the concept's, the frame line stepping up at the A-pillars): its side edge, on the front chamfer and
+    leaning back as the template's, carried up to ZR. It lies on the front side window's plane too (WindowPlane's B and
+    C are on the same edge)."""
+    yt = YF - (ZR - ZL) * (YF - YT) / (ZC - ZL)
+    return Vector((XP - (yt - YC) * (XP - XF) / (YF - YC), yt, ZR))
 
 
 def CutPillar(pane, plane, mirrored=False):
@@ -383,15 +409,17 @@ def Foot(b, plane, foot, down):
         Pipe(b, [q, q + Z * 0.0025], 0.003, Vector((1, 0, 0)), "LIGHT")
 
 
-def Pillar(b, plane):
+def Pillar(b, plane, top):
     """The right A-pillar (b's mirror makes the left): the beam along its front edge from the cap through the knee to
     the sill, a collar where it meets the cap, a band round the knee, and its foot cut level on a base plate (Foot); the
     web behind it, parallel to the window's plane from the pane's cut to the beam, standing on the pane's side console
     and on the shoulder; the shoulder, from the floor to the sill under the foot, on the console's outer end;
     the window's frame along its sill and top (the beam frames its rear edge, the windshield's frame its front).
     Returns the window's opening, a convex polygon in its plane: the windshield's corner on the sill, the foot, the
-    knee, the top, the windshield's corner on the frame line."""
-    B, C, D, n, X = plane
+    knee, the pillar's top, the windshield's top corner on the ceiling (`top`, ShieldTop): its top edge rises from
+    the pillar's top along the corner plate over it (Shell)."""
+    B, _, D, n, X = plane
+    C = top
     At = lambda y, z: Vector((X(y, z), y, z))
     knee, foot = At(*KNEE), At(FOOT_Y, ZL)
     up, down = (D - knee).normalized(), (foot - knee).normalized()
@@ -406,13 +434,14 @@ def Pillar(b, plane):
     Foot(b, plane, foot, down)
     # the web, WEB behind the window's plane and 12 mm in under the beam, split into convex panels by the knee and where
     # the old foot was cut (FOOT_CUT): behind that it stands on the pane's side console, in front of it it comes down to
-    # the sill behind the side console's inner face and onto the shoulder
+    # the sill behind the side console's inner face and onto the shoulder. (A quarter window there instead opened a 1
+    # degree slit at eye level: its frame filled the rest, and the pane's own frame behind it blocks 11 degrees.)
     turned = Turned(plane, path)
     _, rings = Rings(path[::-1] if turned else path, n, [(min(s for s, _ in PILLAR) + 0.012, 0.0)])
     line = [r[0].yz for r in (rings[::-1] if turned else rings)]
-    top, bend, low = line[1], line[4], line[5]
+    head, bend, low = line[1], line[4], line[5]
     rear, y0 = FOOT_CUT[0], PANE_CUT - 0.004
-    for rect, (a, c) in (([(y0, bend[1]), (1.0, bend[1]), (1.0, ZH + 0.004), (y0, ZH + 0.004)], (top, bend)),
+    for rect, (a, c) in (([(y0, bend[1]), (1.0, bend[1]), (1.0, ZH + 0.004), (y0, ZH + 0.004)], (head, bend)),
                          ([(y0, PANE_CONSOLE), (rear, PANE_CONSOLE), (rear, bend[1]), (y0, bend[1])], (bend, low)),
                          ([(rear, ZL - FOOT_PLATE), (1.0, ZL - FOOT_PLATE), (1.0, bend[1]), (rear, bend[1])], (bend, low))):
         panel = Keep(rect, a, c, (y0, ZL))
@@ -499,7 +528,10 @@ def Screens(console, folder):
                  and all(lo[i] <= f.calc_center_median().dot(a) <= hi[i] for i, a in enumerate((u, v)))]
         u0, u1 = min(c.co.dot(u) for f in faces for c in f.verts), max(c.co.dot(u) for f in faces for c in f.verts)
         v0, v1 = min(c.co.dot(v) for f in faces for c in f.verts), max(c.co.dot(v) for f in faces for c in f.verts)
-        if material not in [m.name for m in me.materials]:
+        # found by a tag, not by name: in a session that already has a material of that name (hull_live.py), Blender
+        # adds a suffix to the new one's
+        mine = [k for k, m in enumerate(me.materials) if m.get("screen") == material]
+        if not mine:
             aspect = (u1 - u0) / (v1 - v0)
             image = Png(Display(*SCREEN_PIXELS, aspect, bars=("top", "bottom") if material == "Screen" else ("bottom",)),
                         material, os.path.join(folder, f"screen-{material.lower()}.png"))
@@ -509,8 +541,10 @@ def Screens(console, folder):
             tex = m.node_tree.nodes.new("ShaderNodeTexImage")
             tex.image = image
             m.node_tree.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+            m["screen"] = material
             me.materials.append(m)
-        index = [m.name for m in me.materials].index(material)
+            mine = [len(me.materials) - 1]
+        index = mine[0]
         for f in faces:
             f.material_index = index
             for l in f.loops:
@@ -553,8 +587,8 @@ def Furnish(assets):
             if len(files) > 1 and i == 0:
                 co = np.array([(o.matrix_world @ v.co)[:] for v in o.data.vertices])
                 lo, hi = co.min(0), co.max(0)
-                pedestals.append((float(lo[0] + hi[0]) / 2, float(lo[1] + hi[1]) / 2, float(hi[0] - lo[0]) * 0.32,
-                                  float(hi[1] - lo[1]) * 0.32, float(lo[2]) + 0.003))
+                pedestals.append((float(lo[0] + hi[0]) / 2, float(lo[1] + hi[1]) / 2, float(hi[0] - lo[0]) * PEDESTAL,
+                                  float(hi[1] - lo[1]) * PEDESTAL, float(lo[2]) + 0.003))
     return objects, placed, pedestals
 
 
@@ -699,51 +733,114 @@ def Lamp(b, lights, kind, cls, centre, u, v, n, half_u, half_v, proud=0.003):
         lights.append((flip(c + n * (proud + 0.002)), flip(n), flip(u), (2 * half_u, 2 * half_v), GLOW[cls], LAMP_POWER[kind]))
 
 
-def Lamps(b, wall, spine_end):
-    """The lit concept's lamps, mirrored in x: a fixture on the ceiling over the louvres, a smaller one over the rear
-    section, a strip on each pane's lower wall, an orange strip on the floor along the wall's foot, small lamps along
-    the spine's sides, blue-white lights at the portal's feet, a strip over the door. `wall`: the panes' face (x) at
-    the strip's height and at the floor. Returns the area lights."""
+def Wedge(b, y0, y1):
+    """A ceiling lamp's housing (FIXTURE) from y0 to y1: a wedge under the ceiling, its sloped face turned to the room's
+    middle. Returns the sloped face's centre, its axis up the slope and its normal."""
+    x0, x1, drop = FIXTURE
+    Y = Vector((0, 1, 0))
+    section = [Vector((x0, 0, ZR)), Vector((x1, 0, ZR)), Vector((x1, 0, ZR - drop))]
+    a, c = [p + Y * y0 for p in section], [p + Y * y1 for p in section]
+    slope = (section[0] - section[2]).normalized()
+    n = Y.cross(slope)
+    n = n if n.z < 0 else -n
+    b.Face([a[2], c[2], c[0], a[0]], "DARK", toward=n, uvs=QUAD)
+    b.Face([a[1], c[1], c[2], a[2]], "DARK", toward=Vector((1, 0, 0)), uvs=QUAD)
+    b.Face(a, "DARK", toward=-Y)
+    b.Face(c, "DARK", toward=Y)
+    return (section[0] + section[2]) / 2 + Y * (y0 + y1) / 2, slope, n
+
+
+def Drop(b, front):
+    """The drop panel under the spine's front end (DROP), across its lower tier: from inside the spine down past its
+    underside, its rear face sloping toward the pilot. Returns that face's part below the spine: its centre, the axis
+    up it and its normal."""
+    length, deeper, face = DROP
+    y0, top, low = front - length, ZR - SPINE_DEPTH + 0.008, ZR - SPINE_DEPTH - deeper
+    section = [(y0, top), (y0 + face, low), (front, low), (front, top)]
+    Sweep(b, [Vector((-0.085, 0, 0)), Vector((0.085, 0, 0))], Vector((0, 0, 1)), section + section[:1], ["DARK", "PLATE", "DARK", "DARK"])
+    mid = (ZR - SPINE_DEPTH + low) / 2
+    up = Vector((0, -face, top - low)).normalized()
+    return Vector((0, y0 + face * (top - mid) / (top - low), mid)), up, Vector((0, -(top - low), -face)).normalized()
+
+
+def Lamps(b, wall, corner, drop):
+    """The lit concept's lamps, mirrored in x: a lamp on each corner plate over the front side windows (`corner`: the
+    right plate's corners, Shell), lamps in wedge housings over the cabin and the rear section, a strip on each pane's
+    lower wall, an orange strip on the floor along the wall's foot, a strip and two indicators on the drop panel at the
+    spine's front (`drop`: its face, Drop) and lamps along the spine's underside behind it, blue-white lights at the
+    portal's feet, a strip over the door. `wall`: the panes' face (x) at the strip's height and at the floor. Returns
+    the area lights."""
     lights = []
     X, Y, Z = Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))
     hw, dh, _ = DOOR
+    D, E, top = corner
+    n = (E - D).cross(top - D).normalized()
+    n = n if n.z < 0 else -n
+    along = (top - E).normalized()
     for mirror in (False, True):
         b.mirror = mirror
-        # ceiling fixtures: a housing under the louvres, its face glowing
-        for kind, y0, y1 in (("ceiling", -0.06, 0.08), ("rearCeiling", -0.58, -0.47)):
-            box = [Vector((x, y, ZR - 0.042)) for x, y in ((0.165, y0), (0.265, y0), (0.265, y1), (0.165, y1))]
-            Slab(b, box, -Z, 0.04, "DARK", "DARK")
-            Lamp(b, lights, kind, "LAMP", ((0.215, (y0 + y1) / 2, ZR - 0.042)), X, Y, -Z, 0.042, (y1 - y0) / 2 - 0.008, proud=0.001)
+        # the corner plate's lamp, along its top edge, a third of the way down to its lower edge
+        centre = (D + E + top) / 3 + (E + top - 2 * D).normalized() * 0.01
+        Lamp(b, lights, "ceiling", "LAMP", centre, along, n.cross(along), n, 0.052, 0.016)
+        for kind, y0, y1 in (("midCeiling", -0.27, -0.13), ("rearCeiling", -0.58, -0.47)):
+            c, slope, m = Wedge(b, y0, y1)
+            Lamp(b, lights, kind, "LAMP", c, Y, slope, m, (y1 - y0) / 2 - 0.012, 0.02, proud=0.001)
         # the pane's lower wall and the floor along it
         Lamp(b, lights, "wall", "LAMP", (wall["strip"], -0.14, 0.16), Y, Z, -X, 0.055, 0.016)
         Lamp(b, lights, "floor", "LAMP_ORANGE", (wall["floor"] - 0.016, -0.12, 0.0), Y, X, Z, 0.17, 0.005, proud=0.0015)
-        # small lamps along the spine's lower tier
-        for y in (spine_end - 0.13, spine_end - 0.09, spine_end - 0.05):
-            Lamp(b, lights, "spine", "LAMP", (0.085, y, 0.501), Y, Z, X, 0.012, 0.011, proud=0.0015)
+        # lamps along the spine's underside behind the drop panel, on its lower flats
+        rear = drop[0].y - 0.03
+        for y in (rear - 0.1, rear - 0.06, rear - 0.02):
+            Lamp(b, lights, "spine", "LAMP", (0.0615, y, ZR - SPINE_DEPTH), Y, X, -Z, 0.012, 0.0075, proud=0.0015)
         # the portal's feet
         Lamp(b, lights, "foot", "LAMP_BLUE", (XWALL - 0.027, YR + 0.055, 0.028), X, Z, Y, 0.014, 0.012, proud=0.001)
     b.mirror = False
+    # the drop panel's face toward the pilot: a strip, an indicator either side
+    mid, up, m = drop
+    Lamp(b, lights, "spine", "LAMP", mid, X, up, m, 0.036, 0.0045, proud=0.001)
+    for x in (-0.056, 0.056):
+        Lamp(b, lights, "spine", "LAMP_ORANGE", mid + X * x, X, up, m, 0.006, 0.0045, proud=0.001)
     Lamp(b, lights, "door", "LAMP", (0.0, YB, dh + 0.045), X, Z, Y, 0.08, 0.008)
     return lights
 
 
+def Conduits(b, y0, y1, rise):
+    """The pipes either side of the spine (CONDUITS) from y0 to y1 under the ceiling, with straps across them STRAP
+    apart: a bar under the pipes hung from the ceiling at both ends. `rise`: the run's front end bends up into the
+    ceiling; else the pipes end in flanges against a beam there."""
+    Z = Vector((0, 0, 1))
+    r, z = CONDUIT_R, ZR - 0.003 - CONDUIT_R
+    x0, x1 = CONDUITS[0] - r - 0.008, CONDUITS[-1] + r + 0.008
+    for x in CONDUITS:
+        path = [Vector((x, y0, z)), Vector((x, y1, z))]
+        if rise:
+            path = [path[0], Vector((x, y1 - 0.03, z)), Vector((x, y1, ZR + 0.02))]
+        Pipe(b, path, r, Z, "METAL", sides=12)
+        for y, end in ((y0, True), (y1, not rise)):
+            if end:
+                Pipe(b, [Vector((x, y, z)), Vector((x, y + (0.004 if y == y0 else -0.004), z))], r + 0.004, Z, "LIGHT", sides=12)
+    for y in np.arange(y0 + STRAP / 2, y1 - (0.06 if rise else 0.03), STRAP):
+        bar = Chamfered(-0.006, 0.006, z - r - 0.006 - ZR, z - r - ZR, 0.0015)
+        Sweep(b, [Vector((x0, y, ZR)), Vector((x1, y, ZR))], Z, bar, "DARK")
+        for x in (x0 + 0.003, x1 - 0.003):
+            Sweep(b, [Vector((x, y, z - r - 0.003)), Vector((x, y, ZR))], Vector((0, 1, 0)), Chamfered(-0.003, 0.003, -0.006, 0.006, 0.001), "DARK")
+
+
 def Details(b, edge, desk, screen, bezel, spine_end):
-    """The lit concept's smaller parts: a pipe on brackets along each side of the ceiling, by the caps' lip; louvred vents
-    on the rear section's walls, beside the door and on the spine's sides; a keypad on each desk shelf (`desk`: the
-    right shelf's top, DeskShelf); lit bars on the centre screen's bezel above and below it (`screen`: its corners;
-    `bezel`: how far the bezel's face stands in front of the screen, Bezel)."""
+    """The lit concept's smaller parts: the conduits either side of the spine (Conduits), behind the portal from the rear
+    wall and in front of it up into the ceiling short of the windshield; louvred vents on the rear section's walls,
+    beside the door and on the spine's sides; a keypad on each desk shelf (`desk`: the right shelf's top, DeskShelf); lit
+    bars on the centre screen's bezel above and below it (`screen`: its corners; `bezel`: how far the bezel's face stands
+    in front of the screen, Bezel)."""
     X, Y, Z = Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))
     hw, dh, _ = DOOR
     for mirror in (False, True):
         b.mirror = mirror
-        x = 0.274
-        front = FrontAt(edge, x + 0.01) - 0.02
-        Pipe(b, [Vector((x, YB - 0.01, ZR - 0.011)), Vector((x, front, ZR - 0.011)), Vector((x, front + 0.03, ZR + 0.02))], 0.008, Z)
-        for y in np.arange(YB + 0.06, front - 0.02, 0.12):
-            Sweep(b, [Vector((x, y - 0.006, ZR - 0.011)), Vector((x, y + 0.006, ZR - 0.011))], Z, Chamfered(-0.012, 0.012, -0.012, 0.012, 0.003), "LIGHT")
+        Conduits(b, YB, YR, False)
+        Conduits(b, YR + 0.055, FrontAt(edge, CONDUITS[-1]) - SPINE_CLEAR, True)
         Grille(b, (XWALL, -0.52, 0.12), Y, Z, -X, 0.035, 0.03, 6)
         Grille(b, (0.25, YB, 0.36), X, Z, Y, 0.045, 0.035, 7)
-        Grille(b, (0.085, spine_end - 0.22, 0.501), Y, Z, X, 0.03, 0.013, 3, proud=0.003)
+        Grille(b, (0.085, spine_end - 0.3, ZR - 0.038), Y, Z, X, 0.03, 0.008, 3, proud=0.003)
         x0, y0, x1, y1, z = desk
         Keypad(b, ((x0 + x1) / 2 - 0.01, y0 + 0.035, z), X, Y, Z, 4, 3, 0.011, 0.004)
     b.mirror = False
@@ -835,11 +932,14 @@ def Area(polygon):
 def Shell(pillar, opening, pedestals=(), pane_face=None, console=None):
     """The template's shell, clean: from the measured constants above and the panes' own frame, symmetric about x = 0.
 
-    The frame line (ZH, the panes' top rail) runs round the cockpit: the panes' rails, then the shell's own rail with the
-    panes' cap profile above it, along both front side windows' tops and the windshield's header, and back from the
-    panes to the open rear, where a light portal arch stands. The roof rests on the caps (ZR), so nothing of it comes
-    down across a window or the panes' frames: the spine and the slats end where the cap profile meets the ceiling.
-    Each A-pillar frames its side window's rear; light frames with mitred corners line the rest of every opening. The
+    The frame line (ZH, the panes' top rail) runs along the side walls: the panes' rails, then the shell's own rail with
+    the panes' cap profile above it, forward to the A-pillars' tops and back from the panes to the open rear, where a
+    light portal arch stands. At each A-pillar's top the front's top edge steps up to the ceiling (ZR, the user's choice
+    on 2026-11-02, as the lit concept's): the front side window's top edge rises to the windshield's top corner under a
+    corner plate that spans to the cap's end and the ceiling, and the windshield's top edge is the ceiling's front edge.
+    The roof rests on the caps, so nothing of it comes down across a window or the panes' frames: the spine and the
+    conduits end short of the windshield's frame. Each A-pillar frames its side window's rear; frames with mitred
+    corners line the rest of every opening, the windshield's dark (the concept's slim posts). The
     side walls behind the panes are cut where the panes' windows are (`opening`: the right one and how far out its frame
     reaches) and lined in light. Only those walls go through the boolean: the shell's pieces overlap, and the exact
     solver drops faces it finds inside another piece. `pedestals` (from Furnish) stand from the floor's base up under
@@ -850,9 +950,7 @@ def Shell(pillar, opening, pedestals=(), pane_face=None, console=None):
     low, high, pane_rear, cap_front = pillar
     YP_ = high.y - 0.015  # the A-pillar's top, just behind its front face: the side window's top rear corner
     plane = WindowPlane(pillar)
-    lean = (YF - YT) / (ZC - ZL)
-    yh = YF - (ZH - ZL) * lean                    # the windshield's top edge, on the frame line
-    xh = XP - (yh - YC) * (XP - XF) / (YF - YC)   # its top corners lie on the front chamfers
+    top = ShieldTop()  # the windshield's top corner: the front's top edge is on the ceiling
     # floor: chamfered plates over a dark base, the seams between them 8 mm wide and SEAM deep; the walls start on the base
     rear = [(-W, YB), (W, YB), (W, YP_), (-W, YP_)]
     front = [(-XP, YP_), (XP, YP_), (XP, YC), (XF, YF), (-XF, YF), (-XP, YC)]
@@ -869,43 +967,59 @@ def Shell(pillar, opening, pedestals=(), pane_face=None, console=None):
                     Plate(b, Corners(part, 0.02), 0.0, 0.005, SEAM)
     # the wall under the windshield, behind the console, facing back
     Slab(b, [(-XF, YF, -SEAM), (XF, YF, -SEAM), (XF, YF, ZL), (-XF, YF, ZL)], -Y, SLAB, "DARK")
-    # the windshield: an opening leaning back between the front chamfers up to the frame line, framed all round
-    shield = [Vector((-XF, YF, ZL)), Vector((XF, YF, ZL)), Vector((xh, yh, ZH)), Vector((-xh, yh, ZH))]
+    # the windshield: an opening leaning back between the front chamfers up to the ceiling, framed all round, its frame
+    # dark (the concept's slim posts between it and the front side windows)
+    shield = [Vector((-XF, YF, ZL)), Vector((XF, YF, ZL)), top, Vector((-top.x, top.y, ZR))]
     room = Vector((0, -(ZC - ZL), -(YF - YT))).normalized()
-    Sweep(b, Inward(shield, room), room, WINDOW, WINDOW_CLASSES, closed=True)
+    Sweep(b, Inward(shield, room), room, WINDOW, SHIELD_CLASSES, closed=True)
     windows = [shield]
-    # the frame line round the front: the rail and the panes' cap profile, from one pane's cap along the side window's
-    # top, the windshield's header and back to the other's; the ceiling's front edge is where it ends. It starts OVERLAP
-    # into the panes' caps, which end at their pillar's cut (CutPillar)
+    # the frame line along the side walls: the rail and the panes' cap profile, from the panes' caps (OVERLAP into them:
+    # they end at their pillar's cut, CutPillar) to the A-pillar's top; there the window's top edge turns up to the
+    # windshield's top corner on the ceiling, and a corner plate spans from it to the cap's end and the ceiling
     start = min(cap_front, PANE_CUT) - OVERLAP
-    line = [Vector((XRAIL, start, ZH)), Vector((XRAIL, YP_, ZH)), Vector((xh, yh, ZH)),
-            Vector((-xh, yh, ZH)), Vector((-XRAIL, YP_, ZH)), Vector((-XRAIL, start, ZH))]
-    edge = [r[-1] for r in Sweep(b, line, Z, CAP_SWEPT, CAP_CLASSES)]
-    # the ceiling: plates from the rear to the caps' front end, then up to that front edge; its back
-    xc = edge[0].x
-    cols = (-xc - OVERLAP, -0.143, 0.0, 0.143, xc + OVERLAP)  # over the caps' top, as the joints with the panes
-    rows = np.linspace(YB, edge[0].y, 5)
+    lip = XRAIL - CAP[-1][0]  # the caps' edge on the ceiling
+    D = Vector((XRAIL - CAP_SWEPT[1][0], YP_, ZH + CAP_SWEPT[1][1]))
+    E = Vector((lip, YP_, ZR))
+    corner = (D, E, top)
+    down = (E - D).cross(top - D).normalized()
+    down = down if down.z < 0 else -down
+    for mirror in (False, True):
+        b.mirror = mirror
+        Sweep(b, [Vector((XRAIL, start, ZH)), Vector((XRAIL, YP_, ZH))], Z, CAP_SWEPT, CAP_CLASSES)
+        # the cap's end, closed up to the ceiling's level (it is an open strip: from in front, rays went up through it)
+        b.Face([Vector((XRAIL - s_, YP_, ZH + u)) for s_, u in CAP_SWEPT] + [Vector((XWALL, YP_, ZR))], "DARK", toward=Y)
+        Slab(b, [D, E, top], down, SLAB, "PLATE", "DARK")
+    b.mirror = False
+    # the ceiling: plates from the rear to the pillars' tops between the caps (over their top, as the joints with the
+    # panes), then out along the corner plates' top edges to the windshield's top; its back. `edge`: its outline in front
+    edge = [Vector((lip, start, ZR)), E, top, Vector((-top.x, top.y, ZR)), Vector((-lip, YP_, ZR)), Vector((-lip, start, ZR))]
+    cols = (-lip - OVERLAP, -0.143, 0.0, 0.143, lip + OVERLAP)
+    rows = np.linspace(YB, YP_, 5)
     for x0, x1 in zip(cols, cols[1:]):
         for y0, y1 in zip(rows, rows[1:]):
             b.Face([(x0, y0, ZR), (x1, y0, ZR), (x1, y1, ZR), (x0, y1, ZR)], "PLATE", toward=-Z)
-    b.Face(edge + [Vector((x, edge[0].y, ZR)) for x in cols[1:-1]], "PLATE", toward=-Z)
-    b.Face([Vector((xc, YB, ZR + SLAB))] + [p + Z * SLAB for p in edge] + [Vector((-xc, YB, ZR + SLAB))], "DARK", toward=Z)
-    # the spine, two tiers, the lower recessed underneath, and the louvred slats either side: from the portal to the
-    # ceiling's front edge, and behind the portal from the rear wall to it. Each end that meets the ceiling slopes up
-    # into it at 45 degrees; at the rear wall they run on into it.
-    def Beam(x, profile, classes, depth, rear, front, into_wall=False):
-        ya, yb = rear + 1.414 * depth, front - 1.414 * depth
+    ahead = [Vector((cols[0], YP_, ZR)), Vector((cols[-1], YP_, ZR)), top, Vector((-top.x, top.y, ZR))]
+    b.Face(ahead, "PLATE", toward=-Z)
+    b.Face([(cols[0], YB, ZR + SLAB), (cols[-1], YB, ZR + SLAB), (cols[-1], YP_, ZR + SLAB), (cols[0], YP_, ZR + SLAB)], "DARK", toward=Z)
+    b.Face([p + Z * SLAB for p in ahead], "DARK", toward=Z)
+    # the spine, two tiers, the lower recessed underneath: from the portal to SPINE_CLEAR short of the windshield's top,
+    # ending square there over the drop panel, and behind the portal from the rear wall to it. Each end at the portal
+    # slopes up into the ceiling at 45 degrees; at the rear wall they run on into it.
+    def Beam(x, profile, classes, depth, rear, front, into_wall=False, panel=None):
+        ya = rear + 1.414 * depth
         start = [Vector((x, rear - 0.01, ZR))] if into_wall else [Vector((x, ya - depth, ZR + depth)), Vector((x, ya, ZR))]
-        Sweep(b, start + [Vector((x, yb, ZR)), Vector((x, yb + depth, ZR + depth))], Z, profile, classes)
+        end = [Vector((x, front - 1.414 * depth, ZR)), Vector((x, front - 0.414 * depth, ZR + depth))] if into_wall else [Vector((x, front, ZR))]
+        if panel:  # the straight run in lengths of `panel`, each face mapped once (the plate's bolts at its corners)
+            a, c = start[-1].y, end[0].y
+            k = max(1, round((c - a) / panel))
+            start += [Vector((x, a + (c - a) * i / k, ZR)) for i in range(1, k)]
+        Sweep(b, start + end, Z, profile, classes)
 
-    for rear, front, wall in ((YR + 0.055, None, False), (YB, YR, True)):
-        Beam(0.0, SPINE_UPPER, "DARK", 0.028, rear, front or FrontAt(edge, 0.12), wall)
-        Beam(0.0, SPINE, SPINE_CLASSES, 0.088, rear, front or FrontAt(edge, 0.085), wall)
-        for x, depth in SLATS:
-            for mirror in (False, True):
-                b.mirror = mirror
-                Beam(x, Louvre(depth), SLAT_CLASSES, depth, rear, front or FrontAt(edge, x + 0.016), wall)
-        b.mirror = False
+    spine_end = FrontAt(edge, 0.085) - SPINE_CLEAR
+    for rear, front, wall in ((YR + 0.055, spine_end, False), (YB, YR, True)):
+        Beam(0.0, SPINE_UPPER, "DARK", 0.028, rear, front, wall)
+        Beam(0.0, SPINE, SPINE_CLASSES, SPINE_DEPTH, rear, front, wall, panel=SPINE_PANEL)
+    drop = Drop(b, spine_end)
     # the portal arch at the template's rear: a light chamfered beam up the walls, along the caps and across under the roof
     portal = [Vector((-XWALL, YR, -SEAM)), Vector((-XWALL, YR, ZH)), Vector((-0.30, YR, ZR)), Vector((0.30, YR, ZR)),
               Vector((XWALL, YR, ZH)), Vector((XWALL, YR, -SEAM))]
@@ -920,15 +1034,16 @@ def Shell(pillar, opening, pedestals=(), pane_face=None, console=None):
         # the side wall behind the pane (cut below for its window), on back behind the rear wall and up behind the cap,
         # which close the corners round the pane's rear end
         Slab(walls, [(W, YB, -SEAM), (W, YP_, -SEAM), (W, YP_, ZR), (W, YB, ZR)], -X, SLAB)
-        # behind the A-pillar: the step in to the pillar zone, and the pillar zone's wall up to the window's rear edge
+        # behind the A-pillar: the step in to the pillar zone, and the pillar zone's wall up to the sill (higher, outside
+        # the new pillar's glass, it stood in the view out through the front side window)
         Slab(b, [(XP, YP_, -SEAM), (W, YP_, -SEAM), (W, YP_, ZH), (XP, YP_, ZH)], -Y, SLAB, "DARK")
-        Slab(b, [(XP, YP_, -SEAM), (XP, YC, -SEAM), (XP, YC, ZL), (XP, YP_, ZH)], -X, SLAB, "DARK")
+        Slab(b, [(XP, YP_, -SEAM), (XP, YC, -SEAM), (XP, YC, ZL), (XP, YP_, ZL)], -X, SLAB, "DARK")
         # the front chamfer below the ledge
         p0, p1 = Vector((XP, YC, 0)), Vector((XF, YF, 0))
         Slab(b, [p0 - Z * SEAM, p1 - Z * SEAM, p1 + Z * ZL, p0 + Z * ZL], Vector((p0.y - p1.y, p1.x - p0.x, 0)), SLAB, "DARK")
         # the A-pillar and the front side window in front of it, from the pillar to the windshield's frame and from the
         # ledge to the frame line (Pillar)
-        window = Pillar(b, plane)
+        window = Pillar(b, plane, top)
         windows.append([Vector((-c.x, c.y, c.z)) for c in window] if mirror else window)
     b.mirror = walls.mirror = False
     # the side walls, cut for the panes' windows, and the light lining that carries each pane's frame out through them
@@ -949,12 +1064,12 @@ def Shell(pillar, opening, pedestals=(), pane_face=None, console=None):
     b.mirror = False
     windows += [right, left]
     RearWall(b)
-    lights = Lamps(b, pane_face, FrontAt(edge, 0.085) - 1.414 * 0.088) if pane_face else []
+    lights = Lamps(b, pane_face, corner, drop) if pane_face else []
     if console:
-        Details(b, edge, console["desk"], console["screen"], console["bezel"], FrontAt(edge, 0.085) - 1.414 * 0.088)
+        Details(b, edge, console["desk"], console["screen"], console["bezel"], spine_end)
     # the controls' pedestals: chamfered columns, their edges light
-    for x, y, hx, hy, top in pedestals:
-        Sweep(b, [Vector((x, y, -SEAM)), Vector((x, y, top))], Vector((0, 1, 0)), Chamfered(-hx, hx, -hy, hy, min(hx, hy) * 0.3),
+    for x, y, hx, hy, height in pedestals:
+        Sweep(b, [Vector((x, y, -SEAM)), Vector((x, y, height))], Vector((0, 1, 0)), Chamfered(-hx, hx, -hy, hy, min(hx, hy) * 0.3),
               ["LIGHT", "PLATE"] * 4)
     bmesh.ops.remove_doubles(b.bm, verts=b.bm.verts, dist=1e-6)
     me = bpy.data.meshes.new("shell")
@@ -963,7 +1078,7 @@ def Shell(pillar, opening, pedestals=(), pane_face=None, console=None):
     o = bpy.data.objects.new("shell", me)
     bpy.context.scene.collection.objects.link(o)
     o.data.shade_flat()
-    return o, windows, lights, {"windshieldTop": [round(xh, 4), round(yh, 4)], "pillarTopY": YP_, "capFront": round(cap_front, 4),
+    return o, windows, lights, {"windshieldTop": [round(top.x, 4), round(top.y, 4), ZR], "pillarTopY": YP_, "capFront": round(cap_front, 4),
                         "paneRear": round(pane_rear, 4),
                         "pillar": {k: [round(c, 4) for c in p] for k, p in zip(("foot", "knee", "top"), window[1:4])}}
 
