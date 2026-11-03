@@ -1020,3 +1020,11 @@ The cockpit came in by itself from the save (in the Mako), the PS VR2 and its To
   unit-tested). The right hand's trigger and A stay (the free right hand aims the turret by its ray).
 - **The side displays were too close to read**: `place.py --seat-back` (0.15 m by default) puts the pilot further back in the hull: the hull, its
   displays and the HUD on them move forward; the chair, the lever, the stick and the seated Shepard stay with the player.
+
+## The seat further back, and head-on into a hill (2026-11-03 13:28-13:31, fake headset, `BIOA_UNC20`)
+
+With `place.py --seat-back 0.15` (the hull 0.75 m ahead of the eye instead of 0.60): turned left and down, the left display's radar and the
+Mako's status sit further out and read whole; turned back, the chair's back stands clear of the rear bulkhead (nothing through it). A 30 s
+drive at full throttle with the stick centred (`make-drive-recording.py --controls --straight`, new) ran head-on into the landing's hill at
+about 21 m/s (the speed fell from 2117 to 1361 units a second at the impact) and bounced the Mako onto its side (the chase screen): in eight
+snapshots 3 s apart the slope fills the windshield at close range in three, and no terrain comes into the cabin in any.

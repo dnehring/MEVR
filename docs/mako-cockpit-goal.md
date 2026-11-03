@@ -48,7 +48,7 @@ Each line is checked in the game (fake headset with replays where it can be, the
 | Check | State |
 |---|---|
 | 1. In and out by itself | Done on the fake headset: the drop cutscene (no cockpit through modes 8, 7, 6; built at mode 1), exit, level load, a save loaded in the Mako, the setting off, the pawn's death (`suicide`), and the vehicle's own death reaction with ME1's game-over screen (`mevr vehicle die`: out in the same tick) |
-| 2. The view | Done on the fake headset: fixed at speed and on slopes, no Mako body in the eyes, no terrain in the cabin on a 16 s drive nor a 30 s one up steep banks and past a rock face |
+| 2. The view | Done on the fake headset: fixed at speed and on slopes, no Mako body in the eyes, no terrain in the cabin on a 16 s drive, a 30 s one up steep banks and past a rock face, nor head-on into a hill at 21 m/s |
 | 3. The centre screen | Done: the game's chase view, trailing, 30 a second |
 | 4. The right screen | Done: along the turret, the reticle on the traced point, R3 zoom 30/12/5 degrees |
 | 5. Driving | Done with synthetic tracked hands (lever, the stick now tilting, the models following, the haptics sent); the feel needs the user's headset |

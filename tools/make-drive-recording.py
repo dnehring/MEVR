@@ -56,6 +56,7 @@ def main():
     press_b = "--press-b" in sys.argv
     controls = "--controls" in sys.argv
     twist_stick = "--twist" in sys.argv
+    straight = "--straight" in sys.argv  # full throttle and the stick held centred: head-on into whatever is ahead
     eye_h = 1.20
     if "--eye-height" in sys.argv:
         eye_h = float(sys.argv[sys.argv.index("--eye-height") + 1])
@@ -98,6 +99,8 @@ def main():
                 # Tilted like a flight stick: 3 cm right (about 17 degrees), then left, then pushed forward 5 cm (a full pitch).
                 side = 0.03 if 4.0 <= t < 8.0 else -0.03 if 8.0 <= t < 12.0 else 0.0
                 push = 0.05 if 12.0 <= t < 15.0 else 0.0
+                if straight:
+                    side = push = 0.0
                 right = (*q, STICK[0] + side, eye_h + STICK[1], STICK[2] - push)
             left_sq = right_sq = 1.0 if t >= 1.0 else 0.0
         else:
