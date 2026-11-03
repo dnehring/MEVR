@@ -247,7 +247,7 @@ void SpinInPlace(ue3::Object* vehicle, double deltaSeconds, float spinRateDeg) {
         *field = 0.0f;
         write_journal::Wrote("MakoControls.TurnInPlaceThrottle", field);
     }
-    bool const want = gOut.stickHeld && gOut.throttle == 0.0f && gOut.steer != 0.0f && gSetAngularVelocity.Get() != nullptr;
+    bool const want = gOut.stickHeld && gOut.throttle == 0.0f && gOut.spin != 0.0f && gSetAngularVelocity.Get() != nullptr;
     auto const rotation = gRotation.Read<ue3::Rotator>(vehicle);
     ue3::Object* const mesh = gVehicleMesh.Read<ue3::Object*>(vehicle).value_or(nullptr);
     if (!want || !rotation || mesh == nullptr) {
@@ -264,7 +264,7 @@ void SpinInPlace(ue3::Object* vehicle, double deltaSeconds, float spinRateDeg) {
         gSpin.active = true;
         ++gCounts.spins;
     }
-    float const target = gOut.steer * spinRateDeg;
+    float const target = gOut.spin * spinRateDeg;  // the twist alone (the tilt steers only when moving)
     // The safety: turning hard the other way from the one asked for, for long, is the axis's sign.
     gSpin.wrongS = std::abs(target) > 20.0f && std::abs(rate) > 20.0f && rate * target < 0.0f ? gSpin.wrongS + dt : 0.0f;
     if (gSpin.wrongS > 0.3f) {

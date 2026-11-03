@@ -47,6 +47,9 @@ struct Settings {
     // Below this throttle the stick's steering turns the Mako on the spot: the throttle sent is exactly 0, which is when the tank
     // simulation counter-rotates its tracks; anything above drives the outer track and the Mako surges (the user, 2026-11-03).
     float steerInPlaceBelow = 0.2f;
+    // Tilt and twist (the user, 2026-11-03): the tilt steers, limited to this share of full lock; the twist adds to it (up to full
+    // lock, or against it) and alone turns the Mako on the spot with the lever at neutral (Output::spin).
+    float tiltSteerMax = 0.5f;
     bool stickInvert = false;      // twist the other way
     float throttleTravelM = 0.055f; // hand travel from centre to full, along the seat's forward (the cockpit model's slot)
     bool leverReturns = true;      // let go, the lever goes back to neutral (the user, 2026-11-03); 0: it stays where it's left
@@ -106,6 +109,7 @@ struct Output {
     float tiltRightDeg = 0.0f;    // the stick's tilt (tilt mode): its top to the player's right
     float tiltForwardDeg = 0.0f;  // ... and away from the player
     float pitch = 0.0f;           // -1..1 from the forward tilt (+: pushed, the nose down), past the dead zone; 0 in twist mode
+    float spin = 0.0f;            // -1..1 (+ right): the twist alone, for turning on the spot at zero throttle
     bool driving = false;    // a control has been grabbed in this drive: the mod's values go to the physics
     bool placed = false;     // the controls have a place
     bool leverHeld = false;
@@ -173,6 +177,7 @@ private:
     bool driving_ = false;
     float lever_ = 0.0f;
     float steer_ = 0.0f;
+    float spin_ = 0.0f;
     float twist_ = 0.0f;
     float twistRaw_ = 0.0f;
     XrQuaternionf grabOrientation_{0.0f, 0.0f, 0.0f, 1.0f};

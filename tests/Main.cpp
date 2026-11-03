@@ -6516,11 +6516,20 @@ void TestMakoControls() {
         for (int i = 0; i < 10; ++i) {
             out = c.Step(input(0.0f, 0.0f, identity, 1.0f, {0.05f, 0.0f, 0.0f}), tilting);  // 27 degrees right: past full lock
         }
-        CHECK(close(out.tiltRightDeg, 20.0) && close(out.steer, 1.0) && close(out.pitch, 0.0));
+        // Full tilt steers tiltSteerMax (half lock); the twist adds to it, and alone it is the spin.
+        CHECK(close(out.tiltRightDeg, 20.0) && close(out.steer, 0.5) && close(out.pitch, 0.0) && close(out.spin, 0.0));
         for (int i = 0; i < 5; ++i) {
-            out = c.Step(input(0.0f, 0.0f, identity, 1.0f, {-0.0182f, 0.0f, 0.0f}), tilting);  // about 10 degrees left
+            out = c.Step(input(0.0f, 0.0f, about(up, -42.0f), 1.0f, {0.05f, 0.0f, 0.0f}), tilting);  // and twisted right to full
         }
-        CHECK(out.steer < -0.3f && out.steer > -0.5f);
+        CHECK(close(out.steer, 1.0) && close(out.spin, 1.0));
+        for (int i = 0; i < 5; ++i) {
+            out = c.Step(input(0.0f, 0.0f, about(up, 23.0f), 1.0f, {0.05f, 0.0f, 0.0f}), tilting);  // twisted half left: against the tilt
+        }
+        CHECK(close(out.steer, 0.0) && close(out.spin, -0.5));
+        for (int i = 0; i < 5; ++i) {
+            out = c.Step(input(0.0f, 0.0f, identity, 1.0f, {-0.0182f, 0.0f, 0.0f}), tilting);  // about 10 degrees left, no twist
+        }
+        CHECK(out.steer < -0.15f && out.steer > -0.25f && close(out.spin, 0.0));
         // Pushed away from the player (the seat's forward, -Z): the pitch is + (the nose down), steering back to centre.
         for (int i = 0; i < 10; ++i) {
             out = c.Step(input(0.0f, 0.0f, identity, 1.0f, {0.0f, 0.0f, -0.05f}), tilting);
@@ -6539,12 +6548,17 @@ void TestMakoControls() {
         }
         out = c.Step(input(0.0f, 0.0f, identity, 1.0f, {0.0f, 0.0f, -0.012f}), tilting);  // about 7 degrees
         CHECK(close(out.pitch, 0.0) && out.tiltForwardDeg > 6.0f);
-        // Steering with the lever just past its notch turns on the spot: the throttle sent is exactly 0.
+        // Tilting with the lever just past its notch steers as the tank does (the throttle stays); twisting there turns on the spot:
+        // the throttle sent is exactly 0.
         out = c.Step(input(0.0f, 1.0f, identity, 1.0f, {0.05f, 0.0f, 0.0f}), tilting);  // the lever grabbed at neutral
         for (int i = 0; i < 5; ++i) {
             out = c.Step(input(0.03f, 1.0f, identity, 1.0f, {0.05f, 0.0f, 0.0f}), tilting);  // then 0.2 of its travel
         }
-        CHECK(out.leverHeld && out.lever > 0.15f && close(out.steer, 1.0) && out.throttle == 0.0f);
+        CHECK(out.leverHeld && out.lever > 0.15f && close(out.steer, 0.5) && out.throttle > 0.0f);
+        for (int i = 0; i < 5; ++i) {
+            out = c.Step(input(0.03f, 1.0f, about(up, -42.0f), 1.0f, {0.05f, 0.0f, 0.0f}), tilting);
+        }
+        CHECK(close(out.spin, 1.0) && out.throttle == 0.0f);
     }
     {
         mc::Controls c;
