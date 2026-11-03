@@ -1089,6 +1089,8 @@ void CheckFunctions() {
         "Engine.SequenceEvent.CheckActivate",
         "SFXGame.BioSFHandler_PartySelection.FinalizeParty",
         "SFXGame.SFXGameModeVehicle.TryExitVehicle",
+        "SFXGame.SFXGameModeVehicle.FireCannon",
+        "SFXGame.SFXGameModeVehicle.StopFiringCannon",
         "SFXGame.BioPlayerController.BioExitVehicle",
         "SFXGame.BioVehicleBase.PlaceExitingDriver",
         "SFXGame.BioWorldInfo.Tick",

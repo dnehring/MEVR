@@ -841,3 +841,11 @@ drops pad input without focus is open **[verify]**; a player with the game in fr
 the two captures cost. The GPU sets the pace either way, with the median well inside the 11.1 ms budget (90 Hz). The p90 is over the
 budget in both, so it isn't the cockpit's. This level is light; item 10 of docs/mako-cockpit-goal.md wants a heavy Mako spot (a busier Mako
 level, enemies, the cannon), still to be measured.
+
+## Shots go where the reticle is (2026-11-03 11:15, fake headset, `BIOA_UNC20`)
+
+A replayed right controller by the knee, pointing ahead and 8 degrees down; `mevr vehicle fire` (new: the vehicle game mode's own
+`FireCannon`, RB's binding, released 0.3 s later through `StopFiringCannon`). `mako: shot 2: from the gun's start toward Terrain_0
+74.3 m out; 0.66 degrees off the controller's ray`, the same for shot 3: the cannon fires from its own start at the traced aim point,
+the point the aiming screen's reticle marks (`mako::CurrentTurretAim`'s target); the 0.66 degrees are the gun's offset from the hand.
+Every aim trace hit (500 of 500 in 5 s; none before the native fix).

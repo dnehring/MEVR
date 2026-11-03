@@ -199,6 +199,12 @@ ue3::FunctionRef gFinalizeParty{"SFXGame.BioSFHandler_PartySelection.FinalizePar
 ue3::ClassRef gGameModeVehicle{"SFXGame.SFXGameModeVehicle"};
 ue3::FunctionRef gTryExitVehicle{"SFXGame.SFXGameModeVehicle.TryExitVehicle"};
 ue3::FunctionRef gBioExitVehicle{"SFXGame.BioPlayerController.BioExitVehicle"};
+// `mevr vehicle fire`: RB's own cannon press and release (Console_FireVehicleCannon), released `kFireHoldS` later.
+ue3::FunctionRef gFireCannon{"SFXGame.SFXGameModeVehicle.FireCannon"};
+ue3::FunctionRef gStopFiringCannon{"SFXGame.SFXGameModeVehicle.StopFiringCannon"};
+ue3::Object* gFiringMode = nullptr;
+double gFireReleaseAt = -1.0;
+constexpr double kFireHoldS = 0.3;
 // `mevr vehicle trace`: does any script trace see the ground?
 ue3::FunctionRef gFastTrace{"Engine.Actor.FastTrace"};
 // `mevr vehicle why`: what BioVehicleBase.DriverLeave tests before it lets the driver out.
@@ -2801,6 +2807,27 @@ std::string VehicleCommand(std::string const& line) {
         log::Info("mevr vehicle: {}", report);
         return report;
     }
+    if (verb == "fire") {
+        if (auto const missing = MissingFunction({&gFireCannon, &gStopFiringCannon})) {
+            return Refuse(*missing);
+        }
+        ue3::Object* mode = nullptr;
+        ForEachLive(gGameModeVehicle.Get(), [&](ue3::Object* candidate) {
+            if (mode == nullptr && R().OuterOf(candidate) == controller) {
+                mode = candidate;
+            }
+        });
+        if (mode == nullptr) {
+            return Refuse("no vehicle game mode of the player's controller");
+        }
+        ue3::Params p = ParamsOf(gFireCannon);
+        Call(mode, gFireCannon, p);
+        gFiringMode = mode;
+        gFireReleaseAt = Now() + kFireHoldS;
+        std::string const report = std::format("FireCannon called (as RB), released in {:.1f} s: the `mako: shot` lines say where it went", kFireHoldS);
+        log::Info("mevr vehicle: {}", report);
+        return report;
+    }
     if (verb == "exit") {
         std::string how;
         words >> how;
@@ -3226,6 +3253,13 @@ bool Riding() {
 void Tick(std::optional<std::uint32_t> recenters) {
     AutoTick();
     RideTick();
+    if (gFiringMode != nullptr && Now() >= gFireReleaseAt) {
+        if (ue3::runtime::IsAlive(gFiringMode)) {
+            ue3::Params p = ParamsOf(gStopFiringCannon);
+            Call(gFiringMode, gStopFiringCannon, p);
+        }
+        gFiringMode = nullptr;
+    }
     static std::optional<std::uint32_t> seenRecenters;
     if (recenters && seenRecenters && *recenters != *seenRecenters && gRide.on) {
         gRide.seated = false;  // the player recentered in the seat: where the head is now is the cockpit's eye
@@ -3294,7 +3328,7 @@ void Shutdown(bool exiting) {
     for (ue3::FunctionRef* const f : {&gDynamicLoadObject, &gSpawn, &gDestroy, &gSetLocation, &gSetRotation, &gSetDrawScale, &gSetPhysics, &gSetCollision, &gSetHidden, &gSetBase, &gSetHardAttach,
              &gForceUpdate, &gSetActorCollision, &gSetBlockRigidBody, &gSetTraceBlocking, &gSetStaticMesh, &gGetMaterial, &gSetMaterial, &gGetNumElements, &gGetUnscaledBounds,
              &gCreateMic, &gSetParent, &gSetTextureParameter, &gGetTextureParameter, &gLightEnvironmentSetEnabled, &gCreateTarget, &gCaptureSetEnabled, &gCaptureSetFrameRate,
-             &gCaptureSetView, &gCaptureSetParameters, &gEnterVehicle, &gFindClosestVehicle, &gCheckActivate, &gFinalizeParty, &gUpdateCamera, &gTryExitVehicle, &gBioExitVehicle, &gFastTrace, &gPlaceExitingDriver}) {
+             &gCaptureSetView, &gCaptureSetParameters, &gEnterVehicle, &gFindClosestVehicle, &gCheckActivate, &gFinalizeParty, &gUpdateCamera, &gTryExitVehicle, &gBioExitVehicle, &gFastTrace, &gPlaceExitingDriver, &gFireCannon, &gStopFiringCannon}) {
         f->Reset();
     }
     for (ue3::FieldRef* const f : {&gStatic, &gDeleteMe, &gNoDelete, &gMovable, &gRole, &gPhysics, &gBase, &gDynamicComponent, &gDynamicLightEnvironment, &gStaticActorComponent, &gComponentMesh,
