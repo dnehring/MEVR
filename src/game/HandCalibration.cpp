@@ -1416,6 +1416,75 @@ std::string Describe(Cockpit const& c) {
 Cockpit gCockpit;
 std::string gCockpitText;
 
+// [Spectator] (research/49).
+vr::spectator::Settings ReadSpectator(Ini const& ini) {
+    vr::spectator::Settings s;
+    double value = 0.0;
+    auto const flag = [&](char const* key, bool& into) {
+        if (Number(ini, "Spectator", key, value)) {
+            into = value != 0.0;
+        }
+    };
+    auto const number = [&](char const* key, float& into, double lo, double hi) {
+        if (Number(ini, "Spectator", key, value)) {
+            into = static_cast<float>(std::clamp(value, lo, hi));
+        }
+    };
+    flag("enabled", s.enabled);
+    if (Number(ini, "Spectator", "width", value)) {
+        s.width = static_cast<int>(std::clamp(value, 320.0, 3840.0));
+    }
+    if (Number(ini, "Spectator", "height", value)) {
+        s.height = static_cast<int>(std::clamp(value, 180.0, 2160.0));
+    }
+    number("fovDeg", s.fovDeg, 20.0, 150.0);
+    number("smoothS", s.smoothS, 0.0, 5.0);
+    number("rate", s.rate, 1.0, 1000.0);
+    number("near", s.nearUnits, 1.0, 500.0);
+    number("far", s.farUnits, 0.0, 10000000.0);
+    flag("post", s.postProcess);
+    flag("mirror", s.mirror);
+    flag("layers", s.layers);
+    flag("viewActor", s.viewActor);
+    flag("hideHead", s.hideHead);
+    if (auto const text = ini::Get(ini, "Spectator", "camera"); text && !Strip(*text).empty()) {
+        std::string const lower = ini::Lower(Strip(*text));
+        if (lower == "head") {
+            s.camera = vr::spectator::kHead;
+        } else if (lower == "free") {
+            s.camera = vr::spectator::kFree;
+        } else {
+            log::Warn("spectator: can't read camera = {} (head or free); head kept", *text);
+        }
+    }
+    if (auto const text = ini::Get(ini, "Spectator", "format"); text && !Strip(*text).empty()) {
+        std::string const lower = ini::Lower(Strip(*text));
+        if (lower == "float") {
+            s.floatTarget = true;
+        } else if (lower == "rgba8") {
+            s.floatTarget = false;
+        } else {
+            log::Warn("spectator: can't read format = {} (float or rgba8); {} kept", *text, s.floatTarget ? "float" : "rgba8");
+        }
+    }
+    return s;
+}
+
+std::string Describe(vr::spectator::Settings const& s) {
+    if (!s.enabled) {
+        return "off ([Spectator] enabled = 0)";
+    }
+    return std::format("on: {}x{} {} render target, {:.0f} degrees across, the {} camera{}, post process {}, near plane {:.0f} units, "
+                       "the desktop window {}, our layers {}, view actor {}, head hidden {}",
+        s.width, s.height, s.floatTarget ? "float (FloatRGB)" : "8-bit (A8R8G8B8)", s.fovDeg, s.camera == vr::spectator::kHead ? "head" : "free",
+        s.camera == vr::spectator::kHead ? std::format(" (smoothed over {:.2f} s)", s.smoothS) : std::string(), s.postProcess ? "on" : "off",
+        s.nearUnits, s.mirror ? "shows it" : "keeps Halcyon's mirror", s.layers ? "composited in" : "left out", s.viewActor ? "the pawn" : "untouched",
+        s.hideHead ? "for the head camera" : "never");
+}
+
+vr::spectator::Settings gSpectator;
+std::string gSpectatorText;
+
 Game ReadGame(Ini const& ini) {
     Game g;
     double value = 0.0;
@@ -1831,6 +1900,10 @@ Cockpit GetCockpit() {
     return gCockpit;
 }
 
+vr::spectator::Settings GetSpectator() {
+    return gSpectator;
+}
+
 Game GetGame() {
     return gGame;
 }
@@ -2129,6 +2202,8 @@ void Refresh() {
         {L"Sights", "Sights", L"scopeCapture", "scopeCapture", L"0"},
         {L"Sights", "Sights", L"scopeCaptureSize", "scopeCaptureSize", L"1024"},
         {L"Sights", "Sights", L"scopeCaptureRate", "scopeCaptureRate", L"150"},
+        // The spectator camera (2026-11-03, research/49), off by default: the rest of [Spectator] is file-only.
+        {L"Spectator", "Spectator", L"enabled", "enabled", L"0"},
         {L"Hands", "Hands", L"noCover", "noCover", L"1"},
         {L"Hands", "Hands", L"physicalCrouch", "physicalCrouch", L"1"},
         {L"Hands", "Hands", L"crouchBelow", "crouchBelow", L"0.75"},
@@ -2232,6 +2307,11 @@ void Refresh() {
     if (std::string const text = Describe(gCockpit); text != gCockpitText) {
         gCockpitText = text;
         log::Info("cockpit: settings: {}", text);
+    }
+    gSpectator = ReadSpectator(ini);
+    if (std::string const text = Describe(gSpectator); text != gSpectatorText) {
+        gSpectatorText = text;
+        log::Info("spectator: settings: {}", text);
     }
     gGame = ReadGame(ini);
     if (std::string const text = gGame.pauseUnfocused ? "the game pauses while its window has no focus" : "the game runs on without focus"; text != gGameText) {

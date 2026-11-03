@@ -12,6 +12,7 @@
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/Sights.hpp"
+#include "core/vr/Spectator.hpp"
 #include "game/GamepadMapping.hpp"
 
 #include <optional>
@@ -382,6 +383,11 @@ struct Cockpit {
     bool seated = true;
 };
 Cockpit GetCockpit();
+
+// [Spectator] (research/49): the spectator camera for promotional stills and video (core/vr/Spectator.hpp's Settings:
+// enabled, width, height, fovDeg, camera = head|free, smoothS, format = float|rgba8, rate, post, near, far, mirror,
+// layers, viewActor, hideHead). Off by default.
+vr::spectator::Settings GetSpectator();
 
 // [Game] (research/47 "Why the Mako wouldn't let Shepard out"): the game's own behaviour around VR.
 //   pauseUnfocused  1: the game freezes the world while its window has no focus, as ME1 does; 0: it runs on (game/FocusPause)

@@ -59,6 +59,7 @@
 #include "game/ScopeCapture.hpp"
 #include "game/Sights.hpp"
 #include "game/SkeletonProbe.hpp"
+#include "game/Spectator.hpp"
 #include "game/SquadWeapons.hpp"
 #include "game/SupportGrip.hpp"
 #include "game/Throwables.hpp"
@@ -525,6 +526,16 @@ void PublishSight(mevr::vr::aim_ray::Ray const& ray) {
     game::scope_capture::Tick(gTickSeconds, sight, ray, view, link);
 }
 
+// Host renderer (HostServices v24): the spectator camera, if the host's Frame matches ours.
+mevr::game::spectator::Link SpectatorLink() {
+    using namespace mevr;
+    game::spectator::Link link;
+    if (gHostOwnsVr && MEVR_HOST_HAS(setSpectator) && gHost->setSpectator != nullptr && gHost->spectatorSize == sizeof(vr::spectator::Frame)) {
+        link.publish = gHost->setSpectator;
+    }
+    return link;
+}
+
 // Host renderer (HostServices v21): the interaction prompt at the object, if the host's Label matches ours.
 mevr::game::interact::Link InteractLink() {
     using namespace mevr;
@@ -808,7 +819,7 @@ void PublishStatus() {
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, "
         "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
-        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"cockpitProbe\": {}, \"makoControls\": {}}}",
+        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -819,7 +830,8 @@ void PublishStatus() {
         game::sights::StatusJson(), game::scope_capture::StatusJson(), game::throwables::StatusJson(), game::vent::StatusJson(), game::posture::StatusJson(),
         game::view_level::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
-        game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::cockpit_probe::StatusJson(), game::mako_controls::StatusJson());
+        game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::cockpit_probe::StatusJson(), game::mako_controls::StatusJson(),
+        game::spectator::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -965,6 +977,7 @@ void Heartbeat() {
         game::interact::LogStats();
         game::mako::LogStats();
         game::mako_controls::LogStats();
+        game::spectator::LogStats();
         game::body_calibration::LogStats();
         game::skeleton_probe::Tick();
     }
@@ -1142,6 +1155,8 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
             auto const floor = HostFloor();  // the cockpit takes a new seat at each recenter (research/47)
             game::cockpit_probe::Tick(floor ? std::optional<std::uint32_t>(floor->recenters) : std::nullopt);
         }
+        // The spectator camera (research/49): after everything that moves the head, the pawn and the cockpit this tick.
+        game::spectator::Tick(deltaSeconds, SpectatorLink());
         game::head_tracking::OnTickEnd();
     }
     PublishStatus();
@@ -1243,6 +1258,10 @@ MEVR_MOD_API void MevrModShutdown() {
     gToldNoSight = false;
     // Disables and destroys the scope's scene capture (game thread: the host unloads the mod from its tick), unless
     // the process is exiting. Before sights' shutdown and the reflection layer's.
+    game::spectator::Shutdown(exiting);  // its capture and the head it hid, on the game thread
+    if (gHost != nullptr && MEVR_HOST_HAS(setSpectator) && gHost->setSpectator != nullptr) {
+        gHost->setSpectator(nullptr);  // the desktop window gets Halcyon's mirror back (the host also forgets on unload)
+    }
     game::cockpit_probe::Shutdown(exiting);  // what it spawned, on the game thread; before the reflection layer's
     game::scope_capture::Shutdown(exiting);
     if (gHost != nullptr && MEVR_HOST_HAS(setScopeCapture) && gHost->setScopeCapture != nullptr) {

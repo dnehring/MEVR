@@ -8,6 +8,7 @@
 #include "game/CockpitProbe.hpp"
 #include "game/Holsters.hpp"
 #include "game/Player.hpp"
+#include "game/Spectator.hpp"
 #include "core/WriteJournal.hpp"
 
 #include <Windows.h>
@@ -183,12 +184,17 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::getline(words, rest);
         return cockpit_probe::Command(rest);  // the in-game cockpit's experiment (research/47)
     }
+    if (verb == "spectator") {
+        std::string rest;
+        std::getline(words, rest);
+        return spectator::Command(rest);  // the spectator camera (research/49)
+    }
     if (verb == "vehicle") {
         std::string rest;
         std::getline(words, rest);
         return cockpit_probe::VehicleCommand(rest);  // what a console `open <map>` produced; `enter` gets in
     }
-    return std::string("unknown: mevr loc | mevr setloc X Y Z | mevr density [cellUU] | mevr weapon <pistol|shotgun|assault|sniper> | mevr cockpit ... | mevr vehicle [enter]");
+    return std::string("unknown: mevr loc | mevr setloc X Y Z | mevr density [cellUU] | mevr weapon <pistol|shotgun|assault|sniper> | mevr cockpit ... | mevr vehicle [enter] | mevr spectator ...");
 }
 
 ue3::Function* FindConsoleCommand() {

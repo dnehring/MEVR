@@ -51,6 +51,9 @@ struct Pieces;
 namespace vr::mako_controls {
 struct View;
 }
+namespace vr::spectator {
+struct Frame;
+}
 namespace vr::squad_menu {
 struct View;
 namespace wheel {
@@ -65,7 +68,7 @@ struct Panel;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 23;
+inline constexpr int kHostServicesVersion = 24;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -279,6 +282,14 @@ struct HostServices {
     // controls down there. The mod publishes only if makoControlsSize matches its own sizeof(View). Any thread.
     std::uint32_t makoControlsSize = 0;
     void (*setMakoControls)(vr::mako_controls::View const* view) = nullptr;
+
+    // Version 24: the spectator camera (game/Spectator, plugin/Spectator, research/49). The mod's scene capture each tick
+    // (core/vr/Spectator.hpp, vr::spectator::Frame: its render target's FTextureResource, size, format, the camera's pose and
+    // field): while it's kCapturing and fresh, the host composites the frame's quad layers over it and shows it in the
+    // desktop window instead of Halcyon's mirror. Null forgets it. The mod publishes only if spectatorSize matches its own
+    // sizeof(Frame); with a v23 or older host it never spawns the capture. Any thread.
+    std::uint32_t spectatorSize = 0;
+    void (*setSpectator)(vr::spectator::Frame const* frame) = nullptr;
 };
 
 } // namespace mevr

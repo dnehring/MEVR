@@ -388,6 +388,8 @@ set(MEVR_MOD_SOURCES
     src/game/ScopeParts.hpp
     src/game/ScopeCapture.cpp
     src/game/ScopeCapture.hpp
+    src/game/Spectator.cpp
+    src/game/Spectator.hpp
     src/game/Sights.cpp
     src/game/Sights.hpp
     src/game/SkeletonProbe.cpp
