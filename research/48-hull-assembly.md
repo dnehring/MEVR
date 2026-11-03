@@ -952,7 +952,11 @@ No decimation or packaging until the user approves the modelling.
   bends the world (13% darker), too much for a windshield; lit at the retuned values is still identical to unlit (the
   light environment gathers almost nothing in the closed cabin); glow at 4 brightens the lamps, still no halo.
 - **So:** the glass at opacity 0.32 and its cube at 1.0 (the game side's guess); the lamps' glow at 10 and the idle
-  screens' at 2. The lit instances stay in the package unused: lit shading needs lights inside the cabin (`lamps`), a
+  screens' at 2. In the game (83a375a): at 10 the ceiling lamps bloom, a soft halo round each, white in the middle (their
+  brightest 1% from (220, 203, 205) to white, the lamps' mean grey 57 to 73): they read as lit lamps. The glass at 0.32 and
+  1.0 is still nearly clear (the view (97, 74, 67) against (102, 76, 67) without it), no sheen in a still view.
+- **Now:** the shell's lamps glow by default (their elements on `_Glow_MIC` at 10; the unlit and lit instances are their
+  variants), and the glass's cube at 3, its opacity kept at 0.32 so the view stays clear. The lit instances stay in the package unused: lit shading needs lights inside the cabin (`lamps`), a
   question of their stereo cost that the game side takes up once the Mako drives.
 
 ## 5. Not done

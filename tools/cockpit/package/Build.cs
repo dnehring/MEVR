@@ -90,7 +90,8 @@ internal static class Build
     };
     // Face on the pane takes half the opacity, at grazing the whole; the cube's sheen and a faint grey on top, the fresnel at
     // least 0.15. At 0.22 and 0.4 it read nearly clear from the seat (4% darker, no sheen: the game side, 2026-11-03).
-    private const float GlassOpacity = 0.32f, GlassCube = 1.0f;
+    // At 0.32 and 1.0 still nearly clear (no sheen, 2026-11-03): the cube's sheen brighter, the view kept clear.
+    private const float GlassOpacity = 0.32f, GlassCube = 3.0f;
     private static readonly float[] GlassTint = { 0.03f, 0.035f, 0.04f, 1f }, GlassFresnel = { 0.15f, 0f, 0f, 1f };
     // Which elements get a glow variant: the shell's lamps (hull_shapes.Bake puts them on materials of their own) and the
     // console's idle screens.
@@ -456,7 +457,7 @@ internal static class Build
             {
                 string glow = instanceName.Replace("_MIC", "_Glow_MIC");
                 float[] one = { 1f, 1f, 1f, 1f };
-                AddInstance(pcc, glow, glowParent, Guid.Empty,
+                instances[glow] = AddInstance(pcc, glow, glowParent, Guid.Empty,
                     new[] { ("DiffuseTexture", texture, GlowGuids["DiffuseTexture"]), ("LightTexture", white, GlowGuids["LightTexture"]) },
                     new[] { ("LightmapBrightness", material.StartsWith("lamp", StringComparison.Ordinal) ? GlowLamps : GlowScreens, GlowGuids["LightmapBrightness"]) },
                     new[] { ("WallSpecColor", one, GlowGuids["WallSpecColor"]), ("WindowSpecColor", one, GlowGuids["WindowSpecColor"]) });
@@ -531,6 +532,14 @@ internal static class Build
                     {
                         Variants(name, texture, primitive.MaterialName);
                     }
+                }
+                // The shell's lamps glow by default (at x10 they bloom in the game: the game side, 2026-11-03); the unlit
+                // and lit instances are their variants.
+                if (primitive.MaterialName.StartsWith("lamp", StringComparison.Ordinal))
+                {
+                    string glow = name.Replace("_MIC", "_Glow_MIC");
+                    variants[glow] = new List<string> { name, name.Replace("_MIC", "_Lit_MIC") };
+                    return instances[glow];
                 }
                 return instance;
             }
