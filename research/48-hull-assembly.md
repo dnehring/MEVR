@@ -446,6 +446,23 @@ The user, after round four (2026-11-02):
 - **Shell:** 4,809 triangles. Build: all checks passed, 34.6 MB.
 - **Not done:** the chair and the controls still carry Tripo's own lighting, not the cockpit's lamps. Further
   detail: decals and markings, panel lines on the large panels, the spine's lamp clusters.
+- **In the game** (acc4665, the in-game session; the same boxes and head pose):
+
+  | Region | Eden Prime, post on | Eden Prime, post off | Normandy, post on | Normandy, post off |
+  |---|---|---|---|---|
+  | Ceiling | 15.4 | 26.0 | 18.7 | 26.0 |
+  | Desk | 54.5 | 80.2 | 54.0 | 72.3 |
+  | Frame | 68.0 | 106.8 | 78.9 | 116.4 |
+  | Lamp mean | 123.4 | 167.3 | 138.6 | 192.2 |
+
+  - The wear left the numbers almost where they were (the desk 3 darker).
+  - The two grades (Eden Prime warm, the Normandy cold and blue) take 25-40% off each, the Normandy's a little less,
+    and both shift the lamps cool alike. A Mako level couldn't be reached: by console it stops in its black arrival
+    cinematic.
+  - Even with post off the same surfaces differ between levels (desk 80 against 72). Perhaps height fog, which reaches
+    unlit materials in the base pass [verify].
+- **Seen from above the seat:** the worn bake reads on the console, but the chair (white and red, black fabric, high
+  contrast) is still the richest thing in view against the room's low-contrast grey.
 
 ## 5. Not done
 
