@@ -7,3 +7,6 @@
 
 ## 2026-10-31
 * **Update**: [EA's launcher in a job object](gotchas/ea-launcher-in-a-job-object.md) bit a third time during the unattended QA deploy; the Explorer, WMI and ShellWindows restarts of the EA app are recorded as routes that do not work.
+
+## 2026-11-03
+* **Create**: [ProcessEvent skips every native that has an opcode of its own](gotchas/process-event-skips-opcode-natives.md), after Actor.Trace, Destroy and SetOwner all did nothing in one session; the 2026-10-24 and 2026-10-31 SetLocation reports were the same mechanism.

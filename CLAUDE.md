@@ -365,7 +365,10 @@ switching frameworks.
   research/47 "Riding in the Mako"): a `Camera.UpdateCamera` post-handler keeps the game's chase POV for the console's screen, puts the parts in the
   vehicle's full frame and moves `CameraCache.POV` to the cockpit's eye (minus the head's offset when the ride began: the seat), the Mako's
   components `bOwnerNoSee`. `tools/make-drive-recording.py` drives the Mako by replay on the fake headset. An enum value with a numeric suffix goes in a package as the name and
-  the suffix plus one (`TEXTUREGROUP_Environment`, 1025), or the game reads past the enum's end (`LODGroup 27`: one mip resident, the model one colour). `Actor.SetLocation` refuses a spot it encroaches on (`FarMoveActor`): write `Location` and flush.
+  the suffix plus one (`TEXTUREGROUP_Environment`, 1025), or the game reads past the enum's end (`LODGroup 27`: one mip resident, the model one colour). The parts are placed by writing `Location`/`Rotation` and flushing.
+  **In the Mako by itself** (`[Cockpit]`, research/47 "The cockpit by itself"): entering runs `ASI\cockpit\cockpit.txt` (`tools/cockpit/place.py
+  --script`), leaving parks it. **`[Game] pauseUnfocused = 0`** (`game/FocusPause`) undoes ME1's freeze while the window has no focus
+  (`bPlayersOnly`; it also refused the Mako's exit); the pad reaches the game only with focus, the cockpit's controls without.
 - LE1 life-size stereo ([research/30](research/30-metric-stereo.md), `MELEVR.ini sfr2Metric`, on in our deploy):
   each Stereo 2 pass renders from its eye's real place (`xrLocateViews`, at the view's units per metre: Halcyon's
   50 x lean gain, life-size at 100), no convergence shift, swap ignored (pass 0 = left). In gameplay with the HUD
@@ -613,7 +616,7 @@ Use it to check VR changes yourself instead of asking the user what they see
   after every SteamVR start and vrserver kills the game at the title 5 s later, silently: research/35 "Setup for measuring"), `tools/launch-game.ps1` (EA's Link2EA from a scheduled task, PLAY and the title's Enter by
   keyboard from a foreground shell; never start the game from this shell: the harness's job object breaks the EA app),
   `tools/console.ps1 "mevr density 2000"` (the densest mesh cells), `"god" "ghost"` then `"set SFXPawn_Player Location
-  (X=..,Y=..,Z=..)"` to move Shepard (Actor.SetLocation through ProcessEvent refuses the player), `tools/spot-survey.ps1`
+  (X=..,Y=..,Z=..)"` to move Shepard (Actor.SetLocation through ProcessEvent did nothing until 2026-11-03: the gotcha below), `tools/spot-survey.ps1`
   (frame time and draws per spot under a replayed head recording), `tools/measure-levers.ps1 -Key k -Values 0,1 [-Inputs]`
   (an A/B under the replay; `-Inputs` walks and shoots as recorded), `tools/fpsvr-session.py` (what fpsVR recorded).
   Eden Prime's heaviest cells: (-31000, 145000, 900) and (-33000, 147000, 400), 4,100 draws. Live render levers
@@ -724,6 +727,8 @@ Use it to check VR changes yourself instead of asking the user what they see
   strings through `ue3::memory` (`OwnedString`, `FreeString`), and LE2/LE3's few all-game reads through
   `engine/Legacy` until their layouts exist. Every class, field, function or parameter you resolve
   needs a row in `engine/ReflectCheck`; a failed lookup stands the feature down with a log line.
+- **ProcessEvent skips any native with an opcode of its own** (`UFunction.iNative` != 0: `Trace`, `Destroy`, `SetLocation`, `SetOwner`...):
+  `ue3::runtime::Call` clears the index for its call, so always call through it (gotchas/process-event-skips-opcode-natives).
 - **Never call LExSDKv2's generated function wrappers** (e.g. `USceneCaptureComponent::SetFrameRate`).
   All 5,301 LE1 native wrappers do `FunctionFlags |= ~0x400` (meant `&=`), which permanently sets
   every flag on that UFunction. Find the UFunction yourself and call ProcessEvent directly.
