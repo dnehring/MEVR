@@ -684,3 +684,7 @@ against 97.2, 73.5, 66.7 at cubemap 1), the crate's dark face there washed towar
 86.9). **Most of that haze is the lamps' bloom, not the glass:** with the lamps unlit (`variant base`) the middle reads 102.6, 80.4, 75.5
 (grey stddev 46.8 against 57.0), so the x 10 glow's bloom spreads over the windshield below the lamp bar and the glass at cubemap 3 adds
 about +5 face-on. Turned 70 degrees, the side windows show no sheen in a still frame.
+
+**8dcf26f** (01:18, same pose; the glow x 7, the fresnel floor back at 0.15): the halo stays, a little softer than at x 10 (the lamps'
+area mean grey 66.1, unlit 51.7, x 10 73), and **the spill over the windshield is the same as at x 10** (114.2, 91.4, 86.3; unlit 102.9,
+80.7, 75.8). The spill doesn't scale with the factor between 7 and 10: whatever is over the bloom threshold spreads alike.
