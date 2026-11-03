@@ -863,6 +863,7 @@ void CheckFields() {
 }
 
 void CheckPaths() {
+    CheckPath("Engine.Camera", {"ViewTarget", "Target"}, SDK_AT(offsetof(ACamera, ViewTarget) + offsetof(FTViewTarget, Target), 8));  // the cockpit probe
     CheckPath("Engine.Actor", {"Rotation", "Pitch"}, SDK_AT(offsetof(AActor, Rotation) + offsetof(FRotator, Pitch), 4));
     CheckPath("Engine.Actor", {"Rotation", "Yaw"}, SDK_AT(offsetof(AActor, Rotation) + offsetof(FRotator, Yaw), 4));
     CheckPath("Engine.Actor", {"Rotation", "Roll"}, SDK_AT(offsetof(AActor, Rotation) + offsetof(FRotator, Roll), 4));
@@ -1059,6 +1060,9 @@ void CheckFunctions() {
         "Engine.MaterialInstanceConstant.SetTextureParameterValue",
         "Engine.MaterialInterface.GetTextureParameterValue",
         "Engine.LightEnvironmentComponent.SetEnabled",
+        "Engine.Actor.SetOwner",
+        "Engine.PrimitiveComponent.SetOwnerNoSee",
+        "Engine.PrimitiveComponent.SetOnlyOwnerSee",
         "SFXGame.BioPlayerController.BioEnterVehicle",
         "SFXGame.SFXSaveGame.FindClosestDrivableVehicle",
         "Engine.PlayerController.ConsoleCommand",
@@ -1189,6 +1193,9 @@ void CheckParams() {
     PARAM(AActor_execSetBase_Parms, "Engine.Actor.SetBase", NewBase);
     PARAM(AActor_execSetBase_Parms, "Engine.Actor.SetBase", NewFloor);
     PARAM(AActor_execSetHardAttach_Parms, "Engine.Actor.SetHardAttach", bNewHardAttach);
+    PARAM(AActor_execSetOwner_Parms, "Engine.Actor.SetOwner", NewOwner);
+    PARAM(UPrimitiveComponent_execSetOwnerNoSee_Parms, "Engine.PrimitiveComponent.SetOwnerNoSee", bNewOwnerNoSee);
+    PARAM(UPrimitiveComponent_execSetOnlyOwnerSee_Parms, "Engine.PrimitiveComponent.SetOnlyOwnerSee", bNewOnlyOwnerSee);
     PARAM(UPrimitiveComponent_execSetActorCollision_Parms, "Engine.PrimitiveComponent.SetActorCollision", NewCollideActors);
     PARAM(UPrimitiveComponent_execSetActorCollision_Parms, "Engine.PrimitiveComponent.SetActorCollision", NewBlockActors);
     PARAM(UPrimitiveComponent_execSetBlockRigidBody_Parms, "Engine.PrimitiveComponent.SetBlockRigidBody", bNewBlockRigidBody);
@@ -1286,6 +1293,9 @@ void CheckParams() {
     PARMS(AActor_execSetHidden_Parms, "Engine.Actor.SetHidden");
     PARMS(AActor_execSetBase_Parms, "Engine.Actor.SetBase");
     PARMS(AActor_execSetHardAttach_Parms, "Engine.Actor.SetHardAttach");
+    PARMS(AActor_execSetOwner_Parms, "Engine.Actor.SetOwner");
+    PARMS(UPrimitiveComponent_execSetOwnerNoSee_Parms, "Engine.PrimitiveComponent.SetOwnerNoSee");
+    PARMS(UPrimitiveComponent_execSetOnlyOwnerSee_Parms, "Engine.PrimitiveComponent.SetOnlyOwnerSee");
     PARMS(UPrimitiveComponent_execSetActorCollision_Parms, "Engine.PrimitiveComponent.SetActorCollision");
     PARMS(UPrimitiveComponent_execSetBlockRigidBody_Parms, "Engine.PrimitiveComponent.SetBlockRigidBody");
     PARMS(UPrimitiveComponent_execSetTraceBlocking_Parms, "Engine.PrimitiveComponent.SetTraceBlocking");

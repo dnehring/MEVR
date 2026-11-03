@@ -582,7 +582,34 @@ Build 5969f57 (research/48 section 22): the hull replaces `Front_Cockpit`, the e
 -0.362 -0.446 0.286, `stickOffset` 0.375 -0.415 0.314 (the manifest's `pilot.fromEyeMetres`), `throttleTravelM` 0.055 (the
 model's slot). A file holding all three old defaults exactly gets the new ones once; any other value is kept.
 
+**The Mako's size doesn't matter** (the user, relayed 2026-11-02: the Mako is entered and left through full blackout
+transitions, so the cockpit needn't fit inside its body; it just has to feel real). The two boxes above stay as a note.
+
 **Shepard in the seat** (the user's decision, relayed 2026-11-02): in the Mako, Shepard's body sits in our chair with the VR head at the
 eye, the pelvis at `hPoint`, the heels on the floor, and the hands on the stick and throttle models while held. Not started: it needs
 drivable Mako gameplay to see what the game does with the driver's pawn there (hidden, based on the vehicle **[verify]**), then the body
 shown in the cockpit's frame, a seated pose (the legs to the knee and heel points, the spine to the eye) and arm IK to the grips.
+
+## The aiming screen and the cockpit out of the captures (2026-11-03 00:00, fake headset, Eden Prime, hull f0e8fa5)
+
+f0e8fa5 (research/48 section 23) gives `Hull_Console` a fourth slot: 3, `Hull_Console_Aim_MIC` on the right screen (2.51:1),
+its idle image a gun sight. The user wants the right screen to show the aiming picture while the centre shows the Mako in third
+person.
+
+- **`aimscreen [W H] [fov DEG]`** (probe): a second `SceneCapture2DActor` with its own FloatRGB target (768x306, 30 degrees, no post
+  chain, the capture rate) on slot 3 of the screen part, through our instance over the slot's own. On foot its stand-in aim is the
+  head's view; the Mako's aim point replaces it. **It works:** the right screen shows the live picture along the aim.
+- **The cockpit out of the captures (`capturehide`):** a primitive's `bOwnerNoSee` / `bOnlyOwnerSee` compare the view's actor with
+  the component's owner chain.
+  - 1, the parts owned by the chase capture with `bOwnerNoSee`: the cockpit stayed in the chase picture.
+  - 2 and 3, owned by the pawn or the controller with `bOnlyOwnerSee`: the cockpit vanished from the eyes too.
+  - **Then the cause: `Actor.SetOwner` through ProcessEvent changed nothing.** Every part's `Owner` read the player controller (Spawn's
+    owner) after every call, so 1 to 3 all ran with the controller as owner. The probe now writes the `Owner` field itself when the
+    call leaves it (journalled `CockpitProbe.partOwner`, logged once).
+  - **With the field written, 2 works:** owned by the pawn, `bOnlyOwnerSee`, the cockpit is in the eyes and in neither capture; the
+    centre screen shows Shepard and the squad, the right screen the aim picture. So the eyes' view actor is the pawn (as Halcyon's head
+    hide implies), and a capture's is neither the pawn nor the controller (none, or its own actor **[verify]**). 2 is the default.
+    In the Mako the pawn is the vehicle: the owner has to follow the pawn.
+- **A reticle in the aim picture** needs a mesh the captures see and the eyes don't: owned by the pawn with `bOwnerNoSee`. It would
+  show in both captures, so it belongs at the aim point itself (traced, scaled with distance to keep its size in the aim picture), where
+  it also marks the target in the chase picture. It needs a reticle mesh in the package.

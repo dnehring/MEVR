@@ -93,6 +93,9 @@ ue3::FunctionRef gCaptureSetEnabled{"Engine.SceneCaptureComponent.SetEnabled"};
 ue3::FunctionRef gCaptureSetFrameRate{"Engine.SceneCaptureComponent.SetFrameRate"};
 ue3::FunctionRef gCaptureSetView{"Engine.SceneCapture2DComponent.SetView"};
 ue3::FunctionRef gCaptureSetParameters{"Engine.SceneCapture2DComponent.SetCaptureParameters"};
+ue3::FunctionRef gSetOwner{"Engine.Actor.SetOwner"};
+ue3::FunctionRef gSetOwnerNoSee{"Engine.PrimitiveComponent.SetOwnerNoSee"};
+ue3::FunctionRef gSetOnlyOwnerSee{"Engine.PrimitiveComponent.SetOnlyOwnerSee"};
 ue3::FunctionRef gEnterVehicle{"SFXGame.BioPlayerController.BioEnterVehicle"};
 ue3::FunctionRef gFindClosestVehicle{"SFXGame.SFXSaveGame.FindClosestDrivableVehicle"};
 
@@ -112,6 +115,9 @@ ue3::FieldRef gDrawScale3D{"Engine.Actor", "DrawScale3D"};
 ue3::FieldRef gComponentScale{"Engine.PrimitiveComponent", "Scale"};
 ue3::FieldRef gComponentScale3D{"Engine.PrimitiveComponent", "Scale3D"};
 ue3::FieldRef gPawnMesh{"Engine.Pawn", "Mesh"};
+ue3::FieldRef gOwnerField{"Engine.Actor", "Owner"};
+ue3::FieldRef gCameraViewTarget{"Engine.Camera", "ViewTarget"};
+ue3::FieldRef gCameraViewTargetActor{gCameraViewTarget, "Target"};
 ue3::FieldRef gParent{"Engine.MaterialInstance", "Parent"};
 ue3::FieldRef gStaticPermutation{"Engine.MaterialInstance", "bHasStaticPermutationResource"};
 ue3::FieldRef gTextureValues{"Engine.MaterialInstanceConstant", "TextureParameterValues"};
@@ -252,6 +258,23 @@ struct State {
     ue3::Vector askedView{};
 };
 State gState;
+
+// `aimscreen`: a second capture along the aim, on its own slot of the screen part (Hull_Console's slot 3, the right screen).
+struct AimScreen {
+    ue3::Object* target = nullptr;
+    ue3::Object* captureActor = nullptr;
+    ue3::Object* captureComponent = nullptr;
+    ue3::Object* mic = nullptr;
+    int element = 3;
+    int width = 768;
+    int height = 306;
+    float fovDeg = 30.0f;
+    std::uint32_t pointedTicks = 0;
+    double lastPointed = -1.0;
+};
+AimScreen gAim;
+void ClearAim(char const* why);
+void HideFromCaptures();
 ue3::Object* gLoadedMesh = nullptr;  // what `load` last returned; nothing holds it: checked alive before use
 std::string gLastError = "none";
 bool gLoggedMoveFailure = false;
@@ -401,6 +424,7 @@ void ClearAll(char const* why) {
     if (!gState.part && Still(gState.actor, gActorClass)) {  // a part goes with the parts
         DestroyActor(gState.actor, why);
     }
+    ClearAim(why);  // it sits on the same mesh
     // The render target and the material instance have nothing to destroy: nothing refers to them now, the garbage takes them.
     gState = State{};
 }
@@ -413,6 +437,7 @@ void Refresh() {
     if (gState.world != engine::World()) {
         log::Info("cockpit probe: a new level: forgot what it spawned (its objects went with the old level)");
         gState = State{};
+        gAim = AimScreen{};
         return;
     }
     bool const meshGone = gState.actor != nullptr && (!Still(gState.actor, gActorClass) || !Still(gState.component, gStaticMeshComponent));
@@ -951,6 +976,7 @@ std::string DoPart(std::istringstream& words) {
     part.mesh = mesh;
     PlacePart(part);
     gParts.push_back(part);
+    HideFromCaptures();
     std::string const report = std::format("part {}: {} at right {:.3f} forward {:.3f} up {:.3f} m, yaw {:.1f}, {:.5f} m a unit (draw scale {:.3f}); {} part{}",
         gParts.size(), ue3::runtime::FullName(mesh), part.offsetM.x, part.offsetM.y, part.offsetM.z, part.yawDeg, part.metersPerUnit,
         part.metersPerUnit * gAnchor.unitsPerMeter, gParts.size(), gParts.size() == 1 ? "" : "s");
@@ -1508,7 +1534,219 @@ std::string DoScreen(std::istringstream& words) {
     FlushActor(gState.captureActor, false);  // the re-attach too (research/39 section 5)
     report += std::format("capture {} into a {}x{} {} target at {:.0f} renders a second at most\n", ue3::runtime::FullName(gState.captureActor), width, height,
         floatTarget ? "FloatRGB" : "A8R8G8B8", gSettings.captureRate);
-    return report + ApplyMaterial();
+    report += ApplyMaterial();
+    HideFromCaptures();
+    return report;
+}
+
+// ---- Keeping the cockpit out of the captures ------------------------------------------------------------------------
+
+// A view leaves out a component with bOwnerNoSee when the view's actor is in the component's owner chain (its actor, that
+// actor's Owner, and so on), and one with bOnlyOwnerSee when it isn't. `capturehide`:
+//   1: each part owned by the chase capture, the chase capture by the aim capture, bOwnerNoSee. Left the cockpit in the
+//      chase capture's picture (2026-11-02): a capture's view actor isn't its own actor.
+//   2: each part owned by the pawn, bOnlyOwnerSee: in the eyes, out of both captures (2026-11-03). The eyes' view actor is
+//      the pawn (as Halcyon's head hide, bOwnerNoSee on the pawn's components, implies); a capture's is neither the pawn nor
+//      the controller. Actor.SetOwner through ProcessEvent changed nothing, so the Owner field is written (SetOwnerOf); until
+//      it was, this mode hid the cockpit from the eyes too. In the Mako the pawn is the vehicle: run again on a new pawn.
+//   3: as 2 with the player controller as the owner: gone from the eyes.
+//   0: neither.
+int gCaptureHide = 2;
+
+bool gLoggedOwnerWrite = false;
+
+// Actor.SetOwner through ProcessEvent left every part's Owner at the player controller (2026-11-03): then the field itself.
+void SetOwnerOf(ue3::Object* actor, ue3::Object* owner) {
+    ue3::Params p = ParamsOf(gSetOwner);
+    p.Set("NewOwner", owner);
+    Call(actor, gSetOwner, p);
+    if (gOwnerField.Read<ue3::Object*>(actor).value_or(nullptr) != owner) {
+        if (ue3::Object** const field = gOwnerField.In<ue3::Object*>(actor)) {
+            *field = owner;
+            write_journal::Wrote("CockpitProbe.partOwner", field, sizeof(*field));
+            if (!gLoggedOwnerWrite) {
+                gLoggedOwnerWrite = true;
+                log::Info("cockpit probe: Actor.SetOwner left {}'s Owner as it was: written into the field", ue3::runtime::FullName(actor));
+            }
+        }
+    }
+}
+
+void HideFromCaptures() {
+    if (gSetOwner.Get() == nullptr || gSetOwnerNoSee.Get() == nullptr || gSetOnlyOwnerSee.Get() == nullptr) {
+        return;
+    }
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const pawn = controller != nullptr ? player::Pawn(controller) : nullptr;
+    if (gCaptureHide == 1 && gState.captureActor != nullptr && gAim.captureActor != nullptr) {
+        SetOwnerOf(gState.captureActor, gAim.captureActor);
+    }
+    ue3::Object* const owner = gCaptureHide == 1 ? gState.captureActor : gCaptureHide == 2 ? pawn : gCaptureHide == 3 ? controller : nullptr;
+    if (gCaptureHide != 0 && owner == nullptr) {
+        return;
+    }
+    for (Part const& part : gParts) {
+        if (!PartAlive(part)) {
+            continue;
+        }
+        SetOwnerOf(part.actor, owner);
+        ue3::Params noSee = ParamsOf(gSetOwnerNoSee);
+        noSee.SetBool("bNewOwnerNoSee", gCaptureHide == 1);
+        Call(part.component, gSetOwnerNoSee, noSee);
+        ue3::Params onlySee = ParamsOf(gSetOnlyOwnerSee);
+        onlySee.SetBool("bNewOnlyOwnerSee", gCaptureHide >= 2);
+        Call(part.component, gSetOnlyOwnerSee, onlySee);
+        FlushActor(part.actor, false);  // the scene's copy of the owner chain is made when the component attaches
+    }
+}
+
+// ---- The aim screen -------------------------------------------------------------------------------------------------
+
+// On foot, the stand-in for the Mako's aim: from the head along its view. The capture's centre is the aim point.
+void PointAim() {
+    std::optional<Eye> const eye = HeadNow();
+    if (!eye || gAim.captureComponent == nullptr) {
+        return;
+    }
+    engine::UnrealRotation const look = engine::ToRotation(eye->forward);
+    ue3::Params view = ParamsOf(gCaptureSetView);
+    view.Set("NewLocation", ue3::Vector{static_cast<float>(eye->location.x), static_cast<float>(eye->location.y), static_cast<float>(eye->location.z)});
+    view.Set("NewRotation", ue3::Rotator{look.pitch, look.yaw, look.roll});
+    if (Call(gAim.captureComponent, gCaptureSetView, view) && FlushActor(gAim.captureActor, true)) {
+        ++gAim.pointedTicks;
+    }
+    gAim.lastPointed = Now();
+}
+
+void ClearAim(char const* why) {
+    if (Still(gAim.captureComponent, gCaptureComponent)) {
+        ue3::Params off = ParamsOf(gCaptureSetEnabled);
+        off.SetBool("bEnable", false);
+        Call(gAim.captureComponent, gCaptureSetEnabled, off);
+    }
+    if (Still(gAim.captureActor, gActorClass)) {
+        DestroyActor(gAim.captureActor, why);
+    }
+    gAim = AimScreen{};
+}
+
+// `aimscreen [W H] [fov DEG]`: the screen part's slot `gAim.element` (Hull_Console's right screen) shows a capture along the aim.
+std::string DoAimScreen(std::istringstream& words) {
+    if (auto const missing = MissingFunction({&gCreateTarget, &gCaptureSetEnabled, &gCaptureSetFrameRate, &gCaptureSetView, &gCaptureSetParameters, &gForceUpdate,
+            &gGetMaterial, &gSetMaterial, &gCreateMic, &gSetParent, &gSetTextureParameter})) {
+        return Refuse(*missing);
+    }
+    if (!gState.part || gState.component == nullptr) {
+        return Refuse("no screen part: mevr cockpit screenpart <Package.Object> first");
+    }
+    int width = gAim.width;
+    int height = gAim.height;
+    float fov = gAim.fovDeg;
+    for (std::string word; words >> word;) {
+        if (word == "fov") {
+            if (!(words >> fov) || !(fov > 1.0f) || fov > 170.0f) {
+                return "usage: mevr cockpit aimscreen [W H] [fov DEG]";
+            }
+            continue;
+        }
+        std::istringstream size(word);
+        int w = 0;
+        int h = 0;
+        if (!(size >> w && words >> h && w >= 16 && h >= 16 && w <= 2048 && h <= 2048)) {
+            return "usage: mevr cockpit aimscreen [W H] [fov DEG]";
+        }
+        width = w;
+        height = h;
+    }
+    ue3::Object* const controller = player::Controller();
+    if (controller == nullptr) {
+        return Refuse("no player controller");
+    }
+    if (gAim.target == nullptr || gAim.width != width || gAim.height != height) {
+        ue3::Object* const target = CreateTarget(width, height, true);
+        if (target == nullptr) {
+            return Refuse("TextureRenderTarget2D.Create returned no render target: nothing changed");
+        }
+        gAim.target = target;
+        gAim.width = width;
+        gAim.height = height;
+    }
+    gAim.fovDeg = fov;
+    if (gAim.captureActor == nullptr) {
+        ue3::Object* const actor = SpawnActor(controller, gCaptureActor.Get(), player::Location(controller).value_or(ue3::Vector{}));
+        ue3::Object* const component = ue3::IsA(actor, gCaptureActor) ? gSceneCapture.Read<ue3::Object*>(actor).value_or(nullptr) : nullptr;
+        if (!ue3::IsA(component, gCaptureComponent)) {
+            if (actor != nullptr) {
+                DestroyActor(actor, "no capture component");
+            }
+            return Refuse("Actor.Spawn returned no SceneCapture2DActor with a capture component");
+        }
+        gAim.captureActor = actor;
+        gAim.captureComponent = component;
+        gSkipUsersOccluded.WriteBool(component, false);
+        gSkipOwnerOccluded.WriteBool(component, false);
+        WriteField(gMaxUpdateDist, component, kMaxUpdateDist, "CockpitProbe.AimMaxUpdateDist");
+        gUpdateMatrices.WriteBool(component, false);
+        gEnablePostProcess.WriteBool(component, false);  // as `post 0`: the eye's own post is enough for a screen in the world
+        gUseMainPostProcess.WriteBool(component, false);
+        WriteField(gPostProcess, component, static_cast<ue3::Object*>(nullptr), "CockpitProbe.AimPostProcess");
+    }
+    ue3::Params parameters = ParamsOf(gCaptureSetParameters);
+    parameters.Set("NewTextureTarget", gAim.target);
+    parameters.Set("NewFOV", fov);
+    parameters.Set("NewNearPlane", 20.0f);
+    parameters.Set("NewFarPlane", 0.0f);
+    Call(gAim.captureComponent, gCaptureSetParameters, parameters);
+    ue3::Params rate = ParamsOf(gCaptureSetFrameRate);
+    rate.Set("NewFrameRate", gSettings.captureRate);
+    Call(gAim.captureComponent, gCaptureSetFrameRate, rate);
+    WriteField(gFrameRate, gAim.captureComponent, gSettings.captureRate, "CockpitProbe.AimFrameRate");
+    if (!gCaptureEnabled.ReadBool(gAim.captureComponent).value_or(false)) {
+        ue3::Params on = ParamsOf(gCaptureSetEnabled);
+        on.SetBool("bEnable", true);
+        Call(gAim.captureComponent, gCaptureSetEnabled, on);
+    }
+    PointAim();
+    FlushActor(gAim.captureActor, false);
+    // Our instance over the slot's own (Hull_Console_Aim_MIC), its texture parameter the render target. As EnsureMic: the
+    // slot gets the plain Material under it first, so CreateAndSetMaterialInstanceConstant makes a new instance.
+    if (gAim.mic == nullptr || !ue3::runtime::IsAlive(gAim.mic)) {
+        ue3::Params get = ParamsOf(gGetMaterial);
+        get.Set("ElementIndex", gAim.element);
+        Call(gState.component, gGetMaterial, get);
+        ue3::Object* const own = get.Return<ue3::Object*>().value_or(nullptr);
+        MaterialRow const row = own != nullptr ? Analyze(own) : MaterialRow{};
+        std::optional<ue3::Name> const parameter = row.object != nullptr ? PickParameter(row) : std::nullopt;
+        if (row.base == nullptr || !parameter) {
+            return Refuse(std::format("slot {} shows {}, which has no texture parameter to put the picture on", gAim.element, ue3::runtime::FullName(own)));
+        }
+        ue3::Params plain = ParamsOf(gSetMaterial);
+        plain.Set("ElementIndex", gAim.element);
+        plain.Set("Material", row.base);
+        Call(gState.component, gSetMaterial, plain);
+        ue3::Params create = ParamsOf(gCreateMic);
+        create.Set("ElementIndex", gAim.element);
+        Call(gState.component, gCreateMic, create);
+        ue3::Object* const mic = create.Return<ue3::Object*>().value_or(nullptr);
+        if (!ue3::IsA(mic, gMic)) {
+            return Refuse(std::format("CreateAndSetMaterialInstanceConstant returned {}", ue3::runtime::FullName(mic)));
+        }
+        ue3::Params parent = ParamsOf(gSetParent);
+        parent.Set("NewParent", own);
+        Call(mic, gSetParent, parent);
+        gAim.mic = mic;
+        ue3::Params value = ParamsOf(gSetTextureParameter);
+        value.Set("ParameterName", *parameter);
+        value.Set("Value", gAim.target);
+        Call(mic, gSetTextureParameter, value);
+    }
+    FlushActor(gState.actor, false);
+    HideFromCaptures();
+    std::string const report = std::format("aim screen: {} on slot {} of {}, a {}x{} FloatRGB capture {} at {:.0f} degrees, {:.0f} renders a second at most; the cockpit {} the captures",
+        ue3::runtime::FullName(gAim.mic), gAim.element, ue3::runtime::FullName(gState.mesh), width, height, ue3::runtime::FullName(gAim.captureActor), fov,
+        gSettings.captureRate, gCaptureHide != 0 ? std::format("is kept out of (capturehide {})", gCaptureHide) : std::string("shows in"));
+    log::Info("cockpit probe: {}", report);
+    return report;
 }
 
 // ---- The rest of the verbs -----------------------------------------------------------------------------------------
@@ -1589,7 +1827,7 @@ std::string Rest(std::istringstream& words) {
 }
 
 constexpr char const* kUsage =
-    "mevr cockpit: load <Package.Object> [class] | mesh [name or Package.Object] | part <Package.Object> RIGHT FORWARD UP YAW M_PER_UNIT | parts [clear|sweep] | screenpart <Package.Object> | anchor | list [filter] | classes | spawnclass [name] | screen [W H] [float|rgba8] [linear] | materials [filter] | material [name] | param [name] | "
+    "mevr cockpit: load <Package.Object> [class] | mesh [name or Package.Object] | part <Package.Object> RIGHT FORWARD UP YAW M_PER_UNIT | parts [clear|sweep] | screenpart <Package.Object> | aimscreen [W H] [fov DEG] | capturehide [0|1|2|3] | anchor | list [filter] | classes | spawnclass [name] | screen [W H] [float|rgba8] [linear] | materials [filter] | material [name] | param [name] | "
     "texture [Package.Object] | info | element N|all | scale S | dist M | rot P Y R | follow 0|1 | attach | detach | chase BACK UP | rate N | aim 0|1 | post 0|1 | status | clear";
 
 // ---- `texture`, `info`: separating a bad texture from a bad instance from a bad mesh (research/47) -------------------
@@ -1958,6 +2196,26 @@ std::string Command(std::string const& line) {
     if (verb == "screen") {
         return DoScreen(words);
     }
+    if (verb == "aimscreen") {
+        return DoAimScreen(words);
+    }
+    if (verb == "capturehide") {
+        int mode = 2;
+        words >> mode;
+        if (mode < 0 || mode > 3) {
+            return "usage: mevr cockpit capturehide 0|1|2|3 (none; owned by the chase capture, bOwnerNoSee; owned by the pawn or the controller, bOnlyOwnerSee)";
+        }
+        gCaptureHide = mode;
+        HideFromCaptures();
+        // What the owner test compares: the first part's owner now, and the camera's view target (UE3's view actor for the
+        // eyes [verify]).
+        ue3::Object* const controller = player::Controller();
+        ue3::Object* const camera = controller != nullptr ? player::Camera(controller) : nullptr;
+        ue3::Object* const firstOwner = !gParts.empty() && PartAlive(gParts.front()) ? gOwnerField.Read<ue3::Object*>(gParts.front().actor).value_or(nullptr) : nullptr;
+        return std::format("capturehide {} applied to {} part{}; the first part's Owner {}; pawn {}, controller {}, the camera's view target {}", gCaptureHide,
+            gParts.size(), gParts.size() == 1 ? "" : "s", ue3::runtime::FullName(firstOwner), ue3::runtime::FullName(controller != nullptr ? player::Pawn(controller) : nullptr),
+            ue3::runtime::FullName(controller), ue3::runtime::FullName(camera != nullptr ? gCameraViewTargetActor.Read<ue3::Object*>(camera).value_or(nullptr) : nullptr));
+    }
     if (verb == "materials") {
         return ListMaterials(Rest(words));
     }
@@ -2084,6 +2342,9 @@ void Tick() {
     // Not every tick unless the rate asks: each SetView makes the engine build a new probe, with a new view state.
     if (gState.captureActor != nullptr && gSettings.aim && gSettings.captureRate > 0.0f && Now() - gState.lastPointed >= 1.0 / static_cast<double>(gSettings.captureRate)) {
         PointCapture();
+    }
+    if (gAim.captureActor != nullptr && gSettings.captureRate > 0.0f && Now() - gAim.lastPointed >= 1.0 / static_cast<double>(gSettings.captureRate)) {
+        PointAim();
     }
 }
 
