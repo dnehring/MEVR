@@ -92,7 +92,9 @@ internal static class Build
     // least 0.15. At 0.22 and 0.4 it read nearly clear from the seat (4% darker, no sheen: the game side, 2026-11-03).
     // At 0.32 and 1.0 still nearly clear (no sheen, 2026-11-03): the cube's sheen brighter, the view kept clear.
     private const float GlassOpacity = 0.32f, GlassCube = 3.0f;
-    private static readonly float[] GlassTint = { 0.03f, 0.035f, 0.04f, 1f }, GlassFresnel = { 0.15f, 0f, 0f, 1f };
+    // The fresnel's floor (VSR_Colour_02.r) low, so the cube's sheen stays at grazing angles (the side panes, the edges): at
+    // 0.15 with the cube at 3 it lay as a milky haze over the windshield's middle (the game side, 2026-11-03).
+    private static readonly float[] GlassTint = { 0.03f, 0.035f, 0.04f, 1f }, GlassFresnel = { 0.03f, 0f, 0f, 1f };
     // Which elements get a glow variant: the shell's lamps (hull_shapes.Bake puts them on materials of their own) and the
     // console's idle screens.
     private static bool Glows(string material) => material.StartsWith("lamp", StringComparison.Ordinal) || material is "Display" or "Aim";

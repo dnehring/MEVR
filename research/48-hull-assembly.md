@@ -956,7 +956,12 @@ No decimation or packaging until the user approves the modelling.
   brightest 1% from (220, 203, 205) to white, the lamps' mean grey 57 to 73): they read as lit lamps. The glass at 0.32 and
   1.0 is still nearly clear (the view (97, 74, 67) against (102, 76, 67) without it), no sheen in a still view.
 - **Now:** the shell's lamps glow by default (their elements on `_Glow_MIC` at 10; the unlit and lit instances are their
-  variants), and the glass's cube at 3, its opacity kept at 0.32 so the view stays clear. The lit instances stay in the package unused: lit shading needs lights inside the cabin (`lamps`), a
+  variants), and the glass's cube at 3, its opacity kept at 0.32 so the view stays clear.
+- **In the game** (136f457): the lamps glow with no variant; `variant base` swaps exactly the three lamp elements back. The
+  glass at cube 3 shows its sheen, but as a pale haze over the windshield's middle (the view brighter, (114, 92, 87)
+  against (97, 74, 67), a dark crate behind it washed toward grey), where a fresnel's sheen belongs at grazing angles.
+- **So:** the fresnel's floor (`VSR_Colour_02.r`) at 0.03 (0.15): face on the sheen is a fifth of what it was, at grazing
+  angles (the side panes, the windshield's edges) the same. The lit instances stay in the package unused: lit shading needs lights inside the cabin (`lamps`), a
   question of their stereo cost that the game side takes up once the Mako drives.
 
 ## 5. Not done
