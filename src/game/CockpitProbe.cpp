@@ -96,6 +96,7 @@ ue3::FunctionRef gCaptureSetParameters{"Engine.SceneCapture2DComponent.SetCaptur
 ue3::FunctionRef gSetOwner{"Engine.Actor.SetOwner"};
 ue3::FunctionRef gSetOwnerNoSee{"Engine.PrimitiveComponent.SetOwnerNoSee"};
 ue3::FunctionRef gSetOnlyOwnerSee{"Engine.PrimitiveComponent.SetOnlyOwnerSee"};
+ue3::FunctionRef gTrace{"Engine.Actor.Trace"};
 ue3::FunctionRef gEnterVehicle{"SFXGame.BioPlayerController.BioEnterVehicle"};
 ue3::FunctionRef gFindClosestVehicle{"SFXGame.SFXSaveGame.FindClosestDrivableVehicle"};
 
@@ -271,6 +272,16 @@ struct AimScreen {
     float fovDeg = 30.0f;
     std::uint32_t pointedTicks = 0;
     double lastPointed = -1.0;
+    // `aimreticle`: the package's Aim_Reticle at the traced aim point, seen by the captures, not the eyes.
+    ue3::Object* reticle = nullptr;
+    ue3::Object* reticleComponent = nullptr;
+    float reticleDeg = 6.0f;      // its width as seen from the aim capture
+    float reticleWidthUnits = 97.0f;  // the mesh's own width (research/48: 97 package units)
+    double traceUnits = 0.0;      // the last traced distance
+    std::string traceNote;        // what the last full-length trace answered
+    float traceExtent = 0.0f;     // `aimreticle ... extent N`: a box trace (level meshes may block only those)
+    float rangeM = 200.0f;        // `aimreticle ... range M`: how far the trace looks, and where the reticle sits on a miss
+    float pitchDeg = 0.0f;        // `aimreticle ... pitch DEG`: the stand-in aim tilted from the head's view (up positive)
 };
 AimScreen gAim;
 void ClearAim(char const* why);
@@ -1604,9 +1615,14 @@ void HideFromCaptures() {
 
 // On foot, the stand-in for the Mako's aim: from the head along its view. The capture's centre is the aim point.
 void PointAim() {
-    std::optional<Eye> const eye = HeadNow();
+    std::optional<Eye> eye = HeadNow();
     if (!eye || gAim.captureComponent == nullptr) {
         return;
+    }
+    if (gAim.pitchDeg != 0.0f) {
+        engine::UnrealRotation tilted = engine::ToRotation(eye->forward);
+        tilted.pitch += static_cast<int>(gAim.pitchDeg * 65536.0f / 360.0f);
+        eye->forward = engine::ToBasis(tilted).forward;
     }
     engine::UnrealRotation const look = engine::ToRotation(eye->forward);
     ue3::Params view = ParamsOf(gCaptureSetView);
@@ -1616,6 +1632,149 @@ void PointAim() {
         ++gAim.pointedTicks;
     }
     gAim.lastPointed = Now();
+    if (gAim.reticle == nullptr || !Still(gAim.reticle, gActorClass)) {
+        return;
+    }
+    // Where the aim meets the world (Actor.Trace on the pawn, which it ignores; our parts have no collision), else 200 m out;
+    // the reticle just short of it, square to the aim, its width `reticleDeg` as the capture sees it.
+    // On a miss the reticle sits at most 50 m out: the trace passes through background meshes without collision (2026-11-03,
+    // Eden Prime's far buildings), and a reticle beyond them is hidden behind them.
+    double const kRangeUnits = static_cast<double>(gAim.rangeM) * engine::kUnitsPerMeter;
+    double distance = std::min(kRangeUnits, 50.0 * engine::kUnitsPerMeter);
+    ue3::Object* const pawn = player::Pawn(player::Controller());
+    if (pawn != nullptr && gTrace.Get() != nullptr) {
+        engine::UnrealVector const& o = eye->location;
+        engine::UnrealVector const& f = eye->forward;
+        // The actor hit up to `length` along the aim, and where if the native's out parameter came back (it may not, as
+        // game/sights found): then bisect with the hit/no-hit answer.
+        auto const traceTo = [&](double length, ue3::Vector* hit) {
+            ue3::Params trace = ParamsOf(gTrace);
+            trace.Set("TraceEnd", ue3::Vector{static_cast<float>(o.x + f.x * length), static_cast<float>(o.y + f.y * length), static_cast<float>(o.z + f.z * length)});
+            trace.Set("TraceStart", ue3::Vector{static_cast<float>(o.x), static_cast<float>(o.y), static_cast<float>(o.z)});
+            trace.SetBool("bTraceActors", true);
+            trace.Set("Extent", ue3::Vector{gAim.traceExtent, gAim.traceExtent, gAim.traceExtent});
+            bool const called = Call(pawn, gTrace, trace);
+            ue3::Object* const what = trace.Return<ue3::Object*>().value_or(nullptr);
+            ue3::Vector const where = trace.Get<ue3::Vector>("HitLocation").value_or(ue3::Vector{});
+            if (hit != nullptr) {
+                *hit = where;
+                gAim.traceNote = std::format("called {}, hit {}, HitLocation ({:.0f} {:.0f} {:.0f}), from ({:.0f} {:.0f} {:.0f}) along ({:.2f} {:.2f} {:.2f}) by {}",
+                    called, ue3::runtime::FullName(what), where.x, where.y, where.z, o.x, o.y, o.z, f.x, f.y, f.z, ue3::runtime::FullName(pawn));
+            }
+            return called && what != nullptr;
+        };
+        ue3::Vector at{};
+        if (traceTo(kRangeUnits, &at)) {
+            double const along = (at.x - o.x) * f.x + (at.y - o.y) * f.y + (at.z - o.z) * f.z;
+            if ((at.x != 0.0f || at.y != 0.0f || at.z != 0.0f) && along > 0.0 && along <= kRangeUnits) {
+                distance = along;
+            } else {
+                double lo = 0.0;
+                double hi = 1.0;
+                for (int i = 0; i < 10; ++i) {
+                    double const mid = 0.5 * (lo + hi);
+                    (traceTo(kRangeUnits * mid, nullptr) ? hi : lo) = mid;
+                }
+                distance = kRangeUnits * hi;
+            }
+        }
+    }
+    gAim.traceUnits = distance;
+    double const placed = std::max(distance - 10.0, 40.0);
+    if (ue3::Vector* const atField = gActorLocation.In<ue3::Vector>(gAim.reticle)) {
+        *atField = {static_cast<float>(eye->location.x + eye->forward.x * placed), static_cast<float>(eye->location.y + eye->forward.y * placed),
+            static_cast<float>(eye->location.z + eye->forward.z * placed)};
+        write_journal::Wrote("CockpitProbe.reticleLocation", atField, sizeof(*atField));
+    }
+    if (ue3::Rotator* const turnField = gActorRotation.In<ue3::Rotator>(gAim.reticle)) {
+        *turnField = {look.pitch, look.yaw, look.roll};  // the mesh faces +X: along the aim, two-sided
+        write_journal::Wrote("CockpitProbe.reticleRotation", turnField, sizeof(*turnField));
+    }
+    constexpr double kRadiansPerDegree = 3.14159265358979323846 / 180.0;
+    ue3::Params scale = ParamsOf(gSetDrawScale);
+    scale.Set("NewScale", static_cast<float>(2.0 * placed * std::tan(0.5 * gAim.reticleDeg * kRadiansPerDegree) / gAim.reticleWidthUnits));
+    Call(gAim.reticle, gSetDrawScale, scale);
+    FlushActor(gAim.reticle, true);
+}
+
+// `aimreticle [DEG]`: the package's Aim_Reticle at the aim point, owned by the pawn with bOwnerNoSee: the captures see it, the
+// eyes (whose view actor is the pawn) don't; the hand reticle is theirs.
+std::string DoAimReticle(std::istringstream& words) {
+    if (auto const missing = MissingFunction({&gSpawn, &gSetStaticMesh, &gSetDrawScale, &gSetOwnerNoSee, &gTrace})) {
+        return Refuse(*missing);
+    }
+    float deg = gAim.reticleDeg;
+    bool eyes = false;  // `eyes`: the eyes see it too (to find it)
+    for (std::string word; words >> word;) {
+        if (word == "eyes") {
+            eyes = true;
+        } else if (word == "pitch") {
+            if (!(words >> gAim.pitchDeg) || gAim.pitchDeg < -89.0f || gAim.pitchDeg > 89.0f) {
+                return "usage: mevr cockpit aimreticle ... pitch <degrees>";
+            }
+        } else if (word == "range") {
+            if (!(words >> gAim.rangeM) || !(gAim.rangeM >= 1.0f) || gAim.rangeM > 2000.0f) {
+                return "usage: mevr cockpit aimreticle ... range <metres>";
+            }
+        } else if (word == "extent") {
+            if (!(words >> gAim.traceExtent) || gAim.traceExtent < 0.0f || gAim.traceExtent > 100.0f) {
+                return "usage: mevr cockpit aimreticle ... extent <half size in units>";
+            }
+        } else if (std::from_chars(word.data(), word.data() + word.size(), deg).ec != std::errc{} || !(deg > 0.1f && deg < 60.0f)) {
+            return "usage: mevr cockpit aimreticle [width in degrees, as the aim capture sees it] [eyes]";
+        }
+    }
+    gAim.reticleDeg = deg;
+    if (gAim.captureActor == nullptr) {
+        return Refuse("no aim screen: mevr cockpit aimscreen first");
+    }
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const pawn = controller != nullptr ? player::Pawn(controller) : nullptr;
+    if (pawn == nullptr) {
+        return Refuse("no pawn");
+    }
+    if (gAim.reticle == nullptr) {
+        constexpr char const* kPath = "BIOG_MEVR_Cockpit.Aim_Reticle";
+        ue3::Object* mesh = FindMesh(kPath);
+        if (mesh == nullptr || Lower(R().PathName(mesh)) != Lower(kPath)) {
+            mesh = LoadObject(kPath, gStaticMesh.Get());
+        }
+        if (!ue3::IsA(mesh, gStaticMesh)) {
+            return Refuse(std::format("no StaticMesh {} (a package from b486139 on)", kPath));
+        }
+        ue3::Vector const at = player::Location(pawn).value_or(ue3::Vector{});
+        for (std::size_t i = 0; i < kAutomatic && gAim.reticle == nullptr; ++i) {
+            ActorKind const& kind = kKinds[i];
+            ue3::Object* const actor = SpawnActor(controller, kind.cls->Get(), at);
+            ue3::Object* const component = ue3::IsA(actor, *kind.cls) ? kind.component->Read<ue3::Object*>(actor).value_or(nullptr) : nullptr;
+            if (!ue3::IsA(component, gStaticMeshComponent)) {
+                if (actor != nullptr) {
+                    DestroyActor(actor, "no StaticMeshComponent");
+                }
+                continue;
+            }
+            MakeHarmless(kind, actor, component);
+            gAim.reticle = actor;
+            gAim.reticleComponent = component;
+        }
+        if (gAim.reticle == nullptr) {
+            return Refuse("no actor could be spawned for the reticle");
+        }
+        ue3::Params set = ParamsOf(gSetStaticMesh);
+        set.Set("NewMesh", mesh);
+        set.SetBool("bForce", true);
+        Call(gAim.reticleComponent, gSetStaticMesh, set);
+    }
+    SetOwnerOf(gAim.reticle, pawn);
+    ue3::Params noSee = ParamsOf(gSetOwnerNoSee);
+    noSee.SetBool("bNewOwnerNoSee", !eyes);
+    Call(gAim.reticleComponent, gSetOwnerNoSee, noSee);
+    FlushActor(gAim.reticle, false);
+    PointAim();
+    std::string const report = std::format("aim reticle {} at the aim point ({:.1f} m out), {:.1f} degrees wide in the aim picture; {}; the trace: {}",
+        ue3::runtime::FullName(gAim.reticle), gAim.traceUnits / engine::kUnitsPerMeter, gAim.reticleDeg, eyes ? "the eyes see it too" : "hidden from the eyes", gAim.traceNote);
+    log::Info("cockpit probe: {}", report);
+    return report;
 }
 
 void ClearAim(char const* why) {
@@ -1626,6 +1785,9 @@ void ClearAim(char const* why) {
     }
     if (Still(gAim.captureActor, gActorClass)) {
         DestroyActor(gAim.captureActor, why);
+    }
+    if (Still(gAim.reticle, gActorClass)) {
+        DestroyActor(gAim.reticle, why);
     }
     gAim = AimScreen{};
 }
@@ -1645,7 +1807,13 @@ std::string DoAimScreen(std::istringstream& words) {
     for (std::string word; words >> word;) {
         if (word == "fov") {
             if (!(words >> fov) || !(fov > 1.0f) || fov > 170.0f) {
-                return "usage: mevr cockpit aimscreen [W H] [fov DEG]";
+                return "usage: mevr cockpit aimscreen [W H] [fov DEG] [slot N]";
+            }
+            continue;
+        }
+        if (word == "slot") {  // another of the part's slots (the centre's, 1, to look at the picture)
+            if (!(words >> gAim.element) || gAim.element < 0 || gAim.element > 15) {
+                return "usage: mevr cockpit aimscreen [W H] [fov DEG] [slot N]";
             }
             continue;
         }
@@ -1827,7 +1995,7 @@ std::string Rest(std::istringstream& words) {
 }
 
 constexpr char const* kUsage =
-    "mevr cockpit: load <Package.Object> [class] | mesh [name or Package.Object] | part <Package.Object> RIGHT FORWARD UP YAW M_PER_UNIT | parts [clear|sweep] | screenpart <Package.Object> | aimscreen [W H] [fov DEG] | capturehide [0|1|2|3] | anchor | list [filter] | classes | spawnclass [name] | screen [W H] [float|rgba8] [linear] | materials [filter] | material [name] | param [name] | "
+    "mevr cockpit: load <Package.Object> [class] | mesh [name or Package.Object] | part <Package.Object> RIGHT FORWARD UP YAW M_PER_UNIT | parts [clear|sweep] | screenpart <Package.Object> | aimscreen [W H] [fov DEG] | aimreticle [DEG] | capturehide [0|1|2|3] | anchor | list [filter] | classes | spawnclass [name] | screen [W H] [float|rgba8] [linear] | materials [filter] | material [name] | param [name] | "
     "texture [Package.Object] | info | element N|all | scale S | dist M | rot P Y R | follow 0|1 | attach | detach | chase BACK UP | rate N | aim 0|1 | post 0|1 | status | clear";
 
 // ---- `texture`, `info`: separating a bad texture from a bad instance from a bad mesh (research/47) -------------------
@@ -2198,6 +2366,9 @@ std::string Command(std::string const& line) {
     }
     if (verb == "aimscreen") {
         return DoAimScreen(words);
+    }
+    if (verb == "aimreticle") {
+        return DoAimReticle(words);
     }
     if (verb == "capturehide") {
         int mode = 2;

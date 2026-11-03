@@ -613,3 +613,20 @@ person.
 - **A reticle in the aim picture** needs a mesh the captures see and the eyes don't: owned by the pawn with `bOwnerNoSee`. It would
   show in both captures, so it belongs at the aim point itself (traced, scaled with distance to keep its size in the aim picture), where
   it also marks the target in the chase picture. It needs a reticle mesh in the package.
+
+## The aim reticle (2026-11-03 00:40, fake headset, Eden Prime, hull b486139)
+
+b486139 adds `Aim_Reticle` (the right screen's idle sight as flat two-sided strips, 97 package units across, facing +X, research/48)
+and a detail pass (three baked pages on `Hull_Shell`, labels, stripes, handles, cables).
+
+- **`aimreticle [DEG] [range M] [pitch DEG] [extent N] [eyes]`** (probe): spawns the mesh, writes its `Owner` (the pawn), sets
+  `bOwnerNoSee`, and each pointing of the aim capture places it on the aim line, square to it, `DEG` wide as the capture sees it
+  (draw scale 2 d tan(DEG/2) / 97). `aimscreen ... slot N` puts the aim picture on another slot (the centre's, 1, to look at it).
+- **It works:** on the centre screen the aim picture shows the reticle centred and orange, the eyes don't see it (`eyes` shows it to them).
+- **`Actor.Trace` through ProcessEvent hit nothing:** level from the eye past a crate and buildings, and 25 degrees down at the floor, with
+  and without a box extent: `ReturnValue` None, `HitLocation` (0, 0, 0). So a reticle meant for the aim point sat behind the crate (8 m)
+  or the buildings (50 m, 200 m) and was hidden; at 5 m, in front of the crate, it showed. In Ghidra `AActor::execTrace` (`0x140506E50`)
+  reads HitLocation, HitNormal, TraceEnd, TraceStart, bTraceActors, Extent, HitInfo, ExtraTraceFlags and one more int, then
+  `0x140500CB0` (flags, a trace-actor swap) and the world's line check `0x140408E30`; why nothing comes back is open **[verify]**.
+  `game/Sights` (shot convergence), `game/Mako` (the turret's aim point) and `game/Throwables` use the same call; none has been seen
+  hitting in the game. On a miss the reticle sits at most 50 m out.
