@@ -3,6 +3,7 @@
 
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
+#include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/TestRequest.hpp"
@@ -2088,7 +2089,9 @@ void PointAim() {
     }
     constexpr double kRadiansPerDegree = 3.14159265358979323846 / 180.0;
     ue3::Params scale = ParamsOf(gSetDrawScale);
-    scale.Set("NewScale", static_cast<float>(2.0 * placed * std::tan(0.5 * gAim.reticleDeg * kRadiansPerDegree) / gAim.reticleWidthUnits));
+    // `reticleDeg` is its width at the screen's 30-degree field; zoomed (R3) it keeps its size on the screen.
+    double const reticleDeg = static_cast<double>(gAim.reticleDeg) * gAim.fovDeg / 30.0;
+    scale.Set("NewScale", static_cast<float>(2.0 * placed * std::tan(0.5 * reticleDeg * kRadiansPerDegree) / gAim.reticleWidthUnits));
     Call(gAim.reticle, gSetDrawScale, scale);
     FlushActor(gAim.reticle, true);
 }
@@ -3250,9 +3253,32 @@ bool Riding() {
     return gRide.on && gRide.riding;
 }
 
+// R3 (the right stick's click) steps the aiming screen's zoom while riding: its field 30, 12, 5 degrees and round again
+// (docs/mako-cockpit-goal.md item 4). Read from the controllers, so it works whether or not the game takes the pad.
+void ZoomTick() {
+    static bool wasDown = false;
+    bool const down = vr::controllers::Latest().active && vr::controllers::Latest().right.stickClick;
+    bool const pressed = down && !wasDown;
+    wasDown = down;
+    if (!pressed || !gRide.riding || !Still(gAim.captureComponent, gCaptureComponent) || gAim.target == nullptr) {
+        return;
+    }
+    constexpr std::array<float, 3> kFields{30.0f, 12.0f, 5.0f};
+    auto const next = std::find_if(kFields.begin(), kFields.end(), [](float f) { return f < gAim.fovDeg - 0.5f; });
+    gAim.fovDeg = next != kFields.end() ? *next : kFields.front();
+    ue3::Params parameters = ParamsOf(gCaptureSetParameters);
+    parameters.Set("NewTextureTarget", gAim.target);
+    parameters.Set("NewFOV", gAim.fovDeg);
+    parameters.Set("NewNearPlane", 20.0f);
+    parameters.Set("NewFarPlane", 0.0f);
+    Call(gAim.captureComponent, gCaptureSetParameters, parameters);
+    log::Info("cockpit: R3: the aiming screen's field is {:.0f} degrees", gAim.fovDeg);
+}
+
 void Tick(std::optional<std::uint32_t> recenters) {
     AutoTick();
     RideTick();
+    ZoomTick();
     if (gFiringMode != nullptr && Now() >= gFireReleaseAt) {
         if (ue3::runtime::IsAlive(gFiringMode)) {
             ue3::Params p = ParamsOf(gStopFiringCannon);
