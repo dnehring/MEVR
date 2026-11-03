@@ -647,3 +647,26 @@ a grey specular) and the lamps and idle side screens a `_Glow_MIC` over `EngineB
   - **Glow brightens the lamps** (their brightest 1%: RGB 155, 122, 110 -> 227, 210, 213) with no visible bloom halo.
 - **This build is darker than b486139 at the same views:** ahead the whole picture's mean grey 56.0 -> 35.1 (the top third, the ceiling,
   37.2 -> 24.2); over the left shoulder 50.3 -> 28.3. The idle centre screen's opening: RGB 14.8, 10.2, 7.8 (5969f57: 37, 26, 19).
+  **Not the asset** (Asset Modeling: the packaged textures match b486139's to 0.1 of a level) **and not reproduced:** the next session
+  (66d3a38, below) reads the old values at the same pose. Something in that session's state darkened the whole picture; what, is open.
+
+## Window glass (2026-11-03 00:59, fake headset, Eden Prime, hull 66d3a38)
+
+66d3a38 (research/48 section 26) adds `Hull_Glass` (six panes, placed like the hull pieces; `tools/cockpit/place.py` lists it now),
+`Hull_Glass_MIC` over `HMF_VSR_MASTER_MAT` (unlit, translucent, opacity 0.22) and `Hull_Glass_Alt_MIC` over `JUG00_GLASS01` (lit,
+frosted); the package now imports from `BIOC_Materials`, and it loaded. `variant alt` (probe) swaps to the alternative. Same pose:
+
+| | whole | top third | centre screen (RGB) | through the windshield (RGB) |
+|---|---|---|---|---|
+| no screens | 51.9 | 37.2 | 37.4, 25.6, 19.2 | |
+| screens and aim live | 55.2 | 37.2 | 101.3, 64.3, 48.7 | |
+| no screens again | 51.9 | 37.2 | 37.4, 25.6, 19.1 | 97.9, 72.9, 65.1 (b486139 without glass: 101.8, 75.7, 67.1) |
+| glass alt | 49.7 | 37.2 | | 84.2, 62.2, 54.5 |
+| + lit (16 elements) | 49.7 | 37.2 | | |
+| + glow x 4 (5) | 51.0 | 38.1 | | |
+
+- **The glass is close to clear:** 4% darker through the windshield, no visible sheen from the seat. The alternative reads as glass but its
+  hexagonal frost bends the world (13% darker).
+- **Lit, retuned (mid-grey diffuse, stronger specular), still changes nothing**: the parts' light environment gathers almost no light in the
+  closed cabin. Lights inside (the manifest's `lamps`) would be the fix, at their stereo cost (not tried).
+- **The screens don't darken anything:** with the live screens the rest of the picture reads the same.

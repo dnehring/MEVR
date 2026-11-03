@@ -1073,13 +1073,14 @@ std::string DoLoaded(std::istringstream& words) {
     return out;
 }
 
-// `variant lit|glow|base`: each part's elements to the package's `<instance>_Lit_MIC` or `_Glow_MIC` (research/48 section 25), or
+// `variant lit|glow|alt|base`: each part's elements to the package's `<instance>_Lit_MIC`, `_Glow_MIC` (research/48 section 25) or
+// `_Alt_MIC` (the glass's other material, section 26), or
 // back to the plain `<instance>_MIC`; an element without that variant keeps what it shows, and our own instances (the screens',
 // the aim's) are left alone.
 std::string DoVariant(std::string const& which) {
-    std::string const suffix = which == "lit" ? "_lit_mic" : which == "glow" ? "_glow_mic" : which == "base" ? "_mic" : "";
+    std::string const suffix = which == "lit" ? "_lit_mic" : which == "glow" ? "_glow_mic" : which == "alt" ? "_alt_mic" : which == "base" ? "_mic" : "";
     if (suffix.empty()) {
-        return "usage: mevr cockpit variant lit|glow|base";
+        return "usage: mevr cockpit variant lit|glow|alt|base";
     }
     if (auto const missing = MissingFunction({&gGetMaterial, &gSetMaterial, &gGetNumElements})) {
         return Refuse(*missing);
@@ -1105,7 +1106,7 @@ std::string DoVariant(std::string const& which) {
                 ++kept;
                 continue;
             }
-            for (std::string_view const variant : {std::string_view("_lit_mic"), std::string_view("_glow_mic")}) {
+            for (std::string_view const variant : {std::string_view("_lit_mic"), std::string_view("_glow_mic"), std::string_view("_alt_mic")}) {
                 if (base.ends_with(variant)) {
                     base = base.substr(0, base.size() - variant.size()) + "_mic";
                 }
@@ -2097,7 +2098,7 @@ std::string Rest(std::istringstream& words) {
 }
 
 constexpr char const* kUsage =
-    "mevr cockpit: load <Package.Object> [class] | mesh [name or Package.Object] | part <Package.Object> RIGHT FORWARD UP YAW M_PER_UNIT | parts [clear|sweep] | screenpart <Package.Object> | variant lit|glow|base | loaded <Package.Object> ... | aimscreen [W H] [fov DEG] | aimreticle [DEG] | capturehide [0|1|2|3] | anchor | list [filter] | classes | spawnclass [name] | screen [W H] [float|rgba8] [linear] | materials [filter] | material [name] | param [name] | "
+    "mevr cockpit: load <Package.Object> [class] | mesh [name or Package.Object] | part <Package.Object> RIGHT FORWARD UP YAW M_PER_UNIT | parts [clear|sweep] | screenpart <Package.Object> | variant lit|glow|alt|base | loaded <Package.Object> ... | aimscreen [W H] [fov DEG] | aimreticle [DEG] | capturehide [0|1|2|3] | anchor | list [filter] | classes | spawnclass [name] | screen [W H] [float|rgba8] [linear] | materials [filter] | material [name] | param [name] | "
     "texture [Package.Object] | info | element N|all | scale S | dist M | rot P Y R | follow 0|1 | attach | detach | chase BACK UP | rate N | aim 0|1 | post 0|1 | status | clear";
 
 // ---- `texture`, `info`: separating a bad texture from a bad instance from a bad mesh (research/47) -------------------

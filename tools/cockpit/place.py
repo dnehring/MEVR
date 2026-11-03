@@ -17,7 +17,7 @@ import os
 
 PACKAGE = "BIOG_MEVR_Cockpit"
 UNITS_PER_MODEL_UNIT = 100.0  # the packager's glTF import
-HULL_MESHES = ["Hull_Shell", "Hull_Console", "Hull_Side_Left", "Hull_Side_Right"]
+HULL_MESHES = ["Hull_Shell", "Hull_Console", "Hull_Side_Left", "Hull_Side_Right", "Hull_Glass"]  # the glass from 66d3a38 on
 FURNITURE = {  # manifest name: package mesh
     "chair": "Chair",
     "throtle-control-base": "Throttle_Base",
