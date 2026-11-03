@@ -47,7 +47,7 @@ Each line is checked in the game (fake headset with replays where it can be, the
 
 | Check | State |
 |---|---|
-| 1. In and out by itself | Done on the fake headset: the drop cutscene (no cockpit through modes 8, 7, 6; built at mode 1), exit, level load, a save loaded in the Mako, the setting off, the pawn's death (`suicide`), and the vehicle's own death reaction with ME1's game-over screen (`mevr vehicle die`: out in the same tick) |
+| 1. In and out by itself | Done on the fake headset: the drop cutscene (no cockpit through modes 8, 7, 6; built at mode 1), exit, level load, a save loaded in the Mako, the setting off, the pawn's death (`suicide`), and the vehicle's own death reaction with ME1's game-over screen (`mevr vehicle die`: out in the same tick), and from the user's save on Trebin its "Resume Last Save" back into the cockpit five times (research/47 "A normal save, a death and its reload"); a death by enemy fire not tried |
 | 2. The view | Done on the fake headset: fixed at speed and on slopes, no Mako body in the eyes, no terrain in the cabin on a 16 s drive, a 30 s one up steep banks and past a rock face, nor head-on into a hill at 21 m/s |
 | 3. The centre screen | Done: the game's chase view, trailing, 30 a second |
 | 4. The right screen | Done: along the turret, the reticle on the traced point, R3 zoom 30/12/5 degrees |
@@ -56,7 +56,7 @@ Each line is checked in the game (fake headset with replays where it can be, the
 | 7. Shepard seated | Done: the hips on the H-point (slid back until the head is behind the eye), legs to the heels, the hands closed on the handles' measured axes while held (research/47 "The hands on the handles"), shown only while posed; no Camera/God write |
 | 8. The HUD | Done: the Mako's status and radar on the left display, the rest high in the windshield |
 | 9. Comfort | Needs the user's headset |
-| 10. Cost | Done: within 11.1 ms at p90 at `BIOA_UNC52` (the heaviest uncharted world) with the cockpit riding |
+| 10. Cost | Done: within 11.1 ms at p90 at `BIOA_UNC52` with the cockpit riding, and over a 30 s replayed drive on Trebin after the screens' captures were staggered (render thread p90 7.95-9.19 ms, 5.56 without the cockpit; research/47 "The cockpit's cost over a drive") |
 | 11. Players get it | Done: the release build, the package and script in the payload, MEVR Setup's install, repair and uninstall with the TOC entry, tested on the fake game and on the user's real game (installed, played into the cockpit, uninstalled: 56 files byte for byte as before) |
 
 Also asked for on 2026-11-03: the stick tilts (left/right steers, forward/back pitches the Mako while the thrusters fire) and the
