@@ -57,6 +57,7 @@ def main():
     controls = "--controls" in sys.argv
     twist_stick = "--twist" in sys.argv
     straight = "--straight" in sys.argv  # full throttle and the stick held centred: head-on into whatever is ahead
+    spin = "--spin" in sys.argv  # the lever at neutral, the stick hard right from 2 s, hard left from 6 s: the spin on the spot
     eye_h = 1.20
     if "--eye-height" in sys.argv:
         eye_h = float(sys.argv[sys.argv.index("--eye-height") + 1])
@@ -90,7 +91,7 @@ def main():
         left_sq = right_sq = 0.0
         steer, push = 0.0, 0.0
         if controls:
-            forward = THROTTLE_TRAVEL * min(max((t - 1.5) / 1.0, 0.0), 1.0)
+            forward = 0.0 if spin else THROTTLE_TRAVEL * min(max((t - 1.5) / 1.0, 0.0), 1.0)
             left = (*q, LEVER[0], eye_h + LEVER[1], LEVER[2] - forward)
             if twist_stick:
                 angle = TWIST_DEG if 4.0 <= t < 8.0 else -TWIST_DEG if 8.0 <= t < 12.0 else 0.0
@@ -101,6 +102,10 @@ def main():
                 push = 0.05 if 12.0 <= t < 15.0 else 0.0
                 if straight:
                     side = push = 0.0
+                if spin:
+                    forward = 0.0  # the lever at neutral: steering spins on the spot
+                    side = 0.06 if 2.0 <= t < 6.0 else -0.06 if 6.0 <= t < 10.0 else 0.0
+                    push = 0.0
                 right = (*q, STICK[0] + side, eye_h + STICK[1], STICK[2] - push)
             left_sq = right_sq = 1.0 if t >= 1.0 else 0.0
         else:

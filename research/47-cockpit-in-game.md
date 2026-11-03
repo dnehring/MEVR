@@ -1028,3 +1028,20 @@ Mako's status sit further out and read whole; turned back, the chair's back stan
 drive at full throttle with the stick centred (`make-drive-recording.py --controls --straight`, new) ran head-on into the landing's hill at
 about 21 m/s (the speed fell from 2117 to 1361 units a second at the impact) and bounced the Mako onto its side (the chase screen): in eight
 snapshots 3 s apart the slope fills the windshield at close range in three, and no terrain comes into the cabin in any.
+
+## Which way the body turns: SetRBAngularVelocity measured (2026-11-03 15:02-15:07, fake headset, `BIOA_UNC20`)
+
+The jet stabiliser and the on-the-spot spin both drive the Mako's rigid body through `PrimitiveComponent.SetRBAngularVelocity`. In the
+user's second headset drive both turned the wrong way: the "level" stabiliser rolled the Mako to 65-180 degrees and the spin ran at
++166 deg/s for -17 asked. Two guesses (degrees for the units; world X and Z mirrored by the engine's PhysX conversion) were each
+deployed and failed. Then measured instead: `mevr vehicle angvel [body] X Y Z` (new) sets the vector raw and logs the vehicle's pitch,
+yaw and roll change 0.25 s later, the Mako in the air on a burst of its jets (`mevr vehicle jets`). Results:
+- **The units are radians a second**: 1 for 0.25 s turned it 15 degrees (14.3 expected).
+- **Along the body's forward: roll -14.9 degrees; along its right: pitch -14.6; about world up (fairly level): yaw +15.9.** Six world-axis
+  tests at headings 0, 45, 60, 151 and 168 agree with the same rule: a vector v changes pitch by -(v . right), roll by -(v . forward) and
+  yaw by +(v . up). (In UE's angles: pitch + nose up, roll + right side down, yaw + turning right.)
+- `game/MakoControls`' `AngularVelocity(axes, pitch, roll, yaw)` builds the vector from that rule.
+
+With it: three 2 s jet bursts with the stabiliser held pitch within 1.1 degrees and roll within 10 (it also righted the Mako from 81 degrees
+on its side); the spin (lever at neutral, the stick hard right then left, `make-drive-recording.py --controls --spin`, new) ran at +47 deg/s
+for +48 asked and -47 for -48. Both back on by default.

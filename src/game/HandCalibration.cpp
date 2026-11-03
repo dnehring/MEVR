@@ -540,12 +540,12 @@ constexpr char const* kMakoBlock =
     "rumble = 0.12\n"
     "cameraFollow = 1\n"
     "thrusterBurnScale = 0.4\n"
-    "thrusterStabilize = 0\n"
+    "thrusterStabilize = 1\n"
     "thrusterPitchDeg = 20\n"
     "thrusterRateDeg = 60\n"
     "stickPitchDeadZoneDeg = 8\n"
     "steerInPlaceBelow = 0.2\n"
-    "spinRateDeg = 0\n";
+    "spinRateDeg = 60\n";
 
 // Appended to a settings file that has no [Cockpit] yet (and part of a new file).
 constexpr char const* kCockpitBlock =

@@ -40,13 +40,19 @@ constexpr double kDegrees = 180.0 / std::numbers::pi;
 // controllers 57 times too strong, and the spin swung between +200 and -164 deg/s for 60 asked (2026-11-03, the headset).
 constexpr float kRadiansPerDegree = std::numbers::pi_v<float> / 180.0f;
 
-// A world angular velocity (degrees a second, about UE's axes) as SetRBAngularVelocity needs it: radians, and X and Z negated.
-// The engine converts the vector to PhysX like a position (Y mirrored), but a rotation axis under a mirror also changes sign,
-// so turns about world X and Z came out reversed while Y was right (2026-11-03, the headset: the "level" stabiliser rolled the
-// Mako to 180 degrees and the spin ran at +166 deg/s for -17 asked; the one pitch test had happened to face along X).
-ue3::Vector AngularVelocity(double x, double y, double z) {
-    return ue3::Vector{static_cast<float>(-x * kRadiansPerDegree), static_cast<float>(y * kRadiansPerDegree),
-        static_cast<float>(-z * kRadiansPerDegree)};
+// The angular velocity SetRBAngularVelocity needs for rates of the vehicle's own pitch (+ nose up), roll (+ right side down)
+// and yaw (+ turning right), degrees a second about its axes. Measured on the fake headset with the Mako in the air (`mevr vehicle
+// angvel [body]`, research/47 "Which way the body turns", 2026-11-03): 1 rad/s along the body's forward for 0.25 s rolled it
+// -14.9 degrees, along its right pitched it -14.6, about world up yawed it +15.9; six world-axis tests at other headings agreed.
+// So a vector v turns pitch by -(v . right), roll by -(v . forward), yaw by +(v . up), in radians. (Two guesses before this
+// rolled the Mako over in the headset: degrees for radians, then world X and Z negated.)
+ue3::Vector AngularVelocity(engine::Basis const& axes, double pitchDeg, double rollDeg, double yawDeg) {
+    double const p = -pitchDeg * kRadiansPerDegree;
+    double const r = -rollDeg * kRadiansPerDegree;
+    double const y = yawDeg * kRadiansPerDegree;
+    return ue3::Vector{static_cast<float>(axes.right.x * p + axes.forward.x * r + axes.up.x * y),
+        static_cast<float>(axes.right.y * p + axes.forward.y * r + axes.up.y * y),
+        static_cast<float>(axes.right.z * p + axes.forward.z * r + axes.up.z * y)};
 }
 
 #if defined(MEVR_GAME_LE1)
@@ -270,7 +276,7 @@ void SpinInPlace(ue3::Object* vehicle, double deltaSeconds, float spinRateDeg) {
     float const add = std::clamp((target - rate) * kRateGain, -spinRateDeg, spinRateDeg) * gSpin.sign;
     engine::Basis const axes = engine::ToBasis(engine::UnrealRotation{rotation->pitch, rotation->yaw, rotation->roll});
     ue3::Params parms(ue3::runtime::Get(), gSetAngularVelocity.Get());
-    parms.Set("NewAngVel", AngularVelocity(axes.up.x * add, axes.up.y * add, axes.up.z * add));
+    parms.Set("NewAngVel", AngularVelocity(axes, 0.0, 0.0, add));
     parms.SetBool("bAddToCurrent", true);
     ue3::runtime::Call(mesh, gSetAngularVelocity.Get(), parms);
     ++gCounts.spinTicks;
@@ -322,8 +328,7 @@ void StabilizeOnThrusters(ue3::Object* vehicle, double deltaSeconds, hand_calibr
     float const addRoll = std::clamp((wantRollRate - rollRate) * kRateGain, -limit, limit);
     engine::Basis const axes = engine::ToBasis(engine::UnrealRotation{rotation->pitch, rotation->yaw, rotation->roll});
     ue3::Params parms(ue3::runtime::Get(), gSetAngularVelocity.Get());
-    parms.Set("NewAngVel", AngularVelocity(axes.right.x * addPitch + axes.forward.x * addRoll, axes.right.y * addPitch + axes.forward.y * addRoll,
-                               axes.right.z * addPitch + axes.forward.z * addRoll));
+    parms.Set("NewAngVel", AngularVelocity(axes, addPitch, addRoll, 0.0));
     parms.SetBool("bAddToCurrent", true);
     ue3::runtime::Call(mesh, gSetAngularVelocity.Get(), parms);
     ++gCounts.held;

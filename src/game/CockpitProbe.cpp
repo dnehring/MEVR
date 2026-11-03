@@ -207,6 +207,13 @@ ue3::FunctionRef gFireCannon{"SFXGame.SFXGameModeVehicle.FireCannon"};
 ue3::FunctionRef gStopFiringCannon{"SFXGame.SFXGameModeVehicle.StopFiringCannon"};
 ue3::Object* gFiringMode = nullptr;
 double gFireReleaseAt = -1.0;
+// `mevr vehicle angvel X Y Z`: SetRBAngularVelocity with that raw vector (replacing the body's), and 0.25 s later the
+// vehicle's pitch, yaw and roll change logged: which way each world axis turns it, in which units (research/47).
+ue3::FunctionRef gSetAngVel{"Engine.PrimitiveComponent.SetRBAngularVelocity"};
+ue3::Object* gAngVelVehicle = nullptr;
+double gAngVelAt = -1.0;
+ue3::Rotator gAngVelFrom{};
+ue3::Vector gAngVelAsked{};
 constexpr double kFireHoldS = 0.3;
 // `mevr vehicle trace`: does any script trace see the ground?
 ue3::FunctionRef gFastTrace{"Engine.Actor.FastTrace"};
@@ -3218,6 +3225,42 @@ std::string VehicleCommand(std::string const& line) {
         log::Info("mevr vehicle: {}", report);
         return report;
     }
+    if (verb == "angvel") {
+        // `angvel body F R U`: along the vehicle's own forward, right and up at this moment instead of the world's axes.
+        std::string first;
+        words >> first;
+        bool const body = first == "body";
+        if (!body) {
+            words.seekg(0);
+            words >> first;  // the verb again
+        }
+        ue3::Vector v{};
+        if (!(words >> v.x >> v.y >> v.z)) {
+            return "usage: mevr vehicle angvel X Y Z (raw, as SetRBAngularVelocity takes it; the turn 0.25 s later goes to the log)";
+        }
+        ue3::Object* const mesh = gPawnMesh.Read<ue3::Object*>(pawn).value_or(nullptr);
+        auto const turn = player::Rotation(pawn);
+        if (mesh == nullptr || !turn || gSetAngVel.Get() == nullptr) {
+            return Refuse("no vehicle mesh or SetRBAngularVelocity");
+        }
+        if (body) {
+            engine::Basis const axes = engine::ToBasis(engine::UnrealRotation{turn->pitch, turn->yaw, turn->roll});
+            ue3::Vector const local = v;
+            v = {static_cast<float>(axes.forward.x * local.x + axes.right.x * local.y + axes.up.x * local.z),
+                static_cast<float>(axes.forward.y * local.x + axes.right.y * local.y + axes.up.y * local.z),
+                static_cast<float>(axes.forward.z * local.x + axes.right.z * local.y + axes.up.z * local.z)};
+        }
+        ue3::Params p = ParamsOf(gSetAngVel);
+        p.Set("NewAngVel", v);
+        p.SetBool("bAddToCurrent", false);
+        Call(mesh, gSetAngVel, p);
+        gAngVelVehicle = pawn;
+        gAngVelAt = Now() + 0.25;
+        gAngVelFrom = {turn->pitch, turn->yaw, turn->roll};
+        gAngVelAsked = v;
+        return std::format("angular velocity ({}, {}, {}) set at pitch {:.1f} yaw {:.1f} roll {:.1f}: the change follows in the log", v.x, v.y, v.z,
+            turn->pitch * 360.0 / 65536.0, turn->yaw * 360.0 / 65536.0, turn->roll * 360.0 / 65536.0);
+    }
     if (verb == "jets") {
         double seconds = 2.0;
         words >> seconds;
@@ -3782,6 +3825,17 @@ void Tick(std::optional<std::uint32_t> recenters) {
     AutoTick();
     RideTick();
     ZoomTick();
+    if (gAngVelVehicle != nullptr && Now() >= gAngVelAt) {
+        if (ue3::runtime::IsAlive(gAngVelVehicle)) {
+            if (auto const turn = player::Rotation(gAngVelVehicle)) {
+                auto const d = [](int a, int b) { return std::remainder((a - b) * 360.0 / 65536.0, 360.0); };
+                log::Info("mevr vehicle: angvel ({}, {}, {}) for 0.25 s: pitch {:+.1f} yaw {:+.1f} roll {:+.1f} deg (from pitch {:.1f} yaw {:.1f} roll {:.1f})",
+                    gAngVelAsked.x, gAngVelAsked.y, gAngVelAsked.z, d(turn->pitch, gAngVelFrom.pitch), d(turn->yaw, gAngVelFrom.yaw),
+                    d(turn->roll, gAngVelFrom.roll), gAngVelFrom.pitch * 360.0 / 65536.0, gAngVelFrom.yaw * 360.0 / 65536.0, gAngVelFrom.roll * 360.0 / 65536.0);
+            }
+        }
+        gAngVelVehicle = nullptr;
+    }
     if (gFiringMode != nullptr && Now() >= gFireReleaseAt) {
         if (ue3::runtime::IsAlive(gFiringMode)) {
             ue3::Params p = ParamsOf(gStopFiringCannon);
@@ -3862,7 +3916,7 @@ void Shutdown(bool exiting) {
              &gForceUpdate, &gSetActorCollision, &gSetBlockRigidBody, &gSetTraceBlocking, &gSetStaticMesh, &gGetMaterial, &gSetMaterial, &gGetNumElements, &gGetUnscaledBounds,
              &gCreateMic, &gSetParent, &gSetTextureParameter, &gGetTextureParameter, &gLightEnvironmentSetEnabled, &gCreateTarget, &gCaptureSetEnabled, &gCaptureSetFrameRate,
              &gCaptureSetView, &gCaptureSetParameters, &gEnterVehicle, &gFindClosestVehicle, &gCheckActivate, &gFinalizeParty, &gUpdateCamera, &gTryExitVehicle, &gBioExitVehicle, &gFastTrace, &gPlaceExitingDriver, &gFireCannon, &gStopFiringCannon,
-             &gPrimitiveSetHidden, &gSetLightEnvironment, &gTakeDamage, &gReactToDeath, &gGameOverEvent}) {
+             &gPrimitiveSetHidden, &gSetLightEnvironment, &gTakeDamage, &gReactToDeath, &gGameOverEvent, &gSetAngVel}) {
         f->Reset();
     }
     for (ue3::FieldRef* const f : {&gStatic, &gDeleteMe, &gNoDelete, &gMovable, &gRole, &gPhysics, &gBase, &gDynamicComponent, &gDynamicLightEnvironment, &gStaticActorComponent, &gComponentMesh,
