@@ -42,6 +42,7 @@
 #include "core/vr/PoseRecording.hpp"
 #include "core/vr/Recenter.hpp"
 #include "core/vr/SceneCaptureScope.hpp"
+#include "core/vr/Spectator.hpp"
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/Ads.hpp"
 #include "core/vr/Sights.hpp"
@@ -5668,6 +5669,97 @@ void TestSightVirtualEyepiece() {
 
 // The scope's real zoomed render (research/39): the capture's field, its camera, the pose history, and the picture
 // sampling it through the same projection the eye copy uses.
+// The spectator camera (core/vr/Spectator, research/49): its field, the head camera's damped follow, the publish history.
+void TestSpectator() {
+    namespace sp = mevr::vr::spectator;
+    constexpr double kDeg = 180.0 / 3.14159265358979;
+    // 85 degrees across a 16:9 picture: the vertical field from the aspect.
+    CHECK(NearD(sp::TanHalfX(85.0f), std::tan(42.5 / kDeg), 1e-5));
+    CHECK(NearD(sp::TanHalfY(85.0f, 1920, 1080), std::tan(42.5 / kDeg) * 9.0 / 16.0, 1e-5));
+    CHECK(NearD(sp::TanHalfY(85.0f, 3840, 2160), sp::TanHalfY(85.0f, 1920, 1080), 1e-6));
+    {
+        XrFovf const f = sp::Fov(90.0f, 1600, 900);
+        CHECK(NearD(f.angleLeft, -0.785398, 1e-4) && NearD(f.angleRight, 0.785398, 1e-4));
+        CHECK(NearD(std::tan(f.angleUp), 900.0 / 1600.0, 1e-5) && NearD(f.angleDown, -f.angleUp, 1e-6));
+    }
+    // Rotation vectors round-trip; the angle between two orientations.
+    {
+        XrQuaternionf const q = AxisAngle(0.3 / 0.9695, 0.9 / 0.9695, -0.2 / 0.9695, 70);
+        XrQuaternionf const back = sp::Exp(sp::Log(q));
+        CHECK(NearD(back.x, q.x, 1e-4) && NearD(back.y, q.y, 1e-4) && NearD(back.z, q.z, 1e-4) && NearD(back.w, q.w, 1e-4));
+        CHECK(NearD(sp::AngleBetween(AxisAngle(0, 1, 0, 10), AxisAngle(0, 1, 0, 50)) * kDeg, 40.0, 1e-3));
+        XrQuaternionf const minus{-q.x, -q.y, -q.z, -q.w};  // the same orientation: the short way, 0 apart
+        CHECK(NearD(sp::AngleBetween(q, minus), 0.0, 1e-3));
+    }
+    // The first step snaps; then a step toward a jump moves part of the way, never past it, and settles.
+    {
+        sp::Follow f;
+        XrPosef const a{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 1.6f, 0.0f}};
+        sp::Step(f, a, 0.011f, 0.25f);
+        CHECK(f.valid && f.pose.position.y == 1.6f);
+        XrPosef b = a;
+        b.position.x = 1.0f;
+        b.orientation = AxisAngle(0, 1, 0, 90);
+        float lastX = 0.0f;
+        double lastAngle = 90.0;
+        bool monotonic = true;
+        float atSmooth = 0.0f;
+        for (int i = 1; i <= 200; ++i) {  // 2.2 s at 90 Hz
+            sp::Step(f, b, 1.0f / 90.0f, 0.25f);
+            double const angle = sp::AngleBetween(f.pose.orientation, b.orientation) * kDeg;
+            monotonic = monotonic && f.pose.position.x >= lastX - 1e-6f && f.pose.position.x <= 1.0f + 1e-6f && angle <= lastAngle + 1e-3;
+            lastX = f.pose.position.x;
+            lastAngle = angle;
+            if (i == 22) {
+                atSmooth = f.pose.position.x;  // about smoothS in
+            }
+        }
+        CHECK(monotonic);
+        CHECK(atSmooth > 0.3f && atSmooth < 0.9f);
+        CHECK(NearD(f.pose.position.x, 1.0, 1e-3) && lastAngle < 0.1);
+        // A shaking target (5 mm at 15 Hz): the camera moves far less.
+        sp::Snap(f, a);
+        float most = 0.0f;
+        for (int i = 0; i < 180; ++i) {
+            XrPosef shake = a;
+            shake.position.x = 0.005f * static_cast<float>(std::sin(2.0 * 3.14159265 * 15.0 * i / 90.0));
+            sp::Step(f, shake, 1.0f / 90.0f, 0.25f);
+            most = std::max(most, std::abs(f.pose.position.x));
+        }
+        CHECK(most < 0.001f);
+        // smoothS 0: the head exactly.
+        sp::Step(f, b, 1.0f / 90.0f, 0.0f);
+        CHECK(f.pose.position.x == 1.0f);
+        // A zero step changes nothing; a huge one is clamped and never blows up.
+        sp::Snap(f, a);
+        sp::Step(f, b, 0.0f, 0.25f);
+        CHECK(f.pose.position.x == 0.0f);
+        sp::Step(f, b, 100.0f, 0.25f);
+        CHECK(f.pose.position.x > 0.0f && f.pose.position.x <= 1.0f && std::isfinite(f.pose.orientation.w));
+    }
+    // The publish history and the Draw's arm, as the scope capture's.
+    {
+        sp::Reset();
+        CHECK(sp::Latest().state == sp::kOff);
+        sp::Frame frame{};
+        frame.state = sp::kCapturing;
+        frame.pose.position = {1.0f, 0.0f, 0.0f};
+        sp::Publish(frame);
+        std::uint64_t const s1 = sp::LatestSequence();
+        sp::NoteDrawArm(5);
+        frame.pose.position = {2.0f, 0.0f, 0.0f};
+        sp::Publish(frame);
+        auto const forArm = sp::SequenceForArm(5);
+        CHECK(forArm && *forArm == s1);
+        auto const rendered = forArm ? sp::BySequence(*forArm) : std::nullopt;
+        CHECK(rendered && rendered->pose.position.x == 1.0f);
+        CHECK(sp::Latest().state == sp::kCapturing && sp::Latest().pose.position.x == 2.0f);
+        std::uint64_t const resets = sp::Resets();
+        sp::Reset();
+        CHECK(sp::Resets() == resets + 1 && !sp::SequenceForArm(5) && sp::Latest().state == sp::kOff);
+    }
+}
+
 void TestSceneCaptureScope() {
     namespace sc = mevr::vr::scene_capture;
     // A capture's passes run with no eye: index -1, no skipped passes, and the eye's one-Draw finish isn't theirs.
@@ -8736,6 +8828,7 @@ int main() {
     TestSightVirtualEyepiece();
     TestScopeCapture();
     TestSceneCaptureScope();
+    TestSpectator();
     TestBoneNames();
     TestIk();
     TestRigid();
