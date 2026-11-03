@@ -670,3 +670,7 @@ frosted); the package now imports from `BIOC_Materials`, and it loaded. `variant
 - **Lit, retuned (mid-grey diffuse, stronger specular), still changes nothing**: the parts' light environment gathers almost no light in the
   closed cabin. Lights inside (the manifest's `lamps`) would be the fix, at their stereo cost (not tried).
 - **The screens don't darken anything:** with the live screens the rest of the picture reads the same.
+
+**83a375a** (01:04, same pose): the glass at opacity 0.32 with cubemap 1.0 reads through the windshield as RGB 97.2, 73.5, 66.7 (0.22:
+97.9, 72.9, 65.1; none: 101.8, 75.7, 67.1), still close to clear from the seat. **The lamps' glow at x 10 blooms:** a soft halo round each
+lamp, white at the centre (their brightest 1% 255, 255, 255 against 220, 203, 205 unlit; the lamps' area mean grey 57 -> 73).
