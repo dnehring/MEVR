@@ -639,7 +639,7 @@ a grey specular) and the lamps and idle side screens a `_Glow_MIC` over `EngineB
 
 - **`loaded <Package.Object> ...`** (probe): whether objects are in memory, without loading. `BIOG_APL_MASTER_MATERIAL.APL__MASTER__Mat`,
   `BIOG_Humanoid_MASTER_MTR_R.Human.HMF_VSR_MASTER_MAT` and `BIOA_JUG00_T.JUG00_GLASS01` are all loaded at the title (`entrymenu`, as soon
-  as a player exists) and in `BIOA_PRO00`. A Mako level (`BIOA_UNC20`) not checked yet.
+  as a player exists), in `BIOA_PRO00` and in the Mako level `BIOA_UNC20` (loaded with `open` from Eden Prime).
 - **`variant lit|glow|base`** (probe): each placed part's elements to the package's variant by name (our own screen instances left alone).
   `lit` swapped 16 elements, `glow` 5 (on top of lit). Same pose, post on:
   - **Lit renders** (no default checkerboard) **and looks like the unlit one**: the region means change by under 0.2, 2,825 pixels differ by
