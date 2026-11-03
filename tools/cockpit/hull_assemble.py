@@ -61,11 +61,17 @@ CONSOLE_CENTRE = (0.0, 0.2749, 0.1473)
 # about a point on the windshield's wall (x, y, z factors; the point's height): its top stays on the sill's sightline,
 # its foot sinks 5 cm under the floor plates and its wings reach 0.08 nearer the seat, clear of the controls. (1.3 deep
 # wrapped the room most but stretched the angled side screens past the concept's console shape.)
-CONSOLE_GROW, CONSOLE_PIVOT_Z = (1.03, 1.2, 1.2), 0.25
+CONSOLE_GROW, CONSOLE_PIVOT_Z = (1.03, 1.2, 1.3), 0.25
+# And stood 0.1 nearer the seat before growing (the user, 2026-11-02, on the cabin's proportions; research/48 section 18):
+# measured from the camera matched to the room, the concept's console stands about 0.2 further from the windshield and
+# higher, free in the room. Its wings then pass beside the controls, and its top stays on the sill's sightline.
+CONSOLE_SHIFT = -0.1
 # The template's shell, measured by rays from inside it on 2026-11-02 (research/48): x across, y forward, z up.
 W, ZW = 0.463, 0.412       # the side walls' inner face; the height where their chamfer into the ceiling starts
 XC, ZC = 0.39, 0.48        # the chamfer's top edge; the ceiling
-YR = -0.425                # the template's open rear: the portal arch stands here
+YR = -0.38                 # the portal arch: its front face flush with the panes' rear ends (-0.309), so the panes'
+                           # rear posts and the arch read as one frame (the user, 2026-11-02, on the side walls; it
+                           # stood at the template's open rear, -0.425)
 YB = -0.62                 # the rear wall, closing the cabin 0.59 m behind the arch at 3 m per unit (the user, 2026-11-02:
                            # the contours carried on to a rear section, as Codex's assembly did)
 DOOR = (0.14, 0.48, 0.05)  # the rear wall's door: half width, height, its top corners' cut (0.84 x 1.44 m)
@@ -158,6 +164,22 @@ FIXTURE = (0.222, 0.283, 0.034)
 # The windshield's frame: as WINDOW, but its face dark with a light chamfer along the glass, the concept's slim posts
 # between the windshield and the front side windows.
 SHIELD_CLASSES = ["DARK", "SEAM", "SEAM", "DARK", "LIGHT", "DARK", "DARK", "DARK"]
+# The floor as the lit concept's (the user, 2026-11-02): large flat plates in three runs, the middle one as wide as the
+# console's middle and the side runs' rows half a row out of step, the seams 3 mm grooves (FLOOR_SEAM either side), the
+# plates' corners cut by FLOOR_CORNER where they meet, their top edges bevelled FLOOR_BEVEL. (They were 0.15 by 0.2
+# tiles with 8 mm seams, 20 mm corners and a 5 mm bevel: chunky beside the concept's.)
+FLOOR_COLUMNS, FLOOR_ROW = (-0.16, 0.16), 0.166
+FLOOR_SEAM, FLOOR_CORNER, FLOOR_BEVEL = 0.0015, 0.012, 0.002
+# The portal arch, bolder, as the concept's frames down the side walls: (into the room, along the cabin) from its line,
+# 65 mm proud and 70 deep, chamfered, a dark groove down its face.
+PORTAL = [(0.0, 0.0), (0.052, 0.0), (0.065, 0.013), (0.065, 0.031), (0.061, 0.031), (0.061, 0.039), (0.065, 0.039),
+          (0.065, 0.057), (0.052, 0.07), (0.0, 0.07), (0.0, 0.0)]
+PORTAL_CLASSES = ["DARK", "LIGHT", "LIGHT", "SEAM", "SEAM", "SEAM", "LIGHT", "LIGHT", "DARK", "DARK"]
+PORTAL_DEPTH = 0.07
+# A light stringer along each wall-ceiling corner, as the concept's pale corner beams: on the caps' sloped face, from the
+# portal to the A-pillar's top. (along the slope, out of it) from the slope's middle: 60 mm wide, 22 mm proud.
+STRINGER = Chamfered(-0.03, 0.03, -0.004, 0.022, 0.005)
+STRINGER_CLASSES = ["DARK", "DARK", "LIGHT", "LIGHT", "LIGHT", "DARK", "DARK", "DARK"]
 
 
 # Rectangles (u0, v0, u1, v1) of the side pane's 4096 x 4096 atlas, by surface class, and each class's tint in the bake.
@@ -223,7 +245,7 @@ def Placements(pbm, cbm):
     right = Matrix.Diagonal((-1, 1, 1, 1)) @ left
     cco = np.array([v.co[:] for v in cbm.verts])
     ccentre = Vector(((cco.min(0) + cco.max(0)) / 2).tolist())
-    console = Matrix.Translation(Vector(CONSOLE_CENTRE)) @ Matrix.Scale(CONSOLE_SCALE, 4) @ Matrix.Translation(-ccentre)
+    console = Matrix.Translation(Vector(CONSOLE_CENTRE) + Vector((0, CONSOLE_SHIFT, 0))) @ Matrix.Scale(CONSOLE_SCALE, 4) @ Matrix.Translation(-ccentre)
     floor = min((console @ v.co).z for v in cbm.verts)
     pivot = Vector((0.0, YF, CONSOLE_PIVOT_Z))
     grow = Matrix.Translation(pivot) @ Matrix.Diagonal((*CONSOLE_GROW, 1.0)) @ Matrix.Translation(-pivot)
@@ -825,7 +847,7 @@ def Lamps(b, wall, corner, drop):
         for y in (rear - 0.1, rear - 0.06, rear - 0.02):
             Lamp(b, lights, "spine", "LAMP", (0.0615, y, ZR - SPINE_DEPTH), Y, X, -Z, 0.012, 0.0075, proud=0.0015)
         # the portal's feet
-        Lamp(b, lights, "foot", "LAMP_BLUE", (XWALL - 0.027, YR + 0.055, 0.028), X, Z, Y, 0.014, 0.012, proud=0.001)
+        Lamp(b, lights, "foot", "LAMP_BLUE", (XWALL - 0.03, YR + PORTAL_DEPTH, 0.028), X, Z, Y, 0.014, 0.012, proud=0.001)
     b.mirror = False
     # the drop panel's face toward the pilot: a strip, an indicator either side
     mid, up, m = drop
@@ -869,7 +891,7 @@ def Details(b, edge, desk, screen, bezel, spine_end):
     for mirror in (False, True):
         b.mirror = mirror
         Conduits(b, YB, YR, False)
-        Conduits(b, YR + 0.055, FrontAt(edge, CONDUITS[-1]) - SPINE_CLEAR, True)
+        Conduits(b, YR + PORTAL_DEPTH, FrontAt(edge, CONDUITS[-1]) - SPINE_CLEAR, True)
         Grille(b, (XWALL, -0.52, 0.12), Y, Z, -X, 0.035, 0.03, 6)
         Grille(b, (0.25, YB, 0.36), X, Z, Y, 0.045, 0.035, 7)
         Grille(b, (0.085, spine_end - 0.3, ZR - 0.038), Y, Z, X, 0.03, 0.008, 3, proud=0.003)
@@ -988,15 +1010,17 @@ def Shell(pillar, opening, pedestals=(), pane_face=None, console=None):
     front = [(-XP, YP_), (XP, YP_), (XP, YC), (XF, YF), (-XF, YF), (-XP, YC)]
     for piece in (rear, front):
         Slab(b, [(x, y, -SEAM) for x, y in piece], Z, SLAB, "SEAM", "DARK")
-    columns = (-W, -0.27, -0.12, 0.12, 0.27, W)
-    rows = np.arange(YB, YF + 0.2, 0.2)
-    for x0, x1 in zip(columns, columns[1:]):
+    columns = (-W,) + FLOOR_COLUMNS + (W,)
+    for k, (x0, x1) in enumerate(zip(columns, columns[1:])):
+        shift = 0.0 if k == 1 else FLOOR_ROW / 2  # the side runs half a row out of step with the middle one
+        rows = np.arange(YB - shift, YF + FLOOR_ROW, FLOOR_ROW)
         for y0, y1 in zip(rows, rows[1:]):
-            cell = [(x0 + 0.004, y0 + 0.004), (x1 - 0.004, y0 + 0.004), (x1 - 0.004, y1 - 0.004), (x0 + 0.004, y1 - 0.004)]
+            g = FLOOR_SEAM
+            cell = [(x0 + g, y0 + g), (x1 - g, y0 + g), (x1 - g, y1 - g), (x0 + g, y1 - g)]
             for piece in (rear, front):
                 part = Clip(cell, piece)
                 if len(part) >= 3 and Area(part) > 0.002:
-                    Plate(b, Corners(part, 0.02), 0.0, 0.005, SEAM)
+                    Plate(b, Corners(part, FLOOR_CORNER), 0.0, FLOOR_BEVEL, SEAM)
     # the wall under the windshield, behind the console, facing back
     Slab(b, [(-XF, YF, -SEAM), (XF, YF, -SEAM), (XF, YF, ZL), (-XF, YF, ZL)], -Y, SLAB, "DARK")
     # the windshield: an opening leaning back between the front chamfers up to the ceiling, framed all round, its frame
@@ -1048,14 +1072,25 @@ def Shell(pillar, opening, pedestals=(), pane_face=None, console=None):
         Sweep(b, start + end, Z, profile, classes)
 
     spine_end = FrontAt(edge, 0.085) - SPINE_CLEAR
-    for rear, front, wall in ((YR + 0.055, spine_end, False), (YB, YR, True)):
+    for rear, front, wall in ((YR + PORTAL_DEPTH, spine_end, False), (YB, YR, True)):
         Beam(0.0, SPINE_UPPER, "DARK", 0.028, rear, front, wall)
         Beam(0.0, SPINE, SPINE_CLASSES, SPINE_DEPTH, rear, front, wall, panel=SPINE_PANEL)
     drop = Drop(b, spine_end)
     # the portal arch at the template's rear: a light chamfered beam up the walls, along the caps and across under the roof
     portal = [Vector((-XWALL, YR, -SEAM)), Vector((-XWALL, YR, ZH)), Vector((-0.30, YR, ZR)), Vector((0.30, YR, ZR)),
               Vector((XWALL, YR, ZH)), Vector((XWALL, YR, -SEAM))]
-    Sweep(b, portal, Y, Chamfered(0.0, 0.05, 0.0, 0.055, 0.01), "LIGHT")
+    Sweep(b, portal, Y, PORTAL, PORTAL_CLASSES)
+    # the stringers along the wall-ceiling corners: on the caps' sloped face, from 1 cm inside the portal to the A-pillar's
+    # top, where each slopes up into the cap at 45 degrees (it runs under the corner plate, so ended square it hung there)
+    a, c = Vector((XRAIL - CAP[3][0], 0, ZH + CAP[3][1])), Vector((XRAIL - CAP[4][0], 0, ZH + CAP[4][1]))
+    mid, slope = (a + c) / 2, (c - a).normalized()
+    out = Vector((slope.z, 0, -slope.x))
+    out = out if out.z < 0 else -out  # out of the slope, into the room
+    for mirror in (False, True):
+        b.mirror = mirror
+        Sweep(b, [mid + Y * (YR + PORTAL_DEPTH - 0.01), mid + Y * (YP_ + 0.03)], out, STRINGER, STRINGER_CLASSES,
+              ends=(None, (mid + Y * YP_, (Y + out).normalized())))
+    b.mirror = False
     for mirror in (False, True):
         b.mirror = walls.mirror = mirror
         # behind the panes: the side wall, a panel set in either side of the portal, the rail and cap carried back to

@@ -227,7 +227,9 @@ so the new shell follows it. The parts (console, side pane) are placed in it, an
   list what bounds each axis first (walls across, the windshield's sightline up, the controls toward the seat). The
   console grew 1.03 / 1.2 / 1.2 about a point on the windshield's wall, so its top stayed on the sill's sightline. Find
   features on the placed part, never from constants, so they follow it. A non-uniform scale tilts a Tripo surface's
-  small folds: the screens' 0.98 normal test left dark lines across a stretched screen.
+  small folds: the screens' 0.98 normal test left dark lines across a stretched screen. When a concept's room is
+  "smaller around" a part than a seated eye allows, move the part instead: the console stood 0.1 nearer the seat
+  (`CONSOLE_SHIFT`, section 18) and filled the room camera's view as the concept's, at no cost to the windshield.
 
 - **Fit against the template's interior, never the whole mesh.** The interior is the faces hit by rays from points
   inside it. Use only the part's faces toward the room, and hold the scale to a plausible range. Against the whole

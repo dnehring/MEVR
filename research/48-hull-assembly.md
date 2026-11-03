@@ -638,6 +638,42 @@ and their direction: work through the Higgsfield bridge and plan the design as o
   wall above it is plain: 0 rays. The joints check after decimating had found one new ray through the same corner with
   the grown console.
 
+## 18. Proportions, side walls and floor (the user: "focus on side wall, proportions, and floor. Only retopologize when you get to a state of confidence")
+
+No decimation or packaging until the user approves the modelling.
+
+- **Proportions.** Measured against the console, the concept's room is about 0.75 times ours every way: its pillar
+  tops, ceiling and side windows sit lower, and its walls close in. What the seat allows:
+  - **lower:** the eye at 0.403 leaves the ceiling (0.553) 45 cm above it. The concept's ratio would put the ceiling at
+    about the eye;
+  - **narrower** (tried live, 0.9 and 0.85 in plan, heights kept): the console already spans the room at the front, and
+    its wings ran through the side walls;
+  - **the console further back:** the camera matched to the room puts the concept's console about 0.2 nearer the rear
+    than ours, and higher, standing free in the room. Moved 0.1 toward the seat (`CONSOLE_SHIFT`, before growing) and
+    grown 1.3 in height:
+    - it fills the room's width and height in the room camera, as the concept's;
+    - from the seat it stands nearer (the centre screen 0.38 from the eye, 0.52 before);
+    - its top still meets the windshield's sill (the sightline over it is 8.8 degrees down; the sill's 9.6);
+    - its wings reach y -0.207, beside the controls (they are inboard of the wings): no overlap with the controls or the
+      chair;
+    - the price: its centre screen is 2.25 times as wide as tall (the concept's 2.8). Refitted to this screen, the concept's
+      camera stands at (0, -0.468, 0.175).
+- **Side walls.** The concept's walls carry bold light frames that follow the room's section, and pale beams along the
+  wall-ceiling corners:
+  - the portal arch is bolder: 65 mm proud and 70 deep, chamfered, with a dark groove down its face (`PORTAL`);
+  - it moved forward to y -0.38, its front face against the panes' rear ends, so the panes' own light rear posts and the
+    arch read as one frame. It stood at the template's open rear (-0.425);
+  - a light stringer runs along each wall-ceiling corner on the caps' sloped face (`STRINGER`): from the arch to the
+    A-pillar's top, where it slopes up into the cap at 45 degrees. Ended square, it hung under the corner plate. It meets
+    two of the pane's own light posts at its cap. The side walls now go arch, stringer, A-pillar: one frame system;
+  - the spine and the conduits start at the arch's new front face.
+- **Floor.** The concept's floor is large flat plates with fine grooves:
+  - now three runs: the middle 0.32 wide (the console's middle), the side runs to the walls, half a row out of step;
+  - rows 0.166 long, 3 mm grooves, the corners cut 12 mm where plates meet, a 2 mm bevel;
+  - they were 0.15 by 0.2 tiles with 8 mm seams, 20 mm corners and a 5 mm bevel;
+  - each plate maps the atlas's bolted plate once, so the bolts sit at its corners.
+- **The pillar zone's view** is unchanged by all of it: 19.5 degrees blocked at eye level.
+
 ## 5. Not done
 
 - **Not seen from the seat in the game:** the meshes load and draw textured (section 9), but nothing is placed around the
