@@ -507,8 +507,8 @@ constexpr char const* kMakoBlock =
     "turnRate = 20\n"
     "aimRangeM = 200\n"
     "calibratedLine = 1\n"
-    "; Physical controls (research/46). controls: 1 = a throttle lever at your left knee (grip it, push forward or pull\n"
-    "; back; it stays where you leave it; X is jump and upright, Y is boost while held) and a drive stick at your right knee\n"
+    "; Physical controls (research/46). controls: 1 = a throttle lever on the seat's left armrest (grip it, push forward or\n"
+    "; pull back; it stays where you leave it; X is jump and upright, Y is boost while held) and a drive stick on the right one\n"
     "; (grip it, TWIST it to steer; it springs back; the trigger fires the machine gun, A the cannon, the thumbstick aims the\n"
     "; turret while held; let go and your hand aims it). Until you grab one the game's own controls work as always; 0 = they\n"
     "; stay. grabRadiusM: how near a hand must be. stickTwistDeg: the twist for full lock; stickDeadZoneDeg: the twist that\n"
@@ -522,10 +522,10 @@ constexpr char const* kMakoBlock =
     "stickTwistDeg = 42\n"
     "stickDeadZoneDeg = 4\n"
     "stickInvert = 0\n"
-    "throttleTravelM = 0.15\n"
+    "throttleTravelM = 0.055\n"
     "throttleDetent = 0.08\n"
-    "leverOffset = -0.20 -0.55 0.25\n"
-    "stickOffset = 0.20 -0.55 0.25\n"
+    "leverOffset = -0.362 -0.446 0.286\n"
+    "stickOffset = 0.375 -0.415 0.314\n"
     "stickAimRate = 90\n"
     "rumble = 0.12\n"
     "cameraFollow = 1\n";
@@ -1941,6 +1941,37 @@ void Refresh() {
             }
         }
     }
+    // [Mako] since 2026-11-02 (research/48 section 22): the controls' grips are the cockpit models' on the seat's armrests and
+    // the throttle travels the model's slot. A file holding all three old defaults exactly gets the new ones; any other
+    // value is the player's and kept.
+    if (auto const s = ini.find("Mako"); s != ini.end()) {
+        static constexpr struct {
+            wchar_t const* key;
+            char const* name;
+            char const* old;
+            wchar_t const* now;
+        } kMoved[] = {
+            {L"throttleTravelM", "throttleTravelM", "0.15", L"0.055"},
+            {L"leverOffset", "leverOffset", "-0.20 -0.55 0.25", L"-0.362 -0.446 0.286"},
+            {L"stickOffset", "stickOffset", "0.20 -0.55 0.25", L"0.375 -0.415 0.314"},
+        };
+        bool const allOld = std::ranges::all_of(kMoved, [&](auto const& m) {
+            auto const k = s->second.find(m.name);
+            return k != s->second.end() && k->second == m.old;
+        });
+        if (allOld) {
+            bool written = true;
+            for (auto const& m : kMoved) {
+                written = WritePrivateProfileStringW(L"Mako", m.key, m.now, path.wstring().c_str()) != 0 && written;
+            }
+            if (written) {
+                log::Info("hands: [Mako] throttleTravelM, leverOffset, stickOffset: the old defaults -> the cockpit's grips (research/48 section 22) in {}",
+                    ini::Utf8(path));
+            }
+            ini = ReadIni(path);
+            stamp = fs::last_write_time(path, ec);
+        }
+    }
     // [Hands] reachNearFaceM, the [Sights] alignment assist, [Hands]' physical cover and crouch
     // (research/23) and levelCamera / recoilHaptic (research/24) (2026-10-22), appended with their defaults.
     static constexpr struct {
@@ -2011,10 +2042,10 @@ void Refresh() {
         {L"Mako", "Mako", L"stickTwistDeg", "stickTwistDeg", L"42"},
         {L"Mako", "Mako", L"stickDeadZoneDeg", "stickDeadZoneDeg", L"4"},
         {L"Mako", "Mako", L"stickInvert", "stickInvert", L"0"},
-        {L"Mako", "Mako", L"throttleTravelM", "throttleTravelM", L"0.15"},
+        {L"Mako", "Mako", L"throttleTravelM", "throttleTravelM", L"0.055"},
         {L"Mako", "Mako", L"throttleDetent", "throttleDetent", L"0.08"},
-        {L"Mako", "Mako", L"leverOffset", "leverOffset", L"-0.20 -0.55 0.25"},
-        {L"Mako", "Mako", L"stickOffset", "stickOffset", L"0.20 -0.55 0.25"},
+        {L"Mako", "Mako", L"leverOffset", "leverOffset", L"-0.362 -0.446 0.286"},
+        {L"Mako", "Mako", L"stickOffset", "stickOffset", L"0.375 -0.415 0.314"},
         {L"Mako", "Mako", L"stickAimRate", "stickAimRate", L"90"},
         {L"Mako", "Mako", L"rumble", "rumble", L"0.12"},
         {L"Mako", "Mako", L"cameraFollow", "cameraFollow", L"1"},

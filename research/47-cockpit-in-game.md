@@ -559,3 +559,30 @@ a placed part instead of a mesh of its own: the part stays where the frame put i
   post processing), the side panels 35-38, 29-30, 26-27.
 - A rear view lasted to the end of Eden Prime's bomb timer (`4 Charges Remaining`, under 2 minutes after the load): views from this
   save need taking soon after `god`.
+
+## The hull of 5969f57: the seat, the grips, the Mako's size (2026-11-02 23:46, fake headset, Eden Prime then `BIOA_UNC20`)
+
+Build 5969f57 (research/48 section 22): the hull replaces `Front_Cockpit`, the eye 0.10 m further from the headrest (`eye.hull`
+(0, -0.2, 0.4033), 0.213 m from it), the HOTAS on the armrests, the idle images 2.5 times brighter, and the manifest's `pilot` points.
+
+- **Over the shoulders the backrest shows its fabric and piping** and nothing shows through it: the dark surface and the light
+  shards of the run before were the near plane (`LocalPlayer.NearClipPlane`, 10 units: 0.10 m at the view's 100 units a metre) cutting
+  into the backrest from inside, with the eye 7-11 cm from it.
+- **The idle centre panel** reads mean RGB 37, 26, 19 with post processing (the concept's aim 39, 26, 23), 66, 43, 29 without.
+- Tone boxes (post on / off): 32.9 / 27.5 / 34.5 / 42.3 and 57.3 / 46.9 / 68.5 / 73.1.
+- **The Mako's size** (`mevr vehicle size`, new: the vehicle's `Pawn.Mesh`, its `MeshComponent.GetUnscaledBounds` times the actor's
+  and the component's scales, and the component's world `Bounds`), `BioVehicleWheeled_0` in `BIOA_UNC20` (actor `DrawScale` 3, yaw
+  210.3 degrees): the mesh's own box scaled is 15.7 x 8.3 x 4.0 m, the world box 8.11 x 6.59 x 1.66 m. Unrotated (yaw 30 off the
+  world axes), the world box is a body 7.5 m long and 3.3 m wide, 1.66 m tall. The two disagree by more than the scale, so neither is
+  the body's size for sure **[verify]**: the mesh's box looks loose (as the guns' are), and a skeletal component's world box may come from
+  its physics bodies. Against the cockpit's 2.96 x 3.4 x 2.0 m at 3 m per hull unit, the width fits under either; the height is the
+  open question. A picture of the cockpit inside the Mako settles it, once the cockpit follows the vehicle.
+
+**The controls moved to the cockpit's grips** (`core/vr/MakoControls` defaults, `game/HandCalibration`'s template and new keys): `leverOffset`
+-0.362 -0.446 0.286, `stickOffset` 0.375 -0.415 0.314 (the manifest's `pilot.fromEyeMetres`), `throttleTravelM` 0.055 (the
+model's slot). A file holding all three old defaults exactly gets the new ones once; any other value is kept.
+
+**Shepard in the seat** (the user's decision, relayed 2026-11-02): in the Mako, Shepard's body sits in our chair with the VR head at the
+eye, the pelvis at `hPoint`, the heels on the floor, and the hands on the stick and throttle models while held. Not started: it needs
+drivable Mako gameplay to see what the game does with the driver's pawn there (hidden, based on the vehicle **[verify]**), then the body
+shown in the cockpit's frame, a seated pose (the legs to the knee and heel points, the spine to the eye) and arm IK to the grips.

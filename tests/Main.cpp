@@ -6359,6 +6359,11 @@ void TestMakoControls() {
         CHECK(close(mc::TwistDegrees(identity, q, up), 25.0, 0.01));
     }
     mc::Settings settings;
+    // The cases below are worked out for these (the first defaults); the defaults are the cockpit's grips now.
+    CHECK(close(settings.throttleTravelM, 0.055) && close(settings.leverOffset.x, -0.362) && close(settings.stickOffset.z, 0.314));
+    settings.throttleTravelM = 0.15f;
+    settings.leverOffset = {-0.20f, -0.55f, 0.25f};
+    settings.stickOffset = {0.20f, -0.55f, 0.25f};
     mc::Settings inverted = settings;
     inverted.stickInvert = true;
     CHECK(close(mc::SteerFromTwist(0.0f, settings), 0.0));

@@ -35,11 +35,12 @@ struct Settings {
     float stickTwistDeg = 42.0f;   // twist for full lock
     float stickDeadZoneDeg = 4.0f; // twist that steers nothing
     bool stickInvert = false;      // twist the other way
-    float throttleTravelM = 0.15f; // hand travel from centre to full, along the seat's forward
+    float throttleTravelM = 0.055f; // hand travel from centre to full, along the seat's forward (the cockpit model's slot)
     float throttleDetent = 0.08f;  // the lever's neutral notch, as a fraction of its travel
-    // Where each control sits from the head at placement, along the seat's axes (meters: right, up, forward).
-    XrVector3f leverOffset{-0.20f, -0.55f, 0.25f};
-    XrVector3f stickOffset{0.20f, -0.55f, 0.25f};
+    // Where each control's grip sits from the head at placement, along the seat's axes (meters: right, up, forward): the
+    // cockpit models' grips from the pilot's eye (research/48 section 22, the manifest's pilot.fromEyeMetres).
+    XrVector3f leverOffset{-0.362f, -0.446f, 0.286f};
+    XrVector3f stickOffset{0.375f, -0.415f, 0.314f};
     float stickAimRate = 90.0f;    // degrees a second at a full thumbstick, for the turret while the stick is held
     float rumble = 0.12f;          // the engine's rumble at full speed, in the holding hand (0: none)
     bool cameraFollow = true;      // while the mod drives, the chase camera keeps its angle to the vehicle (game/MakoControls)

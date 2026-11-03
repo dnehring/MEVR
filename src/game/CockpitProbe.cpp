@@ -107,6 +107,11 @@ ue3::FieldRef gDynamicLightEnvironment{"Engine.DynamicSMActor", "LightEnvironmen
 ue3::FieldRef gStaticActorComponent{"Engine.StaticMeshActor", "StaticMeshComponent"};
 ue3::FieldRef gComponentMesh{"Engine.StaticMeshComponent", "StaticMesh"};
 ue3::FieldRef gBounds{"Engine.PrimitiveComponent", "Bounds"};
+ue3::FieldRef gDrawScale{"Engine.Actor", "DrawScale"};
+ue3::FieldRef gDrawScale3D{"Engine.Actor", "DrawScale3D"};
+ue3::FieldRef gComponentScale{"Engine.PrimitiveComponent", "Scale"};
+ue3::FieldRef gComponentScale3D{"Engine.PrimitiveComponent", "Scale3D"};
+ue3::FieldRef gPawnMesh{"Engine.Pawn", "Mesh"};
 ue3::FieldRef gParent{"Engine.MaterialInstance", "Parent"};
 ue3::FieldRef gStaticPermutation{"Engine.MaterialInstance", "bHasStaticPermutationResource"};
 ue3::FieldRef gTextureValues{"Engine.MaterialInstanceConstant", "TextureParameterValues"};
@@ -1858,6 +1863,45 @@ std::string VehicleCommand(std::string const& line) {
         bool const called = Call(controller, gEnterVehicle, p);
         std::string const report = std::format("BioEnterVehicle({}): called {}, returned {}; `mevr vehicle` says what it did", ue3::runtime::FullName(target), called,
             p.ReturnBool().value_or(false));
+        log::Info("mevr vehicle: {}", report);
+        return report;
+    }
+    if (verb == "size") {
+        // The vehicle's own mesh, unscaled (its local axes) times every scale on the way: the body's size to compare the
+        // cockpit with (research/48 section 22). The world box alone grows with the vehicle's yaw.
+        if (target == nullptr) {
+            return Refuse(std::format("no vehicle in {}", MapName(controller)));
+        }
+        ue3::Object* const mesh = gPawnMesh.Read<ue3::Object*>(target).value_or(nullptr);
+        if (mesh == nullptr) {
+            return Refuse(std::format("{} has no Mesh", ue3::runtime::FullName(target)));
+        }
+        ue3::Params p = ParamsOf(gGetUnscaledBounds);
+        Call(mesh, gGetUnscaledBounds, p);
+        auto const local = p.Get<BoxSphereBounds>("UnscaledBounds");
+        auto const world = gBounds.Read<BoxSphereBounds>(mesh);
+        float const actorScale = gDrawScale.Read<float>(target).value_or(1.0f);
+        ue3::Vector const actorScale3D = gDrawScale3D.Read<ue3::Vector>(target).value_or(ue3::Vector{1.0f, 1.0f, 1.0f});
+        float const componentScale = gComponentScale.Read<float>(mesh).value_or(1.0f);
+        ue3::Vector const componentScale3D = gComponentScale3D.Read<ue3::Vector>(mesh).value_or(ue3::Vector{1.0f, 1.0f, 1.0f});
+        auto const rotation = gActorRotation.Read<ue3::Rotator>(target);
+        float const upm = static_cast<float>(engine::kUnitsPerMeter);
+        std::string report = std::format("{} ({}), yaw {:.1f} deg; scales: actor {:.3f} x ({:.3f} {:.3f} {:.3f}), mesh {:.3f} x ({:.3f} {:.3f} {:.3f})\n",
+            ue3::runtime::FullName(target), ue3::runtime::FullName(mesh), rotation ? rotation->yaw * 360.0 / 65536.0 : 0.0, actorScale, actorScale3D.x,
+            actorScale3D.y, actorScale3D.z, componentScale, componentScale3D.x, componentScale3D.y, componentScale3D.z);
+        if (local) {
+            float const sx = actorScale * actorScale3D.x * componentScale * componentScale3D.x;
+            float const sy = actorScale * actorScale3D.y * componentScale * componentScale3D.y;
+            float const sz = actorScale * actorScale3D.z * componentScale * componentScale3D.z;
+            report += std::format("the mesh's own box: {:.2f} x {:.2f} x {:.2f} m (its X, Y, Z: full sizes, scaled), centre ({:.1f} {:.1f} {:.1f}) units unscaled\n",
+                2.0f * local->extent.x * sx / upm, 2.0f * local->extent.y * sy / upm, 2.0f * local->extent.z * sz / upm, local->origin.x, local->origin.y, local->origin.z);
+        } else {
+            report += "the mesh's own box can't be read\n";
+        }
+        if (world) {
+            report += std::format("the world box: {:.2f} x {:.2f} x {:.2f} m (world X, Y, Z)", 2.0f * world->extent.x / upm, 2.0f * world->extent.y / upm,
+                2.0f * world->extent.z / upm);
+        }
         log::Info("mevr vehicle: {}", report);
         return report;
     }

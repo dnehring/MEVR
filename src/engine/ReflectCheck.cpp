@@ -855,6 +855,11 @@ void CheckFields() {
         SDK_BOOL(UBioPlayerSelection, m_bCurrentSelectionIsCombatTarget));
     CheckField("Engine.Actor", "CollisionComponent", SDK_FIELD(AActor, CollisionComponent));
     CheckField("Engine.PrimitiveComponent", "Bounds", SDK_FIELD(UPrimitiveComponent, Bounds), true);
+    // game/cockpit_probe's `mevr vehicle size` (research/47): a mesh's size in the world.
+    CheckField("Engine.Actor", "DrawScale", SDK_FIELD(AActor, DrawScale));
+    CheckField("Engine.Actor", "DrawScale3D", SDK_FIELD(AActor, DrawScale3D));
+    CheckField("Engine.PrimitiveComponent", "Scale", SDK_FIELD(UPrimitiveComponent, Scale));
+    CheckField("Engine.PrimitiveComponent", "Scale3D", SDK_FIELD(UPrimitiveComponent, Scale3D));
 }
 
 void CheckPaths() {
