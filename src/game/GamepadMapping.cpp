@@ -459,11 +459,20 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
     if (asControl(r.primary, 4, options.makoStick)) {
         buttons = static_cast<WORD>((buttons & ~XINPUT_GAMEPAD_A) | XINPUT_GAMEPAD_RIGHT_SHOULDER);  // the cannon
     }
-    if (asControl(l.primary, 1, options.makoLever)) {
+    bool const jets = asControl(l.primary, 1, options.makoLever);
+    bool const boost = asControl(l.secondary, 2, options.makoLever);
+    if (jets) {
         buttons = static_cast<WORD>((buttons & ~XINPUT_GAMEPAD_X) | XINPUT_GAMEPAD_A);  // jump jets, upright when flipped
     }
-    if (asControl(l.secondary, 2, options.makoLever)) {
+    if (boost) {
         buttons = static_cast<WORD>((buttons & ~XINPUT_GAMEPAD_Y) | XINPUT_GAMEPAD_LEFT_SHOULDER);  // boost
+    }
+    // While the mod drives the Mako, the left hand's buttons and trigger work only on the lever (the user, 2026-11-03: the jets fired
+    // with the hand off it): a press that didn't begin on the lever, and the trigger without it, reach the game as nothing.
+    if (options.makoDrive) {
+        if (l.primary && !jets) buttons = static_cast<WORD>(buttons & ~XINPUT_GAMEPAD_X);
+        if (l.secondary && !boost) buttons = static_cast<WORD>(buttons & ~XINPUT_GAMEPAD_Y);
+        if (!options.makoLever) pad.bLeftTrigger = 0;
     }
     pad.wButtons = buttons;
     return pad;

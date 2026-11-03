@@ -33,16 +33,19 @@ FURNITURE = {  # manifest name: package mesh
 }
 
 
-def Lines(manifest, metres, yaw_sign):
+def Lines(manifest, metres, yaw_sign, seat_back=0.0):
+    """`seat_back`: the pilot (the eye, the chair and its controls) that many metres further back in the hull: the hull's own meshes
+    move forward around them (the user, 2026-11-03: the side displays were too close to read)."""
     eye = manifest["eye"]["hull"]
     out = ["mevr cockpit parts clear"]
 
-    def Part(mesh, origin, yaw, metres_per_unit):
+    def Part(mesh, origin, yaw, metres_per_unit, ahead=0.0):
         right, forward, up = ((origin[i] - eye[i]) * metres for i in range(3))
+        forward += ahead
         out.append(f"mevr cockpit part {PACKAGE}.{mesh} {right:.4f} {forward:.4f} {up:.4f} {yaw:.1f} {metres_per_unit:.6f}")
 
     for mesh in HULL_MESHES:
-        Part(mesh, (0.0, 0.0, 0.0), 90.0, metres / UNITS_PER_MODEL_UNIT)
+        Part(mesh, (0.0, 0.0, 0.0), 90.0, metres / UNITS_PER_MODEL_UNIT, seat_back)
     for name, mesh in FURNITURE.items():
         f = manifest["furniture"][name]
         origin = list(f["origin"])
@@ -55,7 +58,7 @@ def Lines(manifest, metres, yaw_sign):
     return out
 
 
-def HudLine(manifest, metres):
+def HudLine(manifest, metres, seat_back=0.0):
     """`hud ...`: the Mako's status on the left half of the manifest's left display, the radar on its right half (each a
     little in front of it), the rest of the HUD panel high in the windshield; metres from the cockpit's eye (right, forward, up)."""
     eye = manifest["eye"]["hull"]
@@ -68,7 +71,8 @@ def HudLine(manifest, metres):
 
     def At(along):
         p = [centre[i] + u[i] * along + normal[i] * lift for i in range(3)]
-        return tuple((p[i] - eye[i]) * metres for i in range(3))
+        right, forward, up = ((p[i] - eye[i]) * metres for i in range(3))
+        return right, forward + seat_back, up
 
     width = left["width"] * metres * 0.42
     status, radar = At(-quarter), At(quarter)
@@ -89,13 +93,13 @@ def SeatLine(manifest):
             f"grips {RFU('throttleGrip')} {RFU('stickGrip')}")
 
 
-def Script(manifest, metres, yaw_sign, eye):
+def Script(manifest, metres, yaw_sign, eye, seat_back=0.0):
     """The cockpit's script: what the mod runs on entering the Mako (`mevr cockpit` lines without those words)."""
-    parts = [line[len("mevr cockpit "):] for line in Lines(manifest, metres, yaw_sign) if line.startswith("mevr cockpit part ")]
+    parts = [line[len("mevr cockpit "):] for line in Lines(manifest, metres, yaw_sign, seat_back) if line.startswith("mevr cockpit part ")]
     return (["; The Mako's cockpit (research/47): written by tools/cockpit/place.py --script; run by the mod on entering the Mako.",
              "parts sweep"] + parts +
             ["screenpart BIOG_MEVR_Cockpit.Hull_Console", "element 1", "post 0", "screen 768 343 float",
-             "aimscreen 768 306", "aimreticle 6", HudLine(manifest, metres), SeatLine(manifest),
+             "aimscreen 768 306", "aimreticle 6", HudLine(manifest, metres, seat_back), SeatLine(manifest),
              f"ride {eye[0]:.3f} {eye[1]:.3f} {eye[2]:.3f}"])
 
 
@@ -108,6 +112,8 @@ def main():
     parser.add_argument("--script", help="write the cockpit's script to this file instead of printing console lines")
     parser.add_argument("--eye", type=float, nargs=3, default=(0.0, 1.0, 0.8),
                         help="the cockpit's eye from the Mako's origin, metres: right forward up (default 0 1.0 0.8)")
+    parser.add_argument("--seat-back", type=float, default=0.15,
+                        help="the pilot this many metres further back in the hull than the manifest's eye (default 0.15)")
     args = parser.parse_args()
     path = os.path.join(args.assets, "hull reconstruction", "assembled", "manifest.json")
     with open(path, encoding="utf-8") as f:
@@ -116,10 +122,10 @@ def main():
     if args.script:
         os.makedirs(os.path.dirname(os.path.abspath(args.script)), exist_ok=True)
         with open(args.script, "w", encoding="utf-8", newline="\n") as f:
-            f.write("\n".join(Script(manifest, metres, args.yaw_sign, args.eye)) + "\n")
+            f.write("\n".join(Script(manifest, metres, args.yaw_sign, args.eye, args.seat_back)) + "\n")
         print(f"{args.script}: the cockpit's script")
         return
-    for line in Lines(manifest, metres, args.yaw_sign):
+    for line in Lines(manifest, metres, args.yaw_sign, args.seat_back):
         print(line)
 
 

@@ -303,6 +303,9 @@ Output Controls::Step(Input const& in, Settings const& settings) {
                 out.leverGrabbed = true;
                 Add(out, 0, 0.03f, 0.35f);
             }
+            if (!leverHeld_ && settings.leverReturns) {
+                lever_ = Approach(lever_, 0.0f, kLeverReturnRate * dt);
+            }
             if (leverHeld_ && leftTracked) {
                 // Travel since the last step along the seat's forward: pushing past an end doesn't wind up.
                 lever_ = std::clamp(lever_ + Dot(Sub(in.left.grip.position, leverLast_), seat_.forward) / travel, -1.0f, 1.0f);
@@ -324,6 +327,7 @@ Output Controls::Step(Input const& in, Settings const& settings) {
                 grabOrientation_ = in.right.grip.orientation;
                 axis_ = StickAxis(grabOrientation_);
                 stickGrab_ = in.right.grip.position;
+                stickSettle_ = kGrabSettleS;
                 twist_ = 0.0f;
                 twistRaw_ = 0.0f;
                 driving_ = true;
@@ -337,6 +341,10 @@ Output Controls::Step(Input const& in, Settings const& settings) {
                     twist_ += std::remainder(raw - twistRaw_, 360.0f);
                     twistRaw_ = raw;
                 } else {
+                    if (stickSettle_ > 0.0f) {
+                        stickSettle_ -= dt;
+                        stickGrab_ = in.right.grip.position;  // the squeeze settling: no tilt yet
+                    }
                     // Held past full tilt, the stick stops there (the hand's further travel tilts nothing).
                     float rightDeg = 0.0f;
                     float forwardDeg = 0.0f;

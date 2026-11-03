@@ -1001,3 +1001,22 @@ package's TOC entry already there at the same size (recorded with that size, so 
 as the player's. The game then ran the players' build (`MEVR 0.1.0 (monolithic, commit 7ec9404696)`, `reflect: no LExSDKv2 cross-check in
 this build`); `mako-start` and the drop: the cockpit, the seated Shepard posed by arm IK, the tilting stick driving, the chase view on the
 centre screen. `--uninstall --keep-settings`: every file restored; with the old record back, all 56 files byte for byte as before.
+
+## The user's first headset drive (2026-11-03 13:04-13:13, PS VR2 over SteamVR, `BIOA_UNC20` from the launcher's Resume)
+
+The cockpit came in by itself from the save (in the Mako), the PS VR2 and its Touch-profile controllers with the user's calibration of
+2026-10-25. What the user found, and what the log says:
+- **Steering surged the Mako.** The lever sat at +0.11 of its travel, just past the 0.08 notch: throttle +0.04, and the tank simulation
+  (BioSVehicleSimTank) at full steering then drove the outer track at full speed (tracks 2611 and 61). Fixed (64feea5): the notch 0.15
+  (`throttleDetent`, the user's file changed too), steering under `steerInPlaceBelow` (0.2) sends exactly 0.
+- **The thrusters flipped it.** Every burst with the stick held added the hand's forward drift as pitch, unchecked: +15.6 to +83.7 degrees in
+  one, +8.7 to +55.8 in another. Fixed (64feea5): while the jets or booster fire a rate controller holds roll at 0 and pitch at the stick's ask
+  (`thrusterPitchDeg` 20 at full tilt, `thrusterRateDeg` 60), with an 8-degree pitch dead zone.
+- **A bias left and forward, the stick tilted forward at each grab; more travel wanted.** The tilt was the hand's travel over a 0.10 m stick: 2 cm of
+  drift was 10 degrees. Now `stickHeightM` 0.20 (full lock at about 7 cm of travel), and for 0.2 s after a grab the stick's zero follows the hand,
+  so the squeeze's own shift tilts nothing.
+- **The lever should go back to neutral when let go** (`leverReturns`, 1). **The left hand's buttons and trigger should act only on the lever:**
+  while the mod drives, X, Y and the left trigger reach the game as nothing unless the press began on the lever (game/GamepadMapping,
+  unit-tested). The right hand's trigger and A stay (the free right hand aims the turret by its ray).
+- **The side displays were too close to read**: `place.py --seat-back` (0.15 m by default) puts the pilot further back in the hull: the hull, its
+  displays and the HUD on them move forward; the chair, the lever, the stick and the seated Shepard stay with the player.

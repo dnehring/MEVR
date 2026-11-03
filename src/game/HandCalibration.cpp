@@ -513,7 +513,8 @@ constexpr char const* kMakoBlock =
     "; stickTwist = 1: twist it to steer instead; the trigger fires the machine gun, A the cannon, the thumbstick aims the\n"
     "; turret while held; let go and your hand aims it). Until you grab one the game's own controls work as always; 0 = they\n"
     "; stay. grabRadiusM: how near a hand must be. stickTiltDeg: the tilt for full lock; stickHeightM: the grip's height over\n"
-    "; the stick's pivot. stickTwistDeg: the twist for full lock (stickTwist = 1); stickDeadZoneDeg: the tilt or twist that\n"
+    "; the stick's pivot (0.20: about 7 cm of hand travel for full lock). leverReturns: 1 = let go, the lever goes back to\n"
+    "; neutral. stickTwistDeg: the twist for full lock (stickTwist = 1); stickDeadZoneDeg: the tilt or twist that\n"
     "; steers nothing; stickInvert: 1 = twist the other way. throttleTravelM: hand travel from neutral to full;\n"
     "; throttleDetent: the neutral notch, a fraction of the travel. leverOffset, stickOffset: where they sit from your head\n"
     "; when you enter the Mako or recenter (meters: right, up, forward). stickAimRate: degrees a second at a full thumbstick.\n"
@@ -526,7 +527,8 @@ constexpr char const* kMakoBlock =
     "grabRadiusM = 0.15\n"
     "stickTwist = 0\n"
     "stickTiltDeg = 20\n"
-    "stickHeightM = 0.10\n"
+    "stickHeightM = 0.20\n"
+    "leverReturns = 1\n"
     "stickTwistDeg = 42\n"
     "stickDeadZoneDeg = 4\n"
     "stickInvert = 0\n"
@@ -1304,6 +1306,9 @@ Mako ReadMako(Ini const& ini) {
     }
     if (Number(ini, "Mako", "stickTiltDeg", value)) {
         c.stickTiltDeg = static_cast<float>(std::clamp(value, 5.0, 60.0));
+    }
+    if (Number(ini, "Mako", "leverReturns", value)) {
+        c.leverReturns = value != 0.0;
     }
     if (Number(ini, "Mako", "stickHeightM", value)) {
         c.stickHeightM = static_cast<float>(std::clamp(value, 0.03, 0.5));

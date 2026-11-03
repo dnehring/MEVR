@@ -24,6 +24,10 @@ inline constexpr float kTrackingGraceS = 0.5f;
 // How fast the steering may move, per second: while held (full lock in about 0.1 s) and springing back on release.
 inline constexpr float kSteerRateHeld = 12.0f;
 inline constexpr float kSteerRateReturn = 6.0f;
+// After a grab of the stick its zero follows the hand this long (a squeeze shifts the hand: the user's first drive started each
+// grab tilted forward), and a released lever goes back to neutral at this many travels a second.
+inline constexpr float kGrabSettleS = 0.2f;
+inline constexpr float kLeverReturnRate = 4.0f;
 // The right stick's dead zone for the turret, and the turret's pitch range relative to the vehicle (degrees).
 inline constexpr float kAimStickDeadZone = 0.15f;
 inline constexpr float kAimPitchMinDeg = -45.0f;
@@ -35,7 +39,8 @@ struct Settings {
     float grabRadiusM = 0.15f;     // a hand this close to a control can grab it
     bool stickTwist = false;       // 1: steer by twisting the stick about its axis (stage 1); 0: by tilting it
     float stickTiltDeg = 20.0f;    // tilt for full lock (and for a full pitch)
-    float stickHeightM = 0.10f;    // the grip's height over the stick's pivot: the hand's travel from the grab, as a tilt
+    float stickHeightM = 0.20f;    // the grip's height over the stick's pivot: the hand's travel from the grab, as a tilt (0.20: about
+                                   // 7 cm of travel for full lock; 0.10 made 2 cm of drift a 10-degree tilt, 2026-11-03)
     float stickTwistDeg = 42.0f;   // twist for full lock
     float stickDeadZoneDeg = 4.0f; // twist or tilt that steers nothing
     float stickPitchDeadZoneDeg = 8.0f;  // forward/back tilt that pitches nothing (a hand drifts while it steers; the user, 2026-11-03)
@@ -44,6 +49,7 @@ struct Settings {
     float steerInPlaceBelow = 0.2f;
     bool stickInvert = false;      // twist the other way
     float throttleTravelM = 0.055f; // hand travel from centre to full, along the seat's forward (the cockpit model's slot)
+    bool leverReturns = true;      // let go, the lever goes back to neutral (the user, 2026-11-03); 0: it stays where it's left
     float throttleDetent = 0.15f;  // the lever's neutral notch, as a fraction of its travel
     // Where each control's grip sits from the head at placement, along the seat's axes (meters: right, up, forward): the
     // cockpit models' grips from the pilot's eye (research/48 section 22, the manifest's pilot.fromEyeMetres).
@@ -172,6 +178,7 @@ private:
     XrQuaternionf grabOrientation_{0.0f, 0.0f, 0.0f, 1.0f};
     XrVector3f axis_{0.0f, 1.0f, 0.0f};
     XrVector3f stickGrab_{};
+    float stickSettle_ = 0.0f;  // seconds left in which the stick's zero follows the hand
     float tiltRight_ = 0.0f;
     float tiltForward_ = 0.0f;
     float pitch_ = 0.0f;

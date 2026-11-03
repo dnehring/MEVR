@@ -6407,6 +6407,8 @@ void TestMakoControls() {
     CHECK(close(settings.throttleTravelM, 0.055) && close(settings.leverOffset.x, -0.362) && close(settings.stickOffset.z, 0.314));
     settings.throttleTravelM = 0.15f;
     settings.throttleDetent = 0.08f;  // the first default (0.15 since 2026-11-03)
+    settings.leverReturns = false;    // the lever stayed where it was left until 2026-11-03
+    settings.stickHeightM = 0.10f;    // the tilt cases below are worked out for the first height
     settings.leverOffset = {-0.20f, -0.55f, 0.25f};
     settings.stickOffset = {0.20f, -0.55f, 0.25f};
     CHECK(!settings.stickTwist);  // tilting is the default since 2026-11-03; the session below is the twist's
@@ -6496,6 +6498,12 @@ void TestMakoControls() {
         mc::Controls c;
         mc::Output out = c.Step(input(0.0f, 0.0f, identity, 1.0f), tilting);
         CHECK(out.stickGrabbed && out.stickHeld && close(out.steer, 0.0) && close(out.pitch, 0.0));
+        // The squeeze settling: for kGrabSettleS the stick's zero follows the hand, so a hand that shifts as it closes tilts nothing.
+        out = c.Step(input(0.0f, 0.0f, identity, 1.0f, {0.0f, 0.0f, -0.03f}), tilting);
+        CHECK(close(out.pitch, 0.0) && close(out.tiltForwardDeg, 0.0));
+        for (int i = 0; i < 3; ++i) {
+            out = c.Step(input(0.0f, 0.0f, identity, 1.0f), tilting);  // back where it grabbed: the zero follows it here
+        }
         out = c.Step(input(0.0f, 0.0f, about(up, 60.0f), 1.0f), tilting);  // a twist alone steers nothing now
         CHECK(close(out.steer, 0.0) && close(out.tiltRightDeg, 0.0));
         for (int i = 0; i < 10; ++i) {
@@ -6519,7 +6527,9 @@ void TestMakoControls() {
         }
         CHECK(!out.stickHeld && close(out.pitch, 0.0) && close(out.tiltForwardDeg, 0.0) && close(out.steer, 0.0));
         // A small forward tilt (a hand drifting while it steers) pitches nothing: inside stickPitchDeadZoneDeg.
-        out = c.Step(input(0.0f, 0.0f, identity, 1.0f), tilting);
+        for (int i = 0; i < 5; ++i) {
+            out = c.Step(input(0.0f, 0.0f, identity, 1.0f), tilting);  // grabbed again, and settled
+        }
         out = c.Step(input(0.0f, 0.0f, identity, 1.0f, {0.0f, 0.0f, -0.012f}), tilting);  // about 7 degrees
         CHECK(close(out.pitch, 0.0) && out.tiltForwardDeg > 6.0f);
         // Steering with the lever just past its notch turns on the spot: the throttle sent is exactly 0.
@@ -6752,7 +6762,20 @@ void TestMakoControls() {
         driving.makoDrive = driving.makoLever = driving.makoStick = true;
         pad = gp::FromControllers(state, latches, driving);
         CHECK(pad.sThumbLX == 0 && pad.sThumbLY == 0 && pad.sThumbRX == 0 && pad.sThumbRY == 0);
-        CHECK((pad.wButtons & XINPUT_GAMEPAD_X) != 0 && (pad.wButtons & XINPUT_GAMEPAD_Y) != 0 && (pad.wButtons & XINPUT_GAMEPAD_A) != 0);
+        // ...except the left hand's: while the mod drives, X and Y reach the game only as the lever's (since 2026-11-03).
+        CHECK((pad.wButtons & XINPUT_GAMEPAD_X) == 0 && (pad.wButtons & XINPUT_GAMEPAD_Y) == 0 && (pad.wButtons & XINPUT_GAMEPAD_A) != 0);
+        {
+            // The left trigger too: driving with the lever let go, it reaches the game as nothing; on the lever, as itself.
+            gp::Latches other;
+            mevr::vr::controllers::State held = state;
+            held.left.trigger = 1.0f;
+            gp::Options off;
+            off.leftTrigger = true;
+            off.makoDrive = true;
+            CHECK(gp::FromControllers(held, other, off).bLeftTrigger == 0);
+            off.makoLever = true;
+            CHECK(gp::FromControllers(held, other, off).bLeftTrigger > 0);
+        }
         // New presses while held: X jumps, Y boosts, A fires the cannon; the trigger stays the gun.
         state.left.primary = state.left.secondary = state.right.primary = false;
         pad = gp::FromControllers(state, latches, driving);
