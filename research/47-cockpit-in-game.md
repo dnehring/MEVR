@@ -679,3 +679,8 @@ lamp, white at the centre (their brightest 1% 255, 255, 255 against 220, 203, 20
 those three back to the unlit `_lamp_MIC`s (the lamps' brightest 1% 255 -> 222, 205, 207), as its name rule says. **The glass with its
 cubemap at 3 shows a sheen:** a pale haze over the windshield's middle, the view through it brighter, not darker (RGB 114.3, 92.3, 86.9
 against 97.2, 73.5, 66.7 at cubemap 1), the crate's dark face there washed toward grey.
+
+**f858dda** (01:13, same pose; the glass's minimum fresnel `VSR_Colour_02.r` 0.15 -> 0.03): the windshield's middle unchanged (114.2, 92.3,
+86.9). **Most of that haze is the lamps' bloom, not the glass:** with the lamps unlit (`variant base`) the middle reads 102.6, 80.4, 75.5
+(grey stddev 46.8 against 57.0), so the x 10 glow's bloom spreads over the windshield below the lamp bar and the glass at cubemap 3 adds
+about +5 face-on. Turned 70 degrees, the side windows show no sheen in a still frame.
