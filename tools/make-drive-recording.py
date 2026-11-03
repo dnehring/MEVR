@@ -5,13 +5,15 @@ loop of `seconds`. For the cockpit riding in the Mako on the fake headset (resea
 `tools/mako-start.ps1`, then `tools/replay.ps1 -Path out.mevrrec -Loop -Inputs` (the sticks reach the game as pad 0 until a
 Mako control is grabbed).
 
-    python tools/make-drive-recording.py out.mevrrec [seconds] [hz] [--press-b | --controls] [--eye-height M]
+    python tools/make-drive-recording.py out.mevrrec [seconds] [hz] [--press-b | --controls] [--eye-height M] [--look YAW PITCH]
 
 --press-b: the sticks rest and the right controller's B is held from 1 s to 1.4 s instead (the game's TryExitVehicle).
 --controls: the cockpit's own controls instead of the stick (research/46; needs no pad input, so it drives with the game window
 unfocused too): both hands go to the lever and the stick (their places for a head entering at this recording's seat), squeeze at
 1 s, the lever is pushed full forward by 2.5 s, the stick twisted 35 degrees one way from 4 s, the other from 8 s, back at 12 s.
-Play it once (no -Loop): a loop lets go of both at its end. --eye-height: the seated head's height in tracking space (default\n1.2; the controls are placed from the head when the Mako is entered, so use the head's height then: 0 on the fake headset)."""
+Play it once (no -Loop): a loop lets go of both at its end. --eye-height: the seated head's height in tracking space (default
+1.2; the controls are placed from the head when the Mako is entered, so use the head's height then: 0 on the fake headset).
+--look: the head turned YAW degrees (+ right) and PITCH (+ up), e.g. to watch the controls' models (the hands don't turn)."""
 import math
 import struct
 import sys
@@ -36,20 +38,38 @@ def twist(degrees):
     return (0.0, 0.0, -math.sin(half), math.cos(half))
 
 
+def head_orientation(yaw_deg, pitch_deg):
+    """xyzw: turned yaw (+ right) about +Y, then pitched (+ up) about the turned +X (OpenXR: -Z ahead)."""
+    y, p = math.radians(-yaw_deg) / 2.0, math.radians(pitch_deg) / 2.0
+    qy = (0.0, math.sin(y), 0.0, math.cos(y))
+    qp = (math.sin(p), 0.0, 0.0, math.cos(p))
+    return (qy[3] * qp[0] + qy[0] * qp[3] + qy[1] * qp[2] - qy[2] * qp[1],
+            qy[3] * qp[1] - qy[0] * qp[2] + qy[1] * qp[3] + qy[2] * qp[0],
+            qy[3] * qp[2] + qy[0] * qp[1] - qy[1] * qp[0] + qy[2] * qp[3],
+            qy[3] * qp[3] - qy[0] * qp[0] - qy[1] * qp[1] - qy[2] * qp[2])
+
+
 def main():
     press_b = "--press-b" in sys.argv
     controls = "--controls" in sys.argv
     eye_h = 1.20
     if "--eye-height" in sys.argv:
         eye_h = float(sys.argv[sys.argv.index("--eye-height") + 1])
-    args = [a for i, a in enumerate(sys.argv) if i > 0 and not a.startswith("--") and sys.argv[i - 1] != "--eye-height"]
+    look = (0.0, 0.0)
+    if "--look" in sys.argv:
+        at = sys.argv.index("--look")
+        look = (float(sys.argv[at + 1]), float(sys.argv[at + 2]))
+    taken = {i + 1 for i, a in enumerate(sys.argv) if a == "--eye-height"} | {i + k for i, a in enumerate(sys.argv) if a == "--look" for k in (1, 2)}
+    args = [a for i, a in enumerate(sys.argv) if i > 0 and not a.startswith("--") and i not in taken]
     out = args[0]
     seconds = float(args[1]) if len(args) > 1 else (16.0 if controls else 12.0)
     hz = float(args[2]) if len(args) > 2 else 90.0
     ipd = 0.064
     fov = (-0.785, 0.785, 0.785, -0.785)  # left, right, up, down (radians)
-    q = (0.0, 0.0, 0.0, 1.0)  # looking straight ahead
-    eyes = [(*q, side * ipd / 2, eye_h, 0.0) for side in (-1, 1)]
+    q = (0.0, 0.0, 0.0, 1.0)  # the hands: pointing ahead
+    head = head_orientation(*look)
+    right_axis = (math.cos(math.radians(look[0])), 0.0, math.sin(math.radians(look[0])))  # the head's right, laid flat
+    eyes = [(*head, side * ipd / 2 * right_axis[0], eye_h, side * ipd / 2 * right_axis[2]) for side in (-1, 1)]
     valid = (1 << 4) | (1 << 5)  # gripValid, aimValid
     frames = []
     n = int(seconds * hz)

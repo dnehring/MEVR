@@ -13,6 +13,7 @@
 #include "engine/XrToUnreal.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/Mako.hpp"
+#include "game/MakoControls.hpp"
 #include "game/Player.hpp"
 #include "game/ViewAnchor.hpp"
 #include "ue3/Handles.hpp"
@@ -951,6 +952,9 @@ struct Part {
     engine::UnrealVector offsetM{};  // right, forward, up
     float yawDeg = 0.0f;
     float metersPerUnit = 0.01f;
+    // Riding, the controls' models follow game/MakoControls (research/47): the throttle's handle slides along the seat's
+    // forward by the lever's travel, the stick's grip turns about its own vertical by the steering. From the mesh's name.
+    enum class Motion { None, Lever, Stick } motion = Motion::None;
 };
 std::vector<Part> gParts;
 
@@ -1056,6 +1060,8 @@ std::string DoPart(std::istringstream& words) {
     set.SetBool("bForce", true);
     Call(part.component, gSetStaticMesh, set);
     part.mesh = mesh;
+    std::string const meshName = Lower(R().NameText(mesh));
+    part.motion = meshName == "throttle_handle" ? Part::Motion::Lever : meshName == "joystick_grip" ? Part::Motion::Stick : Part::Motion::None;
     PlacePart(part);
     gParts.push_back(part);
     HideFromCaptures();
@@ -1844,8 +1850,11 @@ void ShowVehicle() {
 
 // A part in the vehicle's frame: its offset from the eye along the vehicle's axes, its yaw on top of the vehicle's rotation.
 void PlacePartIn(Part const& part, engine::Basis const& frame, engine::UnrealVector const& eye, double upm) {
-    engine::UnrealVector const offset = engine::Apply(frame, {part.offsetM.y * upm, part.offsetM.x * upm, part.offsetM.z * upm});
-    engine::UnrealRotation const turned = engine::BasisRotation(engine::Compose(frame, engine::ToBasis(engine::UnrealRotation{0, static_cast<int>(std::lround(part.yawDeg * 65536.0 / 360.0)), 0})));
+    mako_controls::Pose const pose = part.motion != Part::Motion::None ? mako_controls::CurrentPose() : mako_controls::Pose{};
+    double const forwardM = part.offsetM.y + (part.motion == Part::Motion::Lever ? static_cast<double>(pose.lever * pose.travelM) : 0.0);
+    double const yawDeg = part.yawDeg + (part.motion == Part::Motion::Stick ? static_cast<double>(pose.steer * pose.lockDeg) : 0.0);
+    engine::UnrealVector const offset = engine::Apply(frame, {forwardM * upm, part.offsetM.x * upm, part.offsetM.z * upm});
+    engine::UnrealRotation const turned = engine::BasisRotation(engine::Compose(frame, engine::ToBasis(engine::UnrealRotation{0, static_cast<int>(std::lround(yawDeg * 65536.0 / 360.0)), 0})));
     if (ue3::Vector* const atField = gActorLocation.In<ue3::Vector>(part.actor)) {
         *atField = {static_cast<float>(eye.x + offset.x), static_cast<float>(eye.y + offset.y), static_cast<float>(eye.z + offset.z)};
         write_journal::Wrote("CockpitProbe.rideLocation", atField, sizeof(*atField));
@@ -3214,9 +3223,15 @@ bool Riding() {
     return gRide.on && gRide.riding;
 }
 
-void Tick() {
+void Tick(std::optional<std::uint32_t> recenters) {
     AutoTick();
     RideTick();
+    static std::optional<std::uint32_t> seenRecenters;
+    if (recenters && seenRecenters && *recenters != *seenRecenters && gRide.on) {
+        gRide.seated = false;  // the player recentered in the seat: where the head is now is the cockpit's eye
+        log::Info("cockpit: a recenter: the seat is taken again");
+    }
+    seenRecenters = recenters;
     if (gState.actor == nullptr && gState.captureActor == nullptr) {
         return;
     }
@@ -3312,7 +3327,7 @@ std::string VehicleCommand(std::string const& /*line*/) {
     return "mevr vehicle: LE1 only";
 }
 
-void Tick() {}
+void Tick(std::optional<std::uint32_t> /*recenters*/) {}
 
 std::string StatusJson() {
     return "{\"up\": false}";

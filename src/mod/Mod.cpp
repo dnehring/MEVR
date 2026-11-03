@@ -1138,7 +1138,10 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // What A uses: from where the head looks, and its prompt at the object (research/40).
         EnsureSelectionHook();
         game::interact::Tick(deltaSeconds, gSelectionHooked, InteractLink());
-        game::cockpit_probe::Tick();  // nothing until a `mevr cockpit` line asks (research/47)
+        {
+            auto const floor = HostFloor();  // the cockpit takes a new seat at each recenter (research/47)
+            game::cockpit_probe::Tick(floor ? std::optional<std::uint32_t>(floor->recenters) : std::nullopt);
+        }
         game::head_tracking::OnTickEnd();
     }
     PublishStatus();

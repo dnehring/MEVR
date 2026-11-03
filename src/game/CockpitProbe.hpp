@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include <cstdint>
+#include <optional>
 #include <string>
 
 // An experiment, not a feature (research/47): can the mod, at run time and with nothing in the game's install changed, put
@@ -24,7 +26,8 @@ bool TryStartup();
 // The cockpit is riding in the Mako this tick (its camera moved): the chase camera's own rotation no longer turns the view.
 bool Riding();
 // Each mod tick, late (the view anchor current). Also the cockpit by itself ([Cockpit]): in on entering the Mako, out on leaving.
-void Tick();
+// `recenters`: the host's recenter count (core/vr/Floor), if known: a change while riding takes a new seat.
+void Tick(std::optional<std::uint32_t> recenters);
 // Snapshot JSON ("cockpitProbe").
 std::string StatusJson();
 // Heartbeat line (while something is up).

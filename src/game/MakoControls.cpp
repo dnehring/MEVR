@@ -465,6 +465,17 @@ bool Driving() {
     return gInMako && gOut.driving;
 }
 
+Pose CurrentPose() {
+    Pose pose;
+    pose.travelM = gSettings.throttleTravelM;
+    pose.lockDeg = gSettings.stickTwistDeg;
+    if (gInMako) {
+        pose.lever = gOut.lever;
+        pose.steer = gOut.steer;
+    }
+    return pose;
+}
+
 std::string StatusJson() {
     mc::Seat const& seat = gControls.CurrentSeat();
     return std::format(

@@ -58,6 +58,16 @@ void AdjustPad(gamepad::Options& options);
 // The mod drives: a control has been grabbed in this drive.
 bool Driving();
 
+// Where the controls are now, for the cockpit's models (research/47): the lever -1..1 of its travel (meters from centre to
+// full), the steering -1..1 (+ right) of its full lock (degrees of twist). Zero when not in the Mako.
+struct Pose {
+    float lever = 0.0f;
+    float travelM = 0.055f;
+    float steer = 0.0f;
+    float lockDeg = 42.0f;
+};
+Pose CurrentPose();
+
 std::string StatusJson();
 void LogStats();
 // Throttle and steering to zero unless the process is exiting, the host's picture gone.
