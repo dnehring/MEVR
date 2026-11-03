@@ -12,6 +12,7 @@
 #include "engine/SettingsFile.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/HandCalibration.hpp"
+#include "game/Mako.hpp"
 #include "game/Player.hpp"
 #include "game/ViewAnchor.hpp"
 #include "ue3/Handles.hpp"
@@ -1983,6 +1984,19 @@ std::string DoRide(std::istringstream& words) {
 // On foot, the stand-in for the Mako's aim: from the head along its view. The capture's centre is the aim point.
 void PointAim() {
     std::optional<Eye> eye = HeadNow();
+    if (gRide.riding) {
+        // In the Mako: along the turret's aim (game/mako), else straight ahead of the vehicle from about the turret.
+        if (auto const turret = mako::CurrentTurretAim()) {
+            eye = Eye{turret->from, turret->direction, engine::kUnitsPerMeter};
+        } else if (ue3::Object* const vehicle = player::Pawn(player::Controller())) {
+            auto const at = player::Location(vehicle);
+            auto const turn = player::Rotation(vehicle);
+            if (at && turn) {
+                engine::Basis const frame = engine::ToBasis(engine::UnrealRotation{turn->pitch, turn->yaw, turn->roll});
+                eye = Eye{{at->x + frame.up.x * 150.0, at->y + frame.up.y * 150.0, at->z + frame.up.z * 150.0}, frame.forward, engine::kUnitsPerMeter};
+            }
+        }
+    }
     if (!eye || gAim.captureComponent == nullptr) {
         return;
     }

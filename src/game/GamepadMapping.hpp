@@ -293,6 +293,10 @@ struct Options {
     bool makoDrive = false;
     bool makoLever = false;
     bool makoStick = false;
+    // The cockpit rides in the Mako (research/47 "Riding in the Mako"): the head looks round the cockpit, so the host's
+    // renderer turns the view with the head in game mode 1 too, where it parks head look for the chase camera. Not a pad
+    // mapping option; it travels with them.
+    bool cockpitLook = false;
     SupportInput support;
 };
 
@@ -319,6 +323,7 @@ inline constexpr std::uint32_t kFlagHandWalk = 1u << 18;         // Options::han
 inline constexpr std::uint32_t kFlagMakoDrive = 1u << 19;        // Options::makoDrive (host v23)
 inline constexpr std::uint32_t kFlagMakoLever = 1u << 20;        // Options::makoLever (host v23)
 inline constexpr std::uint32_t kFlagMakoStick = 1u << 21;        // Options::makoStick (host v23)
+inline constexpr std::uint32_t kFlagCockpitLook = 1u << 22;      // Options::cockpitLook (a host of 2026-11-03 or later)
 std::uint32_t ToFlags(Options const& options);
 Options FromFlags(float distance, float acquire, float release, std::uint32_t flags);
 

@@ -66,6 +66,11 @@ void OnViewBuilt(bool worldView, bool headLook, bool headAim, float const headOr
 // off, so the head only looks (render-side) and the controller aims. False with a plain gamepad.
 bool ControllerAimActive() noexcept;
 
+// True while our mod's cockpit rides in the Mako (research/47 "Riding in the Mako"; the mod's gamepad::kFlagCockpitLook,
+// fresh): in game mode 1 the head then looks round the cockpit (render-side head look, as on foot) instead of being
+// parked for the chase camera, and the left stick isn't turned by that look (the Mako steers by its own controls).
+bool CockpitLook() noexcept;
+
 // ---- Body-locked HUD panel and hand reticle (src/plugin/HalcyonOverlays.cpp) --------------------
 // The game's UI draws of a head-tracked world frame go into a panel texture instead of the eye
 // images (d3d_capture.cpp's draw hooks), and RunFrame shows that texture as a quad fixed in the

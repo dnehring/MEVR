@@ -811,3 +811,18 @@ drops pad input without focus is open **[verify]**; a player with the game in fr
   throttle +1.00 steer +0.82 (lever held, stick held)", forward speed about 1,950 units/s, the screen behind the Mako through both
   turns; at the replay's end "stopped (a controller stopped tracking)", the game's controls back.
 - `Destroy` works now (above): the sweep destroys leftovers.
+
+## The aiming screen and head look in the cockpit (2026-11-03 10:57-11:05, fake headset, `BIOA_UNC20`; host redeployed)
+
+- **The right screen follows the turret:** while riding, the aim capture looks from about the turret (150 units up the vehicle's
+  axis) toward the turret's traced aim point (`mako::CurrentTurretAim`, new), else straight ahead of the vehicle; its reticle sits on
+  the traced point (the first trace hit 105 m ahead on the terrain). The cockpit script brings both up (`aimscreen 768 306`, `aimreticle 6`).
+  The reticle is in the world, so the centre screen's chase view shows it too.
+- **Halcyon parks head look in game mode 1** (its Mako default: the stick aims, the crosshair matches the cannon), so in the cockpit
+  the head turned only the head-locked quads. Two `[MEVR]` seams (host): `xr_session.cpp`'s game-mode-1 branch is skipped while
+  `MevrBridge::CockpitLook()` (the mod's new pad flag `gamepad::kFlagCockpitLook`, fresh: set while `cockpit_probe::Riding()`), so the
+  on-foot head look applies; and `vr_menu.cpp`'s `RotateMoveStickByHeadLook` (moveFollowsHead) stands down then (the Mako steers by its
+  own controls, not by where you look). Measured: host view `headLook true`, yaw 35 and pitch -25 degrees for a head turned that way;
+  the eye sees the seat's armrest, the joystick model and the right screen with the turret's view and its reticle.
+- **Loading a save inside the Mako** (the drop's own autosave, through the launcher's Resume) put the player in the cockpit by itself,
+  seated, both screens up.

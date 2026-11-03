@@ -6644,7 +6644,10 @@ void TestMakoControls() {
         options.makoLever = true;
         options.makoStick = true;
         gp::Options const back = gp::FromFlags(-1.0f, 0.1f, 0.2f, gp::ToFlags(options));
-        CHECK(back.makoLever && back.makoStick && !back.makoDrive);
+        CHECK(back.makoLever && back.makoStick && !back.makoDrive && !back.cockpitLook);
+        options.cockpitLook = true;
+        CHECK(gp::FromFlags(-1.0f, 0.1f, 0.2f, gp::ToFlags(options)).cockpitLook);
+        CHECK((gp::kFlagCockpitLook & (gp::kRbSourceMask | gp::kWheelStickMask | gp::kFlagMakoStick)) == 0);
 
         mevr::vr::controllers::State state;
         state.active = true;

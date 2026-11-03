@@ -61,6 +61,7 @@ def Script(manifest, metres, yaw_sign, eye):
     return (["; The Mako's cockpit (research/47): written by tools/cockpit/place.py --script; run by the mod on entering the Mako.",
              "parts sweep"] + parts +
             ["screenpart BIOG_MEVR_Cockpit.Hull_Console", "element 1", "post 0", "screen 768 343 float",
+             "aimscreen 768 306", "aimreticle 6",
              f"ride {eye[0]:.3f} {eye[1]:.3f} {eye[2]:.3f}"])
 
 

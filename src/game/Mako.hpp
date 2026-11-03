@@ -53,6 +53,17 @@ bool ShotRotation(ue3::Rotator const& game, ue3::Rotator& out);
 // is on; nullopt otherwise.
 std::optional<vr::aim_ray::Ray> AimRay();
 
+// The turret's aim this tick in the world, for the cockpit's aiming screen (research/47): from above the vehicle's origin
+// (where the stick's turret ray starts) toward what the aim ray hits, and how far that is; nullopt while nothing aims it
+// (no tracked controller, [Mako] handAim off).
+struct TurretAim {
+    engine::UnrealVector from;
+    engine::UnrealVector direction;  // unit
+    double distanceUnits = 0.0;
+    bool hit = false;
+};
+std::optional<TurretAim> CurrentTurretAim();
+
 std::string StatusJson();
 void LogStats();
 void Shutdown();

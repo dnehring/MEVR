@@ -149,6 +149,7 @@ inline void RotateMoveStickByHeadLook(XINPUT_GAMEPAD* pad) noexcept
 {
     const int32_t yawUU = MELEVR::RenderHook::HeadLookYawUU();
     if (yawUU == 0) return;
+    if (MELEVR::MevrBridge::CockpitLook()) return;   // [MEVR] the Mako steers by its own controls, not where you look
     if (pad->sThumbLX == 0 && pad->sThumbLY == 0) return;
     // Positive yawUU = view turned LEFT (proven: ApplyHeadRotation Ry maps ahead->view-right for yaw>0,
     // i.e. the camera rotated left). Rotate the stick vector left by the same angle: fwd -> fwd-left.

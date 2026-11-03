@@ -484,6 +484,17 @@ void NoteDrawArm(std::uint64_t arm) noexcept {
     mevr::vr::scope_capture::NoteDrawArm(arm);  // research/39: which capture pose this Draw renders
 }
 
+bool CockpitLook() noexcept {
+    bool const fresh = GetTickCount64() - gSupportInputMs.load(std::memory_order_relaxed) <= kSupportInputMaxAgeMs;
+    bool const on = fresh && (gSupportFlags.load(std::memory_order_relaxed) & mevr::game::gamepad::kFlagCockpitLook) != 0;
+    static std::atomic<bool> s_logged{false};
+    if (on != s_logged.exchange(on, std::memory_order_relaxed)) {
+        mevr::log::Info("halcyon bridge: {}", on ? "the cockpit rides in the Mako: the head looks round it (head look in game mode 1)"
+                                                 : "the cockpit's head look is off (Halcyon's game mode 1 parks head look again)");
+    }
+    return on;
+}
+
 bool ControllerAimActive() noexcept {
     std::uint64_t const tracked = gRightAimTrackedMs.load(std::memory_order_relaxed);
     bool const on = gModHandAim.load(std::memory_order_relaxed) && tracked != 0 &&

@@ -7,6 +7,7 @@
 #include "core/vr/Controllers.hpp"
 #include "engine/BonePose.hpp"
 #include "game/BodyCalibration.hpp"
+#include "game/CockpitProbe.hpp"
 #include "game/Comfort.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/Holsters.hpp"
@@ -275,6 +276,7 @@ void Tick(double deltaSeconds, bool requested) {
     throwables::AdjustPad(options);  // B and X off on foot if turned off; no RB from a squeeze at the grenade slot
     comfort::AdjustPad(options);  // our own turn (no right-stick X for the game) and walking toward the left hand
     mako_controls::AdjustPad(options);  // the Mako's lever and stick (research/46): a squeeze there is theirs, and their buttons
+    options.cockpitLook = cockpit_probe::Riding();  // the head looks round the cockpit in the Mako (research/47)
     gFlags.store(gamepad::ToFlags(options), std::memory_order_relaxed);
     bool const aiming = options.supportAims && gHeld.load(std::memory_order_relaxed) && requested;
     std::optional<bool> const zoomed = weapon::Zoomed();

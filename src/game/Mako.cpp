@@ -732,6 +732,31 @@ Motion CurrentMotion() {
     return gMotionNow;
 }
 
+std::optional<TurretAim> CurrentTurretAim() {
+    if (!gAim.valid || GetTickCount64() - gAim.atMs > kAimFreshMs || gVehicle == nullptr || !ue3::runtime::IsAlive(gVehicle)) {
+        return std::nullopt;
+    }
+    auto const at = player::Location(gVehicle);
+    auto const turn = player::Rotation(gVehicle);
+    if (!at || !turn) {
+        return std::nullopt;
+    }
+    // About the turret: as the thumbstick's ray (game/MakoControls), 150 units up the vehicle's own axis.
+    constexpr double kTurretUp = 150.0;
+    engine::UnrealVector const up = engine::ToBasis(engine::UnrealRotation{turn->pitch, turn->yaw, turn->roll}).up;
+    TurretAim aim;
+    aim.from = {at->x + up.x * kTurretUp, at->y + up.y * kTurretUp, at->z + up.z * kTurretUp};
+    engine::UnrealVector const to = Sub(gAim.target, aim.from);
+    double const length = Len(to);
+    if (!(length > 1.0)) {
+        return std::nullopt;
+    }
+    aim.direction = Times(to, 1.0 / length);
+    aim.distanceUnits = length;
+    aim.hit = gAim.hit;
+    return aim;
+}
+
 bool ShotRotation(ue3::Rotator const& game, ue3::Rotator& out) {
 #if defined(MEVR_GAME_LE1)
     ULONGLONG const now = GetTickCount64();

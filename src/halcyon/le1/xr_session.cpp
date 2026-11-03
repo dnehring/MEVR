@@ -4413,7 +4413,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         }
         MELEVR::RenderHook::SetHeadLook(0, 0, false);
     }
-    else if (gameMode == 1)
+    else if (gameMode == 1 && !MELEVR::MevrBridge::CockpitLook())   // [MEVR] in our cockpit the head looks round (below)
     {
         // MAKO default: stick aims, head-look parked so the crosshair matches the cannon. Usable, shippable.
         // Experimental Mako head-aim is deliberately one variable only: ControlRotation via DriveAimWithHead,
