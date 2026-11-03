@@ -38,9 +38,13 @@ struct Settings {
     float stickHeightM = 0.10f;    // the grip's height over the stick's pivot: the hand's travel from the grab, as a tilt
     float stickTwistDeg = 42.0f;   // twist for full lock
     float stickDeadZoneDeg = 4.0f; // twist or tilt that steers nothing
+    float stickPitchDeadZoneDeg = 8.0f;  // forward/back tilt that pitches nothing (a hand drifts while it steers; the user, 2026-11-03)
+    // Below this throttle the stick's steering turns the Mako on the spot: the throttle sent is exactly 0, which is when the tank
+    // simulation counter-rotates its tracks; anything above drives the outer track and the Mako surges (the user, 2026-11-03).
+    float steerInPlaceBelow = 0.2f;
     bool stickInvert = false;      // twist the other way
     float throttleTravelM = 0.055f; // hand travel from centre to full, along the seat's forward (the cockpit model's slot)
-    float throttleDetent = 0.08f;  // the lever's neutral notch, as a fraction of its travel
+    float throttleDetent = 0.15f;  // the lever's neutral notch, as a fraction of its travel
     // Where each control's grip sits from the head at placement, along the seat's axes (meters: right, up, forward): the
     // cockpit models' grips from the pilot's eye (research/48 section 22, the manifest's pilot.fromEyeMetres).
     XrVector3f leverOffset{-0.362f, -0.446f, 0.286f};
@@ -132,8 +136,10 @@ float TwistDegrees(XrQuaternionf const& grab, XrQuaternionf const& now, XrVector
 XrVector3f StickAxis(XrQuaternionf const& grip);
 // -1..1 (+ the player's right) from an unwrapped twist.
 float SteerFromTwist(float twistDeg, Settings const& settings);
-// -1..1 (+ the player's right, or pushed away) from a tilt in degrees: nothing inside the dead zone, full at stickTiltDeg.
+// -1..1 (+ the player's right, or pushed away) from a tilt in degrees: nothing inside `deadZoneDeg` (stickDeadZoneDeg by default),
+// full at stickTiltDeg.
 float FromTilt(float tiltDeg, Settings const& settings);
+float FromTilt(float tiltDeg, Settings const& settings, float deadZoneDeg);
 // The stick's tilt (degrees: to the right, forward) for the hand moved `travel` from where it grabbed, the grip `heightM` over the
 // pivot: atan(travel / height) along the seat's right and forward.
 void TiltFromTravel(XrVector3f const& travel, XrVector3f const& right, XrVector3f const& forward, float heightM, float& rightDeg, float& forwardDeg);

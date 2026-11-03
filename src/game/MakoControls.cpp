@@ -114,12 +114,13 @@ struct Counts {
     unsigned gated = 0;          // SetInputs had zeroed them: the powertrain off, or paused
     unsigned tickWrites = 0;     // no SetInputs seen: written from the mod's tick
     int cameraUnits = 0;         // the vehicle's yaw given to the camera
-    unsigned firing = 0;         // ticks with the jump jets or the booster on
-    unsigned pitched = 0;        // ...of them with the stick pitching
+    unsigned jets = 0;           // ticks with the jump jets on
+    unsigned boost = 0;          // ...with the booster on
+    unsigned held = 0;           // ...of them stabilised
     float refunded = 0.0f;       // fuel given back (seconds of thrust)
-    float pitchDeg = 0.0f;       // the angular velocity added, summed (signed, degrees a second)
-    int pitchUnitsAtStart = 0;   // the vehicle's pitch at the first pitched tick, and at the last
-    int pitchUnitsAtEnd = 0;
+    float worstPitchDeg = 0.0f;  // the largest |pitch error| and |roll| seen while stabilising
+    float worstRollDeg = 0.0f;
+    float targetPitchDeg = 0.0f; // the last target
 } gCounts;
 
 #if defined(MEVR_GAME_LE1)
@@ -178,35 +179,59 @@ void HoldJets(ue3::Object* controller) {
     }
 }
 
-// While the jump jets or the booster fire, the stick's forward tilt turns the vehicle about its right axis (pushed: the nose
-// down). `degreesPerSecond2` at a full tilt, added to the body's angular velocity each tick [verify the units and the sign: the
-// heartbeat says how the vehicle's pitch moved].
-void PitchOnThrusters(ue3::Object* vehicle, double deltaSeconds, float degreesPerSecond2) {
-    bool const firing = gJumping.ReadBool(vehicle).value_or(false) || gBoosting.ReadBool(vehicle).value_or(false);
-    if (!firing) {
-        return;
-    }
-    ++gCounts.firing;
-    if (!gOut.stickHeld || gOut.pitch == 0.0f || !(degreesPerSecond2 > 0.0f) || gSetAngularVelocity.Get() == nullptr) {
+// The vehicle's attitude last tick while stabilising (its pitch and roll, degrees), for the rates.
+struct Attitude {
+    bool have = false;
+    float pitchDeg = 0.0f;
+    float rollDeg = 0.0f;
+};
+Attitude gAttitude;
+
+// While the jets or the booster fire, the Mako is held level: roll to 0 and pitch to the stick's forward/back tilt (pushed: the
+// nose down, at most `maxPitchDeg`), each turning at most `maxRateDeg` a second. A rate controller on the body's angular velocity
+// (SetRBAngularVelocity, added to the current): the wanted rate from the angle's error, the change toward it from the rate seen
+// since the last tick. The first version added the stick's pitch every tick with nothing holding it and flipped the Mako
+// (2026-11-03, the user in the headset: +16 -> +84 degrees in one burst). A positive angular velocity about the vehicle's right
+// axis raises its pitch and about its forward axis its roll (measured: pushed, the pitch fell from -0.3 to -61 degrees).
+void StabilizeOnThrusters(ue3::Object* vehicle, double deltaSeconds, hand_calibration::Mako const& settings) {
+    bool const jets = gJumping.ReadBool(vehicle).value_or(false);
+    bool const boost = gBoosting.ReadBool(vehicle).value_or(false);
+    gCounts.jets += jets ? 1u : 0u;
+    gCounts.boost += boost ? 1u : 0u;
+    auto const rotation = gRotation.Read<ue3::Rotator>(vehicle);
+    if (!(jets || boost) || !settings.thrusterStabilize || !rotation || gSetAngularVelocity.Get() == nullptr) {
+        gAttitude = {};
         return;
     }
     ue3::Object* const mesh = gVehicleMesh.Read<ue3::Object*>(vehicle).value_or(nullptr);
-    auto const rotation = gRotation.Read<ue3::Rotator>(vehicle);
-    if (mesh == nullptr || !rotation) {
+    float const dt = static_cast<float>(std::clamp(deltaSeconds, 0.001, 0.1));
+    if (mesh == nullptr) {
         return;
     }
+    float const pitch = static_cast<float>(SignedUnits(rotation->pitch) * 360.0 / 65536.0);
+    float const roll = static_cast<float>(SignedUnits(rotation->roll) * 360.0 / 65536.0);
+    float const pitchRate = gAttitude.have ? std::remainder(pitch - gAttitude.pitchDeg, 360.0f) / dt : 0.0f;
+    float const rollRate = gAttitude.have ? std::remainder(roll - gAttitude.rollDeg, 360.0f) / dt : 0.0f;
+    gAttitude = {true, pitch, roll};
+    float const target = gOut.stickHeld ? -gOut.pitch * settings.thrusterPitchDeg : 0.0f;
+    constexpr float kAngleGain = 3.0f;  // wanted rate per degree of error (1/s)
+    constexpr float kRateGain = 0.35f;  // the share of the rate's error corrected each tick
+    float const limit = settings.thrusterRateDeg;
+    float const wantPitchRate = std::clamp(kAngleGain * (target - pitch), -limit, limit);
+    float const wantRollRate = std::clamp(kAngleGain * (0.0f - roll), -limit, limit);
+    float const addPitch = std::clamp((wantPitchRate - pitchRate) * kRateGain, -limit, limit);
+    float const addRoll = std::clamp((wantRollRate - rollRate) * kRateGain, -limit, limit);
     engine::Basis const axes = engine::ToBasis(engine::UnrealRotation{rotation->pitch, rotation->yaw, rotation->roll});
-    float const add = -gOut.pitch * degreesPerSecond2 * static_cast<float>(std::clamp(deltaSeconds, 0.0, 0.1));
     ue3::Params parms(ue3::runtime::Get(), gSetAngularVelocity.Get());
-    parms.Set("NewAngVel", ue3::Vector{static_cast<float>(axes.right.x * add), static_cast<float>(axes.right.y * add), static_cast<float>(axes.right.z * add)});
+    parms.Set("NewAngVel", ue3::Vector{static_cast<float>(axes.right.x * addPitch + axes.forward.x * addRoll),
+                                       static_cast<float>(axes.right.y * addPitch + axes.forward.y * addRoll),
+                                       static_cast<float>(axes.right.z * addPitch + axes.forward.z * addRoll)});
     parms.SetBool("bAddToCurrent", true);
     ue3::runtime::Call(mesh, gSetAngularVelocity.Get(), parms);
-    if (gCounts.pitched == 0) {
-        gCounts.pitchUnitsAtStart = SignedUnits(rotation->pitch);
-    }
-    gCounts.pitchUnitsAtEnd = SignedUnits(rotation->pitch);
-    ++gCounts.pitched;
-    gCounts.pitchDeg += add;
+    ++gCounts.held;
+    gCounts.worstPitchDeg = std::max(gCounts.worstPitchDeg, std::abs(target - pitch));
+    gCounts.worstRollDeg = std::max(gCounts.worstRollDeg, std::abs(roll));
+    gCounts.targetPitchDeg = target;
 }
 
 void WriteInputs(ue3::Object* vehicle, float throttle, float steering) {
@@ -480,7 +505,7 @@ StickAim Tick(double deltaSeconds, Link const& link, ue3::Object* vehicle, ue3::
         gLoggedDrive = false;
     }
     LogSimulation(vehicle, controller);
-    PitchOnThrusters(vehicle, deltaSeconds, settings.thrusterPitchDeg);
+    StabilizeOnThrusters(vehicle, deltaSeconds, settings);
 
     // The physics' values for this tick. Steering: the game's is + left (PlayerDriving's ProcessDrive passes -InStrafe)
     // [verify the sign in the headset; [Mako] stickInvert flips the twist].
@@ -633,10 +658,10 @@ void LogStats() {
         gOutputSteering.Read<float>(gVehicle).value_or(0.0f), gOutputBrake.Read<float>(gVehicle).value_or(0.0f), gForwardVel.Read<float>(gVehicle).value_or(0.0f),
         sim != nullptr ? gActualSteering.Read<float>(sim).value_or(0.0f) : 0.0f, tank, gCounts.handlerCalls, gCounts.handlerEvents, gCounts.written, gCounts.gated,
         gCounts.tickWrites, static_cast<double>(gCounts.cameraUnits) * 360.0 / 65536.0);
-    if (gCounts.firing > 0) {
-        log::Info("    mako controls: thrusters on {} ticks, {:.2f} s of fuel given back; the stick pitched {} of them ({:+.1f} deg/s added; the vehicle's pitch "
-                  "{:+.1f} -> {:+.1f} deg) [verify]",
-            gCounts.firing, gCounts.refunded, gCounts.pitched, gCounts.pitchDeg, gCounts.pitchUnitsAtStart * 360.0 / 65536.0, gCounts.pitchUnitsAtEnd * 360.0 / 65536.0);
+    if (gCounts.jets + gCounts.boost > 0) {
+        log::Info("    mako controls: thrusters: jump jets on {} ticks, booster {}, {:.2f} s of fuel given back; held level on {} (the worst pitch error "
+                  "{:.1f} deg, roll {:.1f} deg; the last target pitch {:+.1f})",
+            gCounts.jets, gCounts.boost, gCounts.refunded, gCounts.held, gCounts.worstPitchDeg, gCounts.worstRollDeg, gCounts.targetPitchDeg);
     }
     gCounts = Counts{};
 #endif
@@ -649,6 +674,7 @@ void Shutdown(bool exiting, void (*publish)(vr::mako_controls::View const* view)
     }
     gJetsUntilMs = 0;
     gJetsController = nullptr;
+    gAttitude = {};
     gLoggedFuel = false;
     if (publish != nullptr) {
         publish(nullptr);

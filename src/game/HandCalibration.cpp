@@ -519,7 +519,9 @@ constexpr char const* kMakoBlock =
     "; when you enter the Mako or recenter (meters: right, up, forward). stickAimRate: degrees a second at a full thumbstick.\n"
     "; rumble: the engine's vibration at full speed (0 = none). cameraFollow: 1 = while you drive with them the chase camera\n"
     "; keeps its angle to the Mako. thrusterBurnScale: the jump jets' and booster's fuel burns this fast (0.4 = they last 2.5\n"
-    "; times as long; 1 = the game's). thrusterPitchDeg: how hard the stick pitches the Mako while they fire (0 = not).\n"
+    "; times as long; 1 = the game's). thrusterStabilize: 1 = while they fire the Mako is held level, pitched by the stick up\n"
+    "; to thrusterPitchDeg, turning at most thrusterRateDeg a second. stickPitchDeadZoneDeg: the forward/back tilt that pitches\n"
+    "; nothing. steerInPlaceBelow: below this throttle the stick turns the Mako on the spot.\n"
     "controls = 1\n"
     "grabRadiusM = 0.15\n"
     "stickTwist = 0\n"
@@ -529,14 +531,18 @@ constexpr char const* kMakoBlock =
     "stickDeadZoneDeg = 4\n"
     "stickInvert = 0\n"
     "throttleTravelM = 0.055\n"
-    "throttleDetent = 0.08\n"
+    "throttleDetent = 0.15\n"
     "leverOffset = -0.362 -0.446 0.286\n"
     "stickOffset = 0.375 -0.415 0.314\n"
     "stickAimRate = 90\n"
     "rumble = 0.12\n"
     "cameraFollow = 1\n"
     "thrusterBurnScale = 0.4\n"
-    "thrusterPitchDeg = 120\n";
+    "thrusterStabilize = 1\n"
+    "thrusterPitchDeg = 20\n"
+    "thrusterRateDeg = 60\n"
+    "stickPitchDeadZoneDeg = 8\n"
+    "steerInPlaceBelow = 0.2\n";
 
 // Appended to a settings file that has no [Cockpit] yet (and part of a new file).
 constexpr char const* kCockpitBlock =
@@ -1305,8 +1311,20 @@ Mako ReadMako(Ini const& ini) {
     if (Number(ini, "Mako", "thrusterBurnScale", value)) {
         m.thrusterBurnScale = static_cast<float>(std::clamp(value, 0.05, 1.0));
     }
+    if (Number(ini, "Mako", "thrusterStabilize", value)) {
+        m.thrusterStabilize = value != 0.0;
+    }
     if (Number(ini, "Mako", "thrusterPitchDeg", value)) {
-        m.thrusterPitchDeg = static_cast<float>(std::clamp(value, 0.0, 720.0));
+        m.thrusterPitchDeg = static_cast<float>(std::clamp(value, 0.0, 45.0));
+    }
+    if (Number(ini, "Mako", "thrusterRateDeg", value)) {
+        m.thrusterRateDeg = static_cast<float>(std::clamp(value, 10.0, 180.0));
+    }
+    if (Number(ini, "Mako", "stickPitchDeadZoneDeg", value)) {
+        c.stickPitchDeadZoneDeg = static_cast<float>(std::clamp(value, 0.0, 30.0));
+    }
+    if (Number(ini, "Mako", "steerInPlaceBelow", value)) {
+        c.steerInPlaceBelow = static_cast<float>(std::clamp(value, 0.0, 1.0));
     }
     if (Number(ini, "Mako", "stickTwistDeg", value)) {
         c.stickTwistDeg = static_cast<float>(std::clamp(value, 5.0, 170.0));

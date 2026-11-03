@@ -6406,6 +6406,7 @@ void TestMakoControls() {
     // The cases below are worked out for these (the first defaults); the defaults are the cockpit's grips now.
     CHECK(close(settings.throttleTravelM, 0.055) && close(settings.leverOffset.x, -0.362) && close(settings.stickOffset.z, 0.314));
     settings.throttleTravelM = 0.15f;
+    settings.throttleDetent = 0.08f;  // the first default (0.15 since 2026-11-03)
     settings.leverOffset = {-0.20f, -0.55f, 0.25f};
     settings.stickOffset = {0.20f, -0.55f, 0.25f};
     CHECK(!settings.stickTwist);  // tilting is the default since 2026-11-03; the session below is the twist's
@@ -6517,6 +6518,16 @@ void TestMakoControls() {
             out = c.Step(input(0.0f, 0.0f, identity, 0.0f, {0.0f, 0.0f, 0.05f}), tilting);
         }
         CHECK(!out.stickHeld && close(out.pitch, 0.0) && close(out.tiltForwardDeg, 0.0) && close(out.steer, 0.0));
+        // A small forward tilt (a hand drifting while it steers) pitches nothing: inside stickPitchDeadZoneDeg.
+        out = c.Step(input(0.0f, 0.0f, identity, 1.0f), tilting);
+        out = c.Step(input(0.0f, 0.0f, identity, 1.0f, {0.0f, 0.0f, -0.012f}), tilting);  // about 7 degrees
+        CHECK(close(out.pitch, 0.0) && out.tiltForwardDeg > 6.0f);
+        // Steering with the lever just past its notch turns on the spot: the throttle sent is exactly 0.
+        out = c.Step(input(0.0f, 1.0f, identity, 1.0f, {0.05f, 0.0f, 0.0f}), tilting);  // the lever grabbed at neutral
+        for (int i = 0; i < 5; ++i) {
+            out = c.Step(input(0.03f, 1.0f, identity, 1.0f, {0.05f, 0.0f, 0.0f}), tilting);  // then 0.2 of its travel
+        }
+        CHECK(out.leverHeld && out.lever > 0.15f && close(out.steer, 1.0) && out.throttle == 0.0f);
     }
     {
         mc::Controls c;

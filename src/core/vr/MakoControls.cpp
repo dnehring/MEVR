@@ -181,8 +181,12 @@ float SteerFromTwist(float twistDeg, Settings const& settings) {
 }
 
 float FromTilt(float tiltDeg, Settings const& settings) {
+    return FromTilt(tiltDeg, settings, settings.stickDeadZoneDeg);
+}
+
+float FromTilt(float tiltDeg, Settings const& settings, float deadZoneDeg) {
     float const limit = std::max(settings.stickTiltDeg, 1.0f);
-    float const dead = std::clamp(settings.stickDeadZoneDeg, 0.0f, limit - 0.5f);
+    float const dead = std::clamp(deadZoneDeg, 0.0f, limit - 0.5f);
     float const size = std::abs(tiltDeg);
     float const amount = size <= dead ? 0.0f : std::min((size - dead) / (limit - dead), 1.0f);
     float const value = tiltDeg > 0.0f ? amount : -amount;
@@ -350,7 +354,7 @@ Output Controls::Step(Input const& in, Settings const& settings) {
             }
             float const target = !stickHeld_ ? 0.0f : settings.stickTwist ? SteerFromTwist(twist_, settings) : FromTilt(tiltRight_, settings);
             steer_ = Approach(steer_, target, (stickHeld_ ? kSteerRateHeld : kSteerRateReturn) * dt);
-            pitch_ = settings.stickTwist ? 0.0f : FromTilt(tiltForward_, settings);
+            pitch_ = settings.stickTwist ? 0.0f : FromTilt(tiltForward_, settings, settings.stickPitchDeadZoneDeg);
             if (!stickHeld_) {
                 twist_ = 0.0f;
             }
@@ -377,6 +381,9 @@ Output Controls::Step(Input const& in, Settings const& settings) {
     }
     out.lever = lever_;
     out.throttle = ThrottleFromLever(lever_, settings.throttleDetent);
+    if (stickHeld_ && steer_ != 0.0f && std::abs(out.throttle) < settings.steerInPlaceBelow) {
+        out.throttle = 0.0f;  // turning on the spot
+    }
     out.steer = steer_;
     out.twistDeg = twist_;
     out.tiltRightDeg = tiltRight_;
