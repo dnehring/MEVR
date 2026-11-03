@@ -139,11 +139,16 @@ internal static class Check
         {
             PropertyCollection props = export.GetProperties();
             IEntry parent = pcc.GetEntry(props.GetProp<ObjectProperty>("Parent")?.Value ?? 0);
-            StructProperty value = props.GetProp<ArrayProperty<StructProperty>>("TextureParameterValues")?.FirstOrDefault();
-            IEntry texture = pcc.GetEntry(value?.GetProp<ObjectProperty>("ParameterValue")?.Value ?? 0);
-            Report(parent != null && parent.InstancedFullPath == $"{Build.ParentPackage}.{Build.ParentMaterial}" && parent.ClassName == "Material" && texture?.ClassName == "Texture2D"
-                && value.GetProp<NameProperty>("ParameterName")?.Value.Instanced == Build.ParameterName,
-                $"{export.ObjectName.Instanced}: parent {parent?.InstancedFullPath}, {value?.GetProp<NameProperty>("ParameterName")?.Value.Instanced} = {texture?.ObjectName.Instanced}, binary {export.GetBinaryData().Length} bytes");
+            var values = props.GetProp<ArrayProperty<StructProperty>>("TextureParameterValues")?.ToList() ?? new List<StructProperty>();
+            IEntry Texture(StructProperty value) => pcc.GetEntry(value?.GetProp<ObjectProperty>("ParameterValue")?.Value ?? 0);
+            string Name(StructProperty value) => value?.GetProp<NameProperty>("ParameterName")?.Value.Instanced;
+            // The instances the meshes use are over EmissiveTexturedMaterial with one texture; the optional lit and glow ones
+            // (Build's variants) over their own parents, every texture parameter a texture of ours, no static parameters.
+            bool variant = export.ObjectName.Instanced.EndsWith("_Lit_MIC", StringComparison.Ordinal) || export.ObjectName.Instanced.EndsWith("_Glow_MIC", StringComparison.Ordinal);
+            string expected = variant ? null : $"{Build.ParentPackage}.{Build.ParentMaterial}";
+            bool ok = parent != null && parent.ClassName == "Material" && values.Count > 0 && values.All(v => Texture(v)?.ClassName == "Texture2D")
+                && (variant ? !(props.GetProp<BoolProperty>("bHasStaticPermutationResource")?.Value ?? false) : parent.InstancedFullPath == expected && Name(values[0]) == Build.ParameterName);
+            Report(ok, $"{export.ObjectName.Instanced}: parent {parent?.InstancedFullPath}, {string.Join(", ", values.Select(v => $"{Name(v)} = {Texture(v)?.ObjectName.Instanced}"))}, binary {export.GetBinaryData().Length} bytes");
         }
 
         Dictionary<string, ModelSource> sources = assets != null ? Build.Sources(assets, raw).ToDictionary(s => s.Name) : new Dictionary<string, ModelSource>();

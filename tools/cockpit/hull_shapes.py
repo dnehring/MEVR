@@ -487,20 +487,22 @@ def Bake(o, atlas, trims, tints, path, occluders, points, size=4096, distance=0.
         finals.append(Png(linear, f"shell-baked-{k + 1}", path if k == 0 else path.replace(".png", f"-{k + 1}.png")))
     for t in targets:
         bpy.data.images.remove(t)
-    # the shell's materials: each page's baked image on the unwrap
+    # the shell's materials: each page's baked image on the unwrap, and the same for the lamps' faces on that page as a
+    # material of their own ("lamp", "lamp2"...), so the game side can give just the lamps a glowing instance
     me.materials.clear()
-    for k, image in enumerate(finals):
-        m = bpy.data.materials.new("shell" if k == 0 else f"shell{k + 1}")
-        m.use_nodes = True
-        nt = m.node_tree
-        bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
-        tex = nt.nodes.new("ShaderNodeTexImage")
-        tex.image = image
-        nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
-        nt.nodes.active = tex
-        me.materials.append(m)
+    for prefix in ("shell", "lamp"):
+        for k, image in enumerate(finals):
+            m = bpy.data.materials.new(prefix if k == 0 else f"{prefix}{k + 1}")
+            m.use_nodes = True
+            nt = m.node_tree
+            bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+            tex = nt.nodes.new("ShaderNodeTexImage")
+            tex.image = image
+            nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+            nt.nodes.active = tex
+            me.materials.append(m)
     for p in me.polygons:
-        p.material_index = page.get(p.index, 0)
+        p.material_index = page.get(p.index, 0) + (pages if CLASSES[classes[p.index]] in GLOW else 0)
     me.uv_layers.remove(me.uv_layers["trim"])
     areas = [sum(me.polygons[i].area for i in seen if page[i] == k) for k in range(pages)]
     return {"size": size, "pages": pages, "device": device, "samples": samples, "exposure": exposure, "facesSeen": len(seen),

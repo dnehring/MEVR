@@ -54,6 +54,30 @@ internal static class Build
     // metre where a hand on them sees about 3,000 (research/48 section 24); 2048 keeps 3,400 to 4,600 and frees 16 MB.
     private static readonly Dictionary<string, int> GroupMaxTexture = new() { ["Joystick"] = 2048, ["Throttle"] = 2048 };
 
+    // Optional instances over two more of the game's own materials, both in Startup_INT (always loaded; their shaders are in
+    // Engine.pcc's always-loaded cache; research/48 section 25). Nothing points at them: the game side swaps one onto an
+    // element to try it. The expression GUIDs are the ones in the game's shader maps (the cooked graphs' links are stripped).
+    // Lit: Phong, our image as the emissive (the baked light stays) over a dark diffuse and a grey specular, so the light
+    // environment adds highlights. Glow: unlit, the image times LightmapBrightness, so a lamp passes 1 and blooms.
+    private static readonly (string Package, string Material) LitParent = ("EngineDebugMaterials", "TexturePaint_2Tex_Color");
+    private static readonly (string Package, string Material) GlowParent = ("EngineBuildings", "ProcBuildingSimpleMaterial");
+    private static readonly Dictionary<string, Guid> LitGuids = new()
+    {
+        ["Diffuse"] = new("58e49976-1059-497c-9606-f5fb86ca944a"), ["Spec"] = new("3900e298-95ee-4061-a790-71944292caf5"),
+        ["Emissive"] = new("83db6666-6c5b-4f33-b40a-c6eb45b04a2f"), ["SpecularMultValue"] = new("d4d65423-6084-43d7-a42d-b14909667a67"),
+        ["SpecPower"] = new("e3e1940b-ee17-48ce-902b-63cd05eb49b1"), ["EmissiveMultiply"] = new("ff470b90-7f6d-42e6-bbcd-285e875f3f47"),
+    };
+    private static readonly Dictionary<string, Guid> GlowGuids = new()
+    {
+        ["DiffuseTexture"] = new("bdf6e56f-5fd0-4083-bf7d-bcfd122abc81"), ["LightTexture"] = new("75696fb0-2e92-4e8f-aaa5-36abf6d8c499"),
+        ["LightmapBrightness"] = new("a643d9b7-db64-467d-a4ff-bf48edab1bc6"), ["WallSpecColor"] = new("42eacc11-ecbb-4687-9085-f056394ffed4"),
+        ["WindowSpecColor"] = new("90c7c0ef-12bb-4cf5-93f4-722272718db1"),
+    };
+    private const float LitSpecular = 1.0f, LitSpecPower = 32.0f, GlowBrightness = 3.0f;
+    // Which elements get a glow variant: the shell's lamps (hull_shapes.Bake puts them on materials of their own) and the
+    // console's idle screens.
+    private static bool Glows(string material) => material.StartsWith("lamp", StringComparison.Ordinal) || material is "Display" or "Aim";
+
     // The object names, the file names they come from, which texture they share, and where the file is: "detached"
     // (detached/<file>.glb), "repair" (Newest below) or a path under the assets folder. The hull's pieces share its origin
     // (tools/cockpit/hull_assemble.py); the two side panes share one texture. The hull replaces the earlier front cockpit
@@ -269,18 +293,44 @@ internal static class Build
     }
 
     private static ExportEntry AddInstance(IMEPackage pcc, string name, IEntry parent, ExportEntry texture, Guid expressionGuid, Guid parentLightingGuid)
+        => AddInstance(pcc, name, parent, parentLightingGuid, new[] { (ParameterName, texture, expressionGuid) });
+
+    // An instance of `parent` with these texture, scalar and colour parameters (each with its expression GUID in the parent).
+    private static ExportEntry AddInstance(IMEPackage pcc, string name, IEntry parent, Guid parentLightingGuid,
+        IEnumerable<(string Name, ExportEntry Texture, Guid Guid)> textures, IEnumerable<(string Name, float Value, Guid Guid)> scalars = null,
+        IEnumerable<(string Name, float[] Value, Guid Guid)> colours = null)
     {
         ExportEntry export = ExportCreator.CreateExport(pcc, new NameReference(name, 0), "MaterialInstanceConstant", indexed: false);
         MakeLoadable(export);
         PropertyCollection props = export.GetProperties();
         props.AddOrReplaceProp(new ObjectProperty(parent.UIndex, "Parent"));
-        var value = new PropertyCollection
+        props.AddOrReplaceProp(new ArrayProperty<StructProperty>(textures.Select(t => new StructProperty("TextureParameterValue", new PropertyCollection
         {
-            CommonStructs.GuidProp(expressionGuid, "ExpressionGUID"),
-            new NameProperty(ParameterName, "ParameterName"),
-            new ObjectProperty(texture.UIndex, "ParameterValue"),
-        };
-        props.AddOrReplaceProp(new ArrayProperty<StructProperty>(new[] { new StructProperty("TextureParameterValue", value) }, "TextureParameterValues"));
+            CommonStructs.GuidProp(t.Guid, "ExpressionGUID"),
+            new NameProperty(t.Name, "ParameterName"),
+            new ObjectProperty(t.Texture.UIndex, "ParameterValue"),
+        })).ToArray(), "TextureParameterValues"));
+        if (scalars != null)
+        {
+            props.AddOrReplaceProp(new ArrayProperty<StructProperty>(scalars.Select(s => new StructProperty("ScalarParameterValue", new PropertyCollection
+            {
+                CommonStructs.GuidProp(s.Guid, "ExpressionGUID"),
+                new NameProperty(s.Name, "ParameterName"),
+                new FloatProperty(s.Value, "ParameterValue"),
+            })).ToArray(), "ScalarParameterValues"));
+        }
+        if (colours != null)
+        {
+            props.AddOrReplaceProp(new ArrayProperty<StructProperty>(colours.Select(c => new StructProperty("VectorParameterValue", new PropertyCollection
+            {
+                CommonStructs.GuidProp(c.Guid, "ExpressionGUID"),
+                new NameProperty(c.Name, "ParameterName"),
+                new StructProperty("LinearColor", new PropertyCollection
+                {
+                    new FloatProperty(c.Value[0], "R"), new FloatProperty(c.Value[1], "G"), new FloatProperty(c.Value[2], "B"), new FloatProperty(c.Value[3], "A"),
+                }, "ParameterValue", true),
+            })).ToArray(), "VectorParameterValues"));
+        }
         // The instance's own and its parent's GUIDs, as every instance of the game's holds them.
         props.AddOrReplaceProp(CommonStructs.GuidProp(parentLightingGuid, "ParentLightingGuid"));
         props.AddOrReplaceProp(CommonStructs.GuidProp(Guid.NewGuid(), "m_Guid"));
@@ -344,9 +394,37 @@ internal static class Build
         var report = new List<Dictionary<string, object>>();
         var textures = new Dictionary<string, (ExportEntry Texture, int Width, int Height)>();
         var instances = new Dictionary<string, ExportEntry>();
+        var variants = new Dictionary<string, List<string>>();  // an instance's name: its optional lit and glow instances
         var backingImage = LecImage.LoadFromRaw(SolidBgr(4, 4, new Vector3(0.035f, 0.04f, 0.044f)), PixelFormat.RGB, 4, 4);
         ExportEntry backingTexture = AddTexture(pcc, "Backing_Diff", backingImage, 4, 4);
         ExportEntry backingInstance = AddInstance(pcc, "Backing_MIC", parent, backingTexture, expressionGuid, parentLightingGuid);
+        IEntry litParent = ExportCreator.CreateImport(pcc, "Material", LitParent.Material, ExportCreator.CreatePackageImport(pcc, LitParent.Package));
+        IEntry glowParent = ExportCreator.CreateImport(pcc, "Material", GlowParent.Material, ExportCreator.CreatePackageImport(pcc, GlowParent.Package));
+        ExportEntry Constant(string textureName, Vector3 rgb) => AddTexture(pcc, textureName, LecImage.LoadFromRaw(SolidBgr(4, 4, rgb), PixelFormat.RGB, 4, 4), 4, 4);
+        ExportEntry litDiffuse = Constant("Lit_Diffuse", new Vector3(0.1f, 0.1f, 0.105f));  // dark: the baked light is the emissive
+        ExportEntry litSpecular = Constant("Lit_Spec", new Vector3(0.35f, 0.35f, 0.36f));
+        ExportEntry white = Constant("Glow_Light", new Vector3(1f, 1f, 1f));
+        void Variants(string instanceName, ExportEntry texture, string material)
+        {
+            var made = new List<string>();
+            string lit = instanceName.Replace("_MIC", "_Lit_MIC");
+            AddInstance(pcc, lit, litParent, Guid.Empty,
+                new[] { ("Diffuse", litDiffuse, LitGuids["Diffuse"]), ("Spec", litSpecular, LitGuids["Spec"]), ("Emissive", texture, LitGuids["Emissive"]) },
+                new[] { ("SpecularMultValue", LitSpecular, LitGuids["SpecularMultValue"]), ("SpecPower", LitSpecPower, LitGuids["SpecPower"]),
+                        ("EmissiveMultiply", 1.0f, LitGuids["EmissiveMultiply"]) });
+            made.Add(lit);
+            if (Glows(material))
+            {
+                string glow = instanceName.Replace("_MIC", "_Glow_MIC");
+                float[] one = { 1f, 1f, 1f, 1f };
+                AddInstance(pcc, glow, glowParent, Guid.Empty,
+                    new[] { ("DiffuseTexture", texture, GlowGuids["DiffuseTexture"]), ("LightTexture", white, GlowGuids["LightTexture"]) },
+                    new[] { ("LightmapBrightness", GlowBrightness, GlowGuids["LightmapBrightness"]) },
+                    new[] { ("WallSpecColor", one, GlowGuids["WallSpecColor"]), ("WindowSpecColor", one, GlowGuids["WindowSpecColor"]) });
+                made.Add(glow);
+            }
+            variants[instanceName] = made;
+        }
 
         bool raw = options.Has("raw");
         foreach (ModelSource source in Sources(assets, raw))
@@ -388,6 +466,9 @@ internal static class Build
                 }
                 return made;
             }
+            // An element on the main image under another material (the shell's lamps on a page) gets an instance of its own,
+            // named for its material, on the same texture: so the game side can swap just that element.
+            string mainMaterial = welded.First(p => p.BaseColorImage == mainImage).MaterialName;
             ExportEntry Instance(WeldedPrimitive primitive)
             {
                 bool screen = primitive.MaterialName == ScreenMaterial;
@@ -397,11 +478,16 @@ internal static class Build
                 }
                 string suffix = primitive.BaseColorImage == mainImage ? "" : "_" + primitive.MaterialName;
                 ExportEntry texture = primitive.BaseColorImage.HasValue ? Texture(primitive.BaseColorImage.Value, suffix).Texture : backingTexture;
-                string name = source.Group + (screen ? "_" + ScreenMaterial : suffix) + "_MIC";
+                string own = primitive.MaterialName == mainMaterial || screen ? suffix : "_" + primitive.MaterialName;
+                string name = source.Group + (screen ? "_" + ScreenMaterial : own) + "_MIC";
                 if (!instances.TryGetValue(name, out ExportEntry instance))
                 {
                     instance = AddInstance(pcc, name, parent, texture, expressionGuid, parentLightingGuid);
                     instances.Add(name, instance);
+                    if (!screen)
+                    {
+                        Variants(name, texture, primitive.MaterialName);
+                    }
                 }
                 return instance;
             }
@@ -442,6 +528,7 @@ internal static class Build
                     ["weldedVertices"] = primitives.Sum(p => p.Positions.Count),
                     ["meshVertices"] = (int)lod.NumVertices,
                     ["materialSlots"] = lod.Elements.Select(e => pcc.GetEntry(e.Material).ObjectName.Instanced).ToArray(),
+                    ["slotVariants"] = lod.Elements.Select(e => variants.TryGetValue(pcc.GetEntry(e.Material).ObjectName.Instanced, out var v) ? v.ToArray() : Array.Empty<string>()).ToArray(),
                     ["texture"] = main.Texture.ObjectName.Instanced,
                     ["textureSize"] = new[] { main.Width, main.Height },
                 });

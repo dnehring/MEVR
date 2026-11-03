@@ -887,6 +887,41 @@ No decimation or packaging until the user approves the modelling.
   - not yet seen in the game.
 - **Shading, glass and the lamps' glow** wait for which of the game's own materials can carry them (section 25).
 
+## 25. The game's own materials for shading, glass and glow (a survey of LE1's packages, 2026-11-03)
+
+- **LE1 can't run a new material**: there is no shader compiler in the game, and a material draws only if a shader map
+  for its key (its resource, static switches and normal-map compression classes) is in a loaded cache; else the default
+  material. An instance can only change a parent's scalar, colour and texture values; a static permutation (313 of the
+  game's 1,043 instances over its main environment material carry one) we can't make. So every look comes from an
+  existing parent. Sources: the game's packages read with LegendaryExplorerCore (a scratch survey tool: shader maps by
+  `ShaderCacheManipulator`/`RefShaderCacheReader`, base pass pixel shaders disassembled, 1,473 level packages scanned for
+  static-mesh use), `BIOEngine.ini`, ME3Tweaks on porting shaders.
+- **Every base material in the global packages has its shaders in an always-loaded cache** (Engine.pcc's, 711 shader maps:
+  all 664 base materials of Engine, Startup_INT, SFXGame, BIOC_Materials, SFXWorldResources and SFXVehicleResources).
+  What a parent needs is that its package is in memory before ours, which `RequireImportsAlreadyLoaded` demands:
+  Startup_INT is (the ini's startup packages); BIOC_Materials is in LegendaryExplorer's list of packages safe to import
+  from and is imported so by 278 level packages, but what loads it wasn't found [verify in the game, at the main menu
+  and in levels]; SFXWorldResources and SFXVehicleResources aren't loaded in BIOA_STA00.
+- **Candidates:**
+
+  | For | Parent | Package | Notes |
+  |---|---|---|---|
+  | lit, with our baked light kept | `BIOG_APL_MASTER_MATERIAL.APL__MASTER__Mat` | BIOC_Materials | Phong; Diffuse, Normal (BC5, xy), Specular, SpecularPower, Emissive, EmissiveColour, CubeMap; masked (clip at 0.333); 1,390 static meshes in 253 levels, 941 with a light environment |
+  | the same | `EngineDebugMaterials.TexturePaint_2Tex_Color` | Startup_INT | Phong; Diffuse, Normal (xyz), Spec, Emissive, SpecularMultValue, SpecPower, EmissiveMultiply; used in no level |
+  | glass | `BIOG_Humanoid_MASTER_MTR_R.Human.HMF_VSR_MASTER_MAT` (visors), `BIOA_JUG00_T.JUG00_GLASS01` | BIOC_Materials | translucent; the visor's opacity and a fresnel; JUG00's lit, two-sided, on 74 static meshes |
+  | glow above 1 | `EngineBuildings.ProcBuildingSimpleMaterial` | Startup_INT | unlit, two-sided: DiffuseTexture x LightTexture x LightmapBrightness x WallSpecColor |
+
+- **In the package now, optional** (nothing points at them; the package's listing has each mesh slot's `slotVariants`):
+  every element's `<instance>_Lit_MIC` over TexturePaint_2Tex_Color (our image as its emissive, so the baked light
+  stays; a dark 4x4 diffuse and a grey 4x4 specular, SpecPower 32, so the light environment adds highlights on the
+  geometry's own normals); the shell's lamps and the idle screens' `_Glow_MIC` over ProcBuildingSimpleMaterial at
+  LightmapBrightness 3 (over 1, so the game's bloom takes them). Only Startup_INT imports: no new load risk. The shell's
+  lamps bake onto materials of their own now (`lamp`, `lamp2`, `lamp3` on the pages' images), so they swap alone.
+- **Not yet:** the glass, and the main environment material, until BIOC_Materials is shown in memory before our package
+  loads (a missing import fails the whole package). The glass needs pane meshes too.
+- **To try in the game** (the game side): each part's elements swapped to their `_Lit_MIC` (do highlights show, and how
+  does the light environment light an enclosed cabin); the lamps' and idle screens' `_Glow_MIC` (do they bloom).
+
 ## 5. Not done
 
 (Brought up to date 2026-11-02, after section 21.)
