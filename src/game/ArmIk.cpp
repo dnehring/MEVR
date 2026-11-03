@@ -698,6 +698,13 @@ constexpr double kAnkleAboveHeelM = 0.08;
 // The Mako's seated driver (research/47 "Shepard in the seat"): game/cockpit_probe shows the driver and puts its hips on the
 // chair; here the legs reach the heels with the knees toward the layout's knees, and the hands go where the controllers are,
 // on a held control's grip. The torso keeps the animation's.
+std::uint64_t gSeatReachLogMs = 0;
+// Where a closed fist's middle sits in the hand: this share of the way from the wrist to the middle knuckle, and this share of
+// that length toward the palm (a fist around a 4 cm handle).
+constexpr double kFistAlongKnuckle = 0.8;
+constexpr double kFistPalmward = 0.35;
+constexpr float kHeldIndexCurl = 0.5f;  // a held handle's index: at least this much of the trigger's curl
+
 void DriveSeated(cockpit_probe::Seat const& seat) {
     ue3::Object* const mesh = seat.mesh;
     if (player::SkeletalMesh(mesh) == nullptr || engine::skeleton::PoseParent(mesh) != nullptr) {
@@ -729,7 +736,11 @@ void DriveSeated(cockpit_probe::Seat const& seat) {
     if (info->legs[kLeft] && info->legs[kRight]) {
         ik::Vec3 const left = engine::skeleton::ToTransform(pose[static_cast<std::size_t>(info->legs[kLeft]->upper)]).translation;
         ik::Vec3 const right = engine::skeleton::ToTransform(pose[static_cast<std::size_t>(info->legs[kRight]->upper)]).translation;
-        cockpit_probe::NoteSeatHips(mesh, (left + right) * 0.5);
+        std::optional<ik::Vec3> head;
+        if (info->head >= 0 && info->head < static_cast<int>(pose.size())) {
+            head = engine::skeleton::ToTransform(pose[static_cast<std::size_t>(info->head)]).translation;
+        }
+        cockpit_probe::NoteSeatHips(mesh, (left + right) * 0.5, head);
     }
     engine::bone_pose::Request request;
     request.mesh = mesh;
@@ -781,20 +792,89 @@ void DriveSeated(cockpit_probe::Seat const& seat) {
             arm.target = engine::bone_pose::Target::Component;
             engine::UnrealVector wrist = hand.position;
             vr::controllers::Hand const& tracked = side == kLeft ? controllers.left : controllers.right;
+            ik::Quat handRotation = hand.rotation;
+            ik::Quat trim = hand_calibration::Trim(side);
             if (seat.held[side] && tracked.gripValid) {
-                // The wrist where it sits behind the controller's grip, moved with the grip onto the control's.
+                // The wrist where it sits behind the controller's grip, moved with the grip onto the control's; with the handle's
+                // axis, the hand turned onto it about the grip as on a pistol grip (the knuckles along the bar or the stick, the
+                // thumb side up it, however the controller is held).
                 engine::UnrealVector const grip = engine::ToWorld(targets.body, tracked.grip.position);
-                wrist = {seat.grip[side].x + wrist.x - grip.x, seat.grip[side].y + wrist.y - grip.y, seat.grip[side].z + wrist.z - grip.z};
+                ik::Vec3 offset{wrist.x - grip.x, wrist.y - grip.y, wrist.z - grip.z};
+                if (seat.haveAxes && hand.hasRotation) {
+                    engine::UnrealVector const& a = seat.axis[side];
+                    // The hand as it would be drawn (the controller's grip with this hand's trim) is what goes onto the handle.
+                    ik::Quat const drawn = ik::Normalize(hand.rotation * trim);
+                    handRotation = ik::AlignGripToAxis(drawn, {a.x, a.y, a.z});
+                    offset = ik::Rotate(handRotation * ik::Conjugate(drawn), offset);
+                    trim = ik::Quat{};
+                }
+                wrist = {seat.grip[side].x + offset.x, seat.grip[side].y + offset.y, seat.grip[side].z + offset.z};
             }
             arm.wrist = toComponent(wrist);
+            if (std::uint64_t const nowMs = GetTickCount64(); side == kRight && nowMs - gSeatReachLogMs > 10000) {
+                // Whether each hand can reach its target from the animated shoulder (the seated pose's reach; research/47).
+                gSeatReachLogMs = nowMs;
+                std::string line;
+                for (int s2 : {kLeft, kRight}) {
+                    engine::bone_pose::Arm const& a2 = request.arms[s2];
+                    if (!info->arms[s2]) {
+                        continue;
+                    }
+                    auto const& c = *info->arms[s2];
+                    ik::Vec3 const shoulder = engine::skeleton::ToTransform(pose[static_cast<std::size_t>(c.upper)]).translation;
+                    ik::Vec3 const elbow = engine::skeleton::ToTransform(pose[static_cast<std::size_t>(c.fore)]).translation;
+                    ik::Vec3 const hand2 = engine::skeleton::ToTransform(pose[static_cast<std::size_t>(c.hand)]).translation;
+                    double const reach = ik::Length(elbow - shoulder) + ik::Length(hand2 - elbow);
+                    double const want = ik::Length(a2.wrist - shoulder);
+                    line += std::format("{}{}: target {:.2f} m from the shoulder, reach {:.2f}{}", line.empty() ? "" : "; ", kSideNames[s2],
+                        want / engine::kUnitsPerMeter, reach / engine::kUnitsPerMeter, seat.held[s2] ? " (held)" : "");
+                    // As drawn last frame: the palm's centre (the hand bone and the middle finger's base) from the handle's grip,
+                    // and where the fingers and the thumb side point, along the body's forward, right, up (cm; unit).
+                    int const middle = info->fingers[s2][0];
+                    if (middle >= 0 && middle < static_cast<int>(pose.size())) {
+                        ik::Transform const handBone = engine::skeleton::ToTransform(pose[static_cast<std::size_t>(c.hand)]);
+                        ik::Vec3 const knuckle = engine::skeleton::ToTransform(pose[static_cast<std::size_t>(middle)]).translation;
+                        ik::Vec3 const palm = (handBone.translation + knuckle) * 0.5;
+                        ik::Vec3 const off = palm - toComponent(seat.grip[s2]);
+                        ik::Vec3 const fingersDir = ik::Normalize(knuckle - handBone.translation);
+                        auto const along = [&](ik::Vec3 v, double scale) {
+                            return std::format("({:+.1f} {:+.1f} {:+.1f})", ik::Dot(v, frame->forward) * scale, ik::Dot(v, frame->right) * scale,
+                                ik::Dot(v, frame->up) * scale);
+                        };
+                        line += std::format(", palm {} cm from the grip, fingers {}", along(off, 100.0 / engine::kUnitsPerMeter), along(fingersDir, 1.0));
+                    }
+                }
+                if (info->head >= 0 && info->head < static_cast<int>(pose.size())) {
+                    ik::Vec3 const headBone = engine::skeleton::ToTransform(pose[static_cast<std::size_t>(info->head)]).translation;
+                    ik::Vec3 const d = headBone - toComponent(seat.eye);
+                    line += std::format("; the head bone ({:+.1f} {:+.1f} {:+.1f}) cm from the cockpit's eye (forward, right, up)",
+                        ik::Dot(d, frame->forward) * 100.0 / engine::kUnitsPerMeter, ik::Dot(d, frame->right) * 100.0 / engine::kUnitsPerMeter,
+                        ik::Dot(d, frame->up) * 100.0 / engine::kUnitsPerMeter);
+                }
+                log::Info("arm ik: seated reach: {}", line);
+            }
             if (!gAnatomyTried[side]) {
                 gAnatomyTried[side] = true;
                 gAnatomy[side] = HandAnatomy(*info, pose, side, chain->hand);
             }
             if (hand.hasRotation && gAnatomy[side]) {
-                ik::Quat const grip = ik::Normalize(ik::Conjugate(*componentRotation) * hand.rotation);
+                ik::Quat const grip = ik::Normalize(ik::Conjugate(*componentRotation) * handRotation);
                 arm.hasRotation = true;
-                arm.rotation = ik::HandFromGrip(grip, hand_calibration::Trim(side), *gAnatomy[side]);
+                arm.rotation = ik::HandFromGrip(grip, trim, *gAnatomy[side]);
+                if (seat.held[side] && seat.haveAxes) {
+                    // On a handle the hand goes by its own shape: the fist's middle (the closed fingers' tube: most of the way
+                    // to the middle knuckle, toward the palm) on the handle's grip, not the wrist where it sits behind a
+                    // controller (which put the palm 5-8 cm past the handle, research/47 "The hands on the handles").
+                    int const middle = info->fingers[side][0];
+                    std::optional<ik::Vec3> const palm = fingers::PalmNormal(info->asset, side);
+                    if (middle >= 0 && middle < static_cast<int>(pose.size()) && palm) {
+                        ik::Transform const handBone = engine::skeleton::ToTransform(pose[static_cast<std::size_t>(chain->hand)]);
+                        ik::Vec3 const knuckle = ik::Rotate(ik::Conjugate(handBone.rotation),
+                            engine::skeleton::ToTransform(pose[static_cast<std::size_t>(middle)]).translation - handBone.translation);
+                        ik::Vec3 const fist = knuckle * kFistAlongKnuckle + *palm * (ik::Length(knuckle) * kFistPalmward);
+                        arm.wrist = toComponent(seat.grip[side]) - ik::Rotate(arm.rotation, fist);
+                    }
+                }
             }
             driven += std::format("{}{} hand {}", driven.empty() ? "" : ", ", kSideNames[side], seat.held[side] ? "on its control" : "on its controller");
         }
@@ -806,7 +886,15 @@ void DriveSeated(cockpit_probe::Seat const& seat) {
         fingerSkeleton.hands = {info->arms[kLeft] ? info->arms[kLeft]->hand : -1, info->arms[kRight] ? info->arms[kRight]->hand : -1};
         fingers::Inputs fingerInputs;
         fingerInputs.firstPerson = true;
-        fingers::Fill(request, fingerSkeleton, pose, controllers, fingerInputs);
+        // On a held handle the index rests curled round it (at least half) rather than straight out at a trigger at rest.
+        vr::controllers::State fingerState = controllers;
+        for (int side : {kLeft, kRight}) {
+            vr::controllers::Hand& h = side == kLeft ? fingerState.left : fingerState.right;
+            if (seat.held[side]) {
+                h.trigger = std::max(h.trigger, kHeldIndexCurl);
+            }
+        }
+        fingers::Fill(request, fingerSkeleton, pose, fingerState, fingerInputs);
     } else {
         fingers::Stop("seated without controllers");
     }

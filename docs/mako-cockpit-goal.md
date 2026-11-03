@@ -53,7 +53,7 @@ Each line is checked in the game (fake headset with replays where it can be, the
 | 4. The right screen | Done: along the turret, the reticle on the traced point, R3 zoom 30/12/5 degrees |
 | 5. Driving | Done with synthetic tracked hands (lever, the stick now tilting, the models following, the haptics sent); the feel needs the user's headset |
 | 6. Aiming | Done: shots land at the reticle |
-| 7. Shepard seated | Done: the hips on the H-point, legs to the heels, the hands on the grips while held, shown only while posed; no Camera/God write |
+| 7. Shepard seated | Done: the hips on the H-point (slid back until the head is behind the eye), legs to the heels, the hands closed on the handles' measured axes while held (research/47 "The hands on the handles"), shown only while posed; no Camera/God write |
 | 8. The HUD | Done: the Mako's status and radar on the left display, the rest high in the windshield |
 | 9. Comfort | Needs the user's headset |
 | 10. Cost | Done: within 11.1 ms at p90 at `BIOA_UNC52` (the heaviest uncharted world) with the cockpit riding |

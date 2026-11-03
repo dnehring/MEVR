@@ -384,6 +384,10 @@ struct SeatLayout {
     std::array<engine::UnrealVector, 2> kneeM{};
     std::array<engine::UnrealVector, 2> heelM{};
     std::array<engine::UnrealVector, 2> gripM{};
+    // `axes`: each handle's grip axis (unit, right forward up; the lever's bar, the stick's centre line), measured from the models
+    // by place.py: a held hand's fist wraps it (game/arm_ik).
+    bool haveAxes = false;
+    std::array<engine::UnrealVector, 2> axisM{};
 };
 SeatLayout gSeatLayout;
 
@@ -405,6 +409,9 @@ struct SeatedDriver {
     std::vector<std::pair<ue3::Object*, ue3::Object*>> lit;  // each primitive lit by the vehicle's light environment, and its own
     bool haveHips = false;
     ik::Vec3 hips{};  // the hips' midpoint in the mesh's component space (game/arm_ik)
+    bool haveHeadBone = false;
+    ik::Vec3 headBone{};  // the head bone there
+    double slideBackM = 0.0;  // how far PlaceDriver slid the body back of the H-point for the head
     // Shown only while arm IK poses it seated (its last NoteSeatHips within 0.5 s): without tracked controllers arm IK is off and
     // the animation would stand Shepard up through the cockpit's eye (2026-11-03, BIOA_UNC52 with no replay).
     double posedAt = -1.0;
@@ -2095,6 +2102,11 @@ void SeatTick(ue3::Object* vehicle) {
 // In the camera's update, after the parts: the driver's hips on the H-point, with the vehicle's rotation. The hips' place in
 // the actor's own axes comes from where the mesh is now (before the first pose sample, the actor's origin: its collision
 // centre, about the pelvis).
+// A head bone's place behind its eyes (Shepard's sits at the skull's base: the eyes are about this far ahead of it), and the
+// furthest the seated body slides back of the seat's H-point to get it there.
+constexpr double kHeadBoneBehindEyeM = 0.10;
+constexpr double kSeatSlideBackM = 0.25;
+
 void PlaceDriver(engine::Basis const& frame, engine::UnrealVector const& eye, double upm, ue3::Rotator const& turn) {
     ue3::Object* const driver = gSeated.pawn;
     if (driver == nullptr || !ue3::runtime::IsAlive(driver)) {
@@ -2105,16 +2117,32 @@ void PlaceDriver(engine::Basis const& frame, engine::UnrealVector const& eye, do
     if (atField == nullptr || turnField == nullptr) {
         return;
     }
+    // The hips and the head bone from the actor, along its own axes (forward, right, up; world units).
     engine::UnrealVector local{};
+    std::optional<engine::UnrealVector> headLocal;
     if (gSeated.haveHips && gSeated.mesh != nullptr) {
-        ik::Vec3 const hips = ik::TransformPoint(engine::skeleton::LocalToWorld(gSeated.mesh), gSeated.hips);
+        ik::Affine const toWorld = engine::skeleton::LocalToWorld(gSeated.mesh);
         engine::Basis const was = engine::ToBasis(engine::UnrealRotation{turnField->pitch, turnField->yaw, turnField->roll});
-        local = engine::Apply(engine::Inverse(was), {hips.x - atField->x, hips.y - atField->y, hips.z - atField->z});
+        auto const fromActor = [&](ik::Vec3 const& component) {
+            ik::Vec3 const w = ik::TransformPoint(toWorld, component);
+            return engine::Apply(engine::Inverse(was), {w.x - atField->x, w.y - atField->y, w.z - atField->z});
+        };
+        local = fromActor(gSeated.hips);
+        if (gSeated.haveHeadBone) {
+            headLocal = fromActor(gSeated.headBone);
+        }
     }
-    engine::UnrealVector const hipOffset = engine::Apply(frame, {gSeatLayout.hipM.y * upm, gSeatLayout.hipM.x * upm, gSeatLayout.hipM.z * upm});
-    engine::UnrealVector const back = engine::Apply(frame, local);
-    *atField = {static_cast<float>(eye.x + hipOffset.x - back.x), static_cast<float>(eye.y + hipOffset.y - back.y),
-        static_cast<float>(eye.z + hipOffset.z - back.z)};
+    // The actor from the cockpit's eye, along the vehicle's axes: the hips on the seat's H-point; along forward, with the head
+    // bone known, slid back until it sits kHeadBoneBehindEyeM behind the eye (a head's bone is behind its eyes), at most
+    // kSeatSlideBackM behind the H-point and never forward of it.
+    engine::UnrealVector offset{gSeatLayout.hipM.y * upm - local.x, gSeatLayout.hipM.x * upm - local.y, gSeatLayout.hipM.z * upm - local.z};
+    if (headLocal) {
+        double const byHead = -kHeadBoneBehindEyeM * upm - headLocal->x;
+        offset.x = std::clamp(byHead, offset.x - kSeatSlideBackM * upm, offset.x);
+        gSeated.slideBackM = (gSeatLayout.hipM.y * upm - local.x - offset.x) / upm;
+    }
+    engine::UnrealVector const placed = engine::Apply(frame, offset);
+    *atField = {static_cast<float>(eye.x + placed.x), static_cast<float>(eye.y + placed.y), static_cast<float>(eye.z + placed.z)};
     write_journal::Wrote("CockpitProbe.driverLocation", atField, sizeof(*atField));
     *turnField = turn;
     write_journal::Wrote("CockpitProbe.driverRotation", turnField, sizeof(*turnField));
@@ -2138,10 +2166,23 @@ std::string DoSeat(std::istringstream& words) {
             ok = read(layout.heelM[0]) && read(layout.heelM[1]);
         } else if (name == "grips") {
             ok = read(layout.gripM[0]) && read(layout.gripM[1]);
+        } else if (name == "axes") {
+            ok = read(layout.axisM[0]) && read(layout.axisM[1]);
+            for (engine::UnrealVector& a : layout.axisM) {
+                double const length = std::sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
+                ok = ok && length > 0.1;
+                if (ok) {
+                    a = {a.x / length, a.y / length, a.z / length};
+                }
+            }
+            layout.haveAxes = ok;
+            if (ok) {
+                continue;  // optional: not one of the four
+            }
         }
         if (!ok) {
-            return "usage: mevr cockpit seat hip R F U knees R F U R F U heels R F U R F U grips R F U R F U (metres from the cockpit's eye: "
-                   "right, forward, up; left then right; the grips are the lever's and the stick's)";
+            return "usage: mevr cockpit seat hip R F U knees R F U R F U heels R F U R F U grips R F U R F U [axes R F U R F U] (metres from the "
+                   "cockpit's eye: right, forward, up; left then right; the grips are the lever's and the stick's, the axes their handles')";
         }
         ++found;
     }
@@ -2154,6 +2195,10 @@ std::string DoSeat(std::istringstream& words) {
                                            "Shepard sits there while riding ([Cockpit] seated = {})",
         layout.hipM.x, layout.hipM.y, layout.hipM.z, layout.heelM[0].x, layout.heelM[0].y, layout.heelM[0].z, layout.heelM[1].x, layout.heelM[1].y,
         layout.heelM[1].z, hand_calibration::GetCockpit().seated ? 1 : 0);
+    if (layout.haveAxes) {
+        log::Info("cockpit probe: seat: the held hands wrap the lever's axis ({:.2f} {:.2f} {:.2f}) and the stick's ({:.2f} {:.2f} {:.2f})",
+            layout.axisM[0].x, layout.axisM[0].y, layout.axisM[0].z, layout.axisM[1].x, layout.axisM[1].y, layout.axisM[1].z);
+    }
     log::Info("cockpit probe: {}", report);
     return report;
 }
@@ -3746,34 +3791,69 @@ std::optional<Seat> CurrentSeat() {
     mako_controls::Pose const pose = mako_controls::CurrentPose();
     seat.held[0] = pose.leverHeld;
     seat.held[1] = pose.stickHeld;
+    seat.haveAxes = gSeatLayout.haveAxes;
+    seat.eye = gRide.eyeWorld;
     for (int side : {0, 1}) {
         seat.knee[side] = at(gSeatLayout.kneeM[static_cast<std::size_t>(side)]);
         seat.heel[side] = at(gSeatLayout.heelM[static_cast<std::size_t>(side)]);
         engine::UnrealVector grip = gSeatLayout.gripM[static_cast<std::size_t>(side)];
+        engine::UnrealVector axis = gSeatLayout.axisM[static_cast<std::size_t>(side)];  // right, forward, up
         if (side == 0) {
             grip.y += static_cast<double>(pose.lever * pose.travelM);  // the lever's grip travels with it, as its model
         } else if (pose.tilt) {
-            // The stick's grip tilts about the stick model's pivot, as its model does.
+            // The stick's grip and axis tilt about the stick model's pivot, as its model does.
             for (Part const& part : gParts) {
                 if (part.motion == Part::Motion::Stick) {
                     engine::UnrealVector const p = part.offsetM;
                     engine::UnrealVector const turned = engine::Apply(StickTilt(pose), {grip.y - p.y, grip.x - p.x, grip.z - p.z});
                     grip = {p.x + turned.y, p.y + turned.x, p.z + turned.z};
+                    engine::UnrealVector const axisTurned = engine::Apply(StickTilt(pose), {axis.y, axis.x, axis.z});
+                    axis = {axisTurned.y, axisTurned.x, axisTurned.z};
                     break;
                 }
             }
         }
         seat.grip[side] = at(grip);
+        seat.axis[side] = engine::Apply(gRide.frame, {axis.y, axis.x, axis.z});
     }
     return seat;
 }
 
-void NoteSeatHips(ue3::Object const* mesh, ik::Vec3 const& hips) {
+void NoteSeatHips(ue3::Object const* mesh, ik::Vec3 const& hips, std::optional<ik::Vec3> const& head) {
     if (mesh != nullptr && mesh == gSeated.mesh) {
         gSeated.hips = hips;
         gSeated.haveHips = true;
+        gSeated.haveHeadBone = head.has_value();
+        if (head) {
+            gSeated.headBone = *head;
+        }
         gSeated.posedAt = Now();
     }
+}
+
+std::optional<vr::mako_controls::Seat> ControlSeat() {
+    if (!Riding() || !gRide.haveEye || !gSeatLayout.set) {
+        return std::nullopt;
+    }
+    auto const anchor = view_anchor::Current();
+    if (!anchor) {
+        return std::nullopt;
+    }
+    auto const at = [&](engine::UnrealVector const& m) {
+        engine::UnrealVector const off = engine::Apply(gRide.frame, {m.y * gRide.upm, m.x * gRide.upm, m.z * gRide.upm});
+        return engine::ToTracking(*anchor, {gRide.eyeWorld.x + off.x, gRide.eyeWorld.y + off.y, gRide.eyeWorld.z + off.z});
+    };
+    XrVector3f const forward = engine::DirectionToTracking(*anchor, gRide.frame.forward);
+    float const length = std::hypot(forward.x, forward.z);
+    if (!(length > 0.1f)) {
+        return std::nullopt;
+    }
+    vr::mako_controls::Seat seat;
+    seat.forward = {forward.x / length, 0.0f, forward.z / length};
+    seat.right = {-seat.forward.z, 0.0f, seat.forward.x};  // forward x up, as PlaceSeat
+    seat.leverBase = at(gSeatLayout.gripM[0]);
+    seat.stickBase = at(gSeatLayout.gripM[1]);
+    return seat;
 }
 
 void FillHud(vr::hud_pieces::Pieces& pieces) {
@@ -3955,7 +4035,11 @@ std::optional<Seat> CurrentSeat() {
     return std::nullopt;
 }
 
-void NoteSeatHips(ue3::Object const* /*mesh*/, ik::Vec3 const& /*hips*/) {}
+std::optional<vr::mako_controls::Seat> ControlSeat() {
+    return std::nullopt;
+}
+
+void NoteSeatHips(ue3::Object const* /*mesh*/, ik::Vec3 const& /*hips*/, std::optional<ik::Vec3> const& /*head*/) {}
 
 std::string VehicleCommand(std::string const& /*line*/) {
     return "mevr vehicle: LE1 only";

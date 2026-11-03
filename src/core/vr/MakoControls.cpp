@@ -245,6 +245,7 @@ void Controls::StopAll(Stop stop, Output& out) {
     stickAtLock_ = false;
     if (stop != Stop::Menu && stop != Stop::Calibration && stop != Stop::Tracking) {
         placed_ = false;  // a new drive, a new seat
+        modelSeat_ = false;
         haveRecenters_ = false;
     }
 }
@@ -271,7 +272,23 @@ Output Controls::Step(Input const& in, Settings const& settings) {
         // Placed when the Mako is entered and on each recenter. A recenter moves tracking space under the hands, so the
         // holds are let go (the lever stays where it is: it isn't a safety stop); the next squeeze grabs again.
         bool const recentered = in.haveRecenters && haveRecenters_ && in.recenters != recenters_;
-        if ((!placed_ || recentered) && in.headValid) {
+        if (in.haveModelSeat) {
+            // The model's grips move with the cockpit (a recenter re-seats it): follow them every tick. A new placement only when
+            // the seat comes from somewhere else or jumps (over 5 cm: the cockpit re-seated).
+            bool const jumped = !placed_ || !modelSeat_ || Distance(seat_.leverBase, in.modelSeat.leverBase) > 0.05f ||
+                                Distance(seat_.stickBase, in.modelSeat.stickBase) > 0.05f;
+            seat_ = in.modelSeat;
+            placed_ = true;
+            modelSeat_ = true;
+            if (jumped) {
+                out.replaced = true;
+                if (recentered) {
+                    leverHeld_ = false;
+                    stickHeld_ = false;
+                }
+            }
+        } else if ((!placed_ || recentered || modelSeat_) && in.headValid) {
+            modelSeat_ = false;
             Seat seat;
             if (PlaceSeat(in.head, settings, seat)) {
                 seat_ = seat;

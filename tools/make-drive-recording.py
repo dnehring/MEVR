@@ -16,7 +16,9 @@ Play it once (no -Loop): a loop lets go of both at its end. --eye-height: the se
 1.2; the controls are placed from the head when the Mako is entered, so use the head's height then: 0 on the fake headset).
 --look: the head turned YAW degrees (+ right) and PITCH (+ up), e.g. to watch the controls' models (the hands don't turn).
 --head-at R U F: the head moved R metres right, U up and F forward of the seat (the hands stay), e.g. `--head-at 0 0.25 0.55
---look 180 -35` to look back at the seated Shepard (research/47 "Shepard in the seat")."""
+--look 180 -35` to look back at the seated Shepard (research/47 "Shepard in the seat").
+--hands-from REC: each hand turned as the player's real controller was in that recording (its average orientation while tracked,
+its head's yaw taken out) instead of pointing straight ahead, which no hand does (research/47 "The hands on the handles")."""
 import math
 import struct
 import sys
@@ -52,6 +54,43 @@ def head_orientation(yaw_deg, pitch_deg):
             qy[3] * qp[3] - qy[0] * qp[0] - qy[1] * qp[1] - qy[2] * qp[2])
 
 
+def qmul(a, b):
+    ax, ay, az, aw = a
+    bx, by, bz, bw = b
+    return (aw * bx + ax * bw + ay * bz - az * by, aw * by - ax * bz + ay * bw + az * bx,
+            aw * bz + ax * by - ay * bx + az * bw, aw * bw - ax * bx - ay * by - az * bz)
+
+
+def hands_from(path):
+    """The average grip orientation of each hand (xyzw) in a recording, relative to its head's yaw."""
+    with open(path, "rb") as f:
+        data = f.read()
+    magic, _, header_size, frame_size, _, _ = HEADER.unpack_from(data, 0)
+    if magic != MAGIC or frame_size != FRAME.size:
+        raise SystemExit(f"{path}: not a pose recording of this layout")
+    sums = [[0.0] * 4, [0.0] * 4]
+    for at in range(header_size, len(data) - frame_size + 1, frame_size):
+        v = FRAME.unpack_from(data, at)
+        eye = v[2:9]  # the left eye's pose: xyzw then position
+        fx, fz = -2 * (eye[0] * eye[2] + eye[1] * eye[3]), -(1 - 2 * (eye[0] ** 2 + eye[1] ** 2))  # its -Z, flat
+        yaw = math.atan2(fx, -fz)
+        unyaw = (0.0, math.sin(yaw / 2.0), 0.0, math.cos(yaw / 2.0))  # turns the head's flat forward back to -Z
+        for side, base in ((0, 24), (1, 43)):
+            buttons = v[base]
+            if not buttons & (1 << 4):
+                continue
+            grip = v[base + 5:base + 9]
+            rel = qmul(unyaw, grip)
+            ref = sums[side] if any(sums[side]) else rel
+            sign = 1.0 if sum(a * b for a, b in zip(rel, ref)) >= 0 else -1.0
+            sums[side] = [a + sign * b for a, b in zip(sums[side], rel)]
+    out = []
+    for total in sums:
+        length = math.sqrt(sum(a * a for a in total))
+        out.append(tuple(a / length for a in total) if length > 0 else (0.0, 0.0, 0.0, 1.0))
+    return out
+
+
 def main():
     press_b = "--press-b" in sys.argv
     controls = "--controls" in sys.argv
@@ -69,7 +108,8 @@ def main():
     if "--head-at" in sys.argv:
         at = sys.argv.index("--head-at")
         head_at = tuple(float(v) for v in sys.argv[at + 1:at + 4])
-    taken = ({i + 1 for i, a in enumerate(sys.argv) if a == "--eye-height"} | {i + k for i, a in enumerate(sys.argv) if a == "--look" for k in (1, 2)} |
+    hands_path = sys.argv[sys.argv.index("--hands-from") + 1] if "--hands-from" in sys.argv else None
+    taken = ({sys.argv.index("--hands-from") + 1} if hands_path else set()) | ({i + 1 for i, a in enumerate(sys.argv) if a == "--eye-height"} | {i + k for i, a in enumerate(sys.argv) if a == "--look" for k in (1, 2)} |
              {i + k for i, a in enumerate(sys.argv) if a == "--head-at" for k in (1, 2, 3)})
     args = [a for i, a in enumerate(sys.argv) if i > 0 and not a.startswith("--") and i not in taken]
     out = args[0]
@@ -78,6 +118,9 @@ def main():
     ipd = 0.064
     fov = (-0.785, 0.785, 0.785, -0.785)  # left, right, up, down (radians)
     q = (0.0, 0.0, 0.0, 1.0)  # the hands: pointing ahead
+    q_left = q_right = q
+    if hands_path:
+        q_left, q_right = hands_from(hands_path)
     head = head_orientation(*look)
     right_axis = (math.cos(math.radians(look[0])), 0.0, math.sin(math.radians(look[0])))  # the head's right, laid flat
     eyes = [(*head, head_at[0] + side * ipd / 2 * right_axis[0], eye_h + head_at[1], -head_at[2] + side * ipd / 2 * right_axis[2])
@@ -92,10 +135,10 @@ def main():
         steer, push = 0.0, 0.0
         if controls:
             forward = 0.0 if spin else THROTTLE_TRAVEL * min(max((t - 1.5) / 1.0, 0.0), 1.0)
-            left = (*q, LEVER[0], eye_h + LEVER[1], LEVER[2] - forward)
+            left = (*q_left, LEVER[0], eye_h + LEVER[1], LEVER[2] - forward)
             if twist_stick:
                 angle = TWIST_DEG if 4.0 <= t < 8.0 else -TWIST_DEG if 8.0 <= t < 12.0 else 0.0
-                right = (*twist(angle), STICK[0], eye_h + STICK[1], STICK[2])
+                right = (*qmul(q_right, twist(angle)), STICK[0], eye_h + STICK[1], STICK[2])
             else:
                 # Tilted like a flight stick: 3 cm right (about 17 degrees), then left, then pushed forward 5 cm (a full pitch).
                 side = 0.03 if 4.0 <= t < 8.0 else -0.03 if 8.0 <= t < 12.0 else 0.0
@@ -106,7 +149,7 @@ def main():
                     forward = 0.0  # the lever at neutral: steering spins on the spot
                     side = 0.06 if 2.0 <= t < 6.0 else -0.06 if 6.0 <= t < 10.0 else 0.0
                     push = 0.0
-                right = (*q, STICK[0] + side, eye_h + STICK[1], STICK[2] - push)
+                right = (*q_right, STICK[0] + side, eye_h + STICK[1], STICK[2] - push)
             left_sq = right_sq = 1.0 if t >= 1.0 else 0.0
         else:
             # Hands on the knees, pointing ahead (OpenXR: -Z forward), away from the lever and the stick's grab points.

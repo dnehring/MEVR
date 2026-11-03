@@ -1053,3 +1053,40 @@ twist spin the Mako. Now (`core/vr/MakoControls`, unit-tested): the tilt steers 
 adds to it (to full lock, or against it back toward centre), and the twist alone is `Output::spin`, which with the lever under
 `steerInPlaceBelow` sends exactly zero throttle and turns the Mako on the spot (`game/MakoControls` `SpinInPlace`). A tilt at standstill
 is the tank's own pivot, so a drifting hand never spins the Mako.
+
+## The hands on the handles (2026-11-03 15:40-16:05, fake headset, `BIOA_UNC20`; mod only)
+
+The user, from the headset: holding the throttle and the stick, "the grip location doesn't actually interact with the model correctly,
+so the holding visual looks completely off". Measured on the fake headset with replayed holds, projecting the grab points into the
+eye images and logging each palm against its grip (`arm ik: seated reach:` every 10 s while seated), four things were wrong:
+
+1. **The stage-1 flat lever and dial were still drawn in the cockpit**, beside the models. With the cockpit up they're hidden now, and
+   the controls take their grab points from the models (`cockpit_probe::ControlSeat()`: the seat line's grips in tracking space each
+   tick, through the view anchor as the HUD's displays are; `Input::modelSeat` in `core/vr/MakoControls`, unit-tested; log `mako
+   controls: placed from the cockpit's models`). The grips themselves agreed with the models within 7 mm (`place.py`'s manifest
+   points against the game-ready vertices), and in tracking space with the old placement from the head, as long as the head was
+   at the seat when the Mako was entered.
+2. **The hand turned with the controller, not the handle.** The handles' axes are now measured from the game-ready models by
+   `place.py` (pure Python, no numpy): the throttle's bar along its length (0.995, -0.101, 0.011 right/forward/up: a bar across the
+   seat), the stick's centre line through the middles of its height's second and third fifths (-0.02, 0.44, 0.90: 26 degrees forward,
+   below the head that bends forward). Each grip is the manifest's moved onto its line; the seat line gains `axes R F U R F U`
+   (optional; without the models it's the old line). A held hand is turned the least way so that its thumb side lies along the
+   handle, as on a pistol grip: the knuckles along it, the fingers across it (`ik::AlignGripToAxis`, unit-tested). **The thumb side,
+   not the grip's X:** in this mod's hand frame X is where the fingers point and Z the thumb side, and the hands' trim (`[Hands]
+   handPitch = 90` in the user's ini) turns the controller's tube axis onto the thumb side; the alignment acts on the trimmed hand
+   and then drops the trim.
+3. **The wrist sat 7 units behind the controller's grip along its tube** (`hand_targets` `kWristBehindGripUnits`), which with the 90
+   degree trim is beside the hand, not behind it: the palm came out 5-8 cm past the handle, the left hand hanging below the bar. A
+   held hand now goes by its own shape: the fist's middle (0.8 of the way from the wrist to the middle knuckle, 0.35 of that toward
+   the palm, the palm side from `game/fingers`' measurement) on the grip. Palms within 1-3 cm of the grips after.
+4. **The eye was inside the back of Shepard's head.** The hips on the H-point left the head bone 8.6 cm in front of the cockpit's
+   eye; looking down, his collar filled the view. The placement now also takes the head bone: along the vehicle's forward the body
+   slides back until the head bone is 0.10 m behind the eye (a head's bone sits at the skull's base, behind the eyes), at most 0.25 m
+   behind the H-point; the hips keep the seat's height. Measured: the head bone -10.1 cm from the eye, the arms at 0.51 and 0.53 of
+   their 0.55 m reach. From the seat the legs, both controls and both hands on them are in view.
+
+Also: a held handle's index rests curled at least half (the trigger at rest left it pointing straight out), and
+`tools/make-drive-recording.py --hands-from <recording>` turns the synthetic hands as the player's real controllers were (their mean
+orientation, the head's yaw taken out): a controller pointing straight ahead is no real hold, and the trim made it look wrong in ways
+the headset never shows. Left for the headset: how the hands look with the player's own hold, and whether the near-straight arms want
+the controls a little closer.

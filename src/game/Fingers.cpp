@@ -300,4 +300,12 @@ void Shutdown() {
     gDriving = false;
 }
 
+std::optional<ik::Vec3> PalmNormal(void const* asset, int side) {
+    if (asset == nullptr || gFound.asset != asset || (side != 0 && side != 1)) {
+        return std::nullopt;
+    }
+    std::optional<fg::HandAxes> const& axes = gFound.axes[static_cast<std::size_t>(side)];
+    return axes ? std::optional<ik::Vec3>{axes->palm} : std::nullopt;
+}
+
 } // namespace mevr::game::fingers

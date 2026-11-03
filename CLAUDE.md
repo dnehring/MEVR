@@ -376,8 +376,11 @@ switching frameworks.
   (`bPlayersOnly`; it also refused the Mako's exit); the pad reaches the game only with focus, the cockpit's controls without.
   **Shepard in the seat** (`[Cockpit] seated`, research/47 "Shepard in the seat"): the script's `seat` line; the driver (hidden by the game
   at the vehicle's origin) is shown eyes-only (`bOnlyOwnerSee`, owned by the vehicle), its head's meshes hidden, lit by the vehicle's light
-  environment (its own drew it black), its hips put on the H-point each camera update; `arm_ik::DriveSeated` poses the legs (two-bone IK,
-  `ik::FindLegChain`, a knee pole) and the hands (controllers, a held control's grip).
+  environment (its own drew it black), its hips put on the H-point each camera update (slid back until the head bone is 0.10 m behind
+  the eye); `arm_ik::DriveSeated` poses the legs (two-bone IK, `ik::FindLegChain`, a knee pole) and the hands (controllers; a held
+  control's hand closed on the handle's axis, `seat ... axes` from `place.py`'s measure of the models, the fist's middle on the grip:
+  research/47 "The hands on the handles"). With the cockpit up the controls grab at the models (`cockpit_probe::ControlSeat`) and
+  stage 1's flat lever and dial are hidden.
 - LE1 life-size stereo ([research/30](research/30-metric-stereo.md), `MELEVR.ini sfr2Metric`, on in our deploy):
   each Stereo 2 pass renders from its eye's real place (`xrLocateViews`, at the view's units per metre: Halcyon's
   50 x lean gain, life-size at 100), no convergence shift, swap ignored (pass 0 = left). In gameplay with the HUD

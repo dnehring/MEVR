@@ -23,6 +23,12 @@ std::optional<Quat> AnatomyInHand(Vec3 middleLocal, Vec3 indexLocal, Vec3 pinkLo
 // them right, positive roll turns the thumb side to the right.
 Quat GripTrim(double pitchDegrees, double yawDegrees, double rollDegrees);
 
+// A grip rotation (as HandFromGrip's: X where the fingers point, Z the thumb side) turned the least way so that its Z lies along
+// `axis` or its opposite, whichever is nearer: a hand closed on a handle with that axis, as on a pistol grip (the knuckles along
+// the handle, the fingers across it), keeping how far round the handle it is (the Mako cockpit's lever and stick, research/47).
+// `axis` in the same space, any length but zero.
+Quat AlignGripToAxis(Quat grip, Vec3 axis);
+
 // The hand bone's rotation for a grip rotation (its X axis = where the fist points, Z = up),
 // expressed in the same space as `grip`.
 Quat HandFromGrip(Quat grip, Quat trim, Quat anatomyInHand);

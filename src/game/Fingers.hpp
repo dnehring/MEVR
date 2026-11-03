@@ -44,6 +44,9 @@ void Fill(engine::bone_pose::Request& request, Skeleton const& skeleton, std::sp
     vr::controllers::State const& controllers, Inputs const& in);
 // Arm IK isn't driving this tick: nothing is written, the status says why.
 void Stop(char const* why);
+// The palm's normal (out of the palm, the side the fingers close toward) in the hand bone's frame, as measured for
+// `asset`'s skeleton by Fill; nullopt before that or if it couldn't be told.
+std::optional<ik::Vec3> PalmNormal(void const* asset, int side);
 
 std::string StatusJson();
 void LogStats();
