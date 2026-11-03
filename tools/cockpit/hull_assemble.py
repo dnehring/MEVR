@@ -773,6 +773,25 @@ def RearWall(b):
     Sweep(b, Inward(opening, Y), Y, DOOR_FRAME, DOOR_FRAME_CLASSES, closed=True)
 
 
+def Stand(b, x, y, hx, hy, top):
+    """A control's stand, made as the console's legs are (the concept has no free posts; the user, 2026-11-02, wants the
+    controls): a base plate bolted to the floor, a chamfered column hx by hy either side of (x, y) with a groove down its
+    front and back, and a mounting head under the control's base at `top`."""
+    Z = Vector((0, 0, 1))
+    c, w, d, plate, head = 0.004, hx * 0.35, 0.003, 0.012, 0.006
+    rect = lambda ax, ay: [(x - ax, y - ay), (x + ax, y - ay), (x + ax, y + ay), (x - ax, y + ay)]
+    Plate(b, Corners(rect(hx + plate, hy + plate), 0.006), 0.005, 0.0015, 0.006, top="DARK", edge="LIGHT")
+    for px, py in rect(hx + plate - 0.006, hy + plate - 0.006):
+        Pipe(b, [Vector((px, py, 0.005)), Vector((px, py, 0.007))], 0.0022, Vector((1, 0, 0)), "LIGHT", sides=6)
+    column = [(hx - c, -hy), (hx, -hy + c), (hx, hy - c), (hx - c, hy), (w, hy), (w, hy - d), (-w, hy - d), (-w, hy),
+              (-hx + c, hy), (-hx, hy - c), (-hx, -hy + c), (-hx + c, -hy), (-w, -hy), (-w, -hy + d), (w, -hy + d), (w, -hy)]
+    classes = ["LIGHT", "DARK", "LIGHT", "LIGHT", "SEAM", "SEAM", "SEAM", "LIGHT", "LIGHT", "DARK", "LIGHT", "LIGHT", "SEAM", "SEAM",
+               "SEAM", "LIGHT"]
+    Sweep(b, [Vector((x, y, 0.004)), Vector((x, y, top - 0.008))], Vector((0, 1, 0)), column + column[:1], classes)
+    Plate(b, Corners(rect(hx + head, hy + head), 0.005), top, 0.0015, 0.008, top="DARK", edge="LIGHT")
+    b.Face([Vector((px, py, top - 0.008)) for px, py in reversed(Corners(rect(hx + head, hy + head), 0.005))], "DARK", toward=-Z)
+
+
 def Lamp(b, lights, kind, cls, centre, u, v, n, half_u, half_v, proud=0.003):
     """A lamp on a surface facing `n`: a dark housing `proud` deep and a glowing face just in front of it, and the area
     light (centre, facing, axes, size, colour, power) that stands for it in the bake."""
@@ -1134,10 +1153,9 @@ def Shell(pillar, opening, pedestals=(), pane_face=None, console=None):
     lights = Lamps(b, pane_face, corner, drop) if pane_face else []
     if console:
         Details(b, edge, console["desk"], console["screen"], console["bezel"], spine_end)
-    # the controls' pedestals: chamfered columns, their edges light
+    # the controls' stands (Stand)
     for x, y, hx, hy, height in pedestals:
-        Sweep(b, [Vector((x, y, -SEAM)), Vector((x, y, height))], Vector((0, 1, 0)), Chamfered(-hx, hx, -hy, hy, min(hx, hy) * 0.3),
-              ["LIGHT", "PLATE"] * 4)
+        Stand(b, x, y, hx, hy, height)
     bmesh.ops.remove_doubles(b.bm, verts=b.bm.verts, dist=1e-6)
     me = bpy.data.meshes.new("shell")
     b.bm.to_mesh(me)

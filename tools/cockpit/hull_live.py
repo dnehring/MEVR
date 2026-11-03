@@ -283,7 +283,7 @@ def Shots(tag, views, size=(800, 600), only="LIVE_Hull"):
 
 
 
-def Lit(tag, views=None, camname=None, size=(800, 600), samples=24, glow=5.0, fill=1.5, power=1.0):
+def Lit(tag, views=None, camname=None, size=(800, 600), samples=24, glow=5.0, fill=1.5, power=1.0, furniture=False):
     """An EEVEE preview of the live build lit as the bake lights it: the build's lamps as area lights (scaled with the
     rig: x3 in size, x9 in power), the screens glowing, a dim warm world. `views` as Shots, or `camname` at the
     concept's size with the 50/50 mix (Overlay's layout)."""
@@ -318,7 +318,8 @@ def Lit(tag, views=None, camname=None, size=(800, 600), samples=24, glow=5.0, fi
     sc.render.engine = "BLENDER_EEVEE"
     sc.eevee.taa_render_samples = samples
     sc.view_settings.view_transform = "AgX"
-    hidden = [o for o in sc.objects if o.type == "MESH" and not o.hide_render and (o.name not in live.objects or any(h in o.name for h in ("chair", "joystick", "throtle")))]
+    hidden = [o for o in sc.objects if o.type == "MESH" and not o.hide_render and
+              (o.name not in live.objects or (not furniture and any(h in o.name for h in ("chair", "joystick", "throtle"))))]
     for o in hidden:
         o.hide_render = True
     out = []

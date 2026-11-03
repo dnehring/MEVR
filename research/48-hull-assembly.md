@@ -673,6 +673,25 @@ No decimation or packaging until the user approves the modelling.
   - they were 0.15 by 0.2 tiles with 8 mm seams, 20 mm corners and a 5 mm bevel;
   - each plate maps the atlas's bolted plate once, so the bolts sit at its corners.
 - **The pillar zone's view** is unchanged by all of it: 19.5 degrees blocked at eye level.
+- **The controls' stands** (`Stand`, the user: "do more modeling and then decimate on completion"). The plain chamfered
+  posts became stands made as the console's legs are:
+  - a base plate bolted to the floor at its corners;
+  - a column, light at its chamfers and dark on its sides, with a groove down its front and back;
+  - a mounting head under the control's base, which rests 3 mm into it (the only overlap with the controls).
+  The concept has no free posts, but the controls are the user's.
+- **Checked and left as they are:**
+  - the side walls' near frames: the concept's bold frame behind each side window is ours too, the arch's leg against
+    the panes' own light rear post;
+  - the console's back now stands clear of the windshield's wall, below the sightline over its top;
+  - the stringers meet each A-pillar's top in one node with the corner plate.
+- **Result, decimated and packaged** (the modelling pass complete):
+  - shell 7,340 triangles;
+  - console 14,250 game-ready (27,316 raw), each pane about 4,450;
+  - from the seat 5.8% of rays leave, all through the windows;
+  - the leak probe (19 eyes): no ray escapes;
+  - after decimating, the joints are as in section 15: two rays at the rear edge of the left pane's open window;
+  - package 36.1 MB, all checks passed;
+  - not yet seen in the game.
 
 ## 5. Not done
 
