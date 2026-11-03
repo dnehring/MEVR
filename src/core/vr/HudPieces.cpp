@@ -29,6 +29,11 @@ constexpr float kGunLeft = 56.0f;
 constexpr float kGunRight = 224.0f;
 constexpr float kGunAboveBottom = 145.0f;
 constexpr float kGunBelowTop = 10.0f;
+// The Mako's radar, bottom right (measured 2026-11-03 on a 1172x1196 frame: x 1089..1214, the bottom 163..37 at alpha > 40).
+constexpr float kRadarLeft = 1080.0f;
+constexpr float kRadarRight = 1222.0f;
+constexpr float kRadarAboveBottom = 172.0f;
+constexpr float kRadarBelowTop = 28.0f;
 
 Rect BottomBand(std::uint32_t width, std::uint32_t height, float left, float right, float aboveBottom, float belowTop) {
     if (width == 0 || height == 0) {
@@ -193,6 +198,10 @@ Rect DefaultWristCrop(std::uint32_t width, std::uint32_t height) {
 
 Rect DefaultGunCrop(std::uint32_t width, std::uint32_t height) {
     return BottomBand(width, height, kGunLeft, kGunRight, kGunAboveBottom, kGunBelowTop);
+}
+
+Rect DefaultRadarCrop(std::uint32_t width, std::uint32_t height) {
+    return BottomBand(width, height, kRadarLeft, kRadarRight, kRadarAboveBottom, kRadarBelowTop);
 }
 
 Rect WristCrop(Settings const& settings, std::uint32_t width, std::uint32_t height) {

@@ -1006,6 +1006,10 @@ QuadSwapchain gWristSwapchain;
 QuadSwapchain gGunSwapchain;
 XrCompositionLayerQuad gWristQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
 XrCompositionLayerQuad gGunQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+// The cockpit in the Mako (research/47): the radar on a display of its own (the vehicle's status uses the gun piece's).
+QuadSwapchain gRadarSwapchain;
+XrCompositionLayerQuad gRadarQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+bool gCockpitHudShown = false;
 
 struct PiecesState {
     bool wristShown = false;          // the wrist piece went out last frame
@@ -1568,6 +1572,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         gLabelSwapchain.Forget();
         gWristSwapchain.Forget();
         gGunSwapchain.Forget();
+        gRadarSwapchain.Forget();
         gLeverQuad.Forget();
         gStickQuad.Forget();
         gSession = session;
@@ -1670,16 +1675,30 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     mevr::vr::controllers::State const pieceControllers = mevr::vr::controllers::Latest();
     bool const piecesAllowed = !wheelWanted && engaged && gameplay && gLastGameMode == 0 && frame.worldFrame && !frame.menuOpen &&
         frame.headValid && gPanel.texture != nullptr && gPanel.tintSrv != nullptr && device != nullptr;
+    // In the Mako's cockpit (the mod's pieces say where its displays are): the vehicle's status (the weapon panel's band) and
+    // the radar on them, the rest of the HUD panel at the cockpit's anchor, none over its screens (research/47).
+    bool const cockpitHud = pieces.cockpit && !wheelWanted && engaged && gameplay && gLastGameMode == 1 && frame.worldFrame &&
+        !frame.menuOpen && frame.headValid && gPanel.texture != nullptr && gPanel.tintSrv != nullptr && device != nullptr;
+    if (cockpitHud != gCockpitHudShown) {
+        gCockpitHudShown = cockpitHud;
+        LogBoth(cockpitHud ? "[MEVR-HUD] the cockpit's HUD: the Mako's status and radar on its displays, the HUD panel at its anchor"
+                           : "[MEVR-HUD] the cockpit's HUD is off: the HUD panel as before");
+    }
     bool const wristWanted = piecesAllowed && hud.wristStatus && !gWristSwapchain.failed && pieceControllers.active &&
         pieceControllers.left.gripValid;
-    bool const gunWanted = piecesAllowed && hud.gunStatus && !gGunSwapchain.failed && pieces.gunVisible;
+    bool const gunWanted = ((piecesAllowed && hud.gunStatus && pieces.gunVisible) || cockpitHud) && !gGunSwapchain.failed;
+    bool const radarWanted = cockpitHud && !gRadarSwapchain.failed;
     hp::Pixels const wristPx = hp::ToPixels(hp::WristCrop(hud, gPanel.width, gPanel.height), gPanel.width, gPanel.height);
     hp::Pixels const gunPx = hp::ToPixels(hp::GunCrop(hud, gPanel.width, gPanel.height), gPanel.width, gPanel.height);
+    hp::Pixels const radarPx = hp::ToPixels(hp::DefaultRadarCrop(gPanel.width, gPanel.height), gPanel.width, gPanel.height);
     if (wristWanted && wristPx.width > 0) {
         hudMasks.Add(wristPx.x, wristPx.y, wristPx.width, wristPx.height);
     }
     if (gunWanted && gunPx.width > 0) {
         hudMasks.Add(gunPx.x, gunPx.y, gunPx.width, gunPx.height);
+    }
+    if (radarWanted && radarPx.width > 0) {
+        hudMasks.Add(radarPx.x, radarPx.y, radarPx.width, radarPx.height);
     }
 
     bool panelShown = false;
@@ -1696,6 +1715,12 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                 {static_cast<int32_t>(gPanelSwapchain.width), static_cast<int32_t>(gPanelSwapchain.height)}};
             gPanelQuad.pose = gPlacement.Pose(settings);
             gPanelQuad.size = {width, width * static_cast<float>(gPanel.height) / static_cast<float>(gPanel.width)};
+            hp::Quad cockpitPanel;
+            if (cockpitHud && hp::Place(pieces.panelAnchor, ToVec(frame.headPosition), pieces.panelWidthM,
+                                  static_cast<float>(gPanel.width) / static_cast<float>(gPanel.height), cockpitPanel, pieces.cockpitUp)) {
+                gPanelQuad.pose = cockpitPanel.pose;  // the cockpit's place for what's left of the HUD, clear of its screens
+                gPanelQuad.size = {cockpitPanel.width, cockpitPanel.height};
+            }
             layersOut[count++] = &gPanelQuad;
             panelShown = true;
             if (!gLoggedPanel || now >= gNextPanelLogMs) {
@@ -1773,8 +1798,9 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     // The weapon panel on the gun, where the mod says the held gun is (above the receiver, behind the sights), facing the
     // eyes, leaning with the gun's top.
     if (gunWanted && panelShown && gunPx.width > 0 && count < capacity) {
-        if (ShowPiece(context, device.Get(), gGunSwapchain, gGunQuad, "gun status", "gun", gunPx, pieces.gunAnchor, headPosition,
-                hud.gunWidthM, pieces.gunUp, frame.appSpace, frame.floatWhiteScale)) {
+        if (ShowPiece(context, device.Get(), gGunSwapchain, gGunQuad, "gun status", "gun", gunPx, cockpitHud ? pieces.statusAnchor : pieces.gunAnchor,
+                headPosition, cockpitHud ? pieces.statusWidthM : hud.gunWidthM, cockpitHud ? pieces.cockpitUp : pieces.gunUp, frame.appSpace,
+                frame.floatWhiteScale)) {
             layersOut[count++] = &gGunQuad;
             if (!gPieces.gunShown || gPieces.gunSerial != pieces.serial) {
                 char line[320];
@@ -1791,6 +1817,13 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     } else if (gPieces.gunShown) {
         gPieces.gunShown = false;
         LogBoth("[MEVR-HUD] the weapon panel is back on the HUD panel");
+    }
+    // The Mako's radar on the cockpit's display (research/47).
+    if (radarWanted && panelShown && radarPx.width > 0 && count < capacity) {
+        if (ShowPiece(context, device.Get(), gRadarSwapchain, gRadarQuad, "cockpit radar", "radar", radarPx, pieces.radarAnchor, headPosition,
+                pieces.radarWidthM, pieces.cockpitUp, frame.appSpace, frame.floatWhiteScale)) {
+            layersOut[count++] = &gRadarQuad;
+        }
     }
     // A HUD-only picture of where the UI is, now and then, until the wheel's place has been measured.
     bool const autoCrop = !(wheelSettings.crop[2] > 0.0f && wheelSettings.crop[3] > 0.0f);

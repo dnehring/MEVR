@@ -328,8 +328,27 @@ struct Ride {
     ue3::Rotator chaseRotation{};
     std::uint32_t cameraTicks = 0;
     std::uint32_t partPlacements = 0;
+    // This frame's cockpit in the world: its eye and the vehicle's axes (for the HUD's displays).
+    bool haveEye = false;
+    engine::UnrealVector eyeWorld{};
+    engine::Basis frame{};
+    double upm = engine::kUnitsPerMeter;
 };
 Ride gRide;
+
+// `hud`: where the Mako's HUD goes in the cockpit (docs/mako-cockpit-goal.md item 8): the vehicle's status, the radar and the
+// rest of the HUD panel, each a centre (right, forward, up from the cockpit's eye, metres) and a width. place.py --script writes
+// it from the manifest's left display.
+struct HudLayout {
+    bool set = false;
+    engine::UnrealVector statusM{};
+    float statusWidthM = 0.0f;
+    engine::UnrealVector radarM{};
+    float radarWidthM = 0.0f;
+    engine::UnrealVector panelM{};
+    float panelWidthM = 0.0f;
+};
+HudLayout gHudLayout;
 
 // `aimscreen`: a second capture along the aim, on its own slot of the screen part (Hull_Console's slot 3, the right screen).
 struct AimScreen {
@@ -1921,6 +1940,10 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
     *pov->rotation = {turn->pitch, engine::Unwind(turn->yaw, pov->rotation->yaw), turn->roll};
     write_journal::Wrote("CockpitProbe.rideCameraRotation", pov->rotation, sizeof(*pov->rotation));
     gRide.riding = true;
+    gRide.haveEye = true;
+    gRide.eyeWorld = eye;
+    gRide.frame = frame;
+    gRide.upm = upm;
     ++gRide.cameraTicks;
 }
 
@@ -1950,6 +1973,41 @@ void RideTick() {
         HideVehicle(pawn);
         HideFromCaptures();  // the owner is now the vehicle
     }
+}
+
+// `hud status R F U W radar R F U W panel R F U W`
+std::string DoHud(std::istringstream& words) {
+    HudLayout layout;
+    std::string name;
+    int parts = 0;
+    while (words >> name) {
+        engine::UnrealVector at{};
+        float width = 0.0f;
+        if (!(words >> at.x >> at.y >> at.z >> width) || !(width > 0.0f)) {
+            return "usage: mevr cockpit hud status R F U W radar R F U W panel R F U W (metres from the cockpit's eye: right, forward, up; width)";
+        }
+        if (name == "status") {
+            layout.statusM = at, layout.statusWidthM = width;
+        } else if (name == "radar") {
+            layout.radarM = at, layout.radarWidthM = width;
+        } else if (name == "panel") {
+            layout.panelM = at, layout.panelWidthM = width;
+        } else {
+            return Refuse(std::format("hud: no piece called {}", name));
+        }
+        ++parts;
+    }
+    if (parts != 3) {
+        return Refuse("hud: status, radar and panel are all needed");
+    }
+    layout.set = true;
+    gHudLayout = layout;
+    std::string const report = std::format("hud in the cockpit: status at ({:.2f} {:.2f} {:.2f}) {:.2f} m wide, radar at ({:.2f} {:.2f} {:.2f}) {:.2f} m, the rest at "
+                                           "({:.2f} {:.2f} {:.2f}) {:.2f} m",
+        layout.statusM.x, layout.statusM.y, layout.statusM.z, layout.statusWidthM, layout.radarM.x, layout.radarM.y, layout.radarM.z, layout.radarWidthM,
+        layout.panelM.x, layout.panelM.y, layout.panelM.z, layout.panelWidthM);
+    log::Info("cockpit probe: {}", report);
+    return report;
 }
 
 std::string DoRide(std::istringstream& words) {
@@ -3110,6 +3168,9 @@ std::string Command(std::string const& line) {
     if (verb == "ride") {
         return DoRide(words);
     }
+    if (verb == "hud") {
+        return DoHud(words);
+    }
     if (verb == "clear") {
         ClearAll("mevr cockpit clear");
         ClearParts("mevr cockpit clear");
@@ -3253,6 +3314,29 @@ bool Riding() {
     return gRide.on && gRide.riding;
 }
 
+void FillHud(vr::hud_pieces::Pieces& pieces) {
+    if (!Riding() || !gRide.haveEye || !gHudLayout.set) {
+        return;
+    }
+    auto const anchor = view_anchor::Current();
+    if (!anchor) {
+        return;
+    }
+    // A point of the cockpit (metres from its eye: right, forward, up) in tracking space.
+    auto const at = [&](engine::UnrealVector const& m) {
+        engine::UnrealVector const off = engine::Apply(gRide.frame, {m.y * gRide.upm, m.x * gRide.upm, m.z * gRide.upm});
+        return engine::ToTracking(*anchor, {gRide.eyeWorld.x + off.x, gRide.eyeWorld.y + off.y, gRide.eyeWorld.z + off.z});
+    };
+    pieces.cockpit = true;
+    pieces.cockpitUp = engine::DirectionToTracking(*anchor, gRide.frame.up);
+    pieces.statusAnchor = at(gHudLayout.statusM);
+    pieces.statusWidthM = gHudLayout.statusWidthM;
+    pieces.radarAnchor = at(gHudLayout.radarM);
+    pieces.radarWidthM = gHudLayout.radarWidthM;
+    pieces.panelAnchor = at(gHudLayout.panelM);
+    pieces.panelWidthM = gHudLayout.panelWidthM;
+}
+
 // R3 (the right stick's click) steps the aiming screen's zoom while riding: its field 30, 12, 5 degrees and round again
 // (docs/mako-cockpit-goal.md item 4). Read from the controllers, so it works whether or not the game takes the pad.
 void ZoomTick() {
@@ -3382,6 +3466,8 @@ bool TryStartup() {
 bool Riding() {
     return false;
 }
+
+void FillHud(vr::hud_pieces::Pieces& /*pieces*/) {}
 
 std::string VehicleCommand(std::string const& /*line*/) {
     return "mevr vehicle: LE1 only";

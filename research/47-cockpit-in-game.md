@@ -849,3 +849,18 @@ A replayed right controller by the knee, pointing ahead and 8 degrees down; `mev
 74.3 m out; 0.66 degrees off the controller's ray`, the same for shot 3: the cannon fires from its own start at the traced aim point,
 the point the aiming screen's reticle marks (`mako::CurrentTurretAim`'s target); the 0.66 degrees are the gun's offset from the hand.
 Every aim trace hit (500 of 500 in 5 s; none before the native fix).
+
+## The Mako's HUD in the cockpit (2026-11-03 11:28, fake headset, `BIOA_UNC20`; host redeployed)
+
+The Mako's HUD has three pieces: the vehicle's status silhouette at the bottom left (in the weapon panel's band: stage x 64..210, the
+bottom 139..35), the radar at the bottom right (x 1089..1214, the bottom 163..37; `DefaultRadarCrop` x 1080..1222, 172..28) and the
+crosshair in the centre. `vr::hud_pieces::Pieces` grew a cockpit part (the mod's `cockpit_probe::FillHud`: anchors for the status, the
+radar and the rest of the panel in tracking space, from the cockpit's eye and the vehicle's axes; the struct's size changed, so host and
+mod deploy together). While it's set, in game mode 1 the host (`HalcyonOverlays`) puts the weapon panel's band on the status anchor,
+the radar's band on a quad of its own, masks both out of the HUD panel and places the panel's remainder at the cockpit's anchor (high in
+the windshield, 1.6 m out, 0.3 m up, 1 m wide). `place.py --script` writes the `hud` line from the manifest's left display: the status on
+its left half, the radar on its right half, 2 cm off it toward the seat.
+
+Measured: looking ahead the centre screen is clear (the crosshair's small remainder sits up in the windshield); turned down-left, the left
+display shows the Mako's silhouette and the radar. The quads are compositor layers without depth: the throttle model in front of the
+display is drawn under the radar.

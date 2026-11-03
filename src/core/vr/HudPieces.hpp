@@ -36,6 +36,17 @@ struct Pieces {
     XrVector3f gunAnchor{};      // tracking space (meters): where the weapon panel's centre goes
     XrVector3f gunUp{};          // unit, the gun's top at the anchor (the quad leans toward it; zero: world up)
     std::uint32_t serial = 0;    // changes with the held weapon
+    // The cockpit rides in the Mako (research/47, docs/mako-cockpit-goal.md item 8): the vehicle's status (the weapon panel's
+    // band, where the Mako's silhouette is) and the radar go on the cockpit's displays, the rest of the HUD panel to
+    // `panelAnchor`, none of them over the screens. Tracking space (meters), each quad facing the eyes, upright to `cockpitUp`.
+    bool cockpit = false;
+    XrVector3f cockpitUp{};
+    XrVector3f statusAnchor{};
+    float statusWidthM = 0.0f;
+    XrVector3f radarAnchor{};
+    float radarWidthM = 0.0f;
+    XrVector3f panelAnchor{};
+    float panelWidthM = 0.0f;
     std::uint64_t sequence = 0;  // set by Publish
     std::uint64_t timeMs = 0;    // GetTickCount64 when published
 };
@@ -74,6 +85,8 @@ std::string Describe(Settings const& settings);
 // the bottom 12). Invalid (width 0) for an empty frame.
 Rect DefaultWristCrop(std::uint32_t width, std::uint32_t height);
 Rect DefaultGunCrop(std::uint32_t width, std::uint32_t height);
+// The Mako's radar at the bottom right: x 1080..1222, the bottom 172..28 (stage pixels).
+Rect DefaultRadarCrop(std::uint32_t width, std::uint32_t height);
 // `crop` if it's valid, else the default for the frame.
 Rect WristCrop(Settings const& settings, std::uint32_t width, std::uint32_t height);
 Rect GunCrop(Settings const& settings, std::uint32_t width, std::uint32_t height);

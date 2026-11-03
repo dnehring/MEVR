@@ -55,13 +55,34 @@ def Lines(manifest, metres, yaw_sign):
     return out
 
 
+def HudLine(manifest, metres):
+    """`hud ...`: the Mako's status on the left half of the manifest's left display, the radar on its right half (each a
+    little in front of it), the rest of the HUD panel high in the windshield; metres from the cockpit's eye (right, forward, up)."""
+    eye = manifest["eye"]["hull"]
+    left = manifest["screens"]["left"]
+    corners = left["corners"]
+    centre = [sum(c[i] for c in corners) / 4.0 for i in range(3)]
+    u, normal = left["u"], left["normal"]
+    quarter = left["width"] / 4.0
+    lift = 0.02 / metres  # 2 cm off the display, toward the pilot
+
+    def At(along):
+        p = [centre[i] + u[i] * along + normal[i] * lift for i in range(3)]
+        return tuple((p[i] - eye[i]) * metres for i in range(3))
+
+    width = left["width"] * metres * 0.42
+    status, radar = At(-quarter), At(quarter)
+    return ("hud status {:.3f} {:.3f} {:.3f} {:.3f} radar {:.3f} {:.3f} {:.3f} {:.3f} panel 0.000 1.600 0.300 1.000"
+            .format(*status, width, *radar, width * 0.85))
+
+
 def Script(manifest, metres, yaw_sign, eye):
     """The cockpit's script: what the mod runs on entering the Mako (`mevr cockpit` lines without those words)."""
     parts = [line[len("mevr cockpit "):] for line in Lines(manifest, metres, yaw_sign) if line.startswith("mevr cockpit part ")]
     return (["; The Mako's cockpit (research/47): written by tools/cockpit/place.py --script; run by the mod on entering the Mako.",
              "parts sweep"] + parts +
             ["screenpart BIOG_MEVR_Cockpit.Hull_Console", "element 1", "post 0", "screen 768 343 float",
-             "aimscreen 768 306", "aimreticle 6",
+             "aimscreen 768 306", "aimreticle 6", HudLine(manifest, metres),
              f"ride {eye[0]:.3f} {eye[1]:.3f} {eye[2]:.3f}"])
 
 

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "core/vr/HudPieces.hpp"
+
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -25,6 +27,8 @@ std::string VehicleCommand(std::string const& line);
 bool TryStartup();
 // The cockpit is riding in the Mako this tick (its camera moved): the chase camera's own rotation no longer turns the view.
 bool Riding();
+// While riding, with a `hud` layout: where the cockpit's displays are, into the HUD pieces the host draws (research/47).
+void FillHud(vr::hud_pieces::Pieces& pieces);
 // Each mod tick, late (the view anchor current). Also the cockpit by itself ([Cockpit]): in on entering the Mako, out on leaving.
 // `recenters`: the host's recenter count (core/vr/Floor), if known: a change while riding takes a new seat.
 void Tick(std::optional<std::uint32_t> recenters);

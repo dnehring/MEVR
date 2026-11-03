@@ -3,6 +3,7 @@
 
 #include "core/Log.hpp"
 #include "core/vr/TestRequest.hpp"
+#include "game/CockpitProbe.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/Player.hpp"
 #include "game/Sights.hpp"
@@ -97,6 +98,7 @@ void Tick(vr::aim_ray::Ray const& ray, Link const& link) {
         log::Warn("hud pieces: the host (services older than v22) can't show the weapon panel on the gun: close the game and "
                   "redeploy the host");
     }
+    cockpit_probe::FillHud(pieces);  // in the Mako's cockpit: its displays (research/47)
     Publish(link, pieces);
 }
 
