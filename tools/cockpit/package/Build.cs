@@ -73,7 +73,24 @@ internal static class Build
         ["LightmapBrightness"] = new("a643d9b7-db64-467d-a4ff-bf48edab1bc6"), ["WallSpecColor"] = new("42eacc11-ecbb-4687-9085-f056394ffed4"),
         ["WindowSpecColor"] = new("90c7c0ef-12bb-4cf5-93f4-722272718db1"),
     };
-    private const float LitSpecular = 1.0f, LitSpecPower = 32.0f, GlowBrightness = 3.0f;
+    // A dark diffuse left the lit instances looking unlit in the game (the game side, 2026-11-03): a mid one shows whether
+    // light reaches the parts at all, and a stronger specular whether highlights do.
+    private const float LitSpecular = 1.6f, LitSpecPower = 24.0f, GlowBrightness = 4.0f;
+
+    // The windows' glass (research/48 section 26), over materials in BIOC_Materials, which the game side found in memory at
+    // the title, in Eden Prime and in a Mako level: the helmet visors' (unlit, translucent, one-sided; opacity rises toward
+    // grazing angles, a fresnel sheen of its cube map), and, to try instead, a level's glass (lit, translucent, two-sided).
+    private static readonly (string Package, string Group, string Material) GlassParent = ("BIOG_Humanoid_MASTER_MTR_R", "Human", "HMF_VSR_MASTER_MAT");
+    private static readonly (string Package, string Material) GlassAltParent = ("BIOA_JUG00_T", "JUG00_GLASS01");
+    private static readonly Dictionary<string, Guid> GlassGuids = new()
+    {
+        ["VSR_Opacity"] = new("18862473-f1f5-475c-bc76-073ad9580d23"), ["VSR_CubeMap_Intensity"] = new("14bc4ff7-c0ef-4418-9093-f08b6fbf5e03"),
+        ["VSR_Colour_01"] = new("36a0530d-3b2f-426c-b4b5-3dae8740a7b5"), ["VSR_Colour_02"] = new("bedd8add-8855-4c95-8280-1a62f6cb7e48"),
+    };
+    // Face on the pane lets half the opacity through, at grazing the whole; the cube's sheen and a faint grey on top, the
+    // fresnel at least 0.15.
+    private const float GlassOpacity = 0.22f, GlassCube = 0.4f;
+    private static readonly float[] GlassTint = { 0.03f, 0.035f, 0.04f, 1f }, GlassFresnel = { 0.15f, 0f, 0f, 1f };
     // Which elements get a glow variant: the shell's lamps (hull_shapes.Bake puts them on materials of their own) and the
     // console's idle screens.
     private static bool Glows(string material) => material.StartsWith("lamp", StringComparison.Ordinal) || material is "Display" or "Aim";
@@ -94,7 +111,8 @@ internal static class Build
         ("hull-console", "Hull_Console", "Hull_Console", Hull + "console.glb"),
         ("hull-side-left", "Hull_Side_Left", "Hull_Side", Hull + "side-left.glb"),
         ("hull-side-right", "Hull_Side_Right", "Hull_Side", Hull + "side-right.glb"),
-        ("aim-reticle", "Aim_Reticle", "Aim_Reticle", Hull + "aim-reticle.glb"),  // the game's aiming capture's reticle (research/48 section 24)
+        ("aim-reticle", "Aim_Reticle", "Aim_Reticle", Hull + "aim-reticle.glb"),
+        ("hull-glass", "Hull_Glass", "Hull_Glass", Hull + "glass.glb"),  // the windows' panes over the game's glass (GlassParent)  // the game's aiming capture's reticle (research/48 section 24)
     };
 
     // The rule of tools/cockpit/detach_controls.py: the highest vNNN under repairs/<date>/<name>/, else the file beside repairs/.
@@ -304,12 +322,15 @@ internal static class Build
         MakeLoadable(export);
         PropertyCollection props = export.GetProperties();
         props.AddOrReplaceProp(new ObjectProperty(parent.UIndex, "Parent"));
-        props.AddOrReplaceProp(new ArrayProperty<StructProperty>(textures.Select(t => new StructProperty("TextureParameterValue", new PropertyCollection
+        if (textures.Any())  // the glass keeps its parent's textures
         {
-            CommonStructs.GuidProp(t.Guid, "ExpressionGUID"),
-            new NameProperty(t.Name, "ParameterName"),
-            new ObjectProperty(t.Texture.UIndex, "ParameterValue"),
-        })).ToArray(), "TextureParameterValues"));
+            props.AddOrReplaceProp(new ArrayProperty<StructProperty>(textures.Select(t => new StructProperty("TextureParameterValue", new PropertyCollection
+            {
+                CommonStructs.GuidProp(t.Guid, "ExpressionGUID"),
+                new NameProperty(t.Name, "ParameterName"),
+                new ObjectProperty(t.Texture.UIndex, "ParameterValue"),
+            })).ToArray(), "TextureParameterValues"));
+        }
         if (scalars != null)
         {
             props.AddOrReplaceProp(new ArrayProperty<StructProperty>(scalars.Select(s => new StructProperty("ScalarParameterValue", new PropertyCollection
@@ -401,9 +422,26 @@ internal static class Build
         IEntry litParent = ExportCreator.CreateImport(pcc, "Material", LitParent.Material, ExportCreator.CreatePackageImport(pcc, LitParent.Package));
         IEntry glowParent = ExportCreator.CreateImport(pcc, "Material", GlowParent.Material, ExportCreator.CreatePackageImport(pcc, GlowParent.Package));
         ExportEntry Constant(string textureName, Vector3 rgb) => AddTexture(pcc, textureName, LecImage.LoadFromRaw(SolidBgr(4, 4, rgb), PixelFormat.RGB, 4, 4), 4, 4);
-        ExportEntry litDiffuse = Constant("Lit_Diffuse", new Vector3(0.1f, 0.1f, 0.105f));  // dark: the baked light is the emissive
-        ExportEntry litSpecular = Constant("Lit_Spec", new Vector3(0.35f, 0.35f, 0.36f));
+        ExportEntry litDiffuse = Constant("Lit_Diffuse", new Vector3(0.3f, 0.3f, 0.31f));  // the baked light is the emissive
+        ExportEntry litSpecular = Constant("Lit_Spec", new Vector3(0.6f, 0.6f, 0.62f));
         ExportEntry white = Constant("Glow_Light", new Vector3(1f, 1f, 1f));
+        ExportEntry glassInstance = null;
+        ExportEntry Glass()
+        {
+            if (glassInstance == null)
+            {
+                IEntry package = ExportCreator.CreatePackageImport(pcc, GlassParent.Package);
+                IEntry group = ExportCreator.CreateImport(pcc, "Package", GlassParent.Group, package);
+                IEntry glass = ExportCreator.CreateImport(pcc, "Material", GlassParent.Material, group);
+                glassInstance = AddInstance(pcc, "Hull_Glass_MIC", glass, Guid.Empty, Array.Empty<(string, ExportEntry, Guid)>(),
+                    new[] { ("VSR_Opacity", GlassOpacity, GlassGuids["VSR_Opacity"]), ("VSR_CubeMap_Intensity", GlassCube, GlassGuids["VSR_CubeMap_Intensity"]) },
+                    new[] { ("VSR_Colour_01", GlassTint, GlassGuids["VSR_Colour_01"]), ("VSR_Colour_02", GlassFresnel, GlassGuids["VSR_Colour_02"]) });
+                IEntry alt = ExportCreator.CreateImport(pcc, "Material", GlassAltParent.Material, ExportCreator.CreatePackageImport(pcc, GlassAltParent.Package));
+                AddInstance(pcc, "Hull_Glass_Alt_MIC", alt, Guid.Empty, Array.Empty<(string, ExportEntry, Guid)>());
+                variants["Hull_Glass_MIC"] = new List<string> { "Hull_Glass_Alt_MIC" };
+            }
+            return glassInstance;
+        }
         void Variants(string instanceName, ExportEntry texture, string material)
         {
             var made = new List<string>();
@@ -471,6 +509,10 @@ internal static class Build
             string mainMaterial = welded.First(p => p.BaseColorImage == mainImage).MaterialName;
             ExportEntry Instance(WeldedPrimitive primitive)
             {
+                if (source.Group == "Hull_Glass")  // the panes take the game's glass, not their image
+                {
+                    return Glass();
+                }
                 bool screen = primitive.MaterialName == ScreenMaterial;
                 if (!primitive.BaseColorImage.HasValue && !screen)
                 {

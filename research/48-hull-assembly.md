@@ -922,6 +922,31 @@ No decimation or packaging until the user approves the modelling.
 - **To try in the game** (the game side): each part's elements swapped to their `_Lit_MIC` (do highlights show, and how
   does the light environment light an enclosed cabin); the lamps' and idle screens' `_Glow_MIC` (do they bloom).
 
+## 26. Glass, and what the game showed of the lit and glowing instances (2026-11-03)
+
+- **In the game** (59ae138; research/47 "Lit and glowing instances"):
+  - **residency:** APL__MASTER__Mat, HMF_VSR_MASTER_MAT and JUG00_GLASS01 are in memory at the title (once a player
+    exists), in Eden Prime and in BIOA_UNC20;
+  - **lit:** renders (no checkerboard) and looks the same as unlit, within 0.2 of a level, no highlights. The parts are
+    InterpActors with their DynamicLightEnvironment on; under the dark diffuse what light reaches them doesn't show;
+  - **glow** at 3: the lamps' brightest 1% from (155, 122, 110) to (227, 210, 213), no halo yet;
+  - **darker overall** than b486139 at the same views (ahead 56.0 to 35.1, the idle centre screen (37, 26, 19) to
+    (15, 10, 8)). The packaged textures are the same as b486139's to a tenth of a level in every mean, including the
+    screen's image, and the base instances unchanged: not the asset [verify on the game side: the two packages back to back
+    in one session, and the post-process or exposure state].
+- **Changed:** the lit instances' diffuse mid grey (0.3) and specular stronger (0.6, x1.6, power 24), so the game shows
+  whether light reaches the parts at all; glow 4 (the game side's suggestion for a halo).
+- **Glass** (`Glass`, `Hull_Glass`): each window's outline as one pane facing the room (the windshield, the front side
+  windows, the side panes' windows: the outlines the frames are built round, so a pane fills its opening), packaged on its
+  own (not in `hull.glb`, so the previews and the probes still look through). Its instance `Hull_Glass_MIC` is over the
+  helmet visors' `HMF_VSR_MASTER_MAT` (unlit, translucent, one-sided): `VSR_Opacity` 0.22 (half that face on, all of it at
+  grazing angles), `VSR_CubeMap_Intensity` 0.4 (its default 10 is a helmet's shine), a faint grey `VSR_Colour_01`, the
+  fresnel at least 0.15; `Hull_Glass_Alt_MIC` over the level glass `JUG00_GLASS01` (lit, translucent, two-sided, fixed
+  frost) to try instead. The package imports from BIOC_Materials now (`Check.cs` counts it among the always-loaded
+  packages, on the game side's finding; not yet checked at the main menu reached from inside a game).
+- **The lamps** are in the manifest (`lamps`: centre, facing, size, colour, power), for real lights in the game to match the
+  baked ones: the light environment alone brings the level's light, not the cabin's.
+
 ## 5. Not done
 
 (Brought up to date 2026-11-02, after section 21.)

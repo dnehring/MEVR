@@ -41,7 +41,7 @@ from mathutils.bvhtree import BVHTree
 from mathutils.geometry import barycentric_transform, intersect_ray_tri
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from hull_shapes import (GLOW, QUAD, Bake, Builder, Chamfered, Clip, Corners, Cross, Display, Grille, Inset, Keypad, Newell,  # noqa: E402
+from hull_shapes import (GLOW, QUAD, Bake, Builder, Chamfered, Clip, Corners, Cross, Display, Grille, Inset, Keypad, Local, Newell,  # noqa: E402
                          Offset, Pipe, Plate, Png, RETICLE, Relight, Rings, ScreenGlow, Slab, Sweep, Visible)
 
 TEMPLATE = "hull full -bad.glb"
@@ -706,6 +706,34 @@ def Screens(console, folder):
     bm.to_mesh(me)
     bm.free()
     return found
+
+
+def Glass(windows, folder):
+    """The windows' panes, for the game's glass (packaged as Hull_Glass over the game's visor material; research/48
+    section 26): each window's outline as one flat pane facing the room (the material is one-sided, seen from inside),
+    planar UVs, and a 4x4 grey image (written to `folder`) only because the packager wants one."""
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.new("UVMap")
+    room = Vector((0.0, -0.1, 0.25))
+    for w in windows:
+        pts = [Vector(p) for p in w]
+        if Newell(pts).dot(room - sum(pts, Vector()) / len(pts)) < 0:
+            pts.reverse()
+        f = bm.faces.new([bm.verts.new(p) for p in pts])
+        for loop, t in zip(f.loops, Local(pts)):
+            loop[uv].uv = t
+    me = bpy.data.meshes.new("glass")
+    bm.to_mesh(me)
+    bm.free()
+    m = bpy.data.materials.new("Glass")
+    m.use_nodes = True
+    tex = m.node_tree.nodes.new("ShaderNodeTexImage")
+    tex.image = Png(np.full((4, 4, 3), 0.2, np.float32), "glass", os.path.join(folder, "glass.png"))
+    m.node_tree.links.new(tex.outputs["Color"], next(n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED").inputs["Base Color"])
+    me.materials.append(m)
+    o = bpy.data.objects.new("glass", me)
+    bpy.context.scene.collection.objects.link(o)
+    return o
 
 
 RETICLE_STRIP = 0.025  # the reticle mesh's strips, a fortieth of its one unit across (the game side's ask)
@@ -1816,6 +1844,9 @@ def Run(folder):
     reticle = AimReticle(out)
     Export([reticle], os.path.join(out, "aim-reticle.glb"))
     bpy.data.objects.remove(reticle)
+    glass = Glass(windows, out)  # not in hull.glb: the previews and the probes look through open windows
+    Export([glass], os.path.join(out, "glass.glb"))
+    bpy.data.objects.remove(glass)
     every = [template] + list(pieces.values()) + furniture
     Outside()
     with tempfile.TemporaryDirectory() as scratch:
@@ -1839,6 +1870,10 @@ def Run(folder):
         "scale": {"metresPerHullUnit": METRES_PER_UNIT, "status": "proposed 2026-11-02, the user to confirm"},
         "eye": {"hull": list(EYE), "fromChairMetres": list(EYE_FROM_CHAIR)},
         "pilot": pilot,
+        "lamps": {"note": "the bake's lamps, for real lights in the game to match: centre and facing in hull units, size across "
+                          "and along (hull units), linear colour, power (W in the bake's hull-unit scene)",
+                  "list": [{"centre": [round(c, 4) for c in centre], "facing": [round(c, 4) for c in n], "size": [round(su, 4), round(sv, 4)],
+                            "colour": [round(c, 3) for c in colour], "power": power} for centre, n, u, (su, sv), colour, power in lights]},
         "furniture": {"note": "each file's origin (a moving part's pivot) in hull coordinates, turned about z, scaled by "
                               "hullUnitsPerModelUnit; motion values in model units", **placed},
         "bake": bake,

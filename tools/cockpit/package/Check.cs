@@ -51,7 +51,8 @@ internal static class Check
         return counted == 0 ? 0.5 : (double)agree / counted;
     }
 
-    private static readonly string[] GlobalPackages = { "Core", "Engine", "SFXGame", "Startup_INT" };
+    // BIOC_Materials for the glass: in memory at the title, in Eden Prime and in a Mako level (the game side, 2026-11-03).
+    private static readonly string[] GlobalPackages = { "Core", "Engine", "SFXGame", "Startup_INT", "BIOC_Materials" };
 
     // Every import against the packages the game keeps loaded: Core, Engine, SFXGame by their own name, and the forced
     // exports of Startup_INT (EngineMaterials.* lives there, there is no EngineMaterials.pcc).
@@ -144,10 +145,10 @@ internal static class Check
             string Name(StructProperty value) => value?.GetProp<NameProperty>("ParameterName")?.Value.Instanced;
             // The instances the meshes use are over EmissiveTexturedMaterial with one texture; the optional lit and glow ones
             // (Build's variants) over their own parents, every texture parameter a texture of ours, no static parameters.
-            bool variant = export.ObjectName.Instanced.EndsWith("_Lit_MIC", StringComparison.Ordinal) || export.ObjectName.Instanced.EndsWith("_Glow_MIC", StringComparison.Ordinal);
-            string expected = variant ? null : $"{Build.ParentPackage}.{Build.ParentMaterial}";
-            bool ok = parent != null && parent.ClassName == "Material" && values.Count > 0 && values.All(v => Texture(v)?.ClassName == "Texture2D")
-                && (variant ? !(props.GetProp<BoolProperty>("bHasStaticPermutationResource")?.Value ?? false) : parent.InstancedFullPath == expected && Name(values[0]) == Build.ParameterName);
+            string expected = $"{Build.ParentPackage}.{Build.ParentMaterial}";
+            bool variant = parent?.InstancedFullPath != expected;  // the lit, glow and glass instances: their own parents
+            bool ok = parent != null && parent.ClassName == "Material" && values.All(v => Texture(v)?.ClassName == "Texture2D")
+                && (variant ? !(props.GetProp<BoolProperty>("bHasStaticPermutationResource")?.Value ?? false) : values.Count > 0 && Name(values[0]) == Build.ParameterName);
             Report(ok, $"{export.ObjectName.Instanced}: parent {parent?.InstancedFullPath}, {string.Join(", ", values.Select(v => $"{Name(v)} = {Texture(v)?.ObjectName.Instanced}"))}, binary {export.GetBinaryData().Length} bytes");
         }
 
