@@ -223,6 +223,11 @@ so the new shell follows it. The parts (console, side pane) are placed in it, an
   before and after. When a window plane moves, walls built for the old one can stand outside the new glass and block
   the view through it (one did); cut only what a line of sight through the glass reaches, then probe for leaks
   (research/48 section 16).
+- **Grow a part where the room allows, about the point that must stay put** (`CONSOLE_GROW`, research/48 section 17):
+  list what bounds each axis first (walls across, the windshield's sightline up, the controls toward the seat). The
+  console grew 1.03 / 1.2 / 1.2 about a point on the windshield's wall, so its top stayed on the sill's sightline. Find
+  features on the placed part, never from constants, so they follow it. A non-uniform scale tilts a Tripo surface's
+  small folds: the screens' 0.98 normal test left dark lines across a stretched screen.
 
 - **Fit against the template's interior, never the whole mesh.** The interior is the faces hit by rays from points
   inside it. Use only the part's faces toward the room, and hold the scale to a plausible range. Against the whole

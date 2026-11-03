@@ -96,13 +96,14 @@ def Clear():
     return n
 
 
-def Build(furniture=False):
-    """The live build; on a failure everything this run made is removed again before the error is raised."""
+def Build(furniture=False, **overrides):
+    """The live build; on a failure everything this run made is removed again before the error is raised. `overrides`:
+    hull_assemble constants to try for this build only (Build(CONSOLE_GROW=(1, 1.2, 1.2)))."""
     removed = Clear()
     before = set(bpy.data.objects)
     mats = set(bpy.data.materials)
     try:
-        out = Make(before, furniture)
+        out = Make(before, furniture, overrides)
     except Exception:
         for o in set(bpy.data.objects) - before:
             data = o.data
@@ -117,24 +118,16 @@ def Build(furniture=False):
     return out
 
 
-def Make(before, furniture):
+def Make(before, furniture, overrides):
     global H
     importlib.reload(hull_shapes)
     H = importlib.reload(H)
+    for k, v in overrides.items():
+        assert hasattr(H, k), k
+        setattr(H, k, v)
     pane_src, pbm = H.Import(os.path.join(FOLDER, H.PANE))
     console_src, cbm = H.Import(os.path.join(FOLDER, H.CONSOLE))
-    turn = Matrix.Rotation(math.radians(90), 4, "Z")
-    co = np.array([(turn @ v.co)[:] for v in pbm.verts])
-    centre = Vector(((co.min(0) + co.max(0)) / 2).tolist())
-    left = Matrix.Translation(Vector(H.PANE_CENTRE)) @ Matrix.Scale(H.PANE_SCALE, 4) @ Matrix.Translation(-centre) @ turn
-    floor = min((left @ v.co).z for v in pbm.verts)
-    left = Matrix.Translation((0, 0, -floor)) @ left
-    right = Matrix.Diagonal((-1, 1, 1, 1)) @ left
-    cco = np.array([v.co[:] for v in cbm.verts])
-    ccentre = Vector(((cco.min(0) + cco.max(0)) / 2).tolist())
-    console_m = Matrix.Translation(Vector(H.CONSOLE_CENTRE)) @ Matrix.Scale(H.CONSOLE_SCALE, 4) @ Matrix.Translation(-ccentre)
-    floor = min((console_m @ v.co).z for v in cbm.verts)
-    console_m = Matrix.Translation((0, 0, -floor)) @ console_m
+    left, right, console_m = H.Placements(pbm, cbm)
     pieces = {"side-left": H.Placed("side-left", pane_src, pbm, left), "side-right": H.Placed("side-right", pane_src, pbm, right, mirrored=True),
               "console": H.Placed("console", console_src, cbm, console_m)}
     pbm.free()

@@ -595,6 +595,49 @@ and their direction: work through the Higgsfield bridge and plan the design as o
   the console-fitted camera its side walls close in at the console's ends and its A-pillars stand on them; ours stand
   well outside the frame. Matching it means a larger console in our room (about 1.38 times), or a narrower room.
 
+## 17. The console grown (the user: "you can attempt to scale parts of the console asset")
+
+- **What room there is.** The console can't simply be 1.35 to 1.38 times larger:
+  - across, its wings already reach x ±0.376 where the walls beside them are at 0.39 (the side panes' consoles at 0.357
+    overlap them already);
+  - its back top (z 0.307) already sits at the windshield's sill. From the eye the sill line is 9.6 degrees down, and
+    every centimetre the console rises hides more of the view ahead and down;
+  - a uniform 1.35 about its foot at the windshield's wall puts its top at 0.415, above the pilot's eye (0.403);
+  - so the concept's console-to-room ratio is out of reach for a seated pilot who sees out. Its camera sits at the
+    screens' height, not a seated eye's;
+  - toward the seat there is room: the wings ended at y -0.01, and the controls stand at -0.107, inboard of them.
+- **Grown in parts** (`CONSOLE_GROW`, about a point on the windshield's wall at z 0.25):
+  - 1.03 across, 1.2 toward the seat, 1.2 in height;
+  - its top stays on the sill's sightline (9.2 degrees down from the eye, 9.8 before);
+  - its foot sinks 5 cm under the floor plates;
+  - its wings reach y -0.087, 8 cm nearer the seat;
+  - the screens are 3% wider and 20% taller, and the screens, keypads and the bezel's lit bars follow, since they are
+    found on the placed console.
+- **The variants** (seat and room-camera renders in the live Blender; all clear of the controls and the chair):
+  - 1.0 / 1.2 / 1.07;
+  - 1.03 / 1.25 / 1.12;
+  - 1.03 / 1.3 / 1.15: wrapped the room most in the room camera, but stretched the angled side screens past the concept's
+    console shape (the camera refitted to the grown console's screens shows it);
+  - 1.03 / 1.15 / 1.25;
+  - 1.03 / 1.2 / 1.2: chosen.
+- **Checked:**
+  - the joystick, the throttle and the chair: no overlap (`BVHTree.overlap`);
+  - the shell above z 0.2: only the windshield's sill frame against the console's back top (as before) and the bezel's
+    lit bars, placed on it;
+  - the pillar's region is clear;
+  - from the seat, the console's top meets the windshield's sill frame cleanly. 184 vertices of its back edge lie a few
+    millimetres past the glass line, under the frame.
+- **The screens' faces** (`Screens`): the stretch tilted small folds in the side screens past the 0.98 normal test, and they
+  showed as dark lines across the left screen. Every face in a screen's plane and rectangle now counts down to 0.85
+  (32 degrees).
+- **Not changed:** the controls keep their pedestals. The wings now pass them 6 to 9 cm outboard, but under a wing's
+  inner edge is its screen, so a bracket to the wing would cross it.
+- **The probes' last leak, found:** the rear wall's panel was inset on an outline that follows the caps' profile, which
+  dips (not convex). The offset flipped a triangle at the wall's top corner, culled from the room, and 430 rays from a
+  cabin eye left through it (exported and read back, as the probes see it). The panel now stops at the frame line and the
+  wall above it is plain: 0 rays. The joints check after decimating had found one new ray through the same corner with
+  the grown console.
+
 ## 5. Not done
 
 - **Not seen from the seat in the game:** the meshes load and draw textured (section 9), but nothing is placed around the

@@ -55,6 +55,13 @@ PANE_CENTRE = (-0.3647, -0.1318 + 0.12, 0.2748)
 # The console's, fitted to the template's interior faces in front (y > -0.05, z < 0.33), centred (research/48).
 CONSOLE_SCALE = 0.7524
 CONSOLE_CENTRE = (0.0, 0.2749, 0.1473)
+# Then grown toward the lit concept's (the user, 2026-11-02: "you can attempt to scale parts of the console asset"):
+# around the same console the concept's room is smaller (research/48 section 17). Across, the console already meets the
+# walls, and grown upward it would hide the windshield's sill from the seat, so it grows toward the seat and in height
+# about a point on the windshield's wall (x, y, z factors; the point's height): its top stays on the sill's sightline,
+# its foot sinks 5 cm under the floor plates and its wings reach 0.08 nearer the seat, clear of the controls. (1.3 deep
+# wrapped the room most but stretched the angled side screens past the concept's console shape.)
+CONSOLE_GROW, CONSOLE_PIVOT_Z = (1.03, 1.2, 1.2), 0.25
 # The template's shell, measured by rays from inside it on 2026-11-02 (research/48): x across, y forward, z up.
 W, ZW = 0.463, 0.412       # the side walls' inner face; the height where their chamfer into the ceiling starts
 XC, ZC = 0.39, 0.48        # the chamfer's top edge; the ceiling
@@ -202,6 +209,25 @@ def Import(path):
     bm.verts.index_update()
     bm.faces.index_update()
     return o, bm
+
+
+def Placements(pbm, cbm):
+    """The left pane's, the right pane's (its mirror) and the console's matrices, from their files' meshes: a quarter
+    turn for the pane, each scaled and centred as fitted, stood on the floor; the console then grown (CONSOLE_GROW)."""
+    turn = Matrix.Rotation(math.radians(90), 4, "Z")
+    co = np.array([(turn @ v.co)[:] for v in pbm.verts])
+    centre = Vector(((co.min(0) + co.max(0)) / 2).tolist())
+    left = Matrix.Translation(Vector(PANE_CENTRE)) @ Matrix.Scale(PANE_SCALE, 4) @ Matrix.Translation(-centre) @ turn
+    floor = min((left @ v.co).z for v in pbm.verts)
+    left = Matrix.Translation((0, 0, -floor)) @ left
+    right = Matrix.Diagonal((-1, 1, 1, 1)) @ left
+    cco = np.array([v.co[:] for v in cbm.verts])
+    ccentre = Vector(((cco.min(0) + cco.max(0)) / 2).tolist())
+    console = Matrix.Translation(Vector(CONSOLE_CENTRE)) @ Matrix.Scale(CONSOLE_SCALE, 4) @ Matrix.Translation(-ccentre)
+    floor = min((console @ v.co).z for v in cbm.verts)
+    pivot = Vector((0.0, YF, CONSOLE_PIVOT_Z))
+    grow = Matrix.Translation(pivot) @ Matrix.Diagonal((*CONSOLE_GROW, 1.0)) @ Matrix.Translation(-pivot)
+    return left, right, grow @ Matrix.Translation((0, 0, -floor)) @ console
 
 
 def Placed(name, source, bm, matrix, mirrored=False):
@@ -524,7 +550,9 @@ def Screens(console, folder):
         v = n.cross(u)
         lo = [min(c.co.dot(a) for g in seed for c in g.verts) - 0.012 for a in (u, v)]
         hi = [max(c.co.dot(a) for g in seed for c in g.verts) + 0.012 for a in (u, v)]
-        faces = [f for f in facing if abs((f.calc_center_median() - centre).dot(n)) < 0.003 and f.normal.dot(n) > 0.98
+        # every face in the screen's plane and rectangle, its small folds too (up to 32 degrees off: the grown console
+        # tilts them further, and left out they showed as dark lines across the screen)
+        faces = [f for f in facing if abs((f.calc_center_median() - centre).dot(n)) < 0.003 and f.normal.dot(n) > 0.85
                  and all(lo[i] <= f.calc_center_median().dot(a) <= hi[i] for i, a in enumerate((u, v)))]
         u0, u1 = min(c.co.dot(u) for f in faces for c in f.verts), max(c.co.dot(u) for f in faces for c in f.verts)
         v0, v1 = min(c.co.dot(v) for f in faces for c in f.verts), max(c.co.dot(v) for f in faces for c in f.verts)
@@ -709,7 +737,11 @@ def RearWall(b):
     side = [Vector((XRAIL - s, YB, ZH + u)) for s, u in CAP]  # from the wall's top up to the ceiling
     for mirror in (False, True):
         b.mirror = mirror
-        Slab(b, [Vector((hw, YB, -SEAM)), Vector((XWALL, YB, -SEAM))] + side + [Vector((hw, YB, ZR))], Y, SLAB, inset=(0.008, 0.006, 0.03))
+        # beside the door up to the frame line, a panel set in; above it, plain, up the caps' profile to the ceiling. (An
+        # inset needs a convex outline: offset round the profile's dip it flipped a triangle, and rays from the cabin
+        # left through it, the probes' one leak since research/48 section 15.)
+        Slab(b, [(hw, YB, -SEAM), (XWALL, YB, -SEAM), (XWALL, YB, ZH), (hw, YB, ZH)], Y, SLAB, inset=(0.008, 0.006, 0.03))
+        Slab(b, [Vector((hw, YB, ZH))] + side + [Vector((hw, YB, ZR))], Y, SLAB)
         b.Face([(hw - dc, YB, dh), (hw, YB, dh), (hw, YB, dh - dc)], "PLATE", toward=Y)  # the opening's cut corner
         leaf = [(0.0, YB - 0.015, -SEAM), (hw, YB - 0.015, -SEAM), (hw, YB - 0.015, dh - dc), (hw - dc, YB - 0.015, dh), (0.0, YB - 0.015, dh)]
         Slab(b, leaf, Y, 0.02, inset=(0.01, 0.005, 0.03))
@@ -1291,20 +1323,9 @@ def Run(folder):
     for o in (template, pane_src, console_src):
         o.hide_render = o is not template
 
-    turn = Matrix.Rotation(math.radians(90), 4, "Z")
-    co = np.array([(turn @ v.co)[:] for v in pbm.verts])
-    centre = Vector(((co.min(0) + co.max(0)) / 2).tolist())
-    left = Matrix.Translation(Vector(PANE_CENTRE)) @ Matrix.Scale(PANE_SCALE, 4) @ Matrix.Translation(-centre) @ turn
-    floor = min((left @ v.co).z for v in pbm.verts)
-    left = Matrix.Translation((0, 0, -floor)) @ left
-    right = Matrix.Diagonal((-1, 1, 1, 1)) @ left
+    left, right, console_m = Placements(pbm, cbm)
     tlo = np.array([min(v.co[i] for v in tbm.verts) for i in range(3)])
     thi = np.array([max(v.co[i] for v in tbm.verts) for i in range(3)])
-    cco = np.array([v.co[:] for v in cbm.verts])
-    ccentre = Vector(((cco.min(0) + cco.max(0)) / 2).tolist())
-    console_m = Matrix.Translation(Vector(CONSOLE_CENTRE)) @ Matrix.Scale(CONSOLE_SCALE, 4) @ Matrix.Translation(-ccentre)
-    floor = min((console_m @ v.co).z for v in cbm.verts)
-    console_m = Matrix.Translation((0, 0, -floor)) @ console_m
 
     pieces = {"side-left": Placed("side-left", pane_src, pbm, left), "side-right": Placed("side-right", pane_src, pbm, right, mirrored=True),
               "console": Placed("console", console_src, cbm, console_m)}
