@@ -693,6 +693,32 @@ No decimation or packaging until the user approves the modelling.
   - package 36.1 MB, all checks passed;
   - not yet seen in the game.
 
+## 19. The screens as panels of their own (the user: the side displays "look like they may be a little distorted when I look at the edges of the display and look at the orange glow")
+
+- **What it was:**
+  - the side screens are slanted: their long edges tilt in their plane, as the concept's;
+  - `Screens` fitted every screen to a level rectangle. On a side screen that rectangle took in the bezel's corners and,
+    after the 0.85 normal test of section 17, the tilted faces round the screen's border;
+  - the model's screen isn't one clean face either (ragged triangles round its border, folds across it);
+  - so the orange idle image lay stretched over bezel corners and folds, with a jagged edge (close-ups of the baked hull
+    from the seat, unlit as the game draws it).
+- **Now each screen is a panel of its own:**
+  - the seed patch (the largest dark flat patch) and the faces joined to it within 2 mm of its plane and 18 degrees of its
+    normal;
+  - the smallest rectangle round the region's outline, its long sides on the screen's straight edges, 1.5 mm larger each
+    way (`SCREEN_TUCK`), so its edges go under the bezel. A principal axis came first: it followed the ragged border, tilted
+    the left panel 3 degrees off the right's mirror, and put one corner over the bezel;
+  - one quad 1.5 mm in front of the model's screen (`SCREEN_PROUD`; the model's folds rise at most 1.1 mm), its UVs 0 to 1;
+  - the model's screen faces keep their own texture under it.
+- **Result:**
+  - the idle image's frame lines and glow follow each screen's edges, the two side screens mirror images (close-ups of
+    the baked hull from the seat, unlit);
+  - the centre screen, the live view's target, is level as before, its manifest corners the panel's;
+  - the decimated console keeps each panel (2 triangles each);
+  - the leak probe finds no escape, and the joints are as in section 18;
+  - package 36.1 MB, all checks passed;
+  - not yet seen in the game.
+
 ## 5. Not done
 
 - **Not seen from the seat in the game:** the meshes load and draw textured (section 9), but nothing is placed around the

@@ -520,13 +520,15 @@ def Pillar(b, plane, top):
 # user's choice, 2026-11-02), the others idle screens in the game's orange interface style.
 SCREENS = (("centre", (-0.1, 0.1), "Screen"), ("left", (-0.5, -0.15), "Display"), ("right", (0.15, 0.5), "Display"))
 SCREEN_PIXELS = (1024, 512)  # the idle screens' images; the design is drawn for each screen's own shape
+SCREEN_PROUD, SCREEN_TUCK = 0.0015, 0.0015  # each screen's panel: in front of the model's screen, under the bezel
 
 
 def Screens(console, folder):
-    """The console's screens on materials of their own: "Screen" for the live view, "Display" for the idle ones, each
-    with an image of its idle state. A screen is the largest dark flat patch facing the seat in its region, and every
-    face in that plane within its bounds; its UVs run 0 to 1 across its rectangle, u to the pilot's right and v up (the
-    glTF export turns v downward, as a render target's rows run). Returns each screen's rectangle in hull coordinates."""
+    """The console's screens as panels of their own: "Screen" for the live view, "Display" for the idle ones, each with
+    an image of its idle state. A screen is the largest dark flat patch facing the seat in its region and the faces joined
+    to it near its plane; its panel is the rectangle round them along the screen's own long edge, just in front of the
+    model's screen, its UVs 0 to 1 across it, u to the pilot's right and v up (the glTF export turns v downward, as a
+    render target's rows run). Returns each screen's rectangle in hull coordinates."""
     me = console.data
     atlas = next(n.image for m in me.materials for n in m.node_tree.nodes if n.type == "TEX_IMAGE" and n.image)
     w, h = atlas.size
@@ -567,17 +569,39 @@ def Screens(console, folder):
     for name, (x0, x1), material in SCREENS:
         area, centre, seed, _ = max((p for p in patches if x0 < p[1].x < x1 and p[3] < 0.22), key=lambda p: p[0])
         n = sum((g.normal * g.calc_area() for g in seed), Vector()).normalized()
-        u = Z.cross(n).normalized()
+        # the screen: the seed and the faces joined to it near its plane, then a rectangle along its own long edge (the
+        # side screens are slanted: a level one took in bezel corners)
+        region, stack = set(seed), list(seed)
+        while stack:
+            g = stack.pop()
+            for e in g.edges:
+                for k in e.link_faces:
+                    if k not in region and abs((k.calc_center_median() - centre).dot(n)) < 0.002 and k.normal.dot(n) > 0.95:
+                        region.add(k)
+                        stack.append(k)
+        h = Z.cross(n).normalized()
+        w = n.cross(h)
+        # the smallest rectangle round the region's outline (its long sides on the screen's straight edges; a principal
+        # axis followed the ragged border and tilted one side screen's panel off its bezel)
+        hull = Hull2([(round(c.co.dot(h), 6), round(c.co.dot(w), 6)) for g in region for c in g.verts])
+        best = None
+        for (ax, ay), (bx, by) in zip(hull, hull[1:] + hull[:1]):
+            d = math.hypot(bx - ax, by - ay)
+            if d < 1e-6:
+                continue
+            ex, ey = (bx - ax) / d, (by - ay) / d
+            along = [px * ex + py * ey for px, py in hull]
+            across = [-px * ey + py * ex for px, py in hull]
+            box = (max(along) - min(along)) * (max(across) - min(across))
+            if best is None or box < best[0]:
+                best = (box, ex, ey, max(along) - min(along) >= max(across) - min(across))
+        _, ex, ey, long_along = best
+        u = h * ex + w * ey if long_along else h * -ey + w * ex
         u = u if u.x > 0 else -u
         v = n.cross(u)
-        lo = [min(c.co.dot(a) for g in seed for c in g.verts) - 0.012 for a in (u, v)]
-        hi = [max(c.co.dot(a) for g in seed for c in g.verts) + 0.012 for a in (u, v)]
-        # every face in the screen's plane and rectangle, its small folds too (up to 32 degrees off: the grown console
-        # tilts them further, and left out they showed as dark lines across the screen)
-        faces = [f for f in facing if abs((f.calc_center_median() - centre).dot(n)) < 0.003 and f.normal.dot(n) > 0.85
-                 and all(lo[i] <= f.calc_center_median().dot(a) <= hi[i] for i, a in enumerate((u, v)))]
-        u0, u1 = min(c.co.dot(u) for f in faces for c in f.verts), max(c.co.dot(u) for f in faces for c in f.verts)
-        v0, v1 = min(c.co.dot(v) for f in faces for c in f.verts), max(c.co.dot(v) for f in faces for c in f.verts)
+        u0, u1 = min(c.co.dot(u) for g in region for c in g.verts), max(c.co.dot(u) for g in region for c in g.verts)
+        v0, v1 = min(c.co.dot(v) for g in region for c in g.verts), max(c.co.dot(v) for g in region for c in g.verts)
+        u0, u1, v0, v1 = u0 - SCREEN_TUCK, u1 + SCREEN_TUCK, v0 - SCREEN_TUCK, v1 + SCREEN_TUCK
         # found by a tag, not by name: in a session that already has a material of that name (hull_live.py), Blender
         # adds a suffix to the new one's
         mine = [k for k, m in enumerate(me.materials) if m.get("screen") == material]
@@ -594,14 +618,16 @@ def Screens(console, folder):
             m["screen"] = material
             me.materials.append(m)
             mine = [len(me.materials) - 1]
-        index = mine[0]
-        for f in faces:
-            f.material_index = index
-            for l in f.loops:
-                l[uv].uv = ((l.vert.co.dot(u) - u0) / (u1 - u0), (l.vert.co.dot(v) - v0) / (v1 - v0))
-        origin = n * centre.dot(n)  # the rectangle on the screen's plane
+        # the screen's own flat panel SCREEN_PROUD in front of the model's screen, its edges SCREEN_TUCK under the bezel:
+        # the model's screen is not one clean face (ragged triangles round its border, folds across it that the grown
+        # console tilts), and textured in place its edges showed jagged and its glow distorted (the user, 2026-11-02)
+        origin = n * (centre.dot(n) + SCREEN_PROUD)
         corner = [origin + u * a + v * b for a, b in ((u0, v0), (u1, v0), (u1, v1), (u0, v1))]
-        found[name] = {"material": material, "faces": len(faces), "width": round(u1 - u0, 4), "height": round(v1 - v0, 4),
+        panel = bm.faces.new([bm.verts.new(p) for p in corner])
+        panel.material_index = mine[0]
+        for loop, t in zip(panel.loops, QUAD):
+            loop[uv].uv = t
+        found[name] = {"material": material, "faces": len(region), "width": round(u1 - u0, 4), "height": round(v1 - v0, 4),
                        "corners": [[round(c, 4) for c in p] for p in corner], "normal": [round(c, 4) for c in n],
                        "u": [round(c, 4) for c in u], "v": [round(c, 4) for c in v]}
     bm.to_mesh(me)
