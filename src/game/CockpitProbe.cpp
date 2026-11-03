@@ -1029,7 +1029,8 @@ struct Part {
     float yawDeg = 0.0f;
     float metersPerUnit = 0.01f;
     // Riding, the controls' models follow game/MakoControls (research/47): the throttle's handle slides along the seat's
-    // forward by the lever's travel, the stick's grip turns about its own vertical by the steering. From the mesh's name.
+    // forward by the lever's travel, the stick's grip tilts about its pivot (the part's origin) as the hand tilts it, or turns
+    // about its own vertical by the steering with [Mako] stickTwist. From the mesh's name.
     enum class Motion { None, Lever, Stick } motion = Motion::None;
 };
 std::vector<Part> gParts;
@@ -2143,13 +2144,21 @@ std::string DoSeat(std::istringstream& words) {
     return report;
 }
 
+// The stick's tilt as a rotation in the vehicle's frame: its top to the right (roll) and away from the player (pitch down).
+engine::Basis StickTilt(mako_controls::Pose const& pose) {
+    auto const units = [](float degrees) { return static_cast<int>(std::lround(degrees * 65536.0 / 360.0)); };
+    return engine::ToBasis(engine::UnrealRotation{units(-pose.tiltForwardDeg), 0, units(pose.tiltRightDeg)});
+}
+
 // A part in the vehicle's frame: its offset from the eye along the vehicle's axes, its yaw on top of the vehicle's rotation.
 void PlacePartIn(Part const& part, engine::Basis const& frame, engine::UnrealVector const& eye, double upm) {
     mako_controls::Pose const pose = part.motion != Part::Motion::None ? mako_controls::CurrentPose() : mako_controls::Pose{};
     double const forwardM = part.offsetM.y + (part.motion == Part::Motion::Lever ? static_cast<double>(pose.lever * pose.travelM) : 0.0);
-    double const yawDeg = part.yawDeg + (part.motion == Part::Motion::Stick ? static_cast<double>(pose.steer * pose.lockDeg) : 0.0);
+    bool const stick = part.motion == Part::Motion::Stick;
+    double const yawDeg = part.yawDeg + (stick && !pose.tilt ? static_cast<double>(pose.steer * pose.lockDeg) : 0.0);
     engine::UnrealVector const offset = engine::Apply(frame, {forwardM * upm, part.offsetM.x * upm, part.offsetM.z * upm});
-    engine::UnrealRotation const turned = engine::BasisRotation(engine::Compose(frame, engine::ToBasis(engine::UnrealRotation{0, static_cast<int>(std::lround(yawDeg * 65536.0 / 360.0)), 0})));
+    engine::Basis const tilted = stick && pose.tilt ? engine::Compose(frame, StickTilt(pose)) : frame;
+    engine::UnrealRotation const turned = engine::BasisRotation(engine::Compose(tilted, engine::ToBasis(engine::UnrealRotation{0, static_cast<int>(std::lround(yawDeg * 65536.0 / 360.0)), 0})));
     if (ue3::Vector* const atField = gActorLocation.In<ue3::Vector>(part.actor)) {
         *atField = {static_cast<float>(eye.x + offset.x), static_cast<float>(eye.y + offset.y), static_cast<float>(eye.z + offset.z)};
         write_journal::Wrote("CockpitProbe.rideLocation", atField, sizeof(*atField));
@@ -3157,6 +3166,11 @@ std::string VehicleCommand(std::string const& line) {
         log::Info("mevr vehicle: {}", report);
         return report;
     }
+    if (verb == "jets") {
+        double seconds = 2.0;
+        words >> seconds;
+        return mako_controls::TestJets(seconds);
+    }
     if (verb == "fire") {
         if (auto const missing = MissingFunction({&gFireCannon, &gStopFiringCannon})) {
             return Refuse(*missing);
@@ -3626,6 +3640,16 @@ std::optional<Seat> CurrentSeat() {
         engine::UnrealVector grip = gSeatLayout.gripM[static_cast<std::size_t>(side)];
         if (side == 0) {
             grip.y += static_cast<double>(pose.lever * pose.travelM);  // the lever's grip travels with it, as its model
+        } else if (pose.tilt) {
+            // The stick's grip tilts about the stick model's pivot, as its model does.
+            for (Part const& part : gParts) {
+                if (part.motion == Part::Motion::Stick) {
+                    engine::UnrealVector const p = part.offsetM;
+                    engine::UnrealVector const turned = engine::Apply(StickTilt(pose), {grip.y - p.y, grip.x - p.x, grip.z - p.z});
+                    grip = {p.x + turned.y, p.y + turned.x, p.z + turned.z};
+                    break;
+                }
+            }
         }
         seat.grip[side] = at(grip);
     }

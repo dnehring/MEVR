@@ -6408,6 +6408,9 @@ void TestMakoControls() {
     settings.throttleTravelM = 0.15f;
     settings.leverOffset = {-0.20f, -0.55f, 0.25f};
     settings.stickOffset = {0.20f, -0.55f, 0.25f};
+    CHECK(!settings.stickTwist);  // tilting is the default since 2026-11-03; the session below is the twist's
+    mc::Settings tilting = settings;
+    settings.stickTwist = true;
     mc::Settings inverted = settings;
     inverted.stickInvert = true;
     CHECK(close(mc::SteerFromTwist(0.0f, settings), 0.0));
@@ -6422,6 +6425,18 @@ void TestMakoControls() {
     CHECK(close(mc::ThrottleFromLever(1.0f, 0.08f), 1.0));
     CHECK(close(mc::ThrottleFromLever(-1.0f, 0.08f), -1.0));
     CHECK(close(mc::ThrottleFromLever(0.54f, 0.08f), 0.5));
+    // The tilt: degrees to -1..1 past the dead zone, full at stickTiltDeg; the hand's travel over the grip's height as a tilt.
+    CHECK(close(mc::FromTilt(3.0f, tilting), 0.0));
+    CHECK(close(mc::FromTilt(20.0f, tilting), 1.0) && close(mc::FromTilt(-35.0f, tilting), -1.0));
+    CHECK(close(mc::FromTilt(12.0f, tilting), 0.5));
+    {
+        float rightDeg = 0.0f;
+        float forwardDeg = 0.0f;
+        mc::TiltFromTravel({0.10f, 0.0f, -0.10f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -1.0f}, 0.10f, rightDeg, forwardDeg);
+        CHECK(close(rightDeg, 45.0, 0.01) && close(forwardDeg, 45.0, 0.01));
+        mc::TiltFromTravel({-0.0364f, 0.3f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -1.0f}, 0.10f, rightDeg, forwardDeg);
+        CHECK(close(rightDeg, -20.0, 0.05) && close(forwardDeg, 0.0));  // up and down tilt nothing
+    }
 
     // Placement: from the head's position and flat yaw.
     XrPosef head{identity, {0.3f, 1.2f, -0.5f}};
@@ -6475,6 +6490,34 @@ void TestMakoControls() {
         return in;
     };
     XrVector3f const up{0.0f, 1.0f, 0.0f};
+    {
+        // The tilting stick: the hand's travel from the grab (the seat faces -Z, its right is +X), not its twist.
+        mc::Controls c;
+        mc::Output out = c.Step(input(0.0f, 0.0f, identity, 1.0f), tilting);
+        CHECK(out.stickGrabbed && out.stickHeld && close(out.steer, 0.0) && close(out.pitch, 0.0));
+        out = c.Step(input(0.0f, 0.0f, about(up, 60.0f), 1.0f), tilting);  // a twist alone steers nothing now
+        CHECK(close(out.steer, 0.0) && close(out.tiltRightDeg, 0.0));
+        for (int i = 0; i < 10; ++i) {
+            out = c.Step(input(0.0f, 0.0f, identity, 1.0f, {0.05f, 0.0f, 0.0f}), tilting);  // 27 degrees right: past full lock
+        }
+        CHECK(close(out.tiltRightDeg, 20.0) && close(out.steer, 1.0) && close(out.pitch, 0.0));
+        for (int i = 0; i < 5; ++i) {
+            out = c.Step(input(0.0f, 0.0f, identity, 1.0f, {-0.0182f, 0.0f, 0.0f}), tilting);  // about 10 degrees left
+        }
+        CHECK(out.steer < -0.3f && out.steer > -0.5f);
+        // Pushed away from the player (the seat's forward, -Z): the pitch is + (the nose down), steering back to centre.
+        for (int i = 0; i < 10; ++i) {
+            out = c.Step(input(0.0f, 0.0f, identity, 1.0f, {0.0f, 0.0f, -0.05f}), tilting);
+        }
+        CHECK(close(out.pitch, 1.0) && close(out.tiltForwardDeg, 20.0) && close(out.steer, 0.0));
+        out = c.Step(input(0.0f, 0.0f, identity, 1.0f, {0.0f, 0.0f, 0.05f}), tilting);
+        CHECK(close(out.pitch, -1.0));
+        // Let go: it springs back to centre.
+        for (int i = 0; i < 20; ++i) {
+            out = c.Step(input(0.0f, 0.0f, identity, 0.0f, {0.0f, 0.0f, 0.05f}), tilting);
+        }
+        CHECK(!out.stickHeld && close(out.pitch, 0.0) && close(out.tiltForwardDeg, 0.0) && close(out.steer, 0.0));
+    }
     {
         mc::Controls c;
         // Near, no grip: not driving, nothing goes to the game's physics.

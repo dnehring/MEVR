@@ -356,6 +356,11 @@ struct Mako {
     float turnRate = 20.0f;
     float aimRangeM = 200.0f;
     bool calibratedLine = true;
+    // The thrusters (the user, 2026-11-03): their fuel burns this fast while they fire (0.4: 2.5 times as long; 1: the game's),
+    // and the stick's forward and back tilt pitching the Mako while they fire (degrees a second added each second at a
+    // full tilt; 0: none).
+    float thrusterBurnScale = 0.4f;
+    float thrusterPitchDeg = 120.0f;
     vr::mako_controls::Settings controlSettings;  // the physical lever and stick (research/46)
 };
 Mako GetMako();

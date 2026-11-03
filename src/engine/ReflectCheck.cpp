@@ -634,6 +634,14 @@ void CheckFields() {
     CheckField("Engine.Actor", "bHidden", SDK_BOOL(AActor, bHidden));
     CheckField("Engine.PrimitiveComponent", "HiddenGame", SDK_BOOL(UPrimitiveComponent, HiddenGame));
     CheckField("Engine.PrimitiveComponent", "bOnlyOwnerSee", SDK_BOOL(UPrimitiveComponent, bOnlyOwnerSee));  // the seated driver
+    // The Mako's thrusters (game/MakoControls): longer, pitched by the stick.
+    CheckField("SFXGame.BioPlayerController", "bJumpJetsOn", SDK_FIELD(ABioPlayerController, bJumpJetsOn));
+    CheckField("SFXGame.BioVehicleWheeled", "CurrentJumpFuel", SDK_FIELD(ABioVehicleWheeled, CurrentJumpFuel));
+    CheckField("SFXGame.BioVehicleWheeled", "CurrentBoostFuel", SDK_FIELD(ABioVehicleWheeled, CurrentBoostFuel));
+    CheckField("SFXGame.BioVehicleWheeled", "MaxJumpFuel", SDK_FIELD(ABioVehicleWheeled, MaxJumpFuel));
+    CheckField("SFXGame.BioVehicleWheeled", "MaxBoostFuel", SDK_FIELD(ABioVehicleWheeled, MaxBoostFuel));
+    CheckField("SFXGame.BioVehicleWheeled", "bJumping", SDK_BOOL(ABioVehicleWheeled, bJumping));
+    CheckField("SFXGame.BioVehicleWheeled", "bBoosting", SDK_BOOL(ABioVehicleWheeled, bBoosting));
     CheckField("SFXGame.BioPawn", "m_oHeadMesh", SDK_FIELD(ABioPawn, m_oHeadMesh));
     CheckField("SFXGame.BioPawn", "m_oHairMesh", SDK_FIELD(ABioPawn, m_oHairMesh));
     CheckField("SFXGame.BioPawn", "m_oHeadGearMesh", SDK_FIELD(ABioPawn, m_oHeadGearMesh));
@@ -1076,6 +1084,7 @@ void CheckFunctions() {
         "Engine.Actor.SetHidden",
         "Engine.PrimitiveComponent.SetHidden",
         "Engine.PrimitiveComponent.SetLightEnvironment",
+        "Engine.PrimitiveComponent.SetRBAngularVelocity",
         "Engine.Actor.SetBase",
         "Engine.Actor.SetHardAttach",
         "Engine.PrimitiveComponent.SetActorCollision",
@@ -1234,6 +1243,8 @@ void CheckParams() {
     PARAM(AActor_execSetHidden_Parms, "Engine.Actor.SetHidden", bNewHidden);
     PARAM(UPrimitiveComponent_execSetHidden_Parms, "Engine.PrimitiveComponent.SetHidden", NewHidden);
     PARAM(UPrimitiveComponent_execSetLightEnvironment_Parms, "Engine.PrimitiveComponent.SetLightEnvironment", NewLightEnvironment);
+    PARAM(UPrimitiveComponent_execSetRBAngularVelocity_Parms, "Engine.PrimitiveComponent.SetRBAngularVelocity", NewAngVel);
+    PARAM(UPrimitiveComponent_execSetRBAngularVelocity_Parms, "Engine.PrimitiveComponent.SetRBAngularVelocity", bAddToCurrent);
     PARAM(AActor_execSetBase_Parms, "Engine.Actor.SetBase", NewBase);
     PARAM(AActor_execSetBase_Parms, "Engine.Actor.SetBase", NewFloor);
     PARAM(AActor_execSetHardAttach_Parms, "Engine.Actor.SetHardAttach", bNewHardAttach);
@@ -1348,6 +1359,7 @@ void CheckParams() {
     PARMS(AActor_execSetHidden_Parms, "Engine.Actor.SetHidden");
     PARMS(UPrimitiveComponent_execSetHidden_Parms, "Engine.PrimitiveComponent.SetHidden");
     PARMS(UPrimitiveComponent_execSetLightEnvironment_Parms, "Engine.PrimitiveComponent.SetLightEnvironment");
+    PARMS(UPrimitiveComponent_execSetRBAngularVelocity_Parms, "Engine.PrimitiveComponent.SetRBAngularVelocity");
     PARMS(AActor_execSetBase_Parms, "Engine.Actor.SetBase");
     PARMS(AActor_execSetHardAttach_Parms, "Engine.Actor.SetHardAttach");
     PARMS(AActor_execSetOwner_Parms, "Engine.Actor.SetOwner");

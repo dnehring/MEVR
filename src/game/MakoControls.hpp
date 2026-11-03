@@ -57,6 +57,9 @@ StickAim Tick(double deltaSeconds, Link const& link, ue3::Object* vehicle, ue3::
 void AdjustPad(gamepad::Options& options);
 // The mod drives: a control has been grabbed in this drive.
 bool Driving();
+// `mevr vehicle jets <seconds>`: the jump jets' button (BioPlayerController.bJumpJetsOn) held on, to fire them without the pad
+// (tests on the fake headset: the pad reaches the game only with its window in front). Game thread.
+std::string TestJets(double seconds);
 
 // Where the controls are now, for the cockpit's models (research/47): the lever -1..1 of its travel (meters from centre to
 // full), the steering -1..1 (+ right) of its full lock (degrees of twist). Zero when not in the Mako.
@@ -65,6 +68,9 @@ struct Pose {
     float travelM = 0.055f;
     float steer = 0.0f;
     float lockDeg = 42.0f;
+    bool tilt = false;          // the stick tilts (else it twists by `steer` x `lockDeg`)
+    float tiltRightDeg = 0.0f;  // its tilt: the top to the right, and away from the player
+    float tiltForwardDeg = 0.0f;
     bool leverHeld = false;  // the left hand holds the lever (Shepard's left hand goes on it)
     bool stickHeld = false;  // the right hand holds the stick
 };

@@ -7,11 +7,13 @@
 #include "core/vr/TestRequest.hpp"
 #include "engine/CallFunction.hpp"
 #include "engine/ProcessEvent.hpp"
+#include "engine/XrToUnreal.hpp"
 #include "game/BodyCalibration.hpp"
 #include "game/CockpitProbe.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/ViewAnchor.hpp"
 #include "ue3/Handles.hpp"
+#include "ue3/Params.hpp"
 #include "ue3/Runtime.hpp"
 
 #include <Windows.h>
@@ -60,6 +62,20 @@ ue3::FieldRef gRightTrackVel{"Engine.SVehicleSimTank", "RightTrackVel"};
 ue3::FieldRef gTurnInPlace{"Engine.SVehicleSimTank", "TurnInPlaceThrottle"};
 ue3::FieldRef gCurrentInputYaw{"SFXGame.BioSVehicleSimTank", "m_fCurrentInputYaw"};
 ue3::FieldRef gCameraRelative{"SFXGame.BioPlayerController", "bUseCameraRelativeVehicleSteering"};
+// The thrusters (the user, 2026-11-03): their fuel burns slower while the player drives, and the stick's forward and back tilt
+// pitches the Mako while they fire (the vehicle's rigid body, SetRBAngularVelocity added to the current).
+// BioVehicleWheeled.Tick fires the jump jets while BioPlayerController.bJumpJetsOn (X) and the booster while bBoostersOn (Y), and
+// its UpdateFuel burns CurrentJumpFuel / CurrentBoostFuel by the frame's time while they're on (MaxJumpFuel seconds of jets; the
+// ThrusterBurnRate and BoosterBurnRate fields are 0 and unused). Longer: part of each burn given back.
+ue3::FieldRef gJumpJetsOn{"SFXGame.BioPlayerController", "bJumpJetsOn"};  // `mevr vehicle jets`: held on for a test
+ue3::FieldRef gJumpFuel{"SFXGame.BioVehicleWheeled", "CurrentJumpFuel"};
+ue3::FieldRef gBoostFuel{"SFXGame.BioVehicleWheeled", "CurrentBoostFuel"};
+ue3::FieldRef gMaxJumpFuel{"SFXGame.BioVehicleWheeled", "MaxJumpFuel"};
+ue3::FieldRef gMaxBoostFuel{"SFXGame.BioVehicleWheeled", "MaxBoostFuel"};
+ue3::FieldRef gJumping{"SFXGame.BioVehicleWheeled", "bJumping"};
+ue3::FieldRef gBoosting{"SFXGame.BioVehicleWheeled", "bBoosting"};
+ue3::FieldRef gVehicleMesh{"Engine.Pawn", "Mesh"};
+ue3::FunctionRef gSetAngularVelocity{"Engine.PrimitiveComponent.SetRBAngularVelocity"};
 #endif
 
 bool gStarted = false;
@@ -86,6 +102,10 @@ bool gLoggedSettings = false;
 std::string gSimClass;
 bool gSimIsTank = false;
 
+ULONGLONG gJetsUntilMs = 0;  // `mevr vehicle jets <seconds>`: bJumpJetsOn held on until then
+ue3::Object* gJetsController = nullptr;
+bool gLoggedFuel = false;
+
 // Since the heartbeat.
 struct Counts {
     unsigned handlerCalls = 0;   // SetInputs, through CallFunction
@@ -94,6 +114,12 @@ struct Counts {
     unsigned gated = 0;          // SetInputs had zeroed them: the powertrain off, or paused
     unsigned tickWrites = 0;     // no SetInputs seen: written from the mod's tick
     int cameraUnits = 0;         // the vehicle's yaw given to the camera
+    unsigned firing = 0;         // ticks with the jump jets or the booster on
+    unsigned pitched = 0;        // ...of them with the stick pitching
+    float refunded = 0.0f;       // fuel given back (seconds of thrust)
+    float pitchDeg = 0.0f;       // the angular velocity added, summed (signed, degrees a second)
+    int pitchUnitsAtStart = 0;   // the vehicle's pitch at the first pitched tick, and at the last
+    int pitchUnitsAtEnd = 0;
 } gCounts;
 
 #if defined(MEVR_GAME_LE1)
@@ -111,6 +137,78 @@ bool Powered() {
     return gPowertrain.ReadBool(gVehicleBehavior).value_or(false) && !gPaused.ReadBool(gVehicleBehavior).value_or(true);
 }
 
+// While the jets or the booster fire, (1 - scale) of the frame's burn goes back into their fuel, so they last 1/scale as long;
+// their regeneration is the game's.
+void RefundFuel(ue3::Object* vehicle, double deltaSeconds, float scale) {
+    if (!gLoggedFuel) {
+        gLoggedFuel = true;
+        log::Info("mako controls: the thrusters: {:.1f} s of jump jets and {:.1f} s of booster at full fuel, {}",
+            gMaxJumpFuel.Read<float>(vehicle).value_or(-1.0f), gMaxBoostFuel.Read<float>(vehicle).value_or(-1.0f),
+            scale < 1.0f ? std::format("burning {:.2f} as fast: {:.1f} times as long ([Mako] thrusterBurnScale)", scale, 1.0f / scale) : std::string("as the game burns them"));
+    }
+    if (!(scale < 1.0f)) {
+        return;
+    }
+    float const back = (1.0f - std::max(scale, 0.0f)) * static_cast<float>(std::clamp(deltaSeconds, 0.0, 0.1));
+    auto const refund = [&](ue3::FieldRef& firingField, ue3::FieldRef& fuelField, ue3::FieldRef& maxField, char const* what) {
+        if (!firingField.ReadBool(vehicle).value_or(false)) {
+            return;
+        }
+        float* const fuel = fuelField.In<float>(vehicle);
+        float const max = maxField.Read<float>(vehicle).value_or(0.0f);
+        if (fuel == nullptr || !(*fuel > 0.0f)) {
+            return;  // ran out: the game's own refill decides
+        }
+        *fuel = std::min(*fuel + back, max);
+        write_journal::Wrote(what, fuel);
+        gCounts.refunded += back;
+    };
+    refund(gJumping, gJumpFuel, gMaxJumpFuel, "MakoControls.jumpFuel");
+    refund(gBoosting, gBoostFuel, gMaxBoostFuel, "MakoControls.boostFuel");
+}
+
+// `mevr vehicle jets`: the X button's bJumpJetsOn held on (the player input clears it each frame without a pad).
+void HoldJets(ue3::Object* controller) {
+    if (controller == nullptr || GetTickCount64() >= gJetsUntilMs) {
+        return;
+    }
+    if (std::uint8_t* const on = gJumpJetsOn.In<std::uint8_t>(controller)) {
+        *on = 1;
+        write_journal::Wrote("MakoControls.bJumpJetsOn", on);
+    }
+}
+
+// While the jump jets or the booster fire, the stick's forward tilt turns the vehicle about its right axis (pushed: the nose
+// down). `degreesPerSecond2` at a full tilt, added to the body's angular velocity each tick [verify the units and the sign: the
+// heartbeat says how the vehicle's pitch moved].
+void PitchOnThrusters(ue3::Object* vehicle, double deltaSeconds, float degreesPerSecond2) {
+    bool const firing = gJumping.ReadBool(vehicle).value_or(false) || gBoosting.ReadBool(vehicle).value_or(false);
+    if (!firing) {
+        return;
+    }
+    ++gCounts.firing;
+    if (!gOut.stickHeld || gOut.pitch == 0.0f || !(degreesPerSecond2 > 0.0f) || gSetAngularVelocity.Get() == nullptr) {
+        return;
+    }
+    ue3::Object* const mesh = gVehicleMesh.Read<ue3::Object*>(vehicle).value_or(nullptr);
+    auto const rotation = gRotation.Read<ue3::Rotator>(vehicle);
+    if (mesh == nullptr || !rotation) {
+        return;
+    }
+    engine::Basis const axes = engine::ToBasis(engine::UnrealRotation{rotation->pitch, rotation->yaw, rotation->roll});
+    float const add = -gOut.pitch * degreesPerSecond2 * static_cast<float>(std::clamp(deltaSeconds, 0.0, 0.1));
+    ue3::Params parms(ue3::runtime::Get(), gSetAngularVelocity.Get());
+    parms.Set("NewAngVel", ue3::Vector{static_cast<float>(axes.right.x * add), static_cast<float>(axes.right.y * add), static_cast<float>(axes.right.z * add)});
+    parms.SetBool("bAddToCurrent", true);
+    ue3::runtime::Call(mesh, gSetAngularVelocity.Get(), parms);
+    if (gCounts.pitched == 0) {
+        gCounts.pitchUnitsAtStart = SignedUnits(rotation->pitch);
+    }
+    gCounts.pitchUnitsAtEnd = SignedUnits(rotation->pitch);
+    ++gCounts.pitched;
+    gCounts.pitchDeg += add;
+}
+
 void WriteInputs(ue3::Object* vehicle, float throttle, float steering) {
     float* const t = gThrottle.In<float>(vehicle);
     float* const s = gSteering.In<float>(vehicle);
@@ -124,6 +222,9 @@ void WriteInputs(ue3::Object* vehicle, float throttle, float steering) {
 }
 
 void ApplyInputs(ue3::Object* context) {
+    if (context == gVehicle && gVehicle != nullptr) {
+        HoldJets(gJetsController);
+    }
     if (!gOut.driving || context != gVehicle || gVehicle == nullptr) {
         return;
     }
@@ -351,6 +452,9 @@ StickAim Tick(double deltaSeconds, Link const& link, ue3::Object* vehicle, ue3::
         gVehicleBehavior = gBehavior.Read<ue3::Object*>(vehicle).value_or(nullptr);
     }
     gInMako = true;
+    gJetsController = controller;
+    HoldJets(controller);
+    RefundFuel(vehicle, deltaSeconds, settings.thrusterBurnScale);
 
     bool const calibrating = body_calibration::Calibrating();
     mc::Input in;
@@ -376,6 +480,7 @@ StickAim Tick(double deltaSeconds, Link const& link, ue3::Object* vehicle, ue3::
         gLoggedDrive = false;
     }
     LogSimulation(vehicle, controller);
+    PitchOnThrusters(vehicle, deltaSeconds, settings.thrusterPitchDeg);
 
     // The physics' values for this tick. Steering: the game's is + left (PlayerDriving's ProcessDrive passes -InStrafe)
     // [verify the sign in the headset; [Mako] stickInvert flips the twist].
@@ -398,7 +503,8 @@ StickAim Tick(double deltaSeconds, Link const& link, ue3::Object* vehicle, ue3::
         gOut.aimPitchDeg = gControls.AimPitch();
         if (!gLoggedStick) {
             gLoggedStick = true;
-            log::Info("mako controls: first grab of the stick: twist steers, the trigger fires the machine gun, A the cannon, the thumbstick aims the turret");
+            log::Info("mako controls: first grab of the stick: {}, the trigger fires the machine gun, A the cannon, the thumbstick aims the turret",
+                gSettings.stickTwist ? "twist steers" : "tilting it left and right steers, forward and back pitches the Mako while its thrusters fire");
         }
     }
     if (gOut.driving && !gLoggedDrive) {
@@ -465,13 +571,26 @@ bool Driving() {
     return gInMako && gOut.driving;
 }
 
+std::string TestJets(double seconds) {
+    if (!gInMako || gVehicle == nullptr) {
+        return "not driving the Mako";
+    }
+    gJetsUntilMs = GetTickCount64() + static_cast<ULONGLONG>(std::clamp(seconds, 0.0, 30.0) * 1000.0);
+    log::Info("mako controls: test: the jump jets' button (bJumpJetsOn) held for {:.1f} s", seconds);
+    return std::format("bJumpJetsOn held for {:.1f} s (jump fuel {:.2f} of {:.2f}): the heartbeat's `thrusters on` line says what happened", seconds,
+        gJumpFuel.Read<float>(gVehicle).value_or(-1.0f), gMaxJumpFuel.Read<float>(gVehicle).value_or(-1.0f));
+}
+
 Pose CurrentPose() {
     Pose pose;
     pose.travelM = gSettings.throttleTravelM;
     pose.lockDeg = gSettings.stickTwistDeg;
+    pose.tilt = !gSettings.stickTwist;
     if (gInMako) {
         pose.lever = gOut.lever;
         pose.steer = gOut.steer;
+        pose.tiltRightDeg = gOut.tiltRightDeg;
+        pose.tiltForwardDeg = gOut.tiltForwardDeg;
         pose.leverHeld = gOut.leverHeld;
         pose.stickHeld = gOut.stickHeld;
     }
@@ -514,6 +633,11 @@ void LogStats() {
         gOutputSteering.Read<float>(gVehicle).value_or(0.0f), gOutputBrake.Read<float>(gVehicle).value_or(0.0f), gForwardVel.Read<float>(gVehicle).value_or(0.0f),
         sim != nullptr ? gActualSteering.Read<float>(sim).value_or(0.0f) : 0.0f, tank, gCounts.handlerCalls, gCounts.handlerEvents, gCounts.written, gCounts.gated,
         gCounts.tickWrites, static_cast<double>(gCounts.cameraUnits) * 360.0 / 65536.0);
+    if (gCounts.firing > 0) {
+        log::Info("    mako controls: thrusters on {} ticks, {:.2f} s of fuel given back; the stick pitched {} of them ({:+.1f} deg/s added; the vehicle's pitch "
+                  "{:+.1f} -> {:+.1f} deg) [verify]",
+            gCounts.firing, gCounts.refunded, gCounts.pitched, gCounts.pitchDeg, gCounts.pitchUnitsAtStart * 360.0 / 65536.0, gCounts.pitchUnitsAtEnd * 360.0 / 65536.0);
+    }
     gCounts = Counts{};
 #endif
 }
@@ -523,6 +647,9 @@ void Shutdown(bool exiting, void (*publish)(vr::mako_controls::View const* view)
     if (!exiting && gVehicle != nullptr && gOut.driving && ue3::runtime::IsAlive(gVehicle)) {
         WriteInputs(gVehicle, 0.0f, 0.0f);
     }
+    gJetsUntilMs = 0;
+    gJetsController = nullptr;
+    gLoggedFuel = false;
     if (publish != nullptr) {
         publish(nullptr);
     }

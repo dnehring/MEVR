@@ -10,7 +10,8 @@ Mako control is grabbed).
 --press-b: the sticks rest and the right controller's B is held from 1 s to 1.4 s instead (the game's TryExitVehicle).
 --controls: the cockpit's own controls instead of the stick (research/46; needs no pad input, so it drives with the game window
 unfocused too): both hands go to the lever and the stick (their places for a head entering at this recording's seat), squeeze at
-1 s, the lever is pushed full forward by 2.5 s, the stick twisted 35 degrees one way from 4 s, the other from 8 s, back at 12 s.
+1 s, the lever is pushed full forward by 2.5 s, the stick tilted 3 cm right from 4 s, left from 8 s, pushed 5 cm forward from 12 s
+(a full pitch for the thrusters: `mevr vehicle rise` fires them), back at 15 s; --twist: twisted 35 degrees instead (stage 1).
 Play it once (no -Loop): a loop lets go of both at its end. --eye-height: the seated head's height in tracking space (default
 1.2; the controls are placed from the head when the Mako is entered, so use the head's height then: 0 on the fake headset).
 --look: the head turned YAW degrees (+ right) and PITCH (+ up), e.g. to watch the controls' models (the hands don't turn).
@@ -54,6 +55,7 @@ def head_orientation(yaw_deg, pitch_deg):
 def main():
     press_b = "--press-b" in sys.argv
     controls = "--controls" in sys.argv
+    twist_stick = "--twist" in sys.argv
     eye_h = 1.20
     if "--eye-height" in sys.argv:
         eye_h = float(sys.argv[sys.argv.index("--eye-height") + 1])
@@ -89,8 +91,14 @@ def main():
         if controls:
             forward = THROTTLE_TRAVEL * min(max((t - 1.5) / 1.0, 0.0), 1.0)
             left = (*q, LEVER[0], eye_h + LEVER[1], LEVER[2] - forward)
-            angle = TWIST_DEG if 4.0 <= t < 8.0 else -TWIST_DEG if 8.0 <= t < 12.0 else 0.0
-            right = (*twist(angle), STICK[0], eye_h + STICK[1], STICK[2])
+            if twist_stick:
+                angle = TWIST_DEG if 4.0 <= t < 8.0 else -TWIST_DEG if 8.0 <= t < 12.0 else 0.0
+                right = (*twist(angle), STICK[0], eye_h + STICK[1], STICK[2])
+            else:
+                # Tilted like a flight stick: 3 cm right (about 17 degrees), then left, then pushed forward 5 cm (a full pitch).
+                side = 0.03 if 4.0 <= t < 8.0 else -0.03 if 8.0 <= t < 12.0 else 0.0
+                push = 0.05 if 12.0 <= t < 15.0 else 0.0
+                right = (*q, STICK[0] + side, eye_h + STICK[1], STICK[2] - push)
             left_sq = right_sq = 1.0 if t >= 1.0 else 0.0
         else:
             # Hands on the knees, pointing ahead (OpenXR: -Z forward), away from the lever and the stick's grab points.

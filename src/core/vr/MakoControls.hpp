@@ -9,8 +9,9 @@
 
 // Physical Mako controls, stage 1 (research/46; LE1, game mode 1, the current chase camera). Two controls fixed in tracking
 // space relative to the seat, driven by real hand movement. The left hand grips a throttle lever and pushes it forward or
-// pulls it back (it stays where it's left); the right hand grips a drive stick and twists it about the stick's own axis
-// (it springs back to centre). Movement counts from where the hand grabbed, so a grab never jerks the Mako and no exact
+// pulls it back (it stays where it's left); the right hand grips a drive stick and tilts it like a flight stick (it springs
+// back to centre): side to side steers, forward and back pitches the Mako while its thrusters fire (game/MakoControls; the user,
+// 2026-11-03). `stickTwist` keeps the first design, a twist about the stick's own axis. Movement counts from where the hand grabbed, so a grab never jerks the Mako and no exact
 // grab spot is needed. Pure parts here, unit-tested (tests/Main.cpp TestMakoControls); game/MakoControls feeds the
 // physics and the pad; the host (plugin/HalcyonOverlays) draws the two from View (HostServices v23, setMakoControls).
 namespace mevr::vr::mako_controls {
@@ -32,8 +33,11 @@ inline constexpr float kAimPitchMaxDeg = 60.0f;
 struct Settings {
     bool controls = true;          // 0: exactly the game's own controls, nothing here runs
     float grabRadiusM = 0.15f;     // a hand this close to a control can grab it
+    bool stickTwist = false;       // 1: steer by twisting the stick about its axis (stage 1); 0: by tilting it
+    float stickTiltDeg = 20.0f;    // tilt for full lock (and for a full pitch)
+    float stickHeightM = 0.10f;    // the grip's height over the stick's pivot: the hand's travel from the grab, as a tilt
     float stickTwistDeg = 42.0f;   // twist for full lock
-    float stickDeadZoneDeg = 4.0f; // twist that steers nothing
+    float stickDeadZoneDeg = 4.0f; // twist or tilt that steers nothing
     bool stickInvert = false;      // twist the other way
     float throttleTravelM = 0.055f; // hand travel from centre to full, along the seat's forward (the cockpit model's slot)
     float throttleDetent = 0.08f;  // the lever's neutral notch, as a fraction of its travel
@@ -89,6 +93,9 @@ struct Output {
     float lever = 0.0f;      // where the lever physically is, -1..1 (before the detent)
     float steer = 0.0f;      // -1 (full left) .. 1 (full right), + turns to the player's right
     float twistDeg = 0.0f;   // the stick's twist from the grab, unwrapped (+: the right-hand rule about the stick's axis)
+    float tiltRightDeg = 0.0f;    // the stick's tilt (tilt mode): its top to the player's right
+    float tiltForwardDeg = 0.0f;  // ... and away from the player
+    float pitch = 0.0f;           // -1..1 from the forward tilt (+: pushed, the nose down), past the dead zone; 0 in twist mode
     bool driving = false;    // a control has been grabbed in this drive: the mod's values go to the physics
     bool placed = false;     // the controls have a place
     bool leverHeld = false;
@@ -125,6 +132,11 @@ float TwistDegrees(XrQuaternionf const& grab, XrQuaternionf const& now, XrVector
 XrVector3f StickAxis(XrQuaternionf const& grip);
 // -1..1 (+ the player's right) from an unwrapped twist.
 float SteerFromTwist(float twistDeg, Settings const& settings);
+// -1..1 (+ the player's right, or pushed away) from a tilt in degrees: nothing inside the dead zone, full at stickTiltDeg.
+float FromTilt(float tiltDeg, Settings const& settings);
+// The stick's tilt (degrees: to the right, forward) for the hand moved `travel` from where it grabbed, the grip `heightM` over the
+// pivot: atan(travel / height) along the seat's right and forward.
+void TiltFromTravel(XrVector3f const& travel, XrVector3f const& right, XrVector3f const& forward, float heightM, float& rightDeg, float& forwardDeg);
 // -1..1 from the lever's position: nothing inside the detent, full at the ends.
 float ThrottleFromLever(float lever, float detent);
 // The turret's yaw and pitch (degrees) moved by the thumbstick for `seconds`: pitch clamped, yaw wrapped to (-180, 180].
@@ -153,6 +165,10 @@ private:
     float twistRaw_ = 0.0f;
     XrQuaternionf grabOrientation_{0.0f, 0.0f, 0.0f, 1.0f};
     XrVector3f axis_{0.0f, 1.0f, 0.0f};
+    XrVector3f stickGrab_{};
+    float tiltRight_ = 0.0f;
+    float tiltForward_ = 0.0f;
+    float pitch_ = 0.0f;
     XrVector3f leverLast_{};
     bool leverHeld_ = false;
     bool stickHeld_ = false;

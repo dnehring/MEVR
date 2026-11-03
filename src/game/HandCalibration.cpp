@@ -509,16 +509,22 @@ constexpr char const* kMakoBlock =
     "calibratedLine = 1\n"
     "; Physical controls (research/46). controls: 1 = a throttle lever on the seat's left armrest (grip it, push forward or\n"
     "; pull back; it stays where you leave it; X is jump and upright, Y is boost while held) and a drive stick on the right one\n"
-    "; (grip it, TWIST it to steer; it springs back; the trigger fires the machine gun, A the cannon, the thumbstick aims the\n"
+    "; (grip it, TILT it left and right to steer, forward and back to pitch the Mako while its thrusters fire; it springs back;\n"
+    "; stickTwist = 1: twist it to steer instead; the trigger fires the machine gun, A the cannon, the thumbstick aims the\n"
     "; turret while held; let go and your hand aims it). Until you grab one the game's own controls work as always; 0 = they\n"
-    "; stay. grabRadiusM: how near a hand must be. stickTwistDeg: the twist for full lock; stickDeadZoneDeg: the twist that\n"
+    "; stay. grabRadiusM: how near a hand must be. stickTiltDeg: the tilt for full lock; stickHeightM: the grip's height over\n"
+    "; the stick's pivot. stickTwistDeg: the twist for full lock (stickTwist = 1); stickDeadZoneDeg: the tilt or twist that\n"
     "; steers nothing; stickInvert: 1 = twist the other way. throttleTravelM: hand travel from neutral to full;\n"
     "; throttleDetent: the neutral notch, a fraction of the travel. leverOffset, stickOffset: where they sit from your head\n"
     "; when you enter the Mako or recenter (meters: right, up, forward). stickAimRate: degrees a second at a full thumbstick.\n"
     "; rumble: the engine's vibration at full speed (0 = none). cameraFollow: 1 = while you drive with them the chase camera\n"
-    "; keeps its angle to the Mako.\n"
+    "; keeps its angle to the Mako. thrusterBurnScale: the jump jets' and booster's fuel burns this fast (0.4 = they last 2.5\n"
+    "; times as long; 1 = the game's). thrusterPitchDeg: how hard the stick pitches the Mako while they fire (0 = not).\n"
     "controls = 1\n"
     "grabRadiusM = 0.15\n"
+    "stickTwist = 0\n"
+    "stickTiltDeg = 20\n"
+    "stickHeightM = 0.10\n"
     "stickTwistDeg = 42\n"
     "stickDeadZoneDeg = 4\n"
     "stickInvert = 0\n"
@@ -528,7 +534,9 @@ constexpr char const* kMakoBlock =
     "stickOffset = 0.375 -0.415 0.314\n"
     "stickAimRate = 90\n"
     "rumble = 0.12\n"
-    "cameraFollow = 1\n";
+    "cameraFollow = 1\n"
+    "thrusterBurnScale = 0.4\n"
+    "thrusterPitchDeg = 120\n";
 
 // Appended to a settings file that has no [Cockpit] yet (and part of a new file).
 constexpr char const* kCockpitBlock =
@@ -1284,6 +1292,21 @@ Mako ReadMako(Ini const& ini) {
     }
     if (Number(ini, "Mako", "grabRadiusM", value)) {
         c.grabRadiusM = static_cast<float>(std::clamp(value, 0.02, 1.0));
+    }
+    if (Number(ini, "Mako", "stickTwist", value)) {
+        c.stickTwist = value != 0.0;
+    }
+    if (Number(ini, "Mako", "stickTiltDeg", value)) {
+        c.stickTiltDeg = static_cast<float>(std::clamp(value, 5.0, 60.0));
+    }
+    if (Number(ini, "Mako", "stickHeightM", value)) {
+        c.stickHeightM = static_cast<float>(std::clamp(value, 0.03, 0.5));
+    }
+    if (Number(ini, "Mako", "thrusterBurnScale", value)) {
+        m.thrusterBurnScale = static_cast<float>(std::clamp(value, 0.05, 1.0));
+    }
+    if (Number(ini, "Mako", "thrusterPitchDeg", value)) {
+        m.thrusterPitchDeg = static_cast<float>(std::clamp(value, 0.0, 720.0));
     }
     if (Number(ini, "Mako", "stickTwistDeg", value)) {
         c.stickTwistDeg = static_cast<float>(std::clamp(value, 5.0, 170.0));

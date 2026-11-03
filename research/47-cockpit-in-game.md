@@ -919,6 +919,33 @@ in the cabin in any of them: the windshield, the side panes and the screens show
 than the Mako (research/48), so a nose into a wall or a steep bank can still bring the ground through the floor or the nose [verify in the
 headset].
 
+## The stick tilts, and pitches the Mako on its thrusters (2026-11-03 12:10-12:20, fake headset, `BIOA_UNC52`; mod only)
+
+The user: the stick should move along axes, not twist; left and right steer, and pulled or pushed while the thrusters fire it should pitch
+the vessel; and the thrusters should last longer.
+
+- **The tilt** (`core/vr/MakoControls`, unit-tested): the stick's tilt is the right hand's travel from where it grabbed, along the seat's
+  right and forward, as an angle over the grip's height above the pivot (`[Mako] stickHeightM` 0.10 m): full lock at `stickTiltDeg` (20),
+  the dead zone `stickDeadZoneDeg`; it stops at full tilt and springs back on release. The forward tilt is `Output::pitch` (+ pushed).
+  `stickTwist = 1` keeps stage 1's twist. The stick's model tilts about its pivot the same way, and Shepard's right hand follows its grip.
+- **What fires the thrusters** (BioVehicleWheeled's script, read with Legendary Explorer's library; prose only): its Tick fires the jump
+  jets while `BioPlayerController.bJumpJetsOn` (X) is on and `CanJump` (not out of fuel, the vehicle's functions on, not cinematic, not
+  healing), pushing along the vehicle's up by `ThrusterForce`; the booster while `bBoostersOn` (Y) and `CanBoost`, with the boost torque
+  curve and Throttle 1. `UpdateFuel` burns `CurrentJumpFuel` / `CurrentBoostFuel` by the frame's time while they fire and refills them at
+  `JumpFuelRegenRate` / `BoostFuelRegenRate` otherwise. `ThrusterBurnRate` and `BoosterBurnRate` are 0 and unused (a first try that scaled
+  them changed nothing). `Vehicle.Rise` doesn't fire them.
+- **Longer** (`game/MakoControls`): while `bJumping` or `bBoosting`, each tick gives back (1 - `thrusterBurnScale`) of the frame's burn
+  (journalled `MakoControls.jumpFuel` / `boostFuel`): 0.4 makes them last 2.5 times as long; the refill is the game's.
+- **The pitch**: while they fire and the stick is held tilted, `PrimitiveComponent.SetRBAngularVelocity(right axis x -pitch x
+  thrusterPitchDeg x dt, bAddToCurrent)` on the vehicle's mesh (`thrusterPitchDeg` 120 at a full tilt).
+
+Measured (a replay that grabs both controls and tilts the stick 3 cm right, then left, then pushes it 5 cm forward; `mevr vehicle jets 3`,
+new, holds `bJumpJetsOn` for a test without the pad): steer +0.79 at 3 cm right (the tracks 2926 and 1878: a right turn), -0.79 at 3 cm
+left. LE1's Mako has **0.70 s of jump jets** at full fuel; with the refund they fired for 1.75 s (244 + 366 ticks, 1.05 + 1.66 s of fuel
+given back). Pushed forward through the burn, the Mako pitched from -0.3 to -61.4 degrees (the nose down: the sign as meant; the units
+look like degrees a second, damped by the body [verify in the headset]). The eye shows the ground across the upper windshield and the
+chase screen the Mako tipping forward.
+
 ## The cockpit's cost at a heavy Mako spot (2026-11-03 12:04-12:06, fake headset, `BIOA_UNC52`)
 
 `BIOA_UNC52` is the heaviest uncharted world by its packages (225 MB against `BIOA_UNC20`'s 89 MB): rocky terrain, flying objects with

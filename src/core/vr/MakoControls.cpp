@@ -180,6 +180,21 @@ float SteerFromTwist(float twistDeg, Settings const& settings) {
     return settings.stickInvert ? -steer : steer;
 }
 
+float FromTilt(float tiltDeg, Settings const& settings) {
+    float const limit = std::max(settings.stickTiltDeg, 1.0f);
+    float const dead = std::clamp(settings.stickDeadZoneDeg, 0.0f, limit - 0.5f);
+    float const size = std::abs(tiltDeg);
+    float const amount = size <= dead ? 0.0f : std::min((size - dead) / (limit - dead), 1.0f);
+    float const value = tiltDeg > 0.0f ? amount : -amount;
+    return settings.stickInvert ? -value : value;
+}
+
+void TiltFromTravel(XrVector3f const& travel, XrVector3f const& right, XrVector3f const& forward, float heightM, float& rightDeg, float& forwardDeg) {
+    float const height = std::max(heightM, 0.02f);
+    rightDeg = std::atan2(Dot(travel, right), height) * kDegrees;
+    forwardDeg = std::atan2(Dot(travel, forward), height) * kDegrees;
+}
+
 float ThrottleFromLever(float lever, float detent) {
     float const notch = std::clamp(detent, 0.0f, 0.9f);
     float const size = std::abs(lever);
@@ -217,6 +232,7 @@ void Controls::StopAll(Stop stop, Output& out) {
     lever_ = 0.0f;
     steer_ = 0.0f;
     twist_ = 0.0f;
+    tiltRight_ = tiltForward_ = pitch_ = 0.0f;
     leverHeld_ = false;
     stickHeld_ = false;
     leverInDetent_ = true;
@@ -303,6 +319,7 @@ Output Controls::Step(Input const& in, Settings const& settings) {
                 stickHeld_ = true;
                 grabOrientation_ = in.right.grip.orientation;
                 axis_ = StickAxis(grabOrientation_);
+                stickGrab_ = in.right.grip.position;
                 twist_ = 0.0f;
                 twistRaw_ = 0.0f;
                 driving_ = true;
@@ -310,13 +327,30 @@ Output Controls::Step(Input const& in, Settings const& settings) {
                 Add(out, 1, 0.03f, 0.35f);
             }
             if (stickHeld_ && rightTracked) {
-                // Unwrapped: past half a turn the raw angle jumps by a whole turn, the steering must not.
-                float const raw = TwistDegrees(grabOrientation_, in.right.grip.orientation, axis_);
-                twist_ += std::remainder(raw - twistRaw_, 360.0f);
-                twistRaw_ = raw;
+                if (settings.stickTwist) {
+                    // Unwrapped: past half a turn the raw angle jumps by a whole turn, the steering must not.
+                    float const raw = TwistDegrees(grabOrientation_, in.right.grip.orientation, axis_);
+                    twist_ += std::remainder(raw - twistRaw_, 360.0f);
+                    twistRaw_ = raw;
+                } else {
+                    // Held past full tilt, the stick stops there (the hand's further travel tilts nothing).
+                    float rightDeg = 0.0f;
+                    float forwardDeg = 0.0f;
+                    TiltFromTravel(Sub(in.right.grip.position, stickGrab_), seat_.right, seat_.forward, settings.stickHeightM, rightDeg, forwardDeg);
+                    float const limit = std::max(settings.stickTiltDeg, 1.0f);
+                    tiltRight_ = std::clamp(rightDeg, -limit, limit);
+                    tiltForward_ = std::clamp(forwardDeg, -limit, limit);
+                }
             }
-            float const target = stickHeld_ ? SteerFromTwist(twist_, settings) : 0.0f;
+            if (!stickHeld_ && !settings.stickTwist) {
+                // Springing back to centre at the steering's return rate.
+                float const back = kSteerRateReturn * std::max(settings.stickTiltDeg, 1.0f) * dt;
+                tiltRight_ = Approach(tiltRight_, 0.0f, back);
+                tiltForward_ = Approach(tiltForward_, 0.0f, back);
+            }
+            float const target = !stickHeld_ ? 0.0f : settings.stickTwist ? SteerFromTwist(twist_, settings) : FromTilt(tiltRight_, settings);
             steer_ = Approach(steer_, target, (stickHeld_ ? kSteerRateHeld : kSteerRateReturn) * dt);
+            pitch_ = settings.stickTwist ? 0.0f : FromTilt(tiltForward_, settings);
             if (!stickHeld_) {
                 twist_ = 0.0f;
             }
@@ -345,6 +379,9 @@ Output Controls::Step(Input const& in, Settings const& settings) {
     out.throttle = ThrottleFromLever(lever_, settings.throttleDetent);
     out.steer = steer_;
     out.twistDeg = twist_;
+    out.tiltRightDeg = tiltRight_;
+    out.tiltForwardDeg = tiltForward_;
+    out.pitch = pitch_;
     out.driving = driving_;
     out.placed = placed_;
     out.leverHeld = leverHeld_;
@@ -467,10 +504,13 @@ std::uint32_t StickKey(float steer, bool inReach, bool held) {
 }
 
 std::string Describe(Settings const& s) {
-    return std::format("physical controls {}: grab within {:.2f} m, full lock at {:.0f} degrees of twist (dead zone {:.0f}{}), full throttle at "
+    std::string const stick = s.stickTwist ? std::format("{:.0f} degrees of twist", s.stickTwistDeg)
+                                           : std::format("{:.0f} degrees of tilt (the grip {:.2f} m over its pivot; forward and back pitch "
+                                                         "the Mako on its thrusters)", s.stickTiltDeg, s.stickHeightM);
+    return std::format("physical controls {}: grab within {:.2f} m, full lock at {} (dead zone {:.0f}{}), full throttle at "
                        "{:.2f} m (detent {:.2f}), lever at ({:.2f}, {:.2f}, {:.2f}), stick at ({:.2f}, {:.2f}, {:.2f}) m (right, up, forward "
                        "from the head), the thumbstick turns the turret {:.0f} deg/s, rumble {:.2f}, the camera {} the vehicle",
-        s.controls ? "on" : "off", s.grabRadiusM, s.stickTwistDeg, s.stickDeadZoneDeg, s.stickInvert ? ", inverted" : "", s.throttleTravelM,
+        s.controls ? "on" : "off", s.grabRadiusM, stick, s.stickDeadZoneDeg, s.stickInvert ? ", inverted" : "", s.throttleTravelM,
         s.throttleDetent, s.leverOffset.x, s.leverOffset.y, s.leverOffset.z, s.stickOffset.x, s.stickOffset.y, s.stickOffset.z, s.stickAimRate,
         s.rumble, s.cameraFollow ? "follows" : "doesn't follow");
 }
