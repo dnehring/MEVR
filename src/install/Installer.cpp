@@ -219,11 +219,16 @@ void AdoptOurFiles(Transaction& tx, Payload const& payload, fs::path const& setu
     if (!setupExe.empty()) {
         targets.push_back(paths::kSetupExe);
     }
+    // The cockpit (research/47): its script's folder, the script, the package and its TOC entry, all only ever put there by us.
+    tx.RecordDir(std::string(paths::kAsi) + "/cockpit");
+    targets.push_back(paths::kCockpitScript);
+    targets.push_back(paths::kCockpitPackage);
     for (std::string const& rel : targets) {
         if (fs::exists(layout.Full(rel), ec) && tx.Data().Find(rel) == nullptr) {
             tx.AdoptAdded(rel);
         }
     }
+    tx.AdoptTocEntry(paths::kToc, paths::kCockpitTocName);
 }
 
 bool Installed(Transaction const& tx) {

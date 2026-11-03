@@ -638,6 +638,29 @@ bool Transaction::AdoptAdded(std::string_view relative) {
     return Save();
 }
 
+bool Transaction::AdoptTocEntry(std::string_view relative, std::string_view name) {
+    auto const bytes = ReadFile(layout_.Full(relative));
+    auto const file = bytes ? toc::Parse(*bytes) : std::nullopt;
+    std::optional<std::uint32_t> const size = file ? toc::Find(*file, name) : std::nullopt;
+    if (!size) {
+        return true;
+    }
+    FileEntry* entry = manifest_.Find(relative);
+    if (entry == nullptr) {
+        FileEntry fresh;
+        fresh.path = std::string(relative);
+        fresh.action = "toc";
+        manifest_.files.push_back(fresh);
+        entry = &manifest_.files.back();
+    }
+    if (std::any_of(entry->toc.begin(), entry->toc.end(), [&](TocEdit const& t) { return t.name == name; })) {
+        return true;
+    }
+    entry->toc.push_back(TocEdit{std::string(name), std::nullopt, *size});
+    Note("recorded " + std::string(name) + " in " + std::string(relative) + " as ours");
+    return Save();
+}
+
 void Transaction::Forget(std::string_view relative) {
     std::erase_if(manifest_.files, [&](FileEntry const& f) { return _stricmp(f.path.c_str(), std::string(relative).c_str()) == 0; });
 }

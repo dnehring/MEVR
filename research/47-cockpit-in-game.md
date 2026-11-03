@@ -1090,3 +1090,12 @@ Also: a held handle's index rests curled at least half (the trigger at rest left
 orientation, the head's yaw taken out): a controller pointing straight ahead is no real hold, and the trim made it look wrong in ways
 the headset never shows. Left for the headset: how the hands look with the player's own hold, and whether the near-straight arms want
 the controls a little closer.
+
+## Players get it, again (2026-11-03 16:10-16:20; item 11)
+
+`tools/package-release.ps1 -Zip` from current main: the monolithic ASI carries today's cockpit code (the model seat, the hands on the
+handles, the jets), the release's `cockpit.txt` has the `seat ... axes` line, `dist/MEVR-0.1.0.zip` 35.3 MB. `tools/setup/test-fake-game.ps1`
+with the release's own setup (`-Build build-mono`) and payload: 65 checks pass. One had failed first: **an install after a lost install
+record, then an uninstall, left the cockpit behind** (its script, its package and its TOC entry: the second install found them without a
+record and took them for the player's, to put back). `AdoptOurFiles` now adopts the cockpit's folder, script and package with the rest of
+the ASI folder, and `Transaction::AdoptTocEntry` records our package's TOC entry as added; the folder is byte for byte the game's again.

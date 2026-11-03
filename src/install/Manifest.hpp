@@ -156,6 +156,9 @@ public:
     // `from` (bink2w64_original.dll), or `relative` as a file we added (with its current hash).
     bool AdoptRenamed(std::string_view from, std::string_view to);
     bool AdoptAdded(std::string_view relative);
+    // After a lost record: `name`'s entry already in the TOC at `relative` recorded as one we added (an uninstall removes it).
+    // Nothing when it isn't there or is already on record.
+    bool AdoptTocEntry(std::string_view relative, std::string_view name);
     // Forgets an entry (left alone on uninstall).
     void Forget(std::string_view relative);
 
