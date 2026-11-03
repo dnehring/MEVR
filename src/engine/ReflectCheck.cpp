@@ -566,6 +566,7 @@ void CheckClasses() {
     CheckClass<USFXSaveGame>("SFXGame.SFXSaveGame");
     CheckClass<USeqEvent_RemoteEvent>("Engine.SeqEvent_RemoteEvent");  // `mevr vehicle event`
     CheckClass<UBioSFHandler_PartySelection>("SFXGame.BioSFHandler_PartySelection");  // `mevr vehicle party`
+    CheckClass<USFXGameModeVehicle>("SFXGame.SFXGameModeVehicle");  // `mevr vehicle exit`
     CheckClass<UEngine>("Engine.Engine");
     CheckClass<UGameEngine>("Engine.GameEngine");
     CheckClass<UPlayer>("Engine.Player");
@@ -628,6 +629,12 @@ void CheckFields() {
     CheckField("Engine.Actor", "WorldInfo", SDK_FIELD(AActor, WorldInfo));
     CheckField("Engine.Actor", "Owner", SDK_FIELD(AActor, Owner));
     CheckField("Engine.Actor", "AllComponents", SDK_FIELD(AActor, AllComponents));  // the cockpit probe's `ride`
+    CheckField("Engine.Actor", "bDeleteMe", SDK_BOOL(AActor, bDeleteMe));
+    CheckField("Engine.Vehicle", "Driver", SDK_FIELD(AVehicle, Driver));  // `mevr vehicle why`
+    CheckField("Engine.Pawn", "Health", SDK_FIELD(APawn, Health));
+    CheckField("Engine.WorldInfo", "bPlayersOnly", SDK_BOOL(AWorldInfo, bPlayersOnly));
+    CheckField("Engine.WorldInfo", "bPlayersOnlyPending", SDK_BOOL(AWorldInfo, bPlayersOnlyPending));
+    CheckField("SFXGame.BioWorldInfo", "m_bPausedByFocusLoss", SDK_BOOL(ABioWorldInfo, m_bPausedByFocusLoss));  // game/FocusPause
     CheckField("Engine.PrimitiveComponent", "bOwnerNoSee", SDK_BOOL(UPrimitiveComponent, bOwnerNoSee));
     CheckField("Engine.Actor", "Instigator", SDK_FIELD(AActor, Instigator));
     CheckField("Engine.Actor", "Tag", SDK_FIELD(AActor, Tag));
@@ -975,6 +982,7 @@ void CheckFunctions() {
         "Engine.Pawn.GetWeaponStartTraceLocation",
         "SFXGame.BioPlayerController.GetAdjustedAimFor",
         "Engine.Actor.Trace",
+        "Engine.Actor.FastTrace",
         "Engine.SkeletalMeshComponent.HideBone",  // game/scope_parts (research/21 section 14)
         "Engine.SkeletalMeshComponent.UnHideBone",
         "Engine.SkeletalMeshComponent.IsBoneHidden",
@@ -1080,6 +1088,10 @@ void CheckFunctions() {
         "SFXGame.SFXSaveGame.FindClosestDrivableVehicle",
         "Engine.SequenceEvent.CheckActivate",
         "SFXGame.BioSFHandler_PartySelection.FinalizeParty",
+        "SFXGame.SFXGameModeVehicle.TryExitVehicle",
+        "SFXGame.BioPlayerController.BioExitVehicle",
+        "SFXGame.BioVehicleBase.PlaceExitingDriver",
+        "SFXGame.BioWorldInfo.Tick",
         "Engine.PlayerController.ConsoleCommand",
         "Engine.SkeletalMeshComponent.GetBoneNames",
         "Engine.SkeletalMeshComponent.GetBoneLocation",
@@ -1123,6 +1135,9 @@ void CheckParams() {
     PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", TraceStart);
     PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", bTraceActors);
     PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", ReturnValue);
+    PARAM(AActor_execFastTrace_Parms, "Engine.Actor.FastTrace", TraceEnd);  // `mevr vehicle trace`
+    PARAM(AActor_execFastTrace_Parms, "Engine.Actor.FastTrace", TraceStart);
+    PARAM(AActor_execFastTrace_Parms, "Engine.Actor.FastTrace", ReturnValue);
     PARAM(USkeletalMeshComponent_execHideBone_Parms, "Engine.SkeletalMeshComponent.HideBone", BoneIndex);
     PARAM(USkeletalMeshComponent_execHideBone_Parms, "Engine.SkeletalMeshComponent.HideBone", PhysBodyOption);
     PARAM(USkeletalMeshComponent_execUnHideBone_Parms, "Engine.SkeletalMeshComponent.UnHideBone", BoneIndex);
@@ -1241,6 +1256,10 @@ void CheckParams() {
     PARAM(USequenceEvent_execCheckActivate_Parms, "Engine.SequenceEvent.CheckActivate", InOriginator);
     PARAM(USequenceEvent_execCheckActivate_Parms, "Engine.SequenceEvent.CheckActivate", InInstigator);
     PARAM(USequenceEvent_execCheckActivate_Parms, "Engine.SequenceEvent.CheckActivate", ReturnValue);
+    PARAM(ABioVehicleBase_execPlaceExitingDriver_Parms, "SFXGame.BioVehicleBase.PlaceExitingDriver", ExitingDriver);
+    PARAM(ABioVehicleBase_execPlaceExitingDriver_Parms, "SFXGame.BioVehicleBase.PlaceExitingDriver", ReturnValue);
+    PARAM(ABioPlayerController_execBioExitVehicle_Parms, "SFXGame.BioPlayerController.BioExitVehicle", bForceExit);
+    PARAM(ABioPlayerController_execBioExitVehicle_Parms, "SFXGame.BioPlayerController.BioExitVehicle", ReturnValue);
     PARAM(UBioSFHandler_PartySelection_execFinalizeParty_Parms, "SFXGame.BioSFHandler_PartySelection.FinalizeParty", bAPressed);
     PARAM(UBioSFHandler_PartySelection_execFinalizeParty_Parms, "SFXGame.BioSFHandler_PartySelection.FinalizeParty", nContext);
     PARAM(UBioSFHandler_PartySelection_execFinalizeParty_Parms, "SFXGame.BioSFHandler_PartySelection.FinalizeParty", bYPressed);
@@ -1272,6 +1291,7 @@ void CheckParams() {
     PARMS(ABioGrenadeProjectile_execSetVelocity_Parms, "SFXGame.BioGrenadeProjectile.SetVelocity");
     PARMS(ABioGrenade_eventLaunchGrenadeAtPoint_Parms, "SFXGame.BioGrenade.LaunchGrenadeAtPoint");
     PARMS(AActor_execTrace_Parms, "Engine.Actor.Trace");
+    PARMS(AActor_execFastTrace_Parms, "Engine.Actor.FastTrace");
     PARMS(ABioGrenade_eventLaunchGrenadeAtActor_Parms, "SFXGame.BioGrenade.LaunchGrenadeAtActor");
     PARMS(ABioGrenade_eventLaunchGrenade_Parms, "SFXGame.BioGrenade.LaunchGrenade");
     PARMS(ABioPawn_execIsUsingPower_Parms, "SFXGame.BioPawn.IsUsingPower");

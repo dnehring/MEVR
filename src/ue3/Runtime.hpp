@@ -59,7 +59,8 @@ bool Guarded(void (*fn)(void*), void* context);
 // UObject::ProcessEvent through the object's vtable (the way the engine itself calls it, so the
 // host's hook and Halcyon's see it). `parms` must be the function's full parameter block.
 void CallProcessEvent(Object* object, Function* function, void* parms);
-// The same with a Params block; false (nothing called) if not Ready or either pointer is null.
+// The same with a Params block; false (nothing called) if not Ready or either pointer is null. A native with an opcode of
+// its own (UFunction.iNative, e.g. Actor.Trace) has that index cleared for the call: ProcessEvent skips it otherwise.
 bool Call(Object* object, Function* function, Params& params);
 
 // Engine.GameEngine's live instance (not its Default__ object), found once by class.

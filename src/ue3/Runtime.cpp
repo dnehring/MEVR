@@ -2,6 +2,7 @@
 #include "ue3/Runtime.hpp"
 
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
 #include "engine/GameAdapter.hpp"
 #include "ue3/Memory.hpp"
 #include "ue3/Pattern.hpp"
@@ -505,7 +506,20 @@ bool Call(Object* object, Function* function, Params& params) {
     if (!gReady || object == nullptr || function == nullptr || !params.Valid()) {
         return false;
     }
+    // UObject::ProcessEvent runs a function only if its native index (UFunction.iNative) is 0: the natives with an opcode of
+    // their own (Actor.Trace 277, Destroy 279, FastTrace 548...) are meant for the script VM, which reaches them through
+    // GNatives by that opcode, and ProcessEvent returned at once for them, leaving every out value as it was (research/47
+    // "Why Trace never hit"). For our call only, the index reads 0; the VM's own calls don't read the field.
+    auto* const native = reinterpret_cast<std::uint16_t*>(reinterpret_cast<std::uint8_t*>(function) + gReflection.layout().functionNative);
+    std::uint16_t const index = gReflection.layout().functionNative != 0 ? *native : 0;
+    if (index != 0) {
+        *native = 0;
+        write_journal::Wrote("ue3.Call.iNative", native, sizeof(*native));
+    }
     CallProcessEvent(object, function, params.Data());
+    if (index != 0) {
+        *native = index;
+    }
     return true;
 }
 

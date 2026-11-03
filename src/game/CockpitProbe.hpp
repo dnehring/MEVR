@@ -21,7 +21,9 @@ std::string Command(std::string const& line);
 std::string VehicleCommand(std::string const& line);
 // Registers the camera update's post-handler `ride` uses (inert until asked), before the ProcessEvent hook goes in.
 bool TryStartup();
-// Each mod tick, late (the view anchor current).
+// The cockpit is riding in the Mako this tick (its camera moved): the chase camera's own rotation no longer turns the view.
+bool Riding();
+// Each mod tick, late (the view anchor current). Also the cockpit by itself ([Cockpit]): in on entering the Mako, out on leaving.
 void Tick();
 // Snapshot JSON ("cockpitProbe").
 std::string StatusJson();

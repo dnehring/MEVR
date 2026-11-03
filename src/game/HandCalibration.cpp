@@ -530,6 +530,26 @@ constexpr char const* kMakoBlock =
     "rumble = 0.12\n"
     "cameraFollow = 1\n";
 
+// Appended to a settings file that has no [Cockpit] yet (and part of a new file).
+constexpr char const* kCockpitBlock =
+    "\n"
+    "[Cockpit]\n"
+    "; The Mako's cockpit (research/47). enabled: 1 = in the Mako you sit in the cockpit, the Mako's third-person view on its\n"
+    "; centre screen (needs the cockpit's package installed); 0 = the game's chase camera as before. script: the cockpit's\n"
+    "; layout, from this folder. followCamera: 1 = the screen's chase camera turns with the Mako.\n"
+    "enabled = 1\n"
+    "script = cockpit\\cockpit.txt\n"
+    "followCamera = 1\n";
+
+// Appended to a settings file that has no [Game] yet (and part of a new file).
+constexpr char const* kGameBlock =
+    "\n"
+    "[Game]\n"
+    "; The game's own behaviour around VR. pauseUnfocused: 1 = the game freezes everything but you while its window\n"
+    "; doesn't have the focus, as Mass Effect does (a click beside the window or the headset's dashboard can do that);\n"
+    "; 0 = it runs on.\n"
+    "pauseUnfocused = 1\n";
+
 fs::path FilePath() {
     return engine::SettingsFile();  // <exe dir>\ASI\<GAME>MEVR.ini, the host's file too
 }
@@ -1318,6 +1338,40 @@ std::string Describe(Mako const& m) {
 Mako gMako;
 std::string gMakoText;
 
+Cockpit ReadCockpit(Ini const& ini) {
+    Cockpit c;
+    double value = 0.0;
+    if (Number(ini, "Cockpit", "enabled", value)) {
+        c.enabled = value != 0.0;
+    }
+    if (auto const text = ini::Get(ini, "Cockpit", "script"); text && !Strip(*text).empty()) {
+        c.script = Strip(*text);
+    }
+    if (Number(ini, "Cockpit", "followCamera", value)) {
+        c.followCamera = value != 0.0;
+    }
+    return c;
+}
+
+std::string Describe(Cockpit const& c) {
+    return std::format("{}, script {}, the chase camera {}", c.enabled ? "on" : "off", c.script, c.followCamera ? "follows the Mako" : "the game's");
+}
+
+Cockpit gCockpit;
+std::string gCockpitText;
+
+Game ReadGame(Ini const& ini) {
+    Game g;
+    double value = 0.0;
+    if (Number(ini, "Game", "pauseUnfocused", value)) {
+        g.pauseUnfocused = value != 0.0;
+    }
+    return g;
+}
+
+Game gGame;
+std::string gGameText;
+
 Posture ReadPosture(Ini const& ini) {
     Posture p;
     double value = 0.0;
@@ -1717,6 +1771,14 @@ vr::hud_pieces::Settings GetHud() {
     return gHud;
 }
 
+Cockpit GetCockpit() {
+    return gCockpit;
+}
+
+Game GetGame() {
+    return gGame;
+}
+
 Mako GetMako() {
     return gMako;
 }
@@ -1784,7 +1846,7 @@ void Refresh() {
         {
             std::ofstream out(path);
             out << kDefaultFile << kControlsBlock << kHolstersBlock << kSquadBlock << kSightsBlock << kThrowablesBlock
-                << kComfortBlock << kInteractBlock << kVentBlock << kHudBlock << kMakoBlock;
+                << kComfortBlock << kInteractBlock << kVentBlock << kHudBlock << kMakoBlock << kCockpitBlock << kGameBlock;
             out.close();
             static bool warned = false;
             if (!out || !fs::exists(path, ec)) {
@@ -1810,7 +1872,8 @@ void Refresh() {
     Ini ini = ReadIni(path);
     for (auto const& [name, block] : {std::pair{"Controls", kControlsBlock}, std::pair{"Holsters", kHolstersBlock},
              std::pair{"Squad", kSquadBlock}, std::pair{"Throwables", kThrowablesBlock}, std::pair{"Comfort", kComfortBlock},
-             std::pair{"Sights", kSightsBlock}, std::pair{"Interact", kInteractBlock}, std::pair{"Vent", kVentBlock}, std::pair{"Hud", kHudBlock}, std::pair{"Mako", kMakoBlock}}) {
+             std::pair{"Sights", kSightsBlock}, std::pair{"Interact", kInteractBlock}, std::pair{"Vent", kVentBlock}, std::pair{"Hud", kHudBlock}, std::pair{"Mako", kMakoBlock},
+             std::pair{"Cockpit", kCockpitBlock}, std::pair{"Game", kGameBlock}}) {
         if (ini.find(name) == ini.end() && AppendBlock(path, block, name)) {  // an older file: show the new settings
             ini = ReadIni(path);
             stamp = fs::last_write_time(path, ec);
@@ -2108,6 +2171,16 @@ void Refresh() {
     if (std::string const text = Describe(gMako); text != gMakoText) {
         gMakoText = text;
         log::Info("mako: settings: {}", text);
+    }
+    gCockpit = ReadCockpit(ini);
+    if (std::string const text = Describe(gCockpit); text != gCockpitText) {
+        gCockpitText = text;
+        log::Info("cockpit: settings: {}", text);
+    }
+    gGame = ReadGame(ini);
+    if (std::string const text = gGame.pauseUnfocused ? "the game pauses while its window has no focus" : "the game runs on without focus"; text != gGameText) {
+        gGameText = text;
+        log::Info("game: settings: {}", text);
     }
     gSights = ReadSights(ini);
     if (std::string const text = Describe(gSights); text != gSightsText) {

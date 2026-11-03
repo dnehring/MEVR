@@ -372,6 +372,8 @@ set(MEVR_MOD_SOURCES
     src/game/Mako.hpp
     src/game/Holsters.cpp
     src/game/Holsters.hpp
+    src/game/FocusPause.cpp
+    src/game/FocusPause.hpp
     src/game/MenuPause.cpp
     src/game/MenuPause.hpp
     src/game/Player.cpp

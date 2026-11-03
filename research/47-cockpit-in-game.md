@@ -762,3 +762,52 @@ windshield, and the screen showed the same moment from outside. The camera was m
 - Shepard isn't in the seat yet; the lever's and the stick's quads (MakoControls) are placed from the head at entry, which is now the
   cockpit's eye, so they should meet the models' grips [verify with tracked controllers].
 - The frame cost of the parts' per-frame updates and the two captures in stereo isn't measured.
+
+## Why Trace never hit: ProcessEvent skips natives with an opcode (2026-11-03 10:37, read in Ghidra, measured)
+
+LE1's `UObject::ProcessEvent` (`0x12DD20`) runs a function only if its `iNative` (the u16 at UFunction +0xDC) is 0, as stock UE3's
+does: a native with an opcode of its own is meant for the script VM, which reaches it through `GNatives` by that opcode. Called
+through ProcessEvent it returned at once, every out value left as it was. That was `Actor.Trace` (277: "never hits"), `FastTrace`
+(548), `Destroy` (279: 458 calls in one session, all false, nothing destroyed), and very likely `SetLocation`, `SetRotation`,
+`SetCollision`, `SetBase`, `SetOwner`, `SetPhysics` (the old notes "Actor.SetLocation through ProcessEvent refuses the player",
+"Actor.SetOwner through ProcessEvent changed nothing").
+
+**Fix (`ue3::runtime::Call`):** for our call only, the function's `iNative` reads 0 (journalled `ue3.Call.iNative`) and is put back
+after; the VM's own calls go by opcode and never read the field. Measured (`mevr vehicle trace`, new: from 3 m above the Mako straight
+down, from the Mako, the controller and the WorldInfo): `Trace` returns `Terrain_0` with its hit 1.41 m under the Mako's origin (from the
+WorldInfo with actors, the Mako itself); `FastTrace` false down, true up into the sky; `Destroy` true with `bDeleteMe` set.
+
+**What changes:** every mod call of such a native now runs. `game/Sights` (shot convergence), `game/Mako` (the turret's aim point),
+`game/Throwables` (the throw), `game/Comfort` (`Actor.SetRotation` on the pawn), the probe's `SetCollision`/`SetBase`/`SetOwner` all act
+for the first time **[verify each in the headset]**. The task "Find why Actor.Trace via ProcessEvent never hits" is answered by this.
+
+## Why the Mako wouldn't let Shepard out: the focus pause (2026-11-03 10:45)
+
+`BioWorldInfo.Tick` freezes the world (`WorldInfo.bPlayersOnly`: only the players tick) while `HasFocus()` is false and the game
+mode can pause, and lets it go when focus is back (`m_bPausedByFocusLoss`). On this machine the game runs behind the desktop, so
+from the moment the window lost focus NPCs stopped and `BioPlayerController.BioExitVehicle`'s native refused (its first test is
+`bPlayersOnly`; `mevr vehicle why` shows the driver, `bPlayersOnly` and `PlaceExitingDriver`'s answer). `MassEffectGuiManager`'s
+screens put back whatever they found, so the squad screen kept it. **`[Game] pauseUnfocused = 0`** (`game/FocusPause`, new; 1 =
+the game's own behaviour, the default) undoes that one pause right after the tick that made it (a `BioWorldInfo.Tick`
+post-handler, only when `m_bPausedByFocusLoss` is set; any menu's or wheel's `PauseGame` is left alone). With it the exit works:
+`mevr vehicle exit` (B's `TryExitVehicle`) took Shepard out (game mode 0), `mevr vehicle enter` back in.
+
+**The pad doesn't reach the game without focus either:** the same replayed left stick that drove at 09:57 (the window had focus then)
+gave throttle 0 after it lost focus, with the cockpit off and without the native fix alike; the controllers had the input. The cockpit's
+own controls write the vehicle's throttle and steering themselves after `SetInputs`, so they drive unfocused (below). Where the engine
+drops pad input without focus is open **[verify]**; a player with the game in front never meets it.
+
+## The cockpit by itself, and its controls driving (2026-11-03 10:20-10:54)
+
+- **No console:** `[Cockpit] enabled = 1` (new section) runs `ASI\cockpit\cockpit.txt` once on entering the Mako (`tools/cockpit/place.py
+  --script` writes it: the parts, the screen on `Hull_Console`, `ride`); leaving it parks the cockpit (hidden, captures off), the next
+  entry shows it again and seats anew; a level change forgets it; `enabled = 0` parks it. Checked: hot reload, a fresh level load
+  (`mako-start`), out with B's exit, in with `BioEnterVehicle`; on foot the eyes see the real Mako, back in the cockpit.
+- **The seat waits for the host's view** (the first frames after a load have none; seated from zero the eye was inside the backrest).
+- **The chase screen trails the Mako:** on entry the controller's yaw is set to the Mako's, and while riding `game/MakoControls`
+  turns it with the Mako whoever drives (`[Cockpit] followCamera`; the view anchor isn't told: the ride sets the view itself).
+- **The cockpit's controls drove the Mako for the first time**, on synthetic tracked hands (`tools/make-drive-recording.py --controls
+  --eye-height 0`: grab the lever and the stick where MakoControls placed them, push, twist 35 degrees each way): "the mod drives;
+  throttle +1.00 steer +0.82 (lever held, stick held)", forward speed about 1,950 units/s, the screen behind the Mako through both
+  turns; at the replay's end "stopped (a controller stopped tracking)", the game's controls back.
+- `Destroy` works now (above): the sweep destroys leftovers.

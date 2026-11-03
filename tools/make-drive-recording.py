@@ -1,9 +1,17 @@
 # SPDX-License-Identifier: MIT
-"""Writes a synthetic .mevrrec (src/core/vr/PoseRecording.hpp v1, see tools/mevrrec.py) that drives the Mako with the left
-stick: a seated player looking ahead, both controllers resting at the seat, the stick pushed forward, then steering left, then
-right, in a loop of `seconds`. For the cockpit riding in the Mako on the fake headset (research/47 "Riding in the Mako"):
+"""Writes a synthetic .mevrrec (src/core/vr/PoseRecording.hpp v1, see tools/mevrrec.py) that drives the Mako: a seated
+player looking ahead, both controllers resting at the seat, the left stick pushed forward, then steering left, then right, in a
+loop of `seconds`. For the cockpit riding in the Mako on the fake headset (research/47 "Riding in the Mako"):
 `tools/mako-start.ps1`, then `tools/replay.ps1 -Path out.mevrrec -Loop -Inputs` (the sticks reach the game as pad 0 until a
-Mako control is grabbed). Usage: python tools/make-drive-recording.py out.mevrrec [seconds] [hz]."""
+Mako control is grabbed).
+
+    python tools/make-drive-recording.py out.mevrrec [seconds] [hz] [--press-b | --controls] [--eye-height M]
+
+--press-b: the sticks rest and the right controller's B is held from 1 s to 1.4 s instead (the game's TryExitVehicle).
+--controls: the cockpit's own controls instead of the stick (research/46; needs no pad input, so it drives with the game window
+unfocused too): both hands go to the lever and the stick (their places for a head entering at this recording's seat), squeeze at
+1 s, the lever is pushed full forward by 2.5 s, the stick twisted 35 degrees one way from 4 s, the other from 8 s, back at 12 s.
+Play it once (no -Loop): a loop lets go of both at its end. --eye-height: the seated head's height in tracking space (default\n1.2; the controls are placed from the head when the Mako is entered, so use the head's height then: 0 on the fake headset)."""
 import math
 import struct
 import sys
@@ -14,30 +22,63 @@ HEADER = struct.Struct("<8sIIIIq")
 POSE = "7f"
 FRAME = struct.Struct("<qI" + (POSE + "4f") * 2 + ("I4f" + POSE + POSE) * 2)
 
+# game/MakoControls' defaults ([Mako] leverOffset, stickOffset: right, up, forward from the head at entry) for a head looking
+# down -Z: the controls' grab points from the head, in tracking space's axes.
+LEVER = (-0.362, -0.446, -0.286)
+STICK = (0.375, -0.415, -0.314)
+THROTTLE_TRAVEL = 0.06  # a little past [Mako] throttleTravelM (0.055): full
+TWIST_DEG = 35.0
+
+
+def twist(degrees):
+    """A rotation about the grip's -Z (OpenXR), xyzw: the stick's twist axis for a grip held this way."""
+    half = math.radians(degrees) / 2.0
+    return (0.0, 0.0, -math.sin(half), math.cos(half))
+
 
 def main():
-    out = sys.argv[1]
-    seconds = float(sys.argv[2]) if len(sys.argv) > 2 else 12.0
-    hz = float(sys.argv[3]) if len(sys.argv) > 3 else 90.0
-    eye_h = 1.20  # seated
+    press_b = "--press-b" in sys.argv
+    controls = "--controls" in sys.argv
+    eye_h = 1.20
+    if "--eye-height" in sys.argv:
+        eye_h = float(sys.argv[sys.argv.index("--eye-height") + 1])
+    args = [a for i, a in enumerate(sys.argv) if i > 0 and not a.startswith("--") and sys.argv[i - 1] != "--eye-height"]
+    out = args[0]
+    seconds = float(args[1]) if len(args) > 1 else (16.0 if controls else 12.0)
+    hz = float(args[2]) if len(args) > 2 else 90.0
     ipd = 0.064
     fov = (-0.785, 0.785, 0.785, -0.785)  # left, right, up, down (radians)
     q = (0.0, 0.0, 0.0, 1.0)  # looking straight ahead
     eyes = [(*q, side * ipd / 2, eye_h, 0.0) for side in (-1, 1)]
-    # Hands on the knees, pointing ahead (OpenXR: -Z forward), away from the lever and the stick's grab points.
-    left = (*q, -0.20, 0.75, -0.35)
-    right = (*q, 0.20, 0.75, -0.35)
     valid = (1 << 4) | (1 << 5)  # gripValid, aimValid
     frames = []
     n = int(seconds * hz)
     for i in range(n):
         t = i / hz
-        phase = t / seconds
-        steer = 0.0 if phase < 1 / 3 else -0.6 if phase < 2 / 3 else 0.6
+        right_buttons = valid
+        left_sq = right_sq = 0.0
+        steer, push = 0.0, 0.0
+        if controls:
+            forward = THROTTLE_TRAVEL * min(max((t - 1.5) / 1.0, 0.0), 1.0)
+            left = (*q, LEVER[0], eye_h + LEVER[1], LEVER[2] - forward)
+            angle = TWIST_DEG if 4.0 <= t < 8.0 else -TWIST_DEG if 8.0 <= t < 12.0 else 0.0
+            right = (*twist(angle), STICK[0], eye_h + STICK[1], STICK[2])
+            left_sq = right_sq = 1.0 if t >= 1.0 else 0.0
+        else:
+            # Hands on the knees, pointing ahead (OpenXR: -Z forward), away from the lever and the stick's grab points.
+            left = (*q, -0.20, eye_h - 0.45, -0.35)
+            right = (*q, 0.20, eye_h - 0.45, -0.35)
+            phase = t / seconds
+            steer = 0.0 if phase < 1 / 3 else -0.6 if phase < 2 / 3 else 0.6
+            push = 1.0
+            if press_b:
+                steer, push = 0.0, 0.0
+                if 1.0 <= t < 1.4:
+                    right_buttons |= 1 << 2  # secondary: B
         frame = FRAME.pack(int(t * 1e9), 3,
                            *eyes[0], *fov, *eyes[1], *fov,
-                           valid, 0.0, 0.0, steer, 1.0, *left, *left,  # left: trigger, squeeze, stick x, stick y
-                           valid, 0.0, 0.0, 0.0, 0.0, *right, *right)
+                           valid, 0.0, left_sq, steer, push, *left, *left,  # left: trigger, squeeze, stick x, stick y
+                           right_buttons, 0.0, right_sq, 0.0, 0.0, *right, *right)
         frames.append(frame)
     header = HEADER.pack(MAGIC, 1, HEADER.size, FRAME.size, 0, int(time.time() * 1000))
     with open(out, "wb") as f:

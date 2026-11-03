@@ -360,4 +360,22 @@ struct Mako {
 };
 Mako GetMako();
 
+// [Cockpit] (research/47 "Riding in the Mako", docs/mako-cockpit-goal.md): the cockpit around the player in the Mako.
+//   enabled       1: entering the Mako runs the cockpit's script (the parts, the screens, the ride); leaving it clears them
+//   script        that script, from the ASI folder: `mevr cockpit` lines without those two words (tools/cockpit/place.py --script)
+//   followCamera  1: while riding, the game's chase camera (the centre screen) keeps its angle to the Mako as it turns
+struct Cockpit {
+    bool enabled = true;
+    std::string script = "cockpit\\cockpit.txt";
+    bool followCamera = true;
+};
+Cockpit GetCockpit();
+
+// [Game] (research/47 "Why the Mako wouldn't let Shepard out"): the game's own behaviour around VR.
+//   pauseUnfocused  1: the game freezes the world while its window has no focus, as ME1 does; 0: it runs on (game/FocusPause)
+struct Game {
+    bool pauseUnfocused = true;
+};
+Game GetGame();
+
 } // namespace mevr::game::hand_calibration

@@ -7,14 +7,19 @@
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/Engine.hpp"
+#include "core/Ini.hpp"
 #include "engine/ProcessEvent.hpp"
+#include "engine/SettingsFile.hpp"
 #include "engine/XrToUnreal.hpp"
+#include "game/HandCalibration.hpp"
 #include "game/Player.hpp"
 #include "game/ViewAnchor.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Memory.hpp"
 #include "ue3/Params.hpp"
 #include "ue3/Runtime.hpp"
+
+#include <Windows.h>
 
 #include <algorithm>
 #include <array>
@@ -23,7 +28,9 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <format>
+#include <fstream>
 #include <initializer_list>
 #include <optional>
 #include <sstream>
@@ -103,6 +110,7 @@ ue3::FunctionRef gEnterVehicle{"SFXGame.BioPlayerController.BioEnterVehicle"};
 ue3::FunctionRef gFindClosestVehicle{"SFXGame.SFXSaveGame.FindClosestDrivableVehicle"};
 
 ue3::FieldRef gStatic{"Engine.Actor", "bStatic"};
+ue3::FieldRef gDeleteMe{"Engine.Actor", "bDeleteMe"};  // destroyed, waiting for the garbage collection
 ue3::FieldRef gNoDelete{"Engine.Actor", "bNoDelete"};
 ue3::FieldRef gMovable{"Engine.Actor", "bMovable"};
 ue3::FieldRef gRole{"Engine.Actor", "Role"};
@@ -185,6 +193,18 @@ ue3::FieldRef gStreamPending{"Engine.LevelStreaming", "bHasLoadRequestPending"};
 // `mevr vehicle party`: the squad screen's own "A on the confirmation" (FinalizeParty), which hides the panel.
 ue3::ClassRef gPartySelection{"SFXGame.BioSFHandler_PartySelection"};
 ue3::FunctionRef gFinalizeParty{"SFXGame.BioSFHandler_PartySelection.FinalizeParty"};
+// `mevr vehicle exit`: B's own exit (Console_VehicleExit), through the level's BioSeqEvt_VehicleExit when it has one.
+ue3::ClassRef gGameModeVehicle{"SFXGame.SFXGameModeVehicle"};
+ue3::FunctionRef gTryExitVehicle{"SFXGame.SFXGameModeVehicle.TryExitVehicle"};
+ue3::FunctionRef gBioExitVehicle{"SFXGame.BioPlayerController.BioExitVehicle"};
+// `mevr vehicle trace`: does any script trace see the ground?
+ue3::FunctionRef gFastTrace{"Engine.Actor.FastTrace"};
+// `mevr vehicle why`: what BioVehicleBase.DriverLeave tests before it lets the driver out.
+ue3::FieldRef gVehicleDriver{"Engine.Vehicle", "Driver"};
+ue3::FieldRef gPawnHealth{"Engine.Pawn", "Health"};
+ue3::FieldRef gPlayersOnly{"Engine.WorldInfo", "bPlayersOnly"};  // BioExitVehicle's native refuses while it's set
+ue3::FieldRef gPlayersOnlyPending{"Engine.WorldInfo", "bPlayersOnlyPending"};
+ue3::FunctionRef gPlaceExitingDriver{"SFXGame.BioVehicleBase.PlaceExitingDriver"};
 // `ride`: the camera's update (a post-handler, registered at startup) and the vehicle's components hidden from the eyes.
 ue3::FunctionRef gUpdateCamera{"Engine.Camera.UpdateCamera"};
 ue3::ClassRef gPrimitiveComponent{"Engine.PrimitiveComponent"};
@@ -451,14 +471,21 @@ ue3::Object* SpawnActor(ue3::Object* controller, ue3::Class* cls, ue3::Vector co
 }
 
 // Destroy, or hide it if the engine refuses (a flag we couldn't clear).
+void SetOwnerOf(ue3::Object* actor, ue3::Object* owner);
+
 void DestroyActor(ue3::Object* actor, char const* why) {
+    // Owned by the pawn (capturehide 2), Destroy answered false and left the parts alive [verify: UWorld::DestroyActor's
+    // player-controller test reached through the owner]: no owner first.
+    if (gOwnerField.Read<ue3::Object*>(actor).value_or(nullptr) != nullptr) {
+        SetOwnerOf(actor, nullptr);
+    }
     ue3::Params p = ParamsOf(gDestroy);
-    Call(actor, gDestroy, p);
+    bool const called = Call(actor, gDestroy, p);
     bool const destroyed = p.ReturnBool().value_or(false);
     // UWorld::DestroyActor refuses a bStatic or bNoDelete actor, and one whose Role isn't ROLE_Authority (3).
-    log::Info("cockpit probe: destroying {} ({}): Destroy returned {} (bStatic {}, bNoDelete {}, Role {})", ue3::runtime::FullName(actor), why,
-        destroyed ? "true" : "false", gStatic.ReadBool(actor).value_or(false) ? 1 : 0, gNoDelete.ReadBool(actor).value_or(false) ? 1 : 0,
-        static_cast<int>(gRole.Read<std::uint8_t>(actor).value_or(255)));
+    log::Info("cockpit probe: destroying {} ({}): Destroy {} returned {} (bStatic {}, bNoDelete {}, Role {}, bDeleteMe now {})", ue3::runtime::FullName(actor), why,
+        called ? "called," : "NOT called,", destroyed ? "true" : "false", gStatic.ReadBool(actor).value_or(false) ? 1 : 0, gNoDelete.ReadBool(actor).value_or(false) ? 1 : 0,
+        static_cast<int>(gRole.Read<std::uint8_t>(actor).value_or(255)), gDeleteMe.ReadBool(actor).value_or(false) ? 1 : 0);
     if (!destroyed && ue3::runtime::IsAlive(actor)) {
         ue3::Params hide = ParamsOf(gSetHidden);
         hide.SetBool("bNewHidden", true);
@@ -1044,18 +1071,27 @@ int SweepCockpitActors() {
         ClearAll("mevr cockpit parts sweep");
     }
     std::vector<ue3::Object*> found;
+    int destroyedBefore = 0;
     for (std::size_t i = 0; i < kAutomatic; ++i) {
         ActorKind const& kind = kKinds[i];
         ForEachLive(kind.cls->Get(), [&](ue3::Object* actor) {
             ue3::Object* const component = kind.component->Read<ue3::Object*>(actor).value_or(nullptr);
             ue3::Object* const mesh = component != nullptr ? gComponentMesh.Read<ue3::Object*>(component).value_or(nullptr) : nullptr;
-            if (mesh != nullptr && Lower(R().PathName(mesh)).starts_with("biog_mevr_cockpit.") && actor != gState.actor) {
-                found.push_back(actor);
+            if (mesh == nullptr || !Lower(R().PathName(mesh)).starts_with("biog_mevr_cockpit.") || actor == gState.actor) {
+                return;
             }
+            if (gDeleteMe.ReadBool(actor).value_or(false)) {
+                ++destroyedBefore;  // destroyed already; its object stays until the garbage collection
+                return;
+            }
+            found.push_back(actor);
         });
     }
     for (ue3::Object* const actor : found) {
         DestroyActor(actor, "mevr cockpit parts sweep");
+    }
+    if (destroyedBefore > 0) {
+        log::Info("cockpit probe: parts sweep: {} more were destroyed before (bDeleteMe), waiting for the garbage collection", destroyedBefore);
     }
     gParts.clear();
     gAnchor = {};
@@ -1852,11 +1888,14 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
         }
     }
     if (!gRide.seated) {
+        // Until the host has a view (the first frames after a load, VR off), no seat: the head counts from the tracking centre.
         vr::host_view::State const view = vr::host_view::Latest();
         gRide.seat = view.valid ? engine::UnrealVector{view.offsetForward, view.offsetRight, view.offsetUp} : engine::UnrealVector{};
-        gRide.seated = true;
-        log::Info("cockpit probe: ride: seated with the head {:.2f} m forward, {:.2f} m right, {:.2f} m up of the tracking centre{}", gRide.seat.x / upm, gRide.seat.y / upm,
-            gRide.seat.z / upm, view.valid ? "" : " (no host view: none)");
+        gRide.seated = view.valid;
+        if (view.valid) {
+            log::Info("cockpit probe: ride: seated with the head {:.2f} m forward, {:.2f} m right, {:.2f} m up of the tracking centre", gRide.seat.x / upm,
+                gRide.seat.y / upm, gRide.seat.z / upm);
+        }
     }
     // The renderer puts the head at the camera plus its offset: the camera goes where that lands the seated head on the eye.
     engine::UnrealVector const seat = engine::Apply(frame, gRide.seat);
@@ -1882,6 +1921,15 @@ void RideTick() {
     }
     if (inVehicle && gRide.vehicle == nullptr) {
         gRide.seated = false;  // a new seat with each entry
+        // The centre screen's chase camera hangs on the controller's yaw: behind the Mako from the start, then it follows
+        // the Mako's turns ([Cockpit] followCamera, game/MakoControls).
+        if (hand_calibration::GetCockpit().followCamera) {
+            auto const turn = player::Rotation(pawn);
+            if (ue3::Rotator* const control = gActorRotation.In<ue3::Rotator>(controller); control != nullptr && turn) {
+                control->yaw = engine::Unwind(turn->yaw, control->yaw);
+                write_journal::Wrote("CockpitProbe.controlYaw", control, sizeof(*control));
+            }
+        }
         HideVehicle(pawn);
         HideFromCaptures();  // the owner is now the vehicle
     }
@@ -2653,6 +2701,119 @@ std::string VehicleCommand(std::string const& line) {
         log::Info("mevr vehicle: {}", report);
         return report;
     }
+    if (verb == "trace") {
+        // Straight down through the ground under the pawn, from 3 m above it to 50 m below: every script trace should hit.
+        if (auto const missing = MissingFunction({&gTrace, &gFastTrace})) {
+            return Refuse(*missing);
+        }
+        auto const at = pawn != nullptr ? player::Location(pawn) : std::nullopt;
+        if (!at) {
+            return Refuse("no pawn");
+        }
+        ue3::Vector const start{at->x, at->y, at->z + 300.0f};
+        ue3::Vector const end{at->x, at->y, at->z - 5000.0f};
+        ue3::Object* const world = gWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr);
+        std::string report = std::format("traces from ({:.0f} {:.0f} {:.0f}) down 53 m:", start.x, start.y, start.z);
+        for (ue3::Object* const source : {pawn, controller, world}) {
+            for (bool const actors : {false, true}) {
+                ue3::Params trace = ParamsOf(gTrace);
+                trace.Set("TraceEnd", end);
+                trace.Set("TraceStart", start);
+                trace.SetBool("bTraceActors", actors);
+                bool const called = Call(source, gTrace, trace);
+                ue3::Vector const hit = trace.Get<ue3::Vector>("HitLocation").value_or(ue3::Vector{});
+                report += std::format("\n  Trace by {} (actors {}): called {}, returned {}, HitLocation ({:.0f} {:.0f} {:.0f})", R().NameText(source), actors, called,
+                    ue3::runtime::FullName(trace.Return<ue3::Object*>().value_or(nullptr)), hit.x, hit.y, hit.z);
+            }
+            ue3::Params fast = ParamsOf(gFastTrace);
+            fast.Set("TraceEnd", end);
+            fast.Set("TraceStart", start);
+            bool const called = Call(source, gFastTrace, fast);
+            ue3::Params up = ParamsOf(gFastTrace);
+            up.Set("TraceEnd", ue3::Vector{start.x, start.y, start.z + 5000.0f});
+            up.Set("TraceStart", start);
+            Call(source, gFastTrace, up);
+            report += std::format("\n  FastTrace by {}: called {}, down returned {}, up into the sky {} (true: nothing in the way)", R().NameText(source), called,
+                fast.ReturnBool().value_or(false), up.ReturnBool().value_or(false));
+        }
+        log::Info("mevr vehicle: {}", report);
+        return report;
+    }
+    if (verb == "playersonly") {
+        // A direct `open` of a Mako level can leave the world frozen but for the players (the squad screen puts back whatever
+        // it found, research/47): nothing but the player ticks and BioExitVehicle refuses. `playersonly 0` clears it.
+        std::string value;
+        words >> value;
+        ue3::Object* const world = gWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr);
+        if (world == nullptr) {
+            return Refuse("no WorldInfo");
+        }
+        if (value == "0" || value == "1") {
+            bool const on = value == "1";
+            gPlayersOnly.WriteBool(world, on);
+            gPlayersOnlyPending.WriteBool(world, on);
+            if (void* const field = gPlayersOnly.Address(world)) {
+                write_journal::Wrote("CockpitProbe.bPlayersOnly", field, 4);
+            }
+        }
+        std::string const report = std::format("WorldInfo.bPlayersOnly {}, bPlayersOnlyPending {}", gPlayersOnly.ReadBool(world).value_or(false) ? 1 : 0,
+            gPlayersOnlyPending.ReadBool(world).value_or(false) ? 1 : 0);
+        log::Info("mevr vehicle: {}", report);
+        return report;
+    }
+    if (verb == "why") {
+        if (!ue3::IsA(pawn, gVehicleBase)) {
+            return Refuse("the pawn isn't a vehicle");
+        }
+        ue3::Object* const driver = gVehicleDriver.Read<ue3::Object*>(pawn).value_or(nullptr);
+        ue3::Object* const world = gWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr);
+        std::string report = std::format("driver {} (health {}); WorldInfo.bPlayersOnly {}; ", ue3::runtime::FullName(driver),
+            driver != nullptr ? std::to_string(gPawnHealth.Read<std::int32_t>(driver).value_or(-1)) : std::string("-"),
+            world != nullptr ? (gPlayersOnly.ReadBool(world).value_or(false) ? "1" : "0") : "?");
+        if (gPlaceExitingDriver.Get() != nullptr) {
+            ue3::Params p = ParamsOf(gPlaceExitingDriver);
+            bool const called = Call(pawn, gPlaceExitingDriver, p);
+            report += std::format("PlaceExitingDriver: called {}, returned {} (true: a place found, the driver moved there)", called, p.ReturnBool().value_or(false));
+        }
+        log::Info("mevr vehicle: {}", report);
+        return report;
+    }
+    if (verb == "exit") {
+        std::string how;
+        words >> how;
+        if (how == "force") {
+            // BioPlayerController.BioExitVehicle(bForceExit): past whatever refused TryExitVehicle (research/47 [verify]).
+            if (auto const missing = MissingFunction({&gBioExitVehicle})) {
+                return Refuse(*missing);
+            }
+            ue3::Params p = ParamsOf(gBioExitVehicle);
+            p.SetBool("bForceExit", true);
+            bool const called = Call(controller, gBioExitVehicle, p);
+            // The native forwards to a virtual of the controller (vtable +0xB90) and the vehicle's BioCanExitVehicle to +0xC20:
+            // their addresses, to read in Ghidra.
+            auto const slot = [](ue3::Object* object, std::size_t offset) -> std::uintptr_t {
+                auto const* const table = object != nullptr ? *reinterpret_cast<std::uintptr_t const* const*>(object) : nullptr;
+                return table != nullptr ? table[offset / sizeof(std::uintptr_t)] - reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr)) : 0;
+            };
+            std::string const report = std::format("BioExitVehicle(force): called {}, returned {}; the controller's +0xB90 is exe+0x{:X}, the vehicle's +0xC20 exe+0x{:X}", called,
+                p.ReturnBool().value_or(false), slot(controller, 0xB90), slot(pawn, 0xC20));
+            log::Info("mevr vehicle: {}", report);
+            return report;
+        }
+        if (auto const missing = MissingFunction({&gTryExitVehicle})) {
+            return Refuse(*missing);
+        }
+        int called = 0;
+        ForEachLive(gGameModeVehicle.Get(), [&](ue3::Object* mode) {
+            if (called == 0 && R().OuterOf(mode) == controller) {
+                ue3::Params p = ParamsOf(gTryExitVehicle);
+                called += Call(mode, gTryExitVehicle, p) ? 1 : 0;
+            }
+        });
+        std::string const report = called > 0 ? "TryExitVehicle called (as B): `mevr vehicle` says what it did" : "no vehicle game mode of the player's controller";
+        log::Info("mevr vehicle: {}", report);
+        return report;
+    }
     if (verb == "party") {
         // Accepts the squad screen as its confirmation box's A does: the members picked so far go into the party (none
         // picked: Shepard alone) and the panel hides, so the level's script goes on past ShowPartySelectionGUI.
@@ -2904,6 +3065,127 @@ std::string Command(std::string const& line) {
     return kUsage;
 }
 
+// ---- The cockpit by itself ([Cockpit], docs/mako-cockpit-goal.md item 1) --------------------------------------------
+
+// Entering the Mako runs the cockpit's script once (the same lines as the console, without `mevr cockpit`); leaving it, a
+// level change or `enabled = 0` takes everything away. A script that fails isn't run again until the next entry.
+// Leaving parks it (the parts hidden, the captures off) rather than destroying it: the next entry in the same level shows the
+// parked one again at once, with the screen's render target it already has. (Until ue3::runtime::Call cleared a native's
+// opcode for the call, Actor.Destroy never ran at all: research/47 "Why Trace never hit".)
+struct Auto {
+    ue3::Object* vehicle = nullptr;
+    void const* world = nullptr;
+    bool ran = false;
+    bool failed = false;
+    bool parked = false;
+};
+Auto gAuto;
+bool gLoggedNoScript = false;
+
+void ShowCockpit(bool show) {
+    for (Part const& part : gParts) {
+        if (PartAlive(part)) {
+            ue3::Params hide = ParamsOf(gSetHidden);
+            hide.SetBool("bNewHidden", !show);
+            Call(part.actor, gSetHidden, hide);
+        }
+    }
+    for (ue3::Object* const capture : {gState.captureComponent, gAim.captureComponent}) {
+        if (Still(capture, gCaptureComponent)) {
+            ue3::Params enable = ParamsOf(gCaptureSetEnabled);
+            enable.SetBool("bEnable", show);
+            Call(capture, gCaptureSetEnabled, enable);
+        }
+    }
+}
+
+void Park(char const* why) {
+    gRide.on = false;
+    ShowVehicle();
+    ShowCockpit(false);
+    gAuto.parked = true;
+    log::Info("cockpit: {}: the cockpit is parked (hidden, its captures off)", why);
+}
+
+bool Unpark() {
+    bool const alive = !gParts.empty() && std::all_of(gParts.begin(), gParts.end(), [](Part const& part) { return PartAlive(part); });
+    if (!gAuto.parked || !alive) {
+        return false;
+    }
+    ShowCockpit(true);
+    gRide.on = true;
+    gAuto.parked = false;
+    log::Info("cockpit: back in the Mako: the parked cockpit is shown again");
+    return true;
+}
+
+bool RunScript(std::filesystem::path const& path) {
+    std::ifstream in(path);
+    if (!in) {
+        if (!gLoggedNoScript) {
+            gLoggedNoScript = true;
+            log::Warn("cockpit: no script at {} (tools/cockpit/place.py --script writes it): no cockpit", ini::Utf8(path));
+        }
+        return false;
+    }
+    int lines = 0;
+    for (std::string line; std::getline(in, line);) {
+        std::size_t const start = line.find_first_not_of(" \t\r");
+        if (start == std::string::npos || line[start] == ';' || line[start] == '#') {
+            continue;
+        }
+        line = line.substr(start);
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) {
+            line.pop_back();
+        }
+        for (std::string_view const prefix : {std::string_view("mevr cockpit "), std::string_view("cockpit ")}) {
+            if (line.starts_with(prefix)) {
+                line = line.substr(prefix.size());
+            }
+        }
+        std::string const answer = Command(line);
+        log::Info("cockpit: {} -> {}", line, answer.substr(0, answer.find('\n')));
+        ++lines;
+    }
+    bool const ok = !gParts.empty() && gRide.on;
+    log::Info("cockpit: script {}: {} lines, {} parts, ride {}{}", ini::Utf8(path), lines, gParts.size(), gRide.on ? "on" : "off",
+        ok ? "" : ": no cockpit (the package installed and in the TOC? the script's last line `ride`?)");
+    return ok;
+}
+
+void AutoTick() {
+    hand_calibration::Cockpit const settings = hand_calibration::GetCockpit();
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const pawn = controller != nullptr ? player::Pawn(controller) : nullptr;
+    bool const inMako = ue3::IsA(pawn, gVehicleBase);
+    if (gAuto.world != nullptr && gAuto.world != engine::World()) {
+        gAuto = {};  // a new level: the old one's cockpit went with it (the probe forgets it on its own)
+    }
+    if (!settings.enabled || !inMako) {
+        if (gAuto.ran && !gAuto.parked) {
+            Park(!settings.enabled ? "[Cockpit] enabled = 0" : "out of the Mako");
+        }
+        gAuto.vehicle = nullptr;
+        gAuto.failed = false;
+        return;
+    }
+    if ((gAuto.ran && !gAuto.parked) || (gAuto.failed && gAuto.vehicle == pawn)) {
+        return;
+    }
+    if (player::GameMode(controller) != 1) {
+        return;  // the drop's cinematic: once it hands over
+    }
+    gAuto.vehicle = pawn;
+    gAuto.world = engine::World();
+    if (Unpark()) {
+        return;
+    }
+    bool const ok = RunScript(engine::SettingsFile().parent_path() / std::filesystem::path(std::u8string(settings.script.begin(), settings.script.end())));
+    gAuto.ran = ok;
+    gAuto.failed = !ok;
+    gAuto.parked = false;
+}
+
 bool TryStartup() {
     ue3::Function* const update = ue3::runtime::Ready() ? gUpdateCamera.Get() : nullptr;
     if (update == nullptr) {
@@ -2914,7 +3196,12 @@ bool TryStartup() {
     return true;
 }
 
+bool Riding() {
+    return gRide.on && gRide.riding;
+}
+
 void Tick() {
+    AutoTick();
     RideTick();
     if (gState.actor == nullptr && gState.captureActor == nullptr) {
         return;
@@ -2955,6 +3242,8 @@ void Shutdown(bool exiting) {
         ShowVehicle();
     }
     gRide = Ride{};
+    gAuto = {};
+    gLoggedNoScript = false;
     if (!exiting && (gState.actor != nullptr || gState.captureActor != nullptr) && ue3::runtime::Ready()) {
         ClearAll("the mod shuts down");
     }
@@ -2970,23 +3259,23 @@ void Shutdown(bool exiting) {
     gLoggedMoveFailure = gLoggedFirstPlace = gLoggedFlatFallback = false;
     for (ue3::ClassRef* const c : {&gActorClass, &gInterpActor, &gKActor, &gKActorSpawnable, &gStaticMeshActor, &gDynamicSmActor, &gStaticMesh, &gStaticMeshComponent,
              &gMaterial, &gMaterialInstance, &gMic, &gTextureParameterExpression, &gCaptureActor, &gCaptureComponent, &gTargetClass, &gTexture, &gTexture2D, &gVehicleBase, &gBioPawn,
-             &gBioController, &gSaveGame, &gRemoteEvent, &gPartySelection, &gPrimitiveComponent}) {
+             &gBioController, &gSaveGame, &gRemoteEvent, &gPartySelection, &gPrimitiveComponent, &gGameModeVehicle}) {
         c->Reset();
     }
     for (ue3::FunctionRef* const f : {&gDynamicLoadObject, &gSpawn, &gDestroy, &gSetLocation, &gSetRotation, &gSetDrawScale, &gSetPhysics, &gSetCollision, &gSetHidden, &gSetBase, &gSetHardAttach,
              &gForceUpdate, &gSetActorCollision, &gSetBlockRigidBody, &gSetTraceBlocking, &gSetStaticMesh, &gGetMaterial, &gSetMaterial, &gGetNumElements, &gGetUnscaledBounds,
              &gCreateMic, &gSetParent, &gSetTextureParameter, &gGetTextureParameter, &gLightEnvironmentSetEnabled, &gCreateTarget, &gCaptureSetEnabled, &gCaptureSetFrameRate,
-             &gCaptureSetView, &gCaptureSetParameters, &gEnterVehicle, &gFindClosestVehicle, &gCheckActivate, &gFinalizeParty, &gUpdateCamera}) {
+             &gCaptureSetView, &gCaptureSetParameters, &gEnterVehicle, &gFindClosestVehicle, &gCheckActivate, &gFinalizeParty, &gUpdateCamera, &gTryExitVehicle, &gBioExitVehicle, &gFastTrace, &gPlaceExitingDriver}) {
         f->Reset();
     }
-    for (ue3::FieldRef* const f : {&gStatic, &gNoDelete, &gMovable, &gRole, &gPhysics, &gBase, &gDynamicComponent, &gDynamicLightEnvironment, &gStaticActorComponent, &gComponentMesh,
+    for (ue3::FieldRef* const f : {&gStatic, &gDeleteMe, &gNoDelete, &gMovable, &gRole, &gPhysics, &gBase, &gDynamicComponent, &gDynamicLightEnvironment, &gStaticActorComponent, &gComponentMesh,
              &gBounds, &gParent, &gStaticPermutation, &gTextureValues, &gTextureValueName, &gExpressions, &gEmissive, &gEmissiveExpression, &gBlendMode, &gLightingModel,
              &gUsedStaticLighting, &gUsedLightEnvironments, &gExpressionParameterName, &gSceneCapture, &gCaptureEnabled, &gEnablePostProcess, &gUseMainPostProcess,
              &gSkipUsersOccluded, &gSkipOwnerOccluded, &gMaxUpdateDist, &gPostProcess, &gFrameRate, &gSizeX, &gSizeY, &gPlayer, &gPlayerPostProcess, &gDefaultPostProcess, &gUpdateMatrices,
              &gViewMatrix, &gForceLinearGamma, &gTargetFormat, &gMeshMaterials, &gPrimitiveLightEnvironment, &gLightEnvironmentEnabled, &gTextureResource, &gTextureSrgb, &gTextureNeverStream,
              &gTextureLodGroup, &gTexture2DSizeX, &gTexture2DSizeY, &gTexture2DFormat, &gTexture2DRequestedMips, &gTexture2DResidentMips, &gTexture2DMipTail, &gTexture2DMips, &gWorldInfo,
              &gTextureValueObject, &gRemoteEventName, &gStreamingLevels, &gStreamPackage, &gStreamLoaded, &gStreamShouldLoad, &gStreamShouldShow, &gStreamVisible,
-             &gStreamPending, &gAllComponents, &gOwnerNoSee}) {
+             &gStreamPending, &gAllComponents, &gOwnerNoSee, &gVehicleDriver, &gPawnHealth, &gPlayersOnly, &gPlayersOnlyPending}) {
         f->Reset();
     }
 }
@@ -2998,6 +3287,10 @@ std::string Command(std::string const& /*line*/) {
 }
 
 bool TryStartup() {
+    return false;
+}
+
+bool Riding() {
     return false;
 }
 

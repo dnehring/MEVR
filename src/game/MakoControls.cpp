@@ -8,6 +8,7 @@
 #include "engine/CallFunction.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "game/BodyCalibration.hpp"
+#include "game/CockpitProbe.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/ViewAnchor.hpp"
 #include "ue3/Handles.hpp"
@@ -183,7 +184,9 @@ float EngineSpeed(ue3::Object* vehicle) {
     return top > 1.0f ? std::clamp(std::abs(speed) / top, 0.0f, 1.0f) : 0.0f;
 }
 
-// While the mod drives, the camera keeps its angle to the vehicle (it hangs on ControlRotation, research/46).
+// While the mod drives, the camera keeps its angle to the vehicle (it hangs on ControlRotation, research/46). Riding in the
+// cockpit (research/47) it does so whoever drives: that camera is the centre screen's chase view, and it trails the Mako as a
+// pad player keeps it behind. The ride moves the eyes' view to the cockpit itself, so the view anchor isn't told of the turn.
 void FollowCamera(ue3::Object* vehicle, ue3::Object* controller) {
     std::optional<ue3::Rotator> const rotation = gRotation.Read<ue3::Rotator>(vehicle);
     if (!rotation) {
@@ -193,7 +196,8 @@ void FollowCamera(ue3::Object* vehicle, ue3::Object* controller) {
     int const units = gHaveYaw ? SignedUnits(rotation->yaw - gLastYaw) : 0;
     gLastYaw = rotation->yaw;
     gHaveYaw = true;
-    if (units == 0 || !gOut.driving || !gSettings.cameraFollow || controller == nullptr) {
+    bool const riding = cockpit_probe::Riding() && hand_calibration::GetCockpit().followCamera;
+    if (units == 0 || !(riding || (gOut.driving && gSettings.cameraFollow)) || controller == nullptr) {
         return;
     }
     ue3::Rotator* const control = gRotation.In<ue3::Rotator>(controller);
@@ -202,7 +206,9 @@ void FollowCamera(ue3::Object* vehicle, ue3::Object* controller) {
     }
     control->yaw += units;
     write_journal::Wrote("MakoControls.ControlRotation", control);
-    view_anchor::NoteTurn(units, false, 0.0, 0.0);
+    if (!riding) {
+        view_anchor::NoteTurn(units, false, 0.0, 0.0);
+    }
     gCounts.cameraUnits += units;
 }
 

@@ -52,6 +52,7 @@
 #include "game/Mako.hpp"
 #include "game/Holsters.hpp"
 #include "game/CockpitProbe.hpp"
+#include "game/FocusPause.hpp"
 #include "game/MenuPause.hpp"
 #include "game/Posture.hpp"
 #include "game/Reflections.hpp"
@@ -279,6 +280,7 @@ void TryInstallScriptHooks() {
     game::mako::TryStartup();  // the Mako's turret aimed by the controller (research/44: the vehicle's Tick and shot-start handlers)
     game::mako_controls::TryStartup();  // the Mako's physical lever and stick (research/46: the SetInputs handlers)
     game::cockpit_probe::TryStartup();  // the cockpit riding in the Mako (research/47: a camera-update handler, inert until asked)
+    game::focus_pause::TryStartup();  // [Game] pauseUnfocused (research/47: a BioWorldInfo.Tick handler)
     game::sights::TryStartup();  // the scoped shots' aimed fire (a CallFunction handler, registered before the hook)
     game::view_level::TryStartup();  // the level camera (PlayerTick and SetWeaponRecoil handlers, before the hooks)
     if (!gHandAimAvailable) {
@@ -1268,6 +1270,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::mako::Shutdown();  // the turret's pose seam cleared, the vehicle forgotten
     game::body_calibration::Shutdown();
     game::menu_pause::Shutdown(exiting);  // unpauses the game if the main menu paused it
+    game::focus_pause::Shutdown();
     game::game_menu_request::Shutdown();
     write_journal::Connect(nullptr);
     engine::call_function::SetBreadcrumbs(nullptr, nullptr);

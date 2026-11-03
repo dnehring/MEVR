@@ -7,6 +7,12 @@ places, the proposed scale) and prints one `mevr cockpit part` line per packaged
     python tools/cockpit/place.py [--assets concept/assets] [--metres-per-hull-unit 3.0] [--yaw-sign 1]
     tools/console.ps1 (python tools/cockpit/place.py)
 
+With --script <file> it writes the cockpit's script instead: the parts, the live chase view on the console's screen and the
+ride in the Mako, the lines the mod runs by itself on entering the Mako ([Cockpit] script in LE1MEVR.ini, default
+<ASI>\\cockpit\\cockpit.txt; research/47 "Riding in the Mako"):
+
+    python tools/cockpit/place.py --script "<game>\\Binaries\\Win64\\ASI\\cockpit\\cockpit.txt"
+
 Frames: the hull is x right, y forward, z up (right-handed); the package is that times 100 with forward on -Y, so a hull mesh
 needs yaw +90 to face the head's way. A furniture file is turned about hull z by its `turnDeg`; mirrored into the package that
 is a yaw of -turnDeg (`--yaw-sign -1` if the game shows them turned the other way).
@@ -49,17 +55,35 @@ def Lines(manifest, metres, yaw_sign):
     return out
 
 
+def Script(manifest, metres, yaw_sign, eye):
+    """The cockpit's script: what the mod runs on entering the Mako (`mevr cockpit` lines without those words)."""
+    parts = [line[len("mevr cockpit "):] for line in Lines(manifest, metres, yaw_sign) if line.startswith("mevr cockpit part ")]
+    return (["; The Mako's cockpit (research/47): written by tools/cockpit/place.py --script; run by the mod on entering the Mako.",
+             "parts sweep"] + parts +
+            ["screenpart BIOG_MEVR_Cockpit.Hull_Console", "element 1", "post 0", "screen 768 343 float",
+             f"ride {eye[0]:.3f} {eye[1]:.3f} {eye[2]:.3f}"])
+
+
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--assets", default=os.path.join(here, "..", "..", "concept", "assets"))
     parser.add_argument("--metres-per-hull-unit", type=float, default=None, help="default: the manifest's scale")
     parser.add_argument("--yaw-sign", type=float, default=1.0)
+    parser.add_argument("--script", help="write the cockpit's script to this file instead of printing console lines")
+    parser.add_argument("--eye", type=float, nargs=3, default=(0.0, 1.0, 0.8),
+                        help="the cockpit's eye from the Mako's origin, metres: right forward up (default 0 1.0 0.8)")
     args = parser.parse_args()
     path = os.path.join(args.assets, "hull reconstruction", "assembled", "manifest.json")
     with open(path, encoding="utf-8") as f:
         manifest = json.load(f)
     metres = args.metres_per_hull_unit or manifest["scale"]["metresPerHullUnit"]
+    if args.script:
+        os.makedirs(os.path.dirname(os.path.abspath(args.script)), exist_ok=True)
+        with open(args.script, "w", encoding="utf-8", newline="\n") as f:
+            f.write("\n".join(Script(manifest, metres, args.yaw_sign, args.eye)) + "\n")
+        print(f"{args.script}: the cockpit's script")
+        return
     for line in Lines(manifest, metres, args.yaw_sign):
         print(line)
 
