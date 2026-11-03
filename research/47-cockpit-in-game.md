@@ -674,3 +674,8 @@ frosted); the package now imports from `BIOC_Materials`, and it loaded. `variant
 **83a375a** (01:04, same pose): the glass at opacity 0.32 with cubemap 1.0 reads through the windshield as RGB 97.2, 73.5, 66.7 (0.22:
 97.9, 72.9, 65.1; none: 101.8, 75.7, 67.1), still close to clear from the seat. **The lamps' glow at x 10 blooms:** a soft halo round each
 lamp, white at the centre (their brightest 1% 255, 255, 255 against 220, 203, 205 unlit; the lamps' area mean grey 57 -> 73).
+
+**136f457** (01:09, same pose): the lamps glow by default (`Hull_Shell` elements 3-5 are the x 10 `_Glow_MIC`s); `variant base` swaps
+those three back to the unlit `_lamp_MIC`s (the lamps' brightest 1% 255 -> 222, 205, 207), as its name rule says. **The glass with its
+cubemap at 3 shows a sheen:** a pale haze over the windshield's middle, the view through it brighter, not darker (RGB 114.3, 92.3, 86.9
+against 97.2, 73.5, 66.7 at cubemap 1), the crate's dark face there washed toward grey.
