@@ -611,6 +611,8 @@ void CheckClasses() {
     // game/mako (research/44): the Mako's turret aimed by the controller.
     CheckClass<ABioVehicleBase>("SFXGame.BioVehicleBase");
     CheckClass<ABioVehicleWheeled>("SFXGame.BioVehicleWheeled");
+    CheckClass<UDamageType>("Engine.DamageType");  // `mevr vehicle damage`
+    CheckClass<UBioSFHandler_GameOver>("SFXGame.BioSFHandler_GameOver");  // `mevr vehicle resume`
     CheckClass<UBioVehicleBehaviorBase>("SFXGame.BioVehicleBehaviorBase");
     CheckClass<UBioSkelControl_TurretConstrained>("SFXGame.BioSkelControl_TurretConstrained");
     // game/MakoControls (research/46): which simulation the vehicle runs.
@@ -1085,6 +1087,9 @@ void CheckFunctions() {
         "Engine.PrimitiveComponent.SetHidden",
         "Engine.PrimitiveComponent.SetLightEnvironment",
         "Engine.PrimitiveComponent.SetRBAngularVelocity",
+        "Engine.Actor.TakeDamage",
+        "SFXGame.BioActorBehavior.ReactToDeath",
+        "SFXGame.BioSFHandler_GameOver.HandleEvent",
         "Engine.Actor.SetBase",
         "Engine.Actor.SetHardAttach",
         "Engine.PrimitiveComponent.SetActorCollision",
@@ -1360,6 +1365,7 @@ void CheckParams() {
     PARMS(UPrimitiveComponent_execSetHidden_Parms, "Engine.PrimitiveComponent.SetHidden");
     PARMS(UPrimitiveComponent_execSetLightEnvironment_Parms, "Engine.PrimitiveComponent.SetLightEnvironment");
     PARMS(UPrimitiveComponent_execSetRBAngularVelocity_Parms, "Engine.PrimitiveComponent.SetRBAngularVelocity");
+    PARMS(AActor_eventTakeDamage_Parms, "Engine.Actor.TakeDamage");
     PARMS(AActor_execSetBase_Parms, "Engine.Actor.SetBase");
     PARMS(AActor_execSetHardAttach_Parms, "Engine.Actor.SetHardAttach");
     PARMS(AActor_execSetOwner_Parms, "Engine.Actor.SetOwner");

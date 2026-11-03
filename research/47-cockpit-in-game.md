@@ -975,3 +975,18 @@ user's PS VR2 renders more pixels than the fake headset's 2160-high eyes: the he
 - **Tested on the fake game** (`tools/setup/test-fake-game.ps1 -Build build-mono`, the game's own TOC copied in): install (the package, the
   script, the TOC one entry longer), repair after the game's TOC was put back (the entry back), restore and apply of the settings, an
   update over the top, report, uninstall: the fake game folder byte for byte what it was, TOC included. Every check passed.
+
+## A death in the Mako and the steep banks (2026-11-03 12:27-12:35, fake headset, `BIOA_UNC20`)
+
+- **A death by the game's own path.** `Vehicle.TakeDamage` on the Mako (`mevr vehicle damage <n>`, new) left `Pawn.Health` at 300: ME1's
+  vehicles take damage through their behaviour, and the vehicle behaviour's death reaction is `BioVehicleBehaviorBase.ReactToDeath` (the
+  override of `BioActorBehavior.ReactToDeath`). `mevr vehicle die` (new) runs it as a fatal hit would: the game went to game mode 7 with
+  ME1's "Critical Mission Failure" screen, and in the same tick the cockpit took itself out (`seat: ... out of the seat`, the parts parked,
+  the captures off). `mevr vehicle resume` (new) presses the screen's "Resume Last Save" as its button does
+  (`BioSFHandler_GameOver.HandleEvent(3)`; the handler's script, read with Legendary Explorer's library: 3 loads the character's most
+  recent save, 4 the main menu, 5 the load screen). Here it answered "Cannot find previous Save Game to resume": a level opened from the
+  console with no character's save on record. Loading a save made in the Mako brings the cockpit back in ("The cockpit by itself").
+- **Steep banks.** A 30 s drive (`make-drive-recording.py 30 --controls`: full throttle, turning right, left, then straight on for 15 s)
+  climbed the landing's banks until the speed fell from 2236 to 968 units a second; eight snapshots 2 s apart from 13 s: the slope and a
+  rock face fill the windshield at close range in two of them, the Mako pitched and rolled, and nothing of the terrain comes into the
+  cabin in any.

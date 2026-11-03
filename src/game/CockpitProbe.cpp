@@ -218,6 +218,13 @@ ue3::FieldRef gPlayersOnlyPending{"Engine.WorldInfo", "bPlayersOnlyPending"};
 ue3::FieldRef gHiddenField{"Engine.Actor", "bHidden"};
 ue3::FieldRef gHiddenGame{"Engine.PrimitiveComponent", "HiddenGame"};
 ue3::FunctionRef gPlaceExitingDriver{"SFXGame.BioVehicleBase.PlaceExitingDriver"};
+// `mevr vehicle damage`: the game's damage (resolved on the pawn's class; this row is the base declaration's check).
+ue3::FunctionRef gTakeDamage{"Engine.Actor.TakeDamage"};
+ue3::ClassRef gDamageTypeClass{"Engine.DamageType"};
+ue3::FieldRef gVehicleBehavior{"SFXGame.BioVehicleBase", "m_oBehavior"};  // `mevr vehicle die`
+ue3::FunctionRef gReactToDeath{"SFXGame.BioActorBehavior.ReactToDeath"};
+ue3::ClassRef gGameOver{"SFXGame.BioSFHandler_GameOver"};  // `mevr vehicle resume`
+ue3::FunctionRef gGameOverEvent{"SFXGame.BioSFHandler_GameOver.HandleEvent"};
 // `ride`: the camera's update (a post-handler, registered at startup) and the vehicle's components hidden from the eyes.
 ue3::FunctionRef gUpdateCamera{"Engine.Camera.UpdateCamera"};
 ue3::ClassRef gPrimitiveComponent{"Engine.PrimitiveComponent"};
@@ -3166,6 +3173,51 @@ std::string VehicleCommand(std::string const& line) {
         log::Info("mevr vehicle: {}", report);
         return report;
     }
+    if (verb == "damage") {
+        // The game's own damage on the pawn (its class's TakeDamage, so the vehicle's override and its death and game-over run),
+        // for testing what the cockpit does when the Mako dies (docs/mako-cockpit-goal.md item 1).
+        float amount = 100.0f;
+        words >> amount;
+        ue3::Reflection& r = R();
+        ue3::Function* const take = r.FindFunction(r.ClassOf(pawn), "TakeDamage");
+        if (take == nullptr || gTakeDamage.Get() == nullptr) {
+            return Refuse("no TakeDamage on the pawn's class");
+        }
+        auto const at = player::Location(pawn);
+        ue3::Params p(r, take);
+        p.Set("Damage", amount);
+        p.Set("DamageAmount", amount);
+        p.Set("EventInstigator", static_cast<ue3::Object*>(nullptr));
+        p.Set("HitLocation", at ? ue3::Vector{at->x, at->y, at->z} : ue3::Vector{});
+        p.Set("DamageType", static_cast<ue3::Object*>(gDamageTypeClass.Get()));
+        bool const called = ue3::runtime::Call(pawn, take, p);
+        std::string const report = std::format("{}.TakeDamage({:.0f}) called {}; health now {}", r.NameText(r.OuterOf(take)), amount, called,
+            gPawnHealth.Read<std::int32_t>(pawn).value_or(-1));
+        log::Info("mevr vehicle: {}", report);
+        return report;
+    }
+    if (verb == "die") {
+        // ME1's vehicles take damage through their behaviour (TakeDamage on the pawn left Health as it was): its own death reaction,
+        // the vehicle behaviour's override of BioActorBehavior.ReactToDeath, as a fatal hit would run it.
+        ue3::Object* const behavior = gVehicleBehavior.Read<ue3::Object*>(pawn).value_or(nullptr);
+        ue3::Reflection& r = R();
+        ue3::Function* const react = behavior != nullptr ? r.FindFunction(r.ClassOf(behavior), "ReactToDeath") : nullptr;
+        if (react == nullptr || gReactToDeath.Get() == nullptr) {
+            return Refuse("no vehicle behaviour with ReactToDeath");
+        }
+        auto const at = player::Location(pawn);
+        ue3::Params p(r, react);
+        p.Set("Damage", 10000.0f);
+        p.Set("fDamage", 10000.0f);
+        p.Set("fDeathDamage", 10000.0f);
+        p.Set("HitLocation", at ? ue3::Vector{at->x, at->y, at->z} : ue3::Vector{});
+        p.Set("vHitLocation", at ? ue3::Vector{at->x, at->y, at->z} : ue3::Vector{});
+        p.Set("clsDamageType", static_cast<ue3::Object*>(gDamageTypeClass.Get()));
+        bool const called = ue3::runtime::Call(behavior, react, p);
+        std::string const report = std::format("{}.ReactToDeath called {}", r.NameText(r.OuterOf(react)), called);
+        log::Info("mevr vehicle: {}", report);
+        return report;
+    }
     if (verb == "jets") {
         double seconds = 2.0;
         words >> seconds;
@@ -3245,6 +3297,23 @@ std::string VehicleCommand(std::string const& line) {
             called += Call(handler, gFinalizeParty, p) ? 1 : 0;
         });
         std::string const report = std::format("squad screen: {} handler{}, FinalizeParty(A) called on {}", handlers, handlers == 1 ? "" : "s", called);
+        log::Info("mevr vehicle: {}", report);
+        return report;
+    }
+    if (verb == "resume") {
+        // The game-over screen's "Resume Last Save", as its button sends it: BioSFHandler_GameOver.HandleEvent(3).
+        if (auto const missing = MissingFunction({&gGameOverEvent})) {
+            return Refuse(*missing);
+        }
+        int handlers = 0;
+        int called = 0;
+        ForEachLive(gGameOver.Get(), [&](ue3::Object* handler) {
+            ++handlers;
+            ue3::Params p = ParamsOf(gGameOverEvent);
+            p.Set("nCommand", static_cast<std::uint8_t>(3));
+            called += Call(handler, gGameOverEvent, p) ? 1 : 0;
+        });
+        std::string const report = std::format("game over: {} handler{}, Resume Last Save (HandleEvent 3) called on {}", handlers, handlers == 1 ? "" : "s", called);
         log::Info("mevr vehicle: {}", report);
         return report;
     }
@@ -3792,7 +3861,8 @@ void Shutdown(bool exiting) {
     for (ue3::FunctionRef* const f : {&gDynamicLoadObject, &gSpawn, &gDestroy, &gSetLocation, &gSetRotation, &gSetDrawScale, &gSetPhysics, &gSetCollision, &gSetHidden, &gSetBase, &gSetHardAttach,
              &gForceUpdate, &gSetActorCollision, &gSetBlockRigidBody, &gSetTraceBlocking, &gSetStaticMesh, &gGetMaterial, &gSetMaterial, &gGetNumElements, &gGetUnscaledBounds,
              &gCreateMic, &gSetParent, &gSetTextureParameter, &gGetTextureParameter, &gLightEnvironmentSetEnabled, &gCreateTarget, &gCaptureSetEnabled, &gCaptureSetFrameRate,
-             &gCaptureSetView, &gCaptureSetParameters, &gEnterVehicle, &gFindClosestVehicle, &gCheckActivate, &gFinalizeParty, &gUpdateCamera, &gTryExitVehicle, &gBioExitVehicle, &gFastTrace, &gPlaceExitingDriver, &gFireCannon, &gStopFiringCannon}) {
+             &gCaptureSetView, &gCaptureSetParameters, &gEnterVehicle, &gFindClosestVehicle, &gCheckActivate, &gFinalizeParty, &gUpdateCamera, &gTryExitVehicle, &gBioExitVehicle, &gFastTrace, &gPlaceExitingDriver, &gFireCannon, &gStopFiringCannon,
+             &gPrimitiveSetHidden, &gSetLightEnvironment, &gTakeDamage, &gReactToDeath, &gGameOverEvent}) {
         f->Reset();
     }
     for (ue3::FieldRef* const f : {&gStatic, &gDeleteMe, &gNoDelete, &gMovable, &gRole, &gPhysics, &gBase, &gDynamicComponent, &gDynamicLightEnvironment, &gStaticActorComponent, &gComponentMesh,
@@ -3802,8 +3872,12 @@ void Shutdown(bool exiting) {
              &gViewMatrix, &gForceLinearGamma, &gTargetFormat, &gMeshMaterials, &gPrimitiveLightEnvironment, &gLightEnvironmentEnabled, &gTextureResource, &gTextureSrgb, &gTextureNeverStream,
              &gTextureLodGroup, &gTexture2DSizeX, &gTexture2DSizeY, &gTexture2DFormat, &gTexture2DRequestedMips, &gTexture2DResidentMips, &gTexture2DMipTail, &gTexture2DMips, &gWorldInfo,
              &gTextureValueObject, &gRemoteEventName, &gStreamingLevels, &gStreamPackage, &gStreamLoaded, &gStreamShouldLoad, &gStreamShouldShow, &gStreamVisible,
-             &gStreamPending, &gAllComponents, &gOwnerNoSee, &gVehicleDriver, &gPawnHealth, &gPlayersOnly, &gPlayersOnlyPending, &gHiddenField, &gHiddenGame}) {
+             &gStreamPending, &gAllComponents, &gOwnerNoSee, &gVehicleDriver, &gPawnHealth, &gPlayersOnly, &gPlayersOnlyPending, &gHiddenField, &gHiddenGame,
+             &gOnlyOwnerSee, &gVehicleBehavior}) {
         f->Reset();
+    }
+    for (ue3::FieldRef& f : gHeadMeshes) {
+        f.Reset();
     }
 }
 
