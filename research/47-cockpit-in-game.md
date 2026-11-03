@@ -531,3 +531,31 @@ static or no-delete, then not `ROLE_Authority`). It is the third branch, BioWare
 (vtable +0x6D0) to an object whose member is of an Engine class, it sets a flag and calls a method on another object instead,
 then returns 0, which looks like a deferred destroy **[verify]**. The probe's fallback hides the actor, so nothing stays in view.
 But a hidden actor still shows our mesh, so a later sweep counts it again (41 after 37).
+
+## The hull of d4d3373 with its live screen (2026-11-02 23:25, fake headset, Eden Prime)
+
+The hull built from d4d3373 (research/48 sections 17 to 21: a bigger console, each screen a panel cut to its bezel's opening, the
+rear section's lamps and panels, keypads and vents) was installed as in "What to do" and placed with `place.py`'s lines, in the
+same frame as the earlier runs (-122375, 235857, -263, heading -81). The probe's new `screenpart <Package.Object>` puts the screen on
+a placed part instead of a mesh of its own: the part stays where the frame put it, the tick never moves it, and `parts clear` /
+`sweep` take the screen and its capture with them. The lines after the parts: `screenpart BIOG_MEVR_Cockpit.Hull_Console`,
+`element 1`, `post 0`, `screen 768 343 float` (the centre panel's 0.3605 x 0.161 hull units, 2.24:1), `chase 6 3`.
+
+- **The live view fills the centre panel's opening**, upright, unmirrored, at the panel's own aspect.
+- **The chase capture sees our cockpit from outside:** 6 m behind and 3 m above Shepard, the cockpit floating at the head is a dark
+  box in the middle of the picture, the chair's legs below it. In the Mako the cockpit sits inside the vehicle's own hull, which should
+  hide it unless the cockpit is wider than the Mako at 3 m per hull unit **[verify]**. If not, hide the parts from the capture
+  (the components' `bOwnerNoSee` with the capture actor as their owner, if a scene capture's view takes its owner as the view actor
+  **[verify]**).
+- **Sides** (the cockpit turned 70 degrees each way around the head): the angled side windows, the side panels with the idle
+  images' orange frames, the A-pillars' feet on the console's blocks with no sleeve, the controls in front of the side panels.
+- **Over the shoulders** (150 degrees each way): the rear section's wall panels, vents, the amber lamp strips and the ceiling lamps
+  as in Asset Modeling's `rear-baked` render. The chair's backrest fills half the view, a flat, untextured-looking dark surface
+  (mean RGB 28, 31, 28 with post processing) with small light shards where something behind shows through: whether the eye sits too
+  close to or inside the backrest is the asset side's to check.
+- **Tone** (the same three boxes as before, post on / off / on): 32.3 / 29.2 / 34.6 / 38.5, then 56.2 / 45.4 / 68.5 / 68.0, then
+  on again as the first. The boxes now fall on the new ceiling and console, so they don't compare with the earlier builds' numbers.
+  The panels' idle images read darker than in the renders: the centre panel's opening mean RGB 25, 17, 12 (43, 28, 16 without
+  post processing), the side panels 35-38, 29-30, 26-27.
+- A rear view lasted to the end of Eden Prime's bomb timer (`4 Charges Remaining`, under 2 minutes after the load): views from this
+  save need taking soon after `god`.

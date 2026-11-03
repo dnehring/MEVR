@@ -229,6 +229,7 @@ struct State {
     ue3::Object* mesh = nullptr;
     char const* kind = "";
     bool attached = false;
+    bool part = false;  // `screenpart`: the actor is one of the parts, placed by the frame, never by Place()
     ue3::Object* mic = nullptr;
     ue3::Object* parent = nullptr;
     ue3::Name parameter{};
@@ -392,7 +393,7 @@ void ClearAll(char const* why) {
     if (Still(gState.captureActor, gActorClass)) {
         DestroyActor(gState.captureActor, why);
     }
-    if (Still(gState.actor, gActorClass)) {
+    if (!gState.part && Still(gState.actor, gActorClass)) {  // a part goes with the parts
         DestroyActor(gState.actor, why);
     }
     // The render target and the material instance have nothing to destroy: nothing refers to them now, the garbage takes them.
@@ -879,6 +880,9 @@ bool PartAlive(Part const& part) {
 }
 
 void ClearParts(char const* why) {
+    if (gState.part) {
+        ClearAll(why);  // the screen on one of them, and its capture
+    }
     for (Part const& part : gParts) {
         if (PartAlive(part)) {
             DestroyActor(part.actor, why);
@@ -951,6 +955,9 @@ std::string DoPart(std::istringstream& words) {
 
 // Every actor of the spawnable kinds whose mesh comes from our package: parts a hot reload or a lost list left behind.
 int SweepCockpitActors() {
+    if (gState.part) {
+        ClearAll("mevr cockpit parts sweep");
+    }
     std::vector<ue3::Object*> found;
     for (std::size_t i = 0; i < kAutomatic; ++i) {
         ActorKind const& kind = kKinds[i];
@@ -985,10 +992,33 @@ std::string DoParts(std::string const& what) {
                                   : std::string("no frame yet: the first part or `anchor` takes the head\n");
     for (std::size_t i = 0; i < gParts.size(); ++i) {
         Part const& p = gParts[i];
-        out += std::format("  {} {}: right {:.3f} forward {:.3f} up {:.3f} m, yaw {:.1f}, {:.5f} m a unit\n", i + 1, ue3::runtime::FullName(p.mesh), p.offsetM.x, p.offsetM.y,
-            p.offsetM.z, p.yawDeg, p.metersPerUnit);
+        out += std::format("  {} {}: right {:.3f} forward {:.3f} up {:.3f} m, yaw {:.1f}, {:.5f} m a unit{}\n", i + 1, ue3::runtime::FullName(p.mesh), p.offsetM.x, p.offsetM.y,
+            p.offsetM.z, p.yawDeg, p.metersPerUnit, gState.part && gState.actor == p.actor ? " (the screen)" : "");
     }
     return out;
+}
+
+// `screenpart <Package.Object>`: the screen goes on that part (the hull's console) instead of a mesh of its own; it stays where the
+// frame put it. Then `element`, `screen` as for a mesh.
+std::string DoScreenPart(std::string const& path) {
+    for (Part const& part : gParts) {
+        if (!PartAlive(part) || Lower(R().PathName(part.mesh)) != Lower(path)) {
+            continue;
+        }
+        if (gState.actor != part.actor) {
+            ClearAll("the screen moves to a part");
+            gState.world = engine::World();
+            gState.actor = part.actor;
+            gState.component = part.component;
+            gState.mesh = part.mesh;
+            gState.kind = "part";
+            gState.part = true;
+        }
+        std::string const report = std::format("the screen goes on the part {} ({}); mevr cockpit screen next", ue3::runtime::FullName(part.mesh), ue3::runtime::FullName(part.actor));
+        log::Info("cockpit probe: {}", report);
+        return report;
+    }
+    return Refuse(std::format("no placed part shows {} (mevr cockpit parts)", path));
 }
 
 // ---- Materials -----------------------------------------------------------------------------------------------------
@@ -1533,7 +1563,7 @@ std::string Classes() {
 }
 
 std::string StatusLine() {
-    char const* const mode = gState.actor == nullptr ? "-" : gState.attached ? "attached" : gSettings.follow ? "following the head" : "still";
+    char const* const mode = gState.actor == nullptr ? "-" : gState.part ? "in the parts' frame" : gState.attached ? "attached" : gSettings.follow ? "following the head" : "still";
     std::string target = "no render target";
     if (gState.target != nullptr) {
         target = std::format("{}x{} {}", gSizeX.Read<std::int32_t>(gState.target).value_or(-1), gSizeY.Read<std::int32_t>(gState.target).value_or(-1),
@@ -1554,7 +1584,7 @@ std::string Rest(std::istringstream& words) {
 }
 
 constexpr char const* kUsage =
-    "mevr cockpit: load <Package.Object> [class] | mesh [name or Package.Object] | part <Package.Object> RIGHT FORWARD UP YAW M_PER_UNIT | parts [clear|sweep] | anchor | list [filter] | classes | spawnclass [name] | screen [W H] [float|rgba8] [linear] | materials [filter] | material [name] | param [name] | "
+    "mevr cockpit: load <Package.Object> [class] | mesh [name or Package.Object] | part <Package.Object> RIGHT FORWARD UP YAW M_PER_UNIT | parts [clear|sweep] | screenpart <Package.Object> | anchor | list [filter] | classes | spawnclass [name] | screen [W H] [float|rgba8] [linear] | materials [filter] | material [name] | param [name] | "
     "texture [Package.Object] | info | element N|all | scale S | dist M | rot P Y R | follow 0|1 | attach | detach | chase BACK UP | rate N | aim 0|1 | post 0|1 | status | clear";
 
 // ---- `texture`, `info`: separating a bad texture from a bad instance from a bad mesh (research/47) -------------------
@@ -1857,6 +1887,9 @@ std::string Command(std::string const& line) {
     if (verb == "parts") {
         return DoParts(Rest(words));
     }
+    if (verb == "screenpart") {
+        return DoScreenPart(Rest(words));
+    }
     if (verb == "anchor") {
         if (!SetAnchor()) {
             return Refuse("no head or camera to anchor the parts to");
@@ -2001,7 +2034,7 @@ void Tick() {
         return;
     }
     Refresh();
-    if (gState.actor != nullptr && gSettings.follow && !gState.attached && Place()) {
+    if (gState.actor != nullptr && !gState.part && gSettings.follow && !gState.attached && Place()) {
         ++gState.placedTicks;
     }
     // Not every tick unless the rate asks: each SetView makes the engine build a new probe, with a new view state.
