@@ -990,3 +990,14 @@ user's PS VR2 renders more pixels than the fake headset's 2160-high eyes: the he
   climbed the landing's banks until the speed fell from 2236 to 968 units a second; eight snapshots 2 s apart from 13 s: the slope and a
   rock face fill the windshield at close range in two of them, the Mako pitched and rolled, and nothing of the terrain comes into the
   cabin in any.
+
+## On the real game (2026-11-03 12:50-13:05; the user's go-ahead)
+
+MEVR Setup from `dist\MEVR-0.1.0` on the user's own install, after a backup and a SHA-256 list of 56 files (`Binaries\Win64`, the
+configs, the TOC, the cockpit package). The install found an older record (2026-10-26, with backups of that day's development files),
+so it was set aside for the test and put back after: the test's uninstall then had to return the folder as it was this morning.
+`--install --source Steam --no-settings`: the monolithic ASI, fonts, menu, the cockpit package and script replaced (backed up), the
+package's TOC entry already there at the same size (recorded with that size, so uninstall leaves it), the mod's settings and logs recorded
+as the player's. The game then ran the players' build (`MEVR 0.1.0 (monolithic, commit 7ec9404696)`, `reflect: no LExSDKv2 cross-check in
+this build`); `mako-start` and the drop: the cockpit, the seated Shepard posed by arm IK, the tilting stick driving, the chase view on the
+centre screen. `--uninstall --keep-settings`: every file restored; with the old record back, all 56 files byte for byte as before.

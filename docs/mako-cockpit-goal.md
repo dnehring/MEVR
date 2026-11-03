@@ -57,7 +57,7 @@ Each line is checked in the game (fake headset with replays where it can be, the
 | 8. The HUD | Done: the Mako's status and radar on the left display, the rest high in the windshield |
 | 9. Comfort | Needs the user's headset |
 | 10. Cost | Done: within 11.1 ms at p90 at `BIOA_UNC52` (the heaviest uncharted world) with the cockpit riding |
-| 11. Players get it | Done: the release build, the package and script in the payload, MEVR Setup's install, repair and uninstall with the TOC entry, tested on the fake game |
+| 11. Players get it | Done: the release build, the package and script in the payload, MEVR Setup's install, repair and uninstall with the TOC entry, tested on the fake game and on the user's real game (installed, played into the cockpit, uninstalled: 56 files byte for byte as before) |
 
 Also asked for on 2026-11-03: the stick tilts (left/right steers, forward/back pitches the Mako while the thrusters fire) and the
 thrusters last 2.5 times as long (research/47 "The stick tilts").
