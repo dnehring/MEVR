@@ -793,17 +793,39 @@ No decimation or packaging until the user approves the modelling.
 
 ## 5. Not done
 
-- **Not seen from the seat in the game:** the meshes load and draw textured (section 9), but nothing is placed around the
-  player until the scale and the eye point are decided.
+(Brought up to date 2026-11-02, after section 21.)
+
+- **What the game side relies on** (keep it, or change both sides together):
+  - the package `BIOG_MEVR_Cockpit` and its mesh names: `Hull_Shell`, `Hull_Console`, `Hull_Side_Left`, `Hull_Side_Right`,
+    `Chair`, `Joystick_Base`, `Joystick_Grip`, `Throttle_Base`, `Throttle_Handle` (and `Front_Cockpit`);
+  - the frame: hull units times 100, forward on -Y, so a hull mesh takes yaw 90 (`tools/cockpit/place.py`);
+  - `Hull_Console`'s material slot 1 is the live screen (`Screen`, UVs 0 to 1, v = 0 at the top), slot 2 the idle
+    screens (`Display`). The probe's `element 1` puts the capture there;
+  - the manifest's `eye.hull`, `scale.metresPerHullUnit` and each furniture file's `origin`, `turnDeg`, `motion` and
+    `hullUnitsPerModelUnit` (place.py);
+  - the unlit `EmissiveTexturedMaterial`: everything seen is the baked texture, so a moved chair or lamp means baking
+    again (the chair's shadow is on the floor).
+- **The game side's last run (research/47, 2026-11-02) used an earlier build.** Not seen in the game since: the screens
+  fitted to their trim (sections 19, 20), the console grown and moved (17, 18), the walls, floor, stands and the parts of
+  section 21. The package has to be installed again (research/47 "What to do", the game closed).
+- **The live screen is now 2.24 times as wide as tall** (manifest `screens.centre`: 0.3605 x 0.161). The probe's capture was
+  sized for the earlier screen, 2.85:1 (`screen 768 270`); at that size the picture shows squeezed sideways. About
+  `screen 768 343` fits now.
+- **In the game, still to do** (the game side): follow the Mako with the cockpit (it stays where it was anchored), reach
+  drivable Mako gameplay at all (no save or level load has yet), the Mako's own mesh and camera against the cockpit
+  [verify], the controls' 3D models under the hands (research/46 draws them as flat quads), and what the cockpit costs
+  a frame in stereo.
 - **Not decided** (the user's call):
-  - the metric scale (the in-game session assumes a 1.6 m cabin for now, about 190 Unreal units per hull unit,
-    adjustable at run time);
-  - the pilot's eye point and the seat;
-  - which console screen shows the live third-person view: it needs a material slot of its own, which the console
-    doesn't have;
-  - the controls' place relative to the hull.
-- **The tone:** the shell has a texture of its own now (section 8), tinted from the pane's atlas so it matches the parts;
-  the concept's darker grade would mean darkening the parts too.
+  - the metric scale: 3 m per hull unit proposed (the cabin 2.5 m wide, the ceiling 1.66 m, the eye 1.21 m over the
+    floor), best judged in the headset;
+  - whether the hull replaces `Front_Cockpit` (then it can leave the package: a 4096 texture, 10.7 MB resident);
+  - the controls' place relative to the hull and the seat (from Codex's anchors for now).
+- **Texture memory:** seven 4096 DXT1 textures, all mips resident (`NeverStream`), about 75 MB. Not measured against the
+  frame yet.
+- **The tone:** the concept is darker and warmer; in the game the level's grade changes ours too (section 13). Tune it
+  against in-game snapshots, not renders.
+- **Modelling left against the concept:** its lamps and panels on the lower side walls beside the console (ours there are
+  behind the wings, section 21); its larger corner lamps (the corner plates can't hold them); the centre screen's
+  aspect (2.24 against 2.8, from growing the console for a seated eye).
 - **The roof's height** follows the panes, 7 cm above the template's ceiling. Keeping the template's height would mean
   scaling the panes down or cutting their caps.
-- **Not placed:** the seat, and how the hull relates to `front-cockpit` (research/47).
