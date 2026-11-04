@@ -8,8 +8,10 @@
 //
 //   section-<name>.png       each section (the menu over the stand-in world, as the headset composites it)
 //   section-<name>-<x>.png   a section's other states (Comfort's snap and movement, Display's image quality rows with
-//                            the headset known and before VR has started)
-//   advanced-<tab>.png       each of Advanced's tabs
+//                            the headset known and before VR has started, the controller guide on a first run and with
+//                            other settings) and its lower screenfuls (-2, -3, -4: the guide, Comfort, Controls, HUD)
+//   advanced-<tab>.png       each of Advanced's tabs (-2: the lower half of Stereo, Game UI and Diagnostics;
+//                            advanced-stereo-expert.png: the original stereo's rows)
 //   state-hover.png          the pointer resting on Resume (its light sweep part-way) and a row hovered
 //   state-pressed.png        a button held down (the dip)
 //   state-focus.png          the pad's focus ring on a toggle
@@ -84,13 +86,20 @@ public:
             v.texts["headset_text"] = ms::HeadsetSizesText(2824, 2880);
             v.texts["prof_active"] = "1";
             v.numbers["lifesize"] = 1;
-            v.numbers["eye_distance"] = 3.4f;
+            v.numbers["eye_distance"] = 6.8f;  // twice Halcyon's sfr2HalfEyeUU 3.4
             v.numbers["convergence"] = 0.012f;
             v.numbers["fp_back"] = 0.23f;
             v.numbers["fp_up"] = -0.05f;
             v.numbers["lean_gain"] = 2.0f;
             v.numbers["panel_follow"] = 70;
             v.texts["content_installed"] = "ALOT for ME1";  // Display > Optional content (research/33)
+            Guide(v, ms::GuideInput{});  // the controller guide with the shipped settings
+        }
+    }
+    // The controller guide's texts for these settings (the host's Read does the same from the files).
+    static void Guide(mevr::menu::Values& v, ms::GuideInput const& input) {
+        for (auto const& [key, text] : ms::GuideTexts(input)) {
+            v.texts[key] = text;
         }
     }
     void Write(std::string const& key, mevr::menu::Values const&, bool final) override {
@@ -404,10 +413,59 @@ int main(int argc, char** argv) {
     };
 
     rml->ProcessMouseMove(-50, -50, 0);
-    for (char const* section : {"comfort", "controls", "body", "display", "hud"}) {
+    for (char const* section : {"guide", "comfort", "controls", "body", "display", "hud"}) {
         model.SetText("section", section);
         frames(30);
         save(std::string("section-") + section);
+    }
+    // Each section's lower part (the pages scroll): one more picture per screenful.
+    auto scrolled = [&](char const* section) {
+        model.SetText("section", section);
+        frames(10);
+        Rml::Element* const content = element("content");
+        if (content == nullptr) {
+            return;
+        }
+        float const page = content->GetClientHeight() - 40.0f;
+        int n = 2;
+        for (float top = page; top < content->GetScrollHeight() - 40.0f && n <= 4; top += page, ++n) {
+            content->SetScrollTop(top);
+            frames(10);
+            save(std::string("section-") + section + "-" + std::to_string(n));
+        }
+        content->SetScrollTop(0.0f);
+    };
+    for (char const* section : {"guide", "comfort", "controls", "hud"}) {
+        scrolled(section);
+    }
+    // The controller guide as a new player first sees it (MainMenu's first run: the welcome line), and with other settings:
+    // the left trigger as Aim, the power wheel on Y, the right grip as RB (holsters off), grenades in the left hand, no vent,
+    // the lever and stick off.
+    model.SetText("section", "guide");
+    model.SetNumber("first_run", 1.0f);
+    frames(30);
+    save("section-guide-first-run");
+    model.SetNumber("first_run", 0.0f);
+    {
+        ms::GuideInput other;
+        other.leftTrigger = "lt";
+        other.powerWheel = "y";
+        other.holsters = false;
+        other.grenadeHands = "left";
+        other.vent = false;
+        other.turn = "snap";
+        for (auto const& [key, text] : ms::GuideTexts(other)) {
+            model.SetText(key, text);
+        }
+        model.SetNumber("vent", 0.0f);
+        model.SetNumber("mako_controls", 0.0f);
+        frames(30);
+        save("section-guide-other");
+        for (auto const& [key, text] : ms::GuideTexts(ms::GuideInput{})) {
+            model.SetText(key, text);
+        }
+        model.SetNumber("vent", 1.0f);
+        model.SetNumber("mako_controls", 1.0f);
     }
     // Comfort's other states (research/31): snap with its angle, the vignette on (its rows enabled), walking toward the hand.
     model.SetText("section", "comfort");
@@ -465,7 +523,40 @@ int main(int argc, char** argv) {
         if (std::string(tab) == "stereo") {
             mevr::png::Write(output / "menu-alpha.png", w, h, Straight(menu).data());
         }
+        if (std::string(tab) == "hud" || std::string(tab) == "diag" || std::string(tab) == "stereo") {
+            if (Rml::Element* content = element("content")) {  // the tab's lower half
+                content->SetScrollTop(content->GetScrollHeight());
+                frames(10);
+                save(std::string("advanced-") + tab + "-2");
+                content->SetScrollTop(0.0f);
+            }
+        }
     }
+    // Stereo without real eye positions: the original stereo's expert rows.
+    model.SetText("advtab", "stereo");
+    model.SetNumber("life_size", 0.0f);
+    frames(10);
+    if (Rml::Element* content = element("content")) {
+        content->SetScrollTop(content->GetScrollHeight());
+        frames(10);
+        save("advanced-stereo-expert");
+        content->SetScrollTop(0.0f);
+    }
+    model.SetNumber("life_size", 1.0f);
+    // Comfort's Life-size movement row when Advanced > View's Movement scale holds another gain.
+    model.SetText("section", "comfort");
+    model.SetNumber("lifesize", 0.0f);
+    model.SetText("lifesize_note", "Now 1.5\xC3\x97 (Advanced > View > Movement scale): switching sets 2\xC3\x97 or 1\xC3\x97");
+    frames(10);
+    if (Rml::Element* content = element("content")) {
+        content->SetScrollTop(content->GetScrollHeight() * 0.3f);
+        frames(10);
+        save("section-comfort-lifesize-note");
+        content->SetScrollTop(0.0f);
+    }
+    model.SetNumber("lifesize", 1.0f);
+    model.SetText("lifesize_note", "");
+    model.SetText("section", "advanced");
     // Report a problem (research/33 section 8): the request answered, then the crash offer over the first section.
     model.SetText("report_msg", "Saved to the Desktop: MEVR-report-2026-10-26-0143.zip. Open it after the game: nothing was sent.");
     model.SetNumber("report_snapshot", 1.0f);

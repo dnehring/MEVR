@@ -28,12 +28,13 @@
 
 <div class="main">
 	<div class="rail">
+		<button class="navb" id="nav-guide" data-class-on="section == 'guide'" data-event-click="section = 'guide'"><div class="nico i-guide"/><div><div class="navl">Controller guide</div><div class="navs">Every button and gesture</div></div></button>
 		<button class="navb" id="nav-comfort" data-class-on="section == 'comfort'" data-event-click="section = 'comfort'"><div class="nico i-turn"/><div><div class="navl">Comfort</div><div class="navs">Turning, movement</div></div></button>
 		<button class="navb" id="nav-controls" data-class-on="section == 'controls'" data-event-click="section = 'controls'"><div class="nico i-controls"/><div><div class="navl">Controls</div><div class="navs">Guns, holsters, grenades</div></div></button>
 		<button class="navb" id="nav-body" data-class-on="section == 'body'" data-event-click="section = 'body'"><div class="nico i-body"/><div><div class="navl">Body &amp; calibration</div><div class="navs">Height, arms, aim</div></div></button>
 		<button class="navb" id="nav-display" data-class-on="section == 'display'" data-event-click="section = 'display'"><div class="nico i-eye"/><div><div class="navl">Display</div><div class="navs">Colour, resolution</div></div></button>
 		<button class="navb" id="nav-hud" data-class-on="section == 'hud'" data-event-click="section = 'hud'"><div class="nico i-crosshair"/><div><div class="navl">HUD &amp; sights</div><div class="navs">Panel, reticle, scopes</div></div></button>
-		<button class="navb" id="nav-advanced" data-class-on="section == 'advanced'" data-event-click="section = 'advanced'"><div class="nico i-sliders"/><div><div class="navl">Advanced</div><div class="navs">Renderer, diagnostics</div></div></button>
+		<button class="navb" id="nav-advanced" data-class-on="section == 'advanced'" data-event-click="section = 'advanced'"><div class="nico i-sliders"/><div><div class="navl">Advanced</div><div class="navs">View, stereo, diagnostics</div></div></button>
 		<div class="railspace"/>
 		<!-- The headset, controllers and calibration (in the top bar until the game's menus took its room). -->
 		<div class="chips">
@@ -56,6 +57,79 @@
 			</div></div>
 	</div>
 
+	<!-- ===================================================================================== Controller guide -->
+	<!-- What each control does (research/28 "The controller guide"). The labels and the list come from the settings
+	     (core/vr/MenuSettings GuideTexts); the drawing is RCSS boxes (.gdraw), no artwork. The first opening for a new
+	     player lands here (MainMenu's first run, [Menu] controlsShown). -->
+	<div data-if="section == 'guide'">
+		<div class="stitle">Controller guide</div>
+		<div class="sdesc">What each button and gesture does on foot. Open this menu any time: press and hold both thumbsticks.</div>
+		<div class="info welcome" data-if="first_run"><div class="ico i-info"/><span>Welcome to MEVR. This guide stays here, first in the list on the left. Resume when you're ready; Body &amp; calibration fits Shepard to your height and aim.</span></div>
+		<div class="guide">
+			<div class="gcard">
+				<div class="gname">Left controller</div>
+				<div class="gdraw">
+					<div class="gtrig"/><div class="gbody"/><div class="gstick"><div class="gknob"/></div>
+					<div class="gbtn up">Y</div><div class="gbtn lo">X</div><div class="gmenu"/><div class="ggrip onright"/>
+					<div class="glead l t"/><div class="glab l t"><div>{{guide_lt}}</div></div>
+					<div class="glead l s"/><div class="glab l s"><div>{{guide_lstick}}</div></div>
+					<div class="glead l up"/><div class="glab l up"><div>{{guide_y}}</div></div>
+					<div class="glead l lo"/><div class="glab l lo"><div>{{guide_x}}</div></div>
+					<div class="glead l m"/><div class="glab l m"><div>{{guide_menu}}</div></div>
+					<div class="glead r g"/><div class="glab r g"><div>{{guide_lgrip}}</div></div>
+				</div>
+				<div class="glist">
+					<div class="gitem"><span class="key">Trigger</span><div class="gdesc">{{guide_lt_how}}</div></div>
+					<div class="gitem"><span class="key">Grip</span><div class="gdesc">{{guide_lgrip_how}}</div></div>
+					<div class="gitem"><span class="key">Stick</span><div class="gdesc">{{guide_lstick_how}}</div></div>
+					<div class="gitem"><span class="key">X</span><div class="gdesc">{{guide_x_how}}</div></div>
+					<div class="gitem"><span class="key">Y</span><div class="gdesc">{{guide_y_how}}</div></div>
+					<div class="gitem"><span class="key">Menu</span><div class="gdesc">{{guide_menu_how}}</div></div>
+				</div>
+			</div>
+			<div class="gcard">
+				<div class="gname">Right controller</div>
+				<div class="gdraw">
+					<div class="gtrig"/><div class="gbody"/><div class="gstick"><div class="gknob"/></div>
+					<div class="gbtn up">B</div><div class="gbtn lo">A</div><div class="ggrip onleft"/>
+					<div class="glead r t"/><div class="glab r t"><div>{{guide_rt}}</div></div>
+					<div class="glead r s"/><div class="glab r s"><div>{{guide_rstick}}</div></div>
+					<div class="glead r up"/><div class="glab r up"><div>{{guide_b}}</div></div>
+					<div class="glead r lo"/><div class="glab r lo"><div>{{guide_a}}</div></div>
+					<div class="glead l g"/><div class="glab l g"><div>{{guide_rgrip}}</div></div>
+				</div>
+				<div class="glist">
+					<div class="gitem"><span class="key">Trigger</span><div class="gdesc">{{guide_rt_how}}</div></div>
+					<div class="gitem"><span class="key">Grip</span><div class="gdesc">{{guide_rgrip_how}}</div></div>
+					<div class="gitem"><span class="key">Stick</span><div class="gdesc">{{guide_rstick_how}}</div></div>
+					<div class="gitem"><span class="key">A</span><div class="gdesc">{{guide_a_how}}</div></div>
+					<div class="gitem"><span class="key">B</span><div class="gdesc">{{guide_b_how}}</div></div>
+				</div>
+			</div>
+		</div>
+		<div class="info"><div class="ico i-info"/><span>Buttons named as on Quest controllers: A and X are the lower face buttons, B and Y the upper ones.</span></div>
+		<div class="group">
+			<div class="gtitle"><span>Gestures</span><div class="gline"/></div>
+			<div class="row" data-if="holsters"><div class="rl"><div class="rlab">Holsters</div><div class="rdesc">Reach with your right hand and squeeze the grip: the pistol at your right hip, the assault rifle over your right shoulder, the shotgun at your left hip, the sniper rifle over your left shoulder.</div></div></div>
+			<div class="row"><div class="rl"><div class="rlab">Grenades</div><div class="rdesc">{{guide_grenade}}</div></div></div>
+			<div class="row"><div class="rl"><div class="rlab">Melee</div><div class="rdesc">{{guide_melee}}</div></div></div>
+			<div class="row"><div class="rl"><div class="rlab">Both hands on the gun</div><div class="rdesc">Squeeze the left grip with your left hand on the gun. Raise it to your cheek for aimed fire.</div></div></div>
+			<div class="row" data-if="vent"><div class="rl"><div class="rlab">Vent a hot gun</div><div class="rdesc">When the gun runs hot, squeeze the left grip on its top just ahead of your right hand, then pull back fast as you let go.</div></div></div>
+			<div class="row" data-if="crouch"><div class="rl"><div class="rlab">Crouch</div><div class="rdesc">Crouch for real and Shepard crouches with you, down behind low cover.</div></div></div>
+			<div class="row"><div class="rl"><div class="rlab">This menu, recenter</div><div class="rdesc">Press and hold both thumbsticks for this menu. Double-click the right thumbstick to turn the view to face where you look.</div></div></div>
+		</div>
+		<div class="group">
+			<div class="gtitle"><span>In the Mako</span><div class="gline"/></div>
+			<div data-if="mako_controls">
+				<div class="row"><div class="rl"><div class="rlab">Throttle lever, left hand</div><div class="rdesc">Squeeze the grip at the lever by your left side. Push it forward to drive, pull it back to reverse; it stays where you leave it. X: jump jets (and back onto the wheels), Y: boost.</div></div></div>
+				<div class="row"><div class="rl"><div class="rlab">Drive stick, right hand</div><div class="rdesc">Squeeze the grip at the stick by your right side. Tilt it left and right to steer, forward and back to pitch while the jets fire. Trigger: machine gun, A: cannon, thumbstick: turret.</div></div></div>
+				<div class="row"><div class="rl"><div class="rlab">Before you grab them</div><div class="rdesc">Point the right controller to aim. The game's own controls work: the left stick drives, the right trigger fires the machine gun, the right grip the cannon.</div></div></div>
+			</div>
+			<div class="row" data-if="!mako_controls"><div class="rl"><div class="rlab">The game's controls</div><div class="rdesc">Point the right controller to aim. The left stick drives, the right trigger fires the machine gun, the right grip the cannon, A jumps.</div></div></div>
+			<div class="row"><div class="rl"><div class="rlab">Getting out</div><div class="rdesc">B leaves the Mako.</div></div></div>
+		</div>
+	</div>
+
 	<!-- ===================================================================================== Comfort -->
 	<div data-if="section == 'comfort'">
 		<div class="stitle">Comfort</div>
@@ -74,25 +148,31 @@
 		</div>
 		<div class="group">
 			<div class="gtitle"><span>Movement</span><div class="gline"/></div>
-			<div class="row"><div class="rl"><div class="rlab">Walk toward</div><div class="rdesc">What the left stick's forward means: where you look, where your left hand points, or where Shepard faces</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Walk toward</div><div class="rdesc">What the left stick's forward means: where you look, where your left hand points, or where Shepard faces. Body has a known bug: sprinting while you look aside can steer you the wrong way.</div></div>
 				<div class="seg"><button class="segb" data-class-on="walk == 'head'" data-event-click="pick('walk','head')">Where I look</button><button class="segb" data-class-on="walk == 'hand'" data-event-click="pick('walk','hand')">Left hand</button><button class="segb" data-class-on="walk == 'body'" data-event-click="pick('walk','body')">Body</button></div></div>
 			<div class="row"><div class="rl"><div class="rlab">Physical crouch</div><div class="rdesc">Crouch for real and Shepard crouches with you</div></div>
 				<button class="tog" data-class-on="crouch" data-event-click="toggle('crouch')"><div class="knob"/></button></div>
-			<div class="row"><div class="rl"><div class="rlab">Life-size movement</div><div class="rdesc">Your steps and leans move Shepard one to one</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Life-size movement</div><div class="rdesc">Your steps and leans move you one to one and the world has its true size. Off: half as far, and the world looks twice as big.</div><div class="note" data-if="lifesize_note != ''">{{lifesize_note}}</div></div>
 				<button class="tog" data-class-on="lifesize" data-event-click="toggle('lifesize')"><div class="knob"/></button></div>
 		</div>
 		<div class="group">
 			<div class="gtitle"><span>Conversations and cutscenes</span><div class="gline"/></div>
-			<div class="row"><div class="rl"><div class="rlab">Watch them</div><div class="rdesc">In VR the director's camera moves you; the 3D screen keeps its moves inside a screen in the room, with depth</div></div>
-				<div class="seg"><button class="segb" data-class-on="cine_view == 'vr'" data-event-click="pick('cine_view','vr')">In VR</button><button class="segb" data-class-on="cine_view == 'screen'" data-event-click="pick('cine_view','screen')">3D screen</button><button class="segb" data-class-on="cine_view == 'flat'" data-event-click="pick('cine_view','flat')">Flat screen</button></div></div>
-			<div class="srow" data-class-disabled="cine_view != 'screen'"><div class="slab">Screen width</div><input type="range" min="1.5" max="8" step="0.1" data-value="cine_width"/><div class="sval">{{cine_width_text}}</div></div>
-			<div class="srow" data-class-disabled="cine_view != 'screen'"><div class="slab">Screen distance</div><input type="range" min="1" max="6" step="0.1" data-value="cine_distance"/><div class="sval">{{cine_distance_text}}</div></div>
-			<div class="srow" data-class-disabled="cine_view != 'screen'"><div class="slab">3D depth</div><input type="range" min="0" max="150" step="5" data-value="cine_depth"/><div class="sval">{{cine_depth_text}}</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Conversations</div><div class="rdesc">In VR the director's camera moves you around; the 3D screen keeps its moves on a big screen in the room, with depth; the flat screen has none.</div></div>
+				<div class="seg"><button class="segb" data-class-on="cine_convo == 'vr'" data-event-click="pick('cine_convo','vr')">In VR</button><button class="segb" data-class-on="cine_convo == 'screen'" data-event-click="pick('cine_convo','screen')">3D screen</button><button class="segb" data-class-on="cine_convo == 'flat'" data-event-click="pick('cine_convo','flat')">Flat screen</button></div></div>
+			<div class="row"><div class="rl"><div class="rlab">Cutscenes</div><div class="rdesc">The same choice for cutscenes.</div></div>
+				<div class="seg"><button class="segb" data-class-on="cine_cut == 'vr'" data-event-click="pick('cine_cut','vr')">In VR</button><button class="segb" data-class-on="cine_cut == 'screen'" data-event-click="pick('cine_cut','screen')">3D screen</button><button class="segb" data-class-on="cine_cut == 'flat'" data-event-click="pick('cine_cut','flat')">Flat screen</button></div></div>
+			<div class="srow" data-class-disabled="!(cine_convo == 'screen' || cine_cut == 'screen')"><div class="slab">Screen width</div><input type="range" min="1.5" max="8" step="0.1" data-value="cine_width"/><div class="sval">{{cine_width_text}}</div></div>
+			<div class="srow" data-class-disabled="!(cine_convo == 'screen' || cine_cut == 'screen')"><div class="slab">Screen distance</div><input type="range" min="1" max="6" step="0.1" data-value="cine_distance"/><div class="sval">{{cine_distance_text}}</div></div>
+			<div class="srow" data-class-disabled="!(cine_convo == 'screen' || cine_cut == 'screen')"><div class="slab">3D depth</div><input type="range" min="0" max="150" step="5" data-value="cine_depth"/><div class="sval">{{cine_depth_text}}</div></div>
 		</div>
 		<div class="group">
 			<div class="gtitle"><span>Game screens</span><div class="gline"/></div>
-			<div class="row"><div class="rl"><div class="rlab">Hacking screen</div><div class="rdesc">Locked crates and consoles: projected from your left wrist like an omni-tool, or standing in the room by what you open</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Game screens in the room</div><div class="rdesc">Shops, loot, the journal, the map and the game's other full-screen menus stand in the room where they open; point at them to use them. Off: on a flat screen with the world gone.</div></div>
+				<button class="tog" data-class-on="world_ui" data-event-click="toggle('world_ui')"><div class="knob"/></button></div>
+			<div class="row" data-class-disabled="!world_ui"><div class="rl"><div class="rlab">Hacking screen</div><div class="rdesc">Locked crates and consoles: projected from your left wrist like an omni-tool, or standing in the room by what you open</div></div>
 				<div class="seg"><button class="segb" data-class-on="wrist_screen == 'wrist'" data-event-click="pick('wrist_screen','wrist')">On my wrist</button><button class="segb" data-class-on="wrist_screen == 'room'" data-event-click="pick('wrist_screen','room')">In the room</button></div></div>
+			<div class="row"><div class="rl"><div class="rlab">Galaxy map hologram</div><div class="rdesc">On the Normandy the galaxy map stands as a hologram over the CIC's projector: walk up and point to pick a destination. Off: the game's flat map.</div></div>
+				<button class="tog" data-class-on="galaxy_holo" data-event-click="toggle('galaxy_holo')"><div class="knob"/></button></div>
 		</div>
 		<div class="group">
 			<div class="gtitle"><span>This menu</span><div class="gline"/></div>
@@ -109,30 +189,41 @@
 			<div class="gtitle"><span>Weapons</span><div class="gline"/></div>
 			<div class="row"><div class="rl"><div class="rlab">Grip holds the gun</div><div class="rdesc">Squeeze to carry it; let go at its holster to put it away</div></div>
 				<button class="tog" data-class-on="grip_holds" data-event-click="toggle('grip_holds')"><div class="knob"/></button></div>
-			<div class="row"><div class="rl"><div class="rlab">Body holsters</div><div class="rdesc">Pistol at the right hip, rifle over the right shoulder, shotgun at the left hip, sniper over the left shoulder</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Body holsters</div><div class="rdesc">Pistol at the right hip, assault rifle over the right shoulder, shotgun at the left hip, sniper rifle over the left shoulder</div></div>
 				<button class="tog" data-class-on="holsters" data-event-click="toggle('holsters')"><div class="knob"/></button></div>
 			<div class="srow"><div class="slab">Holster buzz</div><input type="range" min="0" max="100" step="5" data-value="holster_buzz"/><div class="sval">{{holster_buzz_text}}</div></div>
 		</div>
 		<div class="group">
-			<div class="gtitle"><span>Left hand</span><div class="gline"/></div>
-			<div class="row"><div class="rl"><div class="rlab">Left trigger</div><div class="rdesc">Aimed fire comes from holding the gun with both hands at your shoulder</div></div>
+			<div class="gtitle"><span>Hands</span><div class="gline"/></div>
+			<div class="row"><div class="rl"><div class="rlab">Left trigger</div><div class="rdesc">Weapon wheel: pull to open it at your left hand, point at a squadmate to arm them, let go to choose. Aim: the game's aim button. Off: nothing. Aimed fire also comes from holding the gun at your cheek with both hands.</div></div>
 				<div class="seg"><button class="segb" data-class-on="left_trigger == 'lb'" data-event-click="pick('left_trigger','lb')">Weapon wheel</button><button class="segb" data-class-on="left_trigger == 'lt'" data-event-click="pick('left_trigger','lt')">Aim</button><button class="segb" data-class-on="left_trigger == 'none'" data-event-click="pick('left_trigger','none')">Off</button></div></div>
+			<div class="row"><div class="rl"><div class="rlab">Fingers follow yours</div><div class="rdesc">Shepard's index finger curls with your trigger and the other fingers with your grip</div></div>
+				<button class="tog" data-class-on="fingers" data-event-click="toggle('fingers')"><div class="knob"/></button></div>
 		</div>
 		<div class="group">
 			<div class="gtitle"><span>Combat</span><div class="gline"/></div>
-			<div class="row"><div class="rl"><div class="rlab">Physical grenades and melee</div><div class="rdesc">Take a grenade from your left chest and throw it; strike to melee</div><div class="note" data-if="throwables_note != ''">{{throwables_note}}</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Physical grenades and melee</div><div class="rdesc">Take a grenade from the left of your chest and throw it; strike fast at an enemy to melee</div><div class="note" data-if="throwables_note != ''">{{throwables_note}}</div></div>
 				<button class="tog" data-class-on="throwables" data-event-click="toggle('throwables')"><div class="knob"/></button></div>
+			<div class="row"><div class="rl"><div class="rlab">Vent by racking the gun</div><div class="rdesc">When the gun runs hot, squeeze the left grip on its top just ahead of your right hand and pull back fast: the heat is gone at once (a change to the game's rules)</div></div>
+				<button class="tog" data-class-on="vent" data-event-click="toggle('vent')"><div class="knob"/></button></div>
 			<div class="srow"><div class="slab">Recoil buzz</div><input type="range" min="0" max="100" step="5" data-value="recoil_buzz"/><div class="sval">{{recoil_buzz_text}}</div></div>
 			<div class="row"><div class="rl"><div class="rlab">Aim assist</div><div class="rdesc">Off: the stick turns you at the speed you ask, even near enemies</div></div>
 				<button class="tog" data-class-on="aim_assist" data-event-click="toggle('aim_assist')"><div class="knob"/></button></div>
 		</div>
 		<div class="group">
 			<div class="gtitle"><span>Weapon drawn</span><div class="gline"/></div>
-			<div class="row"><div class="rl"><div class="rlab">Body stays relaxed</div><div class="rdesc">With a gun out Shepard keeps the explore pose under you; shots, grenades and powers work as before</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Body stays relaxed</div><div class="rdesc">Experimental: with a gun out, Shepard's body keeps the relaxed walking pose instead of the combat stance; your arms and the gun stay as they are</div></div>
 				<button class="tog" data-class-on="explore_stance" data-event-click="toggle('explore_stance')"><div class="knob"/></button></div>
 			<div class="row"><div class="rl"><div class="rlab">Steady view</div><div class="rdesc">Drawing, holstering, aiming and sprinting leave your eyes where they are</div></div>
 				<button class="tog" data-class-on="constant_eye" data-event-click="toggle('constant_eye')"><div class="knob"/></button></div>
 			<div class="srow"><div class="slab">Draw speed</div><input type="range" min="1" max="10" step="0.5" data-value="draw_rate"/><div class="sval">{{draw_rate_text}}</div></div>
+		</div>
+		<div class="group">
+			<div class="gtitle"><span>Mako</span><div class="gline"/></div>
+			<div class="row"><div class="rl"><div class="rlab">Throttle lever and drive stick</div><div class="rdesc">Drive with a lever by your left side and a stick by your right: grab them with the grips (the Controller guide has the details). Off: the game's own Mako controls.</div></div>
+				<button class="tog" data-class-on="mako_controls" data-event-click="toggle('mako_controls')"><div class="knob"/></button></div>
+			<div class="row"><div class="rl"><div class="rlab">Sit in the cockpit</div><div class="rdesc">In the Mako you sit in its cockpit, the outside view on the screen ahead. Off: the game's camera behind the Mako.</div></div>
+				<button class="tog" data-class-on="cockpit" data-event-click="toggle('cockpit')"><div class="knob"/></button></div>
 		</div>
 	</div>
 
@@ -211,7 +302,7 @@
 			<div class="gtitle"><span>Image quality</span><div class="gline"/></div>
 			<div class="row"><div class="rl"><div class="rlab">Render resolution</div><div class="rdesc">Now {{quality_text}} per eye · {{quality_note}}</div><div class="rdesc">{{headset_text}}</div></div>
 				<div class="seg"><button class="segb disabled" data-if="!headset_known">Headset (unknown until VR starts)</button><button class="segb" data-if="headset_known" data-class-on="quality == 'headset'" data-event-click="pick('quality','headset')">Headset</button><button class="segb" data-if="headset_known" data-class-on="quality == 'headset85'" data-event-click="pick('quality','headset85')">Headset × 0.85</button><button class="segb" data-if="headset_known" data-class-on="quality == 'headset75'" data-event-click="pick('quality','headset75')">Headset × 0.75</button></div></div>
-			<div class="row"><div class="rl"><div class="rlab">Fixed sizes</div><div class="rdesc">Halcyon's ladder, 2048 to 6144 wide: above your headset's size it supersamples</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Fixed sizes</div><div class="rdesc">Set sizes from 2048 to 6144 pixels wide per eye. Above your headset's own size the picture gets sharper, but each step costs a lot of frame rate.</div></div>
 				<div class="seg"><button class="segb" data-class-on="quality == 'low'" data-event-click="pick('quality','low')">Low</button><button class="segb" data-class-on="quality == 'performance'" data-event-click="pick('quality','performance')">Performance</button><button class="segb" data-class-on="quality == 'balanced'" data-event-click="pick('quality','balanced')">Balanced</button><button class="segb" data-class-on="quality == 'sharp'" data-event-click="pick('quality','sharp')">Sharp</button><button class="segb" data-class-on="quality == 'max'" data-event-click="pick('quality','max')">Max</button></div></div>
 			<div class="row"><div class="rl"><div class="rlab">Upscale</div><div class="rdesc">Renders smaller and sharpens it back up: faster, a little softer. Pairs with Headset × 0.85.</div></div>
 				<div class="seg"><button class="segb" data-class-on="upscale == 'off'" data-event-click="pick('upscale','off')">Off</button><button class="segb" data-class-on="upscale == 'fsr'" data-event-click="pick('upscale','fsr')">FSR</button></div></div>
@@ -232,16 +323,31 @@
 		<div class="sdesc">What's drawn over the world.</div>
 		<div class="group">
 			<div class="gtitle"><span>HUD</span><div class="gline"/></div>
-			<div class="srow"><div class="slab">Distance</div><input type="range" min="1" max="3" step="0.1" data-value="hud_distance"/><div class="sval">{{hud_distance_text}}</div></div>
-			<div class="srow"><div class="slab">Size</div><input type="range" min="70" max="140" step="5" data-value="hud_size"/><div class="sval">{{hud_size_text}}</div></div>
+			<div class="srow d"><div class="sl"><div class="slab">Distance</div><div class="rdesc">How far in front of you the HUD floats</div></div><input type="range" min="1" max="3" step="0.1" data-value="hud_distance"/><div class="sval">{{hud_distance_text}}</div></div>
+			<div class="srow d"><div class="sl"><div class="slab">Size</div><div class="rdesc">How wide it is: 100% is 1.3 m</div></div><input type="range" min="45" max="155" step="5" data-value="hud_size"/><div class="sval">{{hud_size_text}}</div></div>
+			<div class="srow d"><div class="sl"><div class="slab">Below your eyes</div><div class="rdesc">How far below eye height its middle sits</div></div><input type="range" min="-0.3" max="0.6" step="0.01" data-value="panel_below"/><div class="sval">{{panel_below_text}}</div></div>
+			<div class="srow d"><div class="sl"><div class="slab">Comes round past</div><div class="rdesc">Look this far aside for a second and it moves back in front of you</div></div><input type="range" min="0" max="120" step="5" data-value="panel_follow"/><div class="sval">{{panel_follow_text}}</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Bring it in front of me</div><div class="rdesc">Puts the HUD straight ahead of where you look now (recentering does too)</div></div>
+				<button class="btn" data-event-click="cmd('place_hud')"><div class="sweep"/><div class="bi i-place"/><span>Place</span><div class="tick"/></button></div>
 			<div class="row"><div class="rl"><div class="rlab">Hand reticle</div><div class="rdesc">A marker where the gun points, instead of the screen crosshair</div></div>
 				<button class="tog" data-class-on="reticle" data-event-click="toggle('reticle')"><div class="knob"/></button></div>
 		</div>
 		<div class="group">
+			<div class="gtitle"><span>On you and in the world</span><div class="gline"/></div>
+			<div class="row"><div class="rl"><div class="rlab">Status on your wrist</div><div class="rdesc">Health, shields, your squad and medi-gel on the back of your left wrist, out of the HUD</div></div>
+				<button class="tog" data-class-on="wrist_status" data-event-click="toggle('wrist_status')"><div class="knob"/></button></div>
+			<div class="row"><div class="rl"><div class="rlab">Weapon panel on the gun</div><div class="rdesc">The gun's heat and your grenades on top of the drawn gun, out of the HUD</div></div>
+				<button class="tog" data-class-on="gun_status" data-event-click="toggle('gun_status')"><div class="knob"/></button></div>
+			<div class="row"><div class="rl"><div class="rlab">Prompts at the object</div><div class="rdesc">What A will use (a door, a console, a person) is named where it is, big enough to read. Off: small on the HUD.</div></div>
+				<button class="tog" data-class-on="interact_label" data-event-click="toggle('interact_label')"><div class="knob"/></button></div>
+		</div>
+		<div class="group">
 			<div class="gtitle"><span>Sights</span><div class="gline"/></div>
-			<div class="row"><div class="rl"><div class="rlab">Pistol</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Pistol</div><div class="rdesc">Seen by the eye you aim with: a red dot, or a holo ring around a dot</div></div>
 				<div class="seg"><button class="segb" data-class-on="sight_pistol == 'dot'" data-event-click="pick('sight_pistol','dot')">Red dot</button><button class="segb" data-class-on="sight_pistol == 'holo'" data-event-click="pick('sight_pistol','holo')">Holo</button><button class="segb" data-class-on="sight_pistol == 'none'" data-event-click="pick('sight_pistol','none')">None</button></div></div>
-			<div class="row"><div class="rl"><div class="rlab">Shotgun and assault rifle</div><div class="rdesc">The scope is the assault rifle's own; the shotgun keeps its sight</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Shotgun</div><div class="rdesc">The same choice for the shotgun</div></div>
+				<div class="seg"><button class="segb" data-class-on="sight_shotgun == 'dot'" data-event-click="pick('sight_shotgun','dot')">Red dot</button><button class="segb" data-class-on="sight_shotgun == 'holo'" data-event-click="pick('sight_shotgun','holo')">Holo</button><button class="segb" data-class-on="sight_shotgun == 'none'" data-event-click="pick('sight_shotgun','none')">None</button></div></div>
+			<div class="row"><div class="rl"><div class="rlab">Assault rifle</div><div class="rdesc">A sight, or the rifle's own small scope</div></div>
 				<div class="seg"><button class="segb" data-class-on="sight_rifle == 'dot'" data-event-click="pick('sight_rifle','dot')">Red dot</button><button class="segb" data-class-on="sight_rifle == 'scope'" data-event-click="pick('sight_rifle','scope')">Scope 1.5×</button><button class="segb" data-class-on="sight_rifle == 'holo'" data-event-click="pick('sight_rifle','holo')">Holo</button><button class="segb" data-class-on="sight_rifle == 'none'" data-event-click="pick('sight_rifle','none')">None</button></div></div>
 			<div class="row"><div class="rl"><div class="rlab">Sniper rifle</div><div class="rdesc">The game's own scope view and zoom; flick the right stick to zoom while aiming down it</div></div>
 				<div class="seg"><button class="segb" data-class-on="sight_sniper == 'scope'" data-event-click="pick('sight_sniper','scope')">Scope</button><button class="segb" data-class-on="sight_sniper == 'dot'" data-event-click="pick('sight_sniper','dot')">Red dot</button><button class="segb" data-class-on="sight_sniper == 'holo'" data-event-click="pick('sight_sniper','holo')">Holo</button><button class="segb" data-class-on="sight_sniper == 'none'" data-event-click="pick('sight_sniper','none')">None</button></div></div>
@@ -249,19 +355,21 @@
 				<button class="tog" data-class-on="sight_assist" data-event-click="toggle('sight_assist')"><div class="knob"/></button></div>
 			<div class="row"><div class="rl"><div class="rlab">Shots land on the dot</div><div class="rdesc">Each shot aims at whatever the sight line points at, near or far</div></div>
 				<button class="tog" data-class-on="sight_converge" data-event-click="toggle('sight_converge')"><div class="knob"/></button></div>
+			<div class="row"><div class="rl"><div class="rlab">Scope picture in the game's colours</div><div class="rdesc">The zoomed picture gets the game's colour grade, with a dark speckle in shadows. Off: clean, plainer colours. From the next loading screen.</div></div>
+				<button class="tog" data-class-on="scope_grade" data-event-click="toggle('scope_grade')"><div class="knob"/></button></div>
 		</div>
 	</div>
 
 	<!-- ===================================================================================== Advanced -->
 	<div data-if="section == 'advanced'">
 		<div class="stitle">Advanced</div>
-		<div class="sdesc">The renderer's own settings, for fine-tuning and troubleshooting.</div>
+		<div class="sdesc">Fine-tuning and troubleshooting. The standard settings suit most players.</div>
 		<div class="advwrap"><div class="seg advtabs">
 			<button class="segb" data-class-on="advtab == 'tracking'" data-event-click="advtab = 'tracking'">Tracking</button>
 			<button class="segb" data-class-on="advtab == 'fp'" data-event-click="advtab = 'fp'">First person</button>
 			<button class="segb" data-class-on="advtab == 'view'" data-event-click="advtab = 'view'">View</button>
 			<button class="segb" data-class-on="advtab == 'stereo'" data-event-click="advtab = 'stereo'">Stereo</button>
-			<button class="segb" data-class-on="advtab == 'hud'" data-event-click="advtab = 'hud'">HUD placement</button>
+			<button class="segb" data-class-on="advtab == 'hud'" data-event-click="advtab = 'hud'">Game UI</button>
 			<button class="segb" data-class-on="advtab == 'profiles'" data-event-click="advtab = 'profiles'">Profiles</button>
 			<button class="segb" data-class-on="advtab == 'diag'" data-event-click="advtab = 'diag'">Diagnostics</button>
 		</div></div>
@@ -271,18 +379,15 @@
 				<div class="gtitle"><span>Head tracking</span><div class="gline"/></div>
 				<div class="row"><div class="rl"><div class="rlab">Recenter key</div><div class="rdesc">{{recenter_key_desc}}</div></div>
 					<button class="tog" data-class-on="recenter_key" data-event-click="toggle('recenter_key')"><div class="knob"/></button></div>
-				<div class="srow"><div class="slab">Look speed</div><input type="range" min="0.25" max="2" step="0.05" data-value="look_speed"/><div class="sval">{{look_speed_text}}</div></div>
-				<div class="srow"><div class="slab">Smoothing</div><input type="range" min="0" max="0.9" step="0.05" data-value="look_smooth"/><div class="sval">{{look_smooth_text}}</div></div>
+				<div class="srow d"><div class="sl"><div class="slab">Look speed</div><div class="rdesc">Turns the view faster or slower than your head. Anything but 1.00× can make you feel sick.</div></div><input type="range" min="0.25" max="2" step="0.05" data-value="look_speed"/><div class="sval">{{look_speed_text}}</div></div>
+				<div class="srow d"><div class="sl"><div class="slab">Smoothing</div><div class="rdesc">Steadies the picture while your head is still; more feels laggy</div></div><input type="range" min="0" max="0.9" step="0.05" data-value="look_smooth"/><div class="sval">{{look_smooth_text}}</div></div>
 			</div>
 			<div class="group">
-				<div class="gtitle"><span>Conversations, cutscenes and menus</span><div class="gline"/></div>
-				<div class="row"><div class="rl"><div class="rlab">Conversations in VR</div><div class="rdesc">Off: shown on a flat screen in front of you</div></div>
-					<button class="tog" data-class-on="vr_convo" data-event-click="toggle('vr_convo')"><div class="knob"/></button></div>
-				<div class="row"><div class="rl"><div class="rlab">Cutscenes in VR</div><div class="rdesc">Off: shown on a flat screen in front of you</div></div>
-					<button class="tog" data-class-on="vr_cine" data-event-click="toggle('vr_cine')"><div class="knob"/></button></div>
-				<div class="row"><div class="rl"><div class="rlab">Flat game menus</div><div class="rdesc">The inventory and map on a flat screen, easier to read</div></div>
+				<div class="gtitle"><span>Flat screens</span><div class="gline"/></div>
+				<div class="hint">Conversations and cutscenes are on the Comfort page.</div>
+				<div class="row"><div class="rl"><div class="rlab">Flat game menus</div><div class="rdesc">Full-screen game menus the room doesn't take go on a flat screen in front of you, easy to read. Off: drawn in 3D.</div></div>
 					<button class="tog" data-class-on="flat_menus" data-event-click="toggle('flat_menus')"><div class="knob"/></button></div>
-				<div class="row"><div class="rl"><div class="rlab">Flat galaxy map</div><div class="rdesc">Off: the galaxy map in VR</div></div>
+				<div class="row"><div class="rl"><div class="rlab">Flat galaxy map</div><div class="rdesc">A full-screen galaxy map goes on a flat screen. Off: drawn in 3D.</div></div>
 					<button class="tog" data-class-on="flat_galaxy" data-event-click="toggle('flat_galaxy')"><div class="knob"/></button></div>
 			</div>
 		</div>
@@ -306,8 +411,8 @@
 				<div class="gtitle"><span>Lean and view</span><div class="gline"/></div>
 				<div class="row"><div class="rl"><div class="rlab">Lean</div><div class="rdesc">Leaning and stepping move the camera</div></div>
 					<button class="tog" data-class-on="lean" data-event-click="toggle('lean')"><div class="knob"/></button></div>
-				<div class="srow"><div class="slab">Lean gain</div><input type="range" min="0.5" max="3" step="0.1" data-value="lean_gain"/><div class="sval">{{lean_gain_text}}</div></div>
-				<div class="srow"><div class="slab">Flat screen</div><input type="range" min="1" max="3.5" step="0.05" data-value="flat_size"/><div class="sval">{{flat_size_text}}</div></div>
+				<div class="srow d" data-class-disabled="!lean"><div class="sl"><div class="slab">Movement scale</div><div class="rdesc">2.0× is life-size (Comfort's Life-size movement); lower makes the world look bigger</div></div><input type="range" min="0.5" max="3" step="0.1" data-value="lean_gain"/><div class="sval">{{lean_gain_text}}</div></div>
+				<div class="srow d"><div class="sl"><div class="slab">Flat screen width</div><div class="rdesc">The flat screen for menus, the map and flat cutscenes</div></div><input type="range" min="1" max="3.5" step="0.05" data-value="flat_size"/><div class="sval">{{flat_size_text}}</div></div>
 				<div class="row"><div class="rl"><div class="rlab">Fill the field of view</div><div class="rdesc">Stretches the game's picture to the headset's full view</div></div>
 					<button class="tog" data-class-on="fov_fill" data-event-click="toggle('fov_fill')"><div class="knob"/></button></div>
 			</div>
@@ -316,54 +421,56 @@
 		<div data-if="advtab == 'stereo'">
 			<div class="group">
 				<div class="gtitle"><span>Stereo</span><div class="gline"/></div>
-				<div class="row"><div class="rl"><div class="rlab">VR mode</div><div class="rdesc">Stereo renders each eye; Depth builds the second eye from one render</div><div class="note" data-if="mode_note != ''">{{mode_note}}</div></div>
+				<div class="row"><div class="rl"><div class="rlab">VR mode</div><div class="rdesc">Stereo: each eye rendered on its own (the standard). Mono: one picture for both eyes, no depth, faster. Depth: the second eye made from the first one's depth, faster, with fringes at edges. Mono and Depth aren't tested with hand aiming. Needs a restart.</div><div class="note" data-if="mode_note != ''">{{mode_note}}</div></div>
 					<div class="seg"><button class="segb" data-class-on="vr_mode == 'mono'" data-event-click="pick('vr_mode','mono')">Mono</button><button class="segb" data-class-on="vr_mode == 'stereo'" data-event-click="pick('vr_mode','stereo')">Stereo</button><button class="segb" data-class-on="vr_mode == 'dibr'" data-event-click="pick('vr_mode','dibr')">Depth</button></div></div>
-				<div class="row"><div class="rl"><div class="rlab">Life-size stereo</div><div class="rdesc">Each eye sees from where it really is, at the world's own scale: true depth and size</div></div>
+				<div class="row"><div class="rl"><div class="rlab">Real eye positions</div><div class="rdesc">Each eye sees from where it really is, so depth and sizes are true (life-size with Comfort's Life-size movement). Off: the original MELE-VR stereo, set by hand below.</div></div>
 					<button class="tog" data-class-on="life_size" data-event-click="toggle('life_size')"><div class="knob"/></button></div>
 				<div data-if="life_size">
-					<div class="srow"><div class="slab">Extra depth</div><input type="range" min="0.5" max="2" step="0.05" data-value="extra_depth"/><div class="sval">{{extra_depth_text}}</div></div>
-					<div class="hint">1.00× is your own eye distance. More makes depth stronger and the world feel smaller.</div>
+					<div class="srow d"><div class="sl"><div class="slab">Extra depth</div><div class="rdesc">1.00× is your own eye distance; more makes depth stronger and the world smaller</div></div><input type="range" min="0.5" max="2" step="0.05" data-value="extra_depth"/><div class="sval">{{extra_depth_text}}</div></div>
 					<div class="row"><div class="rl"><div class="rlab">Each eye's own field of view</div><div class="rdesc">Renders each eye's real, off-centre view so the whole image is used. Off: one shared window for both eyes</div></div>
 						<button class="tog" data-class-on="eye_frustum" data-event-click="toggle('eye_frustum')"><div class="knob"/></button></div>
 				</div>
 				<div data-if="!life_size">
-					<div class="srow"><div class="slab">Eye distance</div><input type="range" min="0.5" max="8" step="0.1" data-value="eye_distance"/><div class="sval">{{eye_distance_text}}</div></div>
-					<div class="srow"><div class="slab">Convergence</div><input type="range" min="-0.02" max="0.05" step="0.001" data-value="convergence"/><div class="sval">{{convergence_text}}</div></div>
-					<div class="hint">Eye distance sets the world's scale: lower makes it feel bigger.</div>
+					<div class="hint">Expert: the original stereo's own settings, used only while Real eye positions is off.</div>
+					<div class="srow d"><div class="sl"><div class="slab">Eye distance</div><div class="rdesc">How far apart the two cameras are, in Shepard's centimetres (yours: about 6.3). Wider makes the world smaller.</div></div><input type="range" min="1" max="16" step="0.2" data-value="eye_distance"/><div class="sval">{{eye_distance_text}}</div></div>
+					<div class="srow d"><div class="sl"><div class="slab">Convergence</div><div class="rdesc">Shifts the two pictures sideways so near prompts and far scenery both fuse; 0 is no shift</div></div><input type="range" min="-0.02" max="0.05" step="0.001" data-value="convergence"/><div class="sval">{{convergence_text}}</div></div>
 					<div class="row"><div class="rl"><div class="rlab">Swap eyes</div><div class="rdesc">If depth looks inside out</div></div>
 						<button class="tog" data-class-on="swap_eyes" data-event-click="toggle('swap_eyes')"><div class="knob"/></button></div>
 				</div>
-				<div class="row"><div class="rl"><div class="rlab">Quest field-of-view match</div><div class="rdesc">Matches the picture to a Quest's lenses over Link (no effect on SteamVR)</div></div>
+				<div class="row"><div class="rl"><div class="rlab">Quest Link image fix</div><div class="rdesc">Fixes a doubled picture with a Quest on Meta's Link or Air Link. It does nothing through SteamVR or Virtual Desktop, so leave it on.</div></div>
 					<button class="tog" data-class-on="quest_fov" data-event-click="toggle('quest_fov')"><div class="knob"/></button></div>
 			</div>
 			<div class="group">
 				<div class="gtitle"><span>Graphics</span><div class="gline"/></div>
 				<div class="row"><div class="rl"><div class="rlab">Depth of field</div><div class="rdesc">Turning it off sharpens the background but washes out colour (after a restart)</div></div>
 					<button class="tog" data-class-on="dof" data-event-click="toggle('dof')"><div class="knob"/></button></div>
-				<div class="row"><div class="rl"><div class="rlab">Desktop mirror</div><div class="rdesc">How often the monitor's picture updates, for recording; more costs frame rate</div></div>
-					<div class="seg"><button class="segb" data-class-on="mirror == 'normal'" data-event-click="pick('mirror','normal')">Normal</button><button class="segb" data-class-on="mirror == 'smooth'" data-event-click="pick('mirror','smooth')">Every 2nd</button><button class="segb" data-class-on="mirror == 'every'" data-event-click="pick('mirror','every')">Every frame</button></div></div>
+				<div class="row"><div class="rl"><div class="rlab">Desktop mirror</div><div class="rdesc">How often the game window on your monitor updates. Every 2nd is the standard; every frame is smooth for recording but costs frame rate.</div></div>
+					<div class="seg"><button class="segb" data-class-on="mirror == 'normal'" data-event-click="pick('mirror','normal')">Every 8th</button><button class="segb" data-class-on="mirror == 'smooth'" data-event-click="pick('mirror','smooth')">Every 2nd</button><button class="segb" data-class-on="mirror == 'every'" data-event-click="pick('mirror','every')">Every frame</button></div></div>
 			</div>
 		</div>
 
+		<!-- The game's conversation wheel and mission overlays: their size and place (Halcyon's HUD tab's transforms). The combat
+		     HUD has none here: the HUD panel shows it at the game's own layout (HUD & sights sizes the panel). -->
 		<div data-if="advtab == 'hud'">
 			<div class="group">
-				<div class="gtitle"><span>HUD panel</span><div class="gline"/></div>
-				<div class="srow"><div class="slab">Width</div><input type="range" min="0.6" max="2" step="0.05" data-value="panel_width"/><div class="sval">{{panel_width_text}}</div></div>
-				<div class="srow"><div class="slab">Below eyes</div><input type="range" min="-0.3" max="0.6" step="0.01" data-value="panel_below"/><div class="sval">{{panel_below_text}}</div></div>
-				<div class="srow"><div class="slab">Follow past</div><input type="range" min="0" max="120" step="5" data-value="panel_follow"/><div class="sval">{{panel_follow_text}}</div></div>
-				<div class="row"><div class="rl"><div class="rlab">Put the panel where I'm looking</div></div>
-					<button class="btn" data-event-click="cmd('place_hud')"><div class="sweep"/><div class="bi i-place"/><span>Place</span><div class="tick"/></button></div>
+				<div class="gtitle"><span>Conversation wheel</span><div class="gline"/></div>
+				<div class="row"><div class="rl"><div class="rlab">Fit it to your view</div><div class="rdesc">The dialogue wheel and conversation captions at the size and place below. Off: the game's own size and place.</div></div>
+					<button class="tog" data-class-on="g_convo" data-event-click="toggle('g_convo')"><div class="knob"/></button></div>
+				<div class="srow" data-class-disabled="!g_convo"><div class="slab">Size</div><input type="range" min="40" max="250" step="5" data-value="convo_size"/><div class="sval">{{convo_size_text}}</div></div>
+				<div class="srow" data-class-disabled="!g_convo"><div class="slab">Left / right</div><input type="range" min="-600" max="600" step="10" data-value="convo_x"/><div class="sval">{{convo_x_text}}</div></div>
+				<div class="srow" data-class-disabled="!g_convo"><div class="slab">Down / up</div><input type="range" min="-600" max="600" step="10" data-value="convo_y"/><div class="sval">{{convo_y_text}}</div></div>
+				<div class="row" data-class-disabled="!g_convo"><div class="rl"><div class="rlab">Standard size and place</div><div class="rdesc">Open this menu during a conversation to see the wheel change as you move the sliders</div></div>
+					<button class="btn" data-event-click="cmd('ui_reset','convo')"><div class="sweep"/><span>Standard</span><div class="tick"/></button></div>
 			</div>
 			<div class="group">
-				<div class="gtitle"><span>Game screens</span><div class="gline"/></div>
-				<div class="row"><div class="rl"><div class="rlab">Combat HUD</div><div class="rdesc">Health, shields and squad status</div></div>
-					<button class="tog" data-class-on="g_pchud" data-event-click="toggle('g_pchud')"><div class="knob"/></button></div>
-				<div class="row"><div class="rl"><div class="rlab">Conversation wheel</div><div class="rdesc">The dialogue wheel and cutscene captions</div></div>
-					<button class="tog" data-class-on="g_convo" data-event-click="toggle('g_convo')"><div class="knob"/></button></div>
-				<div class="row"><div class="rl"><div class="rlab">Mission overlays</div><div class="rdesc">Boss bars, timers and mission prompts</div></div>
+				<div class="gtitle"><span>Mission overlays</span><div class="gline"/></div>
+				<div class="row"><div class="rl"><div class="rlab">Fit them to your view</div><div class="rdesc">Timers, charge counters and boss bars at the size and place below. Off: the game's own size and place.</div></div>
 					<button class="tog" data-class-on="g_designer" data-event-click="toggle('g_designer')"><div class="knob"/></button></div>
-				<div class="row"><div class="rl"><div class="rlab">Move and resize a screen</div><div class="rdesc">In the classic renderer menu's HUD tab, for now</div></div>
-					<button class="btn" data-event-click="cmd('classic')"><div class="sweep"/><span>Edit</span><div class="tick"/></button></div>
+				<div class="srow" data-class-disabled="!g_designer"><div class="slab">Size</div><input type="range" min="40" max="250" step="5" data-value="designer_size"/><div class="sval">{{designer_size_text}}</div></div>
+				<div class="srow" data-class-disabled="!g_designer"><div class="slab">Left / right</div><input type="range" min="-900" max="900" step="10" data-value="designer_x"/><div class="sval">{{designer_x_text}}</div></div>
+				<div class="srow" data-class-disabled="!g_designer"><div class="slab">Down / up</div><input type="range" min="-900" max="900" step="10" data-value="designer_y"/><div class="sval">{{designer_y_text}}</div></div>
+				<div class="row" data-class-disabled="!g_designer"><div class="rl"><div class="rlab">Standard size and place</div><div class="rdesc">The change shows the next time an overlay is on screen</div></div>
+					<button class="btn" data-event-click="cmd('ui_reset','designer')"><div class="sweep"/><span>Standard</span><div class="tick"/></button></div>
 			</div>
 		</div>
 
@@ -383,7 +490,7 @@
 						<div class="tbtns"><button class="btn small" data-event-click="cmd('prof_load','3')"><div class="sweep"/><span>Load</span></button><button class="btn small" data-event-click="cmd('prof_save','3')"><div class="sweep"/><span>Save</span></button></div></div>
 				</div>
 				<div class="note" data-if="prof_msg != ''">{{prof_msg}}</div>
-				<div class="hint">A profile keeps every renderer setting on this page; your calibration and controls are kept separately. Changes here save into the active profile when the menu closes.</div>
+				<div class="hint">A profile keeps the VR view settings: these Advanced pages, the render resolution, the HUD's size and place and a few comfort choices. Your calibration, controls and colour are kept apart. Changes save into the active profile when the menu closes.</div>
 			</div>
 		</div>
 
@@ -398,13 +505,13 @@
 					<button class="tog" data-class-on="report_perf" data-event-click="toggle('report_perf')"><div class="knob"/></button></div>
 				<div class="row"><div class="rl"><div class="rlab">Snapshot</div><div class="rdesc">Closes the menu and saves what each eye sees, for a bug report (also: tap both stick clicks)</div></div>
 					<button class="btn" data-event-click="cmd('snapshot')"><div class="sweep"/><div class="bi i-camera"/><span>Take</span><div class="tick"/></button></div>
-				<div class="row"><div class="rl"><div class="rlab">Record a session</div><div class="rdesc">Your head and hand movements, to replay a problem</div></div>
+				<div class="row"><div class="rl"><div class="rlab">Record your movements</div><div class="rdesc">Records your head and hand movements, not the picture, into AppData\Local\MEVR\recordings. Attach the file to a bug report about tracking, aiming or your hands. Press again to stop.</div></div>
 					<button class="btn" data-event-click="cmd('record')"><div class="sweep"/><div class="bi i-record"/><span data-if="!recording">Record</span><span data-if="recording">Stop</span><div class="tick"/></button></div>
-				<div class="row"><div class="rl"><div class="rlab">Measure frame timing</div><div class="rdesc">Closes the menu; where each frame's time goes, for 20 seconds</div><div class="note" data-if="perf_msg != ''">{{perf_msg}}</div></div>
+				<div class="row"><div class="rl"><div class="rlab">Measure frame timing</div><div class="rdesc">Closes the menu and measures where each frame's time goes for 20 seconds, for a report about stutter</div><div class="note" data-if="perf_msg != ''">{{perf_msg}}</div></div>
 					<button class="btn" data-event-click="cmd('perf')"><div class="sweep"/><div class="bi i-timer"/><span>Measure</span><div class="tick"/></button></div>
-				<div class="row"><div class="rl"><div class="rlab">Reset renderer settings</div><div class="rdesc">Back to Halcyon's defaults for this session; your calibration, controls and head-aim choice are kept</div><div class="note" data-if="diag_msg != ''">{{diag_msg}}</div></div>
+				<div class="row"><div class="rl"><div class="rlab">Reset VR settings</div><div class="rdesc">Puts the view, stereo and HUD settings back to standard for this session, not saved unless you save a profile. Your calibration, controls, resolution and first-person view are kept.</div><div class="note" data-if="diag_msg != ''">{{diag_msg}}</div></div>
 					<button class="btn danger" data-class-armed="reset_armed" data-event-click="cmd('reset')"><div class="sweep"/><div class="bi i-trash"/><span data-if="!reset_armed">Reset</span><span data-if="reset_armed">Confirm</span><div class="tick"/></button></div>
-				<div class="row"><div class="rl"><div class="rlab">Classic renderer menu</div><div class="rdesc">{{classic_desc}}</div></div>
+				<div class="row"><div class="rl"><div class="rlab">Classic VR menu</div><div class="rdesc">{{classic_desc}}</div></div>
 					<button class="btn" data-event-click="cmd('classic')"><div class="sweep"/><span>Open</span><div class="tick"/></button></div>
 			</div>
 			<div class="group">

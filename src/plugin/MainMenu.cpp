@@ -151,6 +151,17 @@ std::atomic<bool> gRecentered{false};
 std::uint64_t gLastLayerMs = 0;
 std::uint64_t gLastDrawnMs = 0;
 
+// The first run (Present thread): a player who has never opened the menu gets it once on the controller guide, by itself
+// at a quiet moment on foot (FirstRunTick) or at their own first opening, whichever comes first.
+struct FirstRun {
+    bool checked = false;     // [Menu] controlsShown read
+    bool done = false;        // shown (this session or an earlier one)
+    float seconds = 0.0f;     // in a row on foot, focused, nothing else up
+    std::uint64_t lastMs = 0;
+};
+FirstRun gFirstRun;
+bool gOpenOnGuide = false;  // the opening lands on the controller guide (applied once the model exists)
+
 void Say(menu::LogLevel level, std::string const& text) {
     switch (level) {
     case menu::LogLevel::Error: log::Error("{}", text); break;
@@ -713,6 +724,54 @@ void AfterCommand(After after) {
     }
 }
 
+// True while the controller guide hasn't been shown to this player ([Menu] controlsShown, read once).
+bool FirstRunWanted() {
+    if (!gFirstRun.checked) {
+        std::wstring const& path = MELEVR::MevrBridge::SettingsPath();
+        if (path.empty()) {
+            return false;
+        }
+        gFirstRun.checked = true;
+        gFirstRun.done = GetPrivateProfileIntW(L"Menu", L"controlsShown", 0, path.c_str()) != 0;
+        if (!gFirstRun.done) {
+            log::Info("main menu: first run: the controller guide opens once by itself, on foot and after the calibration's prompt "
+                      "([Menu] controlsShown isn't 1)");
+        }
+    }
+    return !gFirstRun.done;
+}
+
+// The guide is shown now: never again ([Menu] controlsShown = 1, written key by key like every menu setting).
+void FirstRunShown(char const* why) {
+    gFirstRun.done = true;
+    gOpenOnGuide = true;
+    std::wstring const& path = MELEVR::MevrBridge::SettingsPath();
+    bool const wrote = !path.empty() && WritePrivateProfileStringW(L"Menu", L"controlsShown", L"1", path.c_str()) != 0;
+    log::Info("main menu: first run: on the controller guide ({}){}", why,
+        wrote ? "" : "; [Menu] controlsShown couldn't be written, so it may show again next launch");
+}
+
+// Each frame while the guide hasn't been shown: kFirstRunSeconds in a row on foot in the head-tracked world, the session
+// focused (the headset worn), no other menu or the calibration up and its first-run prompt answered, then the menu opens.
+void FirstRunTick(Frame const& frame) {
+    if (gFirstRun.done) {
+        return;
+    }
+    std::uint64_t const now = GetTickCount64();
+    float const dt = gFirstRun.lastMs == 0 ? 0.0f : std::min(static_cast<float>(now - gFirstRun.lastMs) / 1000.0f, 0.25f);
+    gFirstRun.lastMs = now;
+    if (!FirstRunWanted()) {
+        return;
+    }
+    bool const quiet = frame.session != XR_NULL_HANDLE && frame.worldFrame && frame.headValid && frame.gameMode == 0 &&
+        !gOpen.load(std::memory_order_relaxed) && !MELEVR::Menu::IsOpen() && !calibration::Running() &&
+        !calibration::PromptPending() && calibration::Focused();
+    gFirstRun.seconds = quiet ? gFirstRun.seconds + dt : 0.0f;
+    if (gFirstRun.seconds >= kFirstRunSeconds) {
+        SetOpen(true, "first run: the controller guide");  // lands on the guide (SetOpen marks the first run)
+    }
+}
+
 } // namespace
 
 bool IsOpen() {
@@ -738,6 +797,9 @@ void SetOpen(bool open, char const* why) {
         return;
     }
     gOpen.store(open);
+    if (open && FirstRunWanted()) {
+        FirstRunShown(why != nullptr ? why : "?");  // by itself or the player's own first opening: the guide either way
+    }
     if (open) {
         gLastDrawnMs = GetTickCount64();
         g.placed = false;
@@ -764,6 +826,9 @@ void SetOpen(bool open, char const* why) {
         }
         if (g.ui != nullptr && g.ui->Context() != nullptr) {
             g.ui->Context()->ProcessMouseLeave();
+        }
+        if (g.model != nullptr) {
+            g.model->SetNumber("first_run", 0.0f);  // the welcome line is for that one opening
         }
         gPauseWanted.store(false);
     }
@@ -799,6 +864,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         g.session = frame.session;
         g.submitted = false;
     }
+    FirstRunTick(frame);  // one test once the guide has been shown
     if (!gOpen.load(std::memory_order_relaxed)) {
         return nullptr;  // closed: nothing at all
     }
@@ -810,6 +876,16 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     if (frame.session == XR_NULL_HANDLE || frame.context == nullptr || frame.device == nullptr || !Init(frame.device, frame.context) ||
         !EnsureSwapchain(frame.session)) {
         return nullptr;
+    }
+    if (gOpenOnGuide) {
+        gOpenOnGuide = false;
+        g.model->SetText("section", "guide");
+        g.model->SetNumber("first_run", 1.0f);
+        if (Rml::ElementDocument* const doc = g.ui->Document()) {
+            if (Rml::Element* const content = doc->GetElementById("content")) {
+                content->SetScrollTop(0.0f);
+            }
+        }
     }
     std::uint64_t const now = GetTickCount64();
     gLastDrawnMs = now;

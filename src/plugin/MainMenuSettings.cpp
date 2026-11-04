@@ -150,6 +150,51 @@ char const* ModeChoice(MELEVR::Config::VrConfig const& c) {
     return c.sfr2Enabled ? "stereo" : c.dibrEnabled ? "dibr" : c.aerEnabled ? "aer" : "mono";
 }
 
+// A game UI movie's size and place in Halcyon's config (its HUD tab's transform; Advanced > Game UI), the set the renderer
+// uses now (xr_session's useDibrUi / useStereoUi choice: DIBR's own, the old side-by-side stereo's own, else the normal one),
+// with Halcyon's tuned values for it.
+struct UiMovie {
+    float* scaleX;
+    float* scaleY;
+    float* offsetX;
+    float* offsetY;
+    float defScaleX, defScaleY, defOffsetX, defOffsetY;
+};
+
+UiMovie Movie(MELEVR::Config::VrConfig& c, bool designer) {
+    static MELEVR::Config::VrConfig const d{};
+    if (designer) {  // one set for every mode
+        return {&c.designerUiScaleX, &c.designerUiScaleY, &c.designerUiOffsetX, &c.designerUiOffsetY, d.designerUiScaleX,
+            d.designerUiScaleY, d.designerUiOffsetX, d.designerUiOffsetY};
+    }
+    if (c.dibrEnabled) {
+        return {&c.convoScaleXDibr, &c.convoScaleYDibr, &c.convoOffsetXDibr, &c.convoOffsetYDibr, d.convoScaleXDibr, d.convoScaleYDibr,
+            d.convoOffsetXDibr, d.convoOffsetYDibr};
+    }
+    if (c.stereoEnabled) {
+        return {&c.convoScaleXStereo, &c.convoScaleYStereo, &c.convoOffsetXStereo, &c.convoOffsetYStereo, d.convoScaleXStereo,
+            d.convoScaleYStereo, d.convoOffsetXStereo, d.convoOffsetYStereo};
+    }
+    return {&c.convoScaleX, &c.convoScaleY, &c.convoOffsetX, &c.convoOffsetY, d.convoScaleX, d.convoScaleY, d.convoOffsetX, d.convoOffsetY};
+}
+
+// The rows: size as a percentage of the tuned size, a nudge from the tuned place in the movie's pixels (up is +: Flash's y
+// grows downward).
+void ReadMovie(menu::Values& v, MELEVR::Config::VrConfig& c, bool designer, char const* prefix) {
+    UiMovie const m = Movie(c, designer);
+    v.numbers[std::string(prefix) + "_size"] = m.defScaleX > 0.0f ? std::round(*m.scaleX / m.defScaleX * 100.0f) : 100.0f;
+    v.numbers[std::string(prefix) + "_x"] = std::round(*m.offsetX - m.defOffsetX);
+    v.numbers[std::string(prefix) + "_y"] = std::round(m.defOffsetY - *m.offsetY);
+}
+
+void WriteSize(UiMovie const& m, float percent) {
+    float const scaleX = m.defScaleX * percent / 100.0f;
+    // Both axes together, keeping the shape the movie has (a different height set in the classic menu stays in proportion).
+    float const ratio = *m.scaleX > 1e-4f ? *m.scaleY / *m.scaleX : (m.defScaleX > 1e-4f ? m.defScaleY / m.defScaleX : 1.0f);
+    *m.scaleX = scaleX;
+    *m.scaleY = scaleX * ratio;
+}
+
 } // namespace
 
 Settings::Settings() {
@@ -202,8 +247,10 @@ void Settings::Read(menu::Values& v) {
     ini.pending = &pending_;
     if (!path.empty()) {
         // Every section a row below reads (WorldUi was missing: the Hacking screen row fell back to its default after a write).
+        // A section missing here makes its rows snap back to their defaults after a write (the Hacking row's bug, f1f8d8b).
         for (wchar_t const* s : {L"Hands", L"Holsters", L"Controls", L"Throwables", L"Sights", L"Camera", L"Arms", L"Menu", L"Comfort",
-                                 L"Upscale", L"Cinematics", L"WorldUi"}) {
+                                 L"Upscale", L"Cinematics", L"WorldUi", L"Galaxy", L"Hud", L"Interact", L"Vent", L"Mako", L"Cockpit",
+                                 L"Squad"}) {
             ini.sections[Narrow(s)] = ReadSection(path, s);
         }
     }
@@ -221,15 +268,23 @@ void Settings::Read(menu::Values& v) {
     // "body": Halcyon's moveFollowsHead off (the stick walks where Shepard faces), a chip of its own.
     v.texts["walk"] = Lower(ini.Text("Comfort", "walk", "head")) == "hand" ? "hand" : c.moveFollowsHead ? "head" : "body";
     flag("crouch", ini.Num("Hands", "physicalCrouch", 1.0f) != 0.0f);
-    // Life-size movement is Halcyon's lean gain of 2 in the live profile (what's in effect), not a key of ours.
-    flag("lifesize", std::fabs(c.leanGain - 2.0f) < 0.01f);
+    // Life-size movement is Halcyon's lean gain of 2 in the live profile (what's in effect), not a key of ours; Advanced > View's
+    // Movement scale sets any other gain, and the row says so.
+    bool const lifeSize = std::fabs(c.leanGain - 2.0f) < 0.01f;
+    flag("lifesize", lifeSize);
+    v.texts["lifesize_note"] = lifeSize || std::fabs(c.leanGain - 1.0f) < 0.01f
+        ? std::string()
+        : std::format("Now {:.1f}\xC3\x97 (Advanced > View > Movement scale): switching sets 2\xC3\x97 or 1\xC3\x97", c.leanGain);
     flag("pause", ini.Num("Menu", "pause", 1.0f) != 0.0f);
-    // Conversations and cutscenes (research/52): flat with Halcyon's VR conversations and cutscenes both off, on the 3D cinema
-    // screen with [Cinematics] conversations or cutscenes on, else in VR. The Advanced page's toggles stay per context.
+    // Conversations and cutscenes (research/52), each on its own row: flat with Halcyon's VR conversations (cutscenes) off, on the
+    // 3D cinema screen with [Cinematics] conversations (cutscenes) on, else in VR.
     mevr::vr::cine_screen::Settings const cineDefaults;
-    bool const screen = ini.Num("Cinematics", "conversations", cineDefaults.conversations ? 1.0f : 0.0f) != 0.0f ||
-                        ini.Num("Cinematics", "cutscenes", cineDefaults.cutscenes ? 1.0f : 0.0f) != 0.0f;
-    v.texts["cine_view"] = !c.cineVrConvo && !c.cineVrCutscene ? "flat" : screen ? "screen" : "vr";
+    auto const cineChoice = [&](bool inVr, char const* key, bool fallback) {
+        return !inVr ? std::string("flat") : ini.Num("Cinematics", key, fallback ? 1.0f : 0.0f) != 0.0f ? std::string("screen")
+                                                                                                       : std::string("vr");
+    };
+    v.texts["cine_convo"] = cineChoice(c.cineVrConvo, "conversations", cineDefaults.conversations);
+    v.texts["cine_cut"] = cineChoice(c.cineVrCutscene, "cutscenes", cineDefaults.cutscenes);
     v.numbers["cine_width"] = std::clamp(ini.Num("Cinematics", "widthM", 3.0f), 1.5f, 8.0f);
     v.numbers["cine_distance"] = std::clamp(ini.Num("Cinematics", "distanceM", 2.6f), 1.0f, 6.0f);
     v.numbers["cine_depth"] = std::clamp(std::round(ini.Num("Cinematics", "depth", kCineDepthFull) / kCineDepthFull * 100.0f), 0.0f, 150.0f);
@@ -238,6 +293,9 @@ void Settings::Read(menu::Values& v) {
         std::string const wrist = Lower(ini.Text("WorldUi", "wrist", "SkillGame"));
         v.texts["wrist_screen"] = wrist.find("skillgame") != std::string::npos || wrist.find("all") != std::string::npos ? "wrist" : "room";
     }
+    // The game's screens in the room (research/53) and the galaxy map's hologram (research/51): the mod's defaults are on.
+    flag("world_ui", ini.Num("WorldUi", "on", 1.0f) != 0.0f);
+    flag("galaxy_holo", ini.Num("Galaxy", "hologram", 1.0f) != 0.0f);
     // Controls.
     flag("grip_holds", ini.Num("Holsters", "gripHolds", 1.0f) != 0.0f);
     flag("holsters", ini.Num("Holsters", "enabled", 1.0f) != 0.0f);
@@ -261,6 +319,33 @@ void Settings::Read(menu::Values& v) {
     flag("explore_stance", ini.Num("Hands", "exploreStance", 0.0f) != 0.0f);
     flag("constant_eye", ini.Num("Hands", "constantEye", 1.0f) != 0.0f);
     v.numbers["draw_rate"] = std::clamp(ini.Num("Hands", "drawRate", 6.0f), 1.0f, 10.0f);
+    // Features on by default with no row until 2026-11-04 (the release checklist's file-only list): the mod's defaults are on.
+    flag("fingers", ini.Num("Hands", "fingers", 1.0f) != 0.0f);
+    flag("vent", ini.Num("Vent", "enabled", 1.0f) != 0.0f);
+    flag("mako_controls", ini.Num("Mako", "controls", 1.0f) != 0.0f);
+    flag("cockpit", ini.Num("Cockpit", "enabled", 1.0f) != 0.0f);
+    {
+        // The controller guide: what each button does with these settings (core/vr/MenuSettings GuideTexts).
+        ms::GuideInput g;
+        g.leftTrigger = v.Text("left_trigger");
+        g.squad = ini.Num("Squad", "enabled", 1.0f) != 0.0f;
+        g.squadStyle = Lower(ini.Text("Squad", "style", "native"));
+        g.holsters = v.Flag("holsters");
+        g.gripHolds = v.Flag("grip_holds");
+        g.powerWheel = Lower(ini.Text("Holsters", "powerWheel", "r3"));
+        g.grenades = ini.Num("Throwables", "enabled", 1.0f) != 0.0f;
+        g.melee = ini.Num("Throwables", "melee", 1.0f) != 0.0f;
+        g.grenadeHands = Lower(ini.Text("Throwables", "hands", "right"));
+        g.grenadeButton = ini.Num("Throwables", "grenadeButton", 1.0f) != 0.0f;
+        g.meleeButton = ini.Num("Throwables", "meleeButton", 1.0f) != 0.0f;
+        g.vent = v.Flag("vent");
+        g.turn = v.Text("turn");
+        g.walk = v.Text("walk");
+        g.physicalCrouch = v.Flag("crouch");
+        for (auto const& [key, text] : ms::GuideTexts(g)) {
+            v.texts[key] = text;
+        }
+    }
     // Body.
     v.numbers["trim_pitch"] = ini.Num("Hands", "handPitch", 0.0f);
     v.numbers["trim_yaw"] = ini.Num("Hands", "handYaw", 0.0f);
@@ -319,7 +404,7 @@ void Settings::Read(menu::Values& v) {
     int const recommendedH = static_cast<int>(resolution.recommendedEyeHeight);
     v.texts["quality"] = ms::ResolutionChoice(c.sfr2ResX, c.sfr2ResY, recommendedW, recommendedH);
     v.texts["quality_text"] = ms::SizeText(c.sfr2ResX, c.sfr2ResY);
-    v.texts["quality_note"] = noSave_ ? "not saved: the renderer settings were reset this session (Profiles > Save keeps it)"
+    v.texts["quality_note"] = noSave_ ? "not saved: the VR settings were reset this session (Advanced > Profiles > Save keeps it)"
                                       : "applies after a restart";
     flag("headset_known", recommendedW > 0 && recommendedH > 0);
     v.texts["headset_text"] = ms::HeadsetSizesText(recommendedW, recommendedH);
@@ -328,21 +413,27 @@ void Settings::Read(menu::Values& v) {
     // HUD and sights.
     v.numbers["hud_distance"] = c.hudPanelDistanceM;
     v.numbers["hud_size"] = std::round(c.hudPanelWidthM / 1.3f * 100.0f);
+    v.numbers["panel_below"] = c.hudPanelDropM;
+    v.numbers["panel_follow"] = c.hudPanelFollowDeg;
     flag("reticle", c.handReticle);
+    flag("wrist_status", ini.Num("Hud", "wristStatus", 1.0f) != 0.0f);
+    flag("gun_status", ini.Num("Hud", "gunStatus", 1.0f) != 0.0f);
+    flag("interact_label", ini.Num("Interact", "label", 1.0f) != 0.0f);
     v.texts["sight_pistol"] = ms::SightKind(ini.Text("Sights", "pistol", "dot"), "dot");
+    v.texts["sight_shotgun"] = ms::SightKind(ini.Text("Sights", "shotgun", "dot"), "dot");
     v.texts["sight_rifle"] = ms::SightKind(ini.Text("Sights", "assaultRifle", "dot"), "dot");
     v.texts["sight_sniper"] = ms::SightKind(ini.Text("Sights", "sniperRifle", "scope auto"), "scope");
     flag("sight_assist", ini.Num("Sights", "assist", 1.0f) != 0.0f);
     flag("sight_converge", ini.Num("Sights", "converge", 1.0f) != 0.0f);
+    flag("scope_grade", ini.Num("Sights", "scopeCapturePost", 1.0f) != 0.0f);
     // Advanced: Halcyon's.
     flag("recenter_key", c.recenterKeyEnabled);
     v.texts["recenter_key_desc"] = std::format("{} on the keyboard recenters, with the game window in front (the right stick's "
                                                "double-click works either way)", KeyName(c.recenterKey));
-    v.texts["classic_desc"] = std::format("Halcyon's own menu, for what isn't here yet (also: Ctrl + {})", KeyName(c.menuKey));
+    v.texts["classic_desc"] = std::format("The original MELE-VR settings menu, with expert settings these pages don't have (also: "
+                                          "Ctrl + {})", KeyName(c.menuKey));
     v.numbers["look_speed"] = c.lookSensitivity;
     v.numbers["look_smooth"] = c.headLookSmoothing;
-    flag("vr_convo", c.cineVrConvo);
-    flag("vr_cine", c.cineVrCutscene);
     flag("flat_menus", c.menuFlat);
     flag("flat_galaxy", c.galaxyFlat);
     flag("fp_on", c.fpEnabled);
@@ -360,18 +451,18 @@ void Settings::Read(menu::Values& v) {
     flag("life_size", c.sfr2Metric);
     v.numbers["extra_depth"] = c.sfr2MetricDepth;
     flag("eye_frustum", c.sfr2MetricEyeFrustum);
-    v.numbers["eye_distance"] = c.sfr2HalfEyeUU;
+    v.numbers["eye_distance"] = 2.0f * c.sfr2HalfEyeUU;  // both eyes apart, in game centimetres at life size (100 units/m)
     v.numbers["convergence"] = c.sfr2Convergence;
     flag("swap_eyes", c.sfr2SwapEyes);
     flag("quest_fov", c.questFovMatch);
     flag("dof", !c.disableDof);
     v.texts["mirror"] = ms::MirrorChoice(c.mirrorPresentEvery);
-    v.numbers["panel_width"] = c.hudPanelWidthM;
-    v.numbers["panel_below"] = c.hudPanelDropM;
-    v.numbers["panel_follow"] = c.hudPanelFollowDeg;
-    flag("g_pchud", c.pchudEnabled);
+    // Advanced > Game UI (Halcyon's HUD tab's movie transforms; the combat HUD's isn't there: the HUD panel shows that movie
+    // at its authored layout, research/15).
     flag("g_convo", c.convoEnabled);
+    ReadMovie(v, MELEVR::Config::Get(), false, "convo");  // read only
     flag("g_designer", c.designerUiEnabled);
+    ReadMovie(v, MELEVR::Config::Get(), true, "designer");
     v.texts["prof_active"] = std::to_string(MELEVR::Config::ActiveProfileIndex());
     for (int i = 0; i < 4; ++i) {
         v.texts[std::format("prof{}_name", i)] = MELEVR::Config::ProfileName(i);
@@ -461,16 +552,15 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     auto fixed = [&](float value, int decimals) { return std::format("{:.{}f}", value, decimals); };
     MELEVR::Config::VrConfig& c = MELEVR::Config::Get();
     // ---- Our settings file ----
-    if (key == "cine_view") {
-        std::string const view = v.Text("cine_view");
-        bool const inVr = view != "flat";
-        c.cineVrConvo = inVr;
-        c.cineVrCutscene = inVr;
+    if (key == "cine_convo" || key == "cine_cut") {
+        // One context each: Halcyon's VR conversations (cutscenes) off for the flat screen, else [Cinematics] picks the 3D
+        // screen or the director's camera in VR.
+        bool const convo = key == "cine_convo";
+        std::string const view = v.Text(key);
+        (convo ? c.cineVrConvo : c.cineVrCutscene) = view != "flat";
         HalcyonChanged(false);
-        if (inVr) {
-            std::string const onScreen = view == "screen" ? "1" : "0";
-            Put("Cinematics", "conversations", onScreen, true);
-            Put("Cinematics", "cutscenes", onScreen, true);
+        if (view != "flat") {
+            Put("Cinematics", convo ? "conversations" : "cutscenes", view == "screen" ? "1" : "0", true);
         }
     } else if (key == "cine_width") {
         Put("Cinematics", "widthM", fixed(v.Number("cine_width"), 2), final);
@@ -480,6 +570,26 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         Put("Cinematics", "depth", fixed(v.Number("cine_depth") / 100.0f * kCineDepthFull, 4), final);
     } else if (key == "wrist_screen") {
         Put("WorldUi", "wrist", v.Text("wrist_screen") == "room" ? "none" : "SkillGame", true);
+    } else if (key == "world_ui") {
+        Put("WorldUi", "on", onOff("world_ui"), true);
+    } else if (key == "galaxy_holo") {
+        Put("Galaxy", "hologram", onOff("galaxy_holo"), true);
+    } else if (key == "fingers") {
+        Put("Hands", "fingers", onOff("fingers"), true);
+    } else if (key == "vent") {
+        Put("Vent", "enabled", onOff("vent"), true);
+    } else if (key == "mako_controls") {
+        Put("Mako", "controls", onOff("mako_controls"), true);
+    } else if (key == "cockpit") {
+        Put("Cockpit", "enabled", onOff("cockpit"), true);
+    } else if (key == "wrist_status") {
+        Put("Hud", "wristStatus", onOff("wrist_status"), true);
+    } else if (key == "gun_status") {
+        Put("Hud", "gunStatus", onOff("gun_status"), true);
+    } else if (key == "interact_label") {
+        Put("Interact", "label", onOff("interact_label"), true);
+    } else if (key == "scope_grade") {
+        Put("Sights", "scopeCapturePost", onOff("scope_grade"), true);  // the mod applies it to the next scope capture it makes
     } else if (key == "turn") {
         Put("Comfort", "turn", v.Text("turn") == "snap" ? "snap" : "game", true);
     } else if (key == "snap") {
@@ -525,15 +635,14 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         Put("Hands", name, fixed(v.Number(key), 1), final);
     } else if (key == "sight_pistol") {
         Put("Sights", "pistol", ms::SightValue(v.Text(key), ""), true);
+    } else if (key == "sight_shotgun") {
+        Put("Sights", "shotgun", ms::SightValue(v.Text(key), ""), true);  // no scope chip: the shotgun's model has none
     } else if (key == "sight_rifle") {
         // A red dot by default (research/21 section 15). A scope is the assault rifle's own (its model has one: section 14),
-        // 1.5x unless it had another zoom; the shotgun has none and keeps its sight. Any other chip sets both.
+        // 1.5x unless it had another zoom.
         std::wstring const& path = MELEVR::MevrBridge::SettingsPath();
         wchar_t previous[64]{};
         GetPrivateProfileStringW(L"Sights", L"assaultRifle", L"dot", previous, 64, path.c_str());
-        if (v.Text(key) != "scope") {
-            Put("Sights", "shotgun", ms::SightValue(v.Text(key), ""), true);
-        }
         Put("Sights", "assaultRifle", ms::SightValue(v.Text(key), Narrow(previous), 1.5f), true);
     } else if (key == "sight_sniper") {
         std::wstring const& path = MELEVR::MevrBridge::SettingsPath();
@@ -626,12 +735,6 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     } else if (key == "look_smooth") {
         c.headLookSmoothing = v.Number(key);
         HalcyonChanged(false);
-    } else if (key == "vr_convo") {
-        c.cineVrConvo = v.Flag(key);
-        HalcyonChanged(false);
-    } else if (key == "vr_cine") {
-        c.cineVrCutscene = v.Flag(key);
-        HalcyonChanged(false);
     } else if (key == "flat_menus") {
         c.menuFlat = v.Flag(key);
         HalcyonChanged(false);
@@ -678,7 +781,7 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         if (!noSave_) {  // as the resolution: GamerSettings.ini only with the profile
             MELEVR::Config::ApplyResolutionForCurrentMode(&wx, &wy);
         }
-        modeNote_ = noSave_ ? std::string("Not saved: the renderer settings were reset this session (Profiles > Save keeps it).")
+        modeNote_ = noSave_ ? std::string("Not saved: the VR settings were reset this session (Advanced > Profiles > Save keeps it).")
                   : wx > 0 ? std::format("Resolution set to {} \xC3\x97 {}: restart the game to apply this mode.", wx, wy)
                            : std::string("Restart the game to apply this mode.");
         log::Info("main menu: VR mode {} ({})", mode, modeNote_);
@@ -694,7 +797,7 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         HalcyonChanged(false);
         log::Info("main menu: each eye's own field of view {}", c.sfr2MetricEyeFrustum ? "on" : "off");
     } else if (key == "eye_distance") {
-        c.sfr2HalfEyeUU = v.Number(key);
+        c.sfr2HalfEyeUU = v.Number(key) * 0.5f;  // the row shows both eyes apart
         HalcyonChanged(false);
     } else if (key == "convergence") {
         c.sfr2Convergence = v.Number(key);
@@ -712,23 +815,28 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     } else if (key == "mirror") {
         c.mirrorPresentEvery = ms::MirrorPresentEvery(v.Text(key));
         HalcyonChanged(false);
-    } else if (key == "panel_width") {
-        c.hudPanelWidthM = v.Number(key);
-        HalcyonChanged(false);
     } else if (key == "panel_below") {
         c.hudPanelDropM = v.Number(key);
         HalcyonChanged(false);
     } else if (key == "panel_follow") {
         c.hudPanelFollowDeg = v.Number(key);
         HalcyonChanged(false);
-    } else if (key == "g_pchud") {
-        c.pchudEnabled = v.Flag(key);
-        HalcyonChanged(false);
     } else if (key == "g_convo") {
         c.convoEnabled = v.Flag(key);
         HalcyonChanged(false);
     } else if (key == "g_designer") {
         c.designerUiEnabled = v.Flag(key);
+        HalcyonChanged(false);
+    } else if (key == "convo_size" || key == "designer_size") {
+        WriteSize(Movie(c, key == "designer_size"), v.Number(key));
+        HalcyonChanged(false);
+    } else if (key == "convo_x" || key == "designer_x") {
+        UiMovie const m = Movie(c, key == "designer_x");
+        *m.offsetX = m.defOffsetX + v.Number(key);
+        HalcyonChanged(false);
+    } else if (key == "convo_y" || key == "designer_y") {
+        UiMovie const m = Movie(c, key == "designer_y");
+        *m.offsetY = m.defOffsetY - v.Number(key);  // up is +; Flash's y grows downward
         HalcyonChanged(false);
     } else {
         log::Warn("main menu: no setting behind '{}'", key);
@@ -756,6 +864,15 @@ void Settings::Command(std::string const& name, std::string const& argument, men
     } else if (name == "place_hud") {
         MELEVR::MevrBridge::RequestHudPanelReplace();
         profMsg_.clear();
+    } else if (name == "ui_reset") {
+        // Advanced > Game UI's Standard: the movie back to Halcyon's tuned size and place (as its HUD tab's Reset buttons).
+        UiMovie const m = Movie(MELEVR::Config::Get(), argument == "designer");
+        *m.scaleX = m.defScaleX;
+        *m.scaleY = m.defScaleY;
+        *m.offsetX = m.defOffsetX;
+        *m.offsetY = m.defOffsetY;
+        HalcyonChanged(false);
+        log::Info("main menu: the {} back to its standard size and place", argument == "designer" ? "mission overlays" : "conversation wheel");
     } else if (name == "classic") {
         after_ = After::Classic;
     } else if (name == "prof_load" || name == "prof_save") {
@@ -795,7 +912,7 @@ void Settings::Command(std::string const& name, std::string const& argument, men
     } else if (name == "reset") {
         if (resetArmedMs_ == 0) {
             resetArmedMs_ = Now();
-            diagMsg_ = "Press Confirm to reset the renderer settings for this session.";
+            diagMsg_ = "Press Confirm to put the VR view, stereo and HUD settings back to standard for this session.";
         } else {
             // Halcyon's defaults, live, but what our deploy and the player chose stays: the menu key, no head aim, the
             // render resolution, the first-run notice. Not saved over the profile (Profiles > Save keeps it).
@@ -852,7 +969,7 @@ void Settings::Tick(vr::controllers::State const& live, bool headValid, XrVector
     }
     perf::Status const p = perf::GetStatus();
     if (!p.pending && !p.lastCapture.empty()) {
-        perfMsg_ = "Last measurement saved (perf folder).";
+        perfMsg_ = "Saved in AppData\\Local\\MEVR\\perf. Switch on \"With the latest frame timing\" to put it in a report.";
     }
 }
 

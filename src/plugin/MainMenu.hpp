@@ -54,6 +54,7 @@ struct Frame {
     ID3D11DeviceContext* context = nullptr;
     ID3D11Device* device = nullptr;
     bool worldFrame = false;            // the head-tracked world is submitted (a backdrop to sample)
+    int gameMode = -1;                  // Halcyon's game mode, the last one known (0 on foot): the first run waits for 0
     bool headValid = false;
     XrPosef head{};                     // the eyes' centre and the head's orientation, app space
     // The left eye's image as submitted this frame: the backdrop's source.
@@ -64,6 +65,12 @@ struct Frame {
     XrFovf projectionFov{};
 };
 // OverlayLayers, every frame: the menu's quad, or nullptr while it's closed.
+//
+// The first run: a player who has never seen it ([Menu] controlsShown absent or 0 in <GAME>MEVR.ini) gets the menu opened
+// once by itself on the Controller guide page, after kFirstRunSeconds in a row on foot in the head-tracked world with the
+// session focused, Halcyon's menu closed, no calibration running and the calibration's first-run prompt answered (it comes
+// first). controlsShown = 1 is written as it opens.
+inline constexpr float kFirstRunSeconds = 6.0f;
 XrCompositionLayerQuad const* Layer(Frame const& frame);
 // Recentering re-origined the app space: an open menu is placed again in front of the head.
 void Recentered();

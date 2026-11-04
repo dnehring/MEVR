@@ -2251,7 +2251,12 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         calibration.context = context;
         calibration.device = device.Get();
         calibration.worldFrame = frame.worldFrame;
+#if defined(MEVR_WITH_MAIN_MENU)
+        // Our menu hides the first-run prompt as Halcyon's does: its delay and timeout wait for it to close.
+        calibration.menuOpen = frame.menuOpen || mevr::host::main_menu::IsOpen();
+#else
         calibration.menuOpen = frame.menuOpen;
+#endif
         calibration.gameMode = gLastGameMode;
         calibration.headValid = frame.headValid;
         calibration.head.orientation = head;
@@ -2280,6 +2285,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         menu.context = context;
         menu.device = device.Get();
         menu.worldFrame = frame.worldFrame;
+        menu.gameMode = gLastGameMode;  // the first run waits for on foot
         menu.headValid = frame.headValid;
         menu.head.orientation = head;
         menu.head.position = ToVec(frame.headPosition);

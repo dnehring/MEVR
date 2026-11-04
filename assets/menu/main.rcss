@@ -170,7 +170,7 @@ button { display: inline-block; focus: auto; tab-index: auto; nav: auto; }
 	display: flex;
 	align-items: center;
 	gap: 16dp;
-	height: 76dp;
+	height: 70dp;  /* seven sections and the status chips fit the rail (76 until the controller guide came) */
 	padding: 0dp 20dp;
 	color: #AEB4B9;
 }
@@ -190,6 +190,7 @@ button { display: inline-block; focus: auto; tab-index: auto; nav: auto; }
 .i-eye { decorator: icon(eye); }
 .i-crosshair { decorator: icon(crosshair); }
 .i-sliders { decorator: icon(sliders); }
+.i-guide { decorator: icon(guide); }
 
 .content {
 	flex: 1 1 auto;
@@ -222,7 +223,7 @@ button { display: inline-block; focus: auto; tab-index: auto; nav: auto; }
 .gtitle .gline { flex: 1 1 auto; height: 1dp; decorator: linear-gradient(90deg, rgba(124,203,242,55%), rgba(124,203,242,0%)); }
 
 /* ---- Rows ---------------------------------------------------------------------------------------------- */
-.row, .srow, .tile, .pv {
+.row, .srow, .tile, .pv, .gcard {
 	background-color: rgba(20,30,40,50%);
 	border: 1dp rgba(255,255,255,9%);
 	box-shadow: rgba(255,255,255,8%) 0dp 1dp 0dp 0dp inset, rgba(0,0,0,25%) 0dp 10dp 30dp 0dp;
@@ -322,6 +323,10 @@ button { display: inline-block; focus: auto; tab-index: auto; nav: auto; }
 }
 .slab { width: 150dp; flex: 0 0 auto; font-size: 19dp; font-weight: 600; }
 .sval { width: 90dp; flex: 0 0 auto; text-align: right; font-family: Rajdhani; font-weight: 600; font-size: 22dp; }
+/* A slider with a line of explanation under its name. */
+.srow.d { height: auto; min-height: 76dp; padding: 10dp 20dp; }
+.srow .sl { width: 330dp; flex: 0 0 auto; }
+.srow .sl .slab { width: auto; }
 /* The pad: up and down move the focus on, left and right move the slider. */
 input.range { display: block; flex: 1 1 0dp; width: 200dp; height: 32dp; tab-index: auto; nav-up: auto; nav-down: auto; }
 input.range slidertrack {
@@ -441,6 +446,53 @@ scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc { width: 0dp;
 }
 #pointer .dot { margin: 3dp; width: 12dp; height: 12dp; border-radius: 6dp; background-color: #50C8FF; }
 #pointer.pressing .dot { background-color: #FFAA28; }
+
+/* The controller guide: both controllers drawn with boxes (no artwork; 460 x 232 each, the left one's labels on its left,
+ * the right one's mirrored), each control's job on a label at the end of a leader line; the list under it says how. */
+.welcome { border: 1dp rgba(255,196,150,30%); background-color: rgba(255,143,63,10%); color: #FFE1C2; padding: 12dp 20dp; margin-bottom: 16dp; }
+.guide { display: flex; gap: 12dp; margin-bottom: 6dp; }
+.gcard { flex: 1 1 0dp; padding: 14dp 18dp 8dp 18dp; }
+.gname { font-family: Rajdhani; font-weight: 600; font-size: 18dp; letter-spacing: 0.24em; text-transform: uppercase; color: #CBD6DD; margin-bottom: 4dp; }
+.gdraw { position: relative; width: 460dp; height: 232dp; margin: 0dp auto; }
+.gbody, .gtrig, .gstick, .gknob, .gbtn, .gmenu, .ggrip, .glead, .glab { position: absolute; box-sizing: border-box; }
+.gbody { left: 170dp; top: 30dp; width: 120dp; height: 192dp; border-radius: 48dp; border: 2dp rgba(124,203,242,55%); background-color: rgba(124,203,242,7%); }
+.gtrig { left: 198dp; top: 8dp; width: 64dp; height: 28dp; border-radius: 10dp; border: 2dp rgba(124,203,242,55%); background-color: rgba(124,203,242,24%); }
+.gstick { left: 207dp; top: 52dp; width: 46dp; height: 46dp; border-radius: 23dp; border: 2dp #7CCBF2; background-color: rgba(6,10,14,55%); }
+.gknob { left: 11dp; top: 11dp; width: 20dp; height: 20dp; border-radius: 10dp; background-color: rgba(124,203,242,45%); }
+.gbtn { left: 215dp; width: 30dp; height: 30dp; border-radius: 15dp; border: 2dp #7CCBF2; background-color: rgba(6,10,14,55%);
+	font-family: Rajdhani; font-weight: 700; font-size: 17dp; line-height: 26dp; text-align: center; color: #E9F6FD; }
+.gbtn.up { top: 112dp; }
+.gbtn.lo { top: 152dp; }
+.gmenu { left: 223dp; top: 194dp; width: 14dp; height: 14dp; border-radius: 7dp; border: 2dp rgba(124,203,242,70%); }
+.ggrip { top: 104dp; width: 20dp; height: 92dp; border-radius: 8dp; border: 2dp rgba(124,203,242,55%); background-color: rgba(124,203,242,24%); }
+.ggrip.onright { left: 282dp; }
+.ggrip.onleft { left: 158dp; }
+.glead { height: 1dp; background-color: rgba(124,203,242,60%); }
+.glead.l { left: 146dp; }
+.glead.l.t { width: 52dp; top: 21dp; }
+.glead.l.s { width: 61dp; top: 75dp; }
+.glead.l.up { width: 69dp; top: 127dp; }
+.glead.l.lo { width: 69dp; top: 167dp; }
+.glead.l.m { width: 77dp; top: 201dp; }
+.glead.l.g { width: 12dp; top: 150dp; }
+.glead.r.t { left: 262dp; width: 52dp; top: 21dp; }
+.glead.r.s { left: 253dp; width: 61dp; top: 75dp; }
+.glead.r.up { left: 245dp; width: 69dp; top: 127dp; }
+.glead.r.lo { left: 245dp; width: 69dp; top: 167dp; }
+.glead.r.g { left: 302dp; width: 12dp; top: 150dp; }
+.glab { width: 140dp; height: 40dp; display: flex; align-items: center; font-size: 15dp; font-weight: 600; line-height: 18dp; color: #F1EEE8; }
+.glab.l { left: 0dp; justify-content: flex-end; text-align: right; }
+.glab.r { left: 320dp; }
+.glab.t { top: 1dp; }
+.glab.s { top: 55dp; }
+.glab.up { top: 107dp; }
+.glab.lo { top: 147dp; }
+.glab.m { top: 181dp; }
+.glab.g { top: 130dp; }
+.glist { margin-top: 6dp; }
+.gitem { display: flex; gap: 12dp; align-items: flex-start; padding: 8dp 0dp; border-top: 1dp rgba(255,255,255,7%); }
+.gitem .key { flex: 0 0 auto; width: 64dp; text-align: center; margin-right: 0dp; }
+.gdesc { flex: 1 1 0dp; font-size: 15dp; line-height: 20dp; color: #C9CED2; padding-top: 3dp; }
 
 /* Report a problem's crash offer (research/33 section 8): over every section until answered. */
 .row .actions { display: flex; gap: 8dp; flex: 0 0 auto; }
