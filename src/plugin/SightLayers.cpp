@@ -541,6 +541,7 @@ void PrepareArt(Frame const& frame, sv::Sight const& sight) {
     ComPtr<ID3D11ShaderResourceView> sources[art::kTextures];
     float decode[art::kTextures] = {};
     std::string formats;
+    scope_capture_source::NoteDevice(frame.device);  // the search's fallback for textures behind unaligned pointers
     for (int k = 0; k < art::kTextures; ++k) {
         D3D11_TEXTURE2D_DESC desc{};
         ComPtr<ID3D11Texture2D> texture;

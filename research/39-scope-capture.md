@@ -226,9 +226,50 @@ past the muzzle), `scopeCaptureFar` (0), `scopeCaptureHold` (0.5 s).
 - **3. The texture search: no.** `scope capture source: no 1024x1024 D3D11 texture found behind the render target's resource ...
   in 240 frames`, twice (two render targets). Yet a probe from the mod found it at **`+0xA0 -> +0x8`: 1024x1024, format 10
   (R16G16B16A16_FLOAT, so FloatRGB is RGBA16F here), bind 0x28 (render target and shader resource)**, inside the host's
-  0x100 -> 0x80 window, both minutes after creation and within about a second of it. Why the host's `FindTexture` misses it
-  isn't settled [verify]; the next try should log every candidate the host's search calls `isTexture` on, and hint
-  `{0xA0, 0x8}` first. The scope kept the eye copy, so **its cost and its sharpness are still unmeasured** (item 7).
+  0x100 -> 0x80 window, both minutes after creation and within about a second of it. Why the host's `FindTexture` misses it:
+  settled in section 12 (the pointer at `+0xA0` isn't 8-aligned). The scope kept the eye copy, so **its cost and its sharpness are still unmeasured** (item 7).
 - That probe crashed the game (research/21 section 16: `QueryInterface` on d3d11 objects that aren't COM). The host's own
   search asks the same question of every d3d11-vtabled object in its smaller window; before widening it, compare a candidate's
   vtable with a known ID3D11Texture2D's (a texture the host creates on the same device) and call nothing else.
+
+## 12. Found and measured (2026-11-04, later; the fake headset, BIOA_UNC20)
+
+- **The texture search: yes.** The pointer at `+0xA0` isn't 8-aligned, and `sc::FindTexture`'s walk skips unaligned pointers
+  (the galaxy session's finding with its own capture targets, research/51 section 8, 6c81bf0). `Resolve` now calls `NoteDevice`
+  (a 4x4 texture of our own on the game's device gives the class's vtable; it lives in d3d11.dll, so the module check was never
+  the problem) and then `FindTargetTexture`, whose fallback walks the same window for objects with exactly that vtable and asks
+  them nothing but `GetDesc` and `AddRef`. Found in 2 frames: `+0xA0 -> +0x8`, 1024x1024, format 10, bind 0x28. Every scoped frame
+  after that took the capture (`framesNotReady` 0, the pose from the presented Draw's arm).
+- **Setup.** Sniper rifle at 3.5x, Shepard 10 m from the parked Mako (the hull's panel lines and its painted "CAUTION" text in the
+  scope), `ads-sniper-30s-h0.mevrrec` replayed in a loop with its inputs (research/21 section 16: head height 0, hand drop 0.15).
+- **Cost.** `tools/measure-levers.ps1 -Section Sights -Key scopeCapture -Values 0,1 -Rounds 3 -Seconds 10` (medians / p90, ms;
+  the fake headset paces at 31 fps, so busy times are the measure):
+
+  | | off (3 rounds) | on (3 rounds) | difference |
+  |---|---|---|---|
+  | render thread's work | 4.25-4.33 / 4.95-5.03 | 4.78-4.79 / 5.56-5.61 | +0.5 / +0.6 |
+  | draws a frame | 929-931 | 1020-1035 | +95 |
+  | GPU span, whole frame | 10.99-11.06 / 11.78-11.79 | 10.68-10.71 / 11.50-11.51 | -0.3 |
+  | GPU span, copies and quads | 0.60 | 0.51 | -0.09 |
+  | game thread's work | 2.87-2.91 | 2.80-2.84 | none |
+
+  The levers line agrees: the eye's scene render takes 2.8-3.0 ms alone and 3.3-3.5 ms with the capture's render inside it
+  (1.0 captures a frame). No GPU cost is visible. With the capture on, the scope no longer copies the other eye's image, which
+  saves 0.09 ms of copies; the rest of the -0.3 ms is within the replay's spread. This is a light scene (930 draws); a dense one
+  will cost more [verify at Eden Prime's heaviest cell].
+- **Sharpness.** Snapshots at the same replay phases, measured on the scope layer's own 768 px picture:
+  - **Eye copy:** it keeps 90% of its detail through a 3-4x downscale and back. It carries about 175 px of detail across the disc,
+    the other eye's pixels magnified 3.5x, and looks blocky.
+  - **Capture:** it keeps 90% only through 1.5x. Its 1024 px span 7.14 degrees, more than the layer holds. Panel scratches and
+    lines are crisp.
+  - **Edges and brightness:** the 99th percentile of the gradient is 48-93 for the eye copy and 129-169 for the capture. Mean
+    brightness is alike.
+  - **In the eye:** the scope's disc is about 380 px across. So the capture is now limited by the display, while the eye copy was
+    about 2.2x below it.
+- **A speckle from the post process.** The capture's dark areas carry a black speckle that the eye images don't have. With
+  `scopeCapturePost = 0` the speckle is gone and the edges are stronger (99th percentile 190-198). But the game's colour grade goes
+  too: the hull is whiter and more neutral than the bluish eye image around it. So the player's post-process chain makes the
+  speckle at the capture's own pixel scale. Which effect is [verify]: the speckle follows crevices and dark edges, so the chain's
+  ambient occlusion is the likely one. `scopeCapturePost` applies when the actor is created, so turn `scopeCapture` off and on.
+- **The verify list (section 10).** 1, 3 and 7 are done. In 4, the picture was centred on the reticle with the world steady in it
+  (snapshots); the rest of 4, 2, 5 and 6 weren't checked in this run.

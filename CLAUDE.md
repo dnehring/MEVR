@@ -512,7 +512,9 @@ switching frameworks.
   resources in the sight; the host composes two layers once, `SightLayers` PrepareArt, layout `vr::scope_art` from
   `tools/scope-art.py`; the duplex if not found). The sight struct grew: host and mod deploy together.
 - LE1 scope capture ([research/39](research/39-scope-capture.md), HostServices v20; **off by default**, `[Sights]
-  scopeCapture = 0`, until its frame cost is measured): the scope's picture from a real zoomed render instead of the other
+  scopeCapture = 0`; measured 2026-11-04, research/39 section 12: the render thread +0.5 ms in a light scene, no GPU cost
+  visible, the picture as sharp as the display instead of 2.2x below it; the player's post chain adds a black speckle in dark
+  areas, `scopeCapturePost = 0` removes it and the grade): the scope's picture from a real zoomed render instead of the other
   eye's image enlarged. The mod (`game/ScopeCapture`, hot-reloaded) spawns a `SceneCapture2DActor` (Actor.Spawn on the
   player controller; the class's `bStatic`/`bNoDelete` defaults cleared for the call if set) with a
   `TextureRenderTarget2D` of its own (`Create` on its default object; `scopeCaptureSize` 1024, FloatRGB), the update
@@ -522,7 +524,8 @@ switching frameworks.
   deg) / zoom)`, the near plane 20 units past the muzzle), destroyed at shutdown, forgotten on a level change. It renders
   through `FSceneRenderer::Render` before the eye render, into its own target, so RenderLevers runs it with index -1 (a
   "capture" in the levers line). The host (`plugin/ScopeCaptureSource`) finds the render target's ID3D11Texture2D behind
-  `UTexture.Resource` by a guarded search (vtable in d3d11.dll, QueryInterface, the size; Ghidra's offsets later), keeps a
+  `UTexture.Resource` by a guarded search (vtable in d3d11.dll, QueryInterface, the size; the target's own sits behind an
+  unaligned pointer, `+0xA0 -> +0x8`, found by the walk for objects of a texture's class, `NoteDevice`), keeps a
   reference, and SightLayers samples it with the pose the presented Draw rendered (`[MEVR]` seams `NoteDrawArm` at the
   pair-arm latch in `render_hook.cpp` and `OverlayFrame::pairArm` in `xr_session.cpp`), else the eye copy as before; the
   reticle stays collimated. Logs `scope capture:`, `scope capture source:`; snapshots `"mod"."scopeCapture"`,

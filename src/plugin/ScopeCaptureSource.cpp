@@ -154,42 +154,29 @@ bool Resolve(ID3D11Device* device, sc::Capture const& capture) {
         return false;
     }
     ++gResolved.tries;
-    Modules const modules{ImageOf(L"d3d11.dll"), ImageOf(L"d3d11_3SDKLayers.dll"), ImageOf(L"D3D11SDKLayers.dll")};
-    if (modules.d3d11.begin == 0) {
+    if (GetModuleHandleW(L"d3d11.dll") == nullptr) {
         gResolved.gaveUp = true;
         log::Error("scope capture source: d3d11.dll isn't loaded?; the scope keeps the eye copy");
         return false;
     }
-    ID3D11Texture2D* found = nullptr;
+    // The capture's texture sits behind an unaligned pointer (+0xA0 -> +0x8, research/39 section 11, research/51 section 8),
+    // which the aligned walk skips: FindTargetTexture falls back to a walk for objects of the class of a texture of our own
+    // on the game's device, so that class must be known first.
+    NoteDevice(device);
     D3D11_TEXTURE2D_DESC desc{};
-    auto const read = [](std::uint64_t address) -> std::optional<std::uint64_t> {
-        std::uint64_t value = 0;
-        return ReadRaw(address, &value) ? std::optional<std::uint64_t>(value) : std::nullopt;
-    };
-    auto const isTexture = [&](std::uint64_t candidate) {
-        if (ID3D11Texture2D* const t = ProbeRaw(candidate, &modules, capture.width, capture.height, &desc)) {
-            if (found != nullptr) {
-                found->Release();
-            }
-            found = t;
-            return true;
-        }
-        return false;
-    };
-    sc::TexturePath const path = sc::FindTexture(capture.resource, read, isTexture, gHint);
-    if (!path.Valid() || found == nullptr) {
-        if (found != nullptr) {
-            found->Release();
-        }
+    sc::TexturePath hint = gHint;
+    ID3D11Texture2D* const found = FindTargetTexture(capture.resource, capture.width, capture.height, hint, &desc);
+    if (found == nullptr) {
         if (gResolved.tries >= kResolveTries) {
             gResolved.gaveUp = true;
             log::Warn("scope capture source: no {}x{} D3D11 texture found behind the render target's resource 0x{:X} in {} frames (its "
-                      "RHI references within 0x100 bytes, theirs within 0x80); the scope keeps the eye copy [research/39: the offsets "
-                      "need Ghidra]",
-                capture.width, capture.height, capture.resource, gResolved.tries);
+                      "RHI references within 0x100 bytes, theirs within 0x80; last search: {}; the known class's textures there:{}); "
+                      "the scope keeps the eye copy",
+                capture.width, capture.height, capture.resource, gResolved.tries, LastSearch(), DescribeTextures(capture.resource));
         }
         return false;
     }
+    sc::TexturePath const path = hint;
     gResolved.texture.Attach(found);
     gResolved.desc = desc;
     gResolved.path = path;
