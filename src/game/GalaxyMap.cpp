@@ -79,6 +79,13 @@ ue3::FunctionRef gSetHidden{"Engine.Actor.SetHidden"};
 ue3::ClassRef gEmitterClass{"Engine.Emitter"};
 ue3::ClassRef gInterpActorClass{"Engine.InterpActor"};
 constexpr float kProjectorUnits = 100.0f;
+// The projector's hologram's disc (research/51 section 8.1): the mesh (bioa_galaxymap_s.GalaxyMapProxy) is a square in its local
+// XY plane with the galaxy painted as a disc, 301 units from its centre to its sides (measured from its bounds, 2026-11-04); the
+// matinee spins it in that plane, so its up axis stays put.
+ue3::FieldRef gMeshComponent{"Engine.DynamicSMActor", "StaticMeshComponent"};
+ue3::FieldRef gBounds{"Engine.PrimitiveComponent", "Bounds"};
+ue3::FieldRef gBoundsExtent{gBounds, "BoxExtent"};
+constexpr float kHologramHalfUnits = 301.0f;
 // The map's opening wait: the GalaxyMap sequence's longest BioSeqAct_Delay (2.5 s while the camera flies into the map, which the
 // CIC's held view never shows), shortened while the map is used in the CIC; the map is up 0.2 s after the console's use.
 ue3::ClassRef gBioDelayClass{"SFXGame.BioSeqAct_Delay"};
@@ -96,6 +103,7 @@ struct Console {
     ue3::Object* behavior = nullptr;
     std::uint64_t lastSearchMs = 0;
     std::vector<ue3::Object*> projector;  // the game's own hologram's actors (BIOA_NOR10_03_PLC's InterpActor_0 and Emitter_71)
+    ue3::Object* hologram = nullptr;       // of those, the mesh (the InterpActor): the disc the window lies on
     bool projectorHidden = false;
     ue3::Object* openingDelay = nullptr;   // the sequence's opening wait (BioSeqAct_Delay_0)
     float openingOriginalS = 0.0f;
@@ -662,6 +670,7 @@ bool FindConsole() {
         auto const at = player::Location(gConsole.usable);
         gConsole.projector.clear();
         gConsole.projectorHidden = false;
+        gConsole.hologram = nullptr;
         for (std::int32_t i = 0, n = r.ObjectCount(); at && i < n; ++i) {
             ue3::Object* const o = r.ObjectAt(i);
             if (o == nullptr || !r.IsAlive(o) || !(ue3::IsA(o, gEmitterClass) || ue3::IsA(o, gInterpActorClass)) ||
@@ -672,6 +681,9 @@ bool FindConsole() {
                 p && std::sqrt((p->x - at->x) * (p->x - at->x) + (p->y - at->y) * (p->y - at->y) + (p->z - at->z) * (p->z - at->z)) <
                          kProjectorUnits) {
                 gConsole.projector.push_back(o);
+                if (gConsole.hologram == nullptr && ue3::IsA(o, gInterpActorClass)) {
+                    gConsole.hologram = o;
+                }
                 log::Info("galaxy hologram: the game's own hologram: {} (hidden while ours shows)", r.FullName(o));
             }
         }
@@ -751,8 +763,58 @@ struct LastAnchor {
     bool valid = false;
     XrVector3f anchor{};
     float yaw = 0.0f;
+    bool disc = false;  // the projector's hologram, where the window lies (tracking space)
+    XrVector3f discCentre{};
+    XrVector3f discNormal{};
+    float discRadiusM = 0.0f;
 };
 LastAnchor gLastAnchor;
+std::uint64_t gDiscLogs = 0;
+
+// The projector's own hologram as a disc in the world: its centre (the actor's place, the pivot it spins about), its normal (the
+// mesh's up axis) and its radius (the square's half side, from the component's bounds: each world axis's half extent over what
+// the square's two in-plane axes project on it, the smallest of the three, since the mesh's thickness only adds).
+struct WorldDisc {
+    engine::UnrealVector centre{};
+    engine::UnrealVector normal{};
+    double radiusUnits = 0.0;
+    bool measured = false;
+};
+std::optional<WorldDisc> HologramDisc() {
+    ue3::Object* const actor = gConsole.hologram;
+    if (actor == nullptr || !ue3::runtime::IsAlive(actor)) {
+        return std::nullopt;
+    }
+    auto const at = player::Location(actor);
+    auto const rotation = player::Rotation(actor);
+    if (!at || !rotation) {
+        return std::nullopt;
+    }
+    engine::Basis const axes = engine::ToBasis(engine::UnrealRotation{rotation->pitch, rotation->yaw, rotation->roll});
+    WorldDisc disc;
+    disc.centre = {at->x, at->y, at->z};
+    disc.normal = axes.up;
+    disc.radiusUnits = kHologramHalfUnits;
+    if (auto const component = gMeshComponent.Read<ue3::Object*>(actor); component && *component != nullptr) {
+        if (auto const extent = gBoundsExtent.Read<ue3::Vector>(gBounds.Address(*component))) {
+            double const e[3] = {extent->x, extent->y, extent->z};
+            double const fx[3] = {axes.forward.x, axes.forward.y, axes.forward.z};
+            double const ry[3] = {axes.right.x, axes.right.y, axes.right.z};
+            double half = 1e9;
+            for (int i = 0; i < 3; ++i) {
+                double const across = std::fabs(fx[i]) + std::fabs(ry[i]);
+                if (across > 0.3) {
+                    half = std::min(half, e[i] / across);
+                }
+            }
+            if (half > 50.0 && half < 2000.0) {
+                disc.radiusUnits = half;
+                disc.measured = true;
+            }
+        }
+    }
+    return disc;
+}
 
 bool PlaceInWorld(gh::Scene& scene, vr::galaxy_map::Settings const& settings) {
     auto const frame = view_anchor::Current();
@@ -763,6 +825,19 @@ bool PlaceInWorld(gh::Scene& scene, vr::galaxy_map::Settings const& settings) {
         engine::UnrealVector const centre{at->x, at->y, at->z + settings.worldLiftM * frame->unitsPerMeter};
         XrVector3f const away = engine::DirectionToTracking(*frame, {0.0, -1.0, 0.0});
         gLastAnchor = {true, engine::ToTracking(*frame, centre), std::atan2(-away.x, -away.z)};
+        if (auto const disc = HologramDisc()) {
+            gLastAnchor.disc = true;
+            gLastAnchor.discCentre = engine::ToTracking(*frame, disc->centre);
+            gLastAnchor.discNormal = engine::DirectionToTracking(*frame, disc->normal);
+            gLastAnchor.discRadiusM = static_cast<float>(disc->radiusUnits / frame->unitsPerMeter);
+            if (gDiscLogs++ == 0) {
+                log::Info("galaxy hologram: the projector's hologram is a disc at ({:.0f}, {:.0f}, {:.0f}), its normal ({:.2f}, {:.2f}, {:.2f}) "
+                          "({:.0f} degrees off vertical), {:.0f} units in radius ({}); the map's window lies on it",
+                    disc->centre.x, disc->centre.y, disc->centre.z, disc->normal.x, disc->normal.y, disc->normal.z,
+                    std::acos(std::clamp(std::fabs(disc->normal.z), 0.0, 1.0)) * 57.29578, disc->radiusUnits,
+                    disc->measured ? "from its bounds" : "as measured on 2026-11-04");
+            }
+        }
     } else if (!gLastAnchor.valid) {
         return false;
     }
@@ -779,6 +854,16 @@ bool PlaceInWorld(gh::Scene& scene, vr::galaxy_map::Settings const& settings) {
     scene.forward[0] = 0.0f;
     scene.forward[1] = -1.0f;
     scene.forward[2] = 0.0f;
+    if (settings.windowOnHologram && gLastAnchor.disc) {
+        scene.windowDisc = 1;
+        scene.discCentre[0] = gLastAnchor.discCentre.x;
+        scene.discCentre[1] = gLastAnchor.discCentre.y;
+        scene.discCentre[2] = gLastAnchor.discCentre.z;
+        scene.discNormal[0] = gLastAnchor.discNormal.x;
+        scene.discNormal[1] = gLastAnchor.discNormal.y;
+        scene.discNormal[2] = gLastAnchor.discNormal.z;
+        scene.discRadiusM = gLastAnchor.discRadiusM;
+    }
     return true;
 }
 
@@ -979,7 +1064,10 @@ bool StepWindow(vr::galaxy_map::Settings const& settings, bool held, ue3::Object
             converge = along;
         }
     }
-    float const depth = std::min(settings.windowDepth, vr::cine_screen::MaxDepth(settings.windowWidthM, vr::cine_screen::kDefaultIpdM));
+    // On the hologram the window is its diameter wide (the disc found on foot, frozen while the view is held).
+    float const widthM = settings.windowOnHologram && gLastAnchor.disc && gLastAnchor.discRadiusM > 0.1f ? 2.0f * gLastAnchor.discRadiusM
+                                                                                                          : settings.windowWidthM;
+    float const depth = std::min(settings.windowDepth, vr::cine_screen::MaxDepth(widthM, vr::cine_screen::kDefaultIpdM));
     float const crop = vr::cine_screen::CropFraction(depth);
     float const halfH = gMapPov.fovDeg * 0.5f * 0.01745329f;
     float const baseline = vr::cine_screen::BaselineUU(crop, converge, halfH);
@@ -1018,7 +1106,7 @@ bool StepWindow(vr::galaxy_map::Settings const& settings, bool held, ue3::Object
     scene.windowResource[1] = gWindow.eyes[1].Resource();
     scene.windowGeneration = gWindow.eyes[0].Generation() * 1000003ull + gWindow.eyes[1].Generation();
     scene.windowCrop = crop;
-    scene.windowWidthM = settings.windowWidthM;
+    scene.windowWidthM = widthM;
     return true;
 }
 

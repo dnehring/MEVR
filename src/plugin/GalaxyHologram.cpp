@@ -549,6 +549,11 @@ bool AskingTravel() {
 }
 
 XrPosef UiPanelPose(XrVector3f const& head) {
+    // With the game's map on the projector's hologram, the UI lies on it too (its labels belong to the map's picture there).
+    if (auto const scene = gh::Latest(kFreshMs); scene && scene->windowOn != 0 && scene->windowDisc != 0 && scene->discRadiusM > 0.1f) {
+        return gh::DiscPose({scene->discCentre[0], scene->discCentre[1], scene->discCentre[2]},
+            {scene->discNormal[0], scene->discNormal[1], scene->discNormal[2]}, head);
+    }
     // Over the table's centre at about the eyes' height, brought toward the player so it stands clear of the raised far edge,
     // upright and turned to face the eyes.
     XrVector3f centre = gTable.pose.position;
@@ -759,7 +764,7 @@ int WindowLayers(Frame const& frame, XrCompositionLayerBaseHeader const** out) {
         return 0;
     }
     float const crop = std::clamp(scene->windowCrop, 0.0f, 0.2f);
-    float const widthM = std::clamp(scene->windowWidthM, 0.5f, 4.0f);
+    float const widthM = std::clamp(scene->windowWidthM, 0.5f, 10.0f);  // on the projector's hologram, its diameter (about 6 m)
     gWindow.panelWidthM.store(widthM / (1.0f - crop), std::memory_order_release);  // the UI frame: the captures' whole width
     gWindow.on.store(true, std::memory_order_release);
     if (scene->windowTicks < 2 || scene->windowWidth < 64 || scene->windowHeight < 64) {
@@ -870,8 +875,11 @@ int WindowLayers(Frame const& frame, XrCompositionLayerBaseHeader const** out) {
         }
     }
     if (!gWindow.up) {
-        log::Info("galaxy window: up: the game's map {:.2f} x {:.2f} m{} at ({:.2f}, {:.2f}, {:.2f}), each eye {}x{} of its capture (crop {:.1f}%)",
-            widthM, heightM, scene->windowRound != 0 ? " (a disc)" : "", pose.position.x, pose.position.y, pose.position.z, shownW, height,
+        XrVector3f const facing = vr::overlay::Rotate(pose.orientation, {0.0f, 0.0f, 1.0f});
+        log::Info("galaxy window: up: the game's map {:.2f} x {:.2f} m{} at ({:.2f}, {:.2f}, {:.2f}), {}, facing ({:.2f}, {:.2f}, {:.2f}), each "
+                  "eye {}x{} of its capture (crop {:.1f}%)",
+            widthM, heightM, scene->windowRound != 0 ? " (a disc)" : "", pose.position.x, pose.position.y, pose.position.z,
+            scene->windowDisc != 0 ? "on the projector's hologram" : "upright over the table", facing.x, facing.y, facing.z, shownW, height,
             crop * 100.0f);
         gWindow.up = true;
     }

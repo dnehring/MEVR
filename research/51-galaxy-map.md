@@ -196,6 +196,20 @@ level's nebula, axes and rings come out as the game draws them, in stereo; the c
   the quad's own coordinates, the same for both eyes, so the rim sits on the window's plane while the map shows behind it in
   depth. The game's Flash layer (the title, the cursor's cross-hair lines, the buttons) stays on its rectangular panel: its title
   and buttons sit outside the disc.
+- **On the projector's hologram** (the user, 2026-11-04: the circle "needs to have the same angle and position as the initial
+  state"). The projector's hologram is `BIOA_NOR10_03_PLC.InterpActor_0`, mesh `bioa_galaxymap_s.GalaxyMapProxy`: a square in
+  its local XY plane with the galaxy painted as a disc, centred at (-5169, 14338, -36048), 59 units from the console's
+  `BioUseable_0`. Its matinee (Physics 7, interpolating) spins it within its plane: two readings (rotation (-5092, 12827, 1715),
+  then (-730, 1303, 5299)) give the same up axis, (0.00, 0.49, 0.87), 29 degrees off vertical, toward the console's side. Its
+  component's bounds (half extents 376, 339, 205) over what the square's in-plane axes project on each world axis give a half
+  side of 301 units (the X axis, which the thickness doesn't reach). With `[Galaxy] windowOnHologram = 1` (the default) the mod
+  publishes that disc in tracking space (`Scene.windowDisc`, `discCentre`, `discNormal`, `discRadiusM`, read on foot and frozen
+  with the table's anchor while the view is held) and the window is its diameter wide; the host lays the window and the game's
+  UI panel on it (`galaxy_holo::DiscPose`: front toward the head, +X level, +Y up the slope), so the labels stay on the map's
+  picture and the pointer's ray meets the same plane. Measured in the game: the window 6.02 x 6.19 m at 3.5 m ahead and 0.87 m
+  below the eyes, facing (0.00, 0.87, 0.49), its centre (the map's cross-hair) where the stock disc's centre was. Seen from the
+  console it is foreshortened as the stock hologram is (text on it too). The compositor's quads have no depth, so the disc's
+  near edge draws over the console's front panel, which hides the stock hologram's [open].
 - Open: the game's travel box ignores the pointer's click in this mode while the console's identical press answers it [verify];
   the galaxy level (whether its picture is Flash or scene in the window) and going back out a level; the on-foot hologram is
   still ours (the plan: the game's projector hologram as the visual, our picks on it).

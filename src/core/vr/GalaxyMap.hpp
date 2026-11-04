@@ -40,6 +40,8 @@ struct Settings {
     float windowDepth = 0.03f;     // windowDepth: infinity's disparity, a share of the window's width (core/vr/CineScreen's depth)
     bool windowRound = true;       // windowRound: the window is a disc with a soft edge, like the projector's own round hologram
                                    // (0: the captures' rectangle)
+    bool windowOnHologram = true;  // windowOnHologram: the window lies where the projector's own hologram is, at its tilt and
+                                   // size (the map takes its place; 0: upright over the table, windowWidthM wide)
 };
 
 // ---- What the mod publishes ------------------------------------------------------------------------------------------

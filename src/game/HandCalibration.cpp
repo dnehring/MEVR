@@ -579,7 +579,8 @@ constexpr char const* kGalaxyBlock =
     "; to close it). worldRadiusM its size, worldTiltDeg how far its far edge is raised, worldLiftM up from the projector.\n"
     "; window = 1: once the map is open, the game's own map (its 3D scene in stereo, its labels and buttons) on a window over\n"
     "; the table, pointed at with a controller as the game's mouse; windowWidthM its width, windowDepth its depth, windowRound\n"
-    "; = 1 a disc like the projector's own hologram (0: a rectangle).\n"
+    "; = 1 a disc like the projector's own hologram (0: a rectangle), windowOnHologram = 1 where that hologram is, at its tilt\n"
+    "; and size (0: upright over the table, windowWidthM wide).\n"
     "; inWorld = 0: the map opens as the game's, with the hologram on a table in front of you (tableDistanceM / tableBelowM\n"
     "; ahead of and below your eyes, tableRadiusM its size) and the game's map behind it as a screen. hologram = 0: the\n"
     "; game's map on the flat screen only.\n"
@@ -592,6 +593,7 @@ constexpr char const* kGalaxyBlock =
     "windowWidthM = 2.0\n"
     "windowDepth = 0.03\n"
     "windowRound = 1\n"
+    "windowOnHologram = 1\n"
     "tableDistanceM = 0.70\n"
     "tableBelowM = 0.45\n"
     "tableRadiusM = 0.48\n"
@@ -1570,6 +1572,9 @@ vr::galaxy_map::Settings ReadGalaxy(Ini const& ini) {
     }
     if (Number(ini, "Galaxy", "windowRound", value)) {
         s.windowRound = value != 0.0;
+    }
+    if (Number(ini, "Galaxy", "windowOnHologram", value)) {
+        s.windowOnHologram = value != 0.0;
     }
     return s;
 }

@@ -95,6 +95,52 @@ XrQuaternionf TableOrientation(float yaw, float tiltRad) {
             y.w * x.z + y.x * x.y - y.y * x.x + y.z * x.w, y.w * x.w - y.x * x.x - y.y * x.y - y.z * x.z};
 }
 
+XrPosef DiscPose(XrVector3f const& centre, XrVector3f const& normal, XrVector3f const& head) {
+    XrVector3f const toHead = Sub(head, centre);
+    XrVector3f z = Normalize(normal);
+    if (Length(z) < 0.5f) {
+        z = {0.0f, 1.0f, 0.0f};
+    }
+    if (Dot(z, toHead) < 0.0f) {
+        z = Mul(z, -1.0f);  // the side the head is on
+    }
+    // Level across the disc: the horizontal line in its plane; for a disc lying (nearly) flat, the head's right.
+    XrVector3f x = Cross({0.0f, 1.0f, 0.0f}, z);
+    if (Length(x) < 0.1f) {
+        XrVector3f flat{toHead.x, 0.0f, toHead.z};
+        if (Length(flat) < 1e-3f) {
+            flat = {0.0f, 0.0f, 1.0f};
+        }
+        x = Cross({0.0f, 1.0f, 0.0f}, Normalize(flat));
+    }
+    x = Normalize(Sub(x, Mul(z, Dot(x, z))));
+    XrVector3f const y = Cross(z, x);
+    // The rotation whose columns are x, y, z.
+    float const m00 = x.x, m01 = y.x, m02 = z.x;
+    float const m10 = x.y, m11 = y.y, m12 = z.y;
+    float const m20 = x.z, m21 = y.z, m22 = z.z;
+    XrQuaternionf q{};
+    float const trace = m00 + m11 + m22;
+    if (trace > 0.0f) {
+        float const s = std::sqrt(trace + 1.0f) * 2.0f;
+        q = {(m21 - m12) / s, (m02 - m20) / s, (m10 - m01) / s, 0.25f * s};
+    } else if (m00 > m11 && m00 > m22) {
+        float const s = std::sqrt(1.0f + m00 - m11 - m22) * 2.0f;
+        q = {0.25f * s, (m01 + m10) / s, (m02 + m20) / s, (m21 - m12) / s};
+    } else if (m11 > m22) {
+        float const s = std::sqrt(1.0f + m11 - m00 - m22) * 2.0f;
+        q = {(m01 + m10) / s, 0.25f * s, (m12 + m21) / s, (m02 - m20) / s};
+    } else {
+        float const s = std::sqrt(1.0f + m22 - m00 - m11) * 2.0f;
+        q = {(m02 + m20) / s, (m12 + m21) / s, 0.25f * s, (m10 - m01) / s};
+    }
+    float const n = std::sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
+    XrPosef pose{};
+    pose.orientation = n > 1e-6f ? XrQuaternionf{q.x / n, q.y / n, q.z / n, q.w / n} : XrQuaternionf{0.0f, 0.0f, 0.0f, 1.0f};
+    pose.position = centre;
+    return pose;
+}
+
 Table PlaceTable(XrPosef const& head, TableSettings const& settings) {
     Table t;
     float const yaw = overlay::HeadingOf(head.orientation);

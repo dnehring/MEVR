@@ -101,7 +101,15 @@ struct Scene {
     std::uint64_t windowResource[2] = {};  // left, right: the render targets' FTextureResource* (engine memory)
     std::uint64_t windowGeneration = 0;    // changes when either target may have
     float windowCrop = 0.0f;  // each eye drops this share of its width (the left eye its left edge, the right eye its right)
-    float windowWidthM = 0.0f;  // [Galaxy] windowWidthM: the window's width over the table
+    float windowWidthM = 0.0f;  // the window's width: [Galaxy] windowWidthM over the table, the hologram's diameter on it
+    // The projector's own hologram (BIOA_NOR10_03_PLC's InterpActor_0, a galaxy painted on a tilted square that spins in its
+    // plane), the disc the window lies on with [Galaxy] windowOnHologram (research/51 section 8.1): its centre, its normal (the
+    // mesh's up axis) and radius, tracking space, frozen while the view is held. windowDisc 0: the window stands upright.
+    std::uint8_t windowDisc = 0;
+    std::uint8_t windowDiscPad[3] = {};
+    float discCentre[3] = {};
+    float discNormal[3] = {};
+    float discRadiusM = 0.0f;
     // The view held at Shepard's in the CIC, at render time only (research/51 section 8): the game keeps its map camera in the
     // player camera's CameraCache.POV (its Flash labels and its cursor's picks project through it), and the host writes this
     // view there for the main view's CalcSceneView alone ([MEVR] seam MevrBridge::GalaxyViewSwapBegin/End), putting the map
@@ -167,6 +175,9 @@ struct Table {
 Table PlaceTable(XrPosef const& head, TableSettings const& settings);
 // A table's orientation: turned `yaw` (overlay::HeadingOf's sense), its far edge raised `tiltRad`.
 XrQuaternionf TableOrientation(float yaw, float tiltRad);
+// A quad lying on a disc (the projector's hologram) seen from `head`: its centre the disc's, its front (+Z) the disc's normal
+// turned to the head's side, its +X level (the head's right across the disc), its +Y up the disc's slope.
+XrPosef DiscPose(XrVector3f const& centre, XrVector3f const& normal, XrVector3f const& head);
 
 // Metres per game unit for `scene` on a table of `radiusM` (the extent, or the farthest object in the plane, at the rim).
 float FitScale(Scene const& scene, float radiusM);

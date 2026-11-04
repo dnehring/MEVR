@@ -5937,6 +5937,28 @@ void TestGalaxyHologram() {
     }
     CHECK(galaxyDisc);
     CHECK(!gh::Describe(s).empty());
+
+    // The window on the projector's hologram (measured 2026-11-04: its normal 29 degrees off vertical, toward the player): the
+    // quad's front faces the head, its +X is level and the head's right, its +Y climbs the disc away from the head. A normal
+    // given from below turns to the head's side; a flat disc takes the head's right.
+    float const tilt = 29.3f * 0.01745329f;
+    XrVector3f const discCentre{0.0f, 1.0f, -3.7f};
+    XrVector3f const discNormal{0.0f, std::cos(tilt), std::sin(tilt)};
+    XrVector3f const eye{0.0f, 1.7f, 0.0f};
+    for (XrVector3f const n : {discNormal, gh::Mul(discNormal, -1.0f)}) {
+        XrPosef const pose = gh::DiscPose(discCentre, n, eye);
+        XrVector3f const qx = mevr::vr::overlay::Rotate(pose.orientation, {1.0f, 0.0f, 0.0f});
+        XrVector3f const qy = mevr::vr::overlay::Rotate(pose.orientation, {0.0f, 1.0f, 0.0f});
+        XrVector3f const qz = mevr::vr::overlay::Rotate(pose.orientation, {0.0f, 0.0f, 1.0f});
+        CHECK(NearD(gh::Dot(qz, discNormal), 1.0, 1e-5));
+        CHECK(NearD(qx.x, 1.0, 1e-5) && NearD(qx.y, 0.0, 1e-5));
+        CHECK(qy.y > 0.4f && qy.z < -0.8f);
+        CHECK(NearD(pose.position.z, -3.7, 1e-6));
+    }
+    XrPosef const flat = gh::DiscPose(discCentre, {0.0f, 1.0f, 0.0f}, eye);
+    XrVector3f const flatX = mevr::vr::overlay::Rotate(flat.orientation, {1.0f, 0.0f, 0.0f});
+    XrVector3f const flatY = mevr::vr::overlay::Rotate(flat.orientation, {0.0f, 1.0f, 0.0f});
+    CHECK(NearD(flatX.x, 1.0, 1e-5) && flatY.z < -0.99f);
 }
 
 void TestGalaxyMap() {
