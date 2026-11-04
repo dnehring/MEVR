@@ -210,15 +210,22 @@ if (-not $NoCockpit) {
     if (-not (Test-Path $CockpitPackage)) {
         throw "No cockpit package at $CockpitPackage (tools/cockpit/package build, research/48): pass -CockpitPackage, or -NoCockpit"
     }
-    # Built from the current models? The newest tracked file under its sources against the package's time.
+    # Built from the current models? The last commit to its sources (commit times: a fresh checkout's file times are all
+    # "now") and any uncommitted change under them, against the package's time.
     $packageTime = (Get-Item $CockpitPackage).LastWriteTimeUtc
-    $newest = Invoke-Native { git -C $repo ls-files -- tools/cockpit concept/assets/game-ready } |
-        Where-Object { $_ } | ForEach-Object { Join-Path $repo $_ } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
-        ForEach-Object { Get-Item -LiteralPath $_ } | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
-    if ($newest -and $newest.LastWriteTimeUtc -gt $packageTime) {
-        Write-Warning ("The cockpit package ({0:u}) is older than its sources: {1} ({2:u}). Rebuild it (tools/cockpit/package, " +
-            "the tripo-game-ready skill) unless that change can't affect it." -f $packageTime,
-            $newest.FullName.Substring($repo.Length + 1), $newest.LastWriteTimeUtc)
+    $cockpitSources = 'tools/cockpit', 'concept/assets/game-ready'
+    $last = "$(Invoke-Native { git -C $repo log -1 --format='%ct %h %s' -- $cockpitSources })".Trim()
+    if ($last -match '^(\d+) (\S+) (.*)$') {
+        $sourceTime = [DateTimeOffset]::FromUnixTimeSeconds([long]$Matches[1]).UtcDateTime
+        if ($sourceTime -gt $packageTime) {
+            Write-Warning (("The cockpit package ({0:u}) is older than the last change to its sources: {1} ({2:u}, {3}). " +
+                "Rebuild it (tools/cockpit/package, the tripo-game-ready skill) unless that change can't affect it.") -f
+                $packageTime, $Matches[2], $sourceTime, $Matches[3])
+        }
+    }
+    $uncommitted = @(Invoke-Native { git -C $repo status --porcelain -- $cockpitSources } | Where-Object { $_ })
+    if ($uncommitted.Count -gt 0) {
+        Write-Warning "The cockpit's sources have uncommitted changes the package may not have:`n  $(($uncommitted | Select-Object -First 10) -join "`n  ")"
     }
     $cockpitDir = Join-Path $payload 'cockpit'
     New-Item -ItemType Directory -Force $cockpitDir | Out-Null
