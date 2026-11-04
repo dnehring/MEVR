@@ -485,7 +485,13 @@ switching frameworks.
   0.25 s. Log `sights: the <gun>'s sight sits on its '<bone>' bone: ...`. Long guns without a rifle calibration borrow the pistol's grip
   frame. **Our quads are metric; Halcyon's Stereo 2 isn't** (research/21 section 9: eyes rendered `sfr2HalfEyeUU`
   from the midpoint, each image moved 1.27 degrees outward at submit by `sfr2Convergence` with swap-eyes): the fix is
-  a metric stereo mode in Halcyon (a separate job), not per-eye corrections of our quads.
+  a metric stereo mode in Halcyon (a separate job), not per-eye corrections of our quads. **The game's own optics** (research/21
+  section 16, 2026-11-03): the player's guns are 8 meshes (a and b per type); the rifles' measured eyepieces and housings
+  (`vr::sights::OpticFor`: SNPa's glass is 13.5 units behind `Scope_Eye`, behind the grip), `<type>Lens`/`<type>Hide = auto`;
+  the held weapon's magnifications from its `Stats.AimModes` (`sniperRifle = scope auto`: 3.5x, 7.0x; a right-stick flick under
+  ADS steps them, `zoomStick`); `reticle = game`: the game's sniper view (the mod publishes `GUI_SF_HUD.Reticule_I4E/I4C/I41`'s
+  resources in the sight; the host composes two layers once, `SightLayers` PrepareArt, layout `vr::scope_art` from
+  `tools/scope-art.py`; the duplex if not found). The sight struct grew: host and mod deploy together.
 - LE1 scope capture ([research/39](research/39-scope-capture.md), HostServices v20; **off by default**, `[Sights]
   scopeCapture = 0`, until its frame cost is measured): the scope's picture from a real zoomed render instead of the other
   eye's image enlarged. The mod (`game/ScopeCapture`, hot-reloaded) spawns a `SceneCapture2DActor` (Actor.Spawn on the

@@ -5,6 +5,7 @@
 
 #include "core/Log.hpp"
 #include "core/vr/OverlayPlacement.hpp"
+#include "core/vr/ScopeArt.hpp"
 #include "core/vr/Sights.hpp"
 #include "plugin/ScopeCaptureSource.hpp"
 #include "plugin/SightPictures.hpp"
@@ -173,7 +174,8 @@ using namespace sight_pictures;
 using D3DCompileFn = HRESULT(WINAPI*)(LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MACRO*, ID3DInclude*, LPCSTR, LPCSTR, UINT, UINT,
     ID3DBlob**, ID3DBlob**);
 
-bool Compile(char const* entry, char const* profile, ComPtr<ID3DBlob>& out) {
+bool Compile(char const* entry, char const* profile, ComPtr<ID3DBlob>& out, char const* source = kScopeShader,
+    std::size_t size = kScopeShaderSize, char const* name = "MEVR_Scope") {
     static D3DCompileFn compile = [] {
         HMODULE module = LoadLibraryW(L"d3dcompiler_47.dll");
         return module != nullptr ? reinterpret_cast<D3DCompileFn>(GetProcAddress(module, "D3DCompile")) : nullptr;
@@ -183,10 +185,10 @@ bool Compile(char const* entry, char const* profile, ComPtr<ID3DBlob>& out) {
         return false;
     }
     ComPtr<ID3DBlob> errors;
-    HRESULT const hr = compile(kScopeShader, kScopeShaderSize, "MEVR_Scope", nullptr, nullptr, entry, profile,
-        0x8000 /* D3DCOMPILE_OPTIMIZATION_LEVEL3 */, 0, out.ReleaseAndGetAddressOf(), errors.GetAddressOf());
+    HRESULT const hr = compile(source, size, name, nullptr, nullptr, entry, profile, 0x8000 /* D3DCOMPILE_OPTIMIZATION_LEVEL3 */, 0,
+        out.ReleaseAndGetAddressOf(), errors.GetAddressOf());
     if (FAILED(hr)) {
-        log::Error("sights: scope shader {} failed to compile: {}", entry,
+        log::Error("sights: {} shader {} failed to compile: {}", name, entry,
             errors ? static_cast<char const*>(errors->GetBufferPointer()) : "(no message)");
         return false;
     }
@@ -263,13 +265,13 @@ public:
         c_->GSGetShader(&gs_, nullptr, nullptr);
         c_->HSGetShader(&hs_, nullptr, nullptr);
         c_->DSGetShader(&ds_, nullptr, nullptr);
-        c_->PSGetShaderResources(0, 1, &srv_);
+        c_->PSGetShaderResources(0, kSrvs, srvs_);
         c_->PSGetConstantBuffers(0, 1, &cb_);
         c_->PSGetSamplers(0, 1, &sampler_);
     }
     ~StateGuard() {
-        ID3D11ShaderResourceView* none = nullptr;
-        c_->PSSetShaderResources(0, 1, &none);
+        ID3D11ShaderResourceView* none[kSrvs] = {};
+        c_->PSSetShaderResources(0, kSrvs, none);
         c_->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, rtvs_, dsv_);
         c_->OMSetBlendState(blend_, blendFactor_, sampleMask_);
         c_->OMSetDepthStencilState(depth_, stencilRef_);
@@ -283,7 +285,7 @@ public:
         c_->GSSetShader(gs_, nullptr, 0);
         c_->HSSetShader(hs_, nullptr, 0);
         c_->DSSetShader(ds_, nullptr, 0);
-        c_->PSSetShaderResources(0, 1, &srv_);
+        c_->PSSetShaderResources(0, kSrvs, srvs_);
         c_->PSSetConstantBuffers(0, 1, &cb_);
         c_->PSSetSamplers(0, 1, &sampler_);
         for (auto*& r : rtvs_) {
@@ -299,7 +301,9 @@ public:
         Drop(gs_);
         Drop(hs_);
         Drop(ds_);
-        Drop(srv_);
+        for (auto*& s : srvs_) {
+            Drop(s);
+        }
         Drop(cb_);
         Drop(sampler_);
     }
@@ -335,7 +339,8 @@ private:
     ID3D11GeometryShader* gs_ = nullptr;
     ID3D11HullShader* hs_ = nullptr;
     ID3D11DomainShader* ds_ = nullptr;
-    ID3D11ShaderResourceView* srv_ = nullptr;
+    static constexpr UINT kSrvs = 3;  // the scope's source and the game's two art layers; the art's three textures
+    ID3D11ShaderResourceView* srvs_[kSrvs] = {};
     ID3D11Buffer* cb_ = nullptr;
     ID3D11SamplerState* sampler_ = nullptr;
 };
@@ -435,6 +440,204 @@ void OnEyeReleased(XrSwapchain swapchain, ID3D11Texture2D* image) {
     gCopy.swapchain = swapchain;
     gCopy.frame = gFrameCount + 1;  // released before this frame's layers are built (OverlayLayers counts it then)
     ++gCopy.copies;
+}
+
+// ---- The game's scope view (research/21 section 16, vr::scope_art) -----------------------------------------
+// The mod publishes the game's three textures' resources with the scope; here, once per set, each one's D3D texture is
+// found behind its FTextureResource (scope_capture_source's guarded search), the two layers (the reticle, the tube) are
+// drawn into float textures of our own with mips, and the game's textures are let go. Anything missing: our duplex.
+struct Art {
+    std::uint64_t key = 0;  // the set last tried (its generation and resources)
+    bool ready = false;
+    ComPtr<ID3D11ShaderResourceView> layers[vr::scope_art::kLayers];
+    ComPtr<ID3D11VertexShader> vs;
+    ComPtr<ID3D11PixelShader> ps;
+    ComPtr<ID3D11Buffer> params;
+    bool pipelineTried = false;
+    bool pipelineReady = false;
+    vr::scope_capture::TexturePath hints[vr::scope_art::kTextures];
+    std::string text = "none published";
+};
+Art gArt;
+
+// A game texture's view, and the gamma its samples are decoded with (1: an sRGB view decodes them). The UI art is
+// gamma-encoded (SRGB off): typeless and UNORM formats are read as UNORM and decoded 2.2 in the shader.
+bool ArtView(DXGI_FORMAT format, DXGI_FORMAT& view, float& decode) {
+    decode = 2.2f;
+    switch (format) {
+    case DXGI_FORMAT_BC3_TYPELESS:
+    case DXGI_FORMAT_BC3_UNORM: view = DXGI_FORMAT_BC3_UNORM; return true;
+    case DXGI_FORMAT_BC1_TYPELESS:
+    case DXGI_FORMAT_BC1_UNORM: view = DXGI_FORMAT_BC1_UNORM; return true;
+    case DXGI_FORMAT_BC2_TYPELESS:
+    case DXGI_FORMAT_BC2_UNORM: view = DXGI_FORMAT_BC2_UNORM; return true;
+    case DXGI_FORMAT_BC7_TYPELESS:
+    case DXGI_FORMAT_BC7_UNORM: view = DXGI_FORMAT_BC7_UNORM; return true;
+    case DXGI_FORMAT_R8G8B8A8_TYPELESS:
+    case DXGI_FORMAT_R8G8B8A8_UNORM: view = DXGI_FORMAT_R8G8B8A8_UNORM; return true;
+    case DXGI_FORMAT_B8G8R8A8_TYPELESS:
+    case DXGI_FORMAT_B8G8R8A8_UNORM: view = DXGI_FORMAT_B8G8R8A8_UNORM; return true;
+    case DXGI_FORMAT_BC3_UNORM_SRGB:
+    case DXGI_FORMAT_BC1_UNORM_SRGB:
+    case DXGI_FORMAT_BC2_UNORM_SRGB:
+    case DXGI_FORMAT_BC7_UNORM_SRGB:
+    case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+    case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB: view = format; decode = 1.0f; return true;
+    default: return false;
+    }
+}
+
+bool EnsureArtPipeline(ID3D11Device* device) {
+    if (gArt.pipelineTried) {
+        return gArt.pipelineReady;
+    }
+    gArt.pipelineTried = true;
+    ComPtr<ID3DBlob> vsBlob;
+    ComPtr<ID3DBlob> psBlob;
+    if (!Compile("VSMain", "vs_5_0", vsBlob, kArtShader, kArtShaderSize, "MEVR_ScopeArt") ||
+        !Compile("PSCompose", "ps_5_0", psBlob, kArtShader, kArtShaderSize, "MEVR_ScopeArt")) {
+        return false;
+    }
+    D3D11_BUFFER_DESC cb{};
+    cb.ByteWidth = sizeof(ArtParams);
+    cb.Usage = D3D11_USAGE_DEFAULT;
+    cb.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    gArt.pipelineReady =
+        SUCCEEDED(device->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, gArt.vs.GetAddressOf())) &&
+        SUCCEEDED(device->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, gArt.ps.GetAddressOf())) &&
+        SUCCEEDED(device->CreateBuffer(&cb, nullptr, gArt.params.GetAddressOf()));
+    return gArt.pipelineReady;
+}
+
+void ArtFailed(std::string const& why) {
+    gArt.ready = false;
+    for (auto& layer : gArt.layers) {
+        layer.Reset();
+    }
+    gArt.text = why;
+    log::Warn("sights: the game's scope view isn't used: {}; the scope keeps our duplex reticle", why);
+}
+
+void PrepareArt(Frame const& frame, sv::Sight const& sight) {
+    namespace art = vr::scope_art;
+    if (sight.artGeneration == 0 || frame.device == nullptr || frame.context == nullptr) {
+        return;
+    }
+    std::uint64_t key = sight.artGeneration * 0x9E3779B97F4A7C15ull;
+    for (auto const& t : sight.art) {
+        key = (key ^ t.resource) * 0x100000001B3ull;
+    }
+    if (key == gArt.key) {
+        return;
+    }
+    gArt.key = key;
+    if (!EnsurePipeline(frame.device) || !EnsureArtPipeline(frame.device)) {
+        ArtFailed("its shaders didn't compile");
+        return;
+    }
+    LARGE_INTEGER t0{};
+    QueryPerformanceCounter(&t0);
+    // The game's textures (held only for this composition).
+    ComPtr<ID3D11ShaderResourceView> sources[art::kTextures];
+    float decode[art::kTextures] = {};
+    std::string formats;
+    for (int k = 0; k < art::kTextures; ++k) {
+        D3D11_TEXTURE2D_DESC desc{};
+        ComPtr<ID3D11Texture2D> texture;
+        texture.Attach(scope_capture_source::FindTargetTexture(sight.art[k].resource, sight.art[k].width, sight.art[k].height,
+            gArt.hints[k], &desc));
+        DXGI_FORMAT view = DXGI_FORMAT_UNKNOWN;
+        if (texture == nullptr) {
+            ArtFailed(std::format("no D3D texture of {}x{} found behind {}'s resource", sight.art[k].width, sight.art[k].height,
+                art::Info(k).name));
+            return;
+        }
+        if (!ArtView(desc.Format, view, decode[k])) {
+            ArtFailed(std::format("{} is format {}, which isn't read here", art::Info(k).name, static_cast<int>(desc.Format)));
+            return;
+        }
+        D3D11_SHADER_RESOURCE_VIEW_DESC sd{};
+        sd.Format = view;
+        sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+        sd.Texture2D.MipLevels = static_cast<UINT>(-1);
+        if (FAILED(frame.device->CreateShaderResourceView(texture.Get(), &sd, sources[k].GetAddressOf()))) {
+            ArtFailed(std::format("no view of {} (format {})", art::Info(k).name, static_cast<int>(desc.Format)));
+            return;
+        }
+        formats += std::format("{}{} {}x{} format {} ({} mips, found at +0x{:X}{})", formats.empty() ? "" : ", ", art::Info(k).name, desc.Width,
+            desc.Height, static_cast<int>(desc.Format), desc.MipLevels, gArt.hints[k].first,
+            gArt.hints[k].second >= 0 ? std::format(" -> +0x{:X}", gArt.hints[k].second) : std::string());
+    }
+    // Our two layers: float, with mips (they're minified in the picture).
+    ComPtr<ID3D11RenderTargetView> targets[art::kLayers];
+    ComPtr<ID3D11ShaderResourceView> layers[art::kLayers];
+    for (int l = 0; l < art::kLayers; ++l) {
+        D3D11_TEXTURE2D_DESC td{};
+        td.Width = td.Height = kArtLayerSize;
+        td.MipLevels = 0;
+        td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_DEFAULT;
+        td.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+        td.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+        ComPtr<ID3D11Texture2D> texture;
+        if (FAILED(frame.device->CreateTexture2D(&td, nullptr, texture.GetAddressOf())) ||
+            FAILED(frame.device->CreateRenderTargetView(texture.Get(), nullptr, targets[l].GetAddressOf())) ||
+            FAILED(frame.device->CreateShaderResourceView(texture.Get(), nullptr, layers[l].GetAddressOf()))) {
+            ArtFailed("its layer textures couldn't be made");
+            return;
+        }
+    }
+    ID3D11DeviceContext* const c = frame.context;
+    {
+        StateGuard guard(c);
+        D3D11_VIEWPORT viewport{0.0f, 0.0f, static_cast<float>(kArtLayerSize), static_cast<float>(kArtLayerSize), 0.0f, 1.0f};
+        float const blendFactor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        ID3D11ShaderResourceView* views[art::kTextures] = {sources[0].Get(), sources[1].Get(), sources[2].Get()};
+        ID3D11Buffer* constants = gArt.params.Get();
+        ID3D11SamplerState* sampler = gPipeline.sampler.Get();
+        c->OMSetBlendState(gPipeline.opaque.Get(), blendFactor, 0xFFFFFFFFu);
+        c->OMSetDepthStencilState(gPipeline.noDepth.Get(), 0);
+        c->RSSetState(gPipeline.raster.Get());
+        c->RSSetViewports(1, &viewport);
+        c->IASetInputLayout(nullptr);
+        c->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        c->VSSetShader(gArt.vs.Get(), nullptr, 0);
+        c->PSSetShader(gArt.ps.Get(), nullptr, 0);
+        c->GSSetShader(nullptr, nullptr, 0);
+        c->HSSetShader(nullptr, nullptr, 0);
+        c->DSSetShader(nullptr, nullptr, 0);
+        c->PSSetShaderResources(0, art::kTextures, views);
+        c->PSSetConstantBuffers(0, 1, &constants);
+        c->PSSetSamplers(0, 1, &sampler);
+        for (int l = 0; l < art::kLayers; ++l) {
+            ArtParams const params = MakeArtParams(static_cast<art::Layer>(l), decode);
+            if (!(params.info[0] > 0.0f)) {
+                ArtFailed("a piece of its layout is degenerate");
+                return;
+            }
+            c->UpdateSubresource(gArt.params.Get(), 0, nullptr, &params, 0, 0);
+            ID3D11RenderTargetView* target = targets[l].Get();
+            c->OMSetRenderTargets(1, &target, nullptr);
+            c->Draw(3, 0);
+        }
+    }
+    for (auto const& layer : layers) {
+        c->GenerateMips(layer.Get());
+    }
+    for (int l = 0; l < art::kLayers; ++l) {
+        gArt.layers[l] = layers[l];
+    }
+    gArt.ready = true;
+    LARGE_INTEGER t1{};
+    LARGE_INTEGER frequency{};
+    QueryPerformanceCounter(&t1);
+    QueryPerformanceFrequency(&frequency);
+    gArt.text = std::format("composed (generation {})", sight.artGeneration);
+    log::Info("sights: the game's scope view composed: two {}-pixel layers (the reticle, the lens and tube) from {}; {:.1f} ms of CPU to "
+              "queue (research/21 section 16)",
+        kArtLayerSize, formats, static_cast<double>(t1.QuadPart - t0.QuadPart) * 1000.0 / static_cast<double>(frequency.QuadPart));
 }
 
 // ---- State ------------------------------------------------------------------------------------------------
@@ -596,7 +799,7 @@ bool RenderScope(Frame const& frame, sv::Sight const& sight, sv::Lens const& len
         return false;
     }
     ScopeParams const params = MakeScopeParams(sight, lens, view, eye, source.pose, source.fov, source.rect, source.width, source.height,
-        size, source.decodeGamma);
+        size, source.decodeGamma, gArt.ready);
     std::uint32_t index = 0;
     if (!Acquire(gScope, index)) {
         return false;
@@ -616,7 +819,8 @@ bool RenderScope(Frame const& frame, sv::Sight const& sight, sv::Lens const& len
         D3D11_VIEWPORT viewport{0.0f, 0.0f, static_cast<float>(size), static_cast<float>(size), 0.0f, 1.0f};
         float const blendFactor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
         ID3D11RenderTargetView* target = rtv.Get();
-        ID3D11ShaderResourceView* image = source.srv;
+        ID3D11ShaderResourceView* images[3] = {source.srv, gArt.ready ? gArt.layers[0].Get() : nullptr,
+            gArt.ready ? gArt.layers[1].Get() : nullptr};
         ID3D11Buffer* constants = gPipeline.params.Get();
         ID3D11SamplerState* sampler = gPipeline.sampler.Get();
         c->OMSetRenderTargets(1, &target, nullptr);
@@ -631,7 +835,7 @@ bool RenderScope(Frame const& frame, sv::Sight const& sight, sv::Lens const& len
         c->GSSetShader(nullptr, nullptr, 0);
         c->HSSetShader(nullptr, nullptr, 0);
         c->DSSetShader(nullptr, nullptr, 0);
-        c->PSSetShaderResources(0, 1, &image);
+        c->PSSetShaderResources(0, 3, images);
         c->PSSetConstantBuffers(0, 1, &constants);
         c->PSSetSamplers(0, 1, &sampler);
         c->Draw(3, 0);
@@ -671,6 +875,8 @@ Output Layers(Frame const& frame) {
     }
     sv::Sight const sight = sv::Latest();
     gSight = sight;
+    // The game's scope view, composed once when the mod first publishes it (with the scope, before its picture is up).
+    PrepareArt(frame, sight);
     auto const kind = static_cast<sv::Kind>(sight.kind);
     if (sight.kind != gLoggedKind) {
         gLoggedKind = sight.kind;
@@ -811,14 +1017,16 @@ std::string StatusJson() {
                        "\"sourceEye\": \"{}\", \"scopeDrawn\": {}, \"view\": {}, \"copies\": {}, \"copySize\": [{}, {}], "
                        "\"eyeBox\": {:.4f}, \"dotEye\": \"{}\", \"scope\": {{\"fieldDeg\": {:.1f}, \"eyeBoxM\": {:.3f}, \"maxM\": {:.2f}, "
                        "\"along\": {:.4f}, \"pictureRadiusM\": {:.4f}, \"pictureDeg\": {:.2f}, \"pupilCentre\": [{:.3f}, {:.3f}], "
-                       "\"fade\": {:.3f}}}, \"pictureSource\": \"{}\", \"capture\": {}}}",
+                       "\"fade\": {:.3f}}}, \"pictureSource\": \"{}\", \"capture\": {}, \"gameArt\": {{\"ready\": {}, \"state\": \"{}\", "
+                       "\"reticle\": \"{}\"}}}}",
         sv::Name(static_cast<sv::Kind>(gSight.kind)), sv::WeaponName(gSight.weapon), gSight.center.x, gSight.center.y, gSight.center.z,
         gSight.axis.x, gSight.axis.y, gSight.axis.z, gSight.radius, gSight.zoom, line(gLines[0]), line(gLines[1]),
         gDotEye == 0 ? "true" : "false", gDotEye == 1 ? "true" : "false", EyeName(gAiming), EyeName(gSource),
         gScopeDrawn ? "true" : "false", gView, gCopy.copies, gCopy.width, gCopy.height, gSight.eyeBox, EyeName(gDotEye),
         gSight.scopeFieldDeg, gSight.scopeEyeBox, gSight.scopeMaxM, gScopeView.along, gPictureRadius,
         gScopeView.along > 0.0f ? 2.0f * std::atan(gPictureRadius / gScopeView.along) * 180.0f / kPi : 0.0f, gScopeView.px, gScopeView.py,
-        gScopeView.fade, !gScopeDrawn ? "none" : gFromCapture ? "capture" : "eye copy", scope_capture_source::StatusJson());
+        gScopeView.fade, !gScopeDrawn ? "none" : gFromCapture ? "capture" : "eye copy", scope_capture_source::StatusJson(),
+        gArt.ready ? "true" : "false", gArt.text, sv::Name(static_cast<sv::ScopeReticle>(gSight.scopeReticle)));
 }
 
 } // namespace mevr::host::sight_layers

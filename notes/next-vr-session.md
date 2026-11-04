@@ -1531,6 +1531,29 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
     (doubled). Driving fast or turning should bring the comfort vignette if `[Comfort] vignette` is on. `handAim = 0` gives
     the game's aim back; `turretSeam` picks the seams (bits; the default 3 leaves the pose seam off: if the model doesn't follow, try 7). Log `mako: the game aims the turret (...)` says when we
     stand aside (no world view, menu, controller untracked).
+49. **The sniper scope as the game draws it, its own zoom, the eyepiece where the model has it (new, 2026-11-03; HOST AND MOD
+    REDEPLOY together, game closed: the sight the two share grew; [research/21](../research/21-sights-and-scopes.md) section 16).**
+    - At start, once: `hands: [Sights] the game's own optics (research/21 section 16): sniperRifle scope 4 -> scope auto, reticle
+      duplex -> game, ...` (values you had changed are listed as kept), then `hands: added Sights.zoomStick`.
+    - Draw the sniper rifle: `sights: the sniper rifle model is WPN_SNPa_MDL: the game's scope's eyepiece sight: 13.5 units behind
+      its 'Scope_Eye' bone, 1.7 under it, radius 2.10 units; 'Scope_Lens' hides ...` (or `WPN_SNPb_MDL_1a` ... `'Scope_Rear'`), `sights:
+      the sniper rifle's own aim modes (...AimModes): 22.6 degrees (a scope, 3.5x), 11.4 degrees (a scope, 7.0x)` (23.9 and 12.1 on
+      an Equalizer, Hammer, Harpoon or Volkov), `sights: the game's scope art found` and the host's `sights: the game's scope view
+      composed: two 1024-pixel layers ...`. If it says `isn't used: no D3D texture ... found behind ...`, send that line (the
+      scope keeps our duplex).
+    - **Aim down it**: the picture is the game's own sniper view: cyan post from below, stems from the sides, arcs, a bracket
+      underneath, the dirty lens edge and the tube's rings. The reticle stays on the target as your eye moves; the rings stay
+      on the tube. Is the reticle readable on bright and dark targets (it has a soft dark outline)? Too thin, too thick?
+    - **Flick the right stick forward** while aiming down it: 7.0x (one detent in the right hand; `sights: the sniper rifle's scope
+      zooms in to 7.0x (the game's aim mode 2 of 2, 11.4 degrees)`); back: 3.5x again.
+    - **Where the eye ends up**: the eyepiece is now the model's glass, 13.5 cm further back than before (behind the grip). The
+      per-look line `the scope's picture was up N frames: the eye A..B m behind the eyepiece` should still read about 0.12, and
+      the ADS pull should be much shorter (the `ADS off ... pulled at most N cm` line: about 6-10 cm instead of 35). Does the gun
+      still feel like it comes to your face, and is the hand no longer at the chin?
+    - **The assault rifle's red dot**: its window is now the rear opening of the model's sight housing (7.4 units behind the
+      bone on the ASLa model). Does the dot line up better? Send the heartbeat's `the aiming eye sat on average ...` line.
+    - Must NOT happen: the duplex reticle when the art line said composed; a black or white square instead of the picture; the
+      reticle off the target's centre; the stick flick zooming while not aiming down the scope.
 
 What Claude looks for:
 - Halcyon: `[XR]` session lines, the swap chain capture, `using the statically linked OpenXR

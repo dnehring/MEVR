@@ -843,7 +843,7 @@ std::vector<IniDefault> const& ModIniDefaults() {
         {"Holsters", "enabled", "1"}, {"Holsters", "gripHolds", "1"}, {"Holsters", "hapticAmplitude", "0.5"},
         {"Controls", "leftTrigger", "lb"},
         {"Throwables", "enabled", "1"}, {"Throwables", "melee", "1"},
-        {"Sights", "pistol", "dot"}, {"Sights", "assaultRifle", "dot"}, {"Sights", "sniperRifle", "scope 4"}, {"Sights", "assist", "1"},
+        {"Sights", "pistol", "dot"}, {"Sights", "assaultRifle", "dot"}, {"Sights", "sniperRifle", "scope auto"}, {"Sights", "assist", "1"},
         {"Sights", "converge", "1"},
         {"Squad", "style", "native"},
         {"Colour", "profile", "auto"}, {"Colour", "compare", "0"}, {"Colour", "dither", "0.5"},

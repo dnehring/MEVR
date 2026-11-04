@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "core/vr/ScopeArt.hpp"
 #include "core/vr/Sights.hpp"
 
 #include <openxr/openxr.h>
@@ -55,15 +56,39 @@ struct ScopeParams {
     float texel[4];
     float lit[4];
     float decode[4];  // x: each sample raised to this (1: already linear); research/39's 8-bit capture without an sRGB view
+    float art[4];     // x: 1 = the game's scope view (research/21 section 16): its reticle layer in t1, its tube in t2; y: a
+                      // picture radius in a layer's uv; z: the reticle's dark halo (0..1); w: its coverage gain
 };
-static_assert(sizeof(ScopeParams) == 14 * 16);
+// The game's reticle in our picture: its lines were a pixel wide on the game's 720-line HUD, and the scope's field is fewer
+// headset pixels across, so they get more coverage and a soft dark halo against bright targets.
+inline constexpr float kArtHalo = 0.45f;
+inline constexpr float kArtBoost = 1.8f;
+static_assert(sizeof(ScopeParams) == 15 * 16);
 
 // The constants for one picture: the aiming eye at `eye` looking through `lens` (`view`), the source eye
 // image rendered from `source` with `fov`, its part `rect` of a `textureWidth` x `textureHeight` texture,
 // into a `size`-pixel square. The source may also be the scope's scene capture (research/39): its own pose, its square
-// frustum and the whole texture; `decodeGamma` 1 unless its samples are gamma-encoded.
+// frustum and the whole texture; `decodeGamma` 1 unless its samples are gamma-encoded. `gameArt`: the game's scope view is
+// composed and bound (t1, t2); without it a sight asking for it gets the duplex.
 ScopeParams MakeScopeParams(vr::sights::Sight const& sight, vr::sights::Lens const& lens, vr::sights::ScopeView const& view,
     XrVector3f const& eye, XrPosef const& source, XrFovf const& fov, XrRect2Di const& rect, unsigned textureWidth,
-    unsigned textureHeight, unsigned size, float decodeGamma = 1.0f);
+    unsigned textureHeight, unsigned size, float decodeGamma = 1.0f, bool gameArt = false);
+
+// ---- The game's scope view, composed (research/21 section 16, vr::scope_art) ---------------------------------------
+// Once per set of textures the host draws each layer (the reticle, the tube) into a square float texture of its own,
+// kArtLayerSize across with mips, from the game's three textures (t0 the atlas, t1 the mask, t2 the rings: vr::scope_art's
+// order), 4x4 samples a pixel (the game's art has no mips and is minified 2.5x): premultiplied linear colour. VSMain (the
+// full-screen triangle) and PSCompose, constants in b0 (ArtParams).
+extern char const kArtShader[];
+extern std::size_t const kArtShaderSize;
+inline constexpr unsigned kArtLayerSize = 1024;
+struct ArtParams {
+    float info[4];    // x: the pieces, y: the output's pixels across
+    float decode[4];  // x, y, z: each texture's samples raised to this (2.2: gamma-encoded UI art; 1: an sRGB view decodes)
+    float pieces[vr::scope_art::kMaxPiecesPerLayer * 3][4];  // per piece: u row + texture; v row + alpha; clip (texture uv)
+};
+static_assert(sizeof(ArtParams) == (2 + vr::scope_art::kMaxPiecesPerLayer * 3) * 16);
+// The constants for composing `layer`, each texture decoded with `decode`; info.x 0 if a piece is degenerate.
+ArtParams MakeArtParams(vr::scope_art::Layer layer, float const decode[vr::scope_art::kTextures]);
 
 } // namespace mevr::host::sight_pictures

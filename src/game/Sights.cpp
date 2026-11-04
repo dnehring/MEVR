@@ -7,6 +7,7 @@
 #include "core/vr/Calibration.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/OverlayPlacement.hpp"
+#include "core/vr/ScopeArt.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/CallFunction.hpp"
 #include "engine/XrToUnreal.hpp"
@@ -20,6 +21,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -41,6 +43,17 @@ ue3::FunctionRef gTrace{"Engine.Actor.Trace"};
 // read it live; MassFPS pulls it in to 1, research/11). The scope's pull never brings the eyepiece inside it.
 ue3::FieldRef gControllerPlayer{"Engine.PlayerController", "Player"};
 ue3::FieldRef gNearClipPlane{"Engine.LocalPlayer", "NearClipPlane"};
+// The game's own magnifications (research/21 section 16): the held weapon's stats object (one class per manufacturer) and
+// its AimModes, each a zoomed camera FOV and whether it's a scope.
+ue3::FieldRef gWeaponStats{"SFXGame.BioWeaponRanged", "Stats"};
+ue3::FieldRef gAimModes{"SFXGame.SFXWeaponStatsBase", "AimModes"};
+ue3::FieldRef gAimZoomFov{gAimModes, "ZoomFOV"};
+ue3::FieldRef gAimScoped{gAimModes, "bScoped"};
+// The game's scope art (vr::scope_art): three Texture2Ds of GUI_SF_HUD in Startup_INT.pcc, always loaded.
+ue3::ClassRef gTexture2D{"Engine.Texture2D"};
+ue3::FieldRef gTextureResource{"Engine.Texture", "Resource"};
+ue3::FieldRef gTextureSizeX{"Engine.Texture2D", "SizeX"};
+ue3::FieldRef gTextureSizeY{"Engine.Texture2D", "SizeY"};
 #endif
 constexpr float kDefaultNearUnits = 10.0f;  // UE3's default near plane, when the field can't be read
 // How far the sight line is traced for the shot's convergence point (game units: 300 m at the life-size view).
@@ -93,8 +106,41 @@ struct ModelPlace {
     float travelled = 0.0f;  // how far the bone moved since the draw (gun units)
     bool settledLogged = false;
     int settleLogs = 0;
+    // The game's model (research/21 section 16): its mesh's name and, for the rifles' meshes, its optic (where the
+    // eyepiece or the housing's rear is from the sight's bone, its radius, the parts to hide), used when its bone is the
+    // sight's.
+    std::string mesh;
+    std::optional<sv::Optic> optic;
+    bool opticApplies = false;
 };
 ModelPlace gModel;
+
+// The game's magnifications for the held weapon (research/21 section 16), read once per weapon, and the level chosen by
+// the right stick's flick while aiming down the scope.
+struct Zoom {
+    std::uintptr_t weapon = 0;
+    bool read = false;
+    sv::GameZoom game;
+    std::string stats;  // the stats object, for the log
+    int level = 0;
+    sv::ZoomFlick flick;
+};
+Zoom gZoom;
+void (*gHaptic)(int hand, float seconds, float amplitude) = nullptr;
+
+// The game's scope art (vr::scope_art): its three textures found once (again every 10 s while not), checked alive each
+// tick; a new generation whenever what's published changes.
+struct Art {
+    ue3::Object* textures[vr::scope_art::kTextures]{};
+    bool found = false;
+    double searchedMs = -1e9;
+    int searches = 0;
+    sv::Sight::ArtTexture published[vr::scope_art::kTextures]{};
+    std::uint64_t generation = 0;
+    std::string text = "not looked for";
+};
+Art gArt;
+constexpr double kArtSearchEveryMs = 10000.0;
 constexpr double kRemeasureMs = 250.0;
 constexpr float kSettleUnits = 0.3f;    // the bone counts as still while it stays this close
 constexpr double kSettleMs = 500.0;     // ...for this long
@@ -342,6 +388,26 @@ void MeasureModel(engine::UnrealVector const& topWorld, sv::Kind kind, float len
                     gModel.bone.reset();
                 }
                 gModel.boneName = gModel.bone ? names[*gModel.bone] : std::string();
+                // Which of the game's models it is (research/21 section 16): the rifles' carry a measured optic.
+#if defined(MEVR_GAME_LE1)
+                ue3::Object* const component = weapon::HeldMesh();
+                ue3::Object* const asset = component != nullptr && ue3::runtime::Ready() ? player::SkeletalMesh(component) : nullptr;
+                gModel.mesh = asset != nullptr ? ue3::runtime::Get().NameText(asset) : std::string();
+#endif
+                gModel.optic = sv::OpticFor(gModel.mesh);
+                gModel.opticApplies = gModel.optic && gModel.bone && _stricmp(gModel.boneName.c_str(), gModel.optic->bone) == 0;
+                log::Info("sights: the {} model is {}{}", sv::WeaponName(static_cast<int>(weapon::Type())),
+                    gModel.mesh.empty() ? std::string("unnamed") : gModel.mesh,
+                    !gModel.optic ? std::string(": no optic of the game's on it (the generic placement)")
+                    : gModel.opticApplies
+                        ? std::format(": the game's {} sight: {:.1f} units behind its '{}' bone, {:.1f} {} it, radius {:.2f} units{} "
+                                      "(research/21 section 16)",
+                              kind == sv::Kind::Scope ? "scope's eyepiece" : "housing's rear opening", gModel.optic->back, gModel.boneName,
+                              std::abs(gModel.optic->up), gModel.optic->up >= 0.0f ? "above" : "under", gModel.optic->lens,
+                              *gModel.optic->hide != '\0' ? std::format("; '{}' hides while the scope's picture is up", gModel.optic->hide)
+                                                          : std::string())
+                        : std::format(": its optic belongs on the '{}' bone, but the sight's is '{}': the generic placement",
+                              gModel.optic->bone, gModel.boneName.empty() ? std::string("none") : gModel.boneName));
                 std::string points;
                 for (weapon::ModelPoint const& p : model->points) {
                     points += std::format("{}{} ({:.1f} back, {:.1f} up, {:.1f} right)", points.empty() ? "" : "; ", p.name, p.back, p.up, p.side);
@@ -403,8 +469,13 @@ sv::Gun PlaceFor(int type, sv::Gun const& gun, float length, float radius) {
         placed.back = gModel.live->back;
         placed.height = gModel.live->up;
         placed.side = gModel.live->side;
-        // A scope on a housing's bone (the assault rifle's `Scope`), not its eyepiece's: the eyepiece is at its rear.
-        if (gun.kind == sv::Kind::Scope && !sv::IsEyepieceName(gModel.boneName)) {
+        if (gModel.opticApplies) {
+            // The game's model (research/21 section 16): the eyepiece's glass, or the housing's rear opening for a dot,
+            // measured from this bone on the mesh.
+            placed.back += gModel.optic->back;
+            placed.height += gModel.optic->up;
+        } else if (gun.kind == sv::Kind::Scope && !sv::IsEyepieceName(gModel.boneName)) {
+            // A scope on a housing's bone, not its eyepiece's: the eyepiece is at its rear (a guess per type).
             placed.back += sv::HousingToEyepiece(type);
         }
     } else if (gModel.top) {
@@ -675,7 +746,165 @@ std::optional<XrVector3f> TopFor(int type, XrVector3f const& direction) {
     return top;
 }
 
+// The held weapon's own magnifications (research/21 section 16), once per weapon: its stats object's AimModes.
+void ReadGameZoom(int type) {
+    std::uintptr_t const key = weapon::Key();
+    if (gZoom.read && gZoom.weapon == key) {
+        return;
+    }
+    gZoom = {};
+    gZoom.weapon = key;
+    gZoom.read = true;
+#if defined(MEVR_GAME_LE1)
+    ue3::Object* const held = weapon::HeldObject();
+    ue3::Object* const stats = held != nullptr ? gWeaponStats.Read<ue3::Object*>(held).value_or(nullptr) : nullptr;
+    std::string modes;
+    if (stats != nullptr) {
+        gZoom.stats = ue3::runtime::FullName(stats);
+        if (auto const elements = gAimModes.ElementsOf(stats, 16)) {
+            for (std::int32_t i = 0; i < elements->count; ++i) {
+                void const* const mode = elements->At(i);
+                float const fov = gAimZoomFov.Read<float>(mode).value_or(0.0f);
+                bool const scoped = gAimScoped.ReadBool(mode).value_or(false);
+                sv::AddAimMode(gZoom.game, fov, scoped);
+                modes += std::format("{}{:.1f} degrees{}", modes.empty() ? "" : ", ", fov,
+                    scoped ? std::format(" (a scope, {:.1f}x)", sv::ZoomFromFov(fov)) : std::string(" (not a scope)"));
+            }
+        }
+    }
+    log::Info("sights: the {}'s own aim modes ({}.AimModes): {}{}", sv::WeaponName(type),
+        gZoom.stats.empty() ? std::string("no stats object") : gZoom.stats, modes.empty() ? std::string("none read") : modes,
+        gZoom.game.count > 0 ? std::format("; a scope there shows {:.1f}x{}", gZoom.game.zoom[0],
+                                   gZoom.game.count > 1 ? std::format(", {:.1f}x after a flick of the right stick forward while aiming down "
+                                                                      "it", gZoom.game.zoom[1])
+                                                        : std::string())
+                             : std::string());
+#else
+    (void)type;
+#endif
+}
+
+// The fallback magnification when the game's can't be read (or the gun has no scoped mode of its own).
+float FallbackZoom(int type) {
+    return type == 3 ? 4.0f : 1.5f;
+}
+
+// The magnification shown: [Sights] <type> = scope N, else the held weapon's own at the chosen level. A flick of the right
+// stick forward (back) while aiming down the scope steps to the next (previous) of them.
+float ZoomFor(sv::Settings const& settings, int type, sv::Gun const& gun) {
+    if (gun.kind != sv::Kind::Scope) {
+        return 1.0f;
+    }
+    if (gun.zoom >= 1.0f) {
+        return gun.zoom;
+    }
+    ReadGameZoom(type);
+    if (settings.zoomStick && gZoom.game.count > 1 && gAds) {
+        vr::controllers::State const controllers = vr::controllers::Latest();
+        int const step = controllers.active ? gZoom.flick.Update(controllers.right.stickY) : 0;
+        int const level = std::clamp(gZoom.level + step, 0, gZoom.game.count - 1);
+        if (step != 0 && level != gZoom.level) {
+            gZoom.level = level;
+            if (gHaptic != nullptr) {
+                gHaptic(1, 0.03f, 0.35f);  // a detent under the thumb
+            }
+            log::Info("sights: the {}'s scope zooms {} to {:.1f}x (the game's aim mode {} of {}, {:.1f} degrees)", sv::WeaponName(type),
+                step > 0 ? "in" : "out", sv::ZoomAt(gZoom.game, level), level + 1, gZoom.game.count, gZoom.game.fovDeg[level]);
+        }
+    } else {
+        gZoom.flick.Reset();
+    }
+    float const zoom = sv::ZoomAt(gZoom.game, gZoom.level);
+    return zoom >= 1.0f ? zoom : FallbackZoom(type);
+}
+
+// The eyepiece's radius (gun units): <type>Lens, else the game's model's own, else lensUnits.
+float LensFor(sv::Settings const& settings, int type) {
+    if (type >= 0 && type < sv::kWeaponTypes && settings.guns[type].lens > 0.0f) {
+        return settings.guns[type].lens;
+    }
+    if (gModel.opticApplies && gModel.weapon == weapon::Key()) {
+        return gModel.optic->lens;
+    }
+    return settings.lensUnits;
+}
+
+// The game's scope art (research/21 section 16): its textures found in GObjects (by class, name and package), once, again
+// every 10 s while any is missing; then each tick their resources, published with a new generation when they change.
+void PublishArt(sv::Sight& out, double nowMs) {
+    namespace art = vr::scope_art;
+#if defined(MEVR_GAME_LE1)
+    if (!ue3::runtime::Ready()) {
+        return;
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    for (ue3::Object*& t : gArt.textures) {
+        if (t != nullptr && (!ue3::runtime::IsAlive(t) || !ue3::IsA(t, gTexture2D))) {
+            t = nullptr;
+            gArt.found = false;
+        }
+    }
+    if (!gArt.found && nowMs - gArt.searchedMs >= kArtSearchEveryMs) {
+        gArt.searchedMs = nowMs;
+        ++gArt.searches;
+        ue3::Class* const cls = gTexture2D.Get();
+        std::int32_t const count = cls != nullptr ? r.ObjectCount() : 0;
+        for (std::int32_t i = 0; i < count; ++i) {
+            ue3::Object* const object = r.ObjectAt(i);
+            if (object == nullptr || r.ClassOf(object) != cls) {
+                continue;
+            }
+            for (int k = 0; k < art::kTextures; ++k) {
+                if (gArt.textures[k] == nullptr && r.NameIs(object, art::Info(k).name) && r.NameIs(r.OuterOf(object), art::kPackage) &&
+                    r.IsAlive(object)) {
+                    gArt.textures[k] = object;
+                }
+            }
+        }
+        gArt.found = std::all_of(std::begin(gArt.textures), std::end(gArt.textures), [](ue3::Object* t) { return t != nullptr; });
+        std::string missing;
+        for (int k = 0; k < art::kTextures; ++k) {
+            if (gArt.textures[k] == nullptr) {
+                missing += std::format("{}{}.{}", missing.empty() ? "" : ", ", art::kPackage, art::Info(k).name);
+            }
+        }
+        gArt.text = gArt.found ? "found" : "not found: " + missing;
+        if (gArt.found || gArt.searches <= 1) {
+            log::Info("sights: the game's scope art {} ({} objects searched{})", gArt.found ? "found" : gArt.text, count,
+                gArt.found ? "; the host composes it once" : "; our own reticle meanwhile, looked for again every 10 s");
+        }
+    }
+    if (!gArt.found) {
+        return;
+    }
+    sv::Sight::ArtTexture now[art::kTextures]{};
+    for (int k = 0; k < art::kTextures; ++k) {
+        now[k].resource = gTextureResource.Read<std::uint64_t>(gArt.textures[k]).value_or(0);
+        now[k].width = static_cast<std::uint32_t>(std::max(gTextureSizeX.Read<std::int32_t>(gArt.textures[k]).value_or(0), 0));
+        now[k].height = static_cast<std::uint32_t>(std::max(gTextureSizeY.Read<std::int32_t>(gArt.textures[k]).value_or(0), 0));
+        if (now[k].resource == 0 || now[k].width != art::Info(k).width || now[k].height != art::Info(k).height) {
+            gArt.text = std::format("{} has no resource or another size ({}x{})", art::Info(k).name, now[k].width, now[k].height);
+            return;  // not loaded (or another movie's art): our own reticle
+        }
+    }
+    if (std::memcmp(now, gArt.published, sizeof(now)) != 0) {
+        std::memcpy(gArt.published, now, sizeof(now));
+        ++gArt.generation;
+        gArt.text = std::format("published, generation {}", gArt.generation);
+    }
+    std::memcpy(out.art, gArt.published, sizeof(out.art));
+    out.artGeneration = gArt.generation;
+#else
+    (void)out;
+    (void)nowMs;
+#endif
+}
+
 } // namespace
+
+void SetHaptic(void (*pulse)(int hand, float seconds, float amplitude)) {
+    gHaptic = pulse;
+}
 
 std::optional<XrVector3f> GunTop(vr::aim_ray::Ray const& ray) {
     if (!ray.valid) {
@@ -734,11 +963,12 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
                 status = "none (the barrel points straight up or down: no top)";
             } else {
                 bool const scope = gun.kind == sv::Kind::Scope;
-                float const lensUnits = sv::LensUnits(settings, type);
                 engine::UnrealVector const topWorld = DirectionToWorld(*frame, *top);
                 double const nowMs =
                     std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
                 MeasureModel(topWorld, gun.kind, length, *muzzle, nowMs);
+                float const lensUnits = LensFor(settings, type);  // the model's own eyepiece once it's known
+                float const zoom = ZoomFor(settings, type, gun);
                 sv::Gun const placed = PlaceFor(type, gun, length, scope ? lensUnits : settings.windowUnits);
                 gPlaced = placed;
                 gPlacedWeapon = weapon::Key();
@@ -752,7 +982,7 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
                 out.axis = sv::Zeroed(out.center, ray.origin, ray.direction, settings.zeroM * 100.0f / unitsPerMeter);
                 out.up = sv::TopOf(out.axis, *top).value_or(*top);
                 out.radius = (scope ? lensUnits : settings.windowUnits) / unitsPerMeter;
-                out.zoom = scope ? gun.zoom : 1.0f;
+                out.zoom = scope ? zoom : 1.0f;
                 out.dotSizeDeg = settings.dotSizeDeg;
                 out.ringSizeDeg = settings.ringSizeDeg;
                 out.dotColor = settings.dotColor;
@@ -770,6 +1000,11 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
                 if (scope && settings.ads) {
                     float const reach = ReachExit(settings);
                     out.scopeMaxM = reach > 0.0f ? reach + 0.10f : std::max(settings.scopeMaxM, 1.2f);
+                }
+                // The game's own scope view (research/21 section 16), published with the scope even while its picture waits
+                // for ADS, so the host has it composed before the first look.
+                if (scope && settings.scopeReticle == sv::ScopeReticle::Game) {
+                    PublishArt(out, nowMs);
                 }
                 // The pull to the eye (research/21 sections 14-15): the sight comes to the relief in front of the aiming eye
                 // (scopes, and a holo by 5 cm), and a scope's picture is the model's eyepiece seen from there (the host's
@@ -825,7 +1060,11 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
                 status = std::format("the {} has a {} sight{}: {} ({}; the gun is "
                                      "{:.1f} units from muzzle to grip), {} {:.1f} units ({:.3f} m at {:.1f} units per meter), eye box "
                                      "{:.1f} units{}{}; shots {}",
-                    sv::WeaponName(type), sv::Name(gun.kind), scope ? std::format(" ({:.1f}x)", gun.zoom) : std::string(),
+                    sv::WeaponName(type), sv::Name(gun.kind),
+                    scope ? std::format(" ({:.1f}x{}, {} reticle)", zoom, gun.zoom >= 1.0f ? "" : gZoom.game.count > 0 ? ": the game's" : ": the "
+                                                                                                    "game's couldn't be read",
+                                sv::Name(settings.scopeReticle))
+                          : std::string(),
                     gModel.live && gun.autoPlace ? std::format("on the model's '{}' bone", gModel.boneName)
                                                  : std::format("{:.1f} units behind the muzzle, {:.1f} above the bore{}", placed.back,
                                                        placed.height, placed.side != 0.0f ? std::format(", {:.1f} right", placed.side) : std::string()),
@@ -949,11 +1188,13 @@ void SetHostView(std::uint32_t view) {
     // The model's parts hidden while the scope's picture is up (the sniper's glowing lens; research/21 section 14).
     int const type = static_cast<int>(weapon::Type());
     std::string const hide = type >= 0 && type < sv::kWeaponTypes ? hand_calibration::GetSights().guns[type].hide : std::string();
-    if (hide != gHideText) {
-        gHideText = hide;
-        gHideList = sv::ParseBoneList(hide);
-    }
     bool const ownModel = gModel.measured && gModel.weapon != 0 && gModel.weapon == weapon::Key();
+    // "auto": the game's model's own parts (research/21 section 16), so the list follows the model as well as the setting.
+    std::string const key = hide + "|" + (ownModel ? gModel.mesh : std::string()) + "|" + std::to_string(type);
+    if (key != gHideText) {
+        gHideText = key;
+        gHideList = sv::HideList(hide, ownModel ? gModel.optic : std::nullopt, type);
+    }
     scope_parts::Update(gScopeUp, gHideList, ownModel ? gModel.bone : std::nullopt, type);
 }
 
@@ -972,6 +1213,19 @@ std::string AdsJson() {
         json::JsonNumber(gApproach * gDistanceWeight), json::JsonNumber(gPullLimit), gFastSpring ? "true" : "false");
 }
 
+// What came from the game (research/21 section 16): the model and its optic, the weapon's magnifications, the scope art.
+std::string GameJson() {
+    namespace json = vr::test_request;
+    std::string zooms;
+    for (int i = 0; i < gZoom.game.count; ++i) {
+        zooms += std::format("{}{}", i == 0 ? "" : ", ", json::JsonNumber(gZoom.game.zoom[i]));
+    }
+    return std::format("{{\"mesh\": {}, \"optic\": {}, \"zooms\": [{}], \"zoomLevel\": {}, \"stats\": {}, \"art\": {{\"state\": {}, "
+                       "\"generation\": {}}}}}",
+        json::JsonString(gModel.mesh), gModel.opticApplies ? "true" : "false", zooms, gZoom.level, json::JsonString(gZoom.stats),
+        json::JsonString(gArt.text), gArt.generation);
+}
+
 } // namespace
 
 std::string StatusJson() {
@@ -985,7 +1239,7 @@ std::string StatusJson() {
                        "\"eye\": {}, \"angleDeg\": {}, \"along\": {}, \"offset\": [{}, {}], \"weight\": {}, \"goal\": [{}, {}, {}], "
                        "\"shift\": [{}, {}, {}], \"pull\": {{\"reliefM\": {}, \"maxM\": {}, \"goalM\": {}, \"nearUnits\": {}, "
                        "\"nearFromGame\": {}, \"raisePulledM\": {}, \"raiseEyeBeforeM\": {}, \"raiseEyeAfterM\": {}}}}}, \"ads\": {}, "
-                       "\"parts\": {}}}",
+                       "\"parts\": {}, \"game\": {}}}",
         json::JsonString(sv::Name(static_cast<sv::Kind>(gLast.kind))), json::JsonString(sv::WeaponName(gLast.weapon)),
         json::JsonString(gStatus), gHostView, gScopeUp ? "true" : "false", gAimedShotsTotal, json::JsonNumber(gLast.center.x),
         json::JsonNumber(gLast.center.y), json::JsonNumber(gLast.center.z), json::JsonNumber(gLast.axis.x),
@@ -1000,7 +1254,7 @@ std::string StatusJson() {
         json::JsonNumber(shift.x), json::JsonNumber(shift.y), json::JsonNumber(shift.z), json::JsonNumber(gPull.reliefM),
         json::JsonNumber(gPull.maxM), json::JsonNumber(gGoal.pull), json::JsonNumber(gNearUnits), gNearRead ? "true" : "false",
         json::JsonNumber(gRaisePullMax), json::JsonNumber(gRaiseAlongBefore), json::JsonNumber(gRaiseAlongAfter), AdsJson(),
-        scope_parts::StatusJson());
+        scope_parts::StatusJson(), GameJson());
 }
 
 void LogStats() {
@@ -1048,6 +1302,9 @@ void Shutdown(bool exiting) {
     gPullTicksHeartbeat = 0;
     gHideText.clear();
     gHideList.clear();
+    gZoom = {};
+    gArt = {};  // a reloaded mod finds the textures again; the host composes on the generation (which starts over: it
+                // drops its layers when a generation goes back or the resources change)
     gAimErrorFunction = nullptr;
     gTraceFunction = nullptr;
     gWorld = {};

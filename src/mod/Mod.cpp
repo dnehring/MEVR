@@ -516,6 +516,7 @@ void PublishSight(mevr::vr::aim_ray::Ray const& ray) {
         }
         return;
     }
+    game::sights::SetHaptic(gHost->version >= 9 ? gHost->hapticPulse : nullptr);
     vr::sights::Sight const sight = game::sights::Current(ray);
     gHost->setSight(&sight);
     gSightSent = true;

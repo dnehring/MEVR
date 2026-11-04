@@ -108,6 +108,8 @@ std::vector<std::uint32_t> FramePixels() {
 // the sight line, and the pupil's soft edge. Writes linear premultiplied colour through the sRGB view.
 char const kScopeShader[] = R"(
 Texture2D<float4> eyeImage : register(t0);
+Texture2D<float4> artReticle : register(t1);  // the game's scope view (research/21 section 16): premultiplied linear
+Texture2D<float4> artTube : register(t2);
 SamplerState linearClamp : register(s0);
 cbuffer Scope : register(b0) {
     float4 eyeAlong;    // xyz the aiming eye (app space); w its distance to the lens plane along the axis
@@ -124,6 +126,7 @@ cbuffer Scope : register(b0) {
     float4 texel;       // 1 / texture width, 1 / texture height; zw the exit pupil's centre (lens radii)
     float4 lit;         // the reticle's lit centre (linear); w the picture's opacity
     float4 decode;      // x: each sample raised to this (1: linear already; research/39's 8-bit capture: 2.2)
+    float4 art;         // x: 1 = the game's scope view in t1 (the reticle) and t2 (the tube); y: a picture radius in their uv
 };
 struct VSOut { float4 pos : SV_Position; };
 VSOut VSMain(uint id : SV_VertexID) {
@@ -136,10 +139,26 @@ float4 PSMain(VSOut i) : SV_Target {
     float n = row2.w;
     float px = 2.0 / n;
     float2 lens = float2(i.pos.x / n * 2.0 - 1.0, 1.0 - i.pos.y / n * 2.0);
+    float2 d = lens - float2(lensRight.w, lensUp.w);
+    float style = row1.w;
+    // The game's scope view: its reticle centred on the sight line through the eye (d), its tube on the eyepiece (lens).
+    // Sampled before any branch on the pixel (their mips need the quad's derivatives).
+    float4 gameReticle = float4(0.0, 0.0, 0.0, 0.0);
+    float4 gameHalo = float4(0.0, 0.0, 0.0, 0.0);
+    float4 gameTube = float4(0.0, 0.0, 0.0, 0.0);
+    if (art.x > 0.5) {
+        float2 ru = 0.5 + float2(d.x, -d.y) * art.y;
+        float2 tu = 0.5 + float2(lens.x, -lens.y) * art.y;
+        // The game drew its lines a pixel wide on a 720-line HUD; here the field is fewer headset pixels across, so the
+        // reticle gets art.w more coverage and a soft dark halo (the reticle blurred: a wider footprint, art.z strong).
+        gameReticle = saturate(artReticle.SampleGrad(linearClamp, ru, ddx(ru), ddy(ru)) * art.w);
+        gameHalo = artReticle.SampleGrad(linearClamp, ru, ddx(ru) * 6.0, ddy(ru) * 6.0);
+        gameTube = artTube.SampleGrad(linearClamp, tu, ddx(tu), ddy(tu));
+    }
+    bool game = art.x > 0.5 && style > 2.5;
     float r = length(lens);
     float rim = saturate((1.0 - r) / px + 0.5);
     if (rim <= 0.0) return float4(0.0, 0.0, 0.0, 0.0);
-    float2 d = lens - float2(lensRight.w, lensUp.w);
     float pr = length(lens - texel.zw) / max(row0.w, 0.01);
     float3 c = float3(0.0, 0.0, 0.0);
     if (pr < 1.0) {
@@ -157,10 +176,13 @@ float4 PSMain(VSOut i) : SV_Target {
                 if (decode.x != 1.0) c = pow(max(c, 0.0), decode.x);
             }
         }
-        float style = row1.w;
         float ink = 0.0;
         float glow = 0.0;
-        if (style < 1.5) {
+        if (game) {
+            c = c * (1.0 - gameTube.a) + gameTube.rgb;  // the lens mask's specks and the rings, then the reticle
+            c *= 1.0 - art.z * saturate(gameHalo.a * 4.0);
+            c = c * (1.0 - gameReticle.a) + gameReticle.rgb;
+        } else if (style < 1.5) {
             float thin = max(0.004, 0.75 * px);
             float hHalf = (abs(d.x) < 0.33 || style > 0.5) ? thin : 0.02;  // duplex: thick posts outside a third
             float vHalf = (abs(d.y) < 0.33 || style > 0.5) ? thin : 0.02;
@@ -177,17 +199,120 @@ float4 PSMain(VSOut i) : SV_Target {
         c = lerp(c, lit.rgb, glow);
         c *= 1.0 - smoothstep(0.82, 1.0, pr);
     }
-    c *= 1.0 - smoothstep(0.84, 0.97, r);  // the tube's dark rim: a scope's edge, not a hard cut
     float a = rim * saturate(lit.w);
+    if (game) {
+        a *= 1.0 - smoothstep(0.95, 1.0, r);  // the game's rings fade out at the picture's edge
+    } else {
+        c *= 1.0 - smoothstep(0.84, 0.97, r);  // the tube's dark rim: a scope's edge, not a hard cut
+    }
     return float4(c * a, a);
 }
 )";
+
+// The game's scope view composed into one layer (research/21 section 16): per output pixel 4x4 samples, each the pieces
+// over each other in the movie's order (premultiplied, linear after decoding the UI art's gamma).
+char const kArtShader[] = R"(
+Texture2D<float4> artAtlas : register(t0);
+Texture2D<float4> artMask : register(t1);
+Texture2D<float4> artRings : register(t2);
+SamplerState linearClamp : register(s0);
+cbuffer Art : register(b0) {
+    float4 info;      // x: the pieces, y: the output's pixels across
+    float4 decode;    // xyz: per texture
+    float4 piece[36]; // per piece: u row (xyz) and the texture (w); v row (xyz) and the alpha (w); the clip (texture uv)
+};
+struct VSOut { float4 pos : SV_Position; };
+VSOut VSMain(uint id : SV_VertexID) {
+    float2 p = float2((id == 2) ? 3.0 : -1.0, (id == 1) ? 3.0 : -1.0);
+    VSOut o; o.pos = float4(p, 0.0, 1.0); return o;
+}
+float4 Fetch(float t, float2 uv) {
+    float4 s;
+    float g;
+    if (t < 0.5) { s = artAtlas.SampleLevel(linearClamp, uv, 0); g = decode.x; }
+    else if (t < 1.5) { s = artMask.SampleLevel(linearClamp, uv, 0); g = decode.y; }
+    else { s = artRings.SampleLevel(linearClamp, uv, 0); g = decode.z; }
+    s.rgb = pow(max(s.rgb, 0.0), g);
+    return s;
+}
+float4 PSCompose(VSOut i) : SV_Target {
+    float n = info.y;
+    int count = (int)info.x;
+    float4 sum = float4(0.0, 0.0, 0.0, 0.0);
+    [loop] for (int sy = 0; sy < 4; ++sy) {
+        [loop] for (int sx = 0; sx < 4; ++sx) {
+            float2 uv = (floor(i.pos.xy) + (float2(sx, sy) + 0.5) * 0.25) / n;
+            float3 h = float3(uv, 1.0);
+            float4 c = float4(0.0, 0.0, 0.0, 0.0);
+            [loop] for (int k = 0; k < 12; ++k) {
+                if (k >= count) break;
+                float4 r0 = piece[3 * k];
+                float4 r1 = piece[3 * k + 1];
+                float4 cl = piece[3 * k + 2];
+                float2 t = float2(dot(r0.xyz, h), dot(r1.xyz, h));
+                float inside = step(cl.x, t.x) * step(cl.y, t.y) * step(t.x, cl.z) * step(t.y, cl.w);
+                float4 s = Fetch(r0.w, t);
+                float a = saturate(s.a * r1.w * inside);
+                c.rgb = c.rgb * (1.0 - a) + s.rgb * a;
+                c.a = c.a * (1.0 - a) + a;
+            }
+            sum += c;
+        }
+    }
+    return sum / 16.0;
+}
+)";
+
+std::size_t const kArtShaderSize = sizeof(kArtShader) - 1;
+
+ArtParams MakeArtParams(vr::scope_art::Layer layer, float const decode[vr::scope_art::kTextures]) {
+    namespace art = vr::scope_art;
+    ArtParams p{};
+    p.info[1] = static_cast<float>(kArtLayerSize);
+    for (int k = 0; k < art::kTextures; ++k) {
+        p.decode[k] = std::isfinite(decode[k]) && decode[k] > 0.0f ? decode[k] : 1.0f;
+    }
+    int count = 0;
+    for (art::Piece const& piece : art::Pieces()) {
+        if (piece.layer != layer) {
+            continue;
+        }
+        art::Map map{};
+        if (count >= art::kMaxPiecesPerLayer || !art::LayerToTexture(piece, map)) {
+            p.info[0] = 0.0f;
+            return p;
+        }
+        float* const u = p.pieces[3 * count];
+        float* const v = p.pieces[3 * count + 1];
+        float* const clip = p.pieces[3 * count + 2];
+        u[0] = map.u[0];
+        u[1] = map.u[1];
+        u[2] = map.u[2];
+        u[3] = static_cast<float>(piece.texture);
+        v[0] = map.v[0];
+        v[1] = map.v[1];
+        v[2] = map.v[2];
+        v[3] = piece.alpha;
+        for (int i = 0; i < 4; ++i) {
+            clip[i] = map.clip[i];
+        }
+        ++count;
+    }
+    p.info[0] = static_cast<float>(count);
+    return p;
+}
 
 std::size_t const kScopeShaderSize = sizeof(kScopeShader) - 1;
 
 ScopeParams MakeScopeParams(sv::Sight const& sight, sv::Lens const& lens, sv::ScopeView const& view, XrVector3f const& eye,
     XrPosef const& source, XrFovf const& fov, XrRect2Di const& rect, unsigned textureWidth, unsigned textureHeight, unsigned size,
-    float decodeGamma) {
+    float decodeGamma, bool gameArt) {
+    // The game's view only when it's there; else our duplex in its place.
+    std::int32_t style = sight.scopeReticle;
+    if (style == static_cast<std::int32_t>(sv::ScopeReticle::Game) && !gameArt) {
+        style = static_cast<std::int32_t>(sv::ScopeReticle::Duplex);
+    }
+    bool const art = gameArt && style == static_cast<std::int32_t>(sv::ScopeReticle::Game);
     XrVector3f const r0 = vr::overlay::Rotate(source.orientation, {1.0f, 0.0f, 0.0f});
     XrVector3f const r1 = vr::overlay::Rotate(source.orientation, {0.0f, 1.0f, 0.0f});
     XrVector3f const r2 = vr::overlay::Rotate(source.orientation, {0.0f, 0.0f, 1.0f});
@@ -200,7 +325,7 @@ ScopeParams MakeScopeParams(sv::Sight const& sight, sv::Lens const& lens, sv::Sc
         {lens.axis.x, lens.axis.y, lens.axis.z, std::clamp(sight.zoom, 1.0f, 12.0f)},
         {source.position.x, source.position.y, source.position.z, std::max(sight.focusM, 0.5f)},
         {r0.x, r0.y, r0.z, view.pupil},
-        {r1.x, r1.y, r1.z, static_cast<float>(sight.scopeReticle)},
+        {r1.x, r1.y, r1.z, static_cast<float>(style)},
         {r2.x, r2.y, r2.z, static_cast<float>(size)},
         {std::tan(fov.angleLeft), std::tan(fov.angleRight), std::tan(fov.angleUp), std::tan(fov.angleDown)},
         {static_cast<float>(rect.offset.x), static_cast<float>(rect.offset.y), static_cast<float>(rect.extent.width),
@@ -208,6 +333,7 @@ ScopeParams MakeScopeParams(sv::Sight const& sight, sv::Lens const& lens, sv::Sc
         {1.0f / static_cast<float>(std::max(textureWidth, 1u)), 1.0f / static_cast<float>(std::max(textureHeight, 1u)), view.px, view.py},
         {lit[0], lit[1], lit[2], std::clamp(view.fade, 0.0f, 1.0f)},
         {std::isfinite(decodeGamma) && decodeGamma > 0.0f ? decodeGamma : 1.0f, 0.0f, 0.0f, 0.0f},
+        {art ? 1.0f : 0.0f, vr::scope_art::kPictureRadius / vr::scope_art::kLayerSpan, kArtHalo, kArtBoost},
     };
 }
 

@@ -39,22 +39,26 @@ inline constexpr int kWeaponTypes = 4;
 char const* WeaponName(int weapon);  // "pistol", "shotgun", "assault rifle", "sniper rifle", "unknown"
 char const* WeaponKey(int weapon);   // the [Sights] key: "pistol", "shotgun", "assaultRifle", "sniperRifle"
 
-enum class ScopeReticle : std::int32_t { Duplex = 0, MilDot = 1, Dot = 2 };
+// Game (research/21 section 16): the game's own sniper scope view (its reticle, lens mask and tube rings, vr::scope_art),
+// taken from the running game; Duplex when those textures aren't found.
+enum class ScopeReticle : std::int32_t { Duplex = 0, MilDot = 1, Dot = 2, Game = 3 };
 char const* Name(ScopeReticle reticle);
 
 struct Gun {
     Kind kind = Kind::None;
-    float zoom = 1.0f;       // Scope: magnification
+    float zoom = 1.0f;       // Scope: magnification; 0 = the game's (the held weapon's own, GameZoom; research/21 section 16)
     bool autoPlace = true;   // where the sight sits: from the gun's length (AutoPlace)
     float back = 0.0f;       // gun units behind the muzzle, along the barrel
     float height = 0.0f;     // gun units above the bore line, toward the gun's top
     float side = 0.0f;       // gun units to the gun's right (a bone off the gun's middle; 0 when set by hand)
-    // Scopes (research/21 section 14): the model's eyepiece radius (gun units; 0: Settings::lensUnits), and the model's
-    // bones hidden while the scope's picture is up (`<type>Hide`: names, comma separated; the sniper's glowing lens).
+    // Scopes (research/21 section 14): the model's eyepiece radius (gun units; 0 = auto: the model's own (Optic), else
+    // Settings::lensUnits), and the model's bones hidden while the scope's picture is up (`<type>Hide`: names, comma
+    // separated; "auto": the model's own (Optic), else Scope_Lens for a sniper rifle).
     float lens = 0.0f;
     std::string hide;
 };
-// A scope with its magnification, eyepiece radius (gun units; 0: lensUnits) and the bones hidden while its picture is up.
+// A scope with its magnification (0: the game's), eyepiece radius (gun units; 0: auto) and the bones hidden while its
+// picture is up ("auto": the model's).
 inline Gun ScopeGun(float zoom, float lens, char const* hide) {
     Gun gun{Kind::Scope, zoom};
     gun.lens = lens;
@@ -93,9 +97,10 @@ struct Settings {
     bool enabled = true;
     // Since 2026-10-23 the shotgun defaults to a red dot (a holo's ring is busy on a gun held at the cheek; the user
     // asked for "something like a red dot"). The assault rifle was a 1.5x scope on its model's scope for a day
-    // (research/21 section 14) and is a red dot again (section 15: the player wants a dot there); its eyepiece radius stays
-    // for `assaultRifle = scope 1.5`. Eyepiece radii and the hidden lens bone are guesses from the bones [verify].
-    Gun guns[kWeaponTypes] = {{Kind::Dot}, {Kind::Dot}, DotGun(1.6f), ScopeGun(4.0f, 2.0f, "Scope_Lens")};
+    // (research/21 section 14) and is a red dot again (section 15: the player wants a dot there). Since 2026-11-03
+    // (section 16) the sniper rifle's magnification is the game's own for the held weapon, and the eyepieces and the
+    // hidden parts are the model's own, measured from the game's meshes (Optic).
+    Gun guns[kWeaponTypes] = {{Kind::Dot}, {Kind::Dot}, DotGun(0.0f), ScopeGun(0.0f, 0.0f, "auto")};
     // Dot and holo sights.
     std::uint32_t dotColor = 0xFF3020;  // 0xRRGGBB
     float dotSizeDeg = 0.25f;           // the dot's diameter as seen
@@ -109,8 +114,11 @@ struct Settings {
     bool converge = true;               // shots leave the muzzle toward the point the sight line hits (a world
                                         // trace along it), so they land on the dot at any distance
     // Scopes.
-    float lensUnits = 2.0f;             // the eyepiece's radius (gun units)
-    ScopeReticle scopeReticle = ScopeReticle::Duplex;
+    float lensUnits = 2.0f;             // the eyepiece's radius (gun units) on a model we don't know
+    ScopeReticle scopeReticle = ScopeReticle::Game;
+    // The game's second magnification (research/21 section 16): aiming down a scope, a flick of the right thumbstick
+    // forward steps to the next of the held weapon's magnifications, back to the one before.
+    bool zoomStick = true;
     std::uint32_t scopeColor = 0xFF2020;  // the reticle's lit centre
     bool otherEye = true;               // scopeSource = other: magnify the other eye's image (the gun's own
                                         // scope model doesn't block it); same: the aiming eye's
@@ -155,9 +163,56 @@ Gun AutoPlace(int weapon, Gun const& gun, float gunLength);
 // typical height.
 std::optional<float> HeightOnModel(Kind kind, float modelTop, float radius);
 
-// "none", "dot", "holo", "scope" or "scope 4" (with a magnification, 1-12, decimals allowed: "scope 1.5"; `defaults`
-// gives the zoom when none is written). Nullopt: unreadable.
+// "none", "dot", "holo", "scope", "scope auto" (the game's magnification: zoom 0) or "scope 4" (with a magnification, 1-12,
+// decimals allowed: "scope 1.5"; `defaults` gives the zoom when none is written, else auto). Nullopt: unreadable.
 std::optional<Gun> ParseGun(std::string_view text, Gun const& defaults);
+
+// ---- The game's own optics (research/21 section 16) ---------------------------------------------------------------
+// The game's player guns are 8 meshes, two per type (a and b; the manufacturers only change their colours). The rifles'
+// carry a sight: measured from the meshes (the vertices each sight bone carries, the reference pose: the unfolded gun),
+// the bone the sight follows, where the eyepiece's glass (a scope) or the housing's rear opening (a sight's window) is from
+// that bone's origin in the gun's frame (`back` toward the butt, `up` toward the top; gun units), its radius, and the
+// bones to hide while a scope's picture is up ("" none). Pistols and shotguns carry no sight: nullopt, as for any mesh we
+// don't know (a mod's), which keeps the generic placement.
+struct Optic {
+    char const* mesh;  // the SkeletalMesh's object name, "WPN_SNPa_MDL"
+    char const* bone;
+    float back;
+    float up;
+    float lens;
+    char const* hide;
+};
+std::optional<Optic> OpticFor(std::string_view meshName);
+// The bones `<type>Hide` names: its own list, or for "auto" the model's (Optic), else Scope_Lens on a sniper rifle.
+std::vector<std::string> HideList(std::string_view setting, std::optional<Optic> const& optic, int weapon);
+
+// The game's magnifications: a weapon's SFXWeaponStatsBase.AimModes (per manufacturer), each a zoomed camera FOV and
+// whether it's a scope. Against the combat camera's FOV (SFXCameraMode's 70 degrees; SFXCameraMode_Combat keeps it) a
+// ZoomFOV of 22.6 degrees is 3.5x, 11.4 is 7.0x.
+inline constexpr float kGameCombatFovDeg = 70.0f;
+// tan(base / 2) / tan(zoomFov / 2), clamped to 1..12; 0 for an implausible FOV (not between 1 and the base).
+float ZoomFromFov(float zoomFovDeg, float baseFovDeg = kGameCombatFovDeg);
+struct GameZoom {
+    int count = 0;           // the scoped modes, in the weapon's order
+    float zoom[4]{};
+    float fovDeg[4]{};
+    int unscoped = 0;        // AimModes that aren't scopes (the unzoomed TightAim of pistols, shotguns, assault rifles)
+};
+// Adds one of the weapon's AimModes; implausible FOVs and modes past four are skipped.
+void AddAimMode(GameZoom& zoom, float zoomFovDeg, bool scoped);
+// The magnification for `level` (clamped into the scoped modes); 0 without any.
+float ZoomAt(GameZoom const& zoom, int level);
+
+// The flick that steps the magnification: +1 once the stick is pushed forward past `on`, -1 pulled back past it, then
+// nothing until it has come back inside `off`.
+class ZoomFlick {
+public:
+    int Update(float stickY, float on = 0.7f, float off = 0.3f);
+    void Reset() { armed_ = true; }
+
+private:
+    bool armed_ = true;
+};
 // A list of bone names ("Scope_Lens, Scope_Glow"; "none" or empty: no bones), for `<type>Hide`.
 std::vector<std::string> ParseBoneList(std::string_view text);
 // The eyepiece's radius on this gun (gun units): its own `lens`, else `lensUnits`.
@@ -206,6 +261,17 @@ struct Sight {
     float scopeFieldDeg = 0.0f;  // the virtual eyepiece (Settings): 0 = the physical lens
     float scopeEyeBox = 0.05f;   // tracking meters
     float scopeMaxM = 0.70f;     // tracking meters
+    // The game's scope art (research/21 section 16; vr::scope_art's three textures, in its order): each Texture2D's
+    // FTextureResource* (UTexture.Resource: engine memory) and size, found by the mod while a scope is on the held gun
+    // (also while its picture waits for ADS and `kind` is None, so the host composes it before the first look). The host
+    // composes the layers once per `artGeneration` (0: none: our own reticles).
+    struct ArtTexture {
+        std::uint64_t resource = 0;
+        std::uint32_t width = 0;
+        std::uint32_t height = 0;
+    };
+    ArtTexture art[3]{};
+    std::uint64_t artGeneration = 0;
     std::uint64_t sequence = 0;  // set by Publish
     std::uint64_t timeMs = 0;    // GetTickCount64 at Publish
 };

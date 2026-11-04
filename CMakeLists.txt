@@ -283,6 +283,7 @@ set(MEVR_MOD_SOURCES
     src/core/vr/OverlayPlacement.hpp
     src/core/vr/SceneCaptureScope.hpp
     src/core/vr/ScopeCapture.cpp
+    src/core/vr/ScopeArt.cpp
     src/core/vr/GalaxyHologram.cpp
     src/core/vr/GalaxyHologram.hpp
     src/core/vr/GalaxyMap.cpp
@@ -508,6 +509,7 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/Recenter.hpp
     src/core/vr/SceneCaptureScope.hpp
     src/core/vr/ScopeCapture.cpp
+    src/core/vr/ScopeArt.cpp
     src/core/vr/GalaxyHologram.cpp
     src/core/vr/GalaxyHologram.hpp
     src/core/vr/GalaxyMap.cpp
@@ -798,6 +800,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/Recenter.cpp
         src/core/vr/SceneCaptureScope.hpp
         src/core/vr/ScopeCapture.cpp
+        src/core/vr/ScopeArt.cpp
         src/core/vr/GalaxyHologram.cpp
         src/core/vr/GalaxyMap.cpp
         src/core/vr/Spectator.cpp
@@ -866,6 +869,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/OverlayPlacement.cpp
         src/core/vr/SceneCaptureScope.hpp
         src/core/vr/ScopeCapture.cpp
+        src/core/vr/ScopeArt.cpp
         src/core/vr/Sights.cpp
         src/plugin/SightPictures.cpp
     )

@@ -320,13 +320,14 @@ constexpr char const* kSightsBlock =
     "\n"
     "[Sights]\n"
     "; Gun sights (research/21). Each weapon type gets: none, dot (a red dot), holo (a ring and a dot), or scope with\n"
-    "; its magnification (scope 4: a magnified picture at the eyepiece). A dot shows only to the eye looking through\n"
-    "; the sight's window, and stays on the target wherever that eye is behind it.\n"
+    "; its magnification (scope 4: a magnified picture at the eyepiece; scope auto: the held weapon's own, as the game\n"
+    "; zooms it). A dot shows only to the eye looking through the sight's window, and stays on the target wherever that\n"
+    "; eye is behind it.\n"
     "enabled = 1\n"
     "pistol = dot\n"
     "shotgun = dot\n"
     "assaultRifle = dot\n"
-    "sniperRifle = scope 4\n"
+    "sniperRifle = scope auto\n"
     "; Where the sight sits on each gun: auto, or back, height[, side]: units behind the muzzle along the barrel, units\n"
     "; above the bore, units to the right (the log's `sights:` lines say what auto chose: a bone of the model named for a\n"
     "; sight, followed live, else the bones' top).\n"
@@ -347,12 +348,15 @@ constexpr char const* kSightsBlock =
     "; shot leaves the muzzle toward whatever the sight line hits, so it lands on the dot at any distance.\n"
     "zeroM = 0\n"
     "converge = 1\n"
-    "; Scopes. lensUnits: the eyepiece's radius (gun units). reticle: duplex, mildot or dot; reticleColor: its lit\n"
-    "; centre. source: other = magnify the other eye's picture (the gun's own scope model doesn't block it), same =\n"
-    "; the aiming eye's. focusM: where both eyes' pictures agree (game meters). eyeReliefM: how close (meters) your eye\n"
-    "; must be to the eyepiece for the full picture. resolution: the picture's pixels across.\n"
+    "; Scopes. lensUnits: the eyepiece's radius (gun units) on a model the mod doesn't know. reticle: game (the game's\n"
+    "; own sniper scope view: its reticle, lens and tube), duplex, mildot or dot; reticleColor: their lit centre.\n"
+    "; zoomStick: 1 = aiming down a scope with a second magnification of its own, a flick of the right stick forward\n"
+    "; zooms in, back zooms out. source: other = magnify the other eye's picture (the gun's own scope model doesn't\n"
+    "; block it), same = the aiming eye's. focusM: where both eyes' pictures agree (game meters). eyeReliefM: how close\n"
+    "; (meters) your eye must be to the eyepiece for the full picture. resolution: the picture's pixels across.\n"
     "lensUnits = 2\n"
-    "reticle = duplex\n"
+    "reticle = game\n"
+    "zoomStick = 1\n"
     "reticleColor = ff2020\n"
     "source = other\n"
     "focusM = 40\n"
@@ -371,15 +375,16 @@ constexpr char const* kSightsBlock =
     "; scopeReliefM in front of your eye (never inside the camera's near plane): a holo 5 cm at most, a low-power scope\n"
     "; (under 3x) 10 cm, other scopes scopePullMaxM, and a scope under ADS scopeAdsPullMaxM (faster); the picture then\n"
     "; sits on the model's eyepiece. scopePullMaxM = 0: no scope pulls. <gun>Lens: the model's eyepiece radius (gun\n"
-    "; units). <gun>Hide: the model's bones hidden while the scope's picture is up (none: nothing).\n"
+    "; units; auto: the game's model's own, measured). <gun>Hide: the model's bones hidden while the scope's picture is up\n"
+    "; (auto: the game's model's own; none: nothing).\n"
     "ads = 1\n"
     "adsReachM = 0.40\n"
     "scopeReliefM = 0.12\n"
     "scopePullMaxM = 0.15\n"
     "scopeAdsPullMaxM = 0.35\n"
-    "assaultRifleLens = 1.6\n"
-    "sniperRifleLens = 2\n"
-    "sniperRifleHide = Scope_Lens\n"
+    "assaultRifleLens = auto\n"
+    "sniperRifleLens = auto\n"
+    "sniperRifleHide = auto\n"
     "; replaceRing: 1 = the floating ring reticle hides while you look through a sight.\n"
     "replaceRing = 1\n"
     "; aimedFire: 1 = looking through a scope gives the shots the game's aimed-fire accuracy (no scope camera).\n"
@@ -1625,7 +1630,7 @@ vr::sights::Settings ReadSights(Ini const& ini) {
         std::string const lensKey = key + "Lens";
         if (Number(ini, "Sights", lensKey.c_str(), value)) {
             out.guns[w].lens = static_cast<float>(std::clamp(value, 0.5, 10.0));
-        }
+        }  // auto (or anything else): 0, the game's model's own (research/21 section 16)
         std::string const hideKey = key + "Hide";
         if (auto const s = section->second.find(hideKey); s != section->second.end()) {
             out.guns[w].hide = s->second;  // empty: nothing hidden (the key there without a value)
@@ -1691,8 +1696,11 @@ vr::sights::Settings ReadSights(Ini const& ini) {
         if (auto const r = sv::ParseScopeReticle(*t)) {
             out.scopeReticle = *r;
         } else {
-            log::Warn("sights: can't read reticle = {} (duplex, mildot or dot); duplex kept", *t);
+            log::Warn("sights: can't read reticle = {} (game, duplex, mildot or dot); the game's kept", *t);
         }
+    }
+    if (Number(ini, "Sights", "zoomStick", value)) {
+        out.zoomStick = value != 0.0;
     }
     if (auto const t = text("source")) {
         std::string lower = *t;
@@ -2203,6 +2211,44 @@ void Refresh() {
             }
         }
     }
+    // [Sights] since 2026-11-03 (research/21 section 16): the game's own optics. A file without the marker zoomStick gets each
+    // old default, exactly as written, turned into the new one (the sniper rifle's magnification, the eyepieces and the hidden
+    // part the game's model's own, its reticle the game's); any other value is the player's and kept.
+    if (auto const s = ini.find("Sights"); s != ini.end() && s->second.find("zoomStick") == s->second.end()) {
+        static constexpr struct {
+            wchar_t const* key;
+            char const* name;
+            char const* old;
+            wchar_t const* now;
+        } kMoved[] = {
+            {L"sniperRifle", "sniperRifle", "scope 4", L"scope auto"},
+            {L"reticle", "reticle", "duplex", L"game"},
+            {L"assaultRifleLens", "assaultRifleLens", "1.6", L"auto"},
+            {L"sniperRifleLens", "sniperRifleLens", "2", L"auto"},
+            {L"sniperRifleHide", "sniperRifleHide", "Scope_Lens", L"auto"},
+        };
+        std::string moved;
+        std::string kept;
+        for (auto const& m : kMoved) {
+            auto const k = s->second.find(m.name);
+            if (k == s->second.end()) {
+                continue;
+            }
+            if (_stricmp(k->second.c_str(), m.old) == 0 && WritePrivateProfileStringW(L"Sights", m.key, m.now, path.wstring().c_str()) != 0) {
+                moved += std::format("{}{} {} -> {}", moved.empty() ? "" : ", ", m.name, m.old, ini::Utf8(fs::path(m.now)));
+            } else {
+                kept += std::format("{}{} = {}", kept.empty() ? "" : ", ", m.name, k->second);
+            }
+        }
+        if (!moved.empty() || !kept.empty()) {
+            log::Info("hands: [Sights] the game's own optics (research/21 section 16): {}{}{} in {}", moved.empty() ? "nothing moved" : moved,
+                kept.empty() ? "" : "; kept as you set them: ", kept, ini::Utf8(path));
+        }
+        if (!moved.empty()) {
+            ini = ReadIni(path);
+            stamp = fs::last_write_time(path, ec);
+        }
+    }
     // [Mako] since 2026-11-02 (research/48 section 22): the controls' grips are the cockpit models' on the seat's armrests and
     // the throttle travels the model's slot. A file holding all three old defaults exactly gets the new ones; any other
     // value is the player's and kept.
@@ -2265,9 +2311,11 @@ void Refresh() {
         {L"Sights", "Sights", L"adsReachM", "adsReachM", L"0.40"},
         {L"Sights", "Sights", L"scopeAdsPullMaxM", "scopeAdsPullMaxM", L"0.35"},
         {L"Sights", "Sights", L"assistDotMaxM", "assistDotMaxM", L"0.03"},
-        {L"Sights", "Sights", L"assaultRifleLens", "assaultRifleLens", L"1.6"},
-        {L"Sights", "Sights", L"sniperRifleLens", "sniperRifleLens", L"2"},
-        {L"Sights", "Sights", L"sniperRifleHide", "sniperRifleHide", L"Scope_Lens"},
+        {L"Sights", "Sights", L"assaultRifleLens", "assaultRifleLens", L"auto"},
+        {L"Sights", "Sights", L"sniperRifleLens", "sniperRifleLens", L"auto"},
+        {L"Sights", "Sights", L"sniperRifleHide", "sniperRifleHide", L"auto"},
+        // The game's own optics (2026-11-03, research/21 section 16). The marker zoomStick comes after their migration above.
+        {L"Sights", "Sights", L"zoomStick", "zoomStick", L"1"},
         // The scope's real zoomed render (2026-10-27, research/39), off until measured.
         {L"Sights", "Sights", L"scopeCapture", "scopeCapture", L"0"},
         {L"Sights", "Sights", L"scopeCaptureSize", "scopeCaptureSize", L"1024"},

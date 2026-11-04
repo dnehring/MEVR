@@ -324,7 +324,7 @@ void Settings::Read(menu::Values& v) {
     flag("reticle", c.handReticle);
     v.texts["sight_pistol"] = ms::SightKind(ini.Text("Sights", "pistol", "dot"), "dot");
     v.texts["sight_rifle"] = ms::SightKind(ini.Text("Sights", "assaultRifle", "dot"), "dot");
-    v.texts["sight_sniper"] = ms::SightKind(ini.Text("Sights", "sniperRifle", "scope 4"), "scope");
+    v.texts["sight_sniper"] = ms::SightKind(ini.Text("Sights", "sniperRifle", "scope auto"), "scope");
     flag("sight_assist", ini.Num("Sights", "assist", 1.0f) != 0.0f);
     flag("sight_converge", ini.Num("Sights", "converge", 1.0f) != 0.0f);
     // Advanced: Halcyon's.
@@ -529,8 +529,8 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     } else if (key == "sight_sniper") {
         std::wstring const& path = MELEVR::MevrBridge::SettingsPath();
         wchar_t previous[64]{};
-        GetPrivateProfileStringW(L"Sights", L"sniperRifle", L"scope 4", previous, 64, path.c_str());
-        Put("Sights", "sniperRifle", ms::SightValue(v.Text(key), Narrow(previous)), true);
+        GetPrivateProfileStringW(L"Sights", L"sniperRifle", L"scope auto", previous, 64, path.c_str());
+        Put("Sights", "sniperRifle", ms::SightValue(v.Text(key), Narrow(previous), 0.0f), true);
     } else if (key == "upscale") {
         Put("Upscale", "method", v.Text("upscale") == "fsr" ? "fsr" : "off", true);  // plugin/Upscale re-reads it within a second
     } else if (key == "sight_assist") {

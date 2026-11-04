@@ -618,7 +618,7 @@ static void SightsSection() {
         wchar_t const* fallback;
     };
     static constexpr Gun kGuns[] = {{"Pistol", L"pistol", L"dot"}, {"Shotgun", L"shotgun", L"holo"},
-        {"Assault rifle", L"assaultRifle", L"holo"}, {"Sniper rifle", L"sniperRifle", L"scope 4"}};
+        {"Assault rifle", L"assaultRifle", L"holo"}, {"Sniper rifle", L"sniperRifle", L"scope auto"}};
     static constexpr char const* kKinds[] = {"none", "dot", "holo", "scope"};
     for (Gun const& gun : kGuns) {
         std::string const value = ReadText(L"Sights", gun.key, gun.fallback);

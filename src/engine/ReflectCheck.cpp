@@ -602,6 +602,7 @@ void CheckClasses() {
     CheckClass<UBioEquipment>("SFXGame.BioEquipment");
     CheckClass<ABioWeapon>("SFXGame.BioWeapon");
     CheckClass<ABioWeaponRanged>("SFXGame.BioWeaponRanged");
+    CheckClass<USFXWeaponStatsBase>("SFXGame.SFXWeaponStatsBase");  // the game's magnifications (research/21 section 16)
     CheckClass<ABioGrenade>("SFXGame.BioGrenade");
     CheckClass<ABioGrenadeProjectile>("SFXGame.BioGrenadeProjectile");
     CheckClass<ABioGrenadeProjectileFrisbee>("SFXGame.BioGrenadeProjectileFrisbee");
@@ -849,6 +850,12 @@ void CheckFields() {
     CheckField("SFXGame.BioWeaponRanged", "m_MuzzleSocketName", SDK_FIELD(ABioWeaponRanged, m_MuzzleSocketName));
     CheckField("SFXGame.BioWeaponRanged", "m_fMinVFXDecalIntensity", SDK_FIELD(ABioWeaponRanged, m_fMinVFXDecalIntensity));
     CheckField("SFXGame.BioWeaponRanged", "bIsZoomed", SDK_BOOL(ABioWeaponRanged, bIsZoomed));
+    // The game's own magnifications (game/sights, research/21 section 16).
+    CheckField("SFXGame.BioWeaponRanged", "Stats", SDK_FIELD(ABioWeaponRanged, Stats));
+    CheckField("SFXGame.SFXWeaponStatsBase", "AimModes", SDK_FIELD(USFXWeaponStatsBase, AimModes));
+    CheckElement("SFXGame.SFXWeaponStatsBase", "AimModes", static_cast<long long>(sizeof(FWeaponAimMode)));
+    CheckPath("SFXGame.SFXWeaponStatsBase", {"AimModes", "ZoomFOV"}, SDK_AT(offsetof(FWeaponAimMode, ZoomFOV), 4));
+    CheckPath("SFXGame.SFXWeaponStatsBase", {"AimModes", "bScoped"}, SDK_BOOL(FWeaponAimMode, bScoped));
     // Vent (research/45)
     CheckField("SFXGame.BioWeaponRanged", "m_fCurrentHeat", SDK_FIELD(ABioWeaponRanged, m_fCurrentHeat));
     CheckField("SFXGame.BioWeaponRanged", "m_bOverheated", SDK_BOOL(ABioWeaponRanged, m_bOverheated));

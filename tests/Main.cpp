@@ -48,6 +48,7 @@
 #include "core/vr/Spectator.hpp"
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/Ads.hpp"
+#include "core/vr/ScopeArt.hpp"
 #include "core/vr/Sights.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/FrameProbe.hpp"
@@ -5384,7 +5385,12 @@ void TestSightSettings() {
     gun = s::ParseGun("scope", s::Gun{s::Kind::Scope, 3.0f});
     CHECK(gun && gun->kind == s::Kind::Scope && gun->zoom == 3.0f);
     gun = s::ParseGun("scope", none);
-    CHECK(gun && gun->zoom == 4.0f);
+    CHECK(gun && gun->zoom == 0.0f);  // the game's own magnification (research/21 section 16)
+    gun = s::ParseGun("Scope Auto", s::Gun{s::Kind::Scope, 3.0f});
+    CHECK(gun && gun->kind == s::Kind::Scope && gun->zoom == 0.0f);
+    gun = s::ParseGun("scope", s::Gun{s::Kind::Scope, 0.0f});
+    CHECK(gun && gun->zoom == 0.0f);
+    CHECK(s::ParseGun("dot auto", none) == std::nullopt && s::ParseGun("scope x", none) == std::nullopt);
     gun = s::ParseGun("scope 40", none);
     CHECK(gun && gun->zoom == 12.0f);
     CHECK(s::ParseGun("dot 4", none) == std::nullopt);
@@ -5397,9 +5403,9 @@ void TestSightSettings() {
     gun = s::ParseGun("scope 1.5", s::Gun{s::Kind::Dot});
     CHECK(gun && gun->kind == s::Kind::Scope && gun->zoom == 1.5f);
     s::Settings const defaults;
-    CHECK(defaults.guns[2].kind == s::Kind::Dot && defaults.guns[2].lens == 1.6f && defaults.guns[2].hide.empty());
+    CHECK(defaults.guns[2].kind == s::Kind::Dot && defaults.guns[2].lens == 0.0f && defaults.guns[2].hide.empty());
     gun = s::ParseGun("scope 1.5", defaults.guns[2]);
-    CHECK(gun && gun->kind == s::Kind::Scope && gun->zoom == 1.5f && gun->lens == 1.6f);
+    CHECK(gun && gun->kind == s::Kind::Scope && gun->zoom == 1.5f && gun->lens == 0.0f);
     CHECK(defaults.ads && defaults.adsReachM == 0.40f && defaults.scopeAdsPullMaxM == 0.35f && defaults.scopePullMaxM == 0.15f);
     // The one-time move back (section 15): exactly section 14's `scope 1.5` becomes dot; anything else is the player's.
     CHECK(s::MigrateAssaultRifle("scope 1.5") == std::optional<std::string>("dot"));
@@ -5407,10 +5413,15 @@ void TestSightSettings() {
     CHECK(!s::MigrateAssaultRifle("scope 2") && !s::MigrateAssaultRifle("scope") && !s::MigrateAssaultRifle("dot") &&
           !s::MigrateAssaultRifle("holo") && !s::MigrateAssaultRifle("none") && !s::MigrateAssaultRifle("scope 1.5 x") &&
           !s::MigrateAssaultRifle(""));
-    CHECK(defaults.guns[3].kind == s::Kind::Scope && defaults.guns[3].zoom == 4.0f && defaults.guns[3].hide == "Scope_Lens");
-    CHECK(s::LensUnits(defaults, 2) == 1.6f && s::LensUnits(defaults, 3) == 2.0f && s::LensUnits(defaults, 0) == defaults.lensUnits);
+    // Since section 16 the sniper rifle's zoom, eyepieces and hidden part are the game's model's own ("auto"), its reticle the
+    // game's; a model we don't know falls back to lensUnits and, on a sniper rifle, Scope_Lens.
+    CHECK(defaults.guns[3].kind == s::Kind::Scope && defaults.guns[3].zoom == 0.0f && defaults.guns[3].hide == "auto");
+    CHECK(defaults.scopeReticle == s::ScopeReticle::Game && defaults.zoomStick);
+    CHECK(s::LensUnits(defaults, 2) == defaults.lensUnits && s::LensUnits(defaults, 3) == defaults.lensUnits &&
+          s::LensUnits(defaults, 0) == defaults.lensUnits);
     gun = s::ParseGun("dot", defaults.guns[3]);  // a parsed kind keeps the gun's lens and hide list
-    CHECK(gun && gun->kind == s::Kind::Dot && gun->hide == "Scope_Lens" && gun->lens == 2.0f);
+    CHECK(gun && gun->kind == s::Kind::Dot && gun->hide == "auto" && gun->lens == 0.0f);
+    CHECK(s::ParseScopeReticle("Game") == s::ScopeReticle::Game && s::ParseScopeReticle("duplex") == s::ScopeReticle::Duplex);
     CHECK(s::ParseBoneList(" Scope_Lens, Scope_Glow;scope_lens ") == std::vector<std::string>({"Scope_Lens", "Scope_Glow"}));
     CHECK(s::ParseBoneList("none").empty() && s::ParseBoneList("").empty());
     CHECK(s::IsEyepieceName("Scope_Eye") && s::IsEyepieceName("rear_sight") && !s::IsEyepieceName("Scope") &&
@@ -5444,6 +5455,93 @@ void TestSightSettings() {
     fixed.autoPlace = false;
     fixed.back = 12.0f;
     CHECK(s::AutoPlace(2, fixed, 39.0f).back == 12.0f);
+}
+
+// The game's own optics (research/21 section 16): the rifles' measured eyepieces, the hidden parts, the magnifications from
+// the weapons' AimModes, the stick's flick between them.
+void TestSightGameOptics() {
+    namespace s = mevr::vr::sights;
+    auto const snpa = s::OpticFor("wpn_snpa_mdl");  // the mesh's name, case aside
+    CHECK(snpa && std::string(snpa->bone) == "Scope_Eye" && snpa->back > 13.0f && snpa->back < 14.0f && snpa->up < 0.0f &&
+          snpa->lens > 2.0f && snpa->lens < 2.2f);
+    auto const snpb = s::OpticFor("WPN_SNPb_MDL_1a");
+    CHECK(snpb && std::string(snpb->bone) == "Scope_Rear" && snpb->lens == 1.7f && std::string(snpb->hide).empty());
+    CHECK(s::OpticFor("WPN_ASLa_MDL") && s::OpticFor("WPN_ASLb_MDL") && !s::OpticFor("WPN_PSTa_MDL") && !s::OpticFor("") &&
+          !s::OpticFor("WPN_SNPa_MDL_x"));
+    // The section-14 eyepiece on SNPa: 59.2 units behind the muzzle at the bone; the glass 72.7, 6 behind the grip (66.6).
+    CHECK(NearD(59.2 + snpa->back, 72.7, 0.1));
+    // The parts to hide: the model's own for "auto", Scope_Lens on a sniper we don't know, the list as written otherwise.
+    CHECK(s::HideList("auto", snpa, 3) == std::vector<std::string>({"Scope_Lens"}));
+    CHECK(s::HideList("Auto", snpb, 3).empty());
+    CHECK(s::HideList("auto", std::nullopt, 3) == std::vector<std::string>({"Scope_Lens"}) && s::HideList("auto", std::nullopt, 2).empty());
+    CHECK(s::HideList("Scope_Mid, Scope_Forward", snpb, 3) == std::vector<std::string>({"Scope_Mid", "Scope_Forward"}));
+    CHECK(s::HideList("none", snpa, 3).empty());
+
+    // The magnifications: tan(35) / tan(ZoomFOV / 2) against the 70-degree combat camera.
+    CHECK(NearD(s::ZoomFromFov(22.6f), 3.504, 0.005) && NearD(s::ZoomFromFov(11.4f), 7.015, 0.01));
+    CHECK(NearD(s::ZoomFromFov(23.9f), 3.308, 0.005) && NearD(s::ZoomFromFov(12.1f), 6.606, 0.01));
+    CHECK(NearD(s::ZoomFromFov(39.6f), 1.945, 0.005) && s::ZoomFromFov(70.0f) == 1.0f);
+    CHECK(s::ZoomFromFov(0.0f) == 0.0f && s::ZoomFromFov(90.0f) == 0.0f && s::ZoomFromFov(std::nanf("")) == 0.0f &&
+          s::ZoomFromFov(0.5f) == 0.0f);
+    s::GameZoom sniper;
+    s::AddAimMode(sniper, 22.6f, true);
+    s::AddAimMode(sniper, 11.4f, true);
+    CHECK(sniper.count == 2 && sniper.unscoped == 0 && NearD(s::ZoomAt(sniper, 0), 3.504, 0.005) && NearD(s::ZoomAt(sniper, 1), 7.015, 0.01));
+    CHECK(s::ZoomAt(sniper, 5) == s::ZoomAt(sniper, 1) && s::ZoomAt(sniper, -1) == s::ZoomAt(sniper, 0));
+    s::GameZoom rifle;
+    s::AddAimMode(rifle, 39.6f, false);
+    s::AddAimMode(rifle, 0.0f, true);  // implausible: skipped
+    CHECK(rifle.count == 0 && rifle.unscoped == 1 && s::ZoomAt(rifle, 0) == 0.0f);
+    s::GameZoom many;
+    for (int i = 0; i < 6; ++i) {
+        s::AddAimMode(many, 20.0f, true);
+    }
+    CHECK(many.count == 4);
+
+    // The flick: one step per push past 0.7, nothing again until the stick is back inside 0.3.
+    s::ZoomFlick flick;
+    CHECK(flick.Update(0.5f) == 0 && flick.Update(0.8f) == 1 && flick.Update(0.95f) == 0 && flick.Update(0.5f) == 0);
+    CHECK(flick.Update(0.2f) == 0 && flick.Update(-0.9f) == -1 && flick.Update(-1.0f) == 0 && flick.Update(0.0f) == 0);
+    CHECK(flick.Update(0.75f) == 1 && flick.Update(std::nanf("")) == 0);
+    flick.Reset();
+    CHECK(flick.Update(-0.8f) == -1);
+}
+
+// The game's scope view (research/21 section 16, vr::scope_art): the layout's maps, the layers' framing.
+void TestScopeArt() {
+    namespace art = mevr::vr::scope_art;
+    CHECK(art::Pieces().size() == 11);
+    int reticle = 0;
+    int tube = 0;
+    for (art::Piece const& p : art::Pieces()) {
+        (p.layer == art::Layer::Reticle ? reticle : tube) += 1;
+        CHECK((p.layer == art::Layer::Reticle) == (p.texture == art::Texture::I4E));
+        // Each piece's map round trip: a texel inside its clip -> the movie's pixels -> the layer's uv -> the texture's uv.
+        art::Map m{};
+        CHECK(art::LayerToTexture(p, m));
+        art::TextureInfo const& info = art::Info(p.texture);
+        float const tu = 0.5f * (p.clip[0] + p.clip[2]);
+        float const tv = 0.5f * (p.clip[1] + p.clip[3]);
+        float const x = p.map[0] * tu + p.map[2] * tv + p.map[4];
+        float const y = p.map[1] * tu + p.map[3] * tv + p.map[5];
+        art::Point const o = art::Origin(p.layer);
+        float const U = 0.5f + (x - o.x) / art::kLayerSpan;
+        float const V = 0.5f + (y - o.y) / art::kLayerSpan;
+        CHECK(NearD(m.u[0] * U + m.u[1] * V + m.u[2], tu / static_cast<float>(info.width), 1e-4));
+        CHECK(NearD(m.v[0] * U + m.v[1] * V + m.v[2], tv / static_cast<float>(info.height), 1e-4));
+        CHECK(m.clip[0] >= 0.0f && m.clip[2] <= 1.0f && m.clip[0] < m.clip[2] && m.clip[1] < m.clip[3]);
+    }
+    CHECK(reticle == 9 && tube == 2 && reticle <= art::kMaxPiecesPerLayer && tube <= art::kMaxPiecesPerLayer);
+    // The mirrored stems: one map is the other reflected about the reticle's axis (x = 0 in the movie).
+    auto const pieces = art::Pieces();
+    CHECK(pieces[3].map[0] == -pieces[4].map[0] && pieces[3].map[4] == -pieces[4].map[4]);
+    // A picture point: the origin in the middle of the layer, its edge (r = 1) on the texture's edge, y up.
+    art::Point const c = art::PictureToLayer(0.0f, 0.0f);
+    art::Point const edge = art::PictureToLayer(1.0f, 1.0f);
+    CHECK(NearD(c.x, 0.5, 1e-6) && NearD(c.y, 0.5, 1e-6) && NearD(edge.x, 1.0, 1e-5) && NearD(edge.y, 0.0, 1e-5));
+    // The field fills 0.89 of the picture: the game's clear disc (223 movie pixels) inside the 251-pixel picture radius.
+    CHECK(NearD(art::kFieldRadius / art::kPictureRadius, art::kFieldShare, 1e-5) && art::kPictureRadius > 240.0f);
+    CHECK(std::string(art::Info(art::Texture::I41).name) == "Reticule_I41" && art::Info(9).width == art::Info(0).width);
 }
 
 void TestSightGeometry() {
@@ -7913,6 +8011,9 @@ void TestMenuSettings() {
     CHECK(ms::SightValue("scope", "holo") == "scope 4");
     CHECK(ms::SightValue("scope", "scope 99") == "scope 4");
     CHECK(ms::SightValue("scope", "dot", 1.5f) == "scope 1.5" && ms::SightValue("scope", "scope 3", 1.5f) == "scope 3");
+    // The sniper rifle's chip (research/21 section 16): the game's own magnification unless the player set one.
+    CHECK(ms::SightValue("scope", "dot", 0.0f) == "scope auto" && ms::SightValue("scope", "scope auto", 0.0f) == "scope auto");
+    CHECK(ms::SightValue("scope", "Scope Auto", 1.5f) == "scope auto" && ms::SightValue("scope", "scope 5", 0.0f) == "scope 5");
     CHECK(ms::SightKind("scope 1.5", "dot") == "scope");
 
     // The desktop mirror, the colour sliders, the chips.
@@ -9060,6 +9161,8 @@ int main() {
     TestMakoControls();
     TestHudPieces();
     TestSightSettings();
+    TestSightGameOptics();
+    TestScopeArt();
     TestSightGeometry();
     TestScopeMapping();
     TestSightShots();

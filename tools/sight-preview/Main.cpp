@@ -20,6 +20,11 @@
 //                                       the capture's own render target (traced from the eyepiece, 1024 px)
 //   dot.png, holo.png, frame.png        the reticles and the window ring over grey
 //   eye-right-dot.png                   the right eye looking through a red dot sight
+//
+//   mevr-sight-preview [output folder] --art <folder>   also the game's own scope view (research/21 section 16), from its
+//                                       three textures exported to PNG (tools/scope-art.py says how; game data, local only):
+//                                       game-art-reticle.png, game-art-tube.png (the composed layers over grey) and
+//                                       scope-game-*.png, eye-right-game-*.png (the picture with them, as the host draws it)
 
 #include "core/PngFile.hpp"
 #include "core/vr/LayerComposite.hpp"
@@ -193,6 +198,11 @@ struct Gpu {
     ComPtr<ID3D11PixelShader> ps;
     ComPtr<ID3D11Buffer> params;
     ComPtr<ID3D11SamplerState> sampler;
+    // The game's scope view's composition (research/21 section 16) and its two layers, when --art is given.
+    ComPtr<ID3D11VertexShader> artVs;
+    ComPtr<ID3D11PixelShader> artPs;
+    ComPtr<ID3D11Buffer> artParams;
+    ComPtr<ID3D11ShaderResourceView> artLayers[2];
 };
 
 bool Start(Gpu& gpu) {
@@ -218,6 +228,28 @@ bool Start(Gpu& gpu) {
         return true;
     };
     if (!compile("VSMain", "vs_5_0", vsBlob) || !compile("PSMain", "ps_5_0", psBlob)) {
+        return false;
+    }
+    ComPtr<ID3DBlob> artVsBlob;
+    ComPtr<ID3DBlob> artPsBlob;
+    auto compileArt = [&](char const* entry, char const* profile, ComPtr<ID3DBlob>& blob) {
+        if (FAILED(D3DCompile(pic::kArtShader, pic::kArtShaderSize, "MEVR_ScopeArt", nullptr, nullptr, entry, profile,
+                D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, blob.GetAddressOf(), errors.ReleaseAndGetAddressOf()))) {
+            std::printf("%s: %s\n", entry, errors ? static_cast<char const*>(errors->GetBufferPointer()) : "?");
+            return false;
+        }
+        return true;
+    };
+    if (!compileArt("VSMain", "vs_5_0", artVsBlob) || !compileArt("PSCompose", "ps_5_0", artPsBlob)) {
+        return false;
+    }
+    D3D11_BUFFER_DESC acb{};
+    acb.ByteWidth = sizeof(pic::ArtParams);
+    acb.Usage = D3D11_USAGE_DEFAULT;
+    acb.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    if (FAILED(gpu.device->CreateVertexShader(artVsBlob->GetBufferPointer(), artVsBlob->GetBufferSize(), nullptr, gpu.artVs.GetAddressOf())) ||
+        FAILED(gpu.device->CreatePixelShader(artPsBlob->GetBufferPointer(), artPsBlob->GetBufferSize(), nullptr, gpu.artPs.GetAddressOf())) ||
+        FAILED(gpu.device->CreateBuffer(&acb, nullptr, gpu.artParams.GetAddressOf()))) {
         return false;
     }
     D3D11_BUFFER_DESC cb{};
@@ -259,8 +291,129 @@ ComPtr<ID3D11ShaderResourceView> Upload(Gpu& gpu, composite::Image const& image)
     return srv;
 }
 
-// One scope picture (premultiplied sRGB pixels, `size` square), as the host draws it.
-std::vector<std::uint32_t> RenderScope(Gpu& gpu, ID3D11ShaderResourceView* source, pic::ScopeParams const& params, UINT size) {
+// The game's three textures from PNGs (gamma-encoded RGBA, as the game holds them), composed into the two layers the host
+// makes (plugin/SightLayers PrepareArt: the same shader and constants), with mips. False if any is missing.
+bool ComposeArt(Gpu& gpu, fs::path const& dir) {
+    namespace art = mevr::vr::scope_art;
+    ComPtr<ID3D11ShaderResourceView> sources[art::kTextures];
+    for (int k = 0; k < art::kTextures; ++k) {
+        int width = 0;
+        int height = 0;
+        std::vector<std::uint32_t> pixels;
+        std::string error;
+        fs::path const file = dir / (std::string(art::Info(k).name) + ".png");
+        if (!mevr::png::Read(file, width, height, pixels, &error)) {
+            std::printf("--art: %s: %s\n", file.string().c_str(), error.c_str());
+            return false;
+        }
+        D3D11_TEXTURE2D_DESC td{};
+        td.Width = static_cast<UINT>(width);
+        td.Height = static_cast<UINT>(height);
+        td.MipLevels = 1;
+        td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_IMMUTABLE;
+        td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        D3D11_SUBRESOURCE_DATA data{pixels.data(), static_cast<UINT>(width) * 4, 0};
+        ComPtr<ID3D11Texture2D> texture;
+        if (FAILED(gpu.device->CreateTexture2D(&td, &data, texture.GetAddressOf())) ||
+            FAILED(gpu.device->CreateShaderResourceView(texture.Get(), nullptr, sources[k].GetAddressOf()))) {
+            return false;
+        }
+    }
+    float const decode[art::kTextures] = {2.2f, 2.2f, 2.2f};
+    ID3D11DeviceContext* const c = gpu.context.Get();
+    for (int l = 0; l < art::kLayers; ++l) {
+        D3D11_TEXTURE2D_DESC td{};
+        td.Width = td.Height = pic::kArtLayerSize;
+        td.MipLevels = 0;
+        td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_DEFAULT;
+        td.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+        td.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+        ComPtr<ID3D11Texture2D> texture;
+        ComPtr<ID3D11RenderTargetView> rtv;
+        if (FAILED(gpu.device->CreateTexture2D(&td, nullptr, texture.GetAddressOf())) ||
+            FAILED(gpu.device->CreateRenderTargetView(texture.Get(), nullptr, rtv.GetAddressOf())) ||
+            FAILED(gpu.device->CreateShaderResourceView(texture.Get(), nullptr, gpu.artLayers[l].ReleaseAndGetAddressOf()))) {
+            return false;
+        }
+        pic::ArtParams const params = pic::MakeArtParams(static_cast<art::Layer>(l), decode);
+        if (!(params.info[0] > 0.0f)) {
+            return false;
+        }
+        c->UpdateSubresource(gpu.artParams.Get(), 0, nullptr, &params, 0, 0);
+        D3D11_VIEWPORT viewport{0.0f, 0.0f, static_cast<float>(pic::kArtLayerSize), static_cast<float>(pic::kArtLayerSize), 0.0f, 1.0f};
+        ID3D11RenderTargetView* target = rtv.Get();
+        ID3D11ShaderResourceView* views[art::kTextures] = {sources[0].Get(), sources[1].Get(), sources[2].Get()};
+        ID3D11Buffer* constants = gpu.artParams.Get();
+        ID3D11SamplerState* sampler = gpu.sampler.Get();
+        c->OMSetRenderTargets(1, &target, nullptr);
+        c->RSSetViewports(1, &viewport);
+        c->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        c->VSSetShader(gpu.artVs.Get(), nullptr, 0);
+        c->PSSetShader(gpu.artPs.Get(), nullptr, 0);
+        c->PSSetShaderResources(0, art::kTextures, views);
+        c->PSSetConstantBuffers(0, 1, &constants);
+        c->PSSetSamplers(0, 1, &sampler);
+        c->Draw(3, 0);
+        ID3D11RenderTargetView* none = nullptr;
+        c->OMSetRenderTargets(1, &none, nullptr);
+        c->GenerateMips(gpu.artLayers[l].Get());
+    }
+    return true;
+}
+
+// A composed layer (premultiplied linear float) as sRGB pixels over grey, to look at.
+std::vector<std::uint32_t> LayerOverGrey(Gpu& gpu, ID3D11ShaderResourceView* layer) {
+    ComPtr<ID3D11Resource> resource;
+    layer->GetResource(resource.GetAddressOf());
+    D3D11_TEXTURE2D_DESC td{};
+    td.Width = td.Height = pic::kArtLayerSize;
+    td.MipLevels = 1;
+    td.ArraySize = 1;
+    td.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    td.SampleDesc.Count = 1;
+    td.Usage = D3D11_USAGE_STAGING;
+    td.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    ComPtr<ID3D11Texture2D> staging;
+    if (FAILED(gpu.device->CreateTexture2D(&td, nullptr, staging.GetAddressOf()))) {
+        return {};
+    }
+    gpu.context->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0, resource.Get(), 0, nullptr);
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    if (FAILED(gpu.context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+        return {};
+    }
+    auto const half = [](std::uint16_t h) {
+        std::uint32_t const sign = (h >> 15) & 1u;
+        std::uint32_t const exponent = (h >> 10) & 0x1Fu;
+        std::uint32_t const mantissa = h & 0x3FFu;
+        float const v = exponent == 0 ? std::ldexp(static_cast<float>(mantissa), -24)
+            : exponent == 31          ? 65504.0f
+                                      : std::ldexp(static_cast<float>(mantissa | 0x400u), static_cast<int>(exponent) - 25);
+        return sign != 0 ? -v : v;
+    };
+    std::vector<std::uint32_t> out(static_cast<size_t>(pic::kArtLayerSize) * pic::kArtLayerSize);
+    for (UINT y = 0; y < pic::kArtLayerSize; ++y) {
+        auto const* row = reinterpret_cast<std::uint16_t const*>(static_cast<std::uint8_t const*>(mapped.pData) + y * mapped.RowPitch);
+        for (UINT x = 0; x < pic::kArtLayerSize; ++x) {
+            float const a = half(row[4 * x + 3]);
+            float const grey = 0.18f * (1.0f - a);  // premultiplied over a linear mid grey
+            out[static_cast<size_t>(y) * pic::kArtLayerSize + x] =
+                Rgb(half(row[4 * x]) + grey, half(row[4 * x + 1]) + grey, half(row[4 * x + 2]) + grey);
+        }
+    }
+    gpu.context->Unmap(staging.Get(), 0);
+    return out;
+}
+
+// One scope picture (premultiplied sRGB pixels, `size` square), as the host draws it (with the game's layers when given).
+std::vector<std::uint32_t> RenderScope(Gpu& gpu, ID3D11ShaderResourceView* source, pic::ScopeParams const& params, UINT size,
+    bool gameArt = false) {
     D3D11_TEXTURE2D_DESC td{};
     td.Width = td.Height = size;
     td.MipLevels = 1;
@@ -292,7 +445,8 @@ std::vector<std::uint32_t> RenderScope(Gpu& gpu, ID3D11ShaderResourceView* sourc
     c->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     c->VSSetShader(gpu.vs.Get(), nullptr, 0);
     c->PSSetShader(gpu.ps.Get(), nullptr, 0);
-    c->PSSetShaderResources(0, 1, &source);
+    ID3D11ShaderResourceView* views[3] = {source, gameArt ? gpu.artLayers[0].Get() : nullptr, gameArt ? gpu.artLayers[1].Get() : nullptr};
+    c->PSSetShaderResources(0, 3, views);
     c->PSSetConstantBuffers(0, 1, &constants);
     c->PSSetSamplers(0, 1, &sampler);
     c->Draw(3, 0);
@@ -323,7 +477,15 @@ struct Case {
 
 int main(int argc, char** argv) {
     (void)CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    fs::path const dir = argc > 1 ? fs::path(argv[1]) : fs::path("sight-preview");
+    fs::path dir = "sight-preview";
+    fs::path artDir;
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--art" && i + 1 < argc) {
+            artDir = argv[++i];
+        } else {
+            dir = argv[i];
+        }
+    }
     std::error_code ec;
     fs::create_directories(dir, ec);
     Gpu gpu;
@@ -471,6 +633,66 @@ int main(int argc, char** argv) {
             c.zoom);
     }
     gTube = Tube{};
+    // The game's own scope view (research/21 section 16): its composed layers, then the pulled sniper scope (SNPa's eyepiece,
+    // 2.1 units at 100 units per meter) at the game's two magnifications, and the eye 1.5 cm off the line (the reticle stays on
+    // the target, the tube's shadow creeps in).
+    if (!artDir.empty()) {
+        if (!ComposeArt(gpu, artDir)) {
+            std::printf("--art: the game's scope view couldn't be composed from %s\n", artDir.string().c_str());
+            return 1;
+        }
+        Save(dir, "game-art-reticle.png", pic::kArtLayerSize, pic::kArtLayerSize, LayerOverGrey(gpu, gpu.artLayers[0].Get()));
+        Save(dir, "game-art-tube.png", pic::kArtLayerSize, pic::kArtLayerSize, LayerOverGrey(gpu, gpu.artLayers[1].Get()));
+        struct GameCase {
+            char const* name;
+            XrVector3f eye;
+            float zoom;
+        };
+        GameCase const gameCases[] = {
+            {"game-pulled-sniper-3.5x", kRightEye, 3.504f},
+            {"game-pulled-sniper-7x", kRightEye, 7.015f},
+            {"game-pulled-sniper-off-1.5cm", {0.015f, 0.0f, 0.0f}, 3.504f},
+        };
+        constexpr float kLens = 0.021f;
+        for (GameCase const& c : gameCases) {
+            gTube = Tube{-kRelief, 0.029f, kLens};
+            composite::Image const aiming = EyeImage(kRightEye);
+            ComPtr<ID3D11ShaderResourceView> const otherSrv = Upload(gpu, EyeImage(kLeftEye));
+            sv::Sight s = sight;
+            s.center = {0.0f, 0.0f, -kRelief};
+            s.radius = kLens;
+            s.zoom = c.zoom;
+            s.scopeReticle = static_cast<std::int32_t>(sv::ScopeReticle::Game);
+            s.scopeFieldDeg = sv::PulledFieldDeg(kLens, kRelief);
+            auto const gameLens = sv::MakeLens(s.center, s.axis, s.up, s.radius);
+            sv::Lens pictureLens = *gameLens;
+            auto const view = sv::VirtualView(*gameLens, c.eye, sv::Eyepiece{s.scopeFieldDeg, s.scopeEyeBox, s.scopeMaxM}, pictureLens);
+            if (!view) {
+                std::printf("%s: no view\n", c.name);
+                continue;
+            }
+            pic::ScopeParams const params =
+                pic::MakeScopeParams(s, pictureLens, *view, c.eye, leftPose, kFov, rect, kEyeSize, kEyeSize, kScopeSize, 1.0f, true);
+            std::vector<std::uint32_t> const picture = RenderScope(gpu, otherSrv.Get(), params, kScopeSize, true);
+            if (picture.empty()) {
+                std::printf("%s: render failed\n", c.name);
+                continue;
+            }
+            Save(dir, (std::string("scope-") + c.name + ".png").c_str(), kScopeSize, kScopeSize, OverGrey(picture));
+            composite::Image eye = aiming;
+            composite::Image const quadImage = Straight(picture, static_cast<int>(kScopeSize));
+            sv::Quad const disc = sv::Disc(s.center, s.axis, s.up, pictureLens.radius);
+            composite::Quad quad;
+            quad.pose = disc.pose;
+            quad.width = quad.height = disc.size;
+            quad.image = &quadImage;
+            composite::Draw(eye, composite::Eye{{{0.0f, 0.0f, 0.0f, 1.0f}, c.eye}, kFov}, quad);
+            Save(dir, (std::string("eye-right-") + c.name + ".png").c_str(), eye.width, eye.height, eye.pixels);
+            std::printf("  %s: %.1fx, the picture %.1f degrees across, the field (the game's clear disc) %.1f of it\n", c.name, c.zoom,
+                2.0 * std::atan(pictureLens.radius / view->along) * 180.0 / 3.14159265, mevr::vr::scope_art::kFieldShare);
+        }
+        gTube = Tube{};
+    }
     // The scope capture (research/39): the engine renders the scope's own narrow field from the eyepiece into a 1024-pixel
     // target, and the same shader samples that instead of the other eye's image (its pose and square frustum, the whole
     // texture). Traced here from the eyepiece (the scope tube's face lies on the near plane, as the capture's near plane

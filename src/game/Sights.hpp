@@ -68,6 +68,8 @@ std::optional<ShotAim> ShotAlongSight(weapon::Muzzle const& muzzle);
 // The host's report for the latest frame (vr::sights::View bits), each tick. Also hides the held gun's [Sights]
 // <type>Hide bones while its scope's picture is up under ADS (game/scope_parts).
 void SetHostView(std::uint32_t view);
+// The host's haptic pulse (HostServices v9), or null: the detent of a magnification step (research/21 section 16).
+void SetHaptic(void (*pulse)(int hand, float seconds, float amplitude));
 // For snapshots and the heartbeat.
 std::string StatusJson();
 void LogStats();

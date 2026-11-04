@@ -37,10 +37,45 @@ internal static class Verbs
                 return Check.Run(Path.GetFullPath(options.Positional.First()), options.Get("assets"), game, options.Has("raw"));
             case "toc":
                 return Toc.Run(options);
+            case "export":
+                return Export(options);
             default:
                 Console.Error.WriteLine("Unknown verb " + options.Verb);
                 return 2;
         }
+    }
+
+    // export <file.pcc> --filter text --out <folder>: each matching Texture2D as <name>.png and each GFxMovieInfo's movie as
+    // <name>.gfx, for reading the game's own art and layouts locally (research/21 section 16: tools/scope-art.py). What it
+    // writes is game data: keep it out of the repository.
+    private static int Export(Options options)
+    {
+        string path = options.Positional.First();
+        string filter = options.Get("filter") ?? throw new ArgumentException("export needs --filter");
+        string outDir = options.Get("out") ?? throw new ArgumentException("export needs --out");
+        Directory.CreateDirectory(outDir);
+        using IMEPackage pcc = MEPackageHandler.OpenMEPackage(path, forceLoadFromDisk: true);
+        int written = 0;
+        foreach (ExportEntry export in pcc.Exports.Where(e => e.InstancedFullPath.Contains(filter, StringComparison.OrdinalIgnoreCase)))
+        {
+            string file = Path.Combine(outDir, export.ObjectName.Instanced);
+            if (export.ClassName == "Texture2D")
+            {
+                var texture = new LegendaryExplorerCore.Unreal.Classes.Texture2D(export);
+                var mip = texture.GetTopMip();
+                texture.ExportToPNG(file + ".png");
+                Console.WriteLine($"{export.InstancedFullPath}: {mip.width}x{mip.height} {texture.TextureFormat} -> {file}.png");
+                ++written;
+            }
+            else if (export.ClassName == "GFxMovieInfo" && export.GetProperties().GetProp<ImmutableByteArrayProperty>("RawData") is { } raw)
+            {
+                File.WriteAllBytes(file + ".gfx", raw.Bytes);
+                Console.WriteLine($"{export.InstancedFullPath}: movie, {raw.Bytes.Length} bytes -> {file}.gfx");
+                ++written;
+            }
+        }
+        Console.WriteLine($"{written} written");
+        return written > 0 ? 0 : 1;
     }
 
     // What the game's own packages do, to copy: static mesh buffer fields, package-stored textures, MICs over a base Material.

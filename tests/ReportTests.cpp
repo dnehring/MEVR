@@ -330,7 +330,7 @@ void TestCrash() {
 }
 
 void TestSettings() {
-    std::string const mod = "[Hands]\r\naimAssist = 1\r\nphysicalCrouch=1.0\r\n[Comfort]\r\nturn=snap\r\nsnapDeg=45.000\r\n[Sights]\r\nsniperRifle = scope 4\r\n";
+    std::string const mod = "[Hands]\r\naimAssist = 1\r\nphysicalCrouch=1.0\r\n[Comfort]\r\nturn=snap\r\nsnapDeg=45.000\r\n[Sights]\r\nsniperRifle = scope auto\r\n";
     auto const d = report::DiffModIni(mod);
     RCHECK(d.size() == 2);
     if (d.size() == 2) {

@@ -27,6 +27,8 @@ internal static class Program
                   Writes a copy of a TOC with one entry added or removed. Never writes over its input.
           survey  <CookedPCConsole> [--pattern BIOA_*_ART.pcc] [--count N]
                   What the game's own meshes, textures and instances hold: the reference for what the build writes.
+          export  <file.pcc> --filter text --out <folder>
+                  Matching textures as PNG and GFx movies as .gfx (game data: never into the repository).
 
         Options for all: --lex-dir <folder> (Legendary Explorer nightly), --game <LE1 game folder, for reading its packages>
         """;

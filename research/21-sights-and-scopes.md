@@ -794,10 +794,62 @@ The HUD's reticle movie `GUI_SF_HUD.Reticule` and its textures in `Startup_INT.p
   screens), `I4C` (2048 square: a soft lens mask with scratches), `I4E` (1024 square: one quarter of a cyan reticle, a post, a
   stem, arcs and a bracket below), `I70` (1024x2048: a ranging ladder and scale), `I6D` (a soft white mask). The others are the
   standard reticle's arcs and bars.
-- How the pieces are placed, mirrored and animated with the zoom is in the movie's timeline **[verify: the SWF's placements, or
-  a flat screenshot of the game's sniper zoom]**.
+- How the pieces are placed, mirrored and animated with the zoom is in the movie's timeline: read below (the layout).
 
-### Options (none built yet)
+### The layout (read from the movie, 2026-11-03)
+
+`tools/scope-art.py` reads the GFx (an uncompressed SWF with Scaleform's tags; images are `DefineExternalImage2`, tag 1009:
+character id, format, the image's logical size, its file name) and walks the exported `SniperMode` clip's display list to its
+last frame (the zoom-in animation settled; the zoom and range text `distanceMC` and the frame's widescreen sides `wideDetail`
+left out): 11 pieces in a 1280x720 stage. At depth 1 the `needle` clip: the lens mask (`I4C`, 0.359 movie pixels a texel,
+2048 texels: 735 pixels across) and nine pieces cut from the atlas `I4E` (0.203 pixels a texel; the stems, the side arcs and the
+top arcs each placed twice, one mirrored about x = 0); at depth 12 the `scopeFrame` clip, the rings (`I41`, 0.333 a texel). The
+mask's clear disc (alpha under 0.5) is centred at (6.85, 6.62) movie pixels, radius 223 (the median over 24 directions: specks
+cut a few short); the reticle's centre (the post's column, the stems' brightest row) at (0.86, 1.31). Composed offline from the
+exported textures, it is the game's zoomed sniper view (the picture stays local: game data).
+
+### Built (2026-11-03, the same day)
+
+1. **The per-model optic table** (`vr::sights::OpticFor`, `HideList`; mod `game/sights`): the held mesh's name
+   (`SkeletalMeshComponent.SkeletalMesh`'s object name) picks the measured optic; it applies when the sight's bone is the one it
+   was measured on. The eyepiece (or, for a dot, the housing's rear opening) is placed that far from the live bone along the gun's
+   frame (`back`, `up`), the lens radius is the model's (`<type>Lens = auto`, the new default; a number overrides), the hidden parts
+   the model's (`<type>Hide = auto`: SNPa `Scope_Lens`, SNPb nothing; a sniper we don't know `Scope_Lens`). A mesh we don't know
+   keeps the generic placement (`HousingToEyepiece`). Log `sights: the <gun> model is <mesh>: the game's scope's eyepiece sight:
+   ...`; snapshot `mod.sights.game.mesh`, `optic`.
+2. **The game's magnifications** (`vr::sights::ZoomFromFov`, `AddAimMode`, `ZoomAt`, `ZoomFlick`; mod): `sniperRifle = scope
+   auto` (the new default; `scope N` overrides) reads the held weapon's `Stats.AimModes` once per weapon (rows in
+   `engine/ReflectCheck`): the scoped modes' zooms, 3.5x then 7.0x (the four makers 3.3x, 6.6x). Under ADS, a flick of the right
+   stick forward steps to the next, back to the one before (`[Sights] zoomStick = 1`; a 30 ms detent in the right hand; the stick's
+   Y does nothing else on foot: the view level holds the pitch). The game's own `CurrentAimMode` isn't touched. Unreadable: 4x for
+   a sniper, 1.5x else. Log `sights: the <gun>'s own aim modes (...)`, `... scope zooms in to 7.0x ...`; snapshot `zooms`,
+   `zoomLevel`.
+3. **The game's scope view on our picture** (`vr::scope_art`; mod `game/sights`, host `plugin/SightLayers` and `SightPictures`;
+   `[Sights] reticle = game`, the new default; duplex, mildot, dot as before). The mod finds the three `GUI_SF_HUD` Texture2Ds in
+   GObjects (by class, name and package; again every 10 s while missing) and publishes each one's `Resource`, size and a
+   generation with the scope, also while its picture waits for ADS (the sight the host and mod share grew: they deploy
+   together). The host, once per generation, finds each D3D texture behind its resource (`scope_capture_source::
+   FindTargetTexture`, research/39's guarded search), reads it UNORM and decodes the UI art's gamma (2.2; an sRGB format would
+   be decoded by its view), composes two 1024-pixel float layers with mips (`kArtShader`: 4x4 samples a pixel, each piece's
+   texels clipped as the movie's shapes clip them), and lets the game's textures go. The scope picture samples the reticle layer
+   about the sight line through the eye (collimated, like our reticles) and the tube layer (mask and rings) about the eyepiece;
+   the picture's edge is 251 movie pixels from the centre (the field fills 0.89 of it), the exit pupil's shadow as before. The
+   game's lines were a pixel wide on a 720-line HUD; the field here is fewer headset pixels across, so the reticle gets 1.8x
+   coverage and a soft dark halo (the reticle blurred, 0.45; `kArtBoost`, `kArtHalo`). Not composed (no texture, another size or
+   format): the duplex, logged once. Logs `sights: the game's scope art found`, `sights: the game's scope view composed: ...`,
+   `... isn't used: <why>`; snapshots `mod.sights.game.art`, the host's `sights.gameArt`.
+4. **Settings migration** (marker `zoomStick`): exactly the old defaults become the new ones once (`sniperRifle scope 4 -> scope
+   auto`, `reticle duplex -> game`, `assaultRifleLens 1.6`, `sniperRifleLens 2`, `sniperRifleHide Scope_Lens -> auto`); anything
+   else is the player's and kept. The menu's sniper chip is "Scope" (`scope auto`).
+5. **Tools**: `cockpit-package export <pcc> --filter --out` (textures to PNG, GFx movies to .gfx; local only),
+   `tools/scope-art.py` (the layout above, printed as `ScopeArt.cpp`'s table), `mevr-sight-preview --art <folder>` (the composed
+   layers and `scope-game-*.png` with the host's own shaders). Unit tests `TestSightGameOptics`, `TestScopeArt`.
+
+**[verify] in the headset (notes/next-vr-session.md step 49):** the D3D texture is found behind each `Resource` (the search was
+made for render targets; a `FTexture2DResource` may hold its RHI reference elsewhere); the eyepiece on the glass at 0.12 m with a
+much shorter pull; the reticle readable; the zoom flick.
+
+### The options as first written (before building)
 
 1. **A per-model optic table** (mod only, hot reload, unit-testable): keyed by the mesh's name (the mod logs it), our numbers
    above: the eyepiece's rear-face point and axis in the sight bone's frame, the lens radius, parts to hide; an unknown mesh

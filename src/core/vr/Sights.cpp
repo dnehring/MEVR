@@ -138,8 +138,93 @@ char const* Name(ScopeReticle reticle) {
     switch (reticle) {
     case ScopeReticle::MilDot: return "mil-dot";
     case ScopeReticle::Dot: return "dot";
+    case ScopeReticle::Game: return "the game's";
     default: return "duplex";
     }
+}
+
+namespace {
+// research/21 section 16: from the meshes in BIOC_Materials.pcc (each bone's own vertices' box, the reference pose; the
+// sessions' live bones agree with it: SNPa's Scope_Eye 59.2 back, 7.0 up; ASLa's Scope 39.6 back, 9.1 up).
+//   SNPa: Scope_Eye at x -5.49, z 12.39; its tube x -6.1..8.0, 4.2 wide, z 8.5..12.8: the glass 13.5 behind the bone, its
+//         axis 1.7 under it (behind the grip, `handle` at x 1.9). Scope_Lens (the objective) keeps being hidden.
+//   SNPb: Scope_Rear at x 5.76, z 10.16; its disc x 6.6..7.2, 3.4 across, centre z 9.85: the glass itself.
+//   ASLa: Scope at x -0.34, z 10.65; its housing x -5.8..7.1, 4.3 wide, z 9.5..13.9: the rear 7.4 behind the bone.
+//   ASLb: Scope at x 7.06, z 10.21; its housing x 3.0..9.0, 3.3 wide, z 8.4..12.0: the rear 1.9 behind the bone.
+constexpr Optic kOptics[] = {
+    {"WPN_SNPa_MDL", "Scope_Eye", 13.49f, -1.74f, 2.10f, "Scope_Lens"},
+    {"WPN_SNPb_MDL_1a", "Scope_Rear", 1.44f, -0.31f, 1.70f, ""},
+    {"WPN_ASLa_MDL", "Scope", 7.44f, 1.05f, 2.15f, ""},
+    {"WPN_ASLb_MDL", "Scope", 1.94f, 0.0f, 1.70f, ""},
+};
+} // namespace
+
+std::optional<Optic> OpticFor(std::string_view meshName) {
+    std::string const name = Lower(meshName);
+    for (Optic const& optic : kOptics) {
+        if (name == Lower(optic.mesh)) {
+            return optic;
+        }
+    }
+    return std::nullopt;
+}
+
+std::vector<std::string> HideList(std::string_view setting, std::optional<Optic> const& optic, int weapon) {
+    std::vector<std::string> const tokens = Tokens(setting);
+    if (tokens.size() == 1 && Lower(tokens[0]) == "auto") {
+        if (optic) {
+            return ParseBoneList(optic->hide);
+        }
+        return weapon == 3 ? std::vector<std::string>{"Scope_Lens"} : std::vector<std::string>{};
+    }
+    return ParseBoneList(setting);
+}
+
+float ZoomFromFov(float zoomFovDeg, float baseFovDeg) {
+    if (!std::isfinite(zoomFovDeg) || !std::isfinite(baseFovDeg) || !(zoomFovDeg >= 1.0f) || !(zoomFovDeg <= baseFovDeg) ||
+        !(baseFovDeg < 179.0f)) {
+        return 0.0f;
+    }
+    constexpr float kHalfRadians = 3.14159265f / 360.0f;
+    return std::clamp(std::tan(baseFovDeg * kHalfRadians) / std::tan(zoomFovDeg * kHalfRadians), 1.0f, 12.0f);
+}
+
+void AddAimMode(GameZoom& zoom, float zoomFovDeg, bool scoped) {
+    if (!scoped) {
+        ++zoom.unscoped;
+        return;
+    }
+    float const z = ZoomFromFov(zoomFovDeg);
+    if (!(z > 0.0f) || zoom.count >= 4) {
+        return;
+    }
+    zoom.zoom[zoom.count] = z;
+    zoom.fovDeg[zoom.count] = zoomFovDeg;
+    ++zoom.count;
+}
+
+float ZoomAt(GameZoom const& zoom, int level) {
+    if (zoom.count <= 0) {
+        return 0.0f;
+    }
+    return zoom.zoom[std::clamp(level, 0, zoom.count - 1)];
+}
+
+int ZoomFlick::Update(float stickY, float on, float off) {
+    if (!std::isfinite(stickY)) {
+        return 0;
+    }
+    if (!armed_) {
+        if (std::abs(stickY) < off) {
+            armed_ = true;
+        }
+        return 0;
+    }
+    if (stickY > on || stickY < -on) {
+        armed_ = false;
+        return stickY > 0.0f ? 1 : -1;
+    }
+    return 0;
 }
 
 Gun AutoPlace(int weapon, Gun const& gun, float gunLength) {
@@ -173,13 +258,21 @@ std::optional<Gun> ParseGun(std::string_view text, Gun const& defaults) {
         return std::nullopt;
     }
     if (tokens.size() == 2) {
-        auto const zoom = Number(tokens[1]);
-        if (!zoom || gun.kind != Kind::Scope) {
+        if (gun.kind != Kind::Scope) {
             return std::nullopt;
         }
-        gun.zoom = std::clamp(*zoom, 1.0f, 12.0f);
-    } else if (gun.kind == Kind::Scope && !(defaults.kind == Kind::Scope && defaults.zoom >= 1.0f)) {
-        gun.zoom = 4.0f;
+        std::string const second = Lower(tokens[1]);
+        if (second == "auto" || second == "game") {
+            gun.zoom = 0.0f;  // the held weapon's own magnification (research/21 section 16)
+        } else {
+            auto const zoom = Number(tokens[1]);
+            if (!zoom) {
+                return std::nullopt;
+            }
+            gun.zoom = std::clamp(*zoom, 1.0f, 12.0f);
+        }
+    } else if (gun.kind == Kind::Scope && !(defaults.kind == Kind::Scope && (defaults.zoom >= 1.0f || defaults.zoom == 0.0f))) {
+        gun.zoom = 0.0f;
     }
     if (gun.kind != Kind::Scope) {
         gun.zoom = 1.0f;
@@ -336,6 +429,7 @@ std::optional<ScopeReticle> ParseScopeReticle(std::string_view text) {
     if (value == "duplex" || value == "crosshair") return ScopeReticle::Duplex;
     if (value == "mildot" || value == "mil-dot") return ScopeReticle::MilDot;
     if (value == "dot") return ScopeReticle::Dot;
+    if (value == "game" || value == "original") return ScopeReticle::Game;
     return std::nullopt;
 }
 
