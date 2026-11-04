@@ -10,6 +10,8 @@
 #include <Windows.h>
 
 #include <cstring>
+#include <format>
+#include <iterator>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -33,6 +35,14 @@ fs::file_time_type gStamp{};
 bool gHaveStamp = false;
 bool gToldOff = false;
 void const* gAppliedWorld = nullptr;  // the world the settings last went to: a new level gets them again
+// The level's settle applies (2026-11-04, docs/release-checklist.md section 1): from a fresh launch the apply at the
+// world change (the save's load) came during the load and the level rendered with the blur anyway (gotchas/motion-blur-
+// in-stereo, 2026-11-02), while the same two lines by hand later turned it off. So each level gets them again once it has
+// been the current world for 3 s and for 15 s, by when it renders.
+constexpr float kSettleApplyAt[] = {3.0f, 15.0f};
+void const* gSeenWorld = nullptr;
+float gSinceWorldChange = 0.0f;
+int gSettleApplies = 0;  // of kSettleApplyAt, done in this level
 
 fs::path FilePath() {
     return engine::SettingsFile();  // <exe dir>\ASI\<GAME>MEVR.ini, the host's file too
@@ -121,6 +131,7 @@ void Tick(float deltaSeconds) {
     if (gSincePoll < kPollSeconds) {
         return;
     }
+    float const elapsed = gSincePoll;
     gSincePoll = 0.0f;
     fs::path const path = FilePath();
     std::error_code ec;
@@ -129,7 +140,16 @@ void Tick(float deltaSeconds) {
     // A new level (the save loaded after the title's menu world, a map change) renders with the blur again: apply again.
     void const* const world = engine::World();
     bool const newLevel = gApplied && world != nullptr && world != gAppliedWorld;
-    if (gApplied && !changed && !newLevel) {
+    if (world != gSeenWorld) {
+        gSeenWorld = world;
+        gSinceWorldChange = 0.0f;
+        gSettleApplies = 0;
+    } else {
+        gSinceWorldChange += elapsed;
+    }
+    bool const settleDue = gApplied && world != nullptr && gSettleApplies < static_cast<int>(std::size(kSettleApplyAt)) &&
+                           gSinceWorldChange >= kSettleApplyAt[gSettleApplies];
+    if (gApplied && !changed && !newLevel && !settleDue) {
         return;
     }
     std::vector<Setting> const wanted = Wanted(path);
@@ -145,7 +165,7 @@ void Tick(float deltaSeconds) {
         }
         return true;
     };
-    if (gApplied && same() && !newLevel) {
+    if (gApplied && same() && !newLevel && !settleDue) {
         gStamp = stamp;
         gHaveStamp = !ec;
         return;
@@ -180,7 +200,11 @@ void Tick(float deltaSeconds) {
     log::Info("system settings: scale set {} (booleans through their opposite first){}", appliedText,
               newLevel              ? " (a new level: applied again)"
               : changed && gApplied ? " (the file's values changed)"
+              : settleDue           ? std::format(" (the level has rendered {:.0f} s: applied again)", gSinceWorldChange)
                                     : " (BIOEngine.ini's [SystemSettings] wins over GamerSettings' and the game rewrites it)");
+    if (settleDue && !newLevel) {
+        ++gSettleApplies;
+    }
     applied = wanted;
     gApplied = true;
     gAppliedWorld = world;
