@@ -32,7 +32,16 @@ set(LESDK_WITH_LE3 ${MEVR_BUILD_LE3})
 set(LESDK_WITH_LEL OFF)
 set(LESDK_WITH_SAMPLES OFF)
 set(LESDK_WITH_TESTS OFF)
-add_subdirectory(external/LExSDKv2)
+# Only when something links it: a release build of LE1 configures and builds without the unlicensed submodule checked
+# out (docs/release-checklist.md section 1; research/34 stage 6).
+if (LESDK_WITH_LE1 OR LESDK_WITH_LE2 OR LESDK_WITH_LE3)
+    add_subdirectory(external/LExSDKv2)
+endif ()
+# The loader's test ASI is built against LExSDKv2's own SPI header (an outside plugin's view), when the submodule is there.
+set(MEVR_HAVE_LESDK_SPI OFF)
+if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/LExSDKv2/External")
+    set(MEVR_HAVE_LESDK_SPI ON)
+endif ()
 
 # Khronos OpenXR loader (Apache-2.0), linked statically into the mod.
 set(DYNAMIC_LOADER OFF)
@@ -848,7 +857,9 @@ if (MEVR_BUILD_TESTS)
 
     # Our ASI loader in a tiny host process (tools/loader-test, research/33): a folder like the game's Win64 with our
     # bink2w64.dll, a stand-in bink2w64_original.dll (the same 79 export names) and a test ASI built against
-    # LExSDKv2's own SPI header; the host checks the forwarders, the attach, FindPattern and the hooks.
+    # LExSDKv2's own SPI header; the host checks the forwarders, the attach, FindPattern and the hooks. Skipped without
+    # the submodule (a source build of the release).
+    if (MEVR_HAVE_LESDK_SPI)
     set(loader_test_dir ${CMAKE_BINARY_DIR}/loader-test/$<CONFIG>)
     add_library(mevr-loader-test-original SHARED tools/loader-test/TestOriginal.cpp tools/loader-test/TestOriginal.def)
     set_target_properties(mevr-loader-test-original PROPERTIES OUTPUT_NAME bink2w64_original RUNTIME_OUTPUT_DIRECTORY ${loader_test_dir})
@@ -868,6 +879,7 @@ if (MEVR_BUILD_TESTS)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:MEVR-Loader> ${loader_test_dir}/bink2w64.dll
         VERBATIM)
     add_test(NAME mevr-loader COMMAND mevr-loader-test WORKING_DIRECTORY ${loader_test_dir})
+    endif ()
 
     # A stand-in MassEffect1.exe with the real one's version number, for testing the setup on a fake game folder.
     add_executable(mevr-fake-game tools/setup/FakeGame.cpp tools/setup/FakeGame.rc)
