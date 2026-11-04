@@ -539,7 +539,7 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         if (index >= gFound.size() || !ue3::runtime::IsAlive(gFound[index])) {
             return std::format("mevr {}: no object {} (mevr find first)", verb, index);
         }
-        return verb == "props" ? galaxy_dump::Props(gFound[index]) : galaxy_dump::SetProp(gFound[index], field, value);
+        return verb == "props" ? galaxy_dump::Props(gFound[index]) : galaxy_dump::SetProperty(gFound[index], field, value);
     }
     if (verb == "hide") {
         // `mevr hide <n> [0|1]`: Actor.SetHidden on the n-th of `find` (1, the default, hides; 0 shows).

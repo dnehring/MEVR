@@ -721,7 +721,7 @@ std::string Props(ue3::Object* object) {
     return d.Object(object, nullptr);
 }
 
-std::string SetProp(ue3::Object* object, std::string const& field, std::string const& value) {
+std::string SetProperty(ue3::Object* object, std::string const& field, std::string const& value) {
     if (object == nullptr || !ue3::runtime::IsAlive(object)) {
         return "setprop: no such object";
     }

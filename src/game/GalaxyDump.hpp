@@ -50,6 +50,6 @@ std::string Aim(int index);
 // `mevr props <n>` (after `mevr find`): an object's properties, read generically (its class chain), as JSON. `mevr setprop <n>
 // <field> <value>`: one Float, Int, Byte or Bool property written (journalled): A/B a value without a rebuild (research).
 std::string Props(ue3::Object* object);
-std::string SetProp(ue3::Object* object, std::string const& field, std::string const& value);
+std::string SetProperty(ue3::Object* object, std::string const& field, std::string const& value);
 
 } // namespace mevr::game::galaxy_dump
