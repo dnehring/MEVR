@@ -4040,6 +4040,11 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
                                 useDibrUi ? cfg.pchudScaleYDibr  : (useStereoUi ? cfg.pchudScaleYStereo  : cfg.pchudScaleY),
                                 useDibrUi ? cfg.pchudOffsetXDibr : (useStereoUi ? cfg.pchudOffsetXStereo : cfg.pchudOffsetX),
                                 useDibrUi ? cfg.pchudOffsetYDibr : (useStereoUi ? cfg.pchudOffsetYStereo : cfg.pchudOffsetY));
+    // [MEVR] research/52: on the 3D cinema screen the conversation movie keeps its authored size and place. The VR layout
+    // (half size, centred, for a head-locked view) made the dialogue wheel about 0.9 degrees tall on the screen.
+    if (mevrCineScreen)
+        MELEVR::Pchud::SetConvoTransform(true, 1.0f, 1.0f, 0.0f, 0.0f);
+    else
     MELEVR::Pchud::SetConvoTransform(cfg.convoEnabled,
                                 useDibrUi ? cfg.convoScaleXDibr  : (useStereoUi ? cfg.convoScaleXStereo  : cfg.convoScaleX),
                                 useDibrUi ? cfg.convoScaleYDibr  : (useStereoUi ? cfg.convoScaleYStereo  : cfg.convoScaleY),
