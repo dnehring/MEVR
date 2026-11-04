@@ -74,7 +74,15 @@ if ($Attach) {
     $params = '-game 1 -autoterminate'
     if ($Map -ne '') { $params = $Map + ' ' + $params }
     if ($Steam) {
-        # The new steam.exe hands the command to the running one and exits; the running one does the launch.
+        # The new steam.exe hands the command to the running one and exits; the running one does the launch. Not while
+        # SteamVR is still starting: asked at the same second as fake-headset.ps1 -On's SteamVR start, Steam left the
+        # game's launch "waiting for user response to ShowInterstitials" for good and ignored the next -applaunch
+        # (2026-11-03 19:17); asked with SteamVR up for minutes (18:30), it went straight through.
+        for ($w = 0; $w -lt 30; $w++) {
+            $vr = Get-Process vrserver, vrmonitor -ErrorAction SilentlyContinue | Sort-Object StartTime -Descending | Select-Object -First 1
+            if (-not $vr -or ((Get-Date) - $vr.StartTime).TotalSeconds -ge 15) { break }
+            Start-Sleep 1
+        }
         $steamExe = 'C:\Program Files (x86)\Steam\steam.exe'
         Start-Process -FilePath $steamExe -ArgumentList (@('-applaunch', '1328670') + ($params -split ' '))
         "asked Steam for the game at $(Get-Date -Format HH:mm:ss) (-applaunch 1328670 $params)"
