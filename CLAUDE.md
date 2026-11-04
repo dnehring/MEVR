@@ -345,7 +345,23 @@ switching frameworks.
   stick is the wheel (`wheelPerSecond` 6), a dot (`dotDeg` 0.6) 5 mm in front of the quad. Not while our menu, Halcyon's menu or
   the calibration is up. One `[MEVR]` seam: `MevrBridge::OnFlatQuad` from `xr_session.cpp`'s flat quad block. Which of the two
   mouse paths LE's Scaleform menus take is [verify]. The VR dialogue wheel (in the eye images) is not covered. Logs `game pointer:`;
-  snapshot `"gamePointer"`, layer `gamepointer`.
+  snapshot `"gamePointer"`, layer `gamepointer`. **The cursor and messages are posted from a worker thread** (`postThread = 1`,
+  2026-11-03): the identical click posted from the Present callback was ignored by a Flash message box (research/51 section 8);
+  `logMessages = 1` logs each. While its ray is on the flat screen (or on the galaxy hologram) the pad's triggers are kept from
+  the game (a held RT blocked the box's click).
+- LE1 galaxy map in the CIC ([research/51](research/51-galaxy-map.md) section 8, HostServices v26; `game/GalaxyMap`,
+  `core/vr/GalaxyHologram`, host `plugin/GalaxyHologram` + `GalaxyHologramDraw`; `[Galaxy] hologram`, `inWorld`, `world*`): on foot
+  near the console our hologram of the galaxy (from the 2DA tables) stands over the projector (the game's own projector hologram
+  hidden); a trigger pick opens the map behind the scenes (`OnArtPlaceableUsed`; the sequence's 2.5 s `BioSeqAct_Delay_0` set to
+  0.05 s), the view is held at Shepard's (`Camera.UpdateCamera` post-handler; Halcyon seams `MevrBridge::GalaxyHologram`/`GalaxyHeld`:
+  mode 9 and the opening/closing mode 6 shown as on foot), the map's Flash movie hidden, and the pick made through the map's
+  cross-hair (`Actor.SetLocation`) and a posted click. The game's travel question (its own message box) shows on the UI panel over
+  the table, clicked by the game pointer. Walking away closes the map. **The cluster view's nebula, axes and rings are the map
+  level's 3D scene, not Flash** (`BIOA_GalaxyMap_T`'s art; section 7's "all Flash" was measured at the galaxy level); next: the
+  game's own map rendered over the table instead of our drawing (the user, 2026-11-03). Tools: `mevr galaxy dump|where|pick|click|
+  press|trace|input|movie|invoke|var|aim`, `mevr props`/`setprop`, `tools/make-galaxy-pick-recording.py` (`--world`, `--snapshot`,
+  `--panel-uv`), offline look `mevr-galaxy-preview`. Logs `galaxy hologram:`; snapshot `"galaxyHologram"` (objects' places), layers
+  `galaxy-left`/`-right`.
 - LE1 Mako ([research/44](research/44-mako.md), `game/Mako`; `[Mako]` in `ASI\LE1MEVR.ini`): game mode 1 with a
   `BioVehicleBase` pawn, the right controller's aim ray (or the pistol calibration's line) traced in the world (`Actor.Trace`,
   `aimRangeM` 200) is the aim point: shots through HandAim's `GetAdjustedAimFor` handler (direction from the start the

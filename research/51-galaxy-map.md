@@ -93,7 +93,9 @@ that scale), then measured on the fake headset at the Normandy's map (`mevr used
 - No `SceneCapture` component or `TextureRenderTarget` exists while the map is open (`mevr find`), so it is not a capture either.
 
 So everything on LE1's map (the disc, the systems' rings, the axis lines, the labels, the stars) is drawn independently of the
-scene view: by the Scaleform movie (`BioCameraBehaviorGalaxy.m_pScaleformObjects`), as far as we can tell. The scene renders
+scene view: by the Scaleform movie (`BioCameraBehaviorGalaxy.m_pScaleformObjects`), as far as we can tell. **Partly wrong
+(section 8): at the cluster level the nebula, the axis lines and the rings are the map level's 3D scene; this measurement was at
+the galaxy level.** The scene renders
 under it, but contributes nothing visible. **No camera-based hologram (stage B or C) is possible.** What remains:
 
 - **Stage A** (the flat panel, Halcyon's `galaxyFlat`) works: `[Galaxy] hologram = 0`, now the default and the deployed value. The
@@ -114,3 +116,55 @@ The hologram code (`core/vr/GalaxyMap`, `game/GalaxyMap`, the `xr_session` seams
 2. Stage B: read Halcyon's galaxy branch for the seam; measure the map scene's scale (its actors' bounds) to pick the miniature's units
    per metre; find the map UI's crop in the HUD capture.
 3. ME2: when its renderer arrives, the auto scan from section 4 (unit-testable: which features, how much, which impacts).
+
+## 8. Our own hologram in the CIC, and what the map is made of (2026-11-03 night)
+
+The user asked for a hologram of our own (section 7 ruled out the camera), then for one used where the game already shows its
+own: walk up to the CIC's projector and pick from the hologram there, never a full-screen map. Built and tested on the fake
+headset with replayed controller rays (`tools/make-galaxy-pick-recording.py`); commits 72d7839, ea03088, 4adb7af, 601a938.
+
+**What the player gets ([Galaxy] `inWorld = 1`).** On foot within 900 units of the console, the galaxy from the tables
+(`GalaxyMap_Cluster` X/Y, 630 units a step round (0.5, 0.5); visible by `VisibleConditional`/`CheckConditional` or the flags
+the open map showed last, kept in `%LOCALAPPDATA%\MEVR\galaxy\visible.txt`; relay routes from `GalaxyMap_Relay`, codes / 10000 =
+cluster rows) stands over the projector (`worldRadiusM` 1.4, `worldTiltDeg` 35), the game's own projector hologram
+(`BIOA_NOR10_03_PLC` InterpActor_0 + Emitter_71) hidden meanwhile. A trigger pick opens the map behind the scenes
+(`BioArtPlaceableBehavior.OnArtPlaceableUsed` on the console's behaviour, the GalaxyMap sequence's originator), the mod holds
+the view at Shepard's (a `Camera.UpdateCamera` post-handler) and hides the map's Flash movie (`BioSFPanel.SetMovieVisibility`),
+and once the map is up the pick goes on: the map's cross-hair actor is moved onto the object (`Actor.SetLocation`), the
+behaviour's native tick selects the object nearest it, and a posted click opens it. Halcyon presents mode 9 (and the map's
+opening and closing, mode 6) as the world on foot through `MevrBridge::GalaxyHologram`/`GalaxyHeld`. Walking 1.6 m past the
+table's edge closes the map (`exitGalaxyMap`).
+
+**The opening is a wait, not the animation.** The 2.5 s from the console's use to game mode 9 is `BioSeqAct_Delay_0` in the
+GalaxyMap sequence (Duration 2.5), not the matinee `SeqAct_Interp_0` (2.51 s; PlayRate 10 changed nothing). With the delay at
+0.05 s the map is up 0.2 s after the use and the picked cluster on the hologram 0.74 s after the trigger (was 3.1 s); the rest
+is the map's own zoom into the cluster (0.5 s). The mod shortens it while `inWorld` is on and puts it back otherwise. Closing
+runs 9 -> 0 -> 6 (about 0.4 s) -> 0.
+
+**The travel question is the game's own box.** `BioSFHandler_GalaxyMap.m_bWaitingForMsgBox` is set while
+`BioSFHandler_MessageBox` (a separate Flash movie, `Transient.BioSFHandler_MessageBox_0`) asks "Travel to another system?". In
+the CIC the game's UI goes to the HUD panel, which then stands over the table; the game pointer clicks it. Two findings:
+- **Messages posted from the Present callback were ignored** by the box; the same SetCursorPos + WM_MOUSEMOVE + WM_LBUTTONDOWN
+  + WM_LBUTTONUP from any other thread were taken (both logged with `[Pointer] logMessages`, the only difference the posting
+  thread). The pointer now posts from a worker thread (`postThread = 1`). Why the render thread's posts are dropped is
+  [verify]; it likely affected the pointer on every flat menu, which had never been checked in a headset.
+- **A held right trigger blocks the box's mouse click** (the controller's trigger is also the pad's RT): the pad's triggers
+  are kept from the game while a ray is on the game's flat screen or the hologram.
+
+**Correction to section 7: the cluster view is a 3D scene.** With the map's Flash movie hidden, Halcyon's flat panel still
+showed the cluster level's nebula, the orange axis lines and the system's ring (snapshot 2026-11-03 23:41, quad0); only the
+labels, the title and the panels went. The map level `BIOA_NOR10_03_GM_LAY` holds a StaticMeshComponent ring per selectable
+object (`<id> Circle`) and the package `BIOA_GalaxyMap_T` (loaded on the Normandy) holds the art: `galaxy`, `galaxy01`,
+`Cluster01`..`Cluster20` (the clusters' nebulae), `Circle`, `GalaxyGuiProxy`, and the materials `Galaxy_Holo_Mat`,
+`Galaxy_Holo_GUI_Mat`, `Glow_Mat`, `CloudMask_Mat`. `GUI_SF_GalaxyMap` holds the movie and the picture tiles `GalaxyMap_G0`..`GF`,
+`_IAD`, `_I70`. Section 7's zero disparity was measured at the galaxy level, whose picture may be the movie's tiles [verify which
+levels are scene and which Flash]. The cluster table's `CloudTile`, `SphereIntensity`, `SphereSize`, `NebularDensity`,
+`Colour`/`Colour2` and the planet table's material colours are the parameters of that scene.
+
+**Next (the user, 2026-11-03: "it looked like the actual game instead of us trying to re-create the experience"):** show the
+game's own map in the CIC instead of our drawing. For the 3D levels, render the map level's scene in stereo over the table: a
+pair of scene captures from the map camera (research/39's `SceneCapture2DActor` and the host's texture lookup), placed as one
+stereo layer at the table, the map's real nebula planes, rings and axes at their own depths; the Flash layer (labels, title,
+the planet panel) on the UI panel or cut into pieces. For a Flash level, the movie's own drawing on a panel over the table.
+Picks then go through the game's own cursor (the pointer on the captured picture, projected through the map camera) rather
+than our hologram's objects.
