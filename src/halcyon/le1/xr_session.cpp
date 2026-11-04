@@ -3464,7 +3464,7 @@ static void CineFinishDecision(CineDecision& d, const CineInputs& in,
     d.forceFlatCine = in.manualFlat ||
                       (cinematicContext && !vrCineOn) ||
                       (in.inMenuMode && cfg.menuFlat && !in.liveWorldGui) ||
-                      (in.inGalaxyMode && cfg.galaxyFlat) ||
+                      (in.inGalaxyMode && cfg.galaxyFlat && !MELEVR::MevrBridge::GalaxyHologram(nullptr, nullptr)) ||   // [MEVR] galaxy hologram
                       in.inMovie;
     // A VR cine is served by the SFR pair (Stereo 2). Other modes fall back to the flat screen:
     // an AER quad pair is two different frames = shimmer, and mono has no depth to show anyway.
@@ -5015,7 +5015,22 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         // as a WORLD-LOCKED quad, so leaning already gives real parallax against the panel for free
         // via OpenXR. Writing a camera offset there would move the world INSIDE a fixed panel, which
         // is the wrong thing and reads as the picture sliding around.
-        if (cfg.leanEnabled && headValid && !menuOpen && !forceFlatCine)
+        // [MEVR] galaxy hologram (research/51): the map's scene at the scale the mod measured, the head's movement 1:1 at it.
+        float mevrGalaxyUpm = 0.0f;
+        float mevrGalaxyBelow = 0.0f;
+        const bool mevrGalaxy = inGalaxyMode && headValid && !menuOpen && !forceFlatCine &&
+                                MELEVR::MevrBridge::GalaxyHologram(&mevrGalaxyUpm, &mevrGalaxyBelow) && mevrGalaxyUpm > 0.0f;
+        if (mevrGalaxy)
+        {
+            const float g = mevrGalaxyUpm / kMetersToUU;
+            right = headPos.x * g;
+            up = (headPos.y + mevrGalaxyBelow) * g;
+            fwd = -headPos.z * g;
+            float halfH = 0.0f, halfV = 0.0f;
+            if (MELEVR::RenderHook::GetRenderFovHalfAngles(&halfH, &halfV))
+                MELEVR::MevrBridge::OnGalaxyHologram(halfH, halfV);
+        }
+        else if (cfg.leanEnabled && headValid && !menuOpen && !forceFlatCine)
         {
             // Forward/back (a dolly) reads ~3x weaker than sideways (parallax), so emphasize it to feel matched.
             const float kFwdLeanEmphasis = MELEVR::MevrBridge::ForwardLeanEmphasis();   // [MEVR] upstream: 3.0f
@@ -5052,7 +5067,8 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             const float mevrHeadQ[4] = {renderTagPose.orientation.x, renderTagPose.orientation.y,
                                         renderTagPose.orientation.z, renderTagPose.orientation.w};
             const float mevrHeadP[3] = {renderTagPose.position.x, renderTagPose.position.y, renderTagPose.position.z};
-            const float mevrLeanScale = (cfg.leanEnabled && cfg.leanGain > 0.0f) ? cfg.leanGain : 1.0f;
+            const float mevrLeanScale = mevrGalaxy ? mevrGalaxyUpm / kMetersToUU   // [MEVR] galaxy hologram
+                                                   : ((cfg.leanEnabled && cfg.leanGain > 0.0f) ? cfg.leanGain : 1.0f);
             MELEVR::MevrBridge::OnViewBuilt(headValid && !menuOpen && !forceFlatCine, headLookApplied, headAimApplied,
                                             mevrHeadQ, mevrHeadP, rightUU, upUU, fwdUU, kMetersToUU * mevrLeanScale);
 

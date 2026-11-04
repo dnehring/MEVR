@@ -283,6 +283,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/OverlayPlacement.hpp
     src/core/vr/SceneCaptureScope.hpp
     src/core/vr/ScopeCapture.cpp
+    src/core/vr/GalaxyMap.cpp
+    src/core/vr/GalaxyMap.hpp
     src/core/vr/Spectator.cpp
     src/core/vr/Spectator.hpp
     src/core/vr/ScopeCapture.hpp
@@ -388,6 +390,8 @@ set(MEVR_MOD_SOURCES
     src/game/ScopeParts.hpp
     src/game/ScopeCapture.cpp
     src/game/ScopeCapture.hpp
+    src/game/GalaxyMap.cpp
+    src/game/GalaxyMap.hpp
     src/game/Spectator.cpp
     src/game/Spectator.hpp
     src/game/Sights.cpp
@@ -498,6 +502,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/Recenter.hpp
     src/core/vr/SceneCaptureScope.hpp
     src/core/vr/ScopeCapture.cpp
+    src/core/vr/GalaxyMap.cpp
+    src/core/vr/GalaxyMap.hpp
     src/core/vr/Spectator.cpp
     src/core/vr/Spectator.hpp
     src/core/vr/ScopeCapture.hpp
@@ -777,6 +783,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/Recenter.cpp
         src/core/vr/SceneCaptureScope.hpp
         src/core/vr/ScopeCapture.cpp
+        src/core/vr/GalaxyMap.cpp
         src/core/vr/Spectator.cpp
         src/core/vr/Sights.cpp
         src/core/vr/SquadMenu.cpp

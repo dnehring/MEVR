@@ -4,6 +4,8 @@
 
 #include "plugin/GamePointer.hpp"
 
+#include "core/vr/GalaxyMap.hpp"
+
 #include "halcyon/le1/mevr_bridge.h"
 #include "plugin/Calibration.hpp"
 #include "plugin/MevrMenu.hpp"
@@ -407,6 +409,34 @@ void OnFlatQuad(PanelKind kind, float const headOrientation[4], float const head
     local.orientation = {placed.orientation[0], placed.orientation[1], placed.orientation[2], placed.orientation[3]};
     local.position = {placed.position[0], placed.position[1], placed.position[2]};
     mevr::host::game_pointer::NoteFlatQuad(kind, space, local, width, height, placed.headLocked);
+}
+
+bool GalaxyHologram(float* unitsPerMeter, float* belowM) noexcept {
+    constexpr std::uint64_t kFreshMs = 500;  // the mod publishes every tick while the map is up
+    auto const view = mevr::vr::galaxy_map::Latest(kFreshMs);
+    if (!view || !(view->unitsPerMeter > 0.0f)) {
+        return false;
+    }
+    if (unitsPerMeter != nullptr) {
+        *unitsPerMeter = view->unitsPerMeter;
+    }
+    if (belowM != nullptr) {
+        *belowM = view->belowM;
+    }
+    return true;
+}
+
+void OnGalaxyHologram(float cpuHalfH, float cpuHalfV) noexcept {
+    auto const view = mevr::vr::galaxy_map::Latest(500);
+    if (!view || !(cpuHalfH > 0.0f) || !(cpuHalfV > 0.0f)) {
+        return;
+    }
+    auto const screen = mevr::vr::galaxy_map::VirtualScreen(view->distanceM, view->belowM, std::tan(cpuHalfH), std::tan(cpuHalfV));
+    if (!screen) {
+        return;
+    }
+    XrPosef const space{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
+    mevr::host::game_pointer::NoteFlatQuad(PanelKind::GalaxyMap, space, screen->pose, screen->width, screen->height, false);
 }
 
 } // namespace MELEVR::MevrBridge

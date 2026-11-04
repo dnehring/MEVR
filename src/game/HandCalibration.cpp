@@ -562,6 +562,16 @@ constexpr char const* kCockpitBlock =
     "seated = 1\n";
 
 // Appended to a settings file that has no [Game] yet (and part of a new file).
+constexpr char const* kGalaxyBlock =
+    "\n"
+    "[Galaxy]\n"
+    "; The Normandy's galaxy map (research/51). hologram: 1 = the map as a table-sized model in front of you, in stereo,\n"
+    "; pointed at with a controller (the trigger clicks); 0 = the game's full-screen map on a flat panel. distanceM: how far\n"
+    "; ahead its centre appears; belowM: how far below your eyes.\n"
+    "hologram = 1\n"
+    "distanceM = 0.9\n"
+    "belowM = 0.30\n";
+
 constexpr char const* kGameBlock =
     "\n"
     "[Game]\n"
@@ -1489,6 +1499,32 @@ std::string Describe(vr::spectator::Settings const& s) {
 vr::spectator::Settings gSpectator;
 std::string gSpectatorText;
 
+// [Galaxy] (research/51).
+vr::galaxy_map::Settings ReadGalaxy(Ini const& ini) {
+    vr::galaxy_map::Settings s;
+    double value = 0.0;
+    if (Number(ini, "Galaxy", "hologram", value)) {
+        s.hologram = value != 0.0;
+    }
+    if (Number(ini, "Galaxy", "distanceM", value)) {
+        s.distanceM = static_cast<float>(std::clamp(value, 0.3, 3.0));
+    }
+    if (Number(ini, "Galaxy", "belowM", value)) {
+        s.belowM = static_cast<float>(std::clamp(value, -1.0, 1.5));
+    }
+    return s;
+}
+
+std::string Describe(vr::galaxy_map::Settings const& s) {
+    if (!s.hologram) {
+        return "the galaxy map on Halcyon's panel ([Galaxy] hologram = 0)";
+    }
+    return std::format("the galaxy map as a hologram, its centre {:.2f} m ahead and {:.2f} m below the eyes", s.distanceM, s.belowM);
+}
+
+vr::galaxy_map::Settings gGalaxy;
+std::string gGalaxyText;
+
 Game ReadGame(Ini const& ini) {
     Game g;
     double value = 0.0;
@@ -1908,6 +1944,10 @@ vr::spectator::Settings GetSpectator() {
     return gSpectator;
 }
 
+vr::galaxy_map::Settings GetGalaxy() {
+    return gGalaxy;
+}
+
 Game GetGame() {
     return gGame;
 }
@@ -1979,7 +2019,7 @@ void Refresh() {
         {
             std::ofstream out(path);
             out << kDefaultFile << kControlsBlock << kHolstersBlock << kSquadBlock << kSightsBlock << kThrowablesBlock
-                << kComfortBlock << kInteractBlock << kVentBlock << kHudBlock << kMakoBlock << kCockpitBlock << kGameBlock;
+                << kComfortBlock << kInteractBlock << kVentBlock << kHudBlock << kMakoBlock << kCockpitBlock << kGalaxyBlock << kGameBlock;
             out.close();
             static bool warned = false;
             if (!out || !fs::exists(path, ec)) {
@@ -2006,7 +2046,7 @@ void Refresh() {
     for (auto const& [name, block] : {std::pair{"Controls", kControlsBlock}, std::pair{"Holsters", kHolstersBlock},
              std::pair{"Squad", kSquadBlock}, std::pair{"Throwables", kThrowablesBlock}, std::pair{"Comfort", kComfortBlock},
              std::pair{"Sights", kSightsBlock}, std::pair{"Interact", kInteractBlock}, std::pair{"Vent", kVentBlock}, std::pair{"Hud", kHudBlock}, std::pair{"Mako", kMakoBlock},
-             std::pair{"Cockpit", kCockpitBlock}, std::pair{"Game", kGameBlock}}) {
+             std::pair{"Cockpit", kCockpitBlock}, std::pair{"Galaxy", kGalaxyBlock}, std::pair{"Game", kGameBlock}}) {
         if (ini.find(name) == ini.end() && AppendBlock(path, block, name)) {  // an older file: show the new settings
             ini = ReadIni(path);
             stamp = fs::last_write_time(path, ec);
@@ -2316,6 +2356,11 @@ void Refresh() {
     if (std::string const text = Describe(gSpectator); text != gSpectatorText) {
         gSpectatorText = text;
         log::Info("spectator: settings: {}", text);
+    }
+    gGalaxy = ReadGalaxy(ini);
+    if (std::string const text = Describe(gGalaxy); text != gGalaxyText) {
+        gGalaxyText = text;
+        log::Info("galaxy map: settings: {}", text);
     }
     gGame = ReadGame(ini);
     if (std::string const text = gGame.pauseUnfocused ? "the game pauses while its window has no focus" : "the game runs on without focus"; text != gGameText) {

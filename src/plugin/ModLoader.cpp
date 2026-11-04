@@ -20,6 +20,7 @@
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/Sights.hpp"
+#include "core/vr/GalaxyMap.hpp"
 #include "core/vr/Spectator.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "plugin/Calibration.hpp"
@@ -235,7 +236,20 @@ HostServices WithSpectator(HostServices services) {
     services.setSpectator = &HostSetSpectator;
     return services;
 }
-HostServices const gServices = WithSpectator(WithMakoControls(WithHudPieces(WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithCrashBreadcrumbs({kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
+// v25: the galaxy map as a hologram (game/GalaxyMap, research/51).
+void HostSetGalaxyMap(vr::galaxy_map::View const* view) {
+    if (view != nullptr) {
+        vr::galaxy_map::Publish(*view);
+    } else {
+        vr::galaxy_map::Reset();
+    }
+}
+HostServices WithGalaxyMap(HostServices services) {
+    services.galaxyMapSize = static_cast<std::uint32_t>(sizeof(vr::galaxy_map::View));
+    services.setGalaxyMap = &HostSetGalaxyMap;
+    return services;
+}
+HostServices const gServices = WithGalaxyMap(WithSpectator(WithMakoControls(WithHudPieces(WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithCrashBreadcrumbs({kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
     static_cast<std::uint32_t>(sizeof(vr::controllers::State)), static_cast<std::uint32_t>(sizeof(vr::host_view::State)),
     &HostSetProcessEventCallback, &HostProcessExiting, &HostKeepLoaded,
     static_cast<std::uint32_t>(sizeof(vr::aim_ray::Ray)), &HostSetAimRay, &HostSetSupportGrip, &HostSupportGripHeld,
@@ -245,7 +259,7 @@ HostServices const gServices = WithSpectator(WithMakoControls(WithHudPieces(With
     static_cast<std::uint32_t>(sizeof(vr::squad_menu::View)), &HostSetSquadMenu, &HostLeftGripAway,
     static_cast<std::uint32_t>(sizeof(vr::squad_menu::wheel::Panel)), &HostSetWheelPanel,
     static_cast<std::uint32_t>(sizeof(vr::sights::Sight)), &HostSetSight, &HostSightView,
-    static_cast<std::uint32_t>(sizeof(vr::calibration::HostState)), &HostCalibration, &HostMainMenu, &HostSetVignette})))))));
+    static_cast<std::uint32_t>(sizeof(vr::calibration::HostState)), &HostCalibration, &HostMainMenu, &HostSetVignette}))))))));
 // A mod that's gone can't aim: Halcyon's head aim must come back, the reticle go, the pad mapping
 // forget the two-handed grip (the grip holding the gun, the squad menu's controls), the squad menu and the
 // wheel panel settings go, and the controllers stop vibrating.

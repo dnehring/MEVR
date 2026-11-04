@@ -12,6 +12,7 @@
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/Sights.hpp"
+#include "core/vr/GalaxyMap.hpp"
 #include "core/vr/Spectator.hpp"
 #include "game/GamepadMapping.hpp"
 
@@ -388,6 +389,9 @@ Cockpit GetCockpit();
 // enabled, width, height, fovDeg, camera = head|free, smoothS, format = float|rgba8, rate, post, near, far, mirror,
 // layers, viewActor, hideHead). Off by default.
 vr::spectator::Settings GetSpectator();
+
+// [Galaxy] (research/51): the galaxy map as a hologram (hologram, distanceM, belowM).
+vr::galaxy_map::Settings GetGalaxy();
 
 // [Game] (research/47 "Why the Mako wouldn't let Shepard out"): the game's own behaviour around VR.
 //   pauseUnfocused  1: the game freezes the world while its window has no focus, as ME1 does; 0: it runs on (game/FocusPause)

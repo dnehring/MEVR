@@ -59,6 +59,7 @@
 #include "game/ScopeCapture.hpp"
 #include "game/Sights.hpp"
 #include "game/SkeletonProbe.hpp"
+#include "game/GalaxyMap.hpp"
 #include "game/Spectator.hpp"
 #include "game/SquadWeapons.hpp"
 #include "game/SupportGrip.hpp"
@@ -536,6 +537,16 @@ mevr::game::spectator::Link SpectatorLink() {
     return link;
 }
 
+// Host renderer (HostServices v25): the galaxy map as a hologram, if the host's View matches ours.
+mevr::game::galaxy_map::Link GalaxyMapLink() {
+    using namespace mevr;
+    game::galaxy_map::Link link;
+    if (gHostOwnsVr && MEVR_HOST_HAS(setGalaxyMap) && gHost->setGalaxyMap != nullptr && gHost->galaxyMapSize == sizeof(vr::galaxy_map::View)) {
+        link.publish = gHost->setGalaxyMap;
+    }
+    return link;
+}
+
 // Host renderer (HostServices v21): the interaction prompt at the object, if the host's Label matches ours.
 mevr::game::interact::Link InteractLink() {
     using namespace mevr;
@@ -819,7 +830,7 @@ void PublishStatus() {
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, "
         "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
-        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}}}",
+        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -831,7 +842,7 @@ void PublishStatus() {
         game::view_level::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
         game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::cockpit_probe::StatusJson(), game::mako_controls::StatusJson(),
-        game::spectator::StatusJson());
+        game::spectator::StatusJson(), game::galaxy_map::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -1157,6 +1168,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         }
         // The spectator camera (research/49): after everything that moves the head, the pawn and the cockpit this tick.
         game::spectator::Tick(deltaSeconds, SpectatorLink());
+        game::galaxy_map::Tick(GalaxyMapLink());
         game::head_tracking::OnTickEnd();
     }
     PublishStatus();
@@ -1259,6 +1271,7 @@ MEVR_MOD_API void MevrModShutdown() {
     // Disables and destroys the scope's scene capture (game thread: the host unloads the mod from its tick), unless
     // the process is exiting. Before sights' shutdown and the reflection layer's.
     game::spectator::Shutdown(exiting);  // its capture and the head it hid, on the game thread
+    game::galaxy_map::Shutdown(GalaxyMapLink());  // the host forgets the hologram
     if (gHost != nullptr && MEVR_HOST_HAS(setSpectator) && gHost->setSpectator != nullptr) {
         gHost->setSpectator(nullptr);  // the desktop window gets Halcyon's mirror back (the host also forgets on unload)
     }

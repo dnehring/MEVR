@@ -42,6 +42,7 @@
 #include "core/vr/PoseRecording.hpp"
 #include "core/vr/Recenter.hpp"
 #include "core/vr/SceneCaptureScope.hpp"
+#include "core/vr/GalaxyMap.hpp"
 #include "core/vr/Spectator.hpp"
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/Ads.hpp"
@@ -5682,6 +5683,37 @@ void TestSightVirtualEyepiece() {
 // The scope's real zoomed render (research/39): the capture's field, its camera, the pose history, and the picture
 // sampling it through the same projection the eye copy uses.
 // The spectator camera (core/vr/Spectator, research/49): its field, the head camera's damped follow, the publish history.
+void TestGalaxyMap() {
+    namespace gm = mevr::vr::galaxy_map;
+    // The scale: a map centre 50,000 units ahead of its camera shown 0.9 m ahead.
+    CHECK(gm::UnitsPerMeter(50000.0f, 0.9f).has_value() && NearD(*gm::UnitsPerMeter(50000.0f, 0.9f), 50000.0 / 0.9, 1e-1));
+    CHECK(!gm::UnitsPerMeter(0.0f, 0.9f) && !gm::UnitsPerMeter(-5.0f, 0.9f) && !gm::UnitsPerMeter(100.0f, 0.0f));
+    CHECK(*gm::UnitsPerMeter(1e12f, 0.5f) == gm::kMaxUnitsPerMeter && *gm::UnitsPerMeter(0.1f, 2.0f) == gm::kMinUnitsPerMeter);
+    // The virtual screen: through the point 0.9 m ahead, 0.3 m below the eyes, as wide as the window is at that distance.
+    float const tx = 0.8f;
+    float const ty = 0.45f;
+    auto const screen = gm::VirtualScreen(0.9f, 0.3f, tx, ty);
+    CHECK(screen.has_value());
+    CHECK(NearD(screen->pose.position.z, -0.9, 1e-6) && NearD(screen->pose.position.y, -0.3, 1e-6) && NearD(screen->width, 2.0 * 0.9 * tx, 1e-6) &&
+          NearD(screen->height, 2.0 * 0.9 * ty, 1e-6));
+    CHECK(!gm::VirtualScreen(0.0f, 0.3f, tx, ty) && !gm::VirtualScreen(0.9f, 0.3f, 0.0f, ty));
+    // A point on the screen projects to the window where the quad's own UV puts it (the game pointer's pixel).
+    for (float const qx : {-0.5f, -0.1f, 0.0f, 0.3f, 0.49f}) {
+        for (float const qy : {-0.45f, 0.0f, 0.2f}) {
+            XrVector3f const p{qx * screen->width, -0.3f + qy * screen->height, -0.9f};
+            auto const uv = gm::ProjectToWindow(p, 0.3f, tx, ty);
+            CHECK(uv.has_value() && NearD(uv->x, 0.5 + qx, 1e-5) && NearD(uv->y, 0.5 - qy, 1e-5));
+        }
+    }
+    // Further along the same line from the camera: the same pixel (what the game's projection does at any depth).
+    XrVector3f const closer{0.2f, -0.3f + 0.1f, -0.9f};
+    XrVector3f const further{0.4f, -0.3f + 0.2f, -1.8f};
+    auto const a = gm::ProjectToWindow(closer, 0.3f, tx, ty);
+    auto const b = gm::ProjectToWindow(further, 0.3f, tx, ty);
+    CHECK(a && b && NearD(a->x, b->x, 1e-5) && NearD(a->y, b->y, 1e-5));
+    CHECK(!gm::ProjectToWindow({0.0f, 0.0f, 0.5f}, 0.3f, tx, ty));  // behind the camera
+}
+
 void TestSpectator() {
     namespace sp = mevr::vr::spectator;
     constexpr double kDeg = 180.0 / 3.14159265358979;
@@ -8877,6 +8909,7 @@ int main() {
     TestScopeCapture();
     TestSceneCaptureScope();
     TestSpectator();
+    TestGalaxyMap();
     TestBoneNames();
     TestIk();
     TestRigid();

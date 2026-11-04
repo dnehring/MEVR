@@ -242,6 +242,15 @@ void OnMenuQuad(float const headOrientation[4], float const headPosition[3], Pan
 void OnFlatQuad(PanelKind kind, float const headOrientation[4], float const headPosition[3], PanelPose const& placed,
                 float width, float height, bool headValid) noexcept;
 
+// [MEVR] The galaxy map as a hologram (research/51 stage B; src/plugin/GamePointer.cpp, core/vr/GalaxyMap, the mod's
+// game/GalaxyMap). True while the mod's measure of the open map is fresh: then the galaxy mode renders in stereo instead of
+// on the flat panel (galaxyFlat is passed over), at `unitsPerMeter` game units a metre (the eye separation and the head's
+// movement), the view raised `belowM` metres so the map's centre sits that far below the eyes. Pointers may be null.
+bool GalaxyHologram(float* unitsPerMeter, float* belowM) noexcept;
+// Each frame the hologram is shown: the render's symmetric half angles (radians, the game's own projection), so the game
+// pointer gets the game's screen as a quad in the room through the map's centre (core/vr/GalaxyMap VirtualScreen).
+void OnGalaxyHologram(float cpuHalfH, float cpuHalfV) noexcept;
+
 struct MenuPointer
 {
     bool hit = false;    // a controller's aim ray is on the menu (or holds a press that began there)

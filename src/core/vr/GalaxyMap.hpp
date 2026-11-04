@@ -1,0 +1,66 @@
+// SPDX-License-Identifier: MIT
+#pragma once
+
+#include <openxr/openxr.h>
+
+#include <cstdint>
+#include <optional>
+
+// The galaxy map as a hologram (research/51 stage B): LE1's map is a 3D scene the engine renders from a camera mode of its
+// own (BioCameraBehaviorGalaxy), with a Flash layer on top. Instead of Halcyon's flat panel, the map renders in stereo at a
+// scale that makes it a table-sized model in front of the player: while the map is up, the stereo's units per metre (the eye
+// separation and the head's movement, Halcyon's lean) are those that put the map's centre `distanceM` ahead of the player,
+// and the view is raised `belowM` so the model sits below the eyes.
+//
+// The mod (game/GalaxyMap) measures the map's camera against the map's centre each tick and publishes a View (HostServices
+// v25, setGalaxyMap); the host (Halcyon's galaxy branch, the [MEVR] galaxy seams) uses it while the game is in its galaxy
+// mode. Pointing: rendered from a camera the game takes to stand at a fixed place in the room, the game's screen is a quad in
+// the room through the map's centre (VirtualScreen), so the game pointer (research/42) turns a controller's ray on it into the
+// game's own mouse. This file: engine-agnostic and unit-tested (tests/Main.cpp TestGalaxyMap).
+namespace mevr::vr::galaxy_map {
+
+// ---- Settings ([Galaxy] in <GAME>MEVR.ini, parsed by the mod) -------------------------------------------------------
+struct Settings {
+    bool hologram = true;     // hologram: the map as a table-sized model in stereo; 0 = Halcyon's own (galaxyFlat decides)
+    float distanceM = 0.9f;   // distanceM: how far ahead the map's centre appears, metres
+    float belowM = 0.30f;     // belowM: how far below the eyes the map's centre appears, metres
+};
+
+// ---- What the mod publishes ------------------------------------------------------------------------------------------
+struct View {
+    bool active = false;          // the map is up and measured: the host shows it as a hologram
+    float unitsPerMeter = 0.0f;   // game units a metre of the room is, while the map is up
+    float distanceM = 0.9f;
+    float belowM = 0.30f;
+    std::uint64_t sequence = 0;   // set by Publish
+    std::uint64_t timeMs = 0;     // GetTickCount64 when published (set by Publish)
+};
+
+void Publish(View const& view);
+void Reset();
+// The latest view if one was published within maxAgeMs and is active; else nullopt.
+std::optional<View> Latest(std::uint64_t maxAgeMs);
+
+// ---- The math --------------------------------------------------------------------------------------------------------
+// The units per metre that put a point `cameraToCentreUnits` ahead of the map's camera at `distanceM` in the room; nullopt for
+// a distance that can't be (zero, negative, not finite). Clamped to [kMinUnitsPerMeter, kMaxUnitsPerMeter].
+inline constexpr float kMinUnitsPerMeter = 1.0f;
+inline constexpr float kMaxUnitsPerMeter = 10000000.0f;
+std::optional<float> UnitsPerMeter(float cameraToCentreUnits, float distanceM);
+
+// The game's screen as a quad in the room (tracking space, OpenXR axes: -Z ahead, +Y up), for a view rendered from a camera
+// the game takes to stand `belowM` below the tracking origin, looking along -Z, with a symmetric window of tan half angles
+// tanHalfX, tanHalfY: the quad through the point `distanceM` ahead, facing the camera, covering the whole window (the
+// backbuffer's corners on its corners). A ray's hit on it is the window pixel the game's projection puts that point at.
+struct Screen {
+    XrPosef pose{};   // its centre; it faces +Z (toward the camera)
+    float width = 0.0f;
+    float height = 0.0f;
+};
+std::optional<Screen> VirtualScreen(float distanceM, float belowM, float tanHalfX, float tanHalfY);
+
+// Where the game's projection puts a point of the room (the same camera): the window's UV (0,0 top left, 1,1 bottom right);
+// nullopt behind the camera. VirtualScreen's quad maps its points to the same UV (the test checks it).
+std::optional<XrVector2f> ProjectToWindow(XrVector3f const& point, float belowM, float tanHalfX, float tanHalfY);
+
+} // namespace mevr::vr::galaxy_map

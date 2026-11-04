@@ -54,6 +54,9 @@ struct View;
 namespace vr::spectator {
 struct Frame;
 }
+namespace vr::galaxy_map {
+struct View;
+}
 namespace vr::squad_menu {
 struct View;
 namespace wheel {
@@ -68,7 +71,7 @@ struct Panel;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 24;
+inline constexpr int kHostServicesVersion = 25;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -290,6 +293,14 @@ struct HostServices {
     // sizeof(Frame); with a v23 or older host it never spawns the capture. Any thread.
     std::uint32_t spectatorSize = 0;
     void (*setSpectator)(vr::spectator::Frame const* frame) = nullptr;
+
+    // Version 25: the galaxy map as a hologram (game/GalaxyMap, research/51). While the game is in its galaxy mode the mod
+    // publishes the units per metre that show the map's centre `distanceM` ahead (core/vr/GalaxyMap.hpp, vr::galaxy_map::View);
+    // while it's active and fresh, Halcyon's galaxy branch renders the map in stereo at that scale instead of on its flat
+    // panel, and the game pointer points the game's mouse at it. Null forgets it. The mod publishes only if galaxyMapSize
+    // matches its sizeof(View). Any thread.
+    std::uint32_t galaxyMapSize = 0;
+    void (*setGalaxyMap)(vr::galaxy_map::View const* view) = nullptr;
 };
 
 } // namespace mevr
