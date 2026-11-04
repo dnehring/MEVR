@@ -502,6 +502,24 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         return std::format("{}.{} called {}{}", r.FullName(target), verb == "use" ? "UsedBy(the player's pawn)" : std::format("ForceActivateInput({})", input),
             called, verb == "use" ? std::format(", returned {}", parms.ReturnBool().value_or(false)) : std::string());
     }
+    if (verb == "hide") {
+        // `mevr hide <n> [0|1]`: Actor.SetHidden on the n-th of `find` (1, the default, hides; 0 shows).
+        std::size_t index = 0;
+        int hide = 1;
+        words >> index >> hide;
+        ue3::Reflection& r = ue3::runtime::Get();
+        if (index >= gFound.size() || !r.IsAlive(gFound[index])) {
+            return std::format("mevr hide: no object {} (mevr find first)", index);
+        }
+        ue3::Function* const f = r.FindFunction(r.ClassOf(gFound[index]), "SetHidden");
+        if (f == nullptr) {
+            return r.FullName(gFound[index]) + " has no SetHidden";
+        }
+        ue3::Params parms(r, f);
+        parms.SetBool("bNewHidden", hide != 0);
+        bool const called = ue3::runtime::Call(gFound[index], f, parms);
+        return std::format("{}.SetHidden({}) called {}", r.FullName(gFound[index]), hide != 0, called);
+    }
     if (verb == "near") {
         // `mevr near <x> <y> <z> <radius> [text]`: live actors within the radius (units) of a point, nearest first, with their
         // places (finding where things stand, e.g. the CIC's galaxy map platform). Up to 60.

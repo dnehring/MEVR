@@ -424,7 +424,9 @@ bool GalaxyHologram(float* unitsPerMeter, float* belowM) noexcept {
     // (0: Halcyon's galaxy lean branch stays off). The camera-based hologram that used a scale (section 7) is gone.
     constexpr std::uint64_t kFreshMs = 500;  // the mod sends every tick while the map is up
     auto const scene = mevr::vr::galaxy_holo::Latest(kFreshMs);
-    if (!scene || scene->inWorld == 0 || scene->onFoot != 0) {
+    if (!scene || scene->inWorld == 0) {
+        // Fresh on foot too: Halcyon decides its galaxy presentation (and holds it) as the map's mode begins, and the mod is
+        // still sending the on-foot scene then (a map opened with A at the console as much as by a pick). Only read in mode 9.
         return false;
     }
     if (unitsPerMeter != nullptr) {
@@ -434,6 +436,11 @@ bool GalaxyHologram(float* unitsPerMeter, float* belowM) noexcept {
         *belowM = 0.0f;
     }
     return true;
+}
+
+bool GalaxyHeld() noexcept {
+    auto const scene = mevr::vr::galaxy_holo::Latest(500);
+    return scene && scene->inWorld != 0 && scene->onFoot == 0;
 }
 
 void OnGalaxyHologram(float cpuHalfH, float cpuHalfV) noexcept {

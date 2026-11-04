@@ -570,11 +570,18 @@ constexpr char const* kCockpitBlock =
 constexpr char const* kGalaxyBlock =
     "\n"
     "[Galaxy]\n"
-    "; The Normandy's galaxy map (research/51). hologram = 1: a hologram of the map on a table in front of you (clusters,\n"
-    "; systems, planets in 3D): point at one with a controller and pull the trigger to select it; the game's own map hangs\n"
-    "; behind as a screen (its buttons and questions, pointed at the same way). 0: the game's map on the flat screen only.\n"
-    "; tableDistanceM / tableBelowM: the table's centre ahead of and below your eyes when the map opens; tableRadiusM its size.\n"
+    "; The Normandy's galaxy map (research/51). hologram = 1: a hologram of the map (clusters, systems, planets in 3D): point\n"
+    "; at one with a controller and pull the trigger to select it. inWorld = 1: it stands over the CIC's projector, where the\n"
+    "; game shows its own; walk up and pick from it on foot (the map opens behind the scenes, you stay in the CIC; walk away\n"
+    "; to close it). worldRadiusM its size, worldTiltDeg how far its far edge is raised, worldLiftM up from the projector.\n"
+    "; inWorld = 0: the map opens as the game's, with the hologram on a table in front of you (tableDistanceM / tableBelowM\n"
+    "; ahead of and below your eyes, tableRadiusM its size) and the game's map behind it as a screen. hologram = 0: the\n"
+    "; game's map on the flat screen only.\n"
     "hologram = 1\n"
+    "inWorld = 1\n"
+    "worldRadiusM = 1.40\n"
+    "worldTiltDeg = 35\n"
+    "worldLiftM = 0\n"
     "tableDistanceM = 0.70\n"
     "tableBelowM = 0.45\n"
     "tableRadiusM = 0.48\n"
@@ -1530,11 +1537,6 @@ vr::galaxy_map::Settings ReadGalaxy(Ini const& ini) {
     if (Number(ini, "Galaxy", "tableRadiusM", value)) {
         s.tableRadiusM = static_cast<float>(std::clamp(value, 0.15, 1.0));
     }
-    return s;
-}
-
-std::string Describe(vr::galaxy_map::Settings const& s) {
-    if (!s.hologram) {
     if (Number(ini, "Galaxy", "inWorld", value)) {
         s.inWorld = value != 0.0;
     }
@@ -1547,7 +1549,16 @@ std::string Describe(vr::galaxy_map::Settings const& s) {
     if (Number(ini, "Galaxy", "worldLiftM", value)) {
         s.worldLiftM = static_cast<float>(std::clamp(value, -1.0, 1.5));
     }
+    return s;
+}
+
+std::string Describe(vr::galaxy_map::Settings const& s) {
+    if (!s.hologram) {
         return "the galaxy map on Halcyon's panel ([Galaxy] hologram = 0)";
+    }
+    if (s.inWorld) {
+        return std::format("the galaxy map as our hologram over the CIC's projector, {:.2f} m in radius, tilted {:.0f} deg, lifted {:.2f} m",
+                           s.worldRadiusM, s.worldTiltDeg, s.worldLiftM);
     }
     return std::format("the galaxy map as our hologram on a table {:.2f} m ahead, {:.2f} m below the eyes, {:.2f} m in radius",
                        s.tableDistanceM, s.tableBelowM, s.tableRadiusM);

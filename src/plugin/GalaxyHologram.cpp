@@ -7,6 +7,7 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/GalaxyHologram.hpp"
 #include "core/vr/OverlayPlacement.hpp"
+#include "core/vr/TestRequest.hpp"
 #include "plugin/GalaxyHologramDraw.hpp"
 #include "plugin/Halcyon.hpp"
 #include "plugin/MevrMenu.hpp"
@@ -32,6 +33,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <format>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -88,7 +90,17 @@ int gPicks = 0;
 unsigned gFrames = 0;
 double gDrawMsSum = 0.0;
 std::uint64_t gLastCostLogMs = 0;
-char gStatus[384] = "{}";
+std::mutex gStatusMutex;  // the snapshot's JSON may be asked for from another thread
+std::string gStatus = "{}";
+
+void SetStatus(std::string text) {
+    std::lock_guard lock(gStatusMutex);
+    gStatus = std::move(text);
+}
+
+std::string JVec3(XrVector3f const& v) {
+    return std::format("[{:.4f}, {:.4f}, {:.4f}]", v.x, v.y, v.z);
+}
 
 // Saves and restores what drawing touches on the game's context (UE3 caches its own state).
 class StateGuard {
@@ -315,7 +327,7 @@ void Down(char const* why) {
     gPointer.Reset();
     gActive.store(false, std::memory_order_release);
     gHovering.store(false, std::memory_order_release);
-    std::snprintf(gStatus, sizeof(gStatus), "{\"up\": false, \"picks\": %d}", gPicks);
+    SetStatus(std::format("{{\"up\": false, \"picks\": {}}}", gPicks));
 }
 
 } // namespace
@@ -528,11 +540,26 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
         gFrames = 0;
         gDrawMsSum = 0.0;
     }
-    std::snprintf(gStatus, sizeof(gStatus),
-        "{\"up\": true, \"level\": %d, \"objects\": %d, \"hovered\": %d, \"onTable\": %s, \"picks\": %d, \"table\": [%.3f, %.3f, %.3f], "
-        "\"radiusM\": %.3f}",
-        scene->level, scene->objectCount, gHovered, onTable ? "true" : "false", gPicks, gTable.pose.position.x, gTable.pose.position.y,
-        gTable.pose.position.z, gTable.radiusM);
+    // Where each object and button is in the app space (tools/make-galaxy-pick-recording.py --snapshot aims at them).
+    std::string objects;
+    for (gh::Placed const& p : placed) {
+        if (p.index < 0 || p.index >= scene->objectCount) {
+            continue;
+        }
+        gh::Object const& o = scene->objects[p.index];
+        objects += std::format("{}{{\"label\": {}, \"id\": {}, \"at\": {}, \"radiusM\": {:.4f}}}", objects.empty() ? "" : ", ",
+            vr::test_request::JsonString(std::string_view(o.label, strnlen(o.label, gh::kLabelBytes))), o.id, JVec3(p.position), p.radiusM);
+    }
+    std::string buttonsJson;
+    for (Button const& b : buttons) {
+        buttonsJson += std::format("{}{{\"label\": \"{}\", \"id\": {}, \"at\": {}}}", buttonsJson.empty() ? "" : ", ", b.text, b.id,
+            JVec3(b.at));
+    }
+    SetStatus(std::format(
+        "{{\"up\": true, \"level\": {}, \"objectCount\": {}, \"hovered\": {}, \"onTable\": {}, \"picks\": {}, "
+        "\"askTravel\": {}, \"table\": {}, \"radiusM\": {:.3f}, \"tiltDeg\": {:.1f}, \"objects\": [{}], \"buttons\": [{}]}}",
+        scene->level, scene->objectCount, gHovered, onTable ? "true" : "false", gPicks, scene->askTravel != 0 ? "true" : "false",
+        JVec3(gTable.pose.position), gTable.radiusM, scene->tiltDeg, objects, buttonsJson));
     gLayer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
     gLayer.space = frame.appSpace;
     gLayer.viewCount = 2;
@@ -548,7 +575,8 @@ bool Hovering() {
     return gHovering.load(std::memory_order_acquire);
 }
 
-char const* StatusJson() {
+std::string StatusJson() {
+    std::lock_guard lock(gStatusMutex);
     return gStatus;
 }
 

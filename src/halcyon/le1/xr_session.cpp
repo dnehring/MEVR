@@ -3455,6 +3455,13 @@ struct CineDecision
 static void CineFinishDecision(CineDecision& d, const CineInputs& in,
                                const MELEVR::Config::VrConfig& cfg) noexcept
 {
+    // [MEVR] research/51 section 8: the galaxy map open in the CIC (the view held at Shepard's) is the world as on foot, not a
+    // cutscene (its camera reads as one): no flat screen, no 3D cinema screen.
+    if ((in.inGalaxyMode && MELEVR::MevrBridge::GalaxyHologram(nullptr, nullptr)) || MELEVR::MevrBridge::GalaxyHeld())
+    {
+        d.inConversation = false;
+        d.inCutscene = false;
+    }
     const bool cinematicContext = d.inConversation || d.inCutscene;
     bool vrCineOn = (d.inConversation && cfg.cineVrConvo) ||
                     (d.inCutscene && cfg.cineVrCutscene);

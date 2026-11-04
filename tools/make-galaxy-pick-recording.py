@@ -7,6 +7,12 @@ turned so 'away' is the game camera's heading), from a `mevr galaxy dump` file o
 
     python tools/make-galaxy-pick-recording.py <dump.json> <label> out.mevrrec [--seconds S] [--pick-at T] [--pitch DEG]
 
+--world AHEAD BELOW RADIUS TILT: the CIC table on foot instead (the host's logged table centre, metres; its radius and tilt).
+
+    python tools/make-galaxy-pick-recording.py --snapshot <snapshot.json> <label> out.mevrrec [...]
+
+--snapshot: aim at an object or button ("Yes", "No") where the host placed it (the snapshot's "galaxyHologram", app space,
+taken under a replay with the head at the origin), at any level of the map; the table needn't be computed.
 <label>: the object's name as the hologram shows it (e.g. a cluster's). The trigger is down from --pick-at (default 3 s) for
 0.3 s; the recording lasts --seconds (default 8). Replay it once (not in a loop) with -Inputs while the map is up:
     tools/replay.ps1 -Path out.mevrrec -Inputs
@@ -78,8 +84,39 @@ def objects_on_table(dump):
     return out
 
 
+def objects_in_world(dump, ahead, below, radius, tilt_deg):
+    """The CIC table (game/GalaxyMap PlaceInWorld, on foot): the clusters from GalaxyMap_Cluster's X/Y (630 units a step round
+    (0.5, 0.5)), the visible ones as the open map showed them, 'away' the world's -Y, the far edge raised tilt_deg; the table's
+    centre `ahead` and `below` the head (as the host logs it: "galaxy hologram: up: the table at (x, y, z)")."""
+    hidden = {}
+    for a in dump["m_pDynamicObjects"]:
+        if isinstance(a, dict) and a.get("Tag", "").startswith("Cluster") and len(a.get("Tag", "")) == 9:
+            hidden[short(a["name"])] = a.get("bHidden", False)
+    placed = []
+    for row in dump["tables"]["m_pClusterTable"]["data"]:
+        c = row["cells"]
+        ref = str(int(c["Name"]["int"]))
+        if hidden.get(ref, True):
+            continue
+        placed.append((c["Name"].get("text", ""), ((c["X"]["float"] - 0.5) * 630.0, (c["Y"]["float"] - 0.5) * 630.0)))
+    extent = 1.15 * max(math.hypot(x, y) for _, (x, y) in placed)
+    scale = radius / extent
+    t = math.radians(tilt_deg)
+    out = []
+    for name, (x, y) in placed:
+        lx, ly, lz = x * scale, 0.0, y * scale  # right = game +X; away (-Z) = game -Y, so local z = +y
+        ry, rz = ly * math.cos(t) - lz * math.sin(t), ly * math.sin(t) + lz * math.cos(t)
+        out.append((name, (lx, -below + ry, -ahead + rz)))
+    return out
+
+
 def main():
-    args = [a for i, a in enumerate(sys.argv) if i > 0 and not a.startswith("--") and sys.argv[i - 1] not in ("--seconds", "--pick-at", "--pitch")]
+    skip = set()
+    for flag, n in (("--seconds", 1), ("--pick-at", 1), ("--pitch", 1), ("--world", 4)):
+        if flag in sys.argv:
+            k = sys.argv.index(flag)
+            skip.update(range(k + 1, k + 1 + n))
+    args = [a for i, a in enumerate(sys.argv) if i > 0 and not a.startswith("--") and i not in skip]
     if len(args) < 3:
         print(__doc__)
         return 2
@@ -87,9 +124,20 @@ def main():
     seconds = option("--seconds", 8.0)
     pick_at = option("--pick-at", 3.0)
     pitch = option("--pitch", -30.0)
-    with open(dump_path, encoding="utf-8") as f:
+    with open(dump_path, encoding="utf-8-sig") as f:
         dump = json.load(f)
-    placed = objects_on_table(dump)
+    if "--snapshot" in sys.argv:
+        holo = dump.get("galaxyHologram") or {}
+        if not holo.get("up"):
+            print(f"{dump_path}: the hologram wasn't up in this snapshot")
+            return 1
+        placed = [(o["label"], tuple(o["at"])) for o in holo.get("objects", []) + holo.get("buttons", [])]
+    elif "--world" in sys.argv:
+        i = sys.argv.index("--world")
+        ahead, below, radius, tilt = (float(v) for v in sys.argv[i + 1:i + 5])
+        placed = objects_in_world(dump, ahead, below, radius, tilt)
+    else:
+        placed = objects_on_table(dump)
     target = next((p for name, p in placed if name == label), None)
     if target is None:
         print(f"no object '{label}' on the table; there are: {', '.join(name for name, _ in placed)}")

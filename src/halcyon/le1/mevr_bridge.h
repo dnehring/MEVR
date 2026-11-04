@@ -247,6 +247,9 @@ void OnFlatQuad(PanelKind kind, float const headOrientation[4], float const head
 // the galaxy mode renders in stereo as on foot (galaxyFlat passed over, both Draws, no galaxyVrZoom). `unitsPerMeter` is 0
 // (the stage B scale branch below stays off; `belowM` 0). Pointers may be null.
 bool GalaxyHologram(float* unitsPerMeter, float* belowM) noexcept;
+// [MEVR] True while the mod holds the view at Shepard's for the map in the CIC: the map open, and its opening and closing
+// cutscenes (their camera flights read as cutscenes): Halcyon presents the world as on foot then too.
+bool GalaxyHeld() noexcept;
 // Each frame the hologram is shown: the render's symmetric half angles (radians, the game's own projection), so the game
 // pointer gets the game's screen as a quad in the room through the map's centre (core/vr/GalaxyMap VirtualScreen).
 void OnGalaxyHologram(float cpuHalfH, float cpuHalfV) noexcept;

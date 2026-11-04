@@ -616,6 +616,7 @@ void CheckClasses() {
     CheckClass<UBioSFHandler_GalaxyMap>("SFXGame.BioSFHandler_GalaxyMap");
     CheckClass<UBioSeqEvt_ArtPlaceableUsed>("SFXGame.BioSeqEvt_ArtPlaceableUsed");
     CheckClass<UBioArtPlaceableBehavior>("SFXGame.BioArtPlaceableBehavior");
+    CheckClass<AEmitter>("Engine.Emitter");  // the CIC projector's own hologram, hidden while ours shows
     // game/mako (research/44): the Mako's turret aimed by the controller.
     CheckClass<ABioVehicleBase>("SFXGame.BioVehicleBase");
     CheckClass<ABioVehicleWheeled>("SFXGame.BioVehicleWheeled");

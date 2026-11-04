@@ -74,6 +74,10 @@ ue3::FunctionRef gCheckConditional{"SFXGame.BioWorldInfo.CheckConditional"};
 ue3::FunctionRef gInvokeMethod{"Engine.BioSFPanel.InvokeMethod"};
 ue3::FunctionRef gTravelConfirm{"SFXGame.BioSFHandler_GalaxyMap.TravelConfirm"};
 ue3::FieldRef gWaitingForMsgBox{"SFXGame.BioSFHandler_GalaxyMap", "m_bWaitingForMsgBox"};
+ue3::FunctionRef gSetHidden{"Engine.Actor.SetHidden"};
+ue3::ClassRef gEmitterClass{"Engine.Emitter"};
+ue3::ClassRef gInterpActorClass{"Engine.InterpActor"};
+constexpr float kProjectorUnits = 100.0f;  // the game's own galaxy (a mesh and an emitter) sits within this of the console
 
 // The map's clusters on foot come from GalaxyMap_Cluster: X and Y (0..1) are where the map's level puts each cluster's actor,
 // 630 units a step and centred on (0.5, 0.5) (research/51 section 8), so on foot and open the hologram is the same picture.
@@ -84,6 +88,8 @@ struct Console {
     ue3::Object* usable = nullptr;
     ue3::Object* behavior = nullptr;
     std::uint64_t lastSearchMs = 0;
+    std::vector<ue3::Object*> projector;  // the game's own hologram's actors (BIOA_NOR10_03_PLC's InterpActor_0 and Emitter_71)
+    bool projectorHidden = false;
 };
 Console gConsole;
 
@@ -122,6 +128,8 @@ struct Hold {
     std::uint64_t cameraTicks = 0;
     std::uint64_t lastHideMs = 0;
     int hides = 0;
+    std::uint64_t closingUntilMs = 0;  // the map's closing cutscene, held too (the view stays the CIC's)
+    std::uint8_t lastMode = 255;
 };
 Hold gHold;
 
@@ -142,6 +150,7 @@ struct State {
     int lastCount = -1;
     // Per opening: the relay routes (by actor name) read from the tables.
     bool routesRead = false;
+    ue3::Object* routesBehavior = nullptr;  // the map camera the routes (and the cluster rows) were read for
     std::vector<std::pair<std::string, std::string>> routes;
     std::optional<PendingPick> pick;
     std::uint64_t ticks = 0;
@@ -549,6 +558,21 @@ bool FindConsole() {
     }
     if (gConsole.usable != nullptr && gConsole.behavior != nullptr) {
         auto const at = player::Location(gConsole.usable);
+        gConsole.projector.clear();
+        gConsole.projectorHidden = false;
+        for (std::int32_t i = 0, n = r.ObjectCount(); at && i < n; ++i) {
+            ue3::Object* const o = r.ObjectAt(i);
+            if (o == nullptr || !r.IsAlive(o) || !(ue3::IsA(o, gEmitterClass) || ue3::IsA(o, gInterpActorClass)) ||
+                r.NameText(o).starts_with("Default__")) {
+                continue;
+            }
+            if (auto const p = player::Location(o);
+                p && std::sqrt((p->x - at->x) * (p->x - at->x) + (p->y - at->y) * (p->y - at->y) + (p->z - at->z) * (p->z - at->z)) <
+                         kProjectorUnits) {
+                gConsole.projector.push_back(o);
+                log::Info("galaxy hologram: the game's own hologram: {} (hidden while ours shows)", r.FullName(o));
+            }
+        }
         log::Info("galaxy hologram: the galaxy map's console is {} at ({:.0f}, {:.0f}, {:.0f})", r.FullName(gConsole.usable), at ? at->x : 0.0f,
                   at ? at->y : 0.0f, at ? at->z : 0.0f);
         return true;
@@ -621,21 +645,31 @@ bool HiddenOnFoot(ClusterRow const& row, ue3::Object* worldInfo) {
 
 // Where the table stands this tick: over the console, turned so 'away' is the world's -Y (the way the CIC's start faces the
 // projector, and the way the game's map camera looks), in tracking space.
+struct LastAnchor {
+    bool valid = false;
+    XrVector3f anchor{};
+    float yaw = 0.0f;
+};
+LastAnchor gLastAnchor;
+
 bool PlaceInWorld(gh::Scene& scene, vr::galaxy_map::Settings const& settings) {
     auto const frame = view_anchor::Current();
     auto const at = gConsole.usable != nullptr ? player::Location(gConsole.usable) : std::nullopt;
-    if (!frame || !at) {
+    if (frame && at) {
+        engine::UnrealVector const centre{at->x, at->y, at->z + settings.worldLiftM * frame->unitsPerMeter};
+        XrVector3f const away = engine::DirectionToTracking(*frame, {0.0, -1.0, 0.0});
+        gLastAnchor = {true, engine::ToTracking(*frame, centre), std::atan2(-away.x, -away.z)};
+    } else if (!gLastAnchor.valid) {
         return false;
     }
-    engine::UnrealVector const centre{at->x, at->y, at->z + settings.worldLiftM * frame->unitsPerMeter};
-    XrVector3f const anchor = engine::ToTracking(*frame, centre);
-    XrVector3f const away = engine::DirectionToTracking(*frame, {0.0, -1.0, 0.0});
+    // Without a view of its own (the map opening, before Halcyon renders the held view as the world again) the last place
+    // stands: the view is held where it was, so the table is too.
     scene.inWorld = 1;
     scene.anchorValid = 1;
-    scene.anchor[0] = anchor.x;
-    scene.anchor[1] = anchor.y;
-    scene.anchor[2] = anchor.z;
-    scene.anchorYaw = std::atan2(-away.x, -away.z);
+    scene.anchor[0] = gLastAnchor.anchor.x;
+    scene.anchor[1] = gLastAnchor.anchor.y;
+    scene.anchor[2] = gLastAnchor.anchor.z;
+    scene.anchorYaw = gLastAnchor.yaw;
     scene.tableRadiusM = settings.worldRadiusM;
     scene.tiltDeg = settings.worldTiltDeg;
     scene.forward[0] = 0.0f;
@@ -729,6 +763,30 @@ void AnswerTravel(ue3::Object* handler, bool yes) {
     log::Info("galaxy hologram: the travel question answered {} ({})", yes ? "yes" : "no", called ? "TravelConfirm" : "TravelConfirm failed");
 }
 
+// The game's own hologram over the projector, hidden while ours shows there and shown again when ours goes.
+void HideProjector(bool hide) {
+    if (gConsole.projectorHidden == hide) {
+        return;
+    }
+    ue3::Function* const f = gSetHidden.Get();
+    if (f == nullptr) {
+        return;
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    int done = 0;
+    for (ue3::Object* const o : gConsole.projector) {
+        if (o == nullptr || !ue3::runtime::IsAlive(o)) {
+            continue;
+        }
+        ue3::Params p(r, f);
+        if (p.Valid() && p.SetBool("bNewHidden", hide) && ue3::runtime::Call(o, f, p)) {
+            ++done;
+        }
+    }
+    gConsole.projectorHidden = hide;
+    log::Info("galaxy hologram: the game's own hologram {} ({} actors)", hide ? "hidden" : "shown again", done);
+}
+
 // The game's own map (the Flash movie) hidden while the map is open in-world, re-asserted twice a second.
 void HideFlashMap() {
     std::uint64_t const now = GetTickCount64();
@@ -759,6 +817,10 @@ void HideFlashMap() {
 }
 
 void Forget(Link const& link, char const* why) {
+    HideProjector(false);
+    if (!gHold.active) {
+        gLastAnchor.valid = false;  // a place found again next time (not while the view is held)
+    }
     if (gS.published && link.setScene != nullptr) {
         link.setScene(nullptr);
         log::Info("galaxy hologram: down ({})", why);
@@ -766,7 +828,6 @@ void Forget(Link const& link, char const* why) {
     gS.published = false;
     gS.lastState = -1;
     gS.lastCount = -1;
-    gS.routesRead = false;
     gS.pick.reset();
 }
 
@@ -791,8 +852,14 @@ void Tick(Link const& link) {
         log::Info("galaxy hologram: the map didn't open for the pick within 8 s; dropped");
         gOpen.pending = false;
     }
-    // In the CIC the view stays Shepard's while the map is open, and through the opening a pick on foot started.
-    bool const opening = gOpen.pending && mode && *mode == 6;
+    // In the CIC the view stays Shepard's while the map is open, through the opening a pick on foot started, and through the
+    // closing cutscene after it (both are the game's camera flying between the CIC and the map's scene).
+    std::uint8_t const modeNow = mode ? *mode : 255;
+    if (gHold.active && gHold.lastMode == kGalaxyMode && modeNow != kGalaxyMode) {
+        gHold.closingUntilMs = now + 3000;
+    }
+    gHold.lastMode = modeNow;
+    bool const opening = (gOpen.pending && modeNow == 6) || (modeNow == 6 && now < gHold.closingUntilMs);
     bool const holding = inWorld && gHold.haveView && mode && (*mode == kGalaxyMode || opening);
     if (holding != gHold.active) {
         gHold.active = holding;
@@ -824,6 +891,22 @@ void Tick(Link const& link) {
         Forget(link, "no map camera");
         return;
     }
+    if (behavior != gS.routesBehavior) {
+        // A new map camera (a level load): its tables are read again when needed.
+        gS.routesBehavior = behavior;
+        gS.routesRead = false;
+        gRowsRead = false;
+    }
+    if (*mode != kGalaxyMode) {
+        // On foot only near the console (the CIC); nothing is read further away.
+        ue3::Object* const pawn = player::Pawn(controller);
+        auto const pawnAt = pawn != nullptr ? player::Location(pawn) : std::nullopt;
+        auto const consoleAt = FindConsole() ? player::Location(gConsole.usable) : std::nullopt;
+        if (!pawnAt || !consoleAt || std::hypot(pawnAt->x - consoleAt->x, pawnAt->y - consoleAt->y) > kNearConsoleUnits) {
+            Forget(link, "away from the galaxy map's console");
+            return;
+        }
+    }
     ue3::Object* const worldInfo = ObjectField(gWorldInfo, controller);
     ue3::Object* const game = ObjectField(gGame, worldInfo);
     if (!gS.routesRead) {
@@ -836,14 +919,6 @@ void Tick(Link const& link) {
     gh::Scene scene;
     if (*mode != kGalaxyMode) {
         // ---- On foot (or the map opening) in the CIC: the galaxy from the tables over the console ----
-        ue3::Object* const pawn = player::Pawn(controller);
-        auto const pawnAt = pawn != nullptr ? player::Location(pawn) : std::nullopt;
-        auto const consoleAt = FindConsole() ? player::Location(gConsole.usable) : std::nullopt;
-        if (!pawnAt || !consoleAt ||
-            std::hypot(pawnAt->x - consoleAt->x, pawnAt->y - consoleAt->y) > kNearConsoleUnits) {
-            Forget(link, "away from the galaxy map's console");
-            return;
-        }
         if (picked && *mode == 0 && id != gh::kPickYes && id != gh::kPickNo) {
             bool const opened = OpenMap(controller);
             gOpen = PendingOpen{opened, id, now};
@@ -856,7 +931,8 @@ void Tick(Link const& link) {
             return;
         }
         scene = gh::BuildScene(*model);
-        scene.onFoot = 1;
+        // On foot, unless the map is opening for a pick: Halcyon decides its galaxy presentation as the map's mode begins.
+        scene.onFoot = gOpen.pending || gHold.active ? 0 : 1;
     } else {
         // ---- The map is open ----
         if (picked) {
@@ -917,6 +993,7 @@ void Tick(Link const& link) {
             Forget(link, "the console's place isn't known");
             return;
         }
+        HideProjector(true);
         // Walking away from the table closes the open map (its own way out), as stepping back from the console would.
         if (*mode == kGalaxyMode) {
             auto const frame = view_anchor::Current();

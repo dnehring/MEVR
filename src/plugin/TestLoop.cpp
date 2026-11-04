@@ -7,6 +7,7 @@
 #include "plugin/Calibration.hpp"
 #include "plugin/Colour.hpp"
 #include "plugin/DrawReplay.hpp"
+#include "plugin/GalaxyHologram.hpp"
 #include "plugin/GamePointer.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/MainMenu.hpp"
@@ -389,7 +390,9 @@ bool ConvertLayer(Job const& job, LayerShot const& layer, vr::composite::Image& 
     bool const blend = (layer.flags & XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT) != 0;
     vr::image::Options options;
     options.opaque = !blend;
-    options.premultiplied = blend && (layer.flags & XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT) == 0;
+    // A projection layer's colour stays premultiplied (the composite below adds it as the runtime does: light with no alpha
+    // counts, as the galaxy hologram's glow); a quad's is divided out for the straight-alpha composite.
+    options.premultiplied = blend && !layer.projection && (layer.flags & XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT) == 0;
     out.width = w;
     out.height = h;
     out.pixels.assign(static_cast<size_t>(w) * static_cast<size_t>(h), 0u);
@@ -463,10 +466,31 @@ void Worker::Process(Job& job) {
             if (!haveWorld) {
                 eye = images[i];
                 haveWorld = true;
-            } else if (images[i].width == eye.width && images[i].height == eye.height) {
+            } else if (images[i].width > 0 && images[i].height > 0) {
+                // A later projection layer (the galaxy hologram's): over the world, scaled to its size if it renders smaller (the
+                // same field of view, so the pixel grids map proportionally; nearest sample).
                 bool const blend = (layer.flags & XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT) != 0;
-                for (size_t p = 0; p < eye.pixels.size(); ++p) {
-                    eye.pixels[p] = blend ? vr::image::Over(eye.pixels[p], images[i].pixels[p]) : images[i].pixels[p];
+                vr::composite::Image const& src = images[i];
+                for (int y = 0; y < eye.height; ++y) {
+                    int const sy = std::min(src.height - 1, static_cast<int>(static_cast<long long>(y) * src.height / eye.height));
+                    for (int x = 0; x < eye.width; ++x) {
+                        int const sx = std::min(src.width - 1, static_cast<int>(static_cast<long long>(x) * src.width / eye.width));
+                        std::uint32_t const s = src.pixels[static_cast<size_t>(sy) * src.width + sx];
+                        std::uint32_t& d = eye.pixels[static_cast<size_t>(y) * eye.width + x];
+                        if (!blend) {
+                            d = s;
+                            continue;
+                        }
+                        // Premultiplied over, in linear light: out = source + destination x (1 - source alpha).
+                        float const a = static_cast<float>(s >> 24) / 255.0f;
+                        std::uint32_t out = 0xFF000000u & (d | 0xFF000000u);
+                        for (int c = 0; c < 3; ++c) {
+                            float const sl = vr::image::SrgbToLinear(static_cast<float>((s >> (8 * c)) & 0xFFu) / 255.0f);
+                            float const dl = vr::image::SrgbToLinear(static_cast<float>((d >> (8 * c)) & 0xFFu) / 255.0f);
+                            out |= static_cast<std::uint32_t>(vr::image::LinearToSrgb8(sl + dl * (1.0f - a))) << (8 * c);
+                        }
+                        d = out;
+                    }
                 }
             }
         }
@@ -779,7 +803,8 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
         "  \"aimRay\": {{\"valid\": {}, \"origin\": {}, \"direction\": {}, \"ageMs\": {}}},\n"
         "  \"hostView\": {{\"valid\": {}, \"headLook\": {}, \"headAim\": {}, \"lookYawUU\": {}, \"lookPitchUU\": {}, "
         "\"offsetUU\": [{}, {}, {}], \"unitsPerMeter\": {}}},\n  \"recenter\": {},\n  \"sights\": {},\n  \"calibration\": {},\n"
-        "  \"colour\": {},\n  \"stereo\": {},\n  \"cineScreen\": {},\n  \"mainMenu\": {},\n  \"gamePointer\": {},\n  \"spectator\": {},\n  \"mod\": {},\n"
+        "  \"colour\": {},\n  \"stereo\": {},\n  \"cineScreen\": {},\n  \"mainMenu\": {},\n  \"gamePointer\": {},\n  \"galaxyHologram\": {},\n"
+        "  \"spectator\": {},\n  \"mod\": {},\n"
         "  \"layers\": [{}\n  ]",
         req::JsonString(trigger), req::JsonString(tag), gFrame, static_cast<long long>(displayTime), UnixMs(), J(gFocused),
         J(MELEVR::Menu::IsOpen()), J(gRecordingActive.load()), replay, head, J(c.active), JHand(c.left), JHand(c.right),
@@ -793,7 +818,7 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
 #else
         std::string("null"),
 #endif
-        game_pointer::StatusJson(), spectator::StatusJson(), mod, LayersJson(layers));
+        game_pointer::StatusJson(), galaxy_hologram::StatusJson(), spectator::StatusJson(), mod, LayersJson(layers));
 }
 
 void LocateQuads(std::vector<LayerShot>& layers, XrSpace reference, XrTime displayTime);
