@@ -574,7 +574,21 @@ Object* LocalPlayerController() {
 }
 
 bool IsAlive(Object const* object) {
-    return gReady && gReflection.IsAlive(object);
+    if (!gReady || object == nullptr) {
+        return false;
+    }
+    // A pointer kept across a level change can point into memory the engine has already given back (a crash at
+    // `open BIOA_NOR00` from the title, 2026-11-03: the Mako controls' IsAlive read a freed pawn's index), so the read is
+    // guarded: a fault means gone.
+    struct Check {
+        Object const* object;
+        bool alive;
+    } check{object, false};
+    bool const read = Guarded([](void* context) {
+        auto* const c = static_cast<Check*>(context);
+        c->alive = gReflection.IsAlive(c->object);
+    }, &check);
+    return read && check.alive;
 }
 
 std::string FullName(Object const* object) {

@@ -23,7 +23,8 @@ steered with the stick is ME2's and ME3's map (section 4).
 
 ## 2. How LE1's galaxy map works
 
-- **A real 3D scene with a Flash layer on top.** The game mode `SFXGameModeGalaxy` (`SFXGame_classes.hpp:30082`) only switches the
+- **A real 3D scene with a Flash layer on top. REFUTED in the game (section 7): the visible map is drawn independently of the
+  scene view.** The game mode `SFXGameModeGalaxy` (`SFXGame_classes.hpp:30082`) only switches the
   camera to `BioCameraBehaviorGalaxy` (`:12841`, a `SFXCameraMode`), which holds the map: selectable actors (`m_pScaleformObjects`,
   `m_pDynamicObjects`, `m_pDynamicClusterPath`), a template planet (a `DynamicSMActor`), the cross-hair, centre and camera objects,
   relay lines with 3D positions (`FBioMassRelayLine`), the camera's zoom location and rotation, and the selection:
@@ -73,6 +74,38 @@ existing pieces: metric stereo, the HUD-style cut, the pointer), C only if keepi
   (`docs/trilogy-design.md`: "Panel plus laser pointer" [verify]); Back is `SFXGameModeMinigame.ExitMinigame` (research/28).
 - Elevators and load screens, the Mako's map (a menu, mode 7: the flat panel), ME2's hacking minigames, ME3's galaxy map and Reaper
   chase: not looked at.
+
+## 7. Stage B tried in the game: the map is not a 3D scene (2026-11-03 evening)
+
+**Refuted: section 2's "a real 3D scene with a Flash layer on top" and section 1's "the map's own 3D scene renders in VR".** Built
+as planned (commit 6b3305d, HostServices v25: `game/GalaxyMap` measures `BioCameraBehaviorGalaxy`'s camera and centre, 46,111
+units apart, so 51,235 units a metre put the centre 0.9 m away; Halcyon's galaxy branch skips the flat panel and renders the pair at
+that scale), then measured on the fake headset at the Normandy's map (`mevr used` on the CIC's `BioArtPlaceableBehavior`):
+
+- **Zero disparity.** Left against right, block matching over ±80 px at the centre, the lower half, the stars and the title: best
+  shift 0 px everywhere (mean difference 0.09 of 255). First with one Draw (sharePass 5 replays the first eye), then with
+  Halcyon's second Draw forced on in mode 9 (`SfrModeAllowsReplay`, which keeps 7/8/9 mono, temporarily let 9 through): two scene
+  renders a frame, 0.65 and 1.1 ms, the pair streamed to the eyes, and the log confirmed each pass moved by its eye's offset
+  (`[MEVR-STEREO] pass 0 ... right -1613.89 uu`, 3,228 units between the eyes). At 46,111 units that is about 80 px of disparity.
+  Measured: 0.
+- **The view doesn't reach the picture.** Raising the view by 1.2 m (61,000 units, `[Galaxy] belowM` 0.30 -> 1.50) changed **no
+  pixel** of the left eye (mean difference exactly 0.0).
+- No `SceneCapture` component or `TextureRenderTarget` exists while the map is open (`mevr find`), so it is not a capture either.
+
+So everything on LE1's map (the disc, the systems' rings, the axis lines, the labels, the stars) is drawn independently of the
+scene view: by the Scaleform movie (`BioCameraBehaviorGalaxy.m_pScaleformObjects`), as far as we can tell. The scene renders
+under it, but contributes nothing visible. **No camera-based hologram (stage B or C) is possible.** What remains:
+
+- **Stage A** (the flat panel, Halcyon's `galaxyFlat`) works: `[Galaxy] hologram = 0`, now the default and the deployed value. The
+  pointer on it is still unverified in the headset (the fake headset's controllers aren't tracked).
+- **A real hologram means drawing the map ourselves**: the clusters', systems' and planets' positions are in the 2DA tables
+  (`BIOG_2DA_GalaxyMap_X.GalaxyMap_Cluster/System/Planet/Map/Relay`, loaded while the map is open), and a pick would go through the
+  game's own path (the cursor on the hidden flat map, or the selection fields plus the movie's Select). A project of its own.
+
+The hologram code (`core/vr/GalaxyMap`, `game/GalaxyMap`, the `xr_session` seams, HostServices v25) stays in, inert while
+`hologram = 0`; the mode-9 replay gate and the one-Draw suspension it needed were not kept. Side finding the same evening: a crash at
+`open BIOA_NOR00` from the title (the Mako controls' `runtime::IsAlive` read a freed pawn's index across the level change);
+`runtime::IsAlive` now guards the read.
 
 ## 6. Next steps
 

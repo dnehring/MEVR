@@ -304,6 +304,10 @@ std::string Streams(ue3::Object* pawn, std::istringstream& words) {
     return std::string("usage: mevr stream list [filter] | mevr stream touch <index|name>");
 }
 
+std::vector<ue3::Object*> gFound;  // `mevr find`'s list, for `use` and `activate`
+ue3::ClassRef gActorClassRef{"Engine.Actor"};
+ue3::FieldRef gEventOriginator{"Engine.SequenceEvent", "Originator"};
+
 std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
     if (line.rfind("mevr ", 0) != 0) {
         return std::nullopt;
@@ -324,6 +328,130 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         }
         std::snprintf(text, sizeof(text), "loc %.1f %.1f %.1f rot %d %d %d", at->x, at->y, at->z, rot->pitch, rot->yaw, rot->roll);
         return std::string(text);
+    }
+    if (verb == "find") {
+        // `mevr find <text>`: live objects whose full name holds the text (case-insensitive), numbered for `use` and `activate`
+        // (finding the galaxy map's usable object on the Normandy, research/51).
+        std::string pattern;
+        words >> pattern;
+        if (pattern.empty()) {
+            return std::string("usage: mevr find <text>");
+        }
+        auto const lower = [](std::string v) {
+            std::transform(v.begin(), v.end(), v.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            return v;
+        };
+        std::string const want = lower(pattern);
+        ue3::Reflection& r = ue3::runtime::Get();
+        gFound.clear();
+        std::string out;
+        for (std::int32_t i = 0, n = r.ObjectCount(); i < n && gFound.size() < 40; ++i) {
+            ue3::Object* const o = r.ObjectAt(i);
+            if (o == nullptr || !r.IsAlive(o)) {
+                continue;
+            }
+            std::string const name = r.FullName(o);
+            if (lower(name).find(want) == std::string::npos || name.find("Default__") != std::string::npos) {
+                continue;
+            }
+            out += std::format("[{}] {}", gFound.size(), name);
+            if (auto const at = player::Location(o); at && ue3::IsA(o, gActorClassRef)) {
+                out += std::format(" at {:.0f} {:.0f} {:.0f}", at->x, at->y, at->z);
+            }
+            out += "\n";
+            gFound.push_back(o);
+        }
+        return std::format("{} found{}\n{}", gFound.size(), gFound.size() == 40 ? " (the first 40)" : "", out);
+    }
+    if (verb == "funcs") {
+        // `mevr funcs <n> <text>`: the n-th of `find`'s functions (its class chain) whose name holds the text, with parameters.
+        std::size_t index = 0;
+        std::string pattern;
+        words >> index >> pattern;
+        ue3::Reflection& r = ue3::runtime::Get();
+        if (index >= gFound.size() || !r.IsAlive(gFound[index])) {
+            return std::format("mevr funcs: no object {} (mevr find first)", index);
+        }
+        auto const lower = [](std::string v) {
+            std::transform(v.begin(), v.end(), v.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            return v;
+        };
+        std::string const want = lower(pattern);
+        std::string out = r.FullName(gFound[index]) + ":";
+        int shown = 0;
+        for (ue3::Struct* c = r.ClassOf(gFound[index]); c != nullptr && shown < 50; c = r.SuperOf(c)) {
+            for (ue3::Field* f = r.ChildrenOf(c); f != nullptr && shown < 50; f = r.NextOf(f)) {
+                if (r.ClassOf(f) != r.FunctionClass() || lower(r.NameText(f)).find(want) == std::string::npos) {
+                    continue;
+                }
+                std::string params;
+                for (ue3::ParamSpec const& ps : r.Parameters(reinterpret_cast<ue3::Function*>(f))) {
+                    params += (params.empty() ? "" : ", ") + ps.name;
+                }
+                out += std::format("\n  {}.{}({})", r.NameText(c), r.NameText(f), params);
+                ++shown;
+            }
+        }
+        return out;
+    }
+    if (verb == "origin") {
+        // `mevr origin <n>`: the n-th of `find` (a Kismet event) gives its Originator (the actor it belongs to), appended to the list.
+        std::size_t index = 0;
+        words >> index;
+        ue3::Reflection& r = ue3::runtime::Get();
+        if (index >= gFound.size() || !r.IsAlive(gFound[index])) {
+            return std::format("mevr origin: no object {} (mevr find first)", index);
+        }
+        ue3::Object* const origin = gEventOriginator.Read<ue3::Object*>(gFound[index]).value_or(nullptr);
+        if (origin == nullptr) {
+            return std::format("{} has no Originator", r.FullName(gFound[index]));
+        }
+        gFound.push_back(origin);
+        auto const at = player::Location(origin);
+        return std::format("[{}] {}{}", gFound.size() - 1, r.FullName(origin), at ? std::format(" at {:.0f} {:.0f} {:.0f}", at->x, at->y, at->z) : std::string());
+    }
+    if (verb == "used") {
+        // `mevr used <n>`: an art placeable's behaviour (the n-th of `find`) told the player's pawn used it
+        // (BioArtPlaceableBehavior.OnArtPlaceableUsed: the event its Kismet BioSeqEvt_ArtPlaceableUsed listens for).
+        std::size_t index = 0;
+        words >> index;
+        ue3::Reflection& r = ue3::runtime::Get();
+        if (index >= gFound.size() || !r.IsAlive(gFound[index])) {
+            return std::format("mevr used: no object {} (mevr find first)", index);
+        }
+        ue3::Function* const f = r.FindFunction(r.ClassOf(gFound[index]), "OnArtPlaceableUsed");
+        if (f == nullptr) {
+            return std::format("{} has no OnArtPlaceableUsed", r.FullName(gFound[index]));
+        }
+        ue3::Params parms(r, f);
+        parms.Set("User", pawn);
+        bool const called = ue3::runtime::Call(gFound[index], f, parms);
+        return std::format("{}.OnArtPlaceableUsed(the player's pawn) called {}", r.FullName(gFound[index]), called);
+    }
+    if (verb == "use" || verb == "activate") {
+        // `mevr use <n>`: the n-th of `find` used by the player's pawn (Actor.UsedBy: what A on it does). `mevr activate <n> [input]`:
+        // a Kismet op's input fired (SequenceOp.ForceActivateInput).
+        std::size_t index = 0;
+        int input = 0;
+        words >> index >> input;
+        ue3::Reflection& r = ue3::runtime::Get();
+        if (index >= gFound.size() || !r.IsAlive(gFound[index])) {
+            return std::format("mevr {}: no object {} (mevr find first)", verb, index);
+        }
+        ue3::Object* const target = gFound[index];
+        ue3::Function* const f = r.FindFunction(r.ClassOf(target), verb == "use" ? "UsedBy" : "ForceActivateInput");
+        if (f == nullptr) {
+            return std::format("{} has no {}", r.FullName(target), verb == "use" ? "UsedBy" : "ForceActivateInput");
+        }
+        ue3::Params parms(r, f);
+        if (verb == "use") {
+            parms.Set("User", pawn);
+        } else {
+            parms.Set("InputIdx", static_cast<std::int32_t>(input));
+        }
+        bool const called = ue3::runtime::Call(target, f, parms);
+        return std::format("{}.{} called {}{}", r.FullName(target), verb == "use" ? "UsedBy(the player's pawn)" : std::format("ForceActivateInput({})", input),
+            called, verb == "use" ? std::format(", returned {}", parms.ReturnBool().value_or(false)) : std::string());
     }
     if (verb == "setloc") {
         ue3::Vector to{};

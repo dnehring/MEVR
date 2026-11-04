@@ -565,10 +565,10 @@ constexpr char const* kCockpitBlock =
 constexpr char const* kGalaxyBlock =
     "\n"
     "[Galaxy]\n"
-    "; The Normandy's galaxy map (research/51). hologram: 1 = the map as a table-sized model in front of you, in stereo,\n"
-    "; pointed at with a controller (the trigger clicks); 0 = the game's full-screen map on a flat panel. distanceM: how far\n"
-    "; ahead its centre appears; belowM: how far below your eyes.\n"
-    "hologram = 1\n"
+    "; The Normandy's galaxy map (research/51). hologram = 0: the game's map on Halcyon's flat panel, pointed at with a\n"
+    "; controller (the trigger clicks). 1 is an experiment that does NOT work: the map is drawn by the game's Flash layer, not\n"
+    "; its 3D camera, so both eyes see the same picture filling the view (research/51, 2026-11-03).\n"
+    "hologram = 0\n"
     "distanceM = 0.9\n"
     "belowM = 0.30\n";
 

@@ -21,7 +21,7 @@ namespace mevr::vr::galaxy_map {
 
 // ---- Settings ([Galaxy] in <GAME>MEVR.ini, parsed by the mod) -------------------------------------------------------
 struct Settings {
-    bool hologram = true;     // hologram: the map as a table-sized model in stereo; 0 = Halcyon's own (galaxyFlat decides)
+    bool hologram = false;    // hologram: the map as a table-sized model in stereo; 0 = Halcyon's own (galaxyFlat decides)
     float distanceM = 0.9f;   // distanceM: how far ahead the map's centre appears, metres
     float belowM = 0.30f;     // belowM: how far below the eyes the map's centre appears, metres
 };
