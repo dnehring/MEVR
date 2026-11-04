@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: MIT
+# All three games, once a week and on demand (docs/release-checklist.md section 5, CLAUDE.md "Trilogy check"): the development
+# configuration with LE2 and LE3 on, which needs every submodule including LExSDKv2 (LE2/LE3 still read the engine through it,
+# and LE1's development build keeps its reflection cross-check). LExSDKv2 has no licence: this job only checks out and compiles
+# it to see that our code still builds against it; nothing built here is uploaded or published. The players' build (build.yml)
+# never touches it.
+name: Trilogy
+
+on:
+  schedule:
+    - cron: '17 4 * * 1'  # Mondays, 04:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trilogy
+  cancel-in-progress: true
+
+jobs:
+  trilogy:
+    name: LE1, LE2 and LE3 (development build) and tests
+    # Visual Studio 2022, as build.yml: windows-latest moved to Visual Studio 2026 in June 2026.
+    runs-on: windows-2022
+    timeout-minutes: 150
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          lfs: false
+
+      - name: "Every submodule (LExSDKv2 at its recorded commit, which may not be a branch tip, so no shallow fetch for it)"
+        run: |
+          git submodule update --init --depth 1 external/OpenXR-SDK external/RmlUi external/freetype
+          git submodule update --init external/LExSDKv2
+
+      - name: Python (the checks and two ctest tests)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Configure (hot-reload development build, LE2 and LE3 on)
+        run: cmake -S . -B build-trilogy -G "Visual Studio 17 2022" -A x64 -DMEVR_BUILD_LE2=ON -DMEVR_BUILD_LE3=ON
+
+      - name: Build everything
+        run: cmake --build build-trilogy --config Release --parallel
+
+      - name: Tests
+        run: ctest -C Release --test-dir build-trilogy --output-on-failure
+
+      - name: Keep the test log of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trilogy-ctest-log
+          path: build-trilogy/Testing/Temporary/
+          if-no-files-found: ignore
+          retention-days: 14
