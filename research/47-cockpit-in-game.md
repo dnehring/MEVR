@@ -1017,7 +1017,10 @@ The cockpit came in by itself from the save (in the Mako), the PS VR2 and its To
   so the squeeze's own shift tilts nothing.
 - **The lever should go back to neutral when let go** (`leverReturns`, 1). **The left hand's buttons and trigger should act only on the lever:**
   while the mod drives, X, Y and the left trigger reach the game as nothing unless the press began on the lever (game/GamepadMapping,
-  unit-tested). The right hand's trigger and A stay (the free right hand aims the turret by its ray).
+  unit-tested). The right hand's trigger and A stay (the free right hand aims the turret by its ray). **Fixed 2026-11-04:** with the
+  default `[Controls] leftTrigger = lb` the trigger is the game's LB (the Mako's boost), and only the analog LT was cleared, so the
+  trigger off the lever still boosted; its LB is cleared now too (a boost begun on the lever's Y stays). Found by reading the code
+  while writing the player docs, not reported from a drive.
 - **The side displays were too close to read**: `place.py --seat-back` (0.15 m by default) puts the pilot further back in the hull: the hull, its
   displays and the HUD on them move forward; the chair, the lever, the stick and the seated Shepard stay with the player.
 

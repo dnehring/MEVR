@@ -474,7 +474,14 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
     if (options.makoDrive) {
         if (l.primary && !jets) buttons = static_cast<WORD>(buttons & ~XINPUT_GAMEPAD_X);
         if (l.secondary && !boost) buttons = static_cast<WORD>(buttons & ~XINPUT_GAMEPAD_Y);
-        if (!options.makoLever) pad.bLeftTrigger = 0;
+        if (!options.makoLever) {
+            pad.bLeftTrigger = 0;
+            // With leftTrigger = lb (the default) the trigger is the game's LB, the Mako's boost: off the lever it reaches the game as
+            // nothing too (2026-11-04; only the analog LT was cleared before). A boost begun on the lever's Y stays.
+            if (options.leftTriggerShoulder && leftTriggerDown && !boost) {
+                buttons = static_cast<WORD>(buttons & ~XINPUT_GAMEPAD_LEFT_SHOULDER);
+            }
+        }
         // The jump is the lever's X only: the right hand's A off the stick reached the game as its jump (the Mako's A) and fired
         // the jets by surprise (the user, 2026-11-03). On the stick, A is the cannon.
         if (r.primary && !cannon && !jets) buttons = static_cast<WORD>(buttons & ~XINPUT_GAMEPAD_A);

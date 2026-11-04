@@ -133,8 +133,8 @@ the stick, and squeeze its grip to take it. The chase view is on the centre scre
 | Right hand off the stick | Point to aim the turret. Trigger: machine gun. Grip: cannon |
 | B | Get out |
 
-Once you've taken a control, the left stick doesn't drive any more, X and Y work only with the lever held, and A only
-on the stick. The game's own controls come back when you get out, open the VR menu, or a controller loses tracking.
+Once you've taken a control, the left stick doesn't drive any more, X, Y and the left trigger work only with the lever
+held, and A only on the stick. The game's own controls come back when you get out, open the VR menu, or a controller loses tracking.
 `[Cockpit] enabled = 0` keeps the game's chase camera (the lever and stick then show as two flat markers at your knees);
 `[Mako] controls = 0` keeps the game's own controls.
 

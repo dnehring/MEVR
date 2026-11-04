@@ -7398,6 +7398,22 @@ void TestMakoControls() {
             CHECK(gp::FromControllers(held, other, off).bLeftTrigger == 0);
             off.makoLever = true;
             CHECK(gp::FromControllers(held, other, off).bLeftTrigger > 0);
+            // With leftTrigger = lb (the default) the trigger is LB, the Mako's boost: the same rule (2026-11-04).
+            mevr::vr::controllers::State trigger = state;
+            trigger.left.primary = trigger.left.secondary = trigger.right.primary = false;
+            trigger.left.trigger = 1.0f;
+            gp::Latches lbLatches;
+            gp::Options lb;
+            lb.leftTrigger = lb.leftTriggerShoulder = true;
+            lb.makoDrive = true;
+            CHECK((gp::FromControllers(trigger, lbLatches, lb).wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) == 0);
+            lb.makoLever = true;
+            CHECK((gp::FromControllers(trigger, lbLatches, lb).wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0);
+            // Not driving (on foot, or the Mako's own controls): the trigger is LB as always.
+            gp::Latches footLatches;
+            gp::Options foot;
+            foot.leftTrigger = foot.leftTriggerShoulder = true;
+            CHECK((gp::FromControllers(trigger, footLatches, foot).wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0);
         }
         // New presses while held: X jumps, Y boosts, A fires the cannon; the trigger stays the gun.
         state.left.primary = state.left.secondary = state.right.primary = false;
