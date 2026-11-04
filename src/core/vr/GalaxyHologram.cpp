@@ -7,6 +7,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <format>
 
@@ -268,7 +270,14 @@ DrawList Build(Scene const& scene, Table const& table, TableSettings const& sett
         }
     }
 
-    // The objects: a stalk down to the plane, the body, markers, the label.
+    // The objects: a stalk down to the plane, the body, markers, the label (placed after, so they don't cover each other).
+    struct Pending {
+        Label label;
+        XrVector3f object{};
+        float objectRadius = 0.0f;
+        bool hovered = false;
+    };
+    std::vector<Pending> pending;
     XrVector3f sunForLight = centre;
     for (Placed const& p : placed) {
         if (static_cast<Kind>(scene.objects[p.index].kind) == Kind::Star) {
@@ -328,8 +337,49 @@ DrawList Build(Scene const& scene, Table const& table, TableSettings const& sett
             l.heightM = isHovered ? 0.022f : 0.016f;
             l.colour = isHovered ? warm : Colour{0.82f, 0.92f, 1.0f, (o.flags & kSelectable) != 0 ? 1.0f : 0.6f};
             l.text = text;
-            list.labels.push_back(l);
+            pending.push_back({l, p.position, p.radiusM, isHovered});
         }
+    }
+    // De-clutter, as the player sees the table (from in front and above, about 35 degrees down): a label's place on the
+    // picture is its sideways position across, and its height plus 0.57 of its depth up. The hovered label goes first and
+    // never moves; the rest, nearest first, rise in steps until they cover none placed before, with a leader to their object.
+    XrVector3f const tableRight = overlay::Rotate(q, {1.0f, 0.0f, 0.0f});
+    std::stable_sort(pending.begin(), pending.end(), [&](Pending const& a, Pending const& b) {
+        if (a.hovered != b.hovered) {
+            return a.hovered;
+        }
+        return Dot(Sub(a.object, centre), tableAway) < Dot(Sub(b.object, centre), tableAway);
+    });
+    struct Box {
+        float left, right, bottom, top;
+    };
+    std::vector<Box> placedBoxes;
+    for (Pending& pl : pending) {
+        Label& l = pl.label;
+        float const width = l.heightM * (0.52f * static_cast<float>(l.text.size()) + 0.9f);  // the text plus its plate
+        float const across = Dot(Sub(l.anchor, centre), tableRight);
+        float const up = Dot(Sub(l.anchor, centre), tableUp) + 0.57f * Dot(Sub(l.anchor, centre), tableAway);
+        float raise = 0.0f;
+        for (int step = 0; step < 6 && !pl.hovered; ++step) {
+            Box const box{across - width * 0.5f, across + width * 0.5f, up + raise - 0.1f * l.heightM, up + raise + 1.25f * l.heightM};
+            bool clear = true;
+            for (Box const& other : placedBoxes) {
+                if (box.left < other.right && other.left < box.right && box.bottom < other.top && other.bottom < box.top) {
+                    clear = false;
+                    break;
+                }
+            }
+            if (clear) {
+                break;
+            }
+            raise += l.heightM * 1.35f;
+        }
+        placedBoxes.push_back({across - width * 0.5f, across + width * 0.5f, up + raise - 0.1f * l.heightM, up + raise + 1.25f * l.heightM});
+        if (raise > 0.0f) {
+            l.anchor = Add(l.anchor, Mul(tableUp, raise));
+            list.lines.push_back({Add(pl.object, Mul(tableUp, pl.objectRadius)), l.anchor, 0.0007f, Scaled(holo, 0.45f)});
+        }
+        list.labels.push_back(l);
     }
 
     // The level's title over the far rim.
@@ -345,6 +395,64 @@ DrawList Build(Scene const& scene, Table const& table, TableSettings const& sett
     }
     (void)settings;
     return list;
+}
+
+bool IsSelectable(MapActor const& actor, std::string const& selectable) {
+    return !selectable.empty() && actor.tag.size() == selectable.size() + 2 && actor.tag.compare(0, selectable.size(), selectable) == 0;
+}
+
+Scene BuildScene(MapModel const& model) {
+    Scene s;
+    Level level = Level::Unknown;
+    if (model.state >= 1 && model.state <= 4) {
+        level = static_cast<Level>(model.state);
+    }
+    s.level = static_cast<std::uint8_t>(level);
+    std::snprintf(s.title, kLabelBytes, "%s", model.title.c_str());
+    Kind kind = Kind::Other;
+    if (model.selectable == "Cluster") kind = Kind::Cluster;
+    else if (model.selectable == "System") kind = Kind::System;
+    else if (model.selectable == "Planet") kind = Kind::Planet;
+    std::map<std::string, int> indexOf;
+    float sum[3] = {};
+    for (MapActor const& a : model.actors) {
+        if (s.objectCount >= kMaxObjects || a.hidden || !IsSelectable(a, model.selectable) || indexOf.count(a.name) != 0) {
+            continue;
+        }
+        Object& o = s.objects[s.objectCount];
+        for (int k = 0; k < 3; ++k) {
+            o.position[k] = a.location[k];
+            sum[k] += a.location[k];
+        }
+        o.kind = static_cast<std::uint8_t>(kind);
+        o.flags = kSelectable | (a.name == model.selected ? kSelected : 0);
+        o.id = static_cast<std::uint32_t>(std::strtoul(a.name.c_str(), nullptr, 10));
+        auto const label = model.labels.find(a.name);
+        std::snprintf(o.label, kLabelBytes, "%s", label != model.labels.end() ? label->second.c_str() : "");
+        indexOf[a.name] = s.objectCount;
+        ++s.objectCount;
+    }
+    for (auto const& [a, b] : model.links) {
+        auto const ia = indexOf.find(a);
+        auto const ib = indexOf.find(b);
+        if (ia != indexOf.end() && ib != indexOf.end() && s.linkCount < kMaxLinks) {
+            s.links[s.linkCount].a = static_cast<std::uint8_t>(ia->second);
+            s.links[s.linkCount].b = static_cast<std::uint8_t>(ib->second);
+            ++s.linkCount;
+        }
+    }
+    if (model.hasCentre) {
+        for (int k = 0; k < 3; ++k) s.centre[k] = model.centre[k];
+    } else if (s.objectCount > 0) {
+        for (int k = 0; k < 3; ++k) s.centre[k] = sum[k] / static_cast<float>(s.objectCount);
+    }
+    // The map's plane is the game's horizontal one; 'away' is where the game's camera looks, flattened.
+    s.up[0] = 0.0f; s.up[1] = 0.0f; s.up[2] = 1.0f;
+    s.forward[0] = std::cos(model.camera.yaw);
+    s.forward[1] = std::sin(model.camera.yaw);
+    s.forward[2] = 0.0f;
+    s.camera = model.camera;
+    return s;
 }
 
 std::string Describe(Scene const& scene) {

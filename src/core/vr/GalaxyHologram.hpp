@@ -4,6 +4,7 @@
 #include <openxr/openxr.h>
 
 #include <array>
+#include <map>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -78,11 +79,41 @@ struct Scene {
     Link links[kMaxLinks];
 };
 
+// ---- The game's map, as the mod (live) or tools/galaxy-preview (a `mevr galaxy dump` file) reads it ----------------------
+// LE1's map is a 3D layout of actors in the CIC's level (research/51 section 8): BioCameraBehaviorGalaxy's m_pDynamicObjects
+// hold every level's actors; the current level's selectable ones are tagged m_sSelectableObject plus two digits ("Cluster01",
+// "System02", "Planet03"), visible unless bHidden, and named by their text reference ("135724"). The game selects the one
+// nearest its cross-hair actor; its camera (the player camera's view) shows the map, and the Flash layer draws its rings and
+// labels where that camera projects each actor.
+struct MapActor {
+    std::string tag;
+    std::string name;  // the object's name: the text reference of its label
+    float location[3] = {};
+    bool hidden = false;
+};
+struct MapModel {
+    int state = 0;           // m_nCurrentState: 1 galaxy, 2 cluster, 3 system, 4 planet
+    std::string selectable;  // m_sSelectableObject
+    std::vector<MapActor> actors;
+    bool hasCentre = false;
+    float centre[3] = {};          // m_pCenterObject's place
+    std::string selected;          // m_pSelectedObject's name
+    GameCamera camera;
+    std::map<std::string, std::string> labels;          // name (text reference) -> text
+    std::vector<std::pair<std::string, std::string>> links;  // relay routes, by actor name
+    std::string title;
+};
+// The actor is one of the level's selectable ones (the tag is the selectable kind plus two characters, as the game checks).
+bool IsSelectable(MapActor const& actor, std::string const& selectable);
+// The Scene for the level: its visible selectable actors with their labels, the selection, the relay routes between them,
+// centred on the centre object and turned so 'away' on the table is where the game's camera looks.
+Scene BuildScene(MapModel const& model);
+
 // ---- Settings ([Galaxy] in <GAME>MEVR.ini) --------------------------------------------------------------------------------
 struct TableSettings {
     float distanceM = 0.70f;   // the table's centre ahead of the head when the map opens
     float belowM = 0.45f;      // ... and below the eyes
-    float radiusM = 0.40f;     // the map's rim
+    float radiusM = 0.48f;     // the map's rim
     float heightScale = 1.0f;  // stretches the map's height above its plane
 };
 
@@ -152,7 +183,7 @@ struct Ring {  // a circle in a plane: orbits, the table's rim, a selection mark
     Colour colour;
 };
 struct Label {
-    XrVector3f anchor{};  // the text's bottom centre
+    XrVector3f anchor{};  // the text's bottom centre (raised above its object when it would cover another label)
     float heightM = 0.0f;
     Colour colour;
     std::string text;

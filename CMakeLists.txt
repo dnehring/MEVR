@@ -876,6 +876,7 @@ if (MEVR_BUILD_TESTS)
     # own drawing code, as PNGs, and a stereo check (every star found in both images and triangulated back into the room).
     add_executable(mevr-galaxy-preview
         tools/galaxy-preview/Main.cpp
+        src/core/Json.cpp
         src/core/PngFile.cpp
         src/core/vr/GalaxyHologram.cpp
         src/core/vr/OverlayPlacement.cpp

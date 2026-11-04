@@ -3,10 +3,14 @@
 // (core/vr/GalaxyHologram, plugin/GalaxyHologramDraw) for both eyes, as PNGs, plus a stereo check: every star's centre is
 // found in the rendered left and right images and triangulated back into the room, against where the scene put it.
 //
-//   mevr-galaxy-preview <out folder> [--font <ttf>] [--size N] [--point <level>:<object index>]
+//   mevr-galaxy-preview <out folder> [--font <ttf>] [--size N] [--point <level>:<object index>] [--dump <galaxy dump json>]
+//
+// With --dump, the level in a `mevr galaxy dump` file (local game data, %LOCALAPPDATA%\MEVR\galaxy) is drawn too, through
+// core/vr/GalaxyHologram BuildScene as the mod builds it live, and the report lists where the game's camera shows each object.
 //
 // Writes <level>-left.png, <level>-right.png, <level>-sbs.png and report.txt (the check's numbers and the frame's cost).
 
+#include "core/Json.hpp"
 #include "core/PngFile.hpp"
 #include "core/vr/GalaxyHologram.hpp"
 #include "core/vr/OverlayPlacement.hpp"
@@ -118,6 +122,92 @@ gh::Scene PlanetScene() {
     Add(s, -4000.0f, 3000.0f, 800.0f, gh::Kind::Star, "", 0, 0.5f);
     s.extent = 5000.0f;
     return s;
+}
+
+// A `mevr galaxy dump` file as the map model.
+std::string ShortName(std::string const& full) {
+    size_t const dot = full.find_last_of('.');
+    return dot == std::string::npos ? full : full.substr(dot + 1);
+}
+
+bool LoadDump(std::filesystem::path const& path, gh::MapModel& m) {
+    std::ifstream in(path, std::ios::binary);
+    std::string const text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::string error;
+    auto const root = mevr::json::Parse(text, &error);
+    if (!root) {
+        std::printf("dump: %s\n", error.c_str());
+        return false;
+    }
+    auto const& j = *root;
+    auto const& props = j.Get("behavior").Get("props");
+    m.state = static_cast<int>(props.Number("m_nCurrentState"));
+    m.selectable = props.String("m_sSelectableObject");
+    for (auto const& a : j.Get("m_pDynamicObjects").Items()) {
+        if (!a.IsObject() || !a.Has("location")) {
+            continue;
+        }
+        gh::MapActor actor;
+        actor.tag = a.String("Tag");
+        actor.name = ShortName(a.String("name"));
+        for (int k = 0; k < 3; ++k) {
+            actor.location[k] = static_cast<float>(a.Get("location").Items()[static_cast<size_t>(k)].AsNumber());
+        }
+        actor.hidden = a.Bool("bHidden");
+        m.actors.push_back(actor);
+    }
+    if (auto const& c = j.Get("m_pCenterObject"); c.IsObject() && c.Has("location")) {
+        m.hasCentre = true;
+        for (int k = 0; k < 3; ++k) {
+            m.centre[k] = static_cast<float>(c.Get("location").Items()[static_cast<size_t>(k)].AsNumber());
+        }
+    }
+    if (auto const& sel = j.Get("m_pSelectedObject"); sel.IsObject()) {
+        m.selected = ShortName(sel.String("name"));
+    }
+    auto const& cam = j.Get("playerCamera");
+    if (cam.IsObject()) {
+        constexpr float kUnit = 6.2831853f / 65536.0f;
+        for (int k = 0; k < 3; ++k) {
+            m.camera.location[k] = static_cast<float>(cam.Get("location").Items()[static_cast<size_t>(k)].AsNumber());
+        }
+        m.camera.pitch = static_cast<float>(cam.Get("rotation").Items()[0].AsNumber()) * kUnit;
+        m.camera.yaw = static_cast<float>(cam.Get("rotation").Items()[1].AsNumber()) * kUnit;
+        m.camera.roll = static_cast<float>(cam.Get("rotation").Items()[2].AsNumber()) * kUnit;
+        m.camera.fovXDeg = static_cast<float>(cam.Number("fov"));
+        auto const& client = j.Get("windowClient").Items();
+        m.camera.aspect = client.size() == 2 ? static_cast<float>(client[0].AsNumber() / std::max(1.0, client[1].AsNumber())) : 1.0f;
+        m.camera.valid = 1;
+    }
+    // Labels: every table's Name text reference and its text. Relay routes: StartCluster/EndCluster / 10000 = a cluster row.
+    std::map<int, std::string> clusterByRow;
+    auto const& tables = j.Get("tables");
+    for (char const* t : {"m_pClusterTable", "m_pSystemTable", "m_pPlanetTable"}) {
+        for (auto const& row : tables.Get(t).Get("data").Items()) {
+            auto const& name = row.Get("cells").Get("Name");
+            if (!name.IsObject() || !name.Has("int")) {
+                continue;
+            }
+            std::string const ref = std::to_string(static_cast<long long>(name.Number("int")));
+            m.labels[ref] = name.String("text");
+            if (std::string(t) == "m_pClusterTable") {
+                clusterByRow[static_cast<int>(row.Number("row"))] = ref;
+            }
+        }
+    }
+    for (auto const& row : tables.Get("m_pRelayTable").Get("data").Items()) {
+        int const a = static_cast<int>(row.Get("cells").Get("StartCluster").Number("int")) / 10000;
+        int const b = static_cast<int>(row.Get("cells").Get("EndCluster").Number("int")) / 10000;
+        if (clusterByRow.count(a) != 0 && clusterByRow.count(b) != 0) {
+            m.links.emplace_back(clusterByRow[a], clusterByRow[b]);
+        }
+    }
+    if (m.state == 1) {
+        m.title = "Galaxy";
+    } else if (auto const it = m.labels.find(m.selected); it != m.labels.end() && m.state >= 3) {
+        m.title = it->second;
+    }
+    return true;
 }
 
 struct Gpu {
@@ -268,12 +358,15 @@ int main(int argc, char** argv) {
     std::filesystem::path font = std::filesystem::path(__FILE__).parent_path() / "../../third_party/fonts/Rajdhani-SemiBold.ttf";
     int size = 1400;
     int pointLevel = 3, pointIndex = 3;
+    std::filesystem::path dump;
     for (int i = 2; i < argc; ++i) {
         std::string const a = argv[i];
         if (a == "--font" && i + 1 < argc) {
             font = argv[++i];
         } else if (a == "--size" && i + 1 < argc) {
             size = std::clamp(std::atoi(argv[++i]), 256, 4096);
+        } else if (a == "--dump" && i + 1 < argc) {
+            dump = argv[++i];
         } else if (a == "--point" && i + 1 < argc) {
             std::string const v = argv[++i];
             size_t const colon = v.find(':');
@@ -319,7 +412,22 @@ int main(int argc, char** argv) {
                           "table {:.2f} m ahead, {:.2f} m below the eyes, radius {:.2f} m\n",
                           size, pitch * 180.0f / kPi, settings.distanceM, settings.belowM, settings.radiusM);
     struct Named { char const* name; gh::Scene scene; };
-    Named const scenes[] = {{"galaxy", GalaxyScene()}, {"cluster", ClusterScene()}, {"system", SystemScene()}, {"planet", PlanetScene()}};
+    std::vector<Named> scenes = {{"galaxy", GalaxyScene()}, {"cluster", ClusterScene()}, {"system", SystemScene()}, {"planet", PlanetScene()}};
+    gh::MapModel model;
+    if (!dump.empty()) {
+        if (!LoadDump(dump, model)) {
+            return 1;
+        }
+        scenes.push_back({"dump", gh::BuildScene(model)});
+        report << std::format("\ndump {}: state {}, selectable '{}', {} actors, {} labels, {} relay routes\n", dump.filename().string(), model.state,
+                              model.selectable, model.actors.size(), model.labels.size(), model.links.size());
+        gh::Scene const& s = scenes.back().scene;
+        for (int i = 0; i < s.objectCount; ++i) {
+            auto const uv = gh::ToGameScreen(s.camera, s.objects[i].position);
+            report << std::format("  game screen: [{}] {:<20} {}\n", i, s.objects[i].label,
+                                  uv ? std::format("({:.3f}, {:.3f})", (*uv)[0], (*uv)[1]) : std::string("behind"));
+        }
+    }
     float worstError = 0.0f;
     for (Named const& n : scenes) {
         gh::Scene const& scene = n.scene;
