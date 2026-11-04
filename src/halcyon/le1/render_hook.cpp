@@ -199,6 +199,9 @@ bool SfrModeAllowsReplay(int gameMode) noexcept
     if (gameMode == 5 && g_sfrConvoAllowed.load(std::memory_order_acquire)) return true;
     if (gameMode == 6 && g_sfrCutsceneAllowed.load(std::memory_order_acquire)) return true;
     if (gameMode == 7 && g_sfrLiveGui7.load(std::memory_order_acquire)) return true;
+    // [MEVR] research/51 section 8: the galaxy map open in the CIC (the view held at Shepard's, the game's own map hidden):
+    // the world renders as on foot.
+    if (gameMode == 9 && MELEVR::MevrBridge::GalaxyHologram(nullptr, nullptr)) return true;
     return false;
 }
 

@@ -24,6 +24,8 @@ struct Link {
     bool (*takePick)(std::uint32_t* id) = nullptr;
 };
 
+// Before the ProcessEvent hook goes in: the camera-update handler that holds the view in the CIC while the map is open in-world.
+void TryStartup();
 void Tick(Link const& link);
 // Snapshot JSON ("galaxyMap").
 std::string StatusJson();

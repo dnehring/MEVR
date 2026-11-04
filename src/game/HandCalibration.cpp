@@ -1530,6 +1530,18 @@ vr::galaxy_map::Settings ReadGalaxy(Ini const& ini) {
 
 std::string Describe(vr::galaxy_map::Settings const& s) {
     if (!s.hologram) {
+    if (Number(ini, "Galaxy", "inWorld", value)) {
+        s.inWorld = value != 0.0;
+    }
+    if (Number(ini, "Galaxy", "worldRadiusM", value)) {
+        s.worldRadiusM = static_cast<float>(std::clamp(value, 0.3, 2.5));
+    }
+    if (Number(ini, "Galaxy", "worldTiltDeg", value)) {
+        s.worldTiltDeg = static_cast<float>(std::clamp(value, 0.0, 80.0));
+    }
+    if (Number(ini, "Galaxy", "worldLiftM", value)) {
+        s.worldLiftM = static_cast<float>(std::clamp(value, -1.0, 1.5));
+    }
         return "the galaxy map on Halcyon's panel ([Galaxy] hologram = 0)";
     }
     return std::format("the galaxy map as our hologram on a table {:.2f} m ahead, {:.2f} m below the eyes, {:.2f} m in radius",

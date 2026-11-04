@@ -242,10 +242,10 @@ void OnMenuQuad(float const headOrientation[4], float const headPosition[3], Pan
 void OnFlatQuad(PanelKind kind, float const headOrientation[4], float const headPosition[3], PanelPose const& placed,
                 float width, float height, bool headValid) noexcept;
 
-// [MEVR] The galaxy map as a hologram (research/51 stage B; src/plugin/GamePointer.cpp, core/vr/GalaxyMap, the mod's
-// game/GalaxyMap). True while the mod's measure of the open map is fresh: then the galaxy mode renders in stereo instead of
-// on the flat panel (galaxyFlat is passed over), at `unitsPerMeter` game units a metre (the eye separation and the head's
-// movement), the view raised `belowM` metres so the map's centre sits that far below the eyes. Pointers may be null.
+// [MEVR] The galaxy map used in the CIC (research/51 section 8; src/plugin/GamePointer.cpp, core/vr/GalaxyHologram, the mod's
+// game/GalaxyMap). True while the map is open in-world: the mod holds the view at Shepard's and hides the game's own map, so
+// the galaxy mode renders in stereo as on foot (galaxyFlat passed over, both Draws, no galaxyVrZoom). `unitsPerMeter` is 0
+// (the stage B scale branch below stays off; `belowM` 0). Pointers may be null.
 bool GalaxyHologram(float* unitsPerMeter, float* belowM) noexcept;
 // Each frame the hologram is shown: the render's symmetric half angles (radians, the game's own projection), so the game
 // pointer gets the game's screen as a quad in the room through the map's centre (core/vr/GalaxyMap VirtualScreen).

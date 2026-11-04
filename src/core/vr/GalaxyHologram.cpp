@@ -88,11 +88,18 @@ XrVector3f Normalize(XrVector3f const& a) {
     return l > 1e-9f ? Mul(a, 1.0f / l) : XrVector3f{0.0f, 0.0f, 0.0f};
 }
 
+XrQuaternionf TableOrientation(float yaw, float tiltRad) {
+    XrQuaternionf const y = overlay::YawRotation(yaw);
+    XrQuaternionf const x{std::sin(tiltRad * 0.5f), 0.0f, 0.0f, std::cos(tiltRad * 0.5f)};  // about +X: -Z (the far edge) rises
+    return {y.w * x.x + y.x * x.w + y.y * x.z - y.z * x.y, y.w * x.y - y.x * x.z + y.y * x.w + y.z * x.x,
+            y.w * x.z + y.x * x.y - y.y * x.x + y.z * x.w, y.w * x.w - y.x * x.x - y.y * x.y - y.z * x.z};
+}
+
 Table PlaceTable(XrPosef const& head, TableSettings const& settings) {
     Table t;
     float const yaw = overlay::HeadingOf(head.orientation);
-    t.pose.orientation = overlay::YawRotation(yaw);
-    t.pose.position = Add(head.position, overlay::Rotate(t.pose.orientation, {0.0f, -settings.belowM, -settings.distanceM}));
+    t.pose.orientation = TableOrientation(yaw, settings.tiltDeg * kDegToRad);
+    t.pose.position = Add(head.position, overlay::Rotate(overlay::YawRotation(yaw), {0.0f, -settings.belowM, -settings.distanceM}));
     t.radiusM = settings.radiusM;
     return t;
 }
@@ -219,6 +226,7 @@ DrawList Build(Scene const& scene, Table const& table, TableSettings const& sett
     XrVector3f const tableAway = overlay::Rotate(q, {0.0f, 0.0f, -1.0f});
     XrVector3f const centre = table.pose.position;
     float const r = table.radiusM;
+    float const k = std::max(1.0f, table.radiusM / 0.48f);  // a bigger table (the CIC's) is seen from further: lines and text grow
     Colour const holo{0.35f, 0.75f, 1.0f, 1.0f};
     Colour const warm{1.0f, 0.62f, 0.25f, 1.0f};
     Colour const green{0.35f, 1.0f, 0.55f, 1.0f};
@@ -227,8 +235,8 @@ DrawList Build(Scene const& scene, Table const& table, TableSettings const& sett
     // The projector's base: a faint grid under the map and two rims.
     XrVector3f const base = Sub(centre, Mul(tableUp, 0.004f));
     list.discs.push_back({base, tableUp, tableAway, r * 1.10f, Scaled(holo, 0.16f), DiscStyle::Grid});
-    list.rings.push_back({base, tableUp, r * 1.10f, 0.0025f, Scaled(holo, 0.55f)});
-    list.rings.push_back({base, tableUp, r * 1.14f, 0.0012f, Scaled(holo, 0.30f)});
+    list.rings.push_back({base, tableUp, r * 1.10f, 0.0025f * k, Scaled(holo, 0.55f)});
+    list.rings.push_back({base, tableUp, r * 1.14f, 0.0012f * k, Scaled(holo, 0.30f)});
 
     Level const level = static_cast<Level>(scene.level);
     if (level == Level::Galaxy) {
@@ -248,7 +256,7 @@ DrawList Build(Scene const& scene, Table const& table, TableSettings const& sett
         Placed const* a = placedAt(scene.links[i].a);
         Placed const* b = placedAt(scene.links[i].b);
         if (a != nullptr && b != nullptr) {
-            list.lines.push_back({a->position, b->position, 0.0016f, Scaled(holo, 0.55f)});
+            list.lines.push_back({a->position, b->position, 0.0016f * k, Scaled(holo, 0.55f)});
         }
     }
 
@@ -268,7 +276,7 @@ DrawList Build(Scene const& scene, Table const& table, TableSettings const& sett
             XrVector3f const d = Sub(p.position, sun);
             float const across = Length(Sub(d, Mul(tableUp, Dot(d, tableUp))));
             if (across > 0.01f) {
-                list.rings.push_back({sun, tableUp, across, 0.0016f, Scaled(holo, 0.75f)});
+                list.rings.push_back({sun, tableUp, across, 0.0016f * k, Scaled(holo, 0.75f)});
             }
         }
     }
@@ -293,7 +301,7 @@ DrawList Build(Scene const& scene, Table const& table, TableSettings const& sett
         bool const isHovered = p.index == hovered;
         float const height = Dot(Sub(p.position, centre), tableUp);
         if (std::abs(height) > 0.004f) {
-            list.lines.push_back({p.position, Sub(p.position, Mul(tableUp, height)), 0.0008f, Scaled(holo, 0.30f)});
+            list.lines.push_back({p.position, Sub(p.position, Mul(tableUp, height)), 0.0008f * k, Scaled(holo, 0.30f)});
         }
         Sprite s;
         s.centre = p.position;
@@ -325,7 +333,7 @@ DrawList Build(Scene const& scene, Table const& table, TableSettings const& sett
             list.sprites.push_back({p.position, p.radiusM * 2.6f, warm, SpriteStyle::Halo, {}});
         }
         if ((o.flags & kSelected) != 0) {
-            list.rings.push_back({p.position, tableUp, p.radiusM * 1.9f, 0.0016f, warm});
+            list.rings.push_back({p.position, tableUp, p.radiusM * 1.9f, 0.0016f * k, warm});
         }
         if ((o.flags & kHere) != 0) {
             list.rings.push_back({p.position, tableUp, p.radiusM * (2.2f + 0.6f * pulse), 0.0014f, Scaled(green, 0.5f + 0.5f * pulse)});
@@ -336,8 +344,8 @@ DrawList Build(Scene const& scene, Table const& table, TableSettings const& sett
         std::string const text = LabelOf(o.label);
         if (!text.empty()) {
             Label l;
-            l.anchor = Add(p.position, Mul(tableUp, p.radiusM + 0.008f));
-            l.heightM = isHovered ? 0.022f : 0.016f;
+            l.anchor = Add(p.position, Mul(tableUp, p.radiusM + 0.008f * k));
+            l.heightM = (isHovered ? 0.022f : 0.016f) * (k > 1.0f ? k * 1.35f : 1.0f);
             l.colour = isHovered ? warm : Colour{0.82f, 0.92f, 1.0f, (o.flags & kSelectable) != 0 ? 1.0f : 0.6f};
             l.text = text;
             pending.push_back({l, p.position, p.radiusM, isHovered});
@@ -380,7 +388,7 @@ DrawList Build(Scene const& scene, Table const& table, TableSettings const& sett
         placedBoxes.push_back({across - width * 0.5f, across + width * 0.5f, up + raise - 0.1f * l.heightM, up + raise + 1.25f * l.heightM});
         if (raise > 0.0f) {
             l.anchor = Add(l.anchor, Mul(tableUp, raise));
-            list.lines.push_back({Add(pl.object, Mul(tableUp, pl.objectRadius)), l.anchor, 0.0007f, Scaled(holo, 0.45f)});
+            list.lines.push_back({Add(pl.object, Mul(tableUp, pl.objectRadius)), l.anchor, 0.0007f * k, Scaled(holo, 0.45f)});
         }
         list.labels.push_back(l);
     }
@@ -389,8 +397,8 @@ DrawList Build(Scene const& scene, Table const& table, TableSettings const& sett
     std::string const title(scene.title, strnlen(scene.title, kLabelBytes));
     if (!title.empty()) {
         Label t;
-        t.anchor = Add(Add(centre, Mul(tableAway, r * 1.15f)), Mul(tableUp, 0.07f));
-        t.heightM = 0.040f;
+        t.anchor = Add(Add(centre, Mul(tableAway, r * 1.15f)), Mul(tableUp, 0.07f * k));
+        t.heightM = 0.040f * k;
         t.colour = Colour{0.85f, 0.95f, 1.0f, 1.0f};
         t.text = title;
         t.plate = false;

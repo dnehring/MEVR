@@ -502,6 +502,37 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         return std::format("{}.{} called {}{}", r.FullName(target), verb == "use" ? "UsedBy(the player's pawn)" : std::format("ForceActivateInput({})", input),
             called, verb == "use" ? std::format(", returned {}", parms.ReturnBool().value_or(false)) : std::string());
     }
+    if (verb == "near") {
+        // `mevr near <x> <y> <z> <radius> [text]`: live actors within the radius (units) of a point, nearest first, with their
+        // places (finding where things stand, e.g. the CIC's galaxy map platform). Up to 60.
+        double x = 0.0, y = 0.0, z = 0.0, radius = 500.0;
+        std::string filter;
+        words >> x >> y >> z >> radius >> filter;
+        ue3::Reflection& r = ue3::runtime::Get();
+        std::vector<std::pair<double, std::string>> found;
+        for (std::int32_t i = 0, n = r.ObjectCount(); i < n; ++i) {
+            ue3::Object* const o = r.ObjectAt(i);
+            if (o == nullptr || !ue3::IsA(o, gActorClassRef) || !r.IsAlive(o)) {
+                continue;
+            }
+            auto const at = player::Location(o);
+            if (!at) {
+                continue;
+            }
+            double const d = std::sqrt((at->x - x) * (at->x - x) + (at->y - y) * (at->y - y) + (at->z - z) * (at->z - z));
+            std::string const name = r.FullName(o);
+            if (d > radius || name.find("Default__") != std::string::npos || (!filter.empty() && name.find(filter) == std::string::npos)) {
+                continue;
+            }
+            found.emplace_back(d, std::format("{:6.0f}  ({:.0f}, {:.0f}, {:.0f})  {}", d, at->x, at->y, at->z, name));
+        }
+        std::sort(found.begin(), found.end());
+        std::string out = std::format("{} actors within {:.0f} of ({:.0f}, {:.0f}, {:.0f})", found.size(), radius, x, y, z);
+        for (std::size_t i = 0; i < std::min<std::size_t>(found.size(), 60); ++i) {
+            out += "\n" + found[i].second;
+        }
+        return out;
+    }
     if (verb == "setloc") {
         ue3::Vector to{};
         if (!(words >> to.x >> to.y >> to.z)) {

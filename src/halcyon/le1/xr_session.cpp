@@ -4769,7 +4769,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
 
     // Galaxy-only readability zoom. Conversations/cutscenes in full VR intentionally skip the former
     // cinematic submit-FOV override: their declared FOV must match what both gameplay-path eyes rendered.
-    if (!forceFlatCine && headValid && inGalaxyMode)
+    if (!forceFlatCine && headValid && inGalaxyMode && !MELEVR::MevrBridge::GalaxyHologram(nullptr, nullptr))   // [MEVR] the CIC's view: no map zoom
     {
         const float zoom = cfg.galaxyVrZoom;
         const float zoomLo = 0.25f;

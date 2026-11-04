@@ -28,6 +28,12 @@ struct Settings {
     float tableDistanceM = 0.70f;  // tableDistanceM: the table's centre ahead of the head when the map opens
     float tableBelowM = 0.45f;     // tableBelowM: ... and below the eyes
     float tableRadiusM = 0.48f;    // tableRadiusM: the map's rim
+    bool inWorld = true;           // inWorld: the hologram stands over the CIC's projector and you use it on foot; while the game
+                                   // is in its map mode the view stays in the CIC (the game's own map hidden); 0: the table in
+                                   // front of you once the map is open, the game's map as a screen behind it
+    float worldRadiusM = 1.40f;    // worldRadiusM: the CIC table's radius
+    float worldTiltDeg = 35.0f;    // worldTiltDeg: its far edge raised toward you (read from the console, a few metres away)
+    float worldLiftM = 0.0f;       // worldLiftM: its centre above the galaxy map console's use point (about 1 m above the floor)
 };
 
 // ---- What the mod publishes ------------------------------------------------------------------------------------------

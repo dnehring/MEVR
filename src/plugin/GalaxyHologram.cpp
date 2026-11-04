@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstring>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -321,9 +322,12 @@ void Down(char const* why) {
 
 XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
     auto scene = gh::Latest(kFreshMs);
-    if (!scene || frame.gameMode != 9 || frame.menuOpen || frame.session == XR_NULL_HANDLE || frame.context == nullptr ||
-        frame.device == nullptr) {
-        Down(!scene ? "the mod sends no map" : frame.gameMode != 9 ? "not the galaxy map" : "a menu is open");
+    // In the CIC ([Galaxy] inWorld) the table stands over the projector on foot (0), through the map's opening (6) and with the
+    // map open (9); otherwise only with the map open.
+    bool const inWorld = scene && scene->inWorld != 0 && scene->anchorValid != 0;
+    bool const modeOk = scene && (inWorld ? (frame.gameMode == 0 || frame.gameMode == 6 || frame.gameMode == 9) : frame.gameMode == 9);
+    if (!scene || !modeOk || frame.menuOpen || frame.session == XR_NULL_HANDLE || frame.context == nullptr || frame.device == nullptr) {
+        Down(!scene ? "the mod sends no map" : !modeOk ? "not the galaxy map" : "a menu is open");
         return nullptr;
     }
     std::uint64_t const now = GetTickCount64();
@@ -331,11 +335,19 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
     settings.distanceM = scene->tableDistanceM;
     settings.belowM = scene->tableBelowM;
     settings.radiusM = scene->tableRadiusM;
+    if (inWorld) {
+        // Over the projector: where the mod put it this tick (it follows the world as the player turns or moves with the stick).
+        gTable.pose.orientation = gh::TableOrientation(scene->anchorYaw, scene->tiltDeg * 0.01745329f);
+        gTable.pose.position = {scene->anchor[0], scene->anchor[1], scene->anchor[2]};
+        gTable.radiusM = scene->tableRadiusM;
+    }
     if (!gUp) {
-        if (!frame.headValid) {
+        if (!frame.headValid && !inWorld) {
             return nullptr;
         }
-        gTable = gh::PlaceTable(frame.head, settings);
+        if (!inWorld) {
+            gTable = gh::PlaceTable(frame.head, settings);
+        }
         gUp = true;
         gUpMs = now;
         gLastLevel = 0;
@@ -363,7 +375,40 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
     XrVector3f const origin = h.aim.position;
     XrVector3f const dir = gh::Normalize(vr::overlay::Rotate(h.aim.orientation, {0.0f, 0.0f, -1.0f}));
     bool const valid = state.active && hand >= 0;
-    int const candidate = valid ? gh::Pick(origin, dir, placed, *scene) : -1;
+    // The game's travel question (its message box hidden with the map): the question and Yes / No over the table; only they pick.
+    struct Button {
+        XrVector3f at;
+        std::uint32_t id;
+        char const* text;
+    };
+    std::vector<Button> buttons;
+    float const k = std::max(1.0f, gTable.radiusM / 0.48f);
+    XrVector3f const tableUp = vr::overlay::Rotate(gTable.pose.orientation, {0.0f, 1.0f, 0.0f});
+    XrVector3f const tableRight = vr::overlay::Rotate(gTable.pose.orientation, {1.0f, 0.0f, 0.0f});
+    if (scene->askTravel != 0) {
+        XrVector3f const base = gh::Add(gTable.pose.position, gh::Mul(tableUp, 0.22f * k));
+        buttons.push_back({gh::Add(base, gh::Mul(tableRight, -0.12f * k)), gh::kPickYes, "Yes"});
+        buttons.push_back({gh::Add(base, gh::Mul(tableRight, 0.12f * k)), gh::kPickNo, "No"});
+    }
+    int candidate = -1;
+    if (valid && !buttons.empty()) {
+        float best = 1.0f;
+        for (std::size_t b = 0; b < buttons.size(); ++b) {
+            XrVector3f const v = gh::Sub(buttons[b].at, origin);
+            float const along = gh::Dot(v, dir);
+            if (along <= 0.05f) {
+                continue;
+            }
+            float const angle = std::atan2(gh::Length(gh::Sub(v, gh::Mul(dir, along))), along);
+            float const ratio = angle / std::max(0.0524f, std::atan2(0.06f * k, along));
+            if (ratio < best) {
+                best = ratio;
+                candidate = 1000 + static_cast<int>(b);
+            }
+        }
+    } else if (valid) {
+        candidate = gh::Pick(origin, dir, placed, *scene);
+    }
     bool const onTable = valid && (candidate >= 0 || RayOnTable(origin, dir));
     auto const selected = gPointer.Step(candidate, onTable ? h.trigger : 0.0f, valid);
     if (candidate != gHovered) {
@@ -372,7 +417,13 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
         }
         gHovered = candidate;
     }
-    if (selected && *selected >= 0 && *selected < scene->objectCount) {
+    if (selected && *selected >= 1000 && *selected - 1000 < static_cast<int>(buttons.size())) {
+        Button const& b = buttons[static_cast<std::size_t>(*selected - 1000)];
+        gh::PostPick(b.id);
+        ++gPicks;
+        halcyon::RequestHaptic(hand, 0.04f, 0.6f);
+        log::Info("galaxy hologram: answered '{}' to the game's travel question", b.text);
+    } else if (selected && *selected >= 0 && *selected < scene->objectCount) {
         gh::Object const& o = scene->objects[*selected];
         gh::PostPick(o.id);
         ++gPicks;
@@ -381,7 +432,24 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
     }
     gHovering.store(onTable, std::memory_order_release);
 
-    gh::DrawList list = gh::Build(*scene, gTable, settings, placed, gHovered, timeS);
+    gh::DrawList list = gh::Build(*scene, gTable, settings, placed, gHovered < 1000 ? gHovered : -1, timeS);
+    if (!buttons.empty()) {
+        gh::Label question;
+        question.anchor = gh::Add(gTable.pose.position, gh::Mul(tableUp, 0.32f * k));
+        question.heightM = 0.026f * k;
+        question.colour = gh::Colour{0.85f, 0.95f, 1.0f, 1.0f};
+        question.text = std::string(scene->askText, strnlen(scene->askText, gh::kLabelBytes));
+        list.labels.push_back(question);
+        for (std::size_t b = 0; b < buttons.size(); ++b) {
+            bool const lit = gHovered == 1000 + static_cast<int>(b);
+            gh::Label l;
+            l.anchor = buttons[b].at;
+            l.heightM = (lit ? 0.034f : 0.028f) * k;
+            l.colour = lit ? gh::Colour{1.0f, 0.62f, 0.25f, 1.0f} : gh::Colour{0.82f, 0.92f, 1.0f, 1.0f};
+            l.text = buttons[b].text;
+            list.labels.push_back(l);
+        }
+    }
     if (onTable) {
         // The beam: from the controller to what it hovers, or to where it meets the table.
         XrVector3f end = gh::Add(origin, gh::Mul(dir, 0.6f));
@@ -390,6 +458,9 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
                 if (p.index == gHovered) {
                     end = p.position;
                 }
+            }
+            if (gHovered >= 1000 && gHovered - 1000 < static_cast<int>(buttons.size())) {
+                end = buttons[static_cast<std::size_t>(gHovered - 1000)].at;
             }
         } else {
             XrVector3f const up = vr::overlay::Rotate(gTable.pose.orientation, {0.0f, 1.0f, 0.0f});
@@ -433,6 +504,7 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
             gd::Eye const eye{frame.eyes[e], frame.fov[e]};
             gRenderer.Draw(frame.context, gMsaaRtv.Get(), width, height, eye, timeS);
             frame.context->ResolveSubresource(c.images[index], 0, gMsaa.Get(), 0, kFormat);
+            testloop::OnImageWritten(c.handle, c.images[index]);  // snapshots see our layer as the runtime does
             XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
             xrReleaseSwapchainImage(c.handle, &release);
             gViews[e].pose = frame.eyes[e];
@@ -450,7 +522,7 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
         if (gLastCostLogMs != 0 && gFrames > 0) {
             log::Info("galaxy hologram: last 10 s: {} frames, {:.3f} ms a frame on the CPU (both eyes' drawing submitted), {} objects, "
                       "hovered '{}', {} picks",
-                gFrames, gDrawMsSum / gFrames, scene->objectCount, gHovered >= 0 ? scene->objects[gHovered].label : "", gPicks);
+                gFrames, gDrawMsSum / gFrames, scene->objectCount, gHovered >= 0 && gHovered < scene->objectCount ? scene->objects[gHovered].label : "", gPicks);
         }
         gLastCostLogMs = now;
         gFrames = 0;

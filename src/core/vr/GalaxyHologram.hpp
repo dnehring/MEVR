@@ -34,6 +34,9 @@ enum Flag : std::uint8_t {
 inline constexpr int kMaxObjects = 64;
 inline constexpr int kMaxLinks = 48;
 inline constexpr int kLabelBytes = 48;
+// Picks that aren't objects: the answers to the game's travel question (Scene::askTravel).
+inline constexpr std::uint32_t kPickYes = 0xFFFFFF01u;
+inline constexpr std::uint32_t kPickNo = 0xFFFFFF02u;
 
 struct Object {
     float position[3] = {};  // game units, the map's own space
@@ -76,6 +79,15 @@ struct Scene {
     float tableDistanceM = 0.70f;       // [Galaxy] tableDistanceM, tableBelowM, tableRadiusM (the mod reads the file)
     float tableBelowM = 0.45f;
     float tableRadiusM = 0.48f;
+    // In the CIC ([Galaxy] inWorld): the table stands over the projector, where the mod puts it each tick (tracking space).
+    std::uint8_t inWorld = 0;
+    std::uint8_t anchorValid = 0;
+    std::uint8_t onFoot = 0;     // the game's map isn't open: the galaxy from the tables; a pick opens it
+    std::uint8_t askTravel = 0;  // the game asks whether to travel: the hologram shows the question with Yes and No
+    float anchor[3] = {};        // the table's centre (tracking space, metres)
+    float anchorYaw = 0.0f;      // its heading (radians; overlay::HeadingOf's sense: 0 faces -Z, + turned left)
+    float tiltDeg = 0.0f;        // its far edge raised toward the player
+    char askText[kLabelBytes] = {};
     GameCamera camera;
     char title[kLabelBytes] = {};
     Object objects[kMaxObjects];
@@ -118,6 +130,7 @@ struct TableSettings {
     float belowM = 0.45f;      // ... and below the eyes
     float radiusM = 0.48f;     // the map's rim
     float heightScale = 1.0f;  // stretches the map's height above its plane
+    float tiltDeg = 0.0f;      // the far edge raised toward the player (the CIC's table, seen from a few metres)
 };
 
 // The table: its centre and a yaw-only orientation facing the player (its -Z points away from them).
@@ -126,6 +139,8 @@ struct Table {
     float radiusM = 0.40f;
 };
 Table PlaceTable(XrPosef const& head, TableSettings const& settings);
+// A table's orientation: turned `yaw` (overlay::HeadingOf's sense), its far edge raised `tiltRad`.
+XrQuaternionf TableOrientation(float yaw, float tiltRad);
 
 // Metres per game unit for `scene` on a table of `radiusM` (the extent, or the farthest object in the plane, at the rim).
 float FitScale(Scene const& scene, float radiusM);

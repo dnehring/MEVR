@@ -359,12 +359,21 @@ int main(int argc, char** argv) {
     int size = 1400;
     int pointLevel = 3, pointIndex = 3;
     std::filesystem::path dump;
+    float tableAhead = -1.0f, tableBelow = 0.0f, tableRadius = 0.0f, headPitch = -28.0f, tableTilt = 0.0f;
     for (int i = 2; i < argc; ++i) {
         std::string const a = argv[i];
         if (a == "--font" && i + 1 < argc) {
             font = argv[++i];
         } else if (a == "--size" && i + 1 < argc) {
             size = std::clamp(std::atoi(argv[++i]), 256, 4096);
+        } else if (a == "--table" && i + 3 < argc) {
+            tableAhead = static_cast<float>(std::atof(argv[++i]));
+            tableBelow = static_cast<float>(std::atof(argv[++i]));
+            tableRadius = static_cast<float>(std::atof(argv[++i]));
+        } else if (a == "--tilt" && i + 1 < argc) {
+            tableTilt = static_cast<float>(std::atof(argv[++i]));
+        } else if (a == "--pitch" && i + 1 < argc) {
+            headPitch = static_cast<float>(std::atof(argv[++i]));
         } else if (a == "--dump" && i + 1 < argc) {
             dump = argv[++i];
         } else if (a == "--point" && i + 1 < argc) {
@@ -396,9 +405,15 @@ int main(int argc, char** argv) {
     }
 
     // A standing player at 1.6 m looking down at the table, 64 mm between the eyes, 90 degrees square.
-    float const pitch = -28.0f * kPi / 180.0f;
+    float const pitch = headPitch * kPi / 180.0f;
     XrPosef head{{std::sin(pitch * 0.5f), 0.0f, 0.0f, std::cos(pitch * 0.5f)}, {0.0f, 1.6f, 0.0f}};
-    gh::TableSettings const settings;
+    gh::TableSettings settings;
+    if (tableAhead > 0.0f) {  // the CIC's table: further and bigger (--table ahead below radius)
+        settings.distanceM = tableAhead;
+        settings.belowM = tableBelow;
+        settings.radiusM = tableRadius;
+    }
+    settings.tiltDeg = tableTilt;
     gh::Table const table = gh::PlaceTable(XrPosef{{0.0f, 0.0f, 0.0f, 1.0f}, head.position}, settings);
     XrVector3f const headRight = mevr::vr::overlay::Rotate(head.orientation, {1.0f, 0.0f, 0.0f});
     gd::Eye left, right;

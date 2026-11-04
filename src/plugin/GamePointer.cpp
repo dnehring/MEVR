@@ -4,6 +4,7 @@
 
 #include "plugin/GamePointer.hpp"
 
+#include "core/vr/GalaxyHologram.hpp"
 #include "core/vr/GalaxyMap.hpp"
 
 #include "halcyon/le1/mevr_bridge.h"
@@ -418,16 +419,19 @@ void OnFlatQuad(PanelKind kind, float const headOrientation[4], float const head
 }
 
 bool GalaxyHologram(float* unitsPerMeter, float* belowM) noexcept {
-    constexpr std::uint64_t kFreshMs = 500;  // the mod publishes every tick while the map is up
-    auto const view = mevr::vr::galaxy_map::Latest(kFreshMs);
-    if (!view || !(view->unitsPerMeter > 0.0f)) {
+    // research/51 section 8: the map open in the CIC ([Galaxy] inWorld): the mod holds the view at Shepard's and hides the game's
+    // own map, so Halcyon renders the world in stereo as on foot (no flat panel, both Draws, no galaxy zoom). No scale of its own
+    // (0: Halcyon's galaxy lean branch stays off). The camera-based hologram that used a scale (section 7) is gone.
+    constexpr std::uint64_t kFreshMs = 500;  // the mod sends every tick while the map is up
+    auto const scene = mevr::vr::galaxy_holo::Latest(kFreshMs);
+    if (!scene || scene->inWorld == 0 || scene->onFoot != 0) {
         return false;
     }
     if (unitsPerMeter != nullptr) {
-        *unitsPerMeter = view->unitsPerMeter;
+        *unitsPerMeter = 0.0f;
     }
     if (belowM != nullptr) {
-        *belowM = view->belowM;
+        *belowM = 0.0f;
     }
     return true;
 }

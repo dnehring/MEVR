@@ -612,6 +612,9 @@ void CheckClasses() {
     CheckClass<ABioSPGame>("SFXGame.BioSPGame");
     CheckClass<UBio2DA>("Engine.Bio2DA");
     CheckClass<UBioPlayerSelection>("SFXGame.BioPlayerSelection");  // game/interact (research/40)
+    CheckClass<UBioSFHandler_GalaxyMap>("SFXGame.BioSFHandler_GalaxyMap");
+    CheckClass<UBioSeqEvt_ArtPlaceableUsed>("SFXGame.BioSeqEvt_ArtPlaceableUsed");
+    CheckClass<UBioArtPlaceableBehavior>("SFXGame.BioArtPlaceableBehavior");
     // game/mako (research/44): the Mako's turret aimed by the controller.
     CheckClass<ABioVehicleBase>("SFXGame.BioVehicleBase");
     CheckClass<ABioVehicleWheeled>("SFXGame.BioVehicleWheeled");
@@ -674,6 +677,8 @@ void CheckFields() {
     CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pClusterTable", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pClusterTable));
     CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pRelayTable", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pRelayTable));
     CheckField("Engine.Actor", "Acceleration", SDK_FIELD(AActor, Acceleration));
+    CheckField("SFXGame.BioSFHandler_GalaxyMap", "m_bWaitingForMsgBox", SDK_BOOL(UBioSFHandler_GalaxyMap, m_bWaitingForMsgBox));
+    CheckField("Engine.SequenceEvent", "Originator", SDK_FIELD(USequenceEvent, Originator));
     CheckField("Engine.Controller", "Pawn", SDK_FIELD(AController, Pawn));
     CheckField("Engine.Pawn", "Mesh", SDK_FIELD(APawn, Mesh));
     CheckField("Engine.Pawn", "Weapon", SDK_FIELD(APawn, Weapon));
@@ -1029,6 +1034,12 @@ void CheckFunctions() {
         "SFXGame.BioWeaponRanged.GetPlayerAimError",
         "SFXGame.BioWeaponRanged.TickFire",
         "SFXGame.BioWeaponRanged.GetAdjustedAim",
+        "Engine.BioSFPanel.SetMovieVisibility",
+        "Engine.BioSFPanel.InvokeMethod",
+        "Engine.Bio2DA.GetFloatEntryII",
+        "SFXGame.BioWorldInfo.CheckConditional",
+        "SFXGame.BioArtPlaceableBehavior.OnArtPlaceableUsed",
+        "SFXGame.BioSFHandler_GalaxyMap.TravelConfirm",
         "SFXGame.BioPawn.GetWeaponStartTraceLocation",
         "Engine.Pawn.GetWeaponStartTraceLocation",
         "SFXGame.BioPlayerController.GetAdjustedAimFor",
@@ -1228,6 +1239,16 @@ void CheckParams() {
     PARAM(UBioEpicPawnBehavior_execGetPercentHealth_Parms, "SFXGame.BioEpicPawnBehavior.GetPercentHealth", ReturnValue);
     PARAM(AActor_execSetLocation_Parms, "Engine.Actor.SetLocation", NewLocation);
     PARAM(AActor_execSetLocation_Parms, "Engine.Actor.SetLocation", ReturnValue);
+    PARAM(UBioSFPanel_execSetMovieVisibility_Parms, "Engine.BioSFPanel.SetMovieVisibility", bVisible);
+    PARAM(UBioSFPanel_execInvokeMethod_Parms, "Engine.BioSFPanel.InvokeMethod", sMethodName);
+    PARAM(UBio2DA_execGetFloatEntryII_Parms, "Engine.Bio2DA.GetFloatEntryII", nRow);
+    PARAM(UBio2DA_execGetFloatEntryII_Parms, "Engine.Bio2DA.GetFloatEntryII", nColumn);
+    PARAM(UBio2DA_execGetFloatEntryII_Parms, "Engine.Bio2DA.GetFloatEntryII", fEntry);
+    PARAM(ABioWorldInfo_execCheckConditional_Parms, "SFXGame.BioWorldInfo.CheckConditional", nConditional);
+    PARAM(ABioWorldInfo_execCheckConditional_Parms, "SFXGame.BioWorldInfo.CheckConditional", nParam);
+    PARAM(ABioWorldInfo_execCheckConditional_Parms, "SFXGame.BioWorldInfo.CheckConditional", ReturnValue);
+    PARAM(UBioArtPlaceableBehavior_eventOnArtPlaceableUsed_Parms, "SFXGame.BioArtPlaceableBehavior.OnArtPlaceableUsed", User);
+    PARAM(UBioSFHandler_GalaxyMap_execTravelConfirm_Parms, "SFXGame.BioSFHandler_GalaxyMap.TravelConfirm", nContext);
     PARAM(AActor_execDestroy_Parms, "Engine.Actor.Destroy", ReturnValue);
     PARAM(ABioBaseSquad_execGetSquadSize_Parms, "SFXGame.BioBaseSquad.GetSquadSize", ReturnValue);
     PARAM(ABioBaseSquad_execGetMember_Parms, "SFXGame.BioBaseSquad.GetMember", nIndex);

@@ -285,6 +285,7 @@ void TryInstallScriptHooks() {
     game::cockpit_probe::TryStartup();  // the cockpit riding in the Mako (research/47: a camera-update handler, inert until asked)
     game::focus_pause::TryStartup();  // [Game] pauseUnfocused (research/47: a BioWorldInfo.Tick handler)
     game::galaxy_dump::TryStartup();  // the galaxy map's Flash calls, traced on request (research/51 section 8)
+    game::galaxy_map::TryStartup();  // the camera-update handler holding the view in the CIC while the map is open in-world
     game::sights::TryStartup();  // the scoped shots' aimed fire (a CallFunction handler, registered before the hook)
     game::view_level::TryStartup();  // the level camera (PlayerTick and SetWeaponRecoil handlers, before the hooks)
     if (!gHandAimAvailable) {
