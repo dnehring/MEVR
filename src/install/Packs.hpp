@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "install/Http.hpp"
+
 #include <atomic>
 #include <filesystem>
 #include <functional>
@@ -49,14 +51,27 @@ inline constexpr char kMemReleasesApi[] = "https://api.github.com/repos/MassEffe
 inline constexpr char kMemPage[] = "https://github.com/MassEffectModder/MassEffectModder/releases";
 
 // The LE build's CLI asset from a GitHub "latest release" answer: name, URL and size of MassEffectModderNoGui-v*.7z
-// for Windows (not the Linux / macOS builds).
+// for Windows (not the Linux / macOS builds), and its SHA-256 when GitHub lists one ("digest": "sha256:<hex>").
+// Only a plain file name (it becomes a path) and a github.com download URL are accepted; `why` says what was missing.
 struct Asset {
     std::string name;
     std::string url;
     std::uint64_t size = 0;
     std::string tag;
+    std::string sha256;  // lower-case hex, or "" (not listed: not checked)
 };
-std::optional<Asset> MemAssetFrom(std::string_view releaseJson);
+std::optional<Asset> MemAssetFrom(std::string_view releaseJson, std::string* why = nullptr);
+
+// Asks GitHub for MEM's latest release (a network request; the test server under --test-server): the asset, or why
+// not ("Couldn't reach GitHub: ...", the API quota, an answer without a Windows CLI build).
+struct MemLookup {
+    std::optional<Asset> asset;
+    std::string error;
+};
+MemLookup FindMemRelease();
+// Downloads `asset` into MEM's tools folder (its listed size and SHA-256 checked) and unpacks it (UnpackMem). "" or an
+// error. The window's Download button (after the player saw the name and size) and the command line's --get-mem.
+std::string DownloadMem(Asset const& asset, std::function<void(http::Progress const&)> const& progress, std::atomic<bool> const* cancel);
 
 // One line of MEM's --ipc output ("[IPC]TASK_PROGRESS 42", "[IPC]STAGE_CONTEXT STAGE_SCAN", "[IPC]ERROR ...").
 struct IpcLine {
@@ -82,16 +97,35 @@ struct InstallStep {
     int percent = 0;
     std::string detail;
 };
-// Waits up to `timeoutMs` for MassEffect1.exe and its launcher to exit (calling `waiting` once if it has to wait).
-// False if the game still runs, or `cancel` was set.
-bool WaitForGameExit(unsigned timeoutMs, std::atomic<bool> const* cancel, std::function<void()> const& waiting);
-// Installs a downloaded pack (refused while the game runs or is still exiting): unpacks the archive (MEM's --unpack-archive, or takes .mem files as they are) into
-// %LOCALAPPDATA%\MEVR\packs\<id>, writes the .mfl, points MEM at the game (--set-game-data-path) and runs
-// --install-mods --gameid 1 --input <mfl> --verify --ipc, reporting progress. "" or an error. [untested]
+// Waits up to `timeoutMs` for the game in `gameRoot` (its MassEffect1.exe and launcher; another copy of the game doesn't
+// count, detect::GameRunningIn) to exit, calling `waiting` once if it has to wait. False if it still runs, or `cancel`
+// was set.
+bool WaitForGameExit(std::filesystem::path const& gameRoot, unsigned timeoutMs, std::atomic<bool> const* cancel,
+    std::function<void()> const& waiting);
+// Installs a downloaded pack (refused while the game runs or is still exiting): unpacks the archive (MEM's
+// --unpack-archive, into %LOCALAPPDATA%\MEVR\packs\<id>, emptied first so an earlier version's files never go along), or
+// takes a .mem file as it is, writes the .mfl, points MEM at the game (--set-game-data-path) and runs --install-mods
+// --gameid 1 --input <mfl> --verify --ipc, reporting progress. "" or an error. Tested with a stand-in MEM (research/33
+// section 10); MEM's real arguments and output are [verify].
 std::string InstallWithMem(Pack const& pack, std::filesystem::path const& download, std::filesystem::path const& gameRoot,
     std::function<void(InstallStep const&)> const& progress, std::atomic<bool> const* cancel);
 
-// Unpacks MEM's own .7z (Windows' tar.exe reads 7z) into its tools folder. "" or an error. [untested]
+// A program that unpacks MEM's .7z: Windows' own tar.exe (bsdtar: it reads 7z's LZMA only where it's built with liblzma,
+// as Windows 11's is since 2023; Windows 10's isn't), else 7-Zip if it's installed.
+struct Unpacker {
+    std::string name;  // "tar.exe", "7-Zip"
+    std::filesystem::path exe;
+    bool sevenZip = false;
+};
+// Those found on this PC, in the order they're tried.
+std::vector<Unpacker> Unpackers();
+// Unpacks MEM's own .7z into its tools folder with the first of `tools` that manages (and finds the exe if the archive
+// holds it in a subfolder). "" or an error naming what was tried.
 std::string UnpackMem(std::filesystem::path const& archive);
+std::string UnpackMem(std::filesystem::path const& archive, std::vector<Unpacker> const& tools);
+
+// One argument for a Windows command line (CommandLineToArgvW's rules: a trailing backslash is doubled before the
+// closing quote, so "D:\Games\" doesn't swallow it).
+std::wstring QuoteArg(std::wstring_view arg);
 
 } // namespace mevr::install::packs

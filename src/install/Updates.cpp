@@ -2,6 +2,7 @@
 #include "install/Updates.hpp"
 
 #include "core/Json.hpp"
+#include "install/Http.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -81,6 +82,7 @@ std::optional<Release> ParseLatestRelease(std::string_view text) {
     r.tag = v->String("tag_name");
     r.name = v->String("name");
     r.page = v->String("html_url");
+    r.prerelease = v->Bool("prerelease") || v->Bool("draft");
     if (r.tag.empty() || r.page.rfind("https://github.com/", 0) != 0) {
         return std::nullopt;
     }
@@ -98,6 +100,77 @@ int CompareVersions(std::string_view a, std::string_view b) {
         }
     }
     return 0;
+}
+
+char const* StateName(CheckResult::State state) {
+    switch (state) {
+    case CheckResult::State::Newer: return "newer";
+    case CheckResult::State::Latest: return "latest";
+    case CheckResult::State::NoRelease: return "no release";
+    case CheckResult::State::RateLimited: return "rate limited";
+    case CheckResult::State::Failed: return "failed";
+    case CheckResult::State::Off: return "off";
+    }
+    return "";
+}
+
+CheckResult Interpret(int status, std::string_view body, std::string_view error, bool rateLimited, std::string_view mine) {
+    using State = CheckResult::State;
+    CheckResult out;
+    if (status == 0) {
+        out.text = "Couldn't check: " + std::string(error.empty() ? std::string_view("no answer") : error) + ".";
+        return out;
+    }
+    if (rateLimited) {
+        out.state = State::RateLimited;
+        out.text = "GitHub's limit for checks without an account is reached for now (60 an hour): try again later.";
+        return out;
+    }
+    if (status == 404) {
+        // /releases/latest answers 404 while a repository has no published release (drafts and pre-releases don't
+        // count), and for a repository that doesn't exist.
+        out.state = State::NoRelease;
+        out.text = "No release is published on GitHub yet.";
+        return out;
+    }
+    if (status != 200) {
+        out.text = "Couldn't check: GitHub answered HTTP " + std::to_string(status) + ".";
+        return out;
+    }
+    if (!error.empty()) {
+        out.text = "Couldn't check: " + std::string(error) + ".";
+        return out;
+    }
+    auto const release = ParseLatestRelease(body);
+    if (!release) {
+        out.text = "Couldn't check: GitHub's answer wasn't a release.";
+        return out;
+    }
+    out.tag = release->tag;
+    int const order = CompareVersions(release->tag, mine);
+    out.state = State::Latest;
+    if (order > 0 && !release->prerelease) {
+        out.state = State::Newer;
+        out.text = "Version " + release->tag + " is out.";
+        out.page = release->page;
+    } else if (order < 0 && !release->prerelease) {
+        out.text = "This version is newer than the latest release (" + release->tag + ").";
+    } else {
+        out.text = "This is the latest version.";
+    }
+    return out;
+}
+
+CheckResult Check(std::string_view repoUrl) {
+    std::string const api = LatestReleaseApi(repoUrl);
+    if (api.empty()) {
+        CheckResult off;
+        off.state = CheckResult::State::Off;
+        off.text = "No release page set (MEVR-Setup.ini, [Update] repo).";
+        return off;
+    }
+    http::Response const r = http::Get(api);
+    return Interpret(r.status, r.body, r.error, r.rateLimited);
 }
 
 } // namespace mevr::install::updates

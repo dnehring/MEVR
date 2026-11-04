@@ -79,6 +79,11 @@ public:
     void Sample(std::string const& state);
     void SetPage(std::string const& page);
     bool Busy() const { return busy_; }
+    // Whether the window still waits for the game to exit (--wait-pid).
+    bool Waiting() const { return waiting_; }
+    // The model's state as "key: value" lines, for the preview's real-start mode (--preview <folder> --request: the
+    // "Install after I quit" test, research/33 section 10).
+    std::string StateText() const;
 
 private:
     void Act(std::string const& name, std::string const& arg);

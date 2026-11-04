@@ -188,6 +188,16 @@ void App::SetPage(std::string const& page) {
     Dirty();
 }
 
+std::string App::StateText() const {
+    std::string packs;
+    for (PackView const& p : packs_) {
+        packs += std::format("pack {}: {}{}\n", p.id, p.state, p.installed ? " (installed)" : "");
+    }
+    return std::format("page: {}\ngame: {}\ngame ok: {}\ninstalled: {}\nrequest text: {}\nwaiting: {}\nwait text: {}\nmem ready: {}\n{}", page_,
+        gameOk_ ? detect::Utf8(status_.root.wstring()) : std::string("none"), gameOk_ ? 1 : 0, installed_ ? 1 : 0, requestText_, waiting_ ? 1 : 0,
+        waitText_, memReady_ ? 1 : 0, packs);
+}
+
 bool App::SteamGame() const {
     // Found through Steam, or a picked folder inside a Steam library.
     std::wstring path = status_.root.wstring();
@@ -230,16 +240,20 @@ void App::Start() {
     updateText_ = updateEnabled_ ? "Check asks GitHub for the newest release and links its page; nothing downloads by itself."
                              : "No release page set yet (MEVR-Setup.ini, [Update] repo).";
     if (options_.request) {
+        // "Install after I quit" (plugin/SetupRequest): the game wrote the request and started us as it exited.
         page_ = "content";
+        requestText_ = "Choose a pack below.";
         if (auto const text = install::ReadFile(install::RequestFile())) {
-            if (auto const request = json::Parse(*text)) {
+            if (auto const request = install::ParseSetupRequest(*text)) {
                 std::string names;
-                for (json::Value const& id : request->Get("packs").Items()) {
-                    if (packs::Pack const* p = packs::Find(id.AsString())) {
+                for (std::string const& id : request->packs) {
+                    if (packs::Pack const* p = packs::Find(id)) {
                         names += names.empty() ? p->name : std::string(", ") + p->name;
                     }
                 }
-                requestText_ = names.empty() ? std::string("Choose a pack below.") : "You asked for: " + names + ".";
+                if (!names.empty()) {
+                    requestText_ = "You asked for: " + names + ".";
+                }
             }
         }
         std::error_code ec;
@@ -976,27 +990,18 @@ void App::Act(std::string const& name, std::string const& arg) {
         if (!updateEnabled_) {
             return;
         }
-        std::string const api = install::updates::LatestReleaseApi(options_.repo);
-        if (api.empty()) {
+        if (install::updates::LatestReleaseApi(options_.repo).empty()) {
             return;
         }
-        auto result = std::make_shared<std::pair<std::string, std::string>>();
-        RunJob("Checking for updates", [this, api, result] {
-            install::http::Response const r = install::http::Get(api);
-            auto const release = r.status == 200 ? install::updates::ParseLatestRelease(r.body) : std::nullopt;
-            if (!release) {
-                result->first = "Couldn't check (" + (r.error.empty() ? "HTTP " + std::to_string(r.status) : r.error) + ").";
-            } else if (install::updates::CompareVersions(release->tag, install::updates::kVersion) > 0) {
-                result->first = "Version " + release->tag + " is out.";
-                result->second = release->page;
-            } else {
-                result->first = "This is the latest version.";
-            }
-            Post(result->first);
+        auto result = std::make_shared<install::updates::CheckResult>();
+        std::string const repo = options_.repo;
+        RunJob("Checking for updates", [this, repo, result] {
+            *result = install::updates::Check(repo);
+            Post(result->text, result->state == install::updates::CheckResult::State::Failed);
         });
         jobDone_ = [this, result] {
-            updateText_ = result->first;
-            updateUrl_ = result->second;
+            updateText_ = result->text;
+            updateUrl_ = result->page;
         };
     } else if (name == "open_update") {
         if (host_.openUrl && !updateUrl_.empty()) {
@@ -1013,10 +1018,10 @@ void App::Act(std::string const& name, std::string const& arg) {
         // First what the latest release offers (its name and size), then the download once the player has seen them.
         auto asset = std::make_shared<std::optional<packs::Asset>>();
         RunJob("Looking up Mass Effect Modder's latest release", [this, asset] {
-            install::http::Response const r = install::http::Get(packs::kMemReleasesApi);
-            *asset = r.status == 200 ? packs::MemAssetFrom(r.body) : std::nullopt;
+            packs::MemLookup const found = packs::FindMemRelease();
+            *asset = found.asset;
             if (!*asset) {
-                Post("Couldn't find the download (" + (r.error.empty() ? "HTTP " + std::to_string(r.status) : r.error) + "). Use its page instead.", true);
+                Post(found.error + ". Use its page instead.", true);
             }
         });
         jobDone_ = [this, asset] {
@@ -1030,15 +1035,14 @@ void App::Act(std::string const& name, std::string const& arg) {
                     a.name, install::http::SizeText(a.size), install::http::TimeText(a.size, 6.25e6)),
                 "Download", false, [this, a] {
                     RunJob("Downloading " + a.name, [this, a] {
-                        fs::path const file = packs::MemExe().parent_path() / detect::Wide(a.name);
-                        std::string error = install::http::Download(a.url, file, [this, a](install::http::Progress const& p) {
+                        std::string const error = packs::DownloadMem(a, [this, a](install::http::Progress const& p) {
+                            if (p.total > 0 && p.received >= p.total) {
+                                Progress("Unpacking " + a.name, 100);
+                                return;
+                            }
                             int const percent = p.total > 0 ? static_cast<int>(100 * p.received / p.total) : 0;
                             Progress(std::format("Downloading {}: {} of {}", a.name, install::http::SizeText(p.received), install::http::SizeText(p.total)), percent);
                         }, &cancel_);
-                        if (error.empty()) {
-                            Progress("Unpacking", 100);
-                            error = packs::UnpackMem(file);
-                        }
                         Post(error.empty() ? "Mass Effect Modder is ready." : error, !error.empty());
                     });
                 });
@@ -1064,8 +1068,6 @@ void App::Act(std::string const& name, std::string const& arg) {
             return;
         }
         fs::path const file = it->second;
-        bool const reapply = status_.gameSettings;
-        auto const choices = ChoicesFromModel();
         std::string const id = p->id;
         std::string const packName = p->name;
         Confirm(std::string("Install ") + p->name + "?",
@@ -1073,22 +1075,12 @@ void App::Act(std::string const& name, std::string const& arg) {
                         "first time, as it scans the game). Install texture packs after every other content mod: content mods can't go on "
                         "afterwards, and only a full restore or reinstall of the game takes textures out. Close the game first.",
                 p->size),
-            "Install for good", true, [this, layout, file, id, packName, reapply, choices] {
-                RunJob("Installing " + packName, [this, layout, file, id, packName, reapply, choices] {
-                    packs::Pack const* pack = packs::Find(id);
-                    std::string const error = packs::InstallWithMem(*pack, file, layout.root, [this](packs::InstallStep const& s) {
+            "Install for good", true, [this, layout, file, id, packName] {
+                RunJob("Installing " + packName, [this, layout, file, id] {
+                    // MEM, the manifest's record, and our recorded VR game settings again where MEM wrote over them.
+                    Apply(install::InstallPack(layout, id, file, [this](packs::InstallStep const& s) {
                         Progress(s.detail.empty() ? s.stage : s.stage + ": " + s.detail, s.percent);
-                    }, &cancel_);
-                    if (!error.empty()) {
-                        Post(error, true);
-                        return;
-                    }
-                    install::RecordPack(layout, id, packName);
-                    Post(packName + " is installed.");
-                    if (reapply) {
-                        // MEM writes the game's graphics settings too: ours again on top.
-                        Apply(install::ApplySettings(layout, choices));
-                    }
+                    }, &cancel_));
                 });
             });
     } else if (name == "admin") {

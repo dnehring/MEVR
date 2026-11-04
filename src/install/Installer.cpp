@@ -484,6 +484,15 @@ Outcome Uninstall(Layout const& layout, bool keepUserData, fs::path const& runni
             moved.clear();
         }
     }
+    // Texture packs aren't ours to undo: MEM rewrote the game's packages (research/33 section 3).
+    if (!tx.Data().packs.empty() || packs::TexturesMarked(layout.root)) {
+        std::string names;
+        for (PackRecord const& p : tx.Data().packs) {
+            names += (names.empty() ? "" : ", ") + p.name;
+        }
+        tx.Note("texture packs stay" + (names.empty() ? std::string() : " (" + names + ")") +
+                ": Mass Effect Modder changed the game's files for good; only a full restore (or reinstall) of the game takes them out");
+    }
     bool const ok = tx.Uninstall(keepUserData);
     if (!moved.empty()) {
         if (!ok) {
@@ -635,15 +644,57 @@ Outcome RestoreSettings(Layout const& layout) {
     return Finish(tx, ok);
 }
 
+static void PutPackOnRecord(Transaction& tx, std::string const& id, std::string const& name) {
+    auto& list = tx.Data().packs;
+    list.erase(std::remove_if(list.begin(), list.end(), [&](PackRecord const& p) { return p.id == id; }), list.end());
+    list.push_back({id, name, "mem", NowIso()});
+}
+
 Outcome RecordPack(Layout const& layout, std::string const& id, std::string const& name) {
     Transaction tx(layout);
     if (!tx.Load()) {
         return Finish(tx, false);
     }
-    auto& list = tx.Data().packs;
-    list.erase(std::remove_if(list.begin(), list.end(), [&](PackRecord const& p) { return p.id == id; }), list.end());
-    list.push_back({id, name, "mem", NowIso()});
+    PutPackOnRecord(tx, id, name);
     return Finish(tx, tx.Save());
+}
+
+Outcome InstallPack(Layout const& layout, std::string const& packId, fs::path const& download,
+    std::function<void(packs::InstallStep const&)> const& progress, std::atomic<bool> const* cancel) {
+    packs::Pack const* pack = packs::Find(packId);
+    if (pack == nullptr) {
+        return Error("No texture pack called '" + packId + "' in the catalogue");
+    }
+    if (pack->method != packs::Method::PageThenMem) {
+        return Error(std::string(pack->name) + " installs with its author's own tool, not with this setup");
+    }
+    if (!detect::IsGameRoot(layout.root)) {
+        return Error("Mass Effect Legendary Edition isn't in " + detect::Utf8(layout.root.wstring()));
+    }
+    std::error_code ec;
+    if (!fs::is_regular_file(download, ec)) {
+        return Error("The downloaded file isn't there: " + detect::Utf8(download.wstring()));
+    }
+    // The game's ini files as they are before MEM writes its graphics settings into them.
+    std::string const gamerBefore = ReadFile(layout.Full(paths::kGamerSettings)).value_or(std::string());
+    std::string const engineBefore = ReadFile(layout.Full(paths::kEngineIni)).value_or(std::string());
+    // Not Preflight: "Install after I quit" starts us while the game is still exiting, and InstallWithMem waits for it.
+    std::string const error = packs::InstallWithMem(*pack, download, layout.root, progress, cancel);
+    if (!error.empty()) {
+        return Error(error);
+    }
+    // On record, and the VR game settings again where MEM's own graphics settings went over them: the values this install
+    // wrote, as recorded, and only where they were still in place before MEM ran (the player's own changes stay).
+    Transaction tx(layout);
+    if (!tx.Load()) {
+        return Finish(tx, false);
+    }
+    tx.Note(std::string(pack->name) + " is installed (Mass Effect Modder changed the game's textures for good)");
+    PutPackOnRecord(tx, pack->id, pack->name);
+    bool ok = tx.Save();
+    ok = tx.ReassertIni(paths::kGamerSettings, gamerBefore) && ok;
+    ok = tx.ReassertIni(paths::kEngineIni, engineBefore) && ok;
+    return Finish(tx, ok);
 }
 
 fs::path LocalDataDir() {
@@ -657,6 +708,27 @@ fs::path LocalDataDir() {
 
 fs::path RequestFile() {
     return LocalDataDir() / L"setup.request";
+}
+
+std::optional<SetupRequest> ParseSetupRequest(std::string_view text) {
+    auto const v = json::Parse(text);
+    if (!v || !v->IsObject()) {
+        return std::nullopt;
+    }
+    SetupRequest r;
+    r.page = v->String("page", "content");
+    if (r.page != "content") {
+        r.page = "content";  // the only page the game asks for
+    }
+    for (json::Value const& id : v->Get("packs").Items()) {
+        if (id.IsString() && packs::Find(id.AsString()) != nullptr &&
+            std::find(r.packs.begin(), r.packs.end(), id.AsString()) == r.packs.end()) {
+            r.packs.push_back(id.AsString());
+        }
+    }
+    double const pid = v->Number("pid", 0.0);
+    r.pid = pid > 0.0 && pid < 4294967296.0 ? static_cast<unsigned long>(pid) : 0;
+    return r;
 }
 
 std::vector<std::string> RuntimeFiles() {

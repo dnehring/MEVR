@@ -16,7 +16,16 @@
 //     | --report [--snapshot] [--perf] [--report-dir <folder>] [--local <folder>] [--from-game]  (the problem report's zip:
 //       on the Desktop unless --report-dir; --local reads another %LOCALAPPDATA%\MEVR, for tests; --from-game: started by
 //       the in-game menu, at background priority, its report.request's choices)
+//     | --check-update [--repo <url>]  (the update check: GitHub's latest release against this version)
+//     | --get-mem  (Mass Effect Modder's latest CLI build from its GitHub releases into %LOCALAPPDATA%\MEVR\tools, unpacked)
+//     | --install-pack <id> --file <download>  (a texture pack through MEM, recorded, our recorded VR game settings again where
+//       MEM wrote over them)
 //   with --game <folder> and --payload <folder> (default: payload\ next to the exe).
+//   --preview <folder> --request [--wait-pid N] [--game <folder>] [--out <file>]: the window's real start for "Install after I
+//     quit" (the request file read and removed, the page, the wait for the game's exit) as PNGs and its state as text.
+//   --test-server http://127.0.0.1:<port>: TESTS ONLY (research/33 section 10). Every web request goes to that local server
+//     instead (https://api.github.com/x -> http://127.0.0.1:<port>/api.github.com/x); anything but http://127.0.0.1 or
+//     https:// is refused. Never on by default.
 
 #include "SetupApp.hpp"
 
@@ -24,8 +33,10 @@
 #include "install/Detect.hpp"
 #include "install/GameSettings.hpp"
 #include "core/Json.hpp"
+#include "install/Http.hpp"
 #include "install/Installer.hpp"
 #include "install/Launch.hpp"
+#include "install/Packs.hpp"
 #include "install/Report.hpp"
 #include "install/ReportMarks.hpp"
 #include "install/Updates.hpp"
@@ -220,7 +231,7 @@ std::string RepoSetting(fs::path const& exeDir) {
 }
 
 // ---- The offline preview ------------------------------------------------------------------------------------------
-int Preview(fs::path const& output, bool warp) {
+int Preview(fs::path const& output, bool warp, mevr::setup::Options const& real, std::optional<fs::path> const& out) {
     fs::create_directories(output);
     ComPtr<ID3D11Device> device;
     ComPtr<ID3D11DeviceContext> context;
@@ -251,7 +262,8 @@ int Preview(fs::path const& output, bool warp) {
         static_cast<int>(mevr::menu::kBackdropHeight));
     mevr::setup::Options options;
     options.exe = ExePath();
-    mevr::setup::App app(options, {});
+    // --request: the window's real start (Start, Tick) instead of the sample states.
+    mevr::setup::App app(real.request ? real : options, {});
     if (!app.Bind(ui.Context()) || !ui.LoadDocument()) {
         return 1;
     }
@@ -273,6 +285,65 @@ int Preview(fs::path const& output, bool warp) {
     td.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
     device->CreateTexture2D(&td, nullptr, staging.GetAddressOf());
     ui.Context()->ProcessMouseMove(-50, -50, 0);
+
+    // Renders the page as it is now (30 frames: the layout catches up) into <output>\<name>.png.
+    auto capture = [&](char const* name, bool bottom, bool tick) {
+        for (int i = 0; i < 30; ++i) {
+            clock += 1.0 / 60.0;
+            if (tick) {
+                app.Tick();
+            }
+            if (i == 2 || i == 20) {  // after the layout has caught up with the new state
+                if (Rml::Element* content = ui.Document()->GetElementById("content")) {
+                    content->SetScrollTop(bottom ? content->GetScrollHeight() : 0.0f);
+                }
+            }
+            ui.Render(context.Get(), rtv.Get());
+        }
+        context->CopyResource(staging.Get(), target.Get());
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        std::vector<std::uint32_t> pixels(static_cast<std::size_t>(w) * h);
+        if (SUCCEEDED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+            for (int y = 0; y < h; ++y) {
+                std::memcpy(&pixels[static_cast<std::size_t>(y) * w], static_cast<std::uint8_t const*>(mapped.pData) + static_cast<std::size_t>(y) * mapped.RowPitch,
+                    static_cast<std::size_t>(w) * 4);
+            }
+            context->Unmap(staging.Get(), 0);
+        }
+        // The window's black behind the (premultiplied) page, as the swapchain shows it.
+        for (std::uint32_t& p : pixels) {
+            p |= 0xFF000000u;
+        }
+        fs::path const file = output / (std::string(name) + ".png");
+        std::string error;
+        if (mevr::png::Write(file, w, h, pixels.data(), &error)) {
+            std::printf("wrote %s\n", file.string().c_str());
+        } else {
+            std::printf("%s: %s\n", file.string().c_str(), error.c_str());
+        }
+    };
+
+    if (real.request) {
+        // "Install after I quit" (research/33 section 10): what the window does when the game starts it as it exits.
+        app.Start();
+        std::string text = "== started\n" + app.StateText();
+        capture("request-start", false, true);
+        text += "== while waiting\n" + app.StateText();
+        // --wait-pid: the window waits for the game to exit (Tick polls it), at most 60 s here.
+        ULONGLONG const until = GetTickCount64() + 60000;
+        while (app.Waiting() && GetTickCount64() < until) {
+            app.Tick();
+            Sleep(50);
+        }
+        capture("request-after-exit", false, true);
+        text += "== after the game exited\n" + app.StateText();
+        std::printf("%s", text.c_str());
+        if (out) {
+            std::ofstream(*out, std::ios::binary) << text;
+        }
+        ui.Shutdown();
+        return app.Waiting() ? 3 : 0;
+    }
 
     struct Shot {
         char const* file;
@@ -321,36 +392,7 @@ int Preview(fs::path const& output, bool warp) {
     for (Shot const& shot : shots) {
         app.Sample(shot.state);
         app.SetPage(shot.page);
-        for (int i = 0; i < 30; ++i) {
-            clock += 1.0 / 60.0;
-            if (i == 2 || i == 20) {  // after the layout has caught up with the new state
-                if (Rml::Element* content = ui.Document()->GetElementById("content")) {
-                    content->SetScrollTop(shot.bottom ? content->GetScrollHeight() : 0.0f);
-                }
-            }
-            ui.Render(context.Get(), rtv.Get());
-        }
-        context->CopyResource(staging.Get(), target.Get());
-        D3D11_MAPPED_SUBRESOURCE mapped{};
-        std::vector<std::uint32_t> pixels(static_cast<std::size_t>(w) * h);
-        if (SUCCEEDED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
-            for (int y = 0; y < h; ++y) {
-                std::memcpy(&pixels[static_cast<std::size_t>(y) * w], static_cast<std::uint8_t const*>(mapped.pData) + static_cast<std::size_t>(y) * mapped.RowPitch,
-                    static_cast<std::size_t>(w) * 4);
-            }
-            context->Unmap(staging.Get(), 0);
-        }
-        // The window's black behind the (premultiplied) page, as the swapchain shows it.
-        for (std::uint32_t& p : pixels) {
-            p |= 0xFF000000u;
-        }
-        fs::path const file = output / (std::string(shot.file) + ".png");
-        std::string error;
-        if (mevr::png::Write(file, w, h, pixels.data(), &error)) {
-            std::printf("wrote %s\n", file.string().c_str());
-        } else {
-            std::printf("%s: %s\n", file.string().c_str(), error.c_str());
-        }
+        capture(shot.file, shot.bottom, false);
     }
     ui.Shutdown();
     return 0;
@@ -375,7 +417,54 @@ struct Cli {
     bool fromGame = false;
     std::optional<fs::path> reportDir;
     std::optional<fs::path> localData;
+    // --check-update, --get-mem, --install-pack
+    std::string repo;
+    std::string packId;
+    std::optional<fs::path> packFile;
 };
+
+// --check-update: the update check the Settings page's Check button runs (install/Updates), its answer as text.
+int RunCheckUpdate(Cli const& cli, std::function<void(std::string const&)> const& say) {
+    namespace updates = mevr::install::updates;
+    say("update check: " + cli.repo + " (this version " + std::string(updates::kVersion) + ")");
+    updates::CheckResult const r = updates::Check(cli.repo);
+    say(std::string("update: ") + updates::StateName(r.state));
+    say("text: " + r.text);
+    if (!r.tag.empty()) {
+        say("tag: " + r.tag);
+    }
+    if (!r.page.empty()) {
+        say("page: " + r.page);
+    }
+    return r.state == updates::CheckResult::State::Failed || r.state == updates::CheckResult::State::RateLimited ? 1 : 0;
+}
+
+// --get-mem: what the Optional content page's Download button does (install/Packs), without the confirmation.
+int RunGetMem(std::function<void(std::string const&)> const& say) {
+    namespace packs = mevr::install::packs;
+    namespace http = mevr::install::http;
+    packs::MemLookup const found = packs::FindMemRelease();
+    if (!found.asset) {
+        say("mem: FAILED: " + found.error);
+        return 1;
+    }
+    packs::Asset const& a = *found.asset;
+    say(std::format("mem release: {} {} ({} bytes, sha256 {}) {}", a.tag, a.name, a.size, a.sha256.empty() ? "not listed" : a.sha256, a.url));
+    int lastQuarter = -1;
+    std::string const error = packs::DownloadMem(a, [&](http::Progress const& p) {
+        int const quarter = p.total > 0 ? static_cast<int>(4 * p.received / p.total) : 0;
+        if (quarter != lastQuarter) {
+            lastQuarter = quarter;
+            say(std::format("  {} of {}", p.received, p.total));
+        }
+    }, nullptr);
+    if (!error.empty()) {
+        say("mem: FAILED: " + error);
+        return 1;
+    }
+    say("mem: ready: " + detect::Utf8(packs::MemExe().wstring()));
+    return 0;
+}
 
 // --report: the problem report's zip, no window (install/Report, research/33 section 8). With --from-game (the in-game
 // menu started us while the game runs): the request file's choices, a background priority (CPU and disk), the request
@@ -435,6 +524,13 @@ int RunCli(Cli const& cli) {
         source = source.empty() ? installs.front().source : source;
     }
     int code = 0;
+    if (cli.command == "check-update" || cli.command == "get-mem") {
+        code = cli.command == "check-update" ? RunCheckUpdate(cli, say) : RunGetMem(say);
+        if (cli.out) {
+            std::ofstream(*cli.out, std::ios::binary) << text;
+        }
+        return code;
+    }
     if (cli.command == "report") {
         code = RunReport(cli, root, source, say);
         if (cli.out) {
@@ -495,6 +591,21 @@ int RunCli(Cli const& cli) {
             report(mevr::install::ApplySettings(layout, choices));
         } else if (cli.command == "restore-settings") {
             report(mevr::install::RestoreSettings(layout));
+        } else if (cli.command == "install-pack") {
+            if (cli.packId.empty() || !cli.packFile) {
+                say("--install-pack <id> needs --file <the downloaded pack>");
+                code = 1;
+            } else {
+                int lastPercent = -1;
+                std::string lastStage;
+                report(mevr::install::InstallPack(layout, cli.packId, *cli.packFile, [&](mevr::install::packs::InstallStep const& s) {
+                    if (s.stage != lastStage || (s.percent >= 0 && s.percent / 25 != lastPercent / 25)) {
+                        lastStage = s.stage;
+                        lastPercent = s.percent;
+                        say(std::format("  [{}] {}{}{}", s.percent, s.stage, s.detail.empty() ? "" : ": ", s.detail));
+                    }
+                }, nullptr));
+            }
         }
         mevr::install::Status const s = mevr::install::ReadStatus(*root, source);
         say("game: " + detect::Utf8(s.root.wstring()) + " (" + source + ")");
@@ -515,6 +626,13 @@ int RunCli(Cli const& cli) {
             say("needs repair: " + (list.empty() ? std::string("nothing") : list));
         }
         say(std::string("textures marked by MEM: ") + (s.texturesMarked ? "yes" : "no"));
+        std::string packList;
+        for (mevr::install::PackRecord const& p : s.packs) {
+            packList += (packList.empty() ? "" : ", ") + p.name + " (" + p.id + ", " + p.method + ", " + p.installedAt + ")";
+        }
+        say("texture packs installed: " + (packList.empty() ? std::string("none") : packList));
+        std::error_code memEc;
+        say(std::string("Mass Effect Modder: ") + (fs::exists(mevr::install::packs::MemExe(), memEc) ? "downloaded" : "not downloaded"));
         detect::XrRuntime const xr = detect::ActiveRuntime();
         say("VR runtime: " + (xr.kind.empty() ? std::string("none") : xr.kind + " (" + xr.manifest + ")"));
         say("before launch: " + mevr::install::launch::runtime_start::PlanFor(xr.kind, xr.manifest).advice);
@@ -887,13 +1005,36 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             cli.reportDir = fs::path(next());
         } else if (a == L"--local") {
             cli.localData = fs::path(next());
+        } else if (a == L"--repo") {
+            cli.repo = detect::Utf8(next());
+        } else if (a == L"--install-pack") {
+            cli.command = "install-pack";
+            cli.packId = detect::Utf8(next());
+        } else if (a == L"--file") {
+            cli.packFile = fs::path(next());
+        } else if (a == L"--test-server") {
+            // Tests only: every web request to a local server (install/Http). Refused for anything else.
+            std::string const server = detect::Utf8(next());
+            if (!mevr::install::http::SetTestServer(server)) {
+                if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+                    FILE* f = nullptr;
+                    freopen_s(&f, "CONOUT$", "w", stderr);
+                }
+                std::fprintf(stderr, "--test-server: only http://127.0.0.1[:port] or an https:// URL, not '%s'\n", server.c_str());
+                return 2;
+            }
         } else if (a.rfind(L"--", 0) == 0) {
             std::wstring const name = a.substr(2);
             if (name == L"status" || name == L"install" || name == L"uninstall" || name == L"repair" || name == L"apply-settings" ||
-                name == L"restore-settings" || name == L"report") {
+                name == L"restore-settings" || name == L"report" || name == L"check-update" || name == L"get-mem") {
                 cli.command = detect::Utf8(name);
             }
         }
+    }
+    if (cli.repo.empty()) {
+        cli.repo = options.repo;
+    } else {
+        options.repo = cli.repo;
     }
     if (preview || !cli.command.empty()) {
         // Output to the console we were started from, if any.
@@ -903,7 +1044,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             freopen_s(&f, "CONOUT$", "w", stderr);
         }
         CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-        int const code = preview ? Preview(*preview, warp) : RunCli(cli);
+        int const code = preview ? Preview(*preview, warp, options, cli.out) : RunCli(cli);
         std::fflush(stdout);
         return code;
     }

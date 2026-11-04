@@ -18,6 +18,7 @@
 #include "loader/LoaderCore.hpp"
 
 #include <Windows.h>
+#include <shellapi.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -440,6 +441,151 @@ void TestPacksAndUpdates() {
     ICHECK(mevr::install::http::SizeText(9700000000ull) == "9.7 GB");
     ICHECK(mevr::install::http::TimeText(600000000, 10000000.0) == "about 1 minute");
     ICHECK(mevr::install::http::TimeText(1000, 10000000.0) == "under a minute");
+}
+
+// The pure parts of the web and MEM paths (research/33 section 10; the paths themselves run against a local server in
+// tools/setup/test-network.py): the update check's verdicts, MEM's asset with its digest, the test server's mapping,
+// command-line quoting, and the in-game menu's setup.request.
+void TestNetworkPaths() {
+    namespace p = mevr::install::packs;
+    namespace u = mevr::install::updates;
+    namespace http = mevr::install::http;
+    using State = u::CheckResult::State;
+    std::string const page = "https://github.com/dnehring/MEVR/releases/tag/";
+    auto release = [&](char const* tag, char const* extra = "") {
+        return std::string(R"({"tag_name": ")") + tag + R"(", "html_url": ")" + page + tag + "\"" + extra + "}";
+    };
+    // The update check's verdicts.
+    ICHECK(u::Interpret(0, "", "the request failed: couldn't connect (error 12029)", false, "0.1.0").state == State::Failed);
+    ICHECK(u::Interpret(0, "", "", false, "0.1.0").text == "Couldn't check: no answer.");
+    ICHECK(u::Interpret(404, R"({"message": "Not Found"})", "", false, "0.1.0").state == State::NoRelease);
+    ICHECK(u::Interpret(403, "", "", true, "0.1.0").state == State::RateLimited);
+    ICHECK(u::Interpret(429, "", "", true, "0.1.0").state == State::RateLimited);
+    ICHECK(u::Interpret(403, "", "", false, "0.1.0").text == "Couldn't check: GitHub answered HTTP 403.");
+    ICHECK(u::Interpret(500, "", "", false, "0.1.0").state == State::Failed);
+    ICHECK(u::Interpret(200, "{", "", false, "0.1.0").text == "Couldn't check: GitHub's answer wasn't a release.");
+    ICHECK(u::Interpret(200, release("v9.0.0"), "the answer is too large", false, "0.1.0").state == State::Failed);
+    u::CheckResult const newer = u::Interpret(200, release("v0.2.0"), "", false, "0.1.0");
+    ICHECK(newer.state == State::Newer && newer.page == page + "v0.2.0" && newer.tag == "v0.2.0" && newer.text == "Version v0.2.0 is out.");
+    ICHECK(u::Interpret(200, release("v0.1.0"), "", false, "0.1.0").text == "This is the latest version.");
+    u::CheckResult const older = u::Interpret(200, release("v0.0.9"), "", false, "0.1.0");
+    ICHECK(older.state == State::Latest && older.page.empty() && older.text.find("(v0.0.9)") != std::string::npos);
+    ICHECK(u::Interpret(200, release("v0.2.0", R"(, "prerelease": true)"), "", false, "0.1.0").state == State::Latest);
+    ICHECK(u::Interpret(200, release("v0.2.0", R"(, "draft": true)"), "", false, "0.1.0").page.empty());
+    ICHECK(u::Interpret(200, R"({"tag_name": "v9", "html_url": "https://evil.example/"})", "", false, "0.1.0").state == State::Failed);
+    ICHECK(u::Check(u::kPlaceholderRepo).state == State::Off);  // no request
+    ICHECK(std::string(u::StateName(State::RateLimited)) == "rate limited");
+
+    // MEM's asset: GitHub's digest, a plain file name, why not.
+    auto memRelease = [](std::string const& asset) {
+        return R"({"tag_name": "v534", "assets": [{"name": "MassEffectModderNoGui-v534-linux.7z", "browser_download_url": "https://github.com/l.7z"}, )" +
+            asset + "]}";
+    };
+    std::string const sha(64, 'a');
+    auto withDigest = p::MemAssetFrom(memRelease(R"({"name": "MassEffectModderNoGui-v534.7z", "browser_download_url": "https://github.com/m.7z", "size": 9, "digest": "SHA256:)" +
+        std::string(64, 'A') + "\"}"));
+    ICHECK(withDigest && withDigest->sha256 == sha && withDigest->size == 9);
+    auto shortDigest = p::MemAssetFrom(memRelease(R"({"name": "MassEffectModderNoGui-v534.7z", "browser_download_url": "https://github.com/m.7z", "digest": "sha256:abc"})"));
+    ICHECK(shortDigest && shortDigest->sha256.empty());
+    auto otherDigest = p::MemAssetFrom(memRelease(R"({"name": "MassEffectModderNoGui-v534.7z", "browser_download_url": "https://github.com/m.7z", "digest": "md5:)" + sha + "\"}"));
+    ICHECK(otherDigest && otherDigest->sha256.empty());
+    std::string why;
+    ICHECK(!p::MemAssetFrom(memRelease(R"({"name": "MassEffectModderNoGui\\..\\x.7z", "browser_download_url": "https://github.com/m.7z"})"), &why) &&
+           why.find("plain file name") != std::string::npos);
+    ICHECK(!p::MemAssetFrom(R"({"tag_name": "v1", "assets": []})", &why) && why.find("(v1) has no Windows command-line build") != std::string::npos);
+    ICHECK(!p::MemAssetFrom("[]", &why) && why == "GitHub's answer wasn't a release");
+    ICHECK(!p::MemAssetFrom(memRelease(R"({"name": "MassEffectModderNoGui-v534.7z", "browser_download_url": "https://evil.example/m.7z"})"), &why) &&
+           why.find("github.com") != std::string::npos);
+
+    // The test server: only 127.0.0.1 or https, every URL mapped under it, off again with "".
+    ICHECK(http::EffectiveUrl("https://api.github.com/repos/a/b") == "https://api.github.com/repos/a/b");
+    for (char const* bad : {"http://localhost:8080", "http://127.0.0.2", "http://127.0.0.1:", "http://127.0.0.1:80/x", "http://127.0.0.1:1234567",
+             "http://127.0.0.1.evil.example", "ftp://127.0.0.1", "127.0.0.1:80", "https://", "https://a b"}) {
+        ICHECK(!http::SetTestServer(bad));
+    }
+    ICHECK(http::EffectiveUrl("https://github.com/x") == "https://github.com/x");  // a refused server changed nothing
+    ICHECK(http::SetTestServer("http://127.0.0.1:8123/"));
+    ICHECK(http::EffectiveUrl("https://api.github.com/repos/a/b/releases/latest") == "http://127.0.0.1:8123/api.github.com/repos/a/b/releases/latest");
+    ICHECK(http::EffectiveUrl("https://github.com/o/r/releases/download/v1/x.7z?y=1") == "http://127.0.0.1:8123/github.com/o/r/releases/download/v1/x.7z?y=1");
+    ICHECK(http::EffectiveUrl("http://127.0.0.1:8123/github.com/x") == "http://127.0.0.1:8123/github.com/x");
+    ICHECK(http::SetTestServer("http://127.0.0.1"));
+    ICHECK(http::SetTestServer("https://mirror.example/test"));
+    ICHECK(http::EffectiveUrl("https://github.com/x") == "https://mirror.example/test/github.com/x");
+    ICHECK(http::SetTestServer(""));
+    ICHECK(http::EffectiveUrl("https://github.com/x") == "https://github.com/x");
+    // Without a test server, plain http is refused before anything is sent.
+    ICHECK(http::Get("http://127.0.0.1:1/x").error == "not an https URL");
+    wchar_t temp[MAX_PATH]{};
+    GetTempPathW(MAX_PATH, temp);
+    fs::path const target = fs::path(temp) / L"mevr-http-test" / L"x.bin";
+    ICHECK(http::Download("http://127.0.0.1:1/x", target, nullptr, nullptr) == "not an https URL" && !fs::exists(target));
+    ICHECK(http::ErrorText(12029).find("couldn't connect") == 0 && http::ErrorText(12002).find("no answer in time") == 0);
+    ICHECK(http::ErrorText(5) == "error 5");
+
+    // Command-line arguments (CommandLineToArgvW's rules): a trailing backslash must not eat the closing quote.
+    ICHECK(p::QuoteArg(L"C:\\Games\\Mass Effect Legendary Edition") == L"\"C:\\Games\\Mass Effect Legendary Edition\"");
+    ICHECK(p::QuoteArg(L"C:\\Games\\Mass Effect Legendary Edition\\") == L"\"C:\\Games\\Mass Effect Legendary Edition\\\\\"");
+    ICHECK(p::QuoteArg(L"a\\\"b") == L"\"a\\\\\\\"b\"");
+    ICHECK(p::QuoteArg(L"") == L"\"\"");
+    for (std::wstring const arg : {std::wstring(L"D:\\x y\\"), std::wstring(L"a\\\\b\\\""), std::wstring(L"plain"), std::wstring(L"\\\\server\\share\\")}) {
+        std::wstring const line = L"x.exe " + p::QuoteArg(arg);
+        int argc = 0;
+        wchar_t** argv = CommandLineToArgvW(line.c_str(), &argc);
+        ICHECK(argv != nullptr && argc == 2 && arg == argv[1]);
+        LocalFree(argv);
+    }
+
+    // The in-game menu's request (plugin/SetupRequest writes page, packs and the game's pid).
+    auto const req = mevr::install::ParseSetupRequest("{\n  \"page\": \"content\",\n  \"packs\": [],\n  \"pid\": 4321\n}");
+    ICHECK(req && req->page == "content" && req->packs.empty() && req->pid == 4321);
+    auto const named = mevr::install::ParseSetupRequest(R"({"page": "settings", "packs": ["alot-le1", "nope", "alot-le1", 7], "pid": -3})");
+    ICHECK(named && named->page == "content" && named->packs == std::vector<std::string>{"alot-le1"} && named->pid == 0);
+    ICHECK(!mevr::install::ParseSetupRequest("{ not json") && !mevr::install::ParseSetupRequest("[]"));
+
+    // After MEM wrote the game's settings: ours again only where they were in place before it ran; the uninstall still
+    // puts the player's own values back.
+    {
+        using namespace mevr::install;
+        fs::path const root = fs::path(temp) / L"mevr-reassert-test" / L"Mass Effect Legendary Edition";
+        std::error_code ec;
+        fs::remove_all(root.parent_path(), ec);
+        Layout const layout{root};
+        Write(layout.Win64() / L"MassEffect1.exe", "exe");
+        std::string const original = "[SystemSettings]\r\nUseVSync=True\r\nMotionBlur=True\r\nFilmGrain=True\r\nResX=1920\r\n";
+        Write(layout.Full(paths::kGamerSettings), original);
+        {
+            Transaction tx(layout);
+            ICHECK(tx.Load() && tx.EditIni(paths::kGamerSettings, [](std::string_view t, std::vector<ini::Edit>* e) {
+                settings::Choices c;
+                c.target = settings::TargetFor("performance", 0, 0);
+                return settings::ApplyGamerSettings(t, c, e);
+            }));
+        }
+        std::string const installed = Read(layout.Full(paths::kGamerSettings));
+        std::string beforeMem = ini::Set(installed, "SystemSettings", "FilmGrain", "True");  // the player's, since
+        std::string afterMem = ini::Set(beforeMem, "SystemSettings", "MotionBlur", "True");  // MEM's
+        afterMem = ini::Set(afterMem, "SystemSettings", "TEXTUREGROUP_World", "(MinLODSize=256)");
+        Write(layout.Full(paths::kGamerSettings), afterMem);
+        {
+            Transaction tx(layout);
+            ICHECK(tx.Load() && tx.ReassertIni(paths::kGamerSettings, beforeMem) && tx.Errors().empty());
+            ICHECK(tx.ReassertIni(paths::kEngineIni, ""));  // not on record: nothing
+        }
+        std::string const now = Read(layout.Full(paths::kGamerSettings));
+        ICHECK(ini::Get(now, "SystemSettings", "MotionBlur") == std::optional<std::string>("False"));
+        ICHECK(ini::Get(now, "SystemSettings", "FilmGrain") == std::optional<std::string>("True"));
+        ICHECK(ini::Get(now, "SystemSettings", "ResX") == std::optional<std::string>("3072"));
+        ICHECK(ini::Get(now, "SystemSettings", "TEXTUREGROUP_World") == std::optional<std::string>("(MinLODSize=256)"));
+        {
+            Transaction tx(layout);
+            ICHECK(tx.Load() && tx.RevertIni(paths::kGamerSettings));
+        }
+        std::string const reverted = Read(layout.Full(paths::kGamerSettings));
+        ICHECK(ini::Get(reverted, "SystemSettings", "MotionBlur") == std::optional<std::string>("True"));
+        ICHECK(ini::Get(reverted, "SystemSettings", "ResX") == std::optional<std::string>("1920"));
+        ICHECK(ini::Get(reverted, "SystemSettings", "TEXTUREGROUP_World") == std::optional<std::string>("(MinLODSize=256)"));
+        fs::remove_all(root.parent_path(), ec);
+    }
 }
 
 // A fake game folder under %TEMP% (never the real game): the manifest's add / replace / rename / edit and their
@@ -1093,6 +1239,7 @@ void RunInstallTests(int& failures) {
     TestLaunch();
     TestFirstStartAndRuntime();
     TestPacksAndUpdates();
+    TestNetworkPaths();
     TestTransaction();
     TestQaFixes();
     TestLoaderCore();

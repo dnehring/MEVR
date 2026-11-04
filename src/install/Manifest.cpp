@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cstdio>
 #include <ctime>
+#include <format>
 #include <fstream>
 #include <sstream>
 #include <system_error>
@@ -638,6 +639,38 @@ bool Transaction::RevertIni(std::string_view relative) {
             break;
         }
     }
+    return Save();
+}
+
+bool Transaction::ReassertIni(std::string_view relative, std::string_view before) {
+    FileEntry* entry = manifest_.Find(relative);
+    if (entry == nullptr || entry->action != "edited") {
+        return true;
+    }
+    fs::path const target = layout_.Full(relative);
+    auto const text = ReadFile(target);
+    if (!text) {
+        return true;
+    }
+    std::string out = *text;
+    int changed = 0;
+    std::vector<ini::Edit> const recorded = entry->edits;
+    for (ini::Edit const& e : recorded) {
+        std::optional<std::string> const ours(e.after);
+        if (ini::Get(before, e.section, e.key) == ours && ini::Get(out, e.section, e.key) != ours) {
+            out = ini::Set(out, e.section, e.key, e.after, &entry->edits);
+            ++changed;
+        }
+    }
+    if (changed == 0) {
+        Note(std::string(relative) + ": none of our values changed");
+        return true;
+    }
+    if (!WriteFileAtomic(target, out)) {
+        Fail("couldn't write " + std::string(relative));
+        return false;
+    }
+    Note(std::format("{}: {} of our values set again (written over meanwhile)", relative, changed));
     return Save();
 }
 

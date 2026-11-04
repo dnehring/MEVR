@@ -915,6 +915,21 @@ if (MEVR_BUILD_TESTS)
     add_executable(mevr-fake-game tools/setup/FakeGame.cpp tools/setup/FakeGame.rc)
     set_target_properties(mevr-fake-game PROPERTIES OUTPUT_NAME MassEffect1 RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/fake-game/$<CONFIG>)
     target_compile_options(mevr-fake-game PRIVATE /W4 /WX)
+    # A stand-in for Mass Effect Modder's command line (MassEffectModderNoGui.exe): logs its calls, "unpacks" and
+    # "installs" on a fake game, so the setup's texture-pack flow is tested without MEM (research/33 section 10).
+    add_executable(mevr-fake-mem tools/setup/FakeMem.cpp)
+    set_target_properties(mevr-fake-mem PROPERTIES OUTPUT_NAME MassEffectModderNoGui RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/fake-mem/$<CONFIG>)
+    target_compile_definitions(mevr-fake-mem PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+    target_compile_options(mevr-fake-mem PRIVATE /W4 /WX /permissive- /utf-8)
+    # MEVR Setup's web and MEM paths against a local server (tools/setup/test-network.py, research/33 section 10): the
+    # update check's answers, MEM's download and unpacking, a texture pack's install and uninstall on a fake game, and
+    # "Install after I quit". Nothing reaches the internet (--test-server); skipped without Python or the setup.
+    if (MEVR_MAIN_MENU AND Python3_Interpreter_FOUND)
+        add_test(NAME mevr-setup-network COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/setup/test-network.py
+            --setup $<TARGET_FILE:MEVR-Setup> --fake-game $<TARGET_FILE:mevr-fake-game> --fake-mem $<TARGET_FILE:mevr-fake-mem>
+            --repo ${CMAKE_CURRENT_SOURCE_DIR})
+        set_tests_properties(mevr-setup-network PROPERTIES TIMEOUT 600)
+    endif ()
 
     # The gun sights' look, offline (tools/sight-preview): the scope's picture with the host's own shader, the
     # reticles and the window ring, as PNGs from a ray-traced test scene.
@@ -1002,7 +1017,10 @@ if (MEVR_BUILD_TESTS)
     # Every program ctest runs, as one target: CI (.github/workflows) and tools/package-release.ps1 build it before ctest.
     # The loader too: mevr-tests installs the bink2w64.dll built next to it into its fake game.
     add_custom_target(mevr-test-programs)
-    add_dependencies(mevr-test-programs mevr-tests mevr-colour-preview mevr-upscale-preview MEVR-Loader)
+    add_dependencies(mevr-test-programs mevr-tests mevr-colour-preview mevr-upscale-preview MEVR-Loader mevr-fake-game mevr-fake-mem)
+    if (MEVR_MAIN_MENU)
+        add_dependencies(mevr-test-programs MEVR-Setup)
+    endif ()
     if (MEVR_HAVE_LESDK_SPI)
         add_dependencies(mevr-test-programs mevr-loader-test)
     endif ()

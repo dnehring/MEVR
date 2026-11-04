@@ -14,7 +14,8 @@ settle, **[untested]** code written against documentation and never run here (no
    `MenuDecorators`). Pages: Welcome (status), Install, Optional content, Settings (the VR game settings), Repair,
    Uninstall, Launch. The work is the `mevr-install` library (`src/install`), unit-tested and also driven by the exe's
    command line (`--status`, `--install`, `--repair`, `--apply-settings`, `--restore-settings`, `--uninstall`), which
-   `tools/setup/test-fake-game.ps1` runs against a fake game folder.
+   `tools/setup/test-fake-game.ps1` runs against a fake game folder, and `--check-update`, `--get-mem`,
+   `--install-pack`, which `tools/setup/test-network.py` runs against a local server (section 10).
 2. **Our own ASI loader** (`src/loader`, `bink2w64.dll`, GPL-3.0, new code): forwards all 79 Bink exports to
    `bink2w64_original.dll`, loads `ASI\*.asi`, and offers LExSDKv2-style plugins (ours) the SPI interface they expect.
    If ME3Tweaks' LEBinkProxy (or another proxy) is already there, the setup uses it instead.
@@ -27,10 +28,11 @@ settle, **[untested]** code written against documentation and never run here (no
 5. **Optional content**: a catalogue of third-party texture packs. Their Nexus terms forbid re-uploads, and Nexus only
    gives direct download links to premium members' registered apps, so each entry opens the pack's own page; the
    player downloads it there and picks the file; the setup then installs it with Mass Effect Modder's command line
-   (GPL-3.0, fetched from its GitHub releases after the player confirms name, size and time). **[untested]**
+   (GPL-3.0, fetched from its GitHub releases after the player confirms name, size and time). Tested offline against a
+   local server and a stand-in MEM (section 10); the real MEM and GitHub are **[verify]**.
 6. **Update check** against GitHub Releases (`MEVR-Setup.ini [Update] repo`, default
    `https://github.com/dnehring/MEVR`, the public repository since 2026-10-23; `https://github.com/OWNER/REPO` turns the
-   check off). **[untested]**
+   check off). Tested offline against every answer GitHub gives (section 10).
 7. **In game**: Display > Optional content shows the installed packs and "Install after I quit", which writes
    `%LOCALAPPDATA%\MEVR\setup.request`; the host's ExitProcess hook then starts `ASI\MEVR-Setup.exe --request
    --wait-pid <pid>`.
@@ -166,8 +168,9 @@ Uninstall removes it); the user's game already has one. "Through Steam instead" 
   latest release found was v534 (2026-04-02); every release is titled "For LE only". The CLI is the asset
   `MassEffectModderNoGui-v534.7z` (6.9 MB). We never bundle it: the setup fetches the latest release's asset list
   from GitHub's API (accepting only `github.com` download URLs), shows its name, size and an estimated time, and
-  downloads it on the player's OK into `%LOCALAPPDATA%\MEVR\tools`. It's unpacked with Windows' `tar.exe`, which reads
-  7z on current Windows 11 **[untested, inference]**.
+  downloads it on the player's OK into `%LOCALAPPDATA%\MEVR\tools`. It's unpacked with Windows' `tar.exe`, then 7-Zip if
+  that fails (section 10: Windows 11's tar.exe reads 7z's LZMA2 and BCJ2; Windows 10's is **[inference]** built without
+  liblzma).
 - **The CLI** (`CmdLine/CmdLineHelp.cpp`): `--install-mods --gameid <1-3> --input <dir or .mfl> [--repack]
   [--skip-markers] [--ipc] [--alot-mode] [--limit-2k] [--verify]`. The checks are `--check-game-data-after`,
   `-mismatch` and `-vanilla`, `--check-for-markers`, `--detect-mods` and `--detect-bad-mods`. Also
@@ -188,16 +191,18 @@ Uninstall removes it); the user's game already has one. "Through Steam instead" 
   `BioGame\CookedPCConsole\SFXTest.pcc`. `install::packs::TexturesMarked` checks that file. Whether Steam's "verify
   files" fully undoes a texture install is **not confirmed**.
 
-### The flow built (`install/Packs`, the Optional content page) [untested]
+### The flow built (`install/Packs`, the Optional content page; tested with a stand-in MEM, section 10)
 
 1. "Open its page": the browser on the pack's Nexus page.
 2. The setup scans Downloads for a matching file, or the player picks it.
 3. "Install" shows a confirmation: permanent, after content mods, size, close the game.
-4. MEM `--unpack-archive` into `%LOCALAPPDATA%\MEVR\packs\<id>` (or the .mem file as it is), then a `.mfl`,
-   `--set-game-data-path`, and `--install-mods --gameid 1 --input <mfl> --verify --ipc` with live progress.
-5. The pack is recorded in the manifest, and the VR game settings are applied again.
+4. MEM `--unpack-archive` into `%LOCALAPPDATA%\MEVR\packs\<id>` (emptied first; or the .mem file as it is), then a
+   `.mfl`, `--set-game-data-path`, and `--install-mods --gameid 1 --input <mfl> --verify --ipc` with live progress
+   (`install::InstallPack`, shared by the window and `--install-pack`).
+5. The pack is recorded in the manifest, and the VR game settings this install wrote are set again where MEM wrote over
+   them (only those still in place before MEM ran: `Transaction::ReassertIni`).
 
-Uninstalling the VR mod leaves textures in place, and says so.
+Uninstalling the VR mod leaves textures in place, and says so (the uninstall's log names the packs).
 
 ## 4. The install (`src/install`)
 
@@ -245,7 +250,10 @@ Uninstalling the VR mod leaves textures in place, and says so.
 
 `updates::LatestReleaseApi` turns `https://github.com/<owner>/<repo>` into the Releases API URL (the placeholder
 `OWNER/REPO` gives none: the check is off). The setup reads `tag_name` and `html_url` (only `github.com` pages) and
-compares versions. A newer release only offers its page: nothing is downloaded. **[untested: no repository yet]**
+compares versions. A newer release only offers its page: nothing is downloaded. `updates::Check` / `Interpret` (since
+2026-11-04) also tell apart no release yet (404), GitHub's API quota (403 with `X-RateLimit-Remaining: 0`, or 429), an
+answer that isn't a release, and a pre-release or draft (never offered). Tested against a local server (section 10);
+against GitHub itself **[verify]** (no release is published yet).
 
 ## 6. Licensing for a release
 
@@ -475,11 +483,90 @@ file and the TOC; Repair puts all back; status then "nothing"); `MEVR-Setup.exe 
 `welcome-firststart*`, `install-firststart*`, `settings-firststart`, `launch-firststart`, `welcome-pending`,
 `welcome-repair`, `repair-needed`, `launch-repair`, `launch-meta` looked at. **Not run:** the real game, Steam, SteamVR.
 
+## 10. The web and MEM paths, tested offline (2026-11-04)
+
+docs/release-checklist.md section 5 "Installer paths never run": the update check (`install/Updates`), the downloads
+(`install/Http`), MEM's download and unpacking and a pack's install (`install/Packs`), and the setup's side of "Install
+after I quit" now run in ctest **`mevr-setup-network`** (`tools/setup/test-network.py`, about 45 s; `--quick` skips the
+30 s timeout case, `--keep` keeps its scratch folder). Nothing reaches the internet, the real MEM, the game or the
+player's `%LOCALAPPDATA%\MEVR`.
+
+**How.**
+- **`MEVR-Setup.exe --test-server http://127.0.0.1:<port>`** (tests only; `http::SetTestServer`): every request goes to
+  `<server>/<host>/<path>` (`https://api.github.com/repos/x` to `http://127.0.0.1:<port>/api.github.com/repos/x`), so
+  one local server answers for GitHub, its download host and the redirect between them. Plain http only to 127.0.0.1,
+  without a proxy; anything but `http://127.0.0.1[:port]` or an `https://` URL is refused (exit 2). Never on by default:
+  without it the setup speaks only HTTPS to the URL it's given (unit test: an `http://` URL is refused before anything is
+  sent).
+- **New command line**, running the same functions as the window's buttons: `--check-update [--repo <url>]`
+  (`updates::Check`), `--get-mem` (`packs::FindMemRelease`, `DownloadMem`), `--install-pack <id> --file <download>`
+  (`install::InstallPack`), and `--preview <folder> --request [--wait-pid N]`: the window's real `Start` and `Tick` for
+  "Install after I quit", its page as PNGs and its state as text (`App::StateText`).
+- **A stand-in MEM** (`tools/setup/FakeMem.cpp`, target `mevr-fake-mem`, built at test time as
+  `MassEffectModderNoGui.exe`, never committed or shipped): logs every call's arguments; `--unpack-archive` writes two
+  .mem files (one in a subfolder); `--set-game-data-path` checks the folder is a game root; `--install-mods` checks each
+  `.mfl` line is a .mem file, prints MEM's `[IPC]` stages and progress, appends MEM's end-of-file marker to
+  `SFXTest.pcc` and turns MotionBlur back on in `GamerSettings.ini` (MEM writes graphics settings);
+  `MEVR_FAKE_MEM_FAIL=<command>` makes one call fail with an `[IPC]ERROR`.
+- **The .7z** holding the stand-in is written by the test itself (a minimal 7z writer over Python's `lzma`: LZMA2, one
+  solid folder, CRCs), so CI needs no archiver; with 7-Zip installed the test also makes 7-Zip's own archives.
+- **The fake game** has stand-ins for "another proxy" loader (no RAD DLL needed, so it runs in CI); every run's
+  `LOCALAPPDATA` is a scratch folder under %TEMP%, checked before each run.
+
+**What ran, and what it showed** (111 checks on this PC, all passing after the fixes below; ctest 7/7):
+
+| Path | Cases | Result |
+|------|-------|--------|
+| Update check | 404; an older, the same and a newer release; a newer pre-release and draft; malformed JSON; a JSON array; `html_url` off github.com; 403 with `X-RateLimit-Remaining: 0`; 429; a 403 that isn't the quota; 500; a 5 MB body; the placeholder repository; another `--repo`; a refused connection; a server that never answers | one GET of `/repos/<o>/<r>/releases/latest` with our User-Agent and GitHub's Accept; "No release is published on GitHub yet.", "Version vX is out." with its page only for a newer full release; the timeout after 30-32 s ("no answer in time"); the placeholder asks nothing |
+| `--test-server` | localhost, 127.0.0.2, a host name, ftp, a path, file: | all refused |
+| MEM download | the release lookup then the asset through a 302 like GitHub's; the Windows CLI asset picked over the Linux and GUI builds; the listed size and SHA-256 (`digest`); downloading again over the first; a body cut short; no Content-Length (as listed, short, overlong); a Content-Length other than listed; another SHA-256; no digest; a 404; no Windows build; a URL off github.com; a file name with `..\`; malformed JSON; the API quota | each refusal names why and leaves no file (no `.part`, no archive); the exe in a subfolder found; an archive without it said so |
+| Unpacking | our LZMA2 .7z; 7-Zip's `-mx=9` archive of an exe (BCJ2 + LZMA2); a Swap4-filtered one; a broken file | Windows 11's tar.exe (bsdtar 3.8.9, liblzma 5.8.3) unpacks the first two and fails on Swap4 ("Unexpected codec ID"), then 7-Zip takes over; the broken one names both tools' errors |
+| Pack install | an archive (unpacked by MEM), a .mem as it is (from the game's own setup copy), a stale work folder, a game path ending in `\`, MEM failing in each of its three steps, an unknown pack, a missing file | MEM's three command lines exactly as section 3; the `.mfl` sorted, without the stale version's file; MEM's marker; the manifest's `packs` entry (id, name, `mem`, time); MotionBlur (MEM's) set back, FilmGrain (the player's since) kept, the resolution as installed; a failed install not recorded |
+| Status, uninstall | `--status`; `--uninstall --remove-local-data` | the packs, the marker and MEM listed; "texture packs stay (ALOT for ME1, LEUITM ...)"; the game folder byte for byte as before but for `SFXTest.pcc` (the textures stay); the scratch `%LOCALAPPDATA%\MEVR` (MEM, the pack work files) gone |
+| "Install after I quit" | the request as `plugin/SetupRequest` writes it (`page`, `packs: []`, `pid`), started as the game starts it (`ASI\MEVR-Setup.exe --request --wait-pid <pid>`, no `--game`); a request naming packs; a broken one | opens on Optional content, "Choose a pack below.", finds its own game from the ASI folder, waits ("Waiting for Mass Effect to close", Launch and installs disabled) until the process exits, then goes on; the request file is removed every time; named packs shown, unknown ids dropped |
+
+**Bugs found and fixed** (each covered by the test or `tests/InstallTests.cpp` `TestNetworkPaths`):
+1. **A pack install refused while any MassEffect1.exe ran**, another copy of the game included (`WaitForGameExit` and
+   the check before `--install-mods` used `GameRunning`): per game folder now (`GameRunningIn`, as section 9 item 6).
+2. **A stale work folder went along**: `packs\<id>` kept an earlier unpack's .mem files (another version of the pack),
+   and the recursive scan put them in MEM's list. Emptied before unpacking (a .mem picked from inside it is kept).
+3. **MEM's command lines were quoted by hand**: a game folder ending in `\` (the EA app's `Install Dir` value can)
+   swallowed the closing quote, so MEM got a wrong `--path`. `packs::QuoteArg` follows CommandLineToArgvW's rules.
+4. **After MEM the VR game settings were applied from the Settings page's current choices**: the resolution could
+   change (to Performance when the setup started without Halcyon's log) and toggles the player had kept went off. Now
+   `Transaction::ReassertIni` sets back only our recorded values that held before MEM ran and changed since.
+5. **The update check's messages**: a 404 (no release yet) read "Couldn't check (HTTP 404)", malformed JSON "Couldn't
+   check (HTTP 200)"; GitHub's API quota wasn't recognised; WinHTTP errors were bare numbers (`http::ErrorText`: "couldn't
+   connect", "no answer in time", ...). A draft or pre-release is never offered.
+6. **Downloads trusted what arrived**: the release's listed size and SHA-256 (GitHub's `digest`, `sha256:<hex>`) are now
+   checked, more bytes than listed stop the download, a failed write (a full disk) is an error, and every failure removes
+   the `.part`. MEM's asset name must be a plain file name (it becomes a path in the tools folder).
+7. **MEM's .7z unpacked only with tar.exe**: Windows 10's has no LZMA **[inference: its bsdtar 3.5.2 is built with zlib
+   only]**, so the download failed there with "tar exit code 1". `packs::Unpackers`: tar.exe, then 7-Zip (registry or
+   Program Files); the message says to install 7-Zip, or where to put the exe by hand.
+8. **The uninstall didn't say the textures stay** (only the window's page did): its log names the packs.
+9. **Cancel during MEM** read as "MEM failed (exit code 1)": it says cancelled, and during `--install-mods` that the
+   game's files may be half changed.
+
+**Still untested** (no internet, no MEM, no game here):
+- **GitHub itself [verify]**: the live JSON of MEVR's and MEM's releases, the `digest` field's format (from GitHub's 2025
+  API change, not checked here), the real redirect host, HTTPS (certificate, proxy): the test server speaks plain http.
+- **MEM itself [verify]**: its argument names (`--unpack-archive --input/--output`, `--set-game-data-path --path` with
+  the LE root), the `.mfl`'s encoding (UTF-8 written), its real `[IPC]` lines and exit codes, how its release .7z is
+  compressed.
+- **The window's clicks**: the buttons run the functions tested here, but the confirmations and progress glue weren't
+  clicked. There's no Stop button for the MEM download or a pack install (closing the window cancels between reads, or
+  after the 30 s receive timeout on a stalled server); cancel isn't driven by a test.
+- **The game's side of "Install after I quit"**: `plugin/SetupRequest`'s write and the ExitProcess hook's start; the
+  test writes the same JSON and runs the same command line from the ASI copy.
+- Windows 10's and Server 2022's tar.exe (the CI runner shows which branch it takes); headset Detect (it may start
+  SteamVR); `tools/setup/test-fake-game.ps1` wasn't re-run (it reads RAD's DLL from the real game install).
+
 ## Open
 
 - **[verify]** In the game: our loader in place of LEBinkProxy (attach timing, Halcyon's DXGI hook, the log);
   Launch on the Steam build (and whether `link2ea` is needed); the EA app build; "Install after I quit" end to end;
   "Start the game once" and Launch's SteamVR start (section 9).
-- **[untested]** Everything that touches the network or MEM: the update check, MEM's download and unpacking, a pack
-  install.
+- **[verify]** Against GitHub and the real MEM (section 10's "still untested"): the update check once a release exists,
+  MEM's download, unpacking and a real pack install on a real game.
 - The ME2/ME3 variants (the layout is `Game\ME<n>`; the classes take the game as a parameter only where needed).
