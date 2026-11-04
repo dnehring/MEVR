@@ -54,7 +54,13 @@ std::string HalcyonReleaseIni();
 // Every-install fixes on an existing file, never resetting anything else: the profile hotkeys off; in every slot the
 // menu on backslash (menuKey = 220, added if missing), no head aim (combatHeadAim / makoHeadAim 1 -> 0, and 0 added
 // where missing: a sparse slot would load Halcyon's code default, head aim on), the HUD panel's old 50 degree follow
-// becomes 70, and sfr2Metric = 1 added to a slot that has no sfr2Metric yet (a 0 the player chose stays).
+// becomes 70, Halcyon's welcome marked seen (firstRunDone = 1), and sfr2Metric = 1 added to a slot that has no
+// sfr2Metric yet (a 0 the player chose stays).
+// A slot without any key only this mod's Halcyon writes (sfr2Metric, sfr2MetricDepth, sfr2MetricEyeFrustum,
+// worldLockedPanels, recenterTiltDeg, hdrPaperWhiteNits) was never written by this mod (Halcyon's upstream MELE-VR file,
+// or an old starting file, copied in): its vrMode, fpEnabled, mirrorPresentEvery and depthPopKeyEnabled become what a
+// fresh install writes (2, 1, 2, 0). In a slot this mod wrote they're the player's (the menu sets them) and only added
+// where missing (fpEnabled 1, mirrorPresentEvery 2, depthPopKeyEnabled 0: a missing key would load Halcyon's code default).
 std::string FixHalcyonIni(std::string_view text, std::vector<Edit>* edits = nullptr);
 // Halcyon's own copy of the stereo target (sfr2ResX/Y, expectedResX/Y) in every profile slot that has those keys.
 std::string SetHalcyonResolution(std::string_view text, int width, int height, std::vector<Edit>* edits = nullptr);

@@ -12,6 +12,28 @@
 #include <system_error>
 
 namespace mevr::install {
+
+PendingSettings PendingFromChoices(settings::Choices const& c) {
+    PendingSettings p;
+    p.width = c.target.width;
+    p.height = c.target.height;
+    p.vsyncOff = c.vsyncOff;
+    p.motionBlurOff = c.motionBlurOff;
+    p.filmGrainOff = c.filmGrainOff;
+    p.hdrOff = c.hdrOff;
+    return p;
+}
+
+settings::Choices ChoicesFromPending(PendingSettings const& p) {
+    settings::Choices c;
+    c.target = {p.width, p.height};
+    c.vsyncOff = p.vsyncOff;
+    c.motionBlurOff = p.motionBlurOff;
+    c.filmGrainOff = p.filmGrainOff;
+    c.hdrOff = p.hdrOff;
+    return c;
+}
+
 namespace {
 
 namespace fs = std::filesystem;
@@ -151,8 +173,15 @@ bool ApplySettingsIn(Transaction& tx, settings::Choices const& choices, bool* ga
     Layout const& layout = tx.Where();
     std::error_code ec;
     if (!fs::exists(layout.Full(paths::kGamerSettings), ec)) {
+        // The game has never been started here: it makes GamerSettings.ini on its first start. Without the VR values the
+        // window stays bordered at the monitor's size (Halcyon's stereo breaks) and MELEVR.ini keeps the template's
+        // target, so the choices are kept and applied once the file exists (Repair, "Start the game once", Settings).
         tx.Data().gameSettings = false;
-        return true;  // the caller says "start the game once first"
+        tx.Data().pendingSettings = PendingFromChoices(choices);
+        tx.Note("warning: Mass Effect 1 hasn't been started on this PC yet, so its settings file (GamerSettings.ini) doesn't exist and the VR "
+                "game settings can't go on. They're kept: start the game once (MEVR Setup's \"Start the game once\"), quit at its main menu, "
+                "and they're applied (or use Repair afterwards).");
+        return tx.Save();
     }
     bool gamerLocked = false;
     bool ok = EditUnlessReadOnly(tx, paths::kGamerSettings, "GamerSettings.ini", [&](std::string_view text, std::vector<ini::Edit>* edits) {
@@ -172,6 +201,9 @@ bool ApplySettingsIn(Transaction& tx, settings::Choices const& choices, bool* ga
         *gamerReadOnly = gamerLocked;
     }
     tx.Data().gameSettings = ok && !gamerLocked;
+    if (tx.Data().gameSettings) {
+        tx.Data().pendingSettings.reset();
+    }
     return ok && tx.Save();
 }
 
@@ -240,7 +272,7 @@ bool Preflight(Layout const& layout, Outcome& out) {
         out = Error("Mass Effect Legendary Edition isn't in " + detect::Utf8(layout.root.wstring()));
         return false;
     }
-    if (detect::GameRunning()) {
+    if (detect::GameRunningIn(layout.root)) {
         out = Error("Mass Effect (or its launcher) is running: close it first");
         return false;
     }
@@ -295,7 +327,7 @@ Status ReadStatus(fs::path const& root, std::string const& source) {
     s.root = root;
     s.source = source;
     s.gameFound = detect::IsGameRoot(root);
-    s.gameRunning = detect::GameRunning();
+    s.gameRunning = s.gameFound ? detect::GameRunningIn(root) : detect::GameRunning();
     if (!s.gameFound) {
         return s;
     }
@@ -316,7 +348,15 @@ Status ReadStatus(fs::path const& root, std::string const& source) {
         s.installedVersion = tx.Data().modVersion;
         s.loader = tx.Data().loader;
         s.gameSettings = tx.Data().gameSettings;
+        s.pendingSettings = tx.Data().pendingSettings;
         s.packs = tx.Data().packs;
+        if (s.installed) {
+            // What Repair would put back: a loader another tool installed since stays (Repair leaves it).
+            s.needsRepair = tx.Verify();
+            if (CheckLoader(layout, tx.Data()) == LoaderNow::Foreign) {
+                std::erase(s.needsRepair, std::string(paths::kBink));
+            }
+        }
     }
     return s;
 }
@@ -543,6 +583,16 @@ Outcome Repair(Layout const& layout, Payload const& payload) {
     } else {
         ok = tx.WriteIfMissing(paths::kHalcyonIni, ini::HalcyonReleaseIni(), true) && ok;
     }
+    // The VR game settings chosen at install, before the game had ever been started: on now if it has made its file since.
+    if (tx.Data().pendingSettings) {
+        if (fs::exists(layout.Full(paths::kGamerSettings), ec)) {
+            tx.Note("the game has made its settings file since the install: applying the VR game settings chosen then");
+            ok = ApplySettingsIn(tx, ChoicesFromPending(*tx.Data().pendingSettings)) && ok;
+        } else {
+            tx.Note("the VR game settings still wait for the game's first start (GamerSettings.ini isn't there yet): start Mass Effect 1 once, "
+                    "quit at its main menu, then Repair again");
+        }
+    }
     return Finish(tx, ok);
 }
 
@@ -580,6 +630,7 @@ Outcome RestoreSettings(Layout const& layout) {
     bool ok = tx.RevertIni(paths::kGamerSettings);
     ok = tx.RevertIni(paths::kEngineIni) && ok;
     tx.Data().gameSettings = false;
+    tx.Data().pendingSettings.reset();  // the player's own values: nothing waits to go on later either
     ok = ok && (!tx.Exists() || tx.Save());
     return Finish(tx, ok);
 }

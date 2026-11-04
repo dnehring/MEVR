@@ -22,7 +22,8 @@ settle, **[untested]** code written against documentation and never run here (no
    renamed or edited (key by key), so Uninstall restores the game exactly, and never resets a value the player changed
    since.
 4. **Launch** starts `MassEffect1.exe` directly with the arguments the Legendary Edition launcher would pass, past its
-   game picker.
+   game picker; SteamVR first when it's the active runtime (section 9). **Start the game once** makes a never-started
+   game write its `GamerSettings.ini`, then applies the VR game settings (section 9).
 5. **Optional content**: a catalogue of third-party texture packs. Their Nexus terms forbid re-uploads, and Nexus only
    gives direct download links to premium members' registered apps, so each entry opens the pack's own page; the
    player downloads it there and picks the file; the setup then installs it with Mass Effect Modder's command line
@@ -219,7 +220,8 @@ Uninstalling the VR mod leaves textures in place, and says so.
   3. `ASI\MEVR-Setup.exe`: a copy of the setup, for uninstalling and "Install after I quit".
   4. Halcyon's `MELEVR.ini`: its release file only if missing (`ini::HalcyonReleaseIni`, as `deploy-asi.ps1`), then
      the per-slot fixes on whatever is there (`ini::FixHalcyonIni`: hotkeys off, `menuKey = 220`, head aim 1 to 0,
-     follow 50 to 70, `sfr2Metric = 1` where missing). Every other value is the player's.
+     follow 50 to 70, `firstRunDone = 1`, `sfr2Metric = 1` where missing; a slot MEVR never wrote also gets a fresh
+     install's mode, first person, mirror rate and depth-pop key: section 9). Every other value is the player's.
   5. `steam_appid.txt` for Steam installs.
   6. The VR game settings (`settings::ApplyGamerSettings`, as `vr-game-settings.ps1`): VSync, motion blur and film
      grain off, 16x anisotropy, borderless, not full screen, no dynamic shadows, SDR. The resolution is the headset's
@@ -396,10 +398,88 @@ menu is open) and the commit in its attach line; the mod nothing; the setup the 
 the version, what you did / expected / happened, a required "I attached the report zip" checkbox, the optional
 summary. `config.yml` keeps blank issues (ideas and questions have no form yet) and links the troubleshooting guide.
 
+## 9. First-run fixes (2026-11-04)
+
+From docs/release-checklist.md section 4 "First minutes" and the release's installer review. All in `src/install` and
+`tools/setup`; unit tests in `tests/InstallTests.cpp` (`TestUpstreamHalcyonIni`, `TestFirstStartAndRuntime`,
+`TestFirstRunInstall`, additions to `TestHalcyonIni` and `TestQaFixes`); fake-game cases in `tools/setup/test-fake-game.ps1`.
+
+1. **A game never started on this PC.** LE1 keeps `GamerSettings.ini` in the game folder (`Game\ME1\BioGame\Config`,
+   `paths::kGamerSettings`) and makes it on its first start; the setup only edits it, key by key (it never writes one
+   from scratch: whether the game accepts a partial file isn't known). Before, Install skipped the whole settings step
+   with one log line, leaving a bordered window at the monitor's size (Halcyon's stereo breaks) and `MELEVR.ini` at the
+   template's 4096 x 4250. Now:
+   - Install records the chosen settings as `pendingSettings` in the manifest (target, VSync, blur, grain, HDR) and says
+     plainly that the game hasn't been started and what to do; `Status::pendingSettings` exposes them.
+   - **Start the game once** (Welcome hero, and a warning row on Install, Settings and Launch whenever the file is missing):
+     starts the game (`launch::StartLe1`; or, if it already runs, only waits), polls every 0.5 s, and applies the settings
+     (the install's pending ones, or the Settings page's when started there) once `GamerSettings.ini` exists **and** the
+     game has exited (it rewrites its ini files when it quits). The decision per poll is pure:
+     `launch::first_start::Next` (Starting, WaitingForFile, WaitingForQuit, Apply, Closed, TimedOut; 90 s to appear, 20 s
+     gone counts as closed, 15 min for the file, 45 min for the quit). The setup shows the phase ("Quit the game now (main
+     menu > Quit)") with a Stop waiting button.
+   - **Repair** applies pending settings once the file exists (and says they still wait when it doesn't); the Welcome
+     page offers "Apply them" when the file has appeared since. Settings > Apply and Restore clear them.
+   - **[verify]** whether LE1 writes `GamerSettings.ini` at its first start (the setup's text since 2026-10-23 says so) or
+     only when it quits: either way the flow applies after the exit. Whether `BIOEngine.ini` exists before the first
+     start (the step skips it when missing, as before).
+2. **Upgrading from Halcyon's upstream MELE-VR.** Upstream keeps its `MELEVR.ini` in `Binaries\Win64` (its dxgi.dll's
+   folder; `vr_config.cpp IniPath`), ours reads `ASI\MELEVR.ini` (next to `LE1MEVR.asi`), and Install never touches
+   upstream's file: so a standard upgrade gets a fresh `ASI\MELEVR.ini`. The case that reached players is an upstream (or
+   old `src/halcyon/le1/runtime/MELEVR.ini`) file **copied into ASI**: it kept `vrMode` 1/3, `fpEnabled 0`,
+   `firstRunDone 0` (Halcyon's "INSERT opens this menu" welcome) and `mirrorPresentEvery 1`.
+   - `FixHalcyonIni` now marks the welcome seen (`firstRunDone = 1`) in every slot, and a slot with **none of the keys
+     only MEVR's Halcyon knows** (`sfr2Metric`, `sfr2MetricDepth`, `sfr2MetricEyeFrustum`, `worldLockedPanels`,
+     `recenterTiltDeg`, `hdrPaperWhiteNits`: upstream's code has none, MEVR's in-game save writes all, and every MEVR
+     install path writes `sfr2Metric`) gets a fresh install's `vrMode = 2`, `fpEnabled = 1`, `mirrorPresentEvery = 2`,
+     `depthPopKeyEnabled = 0`. In a slot MEVR wrote those four are the player's (our menu sets mode, first person and
+     mirror) and only added where missing (a missing key loads Halcyon's code default: third person, every frame, P on).
+     Every other value stays; a second pass changes nothing.
+   - **Recorded**: edits on a `MELEVR.ini` that was there before the install (a userData entry with no hash: we never
+     wrote it) are kept on its manifest entry, and an uninstall that keeps the VR settings puts each one back that still
+     holds our value (a full uninstall deletes the file, as before). A slot the player saved in game stays recognised
+     after that (its other MEVR keys), so a reinstall keeps their menu choices; a slot never saved is normalised again.
+     A file we wrote ourselves (fresh, or rewritten by Repair after the player deleted it) records nothing, as before.
+   - Limit: a slot an *older* MEVR setup already gave `sfr2Metric = 1` (without these four) counts as MEVR's; only
+     testers had such setups (no release yet).
+3. **Steam's "verify files".** Repair already restored the loader (RAD's DLL renamed behind ours again) and the cockpit's
+   `PCConsoleTOC.bin` entry (`InstallCockpit` on every Repair). New: `Status::needsRepair` lists what Repair would put
+   back (a loader another tool installed since isn't one), the Welcome hero says "The mod needs a repair" with the files
+   (`bink2w64.dll (the ASI loader)`, `PCConsoleTOC.bin (the cockpit's entry)`) and a Repair button, the Launch page warns,
+   and `--status` prints `needs repair:`. **Found while testing it:** after a lost install record and a reinstall, the
+   uninstall left the cockpit's script, package and TOC entry (the package and script were "replaced" by themselves, the
+   entry's size "kept"); `AdoptOurFiles` now adopts them (`Transaction::AdoptTocEntry`: our package's name is in no game
+   TOC). That case only runs with a cockpit in the payload, which `test-fake-game.ps1` now always has (a stand-in
+   package when none is built).
+4. **The menu key's name.** The Welcome and Launch pages name it from the keyboard layout (`GetKeyNameTextW` of
+   `MapVirtualKeyW(220)`, as the in-game menu's `KeyName`): "the \ key" on a US layout. **[untested]** on another layout
+   (changing the PC's layouts to test it was out of bounds).
+5. **The VR runtime before the game.** Halcyon looks for the headset once, at the game's start. `launch::runtime_start`
+   (pure, unit-tested): for SteamVR, Launch starts it first (`SteamVR\bin\win64\vrstartup.exe` next to its OpenXR
+   manifest, else `steam://rungameid/250820`) and polls for `vrserver.exe` and `vrcompositor.exe` every 0.25 s, at most
+   60 s (Stop waiting cuts it short), then starts the game either way, with a note when SteamVR wasn't up. Other runtimes
+   get one sentence on the Launch page and the Welcome hero (the Meta Quest Link app and Link / Air Link, Virtual Desktop's
+   Streamer, Mixed Reality Portal, Pimax Play, Varjo Base). **[untested]**: starting SteamVR and the wait (never started
+   here), and whether `vrcompositor.exe` without a headset connected ever appears (then the 60 s run out and the game starts).
+6. **The running-game check is per folder** (`detect::GameRunningIn`): a `MassEffect1.exe` / `MassEffectLauncher.exe`
+   whose image is under the root, or the same file by another path, or one whose path can't be read. Another copy of the
+   game (or a fake game folder while a real game runs) no longer blocks Install, Repair and the rest; the unit tests and
+   the fake-game test ran with the real game open in another session.
+
+**Verified 2026-11-04** (worktree build, the real game open elsewhere): `mevr-tests` all passed (ctest 6/6);
+`tools/setup/test-fake-game.ps1` 76 checks passed, including install on a never-started game (settings wait, no
+GamerSettings.ini made up, MELEVR.ini's target waits), Repair before and after the game's first start (applied, then the
+game's own file back on uninstall, the folder byte for byte), an upstream `MELEVR.ini` in ASI (both slots as a fresh
+install, tuning kept, "keep my settings" puts it back byte for byte), and "verify files" (status lists the loader, a menu
+file and the TOC; Repair puts all back; status then "nothing"); `MEVR-Setup.exe --preview` pages
+`welcome-firststart*`, `install-firststart*`, `settings-firststart`, `launch-firststart`, `welcome-pending`,
+`welcome-repair`, `repair-needed`, `launch-repair`, `launch-meta` looked at. **Not run:** the real game, Steam, SteamVR.
+
 ## Open
 
 - **[verify]** In the game: our loader in place of LEBinkProxy (attach timing, Halcyon's DXGI hook, the log);
-  Launch on the Steam build (and whether `link2ea` is needed); the EA app build; "Install after I quit" end to end.
+  Launch on the Steam build (and whether `link2ea` is needed); the EA app build; "Install after I quit" end to end;
+  "Start the game once" and Launch's SteamVR start (section 9).
 - **[untested]** Everything that touches the network or MEM: the update check, MEM's download and unpacking, a pack
   install.
 - The ME2/ME3 variants (the layout is `Game\ME<n>`; the classes take the game as a parameter only where needed).

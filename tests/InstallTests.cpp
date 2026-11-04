@@ -19,6 +19,7 @@
 
 #include <Windows.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -166,12 +167,16 @@ void TestHalcyonIni() {
     ICHECK(ini::Get(fixed, "profile:Custom 1", "sfr2Metric") == std::optional<std::string>("0"));
     ICHECK(ini::Get(fixed, "profile:Custom 1", "sfr2ResX") == std::optional<std::string>("2824"));
     ICHECK(ini::Get(fixed, "active", "profile") == std::optional<std::string>("Custom 1"));
-    // Default: hotkeys, menuKey, combatHeadAim, makoHeadAim (missing: added as 0), the follow, sfr2Metric; Custom 1
-    // (sparse): combatHeadAim and makoHeadAim added as 0.
+    // Default: hotkeys, menuKey, combatHeadAim, makoHeadAim (missing: added as 0), the follow, sfr2Metric, and as a slot
+    // without sfr2Metric (never written by this mod) firstRunDone, vrMode, fpEnabled, mirrorPresentEvery, depthPopKeyEnabled;
+    // Custom 1 (sparse, but ours: it has sfr2Metric): combatHeadAim and makoHeadAim added as 0, firstRunDone, and the three
+    // keys whose code default isn't a fresh install's (fpEnabled, mirrorPresentEvery, depthPopKeyEnabled), not vrMode.
     ICHECK(ini::Get(fixed, "profile:Default", "makoHeadAim") == std::optional<std::string>("0"));
     ICHECK(ini::Get(fixed, "profile:Custom 1", "combatHeadAim") == std::optional<std::string>("0"));
     ICHECK(ini::Get(fixed, "profile:Custom 1", "makoHeadAim") == std::optional<std::string>("0"));
-    ICHECK(edits.size() == 8);
+    ICHECK(ini::Get(fixed, "profile:Custom 1", "fpEnabled") == std::optional<std::string>("1"));
+    ICHECK(!ini::Get(fixed, "profile:Custom 1", "vrMode"));
+    ICHECK(edits.size() == 17);
     ICHECK(ini::Revert(fixed, edits) == player);
     // A slot with nothing but a resolution gets the menu key and no head aim (else Halcyon's defaults: Insert, head aim).
     std::string const sparse = "[profile:Custom 2]\r\nsfr2ResX = 2824\r\n";
@@ -185,6 +190,123 @@ void TestHalcyonIni() {
     ICHECK(ini::Get(res, "profile:Custom 3", "sfr2ResY") == std::optional<std::string>("2880"));
     ICHECK(ini::Get(res, "profile:Default", "expectedResX") == std::optional<std::string>("2824"));
     ICHECK(ini::Get(res, "profile:Default", "monoResX") == std::optional<std::string>("3840"));
+}
+
+// Upgrading from Halcyon's upstream MELE-VR (research/33 section 9): a MELEVR.ini this mod never wrote (no sfr2Metric in a
+// slot) gets a fresh install's mode, first person, welcome, mirror rate and depth-pop key in every slot; everything else
+// stays; a slot this mod wrote keeps the player's own choices; the edits revert to the file exactly.
+void TestUpstreamHalcyonIni() {
+    // Upstream's file, in the shape of its release MELEVR.ini after its MELE-VR.bat (AER in one slot, DIBR in another,
+    // third person, its welcome not seen, Insert, head aim on, the mirror every frame, the depth-pop key on), with values a
+    // player tuned there, LF line endings as Halcyon's own save writes them.
+    std::string const upstream =
+        "; MELE VR config - written by the in-headset menu.\n\n[active]\nprofile=Custom 1\n\n[hotkeys]\nenabled=1\nprofile0=112\n\n"
+        "[profile:Default]\nvrMode = 1\nsfr2ResX = 4096\nsfr2ResY = 4250\nexpectedResX = 3072\nexpectedResY = 3188\nfirstRunDone = 0\n"
+        "menuKey = 45\nfpEnabled = 0\ncombatHeadAim = 1\nmakoHeadAim = 1\nmirrorPresentEvery = 1\ndepthPopKeyEnabled = 1\nsfr2HalfEyeUU = 3.4\n"
+        "hudPanelWidthM = 1.15\n\n"
+        "[profile:Custom 1]\nvrMode = 3\nfirstRunDone = 1\nfpEnabled = 0\nmirrorPresentEvery = 4\nleanGain = 1.5\n";
+    std::vector<ini::Edit> edits;
+    std::string const fixed = ini::FixHalcyonIni(upstream, &edits);
+    std::string const fresh = ini::HalcyonReleaseIni();
+    for (char const* slot : {"profile:Default", "profile:Custom 1"}) {
+        // What a fresh install writes, key for key.
+        for (char const* key : {"vrMode", "firstRunDone", "menuKey", "fpEnabled", "combatHeadAim", "makoHeadAim", "mirrorPresentEvery",
+                 "depthPopKeyEnabled", "sfr2Metric"}) {
+            ICHECK(ini::Get(fixed, slot, key) == ini::Get(fresh, "profile:Default", key));
+        }
+    }
+    // The player's own values stay: tuning, the resolution, the active profile.
+    ICHECK(ini::Get(fixed, "profile:Default", "sfr2HalfEyeUU") == std::optional<std::string>("3.4"));
+    ICHECK(ini::Get(fixed, "profile:Default", "hudPanelWidthM") == std::optional<std::string>("1.15"));
+    ICHECK(ini::Get(fixed, "profile:Default", "sfr2ResX") == std::optional<std::string>("4096"));
+    ICHECK(ini::Get(fixed, "profile:Custom 1", "leanGain") == std::optional<std::string>("1.5"));
+    ICHECK(ini::Get(fixed, "active", "profile") == std::optional<std::string>("Custom 1"));
+    ICHECK(fixed.find("\r") == std::string::npos);  // the file's own line endings
+    // Every edit recorded; reverted, the file is upstream's again byte for byte.
+    ICHECK(ini::Revert(fixed, edits) == upstream);
+    // Once fixed, the slots are ours (sfr2Metric): a second pass changes nothing.
+    std::vector<ini::Edit> again;
+    ICHECK(ini::FixHalcyonIni(fixed, &again) == fixed && again.empty());
+    // A slot this mod wrote (it has sfr2Metric): Depth (DIBR), third person and the mirror every frame chosen in our menu
+    // stay; only the welcome is marked seen.
+    std::string const ours = "[profile:Default]\r\nvrMode = 3\r\nfirstRunDone = 0\r\nmenuKey = 220\r\nfpEnabled = 0\r\ncombatHeadAim = 0\r\n"
+                             "makoHeadAim = 0\r\nmirrorPresentEvery = 1\r\ndepthPopKeyEnabled = 1\r\nsfr2Metric = 1\r\n";
+    std::vector<ini::Edit> oursEdits;
+    std::string const oursFixed = ini::FixHalcyonIni(ours, &oursEdits);
+    ICHECK(ini::Get(oursFixed, "profile:Default", "vrMode") == std::optional<std::string>("3"));
+    ICHECK(ini::Get(oursFixed, "profile:Default", "fpEnabled") == std::optional<std::string>("0"));
+    ICHECK(ini::Get(oursFixed, "profile:Default", "mirrorPresentEvery") == std::optional<std::string>("1"));
+    ICHECK(ini::Get(oursFixed, "profile:Default", "depthPopKeyEnabled") == std::optional<std::string>("1"));
+    ICHECK(ini::Get(oursFixed, "profile:Default", "firstRunDone") == std::optional<std::string>("1"));
+    ICHECK(oursEdits.size() == 1);
+    // src/halcyon/le1/runtime/MELEVR.ini's shape (the old starting file: no sfr2Metric, Insert, third person): normalised too.
+    std::string const old = "[profile:Default]\r\nvrMode = 2\r\nmenuKey = 45\r\nfirstRunDone = 0\r\nfpEnabled = 0\r\ndepthPopKeyEnabled = 1\r\n";
+    std::string const oldFixed = ini::FixHalcyonIni(old);
+    ICHECK(ini::Get(oldFixed, "profile:Default", "fpEnabled") == std::optional<std::string>("1"));
+    ICHECK(ini::Get(oldFixed, "profile:Default", "depthPopKeyEnabled") == std::optional<std::string>("0"));
+    ICHECK(ini::Get(oldFixed, "profile:Default", "mirrorPresentEvery") == std::optional<std::string>("2"));
+    ICHECK(ini::Get(oldFixed, "profile:Default", "vrMode") == std::optional<std::string>("2"));
+}
+
+// The setup's launch decisions (research/33 section 9): the game's first start, the VR runtime before the game.
+void TestFirstStartAndRuntime() {
+    namespace fst = mevr::install::launch::first_start;
+    namespace rs = mevr::install::launch::runtime_start;
+    auto next = [](double since, bool running, bool file, double seen) {
+        fst::Observation o;
+        o.sinceLaunchS = since;
+        o.gameRunning = running;
+        o.fileExists = file;
+        o.sinceSeenS = seen;
+        return fst::Next(o);
+    };
+    ICHECK(next(1, false, false, -1) == fst::Phase::Starting);                           // just launched
+    ICHECK(next(fst::kStartGraceS + 1, false, false, -1) == fst::Phase::Closed);         // it never came
+    ICHECK(next(30, true, false, 0) == fst::Phase::WaitingForFile);                     // at its intro, no file yet
+    ICHECK(next(31, false, false, 1) == fst::Phase::WaitingForFile);                    // gone a moment (a restart through the EA app)
+    ICHECK(next(60, false, false, fst::kGoneGraceS + 1) == fst::Phase::Closed);          // gone for good without the file
+    ICHECK(next(90, true, true, 0) == fst::Phase::WaitingForQuit);                      // the file is there: the player quits
+    ICHECK(next(95, false, true, 2) == fst::Phase::Apply);                              // quit: apply
+    ICHECK(next(0, false, true, -1) == fst::Phase::Apply);                              // the file was already there
+    ICHECK(next(fst::kFileTimeoutS + 1, true, false, 0) == fst::Phase::TimedOut);
+    ICHECK(next(fst::kQuitTimeoutS + 1, true, true, 0) == fst::Phase::TimedOut);
+    ICHECK(fst::Finished(fst::Phase::Apply) && fst::Finished(fst::Phase::Closed) && fst::Finished(fst::Phase::TimedOut));
+    ICHECK(!fst::Finished(fst::Phase::Starting) && !fst::Finished(fst::Phase::WaitingForFile) && !fst::Finished(fst::Phase::WaitingForQuit));
+    for (fst::Phase p : {fst::Phase::Starting, fst::Phase::WaitingForFile, fst::Phase::WaitingForQuit, fst::Phase::Apply, fst::Phase::Closed,
+             fst::Phase::TimedOut}) {
+        ICHECK(std::string(fst::PhaseText(p)).size() > 10);
+    }
+    // SteamVR: started and waited for; its starter from the OpenXR manifest's folder.
+    std::string const steamManifest = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\SteamVR\\steamxr_win64.json";
+    rs::Plan const steam = rs::PlanFor("SteamVR", steamManifest);
+    ICHECK(steam.action == rs::Action::StartSteamVr);
+    ICHECK(steam.exe == fs::path(L"C:\\Program Files (x86)\\Steam\\steamapps\\common\\SteamVR\\bin\\win64\\vrstartup.exe"));
+    ICHECK(steam.advice.find("SteamVR") != std::string::npos);
+    ICHECK(rs::SteamVrStartup("").empty());
+    // The others: the player starts them; the advice names what.
+    rs::Plan const meta = rs::PlanFor("Meta", "C:\\Program Files\\Oculus\\Support\\oculus-runtime\\oculus_openxr_64.json");
+    ICHECK(meta.action == rs::Action::AskPlayer && meta.exe.empty() && meta.advice.find("Meta Quest Link") != std::string::npos);
+    ICHECK(rs::PlanFor("Virtual Desktop", "x").advice.find("Virtual Desktop") != std::string::npos);
+    ICHECK(rs::PlanFor("Other", "x").action == rs::Action::AskPlayer);
+    ICHECK(rs::PlanFor("", "").action == rs::Action::None && !rs::PlanFor("", "").advice.empty());
+    // Up = server and compositor; the wait is bounded and never blocks the launch.
+    ICHECK(rs::SteamVrUp(true, true) && !rs::SteamVrUp(true, false) && !rs::SteamVrUp(false, true));
+    ICHECK(rs::Step(false, 0) == rs::Gate::Wait);
+    ICHECK(rs::Step(false, rs::kSteamVrWaitS - 0.5) == rs::Gate::Wait);
+    ICHECK(rs::Step(true, 3) == rs::Gate::Go);
+    ICHECK(rs::Step(false, rs::kSteamVrWaitS) == rs::Gate::GoTimedOut);
+    ICHECK(rs::Step(false, 5, 4) == rs::Gate::GoTimedOut);
+    // Whose game is running: a path under the root (any case, either slash), not a sibling folder with the same prefix.
+    namespace d = mevr::install::detect;
+    fs::path const root = L"C:\\Games\\Mass Effect Legendary Edition";
+    ICHECK(d::PathUnder(L"C:\\Games\\Mass Effect Legendary Edition\\Game\\ME1\\Binaries\\Win64\\MassEffect1.exe", root));
+    ICHECK(d::PathUnder(L"c:/games/mass effect legendary edition/Game/Launcher/MassEffectLauncher.exe", root));
+    ICHECK(d::PathUnder(L"\\\\?\\C:\\Games\\Mass Effect Legendary Edition\\Game\\ME1\\Binaries\\Win64\\MassEffect1.exe", root));
+    ICHECK(d::PathUnder(L"C:\\Games\\Mass Effect Legendary Edition\\x.exe", L"C:\\Games\\Mass Effect Legendary Edition\\"));
+    ICHECK(!d::PathUnder(L"C:\\Games\\Mass Effect Legendary Edition 2\\Game\\ME1\\Binaries\\Win64\\MassEffect1.exe", root));
+    ICHECK(!d::PathUnder(L"D:\\Other\\MassEffect1.exe", root));
+    ICHECK(!d::PathUnder(root, root));
+    ICHECK(!d::PathUnder(L"", root));
 }
 
 void TestGameSettings() {
@@ -408,8 +530,8 @@ void TestTransaction() {
 
     // A full install with the Installer on the same folder. The fake exe has no version (ignoreVersion); the fake
     // bink2w64.dll has no version resource, so with an original behind it it's "another proxy", used as it is. The
-    // Installer refuses to run while the game does: then this part is skipped.
-    if (detect::GameRunning()) {
+    // Installer refuses to run while this folder's game does: then this part is skipped (a real game elsewhere doesn't count).
+    if (detect::GameRunningIn(root)) {
         std::printf("  (the game is running: the Installer part of TestTransaction is skipped)\n");
         fs::remove_all(root.parent_path(), ec);
         return;
@@ -454,14 +576,14 @@ void TestQaFixes() {
     ICHECK(detect::HasMelevrMarker(std::string("MZ\0\0 ... MELEVR 1.0", 18)));
     ICHECK(detect::HasMelevrMarker(std::string("M\0E\0L\0E\0V\0R\0", 12)));
     ICHECK(!detect::HasMelevrMarker("ReShade dxgi.dll"));
-    if (detect::GameRunning()) {
-        std::printf("  (the game is running: TestQaFixes is skipped)\n");
-        return;
-    }
     wchar_t temp[MAX_PATH]{};
     GetTempPathW(MAX_PATH, temp);
     fs::path const base = fs::path(temp) / L"mevr-install-qa";
     fs::path const root = base / L"Mass Effect Legendary Edition";
+    if (detect::GameRunningIn(root)) {
+        std::printf("  (a game runs from the test folder: TestQaFixes is skipped)\n");
+        return;
+    }
     std::error_code ec;
     fs::remove_all(base, ec);
     Layout const layout{root};
@@ -524,6 +646,7 @@ void TestQaFixes() {
     };
     ourInstall();
     Write(layout.Win64() / L"bink2w64.dll", "ME3Tweaks' loader");  // installed after us
+    ICHECK(ReadStatus(root, "Folder").installed && ReadStatus(root, "Folder").needsRepair.empty());  // not something Repair changes
     Outcome const repaired = Repair(layout, payload);
     ICHECK(repaired.ok && Read(layout.Win64() / L"bink2w64.dll") == "ME3Tweaks' loader");
     ICHECK(Uninstall(layout, false, {}).ok);
@@ -629,6 +752,204 @@ void TestQaFixes() {
         Write(payloadDir / L"bink2w64.dll", "our loader");
     } else {
         std::printf("  (no built bink2w64.dll next to the tests: the lost-record case is skipped)\n");
+    }
+    fs::remove_all(base, ec);
+}
+
+// A small PCConsoleTOC.bin built the game's way (7 buckets, five packages).
+std::string SmallToc() {
+    namespace toc = mevr::install::toc;
+    toc::File file;
+    file.buckets.resize(7);
+    for (char const* bare : {"A.pcc", "Bb.pcc", "Ccc.pcc", "Dddd.pcc", "Startup.pcc"}) {
+        toc::Entry e;
+        e.name = std::string("BioGame\\CookedPCConsole\\") + bare;
+        e.size = static_cast<std::uint32_t>(e.name.size() * 1000);
+        file.buckets[toc::Hash(bare) % 7].push_back(e);
+    }
+    return toc::Serialize(file);
+}
+
+// The first-run problems of research/33 section 9 through the Installer, on a fake game under %TEMP%: a game never
+// started (no GamerSettings.ini: the settings wait, Repair applies them once the game has made the file), an upgrade from
+// Halcyon's upstream MELE-VR (its MELEVR.ini normalised, each change undone by a "keep my settings" uninstall), and
+// Steam's "verify files" (the cockpit's TOC entry back by Repair).
+void TestFirstRunInstall() {
+    using namespace mevr::install;
+    wchar_t temp[MAX_PATH]{};
+    GetTempPathW(MAX_PATH, temp);
+    fs::path const base = fs::path(temp) / L"mevr-install-firstrun";
+    fs::path const root = base / L"Mass Effect Legendary Edition";
+    if (detect::GameRunningIn(root)) {
+        std::printf("  (a game runs from the test folder: TestFirstRunInstall is skipped)\n");
+        return;
+    }
+    std::error_code ec;
+    fs::remove_all(base, ec);
+    Layout const layout{root};
+    fs::path const payloadDir = base / L"payload";
+    Write(payloadDir / L"LE1MEVR.asi", "new ASI");
+    Write(payloadDir / L"bink2w64.dll", "our loader");
+    Write(payloadDir / L"fonts" / L"A.ttf", "font");
+    Write(payloadDir / L"menu" / L"main.rml", "<rml/>");
+    Write(payloadDir / L"cockpit" / L"BIOG_MEVR_Cockpit.pcc", std::string(4321, 'p'));
+    Write(payloadDir / L"cockpit" / L"cockpit.txt", "seat 0 0 0\r\n");
+    Payload const payload{payloadDir};
+    ICHECK(payload.Valid() && payload.HasCockpit());
+    std::string const toc = SmallToc();
+    auto fresh = [&] {
+        fs::remove_all(root, ec);
+        Write(layout.Win64() / L"MassEffect1.exe", "exe");
+        Write(layout.Win64() / L"bink2w64.dll", "a proxy");  // no version resource: "another proxy" in front of...
+        Write(layout.Win64() / L"bink2w64_original.dll", "RAD original");
+        Write(layout.Full(paths::kToc), toc);
+    };
+    InstallOptions options;
+    options.ignoreVersion = true;
+    options.choices.target = settings::TargetFor("performance", 0, 0);
+
+    // 1. Never started: no GamerSettings.ini. The install goes on, says so, and keeps the choices.
+    fresh();
+    ICHECK(!ReadStatus(root, "Folder").hasGamerSettings);
+    Outcome const in = Install(layout, payload, options);
+    ICHECK(in.ok);
+    bool said = false;
+    for (std::string const& line : in.log) {
+        said = said || (line.find("hasn't been started") != std::string::npos && line.find("GamerSettings.ini") != std::string::npos);
+    }
+    ICHECK(said);
+    Status s = ReadStatus(root, "Folder");
+    ICHECK(s.installed && !s.gameSettings && s.pendingSettings.has_value());
+    ICHECK(s.pendingSettings && s.pendingSettings->width == 3072 && s.pendingSettings->height == 3188 && s.pendingSettings->hdrOff);
+    ICHECK(s.needsRepair.empty());
+    ICHECK(ini::Get(Read(layout.Full(paths::kHalcyonIni)), "profile:Default", "sfr2ResX") == std::optional<std::string>("4096"));  // not yet
+    // Repair before the first start: nothing to apply yet, and it says why.
+    Outcome const early = Repair(layout, payload);
+    ICHECK(early.ok && ReadStatus(root, "Folder").pendingSettings.has_value() && !fs::exists(layout.Full(paths::kGamerSettings)));
+    // The game's first start makes the file; Repair applies what was chosen at install.
+    std::string const gamer = "[SystemSettings]\r\nFullscreen=True\r\nResX=1920\r\nResY=1080\r\nUseVSync=True\r\n\r\n[HDR]\r\nDesiredRange=DynamicRange_HDR\r\n";
+    Write(layout.Full(paths::kGamerSettings), gamer);
+    ICHECK(ReadStatus(root, "Folder").hasGamerSettings);
+    Outcome const later = Repair(layout, payload);
+    ICHECK(later.ok);
+    std::string const g = Read(layout.Full(paths::kGamerSettings));
+    ICHECK(settings::Read(g).resX == 3072 && settings::Read(g).resY == 3188 && settings::Read(g).borderless && !settings::Read(g).hdr);
+    ICHECK(ini::Get(Read(layout.Full(paths::kHalcyonIni)), "profile:Default", "sfr2ResX") == std::optional<std::string>("3072"));
+    s = ReadStatus(root, "Folder");
+    ICHECK(s.gameSettings && !s.pendingSettings);
+    // Restore: the game's own file again; nothing waits.
+    ICHECK(RestoreSettings(layout).ok && Read(layout.Full(paths::kGamerSettings)) == gamer && !ReadStatus(root, "Folder").pendingSettings);
+    ICHECK(Uninstall(layout, false, {}).ok);
+    ICHECK(Read(layout.Full(paths::kToc)) == toc && !fs::exists(layout.Asi()));
+    // The choices survive the manifest's JSON.
+    {
+        Manifest m;
+        m.pendingSettings = PendingFromChoices(options.choices);
+        auto const back = Manifest::FromJson(m.ToJson());
+        ICHECK(back && back->pendingSettings == m.pendingSettings);
+        ICHECK(ChoicesFromPending(*m.pendingSettings).target.width == 3072);
+        ICHECK(Manifest::FromJson(Manifest{}.ToJson()) && !Manifest::FromJson(Manifest{}.ToJson())->pendingSettings);
+    }
+
+    // 2. Upgrading from upstream: its MELEVR.ini put in the ASI folder. Normalised on install (every slot), its other
+    // values kept; a "keep my settings" uninstall puts back each value still as we set it; a value the player changed since
+    // stays theirs.
+    fresh();
+    Write(layout.Full(paths::kGamerSettings), gamer);
+    std::string const upstream = "[active]\r\nprofile=Default\r\n\r\n[profile:Default]\r\nvrMode = 1\r\nsfr2ResX = 4096\r\nsfr2ResY = 4250\r\n"
+                                 "firstRunDone = 0\r\nmenuKey = 45\r\nfpEnabled = 0\r\nmirrorPresentEvery = 1\r\nsfr2HalfEyeUU = 3.4\r\n\r\n"
+                                 "[profile:Custom 1]\r\nvrMode = 3\r\nfpEnabled = 0\r\n";
+    Write(layout.Full(paths::kHalcyonIni), upstream);
+    ICHECK(Install(layout, payload, options).ok);
+    std::string h = Read(layout.Full(paths::kHalcyonIni));
+    for (char const* slot : {"profile:Default", "profile:Custom 1"}) {
+        ICHECK(ini::Get(h, slot, "vrMode") == std::optional<std::string>("2"));
+        ICHECK(ini::Get(h, slot, "fpEnabled") == std::optional<std::string>("1"));
+        ICHECK(ini::Get(h, slot, "firstRunDone") == std::optional<std::string>("1"));
+        ICHECK(ini::Get(h, slot, "mirrorPresentEvery") == std::optional<std::string>("2"));
+        ICHECK(ini::Get(h, slot, "menuKey") == std::optional<std::string>("220"));
+    }
+    ICHECK(ini::Get(h, "profile:Default", "sfr2HalfEyeUU") == std::optional<std::string>("3.4"));
+    ICHECK(ini::Get(h, "profile:Default", "sfr2ResX") == std::optional<std::string>("3072"));  // the VR game settings' target
+    {
+        Transaction tx(layout);
+        ICHECK(tx.Load());
+        FileEntry const* entry = tx.Data().Find(paths::kHalcyonIni);
+        ICHECK(entry != nullptr && entry->userData && entry->edits.size() >= 10);  // every change on record
+    }
+    // An update over the top changes nothing more: the slots are this mod's now.
+    ICHECK(Install(layout, payload, options).ok && Read(layout.Full(paths::kHalcyonIni)) == h);
+    ICHECK(Uninstall(layout, true, {}).ok);
+    ICHECK(Read(layout.Full(paths::kHalcyonIni)) == upstream);  // kept, exactly as it came
+    // Again, and this time the player picks Depth (DIBR) in the Custom 1 slot through our menu before uninstalling (the
+    // in-game save writes every key, sfr2MetricDepth among them).
+    ICHECK(Install(layout, payload, options).ok);
+    h = ini::Set(Read(layout.Full(paths::kHalcyonIni)), "profile:Custom 1", "vrMode", "3");
+    h = ini::Set(h, "profile:Custom 1", "sfr2MetricDepth", "1.00");
+    Write(layout.Full(paths::kHalcyonIni), h);
+    ICHECK(Repair(layout, payload).ok && ini::Get(Read(layout.Full(paths::kHalcyonIni)), "profile:Custom 1", "vrMode") == std::optional<std::string>("3"));
+    ICHECK(Uninstall(layout, true, {}).ok);
+    std::string const kept = Read(layout.Full(paths::kHalcyonIni));
+    ICHECK(ini::Get(kept, "profile:Custom 1", "vrMode") == std::optional<std::string>("3"));  // theirs since
+    ICHECK(ini::Get(kept, "profile:Default", "vrMode") == std::optional<std::string>("1"));   // ours, put back
+    ICHECK(ini::Get(kept, "profile:Default", "menuKey") == std::optional<std::string>("45"));
+    // Reinstalled: the slot the player saved in game is still theirs (Depth stays); the untouched one is normalised again.
+    ICHECK(Install(layout, payload, options).ok);
+    h = Read(layout.Full(paths::kHalcyonIni));
+    ICHECK(ini::Get(h, "profile:Custom 1", "vrMode") == std::optional<std::string>("3"));
+    ICHECK(ini::Get(h, "profile:Default", "vrMode") == std::optional<std::string>("2"));
+    // The player deletes it; Repair writes the release file, wholly ours from then on: a "keep" uninstall leaves it as written
+    // (the key edits recorded on the old file don't apply to it).
+    fs::remove(layout.Full(paths::kHalcyonIni), ec);
+    ICHECK(Repair(layout, payload).ok && Read(layout.Full(paths::kHalcyonIni)) == ini::HalcyonReleaseIni());
+    ICHECK(Uninstall(layout, true, {}).ok && Read(layout.Full(paths::kHalcyonIni)) == ini::HalcyonReleaseIni());
+    // A full uninstall deletes it (the player's VR data, as before).
+    ICHECK(Install(layout, payload, options).ok);
+    ICHECK(Uninstall(layout, false, {}).ok && !fs::exists(layout.Full(paths::kHalcyonIni)));
+
+    // 3. Steam's "verify files": the game's own TOC back (and the cockpit's package gone): Status says so, Repair puts both back.
+    fresh();
+    Write(layout.Full(paths::kGamerSettings), gamer);
+    ICHECK(Install(layout, payload, options).ok);
+    std::string const installedToc = Read(layout.Full(paths::kToc));
+    ICHECK(installedToc != toc && ReadStatus(root, "Folder").needsRepair.empty());
+    Write(layout.Full(paths::kToc), toc);
+    fs::remove(layout.Full(paths::kCockpitPackage), ec);
+    std::vector<std::string> const bad = ReadStatus(root, "Folder").needsRepair;
+    ICHECK(bad.size() == 2 && std::find(bad.begin(), bad.end(), paths::kToc) != bad.end() &&
+           std::find(bad.begin(), bad.end(), paths::kCockpitPackage) != bad.end());
+    ICHECK(Repair(layout, payload).ok);
+    ICHECK(Read(layout.Full(paths::kToc)) == installedToc && fs::exists(layout.Full(paths::kCockpitPackage)));
+    ICHECK(ReadStatus(root, "Folder").needsRepair.empty());
+    ICHECK(Uninstall(layout, false, {}).ok && Read(layout.Full(paths::kToc)) == toc);
+
+    // 4. A lost install record, then a reinstall over our loader (the built bink2w64.dll next to this exe): the cockpit's
+    // script, package and TOC entry are adopted with the rest, so the uninstall takes them out too.
+    wchar_t self[MAX_PATH]{};
+    GetModuleFileNameW(nullptr, self, MAX_PATH);
+    fs::path const builtLoader = fs::path(self).parent_path() / L"bink2w64.dll";
+    if (fs::exists(builtLoader)) {
+        fresh();
+        fs::copy_file(builtLoader, layout.Win64() / L"bink2w64.dll", fs::copy_options::overwrite_existing, ec);
+        Write(payloadDir / L"bink2w64.dll", Read(builtLoader));
+        InstallOptions plain = options;
+        plain.gameSettings = false;
+        ICHECK(Install(layout, payload, plain).ok);
+        fs::remove(layout.ManifestFile(), ec);
+        ICHECK(Install(layout, payload, plain).ok);
+        {
+            Transaction tx(layout);
+            ICHECK(tx.Load());
+            FileEntry const* pkg = tx.Data().Find(paths::kCockpitPackage);
+            FileEntry const* tocEntry = tx.Data().Find(paths::kToc);
+            ICHECK(pkg != nullptr && pkg->action == "added");
+            ICHECK(tocEntry != nullptr && tocEntry->toc.size() == 1 && !tocEntry->toc[0].before);
+        }
+        ICHECK(Uninstall(layout, false, {}).ok);
+        ICHECK(Read(layout.Full(paths::kToc)) == toc && !fs::exists(layout.Full(paths::kCockpitPackage)) && !fs::exists(layout.Asi()));
+        ICHECK(Read(layout.Win64() / L"bink2w64.dll") == "RAD original");
+    } else {
+        std::printf("  (no built bink2w64.dll next to the tests: the lost-record cockpit case is skipped)\n");
     }
     fs::remove_all(base, ec);
 }
@@ -766,12 +1087,15 @@ void RunInstallTests(int& failures) {
     TestJson();
     TestIni();
     TestHalcyonIni();
+    TestUpstreamHalcyonIni();
     TestGameSettings();
     TestDetect();
     TestLaunch();
+    TestFirstStartAndRuntime();
     TestPacksAndUpdates();
     TestTransaction();
     TestQaFixes();
     TestLoaderCore();
     TestToc();
+    TestFirstRunInstall();
 }

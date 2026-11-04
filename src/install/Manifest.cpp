@@ -199,6 +199,16 @@ json::Value Manifest::ToJson() const {
     v["installedAt"] = installedAt;
     v["loader"] = loader;
     v["gameSettings"] = gameSettings;
+    if (pendingSettings) {
+        json::Value p = json::Value::Object();
+        p["width"] = pendingSettings->width;
+        p["height"] = pendingSettings->height;
+        p["vsyncOff"] = pendingSettings->vsyncOff;
+        p["motionBlurOff"] = pendingSettings->motionBlurOff;
+        p["filmGrainOff"] = pendingSettings->filmGrainOff;
+        p["hdrOff"] = pendingSettings->hdrOff;
+        v["pendingSettings"] = std::move(p);
+    }
     json::Value fileArray = json::Value::Array();
     for (FileEntry const& f : files) {
         json::Value e = json::Value::Object();
@@ -265,6 +275,16 @@ std::optional<Manifest> Manifest::FromJson(json::Value const& v) {
     m.installedAt = v.String("installedAt");
     m.loader = v.String("loader");
     m.gameSettings = v.Bool("gameSettings");
+    if (json::Value const& p = v.Get("pendingSettings"); p.IsObject()) {
+        PendingSettings s;
+        s.width = static_cast<int>(p.Number("width", 0));
+        s.height = static_cast<int>(p.Number("height", 0));
+        s.vsyncOff = p.Bool("vsyncOff", true);
+        s.motionBlurOff = p.Bool("motionBlurOff", true);
+        s.filmGrainOff = p.Bool("filmGrainOff", true);
+        s.hdrOff = p.Bool("hdrOff", true);
+        m.pendingSettings = s;
+    }
     for (json::Value const& e : v.Get("files").Items()) {
         FileEntry f;
         f.path = e.String("path");
@@ -441,6 +461,7 @@ bool Transaction::WriteIn(std::string_view relative, std::string_view bytes, boo
         Note(fresh.action + " " + std::string(relative));
     } else {
         Note("updated " + std::string(relative));
+        entry->edits.clear();  // the whole file is ours now: key edits recorded on an earlier one no longer apply
     }
     entry->sha256 = Sha256(bytes);
     return Save();
@@ -500,8 +521,13 @@ bool Transaction::EditIni(std::string_view relative, std::function<std::string(s
     }
     FileEntry* entry = manifest_.Find(relative);
     bool const ours = entry != nullptr && (entry->action == "added" || entry->action == "replaced");
+    // A file of the player's that was there before us and is kept on record as their data (Halcyon's MELEVR.ini, from an
+    // earlier install or copied from upstream's MELE-VR; RecordRuntimeFile: no hash, as we never wrote it): every value we
+    // change in it is recorded too, so an uninstall that keeps it puts back each one still as we set it. It keeps no hash.
+    bool const preexisting = ours && entry->userData && entry->sha256.empty();
+    bool const record = !ours || preexisting;
     std::vector<ini::Edit> edits;
-    std::string const changed = edit(*text, ours ? nullptr : &edits);
+    std::string const changed = edit(*text, record ? &edits : nullptr);
     if (changed == *text) {
         return true;
     }
@@ -509,7 +535,11 @@ bool Transaction::EditIni(std::string_view relative, std::function<std::string(s
         Fail("couldn't write " + std::string(relative) + WriteFailureHint(target));
         return false;
     }
-    if (ours) {
+    if (preexisting) {
+        for (ini::Edit const& e : edits) {
+            ini::Merge(entry->edits, e);
+        }
+    } else if (ours) {
         entry->sha256 = Sha256(changed);
     } else {
         if (entry == nullptr) {
@@ -562,6 +592,29 @@ bool Transaction::SetTocEntry(std::string_view relative, std::string_view name, 
     } else {
         it->after = size;
     }
+    return Save();
+}
+
+bool Transaction::AdoptTocEntry(std::string_view relative, std::string_view name) {
+    FileEntry* entry = manifest_.Find(relative);
+    if (entry != nullptr && std::any_of(entry->toc.begin(), entry->toc.end(), [&](TocEdit const& t) { return t.name == name; })) {
+        return true;
+    }
+    auto const bytes = ReadFile(layout_.Full(relative));
+    auto const file = bytes ? toc::Parse(*bytes) : std::nullopt;
+    std::optional<std::uint32_t> const size = file ? toc::Find(*file, name) : std::nullopt;
+    if (!size) {
+        return true;  // not there: nothing to adopt
+    }
+    if (entry == nullptr) {
+        FileEntry fresh;
+        fresh.path = std::string(relative);
+        fresh.action = "toc";
+        manifest_.files.push_back(fresh);
+        entry = &manifest_.files.back();
+    }
+    entry->toc.push_back(TocEdit{std::string(name), std::nullopt, *size});
+    Note("recorded " + std::string(name) + " in " + std::string(relative) + " as ours (no install record was left)");
     return Save();
 }
 
@@ -676,8 +729,21 @@ bool Transaction::Uninstall(bool keepUserData) {
         fs::path const target = layout_.Full(f.path);
         if (f.action == "added") {
             if (f.userData && keepUserData) {
-                Note("kept " + f.path);
-                continue;
+                // Kept, with what we changed in it put back (each value still as we set it; the player's since stay).
+                if (!f.edits.empty()) {
+                    if (auto const text = ReadFile(target)) {
+                        std::string const reverted = ini::Revert(*text, f.edits);
+                        if (reverted != *text && !WriteFileAtomic(target, reverted)) {
+                            Fail("couldn't restore the values in " + f.path);
+                            ok = false;
+                            continue;
+                        }
+                    }
+                    Note("kept " + f.path + " (the values the setup changed in it put back)");
+                } else {
+                    Note("kept " + f.path);
+                }
+                continue;  // still on record if something else fails (a retry may be a full uninstall); Revert is idempotent
             }
             if (fs::exists(target, ec) && !fs::remove(target, ec)) {
                 Fail("couldn't remove " + f.path + ": " + ec.message());

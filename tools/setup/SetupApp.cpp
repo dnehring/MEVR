@@ -16,10 +16,12 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cwctype>
 #include <format>
 #include <memory>
 #include <system_error>
+#include <thread>
 
 namespace mevr::setup {
 namespace {
@@ -30,6 +32,53 @@ namespace packs = install::packs;
 
 std::string OnOff(bool on) {
     return on ? "On" : "Off";
+}
+
+// The in-game menu's key: menuKey = 220 (VK_OEM_5) in every MELEVR.ini slot (install/Ini FixHalcyonIni).
+constexpr UINT kMenuKeyVk = 220;
+
+// A key's name on this keyboard layout (GetKeyNameText, as the in-game menu's KeyName): VK_OEM_5 is \ on a US
+// keyboard and ^ on a German one. Empty if the layout has no such key.
+std::string KeyName(UINT vk) {
+    UINT const scan = MapVirtualKeyW(vk, MAPVK_VK_TO_VSC);
+    if (scan == 0) {
+        return {};
+    }
+    wchar_t name[64]{};
+    int const n = GetKeyNameTextW(static_cast<LONG>(scan << 16), name, 64);
+    if (n <= 0) {
+        return {};
+    }
+    return detect::Utf8(std::wstring(name, static_cast<std::size_t>(n)));
+}
+
+// "the \ key", "the ^ key", or a description when the layout has no name for it.
+std::string MenuKeyText() {
+    std::string const name = KeyName(kMenuKeyVk);
+    return name.empty() ? std::string("the menu key (\\ on a US keyboard)") : "the " + name + " key";
+}
+
+// The pages' row for a game never started here (no GamerSettings.ini yet).
+std::string FirstStartText(bool installed, bool pending) {
+    if (installed && pending) {
+        return "The VR game settings you chose at install are waiting for its settings file. Start the game once: the setup waits for the "
+               "file, you quit at the game's main menu, and they go on by themselves.";
+    }
+    return "Without its settings file the VR game settings can't go on, and VR starts in a bordered window with a broken picture. Start the "
+           "game once, before or after Install: the setup waits for the file, you quit at the game's main menu, and the settings go on by "
+           "themselves.";
+}
+
+// The Repair page's name for a file it would put back.
+std::string RepairItemName(std::string const& relative) {
+    std::string const file = detect::Utf8(fs::path(detect::Wide(relative)).filename().wstring());
+    if (relative == install::paths::kBink) {
+        return file + " (the ASI loader)";
+    }
+    if (relative == install::paths::kToc) {
+        return file + " (the cockpit's entry)";
+    }
+    return file;
 }
 
 } // namespace
@@ -91,7 +140,8 @@ bool App::Bind(Rml::Context* context) {
              Flag{"keep_settings", &keepSettings_}, Flag{"confirm_open", &confirmOpen_}, Flag{"confirm_danger", &confirmDanger_},
              Flag{"upstream_found", &upstreamFound_}, Flag{"gamer_read_only", &gamerReadOnly_}, Flag{"remove_local", &removeLocal_},
              Flag{"report_snapshot", &reportSnapshot_}, Flag{"report_perf", &reportPerf_}, Flag{"report_ready", &reportReady_},
-             Flag{"crash_offer", &crashOffer_}, Flag{"report_has_zip", &reportHasZip_}}) {
+             Flag{"crash_offer", &crashOffer_}, Flag{"report_has_zip", &reportHasZip_}, Flag{"settings_pending", &settingsPending_},
+             Flag{"repair_needed", &repairNeeded_}, Flag{"can_cancel", &canCancel_}, Flag{"hero_enabled", &heroEnabled_}}) {
         c.Bind(f.name, f.value);
     }
     struct Text {
@@ -112,7 +162,8 @@ bool App::Bind(Rml::Context* context) {
              Text{"confirm_title", &confirmTitle_}, Text{"confirm_text", &confirmText_}, Text{"confirm_button", &confirmButton_},
              Text{"upstream_text", &upstreamText_}, Text{"local_text", &localText_}, Text{"report_text", &reportText_},
              Text{"report_redactions", &reportRedactions_}, Text{"report_headline", &reportHeadline_}, Text{"report_zip", &reportZip_},
-             Text{"report_request", &reportRequest_}}) {
+             Text{"report_request", &reportRequest_}, Text{"hero_action", &heroAction_}, Text{"hero_button", &heroButton_},
+             Text{"launch_advice", &launchAdvice_}, Text{"menu_key", &menuKey_}, Text{"first_start_text", &firstStartText_}}) {
         c.Bind(t.name, t.value);
     }
     c.Bind("progress", &progress_);
@@ -327,27 +378,10 @@ void App::Refresh() {
     }
     rootText_ = gameOk_ ? detect::Utf8(status_.root.wstring()) : "No game folder";
     sourceText_ = status_.source.empty() ? "nothing yet" : status_.source;
-
-    if (!gameOk_) {
-        heroTitle_ = "Game not found";
-        heroText_ = "Mass Effect Legendary Edition wasn't found in Steam or the EA app. Pick its folder below (the one with Game\\ME1 in it).";
-    } else if (!versionOk_) {
-        heroTitle_ = "Unsupported game version";
-        heroText_ = "The mod is built for MassEffect1.exe 2.0.0.48602 and stays switched off on any other version, so it isn't installed.";
-    } else if (!binkUsable) {
-        heroTitle_ = "The game needs a repair";
-        heroText_ = detect::BinkStateText(status_.bink);
-    } else if (installed_) {
-        heroTitle_ = "Ready for VR";
-        heroText_ = "The mod is installed. Start your VR runtime, put the headset on and launch. In game, \\ or both sticks held opens the VR menu.";
-    } else if (upstreamFound_) {
-        heroTitle_ = "Ready to install";
-        heroText_ = "Halcyon's MELE-VR is installed: Install moves its two DLLs aside (Uninstall puts them back), then puts the mod, its ASI loader and "
-                    "the VR game settings in place, recorded so it can all be undone.";
-    } else {
-        heroTitle_ = "Ready to install";
-        heroText_ = "Everything checks out. Install puts the mod, its ASI loader and the VR game settings in place, recorded so it can all be undone.";
-    }
+    settingsPending_ = status_.pendingSettings.has_value();
+    menuKey_ = MenuKeyText();
+    launchAdvice_ = install::launch::runtime_start::PlanFor(xr_.kind, xr_.manifest).advice;
+    firstStartText_ = FirstStartText(installed_, settingsPending_);
     gameTitle_ = gameOk_ ? "Found" : "Not found";
     gameText_ = gameOk_ ? status_.source + ": " + detect::Utf8(status_.root.filename().wstring()) : "Pick the folder on the Welcome page";
     versionTitle_ = status_.version ? status_.version->ToString() : "Unknown";
@@ -390,6 +424,7 @@ void App::Refresh() {
     }
     // Repair, Uninstall, Launch.
     UpdateRepairStatus();
+    UpdateHero();
     {
         fs::path const local = install::LocalDataDir();
         localText_ = local.empty() ? "Not found."
@@ -422,32 +457,177 @@ void App::Refresh() {
     Dirty();
 }
 
-void App::UpdateRepairStatus() {
+void App::UpdateRepairStatus(bool reread) {
     if (sample_) {
-        repairTitle_ = installed_ ? "Every file is as installed" : "Not installed";
-        repairText_ = installed_ ? "Nothing to do." : "Install first.";
-        return;
-    }
-    if (!installed_ || status_.root.empty()) {
+        // The preview's stand-ins: status_.needsRepair as Sample set it.
+    } else if (!installed_ || status_.root.empty()) {
         repairTitle_ = "Not installed";
         repairText_ = "Install first.";
+        repairNeeded_ = false;
         return;
+    } else if (reread) {
+        // The files as they are now (ReadStatus: what Repair would put back; a loader another tool installed since isn't).
+        status_.needsRepair = install::ReadStatus(status_.root, status_.source).needsRepair;
     }
-    install::Transaction tx(install::Layout{status_.root});
-    if (!tx.Load() || !tx.Exists()) {
+    if (!installed_) {
         repairTitle_ = "Not installed";
         repairText_ = "Install first.";
+        repairNeeded_ = false;
         return;
     }
-    auto const bad = tx.Verify();
-    repairTitle_ = bad.empty() ? "Every file is as installed" : std::format("{} file(s) need repair", bad.size());
+    std::vector<std::string> items;
+    for (std::string const& f : status_.needsRepair) {
+        items.push_back(RepairItemName(f));
+    }
+    // The VR game settings chosen at install, waiting for the game's first start: Repair puts them on once the file exists.
+    bool const settingsDue = settingsPending_ && hasGamerSettings_;
+    if (settingsDue) {
+        items.push_back("the VR game settings chosen at install (the game has made its settings file since)");
+    }
+    repairNeeded_ = !items.empty();
+    std::size_t const files = status_.needsRepair.size();
+    repairTitle_ = files == 0 && !settingsDue ? "Every file is as installed"
+        : files == 0                          ? "The VR game settings are waiting"
+        : files == 1                          ? "1 file needs repair"
+                                              : std::format("{} files need repair", files);
     repairText_.clear();
-    for (std::string const& f : bad) {
-        repairText_ += (repairText_.empty() ? "" : ", ") + fs::path(detect::Wide(f)).filename().string();
+    for (std::string const& item : items) {
+        repairText_ += (repairText_.empty() ? "" : ", ") + item;
     }
-    if (bad.empty()) {
-        repairText_ = "Nothing to do.";
+    if (items.empty()) {
+        repairText_ = settingsPending_ ? "Nothing to do. The VR game settings still wait for the game's first start (Welcome page)." : "Nothing to do.";
+    } else {
+        repairText_ += ". Repair puts them back.";
     }
+}
+
+void App::UpdateHero() {
+    bool const binkUsable = status_.bink != detect::BinkState::Missing && status_.bink != detect::BinkState::Broken;
+    heroAction_.clear();
+    heroButton_.clear();
+    heroEnabled_ = false;
+    if (!gameOk_) {
+        heroTitle_ = "Game not found";
+        heroText_ = "Mass Effect Legendary Edition wasn't found in Steam or the EA app. Pick its folder below (the one with Game\\ME1 in it).";
+    } else if (!versionOk_) {
+        heroTitle_ = "Unsupported game version";
+        heroText_ = "The mod is built for MassEffect1.exe 2.0.0.48602 and stays switched off on any other version, so it isn't installed.";
+    } else if (!binkUsable) {
+        heroTitle_ = "The game needs a repair";
+        heroText_ = detect::BinkStateText(status_.bink);
+    } else if (installed_ && repairNeeded_ && !status_.needsRepair.empty()) {
+        heroTitle_ = "The mod needs a repair";
+        heroText_ = "Some of its files changed or went missing since the install (Steam's or the EA app's \"verify files\" puts the game's own "
+                    "loader and file table back, which switches the mod off): " + repairText_;
+        heroAction_ = "repair";
+        heroButton_ = "Repair";
+        heroEnabled_ = hasPayload_;
+        if (!hasPayload_) {
+            heroText_ += " Run MEVR-Setup.exe from the download to repair.";
+        }
+    } else if (!hasGamerSettings_) {
+        heroTitle_ = installed_ ? "One step left: start the game once" : "Mass Effect 1 hasn't been started here yet";
+        heroText_ = installed_ ? "Mass Effect 1 makes its settings file on its first start, and the VR game settings you chose at install go into "
+                                 "it. Start it once: the setup waits for the file, you quit at the game's main menu, and they go on by themselves."
+                               : "It makes its settings file on its first start, and the VR game settings go into it. Start it once now, or "
+                                 "install first: the settings you choose are kept until the file exists.";
+        heroAction_ = "first_start";
+        heroButton_ = "Start the game once";
+        heroEnabled_ = true;
+    } else if (installed_ && settingsPending_) {
+        heroTitle_ = "One step left: the VR game settings";
+        heroText_ = "Mass Effect 1 has made its settings file since the install: put on the VR game settings you chose then (a borderless window at "
+                    "the VR resolution; your values are kept for Restore).";
+        heroAction_ = "apply_pending";
+        heroButton_ = "Apply them";
+        heroEnabled_ = true;
+    } else if (installed_) {
+        heroTitle_ = "Ready for VR";
+        heroText_ = "The mod is installed. " + launchAdvice_ + " In game, " + menuKey_ + " or both sticks held opens the VR menu.";
+        heroAction_ = "launch";
+        heroButton_ = "Launch";
+        heroEnabled_ = true;
+    } else if (upstreamFound_) {
+        heroTitle_ = "Ready to install";
+        heroText_ = "Halcyon's MELE-VR is installed: Install moves its two DLLs aside (Uninstall puts them back), then puts the mod, its ASI loader and "
+                    "the VR game settings in place, recorded so it can all be undone.";
+        heroAction_ = "goto_install";
+        heroButton_ = "Install";
+        heroEnabled_ = canInstall_;
+    } else {
+        heroTitle_ = "Ready to install";
+        heroText_ = "Everything checks out. Install puts the mod, its ASI loader and the VR game settings in place, recorded so it can all be undone.";
+        heroAction_ = "goto_install";
+        heroButton_ = "Install";
+        heroEnabled_ = canInstall_;
+    }
+}
+
+install::settings::Choices App::PendingOrModelChoices() const {
+    return status_.pendingSettings ? install::ChoicesFromPending(*status_.pendingSettings) : ChoicesFromModel();
+}
+
+void App::StartFirstRun() {
+    if (!gameOk_ || waiting_ || busy_) {
+        return;
+    }
+    namespace fst = install::launch::first_start;
+    install::Layout const layout{status_.root};
+    bool const steam = SteamGame();
+    // From the Settings page: what's chosen there; elsewhere what the install chose, if it waits.
+    install::settings::Choices const choices = page_ == "settings" ? ChoicesFromModel() : PendingOrModelChoices();
+    canCancel_ = true;
+    RunJob(fst::PhaseText(fst::Phase::Starting), [this, layout, steam, choices] {
+        auto const t0 = std::chrono::steady_clock::now();
+        auto seconds = [](std::chrono::steady_clock::duration d) { return std::chrono::duration<double>(d).count(); };
+        std::error_code ec;
+        bool const already = detect::GameRunningIn(layout.root);
+        if (already) {
+            Post("Mass Effect 1 is already running: waiting for its settings file and for it to close.");
+        } else {
+            install::launch::Result const r = install::launch::StartLe1(layout.root, steam);
+            Post(r.message, !r.started);
+            if (!r.started) {
+                Post(fst::PhaseText(fst::Phase::Closed), true);
+                return;
+            }
+        }
+        double lastSeen = -1.0;  // seconds since t0 when the game was last seen running
+        fst::Phase phase = fst::Phase::Starting;
+        fst::Phase shown = fst::Phase::Apply;  // anything but the first phase, so the first one is posted
+        while (!cancel_) {
+            fst::Observation o;
+            o.sinceLaunchS = seconds(std::chrono::steady_clock::now() - t0);
+            o.gameRunning = detect::GameRunningIn(layout.root);
+            o.fileExists = fs::exists(layout.Full(install::paths::kGamerSettings), ec);
+            if (o.gameRunning) {
+                lastSeen = o.sinceLaunchS;
+            }
+            o.sinceSeenS = lastSeen < 0.0 ? -1.0 : o.sinceLaunchS - lastSeen;
+            phase = fst::Next(o);
+            if (phase != shown) {
+                shown = phase;
+                Progress(fst::PhaseText(phase), phase == fst::Phase::WaitingForQuit ? 66 : phase == fst::Phase::WaitingForFile ? 33 : -1);
+                if (phase == fst::Phase::WaitingForQuit) {
+                    Post(fst::PhaseText(phase));
+                }
+            }
+            if (fst::Finished(phase)) {
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
+        if (cancel_) {
+            Post("Stopped waiting. Once Mass Effect 1 has made its settings file and closed, Repair (or Settings > Apply) puts the VR game settings on.");
+            return;
+        }
+        if (phase != fst::Phase::Apply) {
+            Post(fst::PhaseText(phase), true);
+            return;
+        }
+        Post(fst::PhaseText(phase));
+        Apply(install::ApplySettings(layout, choices));
+    });
 }
 
 void App::UpdatePacks() {
@@ -534,7 +714,8 @@ void App::Tick() {
     if (page_ != shownPage_) {
         shownPage_ = page_;
         if (page_ == "repair" && !busy_) {
-            UpdateRepairStatus();  // the files as they are now, not when the setup started
+            UpdateRepairStatus(true);  // the files as they are now, not when the setup started
+            UpdateHero();
             Dirty();
         }
         if (page_ == "report" && !busy_) {
@@ -567,6 +748,7 @@ void App::Tick() {
     if (busy_ && !working_ && worker_.joinable()) {
         worker_.join();
         busy_ = false;
+        canCancel_ = false;
         {
             std::lock_guard const lock(jobMutex_);
             log_ = jobLog_;
@@ -625,6 +807,13 @@ void App::Act(std::string const& name, std::string const& arg) {
         Dirty();
         return;
     }
+    if (name == "stop_waiting") {
+        // The one job that can be stopped: "Start the game once" waiting for the game (or Launch waiting for SteamVR).
+        if (busy_ && canCancel_) {
+            cancel_ = true;
+        }
+        return;
+    }
     if (busy_ || confirmOpen_) {
         return;  // every button below is disabled while a job runs or a dialog is open: the keyboard can't get past that
     }
@@ -655,9 +844,21 @@ void App::Act(std::string const& name, std::string const& arg) {
         RunJob("Installing", [this, layout, payload, options] {
             Apply(install::Install(layout, payload, options));
             if (!install::ReadStatus(layout.root, "").hasGamerSettings && options.gameSettings) {
-                Post("The VR game settings weren't applied: start the game once, quit, then apply them on the Settings page.");
+                Post("One step left: Mass Effect 1 hasn't been started on this PC, so the VR game settings wait for its settings file. Press "
+                     "\"Start the game once\" above (or on the Welcome page).",
+                    true);
             }
         });
+    } else if (name == "goto_install") {
+        page_ = "install";
+    } else if (name == "first_start") {
+        StartFirstRun();
+    } else if (name == "apply_pending") {
+        if (waiting_ || !hasGamerSettings_) {
+            return;
+        }
+        auto const choices = PendingOrModelChoices();
+        RunJob("Applying the VR game settings", [this, layout, choices] { Apply(install::ApplySettings(layout, choices)); });
     } else if (name == "uninstall") {
         if (waiting_ || !installed_) {
             return;
@@ -698,21 +899,55 @@ void App::Act(std::string const& name, std::string const& arg) {
         if (!gameOk_ || waiting_) {
             return;
         }
-        if (detect::GameRunning()) {
+        if (detect::GameRunningIn(status_.root)) {
             launchText_ = "Mass Effect is already running.";
             Refresh();
             return;
         }
         bool const steam = SteamGame();
         fs::path const root = status_.root;
-        RunJob("Starting Mass Effect", [this, root, steam] {
+        namespace rs = install::launch::runtime_start;
+        rs::Plan const plan = rs::PlanFor(xr_.kind, xr_.manifest);
+        canCancel_ = plan.action == rs::Action::StartSteamVr;  // the wait for SteamVR can be cut short
+        RunJob("Starting Mass Effect", [this, root, steam, plan] {
+            // SteamVR first: Halcyon's renderer looks for the headset once, when the game starts.
+            if (plan.action == rs::Action::StartSteamVr && !rs::SteamVrRunning()) {
+                Progress("Starting SteamVR", 0);
+                if (!rs::StartSteamVr(plan)) {
+                    Post("Couldn't start SteamVR: starting the game anyway. If VR stays off, start SteamVR yourself, quit the game and Launch again.", true);
+                } else {
+                    Post("Started SteamVR; waiting for it (at most " + std::to_string(static_cast<int>(rs::kSteamVrWaitS)) + " s).");
+                    auto const t0 = std::chrono::steady_clock::now();
+                    for (;;) {
+                        double const waited = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+                        rs::Gate const gate = rs::Step(rs::SteamVrRunning(), waited);
+                        if (gate == rs::Gate::Go) {
+                            Post("SteamVR is up.");
+                            break;
+                        }
+                        if (gate == rs::Gate::GoTimedOut || cancel_) {
+                            Post(cancel_ ? "Stopped waiting for SteamVR: starting the game now. If VR stays off, quit the game once SteamVR is up and "
+                                           "Launch again."
+                                         : "SteamVR isn't up after a minute (is the headset on and connected?): starting the game anyway. If VR stays "
+                                           "off, quit the game once SteamVR shows the headset and Launch again.",
+                                true);
+                            break;
+                        }
+                        Progress("Waiting for SteamVR (turn the headset on)", static_cast<int>(100.0 * waited / rs::kSteamVrWaitS));
+                        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+                    }
+                }
+            }
             install::launch::Result const r = install::launch::StartLe1(root, steam);
             Post(r.message, !r.started);
             std::lock_guard const lock(jobMutex_);
             jobProgress_ = r.message;
         });
         jobDone_ = [this] {
-            launchText_ = log_.empty() ? "" : log_.back().text;
+            launchText_.clear();
+            for (LogLine const& line : log_) {
+                launchText_ += (launchText_.empty() ? "" : " ") + line.text;
+            }
         };
     } else if (name == "launch_steam") {
         install::launch::StartThroughSteam();
@@ -918,18 +1153,28 @@ void App::Act(std::string const& name, std::string const& arg) {
 void App::Sample(std::string const& state) {
     // The preview's stand-ins (tools/setup --preview): a PS VR2 on SteamVR, the Steam copy.
     sample_ = true;
+    bool const notInstalled = state == "fresh" || state == "nogame" || state == "oldversion" || state == "firststart-fresh";
+    bool const neverStarted = state.rfind("firststart", 0) == 0;  // no GamerSettings.ini yet
     status_ = install::Status{};
     status_.gameFound = state != "nogame";
     status_.root = L"C:\\Program Files (x86)\\Steam\\steamapps\\common\\Mass Effect Legendary Edition";
     status_.source = "Steam";
     status_.version = state == "oldversion" ? detect::ParseVersion("2.0.0.48419") : detect::ParseVersion("2.0.0.48602");
     status_.versionCheck = state == "oldversion" ? detect::VersionCheck::Different : detect::VersionCheck::Supported;
-    status_.bink = state == "fresh" || state == "oldversion" ? detect::BinkState::Original : detect::BinkState::Ours;
-    status_.installed = state != "fresh" && state != "nogame" && state != "oldversion";
+    status_.bink = notInstalled ? detect::BinkState::Original : detect::BinkState::Ours;
+    status_.installed = !notInstalled;
     status_.installedVersion = "0.1.0";
     status_.loader = "mevr";
-    status_.gameSettings = status_.installed;
-    status_.hasGamerSettings = true;
+    status_.hasGamerSettings = !neverStarted;
+    status_.gameSettings = status_.installed && !neverStarted && state != "pending-apply";
+    if ((neverStarted && status_.installed) || state == "pending-apply") {
+        install::settings::Choices choices;
+        choices.target = install::settings::TargetFor("headset", 2824, 2880);
+        status_.pendingSettings = install::PendingFromChoices(choices);
+    }
+    if (state == "repair-needed") {
+        status_.needsRepair = {install::paths::kBink, install::paths::kToc};
+    }
     status_.canWrite = true;
     if (state == "content") {
         status_.packs.push_back({"alot-le1", "ALOT for ME1", "mem", "2026-10-23T12:00:00"});
@@ -937,12 +1182,14 @@ void App::Sample(std::string const& state) {
     }
     payload_ = install::Payload{L"payload"};
     hasPayload_ = true;
-    xr_ = {"C:\\Program Files (x86)\\Steam\\steamapps\\common\\SteamVR\\steamxr_win64.json", "SteamVR/OpenXR", "SteamVR"};
+    xr_ = state == "meta" ? detect::XrRuntime{"C:\\Program Files\\Oculus\\Support\\oculus-runtime\\oculus_openxr_64.json", "Oculus", "Meta"}
+                          : detect::XrRuntime{"C:\\Program Files (x86)\\Steam\\steamapps\\common\\SteamVR\\steamxr_win64.json", "SteamVR/OpenXR", "SteamVR"};
     headsetWidth_ = 2824;
     headsetHeight_ = 2880;
     quality_ = "headset";
     log_.clear();
     busy_ = false;
+    canCancel_ = false;
     confirmOpen_ = false;
     packFiles_.clear();
     if (state == "content") {
@@ -960,7 +1207,8 @@ void App::Sample(std::string const& state) {
     versionOk_ = keep.versionCheck == detect::VersionCheck::Supported;
     installed_ = keep.installed;
     settingsApplied_ = keep.gameSettings;
-    hasGamerSettings_ = true;
+    hasGamerSettings_ = keep.hasGamerSettings;
+    settingsPending_ = keep.pendingSettings.has_value();
     texturesMarked_ = keep.texturesMarked;
     loaderOk_ = gameOk_;
     canInstall_ = gameOk_ && versionOk_;
@@ -974,29 +1222,19 @@ void App::Sample(std::string const& state) {
     versionTitle_ = keep.version ? keep.version->ToString() : "Unknown";
     loaderTitle_ = keep.bink == detect::BinkState::Ours ? "MEVR loader" : "None yet";
     loaderText_ = gameOk_ ? detect::BinkStateText(keep.bink) : "";
-    if (!gameOk_) {
-        heroTitle_ = "Game not found";
-        heroText_ = "Mass Effect Legendary Edition wasn't found in Steam or the EA app. Pick its folder below (the one with Game\\ME1 in it).";
-    } else if (!versionOk_) {
-        heroTitle_ = "Unsupported game version";
-        heroText_ = "The mod is built for MassEffect1.exe 2.0.0.48602 and stays switched off on any other version, so it isn't installed.";
-        versionText_ = "The mod needs 2.0.0.48602 and stays off on any other. Update the game in Steam or the EA app.";
-    } else if (installed_) {
-        heroTitle_ = "Ready for VR";
-        heroText_ = "The mod is installed. Start your VR runtime, put the headset on and launch. In game, \\ or both sticks held opens the VR menu.";
-        versionText_ = "The version the mod is built for";
-    } else {
-        heroTitle_ = "Ready to install";
-        heroText_ = "Everything checks out. Install puts the mod, its ASI loader and the VR game settings in place, recorded so it can all be undone.";
-        versionText_ = "The version the mod is built for";
-    }
-    curRes_ = installed_ ? "2824 × 2880" : "2560 × 1440";
-    curWindow_ = installed_ ? "Borderless" : "Windowed or full screen";
-    curHdr_ = "Off";
-    curVsync_ = OnOff(!installed_);
-    curBlur_ = OnOff(!installed_);
-    curGrain_ = OnOff(!installed_);
+    versionText_ = !gameOk_    ? ""
+        : versionOk_           ? "The version the mod is built for"
+                               : "The mod needs 2.0.0.48602 and stays off on any other. Update the game in Steam or the EA app.";
+    firstStartText_ = FirstStartText(installed_, settingsPending_);
+    bool const applied = installed_ && settingsApplied_;
+    curRes_ = !hasGamerSettings_ ? "-" : applied ? "2824 × 2880" : "2560 × 1440";
+    curWindow_ = !hasGamerSettings_ ? "-" : applied ? "Borderless" : "Windowed or full screen";
+    curHdr_ = !hasGamerSettings_ ? "-" : "Off";
+    curVsync_ = !hasGamerSettings_ ? "-" : OnOff(!applied);
+    curBlur_ = !hasGamerSettings_ ? "-" : OnOff(!applied);
+    curGrain_ = !hasGamerSettings_ ? "-" : OnOff(!applied);
     UpdateRepairStatus();
+    UpdateHero();
     uninstallText_ = installed_ ? "41 files removed, 2 put back as they were, 2 settings files returned to your values." : "Nothing is installed.";
     memReady_ = state == "content";
     memText_ = memReady_ ? "Ready: it installs the texture packs below (GPL, from its own GitHub releases)."
@@ -1026,6 +1264,26 @@ void App::Sample(std::string const& state) {
         log_ = {{"renamed Game/ME1/Binaries/Win64/bink2w64.dll to Game/ME1/Binaries/Win64/bink2w64_original.dll", false},
             {"added Game/ME1/Binaries/Win64/bink2w64.dll", false}, {"added Game/ME1/Binaries/Win64/ASI/LE1MEVR.asi", false},
             {"added Game/ME1/Binaries/Win64/ASI/fonts/Rajdhani-Bold.ttf", false}, {"added Game/ME1/Binaries/Win64/ASI/menu/main.rcss", false}};
+    }
+    if (state == "firststart-busy") {
+        namespace fst = install::launch::first_start;
+        busy_ = true;
+        canCancel_ = true;
+        progressText_ = fst::PhaseText(fst::Phase::WaitingForQuit);
+        progress_ = 66;
+        log_ = {{"Started Mass Effect (-NoHomeDir -SeekFreeLoadingPCConsole -locale {locale} -Subtitles 20 -OVERRIDELANGUAGE=INT)", false},
+            {fst::PhaseText(fst::Phase::WaitingForQuit), false}};
+    }
+    if (state == "firststart-installed") {
+        log_ = {{"added Game/ME1/Binaries/Win64/ASI/LE1MEVR.asi", false},
+            {"warning: Mass Effect 1 hasn't been started on this PC yet, so its settings file (GamerSettings.ini) doesn't exist and the VR game "
+             "settings can't go on. They're kept: start the game once (MEVR Setup's \"Start the game once\"), quit at its main menu, and they're "
+             "applied (or use Repair afterwards).",
+                false},
+            {"Done.", false},
+            {"One step left: Mass Effect 1 hasn't been started on this PC, so the VR game settings wait for its settings file. Press \"Start the "
+             "game once\" above (or on the Welcome page).",
+                true}};
     }
     if (state == "installed-log") {
         log_ = {{"kept the existing Game/ME1/Binaries/Win64/ASI/MELEVR.ini", false},

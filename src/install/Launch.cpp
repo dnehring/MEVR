@@ -156,4 +156,128 @@ bool StartThroughSteam() {
     return reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"open", L"steam://rungameid/1328670", nullptr, nullptr, SW_SHOWNORMAL)) > 32;
 }
 
+// ---- The game's first start --------------------------------------------------------------------------------------
+
+namespace first_start {
+
+Phase Next(Observation const& o) {
+    if (o.fileExists && !o.gameRunning) {
+        return Phase::Apply;
+    }
+    if (o.gameRunning) {
+        if (o.fileExists) {
+            return o.sinceLaunchS > kQuitTimeoutS ? Phase::TimedOut : Phase::WaitingForQuit;
+        }
+        return o.sinceLaunchS > kFileTimeoutS ? Phase::TimedOut : Phase::WaitingForFile;
+    }
+    // Not running, no file.
+    if (o.sinceSeenS < 0.0) {
+        return o.sinceLaunchS > kStartGraceS ? Phase::Closed : Phase::Starting;
+    }
+    return o.sinceSeenS > kGoneGraceS ? Phase::Closed : Phase::WaitingForFile;
+}
+
+bool Finished(Phase phase) {
+    return phase == Phase::Apply || phase == Phase::Closed || phase == Phase::TimedOut;
+}
+
+char const* PhaseText(Phase phase) {
+    switch (phase) {
+    case Phase::Starting: return "Starting Mass Effect 1 (Steam or the EA app may show first)";
+    case Phase::WaitingForFile: return "Waiting for Mass Effect 1 to make its settings file (it does on its first start)";
+    case Phase::WaitingForQuit:
+        return "Mass Effect 1 made its settings file. Quit the game now (main menu > Quit): the setup then applies the VR game settings";
+    case Phase::Apply: return "Mass Effect 1 has closed: applying the VR game settings";
+    case Phase::Closed:
+        return "Mass Effect 1 closed (or never started) without making its settings file. Start it once from Steam or the EA app, quit at its "
+               "main menu, then come back: Repair (or Settings > Apply) puts the VR game settings on";
+    case Phase::TimedOut:
+        return "Stopped waiting. Once you've started Mass Effect 1 once and quit it, Repair (or Settings > Apply) puts the VR game settings on";
+    }
+    return "";
+}
+
+} // namespace first_start
+
+// ---- The VR runtime before the game ------------------------------------------------------------------------------
+
+namespace runtime_start {
+
+fs::path SteamVrStartup(std::string_view manifestPath) {
+    if (manifestPath.empty()) {
+        return {};
+    }
+    return fs::path(detect::Wide(manifestPath)).parent_path() / L"bin" / L"win64" / L"vrstartup.exe";
+}
+
+Plan PlanFor(std::string_view kind, std::string_view manifestPath) {
+    Plan p;
+    if (kind.empty()) {
+        p.advice = "No OpenXR runtime is active: install SteamVR, the Meta Quest Link app or Virtual Desktop and make it the active runtime, or the "
+                   "game starts flat.";
+        return p;
+    }
+    p.action = Action::AskPlayer;
+    if (kind == "SteamVR") {
+        p.action = Action::StartSteamVr;
+        p.exe = SteamVrStartup(manifestPath);
+        p.advice = "Launch starts SteamVR first and waits for it (up to a minute): VR has to be up before the game starts, or it stays off for that "
+                   "run. Turn the headset on before you press it.";
+    } else if (kind == "Meta") {
+        p.advice = "Start the Meta Quest Link app and connect the headset (Link cable or Air Link) before you press Launch: VR has to be up before "
+                   "the game starts, or it stays off for that run.";
+    } else if (kind == "Virtual Desktop") {
+        p.advice = "Connect Virtual Desktop first (the Streamer on this PC, the app in the headset), then press Launch: VR has to be up before the "
+                   "game starts, or it stays off for that run.";
+    } else if (kind == "Windows Mixed Reality") {
+        p.advice = "Connect the headset and let Mixed Reality Portal come up before you press Launch: VR has to be up before the game starts, or it "
+                   "stays off for that run.";
+    } else if (kind == "Pimax") {
+        p.advice = "Start Pimax Play and connect the headset before you press Launch: VR has to be up before the game starts, or it stays off for "
+                   "that run.";
+    } else if (kind == "Varjo") {
+        p.advice = "Start Varjo Base and connect the headset before you press Launch: VR has to be up before the game starts, or it stays off for "
+                   "that run.";
+    } else {
+        p.advice = "Start your VR runtime and connect the headset before you press Launch: VR has to be up before the game starts, or it stays off "
+                   "for that run.";
+    }
+    return p;
+}
+
+bool SteamVrUp(bool serverRunning, bool compositorRunning) {
+    return serverRunning && compositorRunning;
+}
+
+Gate Step(bool up, double waitedS, double timeoutS) {
+    if (up) {
+        return Gate::Go;
+    }
+    return waitedS >= timeoutS ? Gate::GoTimedOut : Gate::Wait;
+}
+
+bool SteamVrRunning() {
+    return SteamVrUp(detect::ProcessRunning(L"vrserver.exe"), detect::ProcessRunning(L"vrcompositor.exe"));
+}
+
+bool StartSteamVr(Plan const& plan) {
+    std::error_code ec;
+    if (!plan.exe.empty() && fs::is_regular_file(plan.exe, ec)) {
+        std::wstring commandLine = L"\"" + plan.exe.wstring() + L"\"";
+        STARTUPINFOW startup{};
+        startup.cb = sizeof startup;
+        PROCESS_INFORMATION process{};
+        if (CreateProcessW(plan.exe.c_str(), commandLine.data(), nullptr, nullptr, FALSE, 0, nullptr, plan.exe.parent_path().c_str(), &startup,
+                &process)) {
+            CloseHandle(process.hThread);
+            CloseHandle(process.hProcess);
+            return true;
+        }
+    }
+    std::wstring const url = std::wstring(L"steam://rungameid/") + detect::Wide(kSteamVrAppId);
+    return reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"open", url.c_str(), nullptr, nullptr, SW_SHOWMINNOACTIVE)) > 32;
+}
+
+} // namespace runtime_start
+
 } // namespace mevr::install::launch

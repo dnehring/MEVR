@@ -91,13 +91,20 @@ private:
     bool SteamGame() const;
     install::settings::Choices ChoicesFromModel() const;
     void UpdatePacks();
-    // The Repair page's status, from the files as they are now (on every refresh and whenever the page is shown).
-    void UpdateRepairStatus();
+    // The Repair page's status (and repairNeeded_) from status_.needsRepair, which `reread` reads again from the files as
+    // they are now (whenever the page is shown; Refresh has just read it).
+    void UpdateRepairStatus(bool reread = false);
     void Dirty();
     // Report a problem (install/Report): gathers what the zip would hold for the page's preview (a job), shows it.
     void GatherReport();
     void ShowBundle();
     install::report::Options ReportOptions() const;
+    // The Welcome page's hero (title, text, its one button) from the state Refresh computed.
+    void UpdateHero();
+    // "Start the game once": launches the game (unless it runs), waits for GamerSettings.ini and the game's exit, applies.
+    void StartFirstRun();
+    // The VR game settings to apply now: those chosen at install if they wait, else the pages' current choices.
+    install::settings::Choices PendingOrModelChoices() const;
 
     Options options_;
     Host host_;
@@ -129,6 +136,16 @@ private:
     std::string curRes_, curWindow_, curHdr_, curVsync_, curBlur_, curGrain_;
     std::string repairTitle_, repairText_, uninstallText_, launchText_, footerText_, waitText_, requestText_, memText_;
     bool keepSettings_ = false;
+    // The game's first start (research/33 section 9): the VR game settings wait for GamerSettings.ini; "Start the game
+    // once" (a job that can be stopped: canCancel_) starts it, waits for the file and the game's exit, then applies them.
+    bool settingsPending_ = false, repairNeeded_ = false, canCancel_ = false;
+    std::string firstStartText_;
+    // The Welcome page's one button: what matters most now ("goto_install", "launch", "repair", "first_start",
+    // "apply_pending"), its label, and whether it can run.
+    std::string heroAction_, heroButton_;
+    bool heroEnabled_ = false;
+    // What to start before the game (install/Launch runtime_start), and the in-game menu key's name on this keyboard.
+    std::string launchAdvice_, menuKey_;
     std::vector<PackView> packs_;
     std::vector<LogLine> log_;
     std::string progressText_;
