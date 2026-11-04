@@ -210,8 +210,14 @@ Each needs a headset verdict, or ships off. Source: notes/next-vr-session.md ste
 - [x] **[C] `docs/troubleshooting.md`** is dated 2026-10-26: rows for the Mako and cockpit, vent, fingers, wrist and gun
   panels, labels, the game pointer, screens in the room, the galaxy map, the 3D screen; stale sights defaults.
   **Done 2026-11-04 (11c626e):** dated 2026-11-04, sections for every newer feature.
-- [ ] **[C] Installer paths never run**: the update check, Mass Effect Modder's download and the texture pack, the headset
+- [x] **[C] Installer paths never run**: the update check, Mass Effect Modder's download and the texture pack, the headset
   Detect, "Install after I quit". Run them once or hide them for this release.
+  **Done offline 2026-11-04 (fe3b156; research/33 section 10):** ctest `mevr-setup-network` (111 checks) runs the update check,
+  MEM's lookup, download and unpacking, a pack install with a stand-in MEM and "Install after I quit" against a local server;
+  nine bugs found and fixed (a pack install refused while any game copy ran, a stale work folder, MEM's quoting with a trailing
+  `\`, settings re-applied over the player's after MEM, update-check messages, downloads' size and SHA-256 checks, 7-Zip as
+  a fallback, the uninstall's texture note, cancel read as failure). Still untested: live GitHub (no release yet; its `digest`
+  format is [verify]), the real MEM, the window's own clicks, the headset Detect, the game's side of the request.
 - [ ] **[C] Logs**: no levels, a flush per line, about 60 heartbeat sites (7 MB in one session). A quieter release default;
   `[verify]` text in Warn lines lands in players' reports (`MakoControls.cpp:652`).
   The Warn line with `[verify]` reworded (4fa704f). **2026-11-04:** the players' build writes the status block every 30 s
