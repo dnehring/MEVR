@@ -119,10 +119,39 @@ What these say:
   with `sharePass = 5` the second eye is a replay of the first's draws. With two full engine renders (`sharePass = 0`)
   the characters' render-thread share would roughly double. [verify]
 
+## Combat: the final fight with Saren (2026-11-03, 21:16-21:24)
+
+The user then asked for one with combat. The saves on this machine with a fight: VR00's Save 7 (Eden Prime's spaceport)
+and John's autosave (Citadel: Tower). The spaceport save is the bomb defusal: a 2:22 timer and the geth 55 m away, too
+short for a set of 20 s probes. The tower autosave is the final fight with Saren in the Council chamber's garden
+(`BIOA_END00`): Saren on his hover platform, the two squadmates, Shepard (`god`). Only four characters: a small fight, not
+a crowd. Measured as above (the look-around replay, 20 s probes, the unchanged condition between the others), median /
+p90, ms:
+
+| Condition | CPU | Game | Render | GPU | Draws |
+|---|---|---|---|---|---|
+| A: as played | 5.28 / 7.24 | 4.75 / 6.24 | 4.95 / 6.87 | 2.77 / 3.60 | 1,636 |
+| B: skeletal meshes hidden | 4.85 / 6.85 | 4.90 / 6.09 | 4.50 / 6.47 | 2.45 / 2.91 | 1,435 |
+| A again | 5.26 / 7.62 | 4.86 / 6.53 | 4.88 / 7.10 | 2.75 / 3.81 | 1,600 |
+| C: AI off | 5.00 / 7.34 | 4.72 / 6.40 | 4.71 / 6.85 | 2.57 / 3.26 | 1,584 |
+| A again | 6.01 / 8.19 | 5.55 / 7.28 | 5.48 / 7.26 | 2.64 / 4.87 | 1,532 |
+| D: world paused | 4.73 / 6.73 | 1.12 / 1.41 | 4.45 / 6.43 | 2.52 / 2.99 | 1,506 |
+| A again | 5.01 / 7.09 | 4.80 / 6.11 | 4.73 / 6.64 | 2.66 / 3.24 | 1,611 |
+
+- Well within the 11.1 ms frame: the worst p90 of any thread was 7.3 ms (the game thread in one A run).
+- **The fight's ticking costs more than the Citadel's crowds:** 3.6-4.4 ms of game thread against 1.1 paused, with four
+  characters, where Flux's 44 cost 2.5. Combat's projectiles, effects, physics and the boss's own script, not the number of
+  characters. The A runs spread 4.75-5.55 ms as the fight's phases change.
+- The four characters' skinned meshes cost about 0.4 ms of render thread and 0.3 ms of GPU; the AI's thinking nothing
+  measurable (`DisableAi`, 0.1 ms, inside the A runs' spread).
+- In one snapshot during the probes the view was smeared with several copies of the lights after a red flash at Shepard:
+  most likely the game's own hit effect (`god` stops the damage, not the effect). Not looked into.
+- **Not covered:** a big fight (a geth assault with many troopers at once). None of the saves here has one.
+
 ## What this doesn't cover
 
-- **Combat crowds:** many characters running AI, weapons and powers at once (the Wards market fight, Feros, Noveria's
-  hotel). Not measured. The AI A/B above can't speak for them.
+- **Big fights:** many characters running AI, weapons and powers at once (a geth assault). Only a small fight was measured
+  (below: Saren and the squad).
 - **LE2/LE3:** they have denser hubs (Omega, Illium, the Citadel's Commons and Purgatory). Our renderer there is our own,
   not Halcyon's.
 - **The fake headset:** no compositor cost and no real head motion. The real headset adds both.
