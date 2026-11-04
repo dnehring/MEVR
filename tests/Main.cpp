@@ -42,6 +42,7 @@
 #include "core/vr/PoseRecording.hpp"
 #include "core/vr/Recenter.hpp"
 #include "core/vr/SceneCaptureScope.hpp"
+#include "core/vr/CineScreen.hpp"
 #include "core/vr/GalaxyMap.hpp"
 #include "core/vr/Spectator.hpp"
 #include "core/vr/ScopeCapture.hpp"
@@ -5683,6 +5684,59 @@ void TestSightVirtualEyepiece() {
 // The scope's real zoomed render (research/39): the capture's field, its camera, the pose history, and the picture
 // sampling it through the same projection the eye copy uses.
 // The spectator camera (core/vr/Spectator, research/49): its field, the head camera's damped follow, the publish history.
+void TestCineScreen() {
+    namespace cs = mevr::vr::cine_screen;
+    // The crop: the two shown parts are c apart and (1 - c) wide, so infinity's disparity is depth of the shown width.
+    float const c = cs::CropFraction(0.015f);
+    CHECK(NearD(c / (1.0f - c), 0.015, 1e-6) && cs::CropFraction(0.0f) == 0.0f && cs::CropFraction(-1.0f) == 0.0f);
+    // The rects: the left eye drops its left edge, the right eye its right edge, both the same size.
+    auto const r = cs::Rects(2344, 2392, c);
+    int const drop = static_cast<int>(std::lround(c * 2344.0f));
+    CHECK(r.left.x == drop && r.left.width == 2344 - drop && r.right.x == 0 && r.right.width == r.left.width && r.left.height == 2392 &&
+          r.right.height == 2392 && r.left.y == 0);
+    CHECK(cs::Rects(0, 100, c).left.width == 0 && cs::Rects(100, 100, 2.0f).left.x == 25);   // the crop is limited to a quarter
+    CHECK(NearD(cs::HeightM(r, 3.0f), 3.0 * 2392.0 / (2344.0 - drop), 1e-5));
+    // The geometry, end to end: two parallel cameras b apart, a render half angle h; a point straight ahead at distance Z
+    // projects at +-(b/2) f / Z of the image's width from the centre (f = 1 / (2 tan h)); after the crop each eye's shown part
+    // maps onto the same screen. The convergence distance lands on the screen plane, infinity `depth` behind it.
+    float const halfH = 0.6f;
+    float const convergeUU = 250.0f;
+    float const b = cs::BaselineUU(c, convergeUU, halfH);
+    double const f = 1.0 / (2.0 * std::tan(static_cast<double>(halfH)));
+    auto screenDisparity = [&](double z) {   // right eye's screen position minus the left eye's, a fraction of the screen
+        double const xl = 0.5 + (b / 2.0) * f / z;   // the left camera sits left: the point is right of its centre
+        double const xr = 0.5 - (b / 2.0) * f / z;
+        double const ul = (xl - c) / (1.0 - c);       // the left eye shows [c, 1]
+        double const ur = xr / (1.0 - c);             // the right eye shows [0, 1 - c]
+        return ur - ul;
+    };
+    CHECK(NearD(screenDisparity(convergeUU), 0.0, 1e-6));
+    CHECK(NearD(screenDisparity(1e12), 0.015, 1e-5));                                // infinity: depth, uncrossed (behind)
+    CHECK(screenDisparity(convergeUU / 2.0) < 0.0 && screenDisparity(convergeUU * 2.0) > 0.0);   // nearer: in front
+    // A close-up's narrower lens gets a narrower baseline for the same depth budget.
+    CHECK(cs::BaselineUU(c, convergeUU, 0.2f) < b && cs::BaselineUU(0.0f, convergeUU, halfH) == 0.0f &&
+          cs::BaselineUU(c, convergeUU, 1.6f) == 0.0f && cs::BaselineUU(c, -1.0f, halfH) == 0.0f);
+    // The divergence cap: infinity's disparity on a 3 m screen stays under 0.8 of a 64 mm eye distance.
+    CHECK(NearD(cs::MaxDepth(3.0f, 0.064f), 0.8 * 0.064 / 3.0, 1e-6) && NearD(cs::MaxDepth(3.0f, 0.0f), 0.8 * 0.064 / 3.0, 1e-6) &&
+          cs::MaxDepth(0.5f, 0.064f) == cs::kMaxDepth && cs::MaxDepth(0.0f, 0.064f) == 0.0f);
+    cs::Settings wide;
+    wide.widthM = 8.0f;
+    wide.depth = 0.03f;
+    auto const capped = cs::Plan(wide, 0.064f, 100.0f, halfH);
+    CHECK(capped.depthCapped && NearD(capped.depth, 0.8 * 0.064 / 8.0, 1e-6) && NearD(capped.depth * 8.0, 0.8 * 0.064, 1e-6));
+    auto const plain = cs::Plan(cs::Settings{}, 0.064f, 100.0f, halfH);
+    CHECK(!plain.depthCapped && NearD(plain.depth, 0.015, 1e-6) && NearD(plain.baselineUU, cs::BaselineUU(plain.crop, 250.0f, halfH), 1e-4));
+    CHECK(cs::Plan(cs::Settings{}, 0.064f, 0.0f, halfH).baselineUU == 0.0f);   // no scale yet: no separation
+    // Clamping.
+    cs::Settings odd;
+    odd.distanceM = 100.0f;
+    odd.widthM = std::numeric_limits<float>::quiet_NaN();
+    odd.depth = -1.0f;
+    odd.convergeM = 0.0f;
+    auto const k = cs::Clamped(odd);
+    CHECK(k.distanceM == cs::kMaxDistanceM && k.widthM == cs::Settings{}.widthM && k.depth == 0.0f && k.convergeM == cs::kMinConvergeM);
+}
+
 void TestGalaxyMap() {
     namespace gm = mevr::vr::galaxy_map;
     // The scale: a map centre 50,000 units ahead of its camera shown 0.9 m ahead.
@@ -8910,6 +8964,7 @@ int main() {
     TestSceneCaptureScope();
     TestSpectator();
     TestGalaxyMap();
+    TestCineScreen();
     TestBoneNames();
     TestIk();
     TestRigid();

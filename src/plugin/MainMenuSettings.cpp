@@ -11,6 +11,7 @@
 
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
+#include "core/vr/CineScreen.hpp"
 #include "plugin/Calibration.hpp"
 #include "plugin/Colour.hpp"
 #include "plugin/MevrMenu.hpp"
@@ -39,6 +40,7 @@ constexpr std::uint64_t kSliderRestMs = 300;    // a slider's value is written o
 constexpr std::uint64_t kColourRestMs = 400;
 constexpr std::uint64_t kHalcyonRestMs = 2000;  // Halcyon's profile saved this long after the last change
 constexpr std::uint64_t kResetArmMs = 4000;
+constexpr float kCineDepthFull = 0.015f;          // [Cinematics] depth at the menu's 100% (core/vr/CineScreen's default)
 constexpr std::uint64_t kMeasureTimeoutMs = 30000;
 
 std::uint64_t Now() {
@@ -199,7 +201,7 @@ void Settings::Read(menu::Values& v) {
     Ini ini;
     ini.pending = &pending_;
     if (!path.empty()) {
-        for (wchar_t const* s : {L"Hands", L"Holsters", L"Controls", L"Throwables", L"Sights", L"Camera", L"Arms", L"Menu", L"Comfort", L"Upscale"}) {
+        for (wchar_t const* s : {L"Hands", L"Holsters", L"Controls", L"Throwables", L"Sights", L"Camera", L"Arms", L"Menu", L"Comfort", L"Upscale", L"Cinematics"}) {
             ini.sections[Narrow(s)] = ReadSection(path, s);
         }
     }
@@ -220,6 +222,15 @@ void Settings::Read(menu::Values& v) {
     // Life-size movement is Halcyon's lean gain of 2 in the live profile (what's in effect), not a key of ours.
     flag("lifesize", std::fabs(c.leanGain - 2.0f) < 0.01f);
     flag("pause", ini.Num("Menu", "pause", 1.0f) != 0.0f);
+    // Conversations and cutscenes (research/52): flat with Halcyon's VR conversations and cutscenes both off, on the 3D cinema
+    // screen with [Cinematics] conversations or cutscenes on, else in VR. The Advanced page's toggles stay per context.
+    mevr::vr::cine_screen::Settings const cineDefaults;
+    bool const screen = ini.Num("Cinematics", "conversations", cineDefaults.conversations ? 1.0f : 0.0f) != 0.0f ||
+                        ini.Num("Cinematics", "cutscenes", cineDefaults.cutscenes ? 1.0f : 0.0f) != 0.0f;
+    v.texts["cine_view"] = !c.cineVrConvo && !c.cineVrCutscene ? "flat" : screen ? "screen" : "vr";
+    v.numbers["cine_width"] = std::clamp(ini.Num("Cinematics", "widthM", 3.0f), 1.5f, 8.0f);
+    v.numbers["cine_distance"] = std::clamp(ini.Num("Cinematics", "distanceM", 2.6f), 1.0f, 6.0f);
+    v.numbers["cine_depth"] = std::clamp(std::round(ini.Num("Cinematics", "depth", kCineDepthFull) / kCineDepthFull * 100.0f), 0.0f, 150.0f);
     // Controls.
     flag("grip_holds", ini.Num("Holsters", "gripHolds", 1.0f) != 0.0f);
     flag("holsters", ini.Num("Holsters", "enabled", 1.0f) != 0.0f);
@@ -443,7 +454,24 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     auto fixed = [&](float value, int decimals) { return std::format("{:.{}f}", value, decimals); };
     MELEVR::Config::VrConfig& c = MELEVR::Config::Get();
     // ---- Our settings file ----
-    if (key == "turn") {
+    if (key == "cine_view") {
+        std::string const view = v.Text("cine_view");
+        bool const inVr = view != "flat";
+        c.cineVrConvo = inVr;
+        c.cineVrCutscene = inVr;
+        HalcyonChanged(false);
+        if (inVr) {
+            std::string const onScreen = view == "screen" ? "1" : "0";
+            Put("Cinematics", "conversations", onScreen, true);
+            Put("Cinematics", "cutscenes", onScreen, true);
+        }
+    } else if (key == "cine_width") {
+        Put("Cinematics", "widthM", fixed(v.Number("cine_width"), 2), final);
+    } else if (key == "cine_distance") {
+        Put("Cinematics", "distanceM", fixed(v.Number("cine_distance"), 2), final);
+    } else if (key == "cine_depth") {
+        Put("Cinematics", "depth", fixed(v.Number("cine_depth") / 100.0f * kCineDepthFull, 4), final);
+    } else if (key == "turn") {
         Put("Comfort", "turn", v.Text("turn") == "snap" ? "snap" : "game", true);
     } else if (key == "snap") {
         Put("Comfort", "snapDeg", v.Text("snap"), true);

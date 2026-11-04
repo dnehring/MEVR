@@ -3448,6 +3448,7 @@ struct CineDecision
     float fillH            = 1.0f;   // FOV-fill multipliers to use THIS frame
     float fillV            = 1.0f;
     float cineZoom         = 1.0f;   // lens zoom while a VR cine renders (1.0 = none)
+    bool  mevrScreen       = false;  // [MEVR] a VR cine on the 3D cinema screen (research/52)
 };
 
 // Presentation: context -> the flags the rest of RunFrame consumes.
@@ -3470,6 +3471,9 @@ static void CineFinishDecision(CineDecision& d, const CineInputs& in,
     // an AER quad pair is two different frames = shimmer, and mono has no depth to show anyway.
     if (cinematicContext && vrCineOn && !in.sfr2CfgOn) d.forceFlatCine = true;
     d.vrCineActive = cinematicContext && vrCineOn && !d.forceFlatCine;
+    // [MEVR] the 3D cinema screen (research/52): a VR cine renders both passes as usual but at the game's own projection,
+    // and each eye's render goes on a screen fixed in the room instead of filling the view ([Cinematics] in LE1MEVR.ini).
+    d.mevrScreen = d.vrCineActive && MELEVR::MevrBridge::CineScreenWanted(d.inConversation);
 
     // [VRCINE FILL] render AND declare the same window gameplay uses. ME2's reasoning, from its
     // own source: the director's per-shot framing FOV is not the mod's to honour in a headset.
@@ -3737,6 +3741,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     const bool inCutsceneMode     = cine.inCutscene;
     const bool vrCineActive       = cine.vrCineActive;
     const bool forceFlatCine      = cine.forceFlatCine;
+    const bool mevrCineScreen     = cine.mevrScreen;   // [MEVR] the 3D cinema screen (research/52)
     // [SFRGATE-LATCH 2026-08-12] Feed the replay gate the LATCHED cine context, not the raw flapping
     // byte (see the note at the old call site above). While a convo/cutscene is latched, gm 7/8/-1
     // blips publish as 5/6 so the second-eye pass keeps rendering; the latch clears instantly on
@@ -3768,6 +3773,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
                              (inCutsceneMode     ? 1u << 9  : 0) |
                              (forceFlatCine      ? 1u << 10 : 0) |
                              (vrCineActive       ? 1u << 11 : 0) |
+                             (mevrCineScreen     ? 1u << 12 : 0) |   // [MEVR] the 3D cinema screen
                              (sceneAliveNow      ? 1u << 13 : 0) |
                              (inMovie            ? 1u << 14 : 0);
         if (key != s_lastKey)
@@ -3779,6 +3785,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
                     (inConversationMode ? " convo" : "") +
                     (inCutsceneMode ? " cutscene" : "") +
                     " -> " + (forceFlatCine ? "FLAT panel"
+                              : mevrCineScreen ? "3D screen (MEVR)"   // [MEVR] research/52
                               : vrCineActive ? (cfg.cineHeadTracking ? "VR cine (tracked)" : "VR cine (locked)")
                               : "VR"));
         }
@@ -4401,7 +4408,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     // cine behaviour: the head does not turn the director's camera. The shot renders as framed and
     // the pair is anchored to the current head at submit, so a cine is a stable 3D picture you sit
     // inside. This also removes the render-vs-tag pose-mismatch class the tracked variant produced.
-    if (menuOpen || (cinematicContext && (forceFlatCine || !cfg.cineHeadTracking)))
+    if (menuOpen || (cinematicContext && (forceFlatCine || !cfg.cineHeadTracking || mevrCineScreen)))   // [MEVR] screen: parked
     {
         // [CINEVR2] park head-look/aim when the Insert menu is open, when cine is on the flat
         // screen (VR toggle off / movie segment), or when cine head tracking is switched off -
@@ -4655,7 +4662,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         // Cinematics (cutscenes/conversations) use the SAME fill as gameplay now. Gameplay renders square (1:1) and
         // looks correct; the old cinematic 0.75/0.50 fill forced the cutscene's render WIDE = the squash. Everything
         // gets gameplay's fill -> cinematics render square like gameplay -> no squash.
-        if (forceFlatCine)
+        if (forceFlatCine || mevrCineScreen)   // [MEVR] the 3D cinema screen renders the shot as framed too
         {
             // Flat cine/menu/movie only: FOV-fill override off = the game's NATIVE projection.
             // A VR cine now takes the [VRCINE FILL] path below (render AND declare the headset window).
@@ -5030,7 +5037,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             if (MELEVR::RenderHook::GetRenderFovHalfAngles(&halfH, &halfV))
                 MELEVR::MevrBridge::OnGalaxyHologram(halfH, halfV);
         }
-        else if (cfg.leanEnabled && headValid && !menuOpen && !forceFlatCine)
+        else if (cfg.leanEnabled && headValid && !menuOpen && !forceFlatCine && !mevrCineScreen)   // [MEVR] screen: no lean
         {
             // Forward/back (a dolly) reads ~3x weaker than sideways (parallax), so emphasize it to feel matched.
             const float kFwdLeanEmphasis = MELEVR::MevrBridge::ForwardLeanEmphasis();   // [MEVR] upstream: 3.0f
@@ -5084,7 +5091,8 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             // The panel is armed only in gameplay (modes 0-4, an unreadable mode keeping the last), so this also
             // covers conversations, cutscenes, menus and live GUIs.
             mevrIn.uiInEyes = vrCineActive || !MELEVR::MevrBridge::HudPanelArmed();
-            mevrIn.fovOverride = cfg.vrFovFillEnabled && !forceFlatCine;
+            mevrIn.fovOverride = cfg.vrFovFillEnabled && !forceFlatCine && !mevrCineScreen;
+            mevrIn.screen = mevrCineScreen;   // [MEVR] the 3D cinema screen: parallel cameras on the director's camera
             mevrIn.swapEyes = cfg.sfr2SwapEyes;
             for (int e = 0; e < 2; ++e)
             {
@@ -5382,7 +5390,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         static XrVector3f s_freshEye[2] = {};
         static XrFovf  s_freshFov = {};
         static bool    s_freshInit = false;
-        const bool lockedCine = vrCineActive && !cfg.cineHeadTracking;
+        const bool lockedCine = (vrCineActive && !cfg.cineHeadTracking) || mevrCineScreen;   // [MEVR] screen: quads, no freeze
         const bool freezeEligible = sfrPairSubmitted && !lockedCine && !forceFlatCine;
         if (!freezeEligible || g_sfrPairFreshThisFrame || !s_freshInit)
         {
@@ -5816,6 +5824,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     const XrCompositionLayerBaseHeader* layers[kMaxLayers] = {};
     uint32_t layerCount = 0;
     XrCompositionLayerQuad flatCineQuad = {};
+    XrCompositionLayerQuad mevrScreenQuad[2] = {};   // [MEVR] the 3D cinema screen (research/52)
     // [MEVR] world-locked panels (MevrBridge::PlacePanel) and the menu pointer: the eye centre in the app space
     float mevrHeadQ[4] = {0.0f, 0.0f, 0.0f, 1.0f};
     float mevrHeadP[3] = {0.0f, 0.0f, 0.0f};
@@ -5878,6 +5887,47 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         }
         layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&flatCineQuad);
     }
+    else if (submitted && mevrCineScreen && g_eyes[0].swapchain != nullptr && g_eyes[1].swapchain != nullptr)
+    {
+        // [MEVR] the 3D cinema screen (research/52, src/plugin/CineScreen.cpp): instead of the projection layer, each eye's
+        // render of the shot on a screen fixed in the room, one quad per eye (eye visibility) at one pose and size. Each
+        // shows its image less a sliver on opposite sides (the left eye its left edge), which puts the scene behind the
+        // screen plane; the passes' separation (PlanStereo's screen branch) puts the plan's distance on it.
+        MELEVR::MevrBridge::CineScreenQuads screenNow;
+        MELEVR::MevrBridge::CineScreenQuadsNow(g_eyes[0].width, g_eyes[0].height, &screenNow);
+        const MELEVR::MevrBridge::PanelKind kind = inConversationMode ? MELEVR::MevrBridge::PanelKind::Conversation
+                                                                      : MELEVR::MevrBridge::PanelKind::Cutscene;
+        const float viewPos[3] = {0.0f, 0.0f, -screenNow.distanceM};
+        const MELEVR::MevrBridge::PanelPose placed = MELEVR::MevrBridge::PlacePanel(kind, viewPos, g_viewSpace, g_appSpace,
+                                                                                    headValid, mevrHeadQ, mevrHeadP);
+        const float heightM = screenNow.heightM > 0.1f ? screenNow.heightM : screenNow.widthM * 9.0f / 16.0f;
+        for (int e = 0; e < 2; ++e)
+        {
+            XrCompositionLayerQuad& q = mevrScreenQuad[e];
+            q.type = XR_TYPE_COMPOSITION_LAYER_QUAD_VALUE;
+            q.layerFlags = 0;
+            q.space = g_viewSpace;
+            q.eyeVisibility = e == 0 ? XR_EYE_VISIBILITY_LEFT_VALUE : XR_EYE_VISIBILITY_RIGHT_VALUE;
+            q.subImage.swapchain = g_eyes[e].swapchain;
+            q.subImage.imageArrayIndex = 0;
+            const bool rectOk = screenNow.rect[e][2] > 0 && screenNow.rect[e][3] > 0;
+            q.subImage.imageRect.offset.x = rectOk ? screenNow.rect[e][0] : 0;
+            q.subImage.imageRect.offset.y = rectOk ? screenNow.rect[e][1] : 0;
+            q.subImage.imageRect.extent.width = rectOk ? screenNow.rect[e][2] : static_cast<int32_t>(g_eyes[e].width);
+            q.subImage.imageRect.extent.height = rectOk ? screenNow.rect[e][3] : static_cast<int32_t>(g_eyes[e].height);
+            q.pose = IdentityPose();
+            q.pose.position.z = -screenNow.distanceM;
+            mevrApplyPanelPose(q, placed);
+            q.size.width = screenNow.widthM;
+            q.size.height = heightM;
+            layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&q);
+        }
+        // The game pointer (research/42): the whole image as both eyes see it on average, centred on the screen and wider by
+        // the crop, so a controller's ray maps onto the game window's pixel.
+        const float crop = screenNow.crop > 0.0f && screenNow.crop < 0.25f ? screenNow.crop : 0.0f;
+        MELEVR::MevrBridge::OnFlatQuad(kind, mevrHeadQ, mevrHeadP, placed, screenNow.widthM / (1.0f - crop), heightM, headValid);
+        MELEVR::MevrBridge::NoteCineScreenSubmit(inConversationMode, heightM);
+    }
     else if (submitted)
     {
         layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&proj);
@@ -5887,12 +5937,18 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     // space above the world and below the menu. Called every frame: it also clears the panel texture,
     // arms the UI redirect for the next frame (world frames only) and hides the game's crosshair.
     float mevrNearestQuadM = (submitted && forceFlatCine) ? 1.4f : 100.0f;   // the flat cine quad's distance
+    if (submitted && mevrCineScreen)   // [MEVR] the 3D cinema screen's
+    {
+        MELEVR::MevrBridge::CineScreenQuads mevrScreenNow;
+        MELEVR::MevrBridge::CineScreenQuadsNow(g_eyes[0].width, g_eyes[0].height, &mevrScreenNow);
+        mevrNearestQuadM = mevrScreenNow.distanceM;
+    }
     {
         MELEVR::MevrBridge::OverlayFrame mevrFrame;
         mevrFrame.session = g_session;
         mevrFrame.appSpace = g_appSpace;
         mevrFrame.context = g_context;
-        mevrFrame.worldFrame = submitted && !forceFlatCine;
+        mevrFrame.worldFrame = submitted && !forceFlatCine && !mevrCineScreen;   // [MEVR] the screen: no world layer
         mevrFrame.menuOpen = menuOpen;
         mevrFrame.sfr2 = cineIn.sfr2CfgOn;
         mevrFrame.gameMode = gameMode;

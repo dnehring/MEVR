@@ -97,6 +97,11 @@ std::vector<Field> const& Schema() {
         {"crouch", Type::Flag, 1},
         {"lifesize", Type::Flag, 0},
         {"pause", Type::Flag, 1},
+        // Comfort: conversations and cutscenes (research/52): in VR (Halcyon's), on the 3D cinema screen, or the flat screen.
+        {"cine_view", Type::Choice, 0, "vr"},
+        {"cine_width", Type::Number, 3, "", 1.5f, 8, F::Meters1},
+        {"cine_distance", Type::Number, 2.6f, "", 1, 6, F::Meters1},
+        {"cine_depth", Type::Number, 100, "", 0, 150, F::Percent},
         // Controls.
         {"grip_holds", Type::Flag, 1},
         {"holsters", Type::Flag, 1},

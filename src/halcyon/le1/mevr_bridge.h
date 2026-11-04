@@ -427,6 +427,9 @@ struct StereoPlanInput
     // The CPU projection the render last used (RenderHook::GetRenderFovHalfAngles, radians; 0 = none seen yet): the
     // culling window, which must hold each eye's own frustum in mode 2 (logged with the plan, warned when it doesn't).
     float cpuHalfH = 0.0f, cpuHalfV = 0.0f;
+    // A cinematic on the 3D cinema screen (CineScreenWanted, research/52): mode 1 whatever `metric`, the two passes from
+    // parallel cameras on the director's camera, their separation from that render's own lens (cpuHalfH) and [Cinematics].
+    bool screen = false;
 };
 struct StereoPlan
 {
@@ -440,6 +443,27 @@ struct StereoPlan
 };
 // Present thread, once per frame with the view offset (RunFrame): the plan for the next game frame's passes.
 void PlanStereo(const StereoPlanInput& in, StereoPlan* out) noexcept;
+
+// ---- Cinematics on a 3D cinema screen (src/plugin/CineScreen.cpp, core/vr/CineScreen, research/52) -------------------
+// A VR cine (cineVrConvo / cineVrCutscene on) can show on a screen fixed in the room instead: both Stereo 2 passes at the
+// game's native projection (as the flat screen renders) from two parallel cameras on the director's camera, each eye's
+// render on its own quad (eye visibility), each cropped on opposite sides so the scene sits behind the screen plane.
+// Head look and lean stay parked; the camera moves stay inside the frame. [Cinematics] in ASI\LE1MEVR.ini.
+struct CineScreenQuads
+{
+    float distanceM = 2.6f;   // where the screen stands, ahead of the head when it appears (PlacePanel)
+    float widthM = 3.0f;
+    float heightM = 0.0f;     // for the shown part's aspect
+    float crop = 0.0f;        // each eye's dropped share of its image's width (the left eye its left edge)
+    int rect[2][4] = {};      // per eye (0 left): x, y, width, height of its image the screen shows
+};
+// Present thread, each frame a VR cine is decided: whether this one goes on the 3D screen ([Cinematics]).
+bool CineScreenWanted(bool conversation) noexcept;
+// Present thread, at submit: the screen, the last plan's crop and each eye's shown part of an image `eyeWidth` x `eyeHeight`.
+// False before any plan (then nothing is cropped).
+bool CineScreenQuadsNow(unsigned eyeWidth, unsigned eyeHeight, CineScreenQuads* out) noexcept;
+// Present thread, each frame the two quads are submitted: for the log and the snapshot.
+void NoteCineScreenSubmit(bool conversation, float heightM) noexcept;
 // Present thread, with the projection views: what this frame submits. `mode`: what the pair was rendered with
 // (0 upstream's, also the flat screen). Declared poses (position xyz, orientation xyzw) and FOVs per eye.
 void NoteStereoSubmit(int mode, float const declaredPosition[2][3], float const declaredOrientation[2][4],

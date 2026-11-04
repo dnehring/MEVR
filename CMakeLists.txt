@@ -492,6 +492,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/LayerComposite.hpp
     src/core/vr/MenuPointer.cpp
     src/core/vr/MenuPointer.hpp
+    src/core/vr/CineScreen.cpp
+    src/core/vr/CineScreen.hpp
     src/core/vr/MetricStereo.cpp
     src/core/vr/MetricStereo.hpp
     src/core/vr/OverlayPlacement.cpp
@@ -546,6 +548,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/MevrMenu.hpp
     src/plugin/MevrMenuPointer.cpp
     src/plugin/MevrMenuTab.cpp
+    src/plugin/CineScreen.cpp
+    src/plugin/CineScreen.hpp
     src/plugin/MetricStereo.cpp
     src/plugin/MetricStereo.hpp
     src/plugin/PerfProbe.cpp
@@ -777,6 +781,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/LayerComposite.cpp
         src/core/vr/MenuPointer.cpp
         src/core/vr/MenuSettings.cpp
+        src/core/vr/CineScreen.cpp
         src/core/vr/MetricStereo.cpp
         src/core/vr/OverlayPlacement.cpp
         src/core/vr/PoseRecording.cpp

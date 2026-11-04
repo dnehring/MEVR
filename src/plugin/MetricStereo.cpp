@@ -3,6 +3,7 @@
 // ([MEVR] seams in xr_session.cpp's RunFrame), the [MEVR-STEREO] log, the snapshot's "stereo" block.
 
 #include "plugin/MetricStereo.hpp"
+#include "plugin/CineScreen.hpp"
 #include "plugin/RenderLevers.hpp"
 
 #include "halcyon/le1/logger.h"
@@ -39,6 +40,7 @@ struct Status {
     float fillH = 1.0f, fillV = 1.0f;
     float cpuHalfH = 0.0f, cpuHalfV = 0.0f;   // the render's last projection (radians; 0 = none seen)
     float cantDeg = 0.0f;
+    bool screen = false;            // the last plan was the 3D cinema screen's (research/52): the whole window is shown
     bool submitted = false;
     int submitMode = 0;
     float declaredPosition[2][3] = {};
@@ -127,7 +129,7 @@ bool PassShownFraction(int pass, float out[4]) {
         return false;
     }
     std::lock_guard lock(gMutex);
-    if (!gStatus.planned || gStatus.plan.mode != 1) {
+    if (!gStatus.planned || gStatus.plan.mode != 1 || gStatus.screen) {
         return false;
     }
     int const eye = pass == 0 ? gStatus.plan.pass0Eye : 1 - gStatus.plan.pass0Eye;
@@ -164,6 +166,35 @@ void PlanStereo(const StereoPlanInput& in, StereoPlan* out) noexcept {
     }
     *out = StereoPlan{};
     float cantDeg = 0.0f;
+    // [Cinematics] the 3D cinema screen (research/52): two parallel cameras on the director's camera, half the separation to
+    // each side, through the render's own (native) projection: mode 1 whatever sfr2Metric says, so the submit routes pass 0
+    // to the left eye and applies no convergence shift (the quads' crop sets the depth instead).
+    if (in.screen && in.sfr2Active) {
+        float ipdM = 0.0f;
+        if (in.headValid) {
+            float const dx = in.eyePosition[1][0] - in.eyePosition[0][0];
+            float const dy = in.eyePosition[1][1] - in.eyePosition[0][1];
+            float const dz = in.eyePosition[1][2] - in.eyePosition[0][2];
+            ipdM = std::sqrt(dx * dx + dy * dy + dz * dz);
+        }
+        mevr::vr::cine_screen::Frame const frame = mevr::host::cine_screen::PlanFrame(in.cpuHalfH, ipdM,
+            mevr::vr::cine_screen::kSceneUnitsPerMeter);   // convergeM is a distance in the scene, at its own scale
+        out->mode = 1;
+        out->pass0Eye = 0;
+        out->passOffsetUU[0][0] = -0.5f * frame.baselineUU;
+        out->passOffsetUU[1][0] = 0.5f * frame.baselineUU;
+        out->ipdM = ipdM;
+        out->ipdUU = frame.baselineUU;
+        std::lock_guard lock(gMutex);
+        gStatus.planned = true;
+        gStatus.plan = *out;
+        gStatus.unitsPerMeter = in.unitsPerMeter;
+        gStatus.depth = frame.depth;
+        gStatus.cpuHalfH = in.cpuHalfH;
+        gStatus.cpuHalfV = in.cpuHalfV;
+        gStatus.screen = true;
+        return;
+    }
     bool const metric = in.metric && in.sfr2Active && in.headValid && in.unitsPerMeter > 0.0f;
     // Upstream's swap exchanges which pass renders which eye (and, through its pass-bound convergence sign, made the
     // shift divergent). Each metric pass renders its own eye's real viewpoint and the submit routes by this plan, so
@@ -213,6 +244,7 @@ void PlanStereo(const StereoPlanInput& in, StereoPlan* out) noexcept {
     {
         std::lock_guard lock(gMutex);
         gStatus.planned = true;
+        gStatus.screen = false;
         gStatus.plan = *out;
         gStatus.unitsPerMeter = in.unitsPerMeter;
         gStatus.depth = in.depth;
