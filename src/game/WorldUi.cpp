@@ -399,7 +399,7 @@ void Tick(Link const& link) {
     state.active = 1;
     state.screen = static_cast<std::uint8_t>(screen);
     state.opening = gS.opening;
-    state.widthM = settings.widthM;
+    state.widthM = wu::RoomWidth(screen, settings.widthM);  // the loot keeps the stage's scale, its empty sides cut
     state.distanceM = settings.distanceM;
     state.belowM = settings.belowM;
     state.backdrop = settings.backdrop;

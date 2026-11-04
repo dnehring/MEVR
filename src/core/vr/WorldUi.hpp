@@ -147,6 +147,9 @@ Rect DefaultCrop(Screen screen);
 // The part shown when it's projected from the wrist: tighter where the screen is a small box on its stage (the minigame). The host
 // picks it when the screen goes on the wrist; the mod's stageCrop is the room's.
 Rect WristCrop(Screen screen);
+// The width the screen's shown part stands at in the room: `widthM` ([WorldUi] widthM) is the whole stage's for a screen that
+// keeps the stage's scale (loot: a narrow frame on an empty stage keeps its size, the empty sides gone), else its crop's.
+float RoomWidth(Screen screen, float widthM);
 
 struct Panel {
     XrPosef pose{};  // its centre; it faces +Z (toward the eyes)

@@ -5982,6 +5982,11 @@ void TestWorldUi() {
     CHECK(skillRoom.u0 == 0.0f && skillRoom.u1 == 1.0f);
     wu::Rect const shopWrist = wu::WristCrop(wu::Screen::Shop);
     CHECK(shopWrist.u0 == wu::DefaultCrop(wu::Screen::Shop).u0);
+    // The loot shows its frame (measured: stage x 0.317..0.683, y 0.064..0.922) at the whole stage's scale.
+    wu::Rect const loot = wu::DefaultCrop(wu::Screen::Loot);
+    CHECK(loot.u0 < 0.317f && loot.u1 > 0.683f && loot.v0 < 0.064f && loot.v1 > 0.922f && loot.u0 > 0.2f && loot.u1 < 0.8f);
+    CHECK(std::fabs(wu::RoomWidth(wu::Screen::Loot, 1.2f) - 1.2f * (loot.u1 - loot.u0)) < 1e-5f);
+    CHECK(wu::RoomWidth(wu::Screen::Shop, 1.2f) == 1.2f);
     // The fan's picture: wide at the panel's edge, a point at the emitter, brighter there, premultiplied.
     std::vector<std::uint32_t> const fan = wu::BeamPixels(64, 0.6f, 0.8f, 1.0f);
     CHECK(fan.size() == 64u * 64u);

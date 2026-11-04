@@ -39,7 +39,7 @@ does). `mevr instances <Package.Class> [text]` finds the live objects of a class
 `mevr skillgame start 0 1 <n>` (the level's own `BioSkillGame.InitializeSkillGame` on the (n-1)-th found placeable), closed with
 `mevr panel SkillGame invoke PreGameButtonBOnPress`. Synthetic calls that skip the game's flow close at once (`ShowLootGui` alone,
 `LootCorpse` on a living pawn); loot needs a mission past its prologue (research/53 section 5 lists Eden Prime's consoles and
-cases). A movie with no MovieInfo at run time: `mevr panel <tag> movie <Package.Name>` (its strings name the buttons' functions). To close a screen without input, reload the level
+cases). A movie with no MovieInfo at run time: `mevr panel <tag> movie <Package.Name>` (its strings name the buttons' functions). **A real mission without the menus:** `tools/launch-game.ps1 -Steam` resumes the last save (the VR career's, on UNC20: `mevr vehicle exit`, then its base, research/53 section 5.1); look at the object (a replayed head) and `mevr call <n> Used` on the live `SFXGameModeDefault` is A, the game's own path (the pad doesn't reach an unfocused window). To close a screen without input, reload the level
 (`open BIOA_NOR00`). A hot-reloaded mod loses what it recorded on foot: reopen the screen after a rebuild.
 
 ## 3. Look at it as VR shows it today
