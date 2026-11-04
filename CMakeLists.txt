@@ -283,6 +283,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/OverlayPlacement.hpp
     src/core/vr/SceneCaptureScope.hpp
     src/core/vr/ScopeCapture.cpp
+    src/core/vr/GalaxyHologram.cpp
+    src/core/vr/GalaxyHologram.hpp
     src/core/vr/GalaxyMap.cpp
     src/core/vr/GalaxyMap.hpp
     src/core/vr/Spectator.cpp
@@ -504,6 +506,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/Recenter.hpp
     src/core/vr/SceneCaptureScope.hpp
     src/core/vr/ScopeCapture.cpp
+    src/core/vr/GalaxyHologram.cpp
+    src/core/vr/GalaxyHologram.hpp
     src/core/vr/GalaxyMap.cpp
     src/core/vr/GalaxyMap.hpp
     src/core/vr/Spectator.cpp
@@ -562,6 +566,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/ScopeCaptureSource.hpp
     src/plugin/SightLayers.cpp
     src/plugin/SightLayers.hpp
+    src/plugin/GalaxyHologramDraw.cpp
+    src/plugin/GalaxyHologramDraw.hpp
     src/plugin/SightPictures.cpp
     src/plugin/SightPictures.hpp
     src/plugin/Spectator.cpp
@@ -788,6 +794,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/Recenter.cpp
         src/core/vr/SceneCaptureScope.hpp
         src/core/vr/ScopeCapture.cpp
+        src/core/vr/GalaxyHologram.cpp
         src/core/vr/GalaxyMap.cpp
         src/core/vr/Spectator.cpp
         src/core/vr/Sights.cpp
@@ -862,6 +869,20 @@ if (MEVR_BUILD_TESTS)
     target_link_libraries(mevr-sight-preview PRIVATE OpenXR::headers windowscodecs ole32 d3d11 d3dcompiler)
     target_compile_definitions(mevr-sight-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-sight-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+
+    # The galaxy hologram, offline (tools/galaxy-preview, research/51 section 8): each map level for both eyes with the host's
+    # own drawing code, as PNGs, and a stereo check (every star found in both images and triangulated back into the room).
+    add_executable(mevr-galaxy-preview
+        tools/galaxy-preview/Main.cpp
+        src/core/PngFile.cpp
+        src/core/vr/GalaxyHologram.cpp
+        src/core/vr/OverlayPlacement.cpp
+        src/plugin/GalaxyHologramDraw.cpp
+    )
+    target_include_directories(mevr-galaxy-preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui)
+    target_link_libraries(mevr-galaxy-preview PRIVATE OpenXR::headers windowscodecs ole32 d3d11 d3dcompiler)
+    target_compile_definitions(mevr-galaxy-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-galaxy-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
 
     # The Mako's lever and stick, offline (tools/mako-preview, research/46): PNGs with the host's own pixels.
     add_executable(mevr-mako-preview

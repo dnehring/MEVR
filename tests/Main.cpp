@@ -43,6 +43,7 @@
 #include "core/vr/Recenter.hpp"
 #include "core/vr/SceneCaptureScope.hpp"
 #include "core/vr/CineScreen.hpp"
+#include "core/vr/GalaxyHologram.hpp"
 #include "core/vr/GalaxyMap.hpp"
 #include "core/vr/Spectator.hpp"
 #include "core/vr/ScopeCapture.hpp"
@@ -5739,6 +5740,107 @@ void TestCineScreen() {
     CHECK(k.distanceM == cs::kMaxDistanceM && k.widthM == cs::Settings{}.widthM && k.depth == 0.0f && k.convergeM == cs::kMinConvergeM);
 }
 
+void TestGalaxyHologram() {
+    namespace gh = mevr::vr::galaxy_holo;
+    // The table: ahead of the head's heading and below the eyes, facing the player, whatever the head's pitch.
+    float const pitch = -0.5f;
+    XrPosef const head{{std::sin(pitch * 0.5f), 0.0f, 0.0f, std::cos(pitch * 0.5f)}, {0.1f, 1.6f, 0.2f}};
+    gh::TableSettings settings;
+    gh::Table const table = gh::PlaceTable(head, settings);
+    CHECK(NearD(table.pose.position.x, 0.1, 1e-5) && NearD(table.pose.position.y, 1.6 - settings.belowM, 1e-5) &&
+          NearD(table.pose.position.z, 0.2 - settings.distanceM, 1e-5));
+    CHECK(NearD(table.pose.orientation.w, 1.0, 1e-5));
+
+    // A galaxy: the centre on the table's centre, the farthest object inside the rim, 'forward' away from the player.
+    gh::Scene s;
+    s.level = static_cast<std::uint8_t>(gh::Level::Galaxy);
+    s.centre[0] = 1000.0f;
+    auto add = [&](float x, float y, float z, std::uint8_t flags) {
+        gh::Object& o = s.objects[s.objectCount++];
+        o.position[0] = x; o.position[1] = y; o.position[2] = z;
+        o.kind = static_cast<std::uint8_t>(gh::Kind::Cluster);
+        o.flags = flags;
+        std::snprintf(o.label, gh::kLabelBytes, "c%d", s.objectCount);
+    };
+    add(1000.0f, 0.0f, 0.0f, gh::kSelectable);        // at the centre
+    add(3000.0f, 0.0f, 0.0f, gh::kSelectable);        // 2000 ahead (game X = the scene's forward)
+    add(1000.0f, 2000.0f, 0.0f, gh::kSelectable);     // 2000 to the right
+    add(1000.0f, 0.0f, 500.0f, 0);                    // above the plane, not selectable
+    float const scale = gh::FitScale(s, table.radiusM);
+    CHECK(NearD(scale, table.radiusM / (2000.0f * 1.15f), 1e-7));
+    auto const placed = gh::PlaceObjects(s, table, settings);
+    CHECK(placed.size() == 4);
+    CHECK(NearD(gh::Length(gh::Sub(placed[0].position, table.pose.position)), 0.0, 1e-5));
+    XrVector3f const ahead = gh::Sub(placed[1].position, table.pose.position);
+    CHECK(ahead.z < -0.3f && NearD(ahead.x, 0.0, 1e-5) && NearD(ahead.y, 0.0, 1e-5));   // away from the player
+    XrVector3f const side = gh::Sub(placed[2].position, table.pose.position);
+    CHECK(side.x > 0.3f && NearD(side.z, 0.0, 1e-5));                                      // game right = room right
+    CHECK(gh::Sub(placed[3].position, table.pose.position).y > 0.05f);                    // game up = room up
+
+    // Picking: a ray from the hand through an object picks it; a ray a little off still does; the unselectable one never;
+    // behind the hand, nothing.
+    XrVector3f const hand{0.3f, 1.2f, 0.0f};
+    for (int i : {0, 1, 2}) {
+        XrVector3f const dir = gh::Sub(placed[static_cast<size_t>(i)].position, hand);
+        CHECK(gh::Pick(hand, dir, placed, s) == i);
+        CHECK(gh::Pick(hand, gh::Add(gh::Normalize(dir), XrVector3f{0.01f, 0.0f, 0.0f}), placed, s) == i);
+    }
+    CHECK(gh::Pick(hand, gh::Sub(placed[3].position, hand), placed, s) != 3);
+    CHECK(gh::Pick(hand, gh::Mul(gh::Sub(placed[1].position, hand), -1.0f), placed, s) == -1);
+    CHECK(gh::Pick(hand, {0.0f, 1.0f, 0.0f}, placed, s) == -1);  // straight up: nothing near
+
+    // The pointer selects once per trigger press, on what's hovered.
+    gh::Pointer pointer;
+    CHECK(!pointer.Step(2, 0.0f, true) && pointer.Hovered() == 2);
+    auto const pressed = pointer.Step(2, 0.7f, true);
+    CHECK(pressed && *pressed == 2);
+    CHECK(!pointer.Step(2, 0.5f, true));   // held (above the 0.4 release)
+    CHECK(!pointer.Step(2, 0.3f, true));   // released
+    CHECK(!pointer.Step(-1, 0.9f, true));  // pressed on nothing: no select ...
+    CHECK(!pointer.Step(1, 0.9f, true));   // ... and moving onto something while held doesn't select either
+    CHECK(!pointer.Step(1, 0.0f, false) && pointer.Hovered() == -1);
+
+    // The game's screen: straight ahead is the centre; right is right, up is up; behind is nothing.
+    gh::GameCamera cam;
+    cam.valid = 1;
+    cam.fovXDeg = 90.0f;
+    cam.aspect = 2.0f;
+    float const front[3] = {100.0f, 0.0f, 0.0f};
+    float const rightUp[3] = {100.0f, 50.0f, 25.0f};
+    float const behind[3] = {-100.0f, 0.0f, 0.0f};
+    auto const c = gh::ToGameScreen(cam, front);
+    auto const ru = gh::ToGameScreen(cam, rightUp);
+    CHECK(c && NearD((*c)[0], 0.5, 1e-5) && NearD((*c)[1], 0.5, 1e-5));
+    CHECK(ru && NearD((*ru)[0], 0.75, 1e-5) && NearD((*ru)[1], 0.25, 1e-5));  // tan 45 = 1: x 50/100 -> 0.75; y 25/(100/2) -> 0.25
+    CHECK(!gh::ToGameScreen(cam, behind));
+    // Turned 90 degrees right (yaw), a point on the game's +Y is straight ahead.
+    cam.yaw = 1.5707963f;
+    float const onY[3] = {0.0f, 100.0f, 0.0f};
+    auto const y = gh::ToGameScreen(cam, onY);
+    CHECK(y && NearD((*y)[0], 0.5, 1e-4) && NearD((*y)[1], 0.5, 1e-4));
+    // Pitched down 30 degrees: a point below and ahead on that line is the centre.
+    cam.yaw = 0.0f;
+    cam.pitch = -0.5235988f;
+    float const down[3] = {100.0f * std::cos(0.5235988f), 0.0f, -100.0f * std::sin(0.5235988f)};
+    auto const d = gh::ToGameScreen(cam, down);
+    CHECK(d && NearD((*d)[0], 0.5, 1e-4) && NearD((*d)[1], 0.5, 1e-4));
+
+    // The picture: a label per labelled object, a halo on the hovered one, the galaxy's disc at the galaxy level.
+    auto const list = gh::Build(s, table, settings, placed, 1, 0.0f);
+    CHECK(list.labels.size() == 4);
+    int halos = 0;
+    for (auto const& sp : list.sprites) {
+        halos += sp.style == gh::SpriteStyle::Halo ? 1 : 0;
+    }
+    CHECK(halos == 1);
+    bool galaxyDisc = false;
+    for (auto const& disc : list.discs) {
+        galaxyDisc = galaxyDisc || disc.style == gh::DiscStyle::Galaxy;
+    }
+    CHECK(galaxyDisc);
+    CHECK(!gh::Describe(s).empty());
+}
+
 void TestGalaxyMap() {
     namespace gm = mevr::vr::galaxy_map;
     // The scale: a map centre 50,000 units ahead of its camera shown 0.9 m ahead.
@@ -8966,6 +9068,7 @@ int main() {
     TestSceneCaptureScope();
     TestSpectator();
     TestGalaxyMap();
+    TestGalaxyHologram();
     TestCineScreen();
     TestBoneNames();
     TestIk();
