@@ -119,45 +119,58 @@ Each needs a headset verdict, or ships off. Source: notes/next-vr-session.md ste
 ## 4. Premium feel
 
 ### First minutes
-- [ ] **[C] A welcome and controls primer in the headset.** `firstRunDone = 1` suppresses Halcyon's welcome and ours
+- [x] **[C] A welcome and controls primer in the headset.** `firstRunDone = 1` suppresses Halcyon's welcome and ours
   doesn't exist; the only hint is the calibration prompt. Nothing teaches holsters, grenades, the left-trigger wheel,
   powers on R3, the vent, B/X melee and throw, or the Mako's lever and stick. A Controls page in the menu with both
   controllers drawn, and a first-run card that points to it.
-- [ ] **[C] Installer: the game must have run once.** Without `GamerSettings.ini` the setup skips all game settings; the
+  **Done 2026-11-04 (e38c381):** the menu's Controller guide (texts from the settings, unit-tested), opened once on a first run (`[Menu] controlsShown`); when it fires was checked only by reading the code.
+- [x] **[C] Installer: the game must have run once.** Without `GamerSettings.ini` the setup skips all game settings; the
   window stays bordered (stereo breaks) and the resolution stays the template's 4096x4250. Detect it in the setup and in
   the headset, or write the settings anyway.
-- [ ] **[C] Upgrading from Halcyon's MELE-VR**: an existing `MELEVR.ini` keeps `vrMode`, `fpEnabled 0`, `firstRunDone 0`
+  **Done 2026-11-04 (9e6768b):** the settings wait in the manifest, "Start the game once", Repair applies them; tested on the fake game, the real launch not run.
+- [x] **[C] Upgrading from Halcyon's MELE-VR**: an existing `MELEVR.ini` keeps `vrMode`, `fpEnabled 0`, `firstRunDone 0`
   and the mirror rate, so a player can start in third person under Halcyon's welcome ("INSERT opens this menu"). Normalise
   those slots on install.
-- [ ] **[C] SteamVR must be up before the game** or VR stays off for the run: say so in the setup's Launch and the README,
+  **Done 2026-11-04 (9e6768b):** those keys normalised per slot where upstream wrote them, recorded for Uninstall; unit-tested and on the fake game.
+- [x] **[C] SteamVR must be up before the game** or VR stays off for the run: say so in the setup's Launch and the README,
   or start the runtime from Launch.
+  **Done 2026-11-04 (9e6768b, 11c626e):** Launch starts SteamVR first when it is the runtime (waits up to 60 s; never run for real), other runtimes get a line; the READMEs say so.
 
 ### Conversations and cutscenes (the core of Mass Effect)
-- [ ] **[C] A readable dialogue wheel**: its own panel near the screen or the hand instead of 0.9 degrees on the 3D
+- [x] **[C] A readable dialogue wheel**: its own panel near the screen or the hand instead of 0.9 degrees on the 3D
   screen; the pointer on it (research/52:94-96, research/42:129-133).
+  **Improved 2026-11-04 (db55151):** the conversation movie at its authored size on the 3D screen: the wheel 1.75x larger, its options' capitals 0.7 degrees (measured on the fake headset, research/52). A panel of its own and the pointer on it are not built; not yet read by a person.
 
 ### Hands, weapons, body
 - [ ] **[C] The assault rifle's dot held two-handed** sits off the sight (the one-handed shift is kept).
-- [ ] **[C] Crouch drops the view twice**: the game's crouch camera (45 units, 35 aiming) on top of the real crouch; the
+  Not changed (2026-11-04): the cause (research/21 cause 4) is unsettled and the fake headset has no rifle calibration to reproduce it; needs the heartbeat lines from a headset session first.
+- [x] **[C] Crouch drops the view twice**: the game's crouch camera (45 units, 35 aiming) on top of the real crouch; the
   constant eye covers standing modes only (research/23:153-156, research/38:272-273).
-- [ ] **[C] Shots from a muzzle through a wall** fire from the far side (`GetPulledInMuzzleLocation` unused,
+  **Built 2026-11-04 (f6997d4):** a physical crouch keeps the standing eye in the crouch camera modes (`[Hands] crouchDrop = 1`: the old drop); the flag reaches the host in the game, the combat crouch itself is [verify] (research/38).
+- [x] **[C] Shots from a muzzle through a wall** fire from the far side (`GetPulledInMuzzleLocation` unused,
   research/14:542-544).
+  **Built 2026-11-04 (6318954):** the shot starts 2 units short of what lies between the pawn's start and the muzzle; [verify] in the game.
 - [ ] **[C] Seated play**: no seated preset; holsters and crouch come from a standing recenter (research/19:570-571).
 - [ ] **[C] Legs moonwalk** when strafing or backing up; Shepard is left behind past 0.75 m (research/29:160-171).
 - [ ] [C] The grenade isn't in the hand while held; the vent has no animation; no visible gun kick.
 
 ### Menus and screens
-- [ ] **[C] Player-facing words in our menu**: "Halcyon's ladder", "the renderer's own settings", "Back to Halcyon's
+- [x] **[C] Player-facing words in our menu**: "Halcyon's ladder", "the renderer's own settings", "Back to Halcyon's
   defaults", "explore pose", raw "Eye distance 3.4" and "Convergence 0.012", "VR mode: Mono / Stereo / Depth" (untested with
   VRIK), "Quest field-of-view match (no effect on SteamVR)", Desktop mirror "Normal" (every 8th frame), "Record a session ...
   to replay" (developer feature). Descriptions missing on Pistol sight, HUD Distance/Size, Place, Left trigger.
-- [ ] **[C] Duplicate controls**: Life-size movement and Lean gain both write `leanGain`; HUD Size and HUD panel Width both
+  **Done 2026-11-04 (e38c381).**
+- [x] **[C] Duplicate controls**: Life-size movement and Lean gain both write `leanGain`; HUD Size and HUD panel Width both
   write `hudPanelWidthM`; Watch them overlaps Conversations/Cutscenes.
-- [ ] **[C] "Move and resize a screen ... in the classic renderer menu's HUD tab, for now"** (`main.rml:365`): build it in
+  **Done 2026-11-04 (e38c381):** one control per setting; Conversations and Cutscenes each a three-way row.
+- [x] **[C] "Move and resize a screen ... in the classic renderer menu's HUD tab, for now"** (`main.rml:365`): build it in
   our menu or drop the row.
-- [ ] **[C] Rows for what is file-only today**: Mako controls, cockpit, galaxy hologram, game screens in the room, wrist and
+  **Done 2026-11-04 (e38c381):** Advanced > Game UI moves and sizes the conversation wheel and the mission overlays.
+- [x] **[C] Rows for what is file-only today**: Mako controls, cockpit, galaxy hologram, game screens in the room, wrist and
   gun panels, vent, fingers, gaze labels, scope capture's post. A player who dislikes one has no way out but the ini.
-- [ ] **[C] About shows no version or commit** (`main.rml:412-413`); reports need it.
+  **Done 2026-11-04 (e38c381):** ten on/off rows.
+- [x] **[C] About shows no version or commit** (`main.rml:412-413`); reports need it.
+  **Done 2026-11-04 (9ab2cf1):** "MEVR 0.1.0 · commit <hash>".
 - [ ] **[C] Pointer on the game's screens**: clicks need the window in front and a settled hover; the galaxy map's travel
   box ignores the click in window mode (research/51:222); the first move flips the button glyphs to mouse and keyboard.
 - [ ] [C] Overlay quads have no depth: the radar draws over the throttle; the galaxy disc over the console.
@@ -170,32 +183,51 @@ Each needs a headset verdict, or ships off. Source: notes/next-vr-session.md ste
 
 ## 5. Release engineering and documentation
 
-- [ ] **[C] One version number.** 0.1.0 is a literal in `src/plugin/Entry.cpp:37`, `src/install/Updates.hpp:14`,
+- [x] **[C] One version number.** 0.1.0 is a literal in `src/plugin/Entry.cpp:37`, `src/install/Updates.hpp:14`,
   `src/loader/Loader.rc` and `package-release.ps1`; `-Version 0.2.0` would package binaries saying 0.1.0. One source (CMake
   `project(VERSION)`), a git tag per release as `docs/release-readme.md` promises.
-- [ ] **[C] package-release checks**: a clean tree, version consistency, ctest, `check-spdx`, a cockpit package built from
+  **Done 2026-11-04 (16fc28e):** `project(MEVR VERSION ...)` only; a generated header for the code and the .rc files.
+- [x] **[C] package-release checks**: a clean tree, version consistency, ctest, `check-spdx`, a cockpit package built from
   the current models. `dist\MEVR-0.1.0` predates today's commits.
+  **Done 2026-11-04 (663adb8, 42db650):** clean tree, tag, version and commit in the binaries, check-spdx, ctest; a warning for a stale cockpit package; checksums and release notes with `-Zip`.
 - [ ] **[C] CI needs real work (owner, 2026-11-04).** Today there is none: `.github` holds only the issue forms. At least a
   Windows workflow (VS 2022) that builds the players' configuration (monolithic, `MEVR_LE1_LESDK=OFF`, which since
   2026-11-04 configures without the LExSDKv2 submodule) and the setup, runs ctest (`mevr-tests`, the colour and upscale
   shader checks, `mevr-rva-table`, `mevr-okf`) and `check-spdx` on every push, and the trilogy build on a schedule. Then
   a release workflow: tag -> the zip from `package-release.ps1`, its checksums, the PDBs kept as an artifact. The cockpit
   package needs Legendary Explorer and the models on Git LFS: build it in CI or attach a reviewed one.
+  **Started 2026-11-04 (663adb8):** `build.yml` (players' build, tests, SPDX and OKF checks on every push and pull request) and `release.yml` (on a `v*` tag: the zip, checksums and symbols as artifacts, nothing published), both on `windows-2022` (GitHub's `windows-latest` moved to VS 2026). Reproduced locally without the submodule; **never run on GitHub yet**. Still to do: the trilogy build on a schedule, the cockpit package, a first real run.
 - [ ] **[D] Code signing.** The setup, the ASI and a `bink2w64.dll` proxy are unsigned: expect SmartScreen and antivirus
   warnings. Sign (an open-source signing programme) or document it in the release README.
-- [ ] **[C] Binary metadata**: an icon and VERSIONINFO for MEVR-Setup.exe and the ASI; no absolute build paths in the PDBs
+- [x] **[C] Binary metadata**: an icon and VERSIONINFO for MEVR-Setup.exe and the ASI; no absolute build paths in the PDBs
   (`/PDBALTPATH`); archive each release's PDBs so crash-report stacks can be symbolised.
-- [ ] **[C] Player docs**: a Controls section; supported headsets and the six controller profiles (README lists three);
+  **Done 2026-11-04 (16fc28e):** version resources on the ASI, loader and setup, the setup's icon, PDBs referenced by name only, a separate symbols zip.
+- [x] **[C] Player docs**: a Controls section; supported headsets and the six controller profiles (README lists three);
   "LE1 only" stated in the release README and the setup; "What Install changes" missing the cockpit package and the TOC
   edit; Steam's "verify files" also drops the cockpit's TOC entry; the DRAFT marker in `docs/release-readme.md`.
-- [ ] **[C] `docs/troubleshooting.md`** is dated 2026-10-26: rows for the Mako and cockpit, vent, fingers, wrist and gun
+  **Done 2026-11-04 (11c626e).**
+- [x] **[C] `docs/troubleshooting.md`** is dated 2026-10-26: rows for the Mako and cockpit, vent, fingers, wrist and gun
   panels, labels, the game pointer, screens in the room, the galaxy map, the 3D screen; stale sights defaults.
+  **Done 2026-11-04 (11c626e):** dated 2026-11-04, sections for every newer feature.
 - [ ] **[C] Installer paths never run**: the update check, Mass Effect Modder's download and the texture pack, the headset
   Detect, "Install after I quit". Run them once or hide them for this release.
 - [ ] **[C] Logs**: no levels, a flush per line, about 60 heartbeat sites (7 MB in one session). A quieter release default;
   `[verify]` text in Warn lines lands in players' reports (`MakoControls.cpp:652`).
-- [ ] [C] `.github`: a feature-request form, CHANGELOG, release notes template.
+  The Warn line with `[verify]` reworded (4fa704f); levels and the heartbeats' volume not done.
+- [x] [C] `.github`: a feature-request form, CHANGELOG, release notes template.
+  **Done 2026-11-04 (663adb8).**
 - [ ] [H+C] **Promo footage**: the spectator camera has never run in the game (research/49); a trailer needs it.
+
+### Found on 2026-11-04 while doing these
+- [ ] [C] **The Mako's left trigger** may still reach the game as LB (boost) while a cockpit control is held: research/47
+  says it reaches the game as nothing then, but `GamepadMapping.cpp` (around line 476) zeroes only the analog LT, and with
+  the default `leftTrigger = lb` it is LB; the unit test covers only `leftTrigger = lt`.
+- [ ] [D] **The Mako lever**: CLAUDE.md, `MakoControls.hpp` and the default ini text say it holds its place, but the default is
+  `leverReturns = 1` (back to neutral); the ini text contradicts itself. Decide, then make the texts agree.
+- [ ] [D] **The game pointer on the 3D cinema screen** is off by default (`[Pointer] flatCine = 0`), so the wheel can't be
+  clicked there.
+- [ ] [C] **The cockpit package** in `build\cockpit-hull` predates commit 891ba5e (`tools/cockpit`): rebuild it before packaging.
+- [ ] [H] **The setup's "Start the game once" and its SteamVR start** never ran for real (only their decisions, unit-tested).
 
 ## 6. Delivery channels (owner, 2026-11-04: consider more than GitHub)
 
