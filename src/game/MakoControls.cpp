@@ -768,7 +768,7 @@ void LogStats() {
             gCurrentInputYaw.Read<float>(sim).value_or(0.0f));
     }
     log::Info("    mako controls: {}; ours throttle {:+.2f} steer {:+.2f} (lever {:+.2f}{}{}); the vehicle's Throttle {:+.2f} Steering {:+.2f}, OutputGas {:+.2f} "
-              "OutputSteering {:+.2f} OutputBrake {:.2f}, ForwardVel {:.0f}, ActualSteering {:+.2f}{}; last 5 s: SetInputs seen {} (script) {} (native), written {}, "
+              "OutputSteering {:+.2f} OutputBrake {:.2f}, ForwardVel {:.0f}, ActualSteering {:+.2f}{}; this period: SetInputs seen {} (script) {} (native), written {}, "
               "left alone {} (powertrain off or paused), from the tick {}; camera followed {:+.1f} deg",
         gOut.driving ? "the mod drives" : "the game drives", gOut.throttle, gOut.steer, gOut.lever, gOut.leverHeld ? ", lever held" : "", gOut.stickHeld ? ", stick held" : "",
         gThrottle.Read<float>(gVehicle).value_or(0.0f), gSteering.Read<float>(gVehicle).value_or(0.0f), gOutputGas.Read<float>(gVehicle).value_or(0.0f),

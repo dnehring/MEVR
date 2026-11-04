@@ -794,7 +794,8 @@ Use it to check VR changes yourself instead of asking the user what they see
   `build-mono` deploy with these tools). Its classic menu has no replay, its open-ended recordings stop after 30 minutes,
   and it keeps the newest 2 GB of snapshots, 512 MB of recordings and 256 MB of perf captures (`[Debug] snapshotsMB`,
   `recordingsMB`, `perfMB`; 0 no limit; development builds keep everything). Halcyon's `MELEVR_Log.txt` over 16 MB moves
-  to `MELEVR_Log.prev.txt` at a launch (`[MEVR]` in its logger).
+  to `MELEVR_Log.prev.txt` at a launch (`[MEVR]` in its logger). The mod's status block (heartbeat plus every module's
+  `LogStats`) comes every 30 s in the players' build, every 5 s in development builds (`[Debug] heartbeatS`, read once).
 - **After a crash:** read `%LOCALAPPDATA%\MEVR\crash-breadcrumbs.txt` (the one before is `.prev.txt`; the same text
   is at the end of `LE1MEVR.log`). It holds the exception, the registers, the native stack, the script frames
   (FFrames) on the faulting thread, and the last ProcessEvents, script handler calls and mod writes, with names

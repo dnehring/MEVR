@@ -214,7 +214,9 @@ Each needs a headset verdict, or ships off. Source: notes/next-vr-session.md ste
   Detect, "Install after I quit". Run them once or hide them for this release.
 - [ ] **[C] Logs**: no levels, a flush per line, about 60 heartbeat sites (7 MB in one session). A quieter release default;
   `[verify]` text in Warn lines lands in players' reports (`MakoControls.cpp:652`).
-  The Warn line with `[verify]` reworded (4fa704f); levels and the heartbeats' volume not done.
+  The Warn line with `[verify]` reworded (4fa704f). **2026-11-04:** the players' build writes the status block every 30 s
+  instead of 5 (the bulk of the volume: about 5 MB an hour to under 1; `[Debug] heartbeatS`); the three lines that said
+  "last 5 s" say "this period". Levels not added; the flush per line stays (a crash keeps every line).
 - [x] [C] `.github`: a feature-request form, CHANGELOG, release notes template.
   **Done 2026-11-04 (663adb8).**
 - [ ] [H+C] **Promo footage**: the spectator camera has never run in the game (research/49); a trailer needs it.

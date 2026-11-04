@@ -398,7 +398,7 @@ std::string StatusJson() {
 }
 
 void LogStats() {
-    log::Info("    comfort: {} (camera mode {}); last 5 s: {} snaps ({:.0f} deg), smooth {:.0f} deg, the pawn turned with it {} times; "
+    log::Info("    comfort: {} (camera mode {}); this period: {} snaps ({:.0f} deg), smooth {:.0f} deg, the pawn turned with it {} times; "
               "vignette wanted in {} ticks (peak {:.0f}%); walking toward {}",
         Name(gWhy), gModeName, gCounts.snaps, gCounts.snapDegrees, gCounts.smoothDegrees, gCounts.pawnTurns, gCounts.vignetteTicks,
         gCounts.vignettePeak * 100.0f, gHandWalk ? "the left hand" : "where the player looks");

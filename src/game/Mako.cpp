@@ -843,7 +843,7 @@ void LogStats() {
         return;
     }
     engine::bone_pose::TurretStats const pose = engine::bone_pose::GetTurretStats();
-    log::Info("    mako: {}; last 5 s: {} aims ({} traces, {} hit), {} shots ({} from the gun's start); turret aim calls: {} from the mod's "
+    log::Info("    mako: {}; this period: {} aims ({} traces, {} hit), {} shots ({} from the gun's start); turret aim calls: {} from the mod's "
               "tick, {} after the vehicle's Tick ({} vehicle ticks seen, {} refused); our aim held through the world tick {} times and "
               "changed {} (mod tick), held {} and changed {} (vehicle tick); pose seam {} writes, {} rejected{}; moving in {} of {} ticks, "
               "turning in {}",

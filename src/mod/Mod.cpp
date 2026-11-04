@@ -85,7 +85,15 @@
 namespace {
 
 constexpr double kStartupRetrySeconds = 1.0;
-constexpr double kHeartbeatSeconds = 5.0;
+// The status block (heartbeat and every module's LogStats): every 5 s while developing; the players' build every 30 s (the log
+// grew about 5 MB an hour at 5 s, mostly these lines; docs/release-checklist.md "Logs"). [Debug] heartbeatS overrides, read once.
+double HeartbeatSeconds() {
+    static double const seconds = [] {
+        int const fileValue = mevr::dev_channels::ReadDebugInt(mevr::engine::SettingsFile(), L"heartbeatS");
+        return fileValue > 0 ? static_cast<double>(fileValue) : (mevr::dev_channels::kDevelopmentBuild ? 5.0 : 30.0);
+    }();
+    return seconds;
+}
 
 std::unique_ptr<mevr::hook::Context> gInit;
 std::atomic<bool> gActive{false};  // read on the render thread too
@@ -1199,7 +1207,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
 
     gHeartbeatElapsed += deltaSeconds;
     ++gHeartbeatFrames;
-    if (gHeartbeatElapsed >= kHeartbeatSeconds) {
+    if (gHeartbeatElapsed >= HeartbeatSeconds()) {
         Heartbeat();
         gHeartbeatElapsed = 0.0;
         gHeartbeatFrames = 0;
