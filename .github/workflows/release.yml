@@ -1,0 +1,80 @@
+# SPDX-License-Identifier: MIT
+# A tag v<version> builds the release with tools/package-release.ps1 (every check: a clean tree, the tag against CMake's
+# version, the binaries' versions and commit, check-spdx, ctest) and keeps what it made as this run's artifacts: the
+# players' zip with its checksums and release notes, and the symbols zip (the PDBs) on its own. It publishes nothing:
+# the owner reviews the artifacts and publishes the GitHub release by hand.
+#
+# The zip here has no Mako cockpit (-NoCockpit): its package needs Legendary Explorer and the models on Git LFS, which CI
+# doesn't have. Package the release with the cockpit locally (tools/package-release.ps1 -Zip), or add a reviewed package
+# to this zip; either way the checksums and notes here are then those of the zip without it.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package ${{ github.ref_name }}
+    runs-on: windows-2022  # Visual Studio 2022 (build.yml says why not windows-latest)
+    timeout-minutes: 90
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          lfs: false
+
+      - name: Submodules the players' build needs (not LExSDKv2)
+        run: git submodule update --init --depth 1 external/OpenXR-SDK external/RmlUi external/freetype
+
+      - name: Python (the checks and two ctest tests)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: The version from the tag
+        id: version
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ($env:TAG -notmatch '^v(\d+\.\d+\.\d+)$') { throw "The tag $env:TAG isn't v<major>.<minor>.<patch>" }
+          "version=$($Matches[1])" >> $env:GITHUB_OUTPUT
+
+      - name: Check, build and package (no cockpit)
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: ./tools/package-release.ps1 -Tag $env:TAG -NoCockpit -Zip
+
+      - name: Keep the release
+        uses: actions/upload-artifact@v4
+        with:
+          name: MEVR-${{ steps.version.outputs.version }}
+          path: |
+            dist/MEVR-${{ steps.version.outputs.version }}.zip
+            dist/MEVR-${{ steps.version.outputs.version }}-SHA256SUMS.txt
+            dist/MEVR-${{ steps.version.outputs.version }}-release-notes.md
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Keep the symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: MEVR-${{ steps.version.outputs.version }}-symbols
+          path: dist/MEVR-${{ steps.version.outputs.version }}-symbols.zip
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Keep the test log of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctest-log
+          path: build-mono/Testing/Temporary/
+          if-no-files-found: ignore
+          retention-days: 14

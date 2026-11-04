@@ -12,6 +12,7 @@
 //                            other settings) and its lower screenfuls (-2, -3, -4: the guide, Comfort, Controls, HUD)
 //   advanced-<tab>.png       each of Advanced's tabs (-2: the lower half of Stereo, Game UI and Diagnostics;
 //                            advanced-stereo-expert.png: the original stereo's rows)
+//   advanced-diag-about.png  Diagnostics scrolled to its end: About, with this build's version and commit
 //   state-hover.png          the pointer resting on Resume (its light sweep part-way) and a row hovered
 //   state-pressed.png        a button held down (the dip)
 //   state-focus.png          the pad's focus ring on a toggle
@@ -27,6 +28,9 @@
 #include "plugin/menu/MenuRenderer.hpp"
 #include "plugin/menu/MenuStrip.hpp"
 #include "plugin/menu/MenuUi.hpp"
+
+#include "mevr/BuildInfo.hpp"  // generated: About's commit
+#include "mevr/Version.hpp"    // generated: About's version
 
 #include <RmlUi/Core.h>
 
@@ -94,6 +98,7 @@ public:
             v.numbers["panel_follow"] = 70;
             v.texts["content_installed"] = "ALOT for ME1";  // Display > Optional content (research/33)
             Guide(v, ms::GuideInput{});  // the controller guide with the shipped settings
+            v.texts["about_build"] = ms::AboutBuild(MEVR_VERSION, MEVR_GIT_COMMIT, false);  // this build's, as a players' build shows it
         }
     }
     // The controller guide's texts for these settings (the host's Read does the same from the files).
@@ -564,6 +569,13 @@ int main(int argc, char** argv) {
     save("advanced-diag-report");
     model.SetText("report_msg", "");
     model.SetNumber("report_snapshot", 0.0f);
+    // The page's end: About, with this build's version and commit.
+    if (Rml::Element* content = element("content")) {
+        content->SetScrollTop(content->GetScrollHeight());
+        frames(10);
+        save("advanced-diag-about");
+        content->SetScrollTop(0.0f);
+    }
     model.SetNumber("crash_offer", 1.0f);
     model.SetText("section", "comfort");
     frames(30);

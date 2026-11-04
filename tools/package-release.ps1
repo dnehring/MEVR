@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
-# Builds and assembles a release folder (and optionally a zip) for players (research/33). Local only: it publishes
-# and uploads nothing.
+# Checks, builds and assembles a release folder (and optionally a zip) for players (research/33). Local only: it
+# publishes and uploads nothing (the release workflow, .github/workflows/release.yml, runs it on a v* tag).
 #
 #   dist\MEVR-<version>\
 #     MEVR-Setup.exe        the installer (tools/setup)
@@ -16,16 +16,37 @@
 #     payload\cockpit\*     the Mako's cockpit (research/47): BIOG_MEVR_Cockpit.pcc (-CockpitPackage, default the hull
 #                           packaging's build\cockpit-hull) and cockpit.txt (tools/cockpit/place.py --script); MEVR Setup
 #                           puts the package in CookedPCConsole with its PCConsoleTOC.bin entry. -NoCockpit leaves it out.
+#   dist\MEVR-<version>-symbols\
+#     *.pdb and the binaries they match (LE1MEVR.asi, bink2w64.dll, MEVR-Setup.exe), to symbolise the stacks in players'
+#     crash reports. Kept next to the players' folder, never inside it (the binaries name their PDB without a path:
+#     /PDBALTPATH, CMakeLists.txt).
+#   with -Zip: dist\MEVR-<version>.zip, dist\MEVR-<version>-symbols.zip, dist\MEVR-<version>-SHA256SUMS.txt and
+#     dist\MEVR-<version>-release-notes.md (.github/release-notes-template.md with this version's CHANGELOG.md entry).
 #
-#   tools\package-release.ps1 [-Version 0.1.0] [-NoBuild] [-Zip] [-LexSdkPermission] [-CockpitPackage <pcc>] [-NoCockpit]
+#   tools\package-release.ps1 [-Version 0.1.0] [-Tag v0.1.0] [-NoBuild] [-Zip] [-AllowDirty] [-SkipTests]
+#                             [-LexSdkPermission] [-CockpitPackage <pcc>] [-NoCockpit]
 #
-# LExSDKv2 has no licence: the release build (build-mono, MEVR_LE1_LESDK=OFF since 2026-10-26) doesn't link it. The
-# script refuses to package an ASI that does link it, unless -LexSdkPermission says its author agreed. Texture packs are
-# never bundled.
+# The version is CMake's: project(MEVR VERSION x.y.z) in CMakeLists.txt is the only place it is written. -Version only
+# confirms it. It refuses to package (docs/release-checklist.md section 5):
+#   - a changed tracked file, or a release submodule (OpenXR-SDK, RmlUi, freetype) not at the commit's pointer, unless
+#     -AllowDirty (the binaries then say <commit>-dirty);
+#   - another version anywhere: -Version or -Tag (the release workflow's) other than CMake's, a v* tag on HEAD other than
+#     v<version>, a binary whose version resource names another version or another commit than HEAD;
+#   - a source file without its SPDX line (python tools/check-spdx.py);
+#   - a failing ctest in build-mono, unless -SkipTests;
+#   - an ASI that links LExSDKv2 (no licence), unless -LexSdkPermission says its author agreed;
+#   - a missing licence text, or a missing cockpit package (unless -NoCockpit).
+# It warns when HEAD has no tag v<version> and when the cockpit package is older than its sources (tools/cockpit,
+# concept/assets/game-ready: rebuild it with tools/cockpit/package). Texture packs are never bundled.
+#
+# LExSDKv2 has no licence: the release build (build-mono, MEVR_LE1_LESDK=OFF since 2026-10-26) doesn't link it.
 param(
-    [string]$Version = '0.1.0',
+    [string]$Version = '',
+    [string]$Tag = '',
     [switch]$NoBuild,
     [switch]$Zip,
+    [switch]$AllowDirty,
+    [switch]$SkipTests,
     [switch]$LexSdkPermission,
     [string]$CockpitPackage = '',
     [switch]$NoCockpit
@@ -35,21 +56,99 @@ $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $buildDir = Join-Path $repo 'build-mono'
 
+# Native tools write warnings to stderr (git, CMake), which Windows PowerShell 5.1 turns into terminating errors under
+# 'Stop': run them under 'Continue' and judge them by $LASTEXITCODE.
+function Invoke-Native([scriptblock]$Command) {
+    $saved = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $Command } finally { $ErrorActionPreference = $saved }
+}
+function Stop-Packaging([string]$Why) {
+    throw "Refusing to package: $Why"
+}
+
+# ---- The version: CMake's, and only CMake's ------------------------------------------------------------------------
+$cmakeLists = Get-Content -Raw (Join-Path $repo 'CMakeLists.txt')
+$match = [regex]::Match($cmakeLists, '(?m)^\s*project\(\s*MEVR\s+VERSION\s+(\d+\.\d+\.\d+)[\s)]')
+if (-not $match.Success) { Stop-Packaging 'no project(MEVR VERSION x.y.z) line in CMakeLists.txt' }
+$cmakeVersion = $match.Groups[1].Value
+if ($Version -and $Version -ne $cmakeVersion) {
+    Stop-Packaging ("-Version $Version, but CMake's version is $cmakeVersion. Change project(MEVR VERSION ...) in " +
+        "CMakeLists.txt (the one place it is written), rebuild, and package again.")
+}
+$Version = $cmakeVersion
+if ($Tag -and $Tag -ne "v$Version") { Stop-Packaging "the tag is $Tag, but CMake's version is $Version (tag v$Version)" }
+
+$head = "$(Invoke-Native { git -C $repo rev-parse --short=10 HEAD })".Trim()
+if ($LASTEXITCODE -ne 0 -or -not $head) { Stop-Packaging 'git rev-parse failed: package from a git checkout' }
+$headTags = @(Invoke-Native { git -C $repo tag --points-at HEAD --list 'v*' } | Where-Object { $_ })
+$otherTags = @($headTags | Where-Object { $_ -ne "v$Version" })
+if ($otherTags.Count -gt 0) { Stop-Packaging "HEAD is tagged $($otherTags -join ', '), but CMake's version is $Version" }
+if (-not $Tag -and -not ($headTags -contains "v$Version")) {
+    Write-Warning "HEAD ($head) has no tag v$Version yet: tag the commit you release (the README points players at it)."
+}
+Write-Output "MEVR $Version, commit $head"
+
+# ---- A clean tree ----------------------------------------------------------------------------------------------------
+$dirty = @(Invoke-Native { git -C $repo status --porcelain --untracked-files=no --ignore-submodules=all } | Where-Object { $_ })
+if ($LASTEXITCODE -ne 0) { Stop-Packaging 'git status failed' }
+$releaseSubmodules = 'external/OpenXR-SDK', 'external/RmlUi', 'external/freetype'
+$subStatus = @(Invoke-Native { git -C $repo submodule status -- $releaseSubmodules })
+if ($LASTEXITCODE -ne 0) {
+    $dirty += "the release submodules' commits can't be read (git submodule status failed): $($releaseSubmodules -join ', ')"
+} else {
+    foreach ($line in $subStatus) {
+        # ' <sha> <path> (<describe>)': at the commit's pointer; '+': another commit; '-': not checked out; 'U': conflict.
+        if ($line -and $line[0] -ne ' ') { $dirty += "submodule: $line" }
+    }
+}
+if ($dirty.Count -gt 0) {
+    $list = ($dirty | Select-Object -First 20) -join "`n  "
+    if (-not $AllowDirty) {
+        Stop-Packaging ("the tree isn't clean (a release is built from a commit):`n  $list`nCommit or stash the changes, " +
+            "update the submodules (git submodule update --init $($releaseSubmodules -join ' ')), or pass -AllowDirty for a test package.")
+    }
+    Write-Warning "Packaging a dirty tree (-AllowDirty); not for release:`n  $list"
+}
+
+# ---- Every source file has its SPDX line ---------------------------------------------------------------------------
+Invoke-Native { python (Join-Path $repo 'tools\check-spdx.py') }
+if ($LASTEXITCODE -ne 0) { Stop-Packaging 'tools/check-spdx.py found files without an SPDX line (above)' }
+
+# ---- Build ---------------------------------------------------------------------------------------------------------
 if (-not $NoBuild) {
     if (-not (Test-Path (Join-Path $buildDir 'CMakeCache.txt'))) {
-        cmake -S $repo -B $buildDir -G 'Visual Studio 17 2022' -A x64 -DMEVR_HOT_RELOAD=OFF
+        Invoke-Native { cmake -S $repo -B $buildDir -G 'Visual Studio 17 2022' -A x64 -DMEVR_HOT_RELOAD=OFF }
         if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
     }
     if (-not (Select-String -Path (Join-Path $buildDir 'CMakeCache.txt') -Pattern '^MEVR_HOT_RELOAD:BOOL=OFF' -Quiet)) {
         throw "$buildDir isn't a monolithic build (MEVR_HOT_RELOAD must be OFF)"
     }
-    cmake --build $buildDir --config Release --target MEVR-LE1 MEVR-Loader MEVR-Setup
+    $targets = @('MEVR-LE1', 'MEVR-Loader', 'MEVR-Setup')
+    if (-not $SkipTests) { $targets += 'mevr-test-programs' }  # everything ctest runs (CMakeLists.txt)
+    Invoke-Native { cmake --build $buildDir --config Release --parallel --target $targets }
     if ($LASTEXITCODE -ne 0) { throw 'build failed' }
 }
 
 $out = Join-Path $buildDir 'Release'
-foreach ($f in 'LE1MEVR.asi', 'bink2w64.dll', 'MEVR-Setup.exe') {
+$binaries = 'LE1MEVR.asi', 'bink2w64.dll', 'MEVR-Setup.exe'
+foreach ($f in $binaries) {
     if (-not (Test-Path (Join-Path $out $f))) { throw "Not built: $(Join-Path $out $f)" }
+}
+
+# ---- The binaries are this version, built from this commit ---------------------------------------------------------
+# Their version resources (src/plugin/Plugin.rc, src/loader/Loader.rc, tools/setup/Setup.rc): FileVersion is CMake's
+# version, ProductVersion <version>+<commit> (tools/cmake/BuildInfo.cmake; "-dirty" for a build with changed files).
+foreach ($f in $binaries) {
+    $info = [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $out $f))
+    $numbers = '{0}.{1}.{2}' -f $info.FileMajorPart, $info.FileMinorPart, $info.FileBuildPart
+    if ($info.FileVersion -ne $Version -or $numbers -ne $Version) {
+        Stop-Packaging "$f says version '$($info.FileVersion)' ($numbers), CMake's is ${Version}: rebuild (without -NoBuild)"
+    }
+    $built = $info.ProductVersion
+    if ($built -ne "$Version+$head" -and -not ($AllowDirty -and $built -eq "$Version+$head-dirty")) {
+        Stop-Packaging "$f was built as $built, not $Version+$head (HEAD): rebuild (without -NoBuild)"
+    }
 }
 
 # The hard gate: LExSDKv2 has no licence, so a build that links it can't be given to anyone without its author's
@@ -62,6 +161,14 @@ if ($linksSdk -and -not $LexSdkPermission) {
         "-LexSdkPermission; or finish removing LExSDKv2 (research/34) first.")
 }
 if ($linksSdk) { Write-Warning 'LExSDKv2 is compiled into LE1MEVR.asi: packaging under -LexSdkPermission (its author agreed).' }
+
+# ---- The tests -----------------------------------------------------------------------------------------------------
+if ($SkipTests) {
+    Write-Warning 'ctest skipped (-SkipTests): not for release.'
+} else {
+    Invoke-Native { ctest -C Release --test-dir $buildDir --output-on-failure }
+    if ($LASTEXITCODE -ne 0) { Stop-Packaging "ctest failed in $buildDir (above)" }
+}
 
 # Every licence text the shipped binaries need, gathered first so a missing one stops the packaging.
 $licences = [ordered]@{
@@ -83,6 +190,10 @@ $licences = [ordered]@{
 foreach ($source in $licences.Values) {
     if (-not (Test-Path (Join-Path $repo $source))) { throw "Licence text missing: $source (fill external\ and third_party\ first)" }
 }
+$pdbs = 'LE1MEVR.pdb', 'bink2w64.pdb', 'MEVR-Setup.pdb'
+foreach ($f in $pdbs) {
+    if (-not (Test-Path (Join-Path $out $f))) { throw "No $f in $out (the release binaries link with /DEBUG): rebuild" }
+}
 
 $dist = Join-Path $repo "dist\MEVR-$Version"
 if (Test-Path $dist) { Remove-Item -Recurse -Force $dist }
@@ -99,10 +210,27 @@ if (-not $NoCockpit) {
     if (-not (Test-Path $CockpitPackage)) {
         throw "No cockpit package at $CockpitPackage (tools/cockpit/package build, research/48): pass -CockpitPackage, or -NoCockpit"
     }
+    # Built from the current models? The last commit to its sources (commit times: a fresh checkout's file times are all
+    # "now") and any uncommitted change under them, against the package's time.
+    $packageTime = (Get-Item $CockpitPackage).LastWriteTimeUtc
+    $cockpitSources = 'tools/cockpit', 'concept/assets/game-ready'
+    $last = "$(Invoke-Native { git -C $repo log -1 --format='%ct %h %s' -- $cockpitSources })".Trim()
+    if ($last -match '^(\d+) (\S+) (.*)$') {
+        $sourceTime = [DateTimeOffset]::FromUnixTimeSeconds([long]$Matches[1]).UtcDateTime
+        if ($sourceTime -gt $packageTime) {
+            Write-Warning (("The cockpit package ({0:u}) is older than the last change to its sources: {1} ({2:u}, {3}). " +
+                "Rebuild it (tools/cockpit/package, the tripo-game-ready skill) unless that change can't affect it.") -f
+                $packageTime, $Matches[2], $sourceTime, $Matches[3])
+        }
+    }
+    $uncommitted = @(Invoke-Native { git -C $repo status --porcelain -- $cockpitSources } | Where-Object { $_ })
+    if ($uncommitted.Count -gt 0) {
+        Write-Warning "The cockpit's sources have uncommitted changes the package may not have:`n  $(($uncommitted | Select-Object -First 10) -join "`n  ")"
+    }
     $cockpitDir = Join-Path $payload 'cockpit'
     New-Item -ItemType Directory -Force $cockpitDir | Out-Null
     Copy-Item $CockpitPackage (Join-Path $cockpitDir 'BIOG_MEVR_Cockpit.pcc')
-    python (Join-Path $repo 'tools\cockpit\place.py') --script (Join-Path $cockpitDir 'cockpit.txt')
+    Invoke-Native { python (Join-Path $repo 'tools\cockpit\place.py') --script (Join-Path $cockpitDir 'cockpit.txt') }
     if ($LASTEXITCODE -ne 0) { throw 'place.py --script failed (it reads the hull manifest under concept/assets)' }
     Write-Output ("Cockpit: {0} ({1:N1} MB)" -f $CockpitPackage, ((Get-Item $CockpitPackage).Length / 1MB))
 }
@@ -120,14 +248,72 @@ foreach ($name in $licences.Keys) {
 $ini = "; MEVR Setup's settings.`r`n[Update]`r`n; The GitHub repository whose Releases the setup checks (https://github.com/OWNER/REPO turns the check off).`r`nrepo = https://github.com/dnehring/MEVR`r`n"
 [IO.File]::WriteAllText((Join-Path $dist 'MEVR-Setup.ini'), $ini)
 
+# The symbols: the PDBs and the exact binaries they belong to, next to the players' folder.
+$symbols = Join-Path $repo "dist\MEVR-$Version-symbols"
+if (Test-Path $symbols) { Remove-Item -Recurse -Force $symbols }
+New-Item -ItemType Directory -Force $symbols | Out-Null
+foreach ($f in $pdbs + $binaries) {
+    Copy-Item (Join-Path $out $f) $symbols
+}
+$symbolsNote = "MEVR $Version (commit $head): the PDBs of the release's three binaries, and the binaries they match.`r`n" +
+    "For symbolising the stacks in players' crash reports (crash-breadcrumbs.txt, minidumps): point the debugger's symbol`r`n" +
+    "path here. Not for players; never put these in the players' zip.`r`n"
+[IO.File]::WriteAllText((Join-Path $symbols 'README.txt'), $symbolsNote)
+
 Write-Output "Release folder: $dist"
 Get-ChildItem -Recurse -File $dist | ForEach-Object {
     '{0,-40} {1,12:N0}  {2}' -f $_.FullName.Substring($dist.Length + 1), $_.Length, (Get-FileHash $_.FullName).Hash.Substring(0, 16)
 }
+Write-Output "Symbols: $symbols"
 
 if ($Zip) {
     $zipPath = "$dist.zip"
     if (Test-Path $zipPath) { Remove-Item $zipPath }
     Compress-Archive -Path (Join-Path $dist '*') -DestinationPath $zipPath
     Write-Output ("Zip: {0} ({1:N1} MB, SHA-256 {2})" -f $zipPath, ((Get-Item $zipPath).Length / 1MB), (Get-FileHash $zipPath).Hash)
+    $symbolsZip = "$symbols.zip"
+    if (Test-Path $symbolsZip) { Remove-Item $symbolsZip }
+    Compress-Archive -Path (Join-Path $symbols '*') -DestinationPath $symbolsZip
+    Write-Output ("Symbols zip: {0} ({1:N1} MB)" -f $symbolsZip, ((Get-Item $symbolsZip).Length / 1MB))
+
+    # Checksums, as sha256sum writes them (sha256sum -c MEVR-<version>-SHA256SUMS.txt checks them).
+    $sums = foreach ($file in $zipPath, $symbolsZip) {
+        '{0}  {1}' -f (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant(), (Split-Path -Leaf $file)
+    }
+    $sumsPath = Join-Path $repo "dist\MEVR-$Version-SHA256SUMS.txt"
+    [IO.File]::WriteAllText($sumsPath, (($sums -join "`n") + "`n"))
+    Write-Output "Checksums: $sumsPath"
+
+    # The release notes: the template with this version's CHANGELOG.md entry (between its '## ' heading and the next).
+    $changelog = @(Get-Content (Join-Path $repo 'CHANGELOG.md'))
+    $start = -1
+    for ($i = 0; $i -lt $changelog.Count; $i++) {
+        if ($changelog[$i] -match ('^##\s+\[?v?' + [regex]::Escape($Version) + '\]?(\s|$)')) { $start = $i; break }
+    }
+    $changes = "(CHANGELOG.md has no entry for ${Version}: write one.)"
+    if ($start -lt 0) {
+        Write-Warning "CHANGELOG.md has no '## $Version' entry: the release notes say so."
+    } else {
+        if ($changelog[$start] -match '(?i)unreleased') { Write-Warning "CHANGELOG.md's $Version entry still says unreleased: date it." }
+        $end = $changelog.Count
+        for ($i = $start + 1; $i -lt $changelog.Count; $i++) {
+            if ($changelog[$i] -match '^##\s') { $end = $i; break }
+        }
+        $changes = if ($end - 1 -ge $start + 1) { (($changelog[($start + 1)..($end - 1)]) -join "`n").Trim() } else { '' }
+    }
+    $notes = Get-Content -Raw (Join-Path $repo '.github\release-notes-template.md')
+    $notes = $notes -replace '(?s)^<!--.*?-->\s*', ''  # the template's own comment
+    $values = [ordered]@{
+        '{{version}}'        = $Version
+        '{{commit}}'         = $head
+        '{{changes}}'        = $changes
+        '{{zip}}'            = (Split-Path -Leaf $zipPath)
+        '{{zip_sha256}}'     = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        '{{symbols_zip}}'    = (Split-Path -Leaf $symbolsZip)
+        '{{symbols_sha256}}' = (Get-FileHash $symbolsZip -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+    foreach ($key in $values.Keys) { $notes = $notes.Replace($key, $values[$key]) }
+    $notesPath = Join-Path $repo "dist\MEVR-$Version-release-notes.md"
+    [IO.File]::WriteAllText($notesPath, $notes)
+    Write-Output "Release notes: $notesPath"
 }

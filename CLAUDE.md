@@ -618,6 +618,14 @@ switching frameworks.
   --from-game` at once, background priority, no window) and the crash offer (`install/ReportMarks`) write a redacted
   `MEVR-report-<date-time>.zip` to the Desktop with REPORT.md first (`install/Report`, `install/Zip`; unit-tested). Never
   uploads anything. Issue form: `.github/ISSUE_TEMPLATE/bug.yml`. The build's commit: `tools/cmake/BuildInfo.cmake`.
+- Release engineering (docs/release-checklist.md section 5): **the version is written once**, `project(MEVR VERSION x.y.z)`
+  in `CMakeLists.txt` (generated `mevr/Version.hpp` for the C++ and the `.rc` files; the binaries' ProductVersion is
+  `<version>+<commit>`; the menu's About shows both). `tools/package-release.ps1` refuses a dirty tree (`-AllowDirty`), a
+  version or tag other than CMake's, binaries not built from HEAD, check-spdx or ctest failures (`-SkipTests`), and puts the
+  PDBs in `dist\MEVR-<version>-symbols` (the binaries name theirs without a path: `/PDBALTPATH`). CI:
+  `.github/workflows/build.yml` (windows-2022 for VS 2022; the players' build without LExSDKv2, ctest, check-spdx, check-okf)
+  and `release.yml` (a `v*` tag: the package without the cockpit, as artifacts; nothing published). Setup's icon:
+  `assets/icon/mevr.ico` from `tools/make-icon.py`. Player-facing changes go in `CHANGELOG.md`.
 - Trilogy check: `build-trilogy/` (configured with `-DMEVR_BUILD_LE2=ON -DMEVR_BUILD_LE3=ON`) must
   keep building all three games. Per-game field spellings go in `src/engine/GameAdapter.hpp`;
   per-game addresses sit next to their use (e.g. `engine/SceneView.cpp`).

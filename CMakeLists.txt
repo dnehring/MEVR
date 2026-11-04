@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: MIT
 cmake_minimum_required(VERSION 3.27)
-project(MEVR LANGUAGES C CXX)
+# The one version number (docs/release-checklist.md section 5). Change it here only: the generated header below carries
+# it into the C++ and .rc files, tools/package-release.ps1 reads it from this line and refuses binaries that disagree,
+# and the release is tagged v<version>.
+project(MEVR VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,6 +11,21 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if (NOT MSVC)
     message(FATAL_ERROR "MEVR builds with MSVC only (LExSDKv2 requires it).")
 endif ()
+
+# Generated headers (#include "mevr/..."): Version.hpp here, at configure time; BuildInfo.hpp (the commit) at build
+# time by the mevr-build-info target below.
+set(MEVR_GENERATED_DIR ${CMAKE_BINARY_DIR}/generated)
+if (NOT PROJECT_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+    message(FATAL_ERROR "project(MEVR VERSION ${PROJECT_VERSION}): use three numbers, major.minor.patch")
+endif ()
+configure_file(tools/cmake/Version.hpp.in ${MEVR_GENERATED_DIR}/mevr/Version.hpp @ONLY)
+# The binaries players get name their PDB without the build folder (their debug directory reads "LE1MEVR.pdb", not
+# the absolute path); tools/package-release.ps1 keeps the PDBs in a symbols zip of their own, next to the release.
+# The PDB's file name by generator expression: the linker's own %_PDB% token doesn't survive CMake's escaping for
+# MSBuild (it arrived as %%%%_PDB%%%%, and the binaries named "%%%LE1MEVR.pdb%%%").
+function(mevr_pdb_name_only target)
+    target_link_options(${target} PRIVATE "/PDBALTPATH:$<TARGET_PDB_FILE_NAME:${target}>")
+endfunction()
 
 # One source tree, one ASI per game (docs/trilogy-design.md). LE1 first.
 option(MEVR_BUILD_LE1 "Build LE1MEVR.asi" ON)
@@ -109,8 +127,8 @@ if (MEVR_MAIN_MENU)
 endif ()
 
 # The build's commit (tools/cmake/BuildInfo.cmake): ${CMAKE_BINARY_DIR}/generated/mevr/BuildInfo.hpp, checked on every
-# build and rewritten only when the commit changes. The host's attach line and the problem report (install/Report) show it.
-set(MEVR_GENERATED_DIR ${CMAKE_BINARY_DIR}/generated)
+# build and rewritten only when the commit changes. The host's attach line, the menu's About, the problem report
+# (install/Report) and the binaries' ProductVersion (<version>+<commit>) show it.
 add_custom_target(mevr-build-info
     COMMAND ${CMAKE_COMMAND} -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR} -DOUTPUT=${MEVR_GENERATED_DIR}/mevr/BuildInfo.hpp
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tools/cmake/BuildInfo.cmake
@@ -128,15 +146,20 @@ if (MEVR_MAIN_MENU)
         tools/setup/SetupApp.hpp
         tools/setup/XrProbe.cpp
         tools/setup/XrProbe.hpp
+        tools/setup/Setup.rc
         src/core/PngFile.cpp
     )
-    target_include_directories(MEVR-Setup PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    # The .rc's icon (assets/icon/mevr.ico, tools/make-icon.py) is found on the include path.
+    target_include_directories(MEVR-Setup PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${MEVR_GENERATED_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/icon)
+    add_dependencies(MEVR-Setup mevr-build-info)
     target_link_libraries(MEVR-Setup PRIVATE mevr-menu mevr-install OpenXR::openxr_loader windowscodecs ole32 d3d11 dxgi dwmapi shell32)
     target_compile_definitions(MEVR-Setup PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS)
     target_compile_options(MEVR-Setup PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus /Zi)
     # /DEPENDENTLOADFLAG:0x800 (LOAD_LIBRARY_SEARCH_SYSTEM32): its imports come from System32 only, never from the
     # folder it was downloaded to (DLL planting); Main.cpp's SetDefaultDllDirectories covers what it loads later.
     target_link_options(MEVR-Setup PRIVATE /ENTRY:wWinMainCRTStartup /DEBUG /DEPENDENTLOADFLAG:0x800)
+    mevr_pdb_name_only(MEVR-Setup)
 endif ()
 
 # MinHook (BSD-2, third_party/minhook): one static library for every target that hooks with it: our loader, core/Hook's
@@ -468,6 +491,7 @@ function(mevr_configure target game)
     target_compile_options(${target} PRIVATE /W4 /WX /permissive /utf-8 /Zc:__cplusplus /Zi
         /wd4121 /wd4127 /wd4702)
     target_link_options(${target} PRIVATE /DEBUG)
+    mevr_pdb_name_only(${target})
 endfunction()
 
 # The LE1 host's side of Halcyon's renderer: its startup, and our seams into it (OpenXR loader,
@@ -686,7 +710,9 @@ function(mevr_add_plugin game)
         target_compile_definitions(${host} PRIVATE MEVR_WITH_MAIN_MENU)
     endif ()
     mevr_configure(${host} ${game} ${host_sdk})
-    # The commit in the attach line (tools/cmake/BuildInfo.cmake).
+    # The version and commit (mevr/Version.hpp, tools/cmake/BuildInfo.cmake): the attach line, the menu's About and the
+    # ASI's version resource (plugin/Plugin.rc).
+    target_sources(${host} PRIVATE src/plugin/Plugin.rc)
     target_include_directories(${host} PRIVATE ${MEVR_GENERATED_DIR})
     add_dependencies(${host} mevr-build-info)
     set_target_properties(${host} PROPERTIES OUTPUT_NAME "${game}MEVR" SUFFIX ".asi")
@@ -732,7 +758,8 @@ add_library(mevr-install STATIC
     src/install/Zip.cpp
     src/install/Zip.hpp
 )
-target_include_directories(mevr-install PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src PRIVATE ${MEVR_GENERATED_DIR})
+# Public: install/Updates.hpp's kVersion is mevr/Version.hpp's (configure time; BuildInfo.hpp stays this library's own).
+target_include_directories(mevr-install PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src ${MEVR_GENERATED_DIR})
 add_dependencies(mevr-install mevr-build-info)
 # dxgi: the problem report's GPU and driver (install/Report).
 target_link_libraries(mevr-install PUBLIC version bcrypt winhttp shell32 ole32 advapi32 dxgi)
@@ -751,11 +778,14 @@ add_library(MEVR-Loader SHARED
     src/loader/Forwarders.hpp
     src/loader/SpiAbi.hpp
 )
-target_include_directories(MEVR-Loader PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+# The generated headers: Loader.rc's version and commit.
+target_include_directories(MEVR-Loader PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${MEVR_GENERATED_DIR})
+add_dependencies(MEVR-Loader mevr-build-info)
 target_link_libraries(MEVR-Loader PRIVATE mevr-minhook)
 target_compile_definitions(MEVR-Loader PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS)
 target_compile_options(MEVR-Loader PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus /Zi)
 target_link_options(MEVR-Loader PRIVATE /DEBUG)
+mevr_pdb_name_only(MEVR-Loader)
 set_target_properties(MEVR-Loader PROPERTIES OUTPUT_NAME bink2w64)
 
 # Offline tests for game-independent math (no game, no runtime needed).
@@ -969,6 +999,14 @@ if (MEVR_BUILD_TESTS)
     target_compile_options(mevr-upscale-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_test(NAME mevr-upscale-shader COMMAND mevr-upscale-preview --check)
 
+    # Every program ctest runs, as one target: CI (.github/workflows) and tools/package-release.ps1 build it before ctest.
+    # The loader too: mevr-tests installs the bink2w64.dll built next to it into its fake game.
+    add_custom_target(mevr-test-programs)
+    add_dependencies(mevr-test-programs mevr-tests mevr-colour-preview mevr-upscale-preview MEVR-Loader)
+    if (MEVR_HAVE_LESDK_SPI)
+        add_dependencies(mevr-test-programs mevr-loader-test)
+    endif ()
+
     # The squad weapon menu's look, offline (tools/squad-preview): PNGs of sample squads drawn with the
     # host's own drawing code and ImGui's D3D11 backend (from the halcyon-le1 library).
     if (MEVR_HALCYON)
@@ -1007,7 +1045,9 @@ if (MEVR_BUILD_TESTS AND MEVR_MAIN_MENU)
         tools/menu-preview/Main.cpp
         src/core/PngFile.cpp
     )
-    target_include_directories(mevr-menu-preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    # The generated headers: About shows this build's version and commit, as in the game.
+    target_include_directories(mevr-menu-preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${MEVR_GENERATED_DIR})
+    add_dependencies(mevr-menu-preview mevr-build-info)
     target_link_libraries(mevr-menu-preview PRIVATE mevr-menu windowscodecs ole32 d3d11)
     target_compile_definitions(mevr-menu-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-menu-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)

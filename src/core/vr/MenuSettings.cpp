@@ -255,6 +255,7 @@ std::vector<Field> const& Schema() {
         {"recenter_key_desc", Type::Text, 0, "R on the keyboard recenters (the right stick's double-click works either way)"},
         {"classic_desc", Type::Text, 0, "The original MELE-VR settings menu, with expert settings these pages don't have (also: Ctrl + "
                                         "the menu key)"},
+        {"about_build", Type::Text, 0, ""},  // Diagnostics > About: version and commit (AboutBuild)
     };
     return fields;
 }
@@ -580,6 +581,17 @@ std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& in
     out.emplace_back("guide_melee", in.melee ? std::string("Strike fast at an enemy within reach, with either hand.")
                                              : std::string("Off (Controls > Physical grenades and melee)."));
     return out;
+}
+
+std::string AboutBuild(std::string_view version, std::string_view commit, bool development) {
+    std::string text = "MEVR " + (version.empty() ? std::string("(no version)") : std::string(version));
+    if (!commit.empty() && commit != "unknown") {
+        text += " \xC2\xB7 commit " + std::string(commit);
+    }
+    if (development) {
+        text += " \xC2\xB7 development build";
+    }
+    return text;
 }
 
 void PendingWrites::Put(std::string section, std::string key, std::string value, std::uint64_t dueMs) {

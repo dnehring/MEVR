@@ -8129,6 +8129,11 @@ void TestMenuSettings() {
     CHECK(trim != nullptr && ms::Clamp(*trim, 45.0f) == 30.0f && ms::Clamp(*trim, -45.0f) == -30.0f);
     CHECK(trim != nullptr && ms::Clamp(*trim, std::numeric_limits<float>::quiet_NaN()) == 0.0f);
     CHECK(ms::Clamp(*ms::Find("crouch"), 0.4f) == 1.0f);
+    // About's build line (the version from CMake, the commit from tools/cmake/BuildInfo.cmake).
+    CHECK(ms::Find("about_build") != nullptr && ms::Find("about_build")->type == ms::Type::Text);
+    CHECK(ms::AboutBuild("0.1.0", "1a0622c1f2", false) == "MEVR 0.1.0 \xC2\xB7 commit 1a0622c1f2");
+    CHECK(ms::AboutBuild("0.2.0", "1a0622c1f2-dirty", true) == "MEVR 0.2.0 \xC2\xB7 commit 1a0622c1f2-dirty \xC2\xB7 development build");
+    CHECK(ms::AboutBuild("0.1.0", "unknown", false) == "MEVR 0.1.0");  // built without git
 
     // What a slider reads.
     CHECK(ms::FormatValue(ms::Format::SignedPercent, 8.0f) == "+8%");

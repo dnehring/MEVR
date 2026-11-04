@@ -516,6 +516,7 @@
 			</div>
 			<div class="group">
 				<div class="gtitle"><span>About</span><div class="gline"/></div>
+				<div class="hint">{{about_build}}</div>
 				<div class="hint">© 2026 ME VR Attempt contributors, Halcyon and Aeka0 · GPL-3.0, no warranty · source: github.com/dnehring/MEVR</div>
 				<div class="hint">Fan project, not affiliated with or endorsed by EA or BioWare. Mass Effect is a trademark of EA International (Studio and Publishing) Ltd.</div>
 			</div>

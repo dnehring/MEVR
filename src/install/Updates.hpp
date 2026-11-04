@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "mevr/Version.hpp"  // generated from project(MEVR VERSION ...) in CMakeLists.txt
+
 #include <optional>
 #include <string>
 #include <string_view>
@@ -10,8 +12,8 @@
 // the latest release's tag and page: nothing is downloaded, the player is sent to the release page.
 namespace mevr::install::updates {
 
-// This build's version (the mod's MEVR_VERSION).
-inline constexpr char kVersion[] = "0.1.0";
+// This build's version: the mod's, the setup's and the release's (one number, from CMake).
+inline constexpr char kVersion[] = MEVR_VERSION;
 // The placeholder: "no check" (an MEVR-Setup.ini can set it to turn the check off).
 inline constexpr char kPlaceholderRepo[] = "https://github.com/OWNER/REPO";
 // The project's public repository, whose Releases the setup checks by default.

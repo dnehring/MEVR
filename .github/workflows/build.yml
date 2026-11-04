@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: MIT
+# The players' build on every push to main and every pull request (docs/release-checklist.md section 5): the monolithic
+# LE1 ASI, our ASI loader and MEVR Setup, every offline test (ctest), and the repository's checks (SPDX lines, the
+# knowledge bundle). Without the LExSDKv2 submodule, which has no licence: the players' build (MEVR_HOT_RELOAD=OFF, so
+# MEVR_LE1_LESDK=OFF) configures and builds without it since 702481b. Without Git LFS: nothing here needs the cockpit's
+# models. The tests that read local data (the decrypted .text dump in %LOCALAPPDATA%\MEVR\dump) say so and skip that part.
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Players' build and tests
+    # windows-2022 has Visual Studio 2022, the generator and compiler our /W4 /WX code is written against. Since June 2026
+    # windows-latest and windows-2025 have Visual Studio 2026 instead (actions/runner-images).
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          lfs: false
+
+      - name: Submodules the players' build needs (not LExSDKv2)
+        run: git submodule update --init --depth 1 external/OpenXR-SDK external/RmlUi external/freetype
+
+      - name: Python (the checks and two ctest tests)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Configure (monolithic, as released)
+        run: cmake -S . -B build-mono -G "Visual Studio 17 2022" -A x64 -DMEVR_HOT_RELOAD=OFF
+
+      - name: Build the ASI, the loader, the setup and the test programs
+        run: cmake --build build-mono --config Release --parallel --target MEVR-LE1 MEVR-Loader MEVR-Setup mevr-test-programs
+
+      - name: Tests
+        run: ctest -C Release --test-dir build-mono --output-on-failure
+
+      - name: Every source file has its SPDX line
+        run: python tools/check-spdx.py
+
+      - name: The knowledge bundle (docs/knowledge)
+        run: python tools/check-okf.py docs/knowledge
+
+      - name: Keep the test log of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctest-log
+          path: build-mono/Testing/Temporary/
+          if-no-files-found: ignore
+          retention-days: 14

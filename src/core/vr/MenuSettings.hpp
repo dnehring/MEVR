@@ -164,6 +164,10 @@ struct GuideInput {
 // line in the list under it) for the ids lt, lgrip, lstick, x, y, menu, rt, rgrip, rstick, a, b; and "guide_grenade",
 // "guide_melee" (the gestures).
 std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& input);
+// ---- About ----------------------------------------------------------------------------------------------------
+// The build line a report needs, from the generated headers' MEVR_VERSION and MEVR_GIT_COMMIT:
+// "MEVR 0.1.0 · commit 1a0622c1f2", and " · development build" for a hot-reload (not a players') build.
+std::string AboutBuild(std::string_view version, std::string_view commit, bool development);
 
 // ---- Settings-file edits -------------------------------------------------------------------------------------
 // Edits on their way to an ini file: one per (section, key), the latest value wins, each written when it's due

@@ -1,0 +1,39 @@
+// SPDX-License-Identifier: MIT
+// MEVR-Setup.exe's resources: its icon (assets/icon/mevr.ico, drawn by tools/make-icon.py; found on the target's include
+// path) and its version (CMake's project(VERSION), mevr/Version.hpp; ProductVersion adds the build's commit as
+// <version>+<commit>, mevr/BuildInfo.hpp). The icon's ID is 1: Explorer shows the lowest, Main.cpp loads it for the window.
+#include <winres.h>
+#include "mevr/Version.hpp"
+#include "mevr/BuildInfo.hpp"
+
+1 ICON "mevr.ico"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION MEVR_VERSION_RC
+ PRODUCTVERSION MEVR_VERSION_RC
+ FILEFLAGSMASK 0x3fL
+ FILEFLAGS 0x0L
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+ FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName", "MEVR"
+            VALUE "FileDescription", "MEVR Setup: installs VR for Mass Effect (Legendary Edition)"
+            VALUE "FileVersion", MEVR_VERSION
+            VALUE "InternalName", "MEVR-Setup"
+            VALUE "LegalCopyright", "ME VR Attempt contributors; GPL-3.0, no warranty"
+            VALUE "LegalTrademarks", "Fan project, not affiliated with EA or BioWare. Mass Effect is a trademark of EA International (Studio and Publishing) Ltd."
+            VALUE "OriginalFilename", "MEVR-Setup.exe"
+            VALUE "ProductName", "MEVR"
+            VALUE "ProductVersion", MEVR_VERSION "+" MEVR_GIT_COMMIT
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

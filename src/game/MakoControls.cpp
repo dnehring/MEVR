@@ -649,8 +649,10 @@ StickAim Tick(double deltaSeconds, Link const& link, ue3::Object* vehicle, ue3::
     if (gOut.driving && GetTickCount64() - gSetInputsSeenMs > kSetInputsFreshMs) {
         if (!gLoggedSeamTick) {
             gLoggedSeamTick = true;
-            log::Warn("mako controls: BioVehicleBase.SetInputs not seen in {} ms while driving: writing Throttle and Steering from the mod's tick [verify]",
-                kSetInputsFreshMs);
+            // [verify] the tick's write is a frame late against the game's own, a stand-in only (research/46; the heartbeat
+            // counts "from the tick"). The warning lands in players' reports, so it says only what happened.
+            log::Warn("mako controls: the game hasn't called BioVehicleBase.SetInputs for {} ms while you drive: the mod writes Throttle and "
+                "Steering from its own tick instead", kSetInputsFreshMs);
         }
         if (Powered()) {
             WriteInputs(vehicle, gOut.throttle, gSteeringSent);
