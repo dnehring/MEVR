@@ -606,20 +606,21 @@ constexpr char const* kGalaxyBlock =
 constexpr char const* kWorldUiBlock =
     "\n"
     "[WorldUi]\n"
-    "; The game's full-screen screens in the room (research/53): with on = 1, the shop (and, as they're measured, the other\n"
-    "; screens) stands as a panel in front of you where it opened, between you and the vendor, the world around it, its dark\n"
+    "; The game's full-screen screens in the room (research/53): with on = 1 each one (the shop, loot, equipment, journal, map,\n"
+    "; the minigame...) stands as a panel in front of you where it opened, toward the vendor or container, the world around, its dark\n"
     "; parts see-through like a hologram; point at it with a controller as the game's mouse. widthM its width, distanceM how\n"
     "; far ahead, belowM its centre below your eyes, backdrop how opaque its dark parts are (1: solid). screens: the screens\n"
     "; put in the room (the game's own names: shop, Loot, Inventory, XMods, CharacterRecord, Specialization, Journal, Codex,\n"
-    "; Map, PartySelect, MenuBrowser, Options, Save, Load, MessageBox, Achievement, AdditionalContent; all = every one).\n"
+    "; Map, PartySelect, MenuBrowser, Options, Save, Load, MessageBox, Achievement, AdditionalContent, SkillGame, DesignerUI,\n"
+    "; GameOver; all = every one). The loot stands at its container, the minigame and a locker's equipment at what you used.\n"
     "; on = 0: the game's screens on the flat panel, the world gone (Halcyon's own). Inventory, XMods and CharacterRecord show a\n"
-    "; 3D model of their own (the game's UI world), which the room hides: list them only to try.\n"
+    "; 3D model of their own in the game's UI world, which isn't in the room yet.\n"
     "on = 1\n"
     "widthM = 1.20\n"
     "distanceM = 0.95\n"
     "belowM = 0.50\n"
     "backdrop = 0.80\n"
-    "screens = shop, MenuBrowser, Journal, Codex, Map, MessageBox\n";
+    "screens = all\n";
 
 constexpr char const* kGameBlock =
     "\n"

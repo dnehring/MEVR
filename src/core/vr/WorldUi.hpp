@@ -16,8 +16,8 @@
 // the game's mouse. This file: the shared, engine-agnostic part (unit-tested, tests/Main.cpp TestWorldUi).
 namespace mevr::vr::world_ui {
 
-// The screens we put in the room, by their library tag. None: a tag we leave to Halcyon (the main menu, character creation,
-// credits, the game-over screen, splash, intro text, the HUD's own movies, the galaxy map's, the minigame's).
+// The screens we put in the room, by their library tag. None: a tag we leave to Halcyon (the front end: the main menu, character
+// creation, credits, splash, intro text; the HUD's own movies; the galaxy map's, which has its own, research/51).
 enum class Screen : std::uint8_t {
     None = 0,
     Shop,
@@ -37,6 +37,9 @@ enum class Screen : std::uint8_t {
     MessageBox,
     Achievement,
     AdditionalContent,
+    SkillGame,   // the bypass minigame (game mode 10)
+    DesignerUI,  // designer minigames over the world (Quasar, the Hanoi puzzle, the laser, the toxin cure, the bomb disarm)
+    GameOver,
     Count
 };
 Screen FromTag(std::string_view tag);  // case-insensitive
@@ -50,10 +53,9 @@ struct Settings {
     float distanceM = 0.95f;   // distanceM: that far ahead of the eyes when it opens (toward what it belongs to)
     float belowM = 0.50f;      // belowM: its centre below the eyes (a counter's height: the vendor's face stays clear above it)
     float backdrop = 0.80f;    // backdrop: its dark parts' opacity (the room shows through the rest); 1 opaque
-    // screens: which ones (bits of Screen; the ini lists their tags). By default those measured in the room (research/53): not the
-    // equipment, XMods and character record, whose 3D models live in the game's UI world.
-    std::uint32_t screens = Bit(Screen::Shop) | Bit(Screen::MenuBrowser) | Bit(Screen::Journal) | Bit(Screen::Codex) | Bit(Screen::Map) |
-                            Bit(Screen::MessageBox);
+    // screens: which ones (bits of Screen; the ini lists their tags), all by default (the user, 2026-11-04: every flat screen in
+    // the room). The equipment, XMods and character record lose their 3D model there (it lives in the game's UI world).
+    std::uint32_t screens = 0xFFFFFFFFu;
 };
 
 // ---- What the mod publishes (HostServices v27 setWorldUi) -------------------------------------------------------------
@@ -87,6 +89,9 @@ struct State {
 
 void Publish(State const& state);
 void Forget();
+inline constexpr std::uint8_t kGuiMode = 7;       // SFXGameModeManager.EGameModes: GameMode_GUI
+inline constexpr std::uint8_t kMinigameMode = 10; // GameMode_Minigame (the bypass minigame)
+inline constexpr bool ScreenMode(int mode) { return mode == kGuiMode || mode == kMinigameMode; }
 // The latest state if published within maxAgeMs and active; else nullopt.
 std::optional<State> Latest(std::uint64_t maxAgeMs);
 

@@ -442,6 +442,22 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         }
         return std::format("{} found{}\n{}", gFound.size(), gFound.size() == 40 ? " (the first 40)" : "", out);
     }
+    if (verb == "loot") {
+        std::size_t index = 0;
+        words >> index;
+        if (index >= gFound.size() || !ue3::runtime::IsAlive(gFound[index])) {
+            return std::format("mevr loot: no object {} (mevr find first)", index);
+        }
+        return galaxy_dump::ShowLoot(pc, gFound[index]);
+    }
+    if (verb == "lootcorpse") {
+        std::size_t index = 0;
+        words >> index;
+        if (index >= gFound.size() || !ue3::runtime::IsAlive(gFound[index])) {
+            return std::format("mevr lootcorpse: no object {} (mevr find first)", index);
+        }
+        return galaxy_dump::LootCorpse(pc, gFound[index]);
+    }
     if (verb == "gui") {
         std::string which;
         words >> which;
@@ -452,6 +468,48 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::string tag, sub, arg;
         words >> tag >> sub >> arg;
         return galaxy_dump::Panel(pc, tag, sub.empty() ? "list" : sub, arg);
+    }
+    if (verb == "instances") {
+        // `mevr instances <Package.Class> [text]`: live objects of that class (or a subclass) whose full name holds the text, each
+        // with the actor it belongs to and that actor's place; on `find`'s list (for `use`, `props`, `loot`...). Up to 60.
+        std::string path, filter;
+        words >> path >> filter;
+        ue3::Reflection& r = ue3::runtime::Get();
+        ue3::Class* const cls = path.empty() ? nullptr : r.FindClass(path);
+        if (cls == nullptr) {
+            return std::string("usage: mevr instances <Package.Class> [text] (no such class)");
+        }
+        ue3::Class* const actorClass = r.FindClass("Engine.Actor");
+        gFound.clear();
+        std::string out;
+        int total = 0;
+        for (std::int32_t i = 0, n = r.ObjectCount(); i < n; ++i) {
+            ue3::Object* const o = r.ObjectAt(i);
+            if (o == nullptr || !r.IsAlive(o) || !r.IsA(o, cls)) {
+                continue;
+            }
+            std::string const name = r.FullName(o);
+            if (name.find("Default__") != std::string::npos || (!filter.empty() && name.find(filter) == std::string::npos)) {
+                continue;
+            }
+            ++total;
+            if (gFound.size() >= 60) {
+                continue;
+            }
+            ue3::Object* owner = o;
+            for (int depth = 0; owner != nullptr && depth < 8 && !(actorClass != nullptr && r.IsA(owner, actorClass)); ++depth) {
+                owner = r.OuterOf(owner);
+            }
+            out += std::format("\n[{}] {}", gFound.size(), name);
+            if (owner != nullptr && owner != o) {
+                out += " (of " + r.NameText(owner) + ")";
+            }
+            if (auto const at = owner != nullptr ? player::Location(owner) : std::nullopt) {
+                out += std::format(" at {:.0f} {:.0f} {:.0f}", at->x, at->y, at->z);
+            }
+            gFound.push_back(o);
+        }
+        return std::format("{} instances{}", total, out);
     }
     if (verb == "classes") {
         // `mevr classes <text>`: the loaded script classes whose name holds the text (case-insensitive), each with its parent;

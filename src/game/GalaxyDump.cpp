@@ -916,6 +916,33 @@ std::string Panel(ue3::Object* controller, std::string const& tag, std::string c
     return "usage: mevr panel list | mevr panel <tag> show|hide|var <path>|invoke <method>|movie";
 }
 
+std::string ShowLoot(ue3::Object* controller, ue3::Object* inventory) {
+    if (!ue3::runtime::Init()) {
+        return "loot: the reflection layer isn't ready";
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Object* const manager = ReadObject(r, controller, "m_oCachedScaleFormManager");
+    ue3::Class* const inventoryClass = r.FindClass("SFXGame.BioInventory");
+    if (manager == nullptr || inventory == nullptr || inventoryClass == nullptr || !r.IsA(inventory, inventoryClass)) {
+        return "loot: no GUI manager, or the object isn't a BioInventory";
+    }
+    bool const called = CallOn(manager, "ShowLootGui", [&](ue3::Params& p) { p.Set("oLootInv", inventory); }, nullptr);
+    return std::format("loot: {}.ShowLootGui({}) called {}", r.FullName(manager), r.FullName(inventory), called);
+}
+
+std::string LootCorpse(ue3::Object* controller, ue3::Object* behavior) {
+    if (!ue3::runtime::Init()) {
+        return "lootcorpse: the reflection layer isn't ready";
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Object* const worldInfo = ReadObject(r, controller, "WorldInfo");
+    if (behavior == nullptr || worldInfo == nullptr) {
+        return "lootcorpse: no object or no WorldInfo";
+    }
+    bool const called = CallOn(behavior, "LootCorpse", [&](ue3::Params& p) { p.Set("BioWorldInfo", worldInfo); }, nullptr);
+    return std::format("lootcorpse: {}.LootCorpse({}) called {}", r.FullName(behavior), r.FullName(worldInfo), called);
+}
+
 std::string ShowGui(ue3::Object* controller, std::string const& which) {
     if (!ue3::runtime::Init()) {
         return "gui: the reflection layer isn't ready";

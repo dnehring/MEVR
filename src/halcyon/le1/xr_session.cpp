@@ -3645,8 +3645,8 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             s_lgTick = 0;   // next mode-7 entry logs immediately (tick 0)
         }
     }
-    // [MEVR] research/53: one of the game's screens stands in the room (the shop...): the GUI mode is a live in-world GUI.
-    if (gameMode == 7 && MELEVR::MevrBridge::WorldUiActive()) liveWorldGui = true;
+    // [MEVR] research/53: one of the game's screens stands in the room (the shop, the minigame...): a live in-world GUI.
+    if ((gameMode == 7 || gameMode == 10) && MELEVR::MevrBridge::WorldUiActive()) liveWorldGui = true;
     // [SFR] gate feed MOVED below the cine decision ([SFRGATE-LATCH 2026-08-12]): it used to be fed
     // the RAW mode byte here, which flaps 7/8/-1 mid-cutscene - the presentation held (CINEFLAPFIX)
     // but SfrModeAllowsReplay returns false for all three, so every blip killed the SECOND EYE pass

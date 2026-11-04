@@ -202,6 +202,8 @@ bool SfrModeAllowsReplay(int gameMode) noexcept
     // [MEVR] research/51 section 8: the galaxy map open in the CIC (the view held at Shepard's, the game's own map hidden):
     // the world renders as on foot.
     if (gameMode == 9 && MELEVR::MevrBridge::GalaxyHologram(nullptr, nullptr)) return true;
+    // [MEVR] research/53: the bypass minigame standing in the room renders the world as on foot.
+    if (gameMode == 10 && MELEVR::MevrBridge::WorldUiActive()) return true;
     return false;
 }
 

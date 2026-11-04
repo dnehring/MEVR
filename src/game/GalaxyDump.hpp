@@ -60,5 +60,11 @@ std::string Panel(ue3::Object* controller, std::string const& tag, std::string c
 // `mevr gui <Equipment|Squad|Codex|Journal|Map|Menu>`: the on-foot game mode's own Show<X>Gui(true) (what its keys call), to open
 // one of the game's screens for the audit (research/53).
 std::string ShowGui(ue3::Object* controller, std::string const& which);
+// `mevr loot <n>` (after `mevr find`): the GUI manager's own ShowLootGui with the n-th found object (a BioInventory: any
+// placeable's or pawn's), the loot screen as a container's use opens it (research/53).
+std::string ShowLoot(ue3::Object* controller, ue3::Object* inventory);
+// `mevr lootcorpse <n>` (after `mevr find`): BioPawnBehavior.LootCorpse(the player's BioWorldInfo) on the n-th found object, the
+// game's own loot of a body (research/53).
+std::string LootCorpse(ue3::Object* controller, ue3::Object* behavior);
 
 } // namespace mevr::game::galaxy_dump

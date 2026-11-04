@@ -369,17 +369,21 @@ switching frameworks.
   `galaxy-left`/`-right`.
 - LE1 game screens in the room ([research/53](research/53-world-screens.md), HostServices v27 `setWorldUi`; `core/vr/WorldUi`,
   `game/WorldUi`, host `plugin/WorldUi`; `[WorldUi]` in `ASI\LE1MEVR.ini`): research/53 audits all 35 of the game's screens (its GUI
-  library, `BioSFManager.HandlerLibrary`). In game mode 7 the mod reads the GUI manager's panels (`m_oCachedScaleFormManager`,
-  `m_lstPanels`, each `nmTag` a library tag); the first one of ours places the screen, and any open one not in `screens` (default
-  `shop, MenuBrowser, Journal, Codex, Map, MessageBox`) leaves the stack on Halcyon's panel (the equipment and character record show
-  3D models in the game's **UI world**, which the room hides). A `bFullScreen` panel makes the game render that UI world (a blurred
+  library, `BioSFManager.HandlerLibrary`). **Every flat screen goes in the room** (the user, 2026-11-04; `screens = all`; the front
+  end stays flat). In game modes 7 and 10 (the bypass minigame) the mod reads the GUI manager's panels (`m_oCachedScaleFormManager`,
+  `m_lstPanels`, each `nmTag` a library tag, only `IsVisible` ones); the first one of ours places the screen; any visible one not in
+  `screens` leaves the stack on Halcyon's panel. The equipment and character record lose their 3D models in the room (they live in
+  the game's **UI world**) [open]. A `bFullScreen` panel makes the game render that UI world (a blurred
   backdrop stage, its own camera) instead of the level: cleared on our screens while they stand in the room (journalled, put back
   if ours goes down). Shepard's view on foot is held at render time through the galaxy map's `CalcSceneView` seam; one `[MEVR]` seam
   in xr_session.cpp sets Halcyon's `liveWorldGui` while `MevrBridge::WorldUiActive()`. The game's UI goes to the HUD panel, shown as
   the 16:9 stage's part (`DefaultCrop`; the shop's x 0.14..0.86), placed once per opening `distanceM` (0.95) ahead toward what it
-  belongs to (the shop: its vendor, the pawn nearest `BioSFHandler_Shop.m_shop`) at counter height (`belowM` 0.50), `widthM` 1.20,
-  its dark parts at `backdrop` 0.80; the game pointer maps the whole window on its plane (`WholeWindow`). Tools: `mevr panel`,
-  `mevr gui <Equipment|Squad|Codex|Journal|Map|Menu>`, `mevr classes <text>`. Logs `world ui:`; snapshot `"mod"."worldUi"`.
+  belongs to (the shop: its vendor, the pawn nearest `BioSFHandler_Shop.m_shop`; loot: the container or body its inventory belongs
+  to; the minigame: its handler's `m_oDependent`; a screen a use opens: what A would have used) at counter height (`belowM` 0.50), `widthM` 1.20,
+  its dark parts at `backdrop` 0.80; the game pointer maps the whole window on its plane (`WholeWindow`). Mode 10 also needs the
+  `[MEVR]` seam in render_hook.cpp's `SfrModeAllowsReplay`. Tools: `mevr panel`, `mevr gui <Equipment|Squad|Codex|Journal|Map|Menu>`,
+  `mevr classes <text>`, `mevr instances <Class> [text]`, `mevr loot <n>`, `mevr lootcorpse <n>`. Eden Prime's real loot and minigame
+  cases: research/53 section 5. Logs `world ui:`; snapshot `"mod"."worldUi"`.
   The skill `game-screen-to-hologram` is the recipe for the next screens.
 - LE1 Mako ([research/44](research/44-mako.md), `game/Mako`; `[Mako]` in `ASI\LE1MEVR.ini`): game mode 1 with a
   `BioVehicleBase` pawn, the right controller's aim ray (or the pistol calibration's line) traced in the world (`Actor.Trace`,

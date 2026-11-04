@@ -33,8 +33,12 @@ The fake headset (`tools/fake-headset.ps1 -On`), Steam's launch with no Enter
 `open BIOA_NOR00` (the Normandy; not NOR10), `streamlevelin <sublevel>` for decks that aren't streamed (the cargo hold:
 `BIOA_NOR10_11_*`), `mevr setloc X Y Z` and `set BioPlayerController Rotation (Pitch=0,Yaw=..,Roll=0)`, then open the screen:
 `mevr activate <n> 0` on its Kismet action (the requisitions officer's shop: `RequisitionOfficer.StoreManager.BioSeqAct_OpenShop_1`),
-`mevr used <n>` on an art placeable's behaviour (the galaxy console), `mevr gui <X>`. To close a screen without input, reload the
-level (`open BIOA_NOR00`). A hot-reloaded mod loses what it recorded on foot: reopen the screen after a rebuild.
+`mevr used <n>` on an art placeable's behaviour (the galaxy console), `mevr gui <X>`, `mevr use <n>` on a container's actor (what A
+does). `mevr instances <Package.Class> [text]` finds the live objects of a class and where their actors stand (crates:
+`SFXGame.BioArtPlaceableBehavior`, their `m_oActorType` says encrypted console or ammo case). Synthetic calls that skip the game's
+flow close at once (`ShowLootGui` alone, `LootCorpse` on a living pawn); loot and the minigame need a mission past its prologue
+(research/53 section 5 lists Eden Prime's consoles and cases). To close a screen without input, reload the level
+(`open BIOA_NOR00`). A hot-reloaded mod loses what it recorded on foot: reopen the screen after a rebuild.
 
 ## 3. Look at it as VR shows it today
 
@@ -46,9 +50,9 @@ world** (a backdrop stage, `GUI_UIWorld`), not the level, while any of its panel
 
 | The screen | Do |
 |---|---|
-| Flash only (shop, journal, codex, map, the main wheel, message boxes) | add its tag to `[WorldUi] screens` and to `world_ui::Screen`/`kTags` if new; measure its crop (`DefaultCrop`, stage UV); give it an anchor in `game/WorldUi.cpp` `AnchorOf` if it belongs to something in the world (the shop: its vendor) |
+| Flash only (shop, loot, journal, codex, map, the main wheel, message boxes, the minigame) | every screen in `world_ui::Screen`/`kTags` is in the room by default (`screens = all`); a new tag goes in the table (append: the values travel host to mod); measure its crop (`DefaultCrop`, stage UV); give it an anchor in `game/WorldUi.cpp` `AnchorOf` if it belongs to something (the shop: its vendor; loot: the inventory's owning actor; the minigame: `m_oDependent`; else what A would have used) |
 | A 3D scene of its own (the galaxy map) | two scene captures from the game's camera (`game/SceneCaptureRig`, core/vr/CineScreen's parallel cameras and crop) on a stereo window; its Flash on the UI panel on the same plane; the view held at Shepard's at render time |
-| A 3D model in the UI world (equipment, character record) | not yet: the room hides the UI world, so these stay on Halcyon's panel (`screens` leaves them out); the plan is the model as a hologram beside the panel (research/53) |
+| A 3D model in the UI world (equipment, character record) | in the room without the model for now (the room hides the UI world); the plan is the model as a hologram beside the panel (research/53) |
 | A prop in the level that already shows it (the CIC projector) | measure the prop live (location, rotation, the mesh component's bounds: research/51 section 8.1's radius method), lay our layer on it, hide the prop's own picture while ours shows |
 
 ## 5. The plumbing (what each piece is for)

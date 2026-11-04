@@ -55,47 +55,48 @@ All 35 templates of the GUI library, in its order. "Room" = the world UI below. 
 | DeviceSelection | GUI_SF_Tutorial.Tutorials | console storage | - | n/a on PC | none |
 | Conversation | GUI_SF_Conversation.Conversation | conversations (mode 5) | the dialogue wheel | Halcyon's VR cine; 3D screen (research/52) | done (separately) |
 | BlackScreen | GUI_SF_Utility.BlackScreen | fades | black | fine | none |
-| SkillGame | GUI_SF_SkillGame.PCMiniGame | the bypass minigame on locked crates and doors (`BioSeqAct_MiniGame`, mode 10) | Flash minigame | [verify] | next: a panel at the used object (needs a save at a locked crate) |
+| SkillGame | GUI_SF_SkillGame.PCMiniGame | the bypass minigame on encrypted consoles, crates and doors (mode 10; the level's `BioSkillGame` with the placeable as `oDependent`) | Flash minigame | **room** (mode 10), at the placeable (`BioSkillGame_Handler.m_oDependent`) | done [verify in a mission] |
 | IntroText | GUI_SF_Utility.IntroText | the opening text | text | flat | keep |
 | MainMenu | GUI_SF_MainMenu.MainMenu | the title | Flash over its flyby | flat | keep (front end) |
 | **shop** | GUI_SF_Shop.PCShop | a vendor's conversation, `BioSeqAct_OpenShop` (its `m_shop` is a BioShop actor placed at the vendor) | Flash, the item's picture (a render target in the movie) | **room: at counter height in front of the vendor** | done (section 4) |
 | ReplayCharacterSelect | GUI_SF_ReplayCharacterSelect.PC_ReplayCharacterSelect | new game+ | front end | flat | keep |
 | GalaxyMap | GUI_SF_GalaxyMap.GalaxyMap | the CIC console (mode 9) | its own 3D map level + Flash | ours: hologram, then the game's map on the projector's disc | done (research/51) |
-| PartySelect | GUI_SF_PartySelect.PartySelect | `BioSeqAct_ShowPartySelectionGUI` before missions | Flash (+ UI world? [verify]) | flat | next: try in the room at the airlock |
+| PartySelect | GUI_SF_PartySelect.PartySelect | `BioSeqAct_ShowPartySelectionGUI` before missions | Flash (+ UI world? [verify]) | **room**, toward what was used | listed [verify] |
 | NewCharacter | GUI_SF_MainMenu.CharacterCreation | character creation | the UI world's Shepard (`BioUIWorld.m_oNCHandler`) | flat | keep (front end); later a mirror |
-| AdditionalContent | GUI_SF_AdditionalContent.AdditionalContent | DLC list | Flash | flat | room (listable, untested) |
+| AdditionalContent | GUI_SF_AdditionalContent.AdditionalContent | DLC list | Flash | **room** | listed [verify] |
 | **MenuBrowser** | GUI_SF_InGameGui.PC_MainWheel | Start / our menu's Game menu (`ShowMenuGui`); the hub for the screens below | Flash | **room, straight ahead** | done |
-| Options | GUI_SF_Options.PCOptions | the wheel | Flash | flat | room (listable, untested) |
+| Options | GUI_SF_Options.PCOptions | the wheel | Flash | **room** | listed [verify] |
 | **Journal** | GUI_SF_Journal.PC_Journal | the wheel, `ShowJournalGui` | Flash | **room** | done |
 | **Codex** | GUI_SF_Journal.PC_Codex | the wheel, `ShowCodexGui` | Flash, pictures, narration | **room** | done |
-| Inventory | GUI_SF_Inventory.PCInventory | the wheel, `ShowEquipmentGui`; Normandy lockers (`BioSeqAct_ShowInventory`) | Flash + the squadmate in the UI world | flat (by default) | next: the squadmate as a hologram (a capture of the UI world [verify]) |
-| XMods | GUI_SF_Inventory.PCInventory | upgrades, from the equipment | as Inventory | flat | with Inventory |
-| Loot | GUI_SF_Loot.PC_Loot | containers and bodies with items (`m_oLootInventory`) | Flash | flat [verify the mode] | next: a panel at the container (the selection the player used) |
-| Achievement | GUI_SF_Achievement.PC_Achievement | achievement list | Flash | flat | room (listable) |
-| GameOver | GUI_SF_GameOver.GameOver | death | Flash | flat | keep |
-| CharacterRecord | GUI_SF_CharacterRecord.PC_CharacterRecord | the wheel, `ShowSquadGui` | Flash + Shepard in the UI world | flat (by default) | with Inventory |
+| Inventory | GUI_SF_Inventory.PCInventory | the wheel, `ShowEquipmentGui`; Normandy lockers (`BioSeqAct_ShowInventory`) | Flash + the squadmate in the UI world | **room** (straight ahead; a locker's toward the locker), the 3D model missing | done; next: the squadmate as a hologram (a capture of the UI world [verify]) |
+| XMods | GUI_SF_Inventory.PCInventory | upgrades, from the equipment | as Inventory | **room** | with Inventory |
+| Loot | GUI_SF_Loot.PC_Loot | containers and bodies with items (`MassEffectGuiManager.ShowLootGui(oLootInv)`) | Flash | **room**, at the container or body (the inventory's owning actor) | done [verify in a mission] |
+| Achievement | GUI_SF_Achievement.PC_Achievement | achievement list | Flash | **room** | listed [verify] |
+| GameOver | GUI_SF_GameOver.GameOver | death | Flash | **room** | listed [verify] |
+| CharacterRecord | GUI_SF_CharacterRecord.PC_CharacterRecord | the wheel, `ShowSquadGui` | Flash + Shepard in the UI world | **room**, the 3D model missing | with Inventory |
 | Credits | GUI_SF_Utility.Credits | the end | text | flat | keep |
-| DesignerUI | GUI_SF_HUD.DesignerUI | designer minigames and timers (layouts: Quasar, Mira's Hanoi, the laser, the toxin cure; the bomb disarm's timer) | an overlay over the live world | flat (Halcyon's [LIVEGUI] off) | next: Halcyon's live-GUI branch through the same seam |
-| Specialization | GUI_SF_CharacterRecord.Specialization | `BioSeqAct_ShowSpecialization` | Flash | flat | room (listable, untested) |
-| Save | GUI_SF_SaveLoad.PCLoadSave | the wheel | Flash | flat | room (listable, untested) |
-| Load | GUI_SF_SaveLoad.PCLoadSave | the wheel, the title | Flash | flat | room (listable, untested) |
+| DesignerUI | GUI_SF_HUD.DesignerUI | designer minigames and timers (layouts: Quasar, Mira's Hanoi, the laser, the toxin cure; the bomb disarm's timer); always open, hidden until used | an overlay over the live world | **room** in mode 7 while visible, toward what was used | listed [verify] |
+| Specialization | GUI_SF_CharacterRecord.Specialization | `BioSeqAct_ShowSpecialization` | Flash | **room** | listed [verify] |
+| Save | GUI_SF_SaveLoad.PCLoadSave | the wheel | Flash | **room** | listed [verify] |
+| Load | GUI_SF_SaveLoad.PCLoadSave | the wheel, the title (the title stays flat: no level) | Flash | **room** in a level | listed [verify] |
 | **Map** | GUI_SF_AreaMap.PCMap | the wheel, `ShowMapGui` | Flash | **room** | done; later a table hologram |
 | Splash | GUI_SF_MainMenu.Splash | boot | splash | flat | keep |
 | **MessageBox** | GUI_SF_Utility.WindowPop | over any screen (confirmations) | Flash | **room, on its parent's panel** | done when over one of ours |
 
-Priority for the next ones (how often a player meets them): Loot and SkillGame (every mission), Inventory and CharacterRecord
-(their 3D models first), DesignerUI's minigames, PartySelect. The front end (title, character creation, credits, splash) stays
-flat (or Halcyon's cinema later): no world to stand in.
+**Every flat screen in the room** (the user, 2026-11-04: "we most certainly want to have the augmented display for all flat
+interactions, like for things like looting"): `[WorldUi] screens = all` by default. The front end (title, character creation,
+credits, splash, intro text) stays flat: no level to stand in. Open: the equipment and character record's 3D models (the UI
+world's, which the room hides), and the real-flow checks of loot, the minigame and the listed-but-untested screens in a mission.
 
 ## 4. The world UI (2026-11-04)
 
 The galaxy map's pieces made generic (core/vr/WorldUi, game/WorldUi, plugin/WorldUi; HostServices v27 `setWorldUi`;
 `[WorldUi]` in `ASI\LE1MEVR.ini`):
 
-- **Which screen.** In mode 7 the mod reads the GUI manager's panels; the first one whose tag is in our table decides the place
-  (a message box over the shop stays on the shop's panel). If any open screen of ours isn't listed in `[WorldUi] screens`
-  (default `shop, MenuBrowser, Journal, Codex, Map, MessageBox`) the whole stack stays on Halcyon's panel: the squad screen opens
-  over the main wheel, and its Shepard would be missing in the room.
+- **Which screen.** In modes 7 (GUI) and 10 (the bypass minigame) the mod reads the GUI manager's panels; the first *visible*
+  one whose tag is in our table decides the place (a message box over the shop stays on the shop's panel; `DesignerUI` is always
+  open and hidden until a designer minigame shows it). If any visible screen of ours isn't listed in `[WorldUi] screens` (all by
+  default) the whole stack stays on Halcyon's panel.
 - **The level behind it.** Every listed full-screen panel open gets `bFullScreen` cleared (journalled), put back on those still
   open when ours goes down. The level renders instead of the UI world.
 - **The view held at Shepard's.** The mod records the player camera's POV on foot (a `Camera.UpdateCamera` post-handler) and,
@@ -109,7 +110,13 @@ The galaxy map's pieces made generic (core/vr/WorldUi, game/WorldUi, plugin/Worl
   the eyes, facing them (its X level), `widthM` (1.20) wide. With no anchor, straight ahead. The shop's anchor: the vendor, the
   nearest pawn within 250 units of the handler's `m_shop` BioShop actor (the requisitions officer `BioPawn_9`, 68 units from
   `BioShop_0`); the actor itself is 50 units beside him, which put the screen 17 degrees off. At counter height the vendor's face
-  stays clear above the screen (snapshot 08:41:09; at 0.12 m below the eyes the item's picture covered it, 08:37:23).
+  stays clear above the screen (snapshot 08:41:09; at 0.12 m below the eyes the item's picture covered it, 08:37:23). The loot's
+  anchor: the actor its inventory belongs to (`BioSFHandler_Loot.m_oLootInventory`'s outer chain: a container's
+  `BioUseable_N.BioArtPlaceableBehavior_N.BioInventory_N`, a body's `BioPawn_N.BioPawnBehavior_N.BioInventory_N`; measured with
+  `mevr loot` on the galaxy console's inventory: "the loot comes from BioUseable_0", the screen toward it). The minigame's: its
+  handler's `m_oDependent` (the placeable played on). A screen a use opens otherwise (a locker's equipment without the main wheel,
+  the squad selection, a specialization, a designer minigame) stands toward what A would have used within the last 3 s on foot
+  (`BioPlayerSelection.m_oCurrentSelectionTarget`).
 - **What it shows.** The game's UI goes to the HUD panel (all its Scaleform draws, as for the galaxy map), shown as a quad of the
   stage's part only: the stage is the 16:9 box of the window (`Stage`; the shop's rows 537..1855 of 2392, measured from its flat
   frame), the screen's crop inside it (`DefaultCrop`: the shop's content spans stage x 0.17..0.83, cropped to 0.14..0.86; the
@@ -121,5 +128,20 @@ The galaxy map's pieces made generic (core/vr/WorldUi, game/WorldUi, plugin/Worl
   the button's centre in the game's own flat frame is (1699, 1615). The click itself didn't register on the test rig: SteamVR's
   `vrmonitor` window had the focus and Windows refused the game's `SetForegroundWindow` (LE1's menus take clicks only with the game
   window in front; research/50). [verify] the click in a headset session, where the game is in front.
+- **Mode 10.** A second Halcyon seam (render_hook.cpp `SfrModeAllowsReplay`: mode 10 while `WorldUiActive`) and mode 10 in the
+  live-GUI seam and the overlays; the minigame renders the world as on foot.
 - Logs `world ui:`; the mod's snapshot field `"worldUi"`. Tools: `mevr panel list | <tag> show|hide|var|invoke|movie`,
-  `mevr gui <screen>`, `mevr classes <text>`.
+  `mevr gui <screen>`, `mevr classes <text>`, `mevr instances <Package.Class> [text]` (live objects of a class with their owning
+  actor's place), `mevr loot <n>` (`ShowLootGui` on an inventory), `mevr lootcorpse <n>` (`BioPawnBehavior.LootCorpse`).
+
+## 5. Testing without a save: what didn't work, and where the real cases are
+
+- `ShowLootGui` alone opens the loot screen for one tick and the game closes it again (an empty inventory: the galaxy console's;
+  a shop's stock: the same), and `LootCorpse` on a living pawn opens nothing: the real flow is a container's use.
+- `open BIOA_PRO00` (Eden Prime) loads but starts the prologue: the controller possesses another pawn, a conversation's panel is
+  up, `mevr setloc` moves a pawn the controller doesn't own. Eden Prime's first areas (`streamlevelin BIOA_PRO10_0x_*`) hold the
+  real cases: encryption consoles (`BIOG_APL_Door_P.Consoles.Console_Encryption`, state "encrypted": the bypass minigame) at
+  `PRO10_00_PLC` `BioUseable_0..3` (-36060, 147455, -125) and (-34500, 143650, 660), and ammo cases
+  (`BIOG_APL_TYPES.Containers.AmmoCase_00_Con_Type`, "Closed": loot) at `PRO10_01_PLC.BioUseable_0` (-24988, 126722, -1107) and
+  `PRO10_03_PLC.BioUseable_4` (-16433, 133959, -72). With a save past the prologue: stand by one, `mevr use` its actor (what A
+  does), snapshot.

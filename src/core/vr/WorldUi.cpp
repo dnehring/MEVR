@@ -22,7 +22,7 @@ namespace gh = galaxy_holo;
 
 constexpr std::array<char const*, static_cast<std::size_t>(Screen::Count)> kTags = {
     "None", "shop", "Loot", "Inventory", "XMods", "CharacterRecord", "Specialization", "Journal", "Codex", "Map", "PartySelect",
-    "MenuBrowser", "Options", "Save", "Load", "MessageBox", "Achievement", "AdditionalContent",
+    "MenuBrowser", "Options", "Save", "Load", "MessageBox", "Achievement", "AdditionalContent", "SkillGame", "DesignerUI", "GameOver",
 };
 
 bool SameText(std::string_view a, std::string_view b) {

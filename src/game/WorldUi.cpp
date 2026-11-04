@@ -28,7 +28,6 @@ namespace {
 
 namespace wu = vr::world_ui;
 
-constexpr std::uint8_t kGuiMode = 7;  // SFXGameModeManager.EGameModes: GameMode_GUI
 
 // The GUI manager (the player controller's cached one) and its panels: each open screen is a BioSFPanel tagged with its library
 // tag (the shop's: nmTag "shop", bFullScreen, m_DefaultHandler its BioSFHandler_Shop; measured 2026-11-04).
@@ -38,6 +37,17 @@ ue3::FieldRef gFocusPanel{"Engine.BioSFManager", "m_FocusPanel"};
 ue3::FieldRef gPanelTag{"Engine.BioSFPanel", "nmTag"};
 ue3::FieldRef gPanelFullScreen{"Engine.BioSFPanel", "bFullScreen"};
 ue3::FieldRef gPanelHandler{"Engine.BioSFPanel", "m_DefaultHandler"};
+ue3::FieldRef gPanelVisible{"Engine.BioSFPanel", "IsVisible"};
+// The loot screen's inventory belongs to the container (or the body) it came from: its outer chain reaches that actor.
+ue3::ClassRef gLootHandlerClass{"SFXGame.BioSFHandler_Loot"};
+ue3::FieldRef gLootInventory{"SFXGame.BioSFHandler_Loot", "m_oLootInventory"};
+ue3::ClassRef gActorClass{"Engine.Actor"};
+// The bypass minigame's handler names the placeable it's played on.
+ue3::ClassRef gSkillGameHandlerClass{"SFXGame.BioSkillGame_Handler"};
+ue3::FieldRef gSkillGameDependent{"SFXGame.BioSkillGame_Handler", "m_oDependent"};
+// What A would use (research/40's BioPlayerSelection): the thing a screen opened by a use belongs to.
+ue3::FieldRef gPlayerSelection{"SFXGame.BioPlayerController", "m_oPlayerSelection"};
+ue3::FieldRef gCurrentTarget{"SFXGame.BioPlayerSelection", "m_oCurrentSelectionTarget"};
 ue3::ClassRef gShopHandlerClass{"SFXGame.BioSFHandler_Shop"};
 ue3::FieldRef gShopActor{"SFXGame.BioSFHandler_Shop", "m_shop"};
 ue3::FunctionRef gUpdateCamera{"Engine.Camera.UpdateCamera"};
@@ -57,6 +67,16 @@ struct Hold {
 };
 Hold gHold;
 bool gScreenUp = false;  // a screen of ours was published last tick (game thread)
+
+// The last thing A would have used on foot, and when: a screen that opens within kUsedWithinMs of it (the minigame at a crate, a
+// locker's equipment, the squad selection at the airlock) stands toward it.
+constexpr std::uint64_t kUsedWithinMs = 3000;
+struct Used {
+    ue3::Object* target = nullptr;
+    std::uint64_t ms = 0;
+};
+Used gUsed;
+Used gUsedAtOpening;  // frozen when a screen opens
 
 // A full-screen panel (bFullScreen) makes the game render its UI world (GUI_UIWorld: a backdrop stage of blurred machinery
 // under a blue gradient, its own camera) instead of the level; with the flag cleared the level renders behind the screen
@@ -104,6 +124,7 @@ struct OpenPanel {
     ue3::Object* panel = nullptr;
     std::string tag;
     bool fullScreen = false;
+    bool visible = false;
     bool focus = false;
     ue3::Object* handler = nullptr;
 };
@@ -129,6 +150,7 @@ std::vector<OpenPanel> OpenPanels(ue3::Object* controller) {
             o.tag = r.ToString(*tag);
         }
         o.fullScreen = gPanelFullScreen.ReadBool(panel).value_or(false);
+        o.visible = gPanelVisible.ReadBool(panel).value_or(true);
         o.focus = panel == focus;
         o.handler = gPanelHandler.Read<ue3::Object*>(panel).value_or(nullptr);
         open.push_back(std::move(o));
@@ -144,6 +166,7 @@ struct Vendor {
     ue3::Object* pawn = nullptr;
 };
 Vendor gVendor;
+std::uint32_t gAnchorLogged = 0;  // the opening whose anchor was logged (loot, a use)
 
 ue3::Object* NearestPawn(ue3::Vector const& at, ue3::Object* player) {
     ue3::Reflection& r = ue3::runtime::Get();
@@ -165,8 +188,51 @@ ue3::Object* NearestPawn(ue3::Vector const& at, ue3::Object* player) {
     return best;
 }
 
-// Where what the screen belongs to stands in the world: the shop's vendor (else its BioShop actor).
-std::optional<ue3::Vector> AnchorOf(wu::Screen screen, ue3::Object* handler, ue3::Object* controller, std::uint32_t opening) {
+// The actor an object belongs to: itself, or the first actor up its outer chain (an inventory of a placeable or a pawn).
+ue3::Object* OwningActor(ue3::Object* o) {
+    ue3::Reflection& r = ue3::runtime::Get();
+    for (int depth = 0; o != nullptr && depth < 8; ++depth, o = r.OuterOf(o)) {
+        if (ue3::IsA(o, gActorClass) && r.IsAlive(o)) {
+            return o;
+        }
+    }
+    return nullptr;
+}
+
+// Where what the screen belongs to stands in the world: the shop's vendor (else its BioShop actor); the loot's container or body;
+// for a screen a use opens (not from the main wheel), the thing that was used.
+std::optional<ue3::Vector> AnchorOf(wu::Screen screen, ue3::Object* handler, ue3::Object* controller, std::uint32_t opening,
+    bool fromWheel) {
+    if (screen == wu::Screen::Loot && handler != nullptr && ue3::IsA(handler, gLootHandlerClass) && ue3::runtime::IsAlive(handler)) {
+        ue3::Object* const inventory = gLootInventory.Read<ue3::Object*>(handler).value_or(nullptr);
+        if (ue3::Object* const owner = inventory != nullptr ? OwningActor(inventory) : nullptr) {
+            if (gAnchorLogged != opening) {
+                gAnchorLogged = opening;
+                log::Info("world ui: the loot comes from {}", ue3::runtime::FullName(owner));
+            }
+            return player::Location(owner);
+        }
+    }
+    if (screen == wu::Screen::SkillGame && handler != nullptr && ue3::IsA(handler, gSkillGameHandlerClass) && ue3::runtime::IsAlive(handler)) {
+        ue3::Object* const dependent = gSkillGameDependent.Read<ue3::Object*>(handler).value_or(nullptr);
+        if (ue3::Object* const owner = dependent != nullptr ? OwningActor(dependent) : nullptr) {
+            if (gAnchorLogged != opening) {
+                gAnchorLogged = opening;
+                log::Info("world ui: the minigame is played on {}", ue3::runtime::FullName(owner));
+            }
+            return player::Location(owner);
+        }
+    }
+    bool const usedScreen = screen == wu::Screen::SkillGame || screen == wu::Screen::DesignerUI || screen == wu::Screen::PartySelect ||
+        screen == wu::Screen::Specialization || screen == wu::Screen::Loot ||
+        ((screen == wu::Screen::Inventory || screen == wu::Screen::XMods) && !fromWheel);
+    if (usedScreen && gUsedAtOpening.target != nullptr && ue3::runtime::IsAlive(gUsedAtOpening.target)) {
+        if (gAnchorLogged != opening) {
+            gAnchorLogged = opening;
+            log::Info("world ui: the {} screen opened by using {}", wu::Name(screen), ue3::runtime::FullName(gUsedAtOpening.target));
+        }
+        return player::Location(gUsedAtOpening.target);
+    }
     if (screen == wu::Screen::Shop && handler != nullptr && ue3::IsA(handler, gShopHandlerClass) && ue3::runtime::IsAlive(handler)) {
         ue3::Object* const shop = gShopActor.Read<ue3::Object*>(handler).value_or(nullptr);
         auto const at = shop != nullptr && ue3::runtime::IsAlive(shop) ? player::Location(shop) : std::nullopt;
@@ -254,12 +320,17 @@ void Tick(Link const& link) {
         if (auto const frame = view_anchor::Current()) {
             gHold.footFrame = frame;  // the room as Shepard's view maps it (the held view's)
         }
+        ue3::Object* const selection = controller != nullptr ? gPlayerSelection.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
+        ue3::Object* const target = selection != nullptr ? gCurrentTarget.Read<ue3::Object*>(selection).value_or(nullptr) : nullptr;
+        if (target != nullptr && ue3::runtime::IsAlive(target)) {
+            gUsed = {target, GetTickCount64()};
+        }
     }
-    if (link.setState == nullptr || !settings.on || !mode || *mode != kGuiMode) {
+    if (link.setState == nullptr || !settings.on || !mode || !wu::ScreenMode(*mode)) {
         if (!gS.stack.empty()) {
             gS.stack.clear();
         }
-        Down(link, link.setState == nullptr ? "an older host" : !settings.on ? "[WorldUi] on = 0" : "the game left its GUI mode");
+        Down(link, link.setState == nullptr ? "an older host" : !settings.on ? "[WorldUi] on = 0" : "the game left its GUI and minigame modes");
         return;
     }
     if (!Resolved()) {
@@ -274,8 +345,9 @@ void Tick(Link const& link) {
     std::string stack;
     OpenPanel const* base = nullptr;  // the first of ours opened decides (a message box over the shop stays on the shop's place)
     for (OpenPanel const& o : panels) {
-        stack += std::format("{}{}{}{}", stack.empty() ? "" : ", ", o.tag, o.fullScreen ? " (full screen)" : "", o.focus ? " (focus)" : "");
-        if (base == nullptr && wu::FromTag(o.tag) != wu::Screen::None) {
+        stack += std::format("{}{}{}{}{}", stack.empty() ? "" : ", ", o.tag, o.fullScreen ? " (full screen)" : "", o.focus ? " (focus)" : "",
+                             o.visible ? "" : " (hidden)");
+        if (base == nullptr && o.visible && wu::FromTag(o.tag) != wu::Screen::None) {
             base = &o;
         }
     }
@@ -291,7 +363,7 @@ void Tick(Link const& link) {
     // Every one of ours open must be listed: a screen that shows a 3D model of its own in the game's UI world (the equipment's
     // squadmate, the character record's Shepard) keeps Halcyon's panel, and the main wheel it opened from with it.
     for (OpenPanel const& o : panels) {
-        if (wu::Screen const s = wu::FromTag(o.tag); s != wu::Screen::None && (settings.screens & wu::Bit(s)) == 0) {
+        if (wu::Screen const s = wu::FromTag(o.tag); o.visible && s != wu::Screen::None && (settings.screens & wu::Bit(s)) == 0) {
             Down(link, "not one of [WorldUi] screens");
             return;
         }
@@ -313,6 +385,8 @@ void Tick(Link const& link) {
         gS.open = true;
         ++gS.opening;
         gS.screen = wu::Name(screen);
+        std::uint64_t const now = GetTickCount64();
+        gUsedAtOpening = gUsed.target != nullptr && now - gUsed.ms < kUsedWithinMs ? gUsed : Used{};
     }
     wu::State state;
     state.active = 1;
@@ -328,7 +402,8 @@ void Tick(Link const& link) {
     state.stageCrop[2] = crop.u1;
     state.stageCrop[3] = crop.v1;
     std::strncpy(state.tag, base->tag.c_str(), sizeof(state.tag) - 1);
-    if (auto const at = AnchorOf(screen, base->handler, controller, gS.opening)) {
+    bool const fromWheel = std::any_of(panels.begin(), panels.end(), [](OpenPanel const& o) { return o.visible && wu::FromTag(o.tag) == wu::Screen::MenuBrowser; });
+    if (auto const at = AnchorOf(screen, base->handler, controller, gS.opening, fromWheel)) {
         {
             XrVector3f const p = engine::ToTracking(*gHold.footFrame, engine::UnrealVector{at->x, at->y, at->z});
             state.anchored = 1;

@@ -1603,7 +1603,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     // the panel too, which then stands over the hologram's table instead of in front of the body.
     bool const galaxyUi = gLastGameMode == 9 && mevr::host::galaxy_hologram::InWorld();
     // One of the game's screens standing in the room (research/53: the shop...): its UI goes to the panel, placed where it opened.
-    bool const worldUi = gLastGameMode == 7 && mevr::host::world_ui::Active();
+    bool const worldUi = mevr::vr::world_ui::ScreenMode(gLastGameMode) && mevr::host::world_ui::Active();
     bool const uiToPanel = gameplay || galaxyUi || worldUi;
 
     // The game's own crosshair marks the screen centre (the head), not the gun: hidden while our
