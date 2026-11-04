@@ -23,22 +23,30 @@ The two facts behind most of this list:
   on; each eye smears its own way (the player's "shimmering floor", "assets shift each its own way"). The workaround
   today is two console lines by hand. Fix, then verify from a cold Steam launch with the frame-flip count of research/35
   attempt 49. (gotchas/motion-blur-in-stereo, bitten 4 times, last 2026-11-02)
-- [ ] **[C] Developer channels open in the player build.** `console.request` runs any console command (`god`, `open`,
+  **In: b3778d8** (each level gets the toggles again 3 s and 15 s after it becomes the world). **Not yet measured** from a
+  cold launch: tick this after that measurement.
+- [x] **[C] Developer channels open in the player build.** Done, 38d35b5: the players' build ignores the request files
+  unless `[Debug] requests = 1` (`core/DevChannels`); development builds unchanged. `console.request` runs any console command (`god`, `open`,
   `set`, `mevr vehicle enter`, which must never run before the Mako drop) for any local process
   (`src/game/ConsoleRequest.cpp:858-918`); the test loop's request files include replay, which swaps the live head pose
   for a recording. Gate both behind a `[Debug]` switch that is off in the release, or compile them out of the monolithic
   build.
-- [ ] **[C] Unbounded disk use.** Snapshots, recordings and perf captures are never pruned (44 GB of snapshots on the dev
+- [x] **[C] Unbounded disk use.** Done, 38d35b5: budgets per folder in the players' build (2 GB / 512 MB / 256 MB,
+  `core/DiskBudget`), a 30-minute cap on open-ended recordings, Halcyon's log rotated at 16 MB. Snapshots, recordings and perf captures are never pruned (44 GB of snapshots on the dev
   machine); a quick tap of both stick clicks takes a snapshot and a recording has no length cap
   (`src/plugin/TestLoop.cpp:1109-1124`). Halcyon's `MELEVR_Log.txt` never resets (README "Reporting a bug"). Cap or prune
   all of them; consider a single-file log size limit.
-- [ ] **[C] Halcyon's classic menu breaks the design.** Reachable by Ctrl/Shift + `\` and two rows of our menu; its
+- [x] **[C] Halcyon's classic menu breaks the design.** Done, e7f459b and 38d35b5: head aim and Mako head aim default
+  off in its code (so Reset keeps them off), and the players' build's menu has no replay. Still reachable as the
+  developer fallback; its wording is a polish item (section 4). Reachable by Ctrl/Shift + `\` and two rows of our menu; its
   per-item Reset puts "Head drives aim" back ON (`vr_config.h:59`, `vr_menu.cpp:1012`) and it exposes Mako head aim, the
   EXPERIMENTAL camera hold, Depth pop and "Test loop (for Claude)". Hide it from players (dev builds or a `[Debug]` switch)
   or make its resets use our deploy's values.
 - [ ] **[C] Menu row bug: Hacking screen only switches one way.** `Settings::Read` doesn't read `[WorldUi]`
   (`MainMenuSettings.cpp:204`), so after the write flushes the row shows "On my wrist" again and a click on it is ignored.
-- [ ] **[C] Licence notices.** NOTICE.md calls `src/install` MIT, but `src/install/Toc.cpp` is GPL-3.0-only; Lucide's ISC
+- [ ] **[C] Licence notices.** NOTICE and Lucide done, ac66710; the CMake change is 8e6468e on branch
+  `release-blockers`, verified (the players' build configured, built and passed its tests without the submodule), to
+  land once the galaxy session's uncommitted `CMakeLists.txt` edits are in. NOTICE.md calls `src/install` MIT, but `src/install/Toc.cpp` is GPL-3.0-only; Lucide's ISC
   text isn't among the licences `package-release.ps1` copies. The GPL source release still needs the unlicensed LExSDKv2
   submodule to configure (`CMakeLists.txt:35` adds it unconditionally): make it optional when `MEVR_LE1_LESDK=OFF`
   (research/34 stage 6).
