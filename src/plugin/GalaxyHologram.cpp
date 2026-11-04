@@ -11,10 +11,12 @@
 #include "plugin/GalaxyHologramDraw.hpp"
 #include "plugin/Halcyon.hpp"
 #include "plugin/MevrMenu.hpp"
+#include "plugin/ScopeCaptureSource.hpp"
 #include "plugin/TestLoop.hpp"
 
 #include <Windows.h>
 #include <d3d11.h>
+#include <d3dcompiler.h>
 #include <wrl/client.h>
 
 #ifndef XR_USE_PLATFORM_WIN32
@@ -373,6 +375,17 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
     }
     gActive.store(true, std::memory_order_release);
     gInWorld.store(inWorld, std::memory_order_release);
+    if (inWorld && scene->windowOn != 0) {
+        // The game's own map is on the window over the table (WindowLayers): no table of ours and no picks; the game's cursor
+        // (the game pointer on the window) does the picking.
+        gAsking.store(scene->askTravel != 0, std::memory_order_release);
+        gHovering.store(false, std::memory_order_release);
+        gPointer.Reset();
+        gHovered = -1;
+        SetStatus(std::format("{{\"up\": true, \"window\": true, \"level\": {}, \"askTravel\": {}, \"table\": {}}}", scene->level,
+            scene->askTravel != 0 ? "true" : "false", JVec3(gTable.pose.position)));
+        return nullptr;
+    }
     if (scene->level != gLastLevel) {
         // The table's 'away' is the game camera's heading when the level appears, held while the game's camera flies to
         // what's selected (else the hologram would swing round under the player).
@@ -550,6 +563,317 @@ XrPosef UiPanelPose(XrVector3f const& head) {
     float const yaw = std::atan2(toward.x, toward.z);  // the quad's +Z (its front) toward the player
     pose.orientation = {0.0f, std::sin(yaw * 0.5f), 0.0f, std::cos(yaw * 0.5f)};
     return pose;
+}
+
+// ---- The game's own map as a stereo window over the table (scene->windowOn; research/51 section 8) --------------------------
+namespace {
+
+constexpr char kWindowShader[] = R"(
+Texture2D picture : register(t0);
+SamplerState linearClamp : register(s0);
+cbuffer Params : register(b0) {
+    float4 rect;  // the capture's shown part: u0, v0, du, dv
+    float4 misc;  // x: the decode gamma (1: an sRGB view decodes it), y: the edge's fade width (a share of the window)
+};
+struct VsOut {
+    float4 pos : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+VsOut VSMain(uint id : SV_VertexID) {
+    VsOut o;
+    float2 t = float2((id << 1) & 2, id & 2);
+    o.uv = t;
+    o.pos = float4(t * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
+    return o;
+}
+float4 PSMain(VsOut i) : SV_Target {
+    float3 c = picture.SampleLevel(linearClamp, rect.xy + i.uv * rect.zw, 0).rgb;
+    c = pow(max(c, 0.0), misc.x);
+    float2 e = min(i.uv, 1.0 - i.uv) / max(misc.y, 1e-4);
+    float fade = saturate(min(e.x, e.y));
+    fade = fade * fade * (3.0 - 2.0 * fade);
+    // Premultiplied, its alpha its brightness: space's black is see-through, the bright nebula covers what's behind (a
+    // hologram's look; pure added light with no alpha drops out of the snapshots' straight-alpha composite).
+    float a = saturate(max(c.r, max(c.g, c.b))) * fade;
+    return float4(min(c * fade, a), a);
+}
+)";
+
+struct WindowParams {
+    float rect[4];
+    float misc[4];
+};
+
+struct WindowEye {
+    EyeChain chain;
+    ComPtr<ID3D11Texture2D> texture;  // the capture's (a reference of ours)
+    ComPtr<ID3D11ShaderResourceView> srv;
+    std::uint64_t resource = 0;
+    std::uint64_t generation = 0;
+    vr::scope_capture::TexturePath hint;
+    float decode = 1.0f;
+    std::uint64_t triedMs = 0;
+    int described = 0;
+};
+
+struct WindowState {
+    WindowEye eyes[2];
+    XrSession session = XR_NULL_HANDLE;
+    bool pipelineTried = false;
+    bool pipelineReady = false;
+    ComPtr<ID3D11VertexShader> vs;
+    ComPtr<ID3D11PixelShader> ps;
+    ComPtr<ID3D11Buffer> params;
+    ComPtr<ID3D11SamplerState> sampler;
+    ComPtr<ID3D11BlendState> blend;
+    ComPtr<ID3D11RasterizerState> raster;
+    ComPtr<ID3D11DepthStencilState> depth;
+    XrCompositionLayerQuad quads[2] = {{XR_TYPE_COMPOSITION_LAYER_QUAD}, {XR_TYPE_COMPOSITION_LAYER_QUAD}};
+    bool up = false;
+    std::atomic<bool> on{false};
+    std::atomic<float> panelWidthM{0.0f};
+    std::uint64_t failedGeneration = 0;
+    unsigned frames = 0;
+};
+WindowState gWindow;
+
+bool EnsureWindowPipeline(ID3D11Device* device) {
+    if (gWindow.pipelineTried) {
+        return gWindow.pipelineReady;
+    }
+    gWindow.pipelineTried = true;
+    ComPtr<ID3DBlob> vsBlob, psBlob, errors;
+    UINT const flags = D3DCOMPILE_OPTIMIZATION_LEVEL3;
+    if (FAILED(D3DCompile(kWindowShader, sizeof(kWindowShader) - 1, "galaxy-window", nullptr, nullptr, "VSMain", "vs_5_0", flags, 0,
+            vsBlob.GetAddressOf(), errors.ReleaseAndGetAddressOf())) ||
+        FAILED(D3DCompile(kWindowShader, sizeof(kWindowShader) - 1, "galaxy-window", nullptr, nullptr, "PSMain", "ps_5_0", flags, 0,
+            psBlob.GetAddressOf(), errors.ReleaseAndGetAddressOf()))) {
+        log::Error("galaxy window: its shader didn't compile ({})",
+            errors ? std::string(static_cast<char const*>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("?"));
+        return false;
+    }
+    D3D11_BUFFER_DESC cb{};
+    cb.ByteWidth = sizeof(WindowParams);
+    cb.Usage = D3D11_USAGE_DEFAULT;
+    cb.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    D3D11_SAMPLER_DESC sd{};
+    sd.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    sd.AddressU = sd.AddressV = sd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sd.MaxLOD = D3D11_FLOAT32_MAX;
+    D3D11_BLEND_DESC bd{};
+    bd.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;  // replaces
+    D3D11_RASTERIZER_DESC rd{};
+    rd.FillMode = D3D11_FILL_SOLID;
+    rd.CullMode = D3D11_CULL_NONE;
+    rd.DepthClipEnable = TRUE;
+    D3D11_DEPTH_STENCIL_DESC dd{};
+    dd.DepthEnable = FALSE;
+    dd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+    gWindow.pipelineReady =
+        SUCCEEDED(device->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, gWindow.vs.GetAddressOf())) &&
+        SUCCEEDED(device->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, gWindow.ps.GetAddressOf())) &&
+        SUCCEEDED(device->CreateBuffer(&cb, nullptr, gWindow.params.GetAddressOf())) &&
+        SUCCEEDED(device->CreateSamplerState(&sd, gWindow.sampler.GetAddressOf())) &&
+        SUCCEEDED(device->CreateBlendState(&bd, gWindow.blend.GetAddressOf())) &&
+        SUCCEEDED(device->CreateRasterizerState(&rd, gWindow.raster.GetAddressOf())) &&
+        SUCCEEDED(device->CreateDepthStencilState(&dd, gWindow.depth.GetAddressOf()));
+    if (!gWindow.pipelineReady) {
+        log::Error("galaxy window: its pipeline objects failed");
+    }
+    return gWindow.pipelineReady;
+}
+
+// The capture's texture behind its FTextureResource (plugin/ScopeCaptureSource's guarded search), once per render target.
+bool FindWindowTexture(WindowEye& eye, std::uint64_t resource, std::uint64_t generation, unsigned width, unsigned height, ID3D11Device* device,
+    char const* name) {
+    if (eye.srv != nullptr && eye.resource == resource && eye.generation == generation) {
+        return true;
+    }
+    std::uint64_t const now = GetTickCount64();
+    if (eye.resource == resource && eye.generation == generation && now - eye.triedMs < 1000) {
+        return false;  // tried this one less than a second ago
+    }
+    eye.triedMs = now;
+    bool const again = eye.resource == resource && eye.generation == generation;
+    eye.texture.Reset();
+    eye.srv.Reset();
+    eye.resource = resource;
+    eye.generation = generation;
+    D3D11_TEXTURE2D_DESC desc{};
+    scope_capture_source::NoteDevice(device);
+    eye.texture.Attach(scope_capture_source::FindTargetTexture(resource, width, height, eye.hint, &desc));
+    DXGI_FORMAT view = DXGI_FORMAT_UNKNOWN;
+    float decode = 1.0f;
+    if (eye.texture == nullptr || !scope_capture_source::CaptureViewFormat(desc.Format, view, decode)) {
+        if (!again) {
+            log::Warn("galaxy window: the {} capture's texture wasn't found behind 0x{:X} ({}x{}); trying once a second", name, resource,
+                width, height);
+        } else if (++eye.described <= 3) {
+            log::Info("galaxy window: textures behind the {} capture's resource:{}; the search: {}; texture {}, format {}", name,
+                scope_capture_source::DescribeTextures(resource), scope_capture_source::LastSearch(), eye.texture != nullptr ? "found" : "none",
+                static_cast<int>(desc.Format));
+        }
+        eye.texture.Reset();
+        return false;
+    }
+    D3D11_SHADER_RESOURCE_VIEW_DESC sv{};
+    sv.Format = view;
+    sv.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    sv.Texture2D.MipLevels = 1;
+    if (FAILED(device->CreateShaderResourceView(eye.texture.Get(), &sv, eye.srv.GetAddressOf()))) {
+        log::Warn("galaxy window: no view of the {} capture's texture (format {})", name, static_cast<int>(desc.Format));
+        eye.texture.Reset();
+        return false;
+    }
+    eye.decode = decode;
+    log::Info("galaxy window: the {} capture's texture {}x{} format {} (decoded with gamma {:.1f})", name, desc.Width, desc.Height,
+        static_cast<int>(desc.Format), decode);
+    return true;
+}
+
+void WindowDown(char const* why) {
+    if (gWindow.up) {
+        log::Info("galaxy window: down ({}; {} frames)", why, gWindow.frames);
+    }
+    gWindow.up = false;
+    gWindow.frames = 0;
+    gWindow.on.store(false, std::memory_order_release);
+}
+
+} // namespace
+
+int WindowLayers(Frame const& frame, XrCompositionLayerBaseHeader const** out) {
+    auto const scene = gh::Latest(kFreshMs);
+    bool const wanted = scene && scene->windowOn != 0 && scene->inWorld != 0 && scene->anchorValid != 0 && frame.gameMode == 9 &&
+        !frame.menuOpen && frame.session != XR_NULL_HANDLE && frame.context != nullptr && frame.device != nullptr && frame.headValid;
+    if (!wanted) {
+        WindowDown(!scene || scene->windowOn == 0 ? "the mod sends no window" : "not the map's mode");
+        return 0;
+    }
+    float const crop = std::clamp(scene->windowCrop, 0.0f, 0.2f);
+    float const widthM = std::clamp(scene->windowWidthM, 0.5f, 4.0f);
+    gWindow.panelWidthM.store(widthM / (1.0f - crop), std::memory_order_release);  // the UI frame: the captures' whole width
+    gWindow.on.store(true, std::memory_order_release);
+    if (scene->windowTicks < 2 || scene->windowWidth < 64 || scene->windowHeight < 64) {
+        return 0;  // its first renders aren't there yet
+    }
+    if (frame.session != gWindow.session) {
+        for (WindowEye& eye : gWindow.eyes) {
+            eye.chain.Destroy();
+            eye.chain.failed = false;
+        }
+        gWindow.session = frame.session;
+    }
+    if (!EnsureWindowPipeline(frame.device)) {
+        return 0;
+    }
+    int const shownW = std::max(64, static_cast<int>(std::lround(static_cast<double>(scene->windowWidth) * (1.0 - crop))));
+    int const height = static_cast<int>(scene->windowHeight);
+    for (int e = 0; e < 2; ++e) {
+        WindowEye& eye = gWindow.eyes[e];
+        char const* const name = e == 0 ? "left" : "right";
+        if (!FindWindowTexture(eye, scene->windowResource[e], scene->windowGeneration, scene->windowWidth, scene->windowHeight, frame.device,
+                name)) {
+            return 0;
+        }
+        if (eye.chain.failed) {
+            return 0;
+        }
+        if (eye.chain.handle == XR_NULL_HANDLE || eye.chain.width != shownW || eye.chain.height != height) {
+            eye.chain.Destroy();
+            if (!MakeChain(frame.session, shownW, height, eye.chain, e == 0 ? "galaxy-window-left" : "galaxy-window-right")) {
+                return 0;
+            }
+        }
+    }
+    XrPosef const pose = UiPanelPose(frame.head.position);
+    float const heightM = widthM * static_cast<float>(height) / static_cast<float>(shownW);
+    {
+        StateGuard guard(frame.context);
+        ID3D11DeviceContext* const c = frame.context;
+        c->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        c->IASetInputLayout(nullptr);
+        c->VSSetShader(gWindow.vs.Get(), nullptr, 0);
+        c->PSSetShader(gWindow.ps.Get(), nullptr, 0);
+        c->GSSetShader(nullptr, nullptr, 0);
+        c->HSSetShader(nullptr, nullptr, 0);
+        c->DSSetShader(nullptr, nullptr, 0);
+        c->PSSetConstantBuffers(0, 1, gWindow.params.GetAddressOf());
+        c->PSSetSamplers(0, 1, gWindow.sampler.GetAddressOf());
+        float const factor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        c->OMSetBlendState(gWindow.blend.Get(), factor, 0xFFFFFFFFu);
+        c->OMSetDepthStencilState(gWindow.depth.Get(), 0);
+        c->RSSetState(gWindow.raster.Get());
+        D3D11_VIEWPORT const viewport{0.0f, 0.0f, static_cast<float>(shownW), static_cast<float>(height), 0.0f, 1.0f};
+        c->RSSetViewports(1, &viewport);
+        for (int e = 0; e < 2; ++e) {
+            WindowEye& eye = gWindow.eyes[e];
+            std::uint32_t index = 0;
+            XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
+            if (XR_FAILED(xrAcquireSwapchainImage(eye.chain.handle, &acquire, &index))) {
+                return 0;
+            }
+            XrSwapchainImageWaitInfo wait{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
+            wait.timeout = XR_INFINITE_DURATION;
+            bool drawn = false;
+            if (XR_SUCCEEDED(xrWaitSwapchainImage(eye.chain.handle, &wait)) && index < eye.chain.images.size()) {
+                D3D11_RENDER_TARGET_VIEW_DESC rv{};
+                rv.Format = kFormat;
+                rv.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+                ComPtr<ID3D11RenderTargetView> rtv;
+                if (SUCCEEDED(frame.device->CreateRenderTargetView(eye.chain.images[index], &rv, rtv.GetAddressOf()))) {
+                    // The left eye drops its left edge, the right eye its right (core/vr/CineScreen's crop).
+                    WindowParams params{};
+                    params.rect[0] = e == 0 ? crop : 0.0f;
+                    params.rect[1] = 0.0f;
+                    params.rect[2] = 1.0f - crop;
+                    params.rect[3] = 1.0f;
+                    params.misc[0] = eye.decode;
+                    params.misc[1] = 0.04f;
+                    c->UpdateSubresource(gWindow.params.Get(), 0, nullptr, &params, 0, 0);
+                    ID3D11RenderTargetView* const target = rtv.Get();
+                    c->OMSetRenderTargets(1, &target, nullptr);
+                    c->PSSetShaderResources(0, 1, eye.srv.GetAddressOf());
+                    c->Draw(3, 0);
+                    ID3D11ShaderResourceView* none = nullptr;
+                    c->PSSetShaderResources(0, 1, &none);
+                    testloop::OnImageWritten(eye.chain.handle, eye.chain.images[index]);
+                    drawn = true;
+                }
+            }
+            XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+            xrReleaseSwapchainImage(eye.chain.handle, &release);
+            if (!drawn) {
+                return 0;
+            }
+            XrCompositionLayerQuad& q = gWindow.quads[e];
+            q = {XR_TYPE_COMPOSITION_LAYER_QUAD};
+            q.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied, alpha = brightness
+            q.space = frame.appSpace;
+            q.eyeVisibility = e == 0 ? XR_EYE_VISIBILITY_LEFT : XR_EYE_VISIBILITY_RIGHT;
+            q.subImage.swapchain = eye.chain.handle;
+            q.subImage.imageRect = {{0, 0}, {shownW, height}};
+            q.pose = pose;
+            q.size = {widthM, heightM};
+            out[e] = reinterpret_cast<XrCompositionLayerBaseHeader const*>(&q);
+        }
+    }
+    if (!gWindow.up) {
+        log::Info("galaxy window: up: the game's map {:.2f} x {:.2f} m at ({:.2f}, {:.2f}, {:.2f}), each eye {}x{} of its capture (crop {:.1f}%)", widthM,
+            heightM, pose.position.x, pose.position.y, pose.position.z, shownW, height, crop * 100.0f);
+        gWindow.up = true;
+    }
+    ++gWindow.frames;
+    return 2;
+}
+
+bool WindowOn() {
+    return gWindow.on.load(std::memory_order_acquire);
+}
+
+float UiPanelWidthM(float fallbackM) {
+    float const w = gWindow.panelWidthM.load(std::memory_order_acquire);
+    return WindowOn() && w > 0.0f ? w : fallbackM;
 }
 
 std::string StatusJson() {

@@ -43,6 +43,13 @@ bool InWorld();
 bool AskingTravel();
 // Where the game's UI panel stands while InWorld(): over the table, facing the eyes (app space). Present thread.
 XrPosef UiPanelPose(XrVector3f const& head);
+// The game's own map as a stereo window over the table (the mod's captures, research/51 section 8): fills up to two quad layers
+// (one per eye) into `out` and returns how many; 0 while the mod sends none. Present thread, each frame before the UI panel.
+int WindowLayers(Frame const& frame, XrCompositionLayerBaseHeader const** out);
+// The window is wanted (the mod sends it): the UI panel over the table is the game's whole map, pointed at as its mouse.
+bool WindowOn();
+// The UI panel's width over the table: the window's whole frame while it's on, else `fallbackM`.
+float UiPanelWidthM(float fallbackM);
 // Snapshot JSON ("galaxyHologram").
 std::string StatusJson();
 

@@ -1277,7 +1277,7 @@ MEVR_MOD_API void MevrModShutdown() {
     // Disables and destroys the scope's scene capture (game thread: the host unloads the mod from its tick), unless
     // the process is exiting. Before sights' shutdown and the reflection layer's.
     game::spectator::Shutdown(exiting);  // its capture and the head it hid, on the game thread
-    game::galaxy_map::Shutdown(GalaxyMapLink());  // the host forgets the hologram
+    game::galaxy_map::Shutdown(GalaxyMapLink(), exiting);  // the host forgets the hologram; the window's captures go
     if (gHost != nullptr && MEVR_HOST_HAS(setSpectator) && gHost->setSpectator != nullptr) {
         gHost->setSpectator(nullptr);  // the desktop window gets Halcyon's mirror back (the host also forgets on unload)
     }

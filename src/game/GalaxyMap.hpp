@@ -29,7 +29,14 @@ void TryStartup();
 void Tick(Link const& link);
 // Snapshot JSON ("galaxyMap").
 std::string StatusJson();
-// Mod shutdown: the host forgets the hologram.
-void Shutdown(Link const& link);
+// Mod shutdown: the host forgets the hologram; the window's captures are destroyed (unless the process is exiting).
+void Shutdown(Link const& link, bool exiting);
+
+// Research (`mevr galaxy view ...`, `mevr galaxy flash ...`): with the map open, the player camera orbits the map's centre
+// object (yaw and pitch in degrees, the distance in units; "off" gives the view back), and the map's Flash movie shown or
+// hidden, to see the map's 3D scene alone from the angles a table hologram shows it at.
+std::string ViewOverride(bool on, float yawDeg, float pitchDeg, float distanceUnits);
+std::string ShowFlash(bool visible);
+std::string HoldWrites(bool on);
 
 } // namespace mevr::game::galaxy_map

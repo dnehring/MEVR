@@ -48,14 +48,18 @@ Output Pointer::Step(Quad const& quad, Input const& input) {
     // Which hand points: keep the pointing hand while it's on the quad (and through a press); else the other
     // one if it is on the quad (or pulls its trigger there while ours doesn't).
     int const other = 1 - hand_;
+    bool switched = false;
     if (!pressing_ && on[other] && (!on[hand_] || (triggers[other] && !triggers[hand_]))) {
         hand_ = other;
+        switched = true;
     }
     bool const pointing = on[hand_];
     if (pointing) {
         float const u = std::clamp(hits[hand_].u, 0.0f, 1.0f);
         float const v = std::clamp(hits[hand_].v, 0.0f, 1.0f);
-        bool const arrived = !wasHit;  // no smoothing from a stale point
+        // No smoothing from a stale point, nor from the other hand's (a pull with the other hand switches to it and clicks at
+        // once: it clicked between the two rays before, 2026-11-04).
+        bool const arrived = !wasHit || switched;
         float const k = std::clamp(settings_.smoothing, 0.0f, 1.0f);
         smoothU_ = arrived ? u : smoothU_ + (u - smoothU_) * k;
         smoothV_ = arrived ? v : smoothV_ + (v - smoothV_) * k;

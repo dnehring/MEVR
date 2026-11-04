@@ -284,6 +284,7 @@ set(MEVR_MOD_SOURCES
     src/core/vr/SceneCaptureScope.hpp
     src/core/vr/ScopeCapture.cpp
     src/core/vr/ScopeArt.cpp
+    src/core/vr/CineScreen.cpp
     src/core/vr/GalaxyHologram.cpp
     src/core/vr/GalaxyHologram.hpp
     src/core/vr/GalaxyMap.cpp
@@ -398,6 +399,7 @@ set(MEVR_MOD_SOURCES
     src/game/GalaxyMap.cpp
     src/game/GalaxyMap.hpp
     src/game/Spectator.cpp
+    src/game/SceneCaptureRig.cpp
     src/game/Spectator.hpp
     src/game/Sights.cpp
     src/game/Sights.hpp

@@ -2820,6 +2820,14 @@ void* __fastcall HookCalcSceneView(void* a1, void* a2, void* a3, void* a4, void*
                            reinterpret_cast<std::uintptr_t>(a1) ==
                                g_primaryLocalPlayer.load(std::memory_order_acquire);
 
+    // [MEVR] The galaxy map in the CIC (research/51 section 8): the main view is built from the view held at Shepard's while
+    // the game keeps its map camera for everything else (its Flash labels, its cursor's picks).
+    struct MevrGalaxyViewSwap {
+        bool on;
+        explicit MevrGalaxyViewSwap(bool mainView) : on(mainView && MELEVR::MevrBridge::GalaxyViewSwapBegin()) {}
+        ~MevrGalaxyViewSwap() { if (on) MELEVR::MevrBridge::GalaxyViewSwapEnd(); }
+    } const mevrGalaxyViewSwap(retRva == kGameplayCalcSceneViewReturnRva);
+
     void* stereoFsv = nullptr;
     if (TryP1LayoutStereo(retRva, a1, a2, a3, a4, a5, a6, &stereoFsv)) return stereoFsv;
 

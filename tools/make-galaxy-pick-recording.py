@@ -114,7 +114,7 @@ def objects_in_world(dump, ahead, below, radius, tilt_deg):
 
 def main():
     skip = set()
-    for flag, n in (("--seconds", 1), ("--pick-at", 1), ("--pitch", 1), ("--world", 4), ("--panel-uv", 2), ("--layer", 1), ("--hold", 1)):
+    for flag, n in (("--seconds", 1), ("--pick-at", 1), ("--pitch", 1), ("--world", 4), ("--panel-uv", 2), ("--layer", 1), ("--hold", 1), ("--press", 1)):
         if flag in sys.argv:
             k = sys.argv.index(flag)
             skip.update(range(k + 1, k + 1 + n))
@@ -127,6 +127,9 @@ def main():
     pick_at = option("--pick-at", 3.0)
     pitch = option("--pitch", -30.0)
     hold = option("--hold", 0.3)
+    # --press primary|secondary|stick: that right-hand button instead of the trigger (A, B, the stick's click)
+    press_bit = {"stick": 1 << 0, "primary": 1 << 1, "secondary": 1 << 2}.get(
+        sys.argv[sys.argv.index("--press") + 1] if "--press" in sys.argv else "", 0)
     with open(dump_path, encoding="utf-8-sig") as f:
         dump = json.load(f)
     if "--snapshot" in sys.argv and "--panel-uv" in sys.argv:
@@ -182,10 +185,12 @@ def main():
     frames = []
     for i in range(int(seconds * hz)):
         t = i / hz
-        trigger = 1.0 if pick_at <= t < pick_at + hold else 0.0
+        down = pick_at <= t < pick_at + hold
+        trigger = 1.0 if down and press_bit == 0 else 0.0
+        buttons = valid | (press_bit if down else 0)
         frames.append(FRAME.pack(int(t * 1e9), 3, *eyes[0], *fov, *eyes[1], *fov,
-                                 valid, 0.0, 0.0, 0.0, 0.0, *left, *left,
-                                 valid, trigger, 0.0, 0.0, 0.0, *aim, *aim))
+                                 1 << 4, 0.0, 0.0, 0.0, 0.0, *left, *left,  # the left hand: its grip only, it points at nothing
+                                 buttons, trigger, 0.0, 0.0, 0.0, *aim, *aim))
     with open(out, "wb") as f:
         f.write(HEADER.pack(MAGIC, 1, HEADER.size, FRAME.size, 0, int(time.time() * 1000)))
         for frame in frames:

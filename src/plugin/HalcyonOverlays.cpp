@@ -1730,8 +1730,9 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                 gPanelQuad.size = {cockpitPanel.width, cockpitPanel.height};
             }
             if (galaxyUi) {
+                float const uiWidth = mevr::host::galaxy_hologram::UiPanelWidthM(kGalaxyUiWidthM);
                 gPanelQuad.pose = mevr::host::galaxy_hologram::UiPanelPose(ToVec(frame.headPosition));
-                gPanelQuad.size = {kGalaxyUiWidthM, kGalaxyUiWidthM * static_cast<float>(gPanel.height) / static_cast<float>(gPanel.width)};
+                gPanelQuad.size = {uiWidth, uiWidth * static_cast<float>(gPanel.height) / static_cast<float>(gPanel.width)};
                 galaxyPanel = true;
             } else {
                 layersOut[count++] = &gPanelQuad;
@@ -2102,10 +2103,17 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         if (XrCompositionLayerBaseHeader const* layer = mevr::host::galaxy_hologram::Layer(galaxy); layer != nullptr && count < capacity) {
             layersOut[count++] = layer;
         }
-        // The game's UI over the table (its travel question): over the hologram, and the game pointer's while the game asks.
+        // The game's own map as a stereo window over the table (the mod's captures), under the game's UI.
+        XrCompositionLayerBaseHeader const* window[2] = {};
+        int const windowLayers = mevr::host::galaxy_hologram::WindowLayers(galaxy, window);
+        for (int i = 0; i < windowLayers && count < capacity; ++i) {
+            layersOut[count++] = window[i];
+        }
+        // The game's UI over the table (its travel question; with the window, its whole map: labels, title, buttons): over the
+        // hologram, and the game pointer's while the game asks or the window shows the map.
         if (galaxyPanel && count < capacity) {
             layersOut[count++] = &gPanelQuad;
-            if (mevr::host::galaxy_hologram::AskingTravel()) {
+            if (mevr::host::galaxy_hologram::AskingTravel() || mevr::host::galaxy_hologram::WindowOn()) {
                 mevr::host::game_pointer::NoteGameUiQuad(gPanelQuad.pose, gPanelQuad.size.width, gPanelQuad.size.height);
             }
         }

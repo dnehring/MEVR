@@ -250,6 +250,10 @@ bool GalaxyHologram(float* unitsPerMeter, float* belowM) noexcept;
 // [MEVR] True while the mod holds the view at Shepard's for the map in the CIC: the map open, and its opening and closing
 // cutscenes (their camera flights read as cutscenes): Halcyon presents the world as on foot then too.
 bool GalaxyHeld() noexcept;
+// [MEVR] Around the main view's CalcSceneView (game thread): while the mod holds the view in the CIC at render time, Begin puts
+// the held view into the player camera's POV (true: it did) and End puts the game's map camera back.
+bool GalaxyViewSwapBegin() noexcept;
+void GalaxyViewSwapEnd() noexcept;
 // Each frame the hologram is shown: the render's symmetric half angles (radians, the game's own projection), so the game
 // pointer gets the game's screen as a quad in the room through the map's centre (core/vr/GalaxyMap VirtualScreen).
 void OnGalaxyHologram(float cpuHalfH, float cpuHalfV) noexcept;

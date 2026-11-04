@@ -57,5 +57,13 @@ ID3D11Texture2D* FindTargetTexture(std::uint64_t resource, unsigned width, unsig
 // The view format a capture's texture is read through, and the gamma the shader decodes it with (1: none). False for a
 // format nobody reads.
 bool CaptureViewFormat(DXGI_FORMAT format, DXGI_FORMAT& view, float& decode);
+// Once, with the game's device: a texture of our own on it shows the vtable its textures have, which the search then accepts
+// besides d3d11.dll's (the capture targets' textures were missed by the module check alone). Present thread.
+void NoteDevice(ID3D11Device* device);
+// Diagnostics: every texture of the known class within the search's window behind `resource` (offset path, size, format,
+// samples, array size, mips, bind flags). After NoteDevice. Present thread.
+std::string DescribeTextures(std::uint64_t resource);
+// What the last FindTargetTexture saw (diagnostics). Present thread.
+std::string LastSearch();
 
 } // namespace mevr::host::scope_capture_source

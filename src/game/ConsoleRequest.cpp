@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 #include "game/ConsoleRequest.hpp"
 
+#include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "engine/Legacy.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Memory.hpp"
 #include "game/CockpitProbe.hpp"
 #include "game/GalaxyDump.hpp"
+#include "game/GalaxyMap.hpp"
 #include "game/Holsters.hpp"
 #include "game/Player.hpp"
 #include "game/Spectator.hpp"
@@ -343,6 +345,27 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
             float u = -1.0f, v = -1.0f;
             words >> u >> v;
             return galaxy_dump::Click(u, v);
+        }
+        if (sub == "view") {
+            // `mevr galaxy view <yawDeg> <pitchDeg> <distanceUnits>` | `mevr galaxy view off`
+            std::string first;
+            words >> first;
+            if (first == "off" || first.empty()) {
+                return galaxy_map::ViewOverride(false, 0.0f, 0.0f, 0.0f);
+            }
+            float pitch = -45.0f, distance = 8000.0f;
+            words >> pitch >> distance;
+            return galaxy_map::ViewOverride(true, static_cast<float>(ini::Number(first).value_or(0.0)), pitch, distance);
+        }
+        if (sub == "hold") {
+            int on = 1;
+            words >> on;
+            return galaxy_map::HoldWrites(on != 0);
+        }
+        if (sub == "flash") {
+            int visible = 1;
+            words >> visible;
+            return galaxy_map::ShowFlash(visible != 0);
         }
         if (sub == "press") {
             float u = -1.0f, v = -1.0f;

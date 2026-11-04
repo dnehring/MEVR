@@ -549,6 +549,76 @@ bool GalaxyHologram(float* unitsPerMeter, float* belowM) noexcept {
     return true;
 }
 
+namespace {
+// The held view swapped into the player camera's POV for the main view's CalcSceneView (galaxy map in the CIC).
+struct GalaxyViewSwap {
+    bool active = false;
+    float* location = nullptr;
+    std::int32_t* rotation = nullptr;
+    float* fov = nullptr;
+    float savedLocation[3] = {};
+    std::int32_t savedRotation[3] = {};
+    float savedFov = 0.0f;
+};
+GalaxyViewSwap gGalaxySwap;  // game thread (CalcSceneView)
+std::uint64_t gGalaxySwaps = 0;
+
+bool SwapIn(GalaxyViewSwap& s, float const location[3], std::int32_t const rotation[3], float fov) noexcept {
+    __try {
+        for (int i = 0; i < 3; ++i) {
+            s.savedLocation[i] = s.location[i];
+            s.savedRotation[i] = s.rotation[i];
+        }
+        s.savedFov = *s.fov;
+        for (int i = 0; i < 3; ++i) {
+            s.location[i] = location[i];
+            s.rotation[i] = rotation[i];
+        }
+        *s.fov = fov;
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+void SwapOut(GalaxyViewSwap& s) noexcept {
+    __try {
+        for (int i = 0; i < 3; ++i) {
+            s.location[i] = s.savedLocation[i];
+            s.rotation[i] = s.savedRotation[i];
+        }
+        *s.fov = s.savedFov;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+}
+} // namespace
+
+bool GalaxyViewSwapBegin() noexcept {
+    gGalaxySwap.active = false;
+    auto const scene = mevr::vr::galaxy_holo::Latest(500);
+    if (!scene || scene->holdRender == 0 || scene->povLocationAddress == 0 || scene->povRotationAddress == 0 || scene->povFovAddress == 0) {
+        return false;
+    }
+    gGalaxySwap.location = reinterpret_cast<float*>(scene->povLocationAddress);
+    gGalaxySwap.rotation = reinterpret_cast<std::int32_t*>(scene->povRotationAddress);
+    gGalaxySwap.fov = reinterpret_cast<float*>(scene->povFovAddress);
+    if (!SwapIn(gGalaxySwap, scene->holdLocation, scene->holdRotation, scene->holdFov)) {
+        return false;
+    }
+    gGalaxySwap.active = true;
+    if (gGalaxySwaps++ == 0) {
+        mevr::log::Info("galaxy hologram: the view held at Shepard's for the main view's build only (the game keeps its map camera)");
+    }
+    return true;
+}
+
+void GalaxyViewSwapEnd() noexcept {
+    if (gGalaxySwap.active) {
+        SwapOut(gGalaxySwap);
+        gGalaxySwap.active = false;
+    }
+}
+
 bool GalaxyHeld() noexcept {
     static std::atomic<std::uint64_t> lastHeldMs{0};
     auto const scene = mevr::vr::galaxy_holo::Latest(500);

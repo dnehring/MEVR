@@ -574,6 +574,8 @@ constexpr char const* kGalaxyBlock =
     "; at one with a controller and pull the trigger to select it. inWorld = 1: it stands over the CIC's projector, where the\n"
     "; game shows its own; walk up and pick from it on foot (the map opens behind the scenes, you stay in the CIC; walk away\n"
     "; to close it). worldRadiusM its size, worldTiltDeg how far its far edge is raised, worldLiftM up from the projector.\n"
+    "; window = 1: once the map is open, the game's own map (its 3D scene in stereo, its labels and buttons) on a window over\n"
+    "; the table, pointed at with a controller as the game's mouse; windowWidthM its width, windowDepth its depth.\n"
     "; inWorld = 0: the map opens as the game's, with the hologram on a table in front of you (tableDistanceM / tableBelowM\n"
     "; ahead of and below your eyes, tableRadiusM its size) and the game's map behind it as a screen. hologram = 0: the\n"
     "; game's map on the flat screen only.\n"
@@ -582,6 +584,9 @@ constexpr char const* kGalaxyBlock =
     "worldRadiusM = 1.40\n"
     "worldTiltDeg = 35\n"
     "worldLiftM = 0\n"
+    "window = 1\n"
+    "windowWidthM = 2.0\n"
+    "windowDepth = 0.03\n"
     "tableDistanceM = 0.70\n"
     "tableBelowM = 0.45\n"
     "tableRadiusM = 0.48\n"
@@ -1548,6 +1553,15 @@ vr::galaxy_map::Settings ReadGalaxy(Ini const& ini) {
     }
     if (Number(ini, "Galaxy", "worldLiftM", value)) {
         s.worldLiftM = static_cast<float>(std::clamp(value, -1.0, 1.5));
+    }
+    if (Number(ini, "Galaxy", "window", value)) {
+        s.window = value != 0.0;
+    }
+    if (Number(ini, "Galaxy", "windowWidthM", value)) {
+        s.windowWidthM = static_cast<float>(std::clamp(value, 0.5, 4.0));
+    }
+    if (Number(ini, "Galaxy", "windowDepth", value)) {
+        s.windowDepth = static_cast<float>(std::clamp(value, 0.0, 0.05));
     }
     return s;
 }

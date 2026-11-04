@@ -62,6 +62,11 @@ bool ReadRaw(std::uint64_t address, std::uint64_t* out) noexcept {
 
 // The candidate is an ID3D11Texture2D of the render target's size, one sample, readable by shaders: returns it with a
 // reference of its own (QueryInterface's), else null.
+// The vtable of a texture the host made on the game's device (NoteDevice): a candidate with exactly it is a texture of that
+// device's class, whatever module its vtable lives in (the capture's texture was missed by the module check, research/39
+// section 11 and research/51 section 8), and is asked nothing it can't answer.
+std::atomic<std::uintptr_t> gKnownTextureVtable{0};
+
 ID3D11Texture2D* ProbeRaw(std::uint64_t candidate, Modules const* modules, UINT width, UINT height, D3D11_TEXTURE2D_DESC* desc) noexcept {
     __try {
         auto const object = static_cast<std::uintptr_t>(candidate);
@@ -69,8 +74,9 @@ ID3D11Texture2D* ProbeRaw(std::uint64_t candidate, Modules const* modules, UINT 
             return nullptr;  // a pointer into the module itself, not an object
         }
         auto const vtable = *reinterpret_cast<std::uintptr_t const volatile*>(object);
-        if (!modules->Holds(vtable)) {
-            return nullptr;  // only d3d11's own objects are asked anything
+        std::uintptr_t const known = gKnownTextureVtable.load(std::memory_order_relaxed);
+        if (vtable != known && !modules->Holds(vtable)) {
+            return nullptr;  // only d3d11's own objects (or ones of a known texture's class) are asked anything
         }
         auto* const unknown = reinterpret_cast<IUnknown*>(object);
         ID3D11Texture2D* texture = nullptr;
@@ -285,6 +291,15 @@ std::optional<Source> ForFrame(ID3D11Device* device, int weapon, std::uint64_t p
     return out;
 }
 
+namespace {
+ID3D11Texture2D* FindKnownTexture(std::uint64_t resource, unsigned width, unsigned height, sc::TexturePath& hint, D3D11_TEXTURE2D_DESC* desc);
+std::string gLastSearch;  // what the last FindTargetTexture saw (Present thread)
+} // namespace
+
+std::string LastSearch() {
+    return gLastSearch;
+}
+
 ID3D11Texture2D* FindTargetTexture(std::uint64_t resource, unsigned width, unsigned height, sc::TexturePath& hint, D3D11_TEXTURE2D_DESC* desc) {
     Modules const modules{ImageOf(L"d3d11.dll"), ImageOf(L"d3d11_3SDKLayers.dll"), ImageOf(L"D3D11SDKLayers.dll")};
     if (modules.d3d11.begin == 0 || resource == 0 || desc == nullptr) {
@@ -306,14 +321,151 @@ ID3D11Texture2D* FindTargetTexture(std::uint64_t resource, unsigned width, unsig
         return false;
     };
     sc::TexturePath const path = sc::FindTexture(resource, read, isTexture, hint);
+    gLastSearch = std::format("probe path {} found {}", path.Valid() ? std::format("+0x{:X} -> {}", path.first, path.second) : std::string("none"),
+        found != nullptr ? "a texture" : "nothing");
     if (!path.Valid() || found == nullptr) {
         if (found != nullptr) {
             found->Release();
         }
-        return nullptr;
+        // The QueryInterface probe turned down the capture targets' textures although they fit (research/39 section 11,
+        // research/51 section 8: +0xA0 -> +0x8, the right size, one sample, shader-resource binding): the same window walked
+        // for objects of the known texture class (NoteDevice), asked nothing but GetDesc and AddRef.
+        return FindKnownTexture(resource, width, height, hint, desc);
     }
     hint = path;
     return found;
+}
+
+namespace {
+// One known texture's description, when `object` has the known texture vtable (only then is it asked anything).
+bool KnownTextureDesc(std::uint64_t object, D3D11_TEXTURE2D_DESC* desc) noexcept {
+    __try {
+        std::uintptr_t const known = gKnownTextureVtable.load(std::memory_order_relaxed);
+        if (known == 0 || object < 0x10000) {
+            return false;
+        }
+        if (*reinterpret_cast<std::uintptr_t const volatile*>(static_cast<std::uintptr_t>(object)) != known) {
+            return false;
+        }
+        reinterpret_cast<ID3D11Texture2D*>(static_cast<std::uintptr_t>(object))->GetDesc(desc);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+// A reference of our own on a texture of the known class (SEH-guarded).
+ID3D11Texture2D* AddRefKnown(std::uint64_t object) noexcept {
+    __try {
+        auto* const texture = reinterpret_cast<ID3D11Texture2D*>(static_cast<std::uintptr_t>(object));
+        texture->AddRef();
+        return texture;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return nullptr;
+    }
+}
+
+ID3D11Texture2D* FindKnownTexture(std::uint64_t resource, unsigned width, unsigned height, sc::TexturePath& hint, D3D11_TEXTURE2D_DESC* desc) {
+    if (gKnownTextureVtable.load(std::memory_order_relaxed) == 0 || resource == 0 || desc == nullptr) {
+        return nullptr;
+    }
+    int known = 0;
+    auto const fits = [&](std::uint64_t object) {
+        D3D11_TEXTURE2D_DESC d{};
+        if (!KnownTextureDesc(object, &d)) {
+            return false;
+        }
+        ++known;
+        if (d.Width != width || d.Height != height || d.SampleDesc.Count != 1 || d.ArraySize != 1 ||
+            (d.BindFlags & D3D11_BIND_SHADER_RESOURCE) == 0) {
+            gLastSearch += std::format("; known {}x{} s{} a{} b0x{:X} vs {}x{}", d.Width, d.Height, d.SampleDesc.Count, d.ArraySize, d.BindFlags,
+                width, height);
+            return false;
+        }
+        *desc = d;
+        return true;
+    };
+    for (std::int32_t first = 0; first < 0x100; first += 8) {
+        std::uint64_t a = 0;
+        // No alignment asked of the pointers (the walk in sc::FindTexture wants them 8-aligned, and the capture targets' path
+        // runs through one that isn't): the object must carry the known texture vtable, and every read is guarded.
+        if (!ReadRaw(resource + static_cast<std::uint64_t>(first), &a) || a < 0x10000 || a >= 0x00007FFFFFFFFFFFull) {
+            continue;
+        }
+        if (fits(a)) {
+            hint = {first, -1, a};
+            return AddRefKnown(a);
+        }
+        for (std::int32_t second = 0; second < 0x80; second += 8) {
+            std::uint64_t b = 0;
+            if (ReadRaw(a + static_cast<std::uint64_t>(second), &b) && b >= 0x10000 && b < 0x00007FFFFFFFFFFFull && fits(b)) {
+                hint = {first, second, b};
+                ID3D11Texture2D* const t = AddRefKnown(b);
+                gLastSearch += std::format("; the known class's texture at +0x{:X} -> +0x{:X}{}", first, second, t != nullptr ? "" : " (AddRef failed)");
+                return t;
+            }
+        }
+    }
+    gLastSearch += std::format("; {} known-class textures, none fits", known);
+    return nullptr;
+}
+} // namespace
+
+std::string DescribeTextures(std::uint64_t resource) {
+    std::string out;
+    for (std::int32_t first = 0; first < 0x100; first += 8) {
+        std::uint64_t a = 0;
+        if (!ReadRaw(resource + static_cast<std::uint64_t>(first), &a) || a < 0x10000) {
+            continue;
+        }
+        D3D11_TEXTURE2D_DESC d{};
+        if (KnownTextureDesc(a, &d)) {
+            out += std::format(" +0x{:X}: {}x{} format {} samples {} array {} mips {} bind 0x{:X};", first, d.Width, d.Height,
+                static_cast<int>(d.Format), d.SampleDesc.Count, d.ArraySize, d.MipLevels, d.BindFlags);
+        }
+        for (std::int32_t second = 0; second < 0x80; second += 8) {
+            std::uint64_t b = 0;
+            if (!ReadRaw(a + static_cast<std::uint64_t>(second), &b) || b < 0x10000) {
+                continue;
+            }
+            if (KnownTextureDesc(b, &d)) {
+                out += std::format(" +0x{:X} -> +0x{:X}: {}x{} format {} samples {} array {} mips {} bind 0x{:X};", first, second, d.Width,
+                    d.Height, static_cast<int>(d.Format), d.SampleDesc.Count, d.ArraySize, d.MipLevels, d.BindFlags);
+            }
+        }
+    }
+    return out.empty() ? std::string(" none") : out;
+}
+
+void NoteDevice(ID3D11Device* device) {
+    if (device == nullptr || gKnownTextureVtable.load(std::memory_order_relaxed) != 0) {
+        return;
+    }
+    D3D11_TEXTURE2D_DESC td{};
+    td.Width = td.Height = 4;
+    td.MipLevels = td.ArraySize = 1;
+    td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    td.SampleDesc.Count = 1;
+    td.Usage = D3D11_USAGE_DEFAULT;
+    td.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+    if (FAILED(device->CreateTexture2D(&td, nullptr, texture.GetAddressOf()))) {
+        return;
+    }
+    std::uintptr_t const vtable = *reinterpret_cast<std::uintptr_t const*>(texture.Get());
+    gKnownTextureVtable.store(vtable, std::memory_order_relaxed);
+    HMODULE module = nullptr;
+    wchar_t name[MAX_PATH] = L"?";
+    if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            reinterpret_cast<LPCWSTR>(vtable), &module) && module != nullptr) {
+        GetModuleFileNameW(module, name, MAX_PATH);
+    }
+    std::string narrow;
+    for (wchar_t const* c = name; *c != 0; ++c) {
+        narrow.push_back(*c < 128 ? static_cast<char>(*c) : '?');
+    }
+    log::Info("scope capture source: a texture of the game's device has its vtable at 0x{:X} ({}): such candidates are textures",
+        vtable, narrow);
 }
 
 bool CaptureViewFormat(DXGI_FORMAT format, DXGI_FORMAT& view, float& decode) {

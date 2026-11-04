@@ -87,7 +87,32 @@ struct Scene {
     float anchor[3] = {};        // the table's centre (tracking space, metres)
     float anchorYaw = 0.0f;      // its heading (radians; overlay::HeadingOf's sense: 0 faces -Z, + turned left)
     float tiltDeg = 0.0f;        // its far edge raised toward the player
-    char askText[kLabelBytes] = {};  // unused (the game's own box asks); kept so the layout stays HostServices v26's
+    char askText[kLabelBytes] = {};  // unused (the game's own box asks)
+    // The game's own map as a stereo window over the table (research/51 section 8, the map open in the CIC): two captures of the
+    // map level from the game's map camera, side by side (core/vr/CineScreen's parallel cameras and crop); the game's Flash layer
+    // goes on the same panel as its UI. windowOn 0: our hologram is drawn instead.
+    std::uint8_t windowOn = 0;
+    std::uint8_t windowFloat = 0;  // the targets are FloatRGB (linear) instead of A8R8G8B8
+    std::uint16_t windowPad = 0;
+    std::uint32_t windowWidth = 0;
+    std::uint32_t windowHeight = 0;
+    std::uint32_t windowTicks = 0;  // ticks since the captures were enabled (their first renders aren't there yet)
+    std::uint64_t windowResource[2] = {};  // left, right: the render targets' FTextureResource* (engine memory)
+    std::uint64_t windowGeneration = 0;    // changes when either target may have
+    float windowCrop = 0.0f;  // each eye drops this share of its width (the left eye its left edge, the right eye its right)
+    float windowWidthM = 0.0f;  // [Galaxy] windowWidthM: the window's width over the table
+    // The view held at Shepard's in the CIC, at render time only (research/51 section 8): the game keeps its map camera in the
+    // player camera's CameraCache.POV (its Flash labels and its cursor's picks project through it), and the host writes this
+    // view there for the main view's CalcSceneView alone ([MEVR] seam MevrBridge::GalaxyViewSwapBegin/End), putting the map
+    // camera back right after. The addresses are the POV's fields in engine memory (game thread).
+    std::uint8_t holdRender = 0;
+    std::uint8_t holdPad[3] = {};
+    float holdLocation[3] = {};
+    std::int32_t holdRotation[3] = {};  // pitch, yaw, roll (Unreal units)
+    float holdFov = 0.0f;
+    std::uint64_t povLocationAddress = 0;  // FVector
+    std::uint64_t povRotationAddress = 0;  // FRotator
+    std::uint64_t povFovAddress = 0;       // float
     GameCamera camera;
     char title[kLabelBytes] = {};
     Object objects[kMaxObjects];

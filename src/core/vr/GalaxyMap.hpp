@@ -34,6 +34,10 @@ struct Settings {
     float worldRadiusM = 1.40f;    // worldRadiusM: the CIC table's radius
     float worldTiltDeg = 35.0f;    // worldTiltDeg: its far edge raised toward you (read from the console, a few metres away)
     float worldLiftM = 0.0f;       // worldLiftM: its centre above the galaxy map console's use point (about 1 m above the floor)
+    bool window = true;            // window: with the map open in the CIC, the game's own map (its 3D scene in stereo, its Flash
+                                   // layer) on a window over the table instead of our hologram (research/51 section 8)
+    float windowWidthM = 2.0f;     // windowWidthM: that window's width
+    float windowDepth = 0.03f;     // windowDepth: infinity's disparity, a share of the window's width (core/vr/CineScreen's depth)
 };
 
 // ---- What the mod publishes ------------------------------------------------------------------------------------------

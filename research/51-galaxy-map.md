@@ -168,3 +168,28 @@ stereo layer at the table, the map's real nebula planes, rings and axes at their
 the planet panel) on the UI panel or cut into pieces. For a Flash level, the movie's own drawing on a panel over the table.
 Picks then go through the game's own cursor (the pointer on the captured picture, projected through the map camera) rather
 than our hologram's objects.
+
+### 8.1 The game's own map over the table (2026-11-04)
+
+The user: keep the game's own map, its art and its stacked layers, rather than our drawing. With the map open in the CIC
+(`[Galaxy] window = 1`) the mod runs two scene captures (`game/SceneCaptureRig`, the spectator's recipe) from the game's own map
+camera, side by side as the 3D cinema screen does (core/vr/CineScreen: parallel cameras, the map's centre on the window's plane,
+infinity `windowDepth` of the width behind), and the host shows each eye its capture on one quad over the table (`windowWidthM`
+2.0 m), with the game's UI (its Flash map: the title, the labels, the travel box) on the panel at the same place. The cluster
+level's nebula, axes and rings come out as the game draws them, in stereo; the controller ray on the window is the game's cursor
+(a click on Newton selected it and brought up the game's travel question).
+
+- **The view is held at render time only.** Writing the held view into `CameraCache.POV` after `Camera.UpdateCamera` hid the
+  map's Flash labels (they project through the player camera; "Newton" appeared once the POV was left alone). The host now swaps
+  the held view into the POV around the main view's `CalcSceneView` alone (a `[MEVR]` seam in Halcyon's hook,
+  `MevrBridge::GalaxyViewSwapBegin/End`, the POV's addresses from the mod) and puts the map camera back: the game keeps its map
+  camera for everything else. The table's place is frozen while the view is held (the player camera no longer says where the
+  CIC is).
+- **The capture targets' texture search.** `scope_capture_source::FindTargetTexture` missed the render targets' textures (the
+  scope capture's too, research/39 section 11): the texture sits at `resource +0xA0 -> +0x8`, inside the search's window, but the
+  pointer at +0xA0 isn't 8-aligned and `sc::FindTexture`'s walk skips unaligned pointers. A fallback walks the same window without
+  the alignment test and accepts only objects with the vtable of a texture the host made on the game's device (`NoteDevice`),
+  asked nothing but GetDesc and AddRef. The window's targets are found at once.
+- Open: the game's travel box ignores the pointer's click in this mode while the console's identical press answers it [verify];
+  the galaxy level (whether its picture is Flash or scene in the window) and going back out a level; the on-foot hologram is
+  still ours (the plan: the game's projector hologram as the visual, our picks on it).
