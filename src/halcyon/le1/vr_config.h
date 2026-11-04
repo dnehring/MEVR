@@ -56,7 +56,8 @@ struct VrConfig
     // Kept as an A/B toggle for diagnostics; poseTagDelay wins when both are on. Default OFF.
     bool  lateLatchPose = false;
     bool  combatHeadTracking = true;  // weapon drawn -> HMD still drives the VR camera/view
-    bool  combatHeadAim    = true;  // weapon drawn -> HMD also drives game aim/ControlRotation
+    // [MEVR] default off (upstream true): the hand aims, never the head; the classic menu's Reset put head aim back on.
+    bool  combatHeadAim    = false;  // weapon drawn -> HMD also drives game aim/ControlRotation
     bool  invertAimYaw     = false;
     bool  invertAimPitch   = false;
     // Camera hold (EXPERIMENTAL, 2026-07-12, user request): weapon-out head aim normally moves the game
@@ -89,7 +90,8 @@ struct VrConfig
     bool  moveFollowsHead  = true;
     // Mako head-aim (EXPERIMENTAL): head drives the cannon turret directly (its own appearance-object field,
     // not ControlRotation) while the chase camera stays put. Default OFF; live write-experiment, units TBD.
-    bool  makoHeadAim      = true;   // Baked ON (cannon follows head)
+    // [MEVR] default off (upstream true, "baked ON"): the Mako's turret follows the hand (game/Mako), never the head.
+    bool  makoHeadAim      = false;
 
     // First-run onboarding: false until the user dismisses the welcome / HDR-off notice once (then saved =1
     // so it never nags again). Fresh installs have no key -> defaults false -> the welcome shows once.
