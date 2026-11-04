@@ -7,6 +7,7 @@
 #include "core/vr/GalaxyHologram.hpp"
 #include "core/Log.hpp"
 #include "game/Player.hpp"
+#include "engine/ProcessEvent.hpp"
 #include "ue3/Memory.hpp"
 #include "ue3/Params.hpp"
 #include "ue3/Reflect.hpp"
@@ -66,18 +67,20 @@ T ReadAt(std::uint8_t const* p) {
     return v;
 }
 
+// The newest live instance (the highest object index: an idle one from an earlier opening may linger).
 ue3::Object* FindLive(ue3::Reflection& r, std::string_view classPath) {
     ue3::Class* const cls = r.FindClass(classPath);
     if (cls == nullptr) {
         return nullptr;
     }
+    ue3::Object* found = nullptr;
     for (std::int32_t i = 0, n = r.ObjectCount(); i < n; ++i) {
         ue3::Object* const o = r.ObjectAt(i);
         if (o != nullptr && r.IsA(o, cls) && r.IsAlive(o) && !r.NameText(o).starts_with("Default__")) {
-            return o;
+            found = o;
         }
     }
-    return nullptr;
+    return found;
 }
 
 // Calls `fn` on `target` with parameters set by `set`; `get` reads the results. False if the function or the call failed.
@@ -269,48 +272,43 @@ public:
             out += std::format("{}{{\"row\": {}, \"label\": {}, \"cells\": {{", row == 0 ? "\n  " : ",\n  ", rowNumber, Esc(rowName));
             bool first = true;
             for (std::int32_t c = 0; c < columns; ++c) {
+                // Every getter that accepts the cell: an int getter truncates a float (0.37 reads 0), so all of them.
                 std::string cell;
                 bool ok = false;
-                CallOn(table, "GetIntEntryII", [&](ue3::Params& p) { p.Set("nRow", row); p.Set("nColumn", c); },
-                       [&](ue3::Params& p) {
-                           if (p.ReturnBool().value_or(false)) {
-                               ok = true;
-                               std::int32_t const v = p.Get<std::int32_t>("nEntry").value_or(0);
-                               std::string const lower = ue3::Lower(names[static_cast<size_t>(c)]);
-                               bool const textual = lower.find("name") != std::string::npos || lower.find("label") != std::string::npos ||
-                                                    lower.find("desc") != std::string::npos || lower.find("title") != std::string::npos;
-                               cell = textual && v > 0 ? std::format("{{\"int\": {}, \"text\": {}}}", v, Esc(Text(v)))
-                                                       : std::format("{{\"int\": {}}}", v);
-                           }
-                       });
-                if (!ok) {
-                    CallOn(table, "GetFloatEntryII", [&](ue3::Params& p) { p.Set("nRow", row); p.Set("nColumn", c); },
-                           [&](ue3::Params& p) {
-                               if (p.ReturnBool().value_or(false)) {
-                                   ok = true;
-                                   cell = std::format("{{\"float\": {}}}", Num(p.Get<float>("fEntry").value_or(0.0f)));
-                               }
-                           });
-                }
-                if (!ok) {
-                    CallOn(table, "GetNameEntryII", [&](ue3::Params& p) { p.Set("nRow", row); p.Set("nColumn", c); },
-                           [&](ue3::Params& p) {
-                               if (p.ReturnBool().value_or(false)) {
-                                   ok = true;
-                                   cell = std::format("{{\"name\": {}}}", Esc(r_.ToString(p.Get<ue3::Name>("nEntry").value_or(ue3::Name{}))));
-                               }
-                           });
-                }
-                if (!ok) {
-                    CallOn(table, "GetStringEntryII", [&](ue3::Params& p) { p.Set("nRow", row); p.Set("nColumn", c); },
-                           [&](ue3::Params& p) {
-                               std::string text = TakeString(p.Get<ue3::FString>("sEntry").value_or(ue3::FString{}));
-                               if (p.ReturnBool().value_or(false)) {
-                                   ok = true;
-                                   cell = std::format("{{\"string\": {}}}", Esc(text));
-                               }
-                           });
-                }
+                auto const at = [&](ue3::Params& p) { p.Set("nRow", row); p.Set("nColumn", c); };
+                CallOn(table, "GetFloatEntryII", at, [&](ue3::Params& p) {
+                    if (p.ReturnBool().value_or(false)) {
+                        cell += std::format("{}\"float\": {}", ok ? ", " : "", Num(p.Get<float>("fEntry").value_or(0.0f)));
+                        ok = true;
+                    }
+                });
+                CallOn(table, "GetIntEntryII", at, [&](ue3::Params& p) {
+                    if (p.ReturnBool().value_or(false)) {
+                        std::int32_t const v = p.Get<std::int32_t>("nEntry").value_or(0);
+                        std::string const lower = ue3::Lower(names[static_cast<size_t>(c)]);
+                        bool const textual = lower.find("name") != std::string::npos || lower.find("label") != std::string::npos ||
+                                             lower.find("desc") != std::string::npos || lower.find("title") != std::string::npos;
+                        cell += std::format("{}\"int\": {}", ok ? ", " : "", v);
+                        if (textual && v > 0) {
+                            cell += std::format(", \"text\": {}", Esc(Text(v)));
+                        }
+                        ok = true;
+                    }
+                });
+                CallOn(table, "GetNameEntryII", at, [&](ue3::Params& p) {
+                    if (p.ReturnBool().value_or(false)) {
+                        cell += std::format("{}\"name\": {}", ok ? ", " : "", Esc(r_.ToString(p.Get<ue3::Name>("nEntry").value_or(ue3::Name{}))));
+                        ok = true;
+                    }
+                });
+                CallOn(table, "GetStringEntryII", at, [&](ue3::Params& p) {
+                    std::string const text = TakeString(p.Get<ue3::FString>("sEntry").value_or(ue3::FString{}));
+                    if (p.ReturnBool().value_or(false)) {
+                        cell += std::format("{}\"string\": {}", ok ? ", " : "", Esc(text));
+                        ok = true;
+                    }
+                });
+                cell = "{" + cell + "}";
                 if (ok) {
                     out += std::format("{}{}: {}", first ? "" : ", ", Esc(names[static_cast<size_t>(c)]), cell);
                     first = false;
@@ -388,7 +386,192 @@ ue3::Object* ReadObject(ue3::Reflection& r, ue3::Object* o, std::string_view fie
     return ReadAt<ue3::Object*>(reinterpret_cast<std::uint8_t const*>(o) + info->offset);
 }
 
+bool gTrace = false;
+int gTraced = 0;
+
+// A traced call's parameters: bytes, ints, floats, strings and arrays of strings.
+void OnFlashCall(ue3::Object* context, ue3::Function* function, void* parms, void* /*result*/) {
+    if (!gTrace || context == nullptr || function == nullptr || parms == nullptr || ++gTraced > 2000) {
+        return;
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    std::string const cls = r.NameText(r.ClassOf(context));
+    std::string args;
+    for (ue3::ParamSpec const& p : r.Parameters(function)) {
+        auto const* at = static_cast<std::uint8_t const*>(parms) + p.offset;
+        std::string value;
+        switch (p.kind) {
+        case ue3::Kind::Byte: value = std::to_string(ReadAt<std::uint8_t>(at)); break;
+        case ue3::Kind::Int: value = std::to_string(ReadAt<std::int32_t>(at)); break;
+        case ue3::Kind::Float: value = Num(ReadAt<float>(at)); break;
+        case ue3::Kind::Str: {
+            auto const s = ReadAt<ue3::FString>(at);
+            value = Esc(s.count > 0 && s.count < 4096 ? mem::Narrow(s) : std::string());
+            break;
+        }
+        case ue3::Kind::Array: {
+            auto const a = ReadAt<ue3::TArray<ue3::FString>>(at);  // the handlers' arguments are arrays of strings
+            value = "[";
+            for (int i = 0; i < std::min(a.count, 24); ++i) {
+                ue3::FString const& s = a.data[i];
+                value += (i == 0 ? "" : ", ") + Esc(s.count > 0 && s.count < 4096 ? mem::Narrow(s) : std::string());
+            }
+            value += a.count > 24 ? std::format(", ... {} in all]", a.count) : "]";
+            break;
+        }
+        default: value = std::format("<{}>", ue3::KindName(p.kind));
+        }
+        args += std::format("{}{}={}", args.empty() ? "" : ", ", p.name, value);
+    }
+    log::Info("galaxy trace: {}.{}({})", cls, r.NameText(function), args);
+}
+
 } // namespace
+
+void TryStartup() {
+    if (!ue3::runtime::Ready()) {
+        return;
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    int added = 0;
+    for (char const* path : {"Engine.BioSFHandler.HandleEvent", "Engine.BioSFHandler.HandleExternalEvent"}) {
+        if (ue3::Function* const f = r.FindFunction(path)) {
+            engine::process_event::AddPostHandler(f, &OnFlashCall);
+            ++added;
+        }
+    }
+    log::Info("galaxy trace: {} of 2 Flash handler functions watched (inert until `mevr galaxy trace on`)", added);
+}
+
+std::string Trace(bool on) {
+    gTrace = on;
+    gTraced = 0;
+    return std::format("galaxy trace {}", on ? "on: the Flash handlers' calls go to the log as `galaxy trace:`" : "off");
+}
+
+std::string Input(int event, float value) {
+    if (!ue3::runtime::Init()) {
+        return "galaxy input: the reflection layer isn't ready";
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Object* const handler = FindLive(r, "SFXGame.BioSFHandler_GalaxyMap");
+    if (handler == nullptr) {
+        return "galaxy input: no live BioSFHandler_GalaxyMap (is the map open?)";
+    }
+    bool const called = CallOn(handler, "HandleInputEvent",
+        [&](ue3::Params& p) {
+            p.Set("Event", static_cast<std::uint8_t>(event));
+            p.Set("fValue", value);
+        },
+        nullptr);
+    return std::format("galaxy input: {}.HandleInputEvent({}, {}) called {}", r.FullName(handler), event, value, called);
+}
+
+namespace {
+ue3::Object* MapPanel(ue3::Reflection& r) {
+    return ReadObject(r, FindLive(r, "SFXGame.BioSFHandler_GalaxyMap"), "oPanel");
+}
+} // namespace
+
+std::string Aim(int index) {
+    if (!ue3::runtime::Init()) {
+        return "galaxy aim: the reflection layer isn't ready";
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Object* const behavior = FindLive(r, "SFXGame.BioCameraBehaviorGalaxy");
+    ue3::Object* const crosshair = ReadObject(r, behavior, "m_pCrossHairObject");
+    auto const info = behavior != nullptr ? r.PropertyOf(r.ClassOf(behavior), "m_pScaleformObjects") : std::nullopt;
+    if (crosshair == nullptr || !info) {
+        return "galaxy aim: no map camera or cross-hair";
+    }
+    auto const array = ReadAt<ue3::TArray<ue3::Object*>>(reinterpret_cast<std::uint8_t const*>(behavior) + info->offset);
+    if (index < 0 || index >= array.count || array.data[index] == nullptr || !ue3::runtime::IsAlive(array.data[index])) {
+        return std::format("galaxy aim: no object {}", index);
+    }
+    auto const at = player::Location(array.data[index]);
+    if (!at) {
+        return "galaxy aim: the object has no place";
+    }
+    bool moved = false;
+    CallOn(crosshair, "SetLocation", [&](ue3::Params& p) { p.Set("NewLocation", *at); },
+        [&](ue3::Params& p) { moved = p.ReturnBool().value_or(false); });
+    return std::format("galaxy aim: the cross-hair to {} at ({:.1f}, {:.1f}, {:.1f}): SetLocation returned {}", r.NameText(array.data[index]),
+                       at->x, at->y, at->z, moved);
+}
+
+std::string Invoke(std::string const& method) {
+    if (!ue3::runtime::Init()) {
+        return "galaxy invoke: the reflection layer isn't ready";
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Object* const panel = MapPanel(r);
+    if (panel == nullptr) {
+        return "galaxy invoke: no map panel";
+    }
+    mem::OwnedString name(mem::Widen(method));
+    std::string result;
+    bool const called = CallOn(panel, "InvokeMethodReturn", [&](ue3::Params& p) { p.Set("sMethodName", name.Get()); },
+        [&](ue3::Params& p) { result = TakeString(p.Return<ue3::FString>().value_or(ue3::FString{})); });
+    return std::format("galaxy invoke: {}() called {}, returned '{}'", method, called, result);
+}
+
+std::string Variable(std::string const& path) {
+    if (!ue3::runtime::Init()) {
+        return "galaxy var: the reflection layer isn't ready";
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Object* const panel = MapPanel(r);
+    if (panel == nullptr) {
+        return "galaxy var: no map panel";
+    }
+    mem::OwnedString name(mem::Widen(path));
+    bool available = false;
+    CallOn(panel, "IsAvailable", [&](ue3::Params& p) { p.Set("sPath", name.Get()); },
+        [&](ue3::Params& p) { available = p.ReturnBool().value_or(false); });
+    std::string value;
+    CallOn(panel, "GetVariableString", [&](ue3::Params& p) { p.Set("sPath", name.Get()); },
+        [&](ue3::Params& p) { value = TakeString(p.Return<ue3::FString>().value_or(ue3::FString{})); });
+    return std::format("galaxy var: {} available {}, '{}'", path, available, value);
+}
+
+std::string Movie() {
+    if (!ue3::runtime::Init()) {
+        return "galaxy movie: the reflection layer isn't ready";
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Object* const handler = FindLive(r, "SFXGame.BioSFHandler_GalaxyMap");
+    ue3::Object* const panel = ReadObject(r, handler, "oPanel");
+    ue3::Object* const instance = ReadObject(r, panel, "MovieRef");
+    ue3::Object* movie = ReadObject(r, instance, "MovieInfo");  // the GFxMovie's GFxMovieInfo holds the SWF
+    if (movie == nullptr) {  // not linked at run time: the package's own asset
+        for (std::int32_t i = 0, n = r.ObjectCount(); i < n && movie == nullptr; ++i) {
+            ue3::Object* const o = r.ObjectAt(i);
+            if (o != nullptr && r.IsAlive(o) && r.FullName(o) == "GFxMovieInfo GUI_SF_GalaxyMap.GalaxyMap") {
+                movie = o;
+            }
+        }
+    }
+    if (movie == nullptr || !ue3::runtime::IsAlive(movie)) {
+        return std::format("galaxy movie: no movie (handler {}, panel {})", ue3::runtime::FullName(handler), ue3::runtime::FullName(panel));
+    }
+    auto const info = r.PropertyOf(r.ClassOf(movie), "RawData");
+    if (!info) {
+        return "galaxy movie: " + r.FullName(movie) + " has no RawData";
+    }
+    auto const bytes = ReadAt<ue3::TArray<std::uint8_t>>(reinterpret_cast<std::uint8_t const*>(movie) + info->offset);
+    if (bytes.data == nullptr || bytes.count <= 0 || bytes.count > 64 * 1024 * 1024) {
+        return std::format("galaxy movie: {}'s RawData is empty ({} bytes)", r.FullName(movie), bytes.count);
+    }
+    std::filesystem::path const folder = OutputFolder();
+    std::error_code ec;
+    std::filesystem::create_directories(folder, ec);
+    std::filesystem::path const path = folder / L"movie.gfx";
+    std::ofstream out(path, std::ios::binary);
+    out.write(reinterpret_cast<char const*>(bytes.data), bytes.count);
+    out.close();
+    return std::format("galaxy movie: wrote {} bytes of {} to {} (starts '{}{}{}')", bytes.count, r.FullName(movie), ini::Utf8(path),
+                       static_cast<char>(bytes.data[0]), static_cast<char>(bytes.data[1]), static_cast<char>(bytes.data[2]));
+}
 
 std::string Click(float u, float v) {
     HWND const window = GameWindow();
@@ -442,6 +625,34 @@ std::string Pick(int index, bool click) {
     std::string out = std::format("galaxy pick: camera ({:.0f}, {:.0f}, {:.0f}) pitch {:.1f} yaw {:.1f} fov {:.1f}, window {}x{}", camera.location[0],
         camera.location[1], camera.location[2], camera.pitch / kUnitToRad * 360.0f / 65536.0f, camera.yaw / kUnitToRad * 360.0f / 65536.0f,
         camera.fovXDeg, client->first, client->second);
+    for (char const* field : {"m_pCrossHairObject", "m_pSelectedObject", "m_pCenterObject"}) {
+        ue3::Object* const o = ReadObject(r, behavior, field);
+        auto const at = o != nullptr && ue3::runtime::IsAlive(o) ? player::Location(o) : std::nullopt;
+        if (at) {
+            float const p[3] = {at->x, at->y, at->z};
+            auto const uv = vr::galaxy_holo::ToGameScreen(camera, p);
+            out += std::format("\n  {}: {} at ({:.1f}, {:.1f}, {:.1f}){}", field, r.NameText(o), at->x, at->y, at->z,
+                uv ? std::format(", screen ({:.3f}, {:.3f})", (*uv)[0], (*uv)[1]) : std::string());
+        } else {
+            out += std::format("\n  {}: none", field);
+        }
+    }
+    {
+        // The camera behaviour's virtual Tick (slot 0x2D8, what execTick calls) and the handler's, as exe offsets, for Ghidra.
+        auto const module = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
+        auto const slot = [&](ue3::Object* o, std::size_t offset) {
+            if (o == nullptr) {
+                return std::uintptr_t{0};
+            }
+            auto const* const vtable = *reinterpret_cast<std::uintptr_t const* const*>(o);
+            return vtable[offset / sizeof(std::uintptr_t)] - module;
+        };
+        out += std::format("\n  behaviour Tick (vtable +0x2D8) at exe+0x{:X}, vtable at exe+0x{:X}", slot(behavior, 0x2D8),
+            *reinterpret_cast<std::uintptr_t const*>(behavior) - module);
+    }
+    if (auto const state = r.PropertyOf(r.ClassOf(behavior), "m_nCurrentState")) {
+        out += std::format("\n  state {}", ReadAt<std::int32_t>(reinterpret_cast<std::uint8_t const*>(behavior) + state->offset));
+    }
     for (int i = 0; i < array.count; ++i) {
         if (index >= 0 && i != index) {
             continue;

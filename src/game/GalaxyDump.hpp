@@ -21,4 +21,23 @@ std::string Click(float u, float v);
 // ToGameScreen with the player camera's view and the window's aspect), clicked; `mevr galaxy where` lists every object's place.
 std::string Pick(int index, bool click);
 
+// The Flash map's calls into the game, for learning its protocol: post-handlers on BioSFHandler.HandleEvent and
+// HandleExternalEvent (registered before the ProcessEvent hook goes in; inert until `mevr galaxy trace on`), logged as
+// `galaxy trace:` with their command and string arguments.
+void TryStartup();
+std::string Trace(bool on);
+// `mevr galaxy input <event> <value>`: the map handler's own HandleInputEvent (2/3 the left stick, 6/7 mouse deltas, 50 select
+// the highlighted galaxy object), as the game's input would call it.
+std::string Input(int event, float value);
+// `mevr galaxy movie`: the open map's Flash movie (its panel's MovieRef, a GFxMovieInfo) RawData to
+// %LOCALAPPDATA%\MEVR\galaxy\movie.gfx, for listing its ActionScript identifiers offline (local game data).
+std::string Movie();
+// `mevr galaxy invoke <method>`: the map panel's InvokeMethodReturn (an ActionScript function on the movie); `mevr galaxy var
+// <path>`: its GetVariableString.
+std::string Invoke(std::string const& method);
+std::string Variable(std::string const& path);
+// `mevr galaxy aim <i>`: the map's cross-hair actor moved onto m_pScaleformObjects[i] (Actor.SetLocation), so the camera
+// behaviour's own tick selects the object nearest it (within m_nScanRange) and flies the camera there.
+std::string Aim(int index);
+
 } // namespace mevr::game::galaxy_dump

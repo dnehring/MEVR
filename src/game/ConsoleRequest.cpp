@@ -352,7 +352,31 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         if (sub == "where") {
             return galaxy_dump::Pick(-1, false);
         }
-        return std::string("usage: mevr galaxy dump [tag] | click <u> <v> | pick <i> | where");
+        if (sub == "aim") {
+            int index = -1;
+            words >> index;
+            return galaxy_dump::Aim(index);
+        }
+        if (sub == "invoke" || sub == "var") {
+            std::string arg;
+            words >> arg;
+            return sub == "invoke" ? galaxy_dump::Invoke(arg) : galaxy_dump::Variable(arg);
+        }
+        if (sub == "movie") {
+            return galaxy_dump::Movie();
+        }
+        if (sub == "trace") {
+            std::string state;
+            words >> state;
+            return galaxy_dump::Trace(state != "off");
+        }
+        if (sub == "input") {
+            int event = -1;
+            float value = 0.0f;
+            words >> event >> value;
+            return galaxy_dump::Input(event, value);
+        }
+        return std::string("usage: mevr galaxy dump [tag] | click <u> <v> | pick <i> | where | trace on|off | input <event> <value>");
     }
     if (verb == "find") {
         // `mevr find <text>`: live objects whose full name holds the text (case-insensitive), numbered for `use` and `activate`
