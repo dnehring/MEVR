@@ -94,7 +94,7 @@ struct Scene {
     std::uint8_t windowOn = 0;
     std::uint8_t windowFloat = 0;  // the targets are FloatRGB (linear) instead of A8R8G8B8
     std::uint8_t windowRound = 0;  // 1: the window is a disc (inscribed in it, soft edge), like the projector's round hologram
-    std::uint8_t windowPad = 0;
+    std::uint8_t windowBackdrop = 0;  // the space behind the map, opacity in percent (0: see-through, the window's alpha its brightness)
     std::uint32_t windowWidth = 0;
     std::uint32_t windowHeight = 0;
     std::uint32_t windowTicks = 0;  // ticks since the captures were enabled (their first renders aren't there yet)

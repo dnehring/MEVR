@@ -42,6 +42,8 @@ struct Settings {
                                    // (0: the captures' rectangle)
     bool windowOnHologram = true;  // windowOnHologram: the window lies where the projector's own hologram is, at its tilt and
                                    // size (the map takes its place; 0: upright over the table, windowWidthM wide)
+    float windowBackdrop = 0.8f;   // windowBackdrop: how opaque the map's space (its starfield's black) is, 0..1, as on the full
+                                   // screen; below 1 the room shows faintly through it (a hologram); 0: only the bright parts cover
 };
 
 // ---- What the mod publishes ------------------------------------------------------------------------------------------

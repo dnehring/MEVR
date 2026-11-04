@@ -580,6 +580,7 @@ cbuffer Params : register(b0) {
     float4 rect;  // the capture's shown part: u0, v0, du, dv
     float4 misc;  // x: the decode gamma (1: an sRGB view decodes it), y: the edge's fade width (a share of the window),
                   // z: 1 a disc inscribed in the window (the projector's round hologram), w: the window's width over its height
+    float4 look;  // x: the backdrop's opacity (the map's space, 0..1)
 };
 struct VsOut {
     float4 pos : SV_Position;
@@ -605,9 +606,10 @@ float4 PSMain(VsOut i) : SV_Target {
         fade = saturate(min(e.x, e.y));
     }
     fade = fade * fade * (3.0 - 2.0 * fade);
-    // Premultiplied, its alpha its brightness: space's black is see-through, the bright nebula covers what's behind (a
-    // hologram's look; pure added light with no alpha drops out of the snapshots' straight-alpha composite).
-    float a = saturate(max(c.r, max(c.g, c.b))) * fade;
+    // Premultiplied, its alpha its brightness but at least the backdrop's opacity: the map's space (its starfield's black)
+    // dims the room behind it as the full screen's did, and below 1 the room still shows faintly through (a hologram's look);
+    // the bright galaxy covers it (pure added light with no alpha drops out of the snapshots' straight-alpha composite).
+    float a = max(saturate(max(c.r, max(c.g, c.b))), look.x) * fade;
     return float4(min(c * fade, a), a);
 }
 )";
@@ -615,6 +617,7 @@ float4 PSMain(VsOut i) : SV_Target {
 struct WindowParams {
     float rect[4];
     float misc[4];
+    float look[4];
 };
 
 struct WindowEye {
@@ -846,6 +849,7 @@ int WindowLayers(Frame const& frame, XrCompositionLayerBaseHeader const** out) {
                     params.misc[1] = round ? 0.05f : 0.04f;
                     params.misc[2] = round ? 1.0f : 0.0f;
                     params.misc[3] = static_cast<float>(shownW) / static_cast<float>(std::max(height, 1));
+                    params.look[0] = std::min(static_cast<float>(scene->windowBackdrop), 100.0f) / 100.0f;
                     c->UpdateSubresource(gWindow.params.Get(), 0, nullptr, &params, 0, 0);
                     ID3D11RenderTargetView* const target = rtv.Get();
                     c->OMSetRenderTargets(1, &target, nullptr);

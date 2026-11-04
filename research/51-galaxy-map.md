@@ -210,6 +210,15 @@ level's nebula, axes and rings come out as the game draws them, in stereo; the c
   below the eyes, facing (0.00, 0.87, 0.49), its centre (the map's cross-hair) where the stock disc's centre was. Seen from the
   console it is foreshortened as the stock hologram is (text on it too). The compositor's quads have no depth, so the disc's
   near edge draws over the console's front panel, which hides the stock hologram's [open].
+- **The map's space as a backdrop** (the user, 2026-11-04: the full screen "had a background image ... so that is easier to see
+  the available planets. We would still want a bit of transparency so it will look like it's a hologram"). The full screen's
+  background is the map level's own starfield (black with stars, snapshot 2026-11-03 22:15 quad0), which the captures carry too,
+  but the window's alpha was its brightness, so space's black let the CIC through: the railing's lights and the crew's orange
+  consoles behind the projector ran across the map. The window shader's alpha is now at least `[Galaxy] windowBackdrop` (0.8 by
+  default) inside the disc: the starfield's black dims the room behind it to a fifth, the bright galaxy still covers it fully, and
+  the rim keeps its fade. Published in the Scene's former pad byte (`windowBackdrop`, percent), so the layout didn't change.
+  Measured in the game (snapshot 2026-11-04 07:52): the room shows faintly through the map's space; 1.0 is the full screen's
+  opaque look, 0 the old see-through one.
 - Open: the game's travel box ignores the pointer's click in this mode while the console's identical press answers it [verify];
   the galaxy level (whether its picture is Flash or scene in the window) and going back out a level; the on-foot hologram is
   still ours (the plan: the game's projector hologram as the visual, our picks on it).

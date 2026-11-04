@@ -360,7 +360,8 @@ switching frameworks.
   level's 3D scene, not Flash** (`BIOA_GalaxyMap_T`'s art; section 7's "all Flash" was measured at the galaxy level). **With the map open,
   the game's own map is a stereo window over the table** (section 8.1; `[Galaxy] window`, `windowWidthM`, `windowDepth`,
   `windowRound`: a disc like the projector's hologram, by default; `windowOnHologram`: lying where that hologram is, at its 29-degree
-  tilt and 6 m size, measured live from `InterpActor_0`, by default): two scene captures from the map camera (`game/SceneCaptureRig`,
+  tilt and 6 m size, measured live from `InterpActor_0`, by default; `windowBackdrop` 0.8: the map's space covers the room that
+  much, as the full screen's starfield did, 0 see-through): two scene captures from the map camera (`game/SceneCaptureRig`,
   CineScreen's parallel cameras and crop), its Flash layer on the UI panel at the same place, the view held at Shepard's at render
   time only (`[MEVR]` seam `MevrBridge::GalaxyViewSwapBegin/End` around the main view's `CalcSceneView`). Tools: `mevr galaxy dump|where|pick|click|
   press|trace|input|movie|invoke|var|aim`, `mevr props`/`setprop`, `tools/make-galaxy-pick-recording.py` (`--world`, `--snapshot`,
