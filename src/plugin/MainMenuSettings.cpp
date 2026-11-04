@@ -201,7 +201,9 @@ void Settings::Read(menu::Values& v) {
     Ini ini;
     ini.pending = &pending_;
     if (!path.empty()) {
-        for (wchar_t const* s : {L"Hands", L"Holsters", L"Controls", L"Throwables", L"Sights", L"Camera", L"Arms", L"Menu", L"Comfort", L"Upscale", L"Cinematics"}) {
+        // Every section a row below reads (WorldUi was missing: the Hacking screen row fell back to its default after a write).
+        for (wchar_t const* s : {L"Hands", L"Holsters", L"Controls", L"Throwables", L"Sights", L"Camera", L"Arms", L"Menu", L"Comfort",
+                                 L"Upscale", L"Cinematics", L"WorldUi"}) {
             ini.sections[Narrow(s)] = ReadSection(path, s);
         }
     }
