@@ -7,7 +7,7 @@ headset session in the Mako. Section 7 is the checklist.
 
 | Hand | Control | Movement | Effect |
 |---|---|---|---|
-| Left | Throttle lever | Grip it, push forward or pull back | Speed or reverse. Stays where it's left |
+| Left | Throttle lever | Grip it, push forward or pull back | Speed or reverse. Springs back to neutral when let go (`leverReturns = 1`, the user 2026-11-03 and 2026-11-04; stage 1 held its place) |
 | Left | Throttle lever | X and Y while held | X: jump jets, or upright when flipped. Y: boost |
 | Right | Drive stick | Grip it, twist about the stick's own axis | Steering. Springs to centre on release |
 | Right | Drive stick | Trigger while held | Machine gun |

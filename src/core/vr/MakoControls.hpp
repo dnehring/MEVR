@@ -9,7 +9,7 @@
 
 // Physical Mako controls, stage 1 (research/46; LE1, game mode 1, the current chase camera). Two controls fixed in tracking
 // space relative to the seat, driven by real hand movement. The left hand grips a throttle lever and pushes it forward or
-// pulls it back (it stays where it's left); the right hand grips a drive stick and tilts it like a flight stick (it springs
+// pulls it back (let go, it springs back to neutral: leverReturns, the user's choice 2026-11-03 and 2026-11-04); the right hand grips a drive stick and tilts it like a flight stick (it springs
 // back to centre): side to side steers, forward and back pitches the Mako while its thrusters fire (game/MakoControls; the user,
 // 2026-11-03). `stickTwist` keeps the first design, a twist about the stick's own axis. Movement counts from where the hand grabbed, so a grab never jerks the Mako and no exact
 // grab spot is needed. Pure parts here, unit-tested (tests/Main.cpp TestMakoControls); game/MakoControls feeds the

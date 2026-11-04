@@ -413,7 +413,7 @@ switching frameworks.
   `VehicleMotion` (speed, yaw rate with the 65536 wrap) drives the vignette in the Mako (`vignetteWhen` applies). Halcyon's
   `makoHeadAim = 0` stays. Logs `mako:`; snapshot `"mod"."mako"`.
 - LE1 Mako controls, stage 1 ([research/46](research/46-mako-controls.md), HostServices v23 `setMakoControls`; `core/vr/MakoControls`, `game/MakoControls`;
-  `[Mako] controls`): a grabbed throttle lever (left, holds its place, X jump, Y boost) and a stick (right, springs back, trigger machine gun, A cannon,
+  `[Mako] controls`): a grabbed throttle lever (left, springs back to neutral when let go: `leverReturns = 1`, the user 2026-11-04; X jump, Y boost) and a stick (right, springs back, trigger machine gun, A cannon,
   thumbstick turret) at the seat, drawn as two flat quads; the values overwrite `Vehicle.Throttle`/`Steering` in a `BioVehicleBase.SetInputs` post-handler.
   **The stick tilts** (2026-11-03, research/47 "The stick tilts"): the hand's travel from the grab as a tilt; left/right steer, forward/back pitch the
   Mako's rigid body while the jets (`bJumpJetsOn`) or booster fire (`thrusterPitchDeg`); their fuel is partly given back while they fire

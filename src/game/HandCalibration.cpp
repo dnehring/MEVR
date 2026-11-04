@@ -520,7 +520,7 @@ constexpr char const* kMakoBlock =
     "aimRangeM = 200\n"
     "calibratedLine = 1\n"
     "; Physical controls (research/46). controls: 1 = a throttle lever on the seat's left armrest (grip it, push forward or\n"
-    "; pull back; it stays where you leave it; X is jump and upright, Y is boost while held) and a drive stick on the right one\n"
+    "; pull back; let go and it springs back to neutral; X is jump and upright, Y is boost while held) and a drive stick on the right one\n"
     "; (grip it, TILT it left and right to steer, forward and back to pitch the Mako while its thrusters fire; it springs back;\n"
     "; stickTwist = 1: twist it to steer instead; the trigger fires the machine gun, A the cannon, the thumbstick aims the\n"
     "; turret while held; let go and your hand aims it). Until you grab one the game's own controls work as always; 0 = they\n"

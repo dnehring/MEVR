@@ -85,9 +85,10 @@ Each needs a headset verdict, or ships off. Source: notes/next-vr-session.md ste
   10-27), the sniper's eyepiece and shorter pull, the 3.5x/7x flick, ADS without flicker.
 - [ ] **[H] Scope capture** (on since 2026-11-04): sharp, steady, upright; its cost in a dense scene (+0.5 ms measured
   only in a light one) (research/39).
-- [ ] **[H] Mako controls and the cockpit** (both on): the fixes after the player's two drives (stabiliser, spin
+- [x] **[H] Mako controls and the cockpit** (both on): the fixes after the player's two drives (stabiliser, spin
   direction, lever notch, seat, hands on the handles) were checked on the fake headset only; comfort of the full pitch and
   roll; the turret following the hand; a doubled crosshair (research/44, 46, 47).
+  **Validated by the owner** in the headset on 2026-11-03 ("I did validate the mako play yesterday", 2026-11-04).
 - [ ] **[H] Galaxy map in the CIC**: going to the galaxy level and back out (research/51).
 - [ ] **[H] Grenades and melee**: landings were never right before 2026-11-03; false melee strikes while aiming or reloading.
 - [ ] **[H] Calibration's redesigned rifle step** (it looped for the player on 2026-10-23); without it long guns borrow the
@@ -219,11 +220,13 @@ Each needs a headset verdict, or ships off. Source: notes/next-vr-session.md ste
 - [ ] [H+C] **Promo footage**: the spectator camera has never run in the game (research/49); a trailer needs it.
 
 ### Found on 2026-11-04 while doing these
-- [ ] [C] **The Mako's left trigger** may still reach the game as LB (boost) while a cockpit control is held: research/47
+- [x] [C] **The Mako's left trigger** may still reach the game as LB (boost) while a cockpit control is held: research/47
   says it reaches the game as nothing then, but `GamepadMapping.cpp` (around line 476) zeroes only the analog LT, and with
   the default `leftTrigger = lb` it is LB; the unit test covers only `leftTrigger = lt`.
-- [ ] [D] **The Mako lever**: CLAUDE.md, `MakoControls.hpp` and the default ini text say it holds its place, but the default is
+  **Fixed 2026-11-04:** the trigger's LB is cleared off the lever too (a boost begun on the lever's Y stays); unit-tested.
+- [x] [D] **The Mako lever**: CLAUDE.md, `MakoControls.hpp` and the default ini text say it holds its place, but the default is
   `leverReturns = 1` (back to neutral); the ini text contradicts itself. Decide, then make the texts agree.
+  **Decided by the owner 2026-11-04: it springs back** (the default); the texts say so now.
 - [ ] [D] **The game pointer on the 3D cinema screen** is off by default (`[Pointer] flatCine = 0`), so the wheel can't be
   clicked there.
 - [ ] [C] **The cockpit package** in `build\cockpit-hull` predates commit 891ba5e (`tools/cockpit`): rebuild it before packaging.
