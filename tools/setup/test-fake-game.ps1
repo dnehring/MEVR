@@ -57,16 +57,25 @@ if (-not $Payload) {
     New-Item -ItemType Directory -Force $Payload | Out-Null
     $asi = Join-Path $repo 'build-mono\Release\LE1MEVR.asi'
     if (-not (Test-Path $asi)) { $asi = Join-Path $Build 'Release\LE1MEVR.asi' }
-    Copy-Item $asi $Payload
+    if (Test-Path $asi) {
+        Copy-Item $asi $Payload
+    } else {
+        # No mod built here (a worktree that built only the setup): a stand-in, as the fake game never loads it.
+        [IO.File]::WriteAllText((Join-Path $Payload 'LE1MEVR.asi'), 'stand-in LE1MEVR.asi (test-fake-game.ps1)')
+    }
     Copy-Item (Join-Path $Build 'Release\bink2w64.dll') $Payload
     Copy-Item -Recurse (Join-Path $repo 'third_party\fonts') (Join-Path $Payload 'fonts')
     Copy-Item -Recurse (Join-Path $repo 'assets\menu') (Join-Path $Payload 'menu')
-    # The Mako's cockpit (research/47), when its package is built: into CookedPCConsole with a TOC entry.
+    # The Mako's cockpit (research/47), when its package is built: into CookedPCConsole with a TOC entry. Without a built
+    # package a stand-in of a few KB (the setup only needs its size for the TOC entry), so Repair's TOC entry is always tested.
     $cockpitPackage = Join-Path $repo 'build\cockpit-hull\BIOG_MEVR_Cockpit.pcc'
+    New-Item -ItemType Directory -Force (Join-Path $Payload 'cockpit') | Out-Null
     if (Test-Path $cockpitPackage) {
-        New-Item -ItemType Directory -Force (Join-Path $Payload 'cockpit') | Out-Null
         Copy-Item $cockpitPackage (Join-Path $Payload 'cockpit')
         python (Join-Path $repo 'tools\cockpit\place.py') --script (Join-Path $Payload 'cockpit\cockpit.txt') | Out-Null
+    } else {
+        [IO.File]::WriteAllBytes((Join-Path $Payload 'cockpit\BIOG_MEVR_Cockpit.pcc'), [byte[]](@(0xC1, 0x83, 0x2A, 0x9E) + (1..4092 | ForEach-Object { 0 })))
+        [IO.File]::WriteAllText((Join-Path $Payload 'cockpit\cockpit.txt'), "# stand-in cockpit script (test-fake-game.ps1)`r`n")
     }
 }
 $withCockpit = Test-Path (Join-Path $Payload 'cockpit\BIOG_MEVR_Cockpit.pcc')
@@ -114,11 +123,16 @@ $melevr = $melevr -replace '(?m)^sfr2HalfEyeUU = .*$', 'sfr2HalfEyeUU = 2.9'
 if ($melevr -notmatch 'sfr2HalfEyeUU') { $melevr = $melevr -replace '\[profile:Default\]\r\n', "[profile:Default]`r`nsfr2HalfEyeUU = 2.9`r`n" }
 [IO.File]::WriteAllText((Join-Path $win64 'ASI\MELEVR.ini'), $melevr)
 
-# Steam's "verify files" puts RAD's DLL back, and a menu file goes missing: Repair.
+# Steam's "verify files" puts RAD's DLL back (and the game's own TOC), and a menu file goes missing: Repair.
 Copy-Item $BinkDll (Join-Path $win64 'bink2w64.dll') -Force
 Remove-Item (Join-Path $win64 'ASI\menu\main.rcss')
 if ($withCockpit) { Copy-Item $gameToc $toc -Force }
+Run-Setup @('--status') | Out-Null
+$st = Get-Content -Raw (Join-Path $scratch 'setup-cli.txt')
+Check ($st -match '(?m)^needs repair: .*bink2w64\.dll' -and $st -match '(?m)^needs repair: .*main\.rcss' -and (-not $withCockpit -or $st -match '(?m)^needs repair: .*PCConsoleTOC\.bin')) 'status after "verify files": the loader, the menu file and the TOC need repair'
 Check ((Run-Setup @('--repair')) -eq 0) 'repair'
+Run-Setup @('--status') | Out-Null
+Check ((Get-Content -Raw (Join-Path $scratch 'setup-cli.txt')) -match '(?m)^needs repair: nothing') 'status after repair: nothing to repair'
 if ($withCockpit) { Check ((Get-FileHash $toc).Hash -eq $tocInstalled) 'repair: the cockpit''s TOC entry back' }
 Check ((Get-Item (Join-Path $win64 'bink2w64.dll')).VersionInfo.ProductName -eq 'MEVR ASI loader') 'repair: our loader back'
 Check (Test-Path (Join-Path $win64 'ASI\menu\main.rcss')) 'repair: the menu file back'
@@ -214,6 +228,60 @@ Check (Test-Path (Join-Path $win64 'steam_appid.txt')) 'steam_appid.txt left (no
 Remove-Item (Join-Path $win64 'steam_appid.txt')
 $diff = Compare-Object $before (Snapshot)
 if ($diff) { $diff | ForEach-Object { Write-Output "  differs: $($_.SideIndicator) $($_.InputObject)" } }
+Check (-not $diff) 'the fake game folder is byte for byte what it was'
+
+# research/33 section 9. A game never started on this PC: no GamerSettings.ini (nor BIOEngine.ini). The install goes on and
+# keeps the VR game settings; Repair applies them once the game has made its file; uninstall leaves the game's own file.
+$gamerFile = Join-Path $config 'GamerSettings.ini'
+$engineFile = Join-Path $config 'BIOEngine.ini'
+Remove-Item $gamerFile, $engineFile
+$beforeFirstStart = Snapshot
+Check ((Run-Setup @('--install', '--source', 'Steam', '--quality', 'performance')) -eq 0) 'install on a game never started'
+$out = Get-Content -Raw (Join-Path $scratch 'setup-cli.txt')
+Check ($out -match "hasn't been started on this PC yet" -and $out -match '(?m)^game settings waiting for the game''s first start: 3072 x 3188') 'install: says so, and the settings wait'
+Check (-not (Test-Path $gamerFile)) 'install: no GamerSettings.ini made up'
+Check ((Get-Content -Raw (Join-Path $win64 'ASI\MELEVR.ini')) -match '(?m)^sfr2ResX = 4096') 'install: MELEVR.ini''s target waits too'
+Check ((Run-Setup @('--repair')) -eq 0) 'repair before the first start'
+Check ((Get-Content -Raw (Join-Path $scratch 'setup-cli.txt')) -match 'still wait for the game''s first start') 'repair: the settings still wait'
+# The game's first start makes its file (as the game writes it: full screen, its own resolution).
+$firstGamer = "[SystemSettings]`r`nFullscreen=True`r`nResX=1920`r`nResY=1080`r`nUseVSync=True`r`nMotionBlur=True`r`n`r`n[HDR]`r`nDesiredRange=DynamicRange_HDR`r`n"
+[IO.File]::WriteAllText($gamerFile, $firstGamer)
+Check ((Run-Setup @('--repair')) -eq 0) 'repair after the first start'
+$g = Get-Content -Raw $gamerFile
+Check ($g -match '(?m)^ResX=3072' -and $g -match '(?m)^ResY=3188' -and $g -match '(?m)^BorderlessWindow=True' -and $g -match '(?m)^Fullscreen=False' -and $g -match 'DynamicRange_SDR') 'repair: the waiting VR game settings applied'
+Check ((Get-Content -Raw (Join-Path $win64 'ASI\MELEVR.ini')) -match '(?m)^sfr2ResX = 3072') 'repair: MELEVR.ini''s target with them'
+$out = Get-Content -Raw (Join-Path $scratch 'setup-cli.txt')
+Check ($out -match '(?m)^game settings applied: yes' -and $out -notmatch 'game settings waiting') 'repair: nothing waits any more'
+Check ((Run-Setup @('--uninstall')) -eq 0) 'uninstall'
+Check ((Get-Content -Raw $gamerFile) -eq $firstGamer) 'uninstall: the game''s own GamerSettings.ini, exactly'
+Remove-Item $gamerFile
+$diff = Compare-Object $beforeFirstStart (Snapshot)
+if ($diff) { $diff | ForEach-Object { Write-Output "  differs: $($_.SideIndicator) $($_.InputObject)" } }
+Check (-not $diff) 'the never-started game folder is byte for byte what it was'
+[IO.File]::WriteAllText($gamerFile, $gamer)
+[IO.File]::WriteAllText($engineFile, "[Engine.GameEngine]`r`nSmoothFrameRate=TRUE`r`nMaxSmoothedFrameRate=62`r`n")
+
+# Upgrading from Halcyon's upstream MELE-VR, its MELEVR.ini in the ASI folder (AER, third person, its welcome, Insert, the
+# mirror every frame): every slot normalised, the player's other values kept; "keep my settings" puts it back exactly.
+New-Item -ItemType Directory -Force (Join-Path $win64 'ASI') | Out-Null
+$upstreamIni = "[active]`nprofile=Default`n`n[hotkeys]`nenabled=1`n`n[profile:Default]`nvrMode = 1`nfirstRunDone = 0`nmenuKey = 45`nfpEnabled = 0`n" +
+    "combatHeadAim = 1`nmirrorPresentEvery = 1`ndepthPopKeyEnabled = 1`nsfr2HalfEyeUU = 3.4`n`n[profile:Custom 1]`nvrMode = 3`nfpEnabled = 0`n"
+[IO.File]::WriteAllText((Join-Path $win64 'ASI\MELEVR.ini'), $upstreamIni)
+$beforeUpgrade = Snapshot
+Check ((Run-Setup @('--install', '--source', 'Steam', '--quality', 'keep')) -eq 0) 'install over upstream''s MELEVR.ini'
+$m = Get-Content -Raw (Join-Path $win64 'ASI\MELEVR.ini')
+$slots = [regex]::Split($m, '(?m)^\[profile:')
+Check ($slots.Count -eq 3 -and @($slots[1..2] | Where-Object { $_ -match '(?m)^vrMode = 2' -and $_ -match '(?m)^fpEnabled = 1' -and $_ -match '(?m)^firstRunDone = 1' -and
+    $_ -match '(?m)^menuKey = 220' -and $_ -match '(?m)^mirrorPresentEvery = 2' -and $_ -match '(?m)^depthPopKeyEnabled = 0' -and $_ -match '(?m)^sfr2Metric = 1' }).Count -eq 2) 'MELEVR.ini: both slots as a fresh install writes them'
+Check ($m -match '(?m)^sfr2HalfEyeUU = 3\.4' -and $m -match '(?m)^enabled=0') 'MELEVR.ini: the player''s tuning kept, the F-key hotkeys off'
+Check ((Get-Content -Raw (Join-Path $win64 'ASI\MEVR-install.json')) -match '"key": "fpEnabled"') 'the manifest records each change'
+Check ((Run-Setup @('--uninstall', '--keep-settings')) -eq 0) 'uninstall, keeping the VR settings'
+Check ((Get-Content -Raw (Join-Path $win64 'ASI\MELEVR.ini')) -eq $upstreamIni) 'kept MELEVR.ini: exactly as it came'
+$diff = Compare-Object $beforeUpgrade (Snapshot)
+if ($diff) { $diff | ForEach-Object { Write-Output "  differs: $($_.SideIndicator) $($_.InputObject)" } }
+Check (-not $diff) 'the folder is byte for byte what it was before the upgrade'
+Remove-Item -Recurse -Force (Join-Path $win64 'ASI')
+$diff = Compare-Object $before (Snapshot)
 Check (-not $diff) 'the fake game folder is byte for byte what it was'
 
 Write-Output $(if ($failures -eq 0) { 'fake game test passed' } else { "fake game test FAILED ($failures)" })

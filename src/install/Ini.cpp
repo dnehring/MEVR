@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <iterator>
 
 namespace mevr::install::ini {
 namespace {
@@ -341,6 +342,12 @@ std::string HalcyonReleaseIni() {
     return out;
 }
 
+namespace {
+// Profile keys only MEVR's copy of Halcyon reads and writes (its save writes every one; upstream's code has none of them).
+constexpr char const* kMevrOnlyKeys[] = {"sfr2Metric", "sfr2MetricDepth", "sfr2MetricEyeFrustum", "worldLockedPanels", "recenterTiltDeg",
+    "hdrPaperWhiteNits"};
+} // namespace
+
 std::string FixHalcyonIni(std::string_view text, std::vector<Edit>* edits) {
     std::string out(text);
     if (auto const v = Get(out, "hotkeys", "enabled"); v && *v == "1") {
@@ -350,6 +357,13 @@ std::string FixHalcyonIni(std::string_view text, std::vector<Edit>* edits) {
         if (section.rfind("profile:", 0) != 0) {
             continue;
         }
+        // A slot this mod never wrote: none of the keys only MEVR's Halcyon knows ([MEVR] seams in vr_config.cpp; every
+        // MEVR path writes sfr2Metric: the setup's file, tools/deploy-asi.ps1, the fix below; the in-game save writes them
+        // all, so a slot saved in game stays recognised after an uninstall put back the sfr2Metric we added). So Halcyon's
+        // upstream MELE-VR file, or an old starting file, copied in: its mode, first person, mirror rate and depth-pop key
+        // are upstream's (AER or DIBR, third person, every frame, P on), not choices made in this mod's menu.
+        bool const foreign = std::none_of(std::begin(kMevrOnlyKeys), std::end(kMevrOnlyKeys),
+            [&](char const* key) { return Get(text, section, key).has_value(); });
         // A sparse slot loads Halcyon's code defaults for what it lacks (Insert, head aim on): written in when missing.
         if (auto const v = Get(out, section, "menuKey"); !v || *v != "220") {
             out = Set(out, section, "menuKey", "220", edits);
@@ -361,6 +375,25 @@ std::string FixHalcyonIni(std::string_view text, std::vector<Edit>* edits) {
         }
         if (auto const v = Get(out, section, "hudPanelFollowDeg"); v && *v == "50.0") {
             out = Set(out, section, "hudPanelFollowDeg", "70.0", edits);
+        }
+        // Halcyon's welcome ("INSERT opens this menu") is never right in this mod: seen, in every slot.
+        if (auto const v = Get(out, section, "firstRunDone"); !v || *v != "1") {
+            out = Set(out, section, "firstRunDone", "1", edits);
+        }
+        // What a fresh install writes (HalcyonReleaseIni): in a foreign slot always, in ours only where missing (a missing
+        // key loads Halcyon's code default: third person, the mirror every frame, the depth-pop key on; vrMode's default
+        // is already Stereo). Where the slot is ours, the player's own choice from the menu stays.
+        struct Fresh {
+            char const* key;
+            char const* value;
+            bool whenMissing;
+        };
+        for (Fresh const& f : {Fresh{"vrMode", "2", false}, Fresh{"fpEnabled", "1", true}, Fresh{"mirrorPresentEvery", "2", true},
+                 Fresh{"depthPopKeyEnabled", "0", true}}) {
+            auto const v = Get(out, section, f.key);
+            if ((!v && (foreign || f.whenMissing)) || (v && foreign && *v != f.value)) {
+                out = Set(out, section, f.key, f.value, edits);
+            }
         }
         if (!Get(out, section, "sfr2Metric")) {
             out = Set(out, section, "sfr2Metric", "1", edits);

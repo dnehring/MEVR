@@ -51,6 +51,19 @@ struct PackRecord {
     std::string installedAt;  // ISO 8601, local time
 };
 
+// The VR game settings the player chose when GamerSettings.ini didn't exist yet (the game makes it on its first start):
+// kept here and applied once it does (Repair, the setup's "Start the game once", Settings > Apply). Mirrors
+// settings::Choices.
+struct PendingSettings {
+    int width = 0;  // the stereo target; 0: keep the file's
+    int height = 0;
+    bool vsyncOff = true;
+    bool motionBlurOff = true;
+    bool filmGrainOff = true;
+    bool hdrOff = true;
+    bool operator==(PendingSettings const&) const = default;
+};
+
 struct Manifest {
     int schema = 1;
     std::string game = "LE1";
@@ -62,6 +75,7 @@ struct Manifest {
     std::vector<std::string> dirs;  // folders we created (removed on uninstall when empty), in creation order
     std::vector<PackRecord> packs;
     bool gameSettings = false;  // the VR game settings are applied
+    std::optional<PendingSettings> pendingSettings;  // chosen but not applied yet: the game hasn't made GamerSettings.ini
 
     FileEntry* Find(std::string_view path);
     FileEntry const* Find(std::string_view path) const;
@@ -156,6 +170,9 @@ public:
     // `from` (bink2w64_original.dll), or `relative` as a file we added (with its current hash).
     bool AdoptRenamed(std::string_view from, std::string_view to);
     bool AdoptAdded(std::string_view relative);
+    // `name`'s entry in the TOC at `relative`, already there, as one we added (taken out on uninstall). Only for names no
+    // game file has (the cockpit's package). No-op if it isn't there or is on record.
+    bool AdoptTocEntry(std::string_view relative, std::string_view name);
     // Forgets an entry (left alone on uninstall).
     void Forget(std::string_view relative);
 

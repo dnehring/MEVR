@@ -40,7 +40,8 @@
 
 	<!-- Shared: a job's progress and the log, on every page while something runs or after it ran. -->
 	<div data-if="busy" class="row"><div class="lead i-timer"/><div class="rl"><div class="rlab">{{progress_text}}</div>
-		<div class="progress"><div class="fill" data-style-width="progress + '%'"/></div></div></div>
+		<div class="progress"><div class="fill" data-style-width="progress + '%'"/></div></div>
+		<button class="btn" data-if="can_cancel" data-event-click="act('stop_waiting')"><div class="sweep"/><span>Stop waiting</span><div class="tick"/></button></div>
 	<div data-if="waiting" class="row warnrow"><div class="lead i-timer"/><div class="rl"><div class="rlab">Waiting for Mass Effect to close</div><div class="rdesc">{{wait_text}}</div></div></div>
 
 	<!-- ===================================================================================== Welcome -->
@@ -58,8 +59,10 @@
 				<div class="heroh">{{hero_title}}</div>
 				<div class="herop">{{hero_text}}</div>
 			</div>
-			<button class="btn primary" data-if="!installed" data-class-disabled="!can_install || busy" data-event-click="page = 'install'"><div class="sweep"/><div class="bi i-download"/><span>Install</span></button>
-			<button class="btn primary" data-if="installed" data-class-disabled="busy || waiting" data-event-click="act('launch')"><div class="sweep"/><div class="bi i-play"/><span>Launch</span></button>
+			<!-- One button: what matters most now (SetupApp::UpdateHero): install, launch, repair, start the game once, apply the waiting settings. -->
+			<button class="btn primary" data-if="hero_action != ''" data-class-disabled="!hero_enabled || busy || waiting" data-event-click="act(hero_action)"><div class="sweep"/>
+				<div class="bi i-download" data-if="hero_action == 'goto_install'"/><div class="bi i-play" data-if="hero_action == 'launch' || hero_action == 'first_start'"/>
+				<div class="bi i-wrench" data-if="hero_action == 'repair'"/><div class="bi i-sliders" data-if="hero_action == 'apply_pending'"/><span>{{hero_button}}</span></button>
 		</div>
 		<div class="tiles">
 			<div class="tile" data-class-good="game_ok" data-class-bad="!game_ok"><div class="tl">Game</div><div class="tv small">{{game_title}}</div><div class="ts">{{game_text}}</div></div>
@@ -97,11 +100,13 @@
 			<button class="btn" data-event-click="act('admin')"><div class="sweep"/><span>Restart as admin</span><div class="tick"/></button></div>
 		<div data-if="upstream_found" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">Halcyon's MELE-VR is installed</div><div class="rdesc">{{upstream_text}}</div></div></div>
 		<div data-if="!has_payload" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">This copy can't install</div><div class="rdesc">It's the one kept in the game's folder for uninstalling and optional content. Run MEVR-Setup.exe from the download to install or repair.</div></div></div>
+		<div data-if="game_ok &amp;&amp; !has_gamer_settings" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">Mass Effect 1 hasn't been started on this PC yet</div><div class="rdesc">{{first_start_text}}</div></div>
+			<button class="btn" data-class-disabled="busy || waiting" data-event-click="act('first_start')"><div class="sweep"/><div class="bi i-play"/><span>Start the game once</span><div class="tick"/></button></div>
 		<div class="group">
 			<div class="gtitle"><span>What goes in</span><div class="gline"/></div>
 			<div class="row"><div class="lead i-check"/><div class="rl"><div class="rlab">The VR mod</div><div class="rdesc">LE1MEVR.asi, its menu and fonts, in Binaries\Win64\ASI</div></div></div>
 			<div class="row"><div class="lead i-check"/><div class="rl"><div class="rlab">ASI loader</div><div class="rdesc">{{loader_plan}}</div></div></div>
-			<div class="row"><div class="lead i-check"/><div class="rl"><div class="rlab">Renderer settings</div><div class="rdesc">Halcyon's MELEVR.ini, only if there's none yet; an existing one keeps your profiles (only the menu key and head aim are set)</div></div></div>
+			<div class="row"><div class="lead i-check"/><div class="rl"><div class="rlab">Renderer settings</div><div class="rdesc">Halcyon's MELEVR.ini, only if there's none yet. An existing one keeps your profiles: only the menu key, head aim and its welcome are set, and profiles from Halcyon's own MELE-VR also get this mod's VR mode, first person and mirror rate (recorded: an uninstall that keeps your VR settings puts them back).</div></div></div>
 			<div class="row"><div class="rl"><div class="rlab">VR game settings</div><div class="rdesc">Borderless window at the VR resolution, VSync, motion blur and film grain off, HDR off. Your values are kept for Restore.</div></div>
 				<button class="tog" data-class-on="opt_settings" data-event-click="opt_settings = !opt_settings"><div class="knob"/></button></div>
 			<div class="row" data-class-disabled="!opt_settings"><div class="rl"><div class="rlab">Render resolution</div><div class="rdesc">{{quality_text}}</div></div>
@@ -145,7 +150,9 @@
 	<div data-if="page == 'settings'">
 		<div class="stitle">VR game settings</div>
 		<div class="sdesc">The game's own graphics settings (GamerSettings.ini) that VR needs. Restore puts your values back.</div>
-		<div class="row warnrow" data-if="!has_gamer_settings &amp;&amp; game_ok"><div class="lead i-warn"/><div class="rl"><div class="rlab">Start the game once first</div><div class="rdesc">Its settings file is made on the first start. Start Mass Effect 1, quit, and come back.</div></div></div>
+		<div class="row warnrow" data-if="!has_gamer_settings &amp;&amp; game_ok"><div class="lead i-warn"/><div class="rl"><div class="rlab">Start the game once first</div><div class="rdesc">Its settings file is made on the first start. {{first_start_text}}</div></div>
+			<button class="btn" data-class-disabled="busy || waiting" data-event-click="act('first_start')"><div class="sweep"/><div class="bi i-play"/><span>Start the game once</span><div class="tick"/></button></div>
+		<div class="row warnrow" data-if="has_gamer_settings &amp;&amp; settings_pending &amp;&amp; installed"><div class="lead i-warn"/><div class="rl"><div class="rlab">Waiting since the install</div><div class="rdesc">The VR game settings you chose when you installed haven't gone on yet: the game hadn't made this file then. Apply puts on what's chosen below.</div></div></div>
 		<div class="row warnrow" data-if="gamer_read_only"><div class="lead i-warn"/><div class="rl"><div class="rlab">GamerSettings.ini is read-only</div><div class="rdesc">You or a tool ticked Read-only in its Properties (Game\ME1\BioGame\Config), so nothing can be applied to it. Untick it, then Apply.</div></div></div>
 		<div class="tiles">
 			<div class="tile"><div class="tl">Resolution</div><div class="tv small">{{cur_res}}</div></div>
@@ -184,7 +191,7 @@
 	<!-- ===================================================================================== Repair -->
 	<div data-if="page == 'repair'">
 		<div class="stitle">Repair</div>
-		<div class="sdesc">Checks every file the install put in and puts back what's missing or changed. Steam's "verify files" can remove the loader: this brings it back.</div>
+		<div class="sdesc">Checks every file the install put in and puts back what's missing or changed. Steam's or the EA app's "verify files" puts the game's own loader and file table back (the mod and the Mako's cockpit then stay off): this brings ours back. It also applies VR game settings still waiting for the game's first start.</div>
 		<div class="row"><div class="rl"><div class="rlab">Still not right?</div><div class="rdesc">Report a problem: a zip with the logs and a summary for an issue or your AI assistant.</div></div>
 			<button class="btn" data-class-disabled="busy" data-event-click="page = 'report'"><div class="sweep"/><div class="bi i-report"/><span>Report</span><div class="tick"/></button></div>
 		<div class="group">
@@ -253,11 +260,15 @@
 	<div data-if="page == 'launch'">
 		<div class="stitle">Launch</div>
 		<div class="sdesc">Starts Mass Effect 1 directly, past the Legendary Edition launcher's game picker.</div>
+		<div data-if="installed &amp;&amp; repair_needed" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">Repair first</div><div class="rdesc">{{repair_text}}</div></div>
+			<button class="btn" data-class-disabled="busy || waiting" data-event-click="page = 'repair'"><div class="sweep"/><div class="bi i-wrench"/><span>Repair</span><div class="tick"/></button></div>
+		<div data-if="game_ok &amp;&amp; !has_gamer_settings" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">Start the game once first</div><div class="rdesc">{{first_start_text}}</div></div>
+			<button class="btn" data-class-disabled="busy || waiting" data-event-click="act('first_start')"><div class="sweep"/><div class="bi i-play"/><span>Start the game once</span><div class="tick"/></button></div>
 		<div class="hero">
 			<div class="big i-play"/>
 			<div class="herot">
 				<div class="heroh">Into Mass Effect</div>
-				<div class="herop">Start your VR runtime ({{xr_title}}) and put the headset on. The game uses your launcher settings (language, subtitles).</div>
+				<div class="herop">{{launch_advice}} The game uses your launcher settings (language, subtitles). In game, {{menu_key}} or both sticks held opens the VR menu.</div>
 			</div>
 			<button class="btn primary" data-class-disabled="!game_ok || busy || waiting" data-event-click="act('launch')"><div class="sweep"/><div class="bi i-play"/><span>Launch</span></button>
 		</div>
@@ -269,7 +280,7 @@
 	</div>
 
 	<!-- The job's log. -->
-	<div data-if="log_lines.size > 0 &amp;&amp; (page == 'install' || page == 'repair' || page == 'uninstall' || page == 'settings' || page == 'content' || page == 'report')" class="group">
+	<div data-if="log_lines.size > 0 &amp;&amp; (page == 'welcome' || page == 'install' || page == 'repair' || page == 'uninstall' || page == 'settings' || page == 'content' || page == 'report')" class="group">
 		<div class="gtitle"><span>Log</span><div class="gline"/></div>
 		<div class="log"><div data-for="line : log_lines" data-class-err="line.error">{{line.text}}</div></div>
 	</div>

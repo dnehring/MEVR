@@ -99,6 +99,12 @@ std::filesystem::path HalcyonLogPath();
 bool ProcessRunning(wchar_t const* exeName);
 // The game or its launcher is running (files would be locked, and the game rewrites its ini files on exit).
 bool GameRunning();
+// The game or launcher of the install at `root` is running: a MassEffect1.exe / MassEffectLauncher.exe whose image is
+// under `root` (or the same file by another path), or one whose path can't be read (counted, to be safe). Another copy
+// of the game (a second install, or a fake game folder for tests) doesn't count.
+bool GameRunningIn(std::filesystem::path const& root);
+// `file` lies inside the folder `root` (case-insensitive, either slash, a \\?\ prefix ignored). Pure.
+bool PathUnder(std::filesystem::path const& file, std::filesystem::path const& root);
 // We can create files in `dir` (else: run as administrator).
 bool CanWrite(std::filesystem::path const& dir);
 // The file has the Read-only attribute (a player or a tool set it on GamerSettings.ini to pin their values).

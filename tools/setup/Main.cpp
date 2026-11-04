@@ -25,6 +25,7 @@
 #include "install/GameSettings.hpp"
 #include "core/Json.hpp"
 #include "install/Installer.hpp"
+#include "install/Launch.hpp"
 #include "install/Report.hpp"
 #include "install/ReportMarks.hpp"
 #include "install/Updates.hpp"
@@ -303,6 +304,19 @@ int Preview(fs::path const& output, bool warp) {
         {"report-request", "report-request", "report"},
         {"report-saved", "report-saved", "report"},
         {"report-files", "report-request", "report", true},
+        // The game's first start, Steam's "verify files", the VR runtime first (research/33 section 9).
+        {"welcome-firststart-fresh", "firststart-fresh", "welcome"},
+        {"install-firststart", "firststart-fresh", "install"},
+        {"install-firststart-done", "firststart-installed", "install", true},
+        {"welcome-firststart", "firststart", "welcome"},
+        {"welcome-firststart-busy", "firststart-busy", "welcome"},
+        {"settings-firststart", "firststart", "settings"},
+        {"launch-firststart", "firststart", "launch"},
+        {"welcome-pending", "pending-apply", "welcome"},
+        {"welcome-repair", "repair-needed", "welcome"},
+        {"repair-needed", "repair-needed", "repair"},
+        {"launch-repair", "repair-needed", "launch"},
+        {"launch-meta", "meta", "launch"},
     };
     for (Shot const& shot : shots) {
         app.Sample(shot.state);
@@ -489,9 +503,21 @@ int RunCli(Cli const& cli) {
         say(std::string("loader: ") + detect::BinkStateText(s.bink));
         say("installed: " + (s.installed ? "yes, " + s.installedVersion + ", loader " + s.loader : std::string("no")));
         say(std::string("game settings applied: ") + (s.gameSettings ? "yes" : "no"));
+        say(std::string("game started once (GamerSettings.ini): ") + (s.hasGamerSettings ? "yes" : "no"));
+        if (s.pendingSettings) {
+            say(std::format("game settings waiting for the game's first start: {} x {}", s.pendingSettings->width, s.pendingSettings->height));
+        }
+        if (s.installed) {
+            std::string list;
+            for (std::string const& f : s.needsRepair) {
+                list += (list.empty() ? "" : ", ") + f;
+            }
+            say("needs repair: " + (list.empty() ? std::string("nothing") : list));
+        }
         say(std::string("textures marked by MEM: ") + (s.texturesMarked ? "yes" : "no"));
         detect::XrRuntime const xr = detect::ActiveRuntime();
         say("VR runtime: " + (xr.kind.empty() ? std::string("none") : xr.kind + " (" + xr.manifest + ")"));
+        say("before launch: " + mevr::install::launch::runtime_start::PlanFor(xr.kind, xr.manifest).advice);
     }
     if (cli.out) {
         std::ofstream(*cli.out, std::ios::binary) << text;

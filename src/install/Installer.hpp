@@ -49,12 +49,21 @@ struct Status {
     bool texturesMarked = false;
     bool gameRunning = false;
     bool canWrite = true;
-    bool hasGamerSettings = false;
+    bool hasGamerSettings = false;  // the game has been started here (it makes GamerSettings.ini on its first start)
     bool gamerSettingsReadOnly = false;
+    // The VR game settings chosen while GamerSettings.ini didn't exist yet: applied once it does (Repair, "Start the game
+    // once", Settings > Apply).
+    std::optional<PendingSettings> pendingSettings;
+    // Installed files Repair would put back (missing or changed: the loader or the cockpit's TOC entry after Steam's
+    // "verify files", a deleted menu file...); a loader another tool put in place of ours isn't one.
+    std::vector<std::string> needsRepair;
     detect::UpstreamHalcyon upstream;  // Halcyon's own MELE-VR in Binaries\Win64
     std::vector<PackRecord> packs;
 };
 Status ReadStatus(std::filesystem::path const& root, std::string const& source);
+
+PendingSettings PendingFromChoices(settings::Choices const& choices);
+settings::Choices ChoicesFromPending(PendingSettings const& pending);
 
 struct InstallOptions {
     bool gameSettings = true;              // apply the VR game settings
@@ -79,8 +88,9 @@ Outcome Install(Layout const& layout, Payload const& payload, InstallOptions con
 // moved aside and deleted after exit (only when the uninstall succeeded). `removeLocalData`: also delete LocalDataDir()
 // (snapshots, recordings, frame-timing captures, crash reports, the downloaded Mass Effect Modder).
 Outcome Uninstall(Layout const& layout, bool keepUserData, std::filesystem::path const& runningExe, bool removeLocalData = false);
-// Puts back any of our files that are missing or changed (from the payload), the loader if it was removed, and
-// Halcyon's per-slot fixes.
+// Puts back any of our files that are missing or changed (from the payload), the loader if it was removed (RAD's DLL put
+// back by Steam's "verify files": renamed behind ours again), the cockpit's package and its PCConsoleTOC.bin entry,
+// Halcyon's per-slot fixes, and the VR game settings still waiting for GamerSettings.ini once the game has made it.
 Outcome Repair(Layout const& layout, Payload const& payload);
 Outcome ApplySettings(Layout const& layout, settings::Choices const& choices);
 // The game settings back to the player's own values (only those still as we set them).

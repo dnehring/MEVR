@@ -392,6 +392,62 @@ bool GameRunning() {
     return ProcessRunning(L"MassEffect1.exe") || ProcessRunning(L"MassEffectLauncher.exe");
 }
 
+bool PathUnder(fs::path const& file, fs::path const& root) {
+    if (file.empty() || root.empty()) {
+        return false;
+    }
+    std::wstring f = file.lexically_normal().wstring();
+    std::wstring r = root.lexically_normal().wstring();
+    for (std::wstring* s : {&f, &r}) {
+        std::replace(s->begin(), s->end(), L'/', L'\\');
+        std::transform(s->begin(), s->end(), s->begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
+        if (s->rfind(L"\\\\?\\", 0) == 0) {
+            s->erase(0, 4);
+        }
+    }
+    while (!r.empty() && r.back() == L'\\') {
+        r.pop_back();
+    }
+    return f.size() > r.size() && f.compare(0, r.size(), r) == 0 && f[r.size()] == L'\\';
+}
+
+bool GameRunningIn(fs::path const& root) {
+    HANDLE const snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) {
+        return GameRunning();
+    }
+    fs::path const gameExe = root / L"Game" / L"ME1" / L"Binaries" / L"Win64" / L"MassEffect1.exe";
+    fs::path const launcherExe = root / L"Game" / L"Launcher" / L"MassEffectLauncher.exe";
+    PROCESSENTRY32W entry{};
+    entry.dwSize = sizeof entry;
+    bool running = false;
+    for (BOOL ok = Process32FirstW(snapshot, &entry); ok && !running; ok = Process32NextW(snapshot, &entry)) {
+        if (_wcsicmp(entry.szExeFile, L"MassEffect1.exe") != 0 && _wcsicmp(entry.szExeFile, L"MassEffectLauncher.exe") != 0) {
+            continue;
+        }
+        // Whose game is it? One we can't ask about counts as this one's (the safe side).
+        HANDLE const process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, entry.th32ProcessID);
+        if (process == nullptr) {
+            running = true;
+            break;
+        }
+        wchar_t image[MAX_PATH * 2]{};
+        DWORD size = static_cast<DWORD>(std::size(image));
+        bool const known = QueryFullProcessImageNameW(process, 0, image, &size) != FALSE;
+        CloseHandle(process);
+        if (!known) {
+            running = true;
+            break;
+        }
+        fs::path const exe(std::wstring(image, size));
+        std::error_code ec;
+        // Under this root by its path, or the same file reached another way (a junction, a subst drive).
+        running = PathUnder(exe, root) || fs::equivalent(exe, gameExe, ec) || fs::equivalent(exe, launcherExe, ec);
+    }
+    CloseHandle(snapshot);
+    return running;
+}
+
 bool ReadOnlyFile(fs::path const& file) {
     DWORD const attributes = GetFileAttributesW(file.c_str());
     return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_READONLY) != 0;
