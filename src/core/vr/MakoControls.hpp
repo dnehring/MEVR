@@ -81,6 +81,13 @@ struct HandInput {
     float squeeze = 0.0f;
 };
 
+struct Seat {
+    XrVector3f leverBase{};  // the lever at neutral
+    XrVector3f stickBase{};
+    XrVector3f forward{0.0f, 0.0f, -1.0f};  // flat, unit
+    XrVector3f right{1.0f, 0.0f, 0.0f};     // flat, unit
+};
+
 struct Input {
     double deltaSeconds = 0.0;
     Stop stop = Stop::None;      // not None: stop now, nothing else counts
@@ -88,6 +95,10 @@ struct Input {
     HandInput right;
     bool headValid = false;
     XrPosef head{};
+    // The cockpit's model is up (research/47): its grips, in tracking space this tick, are the seat instead of a placement from the
+    // head (the hands grab what the eyes see; the user, 2026-11-03: "the holding visual looks completely off").
+    bool haveModelSeat = false;
+    Seat modelSeat{};
     bool haveRecenters = false;  // the host's recenter count below is real
     std::uint32_t recenters = 0;
     float engineSpeed = 0.0f;    // 0..1: for the rumble
@@ -129,13 +140,6 @@ struct Output {
 };
 
 // The controls' place in tracking space, relative to the seat.
-struct Seat {
-    XrVector3f leverBase{};  // the lever at neutral
-    XrVector3f stickBase{};
-    XrVector3f forward{0.0f, 0.0f, -1.0f};  // flat, unit
-    XrVector3f right{1.0f, 0.0f, 0.0f};     // flat, unit
-};
-
 // Placed from the head's position and flat yaw. False (`out` untouched) for a head looking straight up or down.
 bool PlaceSeat(XrPosef const& head, Settings const& settings, Seat& out);
 
@@ -172,6 +176,7 @@ private:
 
     Seat seat_;
     bool placed_ = false;
+    bool modelSeat_ = false;  // seat_ is the cockpit model's (Input::modelSeat)
     bool haveRecenters_ = false;
     std::uint32_t recenters_ = 0;
     bool driving_ = false;

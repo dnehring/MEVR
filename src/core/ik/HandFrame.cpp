@@ -34,6 +34,13 @@ Quat GripTrim(double pitchDegrees, double yawDegrees, double rollDegrees) {
         about({1.0, 0.0, 0.0}, -rollDegrees));
 }
 
+Quat AlignGripToAxis(Quat grip, Vec3 axis) {
+    Vec3 const thumbSide = Rotate(grip, {0.0, 0.0, 1.0});
+    double const along = thumbSide.x * axis.x + thumbSide.y * axis.y + thumbSide.z * axis.z;
+    Vec3 const target = along < 0.0 ? Vec3{-axis.x, -axis.y, -axis.z} : axis;
+    return Normalize(FromTo(thumbSide, target) * grip);
+}
+
 Quat HandFromGrip(Quat grip, Quat trim, Quat anatomyInHand) {
     // The grip's anatomical frame: fingers along its X, thumb side along its Z, so the third axis
     // (X cross Z) is its -Y.

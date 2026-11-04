@@ -216,13 +216,9 @@ void LogWhy(Why why, double now) {
     log::Info("mako: {}", Name(why));
 }
 
-#if defined(MEVR_GAME_LE1)
-
+// Every game: CurrentTurretAim uses them.
 engine::UnrealVector Sub(engine::UnrealVector const& a, engine::UnrealVector const& b) {
     return {a.x - b.x, a.y - b.y, a.z - b.z};
-}
-engine::UnrealVector Add(engine::UnrealVector const& a, engine::UnrealVector const& b) {
-    return {a.x + b.x, a.y + b.y, a.z + b.z};
 }
 engine::UnrealVector Times(engine::UnrealVector const& a, double s) {
     return {a.x * s, a.y * s, a.z * s};
@@ -232,6 +228,12 @@ double Dot(engine::UnrealVector const& a, engine::UnrealVector const& b) {
 }
 double Len(engine::UnrealVector const& a) {
     return std::sqrt(Dot(a, a));
+}
+
+#if defined(MEVR_GAME_LE1)
+
+engine::UnrealVector Add(engine::UnrealVector const& a, engine::UnrealVector const& b) {
+    return {a.x + b.x, a.y + b.y, a.z + b.z};
 }
 int SignedUnits(int units) {
     int const u = units & 0xFFFF;

@@ -596,6 +596,10 @@ StickAim Tick(double deltaSeconds, Link const& link, ue3::Object* vehicle, ue3::
         in.headValid = true;
         in.head = anchor->head;
     }
+    if (auto const modelSeat = cockpit_probe::ControlSeat()) {
+        in.haveModelSeat = true;  // the cockpit's models are the controls: grab them where they are drawn
+        in.modelSeat = *modelSeat;
+    }
     if (link.floor) {
         in.haveRecenters = true;
         in.recenters = link.floor->recenters;
@@ -619,9 +623,9 @@ StickAim Tick(double deltaSeconds, Link const& link, ue3::Object* vehicle, ue3::
 
     if (gOut.replaced) {
         mc::Seat const& seat = gControls.CurrentSeat();
-        log::Info("mako controls: placed from the head: lever at ({:.2f}, {:.2f}, {:.2f}), stick at ({:.2f}, {:.2f}, {:.2f}) m in tracking space, "
+        log::Info("mako controls: placed from {}: lever at ({:.2f}, {:.2f}, {:.2f}), stick at ({:.2f}, {:.2f}, {:.2f}) m in tracking space, "
                   "the seat faces ({:.2f}, {:.2f})",
-            seat.leverBase.x, seat.leverBase.y, seat.leverBase.z, seat.stickBase.x, seat.stickBase.y, seat.stickBase.z, seat.forward.x, seat.forward.z);
+            in.haveModelSeat ? "the cockpit's models" : "the head", seat.leverBase.x, seat.leverBase.y, seat.leverBase.z, seat.stickBase.x, seat.stickBase.y, seat.stickBase.z, seat.forward.x, seat.forward.z);
     }
     if (gOut.leverGrabbed && !gLoggedLever) {
         gLoggedLever = true;
@@ -668,7 +672,8 @@ StickAim Tick(double deltaSeconds, Link const& link, ue3::Object* vehicle, ue3::
         }
     }
 
-    PublishView(link, gOut.placed && link.headTrackedView && !link.mainMenuOpen && !calibrating);
+    // Stage 1's flat lever and dial only without the cockpit's models (they are the controls then).
+    PublishView(link, gOut.placed && !in.haveModelSeat && link.headTrackedView && !link.mainMenuOpen && !calibrating);
     if (gOut.stickHeld) {
         aim = AimFromStick(vehicle);
     }
@@ -702,6 +707,10 @@ bool Driving() {
 }
 
 std::string TestJets(double seconds) {
+#if !defined(MEVR_GAME_LE1)
+    (void)seconds;
+    return "the Mako's jets: LE1 only";
+#else
     if (!gInMako || gVehicle == nullptr) {
         return "not driving the Mako";
     }
@@ -709,6 +718,7 @@ std::string TestJets(double seconds) {
     log::Info("mako controls: test: the jump jets' button (bJumpJetsOn) held for {:.1f} s", seconds);
     return std::format("bJumpJetsOn held for {:.1f} s (jump fuel {:.2f} of {:.2f}): the heartbeat's `thrusters on` line says what happened", seconds,
         gJumpFuel.Read<float>(gVehicle).value_or(-1.0f), gMaxJumpFuel.Read<float>(gVehicle).value_or(-1.0f));
+#endif
 }
 
 Pose CurrentPose() {

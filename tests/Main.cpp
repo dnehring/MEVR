@@ -1631,6 +1631,18 @@ void TestHandFrame() {
     CHECK(Rotate(GripTrim(0.0, 30.0, 0.0), {1.0, 0.0, 0.0}).y > 0.4);
     CHECK(Rotate(GripTrim(0.0, 0.0, 30.0), {0.0, 0.0, 1.0}).y > 0.4);
     CHECK(same(Rotate(GripTrim(0.0, 0.0, 0.0), {1.0, 2.0, 3.0}), {1.0, 2.0, 3.0}));
+    // A hand closed on a handle, as on a pistol grip: its thumb side (Z) onto the handle's axis or the opposite, whichever is
+    // nearer, turned the least way; the fingers (X) across it.
+    Quat const level{};  // the fingers along +X, the thumb side up (+Z)
+    Vec3 const leaning = Normalize(Vec3{0.4, 0.0, 1.0});  // a stick leaning forward
+    Quat const onStick = AlignGripToAxis(level, leaning);
+    CHECK(same(Rotate(onStick, {0.0, 0.0, 1.0}), leaning));
+    CHECK(same(Rotate(onStick, {0.0, 1.0, 0.0}), {0.0, 1.0, 0.0}));  // still as far round: about the hand's own side axis
+    CHECK(std::abs(Dot(Rotate(onStick, {1.0, 0.0, 0.0}), leaning)) < 1e-9);  // the fingers across the stick
+    CHECK(same(Rotate(AlignGripToAxis(level, {0.1, 0.0, -1.0}), {0.0, 0.0, 1.0}), Normalize(Vec3{-0.1, 0.0, 1.0})));  // the nearer sign
+    Quat const onBar = AlignGripToAxis(grip, {0.0, 1.0, 0.0});  // a bar across
+    CHECK(same(Rotate(onBar, {0.0, 0.0, 1.0}), {0.0, Rotate(grip, {0.0, 0.0, 1.0}).y < 0.0 ? -1.0 : 1.0, 0.0}));
+    CHECK(AngleBetween(AlignGripToAxis(onStick, leaning), onStick) < 1e-6);  // already on it: unchanged
 }
 
 // A held gun's barrel follows the controller's aim (core/ik/HandFrame HandForBarrel).
@@ -6585,6 +6597,28 @@ void TestMakoControls() {
         return in;
     };
     XrVector3f const up{0.0f, 1.0f, 0.0f};
+    {
+        // The cockpit's models are the seat (Input::modelSeat): grabbed where they are drawn, not where the head would place them.
+        mc::Controls c;
+        mc::Seat model = seat;
+        model.stickBase = {seat.stickBase.x + 0.3f, seat.stickBase.y, seat.stickBase.z};  // 30 cm right of the head's placement
+        mc::Input in = input(0.0f, 0.0f, identity, 1.0f);  // the hand at the head's placement: out of the model's reach
+        in.haveModelSeat = true;
+        in.modelSeat = model;
+        mc::Output out = c.Step(in, tilting);
+        CHECK(out.placed && out.replaced && !out.stickHeld);
+        CHECK(close(c.CurrentSeat().stickBase.x, model.stickBase.x));
+        in.right.squeeze = 0.0f;
+        c.Step(in, tilting);
+        in.right.grip.position.x += 0.3f;  // to the model's stick
+        in.right.squeeze = 1.0f;
+        out = c.Step(in, tilting);
+        CHECK(out.stickHeld && !out.replaced);
+        model.stickBase.z -= 0.01f;  // the cockpit moves a little (a frame's lag): followed, no new placement
+        in.modelSeat = model;
+        out = c.Step(in, tilting);
+        CHECK(out.stickHeld && !out.replaced && close(c.CurrentSeat().stickBase.z, model.stickBase.z));
+    }
     {
         // The tilting stick: the hand's travel from the grab (the seat faces -Z, its right is +X), not its twist.
         mc::Controls c;

@@ -3,6 +3,7 @@
 
 #include "core/ik/Rigid.hpp"
 #include "core/vr/HudPieces.hpp"
+#include "core/vr/MakoControls.hpp"
 #include "engine/XrToUnreal.hpp"
 
 #include <cstdint>
@@ -48,10 +49,19 @@ struct Seat {
     engine::UnrealVector heel[2]{};
     bool held[2]{};                  // the left hand holds the lever, the right the stick
     engine::UnrealVector grip[2]{};  // where those grips are now
+    bool haveAxes = false;
+    engine::UnrealVector axis[2]{};
+    engine::UnrealVector eye{};      // the cockpit's eye (where the seated player's head is, before leaning)  // each handle's grip axis now (world, unit): a held fist wraps it
 };
 std::optional<Seat> CurrentSeat();
+// While riding with a `seat` layout: the cockpit model's grips (the lever at neutral, the stick upright) and the vehicle's flat
+// forward, in tracking space this tick: where game/MakoControls lets the hands grab (the models are the controls). Nullopt: no
+// cockpit, no view.
+std::optional<vr::mako_controls::Seat> ControlSeat();
 // game/arm_ik: the hips' midpoint in the driver mesh's component space (as animated), which the placement puts on the H-point.
-void NoteSeatHips(ue3::Object const* mesh, ik::Vec3 const& hips);
+// `head`: the head bone there too, if the skeleton has one: the placement slides the body back until it is behind the
+// cockpit's eye as a head is behind its eyes (the eye was inside the back of Shepard's head, research/47).
+void NoteSeatHips(ue3::Object const* mesh, ik::Vec3 const& hips, std::optional<ik::Vec3> const& head = std::nullopt);
 // Snapshot JSON ("cockpitProbe").
 std::string StatusJson();
 // Heartbeat line (while something is up).

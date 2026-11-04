@@ -1053,3 +1053,79 @@ twist spin the Mako. Now (`core/vr/MakoControls`, unit-tested): the tilt steers 
 adds to it (to full lock, or against it back toward centre), and the twist alone is `Output::spin`, which with the lever under
 `steerInPlaceBelow` sends exactly zero throttle and turns the Mako on the spot (`game/MakoControls` `SpinInPlace`). A tilt at standstill
 is the tank's own pivot, so a drifting hand never spins the Mako.
+
+## The hands on the handles (2026-11-03 15:40-16:05, fake headset, `BIOA_UNC20`; mod only)
+
+The user, from the headset: holding the throttle and the stick, "the grip location doesn't actually interact with the model correctly,
+so the holding visual looks completely off". Measured on the fake headset with replayed holds, projecting the grab points into the
+eye images and logging each palm against its grip (`arm ik: seated reach:` every 10 s while seated), four things were wrong:
+
+1. **The stage-1 flat lever and dial were still drawn in the cockpit**, beside the models. With the cockpit up they're hidden now, and
+   the controls take their grab points from the models (`cockpit_probe::ControlSeat()`: the seat line's grips in tracking space each
+   tick, through the view anchor as the HUD's displays are; `Input::modelSeat` in `core/vr/MakoControls`, unit-tested; log `mako
+   controls: placed from the cockpit's models`). The grips themselves agreed with the models within 7 mm (`place.py`'s manifest
+   points against the game-ready vertices), and in tracking space with the old placement from the head, as long as the head was
+   at the seat when the Mako was entered.
+2. **The hand turned with the controller, not the handle.** The handles' axes are now measured from the game-ready models by
+   `place.py` (pure Python, no numpy): the throttle's bar along its length (0.995, -0.101, 0.011 right/forward/up: a bar across the
+   seat), the stick's centre line through the middles of its height's second and third fifths (-0.02, 0.44, 0.90: 26 degrees forward,
+   below the head that bends forward). Each grip is the manifest's moved onto its line; the seat line gains `axes R F U R F U`
+   (optional; without the models it's the old line). A held hand is turned the least way so that its thumb side lies along the
+   handle, as on a pistol grip: the knuckles along it, the fingers across it (`ik::AlignGripToAxis`, unit-tested). **The thumb side,
+   not the grip's X:** in this mod's hand frame X is where the fingers point and Z the thumb side, and the hands' trim (`[Hands]
+   handPitch = 90` in the user's ini) turns the controller's tube axis onto the thumb side; the alignment acts on the trimmed hand
+   and then drops the trim.
+3. **The wrist sat 7 units behind the controller's grip along its tube** (`hand_targets` `kWristBehindGripUnits`), which with the 90
+   degree trim is beside the hand, not behind it: the palm came out 5-8 cm past the handle, the left hand hanging below the bar. A
+   held hand now goes by its own shape: the fist's middle (0.8 of the way from the wrist to the middle knuckle, 0.35 of that toward
+   the palm, the palm side from `game/fingers`' measurement) on the grip. Palms within 1-3 cm of the grips after.
+4. **The eye was inside the back of Shepard's head.** The hips on the H-point left the head bone 8.6 cm in front of the cockpit's
+   eye; looking down, his collar filled the view. The placement now also takes the head bone: along the vehicle's forward the body
+   slides back until the head bone is 0.10 m behind the eye (a head's bone sits at the skull's base, behind the eyes), at most 0.25 m
+   behind the H-point; the hips keep the seat's height. Measured: the head bone -10.1 cm from the eye, the arms at 0.51 and 0.53 of
+   their 0.55 m reach. From the seat the legs, both controls and both hands on them are in view.
+
+Also: a held handle's index rests curled at least half (the trigger at rest left it pointing straight out), and
+`tools/make-drive-recording.py --hands-from <recording>` turns the synthetic hands as the player's real controllers were (their mean
+orientation, the head's yaw taken out): a controller pointing straight ahead is no real hold, and the trim made it look wrong in ways
+the headset never shows. Left for the headset: how the hands look with the player's own hold, and whether the near-straight arms want
+the controls a little closer.
+
+## Players get it, again (2026-11-03 16:10-16:20; item 11)
+
+`tools/package-release.ps1 -Zip` from current main: the monolithic ASI carries today's cockpit code (the model seat, the hands on the
+handles, the jets), the release's `cockpit.txt` has the `seat ... axes` line, `dist/MEVR-0.1.0.zip` 35.3 MB. `tools/setup/test-fake-game.ps1`
+with the release's own setup (`-Build build-mono`) and payload: 65 checks pass. One had failed first: **an install after a lost install
+record, then an uninstall, left the cockpit behind** (its script, its package and its TOC entry: the second install found them without a
+record and took them for the player's, to put back). `AdoptOurFiles` now adopts the cockpit's folder, script and package with the rest of
+the ASI folder, and `Transaction::AdoptTocEntry` records our package's TOC entry as added; the folder is byte for byte the game's again.
+
+## A normal save, a death and its reload (2026-11-03 16:30-16:40, fake headset, the user's save on Trebin, `BIOA_UNC20`)
+
+The game started from Steam and the launcher's Resume card (John Shepard, Soldier, Trebin): the save loaded straight into the Mako and the
+cockpit came in by itself, in the same tick as `mako: driving` (the parts, the screens, Shepard `shown in the seat`, the ride seated).
+`mevr vehicle die` (the vehicle behaviour's `ReactToDeath`, what a fatal hit runs) took the game to "Critical Mission Failure" and the
+cockpit out in the same tick; its "Resume Last Save" (`mevr vehicle resume`) loaded the save again and the cockpit and Shepard were back
+0.4 s after `mako: driving`. Done four more times by the drive A/B below, each time the same. Not done: a death actually caused by enemy
+fire (the path from the hit to `ReactToDeath` is the game's own and doesn't touch the cockpit).
+
+## The cockpit's cost over a drive (2026-11-03 16:37-16:57, fake headset, Trebin from the save)
+
+A 30 s probe over the same replayed 40 s drive (`make-drive-recording.py 40 --controls --hands-from`: full throttle, turning right,
+left, straight on) from the save each time (die, resume), so each run covers the same ground (give or take the physics). The single heavy
+spot measured before (UNC52) had hidden it: at the heavier views (3,000-6,500 draws a frame) the cockpit put frames over budget.
+
+| run | render thread busy, median / p90 / max (ms) | GPU span, median / p90 (ms) |
+| --- | --- | --- |
+| cockpit off (`[Cockpit] enabled = 0`) | 3.36 / 5.56 / 22.6 | 5.08 / 7.11 |
+| cockpit on, both screens on one clock | 4.76 / **11.07** / 30.6 | 4.71 / **12.17** |
+| on, the screens staggered | 4.02 / 9.19 / 40.6; 3.46 / 7.95 / 35.9 | 4.37 / 9.53; 4.37 / 7.82 |
+| staggered, captures to 250 m | 2.86 / 5.21; 3.56 / 8.24; 3.25 / 6.20 | 3.76 / 5.21; 4.25 / 8.35; 4.11 / 6.11 |
+| staggered, captures to 600 m | 3.52 / 8.01 / 35.6 | 4.11 / 8.25 |
+
+The two screens' captures ran on the same 30 Hz clock, so every third frame rendered the world three times. They are staggered now (a
+tick that points the chase screen's capture leaves the turret's for the next), which takes the p90 back under budget with nothing to
+see. `mevr cockpit capturedist <m>` (a cockpit script line too) sets the captures' `SceneCaptureComponent.MaxViewDistanceOverride`: 250
+m gains a little more but drops the far ridgeline from the centre screen, and the runs' spread (the drive's route differs with the
+physics) is as large as the gain, so it stays off (0, the engine's distance). The max column is hitches (level streaming, the first
+frames after a load) present without the cockpit too.
