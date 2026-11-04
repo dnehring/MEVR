@@ -20,12 +20,14 @@ namespace mevr::vr::cine_screen {
 
 // ---- Settings ([Cinematics] in ASI\LE1MEVR.ini, read by the host) ---------------------------------------------------
 struct Settings {
-    bool conversations = false;  // conversations: on the 3D screen while Halcyon's VR conversations are on
-    bool cutscenes = false;      // cutscenes: the same for cutscenes (prerendered movies stay on the flat screen)
+    bool conversations = true;   // conversations: on the 3D screen while Halcyon's VR conversations are on
+    bool cutscenes = true;       // cutscenes: the same for cutscenes (prerendered movies stay on the flat screen)
     float distanceM = 2.6f;      // distanceM: how far ahead the screen stands when a scene starts
     float widthM = 3.0f;         // widthM: the screen's width
     float depth = 0.015f;        // depth: infinity's disparity, a fraction of the screen's width (0 = flat, at the screen)
-    float convergeM = 2.5f;      // convergeM: the scene distance that lands on the screen plane (metres of the scene)
+    float convergeM = 1.2f;      // convergeM: the scene distance that lands on the screen plane (metres of the scene). LE1's
+                                 // close-ups put the camera ~0.85 m from a face: at 2.5 m one came 1.9 degrees out of the
+                                 // screen, at 1.2 m 0.5 (research/52, measured)
 };
 
 inline constexpr float kMinDistanceM = 1.0f;

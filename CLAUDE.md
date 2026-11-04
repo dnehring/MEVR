@@ -285,6 +285,15 @@ switching frameworks.
   in `xr_session`'s loop). `walk = hand` (`kFlagHandWalk`): the host turns the controllers' left stick to the
   left controller's flat yaw before Halcyon's `moveFollowsHead` turn (`WalkTowardHand` in `HalcyonBridge`). Logs
   `comfort:`, `vignette:`, `halcyon bridge: the mod turns ...`; snapshots `"comfort"` and a `vignette` layer.
+- LE1 conversations and cutscenes on a 3D cinema screen ([research/52](research/52-cine-3d-screen.md); `[Cinematics]` in
+  `ASI\LE1MEVR.ini`, on by default; our menu's Comfort > Conversations and cutscenes: In VR / 3D screen / Flat screen): a VR cine
+  renders both Stereo 2 passes at the game's own projection from two parallel cameras on the director's camera (head look and
+  lean parked; `PlanStereo`'s screen branch, mode 1) and each eye's render goes on its own quad (eye visibility) at one pose,
+  fixed in the room by `PlacePanel` (`widthM` 3.0, `distanceM` 2.6). Each eye drops `depth / (1 + depth)` of its width on
+  opposite sides, which puts infinity `depth` (1.5% of the width) behind the screen; the cameras' distance follows each shot's
+  lens so the scene `convergeM` (1.2 m at 100 units per metre) away lands on the plane; infinity's disparity is capped at 80% of
+  the eye distance (`core/vr/CineScreen`, unit-tested). `[MEVR]` seams in xr_session.cpp (decision, park, projection, lean, plan,
+  submit); host `plugin/CineScreen`. Logs `cine screen:`, `[VRSTATE] ... -> 3D screen (MEVR)`; snapshot `"cineScreen"`.
 - LE1 HUD (Halcyon's renderer, Stereo 2): the game's UI draws go to a body-locked HUD panel quad,
   and a hand reticle on the aim ray replaces the crosshair (`src/plugin/HalcyonOverlays.cpp`,
   [research/15](research/15-hud.md)). Scaleform's non-"over" blend modes (multiply...) go there too,
