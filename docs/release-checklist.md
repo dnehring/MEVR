@@ -166,7 +166,12 @@ Each needs a headset verdict, or ships off. Source: notes/next-vr-session.md ste
   `project(VERSION)`), a git tag per release as `docs/release-readme.md` promises.
 - [ ] **[C] package-release checks**: a clean tree, version consistency, ctest, `check-spdx`, a cockpit package built from
   the current models. `dist\MEVR-0.1.0` predates today's commits.
-- [ ] **[C] CI**: a Windows workflow building the three targets and running ctest, check-spdx and check-okf on push.
+- [ ] **[C] CI needs real work (owner, 2026-11-04).** Today there is none: `.github` holds only the issue forms. At least a
+  Windows workflow (VS 2022) that builds the players' configuration (monolithic, `MEVR_LE1_LESDK=OFF`, which since
+  2026-11-04 configures without the LExSDKv2 submodule) and the setup, runs ctest (`mevr-tests`, the colour and upscale
+  shader checks, `mevr-rva-table`, `mevr-okf`) and `check-spdx` on every push, and the trilogy build on a schedule. Then
+  a release workflow: tag -> the zip from `package-release.ps1`, its checksums, the PDBs kept as an artifact. The cockpit
+  package needs Legendary Explorer and the models on Git LFS: build it in CI or attach a reviewed one.
 - [ ] **[D] Code signing.** The setup, the ASI and a `bink2w64.dll` proxy are unsigned: expect SmartScreen and antivirus
   warnings. Sign (an open-source signing programme) or document it in the release README.
 - [ ] **[C] Binary metadata**: an icon and VERSIONINFO for MEVR-Setup.exe and the ASI; no absolute build paths in the PDBs
@@ -183,7 +188,25 @@ Each needs a headset verdict, or ships off. Source: notes/next-vr-session.md ste
 - [ ] [C] `.github`: a feature-request form, CHANGELOG, release notes template.
 - [ ] [H+C] **Promo footage**: the spectator camera has never run in the game (research/49); a trailer needs it.
 
-## 6. After the first release
+## 6. Delivery channels (owner, 2026-11-04: consider more than GitHub)
+
+GitHub Releases stays the source of truth (the setup's update check reads it). Where else players look:
+- [ ] **[D] Nexus Mods** is where Mass Effect LE players find mods. Host the same zip there (not just a link), with the
+  Controls and Known issues sections as the page's description. Vortex doesn't install LE mods, so the page points at
+  MEVR-Setup (or ME3Tweaks Mod Manager, below). Expect the unsigned setup and `bink2w64.dll` proxy to be flagged by
+  Nexus's or players' virus scanners: signing (section 5) or a clear note.
+- [ ] **[D] ME3Tweaks Mod Manager's ASI manager.** Most LE players already have Mod Manager; its ASI list takes ASI mods
+  with public source and a direct download link such as a GitHub release, which MEVR has. Being listed puts MEVR one
+  click away for them (the ASI only; the VR game settings, `MELEVR.ini` and the cockpit package stay MEVR-Setup's job,
+  so the listing says to run Setup's Repair once, or Mod Manager's ASI install gets a small first-run step in the mod
+  that applies them). Ask ME3Tweaks; their LEBinkProxy and our loader must not both load the ASI.
+- [ ] **[D] Steam.** The game has no Steam Workshop, and a separate Steam app for a mod of EA's game needs EA's and
+  Valve's agreement, so Steam is for being found and for the launch: a Steam Community guide and a pinned discussion in
+  the game's forum linking the release. Most players will start the game from Steam's Play button, not the setup's
+  Launch (which starts `MassEffect1.exe` itself): check that path after an install (the EA app in between, SteamVR
+  started first).
+
+## 7. After the first release
 
 Left-handed play; a curved menu layer and desktop keyboard navigation of the menu; room-scale body; squad orders by
 pointing and gesture powers; `XR_FB_color_space` and per-path colour presets; 10-bit eye swapchains; the HDR path; LE2 and
