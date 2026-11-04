@@ -6,6 +6,7 @@
 #include "ue3/Handles.hpp"
 #include "ue3/Memory.hpp"
 #include "game/CockpitProbe.hpp"
+#include "game/GalaxyDump.hpp"
 #include "game/Holsters.hpp"
 #include "game/Player.hpp"
 #include "game/Spectator.hpp"
@@ -328,6 +329,30 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         }
         std::snprintf(text, sizeof(text), "loc %.1f %.1f %.1f rot %d %d %d", at->x, at->y, at->z, rot->pitch, rot->yaw, rot->roll);
         return std::string(text);
+    }
+    if (verb == "galaxy") {
+        // `mevr galaxy dump [tag]`: the open galaxy map's model to %LOCALAPPDATA%\MEVR\galaxy (research/51 section 8).
+        std::string sub;
+        words >> sub;
+        if (sub == "dump") {
+            std::string tag;
+            words >> tag;
+            return galaxy_dump::Dump(tag);
+        }
+        if (sub == "click") {
+            float u = -1.0f, v = -1.0f;
+            words >> u >> v;
+            return galaxy_dump::Click(u, v);
+        }
+        if (sub == "pick") {
+            int index = -1;
+            words >> index;
+            return galaxy_dump::Pick(index, true);
+        }
+        if (sub == "where") {
+            return galaxy_dump::Pick(-1, false);
+        }
+        return std::string("usage: mevr galaxy dump [tag] | click <u> <v> | pick <i> | where");
     }
     if (verb == "find") {
         // `mevr find <text>`: live objects whose full name holds the text (case-insensitive), numbered for `use` and `activate`

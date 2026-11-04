@@ -392,6 +392,8 @@ set(MEVR_MOD_SOURCES
     src/game/ScopeParts.hpp
     src/game/ScopeCapture.cpp
     src/game/ScopeCapture.hpp
+    src/game/GalaxyDump.cpp
+    src/game/GalaxyDump.hpp
     src/game/GalaxyMap.cpp
     src/game/GalaxyMap.hpp
     src/game/Spectator.cpp
