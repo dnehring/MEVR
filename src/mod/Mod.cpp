@@ -61,6 +61,7 @@
 #include "game/SkeletonProbe.hpp"
 #include "game/GalaxyDump.hpp"
 #include "game/GalaxyMap.hpp"
+#include "game/WorldUi.hpp"
 #include "game/Spectator.hpp"
 #include "game/SquadWeapons.hpp"
 #include "game/SupportGrip.hpp"
@@ -285,6 +286,7 @@ void TryInstallScriptHooks() {
     game::cockpit_probe::TryStartup();  // the cockpit riding in the Mako (research/47: a camera-update handler, inert until asked)
     game::focus_pause::TryStartup();  // [Game] pauseUnfocused (research/47: a BioWorldInfo.Tick handler)
     game::galaxy_dump::TryStartup();  // the galaxy map's Flash calls, traced on request (research/51 section 8)
+    game::world_ui::TryStartup();  // the camera-update handler that holds Shepard's view while a game screen stands in the room
     game::galaxy_map::TryStartup();  // the camera-update handler holding the view in the CIC while the map is open in-world
     game::sights::TryStartup();  // the scoped shots' aimed fire (a CallFunction handler, registered before the hook)
     game::view_level::TryStartup();  // the level camera (PlayerTick and SetWeaponRecoil handlers, before the hooks)
@@ -549,6 +551,16 @@ mevr::game::galaxy_map::Link GalaxyMapLink() {
         gHost->galaxyHologramSize == sizeof(vr::galaxy_holo::Scene)) {
         link.setScene = gHost->setGalaxyHologram;
         link.takePick = gHost->takeGalaxyPick;
+    }
+    return link;
+}
+
+// Host renderer (HostServices v27): the game's screens in the room, if the host's State matches ours.
+mevr::game::world_ui::Link WorldUiLink() {
+    using namespace mevr;
+    game::world_ui::Link link;
+    if (gHostOwnsVr && MEVR_HOST_HAS(setWorldUi) && gHost->setWorldUi != nullptr && gHost->worldUiSize == sizeof(vr::world_ui::State)) {
+        link.setState = gHost->setWorldUi;
     }
     return link;
 }
@@ -836,7 +848,7 @@ void PublishStatus() {
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, "
         "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
-        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}}}",
+        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -848,7 +860,7 @@ void PublishStatus() {
         game::view_level::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
         game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::cockpit_probe::StatusJson(), game::mako_controls::StatusJson(),
-        game::spectator::StatusJson(), game::galaxy_map::StatusJson());
+        game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -1175,6 +1187,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // The spectator camera (research/49): after everything that moves the head, the pawn and the cockpit this tick.
         game::spectator::Tick(deltaSeconds, SpectatorLink());
         game::galaxy_map::Tick(GalaxyMapLink());
+        game::world_ui::Tick(WorldUiLink());
         game::head_tracking::OnTickEnd();
     }
     PublishStatus();
@@ -1277,6 +1290,7 @@ MEVR_MOD_API void MevrModShutdown() {
     // Disables and destroys the scope's scene capture (game thread: the host unloads the mod from its tick), unless
     // the process is exiting. Before sights' shutdown and the reflection layer's.
     game::spectator::Shutdown(exiting);  // its capture and the head it hid, on the game thread
+    game::world_ui::Shutdown(WorldUiLink());  // the host forgets the screen
     game::galaxy_map::Shutdown(GalaxyMapLink(), exiting);  // the host forgets the hologram; the window's captures go
     if (gHost != nullptr && MEVR_HOST_HAS(setSpectator) && gHost->setSpectator != nullptr) {
         gHost->setSpectator(nullptr);  // the desktop window gets Halcyon's mirror back (the host also forgets on unload)

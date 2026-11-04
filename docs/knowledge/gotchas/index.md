@@ -24,3 +24,5 @@
 * [Settings code: one ini reader, no C-locale number functions, no path.string()](ini-numbers-paths-and-locale.md) - A decimal-comma locale breaks `strtod`, a Cyrillic folder throws from `path.string()`, and the host and the mod must read one file one way.
 * [Windows PowerShell 5.1 turns a native command's stderr into errors](powershell-5-native-stderr.md) - git progress becomes a terminating error under `$ErrorActionPreference = 'Stop'`; check `$LASTEXITCODE`.
 * [A `cd` in a Bash tool call moves the whole session](bash-cd-moves-the-session.md) - The working directory persists between calls, so every later relative path and tool resolves somewhere else; use absolute paths.
+* [The Bash tool collapses doubled backslashes in a heredoc](bash-heredoc-backslashes.md) - An inline edit script loses one backslash of each pair, so searches for C++ `"\n"` literals match nothing; write the script to a file.
+* [Windows.h defines macros that eat ordinary identifiers](windows-h-macros.md) - `SetProp`, `far`, `near`, `min`, `max`... rewrite a name of ours, so one build breaks and another doesn't; bitten twice on 2026-11-04.

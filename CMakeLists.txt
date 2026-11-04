@@ -289,6 +289,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/GalaxyHologram.hpp
     src/core/vr/GalaxyMap.cpp
     src/core/vr/GalaxyMap.hpp
+    src/core/vr/WorldUi.cpp
+    src/core/vr/WorldUi.hpp
     src/core/vr/Spectator.cpp
     src/core/vr/Spectator.hpp
     src/core/vr/ScopeCapture.hpp
@@ -398,6 +400,8 @@ set(MEVR_MOD_SOURCES
     src/game/GalaxyDump.hpp
     src/game/GalaxyMap.cpp
     src/game/GalaxyMap.hpp
+    src/game/WorldUi.cpp
+    src/game/WorldUi.hpp
     src/game/Spectator.cpp
     src/game/SceneCaptureRig.cpp
     src/game/Spectator.hpp
@@ -516,6 +520,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/GalaxyHologram.hpp
     src/core/vr/GalaxyMap.cpp
     src/core/vr/GalaxyMap.hpp
+    src/core/vr/WorldUi.cpp
+    src/core/vr/WorldUi.hpp
     src/core/vr/Spectator.cpp
     src/core/vr/Spectator.hpp
     src/core/vr/ScopeCapture.hpp
@@ -574,6 +580,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/SightLayers.hpp
     src/plugin/GalaxyHologram.cpp
     src/plugin/GalaxyHologram.hpp
+    src/plugin/WorldUi.cpp
+    src/plugin/WorldUi.hpp
     src/plugin/GalaxyHologramDraw.cpp
     src/plugin/GalaxyHologramDraw.hpp
     src/plugin/SightPictures.cpp
@@ -805,6 +813,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/ScopeArt.cpp
         src/core/vr/GalaxyHologram.cpp
         src/core/vr/GalaxyMap.cpp
+        src/core/vr/WorldUi.cpp
         src/core/vr/Spectator.cpp
         src/core/vr/Sights.cpp
         src/core/vr/SquadMenu.cpp

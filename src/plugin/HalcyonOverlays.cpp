@@ -41,6 +41,7 @@
 #include "plugin/Calibration.hpp"
 #include "plugin/Colour.hpp"
 #include "plugin/GalaxyHologram.hpp"
+#include "plugin/WorldUi.hpp"
 #include "plugin/GamePointer.hpp"
 #include "plugin/Halcyon.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
@@ -90,6 +91,7 @@ constexpr float kPi = 3.14159265358979f;
 constexpr float kDegToRad = kPi / 180.0f;
 constexpr int64_t kSwapchainFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;  // the menu's family: every runtime has it
 constexpr UINT kReticleSize = 128;
+float gPanelBackdrop = 0.0f;  // the world UI's backdrop for this frame's panel blit (research/53; 0: the HUD as it is)
 constexpr float kGalaxyUiWidthM = 1.50f;  // the game's UI frame over the galaxy hologram's table (its travel box ~1 m of it)
 
 // Logs a line to our log and to Halcyon's (one-shots that belong next to Halcyon's [XRSUBMIT] lines).
@@ -240,6 +242,10 @@ float4 PSMain(VSOut i) : SV_Target {
         c = saturate(c);
         c = (c <= 0.04045) ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4);
     }
+    if (params.z > 0.0) {
+        // A game screen standing in the room (research/53): its dark parts at params.z's opacity, the bright ones solid.
+        a *= lerp(params.z, 1.0, saturate(max(c.r, max(c.g, c.b)) * 4.0));
+    }
     c = MEVR_PANEL_OUT(c, i.pos);
     return float4(c * a, a);
 }
@@ -257,7 +263,7 @@ float4 GridPS(VSOut i) : SV_Target {
 
 struct PanelParams {
     std::uint32_t info[4];  // factor, source width, source height, 0
-    float params[4];        // linear source (1/0), white scale, 0, 0
+    float params[4];        // linear source (1/0), white scale, the world UI's backdrop (0: none), 0
     std::int32_t window[4]; // blit: the window's origin (source pixels), 0, 0; grid: 0, 0, cell width, cell height
     std::int32_t masks[3][4];  // each x0, y0, x1, y1 (source pixels); x1 <= x0: none
 };
@@ -689,7 +695,7 @@ ID3D11Texture2D* Blit(ID3D11DeviceContext* context, ID3D11Device* device, QuadSw
     }
     if (rtv != nullptr) {
         PanelParams params{{factor, gPanel.width, gPanel.height, 0},
-            {SamplesLinear(gPanel.format) ? 1.0f : 0.0f, IsFloatFormat(gPanel.format) ? whiteScale : 1.0f, 0.0f, 0.0f},
+            {SamplesLinear(gPanel.format) ? 1.0f : 0.0f, IsFloatFormat(gPanel.format) ? whiteScale : 1.0f, gPanelBackdrop, 0.0f},
             {static_cast<std::int32_t>(window.x), static_cast<std::int32_t>(window.y), 0, 0}, {}};
         for (unsigned m = 0; m < masks.count && m < Masks::kMax; ++m) {
             params.masks[m][0] = masks.rects[m].x0;
@@ -1596,7 +1602,9 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     // The galaxy map open in the CIC (research/51 section 8): the game's UI (its own map hidden, so its travel question) goes to
     // the panel too, which then stands over the hologram's table instead of in front of the body.
     bool const galaxyUi = gLastGameMode == 9 && mevr::host::galaxy_hologram::InWorld();
-    bool const uiToPanel = gameplay || galaxyUi;
+    // One of the game's screens standing in the room (research/53: the shop...): its UI goes to the panel, placed where it opened.
+    bool const worldUi = gLastGameMode == 7 && mevr::host::world_ui::Active();
+    bool const uiToPanel = gameplay || galaxyUi || worldUi;
 
     // The game's own crosshair marks the screen centre (the head), not the gun: hidden while our
     // hand reticle stands in for it. The HUD movie keeps its authored layout on the panel (Halcyon's
@@ -1710,9 +1718,16 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
 
     bool panelShown = false;
     bool galaxyPanel = false;  // the panel goes after the galaxy hologram's layer (over it)
-    if (frame.worldFrame && engaged && uiToPanel && gPanel.texture != nullptr && count < capacity && device != nullptr) {
+    std::optional<mevr::host::world_ui::Shown> worldShown;
+    if (worldUi && gPanel.texture != nullptr) {
+        worldShown = mevr::host::world_ui::Current(ToVec(frame.headPosition), ToQuat(frame.headOrientation), frame.headValid, gPanel.width,
+            gPanel.height);
+    }
+    gPanelBackdrop = worldShown ? std::max(worldShown->backdrop, 1.0f / 256.0f) : 0.0f;
+    if (frame.worldFrame && engaged && uiToPanel && gPanel.texture != nullptr && count < capacity && device != nullptr &&
+        (!worldUi || worldShown)) {
         gPanelDrawsLastFrame.store(draws, std::memory_order_relaxed);
-        if (RenderPanel(context, device.Get(), frame.floatWhiteScale, hudMasks)) {
+        if (RenderPanel(context, device.Get(), frame.floatWhiteScale, worldUi ? Masks{} : hudMasks)) {
             float const width = std::clamp(cfg.hudPanelWidthM, 0.3f, 4.0f);
             gPanelQuad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
             gPanelQuad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied
@@ -1728,6 +1743,19 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                                   static_cast<float>(gPanel.width) / static_cast<float>(gPanel.height), cockpitPanel, pieces.cockpitUp)) {
                 gPanelQuad.pose = cockpitPanel.pose;  // the cockpit's place for what's left of the HUD, clear of its screens
                 gPanelQuad.size = {cockpitPanel.width, cockpitPanel.height};
+            }
+            if (worldShown) {
+                // The screen's shown part (the stage's content) of the panel image, where it stood when it opened; the game
+                // pointer gets the whole window on its plane.
+                auto const sw = static_cast<float>(gPanelSwapchain.width);
+                auto const sh = static_cast<float>(gPanelSwapchain.height);
+                gPanelQuad.subImage.imageRect = {{static_cast<int32_t>(worldShown->part.u0 * sw), static_cast<int32_t>(worldShown->part.v0 * sh)},
+                    {std::max<int32_t>(1, static_cast<int32_t>((worldShown->part.u1 - worldShown->part.u0) * sw)),
+                        std::max<int32_t>(1, static_cast<int32_t>((worldShown->part.v1 - worldShown->part.v0) * sh))}};
+                gPanelQuad.pose = worldShown->panel.pose;
+                gPanelQuad.size = {worldShown->panel.widthM, worldShown->panel.heightM};
+                mevr::host::game_pointer::NoteGameUiQuad(worldShown->whole.pose, worldShown->whole.widthM, worldShown->whole.heightM,
+                    MELEVR::MevrBridge::PanelKind::GameMenu);
             }
             if (galaxyUi) {
                 float const uiWidth = mevr::host::galaxy_hologram::UiPanelWidthM(kGalaxyUiWidthM);
@@ -1924,6 +1952,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     bool const armNext = engaged && uiToPanel && frame.worldFrame && (panelShown || gPanel.texture == nullptr);
     if (armNext != gArmed.load(std::memory_order_relaxed)) {
         mevr::log::Info("overlays: game UI goes to {}", !armNext ? "the eye images" : galaxyUi ? "a panel over the galaxy hologram's table"
+                                                                                                : worldUi ? "a screen standing in the room"
                                                                                                 : "the body-locked HUD panel");
         gPanelNeedsClear = true;
     }

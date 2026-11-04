@@ -52,4 +52,13 @@ std::string Aim(int index);
 std::string Props(ue3::Object* object);
 std::string SetProperty(ue3::Object* object, std::string const& field, std::string const& value);
 
+// `mevr panel list`: the GUI manager's open panels (their library tags, full screen, focus, visible, handler, movie);
+// `mevr panel <tag> show|hide`: BioSFPanel.SetMovieVisibility; `... var <path>`: GetVariableString; `... invoke <method>`:
+// InvokeMethodReturn; `... movie`: its Flash movie's RawData to %LOCALAPPDATA%\MEVR\galaxy\<tag>.gfx. Any of the game's
+// screens (research/53), found by tag through the player controller's cached GUI manager.
+std::string Panel(ue3::Object* controller, std::string const& tag, std::string const& verb, std::string const& arg);
+// `mevr gui <Equipment|Squad|Codex|Journal|Map|Menu>`: the on-foot game mode's own Show<X>Gui(true) (what its keys call), to open
+// one of the game's screens for the audit (research/53).
+std::string ShowGui(ue3::Object* controller, std::string const& which);
+
 } // namespace mevr::game::galaxy_dump

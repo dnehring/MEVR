@@ -367,6 +367,20 @@ switching frameworks.
   press|trace|input|movie|invoke|var|aim`, `mevr props`/`setprop`, `tools/make-galaxy-pick-recording.py` (`--world`, `--snapshot`,
   `--panel-uv`), offline look `mevr-galaxy-preview`. Logs `galaxy hologram:`; snapshot `"galaxyHologram"` (objects' places), layers
   `galaxy-left`/`-right`.
+- LE1 game screens in the room ([research/53](research/53-world-screens.md), HostServices v27 `setWorldUi`; `core/vr/WorldUi`,
+  `game/WorldUi`, host `plugin/WorldUi`; `[WorldUi]` in `ASI\LE1MEVR.ini`): research/53 audits all 35 of the game's screens (its GUI
+  library, `BioSFManager.HandlerLibrary`). In game mode 7 the mod reads the GUI manager's panels (`m_oCachedScaleFormManager`,
+  `m_lstPanels`, each `nmTag` a library tag); the first one of ours places the screen, and any open one not in `screens` (default
+  `shop, MenuBrowser, Journal, Codex, Map, MessageBox`) leaves the stack on Halcyon's panel (the equipment and character record show
+  3D models in the game's **UI world**, which the room hides). A `bFullScreen` panel makes the game render that UI world (a blurred
+  backdrop stage, its own camera) instead of the level: cleared on our screens while they stand in the room (journalled, put back
+  if ours goes down). Shepard's view on foot is held at render time through the galaxy map's `CalcSceneView` seam; one `[MEVR]` seam
+  in xr_session.cpp sets Halcyon's `liveWorldGui` while `MevrBridge::WorldUiActive()`. The game's UI goes to the HUD panel, shown as
+  the 16:9 stage's part (`DefaultCrop`; the shop's x 0.14..0.86), placed once per opening `distanceM` (0.95) ahead toward what it
+  belongs to (the shop: its vendor, the pawn nearest `BioSFHandler_Shop.m_shop`) at counter height (`belowM` 0.50), `widthM` 1.20,
+  its dark parts at `backdrop` 0.80; the game pointer maps the whole window on its plane (`WholeWindow`). Tools: `mevr panel`,
+  `mevr gui <Equipment|Squad|Codex|Journal|Map|Menu>`, `mevr classes <text>`. Logs `world ui:`; snapshot `"mod"."worldUi"`.
+  The skill `game-screen-to-hologram` is the recipe for the next screens.
 - LE1 Mako ([research/44](research/44-mako.md), `game/Mako`; `[Mako]` in `ASI\LE1MEVR.ini`): game mode 1 with a
   `BioVehicleBase` pawn, the right controller's aim ray (or the pistol calibration's line) traced in the world (`Actor.Trace`,
   `aimRangeM` 200) is the aim point: shots through HandAim's `GetAdjustedAimFor` handler (direction from the start the
@@ -766,6 +780,8 @@ Use it to check VR changes yourself instead of asking the user what they see
   motion blur bit a third time under a third name): symptom, cause, check, fix in place, the dates each bit. Read it
   when something looks familiar; add the date when it bites again. The bullets below are the short forms.
 - Don't `cd` in Bash tool calls; it moves the session's working directory. Use absolute paths.
+- An inline `python - <<'EOF'` loses one backslash of every pair (the Bash tool); write scripts with backslashes to a file.
+- `Windows.h` macros eat ordinary names (`SetProp`, `far`, `near`, `min`, `max`): don't name ours after them; build `build-mono/` too.
 - **Our settings file is `<exe dir>\ASI\<GAME>MEVR.ini` for the host and the mod** (`engine/SettingsFile`; the host's
   `MevrBridge::SettingsPath()` returns it, whatever the host ASI is called). **Read it with `core/Ini`** (or Win32's
   profile API): names case-insensitive, the first section and key win (as Win32), a UTF-8 BOM stripped, UTF-16

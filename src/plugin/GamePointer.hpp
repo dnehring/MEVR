@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "halcyon/le1/mevr_bridge.h"
+
 #include <openxr/openxr.h>
 
 #include <string>
@@ -42,6 +44,7 @@ bool OwnsTriggers();
 
 // The game's UI on a quad of ours (app space; the whole UI frame edge to edge, as the window's client area), pointed at this
 // frame: the galaxy map's travel question over the hologram's table (research/51 section 8). Present thread, before Step.
-void NoteGameUiQuad(XrPosef const& pose, float width, float height);
+void NoteGameUiQuad(XrPosef const& pose, float width, float height,
+    MELEVR::MevrBridge::PanelKind kind = MELEVR::MevrBridge::PanelKind::GalaxyMap);
 
 } // namespace mevr::host::game_pointer

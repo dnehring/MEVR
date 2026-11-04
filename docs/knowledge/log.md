@@ -10,3 +10,8 @@
 
 ## 2026-11-03
 * **Create**: [ProcessEvent skips every native that has an opcode of its own](gotchas/process-event-skips-opcode-natives.md), after Actor.Trace, Destroy and SetOwner all did nothing in one session; the 2026-10-24 and 2026-10-31 SetLocation reports were the same mechanism.
+
+## 2026-11-04
+* **Create**: [Windows.h defines macros that eat ordinary identifiers](gotchas/windows-h-macros.md), after `SetProp` broke the monolithic build and `far` broke core/vr/WorldUi.cpp the same day.
+* **Create**: [The Bash tool collapses doubled backslashes in a heredoc](gotchas/bash-heredoc-backslashes.md), after two inline edit scripts lost their `\n`.
+* **Update**: [a `cd` in a Bash tool call moves the session](gotchas/bash-cd-moves-the-session.md) bit again (a `cd` into the SDK headers).

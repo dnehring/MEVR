@@ -60,6 +60,9 @@ struct View;
 namespace vr::galaxy_holo {
 struct Scene;
 }
+namespace vr::world_ui {
+struct State;
+}
 namespace vr::squad_menu {
 struct View;
 namespace wheel {
@@ -74,7 +77,7 @@ struct Panel;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 26;
+inline constexpr int kHostServicesVersion = 27;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -313,6 +316,14 @@ struct HostServices {
     std::uint32_t galaxyHologramSize = 0;
     void (*setGalaxyHologram)(vr::galaxy_holo::Scene const* scene) = nullptr;
     bool (*takeGalaxyPick)(std::uint32_t* id) = nullptr;
+
+    // Version 27: the game's full-screen screens in the room (game/WorldUi, research/53; core/vr/WorldUi). While one of ours
+    // is up in the game's GUI mode (the shop, the inventory...), the mod sends which one, what it belongs to (the vendor's
+    // shop actor, in tracking space) and the [WorldUi] settings each tick; while it's active and fresh, Halcyon renders the
+    // world in stereo as on foot and the host shows the game's UI on a panel standing in the room, the game pointer on it.
+    // Null forgets it. The mod sends only if worldUiSize matches its sizeof(State). Any thread.
+    std::uint32_t worldUiSize = 0;
+    void (*setWorldUi)(vr::world_ui::State const* state) = nullptr;
 };
 
 } // namespace mevr

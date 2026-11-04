@@ -45,6 +45,7 @@
 #include "core/vr/CineScreen.hpp"
 #include "core/vr/GalaxyHologram.hpp"
 #include "core/vr/GalaxyMap.hpp"
+#include "core/vr/WorldUi.hpp"
 #include "core/vr/Spectator.hpp"
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/Ads.hpp"
@@ -5838,6 +5839,56 @@ void TestCineScreen() {
     CHECK(k.distanceM == cs::kMaxDistanceM && k.widthM == cs::Settings{}.widthM && k.depth == 0.0f && k.convergeM == cs::kMinConvergeM);
 }
 
+void TestWorldUi() {
+    namespace wu = mevr::vr::world_ui;
+    // The tags (the game's GUI library), either case.
+    CHECK(wu::FromTag("shop") == wu::Screen::Shop && wu::FromTag("SHOP") == wu::Screen::Shop);
+    CHECK(wu::FromTag("Inventory") == wu::Screen::Inventory && wu::FromTag("MainMenu") == wu::Screen::None);
+    CHECK(std::string(wu::Name(wu::Screen::Loot)) == "Loot" && std::string(wu::Name(wu::Screen::None)) == "None");
+    // The stage in the shop's window (2344 x 2392, measured: rows 537..1855): letterboxed 16:9.
+    wu::Rect const stage = wu::Stage(2344.0f, 2392.0f);
+    CHECK(NearD(stage.u0, 0.0, 1e-6) && NearD(stage.u1, 1.0, 1e-6));
+    CHECK(NearD(stage.v0 * 2392.0, 537.0, 1.0) && NearD(stage.v1 * 2392.0, 1855.0, 1.0));
+    // A wide window: pillarboxed.
+    wu::Rect const wide = wu::Stage(2560.0f, 1080.0f);
+    CHECK(NearD(wide.v0, 0.0, 1e-6) && NearD((wide.u1 - wide.u0) * 2560.0, 1920.0, 0.5));
+    wu::Rect const part = wu::InWindow(stage, {0.25f, 0.5f, 0.75f, 1.0f});
+    CHECK(NearD(part.u0, 0.25, 1e-6) && NearD(part.u1, 0.75, 1e-6) && NearD(part.v1, stage.v1, 1e-6) &&
+          NearD(part.v0, stage.v0 + 0.5 * (stage.v1 - stage.v0), 1e-6));
+    // Placed toward the anchor, short of it, below the eyes, facing them, level.
+    XrVector3f const eyes{0.2f, 1.7f, 0.0f};
+    auto const toward = wu::Place(eyes, {0.0f, 0.0f, -1.0f}, XrVector3f{2.2f, 1.2f, 0.0f}, 1.2f, 1.0f, 0.12f, 0.75f);
+    CHECK(toward.has_value());
+    if (toward) {
+        CHECK(NearXr(toward->pose.position, {1.2f, 1.58f, 0.0f}, 1e-4));
+        CHECK(NearD(toward->widthM, 1.2, 1e-6) && NearD(toward->heightM, 0.9, 1e-6));
+        XrVector3f const front = mevr::vr::overlay::Rotate(toward->pose.orientation, {0.0f, 0.0f, 1.0f});
+        XrVector3f const toEyes{eyes.x - toward->pose.position.x, eyes.y - toward->pose.position.y, eyes.z - toward->pose.position.z};
+        float const len = std::sqrt(toEyes.x * toEyes.x + toEyes.y * toEyes.y + toEyes.z * toEyes.z);
+        CHECK(NearXr(front, {toEyes.x / len, toEyes.y / len, toEyes.z / len}, 1e-4));
+        XrVector3f const across = mevr::vr::overlay::Rotate(toward->pose.orientation, {1.0f, 0.0f, 0.0f});
+        CHECK(NearD(across.y, 0.0, 1e-5));
+    }
+    // An anchor close by: never nearer than kNearestM; no anchor: straight ahead.
+    auto const close = wu::Place(eyes, {0.0f, 0.0f, -1.0f}, XrVector3f{0.2f, 1.2f, -0.6f}, 1.2f, 1.0f, 0.12f, 0.75f);
+    CHECK(close && NearD(close->pose.position.z, -wu::kNearestM, 1e-4));
+    auto const ahead = wu::Place(eyes, {0.6f, -0.8f, 0.0f}, std::nullopt, 1.2f, 1.0f, 0.0f, 0.75f);
+    CHECK(ahead && NearXr(ahead->pose.position, {1.2f, 1.7f, 0.0f}, 1e-4));
+    CHECK(!wu::Place(eyes, {0.0f, 0.0f, -1.0f}, std::nullopt, 0.0f, 1.0f, 0.0f, 0.75f));
+    // The whole window around a cropped panel: the crop's corners land on the panel's corners.
+    if (toward) {
+        wu::Rect const crop{0.14f, 0.2245f, 0.86f, 0.7755f};
+        wu::Panel const whole = wu::WholeWindow(*toward, crop);
+        auto const corner = [](wu::Panel const& p, float u, float v) {
+            XrVector3f const local{(u - 0.5f) * p.widthM, (0.5f - v) * p.heightM, 0.0f};
+            XrVector3f const r = mevr::vr::overlay::Rotate(p.pose.orientation, local);
+            return XrVector3f{p.pose.position.x + r.x, p.pose.position.y + r.y, p.pose.position.z + r.z};
+        };
+        CHECK(NearXr(corner(whole, crop.u0, crop.v0), corner(*toward, 0.0f, 0.0f), 1e-4));
+        CHECK(NearXr(corner(whole, crop.u1, crop.v1), corner(*toward, 1.0f, 1.0f), 1e-4));
+    }
+}
+
 void TestGalaxyHologram() {
     namespace gh = mevr::vr::galaxy_holo;
     // The table: ahead of the head's heading and below the eyes, facing the player, whatever the head's pitch.
@@ -9194,6 +9245,7 @@ int main() {
     TestSpectator();
     TestGalaxyMap();
     TestGalaxyHologram();
+    TestWorldUi();
     TestCineScreen();
     TestBoneNames();
     TestIk();

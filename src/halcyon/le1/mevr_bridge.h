@@ -257,6 +257,10 @@ void GalaxyViewSwapEnd() noexcept;
 // Each frame the hologram is shown: the render's symmetric half angles (radians, the game's own projection), so the game
 // pointer gets the game's screen as a quad in the room through the map's centre (core/vr/GalaxyMap VirtualScreen).
 void OnGalaxyHologram(float cpuHalfH, float cpuHalfV) noexcept;
+// [MEVR] The game's full-screen screens in the room (research/53; src/plugin/WorldUi.cpp, the mod's game/WorldUi): true while
+// one of ours is up in the GUI mode (the shop...). Halcyon then treats mode 7 as a live in-world GUI ([LIVEGUI]'s
+// liveWorldGui): no flat panel, both Draws; HalcyonOverlays stands the game's UI in the room.
+bool WorldUiActive() noexcept;
 
 struct MenuPointer
 {

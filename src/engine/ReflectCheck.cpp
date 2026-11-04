@@ -614,6 +614,7 @@ void CheckClasses() {
     CheckClass<UBio2DA>("Engine.Bio2DA");
     CheckClass<UBioPlayerSelection>("SFXGame.BioPlayerSelection");  // game/interact (research/40)
     CheckClass<UBioSFHandler_GalaxyMap>("SFXGame.BioSFHandler_GalaxyMap");
+    CheckClass<UBioSFHandler_Shop>("SFXGame.BioSFHandler_Shop");  // game/WorldUi: the shop's vendor
     CheckClass<UBioSeqEvt_ArtPlaceableUsed>("SFXGame.BioSeqEvt_ArtPlaceableUsed");
     CheckClass<UBioArtPlaceableBehavior>("SFXGame.BioArtPlaceableBehavior");
     CheckClass<AEmitter>("Engine.Emitter");  // the CIC projector's own hologram, hidden while ours shows
@@ -681,6 +682,12 @@ void CheckFields() {
     CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pRelayTable", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pRelayTable));
     CheckField("Engine.Actor", "Acceleration", SDK_FIELD(AActor, Acceleration));
     CheckField("SFXGame.BioSFHandler_GalaxyMap", "m_bWaitingForMsgBox", SDK_BOOL(UBioSFHandler_GalaxyMap, m_bWaitingForMsgBox));
+    CheckField("Engine.BioSFManager", "m_lstPanels", SDK_FIELD(UBioSFManager, m_lstPanels));  // game/WorldUi (research/53)
+    CheckField("Engine.BioSFManager", "m_FocusPanel", SDK_FIELD(UBioSFManager, m_FocusPanel));
+    CheckField("Engine.BioSFPanel", "nmTag", SDK_FIELD(UBioSFPanel, nmTag));
+    CheckField("Engine.BioSFPanel", "bFullScreen", SDK_BOOL(UBioSFPanel, bFullScreen));
+    CheckField("Engine.BioSFPanel", "m_DefaultHandler", SDK_FIELD(UBioSFPanel, m_DefaultHandler));
+    CheckField("SFXGame.BioSFHandler_Shop", "m_shop", SDK_FIELD(UBioSFHandler_Shop, m_shop));
     CheckField("Engine.SeqAct_Delay", "Duration", SDK_FIELD(USeqAct_Delay, Duration));
     CheckField("Engine.SequenceEvent", "Originator", SDK_FIELD(USequenceEvent, Originator));
     CheckField("Engine.Controller", "Pawn", SDK_FIELD(AController, Pawn));

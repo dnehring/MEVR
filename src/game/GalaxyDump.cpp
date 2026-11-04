@@ -835,4 +835,113 @@ std::string Dump(std::string const& tag) {
     return line;
 }
 
+std::string Panel(ue3::Object* controller, std::string const& tag, std::string const& verb, std::string const& arg) {
+    if (!ue3::runtime::Init()) {
+        return "panel: the reflection layer isn't ready";
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Object* const manager = ReadObject(r, controller, "m_oCachedScaleFormManager");
+    auto const info = manager != nullptr ? r.PropertyOf(r.ClassOf(manager), "m_lstPanels") : std::nullopt;
+    if (!info) {
+        return "panel: no GUI manager (PlayerController.m_oCachedScaleFormManager)";
+    }
+    auto const panels = ReadAt<ue3::TArray<ue3::Object*>>(reinterpret_cast<std::uint8_t const*>(manager) + info->offset);
+    ue3::Object* const focus = ReadObject(r, manager, "m_FocusPanel");
+    auto const tagOf = [&](ue3::Object* panel) {
+        auto const t = r.PropertyOf(r.ClassOf(panel), "nmTag");
+        return t ? r.ToString(ReadAt<ue3::Name>(reinterpret_cast<std::uint8_t const*>(panel) + t->offset)) : std::string();
+    };
+    auto const boolOf = [&](ue3::Object* panel, char const* field) {
+        auto const t = r.PropertyOf(r.ClassOf(panel), field);
+        return t && (ReadAt<std::uint32_t>(reinterpret_cast<std::uint8_t const*>(panel) + t->offset) & t->boolMask) != 0;
+    };
+    ue3::Object* chosen = nullptr;
+    std::string list;
+    for (std::int32_t i = 0; i < panels.count && panels.data != nullptr && i < 64; ++i) {
+        ue3::Object* const panel = panels.data[i];
+        if (panel == nullptr || !r.IsAlive(panel)) {
+            continue;
+        }
+        std::string const t = tagOf(panel);
+        ue3::Object* const handler = ReadObject(r, panel, "m_DefaultHandler");
+        list += std::format("\n  {} ({}): full screen {}, visible {}, focus {}, handler {}", t, r.NameText(panel), boolOf(panel, "bFullScreen"),
+                            boolOf(panel, "IsVisible"), panel == focus, handler != nullptr ? r.FullName(handler) : "none");
+        if (chosen == nullptr && !tag.empty() && ue3::Lower(t) == ue3::Lower(tag)) {
+            chosen = panel;
+        }
+    }
+    if (verb == "list" || tag == "list") {
+        return "panel: the GUI manager's open panels:" + (list.empty() ? std::string(" none") : list);
+    }
+    if (chosen == nullptr) {
+        return std::format("panel: no open panel tagged '{}'; open:{}", tag, list.empty() ? std::string(" none") : list);
+    }
+    if (verb == "show" || verb == "hide") {
+        bool const called = CallOn(chosen, "SetMovieVisibility", [&](ue3::Params& p) { p.SetBool("bVisible", verb == "show"); }, nullptr);
+        return std::format("panel: {}.SetMovieVisibility({}) called {}", tag, verb == "show", called);
+    }
+    if (verb == "var") {
+        mem::OwnedString name(mem::Widen(arg));
+        std::string value;
+        bool const called = CallOn(chosen, "GetVariableString", [&](ue3::Params& p) { p.Set("sPath", name.Get()); },
+            [&](ue3::Params& p) { value = TakeString(p.Return<ue3::FString>().value_or(ue3::FString{})); });
+        return std::format("panel: {} var {}: called {}, '{}'", tag, arg, called, value);
+    }
+    if (verb == "invoke") {
+        mem::OwnedString name(mem::Widen(arg));
+        std::string result;
+        bool const called = CallOn(chosen, "InvokeMethodReturn", [&](ue3::Params& p) { p.Set("sMethodName", name.Get()); },
+            [&](ue3::Params& p) { result = TakeString(p.Return<ue3::FString>().value_or(ue3::FString{})); });
+        return std::format("panel: {} invoke {}(): called {}, returned '{}'", tag, arg, called, result);
+    }
+    if (verb == "movie") {
+        ue3::Object* const instance = ReadObject(r, chosen, "MovieRef");
+        ue3::Object* const movie = ReadObject(r, instance, "MovieInfo");
+        auto const raw = movie != nullptr ? r.PropertyOf(r.ClassOf(movie), "RawData") : std::nullopt;
+        if (!raw) {
+            return std::format("panel: {} has no movie info with RawData", tag);
+        }
+        auto const bytes = ReadAt<ue3::TArray<std::uint8_t>>(reinterpret_cast<std::uint8_t const*>(movie) + raw->offset);
+        if (bytes.data == nullptr || bytes.count <= 0 || bytes.count > 64 * 1024 * 1024) {
+            return std::format("panel: {}'s RawData is empty", r.FullName(movie));
+        }
+        std::filesystem::path const folder = OutputFolder();
+        std::error_code ec;
+        std::filesystem::create_directories(folder, ec);
+        std::filesystem::path const path = folder / (mem::Widen(tag) + L".gfx");
+        std::ofstream out(path, std::ios::binary);
+        out.write(reinterpret_cast<char const*>(bytes.data), bytes.count);
+        return std::format("panel: wrote {} bytes of {} to {}", bytes.count, r.FullName(movie), ini::Utf8(path));
+    }
+    return "usage: mevr panel list | mevr panel <tag> show|hide|var <path>|invoke <method>|movie";
+}
+
+std::string ShowGui(ue3::Object* controller, std::string const& which) {
+    if (!ue3::runtime::Init()) {
+        return "gui: the reflection layer isn't ready";
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Object* const manager = ReadObject(r, controller, "GameModeManager");
+    auto const info = manager != nullptr ? r.PropertyOf(r.ClassOf(manager), "GameModes") : std::nullopt;
+    ue3::Class* const onFoot = r.FindClass("SFXGame.SFXGameModeDefault");
+    if (!info || onFoot == nullptr) {
+        return "gui: no game mode manager";
+    }
+    auto const modes = ReadAt<ue3::TArray<ue3::Object*>>(reinterpret_cast<std::uint8_t const*>(manager) + info->offset);
+    ue3::Object* mode = nullptr;
+    for (std::int32_t i = 0; i < modes.count && modes.data != nullptr; ++i) {
+        if (modes.data[i] != nullptr && r.IsA(modes.data[i], onFoot)) {
+            mode = modes.data[i];
+        }
+    }
+    if (mode == nullptr) {
+        return "gui: no on-foot game mode";
+    }
+    std::string const fn = "Show" + which + "Gui";
+    bool result = false;
+    bool const called = CallOn(mode, fn, [&](ue3::Params& p) { p.SetBool("bShow", true); },
+        [&](ue3::Params& p) { result = p.ReturnBool().value_or(false); });
+    return std::format("gui: {}.{}(true) called {}{}", r.FullName(mode), fn, called, which == "Menu" ? std::format(", returned {}", result) : std::string());
+}
+
 } // namespace mevr::game::galaxy_dump

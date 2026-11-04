@@ -20,6 +20,7 @@
 #include <cmath>
 #include <filesystem>
 #include <format>
+#include <map>
 #include <fstream>
 #include <optional>
 #include <sstream>
@@ -440,6 +441,64 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
             gFound.push_back(o);
         }
         return std::format("{} found{}\n{}", gFound.size(), gFound.size() == 40 ? " (the first 40)" : "", out);
+    }
+    if (verb == "gui") {
+        std::string which;
+        words >> which;
+        return galaxy_dump::ShowGui(pc, which);
+    }
+    if (verb == "panel") {
+        // `mevr panel list` | `mevr panel <tag> show|hide|var <path>|invoke <method>|movie` (research/53).
+        std::string tag, sub, arg;
+        words >> tag >> sub >> arg;
+        return galaxy_dump::Panel(pc, tag, sub.empty() ? "list" : sub, arg);
+    }
+    if (verb == "classes") {
+        // `mevr classes <text>`: the loaded script classes whose name holds the text (case-insensitive), each with its parent;
+        // each class's default object goes on `find`'s list (for `props` and `funcs`). Auditing the game's UIs (research/53).
+        std::string pattern;
+        words >> pattern;
+        if (pattern.empty()) {
+            return std::string("usage: mevr classes <text>");
+        }
+        auto const lower = [](std::string v) {
+            std::transform(v.begin(), v.end(), v.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            return v;
+        };
+        std::string const want = lower(pattern);
+        ue3::Reflection& r = ue3::runtime::Get();
+        ue3::Class* const classClass = r.ClassClass();
+        std::vector<std::pair<std::string, ue3::Object*>> classes;
+        std::map<std::string, ue3::Object*> defaults;
+        for (std::int32_t i = 0, n = r.ObjectCount(); i < n; ++i) {
+            ue3::Object* const o = r.ObjectAt(i);
+            if (o == nullptr || !r.IsAlive(o)) {
+                continue;
+            }
+            std::string const name = r.NameText(o);
+            if (lower(name).find(want) == std::string::npos) {
+                continue;
+            }
+            if (r.ClassOf(o) == classClass) {
+                classes.emplace_back(name, o);
+            } else if (name.starts_with("Default__")) {
+                defaults[name.substr(9)] = o;
+            }
+        }
+        std::sort(classes.begin(), classes.end());
+        gFound.clear();
+        std::string out = std::format("{} classes", classes.size());
+        for (auto const& [name, cls] : classes) {
+            if (gFound.size() >= 300) {
+                out += "\n(the first 300)";
+                break;
+            }
+            ue3::Struct* const super = r.SuperOf(reinterpret_cast<ue3::Struct const*>(cls));
+            auto const d = defaults.find(name);
+            out += std::format("\n[{}] {} : {}", gFound.size(), r.PathName(cls), super != nullptr ? r.NameText(super) : "-");
+            gFound.push_back(d != defaults.end() ? d->second : cls);
+        }
+        return out;
     }
     if (verb == "funcs") {
         // `mevr funcs <n> <text>`: the n-th of `find`'s functions (its class chain) whose name holds the text, with parameters.

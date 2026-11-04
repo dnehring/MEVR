@@ -22,6 +22,7 @@
 #include "core/vr/Sights.hpp"
 #include "core/vr/GalaxyHologram.hpp"
 #include "core/vr/GalaxyMap.hpp"
+#include "core/vr/WorldUi.hpp"
 #include "core/vr/Spectator.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "plugin/Calibration.hpp"
@@ -266,12 +267,25 @@ HostServices WithGalaxyHologram(HostServices services) {
     services.takeGalaxyPick = &HostTakeGalaxyPick;
     return services;
 }
+// v27: the game's screens in the room (core/vr/WorldUi, plugin/WorldUi, research/53).
+void HostSetWorldUi(vr::world_ui::State const* state) {
+    if (state != nullptr) {
+        vr::world_ui::Publish(*state);
+    } else {
+        vr::world_ui::Forget();
+    }
+}
+HostServices WithWorldUi(HostServices services) {
+    services.worldUiSize = static_cast<std::uint32_t>(sizeof(vr::world_ui::State));
+    services.setWorldUi = &HostSetWorldUi;
+    return services;
+}
 HostServices WithGalaxyMap(HostServices services) {
     services.galaxyMapSize = static_cast<std::uint32_t>(sizeof(vr::galaxy_map::View));
     services.setGalaxyMap = &HostSetGalaxyMap;
     return services;
 }
-HostServices const gServices = WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(WithHudPieces(WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithCrashBreadcrumbs({kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
+HostServices const gServices = WithWorldUi(WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(WithHudPieces(WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithCrashBreadcrumbs({kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
     static_cast<std::uint32_t>(sizeof(vr::controllers::State)), static_cast<std::uint32_t>(sizeof(vr::host_view::State)),
     &HostSetProcessEventCallback, &HostProcessExiting, &HostKeepLoaded,
     static_cast<std::uint32_t>(sizeof(vr::aim_ray::Ray)), &HostSetAimRay, &HostSetSupportGrip, &HostSupportGripHeld,
@@ -281,7 +295,7 @@ HostServices const gServices = WithGalaxyHologram(WithGalaxyMap(WithSpectator(Wi
     static_cast<std::uint32_t>(sizeof(vr::squad_menu::View)), &HostSetSquadMenu, &HostLeftGripAway,
     static_cast<std::uint32_t>(sizeof(vr::squad_menu::wheel::Panel)), &HostSetWheelPanel,
     static_cast<std::uint32_t>(sizeof(vr::sights::Sight)), &HostSetSight, &HostSightView,
-    static_cast<std::uint32_t>(sizeof(vr::calibration::HostState)), &HostCalibration, &HostMainMenu, &HostSetVignette})))))))));
+    static_cast<std::uint32_t>(sizeof(vr::calibration::HostState)), &HostCalibration, &HostMainMenu, &HostSetVignette}))))))))));
 // A mod that's gone can't aim: Halcyon's head aim must come back, the reticle go, the pad mapping
 // forget the two-handed grip (the grip holding the gun, the squad menu's controls), the squad menu and the
 // wheel panel settings go, and the controllers stop vibrating.
@@ -296,6 +310,7 @@ void ForgetModState() {
     vr::hud_pieces::Reset();  // the weapon panel back on the HUD (the wrist piece needs no mod)
     vr::mako_controls::Reset();  // no lever or stick without the mod
     vr::spectator::Reset();      // the desktop window gets Halcyon's mirror back
+    vr::world_ui::Forget();      // the game's screens go back to Halcyon's panel
     halcyon::ForgetSupportGrip();
     halcyon::ForgetHaptics();
     vignette::Forget();

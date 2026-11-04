@@ -6,6 +6,7 @@
 
 #include "core/vr/GalaxyHologram.hpp"
 #include "core/vr/GalaxyMap.hpp"
+#include "core/vr/WorldUi.hpp"
 
 #include "halcyon/le1/mevr_bridge.h"
 #include "plugin/Calibration.hpp"
@@ -504,9 +505,9 @@ void NoteFlatQuad(MELEVR::MevrBridge::PanelKind kind, XrPosef const& space, XrPo
     gQuadMs = GetTickCount64();
 }
 
-void NoteGameUiQuad(XrPosef const& pose, float width, float height) {
+void NoteGameUiQuad(XrPosef const& pose, float width, float height, MELEVR::MevrBridge::PanelKind kind) {
     XrPosef const space{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
-    NoteFlatQuad(MELEVR::MevrBridge::PanelKind::GalaxyMap, space, pose, width, height, false);
+    NoteFlatQuad(kind, space, pose, width, height, false);
 }
 
 } // namespace mevr::host::game_pointer
@@ -594,20 +595,37 @@ void SwapOut(GalaxyViewSwap& s) noexcept {
 } // namespace
 
 bool GalaxyViewSwapBegin() noexcept {
+    // The galaxy map in the CIC, or one of the game's screens standing in the room (research/53: the shop's camera looks at a
+    // backdrop stage of its own): the view held at Shepard's for the main view's build only.
     gGalaxySwap.active = false;
     auto const scene = mevr::vr::galaxy_holo::Latest(500);
-    if (!scene || scene->holdRender == 0 || scene->povLocationAddress == 0 || scene->povRotationAddress == 0 || scene->povFovAddress == 0) {
+    if (scene && scene->holdRender != 0 && scene->povLocationAddress != 0 && scene->povRotationAddress != 0 && scene->povFovAddress != 0) {
+        gGalaxySwap.location = reinterpret_cast<float*>(scene->povLocationAddress);
+        gGalaxySwap.rotation = reinterpret_cast<std::int32_t*>(scene->povRotationAddress);
+        gGalaxySwap.fov = reinterpret_cast<float*>(scene->povFovAddress);
+        if (!SwapIn(gGalaxySwap, scene->holdLocation, scene->holdRotation, scene->holdFov)) {
+            return false;
+        }
+        gGalaxySwap.active = true;
+        if (gGalaxySwaps++ == 0) {
+            mevr::log::Info("galaxy hologram: the view held at Shepard's for the main view's build only (the game keeps its map camera)");
+        }
+        return true;
+    }
+    auto const ui = mevr::vr::world_ui::Latest(500);
+    if (!ui || ui->holdRender == 0 || ui->povLocationAddress == 0 || ui->povRotationAddress == 0 || ui->povFovAddress == 0) {
         return false;
     }
-    gGalaxySwap.location = reinterpret_cast<float*>(scene->povLocationAddress);
-    gGalaxySwap.rotation = reinterpret_cast<std::int32_t*>(scene->povRotationAddress);
-    gGalaxySwap.fov = reinterpret_cast<float*>(scene->povFovAddress);
-    if (!SwapIn(gGalaxySwap, scene->holdLocation, scene->holdRotation, scene->holdFov)) {
+    gGalaxySwap.location = reinterpret_cast<float*>(ui->povLocationAddress);
+    gGalaxySwap.rotation = reinterpret_cast<std::int32_t*>(ui->povRotationAddress);
+    gGalaxySwap.fov = reinterpret_cast<float*>(ui->povFovAddress);
+    if (!SwapIn(gGalaxySwap, ui->holdLocation, ui->holdRotation, ui->holdFov)) {
         return false;
     }
     gGalaxySwap.active = true;
-    if (gGalaxySwaps++ == 0) {
-        mevr::log::Info("galaxy hologram: the view held at Shepard's for the main view's build only (the game keeps its map camera)");
+    static std::uint64_t worldUiSwaps = 0;
+    if (worldUiSwaps++ == 0) {
+        mevr::log::Info("world ui: the view held at Shepard's for the main view's build only (the game's screen keeps its own camera)");
     }
     return true;
 }

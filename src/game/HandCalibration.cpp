@@ -21,6 +21,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <format>
+#include <sstream>
 #include <fstream>
 #include <map>
 #include <string>
@@ -601,6 +602,24 @@ constexpr char const* kGalaxyBlock =
     "tableRadiusM = 0.48\n"
     "distanceM = 0.9\n"
     "belowM = 0.30\n";
+
+constexpr char const* kWorldUiBlock =
+    "\n"
+    "[WorldUi]\n"
+    "; The game's full-screen screens in the room (research/53): with on = 1, the shop (and, as they're measured, the other\n"
+    "; screens) stands as a panel in front of you where it opened, between you and the vendor, the world around it, its dark\n"
+    "; parts see-through like a hologram; point at it with a controller as the game's mouse. widthM its width, distanceM how\n"
+    "; far ahead, belowM its centre below your eyes, backdrop how opaque its dark parts are (1: solid). screens: the screens\n"
+    "; put in the room (the game's own names: shop, Loot, Inventory, XMods, CharacterRecord, Specialization, Journal, Codex,\n"
+    "; Map, PartySelect, MenuBrowser, Options, Save, Load, MessageBox, Achievement, AdditionalContent; all = every one).\n"
+    "; on = 0: the game's screens on the flat panel, the world gone (Halcyon's own). Inventory, XMods and CharacterRecord show a\n"
+    "; 3D model of their own (the game's UI world), which the room hides: list them only to try.\n"
+    "on = 1\n"
+    "widthM = 1.20\n"
+    "distanceM = 0.95\n"
+    "belowM = 0.50\n"
+    "backdrop = 0.80\n"
+    "screens = shop, MenuBrowser, Journal, Codex, Map, MessageBox\n";
 
 constexpr char const* kGameBlock =
     "\n"
@@ -1599,6 +1618,65 @@ std::string Describe(vr::galaxy_map::Settings const& s) {
 vr::galaxy_map::Settings gGalaxy;
 std::string gGalaxyText;
 
+// [WorldUi] (research/53).
+vr::world_ui::Settings ReadWorldUi(Ini const& ini) {
+    vr::world_ui::Settings s;
+    double value = 0.0;
+    if (Number(ini, "WorldUi", "on", value)) {
+        s.on = value != 0.0;
+    }
+    if (Number(ini, "WorldUi", "widthM", value)) {
+        s.widthM = static_cast<float>(std::clamp(value, 0.3, 4.0));
+    }
+    if (Number(ini, "WorldUi", "distanceM", value)) {
+        s.distanceM = static_cast<float>(std::clamp(value, 0.4, 4.0));
+    }
+    if (Number(ini, "WorldUi", "belowM", value)) {
+        s.belowM = static_cast<float>(std::clamp(value, -1.0, 1.0));
+    }
+    if (Number(ini, "WorldUi", "backdrop", value)) {
+        s.backdrop = static_cast<float>(std::clamp(value, 0.0, 1.0));
+    }
+    if (auto const section = ini.find("WorldUi"); section != ini.end()) {
+        if (auto const key = section->second.find("screens"); key != section->second.end()) {
+            std::uint32_t bits = 0;
+            std::string word;
+            std::istringstream words(key->second);
+            while (std::getline(words, word, ',')) {
+                std::string const w = Strip(word);
+                std::string lower = w;
+                std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                if (lower == "all") {
+                    bits = 0xFFFFFFFFu;
+                } else if (vr::world_ui::Screen const screen = vr::world_ui::FromTag(w); screen != vr::world_ui::Screen::None) {
+                    bits |= vr::world_ui::Bit(screen);
+                } else if (!w.empty()) {
+                    log::Warn("world ui: [WorldUi] screens: '{}' isn't one of the game's screens we place (research/53)", w);
+                }
+            }
+            s.screens = bits;
+        }
+    }
+    return s;
+}
+
+std::string Describe(vr::world_ui::Settings const& s) {
+    if (!s.on) {
+        return "the game's screens on Halcyon's flat panel ([WorldUi] on = 0)";
+    }
+    std::string names;
+    for (unsigned i = 1; i < static_cast<unsigned>(vr::world_ui::Screen::Count); ++i) {
+        if ((s.screens & (1u << i)) != 0) {
+            names += (names.empty() ? "" : ", ") + std::string(vr::world_ui::Name(static_cast<vr::world_ui::Screen>(i)));
+        }
+    }
+    return std::format("the game's screens in the room ({}): {:.2f} m wide, {:.2f} m ahead, {:.2f} m below the eyes, backdrop {:.2f}",
+                       names.empty() ? "none" : names, s.widthM, s.distanceM, s.belowM, s.backdrop);
+}
+
+vr::world_ui::Settings gWorldUi;
+std::string gWorldUiText;
+
 Game ReadGame(Ini const& ini) {
     Game g;
     double value = 0.0;
@@ -2026,6 +2104,10 @@ vr::galaxy_map::Settings GetGalaxy() {
     return gGalaxy;
 }
 
+vr::world_ui::Settings GetWorldUi() {
+    return gWorldUi;
+}
+
 Game GetGame() {
     return gGame;
 }
@@ -2097,7 +2179,7 @@ void Refresh() {
         {
             std::ofstream out(path);
             out << kDefaultFile << kControlsBlock << kHolstersBlock << kSquadBlock << kSightsBlock << kThrowablesBlock
-                << kComfortBlock << kInteractBlock << kVentBlock << kHudBlock << kMakoBlock << kCockpitBlock << kGalaxyBlock << kGameBlock;
+                << kComfortBlock << kInteractBlock << kVentBlock << kHudBlock << kMakoBlock << kCockpitBlock << kGalaxyBlock << kWorldUiBlock << kGameBlock;
             out.close();
             static bool warned = false;
             if (!out || !fs::exists(path, ec)) {
@@ -2124,7 +2206,7 @@ void Refresh() {
     for (auto const& [name, block] : {std::pair{"Controls", kControlsBlock}, std::pair{"Holsters", kHolstersBlock},
              std::pair{"Squad", kSquadBlock}, std::pair{"Throwables", kThrowablesBlock}, std::pair{"Comfort", kComfortBlock},
              std::pair{"Sights", kSightsBlock}, std::pair{"Interact", kInteractBlock}, std::pair{"Vent", kVentBlock}, std::pair{"Hud", kHudBlock}, std::pair{"Mako", kMakoBlock},
-             std::pair{"Cockpit", kCockpitBlock}, std::pair{"Galaxy", kGalaxyBlock}, std::pair{"Game", kGameBlock}}) {
+             std::pair{"Cockpit", kCockpitBlock}, std::pair{"Galaxy", kGalaxyBlock}, std::pair{"WorldUi", kWorldUiBlock}, std::pair{"Game", kGameBlock}}) {
         if (ini.find(name) == ini.end() && AppendBlock(path, block, name)) {  // an older file: show the new settings
             ini = ReadIni(path);
             stamp = fs::last_write_time(path, ec);
@@ -2495,6 +2577,11 @@ void Refresh() {
     if (std::string const text = Describe(gGalaxy); text != gGalaxyText) {
         gGalaxyText = text;
         log::Info("galaxy map: settings: {}", text);
+    }
+    gWorldUi = ReadWorldUi(ini);
+    if (std::string const text = Describe(gWorldUi); text != gWorldUiText) {
+        gWorldUiText = text;
+        log::Info("world ui: settings: {}", text);
     }
     gGame = ReadGame(ini);
     if (std::string const text = gGame.pauseUnfocused ? "the game pauses while its window has no focus" : "the game runs on without focus"; text != gGameText) {

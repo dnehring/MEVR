@@ -1,0 +1,379 @@
+// SPDX-License-Identifier: MIT
+// The game's full-screen screens in the room: the game's side (game/WorldUi.hpp, research/53).
+#include "game/WorldUi.hpp"
+
+#include "core/Log.hpp"
+#include "engine/ProcessEvent.hpp"
+#include "engine/XrToUnreal.hpp"
+#include "game/HandCalibration.hpp"
+#include "game/Player.hpp"
+#include "game/ViewAnchor.hpp"
+#include "ue3/Handles.hpp"
+#include "ue3/Runtime.hpp"
+
+#include <Windows.h>
+
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <format>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace mevr::game::world_ui {
+
+namespace {
+
+namespace wu = vr::world_ui;
+
+constexpr std::uint8_t kGuiMode = 7;  // SFXGameModeManager.EGameModes: GameMode_GUI
+
+// The GUI manager (the player controller's cached one) and its panels: each open screen is a BioSFPanel tagged with its library
+// tag (the shop's: nmTag "shop", bFullScreen, m_DefaultHandler its BioSFHandler_Shop; measured 2026-11-04).
+ue3::FieldRef gCachedManager{"Engine.PlayerController", "m_oCachedScaleFormManager"};
+ue3::FieldRef gPanels{"Engine.BioSFManager", "m_lstPanels"};
+ue3::FieldRef gFocusPanel{"Engine.BioSFManager", "m_FocusPanel"};
+ue3::FieldRef gPanelTag{"Engine.BioSFPanel", "nmTag"};
+ue3::FieldRef gPanelFullScreen{"Engine.BioSFPanel", "bFullScreen"};
+ue3::FieldRef gPanelHandler{"Engine.BioSFPanel", "m_DefaultHandler"};
+ue3::ClassRef gShopHandlerClass{"SFXGame.BioSFHandler_Shop"};
+ue3::FieldRef gShopActor{"SFXGame.BioSFHandler_Shop", "m_shop"};
+ue3::FunctionRef gUpdateCamera{"Engine.Camera.UpdateCamera"};
+
+// Shepard's view on foot (the last camera update in mode 0), and the player camera's POV fields while a screen is up: the host
+// puts the former into the latter for the main view's render only (the shop's own camera looks at a backdrop stage elsewhere).
+struct Hold {
+    bool haveView = false;
+    ue3::Vector location{};
+    ue3::Rotator rotation{};
+    float fov = 90.0f;
+    std::optional<engine::TrackingFrame> footFrame;  // the tracking frame of that view (the anchor's conversion while held)
+    float* povLocation = nullptr;
+    ue3::Rotator* povRotation = nullptr;
+    float* povFov = nullptr;
+    std::uint64_t povMs = 0;
+};
+Hold gHold;
+bool gScreenUp = false;  // a screen of ours was published last tick (game thread)
+
+// A full-screen panel (bFullScreen) makes the game render its UI world (GUI_UIWorld: a backdrop stage of blurred machinery
+// under a blue gradient, its own camera) instead of the level; with the flag cleared the level renders behind the screen
+// (measured 2026-11-04 at the shop, research/53). Cleared on every screen of ours open while ours stands in the room (the map
+// opens over the main wheel: both full screen), set again on those still open if ours goes down.
+std::vector<ue3::Object*> gClearedPanels;
+
+void RestoreFullScreen() {
+    int restored = 0;
+    for (ue3::Object* const panel : gClearedPanels) {
+        if (panel != nullptr && ue3::runtime::IsAlive(panel)) {
+            gPanelFullScreen.WriteBool(panel, true);  // journalled by the handle
+            ++restored;
+        }
+    }
+    if (restored > 0) {
+        log::Info("world ui: {} of the game's screens full screen again (its UI world renders behind them)", restored);
+    }
+    gClearedPanels.clear();
+}
+
+struct Status {
+    bool published = false;
+    // Screens opened (a new mode-7 stretch with one of ours); starts from the clock, so a reloaded mod never repeats a number the
+    // host has placed.
+    std::uint32_t opening = static_cast<std::uint32_t>(GetTickCount64());
+    bool open = false;                 // one of ours is up now
+    std::string stack;                 // the open screens' tags, as last read
+    std::string screen;                // the one shown
+    bool anchored = false;
+    float anchor[3] = {};
+    std::uint64_t ticks = 0;
+    bool loggedMissing = false;
+};
+Status gS;
+std::mutex gStatusMutex;
+std::string gStatusJson = "{\"open\": false}";
+
+bool Resolved() {
+    return gCachedManager.Get() != nullptr && gPanels.Get() != nullptr && gFocusPanel.Get() != nullptr && gPanelTag.Get() != nullptr &&
+           gPanelFullScreen.Get() != nullptr && gPanelHandler.Get() != nullptr;
+}
+
+struct OpenPanel {
+    ue3::Object* panel = nullptr;
+    std::string tag;
+    bool fullScreen = false;
+    bool focus = false;
+    ue3::Object* handler = nullptr;
+};
+
+// The GUI manager's open panels, in its order (the HUD's, the reticule's... and the screens).
+std::vector<OpenPanel> OpenPanels(ue3::Object* controller) {
+    std::vector<OpenPanel> open;
+    ue3::Object* const manager = gCachedManager.Read<ue3::Object*>(controller).value_or(nullptr);
+    auto const* const panels = manager != nullptr ? gPanels.In<ue3::TArray<ue3::Object*>>(manager) : nullptr;
+    if (panels == nullptr || panels->data == nullptr || panels->count <= 0 || panels->count > 64) {
+        return open;
+    }
+    ue3::Object* const focus = gFocusPanel.Read<ue3::Object*>(manager).value_or(nullptr);
+    ue3::Reflection& r = ue3::runtime::Get();
+    for (std::int32_t i = 0; i < panels->count; ++i) {
+        ue3::Object* const panel = panels->data[i];
+        if (panel == nullptr || !r.IsAlive(panel)) {
+            continue;
+        }
+        OpenPanel o;
+        o.panel = panel;
+        if (auto const tag = gPanelTag.Read<ue3::Name>(panel)) {
+            o.tag = r.ToString(*tag);
+        }
+        o.fullScreen = gPanelFullScreen.ReadBool(panel).value_or(false);
+        o.focus = panel == focus;
+        o.handler = gPanelHandler.Read<ue3::Object*>(panel).value_or(nullptr);
+        open.push_back(std::move(o));
+    }
+    return open;
+}
+
+// The vendor: the BioShop actor names no one, but it's placed at its vendor (the Normandy's requisitions officer 68 units from
+// his), so the nearest pawn other than the player's within kVendorUnits of it; found once per opening.
+constexpr float kVendorUnits = 250.0f;
+struct Vendor {
+    std::uint32_t opening = 0;
+    ue3::Object* pawn = nullptr;
+};
+Vendor gVendor;
+
+ue3::Object* NearestPawn(ue3::Vector const& at, ue3::Object* player) {
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Object* best = nullptr;
+    float bestD = kVendorUnits;
+    for (std::int32_t i = 0, n = r.ObjectCount(); i < n; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o == nullptr || o == player || !player::IsBioPawn(o) || !r.IsAlive(o) || r.NameText(o).starts_with("Default__")) {
+            continue;
+        }
+        if (auto const p = player::Location(o)) {
+            float const d = std::hypot(p->x - at.x, p->y - at.y, p->z - at.z);
+            if (d < bestD) {
+                bestD = d;
+                best = o;
+            }
+        }
+    }
+    return best;
+}
+
+// Where what the screen belongs to stands in the world: the shop's vendor (else its BioShop actor).
+std::optional<ue3::Vector> AnchorOf(wu::Screen screen, ue3::Object* handler, ue3::Object* controller, std::uint32_t opening) {
+    if (screen == wu::Screen::Shop && handler != nullptr && ue3::IsA(handler, gShopHandlerClass) && ue3::runtime::IsAlive(handler)) {
+        ue3::Object* const shop = gShopActor.Read<ue3::Object*>(handler).value_or(nullptr);
+        auto const at = shop != nullptr && ue3::runtime::IsAlive(shop) ? player::Location(shop) : std::nullopt;
+        if (!at) {
+            return std::nullopt;
+        }
+        if (gVendor.opening != opening) {
+            gVendor = {opening, NearestPawn(*at, player::Pawn(controller))};
+            ue3::Reflection& r = ue3::runtime::Get();
+            log::Info("world ui: the shop's vendor: {}", gVendor.pawn != nullptr ? r.FullName(gVendor.pawn)
+                                                                                : std::string("none near its shop actor (the screen faces the shop actor)"));
+        }
+        if (gVendor.pawn != nullptr && ue3::runtime::IsAlive(gVendor.pawn)) {
+            if (auto const v = player::Location(gVendor.pawn)) {
+                return v;
+            }
+        }
+        return at;
+    }
+    return std::nullopt;
+}
+
+// Engine.Camera.UpdateCamera, after the game's: on foot, Shepard's view is recorded; while a screen of ours is up, where the POV
+// lives (the host swaps the recorded view in at render time).
+void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
+    ue3::Object* const controller = player::Controller();
+    if (camera == nullptr || controller == nullptr || player::CameraOwner(camera) != controller) {
+        return;
+    }
+    auto const pov = player::CameraPov(camera);
+    if (!pov || pov->location == nullptr || pov->rotation == nullptr || pov->fov == nullptr) {
+        return;
+    }
+    auto const mode = player::GameMode(controller);
+    if (mode && *mode == 0) {
+        gHold.location = *pov->location;
+        gHold.rotation = *pov->rotation;
+        gHold.fov = *pov->fov;
+        gHold.haveView = true;
+        return;
+    }
+    if (gScreenUp) {
+        gHold.povLocation = reinterpret_cast<float*>(pov->location);
+        gHold.povRotation = pov->rotation;
+        gHold.povFov = pov->fov;
+        gHold.povMs = GetTickCount64();
+    }
+}
+
+void SetStatus(std::string json) {
+    std::lock_guard<std::mutex> const lock(gStatusMutex);
+    gStatusJson = std::move(json);
+}
+
+void Down(Link const& link, char const* why) {
+    if (gS.published && link.setState != nullptr) {
+        link.setState(nullptr);
+        log::Info("world ui: {} down ({})", gS.screen.empty() ? "the screen" : gS.screen, why);
+    }
+    RestoreFullScreen();
+    gS.published = false;
+    gScreenUp = false;
+    gS.open = false;
+    gS.anchored = false;
+    gS.screen.clear();
+    SetStatus(std::format("{{\"open\": false, \"openings\": {}}}", gS.opening));
+}
+
+} // namespace
+
+void TryStartup() {
+    ue3::Function* const update = ue3::runtime::Ready() ? gUpdateCamera.Get() : nullptr;
+    if (update == nullptr) {
+        log::Warn("world ui: Engine.Camera.UpdateCamera not found: the game's screens can't hold Shepard's view (they stay on Halcyon's panel)");
+        return;
+    }
+    engine::process_event::AddPostHandler(update, &OnUpdateCamera);
+}
+
+void Tick(Link const& link) {
+    wu::Settings const settings = hand_calibration::GetWorldUi();
+    ue3::Object* const controller = player::Controller();
+    auto const mode = controller != nullptr ? player::GameMode(controller) : std::nullopt;
+    if (mode && *mode == 0) {
+        if (auto const frame = view_anchor::Current()) {
+            gHold.footFrame = frame;  // the room as Shepard's view maps it (the held view's)
+        }
+    }
+    if (link.setState == nullptr || !settings.on || !mode || *mode != kGuiMode) {
+        if (!gS.stack.empty()) {
+            gS.stack.clear();
+        }
+        Down(link, link.setState == nullptr ? "an older host" : !settings.on ? "[WorldUi] on = 0" : "the game left its GUI mode");
+        return;
+    }
+    if (!Resolved()) {
+        if (!gS.loggedMissing) {
+            gS.loggedMissing = true;
+            log::Warn("world ui: the GUI manager's panels (BioSFManager.m_lstPanels, BioSFPanel.nmTag...) weren't found through our "
+                      "reflection layer: the game's screens stay on Halcyon's panel");
+        }
+        return;
+    }
+    std::vector<OpenPanel> const panels = OpenPanels(controller);
+    std::string stack;
+    OpenPanel const* base = nullptr;  // the first of ours opened decides (a message box over the shop stays on the shop's place)
+    for (OpenPanel const& o : panels) {
+        stack += std::format("{}{}{}{}", stack.empty() ? "" : ", ", o.tag, o.fullScreen ? " (full screen)" : "", o.focus ? " (focus)" : "");
+        if (base == nullptr && wu::FromTag(o.tag) != wu::Screen::None) {
+            base = &o;
+        }
+    }
+    if (stack != gS.stack) {
+        log::Info("world ui: the game's open panels: {}", stack.empty() ? "none" : stack);
+        gS.stack = stack;
+    }
+    wu::Screen const screen = base != nullptr ? wu::FromTag(base->tag) : wu::Screen::None;
+    if (screen == wu::Screen::None) {
+        Down(link, "no screen of ours open");
+        return;
+    }
+    // Every one of ours open must be listed: a screen that shows a 3D model of its own in the game's UI world (the equipment's
+    // squadmate, the character record's Shepard) keeps Halcyon's panel, and the main wheel it opened from with it.
+    for (OpenPanel const& o : panels) {
+        if (wu::Screen const s = wu::FromTag(o.tag); s != wu::Screen::None && (settings.screens & wu::Bit(s)) == 0) {
+            Down(link, "not one of [WorldUi] screens");
+            return;
+        }
+    }
+    if (!gHold.haveView || !gHold.footFrame) {
+        Down(link, "Shepard's view on foot isn't known (opened before any camera update on foot)");
+        return;
+    }
+    std::erase_if(gClearedPanels, [&](ue3::Object* p) {
+        return std::none_of(panels.begin(), panels.end(), [&](OpenPanel const& o) { return o.panel == p; });  // closed since
+    });
+    for (OpenPanel const& o : panels) {
+        if (o.fullScreen && wu::FromTag(o.tag) != wu::Screen::None && gPanelFullScreen.WriteBool(o.panel, false)) {
+            gClearedPanels.push_back(o.panel);
+            log::Info("world ui: the {} screen isn't full screen any more: the level renders behind it, not the game's UI world", o.tag);
+        }
+    }
+    if (!gS.open) {
+        gS.open = true;
+        ++gS.opening;
+        gS.screen = wu::Name(screen);
+    }
+    wu::State state;
+    state.active = 1;
+    state.screen = static_cast<std::uint8_t>(screen);
+    state.opening = gS.opening;
+    state.widthM = settings.widthM;
+    state.distanceM = settings.distanceM;
+    state.belowM = settings.belowM;
+    state.backdrop = settings.backdrop;
+    wu::Rect const crop = wu::DefaultCrop(screen);
+    state.stageCrop[0] = crop.u0;
+    state.stageCrop[1] = crop.v0;
+    state.stageCrop[2] = crop.u1;
+    state.stageCrop[3] = crop.v1;
+    std::strncpy(state.tag, base->tag.c_str(), sizeof(state.tag) - 1);
+    if (auto const at = AnchorOf(screen, base->handler, controller, gS.opening)) {
+        {
+            XrVector3f const p = engine::ToTracking(*gHold.footFrame, engine::UnrealVector{at->x, at->y, at->z});
+            state.anchored = 1;
+            state.anchor[0] = p.x;
+            state.anchor[1] = p.y;
+            state.anchor[2] = p.z;
+        }
+    }
+    bool const wasAnchored = gS.anchored;
+    gS.anchored = state.anchored != 0;
+    std::copy(std::begin(state.anchor), std::end(state.anchor), std::begin(gS.anchor));
+    if (!gS.published || wasAnchored != gS.anchored) {
+        log::Info("world ui: {} up (opening {}){}", gS.screen, gS.opening,
+            gS.anchored ? std::format(": it belongs to what stands at ({:.2f}, {:.2f}, {:.2f}) m in the room", gS.anchor[0], gS.anchor[1], gS.anchor[2])
+                        : std::string(": nothing in the world to stand it by; straight ahead"));
+    }
+    std::uint64_t const now = GetTickCount64();
+    if (gHold.povLocation != nullptr && now - gHold.povMs < 500) {
+        state.holdRender = 1;
+        state.holdLocation[0] = gHold.location.x;
+        state.holdLocation[1] = gHold.location.y;
+        state.holdLocation[2] = gHold.location.z;
+        state.holdRotation[0] = gHold.rotation.pitch;
+        state.holdRotation[1] = gHold.rotation.yaw;
+        state.holdRotation[2] = gHold.rotation.roll;
+        state.holdFov = gHold.fov;
+        state.povLocationAddress = reinterpret_cast<std::uint64_t>(gHold.povLocation);
+        state.povRotationAddress = reinterpret_cast<std::uint64_t>(gHold.povRotation);
+        state.povFovAddress = reinterpret_cast<std::uint64_t>(gHold.povFov);
+    }
+    link.setState(&state);
+    gS.published = true;
+    gScreenUp = true;
+    ++gS.ticks;
+    SetStatus(std::format("{{\"open\": true, \"screen\": \"{}\", \"stack\": \"{}\", \"opening\": {}, \"anchored\": {}, \"anchor\": [{:.3f}, {:.3f}, {:.3f}]}}",
+        gS.screen, stack, gS.opening, gS.anchored ? "true" : "false", gS.anchor[0], gS.anchor[1], gS.anchor[2]));
+}
+
+std::string StatusJson() {
+    std::lock_guard<std::mutex> const lock(gStatusMutex);
+    return gStatusJson;
+}
+
+void Shutdown(Link const& link) {
+    Down(link, "the mod unloads");
+}
+
+} // namespace mevr::game::world_ui

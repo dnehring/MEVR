@@ -13,6 +13,7 @@
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/Sights.hpp"
 #include "core/vr/GalaxyMap.hpp"
+#include "core/vr/WorldUi.hpp"
 #include "core/vr/Spectator.hpp"
 #include "game/GamepadMapping.hpp"
 
@@ -392,6 +393,8 @@ vr::spectator::Settings GetSpectator();
 
 // [Galaxy] (research/51): the galaxy map as a hologram (hologram, distanceM, belowM).
 vr::galaxy_map::Settings GetGalaxy();
+// [WorldUi] (research/53): the game's full-screen screens in the room.
+vr::world_ui::Settings GetWorldUi();
 
 // [Game] (research/47 "Why the Mako wouldn't let Shepard out"): the game's own behaviour around VR.
 //   pauseUnfocused  1: the game freezes the world while its window has no focus, as ME1 does; 0: it runs on (game/FocusPause)
