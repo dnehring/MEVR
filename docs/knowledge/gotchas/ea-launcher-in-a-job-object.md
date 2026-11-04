@@ -4,16 +4,17 @@ title: EA's launcher refuses to start the game from inside a job object
 description: EASteamLauncher creates MassEffectLauncher with breakaway; when its parent chain sits in a Windows job object without breakaway (our shell, or the EA app itself), CreateProcess fails with "Access is denied" and the scripted launch times out.
 tags: [launch, ea-app, steam, test-loop]
 status: stable
-timestamp: 2026-10-30T19:53:43Z
+timestamp: 2026-11-04T02:20:00Z
 generated: { by: claude-code/fable-5.1, at: 2026-10-30T19:53:43Z }
-bitten: [2026-10-24, 2026-10-28, 2026-10-31]
+bitten: [2026-10-24, 2026-10-28, 2026-10-31, 2026-11-03]
 ---
 
 # Symptom
 
 `tools/launch-game.ps1` ends with `no MassEffect1.exe within 120 s`. EA's log
 (`%LOCALAPPDATA%\Electronic Arts\EA Desktop\Logs\EADesktopVerbose.log`) says ErrorCreatingProcess, LaunchFailed,
-"Access is denied" (0x5).
+"Access is denied" (0x5). EASteamLauncher.log: `GameRunStatus received ... with error code [ErrorCreatingProcess]`,
+`[PROCESS] Create Process: Access is denied. | exe=[...\MassEffectLauncher.exe]` (2026-11-03).
 
 # Cause
 
@@ -36,15 +37,22 @@ sits in our job and launches the child itself), (b) through WMI `Win32_Process.C
 IsProcessInJob = true), (c) through the real shell's ShellWindows COM object (`Document.Application.ShellExecute` on the
 desktop window). The EA app may put itself in a job of its own, so IsProcessInJob alone is not the test: the EA log's
 launch error is. With nobody at the keyboard (and the desktop-control request denied) there was no launch that night;
-the only known routes stay a Play in Steam by a person or computer use, then `-Attach`.
+the only known routes stayed a Play in Steam by a person or computer use, then `-Attach`.
+
+2026-11-03: EASteamLauncher.exe started directly from a scheduled task with Steam's own `steam2ea://` link failed the
+same way: Task Scheduler runs its tasks in a job object too.
 
 # Fix in place
 
 Never start the game from the harness's shell: `tools/launch-game.ps1` runs Link2EA from a scheduled task. If the EA
-app itself is in a job, quit it from the tray and start it from the Start menu, or press Play in Steam and attach with
+app itself is in a job, **`tools/launch-game.ps1 -Steam`** (2026-11-03): it asks the running Steam for the game
+(`steam.exe -applaunch 1328670 -game 1 -autoterminate`, what its Play does). The new steam.exe hands the command to the
+running one, which is in no job, so EASteamLauncher starts as its child. The game was up in 6 s, the parameters arriving.
+Otherwise quit the EA app from the tray and start it from the Start menu, or press Play in Steam and attach with
 `tools/launch-game.ps1 -Attach` (it waits 120 s for the process).
 
 # Citations
 
 [1] [research/35, attempt 40 (2026-10-24)](../../../research/35-performance-attempt-log.md).
-[2] [tools/launch-game.ps1](../../../tools/launch-game.ps1): the header, both causes.
+[2] [tools/launch-game.ps1](../../../tools/launch-game.ps1): the header, both causes, `-Steam`.
+[3] [research/50 (2026-11-03)](../../../research/50-citadel-crowds.md): "Reaching a place by the game's own menus".

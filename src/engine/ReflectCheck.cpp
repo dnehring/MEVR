@@ -576,6 +576,7 @@ void CheckClasses() {
     CheckClass<UBioSFPanel>("Engine.BioSFPanel");
     CheckClass<UBioSFManager>("Engine.BioSFManager");
     CheckClass<ABioPawn>("SFXGame.BioPawn");
+    CheckClass<ABioTriggerStream>("SFXGame.BioTriggerStream");  // mevr stream
     CheckClass<ABioPlayerController>("SFXGame.BioPlayerController");
     CheckClass<UBioPlayerInput>("SFXGame.BioPlayerInput");
     CheckClass<ASFXCameraNativeBase>("SFXGame.SFXCameraNativeBase");
@@ -634,6 +635,7 @@ void CheckFields() {
     CheckField("Engine.Actor", "bDeleteMe", SDK_BOOL(AActor, bDeleteMe));
     CheckField("Engine.Vehicle", "Driver", SDK_FIELD(AVehicle, Driver));  // `mevr vehicle why`
     CheckField("Engine.Actor", "bHidden", SDK_BOOL(AActor, bHidden));
+    CheckField("Engine.Actor", "LastRenderTime", SDK_FIELD(AActor, LastRenderTime));  // mevr crowd
     CheckField("Engine.PrimitiveComponent", "HiddenGame", SDK_BOOL(UPrimitiveComponent, HiddenGame));
     CheckField("Engine.PrimitiveComponent", "bOnlyOwnerSee", SDK_BOOL(UPrimitiveComponent, bOnlyOwnerSee));  // the seated driver
     // The Mako's thrusters (game/MakoControls): longer, pitched by the stick.
@@ -670,6 +672,8 @@ void CheckFields() {
     CheckField("Engine.Camera", "CameraCache", SDK_FIELD(ACamera, CameraCache));
     CheckField("Engine.Camera", "PCOwner", SDK_FIELD(ACamera, PCOwner));
     CheckField("Engine.WorldInfo", "PawnList", SDK_FIELD(AWorldInfo, PawnList));
+    CheckField("Engine.WorldInfo", "TimeSeconds", SDK_FIELD(AWorldInfo, TimeSeconds));  // mevr crowd
+    CheckField("SFXGame.BioTriggerStream", "StreamingStates", SDK_FIELD(ABioTriggerStream, StreamingStates));  // mevr stream
     // `mevr vehicle levels` and `event` (the cockpit probe, research/47)
     CheckField("Engine.WorldInfo", "StreamingLevels", SDK_FIELD(AWorldInfo, StreamingLevels));
     CheckField("Engine.LevelStreaming", "PackageName", SDK_FIELD(ULevelStreaming, PackageName));
@@ -903,6 +907,11 @@ void CheckFields() {
 void CheckPaths() {
     CheckPath("Engine.Camera", {"ViewTarget", "Target"}, SDK_AT(offsetof(ACamera, ViewTarget) + offsetof(FTViewTarget, Target), 8));  // the cockpit probe
     CheckPath("Engine.Actor", {"Rotation", "Pitch"}, SDK_AT(offsetof(AActor, Rotation) + offsetof(FRotator, Pitch), 4));
+    CheckElement("SFXGame.BioTriggerStream", "StreamingStates", static_cast<long long>(sizeof(FBioStreamingState)));  // mevr stream
+    CheckPath("SFXGame.BioTriggerStream", {"StreamingStates", "StateName"}, SDK_AT(offsetof(FBioStreamingState, StateName), 8));
+    CheckPath("SFXGame.BioTriggerStream", {"StreamingStates", "InChunkName"}, SDK_AT(offsetof(FBioStreamingState, InChunkName), 8));
+    CheckPath("SFXGame.BioTriggerStream", {"StreamingStates", "VisibleChunkNames"}, SDK_AT(offsetof(FBioStreamingState, VisibleChunkNames), 16));
+    CheckPath("SFXGame.BioTriggerStream", {"StreamingStates", "LoadChunkNames"}, SDK_AT(offsetof(FBioStreamingState, LoadChunkNames), 16));
     CheckPath("Engine.Actor", {"Rotation", "Yaw"}, SDK_AT(offsetof(AActor, Rotation) + offsetof(FRotator, Yaw), 4));
     CheckPath("Engine.Actor", {"Rotation", "Roll"}, SDK_AT(offsetof(AActor, Rotation) + offsetof(FRotator, Roll), 4));
     CheckPath("Engine.Actor", {"Location", "X"}, SDK_AT(offsetof(AActor, Location) + offsetof(FVector, X), 4));
@@ -989,6 +998,8 @@ void CheckSkeleton() {
 
 void CheckFunctions() {
     char const* const functions[] = {
+        // mevr stream (the measuring loop's streaming volumes)
+        "SFXGame.BioTriggerStream.Touch",
         // Weapon, HandAim, Sights
         "SFXGame.BioWeaponRanged.GetMuzzleLoc",
         "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation",
@@ -1175,6 +1186,8 @@ void CheckParams() {
     PARAM(ABioGrenade_eventLaunchGrenade_Parms, "SFXGame.BioGrenade.LaunchGrenade", ReturnValue);
     PARAM(ABioPawn_execIsUsingPower_Parms, "SFXGame.BioPawn.IsUsingPower", bIgnoreWeaponPowers);
     PARAM(ABioPawn_execIsUsingPower_Parms, "SFXGame.BioPawn.IsUsingPower", ReturnValue);
+    PARAM(ABioTriggerStream_eventTouch_Parms, "SFXGame.BioTriggerStream.Touch", Other);  // mevr stream
+    PARAM(ABioTriggerStream_eventTouch_Parms, "SFXGame.BioTriggerStream.Touch", HitLocation);
     PARAM(UBioPawnBehavior_eventGetGrenades_Parms, "SFXGame.BioPawnBehavior.GetGrenades", ReturnValue);
     PARAM(ABioPawn_execIsHostile_Parms, "SFXGame.BioPawn.IsHostile", Other);
     PARAM(ABioPawn_execIsHostile_Parms, "SFXGame.BioPawn.IsHostile", ReturnValue);

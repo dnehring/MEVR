@@ -23,6 +23,10 @@
 #   tools/launch-game.ps1 -Quit           close a running game through its console (the mod's console.request)
 #   tools/launch-game.ps1 -Attach        don't start anything: wait for MassEffect1.exe started another way, then
 #                                         the same Enter and READY wait
+#   tools/launch-game.ps1 -Steam         ask the running Steam for the game (`steam.exe -applaunch 1328670 ...`, what its
+#                                         Play does) instead of the EA app: steam.exe sits in no job, so EA's Steam
+#                                         launcher starts as its child and can create the game's process while the EA
+#                                         app itself is stuck in a job (research/50, 2026-11-03)
 #   tools/launch-game.ps1 -Map BIOA_STA60 open that map straight from the command line (UE3's first argument; a
 #                                         fresh Shepard at the map's player start, no save): a known place for
 #                                         measurements. In gameplay the same is tools/console.ps1 'open BIOA_STA60'.
@@ -31,7 +35,7 @@
 #
 # The mouse does nothing in VR mode (Halcyon decouples it); the keyboard works, so Enter goes through SendKeys to the
 # game's window. Exit code 1 when the game never reached gameplay.
-param([switch]$Pause, [switch]$Quit, [switch]$Attach, [int]$TimeoutSeconds = 240, [string]$Map = '')
+param([switch]$Pause, [switch]$Quit, [switch]$Attach, [switch]$Steam, [int]$TimeoutSeconds = 240, [string]$Map = '')
 $ErrorActionPreference = 'Stop'
 $tools = $PSScriptRoot
 $root = 'C:\Program Files (x86)\Steam\steamapps\common\Mass Effect Legendary Edition'
@@ -67,15 +71,22 @@ if ($Attach) {
 } else {
     if (Get-Process MassEffect1 -ErrorAction SilentlyContinue) { throw 'the game is already running' }
     if (-not (Get-Process steam -ErrorAction SilentlyContinue)) { throw 'Steam is not running (the game needs it)' }
-    $link2ea = 'C:\Program Files\Electronic Arts\EA Desktop\EA Desktop\Link2EA.exe'
-    if (-not (Test-Path -LiteralPath $link2ea)) { throw "Link2EA.exe not found at $link2ea (the EA app)" }
     $params = '-game 1 -autoterminate'
     if ($Map -ne '') { $params = $Map + ' ' + $params }
-    $url = 'link2ea://launchgame/1328670?platform=steam&theme=met&cmdParams=' + [uri]::EscapeDataString($params)
-    $action = New-ScheduledTaskAction -Execute $link2ea -Argument $url -WorkingDirectory (Split-Path $link2ea)
-    Register-ScheduledTask -TaskName 'MEVR-LaunchLE1' -Action $action -Force | Out-Null
-    Start-ScheduledTask -TaskName 'MEVR-LaunchLE1'
-    "asked the EA app for the game through Link2EA at $(Get-Date -Format HH:mm:ss) ($params)"
+    if ($Steam) {
+        # The new steam.exe hands the command to the running one and exits; the running one does the launch.
+        $steamExe = 'C:\Program Files (x86)\Steam\steam.exe'
+        Start-Process -FilePath $steamExe -ArgumentList (@('-applaunch', '1328670') + ($params -split ' '))
+        "asked Steam for the game at $(Get-Date -Format HH:mm:ss) (-applaunch 1328670 $params)"
+    } else {
+        $link2ea = 'C:\Program Files\Electronic Arts\EA Desktop\EA Desktop\Link2EA.exe'
+        if (-not (Test-Path -LiteralPath $link2ea)) { throw "Link2EA.exe not found at $link2ea (the EA app)" }
+        $url = 'link2ea://launchgame/1328670?platform=steam&theme=met&cmdParams=' + [uri]::EscapeDataString($params)
+        $action = New-ScheduledTaskAction -Execute $link2ea -Argument $url -WorkingDirectory (Split-Path $link2ea)
+        Register-ScheduledTask -TaskName 'MEVR-LaunchLE1' -Action $action -Force | Out-Null
+        Start-ScheduledTask -TaskName 'MEVR-LaunchLE1'
+        "asked the EA app for the game through Link2EA at $(Get-Date -Format HH:mm:ss) ($params)"
+    }
     # The launcher's PLAY: cmdParams only sometimes reach its command line (seen once of three), so once the launcher
     # window is up and no game appears within 12 s, Space (its splash) and Enter (PLAY) go to it by keyboard, every 10 s.
     Add-Type -AssemblyName Microsoft.VisualBasic

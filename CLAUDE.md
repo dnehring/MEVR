@@ -626,12 +626,18 @@ Use it to check VR changes yourself instead of asking the user what they see
   **Measuring without a person** (research/35 attempts 40-43): `tools/fake-headset.ps1 -On` (SteamVR's null driver; `-Off`
   gives the real headset back; it also registers the null driver's chaperone universe "2", else vrmonitor launches room setup
   after every SteamVR start and vrserver kills the game at the title 5 s later, silently: research/35 "Setup for measuring"), `tools/launch-game.ps1` (EA's Link2EA from a scheduled task, PLAY and the title's Enter by
-  keyboard from a foreground shell; never start the game from this shell: the harness's job object breaks the EA app),
-  `tools/console.ps1 "mevr density 2000"` (the densest mesh cells), `"god" "ghost"` then `"set SFXPawn_Player Location
+  keyboard from a foreground shell; never start the game from this shell: the harness's job object breaks the EA app;
+  **`-Steam`** asks the running Steam instead, which works while the EA app sits in a job: research/50),
+  `tools/console.ps1 "mevr density 2000"` (the densest mesh cells), `"mevr crowd 1000"` (where the characters stand),
+  `"mevr stream list"` / `"mevr stream touch <BioTriggerStream_N>"` (a hub's streaming volumes: touching one streams its area
+  in as the player's walk would; the Citadel's Wards, Presidium, C-Sec: research/50), `"god" "ghost"` then `"set SFXPawn_Player Location
   (X=..,Y=..,Z=..)"` to move Shepard (Actor.SetLocation through ProcessEvent did nothing until 2026-11-03: the gotcha below), `tools/spot-survey.ps1`
-  (frame time and draws per spot under a replayed head recording), `tools/measure-levers.ps1 -Key k -Values 0,1 [-Inputs]`
+  (each thread's work, the GPU's, draws and characters near per spot under a replayed head recording; a spot's fourth word
+  is a volume to touch first; `tools/make-look-recording.py` writes a head turning a full circle, so every direction counts), `tools/measure-levers.ps1 -Key k -Values 0,1 [-Inputs]`
   (an A/B under the replay; `-Inputs` walks and shoots as recorded), `tools/fpsvr-session.py` (what fpsVR recorded).
-  Eden Prime's heaviest cells: (-31000, 145000, 900) and (-33000, 147000, 400), 4,100 draws. Live render levers
+  Eden Prime's heaviest cells: (-31000, 145000, 900) and (-33000, 147000, 400), 4,100 draws. The Citadel (John's Save 96,
+  research/50): crowds are cheap (skinned meshes 1.0-1.15 ms of render thread), the Presidium's 3,200 draws its peak.
+  LE1's menus take real input (`keybd_event`, a click) with the game window in front; posted keys reach them only as Enter. Live render levers
   (`plugin/RenderLevers`, [research/32](research/32-ue3-vr-performance.md)) in `[Performance]` of `ASI\LE1MEVR.ini`:
   `sharePass` (experimental; 1: the second eye renders on the first's scene renderer, no second visibility; 2: as 1
   but the second eye is a replay of the first's recorded D3D11 calls with the view's bytes substituted,

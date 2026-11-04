@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <optional>
 #include <sstream>
@@ -124,6 +125,185 @@ std::string Density(ue3::Object const* pawn, float cell) {
     return out;
 }
 
+// "mevr crowd [cellUU]": where the characters are (the crowd survey, research/50). Every live Pawn in the loaded levels
+// but the player's (not hidden, not being deleted), binned into cells of the given side (default 1500 UU = 15 m), the
+// most crowded cells first, each with how many of its pawns rendered in the last second and the pawns' centroid (a
+// place among them, usually open floor, for `tools/spot-survey.ps1`); and how many are near the player.
+ue3::ClassRef gPawnClass{"Engine.Pawn"};
+ue3::FieldRef gActorHidden{"Engine.Actor", "bHidden"};
+ue3::FieldRef gActorDeleteMe{"Engine.Actor", "bDeleteMe"};
+ue3::FieldRef gActorLastRender{"Engine.Actor", "LastRenderTime"};
+ue3::FieldRef gActorWorldInfo{"Engine.Actor", "WorldInfo"};
+ue3::FieldRef gWorldTimeSeconds{"Engine.WorldInfo", "TimeSeconds"};
+
+std::string Crowd(ue3::Object* pawn, float cell) {
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Object* const world = gActorWorldInfo.Read<ue3::Object*>(pawn).value_or(nullptr);
+    std::optional<float> const now = world != nullptr ? gWorldTimeSeconds.Read<float>(world) : std::nullopt;
+    std::optional<ue3::Vector> const here = player::Location(pawn);
+    struct Cell { long long cx; long long cy; int count; int rendered; double x; double y; double z; };
+    std::unordered_map<long long, Cell> cells;
+    int seen = 0;
+    int rendered = 0;
+    int near10 = 0;
+    int near25 = 0;
+    std::int32_t const n = r.ObjectCount();
+    for (std::int32_t i = 0; i < n; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o == nullptr || o == pawn || !r.IsAlive(o) || !ue3::IsA(o, gPawnClass)) {
+            continue;
+        }
+        if (r.NameText(o).rfind("Default__", 0) == 0 || gActorHidden.ReadBool(o).value_or(false) || gActorDeleteMe.ReadBool(o).value_or(false)) {
+            continue;
+        }
+        std::optional<ue3::Vector> const at = player::Location(o);
+        if (!at || (at->x == 0.0f && at->y == 0.0f && at->z == 0.0f)) {
+            continue;
+        }
+        ++seen;
+        std::optional<float> const last = gActorLastRender.Read<float>(o);
+        bool const shown = now && last && *now - *last < 1.0f;
+        rendered += shown ? 1 : 0;
+        if (here) {
+            double const dx = at->x - here->x;
+            double const dy = at->y - here->y;
+            double const dz = at->z - here->z;
+            double const d = std::sqrt(dx * dx + dy * dy + dz * dz);
+            near10 += d < 1000.0 ? 1 : 0;
+            near25 += d < 2500.0 ? 1 : 0;
+        }
+        long long const cx = static_cast<long long>(std::floor(at->x / cell));
+        long long const cy = static_cast<long long>(std::floor(at->y / cell));
+        Cell& c = cells[cx * 1000003LL + cy];
+        c.cx = cx;
+        c.cy = cy;
+        ++c.count;
+        c.rendered += shown ? 1 : 0;
+        c.x += at->x;
+        c.y += at->y;
+        c.z += at->z;
+    }
+    std::vector<Cell> sorted;
+    for (auto const& [key, c] : cells) {
+        sorted.push_back(c);
+    }
+    std::sort(sorted.begin(), sorted.end(), [](Cell const& a, Cell const& b) { return a.count > b.count; });
+    std::string out = std::format("{} pawns ({} rendered in the last second) in {} cells of {} UU", seen, rendered, cells.size(), static_cast<int>(cell));
+    if (here) {
+        out += std::format("; near the player: {} within 10 m, {} within 25 m", near10, near25);
+    }
+    out += "\n";
+    int shown = 0;
+    for (Cell const& c : sorted) {
+        if (shown++ >= 12) {
+            break;
+        }
+        out += std::format("  {:3} pawns ({:3} rendered) in the cell at {:.0f} {:.0f}; their centroid {:.0f} {:.0f} {:.0f}\n", c.count, c.rendered,
+            (c.cx + 0.5) * cell, (c.cy + 0.5) * cell, c.x / c.count, c.y / c.count, c.z / c.count);
+    }
+    return out;
+}
+
+// "mevr stream list [filter]" / "mevr stream touch <index|name>": the level's streaming volumes (research/50). LE1 shows
+// a hub's areas through BioTriggerStream volumes: touching one applies its streaming state (the chunks to show and to
+// load). `list` prints each volume (its index, name, place and states; with a filter, only volumes whose name or chunk
+// names contain it); `touch` calls the volume's own Touch event with the player's pawn, so the game streams that area
+// in as when the player walks into it (then move the pawn there).
+ue3::ClassRef gTriggerStream{"SFXGame.BioTriggerStream"};
+ue3::FieldRef gTriggerStates{"SFXGame.BioTriggerStream", "StreamingStates"};
+ue3::FieldRef gStateName{gTriggerStates, "StateName"};
+ue3::FieldRef gStateInChunk{gTriggerStates, "InChunkName"};
+ue3::FieldRef gStateVisible{gTriggerStates, "VisibleChunkNames"};
+ue3::FieldRef gStateLoad{gTriggerStates, "LoadChunkNames"};
+ue3::FunctionRef gTriggerTouch{"SFXGame.BioTriggerStream.Touch"};
+
+std::vector<ue3::Object*> TriggerStreams() {
+    ue3::Reflection& r = ue3::runtime::Get();
+    std::vector<ue3::Object*> found;
+    std::int32_t const n = r.ObjectCount();
+    for (std::int32_t i = 0; i < n; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o != nullptr && r.IsAlive(o) && ue3::IsA(o, gTriggerStream) && r.NameText(o).rfind("Default__", 0) != 0) {
+            found.push_back(o);
+        }
+    }
+    return found;
+}
+
+std::string NameList(ue3::FieldRef& field, void const* state) {
+    std::string out;
+    if (auto const names = field.ElementsOf(state)) {
+        for (std::int32_t j = 0; j < names->count; ++j) {
+            if (auto const* name = static_cast<ue3::Name const*>(names->At(j))) {
+                out += (out.empty() ? "" : ",") + ue3::runtime::NameText(*name);
+            }
+        }
+    }
+    return out;
+}
+
+std::string Streams(ue3::Object* pawn, std::istringstream& words) {
+    std::string verb;
+    words >> verb;
+    std::vector<ue3::Object*> const triggers = TriggerStreams();
+    ue3::Reflection& r = ue3::runtime::Get();
+    if (verb == "list") {
+        std::string filter;
+        words >> filter;
+        auto lower = [](std::string s) {
+            std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            return s;
+        };
+        std::string const want = lower(filter);
+        std::string out = std::format("{} BioTriggerStream volumes{}\n", triggers.size(), filter.empty() ? "" : std::format(" (showing those matching '{}')", filter));
+        for (std::size_t i = 0; i < triggers.size(); ++i) {
+            ue3::Object* const t = triggers[i];
+            std::string text = std::format("[{}] {}", i, r.NameText(t));
+            if (auto const at = player::Location(t)) {
+                text += std::format(" at {:.0f} {:.0f} {:.0f}", at->x, at->y, at->z);
+            }
+            if (auto const states = gTriggerStates.ElementsOf(t)) {
+                for (std::int32_t s = 0; s < states->count; ++s) {
+                    void const* const state = states->At(s);
+                    auto const name = gStateName.Read<ue3::Name>(state);
+                    auto const in = gStateInChunk.Read<ue3::Name>(state);
+                    text += std::format("\n    state {} (in {}): visible {}; load {}", name ? ue3::runtime::NameText(*name) : "?", in ? ue3::runtime::NameText(*in) : "?",
+                        NameList(gStateVisible, state), NameList(gStateLoad, state));
+                }
+            }
+            if (want.empty() || lower(text).find(want) != std::string::npos) {
+                out += text + "\n";
+            }
+        }
+        return out;
+    }
+    if (verb == "touch") {
+        std::string which;
+        words >> which;
+        ue3::Object* trigger = nullptr;
+        for (std::size_t i = 0; i < triggers.size() && trigger == nullptr; ++i) {
+            if (which == std::to_string(i) || which == r.NameText(triggers[i])) {
+                trigger = triggers[i];
+            }
+        }
+        if (trigger == nullptr) {
+            return std::format("mevr stream touch: no volume '{}' among {} (mevr stream list)", which, triggers.size());
+        }
+        ue3::Function* const touch = gTriggerTouch.Get();
+        if (touch == nullptr) {
+            return std::string("(SFXGame.BioTriggerStream.Touch not found)");
+        }
+        ue3::Params parms(r, touch);
+        parms.Set("Other", pawn);
+        parms.Set("HitLocation", player::Location(pawn).value_or(ue3::Vector{}));
+        bool const called = ue3::runtime::Call(trigger, touch, parms);  // its script applies the streaming state
+        std::optional<ue3::Vector> const at = player::Location(trigger);
+        return std::format("{}.Touch(the player's pawn): called {}; the volume is at {:.0f} {:.0f} {:.0f} (`mevr vehicle levels` shows the streaming)", r.NameText(trigger),
+            called, at ? at->x : 0.0f, at ? at->y : 0.0f, at ? at->z : 0.0f);
+    }
+    return std::string("usage: mevr stream list [filter] | mevr stream touch <index|name>");
+}
+
 std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
     if (line.rfind("mevr ", 0) != 0) {
         return std::nullopt;
@@ -169,6 +349,14 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         words >> cell;
         return Density(pawn, cell > 1.0f ? cell : 2000.0f);
     }
+    if (verb == "crowd") {
+        float cell = 1500.0f;
+        words >> cell;
+        return Crowd(pawn, cell > 1.0f ? cell : 1500.0f);
+    }
+    if (verb == "stream") {
+        return Streams(pawn, words);
+    }
     if (verb == "weapon") {
         std::string which;
         words >> which;
@@ -194,7 +382,7 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::getline(words, rest);
         return cockpit_probe::VehicleCommand(rest);  // what a console `open <map>` produced; `enter` gets in
     }
-    return std::string("unknown: mevr loc | mevr setloc X Y Z | mevr density [cellUU] | mevr weapon <pistol|shotgun|assault|sniper> | mevr cockpit ... | mevr vehicle [enter] | mevr spectator ...");
+    return std::string("unknown: mevr loc | mevr setloc X Y Z | mevr density [cellUU] | mevr crowd [cellUU] | mevr stream list|touch | mevr weapon <pistol|shotgun|assault|sniper> | mevr cockpit ... | mevr vehicle [enter] | mevr spectator ...");
 }
 
 ue3::Function* FindConsoleCommand() {

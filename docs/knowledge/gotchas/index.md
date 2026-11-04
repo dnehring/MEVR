@@ -16,7 +16,7 @@
 # Launching and measuring
 
 * [SteamVR's room setup kills the game at the title on the fake headset](steamvr-room-setup-kills-the-game.md) - An unregistered null-driver chaperone universe makes vrmonitor launch room setup and vrserver kill the running scene app 5 s later.
-* [EA's launcher refuses to start the game from inside a job object](ea-launcher-in-a-job-object.md) - EASteamLauncher's breakaway CreateProcess is denied when our shell or the EA app itself sits in a job; Play in Steam works.
+* [EA's launcher refuses to start the game from inside a job object](ea-launcher-in-a-job-object.md) - EASteamLauncher's breakaway CreateProcess is denied when our shell or the EA app itself sits in a job; Steam's own launch works (`tools/launch-game.ps1 -Steam`).
 * [The LE console prints less than UE3's: what works and what is silent](le-console-quirks.md) - `scale set` and `set` take effect, `getall` and the streaming stats print nothing, `god`/`ghost`/`pause` toggle.
 
 # Code and tooling

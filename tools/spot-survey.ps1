@@ -3,9 +3,13 @@
 # the console's `set SFXPawn_Player Location (...)` (Actor.SetLocation through ProcessEvent refused to move the player;
 # `set` writes the property and the next tick takes it), waits for streaming, replays a head recording in a loop so the
 # view moves, runs a short frame probe, and prints the fpsVR-style CPU time and the draws. The places come from
-# `tools/console.ps1 "mevr density 2000"` (the densest mesh cells) or `mevr loc` (where the player stood).
+# `tools/console.ps1 "mevr density 2000"` (the densest mesh cells), `mevr crowd 1000` (where the characters stand) or
+# `mevr loc` (where the player stood). A fourth word names a streaming volume to touch first (`mevr stream list`), so a hub's
+# area streams in as when the player walks in (research/50: the Citadel's Wards). Each row has the fpsVR-style CPU time,
+# each thread's work and the GPU's (medians and p90s) and the characters within 10 and 25 m.
 #
 #   tools/spot-survey.ps1 -Spots "-35000 147000 150", "-33000 149000 0" [-Seconds 6] [-Recording <.mevrrec>] [-Tag x]
+#   tools/spot-survey.ps1 -Spots "-11300 5000 -30657 BioTriggerStream_64"
 param(
     [Parameter(Mandatory = $true)][string[]]$Spots,
     [int]$Seconds = 6,
@@ -29,11 +33,16 @@ $Spots = @($Spots | ForEach-Object { $_ -split '[,;]' } | Where-Object { $_.Trim
 & (Join-Path $tools 'replay.ps1') -Path $Recording -Loop | Out-Null
 try {
     $i = 0
-    "{0,-26} {1,7} {2,7} {3,7} {4,7} {5,7} {6,6}  {7}" -f 'spot (X Y Z)', 'cpu med', 'cpu p90', 'cpu max', 'draws', 'drw p90', 'frames', 'pawn'
+    $row = "{0,-26} {1,6} {2,6} {3,6} {4,6} {5,6} {6,6} {7,6} {8,6} {9,6} {10,6} {11,7} {12,5}  {13}"
+    $row -f 'spot (X Y Z)', 'cpu', 'p90', 'game', 'p90', 'render', 'p90', 'gpu', 'p90', 'draws', 'p90', 'chars', 'frms', 'pawn'
     foreach ($spot in $Spots) {
         $i++
         $p = $spot.Trim() -split '\s+'
         if ($p.Count -lt 3) { "skipping '$spot'"; continue }
+        if ($p.Count -ge 4) {
+            & (Join-Path $tools 'console.ps1') ("mevr stream touch " + $p[3]) | Out-Null
+            Start-Sleep ($SettleSeconds + 4)  # the area's chunks stream in
+        }
         & (Join-Path $tools 'console.ps1') ("set SFXPawn_Player Location (X=$($p[0]),Y=$($p[1]),Z=$($p[2]))") | Out-Null
         Start-Sleep $SettleSeconds
         $loc = (& (Join-Path $tools 'console.ps1') 'mevr loc' | Select-String -SimpleMatch 'loc ').Line
@@ -41,15 +50,21 @@ try {
             "{0,-26} not on foot after the move (dead or a menu): {1}" -f $spot, $loc
             continue
         }
+        $crowd = (& (Join-Path $tools 'console.ps1') 'mevr crowd' | Select-String -Pattern 'within 10 m' | Select-Object -First 1).Line
+        $chars = if ($crowd -match '(\d+) within 10 m, (\d+) within 25 m') { "$($Matches[1])/$($Matches[2])" } else { '?' }
         $probeTag = "$Tag$i"
         & (Join-Path $tools 'perf-probe.ps1') -Seconds $Seconds -Tag $probeTag | Out-Null
         $probe = Get-ChildItem $perf -Filter "*-$probeTag-probe.json" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
         $text = python -I (Join-Path $tools 'perf-probe.py') $probe.FullName
         $nums = { param($line) @($line -split '\s+' | Where-Object { $_ -match '^[0-9.]+$' }) }
-        $cpu = & $nums ($text | Select-String -SimpleMatch 'poses -> submit, wall' | Select-Object -First 1).Line
-        $draws = & $nums ($text | Select-String -Pattern '^\s+whole frame\s' | Select-Object -First 1).Line
+        $pick = { param($pattern) & $nums ($text | Select-String -Pattern $pattern | Select-Object -First 1).Line }
+        $cpu = & $pick 'poses -> submit, wall'
+        $game = & $pick 'busy, engine \+ ours'
+        $render = & $pick 'busy, without the XR waits'
+        $gpu = & $pick 'span: whole frame'
+        $draws = & $pick '^\s+whole frame\s'
         $frames = ($text | Select-String -Pattern '^(\d+) .*headset frames' | Select-Object -First 1).Matches[0].Groups[1].Value
-        "{0,-26} {1,7} {2,7} {3,7} {4,7} {5,7} {6,6}  {7}" -f $spot, $cpu[0], $cpu[1], $cpu[2], $draws[0], $draws[1], $frames, $loc
+        $row -f $spot, $cpu[0], $cpu[1], $game[0], $game[1], $render[0], $render[1], $gpu[0], $gpu[1], $draws[0], $draws[1], $chars, $frames, $loc
     }
 } finally {
     & (Join-Path $tools 'replay.ps1') -Stop | Out-Null
