@@ -1010,6 +1010,7 @@ bool StepWindow(vr::galaxy_map::Settings const& settings, bool held, ue3::Object
     ++gWindow.pointed;
     scene.windowOn = 1;
     scene.windowFloat = 0;
+    scene.windowRound = settings.windowRound ? 1 : 0;
     scene.windowWidth = static_cast<std::uint32_t>(gWindow.eyes[0].Width());
     scene.windowHeight = static_cast<std::uint32_t>(gWindow.eyes[0].Height());
     scene.windowTicks = std::min(gWindow.eyes[0].EnabledTicks(), gWindow.eyes[1].EnabledTicks());

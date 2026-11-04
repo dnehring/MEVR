@@ -190,6 +190,12 @@ level's nebula, axes and rings come out as the game draws them, in stereo; the c
   pointer at +0xA0 isn't 8-aligned and `sc::FindTexture`'s walk skips unaligned pointers. A fallback walks the same window without
   the alignment test and accepts only objects with the vtable of a texture the host made on the game's device (`NoteDevice`),
   asked nothing but GetDesc and AddRef. The window's targets are found at once.
+- **A disc, not a rectangle** (the user, 2026-11-04: "it needs to be circular like the stock map when we approach the console").
+  The captures have the window's aspect (a near-square, carried over from the full screen); with `[Galaxy] windowRound = 1` (the
+  default) the host's window shader keeps a disc inscribed in the window, its edge faded over 5% of the diameter. The mask is in
+  the quad's own coordinates, the same for both eyes, so the rim sits on the window's plane while the map shows behind it in
+  depth. The game's Flash layer (the title, the cursor's cross-hair lines, the buttons) stays on its rectangular panel: its title
+  and buttons sit outside the disc.
 - Open: the game's travel box ignores the pointer's click in this mode while the console's identical press answers it [verify];
   the galaxy level (whether its picture is Flash or scene in the window) and going back out a level; the on-foot hologram is
   still ours (the plan: the game's projector hologram as the visual, our picks on it).

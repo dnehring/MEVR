@@ -573,7 +573,8 @@ Texture2D picture : register(t0);
 SamplerState linearClamp : register(s0);
 cbuffer Params : register(b0) {
     float4 rect;  // the capture's shown part: u0, v0, du, dv
-    float4 misc;  // x: the decode gamma (1: an sRGB view decodes it), y: the edge's fade width (a share of the window)
+    float4 misc;  // x: the decode gamma (1: an sRGB view decodes it), y: the edge's fade width (a share of the window),
+                  // z: 1 a disc inscribed in the window (the projector's round hologram), w: the window's width over its height
 };
 struct VsOut {
     float4 pos : SV_Position;
@@ -589,8 +590,15 @@ VsOut VSMain(uint id : SV_VertexID) {
 float4 PSMain(VsOut i) : SV_Target {
     float3 c = picture.SampleLevel(linearClamp, rect.xy + i.uv * rect.zw, 0).rgb;
     c = pow(max(c, 0.0), misc.x);
-    float2 e = min(i.uv, 1.0 - i.uv) / max(misc.y, 1e-4);
-    float fade = saturate(min(e.x, e.y));
+    float fade;
+    if (misc.z > 0.5) {
+        // The disc in the window's own coordinates (the same for both eyes: its edge on the window's plane), 0.5 its radius.
+        float2 p = (i.uv - 0.5) * float2(misc.w, 1.0) / min(misc.w, 1.0);
+        fade = saturate((0.5 - length(p)) / max(misc.y, 1e-4));
+    } else {
+        float2 e = min(i.uv, 1.0 - i.uv) / max(misc.y, 1e-4);
+        fade = saturate(min(e.x, e.y));
+    }
     fade = fade * fade * (3.0 - 2.0 * fade);
     // Premultiplied, its alpha its brightness: space's black is see-through, the bright nebula covers what's behind (a
     // hologram's look; pure added light with no alpha drops out of the snapshots' straight-alpha composite).
@@ -829,7 +837,10 @@ int WindowLayers(Frame const& frame, XrCompositionLayerBaseHeader const** out) {
                     params.rect[2] = 1.0f - crop;
                     params.rect[3] = 1.0f;
                     params.misc[0] = eye.decode;
-                    params.misc[1] = 0.04f;
+                    bool const round = scene->windowRound != 0;
+                    params.misc[1] = round ? 0.05f : 0.04f;
+                    params.misc[2] = round ? 1.0f : 0.0f;
+                    params.misc[3] = static_cast<float>(shownW) / static_cast<float>(std::max(height, 1));
                     c->UpdateSubresource(gWindow.params.Get(), 0, nullptr, &params, 0, 0);
                     ID3D11RenderTargetView* const target = rtv.Get();
                     c->OMSetRenderTargets(1, &target, nullptr);
@@ -859,8 +870,9 @@ int WindowLayers(Frame const& frame, XrCompositionLayerBaseHeader const** out) {
         }
     }
     if (!gWindow.up) {
-        log::Info("galaxy window: up: the game's map {:.2f} x {:.2f} m at ({:.2f}, {:.2f}, {:.2f}), each eye {}x{} of its capture (crop {:.1f}%)", widthM,
-            heightM, pose.position.x, pose.position.y, pose.position.z, shownW, height, crop * 100.0f);
+        log::Info("galaxy window: up: the game's map {:.2f} x {:.2f} m{} at ({:.2f}, {:.2f}, {:.2f}), each eye {}x{} of its capture (crop {:.1f}%)",
+            widthM, heightM, scene->windowRound != 0 ? " (a disc)" : "", pose.position.x, pose.position.y, pose.position.z, shownW, height,
+            crop * 100.0f);
         gWindow.up = true;
     }
     ++gWindow.frames;

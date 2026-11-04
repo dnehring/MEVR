@@ -357,8 +357,11 @@ switching frameworks.
   mode 9 and the opening/closing mode 6 shown as on foot), the map's Flash movie hidden, and the pick made through the map's
   cross-hair (`Actor.SetLocation`) and a posted click. The game's travel question (its own message box) shows on the UI panel over
   the table, clicked by the game pointer. Walking away closes the map. **The cluster view's nebula, axes and rings are the map
-  level's 3D scene, not Flash** (`BIOA_GalaxyMap_T`'s art; section 7's "all Flash" was measured at the galaxy level); next: the
-  game's own map rendered over the table instead of our drawing (the user, 2026-11-03). Tools: `mevr galaxy dump|where|pick|click|
+  level's 3D scene, not Flash** (`BIOA_GalaxyMap_T`'s art; section 7's "all Flash" was measured at the galaxy level). **With the map open,
+  the game's own map is a stereo window over the table** (section 8.1; `[Galaxy] window`, `windowWidthM`, `windowDepth`,
+  `windowRound`: a disc like the projector's hologram, by default): two scene captures from the map camera (`game/SceneCaptureRig`,
+  CineScreen's parallel cameras and crop), its Flash layer on the UI panel at the same place, the view held at Shepard's at render
+  time only (`[MEVR]` seam `MevrBridge::GalaxyViewSwapBegin/End` around the main view's `CalcSceneView`). Tools: `mevr galaxy dump|where|pick|click|
   press|trace|input|movie|invoke|var|aim`, `mevr props`/`setprop`, `tools/make-galaxy-pick-recording.py` (`--world`, `--snapshot`,
   `--panel-uv`), offline look `mevr-galaxy-preview`. Logs `galaxy hologram:`; snapshot `"galaxyHologram"` (objects' places), layers
   `galaxy-left`/`-right`.

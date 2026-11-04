@@ -93,7 +93,8 @@ struct Scene {
     // goes on the same panel as its UI. windowOn 0: our hologram is drawn instead.
     std::uint8_t windowOn = 0;
     std::uint8_t windowFloat = 0;  // the targets are FloatRGB (linear) instead of A8R8G8B8
-    std::uint16_t windowPad = 0;
+    std::uint8_t windowRound = 0;  // 1: the window is a disc (inscribed in it, soft edge), like the projector's round hologram
+    std::uint8_t windowPad = 0;
     std::uint32_t windowWidth = 0;
     std::uint32_t windowHeight = 0;
     std::uint32_t windowTicks = 0;  // ticks since the captures were enabled (their first renders aren't there yet)
