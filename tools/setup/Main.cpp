@@ -661,7 +661,14 @@ int RunWindow(mevr::setup::Options options) {
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     wc.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
     wc.lpszClassName = L"MEVRSetup";
-    wc.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+    // Our icon (Setup.rc, ID 1): the title bar, Alt+Tab and the taskbar; the system's if it is missing.
+    wc.hIcon = static_cast<HICON>(LoadImageW(wc.hInstance, MAKEINTRESOURCEW(1), IMAGE_ICON, GetSystemMetricsForDpi(SM_CXICON, dpi),
+        GetSystemMetricsForDpi(SM_CYICON, dpi), LR_DEFAULTCOLOR));
+    wc.hIconSm = static_cast<HICON>(LoadImageW(wc.hInstance, MAKEINTRESOURCEW(1), IMAGE_ICON, GetSystemMetricsForDpi(SM_CXSMICON, dpi),
+        GetSystemMetricsForDpi(SM_CYSMICON, dpi), LR_DEFAULTCOLOR));
+    if (wc.hIcon == nullptr) {
+        wc.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+    }
     RegisterClassExW(&wc);
     DWORD const style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
     RECT rect{0, 0, clientW, clientH};

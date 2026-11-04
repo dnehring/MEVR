@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: MIT
 // The loader's version resource: the setup app tells our bink2w64.dll from RAD's and from ME3Tweaks' by its
-// CompanyName and ProductName (install/Detect ClassifyBink).
+// CompanyName and ProductName (install/Detect ClassifyBink). The version is CMake's project(VERSION) (mevr/Version.hpp,
+// generated); ProductVersion adds the build's commit (mevr/BuildInfo.hpp) as <version>+<commit>.
 #include <winres.h>
+#include "mevr/Version.hpp"
+#include "mevr/BuildInfo.hpp"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,1,0,0
- PRODUCTVERSION 0,1,0,0
+ FILEVERSION MEVR_VERSION_RC
+ PRODUCTVERSION MEVR_VERSION_RC
  FILEFLAGSMASK 0x3fL
  FILEFLAGS 0x0L
  FILEOS VOS_NT_WINDOWS32
@@ -18,12 +21,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "MEVR"
             VALUE "FileDescription", "MEVR ASI loader (bink2w64.dll proxy)"
-            VALUE "FileVersion", "0.1.0"
+            VALUE "FileVersion", MEVR_VERSION
             VALUE "InternalName", "bink2w64.dll"
             VALUE "LegalCopyright", "ME VR Attempt contributors, MIT; MinHook BSD-2-Clause"
             VALUE "OriginalFilename", "bink2w64.dll"
             VALUE "ProductName", "MEVR ASI loader"
-            VALUE "ProductVersion", "0.1.0"
+            VALUE "ProductVersion", MEVR_VERSION "+" MEVR_GIT_COMMIT
         END
     END
     BLOCK "VarFileInfo"

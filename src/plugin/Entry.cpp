@@ -30,11 +30,11 @@
 #include "plugin/SetupRequest.hpp"
 #endif
 #include "mevr/BuildInfo.hpp"  // MEVR_GIT_COMMIT (tools/cmake/BuildInfo.cmake): the attach line, read by problem reports
+#include "mevr/Version.hpp"    // MEVR_VERSION: project(MEVR VERSION ...) in CMakeLists.txt (tools/cmake/Version.hpp.in)
 
 #include <Windows.h>
 
 #define MEVR_NAME_W L"MEVR"
-#define MEVR_VERSION "0.1.0"
 
 namespace spi = mevr::loader::spi;
 
