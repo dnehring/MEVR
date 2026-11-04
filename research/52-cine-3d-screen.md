@@ -91,9 +91,21 @@ BIOA_STA00` from the title: the Citadel arrival cutscene (game mode 6) and then 
 
 ## Limits
 
-- **The dialogue wheel is small:** it is drawn into the image at the game's own size, about 0.9 degrees tall on the
-  default screen (as small, relative to the picture, as in VR cine). A wider screen enlarges it; routing the wheel to a
-  panel of its own is a possible follow-up.
+- **The dialogue wheel was small** (about 0.9 degrees tall): Halcyon's VR conversation layout (`convoScale*Stereo` 0.50 x
+  0.65, centred) shrinks the conversation movie for a head-locked view. Since 2026-11-04 (below) the screen shows it at its
+  authored size.
 - **The screen is nearly square** (the full frame `[NOLETTERBOX]` renders). The director's 16:9 framing is its middle
   band; a crop to that band would cut the bottom of the frame where the game puts subtitles, so the full frame stays.
 - **Not checked in the headset** by a person yet: comfort, the wheel's readability, the game pointer on the screen.
+
+## The dialogue wheel at its authored size (2026-11-04)
+
+A `[MEVR]` seam in `xr_session.cpp` gives the conversation movie the identity transform (`Pchud::SetConvoTransform(true, 1,
+1, 0, 0)`) while `mevrCineScreen` is up, and Halcyon's own layout otherwise. Checked on the fake headset (host and mod
+from main e8b48b6 plus this branch, `open BIOA_STA00` from the Mako autosave: the arrival cutscene, then the medical bay
+conversation): the conversation goes to the screen as before, and the wheel's ring is about 8% of the screen's width
+(190 of 2309 pixels) against about 5% in the 2026-11-03 capture of the same conversation (the scratchpad's
+`convo-lr.png`), so about 1.75 times larger: twice as wide and 1.5 times as tall, Halcyon's 0.50 x 0.65 undone. The
+options' capitals are about 1% of the screen's height, 0.7 degrees on the default screen (3.0 m at 2.6 m); a wider
+screen (Comfort > Conversations and cutscenes) enlarges them. The wheel sits where the game draws it (left of centre,
+low), over the shot. Not yet read by a person in a headset.

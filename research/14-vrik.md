@@ -539,9 +539,11 @@ heartbeat `support grip: ...`; `controls: two-handed grip on (acquire 0.12 m, re
 - The weapon should follow the hand: by the code it does, in the same frame (the follow check
   says). The barrel axis (socket X) and the attachment's scale handling are read from code, not
   seen yet.
-- Shots now start at the muzzle: a muzzle poked through a wall fires from the far side. The game
-  has `BioPawn.GetPulledInMuzzleLocation(Wpn, AimDir)` (a script event), probably for this; not
-  used yet.
+- Shots now start at the muzzle: a muzzle poked through a wall fired from the far side. Since 2026-11-04
+  `HandAim`'s start handler traces from the pawn's own start (what `GetWeaponStartTraceLocation` answered,
+  inside Shepard) to the muzzle (`Actor.Trace` on the pawn, `bTraceActors` off) and starts a blocked shot 2
+  units short of what's in the way (`hand aim: the muzzle is through a wall`, counted in the heartbeat).
+  The game's `BioPawn.GetPulledInMuzzleLocation(Wpn, AimDir)` stays unused. **[verify]** in the game.
 - The off-hand: the AnimTree's `LeftArm` limb control pulls the left wrist to `LHIK` during
   ComposeSkeleton, before our write. In the desktop test the right hand moves but the left stays
   on the gun's old grip. In VR both arms are ours; with the two-handed grip the left wrist is put

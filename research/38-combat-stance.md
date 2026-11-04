@@ -288,6 +288,24 @@ may still turn the view during a blend **[verify: the yaw logged across a draw]*
 `tools/snapshot.ps1` before and 1 s after a draw (the JSON's `hostView` position against the hook bone),
 and the `camera: mode` lines (the formula's "N up of the game camera" should read 94.9 in every mode).
 
+### Built (2026-11-04): the physical crouch keeps the eye
+
+Step 2's crouch part. The mod tells the host when the player is physically crouched (`game/posture`'s detector:
+`gamepad::kFlagPhysicalCrouch`, bit 23 of the pad options it already sends each tick; an older host ignores it, no
+HostServices change), and `ConstantFpEye` then lets `ConstantEyeApplies` take the crouch modes too, so the crouch camera's
+45 units don't lower the view on top of the real head. A crouch by L3 while standing keeps the game's lower camera.
+`[Hands] crouchDrop = 1` (host, read once a second) restores the double drop. Logs: `constant eye: ...; you are physically
+crouched, so only your real head lowers the view`, `constant eye: a physical crouch lowers the view by your real head only
+([Hands] crouchDrop = 0)`.
+
+On the fake headset (2026-11-04, the Normandy after the medical bay conversation, replaying a standing and a crouched
+synthetic head 0.7 m lower): `posture: physical crouch: eyes 0.95 m = 0.58 of the standing 1.65 m`, and the host's line
+says it saw the physical crouch. Exploring has no crouch camera mode of its own (SFXCameraMode_Explore throughout), so the
+view moved the same with `crouchDrop` 0 and 1 (+33.0 units relative to Shepard's lowered origin, the lean -74 units); the
+combat crouch, the case this is for, wasn't reached: the Normandy refuses a drawn weapon, and `open BIOA_UNC20` stops at
+the squad screen (game mode 7). **[verify]** with a weapon drawn: the `posture: ... s after the crouch: the view is N units
+above Shepard's origin` line with `crouchDrop` 0 and 1 should differ by the crouch camera's 45.
+
 ### Built (2026-10-25)
 
 Step 2 directly (the seam covers every standing mode; crouch keeps today's values, so no `crouchDrop` choice yet).

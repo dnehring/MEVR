@@ -75,7 +75,8 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   (2026-10-25) never reached the game (2026-10-26). Logs `main menu request:`, `main menu: opened the game's pause menu
   (<class>.ShowMenuGui returned 1; ...)`, `main menu: holstered the weapon`; snapshots `"mod"."gameMenu"`. The menu button and each hand's interaction profile are only logged (`halcyon bridge:`). Pointer: a controller's aim ray is
   the mouse (trigger clicks, right stick scrolls, haptic ticks); the pad or left stick moves the focus, A
-  activates, B backs out then closes; on Display holding A compares the colour. Sections: Comfort, Controls,
+  activates, B backs out then closes; on Display holding A compares the colour. Sections: Controller guide (every button and gesture,
+  texts from the settings: `vr::menu_settings::GuideTexts`; opened once on a first run, `[Menu] controlsShown`), Comfort, Controls,
   Body & calibration (Start calibration opens `plugin/Calibration`), Display, HUD & sights, Advanced
   (Halcyon's settings in sub-tabs). Every row drives a real setting (`plugin/MainMenuSettings`: our
   `LE1MEVR.ini` key by key, Halcyon's live config saved with its own `SaveProfile` when the menu closes;
@@ -266,7 +267,9 @@ switching frameworks.
   it holds still, about 0.15 s); AnimatedHands' left hand is the combat one on the gun. No learned pose: no explore
   compose. `constantEye` (B,
   host): a `[MEVR]` seam in Halcyon's `FpOwnAndWrite`, `MevrBridge::ConstantFpEye`: every standing mode's Offset = its
-  own HookOffset minus the explore eye; crouch modes keep Halcyon's. `exploreRamp` (C): the combat speed ramp set to the
+  own HookOffset minus the explore eye; crouch modes keep Halcyon's, except while the player is physically crouched
+  (the mod's `gamepad::kFlagPhysicalCrouch`, 2026-11-04): then only the real head lowers the view (`[Hands] crouchDrop = 1`:
+  the old double drop; research/38 "the physical crouch keeps the eye"). `exploreRamp` (C): the combat speed ramp set to the
   explore one (restored). `drawRate = 6` (D, 1..10; the animation still plays, so every notify fires): the WeaponEquip node's Draw/Holster sequences play faster (their Rate
   while playing). Logs `stance:`, `constant eye:`, `movement:`, `draw:`; snapshot `"stance"`.
 - LE1 comfort ([research/31](research/31-comfort.md), HostServices v17; the menu's Comfort page, `[Comfort]` in
@@ -293,7 +296,8 @@ switching frameworks.
   opposite sides, which puts infinity `depth` (1.5% of the width) behind the screen; the cameras' distance follows each shot's
   lens so the scene `convergeM` (1.2 m at 100 units per metre) away lands on the plane; infinity's disparity is capped at 80% of
   the eye distance (`core/vr/CineScreen`, unit-tested). `[MEVR]` seams in xr_session.cpp (decision, park, projection, lean, plan,
-  submit); host `plugin/CineScreen`. Logs `cine screen:`, `[VRSTATE] ... -> 3D screen (MEVR)`; snapshot `"cineScreen"`.
+  submit, and the conversation movie at its authored size instead of Halcyon's half-size VR layout: the wheel 1.75x larger); host
+  `plugin/CineScreen`. Logs `cine screen:`, `[VRSTATE] ... -> 3D screen (MEVR)`; snapshot `"cineScreen"`.
 - LE1 HUD (Halcyon's renderer, Stereo 2): the game's UI draws go to a body-locked HUD panel quad,
   and a hand reticle on the aim ray replaces the crosshair (`src/plugin/HalcyonOverlays.cpp`,
   [research/15](research/15-hud.md)). Scaleform's non-"over" blend modes (multiply...) go there too,
@@ -595,7 +599,11 @@ switching frameworks.
   logs) are recorded as user data, so a full uninstall deletes them (and `%LOCALAPPDATA%\MEVR` only when its box is
   ticked); "installed" means the manifest has the mod; a read-only `GamerSettings.ini` is a warning, not a failure. The ASI loader is our own `bink2w64.dll` (`src/loader`, `MEVR-Loader`: 79
   forwarded Bink exports, the SPI interface, the DRM wait by sampling `.text`; ctest `mevr-loader`), unless
-  LEBinkProxy is there. Launch starts `MassEffect1.exe` with the launcher's arguments. Texture packs: the pack's page
+  LEBinkProxy is there. Launch starts SteamVR first when it is the active runtime (waits up to 60 s; other runtimes get
+  a line saying what to start), then `MassEffect1.exe` with the launcher's arguments. A game never started (no
+  GamerSettings.ini) keeps the chosen settings as `pendingSettings` in the manifest and offers "Start the game once";
+  Repair applies them once the file exists, puts back what Steam's "verify files" removed (loader, TOC entry) and the
+  status lists what it would fix (research/33 section 9). Texture packs: the pack's page
   plus Mass Effect Modder's CLI, never bundled or auto-downloaded (Nexus terms). In game, Display > Optional content
   writes `%LOCALAPPDATA%\MEVR\setup.request`; the host's ExitProcess hook starts `ASI\MEVR-Setup.exe --request`.
   Test only on a fake game: `tools/setup/test-fake-game.ps1` (`scratch\fakegame`); pages offline:
