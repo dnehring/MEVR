@@ -4,8 +4,8 @@
 4x: 22 degrees of picture show 5.5 degrees of the world, about 130 source pixels (the eye swapchain has about 24 per
 degree) stretched over about 530 headset pixels, and whatever the eye image went through (FSR's RCAS, research/32) is
 magnified too. The user approved a real zoomed render: the engine's own `SceneCapture2DComponent` rendering the scope's
-field into a small render target, only while the picture is up, sampled by the host instead of the eye copy. **Off by
-default** (`[Sights] scopeCapture = 0`) until its frame cost is measured in game.
+field into a small render target, only while the picture is up, sampled by the host instead of the eye copy. It was off by
+default until its frame cost was measured in game; **on by default since 2026-11-04** (section 12).
 
 **Built** (mod `game/ScopeCapture`, host `plugin/ScopeCaptureSource` + `plugin/SightLayers`, shared `core/vr/ScopeCapture`,
 HostServices **v20**, two `[MEVR]` seams in Halcyon). Nothing here was run in the game: every engine-side claim below
@@ -188,8 +188,9 @@ is **[verify]** until the measurement session (notes/next-vr-session.md step 44)
 
 ## 8. Settings (`[Sights]` in `ASI\LE1MEVR.ini`, live)
 
-`scopeCapture` (0), `scopeCaptureSize` (1024, 256-2048), `scopeCaptureRate` (150), written to older files; file-only:
-`scopeCapturePost` (1), `scopeCaptureFormat` (float | rgba8), `scopeCaptureMargin` (0.25), `scopeCaptureNear` (20 units
+`scopeCapture` (1 since 2026-11-04; an old file's 0 moved to 1 once, marker `scopeCapturePost`), `scopeCaptureSize` (1024,
+256-2048), `scopeCaptureRate` (150), `scopeCapturePost` (1; written since 2026-11-04), written to older files; file-only:
+`scopeCaptureFormat` (float | rgba8), `scopeCaptureMargin` (0.25), `scopeCaptureNear` (20 units
 past the muzzle), `scopeCaptureFar` (0), `scopeCaptureHold` (0.5 s).
 
 ## 9. Logs and snapshots
@@ -273,3 +274,6 @@ past the muzzle), `scopeCaptureFar` (0), `scopeCaptureHold` (0.5 s).
   ambient occlusion is the likely one. `scopeCapturePost` applies when the actor is created, so turn `scopeCapture` off and on.
 - **The verify list (section 10).** 1, 3 and 7 are done. In 4, the picture was centred on the reticle with the world steady in it
   (snapshots); the rest of 4, 2, 5 and 6 weren't checked in this run.
+- **Decision (the user, 2026-11-04): on by default, the speckle kept for now** and noted as a known issue (README, `core/vr/
+  ScopeCapture.hpp`, notes/next-vr-session.md step 44). An old file still holding `scopeCapture = 0` is moved to 1 once (marker
+  `scopeCapturePost`, written with 1); any other value is the player's.

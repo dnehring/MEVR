@@ -75,6 +75,9 @@ In the game, `\` or both thumbsticks held opens the VR menu.
 - **Much of it is new:** the project started in October 2026; many features have been tried in the headset only
   a few times, some not yet (see [notes/next-vr-session.md](notes/next-vr-session.md)).
 - **Steam's "verify files"** can remove the ASI loader: run the setup's Repair, or reinstall the loader.
+- **The sniper scope's dark areas show a black speckle.** The zoomed view is a real render of the scene, and the game's
+  post-processing adds the speckle to it ([research/39](research/39-scope-capture.md) section 12). `[Sights]
+  scopeCapturePost = 0` in `ASI\LE1MEVR.ini` removes it, but the view then loses the game's colour grade.
 
 ## Reporting a bug
 

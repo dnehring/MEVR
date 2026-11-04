@@ -24,12 +24,14 @@ namespace mevr::vr::scope_capture {
 
 // ---- Settings ([Sights] scopeCapture* in <GAME>MEVR.ini, parsed by the mod) ------------------------------------------
 struct Settings {
-    bool enabled = false;          // scopeCapture: 0 until its frame cost is measured in game (research/39)
+    bool enabled = true;           // scopeCapture: on since its cost was measured, 2026-11-04 (research/39 section 12)
     int size = 1024;               // scopeCaptureSize: the render target's pixels across (square), 256..2048
     float rate = 150.0f;           // scopeCaptureRate: SceneCaptureComponent.FrameRate, renders a second at most: 150 renders
                                    // every frame up to 144 Hz but never twice in one (Halcyon's two Draws of a frame are a few
                                    // ms apart, whichever clock the engine compares: research/39 section 3)
-    bool postProcess = true;       // scopeCapturePost: the player's post-process chain (tonemap, bloom) on the capture
+    bool postProcess = true;       // scopeCapturePost: the player's post-process chain (tonemap, bloom) on the capture; known
+                                   // issue: it puts a black speckle in the capture's dark areas (research/39 section 12), kept
+                                   // for now (the user, 2026-11-04) because 0 loses the game's colour grade
     bool floatTarget = true;       // scopeCaptureFormat = float (PF_FloatRGB, linear) | rgba8 (PF_A8R8G8B8, gamma)
     float margin = 0.25f;          // scopeCaptureMargin: the capture's field past the picture's (share of its half-angle)
     float nearUnits = 20.0f;       // scopeCaptureNear: the near plane this far past the muzzle (game units)

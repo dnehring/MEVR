@@ -511,10 +511,11 @@ switching frameworks.
   ADS steps them, `zoomStick`); `reticle = game`: the game's sniper view (the mod publishes `GUI_SF_HUD.Reticule_I4E/I4C/I41`'s
   resources in the sight; the host composes two layers once, `SightLayers` PrepareArt, layout `vr::scope_art` from
   `tools/scope-art.py`; the duplex if not found). The sight struct grew: host and mod deploy together.
-- LE1 scope capture ([research/39](research/39-scope-capture.md), HostServices v20; **off by default**, `[Sights]
-  scopeCapture = 0`; measured 2026-11-04, research/39 section 12: the render thread +0.5 ms in a light scene, no GPU cost
-  visible, the picture as sharp as the display instead of 2.2x below it; the player's post chain adds a black speckle in dark
-  areas, `scopeCapturePost = 0` removes it and the grade): the scope's picture from a real zoomed render instead of the other
+- LE1 scope capture ([research/39](research/39-scope-capture.md), HostServices v20; **on by default since 2026-11-04**,
+  `[Sights] scopeCapture = 1`, an old file's 0 moved once (marker `scopeCapturePost`); measured in research/39 section 12: the
+  render thread +0.5 ms in a light scene, no GPU cost visible, the picture as sharp as the display instead of 2.2x below it;
+  **known issue, kept for now (the user):** the player's post chain adds a black speckle in dark areas, `scopeCapturePost = 0`
+  removes it and the grade; README's known issues): the scope's picture from a real zoomed render instead of the other
   eye's image enlarged. The mod (`game/ScopeCapture`, hot-reloaded) spawns a `SceneCapture2DActor` (Actor.Spawn on the
   player controller; the class's `bStatic`/`bNoDelete` defaults cleared for the call if set) with a
   `TextureRenderTarget2D` of its own (`Create` on its default object; `scopeCaptureSize` 1024, FloatRGB), the update

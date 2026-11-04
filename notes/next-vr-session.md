@@ -1386,8 +1386,12 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
     - Must NOT happen: a gun left without its lens after a weapon switch, a holster or a hot reload (`showed ... again (another
       gun / the gun was put away / the mod unloads)` each time); the gun pushed away from the face.
 44. **The scope's real zoomed render: is it right, and what does it cost (new, 2026-10-27; HOST AND MOD REDEPLOY together,
-    game closed: HostServices v20; [research/39](../research/39-scope-capture.md)).** Off by default (`[Sights]
-    scopeCapture = 0`); everything below turns it on by hand and back off at the end.
+    game closed: HostServices v20; [research/39](../research/39-scope-capture.md)).** **On by default since 2026-11-04**
+    (`[Sights] scopeCapture = 1`; an old file's written 0 is moved to 1 once, marker `scopeCapturePost`). Measured on the fake
+    headset in a light scene (research/39 section 12): +0.5 ms render thread, no GPU cost visible, sharp to the display. Still
+    open: the headset's look and the heavy cell's cost below. **Known issue, kept for now (the user, 2026-11-04):** the
+    player's post chain puts a black speckle in the capture's dark areas; `scopeCapturePost = 0` removes it and the game's
+    grade (which of the chain's effects makes it is [verify], its ambient occlusion likely).
     - **First, does it work** (headset on, Eden Prime, the sniper rifle drawn): set `scopeCapture = 1` in `ASI\LE1MEVR.ini`
       (live), raise the scope to the eye. The picture should be sharp (no blocky pixels), right side up, unmirrored, the
       reticle on what the gun points at. Hold still, then sweep slowly: the world in the picture stays put while the head
@@ -1422,7 +1426,7 @@ Redeploy the host first (close the game, `tools/deploy-asi.ps1 -Game LE1`). File
       for the pass boundary. The capture's Umbra resolve is in no slot of the levers line, so its cost is the render
       thread's "busy, without the XR waits" in `tools/perf-probe.py`, scopeCapture 1 against 0 (expect 1-1.5 ms at a heavy
       spot from the resolve alone).
-    - Put `scopeCapture = 0` back unless the cost is acceptable.
+    - If the heavy cell's cost is too much, set `scopeCapture = 0` and say so (the default would go back to 0).
 45. **Aiming down the sight: the scope only at the eye, the assault rifle a red dot again (new, 2026-10-27, later; the ADS,
     the assist and the pull are the mod's (hot reload: rebuild `MEVR-LE1-mod`); the menu's chip order is the host's, so a
     redeploy with the game closed for that only; the sight the two share is unchanged; [research/21](../research/21-sights-and-scopes.md)

@@ -9,7 +9,7 @@
 #include <string>
 
 // The sniper scope's real zoomed render (research/39; what's shared with the host: core/vr/ScopeCapture.hpp). LE1,
-// [Sights] scopeCapture = 1 (off by default until its frame cost is measured).
+// [Sights] scopeCapture = 1 (the default since 2026-11-04, research/39 section 12; 0 = the other eye's picture enlarged).
 //
 // The first time an eye is behind a scope, a SceneCapture2DActor is spawned (Actor.Spawn on the player controller,
 // through ProcessEvent) with a TextureRenderTarget2D of its own (TextureRenderTarget2D.Create): never with the update

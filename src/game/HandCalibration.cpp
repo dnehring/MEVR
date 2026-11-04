@@ -398,11 +398,14 @@ constexpr char const* kSightsBlock =
     "assistMaxM = 0.10\n"
     "assistDotMaxM = 0.03\n"
     "; scopeCapture: 1 = the scope shows a real zoomed render of the world (the engine's scene capture, only while your eye\n"
-    "; is behind the scope; research/39) instead of the other eye's picture enlarged; 0 until its frame cost is measured.\n"
-    "; scopeCaptureSize: its pixels across. scopeCaptureRate: renders a second at most (150: every frame, never twice in one).\n"
-    "scopeCapture = 0\n"
+    "; is behind the scope; research/39) instead of the other eye's picture enlarged (about 0.5 ms of render thread a frame\n"
+    "; while you look through it). scopeCaptureSize: its pixels across. scopeCaptureRate: renders a second at most (150:\n"
+    "; every frame, never twice in one). scopeCapturePost: 1 = the game's post-processing on it (its colour grade, but also a\n"
+    "; black speckle in dark areas, a known issue); 0 = clean but ungraded. A change applies after scopeCapture goes 0 and 1.\n"
+    "scopeCapture = 1\n"
     "scopeCaptureSize = 1024\n"
-    "scopeCaptureRate = 150\n";
+    "scopeCaptureRate = 150\n"
+    "scopeCapturePost = 1\n";
 
 // Appended to a settings file that has no [Comfort] yet (and part of a new file).
 constexpr char const* kComfortBlock =
@@ -1838,7 +1841,8 @@ std::string Describe(vr::scope_capture::Settings const& s) {
     }
     return std::format("on: {} px {} render target, {:.0f} renders a second at most, post process {}, field margin {:.0f}%, near plane "
                        "{:.0f} units past the muzzle, far plane {}, kept on {:.1f} s after the eye leaves",
-        s.size, s.floatTarget ? "float (FloatRGB)" : "8-bit (A8R8G8B8)", s.rate, s.postProcess ? "on" : "off", s.margin * 100.0f,
+        s.size, s.floatTarget ? "float (FloatRGB)" : "8-bit (A8R8G8B8)", s.rate,
+        s.postProcess ? "on (known issue: a black speckle in dark areas, research/39 section 12)" : "off", s.margin * 100.0f,
         s.nearUnits, s.farUnits > 0.0f ? std::format("{:.0f} units", s.farUnits) : std::string("the engine's (0)"), s.holdSeconds);
 }
 
@@ -2279,6 +2283,20 @@ void Refresh() {
             stamp = fs::last_write_time(path, ec);
         }
     }
+    // [Sights] since 2026-11-04 (research/39 section 12): the scope's zoomed render is on by default. A file without the marker
+    // scopeCapturePost that still holds the old default scopeCapture = 0 gets 1; any other value is the player's and kept.
+    if (auto const s = ini.find("Sights"); s != ini.end() && s->second.find("scopeCapturePost") == s->second.end()) {
+        if (auto const k = s->second.find("scopeCapture"); k != s->second.end()) {
+            if (k->second == "0" && WritePrivateProfileStringW(L"Sights", L"scopeCapture", L"1", path.wstring().c_str()) != 0) {
+                log::Info("hands: [Sights] scopeCapture 0 -> 1: the scope's zoomed render is on by default (research/39 section 12) in {}",
+                    ini::Utf8(path));
+                ini = ReadIni(path);
+                stamp = fs::last_write_time(path, ec);
+            } else if (k->second != "0") {
+                log::Info("hands: [Sights] scopeCapture = {} kept (your choice; the default is 1)", k->second);
+            }
+        }
+    }
     // [Mako] since 2026-11-02 (research/48 section 22): the controls' grips are the cockpit models' on the seat's armrests and
     // the throttle travels the model's slot. A file holding all three old defaults exactly gets the new ones; any other
     // value is the player's and kept.
@@ -2346,10 +2364,12 @@ void Refresh() {
         {L"Sights", "Sights", L"sniperRifleHide", "sniperRifleHide", L"auto"},
         // The game's own optics (2026-11-03, research/21 section 16). The marker zoomStick comes after their migration above.
         {L"Sights", "Sights", L"zoomStick", "zoomStick", L"1"},
-        // The scope's real zoomed render (2026-10-27, research/39), off until measured.
-        {L"Sights", "Sights", L"scopeCapture", "scopeCapture", L"0"},
+        // The scope's real zoomed render (2026-10-27, research/39), on since 2026-11-04 (section 12). The marker
+        // scopeCapturePost comes after its migration above.
+        {L"Sights", "Sights", L"scopeCapture", "scopeCapture", L"1"},
         {L"Sights", "Sights", L"scopeCaptureSize", "scopeCaptureSize", L"1024"},
         {L"Sights", "Sights", L"scopeCaptureRate", "scopeCaptureRate", L"150"},
+        {L"Sights", "Sights", L"scopeCapturePost", "scopeCapturePost", L"1"},
         // The spectator camera (2026-11-03, research/49), off by default: the rest of [Spectator] is file-only.
         {L"Spectator", "Spectator", L"enabled", "enabled", L"0"},
         {L"Hands", "Hands", L"noCover", "noCover", L"1"},
