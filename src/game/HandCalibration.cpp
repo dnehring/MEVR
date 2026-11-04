@@ -615,12 +615,22 @@ constexpr char const* kWorldUiBlock =
     "; GameOver; all = every one). The loot stands at its container, the minigame and a locker's equipment at what you used.\n"
     "; on = 0: the game's screens on the flat panel, the world gone (Halcyon's own). Inventory, XMods and CharacterRecord show a\n"
     "; 3D model of their own in the game's UI world, which isn't in the room yet.\n"
+    "; wrist: the screens projected from your left wrist instead, Shepard's omni-tool (SkillGame: the bypass minigame; none: all\n"
+    "; in the room), wristWidthM wide, its bottom edge wristAboveM over the wrist as you see it, moved wristTowardM toward your\n"
+    "; eyes (< 0 away); wristFollow 1: it rides on the wrist, 0: it stays where it was projected; wristBeam: a faint fan of\n"
+    "; light from the wrist to it.\n"
     "on = 1\n"
     "widthM = 1.20\n"
     "distanceM = 0.95\n"
     "belowM = 0.50\n"
     "backdrop = 0.80\n"
-    "screens = all\n";
+    "screens = all\n"
+    "wrist = SkillGame\n"
+    "wristWidthM = 0.30\n"
+    "wristAboveM = 0.06\n"
+    "wristTowardM = 0.00\n"
+    "wristFollow = 1\n"
+    "wristBeam = 1\n";
 
 constexpr char const* kGameBlock =
     "\n"
@@ -1638,25 +1648,47 @@ vr::world_ui::Settings ReadWorldUi(Ini const& ini) {
     if (Number(ini, "WorldUi", "backdrop", value)) {
         s.backdrop = static_cast<float>(std::clamp(value, 0.0, 1.0));
     }
+    // A list of the game's screen tags ("all"; "none" or nothing: no screen).
+    auto const screenList = [](std::string const& text, char const* key) {
+        std::uint32_t bits = 0;
+        std::string word;
+        std::istringstream words(text);
+        while (std::getline(words, word, ',')) {
+            std::string const w = Strip(word);
+            std::string lower = w;
+            std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (lower == "all") {
+                bits = 0xFFFFFFFFu;
+            } else if (vr::world_ui::Screen const screen = vr::world_ui::FromTag(w); screen != vr::world_ui::Screen::None) {
+                bits |= vr::world_ui::Bit(screen);
+            } else if (!w.empty() && lower != "none") {
+                log::Warn("world ui: [WorldUi] {}: '{}' isn't one of the game's screens we place (research/53)", key, w);
+            }
+        }
+        return bits;
+    };
     if (auto const section = ini.find("WorldUi"); section != ini.end()) {
         if (auto const key = section->second.find("screens"); key != section->second.end()) {
-            std::uint32_t bits = 0;
-            std::string word;
-            std::istringstream words(key->second);
-            while (std::getline(words, word, ',')) {
-                std::string const w = Strip(word);
-                std::string lower = w;
-                std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-                if (lower == "all") {
-                    bits = 0xFFFFFFFFu;
-                } else if (vr::world_ui::Screen const screen = vr::world_ui::FromTag(w); screen != vr::world_ui::Screen::None) {
-                    bits |= vr::world_ui::Bit(screen);
-                } else if (!w.empty()) {
-                    log::Warn("world ui: [WorldUi] screens: '{}' isn't one of the game's screens we place (research/53)", w);
-                }
-            }
-            s.screens = bits;
+            s.screens = screenList(key->second, "screens");
         }
+        if (auto const key = section->second.find("wrist"); key != section->second.end()) {
+            s.wristScreens = screenList(key->second, "wrist");
+        }
+    }
+    if (Number(ini, "WorldUi", "wristWidthM", value)) {
+        s.wristWidthM = static_cast<float>(std::clamp(value, 0.1, 1.0));
+    }
+    if (Number(ini, "WorldUi", "wristAboveM", value)) {
+        s.wristAboveM = static_cast<float>(std::clamp(value, -0.2, 0.5));
+    }
+    if (Number(ini, "WorldUi", "wristTowardM", value)) {
+        s.wristTowardM = static_cast<float>(std::clamp(value, -0.3, 0.5));
+    }
+    if (Number(ini, "WorldUi", "wristFollow", value)) {
+        s.wristFollow = value != 0.0;
+    }
+    if (Number(ini, "WorldUi", "wristBeam", value)) {
+        s.wristBeam = value != 0.0;
     }
     return s;
 }
@@ -1671,8 +1703,19 @@ std::string Describe(vr::world_ui::Settings const& s) {
             names += (names.empty() ? "" : ", ") + std::string(vr::world_ui::Name(static_cast<vr::world_ui::Screen>(i)));
         }
     }
-    return std::format("the game's screens in the room ({}): {:.2f} m wide, {:.2f} m ahead, {:.2f} m below the eyes, backdrop {:.2f}",
-                       names.empty() ? "none" : names, s.widthM, s.distanceM, s.belowM, s.backdrop);
+    std::string wrist;
+    for (unsigned i = 1; i < static_cast<unsigned>(vr::world_ui::Screen::Count); ++i) {
+        if ((s.wristScreens & (1u << i)) != 0) {
+            wrist += (wrist.empty() ? "" : ", ") + std::string(vr::world_ui::Name(static_cast<vr::world_ui::Screen>(i)));
+        }
+    }
+    return std::format("the game's screens in the room ({}): {:.2f} m wide, {:.2f} m ahead, {:.2f} m below the eyes, backdrop {:.2f}; "
+                       "projected from the left wrist: {}{}",
+                       names.empty() ? "none" : names, s.widthM, s.distanceM, s.belowM, s.backdrop, wrist.empty() ? "none" : wrist,
+                       wrist.empty() ? std::string()
+                                     : std::format(" ({:.2f} m wide, {:.2f} m over the wrist, {:.2f} m toward the eyes, {}, {})", s.wristWidthM,
+                                           s.wristAboveM, s.wristTowardM, s.wristFollow ? "riding on it" : "left where it was projected",
+                                           s.wristBeam ? "a fan of light from the wrist" : "no fan of light"));
 }
 
 vr::world_ui::Settings gWorldUi;
@@ -2504,6 +2547,13 @@ void Refresh() {
         {L"Mako", "Mako", L"stickAimRate", "stickAimRate", L"90"},
         {L"Mako", "Mako", L"rumble", "rumble", L"0.12"},
         {L"Mako", "Mako", L"cameraFollow", "cameraFollow", L"1"},
+        // Screens projected from the wrist (2026-11-04, research/53 section 6).
+        {L"WorldUi", "WorldUi", L"wrist", "wrist", L"SkillGame"},
+        {L"WorldUi", "WorldUi", L"wristWidthM", "wristWidthM", L"0.30"},
+        {L"WorldUi", "WorldUi", L"wristAboveM", "wristAboveM", L"0.06"},
+        {L"WorldUi", "WorldUi", L"wristTowardM", "wristTowardM", L"0.00"},
+        {L"WorldUi", "WorldUi", L"wristFollow", "wristFollow", L"1"},
+        {L"WorldUi", "WorldUi", L"wristBeam", "wristBeam", L"1"},
     };
     std::string addedKeys;
     for (auto const& k : kNewKeys) {

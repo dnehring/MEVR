@@ -90,6 +90,11 @@
 			<div class="srow" data-class-disabled="cine_view != 'screen'"><div class="slab">3D depth</div><input type="range" min="0" max="150" step="5" data-value="cine_depth"/><div class="sval">{{cine_depth_text}}</div></div>
 		</div>
 		<div class="group">
+			<div class="gtitle"><span>Game screens</span><div class="gline"/></div>
+			<div class="row"><div class="rl"><div class="rlab">Hacking screen</div><div class="rdesc">Locked crates and consoles: projected from your left wrist like an omni-tool, or standing in the room by what you open</div></div>
+				<div class="seg"><button class="segb" data-class-on="wrist_screen == 'wrist'" data-event-click="pick('wrist_screen','wrist')">On my wrist</button><button class="segb" data-class-on="wrist_screen == 'room'" data-event-click="pick('wrist_screen','room')">In the room</button></div></div>
+		</div>
+		<div class="group">
 			<div class="gtitle"><span>This menu</span><div class="gline"/></div>
 			<div class="row"><div class="rl"><div class="rlab">Pause while open</div><div class="rdesc">The game waits while you change settings</div></div>
 				<button class="tog" data-class-on="pause" data-event-click="toggle('pause')"><div class="knob"/></button></div>

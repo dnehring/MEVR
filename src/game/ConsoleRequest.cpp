@@ -458,6 +458,23 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         }
         return galaxy_dump::LootCorpse(pc, gFound[index]);
     }
+    if (verb == "skillgame") {
+        // `mevr skillgame start [type 0|1] [difficulty 0..2] [n]` (n: the (n-1)-th `find` object as the dependent, the plain
+        // InitializeSkillGame), `mevr skillgame state`, `mevr skillgame gel`.
+        std::string sub;
+        words >> sub;
+        int a = 0, b = 0, c = 0;
+        words >> a >> b >> c;
+        ue3::Object* dependent = nullptr;
+        if (sub == "start" && c > 0) {
+            std::size_t const index = static_cast<std::size_t>(c - 1);
+            if (index >= gFound.size() || !ue3::runtime::IsAlive(gFound[index])) {
+                return std::format("mevr skillgame: no object {} (mevr find first; the dependent is given as n + 1)", index);
+            }
+            dependent = gFound[index];
+        }
+        return galaxy_dump::SkillGame(pc, pawn, sub.empty() ? "state" : sub, a, b, dependent);
+    }
     if (verb == "gui") {
         std::string which;
         words >> which;

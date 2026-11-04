@@ -600,6 +600,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/Vignette.hpp
     src/plugin/WorldPanels.cpp
     src/plugin/WorldPanels.hpp
+    src/plugin/WristBeam.cpp
+    src/plugin/WristBeam.hpp
 )
 
 # Text embedded at build time as a char array (tools/cmake/EmbedText.cmake; the declarations in src/core/Embedded.hpp):

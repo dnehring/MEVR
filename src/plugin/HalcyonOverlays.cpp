@@ -55,6 +55,7 @@
 #include "plugin/SquadPanel.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/Vignette.hpp"
+#include "plugin/WristBeam.hpp"
 #include "plugin/WorldPanels.hpp"
 
 #include <d3d11.h>
@@ -1720,8 +1721,13 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     bool galaxyPanel = false;  // the panel goes after the galaxy hologram's layer (over it)
     std::optional<mevr::host::world_ui::Shown> worldShown;
     if (worldUi && gPanel.texture != nullptr) {
+        // The left wrist (where the HUD's wrist piece sits): a screen marked for it is projected from there (research/53 section 6).
+        std::optional<XrVector3f> wrist;
+        if (pieceControllers.active && pieceControllers.left.gripValid) {
+            wrist = hp::WristPoint(pieceControllers.left.grip, hud.wristOffset);
+        }
         worldShown = mevr::host::world_ui::Current(ToVec(frame.headPosition), ToQuat(frame.headOrientation), frame.headValid, gPanel.width,
-            gPanel.height);
+            gPanel.height, wrist);
     }
     gPanelBackdrop = worldShown ? std::max(worldShown->backdrop, 1.0f / 256.0f) : 0.0f;
     if (frame.worldFrame && engaged && uiToPanel && gPanel.texture != nullptr && count < capacity && device != nullptr &&
@@ -1763,6 +1769,17 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                 gPanelQuad.size = {uiWidth, uiWidth * static_cast<float>(gPanel.height) / static_cast<float>(gPanel.width)};
                 galaxyPanel = true;
             } else {
+                // A screen projected from the wrist: its fan of light first, under the panel.
+                if (worldShown && worldShown->beam && count + 1 < capacity) {
+                    mevr::host::wrist_beam::Frame beamFrame;
+                    beamFrame.session = session;
+                    beamFrame.appSpace = static_cast<XrSpace>(frame.appSpace);
+                    beamFrame.context = context;
+                    beamFrame.device = device.Get();
+                    if (XrCompositionLayerQuad const* beam = mevr::host::wrist_beam::Layer(beamFrame, *worldShown->beam)) {
+                        layersOut[count++] = beam;
+                    }
+                }
                 layersOut[count++] = &gPanelQuad;
             }
             panelShown = true;

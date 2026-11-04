@@ -55,7 +55,7 @@ All 35 templates of the GUI library, in its order. "Room" = the world UI below. 
 | DeviceSelection | GUI_SF_Tutorial.Tutorials | console storage | - | n/a on PC | none |
 | Conversation | GUI_SF_Conversation.Conversation | conversations (mode 5) | the dialogue wheel | Halcyon's VR cine; 3D screen (research/52) | done (separately) |
 | BlackScreen | GUI_SF_Utility.BlackScreen | fades | black | fine | none |
-| SkillGame | GUI_SF_SkillGame.PCMiniGame | the bypass minigame on encrypted consoles, crates and doors (mode 10; the level's `BioSkillGame` with the placeable as `oDependent`) | Flash minigame | **room** (mode 10), at the placeable (`BioSkillGame_Handler.m_oDependent`) | done [verify in a mission] |
+| SkillGame | GUI_SF_SkillGame.PCMiniGame | the bypass minigame on encrypted consoles, crates and doors (mode 10; the level's `BioSkillGame` with the placeable as `oDependent`) | Flash minigame | **wrist** (section 6): projected from the left wrist; in the room at the placeable (`BioSkillGame_Handler.m_oDependent`) without a tracked left controller or with `wrist = none` | done, reached on the Normandy (section 6); a real crate [verify in a mission]; tapping it: next |
 | IntroText | GUI_SF_Utility.IntroText | the opening text | text | flat | keep |
 | MainMenu | GUI_SF_MainMenu.MainMenu | the title | Flash over its flyby | flat | keep (front end) |
 | **shop** | GUI_SF_Shop.PCShop | a vendor's conversation, `BioSeqAct_OpenShop` (its `m_shop` is a BioShop actor placed at the vendor) | Flash, the item's picture (a render target in the movie) | **room: at counter height in front of the vendor** | done (section 4) |
@@ -145,3 +145,64 @@ The galaxy map's pieces made generic (core/vr/WorldUi, game/WorldUi, plugin/Worl
   (`BIOG_APL_TYPES.Containers.AmmoCase_00_Con_Type`, "Closed": loot) at `PRO10_01_PLC.BioUseable_0` (-24988, 126722, -1107) and
   `PRO10_03_PLC.BioUseable_4` (-16433, 133959, -72). With a save past the prologue: stand by one, `mevr use` its actor (what A
   does), snapshot.
+- The minigame itself needs no save: section 6. `BioWorldInfo.BioLoadGame(96)` (a load by slot) loaded nothing from the title's
+  Normandy: the user's Citadel save is another career's, so a real crate still means the menus.
+
+## 6. The bypass minigame: reached on the Normandy, projected from the wrist (2026-11-04)
+
+The user: "for hacking mini-game we consider allowing for auto hacking. I'm curious if we should have a wrist mounted display
+option so that it projects from there instead. Minimal vfx to feel real", then: "Let's scratch removing the mini game and we'll
+likely want to make it something where they need to tap on the wrist mounted display", and "Please continue with wrist mounted
+projector though".
+
+- **The pattern.** Fallout 4 VR's Pip-Boy sits on the left wrist, raised to read, with a setting that projects it in front of you
+  instead (Settings > VR > "Pip-Boy Location": Wrist / Projected, per a 2020 Steam forum post,
+  https://steamcommunity.com/app/611660/discussions/0/1621724904371360432; Bethesda's launch notes list "Pip-Boy display
+  settings", https://bethesda.net/en-AU/news/fallout-4-vr-launch-details). Half-Life: Alyx's multitool projects its hacking puzzles
+  as holograms (Valve's "Holo Hacking Puzzle", https://developer.valvesoftware.com/wiki/HLA_SDK/Holo_Hacking_Puzzle). Mass Effect's
+  own: Shepard bypasses with the omni-tool, the holographic forearm device. So the minigame projects from the left wrist.
+- **Reaching it without a save.** `mevr skillgame start [type] [difficulty] [n]`: the level's own `BioSkillGame`
+  (`BioWorldInfo.m_SkillGame`) `InitializeSkillGame(Shepard, the placeable, type, salvage 1..10, 6 buttons, 1.5 s, 0.5 s,
+  difficulty)`, the placeable the (n-1)-th of `mevr find` / `mevr instances SFXGame.BioArtPlaceable` (without n:
+  `InitializeSkillGameCustom` with no callbacks and Shepard as the dependent). The game goes to mode 10 with the `SkillGame` panel
+  (handler `BioSkillGame_PCHandler`), and the world UI takes it as it would at a crate. Snapshot 10:35:25: the screen in the room
+  toward the Normandy's locker `NOR10_00_PLC.BioUseable_4` (with Shepard as the dependent it stood at his feet, 10:31:09).
+- **What the screen is.** "DECRYPTING" and three buttons: Begin manual override, Cancel, "Override using N omni-gel" (N the
+  handler's `m_nMaxSalvage`). Its frame spans stage x 0.226..0.775, y 0.120..0.848 (`hud.png` of 10:40:44). The movie
+  (`mevr panel SkillGame movie GUI_SF_SkillGame.PCMiniGame`: the GFx has no MovieInfo at run time, so the verb takes the package
+  name) runs `PreGameButtonAOnPress`/`BOnPress`/`XOnPress` for them and reports `SkillGamePreGameButton` to the game (its strings);
+  the handler's `HandleInputEvent(BIOGUI_EVENT_BUTTON_X)` and `HandleSkillGameButtonPress` did nothing before the game starts.
+  `mevr panel SkillGame invoke PreGameButtonBOnPress` cancels it as the button does (the way to close a test minigame).
+- **Auto-hacking: tried and dropped.** The omni-gel button through `invoke PreGameButtonXOnPress` closes the screen, but on a
+  Normandy locker no omni-gel was taken (50 before and after; with 3 against a cost of 10 it closed too), so whether the game
+  checks and charges on that path needs an encrypted crate [verify]. The button showed with the custom start and was missing on
+  the plain start at `BioUseable_12` with no omni-gel (11:00:52) [verify what decides]; `UpdateSalvage(0)` doesn't change the cost
+  shown. Shepard's omni-gel is `SFXPawn_Player.m_oBehavior.m_oInventory.m_fResourceSalvage` (`mevr skillgame gel`; the
+  `initsalvage` cheat didn't set it). An auto mode that pressed the override for you was built and removed the same day at the
+  user's call: the minigame stays the player's, played next by tapping the wrist screen.
+- **The wrist projector** (`[WorldUi] wrist = SkillGame` by default, a comma list like `screens`; our menu's Comfort > Game screens >
+  Hacking screen: On my wrist / In the room writes `SkillGame` / `none`). The host places it from the left wrist (the HUD's wrist
+  point, `hud_pieces::WristPoint` of the left grip) every frame, smoothed (50 ms): `wristWidthM` (0.30) wide, facing the eyes, its
+  bottom edge's middle `wristAboveM` (0.06) above the wrist **across the line of sight** (along its own up), moved
+  `wristTowardM` (0) toward the eyes, never nearer them than 0.25 m (core/vr/WorldUi `WristPlace`, unit-tested). Straight up from the
+  wrist put it between the eyes and the wrist (11:00:52: tilted to face eyes above it, it hid the wrist and the light). It shows the
+  minigame's frame only (`WristCrop`: stage x 0.21..0.79, y 0.10..0.87); in the room it keeps the whole stage (the frame cropped to
+  the room's 1.20 m stood 64 degrees wide). It unfolds out of the wrist over 0.18 s (`Unfold`: its height from nothing, its width
+  from 60%, eased out, the bottom edge fixed). `wristFollow = 0` leaves it where it was projected, the hand free (its light only
+  while it opens). The game pointer gets the whole window on its plane each frame.
+- **The light** (`wristBeam`, plugin/WristBeam): one quad in the plane of the wrist and the screen's bottom edge, a fan from the
+  screen's width to a point at the wrist, alpha 0.30 at the wrist fading to 0.05 at the screen, soft sides, the pale blue of the
+  minigame's frame (`BeamPixels`, 128 x 128, made once per session). Premultiplied in linear light: the first picture premultiplied
+  the sRGB-encoded values and darkened what was behind it (11:09:53, its difference from the world image brown, not blue).
+- **Without a tracked left controller** when it opens the screen stands in the room as before, with the room's crop: "would be
+  projected from the left wrist, but the left controller isn't tracked: it stands in the room" (11:02:18). A controller lost while
+  it rides on the wrist leaves it where it was.
+- **Measured** (the fake headset and a synthetic recording: the head pitched 30 degrees down, the left hand raised 0.42 m below and
+  0.34 m ahead of the eyes and swaying 3 cm, the right hand aimed at the screen; snapshot 11:15:04): the screen 0.30 x 0.22 m,
+  0.45 m from the eyes, centred 0.23 m below them; the fan 0.30 x 0.06 m under it, seen as a pale wedge to a point at the wrist; the
+  game pointer's dot on "Begin manual override", window pixel (1175, 1171), UV (0.50, 0.49) of the whole-window quad (0.52 x 0.53 m),
+  the same transform as the screen's pixels. The first placement (11:00:52: 0.32 m away, lifted straight up) hid the fan; the
+  first fan (11:09:53) needed an 8x brightened difference image to be seen. Without a tracked left controller: the room (11:02:18).
+- **Next: tapping it.** The right index finger on the wrist screen as a touch: the fingertip's contact with the panel's plane as the
+  game pointer's press (research/42's click, at the touch point), released when it leaves; haptics on both hands at contact.
+

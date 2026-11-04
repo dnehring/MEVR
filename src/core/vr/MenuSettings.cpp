@@ -102,6 +102,7 @@ std::vector<Field> const& Schema() {
         {"cine_width", Type::Number, 3, "", 1.5f, 8, F::Meters1},
         {"cine_distance", Type::Number, 2.6f, "", 1, 6, F::Meters1},
         {"cine_depth", Type::Number, 100, "", 0, 150, F::Percent},
+        {"wrist_screen", Type::Choice, 0, "wrist"},  // the hacking screen: "wrist" (projected from it) or "room" (research/53)
         // Controls.
         {"grip_holds", Type::Flag, 1},
         {"holsters", Type::Flag, 1},

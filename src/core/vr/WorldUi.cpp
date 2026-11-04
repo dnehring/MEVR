@@ -99,9 +99,18 @@ Rect DefaultCrop(Screen screen) {
         // Measured 2026-11-04 (the Normandy's requisitions officer): the item picture, the item card and the lists span stage
         // x 0.17..0.83, the whole height (the title "Store" at the top, the back button at the bottom right).
         return {0.14f, 0.0f, 0.86f, 1.0f};
+    // The minigame keeps the whole stage in the room: its frame (stage x 0.226..0.775, y 0.120..0.848, measured 2026-11-04,
+    // research/53 section 6) cropped to the panel's 1.20 m would stand 64 degrees wide at 0.95 m. On the wrist: WristCrop.
     default:
         return {};  // the whole stage until measured (research/53)
     }
+}
+
+Rect WristCrop(Screen screen) {
+    if (screen == Screen::SkillGame) {
+        return {0.21f, 0.10f, 0.79f, 0.87f};  // its frame (measured above) with a little margin: the projector shows only the box
+    }
+    return DefaultCrop(screen);
 }
 
 std::optional<Panel> Place(XrVector3f const& eyes, XrVector3f const& headForward, std::optional<XrVector3f> anchor, float widthM,
@@ -131,6 +140,119 @@ std::optional<Panel> Place(XrVector3f const& eyes, XrVector3f const& headForward
     panel.widthM = widthM;
     panel.heightM = widthM * heightOverWidth;
     return panel;
+}
+
+std::optional<Panel> WristPlace(XrVector3f const& eyes, XrVector3f const& wrist, float widthM, float aboveM, float towardM,
+    float heightOverWidth) {
+    if (!(widthM > 0.05f) || !(heightOverWidth > 0.01f) || !std::isfinite(widthM) || !std::isfinite(heightOverWidth) ||
+        !std::isfinite(aboveM) || !std::isfinite(towardM)) {
+        return std::nullopt;
+    }
+    float const height = widthM * heightOverWidth;
+    XrVector3f toward{eyes.x - wrist.x, 0.0f, eyes.z - wrist.z};
+    float const flat = gh::Length(toward);
+    toward = flat > 1e-4f ? gh::Mul(toward, 1.0f / flat) : XrVector3f{0.0f, 0.0f, 1.0f};
+    XrVector3f const base = gh::Add(wrist, gh::Mul(toward, towardM));
+    // Up as the eyes see it: the facing pose's own +Y (across the line of sight), taken where the screen ends up (it faces the
+    // eyes from its centre; a few rounds settle it).
+    XrVector3f centre = base;
+    for (int round = 0; round < 4; ++round) {
+        XrVector3f const up = overlay::Rotate(gh::DiscPose(centre, gh::Sub(eyes, centre), eyes).orientation, {0.0f, 1.0f, 0.0f});
+        centre = gh::Add(base, gh::Mul(up, aboveM + 0.5f * height));
+    }
+    XrVector3f const fromEyes = gh::Sub(centre, eyes);
+    float const reach = gh::Length(fromEyes);
+    if (reach < kWristNearestM) {  // never in the face
+        centre = reach > 1e-4f ? gh::Add(eyes, gh::Mul(fromEyes, kWristNearestM / reach)) : gh::Add(eyes, {0.0f, 0.0f, -kWristNearestM});
+    }
+    Panel panel;
+    panel.pose = gh::DiscPose(centre, gh::Sub(eyes, centre), eyes);  // facing the eyes, its X level
+    panel.widthM = widthM;
+    panel.heightM = height;
+    return panel;
+}
+
+Panel Unfold(Panel const& panel, float seconds) {
+    if (!(seconds < kUnfoldS)) {
+        return panel;
+    }
+    float const t = std::clamp(seconds / kUnfoldS, 0.0f, 1.0f);
+    float const eased = 1.0f - (1.0f - t) * (1.0f - t);  // ease out
+    Panel out = panel;
+    out.heightM = std::max(panel.heightM * eased, 0.002f);
+    out.widthM = panel.widthM * (kUnfoldWidth + (1.0f - kUnfoldWidth) * eased);
+    XrVector3f const up = overlay::Rotate(panel.pose.orientation, {0.0f, 1.0f, 0.0f});
+    out.pose.position = gh::Sub(panel.pose.position, gh::Mul(up, 0.5f * (panel.heightM - out.heightM)));  // the bottom edge stays
+    return out;
+}
+
+std::optional<Beam> BeamTo(XrVector3f const& emitter, Panel const& panel) {
+    XrVector3f const up = overlay::Rotate(panel.pose.orientation, {0.0f, 1.0f, 0.0f});
+    XrVector3f const across = overlay::Rotate(panel.pose.orientation, {1.0f, 0.0f, 0.0f});
+    XrVector3f const edge = gh::Sub(panel.pose.position, gh::Mul(up, 0.5f * panel.heightM));
+    XrVector3f y = gh::Sub(edge, emitter);
+    float const height = gh::Length(y);
+    if (!(height > 0.01f)) {
+        return std::nullopt;
+    }
+    y = gh::Mul(y, 1.0f / height);
+    XrVector3f x = gh::Sub(across, gh::Mul(y, gh::Dot(across, y)));
+    float const xLength = gh::Length(x);
+    if (!(xLength > 0.2f)) {
+        return std::nullopt;
+    }
+    x = gh::Mul(x, 1.0f / xLength);
+    XrVector3f const z = gh::Cross(x, y);
+    // The rotation whose columns are x, y, z, as a quaternion.
+    float const m00 = x.x, m01 = y.x, m02 = z.x;
+    float const m10 = x.y, m11 = y.y, m12 = z.y;
+    float const m20 = x.z, m21 = y.z, m22 = z.z;
+    XrQuaternionf q{};
+    float const trace = m00 + m11 + m22;
+    if (trace > 0.0f) {
+        float const s = std::sqrt(trace + 1.0f) * 2.0f;
+        q = {(m21 - m12) / s, (m02 - m20) / s, (m10 - m01) / s, 0.25f * s};
+    } else if (m00 > m11 && m00 > m22) {
+        float const s = std::sqrt(1.0f + m00 - m11 - m22) * 2.0f;
+        q = {0.25f * s, (m01 + m10) / s, (m02 + m20) / s, (m21 - m12) / s};
+    } else if (m11 > m22) {
+        float const s = std::sqrt(1.0f + m11 - m00 - m22) * 2.0f;
+        q = {(m01 + m10) / s, 0.25f * s, (m12 + m21) / s, (m02 - m20) / s};
+    } else {
+        float const s = std::sqrt(1.0f + m22 - m00 - m11) * 2.0f;
+        q = {(m02 + m20) / s, (m12 + m21) / s, 0.25f * s, (m10 - m01) / s};
+    }
+    Beam beam;
+    beam.pose.orientation = q;
+    beam.pose.position = gh::Mul(gh::Add(emitter, edge), 0.5f);
+    beam.widthM = panel.widthM;
+    beam.heightM = height;
+    return beam;
+}
+
+std::vector<std::uint32_t> BeamPixels(int size, float red, float green, float blue) {
+    size = std::clamp(size, 8, 1024);
+    std::vector<std::uint32_t> pixels(static_cast<std::size_t>(size) * size, 0u);
+    auto const byte = [](float v) { return static_cast<std::uint32_t>(std::lround(std::clamp(v, 0.0f, 1.0f) * 255.0f)); };
+    auto const toLinear = [](float c) { return c <= 0.04045f ? c / 12.92f : std::pow((c + 0.055f) / 1.055f, 2.4f); };
+    auto const toSrgb = [](float l) { return l <= 0.0031308f ? l * 12.92f : 1.055f * std::pow(l, 1.0f / 2.4f) - 0.055f; };
+    red = toLinear(std::clamp(red, 0.0f, 1.0f));
+    green = toLinear(std::clamp(green, 0.0f, 1.0f));
+    blue = toLinear(std::clamp(blue, 0.0f, 1.0f));
+    for (int row = 0; row < size; ++row) {
+        float const v = (static_cast<float>(row) + 0.5f) / static_cast<float>(size);  // 0 at the panel, 1 at the emitter
+        float const half = 0.5f * (1.0f + (kBeamApex - 1.0f) * v);                       // the fan's half width (of the width)
+        float const strength = kBeamFar + (kBeamNear - kBeamFar) * v * v;               // brightest near the emitter
+        for (int column = 0; column < size; ++column) {
+            float const u = (static_cast<float>(column) + 0.5f) / static_cast<float>(size);
+            float const side = std::abs(u - 0.5f) / std::max(half, 1e-4f);  // 0 on the fan's middle line, 1 at its side
+            float const soft = std::clamp((1.0f - side) / 0.35f, 0.0f, 1.0f);  // soft sides
+            float const a = strength * soft * soft * (3.0f - 2.0f * soft);
+            pixels[static_cast<std::size_t>(row) * size + column] =
+                byte(toSrgb(red * a)) | (byte(toSrgb(green * a)) << 8) | (byte(toSrgb(blue * a)) << 16) | (byte(a) << 24);
+        }
+    }
+    return pixels;
 }
 
 Panel WholeWindow(Panel const& shown, Rect const& part) {

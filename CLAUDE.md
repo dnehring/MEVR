@@ -384,6 +384,14 @@ switching frameworks.
   `[MEVR]` seam in render_hook.cpp's `SfrModeAllowsReplay`. Tools: `mevr panel`, `mevr gui <Equipment|Squad|Codex|Journal|Map|Menu>`,
   `mevr classes <text>`, `mevr instances <Class> [text]`, `mevr loot <n>`, `mevr lootcorpse <n>`. Eden Prime's real loot and minigame
   cases: research/53 section 5. Logs `world ui:`; snapshot `"mod"."worldUi"`.
+  **The bypass minigame is projected from the left wrist** (research/53 section 6, the omni-tool; Fallout 4 VR's Pip-Boy and
+  Half-Life: Alyx's multitool holograms the pattern; `[WorldUi] wrist = SkillGame`, `wristWidthM` 0.30, `wristAboveM` 0.06,
+  `wristTowardM`, `wristFollow`, `wristBeam`; the menu's Comfort > Game screens > Hacking screen): the host places it each frame from
+  the HUD's left wrist point (`WristPlace`: facing the eyes, its bottom edge 6 cm above the wrist across the line of sight), its
+  frame only (`WristCrop`), unfolding over 0.18 s, a faint fan of light from the wrist (plugin/WristBeam, a `beam` snapshot layer;
+  premultiplied in linear light); in the room without a tracked left controller. The State grew (size-checked, v27 unchanged). No
+  auto-hack (dropped, the user). `mevr skillgame start [type] [difficulty] [n]` opens the minigame on any placeable without a save
+  (the level's `BioSkillGame.InitializeSkillGame`); `mevr panel SkillGame invoke PreGameButtonBOnPress` cancels it. Next: tapping it.
   The skill `game-screen-to-hologram` is the recipe for the next screens.
 - LE1 Mako ([research/44](research/44-mako.md), `game/Mako`; `[Mako]` in `ASI\LE1MEVR.ini`): game mode 1 with a
   `BioVehicleBase` pawn, the right controller's aim ray (or the pistol calibration's line) traced in the world (`Actor.Trace`,

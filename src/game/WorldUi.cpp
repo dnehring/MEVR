@@ -396,12 +396,18 @@ void Tick(Link const& link) {
     state.distanceM = settings.distanceM;
     state.belowM = settings.belowM;
     state.backdrop = settings.backdrop;
-    wu::Rect const crop = wu::DefaultCrop(screen);
+    bool const onWrist = (settings.wristScreens & wu::Bit(screen)) != 0;
+    wu::Rect const crop = wu::DefaultCrop(screen);  // the room's; on the wrist the host shows WristCrop
     state.stageCrop[0] = crop.u0;
     state.stageCrop[1] = crop.v0;
     state.stageCrop[2] = crop.u1;
     state.stageCrop[3] = crop.v1;
     std::strncpy(state.tag, base->tag.c_str(), sizeof(state.tag) - 1);
+    state.placement = static_cast<std::uint8_t>(!onWrist ? wu::Placement::Room : settings.wristFollow ? wu::Placement::Wrist : wu::Placement::WristOnce);
+    state.beam = settings.wristBeam ? 1 : 0;
+    state.wristWidthM = settings.wristWidthM;
+    state.wristAboveM = settings.wristAboveM;
+    state.wristTowardM = settings.wristTowardM;
     bool const fromWheel = std::any_of(panels.begin(), panels.end(), [](OpenPanel const& o) { return o.visible && wu::FromTag(o.tag) == wu::Screen::MenuBrowser; });
     if (auto const at = AnchorOf(screen, base->handler, controller, gS.opening, fromWheel)) {
         {
@@ -416,9 +422,10 @@ void Tick(Link const& link) {
     gS.anchored = state.anchored != 0;
     std::copy(std::begin(state.anchor), std::end(state.anchor), std::begin(gS.anchor));
     if (!gS.published || wasAnchored != gS.anchored) {
-        log::Info("world ui: {} up (opening {}){}", gS.screen, gS.opening,
+        log::Info("world ui: {} up (opening {}){}{}", gS.screen, gS.opening,
             gS.anchored ? std::format(": it belongs to what stands at ({:.2f}, {:.2f}, {:.2f}) m in the room", gS.anchor[0], gS.anchor[1], gS.anchor[2])
-                        : std::string(": nothing in the world to stand it by; straight ahead"));
+                        : std::string(": nothing in the world to stand it by; straight ahead"),
+            onWrist ? "; projected from the left wrist (in the room if the left controller isn't tracked)" : "");
     }
     std::uint64_t const now = GetTickCount64();
     if (gHold.povLocation != nullptr && now - gHold.povMs < 500) {
@@ -438,8 +445,9 @@ void Tick(Link const& link) {
     gS.published = true;
     gScreenUp = true;
     ++gS.ticks;
-    SetStatus(std::format("{{\"open\": true, \"screen\": \"{}\", \"stack\": \"{}\", \"opening\": {}, \"anchored\": {}, \"anchor\": [{:.3f}, {:.3f}, {:.3f}]}}",
-        gS.screen, stack, gS.opening, gS.anchored ? "true" : "false", gS.anchor[0], gS.anchor[1], gS.anchor[2]));
+    SetStatus(std::format("{{\"open\": true, \"screen\": \"{}\", \"stack\": \"{}\", \"opening\": {}, \"anchored\": {}, \"anchor\": [{:.3f}, {:.3f}, {:.3f}], "
+                          "\"placement\": {}}}",
+        gS.screen, stack, gS.opening, gS.anchored ? "true" : "false", gS.anchor[0], gS.anchor[1], gS.anchor[2], state.placement));
 }
 
 std::string StatusJson() {

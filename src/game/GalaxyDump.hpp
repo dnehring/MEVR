@@ -66,5 +66,9 @@ std::string ShowLoot(ue3::Object* controller, ue3::Object* inventory);
 // `mevr lootcorpse <n>` (after `mevr find`): BioPawnBehavior.LootCorpse(the player's BioWorldInfo) on the n-th found object, the
 // game's own loot of a body (research/53).
 std::string LootCorpse(ue3::Object* controller, ue3::Object* behavior);
+// `mevr skillgame start [type] [difficulty] [n]` opens the bypass minigame through the level's own BioSkillGame
+// (WorldInfo.m_SkillGame: InitializeSkillGameCustom with no callbacks, or InitializeSkillGame on `dependent`, the n-th of `find`
+// minus one), `state` prints the live handler, `gel` Shepard's inventory (its omni-gel) (research/53 section 6).
+std::string SkillGame(ue3::Object* controller, ue3::Object* pawn, std::string const& sub, int a, int b, ue3::Object* dependent);
 
 } // namespace mevr::game::galaxy_dump

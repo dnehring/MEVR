@@ -5887,6 +5887,90 @@ void TestWorldUi() {
         CHECK(NearXr(corner(whole, crop.u0, crop.v0), corner(*toward, 0.0f, 0.0f), 1e-4));
         CHECK(NearXr(corner(whole, crop.u1, crop.v1), corner(*toward, 1.0f, 1.0f), 1e-4));
     }
+    // Projected from the wrist: facing the eyes, level; its bottom edge aboveM over the wrist across the line of sight, so the eyes
+    // see the wrist below it (not through it).
+    XrVector3f const wrist{0.2f, 1.25f, -0.40f};
+    auto const held = wu::WristPlace(eyes, wrist, 0.30f, 0.06f, 0.0f, 0.75f);
+    CHECK(held.has_value());
+    auto const bottomOf = [](wu::Panel const& p) {
+        XrVector3f const up = mevr::vr::overlay::Rotate(p.pose.orientation, {0.0f, 1.0f, 0.0f});
+        return XrVector3f{p.pose.position.x - up.x * 0.5f * p.heightM, p.pose.position.y - up.y * 0.5f * p.heightM,
+            p.pose.position.z - up.z * 0.5f * p.heightM};
+    };
+    auto const below = [&](XrVector3f const& p) {  // how far below the eyes' level it looks (radians)
+        float const dx = p.x - eyes.x, dz = p.z - eyes.z;
+        return std::atan2(eyes.y - p.y, std::sqrt(dx * dx + dz * dz));
+    };
+    if (held) {
+        CHECK(NearD(held->heightM, 0.225, 1e-6));
+        XrVector3f const edge = bottomOf(*held);
+        float const gx = edge.x - wrist.x, gy = edge.y - wrist.y, gz = edge.z - wrist.z;
+        CHECK(NearD(std::sqrt(gx * gx + gy * gy + gz * gz), 0.06, 0.01));  // the gap
+        CHECK(below(edge) < below(wrist) - 0.05f);                          // seen above the wrist, the gap between
+        CHECK(held->pose.position.y > wrist.y + 0.1f);
+        XrVector3f const front = mevr::vr::overlay::Rotate(held->pose.orientation, {0.0f, 0.0f, 1.0f});
+        XrVector3f const toEyes{eyes.x - held->pose.position.x, eyes.y - held->pose.position.y, eyes.z - held->pose.position.z};
+        float const len = std::sqrt(toEyes.x * toEyes.x + toEyes.y * toEyes.y + toEyes.z * toEyes.z);
+        CHECK(NearXr(front, {toEyes.x / len, toEyes.y / len, toEyes.z / len}, 1e-4));
+        CHECK(NearD(mevr::vr::overlay::Rotate(held->pose.orientation, {1.0f, 0.0f, 0.0f}).y, 0.0, 1e-5));
+        // Unfolding: nothing at first, its bottom edge where it stays; whole once kUnfoldS has passed.
+        auto const bottom = [](wu::Panel const& p) {
+            XrVector3f const up = mevr::vr::overlay::Rotate(p.pose.orientation, {0.0f, 1.0f, 0.0f});
+            return XrVector3f{p.pose.position.x - up.x * 0.5f * p.heightM, p.pose.position.y - up.y * 0.5f * p.heightM,
+                p.pose.position.z - up.z * 0.5f * p.heightM};
+        };
+        wu::Panel const first = wu::Unfold(*held, 0.0f);
+        CHECK(first.heightM < 0.01f && NearD(first.widthM, 0.30 * wu::kUnfoldWidth, 1e-5));
+        CHECK(NearXr(bottom(first), bottom(*held), 1e-4));
+        wu::Panel const half = wu::Unfold(*held, 0.5f * wu::kUnfoldS);
+        CHECK(half.heightM > 0.5f * held->heightM && half.heightM < held->heightM && NearXr(bottom(half), bottom(*held), 1e-4));
+        wu::Panel const done = wu::Unfold(*held, wu::kUnfoldS);
+        CHECK(NearD(done.heightM, held->heightM, 1e-6) && NearXr(done.pose.position, held->pose.position, 1e-6));
+        // The beam: from the wrist to the panel's bottom edge, in their plane, as wide as the panel.
+        auto const beam = wu::BeamTo(wrist, *held);
+        CHECK(beam.has_value());
+        if (beam) {
+            XrVector3f const b = bottom(*held);
+            CHECK(NearXr(beam->pose.position, {0.5f * (wrist.x + b.x), 0.5f * (wrist.y + b.y), 0.5f * (wrist.z + b.z)}, 1e-4));
+            float const dx = b.x - wrist.x, dy = b.y - wrist.y, dz = b.z - wrist.z;
+            CHECK(NearD(beam->heightM, std::sqrt(dx * dx + dy * dy + dz * dz), 1e-4) && NearD(beam->widthM, 0.30, 1e-6));
+            XrVector3f const top = mevr::vr::overlay::Rotate(beam->pose.orientation, {0.0f, 0.5f * beam->heightM, 0.0f});
+            CHECK(NearXr({beam->pose.position.x + top.x, beam->pose.position.y + top.y, beam->pose.position.z + top.z}, b, 1e-4));
+            XrVector3f const bx = mevr::vr::overlay::Rotate(beam->pose.orientation, {1.0f, 0.0f, 0.0f});
+            XrVector3f const px = mevr::vr::overlay::Rotate(held->pose.orientation, {1.0f, 0.0f, 0.0f});
+            CHECK(bx.x * px.x + bx.y * px.y + bx.z * px.z > 0.99f);
+        }
+        CHECK(!wu::BeamTo(bottom(*held), *held));  // the emitter on the edge: no fan
+    }
+    // Never in the face: a wrist at the eyes puts it kWristNearestM away.
+    auto const close2 = wu::WristPlace(eyes, {0.2f, 1.55f, -0.05f}, 0.30f, 0.06f, 0.05f, 0.75f);
+    CHECK(close2.has_value());
+    if (close2) {
+        float const dx = close2->pose.position.x - eyes.x, dy = close2->pose.position.y - eyes.y, dz = close2->pose.position.z - eyes.z;
+        CHECK(NearD(std::sqrt(dx * dx + dy * dy + dz * dz), wu::kWristNearestM, 1e-4));
+    }
+    CHECK(!wu::WristPlace(eyes, wrist, 0.0f, 0.06f, 0.05f, 0.75f));
+    // On the wrist the minigame shows its frame only; in the room its whole stage.
+    wu::Rect const skill = wu::WristCrop(wu::Screen::SkillGame);
+    CHECK(skill.u0 < 0.226f && skill.u1 > 0.775f && skill.v0 < 0.12f && skill.v1 > 0.848f && skill.u0 > 0.15f);
+    wu::Rect const skillRoom = wu::DefaultCrop(wu::Screen::SkillGame);
+    CHECK(skillRoom.u0 == 0.0f && skillRoom.u1 == 1.0f);
+    wu::Rect const shopWrist = wu::WristCrop(wu::Screen::Shop);
+    CHECK(shopWrist.u0 == wu::DefaultCrop(wu::Screen::Shop).u0);
+    // The fan's picture: wide at the panel's edge, a point at the emitter, brighter there, premultiplied.
+    std::vector<std::uint32_t> const fan = wu::BeamPixels(64, 0.6f, 0.8f, 1.0f);
+    CHECK(fan.size() == 64u * 64u);
+    auto const alpha = [&](int row, int column) { return static_cast<int>(fan[static_cast<std::size_t>(row) * 64 + column] >> 24); };
+    CHECK(alpha(0, 8) > 0 && alpha(63, 8) == 0 && alpha(63, 32) > alpha(0, 32));
+    CHECK(alpha(0, 0) == 0 && alpha(0, 32) > 0);
+    // Premultiplied in linear light: each colour, decoded from sRGB, is at most alpha; blue (1.0) decodes to alpha itself.
+    std::uint32_t const middle = fan[static_cast<std::size_t>(63) * 64 + 32];
+    auto const linear = [](std::uint32_t b) {
+        double const c = static_cast<double>(b & 0xFFu) / 255.0;
+        return c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);
+    };
+    double const a63 = static_cast<double>(middle >> 24) / 255.0;
+    CHECK(linear(middle) <= a63 + 0.01 && linear(middle >> 8) <= a63 + 0.01 && NearD(linear(middle >> 16), a63, 0.01));
 }
 
 void TestGalaxyHologram() {

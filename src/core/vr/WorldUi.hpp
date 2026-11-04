@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <string_view>
+#include <vector>
 
 // The game's full-screen screens in the room (research/53). LE1's screens are Scaleform movies the game opens in its GUI mode
 // (EGameModes 7), each a tag in its GUI library (BioSFManager.HandlerLibrary: "shop", "Inventory", "Loot"...); the open ones are
@@ -56,6 +57,22 @@ struct Settings {
     // screens: which ones (bits of Screen; the ini lists their tags), all by default (the user, 2026-11-04: every flat screen in
     // the room). The equipment, XMods and character record lose their 3D model there (it lives in the game's UI world).
     std::uint32_t screens = 0xFFFFFFFFu;
+    // wrist: the screens projected from the left wrist instead, Shepard's omni-tool (the bypass minigame by default; the user,
+    // 2026-11-04; Fallout 4 VR's Pip-Boy, wrist or projected, and Half-Life: Alyx's multitool holograms set the pattern:
+    // research/53 section 6). Without a tracked left controller when it opens, the screen stands in the room.
+    std::uint32_t wristScreens = Bit(Screen::SkillGame);
+    float wristWidthM = 0.30f;   // wristWidthM: its width
+    float wristAboveM = 0.06f;   // wristAboveM: its bottom edge above the wrist as the eyes see it (the fan of light in the gap)
+    float wristTowardM = 0.0f;   // wristTowardM: moved that far from the wrist toward the eyes (level; < 0 away)
+    bool wristFollow = true;     // wristFollow: it rides on the wrist (0: it stays where it was projected, the hand free)
+    bool wristBeam = true;       // wristBeam: a faint fan of light from the wrist to its bottom edge
+};
+
+// Where a screen stands.
+enum class Placement : std::uint8_t {
+    Room = 0,       // in the room where it opened (Place)
+    Wrist = 1,      // projected from the left wrist, riding on it (WristPlace each frame)
+    WristOnce = 2,  // projected from the left wrist where it was when it opened, then fixed in the room
 };
 
 // ---- What the mod publishes (HostServices v27 setWorldUi) -------------------------------------------------------------
@@ -85,6 +102,13 @@ struct State {
     std::uint64_t povFovAddress = 0;
     std::uint64_t sequence = 0;   // set by Publish
     std::uint64_t timeMs = 0;     // GetTickCount64 when published (set by Publish)
+    // Where it stands (the State grew 2026-11-04: the mod sends only to a host whose worldUiSize is this size).
+    std::uint8_t placement = 0;   // Placement
+    std::uint8_t beam = 0;        // the wrist's fan of light
+    std::uint8_t placementPad[2] = {};
+    float wristWidthM = 0.0f;
+    float wristAboveM = 0.0f;
+    float wristTowardM = 0.0f;
 };
 
 void Publish(State const& state);
@@ -110,6 +134,9 @@ Rect Stage(float windowWidth, float windowHeight, float aspect = kStageAspect);
 Rect InWindow(Rect const& stage, Rect const& part);
 // The part of the stage each screen shows by default: its content without the empty sides (stage UV).
 Rect DefaultCrop(Screen screen);
+// The part shown when it's projected from the wrist: tighter where the screen is a small box on its stage (the minigame). The host
+// picks it when the screen goes on the wrist; the mod's stageCrop is the room's.
+Rect WristCrop(Screen screen);
 
 struct Panel {
     XrPosef pose{};  // its centre; it faces +Z (toward the eyes)
@@ -126,5 +153,37 @@ std::optional<Panel> Place(XrVector3f const& eyes, XrVector3f const& headForward
 // The whole window on the shown panel's plane, for a panel that shows `part` of it (window UV): the quad the game pointer maps
 // to the window's pixels.
 Panel WholeWindow(Panel const& shown, Rect const& part);
+
+// ---- Projected from the wrist (the omni-tool; research/53 section 6) ---------------------------------------------------
+// Facing the eyes (its X level), its bottom edge's middle `aboveM` above the wrist (moved `towardM` toward the eyes, level) along
+// its own up: across the line of sight, so the eyes see the gap between the wrist and the screen, never the wrist through the
+// screen (a gap straight up hid the wrist behind a screen tilted to face eyes above it: snapshot 2026-11-04 11:00:52). Never
+// nearer the eyes than kWristNearestM. nullopt for a width that can't be.
+inline constexpr float kWristNearestM = 0.25f;
+std::optional<Panel> WristPlace(XrVector3f const& eyes, XrVector3f const& wrist, float widthM, float aboveM, float towardM,
+    float heightOverWidth);
+// It unfolds out of the wrist when it opens: over kUnfoldS its height grows from nothing and its width from kUnfoldWidth, eased
+// out, its bottom edge where it stays. `seconds` since it opened; past kUnfoldS the panel as it is.
+inline constexpr float kUnfoldS = 0.18f;
+inline constexpr float kUnfoldWidth = 0.6f;
+Panel Unfold(Panel const& panel, float seconds);
+// The fan of light from the emitter (the wrist) to the panel's bottom edge: a quad in their plane, its top edge on that edge, its
+// bottom at the emitter (BeamPixels narrows to a point there). nullopt when the emitter is (nearly) on that edge or the fan
+// would be seen edge on along the edge.
+struct Beam {
+    XrPosef pose{};
+    float widthM = 0.0f;
+    float heightM = 0.0f;
+};
+std::optional<Beam> BeamTo(XrVector3f const& emitter, Panel const& panel);
+// The fan's picture, `size` x `size` RGBA8 (R in the low byte) for an sRGB texture, row 0 the panel's edge: the panel's width at the
+// top narrowing to kBeamApex at the bottom, brightest at the emitter (alpha kBeamNear) fading to kBeamFar at the panel, soft sides.
+// Premultiplied in linear light: each colour byte is the sRGB encoding of (the colour, linear) x alpha, alpha linear, so the GPU's
+// decode gives what the compositor blends (premultiplying the encoded values darkened what was behind it: 2026-11-04 11:09:53).
+// The colour is given sRGB-encoded.
+inline constexpr float kBeamApex = 0.04f;  // of the width
+inline constexpr float kBeamNear = 0.30f;
+inline constexpr float kBeamFar = 0.05f;
+std::vector<std::uint32_t> BeamPixels(int size, float red, float green, float blue);
 
 } // namespace mevr::vr::world_ui

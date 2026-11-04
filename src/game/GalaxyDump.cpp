@@ -896,7 +896,16 @@ std::string Panel(ue3::Object* controller, std::string const& tag, std::string c
     }
     if (verb == "movie") {
         ue3::Object* const instance = ReadObject(r, chosen, "MovieRef");
-        ue3::Object* const movie = ReadObject(r, instance, "MovieInfo");
+        ue3::Object* movie = ReadObject(r, instance, "MovieInfo");
+        if (movie == nullptr && !arg.empty()) {  // not linked at run time: the package's own asset, `<Package.Name>` (e.g. GUI_SF_SkillGame.PCMiniGame)
+            std::string const wanted = "GFxMovieInfo " + arg;
+            for (std::int32_t i = 0, n = r.ObjectCount(); i < n && movie == nullptr; ++i) {
+                ue3::Object* const o = r.ObjectAt(i);
+                if (o != nullptr && r.IsAlive(o) && r.FullName(o) == wanted) {
+                    movie = o;
+                }
+            }
+        }
         auto const raw = movie != nullptr ? r.PropertyOf(r.ClassOf(movie), "RawData") : std::nullopt;
         if (!raw) {
             return std::format("panel: {} has no movie info with RawData", tag);
@@ -941,6 +950,48 @@ std::string LootCorpse(ue3::Object* controller, ue3::Object* behavior) {
     }
     bool const called = CallOn(behavior, "LootCorpse", [&](ue3::Params& p) { p.Set("BioWorldInfo", worldInfo); }, nullptr);
     return std::format("lootcorpse: {}.LootCorpse({}) called {}", r.FullName(behavior), r.FullName(worldInfo), called);
+}
+
+std::string SkillGame(ue3::Object* controller, ue3::Object* pawn, std::string const& sub, int a, int b, ue3::Object* dependent) {
+    if (!ue3::runtime::Init()) {
+        return "skillgame: the reflection layer isn't ready";
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    if (sub == "start") {
+        ue3::Object* const worldInfo = ReadObject(r, controller, "WorldInfo");
+        ue3::Object* const skillGame = worldInfo != nullptr ? ReadObject(r, worldInfo, "m_SkillGame") : nullptr;
+        if (skillGame == nullptr || pawn == nullptr) {
+            return "skillgame: no WorldInfo.m_SkillGame or no pawn";
+        }
+        bool const custom = dependent == nullptr;
+        bool result = false;
+        bool const called = CallOn(skillGame, custom ? "InitializeSkillGameCustom" : "InitializeSkillGame", [&](ue3::Params& p) {
+            p.Set("oUsingPawn", pawn);
+            p.Set("oDependent", custom ? pawn : dependent);
+            p.Set("nSkillGameType", static_cast<std::uint8_t>(a));
+            p.Set("nMinSalvage", std::int32_t{1});
+            p.Set("nMaxSalvage", std::int32_t{10});
+            p.Set("nTotalButtonsToDisplay", std::int32_t{6});
+            p.Set("fButtonTimeout", 1.5f);
+            p.Set("fButtonDelayTime", 0.5f);
+            p.Set("eGameDifficulty", static_cast<std::uint8_t>(b));
+        }, [&](ue3::Params& p) { result = p.ReturnBool().value_or(false); });
+        return std::format("skillgame: {}.{}(type {}, difficulty {}, dependent {}) called {}, returned {}", r.FullName(skillGame),
+            custom ? "InitializeSkillGameCustom" : "InitializeSkillGame", a, b, custom ? std::string("the pawn") : r.FullName(dependent), called, result);
+    }
+    if (sub == "gel") {  // Shepard's inventory (m_fResourceSalvage: the omni-gel)
+        ue3::Object* const behavior = pawn != nullptr ? ReadObject(r, pawn, "m_oBehavior") : nullptr;
+        ue3::Object* const inventory = behavior != nullptr ? ReadObject(r, behavior, "m_oInventory") : nullptr;
+        if (inventory == nullptr) {
+            return "skillgame: no pawn behaviour or inventory";
+        }
+        return Props(inventory);
+    }
+    ue3::Object* const handler = FindLive(r, "SFXGame.BioSkillGame_Handler");
+    if (handler == nullptr) {
+        return "skillgame: no live BioSkillGame_Handler";
+    }
+    return Props(handler);
 }
 
 std::string ShowGui(ue3::Object* controller, std::string const& which) {

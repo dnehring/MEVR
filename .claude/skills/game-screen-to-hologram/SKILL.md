@@ -35,9 +35,11 @@ The fake headset (`tools/fake-headset.ps1 -On`), Steam's launch with no Enter
 `mevr activate <n> 0` on its Kismet action (the requisitions officer's shop: `RequisitionOfficer.StoreManager.BioSeqAct_OpenShop_1`),
 `mevr used <n>` on an art placeable's behaviour (the galaxy console), `mevr gui <X>`, `mevr use <n>` on a container's actor (what A
 does). `mevr instances <Package.Class> [text]` finds the live objects of a class and where their actors stand (crates:
-`SFXGame.BioArtPlaceableBehavior`, their `m_oActorType` says encrypted console or ammo case). Synthetic calls that skip the game's
-flow close at once (`ShowLootGui` alone, `LootCorpse` on a living pawn); loot and the minigame need a mission past its prologue
-(research/53 section 5 lists Eden Prime's consoles and cases). To close a screen without input, reload the level
+`SFXGame.BioArtPlaceableBehavior`, their `m_oActorType` says encrypted console or ammo case). The bypass minigame opens anywhere:
+`mevr skillgame start 0 1 <n>` (the level's own `BioSkillGame.InitializeSkillGame` on the (n-1)-th found placeable), closed with
+`mevr panel SkillGame invoke PreGameButtonBOnPress`. Synthetic calls that skip the game's flow close at once (`ShowLootGui` alone,
+`LootCorpse` on a living pawn); loot needs a mission past its prologue (research/53 section 5 lists Eden Prime's consoles and
+cases). A movie with no MovieInfo at run time: `mevr panel <tag> movie <Package.Name>` (its strings name the buttons' functions). To close a screen without input, reload the level
 (`open BIOA_NOR00`). A hot-reloaded mod loses what it recorded on foot: reopen the screen after a rebuild.
 
 ## 3. Look at it as VR shows it today
@@ -52,6 +54,7 @@ world** (a backdrop stage, `GUI_UIWorld`), not the level, while any of its panel
 |---|---|
 | Flash only (shop, loot, journal, codex, map, the main wheel, message boxes, the minigame) | every screen in `world_ui::Screen`/`kTags` is in the room by default (`screens = all`); a new tag goes in the table (append: the values travel host to mod); measure its crop (`DefaultCrop`, stage UV); give it an anchor in `game/WorldUi.cpp` `AnchorOf` if it belongs to something (the shop: its vendor; loot: the inventory's owning actor; the minigame: `m_oDependent`; else what A would have used) |
 | A 3D scene of its own (the galaxy map) | two scene captures from the game's camera (`game/SceneCaptureRig`, core/vr/CineScreen's parallel cameras and crop) on a stereo window; its Flash on the UI panel on the same plane; the view held at Shepard's at render time |
+| A small tool the player holds up (the bypass minigame: the omni-tool) | projected from the left wrist: `[WorldUi] wrist` lists it; the host's `WristPlace` each frame from the HUD's wrist point (bottom edge above the wrist across the line of sight, or the screen hides the wrist), a tighter `WristCrop`, `Unfold` on opening, the fan of light (plugin/WristBeam); in the room without a tracked left controller (research/53 section 6) |
 | A 3D model in the UI world (equipment, character record) | in the room without the model for now (the room hides the UI world); the plan is the model as a hologram beside the panel (research/53) |
 | A prop in the level that already shows it (the CIC projector) | measure the prop live (location, rotation, the mesh component's bounds: research/51 section 8.1's radius method), lay our layer on it, hide the prop's own picture while ours shows |
 
@@ -107,3 +110,6 @@ they belong to (the shop at counter height).
 | `Windows.h` macros (`SetProp`, `far`) | docs/knowledge/gotchas/windows-h-macros.md |
 | An inline edit script loses its backslashes | docs/knowledge/gotchas/bash-heredoc-backslashes.md |
 | A mod reload restarts counters the host keys on: seed them from the clock | game/WorldUi.cpp `opening` |
+| A screen open across a mod reload stays on Halcyon's panel (the reloaded mod hasn't seen Shepard's view on foot): close it, reopen | research/53 section 6 |
+| A picture for an sRGB swapchain: premultiply in linear light, then encode (premultiplied encoded values darken what's behind) | core/vr/WorldUi `BeamPixels` |
+| A panel facing eyes above it, lifted straight up from the wrist, hides the wrist: lift it along its own up | core/vr/WorldUi `WristPlace` |

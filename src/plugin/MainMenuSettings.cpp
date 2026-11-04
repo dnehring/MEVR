@@ -231,6 +231,11 @@ void Settings::Read(menu::Values& v) {
     v.numbers["cine_width"] = std::clamp(ini.Num("Cinematics", "widthM", 3.0f), 1.5f, 8.0f);
     v.numbers["cine_distance"] = std::clamp(ini.Num("Cinematics", "distanceM", 2.6f), 1.0f, 6.0f);
     v.numbers["cine_depth"] = std::clamp(std::round(ini.Num("Cinematics", "depth", kCineDepthFull) / kCineDepthFull * 100.0f), 0.0f, 150.0f);
+    {
+        // The hacking screen (research/53 section 6): projected from the wrist when [WorldUi] wrist names the minigame (or all).
+        std::string const wrist = Lower(ini.Text("WorldUi", "wrist", "SkillGame"));
+        v.texts["wrist_screen"] = wrist.find("skillgame") != std::string::npos || wrist.find("all") != std::string::npos ? "wrist" : "room";
+    }
     // Controls.
     flag("grip_holds", ini.Num("Holsters", "gripHolds", 1.0f) != 0.0f);
     flag("holsters", ini.Num("Holsters", "enabled", 1.0f) != 0.0f);
@@ -471,6 +476,8 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         Put("Cinematics", "distanceM", fixed(v.Number("cine_distance"), 2), final);
     } else if (key == "cine_depth") {
         Put("Cinematics", "depth", fixed(v.Number("cine_depth") / 100.0f * kCineDepthFull, 4), final);
+    } else if (key == "wrist_screen") {
+        Put("WorldUi", "wrist", v.Text("wrist_screen") == "room" ? "none" : "SkillGame", true);
     } else if (key == "turn") {
         Put("Comfort", "turn", v.Text("turn") == "snap" ? "snap" : "game", true);
     } else if (key == "snap") {
