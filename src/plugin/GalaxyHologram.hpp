@@ -37,6 +37,12 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame);
 bool Active();
 // A controller's ray is on the table (the game pointer then doesn't click the flat screen).
 bool Hovering();
+// Up over the CIC's projector ([Galaxy] inWorld): the game's UI goes to a panel over the table (HalcyonOverlays).
+bool InWorld();
+// The game's travel question is up (its own message box): the panel over the table takes the game pointer.
+bool AskingTravel();
+// Where the game's UI panel stands while InWorld(): over the table, facing the eyes (app space). Present thread.
+XrPosef UiPanelPose(XrVector3f const& head);
 // Snapshot JSON ("galaxyHologram").
 std::string StatusJson();
 

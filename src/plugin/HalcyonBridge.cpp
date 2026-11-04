@@ -23,6 +23,8 @@
 #include "halcyon/le1/le1_game.h"
 #include "halcyon/le1/render_hook.h"
 #include "plugin/Calibration.hpp"
+#include "plugin/GalaxyHologram.hpp"
+#include "plugin/GamePointer.hpp"
 #include "plugin/Colour.hpp"
 #include "plugin/CrashBreadcrumbs.hpp"
 #include "plugin/GameThreadCalls.hpp"
@@ -659,6 +661,10 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     }
     if (mevr::host::calibration::OwnsTriggers()) {
         pad.bLeftTrigger = 0;  // the calibration's first-run prompt is being pointed at: its click isn't a shot
+        pad.bRightTrigger = 0;
+    }
+    if (mevr::host::game_pointer::OwnsTriggers() || mevr::host::galaxy_hologram::Hovering()) {
+        pad.bLeftTrigger = 0;  // the game's flat screen or the galaxy hologram is pointed at: the trigger is its click there
         pad.bRightTrigger = 0;
     }
     NoteCloseLatch(mevr::game::gamepad::ApplyCloseLatch(gCloseLatch, pad));  // the A, B or trigger that closed our menu

@@ -34,7 +34,7 @@ enum Flag : std::uint8_t {
 inline constexpr int kMaxObjects = 64;
 inline constexpr int kMaxLinks = 48;
 inline constexpr int kLabelBytes = 48;
-// Picks that aren't objects: the answers to the game's travel question (Scene::askTravel).
+// Picks that aren't objects: once the answers to the game's travel question, which is now the game's own box (unused).
 inline constexpr std::uint32_t kPickYes = 0xFFFFFF01u;
 inline constexpr std::uint32_t kPickNo = 0xFFFFFF02u;
 
@@ -83,11 +83,11 @@ struct Scene {
     std::uint8_t inWorld = 0;
     std::uint8_t anchorValid = 0;
     std::uint8_t onFoot = 0;     // the game's map isn't open: the galaxy from the tables; a pick opens it
-    std::uint8_t askTravel = 0;  // the game asks whether to travel: the hologram shows the question with Yes and No
+    std::uint8_t askTravel = 0;  // the game asks whether to travel: its own box over the table, no picks on the hologram
     float anchor[3] = {};        // the table's centre (tracking space, metres)
     float anchorYaw = 0.0f;      // its heading (radians; overlay::HeadingOf's sense: 0 faces -Z, + turned left)
     float tiltDeg = 0.0f;        // its far edge raised toward the player
-    char askText[kLabelBytes] = {};
+    char askText[kLabelBytes] = {};  // unused (the game's own box asks); kept so the layout stays HostServices v26's
     GameCamera camera;
     char title[kLabelBytes] = {};
     Object objects[kMaxObjects];

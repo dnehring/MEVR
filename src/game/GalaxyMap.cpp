@@ -72,12 +72,17 @@ ue3::FunctionRef gArtUsed{"SFXGame.BioArtPlaceableBehavior.OnArtPlaceableUsed"};
 ue3::FunctionRef gFloatEntry{"Engine.Bio2DA.GetFloatEntryII"};
 ue3::FunctionRef gCheckConditional{"SFXGame.BioWorldInfo.CheckConditional"};
 ue3::FunctionRef gInvokeMethod{"Engine.BioSFPanel.InvokeMethod"};
-ue3::FunctionRef gTravelConfirm{"SFXGame.BioSFHandler_GalaxyMap.TravelConfirm"};
 ue3::FieldRef gWaitingForMsgBox{"SFXGame.BioSFHandler_GalaxyMap", "m_bWaitingForMsgBox"};
 ue3::FunctionRef gSetHidden{"Engine.Actor.SetHidden"};
 ue3::ClassRef gEmitterClass{"Engine.Emitter"};
 ue3::ClassRef gInterpActorClass{"Engine.InterpActor"};
-constexpr float kProjectorUnits = 100.0f;  // the game's own galaxy (a mesh and an emitter) sits within this of the console
+constexpr float kProjectorUnits = 100.0f;
+// The map's opening wait: the GalaxyMap sequence's longest BioSeqAct_Delay (2.5 s while the camera flies into the map, which the
+// CIC's held view never shows), shortened while the map is used in the CIC; the map is up 0.2 s after the console's use.
+ue3::ClassRef gBioDelayClass{"SFXGame.BioSeqAct_Delay"};
+ue3::FieldRef gDelayDuration{"Engine.SeqAct_Delay", "Duration"};
+constexpr float kOpeningDelayS = 0.05f;
+constexpr float kOpeningAsShippedS = 2.5f;  // measured (2026-11-03); what a node already shortened (a reload) is put back to  // the game's own galaxy (a mesh and an emitter) sits within this of the console
 
 // The map's clusters on foot come from GalaxyMap_Cluster: X and Y (0..1) are where the map's level puts each cluster's actor,
 // 630 units a step and centred on (0.5, 0.5) (research/51 section 8), so on foot and open the hologram is the same picture.
@@ -90,6 +95,10 @@ struct Console {
     std::uint64_t lastSearchMs = 0;
     std::vector<ue3::Object*> projector;  // the game's own hologram's actors (BIOA_NOR10_03_PLC's InterpActor_0 and Emitter_71)
     bool projectorHidden = false;
+    ue3::Object* openingDelay = nullptr;   // the sequence's opening wait (BioSeqAct_Delay_0)
+    float openingOriginalS = 0.0f;
+    bool openingShortened = false;
+    std::uint64_t usedMs = 0;              // the console was used (OnArtPlaceableUsed: A pressed at it, or our pick)
 };
 Console gConsole;
 
@@ -132,6 +141,13 @@ struct Hold {
     std::uint8_t lastMode = 255;
 };
 Hold gHold;
+
+// The galaxy map's live Flash handler, found again only when it goes (a scan of every object; not every tick).
+struct HandlerCache {
+    ue3::Object* handler = nullptr;
+    std::uint64_t scannedMs = 0;
+};
+HandlerCache gHandler;
 
 // A pick being carried out: the cross-hair is on the object; once the game selects it, the click.
 struct PendingPick {
@@ -544,11 +560,33 @@ bool FindConsole() {
     }
     gConsole.lastSearchMs = now;
     ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Object* sequence = nullptr;
     for (std::int32_t i = 0, n = r.ObjectCount(); i < n && gConsole.usable == nullptr; ++i) {
         ue3::Object* const o = r.ObjectAt(i);
         if (o != nullptr && ue3::IsA(o, gArtUsedEvent) && r.IsAlive(o) && r.NameText(r.OuterOf(o)) == "GalaxyMap") {
             gConsole.usable = ObjectField(gOriginator, o);
+            sequence = r.OuterOf(o);
         }
+    }
+    // The opening wait: the sequence's own (not a sub-sequence's) longest delay.
+    gConsole.openingDelay = nullptr;
+    gConsole.openingShortened = false;
+    float longest = 0.0f;
+    for (std::int32_t i = 0, n = r.ObjectCount(); sequence != nullptr && gBioDelayClass.Get() != nullptr && i < n; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o != nullptr && ue3::IsA(o, gBioDelayClass) && r.IsAlive(o) && r.OuterOf(o) == sequence) {
+            if (auto const d = gDelayDuration.Read<float>(o); d && *d > longest) {
+                longest = *d;
+                gConsole.openingDelay = o;
+            }
+        }
+    }
+    if (gConsole.openingDelay != nullptr) {
+        // 0.1 s or less: shortened by us before a reload; put back as shipped.
+        gConsole.openingOriginalS = longest > 0.1f ? longest : kOpeningAsShippedS;
+        gConsole.openingShortened = longest <= 0.1f;
+        log::Info("galaxy hologram: the map's opening wait is {} ({:.2f} s{})", r.FullName(gConsole.openingDelay), longest,
+                  gConsole.openingShortened ? ", already shortened" : "");
     }
     for (std::int32_t i = 0, n = r.ObjectCount(); gConsole.usable != nullptr && i < n && gConsole.behavior == nullptr; ++i) {
         ue3::Object* const o = r.ObjectAt(i);
@@ -726,14 +764,23 @@ bool OpenMap(ue3::Object* controller) {
 }
 
 ue3::Object* LiveHandler() {
+    if (gHandler.handler != nullptr && ue3::runtime::IsAlive(gHandler.handler) && ue3::IsA(gHandler.handler, gGalaxyHandler)) {
+        return gHandler.handler;
+    }
+    std::uint64_t const now = GetTickCount64();
+    if (gHandler.scannedMs != 0 && now - gHandler.scannedMs < 500) {
+        return nullptr;
+    }
+    gHandler.scannedMs = now;
     ue3::Reflection& r = ue3::runtime::Get();
     ue3::Object* handler = nullptr;
     for (std::int32_t i = 0, n = r.ObjectCount(); i < n; ++i) {
         ue3::Object* const o = r.ObjectAt(i);
         if (o != nullptr && ue3::IsA(o, gGalaxyHandler) && r.IsAlive(o) && !r.NameText(o).starts_with("Default__")) {
-            handler = o;
+            handler = o;  // the newest (an older one may linger)
         }
     }
+    gHandler.handler = handler;
     return handler;
 }
 
@@ -751,16 +798,28 @@ bool InvokeFlash(ue3::Object* handler, char const* method) {
     return p.Valid() && p.Set("sMethodName", name.Get()) && ue3::runtime::Call(panel, f, p);
 }
 
-// The answer to the game's travel question (its message box hidden with the map): TravelConfirm(A pressed, context 0).
-void AnswerTravel(ue3::Object* handler, bool yes) {
-    ue3::Function* const f = gTravelConfirm.Get();
-    if (handler == nullptr || f == nullptr) {
+// The map's opening wait shortened (in the CIC) or put back.
+void ShortenOpening(bool shorten) {
+    ue3::Object* const node = gConsole.openingDelay;
+    if (node == nullptr || gConsole.openingShortened == shorten || !ue3::runtime::IsAlive(node)) {
         return;
     }
-    ue3::Reflection& r = ue3::runtime::Get();
-    ue3::Params p(r, f);
-    bool const called = p.Valid() && p.SetBool("bAPressed", yes) && p.Set("nContext", static_cast<std::int32_t>(0)) && ue3::runtime::Call(handler, f, p);
-    log::Info("galaxy hologram: the travel question answered {} ({})", yes ? "yes" : "no", called ? "TravelConfirm" : "TravelConfirm failed");
+    float* const duration = gDelayDuration.In<float>(node);
+    if (duration == nullptr) {
+        return;
+    }
+    *duration = shorten ? kOpeningDelayS : gConsole.openingOriginalS;
+    write_journal::Wrote("GalaxyMap.openingDelay", duration, sizeof(*duration));
+    gConsole.openingShortened = shorten;
+    log::Info("galaxy hologram: the map's opening wait {} ({:.2f} s)", shorten ? "shortened" : "as the game has it", *duration);
+}
+
+// BioArtPlaceableBehavior.OnArtPlaceableUsed, after the game's: the CIC's console was used (A at it, or our pick), so the map's
+// opening (game mode 6) is held like a pick's.
+void OnConsoleUsed(ue3::Object* behavior, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
+    if (behavior != nullptr && behavior == gConsole.behavior) {
+        gConsole.usedMs = GetTickCount64();
+    }
 }
 
 // The game's own hologram over the projector, hidden while ours shows there and shown again when ours goes.
@@ -795,14 +854,7 @@ void HideFlashMap() {
     }
     gHold.lastHideMs = now;
     ue3::Reflection& r = ue3::runtime::Get();
-    ue3::Object* handler = nullptr;
-    for (std::int32_t i = 0, n = r.ObjectCount(); i < n; ++i) {
-        ue3::Object* const o = r.ObjectAt(i);
-        if (o != nullptr && ue3::IsA(o, gGalaxyHandler) && r.IsAlive(o) && !r.NameText(o).starts_with("Default__")) {
-            handler = o;
-        }
-    }
-    ue3::Object* const panel = ObjectField(gHandlerPanel, handler);
+    ue3::Object* const panel = ObjectField(gHandlerPanel, LiveHandler());
     ue3::Function* const f = gSetMovieVisibility.Get();
     if (panel == nullptr || f == nullptr) {
         return;
@@ -840,6 +892,9 @@ void TryStartup() {
         return;
     }
     engine::process_event::AddPostHandler(update, &OnUpdateCamera);
+    if (ue3::Function* const used = gArtUsed.Get(); used != nullptr) {
+        engine::process_event::AddPostHandler(used, &OnConsoleUsed);
+    }
 }
 
 void Tick(Link const& link) {
@@ -848,6 +903,7 @@ void Tick(Link const& link) {
     auto const mode = controller != nullptr ? player::GameMode(controller) : std::nullopt;
     std::uint64_t const now = GetTickCount64();
     bool const inWorld = settings.hologram && settings.inWorld && link.setScene != nullptr;
+    ShortenOpening(inWorld);  // (once the console is known: near it)
     if (gOpen.pending && now - gOpen.startedMs > 8000) {
         log::Info("galaxy hologram: the map didn't open for the pick within 8 s; dropped");
         gOpen.pending = false;
@@ -859,12 +915,14 @@ void Tick(Link const& link) {
         gHold.closingUntilMs = now + 3000;
     }
     gHold.lastMode = modeNow;
-    bool const opening = (gOpen.pending && modeNow == 6) || (modeNow == 6 && now < gHold.closingUntilMs);
+    bool const used = gConsole.usedMs != 0 && now - gConsole.usedMs < 4000;  // the console's use (A, or our pick) opens the map
+    bool const opening = ((gOpen.pending || used) && modeNow == 6) || (modeNow == 6 && now < gHold.closingUntilMs);
     bool const holding = inWorld && gHold.haveView && mode && (*mode == kGalaxyMode || opening);
     if (holding != gHold.active) {
         gHold.active = holding;
         gHold.hides = 0;
         gHold.lastHideMs = 0;
+        gHandler = HandlerCache{};  // a new map: its handler found again
         if (holding) {
             log::Info("galaxy hologram: the map is open in the CIC: the view held, the game's own map hidden");
         } else {
@@ -919,7 +977,7 @@ void Tick(Link const& link) {
     gh::Scene scene;
     if (*mode != kGalaxyMode) {
         // ---- On foot (or the map opening) in the CIC: the galaxy from the tables over the console ----
-        if (picked && *mode == 0 && id != gh::kPickYes && id != gh::kPickNo) {
+        if (picked && *mode == 0) {
             bool const opened = OpenMap(controller);
             gOpen = PendingOpen{opened, id, now};
             log::Info("galaxy hologram: picked {} on foot: the map {}", Label(std::to_string(id), game),
@@ -936,11 +994,7 @@ void Tick(Link const& link) {
     } else {
         // ---- The map is open ----
         if (picked) {
-            if (id == gh::kPickYes || id == gh::kPickNo) {
-                AnswerTravel(LiveHandler(), id == gh::kPickYes);
-            } else {
-                StartPick(id, behavior, game);
-            }
+            StartPick(id, behavior, game);
         }
         StepPick(behavior, window);
         auto const model = ReadModel(behavior, controller, game, window);
@@ -971,15 +1025,9 @@ void Tick(Link const& link) {
         }
         scene = gh::BuildScene(*model);
         if (inWorld) {
+            // The game asks whether to travel (its own message box, which the host shows over the table): no picks meanwhile.
             if (ue3::Object* const handler = LiveHandler(); handler != nullptr && gWaitingForMsgBox.ReadBool(handler).value_or(false)) {
                 scene.askTravel = 1;
-                std::string selected;
-                for (int i = 0; i < scene.objectCount; ++i) {
-                    if ((scene.objects[i].flags & gh::kSelected) != 0) {
-                        selected = scene.objects[i].label;
-                    }
-                }
-                std::snprintf(scene.askText, gh::kLabelBytes, "Travel to %s?", selected.empty() ? "this system" : selected.c_str());
             }
         }
     }
@@ -1027,6 +1075,7 @@ std::string StatusJson() {
 }
 
 void Shutdown(Link const& link) {
+    ShortenOpening(false);
     Forget(link, "the mod is unloading");
     gS = State{};
 }

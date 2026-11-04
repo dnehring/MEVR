@@ -86,6 +86,8 @@ std::uint32_t gLastLevel = 0;
 float gForward[3] = {1.0f, 0.0f, 0.0f};
 std::atomic<bool> gActive{false};
 std::atomic<bool> gHovering{false};
+std::atomic<bool> gInWorld{false};   // over the CIC's projector (the game's UI goes to a panel over the table)
+std::atomic<bool> gAsking{false};    // the game's travel question is up (its own box; no picks on the hologram)
 int gPicks = 0;
 unsigned gFrames = 0;
 double gDrawMsSum = 0.0;
@@ -327,6 +329,8 @@ void Down(char const* why) {
     gPointer.Reset();
     gActive.store(false, std::memory_order_release);
     gHovering.store(false, std::memory_order_release);
+    gInWorld.store(false, std::memory_order_release);
+    gAsking.store(false, std::memory_order_release);
     SetStatus(std::format("{{\"up\": false, \"picks\": {}}}", gPicks));
 }
 
@@ -368,6 +372,7 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
                   vr::overlay::HeadingOf(gTable.pose.orientation) * 57.29578f);
     }
     gActive.store(true, std::memory_order_release);
+    gInWorld.store(inWorld, std::memory_order_release);
     if (scene->level != gLastLevel) {
         // The table's 'away' is the game camera's heading when the level appears, held while the game's camera flies to
         // what's selected (else the hologram would swing round under the player).
@@ -387,41 +392,19 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
     XrVector3f const origin = h.aim.position;
     XrVector3f const dir = gh::Normalize(vr::overlay::Rotate(h.aim.orientation, {0.0f, 0.0f, -1.0f}));
     bool const valid = state.active && hand >= 0;
-    // The game's travel question (its message box hidden with the map): the question and Yes / No over the table; only they pick.
-    struct Button {
-        XrVector3f at;
-        std::uint32_t id;
-        char const* text;
-    };
-    std::vector<Button> buttons;
-    float const k = std::max(1.0f, gTable.radiusM / 0.48f);
-    XrVector3f const tableUp = vr::overlay::Rotate(gTable.pose.orientation, {0.0f, 1.0f, 0.0f});
-    XrVector3f const tableRight = vr::overlay::Rotate(gTable.pose.orientation, {1.0f, 0.0f, 0.0f});
-    if (scene->askTravel != 0) {
-        XrVector3f const base = gh::Add(gTable.pose.position, gh::Mul(tableUp, 0.22f * k));
-        buttons.push_back({gh::Add(base, gh::Mul(tableRight, -0.12f * k)), gh::kPickYes, "Yes"});
-        buttons.push_back({gh::Add(base, gh::Mul(tableRight, 0.12f * k)), gh::kPickNo, "No"});
+    // The game's travel question is its own box (the game's UI on a panel over the table, HalcyonOverlays, answered by the
+    // game pointer): the hologram takes no picks and no trigger meanwhile.
+    bool const asking = inWorld && scene->askTravel != 0;
+    if (asking != gAsking.load(std::memory_order_relaxed)) {
+        log::Info("galaxy hologram: {}", asking ? "the game asks whether to travel: its own box over the table, the hologram waits"
+                                                : "the game's travel question is answered");
     }
+    gAsking.store(asking, std::memory_order_release);
     int candidate = -1;
-    if (valid && !buttons.empty()) {
-        float best = 1.0f;
-        for (std::size_t b = 0; b < buttons.size(); ++b) {
-            XrVector3f const v = gh::Sub(buttons[b].at, origin);
-            float const along = gh::Dot(v, dir);
-            if (along <= 0.05f) {
-                continue;
-            }
-            float const angle = std::atan2(gh::Length(gh::Sub(v, gh::Mul(dir, along))), along);
-            float const ratio = angle / std::max(0.0524f, std::atan2(0.06f * k, along));
-            if (ratio < best) {
-                best = ratio;
-                candidate = 1000 + static_cast<int>(b);
-            }
-        }
-    } else if (valid) {
+    if (valid && !asking) {
         candidate = gh::Pick(origin, dir, placed, *scene);
     }
-    bool const onTable = valid && (candidate >= 0 || RayOnTable(origin, dir));
+    bool const onTable = valid && !asking && (candidate >= 0 || RayOnTable(origin, dir));
     auto const selected = gPointer.Step(candidate, onTable ? h.trigger : 0.0f, valid);
     if (candidate != gHovered) {
         if (candidate >= 0) {
@@ -429,13 +412,7 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
         }
         gHovered = candidate;
     }
-    if (selected && *selected >= 1000 && *selected - 1000 < static_cast<int>(buttons.size())) {
-        Button const& b = buttons[static_cast<std::size_t>(*selected - 1000)];
-        gh::PostPick(b.id);
-        ++gPicks;
-        halcyon::RequestHaptic(hand, 0.04f, 0.6f);
-        log::Info("galaxy hologram: answered '{}' to the game's travel question", b.text);
-    } else if (selected && *selected >= 0 && *selected < scene->objectCount) {
+    if (selected && *selected >= 0 && *selected < scene->objectCount) {
         gh::Object const& o = scene->objects[*selected];
         gh::PostPick(o.id);
         ++gPicks;
@@ -444,24 +421,7 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
     }
     gHovering.store(onTable, std::memory_order_release);
 
-    gh::DrawList list = gh::Build(*scene, gTable, settings, placed, gHovered < 1000 ? gHovered : -1, timeS);
-    if (!buttons.empty()) {
-        gh::Label question;
-        question.anchor = gh::Add(gTable.pose.position, gh::Mul(tableUp, 0.32f * k));
-        question.heightM = 0.026f * k;
-        question.colour = gh::Colour{0.85f, 0.95f, 1.0f, 1.0f};
-        question.text = std::string(scene->askText, strnlen(scene->askText, gh::kLabelBytes));
-        list.labels.push_back(question);
-        for (std::size_t b = 0; b < buttons.size(); ++b) {
-            bool const lit = gHovered == 1000 + static_cast<int>(b);
-            gh::Label l;
-            l.anchor = buttons[b].at;
-            l.heightM = (lit ? 0.034f : 0.028f) * k;
-            l.colour = lit ? gh::Colour{1.0f, 0.62f, 0.25f, 1.0f} : gh::Colour{0.82f, 0.92f, 1.0f, 1.0f};
-            l.text = buttons[b].text;
-            list.labels.push_back(l);
-        }
-    }
+    gh::DrawList list = gh::Build(*scene, gTable, settings, placed, gHovered, timeS);
     if (onTable) {
         // The beam: from the controller to what it hovers, or to where it meets the table.
         XrVector3f end = gh::Add(origin, gh::Mul(dir, 0.6f));
@@ -470,9 +430,6 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
                 if (p.index == gHovered) {
                     end = p.position;
                 }
-            }
-            if (gHovered >= 1000 && gHovered - 1000 < static_cast<int>(buttons.size())) {
-                end = buttons[static_cast<std::size_t>(gHovered - 1000)].at;
             }
         } else {
             XrVector3f const up = vr::overlay::Rotate(gTable.pose.orientation, {0.0f, 1.0f, 0.0f});
@@ -550,16 +507,11 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
         objects += std::format("{}{{\"label\": {}, \"id\": {}, \"at\": {}, \"radiusM\": {:.4f}}}", objects.empty() ? "" : ", ",
             vr::test_request::JsonString(std::string_view(o.label, strnlen(o.label, gh::kLabelBytes))), o.id, JVec3(p.position), p.radiusM);
     }
-    std::string buttonsJson;
-    for (Button const& b : buttons) {
-        buttonsJson += std::format("{}{{\"label\": \"{}\", \"id\": {}, \"at\": {}}}", buttonsJson.empty() ? "" : ", ", b.text, b.id,
-            JVec3(b.at));
-    }
     SetStatus(std::format(
         "{{\"up\": true, \"level\": {}, \"objectCount\": {}, \"hovered\": {}, \"onTable\": {}, \"picks\": {}, "
-        "\"askTravel\": {}, \"table\": {}, \"radiusM\": {:.3f}, \"tiltDeg\": {:.1f}, \"objects\": [{}], \"buttons\": [{}]}}",
+        "\"askTravel\": {}, \"table\": {}, \"radiusM\": {:.3f}, \"tiltDeg\": {:.1f}, \"objects\": [{}]}}",
         scene->level, scene->objectCount, gHovered, onTable ? "true" : "false", gPicks, scene->askTravel != 0 ? "true" : "false",
-        JVec3(gTable.pose.position), gTable.radiusM, scene->tiltDeg, objects, buttonsJson));
+        JVec3(gTable.pose.position), gTable.radiusM, scene->tiltDeg, objects));
     gLayer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
     gLayer.space = frame.appSpace;
     gLayer.viewCount = 2;
@@ -573,6 +525,31 @@ bool Active() {
 
 bool Hovering() {
     return gHovering.load(std::memory_order_acquire);
+}
+
+bool InWorld() {
+    return gActive.load(std::memory_order_acquire) && gInWorld.load(std::memory_order_acquire);
+}
+
+bool AskingTravel() {
+    return InWorld() && gAsking.load(std::memory_order_acquire);
+}
+
+XrPosef UiPanelPose(XrVector3f const& head) {
+    // Over the table's centre at about the eyes' height, brought toward the player so it stands clear of the raised far edge,
+    // upright and turned to face the eyes.
+    XrVector3f centre = gTable.pose.position;
+    XrVector3f toHead = gh::Sub(head, centre);
+    toHead.y = 0.0f;
+    float const flat = gh::Length(toHead);
+    XrVector3f const toward = flat > 1e-3f ? gh::Mul(toHead, 1.0f / flat) : XrVector3f{0.0f, 0.0f, 1.0f};
+    float const forward = std::min(gTable.radiusM * 0.6f, std::max(0.0f, flat - 1.2f));
+    XrPosef pose{};
+    pose.position = gh::Add(centre, gh::Mul(toward, forward));
+    pose.position.y = head.y - 0.10f;
+    float const yaw = std::atan2(toward.x, toward.z);  // the quad's +Z (its front) toward the player
+    pose.orientation = {0.0f, std::sin(yaw * 0.5f), 0.0f, std::cos(yaw * 0.5f)};
+    return pose;
 }
 
 std::string StatusJson() {

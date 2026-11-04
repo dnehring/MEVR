@@ -6,6 +6,7 @@
 #include "core/Ini.hpp"
 #include "core/vr/GalaxyHologram.hpp"
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
 #include "game/Player.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "ue3/Memory.hpp"
@@ -27,6 +28,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 namespace mevr::game::galaxy_dump {
@@ -594,6 +596,43 @@ std::string Click(float u, float v) {
     return line;
 }
 
+std::string Press(float u, float v, int holdMs, bool moves, int preMs) {
+    HWND const window = GameWindow();
+    RECT rc{};
+    if (window == nullptr || !GetClientRect(window, &rc) || !(u >= 0.0f && u <= 1.0f && v >= 0.0f && v <= 1.0f)) {
+        return "galaxy press: no game window, or (u, v) outside 0..1";
+    }
+    int const x = static_cast<int>(u * static_cast<float>(rc.right - rc.left));
+    int const y = static_cast<int>(v * static_cast<float>(rc.bottom - rc.top));
+    holdMs = std::clamp(holdMs, 0, 3000);
+    preMs = std::clamp(preMs, 0, 5000);
+    std::thread([window, x, y, holdMs, moves, preMs] {
+        POINT screen{x, y};
+        ClientToScreen(window, &screen);
+        LPARAM const at = MAKELPARAM(x, y);
+        SetCursorPos(screen.x, screen.y);
+        PostMessageW(window, WM_MOUSEMOVE, 0, at);
+        if (preMs > 0) {
+            Sleep(static_cast<DWORD>(preMs));  // hovered first, as the game pointer's ray does before the trigger
+            SetCursorPos(screen.x, screen.y);
+            PostMessageW(window, WM_MOUSEMOVE, 0, at);
+        }
+        PostMessageW(window, WM_LBUTTONDOWN, MK_LBUTTON, at);
+        for (int t = 0; t < holdMs; t += 30) {
+            Sleep(static_cast<DWORD>(std::min(30, holdMs - t)));
+            if (moves) {
+                SetCursorPos(screen.x, screen.y);
+                PostMessageW(window, WM_MOUSEMOVE, MK_LBUTTON, at);
+            }
+        }
+        SetCursorPos(screen.x, screen.y);
+        PostMessageW(window, WM_MOUSEMOVE, 0, at);
+        PostMessageW(window, WM_LBUTTONUP, 0, at);
+    }).detach();
+    return std::format("galaxy press: client pixel ({}, {}), held {} ms{}, hovered {} ms first", x, y, holdMs, moves ? ", moves while held" : "",
+                       preMs);
+}
+
 std::string Pick(int index, bool click) {
     if (!ue3::runtime::Init()) {
         return "galaxy pick: the reflection layer isn't ready";
@@ -672,6 +711,44 @@ std::string Pick(int index, bool click) {
         }
     }
     return out;
+}
+
+std::string Props(ue3::Object* object) {
+    if (object == nullptr || !ue3::runtime::IsAlive(object)) {
+        return "props: no such object";
+    }
+    Dumper d(nullptr);
+    return d.Object(object, nullptr);
+}
+
+std::string SetProp(ue3::Object* object, std::string const& field, std::string const& value) {
+    if (object == nullptr || !ue3::runtime::IsAlive(object)) {
+        return "setprop: no such object";
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    auto const info = r.PropertyOf(r.ClassOf(object), field);
+    if (!info) {
+        return std::format("setprop: {} has no property '{}'", r.FullName(object), field);
+    }
+    auto const number = ini::Number(value);
+    if (!number) {
+        return std::format("setprop: '{}' isn't a number", value);
+    }
+    auto* const at = reinterpret_cast<std::uint8_t*>(object) + info->offset;
+    switch (info->kind) {
+    case ue3::Kind::Float: *reinterpret_cast<float*>(at) = static_cast<float>(*number); break;
+    case ue3::Kind::Int: *reinterpret_cast<std::int32_t*>(at) = static_cast<std::int32_t>(*number); break;
+    case ue3::Kind::Byte: *at = static_cast<std::uint8_t>(*number); break;
+    case ue3::Kind::Bool: {
+        auto* const bits = reinterpret_cast<std::uint32_t*>(at);
+        *bits = *number != 0.0 ? (*bits | info->boolMask) : (*bits & ~info->boolMask);
+        break;
+    }
+    default: return std::format("setprop: '{}' is a {} (Float, Int, Byte and Bool only)", field, ue3::KindName(info->kind));
+    }
+    write_journal::Wrote("GalaxyDump.setprop", at, info->kind == ue3::Kind::Byte ? 1 : 4);
+    log::Info("galaxy dump: setprop {}.{} = {}", r.FullName(object), field, value);
+    return std::format("{}.{} = {}", r.FullName(object), field, value);
 }
 
 std::string Dump(std::string const& tag) {

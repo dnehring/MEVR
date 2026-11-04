@@ -617,6 +617,7 @@ void CheckClasses() {
     CheckClass<UBioSeqEvt_ArtPlaceableUsed>("SFXGame.BioSeqEvt_ArtPlaceableUsed");
     CheckClass<UBioArtPlaceableBehavior>("SFXGame.BioArtPlaceableBehavior");
     CheckClass<AEmitter>("Engine.Emitter");  // the CIC projector's own hologram, hidden while ours shows
+    CheckClass<UBioSeqAct_Delay>("SFXGame.BioSeqAct_Delay");  // the galaxy map's opening wait
     // game/mako (research/44): the Mako's turret aimed by the controller.
     CheckClass<ABioVehicleBase>("SFXGame.BioVehicleBase");
     CheckClass<ABioVehicleWheeled>("SFXGame.BioVehicleWheeled");
@@ -680,6 +681,7 @@ void CheckFields() {
     CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pRelayTable", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pRelayTable));
     CheckField("Engine.Actor", "Acceleration", SDK_FIELD(AActor, Acceleration));
     CheckField("SFXGame.BioSFHandler_GalaxyMap", "m_bWaitingForMsgBox", SDK_BOOL(UBioSFHandler_GalaxyMap, m_bWaitingForMsgBox));
+    CheckField("Engine.SeqAct_Delay", "Duration", SDK_FIELD(USeqAct_Delay, Duration));
     CheckField("Engine.SequenceEvent", "Originator", SDK_FIELD(USequenceEvent, Originator));
     CheckField("Engine.Controller", "Pawn", SDK_FIELD(AController, Pawn));
     CheckField("Engine.Pawn", "Mesh", SDK_FIELD(APawn, Mesh));

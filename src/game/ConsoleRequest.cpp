@@ -344,6 +344,12 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
             words >> u >> v;
             return galaxy_dump::Click(u, v);
         }
+        if (sub == "press") {
+            float u = -1.0f, v = -1.0f;
+            int holdMs = 300, moves = 0, preMs = 0;
+            words >> u >> v >> holdMs >> moves >> preMs;
+            return galaxy_dump::Press(u, v, holdMs, moves != 0, preMs);
+        }
         if (sub == "pick") {
             int index = -1;
             words >> index;
@@ -501,6 +507,16 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         bool const called = ue3::runtime::Call(target, f, parms);
         return std::format("{}.{} called {}{}", r.FullName(target), verb == "use" ? "UsedBy(the player's pawn)" : std::format("ForceActivateInput({})", input),
             called, verb == "use" ? std::format(", returned {}", parms.ReturnBool().value_or(false)) : std::string());
+    }
+    if (verb == "props" || verb == "setprop") {
+        // `mevr props <n>`: the n-th of `find`'s properties; `mevr setprop <n> <field> <value>`: one written (research).
+        std::size_t index = 0;
+        std::string field, value;
+        words >> index >> field >> value;
+        if (index >= gFound.size() || !ue3::runtime::IsAlive(gFound[index])) {
+            return std::format("mevr {}: no object {} (mevr find first)", verb, index);
+        }
+        return verb == "props" ? galaxy_dump::Props(gFound[index]) : galaxy_dump::SetProp(gFound[index], field, value);
     }
     if (verb == "hide") {
         // `mevr hide <n> [0|1]`: Actor.SetHidden on the n-th of `find` (1, the default, hides; 0 shows).

@@ -35,4 +35,13 @@ bool Step(Frame const& frame, Dot& dot);
 // For snapshots (plugin/TestLoop). Any thread.
 std::string StatusJson();
 
+// A controller's ray is on the flat screen (or a press on it is held): its trigger is the mouse button, so the pad's triggers are
+// kept from the game (a trigger that also reached the game as RT switched a Flash box to the pad, which then ignored the click:
+// the galaxy map's travel question, research/51 section 8). Any thread.
+bool OwnsTriggers();
+
+// The game's UI on a quad of ours (app space; the whole UI frame edge to edge, as the window's client area), pointed at this
+// frame: the galaxy map's travel question over the hologram's table (research/51 section 8). Present thread, before Step.
+void NoteGameUiQuad(XrPosef const& pose, float width, float height);
+
 } // namespace mevr::host::game_pointer

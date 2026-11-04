@@ -3,6 +3,10 @@
 
 #include <string>
 
+namespace mevr::ue3 {
+struct Object;
+}
+
 // `mevr galaxy dump [tag]` (research/51 section 8): the open galaxy map's model, for building the hologram offline. Writes
 // %LOCALAPPDATA%\MEVR\galaxy\<time>-<tag>.json: the player camera's view, the galaxy camera behaviour's own fields, every
 // actor its lists hold (its class's own properties, read generically, and its place), the Flash handler's fields, and the six
@@ -17,6 +21,9 @@ std::string Dump(std::string const& tag);
 // `mevr galaxy click <u> <v>`: the cursor to the game window's (u, v) (0..1, y down) and a left click there, as posted window
 // messages plus SetCursorPos (the game pointer's two paths, research/42). Tests whether the map takes the pick as a click.
 std::string Click(float u, float v);
+// `mevr galaxy press <u> <v> <ms> [moves]`: the same, with the button held `ms` before it goes up (from another thread, so the
+// game's pump sees them apart, as the game pointer's do); `moves` 1 re-posts the move every 30 ms while held.
+std::string Press(float u, float v, int holdMs, bool moves, int preMs);
 // `mevr galaxy pick <i>`: where the game's camera shows the map's object i (m_pScaleformObjects[i]; core/vr/GalaxyHologram
 // ToGameScreen with the player camera's view and the window's aspect), clicked; `mevr galaxy where` lists every object's place.
 std::string Pick(int index, bool click);
@@ -39,5 +46,10 @@ std::string Variable(std::string const& path);
 // `mevr galaxy aim <i>`: the map's cross-hair actor moved onto m_pScaleformObjects[i] (Actor.SetLocation), so the camera
 // behaviour's own tick selects the object nearest it (within m_nScanRange) and flies the camera there.
 std::string Aim(int index);
+
+// `mevr props <n>` (after `mevr find`): an object's properties, read generically (its class chain), as JSON. `mevr setprop <n>
+// <field> <value>`: one Float, Int, Byte or Bool property written (journalled): A/B a value without a rebuild (research).
+std::string Props(ue3::Object* object);
+std::string SetProp(ue3::Object* object, std::string const& field, std::string const& value);
 
 } // namespace mevr::game::galaxy_dump

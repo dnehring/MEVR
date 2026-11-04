@@ -11,10 +11,12 @@ turned so 'away' is the game camera's heading), from a `mevr galaxy dump` file o
 
     python tools/make-galaxy-pick-recording.py --snapshot <snapshot.json> <label> out.mevrrec [...]
 
---snapshot: aim at an object or button ("Yes", "No") where the host placed it (the snapshot's "galaxyHologram", app space,
-taken under a replay with the head at the origin), at any level of the map; the table needn't be computed.
+--snapshot: aim at an object where the host placed it (the snapshot's "galaxyHologram", app space, taken under a replay with
+the head at the origin), at any level of the map; the table needn't be computed. With `--panel-uv U V` (and any <label>, e.g.
+"yes") it aims at that point of the game's UI panel instead (the snapshot's "hud" quad; U, V from 0..1 of its -hud.png:
+the game's own travel box over the table); `--layer NAME` another quad (e.g. quad0: Halcyon's flat screen).
 <label>: the object's name as the hologram shows it (e.g. a cluster's). The trigger is down from --pick-at (default 3 s) for
-0.3 s; the recording lasts --seconds (default 8). Replay it once (not in a loop) with -Inputs while the map is up:
+--hold (0.3 s); the recording lasts --seconds (default 8). Replay it once (not in a loop) with -Inputs while the map is up:
     tools/replay.ps1 -Path out.mevrrec -Inputs
 Prints where the object and the ray are, for checking against the host's `galaxy hologram:` lines."""
 import json
@@ -112,7 +114,7 @@ def objects_in_world(dump, ahead, below, radius, tilt_deg):
 
 def main():
     skip = set()
-    for flag, n in (("--seconds", 1), ("--pick-at", 1), ("--pitch", 1), ("--world", 4)):
+    for flag, n in (("--seconds", 1), ("--pick-at", 1), ("--pitch", 1), ("--world", 4), ("--panel-uv", 2), ("--layer", 1), ("--hold", 1)):
         if flag in sys.argv:
             k = sys.argv.index(flag)
             skip.update(range(k + 1, k + 1 + n))
@@ -124,14 +126,37 @@ def main():
     seconds = option("--seconds", 8.0)
     pick_at = option("--pick-at", 3.0)
     pitch = option("--pitch", -30.0)
+    hold = option("--hold", 0.3)
     with open(dump_path, encoding="utf-8-sig") as f:
         dump = json.load(f)
-    if "--snapshot" in sys.argv:
+    if "--snapshot" in sys.argv and "--panel-uv" in sys.argv:
+        i = sys.argv.index("--panel-uv")
+        u, v = float(sys.argv[i + 1]), float(sys.argv[i + 2])
+        name = sys.argv[sys.argv.index("--layer") + 1] if "--layer" in sys.argv else "hud"
+        hud = next((layer for layer in dump.get("layers", []) if layer.get("name") == name and layer.get("type") == "quad"), None)
+        if hud is None:
+            print(f"{dump_path}: no '{name}' quad in this snapshot")
+            return 1
+        x, y, z, w = hud["pose"]["orientation"]
+        centre = hud["pose"]["position"]
+        width, height = hud["size"]
+
+        def rotate(vec):
+            # q * v * q^-1 for a unit quaternion (x, y, z, w)
+            tx = 2.0 * (y * vec[2] - z * vec[1])
+            ty = 2.0 * (z * vec[0] - x * vec[2])
+            tz = 2.0 * (x * vec[1] - y * vec[0])
+            return (vec[0] + w * tx + (y * tz - z * ty), vec[1] + w * ty + (z * tx - x * tz), vec[2] + w * tz + (x * ty - y * tx))
+
+        right, up = rotate((1.0, 0.0, 0.0)), rotate((0.0, 1.0, 0.0))
+        point = tuple(centre[k] + right[k] * (u - 0.5) * width + up[k] * (0.5 - v) * height for k in range(3))
+        placed = [(label, point)]
+    elif "--snapshot" in sys.argv:
         holo = dump.get("galaxyHologram") or {}
         if not holo.get("up"):
             print(f"{dump_path}: the hologram wasn't up in this snapshot")
             return 1
-        placed = [(o["label"], tuple(o["at"])) for o in holo.get("objects", []) + holo.get("buttons", [])]
+        placed = [(o["label"], tuple(o["at"])) for o in holo.get("objects", [])]
     elif "--world" in sys.argv:
         i = sys.argv.index("--world")
         ahead, below, radius, tilt = (float(v) for v in sys.argv[i + 1:i + 5])
@@ -157,7 +182,7 @@ def main():
     frames = []
     for i in range(int(seconds * hz)):
         t = i / hz
-        trigger = 1.0 if pick_at <= t < pick_at + 0.3 else 0.0
+        trigger = 1.0 if pick_at <= t < pick_at + hold else 0.0
         frames.append(FRAME.pack(int(t * 1e9), 3, *eyes[0], *fov, *eyes[1], *fov,
                                  valid, 0.0, 0.0, 0.0, 0.0, *left, *left,
                                  valid, trigger, 0.0, 0.0, 0.0, *aim, *aim))
@@ -166,7 +191,7 @@ def main():
         for frame in frames:
             f.write(frame)
     print(f"{out}: {len(frames)} frames; '{label}' at ({target[0]:.3f}, {target[1]:.3f}, {target[2]:.3f}) m from the head, "
-          f"{length:.2f} m from the right hand; the trigger down at {pick_at:g} s for 0.3 s")
+          f"{length:.2f} m from the right hand; the trigger down at {pick_at:g} s for {hold:g} s")
     for name, p in placed:
         print(f"  {name:<20} ({p[0]:+.3f}, {p[1]:+.3f}, {p[2]:+.3f})")
     return 0

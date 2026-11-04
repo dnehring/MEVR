@@ -90,6 +90,7 @@ constexpr float kPi = 3.14159265358979f;
 constexpr float kDegToRad = kPi / 180.0f;
 constexpr int64_t kSwapchainFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;  // the menu's family: every runtime has it
 constexpr UINT kReticleSize = 128;
+constexpr float kGalaxyUiWidthM = 1.50f;  // the game's UI frame over the galaxy hologram's table (its travel box ~1 m of it)
 
 // Logs a line to our log and to Halcyon's (one-shots that belong next to Halcyon's [XRSUBMIT] lines).
 void LogBoth(std::string const& line) {
@@ -1592,6 +1593,10 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         gLastGameMode = frame.gameMode;
     }
     bool const gameplay = gLastGameMode >= 0 && gLastGameMode <= 4;
+    // The galaxy map open in the CIC (research/51 section 8): the game's UI (its own map hidden, so its travel question) goes to
+    // the panel too, which then stands over the hologram's table instead of in front of the body.
+    bool const galaxyUi = gLastGameMode == 9 && mevr::host::galaxy_hologram::InWorld();
+    bool const uiToPanel = gameplay || galaxyUi;
 
     // The game's own crosshair marks the screen centre (the head), not the gun: hidden while our
     // hand reticle stands in for it. The HUD movie keeps its authored layout on the panel (Halcyon's
@@ -1704,7 +1709,8 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     }
 
     bool panelShown = false;
-    if (frame.worldFrame && engaged && gameplay && gPanel.texture != nullptr && count < capacity && device != nullptr) {
+    bool galaxyPanel = false;  // the panel goes after the galaxy hologram's layer (over it)
+    if (frame.worldFrame && engaged && uiToPanel && gPanel.texture != nullptr && count < capacity && device != nullptr) {
         gPanelDrawsLastFrame.store(draws, std::memory_order_relaxed);
         if (RenderPanel(context, device.Get(), frame.floatWhiteScale, hudMasks)) {
             float const width = std::clamp(cfg.hudPanelWidthM, 0.3f, 4.0f);
@@ -1723,7 +1729,13 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                 gPanelQuad.pose = cockpitPanel.pose;  // the cockpit's place for what's left of the HUD, clear of its screens
                 gPanelQuad.size = {cockpitPanel.width, cockpitPanel.height};
             }
-            layersOut[count++] = &gPanelQuad;
+            if (galaxyUi) {
+                gPanelQuad.pose = mevr::host::galaxy_hologram::UiPanelPose(ToVec(frame.headPosition));
+                gPanelQuad.size = {kGalaxyUiWidthM, kGalaxyUiWidthM * static_cast<float>(gPanel.height) / static_cast<float>(gPanel.width)};
+                galaxyPanel = true;
+            } else {
+                layersOut[count++] = &gPanelQuad;
+            }
             panelShown = true;
             if (!gLoggedPanel || now >= gNextPanelLogMs) {
                 char line[288];
@@ -1908,9 +1920,10 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     }
     // Next frame's UI goes to the panel only if this one showed it (or nothing went there yet, so
     // the texture can be made), and the panel works.
-    bool const armNext = engaged && gameplay && frame.worldFrame && (panelShown || gPanel.texture == nullptr);
+    bool const armNext = engaged && uiToPanel && frame.worldFrame && (panelShown || gPanel.texture == nullptr);
     if (armNext != gArmed.load(std::memory_order_relaxed)) {
-        mevr::log::Info("overlays: game UI goes to {}", armNext ? "the body-locked HUD panel" : "the eye images");
+        mevr::log::Info("overlays: game UI goes to {}", !armNext ? "the eye images" : galaxyUi ? "a panel over the galaxy hologram's table"
+                                                                                                : "the body-locked HUD panel");
         gPanelNeedsClear = true;
     }
     gArmed.store(armNext, std::memory_order_release);
@@ -2088,6 +2101,13 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         galaxy.eyeHeight = frame.projectionRect[0][3];
         if (XrCompositionLayerBaseHeader const* layer = mevr::host::galaxy_hologram::Layer(galaxy); layer != nullptr && count < capacity) {
             layersOut[count++] = layer;
+        }
+        // The game's UI over the table (its travel question): over the hologram, and the game pointer's while the game asks.
+        if (galaxyPanel && count < capacity) {
+            layersOut[count++] = &gPanelQuad;
+            if (mevr::host::galaxy_hologram::AskingTravel()) {
+                mevr::host::game_pointer::NoteGameUiQuad(gPanelQuad.pose, gPanelQuad.size.width, gPanelQuad.size.height);
+            }
         }
     }
 

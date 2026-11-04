@@ -23,6 +23,9 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <condition_variable>
+#include <deque>
+#include <thread>
 #include <cstdint>
 #include <format>
 #include <iterator>
@@ -52,6 +55,10 @@ struct Settings {
     bool wheel = true;         // the right stick scrolls
     float wheelPerSecond = 6.0f;
     float dotDeg = 0.6f;       // the dot's angular size as seen from the head
+    // The cursor and the messages from a worker thread: posted from the Present callback (the render thread) the same click
+    // was ignored by the game's Flash message box, from any other thread it was taken (2026-11-03, research/51 section 8).
+    bool postThread = true;
+    bool logMessages = false;  // every posted message logged
     bool operator==(Settings const&) const = default;
 };
 
@@ -66,6 +73,7 @@ std::uint64_t gQuadMs = 0;
 MELEVR::MevrBridge::PanelKind gKind = MELEVR::MevrBridge::PanelKind::GameMenu;
 bool gQuadHeadLocked = false;
 std::uint64_t gShownSinceMs = 0;   // the current appearance's start; 0 = not shown
+bool gWaitRelease = false;         // a trigger was held as the quad appeared (the pull that brought it up): ignored until let go
 
 pointer::Pointer gPointer;
 bool gLoggedHit = false;        // per appearance
@@ -83,6 +91,7 @@ unsigned gClicks = 0;
 int gNotches = 0;
 
 // Any thread: the status for snapshots.
+std::atomic<bool> gOwnsTriggers{false};  // OwnsTriggers(): written by Step (Present thread), read by the XInput hook
 std::mutex gStatusMutex;
 std::string gStatus = "null";
 
@@ -140,6 +149,8 @@ void RefreshSettings(std::uint64_t now) {
         s.wheel = readBool(L"wheel", s.wheel);
         s.wheelPerSecond = std::clamp(ReadFloat(L"wheelPerSecond", s.wheelPerSecond, path), 0.0f, 60.0f);
         s.dotDeg = std::clamp(ReadFloat(L"dotDeg", s.dotDeg, path), 0.1f, 5.0f);
+        s.postThread = readBool(L"postThread", s.postThread);
+        s.logMessages = readBool(L"logMessages", s.logMessages);
     }
     if (!gSettingsLogged || !(s == gSettings)) {
         gSettingsLogged = true;
@@ -166,16 +177,82 @@ bool ToScreen(HWND window, int x, int y, POINT& screen) {
     return ClientToScreen(window, &screen) != FALSE;
 }
 
+// The cursor and the posted messages, in order: here, or from a worker thread ([Pointer] postThread).
+struct Post {
+    HWND window = nullptr;
+    bool cursor = false;  // SetCursorPos(screen) first
+    POINT screen{};
+    UINT message = 0;     // 0: none
+    WPARAM wparam = 0;
+    LPARAM lparam = 0;
+    bool log = false;     // [Pointer] logMessages when it was queued
+};
+std::mutex gPostMutex;
+std::condition_variable gPostReady;
+std::deque<Post> gPosts;
+bool gPostThreadStarted = false;
+
+char const* MessageName(UINT m) {
+    switch (m) {
+    case WM_MOUSEMOVE: return "MOVE";
+    case WM_LBUTTONDOWN: return "DOWN";
+    case WM_LBUTTONUP: return "UP";
+    case WM_MOUSEWHEEL: return "WHEEL";
+    default: return "-";
+    }
+}
+
+void Deliver(Post const& p, bool log) {
+    if (p.cursor) {
+        SetCursorPos(p.screen.x, p.screen.y);
+    }
+    if (p.message != 0) {
+        PostMessageW(p.window, p.message, p.wparam, p.lparam);
+    }
+    if (log) {
+        mevr::log::Info("game pointer: posted {}{} ({}, {}) wparam {} on thread {}", p.cursor ? "cursor + " : "", MessageName(p.message),
+            static_cast<short>(LOWORD(p.lparam)), static_cast<short>(HIWORD(p.lparam)), static_cast<unsigned>(p.wparam), GetCurrentThreadId());
+    }
+}
+
+void Send(Post const& p, Settings const& s) {
+    if (!s.postThread) {
+        Deliver(p, s.logMessages);
+        return;
+    }
+    std::lock_guard lock(gPostMutex);
+    Post queued = p;
+    queued.log = s.logMessages;
+    if (!gPostThreadStarted) {
+        gPostThreadStarted = true;
+        std::thread([] {
+            for (;;) {
+                Post next;
+                {
+                    std::unique_lock lock(gPostMutex);
+                    gPostReady.wait(lock, [] { return !gPosts.empty(); });
+                    next = gPosts.front();
+                    gPosts.pop_front();
+                }
+                Deliver(next, next.log);
+            }
+        }).detach();
+    }
+    gPosts.push_back(queued);
+    gPostReady.notify_one();
+}
+
 void SendMove(HWND window, int x, int y, bool pressed, Settings const& s) {
-    if (s.setCursor) {
-        POINT screen;
-        if (ToScreen(window, x, y, screen)) {
-            SetCursorPos(screen.x, screen.y);  // Halcyon's hook passes it through while its menu is closed
-        }
-    }
+    Post p;
+    p.window = window;
+    // SetCursorPos: Halcyon's hook passes it through while its menu is closed.
+    p.cursor = s.setCursor && ToScreen(window, x, y, p.screen);
     if (s.moveMessages) {
-        PostMessageW(window, WM_MOUSEMOVE, pressed ? MK_LBUTTON : 0, MAKELPARAM(x, y));
+        p.message = WM_MOUSEMOVE;
+        p.wparam = pressed ? MK_LBUTTON : 0;
+        p.lparam = MAKELPARAM(x, y);
     }
+    Send(p, s);
     ++gMoves;
 }
 
@@ -193,7 +270,12 @@ void SendButton(HWND window, int x, int y, bool down, Settings const& s) {
         }
     }
     if (!sent) {
-        PostMessageW(window, down ? WM_LBUTTONDOWN : WM_LBUTTONUP, down ? MK_LBUTTON : 0, MAKELPARAM(x, y));
+        Post p;
+        p.window = window;
+        p.message = down ? WM_LBUTTONDOWN : WM_LBUTTONUP;
+        p.wparam = down ? MK_LBUTTON : 0;
+        p.lparam = MAKELPARAM(x, y);
+        Send(p, s);
     }
     if (down) {
         ++gClicks;
@@ -271,7 +353,19 @@ void PublishStatus(bool shown, pointer::Output const* out, int width, int height
 
 } // namespace
 
+static bool StepInner(Frame const& frame, Dot& dot);
+
 bool Step(Frame const& frame, Dot& dot) {
+    bool const pointing = StepInner(frame, dot);  // true: the ray is on the quad (or a press is held), a dot is drawn
+    gOwnsTriggers.store(pointing, std::memory_order_release);
+    return pointing;
+}
+
+bool OwnsTriggers() {
+    return gOwnsTriggers.load(std::memory_order_acquire);
+}
+
+static bool StepInner(Frame const& frame, Dot& dot) {
     std::uint64_t const now = GetTickCount64();
     RefreshSettings(now);
     float const dt = gLastStepMs == 0 ? 0.0f : static_cast<float>(now - gLastStepMs) / 1000.0f;
@@ -286,6 +380,8 @@ bool Step(Frame const& frame, Dot& dot) {
     }
     if (gShownSinceMs == 0) {
         gShownSinceMs = now;
+        controllers::State const held = controllers::Latest();
+        gWaitRelease = held.active && (held.left.trigger > 0.4f || held.right.trigger > 0.4f);
         if (KindWanted(gKind, gSettings)) {
             mevr::log::Info("game pointer: the flat screen is up ({}, {:.2f} x {:.2f} m, {}): a controller's aim ray on it is the game's mouse",
                 KindName(gKind), gQuad.width, gQuad.height, gQuadHeadLocked ? "head-locked" : "fixed in the room");
@@ -326,6 +422,13 @@ bool Step(Frame const& frame, Dot& dot) {
         input.hands[i].aim = hand.aim;
         input.hands[i].trigger = hand.trigger;
     }
+    if (gWaitRelease) {
+        // The pull that brought the quad up (the galaxy map's travel question appears under the trigger that picked a system)
+        // isn't a click on it.
+        gWaitRelease = state.active && (state.left.trigger > 0.4f || state.right.trigger > 0.4f);
+        input.hands[0].trigger = 0.0f;
+        input.hands[1].trigger = 0.0f;
+    }
     input.rightStickY = state.right.stickY;
     input.width = static_cast<int>(client.right);
     input.height = static_cast<int>(client.bottom);
@@ -364,6 +467,9 @@ bool Step(Frame const& frame, Dot& dot) {
         }
     }
     if (out.pressEdge) {
+        // The cursor put at the point again first: the game moves it in between (a Scaleform button took a click only with a
+        // move just before it: the galaxy map's travel question, research/51 section 8).
+        SendMove(window, gLastX, gLastY, false, gSettings);
         SendButton(window, gLastX, gLastY, out.pressed, gSettings);
         if (out.pressed && !gLoggedPress) {
             gLoggedPress = true;
@@ -396,6 +502,11 @@ void NoteFlatQuad(MELEVR::MevrBridge::PanelKind kind, XrPosef const& space, XrPo
     gQuadHeadLocked = headLocked;
     gKind = kind;
     gQuadMs = GetTickCount64();
+}
+
+void NoteGameUiQuad(XrPosef const& pose, float width, float height) {
+    XrPosef const space{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
+    NoteFlatQuad(MELEVR::MevrBridge::PanelKind::GalaxyMap, space, pose, width, height, false);
 }
 
 } // namespace mevr::host::game_pointer
@@ -439,8 +550,15 @@ bool GalaxyHologram(float* unitsPerMeter, float* belowM) noexcept {
 }
 
 bool GalaxyHeld() noexcept {
+    static std::atomic<std::uint64_t> lastHeldMs{0};
     auto const scene = mevr::vr::galaxy_holo::Latest(500);
-    return scene && scene->inWorld != 0 && scene->onFoot == 0;
+    std::uint64_t const now = GetTickCount64();
+    if (scene && scene->inWorld != 0 && scene->onFoot == 0) {
+        lastHeldMs.store(now, std::memory_order_relaxed);
+        return true;
+    }
+    // A short grace: the game's mode changes (to the map's closing cutscene) a frame before the mod's tick sees it and holds.
+    return scene && scene->inWorld != 0 && now - lastHeldMs.load(std::memory_order_relaxed) < 400;
 }
 
 void OnGalaxyHologram(float cpuHalfH, float cpuHalfV) noexcept {
