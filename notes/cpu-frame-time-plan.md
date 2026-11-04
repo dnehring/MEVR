@@ -24,6 +24,15 @@ the attempt-by-attempt log is `research/35-performance-attempt-log.md` (attempts
 - The spikes the player felt on 2026-10-24 were mine: perEyeOcclusion made every ~10th frame draw three times the
   meshes (draws 2,574 median / 8,544 p90, frames 24 ms p90). Off by default since bf38a6c. The remaining spikes
   during walking are unmeasured (a walking probe with the stack sampler is still owed).
+- **A first walking probe (2026-11-04, fake headset, main bc3971d, Eden Prime spaceport from VR00 Save 7):** 15 s standing
+  still under a replayed still head, then 15 s walking a wide circle (a synthetic recording replayed with its inputs: the
+  left stick at 0.9, the right stick at 0.25 for the game's own turn; Shepard covered about 19 m). Game thread (ticks, busy):
+  standing median 4.15, p99 9.66, max 22.9 ms; walking median 3.98, p99 7.88, max 12.5 ms; two ticks over 11.1 ms in each.
+  So **no walking-specific game-thread spikes** here. The GPU span rose while walking (p90 8.5 to 13.8 ms, p99 17.5), but
+  the walk also turned the view across the spaceport while standing kept one view, so it isn't like for like. Caveat: both
+  ran paced at a third of 90 Hz (frame interval median 32 ms; the probe's "the runtime throttles the game"), not the null
+  driver's free run, so frames had room to hide spikes. Still owed: the same at full rate, a straight walk against the same
+  view turned in place, and the stack sampler on a spiking frame.
 
 ## What the player's number is (added 17:30, research/35 attempt 41)
 
