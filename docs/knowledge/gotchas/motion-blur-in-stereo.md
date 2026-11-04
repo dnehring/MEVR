@@ -65,7 +65,14 @@ changes, each boolean goes through its opposite first (`scale set MotionBlur Tru
 `apply = 0` turns it off. Measured clean on 2026-10-28 in the running session: look flips over a 4 s pan 40-57 before,
 1-3 after (the 1-3 are the pan's one content change). **From a fresh launch it did not hold** (2026-11-02): the log
 said "a new level: applied again" at the save's load and the blur was on; the same two lines by hand turned it off.
-Until that is understood, after each launch run the two `scale set` lines yourself before judging a picture.
+Since 2026-11-04 (b3778d8) each level also gets them 3 s and 15 s after it becomes the world, by when it renders.
+**Not proven to be the fix:** on 2026-11-04 two cold Steam launches into the same Mako-cockpit autosave on the fake
+headset were both sharp, one with the new applies and one without them (a control build), so the 2026-11-02 failure
+didn't reproduce. Two traps found on the way: `scale set MotionBlur True` from the console does **not** bring the blur
+back here (it only turns it off), so it is no positive control; and a still head or a full head circle shows no
+measurable difference in snapshots or in the mirror's frame-to-frame sharpness (research/35 attempt 49's method needs
+the real head sway of a headset recording, and even then the forced "on" read like off). Until it reproduces, after a
+launch run the two `scale set` lines yourself before judging a picture.
 
 If it comes back a fourth time, measure before reasoning: a replayed head recording, the desktop mirror grabbed for 4 s,
 the frame's high-frequency energy thresholded and its transitions counted (research/35 attempt 49 describes the setup).

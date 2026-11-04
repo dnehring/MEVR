@@ -23,8 +23,10 @@ The two facts behind most of this list:
   on; each eye smears its own way (the player's "shimmering floor", "assets shift each its own way"). The workaround
   today is two console lines by hand. Fix, then verify from a cold Steam launch with the frame-flip count of research/35
   attempt 49. (gotchas/motion-blur-in-stereo, bitten 4 times, last 2026-11-02)
-  **In: b3778d8** (each level gets the toggles again 3 s and 15 s after it becomes the world). **Not yet measured** from a
-  cold launch: tick this after that measurement.
+  **In: b3778d8** (each level gets the toggles again 3 s and 15 s after it becomes the world). **Unproven:** on 2026-11-04
+  two cold Steam launches into the Mako autosave were sharp both with and without it, so the failure didn't reproduce
+  on the fake headset (the gotcha has the details and two measuring traps). Next: a headset session's first minutes
+  after a cold launch, or a reproduction; until then the two console lines stay the check.
 - [x] **[C] Developer channels open in the player build.** Done, 38d35b5: the players' build ignores the request files
   unless `[Debug] requests = 1` (`core/DevChannels`); development builds unchanged. `console.request` runs any console command (`god`, `open`,
   `set`, `mevr vehicle enter`, which must never run before the Mako drop) for any local process
