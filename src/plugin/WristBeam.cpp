@@ -29,10 +29,11 @@ using Microsoft::WRL::ComPtr;
 
 constexpr std::int64_t kSwapchainFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;  // as our other quads
 constexpr int kSize = 128;  // a soft gradient: bilinear filtering does the rest
-// The light's colour: the pale blue of the game's bypass screen (its frame and buttons), so the fan reads as the screen's own light.
-constexpr float kRed = 0.55f;
-constexpr float kGreen = 0.78f;
-constexpr float kBlue = 1.0f;
+// The light's colour: the omni-tool's orange (its hologram on the forearm, game/OmniTool, measured from the eye image
+// 2026-11-04: mid tones (233, 147, 81), the bright core (255, 205, 103) in sRGB), so the fan reads as the omni-tool's projection.
+constexpr float kRed = 1.0f;
+constexpr float kGreen = 0.63f;
+constexpr float kBlue = 0.35f;
 
 // Present thread.
 XrSession gSession = XR_NULL_HANDLE;

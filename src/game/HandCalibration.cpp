@@ -618,7 +618,7 @@ constexpr char const* kWorldUiBlock =
     "; wrist: the screens projected from your left wrist instead, Shepard's omni-tool (SkillGame: the bypass minigame; none: all\n"
     "; in the room), wristWidthM wide, its bottom edge wristAboveM over the wrist as you see it, moved wristTowardM toward your\n"
     "; eyes (< 0 away); wristFollow 1: it rides on the wrist, 0: it stays where it was projected; wristBeam: a faint fan of\n"
-    "; light from the wrist to it.\n"
+    "; light from the wrist to it; omniTool 1: your left forearm wears the game's own omni-tool hologram while it's up.\n"
     "on = 1\n"
     "widthM = 1.20\n"
     "distanceM = 0.95\n"
@@ -627,10 +627,11 @@ constexpr char const* kWorldUiBlock =
     "screens = all\n"
     "wrist = SkillGame\n"
     "wristWidthM = 0.30\n"
-    "wristAboveM = 0.06\n"
+    "wristAboveM = 0.10\n"
     "wristTowardM = 0.00\n"
     "wristFollow = 1\n"
-    "wristBeam = 1\n";
+    "wristBeam = 1\n"
+    "omniTool = 1\n";
 
 constexpr char const* kGameBlock =
     "\n"
@@ -1690,6 +1691,9 @@ vr::world_ui::Settings ReadWorldUi(Ini const& ini) {
     if (Number(ini, "WorldUi", "wristBeam", value)) {
         s.wristBeam = value != 0.0;
     }
+    if (Number(ini, "WorldUi", "omniTool", value)) {
+        s.omniTool = value != 0.0;
+    }
     return s;
 }
 
@@ -1713,9 +1717,10 @@ std::string Describe(vr::world_ui::Settings const& s) {
                        "projected from the left wrist: {}{}",
                        names.empty() ? "none" : names, s.widthM, s.distanceM, s.belowM, s.backdrop, wrist.empty() ? "none" : wrist,
                        wrist.empty() ? std::string()
-                                     : std::format(" ({:.2f} m wide, {:.2f} m over the wrist, {:.2f} m toward the eyes, {}, {})", s.wristWidthM,
+                                     : std::format(" ({:.2f} m wide, {:.2f} m over the wrist, {:.2f} m toward the eyes, {}, {}, {})", s.wristWidthM,
                                            s.wristAboveM, s.wristTowardM, s.wristFollow ? "riding on it" : "left where it was projected",
-                                           s.wristBeam ? "a fan of light from the wrist" : "no fan of light"));
+                                           s.wristBeam ? "a fan of light from the wrist" : "no fan of light",
+                                           s.omniTool ? "the game's omni-tool on the forearm" : "no omni-tool"));
 }
 
 vr::world_ui::Settings gWorldUi;
@@ -2550,10 +2555,11 @@ void Refresh() {
         // Screens projected from the wrist (2026-11-04, research/53 section 6).
         {L"WorldUi", "WorldUi", L"wrist", "wrist", L"SkillGame"},
         {L"WorldUi", "WorldUi", L"wristWidthM", "wristWidthM", L"0.30"},
-        {L"WorldUi", "WorldUi", L"wristAboveM", "wristAboveM", L"0.06"},
+        {L"WorldUi", "WorldUi", L"wristAboveM", "wristAboveM", L"0.10"},
         {L"WorldUi", "WorldUi", L"wristTowardM", "wristTowardM", L"0.00"},
         {L"WorldUi", "WorldUi", L"wristFollow", "wristFollow", L"1"},
         {L"WorldUi", "WorldUi", L"wristBeam", "wristBeam", L"1"},
+        {L"WorldUi", "WorldUi", L"omniTool", "omniTool", L"1"},
     };
     std::string addedKeys;
     for (auto const& k : kNewKeys) {

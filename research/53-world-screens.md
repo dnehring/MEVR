@@ -183,7 +183,7 @@ projector though".
 - **The wrist projector** (`[WorldUi] wrist = SkillGame` by default, a comma list like `screens`; our menu's Comfort > Game screens >
   Hacking screen: On my wrist / In the room writes `SkillGame` / `none`). The host places it from the left wrist (the HUD's wrist
   point, `hud_pieces::WristPoint` of the left grip) every frame, smoothed (50 ms): `wristWidthM` (0.30) wide, facing the eyes, its
-  bottom edge's middle `wristAboveM` (0.06) above the wrist **across the line of sight** (along its own up), moved
+  bottom edge's middle `wristAboveM` (0.06; 0.10 since section 6.1) above the wrist **across the line of sight** (along its own up), moved
   `wristTowardM` (0) toward the eyes, never nearer them than 0.25 m (core/vr/WorldUi `WristPlace`, unit-tested). Straight up from the
   wrist put it between the eyes and the wrist (11:00:52: tilted to face eyes above it, it hid the wrist and the light). It shows the
   minigame's frame only (`WristCrop`: stage x 0.21..0.79, y 0.10..0.87); in the room it keeps the whole stage (the frame cropped to
@@ -192,7 +192,7 @@ projector though".
   while it opens). The game pointer gets the whole window on its plane each frame.
 - **The light** (`wristBeam`, plugin/WristBeam): one quad in the plane of the wrist and the screen's bottom edge, a fan from the
   screen's width to a point at the wrist, alpha 0.30 at the wrist fading to 0.05 at the screen, soft sides, the pale blue of the
-  minigame's frame (`BeamPixels`, 128 x 128, made once per session). Premultiplied in linear light: the first picture premultiplied
+  minigame's frame at first, the omni-tool's orange since section 6.1 (`BeamPixels`, 128 x 128, made once per session). Premultiplied in linear light: the first picture premultiplied
   the sRGB-encoded values and darkened what was behind it (11:09:53, its difference from the world image brown, not blue).
 - **Without a tracked left controller** when it opens the screen stands in the room as before, with the room's crop: "would be
   projected from the left wrist, but the left controller isn't tracked: it stands in the room" (11:02:18). A controller lost while
@@ -205,4 +205,58 @@ projector though".
   first fan (11:09:53) needed an 8x brightened difference image to be seen. Without a tracked left controller: the room (11:02:18).
 - **Next: tapping it.** The right index finger on the wrist screen as a touch: the fingertip's contact with the panel's plane as the
   game pointer's press (research/42's click, at the touch point), released when it leaves; haptics on both hands at contact.
+
+### 6.1 The game's omni-tool, and Half-Life: Alyx's way (2026-11-04)
+
+The user: "We would follow how half life does it, for the look/assets/style we need it to look like core mass effect with the Omni
+tool".
+
+- **What Half-Life: Alyx does** (sources: the Combine OverWiki's "Hacking" and "Multi-tool" pages,
+  https://combineoverwiki.net/wiki/Hacking, https://www.combineoverwiki.net/wiki/Multi-tool; Valve's level-design page,
+  https://developer.valvesoftware.com/wiki/Half-Life:_Alyx_Workshop_Tools/Level_Design/Holo_Hacking_Puzzle, through a search
+  summary: the page itself refused the fetch; PCGamesN, https://www.pcgamesn.com/half-life-alyx/vr-design; GameSpot's puzzle
+  guide, https://www.gamespot.com/articles/half-life-alyx-multitool-puzzle-guide-how-to-solve/1100-6475047/): the multitool plugs
+  into the device's outlet (`info_hlvr_holo_hacking_plug`), a holographic puzzle appears at a spot the level puts within the
+  player's reach (`info_hlvr_holo_hacking_spawn_target`), and it's worked with the hands: the tool traces a point over a globe
+  while the other hand turns it (Sphere Trace, Point Search, Point Match, Point Drag; touching an obstacle fails it). No pointer,
+  no buttons: the hands in the hologram. What we take: the hologram comes out of the tool on the arm and is worked by hand (next:
+  touch, section 6's last item); the look is Mass Effect's.
+- **The game's omni-tool is loaded** (`mevr find omni`): `BIOG_V_T_Omni_Tool_Z`, a global package. `Prefab.OmniTool_2PieceLoop`
+  (a `BioVFXTemplate`, a crust effect: `bIsCrustEffect`, lifetime 3 s, its sound `snd_vfx.c_snd_omni_imp`) instances
+  `Prefab.OmniTool_2PieceLoop_Prefab`, whose emitters play `Particles.OmniArm_Loop` (mesh particles of `Mesh.OmniArm`, the gauntlet)
+  and `Particles.OmniHand_Loop` (`Mesh.OmniHand` and `Mesh.Omni_Tool_02`, the hand's display), materials `HologramType1/2`,
+  textures `TTMain`, `TTRing02`. The equipment screen puts it on its model through `BioUIWorld.AttachOmnitool` (its
+  `m_pTechToolEffectTemplate`); `BioVisualEffect.CreateCrustEffect(template, pawn, lifetime, bUseVFXPool)` on the class's default
+  object makes it on any pawn. It attaches each prefab emitter to the bone nearest its place in the prefab: the gauntlet to
+  `LeftElbowTwist2` (relative (1.1, 3.0, 0.6) units, rotation (-360, -17208, -32475)), the display to `LeftWrist` ((-0.3, -4.8, -0.9),
+  (228, -18443, -31793)).
+- **Why it showed nothing at first.** The emitters (and the effect) come out with `bTickIsDisabled` copied from the prefab's
+  archetypes: their particle systems never ticked (`AccumTickTime` 0, `bJustAttached` set) though `LastRenderTime` moved.
+  `Actor.SetTickIsDisabled(false)` on all of them plus `BioVisualEffect.SetState(BVFX_SPAWN)` made it show on foot (12:57:20).
+  In the minigame and the GUI screens the world is `bPlayersOnly` (`WorldInfo.bPlayersOnly` true, `Pauser` none), and the engine
+  then ticks a component only for actors the player controls (the actor tick group's loop `0x40D630` calls the component tick
+  `0x41C220`, which checks the actor's vtable `+0x490` under `LEVELTICK_ViewportsOnly`, or the component's `bTickInEditor` while
+  unpaused, but only for actors the loop reaches): the pawn as the emitters' owner, `bAlwaysTick` and `bTickInEditor` all left them
+  frozen. **The fix** (game/OmniTool): each particle system moves off its emitter (`Actor.DetachComponent`) onto Shepard's own mesh
+  at the same bone and offsets (`SkeletalMeshComponent.AttachComponent`), and `ActivateSystem`: it ticks with the pawn, on foot or
+  frozen (13:10:17). Closing the screen deactivates and detaches them and lets the effect's lifetime end (13:10:41: 1 orange pixel
+  in a step-4 sample, 9,126 with it on).
+- **Arm IK while a wrist screen is up.** On foot only before, so in the minigame Shepard's arms hung by the animation and the
+  omni-tool on them was out of sight (13:01:28). Arm IK now also runs while a screen is projected from the wrist
+  (`world_ui::WristScreenUp`), in Shepard's on-foot frame (`view_anchor::Hold`: the frame recorded on foot, as the view is held at
+  render time), so the arms follow the controllers there (13:04:18).
+- **The projector is the omni-tool's display.** The arm-length calibration can leave the rendered hand short of the controller (the
+  synthetic recording's left hand rendered ~0.15 m below it), so the screen above the controller's wrist and the omni-tool on the
+  arm came apart (13:22:46). The mod publishes the display's world place (the `OmniHand_Loop` component's `LocalToWorld`, in the
+  on-foot frame) as `world_ui::State::emitter` (the State grew 16 bytes; host and mod deploy together), the host projects the screen
+  and the fan from it, the controller's wrist as before without it. Its first 150 ms are skipped: the component still has the
+  animation's arm then (an opening placed 0.93 m away, 13:34:20).
+- **The look.** The fan is the omni-tool's orange, measured from the eye image (12:57:20: the hologram's mid tones (233, 147, 81),
+  its core (255, 205, 103) sRGB; the fan's colour (1.0, 0.63, 0.35) sRGB-encoded). The game's minigame screen keeps its own blue
+  (its movie, unchanged). `wristAboveM` 0.10 (0.06 covered the gauntlet's top: the display sits on the back of the hand and the
+  gauntlet reaches above it as seen). `[WorldUi] omniTool = 1` (0: no omni-tool, the projector the controller's wrist).
+- **Measured** (fake headset, the synthetic recording at a 60-degree head pitch, snapshot 13:36:36, `scratch/omni-tool-wrist.png`
+  locally): the opening 0.44 m from the eyes from the controller's wrist, then riding on the display; the gauntlet and display
+  pulsing orange on the forearm; the fan from the display to the screen's bottom edge. Not seen yet: the headset, a real crate, the
+  omni-tool's sound (the template's cue) [verify].
 

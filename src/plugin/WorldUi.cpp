@@ -77,6 +77,12 @@ std::optional<Shown> Current(XrVector3f const& eyes, XrQuaternionf const& head, 
         gPlaced.valid = gPlaced.valid && state.has_value();
         return std::nullopt;
     }
+    // The projector: the omni-tool's display where Shepard's arm shows it (the mod's, game/OmniTool), since the arm-length
+    // calibration can leave the rendered hand short of the controller; the controller's wrist without it. A screen projected
+    // from the wrist still needs the tracked controller (else it stands in the room).
+    if (state->emitterValid != 0 && wrist) {
+        wrist = XrVector3f{state->emitter[0], state->emitter[1], state->emitter[2]};
+    }
     std::uint64_t const now = GetTickCount64();
     LARGE_INTEGER counter{};
     QueryPerformanceCounter(&counter);
@@ -154,7 +160,9 @@ std::optional<Shown> Current(XrVector3f const& eyes, XrQuaternionf const& head, 
             panel->pose.position.x, panel->pose.position.y, panel->pose.position.z,
             std::hypot(panel->pose.position.x - eyes.x, panel->pose.position.y - eyes.y, panel->pose.position.z - eyes.z), wrist->x, wrist->y,
             wrist->z, part.u0, part.v0, part.u1, part.v1, windowWidth, windowHeight, shown.backdrop,
-            state->beam != 0 ? "a fan of light from the wrist" : "no fan of light");
+            state->beam == 0 ? "no fan of light"
+            : state->emitterValid != 0 ? "a fan of light from the omni-tool's display on Shepard's arm"
+                                       : "a fan of light from the controller's wrist");
         return gPlaced.shown;
     }
     auto const panel = wu::Place(eyes, forward, anchor, state->widthM, state->distanceM, state->belowM, heightOverWidth);

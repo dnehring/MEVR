@@ -617,6 +617,8 @@ void CheckClasses() {
     CheckClass<UBioSFHandler_Shop>("SFXGame.BioSFHandler_Shop");  // game/WorldUi: the shop's vendor
     CheckClass<UBioSFHandler_Loot>("SFXGame.BioSFHandler_Loot");  // game/WorldUi: the loot's container
     CheckClass<UBioSkillGame_Handler>("SFXGame.BioSkillGame_Handler");  // game/WorldUi: the minigame's placeable
+    CheckClass<UBioVFXTemplate>("SFXGame.BioVFXTemplate");  // game/OmniTool: the game's omni-tool effect
+    CheckClass<ABioVisualEffect>("SFXGame.BioVisualEffect");  // game/OmniTool
     CheckClass<UBioSeqEvt_ArtPlaceableUsed>("SFXGame.BioSeqEvt_ArtPlaceableUsed");
     CheckClass<UBioArtPlaceableBehavior>("SFXGame.BioArtPlaceableBehavior");
     CheckClass<AEmitter>("Engine.Emitter");  // the CIC projector's own hologram, hidden while ours shows
@@ -785,6 +787,11 @@ void CheckFields() {
     CheckField("Engine.Actor", "bMovable", SDK_BOOL(AActor, bMovable));
     CheckField("Engine.Actor", "Role", SDK_FIELD(AActor, Role));
     CheckField("Engine.Actor", "Base", SDK_FIELD(AActor, Base));
+    CheckField("Engine.Emitter", "ParticleSystemComponent", SDK_FIELD(AEmitter, ParticleSystemComponent));  // game/OmniTool
+    CheckField("Engine.ParticleSystemComponent", "Template", SDK_FIELD(UParticleSystemComponent, Template));  // game/OmniTool
+    CheckField("Engine.Actor", "BaseBoneName", SDK_FIELD(AActor, BaseBoneName));  // game/OmniTool
+    CheckField("Engine.Actor", "RelativeLocation", SDK_FIELD(AActor, RelativeLocation));  // game/OmniTool
+    CheckField("Engine.Actor", "RelativeRotation", SDK_FIELD(AActor, RelativeRotation));  // game/OmniTool
     CheckField("Engine.DynamicSMActor", "StaticMeshComponent", SDK_FIELD(ADynamicSMActor, StaticMeshComponent));
     CheckField("Engine.DynamicSMActor", "LightEnvironment", SDK_FIELD(ADynamicSMActor, LightEnvironment));
     CheckField("Engine.StaticMeshActor", "StaticMeshComponent", SDK_FIELD(AStaticMeshActor, StaticMeshComponent));
@@ -1042,6 +1049,15 @@ void CheckFunctions() {
     char const* const functions[] = {
         // mevr stream (the measuring loop's streaming volumes)
         "SFXGame.BioTriggerStream.Touch",
+        // the omni-tool on Shepard's arm (game/OmniTool)
+        "SFXGame.BioVisualEffect.CreateCrustEffect",
+        "SFXGame.BioVisualEffect.SetLifeTime",
+        "SFXGame.BioVisualEffect.SetState",
+        "Engine.Actor.DetachComponent",
+        "Engine.SkeletalMeshComponent.AttachComponent",
+        "Engine.SkeletalMeshComponent.DetachComponent",
+        "Engine.ParticleSystemComponent.ActivateSystem",
+        "Engine.ParticleSystemComponent.DeactivateSystem",
         // the galaxy hologram (game/GalaxyMap)
         "SFXGame.BioSPGame.GetSimpleString",
         "Engine.Bio2DA.GetNumRows",

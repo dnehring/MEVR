@@ -402,6 +402,8 @@ set(MEVR_MOD_SOURCES
     src/game/GalaxyMap.hpp
     src/game/WorldUi.cpp
     src/game/WorldUi.hpp
+    src/game/OmniTool.cpp
+    src/game/OmniTool.hpp
     src/game/Spectator.cpp
     src/game/SceneCaptureRig.cpp
     src/game/Spectator.hpp

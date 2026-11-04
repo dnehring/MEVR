@@ -387,10 +387,15 @@ switching frameworks.
   **The bypass minigame is projected from the left wrist** (research/53 section 6, the omni-tool; Fallout 4 VR's Pip-Boy and
   Half-Life: Alyx's multitool holograms the pattern; `[WorldUi] wrist = SkillGame`, `wristWidthM` 0.30, `wristAboveM` 0.06,
   `wristTowardM`, `wristFollow`, `wristBeam`; the menu's Comfort > Game screens > Hacking screen): the host places it each frame from
-  the HUD's left wrist point (`WristPlace`: facing the eyes, its bottom edge 6 cm above the wrist across the line of sight), its
+  the HUD's left wrist point (`WristPlace`: facing the eyes, its bottom edge 10 cm above the wrist across the line of sight), its
   frame only (`WristCrop`), unfolding over 0.18 s, a faint fan of light from the wrist (plugin/WristBeam, a `beam` snapshot layer;
   premultiplied in linear light); in the room without a tracked left controller. The State grew (size-checked, v27 unchanged). No
-  auto-hack (dropped, the user). `mevr skillgame start [type] [difficulty] [n]` opens the minigame on any placeable without a save
+  auto-hack (dropped, the user). **Shepard's forearm wears the game's own omni-tool** while it's up (research/53 section 6.1,
+  `[WorldUi] omniTool`, `game/OmniTool`: `BIOG_V_T_Omni_Tool_Z`'s orange gauntlet and display through
+  `BioVisualEffect.CreateCrustEffect`, its particle systems moved onto Shepard's mesh at the same bones, since the minigame's
+  `bPlayersOnly` ticks only the player's actors); arm IK runs while a wrist screen is up (`view_anchor::Hold`, the on-foot frame);
+  the screen and its now orange fan project from the display's rendered place (`State::emitter`, grew again), `wristAboveM` 0.10.
+  Half-Life: Alyx's way is the model for working it by hand. `mevr skillgame start [type] [difficulty] [n]` opens the minigame on any placeable without a save
   (the level's `BioSkillGame.InitializeSkillGame`); `mevr panel SkillGame invoke PreGameButtonBOnPress` cancels it. Next: tapping it.
   The skill `game-screen-to-hologram` is the recipe for the next screens.
 - LE1 Mako ([research/44](research/44-mako.md), `game/Mako`; `[Mako]` in `ASI\LE1MEVR.ini`): game mode 1 with a

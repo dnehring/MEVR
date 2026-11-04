@@ -10,6 +10,7 @@
 #include "game/GalaxyDump.hpp"
 #include "game/GalaxyMap.hpp"
 #include "game/Holsters.hpp"
+#include "game/OmniTool.hpp"
 #include "game/Player.hpp"
 #include "game/Spectator.hpp"
 #include "core/WriteJournal.hpp"
@@ -474,6 +475,12 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
             dependent = gFound[index];
         }
         return galaxy_dump::SkillGame(pc, pawn, sub.empty() ? "state" : sub, a, b, dependent);
+    }
+    if (verb == "omnitool") {
+        // `mevr omnitool on [lifetime s] | off [fade s] | state`: the game's omni-tool on Shepard's arm (research/53 section 6).
+        std::string rest;
+        std::getline(words, rest);
+        return omni_tool::Console(rest);
     }
     if (verb == "gui") {
         std::string which;

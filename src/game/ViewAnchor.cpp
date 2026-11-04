@@ -17,6 +17,7 @@ namespace {
 
 bool gUseHostView = false;
 bool gLogged = false;
+std::optional<engine::TrackingFrame> gHeld;  // Hold(): the on-foot frame while a wrist screen is up
 
 // The mod's own turn since the game camera last updated (NoteTurn): the camera as it was then, and the turn.
 struct PendingTurn {
@@ -159,7 +160,14 @@ void NoteTurn(int units, bool pawnTurned, double pivotX, double pivotY) {
 }
 
 std::optional<engine::TrackingFrame> Current() {
+    if (gHeld) {
+        return gHeld;
+    }
     return gUseHostView ? FromHost() : FromOurRenderer();
+}
+
+void Hold(std::optional<engine::TrackingFrame> frame) {
+    gHeld = frame;
 }
 
 void LogStats() {
@@ -176,6 +184,7 @@ void LogStats() {
 void Shutdown() {
     gUseHostView = false;
     gLogged = false;
+    gHeld.reset();
     gTurn = {};
     vr::host_view::Reset();
 }

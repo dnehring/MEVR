@@ -6,6 +6,7 @@
 #include "engine/ProcessEvent.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/HandCalibration.hpp"
+#include "game/OmniTool.hpp"
 #include "game/Player.hpp"
 #include "game/ViewAnchor.hpp"
 #include "ue3/Handles.hpp"
@@ -67,6 +68,7 @@ struct Hold {
 };
 Hold gHold;
 bool gScreenUp = false;  // a screen of ours was published last tick (game thread)
+bool gWristUp = false;   // ... and it's projected from the wrist (arm IK runs, the view anchor held)
 
 // The last thing A would have used on foot, and when: a screen that opens within kUsedWithinMs of it (the minigame at a crate, a
 // locker's equipment, the squad selection at the airlock) stands toward it.
@@ -293,6 +295,11 @@ void Down(Link const& link, char const* why) {
         log::Info("world ui: {} down ({})", gS.screen.empty() ? "the screen" : gS.screen, why);
     }
     RestoreFullScreen();
+    omni_tool::Tick(false);
+    if (gWristUp) {
+        gWristUp = false;
+        view_anchor::Hold(std::nullopt);
+    }
     gS.published = false;
     gScreenUp = false;
     gS.open = false;
@@ -408,6 +415,14 @@ void Tick(Link const& link) {
     state.wristWidthM = settings.wristWidthM;
     state.wristAboveM = settings.wristAboveM;
     state.wristTowardM = settings.wristTowardM;
+    // The projector: the omni-tool's display as Shepard's arm shows it (last tick's pose), in the room's frame on foot.
+    if (auto const display = onWrist ? omni_tool::DisplayWorld() : std::nullopt; display && gHold.footFrame) {
+        XrVector3f const p = engine::ToTracking(*gHold.footFrame, engine::UnrealVector{display->x, display->y, display->z});
+        state.emitter[0] = p.x;
+        state.emitter[1] = p.y;
+        state.emitter[2] = p.z;
+        state.emitterValid = 1;
+    }
     bool const fromWheel = std::any_of(panels.begin(), panels.end(), [](OpenPanel const& o) { return o.visible && wu::FromTag(o.tag) == wu::Screen::MenuBrowser; });
     if (auto const at = AnchorOf(screen, base->handler, controller, gS.opening, fromWheel)) {
         {
@@ -445,9 +460,21 @@ void Tick(Link const& link) {
     gS.published = true;
     gScreenUp = true;
     ++gS.ticks;
+    omni_tool::Tick(onWrist && settings.omniTool);  // Shepard's forearm wears the game's omni-tool while it projects the screen
+    if (onWrist != gWristUp) {
+        log::Info("world ui: {}", onWrist ? "the arms follow the controllers while the screen is on the wrist (Shepard's view on foot held)"
+                                          : "the arms go back to the game");
+    }
+    gWristUp = onWrist;
+    view_anchor::Hold(onWrist ? gHold.footFrame : std::nullopt);
     SetStatus(std::format("{{\"open\": true, \"screen\": \"{}\", \"stack\": \"{}\", \"opening\": {}, \"anchored\": {}, \"anchor\": [{:.3f}, {:.3f}, {:.3f}], "
-                          "\"placement\": {}}}",
-        gS.screen, stack, gS.opening, gS.anchored ? "true" : "false", gS.anchor[0], gS.anchor[1], gS.anchor[2], state.placement));
+                          "\"placement\": {}, \"omniTool\": {}}}",
+        gS.screen, stack, gS.opening, gS.anchored ? "true" : "false", gS.anchor[0], gS.anchor[1], gS.anchor[2], state.placement,
+        omni_tool::StatusJson()));
+}
+
+bool WristScreenUp() {
+    return gWristUp;
 }
 
 std::string StatusJson() {

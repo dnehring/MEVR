@@ -27,6 +27,9 @@ std::optional<engine::TrackingFrame> Current();
 // for the frame that shows the turn, and a shot fired before the camera update aims from the turned view. Game
 // thread.
 void NoteTurn(int units, bool pawnTurned, double pivotX, double pivotY);
+// While a game screen is projected from the wrist (game/WorldUi), the view shown is Shepard's on foot, held at render time while
+// the game's own camera serves its GUI: Current() returns that frame (recorded on foot) until Hold(nullopt). Game thread.
+void Hold(std::optional<engine::TrackingFrame> frame);
 // Heartbeat (host renderer only): what the host's latest view says.
 void LogStats();
 void Shutdown();

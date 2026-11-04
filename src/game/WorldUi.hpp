@@ -21,6 +21,9 @@ struct Link {
 // Before the ProcessEvent hook goes in: the camera-update handler that records Shepard's view on foot (held while a screen is up).
 void TryStartup();
 void Tick(Link const& link);
+// A screen is up and projected from the wrist ([WorldUi] wrist): arm IK drives Shepard's arms then as on foot (the omni-tool
+// on the left forearm meets the controller that projects it), in the held on-foot frame (view_anchor::Hold). Game thread.
+bool WristScreenUp();
 // Snapshot JSON ("worldUi").
 std::string StatusJson();
 // Mod shutdown: the host forgets the screen.

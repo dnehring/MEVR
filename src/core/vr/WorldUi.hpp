@@ -62,10 +62,15 @@ struct Settings {
     // research/53 section 6). Without a tracked left controller when it opens, the screen stands in the room.
     std::uint32_t wristScreens = Bit(Screen::SkillGame);
     float wristWidthM = 0.30f;   // wristWidthM: its width
-    float wristAboveM = 0.06f;   // wristAboveM: its bottom edge above the wrist as the eyes see it (the fan of light in the gap)
+    float wristAboveM = 0.10f;   // wristAboveM: its bottom edge above the wrist as the eyes see it (the fan of light in the gap;
+                                 // 0.10 clears the omni-tool's gauntlet, measured 2026-11-04, 0.06 covered its top)
     float wristTowardM = 0.0f;   // wristTowardM: moved that far from the wrist toward the eyes (level; < 0 away)
     bool wristFollow = true;     // wristFollow: it rides on the wrist (0: it stays where it was projected, the hand free)
     bool wristBeam = true;       // wristBeam: a faint fan of light from the wrist to its bottom edge
+    // omniTool: while a wrist screen is up, Shepard's left forearm wears the game's own omni-tool (the orange holographic
+    // gauntlet and the hand's display, BIOG_V_T_Omni_Tool_Z; the user, 2026-11-04: "core Mass Effect with the omni-tool").
+    // Mod only (game/OmniTool).
+    bool omniTool = true;
 };
 
 // Where a screen stands.
@@ -109,6 +114,11 @@ struct State {
     float wristWidthM = 0.0f;
     float wristAboveM = 0.0f;
     float wristTowardM = 0.0f;
+    // The projector (grew 2026-11-04 again): the omni-tool's display on Shepard's left arm as rendered (game/OmniTool), tracking
+    // space; the host projects from it instead of the controller's wrist (the arm-length calibration can leave the hand short).
+    float emitter[3] = {};
+    std::uint8_t emitterValid = 0;
+    std::uint8_t emitterPad[3] = {};
 };
 
 void Publish(State const& state);

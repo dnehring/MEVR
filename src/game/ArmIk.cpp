@@ -23,6 +23,7 @@
 #include "game/Sights.hpp"
 #include "game/SupportGrip.hpp"
 #include "game/Weapon.hpp"
+#include "game/WorldUi.hpp"
 #include "ue3/Handles.hpp"
 
 #include <algorithm>
@@ -169,10 +170,12 @@ std::optional<Body> PlayerBody() {
     return Body{pawn, mesh};
 }
 
-// On-foot gameplay: no conversation, cinematic, GUI or vehicle.
+// On-foot gameplay: no conversation, cinematic, GUI or vehicle; or a game screen projected from the wrist (the bypass minigame,
+// research/53 section 6): Shepard stands as on foot, the view held at his, and the omni-tool on his left forearm must meet the
+// controller that projects the screen.
 bool OnFoot() {
     std::optional<std::uint8_t> const mode = player::GameMode(player::Controller());
-    return mode && *mode == kGameModeOnFoot;
+    return mode && (*mode == kGameModeOnFoot || world_ui::WristScreenUp());
 }
 
 std::string Format(engine::UnrealVector const& v) {
