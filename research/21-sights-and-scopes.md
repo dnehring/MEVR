@@ -725,3 +725,87 @@ milliseconds); the eye reaches the relief (the host's picture-up line about 0.12
 chin feel acceptable (else `scopeAdsPullMaxM` lower); the lens part is hidden only while the picture shows; the assault
 rifle's dot lines up (`alignment assist on` with a gentle move, the heartbeat's average offset); `adsReachM` might want
 0.45 for players who hold the gun further out.
+
+## 16. What the game itself says about each gun's sight (read from the game's files, 2026-11-03)
+
+**Question (user, 2026-11-03):** our red dots and scopes are generic; the game has its own look for some weapons. Can the
+live game assets give each gun a scope that fits it?
+
+**Sources.** The weapon meshes and appearances in `BIOC_Materials.pcc` (forced exports `BIOG_WPN_*_R.*` and
+`BIOG_WPN_ALL_MASTER_L.Appearance.*`; the Geth guns in `SFXWorldResources.pcc`), read with Legendary Explorer's library: the
+cockpit packager's `inspect`, and a throwaway dumper for each mesh's bones, sockets and the bounds of the vertices each bone
+carries (LOD 0, the dominant influence; reference pose). The stats classes' config in `Coalesced_INT.bin` (length-prefixed
+UTF-16 strings). Field names from LExSDKv2's LE1 headers (`SFXWeaponStatsBase`, `ABioWeaponRanged`, `BioSFHandler_Reticule`).
+The HUD's reticle movie `GUI_SF_HUD.Reticule` and its textures in `Startup_INT.pcc`. Nothing extracted is in the repository
+(game data); the numbers below are our measurements.
+
+### The models: eight shapes, many paint jobs
+
+- Every player gun is one of 8 skeletal meshes, `BIOG_WPN_<type>_R.<variant>.WPN_<variant>_MDL`: `PSTa`/`PSTb` (pistol),
+  `BLSa`/`BLSb` (shotgun), `ASLa`/`ASLb` (assault rifle), `SNPa`/`SNPb` (sniper rifle). A type's appearance lists variants (the
+  sniper rifle's 12), each one material instance (the manufacturer's colours `HGR_Colour_*`, stripes, the blue emissive tint
+  `WPN_MASTER_Emis_ColourTint`) on model a or b with its anim set. One material and one section per mesh: the lens has no
+  material of its own; its glow is the shared material's emissive mask.
+- No sight sockets on any of them (Flash x2, Tracer, Cooldown, Sabotage, all on `Root`, as section 11 saw on one).
+- **The pistols and shotguns have no optic part at all**: their dots and holos are ours alone.
+- **The rifles' sight parts** (mesh frame: x toward the butt, z up, gun units; each bone's own vertices' box):
+
+| Model | Muzzle | Sight bones (origin x, z) | Their geometry | Reading |
+|---|---|---|---|---|
+| SNPa | x -64.7, bore z 5.3 | `Scope_Eye` (-5.5, 12.4), `Scope_Lens` (-20.7, 10.8) | Eye: x -6.1..8.0, 4.2 wide, z 8.5..12.8. Lens: x -26.3..-17.0, 5.0 x 4.8 | a 34-unit scope; the eyepiece tube runs from the bone back to x 8.0, **6 units behind the grip** (`handle` 1.9); its axis at z 10.65, 1.7 under the bone |
+| SNPb | x about -66.5 [verify] | `Scope_Rear` (5.8, 10.2), `Scope_Mid` (-7.0, 10.2), `Scope_Forward` (-18.6, 10.2) | Rear: a disc x 6.6..7.2, 3.4 across, centre z 9.85 | the eyepiece glass is its own bone; radius 1.7 units (not 2); 5 units behind the grip; no `Scope_Lens` |
+| ASLa | x -39.2, bore z 1.5 | `Scope` (-0.3, 10.65) | x -5.8..7.1, 4.3 wide, z 9.5..13.9 | a 12.8-unit housing over the grip; rear face 7.4 behind the bone, axis z 11.7 |
+| ASLb | x about -41.7 [verify] | `Scope` (7.1, 10.2) | x 3.0..9.0, 3.3 wide, z 8.4..12.0 | a short 6-unit sight behind the grip; rear face 1.9 behind the bone |
+
+- The sessions so far held **SNPa** and **ASLa**: section 13's `Scope_Eye` at 59.2 back, 7.0 up is SNPa's (59.2, 7.1) and
+  section 13/14's settled `Scope` at 39.6 back, 9.1 up is ASLa's (38.9, 9.15). The reference pose is the unfolded gun for these
+  bones. The pistol of 2026-11-03 was `PSTb` (the material log).
+
+**What this changes:**
+1. **SNPa's eyepiece is behind the hand, not ahead of it.** Section 14's "the eyepiece sits about 7 cm AHEAD of the hand" came
+   from the bone's origin; the tube's rear face is 13.5 units further back. Drawn on the face, a hold "at the eye" (section 15:
+   0.31-0.35 m from the bone) is about 0.18-0.22 m from the glass: 6-10 cm of pull reach the 0.12 m relief, within
+   `scopePullMaxM`'s 15 cm, and the 35 cm ADS pull (the hand at the chin) is not needed for that hold. The axis 1.7 units under the bone is part of section 13
+   item 5's eye "4 cm above the line".
+2. **ASLa's housing ends 7.4 units behind its bone** (`HousingToEyepiece` guesses 1.5): with `scope 1.5` the picture sat
+   mid-housing, and a dot window belongs at the housing's rear face (section 14's "red dot floated on the back of the housing").
+3. **SNPb:** `sniperRifleHide = Scope_Lens` matches nothing on it; its eyepiece glass is `Scope_Rear`, which `SightBone`
+   already takes (the "rear" word) and `PartsToHide` never hides (the sight bone). Its lens is 1.7 units, not 2.
+
+### The magnification: per manufacturer, in the config
+
+- `SFXWeaponStatsBase.AimModes` is an array of `WeaponAimMode {ZoomFOV, CameraSensitivityMultiplier, FrictionMultiplier,
+  AdhesionMultiplier, bScoped}`; each manufacturer has its own stats class (`ABioWeaponRanged.StatsClassBindings`,
+  `GetStatsBinding(ManufacturerID, weaponType)`); the weapon holds `Stats` (+0x4C0) and `CurrentAimMode` (+0x4E0) and has
+  `GetZoomFOV`, `IsScoped` and `CycleMagnification`.
+- The config: the pistol, shotgun and assault rifle bases have one mode, ZoomFOV 39.6, `bScoped=false` (no manufacturer
+  overrides it); the sniper rifle base two scoped modes, 22.6 and 11.4 degrees; Equalizer, Hammer, Harpoon and Volkov 23.9 and
+  12.1 (the other sniper classes keep the base's).
+- Against the combat camera's 70 degrees (`SFXCameraMode`'s default, not overridden by `SFXCameraMode_Combat`; TightAim's own
+  39.6): the unscoped aim is 1.9x; the sniper rifles 3.5x then 7.0x, the four 3.3x then 6.6x. **The game says only sniper rifles
+  are scopes** (section 15's decision, the assault rifle a red dot, agrees), **and they have a second magnification**.
+- The HUD shows it: `BioSFHandler_Reticule.ReticuleInfo.m_fMagnificationLevel`, `RETICULE_MODE_SNIPER`.
+
+### The game's scope picture
+
+- `GUI_SF_HUD.Reticule` (GFx, 84 KB; clips `SniperMode` with a `zoom` property and `RANGE_IN`/`RANGE_OUT` labels, beside
+  `StandardMode`, `MarksmanMode`, `AssassinationMode`, ...) and 15 textures in `Startup_INT.pcc` (always loaded). The scope's:
+  `Reticule_I41` (2048 square: the tube's dark rings around a clear disc), `I43`/`I44` (512x2048: the frame's sides for wide
+  screens), `I4C` (2048 square: a soft lens mask with scratches), `I4E` (1024 square: one quarter of a cyan reticle, a post, a
+  stem, arcs and a bracket below), `I70` (1024x2048: a ranging ladder and scale), `I6D` (a soft white mask). The others are the
+  standard reticle's arcs and bars.
+- How the pieces are placed, mirrored and animated with the zoom is in the movie's timeline **[verify: the SWF's placements, or
+  a flat screenshot of the game's sniper zoom]**.
+
+### Options (none built yet)
+
+1. **A per-model optic table** (mod only, hot reload, unit-testable): keyed by the mesh's name (the mod logs it), our numbers
+   above: the eyepiece's rear-face point and axis in the sight bone's frame, the lens radius, parts to hide; an unknown mesh
+   keeps today's generic path. Fixes 1-3.
+2. **Magnification from the held weapon** (mod): `Stats.AimModes[CurrentAimMode]` through our reflection layer: `bScoped` picks
+   scope or dot, the zoom `tan(35 deg) / tan(ZoomFOV / 2)`; the second mode on a gesture (the game's `CycleMagnification`); the
+   scope capture's field follows. `sniperRifle = scope 4` would become `scope auto`, a number still overriding.
+3. **The game's reticle and tube on our picture** (host and mod, a HostServices bump): the `Reticule_*` textures sampled from the
+   running game's memory (the host already finds a `UTexture`'s D3D11 texture for the scope capture, research/39) and composed
+   in `SightPictures`' shader as the movie composes them; nothing from the game in the repository; our duplex when they aren't
+   found. Not the movie itself: its `SniperMode` follows the camera's zoom (`bIsZoomed`), which must stay off (section 4).
