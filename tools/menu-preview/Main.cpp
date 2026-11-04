@@ -562,6 +562,7 @@ int main(int argc, char** argv) {
     model.SetNumber("lifesize", 1.0f);
     model.SetText("lifesize_note", "");
     model.SetText("section", "advanced");
+    model.SetText("advtab", "diag");  // the stereo expert shot above left Stereo selected
     // Report a problem (research/33 section 8): the request answered, then the crash offer over the first section.
     model.SetText("report_msg", "Saved to the Desktop: MEVR-report-2026-10-26-0143.zip. Open it after the game: nothing was sent.");
     model.SetNumber("report_snapshot", 1.0f);
