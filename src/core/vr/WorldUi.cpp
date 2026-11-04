@@ -99,11 +99,23 @@ Rect DefaultCrop(Screen screen) {
         // Measured 2026-11-04 (the Normandy's requisitions officer): the item picture, the item card and the lists span stage
         // x 0.17..0.83, the whole height (the title "Store" at the top, the back button at the bottom right).
         return {0.14f, 0.0f, 0.86f, 1.0f};
+    case Screen::Loot:
+        // Measured 2026-11-04 (a real container on UNC20): "Recovered Items", the list, the value and the two buttons span stage
+        // x 0.317..0.683, y 0.064..0.922; the rest was an empty backdrop over the container. With a margin.
+        return {0.30f, 0.04f, 0.70f, 0.95f};
     // The minigame keeps the whole stage in the room: its frame (stage x 0.226..0.775, y 0.120..0.848, measured 2026-11-04,
     // research/53 section 6) cropped to the panel's 1.20 m would stand 64 degrees wide at 0.95 m. On the wrist: WristCrop.
     default:
         return {};  // the whole stage until measured (research/53)
     }
+}
+
+float RoomWidth(Screen screen, float widthM) {
+    if (screen == Screen::Loot) {
+        Rect const crop = DefaultCrop(screen);
+        return widthM * (crop.u1 - crop.u0);
+    }
+    return widthM;
 }
 
 Rect WristCrop(Screen screen) {

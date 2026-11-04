@@ -70,7 +70,7 @@ All 35 templates of the GUI library, in its order. "Room" = the world UI below. 
 | **Codex** | GUI_SF_Journal.PC_Codex | the wheel, `ShowCodexGui` | Flash, pictures, narration | **room** | done |
 | Inventory | GUI_SF_Inventory.PCInventory | the wheel, `ShowEquipmentGui`; Normandy lockers (`BioSeqAct_ShowInventory`) | Flash + the squadmate in the UI world | **room** (straight ahead; a locker's toward the locker), the 3D model missing | done; next: the squadmate as a hologram (a capture of the UI world [verify]) |
 | XMods | GUI_SF_Inventory.PCInventory | upgrades, from the equipment | as Inventory | **room** | with Inventory |
-| Loot | GUI_SF_Loot.PC_Loot | containers and bodies with items (`MassEffectGuiManager.ShowLootGui(oLootInv)`) | Flash | **room**, at the container or body (the inventory's owning actor) | done [verify in a mission] |
+| Loot | GUI_SF_Loot.PC_Loot | containers and bodies with items (`MassEffectGuiManager.ShowLootGui(oLootInv)`) | Flash | **room**, at the container or body (the inventory's owning actor), its frame only (stage x 0.30..0.70, y 0.04..0.95) at the whole stage's scale | done, seen at a real container (section 5.1) |
 | Achievement | GUI_SF_Achievement.PC_Achievement | achievement list | Flash | **room** | listed [verify] |
 | GameOver | GUI_SF_GameOver.GameOver | death | Flash | **room** | listed [verify] |
 | CharacterRecord | GUI_SF_CharacterRecord.PC_CharacterRecord | the wheel, `ShowSquadGui` | Flash + Shepard in the UI world | **room**, the 3D model missing | with Inventory |
@@ -145,7 +145,28 @@ The galaxy map's pieces made generic (core/vr/WorldUi, game/WorldUi, plugin/Worl
   (`BIOG_APL_TYPES.Containers.AmmoCase_00_Con_Type`, "Closed": loot) at `PRO10_01_PLC.BioUseable_0` (-24988, 126722, -1107) and
   `PRO10_03_PLC.BioUseable_4` (-16433, 133959, -72). With a save past the prologue: stand by one, `mevr use` its actor (what A
   does), snapshot.
-- The minigame itself needs no save: section 6. `BioWorldInfo.BioLoadGame(96)` (a load by slot) loaded nothing from the title's
+- The minigame itself needs no save: section 6.
+
+### 5.1 A real mission: the VR career's save on UNC20 (2026-11-04)
+
+- **Getting there.** `tools/launch-game.ps1 -Steam`: the title's Enter resumes the last save, the VR career's autosave in the
+  Mako on UNC20 (the cockpit work's planet); the script waits for on-foot play and times out in the Mako, harmlessly.
+  `mevr vehicle exit` (the game's `TryExitVehicle`), `mevr setloc` into the planet's base (`BIOA_UNC20_01_DSG`, around
+  (80000, 51500, -25350): a storage locker, a junk container, an aid kit, a computer, four doors).
+- **Using things without the pad.** The game window has no focus on the test rig, so the pad's A doesn't reach the game. The
+  gaze picks the target as in play (`interact: A would use ...` once the replayed head looks down at it), and **`mevr call <n>
+  Used` on the live `SFXGameModeDefault`** (`mevr instances SFXGame.SFXGameModeDefault`) is what A does: the game's own
+  path, its animation, its checks. (`Actor.UsedBy` on the container returned false and opened nothing.) `mevr call <n> <Function>`
+  calls any function without parameters on a found object.
+- **The encrypted storage locker** (`StorageLocker_01_Con_Type`, `m_SkillDifficulty` 0): the game's prompt, our label at the
+  object, reads "Storage Locker / Decryption: Skill Too Low", and A does nothing: this Shepard has no decryption skill (the
+  game's rule). A real crate's minigame needs a Shepard with the skill [verify on another career].
+- **The junk container** (`JunkS_00_Con_Type`, "Malfunctioning Object / Open"): A opened the loot screen in the room, toward the
+  container 0.84 m ahead and 1.76 m below the eyes, 0.55 m from the eyes (the nearest the room placement allows), the lid
+  opening under it (snapshot 14:28:10). Its frame filled only stage x 0.317..0.683, y 0.064..0.922 of a 1.20 x 0.67 m panel, the
+  rest an empty 0.8 backdrop over the crate; cropped to its frame at the whole stage's scale (`DefaultCrop`, `RoomWidth`) it
+  is 0.48 x 0.61 m with the list the same size (14:31:38). `mevr call <n> HideLootGui` on the `MassEffectGuiManager` closes it
+  (the first call was followed by a fresh opening, the second closed it [verify why]). `BioWorldInfo.BioLoadGame(96)` (a load by slot) loaded nothing from the title's
   Normandy: the user's Citadel save is another career's, so a real crate still means the menus.
 
 ## 6. The bypass minigame: reached on the Normandy, projected from the wrist (2026-11-04)

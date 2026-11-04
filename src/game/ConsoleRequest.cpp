@@ -647,6 +647,30 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         bool const called = ue3::runtime::Call(gFound[index], f, parms);
         return std::format("{}.OnArtPlaceableUsed(the player's pawn) called {}", r.FullName(gFound[index]), called);
     }
+    if (verb == "call") {
+        // `mevr call <n> <Function>`: a function without parameters (a return value is fine) called on the n-th of `find` /
+        // `instances` through ProcessEvent (research: e.g. SFXGameModeDefault.Used, what A does on the current selection).
+        std::size_t index = 0;
+        std::string name;
+        words >> index >> name;
+        ue3::Reflection& r = ue3::runtime::Get();
+        if (index >= gFound.size() || !r.IsAlive(gFound[index]) || name.empty()) {
+            return std::string("usage: mevr call <n> <Function> (mevr find or instances first)");
+        }
+        ue3::Function* const f = r.FindFunction(r.ClassOf(gFound[index]), name);
+        if (f == nullptr) {
+            return std::format("{} has no {}", r.FullName(gFound[index]), name);
+        }
+        ue3::Params parms(r, f);
+        for (ue3::ParamSpec const& spec : parms.Specs()) {
+            if (&spec != parms.ReturnSpec()) {
+                return std::format("{} takes parameters: mevr call only calls functions without them", name);
+            }
+        }
+        bool const called = ue3::runtime::Call(gFound[index], f, parms);
+        return std::format("{}.{} called {}{}", r.FullName(gFound[index]), name, called,
+            parms.ReturnBool() ? std::format(", returned {}", *parms.ReturnBool()) : std::string());
+    }
     if (verb == "use" || verb == "activate") {
         // `mevr use <n>`: the n-th of `find` used by the player's pawn (Actor.UsedBy: what A on it does). `mevr activate <n> [input]`:
         // a Kismet op's input fired (SequenceOp.ForceActivateInput).
