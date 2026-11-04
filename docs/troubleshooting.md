@@ -6,13 +6,17 @@ This guide is for two readers:
   (`MEVR-report-<date>.zip`) and a description of the problem. Start at [section 1](#1-how-to-use-this-guide-for-an-ai-assistant).
 - **A player** reading it as an FAQ. Skip to the [quick triage tables](#2-quick-triage) and find your symptom.
 
-MEVR is a VR mod for **Mass Effect 1, Legendary Edition** (`MassEffect1.exe` 2.0.0.48602) on PC. It is an ASI plugin
-(`LE1MEVR.asi`) with Halcyon's MassEffect1-VR renderer built in, plus our motion controls: the hand aims, the arms
-follow the controllers, body holsters, a two-handed grip, sights, grenades, comfort options and a VR menu.
+MEVR is a VR mod for **Mass Effect 1, Legendary Edition** (`MassEffect1.exe` 2.0.0.48602) on PC, and for Mass Effect 1
+only (Mass Effect 2 and 3 aren't playable in VR). It is an ASI plugin (`LE1MEVR.asi`) with Halcyon's MassEffect1-VR
+renderer built in, plus our motion controls: the hand aims, the arms and fingers follow the controllers, body holsters,
+a two-handed grip, sights, grenades, the vent, the Mako's cockpit and its controls, the game's screens in the room,
+comfort options and a VR menu. The controls are listed in the README's Controls section.
 
-Everything here is grounded in the mod's source code and research notes (`research/*.md`) as of 2026-10-26. Log lines
+Everything here is grounded in the mod's source code and research notes (`research/*.md`) as of 2026-11-04. Log lines
 are quoted as the code writes them; `{}`, `N` or `...` stand for values. **[uncertain]** marks what hasn't been
-confirmed.
+confirmed. Many features added since late October were checked only on SteamVR's simulated headset, not by a person in
+a headset ([release checklist](release-checklist.md) section 2): for those, a report with the log is the first real
+evidence, not a mistake on the player's side.
 
 ---
 
@@ -89,8 +93,8 @@ What a good start looks like (the first lines of `LE1MEVR.log`):
 
 | Symptom | Confirm with | Cause | Fix |
 |---------|--------------|-------|-----|
-| No `LE1MEVR.log` at all, or one from an earlier day | The file listing: no `bink2w64_original.dll` next to `bink2w64.dll`, or no `ASI\LE1MEVR.asi`; no `MEVRLoader.log` for this run | No ASI loader ran, so nothing loaded the mod. | Run `MEVR-Setup.exe` (the copy in `Binaries\Win64\ASI` works too) and use **Repair**. |
-| The same, right after Steam's "verify integrity of game files" (or an EA app repair) | `bink2w64_original.dll` is still there, but `bink2w64.dll` is RAD's own (the listing's date/size match the original's) | The repair put the game's own Bink DLL back over our loader. | **Repair** in `MEVR-Setup.exe`. |
+| No `LE1MEVR.log` at all, or one from an earlier day | The file listing: no `bink2w64_original.dll` next to `bink2w64.dll`, or no `ASI\LE1MEVR.asi`; no `MEVRLoader.log` for this run | No ASI loader ran, so nothing loaded the mod. | Run **Repair** in the `MEVR-Setup.exe` from the downloaded release zip (next to its `payload` folder). The copy in `Binaries\Win64\ASI` can uninstall but not repair: it has no payload (`Repair needs the downloaded release (this copy has no payload)`). |
+| The same, right after Steam's "verify integrity of game files" (or an EA app repair, or a game update) | `bink2w64_original.dll` is still there, but `bink2w64.dll` is RAD's own (the listing's date/size match the original's) | The repair put the game's own Bink DLL back over our loader. The same repair also puts the game's own `PCConsoleTOC.bin` back, which drops the Mako cockpit's entry ([2.12](#212-the-mako-and-its-cockpit)). | **Repair** in the downloaded `MEVR-Setup.exe`: it puts the loader back and adds the cockpit's entry again. If both `bink2w64.dll` and `bink2w64_original.dll` are gone, Repair says so: verify the game's files first, then Repair. |
 | `MEVRLoader.log` exists but doesn't mention `LE1MEVR.asi` | `no ASI folder (...)`, or `... didn't load (error N)` | The `ASI` folder or the mod file is missing, or Windows refused to load it (error 126: a dependency missing; 193: not a 64-bit DLL; an antivirus quarantine shows as missing). | Repair. If an antivirus removed `LE1MEVR.asi`, restore it and add an exception. |
 | The loader waited and gave up | `the exe's code still looks encrypted after N ms (...): attaching anyway`, then, probably, the mod's `our RVA table doesn't match` | The game's DRM hadn't decrypted the exe within 60 s (a very slow start, or the exe isn't the real one). | Start the game again. If it repeats, report it with both logs. |
 | `[error] unsupported game version {} (need 2.0.0.48602); VR disabled, game untouched (...)` | That line | `MassEffect1.exe` isn't version 2.0.0.48602. The mod's addresses are only valid for that build, so it switches itself off and the game runs flat. | Update the game in Steam or the EA app. A downgraded or modified exe isn't supported. |
@@ -140,10 +144,12 @@ play), 6 stopping, 7 loss pending, 8 exiting. The renderer runs frames from 2 to
 | The world is upside down or tilted at start | `[MEVR-RECENTER] the world has looked upside down for 5 s (...)` | SteamVR sometimes starts with a rolled base space. | Look straight ahead and recenter: R on the keyboard, double-click the right stick, or the menu's **Recenter**. The log says `[MEVR-RECENTER] tilt-corrected recenter: ...`. |
 | Stereo looks broken, cutscenes letterboxed | Halcyon's log: `[TARGETCHK] Stereo 2 target MISMATCH: live=WxH ... configured=WxH ...` | The game's window isn't the size the stereo renderer expects (a bordered window is capped at the monitor's height; the game or another tool changed `GamerSettings.ini`). | In `MEVR-Setup.exe`, **Settings > Apply** (the VR game settings: a borderless window at the VR resolution). Or pick the render resolution again in our menu's **Display**. Restart the game. |
 | No stereo in gameplay | Halcyon's log has no `[PASSCAP] published complete stereo pair` lines | The two eye renders aren't being captured. Check `vrMode = 2` in the `[active]` profile of `MELEVR.ini` (2 = Stereo). | Set `vrMode = 2` in the active profile, or report it. |
+| The game's flat window floats in the headset over the VR picture, doubled or misaligned (SteamVR, game started from Steam) | No log line: the headset shows two pictures | SteamVR's **Theater Screen** shows a non-VR Steam game's window on a virtual screen while SteamVR runs. Seen with an early build (notes/milestones.md, M3 test 1, 2026-10-07); **[uncertain]** whether it still happens with the current renderer (the development machine has had it off since). | SteamVR > Settings > Show Advanced Settings > Dashboard: turn off showing non-VR apps on the Theater Screen at launch. |
 
-**SteamVR vs Meta's runtime.** MEVR is tested only through **SteamVR** (a Quest 3 over Steam Link, a PS VR2). Meta's
-own runtime (Link, Air Link) ran an early build but **hasn't been tested with the current renderer**. If a Quest
-player has trouble on Link, trying SteamVR (Steam Link, or SteamVR as the active runtime over Link) is a useful
+**SteamVR vs Meta's runtime.** MEVR has been run only through **SteamVR**: a PS VR2 (most sessions), and a Quest 3 over
+Steam Link until 2026-10-21, before most of today's features existed. Meta's own runtime (Link, Air Link) ran an early
+build (a Quest Pro, 2026-10-07) but **hasn't been tried with the current renderer**; Virtual Desktop not at all. If a
+Quest player has trouble on Link, trying SteamVR (Steam Link, or SteamVR as the active runtime over Link) is a useful
 comparison: say which one the logs show (`[XRRUNTIME] name=...`).
 
 ### 2.3 Crashes
@@ -188,7 +194,8 @@ render levers are experimental); turn off other ASI mods and overlays; update th
 ### 2.4 Controllers
 
 The bindings: Touch (and the PS VR2 Sense, which SteamVR presents as Touch), Index, HP Reverb G2, WMR, Vive wands and
-the simple controller. Only Touch (Quest 3, PS VR2 under SteamVR) is tested.
+the simple controller (`src/core/xr/Input.cpp`). Only Touch has been tried (the Quest 3's over Steam Link, the PS VR2
+Sense under SteamVR). On Index the left controller's A and B are X and Y; Index has no menu button binding.
 
 | Symptom | Confirm with | Cause | Fix |
 |---------|--------------|-------|-----|
@@ -204,8 +211,9 @@ the simple controller. Only Touch (Quest 3, PS VR2 under SteamVR) is tested.
 ### 2.5 Weapons: holsters, the grip, sights, shots
 
 Defaults: pistol at the right hip, assault rifle over the right shoulder, shotgun at the left hip (a cross-draw),
-sniper rifle over the left shoulder; grenades at the left side of the chest. **The right grip holds the gun**: keep it
-squeezed to carry it, let go at its slot to holster it, let go elsewhere and it goes back after 0.3 s.
+sniper rifle over the left shoulder; grenades at the left side of the chest, taken with the **right** hand
+(`[Throwables] hands = right`; `left` or `both` for the left hand). **The right grip holds the gun**: keep it squeezed
+to carry it, let go at its slot to holster it, let go elsewhere and it goes back after 0.3 s.
 
 | Symptom | Confirm with | Cause | Fix |
 |---------|--------------|-------|-----|
@@ -220,12 +228,14 @@ squeezed to carry it, let go at its slot to holster it, let go elsewhere and it 
 | The gun isn't in Shepard's hand, or points off | `weapon: grip measured in the right hand's axes: ...` missing, or many `weapon: grip moved by ...` lines; `weapon: {} not in the right hand (...)` | The gun is measured in the hand a moment after a draw. | Hold the hand still for a second after drawing. Repeated `grip moved` lines while standing still: report them. |
 | The gun points somewhere other than the controller | The calibration lines (below); `calibration: the held gun follows the calibrated {} stance: ...` | Without a calibration, the controller's own aim pose is used, which differs per controller. | Run the calibration (our menu: **Body & calibration > Start calibration**). |
 | The two-handed grip doesn't take | `support grip: held (...)` / `support grip: released (...)` lines, `controls: two-handed grip ...` at start | The left hand has to be inside the grab zone along the gun (radius `[Controls] supportAcquireM`, 0.18 m) when the left grip closes. | Hold the left hand on the gun's front. The left grip away from the gun does nothing (it never opens the squad wheel since 2026-10-22: the left trigger does). |
-| No red dot or scope | `sights: settings: ...` at start; `sights: the host draws no sight`, `[MEVR-SIGHT] no eye through the sight` | The dot shows only to an eye looking through the sight's window. | Bring the gun up to the eye, aligned. `[Sights] enabled`, `pistol = dot`, `sniperRifle = scope 4` etc. |
-| The scope looks too small or too big | `[MEVR-SIGHT] first scope picture: ...`, `sights: the scope's picture was up N frames: ...` | | `[Sights] scopeFieldDeg` (22), `scopeEyeBoxM` (0.05), `scopeMaxM` (0.70). |
+| No red dot or scope | `sights: settings: ...` at start; `sights: the host draws no sight`, `[MEVR-SIGHT] no eye through the sight` | The dot shows only to an eye looking through the sight's window. A scope's picture shows only while you aim down the sight (`[Sights] ads = 1`: the gun up at your eye, your eyes within `adsReachM`, 0.40 m, of the eyepiece; `sights: ADS on/off (...)`). | Bring the gun up to the eye, aligned. `[Sights] enabled`, `pistol = dot`, `sniperRifle = scope auto` (the rifle's own 3.5x and 7x; a flick of the right stick forward or back steps between them, `zoomStick = 1`) etc. |
+| The scope looks too small or too big | `[MEVR-SIGHT] first scope picture: ...`, `sights: the scope's picture was up N frames: ...` | | `[Sights] scopeFieldDeg` (22), `scopeEyeBoxM` (0.05); `scopeMaxM` (0.70) only with `ads = 0`. |
+| The scope shows a plain crosshair, not the game's sniper view | `[warn] sights: the game's scope view isn't used: ...; the scope keeps our duplex reticle` | `[Sights] reticle = game` (default) asks for the game's own scope art, which the game frees after loading it: every scope falls back to the duplex reticle (research/21 section 16). Known. | Nothing to fix on the player's side. `reticle = duplex`, `mildot` or `dot` choose one directly. |
+| Black speckle in the scope's dark areas | `scope capture:` lines | The scope's picture is a real zoomed render (`[Sights] scopeCapture = 1`, default since 2026-11-04), and the game's post-processing adds the speckle to it (research/39 section 12). Known. | `[Sights] scopeCapturePost = 0`: no speckle, but no colour grade either (applies after `scopeCapture` goes 0 and back to 1). `scopeCapture = 0` magnifies the other eye's picture instead. |
 | The dot doesn't sit on the gun's sight | `sights: the {}'s sight sits on its '{}' bone: ...`, the heartbeat's `sights:` line | The sight's place is read from the gun model. Two-handed, the assault rifle's dot can be off (known, see [section 4](#4-known-limitations)). | Note which gun and one- or two-handed; a snapshot helps. `[Sights] <gun>Place = back, height` overrides it. |
 | Shots don't land on the dot | `hand aim: shot N: from the muzzle (...) toward what the sight line hit, ...` vs `... along the barrel (no sight line to converge ...)` | Shots converge on what the sight line hits (`[Sights] converge = 1`). Without a calibration the sight line itself may be off. | Calibrate. If shots still miss the dot, report it with a snapshot and the `hand aim: shot` lines. |
 | The world tilts while shooting | `view level:` lines | The level camera holds pitch and roll at 0 on foot while the hand aims (`[Hands] levelCamera = 1`). | Check `levelCamera = 1`. |
-| Grenade or melee doesn't happen | `throwables:` lines (`refused`, `put back`) | A slow release puts the grenade back; melee needs an enemy within `meleeReachM` (2 m) and `meleeConeDeg`. | `[Throwables]` keys. X and B still work unless `grenadeButton`/`meleeButton = 0`. |
+| Grenade or melee doesn't happen | `throwables:` lines (`refused`, `put back`), e.g. `throwables: a squeeze at the grenade slot with the {} hand: no grenade ({})`, `throwables: the {} hand let go at N m/s (under 1.5): the grenade goes back` | A slow release puts the grenade back; a left-hand squeeze takes nothing with `hands = right` (the default); melee needs an enemy within `meleeReachM` (2 m) and `meleeConeDeg`. | `[Throwables]` keys. X and B still work (with a weapon drawn) unless `grenadeButton`/`meleeButton = 0`. |
 | The squad's weapon wheel | `squad:` lines; `halcyon bridge: the game's weapon wheel {}` | The **left trigger** opens it (`[Controls] leftTrigger = lb`), pointing the left hand at a squadmate preselects them, letting go gives the highlighted weapon. | `[Squad]` keys; `style = native` (the game's wheel) or `custom`. |
 
 ### 2.6 The body: arms, stance, calibration
@@ -244,6 +254,9 @@ squeezed to carry it, let go at its slot to holster it, let go elsewhere and it 
 | An aim is redone | `calibration: the {} aims judged: ...`, `calibration: {}: after {} tries aim {} was still {:.2f} deg off the other two: kept the other two ...` | Three aims must agree within 4.5 degrees (rifle) or 3 (pistol). | Normal; after two tries the agreeing pair is kept. |
 | The calibration isn't applied | `calibration: controllers {} (section [{}]): {}`; `calibration: the {} stance in [{}] isn't used: its aims disagreed by ...` | Calibrations are saved **per controller type and headset** (`[Calibration.<profile>__<system>]`). Different controllers or another headset need their own. `[Calibration] use = 0` turns it off. | Calibrate with these controllers. |
 | Holsters too high or low for your body | `holsters: eye height {:.2f} m from {} (slot scale {:.2f})` | The slots scale with the standing eye height (from the floor, or `eyeHeightM`). | See 2.5's eye height row. |
+| Shepard's fingers don't move with the trigger and grip | `fingers: off ([Hands] fingers = 0)`, `fingers: not first person`, `fingers: no tracked controllers`, `fingers: not driven (...)` | The fingers follow the controllers only in first person with tracked controllers, on foot and in the Mako cockpit's seat ([research/43](../research/43-fingers.md)). With a weapon drawn the right hand keeps its hold on the gun and only the index finger moves (off the trigger until you squeeze it); the left hand on the foregrip keeps the animation's hold. | `[Hands] fingers = 1`. |
+| A hand's fingers stay animated | `[warn] fingers: {} hand: the finger bones don't tell the palm plane or its side (...): its fingers stay animated` | The skeleton isn't the one the finger code measures (a mod that changes Shepard's model? **[uncertain]**). | Report it with the log's `fingers:` lines. |
+| The fingers bend backward, or close through the palm | `fingers: {} hand: palm normal ... (from the thumb's base; the rest pose's own curl agrees on N finger(s), disagrees on M)` | **[uncertain]**: never seen by a person in a headset. Backward means the palm side was measured wrong for this skeleton; through the palm means the curl is too strong. | Too strong or too weak: `[Hands] fingerCurlDeg` (70, degrees per joint at a full squeeze). Backward: `fingers = 0` and report it with that log line (a negative `fingerCurlDeg` is **not** the fix: it would invert the trigger finger too). |
 
 ### 2.7 Comfort and view
 
@@ -314,8 +327,10 @@ player's file with values other than the defaults is untested territory (delete 
 
 1. Open `LE1MEVR.ini` in a text editor (Notepad).
 2. Delete the whole section that misbehaves: its `[Name]` line and every line under it, up to the next `[...]`.
-3. Save. The mod writes the defaults back for `[Controls]`, `[Holsters]`, `[Squad]`, `[Throwables]`, `[Comfort]` and
-   `[Sights]` (log `hands: added the [{}] defaults to {}`); for the others, a missing key simply means its default.
+3. Save. The mod writes the defaults back for `[Controls]`, `[Holsters]`, `[Squad]`, `[Throwables]`, `[Comfort]`,
+   `[Sights]`, `[Interact]`, `[Vent]`, `[Hud]`, `[Mako]`, `[Cockpit]`, `[Galaxy]`, `[WorldUi]` and `[Game]` (log
+   `hands: added the [{}] defaults to {}`); for the others (`[Hands]`, `[Cinematics]`, `[Pointer]`, `[Colour]`,
+   `[Performance]`...), a missing key simply means its default.
 4. **Keep** every `[Calibration.<...>]` section and `[Calibration]`, and `[Arms]` (the arm-length measurement):
    that's the player's calibration. To redo a calibration, run it again; it overwrites its own section.
 
@@ -325,8 +340,9 @@ loses the calibration and every choice made in the menus.
 For `MELEVR.ini`: our menu's **Advanced > Diagnostics > Reset renderer settings** resets Halcyon's settings to its
 defaults for the session (the menu key, head aim and resolution kept). Don't delete `MELEVR.ini` by hand: without it
 the renderer runs on its built-in defaults (Halcyon's log: `[config] no MELEVR.ini at ... - using defaults`), which
-aren't the values the setup installs (upstream's menu key is Insert, not `\`). The setup's Install copies it only
-when it's missing; **[uncertain]** whether Repair does.
+aren't the values the setup installs (upstream's menu key is Insert, not `\`). The setup's Install and Repair both
+write its release file when it's missing, and otherwise only set the values this mod needs (the menu key, head aim
+off, life-size stereo where unset, the profile hotkeys off), keeping everything else.
 
 **The keys that matter most** (`LE1MEVR.ini`, defaults):
 
@@ -340,6 +356,7 @@ when it's missing; **[uncertain]** whether Repair does.
 | | `exploreStance` | 0 | Experimental relaxed stance with a weapon drawn. |
 | | `drawRate` | 6.0 | Draw and holster speed (1 = the game's). |
 | | `constantEye`, `blendFix` | 1, 1 | The view doesn't move or jump on a draw. |
+| | `fingers`, `fingerCurlDeg` | 1, 70 | Fingers follow the trigger and grip; degrees per joint at a full squeeze. |
 | `[Holsters]` | `enabled`, `gripHolds`, `releaseGrace` | 1, 1, 0.3 | Holsters on; the right grip holds the gun; seconds before a let-go gun goes back. |
 | | `onlyHolstersDraw` | 1 | Only a holster grab draws on foot (medi-gel and powers excepted). |
 | | `eyeHeightFromFloor`, `eyeHeightM` | 1, 1.65 | Slot scale from the floor, or this height. |
@@ -347,13 +364,29 @@ when it's missing; **[uncertain]** whether Repair does.
 | | `powerWheel`, `hapticAmplitude` | r3, 0.5 | The power wheel / mapped power button; holster buzz. |
 | `[Controls]` | `supportGrip`, `supportAcquireM`, `supportReleaseM` | 1, 0.18, 0.26 | The two-handed grip and its grab zone. |
 | | `leftTrigger` | lb | The left trigger opens the (squad) weapon wheel. |
-| `[Sights]` | `enabled`, `pistol`, `shotgun`, `assaultRifle`, `sniperRifle` | 1, dot, dot, dot, scope 4 | The sight per gun: none, dot, holo, scope N. |
+| `[Throwables]` | `enabled`, `hands`, `slot` | 1, right, -0.13, -0.33, 0.00, 0.10 | Physical grenades; which hand takes them; the chest slot (right, up, forward, radius). |
+| | `melee`, `meleeReachM`, `grenadeButton`, `meleeButton` | 1, 2.0, 1, 1 | Physical melee; X and B still work. |
+| `[Sights]` | `enabled`, `pistol`, `shotgun`, `assaultRifle`, `sniperRifle` | 1, dot, dot, dot, scope auto | The sight per gun: none, dot, holo, scope N, scope auto (the weapon's own magnifications). |
+| | `reticle`, `zoomStick` | game, 1 | The scope's reticle (game falls back to the duplex: see 2.5); a right-stick flick steps the magnification. |
+| | `ads`, `adsReachM` | 1, 0.40 | A scope's picture only while aiming down the sight. |
 | | `assist`, `converge` | 1, 1 | The gun slides to line the sight up with your eye; shots converge on the sight line. |
-| | `scopeFieldDeg`, `scopeEyeBoxM`, `scopeMaxM` | 22, 0.05, 0.70 | The scope's picture size, eye tolerance, range. |
+| | `scopeFieldDeg`, `scopeEyeBoxM`, `scopeMaxM` | 22, 0.05, 0.70 | The scope's picture size, eye tolerance, range (`scopeMaxM` only with `ads = 0`). |
+| | `scopeCapture`, `scopeCapturePost` | 1, 1 | The scope's picture is a real zoomed render; with the game's post-processing (the speckle, 2.5). |
+| `[Vent]` | `enabled`, `ventMinHeat`, `ventMaxHeat`, `ventCooldownS` | 1, 0.3, 1.0, 4 | The physical vent ([2.13](#213-the-vent)). |
+| `[Interact]` | `gaze`, `label`, `labelHeightDeg`, `combatLabel` | 1, 1, 6, 0 | A uses what you look at; its prompt at the object ([2.15](#215-using-things-with-a-the-floating-labels)). |
+| `[Hud]` | `wristStatus`, `gunStatus` | 1, 1 | Health on the left wrist, the weapon panel on the gun ([2.14](#214-the-wrist-and-gun-panels)). |
 | `[Comfort]` | `turn`, `snapDeg` | game, 45 | game / snap / smooth. |
 | | `vignette`, `vignetteStrength`, `vignetteWhen` | 0, 0.6, turn | The comfort vignette. |
 | | `walk` | head | head / hand. |
 | `[Menu]` | `pause`, `distanceM`, `widthM` | 1, 1.30, 1.45 | Our menu pauses the game; its place and size. |
+| `[Mako]` | `handAim`, `controls`, `grabRadiusM` | 1, 1, 0.15 | The right controller aims the turret; the lever and stick ([2.12](#212-the-mako-and-its-cockpit)). |
+| | `leverReturns`, `throttleDetent`, `stickTwist` | 1, 0.15, 0 | The lever goes back to neutral when let go; its notch; 1 = steer by twisting instead of tilting. |
+| `[Cockpit]` | `enabled`, `seated` | 1, 1 | The Mako's cockpit; Shepard in the seat. |
+| `[Cinematics]` | `conversations`, `cutscenes`, `widthM`, `distanceM`, `depth`, `convergeM` | 1, 1, 3.0, 2.6, 0.015, 1.2 | The 3D cinema screen ([2.18](#218-conversations-and-cutscenes-the-3d-screen)). |
+| `[WorldUi]` | `on`, `screens`, `wrist`, `omniTool` | 1, all, SkillGame, 1 | The game's screens in the room; the hacking screen on the wrist ([2.16](#216-the-games-screens-in-the-room-the-pointer-and-the-wrist)). |
+| `[Galaxy]` | `hologram`, `inWorld`, `window` | 1, 1, 1 | The galaxy map in the CIC ([2.17](#217-the-galaxy-map)). |
+| `[Pointer]` | `gameMenus`, `flatCine` | 1, 0 | A controller's ray is the game's mouse on its screens; not on conversations. |
+| `[Game]` | `pauseUnfocused` | 1 | The game freezes while its window doesn't have the focus, as Mass Effect does. |
 | `[Calibration]` | `use` | 1 | 0 ignores the calibration. |
 | `[Colour]` | `profile`, `hdrDisplay` | auto, 0 | Colour profile; answer HDR to the game (leave at 0). |
 | `[Upscale]` | `method` | off | `fsr` upscales a smaller render target. |
@@ -361,6 +394,120 @@ when it's missing; **[uncertain]** whether Repair does.
 In `MELEVR.ini` (the active profile): `vrMode` (2 = Stereo), `sfr2ResX`/`sfr2ResY` (the stereo target), `sfr2Metric`
 (1 = life-size stereo), `menuKey` (220 = `\`), `combatHeadAim` and `makoHeadAim` (0: the hand aims, not the head),
 `hudPanel` and `handReticle` (the HUD on a panel, the reticle on the aim ray).
+
+### 2.12 The Mako and its cockpit
+
+In the Mako the right controller aims the turret ([research/44](../research/44-mako.md)), a throttle lever and a drive
+stick at the seat drive it ([research/46](../research/46-mako-controls.md)), and the player sits in a cockpit model with
+the chase view on its centre screen ([research/47](../research/47-cockpit-in-game.md)). A person drove it in a headset
+twice (PS VR2, 2026-11-03); the fixes after those drives were checked on the simulated headset only.
+
+| Symptom | Confirm with | Cause | Fix |
+|---------|--------------|-------|-----|
+| No cockpit: the game's chase camera, the Mako's own body around you | `[warn] cockpit: no script at {} (...): no cockpit`, or `cockpit: script {}: N lines, 0 parts, ride off: no cockpit (the package installed and in the TOC? ...)` | The cockpit's package (`BioGame\CookedPCConsole\BIOG_MEVR_Cockpit.pcc`) or its entry in `BioGame\PCConsoleTOC.bin` is missing, or the script `ASI\cockpit\cockpit.txt`. Steam's "verify files" or a game update puts the game's own table back; the game reads that table only at its start. | Close the game, run **Repair** in the downloaded `MEVR-Setup.exe` (it adds the entry again), start the game. |
+| The same, by choice | `cockpit: [Cockpit] enabled = 0: the cockpit is parked (hidden, its captures off)`, or no `cockpit:` lines at all in the Mako | `[Cockpit] enabled = 0`. | `enabled = 1`. |
+| The lever or the stick won't take | `mako controls: placed from {}: lever at (...), stick at (...) m ...`; no `mako controls: first grab of the lever` / `first grab of the stick` | Only a **new** squeeze within `grabRadiusM` (0.15 m) of a control takes it: the left hand for the lever, the right hand for the stick. In the cockpit they are its models; without it, two flat markers at the knees, placed from the head on entering and on each recenter. | Bring the hand to the control, open the grip, squeeze again. Without the cockpit: recenter sitting as you'll drive; `[Mako] leverOffset`, `stickOffset`. |
+| The Mako slows down when I let go of the lever | the heartbeat's `mako controls: ...; ours throttle ...` | Default: the lever goes back to neutral when let go (`[Mako] leverReturns = 1`), with a notch at neutral (`throttleDetent`, 0.15 of its travel). | `leverReturns = 0`: it stays where you leave it. |
+| Steering at a standstill spins the Mako on the spot | `mako controls: steering at zero throttle spins the Mako on the spot (...)` | By design: with the lever at neutral (throttle under `steerInPlaceBelow`, 0.2) a twist of the stick turns the Mako on the spot. | |
+| X, Y or A do nothing while driving | `mako controls: the mod drives: Throttle and Steering are ours, the game sees no left stick from the controllers` | By design once a control has been taken in this drive: X (jump jets) and Y (boost) work only with the lever held, A (the cannon) only on the stick, and the left stick doesn't drive. | Take the lever for X and Y. |
+| The controls let go by themselves | `mako controls: stopped ({}): throttle and steering zero, the game's own controls are back until the next grab`, with `our menu opened`, `a controller stopped tracking`, `left the Mako's game mode`, `the calibration is running` or `the vehicle went away` | A safety stop. A recenter that moves the seat lets go of both as well (the lever stays where it was). | Take the control again with a new squeeze. |
+| The Mako pitches or flips when the jets or the boost fire | the heartbeat's `mako controls: thrusters: ...` | While the jets or the booster fire, the stick tilted forward or back pitches the Mako (`thrusterPitchDeg`, 20 at a full tilt); otherwise it is held level (`thrusterStabilize = 1`). They last 2.5 times as long as in the game (`thrusterBurnScale` 0.4). | Keep the stick upright while they fire; `stickPitchDeadZoneDeg` (8) for a hand that drifts; `thrusterBurnScale = 1` for the game's own fuel. |
+| The turret doesn't follow the hand | `mako: the game aims the turret ({})`, the heartbeat's `mako:` line | The hand aims only with a head-tracked view, our menu closed and the right controller tracked; while the stick is held, its thumbstick aims instead. **[uncertain]** which of the three places the mod aims it from (`turretSeam`) the game lets stand. | Report it with the heartbeat's `mako:` lines and a snapshot. |
+| Two crosshairs in the Mako | | **[uncertain]**: whether the Mako HUD's own crosshair hides with the hand reticle isn't confirmed. | A snapshot helps. `[Mako] reticle = 0` hides ours. |
+| Shepard isn't in the seat | `cockpit probe: seat: Shepard hidden again: arm IK isn't posing the seat (no tracked controllers, or arm IK off)` | By design: he shows only while the controllers pose him. | Keep the controllers tracked. `[Cockpit] seated = 0` leaves the seat empty. |
+| The radar draws over the throttle; the ground inside the cabin on a steep bank | | Known: our panels have no depth, so they draw over the cockpit's models. The cabin is a little bigger than the Mako, so a nose into a hill may bring terrain inside **[uncertain]** (not seen on the simulated headset). | |
+| The cockpit disappeared after the Mako's death or leaving the Mako | `cockpit: out of the Mako: the cockpit is parked (...)` | By design (the game-over screen included); it comes back on the next entry. | |
+| B doesn't get Shepard out; nothing around you moves | | Mass Effect freezes the world while its window doesn't have the focus (a click beside the window, the headset's dashboard), and then refuses the exit. | Click the game window, or close the dashboard. `[Game] pauseUnfocused = 0` keeps the world running without the focus. |
+| Turning in the Mako is uncomfortable | `vignette:` lines | The comfort vignette is off by default. | `[Comfort] vignette = 1` (the menu's Comfort page): in the Mako it darkens the view's edges while the Mako turns (`[Mako] turnRate`, 20 degrees a second), or also while it drives with `vignetteWhen = move`. |
+
+### 2.13 The vent
+
+A change to Mass Effect 1's rules ([research/45](../research/45-vent.md)): with a weapon drawn on foot, the left grip on
+a hot gun's receiver (over and just ahead of the right hand), racked back fast and let go, removes the gun's heat at
+once. Never seen by a person in a headset yet.
+
+| Symptom | Confirm with | Cause | Fix |
+|---------|--------------|-------|-----|
+| A rack does nothing | `vent: a squeeze at the receiver: no vent ({})`: `cooldown, N s left`, `the gun is cool (heat N% under ventMinHeat 0.30)` or `not now` | The vent works on a gun at least `ventMinHeat` (0.3 of an overheat) hot, once every `ventCooldownS` (4 s), and not during a weapon switch. | Wait; or fire until the gun's heat bar is past a third. |
+| The same | `vent: the left hand let go at N m/s (... back along the gun, N m pulled; ...): no vent ({})`: `too slow`, `not back along the gun` or `too short a pull` | The rack must be fast (`ventSpeedMS`, 1 m/s), mostly back along the gun, at least `ventTravelM` (5 cm) long, and the grip let go during the pull. | Pull back harder and let go while moving; or lower `[Vent] ventSpeedMS` / `ventTravelM`. |
+| The same | `vent: the left grip stayed on the receiver over 1.5 s: a grip, not a rack; nothing when it opens` | Held too long (`ventHoldMaxS`). | Squeeze and rack in one motion. |
+| No tick when the left hand reaches the receiver; the squeeze takes the two-handed grip | no `vent: the left hand is at the receiver (...)` line, or that line ending `nothing to vent; a squeeze is the two-handed grip` | A cool gun's receiver is the two-handed grip, by design. On a hot gun the hand is outside the receiver zone: 0.06 m behind to 0.14 m ahead of the right hand, up to 0.14 m above the bore, 0.09 m to either side. | Bring the hand closer, over the gun. The line's `along`, `above` and `beside` numbers say where it was; `[Vent] zoneBackM`, `zoneFrontM`, `zoneAboveM`, `zoneSideM` widen the zone. |
+| The vent seems to work at the wrong heat | `vent: the {} overheated at heat X (ventMaxHeat ...)` | **[uncertain]**: the scale of the game's heat. The vent assumes 1.0 is an overheat. | Set `[Vent] ventMaxHeat` to the X the log shows. |
+| No vent at all | `vent: off ([Vent] enabled = 0)`, `vent: the heat fields are MISSING: the vent stays off` | Off, or the game's heat fields weren't found. | `[Vent] enabled = 1`; report the missing fields. |
+
+### 2.14 The wrist and gun panels
+
+The HUD's player status (health and shields, the squad's portraits, the medi-gel count) shows on the back of the left
+wrist, and the weapon panel (the gun, its heat strip, the grenade count) over the drawn gun
+([research/41](../research/41-hud-pieces.md)). Their places are first guesses, not tuned in a headset yet.
+
+| Symptom | Confirm with | Cause | Fix |
+|---------|--------------|-------|-----|
+| No health and shields on the wrist | `[MEVR-HUD] the player's status is back on the HUD panel` | The wrist piece shows on foot only, with the HUD on its panel, the left controller tracked and no wheel up; otherwise it's on the HUD panel as before. | `[Hud] wristStatus = 1`. |
+| The wrist panel is in the wrong place, or too small | `[MEVR-HUD] the player's status on the left wrist: (...) m, W x H m; ...` | The default suits a Touch controller held normally. | `[Hud] wristOffset = x y z` (metres in the left grip's axes: x out of the palm, y toward the elbow, z down the handle; default `-0.03 0.06 0.05`), `wristWidthM` (0.08). |
+| No weapon panel on the gun | `hud pieces: the weapon panel is back on the HUD ({})`: `not on foot`, `no gun aimed along its barrel`... | It rides on a drawn gun on foot only. | `[Hud] gunStatus = 1`. |
+| The sniper scope hides the weapon panel, or it's too small to read | `hud pieces: the weapon panel rides on the {} (N mm behind the muzzle, N mm above the bore)` | **[uncertain]**: not tuned in a headset. | `[Hud] gunBackM` (0.15), `gunUpM` (0.04), `gunWidthM` (0.06). |
+| A piece shows the wrong part of the HUD | a snapshot's `wrist` and `gun` layers | The HUD's layout was measured on 591 snapshots; another layout (a HUD mod?) moves the pieces. | `[Hud] wristCrop` / `gunCrop = x y width height` (fractions of the HUD frame). |
+
+### 2.15 Using things with A: the floating labels
+
+A uses what the player looks at, and the game's prompt (the object's name and action) floats at the object
+([research/40](../research/40-interaction.md)).
+
+| Symptom | Confirm with | Cause | Fix |
+|---------|--------------|-------|-----|
+| A uses something other than what I look at, or nothing | `interact: A would use {}, N m away`, `interact: nothing to use` | The game picks from where the head looks (`[Interact] gaze = 1`), within its own selection angle, range and line of sight: an object near the edge of the view may be outside its angle. | Look straight at the object and come closer. |
+| The label shows but A does nothing | the label has no A button | Out of use range: the game shows the A button only once you're close enough. | Walk closer. |
+| The label is too small or too big | `[MEVR-INTERACT] the prompt at the object: (...) m, W x H m (N deg tall); ...` | `labelHeightDeg`: 6 degrees of the view, at any distance. | `[Interact] labelHeightDeg`. |
+| No label at an enemy | | By design: enemies' names and health bars stay on the HUD. | `[Interact] combatLabel = 1`. |
+| A uses what the body faces, not what I look at | `interact: the selection update isn't hooked: A uses what the game's camera faces, not what you look at`, `interact: the selection update hook failed: ...` | The gaze hook didn't go in. | Report it with the log. |
+
+### 2.16 The game's screens in the room, the pointer and the wrist
+
+The game's full-screen screens (shop, loot, equipment, journal, codex, map, the pause menu, save and load...) stand as
+a panel in the room (`[WorldUi] screens = all`, default since 2026-11-04, [research/53](../research/53-world-screens.md)),
+and a controller's aim ray on a screen is the game's mouse ([research/42](../research/42-game-pointer.md)). The title,
+character creation and credits stay flat. Many screens on the list haven't been opened in a real mission yet.
+
+| Symptom | Confirm with | Cause | Fix |
+|---------|--------------|-------|-----|
+| I'd rather have the old flat screen | `world ui: {} up (opening {})...` | `[WorldUi] on = 1` (default). | `[WorldUi] on = 0`: every game screen on the flat panel, the world gone, as before. |
+| Equipment or character record without the 3D model of Shepard or the squadmate | | Known: the model lives in the game's own UI scene, which the room hides. | `[WorldUi] screens` = every screen but `Inventory`, `XMods` and `CharacterRecord` (the release README's known issues has the line): those then open on the flat panel, model included. |
+| The screen opens in an odd place | `world ui: the game's '{}' screen stands in the room: W x H m at (...) m, N m from the eyes; ...`, `world ui: the shop's vendor: {}`, `world ui: the loot comes from {}` | Placed once per opening, `distanceM` (0.95 m) ahead toward what it belongs to (the vendor, the container or body, what you used), its centre `belowM` (0.50 m) below the eyes, `widthM` (1.20 m) wide. | Close it and open it again; `[WorldUi] distanceM`, `belowM`, `widthM`, `backdrop` (how solid its dark parts are, 0.80). |
+| No dot on the screen, the ray does nothing | `game pointer: the flat screen is up ({}): not pointed at ([Pointer] {})`, `game pointer: the game's window isn't known yet (...): no mouse` | `[Pointer] gameMenus = 0`; on conversations and cutscenes `flatCine = 0` (the default). Never while our menu or the calibration is up. | `[Pointer] gameMenus = 1`. The pad works there too: the sticks and A. |
+| The dot moves but the trigger doesn't click | `game pointer: the trigger clicked the game's menu at (x, y) px (...)` and nothing happens; `game pointer: the game's window isn't in the foreground: ...` | Mass Effect's menus take clicks only with the game's window in front. **[uncertain]** in a headset: the clicks were checked only on the simulated headset, where another window had the focus. | Bring the game's window to the front on the desktop; or select with the stick and A. Report it with `[Pointer] logMessages = 1`. |
+| The screen's button hints switch to mouse and keyboard | | Normal: the game sees a mouse when you point. | Press A: they switch back. |
+| The hacking screen stands in the room, not on the wrist | `world ui: the game's '{}' screen would be projected from the left wrist, but the left controller isn't tracked: ...` | The wrist needs a tracked left controller when the screen opens. Or the choice is `[WorldUi] wrist = none` (menu: Comfort > Game screens > Hacking screen > In the room). | Keep the left controller in view; menu: On my wrist. |
+| The hacking screen can't be tapped with a finger | | Not built yet. | Point at it with the right controller and pull the trigger. |
+| No orange omni-tool on the forearm during hacking | | `[WorldUi] omniTool = 1` (default); **[uncertain]**: seen on the simulated headset only. | Report it with a snapshot. |
+
+### 2.17 The galaxy map
+
+In the Normandy's CIC a hologram of the galaxy stands over the projector; a trigger pick opens the game's map behind the
+scenes, and the game's own map then shows over the table ([research/51](../research/51-galaxy-map.md) section 8).
+
+| Symptom | Confirm with | Cause | Fix |
+|---------|--------------|-------|-----|
+| No hologram at the console | `galaxy hologram: ...` lines; `galaxy hologram: GalaxyMap_Cluster's columns weren't found: no galaxy on foot` | It shows on foot within about 9 m of the console (`[Galaxy] hologram = 1`, `inWorld = 1`). | Walk up to the console. `[Galaxy] hologram = 0` gives back the game's own map on the flat screen. |
+| A pick does nothing | `galaxy hologram: pick '{}' abandoned (...)`, `galaxy hologram: the map didn't open for the pick within 8 s; dropped` | The map didn't open, or didn't select the object in time. | Pick again; report it with the `galaxy hologram:` lines. |
+| The travel question ignores the click | `game pointer: the trigger clicked the game's menu at ...` and nothing happens | Known: in this mode the game's travel box may ignore the pointer's click (research/51 section 8.1) **[uncertain]** why. | `[Galaxy] hologram = 0` (the game's own map on the flat screen, as before). |
+| The map closes by itself | `galaxy hologram: walked away from the table (N m from its centre): the map {}` | By design: 1.6 m past the table's edge closes it. | Stay at the table. |
+| The map's disc draws over the console | | Known: our panels have no depth. | |
+| The room shows through the map, or the map hides the room | | `[Galaxy] windowBackdrop` (0.8): how much the map's space covers the room. | 1 = solid, 0 = see-through. |
+
+### 2.18 Conversations and cutscenes: the 3D screen
+
+By default conversations and cutscenes play as the director framed them, in 3D, on a screen fixed in the room (3.0 m
+wide at 2.6 m; [research/52](../research/52-cine-3d-screen.md)). Not judged by a person in a headset yet.
+
+| Symptom | Confirm with | Cause | Fix |
+|---------|--------------|-------|-----|
+| Conversations play on a screen in front of me, not around me | `cine screen: [Cinematics] conversations = 1, cutscenes = 1 (...)`; in Halcyon's log `[VRSTATE] gm N ... -> 3D screen (MEVR)` | The default since 2026-11-03. | VR menu: Comfort > Conversations and cutscenes: **In VR** (around you), **3D screen** or **Flat screen**. Or `[Cinematics] conversations` / `cutscenes = 0`. |
+| The dialogue wheel is hard to read | | Known: it's drawn into the picture at the game's size, about 0.9 degrees tall on the default screen. | A wider or nearer screen: the menu's screen width and distance, or `[Cinematics] widthM` (3.0), `distanceM` (2.6). |
+| Close-ups pop out, or the depth strains the eyes | `cine screen: depth N% asked, M% used: ...` (the cap at work) | `depth` (0.015: infinity 1.5% of the width behind the screen) and `convergeM` (1.2 m of the scene lands on the screen plane). The eyes are never asked to diverge. | Less depth: the menu's 3D depth, or a lower `[Cinematics] depth` (0 = flat). A lower `convergeM` brings close-ups back toward the screen. |
+| A movie plays flat | | By design: prerendered movies have no depth, so they stay on the flat screen. | |
+| The title screen's background shows on the screen | | Normal: the game plays it as a cutscene. | |
+| The pointer does nothing on the screen | `game pointer: the flat screen is up ({}): not pointed at ([Pointer] flatCine = 0)` | By design: the dialogue wheel takes the pad (the sticks and A). | `[Pointer] flatCine = 1` **[uncertain]**: untested. |
 
 ---
 
@@ -436,6 +583,16 @@ heartbeat #N: F fps, GWorld=0x..., objects=N, script hooks live
 | `colour:`, `[MEVR-COLOUR]`, `hdr display:` | Colour correction, HDR |
 | `upscale:` | FSR |
 | `overlays:`, `[MEVR-HUD]`, `world panels:` | The HUD panel, reticle, wheel panel, flat screens |
+| `hud pieces:` | The wrist and gun panels ([2.14](#214-the-wrist-and-gun-panels)) |
+| `fingers:` | The fingers |
+| `vent:` | The vent ([2.13](#213-the-vent)) |
+| `interact:`, `[MEVR-INTERACT]` | What A uses, and its label at the object ([2.15](#215-using-things-with-a-the-floating-labels)) |
+| `game pointer:` | A controller's ray as the game's mouse |
+| `world ui:` | The game's screens in the room, the wrist's hacking screen ([2.16](#216-the-games-screens-in-the-room-the-pointer-and-the-wrist)) |
+| `galaxy hologram:` | The galaxy map in the CIC ([2.17](#217-the-galaxy-map)) |
+| `cine screen:`, `[VRSTATE]` (Halcyon's log) | The 3D cinema screen ([2.18](#218-conversations-and-cutscenes-the-3d-screen)) |
+| `mako:`, `mako controls:` | The Mako's aim; its lever and stick ([2.12](#212-the-mako-and-its-cockpit)) |
+| `cockpit:`, `cockpit probe:` | The Mako's cockpit, Shepard in its seat |
 | `main menu:`, `menu pause:`, `menu:`, `rmlui:` | Our menu (and Halcyon's classic menu's VR hands tab) |
 | `system settings:` | The engine settings the mod applies |
 | `render levers:`, `draw replay:`, `frame loop:`, `perf probe:` | Rendering and performance |
@@ -458,6 +615,7 @@ tags:
 | `[config]` | `MELEVR.ini` loaded, saved, or not saved (`[config] [MEVR] NOT saved: ...`) |
 | `[CRASH]` | Its own crash handler's lines |
 | `[MEVR-HUD]`, `[MENUVIS]` | The HUD panel and menu quads |
+| `[VRSTATE]` | Each change between VR and the flat screen, with the game mode; `-> 3D screen (MEVR)` for the 3D cinema screen |
 
 Most other tags are Halcyon's diagnostics; they rarely matter for a player's problem.
 
@@ -529,20 +687,24 @@ The installer's record (paths relative to the `Mass Effect Legendary Edition` fo
 - `modVersion`, `setupVersion`, `installedAt`.
 - `loader`: `mevr` (ours), `lebinkproxy` (ME3Tweaks'), `other`.
 - `files[]`: each with `action` = `added`, `replaced`, `renamed` (e.g. the game's `bink2w64.dll` to
-  `bink2w64_original.dll`; Halcyon's upstream `dxgi.dll` to `dxgi.dll.mevr-off`) or `edited` (ini keys, with
-  `before`/`after`); `userData: true` marks the player's settings.
+  `bink2w64_original.dll`; Halcyon's upstream `dxgi.dll` to `dxgi.dll.mevr-off`), `edited` (ini keys, with
+  `before`/`after`) or `toc` (`Game/ME1/BioGame/PCConsoleTOC.bin`: the cockpit's entry
+  `BioGame\CookedPCConsole\BIOG_MEVR_Cockpit.pcc`, its size `before` the install if it was there, and `after`; Uninstall
+  takes out only that entry); `userData: true` marks the player's settings.
 - `gameSettings: true`: the VR game settings were applied.
 - `packs[]`: texture packs installed through the setup.
 
 Compare it with the file listing: a file the record says was `added` but is now missing (or a `bink2w64.dll` that
-isn't ours any more) is what Repair fixes.
+isn't ours any more) is what Repair fixes. Repair also adds the cockpit's TOC entry again; it needs the setup from the
+downloaded release (the copy in the `ASI` folder has no payload).
 
 ### 3.7 The file listing
 
 Look for:
 
 - `Binaries\Win64\bink2w64.dll` and `bink2w64_original.dll` (our loader), or LEBinkProxy's files.
-- `Binaries\Win64\ASI\LE1MEVR.asi`, `MELEVR.ini`, `LE1MEVR.ini`, `menu\`, `fonts\`.
+- `Binaries\Win64\ASI\LE1MEVR.asi`, `MELEVR.ini`, `LE1MEVR.ini`, `menu\`, `fonts\`, `cockpit\cockpit.txt`. (The
+  cockpit's package lives in `BioGame\CookedPCConsole`, outside the listed folders.)
 - **Other `.asi` files** in `ASI`: other mods that load with ours (untested together).
 - `Binaries\Win64\dxgi.dll`, `openxr_loader.dll`, `d3d11.dll`, `dinput8.dll`...: other injectors, Halcyon's upstream
   MELE-VR, ReShade **[uncertain]** which of these conflict. Mention them in the diagnosis.
@@ -552,20 +714,30 @@ Look for:
 
 ## 4. Known limitations
 
-As of 2026-10-26:
+As of 2026-11-04:
 
 - **LE1 only.** LE2 and LE3 build for development but aren't playable in VR.
 - **Releases:** players' builds (MEVR-Setup) go on the GitHub Releases page; before the first one, players build
   from source.
-- **Headsets:** tested on a **Quest 3 over Steam Link** and a **PS VR2**, both through **SteamVR**. Meta's runtime
-  (Link, Air Link) ran an early build (a Quest Pro, 2026-10-07) but is untested with the current renderer. Virtual
-  Desktop is untested. Bindings exist for Index, HP Reverb G2, WMR, Vive wands and the simple controller, but only
-  Touch-type controllers have been tried.
+- **Headsets:** run through **SteamVR** only: a **PS VR2** (most sessions) and a **Quest 3 over Steam Link** (until
+  2026-10-21, before most of today's features). Meta's runtime (Link, Air Link) ran an early build (a Quest Pro,
+  2026-10-07) but hasn't been tried with the current renderer. Virtual Desktop hasn't been tried. Bindings exist for
+  Index, HP Reverb G2, WMR, Vive wands and the simple controller, but only Touch-type controllers have been tried.
 - **Performance:** in the heaviest scenes the render thread needs about 11 ms a frame for the two scene renders, so
   90 Hz isn't held everywhere, even on an RTX 4090. A lower render resolution helps only where the GPU is the limit.
 - **Much of it is new:** the project started in October 2026; many features have been tried in the headset a few
-  times, some not at all.
-- **Steam's "verify files"** removes the ASI loader: run the setup's Repair.
+  times, and those added since late October (the game's screens in the room, the galaxy map, the 3D cinema screen, the
+  vent, the fingers, the wrist and gun panels, the labels at objects) only on SteamVR's simulated headset; the Mako's
+  cockpit and controls had two drives in a headset ([release checklist](release-checklist.md) section 2).
+- **Steam's "verify files"** (or a game update) removes the ASI loader and the cockpit's entry in `PCConsoleTOC.bin`:
+  run Repair in the setup from the downloaded zip.
+- **Equipment and character record in the room** have no 3D model (2.16).
+- **The galaxy map's travel question** may ignore the pointer's click (2.17).
+- **Our panels have no depth:** the radar draws over the cockpit's throttle, the galaxy map's disc over the console.
+- **The dialogue wheel is small** on the 3D cinema screen (2.18).
+- **Scopes show the duplex reticle**, not the game's sniper view; **a black speckle** in the scope's dark areas (2.5).
+- **The hacking screen** is worked with the pointer: tapping it with a finger isn't built.
+- **Squad orders** (the gamepad's d-pad) have no controller button.
 - **The assault rifle's dot two-handed:** with the support grip, the two-hand aim turns the barrel off the
   calibrated one-handed stance while the sight's shift stays the one-handed one, so the dot can sit off the sight.
   Not fixed yet.
