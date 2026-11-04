@@ -151,7 +151,7 @@ p90, ms:
 ## What this doesn't cover
 
 - **Big fights:** many characters running AI, weapons and powers at once (a geth assault). Only a small fight was measured
-  (below: Saren and the squad).
+  (above: Saren and the squad).
 - **LE2/LE3:** they have denser hubs (Omega, Illium, the Citadel's Commons and Purgatory). Our renderer there is our own,
   not Halcyon's.
 - **The fake headset:** no compositor cost and no real head motion. The real headset adds both.
