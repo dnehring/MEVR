@@ -54,6 +54,8 @@ namespace sc = vr::scope_capture;
 
 // Our reflection layer (research/34). Every one of these has a row in engine/ReflectCheck.
 ue3::ClassRef gActorClass{"Engine.Actor"};
+ue3::ClassRef gPawnClassRef{"Engine.Pawn"};
+ue3::FieldRef gPawnControllerField{"Engine.Pawn", "Controller"};
 ue3::ClassRef gInterpActor{"Engine.InterpActor"};
 ue3::ClassRef gKActor{"Engine.KActor"};
 ue3::ClassRef gKActorSpawnable{"Engine.KActorSpawnable"};
@@ -3045,6 +3047,8 @@ std::string MapName(ue3::Object* controller) {
 
 } // namespace
 
+std::vector<ue3::Object*> gFoundPawns;  // `mevr vehicle pawns`' list, for `hit`
+
 std::string VehicleCommand(std::string const& line) {
     if (!ue3::runtime::Ready()) {
         return "mevr vehicle: our reflection layer is off (see the 'reflect:' lines)";
@@ -3251,6 +3255,214 @@ std::string VehicleCommand(std::string const& line) {
             gPawnHealth.Read<std::int32_t>(pawn).value_or(-1));
         log::Info("mevr vehicle: {}", report);
         return report;
+    }
+    if (verb == "pawns") {
+        // The level's live pawns but the player's, nearest first: who could shoot the Mako (`hit <amount> <n>` uses the n-th).
+        ue3::Reflection& r = R();
+        auto const at = player::Location(pawn);
+        std::vector<std::pair<double, ue3::Object*>> found;
+        for (std::int32_t i = 0, n = r.ObjectCount(); i < n; ++i) {
+            ue3::Object* const o = r.ObjectAt(i);
+            if (o == nullptr || o == pawn || !r.IsAlive(o) || !ue3::IsA(o, gPawnClassRef) || (r.FlagsOf(o) & 0x200) != 0) {  // not a class default
+                continue;
+            }
+            auto const where = player::Location(o);
+            if (!where || !at) {
+                continue;
+            }
+            double const dx = where->x - at->x, dy = where->y - at->y, dz = where->z - at->z;
+            found.emplace_back(std::sqrt(dx * dx + dy * dy + dz * dz) / engine::kUnitsPerMeter, o);
+        }
+        std::sort(found.begin(), found.end(), [](auto const& a, auto const& b) { return a.first < b.first; });
+        gFoundPawns.clear();
+        std::string out = std::format("{} pawns:", found.size());
+        for (std::size_t i = 0; i < found.size() && i < 25; ++i) {
+            gFoundPawns.push_back(found[i].second);
+            ue3::Object* const c = gPawnControllerField.Read<ue3::Object*>(found[i].second).value_or(nullptr);
+            out += std::format("\n  {}: {} at {:.0f} m, controller {}", i, r.FullName(found[i].second), found[i].first, r.NameText(c));
+        }
+        log::Info("mevr vehicle: {}", out);
+        return out;
+    }
+    if (verb == "hit") {
+        // A hit as a shot lands one: the vehicle behaviour's own TakeDamage (BioActorBehavior's, through the Mako behaviour's
+        // ProxyTakeDamage), so the game's damage model, health and death run as under fire (research/47).
+        float amount = 200.0f;
+        int shooter = -1;
+        std::string route;
+        words >> amount >> shooter >> route;
+        ue3::Object* const behavior = gVehicleBehavior.Read<ue3::Object*>(pawn).value_or(nullptr);
+        ue3::Reflection& r = R();
+        ue3::Function* const take = behavior != nullptr ? r.FindFunction(r.ClassOf(behavior), "TakeDamage") : nullptr;
+        ue3::Object* const by = shooter >= 0 && static_cast<std::size_t>(shooter) < gFoundPawns.size() && r.IsAlive(gFoundPawns[static_cast<std::size_t>(shooter)])
+                                    ? gFoundPawns[static_cast<std::size_t>(shooter)] : nullptr;
+        ue3::Object* const byController = by != nullptr ? gPawnControllerField.Read<ue3::Object*>(by).value_or(nullptr) : nullptr;
+        // ME1's hits carry a BioDamageType object (pDamage); one the game has loaded (a weapon's), else none.
+        ue3::Object* damage = nullptr;
+        std::string damageName = "none";
+        for (std::int32_t i = 0, n = r.ObjectCount(); i < n && damage == nullptr; ++i) {
+            ue3::Object* const o = r.ObjectAt(i);
+            if (o == nullptr || !r.IsAlive(o) || r.NameText(o).starts_with("Default__")) {
+                continue;
+            }
+            for (ue3::Struct* c = r.ClassOf(o); c != nullptr; c = r.SuperOf(c)) {
+                if (r.NameText(c) == "BioDamageType") {
+                    damage = o;
+                    damageName = r.FullName(o);
+                    break;
+                }
+            }
+        }
+        if (take == nullptr) {
+            return Refuse("no vehicle behaviour with TakeDamage");
+        }
+        auto const at = player::Location(pawn);
+        ue3::Params p(r, take);
+        p.Set("Damage", amount);
+        p.Set("HitLocation", at ? ue3::Vector{at->x, at->y, at->z + 50.0f} : ue3::Vector{});
+        p.Set("DamageType", static_cast<ue3::Object*>(gDamageTypeClass.Get()));
+        p.Set("InstigatedBy", byController);
+        p.Set("pDamageCausingActor", by);
+        p.Set("pDamage", damage);
+        bool called = false;
+        if (route == "pawn") {
+            // The pawn's own TakeDamage, as a projectile calls it (the vehicle's override hands it to the behaviour).
+            ue3::Function* const pawnTake = r.FindFunction(r.ClassOf(pawn), "TakeDamage");
+            if (pawnTake == nullptr) {
+                return Refuse("no TakeDamage on the pawn");
+            }
+            ue3::Params q(r, pawnTake);
+            q.Set("Damage", static_cast<std::int32_t>(amount));
+            q.Set("Damage", amount);
+            q.Set("DamageAmount", static_cast<std::int32_t>(amount));
+            q.Set("EventInstigator", byController);
+            q.Set("HitLocation", at ? ue3::Vector{at->x, at->y, at->z + 50.0f} : ue3::Vector{});
+            q.Set("DamageType", static_cast<ue3::Object*>(gDamageTypeClass.Get()));
+            q.Set("DamageCauser", by);
+            q.Set("pDamage", damage);
+            called = ue3::runtime::Call(pawn, pawnTake, q);
+        } else {
+            called = ue3::runtime::Call(behavior, take, p);
+        }
+        std::string const report = std::format("{}.TakeDamage({:.0f}) by {} with {} called {}; the pawn's health {}, game mode {}",
+            r.NameText(r.OuterOf(take)), amount, r.FullName(by), damageName, called, gPawnHealth.Read<std::int32_t>(pawn).value_or(-1), player::GameMode(player::Controller()).value_or(-1));
+        log::Info("mevr vehicle: {}", report);
+        return report;
+    }
+    if (verb == "bring") {
+        // `bring <n> [metres]`: the n-th of `pawns` put that far ahead of the Mako (Actor.SetLocation), so its own AI fights it: a death
+        // by enemy fire without driving across the map (research/47).
+        int index = -1;
+        float metres = 30.0f;
+        words >> index >> metres;
+        ue3::Reflection& r = R();
+        if (index < 0 || static_cast<std::size_t>(index) >= gFoundPawns.size() || !r.IsAlive(gFoundPawns[static_cast<std::size_t>(index)])) {
+            return Refuse("usage: mevr vehicle bring <n from `mevr vehicle pawns`> [metres ahead]");
+        }
+        ue3::Object* const who = gFoundPawns[static_cast<std::size_t>(index)];
+        auto const at = player::Location(pawn);
+        auto const turn = player::Rotation(pawn);
+        ue3::Function* const setLocation = r.FindFunction(r.ClassOf(who), "SetLocation");
+        if (!at || !turn || setLocation == nullptr) {
+            return Refuse("no place for the Mako, or no SetLocation");
+        }
+        engine::UnrealVector const ahead = engine::ToBasis(engine::UnrealRotation{0, turn->yaw, 0}).forward;
+        double const units = metres * engine::kUnitsPerMeter;
+        ue3::Params p(r, setLocation);
+        p.Set("NewLocation", ue3::Vector{static_cast<float>(at->x + ahead.x * units), static_cast<float>(at->y + ahead.y * units), at->z + 150.0f});
+        bool const called = ue3::runtime::Call(who, setLocation, p);
+        auto const now = player::Location(who);
+        std::string const out = std::format("{} moved {:.0f} m ahead of the Mako: SetLocation {} {}, now {:.0f} m away", r.FullName(who), metres,
+            called, p.ReturnBool().value_or(false) ? "true" : "false",
+            now ? std::sqrt((now->x - at->x) * (now->x - at->x) + (now->y - at->y) * (now->y - at->y)) / engine::kUnitsPerMeter : -1.0);
+        log::Info("mevr vehicle: {}", out);
+        return out;
+    }
+    if (verb == "sethealth") {
+        // The vehicle behaviour's own SetCurrentHealth (a test: a low Mako that the next real hits finish).
+        float health = 1.0f;
+        words >> health;
+        ue3::Object* const behavior = gVehicleBehavior.Read<ue3::Object*>(pawn).value_or(nullptr);
+        ue3::Reflection& r = R();
+        ue3::Function* const set = behavior != nullptr ? r.FindFunction(r.ClassOf(behavior), "SetCurrentHealth") : nullptr;
+        if (set == nullptr) {
+            return Refuse("no vehicle behaviour with SetCurrentHealth");
+        }
+        ue3::Params p(r, set);
+        p.Set("currentHealth", health);
+        bool const called = ue3::runtime::Call(behavior, set, p);
+        log::Info("mevr vehicle: SetCurrentHealth({:.0f}) called {}", health, called);
+        return std::format("SetCurrentHealth({:.0f}) called {}", health, called);
+    }
+    if (verb == "state") {
+        // The vehicle behaviour's own health (ME1 keeps it there, not in Pawn.Health), and whether it can die.
+        ue3::Object* const behavior = gVehicleBehavior.Read<ue3::Object*>(pawn).value_or(nullptr);
+        if (behavior == nullptr) {
+            return Refuse("no vehicle behaviour");
+        }
+        ue3::Reflection& r = R();
+        auto const call = [&](char const* name) -> std::string {
+            ue3::Function* const f = r.FindFunction(r.ClassOf(behavior), name);
+            if (f == nullptr) {
+                return "?";
+            }
+            ue3::Params p(r, f);
+            if (!ue3::runtime::Call(behavior, f, p)) {
+                return "failed";
+            }
+            if (auto const b = p.ReturnBool()) {
+                return *b ? "yes" : "no";
+            }
+            if (auto const v = p.Return<float>()) {
+                return std::format("{:.1f}", *v);
+            }
+            return "?";
+        };
+        std::string shields = "?";
+        if (ue3::Function* const f = r.FindFunction(r.ClassOf(behavior), "GetHealthAndShieldsScaled")) {
+            ue3::Params p(r, f);
+            if (ue3::runtime::Call(behavior, f, p)) {
+                shields = std::format("health {:.2f}, shields {:.2f} (scaled)", p.Get<float>("fHealth").value_or(-1.0f), p.Get<float>("fShields").value_or(-1.0f));
+            }
+        }
+        std::string const out = std::format("health {} of {}, {}, invulnerable {}, held at 1 health {}", call("GetCurrentHealth"), call("GetMaxHealth"),
+            shields, call("IsInvulnerable"), call("IsMin1Health"));
+        log::Info("mevr vehicle: {}", out);
+        return out;
+    }
+    if (verb == "funcs") {
+        // The vehicle behaviour's (or `pawn`: the pawn's) functions whose name holds the text, with their parameters: finding the
+        // game's own paths (a hit's damage, research/47).
+        std::string text;
+        std::string which;
+        words >> text >> which;
+        ue3::Reflection& r = R();
+        ue3::Object* const listed = which == "pawn" ? pawn : gVehicleBehavior.Read<ue3::Object*>(pawn).value_or(nullptr);
+        if (listed == nullptr) {
+            return Refuse("no vehicle behaviour");
+        }
+        auto const lower = [](std::string s) {
+            std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            return s;
+        };
+        std::string const want = lower(text);
+        std::string out = std::format("{}:", r.FullName(listed));
+        int found = 0;
+        for (ue3::Struct* s = r.ClassOf(listed); s != nullptr && found < 40; s = r.SuperOf(s)) {
+            for (ue3::Field* f = r.ChildrenOf(s); f != nullptr && found < 40; f = r.NextOf(f)) {
+                if (r.ClassOf(f) != r.FunctionClass() || lower(r.NameText(f)).find(want) == std::string::npos) {
+                    continue;
+                }
+                std::string params;
+                for (ue3::ParamSpec const& p : r.Parameters(reinterpret_cast<ue3::Function*>(f))) {
+                    params += (params.empty() ? "" : ", ") + p.name;
+                }
+                out += std::format("\n  {}.{}({})", r.NameText(s), r.NameText(f), params);
+                ++found;
+            }
+        }
+        log::Info("mevr vehicle: {}", out);
+        return out;
     }
     if (verb == "die") {
         // ME1's vehicles take damage through their behaviour (TakeDamage on the pawn left Health as it was): its own death reaction,
@@ -4010,7 +4222,7 @@ void Shutdown(bool exiting) {
     gLoadedMesh = nullptr;
     gLastError = "none";
     gLoggedMoveFailure = gLoggedFirstPlace = gLoggedFlatFallback = false;
-    for (ue3::ClassRef* const c : {&gActorClass, &gInterpActor, &gKActor, &gKActorSpawnable, &gStaticMeshActor, &gDynamicSmActor, &gStaticMesh, &gStaticMeshComponent,
+    for (ue3::ClassRef* const c : {&gActorClass, &gPawnClassRef, &gInterpActor, &gKActor, &gKActorSpawnable, &gStaticMeshActor, &gDynamicSmActor, &gStaticMesh, &gStaticMeshComponent,
              &gMaterial, &gMaterialInstance, &gMic, &gTextureParameterExpression, &gCaptureActor, &gCaptureComponent, &gTargetClass, &gTexture, &gTexture2D, &gVehicleBase, &gBioPawn,
              &gBioController, &gSaveGame, &gRemoteEvent, &gPartySelection, &gPrimitiveComponent, &gGameModeVehicle}) {
         c->Reset();
@@ -4030,7 +4242,7 @@ void Shutdown(bool exiting) {
              &gTextureLodGroup, &gTexture2DSizeX, &gTexture2DSizeY, &gTexture2DFormat, &gTexture2DRequestedMips, &gTexture2DResidentMips, &gTexture2DMipTail, &gTexture2DMips, &gWorldInfo,
              &gTextureValueObject, &gRemoteEventName, &gStreamingLevels, &gStreamPackage, &gStreamLoaded, &gStreamShouldLoad, &gStreamShouldShow, &gStreamVisible,
              &gStreamPending, &gAllComponents, &gOwnerNoSee, &gVehicleDriver, &gPawnHealth, &gPlayersOnly, &gPlayersOnlyPending, &gHiddenField, &gHiddenGame,
-             &gOnlyOwnerSee, &gVehicleBehavior}) {
+             &gOnlyOwnerSee, &gVehicleBehavior, &gPawnControllerField}) {
         f->Reset();
     }
     for (ue3::FieldRef& f : gHeadMeshes) {

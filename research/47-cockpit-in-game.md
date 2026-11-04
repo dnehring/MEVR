@@ -1129,3 +1129,20 @@ see. `mevr cockpit capturedist <m>` (a cockpit script line too) sets the capture
 m gains a little more but drops the far ridgeline from the centre screen, and the runs' spread (the drive's route differs with the
 physics) is as large as the gain, so it stays off (0, the engine's distance). The max column is hitches (level streaming, the first
 frames after a load) present without the cockpit too.
+
+## A death under enemy fire, and two minutes of driving (2026-11-03 18:12-18:24, fake headset, Trebin from the user's save; the user away, their go-ahead)
+
+- **The hit path.** ME1 keeps a Mako's health and shields in its behaviour (`BioEpicPawnBehavior.GetCurrentHealth`: 2000 of 2000;
+  `Pawn.Health` sits at 300 and never moves). `BioActorBehavior.TakeDamage` (and the pawn's own `TakeDamage`) ignore a hit without its
+  `pDamage`, a `BioDamageType` object: with none, 5,000 at a time changed nothing. New test verbs (`mevr vehicle ...`): `funcs <text>
+  [pawn]` lists the behaviour's (or pawn's) functions with their parameters, `state` its health, shields and invulnerability, `pawns` the
+  level's pawns nearest first (Trebin's mercenaries and snipers 919 m off), `bring <n> [m]` puts one ahead of the Mako (`SetLocation`;
+  their AI stayed asleep there, outside its encounter: no shots in 2 minutes), `sethealth <v>`, `hit <amount> [n] [pawn]` a hit with a
+  live `BioDamageType` and pawn n as the shooter.
+- **A death by a hit.** At 50 health, `hit 300` by a mercenary: health -250, shields 0, and the game went to game mode 7 ("Critical
+  Mission Failure") through its own damage model and `ReactToDeath`, not our call of it; the cockpit took Shepard out of the seat and
+  parked in that tick; "Resume Last Save" loaded the save and the cockpit and Shepard were back 0.2 s after `mako: driving`. The shot's
+  flight and the enemy's aim are the game's and don't touch the cockpit.
+- **Two minutes of driving** (`make-drive-recording.py 130 --controls --hands-from`: the turns, then straight on across Trebin), the
+  probe over 120 s, 14,065 frames: render thread median 3.21 ms (p90 7.34), GPU at most 3.64 (p90 8.99), game thread 2.39 (p90 2.97):
+  within 11.11 ms at p90 with the screens staggered. Hitches to 54 ms (streaming) are there without the cockpit too.
