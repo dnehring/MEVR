@@ -34,6 +34,7 @@
 #include "halcyon/le1/vr_config.h"
 #include "halcyon/le1/vr_menu.h"
 
+#include "core/DevChannels.hpp"
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/vr/Controllers.hpp"
@@ -444,7 +445,9 @@ static bool gReplayWithInputs = false;
 
 static void TestLoopSection() {
     namespace testloop = mevr::host::testloop;
-    ImGui::SeparatorText("Test loop (for Claude)");
+    // The players' build calls it Diagnostics and has no replay (it swaps the live head for a recording): core/DevChannels.
+    bool const developer = mevr::dev_channels::Allowed(mevr::engine::SettingsFile());
+    ImGui::SeparatorText(developer ? "Test loop (for Claude)" : "Diagnostics");
     testloop::Status const s = testloop::GetStatus();
     if (ImGui::Button("Snapshot in 3 s")) {
         testloop::SnapshotRequest request;
@@ -470,7 +473,7 @@ static void TestLoopSection() {
         }
         ImGui::SameLine();
         ImGui::Text("replaying %.1f / %.1f s%s", s.replaySeconds, s.replayDuration, s.replayLoop ? " (loop)" : "");
-    } else {
+    } else if (developer) {
         if (ImGui::Button("Replay the last recording")) {
             std::string error;
             if (!testloop::StartReplay(L"", false, gReplayWithInputs, false, &error)) {

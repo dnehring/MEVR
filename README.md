@@ -100,7 +100,8 @@ what happened, your headset and OpenXR runtime, and:
 - **the mod's log:** `Game\ME1\Binaries\Win64\Logs\LE1MEVR.log` (and `LE1MEVR.prev.log`, the run before; if the
   game folder isn't writable they are in `%LOCALAPPDATA%\MEVR\`);
 - **after a crash:** `%LOCALAPPDATA%\MEVR\crash-breadcrumbs.txt` (the one before is `crash-breadcrumbs.prev.txt`);
-- **the renderer's log:** `%LOCALAPPDATA%\MELEVR\MELEVR_Log.txt` (it never resets: its end is enough);
+- **the renderer's log:** `%LOCALAPPDATA%\MELEVR\MELEVR_Log.txt` (its end is enough; over 16 MB at a launch it moves to
+  `MELEVR_Log.prev.txt` and a new one starts);
 - **the loader's log:** `Game\ME1\Binaries\Win64\Logs\MEVRLoader.log` (ours) or `bink2w64_proxy.log` (ME3Tweaks').
 
 A snapshot helps with anything visual: Advanced > Diagnostics > Snapshot in the VR menu (or a quick tap of both

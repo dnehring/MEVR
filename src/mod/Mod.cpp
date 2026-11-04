@@ -4,6 +4,7 @@
 
 #include "mod/ModApi.hpp"
 
+#include "core/DevChannels.hpp"
 #include "core/Exe.hpp"
 #include "core/Hook.hpp"
 #include "core/Hotkey.hpp"
@@ -18,6 +19,7 @@
 #include "core/vr/Output.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "core/vr/ViewSync.hpp"
+#include "engine/SettingsFile.hpp"
 #include "engine/Addresses.hpp"
 #include "engine/BonePose.hpp"
 #include "engine/CallFunction.hpp"
@@ -1089,7 +1091,9 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         gGamepadHooked = true;  // the host's XInput hook feeds the controllers to the game
     }
     PollHotkeys();
-    game::console_request::Tick(deltaSeconds);  // the test loop's console.request (research/22)
+    if (dev_channels::Allowed(engine::SettingsFile())) {
+        game::console_request::Tick(deltaSeconds);  // the test loop's console.request (research/22); off in the players' build
+    }
     game::system_settings::Tick(deltaSeconds);  // shadows, motion blur, foliage radius: `scale set` by the mod (research/35)
     if (!gHooked || !gGamepadHooked) {
         gRetryTimer += deltaSeconds;

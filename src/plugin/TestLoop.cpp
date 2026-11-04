@@ -22,6 +22,8 @@
 #include "halcyon/le1/mevr_bridge.h"
 #include "halcyon/le1/vr_menu.h"
 
+#include "core/DevChannels.hpp"
+#include "core/DiskBudget.hpp"
 #include "core/Hotkey.hpp"
 #include "core/Log.hpp"
 #include "core/PngFile.hpp"
@@ -31,6 +33,7 @@
 #include "core/vr/LayerComposite.hpp"
 #include "core/vr/PoseRecording.hpp"
 #include "core/vr/TestRequest.hpp"
+#include "engine/SettingsFile.hpp"
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -1108,6 +1111,11 @@ void StopRecordingNow(char const* why) {
 
 void StartRecordingNow(double maxSeconds) {
     StopRecordingNow("restarted");
+    // The players' build stops an open-ended recording after 30 minutes (Home pressed by accident; docs/release-checklist.md).
+    constexpr double kPlayersRecordingCapSeconds = 30.0 * 60.0;
+    if (maxSeconds <= 0.0 && !dev_channels::kDevelopmentBuild) {
+        maxSeconds = kPlayersRecordingCapSeconds;
+    }
     fs::path const path = RecordingDir() / Widen(Stamp() + ".mevrrec");
     if (!gRecorder.writer.Open(path, UnixMs())) {
         log::Error("test loop: can't create {}; not recording", Utf8(path));
@@ -1459,6 +1467,59 @@ Hotkey gRecordKey{VK_HOME};
 double gPollTimer = 0.0;
 std::string gLastStatusJson;
 
+// ---- What the diagnostics keep on disk (core/DiskBudget, docs/release-checklist.md section 1) -----------------------
+// The players' build keeps the newest 2 GB of snapshots, 512 MB of recordings and 256 MB of frame-timing captures;
+// development builds keep everything. [Debug] snapshotsMB / recordingsMB / perfMB set a budget (0: no limit).
+
+std::uintmax_t BudgetBytes(wchar_t const* key, int playersMegabytes) {
+    int const fileValue = dev_channels::ReadDebugInt(engine::SettingsFile(), key);
+    int const megabytes = fileValue >= 0 ? fileValue : (dev_channels::kDevelopmentBuild ? 0 : playersMegabytes);
+    return static_cast<std::uintmax_t>(megabytes) * 1024u * 1024u;
+}
+
+void PruneDiagnostics() {
+    struct Folder {
+        fs::path dir;
+        wchar_t const* key;
+        int playersMegabytes;
+    };
+    Folder const folders[] = {
+        {SnapshotDir(), L"snapshotsMB", 2048},
+        {RecordingDir(), L"recordingsMB", 512},
+        {BaseDir() / L"perf", L"perfMB", 256},
+    };
+    constexpr std::int64_t kMinAgeSeconds = 10 * 60;  // never a file that may still be written or zipped into a report
+    for (Folder const& f : folders) {
+        std::uintmax_t const budget = BudgetBytes(f.key, f.playersMegabytes);
+        if (budget == 0) {
+            continue;
+        }
+        disk_budget::Result const r = disk_budget::Prune(f.dir, budget, kMinAgeSeconds);
+        if (r.files > 0) {
+            log::Info("test loop: {} was over its {} MB: removed its {} oldest files ({} MB); {} MB kept", Utf8(f.dir),
+                budget / (1024u * 1024u), r.files, r.bytes / (1024u * 1024u), r.kept / (1024u * 1024u));
+        }
+    }
+}
+
+// A background thread, once: at the first tick and every 10 minutes after. Detached: the process's exit ends it.
+void StartPruning() {
+    static std::atomic<bool> started{false};
+    if (started.exchange(true)) {
+        return;
+    }
+    std::thread([] {
+        for (;;) {
+            try {
+                PruneDiagnostics();
+            } catch (...) {
+                log::Warn("test loop: pruning the diagnostics folders failed; trying again in 10 minutes");
+            }
+            Sleep(10 * 60 * 1000);
+        }
+    }).detach();
+}
+
 } // namespace
 
 // ---- Public -------------------------------------------------------------------------------------------
@@ -1647,12 +1708,15 @@ void Tick(float deltaSeconds) {
         log::Info("test loop: Home: recording {}", gRecordingActive.load() ? "off" : "on");
         RequestRecording(-1);
     }
+    StartPruning();
     gPollTimer += deltaSeconds;
     if (gPollTimer < 1.0) {
         return;
     }
     gPollTimer = 0.0;
-    PollRequests();
+    if (dev_channels::Allowed(engine::SettingsFile())) {
+        PollRequests();  // the developer request files: off in the players' build (core/DevChannels)
+    }
     std::string const status = StatusJson(GetStatus());
     if (status != gLastStatusJson) {
         if (WriteFileAtomically(BaseDir() / L"testloop.status", status)) {

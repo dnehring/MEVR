@@ -2,6 +2,8 @@
 // Offline tests for the math that has to be right before it reaches a headset. No game, no
 // runtime: `ctest -C Release --test-dir build`.
 
+#include "core/DevChannels.hpp"
+#include "core/DiskBudget.hpp"
 #include "core/Ini.hpp"
 #include "core/PngFile.hpp"
 #include "core/ik/ArmLength.hpp"
@@ -5784,6 +5786,29 @@ void TestSightVirtualEyepiece() {
 // The scope's real zoomed render (research/39): the capture's field, its camera, the pose history, and the picture
 // sampling it through the same projection the eye copy uses.
 // The spectator camera (core/vr/Spectator, research/49): its field, the head camera's damped follow, the publish history.
+// The developer request files' switch and the diagnostics' disk budget (docs/release-checklist.md section 1).
+void TestDevChannelsAndDiskBudget() {
+    using mevr::dev_channels::Resolve;
+    CHECK(Resolve(-1, true) && !Resolve(-1, false));   // no key: the build flavour decides
+    CHECK(Resolve(1, false) && !Resolve(0, true));     // the key wins either way
+    CHECK(Resolve(2, false));                          // any non-zero is on
+
+    using mevr::disk_budget::Entry;
+    using mevr::disk_budget::PlanPrune;
+    std::vector<Entry> const files{{400, 5000}, {300, 9000}, {200, 100}, {100, 7000}};  // bytes, age in seconds
+    CHECK(PlanPrune(files, 0, 600).empty());      // no limit
+    CHECK(PlanPrune(files, 1000, 600).empty());   // fits exactly
+    {
+        auto const out = PlanPrune(files, 600, 600);  // 1000 bytes: the oldest go first (9000 s, then 7000 s)
+        CHECK(out.size() == 2 && out[0] == 1 && out[1] == 3);
+    }
+    {
+        auto const out = PlanPrune(files, 150, 600);  // the 100-s-old file is never removed, even over budget
+        CHECK(out.size() == 3 && out[0] == 1 && out[1] == 3 && out[2] == 0);
+    }
+    CHECK(PlanPrune(files, 150, 100000).empty());  // nothing old enough
+}
+
 void TestCineScreen() {
     namespace cs = mevr::vr::cine_screen;
     // The crop: the two shown parts are c apart and (1 - c) wide, so infinity's disparity is depth of the shown width.
@@ -9331,6 +9356,7 @@ int main() {
     TestGalaxyHologram();
     TestWorldUi();
     TestCineScreen();
+    TestDevChannelsAndDiskBudget();
     TestBoneNames();
     TestIk();
     TestRigid();

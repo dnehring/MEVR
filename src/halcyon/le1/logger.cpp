@@ -217,6 +217,22 @@ bool AppendLineToFile(const std::wstring& filePath, const std::string& line)
     static HANDLE s_file = INVALID_HANDLE_VALUE;
     if (s_file == INVALID_HANDLE_VALUE)
     {
+        // [MEVR] the log grew forever (578 MB on the development machine): at the process's first line, a log over 16 MB
+        // becomes MELEVR_Log.prev.txt (replacing the one before) and a new one starts. Moving it fails harmlessly while
+        // another program holds it open without delete sharing: the log then keeps growing until a later launch.
+        static bool s_rotated = false;
+        if (!s_rotated)
+        {
+            s_rotated = true;
+            WIN32_FILE_ATTRIBUTE_DATA attributes{};
+            if (GetFileAttributesExW(filePath.c_str(), GetFileExInfoStandard, &attributes) &&
+                ((static_cast<unsigned long long>(attributes.nFileSizeHigh) << 32) | attributes.nFileSizeLow) > 16ull * 1024 * 1024)
+            {
+                const size_t dot = filePath.find_last_of(L'.');
+                const std::wstring previous = (dot == std::wstring::npos ? filePath : filePath.substr(0, dot)) + L".prev.txt";
+                MoveFileExW(filePath.c_str(), previous.c_str(), MOVEFILE_REPLACE_EXISTING);
+            }
+        }
         s_file = CreateFileW(
             filePath.c_str(),
             FILE_APPEND_DATA,

@@ -767,6 +767,13 @@ Use it to check VR changes yourself instead of asking the user what they see
   hot-reloaded) runs each line through `PlayerController.ConsoleCommand` on the game thread and writes what it
   printed to `console.result` (log `console:`). Flat or in VR, wherever there is a local player: A/Bs without a restart.
 - `testloop.status` (JSON, once a second): recording, replay, last snapshot, `framesRunning`.
+- **The request files are a development-build feature** (since 2026-11-04, `core/DevChannels`, docs/release-checklist.md):
+  the hot-reload build reads `console.request`, `snapshot`/`record`/`replay`/`perf`/`eyediff.request`; the players'
+  (monolithic) build ignores them unless `[Debug] requests = 1` in `ASI\LE1MEVR.ini` (so set it when testing a
+  `build-mono` deploy with these tools). Its classic menu has no replay, its open-ended recordings stop after 30 minutes,
+  and it keeps the newest 2 GB of snapshots, 512 MB of recordings and 256 MB of perf captures (`[Debug] snapshotsMB`,
+  `recordingsMB`, `perfMB`; 0 no limit; development builds keep everything). Halcyon's `MELEVR_Log.txt` over 16 MB moves
+  to `MELEVR_Log.prev.txt` at a launch (`[MEVR]` in its logger).
 - **After a crash:** read `%LOCALAPPDATA%\MEVR\crash-breadcrumbs.txt` (the one before is `.prev.txt`; the same text
   is at the end of `LE1MEVR.log`). It holds the exception, the registers, the native stack, the script frames
   (FFrames) on the faulting thread, and the last ProcessEvents, script handler calls and mod writes, with names
