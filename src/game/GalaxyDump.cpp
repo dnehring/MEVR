@@ -979,6 +979,55 @@ std::string SkillGame(ue3::Object* controller, ue3::Object* pawn, std::string co
         return std::format("skillgame: {}.{}(type {}, difficulty {}, dependent {}) called {}, returned {}", r.FullName(skillGame),
             custom ? "InitializeSkillGameCustom" : "InitializeSkillGame", a, b, custom ? std::string("the pawn") : r.FullName(dependent), called, result);
     }
+    if (sub == "decrypt" || sub == "electronics") {
+        // Shepard's decryption (or electronics) skill, BioAttributesPawn.m_SkillDecryption: shown, or with a value > 0 raised to it
+        // in memory for a test (base and current; the max if lower; journalled, never saved unless the game saves): a real
+        // encrypted crate's minigame with a Shepard who lacks the skill ("Decryption: Skill Too Low", research/53 section 5.1).
+        ue3::Class* const cls = r.FindClass("SFXGame.BioAttributesPawn");
+        if (cls == nullptr || pawn == nullptr) {
+            return "skillgame: no BioAttributesPawn class or no pawn";
+        }
+        ue3::Object* attributes = nullptr;
+        for (std::int32_t i = 0, n = r.ObjectCount(); i < n && attributes == nullptr; ++i) {
+            ue3::Object* const o = r.ObjectAt(i);
+            if (o == nullptr || !r.IsAlive(o) || !r.IsA(o, cls)) {
+                continue;
+            }
+            for (ue3::Object* outer = r.OuterOf(o); outer != nullptr; outer = r.OuterOf(outer)) {
+                if (outer == pawn) {
+                    attributes = o;
+                    break;
+                }
+            }
+        }
+        std::string const fieldName = sub == "decrypt" ? "m_SkillDecryption" : "m_SkillElectronics";
+        auto const field = attributes != nullptr ? r.PropertyOf(cls, fieldName) : std::nullopt;
+        ue3::Struct* const inner = field ? r.StructOf(*field) : nullptr;
+        auto const base = inner != nullptr ? r.PropertyOf(inner, "m_Base") : std::nullopt;
+        auto const current = inner != nullptr ? r.PropertyOf(inner, "m_Current") : std::nullopt;
+        auto const max = inner != nullptr ? r.PropertyOf(inner, "m_Max") : std::nullopt;
+        if (!base || !current || !max) {
+            return std::format("skillgame: Shepard's BioAttributesPawn.{} not found", fieldName);
+        }
+        auto* const bytes = reinterpret_cast<std::uint8_t*>(attributes) + field->offset;
+        auto* const pBase = reinterpret_cast<float*>(bytes + base->offset);
+        auto* const pCurrent = reinterpret_cast<float*>(bytes + current->offset);
+        auto* const pMax = reinterpret_cast<float*>(bytes + max->offset);
+        std::string const before = std::format("base {:.1f}, current {:.1f}, max {:.1f}", *pBase, *pCurrent, *pMax);
+        if (a <= 0) {
+            return std::format("skillgame: {} {}.{}: {}", sub, r.FullName(attributes), fieldName, before);
+        }
+        float const value = static_cast<float>(a);
+        *pBase = value;
+        *pCurrent = value;
+        if (*pMax < value) {
+            *pMax = value;
+        }
+        write_journal::Wrote("SkillGame.skill", bytes + base->offset, 3 * sizeof(float));
+        log::Info("skillgame: Shepard's {} set to {} for a test (was {})", fieldName, a, before);
+        return std::format("skillgame: {} {}.{}: was {}, now base {:.1f}, current {:.1f}, max {:.1f}", sub, r.FullName(attributes), fieldName,
+            before, *pBase, *pCurrent, *pMax);
+    }
     if (sub == "gel") {  // Shepard's inventory (m_fResourceSalvage: the omni-gel)
         ue3::Object* const behavior = pawn != nullptr ? ReadObject(r, pawn, "m_oBehavior") : nullptr;
         ue3::Object* const inventory = behavior != nullptr ? ReadObject(r, behavior, "m_oInventory") : nullptr;

@@ -461,7 +461,8 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
     }
     if (verb == "skillgame") {
         // `mevr skillgame start [type 0|1] [difficulty 0..2] [n]` (n: the (n-1)-th `find` object as the dependent, the plain
-        // InitializeSkillGame), `mevr skillgame state`, `mevr skillgame gel`.
+        // InitializeSkillGame), `mevr skillgame state`, `mevr skillgame gel`, `mevr skillgame decrypt|electronics [value]` (Shepard's
+        // skill shown, or raised in memory for a test).
         std::string sub;
         words >> sub;
         int a = 0, b = 0, c = 0;

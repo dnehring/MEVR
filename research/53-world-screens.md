@@ -55,7 +55,7 @@ All 35 templates of the GUI library, in its order. "Room" = the world UI below. 
 | DeviceSelection | GUI_SF_Tutorial.Tutorials | console storage | - | n/a on PC | none |
 | Conversation | GUI_SF_Conversation.Conversation | conversations (mode 5) | the dialogue wheel | Halcyon's VR cine; 3D screen (research/52) | done (separately) |
 | BlackScreen | GUI_SF_Utility.BlackScreen | fades | black | fine | none |
-| SkillGame | GUI_SF_SkillGame.PCMiniGame | the bypass minigame on encrypted consoles, crates and doors (mode 10; the level's `BioSkillGame` with the placeable as `oDependent`) | Flash minigame | **wrist** (section 6): projected from the left wrist; in the room at the placeable (`BioSkillGame_Handler.m_oDependent`) without a tracked left controller or with `wrist = none` | done, reached on the Normandy (section 6); a real crate [verify in a mission]; tapping it: next |
+| SkillGame | GUI_SF_SkillGame.PCMiniGame | the bypass minigame on encrypted consoles, crates and doors (mode 10; the level's `BioSkillGame` with the placeable as `oDependent`) | Flash minigame | **wrist** (section 6): projected from the left wrist; in the room at the placeable (`BioSkillGame_Handler.m_oDependent`) without a tracked left controller or with `wrist = none` | done, reached on the Normandy (section 6) and at a real encrypted locker on UNC20 (section 5.1); tapping it: next |
 | IntroText | GUI_SF_Utility.IntroText | the opening text | text | flat | keep |
 | MainMenu | GUI_SF_MainMenu.MainMenu | the title | Flash over its flyby | flat | keep (front end) |
 | **shop** | GUI_SF_Shop.PCShop | a vendor's conversation, `BioSeqAct_OpenShop` (its `m_shop` is a BioShop actor placed at the vendor) | Flash, the item's picture (a render target in the movie) | **room: at counter height in front of the vendor** | done (section 4) |
@@ -160,7 +160,13 @@ The galaxy map's pieces made generic (core/vr/WorldUi, game/WorldUi, plugin/Worl
   calls any function without parameters on a found object.
 - **The encrypted storage locker** (`StorageLocker_01_Con_Type`, `m_SkillDifficulty` 0): the game's prompt, our label at the
   object, reads "Storage Locker / Decryption: Skill Too Low", and A does nothing: this Shepard has no decryption skill (the
-  game's rule). A real crate's minigame needs a Shepard with the skill [verify on another career].
+  game's rule). **With the skill raised in memory** (`mevr skillgame decrypt 10`: Shepard's `BioAttributesPawn.m_SkillDecryption`
+  base and current, journalled, never saved; it was 0) the prompt reads "Storage Locker / Easy Decryption" and A opens the
+  minigame through the game's own path (15:00:18): the omni-tool on the forearm, the screen projected from its display, the
+  orange fan (snapshot 15:00:38). With 0 omni-gel the screen offers only "Begin manual override" and "Cancel": the omni-gel
+  button needs omni-gel (section 6's open question). `PreGameButtonAOnPress` started the puzzle on the wrist (the rotating
+  rings, the timer; 15:01:04); it timed out, the screen and the omni-tool went (15:01:21). The game's hand display draws a pale
+  beam of its own up from the back of the hand, toward the screen above it. The saves stayed unchanged (checked against a backup).
 - **The junk container** (`JunkS_00_Con_Type`, "Malfunctioning Object / Open"): A opened the loot screen in the room, toward the
   container 0.84 m ahead and 1.76 m below the eyes, 0.55 m from the eyes (the nearest the room placement allows), the lid
   opening under it (snapshot 14:28:10). Its frame filled only stage x 0.317..0.683, y 0.064..0.922 of a 1.20 x 0.67 m panel, the
