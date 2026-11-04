@@ -154,6 +154,11 @@ public:
     bool EditIni(std::string_view relative, std::function<std::string(std::string_view, std::vector<ini::Edit>*)> const& edit);
     // Reverts the recorded edits of one ini file (Restore for the game settings) and forgets them.
     bool RevertIni(std::string_view relative);
+    // After another program wrote the ini file (Mass Effect Modder writes the game's graphics settings: research/33 section
+    // 3): each key this install edited that held our value in `before` (the file's text before that program ran) and holds
+    // another now gets ours back. A key the player had changed already stays theirs. The record keeps each key's first
+    // `before`, so an uninstall still puts the player's own value back. False if the file can't be written.
+    bool ReassertIni(std::string_view relative, std::string_view before);
     // Sets `name`'s entry in the TOC at `relative` to `size` (added if missing), recorded so uninstall takes it out again (or
     // puts back the size it had). Refuses a TOC whose entries aren't where our hash puts them.
     bool SetTocEntry(std::string_view relative, std::string_view name, std::uint32_t size);

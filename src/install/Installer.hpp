@@ -4,8 +4,11 @@
 #include "install/Detect.hpp"
 #include "install/GameSettings.hpp"
 #include "install/Manifest.hpp"
+#include "install/Packs.hpp"
 
+#include <atomic>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -97,9 +100,24 @@ Outcome ApplySettings(Layout const& layout, settings::Choices const& choices);
 Outcome RestoreSettings(Layout const& layout);
 // Records an installed pack in the manifest.
 Outcome RecordPack(Layout const& layout, std::string const& id, std::string const& name);
+// A texture pack (packs::Catalogue's `packId`) from the player's `download` through Mass Effect Modder
+// (packs::InstallWithMem), then recorded in the manifest, then the VR game settings this install wrote set again where
+// MEM changed them (Transaction::ReassertIni: exactly the recorded values, never the Settings page's current choices).
+// The window's Optional content page and the command line's --install-pack (research/33 section 10).
+Outcome InstallPack(Layout const& layout, std::string const& packId, std::filesystem::path const& download,
+    std::function<void(packs::InstallStep const&)> const& progress, std::atomic<bool> const* cancel);
 
 // The request the in-game menu writes ("Install after I quit"): %LOCALAPPDATA%\MEVR\setup.request.
 std::filesystem::path RequestFile();
+// What it holds (plugin/SetupRequest writes {"page": "content", "packs": [], "pid": <the game's>}); the game then starts
+// ASI\MEVR-Setup.exe --request --wait-pid <pid> as it exits. `packs` keeps only ids the catalogue knows.
+struct SetupRequest {
+    std::string page = "content";
+    std::vector<std::string> packs;
+    unsigned long pid = 0;
+};
+// nullopt for text that isn't a request (the setup then opens on Optional content anyway).
+std::optional<SetupRequest> ParseSetupRequest(std::string_view text);
 // %LOCALAPPDATA%\MEVR: the mod's diagnostics and the setup's downloads (never in the game folder).
 std::filesystem::path LocalDataDir();
 // The mod's run-time files in the game folder (recorded at install as user data, deleted by a full uninstall).

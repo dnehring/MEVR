@@ -12,6 +12,7 @@
 #include <cctype>
 #include <chrono>
 #include <cstring>
+#include <format>
 #include <fstream>
 #include <system_error>
 
@@ -152,10 +153,16 @@ fs::path MemExe() {
     return LocalMevr() / L"tools" / L"MassEffectModderNoGui.exe";
 }
 
-std::optional<Asset> MemAssetFrom(std::string_view releaseJson) {
-    auto const release = json::Parse(releaseJson);
-    if (!release) {
+std::optional<Asset> MemAssetFrom(std::string_view releaseJson, std::string* why) {
+    auto say = [why](std::string text) {
+        if (why != nullptr) {
+            *why = std::move(text);
+        }
         return std::nullopt;
+    };
+    auto const release = json::Parse(releaseJson);
+    if (!release || !release->IsObject()) {
+        return say("GitHub's answer wasn't a release");
     }
     for (json::Value const& asset : release->Get("assets").Items()) {
         std::string const name = asset.String("name");
@@ -171,12 +178,77 @@ std::optional<Asset> MemAssetFrom(std::string_view releaseJson) {
             a.size = static_cast<std::uint64_t>(asset.Number("size", 0));
             a.tag = release->String("tag_name");
             if (a.url.rfind("https://github.com/", 0) != 0) {
-                return std::nullopt;  // only GitHub's own download links
+                return say("its download isn't on github.com");  // only GitHub's own download links
+            }
+            // The name becomes a file in the tools folder: a plain name only.
+            if (name.find_first_of("\\/:*?\"<>|") != std::string::npos || name.find("..") != std::string::npos) {
+                return say("its file name isn't a plain file name");
+            }
+            // GitHub lists "digest": "sha256:<64 hex>" for release assets; anything else isn't checked.
+            std::string const digest = Lower(asset.String("digest"));
+            if (digest.size() == 71 && digest.rfind("sha256:", 0) == 0 &&
+                digest.find_first_not_of("0123456789abcdef", 7) == std::string::npos) {
+                a.sha256 = digest.substr(7);
             }
             return a;
         }
     }
-    return std::nullopt;
+    std::string const tag = release->String("tag_name");
+    return say("its latest release" + (tag.empty() ? std::string() : " (" + tag + ")") + " has no Windows command-line build (MassEffectModderNoGui-*.7z)");
+}
+
+MemLookup FindMemRelease() {
+    MemLookup out;
+    http::Response const r = http::Get(kMemReleasesApi);
+    if (r.status == 0) {
+        out.error = "Couldn't reach GitHub: " + r.error;
+    } else if (r.rateLimited) {
+        out.error = "GitHub's limit for requests without an account is reached for now (60 an hour): try again later";
+    } else if (r.status != 200) {
+        out.error = "GitHub answered HTTP " + std::to_string(r.status);
+    } else if (!r.error.empty()) {
+        out.error = "Couldn't read GitHub's answer: " + r.error;
+    } else {
+        std::string why;
+        out.asset = MemAssetFrom(r.body, &why);
+        if (!out.asset) {
+            out.error = "Mass Effect Modder's download wasn't found: " + why;
+        }
+    }
+    return out;
+}
+
+std::string DownloadMem(Asset const& asset, std::function<void(http::Progress const&)> const& progress, std::atomic<bool> const* cancel) {
+    if (asset.name.empty() || asset.name.find_first_of("\\/:*?\"<>|") != std::string::npos || asset.name.find("..") != std::string::npos) {
+        return "the release's file name isn't a plain file name";
+    }
+    fs::path const file = MemExe().parent_path() / detect::Wide(asset.name);
+    http::Expect expect;
+    expect.size = asset.size;
+    expect.sha256 = asset.sha256;
+    std::string const error = http::Download(asset.url, file, progress, cancel, expect);
+    if (!error.empty()) {
+        return error;
+    }
+    return UnpackMem(file);
+}
+
+std::wstring QuoteArg(std::wstring_view arg) {
+    std::wstring out = L"\"";
+    std::size_t backslashes = 0;
+    for (wchar_t const c : arg) {
+        if (c == L'\\') {
+            ++backslashes;
+            continue;
+        }
+        // Backslashes before a quote are doubled and the quote escaped; elsewhere they're literal.
+        out.append(c == L'"' ? backslashes * 2 + 1 : backslashes, L'\\');
+        out += c;
+        backslashes = 0;
+    }
+    out.append(backslashes * 2, L'\\');
+    out += L'"';
+    return out;
 }
 
 IpcLine ParseIpc(std::string_view line) {
@@ -280,16 +352,84 @@ std::vector<fs::path> FindDownloads(Pack const& pack) {
     return found;
 }
 
+std::vector<Unpacker> Unpackers() {
+    std::vector<Unpacker> tools;
+    std::error_code ec;
+    wchar_t system[MAX_PATH]{};
+    GetSystemDirectoryW(system, MAX_PATH);
+    if (fs::path const tar = fs::path(system) / L"tar.exe"; fs::exists(tar, ec)) {
+        tools.push_back({"tar.exe", tar, false});
+    }
+    // 7-Zip: its own registry key (both views), else the usual folders.
+    std::vector<fs::path> candidates;
+    for (HKEY const hive : {HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER}) {
+        for (REGSAM const view : {KEY_WOW64_64KEY, KEY_WOW64_32KEY}) {
+            for (wchar_t const* value : {L"Path64", L"Path"}) {
+                wchar_t buffer[MAX_PATH]{};
+                DWORD size = sizeof buffer;
+                if (RegGetValueW(hive, L"SOFTWARE\\7-Zip", value, RRF_RT_REG_SZ | (view == KEY_WOW64_64KEY ? RRF_SUBKEY_WOW6464KEY : RRF_SUBKEY_WOW6432KEY),
+                        nullptr, buffer, &size) == ERROR_SUCCESS && buffer[0] != L'\0') {
+                    candidates.push_back(fs::path(buffer) / L"7z.exe");
+                }
+            }
+        }
+    }
+    for (wchar_t const* variable : {L"ProgramW6432", L"ProgramFiles", L"ProgramFiles(x86)"}) {
+        wchar_t buffer[MAX_PATH]{};
+        if (DWORD const n = GetEnvironmentVariableW(variable, buffer, MAX_PATH); n > 0 && n < MAX_PATH) {
+            candidates.push_back(fs::path(buffer) / L"7-Zip" / L"7z.exe");
+        }
+    }
+    for (fs::path const& exe : candidates) {
+        if (fs::exists(exe, ec)) {
+            tools.push_back({"7-Zip", exe, true});
+            break;
+        }
+    }
+    return tools;
+}
+
 std::string UnpackMem(fs::path const& archive) {
+    return UnpackMem(archive, Unpackers());
+}
+
+std::string UnpackMem(fs::path const& archive, std::vector<Unpacker> const& tools) {
     fs::path const dir = MemExe().parent_path();
     std::error_code ec;
     fs::create_directories(dir, ec);
-    wchar_t system[MAX_PATH]{};
-    GetSystemDirectoryW(system, MAX_PATH);
-    std::wstring const command = L"\"" + (fs::path(system) / L"tar.exe").wstring() + L"\" -xf \"" + archive.wstring() + L"\" -C \"" + dir.wstring() + L"\"";
-    int const code = Run(command, dir, nullptr, nullptr);
-    if (code != 0) {
-        return "couldn't unpack " + detect::Utf8(archive.filename().wstring()) + " (tar exit code " + std::to_string(code) + ")";
+    std::string const name = detect::Utf8(archive.filename().wstring());
+    std::string tried;
+    bool unpacked = false;
+    for (Unpacker const& tool : tools) {
+        std::wstring const command = tool.sevenZip
+            ? QuoteArg(tool.exe.wstring()) + L" x -y -bd " + QuoteArg(L"-o" + dir.wstring()) + L" " + QuoteArg(archive.wstring())
+            : QuoteArg(tool.exe.wstring()) + L" -xf " + QuoteArg(archive.wstring()) + L" -C " + QuoteArg(dir.wstring());
+        // What it said: its error line if it printed one, else its last line.
+        std::string lastLine;
+        bool errorLine = false;
+        int const code = Run(command, dir, [&](std::string_view text) {
+            bool const isError = text.find("rror") != std::string_view::npos;
+            if (!text.empty() && (!errorLine || isError)) {
+                lastLine = std::string(text);
+                errorLine = errorLine || isError;
+            }
+        }, nullptr);
+        if (code == 0) {
+            unpacked = true;
+            break;
+        }
+        tried += std::format("{}{} (exit code {}{}{})", tried.empty() ? "" : ", ", tool.name, code, lastLine.empty() ? "" : ": ", lastLine);
+    }
+    if (!unpacked) {
+        if (tools.empty()) {
+            return "couldn't unpack " + name + ": neither Windows' tar.exe nor 7-Zip is on this PC";
+        }
+        bool const sevenZipTried = std::any_of(tools.begin(), tools.end(), [](Unpacker const& t) { return t.sevenZip; });
+        return "couldn't unpack " + name + " with " + tried +
+            (sevenZipTried ? std::string(". The download may be damaged: try again, or unpack it yourself")
+                           : std::string(". Windows 10's tar.exe can't open 7z archives: install 7-Zip (7-zip.org) and try again, or unpack it "
+                                         "yourself")) +
+            " and put MassEffectModderNoGui.exe in " + detect::Utf8(dir.wstring());
     }
     // The archive may hold the exe in a subfolder.
     if (!fs::exists(MemExe(), ec)) {
@@ -303,10 +443,10 @@ std::string UnpackMem(fs::path const& archive) {
     return fs::exists(MemExe(), ec) ? std::string() : std::string("MassEffectModderNoGui.exe isn't in the archive");
 }
 
-bool WaitForGameExit(unsigned timeoutMs, std::atomic<bool> const* cancel, std::function<void()> const& waiting) {
+bool WaitForGameExit(fs::path const& gameRoot, unsigned timeoutMs, std::atomic<bool> const* cancel, std::function<void()> const& waiting) {
     ULONGLONG const start = GetTickCount64();
     bool told = false;
-    while (detect::GameRunning()) {
+    while (detect::GameRunningIn(gameRoot)) {
         if ((cancel != nullptr && *cancel) || GetTickCount64() - start > timeoutMs) {
             return false;
         }
@@ -332,11 +472,21 @@ std::string InstallWithMem(Pack const& pack, fs::path const& download, fs::path 
         }
     };
     // MEM rewrites the game's packages and ini files: never while the game runs, or is still exiting and about to
-    // write its ini files ("Install after I quit" starts us while it does). Up to 60 s for it to go.
-    if (!WaitForGameExit(60000, cancel, [&] { report("Waiting for Mass Effect to close", 0, ""); })) {
-        return "Mass Effect is still running: close it, then install the pack";
+    // write its ini files ("Install after I quit" starts us while it does). Up to 60 s for it to go. Only this game
+    // folder's: another copy of the game running elsewhere doesn't matter.
+    if (!WaitForGameExit(gameRoot, 60000, cancel, [&] { report("Waiting for Mass Effect to close", 0, ""); })) {
+        return cancel != nullptr && cancel->load() ? "cancelled" : "Mass Effect is still running: close it, then install the pack";
     }
+    // The work folder starts empty: .mem files an earlier unpack (another version of the pack) left there would be
+    // installed along with these.
     fs::path const work = LocalMevr() / L"packs" / detect::Wide(pack.id);
+    bool const downloadInWork = detect::PathUnder(download, work);  // a .mem picked from there stays
+    if (!downloadInWork) {
+        fs::remove_all(work, ec);
+    }
+    if (!downloadInWork && fs::exists(work, ec)) {
+        return "couldn't empty " + detect::Utf8(work.wstring()) + " (is a file in it open?)";
+    }
     fs::create_directories(work, ec);
     std::string lastError;
     auto onLine = [&](std::string_view text) {
@@ -348,6 +498,7 @@ std::string InstallWithMem(Pack const& pack, fs::path const& download, fs::path 
             lastError = ipc.argument;
         }
     };
+    auto cancelled = [cancel] { return cancel != nullptr && cancel->load(); };
     // 1. The .mem files: as they are, or unpacked from the archive.
     std::vector<fs::path> memFiles;
     std::string const ext = detect::Utf8(download.extension().wstring());
@@ -355,9 +506,13 @@ std::string InstallWithMem(Pack const& pack, fs::path const& download, fs::path 
         memFiles.push_back(download);
     } else {
         report("Unpacking " + detect::Utf8(download.filename().wstring()), 0, "");
-        std::wstring const command = L"\"" + mem.wstring() + L"\" --unpack-archive --input \"" + download.wstring() + L"\" --output \"" + work.wstring() +
-            L"\" --ipc";
-        if (int const code = Run(command, work, onLine, cancel); code != 0) {
+        std::wstring const command =
+            QuoteArg(mem.wstring()) + L" --unpack-archive --input " + QuoteArg(download.wstring()) + L" --output " + QuoteArg(work.wstring()) + L" --ipc";
+        int const code = Run(command, work, onLine, cancel);
+        if (cancelled()) {
+            return "cancelled";
+        }
+        if (code != 0) {
             return "unpacking failed (MEM exit code " + std::to_string(code) + ")" + (lastError.empty() ? "" : ": " + lastError);
         }
         for (auto const& entry : fs::recursive_directory_iterator(work, ec)) {
@@ -375,16 +530,20 @@ std::string InstallWithMem(Pack const& pack, fs::path const& download, fs::path 
         return "couldn't write the file list";
     }
     // 2. Point MEM at this game.
-    std::wstring const setPath = L"\"" + mem.wstring() + L"\" --set-game-data-path --gameid 1 --path \"" + gameRoot.wstring() + L"\"";
+    std::wstring const setPath = QuoteArg(mem.wstring()) + L" --set-game-data-path --gameid 1 --path " + QuoteArg(gameRoot.wstring());
     if (int const code = Run(setPath, work, onLine, cancel); code != 0) {
-        return "MEM didn't accept the game folder (exit code " + std::to_string(code) + ")";
+        return cancelled() ? "cancelled"
+                           : "MEM didn't accept the game folder (exit code " + std::to_string(code) + ")" + (lastError.empty() ? "" : ": " + lastError);
     }
     // 3. Install, after every content mod (the caller has warned the player). The game mustn't have started meanwhile.
-    if (detect::GameRunning()) {
+    if (detect::GameRunningIn(gameRoot)) {
         return "Mass Effect was started while the pack was unpacked: close it, then install the pack again";
     }
+    if (cancelled()) {
+        return "cancelled";
+    }
     std::string stage = "Installing textures";
-    std::wstring const install = L"\"" + mem.wstring() + L"\" --install-mods --gameid 1 --input \"" + mfl.wstring() + L"\" --verify --ipc";
+    std::wstring const install = QuoteArg(mem.wstring()) + L" --install-mods --gameid 1 --input " + QuoteArg(mfl.wstring()) + L" --verify --ipc";
     int const code = Run(install, work, [&](std::string_view text) {
         IpcLine const ipc = ParseIpc(text);
         if (ipc.command == "STAGE_CONTEXT") {
@@ -398,6 +557,10 @@ std::string InstallWithMem(Pack const& pack, fs::path const& download, fs::path 
             lastError = ipc.argument;
         }
     }, cancel);
+    if (cancelled()) {
+        return "cancelled while Mass Effect Modder was installing: the game's files may be half changed. Verify the game's files in "
+               "Steam or the EA app, then install the pack again";
+    }
     if (code != 0) {
         return "MEM failed (exit code " + std::to_string(code) + ")" + (lastError.empty() ? "" : ": " + lastError);
     }
