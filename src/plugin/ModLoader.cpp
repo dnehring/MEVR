@@ -20,6 +20,7 @@
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/Sights.hpp"
+#include "core/vr/GalaxyHologram.hpp"
 #include "core/vr/GalaxyMap.hpp"
 #include "core/vr/Spectator.hpp"
 #include "core/vr/SquadMenu.hpp"
@@ -244,12 +245,33 @@ void HostSetGalaxyMap(vr::galaxy_map::View const* view) {
         vr::galaxy_map::Reset();
     }
 }
+// v26: the galaxy hologram (core/vr/GalaxyHologram, plugin/GalaxyHologram, research/51 section 8).
+void HostSetGalaxyHologram(vr::galaxy_holo::Scene const* scene) {
+    if (scene != nullptr) {
+        vr::galaxy_holo::Publish(*scene);
+    } else {
+        vr::galaxy_holo::Forget();
+    }
+}
+bool HostTakeGalaxyPick(std::uint32_t* id) {
+    auto const pick = vr::galaxy_holo::TakePick();
+    if (pick && id != nullptr) {
+        *id = *pick;
+    }
+    return pick.has_value();
+}
+HostServices WithGalaxyHologram(HostServices services) {
+    services.galaxyHologramSize = static_cast<std::uint32_t>(sizeof(vr::galaxy_holo::Scene));
+    services.setGalaxyHologram = &HostSetGalaxyHologram;
+    services.takeGalaxyPick = &HostTakeGalaxyPick;
+    return services;
+}
 HostServices WithGalaxyMap(HostServices services) {
     services.galaxyMapSize = static_cast<std::uint32_t>(sizeof(vr::galaxy_map::View));
     services.setGalaxyMap = &HostSetGalaxyMap;
     return services;
 }
-HostServices const gServices = WithGalaxyMap(WithSpectator(WithMakoControls(WithHudPieces(WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithCrashBreadcrumbs({kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
+HostServices const gServices = WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(WithHudPieces(WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithCrashBreadcrumbs({kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
     static_cast<std::uint32_t>(sizeof(vr::controllers::State)), static_cast<std::uint32_t>(sizeof(vr::host_view::State)),
     &HostSetProcessEventCallback, &HostProcessExiting, &HostKeepLoaded,
     static_cast<std::uint32_t>(sizeof(vr::aim_ray::Ray)), &HostSetAimRay, &HostSetSupportGrip, &HostSupportGripHeld,
@@ -259,7 +281,7 @@ HostServices const gServices = WithGalaxyMap(WithSpectator(WithMakoControls(With
     static_cast<std::uint32_t>(sizeof(vr::squad_menu::View)), &HostSetSquadMenu, &HostLeftGripAway,
     static_cast<std::uint32_t>(sizeof(vr::squad_menu::wheel::Panel)), &HostSetWheelPanel,
     static_cast<std::uint32_t>(sizeof(vr::sights::Sight)), &HostSetSight, &HostSightView,
-    static_cast<std::uint32_t>(sizeof(vr::calibration::HostState)), &HostCalibration, &HostMainMenu, &HostSetVignette}))))))));
+    static_cast<std::uint32_t>(sizeof(vr::calibration::HostState)), &HostCalibration, &HostMainMenu, &HostSetVignette})))))))));
 // A mod that's gone can't aim: Halcyon's head aim must come back, the reticle go, the pad mapping
 // forget the two-handed grip (the grip holding the gun, the squad menu's controls), the squad menu and the
 // wheel panel settings go, and the controllers stop vibrating.

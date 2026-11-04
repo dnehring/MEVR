@@ -565,10 +565,14 @@ constexpr char const* kCockpitBlock =
 constexpr char const* kGalaxyBlock =
     "\n"
     "[Galaxy]\n"
-    "; The Normandy's galaxy map (research/51). hologram = 0: the game's map on Halcyon's flat panel, pointed at with a\n"
-    "; controller (the trigger clicks). 1 is an experiment that does NOT work: the map is drawn by the game's Flash layer, not\n"
-    "; its 3D camera, so both eyes see the same picture filling the view (research/51, 2026-11-03).\n"
-    "hologram = 0\n"
+    "; The Normandy's galaxy map (research/51). hologram = 1: a hologram of the map on a table in front of you (clusters,\n"
+    "; systems, planets in 3D): point at one with a controller and pull the trigger to select it; the game's own map hangs\n"
+    "; behind as a screen (its buttons and questions, pointed at the same way). 0: the game's map on the flat screen only.\n"
+    "; tableDistanceM / tableBelowM: the table's centre ahead of and below your eyes when the map opens; tableRadiusM its size.\n"
+    "hologram = 1\n"
+    "tableDistanceM = 0.70\n"
+    "tableBelowM = 0.45\n"
+    "tableRadiusM = 0.48\n"
     "distanceM = 0.9\n"
     "belowM = 0.30\n";
 
@@ -1512,6 +1516,15 @@ vr::galaxy_map::Settings ReadGalaxy(Ini const& ini) {
     if (Number(ini, "Galaxy", "belowM", value)) {
         s.belowM = static_cast<float>(std::clamp(value, -1.0, 1.5));
     }
+    if (Number(ini, "Galaxy", "tableDistanceM", value)) {
+        s.tableDistanceM = static_cast<float>(std::clamp(value, 0.3, 2.0));
+    }
+    if (Number(ini, "Galaxy", "tableBelowM", value)) {
+        s.tableBelowM = static_cast<float>(std::clamp(value, -0.5, 1.5));
+    }
+    if (Number(ini, "Galaxy", "tableRadiusM", value)) {
+        s.tableRadiusM = static_cast<float>(std::clamp(value, 0.15, 1.0));
+    }
     return s;
 }
 
@@ -1519,7 +1532,8 @@ std::string Describe(vr::galaxy_map::Settings const& s) {
     if (!s.hologram) {
         return "the galaxy map on Halcyon's panel ([Galaxy] hologram = 0)";
     }
-    return std::format("the galaxy map as a hologram, its centre {:.2f} m ahead and {:.2f} m below the eyes", s.distanceM, s.belowM);
+    return std::format("the galaxy map as our hologram on a table {:.2f} m ahead, {:.2f} m below the eyes, {:.2f} m in radius",
+                       s.tableDistanceM, s.tableBelowM, s.tableRadiusM);
 }
 
 vr::galaxy_map::Settings gGalaxy;

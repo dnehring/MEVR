@@ -7,6 +7,8 @@
 
 #include "plugin/WorldPanels.hpp"
 
+#include "plugin/GalaxyHologram.hpp"
+
 #include "halcyon/le1/mevr_bridge.h"
 #include "halcyon/le1/vr_config.h"
 
@@ -108,7 +110,12 @@ PanelPose PlacePanel(PanelKind kind, float const viewPosition[3], void* viewSpac
     slot.lastMs = now;
 
     overlay::Placement const why = slot.panel.Update(static_cast<int>(kind), gFrame, head, headValid, settings, dt);
-    XrPosef const pose = slot.panel.PoseOf({viewPosition[0], viewPosition[1], viewPosition[2]});
+    XrPosef pose = slot.panel.PoseOf({viewPosition[0], viewPosition[1], viewPosition[2]});
+    if (kind == PanelKind::GalaxyMap && mevr::host::galaxy_hologram::Active()) {
+        // The galaxy hologram is up (research/51 section 8): the game's own map moves back and up, a screen behind the table.
+        XrVector3f const away = overlay::Rotate(pose.orientation, {0.0f, 0.0f, -1.0f});
+        pose.position = {pose.position.x + away.x * 1.0f, pose.position.y + 0.75f + away.y * 1.0f, pose.position.z + away.z * 1.0f};
+    }
     if (why != overlay::Placement::Kept && gPlacementLogs < kMaxPlacementLogs) {
         ++gPlacementLogs;
         XrVector3f const anchor = slot.panel.Anchor();

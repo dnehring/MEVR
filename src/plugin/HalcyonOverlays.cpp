@@ -40,6 +40,7 @@
 #include "core/vr/WheelCrop.hpp"
 #include "plugin/Calibration.hpp"
 #include "plugin/Colour.hpp"
+#include "plugin/GalaxyHologram.hpp"
 #include "plugin/GamePointer.hpp"
 #include "plugin/Halcyon.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
@@ -2063,6 +2064,31 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     // The sight's quads, on top of the ring.
     for (unsigned i = 0; i < sight.count && count < capacity; ++i) {
         layersOut[count++] = sight.layers[i];
+    }
+
+    // ---- The galaxy hologram (plugin/GalaxyHologram, research/51 section 8): the map on a table, over the game's flat screen;
+    // before the game pointer, which leaves the trigger alone while a controller points at the table ----
+    {
+        mevr::host::galaxy_hologram::Frame galaxy;
+        galaxy.session = session;
+        galaxy.appSpace = static_cast<XrSpace>(frame.appSpace);
+        galaxy.context = context;
+        galaxy.device = device.Get();
+        galaxy.gameMode = frame.gameMode;
+        galaxy.menuOpen = frame.menuOpen;
+        galaxy.headValid = frame.headValid;
+        galaxy.head = {ToQuat(frame.headOrientation), ToVec(frame.headPosition)};
+        for (int e = 0; e < 2; ++e) {
+            galaxy.eyes[e] = {ToQuat(frame.eyeOrientation[e]), ToVec(frame.eyePosition[e])};
+            XrFovf const fov{frame.projectionFov[e][0], frame.projectionFov[e][1], frame.projectionFov[e][2], frame.projectionFov[e][3]};
+            bool const sane = fov.angleRight - fov.angleLeft > 0.5f && fov.angleUp - fov.angleDown > 0.5f;
+            galaxy.fov[e] = sane ? fov : XrFovf{-0.785398f, 0.785398f, 0.785398f, -0.785398f};
+        }
+        galaxy.eyeWidth = frame.projectionRect[0][2];
+        galaxy.eyeHeight = frame.projectionRect[0][3];
+        if (XrCompositionLayerBaseHeader const* layer = mevr::host::galaxy_hologram::Layer(galaxy); layer != nullptr && count < capacity) {
+            layersOut[count++] = layer;
+        }
     }
 
     // ---- The game pointer (plugin/GamePointer, research/42): on a flat frame (the game's menus, the galaxy map), a

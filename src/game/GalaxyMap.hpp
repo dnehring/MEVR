@@ -1,21 +1,27 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "core/vr/GalaxyHologram.hpp"
 #include "core/vr/GalaxyMap.hpp"
 
+#include <cstdint>
 #include <string>
 
-// The galaxy map as a hologram (research/51 stage B; what's shared with the host: core/vr/GalaxyMap.hpp). LE1, [Galaxy]
-// hologram = 1 (the default). While the game is in its galaxy mode (9), each tick: the map's camera (the player camera's
-// CameraCache.POV) against the map's centre (BioCameraBehaviorGalaxy.m_pCenterObject, else its m_vZoomLocation) gives the
-// units per metre that show the centre [Galaxy] distanceM ahead; published to the host (HostServices v25, setGalaxyMap),
-// which renders the map in stereo at that scale instead of on Halcyon's flat panel, and points the game's mouse from the
-// controllers. Through our reflection layer; a missing piece stands it down with a `galaxy map:` line. Game thread.
+// The galaxy map as a hologram we draw (research/51 section 8; the shared part: core/vr/GalaxyHologram). LE1, [Galaxy]
+// hologram = 1. While the game is in its galaxy mode (9), each tick: the map's model from the newest live
+// BioCameraBehaviorGalaxy (the level's selectable actors in m_pDynamicObjects, the centre, the selection, the player camera's
+// view) and the GalaxyMap tables (relay routes, read once per opening), labels through BioSPGame.GetSimpleString (cached),
+// sent to the host (HostServices v26 setGalaxyHologram), which draws it on a table. A pick from the host (takeGalaxyPick)
+// moves the map's cross-hair actor onto the object (Actor.SetLocation): the camera behaviour's own tick selects the object
+// nearest its cross-hair; once it has, a click (posted to the game's window) activates the selection as the game's own
+// click does (zooms in, or asks to travel). Through our reflection layer; a missing piece stands it down with a
+// `galaxy hologram:` line. Game thread.
 namespace mevr::game::galaxy_map {
 
 struct Link {
-    // HostServices v25 setGalaxyMap; null: an older host (the map stays on Halcyon's panel).
-    void (*publish)(vr::galaxy_map::View const* view) = nullptr;
+    // HostServices v26; null: an older host (the map stays on Halcyon's panel).
+    void (*setScene)(vr::galaxy_holo::Scene const* scene) = nullptr;
+    bool (*takePick)(std::uint32_t* id) = nullptr;
 };
 
 void Tick(Link const& link);

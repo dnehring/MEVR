@@ -568,6 +568,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/ScopeCaptureSource.hpp
     src/plugin/SightLayers.cpp
     src/plugin/SightLayers.hpp
+    src/plugin/GalaxyHologram.cpp
+    src/plugin/GalaxyHologram.hpp
     src/plugin/GalaxyHologramDraw.cpp
     src/plugin/GalaxyHologramDraw.hpp
     src/plugin/SightPictures.cpp

@@ -608,6 +608,9 @@ void CheckClasses() {
     CheckClass<ABioGrenadeProjectileBallistic>("SFXGame.BioGrenadeProjectileBallistic");
     CheckClass<UMassEffectGuiManager>("SFXGame.MassEffectGuiManager");
     CheckClass<UBioSFHandler_HUD>("SFXGame.BioSFHandler_HUD");
+    CheckClass<UBioCameraBehaviorGalaxy>("SFXGame.BioCameraBehaviorGalaxy");  // the galaxy hologram (research/51 section 8)
+    CheckClass<ABioSPGame>("SFXGame.BioSPGame");
+    CheckClass<UBio2DA>("Engine.Bio2DA");
     CheckClass<UBioPlayerSelection>("SFXGame.BioPlayerSelection");  // game/interact (research/40)
     // game/mako (research/44): the Mako's turret aimed by the controller.
     CheckClass<ABioVehicleBase>("SFXGame.BioVehicleBase");
@@ -658,6 +661,18 @@ void CheckFields() {
     CheckField("Engine.PrimitiveComponent", "bOwnerNoSee", SDK_BOOL(UPrimitiveComponent, bOwnerNoSee));
     CheckField("Engine.Actor", "Instigator", SDK_FIELD(AActor, Instigator));
     CheckField("Engine.Actor", "Tag", SDK_FIELD(AActor, Tag));
+    // The galaxy hologram (game/GalaxyMap, research/51 section 8).
+    CheckField("Engine.WorldInfo", "Game", SDK_FIELD(AWorldInfo, Game));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pDynamicObjects", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pDynamicObjects));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_sSelectableObject", SDK_FIELD(UBioCameraBehaviorGalaxy, m_sSelectableObject));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_nCurrentState", SDK_FIELD(UBioCameraBehaviorGalaxy, m_nCurrentState));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pCenterObject", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pCenterObject));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pCrossHairObject", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pCrossHairObject));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pSelectedObject", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pSelectedObject));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pSelectedCluster", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pSelectedCluster));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pSelectedSystem", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pSelectedSystem));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pClusterTable", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pClusterTable));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pRelayTable", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pRelayTable));
     CheckField("Engine.Actor", "Acceleration", SDK_FIELD(AActor, Acceleration));
     CheckField("Engine.Controller", "Pawn", SDK_FIELD(AController, Pawn));
     CheckField("Engine.Pawn", "Mesh", SDK_FIELD(APawn, Mesh));
@@ -1000,6 +1015,13 @@ void CheckFunctions() {
     char const* const functions[] = {
         // mevr stream (the measuring loop's streaming volumes)
         "SFXGame.BioTriggerStream.Touch",
+        // the galaxy hologram (game/GalaxyMap)
+        "SFXGame.BioSPGame.GetSimpleString",
+        "Engine.Bio2DA.GetNumRows",
+        "Engine.Bio2DA.GetNumColumns",
+        "Engine.Bio2DA.GetColumnName",
+        "Engine.Bio2DA.GetRowNumber",
+        "Engine.Bio2DA.GetIntEntryII",
         // Weapon, HandAim, Sights
         "SFXGame.BioWeaponRanged.GetMuzzleLoc",
         "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation",
@@ -1187,6 +1209,18 @@ void CheckParams() {
     PARAM(ABioPawn_execIsUsingPower_Parms, "SFXGame.BioPawn.IsUsingPower", bIgnoreWeaponPowers);
     PARAM(ABioPawn_execIsUsingPower_Parms, "SFXGame.BioPawn.IsUsingPower", ReturnValue);
     PARAM(ABioTriggerStream_eventTouch_Parms, "SFXGame.BioTriggerStream.Touch", Other);  // mevr stream
+    PARAM(ABioSPGame_execGetSimpleString_Parms, "SFXGame.BioSPGame.GetSimpleString", StrRef);  // the galaxy hologram
+    PARAM(ABioSPGame_execGetSimpleString_Parms, "SFXGame.BioSPGame.GetSimpleString", ReturnValue);
+    PARAM(UBio2DA_execGetNumRows_Parms, "Engine.Bio2DA.GetNumRows", ReturnValue);
+    PARAM(UBio2DA_execGetNumColumns_Parms, "Engine.Bio2DA.GetNumColumns", ReturnValue);
+    PARAM(UBio2DA_execGetColumnName_Parms, "Engine.Bio2DA.GetColumnName", nColumn);
+    PARAM(UBio2DA_execGetColumnName_Parms, "Engine.Bio2DA.GetColumnName", ReturnValue);
+    PARAM(UBio2DA_execGetRowNumber_Parms, "Engine.Bio2DA.GetRowNumber", nRowIndex);
+    PARAM(UBio2DA_execGetRowNumber_Parms, "Engine.Bio2DA.GetRowNumber", ReturnValue);
+    PARAM(UBio2DA_execGetIntEntryII_Parms, "Engine.Bio2DA.GetIntEntryII", nRow);
+    PARAM(UBio2DA_execGetIntEntryII_Parms, "Engine.Bio2DA.GetIntEntryII", nColumn);
+    PARAM(UBio2DA_execGetIntEntryII_Parms, "Engine.Bio2DA.GetIntEntryII", nEntry);
+    PARAM(UBio2DA_execGetIntEntryII_Parms, "Engine.Bio2DA.GetIntEntryII", ReturnValue);
     PARAM(ABioTriggerStream_eventTouch_Parms, "SFXGame.BioTriggerStream.Touch", HitLocation);
     PARAM(UBioPawnBehavior_eventGetGrenades_Parms, "SFXGame.BioPawnBehavior.GetGrenades", ReturnValue);
     PARAM(ABioPawn_execIsHostile_Parms, "SFXGame.BioPawn.IsHostile", Other);

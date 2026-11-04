@@ -21,9 +21,13 @@ namespace mevr::vr::galaxy_map {
 
 // ---- Settings ([Galaxy] in <GAME>MEVR.ini, parsed by the mod) -------------------------------------------------------
 struct Settings {
-    bool hologram = false;    // hologram: the map as a table-sized model in stereo; 0 = Halcyon's own (galaxyFlat decides)
-    float distanceM = 0.9f;   // distanceM: how far ahead the map's centre appears, metres
-    float belowM = 0.30f;     // belowM: how far below the eyes the map's centre appears, metres
+    bool hologram = true;     // hologram: our own hologram of the map (core/vr/GalaxyHologram, research/51 section 8) on a table
+                              // in front of the player; 0 = the game's map on Halcyon's flat panel only
+    float distanceM = 0.9f;   // (the camera-based experiment's, unused since research/51 section 7)
+    float belowM = 0.30f;
+    float tableDistanceM = 0.70f;  // tableDistanceM: the table's centre ahead of the head when the map opens
+    float tableBelowM = 0.45f;     // tableBelowM: ... and below the eyes
+    float tableRadiusM = 0.48f;    // tableRadiusM: the map's rim
 };
 
 // ---- What the mod publishes ------------------------------------------------------------------------------------------

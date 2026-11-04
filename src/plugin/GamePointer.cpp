@@ -8,6 +8,7 @@
 
 #include "halcyon/le1/mevr_bridge.h"
 #include "plugin/Calibration.hpp"
+#include "plugin/GalaxyHologram.hpp"
 #include "plugin/MevrMenu.hpp"
 
 #include "core/Ini.hpp"
@@ -328,6 +329,11 @@ bool Step(Frame const& frame, Dot& dot) {
     input.width = static_cast<int>(client.right);
     input.height = static_cast<int>(client.bottom);
     input.dt = dt;
+    if (mevr::host::galaxy_hologram::Hovering()) {
+        // A controller points at the galaxy hologram's table: the game's screen behind it gets no ray (no click through it).
+        input.hands[0].aimValid = false;
+        input.hands[1].aimValid = false;
+    }
     pointer::Output const out = gPointer.Step(gQuad, input);
 
     if (out.hand != gLoggedHand && out.hit) {

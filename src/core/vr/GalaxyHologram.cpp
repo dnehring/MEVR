@@ -11,6 +11,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <format>
+#include <mutex>
+
+#include <Windows.h>
 
 namespace mevr::vr::galaxy_holo {
 
@@ -453,6 +456,47 @@ Scene BuildScene(MapModel const& model) {
     s.forward[2] = 0.0f;
     s.camera = model.camera;
     return s;
+}
+
+namespace {
+std::mutex gLinkMutex;
+Scene gLatest;
+bool gHaveLatest = false;
+std::uint64_t gLatestMs = 0;
+std::optional<std::uint32_t> gPick;
+} // namespace
+
+void Publish(Scene const& scene) {
+    std::lock_guard lock(gLinkMutex);
+    gLatest = scene;
+    gHaveLatest = true;
+    gLatestMs = GetTickCount64();
+}
+
+void Forget() {
+    std::lock_guard lock(gLinkMutex);
+    gHaveLatest = false;
+    gPick.reset();
+}
+
+std::optional<Scene> Latest(std::uint64_t maxAgeMs) {
+    std::lock_guard lock(gLinkMutex);
+    if (!gHaveLatest || GetTickCount64() - gLatestMs > maxAgeMs) {
+        return std::nullopt;
+    }
+    return gLatest;
+}
+
+void PostPick(std::uint32_t id) {
+    std::lock_guard lock(gLinkMutex);
+    gPick = id;
+}
+
+std::optional<std::uint32_t> TakePick() {
+    std::lock_guard lock(gLinkMutex);
+    std::optional<std::uint32_t> const pick = gPick;
+    gPick.reset();
+    return pick;
 }
 
 std::string Describe(Scene const& scene) {

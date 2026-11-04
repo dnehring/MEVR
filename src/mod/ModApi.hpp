@@ -57,6 +57,9 @@ struct Frame;
 namespace vr::galaxy_map {
 struct View;
 }
+namespace vr::galaxy_holo {
+struct Scene;
+}
 namespace vr::squad_menu {
 struct View;
 namespace wheel {
@@ -71,7 +74,7 @@ struct Panel;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 25;
+inline constexpr int kHostServicesVersion = 26;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -301,6 +304,15 @@ struct HostServices {
     // matches its sizeof(View). Any thread.
     std::uint32_t galaxyMapSize = 0;
     void (*setGalaxyMap)(vr::galaxy_map::View const* view) = nullptr;
+
+    // Version 26: the galaxy map as a hologram we draw (research/51 section 8; core/vr/GalaxyHologram). The mod sends the open
+    // map's level each tick (its selectable objects, the selection, the game camera, the table's settings); the host draws it on
+    // a table in front of the player and posts a pick (an object's id) when a controller points at one and its trigger goes
+    // down; the mod takes it (true and the id) and makes the game select and open that object. Null forgets the scene. The mod
+    // sends only if galaxyHologramSize matches its sizeof(Scene). Any thread.
+    std::uint32_t galaxyHologramSize = 0;
+    void (*setGalaxyHologram)(vr::galaxy_holo::Scene const* scene) = nullptr;
+    bool (*takeGalaxyPick)(std::uint32_t* id) = nullptr;
 };
 
 } // namespace mevr

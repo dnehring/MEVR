@@ -543,8 +543,10 @@ mevr::game::spectator::Link SpectatorLink() {
 mevr::game::galaxy_map::Link GalaxyMapLink() {
     using namespace mevr;
     game::galaxy_map::Link link;
-    if (gHostOwnsVr && MEVR_HOST_HAS(setGalaxyMap) && gHost->setGalaxyMap != nullptr && gHost->galaxyMapSize == sizeof(vr::galaxy_map::View)) {
-        link.publish = gHost->setGalaxyMap;
+    if (gHostOwnsVr && MEVR_HOST_HAS(takeGalaxyPick) && gHost->setGalaxyHologram != nullptr && gHost->takeGalaxyPick != nullptr &&
+        gHost->galaxyHologramSize == sizeof(vr::galaxy_holo::Scene)) {
+        link.setScene = gHost->setGalaxyHologram;
+        link.takePick = gHost->takeGalaxyPick;
     }
     return link;
 }

@@ -73,6 +73,9 @@ struct Scene {
     float up[3] = {0.0f, 0.0f, 1.0f};   // the map plane's normal, game space, unit
     float forward[3] = {1.0f, 0.0f, 0.0f};  // 'away from the player' on the table, game space, unit, in the plane
     float extent = 0.0f;                // game units out to the table's rim; 0: from the objects
+    float tableDistanceM = 0.70f;       // [Galaxy] tableDistanceM, tableBelowM, tableRadiusM (the mod reads the file)
+    float tableBelowM = 0.45f;
+    float tableRadiusM = 0.48f;
     GameCamera camera;
     char title[kLabelBytes] = {};
     Object objects[kMaxObjects];
@@ -213,6 +216,15 @@ DrawList Build(Scene const& scene, Table const& table, TableSettings const& sett
 
 // One line for the log.
 std::string Describe(Scene const& scene);
+
+// ---- Between the mod and the host (HostServices v26; the host's copy, any thread) ----------------------------------------
+void Publish(Scene const& scene);  // the mod, each tick while the map is up (sets nothing else)
+void Forget();                     // the map closed
+// The latest scene if one was published within `maxAgeMs`.
+std::optional<Scene> Latest(std::uint64_t maxAgeMs);
+// The host's pick (an object's id); the mod takes it once.
+void PostPick(std::uint32_t id);
+std::optional<std::uint32_t> TakePick();
 
 // XR helpers this file and its users share.
 XrVector3f Add(XrVector3f const& a, XrVector3f const& b);
