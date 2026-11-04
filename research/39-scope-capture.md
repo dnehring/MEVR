@@ -217,3 +217,18 @@ past the muzzle), `scopeCaptureFar` (0), `scopeCaptureHold` (0.5 s).
 5. The near plane keeps the gun out; the far plane 0 isn't taken literally; fog and post look like the eye.
 6. Nothing changes in the eye images with the scope up (no stale pass 0, no change in bloom).
 7. Its cost (step 44).
+
+## 11. First run in the game (2026-11-04, the fake headset, research/21 section 16's session)
+
+- **1. Spawn and target: yes.** `scope capture: render target TextureRenderTarget2D Transient.TextureRenderTarget2D_2
+  (1024x1024, format 9: FloatRGB, ...)`, `SceneCapture2DActor's defaults say bNoDelete: cleared for the spawn and put back`,
+  `enabled (the eye is behind the 3.5041964x scope): field 7.14 degrees, near plane 93 units`, `capturing ... 624 ticks`.
+- **3. The texture search: no.** `scope capture source: no 1024x1024 D3D11 texture found behind the render target's resource ...
+  in 240 frames`, twice (two render targets). Yet a probe from the mod found it at **`+0xA0 -> +0x8`: 1024x1024, format 10
+  (R16G16B16A16_FLOAT, so FloatRGB is RGBA16F here), bind 0x28 (render target and shader resource)**, inside the host's
+  0x100 -> 0x80 window, both minutes after creation and within about a second of it. Why the host's `FindTexture` misses it
+  isn't settled [verify]; the next try should log every candidate the host's search calls `isTexture` on, and hint
+  `{0xA0, 0x8}` first. The scope kept the eye copy, so **its cost and its sharpness are still unmeasured** (item 7).
+- That probe crashed the game (research/21 section 16: `QueryInterface` on d3d11 objects that aren't COM). The host's own
+  search asks the same question of every d3d11-vtabled object in its smaller window; before widening it, compare a candidate's
+  vtable with a known ID3D11Texture2D's (a texture the host creates on the same device) and call nothing else.

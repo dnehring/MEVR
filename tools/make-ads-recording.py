@@ -2,7 +2,7 @@
 """Writes a synthetic .mevrrec (src/core/vr/PoseRecording.hpp v1, see tools/mevrrec.py): a standing player holding a long gun
 at the eye for N seconds (ADS: the right aim pose ahead of the right eye along -Z, the left hand on the foregrip), with a slow
 head sway so Umbra and the blur see motion. For the scope-capture A/B on the fake headset (research/39, research/35 "Measuring
-without a person"). Usage: python tools/make-ads-recording.py out.mevrrec [seconds] [hz]; then `tools/console.ps1 "mevr weapon sniper"`,
+without a person"). Usage: python tools/make-ads-recording.py out.mevrrec [seconds] [hz] [eye height m] [hand drop m]; then `tools/console.ps1 "mevr weapon sniper"`,
 `tools/replay.ps1 -Path out.mevrrec -Loop -Inputs`, `tools/measure-levers.ps1 -Section Sights -Key scopeCapture -Values 0,1`."""
 import math
 import struct
@@ -27,7 +27,12 @@ def main():
     out = sys.argv[1]
     seconds = float(sys.argv[2]) if len(sys.argv) > 2 else 30.0
     hz = float(sys.argv[3]) if len(sys.argv) > 3 else 90.0
-    eye_h = 1.65
+    # The head's height in tracking space: 1.65 for a standing player's recording; 0 on the fake headset, whose null driver
+    # recentres with the head at the origin (else the view and the hands float 1.65 m above Shepard: 2026-11-04).
+    eye_h = float(sys.argv[4]) if len(sys.argv) > 4 else 1.65
+    # How far below the right eye the aim pose is: the sniper's bore runs about 10 cm above it (the grip's measured muzzle),
+    # so 0.15 puts the eye 5 cm over the bore, on the sight line (ADS's corridor wants the eye above the bore).
+    drop = float(sys.argv[5]) if len(sys.argv) > 5 else 0.015
     ipd = 0.064
     fov = (-0.785, 0.785, 0.785, -0.785)  # left, right, up, down (radians)
     frames = []
@@ -48,7 +53,7 @@ def main():
         # right aim pose: 0.30 m ahead of the RIGHT eye, 1.5 cm below, pointing forward (the sniper's eyepiece near the eye)
         ax = hx + ipd / 2 * rx + 0.30 * fx
         az = hz_ + ipd / 2 * rz + 0.30 * fz
-        ay = hy - 0.015
+        ay = hy - drop
         right_aim = (q[0], q[1], q[2], q[3], ax, ay, az)
         right_grip = (q[0], q[1], q[2], q[3], ax, ay - 0.06, az)
         # left hand on the foregrip 0.25 m further along the barrel

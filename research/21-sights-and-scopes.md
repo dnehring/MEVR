@@ -849,6 +849,30 @@ exported textures, it is the game's zoomed sniper view (the picture stays local:
 made for render targets; a `FTexture2DResource` may hold its RHI reference elsewhere); the eyepiece on the glass at 0.12 m with a
 much shorter pull; the reticle readable; the zoom flick.
 
+### In the game, on the fake headset (2026-11-04, 891ba5e + 601a938)
+
+A save in the Mako on BIOA_UNC20 (`mevr vehicle exit`, then `mevr weapon sniper` under the replay), a synthetic ADS replay
+(`tools/make-ads-recording.py out 30 90 0 0.15`: the null driver recentres with the head at the origin, so the head goes at
+height 0; the aim pose 15 cm under the eye, since this rifle's bore runs about 10 cm over the controller's aim pose).
+- **Works:** `sights: the sniper rifle model is WPN_SNPa_MDL: the game's scope's eyepiece sight: 13.5 units behind its 'Scope_Eye'
+  bone ...`; the sight placed 72.7 units back (was 59.2); `own aim modes (SFXWeaponStats_AvengerSniperRifle ...): 22.6 degrees (a
+  scope, 3.5x), 11.4 degrees (a scope, 7.0x)`; the reflection rows agree with LExSDKv2; the settings migration ran once. **ADS
+  with the hand 30 cm ahead of the eye: `0.09 m wanted now, the right eye 0.21 m behind the eyepiece`** (the old placement needed
+  0.35 m); the picture-up line `the eye 0.12..0.19 m behind the eyepiece (0.12 on average)` over 27,700 frames. Section 14's
+  "eyepiece ahead of the hand" premise is gone in the game.
+- **The game's scope view can't come from `Texture.Resource`.** The art's three `FTexture2DResource`s have no RHI texture (an
+  exe vtable, a self pointer, the resource list's links, then zeros where the RHI references go; no D3D texture within 0x400
+  -> 0x400 bytes), and each mip's bulk data has flags 0x8 (single use) and a null data pointer (element count 0x100000 for
+  the 1024 atlas, 0x400000 for the 2048 ones): Scaleform made its own textures from the bytes and the engine freed them. The
+  host logs `the game's scope view isn't used: no D3D texture ... found behind Reticule_I4E's resource` and keeps the duplex.
+  Routes left: catch Scaleform's upload of those three images (a device `CreateTexture2D` / context `UpdateSubresource` hook
+  matching size, BC3 and a hash of the data: hashes, not the data, in our code), or read the bulk data from Startup_INT.pcc
+  ourselves (the offsets are into the decompressed package: its chunk table and the game's own decompressor). Not built.
+- **A lesson paid for with a crash:** a wide probe (`QueryInterface` on every object with a vtable inside d3d11.dll within
+  two 0x400-byte hops) took the game down 2 ms after a call (the engine jumped to 0 on the game thread): some of d3d11's
+  internal objects aren't COM, and slot 0 of their vtable is not QueryInterface. Never call into an object found by
+  scanning; compare its vtable with a known texture's first (one we create on the same device).
+
 ### The options as first written (before building)
 
 1. **A per-model optic table** (mod only, hot reload, unit-testable): keyed by the mesh's name (the mod logs it), our numbers
