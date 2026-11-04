@@ -78,6 +78,7 @@ $licences = [ordered]@{
     'OpenXR-Loader-jsoncpp.txt'      = 'external\OpenXR-SDK\src\external\jsoncpp\LICENSE'
     'Rajdhani-OFL.txt'               = 'third_party\fonts\Rajdhani-OFL.txt'
     'TitilliumWeb-OFL.txt'           = 'third_party\fonts\TitilliumWeb-OFL.txt'
+    'Lucide-ISC.txt'                 = 'third_party\lucide\LICENSE.txt'
 }
 foreach ($source in $licences.Values) {
     if (-not (Test-Path (Join-Path $repo $source))) { throw "Licence text missing: $source (fill external\ and third_party\ first)" }
