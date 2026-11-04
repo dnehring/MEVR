@@ -100,6 +100,7 @@ std::atomic<unsigned> gControllerAims{0};
 std::atomic<unsigned> gNoAnchor{0};
 std::atomic<unsigned> gStartQueries{0};
 std::atomic<unsigned> gStartsMoved{0};
+std::atomic<unsigned> gStartsWalled{0};  // of those, started short of a wall the muzzle poked through (LE1)
 std::atomic<unsigned> gShotsAtMuzzle{0};
 std::atomic<unsigned> gShotsElsewhere{0};
 std::atomic<unsigned> gRaysPublished{0};
@@ -300,6 +301,61 @@ void OnProcessEvent(ue3::Object* context, ue3::Function* /*function*/, void* par
 }
 
 #if defined(MEVR_GAME_LE1)
+// A muzzle through a wall (research/14 "Open risks"): started at the muzzle, the shot would begin on the wall's far side.
+// The line from the pawn's own start (inside Shepard: what GetWeaponStartTraceLocation answered) to the muzzle is traced
+// against the world (Actor.Trace on the pawn, which ignores it; bTraceActors off: walls and level geometry, not people);
+// if something is in the way, the shot starts kWallPullbackUnits short of it, on Shepard's side.
+ue3::FunctionRef gWallTraceFn{"Engine.Actor.Trace"};
+constexpr double kWallPullbackUnits = 2.0;
+constexpr double kWallCheckMaxUnits = 250.0;  // a pawn start farther from the muzzle than this isn't Shepard's: no check
+bool gLoggedWalled = false;
+ULONGLONG gNextWalledLogMs = 0;
+engine::UnrealVector gLastStartWritten{};
+bool gLastStartWalled = false;
+
+bool WallTrace(ue3::Object* pawn, ue3::Function* trace, engine::UnrealVector const& from, engine::UnrealVector const& to,
+    engine::UnrealVector* hit) {
+    ue3::Params parms(ue3::runtime::Get(), trace);
+    parms.Set("TraceEnd", ue3::Vector{static_cast<float>(to.x), static_cast<float>(to.y), static_cast<float>(to.z)});
+    parms.Set("TraceStart", ue3::Vector{static_cast<float>(from.x), static_cast<float>(from.y), static_cast<float>(from.z)});
+    parms.SetBool("bTraceActors", false);
+    ue3::runtime::Call(pawn, trace, parms);
+    if (hit != nullptr) {
+        ue3::Vector const at = parms.Get<ue3::Vector>("HitLocation").value_or(ue3::Vector{});
+        *hit = {at.x, at.y, at.z};
+    }
+    return parms.Return<ue3::Object*>().value_or(nullptr) != nullptr;
+}
+
+// Where the shot should start instead of the muzzle, if the world lies between the pawn's start and the muzzle.
+std::optional<engine::UnrealVector> WallBeforeMuzzle(ue3::Object* pawn, engine::UnrealVector const& from,
+    engine::UnrealVector const& muzzle) {
+    ue3::Function* const trace = gWallTraceFn.Get();
+    double const length = Distance(from, muzzle);
+    if (trace == nullptr || pawn == nullptr || length < 1.0 || length > kWallCheckMaxUnits) {
+        return std::nullopt;
+    }
+    engine::UnrealVector const dir{(muzzle.x - from.x) / length, (muzzle.y - from.y) / length, (muzzle.z - from.z) / length};
+    auto const along = [&](double t) { return engine::UnrealVector{from.x + dir.x * t, from.y + dir.y * t, from.z + dir.z * t}; };
+    engine::UnrealVector at{};
+    if (!WallTrace(pawn, trace, from, muzzle, &at)) {
+        return std::nullopt;
+    }
+    double t = (at.x - from.x) * dir.x + (at.y - from.y) * dir.y + (at.z - from.z) * dir.z;
+    bool const plausible = (at.x != 0.0 || at.y != 0.0 || at.z != 0.0) && t >= 0.0 && t <= length + 1.0 && Distance(at, along(t)) < 10.0;
+    if (!plausible) {
+        // The native's out parameter didn't come back: bisect with the hit/no-hit answer (as game/sights does).
+        double lo = 0.0;
+        double hi = length;
+        for (int i = 0; i < 8; ++i) {
+            double const mid = 0.5 * (lo + hi);
+            (WallTrace(pawn, trace, from, along(mid), nullptr) ? hi : lo) = mid;
+        }
+        t = hi;
+    }
+    return along(std::max(0.0, t - kWallPullbackUnits));
+}
+
 // The shot's start: the pawn's answer goes back through the parms, so rewriting it here moves the
 // trace to the muzzle. Only for the local player's pawn while shots follow the barrel.
 void OnStartTrace(ue3::Object* context, ue3::Function* function, void* parms, void* /*result*/) {
@@ -319,7 +375,22 @@ void OnStartTrace(ue3::Object* context, ue3::Function* function, void* parms, vo
     }
     ue3::Vector& start = *at;
     engine::UnrealVector const game{start.x, start.y, start.z};
-    start = {static_cast<float>(muzzle->location.x), static_cast<float>(muzzle->location.y), static_cast<float>(muzzle->location.z)};
+    engine::UnrealVector chosen = muzzle->location;
+    std::optional<engine::UnrealVector> const wall = WallBeforeMuzzle(context, game, muzzle->location);
+    if (wall) {
+        chosen = *wall;
+        gStartsWalled.fetch_add(1, std::memory_order_relaxed);
+        ULONGLONG const now = GetTickCount64();
+        if (!gLoggedWalled || now >= gNextWalledLogMs) {
+            gLoggedWalled = true;
+            gNextWalledLogMs = now + 5000;
+            log::Info("hand aim: the muzzle is through a wall: this shot starts {:.0f} units short of the muzzle, on Shepard's side",
+                Distance(chosen, muzzle->location));
+        }
+    }
+    gLastStartWritten = chosen;
+    gLastStartWalled = wall.has_value();
+    start = {static_cast<float>(chosen.x), static_cast<float>(chosen.y), static_cast<float>(chosen.z)};
     write_journal::Wrote("HandAim.start trace (PE ret)", &start);
     gStartsMoved.fetch_add(1, std::memory_order_relaxed);
     if (!gLoggedStartMoved) {
@@ -370,7 +441,8 @@ void OnWeaponAim(ue3::Object* context, ue3::Function* /*function*/, void* parms,
     ue3::Vector const& at = *startFire;
     engine::UnrealVector const start{at.x, at.y, at.z};
     if (gLastPath == Path::Barrel) {
-        double const off = Distance(start, gLastRayStart);
+        // A shot moved back from a wall (WallBeforeMuzzle) is checked against where it was moved to.
+        double const off = Distance(start, gLastStartWalled ? gLastStartWritten : gLastRayStart);
         bool const atMuzzle = off <= kAtMuzzleUnits;
         gShot.startOffMuzzle = off;
         LogShot();
@@ -523,6 +595,7 @@ void LogStats() {
     unsigned const noAnchor = gNoAnchor.exchange(0);
     unsigned const starts = gStartQueries.exchange(0);
     unsigned const moved = gStartsMoved.exchange(0);
+    unsigned const walled = gStartsWalled.exchange(0);
     unsigned const atMuzzle = gShotsAtMuzzle.exchange(0);
     unsigned const elsewhere = gShotsElsewhere.exchange(0);
     unsigned const rays = gRaysPublished.exchange(0);
@@ -530,12 +603,13 @@ void LogStats() {
     unsigned const others = gOtherWeaponAims.exchange(0);
     if (gEnabled || calls > 0) {
         log::Info("    hand aim: {}, {} aim queries: {} along the gun barrel ({} of them toward what the sight line hit{}), {} along the "
-                  "controller's ray, {} kept the game's aim (no view anchor); {} shot-start queries, {} moved to the muzzle; shots "
+                  "controller's ray, {} kept the game's aim (no view anchor); {} shot-start queries, {} moved to the muzzle ({} of them short of a "
+                  "wall the muzzle poked through); shots "
                   "checked: {} from the muzzle, {} not; {} other weapons' aim queries skipped; aim ray {} ({} published)",
             gEnabled ? "on" : "off", calls, barrel, converged,
             converged > 0 ? std::format(", {:.3f} degrees off the sight line on average, {:.3f} at most", gSumToSight / converged, gMaxToSight)
                           : std::string(),
-            controller, noAnchor, starts, moved, atMuzzle, elsewhere, others, gRayStatus, rays);
+            controller, noAnchor, starts, moved, walled, atMuzzle, elsewhere, others, gRayStatus, rays);
     }
     gSumToSight = 0.0;
     gMaxToSight = 0.0;
