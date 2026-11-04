@@ -42,11 +42,11 @@ The two facts behind most of this list:
   per-item Reset puts "Head drives aim" back ON (`vr_config.h:59`, `vr_menu.cpp:1012`) and it exposes Mako head aim, the
   EXPERIMENTAL camera hold, Depth pop and "Test loop (for Claude)". Hide it from players (dev builds or a `[Debug]` switch)
   or make its resets use our deploy's values.
-- [ ] **[C] Menu row bug: Hacking screen only switches one way.** `Settings::Read` doesn't read `[WorldUi]`
+- [ ] **[C] Menu row bug: Hacking screen only switches one way.** The galaxy session is taking the one-line fix
+  (2026-11-04); tick it at its commit. `Settings::Read` doesn't read `[WorldUi]`
   (`MainMenuSettings.cpp:204`), so after the write flushes the row shows "On my wrist" again and a click on it is ignored.
-- [ ] **[C] Licence notices.** NOTICE and Lucide done, ac66710; the CMake change is 8e6468e on branch
-  `release-blockers`, verified (the players' build configured, built and passed its tests without the submodule), to
-  land once the galaxy session's uncommitted `CMakeLists.txt` edits are in. NOTICE.md calls `src/install` MIT, but `src/install/Toc.cpp` is GPL-3.0-only; Lucide's ISC
+- [x] **[C] Licence notices.** Done: NOTICE and Lucide in ac66710; CMake adds the LExSDKv2 submodule only when
+  something links it (the players' build configured, built and passed its tests without it, 2026-11-04). NOTICE.md calls `src/install` MIT, but `src/install/Toc.cpp` is GPL-3.0-only; Lucide's ISC
   text isn't among the licences `package-release.ps1` copies. The GPL source release still needs the unlicensed LExSDKv2
   submodule to configure (`CMakeLists.txt:35` adds it unconditionally): make it optional when `MEVR_LE1_LESDK=OFF`
   (research/34 stage 6).
