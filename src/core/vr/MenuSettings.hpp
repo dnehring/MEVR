@@ -137,6 +137,11 @@ std::string HeadsetLabel(std::string_view runtimeName, std::string_view systemNa
 // The calibration's controller label without the system it adds in brackets ("Sense Controller (...)").
 std::string ControllersLabel(std::string_view calibrationLabel);
 
+// ---- About ----------------------------------------------------------------------------------------------------
+// The build line a report needs, from the generated headers' MEVR_VERSION and MEVR_GIT_COMMIT:
+// "MEVR 0.1.0 · commit 1a0622c1f2", and " · development build" for a hot-reload (not a players') build.
+std::string AboutBuild(std::string_view version, std::string_view commit, bool development);
+
 // ---- Settings-file edits -------------------------------------------------------------------------------------
 // Edits on their way to an ini file: one per (section, key), the latest value wins, each written when it's due
 // (a slider's 300 ms after it last moved; a toggle at once). Until then a re-read of the file shows the pending

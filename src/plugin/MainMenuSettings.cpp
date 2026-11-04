@@ -20,6 +20,9 @@
 #include "plugin/SetupRequest.hpp"
 #include "plugin/TestLoop.hpp"
 
+#include "mevr/BuildInfo.hpp"  // MEVR_GIT_COMMIT, About (generated: tools/cmake/BuildInfo.cmake)
+#include "mevr/Version.hpp"    // MEVR_VERSION, About (generated from CMake's project(VERSION))
+
 #include <Windows.h>
 
 #include <algorithm>
@@ -393,6 +396,12 @@ void Settings::Read(menu::Values& v) {
     v.texts["chip_controllers"] = controllers.empty() ? std::string("No controllers yet") : controllers;
     v.texts["chip_calibrated"] = cal.calibrated ? "Calibrated" : "Not calibrated";
     v.texts["save_msg"] = saveFailed_ ? "Can't save settings: the game's ASI folder is read-only" : "";
+    // Diagnostics > About: what a report needs (the log's attach line says the same).
+#if defined(MEVR_MONOLITHIC)
+    v.texts["about_build"] = ms::AboutBuild(MEVR_VERSION, MEVR_GIT_COMMIT, false);
+#else
+    v.texts["about_build"] = ms::AboutBuild(MEVR_VERSION, MEVR_GIT_COMMIT, true);
+#endif
 }
 
 void Settings::Wrote(bool ok, std::string_view what) {
