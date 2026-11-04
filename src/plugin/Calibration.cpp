@@ -1530,6 +1530,14 @@ void NoteFocused(bool focused) {
     }
 }
 
+bool Focused() {
+    return gFocused.load(std::memory_order_relaxed);
+}
+
+bool PromptPending() {
+    return gKey.empty() || !gKeyChecked || (!gKeyCalibrated && !gKeyPrompted && !gPrompt.decided);
+}
+
 void HostStateOut(vr::calibration::HostState* out) {
     if (out == nullptr) {
         return;

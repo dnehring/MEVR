@@ -124,22 +124,29 @@ nothing writes defaults over a profile: Reset is for the session (below).
 
 | Section | Row | Setting |
 |---------|-----|---------|
+| Controller guide | Both controllers' labels and lines | read only: `core/vr/MenuSettings` `GuideTexts` from `[Controls] leftTrigger`, `[Squad] enabled`/`style`, `[Holsters] enabled`/`gripHolds`/`powerWheel`, `[Throwables] enabled`/`melee`/`hands`/`grenadeButton`/`meleeButton`, `[Vent] enabled`, the turn and walk chips, `[Hands] physicalCrouch` (section "The controller guide", below) |
 | Top bar | Headset chip | `xrGetSystemProperties`/runtime names (`core/vr/MenuSettings` `HeadsetLabel`: SteamVR's driver names mapped: `playstation_vr2` = PlayStation VR2...) |
 | | Controllers chip | the calibration's interaction-profile label |
 | | Calibrated chip | `[Calibration.<key>]` saved |
 | Comfort | Turn style, Snap angle, Turn speed | `[Comfort] turn`, `snapDeg`, `turnSpeed` (the mod's own turn, research/31) |
 | | Comfort vignette, Vignette when, Vignette strength | `[Comfort] vignette`, `vignetteWhen`, `vignetteStrength` (research/31) |
-| | Walk toward: Where I look / Left hand | Halcyon `moveFollowsHead` / `[Comfort] walk = hand` (research/31) |
+| | Walk toward: Where I look / Left hand / Body | Halcyon `moveFollowsHead` / `[Comfort] walk = hand` (research/31) / `moveFollowsHead = 0` (its description warns of Halcyon's "look left, move right" bug, `vr_menu.cpp` `[MOVEFIX]`) |
 | | Physical crouch | `[Hands] physicalCrouch` |
-| | Life-size movement | `[Camera] lifeSize` and Halcyon `leanGain` (2 / 1), as the VR hands tab |
+| | Life-size movement | Halcyon `leanGain` (2 / 1), as the VR hands tab; a note names any other gain (Advanced > View > Movement scale) |
+| | Conversations / Cutscenes: In VR / 3D screen / Flat screen | each its own: Halcyon `cineVrConvo` / `cineVrCutscene` off for flat, else `[Cinematics] conversations` / `cutscenes` 1 (3D screen) or 0 (research/52); Screen width, distance, 3D depth while either is on the screen |
+| | Game screens in the room, Hacking screen, Galaxy map hologram | `[WorldUi] on`, `wrist` (research/53), `[Galaxy] hologram` (research/51) |
 | | Pause while open | `[Menu] pause` (HostServices v16, `game/MenuPause`) |
 | Controls | Grip holds the gun | `[Holsters] gripHolds` |
 | | Body holsters | `[Holsters] enabled` |
 | | Holster buzz | `[Holsters] hapticAmplitude` (0-100%) |
 | | Left trigger: Weapon wheel / Aim / Off | `[Controls] leftTrigger` = `lb` / `lt` / `none` |
+| | Fingers follow yours | `[Hands] fingers` (research/43) |
 | | Physical grenades and melee | `[Throwables] enabled` and `melee` |
+| | Vent by racking the gun | `[Vent] enabled` (research/45) |
 | | Recoil buzz | `[Hands] recoilHaptic` |
 | | Aim assist | `[Hands] aimAssist` |
+| | Body stays relaxed, Steady view, Draw speed | `[Hands] exploreStance`, `constantEye`, `drawRate` (research/38) |
+| | Throttle lever and drive stick, Sit in the cockpit | `[Mako] controls` (research/46), `[Cockpit] enabled` (research/47) |
 | Body & calibration | Hero, Start calibration | `plugin/Calibration` `GetSummary`, `Start` (the menu closes) |
 | | Tiles | `[Calibration.<key>]` `standEyeM`, `crouchEyeM`, `eye`, `pistolSpreadDeg`, `rifleSpreadDeg`; `[Arms] armLengthM` |
 | | Recenter | `Menu::RequestRecenter` |
@@ -155,31 +162,37 @@ nothing writes defaults over a profile: Reset is for the session (below).
 | | Upscale Off / FSR | `[Upscale] method` = `off` / `fsr` (plugin/Upscale re-reads it within a second: live); `sharpness` stays a file setting (research/32) |
 | | Steady cutscenes | Halcyon `cineFpsCap` |
 | HUD & sights | Distance | Halcyon `hudPanelDistanceM` |
-| | Size | Halcyon `hudPanelWidthM` (100% = 1.3 m) |
+| | Size | Halcyon `hudPanelWidthM` (100% = 1.3 m; 45-155%, the range Advanced's Width had) |
+| | Below your eyes, Comes round past, Bring it in front of me | `hudPanelDropM`, `hudPanelFollowDeg`, `RequestHudPanelReplace` (moved from Advanced, 2026-11-04) |
 | | Hand reticle | Halcyon `handReticle` |
-| | Pistol / Shotgun and assault rifle / Sniper rifle | `[Sights] pistol`, `shotgun` + `assaultRifle`, `sniperRifle` (`scope` keeps its zoom) |
-| | Sight alignment help | `[Sights] assist` |
-| Advanced > Tracking | Recenter key, Look speed, Smoothing | `recenterKeyEnabled`, `lookSensitivity`, `headLookSmoothing` |
-| | Conversations / Cutscenes in VR, Flat game menus, Flat galaxy map | `cineVrConvo`, `cineVrCutscene`, `menuFlat`, `galaxyFlat` |
+| | Status on your wrist, Weapon panel on the gun, Prompts at the object | `[Hud] wristStatus`, `gunStatus` (research/41), `[Interact] label` (research/40) |
+| | Pistol / Shotgun / Assault rifle / Sniper rifle | `[Sights] pistol`, `shotgun`, `assaultRifle`, `sniperRifle` (`scope` keeps its zoom; the shotgun has no scope chip) |
+| | Sight alignment help, Shots land on the dot | `[Sights] assist`, `converge` |
+| | Scope picture in the game's colours | `[Sights] scopeCapturePost` (research/39: the mod applies it to the next capture it makes, so from the next level) |
+| Advanced > Tracking | Recenter key, Look speed, Smoothing | `recenterKeyEnabled`, `lookSensitivity` (its description warns of sickness away from 1.00×), `headLookSmoothing` |
+| | Flat game menus, Flat galaxy map | `menuFlat`, `galaxyFlat` (the conversation and cutscene toggles that were here are Comfort's rows) |
 | Advanced > First person | First person, Hide head | `fpEnabled`, `fpHideHead` |
 | | Back, Right, Up | `flatScreenDistance`, `cameraOffsetRight`, `cameraOffsetUp` (metres, the camera alignment's fields; their switches turned on) |
-| Advanced > View | Lean, Lean gain | `leanEnabled`, `leanGain` |
-| | Flat screen | the flat screens' widths (`menu`, `galaxy`, `convo`, `cutscene`, `movieMonoQuadWidth`) |
+| Advanced > View | Lean, Movement scale | `leanEnabled`, `leanGain` (0.5-3; Comfort's Life-size movement is its 2 / 1) |
+| | Flat screen width | the flat screens' widths (`menu`, `galaxy`, `convo`, `cutscene`, `movieMonoQuadWidth`) |
 | | Fill the field of view | `vrFovFillEnabled` |
 | Advanced > Stereo | VR mode Mono / Stereo / Depth | `sfr2Enabled` / `dibrEnabled` (AER and the old side-by-side never), saved, resolution written (restart) |
-| | Eye distance, Convergence, Swap eyes, Quest FOV match | `sfr2HalfEyeUU`, `sfr2Convergence`, `sfr2SwapEyes`, `questFovMatch` |
+| | Real eye positions, Extra depth, Each eye's own field of view | `sfr2Metric` (research/30's life-size stereo), `sfr2MetricDepth`, `sfr2MetricEyeFrustum` |
+| | Eye distance (cm), Convergence, Swap eyes (only without real eye positions) | 2 × `sfr2HalfEyeUU` (the eyes apart in game centimetres at 100 units per metre), `sfr2Convergence`, `sfr2SwapEyes` |
+| | Quest Link image fix | `questFovMatch` |
 | | Depth of field | `!disableDof`, `D3DCapture::EnsureDepthOfFieldSetting` (restart) |
-| | Desktop mirror Normal / Every 2nd / Every frame | `mirrorPresentEvery` 8 / 2 / 1 |
-| Advanced > HUD placement | Width, Below eyes, Follow past, Place | `hudPanelWidthM`, `hudPanelDropM`, `hudPanelFollowDeg`, `RequestHudPanelReplace` |
-| | Combat HUD, Conversation wheel, Mission overlays | `pchudEnabled`, `convoEnabled`, `designerUiEnabled` |
-| | Move and resize a screen | opens the classic menu (its HUD tab's element editor) |
+| | Desktop mirror Every 8th / Every 2nd / Every frame | `mirrorPresentEvery` 8 / 2 / 1 (the deploy's is 2) |
+| Advanced > Game UI | Conversation wheel: Fit it to your view, Size, Left / right, Down / up, Standard | `convoEnabled` and the conversation movie's set the renderer uses (`convo*Dibr` in Depth mode, `convo*Stereo` with the old side-by-side stereo, else `convoScaleX/Y`, `convoOffsetX/Y`): size as a percentage of Halcyon's tuned scale (both axes, their ratio kept), the offsets as a nudge from its tuned place in movie pixels (up +, so `Offset Y` = tuned - value); Standard puts the tuned values back (its HUD tab's Reset) |
+| | Mission overlays: the same | `designerUiEnabled`, `designerUiScaleX/Y`, `designerUiOffsetX/Y` (one set for every mode) |
 | Advanced > Profiles | Load / Save per slot | `Config::LoadProfile(i)` / `SaveProfile(i)` (Default, Custom 1-3) |
-| Advanced > Diagnostics | Snapshot, Record, Measure frame timing | `testloop::RequestSnapshot` (1 s after the menu closes), `RequestRecording`, `perf::Request` (20 s, after it closes) |
-| | Reset renderer settings | two presses; `Config::ResetDefaults` for the session, keeping the menu key, no head aim (`combatHeadAim`, `makoHeadAim`), the resolution, first person and the first-run flag; **not saved** (Profiles > Save keeps it) |
-| | Classic renderer menu | Halcyon's menu (also Ctrl + `\`) |
+| Advanced > Diagnostics | Snapshot, Record your movements, Measure frame timing | `testloop::RequestSnapshot` (1 s after the menu closes), `RequestRecording` (a `.mevrrec` in `%LOCALAPPDATA%\MEVR\recordings` for the player to attach to an issue: the report zip doesn't take it), `perf::Request` (20 s, after it closes; the note names `AppData\Local\MEVR\perf`) |
+| | Reset VR settings | two presses; `Config::ResetDefaults` for the session, keeping the menu key, no head aim (`combatHeadAim`, `makoHeadAim`), the resolution, first person and the first-run flag; **not saved** (Profiles > Save keeps it) |
+| | Classic VR menu | Halcyon's menu (also Ctrl + `\`) |
 
-Left out, as agreed: head aim, the experimental alternate-eye (AER) and depth-pop modes, per-screen
-scale/offset sliders.
+Left out, as agreed: head aim, the experimental alternate-eye (AER) and depth-pop modes. Per-screen scale and offset
+sliders came in 2026-11-04 for the two movies that take them on the default path (Advanced > Game UI, below); the combat
+HUD's own transform and the per-element editor stay in the classic menu (the HUD panel shows that movie at its authored
+layout, research/15, so they do nothing there).
 
 ## RCSS notes (what bit while matching the mockup)
 
@@ -291,12 +304,79 @@ An adversarial pass found rows that showed something other than the setting in e
   STOPPING, EXITING or LOSS_PENDING all end the frames; so does a sleeping headset) and cancels a running calibration
   when no VR frame has run for that long; the pause lifts through the usual path (the mod's `game/MenuPause`).
 
+## Player-facing polish and the controller guide (2026-11-04)
+
+The release checklist's "Menus and screens" and "First minutes" items (docs/release-checklist.md section 4).
+
+**Words.** No developer speak on any page: "Halcyon's ladder" is "Set sizes from 2048 to 6144 pixels wide per eye";
+Advanced is "Fine-tuning and troubleshooting"; Reset is "Reset VR settings" (back to standard, what's kept named); the
+classic menu is "Classic VR menu", "the original MELE-VR settings menu"; "explore pose" is "the relaxed walking pose"
+(and the row says Experimental); VR mode explains each chip and says Mono and Depth aren't tested with hand aiming; the
+Quest row is "Quest Link image fix" (what it fixes, that it does nothing through SteamVR or Virtual Desktop); the desktop
+mirror's chips are Every 8th / Every 2nd / Every frame (the schema's default is the deploy's Every 2nd); Record says what
+the file is for and where it goes (the report zip doesn't take recordings: attach by hand); the frame timing note names
+`AppData\Local\MEVR\perf`. The original stereo's Eye distance reads in centimetres (both eyes apart, 2 × `sfr2HalfEyeUU`
+game centimetres at life size; the user's 3.4 reads 6.8 cm) and both its rows sit under an "Expert" line, each with a line
+of what it does. Walk toward's Body and Advanced's Look speed keep their behaviour (the owner decides) with an honest
+warning each. Slider rows can carry a description now (`.srow.d`: the name and a line in a 330 dp column).
+
+**One control per setting.**
+- `leanGain`: Comfort's Life-size movement (2 / 1) is the player's; Advanced > View's slider adds the range (0.5-3) and is
+  "Movement scale", saying 2.0× is Life-size movement. A gain neither 1 nor 2 shows a note under Life-size movement.
+- `hudPanelWidthM`: one Size slider on HUD & sights, its range widened to 45-155% (0.6-2.0 m, what Advanced's Width
+  allowed); Below your eyes, Comes round past and the Place button moved there too, so Advanced's HUD panel group is gone.
+- Conversations and cutscenes: Comfort's one "Watch them" row (which set both) and Advanced's two "in VR" toggles are now
+  two Comfort rows, Conversations and Cutscenes, each In VR / 3D screen / Flat screen.
+- Advanced > Stereo's "Life-size stereo" is "Real eye positions" (it was too close to "Life-size movement").
+- The sights: "Shotgun and assault rifle" (whose Scope 1.5× was the rifle's only) is two rows; the shotgun has no scope chip.
+
+**Game UI** (the classic menu's pointer "Move and resize a screen ... for now" is gone). Advanced's "HUD placement" tab is
+"Game UI": the conversation wheel's and the mission overlays' size and place, the values the classic HUD tab's sliders edit
+(table above). The old "Combat HUD" toggle (`pchudEnabled`) is gone: it switched Halcyon's resize of the HUD movie, which
+the HUD panel keeps at its authored layout anyway, so it did nothing visible (and its "Health, shields and squad status"
+read as if it hid them). [verify] in the headset: the conversation wheel's sliders on the 3D cinema screen (the transform
+should apply there, as in VR cine: the wheel is in the eye images), and whether the mission overlays update while our menu
+pauses the game (the row says "the next time an overlay is on screen").
+
+**Rows for what was file-only.** Each a toggle with a line on what it does, written through `Settings::Put` and read with the
+mod's default (on), its section added to `Settings::Read`'s list (a missing one made the Hacking row snap back, f1f8d8b):
+`[Mako] controls`, `[Cockpit] enabled` (Controls > Mako); `[WorldUi] on`, `[Galaxy] hologram` (Comfort > Game screens;
+the Hacking row greys out with the screens off); `[Hud] wristStatus`, `gunStatus`, `[Interact] label` (HUD & sights > On
+you and in the world); `[Vent] enabled`, `[Hands] fingers` (Controls); `[Sights] scopeCapturePost` (HUD & sights > Sights:
+"Scope picture in the game's colours", from the next loading screen, because `game/ScopeCapture` sets it on the capture
+actor it spawns once per level).
+
+**The controller guide.** A rail section of its own, first in the list ("Controller guide", icon `guide`: a question mark
+in a circle): both controllers drawn with RCSS boxes (the body, the trigger, the grip on the fingers' side, the stick, two
+face buttons, the left menu button) with a leader line from each control to a label of what it does on foot, a list under
+each drawing saying how, then Gestures (holsters, grenades, melee, both hands, vent, crouch, this menu and recenter) and In
+the Mako (lever, stick, before you grab them, getting out). The labels and lines are `core/vr/MenuSettings` `GuideTexts`
+(unit-tested), computed from the settings that change them (the left trigger's choice and the squad, the holsters and
+`gripHolds`, `[Holsters] powerWheel` (R3 / Y / X / B), the grenade hand and the X and B buttons, the vent, the turn and walk
+chips, physical crouch); the gesture and Mako rows follow their toggles. Every mapping is from game/GamepadMapping, the
+LE1 bullets in CLAUDE.md and research/19 section 6 (the on-foot bindings), research/46 section 3 (the Mako's): notably the
+grenade is the RIGHT hand by default (`[Throwables] hands = right`, at the left of the chest), A is use and hold-to-sprint
+(`Console_Action`), Y is medi-gel, the left menu button is the game's Start only where the controller sends one. Button
+names are Touch's, with a line saying A and X are the lower face buttons.
+
+**First run.** A player who has never had the guide (`[Menu] controlsShown` absent or 0) gets it once: `main_menu::Layer`
+counts 6 s in a row on foot (`Frame::gameMode` 0, HalcyonOverlays' last game mode) in the head-tracked world with the
+session focused, Halcyon's menu and ours closed, no calibration running and the calibration's first-run prompt answered
+(`calibration::PromptPending`: the controllers known, and calibrated, prompted before, or the prompt answered or timed
+out), then opens the menu on the guide with a welcome line and writes `controlsShown = 1`. The player's own first opening
+before that lands on the guide too (and counts). The menu's pause applies as for any opening. The calibration's prompt,
+in turn, now waits while our menu is open (HalcyonOverlays passes our menu as `menuOpen`): its 8 s delay and 45 s timeout
+used to run on under our menu, where it isn't drawn. [verify] in the headset: the moment it opens (a new save's first
+on-foot seconds), that nothing else is up then.
+
 ## Checking it offline
 
 `mevr-menu-preview [folder] [--warp]` (`tools/menu-preview`): the host's own RmlUi setup, renderer,
 decorators, document, data model and backdrop passes on a device of its own, over a stand-in scene,
 with sample values. It writes `section-<name>.png` for each section (and `section-display-quality.png` /
-`-quality-novr.png`: the image quality rows with the PS VR2's 2824 × 2880 known, and before VR starts), `advanced-<tab>.png` for each of
+`-quality-novr.png`: the image quality rows with the PS VR2's 2824 × 2880 known, and before VR starts; `section-<name>-2`
+to `-4` for the guide's, Comfort's, Controls' and HUD's lower screenfuls; `section-guide-first-run.png` and
+`section-guide-other.png`, the guide with other settings), `advanced-<tab>.png` for each of
 Advanced's tabs, `state-hover.png` (the sweep part-way), `state-pressed.png` (the dip), `state-focus.png`
 (the pad's ring), `menu-alpha.png` (the texture alone) and `timing.txt`.
 

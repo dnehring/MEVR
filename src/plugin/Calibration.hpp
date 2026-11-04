@@ -56,6 +56,12 @@ void NoteControllers(vr::controllers::State const& state);
 // Each frame: the session has input focus (the headset is worn; or a replay drives the inputs). The first-run prompt's
 // delay and its timeout count only then, so a headset left on a desk doesn't use them up.
 void NoteFocused(bool focused);
+// NoteFocused's last value (any thread).
+bool Focused();
+// The first-run prompt still has to be answered for these controllers: they aren't known yet, or they aren't calibrated,
+// weren't prompted before and the prompt wasn't answered or timed out this session. The main menu's first opening (the
+// controller guide) waits for it, so the two never meet.
+bool PromptPending();
 // What everything else sees while Active(): the same sample with no controller in it.
 vr::controllers::State Hidden(vr::controllers::State const& state);
 

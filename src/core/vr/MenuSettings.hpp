@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 // The main menu's settings, apart from RmlUi and the game (research/28): every value a row shows or edits (the
@@ -40,6 +41,8 @@ enum class Format {
     Meters1,         // "1.6 m"
     Meters2,         // "1.20 m"
     SignedMeters2,   // "+0.12 m"
+    Signed0,         // "+40" (a nudge from the standard place, 0 reads plain)
+    Centimeters1,    // "6.8 cm"
 };
 std::string FormatValue(Format format, float value);
 
@@ -136,6 +139,31 @@ float ColourFromPercent(float percent);
 std::string HeadsetLabel(std::string_view runtimeName, std::string_view systemName);
 // The calibration's controller label without the system it adds in brackets ("Sense Controller (...)").
 std::string ControllersLabel(std::string_view calibrationLabel);
+
+// ---- The controller guide (the Controller guide page) ---------------------------------------------------------
+// What each button and the right grenade gesture do on foot, from the settings that change them (CLAUDE.md's LE1 bullets,
+// game/GamepadMapping, research/19 section 6's bindings). Every field is what the file holds (or the menu's chip).
+struct GuideInput {
+    std::string leftTrigger = "lb";      // [Controls] leftTrigger: lb | lt | none
+    bool squad = true;                   // [Squad] enabled: the left trigger's pull is the squad's weapon wheel
+    std::string squadStyle = "native";   // [Squad] style: native | custom
+    bool holsters = true;                // [Holsters] enabled
+    bool gripHolds = true;               // [Holsters] gripHolds
+    std::string powerWheel = "r3";       // [Holsters] powerWheel (with gripHolds): r3 | y | x | b | none
+    bool grenades = true;                // [Throwables] enabled
+    bool melee = true;                   // [Throwables] melee
+    std::string grenadeHands = "right";  // [Throwables] hands: right | left | both
+    bool grenadeButton = true;           // [Throwables] grenadeButton (X)
+    bool meleeButton = true;             // [Throwables] meleeButton (B)
+    bool vent = true;                    // [Vent] enabled
+    std::string turn = "smooth";         // the Turn style chip: smooth | snap
+    std::string walk = "head";           // the Walk toward chip: head | hand | body
+    bool physicalCrouch = true;          // [Hands] physicalCrouch
+};
+// The page's texts, as (key, text): "guide_<id>" (the short label on the controller drawing) and "guide_<id>_how" (the
+// line in the list under it) for the ids lt, lgrip, lstick, x, y, menu, rt, rgrip, rstick, a, b; and "guide_grenade",
+// "guide_melee" (the gestures).
+std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& input);
 
 // ---- Settings-file edits -------------------------------------------------------------------------------------
 // Edits on their way to an ini file: one per (section, key), the latest value wins, each written when it's due

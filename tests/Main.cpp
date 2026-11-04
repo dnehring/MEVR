@@ -8215,6 +8215,93 @@ void TestMenuSettings() {
     CHECK(ms::ControllersLabel("Sense Controller (SteamVR/OpenXR : playstation_vr2)") == "Sense Controller");
     CHECK(ms::ControllersLabel("Touch Plus Controller") == "Touch Plus Controller");
 
+    // The Game UI nudges and the original stereo's eye distance (2026-11-04).
+    CHECK(ms::FormatValue(ms::Format::Signed0, 40.0f) == "+40" && ms::FormatValue(ms::Format::Signed0, -120.0f) == "-120");
+    CHECK(ms::FormatValue(ms::Format::Signed0, -0.4f) == "0");
+    CHECK(ms::FormatValue(ms::Format::Centimeters1, 6.8f) == "6.8 cm");
+
+    // The controller guide: what each control does with the shipped settings, and with the settings that change it.
+    {
+        auto text = [](ms::GuideInput const& in, std::string const& key) {
+            for (auto const& [k, t] : ms::GuideTexts(in)) {
+                if (k == key) {
+                    return t;
+                }
+            }
+            return std::string("(missing)");
+        };
+        ms::GuideInput const shipped;
+        for (char const* id : {"lt", "lgrip", "lstick", "x", "y", "menu", "rt", "rgrip", "rstick", "a", "b"}) {
+            std::string const label = text(shipped, std::string("guide_") + id);
+            CHECK(!label.empty() && label != "(missing)" && label.size() <= 22);  // fits the drawing's label in two lines
+            CHECK(text(shipped, std::string("guide_") + id + "_how").size() > 10);
+        }
+        for (auto const& [k, t] : ms::GuideTexts(shipped)) {
+            CHECK(ms::Find(k) != nullptr && ms::Find(k)->type == ms::Type::Text);  // the page binds every one
+        }
+        CHECK(text(shipped, "guide_lt") == "Weapon wheel" && text(shipped, "guide_rt") == "Fire");
+        CHECK(text(shipped, "guide_rstick") == "Turn, click: powers");
+        CHECK(text(shipped, "guide_rstick_how").find("recenter") != std::string::npos);
+        CHECK(text(shipped, "guide_rgrip") == "Draw and holster");
+        CHECK(text(shipped, "guide_x") == "Grenade" && text(shipped, "guide_y") == "Medi-gel" && text(shipped, "guide_b") == "Melee");
+        CHECK(text(shipped, "guide_lgrip_how").find("vent") != std::string::npos);
+        CHECK(text(shipped, "guide_grenade").rfind("Right hand", 0) == 0);  // [Throwables] hands = right
+        CHECK(text(shipped, "guide_lstick_how").find("where you look") != std::string::npos);
+        // The power wheel moved to Y ([Holsters] powerWheel): Y is the powers, the stick click only recenters...
+        ms::GuideInput y = shipped;
+        y.powerWheel = " Y ";
+        CHECK(text(y, "guide_y") == "Powers" && text(y, "guide_rstick") == "Turn");
+        CHECK(text(y, "guide_rstick_how").find("recenter") != std::string::npos);
+        // ...but only while the right grip holds the gun: without the holsters the grip is the game's RB again.
+        ms::GuideInput noHolsters = y;
+        noHolsters.holsters = false;
+        CHECK(text(noHolsters, "guide_rgrip") == "Powers" && text(noHolsters, "guide_y") == "Medi-gel");
+        ms::GuideInput noHold = shipped;
+        noHold.gripHolds = false;
+        CHECK(text(noHold, "guide_rgrip") == "Draw, powers" && text(noHold, "guide_rstick") == "Turn");
+        ms::GuideInput x = shipped;
+        x.powerWheel = "x";
+        CHECK(text(x, "guide_x") == "Powers");
+        ms::GuideInput b = shipped;
+        b.powerWheel = "b";
+        CHECK(text(b, "guide_b") == "Powers");
+        // The left trigger's choices; the wheel without the squad is the game's own (hold, tap); the custom squad menu.
+        ms::GuideInput lt = shipped;
+        lt.leftTrigger = "lt";
+        CHECK(text(lt, "guide_lt") == "Aim");
+        ms::GuideInput none = shipped;
+        none.leftTrigger = "none";
+        CHECK(text(none, "guide_lt") == "Nothing");
+        ms::GuideInput noSquad = shipped;
+        noSquad.squad = false;
+        CHECK(text(noSquad, "guide_lt") == "Weapon wheel" && text(noSquad, "guide_lt_how").find("tap") != std::string::npos);
+        ms::GuideInput custom = shipped;
+        custom.squadStyle = "custom";
+        CHECK(text(custom, "guide_lt") == "Squad weapons");
+        // X and B kept from the game, no vent, grenades in the left hand, walking toward the hand, snap turns.
+        ms::GuideInput kept = shipped;
+        kept.grenadeButton = false;
+        kept.meleeButton = false;
+        kept.vent = false;
+        kept.grenadeHands = "left";
+        kept.walk = "hand";
+        kept.turn = "snap";
+        CHECK(text(kept, "guide_x") == "Nothing" && text(kept, "guide_b") == "Nothing");
+        CHECK(text(kept, "guide_lgrip") == "Two-handed grip" && text(kept, "guide_lgrip_how").find("vent") == std::string::npos);
+        CHECK(text(kept, "guide_lgrip_how").find("grenade") != std::string::npos);
+        CHECK(text(kept, "guide_grenade").rfind("Left hand", 0) == 0);
+        CHECK(text(kept, "guide_lstick_how").find("left hand points") != std::string::npos);
+        CHECK(text(kept, "guide_rstick_how").find("steps") != std::string::npos);
+        ms::GuideInput both = shipped;
+        both.grenadeHands = "both";
+        CHECK(text(both, "guide_grenade").rfind("Either hand", 0) == 0);
+        ms::GuideInput off = shipped;
+        off.grenades = false;
+        off.melee = false;
+        CHECK(text(off, "guide_grenade").rfind("Off", 0) == 0 && text(off, "guide_melee").rfind("Off", 0) == 0);
+        CHECK(text(off, "guide_lgrip_how").find("grenade") == std::string::npos);
+    }
+
     // A section as GetPrivateProfileSection gives it: lower-cased keys, trimmed values, comments skipped.
     auto const section = ms::ParseSection("; a comment\nphysicalCrouch = 1\n  HandPitch=-4.5 \nbroken line\n");
     CHECK(section.size() == 2 && section.at("physicalcrouch") == "1" && section.at("handpitch") == "-4.5");

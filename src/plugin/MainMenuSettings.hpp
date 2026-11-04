@@ -14,7 +14,9 @@
 
 // What each row of our main menu drives (research/28), behind the data model (plugin/menu/MenuModel):
 //   - our settings: <GAME>MEVR.ini next to the host ASI, which the mod re-reads within a second ([Hands], [Holsters],
-//     [Controls], [Throwables], [Sights], [Camera], and the menu's own [Menu]): written key by key with
+//     [Controls], [Throwables], [Sights], [Comfort], [Cinematics], [WorldUi], [Galaxy], [Hud], [Interact], [Vent],
+//     [Mako], [Cockpit], [Upscale], and the menu's own [Menu]; Settings::Read's list names every section a row reads,
+//     or the row snaps back to its default after a write): written key by key with
 //     WritePrivateProfileString, as the VR hands tab does (a slider's value 300 ms after it last moved), never the
 //     whole file;
 //   - Halcyon's: its live config (MELEVR::Config::Get()), as its own menu edits it, saved into the active profile

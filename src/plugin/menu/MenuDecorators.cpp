@@ -488,6 +488,13 @@ std::vector<Icon> const& Icons() {
         // The game's own menus (the top bar's Game menu and Holster).
         v.push_back({"gamemenu", 24.0f, 2.2f, {Line({{4, 6}, {20, 6}}), Line({{4, 12}, {20, 12}}), Line({{4, 18}, {20, 18}})}});
         v.push_back({"holster", 24.0f, 2.0f, {Line({{12, 2}, {12, 13}}), Line({{8, 9}, {12, 13}, {16, 9}}), Line({{5, 11}, {5, 21}, {19, 21}, {19, 11}})}});
+        // The controller guide (the rail's first section): a question mark in a circle.
+        {
+            Shape hook = Arc(12, 9.5f, 3, 180, 420, 16);
+            hook.points.push_back({12, 13.5f});
+            hook.points.push_back({12, 15});
+            v.push_back({"guide", 24.0f, 1.8f, {Circle(12, 12, 9.5f), hook, Line({{12, 17.5f}, {12, 18.5f}})}});
+        }
         return v;
     }();
     return icons;

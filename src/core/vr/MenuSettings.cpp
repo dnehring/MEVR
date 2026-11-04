@@ -69,6 +69,8 @@ std::string FormatValue(Format format, float value) {
     case Format::Meters1: return Plain(value, 1, " m");
     case Format::Meters2: return Plain(value, 2, " m");
     case Format::SignedMeters2: return Signed(value, 2, " m");
+    case Format::Signed0: return Signed(value, 0, "");
+    case Format::Centimeters1: return Plain(value, 1, " cm");
     }
     return Plain(value, 2, "");
 }
@@ -82,6 +84,7 @@ std::vector<Field> const& Schema() {
         {"fine", Type::Flag, 0, "", 0, 1, F::None, true},
         {"reset_armed", Type::Flag, 0, "", 0, 1, F::None, true},
         {"comparing", Type::Flag, 0, "", 0, 1, F::None, true},
+        {"first_run", Type::Flag, 0, "", 0, 1, F::None, true},  // opened by itself on the controller guide (MainMenu's first run)
         // The top bar.
         {"chip_headset", Type::Text, 0, "Headset not started"},
         {"chip_controllers", Type::Text, 0, "No controllers"},
@@ -96,13 +99,17 @@ std::vector<Field> const& Schema() {
         {"walk", Type::Choice, 0, "head"},
         {"crouch", Type::Flag, 1},
         {"lifesize", Type::Flag, 0},
+        {"lifesize_note", Type::Text, 0, ""},  // Halcyon's leanGain is neither 1 nor 2 (Advanced > View's Movement scale)
         {"pause", Type::Flag, 1},
-        // Comfort: conversations and cutscenes (research/52): in VR (Halcyon's), on the 3D cinema screen, or the flat screen.
-        {"cine_view", Type::Choice, 0, "screen"},
+        // Comfort: conversations and cutscenes (research/52), each in VR (Halcyon's), on the 3D cinema screen, or the flat screen.
+        {"cine_convo", Type::Choice, 0, "screen"},
+        {"cine_cut", Type::Choice, 0, "screen"},
         {"cine_width", Type::Number, 3, "", 1.5f, 8, F::Meters1},
         {"cine_distance", Type::Number, 2.6f, "", 1, 6, F::Meters1},
         {"cine_depth", Type::Number, 100, "", 0, 150, F::Percent},
         {"wrist_screen", Type::Choice, 0, "wrist"},  // the hacking screen: "wrist" (projected from it) or "room" (research/53)
+        {"world_ui", Type::Flag, 1},     // [WorldUi] on: the game's screens in the room (research/53)
+        {"galaxy_holo", Type::Flag, 1},  // [Galaxy] hologram: the galaxy map as a hologram over the CIC's table (research/51)
         // Controls.
         {"grip_holds", Type::Flag, 1},
         {"holsters", Type::Flag, 1},
@@ -114,6 +121,35 @@ std::vector<Field> const& Schema() {
         {"explore_stance", Type::Flag, 0},  // [Hands] exploreStance (research/38 A; off by default since 2026-10-25)
         {"constant_eye", Type::Flag, 1},    // [Hands] constantEye (B, the host)
         {"draw_rate", Type::Number, 6, "", 1, 10, F::Times1},  // [Hands] drawRate (D)
+        {"fingers", Type::Flag, 1},        // [Hands] fingers (research/43)
+        {"vent", Type::Flag, 1},           // [Vent] enabled (research/45)
+        {"mako_controls", Type::Flag, 1},  // [Mako] controls: the lever and the stick (research/46)
+        {"cockpit", Type::Flag, 1},        // [Cockpit] enabled (research/47)
+        // The controller guide's texts (core/vr/MenuSettings GuideTexts; "<id>" the drawing's label, "<id>_how" the list's line).
+        {"guide_lt", Type::Text, 0, ""},
+        {"guide_lt_how", Type::Text, 0, ""},
+        {"guide_lgrip", Type::Text, 0, ""},
+        {"guide_lgrip_how", Type::Text, 0, ""},
+        {"guide_lstick", Type::Text, 0, ""},
+        {"guide_lstick_how", Type::Text, 0, ""},
+        {"guide_x", Type::Text, 0, ""},
+        {"guide_x_how", Type::Text, 0, ""},
+        {"guide_y", Type::Text, 0, ""},
+        {"guide_y_how", Type::Text, 0, ""},
+        {"guide_menu", Type::Text, 0, ""},
+        {"guide_menu_how", Type::Text, 0, ""},
+        {"guide_rt", Type::Text, 0, ""},
+        {"guide_rt_how", Type::Text, 0, ""},
+        {"guide_rgrip", Type::Text, 0, ""},
+        {"guide_rgrip_how", Type::Text, 0, ""},
+        {"guide_rstick", Type::Text, 0, ""},
+        {"guide_rstick_how", Type::Text, 0, ""},
+        {"guide_a", Type::Text, 0, ""},
+        {"guide_a_how", Type::Text, 0, ""},
+        {"guide_b", Type::Text, 0, ""},
+        {"guide_b_how", Type::Text, 0, ""},
+        {"guide_grenade", Type::Text, 0, ""},
+        {"guide_melee", Type::Text, 0, ""},
         // Body and calibration.
         {"cal_running", Type::Flag, 0},
         {"cal_status", Type::Text, 0, "Not calibrated for these controllers yet"},
@@ -146,19 +182,24 @@ std::vector<Field> const& Schema() {
         {"steady_cine", Type::Flag, 1},
         // HUD and sights.
         {"hud_distance", Type::Number, 1.5f, "", 1, 3, F::Meters1},
-        {"hud_size", Type::Number, 100, "", 70, 140, F::Percent},
+        {"hud_size", Type::Number, 100, "", 45, 155, F::Percent},  // of 1.3 m: Halcyon's hudPanelWidthM, 0.6 to 2 m
+        {"panel_below", Type::Number, 0.25f, "", -0.3f, 0.6f, F::SignedMeters2},
+        {"panel_follow", Type::Number, 70, "", 0, 120, F::DegreesOrNever},
         {"reticle", Type::Flag, 1},
+        {"wrist_status", Type::Flag, 1},    // [Hud] wristStatus (research/41)
+        {"gun_status", Type::Flag, 1},      // [Hud] gunStatus
+        {"interact_label", Type::Flag, 1},  // [Interact] label (research/40)
         {"sight_pistol", Type::Choice, 0, "dot"},
-        {"sight_rifle", Type::Choice, 0, "scope"},  // the assault rifle's (scope: its own, 1.5x; the shotgun keeps its dot)
+        {"sight_shotgun", Type::Choice, 0, "dot"},
+        {"sight_rifle", Type::Choice, 0, "dot"},  // the assault rifle's (scope: its own, 1.5x)
         {"sight_sniper", Type::Choice, 0, "scope"},
         {"sight_assist", Type::Flag, 1},
         {"sight_converge", Type::Flag, 1},
+        {"scope_grade", Type::Flag, 1},  // [Sights] scopeCapturePost (research/39)
         // Advanced: Halcyon's renderer.
         {"recenter_key", Type::Flag, 1},
         {"look_speed", Type::Number, 1, "", 0.25f, 2, F::Times2},
         {"look_smooth", Type::Number, 0.4f, "", 0, 0.9f, F::Fixed2},
-        {"vr_convo", Type::Flag, 1},
-        {"vr_cine", Type::Flag, 1},
         {"flat_menus", Type::Flag, 1},
         {"flat_galaxy", Type::Flag, 1},
         {"fp_on", Type::Flag, 0},
@@ -175,18 +216,22 @@ std::vector<Field> const& Schema() {
         {"life_size", Type::Flag, 1},
         {"extra_depth", Type::Number, 1, "", 0.5f, 2, F::Times2},
         {"eye_frustum", Type::Flag, 1},
-        {"eye_distance", Type::Number, 3.4f, "", 0.5f, 8, F::Fixed1},
+        {"eye_distance", Type::Number, 6.8f, "", 1, 16, F::Centimeters1},  // twice Halcyon's sfr2HalfEyeUU (game cm at life size)
         {"convergence", Type::Number, 0.012f, "", -0.02f, 0.05f, F::Fixed3},
         {"swap_eyes", Type::Flag, 1},
         {"quest_fov", Type::Flag, 1},
         {"dof", Type::Flag, 1},
-        {"mirror", Type::Choice, 0, "normal"},
-        {"panel_width", Type::Number, 1.3f, "", 0.6f, 2, F::Meters2},
-        {"panel_below", Type::Number, 0.25f, "", -0.3f, 0.6f, F::SignedMeters2},
-        {"panel_follow", Type::Number, 70, "", 0, 120, F::DegreesOrNever},
-        {"g_pchud", Type::Flag, 1},
+        {"mirror", Type::Choice, 0, "smooth"},  // the deploy's mirrorPresentEvery = 2
+        // Advanced > Game UI: Halcyon's size and place of the conversation wheel's and the mission overlays' movies (its HUD
+        // tab's sliders), as a percentage of its tuned size and a nudge in the movie's pixels from its tuned place (up +).
         {"g_convo", Type::Flag, 1},
+        {"convo_size", Type::Number, 100, "", 40, 250, F::Percent},
+        {"convo_x", Type::Number, 0, "", -600, 600, F::Signed0},
+        {"convo_y", Type::Number, 0, "", -600, 600, F::Signed0},
         {"g_designer", Type::Flag, 1},
+        {"designer_size", Type::Number, 100, "", 40, 250, F::Percent},
+        {"designer_x", Type::Number, 0, "", -900, 900, F::Signed0},
+        {"designer_y", Type::Number, 0, "", -900, 900, F::Signed0},
         {"prof_active", Type::Choice, 0, "0"},
         {"prof0_name", Type::Text, 0, "Default"},
         {"prof1_name", Type::Text, 0, "Custom 1"},
@@ -208,7 +253,8 @@ std::vector<Field> const& Schema() {
         {"save_msg", Type::Text, 0, ""},            // the top bar: the settings file couldn't be written
         {"throwables_note", Type::Text, 0, ""},     // grenades and melee set apart in the file
         {"recenter_key_desc", Type::Text, 0, "R on the keyboard recenters (the right stick's double-click works either way)"},
-        {"classic_desc", Type::Text, 0, "Halcyon's own menu, for what isn't here yet (also: Ctrl + the menu key)"},
+        {"classic_desc", Type::Text, 0, "The original MELE-VR settings menu, with expert settings these pages don't have (also: Ctrl + "
+                                        "the menu key)"},
     };
     return fields;
 }
@@ -445,6 +491,95 @@ std::string ControllersLabel(std::string_view calibrationLabel) {
         label.resize(bracket);
     }
     return label;
+}
+
+std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& in) {
+    std::vector<std::pair<std::string, std::string>> out;
+    auto put = [&out](char const* id, std::string label, std::string how) {
+        out.emplace_back(std::string("guide_") + id, std::move(label));
+        out.emplace_back(std::string("guide_") + id + "_how", std::move(how));
+    };
+    // Where the powers are (the game's RB: hold = the power wheel, tap = the power mapped in it). The right grip is RB
+    // unless it holds the gun (holsters with gripHolds); then [Holsters] powerWheel names the control that is.
+    bool const gripIsRb = !(in.holsters && in.gripHolds);
+    std::string const power = gripIsRb ? std::string("grip") : Lower(Trim(in.powerWheel));
+    std::string const powersHow = "hold for the power wheel, tap for the power you mapped in it";
+    bool const grenadeRight = in.grenades && Lower(Trim(in.grenadeHands)) != "left";
+    bool const grenadeLeft = in.grenades && (Lower(Trim(in.grenadeHands)) == "left" || Lower(Trim(in.grenadeHands)) == "both");
+    std::string const lt = Lower(Trim(in.leftTrigger));
+
+    // ---- The left controller ----
+    if (lt == "lt") {
+        put("lt", "Aim", "The game's aim button: steadier, zoomed fire. Aimed fire also comes from holding the gun at your cheek "
+                         "with both hands.");
+    } else if (lt == "lb" && in.squad && Lower(Trim(in.squadStyle)) == "custom") {
+        put("lt", "Squad weapons", "Pull for the squad weapon menu at your hand: the left stick picks a squadmate, a flick of the "
+                                   "right stick a weapon; let go to give it, B cancels.");
+    } else if (lt == "lb" && in.squad) {
+        put("lt", "Weapon wheel", "Pull to open the weapon wheel at your hand. Point at a squadmate to arm them; the right stick "
+                                  "picks a weapon; let go to choose it.");
+    } else if (lt == "lb") {
+        put("lt", "Weapon wheel", "Hold for the game's weapon wheel; tap to switch to your other weapon.");
+    } else {
+        put("lt", "Nothing", "Off (Controls > Left trigger). Aimed fire comes from holding the gun at your cheek with both hands.");
+    }
+    put("lgrip", in.vent ? "Two-handed grip, vent" : "Two-handed grip",
+        std::string("With your hand on the gun: hold it with both hands; at your cheek that is aimed fire.") +
+            (in.vent ? " On a hot gun, squeeze just ahead of your right hand and rack it back to vent the heat." : "") +
+            (grenadeLeft ? " At the left of your chest: take a grenade." : ""));
+    std::string const toward = in.walk == "hand" ? "where your left hand points" : in.walk == "body" ? "where Shepard faces"
+                                                                                                   : "where you look";
+    put("lstick", "Walk, click: crouch",
+        "Walk toward " + toward + ". Click to crouch or stand" + (in.physicalCrouch ? "; or just crouch for real." : "."));
+    if (power == "x") {
+        put("x", "Powers", "Powers: " + powersHow + ".");
+    } else if (in.grenadeButton) {
+        put("x", "Grenade", "Throw a grenade the game's way.");
+    } else {
+        put("x", "Nothing", "Nothing on foot: take grenades from your chest.");
+    }
+    if (power == "y") {
+        put("y", "Powers", "Powers: " + powersHow + ". Medi-gel is in the power wheel.");
+    } else {
+        put("y", "Medi-gel", "Use medi-gel: heals you and your squad.");
+    }
+    put("menu", "Game menu", "The game's pause menu, on controllers that send this button. The Game menu button at the top of "
+                             "this menu always opens it.");
+
+    // ---- The right controller ----
+    put("rt", "Fire", "Fire the gun in your hand.");
+    if (!in.holsters) {
+        put("rgrip", "Powers", "Powers: " + powersHow + ".");
+    } else if (!in.gripHolds) {
+        put("rgrip", "Draw, powers", "At a holster on your body: squeeze to draw that weapon; squeeze and let go there to put it "
+                                     "away. Anywhere else, powers: " + powersHow + ".");
+    } else {
+        put("rgrip", "Draw and holster", "Squeeze at a holster on your body to draw that weapon and keep squeezing to hold "
+                                              "it. Let go at its holster to put it away; anywhere else it goes back by itself.");
+    }
+    std::string const turnHow = in.turn == "snap" ? "Turn in steps (Comfort > Turn style)." : "Turn (Comfort > Turn style).";
+    if (power == "r3") {
+        put("rstick", "Turn, click: powers", turnHow + " Click: " + powersHow + ". Double-click: recenter the view.");
+    } else {
+        put("rstick", "Turn", turnHow + " Double-click the stick to recenter the view.");
+    }
+    put("a", "Use, hold: sprint", "Use what you look at: doors, consoles, people, loot. Hold to sprint.");
+    if (power == "b") {
+        put("b", "Powers", "Powers: " + powersHow + ".");
+    } else if (in.meleeButton) {
+        put("b", "Melee", "Strike with your weapon.");
+    } else {
+        put("b", "Nothing", "Nothing on foot: strike for real to melee.");
+    }
+
+    // ---- Gestures ----
+    std::string const grenadeHand = grenadeRight && grenadeLeft ? "Either hand" : grenadeLeft ? "Left hand" : "Right hand";
+    out.emplace_back("guide_grenade", in.grenades ? grenadeHand + " to the left of your chest, squeeze the grip to take a "
+                                                    "grenade, then throw: let go mid-swing. Let go slowly to put it back."
+                                                  : std::string("Off (Controls > Physical grenades and melee)."));
+    out.emplace_back("guide_melee", in.melee ? std::string("Strike fast at an enemy within reach, with either hand.")
+                                             : std::string("Off (Controls > Physical grenades and melee)."));
+    return out;
 }
 
 void PendingWrites::Put(std::string section, std::string key, std::string value, std::uint64_t dueMs) {
