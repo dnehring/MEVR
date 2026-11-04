@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: MIT
+# The feature request form: an idea for the VR mod. Something that doesn't work as it should is a bug (bug.yml).
+name: Feature request
+description: An idea for something the VR mod could do, or do better
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. Please look through the [open issues](https://github.com/dnehring/MEVR/issues) first: if it's already there, a thumbs-up reaction on it counts. If something doesn't work as it should, use the bug report form instead.
+        MEVR is Mass Effect 1 (Legendary Edition) for now; Mass Effect 2 and 3 come later.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Hands and weapons (aiming, sights, scopes, holsters, grenades)
+        - Body and calibration
+        - Comfort (turning, moving, the vignette)
+        - Conversations and cutscenes
+        - The HUD and the game's own screens
+        - The Mako
+        - The VR menu and settings
+        - Performance and picture quality
+        - Installing (MEVR Setup)
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: What would you like the mod to do? Where in the game would you use it?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: "What's missing or awkward today: what you do now, and what gets in the way."
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How it could work (optional)
+      description: Controls, gestures, where things appear; other VR games that do it well.
+  - type: input
+    id: headset
+    attributes:
+      label: Headset and controllers (optional)
+      placeholder: Quest 3 over Link, Touch Plus controllers

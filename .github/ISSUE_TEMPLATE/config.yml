@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Blank issues stay allowed: ideas, questions and anything that isn't a bug have no form of their own yet.
+# Blank issues stay allowed: questions and anything that is neither a bug (bug.yml) nor an idea (feature.yml).
 blank_issues_enabled: true
 contact_links:
   - name: Troubleshooting guide
