@@ -8897,6 +8897,19 @@ void TestCombatStance() {
     CHECK(!cs::ConstantEyeApplies("SFXCameraMode_SniperAim", "SniperCam0"));
     CHECK(!cs::ConstantEyeApplies("SFXCameraMode_Vehicle", "MakoCam"));
     CHECK(!cs::ConstantEyeApplies("SFXCameraMode_HipAimCover", "x"));
+    // A physical crouch: the crouch modes take the constant eye too (only the real head lowers the view); never cover,
+    // the scope or the Mako.
+    CHECK(cs::ConstantEyeApplies("SFXCameraMode_Combat", "CombatCrouchCam0", true));
+    CHECK(cs::ConstantEyeApplies("SFXCameraMode_TightAim", "CombatCrouchTightAim0", true));
+    CHECK(cs::ConstantEyeApplies("SFXCameraMode_Combat", "CombatCam0", true));
+    CHECK(!cs::ConstantEyeApplies("SFXCameraMode_SniperAim", "SniperCrouchCam0", true));
+    CHECK(!cs::ConstantEyeApplies("SFXCameraMode_HipAimCover", "CoverCrouch", true));
+    {
+        mevr::game::gamepad::Options o;
+        o.physicalCrouch = true;
+        CHECK(mevr::game::gamepad::FromFlags(0, 0, 0, mevr::game::gamepad::ToFlags(o)).physicalCrouch);
+        CHECK(!mevr::game::gamepad::FromFlags(0, 0, 0, mevr::game::gamepad::ToFlags({})).physicalCrouch);
+    }
     CHECK(cs::IsExploreMode("SFXCameraMode_Explore", "ExploreCam0"));
     CHECK(!cs::IsExploreMode("SFXCameraMode_ExploreStorm", "x"));
     CHECK(!cs::IsExploreMode("SFXCameraMode_Combat", "CombatCam0"));

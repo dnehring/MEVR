@@ -99,8 +99,10 @@ Vec ExploreEye(Vec exploreHook, Vec exploreOffset);
 Vec ConstantEyeOffset(Vec modeHook, Vec eye);
 // Whether a first-person camera mode (Halcyon already chose it: Explore, Combat, TightAim and the sprint modes; never
 // cover, the scope or the Mako) takes the constant eye: every standing one. Crouch modes (their object or class name
-// says Crouch) keep Halcyon's values: crouching lowers the view as before.
-bool ConstantEyeApplies(std::string_view className, std::string_view objectName);
+// says Crouch) take it only while the player is physically crouched (physicalCrouch): their real head already lowers the
+// view, and the game's crouch camera (45 units lower in combat, research/23) would lower it a second time. A crouch by
+// the button while standing keeps Halcyon's values: crouching lowers the view as before.
+bool ConstantEyeApplies(std::string_view className, std::string_view objectName, bool physicalCrouch = false);
 // Whether a mode is the explore mode whose HookOffset defines the eye (Explore, not its sprint or crouch).
 bool IsExploreMode(std::string_view className, std::string_view objectName);
 // A HookOffset worth using: finite, within 1000 units.

@@ -46,6 +46,9 @@ bool TryStartup();
 // noCover is on: Mod.cpp puts engine/cover_acquire's hook in (once).
 bool WantsCoverHook();
 void Tick(double deltaSeconds, Link const& link);
+// The player is physically crouched now (the detector, while physical crouch is active: VR on foot). Whatever the game's
+// crouch is: an L3 crouch while standing is false, a real crouch is true even if Shepard stood up by L3.
+bool PhysicallyCrouched();
 std::string StatusJson();
 void LogStats();
 // Releases a crouch we made (unless the process is exiting) and stops refusing cover.

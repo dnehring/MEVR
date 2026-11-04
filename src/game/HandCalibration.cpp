@@ -143,12 +143,15 @@ constexpr char const* kDefaultFile =
     "; drawRate: how fast the draw and holster animations play (1 = the game's own, up to 10). constantEye (read by\n"
     "; the host): 1 = drawing, holstering, aimed fire and sprinting with a weapon out leave your view where it is.\n"
     "; blendFix (read by the host): 1 = a camera blend (the sniper's first draw, cover) doesn't jump your view.\n"
+    "; crouchDrop (read by the host): 0 = when you crouch for real only your head lowers the view; 1 = the game's lower\n"
+    "; crouch camera lowers it a second time (as before 2026-11-04). A crouch by the button while standing always lowers it.\n"
     "exploreStance = 0\n"
     "exploreStanceStorm = 1\n"
     "exploreRamp = 1\n"
     "drawRate = 6.0\n"
     "constantEye = 1\n"
     "blendFix = 1\n"
+    "crouchDrop = 0\n"
     "; Fingers (research/43). fingers: 1 = in first person with tracked controllers each hand's index finger curls with its\n"
     "; controller's trigger and the other fingers with its grip (the thumb a little); with the weapon drawn the right hand\n"
     "; keeps its hold on the gun and only the index finger moves (off the trigger until you squeeze it), and the left hand\n"
@@ -2529,6 +2532,7 @@ void Refresh() {
         {L"Hands", "Hands", L"drawRate", "drawRate", L"6.0"},
         {L"Hands", "Hands", L"constantEye", "constantEye", L"1"},
         {L"Hands", "Hands", L"blendFix", "blendFix", L"1"},  // read by the host (research/38 B)
+        {L"Hands", "Hands", L"crouchDrop", "crouchDrop", L"0"},  // read by the host (2026-11-04: no double crouch drop)
         // Fingers that follow the controllers (research/43).
         {L"Hands", "Hands", L"fingers", "fingers", L"1"},
         {L"Hands", "Hands", L"fingerCurlDeg", "fingerCurlDeg", L"70"},

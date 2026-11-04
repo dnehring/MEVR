@@ -12,6 +12,7 @@
 #include "game/HandCalibration.hpp"
 #include "game/Holsters.hpp"
 #include "game/MakoControls.hpp"
+#include "game/Posture.hpp"
 #include "game/SquadWeapons.hpp"
 #include "game/Throwables.hpp"
 #include "game/Vent.hpp"
@@ -277,6 +278,7 @@ void Tick(double deltaSeconds, bool requested) {
     comfort::AdjustPad(options);  // our own turn (no right-stick X for the game) and walking toward the left hand
     mako_controls::AdjustPad(options);  // the Mako's lever and stick (research/46): a squeeze there is theirs, and their buttons
     options.cockpitLook = cockpit_probe::Riding();  // the head looks round the cockpit in the Mako (research/47)
+    options.physicalCrouch = posture::PhysicallyCrouched();  // the host's crouch camera keeps the real head's height
     gFlags.store(gamepad::ToFlags(options), std::memory_order_relaxed);
     bool const aiming = options.supportAims && gHeld.load(std::memory_order_relaxed) && requested;
     std::optional<bool> const zoomed = weapon::Zoomed();

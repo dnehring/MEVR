@@ -250,7 +250,7 @@ std::uint32_t ToFlags(Options const& options) {
            (options.meleeButton ? 0u : kFlagNoMeleeButton) | (options.grenadeButton ? 0u : kFlagNoGrenadeButton) |
            (options.modTurns ? kFlagModTurns : 0u) | (options.handWalk ? kFlagHandWalk : 0u) |
            (options.makoDrive ? kFlagMakoDrive : 0u) | (options.makoLever ? kFlagMakoLever : 0u) | (options.makoStick ? kFlagMakoStick : 0u) |
-           (options.cockpitLook ? kFlagCockpitLook : 0u) |
+           (options.cockpitLook ? kFlagCockpitLook : 0u) | (options.physicalCrouch ? kFlagPhysicalCrouch : 0u) |
            ((static_cast<std::uint32_t>(options.wheelStick) << kWheelStickShift) & kWheelStickMask) |
            ((static_cast<std::uint32_t>(options.rbSource) << kRbSourceShift) & kRbSourceMask);
 }
@@ -274,6 +274,7 @@ Options FromFlags(float distance, float acquire, float release, std::uint32_t fl
     options.makoLever = (flags & kFlagMakoLever) != 0;
     options.makoStick = (flags & kFlagMakoStick) != 0;
     options.cockpitLook = (flags & kFlagCockpitLook) != 0;
+    options.physicalCrouch = (flags & kFlagPhysicalCrouch) != 0;
     std::uint32_t const stick = (flags & kWheelStickMask) >> kWheelStickShift;
     options.wheelStick = stick <= static_cast<std::uint32_t>(WheelStick::Either) ? static_cast<WheelStick>(stick) : WheelStick::Right;
     std::uint32_t const source = (flags & kRbSourceMask) >> kRbSourceShift;

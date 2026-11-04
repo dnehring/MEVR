@@ -297,6 +297,9 @@ struct Options {
     // renderer turns the view with the head in game mode 1 too, where it parks head look for the chase camera. Not a pad
     // mapping option; it travels with them.
     bool cockpitLook = false;
+    // The player is physically crouched (game/posture's detector, on foot in VR): the host's constant eye then also covers
+    // the crouch camera modes, so only the real head lowers the view (research/38 B step 2). Travels with the options.
+    bool physicalCrouch = false;
     SupportInput support;
 };
 
@@ -324,6 +327,7 @@ inline constexpr std::uint32_t kFlagMakoDrive = 1u << 19;        // Options::mak
 inline constexpr std::uint32_t kFlagMakoLever = 1u << 20;        // Options::makoLever (host v23)
 inline constexpr std::uint32_t kFlagMakoStick = 1u << 21;        // Options::makoStick (host v23)
 inline constexpr std::uint32_t kFlagCockpitLook = 1u << 22;      // Options::cockpitLook (a host of 2026-11-03 or later)
+inline constexpr std::uint32_t kFlagPhysicalCrouch = 1u << 23;   // Options::physicalCrouch (a host of 2026-11-04 or later)
 std::uint32_t ToFlags(Options const& options);
 Options FromFlags(float distance, float acquire, float release, std::uint32_t flags);
 

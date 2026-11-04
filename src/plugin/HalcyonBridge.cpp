@@ -806,6 +806,9 @@ bool ReadModeSEH(void* mode, ModeRead* out) noexcept {
 // on the Present thread: no file I/O on the render thread.
 std::atomic<bool> gConstantEyeOn{true};
 std::atomic<bool> gBlendFixOn{true};
+// [Hands] crouchDrop (default 0): 0 = while the player is physically crouched the crouch camera modes take the constant eye
+// too, so only the real head lowers the view; 1 = the game's crouch camera lowers it a second time (as before 2026-11-04).
+std::atomic<bool> gCrouchDropOn{false};
 
 bool ConstantEyeSetting() {
     return gConstantEyeOn.load(std::memory_order_relaxed);
@@ -826,11 +829,25 @@ void RefreshConstantEyeSetting() {
         on = read;
         gConstantEyeOn.store(read, std::memory_order_relaxed);
     }
+    {
+        static bool dropLogged = false;
+        std::wstring const& path = SettingsPath();
+        bool const drop = !path.empty() && GetPrivateProfileIntW(L"Hands", L"crouchDrop", 0, path.c_str()) != 0;
+        if (!dropLogged || drop != gCrouchDropOn.load(std::memory_order_relaxed)) {
+            dropLogged = true;
+            mevr::log::Info("constant eye: a physical crouch {} ([Hands] crouchDrop = {})",
+                drop ? "also gets the game's lower crouch camera (the view drops twice)"
+                     : "lowers the view by your real head only (the crouch camera modes keep the standing eye)",
+                drop ? 1 : 0);
+        }
+        gCrouchDropOn.store(drop, std::memory_order_relaxed);
+    }
 }
 
 cs::Vec gExploreHook{0.0, 0.0, 120.0};  // the package default (research/38 B), until an Explore mode is seen
 void const* gLoggedMode = nullptr;
 float gLogged[3] = {1e9f, 1e9f, 1e9f};
+bool gLoggedPhysicalCrouch = false;
 
 std::string V(cs::Vec v) {
     return std::format("({:.1f}, {:.1f}, {:.1f})", v.x, v.y, v.z);
@@ -854,19 +871,25 @@ bool ConstantFpEye(void* mode, float* fwd, float* right, float* up) noexcept {
         gExploreHook = hook;
     }
     cs::Vec const halcyon{*fwd, *right, *up};
-    bool const applies = cs::ConstantEyeApplies(read.cls, read.obj);
+    // The mod's physical crouch (kFlagPhysicalCrouch, sent with the pad options each tick): the crouch modes keep the eye too.
+    bool const freshOptions = GetTickCount64() - gSupportInputMs.load(std::memory_order_relaxed) <= kSupportInputMaxAgeMs;
+    bool const physicalCrouch = !gCrouchDropOn.load(std::memory_order_relaxed) && freshOptions &&
+        (gSupportFlags.load(std::memory_order_relaxed) & mevr::game::gamepad::kFlagPhysicalCrouch) != 0;
+    bool const applies = cs::ConstantEyeApplies(read.cls, read.obj, physicalCrouch);
     MELEVR::Config::VrConfig::FpStateCfg const& explore = MELEVR::Config::Get().fpExplore;
     cs::Vec const eye = cs::ExploreEye(gExploreHook, {explore.fwd, explore.right, explore.up});
     cs::Vec const offset = applies ? cs::ConstantEyeOffset(hook, eye) : halcyon;
     float const out[3] = {static_cast<float>(offset.x), static_cast<float>(offset.y), static_cast<float>(offset.z)};
     // Logged once per mode change (and when the values move): the `camera: mode` lines should then read the same eye.
     if (mode != gLoggedMode || std::fabs(out[0] - gLogged[0]) > 0.05f || std::fabs(out[1] - gLogged[1]) > 0.05f ||
-        std::fabs(out[2] - gLogged[2]) > 0.05f) {
+        std::fabs(out[2] - gLogged[2]) > 0.05f || physicalCrouch != gLoggedPhysicalCrouch) {
         gLoggedMode = mode;
+        gLoggedPhysicalCrouch = physicalCrouch;
         std::copy(std::begin(out), std::end(out), std::begin(gLogged));
         if (applies) {
-            mevr::log::Info("constant eye: {} ({}): HookOffset {} -> Offset {}: the eye {} from the hook bone, as exploring (Halcyon's {})",
-                read.obj, read.cls, V(hook), V(offset), V(eye), V(halcyon));
+            mevr::log::Info("constant eye: {} ({}): HookOffset {} -> Offset {}: the eye {} from the hook bone, as exploring (Halcyon's {}){}",
+                read.obj, read.cls, V(hook), V(offset), V(eye), V(halcyon),
+                physicalCrouch ? "; you are physically crouched, so only your real head lowers the view" : "");
         } else {
             mevr::log::Info("constant eye: {} ({}): a crouch mode, Halcyon's Offset {} kept (HookOffset {}: the eye {} from the hook bone)",
                 read.obj, read.cls, V(halcyon), V(hook), V({hook.x - halcyon.x, hook.y - halcyon.y, hook.z - halcyon.z}));

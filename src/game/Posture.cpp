@@ -497,6 +497,10 @@ bool TryStartup() {
 #endif
 }
 
+bool PhysicallyCrouched() {
+    return gCrouchActive && gDetector.Crouched();
+}
+
 bool WantsCoverHook() {
     return gStarted && hand_calibration::GetPosture().noCover;
 }

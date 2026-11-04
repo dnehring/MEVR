@@ -163,12 +163,12 @@ bool OffsetMoved(Vec oldOffset, Vec newOffset) {
            std::fabs(newOffset.z - oldOffset.z) > 0.01;
 }
 
-bool ConstantEyeApplies(std::string_view className, std::string_view objectName) {
-    if (Contains(className, "Crouch") || Contains(objectName, "Crouch")) {
-        return false;
-    }
+bool ConstantEyeApplies(std::string_view className, std::string_view objectName, bool physicalCrouch) {
     if (Contains(className, "Vehicle") || Contains(className, "Sniper") || Contains(className, "HipAim") || Contains(className, "Cover")) {
         return false;  // Halcyon never hands these over; belt and braces
+    }
+    if ((Contains(className, "Crouch") || Contains(objectName, "Crouch")) && !physicalCrouch) {
+        return false;
     }
     return Contains(className, "Explore") || Contains(className, "Combat") || Contains(className, "TightAim");
 }
