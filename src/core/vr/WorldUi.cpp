@@ -125,6 +125,27 @@ Rect WristCrop(Screen screen) {
     return DefaultCrop(screen);
 }
 
+bool OnWrist(Settings const& settings, Screen screen, bool anchored) {
+    if ((settings.wristScreens & Bit(screen)) == 0) {
+        return false;
+    }
+    return screen == Screen::SkillGame || !anchored;
+}
+
+float WristWidth(Settings const& settings, Screen screen) {
+    return screen == Screen::SkillGame ? settings.wristWidthM : settings.wristMenuWidthM;
+}
+
+std::string ScreenList(std::uint32_t bits) {
+    std::string out;
+    for (unsigned i = 1; i < static_cast<unsigned>(Screen::Count); ++i) {
+        if ((bits & (1u << i)) != 0) {
+            out += (out.empty() ? "" : ", ") + std::string(Name(static_cast<Screen>(i)));
+        }
+    }
+    return out.empty() ? std::string("none") : out;
+}
+
 std::optional<Panel> Place(XrVector3f const& eyes, XrVector3f const& headForward, std::optional<XrVector3f> anchor, float widthM,
     float distanceM, float belowM, float heightOverWidth) {
     if (!(widthM > 0.05f) || !(heightOverWidth > 0.01f) || !std::isfinite(widthM) || !std::isfinite(heightOverWidth)) {

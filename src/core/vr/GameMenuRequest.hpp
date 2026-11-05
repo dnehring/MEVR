@@ -15,8 +15,20 @@ enum class Action : std::uint32_t {
     None = 0,
     PauseMenu = 1,  // the game's pause menu (Start: Console_Menu = ShowMenuGui)
     Holster = 2,    // put the weapon away (Back: Console_Holster = TryHolster), only while one is drawn
+    // The omni-tool's rail (research/54, 2026-11-04): one of the game's own screens, as its key opens it (the game mode's
+    // Show<Screen>Gui), or every game screen closed (the screens' own B, as the player backs out).
+    Equipment = 3,  // ShowEquipmentGui: the Inventory panel
+    Squad = 4,      // ShowSquadGui: the character record (talents), over the main wheel
+    Journal = 5,    // ShowJournalGui
+    Codex = 6,      // ShowCodexGui
+    Map = 7,        // ShowMapGui
+    CloseScreens = 8,
 };
 char const* Name(Action action);
+// One of the screens (Equipment..Map): what the rail opens.
+bool IsScreen(Action action);
+// The game's function for a screen ("ShowEquipmentGui"...), nullptr for anything else.
+char const* ShowFunction(Action action);
 // Values from another module (an older or newer host): anything unknown is None.
 Action FromValue(std::uint32_t value);
 

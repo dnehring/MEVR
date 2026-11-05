@@ -1138,6 +1138,13 @@ void CheckFunctions() {
         "Engine.WorldInfo.PauseGame",
         // GameMenuRequest (research/28): Start's Console_Menu on each mode that declares it
         "SFXGame.SFXGameModeBase.ShowMenuGui",
+        // GameMenuRequest, the omni-tool's rail (research/54): the screens' own functions and the screens' B
+        "SFXGame.SFXGameModeBase.ShowEquipmentGui",
+        "SFXGame.SFXGameModeBase.ShowSquadGui",
+        "SFXGame.SFXGameModeBase.ShowJournalGui",
+        "SFXGame.SFXGameModeBase.ShowCodexGui",
+        "SFXGame.SFXGameModeBase.ShowMapGui",
+        "Engine.BioSFHandler.HandleInputEvent",
         "SFXGame.SFXGameModeVehicle.ShowMenuGui",
         // Mako (research/44): the game's own turret aim, the vehicle's Tick and its shot start
         "SFXGame.BioVehicleBehaviorBase.SetDesiredTurretAimPoint",

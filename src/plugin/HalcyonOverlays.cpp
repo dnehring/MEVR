@@ -46,6 +46,7 @@
 #include "plugin/Halcyon.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/MainMenu.hpp"
+#include "plugin/OmniToolRail.hpp"
 #endif
 #include "plugin/MevrMenu.hpp"
 #include "plugin/PerfProbe.hpp"
@@ -2277,6 +2278,28 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         }
     }
 #if defined(MEVR_WITH_MAIN_MENU)
+    // ---- The omni-tool's rail (plugin/OmniToolRail, research/54): beside the game's screen on the wrist, or alone on the wrist
+    // when the player taps it open ----
+    {
+        mevr::host::omni_rail::Frame rail;
+        rail.session = session;
+        rail.appSpace = static_cast<XrSpace>(frame.appSpace);
+        rail.device = device.Get();
+        rail.context = context;
+        rail.headValid = frame.headValid;
+        rail.eyes = ToVec(frame.headPosition);
+        rail.screen = worldShown;
+        if (pieceControllers.active && pieceControllers.left.gripValid) {
+            rail.wristValid = true;
+            rail.wrist = hp::WristPoint(pieceControllers.left.grip, hud.wristOffset);
+        }
+        rail.gunDrawn = pieces.gunVisible;
+        rail.gameMode = gLastGameMode;
+        rail.othersOwnInput = frame.menuOpen || mevr::host::main_menu::IsOpen() || mevr::host::calibration::Active();
+        if (XrCompositionLayerQuad const* layer = mevr::host::omni_rail::Layer(rail); layer != nullptr && count < capacity) {
+            layersOut[count++] = layer;
+        }
+    }
     // ---- Our main menu (plugin/MainMenu): while it's open, its quad is the only one of ours (SteamVR may sort quads by
     // distance, and nothing of the game's is for now). Closed, it returns at once ----
     {

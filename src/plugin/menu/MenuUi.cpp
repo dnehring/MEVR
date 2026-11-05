@@ -121,7 +121,7 @@ void Ui::Shutdown() {
         context_ = nullptr;
         document_ = nullptr;
     }
-    if (gRmlInitialised && renderer_ != nullptr) {
+    if (gRmlInitialised && owner_ && renderer_ != nullptr) {  // only the one that set RmlUi up takes it down
         Rml::Shutdown();
         gRmlInitialised = false;
     }
@@ -143,9 +143,23 @@ bool Ui::Init(UiSetup const& setup) {
         return false;
     }
     if (gRmlInitialised) {
-        say(LogLevel::Error, "menu: RmlUi was set up by another menu already");
-        return false;
+        // A second document beside the first (the omni-tool's rail, research/54): RmlUi, its interfaces and the fonts are the
+        // first one's; this one gets a context of its own, drawn by a renderer of its own.
+        documents_ = setup.documents;
+        documentName_ = setup.document.empty() ? std::wstring(L"main.rml") : setup.document;
+        width_ = setup.width;
+        height_ = setup.height;
+        renderer_ = std::make_unique<Renderer>(setup.device);
+        std::string const name = "mevr-" + Utf8(std::filesystem::path(documentName_).stem());
+        context_ = Rml::CreateContext(name, Rml::Vector2i(width_, height_), renderer_.get());
+        if (context_ == nullptr) {
+            say(LogLevel::Error, std::format("menu: RmlUi context '{}' failed", name));
+            return false;
+        }
+        say(LogLevel::Info, std::format("menu: a second RmlUi context '{}', {}x{}, documents in {}", name, width_, height_, Utf8(documents_)));
+        return true;
     }
+    owner_ = true;
     documents_ = setup.documents;
     documentName_ = setup.document.empty() ? std::wstring(L"main.rml") : setup.document;
     width_ = setup.width;
@@ -220,6 +234,11 @@ bool Ui::Init(UiSetup const& setup) {
     return true;
 }
 
+// The document's own style sheet (main.rml: main.rcss; omnitool.rml: omnitool.rcss), watched for changes with it.
+static std::filesystem::path StyleSheet(std::wstring const& document) {
+    return std::filesystem::path(document).replace_extension(L".rcss");
+}
+
 bool Ui::LoadDocument() {
     if (context_ == nullptr) {
         return false;
@@ -235,7 +254,7 @@ bool Ui::LoadDocument() {
     document_ = context_->LoadDocument(Utf8(file));
     std::error_code ec;
     stamps_[0] = std::filesystem::last_write_time(file, ec);
-    stamps_[1] = std::filesystem::last_write_time(documents_ / L"main.rcss", ec);
+    stamps_[1] = std::filesystem::last_write_time(documents_ / StyleSheet(documentName_), ec);
     if (document_ == nullptr) {
         if (log_) {
             log_(LogLevel::Error, std::format("menu: {} didn't load (see the rmlui: lines)", Utf8(file)));
@@ -254,12 +273,12 @@ bool Ui::ReloadIfChanged() {
     nextCheckMs_ = now + 1000;
     std::error_code ec;
     auto const rml = std::filesystem::last_write_time(documents_ / documentName_, ec);
-    auto const rcss = std::filesystem::last_write_time(documents_ / L"main.rcss", ec);
+    auto const rcss = std::filesystem::last_write_time(documents_ / StyleSheet(documentName_), ec);
     if (ec || (rml == stamps_[0] && rcss == stamps_[1])) {
         return false;
     }
     if (log_) {
-        log_(LogLevel::Info, "menu: main.rml or main.rcss changed: reloaded");
+        log_(LogLevel::Info, std::format("menu: {} or its style sheet changed: reloaded", Utf8(std::filesystem::path(documentName_))));
     }
     return LoadDocument();
 }

@@ -10,6 +10,7 @@
 #include <openxr/openxr.h>
 
 #include <cstdint>
+#include <filesystem>
 #include <string>
 
 struct ID3D11Device;
@@ -45,6 +46,11 @@ void NoteControllers(vr::controllers::State const& live);
 // HostServices v19 (any thread; the mod's tick): what the menu's Game menu or Holster button asked for, once (None:
 // nothing waiting). The mod calls the game's own function on the game thread (game/GameMenuRequest, research/28).
 vr::game_menu::Action TakeGameRequest();
+// A request from elsewhere in the host (the omni-tool's rail, research/54) through the same slot. Any thread.
+void PutGameRequest(vr::game_menu::Action action);
+// Where the menu's documents and fonts are (ASI\menu, or [Menu] assets; ASI\fonts): the rail's document sits beside main.rml.
+std::filesystem::path AssetsFolder();
+std::filesystem::path FontsFolder();
 // From the XInput hook (any thread): a real pad's state (before the menu neutralises it), for pad navigation.
 void NotePad(XINPUT_GAMEPAD const& pad);
 

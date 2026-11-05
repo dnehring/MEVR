@@ -31,6 +31,7 @@
 #include "plugin/Halcyon.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/MainMenu.hpp"
+#include "plugin/OmniToolRail.hpp"
 #endif
 #include "plugin/MevrMenu.hpp"
 #include "plugin/DrawReplay.hpp"
@@ -663,6 +664,12 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
         pad.bLeftTrigger = 0;  // the calibration's first-run prompt is being pointed at: its click isn't a shot
         pad.bRightTrigger = 0;
     }
+#if defined(MEVR_WITH_MAIN_MENU)
+    if (mevr::host::omni_rail::OwnsTriggers()) {
+        pad.bLeftTrigger = 0;  // the omni-tool's rail is pointed at: the trigger is its click there
+        pad.bRightTrigger = 0;
+    }
+#endif
     if (mevr::host::game_pointer::OwnsTriggers() || mevr::host::galaxy_hologram::Hovering()) {
         pad.bLeftTrigger = 0;  // the game's flat screen or the galaxy hologram is pointed at: the trigger is its click there
         pad.bRightTrigger = 0;

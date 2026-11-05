@@ -84,6 +84,7 @@ private:
     LogFunction log_;
     std::filesystem::file_time_type stamps_[2]{};
     std::uint64_t nextCheckMs_ = 0;
+    bool owner_ = false;  // this one set RmlUi up (the first Init); a second document only has a context of its own
 };
 
 } // namespace mevr::menu

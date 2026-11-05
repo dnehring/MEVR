@@ -12,6 +12,7 @@
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/vr/CineScreen.hpp"
+#include "core/vr/WorldUi.hpp"
 #include "plugin/Calibration.hpp"
 #include "plugin/Colour.hpp"
 #include "plugin/MevrMenu.hpp"
@@ -293,9 +294,9 @@ void Settings::Read(menu::Values& v) {
     v.numbers["cine_distance"] = std::clamp(ini.Num("Cinematics", "distanceM", 2.6f), 1.0f, 6.0f);
     v.numbers["cine_depth"] = std::clamp(std::round(ini.Num("Cinematics", "depth", kCineDepthFull) / kCineDepthFull * 100.0f), 0.0f, 150.0f);
     {
-        // The hacking screen (research/53 section 6): projected from the wrist when [WorldUi] wrist names the minigame (or all).
-        std::string const wrist = Lower(ini.Text("WorldUi", "wrist", "SkillGame"));
-        v.texts["wrist_screen"] = wrist.find("skillgame") != std::string::npos || wrist.find("all") != std::string::npos ? "wrist" : "room";
+        // The omni-tool's screens (research/53 section 6, research/54): projected from the wrist unless [WorldUi] wrist is none.
+        std::string const wrist = Lower(ini.Text("WorldUi", "wrist", "all"));
+        v.texts["wrist_screen"] = wrist.empty() || wrist == "none" ? "room" : "wrist";
     }
     // The game's screens in the room (research/53) and the galaxy map's hologram (research/51): the mod's defaults are on.
     flag("world_ui", ini.Num("WorldUi", "on", 1.0f) != 0.0f);
@@ -579,7 +580,8 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     } else if (key == "cine_depth") {
         Put("Cinematics", "depth", fixed(v.Number("cine_depth") / 100.0f * kCineDepthFull, 4), final);
     } else if (key == "wrist_screen") {
-        Put("WorldUi", "wrist", v.Text("wrist_screen") == "room" ? "none" : "SkillGame", true);
+        Put("WorldUi", "wrist", v.Text("wrist_screen") == "room" ? std::string("none")
+            : vr::world_ui::ScreenList(vr::world_ui::Settings{}.wristScreens), true);  // the omni-tool's screens (research/54)
     } else if (key == "world_ui") {
         Put("WorldUi", "on", onOff("world_ui"), true);
     } else if (key == "galaxy_holo") {

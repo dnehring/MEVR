@@ -47,6 +47,7 @@
 #include "core/vr/CineScreen.hpp"
 #include "core/vr/GalaxyHologram.hpp"
 #include "core/vr/GalaxyMap.hpp"
+#include "core/vr/OmniRail.hpp"
 #include "core/vr/WorldUi.hpp"
 #include "core/vr/Spectator.hpp"
 #include "core/vr/ScopeCapture.hpp"
@@ -4465,7 +4466,12 @@ void TestGameMenuRequest() {
     using namespace mevr::vr::game_menu;
     // The values cross the host/mod boundary: unknown ones are None.
     CHECK(FromValue(0) == Action::None && FromValue(1) == Action::PauseMenu && FromValue(2) == Action::Holster);
-    CHECK(FromValue(3) == Action::None && FromValue(0xFFFFFFFFu) == Action::None);
+    CHECK(FromValue(9) == Action::None && FromValue(0xFFFFFFFFu) == Action::None);
+    // The omni-tool's rail (research/54): the five screens by their game functions, and closing them.
+    CHECK(FromValue(3) == Action::Equipment && FromValue(7) == Action::Map && FromValue(8) == Action::CloseScreens);
+    CHECK(IsScreen(Action::Squad) && IsScreen(Action::Codex) && !IsScreen(Action::PauseMenu) && !IsScreen(Action::CloseScreens));
+    CHECK(std::string(ShowFunction(Action::Equipment)) == "ShowEquipmentGui" && std::string(ShowFunction(Action::Journal)) == "ShowJournalGui");
+    CHECK(ShowFunction(Action::Holster) == nullptr && ShowFunction(Action::None) == nullptr);
     // The slot: taken once; a newer request replaces one not yet taken; Polled once the mod has asked.
     Slot slot;
     CHECK(!slot.Polled());
@@ -6082,6 +6088,66 @@ void TestCineScreen() {
     odd.convergeM = 0.0f;
     auto const k = cs::Clamped(odd);
     CHECK(k.distanceM == cs::kMaxDistanceM && k.widthM == cs::Settings{}.widthM && k.depth == 0.0f && k.convergeM == cs::kMinConvergeM);
+}
+
+void TestOmniRail() {
+    namespace wu = mevr::vr::world_ui;
+    namespace rail = mevr::vr::omni_rail;
+    namespace gm = mevr::vr::game_menu;
+    // The entries by their document ids, and what each asks of the mod.
+    CHECK(rail::FromId("squad") == rail::Entry::Squad && rail::FromId("close") == rail::Entry::Close && !rail::FromId("talents"));
+    CHECK(rail::Info(rail::Entry::Equipment).action == gm::Action::Equipment && rail::Info(rail::Entry::Computer).action == gm::Action::PauseMenu);
+    CHECK(rail::Info(rail::Entry::Close).action == gm::Action::CloseScreens);
+    for (int i = 0; i < static_cast<int>(rail::Entry::Count); ++i) {
+        CHECK(rail::FromId(rail::Info(static_cast<rail::Entry>(i)).id) == static_cast<rail::Entry>(i));  // the ids round-trip
+    }
+    // A screen up lights its entry; the shop and the minigame aren't the rail's.
+    CHECK(rail::ForScreen(wu::Screen::Inventory) == rail::Entry::Equipment && rail::ForScreen(wu::Screen::CharacterRecord) == rail::Entry::Squad);
+    CHECK(rail::ForScreen(wu::Screen::MenuBrowser) == rail::Entry::Computer && rail::ForScreen(wu::Screen::Save) == rail::Entry::Computer);
+    CHECK(!rail::ForScreen(wu::Screen::Shop) && !rail::ForScreen(wu::Screen::SkillGame) && !rail::ForScreen(wu::Screen::None));
+    // Beside a screen facing +Z at the origin, 0.55 x 0.31 m: to its left, as tall, kRailAspect wide, in its plane.
+    wu::Panel screen;
+    screen.pose.orientation = {0.0f, 0.0f, 0.0f, 1.0f};
+    screen.pose.position = {0.0f, 0.0f, -0.5f};
+    screen.widthM = 0.55f;
+    screen.heightM = 0.31f;
+    rail::Rail const beside = rail::Beside(screen);
+    CHECK(NearD(beside.heightM, 0.31, 1e-6) && NearD(beside.widthM, 0.31 * rail::kRailAspect, 1e-6));
+    CHECK(NearD(beside.pose.position.x, -(0.275 + rail::kGapM + 0.5 * 0.31 * rail::kRailAspect), 1e-5));
+    CHECK(NearD(beside.pose.position.y, 0.0, 1e-6) && NearD(beside.pose.position.z, -0.5, 1e-6));
+    // Turned 90 degrees about Y (facing +X): "left" follows it, -Z in the room.
+    screen.pose.orientation = {0.0f, 0.70710678f, 0.0f, 0.70710678f};
+    rail::Rail const turned = rail::Beside(screen);
+    CHECK(NearD(turned.pose.position.x, 0.0, 1e-5) && turned.pose.position.z > -0.5f + 0.27f);
+    // Alone on the wrist: as a wrist screen would stand, kAloneHeightM tall; nothing for a height that can't be.
+    auto const alone = rail::Alone({0.0f, 0.0f, 0.0f}, {-0.05f, -0.42f, -0.34f}, rail::kAloneHeightM, 0.10f, 0.0f);
+    CHECK(alone && NearD(alone->heightM, rail::kAloneHeightM, 1e-4) && alone->pose.position.y > -0.42f);
+    CHECK(!rail::Alone({0.0f, 0.0f, 0.0f}, {0.0f, -0.4f, -0.3f}, 0.0f, 0.1f, 0.0f));
+    // The tap: from away, in close, once; a fingertip resting there doesn't tap again until it has been away; the cooldown;
+    // not while not allowed; a hand found again inside the zone isn't a tap.
+    rail::Tap tap;
+    XrVector3f const wrist{0.0f, -0.4f, -0.3f};
+    XrVector3f const away{0.0f, -0.2f, -0.3f};  // 0.20 m away
+    XrVector3f const touching{0.0f, -0.38f, -0.3f};  // 0.02 m
+    CHECK(!tap.Step(true, touching, wrist, true, 0.01f));  // started there: not armed
+    CHECK(!tap.Step(true, away, wrist, true, 0.01f) && tap.Armed());
+    CHECK(tap.Step(true, touching, wrist, true, 0.01f));   // the tap
+    CHECK(!tap.Step(true, touching, wrist, true, 0.01f));  // resting: no second one
+    CHECK(!tap.Step(true, away, wrist, true, 0.01f));
+    CHECK(!tap.Step(true, touching, wrist, true, 0.1f));   // too soon (0.6 s cooldown)
+    CHECK(!tap.Step(true, away, wrist, true, 1.0f));
+    CHECK(!tap.Step(true, touching, wrist, false, 0.01f)); // not allowed (a gun drawn)
+    CHECK(!tap.Step(true, away, wrist, true, 0.01f));
+    CHECK(!tap.Step(false, away, wrist, true, 0.01f));  // tracking lost: disarmed
+    CHECK(!tap.Step(true, touching, wrist, true, 0.01f));
+    CHECK(!tap.Step(true, away, wrist, true, 0.01f) && tap.Step(true, touching, wrist, true, 0.01f));
+    // The world UI's wrist rule (research/54): a listed screen nothing owns; a locker's equipment stands by the locker; the
+    // minigame always; the minigame's own width, the others' 16:9 width.
+    wu::Settings const s;
+    CHECK(wu::OnWrist(s, wu::Screen::Journal, false) && !wu::OnWrist(s, wu::Screen::Inventory, true) && wu::OnWrist(s, wu::Screen::SkillGame, true));
+    CHECK(!wu::OnWrist(s, wu::Screen::Shop, false) && !wu::OnWrist(s, wu::Screen::Loot, false));
+    CHECK(NearD(wu::WristWidth(s, wu::Screen::SkillGame), 0.30, 1e-6) && NearD(wu::WristWidth(s, wu::Screen::Map), 0.55, 1e-6));
+    CHECK(wu::ScreenList(0) == "none" && wu::ScreenList(wu::Bit(wu::Screen::SkillGame) | wu::Bit(wu::Screen::Map)) == "Map, SkillGame");
 }
 
 void TestWorldUi() {
@@ -9765,6 +9831,7 @@ int main() {
     TestSpectator();
     TestGalaxyMap();
     TestGalaxyHologram();
+    TestOmniRail();
     TestWorldUi();
     TestCineScreen();
     TestDevChannelsAndDiskBudget();

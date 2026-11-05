@@ -169,7 +169,7 @@
 			<div class="gtitle"><span>Game screens</span><div class="gline"/></div>
 			<div class="row"><div class="rl"><div class="rlab">Game screens in the room</div><div class="rdesc">Shops, loot, the journal, the map and the game's other full-screen menus stand in the room where they open; point at them to use them. Off: on a flat screen with the world gone.</div></div>
 				<button class="tog" data-class-on="world_ui" data-event-click="toggle('world_ui')"><div class="knob"/></button></div>
-			<div class="row" data-class-disabled="!world_ui"><div class="rl"><div class="rlab">Hacking screen</div><div class="rdesc">Locked crates and consoles: projected from your left wrist like an omni-tool, or standing in the room by what you open</div></div>
+			<div class="row" data-class-disabled="!world_ui"><div class="rl"><div class="rlab">Omni-tool screens</div><div class="rdesc">Your equipment, squad, journal, codex, map, the game menu and the hacking screen: projected from your left wrist, with a menu beside them to switch (tap your left wrist to open it), or standing in the room</div></div>
 				<div class="seg"><button class="segb" data-class-on="wrist_screen == 'wrist'" data-event-click="pick('wrist_screen','wrist')">On my wrist</button><button class="segb" data-class-on="wrist_screen == 'room'" data-event-click="pick('wrist_screen','room')">In the room</button></div></div>
 			<div class="row"><div class="rl"><div class="rlab">Galaxy map hologram</div><div class="rdesc">On the Normandy the galaxy map stands as a hologram over the CIC's projector: walk up and point to pick a destination. Off: the game's flat map.</div></div>
 				<button class="tog" data-class-on="galaxy_holo" data-event-click="toggle('galaxy_holo')"><div class="knob"/></button></div>

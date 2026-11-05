@@ -403,26 +403,6 @@ void Tick(Link const& link) {
     state.distanceM = settings.distanceM;
     state.belowM = settings.belowM;
     state.backdrop = settings.backdrop;
-    bool const onWrist = (settings.wristScreens & wu::Bit(screen)) != 0;
-    wu::Rect const crop = wu::DefaultCrop(screen);  // the room's; on the wrist the host shows WristCrop
-    state.stageCrop[0] = crop.u0;
-    state.stageCrop[1] = crop.v0;
-    state.stageCrop[2] = crop.u1;
-    state.stageCrop[3] = crop.v1;
-    std::strncpy(state.tag, base->tag.c_str(), sizeof(state.tag) - 1);
-    state.placement = static_cast<std::uint8_t>(!onWrist ? wu::Placement::Room : settings.wristFollow ? wu::Placement::Wrist : wu::Placement::WristOnce);
-    state.beam = settings.wristBeam ? 1 : 0;
-    state.wristWidthM = settings.wristWidthM;
-    state.wristAboveM = settings.wristAboveM;
-    state.wristTowardM = settings.wristTowardM;
-    // The projector: the omni-tool's display as Shepard's arm shows it (last tick's pose), in the room's frame on foot.
-    if (auto const display = onWrist ? omni_tool::DisplayWorld() : std::nullopt; display && gHold.footFrame) {
-        XrVector3f const p = engine::ToTracking(*gHold.footFrame, engine::UnrealVector{display->x, display->y, display->z});
-        state.emitter[0] = p.x;
-        state.emitter[1] = p.y;
-        state.emitter[2] = p.z;
-        state.emitterValid = 1;
-    }
     bool const fromWheel = std::any_of(panels.begin(), panels.end(), [](OpenPanel const& o) { return o.visible && wu::FromTag(o.tag) == wu::Screen::MenuBrowser; });
     if (auto const at = AnchorOf(screen, base->handler, controller, gS.opening, fromWheel)) {
         {
@@ -432,6 +412,28 @@ void Tick(Link const& link) {
             state.anchor[1] = p.y;
             state.anchor[2] = p.z;
         }
+    }
+    // On the wrist (the omni-tool, research/54): a listed screen nothing in the world owns; one a use opened (a locker's equipment)
+    // stands by what was used. The bypass minigame is the omni-tool's own, so it always goes on the wrist.
+    bool const onWrist = wu::OnWrist(settings, screen, state.anchored != 0);
+    wu::Rect const crop = wu::DefaultCrop(screen);  // the room's; on the wrist the host shows WristCrop
+    state.stageCrop[0] = crop.u0;
+    state.stageCrop[1] = crop.v0;
+    state.stageCrop[2] = crop.u1;
+    state.stageCrop[3] = crop.v1;
+    std::strncpy(state.tag, base->tag.c_str(), sizeof(state.tag) - 1);
+    state.placement = static_cast<std::uint8_t>(!onWrist ? wu::Placement::Room : settings.wristFollow ? wu::Placement::Wrist : wu::Placement::WristOnce);
+    state.beam = settings.wristBeam ? 1 : 0;
+    state.wristWidthM = wu::WristWidth(settings, screen);
+    state.wristAboveM = settings.wristAboveM;
+    state.wristTowardM = settings.wristTowardM;
+    // The projector: the omni-tool's display as Shepard's arm shows it (last tick's pose), in the room's frame on foot.
+    if (auto const display = onWrist ? omni_tool::DisplayWorld() : std::nullopt; display && gHold.footFrame) {
+        XrVector3f const p = engine::ToTracking(*gHold.footFrame, engine::UnrealVector{display->x, display->y, display->z});
+        state.emitter[0] = p.x;
+        state.emitter[1] = p.y;
+        state.emitter[2] = p.z;
+        state.emitterValid = 1;
     }
     bool const wasAnchored = gS.anchored;
     gS.anchored = state.anchored != 0;

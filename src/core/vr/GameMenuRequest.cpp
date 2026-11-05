@@ -8,16 +8,36 @@ char const* Name(Action action) {
     case Action::None: return "none";
     case Action::PauseMenu: return "the game's pause menu";
     case Action::Holster: return "holster";
+    case Action::Equipment: return "the equipment screen";
+    case Action::Squad: return "the squad screen";
+    case Action::Journal: return "the journal";
+    case Action::Codex: return "the codex";
+    case Action::Map: return "the map";
+    case Action::CloseScreens: return "close the game's screens";
     }
     return "none";
 }
 
-Action FromValue(std::uint32_t value) {
-    switch (value) {
-    case static_cast<std::uint32_t>(Action::PauseMenu): return Action::PauseMenu;
-    case static_cast<std::uint32_t>(Action::Holster): return Action::Holster;
-    default: return Action::None;
+bool IsScreen(Action action) {
+    return ShowFunction(action) != nullptr;
+}
+
+char const* ShowFunction(Action action) {
+    switch (action) {
+    case Action::Equipment: return "ShowEquipmentGui";
+    case Action::Squad: return "ShowSquadGui";
+    case Action::Journal: return "ShowJournalGui";
+    case Action::Codex: return "ShowCodexGui";
+    case Action::Map: return "ShowMapGui";
+    default: return nullptr;
     }
+}
+
+Action FromValue(std::uint32_t value) {
+    if (value >= static_cast<std::uint32_t>(Action::PauseMenu) && value <= static_cast<std::uint32_t>(Action::CloseScreens)) {
+        return static_cast<Action>(value);
+    }
+    return Action::None;
 }
 
 Action Slot::Put(Action action) {

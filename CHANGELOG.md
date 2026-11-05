@@ -17,6 +17,9 @@ Halcyon's MassEffect1-VR renderer, with our hands, body and menus on top. LE1 on
 - The HUD on a panel that follows your body; your health and shields on your left wrist, your weapon's heat and
   grenades on the gun.
 - The game's own screens (shop, loot, journal, codex, map) as panels in the room, used with a laser pointer.
+- Your omni-tool: tap your left wrist with your right index finger and a menu of the game's screens (squad, equipment, map,
+  journal, codex, the mission computer) appears on your wrist; touch one and it's projected from your wrist, the menu
+  beside it to switch. The hacking screen comes from the omni-tool too.
 - The galaxy map as a hologram on the Normandy.
 - Colour presets per headset (brightness, contrast, saturation), optional FSR 1 upscaling, and a render resolution
   sized to your headset: when MEVR Setup can't tell your headset's size yet, the first VR start sets it for the

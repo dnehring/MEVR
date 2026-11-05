@@ -11,6 +11,7 @@
 #include "plugin/menu/MenuStrip.hpp"
 #include "plugin/menu/MenuUi.hpp"
 
+#include "halcyon/le1/mevr_bridge.h"
 #include "halcyon/le1/vr_menu.h"
 
 #include "core/Ini.hpp"
@@ -845,6 +846,29 @@ void NoteControllers(vr::controllers::State const& live) {
 
 vr::game_menu::Action TakeGameRequest() {
     return gGameRequest.Take();
+}
+
+void PutGameRequest(vr::game_menu::Action action) {
+    vr::game_menu::Action const replaced = gGameRequest.Put(action);
+    if (replaced != vr::game_menu::Action::None) {
+        log::Info("main menu request: {} replaced {} not yet taken", vr::game_menu::Name(action), vr::game_menu::Name(replaced));
+    }
+}
+
+std::filesystem::path AssetsFolder() {
+    // As Settings::Assets: [Menu] assets when it holds main.rml, else ASI\menu.
+    std::filesystem::path const file(MELEVR::MevrBridge::SettingsPath());
+    wchar_t assets[MAX_PATH]{};
+    GetPrivateProfileStringW(L"Menu", L"assets", L"", assets, MAX_PATH, file.c_str());
+    std::error_code ec;
+    if (assets[0] != L'\0' && std::filesystem::exists(std::filesystem::path(assets) / L"main.rml", ec)) {
+        return assets;
+    }
+    return file.parent_path() / L"menu";
+}
+
+std::filesystem::path FontsFolder() {
+    return std::filesystem::path(MELEVR::MevrBridge::SettingsPath()).parent_path() / L"fonts";
 }
 
 void NotePad(XINPUT_GAMEPAD const& pad) {

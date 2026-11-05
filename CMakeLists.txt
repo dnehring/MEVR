@@ -323,6 +323,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/GalaxyMap.hpp
     src/core/vr/WorldUi.cpp
     src/core/vr/WorldUi.hpp
+    src/core/vr/OmniRail.cpp
+    src/core/vr/OmniRail.hpp
     src/core/vr/Spectator.cpp
     src/core/vr/Spectator.hpp
     src/core/vr/ScopeCapture.hpp
@@ -559,6 +561,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/GalaxyMap.hpp
     src/core/vr/WorldUi.cpp
     src/core/vr/WorldUi.hpp
+    src/core/vr/OmniRail.cpp
+    src/core/vr/OmniRail.hpp
     src/core/vr/Spectator.cpp
     src/core/vr/Spectator.hpp
     src/core/vr/ScopeCapture.hpp
@@ -672,7 +676,7 @@ function(mevr_add_plugin game)
         if (MEVR_MAIN_MENU)
             # Our VR main menu (research/28): LE1 only for now, in the host (not hot-reloaded).
             set(with_main_menu ON)
-            list(APPEND host_sources src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/MainMenuSettings.cpp
+            list(APPEND host_sources src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/OmniToolRail.cpp src/plugin/OmniToolRail.hpp src/plugin/MainMenuSettings.cpp
                 src/plugin/MainMenuSettings.hpp src/plugin/SetupRequest.cpp src/plugin/SetupRequest.hpp src/plugin/ReportRequest.cpp
                 src/plugin/ReportRequest.hpp src/install/ReportMarks.hpp src/core/Json.cpp src/core/Json.hpp)
         endif ()
@@ -859,6 +863,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/GalaxyHologram.cpp
         src/core/vr/GalaxyMap.cpp
         src/core/vr/WorldUi.cpp
+        src/core/vr/OmniRail.cpp
         src/core/vr/Spectator.cpp
         src/core/vr/Sights.cpp
         src/core/vr/SquadMenu.cpp

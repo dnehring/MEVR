@@ -495,6 +495,18 @@ std::vector<Icon> const& Icons() {
             hook.points.push_back({12, 15});
             v.push_back({"guide", 24.0f, 1.8f, {Circle(12, 12, 9.5f), hook, Line({{12, 17.5f}, {12, 18.5f}})}});
         }
+        // The omni-tool's rail (research/54): the game's own screens.
+        v.push_back({"squad", 24.0f, 1.8f,  // two figures, the second behind
+            {Circle(9, 8, 3.5f), Arc(9, 21, 6.5f, 180, 360, 16), Circle(17, 7, 2.8f, 0.7f), Arc(17, 17.5f, 5, 215, 360, 12)}});
+        v.push_back({"equipment", 24.0f, 1.8f,  // a crate
+            {Closed({{3, 8}, {12, 4}, {21, 8}, {21, 17}, {12, 21}, {3, 17}}), Line({{3, 8}, {12, 12}, {21, 8}}), Line({{12, 12}, {12, 21}})}});
+        v.push_back({"map", 24.0f, 1.8f,  // a folded map
+            {Closed({{3, 6}, {9, 4}, {15, 6}, {21, 4}, {21, 18}, {15, 20}, {9, 18}, {3, 20}}), Line({{9, 4}, {9, 18}}), Line({{15, 6}, {15, 20}})}});
+        v.push_back({"journal", 24.0f, 1.8f,  // a notebook with its lines
+            {Rounded(5, 3, 14, 18, 2), Line({{9, 8}, {16, 8}}), Line({{9, 12}, {16, 12}}), Line({{9, 16}, {14, 16}})}});
+        v.push_back({"codex", 24.0f, 1.8f,  // an open book
+            {Line({{12, 6}, {12, 20}}), Closed({{12, 6}, {7, 4}, {2, 5}, {2, 18}, {7, 17}, {12, 20}}), Closed({{12, 6}, {17, 4}, {22, 5}, {22, 18}, {17, 17}, {12, 20}})}});
+        v.push_back({"close", 24.0f, 2.2f, {Line({{6, 6}, {18, 18}}), Line({{18, 6}, {6, 18}})}});
         return v;
     }();
     return icons;

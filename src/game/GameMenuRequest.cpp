@@ -39,6 +39,22 @@ ue3::ClassRef gModeCommand{"SFXGame.SFXGameModeCommand"};
 ue3::FunctionRef gShowMenuGuiBase{"SFXGame.SFXGameModeBase.ShowMenuGui"};
 ue3::FunctionRef gTryHolster{"SFXGame.SFXGameModeDefault.TryHolster"};
 ue3::FunctionRef gIsInCombatActionState{"SFXGame.BioPawn.IsInCombatActionState"};
+// The omni-tool's rail (research/54): the screens' own functions (declared on SFXGameModeBase only: no mode overrides them, so
+// in game mode 7 the screens open only from the game's Flash wheel), and the GUI manager's focused panel, whose handler takes
+// B as the player's back-out.
+ue3::FunctionRef gShowEquipmentGui{"SFXGame.SFXGameModeBase.ShowEquipmentGui"};
+ue3::FunctionRef gShowSquadGui{"SFXGame.SFXGameModeBase.ShowSquadGui"};
+ue3::FunctionRef gShowJournalGui{"SFXGame.SFXGameModeBase.ShowJournalGui"};
+ue3::FunctionRef gShowCodexGui{"SFXGame.SFXGameModeBase.ShowCodexGui"};
+ue3::FunctionRef gShowMapGui{"SFXGame.SFXGameModeBase.ShowMapGui"};
+ue3::FunctionRef gHandleInputEvent{"Engine.BioSFHandler.HandleInputEvent"};
+ue3::FieldRef gScaleFormManager{"Engine.PlayerController", "m_oCachedScaleFormManager"};
+ue3::FieldRef gFocusPanel{"Engine.BioSFManager", "m_FocusPanel"};
+ue3::FieldRef gPanelTag{"Engine.BioSFPanel", "nmTag"};
+ue3::FieldRef gPanelHandler{"Engine.BioSFPanel", "m_DefaultHandler"};
+constexpr std::uint8_t kGuiEventB = 13;  // BIOGUI_EVENT_BUTTON_B (Engine.EBioGuiEvent)
+constexpr int kBackOutWaitTicks = 4;     // after a B, the ticks to let the screen go before looking again
+constexpr int kMaxBackOuts = 6;          // a screen over the main wheel takes two
 
 constexpr char const* kFunctionName = "ShowMenuGui";
 
@@ -203,10 +219,156 @@ void Holster() {
     log::Info("main menu: holstered the weapon (SFXGameModeDefault.TryHolster)");
 }
 
+// ---- The omni-tool's rail (research/54) ----
+// A screen is opened the way its key opens it, on the mode that has the input (on foot or the Mako); with a screen already up
+// (game mode 7) the rail backs out of it first, B on the focused panel as the player would, a few ticks apart, until the game
+// leaves mode 7, then opens the new one. CloseScreens is the backing out alone.
+constexpr std::uint8_t kModeGui = 7;
+
+struct Switch {
+    gm::Action action = gm::Action::None;  // what to do once no screen is up (CloseScreens: nothing more)
+    int backOuts = 0;
+    int wait = 0;
+};
+Switch gSwitch;
+
+ue3::FunctionRef* ShowRef(gm::Action action) {
+    switch (action) {
+    case gm::Action::Equipment: return &gShowEquipmentGui;
+    case gm::Action::Squad: return &gShowSquadGui;
+    case gm::Action::Journal: return &gShowJournalGui;
+    case gm::Action::Codex: return &gShowCodexGui;
+    case gm::Action::Map: return &gShowMapGui;
+    default: return nullptr;
+    }
+}
+
+// The panel tag a screen opens (research/53's audit): the rail asking for the one already in focus does nothing.
+char const* PanelTag(gm::Action action) {
+    switch (action) {
+    case gm::Action::Equipment: return "Inventory";
+    case gm::Action::Squad: return "CharacterRecord";
+    case gm::Action::Journal: return "Journal";
+    case gm::Action::Codex: return "Codex";
+    case gm::Action::Map: return "Map";
+    default: return "";
+    }
+}
+
+struct Focus {
+    ue3::Object* panel = nullptr;
+    ue3::Object* handler = nullptr;
+    std::string tag;
+};
+
+Focus FocusedPanel() {
+    Focus focus;
+    ue3::Object* const pc = player::Controller();
+    ue3::Object* const manager = pc != nullptr ? gScaleFormManager.Read<ue3::Object*>(pc).value_or(nullptr) : nullptr;
+    focus.panel = manager != nullptr ? gFocusPanel.Read<ue3::Object*>(manager).value_or(nullptr) : nullptr;
+    if (focus.panel != nullptr && ue3::runtime::Get().IsAlive(focus.panel)) {
+        focus.handler = gPanelHandler.Read<ue3::Object*>(focus.panel).value_or(nullptr);
+        if (auto const tag = gPanelTag.Read<ue3::Name>(focus.panel)) {
+            focus.tag = ue3::runtime::Get().ToString(*tag);
+        }
+    } else {
+        focus.panel = nullptr;
+    }
+    return focus;
+}
+
+void OpenScreen(gm::Action action, Modes const& modes) {
+    ue3::FunctionRef* const ref = ShowRef(action);
+    std::string how;
+    ue3::Object* const mode = ActiveMode(modes, how);
+    if (ref == nullptr || ref->Get() == nullptr || mode == nullptr) {
+        gLast = std::format("{}: not opened ({})", gm::Name(action), mode == nullptr ? "no active game mode" : "its function wasn't found");
+        log::Warn("omni-tool: {} not opened: {}", gm::Name(action), mode == nullptr ? "no active game mode" : "SFXGameModeBase's function not found");
+        return;
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Function* const show = r.FindFunction(r.ClassOf(mode), gm::ShowFunction(action));
+    if (show == nullptr) {
+        gLast = std::format("{}: {} has no {}", gm::Name(action), ClassName(mode), gm::ShowFunction(action));
+        log::Warn("omni-tool: {} not opened: {} has no {}", gm::Name(action), ClassName(mode), gm::ShowFunction(action));
+        return;
+    }
+    ue3::Params parms(r, show);
+    parms.SetBool("bShow", true);
+    ue3::runtime::Call(mode, show, parms);  // as its key: the script function through ProcessEvent (game thread)
+    gLast = std::format("{}: {}.{}(true) called", gm::Name(action), ClassName(mode), gm::ShowFunction(action));
+    log::Info("omni-tool: opened {} ({}.{}(true); {})", gm::Name(action), ClassName(mode), gm::ShowFunction(action), how);
+}
+
+void StepSwitch() {
+    if (gSwitch.action == gm::Action::None) {
+        return;
+    }
+    std::string why;
+    std::optional<Modes> const modes = ReadModes(why);
+    if (!modes || !modes->current) {
+        gLast = std::format("{}: not done ({})", gm::Name(gSwitch.action), modes ? "no game mode" : why);
+        log::Warn("omni-tool: {} not done: {}", gm::Name(gSwitch.action), modes ? "the game mode isn't known" : why);
+        gSwitch = {};
+        return;
+    }
+    std::uint8_t const current = *modes->current;
+    if (current == kModeGui) {
+        Focus const focus = FocusedPanel();
+        if (gm::IsScreen(gSwitch.action) && focus.tag == PanelTag(gSwitch.action)) {
+            gLast = std::format("{}: already up", gm::Name(gSwitch.action));
+            log::Info("omni-tool: {} is already up ('{}' has the focus)", gm::Name(gSwitch.action), focus.tag);
+            gSwitch = {};
+            return;
+        }
+        if (gSwitch.wait > 0) {
+            --gSwitch.wait;
+            return;
+        }
+        if (gSwitch.backOuts >= kMaxBackOuts || focus.handler == nullptr || gHandleInputEvent.Get() == nullptr) {
+            gLast = std::format("{}: the game's screen didn't close", gm::Name(gSwitch.action));
+            log::Warn("omni-tool: {} not done: the game stayed in its GUI mode after {} backs out (the focused panel '{}'{})",
+                gm::Name(gSwitch.action), gSwitch.backOuts, focus.tag, focus.handler == nullptr ? ", without a handler" : "");
+            gSwitch = {};
+            return;
+        }
+        ue3::Params parms(ue3::runtime::Get(), gHandleInputEvent.Get());
+        parms.Set("Event", kGuiEventB);
+        parms.Set("fValue", 1.0f);
+        ue3::runtime::Call(focus.handler, gHandleInputEvent.Get(), parms);  // the player's B on the screen in focus
+        ++gSwitch.backOuts;
+        gSwitch.wait = kBackOutWaitTicks;
+        log::Info("omni-tool: backing out of '{}' (B, {} of at most {}) for {}", focus.tag, gSwitch.backOuts, kMaxBackOuts,
+            gm::Name(gSwitch.action));
+        return;
+    }
+    gm::Action const action = gSwitch.action;
+    gSwitch = {};
+    if (action == gm::Action::CloseScreens) {
+        gLast = "close: done";
+        log::Info("omni-tool: the game's screens are closed (game mode {})", current);
+        return;
+    }
+    if (current != 0 && current != 1) {
+        gLast = std::format("{}: not here (game mode {})", gm::Name(action), current);
+        log::Info("omni-tool: {} not opened: the game's screens open on foot or in the Mako (game mode {})", gm::Name(action), current);
+        return;
+    }
+    OpenScreen(action, *modes);
+}
+
 void Run(gm::Action action) {
     switch (action) {
     case gm::Action::PauseMenu: OpenPauseMenu(); return;
     case gm::Action::Holster: Holster(); return;
+    case gm::Action::Equipment:
+    case gm::Action::Squad:
+    case gm::Action::Journal:
+    case gm::Action::Codex:
+    case gm::Action::Map:
+    case gm::Action::CloseScreens:
+        gSwitch = {action, 0, 0};  // StepSwitch does it, a tick at a time
+        return;
     case gm::Action::None: return;
     }
 }
@@ -241,11 +403,17 @@ void Tick(Link const& link) {
     if (step.run != gm::Action::None) {
         Run(step.run);
     }
+#if defined(MEVR_GAME_LE1)
+    StepSwitch();
+#endif
 }
 
 void Shutdown() {
     gSchedule = {};
     gToldOldHost = false;
+#if defined(MEVR_GAME_LE1)
+    gSwitch = {};
+#endif
 }
 
 std::string StatusJson() {

@@ -1,0 +1,77 @@
+/* SPDX-License-Identifier: MIT */
+/*
+ * The omni-tool's rail (research/54): the column of the game's screens to the left of the screen projected from the left wrist,
+ * or alone on the wrist. A hologram of the omni-tool's orange: the active screen lit orange, the others dim glass with orange
+ * edges. Edit while the game runs: it reloads within a second of a save (plugin/OmniToolRail, a second context of the menu's).
+ * The decorators are the main menu's (plugin/menu/MenuDecorators): chamfer(...) and icon(<name>).
+ */
+
+body, div { display: block; }
+
+body {
+	width: 360dp;
+	height: 1000dp;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	gap: 14dp;
+	padding: 0dp 6dp;
+	font-family: Rajdhani;
+	font-weight: 700;
+	color: #FFE4CC;
+}
+
+.head {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	margin-bottom: 6dp;
+}
+.kicker { font-size: 34dp; letter-spacing: 0.22em; color: #FF9A4D; line-height: 36dp; }
+.sub { font-family: "Titillium Web"; font-weight: 600; font-size: 20dp; color: rgba(255,214,180,70%); line-height: 24dp; }
+
+.entry {
+	height: 112dp;
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	gap: 18dp;
+	padding: 0dp 22dp;
+	font-size: 34dp;
+	letter-spacing: 0.08em;
+	color: #FFD9B8;
+	decorator: chamfer(18dp rgba(70,32,10,62%) rgba(30,14,6,62%) rgba(255,154,77,70%) rgba(255,143,63,30%) 2dp rgba(255,200,150,18%));
+}
+.entry:hover {
+	color: #FFF1E4;
+	decorator: chamfer(18dp rgba(120,56,16,78%) rgba(52,24,8,72%) rgba(255,190,130,95%) rgba(255,143,63,50%) 2dp rgba(255,220,180,30%));
+}
+.entry:active {
+	decorator: chamfer(18dp rgba(170,80,22,88%) rgba(80,36,10,82%) #FFE1C2 rgba(255,154,77,70%) 2dp rgba(255,230,200,40%));
+}
+.entry.on {
+	color: #2A1406;
+	decorator: chamfer(18dp #FFB070 #E8691C #FFE1C2 #FF9A4D 2dp rgba(255,255,255,40%));
+}
+.entry.close {
+	height: 84dp;
+	margin-top: 10dp;
+	font-size: 28dp;
+	color: rgba(255,214,180,80%);
+	decorator: chamfer(14dp rgba(40,18,8,55%) rgba(20,10,4,55%) rgba(255,154,77,40%) rgba(255,143,63,18%) 1dp);
+}
+.entry.close:hover { color: #FFF1E4; decorator: chamfer(14dp rgba(90,40,12,70%) rgba(40,18,6,65%) rgba(255,190,130,80%) rgba(255,143,63,35%) 1dp); }
+
+.ico { width: 48dp; height: 48dp; flex: 0 0 auto; }
+.entry.close .ico { width: 36dp; height: 36dp; }
+.label { flex: 1 1 auto; }
+.chev { width: 22dp; height: 22dp; flex: 0 0 auto; display: none; decorator: icon(play); }
+.entry.on .chev { display: block; }
+
+.i-squad { decorator: icon(squad); }
+.i-equipment { decorator: icon(equipment); }
+.i-map { decorator: icon(map); }
+.i-journal { decorator: icon(journal); }
+.i-codex { decorator: icon(codex); }
+.i-computer { decorator: icon(gamemenu); }
+.i-close { decorator: icon(close); }

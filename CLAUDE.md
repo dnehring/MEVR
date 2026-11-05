@@ -407,8 +407,8 @@ switching frameworks.
   `mevr classes <text>`, `mevr instances <Class> [text]`, `mevr loot <n>`, `mevr lootcorpse <n>`. Eden Prime's real loot and minigame
   cases: research/53 section 5. Logs `world ui:`; snapshot `"mod"."worldUi"`.
   **The bypass minigame is projected from the left wrist** (research/53 section 6, the omni-tool; Fallout 4 VR's Pip-Boy and
-  Half-Life: Alyx's multitool holograms the pattern; `[WorldUi] wrist = SkillGame`, `wristWidthM` 0.30, `wristAboveM` 0.06,
-  `wristTowardM`, `wristFollow`, `wristBeam`; the menu's Comfort > Game screens > Hacking screen): the host places it each frame from
+  Half-Life: Alyx's multitool holograms the pattern; `[WorldUi] wrist` (since research/54 every personal screen too), `wristWidthM`
+  0.30, `wristAboveM` 0.06, `wristTowardM`, `wristFollow`, `wristBeam`; the menu's Comfort > Game screens > Omni-tool screens): the host places it each frame from
   the HUD's left wrist point (`WristPlace`: facing the eyes, its bottom edge 10 cm above the wrist across the line of sight), its
   frame only (`WristCrop`), unfolding over 0.18 s, a faint fan of light from the wrist (plugin/WristBeam, a `beam` snapshot layer;
   premultiplied in linear light); in the room without a tracked left controller. The State grew (size-checked, v27 unchanged). No
@@ -420,6 +420,24 @@ switching frameworks.
   Half-Life: Alyx's way is the model for working it by hand. `mevr skillgame start [type] [difficulty] [n]` opens the minigame on any placeable without a save
   (the level's `BioSkillGame.InitializeSkillGame`); `mevr panel SkillGame invoke PreGameButtonBOnPress` cancels it. Next: tapping it.
   The skill `game-screen-to-hologram` is the recipe for the next screens.
+- LE1 omni-tool menu ([research/54](research/54-omni-tool-menu.md), 2026-11-04, the user: "the entire menu system available via
+  omni-tool", "a menu on the left side to allow selecting all of the different menus"): **every personal screen is projected from
+  the left wrist by default** (`[WorldUi] wrist` lists SkillGame, Inventory, XMods, CharacterRecord, Specialization, Journal, Codex,
+  Map, MenuBrowser, Options, Save, Load; an old file's `SkillGame` alone moves once, marker `wristMenuWidthM`; a screen a use opened,
+  a locker's equipment, still stands by what was used: `world_ui::OnWrist`; `wristMenuWidthM` 0.55 for a whole stage, `wristWidthM`
+  0.30 the minigame's frame; the menu's row is Comfort > Game screens > Omni-tool screens). **A rail of the game's screens stands to its
+  left** (`core/vr/OmniRail`, host `plugin/OmniToolRail`, `assets/menu/omnitool.rml`/`.rcss`, `[OmniTool]` enabled/tap/aloneHeightM):
+  Squad, Equipment, Map, Journal, Codex, Computer, Close; a second RmlUi context of the main menu's library (`menu::Ui` allows one
+  per document now), `vr::game_pointer::Pointer` on its quad (ray and trigger, or the fingertip), its trigger kept from the game
+  (`omni_rail::OwnsTriggers`). **Tap the left wrist with the right index fingertip** to open it alone on the wrist (3.5 cm from
+  7 cm, not with a gun drawn; `omni_rail::Tap`); it shows by itself beside a screen of its own; a tap or Close shuts it and the
+  screens. Its entries go to the mod through the main menu's request slot (`main_menu::PutGameRequest`, `game_menu::Action` 3..8):
+  `game/GameMenuRequest` backs out of the screen up with B to the focused panel's handler (`BioSFHandler.HandleInputEvent(13)`, 4
+  ticks apart, at most 6) until the game leaves mode 7, then calls `SFXGameModeBase.Show<Screen>Gui(true)` on the mode that has the
+  input (no mode overrides them; in mode 7 only the Flash wheel opens screens). [verify] in the game: the backing out, the tap's
+  distances, legibility. Logs `omni-tool:`, `omni-tool rail:`; snapshot layer `omnirail`; offline look `mevr-menu-preview`'s
+  `rail-*.png`. **Replays with controller poses move the real cursor** when a screen falls back to the flat panel (the game
+  pointer's `SetCursorPos`): `[Pointer] setCursor = 0` for such tests.
 - LE1 Mako ([research/44](research/44-mako.md), `game/Mako`; `[Mako]` in `ASI\LE1MEVR.ini`): game mode 1 with a
   `BioVehicleBase` pawn, the right controller's aim ray (or the pistol calibration's line) traced in the world (`Actor.Trace`,
   `aimRangeM` 200) is the aim point: shots through HandAim's `GetAdjustedAimFor` handler (direction from the start the

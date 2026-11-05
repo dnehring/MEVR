@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -60,8 +61,14 @@ struct Settings {
     // wrist: the screens projected from the left wrist instead, Shepard's omni-tool (the bypass minigame by default; the user,
     // 2026-11-04; Fallout 4 VR's Pip-Boy, wrist or projected, and Half-Life: Alyx's multitool holograms set the pattern:
     // research/53 section 6). Without a tracked left controller when it opens, the screen stands in the room.
-    std::uint32_t wristScreens = Bit(Screen::SkillGame);
-    float wristWidthM = 0.30f;   // wristWidthM: its width
+    // Since 2026-11-04 (research/54, the user: "the entire menu system available via omni-tool"): every personal screen too,
+    // the ones the omni-tool's rail opens and the main wheel's (options, save, load); a screen a use opened (a locker's
+    // equipment) still stands by what was used (OnWrist). The shop, loot and the rest stay in the room.
+    std::uint32_t wristScreens = Bit(Screen::SkillGame) | Bit(Screen::Inventory) | Bit(Screen::XMods) | Bit(Screen::CharacterRecord) |
+        Bit(Screen::Specialization) | Bit(Screen::Journal) | Bit(Screen::Codex) | Bit(Screen::Map) | Bit(Screen::MenuBrowser) |
+        Bit(Screen::Options) | Bit(Screen::Save) | Bit(Screen::Load);
+    float wristWidthM = 0.30f;   // wristWidthM: the bypass minigame's width (its frame alone)
+    float wristMenuWidthM = 0.55f;  // wristMenuWidthM: every other screen's on the wrist (the whole 16:9 stage)
     float wristAboveM = 0.10f;   // wristAboveM: its bottom edge above the wrist as the eyes see it (the fan of light in the gap;
                                  // 0.10 clears the omni-tool's gauntlet, measured 2026-11-04, 0.06 covered its top)
     float wristTowardM = 0.0f;   // wristTowardM: moved that far from the wrist toward the eyes (level; < 0 away)
@@ -147,6 +154,13 @@ Rect DefaultCrop(Screen screen);
 // The part shown when it's projected from the wrist: tighter where the screen is a small box on its stage (the minigame). The host
 // picks it when the screen goes on the wrist; the mod's stageCrop is the room's.
 Rect WristCrop(Screen screen);
+// Whether a screen goes on the wrist (research/54): listed in wristScreens, and not one a use opened (`anchored`: it belongs to
+// something in the world, a locker's equipment, which keeps standing by it); the bypass minigame (the omni-tool's own) always.
+bool OnWrist(Settings const& settings, Screen screen, bool anchored);
+// Its width there: the bypass minigame's frame (wristWidthM) or a whole 16:9 stage (wristMenuWidthM).
+float WristWidth(Settings const& settings, Screen screen);
+// "SkillGame, Inventory, ..." (the ini's form), "none" for no bits.
+std::string ScreenList(std::uint32_t bits);
 // The width the screen's shown part stands at in the room: `widthM` ([WorldUi] widthM) is the whole stage's for a screen that
 // keeps the stage's scale (loot: a narrow frame on an empty stage keeps its size, the empty sides gone), else its crop's.
 float RoomWidth(Screen screen, float widthM);

@@ -682,6 +682,63 @@ int main(int argc, char** argv) {
         warp ? "WARP" : "hardware", cpuStill, gpuStill, cpuMoving, gpuMoving);
     timing << line;
     std::printf("%s", line);
+
+    // The omni-tool's rail (research/54): a second document, omnitool.rml, in a context of its own as the host makes it
+    // (plugin/OmniToolRail). rail-alone.png: tapped open on the wrist; rail-squad.png: beside the squad screen;
+    // rail-hover.png: the pointer on Map. Over a dark stand-in for the room.
+    {
+        constexpr int rw = 360;
+        constexpr int rh = 1000;
+        mevr::menu::Ui railUi;
+        mevr::menu::UiSetup railSetup = setup;
+        railSetup.document = L"omnitool.rml";
+        railSetup.width = rw;
+        railSetup.height = rh;
+        Rml::String active;
+        bool alone = true;
+        Rml::DataModelHandle handle;
+        Target railTarget;
+        bool ok = railUi.Init(railSetup) && MakeTarget(device.Get(), rw, rh, railTarget);
+        if (ok) {
+            Rml::DataModelConstructor ctor = railUi.Context()->CreateDataModel("omnitool");
+            ok = static_cast<bool>(ctor);
+            if (ok) {
+                ctor.Bind("active", &active);
+                ctor.Bind("alone", &alone);
+                ctor.BindEventCallback("pick", [](Rml::DataModelHandle, Rml::Event&, Rml::VariantList const&) {});
+                handle = ctor.GetModelHandle();
+                ok = railUi.LoadDocument();
+            }
+        }
+        if (!ok) {
+            std::fprintf(stderr, "the omni-tool rail's document didn't load\n");
+            return 1;
+        }
+        std::vector<std::uint32_t> const dark(static_cast<std::size_t>(rw) * rh, 0xFF1A1612u);
+        auto railShot = [&](std::string const& name) {
+            for (int i = 0; i < 20; ++i) {
+                gClock += 1.0 / 72.0;
+                railUi.Render(context.Get(), railTarget.rtv.Get());
+            }
+            std::vector<std::uint32_t> const pixels = ReadBack(context.Get(), railTarget, rw, rh);
+            std::string error;
+            if (!mevr::png::Write(output / (name + ".png"), rw, rh, Over(pixels, dark).data(), &error)) {
+                std::fprintf(stderr, "%s: %s\n", name.c_str(), error.c_str());
+            } else {
+                std::printf("wrote %s\n", (output / (name + ".png")).string().c_str());
+            }
+        };
+        railUi.Context()->ProcessMouseMove(-50, -50, 0);
+        railShot("rail-alone");
+        alone = false;
+        active = "squad";
+        handle.DirtyVariable("alone");
+        handle.DirtyVariable("active");
+        railShot("rail-squad");
+        railUi.Context()->ProcessMouseMove(rw / 2, rh / 2 - 60, 0);
+        railShot("rail-hover");
+        railUi.Shutdown();
+    }
     ui.Shutdown();
     return 0;
 }

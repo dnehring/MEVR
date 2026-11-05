@@ -630,18 +630,21 @@ constexpr char const* kWorldUiBlock =
     "; GameOver; all = every one). The loot stands at its container, the minigame and a locker's equipment at what you used.\n"
     "; on = 0: the game's screens on the flat panel, the world gone (Halcyon's own). Inventory, XMods and CharacterRecord show a\n"
     "; 3D model of their own in the game's UI world, which isn't in the room yet.\n"
-    "; wrist: the screens projected from your left wrist instead, Shepard's omni-tool (SkillGame: the bypass minigame; none: all\n"
-    "; in the room), wristWidthM wide, its bottom edge wristAboveM over the wrist as you see it, moved wristTowardM toward your\n"
-    "; eyes (< 0 away); wristFollow 1: it rides on the wrist, 0: it stays where it was projected; wristBeam: a faint fan of\n"
-    "; light from the wrist to it; omniTool 1: your left forearm wears the game's own omni-tool hologram while it's up.\n"
+    "; wrist: the screens projected from your left wrist instead, Shepard's omni-tool (none: all in the room); one a use opened\n"
+    "; (a locker's equipment) still stands by what you used, except the bypass minigame (SkillGame). wristWidthM: the minigame's\n"
+    "; width there, wristMenuWidthM every other screen's; its bottom edge wristAboveM over the wrist as you see it, moved\n"
+    "; wristTowardM toward your eyes (< 0 away); wristFollow 1: it rides on the wrist, 0: it stays where it was projected;\n"
+    "; wristBeam: a faint fan of light from the wrist to it; omniTool 1: your left forearm wears the game's own omni-tool\n"
+    "; hologram while it's up. The [OmniTool] rail beside it opens the screens.\n"
     "on = 1\n"
     "widthM = 1.20\n"
     "distanceM = 0.95\n"
     "belowM = 0.50\n"
     "backdrop = 0.80\n"
     "screens = all\n"
-    "wrist = SkillGame\n"
+    "wrist = SkillGame, Inventory, XMods, CharacterRecord, Specialization, Journal, Codex, Map, MenuBrowser, Options, Save, Load\n"
     "wristWidthM = 0.30\n"
+    "wristMenuWidthM = 0.55\n"
     "wristAboveM = 0.10\n"
     "wristTowardM = 0.00\n"
     "wristFollow = 1\n"
@@ -1703,6 +1706,9 @@ vr::world_ui::Settings ReadWorldUi(Ini const& ini) {
     if (Number(ini, "WorldUi", "wristWidthM", value)) {
         s.wristWidthM = static_cast<float>(std::clamp(value, 0.1, 1.0));
     }
+    if (Number(ini, "WorldUi", "wristMenuWidthM", value)) {
+        s.wristMenuWidthM = static_cast<float>(std::clamp(value, 0.2, 1.2));
+    }
     if (Number(ini, "WorldUi", "wristAboveM", value)) {
         s.wristAboveM = static_cast<float>(std::clamp(value, -0.2, 0.5));
     }
@@ -1741,8 +1747,8 @@ std::string Describe(vr::world_ui::Settings const& s) {
                        "projected from the left wrist: {}{}",
                        names.empty() ? "none" : names, s.widthM, s.distanceM, s.belowM, s.backdrop, wrist.empty() ? "none" : wrist,
                        wrist.empty() ? std::string()
-                                     : std::format(" ({:.2f} m wide, {:.2f} m over the wrist, {:.2f} m toward the eyes, {}, {}, {})", s.wristWidthM,
-                                           s.wristAboveM, s.wristTowardM, s.wristFollow ? "riding on it" : "left where it was projected",
+                                     : std::format(" (the minigame {:.2f} m wide, the others {:.2f} m, {:.2f} m over the wrist, {:.2f} m toward the eyes, "
+                                                   "{}, {}, {})", s.wristWidthM, s.wristMenuWidthM, s.wristAboveM, s.wristTowardM, s.wristFollow ? "riding on it" : "left where it was projected",
                                            s.wristBeam ? "a fan of light from the wrist" : "no fan of light",
                                            s.omniTool ? "the game's omni-tool on the forearm" : "no omni-tool"));
 }
@@ -2462,6 +2468,22 @@ void Refresh() {
             }
         }
     }
+    // [WorldUi] since 2026-11-04 (research/54): the omni-tool takes every personal screen. A file without the marker
+    // wristMenuWidthM whose wrist still holds the old default (the bypass minigame alone) gets the new list; any other is kept.
+    if (auto const s = ini.find("WorldUi"); s != ini.end() && s->second.find("wristMenuWidthM") == s->second.end()) {
+        if (auto const k = s->second.find("wrist"); k != s->second.end()) {
+            std::string const listText = vr::world_ui::ScreenList(vr::world_ui::Settings{}.wristScreens);
+            std::wstring const list(listText.begin(), listText.end());  // the screens' tags are ASCII
+            if (_stricmp(k->second.c_str(), "SkillGame") == 0 && WritePrivateProfileStringW(L"WorldUi", L"wrist", list.c_str(), path.wstring().c_str()) != 0) {
+                log::Info("hands: [WorldUi] wrist SkillGame -> {}: the omni-tool's screens (research/54) in {}", listText,
+                    ini::Utf8(path));
+                ini = ReadIni(path);
+                stamp = fs::last_write_time(path, ec);
+            } else if (_stricmp(k->second.c_str(), "SkillGame") != 0) {
+                log::Info("hands: [WorldUi] wrist = {} kept (your choice; the default is every personal screen)", k->second);
+            }
+        }
+    }
     // [Mako] since 2026-11-02 (research/48 section 22): the controls' grips are the cockpit models' on the seat's armrests and
     // the throttle travels the model's slot. A file holding all three old defaults exactly gets the new ones; any other
     // value is the player's and kept.
@@ -2584,6 +2606,8 @@ void Refresh() {
         // Screens projected from the wrist (2026-11-04, research/53 section 6).
         {L"WorldUi", "WorldUi", L"wrist", "wrist", L"SkillGame"},
         {L"WorldUi", "WorldUi", L"wristWidthM", "wristWidthM", L"0.30"},
+        // The omni-tool's screens (2026-11-04, research/54). The marker wristMenuWidthM comes after the wrist list's migration above.
+        {L"WorldUi", "WorldUi", L"wristMenuWidthM", "wristMenuWidthM", L"0.55"},
         {L"WorldUi", "WorldUi", L"wristAboveM", "wristAboveM", L"0.10"},
         {L"WorldUi", "WorldUi", L"wristTowardM", "wristTowardM", L"0.00"},
         {L"WorldUi", "WorldUi", L"wristFollow", "wristFollow", L"1"},
