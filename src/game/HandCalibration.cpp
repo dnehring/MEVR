@@ -308,7 +308,8 @@ constexpr char const* kThrowablesBlock =
     "; grenadeButton: 1 = X still throws a grenade the game's way; 0 = only the physical throw (on foot).\n"
     "grenadeButton = 1\n"
     "; Physical melee: a fast stroke of either hand toward an enemy in reach is the game's melee (pistol whip\n"
-    "; or rifle butt). Speeds in m/s relative to your head; travel in meters; cooldown in seconds.\n"
+    "; or rifle butt). Speeds in m/s relative to your head; travel in meters; cooldown in seconds, shared by both\n"
+    "; hands and never shorter than the game's own melee cooldown.\n"
     "melee = 1\n"
     "meleeSpeedMS = 3.0\n"
     "meleeGunSpeedMS = 3.5\n"
@@ -319,7 +320,9 @@ constexpr char const* kThrowablesBlock =
     "meleeReachM = 2.0\n"
     "meleeConeDeg = 75\n"
     "; meleeButton: 1 = B still melees; 0 = only the physical stroke (on foot).\n"
-    "meleeButton = 1\n"
+    "meleeButton = 0\n"
+    "; meleeFist: 1 = with your weapon away, punch with your right fist (squeeze the grip and the trigger).\n"
+    "meleeFist = 1\n"
     "; hapticAmplitude: 0..1 (0.5 as designed, 0 = none). holdBuzz: 1 = a faint buzz while a grenade is held.\n"
     "hapticAmplitude = 0.5\n"
     "holdBuzz = 1\n";
@@ -1162,6 +1165,7 @@ Throwables ReadThrowables(Ini const& ini) {
     number("meleeReachM", t.meleeReach, 0.5, 6.0);
     number("meleeConeDeg", t.meleeConeDeg, 10.0, 180.0);
     flag("meleeButton", t.meleeButton);
+    flag("meleeFist", t.meleeFist);
     number("hapticAmplitude", t.hapticAmplitude, 0.0, 1.0);
     flag("holdBuzz", t.holdBuzz);
     auto const s = ini.find("Throwables");
@@ -1217,7 +1221,7 @@ Throwables ReadThrowables(Ini const& ini) {
 std::string Describe(Throwables const& t) {
     return std::format("{}: grenades with {} from the slot ({:.2f}, {:.2f}, {:.2f}) r {:.2f}; a throw from {:.1f} m/s, x{:.1f} "
                        "(hand capped at {:.0f} m/s), flight {}{}{}, early release {:.2f}; X {}; melee {} (free hand {:.1f} m/s, gun "
-                       "hand {:.1f} m/s, {:.2f} m, cooldown {:.1f} s, {}); B {}; haptics {:.2f}{}",
+                       "hand {:.1f} m/s, {:.2f} m, cooldown {:.1f} s, {}{}); B {}; haptics {:.2f}{}",
         t.enabled ? "on" : "off", t.leftHand && t.rightHand ? "either hand" : t.leftHand ? "the left hand" : "the right hand",
         t.slot.offset.x, t.slot.offset.y, t.slot.offset.z, t.slot.radius, t.throwSpeedMin, t.throwGain, t.throwSpeedMax,
         t.arc ? "arc (experimental)" : "disc", t.fromHand ? ", from the hand" : "", t.drawForThrow ? ", draws the weapon if away" : "",
@@ -1225,7 +1229,7 @@ std::string Describe(Throwables const& t) {
         t.meleeCooldown,
         t.meleeNeedsEnemy ? std::format("an enemy within {:.1f} m and {:.0f} degrees", t.meleeReach, t.meleeConeDeg)
                           : std::string("any time"),
-        t.meleeButton ? "kept" : "off on foot", t.hapticAmplitude, t.holdBuzz ? ", hold buzz" : "");
+        t.meleeFist ? ", the right fist with the weapon away" : "", t.meleeButton ? "kept" : "off on foot", t.hapticAmplitude, t.holdBuzz ? ", hold buzz" : "");
 }
 
 Throwables gThrowables;
@@ -2665,6 +2669,20 @@ void Refresh() {
             }
         }
     }
+    // [Throwables] since 2026-11-05 (research/20 "Gesture only"): melee is the gesture only, B no longer melees on foot. A file
+    // without the marker meleeFist that still holds the old default meleeButton = 1 gets 0; any other value is the player's.
+    if (auto const s = ini.find("Throwables"); s != ini.end() && s->second.find("meleeFist") == s->second.end()) {
+        if (auto const k = s->second.find("meleeButton"); k != s->second.end()) {
+            if (k->second == "1" && WritePrivateProfileStringW(L"Throwables", L"meleeButton", L"0", path.wstring().c_str()) != 0) {
+                log::Info("hands: [Throwables] meleeButton 1 -> 0: melee is the gesture only, B no longer melees on foot "
+                          "(research/20 \"Gesture only\") in {}", ini::Utf8(path));
+                ini = ReadIni(path);
+                stamp = fs::last_write_time(path, ec);
+            } else if (k->second != "1") {
+                log::Info("hands: [Throwables] meleeButton = {} kept (your choice; the default is 0)", k->second);
+            }
+        }
+    }
     // [Mako] since 2026-11-02 (research/48 section 22): the controls' grips are the cockpit models' on the seat's armrests and
     // the throttle travels the model's slot. A file holding all three old defaults exactly gets the new ones; any other
     // value is the player's and kept.
@@ -2802,6 +2820,9 @@ void Refresh() {
         {L"WorldUi", "WorldUi", L"wristFollow", "wristFollow", L"1"},
         {L"WorldUi", "WorldUi", L"wristBeam", "wristBeam", L"1"},
         {L"WorldUi", "WorldUi", L"omniTool", "omniTool", L"1"},
+        // The right fist's punch with the weapon away (2026-11-05, research/20 "Gesture only"). The marker meleeFist comes
+        // after meleeButton's migration above.
+        {L"Throwables", "Throwables", L"meleeFist", "meleeFist", L"1"},
     };
     std::string addedKeys;
     for (auto const& k : kNewKeys) {

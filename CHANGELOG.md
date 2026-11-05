@@ -48,6 +48,8 @@ Halcyon's MassEffect1-VR renderer, with our hands, body and menus on top. LE1 on
   when no enemy is locked.
 - The game's own power wheel: hold the right stick click and steer with the same stick, let go to close it. A quick
   click no longer casts a power by accident; a double-click still recenters the view.
+- Melee is a real strike only: B no longer melees on foot. With your weapon away, punch with your right fist (squeeze
+  the grip and the trigger). Strikes come no faster than the game's own melee allows, so flailing doesn't spam them.
 
 ### Your body
 - A guided calibration (about a minute) measures your height, arms and how you aim, and is saved per controller type.

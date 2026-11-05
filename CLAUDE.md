@@ -195,8 +195,11 @@ switching frameworks.
   release throws it (the game's `UseGrenade`; its disc re-aimed from the hand in a post-handler of
   `BioGrenade.LaunchGrenadeAtPoint`), a slow one puts it back; a fast stroke with an enemy in reach
   is `TryMelee`. Claimed squeezes run before holsters; a left squeeze in the support grip's zone is the
-  support grip, never a grenade. B/X stay unless
-  `meleeButton`/`grenadeButton = 0` (host v14).
+  support grip, never a grenade. X stays unless `grenadeButton = 0` (host v14). **Melee is the gesture only** (research/20
+  "Gesture only", 2026-11-05): B no longer melees on foot (`meleeButton = 0`, migrated once); with the weapon away the
+  right FIST (grip and trigger) punches through `BioPlayerInput.ActivatePower(Pistol_Whip)` (`meleeFist`; the left hand
+  doesn't, its trigger and grip are the squad's); both hands share one cooldown that also waits out the game's melee
+  power's (`ik::throwing::RouteMelee`, `MeleeWait`). `mevr melee punch|strike` tests it without controllers.
 - No cover snapping, physical crouch (LE1, VR on foot; `game/Posture` + `core/ik/Posture`, research/23,
   `[Hands] noCover`, `physicalCrouch`, `crouchBelow`/`standAbove`/`crouchDwellS`): ME1 takes cover by
   itself (BioPawn's native test, no button; A only leaves it). `engine/cover_acquire` pre-hooks that

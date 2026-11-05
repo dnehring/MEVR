@@ -222,10 +222,13 @@ Squad GetSquad();
 //   meleeSpeedMS     the free hand's speed for a strike (m/s, relative to the head)
 //   meleeGunSpeedMS  the gun hand's
 //   meleeTravelM     the stroke's travel at that speed (m)
-//   meleeCooldownS   seconds between strikes (the game adds its own: 0.96 s pistol, 1.38 s rifle)
+//   meleeCooldownS   seconds between strikes, both hands together; never sooner than the game's own melee cooldown
+//                    (0.96 s pistol whip, 1.38 s rifle butt, read live from the power)
 //   meleeNeedsEnemy  1: only with a living hostile within meleeReachM and meleeConeDeg of the body's front
 //   meleeReachM, meleeConeDeg
-//   meleeButton      1: B still melees; 0: only the physical stroke (on foot)
+//   meleeButton      1: B still melees; 0 (default since 2026-11-05): only the physical stroke (on foot)
+//   meleeFist        1: with the weapon away the right hand strikes as a fist (grip and trigger held): the game's
+//                    pistol whip power through BioPlayerInput.ActivatePower (TryMelee would only draw the gun)
 //   hapticAmplitude  0..1 (0.5 as designed; 0: none); holdBuzz: 1 = a faint buzz while a grenade is held
 struct Throwables {
     bool enabled = true;
@@ -248,7 +251,8 @@ struct Throwables {
     bool meleeNeedsEnemy = true;
     double meleeReach = 2.0;
     double meleeConeDeg = 75.0;
-    bool meleeButton = true;
+    bool meleeButton = false;
+    bool meleeFist = true;
     double hapticAmplitude = 0.5;
     bool holdBuzz = true;
 };

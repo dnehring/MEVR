@@ -571,7 +571,7 @@ std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& in
     } else if (in.meleeButton) {
         put("b", "Melee", "Strike with your weapon.");
     } else {
-        put("b", "Nothing", "Nothing on foot: strike for real to melee.");
+        put("b", "Back (menus)", "Nothing on foot: melee is a real strike (below). In menus it backs out.");
     }
 
     // ---- Gestures ----
@@ -579,7 +579,10 @@ std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& in
     out.emplace_back("guide_grenade", in.grenades ? grenadeHand + " to the left of your chest, squeeze the grip to take a "
                                                     "grenade, then throw: let go mid-swing. Let go slowly to put it back."
                                                   : std::string("Off (Controls > Physical grenades and melee)."));
-    out.emplace_back("guide_melee", in.melee ? std::string("Strike fast at an enemy within reach, with either hand.")
+    out.emplace_back("guide_melee", in.melee ? std::string("Strike fast at an enemy within reach, with either hand, about once a "
+                                                           "second.") + (in.meleeFist ? " With your weapon away, punch with your "
+                                                                                        "right fist: squeeze the grip and the trigger."
+                                                                                      : "")
                                              : std::string("Off (Controls > Physical grenades and melee)."));
     return out;
 }

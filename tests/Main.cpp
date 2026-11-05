@@ -6030,7 +6030,27 @@ void TestGrenadeMachine() {
     CHECK(s.event == thr::Event::None && machine.Holder() < 0);
 }
 
+// Melee is the gesture only (research/20 "Gesture only", 2026-11-05): which melee a strike is, and the shared wait.
+void TestMeleeRoute() {
+    namespace thr = mevr::ik::throwing;
+    using R = thr::MeleeRoute;
+    // The weapon out: either hand, open or not.
+    CHECK(thr::RouteMelee(true, true, false, true) == R::Weapon && thr::RouteMelee(true, false, false, false) == R::Weapon);
+    // Away: only the right fist.
+    CHECK(thr::RouteMelee(false, true, true, true) == R::Fist);
+    CHECK(thr::RouteMelee(false, true, false, true) == R::OpenHand);
+    CHECK(thr::RouteMelee(false, false, true, true) == R::LeftUnarmed);
+    CHECK(thr::RouteMelee(false, true, true, false) == R::FistOff);
+    CHECK(thr::Refusal(R::Weapon) == nullptr && thr::Refusal(R::Fist) == nullptr);
+    CHECK(thr::Refusal(R::OpenHand) != nullptr && thr::Refusal(R::LeftUnarmed) != nullptr && thr::Refusal(R::FistOff) != nullptr);
+    // No spamming: whichever of our cooldown and the game's ends later.
+    CHECK(thr::MeleeWait(10.0, 10.8, 0.0) > 0.79 && thr::MeleeWait(10.0, 10.8, 0.0) < 0.81);
+    CHECK(thr::MeleeWait(10.0, 10.8, 1.38) > 1.37 && thr::MeleeWait(10.0, 10.8, 1.38) < 1.39);  // the rifle butt's
+    CHECK(thr::MeleeWait(11.0, 10.8, 0.0) == 0.0 && thr::MeleeWait(11.0, 10.8, -1.0) == 0.0);
+}
+
 void TestSwing() {
+    TestMeleeRoute();
     namespace thr = mevr::ik::throwing;
     using mevr::ik::Vec3;
     double const dt = 1.0 / 90.0;
@@ -9129,7 +9149,11 @@ void TestMenuSettings() {
         CHECK(text(shipped, "guide_rstick") == "Turn, hold: powers");
         CHECK(text(shipped, "guide_rstick_how").find("recenter") != std::string::npos);
         CHECK(text(shipped, "guide_rgrip") == "Draw and holster");
-        CHECK(text(shipped, "guide_x") == "Grenade" && text(shipped, "guide_y") == "Medi-gel" && text(shipped, "guide_b") == "Melee");
+        CHECK(text(shipped, "guide_x") == "Grenade" && text(shipped, "guide_y") == "Medi-gel" && text(shipped, "guide_b") == "Back (menus)");
+        CHECK(text(shipped, "guide_melee").find("right fist") != std::string::npos);  // [Throwables] meleeFist (2026-11-05)
+        ms::GuideInput withB = shipped;
+        withB.meleeButton = true;
+        CHECK(text(withB, "guide_b") == "Melee");
         CHECK(text(shipped, "guide_lgrip_how").find("vent") != std::string::npos);
         CHECK(text(shipped, "guide_grenade").rfind("Right hand", 0) == 0);  // [Throwables] hands = right
         CHECK(text(shipped, "guide_lstick_how").find("where you look") != std::string::npos);
@@ -9172,7 +9196,7 @@ void TestMenuSettings() {
         kept.grenadeHands = "left";
         kept.walk = "hand";
         kept.turn = "snap";
-        CHECK(text(kept, "guide_x") == "Nothing" && text(kept, "guide_b") == "Nothing");
+        CHECK(text(kept, "guide_x") == "Nothing" && text(kept, "guide_b") == "Back (menus)");
         CHECK(text(kept, "guide_lgrip") == "Two-handed grip" && text(kept, "guide_lgrip_how").find("vent") == std::string::npos);
         CHECK(text(kept, "guide_lgrip_how").find("grenade") != std::string::npos);
         CHECK(text(kept, "guide_grenade").rfind("Left hand", 0) == 0);

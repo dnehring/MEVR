@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 
 // Physical grenades and melee (research/20). [Throwables] in <GAME>MEVR.ini (game/hand_calibration).
 //
@@ -29,12 +30,15 @@
 //       but unused: a rigid body with a velocity) launched with the hand's velocity through
 //       BioGrenade.LaunchGrenade, replacing the disc.
 // Melee: a fast stroke of a hand relative to the head (ik::throwing::SwingDetector: speed, travel in
-// one direction, not backward, once per stroke, a cooldown) with an enemy in reach (a living hostile
-// BioPawn within meleeReachM and meleeConeDeg of the body's front) calls SFXGameModeDefault.TryMelee():
-// the game's pistol whip or rifle butt, its cone and cooldown. A tick on the strike; a thump when the
-// target's health drops within 1.2 s (the hit).
-// B and X stay the game's melee and grenade unless [Throwables] meleeButton / grenadeButton = 0 (then
-// kept from the game on foot; host v14).
+// one direction, not backward, once per stroke) with an enemy in reach (a living hostile BioPawn within
+// meleeReachM and meleeConeDeg of the body's front) calls SFXGameModeDefault.TryMelee(): the game's
+// pistol whip or rifle butt, its cone. With the weapon away (TryMelee would only draw it) the right
+// hand's fist (grip and trigger held, [Throwables] meleeFist) casts the pistol whip power through
+// BioPlayerInput.ActivatePower. Both hands share one cooldown, never shorter than the game's own melee
+// cooldown (read live from the power). A tick on the strike; a thump when the target's health drops
+// within 1.2 s (the hit).
+// X stays the game's grenade unless [Throwables] grenadeButton = 0; B no longer melees on foot by
+// default since 2026-11-05 (meleeButton = 0: the gesture only; host v14).
 //
 // Ties to the other hand features: a squeeze that takes a grenade is "claimed" (Claim, before holsters
 // and the squad menu tick): the squad menu ignores a claimed left squeeze; holsters keep the gun out
@@ -74,5 +78,8 @@ void AdjustPad(gamepad::Options& options);
 std::string StatusJson();
 void LogStats();
 void Shutdown();
+// `mevr melee punch|strike` (tests, no tracked controllers needed): the right hand's strike now, through Strike's rules
+// (punch: a fist; any direction, the enemy within meleeReachM). Game thread.
+std::string Console(std::string_view args);
 
 } // namespace mevr::game::throwables

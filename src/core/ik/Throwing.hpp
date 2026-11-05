@@ -206,6 +206,24 @@ private:
     double peakSpeed_ = 0.0;
 };
 
+// ---- Which melee a strike is (research/20 "Gesture only", 2026-11-05) -------------------------
+// With the weapon out either hand's stroke is the game's melee with it (TryMelee: pistol whip or rifle butt). With it away
+// TryMelee would only draw the gun, so only the right hand's FIST (grip and trigger held) punches (the pistol whip power);
+// the left hand never does (its trigger and grip are the squad's wheel and orders).
+enum class MeleeRoute : std::uint8_t {
+    Weapon,       // the weapon is out: the game's melee with it
+    Fist,         // the weapon is away: the right fist's punch
+    FistOff,      // the weapon is away and [Throwables] meleeFist = 0
+    LeftUnarmed,  // the weapon is away: the left hand doesn't punch
+    OpenHand,     // the weapon is away and the right hand is open
+};
+MeleeRoute RouteMelee(bool weaponDrawn, bool rightHand, bool fist, bool fistEnabled);
+// Why a route makes no strike (nullptr for Weapon and Fist).
+char const* Refusal(MeleeRoute route);
+// Seconds until the next strike may start, both hands together: our own cooldown and the game's melee power's (read live),
+// whichever ends later, so the gesture never strikes faster than the game swings.
+double MeleeWait(double now, double readyAt, double gameCooldownLeft);
+
 // ---- Where a throw lands -----------------------------------------------------------------------
 // Points along a thrown object's path in the WORLD (Unreal axes: +Z up; units), every `dt` seconds
 // from `start` at `velocity` under gravity `gravityZ` (negative), until `maxSeconds` or until it has

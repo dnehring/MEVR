@@ -339,10 +339,36 @@ post-handler sees them with the projectile in `ReturnValue`.
 
 ### The buttons
 
-`meleeButton = 1`, `grenadeButton = 1` (default): B and X stay. With 0 the host's pad mapping keeps
+`meleeButton = 1`, `grenadeButton = 1` (the defaults until 2026-11-05): B and X stay. With 0 the host's pad mapping keeps
 B or X from the game **on foot only** (menus keep B), through `gamepad::kFlagNoMeleeButton` /
 `kFlagNoGrenadeButton` (HostServices v14; an older host ignores them and the mod logs it once). B
 or X as the power wheel's RB source stays RB.
+
+### Gesture only (2026-11-05)
+
+The user: melee is the gesture only, and a player with no weapon out punches with a fist; strikes mustn't be spammable.
+
+- **B no longer melees on foot** (`meleeButton = 0` by default; a file without the marker `meleeFist` that still holds the
+  old default 1 gets 0 once, any other value is the player's). In menus B still backs out.
+- **The right fist with the weapon away** (`meleeFist = 1`): `TryMelee` with the weapon away only draws it (section 2), and
+  holsters refuse that draw, so until now nothing happened. Now the right hand's stroke counts with the weapon away only
+  as a **fist**, its grip and trigger both held (the trigger isn't "firing" then: the right hand's suppression by the trigger
+  applies only with the weapon out), and it casts the **`Pistol_Whip` power** through `BioPlayerInput.ActivatePower(nmPower,
+  oTarget, vTargetLocation)`, the native the power wheel's push uses (research/55 section 2): the same power `TryMelee` picks
+  for the pistol, its name read from the behaviour's `m_powers`, the enemy in reach as its target. **The left hand doesn't
+  punch** with the weapon away: its trigger opens the squad's weapon wheel at once and a free left squeeze points a squad
+  order (research/54), so a left fist would set off both. With the weapon out nothing changed: either hand's stroke is
+  `TryMelee`. The rule is `ik::throwing::RouteMelee` (pure, `TestMeleeRoute`).
+- **No spamming:** both hands share one cooldown (`meleeCooldownS`, 0.8 s) and also wait out the game's own melee power's
+  cooldown, read live from the power (`m_fCooldownRemaining`: 0.962 s pistol whip, 1.38 s rifle butt), whichever ends later
+  (`ik::throwing::MeleeWait`). Before, a strike every 0.8 s could land inside the game's cooldown, where `TryMelee` counts
+  nothing. A stroke refused for the cooldown is spent: the next strike needs a new stroke (the detector's once-per-stroke
+  rule), and a melee in progress refuses the next one as "using a power". So the gesture never swings faster than the game.
+- **Test without controllers:** `tools/console.ps1 "mevr melee punch"` (a right fist's strike now, any direction, the enemy
+  within `meleeReachM`) or `"mevr melee strike"` (an open hand).
+- **[verify in the game]:** that `ActivatePower(Pistol_Whip)` plays and hurts with the weapon away (it has no weapon check of
+  its own, research/55 section 2, but the power might want a gun: its animation is the pistol whip's); what the third-person
+  body does; that holsters don't see a draw.
 
 ### Diagnostics
 
