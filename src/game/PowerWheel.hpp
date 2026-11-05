@@ -28,6 +28,9 @@ struct Link {
     void (*haptic)(int hand, float seconds, float amplitude) = nullptr;
 };
 
+// Before the ProcessEvent hook goes in (Mod.cpp): the handler that times the game's release against the bolt (research/55
+// section 9).
+bool TryStartup();
 void Tick(double deltaSeconds, Link const& link);
 // The pad options (before the support grip publishes them): X off on foot while it's on; the left hand its own while open.
 void AdjustPad(gamepad::Options& options);

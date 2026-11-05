@@ -739,7 +739,11 @@ switching frameworks.
   2026-11-05: the running `BioActivePower` keeps that target and point through the release, and Throw ragdolled the locked
   hostile 1.6 s after the push; dormant = `BioActorBehavior.bActive` false or hidden. Console `mevr powerwheel
   push|aimhead on|lock`; powers on a save without them: `GiveBonusTalent 49` then `ScaleTalentByIncrement 49 1` (Throw; 57
-  Singularity: the cheat takes the 2DA's BonusID, research/55 section 7). While on, X never throws a grenade on foot (the pad's `grenadeButton` off); while open the left stick, L3, X, the
+  Singularity: the cheat takes the 2DA's BonusID, research/55 section 7). **The player's powers fly nothing** (they land at the
+  release, about 0.58 s after the cast; only other casters' fly, research/55 section 8), so **a bolt from the hand** (a prototype,
+  section 9; `mevr powerwheel bolt [on|off|speed n]`, `vfx [all]` maps every power's effects) spawns the enemy version's projectile
+  effect (Throw's: a biotic hand) at the left hand with `BioVisualEffect.CreateVFXOnPosition` and flies it to the target in the
+  release delay learned from `BioPawn.ReleasePower`; none where no enemy version is loaded. While on, X never throws a grenade on foot (the pad's `grenadeButton` off); while open the left stick, L3, X, the
   left trigger and grip are its own (`gamepad::kFlagPowerWheel`, `Latches::powerHeld` until released) and the squad's trigger stands down
   (`power_wheel::OwnsLeftHand`). The look is the user's concept in the game's own UI language (research/55 section 5: colours and
   edge-lit fills sampled from `GUI_SF_HUD`/`GUI_SF_InGameGui`, our N7 mark, Rajdhani); a two-level bloom (`plugin/Glow`, its own device

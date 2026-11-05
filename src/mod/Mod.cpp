@@ -309,6 +309,7 @@ void TryInstallScriptHooks() {
     game::galaxy_map::TryStartup();  // the camera-update handler holding the view in the CIC while the map is open in-world
     game::sights::TryStartup();  // the scoped shots' aimed fire (a CallFunction handler, registered before the hook)
     game::view_level::TryStartup();  // the level camera (PlayerTick and SetWeaponRecoil handlers, before the hooks)
+    game::power_wheel::TryStartup();  // the bolt from the hand: BioPawn.ReleasePower's timing (research/55 section 9)
     if (!gHandAimAvailable) {
         log::Warn("hand aim: BioPlayerController.GetAdjustedAimFor not found; hand aim unavailable");
     }

@@ -10,6 +10,7 @@
 #include "core/vr/HostView.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/GameAdapter.hpp"
+#include "engine/ProcessEvent.hpp"
 #include "engine/SettingsFile.hpp"
 #include "game/HeadTracking.hpp"
 #include "game/OmniTool.hpp"
@@ -24,10 +25,12 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <format>
 #include <fstream>
+#include <map>
 #include <optional>
 #include <sstream>
 #include <vector>
@@ -196,6 +199,7 @@ void RefreshSettings() {
 
 // ---- The player's powers -----------------------------------------------------------------------------------------------
 struct Power {
+    ue3::Object* object = nullptr;  // the BioPower
     ue3::Name name{};
     std::string label;
     pw::PowerInfo const* info = nullptr;
@@ -235,6 +239,7 @@ std::vector<Power> ReadRoster(ue3::Object* pawn, bool includeUnlearned) {
             continue;
         }
         Power p;
+        p.object = power;
         p.name = gPowerName.Read<ue3::Name>(power).value_or(ue3::Name{});
         p.label = ue3::runtime::NameText(p.name);
         p.info = pw::FindPower(p.label.c_str());
@@ -394,6 +399,7 @@ std::optional<Power> ReadyPower(ue3::Object* controller, ue3::Object* pawn) {
             continue;
         }
         Power p;
+        p.object = power;
         p.name = gPowerName.Read<ue3::Name>(power).value_or(ue3::Name{});
         p.label = ue3::runtime::NameText(p.name);
         if (p.label != mapped) {
@@ -554,6 +560,189 @@ void Refuse(Link const& link, std::string const& why) {
     }
 }
 
+// ---- The bolt from the hand (research/55 section 9, a prototype) ---------------------------------------------------------
+// The player's powers fly nothing (section 8), but the enemies' versions of the same power do, each with its own projectile
+// effect (TK_Throw_NPC's ThrowProjectile_VFX, SD_Warp_NPC's WarpProjectile_VFX...). At our push's cast that effect is
+// spawned at the left hand (BioVisualEffect.CreateVFXOnPosition on the class's default object) and moved each tick to the
+// target at the enemies' projectile speed (1300 units/s), then let go (SetLifeTime) on arrival: only a picture, the game's
+// own release still decides the hit. The release's moment (BioPawn.ReleasePower on the player's pawn) is logged against it.
+ue3::FieldRef gVfxAppearanceOf{"SFXGame.BioPower", "m_VFXAppearance"};
+ue3::FieldRef gVfxProjectileOf{"SFXGame.BioPowerVFXAppearance", "vfxProjectileEffect"};
+ue3::ClassRef gPowerClassForBolt{"SFXGame.BioPower"};
+ue3::ClassRef gVisualEffectClass{"SFXGame.BioVisualEffect"};
+ue3::FunctionRef gCreateVfxOnPositionFn{"SFXGame.BioVisualEffect.CreateVFXOnPosition"};
+ue3::FunctionRef gVfxSetLifeTimeFn{"SFXGame.BioVisualEffect.SetLifeTime"};
+ue3::FunctionRef gSetLocationFn{"Engine.Actor.SetLocation"};
+ue3::FunctionRef gReleasePowerFn{"SFXGame.BioPawn.ReleasePower"};
+// The flight takes as long as the game takes to release the power after the cast (learned per power from BioPawn.ReleasePower;
+// Throw's measured 0.57 s at first), so the bolt lands as the game's effect does. `bolt speed <units/s>` (tests) flies at a
+// fixed speed instead, slow enough to catch it in a snapshot.
+constexpr double kDefaultReleaseS = 0.55;
+double gBoltTestSpeed = 0.0;  // 0: timed to the release
+std::map<std::string, double> gReleaseDelay;  // per power label, seconds from the cast to the release (smoothed)
+constexpr std::uint64_t kClassDefaultFlag = 0x200;  // EObjectFlags: RF_ClassDefaultObject
+
+struct Bolt {
+    ue3::Object* effect = nullptr;
+    std::string power;
+    engine::UnrealVector from{};
+    engine::UnrealVector to{};
+    double startedAt = 0.0;
+    double flightS = 0.0;
+    bool arrived = false;
+    std::string template_;
+};
+std::optional<Bolt> gBolt;
+bool gBoltOn = true;           // `mevr powerwheel bolt on|off` (a prototype)
+std::string gPushCastPower;    // its power's label
+double gPushCastAt = -100.0;   // our push's cast (gClock), for the release's timing
+std::string gLastBolt = "none";
+unsigned gBolts = 0;
+
+ue3::Object* EffectDefaults() {
+    static ue3::Object* cached = nullptr;
+    if (cached != nullptr && ue3::runtime::IsAlive(cached)) {
+        return cached;
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Class* const cls = gVisualEffectClass.Get();
+    for (std::int32_t i = 0, n = cls != nullptr ? r.ObjectCount() : 0; i < n; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o != nullptr && r.ClassOf(o) == cls && (r.FlagsOf(o) & kClassDefaultFlag) != 0) {
+            cached = o;
+            return o;
+        }
+    }
+    return nullptr;
+}
+
+// The projectile effect for the player's power `label`: its own if it has one, else an enemy version's (TK_Throw ->
+// TK_Throw_NPC or TK_Throw_PLC...) among the loaded powers. Null: none loaded.
+ue3::Object* BoltTemplate(ue3::Object* playerPower, std::string const& label, std::string& source) {
+    auto projectileOf = [](ue3::Object* power) -> ue3::Object* {
+        ue3::Object* const look = power != nullptr ? gVfxAppearanceOf.Read<ue3::Object*>(power).value_or(nullptr) : nullptr;
+        return look != nullptr ? gVfxProjectileOf.Read<ue3::Object*>(look).value_or(nullptr) : nullptr;
+    };
+    if (ue3::Object* const own = projectileOf(playerPower)) {
+        source = "its own";
+        return own;
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Class* const cls = gPowerClassForBolt.Get();
+    for (std::int32_t i = 0, n = cls != nullptr ? r.ObjectCount() : 0; i < n; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o == nullptr || o == playerPower || !r.IsAlive(o) || !r.IsA(o, cls)) {
+            continue;
+        }
+        std::string const other = ue3::runtime::NameText(gPowerName.Read<ue3::Name>(o).value_or(ue3::Name{}));
+        if (other.size() > label.size() && other.compare(0, label.size(), label) == 0 && other[label.size()] == '_') {
+            if (ue3::Object* const templ = projectileOf(o)) {
+                source = other + " on " + NameOf(r.OuterOf(o));
+                return templ;
+            }
+        }
+    }
+    return nullptr;
+}
+
+bool SetActorLocation(ue3::Object* actor, engine::UnrealVector const& where) {
+    ue3::Function* const fn = gSetLocationFn.Get();
+    if (actor == nullptr || fn == nullptr) {
+        return false;
+    }
+    ue3::Params parms(ue3::runtime::Get(), fn);
+    parms.Set("NewLocation", ToVector(where));
+    ue3::runtime::Call(actor, fn, parms);  // an opcode native: through runtime::Call (gotchas/process-event-skips-opcode-natives)
+    return parms.ReturnBool().value_or(false);
+}
+
+void EndBolt(float fadeS) {
+    if (gBolt && gBolt->effect != nullptr && ue3::runtime::IsAlive(gBolt->effect) && gVfxSetLifeTimeFn.Get() != nullptr) {
+        ue3::Params p(ue3::runtime::Get(), gVfxSetLifeTimeFn.Get());
+        p.Set("fLife", fadeS);
+        ue3::runtime::Call(gBolt->effect, gVfxSetLifeTimeFn.Get(), p);
+    }
+    gBolt.reset();
+}
+
+void StartBolt(Power const& power, engine::UnrealVector const& from, engine::UnrealVector const& to) {
+    gPushCastAt = gClock;
+    gPushCastPower = power.label;
+    EndBolt(0.2f);
+    std::string source;
+    ue3::Object* const templ = BoltTemplate(power.object, power.label, source);
+    ue3::Object* const defaults = EffectDefaults();
+    if (templ == nullptr || defaults == nullptr || gCreateVfxOnPositionFn.Get() == nullptr) {
+        gLastBolt = std::format("{}: no bolt ({})", power.label, templ == nullptr ? "no projectile effect of an enemy version loaded"
+                                                                                  : "BioVisualEffect not found");
+        log::Info("power wheel: {}", gLastBolt);
+        return;
+    }
+    engine::UnrealVector const d = Minus(to, from);
+    double const length = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
+    constexpr double kToUnreal = 32768.0 / 3.14159265358979323846;
+    ue3::Rotator const facing{static_cast<std::int32_t>(std::atan2(d.z, std::sqrt(d.x * d.x + d.y * d.y)) * kToUnreal),
+        static_cast<std::int32_t>(std::atan2(d.y, d.x) * kToUnreal), 0};
+    auto const learned = gReleaseDelay.find(power.label);
+    double const flight = gBoltTestSpeed > 0.0 ? std::clamp(length / gBoltTestSpeed, 0.15, 10.0)
+                                               : std::clamp(learned != gReleaseDelay.end() ? learned->second : kDefaultReleaseS, 0.15, 3.0);
+    ue3::Params p(ue3::runtime::Get(), gCreateVfxOnPositionFn.Get());
+    bool const set = p.Set("a_pTemplate", templ) && p.Set("vPosition", ToVector(from)) && p.Set("rOrientation", facing) &&
+        p.Set("fLifeTime", static_cast<float>(flight + 2.0)) && p.SetBool("bUseVFXPool", false);
+    if (!set || !ue3::runtime::Call(defaults, gCreateVfxOnPositionFn.Get(), p)) {
+        gLastBolt = power.label + ": CreateVFXOnPosition failed";
+        log::Warn("power wheel: {}", gLastBolt);
+        return;
+    }
+    ue3::Object* const effect = p.Return<ue3::Object*>().value_or(nullptr);
+    if (effect == nullptr) {
+        gLastBolt = power.label + ": CreateVFXOnPosition gave no effect";
+        log::Warn("power wheel: {}", gLastBolt);
+        return;
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    std::string const full = r.FullName(templ);
+    gBolt = Bolt{effect, power.label, from, to, gClock, flight, false, full.substr(full.find(' ') + 1)};
+    ++gBolts;
+    gLastBolt = std::format("{}: {} from {} ({}), {:.1f} m in {:.2f} s", power.label, gBolt->template_, source, NameOf(effect),
+        length / engine::kUnitsPerMeter, flight);
+    log::Info("power wheel: bolt {}", gLastBolt);
+}
+
+void TickBolt() {
+    if (!gBolt) {
+        return;
+    }
+    if (gBolt->effect == nullptr || !ue3::runtime::IsAlive(gBolt->effect)) {
+        gBolt.reset();
+        return;
+    }
+    double const t = std::min(1.0, (gClock - gBolt->startedAt) / gBolt->flightS);
+    engine::UnrealVector const at = Plus(gBolt->from, Scaled(Minus(gBolt->to, gBolt->from), t));
+    SetActorLocation(gBolt->effect, at);
+    if (t >= 1.0 && !gBolt->arrived) {
+        gBolt->arrived = true;
+        log::Info("power wheel: the {} bolt arrived {:.2f} s after the cast", gBolt->power, gClock - gBolt->startedAt);
+        EndBolt(0.25f);
+    }
+}
+
+// BioPawn.ReleasePower (the casting animation's notify, ProcessEvent from native code): when the game's power actually goes off.
+void OnReleasePower(ue3::Object* pawn, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
+    ue3::Object* const controller = player::Controller();
+    if (controller == nullptr || pawn != player::BioPawn(controller) || gClock - gPushCastAt > 6.0) {
+        return;
+    }
+    if (!gPushCastPower.empty()) {
+        double& d = gReleaseDelay[gPushCastPower];
+        d = d > 0.0 ? 0.5 * d + 0.5 * (gClock - gPushCastAt) : gClock - gPushCastAt;
+        gPushCastPower.clear();  // only the first release after a cast
+    }
+    log::Info("power wheel: the game released the power {:.2f} s after our cast{}", gClock - gPushCastAt,
+        gBolt ? std::format(" (the bolt is {:.0f}% of the way)", 100.0 * std::min(1.0, (gClock - gBolt->startedAt) / gBolt->flightS))
+              : std::string());
+}
+
 void TickLock(Link const& link, vr::host_view::State const& view, vr::controllers::State const& controllers, ue3::Object* controller,
     ue3::Object* pawn, bool onFoot) {
     pw::LockSettings const& s = gLockSettings;
@@ -681,6 +870,16 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
             }
             if (tried) {
                 log::Info("power wheel: push: {}", gLastCast);
+                if (ok && ready->info->aim != pw::Aim::None && gBoltOn) {
+                    // The bolt leaves 6 cm ahead of the hand (the test hand with `aimhead`: held out low and left).
+                    engine::UnrealVector from = Plus(origin, Scaled(direction, 0.06 * upm));
+                    if (!hand) {
+                        XrVector3f const offset = RotateXr(view.head.orientation, {-0.15f, -0.20f, -0.40f});
+                        from = engine::ToWorld(*frame, XrVector3f{view.head.position.x + offset.x, view.head.position.y + offset.y,
+                                                                  view.head.position.z + offset.z});
+                    }
+                    StartBolt(*ready, from, target != nullptr ? Plus(gTargetAt, {0.0, 0.0, kChestUnits}) : *gPlace);
+                }
                 if (ok) {
                     ++gCastCount;
                     ++gCasts;
@@ -711,11 +910,126 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
     publish();
 }
 
+// ---- The powers' own visual effects (research/55 section 9) --------------------------------------------------------------
+// Every BioPower has a BioPowerVFXAppearance: nine slots (a template and a flag each) for the caster's body, the screen, the
+// target and the world, the casting beam, the projectile's attach point, and the projectile's and the release's own effects.
+// `mevr powerwheel vfx [all]` lists the player's; `all` adds every other loaded power's projectile and release effects (the
+// enemies' versions of the same power, which fly).
+ue3::FieldRef gVfxAppearance{"SFXGame.BioPower", "m_VFXAppearance"};
+ue3::ClassRef gBioPowerClass{"SFXGame.BioPower"};
+struct VfxSlot {
+    char const* name;
+    ue3::FieldRef field;
+};
+std::array<VfxSlot, 9> gVfxSlots{{
+    {"PlayerCrust", {"SFXGame.BioPowerVFXAppearance", "PlayerCrust"}},
+    {"PlayerMaterial", {"SFXGame.BioPowerVFXAppearance", "PlayerMaterial"}},
+    {"UsingEffect", {"SFXGame.BioPowerVFXAppearance", "UsingEffect"}},
+    {"FramebufferEffect", {"SFXGame.BioPowerVFXAppearance", "FramebufferEffect"}},
+    {"TargetCrust", {"SFXGame.BioPowerVFXAppearance", "TargetCrust"}},
+    {"TargetMaterial", {"SFXGame.BioPowerVFXAppearance", "TargetMaterial"}},
+    {"ImpactVisualEffect", {"SFXGame.BioPowerVFXAppearance", "ImpactVisualEffect"}},
+    {"WorldImpactVisualEffect", {"SFXGame.BioPowerVFXAppearance", "WorldImpactVisualEffect"}},
+    {"CastingBeam", {"SFXGame.BioPowerVFXAppearance", "CastingBeam"}},
+}};
+ue3::FieldRef gVfxAttachPoint{"SFXGame.BioPowerVFXAppearance", "nmProjectileAttachPoint"};
+ue3::FieldRef gVfxProjectile{"SFXGame.BioPowerVFXAppearance", "vfxProjectileEffect"};
+ue3::FieldRef gVfxRelease{"SFXGame.BioPowerVFXAppearance", "vfxReleaseEffect"};
+ue3::FieldRef gTemplatePrefab{"SFXGame.BioVFXTemplate", "oPrefab"};
+ue3::FieldRef gTemplateLifeTime{"SFXGame.BioVFXTemplate", "fLifeTime"};
+
+// A template as "Package.Name (prefab P, 1.5 s)", or "-".
+std::string TemplateText(ue3::Object* templ) {
+    if (templ == nullptr) {
+        return "-";
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    std::string const full = r.FullName(templ);
+    std::string const name = full.substr(full.find(' ') + 1);
+    ue3::Object* const prefab = gTemplatePrefab.Read<ue3::Object*>(templ).value_or(nullptr);
+    return std::format("{} (prefab {}, {:.2f} s)", name, prefab != nullptr ? r.NameText(prefab) : std::string("none"),
+        gTemplateLifeTime.Read<float>(templ).value_or(0.0f));
+}
+
+std::string PowerLabel(ue3::Object* power) {
+    return ue3::runtime::NameText(gPowerName.Read<ue3::Name>(power).value_or(ue3::Name{}));
+}
+
+std::string VfxMap(bool all) {
+    ue3::Object* const controller = ue3::runtime::Ready() ? player::Controller() : nullptr;
+    ue3::Object* const pawn = controller != nullptr ? player::BioPawn(controller) : nullptr;
+    ue3::Object* const behavior = pawn != nullptr ? gBehavior.Read<ue3::Object*>(pawn).value_or(nullptr) : nullptr;
+    auto const list = behavior != nullptr ? gPowers.ElementsOf(behavior) : std::nullopt;
+    if (!list) {
+        return "power wheel: vfx: no player pawn with powers";
+    }
+    std::string out = std::format("power wheel: vfx: the player's {} power(s)", list->count);
+    std::vector<ue3::Object*> mine;
+    for (std::int32_t i = 0; i < list->count && i < 64; ++i) {
+        void* const slot = list->At(i);
+        ue3::Object* const power = slot != nullptr ? *static_cast<ue3::Object**>(slot) : nullptr;
+        if (power == nullptr || !ue3::runtime::IsAlive(power)) {
+            continue;
+        }
+        mine.push_back(power);
+        ue3::Object* const look = gVfxAppearance.Read<ue3::Object*>(power).value_or(nullptr);
+        out += std::format("\n  {} ({}): appearance {}", PowerLabel(power), NameOf(power), NameOf(look));
+        if (look == nullptr) {
+            continue;
+        }
+        for (VfxSlot& s : gVfxSlots) {
+            ue3::Object** const templ = s.field.In<ue3::Object*>(look);  // FPowerVFXData: the template first
+            if (templ != nullptr && *templ != nullptr) {
+                out += std::format("\n    {}: {}", s.name, TemplateText(*templ));
+            }
+        }
+        out += std::format("\n    attach point: {}; projectile: {}; release: {}",
+            ue3::runtime::NameText(gVfxAttachPoint.Read<ue3::Name>(look).value_or(ue3::Name{})),
+            TemplateText(gVfxProjectile.Read<ue3::Object*>(look).value_or(nullptr)),
+            TemplateText(gVfxRelease.Read<ue3::Object*>(look).value_or(nullptr)));
+    }
+    if (!all) {
+        return out;
+    }
+    // Every other loaded power with a projectile or release effect: the enemies' (and the squad's) versions.
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Class* const cls = gBioPowerClass.Get();
+    int shown = 0;
+    out += "\n  other loaded powers with a projectile or release effect:";
+    for (std::int32_t i = 0, n = r.ObjectCount(); i < n && cls != nullptr && shown < 60; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o == nullptr || !r.IsAlive(o) || !r.IsA(o, cls) || std::find(mine.begin(), mine.end(), o) != mine.end()) {
+            continue;
+        }
+        ue3::Object* const look = gVfxAppearance.Read<ue3::Object*>(o).value_or(nullptr);
+        ue3::Object* const projectile = look != nullptr ? gVfxProjectile.Read<ue3::Object*>(look).value_or(nullptr) : nullptr;
+        ue3::Object* const release = look != nullptr ? gVfxRelease.Read<ue3::Object*>(look).value_or(nullptr) : nullptr;
+        if (projectile == nullptr && release == nullptr) {
+            continue;
+        }
+        ++shown;
+        out += std::format("\n    {} on {} (appearance {}): projectile {}; release {}", PowerLabel(o), NameOf(r.OuterOf(o)), NameOf(look),
+            TemplateText(projectile), TemplateText(release));
+    }
+    return out;
+}
+
 }  // namespace
+
+bool TryStartup() {
+    ue3::Function* const release = gReleasePowerFn.Get();
+    if (release == nullptr) {
+        log::Warn("power wheel: BioPawn.ReleasePower not found: the bolt's timing against the game's release isn't logged");
+        return false;
+    }
+    engine::process_event::AddPostHandler(release, &OnReleasePower);
+    return true;
+}
 
 void Tick(double deltaSeconds, Link const& link) {
     gClock += std::max(deltaSeconds, 0.0);
     RefreshSettings();
+    TickBolt();
     pw::Settings const& s = gSettings;
 
     ue3::Object* const controller = ue3::runtime::Ready() ? player::Controller() : nullptr;
@@ -952,6 +1266,22 @@ std::string Console(std::string_view args) {
         words >> state;
         gAimHead = state != "off";
         return std::format("power wheel: the head's ray {} the left hand's for the lock (tests)", gAimHead ? "stands in for" : "no longer stands in for");
+    }
+    if (verb == "bolt") {
+        std::string state;
+        words >> state;
+        if (state == "speed") {
+            words >> gBoltTestSpeed;
+        } else if (!state.empty()) {
+            gBoltOn = state != "off";
+        }
+        return std::format("power wheel: the bolt from the hand is {} (a prototype); {} bolts; last: {}", gBoltOn ? "on" : "off", gBolts,
+            gLastBolt);
+    }
+    if (verb == "vfx") {
+        std::string scope;
+        words >> scope;
+        return VfxMap(scope == "all");
     }
     if (verb == "lock") {
         std::string out = std::format("power wheel: lock {}; target {}{}; place {}; last cast: {}", gLockWhy, NameOf(gTarget), gTarget != nullptr && gLock.automatic ? " (automatic)" : "",

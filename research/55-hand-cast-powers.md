@@ -303,3 +303,41 @@ the rules; or a real projectile for the player's powers (spawning a `BioLinePowe
 mechanic change, and the release isn't reachable from script). The mover of a321189 (the spawn handler, a launch from the
 hand at the projectile's own speed toward its own target, `vr::power_wheel::FromHand` / `LaunchPoint`, unit-tested) is the
 start of the second if it's wanted.
+
+## 9. The powers' own effects, and a bolt from the hand (2026-11-05)
+
+`mevr powerwheel vfx [all]` lists each power's `BioPowerVFXAppearance` (`BioPower.m_VFXAppearance`): nine slots of
+`FPowerVFXData` (a `BioVFXTemplate` and `bUsePowerTime`: `PlayerCrust`, `PlayerMaterial`, `UsingEffect`, `FramebufferEffect`,
+`TargetCrust`, `TargetMaterial`, `ImpactVisualEffect`, `WorldImpactVisualEffect`, `CastingBeam`), the projectile's attach point
+(`nmProjectileAttachPoint`), and the projectile's and the release's own templates (`vfxProjectileEffect`, `vfxReleaseEffect`). A
+template carries a prefab (its particle systems), a sound, a framebuffer effect and a lifetime. Read on UNC20 with VR00's Soldier
+plus Throw and Singularity, and the woken mercenaries:
+
+| Power | The player's version | An enemy version loaded there |
+|---|---|---|
+| Throw | charge on the body (`BIOG_V_B_ChargeInflux.Biotics_Charge_001`, at `RightWrist`), the biotic screen flash, the target's crust and world impact (`BIOG_V_B_TK_Impact01_Z`), release `Throw_Frambuffer`; **no projectile** | `TK_Throw_NPC` (BioPawn_5): projectile `BIOG_V_B_TK_Attack01_Z.Prefab.ThrowProjectile_VFX` |
+| Singularity | the same charge and flash, `Weaken_FrameBuffer`, target crust and world impact `BIOG_V_B_Weaken_Z`; no projectile | none loaded |
+| Warp, Lift, Stasis | (not the Soldier's) | `SD_Warp_NPC` `WarpProjectile_VFX`, `TK_Lift_PLC` `VFX_LiftProjectile_PF`, `KF_Stasis_NPC` `V_Stasis_Projectile` |
+| Unity, medi-gel, Shield Boost, Adrenaline, Immunity | the omni-tool's own prefabs (`BIOG_V_T_Omni_Tool_Z` `OmniTool_1PieceLoop` / `2Piece`) on the caster, at `LeftWrist` or `RightWrist`; the target's crust | the same |
+| Carnage | projectile `v_CarnageProjectile_PF`, release `v_Carnage_muzzle_VFX` (a weapon power) | `BW_Carnage_NPC` the same |
+| Marksman, Overkill, Assassination, Carnage's setup | no appearance at all | |
+
+So the player's biotics keep their charge, flash and impact but have no projectile picture; the enemies' versions of the same
+power have one each, loaded only where an enemy uses that power.
+
+**The prototype** (`mevr powerwheel bolt [on|off|speed <units/s>]`, on): at our push's cast of a power that aims, the projectile
+effect of the player's power or else of an enemy version found among the loaded powers by label (`TK_Throw` -> `TK_Throw_NPC`,
+`_PLC`...) is spawned at the left hand, 6 cm ahead of the aim pose, by `BioVisualEffect.CreateVFXOnPosition` on the class's default
+object, faced at the target, and moved each tick (`Actor.SetLocation`) in a straight line to the locked hostile's chest or the place,
+then let go (`SetLifeTime` 0.25 s). The flight takes as long as the game takes to release the power after the cast, learned per
+power from `BioPawn.ReleasePower` on the player's pawn (a ProcessEvent post-handler): **0.57-0.58 s for Throw and for Singularity**
+(section 7's 1.6 s was the ragdoll's start, not the release). Measured: Throw's bolt flew 23.6 m in 0.58 s, the game released the
+power with it 99% of the way, it arrived 0.61 s after the cast. A slow test bolt (`speed 400`) showed the effect: **a translucent
+blue biotic hand**, a one-shot burst of about a second (gone by 1.8 s even though it was still flying), which suits the push;
+the game's own impact glow showed at the target at the release. Singularity, with no enemy version loaded, casts with no bolt
+(logged).
+
+**Open:** the hand's scale and brightness at arm's length in the headset (authored to be seen from afar); its orientation (faced
+along the flight, the shape's own axes [verify]); powers with no enemy version loaded (a fallback: the template by name, a package
+load, or one of our own); the charge (`PlayerCrust`) plays at Shepard's right wrist while the left hand casts; the tech powers'
+omni-tool and the self-cast powers have no flight to show.

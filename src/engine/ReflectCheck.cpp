@@ -975,6 +975,22 @@ void CheckFields() {
     CheckField("SFXGame.BioActorBehavior", "ActorGameName", SDK_FIELD(UBioActorBehavior, ActorGameName));
     CheckField("SFXGame.BioActorBehavior", "m_oActorType", SDK_FIELD(UBioActorBehavior, m_oActorType));
     CheckField("SFXGame.BioActorBehavior", "bActive", SDK_BOOL(UBioActorBehavior, bActive));  // the power lock skips dormant pawns
+    // The powers' own visual effects (research/55 section 9): the appearance's slots and the templates' prefabs.
+    CheckField("SFXGame.BioPower", "m_VFXAppearance", SDK_FIELD(UBioPower, m_VFXAppearance));
+    CheckField("SFXGame.BioPowerVFXAppearance", "PlayerCrust", SDK_FIELD(UBioPowerVFXAppearance, PlayerCrust));
+    CheckField("SFXGame.BioPowerVFXAppearance", "PlayerMaterial", SDK_FIELD(UBioPowerVFXAppearance, PlayerMaterial));
+    CheckField("SFXGame.BioPowerVFXAppearance", "UsingEffect", SDK_FIELD(UBioPowerVFXAppearance, UsingEffect));
+    CheckField("SFXGame.BioPowerVFXAppearance", "FramebufferEffect", SDK_FIELD(UBioPowerVFXAppearance, FramebufferEffect));
+    CheckField("SFXGame.BioPowerVFXAppearance", "TargetCrust", SDK_FIELD(UBioPowerVFXAppearance, TargetCrust));
+    CheckField("SFXGame.BioPowerVFXAppearance", "TargetMaterial", SDK_FIELD(UBioPowerVFXAppearance, TargetMaterial));
+    CheckField("SFXGame.BioPowerVFXAppearance", "ImpactVisualEffect", SDK_FIELD(UBioPowerVFXAppearance, ImpactVisualEffect));
+    CheckField("SFXGame.BioPowerVFXAppearance", "WorldImpactVisualEffect", SDK_FIELD(UBioPowerVFXAppearance, WorldImpactVisualEffect));
+    CheckField("SFXGame.BioPowerVFXAppearance", "CastingBeam", SDK_FIELD(UBioPowerVFXAppearance, CastingBeam));
+    CheckField("SFXGame.BioPowerVFXAppearance", "nmProjectileAttachPoint", SDK_FIELD(UBioPowerVFXAppearance, nmProjectileAttachPoint));
+    CheckField("SFXGame.BioPowerVFXAppearance", "vfxProjectileEffect", SDK_FIELD(UBioPowerVFXAppearance, vfxProjectileEffect));
+    CheckField("SFXGame.BioPowerVFXAppearance", "vfxReleaseEffect", SDK_FIELD(UBioPowerVFXAppearance, vfxReleaseEffect));
+    CheckField("SFXGame.BioVFXTemplate", "oPrefab", SDK_FIELD(UBioVFXTemplate, oPrefab));
+    CheckField("SFXGame.BioVFXTemplate", "fLifeTime", SDK_FIELD(UBioVFXTemplate, fLifeTime));
     CheckField("SFXGame.BioActorType", "ActorGameName", SDK_FIELD(UBioActorType, ActorGameName));
     CheckField("SFXGame.BioEquipment", "m_QuickSlotArray", SDK_FIELD(UBioEquipment, m_QuickSlotArray));
     CheckField("SFXGame.BioEquipment", "m_eQuickSlotCurrent", SDK_FIELD(UBioEquipment, m_eQuickSlotCurrent));
@@ -1107,6 +1123,8 @@ void CheckFunctions() {
         // the omni-tool on Shepard's arm (game/OmniTool)
         "SFXGame.BioVisualEffect.CreateCrustEffect",
         "SFXGame.BioVisualEffect.SetLifeTime",
+        "SFXGame.BioVisualEffect.CreateVFXOnPosition",  // the bolt from the hand (research/55 section 9)
+        "SFXGame.BioPawn.ReleasePower",                  // ...timed against the game's release
         "SFXGame.BioVisualEffect.SetState",
         "Engine.Actor.DetachComponent",
         "Engine.SkeletalMeshComponent.AttachComponent",

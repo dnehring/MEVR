@@ -25,6 +25,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] No casts you didn't mean: letting go of a grenade, a squad order or the gun with your left hand never casts.
   (research/55 section 7)
 - [ ] How Shepard's arms look during the cast animation, with arm IK on. (research/55 section 4)
+- [ ] Cast Throw at an enemy (or Warp, Lift or Stasis where enemies in the level use them): a translucent blue biotic hand
+  flies from your left hand and lands as the game's hit does. Is it the right size and brightness at your hand, and facing
+  the right way? (research/55 section 9, a prototype built 2026-11-05)
 - [ ] Hold the right stick click 0.3 s: the game's own power wheel opens, steers with the right stick, closes when you let
   go. A quick click does nothing; a double-click still recenters. (research/19 "Hold only")
 
