@@ -19,6 +19,11 @@ constexpr std::uint32_t kSecondary = 1u << 2;
 constexpr std::uint32_t kMenu = 1u << 3;
 constexpr std::uint32_t kGripValid = 1u << 4;
 constexpr std::uint32_t kAimValid = 1u << 5;
+// The touch sensors (2026-11-04): older recordings have none of these bits, so their controllers read as sensorless.
+constexpr std::uint32_t kTriggerTouch = 1u << 6;
+constexpr std::uint32_t kThumbTouch = 1u << 7;
+constexpr std::uint32_t kTriggerTouchKnown = 1u << 8;
+constexpr std::uint32_t kThumbTouchKnown = 1u << 9;
 
 // Little-endian on every Windows target; memcpy keeps it alignment-safe.
 template <typename T>
@@ -139,7 +144,8 @@ void EncodeFrame(Frame const& frame, std::vector<std::uint8_t>& out) {
     for (controllers::Hand const& hand : frame.hands) {
         std::uint32_t const buttons = (hand.stickClick ? kStickClick : 0u) | (hand.primary ? kPrimary : 0u) |
             (hand.secondary ? kSecondary : 0u) | (hand.menu ? kMenu : 0u) | (hand.gripValid ? kGripValid : 0u) |
-            (hand.aimValid ? kAimValid : 0u);
+            (hand.aimValid ? kAimValid : 0u) | (hand.triggerTouch ? kTriggerTouch : 0u) | (hand.thumbTouch ? kThumbTouch : 0u) |
+            (hand.triggerTouchKnown ? kTriggerTouchKnown : 0u) | (hand.thumbTouchKnown ? kThumbTouchKnown : 0u);
         Put(out, buttons);
         Put(out, hand.trigger);
         Put(out, hand.squeeze);
@@ -210,6 +216,10 @@ bool Decode(std::uint8_t const* data, std::size_t size, Recording& out, std::str
             hand.menu = (buttons & kMenu) != 0;
             hand.gripValid = (buttons & kGripValid) != 0;
             hand.aimValid = (buttons & kAimValid) != 0;
+            hand.triggerTouch = (buttons & kTriggerTouch) != 0;
+            hand.thumbTouch = (buttons & kThumbTouch) != 0;
+            hand.triggerTouchKnown = (buttons & kTriggerTouchKnown) != 0;
+            hand.thumbTouchKnown = (buttons & kThumbTouchKnown) != 0;
             hand.trigger = r.Get<float>();
             hand.squeeze = r.Get<float>();
             hand.stickX = r.Get<float>();

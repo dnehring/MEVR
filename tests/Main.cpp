@@ -2278,6 +2278,9 @@ mevr::vr::recording::Frame RecordedFrame(std::int64_t timeNs, float x) {
         hand.primary = h == 1;
         hand.stickClick = h == 0;
         hand.menu = h == 0;
+        hand.triggerTouchKnown = hand.thumbTouchKnown = h == 1;  // the left one sensorless (an old recording's controllers)
+        hand.triggerTouch = h == 1;
+        hand.thumbTouch = false;
     }
     return frame;
 }
@@ -2323,6 +2326,8 @@ void TestPoseRecording() {
             CHECK(r.hands[h].primary == a.hands[h].primary && r.hands[h].stickClick == a.hands[h].stickClick &&
                 r.hands[h].menu == a.hands[h].menu && r.hands[h].secondary == a.hands[h].secondary);
             CHECK(r.hands[h].gripValid && r.hands[h].aimValid);
+            CHECK(r.hands[h].triggerTouch == a.hands[h].triggerTouch && r.hands[h].thumbTouch == a.hands[h].thumbTouch &&
+                r.hands[h].triggerTouchKnown == a.hands[h].triggerTouchKnown && r.hands[h].thumbTouchKnown == a.hands[h].thumbTouchKnown);
         }
         CHECK(!rec.frames[1].hands[1].aimValid && rec.frames[1].hands[0].primary && !rec.frames[2].headValid);
     }
@@ -9456,6 +9461,64 @@ void TestFingers() {
     }
     // AboutAxis is Rotate's right-handed turn: +90 about Z takes X to Y.
     CHECK(NearV(Rotate(fg::AboutAxis({0.0, 0.0, 1.0}, 90.0), {1.0, 0.0, 0.0}), {0.0, 1.0, 0.0}, 1e-9));
+
+    // The curls from a controller (research/43 "Touch sensors").
+    auto const curlOf = [](fg::Rule rule, double trigger, double squeeze, double triggerTouch, double thumbTouch) {
+        fg::Controller c;
+        c.trigger = trigger;
+        c.squeeze = squeeze;
+        c.triggerTouch = triggerTouch;
+        c.thumbTouch = thumbTouch;
+        return fg::FromController(rule, c);
+    };
+    auto const sameCurl = [](double a, double b) { return std::abs(a - b) < 1e-9; };
+    // No sensors: the first rules exactly (index = trigger, the rest and the thumb = grip; on the gun -0.5 x (1 - trigger)).
+    {
+        fg::Curl const c = curlOf(fg::Rule::Free, 0.3, 0.8, -1.0, -1.0);
+        CHECK(sameCurl(c.finger[fg::kIndex], 0.3) && sameCurl(c.finger[fg::kMiddle], 0.8) && sameCurl(c.finger[fg::kRing], 0.8) &&
+              sameCurl(c.finger[fg::kPinky], 0.8) && sameCurl(c.finger[fg::kThumb], 0.8));
+        CHECK(sameCurl(curlOf(fg::Rule::Gun, 0.0, 1.0, -1.0, -1.0).finger[fg::kIndex], -0.5));
+        CHECK(sameCurl(curlOf(fg::Rule::Gun, 0.5, 1.0, -1.0, -1.0).finger[fg::kIndex], -0.25));
+        CHECK(sameCurl(curlOf(fg::Rule::Gun, 1.0, 1.0, -1.0, -1.0).finger[fg::kIndex], 0.0));
+        fg::Curl const gun = curlOf(fg::Rule::Gun, 0.2, 1.0, -1.0, -1.0);
+        CHECK(gun.finger[fg::kThumb] == 0.0 && gun.finger[fg::kMiddle] == 0.0 && gun.finger[fg::kRing] == 0.0 && gun.finger[fg::kPinky] == 0.0);
+    }
+    // The trigger's sensor: lifted points, resting curls a little, the pull closes it from there; a pull counts as a touch.
+    CHECK(sameCurl(curlOf(fg::Rule::Free, 0.0, 0.0, 0.0, -1.0).finger[fg::kIndex], fg::kIndexPoint));
+    CHECK(sameCurl(curlOf(fg::Rule::Free, 0.0, 0.0, 1.0, -1.0).finger[fg::kIndex], fg::kIndexOnTrigger));
+    CHECK(sameCurl(curlOf(fg::Rule::Free, 1.0, 0.0, 1.0, -1.0).finger[fg::kIndex], 1.0));
+    CHECK(sameCurl(curlOf(fg::Rule::Free, 0.5, 0.0, 1.0, -1.0).finger[fg::kIndex], fg::kIndexOnTrigger + (1.0 - fg::kIndexOnTrigger) * 0.5));
+    CHECK(sameCurl(curlOf(fg::Rule::Free, 0.5, 0.0, 0.0, -1.0).finger[fg::kIndex], fg::kIndexOnTrigger + (1.0 - fg::kIndexOnTrigger) * 0.5));
+    CHECK(sameCurl(curlOf(fg::Rule::Free, 0.0, 0.0, 0.5, -1.0).finger[fg::kIndex], (fg::kIndexPoint + fg::kIndexOnTrigger) / 2.0));
+    // Pointing: the grip closed, the finger off the trigger (the index straight, the other three closed).
+    {
+        fg::Curl const point = curlOf(fg::Rule::Free, 0.0, 1.0, 0.0, 1.0);
+        CHECK(point.finger[fg::kIndex] < 0.0 && sameCurl(point.finger[fg::kMiddle], 1.0) && sameCurl(point.finger[fg::kThumb], 1.0));
+    }
+    // The thumb's sensor: lifted is up (a thumbs-up in a fist, open in an open hand), resting at least kThumbOnRest.
+    CHECK(sameCurl(curlOf(fg::Rule::Free, 1.0, 1.0, 1.0, 0.0).finger[fg::kThumb], fg::kThumbUp));
+    CHECK(sameCurl(curlOf(fg::Rule::Free, 0.0, 0.0, 0.0, 0.0).finger[fg::kThumb], fg::kThumbUp));
+    CHECK(sameCurl(curlOf(fg::Rule::Free, 0.0, 0.0, 0.0, 1.0).finger[fg::kThumb], fg::kThumbOnRest));
+    CHECK(sameCurl(curlOf(fg::Rule::Free, 0.0, 1.0, 0.0, 1.0).finger[fg::kThumb], 1.0));
+    {
+        fg::Curl const thumbsUp = curlOf(fg::Rule::Free, 1.0, 1.0, 1.0, 0.0);
+        CHECK(sameCurl(thumbsUp.finger[fg::kIndex], 1.0) && sameCurl(thumbsUp.finger[fg::kPinky], 1.0) && thumbsUp.finger[fg::kThumb] < 0.0);
+    }
+    // On the gun with a sensor: along the frame until touched, then on the trigger as animated, whatever the pull.
+    CHECK(sameCurl(curlOf(fg::Rule::Gun, 0.0, 1.0, 0.0, 0.0).finger[fg::kIndex], -fg::kIndexOffTrigger));
+    CHECK(sameCurl(curlOf(fg::Rule::Gun, 0.0, 1.0, 1.0, 0.0).finger[fg::kIndex], 0.0));
+    CHECK(sameCurl(curlOf(fg::Rule::Gun, 0.0, 1.0, 0.5, 0.0).finger[fg::kIndex], -fg::kIndexOffTrigger / 2.0));
+    CHECK(sameCurl(curlOf(fg::Rule::Gun, 0.6, 1.0, 0.0, 0.0).finger[fg::kIndex], 0.0));  // pulled, the sensor late: on it
+    CHECK(curlOf(fg::Rule::Gun, 0.0, 1.0, 0.0, 0.0).finger[fg::kThumb] == 0.0);    // the thumb keeps the animated grip
+    // Out-of-range inputs are clamped.
+    CHECK(sameCurl(curlOf(fg::Rule::Free, 2.0, -1.0, 3.0, 5.0).finger[fg::kIndex], 1.0));
+    CHECK(sameCurl(curlOf(fg::Rule::Free, 2.0, -1.0, 3.0, 5.0).finger[fg::kMiddle], 0.0));
+    // The touch eases in and out over kTouchBlendS; a hand that had no sensor starts where the touch is.
+    CHECK(fg::EaseTouch(-1.0, true, 0.0) == 1.0 && fg::EaseTouch(-1.0, false, 0.0) == 0.0);
+    CHECK(sameCurl(fg::EaseTouch(0.0, true, fg::kTouchBlendS / 2.0), 0.5));
+    CHECK(sameCurl(fg::EaseTouch(0.5, false, fg::kTouchBlendS / 4.0), 0.25));
+    CHECK(fg::EaseTouch(0.9, true, 1.0) == 1.0 && fg::EaseTouch(0.1, false, 1.0) == 0.0);
+    CHECK(fg::EaseTouch(0.4, true, -1.0) == 0.4);  // no time, no change
 }
 
 // tests/InstallTests.cpp: the installer's logic (research/33).

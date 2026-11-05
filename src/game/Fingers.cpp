@@ -6,6 +6,7 @@
 #include "game/HandCalibration.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <format>
 #include <optional>
@@ -19,15 +20,11 @@ namespace fg = ik::fingers;
 enum Side { kLeft = 0, kRight = 1 };
 constexpr char const* kSideNames[2] = {"left", "right"};
 
-// With the weapon drawn the right index finger rests this far off the trigger (a fraction of the full curl,
-// extended against the animation's finger on the trigger) and comes back onto it as the trigger is squeezed.
-constexpr double kIndexRest = 0.5;
-
 // What a hand does this tick.
 enum class Mode {
     Off,   // not driven (the reason is in the status)
-    Free,  // the index follows the trigger, the other fingers the grip, the thumb a little
-    Gun,   // on the gun: only the index finger, off the trigger until it's squeezed
+    Free,  // the index follows the trigger, the other fingers the grip, the thumb its rest (or the grip)
+    Gun,   // on the gun: only the index finger, off the trigger until it's touched (or squeezed)
     Held,  // the support grip holds the foregrip: the animation's hold, untouched
 };
 
@@ -57,9 +54,15 @@ struct HandState {
     char const* why = "";
     float trigger = 0.0f;
     float squeeze = 0.0f;
+    double triggerTouch = -1.0;  // the eased sensor weights given to the rule (-1: no sensor, or [Hands] fingerTouch = 0)
+    double thumbTouch = -1.0;
     fg::Curl curl;
 };
 std::array<HandState, 2> gHands;
+// The touch sensors' eased weights per hand (trigger, thumb), kept across ticks; -1 while the hand has no such sensor.
+std::array<std::array<double, 2>, 2> gTouch{{{-1.0, -1.0}, {-1.0, -1.0}}};
+std::chrono::steady_clock::time_point gLastFill{};
+std::array<int, 2> gLoggedSensors{-1, -1};  // what each controller's sensors were last logged as (bit 0 trigger, bit 1 thumb)
 std::array<Mode, 2> gLoggedMode{Mode::Off, Mode::Off};
 std::string gStatus = "off";
 std::string gLoggedStatus;
@@ -160,6 +163,11 @@ void Fill(engine::bone_pose::Request& request, Skeleton const& skeleton, std::sp
     vr::controllers::State const& controllers, Inputs const& in) {
     hand_calibration::Fingers const settings = hand_calibration::GetFingers();
     request.fingers.fullCurlDegrees = settings.curlDeg;
+    auto const now = std::chrono::steady_clock::now();
+    double const seconds = gLastFill == std::chrono::steady_clock::time_point{}
+        ? 0.0
+        : std::clamp(std::chrono::duration<double>(now - gLastFill).count(), 0.0, 0.1);
+    gLastFill = now;
     for (HandState& hand : gHands) {
         hand = {};
         hand.why = "not driven";
@@ -183,6 +191,24 @@ void Fill(engine::bone_pose::Request& request, Skeleton const& skeleton, std::sp
         std::optional<fg::HandAxes> const& axes = gFound.axes[static_cast<std::size_t>(side)];
         state.trigger = std::clamp(tracked.trigger, 0.0f, 1.0f);
         state.squeeze = std::clamp(tracked.squeeze, 0.0f, 1.0f);
+        // The touch sensors (research/43 "Touch sensors"): eased weights, kept while the controller reports the sensor.
+        std::array<double, 2>& touch = gTouch[static_cast<std::size_t>(side)];
+        bool const known[2] = {settings.touch && tracked.triggerTouchKnown, settings.touch && tracked.thumbTouchKnown};
+        bool const touching[2] = {tracked.triggerTouch, tracked.thumbTouch};
+        for (int k = 0; k < 2; ++k) {
+            touch[static_cast<std::size_t>(k)] = known[k] ? fg::EaseTouch(touch[static_cast<std::size_t>(k)], touching[k], seconds) : -1.0;
+        }
+        state.triggerTouch = touch[0];
+        state.thumbTouch = touch[1];
+        int const sensors = (tracked.triggerTouchKnown ? 1 : 0) | (tracked.thumbTouchKnown ? 2 : 0);
+        if (sensors != gLoggedSensors[static_cast<std::size_t>(side)]) {
+            gLoggedSensors[static_cast<std::size_t>(side)] = sensors;
+            log::Info("fingers: the {} controller {}{}", kSideNames[side],
+                sensors == 0 ? "has no touch sensors: the index follows the trigger, the thumb the grip"
+                             : std::format("has touch sensors ({}{}{})", (sensors & 1) != 0 ? "trigger" : "",
+                                   sensors == 3 ? ", " : "", (sensors & 2) != 0 ? "thumb" : ""),
+                sensors != 0 && !settings.touch ? ": not used ([Hands] fingerTouch = 0)" : "");
+        }
         if (bones.hand < 0 || bones.Found() == 0) {
             state.why = "no finger bones";
             continue;
@@ -200,20 +226,22 @@ void Fill(engine::bone_pose::Request& request, Skeleton const& skeleton, std::sp
             state.why = "on the foregrip (as animated)";
             continue;  // the animation's hold: nothing written for this hand
         }
-        double const trigger = state.trigger;
-        double const squeeze = state.squeeze;
+        fg::Controller controller;
+        controller.trigger = state.trigger;
+        controller.squeeze = state.squeeze;
+        controller.triggerTouch = state.triggerTouch;
+        controller.thumbTouch = state.thumbTouch;
         if (side == kRight && in.weaponDrawn) {
             state.mode = Mode::Gun;
-            state.why = "holding the gun: the index finger off the trigger until it's squeezed";
-            state.curl.finger[fg::kIndex] = -kIndexRest * (1.0 - trigger);
+            state.why = state.triggerTouch >= 0.0 ? "holding the gun: the index finger off the trigger until it touches it"
+                                                  : "holding the gun: the index finger off the trigger until it's squeezed";
+            state.curl = fg::FromController(fg::Rule::Gun, controller);
         } else {
             state.mode = Mode::Free;
-            state.why = "free: the index follows the trigger, the other fingers the grip";
-            state.curl.finger[fg::kIndex] = trigger;
-            state.curl.finger[fg::kMiddle] = squeeze;
-            state.curl.finger[fg::kRing] = squeeze;
-            state.curl.finger[fg::kPinky] = squeeze;
-            state.curl.finger[fg::kThumb] = squeeze;  // scaled down by the solver (kThumbScale)
+            state.why = state.triggerTouch >= 0.0 || state.thumbTouch >= 0.0
+                ? "free: the index points or rests on the trigger, the other fingers follow the grip, the thumb its rest"
+                : "free: the index follows the trigger, the other fingers the grip";
+            state.curl = fg::FromController(fg::Rule::Free, controller);  // the thumb scaled down by the solver (kThumbScale)
         }
         engine::bone_pose::FingerHand& out = request.fingers.hands[static_cast<std::size_t>(side)];
         out.enabled = true;
@@ -261,15 +289,19 @@ std::string StatusJson() {
         }
         fg::HandBones const& bones = gFound.bones[static_cast<std::size_t>(side)];
         std::optional<fg::HandAxes> const& axes = gFound.axes[static_cast<std::size_t>(side)];
-        hands += std::format("\"{}\": {{\"mode\": {}, \"why\": {}, \"trigger\": {}, \"grip\": {}, \"curl\": [{}], \"fingersFound\": {}, "
+        auto const weight = [](double w) { return w >= 0.0 ? json::JsonNumber(w) : std::string("null"); };
+        hands += std::format("\"{}\": {{\"mode\": {}, \"why\": {}, \"trigger\": {}, \"grip\": {}, \"triggerTouch\": {}, "
+                             "\"thumbTouch\": {}, \"curl\": [{}], \"fingersFound\": {}, "
                              "\"axes\": {}, \"palmFromThumb\": {}, \"bonesWritten\": {}, \"skipped\": {}}}{}",
             kSideNames[side], json::JsonString(Name(state.mode)), json::JsonString(state.why), json::JsonNumber(state.trigger),
-            json::JsonNumber(state.squeeze), curl, bones.hand >= 0 ? bones.Found() : 0, axes ? "true" : "false",
+            json::JsonNumber(state.squeeze), weight(state.triggerTouch), weight(state.thumbTouch), curl,
+            bones.hand >= 0 ? bones.Found() : 0, axes ? "true" : "false",
             axes && axes->palmFromThumb ? "true" : "false", written ? written->bonesWritten[static_cast<std::size_t>(side)] : 0,
             written && written->skipped[static_cast<std::size_t>(side)] ? "true" : "false", side == kLeft ? ", " : "");
     }
-    return std::format("{{\"enabled\": {}, \"curlDeg\": {}, \"driving\": {}, \"status\": {}, {}}}", settings.on ? "true" : "false",
-        json::JsonNumber(settings.curlDeg), gDriving ? "true" : "false", json::JsonString(gStatus), hands);
+    return std::format("{{\"enabled\": {}, \"curlDeg\": {}, \"touchSensors\": {}, \"driving\": {}, \"status\": {}, {}}}",
+        settings.on ? "true" : "false", json::JsonNumber(settings.curlDeg), settings.touch ? "true" : "false", gDriving ? "true" : "false",
+        json::JsonString(gStatus), hands);
 }
 
 void LogStats() {
@@ -280,8 +312,13 @@ void LogStats() {
     std::string text;
     for (int side : {kLeft, kRight}) {
         HandState const& state = gHands[static_cast<std::size_t>(side)];
-        text += std::format("{}{} {} (trigger {:.2f}, grip {:.2f}{})", side == kLeft ? "" : "; ", kSideNames[side], Name(state.mode), state.trigger,
-            state.squeeze,
+        std::string touch;
+        if (state.triggerTouch >= 0.0 || state.thumbTouch >= 0.0) {
+            touch = std::format(", touch: trigger {}, thumb {}", state.triggerTouch >= 0.0 ? std::format("{:.2f}", state.triggerTouch) : "none",
+                state.thumbTouch >= 0.0 ? std::format("{:.2f}", state.thumbTouch) : "none");
+        }
+        text += std::format("{}{} {} (trigger {:.2f}, grip {:.2f}{}{})", side == kLeft ? "" : "; ", kSideNames[side], Name(state.mode),
+            state.trigger, state.squeeze, touch,
             written ? std::format(", {} bones{}", written->bonesWritten[static_cast<std::size_t>(side)],
                           written->skipped[static_cast<std::size_t>(side)] ? ", SKIPPED: bone names changed" : "")
                     : std::string(", not written yet"));
@@ -295,6 +332,9 @@ void Shutdown() {
         hand = {};
     }
     gLoggedMode = {Mode::Off, Mode::Off};
+    gTouch = {{{-1.0, -1.0}, {-1.0, -1.0}}};
+    gLastFill = {};
+    gLoggedSensors = {-1, -1};
     gStatus = "off";
     gLoggedStatus.clear();
     gDriving = false;

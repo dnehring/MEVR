@@ -321,7 +321,11 @@ switching frameworks.
   person with tracked controllers, each hand's index curls with its trigger and the other fingers with its grip (thumb x 0.35),
   applied in `engine/BonePose` after arm IK (`Request::fingers`, inside its one journalled SpaceBases write). Weapon drawn: the right
   hand keeps the animation's grip but the index rests off the trigger (-0.5 curl) until squeezed; the left hand on the foregrip is
-  untouched. Bones `{Left,Right}{Thumb,Index,Middle,Ring,Pink}Finger[1,2]` under `LeftWrist`/`RightWrist`; the flexion axes are
+  untouched. **Touch sensors** (research/43 "Touch sensors", 2026-11-04, `[Hands] fingerTouch`): Touch and Index controllers report
+  a finger on the trigger and a thumb on the stick/buttons/thumb rest (`core/xr/Input`'s optional `trigger_touch`/`thumb_touch`
+  actions, suggested with a fallback without them; `vr::controllers::Hand::triggerTouch[Known]`, `thumbTouch[Known]`, so host and mod
+  deploy together; recordings' button bits 6-9): a lifted finger points (on the gun: lies along the frame until touched), a lifted
+  thumb is up (open hand, thumbs-up in a fist); rules `ik::fingers::FromController` (unit-tested), eased over 0.08 s. Bones `{Left,Right}{Thumb,Index,Middle,Ring,Pink}Finger[1,2]` under `LeftWrist`/`RightWrist`; the flexion axes are
   measured from the rest pose (palm plane from the knuckles, palm side from the thumb). **Side finding (2026-10-31):
   `BonePose::TakeRequest` never copied `Request::gunShift`** since 24fed58, so the sight assist and the scope pull never reached the
   pose until then. Logs `fingers:`; snapshot `"mod"."fingers"`.

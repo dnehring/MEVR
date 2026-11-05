@@ -68,6 +68,8 @@ private:
     XrAction primary_ = XR_NULL_HANDLE;
     XrAction secondary_ = XR_NULL_HANDLE;
     XrAction menu_ = XR_NULL_HANDLE;
+    XrAction triggerTouch_ = XR_NULL_HANDLE;  // optional: the capacitive sensors (Touch, Index)
+    XrAction thumbTouch_ = XR_NULL_HANDLE;
     XrAction gripPose_ = XR_NULL_HANDLE;
     XrAction aimPose_ = XR_NULL_HANDLE;
     XrAction haptic_ = XR_NULL_HANDLE;  // vibration output; optional

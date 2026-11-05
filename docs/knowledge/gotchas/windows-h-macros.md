@@ -6,7 +6,7 @@ tags: [tooling, build, windows]
 status: stable
 timestamp: 2026-11-04T09:00:00Z
 generated: { by: claude-code/opus-5.5, at: 2026-11-04T09:00:00Z }
-bitten: [2026-11-04, 2026-11-04]
+bitten: [2026-11-04, 2026-11-04, 2026-11-04]
 ---
 
 # Symptom
@@ -15,6 +15,7 @@ bitten: [2026-11-04, 2026-11-04]
 |---|---|
 | the monolithic build fails in `game/GalaxyDump` while `build/` compiled: `SetProp` "is not a member" / redefinition | a function named `SetProp` (601a938), caught by the scope session's players' build |
 | `error C2513: 'const float': no variable declared before '='`, then `syntax error: '>'`, `illegal else` | `float const far = ...` in core/vr/WorldUi.cpp |
+| `error C2513: 'const auto': no variable declared before '='`, then a C4834 "discarding return value" on every later use | `auto const near = [](...)` a test lambda in tests/Main.cpp (the finger touch tests) |
 
 # Cause
 

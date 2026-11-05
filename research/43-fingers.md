@@ -5,7 +5,9 @@ inputs, so a squeezed grip closes the hand and a pulled trigger bends the index 
 animation posed. With the weapon drawn the right hand keeps the animation's hold of the gun and only the index finger
 moves: it rests along the frame, off the trigger, until the trigger is squeezed, when it is back on the trigger as
 animated. The left hand does the same as a free hand while it is off the gun; held on the foregrip by the support
-grip ([research/19](19-body-holsters.md) sections 9-11, `game/SupportGrip`) it keeps the animated hold.
+grip ([research/19](19-body-holsters.md) sections 9-11, `game/SupportGrip`) it keeps the animated hold. Since
+2026-11-04 the controllers' touch sensors say more (section "Touch sensors"): a finger lifted off the trigger points, a
+thumb lifted off the stick and buttons is up.
 
 Builds on [14](14-vrik.md) (route 2: the pose written after the animation, the hand carried rigidly with everything
 below it, the hand frame from the finger bases), [38](38-combat-stance.md) (`core/ik/PoseGraft`: a bone put back in
@@ -84,8 +86,8 @@ Rules (`game/Fingers`, each tick from arm IK's drive, `[Hands] fingers = 1`):
 
 | Hand | Weapon | Rule |
 |---|---|---|
-| either | away | index = trigger; middle, ring, little = grip; thumb = grip (x 0.35 in the solver) |
-| right | drawn (a verified ranged weapon hangs in the right hand, `weapon::Key()`, or arm IK aims it) | middle, ring, little and thumb untouched; index = -0.5 x (1 - trigger): half a curl extended off the trigger, back onto the animated trigger finger as the trigger closes |
+| either | away | index = trigger; middle, ring, little = grip; thumb = grip (x 0.35 in the solver); with touch sensors, the index and thumb as in "Touch sensors" |
+| right | drawn (a verified ranged weapon hangs in the right hand, `weapon::Key()`, or arm IK aims it) | middle, ring, little and thumb untouched; index = -0.5 x (1 - trigger): half a curl extended off the trigger, back onto the animated trigger finger as the trigger closes; with the trigger's sensor, by the touch instead of the pull |
 | left | drawn, the support grip holds (`support_grip::Held()`) | untouched (the animated hold of the foregrip); nothing written for this hand |
 | left | drawn, off the gun | as a free hand |
 
@@ -128,7 +130,62 @@ measurable next to the arm solve.
   curl, a negative curl lifts it, a curl past 1 is clamped, bad input writes nothing, and a Y-mirrored left hand gets
   the mirrored palm and axis and still closes toward its palm.
 
+## Touch sensors (2026-11-04)
+
+The user asked whether hand gestures map to the body ("open hand, grip closes all fingers except the pointer"): the
+grip and trigger did, but a controller says more than its two analog values. Meta's Touch controllers (Quest 1-3, Rift)
+and Valve's Index have capacitive sensors that tell whether a finger rests on the trigger and whether the thumb rests on
+the stick, a face button or the thumb rest; that is how Meta's own hands, Half-Life: Alyx's and most VR games make a
+pointing finger and a thumbs-up without hand tracking.
+
+- **The inputs** (`core/xr/Input`, the host's actions on Halcyon's session): two optional boolean actions,
+  `trigger_touch` (Touch and Index: `/input/trigger/touch`) and `thumb_touch` (Touch: `/input/thumbstick/touch`,
+  `/input/thumbrest/touch`, `/input/x/touch` and `/input/y/touch` left, `/input/a/touch` and `/input/b/touch` right;
+  Index: `/input/thumbstick/touch`, `/input/a/touch`, `/input/b/touch`, `/input/trackpad/touch`); OpenXR ORs the
+  sources of one boolean action, so the thumb touches if it rests on any of them. One unknown path rejects a profile's
+  whole suggestion, so the profile is suggested with the sensors and, if refused, again without them (log `OpenXR: ...
+  rejected the touch sensors' paths: bound without them`); the controller is never lost for its sensors. Whether a hand
+  has a sensor is the action state's `isActive` (a source bound and live): `vr::controllers::Hand::triggerTouchKnown`,
+  `thumbTouchKnown` next to `triggerTouch`, `thumbTouch` (the struct grew: host and mod deploy together; the mod's size
+  check refuses a mismatched host's controllers). The HP Reverb G2, WMR, Vive wands and the simple controller report
+  none and keep the rules above exactly. Recordings carry them as button bits 6-9 (older recordings: no sensors);
+  snapshots as `controllers.<hand>.triggerTouch` / `thumbTouch` (null without a sensor).
+- **The rules** (`ik::fingers::FromController`, unit-tested in `TestFingers`), curls as above (1 = `fingerCurlDeg` per
+  joint toward the palm, the thumb x 0.35):
+
+  | | finger on the trigger | finger off it | thumb resting | thumb lifted |
+  |---|---|---|---|---|
+  | free hand | index `kIndexOnTrigger` 0.25, closing to 1 with the pull | `kIndexPoint` -0.15: straight, pointing | at least `kThumbOnRest` 0.5 (the grip's value if more) | `kThumbUp` -0.8: an open hand, or a thumbs-up in a fist |
+  | right hand on the gun | 0: on the trigger as animated, whatever the pull | `-kIndexOffTrigger` -0.5: along the frame | as animated | as animated |
+
+  So with both sensors: nothing touched is an open hand, resting is a relaxed hand on the controller, grip with the
+  finger off is pointing, grip and trigger with the thumb off is a thumbs-up, everything is a fist. A pulled trigger
+  counts as touched (a pull of 0.05 is a full touch) whatever its sensor says. The sensors are binary, so each eases in
+  or out over `kTouchBlendS` (0.08 s, `ik::fingers::EaseTouch`; the analog pull and grip stay immediate). A hand held on
+  a Mako control (research/47) counts its finger as on the trigger: it stays round the handle.
+- **Settings and logs:** `[Hands] fingerTouch = 1` (0: the trigger and grip only, as before), appended to an older
+  file. `fingers: the <side> controller has touch sensors (trigger, thumb)` once per change; the heartbeat's `fingers:`
+  line adds `touch: trigger <w>, thumb <w>`; the snapshot's `"mod"."fingers"` has `touchSensors` and each hand's
+  `triggerTouch` / `thumbTouch` weights (null without a sensor).
+- **Measured on the test rig** (SteamVR's null driver, which accepted both profiles with the sensors' paths, no
+  fallback; UNC20 on foot, a synthetic recording with the sensors' bits holding one hand in front of the face through
+  five gestures, 2.5 s each, replayed with inputs): every snapshot's `"mod"."fingers"` had the rule's curls, thumb,
+  index, middle, ring, little: open [-0.8, -0.15, 0, 0, 0] (6 bones written), rest [0.5, 0.25, 0, 0, 0], point [1,
+  -0.15, 1, 1, 1] (15 bones), thumbs-up [-0.8, 1, 1, 1, 1], fist [1, 1, 1, 1, 1]; the pictures show five different
+  hands (the extended digit in the point a thin index, in the thumbs-up the thicker thumb from the side of the hand).
+  On the gun: off the trigger -0.5, touching it 0. Two test-rig details: the right trigger with the weapon away drew
+  the pistol by a route the holsters don't refuse (`holsters: the pistol came out without a holster grab ... not
+  through DrawPrimaryWeapon`: the holsters' line for a draw by another route, so `onlyHolstersDraw` doesn't hold for
+the trigger [verify which route]), so the right hand turned to its gun rule during the fist
+  phases; the left hand was measured with `[Controls] leftTrigger = none` for the test (put back after). And the game's
+  `pause` stops the pose writer, so a paused world can't be used to look at a pose.
+
 ## In the headset (not verified without one)
+
+- The touch sensors' values (section "Touch sensors"): whether -0.15 straightens the index from the animation's relaxed
+  curl without bending it backward, whether 0.25 lays it on a Touch controller's trigger, whether -0.8 x 0.35 of
+  `fingerCurlDeg` lifts the thumb into a thumbs-up (the thumb's own axis, below, matters more there), and whether 0.08 s
+  reads as a finger moving. The constants are in `core/ik/Fingers.hpp`.
 
 - Whether the measured palm side is right on the real rig: a squeezed grip must close the fingers into the palm, not
   bend them backward. If backward, the thumb heuristic is wrong for this rig and the log's `palm normal ... from the

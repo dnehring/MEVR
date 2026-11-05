@@ -79,4 +79,39 @@ int Apply(std::span<Transform> pose, std::span<int const> parents, HandBones con
 // The rotation by `degrees` about the unit `axis` (right-handed in components, as Rotate applies it).
 Quat AboutAxis(Vec3 axis, double degrees);
 
+// One controller's inputs for its hand's curls (research/43, "Touch sensors").
+struct Controller {
+    double trigger = 0.0;  // 0..1
+    double squeeze = 0.0;  // the grip, 0..1
+    // The capacitive sensors as weights, 0 (off) to 1 (touching), eased by EaseTouch; negative where the controller has
+    // no such sensor (or they're switched off): that finger then follows the trigger or the grip alone.
+    double triggerTouch = -1.0;  // a finger on the trigger
+    double thumbTouch = -1.0;    // the thumb on the stick, a face button, the thumb rest or the trackpad
+};
+
+// What a hand is doing.
+enum class Rule {
+    Free,  // empty: the index follows the trigger, the other three the grip, the thumb its rest
+    Gun,   // holding the gun (the animation's grip): only the index, off the trigger or on it
+};
+
+// The curls the rule gives.
+//   Free: index = the trigger, or with the trigger's sensor kIndexPoint (lifted: pointing) easing to kIndexOnTrigger
+//         (resting on it) and from there to 1 with the pull; middle, ring, pinky = the grip; thumb = the grip, or with
+//         its sensor kThumbUp (lifted: an open hand, or a thumbs-up in a fist) easing to at least kThumbOnRest.
+//   Gun:  index = -kIndexOffTrigger (along the frame) easing to 0 (the animation's finger on the trigger) as the trigger
+//         is touched, or without a sensor as it is pulled; the others 0 (as animated).
+// A pressed trigger counts as touched (a pull of 0.05 is a full touch), whatever its sensor says.
+Curl FromController(Rule rule, Controller const& controller);
+inline constexpr double kIndexPoint = -0.15;
+inline constexpr double kIndexOnTrigger = 0.25;
+inline constexpr double kIndexOffTrigger = 0.5;
+inline constexpr double kThumbUp = -0.8;
+inline constexpr double kThumbOnRest = 0.5;
+
+// A touch weight moved toward `touching` (1) or not (0) by `seconds` / kTouchBlendS, so a finger lifting or landing
+// takes kTouchBlendS instead of a frame. A negative weight (no sensor until now) starts where the touch is.
+double EaseTouch(double weight, bool touching, double seconds);
+inline constexpr double kTouchBlendS = 0.08;
+
 } // namespace mevr::ik::fingers

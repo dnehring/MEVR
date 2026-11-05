@@ -50,7 +50,7 @@ void Bind(std::vector<Binding>& list, XrAction action, char const* hand, char co
 
 // Suggestions for one interaction profile. A runtime that doesn't know a profile rejects it;
 // that's fine as long as one profile is accepted.
-bool Suggest(XrInstance instance, char const* profile, std::vector<Binding> const& bindings) {
+bool Suggest(XrInstance instance, char const* profile, std::vector<Binding> const& bindings, bool quiet = false) {
     std::vector<XrActionSuggestedBinding> suggested;
     for (Binding const& binding : bindings) {
         suggested.push_back({binding.action, ToPath(instance, binding.path.c_str())});
@@ -61,10 +61,32 @@ bool Suggest(XrInstance instance, char const* profile, std::vector<Binding> cons
     info.suggestedBindings = suggested.data();
     XrResult const result = xrSuggestInteractionProfileBindings(instance, &info);
     if (XR_FAILED(result)) {
-        log::Warn("OpenXR: bindings for {} rejected ({})", profile, static_cast<int>(result));
+        if (!quiet) {
+            log::Warn("OpenXR: bindings for {} rejected ({})", profile, static_cast<int>(result));
+        }
         return false;
     }
     return true;
+}
+
+// The profile's bindings with the touch sensors, and if the runtime rejects any of their paths, without them (one bad
+// path rejects the whole suggestion, and the controller must never be lost for its sensors).
+bool SuggestWithTouch(XrInstance instance, char const* profile, std::vector<Binding> const& bindings,
+    std::vector<Binding> const& touchSensors) {
+    if (touchSensors.empty()) {
+        return Suggest(instance, profile, bindings);
+    }
+    std::vector<Binding> all = bindings;
+    all.insert(all.end(), touchSensors.begin(), touchSensors.end());
+    if (Suggest(instance, profile, all, true)) {
+        return true;
+    }
+    bool const without = Suggest(instance, profile, bindings);
+    if (without) {
+        log::Warn("OpenXR: {} rejected the touch sensors' paths: bound without them (the fingers follow the trigger and grip only)",
+            profile);
+    }
+    return without;
 }
 
 float ReadFloat(XrSession session, XrAction action, XrPath hand) {
@@ -78,13 +100,22 @@ float ReadFloat(XrSession session, XrAction action, XrPath hand) {
     return state.currentState;
 }
 
-bool ReadBool(XrSession session, XrAction action, XrPath hand) {
+bool ReadBool(XrSession session, XrAction action, XrPath hand, bool* active = nullptr) {
+    if (active != nullptr) {
+        *active = false;
+    }
+    if (action == XR_NULL_HANDLE) {
+        return false;
+    }
     XrActionStateGetInfo info{XR_TYPE_ACTION_STATE_GET_INFO};
     info.action = action;
     info.subactionPath = hand;
     XrActionStateBoolean state{XR_TYPE_ACTION_STATE_BOOLEAN};
     if (XR_FAILED(xrGetActionStateBoolean(session, &info, &state)) || !state.isActive) {
         return false;
+    }
+    if (active != nullptr) {
+        *active = true;  // a source is bound and live: the controller has this input
     }
     return state.currentState == XR_TRUE;
 }
@@ -161,6 +192,10 @@ bool Input::Create(Target const& target) {
     aimPose_ = CreateAction(set_, XR_ACTION_TYPE_POSE_INPUT, "aim_pose", "Aim pose", hands_);
     // Optional: without it the controllers work, they just don't vibrate (Vibrate).
     haptic_ = CreateAction(set_, XR_ACTION_TYPE_VIBRATION_OUTPUT, "haptic", "Vibration", hands_);
+    // Optional too: the capacitive sensors, for the fingers (research/43 "Touch sensors"). Several sources on one boolean
+    // action are OR'd by the runtime: the thumb touches if it rests on any of them.
+    triggerTouch_ = CreateAction(set_, XR_ACTION_TYPE_BOOLEAN_INPUT, "trigger_touch", "Finger on the trigger", hands_);
+    thumbTouch_ = CreateAction(set_, XR_ACTION_TYPE_BOOLEAN_INPUT, "thumb_touch", "Thumb resting", hands_);
     for (XrAction action : {trigger_, squeeze_, stick_, stickClick_, primary_, secondary_, menu_, gripPose_, aimPose_}) {
         if (action == XR_NULL_HANDLE) {
             Release(target);
@@ -186,6 +221,22 @@ bool Input::Create(Target const& target) {
         Bind(touch, haptic_, "left", "/output/haptic");
         Bind(touch, haptic_, "right", "/output/haptic");
     }
+    std::vector<Binding> touchSensors;
+    for (char const* hand : {"left", "right"}) {
+        if (triggerTouch_ != XR_NULL_HANDLE) {
+            Bind(touchSensors, triggerTouch_, hand, "/input/trigger/touch");
+        }
+        if (thumbTouch_ != XR_NULL_HANDLE) {
+            Bind(touchSensors, thumbTouch_, hand, "/input/thumbstick/touch");
+            Bind(touchSensors, thumbTouch_, hand, "/input/thumbrest/touch");
+        }
+    }
+    if (thumbTouch_ != XR_NULL_HANDLE) {
+        Bind(touchSensors, thumbTouch_, "left", "/input/x/touch");
+        Bind(touchSensors, thumbTouch_, "left", "/input/y/touch");
+        Bind(touchSensors, thumbTouch_, "right", "/input/a/touch");
+        Bind(touchSensors, thumbTouch_, "right", "/input/b/touch");
+    }
 
     std::vector<Binding> index;
     for (char const* hand : {"left", "right"}) {
@@ -199,6 +250,18 @@ bool Input::Create(Target const& target) {
         Bind(index, aimPose_, hand, "/input/aim/pose");
         if (haptic_ != XR_NULL_HANDLE) {
             Bind(index, haptic_, hand, "/output/haptic");
+        }
+    }
+    std::vector<Binding> indexSensors;
+    for (char const* hand : {"left", "right"}) {
+        if (triggerTouch_ != XR_NULL_HANDLE) {
+            Bind(indexSensors, triggerTouch_, hand, "/input/trigger/touch");
+        }
+        if (thumbTouch_ != XR_NULL_HANDLE) {
+            Bind(indexSensors, thumbTouch_, hand, "/input/thumbstick/touch");
+            Bind(indexSensors, thumbTouch_, hand, "/input/a/touch");
+            Bind(indexSensors, thumbTouch_, hand, "/input/b/touch");
+            Bind(indexSensors, thumbTouch_, hand, "/input/trackpad/touch");
         }
     }
 
@@ -266,8 +329,8 @@ bool Input::Create(Target const& target) {
         }
     }
 
-    bool const touchOk = Suggest(instance, "/interaction_profiles/oculus/touch_controller", touch);
-    bool const indexOk = Suggest(instance, "/interaction_profiles/valve/index_controller", index);
+    bool const touchOk = SuggestWithTouch(instance, "/interaction_profiles/oculus/touch_controller", touch, touchSensors);
+    bool const indexOk = SuggestWithTouch(instance, "/interaction_profiles/valve/index_controller", index, indexSensors);
     bool const hpOk = Suggest(instance, "/interaction_profiles/hp/mixed_reality_controller", hp);
     bool const wmrOk = Suggest(instance, "/interaction_profiles/microsoft/motion_controller", wmr);
     bool const viveOk = Suggest(instance, "/interaction_profiles/htc/vive_controller", vive);
@@ -319,6 +382,7 @@ void Input::Release(Target const& target) {
     }
     set_ = XR_NULL_HANDLE;
     trigger_ = squeeze_ = stick_ = stickClick_ = primary_ = secondary_ = menu_ = gripPose_ = aimPose_ = haptic_ = XR_NULL_HANDLE;
+    triggerTouch_ = thumbTouch_ = XR_NULL_HANDLE;
     created_ = false;
 }
 
@@ -364,6 +428,8 @@ void Input::Sync(Target const& target, XrTime time, vr::controllers::State& out)
         h.primary = ReadBool(handle, primary_, path);
         h.secondary = ReadBool(handle, secondary_, path);
         h.menu = ReadBool(handle, menu_, path);
+        h.triggerTouch = ReadBool(handle, triggerTouch_, path, &h.triggerTouchKnown);
+        h.thumbTouch = ReadBool(handle, thumbTouch_, path, &h.thumbTouchKnown);
         h.gripValid = Locate(gripSpaces_[hand], target.base, time, h.grip);
         h.aimValid = Locate(aimSpaces_[hand], target.base, time, h.aim);
     }

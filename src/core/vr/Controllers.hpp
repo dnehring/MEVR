@@ -18,6 +18,13 @@ struct Hand {
     bool primary = false;    // A (right) / X (left)
     bool secondary = false;  // B (right) / Y (left)
     bool menu = false;       // left hand only on Touch
+    // The capacitive sensors (research/43 "Touch sensors"): a finger resting on the trigger; the thumb on the stick, a
+    // face button, the thumb rest or the trackpad. `...Known` is false where the controller has no such sensor (the
+    // runtime bound no source to it: HP Reverb G2, WMR, Vive wands, the simple controller).
+    bool triggerTouch = false;
+    bool thumbTouch = false;
+    bool triggerTouchKnown = false;
+    bool thumbTouchKnown = false;
     bool gripValid = false;
     XrPosef grip{};  // LOCAL space
     bool aimValid = false;

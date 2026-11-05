@@ -297,4 +297,34 @@ int Apply(std::span<Transform> pose, std::span<int const> parents, HandBones con
     return written;
 }
 
+Curl FromController(Rule rule, Controller const& c) {
+    double const trigger = std::clamp(c.trigger, 0.0, 1.0);
+    double const squeeze = std::clamp(c.squeeze, 0.0, 1.0);
+    auto const lerp = [](double a, double b, double t) { return a + (b - a) * t; };
+    bool const triggerSensor = c.triggerTouch >= 0.0;
+    // How much the finger is on the trigger: its sensor's weight, and a pull is a touch whatever the sensor says.
+    double const onTrigger = std::max(triggerSensor ? std::clamp(c.triggerTouch, 0.0, 1.0) : 0.0, std::clamp(trigger * 20.0, 0.0, 1.0));
+    Curl curl;
+    if (rule == Rule::Gun) {
+        // Without a sensor the pull itself brings the finger onto the trigger (research/43's first rule).
+        double const on = triggerSensor ? onTrigger : trigger;
+        curl.finger[kIndex] = -kIndexOffTrigger * (1.0 - on);
+        return curl;
+    }
+    curl.finger[kIndex] = triggerSensor ? lerp(kIndexPoint, lerp(kIndexOnTrigger, 1.0, trigger), onTrigger) : trigger;
+    curl.finger[kMiddle] = squeeze;
+    curl.finger[kRing] = squeeze;
+    curl.finger[kPinky] = squeeze;
+    curl.finger[kThumb] = c.thumbTouch >= 0.0 ? lerp(kThumbUp, std::max(squeeze, kThumbOnRest), std::clamp(c.thumbTouch, 0.0, 1.0)) : squeeze;
+    return curl;
+}
+
+double EaseTouch(double weight, bool touching, double seconds) {
+    if (!(weight >= 0.0)) {
+        return touching ? 1.0 : 0.0;
+    }
+    double const step = std::max(seconds, 0.0) / kTouchBlendS;
+    return touching ? std::min(1.0, weight + step) : std::max(0.0, weight - step);
+}
+
 } // namespace mevr::ik::fingers

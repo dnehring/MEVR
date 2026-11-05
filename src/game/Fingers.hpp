@@ -15,7 +15,10 @@
 // little with the grip), on top of the animation's pose. With the weapon drawn the right hand keeps the animation's
 // grip on the gun except the index finger, which rests along the frame off the trigger until the trigger is squeezed
 // (then it is on the trigger as animated); the left hand does the same as a free hand only while it is NOT on the gun
-// (held by the support grip, it keeps the animated hold of the foregrip).
+// (held by the support grip, it keeps the animated hold of the foregrip). Controllers with touch sensors (Touch,
+// Index; research/43 "Touch sensors", [Hands] fingerTouch) say more: a finger lifted off the trigger points (on the gun:
+// lies along the frame), one resting on it curls a little; a thumb lifted off the stick, buttons and thumb rest is up
+// (an open hand, a thumbs-up in a fist). The rules are core/ik/Fingers' FromController.
 //
 // Arm IK (game/arm_ik) calls Fill each tick it drives the arms from controllers, with its skeleton and the pose as
 // the animation left it: the finger bones are found by name under each hand bone (once per skeleton asset, logged),

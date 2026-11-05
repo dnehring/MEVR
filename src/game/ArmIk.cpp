@@ -895,6 +895,7 @@ void DriveSeated(cockpit_probe::Seat const& seat) {
             vr::controllers::Hand& h = side == kLeft ? fingerState.left : fingerState.right;
             if (seat.held[side]) {
                 h.trigger = std::max(h.trigger, kHeldIndexCurl);
+                h.triggerTouch = true;  // round the handle, never lifted off it to point
             }
         }
         fingers::Fill(request, fingerSkeleton, pose, fingerState, fingerInputs);

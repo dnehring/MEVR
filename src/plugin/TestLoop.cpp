@@ -166,9 +166,11 @@ std::string JFov(XrFovf const& f) {
 }
 std::string JHand(vr::controllers::Hand const& h) {
     return std::format("{{\"gripValid\": {}, \"grip\": {}, \"aimValid\": {}, \"aim\": {}, \"trigger\": {}, \"squeeze\": {}, "
-                       "\"stick\": [{}, {}], \"stickClick\": {}, \"primary\": {}, \"secondary\": {}, \"menu\": {}}}",
+                       "\"stick\": [{}, {}], \"stickClick\": {}, \"primary\": {}, \"secondary\": {}, \"menu\": {}, "
+                       "\"triggerTouch\": {}, \"thumbTouch\": {}}}",
         J(h.gripValid), JPose(h.grip), J(h.aimValid), JPose(h.aim), J(h.trigger), J(h.squeeze), J(h.stickX), J(h.stickY),
-        J(h.stickClick), J(h.primary), J(h.secondary), J(h.menu));
+        J(h.stickClick), J(h.primary), J(h.secondary), J(h.menu), h.triggerTouchKnown ? J(h.triggerTouch) : std::string("null"),
+        h.thumbTouchKnown ? J(h.thumbTouch) : std::string("null"));
 }
 
 // Writes `text` next to `path` and moves it into place, so a reader never sees half a file.

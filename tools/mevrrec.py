@@ -18,7 +18,8 @@ MAGIC = b"MEVRREC\0"
 HEADER = struct.Struct("<8sIIIIq")
 POSE = "7f"
 FRAME = struct.Struct("<qI" + (POSE + "4f") * 2 + ("I4f" + POSE + POSE) * 2)
-BUTTONS = ["stickClick", "primary", "secondary", "menu", "gripValid", "aimValid"]
+BUTTONS = ["stickClick", "primary", "secondary", "menu", "gripValid", "aimValid", "triggerTouch", "thumbTouch",
+           "triggerTouchKnown", "thumbTouchKnown"]
 
 
 def read(path):
