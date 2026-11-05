@@ -50,10 +50,20 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   the side screens readable. (research/47 "Riding in the Mako", research/48 section 5)
 - [ ] Hazard lights in a real fight at low hull: is the red flash comfortable? (research/47 "Hazard lights")
 - [ ] Take the turret from the gunner with the thumbstick, and by aiming with your free right hand; it goes back after
-  3 s. (research/47 "The gunner")
-- [ ] Repair button: press it with a fingertip from the front, hold 2 s, the repair runs. Extraction handle: pull it,
-  hold at the end, the "Return to Normandy?" box shows at the windshield and takes a click, a touch, A and B.
+  3 s. While you press the repair button or hold the extraction handle (or your right hand is at the handle) the gunner
+  keeps it, even with a finger on the trigger. (research/47 "The gunner"; research/48 section 27, built 2026-11-05)
+- [ ] Repair button on the right desk shelf: does it sit right (squared to the shelf, along its front edge), and can you
+  reach it leaning forward and down (1.14 m from the shoulder)? The ring shows the hull: green, amber at half, red low.
+  (research/48 section 27 "Where", built 2026-11-05)
+- [ ] Repair button: press it with a fingertip from the front, hold 2 s while the squares fill blue, the repair runs.
+  With no omni-gel the squares are solid red; right after a repair (cooling down) they flash red every 1.2 s; neither
+  repairs. (research/48 section 27, red built 2026-11-05)
+- [ ] Extraction handle overhead: grab it with a new squeeze (never fires the cannon or boosts), pull it toward you, hold
+  at the end: the "Return to Normandy?" box shows at the windshield with the cockpit still around you, and takes a
+  click, a touch, A and B. Say whether the handle swings the right way and its label reads from the seat.
   (research/48 section 27)
+- [ ] The ceiling lamps' glow spills a haze over the windshield's top (kept for now as the cabin's light on the glass):
+  keep it, or leave the lamps right above the windshield (the spine's drop panel) unlit? (research/48 section 26)
 - [ ] Frame rate on the PS VR2 while driving with the cockpit up (more pixels than the fake headset). (research/47
   "The cockpit's cost")
 
@@ -171,6 +181,10 @@ Ask Claude to run them when the machine is free; each is a console command, a sn
 - Right stick hold: the game's power wheel opens and closes from an input replay. (research/19 "Hold only")
 - Mako: the cannon and the gunner against several woken enemies; `mevr cockpit panel ask` (no gel / gel / cooldown);
   `turretSeam` 1, 2, 4 one at a time; the extraction box's placement. (research/47, 48 section 27, 44)
+- Cockpit panel by replay: a recording that reaches for the button and the handle (their places are the panel status's
+  `layout`, tracking space): the press direction, the handle's swing sign, the squares filling blue and the red refusals
+  in a snapshot, the gunner's `(a hand works the cockpit's panel)` log line; the repair button's place on the desk shelf
+  in a seat snapshot. (research/48 section 27)
 - Squad orders: `mevr order` / `mevr say` / `mevr context` against woken mercenaries: the squad index base (is Shepard
   index 0?), `QuickCommandAttackTarget` honouring its target, the move point dropped along the swapped Rotation, HOLD
   keeping them put and `GetMemberFormation` reading HOLD back, retreat to cover (does the AI take the slot or stand beside
