@@ -98,6 +98,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   built 2026-11-05)
 - [ ] The squad member behind the equipment and squad screens: there, switching with the tabs, comfortable at the
   backdrop's opacity (`[WorldUi] figureOpacity`, 0 = the backdrop's 0.8)? (research/56 section 7, built 2026-11-05)
+- [ ] The wrist screens' size: 0.70 m wide now (0.55 before). Set it live with our menu's Comfort > Game screens > Wrist screen
+  size (0.40-1.00 m): which size reads best without turning your head, with the rail beside it? (research/56 section 2, built
+  2026-11-05)
 
 ### Squad orders by gesture (session: Low-latency voice squad commands)
 - [ ] Squeeze the left grip with the hand away from the gun's foregrip zone, the grenade slot and a hot receiver, and
