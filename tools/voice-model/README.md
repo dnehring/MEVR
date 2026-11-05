@@ -47,6 +47,11 @@ Environment for step 2 (a venv, never the system Python): `pip install torch --i
 requirements/requirements-convert_hf_to_gguf.txt` there). The base must stay Qwen (or Granite): never a Gemma model as
 the base or the teacher, its terms would make ours a derivative (research/54 "Licences sort the field").
 
+**The runtime must feed the model what it was trained on**: `train_lora.py` wraps every record in Qwen's chat template
+with its `SYSTEM` line (thinking off), and `core/voice/Llm` wraps the prefix and the block in the same template
+(`Settings::chatTemplate`, on by default; `[Voice] llmChat = 0` and the bench's `--raw` for a model trained on the raw
+text). Run1 answered 7 of 300 raw and 285 of 300 wrapped. Change the system line in both places or in neither.
+
 The prompt format is the mod's own: `core/vr/SquadContext`'s `Prefix` (the rules and the roster) + `Block` (NOW, PARTY,
 SHEP, the E groups, AIM/GAZE, PT lines, SAY) + `\nACTION:` (`core/voice/Grammar::Prompt`). `make_dataset.py` writes it
 by hand, so a change to `Block` needs the same change there (the llm bench's grammar reader `GbnfFromBlock` reads the

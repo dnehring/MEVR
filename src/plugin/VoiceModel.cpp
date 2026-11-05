@@ -77,9 +77,12 @@ std::wstring ReadPath(wchar_t const* key) {
     return text;
 }
 
+bool gChat = true;
+
 void WorkerMain(fs::path libraryDir, fs::path model, int threads) {
     voice::llm::Settings settings;
     settings.threads = threads;
+    settings.chatTemplate = gChat;
     std::string error;
     if (!gRunner.Load(libraryDir, model, settings, &error)) {
         std::lock_guard<std::mutex> lock(gMutex);
@@ -124,6 +127,8 @@ void Init() {
         gWhyOff = "[Voice] llm = 0";
         return;
     }
+    // [Voice] llmChat = 0: the raw prompt, for a model not fine-tuned in the chat template (core/voice/Llm's Settings).
+    gChat = ReadNumber(L"llmChat", 1.0) != 0.0;
     fs::path const asi = fs::path(gSettingsPath).parent_path();
     std::wstring const dirSetting = ReadPath(L"llmDir");
     fs::path const dir = dirSetting.empty() ? asi / L"voice" / L"llm" : fs::path(dirSetting);

@@ -32,13 +32,17 @@ std::string Gbnf(sc::Scene const& scene, std::vector<sc::Group> const& groups, O
     for (int w = 0; w < sc::kWeapons; ++w) weapon.push_back(sc::WeaponCode(w));
     std::vector<std::string> power{"-"};
     power.insert(power.end(), powers.begin(), powers.end());
-    std::vector<std::string> const order{"attack", "move", "follow", "hold", "regroup", "use", "cancel", "repeat"};
+    // "-" is an equip alone ("Wrex, go sidearm" = W|PI|-|-|-): without it the grammar forced an order onto every equip line
+    // and merged a compound's clauses into one (the first bench of the fine-tune, research/54 "The fine-tune").
+    std::vector<std::string> const order{"-", "attack", "move", "follow", "hold", "regroup", "use", "cancel", "repeat"};
     std::vector<std::string> target{"-", "AIM", "GAZE", "LAST", "OTHER", "SELF", "AHEAD", "LEFT", "RIGHT", "BEHIND"};
     for (sc::Group const& g : groups) target.push_back(std::format("E{}", g.id));
     for (int i = 1; i <= std::clamp(options.deictics, 0, 9); ++i) target.push_back(std::format("PT{}", i));
     int const extra = std::clamp(options.maxClauses, 1, 5) - 1;
-    // The newline ends the answer: without it greedy decoding never stops at one clause (zero-shot it filled all three).
-    return std::format("root ::= (line (\" ; \" line){{0,{}}} | \"none\") \"\\n\"\n"
+    // A newline may end the answer (zero-shot, greedy decoding never stopped at one clause without a way to end), and so may
+    // the end-of-turn token, which is how the fine-tune ends every answer: a mandatory newline would forbid it and leave the
+    // model choosing between a newline it never wrote and another clause.
+    return std::format("root ::= (line (\" ; \" line){{0,{}}} | \"none\") \"\\n\"?\n"
                        "line ::= who \"|\" weapon \"|\" power \"|\" order \"|\" target\n"
                        "who ::= {}\n"
                        "weapon ::= {}\n"

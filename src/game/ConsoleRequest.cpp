@@ -543,9 +543,10 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         return squad_orders::Say(rest);
     }
     if (verb == "voice") {
-        // `mevr voice wav <path> | listen <seconds> | keyterms <a,b> | stop | status`: the host's recognizer (research/54) fed a
-        // WAV as one listen (its lines come back through the same path as the microphone's), told to listen from the
-        // microphone, given key terms, or asked how it is.
+        // `mevr voice wav <path> | listen <seconds> | keyterms <a,b> | stop | status | say <words>`: the host's recognizer
+        // (research/54) fed a WAV as one listen (its lines come back through the same path as the microphone's), told to
+        // listen from the microphone, given key terms, or asked how it is; `say` is a typed transcript on the whole path (the
+        // rules, then the model when they're not sure; `mevr say` alone stops at the rules).
         std::string rest;
         std::getline(words, rest);
         return voice::Console(rest);

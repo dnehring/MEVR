@@ -18,6 +18,7 @@ import random
 import subprocess
 import sys
 
+# The runtime (core/voice/Llm.cpp's kChatHead) wraps every prompt in Qwen's chat template with this same line: change both.
 SYSTEM = "You are the squad's radio. Answer with the action line only."
 
 

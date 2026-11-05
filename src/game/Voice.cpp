@@ -367,6 +367,12 @@ std::string Console(std::string_view rest) {
             gState.status, gState.error[0] != '\0' ? gState.error : "-", gState.listening != 0 ? "yes" : "no", gState.device, gState.model, gListens, gLines, gEarly,
             gOrders, gRefusals, gLastText, gLastOutcome);
     }
+    if (line.starts_with("say ")) {
+        // The typed stand-in for a transcript on the whole path: the rules, and the model when they're not sure (`mevr say`
+        // alone stops at the rules). The answer comes on the host's worker a second later: the log's `voice: the model answered`.
+        Dispatch(line.substr(4), 0.0, "typed");
+        return "voice: " + gLastOutcome + (gLastOutcome.starts_with("not sure") && gLink.askModel != nullptr ? " -> asked the model" : "");
+    }
     if (!gLink.has || gLink.command == nullptr) return "voice: the host has no voice services (older than v31)";
     gLink.command(line.c_str());
     return std::format("voice: request \"{}\" sent to the host (its log says what came of it)", line);

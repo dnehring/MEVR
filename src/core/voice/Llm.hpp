@@ -18,6 +18,10 @@ struct Settings {
     int threads = 4;
     int contextTokens = 2048;
     int maxAnswerTokens = 48;
+    // The prompt wrapped in Qwen's chat template with the trainer's system line (tools/voice-model/train_lora.py's SYSTEM),
+    // the way the fine-tune saw every record: without it the fine-tuned model answered 7 of 300 under llama.cpp against
+    // 939 of 1,000 in the trainer's own eval (research/54 "The fine-tune"). Off: the raw prefix and block (the zero-shot runs).
+    bool chatTemplate = true;
 };
 
 struct Answer {

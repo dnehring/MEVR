@@ -6,7 +6,7 @@
 // Qwen3-0.6B this is the baseline the fine-tune (train_lora.py) has to beat.
 //
 //   mevr-llm-bench --lib external/llama-cpp --model models/voice/llm/Qwen3-0.6B-Q8_0.gguf --data scratch/voice-model/sample.jsonl
-//                  [--threads 4] [--limit 50] [--no-grammar] [--show 5]
+//                  [--threads 4] [--limit 50] [--no-grammar] [--raw] [--show 5]
 #include "core/voice/Grammar.hpp"
 #include "core/voice/Llm.hpp"
 
@@ -64,7 +64,7 @@ std::string Trimmed(std::string s) {
 int main(int argc, char** argv) {
     std::string lib = "external/llama-cpp", model, data;
     int threads = 4, limit = 0, show = 5;
-    bool grammar = true;
+    bool grammar = true, raw = false;
     for (int i = 1; i < argc; ++i) {
         std::string const a = argv[i];
         auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : std::string(); };
@@ -75,14 +75,16 @@ int main(int argc, char** argv) {
         else if (a == "--limit") limit = std::atoi(next().c_str());
         else if (a == "--show") show = std::atoi(next().c_str());
         else if (a == "--no-grammar") grammar = false;
+        else if (a == "--raw") raw = true;
     }
     if (model.empty() || data.empty()) {
-        std::fprintf(stderr, "usage: mevr-llm-bench --lib <folder with llama.dll> --model <gguf> --data <jsonl> [--threads n] [--limit n] [--no-grammar] [--show n]\n");
+        std::fprintf(stderr, "usage: mevr-llm-bench --lib <folder with llama.dll> --model <gguf> --data <jsonl> [--threads n] [--limit n] [--no-grammar] [--raw] [--show n]\n");
         return 2;
     }
     mevr::voice::llm::Runner runner;
     mevr::voice::llm::Settings settings;
     settings.threads = threads;
+    settings.chatTemplate = !raw;  // --raw: the prompt without the chat template the fine-tune was trained in (the zero-shot runs)
     std::string error;
     if (!runner.Load(lib, model, settings, &error)) {
         std::fprintf(stderr, "load: %s\n", error.c_str());

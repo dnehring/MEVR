@@ -589,7 +589,7 @@ deictic resolved at its time and the grammar, and dispatches each line of the an
 writes itself from the grammar, as planned: [tools/voice-model/make_dataset.py](../tools/voice-model/make_dataset.py)
 samples scenes, draws gold lines and phrasings (fillers, restarts, compounds, deictics, talk as `none`) and injects the
 recognizer's slips on names and powers, in the mod's own prompt format; [train_lora.py](../tools/voice-model/train_lora.py)
-is the LoRA on Qwen3-0.6B with the GGUF export (not run: the GPU was the game's; an hour on the 4090 is the estimate).
+is the LoRA on Qwen3-0.6B with the GGUF export (run the same evening: "The fine-tune" below; 58 minutes on the 4090).
 `mevr-llm-bench` answers a dataset under the grammars with the same runtime; llama.cpp's own `llama-bench` wasn't run here
 (a downloaded executable), so the raw token rates are still the research's extrapolations.
 
@@ -650,3 +650,76 @@ if the rules take nine orders in ten: a nicety for the tenth, off by default whe
   the validator ("a weapon or a power needs one squadmate"). The untrained model's answer is nonsense, as expected; the
   loop (the mod's ask, the host's worker, the grammar, the validator, the dispatcher) is proven, and the budget for a
   trained one is about a second at these settings.
+
+## The fine-tune (2026-11-05, evening)
+
+**The pipeline.** [tools/voice-model/pipeline.py](../tools/voice-model/pipeline.py) runs one config
+(`configs/base.json`) as one folder under `scratch/voice-model/runs/<name>/`: the datasets, the LoRA, the merged model,
+the GGUFs, the eval and the bench, each step with a `done-<step>.json` keyed by the hash of the part of the config it
+depends on, so a failed step resumes and a changed hyperparameter redoes only what follows from it; `sweep` takes a grid
+(`rank=8,16,32 lr=1e-4,2e-4`) from the same base, and `runs.tsv` collects every run's figures. `setup-env.ps1` makes the
+venv (Python 3.12, torch 2.6 cu124, transformers 5.22, peft 0.21) and fetches llama.cpp's convert script. The settings
+are the common LoRA recipe, not a tuned result (the README cites the sources: Unsloth's guide, TinyAgent, the Natural
+GaLore baseline): rank 16, alpha 32, every attention and MLP projection (10.1 M trainable parameters, 1.67% of the 606 M),
+learning rate 2e-4 with a cosine schedule and 3% warmup, weight decay 0.01, 2 epochs, an effective batch of 16, bf16.
+
+**Run1.** 20,000 generated lines (seed 1, noise 0.3), 1,000 held out (seed 2), max 512 tokens a record. The first attempt
+ran at 500 s a step with 23.4 GB of VRAM: a batch of 16 records of up to 768 tokens with the 151k-vocabulary logits spills
+the 4090 into system memory. With micro-batches of 4 accumulated 4 times, gradient checkpointing and 512 tokens it ran at
+1.4 s a step and 12 GB: 2,500 steps, 58 minutes (3,475 s, 11.5 records a second). The loss: 4.54 at step 20, 0.26 at
+100, 0.21 at 500, flat at 0.20 through the second epoch (the mean over the run 0.264). It is the loss over the whole text,
+prompt included (the collator trains on every token), so that floor is the scene block's own perplexity and says little
+about the answer: masking the loss to the answer is the first change for the next run, before any sweep.
+
+**Exact match: 939 of 1,000 held-out lines (93.9%)**, greedy, the merged bf16 model on the GPU, no grammar (the host's
+grammar can only help). Of the 61 misses, most are the group: a description ("the left ones", "the ones on the balcony",
+"the behind ones", "the ones up there") mapped to a neighbouring E id, i.e. the model has not fully learned to read the
+E lines' words (`left mid above`, `balcony`) and pick by them; the rest are an elided object ("Williams, take": gold
+`hold`, answered `attack E1`), a hold that dropped its point, and the second clause of a compound. Some golds are
+debatable themselves ("both of you hold position" with a group as the point), so the generator's labels are part of the
+error and the first real transcripts are worth more than another synthetic run. The zero-shot model answered 0 of 40;
+the narrow fine-tunes the survey cited (34.5% to 95.9%, 58% to 85%) are the same jump.
+
+**GGUF and the bench: two runtime bugs the bench found.** The merged model exported to q8_0 (633 MB) with llama.cpp's
+`convert_hf_to_gguf.py` (since b12128 it needs its `conversion` package beside it; `setup-env.ps1` copies it now, run1's
+export failed without it). No q4_k_m file: `llama-quantize.exe` is a downloaded executable and wasn't run here (as
+`llama-bench` wasn't), so the Q4 lever from the baseline section stays open until it's built from source or the user
+runs it. `mevr-llm-bench` on the q8_0 file, 4 threads, the first 300 held-out prompts, each under its scene's grammar:
+
+| The runtime | Exact | Prefill median / p95 | Decode median / p95 | Total median |
+|---|---|---|---|---|
+| As built: the raw prompt | 7 of 300 (2.3%) | 334 / 482 ms | 405 / 905 ms | 739 ms |
+| The chat template around the prompt | 244 of 300 (81.3%) | 390 / 541 ms | 309 / 418 ms | 699 ms |
+| ... and `-` allowed as the order | **285 of 300 (95.0%)** | 333 / 450 ms | 283 / 744 ms | **616 ms** |
+
+The first row is a format mismatch, not the weights: the trainer wraps every record in Qwen's chat template with a
+system line (`train_lora.py`'s `SYSTEM`, thinking off), and the runtime fed the raw prefix and block; the model then
+put a weapon on every line and ran on into three clauses. `core/voice/Llm` wraps the prompt the same way now
+(`Settings::chatTemplate`, the head before the cached prefix and the turn's tail after each block, the special tokens
+parsed; `[Voice] llmChat = 0` or the bench's `--raw` for a model trained without it), and the grammar's newline is
+optional, so the end-of-turn token the fine-tune emits can end the answer. The second row is the grammar's hole: an
+equip alone is `W|PI|-|-|-`, and `order` had no `-`, so every equip line was forced into an order ("Wrex, go sidearm"
+became `attack`) and a compound's clauses merged into one. With both fixed the runtime matches the trainer's own
+eval (95.0% on the first 300 against 93.9% on all 1,000, the q8_0 quantization costing nothing visible), and all 15
+misses are the group: a description mapped to a neighbouring E id. The time is the baseline's prediction: 0.3 s of
+prefill for the scene block and 0.3 s of decode for 8 tokens, 0.62 s median on a quiet CPU, which in play (the game's
+threads, 4 of ours) was about a second for the stock model. The file is `models/voice/llm/model.gguf` now (the stock
+Qwen3-0.6B-Q8_0 moved to `scratch/voice-model/stock`), so `tools/deploy-asi.ps1` ships the fine-tuned model and
+`plugin/VoiceModel` loads it by its name.
+
+**In the game** (16:36-16:40, the fake headset, the UNC20 save with Ashley, the five groups 60-80 m off and hidden; host
+and mod from d3aa862 with the runtime fixes; `mevr voice say <words>` is new: a typed transcript on the whole path, the
+rules and then the model, where `mevr say` stops at the rules): the model loaded from `model.gguf` in 2.1 s on the host's
+worker, and five lines the rules refused (0.06-0.51) came back from the model 0.72-0.85 s after the ask (161-167 prompt
+tokens in 446-463 ms, 6-9 answer tokens in 226-337 ms, 4 threads beside the running game) and went out as orders:
+"Ashley, you know what to do with the big one" -> `A|-|-|attack|E1` (the biggest group; `QuickCommandAttackTarget` true),
+"Ash, the thresher maw is yours" -> `attack E5`, "Williams, go sidearm" -> `A|PI|-|-|-` (the squad menu's switch: "ordered
+to the pistol (was assault rifle)"), "Ash, do something clever about the guys on the ridge" -> `attack E2` (a guess among
+four groups all "left far above": the block carries no "ridge"), and "Ashley, sabotage the one on the far right" ->
+`A|-|AWS|use|E5` (Suppression through `SquadOrderUsePower` + `ApplyTacticalOrders`: she has no Sabotage, and the model
+took the nearest power rather than refusing; the validator let it through because the power is hers). The budget the
+baseline predicted holds: about 0.8 s from the release to the order when the rules can't place a line.
+
+**Next, in order:** the answer-only loss; a sweep only if that leaves accuracy under 95% (`pipeline.py sweep ... rank=8,16,32
+lr=1e-4,2e-4 epochs=1,2,3`); a shorter block for the prefill (the baseline's levers); real transcripts from the headset
+into the training data, with the generator's golds checked against them.

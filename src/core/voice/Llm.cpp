@@ -55,6 +55,12 @@ bool Get(HMODULE module, char const* name, F& out, std::string& missing) {
     return out != nullptr;
 }
 
+// Qwen3's chat template around the prompt (its system, user and assistant turns, thinking off), exactly what
+// tokenizer.apply_chat_template(enable_thinking=False) wrote for every training record (train_lora.py: the same SYSTEM line).
+// The head goes before the cached prefix, the tail after each request's block; the special tokens are parsed as such.
+constexpr char const* kChatHead = "<|im_start|>system\nYou are the squad's radio. Answer with the action line only.<|im_end|>\n<|im_start|>user\n";
+constexpr char const* kChatTail = "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+
 // The library's own log: errors kept for the caller's message, the rest dropped.
 std::string gLastLogError;
 void CaptureLog(ggml_log_level level, char const* text, void*) {
@@ -209,7 +215,7 @@ bool Runner::SetPrefix(std::string_view prefix, std::string* error) {
     }
     if (prefix == impl_->prefix && impl_->prefixDecoded) return true;
     impl_->prefix = std::string(prefix);
-    impl_->prefixTokens = impl_->Tokenize(prefix, true);
+    impl_->prefixTokens = impl_->Tokenize(impl_->settings.chatTemplate ? kChatHead + impl_->prefix : impl_->prefix, true);
     impl_->api.memory_clear(impl_->api.get_memory(impl_->ctx), true);
     impl_->prefixDecoded = impl_->Decode(impl_->prefixTokens);
     if (!impl_->prefixDecoded && error != nullptr) *error = "the prefix didn't decode";
@@ -231,7 +237,8 @@ Answer Runner::Ask(std::string_view rest, std::string_view gbnf) {
     } else {
         a.memory_clear(a.get_memory(impl_->ctx), true);
     }
-    std::vector<llama_token> tokens = impl_->Tokenize(rest, !impl_->prefixDecoded);
+    std::string const prompt = impl_->settings.chatTemplate ? (impl_->prefixDecoded ? std::string(rest) : kChatHead + std::string(rest)) + kChatTail : std::string(rest);
+    std::vector<llama_token> tokens = impl_->Tokenize(prompt, !impl_->prefixDecoded);
     answer.promptTokens = static_cast<int>(tokens.size());
     if (tokens.empty() || !impl_->Decode(tokens)) {
         answer.error = "the prompt didn't decode";

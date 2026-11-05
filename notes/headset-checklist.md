@@ -253,9 +253,9 @@ Ask Claude to run them when the machine is free; each is a console command, a sn
 - Voice (checked 2026-11-05 afternoon, research/54 "In the game"): the file feed through host, parser and dispatcher, the
   key terms, the acknowledgement's trace (a follow's bark is Shepard's own; a hold is answered by the squadmate; a move
   by our fallback line), the frame probe at the drop zone. Left: an attack's acknowledgement with an enemy present
-  (Eden Prime's Save 7), the early dispatch of a settled partial (needs a long enough line), the fine-tuned model's answer
-  in the game (the stock model's nonsense answer proved the loop; run1's GGUF is in `models/voice/llm` for the next deploy),
-  a probe at a heavy spot with the recognizer's thread priority lowered.
+  (Eden Prime's Save 7), the early dispatch of a settled partial (needs a long enough line), a probe at a heavy spot with
+  the recognizer's thread priority lowered. The fine-tuned model's answers in the game: checked 2026-11-05 16:39 (`mevr
+  voice say`, five refused lines, five sensible orders 0.7-0.85 s after the ask, research/54 "The fine-tune").
 - Omni-tool screens: fingertip replays on Squad, Map, Journal, Codex and Computer; the squad member on the XMods screen
   and with a squad of three; Toggle Helmet where helmets come off (the Normandy) against the flat screen; the UI world
   capture's cost at a heavy spot. (research/57 sections 6-7)

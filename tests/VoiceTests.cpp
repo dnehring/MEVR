@@ -147,7 +147,7 @@ void TestGrammar() {
     Check(gbnf.find("power ::= \"-\" | \"DMP\" | \"OVR\" | \"THR\"\n") != std::string::npos, "POWER lists the party's codes (an absent squadmate's not)");
     Check(gbnf.find("\"E1\"") != std::string::npos && gbnf.find("\"E3\"") != std::string::npos && gbnf.find("\"E2\"") == std::string::npos, "TARGET lists the live groups' ids only");
     Check(gbnf.find("\"PT1\" | \"PT2\"") != std::string::npos && gbnf.find("\"PT3\"") == std::string::npos, "TARGET lists the deictics said");
-    Check(gbnf.find("root ::= (line (\" ; \" line){0,2} | \"none\") \"\\n\"") != std::string::npos, "up to three clauses or none, ended by a newline");
+    Check(gbnf.find("root ::= (line (\" ; \" line){0,2} | \"none\") \"\\n\"?") != std::string::npos, "up to three clauses or none, a newline or the end of the turn after");
     // What the grammar allows must parse.
     for (char const* line : {"G|-|-|attack|E1", "ALL|-|-|follow|-", "W|-|THR|use|PT2", "G|SR|-|-|-", "-|-|-|move|LEFT"}) {
         Check(ParseLine(line).has_value(), line);

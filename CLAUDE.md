@@ -763,7 +763,9 @@ switching frameworks.
   `plugin/VoiceModel` (`[Voice] llm`, a GGUF in `ASI\voice\llm`), asked by the mod when the rules say "not sure"; data and fine-tune in
   `tools/voice-model` (`pipeline.py`: one config per run, resumable steps, sweeps, `runs.tsv`; research/54 "The fine-tune": the
   first LoRA on Qwen3-0.6B, 20,000 synthetic lines, 58 min on the 4090, 939 of 1,000 held-out lines exact; its q8_0 GGUF is
-  `models/voice/llm/model.gguf`, which deploy-asi ships). Benches: `mevr-voice-bench` + `tools/voice-bench.py` over `tools/voice-tts-corpus.ps1`'s WAVs,
+  `models/voice/llm/model.gguf`, which deploy-asi ships; under llama.cpp 285 of 300 exact at 0.62 s median on 4 quiet threads,
+  **only with the chat template around the prompt** (`Llm`'s `Settings::chatTemplate`, the trainer's `SYSTEM` line; `[Voice]
+  llmChat`) and `-` allowed as the grammar's order: without them 2% and 81%). Benches: `mevr-voice-bench` + `tools/voice-bench.py` over `tools/voice-tts-corpus.ps1`'s WAVs,
   `mevr-llm-bench`. Logs `voice:`, `voice model:`, `squad orders: ... answered`; snapshots `"voice"` (host), `"mod"."voice"`,
   `"mod"."squadAck"`. Run in the game on the fake headset with a file feed (research/54 "In the game"); a real microphone and the
   fine-tuned model's answers in play are the checklist's (section 1).
