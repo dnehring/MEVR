@@ -1760,8 +1760,9 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                         std::max<int32_t>(1, static_cast<int32_t>((worldShown->part.v1 - worldShown->part.v0) * sh))}};
                 gPanelQuad.pose = worldShown->panel.pose;
                 gPanelQuad.size = {worldShown->panel.widthM, worldShown->panel.heightM};
+                float const touchArea[4] = {worldShown->part.u0, worldShown->part.v0, worldShown->part.u1, worldShown->part.v1};
                 mevr::host::game_pointer::NoteGameUiQuad(worldShown->whole.pose, worldShown->whole.widthM, worldShown->whole.heightM,
-                    MELEVR::MevrBridge::PanelKind::GameMenu);
+                    MELEVR::MevrBridge::PanelKind::GameMenu, touchArea);
             }
             if (galaxyUi) {
                 float const uiWidth = mevr::host::galaxy_hologram::UiPanelWidthM(kGalaxyUiWidthM);

@@ -44,7 +44,8 @@ bool OwnsTriggers();
 
 // The game's UI on a quad of ours (app space; the whole UI frame edge to edge, as the window's client area), pointed at this
 // frame: the galaxy map's travel question over the hologram's table (research/51 section 8). Present thread, before Step.
+// `touchArea`: the part of the quad a fingertip can touch (quad UV, u0 v0 u1 v1): the visible crop of a world UI screen.
 void NoteGameUiQuad(XrPosef const& pose, float width, float height,
-    MELEVR::MevrBridge::PanelKind kind = MELEVR::MevrBridge::PanelKind::GalaxyMap);
+    MELEVR::MevrBridge::PanelKind kind = MELEVR::MevrBridge::PanelKind::GalaxyMap, float const* touchArea = nullptr);
 
 } // namespace mevr::host::game_pointer

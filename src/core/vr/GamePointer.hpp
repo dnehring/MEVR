@@ -21,6 +21,10 @@ struct HandInput {
     bool aimValid = false;
     XrPosef aim{};           // tracking space; forward is -Z
     float trigger = 0.0f;    // 0..1
+    // The index fingertip (tracking space): touching the quad with it is the mouse, Half-Life: Alyx's way (research/53
+    // section 6.2). Near the quad's touchable part it takes over from the rays.
+    bool tipValid = false;
+    XrVector3f tip{};
 };
 
 struct Input {
@@ -30,6 +34,12 @@ struct Input {
     int width = 0;             // the game window's client area, pixels
     int height = 0;
     float dt = 0.0f;           // seconds since the last Step
+    // The part of the quad a fingertip can touch (quad UV): what's visible of it (the world UI shows a crop of the whole window
+    // the quad stands for). The rays reach the whole quad as before.
+    float touchU0 = 0.0f;
+    float touchV0 = 0.0f;
+    float touchU1 = 1.0f;
+    float touchV1 = 1.0f;
 };
 
 struct Settings {
@@ -39,6 +49,17 @@ struct Settings {
     float wheelPerSecond = 6.0f;  // notches (WHEEL_DELTA) per second at full deflection
     float smoothing = 0.5f;       // per step, of the way to the new point (hand tremor); 1 = none
     float deadBandPx = 1.0f;      // a move smaller than this (both axes) isn't reported
+    // Touch: a fingertip within touchHoverM in front of the touchable part moves the pointer there; at touchPressM (or through
+    // the surface) it presses, and the press lets go once the tip is back past touchReleaseM. Only a tip that came from the
+    // front presses (a hand coming through the quad from behind, or resting in it, doesn't). touchMarginM around the part
+    // still counts, so the edges' buttons take a touch.
+    bool touch = true;
+    float touchHoverM = 0.06f;
+    float touchPressM = 0.005f;
+    float touchReleaseM = 0.015f;
+    float touchBehindM = 0.06f;   // how far behind the surface a pressing tip still holds the press
+    float touchMarginM = 0.01f;
+    float touchSmoothing = 0.8f;  // a lighter smoothing than the ray's: the fingertip is steady
 };
 
 struct Output {
@@ -56,6 +77,8 @@ struct Output {
     float v = 0.0f;
     float distance = 0.0f;     // along the ray, meters
     XrVector3f point{};        // the hit in the tracking space (the dot)
+    bool touch = false;        // the point is a fingertip's (near the quad), not a ray's
+    float touchDistance = 0.0f;  // the fingertip in front of the surface, meters (< 0 behind it)
 };
 
 class Pointer {
@@ -74,6 +97,10 @@ private:
     bool Latch(int hand, float value);
 
     Settings settings_;
+    bool touchArmed_[2] = {false, false};    // the tip was in front of the surface, in reach, since it last left
+    bool touchLatched_[2] = {false, false};  // the tip pressed and hasn't pulled back past touchReleaseM
+    bool pressByTouch_ = false;              // the open press is a touch's (else a trigger's)
+    bool lastTouch_ = false;                 // the last step's point was a fingertip's
     int hand_ = 1;
     bool latched_[2] = {false, false};
     bool pressing_ = false;

@@ -11,6 +11,7 @@
 #include "halcyon/le1/mevr_bridge.h"
 #include "plugin/Calibration.hpp"
 #include "plugin/GalaxyHologram.hpp"
+#include "plugin/Halcyon.hpp"
 #include "plugin/MevrMenu.hpp"
 
 #include "core/Ini.hpp"
@@ -60,6 +61,13 @@ struct Settings {
     // was ignored by the game's Flash message box, from any other thread it was taken (2026-11-03, research/51 section 8).
     bool postThread = true;
     bool logMessages = false;  // every posted message logged
+    // Touch (research/53 section 6.2, Half-Life: Alyx's way): the index fingertip, touchTipM ahead of the controller's aim
+    // pose, pressing a quad within reach is the mouse; the rays still work from afar.
+    bool touch = true;
+    float touchTipM = 0.04f;
+    float touchHoverM = 0.06f;
+    float touchPressM = 0.005f;
+    float touchReleaseM = 0.015f;
     bool operator==(Settings const&) const = default;
 };
 
@@ -70,6 +78,8 @@ bool gSettingsLogged = false;
 
 // The flat quad as submitted this frame (OnFlatQuad), in the app space (the controllers' space).
 pointer::Quad gQuad;
+float gTouchArea[4] = {0.0f, 0.0f, 1.0f, 1.0f};  // the touchable part (quad UV): the world UI's visible crop
+bool gWasTouching = false;                       // the last step's point was a fingertip's (haptic tick on arrival)
 std::uint64_t gQuadMs = 0;
 MELEVR::MevrBridge::PanelKind gKind = MELEVR::MevrBridge::PanelKind::GameMenu;
 bool gQuadHeadLocked = false;
@@ -152,6 +162,11 @@ void RefreshSettings(std::uint64_t now) {
         s.dotDeg = std::clamp(ReadFloat(L"dotDeg", s.dotDeg, path), 0.1f, 5.0f);
         s.postThread = readBool(L"postThread", s.postThread);
         s.logMessages = readBool(L"logMessages", s.logMessages);
+        s.touch = readBool(L"touch", s.touch);
+        s.touchTipM = std::clamp(ReadFloat(L"touchTipM", s.touchTipM, path), -0.1f, 0.2f);
+        s.touchHoverM = std::clamp(ReadFloat(L"touchHoverM", s.touchHoverM, path), 0.01f, 0.3f);
+        s.touchPressM = std::clamp(ReadFloat(L"touchPressM", s.touchPressM, path), -0.05f, 0.05f);
+        s.touchReleaseM = std::clamp(ReadFloat(L"touchReleaseM", s.touchReleaseM, path), s.touchPressM + 0.002f, 0.1f);
     }
     if (!gSettingsLogged || !(s == gSettings)) {
         gSettingsLogged = true;
@@ -164,11 +179,20 @@ void RefreshSettings(std::uint64_t now) {
         if (s.sendInput) {
             mevr::log::Info("game pointer: sendInput = 1: clicks and the wheel go through SendInput, which reaches the foreground window only");
         }
+        mevr::log::Info("game pointer: touch {} (a fingertip {:.3f} m ahead of the aim pose: within {:.3f} m of a screen it points, at "
+                        "{:.3f} m it presses, back past {:.3f} m it lets go)", s.touch ? "on" : "off ([Pointer] touch = 0)", s.touchTipM,
+            s.touchHoverM, s.touchPressM, s.touchReleaseM);
     }
     gSettings = s;
     pointer::Settings ps = gPointer.GetSettings();
+    pointer::Settings const was = ps;
     ps.wheelPerSecond = s.wheel ? s.wheelPerSecond : 0.0f;
-    if (!(ps.wheelPerSecond == gPointer.GetSettings().wheelPerSecond)) {
+    ps.touch = s.touch;
+    ps.touchHoverM = s.touchHoverM;
+    ps.touchPressM = s.touchPressM;
+    ps.touchReleaseM = s.touchReleaseM;
+    if (!(ps.wheelPerSecond == was.wheelPerSecond) || ps.touch != was.touch || !(ps.touchHoverM == was.touchHoverM) ||
+        !(ps.touchPressM == was.touchPressM) || !(ps.touchReleaseM == was.touchReleaseM)) {
         gPointer = pointer::Pointer(ps);  // a fresh latch: the settings changed, nothing is held
     }
 }
@@ -342,11 +366,13 @@ void PublishStatus(bool shown, pointer::Output const* out, int width, int height
     } else {
         status = std::format(
             "{{\"on\": {}, \"flat\": true, \"kind\": \"{}\", \"worldLocked\": {}, \"quadM\": [{:.3f}, {:.3f}], \"client\": [{}, {}], "
-            "\"hit\": {}, \"hand\": \"{}\", \"px\": [{}, {}], \"uv\": [{:.4f}, {:.4f}], \"pressed\": {}, \"moves\": {}, \"clicks\": {}, \"notches\": {}}}",
+            "\"hit\": {}, \"hand\": \"{}\", \"px\": [{}, {}], \"uv\": [{:.4f}, {:.4f}], \"pressed\": {}, \"moves\": {}, \"clicks\": {}, \"notches\": {}, "
+            "\"touch\": {}, \"touchM\": {:.4f}}}",
             gSettings.gameMenus ? "true" : "false", KindName(gKind), gQuadHeadLocked ? "false" : "true", gQuad.width, gQuad.height,
             width, height, out != nullptr && out->hit ? "true" : "false", gPointer.Hand() == 1 ? "right" : "left",
             out != nullptr ? out->x : 0, out != nullptr ? out->y : 0, out != nullptr ? out->u : 0.0f, out != nullptr ? out->v : 0.0f,
-            gPointer.Pressed() ? "true" : "false", gMoves, gClicks, gNotches);
+            gPointer.Pressed() ? "true" : "false", gMoves, gClicks, gNotches, out != nullptr && out->touch ? "true" : "false",
+            out != nullptr ? out->touchDistance : 0.0f);
     }
     std::lock_guard<std::mutex> const lock(gStatusMutex);
     gStatus = std::move(status);
@@ -422,7 +448,22 @@ static bool StepInner(Frame const& frame, Dot& dot) {
         input.hands[i].aimValid = hand.aimValid;
         input.hands[i].aim = hand.aim;
         input.hands[i].trigger = hand.trigger;
+        if (hand.aimValid) {
+            // The index fingertip: a little ahead of the aim pose along it (the pointing finger over a Touch controller's ring).
+            XrVector3f d = menu_pointer::AimDirection(hand.aim);
+            float const n = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
+            if (n > 1e-6f) {
+                d = {d.x / n, d.y / n, d.z / n};
+                input.hands[i].tipValid = true;
+                input.hands[i].tip = {hand.aim.position.x + d.x * gSettings.touchTipM, hand.aim.position.y + d.y * gSettings.touchTipM,
+                    hand.aim.position.z + d.z * gSettings.touchTipM};
+            }
+        }
     }
+    input.touchU0 = gTouchArea[0];
+    input.touchV0 = gTouchArea[1];
+    input.touchU1 = gTouchArea[2];
+    input.touchV1 = gTouchArea[3];
     if (gWaitRelease) {
         // The pull that brought the quad up (the galaxy map's travel question appears under the trigger that picked a system)
         // isn't a click on it.
@@ -440,6 +481,14 @@ static bool StepInner(Frame const& frame, Dot& dot) {
         input.hands[1].aimValid = false;
     }
     pointer::Output const out = gPointer.Step(gQuad, input);
+    // Touch's feel: a light tick as the fingertip reaches a screen, a click on the press and a lighter one on the release.
+    if (out.touch && !gWasTouching) {
+        mevr::host::halcyon::RequestHaptic(out.hand, 0.01f, 0.12f);
+    }
+    if (out.touch && out.pressEdge) {
+        mevr::host::halcyon::RequestHaptic(out.hand, out.pressed ? 0.02f : 0.012f, out.pressed ? 0.5f : 0.25f);
+    }
+    gWasTouching = out.touch;
 
     if (out.hand != gLoggedHand && out.hit) {
         gLoggedHand = out.hand;
@@ -474,8 +523,12 @@ static bool StepInner(Frame const& frame, Dot& dot) {
         SendButton(window, gLastX, gLastY, out.pressed, gSettings);
         if (out.pressed && !gLoggedPress) {
             gLoggedPress = true;
-            mevr::log::Info("game pointer: the trigger clicked the game's menu at ({}, {}) px ({})", gLastX, gLastY,
-                gSettings.sendInput ? "SendInput" : "WM_LBUTTONDOWN posted");
+            mevr::log::Info("game pointer: the {} clicked the game's menu at ({}, {}) px ({})", out.touch ? "fingertip" : "trigger", gLastX,
+                gLastY, gSettings.sendInput ? "SendInput" : "WM_LBUTTONDOWN posted");
+        }
+        if (out.touch) {
+            mevr::log::Info("game pointer: the {} fingertip {} at ({}, {}) px, {:.3f} m from the surface", out.hand == 1 ? "right" : "left",
+                out.pressed ? "pressed" : "let go", gLastX, gLastY, out.touchDistance);
         }
     }
     SendWheel(window, gLastX, gLastY, out.wheelNotches, out.pressed, gSettings);
@@ -487,6 +540,11 @@ static bool StepInner(Frame const& frame, Dot& dot) {
     dot.pose.position = {out.point.x + normal.x * kDotLiftM, out.point.y + normal.y * kDotLiftM, out.point.z + normal.z * kDotLiftM};
     dot.size = frame.headValid ? pointer::DotSize(frame.head, dot.pose.position, gSettings.dotDeg * kDegToRad) : 0.015f;
     dot.size = std::clamp(dot.size, 0.004f, 0.1f);
+    if (out.touch) {
+        // The fingertip's shadow: larger while it's farther, the dot's own size at the surface.
+        float const t = std::clamp(out.touchDistance / std::max(gSettings.touchHoverM, 0.01f), 0.0f, 1.0f);
+        dot.size *= 1.0f + 2.0f * t;
+    }
     dot.pressed = out.pressed;
     return true;
 }
@@ -500,14 +558,19 @@ std::string StatusJson() {
 void NoteFlatQuad(MELEVR::MevrBridge::PanelKind kind, XrPosef const& space, XrPosef const& local, float width, float height,
     bool headLocked) {
     gQuad = menu_pointer::InTracking(space, local, width, height);
+    gTouchArea[0] = gTouchArea[1] = 0.0f;  // the whole quad unless the caller says (NoteGameUiQuad)
+    gTouchArea[2] = gTouchArea[3] = 1.0f;
     gQuadHeadLocked = headLocked;
     gKind = kind;
     gQuadMs = GetTickCount64();
 }
 
-void NoteGameUiQuad(XrPosef const& pose, float width, float height, MELEVR::MevrBridge::PanelKind kind) {
+void NoteGameUiQuad(XrPosef const& pose, float width, float height, MELEVR::MevrBridge::PanelKind kind, float const* touchArea) {
     XrPosef const space{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
     NoteFlatQuad(kind, space, pose, width, height, false);
+    if (touchArea != nullptr) {
+        std::copy(touchArea, touchArea + 4, gTouchArea);
+    }
 }
 
 } // namespace mevr::host::game_pointer

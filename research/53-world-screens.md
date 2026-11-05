@@ -287,3 +287,26 @@ tool".
   pulsing orange on the forearm; the fan from the display to the screen's bottom edge. Not seen yet: the headset, a real crate, the
   omni-tool's sound (the template's cue) [verify].
 
+
+### 6.2 Touching the screens (2026-11-04)
+
+The user asked for the Half-Life: Alyx way (section 6.1): the hands in the hologram, no pointer. The game's screens are
+clicked by touching them with the index fingertip; the laser stays for anything out of reach.
+
+- **The rules** (core/vr/GamePointer, unit-tested): each hand's fingertip (`[Pointer] touchTipM` 0.04 m ahead of its aim pose,
+  along it) is placed in the quad's own frame (u, v across it, the depth in front of it: the quad's +Z faces the viewer). Within
+  `touchHoverM` (0.06) in front of the quad's touchable part (the world UI passes its visible crop, `touchArea` of
+  `NoteGameUiQuad`, with a 1 cm margin) it takes over from the rays: the pointer moves under the fingertip (a lighter smoothing,
+  0.8 a step). It presses at `touchPressM` (0.005) **only after being in front** (a hand coming through from behind never
+  presses) and holds the press while the tip stays within `touchReleaseM` (0.015) or up to 6 cm behind the surface (sliding off
+  the edge too, as a drag); the button up always follows. A trigger's open press isn't taken over.
+- **The feel** (plugin/GamePointer): a light haptic tick as the fingertip reaches a screen, a click on the press and a lighter
+  one on the release; the pointer dot grows with the fingertip's distance (3x at the hover edge, its own size at the surface).
+  Logs `game pointer: the right fingertip pressed at (x, y) px, d m from the surface` / `let go`; the snapshot's
+  `"gamePointer"` has `"touch"` and `"touchM"`.
+- **Measured** (the real encrypted locker on UNC20, the screen on the wrist, a synthetic recording whose right fingertip comes
+  along the screen's normal to "Begin manual override", hovers at 3 cm, presses 1 cm through, pulls back to 5 cm, 8 s a loop):
+  pressed at (1156, 1161) px at 0.005 m, let go at 0.015 m, every loop; the laser had measured the button at (1175, 1171). The
+  press reached the game: the puzzle started (snapshot 16:56:32: the rings and the timer, the dot under the fingertip). On the
+  test rig the rendered right hand sits ~0.1 m below the controller (as the left did, section 6.1), so the drawn finger and the
+  touch point don't meet there; in the headset `touchTipM` sets where the fingertip is [verify the value in the headset].

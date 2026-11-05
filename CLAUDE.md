@@ -352,7 +352,10 @@ switching frameworks.
   snapshot `"gamePointer"`, layer `gamepointer`. **The cursor and messages are posted from a worker thread** (`postThread = 1`,
   2026-11-03): the identical click posted from the Present callback was ignored by a Flash message box (research/51 section 8);
   `logMessages = 1` logs each. While its ray is on the flat screen (or on the galaxy hologram) the pad's triggers are kept from
-  the game (a held RT blocked the box's click).
+  the game (a held RT blocked the box's click). **Touch** (research/53 section 6.2, Half-Life: Alyx's way, 2026-11-04): a fingertip
+  (`touchTipM` 0.04 ahead of the aim pose) within `touchHoverM` (0.06) of a screen's visible part takes over from the rays, pressing
+  at `touchPressM` (0.005) from the front, letting go past `touchReleaseM` (0.015); haptic tick on arrival, click on press; the
+  world UI passes its crop as the touchable part (`NoteGameUiQuad`'s `touchArea`); `touch = 0` off. Rules unit-tested.
 - LE1 galaxy map in the CIC ([research/51](research/51-galaxy-map.md) section 8, HostServices v26; `game/GalaxyMap`,
   `core/vr/GalaxyHologram`, host `plugin/GalaxyHologram` + `GalaxyHologramDraw`; `[Galaxy] hologram`, `inWorld`, `world*`): on foot
   near the console our hologram of the galaxy (from the 2DA tables) stands over the projector (the game's own projector hologram

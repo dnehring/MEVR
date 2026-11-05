@@ -2091,6 +2091,70 @@ void TestGamePointer() {
     in.hands[1].aim.orientation = AxisAngle(0, 1, 0, 70);
     out = pointer2.Step(world, in);
     CHECK(out.hit && out.x > 1280 && out.u > 0.5f);
+
+    // Touch (research/53 section 6.2): a panel 0.4 x 0.3 m half a metre ahead of the eyes, facing them; the fingertip presses it.
+    XrPosef panelPose{};
+    panelPose.orientation = {0.0f, 0.0f, 0.0f, 1.0f};
+    panelPose.position = {0.0f, 1.6f, -0.5f};
+    Quad const panel{panelPose, 0.4f, 0.3f};
+    Input touch;
+    touch.active = true;
+    touch.width = 1000;
+    touch.height = 750;
+    touch.dt = 1.0f / 90.0f;
+    touch.hands[1].tipValid = true;
+    Pointer finger;
+    auto tipAt = [&](float x, float y, float depth) {  // depth: in front of the panel, meters
+        touch.hands[1].tip = {x, 1.6f + y, -0.5f + depth};
+        return finger.Step(panel, touch);
+    };
+    out = tipAt(0.05f, 0.0f, 0.10f);  // out of reach
+    CHECK(!out.hit && !out.touch);
+    out = tipAt(0.05f, 0.0f, 0.03f);  // hovering: the pointer under the fingertip, nothing pressed
+    CHECK(out.hit && out.touch && !out.pressed && NearD(out.u, 0.625) && NearD(out.v, 0.5) && NearD(out.touchDistance, 0.03));
+    out = tipAt(0.05f, 0.0f, 0.002f);  // at the surface: pressed
+    CHECK(out.pressed && out.pressEdge && out.touch);
+    out = tipAt(0.05f, 0.0f, -0.01f);  // pushed through a little: still pressed, no new edge
+    CHECK(out.pressed && !out.pressEdge);
+    out = tipAt(0.05f, 0.0f, 0.01f);  // back out but within the release distance: held
+    CHECK(out.pressed);
+    out = tipAt(0.05f, 0.0f, 0.03f);  // pulled back: let go
+    CHECK(!out.pressed && out.pressEdge && out.hit);
+    // From behind: a hand coming through the panel never presses.
+    Pointer behind;
+    touch.hands[1].tip = {0.0f, 1.6f, -0.52f};
+    out = behind.Step(panel, touch);
+    CHECK(out.touch && !out.pressed);
+    touch.hands[1].tip = {0.0f, 1.6f, -0.501f};
+    out = behind.Step(panel, touch);
+    CHECK(!out.pressed);
+    // Only the touchable part (the visible crop) takes a touch; the margin around it still does.
+    Pointer cropped;
+    touch.touchU0 = 0.25f;
+    touch.touchU1 = 0.75f;
+    touch.hands[1].tip = {0.16f, 1.6f, -0.47f};  // u 0.9
+    out = cropped.Step(panel, touch);
+    CHECK(!out.touch && !out.hit);
+    touch.hands[1].tip = {0.105f, 1.6f, -0.47f};  // u 0.7625: inside
+    out = cropped.Step(panel, touch);
+    CHECK(out.touch);
+    touch.touchU0 = 0.0f;
+    touch.touchU1 = 1.0f;
+    // A fingertip near the panel takes over from the other hand's ray, trigger and all.
+    Pointer both;
+    touch.hands[0].aimValid = true;
+    touch.hands[0].aim.position = {0.0f, 1.6f, 0.0f};
+    touch.hands[0].aim.orientation = {0.0f, 0.0f, 0.0f, 1.0f};
+    touch.hands[0].trigger = 1.0f;
+    touch.hands[1].tip = {-0.1f, 1.6f, -0.48f};
+    out = both.Step(panel, touch);
+    CHECK(out.touch && out.hand == 1 && !out.pressed && NearD(out.u, 0.25));
+    // With touch off the ray works as before.
+    Settings noTouch;
+    noTouch.touch = false;
+    Pointer rays(noTouch);
+    out = rays.Step(panel, touch);
+    CHECK(!out.touch && out.hand == 0 && out.pressed);
 }
 
 XrPosef HeadAt(double yawDeg, XrVector3f position, double pitchDeg = 0.0) {
