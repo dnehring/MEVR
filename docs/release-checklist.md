@@ -118,7 +118,10 @@ The owner decided these on 2026-11-04 (asked one by one); the rows below say wha
   sets it once (`[Display] eyeSizeSet`, log `first VR start:`), for the launches after it. Never run in the game.
 - [ ] **[D] Equipment and character record lose their 3D models in the room**: exclude them from `screens = all` until
   fixed.
-  **Open:** the owner wants a screenshot of both screens (in the room and flat) before deciding.
+  **Open:** the owner saw both screens flat and in the room (snapshots 2026-11-04 20:30-20:31) and chose the omni-tool instead:
+  every personal screen projected from the left wrist with a rail of the screens beside it (research/54, 7d727b2; built,
+  [verify] in the game). The figure itself (the concept art's squad holograms on a disc) is still to come: a scene capture in
+  the game's UI world.
 - [x] **[D] Cockpit on by default with no opt-out**: the setup always installs its package (and edits `PCConsoleTOC.bin`);
   add an optional-content checkbox and a menu row, or ship it off.
   **Decided: keep as is**: always installed; the menu's "Sit in the cockpit" (e38c381) turns it off.
@@ -168,7 +171,13 @@ The owner decided these on 2026-11-04 (asked one by one); the rows below say wha
   **Built 2026-11-04 (6318954):** the shot starts 2 units short of what lies between the pawn's start and the muzzle; [verify] in the game.
 - [ ] **[C] Seated play**: no seated preset; holsters and crouch come from a standing recenter (research/19:570-571).
 - [ ] **[C] Legs moonwalk** when strafing or backing up; Shepard is left behind past 0.75 m (research/29:160-171).
+  **Built 2026-11-04 (ceb6edd):** moving, the legs keep the run and only the spine (up to 60 degrees, `legsTwistDeg`) turns to
+  the view; [verify] in the game. Room-scale (Shepard following you past 0.75 m) is designed in research/29, not built.
 - [ ] [C] The grenade isn't in the hand while held; the vent has no animation; no visible gun kick.
+  **Built 2026-11-04:** the gun kick (799ae64: the model kicks up and back by the gun's own recoil, aim and sights unmoved;
+  `[Hands] gunKick`, `gunKickScale`, a menu row) and the vent's rack (e7a7955: a part of the gun's own model follows the hand
+  back and springs forward; the bones per model are guesses, logged with each model's bone list; `[Vent] animate`). Both
+  [verify] in the game.
   **The owner 2026-11-04: build the gun kick, the vent's rack and the legs (the moonwalk and the 0.75 m cap) for the first
   release**; the grenade in the hand not chosen.
 
