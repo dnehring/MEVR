@@ -246,7 +246,25 @@ pointer's point (screen coordinates of the client pixel, not clamped to the moni
 and each move puts the Windows cursor there too and sends a one-count `SendInput` move and back (with the game's window in front;
 else a warning), from the pointer's worker thread, before the click that follows. `mevr guimouse` (`game/GuiCursor`, a dev probe)
 prints the movie's mouse and where the cursor the game sees would put it; the snapshot's `"gamePointer"."gameCursor"` counts the
-answers and nudges. [verify in the game: the tabs below the monitor's edge]
+answers and nudges.
+
+**In the game (2026-11-05 00:48-01:12, fake headset, replayed fingertip taps on the equipment screen on the wrist):**
+- **The cursor reaches everything:** the weapon-type tabs, the list rows and Ashley's tab below the monitor's edge light up under
+  the fingertip (the game's own hover), and the movie's mouse sits on the pointer's point.
+- **Clicks need real input:** with posted button messages a tab lit up and stayed lit, its click never came; with `SendInput`
+  buttons the tabs, rows and squad tabs worked: the shotgun tab (slot 3 -> 2, the list of 73 shotguns), Ashley (member 0 -> 1, her
+  Storm I), rows 2 and 3 selected. The steered clicks now always go by `SendInput`, from the pointer's worker after the cursor's
+  placement, and are dropped (with a warning) when the game's window isn't in front: a click at the game's old cursor could
+  press anything. Something on this machine takes the focus away during the runs (`explorer` came to the front twice).
+- **But only some clicks land at once, and some a tap later.** With the game in front a tab tap's effect sometimes appeared only
+  at the next tap; three taps traced with `mevr calltrace` all worked at once (`HandleInputEvent` -> `SendMouseToScaleForm` ->
+  `SetItemFilterSlot`/`ChangeTargetCharacter` on the press), untraced ones mostly didn't. Waiting 40 ms after the last nudge
+  before a button and a nudge after it didn't change that. The order of real input against the game's ticks is the suspect.
+- **The deterministic route to try next:** the game's screens take the mouse as GUI events (`SFXGameModeBase.GuiKey` ->
+  `BioSFManager.HandleInputEvent` -> `SendMouseToScaleForm`; BIOGUI_EVENT 50 the left button, 52 its release, 28/29 the wheel,
+  6/7 the mouse's motion). The mod calling `GuiKey` itself on the game thread, with the host's `GetCursorPos` answering the
+  pointer's point, would need no real input, no focus and no race; the host would hand the mod the pointer's edges and wheel
+  (a HostServices field). `mevr guikey <event|w> ...` sends them from the console to check that first.
 
 **The game's model, verified** (`mevr inv`, game/InventoryProbe, 2026-11-04 23:52 on the fake headset, BIOA_UNC20, after the
 cheat manager's `GiveAll`): the equipment screen's handler (`BioSFHandler_PCInventory`) holds `m_oInvInterface`, a

@@ -25,6 +25,10 @@ void Tick(Link const& link);
 // omni-tool rail's entry gives, as if the host had handed it over, so switching screens is testable without a hand on the
 // rail. Returns what it did, for console.result.
 std::string Inject(std::string const& which);
+// A GUI event as the player's input gives it to the game's screens: SFXGameModeBase.GuiKey(Event) on the active game mode (the
+// BIOGUI_EVENT numbers: 13 B, 50 the left mouse button, 52 its release, 28/29 the wheel, 6/7 the mouse's motion). False with
+// why when there is no mode or no GuiKey. LE1, game thread.
+bool GuiKey(std::uint8_t event, std::string& why);
 // Forgets a request not yet run.
 void Shutdown();
 std::string StatusJson();

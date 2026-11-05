@@ -393,8 +393,10 @@ switching frameworks.
   screens put their mouse where `GetCursorPos` says (the client area scaled to the stage) and read it only when real mouse input
   arrives, and the Windows cursor can't leave the monitor (the game's window is taller), so until then the pointer's clicks landed
   wherever the game's cursor was. The host hooks `GetCursorPos` at attach and answers the pointer's point while it's on a game
-  menu (not the galaxy map), and each move sends a one-count `SendInput` move and back (game window in front). `mevr guimouse`
-  prints the movie's mouse. A tap clicks where the finger touched (pinned through the tap); the hand a wrist screen is projected
+  menu (not the galaxy map), and each move sends a one-count `SendInput` move and back (game window in front). Its clicks and
+  wheel there go by `SendInput` too, after the placement (posted buttons left a tab lit and unclicked), and are dropped while the
+  game's window isn't in front. Some clicks still land a tap late [open, research/56 section 6]; the game's own GUI events
+  (`GuiKey` 50/52 from the mod) are the route being checked. `mevr guimouse` prints the movie's mouse, `mevr guikey` sends events. A tap clicks where the finger touched (pinned through the tap); the hand a wrist screen is projected
   from neither touches nor points at it (`NoteGameUiQuad`'s `projectingHand`), nor at the omni-tool's rail.
 - LE1 galaxy map in the CIC ([research/51](research/51-galaxy-map.md) section 8, HostServices v26; `game/GalaxyMap`,
   `core/vr/GalaxyHologram`, host `plugin/GalaxyHologram` + `GalaxyHologramDraw`; `[Galaxy] hologram`, `inWorld`, `world*`): on foot

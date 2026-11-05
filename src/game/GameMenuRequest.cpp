@@ -447,6 +447,35 @@ std::string Inject(std::string const& which) {
     return "usage: mevr omni <equipment|squad|map|journal|codex|computer|close|holster>";
 }
 
+bool GuiKey(std::uint8_t event, std::string& why) {
+#if defined(MEVR_GAME_LE1)
+    std::optional<Modes> const modes = ReadModes(why);
+    if (!modes) {
+        return false;
+    }
+    std::string how;
+    ue3::Object* const mode = ActiveMode(*modes, how);
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Function* const guiKey = mode != nullptr && gGuiKey.Get() != nullptr ? r.FindFunction(r.ClassOf(mode), "GuiKey") : nullptr;
+    if (guiKey == nullptr) {
+        why = mode == nullptr ? "no active game mode" : std::format("no GuiKey on {}", ClassName(mode));
+        return false;
+    }
+    ue3::Params parms(r, guiKey);
+    parms.Set("Event", event);
+    if (!ue3::runtime::Call(mode, guiKey, parms)) {
+        why = "the call failed";
+        return false;
+    }
+    why = std::format("{}.GuiKey({})", ClassName(mode), event);
+    return true;
+#else
+    (void)event;
+    why = "LE1 only";
+    return false;
+#endif
+}
+
 void Shutdown() {
     gSchedule = {};
     gToldOldHost = false;

@@ -251,7 +251,18 @@ struct Post {
     LPARAM lparam = 0;
     bool log = false;     // [Pointer] logMessages when it was queued
     bool nudge = false;   // then a one-count SendInput move and back, so the game reads the cursor (Settings::gameCursor)
+    // Steered input (Settings::gameCursor): the left button down (1) or up (2), or the wheel (3, wheelDelta), by SendInput after
+    // the cursor's placement, only with the game's window in front; a button that went down is always let up.
+    int steered = 0;
+    int wheelDelta = 0;
 };
+std::atomic<bool> gSteeredDown{false};  // a steered button down was sent and its up not yet
+// A steered button waits this long after the last nudge, so the game has read the cursor's new place in a tick before the press
+// or release (a nudge in the same batch as the button: the tab lit up and its click didn't happen, 2026-11-05). Worker thread.
+constexpr std::uint64_t kButtonAfterNudgeMs = 40;
+std::uint64_t gLastNudgeMs = 0;
+std::atomic<std::uint64_t> gSteeredDropped{0};
+std::atomic<bool> gLoggedSteerForeground{false};
 std::mutex gPostMutex;
 std::condition_variable gPostReady;
 std::deque<Post> gPosts;
@@ -267,22 +278,70 @@ char const* MessageName(UINT m) {
     }
 }
 
+// A one-count mouse move and back: real input, which makes the game read the cursor's place (GetCursorPos) and process the
+// button events before it. Worker thread.
+bool Nudge() {
+    INPUT moves[2] = {};
+    moves[0].type = moves[1].type = INPUT_MOUSE;
+    moves[0].mi.dwFlags = moves[1].mi.dwFlags = MOUSEEVENTF_MOVE;
+    moves[0].mi.dx = 1;
+    moves[1].mi.dx = -1;
+    if (SendInput(2, moves, sizeof(INPUT)) != 2) {
+        return false;
+    }
+    gCursorNudges.fetch_add(1, std::memory_order_relaxed);
+    gLastNudgeMs = GetTickCount64();
+    return true;
+}
+
 void Deliver(Post const& p, bool log) {
     if (p.cursor) {
         SetCursorPos(p.screen.x, p.screen.y);
     }
     if (p.nudge) {
         if (GetForegroundWindow() == p.window) {
-            INPUT moves[2] = {};
-            moves[0].type = moves[1].type = INPUT_MOUSE;
-            moves[0].mi.dwFlags = moves[1].mi.dwFlags = MOUSEEVENTF_MOVE;
-            moves[0].mi.dx = 1;
-            moves[1].mi.dx = -1;
-            if (SendInput(2, moves, sizeof(INPUT)) == 2) {
-                gCursorNudges.fetch_add(1, std::memory_order_relaxed);
-            }
+            Nudge();
         } else if (!gLoggedNudgeForeground.exchange(true)) {
             mevr::log::Warn("game pointer: the game's window isn't in front: its cursor isn't moved (SendInput would reach another program)");
+        }
+    }
+    if (p.steered != 0) {
+        if (p.steered != 3) {
+            std::uint64_t const since = GetTickCount64() - gLastNudgeMs;
+            if (gLastNudgeMs != 0 && since < kButtonAfterNudgeMs) {
+                Sleep(static_cast<DWORD>(kButtonAfterNudgeMs - since));
+            }
+        }
+        bool const front = GetForegroundWindow() == p.window;
+        INPUT input{};
+        input.type = INPUT_MOUSE;
+        bool send = front;
+        if (p.steered == 1) {
+            input.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+        } else if (p.steered == 2) {
+            input.mi.dwFlags = MOUSEEVENTF_LEFTUP;
+            send = gSteeredDown.load();  // the up of a down that went, wherever the focus is now
+        } else {
+            input.mi.dwFlags = MOUSEEVENTF_WHEEL;
+            input.mi.mouseData = static_cast<DWORD>(p.wheelDelta);
+        }
+        if (send && SendInput(1, &input, sizeof input) == 1) {
+            if (p.steered == 1) {
+                gSteeredDown.store(true);
+            } else if (p.steered == 2) {
+                gSteeredDown.store(false);
+            }
+            // The game took a button only once more mouse input followed it (each tap's click happened at the next tap,
+            // 2026-11-05): a nudge after it, at the same place.
+            if (GetForegroundWindow() == p.window) {
+                Nudge();
+            }
+        } else if (p.steered != 2) {
+            gSteeredDropped.fetch_add(1, std::memory_order_relaxed);
+            if (!front && !gLoggedSteerForeground.exchange(true)) {
+                mevr::log::Warn("game pointer: the game's window isn't in front: a press or the wheel on its menu was dropped (it would land "
+                                "at the game's old cursor, or in another program)");
+            }
         }
     }
     if (p.message != 0) {
@@ -321,17 +380,24 @@ void Send(Post const& p, Settings const& s) {
     gPostReady.notify_one();
 }
 
-void SendMove(HWND window, int x, int y, bool pressed, Settings const& s) {
+// The game's cursor is steered on this quad (Settings::gameCursor): its clicks and wheel go by SendInput after the placement.
+bool Steering(Settings const& s) {
+    return s.gameCursor && gCursorHooked && gKind == MELEVR::MevrBridge::PanelKind::GameMenu;
+}
+
+// `edge`: the move re-sent just before a button edge: the cursor goes to the point again, without a nudge (the hover's moves
+// already put the game's cursor there; a nudge with the button raced it).
+void SendMove(HWND window, int x, int y, bool pressed, Settings const& s, bool edge = false) {
     Post p;
     p.window = window;
-    bool const steer = s.gameCursor && gCursorHooked && gKind == MELEVR::MevrBridge::PanelKind::GameMenu;
+    bool const steer = Steering(s);
     // SetCursorPos: Halcyon's hook passes it through while its menu is closed. Steering the game's cursor also puts the Windows
     // cursor over the game's window, so the nudge's own mouse move goes to it.
     p.cursor = (s.setCursor || steer) && ToScreen(window, x, y, p.screen);
     if (steer && p.cursor) {
         gCursorPoint.store(Pack(p.screen), std::memory_order_relaxed);  // GetCursorPos's answer: not clamped to the monitor
         gCursorUntilMs.store(GetTickCount64() + kCursorHoldMs, std::memory_order_release);
-        p.nudge = true;
+        p.nudge = !edge;
     }
     if (s.moveMessages) {
         p.message = WM_MOUSEMOVE;
@@ -343,6 +409,18 @@ void SendMove(HWND window, int x, int y, bool pressed, Settings const& s) {
 }
 
 void SendButton(HWND window, int x, int y, bool down, Settings const& s) {
+    if (Steering(s) || (!down && gSteeredDown.load())) {
+        // LE1's screens take a posted button down but not every up (a squad tab lit and stayed lit): real input, in order after the
+        // cursor's placement (research/56 section 6).
+        Post p;
+        p.window = window;
+        p.steered = down ? 1 : 2;
+        Send(p, s);
+        if (down) {
+            ++gClicks;
+        }
+        return;
+    }
     bool sent = false;
     if (s.sendInput) {
         if (GetForegroundWindow() == window) {
@@ -373,6 +451,15 @@ void SendWheel(HWND window, int x, int y, int notches, bool pressed, Settings co
         return;
     }
     int const delta = notches * WHEEL_DELTA;
+    if (Steering(s)) {
+        Post p;
+        p.window = window;
+        p.steered = 3;
+        p.wheelDelta = delta;
+        Send(p, s);
+        gNotches += notches;
+        return;
+    }
     bool sent = false;
     if (s.sendInput && GetForegroundWindow() == window) {
         INPUT input{};
@@ -428,13 +515,13 @@ void PublishStatus(bool shown, pointer::Output const* out, int width, int height
         status = std::format(
             "{{\"on\": {}, \"flat\": true, \"kind\": \"{}\", \"worldLocked\": {}, \"quadM\": [{:.3f}, {:.3f}], \"client\": [{}, {}], "
             "\"hit\": {}, \"hand\": \"{}\", \"px\": [{}, {}], \"uv\": [{:.4f}, {:.4f}], \"pressed\": {}, \"moves\": {}, \"clicks\": {}, \"notches\": {}, "
-            "\"touch\": {}, \"touchM\": {:.4f}, \"gameCursor\": {{\"steering\": {}, \"answers\": {}, \"nudges\": {}}}}}",
+            "\"touch\": {}, \"touchM\": {:.4f}, \"gameCursor\": {{\"steering\": {}, \"answers\": {}, \"nudges\": {}, \"dropped\": {}}}}}",
             gSettings.gameMenus ? "true" : "false", KindName(gKind), gQuadHeadLocked ? "false" : "true", gQuad.width, gQuad.height,
             width, height, out != nullptr && out->hit ? "true" : "false", gPointer.Hand() == 1 ? "right" : "left",
             out != nullptr ? out->x : 0, out != nullptr ? out->y : 0, out != nullptr ? out->u : 0.0f, out != nullptr ? out->v : 0.0f,
             gPointer.Pressed() ? "true" : "false", gMoves, gClicks, gNotches, out != nullptr && out->touch ? "true" : "false",
             out != nullptr ? out->touchDistance : 0.0f, GetTickCount64() < gCursorUntilMs.load() ? "true" : "false",
-            gCursorAnswers.load(), gCursorNudges.load());
+            gCursorAnswers.load(), gCursorNudges.load(), gSteeredDropped.load());
     }
     std::lock_guard<std::mutex> const lock(gStatusMutex);
     gStatus = std::move(status);
@@ -592,7 +679,7 @@ static bool StepInner(Frame const& frame, Dot& dot) {
     if (out.pressEdge) {
         // The cursor put at the point again first: the game moves it in between (a Scaleform button took a click only with a
         // move just before it: the galaxy map's travel question, research/51 section 8).
-        SendMove(window, gLastX, gLastY, false, gSettings);
+        SendMove(window, gLastX, gLastY, false, gSettings, true);
         SendButton(window, gLastX, gLastY, out.pressed, gSettings);
         if (out.pressed && !gLoggedPress) {
             gLoggedPress = true;

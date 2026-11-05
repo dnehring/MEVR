@@ -9,9 +9,13 @@
 // arrives (measured 2026-11-05).
 //   mevr guimouse     the focused movie's mouse (_root._xmouse/_ymouse), its stage size, and where the client pixel the Windows
 //                     cursor reports would put it
+//   mevr guikey <event|w> ...   GUI events through GuiKey on the active game mode, one per tick (w: a tick without one): e.g.
+//                     `6 w 50 w w w 52` = the mouse's motion, the left button, its release (game_menu_request::GuiKey)
 // LE1, game thread.
 namespace mevr::game::gui_cursor {
 
 std::string Command(std::string const& args);
+std::string KeyCommand(std::string const& args);
+void Tick();
 
 } // namespace mevr::game::gui_cursor

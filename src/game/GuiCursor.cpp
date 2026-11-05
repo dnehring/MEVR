@@ -2,6 +2,8 @@
 // Where the game's Flash cursor is (game/GuiCursor.hpp, research/56 section 6).
 #include "game/GuiCursor.hpp"
 
+#include "core/Log.hpp"
+#include "game/GameMenuRequest.hpp"
 #include "game/Player.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Memory.hpp"
@@ -10,8 +12,10 @@
 
 #include <Windows.h>
 
+#include <deque>
 #include <format>
 #include <optional>
+#include <sstream>
 #include <string>
 
 namespace mevr::game::gui_cursor {
@@ -21,6 +25,8 @@ namespace mem = ue3::memory;
 
 ue3::FieldRef gScaleFormManager{"Engine.PlayerController", "m_oCachedScaleFormManager"};
 ue3::FieldRef gFocusPanel{"Engine.BioSFManager", "m_FocusPanel"};
+
+std::deque<int> gKeys;  // mevr guikey's events still to send, one per tick (-1: a tick without one)
 
 ue3::Object* FocusPanel() {
     ue3::Object* const pc = player::Controller();
@@ -77,6 +83,44 @@ std::string Command(std::string const& /*args*/) {
         out += "; the game's window isn't in front";
     }
     return out;
+}
+
+std::string KeyCommand(std::string const& args) {
+    std::istringstream words(args);
+    std::string word;
+    int count = 0;
+    while (words >> word) {
+        if (word == "w") {
+            gKeys.push_back(-1);
+            continue;
+        }
+        int event = -1;
+        try {
+            event = std::stoi(word);
+        } catch (...) {
+            return "usage: mevr guikey <event|w> ... (e.g. 6 w 50 w w w 52)";
+        }
+        if (event < 0 || event > 52) {
+            return std::format("guikey: {} isn't a BIOGUI_EVENT (0..52)", event);
+        }
+        gKeys.push_back(event);
+        ++count;
+    }
+    return std::format("guikey: {} events queued over {} ticks; the log says each (`gui cursor: GuiKey`)", count, gKeys.size());
+}
+
+void Tick() {
+    if (gKeys.empty()) {
+        return;
+    }
+    int const event = gKeys.front();
+    gKeys.pop_front();
+    if (event < 0) {
+        return;
+    }
+    std::string why;
+    bool const ok = game_menu_request::GuiKey(static_cast<std::uint8_t>(event), why);
+    log::Info("gui cursor: GuiKey {} {}: {}", event, ok ? "sent" : "not sent", why);
 }
 
 } // namespace mevr::game::gui_cursor
