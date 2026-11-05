@@ -1259,3 +1259,31 @@ rocket launcher for heavier/crowded targets".
   `gunnerCrowdRadiusM`.
 - **Not yet seen:** a fight with several enemies (the crowd's cannon), a takeover by the stick's thumbstick or the hand in the
   headset (the fake headset's controllers aren't tracked), the gunner against a moving target at range.
+
+## Flying on the jets (2026-11-04, the user; read in the package, measuring pending)
+
+The user: whether the right controller can make small corrections in the air (forward, back, left, right); then "when booster is
+firing I don't think we should allow for the directional pitches", and "when I was trying forward/back in jets I don't know if I
+noticed any real behavioral change".
+
+- **What pushes** (`BioVehicleWheeled.Tick`, read with Legendary Explorer's library; prose only): while `bJumping`, the force is the
+  vehicle's own Z axis (from `GetAxes(Rotation)`) times `ThrusterForce`, through `AddForce`, every tick. So a tipped Mako's jets push
+  it that way: the stick's pitch was meant to be the steering in the air. The class defaults (`Default__BioVehicleWheeled`):
+  `ThrusterForce` 3200, `Mass` 12000, `MaxJumpFuel` 0.7 s (regen 0.35/s), `MaxBoostFuel` 2 s, and **`bStayUpright`** with
+  `StayUprightPitchResistAngle` 60 and `StayUprightRollResistAngle` 30 (the game's own constraint resists tilts past those, so our
+  roll is capped at 25).
+- **Why the push felt like nothing** (from the settings, the arithmetic): the stick's tilt is the hand's travel over
+  `stickHeightM` 0.20 m; the pitch starts past `stickPitchDeadZoneDeg` 8 (2.8 cm of travel) and is full at `stickTiltDeg` 20 (7.3 cm),
+  linear between. A 4 cm push is an 11-degree tilt, 0.28 of full: 5.5 degrees of nose down asked, reached at up to `thrusterRateDeg`
+  60 deg/s, inside a burst of 1.75 s (0.7 s of fuel, refunded to 2.5x). Only a full 7 cm push asked for the full 20 degrees.
+- **Changed** (`core/vr/MakoControls`' `Output::roll` and `JetTarget`, unit-tested; `game/MakoControls`' `StabilizeOnThrusters`):
+  the attitude hold runs **only while the jump jets fire**; the booster alone is the game's own (no hold, no tip; its fuel refund
+  stays). The stick's tilt to the right is `Output::roll` (the pitch's dead zone and curve), and the jets hold the Mako at
+  `-pitch x thrusterPitchDeg` (20) and `roll x thrusterRollDeg` (15, new; + the right side down), level while the stick isn't held.
+- **A burst's log line** (new): `mako controls: a jet burst of S s: the stick asked pitch P roll R deg on average, the Mako held P' /
+  R'; it gained F m/s forward and S m/s right of its heading, U m/s up, and rose H m`. The heartbeat's thrusters line counts the
+  bursts and the last pitch and roll targets.
+- **Next:** on the fake headset, a replay with the lever at neutral and the stick held level, pushed, pulled and tilted to each
+  side, a `mevr vehicle jets 1.75` in each: the forward and sideways speed each burst gives against the level one. If a full tilt
+  gains only a few m/s, the angles or the curve go up (or a direct sideways push replaces the roll); the user's next drive logs
+  the same lines.

@@ -62,6 +62,7 @@ ue3::FieldRef gThrottle{"Engine.Vehicle", "Throttle"};
 ue3::FieldRef gSteering{"Engine.Vehicle", "Steering"};
 ue3::FieldRef gRotation{"Engine.Actor", "Rotation"};
 ue3::FieldRef gLocation{"Engine.Actor", "Location"};
+ue3::FieldRef gVelocity{"Engine.Actor", "Velocity"};
 ue3::FieldRef gBehavior{"SFXGame.BioVehicleBase", "m_oBehavior"};
 ue3::FieldRef gPowertrain{"SFXGame.BioVehicleBehaviorBase", "m_bPowertrainEnabled"};
 ue3::FieldRef gPaused{"SFXGame.BioVehicleBehaviorBase", "m_bIsPaused"};
@@ -139,6 +140,8 @@ struct Counts {
     float worstPitchDeg = 0.0f;  // the largest |pitch error| and |roll| seen while stabilising
     float worstRollDeg = 0.0f;
     float targetPitchDeg = 0.0f; // the last target
+    float targetRollDeg = 0.0f;
+    unsigned bursts = 0;         // jet bursts ended (each logged)
     unsigned spins = 0;          // spins on the spot begun
     unsigned spinTicks = 0;      // ticks spinning
     float spinRateDeg = 0.0f;    // the last yaw rate seen, and the one asked for
@@ -292,8 +295,61 @@ struct Attitude {
 };
 Attitude gAttitude;
 
-// While the jets or the booster fire, the Mako is held level: roll to 0 and pitch to the stick's forward/back tilt (pushed: the
-// nose down, at most `maxPitchDeg`), each turning at most `maxRateDeg` a second. A rate controller on the body's angular velocity
+// One jump-jet burst, for the log (research/47 "Flying on the jets", 2026-11-04: the user felt no change from pushing the stick):
+// what the stick asked for, the attitude the body held, and the speed the burst gave the Mako along its heading at the start.
+struct Burst {
+    bool on = false;
+    float seconds = 0.0f;
+    ue3::Vector velocity{};  // at the start
+    float startZ = 0.0f;
+    int yawUnits = 0;
+    double askPitch = 0.0;   // integrals over the burst (degree-seconds), for the averages
+    double askRoll = 0.0;
+    double pitch = 0.0;
+    double roll = 0.0;
+};
+Burst gBurst;
+
+void TrackBurst(ue3::Object* vehicle, bool jets, float dt, ue3::Rotator const& rotation, float askPitch, float askRoll) {
+    float const pitch = static_cast<float>(SignedUnits(rotation.pitch) * 360.0 / 65536.0);
+    float const roll = static_cast<float>(SignedUnits(rotation.roll) * 360.0 / 65536.0);
+    if (jets) {
+        if (!gBurst.on) {
+            gBurst = {};
+            gBurst.on = true;
+            gBurst.velocity = gVelocity.Read<ue3::Vector>(vehicle).value_or(ue3::Vector{});
+            gBurst.startZ = gLocation.Read<ue3::Vector>(vehicle).value_or(ue3::Vector{}).z;
+            gBurst.yawUnits = rotation.yaw;
+        }
+        gBurst.seconds += dt;
+        gBurst.askPitch += askPitch * dt;
+        gBurst.askRoll += askRoll * dt;
+        gBurst.pitch += pitch * dt;
+        gBurst.roll += roll * dt;
+        return;
+    }
+    if (!gBurst.on) {
+        return;
+    }
+    gBurst.on = false;
+    ++gCounts.bursts;
+    ue3::Vector const v = gVelocity.Read<ue3::Vector>(vehicle).value_or(gBurst.velocity);
+    float const z = gLocation.Read<ue3::Vector>(vehicle).value_or(ue3::Vector{}).z;
+    double const yaw = gBurst.yawUnits * (2.0 * std::numbers::pi / 65536.0);
+    double const dx = v.x - gBurst.velocity.x;
+    double const dy = v.y - gBurst.velocity.y;
+    double const forward = (dx * std::cos(yaw) + dy * std::sin(yaw)) / engine::kUnitsPerMeter;
+    double const right = (-dx * std::sin(yaw) + dy * std::cos(yaw)) / engine::kUnitsPerMeter;
+    double const s = std::max(gBurst.seconds, 0.001f);
+    log::Info("mako controls: a jet burst of {:.2f} s: the stick asked pitch {:+.1f} roll {:+.1f} deg on average, the Mako held {:+.1f} / {:+.1f}; "
+              "it gained {:+.1f} m/s forward and {:+.1f} m/s right of its heading, {:+.1f} m/s up, and rose {:+.1f} m",
+        s, gBurst.askPitch / s, gBurst.askRoll / s, gBurst.pitch / s, gBurst.roll / s, forward, right,
+        (v.z - gBurst.velocity.z) / engine::kUnitsPerMeter, (z - gBurst.startZ) / engine::kUnitsPerMeter);
+}
+
+// While the jump jets fire, the Mako is held at the attitude the stick asks for (mc::JetTarget: pushed the nose down, tilted right
+// the right side down, level when it isn't held; the jets push along its up, so it drifts that way), each turning at most
+// `thrusterRateDeg` a second. The booster alone is the game's own (the user, 2026-11-04: no tipping while boosting). A rate controller on the body's angular velocity
 // (SetRBAngularVelocity, added to the current): the wanted rate from the angle's error, the change toward it from the rate seen
 // since the last tick. The first version added the stick's pitch every tick with nothing holding it and flipped the Mako
 // (2026-11-03, the user in the headset: +16 -> +84 degrees in one burst). A positive angular velocity about the vehicle's right
@@ -304,7 +360,12 @@ void StabilizeOnThrusters(ue3::Object* vehicle, double deltaSeconds, hand_calibr
     gCounts.jets += jets ? 1u : 0u;
     gCounts.boost += boost ? 1u : 0u;
     auto const rotation = gRotation.Read<ue3::Rotator>(vehicle);
-    if (!(jets || boost) || !settings.thrusterStabilize || !rotation || gSetAngularVelocity.Get() == nullptr) {
+    float const dtBurst = static_cast<float>(std::clamp(deltaSeconds, 0.0, 0.1));
+    mc::JetAttitude const asked = settings.thrusterStabilize ? mc::JetTarget(gOut, settings.thrusterPitchDeg, settings.thrusterRollDeg) : mc::JetAttitude{};
+    if (rotation) {
+        TrackBurst(vehicle, jets, dtBurst, *rotation, asked.pitchDeg, asked.rollDeg);
+    }
+    if (!jets || !settings.thrusterStabilize || !rotation || gSetAngularVelocity.Get() == nullptr) {
         gAttitude = {};
         return;
     }
@@ -318,12 +379,13 @@ void StabilizeOnThrusters(ue3::Object* vehicle, double deltaSeconds, hand_calibr
     float const pitchRate = gAttitude.have ? std::remainder(pitch - gAttitude.pitchDeg, 360.0f) / dt : 0.0f;
     float const rollRate = gAttitude.have ? std::remainder(roll - gAttitude.rollDeg, 360.0f) / dt : 0.0f;
     gAttitude = {true, pitch, roll};
-    float const target = gOut.stickHeld ? -gOut.pitch * settings.thrusterPitchDeg : 0.0f;
+    float const target = asked.pitchDeg;
+    float const targetRoll = asked.rollDeg;
     constexpr float kAngleGain = 3.0f;  // wanted rate per degree of error (1/s)
     constexpr float kRateGain = 0.35f;  // the share of the rate's error corrected each tick
     float const limit = settings.thrusterRateDeg;
     float const wantPitchRate = std::clamp(kAngleGain * (target - pitch), -limit, limit);
-    float const wantRollRate = std::clamp(kAngleGain * (0.0f - roll), -limit, limit);
+    float const wantRollRate = std::clamp(kAngleGain * (targetRoll - roll), -limit, limit);
     float const addPitch = std::clamp((wantPitchRate - pitchRate) * kRateGain, -limit, limit);
     float const addRoll = std::clamp((wantRollRate - rollRate) * kRateGain, -limit, limit);
     engine::Basis const axes = engine::ToBasis(engine::UnrealRotation{rotation->pitch, rotation->yaw, rotation->roll});
@@ -333,8 +395,9 @@ void StabilizeOnThrusters(ue3::Object* vehicle, double deltaSeconds, hand_calibr
     ue3::runtime::Call(mesh, gSetAngularVelocity.Get(), parms);
     ++gCounts.held;
     gCounts.worstPitchDeg = std::max(gCounts.worstPitchDeg, std::abs(target - pitch));
-    gCounts.worstRollDeg = std::max(gCounts.worstRollDeg, std::abs(roll));
+    gCounts.worstRollDeg = std::max(gCounts.worstRollDeg, std::abs(targetRoll - roll));
     gCounts.targetPitchDeg = target;
+    gCounts.targetRollDeg = targetRoll;
 }
 
 void WriteInputs(ue3::Object* vehicle, float throttle, float steering) {
@@ -572,6 +635,7 @@ StickAim Tick(double deltaSeconds, Link const& link, ue3::Object* vehicle, ue3::
                     mc::Name(left.stopped));
             }
             RestoreTurnInPlace();
+            gBurst = {};  // a burst cut by leaving isn't reported
             gVehicle = nullptr;
             gVehicleBehavior = nullptr;
             gHaveYaw = false;
@@ -790,9 +854,10 @@ void LogStats() {
             gCounts.spinTicks, gCounts.spinRateDeg, gCounts.spinTargetDeg);
     }
     if (gCounts.jets + gCounts.boost > 0) {
-        log::Info("    mako controls: thrusters: jump jets on {} ticks, booster {}, {:.2f} s of fuel given back; held level on {} (the worst pitch error "
-                  "{:.1f} deg, roll {:.1f} deg; the last target pitch {:+.1f})",
-            gCounts.jets, gCounts.boost, gCounts.refunded, gCounts.held, gCounts.worstPitchDeg, gCounts.worstRollDeg, gCounts.targetPitchDeg);
+        log::Info("    mako controls: thrusters: jump jets on {} ticks ({} bursts), booster {} (the game's own attitude), {:.2f} s of fuel given back; "
+                  "the jets' attitude held on {} (the worst pitch error {:.1f} deg, roll {:.1f} deg; the last target pitch {:+.1f}, roll {:+.1f})",
+            gCounts.jets, gCounts.bursts, gCounts.boost, gCounts.refunded, gCounts.held, gCounts.worstPitchDeg, gCounts.worstRollDeg,
+            gCounts.targetPitchDeg, gCounts.targetRollDeg);
     }
     gCounts = Counts{};
 #endif
@@ -806,6 +871,7 @@ void Shutdown(bool exiting, void (*publish)(vr::mako_controls::View const* view)
     gJetsUntilMs = 0;
     gJetsController = nullptr;
     gAttitude = {};
+    gBurst = {};
     if (!exiting) {
         RestoreTurnInPlace();
     }

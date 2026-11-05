@@ -536,9 +536,9 @@ constexpr char const* kMakoBlock =
     "; when you enter the Mako or recenter (meters: right, up, forward). stickAimRate: degrees a second at a full thumbstick.\n"
     "; rumble: the engine's vibration at full speed (0 = none). cameraFollow: 1 = while you drive with them the chase camera\n"
     "; keeps its angle to the Mako. thrusterBurnScale: the jump jets' and booster's fuel burns this fast (0.4 = they last 2.5\n"
-    "; times as long; 1 = the game's). thrusterStabilize: 1 = while they fire the Mako is held level, pitched by the stick up\n"
-    "; to thrusterPitchDeg, turning at most thrusterRateDeg a second. stickPitchDeadZoneDeg: the forward/back tilt that pitches\n"
-    "; nothing. steerInPlaceBelow: below this throttle the stick turns the Mako on the spot.\n"
+    "; times as long; 1 = the game's). thrusterStabilize: 1 = while the jump jets fire the Mako is held level, tipped by the\n"
+    "; stick up to thrusterPitchDeg forward or back and thrusterRollDeg to a side (the jets push it that way), turning at most\n"
+    "; thrusterRateDeg a second; the booster is the game's own. stickPitchDeadZoneDeg: the tilt that tips nothing. steerInPlaceBelow: below this throttle the stick turns the Mako on the spot.\n"
     "controls = 1\n"
     "grabRadiusM = 0.15\n"
     "stickTwist = 0\n"
@@ -558,6 +558,7 @@ constexpr char const* kMakoBlock =
     "thrusterBurnScale = 0.4\n"
     "thrusterStabilize = 1\n"
     "thrusterPitchDeg = 20\n"
+    "thrusterRollDeg = 15\n"
     "thrusterRateDeg = 60\n"
     "stickPitchDeadZoneDeg = 8\n"
     "steerInPlaceBelow = 0.2\n"
@@ -1413,6 +1414,9 @@ Mako ReadMako(Ini const& ini) {
     }
     if (Number(ini, "Mako", "thrusterPitchDeg", value)) {
         m.thrusterPitchDeg = static_cast<float>(std::clamp(value, 0.0, 45.0));
+    }
+    if (Number(ini, "Mako", "thrusterRollDeg", value)) {
+        m.thrusterRollDeg = static_cast<float>(std::clamp(value, 0.0, 25.0));  // the game resists rolls past 30 (StayUprightRollResistAngle)
     }
     if (Number(ini, "Mako", "gunner", value)) {
         m.gunner.on = value != 0.0;

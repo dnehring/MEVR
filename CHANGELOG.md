@@ -55,7 +55,7 @@ Halcyon's MassEffect1-VR renderer, with our hands, body and menus on top. LE1 on
   switch to the cannon for heavy targets and groups. Push the stick's thumbstick or aim with your free right hand to take the
   guns yourself; they take them back a few seconds after you stop.
 - Drive it with a throttle lever and a flight stick in the cockpit: grab them, tilt the stick to steer, fire with the
-  trigger and A, and pitch the Mako on its thrusters in the air.
+  trigger and A, and tilt the stick while the jump jets fire to drift the Mako forward, back or sideways in the air.
 - The turret follows your right hand.
 
 ### The menu and the setup
