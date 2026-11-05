@@ -353,6 +353,8 @@ word), and the explicit kinds ("my target" AIM, "what I'm looking at" GAZE, "the
 too"/"again" are repeats; a leading "no" is a correction; "and"/"then" before a verb starts a new clause, the squadmate
 carried over. A description that fits one group is the target over a deictic; fitting several it takes the nearest at 0.7
 confidence; words it can't place cost 0.85 each and are listed in `unresolved`, which is where a model would take over.
-The example parses to `G|SR|-|-|-` and `G|-|-|attack|E1` with `PT1 "those"` at word 7, confidence 1. Not wired to anything
-yet: the next step is `mevr say <words>` through the parser, the context and the dispatcher, the typed stand-in for the
-recognizer.
+The example parses to `G|SR|-|-|-` and `G|-|-|attack|E1` with `PT1 "those"` at word 7, confidence 1. Wired as **`mevr say <words>`** (`squad_orders::Say`): the words go through the parser with the live scene, groups and roster;
+each clause's deictics are resolved from the pose history 0.5 s ago (typed words have no times), a place deictic with a move
+traces the left hand's ray for the point, each action is validated and dispatched like the gesture's, and a parse below
+`[SquadOrders] minConfidence` (0.6) is refused with the unresolved words (where a model would take over). The typed stand-in
+for the recognizer: `tools/console.ps1 "mevr say Garrus, take out those troops on the bridge"`. Not yet run in the game.

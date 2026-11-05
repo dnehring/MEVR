@@ -483,7 +483,9 @@ constexpr char const* kSquadOrdersBlock =
     "enemyConeDeg = 8\n"
     "memberConeDeg = 12\n"
     "minHoldS = 0.08\n"
-    "maxHoldS = 8\n";
+    "maxHoldS = 8\n"
+    "; minConfidence: `mevr say <words>` (the typed stand-in for speech) gives an order only when the rule parser is this sure.\n"
+    "minConfidence = 0.6\n";
 // Appended to a settings file that has no [Vent] yet (and part of a new file).
 constexpr char const* kVentBlock =
     "\n"
@@ -1338,6 +1340,9 @@ SquadOrders ReadSquadOrders(Ini const& ini) {
     }
     if (Number(ini, "SquadOrders", "maxHoldS", value)) {
         s.maxHoldS = std::clamp(value, 0.5, 60.0);
+    }
+    if (Number(ini, "SquadOrders", "minConfidence", value)) {
+        s.minConfidence = std::clamp(value, 0.0, 1.0);
     }
     return s;
 }

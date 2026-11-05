@@ -330,7 +330,7 @@ std::string Block(std::string_view said, std::string_view word, double secondsAg
     return sc::Block(gScene, gGrouper.Groups(), deictics, {}, said);
 }
 
-std::string Prefix() {
+std::vector<sc::RosterEntry> Roster() {
     std::vector<sc::RosterEntry> roster;
     for (auto const& [letter, known] : gRoster) {
         sc::RosterEntry e;
@@ -340,7 +340,11 @@ std::string Prefix() {
         e.powers = known.powers;
         roster.push_back(e);
     }
-    return sc::Prefix(roster);
+    return roster;
+}
+
+std::string Prefix() {
+    return sc::Prefix(Roster());
 }
 
 std::string StatusJson() {

@@ -497,6 +497,19 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         }
         return mako_gunner::StatusJson();
     }
+    if (verb == "say") {
+        // `mevr say <words>`: the words as a recognizer would give them (research/54), through the rule parser, the squad
+        // context and the dispatcher: the typed stand-in for speech. The outcome per clause.
+        std::string rest;
+        std::getline(words, rest);
+        while (!rest.empty() && rest.front() == ' ') {
+            rest.erase(rest.begin());
+        }
+        if (rest.empty()) {
+            return std::string("usage: mevr say <words> (e.g. mevr say Garrus, take out those troops on the bridge)");
+        }
+        return squad_orders::Say(rest);
+    }
     if (verb == "order") {
         // `mevr order WHO|WEAPON|POWER|ORDER|TARGET`: an action line (research/54) validated against the squad context and
         // given through the same dispatcher as the gesture, e.g. `ALL|-|-|attack|E1`, `G|-|-|follow|-`, `W|-|-|move|E2`.
