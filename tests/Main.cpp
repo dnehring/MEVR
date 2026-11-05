@@ -13,6 +13,7 @@
 #include "core/ik/BoneNames.hpp"
 #include "core/ik/CameraHook.hpp"
 #include "core/ik/Fingers.hpp"
+#include "core/ik/GunKick.hpp"
 #include "core/ik/HandFrame.hpp"
 #include "core/ik/Ik.hpp"
 #include "core/ik/PoseGraft.hpp"
@@ -5052,6 +5053,179 @@ void TestThrowGrip() {
 }
 
 // The physical vent (core/ik/Vent, research/45): the left hand on the gun's receiver, a fast pull back, let go.
+// A shot's kick of the gun model (core/ik/GunKick, research/24 section 8): the impulse, the spring, the cap, the shaping, the
+// motion of the hand, and the un-kick game/weapon applies to its readings.
+void TestGunKick() {
+    namespace gk = mevr::ik::gun_kick;
+    using mevr::ik::Quat;
+    using mevr::ik::Vec3;
+    gk::Tuning const t;
+    // The impulse: a rifle's 0.1 degrees gives about the min, a shotgun's 3 the max, monotonic, scaled, finite.
+    gk::Offset const rifle = gk::ShotKick(0.1, 1.0, t);
+    gk::Offset const pistol = gk::ShotKick(1.0, 1.0, t);
+    gk::Offset const shotgun = gk::ShotKick(3.0, 1.0, t);
+    CHECK(rifle.angleDeg > 0.8 && rifle.angleDeg < 1.0 && rifle.backM > 0.004 && rifle.backM < 0.005);
+    CHECK(pistol.angleDeg > rifle.angleDeg && shotgun.angleDeg > pistol.angleDeg);
+    CHECK(NearD(shotgun.angleDeg, t.maxAngleDeg, 1e-9) && NearD(shotgun.backM, t.maxBackM, 1e-9));
+    CHECK(NearD(gk::ShotKick(10.0, 1.0, t).angleDeg, t.maxAngleDeg, 1e-9));  // a full-strength shot is the max
+    CHECK(NearD(gk::ShotKick(std::numeric_limits<double>::quiet_NaN(), 1.0, t).angleDeg, t.minAngleDeg, 1e-9));
+    CHECK(NearD(gk::ShotKick(-1.0, 1.0, t).angleDeg, t.minAngleDeg, 1e-9));
+    CHECK(gk::ShotKick(3.0, 0.0, t).angleDeg == 0.0 && gk::ShotKick(3.0, 0.0, t).backM == 0.0);
+    CHECK(NearD(gk::ShotKick(3.0, 5.0, t).angleDeg, gk::kMaxScale * t.maxAngleDeg, 1e-9));  // the scale is clamped
+    CHECK(NearD(gk::ShotKick(0.1, 0.5, t).angleDeg, 0.5 * rifle.angleDeg, 1e-9));
+
+    // The soft cap: as is below the knee, continuous there, never past the cap, monotonic, mirrored.
+    CHECK(gk::SoftCap(2.0, 6.0, 0.6) == 2.0 && gk::SoftCap(3.6, 6.0, 0.6) == 3.6);
+    CHECK(NearD(gk::SoftCap(3.6 + 1e-6, 6.0, 0.6), 3.6, 1e-5));
+    CHECK(gk::SoftCap(1000.0, 6.0, 0.6) <= 6.0 && gk::SoftCap(1000.0, 6.0, 0.6) > 5.99);
+    CHECK(gk::SoftCap(5.0, 6.0, 0.6) > gk::SoftCap(4.0, 6.0, 0.6) && gk::SoftCap(5.0, 6.0, 0.6) < 5.0);
+    CHECK(gk::SoftCap(-5.0, 6.0, 0.6) == -gk::SoftCap(5.0, 6.0, 0.6));
+    CHECK(gk::SoftCap(std::numeric_limits<double>::infinity(), 6.0, 0.6) == 0.0 && gk::SoftCap(1.0, 0.0, 0.6) == 0.0);
+
+    // The spring: from rest a shot's kick rises, peaks at its peak 1/omega after the shot, and is back to a tenth by ~120 ms.
+    {
+        gk::Spring s;
+        CHECK(!s.Moving() && s.Value(t).angleDeg == 0.0);
+        s.Kick(shotgun, t);
+        CHECK(s.Moving() && s.Raw().angleDeg == 0.0);  // a push of velocity: no jump
+        double peakAngle = 0.0;
+        double peakAt = 0.0;
+        double const dt = 1.0 / 1000.0;
+        double tenthAt = -1.0;
+        for (int i = 1; i <= 400; ++i) {
+            s.Step(dt, t);
+            double const a = s.Raw().angleDeg;
+            if (a > peakAngle) {
+                peakAngle = a;
+                peakAt = i * dt;
+            }
+            if (tenthAt < 0.0 && peakAngle > 0.0 && i * dt > peakAt + 0.005 && a < 0.1 * peakAngle) {
+                tenthAt = i * dt;
+            }
+        }
+        CHECK(NearD(peakAngle, shotgun.angleDeg, 1e-3) && NearD(peakAt, 1.0 / t.omega, 1.5e-3));
+        CHECK(tenthAt > 0.08 && tenthAt < 0.15);  // "a fast spring back, about 80-150 ms"
+        CHECK(!s.Moving() && s.Raw().angleDeg == 0.0 && s.Raw().backM == 0.0);  // settled to exactly nothing
+        // The same kick in one step or many (the exact solution).
+        gk::Spring a;
+        gk::Spring b;
+        a.Kick(rifle, t);
+        b.Kick(rifle, t);
+        a.Step(0.04, t);
+        for (int i = 0; i < 40; ++i) {
+            b.Step(0.001, t);
+        }
+        CHECK(NearD(a.Raw().angleDeg, b.Raw().angleDeg, 1e-9) && NearD(a.Raw().backM, b.Raw().backM, 1e-12));
+        // Bad steps do nothing; a long hitch is stable.
+        a.Step(-1.0, t);
+        a.Step(std::numeric_limits<double>::quiet_NaN(), t);
+        CHECK(NearD(a.Raw().angleDeg, b.Raw().angleDeg, 1e-9));
+        a.Step(10.0, t);
+        CHECK(!a.Moving());
+    }
+    // Automatic fire stacks under the cap: an assault rifle at 10 shots a second kicks more than one shot but stays small; a
+    // hundred shotgun shots at once stay at the cap.
+    {
+        gk::Spring s;
+        double most = 0.0;
+        for (int shot = 0; shot < 20; ++shot) {
+            s.Kick(rifle, t);
+            for (int i = 0; i < 100; ++i) {
+                s.Step(0.001, t);
+                most = std::max(most, s.Value(t).angleDeg);
+            }
+        }
+        CHECK(most > rifle.angleDeg * 1.02 && most < 2.0 * rifle.angleDeg && most <= t.capAngleDeg);
+        gk::Spring spam;
+        for (int shot = 0; shot < 100; ++shot) {
+            spam.Kick(shotgun, t);
+        }
+        double top = 0.0;
+        double topBack = 0.0;
+        for (int i = 0; i < 300; ++i) {
+            spam.Step(0.001, t);
+            top = std::max(top, spam.Value(t).angleDeg);
+            topBack = std::max(topBack, spam.Value(t).backM);
+        }
+        CHECK(top <= t.capAngleDeg && top > 0.9 * t.capAngleDeg && topBack <= t.capBackM);
+        spam.Reset();
+        CHECK(!spam.Moving());
+    }
+    // Shaped: both hands halve it; the gun at the eye keeps the turn but not the push toward the eye.
+    {
+        gk::Offset const k{4.0, 0.02};
+        gk::Offset const one = gk::Shaped(k, 0.0, 0.0, t);
+        gk::Offset const two = gk::Shaped(k, 1.0, 0.0, t);
+        gk::Offset const eye = gk::Shaped(k, 0.0, 1.0, t);
+        CHECK(one.angleDeg == 4.0 && one.backM == 0.02);
+        CHECK(NearD(two.angleDeg, 2.0, 1e-12) && NearD(two.backM, 0.01, 1e-12));
+        CHECK(eye.angleDeg == 4.0 && eye.backM == 0.0);
+        CHECK(NearD(gk::Shaped(k, 0.5, 0.5, t).backM, 0.02 * 0.75 * 0.5, 1e-12));
+        CHECK(gk::Shaped(k, std::numeric_limits<double>::quiet_NaN(), -3.0, t).angleDeg == 4.0);
+    }
+    // The hand's motion: the muzzle turns toward the gun's top by the angle, the gun moves back along the barrel.
+    Quat const hand = AxisAngleQ(0.3, -0.5, 0.8, 63.0);
+    Vec3 const barrelInHand = mevr::ik::Normalize(Vec3{0.9, 0.1, -0.2});
+    Vec3 const upInHand = mevr::ik::Normalize(Vec3{0.2, 0.0, 0.9});
+    double const angle = 3.0 * std::numbers::pi / 180.0;
+    double const back = 2.0;
+    auto const motion = gk::HandMotion(hand, barrelInHand, upInHand, angle, back);
+    CHECK(motion.has_value());
+    if (motion) {
+        Vec3 const barrel = mevr::ik::Rotate(hand, barrelInHand);
+        Vec3 up = mevr::ik::Rotate(hand, upInHand);
+        up = mevr::ik::Normalize(up - barrel * mevr::ik::Dot(up, barrel));
+        Vec3 wrist{10.0, -4.0, 30.0};
+        Quat rotation = hand;
+        Vec3 const p = wrist;
+        gk::ApplyToHand(*motion, wrist, rotation);
+        Vec3 const kicked = mevr::ik::Rotate(rotation, barrelInHand);
+        CHECK(NearD(std::acos(std::clamp(mevr::ik::Dot(kicked, barrel), -1.0, 1.0)), angle, 1e-9));
+        CHECK(NearD(mevr::ik::Dot(kicked, up), std::sin(angle), 1e-9));  // up, toward the top
+        CHECK(NearV(wrist, p - barrel * back, 1e-9));
+        // A point on the gun (the muzzle, 40 units out) as drawn, then un-kicked back where the controller holds it.
+        Vec3 const muzzleInHand{40.0, 0.0, 3.0};
+        Vec3 const held = p + mevr::ik::Rotate(hand, muzzleInHand);
+        Vec3 const drawn = wrist + mevr::ik::Rotate(rotation, muzzleInHand);
+        CHECK(mevr::ik::Length(drawn - held) > 1.0);
+        gk::Written const w = gk::ToWritten(*motion, wrist);
+        CHECK(NearV(gk::UnkickPoint(w, drawn), held, 1e-9));
+        CHECK(NearV(gk::RekickPoint(w, held), drawn, 1e-9));
+        CHECK(NearV(gk::UnkickDirection(w, kicked), barrel, 1e-12) && NearV(gk::RekickDirection(w, barrel), kicked, 1e-12));
+        CHECK(NearD(gk::AngleDeg(w), 3.0, 1e-9) && NearD(gk::MoveLength(w), back, 1e-9));
+        // Out of reach the hand is written short of its kicked goal, along the barrel: the un-kicked muzzle stays on its line.
+        gk::Written const shortHand = gk::ToWritten(*motion, wrist + barrel * 1.5);
+        Vec3 const off = gk::UnkickPoint(shortHand, drawn + barrel * 1.5) - held;
+        CHECK(mevr::ik::Length(mevr::ik::Cross(off, barrel)) < 1e-9);
+        // The left hand on the foregrip moves with the gun when held, half way at half the blend, not at all at 0.
+        Vec3 const foregripInHand{25.0, 0.0, -2.0};
+        Vec3 left = p + mevr::ik::Rotate(hand, foregripInHand);
+        Quat leftRotation = hand;
+        gk::ApplyToHeld(*motion, p, 1.0, left, &leftRotation);
+        CHECK(NearV(left, wrist + mevr::ik::Rotate(rotation, foregripInHand), 1e-9));
+        CHECK(mevr::ik::AngleBetween(leftRotation, rotation) < 1e-9);
+        Vec3 const before = p + mevr::ik::Rotate(hand, foregripInHand);
+        Vec3 still = before;
+        gk::ApplyToHeld(*motion, p, 0.0, still, nullptr);
+        CHECK(NearV(still, before, 0.0));
+        Vec3 half = before;
+        gk::ApplyToHeld(*motion, p, 0.5, half, nullptr);
+        double const full = mevr::ik::Length(left - before);
+        CHECK(mevr::ik::Length(half - before) > 0.45 * full && mevr::ik::Length(half - before) < 0.55 * full);
+    }
+    // No plane, nothing finite: no motion.
+    CHECK(!gk::HandMotion(hand, {1.0, 0.0, 0.0}, {2.0, 0.0, 0.0}, angle, back));
+    CHECK(!gk::HandMotion(hand, {0.0, 0.0, 0.0}, upInHand, angle, back));
+    CHECK(!gk::HandMotion(hand, barrelInHand, upInHand, std::numeric_limits<double>::quiet_NaN(), back));
+    // Zero kick: the identity, so the un-kick leaves readings as they are.
+    if (auto const none = gk::HandMotion(hand, barrelInHand, upInHand, 0.0, 0.0)) {
+        gk::Written const w = gk::ToWritten(*none, {1.0, 2.0, 3.0});
+        CHECK(NearV(gk::UnkickPoint(w, {7.0, -8.0, 9.0}), {7.0, -8.0, 9.0}, 1e-12) && gk::AngleDeg(w) < 1e-9);
+    } else {
+        CHECK(false);
+    }
+}
+
 void TestVent() {
     namespace vnt = mevr::ik::vent;
     vnt::Zone const zone;
@@ -9654,6 +9828,7 @@ int main() {
     TestThrowGrip();
     TestGrenadeMachine();
     TestVent();
+    TestGunKick();
     TestSwing();
     TestArcPoints();
     TestFaceButtonsOff();

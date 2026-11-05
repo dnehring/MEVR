@@ -7,6 +7,7 @@
 #include "core/vr/ViewLevel.hpp"
 #include "engine/CallFunction.hpp"
 #include "engine/ProcessEvent.hpp"
+#include "game/GunKick.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/HeadTracking.hpp"
 #include "game/SupportGrip.hpp"
@@ -408,6 +409,8 @@ void OnSetWeaponRecoil(ue3::Object* context, ue3::Function* /*function*/, void* 
     double const at = Now();
     gWindow.Shot(at, kick);
     gChanges.Shot(kick);
+    // The gun model's kick in the hand (game/gun_kick, research/24 section 8): this shot's queued kick, 0 if none measured.
+    gun_kick::NoteShot(vl::Degrees(kick > 0 ? kick : 0));
     if (!gToldFirstShot) {
         gToldFirstShot = true;
         log::Info("view level: first shot seen (SFXInventoryManager.SetWeaponRecoil): pitch kick {} queued for the controller's "

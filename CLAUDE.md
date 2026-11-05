@@ -212,7 +212,18 @@ switching frameworks.
   `recoilHaptic`; log `view level:`. Aim assist's friction and adhesion (`SFXModule_AimAssist.ViewFriction`
   / `ViewAdhesion`, which slowed and bent the stick's turn near enemies) are zeroed by CallFunction
   post-handlers under the same conditions (cover included; not the sniper scope or the Mako):
-  `[Hands] aimAssist = 0` (1 keeps them), log `aim assist:` (research/24 section 7).
+  `[Hands] aimAssist = 0` (1 keeps them), log `aim assist:` (research/24 section 7). **The gun model kicks instead**
+  (research/24 section 8, mod only; `game/gun_kick`, math `core/ik/GunKick`, unit-tested; `[Hands] gunKick`, `gunKickScale`;
+  the menu's Controls > Weapon drawn): each shot (the `SetWeaponRecoil` handler; its queued kick, else
+  `BioWeaponRanged.GetRecoil`, else the weapon's last) turns the gun muzzle up about the hand and moves it back along the
+  barrel (0.8-4 degrees, 0.4-2.2 cm by the recoil; a critically damped spring, peak at 22 ms, a tenth by ~120 ms; stacked
+  under a soft cap of 6 degrees and 3 cm), half with both hands, its back motion faded as the sights' approach weight
+  (`sights::RaisedWeight`) brings it to the eye. Arm IK's `Request::gunKick`, applied by the writer after the support grip;
+  each call's kick goes to `bone_pose::WrittenGunKicks` (the last two: an attachment updated late shows the one before) and
+  **`weapon::Current`, `BoneWorld` and `ModelInGunFrame` take it back out**, so the aim ray, the shots, ADS, the assist and
+  the scope capture follow the controller; only the sight's published centre (the window, the eyepiece) is put back on the
+  kicked model (`weapon::ToDrawn`). `mevr kick [recoilDeg] [shots] [ms]` fires synthetic shots. Logs `gun kick:` (heartbeat),
+  the weapon line's `the gun kick taken out of N readings`; snapshot `"mod"."gunKick"`.
 - LE1 guided calibration ([research/25](research/25-calibration.md), HostServices v15): our menu's Body &
   calibration > Start calibration (or the VR hands tab's Calibrate, or a one-time prompt for uncalibrated
   controllers: its 8 s delay and 45 s timeout count only while the session has input focus, and its text says where

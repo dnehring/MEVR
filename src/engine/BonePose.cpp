@@ -116,6 +116,9 @@ ULONGLONG gSupportTimeMs = 0;
 Mesh const* gFingersMesh = nullptr;
 FingersSample gFingers;
 ULONGLONG gFingersTimeMs = 0;
+// The gun kick each call left in the pose (WrittenGunKicks). tKick is this call's, set by Write once it wrote (the hook's thread).
+KickSamples gKicks;
+thread_local KickSample tKick;
 // Hands closer than Support::minSpanMeters: the distance reported, so the hold lets go.
 constexpr double kCrossedMeters = 99.0;
 bool gFirstWriteLogged = false;  // game thread
@@ -339,6 +342,7 @@ bool TakeRequest(Mesh const* self, Request& copy) {
         // Never copied since 24fed58 (2026-10-22): the writer's thread-local copy kept its zero, so the sight alignment
         // assist and the calibrated stance's move of the gun never reached the pose (found 2026-10-31, research/43).
         copy.gunShift = gRequest.gunShift;
+        copy.gunKick = gRequest.gunKick;  // a new field must be copied here (see gunShift above)
         copy.fingers = gRequest.fingers;
         copy.legs = gRequest.legs;
         copy.keep.assign(gRequest.keep.begin(), gRequest.keep.end());
@@ -511,6 +515,24 @@ void Write(Mesh* self, float deltaTime) {
         double const handScale = pose[rightHand].scale > 1e-6 ? pose[rightHand].scale : 1.0;
         supportSample = ApplySupport(request.support, handScale, goals[0], goals[1]);
     }
+    // The gun kick (research/24 section 8): after the support grip, so its zone, its two-hand aim and the vent's receiver zone
+    // measured the gun where the controller holds it; the left hand on the gun moves with it, like the sight assist's shift.
+    std::optional<ik::gun_kick::Motion> kick;
+    GunKick const& kickRequest = request.gunKick;
+    if (kickRequest.enabled && haveGoal[1] && goals[1].hasRotation && request.arms[1].target == Target::Component &&
+        (kickRequest.angleRadians != 0.0 || kickRequest.backUnits != 0.0)) {
+        kick = ik::gun_kick::HandMotion(goals[1].rotation, kickRequest.barrel, kickRequest.up, kickRequest.angleRadians, kickRequest.backUnits);
+        if (kick) {
+            ik::Vec3 const pivot = goals[1].wrist;
+            ik::gun_kick::ApplyToHand(*kick, goals[1].wrist, goals[1].rotation);
+            if (support && haveGoal[0]) {
+                double const blend = std::clamp(std::isfinite(request.support.blend) ? request.support.blend : 0.0, 0.0, 1.0);
+                ik::gun_kick::ApplyToHeld(*kick, pivot, request.support.hold != 0 ? 1.0 : blend, goals[0].wrist,
+                    goals[0].hasRotation ? &goals[0].rotation : nullptr);
+            }
+        }
+    }
+    bool rightPosed = false;
     for (int side : {0, 1}) {
         Arm const& arm = request.arms[side];
         if (!haveGoal[side]) {
@@ -530,6 +552,17 @@ void Write(Mesh* self, float deltaTime) {
             continue;
         }
         first = (std::min)(first, arm.chain.upper);
+        rightPosed = rightPosed || side == 1;
+    }
+    // What this call leaves of the kick in the pose (set as the call's sample once the pose is written, below).
+    KickSample kickSample;
+    if (rightPosed && rightHand >= 0 && rightHand < count) {
+        kickSample.posed = true;
+        kickSample.hand = pose[rightHand].rotation;
+        if (kick) {
+            kickSample.kicked = true;
+            kickSample.kick = ik::gun_kick::ToWritten(*kick, pose[rightHand].translation);
+        }
     }
     if (torso.valid) {
         AcquireSRWLockExclusive(&gSampleLock);
@@ -629,18 +662,37 @@ void Write(Mesh* self, float deltaTime) {
     gWrites.fetch_add(1, std::memory_order_relaxed);
     gTotalWrites.fetch_add(1, std::memory_order_relaxed);
     gFirstWriteReady.store(true, std::memory_order_release);
+    tKick = kickSample;
+}
+
+// The kick this call left in the pose (none unless Write wrote one) becomes the latest sample, the last one the previous.
+void NoteKick(Mesh const* self) {
+    AcquireSRWLockExclusive(&gSampleLock);
+    if (gKicks.mesh != self) {
+        gKicks.mesh = self;
+        gKicks.latest = {};
+    }
+    gKicks.previous = gKicks.latest;
+    gKicks.latest = tKick;
+    if (tKick.kicked) {
+        ++gKicks.kickedWrites;
+    }
+    ReleaseSRWLockExclusive(&gSampleLock);
 }
 
 // No C++ objects here, so it can catch an access violation: writes then stop for good instead of
 // taking the game down.
 void WriteGuarded(Mesh* self, float deltaTime) {
+    tKick = {};
     __try {
         Write(self, deltaTime);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         gBroken.store(true);
         gMesh.store(nullptr);
         Reject("access violation in the writer: writes stopped");
+        tKick = {};
     }
+    NoteKick(self);
 }
 
 void AfterUpdateSkelPose(Mesh* self, float deltaTime, std::uintptr_t caller) {
@@ -1247,6 +1299,21 @@ std::optional<FingersSample> LatestFingers() {
     FingersSample const sample = gFingers;
     ReleaseSRWLockShared(&gSampleLock);
     return fresh ? std::optional<FingersSample>(sample) : std::nullopt;
+}
+
+KickSamples WrittenGunKicks() {
+    Mesh const* const mesh = gMesh.load(std::memory_order_acquire);
+    AcquireSRWLockShared(&gSampleLock);
+    KickSamples samples = gKicks;
+    ReleaseSRWLockShared(&gSampleLock);
+    // Only while the writer still writes that mesh: once it stops (cleared, republished for another mesh, broken) the engine
+    // composes the pose without us from the next call on.
+    if (mesh == nullptr || samples.mesh != mesh || gBroken.load(std::memory_order_relaxed)) {
+        std::uint64_t const total = samples.kickedWrites;
+        samples = {};
+        samples.kickedWrites = total;
+    }
+    return samples;
 }
 
 std::optional<ik::TorsoResult> LatestTorso() {

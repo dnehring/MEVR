@@ -2,7 +2,9 @@
 """Writes a synthetic .mevrrec (src/core/vr/PoseRecording.hpp v1, see tools/mevrrec.py): a standing player holding a long gun
 at the eye for N seconds (ADS: the right aim pose ahead of the right eye along -Z, the left hand on the foregrip), with a slow
 head sway so Umbra and the blur see motion. For the scope-capture A/B on the fake headset (research/39, research/35 "Measuring
-without a person"). Usage: python tools/make-ads-recording.py out.mevrrec [seconds] [hz] [eye height m] [hand drop m]; then `tools/console.ps1 "mevr weapon sniper"`,
+without a person"). Usage: python tools/make-ads-recording.py out.mevrrec [seconds] [hz] [eye height m] [hand drop m]
+[fire every s] [fire hold s] (the right trigger pulled for `hold` seconds every `every` seconds from 3 s on, for the gun kick,
+research/24 section 8; 0, the default: never); then `tools/console.ps1 "mevr weapon sniper"`,
 `tools/replay.ps1 -Path out.mevrrec -Loop -Inputs`, `tools/measure-levers.ps1 -Section Sights -Key scopeCapture -Values 0,1`."""
 import math
 import struct
@@ -33,6 +35,9 @@ def main():
     # How far below the right eye the aim pose is: the sniper's bore runs about 10 cm above it (the grip's measured muzzle),
     # so 0.15 puts the eye 5 cm over the bore, on the sight line (ADS's corridor wants the eye above the bore).
     drop = float(sys.argv[5]) if len(sys.argv) > 5 else 0.015
+    # Shots (research/24 section 8): the right trigger pulled for fire_hold s every fire_every s once the support grip holds.
+    fire_every = float(sys.argv[6]) if len(sys.argv) > 6 else 0.0
+    fire_hold = float(sys.argv[7]) if len(sys.argv) > 7 else 0.1
     ipd = 0.064
     fov = (-0.785, 0.785, 0.785, -0.785)  # left, right, up, down (radians)
     frames = []
@@ -63,10 +68,11 @@ def main():
         buttons = (1 << 4) | (1 << 5)  # gripValid, aimValid
         left_sq = 1.0 if t > 2.0 else 0.0  # the support grip after 2 s
         right_sq = 1.0  # the right grip holds the gun
+        right_trigger = 1.0 if fire_every > 0.0 and t > 3.0 and (t - 3.0) % fire_every < fire_hold else 0.0
         frame = FRAME.pack(int(t * 1e9), 3,
                            *eyes[0], *fov, *eyes[1], *fov,
                            buttons, 0.0, left_sq, 0.0, 0.0, *left_grip, *left_aim,
-                           buttons, 0.0, right_sq, 0.0, 0.0, *right_grip, *right_aim)
+                           buttons, right_trigger, right_sq, 0.0, 0.0, *right_grip, *right_aim)
         frames.append(frame)
     header = HEADER.pack(MAGIC, 1, HEADER.size, FRAME.size, 0, int(time.time() * 1000))
     with open(out, "wb") as f:

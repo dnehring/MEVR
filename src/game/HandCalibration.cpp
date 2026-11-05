@@ -4,6 +4,7 @@
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/ik/ArmPose.hpp"
+#include "core/ik/GunKick.hpp"
 #include "core/ik/HandFrame.hpp"
 #include "core/vr/CombatStance.hpp"
 #include "core/vr/InteractLabel.hpp"
@@ -47,6 +48,8 @@ struct Values {
     double leanM = 0.20;         // [Hands] leanM
     double bodyMoveMaxM = 0.75;  // [Hands] bodyMoveMaxM
     double recoilHaptic = 0.5;   // [Hands] recoilHaptic
+    bool gunKick = true;         // [Hands] gunKick (research/24 section 8)
+    double gunKickScale = 1.0;   // [Hands] gunKickScale
     bool aimAssist = false;      // [Hands] aimAssist
     bool exploreStance = false;      // [Hands] exploreStance (research/38 A; off since 2026-10-25: the gun's bones follow the explore pose)
     bool exploreStanceStorm = true;  // [Hands] exploreStanceStorm
@@ -132,6 +135,11 @@ constexpr char const* kDefaultFile =
     "; no longer tilt the world; research/24). recoilHaptic: how strongly a shot's recoil buzzes the hand, 0..1.\n"
     "levelCamera = 1\n"
     "recoilHaptic = 0.5\n"
+    "; gunKick: 1 = each shot kicks the gun in your hand, muzzle up and back, and it springs back within a tenth of a second\n"
+    "; (harder for a shotgun or a sniper rifle, less with both hands on it). Only what you see: your aim, the reticle and the\n"
+    "; shots stay where the controller points (research/24). gunKickScale: how big the kick is, 0..2 (1 = as designed).\n"
+    "gunKick = 1\n"
+    "gunKickScale = 1.0\n"
     "; aimAssist: 0 turns the game's aim assist friction and adhesion off on foot while the hand aims (the\n"
     "; stick's turn is never slowed or bent toward enemies; research/24); 1 keeps them. The Mako and the\n"
     "; sniper scope keep theirs either way.\n"
@@ -726,6 +734,12 @@ Values ReadValues(Ini const& ini) {
     }
     if (Number(ini, "Hands", "recoilHaptic", values.recoilHaptic)) {
         values.recoilHaptic = std::clamp(values.recoilHaptic, 0.0, 1.0);
+    }
+    if (Number(ini, "Hands", "gunKick", flag)) {
+        values.gunKick = flag != 0.0;
+    }
+    if (Number(ini, "Hands", "gunKickScale", values.gunKickScale)) {
+        values.gunKickScale = std::isfinite(values.gunKickScale) ? std::clamp(values.gunKickScale, 0.0, ik::gun_kick::kMaxScale) : 1.0;
     }
     if (Number(ini, "Hands", "aimAssist", flag)) {
         values.aimAssist = flag != 0.0;
@@ -2091,6 +2105,10 @@ double RecoilHaptic() {
     return gValues.recoilHaptic;
 }
 
+GunKick GetGunKick() {
+    return {gValues.gunKick, gValues.gunKickScale};
+}
+
 bool AimAssist() {
     return gValues.aimAssist;
 }
@@ -2540,6 +2558,9 @@ void Refresh() {
         {L"Hands", "Hands", L"constantEye", "constantEye", L"1"},
         {L"Hands", "Hands", L"blendFix", "blendFix", L"1"},  // read by the host (research/38 B)
         {L"Hands", "Hands", L"crouchDrop", "crouchDrop", L"0"},  // read by the host (2026-11-04: no double crouch drop)
+        // A visible gun kick on each shot (2026-11-04, research/24 section 8).
+        {L"Hands", "Hands", L"gunKick", "gunKick", L"1"},
+        {L"Hands", "Hands", L"gunKickScale", "gunKickScale", L"1.0"},
         // Fingers that follow the controllers (research/43).
         {L"Hands", "Hands", L"fingers", "fingers", L"1"},
         {L"Hands", "Hands", L"fingerCurlDeg", "fingerCurlDeg", L"70"},
@@ -2696,6 +2717,9 @@ void Refresh() {
         log::Info("controls: a left grip away from the gun is {}", values.gripLB ? "LB (weapon wheel)" : "nothing (it only takes the gun)");
         log::Info("hands: level camera {} (on foot while the hand aims: recoil and aim assist don't pitch the view), recoil haptic {:.2f}",
             values.levelCamera ? "on" : "off", values.recoilHaptic);
+        log::Info("hands: gun kick {} ([Hands] gunKick = {}, gunKickScale {:.2f}; the gun model only: the aim ray and shots stay on the "
+                  "controller, research/24 section 8)",
+            values.gunKick && values.gunKickScale > 0.0 ? "on" : "off", values.gunKick ? 1 : 0, values.gunKickScale);
         log::Info("hands: aim assist's friction and adhesion {} on foot while the hand aims ([Hands] aimAssist = {})",
             values.aimAssist ? "kept" : "off", values.aimAssist ? 1 : 0);
         log::Info("hands: weapon drawn: explore stance {}{}, explore speed ramp {}, draw and holster at {:.2f}x (research/38)",

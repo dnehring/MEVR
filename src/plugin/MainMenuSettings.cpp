@@ -322,6 +322,7 @@ void Settings::Read(menu::Values& v) {
     flag("explore_stance", ini.Num("Hands", "exploreStance", 0.0f) != 0.0f);
     flag("constant_eye", ini.Num("Hands", "constantEye", 1.0f) != 0.0f);
     v.numbers["draw_rate"] = std::clamp(ini.Num("Hands", "drawRate", 6.0f), 1.0f, 10.0f);
+    flag("gun_kick", ini.Num("Hands", "gunKick", 1.0f) != 0.0f);  // the mod reads it (game/gun_kick, research/24 section 8)
     // Features on by default with no row until 2026-11-04 (the release checklist's file-only list): the mod's defaults are on.
     flag("fingers", ini.Num("Hands", "fingers", 1.0f) != 0.0f);
     flag("vent", ini.Num("Vent", "enabled", 1.0f) != 0.0f);
@@ -639,6 +640,8 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         Put("Hands", "constantEye", onOff("constant_eye"), true);
     } else if (key == "draw_rate") {
         Put("Hands", "drawRate", fixed(v.Number("draw_rate"), 1), final);
+    } else if (key == "gun_kick") {
+        Put("Hands", "gunKick", onOff("gun_kick"), true);
     } else if (key == "trim_pitch" || key == "trim_yaw" || key == "trim_roll") {
         char const* name = key == "trim_pitch" ? "handPitch" : key == "trim_yaw" ? "handYaw" : "handRoll";
         Put("Hands", name, fixed(v.Number(key), 1), final);

@@ -121,6 +121,7 @@ std::vector<Field> const& Schema() {
         {"explore_stance", Type::Flag, 0},  // [Hands] exploreStance (research/38 A; off by default since 2026-10-25)
         {"constant_eye", Type::Flag, 1},    // [Hands] constantEye (B, the host)
         {"draw_rate", Type::Number, 6, "", 1, 10, F::Times1},  // [Hands] drawRate (D)
+        {"gun_kick", Type::Flag, 1},       // [Hands] gunKick (research/24 section 8)
         {"fingers", Type::Flag, 1},        // [Hands] fingers (research/43)
         {"vent", Type::Flag, 1},           // [Vent] enabled (research/45)
         {"mako_controls", Type::Flag, 1},  // [Mako] controls: the lever and the stick (research/46)

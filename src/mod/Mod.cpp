@@ -45,6 +45,7 @@
 #include "game/Fingers.hpp"
 #include "game/GamepadBridge.hpp"
 #include "game/GamepadMapping.hpp"
+#include "game/GunKick.hpp"
 #include "game/HandAim.hpp"
 #include "game/HandTargets.hpp"
 #include "game/HeadSim.hpp"
@@ -857,7 +858,7 @@ void PublishStatus() {
         "\"handAim\": {{\"enabled\": {}, \"toldHost\": {}, \"shots\": {}}}, "
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, "
-        "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
+        "\"posture\": {}, \"viewLevel\": {}, \"gunKick\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
         "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
@@ -867,7 +868,7 @@ void PublishStatus() {
         json::JsonString(game::weapon::Status()), game::support_grip::Held() ? "true" : "false",
         json::JsonNumber(game::support_grip::Blend()), game::holsters::StatusJson(), game::squad_weapons::StatusJson(),
         game::sights::StatusJson(), game::scope_capture::StatusJson(), game::throwables::StatusJson(), game::vent::StatusJson(), game::posture::StatusJson(),
-        game::view_level::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
+        game::view_level::StatusJson(), game::gun_kick::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
         game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::cockpit_probe::StatusJson(), game::mako_controls::StatusJson(),
         game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson());
@@ -1010,6 +1011,7 @@ void Heartbeat() {
         game::vent::LogStats();
         game::posture::LogStats();
         game::view_level::LogStats();
+        game::gun_kick::LogStats();
         game::combat_stance::LogStats();
         game::fingers::LogStats();
         game::comfort::LogStats();
@@ -1161,6 +1163,8 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // Our own turn (snap or smooth) before arm IK: the view anchor then maps the view the next frame shows, so the
         // hands and the body are posed for it (research/31). Its pad flags go out with the support grip's below.
         game::comfort::Tick(deltaSeconds, ComfortLink());
+        // A shot's kick of the gun model (research/24 section 8): this tick's, for arm IK's request.
+        game::gun_kick::Tick(deltaSeconds);
         game::arm_ik::Tick(deltaSeconds);
         // Holsters, the squad menu and the grenades before the support grip: it publishes the pad flags,
         // theirs among them. A squeeze at the grenade slot is claimed first, so neither holsters nor the
@@ -1328,6 +1332,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::combat_stance::Shutdown();  // the game's speed ramp and animation rates back, the pre-stage stopped
     game::fingers::Shutdown();
     game::view_level::Shutdown();
+    game::gun_kick::Shutdown();
     if (gHost != nullptr && MEVR_HOST_HAS(setVignette) && gHost->setVignette != nullptr) {
         gHost->setVignette(0.0f);  // no vignette without the mod (the host also forgets on unload)
     }

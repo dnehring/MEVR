@@ -1115,6 +1115,17 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
     if (gAdsGate && !gAds) {
         published.kind = static_cast<std::int32_t>(sv::Kind::None);
     }
+    // The gun kick (game/gun_kick, research/24 section 8): everything above is the gun as the controller holds it (game/weapon
+    // takes the kick out of its readings), so ADS, the assist and the shots' convergence never see a kick. What the host draws
+    // keeps that line (the dot, the scope's picture and its capture look where the shots go) but sits on the model as drawn:
+    // the window (a dot's frame, a scope's eyepiece) moves with the kicked gun.
+    if (published.kind != static_cast<std::int32_t>(sv::Kind::None)) {
+        if (auto const frame = view_anchor::Current()) {
+            if (auto const drawn = weapon::ToDrawn(engine::ToWorld(*frame, published.center))) {
+                published.center = engine::ToTracking(*frame, *drawn);
+            }
+        }
+    }
     return published;
 }
 
@@ -1173,6 +1184,11 @@ XrVector3f TakeGunShift() {
     gTakenPrev = gTakenNow;
     gTakenNow = gSpring.Value();
     return gTakenNow;
+}
+
+float RaisedWeight() {
+    float const weight = gApproach * gDistanceWeight;
+    return std::isfinite(weight) ? std::clamp(weight, 0.0f, 1.0f) : 0.0f;
 }
 
 void SetHostView(std::uint32_t view) {

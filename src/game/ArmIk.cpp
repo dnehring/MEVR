@@ -15,6 +15,7 @@
 #include "game/BodyFollow.hpp"
 #include "game/CockpitProbe.hpp"
 #include "game/Fingers.hpp"
+#include "game/GunKick.hpp"
 #include "game/HandCalibration.hpp"
 #include "engine/BonePose.hpp"
 #include "engine/Skeleton.hpp"
@@ -1142,6 +1143,17 @@ void Drive(double deltaSeconds) {
             engine::UnrealVector const a = engine::ToWorld(targets.body, p);
             engine::UnrealVector const b = engine::ToWorld(targets.body, {p.x + shift.x, p.y + shift.y, p.z + shift.z});
             request.gunShift = request.gunShift + ik::TransformDirection(*worldToComponent, {b.x - a.x, b.y - a.y, b.z - a.z});
+        }
+        // The shot's kick of the gun in the hand (game/gun_kick, research/24 section 8): the writer turns and moves the right
+        // hand's goal by it after the support grip; game/weapon takes it back out of its readings (visual only).
+        if (gunAimed && heldGrip && heldUp) {
+            if (gun_kick::Kick const kick = gun_kick::Current(); kick.active && targets.body.unitsPerMeter > 0.0) {
+                request.gunKick.enabled = true;
+                request.gunKick.barrel = heldGrip->barrel;
+                request.gunKick.up = *heldUp;
+                request.gunKick.angleRadians = kick.angleDeg * std::numbers::pi / 180.0;
+                request.gunKick.backUnits = kick.backM * targets.body.unitsPerMeter;
+            }
         }
         // The fingers (game/fingers, research/43): on the hands as they will be written, from this tick's controllers.
         fingers::Skeleton fingerSkeleton;

@@ -621,6 +621,97 @@ void CheckFollow(Live const& live, Body const& body, engine::skeleton::Attachmen
         meanStill, gFollow.still, verdict);
 }
 
+// The gun kick in the drawn pose (engine::bone_pose::WrittenGunKicks, game/gun_kick, research/24 section 8): what we read of the
+// gun is taken back to where the controller holds it, so the aim ray, the shots and the sights never see the kick. The pose is
+// the writer's latest call's; a weapon whose transform the engine updated late (a deferred attachment update) still shows the
+// call before's: the sample whose written right hand turns the grip's barrel onto the drawn barrel is the one the gun shows.
+struct DrawnKick {
+    ik::gun_kick::Written kick;
+    ik::Affine bodyToWorld;
+    ik::Affine worldToBody;
+};
+
+// Heartbeat: readings that had a kick taken out, how many by the call before's sample, and how well the chosen sample's written
+// hand explained the drawn barrel (degrees; the grip's own accuracy when the gun follows the written hand).
+struct KickReads {
+    unsigned reads = 0;
+    unsigned previous = 0;
+    double maxResidual = 0.0;
+};
+KickReads gKickReads;
+
+std::optional<DrawnKick> SelectKick(Live const& live, ik::Vec3 const& drawnBarrel) {
+    engine::bone_pose::KickSamples const s = engine::bone_pose::WrittenGunKicks();
+    if (s.mesh == nullptr || s.mesh != live.body || (!s.latest.kicked && !s.previous.kicked)) {
+        return std::nullopt;
+    }
+    ik::Affine const bodyToWorld = engine::skeleton::LocalToWorld(live.body);
+    auto const worldToBody = ik::InverseAffine(bodyToWorld);
+    if (!worldToBody) {
+        return std::nullopt;
+    }
+    engine::bone_pose::KickSample const* chosen = &s.latest;
+    if (gGrip && s.latest.posed && s.previous.posed) {
+        ik::Vec3 const barrel = ik::Normalize(ik::TransformDirection(*worldToBody, drawnBarrel), {1.0, 0.0, 0.0});
+        double const latest = Degrees(barrel, ik::Rotate(s.latest.hand, gGrip->barrel));
+        double const previous = Degrees(barrel, ik::Rotate(s.previous.hand, gGrip->barrel));
+        if (previous < latest) {
+            chosen = &s.previous;
+            ++gKickReads.previous;
+        }
+        gKickReads.maxResidual = std::max(gKickReads.maxResidual, std::min(latest, previous));
+    }
+    if (!chosen->kicked) {
+        return std::nullopt;
+    }
+    ++gKickReads.reads;
+    return DrawnKick{chosen->kick, bodyToWorld, *worldToBody};
+}
+
+ik::Vec3 UnkickPoint(DrawnKick const& k, ik::Vec3 const& world) {
+    return ik::TransformPoint(k.bodyToWorld, ik::gun_kick::UnkickPoint(k.kick, ik::TransformPoint(k.worldToBody, world)));
+}
+
+ik::Vec3 UnkickDirection(DrawnKick const& k, ik::Vec3 const& world) {
+    return ik::Normalize(ik::TransformDirection(k.bodyToWorld, ik::gun_kick::UnkickDirection(k.kick, ik::TransformDirection(k.worldToBody, world))),
+        world);
+}
+
+Muzzle Unkicked(Muzzle const& drawn, DrawnKick const& k) {
+    return {U(UnkickPoint(k, V(drawn.location))), U(UnkickDirection(k, V(drawn.barrel))), U(UnkickDirection(k, V(drawn.up))),
+        U(UnkickPoint(k, V(drawn.origin)))};
+}
+
+// The held, verified weapon as drawn now and the kick in it: what Current, the model's points and the bones read.
+struct Reading {
+    Live live;
+    Muzzle drawn;
+    std::optional<DrawnKick> kick;
+};
+
+std::optional<Reading> ReadHeld() {
+    if (!gResolved || !gResolved->verified || !gHeld) {
+        return std::nullopt;
+    }
+    std::string why;
+    auto const live = LivePointers(why);
+    if (!live || live->weapon != gResolved->weapon || live->mesh != gResolved->mesh ||
+        player::SkeletalMesh(live->mesh) != gResolved->asset) {
+        return std::nullopt;
+    }
+    // Still in the hand: it can be put away between two ticks.
+    auto const attachment = engine::skeleton::FindAttachment(live->body, live->mesh);
+    if (!attachment || attachment->bone != gHeldBone) {
+        return std::nullopt;
+    }
+    auto const frame = MuzzleFrame(live->mesh, gResolved->socket);
+    if (!frame) {
+        return std::nullopt;
+    }
+    Muzzle const drawn = ToMuzzle(*frame, engine::skeleton::LocalToWorld(live->mesh), gResolved->axis);
+    return Reading{*live, drawn, SelectKick(*live, V(drawn.barrel))};
+}
+
 #endif  // MEVR_GAME_LE1
 
 } // namespace
@@ -746,26 +837,35 @@ void Tick(bool wanted) {
 
 std::optional<Muzzle> Current() {
 #if defined(MEVR_GAME_LE1)
-    if (!gResolved || !gResolved->verified || !gHeld) {
+    auto const r = ReadHeld();
+    if (!r) {
         return std::nullopt;
     }
-    std::string why;
-    auto const live = LivePointers(why);
-    if (!live || live->weapon != gResolved->weapon || live->mesh != gResolved->mesh ||
-        player::SkeletalMesh(live->mesh) != gResolved->asset) {
-        return std::nullopt;
-    }
-    // Still in the hand: it can be put away between two ticks.
-    auto const attachment = engine::skeleton::FindAttachment(live->body, live->mesh);
-    if (!attachment || attachment->bone != gHeldBone) {
-        return std::nullopt;
-    }
-    auto const frame = MuzzleFrame(live->mesh, gResolved->socket);
-    if (!frame) {
-        return std::nullopt;
-    }
-    return ToMuzzle(*frame, engine::skeleton::LocalToWorld(live->mesh), gResolved->axis);
+    return r->kick ? Unkicked(r->drawn, *r->kick) : r->drawn;
 #else
+    return std::nullopt;
+#endif
+}
+
+std::optional<Muzzle> CurrentAsDrawn() {
+#if defined(MEVR_GAME_LE1)
+    auto const r = ReadHeld();
+    return r ? std::optional<Muzzle>(r->drawn) : std::nullopt;
+#else
+    return std::nullopt;
+#endif
+}
+
+std::optional<engine::UnrealVector> ToDrawn(engine::UnrealVector const& world) {
+#if defined(MEVR_GAME_LE1)
+    auto const r = ReadHeld();
+    if (!r || !r->kick) {
+        return std::nullopt;
+    }
+    DrawnKick const& k = *r->kick;
+    return U(ik::TransformPoint(k.bodyToWorld, ik::gun_kick::RekickPoint(k.kick, ik::TransformPoint(k.worldToBody, V(world)))));
+#else
+    (void)world;
     return std::nullopt;
 #endif
 }
@@ -916,22 +1016,24 @@ std::optional<ik::Vec3> OffHandSocketInHand() {
 
 std::optional<Model> ModelInGunFrame(engine::UnrealVector const& topWorld) {
 #if defined(MEVR_GAME_LE1)
-    auto const muzzle = Current();
-    if (!muzzle) {
+    // The gun as the controller holds it, its points too (the kick taken out).
+    auto const reading = ReadHeld();
+    if (!reading) {
         return std::nullopt;
     }
-    std::string why;
-    auto const live = LivePointers(why);
-    ue3::Object* const asset = live ? player::SkeletalMesh(live->mesh) : nullptr;
+    Muzzle const muzzle = reading->kick ? Unkicked(reading->drawn, *reading->kick) : reading->drawn;
+    std::optional<DrawnKick> const& kick = reading->kick;
+    Live const& live = reading->live;
+    ue3::Object* const asset = player::SkeletalMesh(live.mesh);
     // SkeletalMesh.Bounds (+0x60, research/21 section 11): the reference pose's box in the mesh's space.
     void* const boundsAt = asset != nullptr ? gBounds.Address(asset) : nullptr;
     ue3::Vector const* const boundsOrigin = gBoundsOrigin.In<ue3::Vector>(boundsAt);
     ue3::Vector const* const boundsExtent = gBoundsExtent.In<ue3::Vector>(boundsAt);
-    if (!live || live->mesh != gResolved->mesh || boundsOrigin == nullptr || boundsExtent == nullptr) {
+    if (live.mesh != gResolved->mesh || boundsOrigin == nullptr || boundsExtent == nullptr) {
         return std::nullopt;
     }
-    ik::Vec3 const origin = V(muzzle->location);
-    ik::Vec3 const barrel = ik::Normalize(V(muzzle->barrel), {1.0, 0.0, 0.0});
+    ik::Vec3 const origin = V(muzzle.location);
+    ik::Vec3 const barrel = ik::Normalize(V(muzzle.barrel), {1.0, 0.0, 0.0});
     ik::Vec3 top = V(topWorld);
     top = top - barrel * ik::Dot(top, barrel);
     if (!(ik::Length(top) > 1e-6)) {
@@ -939,11 +1041,11 @@ std::optional<Model> ModelInGunFrame(engine::UnrealVector const& topWorld) {
     }
     top = ik::Normalize(top);
     ik::Vec3 const side = ik::Cross(top, barrel);  // UE axes (X forward, Z up): up x forward = right
-    auto const inFrame = [&](std::string name, ik::Vec3 const& world) {
-        ik::Vec3 const d = world - origin;
+    auto const inFrame = [&](std::string name, ik::Vec3 const& drawn) {
+        ik::Vec3 const d = (kick ? UnkickPoint(*kick, drawn) : drawn) - origin;
         return ModelPoint{std::move(name), -ik::Dot(d, barrel), ik::Dot(d, top), ik::Dot(d, side)};
     };
-    ik::Affine const meshToWorld = engine::skeleton::LocalToWorld(live->mesh);
+    ik::Affine const meshToWorld = engine::skeleton::LocalToWorld(live.mesh);
     Model model;
     ue3::Vector const& o = *boundsOrigin;
     ue3::Vector const& e = *boundsExtent;
@@ -963,14 +1065,14 @@ std::optional<Model> ModelInGunFrame(engine::UnrealVector const& topWorld) {
         model.sideMax = first ? p.side : std::max(model.sideMax, p.side);
         first = false;
     }
-    std::span<engine::skeleton::BoneAtom const> const pose = engine::skeleton::SpaceBases(live->mesh);
-    if (auto const bones = engine::skeleton::ReadRefSkeleton(live->mesh); bones && bones->names.size() == pose.size()) {
+    std::span<engine::skeleton::BoneAtom const> const pose = engine::skeleton::SpaceBases(live.mesh);
+    if (auto const bones = engine::skeleton::ReadRefSkeleton(live.mesh); bones && bones->names.size() == pose.size()) {
         for (std::size_t i = 0; i < pose.size() && i < 64; ++i) {
             model.points.push_back(inFrame(bones->names[i], ik::TransformPoint(meshToWorld, engine::skeleton::ToTransform(pose[i]).translation)));
         }
     }
-    for (auto const& named : engine::skeleton::Sockets(live->mesh)) {
-        if (auto const local = SocketInMesh(live->mesh, named.socket)) {
+    for (auto const& named : engine::skeleton::Sockets(live.mesh)) {
+        if (auto const local = SocketInMesh(live.mesh, named.socket)) {
             model.points.push_back(inFrame("socket " + ue3::runtime::NameText(named.name),
                 ik::TransformPoint(meshToWorld, local->translation)));
         }
@@ -984,19 +1086,17 @@ std::optional<Model> ModelInGunFrame(engine::UnrealVector const& topWorld) {
 
 std::optional<engine::UnrealVector> BoneWorld(std::size_t index) {
 #if defined(MEVR_GAME_LE1)
-    if (!Current()) {
+    auto const reading = ReadHeld();
+    if (!reading) {
         return std::nullopt;
     }
-    std::string why;
-    auto const live = LivePointers(why);
-    if (!live || live->mesh != gResolved->mesh) {
+    ue3::Object* const mesh = reading->live.mesh;
+    std::span<engine::skeleton::BoneAtom const> const pose = engine::skeleton::SpaceBases(mesh);
+    if (index >= pose.size() || static_cast<int>(pose.size()) != engine::skeleton::RefBoneCount(mesh)) {
         return std::nullopt;
     }
-    std::span<engine::skeleton::BoneAtom const> const pose = engine::skeleton::SpaceBases(live->mesh);
-    if (index >= pose.size() || static_cast<int>(pose.size()) != engine::skeleton::RefBoneCount(live->mesh)) {
-        return std::nullopt;
-    }
-    return U(ik::TransformPoint(engine::skeleton::LocalToWorld(live->mesh), engine::skeleton::ToTransform(pose[index]).translation));
+    ik::Vec3 const drawn = ik::TransformPoint(engine::skeleton::LocalToWorld(mesh), engine::skeleton::ToTransform(pose[index]).translation);
+    return U(reading->kick ? UnkickPoint(*reading->kick, drawn) : drawn);
 #else
     (void)index;
     return std::nullopt;
@@ -1031,9 +1131,15 @@ void LogStats() {
             gFollow.windowSumNow / gFollow.windowMoving, gFollow.windowMaxNow, gFollow.windowMoving,
             gFollow.windowSumPrev / gFollow.windowMoving);
     }
-    log::Info("    weapon: {}{}", gStatus, follow);
+    std::string kick;
+    if (gKickReads.reads > 0) {
+        kick = std::format("; the gun kick taken out of {} readings ({} by the pose before: an attachment updated late), the drawn barrel "
+                           "within {:.2f} degrees of the written hand's", gKickReads.reads, gKickReads.previous, gKickReads.maxResidual);
+    }
+    log::Info("    weapon: {}{}{}", gStatus, follow, kick);
     gFollow.windowMoving = 0;
     gFollow.windowSumNow = gFollow.windowMaxNow = gFollow.windowSumPrev = 0.0;
+    gKickReads = {};
 #endif
 }
 
@@ -1045,6 +1151,7 @@ void Shutdown() {
     gGetSocketWorld = nullptr;
     gGetRangedWeaponType = nullptr;
     gGetPlayerAimError = nullptr;
+    gKickReads = {};
 #endif
     gStatus = "off";
     gLoggedStatus.clear();

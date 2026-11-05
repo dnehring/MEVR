@@ -28,6 +28,8 @@ Halcyon's MassEffect1-VR renderer, with our hands, body and menus on top. LE1 on
   to point, lift your thumb off the stick for a thumbs-up, and keep your finger off the trigger along the gun's frame.
 - Hold a rifle with both hands: the left hand grabs the foregrip.
 - Red dots and holo sights on the guns, and a real zoomed scope on the sniper rifle when you bring it to your eye.
+- The gun kicks in your hand when you fire, muzzle up and back, harder for a shotgun or a sniper rifle and less with
+  both hands on it; your view never kicks, and your aim and the shots stay where you point (Controls > Weapon drawn).
 - Body holsters: the pistol at your right hip, the shotgun at your left, the rifles over your shoulders. Reach there
   and squeeze the grip to draw; let go there to put the gun away.
 - Throw real grenades (take one from your chest), strike in melee with a fast swing, and vent an overheated gun by
