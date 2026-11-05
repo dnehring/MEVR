@@ -268,7 +268,8 @@ void Settings::Read(menu::Values& v) {
     flag("vignette", ini.Num("Comfort", "vignette", 0.0f) != 0.0f);
     v.numbers["vignette_strength"] = std::clamp(std::round(ini.Num("Comfort", "vignetteStrength", 0.6f) * 100.0f), 10.0f, 100.0f);
     v.texts["vignette_when"] = Lower(ini.Text("Comfort", "vignetteWhen", "turn")) == "move" ? "move" : "turn";
-    // "body": Halcyon's moveFollowsHead off (the stick walks where Shepard faces), a chip of its own.
+    // "body": Halcyon's moveFollowsHead off (the stick walks where Shepard faces). Not offered since 2026-11-04 (the owner: it
+    // brings back Halcyon's "look left, move right" bug), so a file with it off shows no chip until Where I look is picked.
     v.texts["walk"] = Lower(ini.Text("Comfort", "walk", "head")) == "hand" ? "hand" : c.moveFollowsHead ? "head" : "body";
     flag("crouch", ini.Num("Hands", "physicalCrouch", 1.0f) != 0.0f);
     // Life-size movement is Halcyon's lean gain of 2 in the live profile (what's in effect), not a key of ours; Advanced > View's
@@ -684,7 +685,8 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     else if (key == "walk") {
         // Where I look: Halcyon's moveFollowsHead (as before). Left hand: [Comfort] walk = hand, the mod's flag and the
         // host's stick turn (research/31); moveFollowsHead stays as it is (the host takes Halcyon's turn off first).
-        // Shepard's body: moveFollowsHead off (Halcyon's own), [Comfort] walk = head.
+        // Shepard's body: moveFollowsHead off (Halcyon's own), [Comfort] walk = head; no longer a chip (2026-11-04), so picking
+        // Where I look turns moveFollowsHead back on.
         std::string const walk = v.Text("walk");
         bool const hand = walk == "hand";
         bool const body = walk == "body";
@@ -1008,6 +1010,50 @@ After Settings::TakeAfter() {
     After const a = after_;
     after_ = After::Nothing;
     return a;
+}
+
+void FirstStartEyeSize() {
+    static bool done = false;
+    if (done) {
+        return;
+    }
+    MELEVR::XrSession::ResolutionStats resolution{};
+    MELEVR::XrSession::GetResolutionStats(&resolution);
+    int const recommendedW = static_cast<int>(resolution.recommendedEyeWidth);
+    int const recommendedH = static_cast<int>(resolution.recommendedEyeHeight);
+    if (recommendedW <= 0 || recommendedH <= 0) {
+        return;  // VR hasn't started yet: the runtime's recommendation comes with the session
+    }
+    done = true;
+    std::wstring const& path = MELEVR::MevrBridge::SettingsPath();
+    bool const already = GetPrivateProfileIntW(L"Display", L"eyeSizeSet", 0, path.c_str()) != 0;
+    bool const wanted = setup_request::EyeSizeAtFirstStart();
+    if (!wanted || already) {
+        return;  // a developer deploy, a size the player chose in the setup, or done before
+    }
+    MELEVR::Config::VrConfig& c = MELEVR::Config::Get();
+    int const oldW = c.sfr2ResX;
+    int const oldH = c.sfr2ResY;
+    ms::Size const size = ms::FirstStartSize(wanted, already, {oldW, oldH}, recommendedW, recommendedH);
+    if (size.width > 0) {
+        c.sfr2ResX = size.width;
+        c.sfr2ResY = size.height;
+        c.expectedResX = size.width;
+        c.expectedResY = size.height;
+        int const active = MELEVR::Config::ActiveProfileIndex();
+        MELEVR::Config::SaveProfile(active);
+        int wx = 0, wy = 0;
+        MELEVR::Config::ApplyResolutionForCurrentMode(&wx, &wy);
+        log::Info("first VR start: the render resolution is now your headset's own eye size, {}x{} (MEVR Setup's stand-in was {}x{}); "
+                  "profile {} saved, GamerSettings.ini {}: it applies from the next launch ([Display] eyeSizeSet = 1)",
+            size.width, size.height, oldW, oldH, MELEVR::Config::ProfileName(active),
+            wx > 0 ? std::format("set to {}x{}", wx, wy) : std::string("unchanged (auto-set per mode is off)"));
+    } else {
+        log::Info("first VR start: the render resolution {}x{} is already your headset's own eye size ([Display] eyeSizeSet = 1)", oldW, oldH);
+    }
+    if (WritePrivateProfileStringW(L"Display", L"eyeSizeSet", L"1", path.c_str()) == 0) {
+        log::Warn("first VR start: couldn't write [Display] eyeSizeSet to {}: the next VR start checks again", ini::Utf8(std::filesystem::path(path)));
+    }
 }
 
 } // namespace mevr::host::main_menu

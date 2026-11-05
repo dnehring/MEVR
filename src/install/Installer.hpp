@@ -57,6 +57,7 @@ struct Status {
     // The VR game settings chosen while GamerSettings.ini didn't exist yet: applied once it does (Repair, "Start the game
     // once", Settings > Apply).
     std::optional<PendingSettings> pendingSettings;
+    bool eyeSizeAtFirstStart = false;  // the manifest's: the mod sets the headset's eye size at the first VR start
     // Installed files Repair would put back (missing or changed: the loader or the cockpit's TOC entry after Steam's
     // "verify files", a deleted menu file...); a loader another tool put in place of ours isn't one.
     std::vector<std::string> needsRepair;

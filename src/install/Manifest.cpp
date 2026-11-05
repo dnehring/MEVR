@@ -200,6 +200,7 @@ json::Value Manifest::ToJson() const {
     v["installedAt"] = installedAt;
     v["loader"] = loader;
     v["gameSettings"] = gameSettings;
+    v["eyeSizeAtFirstStart"] = eyeSizeAtFirstStart;
     if (pendingSettings) {
         json::Value p = json::Value::Object();
         p["width"] = pendingSettings->width;
@@ -208,6 +209,7 @@ json::Value Manifest::ToJson() const {
         p["motionBlurOff"] = pendingSettings->motionBlurOff;
         p["filmGrainOff"] = pendingSettings->filmGrainOff;
         p["hdrOff"] = pendingSettings->hdrOff;
+        p["eyeSizeAtFirstStart"] = pendingSettings->eyeSizeAtFirstStart;
         v["pendingSettings"] = std::move(p);
     }
     json::Value fileArray = json::Value::Array();
@@ -276,6 +278,7 @@ std::optional<Manifest> Manifest::FromJson(json::Value const& v) {
     m.installedAt = v.String("installedAt");
     m.loader = v.String("loader");
     m.gameSettings = v.Bool("gameSettings");
+    m.eyeSizeAtFirstStart = v.Bool("eyeSizeAtFirstStart");
     if (json::Value const& p = v.Get("pendingSettings"); p.IsObject()) {
         PendingSettings s;
         s.width = static_cast<int>(p.Number("width", 0));
@@ -284,6 +287,7 @@ std::optional<Manifest> Manifest::FromJson(json::Value const& v) {
         s.motionBlurOff = p.Bool("motionBlurOff", true);
         s.filmGrainOff = p.Bool("filmGrainOff", true);
         s.hdrOff = p.Bool("hdrOff", true);
+        s.eyeSizeAtFirstStart = p.Bool("eyeSizeAtFirstStart");
         m.pendingSettings = s;
     }
     for (json::Value const& e : v.Get("files").Items()) {

@@ -21,6 +21,7 @@ PendingSettings PendingFromChoices(settings::Choices const& c) {
     p.motionBlurOff = c.motionBlurOff;
     p.filmGrainOff = c.filmGrainOff;
     p.hdrOff = c.hdrOff;
+    p.eyeSizeAtFirstStart = c.eyeSizeAtFirstStart;
     return p;
 }
 
@@ -31,6 +32,7 @@ settings::Choices ChoicesFromPending(PendingSettings const& p) {
     c.motionBlurOff = p.motionBlurOff;
     c.filmGrainOff = p.filmGrainOff;
     c.hdrOff = p.hdrOff;
+    c.eyeSizeAtFirstStart = p.eyeSizeAtFirstStart;
     return c;
 }
 
@@ -172,6 +174,7 @@ bool EditUnlessReadOnly(Transaction& tx, std::string_view relative, char const* 
 bool ApplySettingsIn(Transaction& tx, settings::Choices const& choices, bool* gamerReadOnly = nullptr) {
     Layout const& layout = tx.Where();
     std::error_code ec;
+    tx.Data().eyeSizeAtFirstStart = choices.eyeSizeAtFirstStart;  // a later choice (Settings, Keep) replaces it
     if (!fs::exists(layout.Full(paths::kGamerSettings), ec)) {
         // The game has never been started here: it makes GamerSettings.ini on its first start. Without the VR values the
         // window stays bordered at the monitor's size (Halcyon's stereo breaks) and MELEVR.ini keeps the template's
@@ -349,6 +352,7 @@ Status ReadStatus(fs::path const& root, std::string const& source) {
         s.loader = tx.Data().loader;
         s.gameSettings = tx.Data().gameSettings;
         s.pendingSettings = tx.Data().pendingSettings;
+        s.eyeSizeAtFirstStart = tx.Data().eyeSizeAtFirstStart;
         s.packs = tx.Data().packs;
         if (s.installed) {
             // What Repair would put back: a loader another tool installed since stays (Repair leaves it).
@@ -640,6 +644,7 @@ Outcome RestoreSettings(Layout const& layout) {
     ok = tx.RevertIni(paths::kEngineIni) && ok;
     tx.Data().gameSettings = false;
     tx.Data().pendingSettings.reset();  // the player's own values: nothing waits to go on later either
+    tx.Data().eyeSizeAtFirstStart = false;
     ok = ok && (!tx.Exists() || tx.Save());
     return Finish(tx, ok);
 }

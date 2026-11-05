@@ -98,24 +98,39 @@ Each needs a headset verdict, or ships off. Source: notes/next-vr-session.md ste
 
 ## 3. Defaults to decide
 
-- [ ] **[D] `exploreStance`** is off until a headset confirms the redesign: confirm it, or ship off and hide its row.
-- [ ] **[D] Scope capture's speckle**: ship `scopeCapturePost = 1` (grade, speckle) or 0 (clean, no grade); give it a row.
-- [ ] **[D] `reticle = game` can't work**: the game frees the scope art's textures, so every scope falls back to the
+The owner decided these on 2026-11-04 (asked one by one); the rows below say what each answer changed.
+
+- [x] **[D] `exploreStance`** is off until a headset confirms the redesign: confirm it, or ship off and hide its row.
+  **Decided: ship off, hide its row** (the setting stays in the ini). Done: the row is gone from Controls > Weapon drawn.
+- [x] **[D] Scope capture's speckle**: ship `scopeCapturePost = 1` (grade, speckle) or 0 (clean, no grade); give it a row.
+  **Decided: ship with the grade** (`scopeCapturePost = 1`, today's default); the speckle stays a known issue in the README.
+- [x] **[D] `reticle = game` can't work**: the game frees the scope art's textures, so every scope falls back to the
   duplex (research/21:863-870). Build one of the two noted routes, or make `duplex` the default.
-- [ ] **[D] `sharePass = 5`** (one render a frame, 20% at the heaviest cell, symmetric window) stays experimental, or
+  **Decided: `duplex` the default**, the broken choice dropped for now. Done: `reticle = duplex` in the code and the ini text
+  (an old file's `game` is kept: it falls back to the duplex anyway).
+- [x] **[D] `sharePass = 5`** (one render a frame, 20% at the heaviest cell, symmetric window) stays experimental, or
   becomes the default for over-budget machines after the real-headset numbers.
-- [ ] **[D] Starting resolution.** The setup defaults to Performance (3072x3188) unless an old Halcyon log gives the eye
+  **Decided: off, experimental**; revisit after the real-headset numbers.
+- [x] **[D] Starting resolution.** The setup defaults to Performance (3072x3188) unless an old Halcyon log gives the eye
   size; its headset Detect never ran. Choose per headset and GPU class; FSR at x0.85 as the fallback.
+  **Decided: the headset's own eye size**, read at the first VR start and set once; Performance until then. Done: the
+  setup's new default Automatic (`auto`) records `eyeSizeAtFirstStart` in the manifest; the host's `FirstStartEyeSize`
+  sets it once (`[Display] eyeSizeSet`, log `first VR start:`), for the launches after it. Never run in the game.
 - [ ] **[D] Equipment and character record lose their 3D models in the room**: exclude them from `screens = all` until
   fixed.
-- [ ] **[D] Cockpit on by default with no opt-out**: the setup always installs its package (and edits `PCConsoleTOC.bin`);
+  **Open:** the owner wants a screenshot of both screens (in the room and flat) before deciding.
+- [x] **[D] Cockpit on by default with no opt-out**: the setup always installs its package (and edits `PCConsoleTOC.bin`);
   add an optional-content checkbox and a menu row, or ship it off.
-- [ ] **[D] Cutscene frame cap** (`cineFpsCap = 1`: cutscenes at 45 fps at 90 Hz). Less visible on the 3D screen; decide
+  **Decided: keep as is**: always installed; the menu's "Sit in the cockpit" (e38c381) turns it off.
+- [x] **[D] Cutscene frame cap** (`cineFpsCap = 1`: cutscenes at 45 fps at 90 Hz). Less visible on the 3D screen; decide
   for the In VR choice.
-- [ ] **[D] `Walk toward: Body`** turns Halcyon's `moveFollowsHead` off, which brings back its "look left, move right"
+  **Decided: keep it on** (Halcyon's default) for the 3D screen and In VR.
+- [x] **[D] `Walk toward: Body`** turns Halcyon's `moveFollowsHead` off, which brings back its "look left, move right"
   bug (`vr_menu.cpp:1025-1029`). Remove the choice.
-- [ ] **[D] "Look speed"** (head rotation not 1:1) is a nausea risk on a plain slider: remove it or move it to Advanced
+  **Decided: remove Body.** Done: Where I look and Left hand only.
+- [x] **[D] "Look speed"** (head rotation not 1:1) is a nausea risk on a plain slider: remove it or move it to Advanced
   with a warning.
+  **Decided: remove the row** (it had moved to Advanced > Tracking with a warning in e38c381); `MELEVR.ini` still sets it.
 
 ## 4. Premium feel
 
@@ -154,6 +169,8 @@ Each needs a headset verdict, or ships off. Source: notes/next-vr-session.md ste
 - [ ] **[C] Seated play**: no seated preset; holsters and crouch come from a standing recenter (research/19:570-571).
 - [ ] **[C] Legs moonwalk** when strafing or backing up; Shepard is left behind past 0.75 m (research/29:160-171).
 - [ ] [C] The grenade isn't in the hand while held; the vent has no animation; no visible gun kick.
+  **The owner 2026-11-04: build the gun kick, the vent's rack and the legs (the moonwalk and the 0.75 m cap) for the first
+  release**; the grenade in the hand not chosen.
 
 ### Menus and screens
 - [x] **[C] Player-facing words in our menu**: "Halcyon's ladder", "the renderer's own settings", "Back to Halcyon's
@@ -181,6 +198,7 @@ Each needs a headset verdict, or ships off. Source: notes/next-vr-session.md ste
   research/47:1118-1131).
 - [ ] [C] A big fight measured (research/50 had only Saren's arena).
 - [ ] [C] Levers measured but off: `minScreenRadiusPx 8` (~0.3 ms, invisible), `CompositeDynamicLights` (0.3-0.5 ms).
+  **The owner 2026-11-04: `minScreenRadiusPx 8` on by default** (done, host: `RenderLevers`).
 
 ## 5. Release engineering and documentation
 
@@ -198,8 +216,9 @@ Each needs a headset verdict, or ships off. Source: notes/next-vr-session.md ste
   a release workflow: tag -> the zip from `package-release.ps1`, its checksums, the PDBs kept as an artifact. The cockpit
   package needs Legendary Explorer and the models on Git LFS: build it in CI or attach a reviewed one.
   **Started 2026-11-04 (663adb8):** `build.yml` (players' build, tests, SPDX and OKF checks on every push and pull request) and `release.yml` (on a `v*` tag: the zip, checksums and symbols as artifacts, nothing published), both on `windows-2022` (GitHub's `windows-latest` moved to VS 2026). Reproduced locally without the submodule; **never run on GitHub yet**. `trilogy.yml` (2026-11-04): LE1-3's development build and tests every Monday and on demand, with LExSDKv2 checked out for that job only (nothing uploaded). Still to do: the cockpit package, a first real run.
-- [ ] **[D] Code signing.** The setup, the ASI and a `bink2w64.dll` proxy are unsigned: expect SmartScreen and antivirus
+- [x] **[D] Code signing.** The setup, the ASI and a `bink2w64.dll` proxy are unsigned: expect SmartScreen and antivirus
   warnings. Sign (an open-source signing programme) or document it in the release README.
+  **Decided by the owner 2026-11-04: document it only** (no signing plans); `docs/release-readme.md` already explains it.
 - [x] **[C] Binary metadata**: an icon and VERSIONINFO for MEVR-Setup.exe and the ASI; no absolute build paths in the PDBs
   (`/PDBALTPATH`); archive each release's PDBs so crash-report stacks can be symbolised.
   **Done 2026-11-04 (16fc28e):** version resources on the ASI, loader and setup, the setup's icon, PDBs referenced by name only, a separate symbols zip.
@@ -235,14 +254,18 @@ Each needs a headset verdict, or ships off. Source: notes/next-vr-session.md ste
 - [x] [D] **The Mako lever**: CLAUDE.md, `MakoControls.hpp` and the default ini text say it holds its place, but the default is
   `leverReturns = 1` (back to neutral); the ini text contradicts itself. Decide, then make the texts agree.
   **Decided by the owner 2026-11-04: it springs back** (the default); the texts say so now.
-- [ ] [D] **The game pointer on the 3D cinema screen** is off by default (`[Pointer] flatCine = 0`), so the wheel can't be
+- [x] [D] **The game pointer on the 3D cinema screen** is off by default (`[Pointer] flatCine = 0`), so the wheel can't be
   clicked there.
+  **Decided by the owner 2026-11-04: stick only.** (The pointer never reached the 3D screen at all; `flatCine` covers only the
+  Flat screen choice and stays 0.)
 - [ ] [C] **The cockpit package** in `build\cockpit-hull` predates commit 891ba5e (`tools/cockpit`): rebuild it before packaging.
 - [ ] [H] **The setup's "Start the game once" and its SteamVR start** never ran for real (only their decisions, unit-tested).
 
 ## 6. Delivery channels (owner, 2026-11-04: consider more than GitHub)
 
-GitHub Releases stays the source of truth (the setup's update check reads it). Where else players look:
+GitHub Releases stays the source of truth (the setup's update check reads it). **The owner decided on 2026-11-04: GitHub
+only for the first release**: Nexus not for now, ME3Tweaks Mod Manager not at all, Steam (guide, forum post) not for the
+first release. The notes below stay for later. Where else players look:
 - [ ] **[D] Nexus Mods** is where Mass Effect LE players find mods. Host the same zip there (not just a link), with the
   Controls and Known issues sections as the page's description. Vortex doesn't install LE mods, so the page points at
   MEVR-Setup (or ME3Tweaks Mod Manager, below). Expect the unsigned setup and `bink2w64.dll` proxy to be flagged by

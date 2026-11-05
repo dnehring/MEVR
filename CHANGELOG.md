@@ -19,7 +19,8 @@ Halcyon's MassEffect1-VR renderer, with our hands, body and menus on top. LE1 on
 - The game's own screens (shop, loot, journal, codex, map) as panels in the room, used with a laser pointer.
 - The galaxy map as a hologram on the Normandy.
 - Colour presets per headset (brightness, contrast, saturation), optional FSR 1 upscaling, and a render resolution
-  sized to your headset.
+  sized to your headset: when MEVR Setup can't tell your headset's size yet, the first VR start sets it for the
+  launches after it.
 
 ### Your hands
 - You aim with the controller, not your head. Your arms, hands and fingers follow the controllers; the gun is in

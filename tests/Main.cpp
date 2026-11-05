@@ -5485,10 +5485,11 @@ void TestSightSettings() {
     CHECK(!s::MigrateAssaultRifle("scope 2") && !s::MigrateAssaultRifle("scope") && !s::MigrateAssaultRifle("dot") &&
           !s::MigrateAssaultRifle("holo") && !s::MigrateAssaultRifle("none") && !s::MigrateAssaultRifle("scope 1.5 x") &&
           !s::MigrateAssaultRifle(""));
-    // Since section 16 the sniper rifle's zoom, eyepieces and hidden part are the game's model's own ("auto"), its reticle the
-    // game's; a model we don't know falls back to lensUnits and, on a sniper rifle, Scope_Lens.
+    // Since section 16 the sniper rifle's zoom, eyepieces and hidden part are the game's model's own ("auto"); a model we don't
+    // know falls back to lensUnits and, on a sniper rifle, Scope_Lens. The reticle is the duplex (the owner, 2026-11-04: the
+    // game's own scope view can't load yet, its textures freed).
     CHECK(defaults.guns[3].kind == s::Kind::Scope && defaults.guns[3].zoom == 0.0f && defaults.guns[3].hide == "auto");
-    CHECK(defaults.scopeReticle == s::ScopeReticle::Game && defaults.zoomStick);
+    CHECK(defaults.scopeReticle == s::ScopeReticle::Duplex && defaults.zoomStick);
     CHECK(s::LensUnits(defaults, 2) == defaults.lensUnits && s::LensUnits(defaults, 3) == defaults.lensUnits &&
           s::LensUnits(defaults, 0) == defaults.lensUnits);
     gun = s::ParseGun("dot", defaults.guns[3]);  // a parsed kind keeps the gun's lens and hide list
@@ -8259,6 +8260,13 @@ void TestMenuSettings() {
     CHECK((ms::HeadsetSize("headset85", 2017, 2161) == ms::Size{1714, 1836}));  // 1714.45 x 1836.85, each even
     CHECK((ms::HeadsetSize("headset85", 0, 0) == ms::Size{}));                  // before VR has started
     CHECK((ms::HeadsetSize("balanced", 2824, 2880) == ms::Size{}));
+    // A new install's first VR start: the setup's Performance stand-in becomes the headset's own size, once.
+    CHECK((ms::FirstStartSize(true, false, {3072, 3188}, 2824, 2880) == ms::Size{2824, 2880}));
+    CHECK((ms::FirstStartSize(true, false, {3072, 3188}, 2064, 2208) == ms::Size{2064, 2208}));  // a Quest 3 over Link
+    CHECK((ms::FirstStartSize(false, false, {3072, 3188}, 2824, 2880) == ms::Size{}));  // a developer deploy, or a choice
+    CHECK((ms::FirstStartSize(true, true, {3072, 3188}, 2824, 2880) == ms::Size{}));    // done once already
+    CHECK((ms::FirstStartSize(true, false, {3072, 3188}, 0, 0) == ms::Size{}));         // no recommendation yet
+    CHECK((ms::FirstStartSize(true, false, {2824, 2880}, 2824, 2880) == ms::Size{}));   // already that size
     // Selected: a headset chip when the target is exactly its size; a ladder tier by its width; else none.
     CHECK(ms::ResolutionChoice(2824, 2880, 2824, 2880) == "headset");
     CHECK(ms::ResolutionChoice(2400, 2448, 2824, 2880) == "headset85");

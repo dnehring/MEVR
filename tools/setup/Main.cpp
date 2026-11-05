@@ -10,7 +10,7 @@
 //   MEVR-Setup.exe --game <folder>         a game folder of your choice (e.g. a fake one for testing)
 //   MEVR-Setup.exe --preview <folder>      every page to PNGs, offline (no game, no window)
 //   Command line (no window; --out <file> also writes the output there):
-//     --status | --install [--quality headset|performance|balanced|sharp|max|keep] [--no-settings] [--ignore-version]
+//     --status | --install [--quality headset|auto|performance|balanced|sharp|max|keep] [--no-settings] [--ignore-version]
 //     [--source Steam] [--keep-upstream (refuse instead of moving Halcyon's MELE-VR aside)] | --uninstall [--keep-settings]
 //     [--remove-local-data] | --repair | --apply-settings [--quality q] | --restore-settings
 //     | --report [--snapshot] [--perf] [--report-dir <folder>] [--local <folder>] [--from-game]  (the problem report's zip:
@@ -552,6 +552,7 @@ int RunCli(Cli const& cli) {
             }
         } else {
             choices.target = mevr::install::settings::TargetFor(cli.quality, 0, 0);
+            choices.eyeSizeAtFirstStart = cli.quality == "auto";
         }
         auto report = [&](mevr::install::Outcome const& o) {
             for (std::string const& line : o.log) {

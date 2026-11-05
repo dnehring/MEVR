@@ -61,6 +61,7 @@ struct PendingSettings {
     bool motionBlurOff = true;
     bool filmGrainOff = true;
     bool hdrOff = true;
+    bool eyeSizeAtFirstStart = false;  // settings::Choices' own
     bool operator==(PendingSettings const&) const = default;
 };
 
@@ -76,6 +77,9 @@ struct Manifest {
     std::vector<PackRecord> packs;
     bool gameSettings = false;  // the VR game settings are applied
     std::optional<PendingSettings> pendingSettings;  // chosen but not applied yet: the game hasn't made GamerSettings.ini
+    // The resolution chosen was the setup's "auto": the host sets the headset's own eye size at the first VR start
+    // (plugin/MainMenuSettings FirstStartEyeSize, once: [Display] eyeSizeSet in LE1MEVR.ini).
+    bool eyeSizeAtFirstStart = false;
 
     FileEntry* Find(std::string_view path);
     FileEntry const* Find(std::string_view path) const;

@@ -61,6 +61,17 @@ std::string InstalledPacksText() {
     return gText;
 }
 
+bool EyeSizeAtFirstStart() {
+    std::ifstream in(AsiDir() / L"MEVR-install.json", std::ios::binary);
+    if (!in) {
+        return false;
+    }
+    std::ostringstream s;
+    s << in.rdbuf();
+    auto const manifest = json::Parse(s.str());
+    return manifest && manifest->Bool("eyeSizeAtFirstStart");
+}
+
 bool Request(std::string& message) {
     std::error_code ec;
     fs::path const file = RequestFile();

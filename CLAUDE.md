@@ -255,7 +255,8 @@ switching frameworks.
   old spine-only lean. Log `torso:`; snapshot `"torso"`.
 - LE1 weapon drawn, like exploring ([research/38](research/38-combat-stance.md), `game/CombatStance`, rules in
   `core/vr/CombatStance`; `[Hands]` in `ASI\LE1MEVR.ini`, on by default except `exploreStance`; our menu's Controls > Weapon drawn): VR on
-  foot, first person. `exploreStance` (A, mod; **off by default until the headset confirms the redesign**): drawn and
+  foot, first person. `exploreStance` (A, mod; **off by default until the headset confirms the redesign**; no menu row since
+  2026-11-04, the owner: file-only until then): drawn and
   standing (not crouched, in cover or scoped), the player's AnimTree `CombatMode` node composes from its NonCombat child:
   `engine/bone_pose`'s pre-stage writes the two child weights around UpdateSkelPose and puts them back, so the tree still
   ticks as combat and every notify fires; it acts only once the node's `NodeTickTag` showed the tree ticks before the
@@ -286,7 +287,9 @@ switching frameworks.
   mod sends a target each tick (`setVignette`), the host fades it over 0.15 s and draws a head-locked quad in a
   VIEW space of its own (`plugin/Vignette`, first of our quads in `HalcyonOverlays`; nothing while unwanted; not
   in `xr_session`'s loop). `walk = hand` (`kFlagHandWalk`): the host turns the controllers' left stick to the
-  left controller's flat yaw before Halcyon's `moveFollowsHead` turn (`WalkTowardHand` in `HalcyonBridge`). Logs
+  left controller's flat yaw before Halcyon's `moveFollowsHead` turn (`WalkTowardHand` in `HalcyonBridge`). The menu's Walk
+  toward offers Where I look and Left hand only (Body, `moveFollowsHead` off, brought back Halcyon's "look left, move right"
+  bug: removed 2026-11-04, the owner; also gone: Advanced's Look speed, head rotation not 1:1, `MELEVR.ini` only). Logs
   `comfort:`, `vignette:`, `halcyon bridge: the mod turns ...`; snapshots `"comfort"` and a `vignette` layer.
 - LE1 conversations and cutscenes on a 3D cinema screen ([research/52](research/52-cine-3d-screen.md); `[Cinematics]` in
   `ASI\LE1MEVR.ini`, on by default; our menu's Comfort > Conversations and cutscenes: In VR / 3D screen / Flat screen): a VR cine
@@ -554,7 +557,9 @@ switching frameworks.
   the held weapon's magnifications from its `Stats.AimModes` (`sniperRifle = scope auto`: 3.5x, 7.0x; a right-stick flick under
   ADS steps them, `zoomStick`); `reticle = game`: the game's sniper view (the mod publishes `GUI_SF_HUD.Reticule_I4E/I4C/I41`'s
   resources in the sight; the host composes two layers once, `SightLayers` PrepareArt, layout `vr::scope_art` from
-  `tools/scope-art.py`; the duplex if not found). The sight struct grew: host and mod deploy together.
+  `tools/scope-art.py`; the duplex if not found). **It can't load** (the game frees those textures, research/21 section 16),
+  so **`reticle = duplex` is the default** since 2026-11-04 (the owner; an old file's `game` is kept and falls back to it).
+  The sight struct grew: host and mod deploy together.
 - LE1 scope capture ([research/39](research/39-scope-capture.md), HostServices v20; **on by default since 2026-11-04**,
   `[Sights] scopeCapture = 1`, an old file's 0 moved once (marker `scopeCapturePost`); measured in research/39 section 12: the
   render thread +0.5 ms in a light scene, no GPU cost visible, the picture as sharp as the display instead of 2.2x below it;
@@ -609,6 +614,9 @@ switching frameworks.
   LEBinkProxy is there. Launch starts SteamVR first when it is the active runtime (waits up to 60 s; other runtimes get
   a line saying what to start), then `MassEffect1.exe` with the launcher's arguments. A game never started (no
   GamerSettings.ini) keeps the chosen settings as `pendingSettings` in the manifest and offers "Start the game once";
+  the resolution's default without a known headset size is **Automatic** (`auto`, 2026-11-04, the owner): Performance now,
+  the manifest's `eyeSizeAtFirstStart`, and the host's `main_menu::FirstStartEyeSize` sets the headset's own eye size at the
+  first VR start for the launches after it, once (`[Display] eyeSizeSet = 1`; log `first VR start:`);
   Repair applies them once the file exists, puts back what Steam's "verify files" removed (loader, TOC entry) and the
   status lists what it would fix (research/33 section 9). Texture packs: the pack's page
   plus Mass Effect Modder's CLI, never bundled or auto-downloaded (Nexus terms). In game, Display > Optional content
@@ -782,7 +790,8 @@ Use it to check VR changes yourself instead of asking the user what they see
   (ID3D11Device::CreateInputLayout each time, 300 a frame at a heavy spot) are kept alive by one extra reference through the
   RHI's own AddRef once their key (declaration, VS, PS) is constructed a second time; 15.8-16.5 -> 10.5-11.1 ms at the
   heaviest Eden Prime spot in a fresh session, ~1 ms warm; the kept set plateaus near 5,000 and memory stays flat; hazard
-  noted there: a kept state outliving its vertex declaration), `minScreenRadiusPx` (default 0, attempt 45: Umbra's visible
+  noted there: a kept state outliving its vertex declaration), `minScreenRadiusPx` (**default 8 since 2026-11-04**, the
+  owner; 0 measures only; attempt 45: Umbra's visible
   instances whose bounding sphere projects below that radius in pixels of a 2160-high eye are not marked visible; the levers
   line carries the size distribution; 8 px is invisible and worth 0.3 ms at the heavy spot, 32 px 0.8 ms with pop-in),
   `umbraSharedVisibility` (default 0, attempt 46: three failed forms of "Umbra's resolve once a frame", kept as the record

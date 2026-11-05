@@ -337,7 +337,8 @@ std::uint32_t* UmbraCameraParams(std::uint8_t* renderer) {
 // of a 2160-high eye (radius / distance x 1080 x the view's projection [1][1], the view at commander +0x68 and its
 // projection matrix at +0xD0), and an instance smaller than [Performance] minScreenRadiusPx is not marked visible: no
 // draws for it in either pass. The log carries the distribution of the projected sizes, so the threshold's cost in
-// draws is known before it is set. 0 (default) measures only.
+// draws is known before it is set. 8 by default since 2026-11-04 (the owner; research/35 attempt 45: invisible, ~0.3 ms at
+// the heaviest cell); 0 measures only.
 template <typename T>
 T& Field(std::uint8_t* object, std::size_t offset);   // defined below
 constexpr std::uintptr_t kUmbraInstanceVisibleRva = 0x8BE0B0;
@@ -2319,7 +2320,7 @@ void Tick() {
                 keepBssRead, gBoundShaderStateHooked ? "" : "; not hooked, so no effect");
         }
         static int minScreenTenths = -1;
-        int const minScreenRead = readInt(L"minScreenRadiusTenths", readInt(L"minScreenRadiusPx", 0) * 10);
+        int const minScreenRead = readInt(L"minScreenRadiusTenths", readInt(L"minScreenRadiusPx", 8) * 10);
         if (minScreenRead != minScreenTenths) {
             minScreenTenths = minScreenRead;
             gMinScreenRadiusTenths.store(minScreenRead, std::memory_order_relaxed);

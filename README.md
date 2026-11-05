@@ -202,8 +202,8 @@ In the game, `\` or both thumbsticks clicked in and held open the VR menu ([Cont
 - **Panels have no depth:** the game's UI quads draw over everything, so the radar can cover the cockpit's throttle
   and the galaxy map's disc the console's front.
 - **The dialogue wheel is small** on the 3D cinema screen (about 0.9 degrees tall, [research/52](research/52-cine-3d-screen.md)).
-- **Scopes show a plain duplex reticle:** the game's own scope view (`[Sights] reticle = game`) can't be read yet
-  ([research/21](research/21-sights-and-scopes.md) section 16), so every scope falls back to the duplex.
+- **Scopes show a plain duplex reticle** (the default since 2026-11-04): the game's own scope view (`[Sights] reticle =
+  game`) can't be read yet ([research/21](research/21-sights-and-scopes.md) section 16), and falls back to the duplex.
 - **The assault rifle's red dot held with two hands** can sit off the gun's sight.
 - **The sniper scope's dark areas show a black speckle.** The zoomed view is a real render of the scene, and the game's
   post-processing adds the speckle to it ([research/39](research/39-scope-capture.md) section 12). `[Sights]

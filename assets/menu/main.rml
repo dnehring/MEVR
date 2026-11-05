@@ -148,8 +148,8 @@
 		</div>
 		<div class="group">
 			<div class="gtitle"><span>Movement</span><div class="gline"/></div>
-			<div class="row"><div class="rl"><div class="rlab">Walk toward</div><div class="rdesc">What the left stick's forward means: where you look, where your left hand points, or where Shepard faces. Body has a known bug: sprinting while you look aside can steer you the wrong way.</div></div>
-				<div class="seg"><button class="segb" data-class-on="walk == 'head'" data-event-click="pick('walk','head')">Where I look</button><button class="segb" data-class-on="walk == 'hand'" data-event-click="pick('walk','hand')">Left hand</button><button class="segb" data-class-on="walk == 'body'" data-event-click="pick('walk','body')">Body</button></div></div>
+			<div class="row"><div class="rl"><div class="rlab">Walk toward</div><div class="rdesc">What the left stick's forward means: where you look, or where your left hand points.</div></div>
+				<div class="seg"><button class="segb" data-class-on="walk == 'head'" data-event-click="pick('walk','head')">Where I look</button><button class="segb" data-class-on="walk == 'hand'" data-event-click="pick('walk','hand')">Left hand</button></div></div>
 			<div class="row"><div class="rl"><div class="rlab">Physical crouch</div><div class="rdesc">Crouch for real and Shepard crouches with you</div></div>
 				<button class="tog" data-class-on="crouch" data-event-click="toggle('crouch')"><div class="knob"/></button></div>
 			<div class="row"><div class="rl"><div class="rlab">Life-size movement</div><div class="rdesc">Your steps and leans move you one to one and the world has its true size. Off: half as far, and the world looks twice as big.</div><div class="note" data-if="lifesize_note != ''">{{lifesize_note}}</div></div>
@@ -212,8 +212,6 @@
 		</div>
 		<div class="group">
 			<div class="gtitle"><span>Weapon drawn</span><div class="gline"/></div>
-			<div class="row"><div class="rl"><div class="rlab">Body stays relaxed</div><div class="rdesc">Experimental: with a gun out, Shepard's body keeps the relaxed walking pose instead of the combat stance; your arms and the gun stay as they are</div></div>
-				<button class="tog" data-class-on="explore_stance" data-event-click="toggle('explore_stance')"><div class="knob"/></button></div>
 			<div class="row"><div class="rl"><div class="rlab">Steady view</div><div class="rdesc">Drawing, holstering, aiming and sprinting leave your eyes where they are</div></div>
 				<button class="tog" data-class-on="constant_eye" data-event-click="toggle('constant_eye')"><div class="knob"/></button></div>
 			<div class="srow"><div class="slab">Draw speed</div><input type="range" min="1" max="10" step="0.5" data-value="draw_rate"/><div class="sval">{{draw_rate_text}}</div></div>
@@ -379,7 +377,6 @@
 				<div class="gtitle"><span>Head tracking</span><div class="gline"/></div>
 				<div class="row"><div class="rl"><div class="rlab">Recenter key</div><div class="rdesc">{{recenter_key_desc}}</div></div>
 					<button class="tog" data-class-on="recenter_key" data-event-click="toggle('recenter_key')"><div class="knob"/></button></div>
-				<div class="srow d"><div class="sl"><div class="slab">Look speed</div><div class="rdesc">Turns the view faster or slower than your head. Anything but 1.00× can make you feel sick.</div></div><input type="range" min="0.25" max="2" step="0.05" data-value="look_speed"/><div class="sval">{{look_speed_text}}</div></div>
 				<div class="srow d"><div class="sl"><div class="slab">Smoothing</div><div class="rdesc">Steadies the picture while your head is still; more feels laggy</div></div><input type="range" min="0" max="0.9" step="0.05" data-value="look_smooth"/><div class="sval">{{look_smooth_text}}</div></div>
 			</div>
 			<div class="group">

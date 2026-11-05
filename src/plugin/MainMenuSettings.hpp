@@ -107,4 +107,10 @@ private:
     void Wrote(bool ok, std::string_view what);
 };
 
+// A new install's first VR start (the owner, 2026-11-04; docs/release-checklist.md section 3): when MEVR Setup left Halcyon's
+// Performance size as a stand-in (its manifest's eyeSizeAtFirstStart), the render target becomes the headset's own eye size
+// once the runtime recommends one, as Display's Headset chip sets it (Halcyon's profile and GamerSettings.ini for the next
+// launch), once: [Display] eyeSizeSet = 1 in LE1MEVR.ini. Every Present (render thread); a few loads until it has run.
+void FirstStartEyeSize();
+
 } // namespace mevr::host::main_menu

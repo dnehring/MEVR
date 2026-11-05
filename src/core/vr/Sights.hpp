@@ -115,7 +115,7 @@ struct Settings {
                                         // trace along it), so they land on the dot at any distance
     // Scopes.
     float lensUnits = 2.0f;             // the eyepiece's radius (gun units) on a model we don't know
-    ScopeReticle scopeReticle = ScopeReticle::Game;
+    ScopeReticle scopeReticle = ScopeReticle::Duplex;  // Game can't work yet (research/21 section 16): the owner, 2026-11-04
     // The game's second magnification (research/21 section 16): aiming down a scope, a flick of the right thumbstick
     // forward steps to the next of the held weapon's magnifications, back to the one before.
     bool zoomStick = true;

@@ -19,8 +19,9 @@ struct Target {
 };
 
 // The target for a choice: "headset" (the runtime's recommended eye size, when known), "low", "performance",
-// "balanced", "sharp", "max" (Halcyon's ladder: width, width / 0.964 even), or "keep". {0, 0} for "keep", an unknown
-// key, or "headset" without a known size.
+// "balanced", "sharp", "max" (Halcyon's ladder: width, width / 0.964 even), "auto" (performance's, a stand-in: the mod
+// sets the headset's own size at the first VR start, Choices::eyeSizeAtFirstStart) or "keep". {0, 0} for "keep", an
+// unknown key, or "headset" without a known size.
 Target TargetFor(std::string_view choice, int headsetWidth, int headsetHeight);
 
 struct Choices {
@@ -30,6 +31,9 @@ struct Choices {
     bool filmGrainOff = true;  // FilmGrain=False
     bool hdrOff = true;        // [HDR] DesiredRange=DynamicRange_SDR
     bool anisotropy16 = true;  // MaxAnisotropy=16
+    // The target is a stand-in (the setup's "auto": Halcyon's Performance size): the mod sets the headset's own eye size at
+    // the first VR start, once (the owner, 2026-11-04; recorded in the manifest, read by the host).
+    bool eyeSizeAtFirstStart = false;
     // LE1 always: BorderlessWindow=True, Fullscreen=False (Halcyon's stereo needs the window as big as the target),
     // DynamicShadows=False (Halcyon's default; the scene renders twice a frame).
 };

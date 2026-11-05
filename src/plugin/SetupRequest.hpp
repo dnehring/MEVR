@@ -11,6 +11,9 @@ namespace mevr::host::setup_request {
 
 // "ALOT for ME1, ..." or "None yet" (re-read at most every 2 s).
 std::string InstalledPacksText();
+// The manifest's eyeSizeAtFirstStart: MEVR Setup left Performance as a stand-in for the headset's own eye size (its
+// "Automatic" resolution). False without a manifest (a developer deploy). Reads the file each call.
+bool EyeSizeAtFirstStart();
 // Writes the request. The message for the menu either way.
 bool Request(std::string& message);
 // At exit: starts the setup if a request is waiting and the setup is in the ASI folder. Never blocks.

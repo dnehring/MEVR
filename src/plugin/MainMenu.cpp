@@ -962,6 +962,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
 }
 
 void OnPresent() {
+    FirstStartEyeSize();  // a new install's first VR start: the headset's own eye size, once
     std::uint64_t const now = GetTickCount64();
     if (gOpen.load(std::memory_order_relaxed) && now - gLastDrawnMs > kNotDrawnMs) {
         SetOpen(false, gLastLayerMs != 0 && now - gLastLayerMs <= kNotDrawnMs

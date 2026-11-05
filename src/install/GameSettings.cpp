@@ -37,6 +37,9 @@ bool IsTrue(std::optional<std::string> const& v, bool fallback) {
 } // namespace
 
 Target TargetFor(std::string_view choice, int headsetWidth, int headsetHeight) {
+    if (choice == "auto") {
+        choice = "performance";  // the stand-in until the mod learns the headset's own size at the first VR start
+    }
     if (choice == "headset") {
         if (headsetWidth > 0 && headsetHeight > 0) {
             return {Even(headsetWidth), Even(headsetHeight)};

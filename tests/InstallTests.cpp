@@ -319,6 +319,7 @@ void TestGameSettings() {
         ICHECK(t.width == ms::QualityWidth(tier) && t.height == ms::EyeHeight(t.width));
     }
     ICHECK(st::TargetFor("performance", 0, 0).height == 3188);
+    ICHECK(st::TargetFor("auto", 0, 0).width == 3072 && st::TargetFor("auto", 0, 0).height == 3188);  // the stand-in until the first VR start
     ICHECK(st::TargetFor("headset", 2824, 2880).width == 2824);
     ICHECK(st::TargetFor("headset", 0, 0).width == 0);
     ICHECK(st::TargetFor("keep", 1, 1).width == 0);
@@ -952,7 +953,8 @@ void TestFirstRunInstall() {
     };
     InstallOptions options;
     options.ignoreVersion = true;
-    options.choices.target = settings::TargetFor("performance", 0, 0);
+    options.choices.target = settings::TargetFor("auto", 0, 0);  // the setup's default with no headset size known
+    options.choices.eyeSizeAtFirstStart = true;
 
     // 1. Never started: no GamerSettings.ini. The install goes on, says so, and keeps the choices.
     fresh();
@@ -967,6 +969,7 @@ void TestFirstRunInstall() {
     Status s = ReadStatus(root, "Folder");
     ICHECK(s.installed && !s.gameSettings && s.pendingSettings.has_value());
     ICHECK(s.pendingSettings && s.pendingSettings->width == 3072 && s.pendingSettings->height == 3188 && s.pendingSettings->hdrOff);
+    ICHECK(s.eyeSizeAtFirstStart && s.pendingSettings && s.pendingSettings->eyeSizeAtFirstStart);  // the mod's job later
     ICHECK(s.needsRepair.empty());
     ICHECK(ini::Get(Read(layout.Full(paths::kHalcyonIni)), "profile:Default", "sfr2ResX") == std::optional<std::string>("4096"));  // not yet
     // Repair before the first start: nothing to apply yet, and it says why.
@@ -982,9 +985,10 @@ void TestFirstRunInstall() {
     ICHECK(settings::Read(g).resX == 3072 && settings::Read(g).resY == 3188 && settings::Read(g).borderless && !settings::Read(g).hdr);
     ICHECK(ini::Get(Read(layout.Full(paths::kHalcyonIni)), "profile:Default", "sfr2ResX") == std::optional<std::string>("3072"));
     s = ReadStatus(root, "Folder");
-    ICHECK(s.gameSettings && !s.pendingSettings);
+    ICHECK(s.gameSettings && !s.pendingSettings && s.eyeSizeAtFirstStart);  // carried through the pending settings
     // Restore: the game's own file again; nothing waits.
     ICHECK(RestoreSettings(layout).ok && Read(layout.Full(paths::kGamerSettings)) == gamer && !ReadStatus(root, "Folder").pendingSettings);
+    ICHECK(!ReadStatus(root, "Folder").eyeSizeAtFirstStart);
     ICHECK(Uninstall(layout, false, {}).ok);
     ICHECK(Read(layout.Full(paths::kToc)) == toc && !fs::exists(layout.Asi()));
     // The choices survive the manifest's JSON.

@@ -372,6 +372,17 @@ std::string ResolutionChoice(int resX, int resY, int recommendedWidth, int recom
     return "";
 }
 
+Size FirstStartSize(bool wanted, bool alreadySet, Size current, int recommendedWidth, int recommendedHeight) {
+    if (!wanted || alreadySet) {
+        return {};
+    }
+    Size const size = HeadsetSize("headset", recommendedWidth, recommendedHeight);
+    if (size.width <= 0 || size.height <= 0 || size == current) {
+        return {};
+    }
+    return size;
+}
+
 std::string HeadsetSizesText(int recommendedWidth, int recommendedHeight) {
     if (recommendedWidth <= 0 || recommendedHeight <= 0) {
         return "Your headset's own eye size, known once VR starts";

@@ -136,7 +136,8 @@ private:
     std::string heroTitle_, heroText_;
     std::string gameTitle_, gameText_, versionTitle_, versionText_, xrTitle_, xrText_, loaderTitle_, loaderText_, loaderPlan_;
     std::string rootText_, sourceText_, updateText_, updateUrl_;
-    std::string quality_ = "performance", qualityText_, headsetText_;
+    // "auto" (the default while the headset's size isn't known): Performance now, the headset's own size from the first VR start.
+    std::string quality_ = "auto", qualityText_, headsetText_;
     bool optSettings_ = true, optVsync_ = true, optBlur_ = true, optGrain_ = true, optHdr_ = true;
     std::string curRes_, curWindow_, curHdr_, curVsync_, curBlur_, curGrain_;
     std::string repairTitle_, repairText_, uninstallText_, launchText_, footerText_, waitText_, requestText_, memText_;
