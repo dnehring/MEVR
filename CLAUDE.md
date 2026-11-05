@@ -389,6 +389,13 @@ switching frameworks.
   (`touchTipM` 0.04 ahead of the aim pose) within `touchHoverM` (0.06) of a screen's visible part takes over from the rays, pressing
   at `touchPressM` (0.005) from the front, letting go past `touchReleaseM` (0.015); haptic tick on arrival, click on press; the
   world UI passes its crop as the touchable part (`NoteGameUiQuad`'s `touchArea`); `touch = 0` off. Rules unit-tested.
+  **LE1's Flash cursor follows raw relative mouse motion only** (2026-11-05, research/56 section 6): `SetCursorPos` and posted
+  `WM_MOUSEMOVE` never moved it, posted clicks land at it (`BioSFHandler.SendMouseToScaleForm`), so until then the pointer's clicks
+  went wherever the game's cursor was. The mod steers it onto the pointer's point (`game/GuiCursor`, rules `core/vr/GuiCursor`,
+  HostServices v30 `gamePointer`: the focused movie's `_root._xmouse/_ymouse` read each tick, `SendInput` relative moves while the
+  game's window is in front, 0.82 stage units per count to start, the gain learned); `mevr guimouse [to x y | off]`, snapshot
+  `"mod"."guiCursor"`. A tap clicks where the finger touched (pinned through the tap); the hand a wrist screen is projected from
+  neither touches nor points at it (`NoteGameUiQuad`'s `projectingHand`), nor at the omni-tool's rail.
 - LE1 galaxy map in the CIC ([research/51](research/51-galaxy-map.md) section 8, HostServices v26; `game/GalaxyMap`,
   `core/vr/GalaxyHologram`, host `plugin/GalaxyHologram` + `GalaxyHologramDraw`; `[Galaxy] hologram`, `inWorld`, `world*`): on foot
   near the console our hologram of the galaxy (from the 2DA tables) stands over the projector (the game's own projector hologram

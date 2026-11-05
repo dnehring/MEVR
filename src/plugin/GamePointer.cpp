@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <bit>
 #include <cmath>
 #include <condition_variable>
 #include <deque>
@@ -80,6 +81,10 @@ bool gSettingsLogged = false;
 pointer::Quad gQuad;
 float gTouchArea[4] = {0.0f, 0.0f, 1.0f, 1.0f};  // the touchable part (quad UV): the world UI's visible crop
 int gProjectingHand = -1;                        // the hand a wrist screen is projected from: its fingertip doesn't touch it
+// The pointer's last point on one of the game's menus (LatestMenuPoint): window UV as bits, and when.
+std::atomic<std::uint32_t> gMenuU{0};
+std::atomic<std::uint32_t> gMenuV{0};
+std::atomic<std::uint64_t> gMenuMs{0};
 bool gWasTouching = false;                       // the last step's point was a fingertip's (haptic tick on arrival)
 std::uint64_t gQuadMs = 0;
 MELEVR::MevrBridge::PanelKind gKind = MELEVR::MevrBridge::PanelKind::GameMenu;
@@ -536,6 +541,11 @@ static bool StepInner(Frame const& frame, Dot& dot) {
     }
     SendWheel(window, gLastX, gLastY, out.wheelNotches, out.pressed, gSettings);
     PublishStatus(true, &out, input.width, input.height);
+    if (gKind == MELEVR::MevrBridge::PanelKind::GameMenu) {
+        gMenuU.store(std::bit_cast<std::uint32_t>(std::clamp(out.u, 0.0f, 1.0f)), std::memory_order_relaxed);
+        gMenuV.store(std::bit_cast<std::uint32_t>(std::clamp(out.v, 0.0f, 1.0f)), std::memory_order_relaxed);
+        gMenuMs.store(GetTickCount64(), std::memory_order_release);
+    }
 
     // The dot: at the hit, a hair in front of the quad, facing like it.
     XrVector3f const normal = mevr::vr::overlay::Rotate(gQuad.pose.orientation, {0.0f, 0.0f, 1.0f});
@@ -549,6 +559,16 @@ static bool StepInner(Frame const& frame, Dot& dot) {
         dot.size *= 1.0f + 2.0f * t;
     }
     dot.pressed = out.pressed;
+    return true;
+}
+
+bool LatestMenuPoint(float& u, float& v, std::uint64_t maxAgeMs) {
+    std::uint64_t const at = gMenuMs.load(std::memory_order_acquire);
+    if (at == 0 || GetTickCount64() - at > maxAgeMs) {
+        return false;
+    }
+    u = std::bit_cast<float>(gMenuU.load(std::memory_order_relaxed));
+    v = std::bit_cast<float>(gMenuV.load(std::memory_order_relaxed));
     return true;
 }
 

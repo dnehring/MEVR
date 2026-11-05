@@ -5,6 +5,7 @@
 
 #include <openxr/openxr.h>
 
+#include <cstdint>
 #include <string>
 
 // The game pointer (research/42): while Halcyon shows the game on its flat screen (the game's own menus: inventory,
@@ -41,6 +42,10 @@ std::string StatusJson();
 // kept from the game (a trigger that also reached the game as RT switched a Flash box to the pad, which then ignored the click:
 // the galaxy map's travel question, research/51 section 8). Any thread.
 bool OwnsTriggers();
+
+// The pointer's point on one of the game's menus (a flat menu or a world UI screen, not the galaxy map) within `maxAgeMs`, as
+// window UV (HostServices v30: the mod steers the game's Flash cursor onto it, research/56 section 6). Any thread.
+bool LatestMenuPoint(float& u, float& v, std::uint64_t maxAgeMs);
 
 // The game's UI on a quad of ours (app space; the whole UI frame edge to edge, as the window's client area), pointed at this
 // frame: the galaxy map's travel question over the hologram's table (research/51 section 8). Present thread, before Step.

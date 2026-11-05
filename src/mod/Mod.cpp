@@ -901,7 +901,7 @@ void PublishStatus() {
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, "
         "\"posture\": {}, \"viewLevel\": {}, \"gunKick\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
-        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}, \"squadOrders\": {}, \"powerWheel\": {}}}",
+        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}, \"squadOrders\": {}, \"powerWheel\": {}, \"guiCursor\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -913,7 +913,7 @@ void PublishStatus() {
         game::view_level::StatusJson(), game::gun_kick::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
         game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::mako_gunner::StatusJson(), game::cockpit_probe::StatusJson(), game::mako_controls::StatusJson(),
-        game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson(), game::squad_context::StatusJson(), game::squad_orders::StatusJson(), game::power_wheel::StatusJson());
+        game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson(), game::squad_context::StatusJson(), game::squad_orders::StatusJson(), game::power_wheel::StatusJson(), game::gui_cursor::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -1174,7 +1174,14 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         if (gHostOwnsVr) {
             game::game_menu_request::Tick(GameMenuRequestLink());
             game::game_art::Tick();  // the game's UI art for the omni-tool's rail, cached once (research/56)
-            game::gui_cursor::Tick(std::nullopt);  // the game's GUI cursor onto the pointer's point (research/56 section 6)
+            // The game's Flash cursor onto the pointer's point (research/56 section 6, HostServices v30).
+            std::optional<std::pair<float, float>> pointer;
+            float pu = 0.0f;
+            float pv = 0.0f;
+            if (MEVR_HOST_HAS(gamePointer) && gHost->gamePointer != nullptr && gHost->gamePointer(&pu, &pv) != 0) {
+                pointer = std::pair{pu, pv};
+            }
+            game::gui_cursor::Tick(pointer);
         }
     }
     if (gHostOwnsVr) {
