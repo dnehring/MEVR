@@ -476,6 +476,85 @@ void TestLockView() {
     CHECK(pw::LatestLock().active == 0);
 }
 
+// Self-cast gestures (research/55 section 10): the chest and the raise held, the gun slapped (or held); once per stay.
+void TestSelfCast() {
+    CHECK(pw::SelfGestureFor("KF_Barrier") == pw::SelfGesture::Chest && pw::SelfGestureFor("AR_ShieldBoost") == pw::SelfGesture::Chest);
+    CHECK(pw::SelfGestureFor("SW_Critical") == pw::SelfGesture::Gun && pw::SelfGestureFor("LW_Marksman") == pw::SelfGesture::Gun);
+    CHECK(pw::SelfGestureFor("TC_TakeDown") == pw::SelfGesture::Raise);
+    CHECK(pw::SelfGestureFor("TK_Throw") == pw::SelfGesture::None && pw::SelfGestureFor(nullptr) == pw::SelfGesture::None);
+    pw::SelfCastSettings const s;
+    pw::SelfCastInput in;
+    in.tracked = true;
+    in.open = true;
+    in.head.orientation = {0.0f, 0.0f, 0.0f, 1.0f};
+    in.head.position = {0.0f, 1.7f, 0.0f};
+    // The chest: in, held 0.35 s, cast once; out and back in, again.
+    pw::SelfCastState st;
+    in.hand = {0.0f, 1.42f, -0.14f};
+    in.time = 0.0;
+    pw::SelfCastStep a = pw::StepSelfCast(st, pw::SelfGesture::Chest, in, s);
+    CHECK(a.entered && !a.cast && a.progress == 0.0f);
+    in.time = 0.2;
+    CHECK(!pw::StepSelfCast(st, pw::SelfGesture::Chest, in, s).cast);
+    in.time = 0.36;
+    CHECK(pw::StepSelfCast(st, pw::SelfGesture::Chest, in, s).cast);
+    in.time = 1.0;
+    CHECK(!pw::StepSelfCast(st, pw::SelfGesture::Chest, in, s).cast);  // spent until it leaves
+    in.hand = {0.0f, 1.0f, -0.4f};
+    in.time = 1.1;
+    CHECK(!pw::StepSelfCast(st, pw::SelfGesture::Chest, in, s).cast);
+    in.hand = {0.05f, 1.45f, -0.12f};
+    in.time = 1.2;
+    pw::StepSelfCast(st, pw::SelfGesture::Chest, in, s);
+    in.time = 1.6;
+    CHECK(pw::StepSelfCast(st, pw::SelfGesture::Chest, in, s).cast);
+    // A closed hand (the grip or the trigger) never casts.
+    pw::SelfCastState closed;
+    in.open = false;
+    in.time = 2.0;
+    pw::StepSelfCast(closed, pw::SelfGesture::Chest, in, s);
+    in.time = 3.0;
+    CHECK(!pw::StepSelfCast(closed, pw::SelfGesture::Chest, in, s).cast);
+    in.open = true;
+    // The raise: above the eyes, held.
+    pw::SelfCastState raise;
+    in.hand = {0.1f, 1.85f, -0.1f};
+    in.time = 4.0;
+    pw::StepSelfCast(raise, pw::SelfGesture::Raise, in, s);
+    in.time = 4.4;
+    CHECK(pw::StepSelfCast(raise, pw::SelfGesture::Raise, in, s).cast);
+    // The gun: its top 6 cm up and 5 cm ahead of the right aim pose; a slap at 1 m/s casts on entry.
+    pw::SelfCastState gun;
+    in.gunValid = true;
+    in.gun.orientation = {0.0f, 0.0f, 0.0f, 1.0f};
+    in.gun.position = {0.2f, 1.3f, -0.3f};
+    in.hand = {0.2f, 1.60f, -0.35f};
+    in.time = 5.0;
+    CHECK(!pw::StepSelfCast(gun, pw::SelfGesture::Gun, in, s).cast);
+    in.hand = {0.2f, 1.50f, -0.35f};
+    in.time = 5.1;
+    CHECK(!pw::StepSelfCast(gun, pw::SelfGesture::Gun, in, s).cast);
+    in.hand = {0.2f, 1.40f, -0.35f};
+    in.time = 5.2;
+    CHECK(pw::StepSelfCast(gun, pw::SelfGesture::Gun, in, s).cast);
+    // ...a slow touch only after the dwell; and no gun, no cast.
+    pw::SelfCastState slow;
+    in.hand = {0.2f, 1.47f, -0.35f};
+    in.time = 6.0;
+    pw::StepSelfCast(slow, pw::SelfGesture::Gun, in, s);
+    in.hand = {0.2f, 1.44f, -0.35f};
+    in.time = 6.1;
+    CHECK(!pw::StepSelfCast(slow, pw::SelfGesture::Gun, in, s).cast);
+    in.time = 6.5;
+    CHECK(pw::StepSelfCast(slow, pw::SelfGesture::Gun, in, s).cast);
+    pw::SelfCastState none;
+    in.gunValid = false;
+    in.time = 7.0;
+    pw::StepSelfCast(none, pw::SelfGesture::Gun, in, s);
+    in.time = 8.0;
+    CHECK(!pw::StepSelfCast(none, pw::SelfGesture::Gun, in, s).cast);
+}
+
 int RunPowerWheelTests() {
     TestMachine();
     TestPlacement();
@@ -486,5 +565,6 @@ int RunPowerWheelTests() {
     TestAutoLock();
     TestPush();
     TestLockView();
+    TestSelfCast();
     return gFailures;
 }

@@ -250,4 +250,49 @@ struct LockView {
 void PublishLock(LockView const& view);
 LockView LatestLock(std::uint64_t maxAgeMs = 250);
 
+// ---- Self-cast gestures (research/55 section 10, 2026-11-05) ---------------------------------------------------------
+// The powers that aim at nothing are cast by a gesture of their own, not the push: the open left hand alone (the right may
+// hold the gun; the left trigger and grip stay the squad's), no buttons:
+//   Chest  the palm on the chest, held (Barrier, Shield Boost, Immunity, Adrenaline Burst: a shield or a buff on yourself);
+//   Gun    the palm slapped onto the top of the gun in the right hand (Marksman, Overkill, Carnage, Assassination: the gun's modes);
+//   Raise  the hand raised above the head, held (Unity: a rally to the squad).
+enum class SelfGesture : std::uint8_t { None, Chest, Gun, Raise };
+SelfGesture SelfGestureFor(char const* label);  // by the 2DA label; None for a power that aims
+char const* Name(SelfGesture gesture);
+
+struct SelfCastSettings {
+    float chestBelowM = 0.28f;   // the chest point: below the eyes
+    float chestAheadM = 0.14f;   // ...and ahead of them, along the head's flat forward
+    float chestRadiusM = 0.13f;
+    float raiseAboveM = 0.08f;   // the hand this far above the eyes
+    float dwellS = 0.35f;        // held this long (chest, raise; the gun's slow touch)
+    float gunUpM = 0.06f;        // the gun's top: this far up and ahead of the right hand's aim pose
+    float gunAheadM = 0.05f;
+    float gunRadiusM = 0.10f;
+    float slapSpeedMS = 0.6f;    // a slap: entering the gun's zone this fast casts at once
+};
+struct SelfCastInput {
+    double time = 0.0;
+    bool tracked = false;   // the left hand
+    bool open = false;      // no grip, no trigger
+    XrVector3f hand{};      // the left hand (tracking space)
+    XrPosef head{};
+    bool gunValid = false;  // the right hand holds a drawn gun
+    XrPosef gun{};          // the right hand's aim pose
+};
+struct SelfCastState {
+    bool inZone = false;
+    double since = 0.0;     // in the zone since
+    bool spent = false;     // cast in this stay: leave the zone to re-arm
+    bool hasLast = false;
+    XrVector3f last{};
+    double lastTime = 0.0;
+};
+struct SelfCastStep {
+    bool entered = false;   // came into the zone (a tick)
+    bool cast = false;
+    float progress = 0.0f;  // 0..1 of the dwell
+};
+SelfCastStep StepSelfCast(SelfCastState& state, SelfGesture gesture, SelfCastInput const& input, SelfCastSettings const& settings);
+
 }  // namespace mevr::vr::power_wheel

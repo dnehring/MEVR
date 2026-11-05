@@ -363,3 +363,32 @@ the game's own holster toggle (`TryHolster` from the console; the holsters are i
   the self-cast powers (Barrier and the rest) this way.
 - **The fallback bolt** (no enemy version loaded) flies the power's own charge (`Biotics_Charge_001`): standalone it shows as a
   translucent biotic forearm and open hand for a moment, then blue streaks along the flight (snapshots of Singularity's).
+
+## 10. Self-cast gestures, and the omni-tool on tech casts (2026-11-05)
+
+The user: the self-cast powers may want gestures of their own; any tech power must show the omni-tool gauntlet. Nine of the
+19 mappable powers aim at nothing (section 3), and a push at nothing reads wrong for a shield or a buff. Every gesture follows
+the left-hand rule (the left hand alone casts while the right holds a gun, research memory) and stays off the left trigger and
+grip, which are the squad's wheel, its orders and the grenades: **open-hand placements, no buttons**.
+
+| Gesture | Powers | Why |
+|---|---|---|
+| **Chest**: the open left palm on the chest (0.28 m below the eyes, 0.14 m ahead along the head's flat forward, within 0.13 m), held 0.35 s | Barrier, Shield Boost, Immunity, Adrenaline Burst | a shield or a buff on yourself: the hand to the heart |
+| **Gun**: the open palm slapped onto the top of the gun in the right hand (6 cm up and 5 cm ahead of its aim pose, within 0.10 m; entering at 0.6 m/s or more casts at once, a slow touch after 0.35 s) | Marksman, Overkill, Carnage, Assassination | the gun's own modes: charge the gun |
+| **Raise**: the open hand above the eyes (0.08 m), held 0.35 s | Unity | a rally: revive and heal the squad |
+
+Rules (`vr::power_wheel::SelfGestureFor`, `StepSelfCast`, pure, `TestSelfCast`): open = the grip and the trigger both under 0.3;
+once per stay in the zone (leave it to re-arm); a tick in the left hand on arriving, the cast's pulse after. With
+`[PowerWheel] selfGestures = 1` (default) the push refuses those powers and says which gesture casts them (0: the push casts them
+too). The gun gesture needs a drawn gun in the right hand (those powers need their weapon anyway). A self-cast with the weapon away
+gets the mod's release (section 9). `mevr powerwheel selfcast` casts the equipped one as the gesture would (no tracked hands).
+
+**The omni-tool:** a power shows the gauntlet (`game/OmniTool`, the game's own `OmniTool_2PieceLoop` on the left forearm) when it's a
+tech power or its own effects are the omni-tool's (its appearance's `PlayerCrust` or release names `Omni_Tool`: Shield Boost, Unity,
+Immunity, Adrenaline Burst, from section 9's map): while it's aimed with the arm raised, while its gesture's hand is in place, and
+2.5 s after its cast. The game itself plays its omni-tool crust at the right wrist for most of these (`RightWrist`), which in VR is
+the gun hand: [verify] whether both show, and whether the game's should be hidden.
+
+**Not yet run in the game** (the game machine was in use): the casts through `selfcast` with a Soldier's self-cast power enabled
+(the save's Immunity, Adrenaline Burst, Marksman... are rank 0; Overkill needs the assault rifle), the gauntlet on a tech cast. In the
+headset: the zones' sizes and the dwell, false casts (a hand resting on the chest, reaching for the foregrip past the gun's top).

@@ -104,10 +104,15 @@ constexpr char kBlock[] =
     "; is locked by itself (the one both agree on best); pointing at another takes over.\n"
     "autoLock = 1\n"
     "autoLockHandDeg = 30\n"
-    "autoLockGazeDeg = 20\n";
+    "autoLockGazeDeg = 20\n"
+    "; selfGestures 1: the powers that aim at nothing are cast by a gesture of the open left hand, not the push: the palm on\n"
+    "; your chest (Barrier, Shield Boost, Immunity, Adrenaline Burst), slapped onto the gun (Marksman, Overkill, Carnage,\n"
+    "; Assassination), or raised above your head (Unity). 0: the push casts them too.\n"
+    "selfGestures = 1\n";
 
 pw::Settings gSettings;
 pw::LockSettings gLockSettings;
+bool gSelfGestures = true;          // [PowerWheel] selfGestures: the self-cast powers by their gestures, not the push
 std::uint64_t gSettingsAtMs = 0;
 std::string gSettingsText;
 bool gTriedAppend = false;
@@ -185,6 +190,9 @@ void RefreshSettings() {
     flag("autoLock", l.autoLock);
     number("autoLockHandDeg", l.autoHandDeg, 0.0f, 60.0f);
     number("autoLockGazeDeg", l.autoGazeDeg, 0.0f, 60.0f);
+    bool selfGestures = true;
+    flag("selfGestures", selfGestures);
+    gSelfGestures = selfGestures;
     gLockSettings = l;
     gSettings = s;
     std::string const lockText = l.on ? std::format("; the lock within {:.0f} deg (kept to {:.0f}), {:.0f} m, the arm {:.2f} m out; a push "
@@ -809,6 +817,66 @@ void TickUnarmedRelease() {
     gReleaseByMod = false;
 }
 
+// ---- Self-cast gestures and the omni-tool (research/55 section 10) --------------------------------------------------------
+pw::SelfCastSettings gSelfSettings;
+pw::SelfCastState gSelfCast;
+float gSelfProgress = 0.0f;         // the gesture's dwell, 0..1 (the hand is in place)
+bool gConsoleSelfCast = false;      // `mevr powerwheel selfcast` (tests)
+std::string gLastCastPower;
+bool gLastCastUsesOmniTool = false;
+bool gOmniAiming = false;           // this tick: a power that uses the omni-tool is being aimed or gestured
+std::map<std::string, bool> gUsesOmniTool;
+ue3::FieldRef gOmniLook{"SFXGame.BioPower", "m_VFXAppearance"};
+ue3::FieldRef gOmniCrust{"SFXGame.BioPowerVFXAppearance", "PlayerCrust"};
+ue3::FieldRef gOmniRelease{"SFXGame.BioPowerVFXAppearance", "vfxReleaseEffect"};
+
+// A power that shows the omni-tool: a tech power, or one whose own effects are the omni-tool's (the game's appearance: Shield
+// Boost, Unity, Immunity, Adrenaline Burst carry BIOG_V_T_Omni_Tool_Z's prefabs). Left-hand casts wear the gauntlet then.
+bool UsesOmniTool(Power const& power) {
+    if (auto const known = gUsesOmniTool.find(power.label); known != gUsesOmniTool.end()) {
+        return known->second;
+    }
+    bool uses = power.info != nullptr && power.info->discipline == 1;
+    ue3::Object* const look = power.object != nullptr ? gOmniLook.Read<ue3::Object*>(power.object).value_or(nullptr) : nullptr;
+    if (!uses && look != nullptr) {
+        ue3::Reflection& r = ue3::runtime::Get();
+        ue3::Object** const crust = gOmniCrust.In<ue3::Object*>(look);
+        for (ue3::Object* const templ : {crust != nullptr ? *crust : nullptr, gOmniRelease.Read<ue3::Object*>(look).value_or(nullptr)}) {
+            if (templ != nullptr && r.FullName(templ).find("Omni_Tool") != std::string::npos) {
+                uses = true;
+            }
+        }
+    }
+    gUsesOmniTool[power.label] = uses;
+    return uses;
+}
+
+// After a cast of ours (the push or a self-cast gesture): its time for the release, and the release itself with the weapon away.
+void AfterCast(Power const& power, ue3::Object* pawn) {
+    gPushCastAt = gClock;
+    gReleasedSinceCast = false;
+    gPushCastPower = power.label;
+    gLastCastPower = power.label;
+    gLastCastUsesOmniTool = UsesOmniTool(power);
+    if (gUnarmedRelease && !WeaponOut(pawn)) {
+        auto const learned = gReleaseDelay.find(power.label);
+        gUnarmedReleaseAt = gClock + (learned != gReleaseDelay.end() ? learned->second : kDefaultReleaseS);
+        gUnarmedPawn = pawn;
+    }
+}
+
+void CastFeedback(Link const& link, bool ok) {
+    if (ok) {
+        ++gCastCount;
+        ++gCasts;
+        if (link.haptic != nullptr && gSettings.haptic > 0.0f) {
+            link.haptic(0, 0.08f, std::min(1.0f, gSettings.haptic * 2.0f));
+        }
+    } else if (link.haptic != nullptr && gSettings.haptic > 0.0f) {
+        link.haptic(0, 0.12f, gSettings.haptic * 0.5f);
+    }
+}
+
 void TickLock(Link const& link, vr::host_view::State const& view, vr::controllers::State const& controllers, ue3::Object* controller,
     ue3::Object* pawn, bool onFoot) {
     pw::LockSettings const& s = gLockSettings;
@@ -820,6 +888,7 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
     };
     gSeen.clear();
     gPlace.reset();
+    gOmniAiming = false;
     bool const pushAsked = gConsolePush;
     gConsolePush = false;
     std::optional<Power> const ready = s.on && onFoot && controller != nullptr && pawn != nullptr ? ReadyPower(controller, pawn) : std::nullopt;
@@ -931,19 +1000,19 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
                 }
                 break;
             case pw::Aim::None:
-                ok = Cast(controller, *ready, nullptr, std::nullopt);
+                if (gSelfGestures && pw::SelfGestureFor(ready->label.c_str()) != pw::SelfGesture::None) {
+                    tried = false;
+                    Refuse(link, std::format("{} isn't pushed: {} casts it", ready->info->name,
+                        pw::Name(pw::SelfGestureFor(ready->label.c_str()))));
+                } else {
+                    ok = Cast(controller, *ready, nullptr, std::nullopt);
+                }
                 break;
             }
             if (tried) {
                 log::Info("power wheel: push: {}", gLastCast);
                 if (ok) {
-                    gPushCastAt = gClock;
-                    gReleasedSinceCast = false;
-                    if (gUnarmedRelease && !WeaponOut(pawn)) {
-                        auto const learned = gReleaseDelay.find(ready->label);
-                        gUnarmedReleaseAt = gClock + (learned != gReleaseDelay.end() ? learned->second : kDefaultReleaseS);
-                        gUnarmedPawn = pawn;
-                    }
+                    AfterCast(*ready, pawn);
                 }
                 if (ok && ready->info->aim != pw::Aim::None && gBoltOn) {
                     // The bolt leaves 6 cm ahead of the hand (the test hand with `aimhead`: held out low and left).
@@ -955,18 +1024,45 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
                     }
                     StartBolt(*ready, from, target != nullptr ? Plus(gTargetAt, {0.0, 0.0, kChestUnits}) : *gPlace);
                 }
-                if (ok) {
-                    ++gCastCount;
-                    ++gCasts;
-                    if (link.haptic != nullptr && gSettings.haptic > 0.0f) {
-                        link.haptic(0, 0.08f, std::min(1.0f, gSettings.haptic * 2.0f));
-                    }
-                } else if (link.haptic != nullptr && gSettings.haptic > 0.0f) {
-                    link.haptic(0, 0.12f, gSettings.haptic * 0.5f);
-                }
+                CastFeedback(link, ok);
             }
         }
     }
+
+    // The self-cast gestures (research/55 section 10): a power that aims at nothing is cast by its own gesture of the open left
+    // hand, not the push (the chest, the gun, the raise); `mevr powerwheel selfcast` stands in for it without tracked hands.
+    pw::SelfGesture const gesture = gSelfGestures ? pw::SelfGestureFor(ready->label.c_str()) : pw::SelfGesture::None;
+    pw::SelfCastInput self;
+    self.time = gClock;
+    self.tracked = hand && controllers.left.gripValid;
+    self.open = controllers.left.squeeze < 0.3f && controllers.left.trigger < 0.3f;
+    self.hand = controllers.left.grip.position;
+    self.head = view.head;
+    self.gunValid = controllers.right.aimValid && WeaponOut(pawn);
+    self.gun = controllers.right.aim;
+    pw::SelfCastStep const selfStep = pw::StepSelfCast(gSelfCast, gesture, self, gSelfSettings);
+    gSelfProgress = selfStep.progress;
+    if (selfStep.entered && link.haptic != nullptr && gSettings.haptic > 0.0f) {
+        link.haptic(0, 0.03f, gSettings.haptic * 0.6f);  // a tick: the hand is in place
+    }
+    bool const selfAsked = gConsoleSelfCast;
+    gConsoleSelfCast = false;
+    if (gesture != pw::SelfGesture::None && (selfStep.cast || selfAsked)) {
+        if (!ready->enabled) {
+            Refuse(link, std::format("{} can't be cast now (the game says it's unavailable)", ready->info->name));
+        } else if (ready->cooldown > 0.0f) {
+            Refuse(link, std::format("{} is still cooling down ({:.0f}% to go)", ready->info->name, ready->cooldown * 100.0f));
+        } else {
+            bool const ok = Cast(controller, *ready, nullptr, std::nullopt);
+            log::Info("power wheel: {}: {}{}", selfAsked ? "self-cast from the console" : pw::Name(gesture), gLastCast,
+                self.gunValid ? " (a gun in the right hand)" : "");
+            if (ok) {
+                AfterCast(*ready, pawn);
+            }
+            CastFeedback(link, ok);
+        }
+    }
+    gOmniAiming = UsesOmniTool(*ready) && (gSelfProgress > 0.0f || (ready->info->aim != pw::Aim::None && raised && (target != nullptr || gPlace)));
 
     // The marker: on the locked enemy, or where a place power would land.
     if (target != nullptr || gPlace) {
@@ -1283,6 +1379,10 @@ void Tick(double deltaSeconds, Link const& link) {
         }
     }
     TickLock(link, view, controllers, controller, pawn, onFoot);
+    // The omni-tool gauntlet on the forearm for a power that uses it: while it's aimed or gestured, and 2.5 s after its cast.
+    if (onFoot && (gOmniAiming || (gLastCastUsesOmniTool && gClock - gPushCastAt < 2.5))) {
+        omni_tool::Request();
+    }
 }
 
 void AdjustPad(gamepad::Options& options) {
@@ -1342,6 +1442,10 @@ std::string Console(std::string_view args) {
         words >> state;
         gAimHead = state != "off";
         return std::format("power wheel: the head's ray {} the left hand's for the lock (tests)", gAimHead ? "stands in for" : "no longer stands in for");
+    }
+    if (verb == "selfcast") {
+        gConsoleSelfCast = true;
+        return "power wheel: the equipped self-cast power's gesture on the next tick (tests)";
     }
     if (verb == "unarmed") {
         std::string state;

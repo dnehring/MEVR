@@ -25,6 +25,11 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] No casts you didn't mean: letting go of a grenade, a squad order or the gun with your left hand never casts.
   (research/55 section 7)
 - [ ] How Shepard's arms look during the cast animation, with arm IK on. (research/55 section 4)
+- [ ] Self-cast powers by gesture, the left hand open: the palm on your chest, held (Barrier, Shield Boost, Immunity,
+  Adrenaline Burst); slapped onto the top of the gun in your right hand (Marksman, Overkill, Carnage, Assassination); raised
+  above your head, held (Unity). Do they cast when you mean them and never by accident (a hand resting on the chest,
+  reaching for the foregrip)? Tech powers (and Shield Boost, Unity, Immunity, Adrenaline Burst) show the omni-tool gauntlet on
+  your left forearm while aimed or gestured: does the game also show one on the gun hand? (research/55 section 10)
 - [ ] Cast Throw at an enemy (or Warp, Lift or Stasis where enemies in the level use them): a translucent blue biotic hand
   flies from your left hand and lands as the game's hit does. Is it the right size and brightness at your hand, and facing
   the right way? Where no enemy uses the power (Singularity, tech powers) the bolt is the power's own charge or omni-tool

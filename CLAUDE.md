@@ -746,7 +746,11 @@ switching frameworks.
   release delay learned from `BioPawn.ReleasePower`; where no enemy version is loaded, the power's own charge or omni-tool effect.
   **A cast with the weapon away** spent the cooldown for nothing (the release is the gun-out casting animation's notify): the mod
   sends `BioPawn.ReleasePower` itself at the learned delay (`mevr powerwheel unarmed on|off`), so casts work with the gun out
-  (left hand alone) and with it holstered. While on, X never throws a grenade on foot (the pad's `grenadeButton` off); while open the left stick, L3, X, the
+  (left hand alone) and with it holstered. **Self-cast powers by gesture** (section 10; `[PowerWheel] selfGestures`): the open
+  left palm on the chest (Barrier, Shield Boost, Immunity, Adrenaline Burst), slapped onto the gun (Marksman, Overkill, Carnage,
+  Assassination) or raised above the head (Unity), never the left trigger or grip (`vr::power_wheel::StepSelfCast`;
+  `mevr powerwheel selfcast`); powers that use the omni-tool (tech, or the omni-tool in their own effects) wear the gauntlet
+  while aimed, gestured and 2.5 s after the cast. While on, X never throws a grenade on foot (the pad's `grenadeButton` off); while open the left stick, L3, X, the
   left trigger and grip are its own (`gamepad::kFlagPowerWheel`, `Latches::powerHeld` until released) and the squad's trigger stands down
   (`power_wheel::OwnsLeftHand`). The look is the user's concept in the game's own UI language (research/55 section 5: colours and
   edge-lit fills sampled from `GUI_SF_HUD`/`GUI_SF_InGameGui`, our N7 mark, Rajdhani); a two-level bloom (`plugin/Glow`, its own device
