@@ -938,6 +938,7 @@ void CheckFields() {
     CheckField("SFXGame.BioEpicPawnBehavior", "Squad", SDK_FIELD(UBioEpicPawnBehavior, Squad));
     CheckField("SFXGame.BioActorBehavior", "ActorGameName", SDK_FIELD(UBioActorBehavior, ActorGameName));
     CheckField("SFXGame.BioActorBehavior", "m_oActorType", SDK_FIELD(UBioActorBehavior, m_oActorType));
+    CheckField("SFXGame.BioActorBehavior", "bActive", SDK_BOOL(UBioActorBehavior, bActive));  // the power lock skips dormant pawns
     CheckField("SFXGame.BioActorType", "ActorGameName", SDK_FIELD(UBioActorType, ActorGameName));
     CheckField("SFXGame.BioEquipment", "m_QuickSlotArray", SDK_FIELD(UBioEquipment, m_QuickSlotArray));
     CheckField("SFXGame.BioEquipment", "m_eQuickSlotCurrent", SDK_FIELD(UBioEquipment, m_eQuickSlotCurrent));
