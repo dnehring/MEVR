@@ -202,10 +202,21 @@ void TestPad() {
 
 // The lock (research/55 section 4): taken within acquireDeg, the nearest angle winning, kept to keepDeg, held through a
 // short block of the line of sight, let go after graceS of it.
+// A hostile as the lock sees it: its id, the angle from the hand's ray, the distance, in sight or not, the angle from the gaze.
+struct C : pw::LockCandidate {
+    C(std::uint64_t i, float hand, float metres, bool inSight, float gaze = 180.0f) {
+        id = i;
+        angleDeg = hand;
+        distanceM = metres;
+        visible = inSight;
+        gazeDeg = gaze;
+    }
+};
+
 void TestLock() {
-    pw::LockSettings const s;  // acquire 9, keep 16, range 35 m, grace 0.35 s
+    pw::LockSettings s;  // acquire 9, keep 16, range 35 m, grace 0.35 s
+    s.autoLock = false;  // pointing only (TestAutoLock has the resolver)
     pw::LockState state;
-    using C = pw::LockCandidate;
     // Nothing near the ray: none.
     CHECK(pw::UpdateLock(state, {C{1, 12.0f, 10.0f, true}}, 0.0, s) == 0);
     // Within acquireDeg: the smaller angle wins; out of sight or out of range: never taken.
@@ -231,6 +242,32 @@ void TestLock() {
     CHECK(pw::UpdateLock(blocked, {C{5, 2.0f, 10.0f, true}}, 1.8, s) == 5 && blocked.blockedSince < 0.0);
     // Gone from the list (dead, out of the scan): let go.
     CHECK(pw::UpdateLock(blocked, {}, 1.9, s) == 0 && blocked.target == 0);
+}
+
+// The automatic resolver: nothing pointed at, the hostile the hand (within 30 degrees) and the gaze (within 20) agree on best;
+// pointing at another takes over; an automatic lock that's then pointed at stays, now pointed.
+void TestAutoLock() {
+    pw::LockSettings const s;
+    // Nothing within 9 degrees of the hand: the one the gaze is on (hand 25, gaze 2) beats one nearer the hand (15) but off the
+    // gaze (18); one outside both cones or out of sight is never taken.
+    pw::LockState state;
+    CHECK(pw::UpdateLock(state, {C{1, 15.0f, 10.0f, true, 18.0f}, C{2, 25.0f, 10.0f, true, 2.0f}, C{3, 40.0f, 5.0f, true, 30.0f}}, 0.0, s) == 2);
+    CHECK(state.automatic && state.since == 0.0);
+    pw::LockState none;
+    CHECK(pw::UpdateLock(none, {C{3, 40.0f, 5.0f, true, 30.0f}, C{4, 1.0f, 5.0f, false, 1.0f}}, 0.0, s) == 0);
+    // Kept while it drifts within the cones plus 6 degrees (hand 33, gaze 24: both past the cones, within the margin).
+    CHECK(pw::UpdateLock(state, {C{2, 33.0f, 10.0f, true, 24.0f}}, 0.1, s) == 2 && state.since == 0.0);
+    // Another pointed at (within 9 degrees of the hand) takes over at once.
+    CHECK(pw::UpdateLock(state, {C{2, 20.0f, 10.0f, true, 2.0f}, C{5, 5.0f, 12.0f, true, 30.0f}}, 0.2, s) == 5 && !state.automatic);
+    // The pointed one drifts past keepDeg (16) but stays within the automatic cones: the same target, now automatic, its
+    // time kept.
+    CHECK(pw::UpdateLock(state, {C{5, 20.0f, 12.0f, true, 30.0f}}, 0.3, s) == 5 && state.automatic && state.since == 0.2);
+    // An automatic target pointed at becomes a pointed lock, the same target.
+    CHECK(pw::UpdateLock(state, {C{5, 4.0f, 12.0f, true, 30.0f}}, 0.4, s) == 5 && !state.automatic && state.since == 0.2);
+    // Out of both cones and the margin: let go.
+    pw::LockState drift;
+    CHECK(pw::UpdateLock(drift, {C{6, 25.0f, 10.0f, true, 25.0f}}, 0.0, s) == 6 && drift.automatic);
+    CHECK(pw::UpdateLock(drift, {C{6, 37.0f, 10.0f, true, 27.0f}}, 0.1, s) == 0);
 }
 
 // The push: the hand along its own ray, fast and far enough over the last 0.12 s; once, until it slows; the cooldown.
@@ -330,6 +367,7 @@ int RunPowerWheelTests() {
     TestTableAndView();
     TestPad();
     TestLock();
+    TestAutoLock();
     TestPush();
     TestLockView();
     return gFailures;

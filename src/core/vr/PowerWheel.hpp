@@ -189,12 +189,20 @@ struct LockSettings {
     float pushSpeedMS = 1.6f;   // the left hand's speed along its ray that casts...
     float pushTravelM = 0.10f;  // ...over at least this travel
     float cooldownS = 0.6f;     // between pushes
+    // The automatic resolver: nothing within acquireDeg of the hand, the best visible hostile within autoHandDeg of the
+    // hand's ray or autoGazeDeg of the eyes' forward is locked (hand and gaze agreeing win); a hostile then pointed at
+    // takes over. Kept while within those plus kAutoKeepMarginDeg.
+    bool autoLock = true;
+    float autoHandDeg = 30.0f;
+    float autoGazeDeg = 20.0f;
 };
+inline constexpr float kAutoKeepMarginDeg = 6.0f;
 
 // A hostile as the lock sees it this tick.
 struct LockCandidate {
     std::uint64_t id = 0;
     float angleDeg = 180.0f;  // from the hand's ray
+    float gazeDeg = 180.0f;   // from the eyes' forward, as seen from the eyes
     float distanceM = 0.0f;
     bool visible = false;     // nothing between the hand and it
 };
@@ -202,10 +210,14 @@ struct LockState {
     std::uint64_t target = 0;  // 0: none
     double since = 0.0;        // when it locked
     double blockedSince = -1.0;  // the line of sight blocked since (negative: clear)
+    bool automatic = false;    // resolved automatically (nothing was pointed at)
 };
-// One step: the current target is kept while it's within keepDeg and range and its line of sight hasn't been blocked for
-// graceS; else the best visible hostile within acquireDeg and range is taken (the smallest angle, a nearer one winning a
-// near tie: 0.05 degree per metre). Returns the target (0: none).
+// One step. The current target is kept while it stays in its cone (pointed: keepDeg of the hand; automatic: autoHandDeg of
+// the hand or autoGazeDeg of the gaze, plus kAutoKeepMarginDeg) and range, and its line of sight hasn't been blocked for
+// graceS; an automatic one gives way to any other hostile pointed at (within acquireDeg). Else the best visible hostile
+// within acquireDeg of the hand is taken (the smallest angle, a nearer one winning a near tie: 0.05 degree per metre);
+// else, with autoLock, the best visible one within autoHandDeg of the hand or autoGazeDeg of the gaze (the least hand +
+// gaze angle, 0.1 degree per metre). The same hostile taken again keeps its `since`. Returns the target (0: none).
 std::uint64_t UpdateLock(LockState& state, std::vector<LockCandidate> const& candidates, double time, LockSettings const& settings);
 
 // The push that casts: the left hand moved along its own ray at pushSpeedMS or more over the last 0.12 s, at least
