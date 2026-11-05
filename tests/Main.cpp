@@ -61,6 +61,7 @@
 #include "core/vr/SquadContext.hpp"
 #include "core/vr/SquadGesture.hpp"
 #include "core/vr/SquadParser.hpp"
+#include "core/vr/SquadStanding.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/FrameProbe.hpp"
 #include "core/vr/TestRequest.hpp"
@@ -5054,9 +5055,151 @@ void TestSquadParser() {
     // Deictic indices count across clauses.
     p = parse("Wrex throw that one and Garrus overload those");
     CHECK(p.deictics.size() == 2 && p.deictics[1].index == 2 && line(p, 1) == "G|-|OVR|use|PT2");
+    // Standing modifiers: until, stay, no matter what, then come back; "hold the bridge" holds the group's place.
+    p = parse("Garrus, hold the bridge until it's clear, then come back");
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "G|-|-|hold|E1" && p.clauses[0].standing.until == StandingHint::Until::Calm &&
+        p.clauses[0].standing.comeBack && !p.clauses[0].standing.stay && p.confidence > 0.99f);
+    p = parse("Wrex, hold there no matter what");
+    CHECK(line(p, 0) == "W|-|-|hold|PT1");
+    CHECK(p.clauses[0].standing.noRetreat);
+    CHECK(p.deictics.size() == 1 && p.deictics[0].place);
+    p = parse("everyone, take out the destroyer until it's dead and stay there");
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "ALL|-|-|attack|E2" && p.clauses[0].standing.until == StandingHint::Until::GroupGone &&
+        p.clauses[0].standing.stay);
+    p = parse("Garrus, move up to the catwalk and stay there until I say so");
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "G|-|-|move|E1" && p.clauses[0].standing.stay &&
+        p.clauses[0].standing.until == StandingHint::Until::Relieved);
+    p = parse("stay there");
+    CHECK(line(p, 0) == "ALL|-|-|hold|-" && p.clauses[0].standing.stay);
+    p = parse("Garrus, hold here, then regroup");
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "G|-|-|hold|-" && p.clauses[0].standing.comeBack);
 }
 
 
+void TestSquadStanding() {
+    using namespace mevr::vr::squad_standing;
+    using mevr::vr::squad_context::Vec3;
+    Settings s;
+    auto const seen = [](double dt, Vec3 position, int nearPoint = 0, int nearMember = 0, bool combat = false, float health = 1.0f, bool alive = true,
+                          bool groupAlive = true) {
+        Observation o;
+        o.dt = dt;
+        o.alive = alive;
+        o.health = health;
+        o.position = position;
+        o.hostilesNearPoint = nearPoint;
+        o.hostilesNearMember = nearMember;
+        o.groupAlive = groupAlive;
+        o.combat = combat;
+        return o;
+    };
+    Vec3 const bridge{30.0f, -20.0f, 4.0f};
+    // "Hold the bridge": the first tick orders the move; standing there, nothing; drifting away past 4 m, a move again, but
+    // not within reassertS of the last one.
+    Standing hold;
+    hold.intent = {'G', Kind::HoldAt, bridge, 0, Until::Calm};
+    Issue is = hold.Advance(seen(0.1, {0.0f, 0.0f, 0.0f}, 2, 0, true), s);
+    CHECK(is.kind == Issue::MoveTo && is.point.x == bridge.x && std::string(is.why) == "the order" && hold.phase == Phase::Active);
+    is = hold.Advance(seen(0.1, {29.0f, -20.0f, 4.0f}, 2, 0, true), s);
+    CHECK(is.kind == Issue::None);
+    is = hold.Advance(seen(0.1, {20.0f, -20.0f, 4.0f}, 2, 0, true), s);
+    CHECK(is.kind == Issue::None);  // drifted, but reassertS hasn't passed
+    int moves = 0;
+    for (int i = 0; i < 40; ++i) {
+        is = hold.Advance(seen(0.1, {20.0f, -20.0f, 4.0f}, 2, 0, true), s);
+        if (is.kind == Issue::MoveTo) {
+            ++moves;
+            CHECK(std::string(is.why) == "drifted");
+        }
+    }
+    CHECK(moves == 1);  // once in reassertS
+    // The fighting stops: no hostiles near the point and no combat for calmS, then they come back (Follow) and it's done.
+    for (int i = 0; i < 120 && !hold.Done(); ++i) {
+        is = hold.Advance(seen(0.1, {30.0f, -20.0f, 4.0f}, 0, 0, false), s);
+    }
+    CHECK(hold.Done() && is.kind == Issue::Follow && std::string(is.why) == "the fighting stopped");
+    CHECK(hold.Advance(seen(0.1, bridge), s).kind == Issue::None);  // done is done
+    // Combat elsewhere keeps the hold: calm needs both no hostiles near the point and no combat.
+    Standing hold2;
+    hold2.intent = {'W', Kind::HoldAt, bridge, 0, Until::Calm};
+    hold2.Advance(seen(0.1, bridge, 1), s);
+    for (int i = 0; i < 200; ++i) {
+        is = hold2.Advance(seen(0.1, bridge, 0, 0, true), s);
+    }
+    CHECK(!hold2.Done() && hold2.phase == Phase::Active);
+    // "Stay there": ends on calm without a follow.
+    Standing stay;
+    stay.intent = {'W', Kind::HoldAt, bridge, 0, Until::Calm};
+    stay.intent.returnAfter = false;
+    stay.Advance(seen(0.1, bridge, 1), s);
+    for (int i = 0; i < 100 && !stay.Done(); ++i) {
+        is = stay.Advance(seen(0.1, bridge, 0, 0, false), s);
+    }
+    CHECK(stay.Done() && is.kind == Issue::None && std::string(is.why) == "the fighting stopped");
+    // A quiet spot held with nobody ever near: ends as "quiet".
+    Standing quiet;
+    quiet.intent = {'G', Kind::HoldAt, bridge, 0, Until::Calm};
+    for (int i = 0; i < 100 && !quiet.Done(); ++i) {
+        is = quiet.Advance(seen(0.1, bridge), s);
+    }
+    CHECK(quiet.Done() && std::string(is.why) == "quiet" && is.kind == Issue::Follow);
+    // Overwhelmed: three hostiles at the squadmate: a follow, done. Hurt: the same.
+    Standing ow;
+    ow.intent = {'G', Kind::HoldAt, bridge, 0, Until::Calm};
+    ow.Advance(seen(0.1, bridge, 3, 0, true), s);
+    is = ow.Advance(seen(0.1, bridge, 3, 3, true), s);
+    CHECK(ow.Done() && is.kind == Issue::Follow && std::string(is.why) == "overwhelmed");
+    Standing hurt;
+    hurt.intent = {'G', Kind::HoldAt, bridge, 0, Until::Calm};
+    hurt.Advance(seen(0.1, bridge, 3, 0, true), s);
+    is = hurt.Advance(seen(0.1, bridge, 3, 1, true, 0.2f), s);
+    CHECK(hurt.Done() && is.kind == Issue::Follow && std::string(is.why) == "hurt");
+    // "No matter what": no retreat; they hold while hurt and overwhelmed.
+    Standing brave;
+    brave.intent = {'W', Kind::HoldAt, bridge, 0, Until::Calm};
+    brave.intent.mayRetreat = false;
+    brave.Advance(seen(0.1, bridge, 3, 0, true), s);
+    is = brave.Advance(seen(0.1, bridge, 3, 5, true, 0.1f), s);
+    CHECK(!brave.Done() && is.kind == Issue::None);
+    // Down: done, nothing issued.
+    is = brave.Advance(seen(0.1, bridge, 3, 5, true, 0.0f, false), s);
+    CHECK(brave.Done() && is.kind == Issue::None && std::string(is.why) == "down");
+    // Attack a group: ordered at once, again every reassertS while it lives, over when it's gone (no follow by default
+    // here: the caller decides; returnAfter true gives one).
+    Standing attack;
+    attack.intent = {'G', Kind::AttackGroup, {}, 3, Until::GroupGone};
+    attack.intent.returnAfter = false;
+    is = attack.Advance(seen(0.1, {0.0f, 0.0f, 0.0f}, 0, 0, true), s);
+    CHECK(is.kind == Issue::Attack && is.group == 3 && std::string(is.why) == "the order");
+    int reissued = 0;
+    for (int i = 0; i < 100; ++i) {
+        is = attack.Advance(seen(0.1, {0.0f, 0.0f, 0.0f}, 0, 0, true), s);
+        reissued += is.kind == Issue::Attack ? 1 : 0;
+    }
+    CHECK(reissued == 2 && !attack.Done());  // at 4 s and 8 s
+    is = attack.Advance(seen(0.1, {0.0f, 0.0f, 0.0f}, 0, 0, true, 1.0f, true, false), s);
+    CHECK(attack.Done() && is.kind == Issue::None && std::string(is.why) == "the group is gone");
+    // For a while: time's up after untilS. Relieved: never by itself, but stale after maxAgeS.
+    Standing timed;
+    timed.intent = {'G', Kind::HoldAt, bridge, 0, Until::Seconds, 5.0f};
+    timed.Advance(seen(0.1, bridge, 1, 0, true), s);
+    for (int i = 0; i < 100 && !timed.Done(); ++i) {
+        is = timed.Advance(seen(0.1, bridge, 1, 0, true), s);
+    }
+    CHECK(timed.Done() && is.kind == Issue::Follow && std::string(is.why) == "time's up");
+    Standing relieved;
+    relieved.intent = {'G', Kind::HoldAt, bridge, 0, Until::Relieved};
+    relieved.Advance(seen(0.1, bridge), s);
+    for (int i = 0; i < 1000 && !relieved.Done(); ++i) {
+        is = relieved.Advance(seen(0.1, bridge), s);
+    }
+    CHECK(!relieved.Done());
+    for (int i = 0; i < 1000 && !relieved.Done(); ++i) {
+        is = relieved.Advance(seen(0.1, bridge), s);
+    }
+    CHECK(relieved.Done() && std::string(is.why) == "stale");
+    CHECK(std::string(Name(Kind::HoldAt)) == "hold" && std::string(Name(Until::Calm)) == "until it's calm" && std::string(Name(Phase::Done)) == "done");
+}
 void TestGameMenuRequest() {
     using namespace mevr::vr::game_menu;
     // The values cross the host/mod boundary: unknown ones are None.
@@ -10856,8 +10999,9 @@ void RunReportTests(int& failures);
 int RunReflectTests();
 int RunBreadcrumbTests();
 int RunExeTests();
-// tests/GfxTests.cpp: the game's own UI art: the GFx reader, rasterizer and TrueType fonts (core/gfx, research/54).
+// tests/GfxTests.cpp: the game's own UI art: the GFx reader, rasterizer and TrueType fonts (core/gfx, research/56 section 5).
 int RunGfxTests();
+int RunPowerWheelTests();
 
 // core/vr/PowerWheel: the hand's power wheel (research/55, the concept of 2026-11-04).
 void TestPowerWheel() {
@@ -10992,6 +11136,7 @@ int main() {
     gFailures += RunBreadcrumbTests();
     gFailures += RunExeTests();
     gFailures += RunGfxTests();
+    gFailures += RunPowerWheelTests();
     TestUpscale();
     TestMakoGunner();
     TestCockpitHazard();
@@ -11062,6 +11207,7 @@ int main() {
     TestSquadContext();
     TestSquadGesture();
     TestSquadParser();
+    TestSquadStanding();
     TestCloseLatch();
     TestClickGate();
     TestSquadPad();

@@ -202,6 +202,9 @@ struct Latches {
     // game's Y, or a held X into "leave the world").
     std::uint8_t makoDown = 0;
     std::uint8_t makoAs = 0;
+    // The power wheel (Options::powerWheel): the left hand's controls in use while it was open (kPower...), kept from the
+    // game until each is released or centred, so the X that equipped a power doesn't throw a grenade, nor the stick walk.
+    std::uint8_t powerHeld = 0;
 };
 
 // Which stick steers the game's weapon wheel while the left grip holds it open (Options::wheelStick).
@@ -222,6 +225,15 @@ inline constexpr std::uint8_t kSquadR3 = 32;
 inline constexpr std::uint8_t kSquadAll = 63;
 // A stick inside this is centred (released) for that purpose.
 inline constexpr float kSquadStickCentred = 0.25f;
+
+// The power wheel's controls (Options::powerWheel): all on the left hand; none reaches the game while it's open.
+inline constexpr std::uint8_t kPowerLeftStick = 1;
+inline constexpr std::uint8_t kPowerL3 = 2;
+inline constexpr std::uint8_t kPowerX = 4;
+inline constexpr std::uint8_t kPowerLeftTrigger = 8;
+inline constexpr std::uint8_t kPowerLeftGrip = 16;
+inline constexpr std::uint8_t kPowerAll = 31;
+inline constexpr float kPowerPressed = 0.2f;  // a trigger or grip past this is in use
 
 // What the host reports of the left grip (HostServices::leftGripAway, v11): the count of squeezes that
 // began away from the gun, shifted up one bit, and whether the current squeeze is one of them.
@@ -300,6 +312,10 @@ struct Options {
     // The player is physically crouched (game/posture's detector, on foot in VR): the host's constant eye then also covers
     // the crouch camera modes, so only the real head lowers the view (research/38 B step 2). Travels with the options.
     bool physicalCrouch = false;
+    // The power wheel at the left hand is open (game/power_wheel, research/55): the left stick, L3, X, the left trigger and the
+    // left grip are its own (Latches::powerHeld keeps each from the game until released or centred after it closes). The
+    // right hand stays the game's. Set only on foot.
+    bool powerWheel = false;
     SupportInput support;
 };
 
@@ -328,6 +344,7 @@ inline constexpr std::uint32_t kFlagMakoLever = 1u << 20;        // Options::mak
 inline constexpr std::uint32_t kFlagMakoStick = 1u << 21;        // Options::makoStick (host v23)
 inline constexpr std::uint32_t kFlagCockpitLook = 1u << 22;      // Options::cockpitLook (a host of 2026-11-03 or later)
 inline constexpr std::uint32_t kFlagPhysicalCrouch = 1u << 23;   // Options::physicalCrouch (a host of 2026-11-04 or later)
+inline constexpr std::uint32_t kFlagPowerWheel = 1u << 24;       // Options::powerWheel (host v28)
 std::uint32_t ToFlags(Options const& options);
 Options FromFlags(float distance, float acquire, float release, std::uint32_t flags);
 

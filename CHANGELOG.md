@@ -46,6 +46,10 @@ Halcyon's MassEffect1-VR renderer, with our hands, body and menus on top. LE1 on
 - Give your squad weapons from the game's weapon wheel at your left hand: pull the left trigger, point at a squadmate,
   let go.
 - Use doors, lockers and people by looking at them and pressing A; the prompt appears at the object.
+- Your powers on a wheel at your left hand: hold X and it opens around your palm with your biotic, tech and combat
+  powers; move your hand toward one (or push the left stick toward it) and let go of X to equip it. Tap X instead and
+  it stays open until you pinch the left trigger. The equipped power is the one a tap of the right stick click casts.
+  X no longer throws a grenade the game's way on foot (throw real ones from your chest).
 
 ### Your body
 - A guided calibration (about a minute) measures your height, arms and how you aim, and is saved per controller type.

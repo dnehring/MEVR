@@ -6,6 +6,7 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/SquadGesture.hpp"
 #include "core/vr/SquadParser.hpp"
+#include "core/vr/SquadStanding.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/HandCalibration.hpp"
@@ -27,6 +28,8 @@ namespace mevr::game::squad_orders {
 
 namespace sc = vr::squad_context;
 namespace sg = vr::squad_gesture;
+namespace sp = vr::squad_parser;
+namespace ss = vr::squad_standing;
 namespace json = vr::test_request;
 
 namespace {
@@ -45,14 +48,16 @@ ue3::FunctionRef gTraceFn{"Engine.Actor.Trace"};
 
 sg::Machine gMachine;
 std::vector<sc::Command> gHistory;
+std::vector<ss::Standing> gStandings;  // at most one per squadmate
 bool gOwnGrip = false;
 std::uint32_t gLastCount = 0;
 bool gHaveCount = false;
 bool gToldOldGrip = false;
 bool gToldNoFunctions = false;
 double gClock = 0.0;
+double gUpm = engine::kUnitsPerMeter;
 std::string gLast;  // the last order's outcome
-unsigned gStarted = 0, gGiven = 0, gCancelled = 0;
+unsigned gStarted = 0, gGiven = 0, gCancelled = 0, gReasserted = 0, gEnded = 0;
 
 // This tick's pointer: the left aim ray and what it ends on.
 struct Pointer {
@@ -76,6 +81,7 @@ double Len(engine::UnrealVector const& a) { return std::sqrt(Dot(a, a)); }
 sc::Vec3 Metres(engine::UnrealVector const& v, double upm) {
     return {static_cast<float>(v.x / upm), static_cast<float>(v.y / upm), static_cast<float>(v.z / upm)};
 }
+engine::UnrealVector Units(sc::Vec3 const& v, double upm) { return {v.x * upm, v.y * upm, v.z * upm}; }
 
 // Actor.Trace on the player's pawn, through ProcessEvent: the actor hit and, if the out parameter came back, where.
 ue3::Object* TraceOnce(ue3::Object* pawn, ue3::Function* fn, engine::UnrealVector const& start, engine::UnrealVector const& end,
@@ -164,18 +170,27 @@ void ReadPointer(engine::TrackingFrame const& frame, vr::controllers::State cons
     if (auto const point = TraceRay(pawn, gPointer.origin, gPointer.direction, upm)) {
         gPointer.hit = sg::Hit::Ground;
         gPointer.point = *point;
-        engine::UnrealVector const me = player::Location(pawn) ? engine::UnrealVector{player::Location(pawn)->x, player::Location(pawn)->y,
-                                                                      player::Location(pawn)->z}
-                                                                : gPointer.origin;
-        gPointer.distanceM = static_cast<float>(Len(Sub(*point, me)) / upm);
+        std::optional<ue3::Vector> const me = player::Location(pawn);
+        engine::UnrealVector const from = me ? engine::UnrealVector{me->x, me->y, me->z} : gPointer.origin;
+        gPointer.distanceM = static_cast<float>(Len(Sub(*point, from)) / upm);
     }
 }
 
-// The squad indices an order goes to: everyone present, or the one with the letter.
-std::vector<std::pair<int, std::string>> Recipients(sc::Resolved const& r) {
-    std::vector<std::pair<int, std::string>> out;
+// ---- The game's calls -------------------------------------------------------------------------------------------------
+
+struct Recipient {
+    int index = -1;  // the squad's own index
+    char letter = 0;
+    std::string name;
+    ue3::Object* pawn = nullptr;
+};
+
+// Everyone present, or the one with the letter.
+std::vector<Recipient> Recipients(bool all, char who) {
+    std::vector<Recipient> out;
     for (squad_weapons::MemberView const& m : squad_weapons::Members()) {
-        if (r.all || squad_context::LetterOf(m.classId) == r.who) out.emplace_back(m.squadIndex, m.name);
+        char const letter = squad_context::LetterOf(m.classId);
+        if (all || letter == who) out.push_back({m.squadIndex, letter, m.name, m.pawn});
     }
     return out;
 }
@@ -200,66 +215,269 @@ ue3::Object* NearestOfGroup(int groupId) {
     return best;
 }
 
-std::string Dispatch(sc::Resolved const& r, sc::Action const& action, std::optional<engine::UnrealVector> point) {
-    ue3::Object* const controller = player::Controller();
-    if (controller == nullptr || !player::IsBioPlayerController(controller)) return "no player controller";
-    ue3::Function* const moveTo = gMoveToFn.Get();
-    ue3::Function* const attack = gAttackFn.Get();
-    ue3::Function* const follow = gFollowFn.Get();
-    if (moveTo == nullptr || attack == nullptr || follow == nullptr) {
+bool Functions(ue3::Object*& controller) {
+    controller = player::Controller();
+    if (controller == nullptr || !player::IsBioPlayerController(controller)) return false;
+    if (gMoveToFn.Get() == nullptr || gAttackFn.Get() == nullptr || gFollowFn.Get() == nullptr) {
         if (!gToldNoFunctions) {
             gToldNoFunctions = true;
             log::Warn("squad orders: the QuickCommand natives weren't found on BioPlayerController: no orders");
         }
-        return "the game's order functions weren't found";
+        return false;
     }
-    std::vector<std::pair<int, std::string>> const to = Recipients(r);
+    return true;
+}
+
+std::string CallResult(ue3::Params const& parms, bool called) {
+    return called ? (parms.ReturnBool().value_or(false) ? "true" : "false") : "not called";
+}
+
+std::string CallFollow(ue3::Object* controller, int index) {
+    ue3::Params parms(ue3::runtime::Get(), gFollowFn.Get());
+    parms.Set("iSquadMember", static_cast<std::int32_t>(index));
+    return CallResult(parms, ue3::runtime::Call(controller, gFollowFn.Get(), parms));
+}
+
+std::string CallAttack(ue3::Object* controller, int index, ue3::Object* target) {
+    ue3::Params parms(ue3::runtime::Get(), gAttackFn.Get());
+    parms.Set("iSquadMember", static_cast<std::int32_t>(index));
+    parms.Set("pTarget", target);
+    return CallResult(parms, ue3::runtime::Call(controller, gAttackFn.Get(), parms));
+}
+
+// The move: the controller's Rotation turned toward the point for the call (the native drops the point along the controller's
+// facing: research/54's trace), and put back.
+std::string CallMove(ue3::Object* controller, int index, engine::UnrealVector const& point) {
+    ue3::Rotator* const rotation = gRotation.In<ue3::Rotator>(controller);
+    if (rotation == nullptr) return "no Rotation to turn";
+    std::optional<ue3::Vector> const from = player::Location(controller);
+    engine::UnrealVector const origin = from ? engine::UnrealVector{from->x, from->y, from->z} : gPointer.origin;
+    engine::UnrealRotation const toward = engine::ToRotation(Sub(point, origin));
+    ue3::Rotator const saved = *rotation;
+    *rotation = {toward.pitch, toward.yaw, saved.roll};
+    write_journal::Wrote("SquadOrders.Rotation (toward the point)", rotation);
+    ue3::Params parms(ue3::runtime::Get(), gMoveToFn.Get());
+    parms.Set("iSquadMember", static_cast<std::int32_t>(index));
+    bool const called = ue3::runtime::Call(controller, gMoveToFn.Get(), parms);
+    *rotation = saved;
+    write_journal::Wrote("SquadOrders.Rotation (restored)", rotation);
+    return CallResult(parms, called);
+}
+
+// ---- Standing orders --------------------------------------------------------------------------------------------------
+
+ss::Settings StandingSettings(hand_calibration::SquadOrders const& s) {
+    ss::Settings out;
+    out.reassertS = static_cast<float>(s.reassertS);
+    out.holdRadiusM = static_cast<float>(s.holdRadiusM);
+    out.calmS = static_cast<float>(s.calmS);
+    out.retreatHealth = static_cast<float>(s.retreatHealth);
+    out.overwhelmCount = s.overwhelmCount;
+    return out;
+}
+
+void DropStanding(char who, char const* why) {
+    for (auto it = gStandings.begin(); it != gStandings.end();) {
+        if (it->intent.who == who) {
+            log::Info("squad orders: {}'s standing {} order ends: {}", who, ss::Name(it->intent.kind), why);
+            it = gStandings.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+void KeepStanding(ss::Intent const& intent) {
+    DropStanding(intent.who, "replaced");
+    ss::Standing standing;
+    standing.intent = intent;
+    standing.sinceIssueS = 0.0;  // the order was just given
+    gStandings.push_back(standing);
+    log::Info("squad orders: {} keeps a standing {} order {}{}{}", intent.who, ss::Name(intent.kind), ss::Name(intent.until),
+        intent.returnAfter ? ", then comes back" : ", and stays", intent.mayRetreat ? "" : ", no matter what");
+}
+
+std::string IssueText(ss::Issue const& issue) {
+    switch (issue.kind) {
+    case ss::Issue::MoveTo: return "move";
+    case ss::Issue::Follow: return "follow";
+    case ss::Issue::Attack: return std::format("attack E{}", issue.group);
+    case ss::Issue::None: break;
+    }
+    return "nothing";
+}
+
+void TickStandings(double dt, hand_calibration::SquadOrders const& s) {
+    if (gStandings.empty()) return;
+    if (!s.standing) {
+        gStandings.clear();
+        return;
+    }
+    ue3::Object* controller = nullptr;
+    bool const callable = Functions(controller);
+    sc::Scene const& scene = squad_context::Scene();
+    std::vector<sc::Group> const& groups = squad_context::Groups();
+    ss::Settings const settings = StandingSettings(s);
+    std::vector<Recipient> const members = Recipients(true, 0);
+    for (ss::Standing& st : gStandings) {
+        Recipient const* who = nullptr;
+        for (Recipient const& r : members) {
+            if (r.letter == st.intent.who) who = &r;
+        }
+        ss::Observation seen;
+        seen.dt = dt;
+        if (who == nullptr) {
+            seen.alive = false;
+        } else {
+            std::optional<ue3::Vector> const at = player::Location(who->pawn);
+            seen.position = at ? Metres({at->x, at->y, at->z}, gUpm) : sc::Vec3{};
+            for (squad_weapons::MemberView const& m : squad_weapons::Members()) {
+                if (m.pawn == who->pawn) {
+                    seen.alive = m.health != 0.0f;
+                    seen.health = m.health < 0.0f ? 1.0f : std::clamp(m.health > 1.0f ? m.health / 100.0f : m.health, 0.0f, 1.0f);
+                }
+            }
+        }
+        for (sc::Hostile const& h : scene.hostiles) {
+            if (h.health <= 0.0f) continue;
+            if (sc::Distance(h.position, st.intent.point) <= settings.calmRadiusM) ++seen.hostilesNearPoint;
+            if (who != nullptr && sc::Distance(h.position, seen.position) <= settings.overwhelmRadiusM) ++seen.hostilesNearMember;
+        }
+        seen.groupAlive = sc::Find(groups, st.intent.group) != nullptr;
+        seen.combat = scene.combat;
+        ss::Issue const issue = st.Advance(seen, settings);
+        if (issue.kind == ss::Issue::None && !st.Done()) continue;
+        std::string result = "no squadmate";
+        if (who != nullptr && callable && issue.kind != ss::Issue::None) {
+            switch (issue.kind) {
+            case ss::Issue::MoveTo: result = CallMove(controller, who->index, Units(issue.point, gUpm)); break;
+            case ss::Issue::Follow: result = CallFollow(controller, who->index); break;
+            case ss::Issue::Attack: {
+                ue3::Object* const target = NearestOfGroup(issue.group);
+                result = target != nullptr ? CallAttack(controller, who->index, target) : "no living member of the group";
+                break;
+            }
+            case ss::Issue::None: break;
+            }
+        }
+        if (st.Done()) {
+            ++gEnded;
+            log::Info("squad orders: {}'s standing {} order ends ({}){}", st.intent.who, ss::Name(st.intent.kind), issue.why,
+                issue.kind != ss::Issue::None ? std::format(": {} -> {}", IssueText(issue), result) : std::string());
+        } else {
+            ++gReasserted;
+            log::Info("squad orders: {}'s standing {} order: {} ({}) -> {}", st.intent.who, ss::Name(st.intent.kind), IssueText(issue), issue.why, result);
+        }
+    }
+    gStandings.erase(std::remove_if(gStandings.begin(), gStandings.end(), [](ss::Standing const& st) { return st.Done(); }), gStandings.end());
+}
+
+// ---- Dispatch -------------------------------------------------------------------------------------------------------------
+
+std::string Dispatch(sc::Resolved const& r, sc::Action const& action, std::optional<engine::UnrealVector> point, sp::StandingHint const& hint) {
+    ue3::Object* controller = nullptr;
+    if (!Functions(controller)) return controller == nullptr ? "no player controller" : "the game's order functions weren't found";
+    hand_calibration::SquadOrders const s = hand_calibration::GetSquadOrders();
+    std::vector<Recipient> const to = Recipients(r.all, r.who);
     if (to.empty()) return "nobody to order";
     std::string names;
-    for (auto const& [index, name] : to) names += std::format("{}{} (squad index {})", names.empty() ? "" : ", ", name, index);
+    for (Recipient const& rc : to) names += std::format("{}{} (squad index {})", names.empty() ? "" : ", ", rc.name, rc.index);
     std::string returns;
-    auto const call = [&](ue3::Function* fn, int index, ue3::Object* target) {
-        ue3::Params parms(ue3::runtime::Get(), fn);
-        parms.Set("iSquadMember", static_cast<std::int32_t>(index));
-        if (target != nullptr) parms.Set("pTarget", target);
-        bool const called = ue3::runtime::Call(controller, fn, parms);
-        returns += std::format("{}{}", returns.empty() ? "" : "/", called ? (parms.ReturnBool().value_or(false) ? "true" : "false") : "not called");
+    auto const note = [&](std::string const& result) { returns += std::format("{}{}", returns.empty() ? "" : "/", result); };
+    auto const until = [&](ss::Until byDefault) {
+        switch (hint.until) {
+        case sp::StandingHint::Until::Calm: return ss::Until::Calm;
+        case sp::StandingHint::Until::GroupGone: return ss::Until::GroupGone;
+        case sp::StandingHint::Until::Relieved: return ss::Until::Relieved;
+        case sp::StandingHint::Until::Default: break;
+        }
+        return byDefault;
     };
     std::string what;
     switch (r.order) {
     case sc::Order::Follow:
     case sc::Order::Regroup:
-    case sc::Order::Hold:
-        for (auto const& [index, name] : to) call(follow, index, nullptr);
-        what = std::format("{}: QuickCommandFollowPlayer for {} -> {}", r.order == sc::Order::Hold ? "hold (as follow, until the hold order is found)" : "follow", names, returns);
+        for (Recipient const& rc : to) {
+            DropStanding(rc.letter, "called back");
+            note(CallFollow(controller, rc.index));
+        }
+        what = std::format("follow: QuickCommandFollowPlayer for {} -> {}", names, returns);
         break;
+    case sc::Order::Hold: {
+        // Hold a place: move there and keep it; hold here: keep where they stand (the standing brings them back when they drift).
+        if (!point && r.group != 0) {
+            if (sc::Group const* const g = sc::Find(squad_context::Groups(), r.group)) point = Units(g->centre, gUpm);
+        }
+        for (Recipient const& rc : to) {
+            engine::UnrealVector where = point.value_or(engine::UnrealVector{});
+            if (!point) {
+                std::optional<ue3::Vector> const at = player::Location(rc.pawn);
+                if (!at) {
+                    note("no position");
+                    continue;
+                }
+                where = {at->x, at->y, at->z};
+                note("holds here");
+            } else {
+                note(CallMove(controller, rc.index, where));
+            }
+            if (s.standing) {
+                ss::Intent intent;
+                intent.who = rc.letter;
+                intent.kind = ss::Kind::HoldAt;
+                intent.point = Metres(where, gUpm);
+                intent.until = until(ss::Until::Calm);
+                intent.returnAfter = !hint.stay;
+                intent.mayRetreat = !hint.noRetreat;
+                KeepStanding(intent);
+            }
+        }
+        what = std::format("hold {}: {} for {} -> {}", point ? std::format("at ({:.0f}, {:.0f}, {:.0f})", point->x, point->y, point->z) : std::string("here"),
+            point ? "QuickCommandMoveTo" : "the standing order", names, returns);
+        break;
+    }
     case sc::Order::Attack: {
         ue3::Object* const target = NearestOfGroup(r.group);
         if (target == nullptr) return std::format("attack: no living member of E{} to target", r.group);
-        for (auto const& [index, name] : to) call(attack, index, target);
+        for (Recipient const& rc : to) {
+            note(CallAttack(controller, rc.index, target));
+            if (s.standing) {
+                ss::Intent intent;
+                intent.who = rc.letter;
+                intent.kind = ss::Kind::AttackGroup;
+                intent.group = r.group;
+                intent.until = until(ss::Until::GroupGone);
+                intent.returnAfter = hint.comeBack;
+                intent.mayRetreat = !hint.noRetreat;
+                KeepStanding(intent);
+            }
+        }
         what = std::format("attack E{} ({}): QuickCommandAttackTarget for {} -> {}", r.group, ue3::runtime::FullName(target), names, returns);
         break;
     }
     case sc::Order::Move: {
         if (!point && r.group != 0) {
-            sc::Group const* const g = sc::Find(squad_context::Groups(), r.group);
-            double const upm = engine::kUnitsPerMeter;
-            if (g != nullptr) point = engine::UnrealVector{g->centre.x * upm, g->centre.y * upm, g->centre.z * upm};
+            if (sc::Group const* const g = sc::Find(squad_context::Groups(), r.group)) point = Units(g->centre, gUpm);
         }
         if (!point) return "move: no point to move to";
-        ue3::Rotator* const rotation = gRotation.In<ue3::Rotator>(controller);
-        if (rotation == nullptr) return "move: the controller's Rotation can't be written";
-        std::optional<ue3::Vector> const from = player::Location(controller);
-        engine::UnrealVector const origin = from ? engine::UnrealVector{from->x, from->y, from->z} : gPointer.origin;
-        engine::UnrealRotation const toward = engine::ToRotation(Sub(*point, origin));
-        ue3::Rotator const saved = *rotation;
-        *rotation = {toward.pitch, toward.yaw, saved.roll};
-        write_journal::Wrote("SquadOrders.Rotation (toward the point)", rotation);
-        for (auto const& [index, name] : to) call(moveTo, index, nullptr);
-        *rotation = saved;
-        write_journal::Wrote("SquadOrders.Rotation (restored)", rotation);
-        what = std::format("move to ({:.0f}, {:.0f}, {:.0f}) ({:.1f} m, facing yaw {} pitch {} for the call): QuickCommandMoveTo for {} -> {}", point->x,
-            point->y, point->z, Len(Sub(*point, origin)) / engine::kUnitsPerMeter, toward.yaw, toward.pitch, names, returns);
+        for (Recipient const& rc : to) {
+            note(CallMove(controller, rc.index, *point));
+            // "Move there and stay" / "until ...": a move becomes a hold there.
+            bool const keep = s.standing && (hint.stay || hint.until != sp::StandingHint::Until::Default || hint.noRetreat);
+            if (keep) {
+                ss::Intent intent;
+                intent.who = rc.letter;
+                intent.kind = ss::Kind::HoldAt;
+                intent.point = Metres(*point, gUpm);
+                intent.until = until(ss::Until::Calm);
+                intent.returnAfter = !hint.stay;
+                intent.mayRetreat = !hint.noRetreat;
+                KeepStanding(intent);
+            } else {
+                DropStanding(rc.letter, "moved elsewhere");
+            }
+        }
+        what = std::format("move to ({:.0f}, {:.0f}, {:.0f}): QuickCommandMoveTo for {} -> {}", point->x, point->y, point->z, names, returns);
         break;
     }
     case sc::Order::Use:
@@ -279,7 +497,7 @@ std::string Dispatch(sc::Resolved const& r, sc::Action const& action, std::optio
     return what;
 }
 
-std::string GiveResolved(sc::Action const& action, std::optional<engine::UnrealVector> point) {
+std::string GiveResolved(sc::Action const& action, std::optional<engine::UnrealVector> point, sp::StandingHint const& hint) {
     sc::Resolved const r = sc::Validate(action, squad_context::Scene(), squad_context::Groups(), {}, gHistory);
     std::string outcome;
     if (!r.ok) {
@@ -287,7 +505,7 @@ std::string GiveResolved(sc::Action const& action, std::optional<engine::UnrealV
     } else if (r.notReady) {
         outcome = std::format("not ready: {} in {:.0f} s", r.power, r.readyInS);
     } else {
-        outcome = Dispatch(r, action, point);
+        outcome = Dispatch(r, action, point, hint);
     }
     gLast = std::format("{} -> {}", sc::Line(action), outcome);
     log::Info("squad orders: {}", gLast);
@@ -325,6 +543,7 @@ void Tick(double deltaSeconds, Link const& link) {
     ue3::Object* const pawn = controller != nullptr ? player::BioPawn(controller) : nullptr;
     std::optional<engine::TrackingFrame> const frame = view_anchor::Current();
     bool const onFoot = mode && *mode == 0 && pawn != nullptr;
+    if (frame && frame->unitsPerMeter > 0.0) gUpm = frame->unitsPerMeter;
     bool const usable = s.enabled && s.gesture && onFoot && frame.has_value() && controllers.active && controllers.left.aimValid &&
         !squad_weapons::Members().empty();
     if (frame && onFoot) {
@@ -377,16 +596,18 @@ void Tick(double deltaSeconds, Link const& link) {
         log::Info("squad orders: let go on {}{}", sg::Name(gPointer.hit),
             gPointer.hit == sg::Hit::Ground ? std::format(" {:.1f} m away", gPointer.distanceM)
             : gPointer.hit == sg::Hit::Enemy ? std::format(" (E{})", gPointer.group) : std::string());
-        GiveResolved(action, point);
+        GiveResolved(action, point, {});
+    }
+    if (s.enabled && onFoot) {
+        TickStandings(deltaSeconds, s);
     }
 }
 
 std::string Give(sc::Action const& action) {
-    return GiveResolved(action, std::nullopt);
+    return GiveResolved(action, std::nullopt, {});
 }
 
 std::string Say(std::string_view transcript, double secondsAgo) {
-    namespace sp = vr::squad_parser;
     hand_calibration::SquadOrders const s = hand_calibration::GetSquadOrders();
     sc::Scene const& scene = squad_context::Scene();
     std::vector<sc::Group> const& groups = squad_context::Groups();
@@ -409,33 +630,30 @@ std::string Say(std::string_view transcript, double secondsAgo) {
         }
         return std::format("not sure ({:.2f} < {:.2f}): {}; parsed {}", parsed.confidence, s.minConfidence, why.empty() ? "-" : why, lines);
     }
-    // The deictics, from where the head and the hands pointed `secondsAgo`; a place for a move from the left hand's ray now.
+    // The deictics, from where the head and the hands pointed `secondsAgo`; a place for a move or a hold from the left hand's ray now.
     std::vector<sc::Deictic> deictics;
     std::optional<engine::UnrealVector> place;
     for (sp::DeicticWord const& d : parsed.deictics) {
         deictics.push_back({d.index, d.word, squad_context::ResolveAgo(secondsAgo)});
         if (d.place && !place && gPointer.valid) {
-            double const upm = engine::kUnitsPerMeter;
-            if (auto const frame = view_anchor::Current()) {
-                place = TraceRay(player::BioPawn(player::Controller()), gPointer.origin, gPointer.direction,
-                    frame->unitsPerMeter > 0.0 ? frame->unitsPerMeter : upm);
-            }
+            place = TraceRay(player::BioPawn(player::Controller()), gPointer.origin, gPointer.direction, gUpm);
         }
     }
     std::string outcomes;
     for (sp::Clause const& c : parsed.clauses) {
         std::string outcome;
         if (c.action.order == sc::Order::Cancel) {
-            outcome = "cancelled: nothing undone yet (the game has no cancel; a follow order would call them back)";
+            for (Recipient const& rc : Recipients(true, 0)) DropStanding(rc.letter, "belayed");
+            outcome = "belayed: the standing orders are dropped (the game's own order can't be undone; a follow calls them back)";
         } else {
             sc::Resolved const r = sc::Validate(c.action, scene, groups, deictics, gHistory);
             std::optional<engine::UnrealVector> point;
-            if (r.ok && r.order == sc::Order::Move && c.action.target.kind == sc::Target::Pointed) {
+            if (r.ok && (r.order == sc::Order::Move || r.order == sc::Order::Hold) && c.action.target.kind == sc::Target::Pointed) {
                 point = place;
             }
             outcome = !r.ok ? std::format("refused: {}", r.problem)
                 : r.notReady ? std::format("not ready: {} in {:.0f} s", r.power, r.readyInS)
-                             : Dispatch(r, c.action, point);
+                             : Dispatch(r, c.action, point, c.standing);
             gLast = std::format("{} -> {}", sc::Line(c.action), outcome);
             log::Info("squad orders: {}", gLast);
         }
@@ -445,23 +663,36 @@ std::string Say(std::string_view transcript, double secondsAgo) {
 }
 
 std::string StatusJson() {
+    std::string standings;
+    for (ss::Standing const& st : gStandings) {
+        standings += std::format("{}{{\"who\": \"{}\", \"kind\": \"{}\", \"until\": \"{}\", \"phase\": \"{}\", \"ageS\": {}, \"group\": {}, \"returnAfter\": {}, "
+                                 "\"mayRetreat\": {}}}",
+            standings.empty() ? "" : ", ", st.intent.who, ss::Name(st.intent.kind), ss::Name(st.intent.until), ss::Name(st.phase),
+            json::JsonNumber(st.ageS), st.intent.group, st.intent.returnAfter ? "true" : "false", st.intent.mayRetreat ? "true" : "false");
+    }
     return std::format("{{\"holding\": {}, \"heldS\": {}, \"member\": {}, \"pointer\": {{\"valid\": {}, \"hit\": {}, \"group\": {}, \"distanceM\": {}, "
-                       "\"member\": {}, \"traced\": {}}}, \"last\": {}, \"started\": {}, \"given\": {}, \"cancelled\": {}, \"history\": {}}}",
+                       "\"member\": {}, \"traced\": {}}}, \"last\": {}, \"started\": {}, \"given\": {}, \"cancelled\": {}, \"history\": {}, "
+                       "\"standings\": [{}], \"reasserted\": {}, \"ended\": {}}}",
         gMachine.holding ? "true" : "false", json::JsonNumber(gMachine.heldS), gMachine.member, gPointer.valid ? "true" : "false",
         json::JsonString(sg::Name(gPointer.hit)), gPointer.group, json::JsonNumber(gPointer.distanceM), gPointer.member,
-        gPointer.traced ? "true" : "false", json::JsonString(gLast), gStarted, gGiven, gCancelled, gHistory.size());
+        gPointer.traced ? "true" : "false", json::JsonString(gLast), gStarted, gGiven, gCancelled, gHistory.size(), standings, gReasserted, gEnded);
 }
 
 void LogStats() {
-    log::Info("squad orders: {} pointed, {} given, {} called off; {}{}", gStarted, gGiven, gCancelled,
+    std::string standings;
+    for (ss::Standing const& st : gStandings) {
+        standings += std::format("{}{} {} {} ({:.0f} s)", standings.empty() ? "" : ", ", st.intent.who, ss::Name(st.intent.kind), ss::Name(st.intent.until), st.ageS);
+    }
+    log::Info("squad orders: {} pointed, {} given, {} called off; {} standing re-orders, {} ended; {}{}{}", gStarted, gGiven, gCancelled, gReasserted, gEnded,
         gMachine.holding ? std::format("holding ({:.1f} s, on {})", gMachine.heldS, sg::Name(gPointer.hit)) : std::string("idle"),
-        gLast.empty() ? std::string() : std::format("; last: {}", gLast));
+        standings.empty() ? std::string() : std::format("; standing: {}", standings), gLast.empty() ? std::string() : std::format("; last: {}", gLast));
 }
 
 void Shutdown() {
     gMachine.Reset();
     gPointer = {};
     gHistory.clear();
+    gStandings.clear();
 }
 
 }  // namespace mevr::game::squad_orders

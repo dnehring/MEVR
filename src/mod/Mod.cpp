@@ -69,6 +69,7 @@
 #include "game/GalaxyDump.hpp"
 #include "game/GalaxyMap.hpp"
 #include "game/WorldUi.hpp"
+#include "game/PowerWheel.hpp"
 #include "game/Spectator.hpp"
 #include "game/SquadContext.hpp"
 #include "game/SquadOrders.hpp"
@@ -572,6 +573,18 @@ mevr::game::galaxy_map::Link GalaxyMapLink() {
     return link;
 }
 
+// Host renderer (HostServices v28): the power wheel at the left hand, if the host's View matches ours.
+mevr::game::power_wheel::Link PowerWheelLink() {
+    using namespace mevr;
+    game::power_wheel::Link link;
+    if (gHostOwnsVr && MEVR_HOST_HAS(setPowerWheel) && gHost->setPowerWheel != nullptr &&
+        gHost->powerWheelSize == sizeof(vr::power_wheel::View)) {
+        link.publish = gHost->setPowerWheel;
+        link.haptic = gHost->hapticPulse;
+    }
+    return link;
+}
+
 // Host renderer (HostServices v27): the game's screens in the room, if the host's State matches ours.
 mevr::game::world_ui::Link WorldUiLink() {
     using namespace mevr;
@@ -884,7 +897,7 @@ void PublishStatus() {
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, "
         "\"posture\": {}, \"viewLevel\": {}, \"gunKick\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
-        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}, \"squadOrders\": {}}}",
+        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}, \"squadOrders\": {}, \"powerWheel\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -896,7 +909,7 @@ void PublishStatus() {
         game::view_level::StatusJson(), game::gun_kick::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
         game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::mako_gunner::StatusJson(), game::cockpit_probe::StatusJson(), game::mako_controls::StatusJson(),
-        game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson(), game::squad_context::StatusJson(), game::squad_orders::StatusJson());
+        game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson(), game::squad_context::StatusJson(), game::squad_orders::StatusJson(), game::power_wheel::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -1029,6 +1042,7 @@ void Heartbeat() {
         game::support_grip::LogStats();
         game::holsters::LogStats();
         game::squad_weapons::LogStats();
+        game::power_wheel::LogStats();
         game::sights::LogStats();
         game::scope_capture::LogStats();
         game::cockpit_probe::LogStats();
@@ -1208,6 +1222,8 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::vent::Link const ventLink = VentLink();
         game::vent::Claim(ventLink);
         game::holsters::Tick(deltaSeconds, HolsterLink());
+        // The power wheel at the left hand (research/55) before the squad's: a pinch that equips a power is never a squad pull.
+        game::power_wheel::Tick(deltaSeconds, PowerWheelLink());
         game::squad_weapons::Tick(deltaSeconds, SquadLink());
         game::throwables::Tick(deltaSeconds, throwablesLink);
         game::vent::Tick(deltaSeconds, ventLink);
@@ -1344,6 +1360,7 @@ MEVR_MOD_API void MevrModShutdown() {
     // the process is exiting. Before sights' shutdown and the reflection layer's.
     game::spectator::Shutdown(exiting);  // its capture and the head it hid, on the game thread
     game::world_ui::Shutdown(WorldUiLink());  // the host forgets the screen
+    game::power_wheel::Shutdown(PowerWheelLink());  // the host's wheel closed
     game::galaxy_map::Shutdown(GalaxyMapLink(), exiting);  // the host forgets the hologram; the window's captures go
     if (gHost != nullptr && MEVR_HOST_HAS(setSpectator) && gHost->setSpectator != nullptr) {
         gHost->setSpectator(nullptr);  // the desktop window gets Halcyon's mirror back (the host also forgets on unload)

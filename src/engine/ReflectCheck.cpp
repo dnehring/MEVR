@@ -719,6 +719,10 @@ void CheckFields() {
     CheckField("SFXGame.BioEpicPawnBehavior", "m_powers", SDK_FIELD(UBioEpicPawnBehavior, m_powers));  // the squad context (research/54)
     CheckField("SFXGame.BioPower", "m_nmPower", SDK_FIELD(UBioPower, m_nmPower));
     CheckField("SFXGame.BioPower", "m_fCooldownRemaining", SDK_FIELD(UBioPower, m_fCooldownRemaining));
+    CheckField("SFXGame.BioPower", "m_fTotalCooldownTime", SDK_FIELD(UBioPower, m_fTotalCooldownTime));  // the power wheel (research/55)
+    CheckField("SFXGame.BioPlayerInput", "MappedPower", SDK_FIELD(UBioPlayerInput, MappedPower));
+    CheckField("SFXGame.BioPower", "m_nEnabled", SDK_FIELD(UBioPower, m_nEnabled));
+    CheckField("SFXGame.BioPower", "m_nSuppressedCount", SDK_FIELD(UBioPower, m_nSuppressedCount));
     CheckField("SFXGame.BioTriggerStream", "StreamingStates", SDK_FIELD(ABioTriggerStream, StreamingStates));  // mevr stream
     // `mevr vehicle levels` and `event` (the cockpit probe, research/47)
     CheckField("Engine.WorldInfo", "StreamingLevels", SDK_FIELD(AWorldInfo, StreamingLevels));
@@ -1112,6 +1116,7 @@ void CheckFunctions() {
         "SFXGame.BioPawn.GetWalkingSpeedMode",  // game/combat_stance (research/38)
         "SFXGame.BioPawn.IsThrowingGrenade",
         "SFXGame.BioPlayerInput.IsCombatEnabled",
+        "SFXGame.BioPower.IsRequiredWeaponEquipped",
         "SFXGame.BioGrenadeProjectile.SetVelocity",
         "SFXGame.BioGrenade.LaunchGrenadeAtPoint",
         "SFXGame.BioGrenade.LaunchGrenadeAtActor",
@@ -1239,6 +1244,8 @@ void CheckFunctions() {
         "Engine.SkeletalMeshComponent.GetBoneNames",
         "Engine.SkeletalMeshComponent.GetBoneLocation",
         "Engine.SkeletalMeshComponent.MatchRefBone",
+        "SFXGame.BioPower.IsEnabled",  // the power wheel (research/55)
+        "SFXGame.BioPlayerInput.IsCombatEnabled",
     };
     for (char const* function : functions) {
         CheckFunction(function);
@@ -1293,6 +1300,9 @@ void CheckParams() {
     PARAM(ABioGrenade_eventLaunchGrenade_Parms, "SFXGame.BioGrenade.LaunchGrenade", ReturnValue);
     PARAM(ABioPawn_execIsUsingPower_Parms, "SFXGame.BioPawn.IsUsingPower", bIgnoreWeaponPowers);
     PARAM(ABioPawn_execIsUsingPower_Parms, "SFXGame.BioPawn.IsUsingPower", ReturnValue);
+    PARAM(UBioPower_execIsEnabled_Parms, "SFXGame.BioPower.IsEnabled", ReturnValue);  // the power wheel (research/55)
+    PARAM(UBioPlayerInput_execIsCombatEnabled_Parms, "SFXGame.BioPlayerInput.IsCombatEnabled", ReturnValue);
+    PARAM(UBioPower_execIsRequiredWeaponEquipped_Parms, "SFXGame.BioPower.IsRequiredWeaponEquipped", ReturnValue);
     PARAM(ABioTriggerStream_eventTouch_Parms, "SFXGame.BioTriggerStream.Touch", Other);  // mevr stream
     PARAM(ABioSPGame_execGetSimpleString_Parms, "SFXGame.BioSPGame.GetSimpleString", StrRef);  // the galaxy hologram
     PARAM(ABioSPGame_execGetSimpleString_Parms, "SFXGame.BioSPGame.GetSimpleString", ReturnValue);

@@ -14,6 +14,7 @@
 #include "game/MakoControls.hpp"
 #include "game/Posture.hpp"
 #include "game/SquadWeapons.hpp"
+#include "game/PowerWheel.hpp"
 #include "game/Throwables.hpp"
 #include "game/Vent.hpp"
 #include "game/ViewAnchor.hpp"
@@ -274,6 +275,7 @@ void Tick(double deltaSeconds, bool requested) {
                           (!controls.aimAtShoulder || shouldered);
     holsters::AdjustPad(options);  // RB kept off a squeeze at a holster; the wheel's LB if turned off
     squad_weapons::AdjustPad(options);  // the squad menu's controls while it's open; no LB from a left grip away
+    power_wheel::AdjustPad(options);  // X is the power wheel's on foot; the left hand its own while it's open (research/55)
     throwables::AdjustPad(options);  // B and X off on foot if turned off; no RB from a squeeze at the grenade slot
     comfort::AdjustPad(options);  // our own turn (no right-stick X for the game) and walking toward the left hand
     mako_controls::AdjustPad(options);  // the Mako's lever and stick (research/46): a squeeze there is theirs, and their buttons

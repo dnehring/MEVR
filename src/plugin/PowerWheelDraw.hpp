@@ -19,7 +19,9 @@
 // plugin/Glow's, applied to the canvas afterwards. Drawn the same way by the host and by tools/power-wheel-preview.
 namespace mevr::host::power_wheel_draw {
 
-inline constexpr unsigned kCanvas = 1024;      // the wheel's canvas (square); its centre is the wheel's
+inline constexpr unsigned kCanvas = 1024;      // the wheel's canvas (square)
+inline constexpr float kCentreX = 512.0f;      // the wheel's centre on it: a little low, as the chosen tile grows and its
+inline constexpr float kCentreY = 540.0f;      // chevron sits above it
 inline constexpr unsigned kHintWidth = 920;    // the hint card's canvas
 inline constexpr unsigned kHintHeight = 210;
 

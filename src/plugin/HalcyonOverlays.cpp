@@ -53,6 +53,7 @@
 #include "plugin/RecenterTilt.hpp"
 #include "plugin/SightLayers.hpp"
 #include "plugin/Spectator.hpp"
+#include "plugin/PowerWheel.hpp"
 #include "plugin/SquadPanel.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/Vignette.hpp"
@@ -2197,6 +2198,21 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         }
     }
 
+    // ---- The power wheel at the left hand (plugin/PowerWheel, research/55) and its hint card: on top of ours ----
+    if (count < capacity) {
+        mevr::host::power_wheel::Frame wheel;
+        wheel.session = session;
+        wheel.appSpace = static_cast<XrSpace>(frame.appSpace);
+        wheel.context = context;
+        wheel.device = device.Get();
+        wheel.worldFrame = frame.worldFrame;
+        wheel.menuOpen = frame.menuOpen;
+        XrCompositionLayerQuad const* wheelLayers[2] = {};
+        int const n = mevr::host::power_wheel::Layers(wheel, wheelLayers, static_cast<int>(std::min<unsigned>(2u, capacity - count)));
+        for (int i = 0; i < n; ++i) {
+            layersOut[count++] = wheelLayers[i];
+        }
+    }
     // ---- The squad weapon menu, at the left hand (plugin/SquadPanel): last, on top of ours ----
     if (count < capacity) {
         mevr::host::squad_panel::Frame squad;

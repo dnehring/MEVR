@@ -251,6 +251,7 @@ std::uint32_t ToFlags(Options const& options) {
            (options.modTurns ? kFlagModTurns : 0u) | (options.handWalk ? kFlagHandWalk : 0u) |
            (options.makoDrive ? kFlagMakoDrive : 0u) | (options.makoLever ? kFlagMakoLever : 0u) | (options.makoStick ? kFlagMakoStick : 0u) |
            (options.cockpitLook ? kFlagCockpitLook : 0u) | (options.physicalCrouch ? kFlagPhysicalCrouch : 0u) |
+           (options.powerWheel ? kFlagPowerWheel : 0u) |
            ((static_cast<std::uint32_t>(options.wheelStick) << kWheelStickShift) & kWheelStickMask) |
            ((static_cast<std::uint32_t>(options.rbSource) << kRbSourceShift) & kRbSourceMask);
 }
@@ -275,6 +276,7 @@ Options FromFlags(float distance, float acquire, float release, std::uint32_t fl
     options.makoStick = (flags & kFlagMakoStick) != 0;
     options.cockpitLook = (flags & kFlagCockpitLook) != 0;
     options.physicalCrouch = (flags & kFlagPhysicalCrouch) != 0;
+    options.powerWheel = (flags & kFlagPowerWheel) != 0;
     std::uint32_t const stick = (flags & kWheelStickMask) >> kWheelStickShift;
     options.wheelStick = stick <= static_cast<std::uint32_t>(WheelStick::Either) ? static_cast<WheelStick>(stick) : WheelStick::Right;
     std::uint32_t const source = (flags & kRbSourceMask) >> kRbSourceShift;
@@ -341,6 +343,27 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
     }
     if ((block & kSquadR3) != 0) {
         state.right.stickClick = false;
+    }
+    // The power wheel's controls, all on the left hand: what is in use while it's open stays its own until released.
+    std::uint8_t const leftActive = static_cast<std::uint8_t>((pushed(input.left.stickX, input.left.stickY) ? kPowerLeftStick : 0) |
+        (input.left.stickClick ? kPowerL3 : 0) | (input.left.primary ? kPowerX : 0) |
+        (input.left.trigger > kPowerPressed ? kPowerLeftTrigger : 0) | (input.left.squeeze > kPowerPressed ? kPowerLeftGrip : 0));
+    latches.powerHeld = options.powerWheel ? leftActive : static_cast<std::uint8_t>(latches.powerHeld & leftActive);
+    std::uint8_t const powerBlock = options.powerWheel ? kPowerAll : latches.powerHeld;
+    if ((powerBlock & kPowerLeftStick) != 0) {
+        state.left.stickX = state.left.stickY = 0.0f;
+    }
+    if ((powerBlock & kPowerL3) != 0) {
+        state.left.stickClick = false;
+    }
+    if ((powerBlock & kPowerX) != 0) {
+        state.left.primary = false;
+    }
+    if ((powerBlock & kPowerLeftTrigger) != 0) {
+        state.left.trigger = 0.0f;
+    }
+    if ((powerBlock & kPowerLeftGrip) != 0) {
+        state.left.squeeze = 0.0f;
     }
     if (options.nativeWheel && latches.wheelArmed) {
         state.right.stickX = steerX;

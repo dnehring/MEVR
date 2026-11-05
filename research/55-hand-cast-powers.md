@@ -151,3 +151,27 @@ names wrapped onto two lines on narrow tiles, cooldown and disabled states, the 
 nineteen player powers' icons painted from signed distance fields in each discipline's colours, plus a generic one),
 `plugin/Glow` (a two-level bloom added as light in the premultiplied layer, its own device context state) and
 `tools/power-wheel-preview` (`mevr-power-wheel-preview <folder>`: every state, the hint, the icon sheet).
+
+## 6. In the game: X opens it at the left hand (2026-11-04)
+
+The user's controls: everything on the left hand, no right-hand pinch; picking either by moving the left hand into place or
+with the left stick (which then doesn't walk); X freed from the game's grenade for it. Built:
+
+- **Opening and choosing** (`core/vr/PowerWheel`'s `Machine`, unit-tested): X held opens it; the hand's offset from where it
+  opened, in the wheel's plane, picks the nearest tile past a 2.5 cm dead zone with 6 degrees of hysteresis; the left stick
+  pushed past 0.5 picks by its direction (and the hand, left where it was, takes over again only once it moves on); letting go of
+  X equips. Let go within 0.3 s (a tap) and it stays open: then a pinch of the left trigger, a squeeze of the left grip or X again
+  equips. A trigger or grip already held when it opens confirms nothing until let go. Leaving the allowed state (not on foot,
+  a menu, the controllers lost, combat disabled, the squad's wheel open) closes it unequipped.
+- **Where** (`Place`, `InPlane`): its centre 4 cm from the palm (the left grip pose) toward the eyes, facing them, upright; fixed
+  in the room while it's open; the host's quad 0.42 m wide (`[PowerWheel] widthM`), the hint card beside it the first 3 openings
+  of a session.
+- **The roster**: the pawn behaviour's `m_powers`, those in the shared table (`FindPower`, the 19 player powers of section 3),
+  biotics first; cooldown as `m_fCooldownRemaining / m_fTotalCooldownTime`; `BioPower.IsEnabled` dims a tile.
+- **Equipping** writes the power's name into `BioPlayerInput.MappedPower` (journalled): the game's own mapped power, which the
+  right stick click's tap casts through `SFXGameModeDefault.TryUseMappedPower`. It's the stand-in for section 4's lock and fire.
+- **The pad** (`gamepad::Options::powerWheel`, flag bit 24, host v28): while open the motion controllers' left stick, L3, X, left
+  trigger and grip reach the game as nothing, each kept until released after it closes; the right hand stays the game's (turning,
+  firing). On foot with the wheel on, X never reaches the game (`grenadeButton` off): the physical throw stays.
+- **Not yet checked in the game** [verify]: the roster's reads and `IsEnabled` on a real save, the equip reaching
+  `TryUseMappedPower`, the quad's placement at a tracked palm, the glow's cost on the render thread.

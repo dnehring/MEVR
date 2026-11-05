@@ -17,7 +17,7 @@ namespace {
 namespace pw = vr::power_wheel;
 
 constexpr float kPi = std::numbers::pi_v<float>;
-constexpr ImVec2 kCentre{512.0f, 540.0f};  // a little low: the chosen tile grows and its chevron sits above it
+constexpr ImVec2 kCentre{kCentreX, kCentreY};
 
 // ---- Colours (sRGB, as ImGui blends them) ------------------------------------------------------------------------------
 constexpr ImU32 Rgba(int r, int g, int b, int a = 255) {
