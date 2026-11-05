@@ -4,6 +4,10 @@
 #include "core/ik/Ik.hpp"
 #include "core/ik/Throwing.hpp"
 
+#include <string>
+#include <string_view>
+#include <vector>
+
 // The physical vent (research/45): with a weapon drawn, the LEFT hand squeezes its grip on the gun's
 // receiver (the top and rear of the gun: behind the foregrip, over and just ahead of the right hand) and
 // pulls back and away in one fast stroke, letting go, like racking a slide. That ejects the gun's heat.
@@ -93,6 +97,9 @@ public:
     double HoldSeconds(double now) const { return holding_ ? now - heldSince_ : 0.0; }
     double CooldownLeft(double now) const { return readyAt_ > now ? readyAt_ - now : 0.0; }
     double HandSpeed(double now) const;  // m/s in the gun's frame over the last 40 ms (0: unknown)
+    // While holding: how far the hand has come back along the gun since it took the receiver (m; negative: forward).
+    // 0 when not holding. What the visible rack follows (Rack below).
+    double Travel() const { return holding_ ? start_.along - last_.along : 0.0; }
     unsigned Vents() const { return vents_; }
     // Forgets the hand (the frame went away); keeps the cooldown.
     void Reset();
@@ -105,6 +112,7 @@ private:
     bool lapsed_ = false;  // this squeeze lapsed: nothing until the grip opens
     double heldSince_ = 0.0;
     OnGun start_;
+    OnGun last_;  // the latest valid place
     throwing::GripLatch grip_;
     double readyAt_ = 0.0;
     unsigned vents_ = 0;
@@ -116,5 +124,74 @@ char const* Refusal(double heat, double cooldownLeft, Params const& params);
 // Haptics (`strength` 0.5 as designed; both hands get the vent).
 throwing::Buzz EdgeTick(double strength);   // the hand enters the receiver zone of a hot gun
 throwing::Buzz VentPulse(double strength);  // the heat leaves
+
+// ---- The visible rack (2026-11-04, research/45 section 6) ----------------------------------------------------------
+// While the left hand holds the vent grip on a hot gun (Machine::Holding), one part of the gun's own model (its slide,
+// heat sink or receiver cover: a bone and every bone below it) follows the hand's pull back along the gun, clamped to
+// that part's travel. When the grip lets go, vented or not, it snaps forward on a fast spring and stops at its rest
+// place, like a slide slamming home (never past it). game/vent moves the bone through engine/bone_pose's weapon-part
+// stage; this is the math.
+
+// The hand's pull back along the gun (Machine::Travel, meters of left-controller motion) as the part's offset back
+// along the gun in the model's units: `unitsPerMeter` model units per meter (the view's world units per meter over the
+// gun mesh's scale), clamped to 0..maxUnits. Nonsense in, 0 out.
+double RackTarget(double travelMeters, double unitsPerMeter, double maxUnits);
+
+struct RackParams {
+    double maxUnits = 3.0;  // the part's travel (model units: about cm at the life-size 100 units per meter)
+    double returnHz = 9.0;  // the forward spring's natural frequency
+    double damping = 0.5;   // its damping ratio (it stops at the rest place either way)
+};
+
+enum class RackEvent {
+    None,
+    Released,  // the hold ended this step: the spring takes the part forward
+    Home,      // the part is back at its rest place after a release
+};
+
+class Rack {
+public:
+    // One step of `dt` seconds (clamped to 0..0.1). While `holding` the part follows `target` (model units back along
+    // the gun, clamped to 0..maxUnits); otherwise a spring takes it forward to 0, where it stops.
+    RackEvent Update(double dt, bool holding, double target, RackParams const& params);
+    double Offset() const { return x_; }  // model units back from the rest place, 0..maxUnits
+    double Velocity() const { return v_; }
+    bool AtRest() const { return !holding_ && x_ <= 0.0; }
+    bool Holding() const { return holding_; }
+    double Peak() const { return peak_; }                    // the deepest offset of the current or last hold
+    double ReturnSeconds() const { return returnSeconds_; }  // how long the last return took (at Home)
+    void Reset();
+
+private:
+    double x_ = 0.0;
+    double v_ = 0.0;
+    bool holding_ = false;
+    bool returning_ = false;
+    double peak_ = 0.0;
+    double returnSeconds_ = 0.0;
+};
+
+// Which bone of a gun's model is the part the rack moves. `setting` is [Vent] <type>Part: "auto" (AutoPartList for the
+// weapon type, then the first bone named for a moving part: slide, bolt, cover, heat sink, vent, receiver ...; never one
+// named for a sight or a grip), "none", or bone names separated by commas or spaces (the first the model has wins).
+// Never the root, a protected bone (game/vent: those a socket hangs on: the muzzle, the tracer, the cool-down effect's
+// place) or a bone with a protected bone below it, nor a part of more than kMaxPartBones bones. `weaponType` 0 pistol,
+// 1 shotgun, 2 assault rifle, 3 sniper rifle (others: auto has no list).
+inline constexpr int kMaxPartBones = 32;
+struct PartChoice {
+    int bone = -1;           // -1: none (the rack stands down for this model)
+    std::vector<int> bones;  // the part: `bone` and every bone below it, parents first
+    double maxUnits = 0.0;   // its travel (PartTravel)
+    char const* source = ""; // how it was found: "the setting", "the type's list", "its name"
+    std::string why;         // none: why
+};
+PartChoice ChoosePart(std::vector<std::string> const& names, std::vector<int> const& parents, std::vector<int> const& protectedBones,
+    std::string_view setting, int weaponType);
+// The type's own candidates, in order (research/21's bone lists; research/45 section 6 says why each).
+char const* AutoPartList(int weaponType);
+// How far the part may go back (model units): the known parts' own, else the type's.
+double PartTravel(std::string_view bone, int weaponType);
+// `bone` and every bone below it, parents first (bones are stored parents first, as a RefSkeleton is).
+std::vector<int> Subtree(std::vector<int> const& parents, int bone);
 
 } // namespace mevr::ik::vent

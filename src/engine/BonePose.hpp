@@ -310,6 +310,34 @@ struct TurretStats {
 };
 TurretStats GetTurretStats();
 
+// The vent's visible rack (research/45 section 6, game/vent): one part of the held gun's own model (its slide, heat sink
+// or receiver cover: a bone and every bone below it) moved by `offset` (the gun mesh's component space) right after
+// UpdateSkelPose composed the gun's pose, before anything shows it. Absolute, not cumulative: a call that didn't
+// recompose the part (its entries still hold our last write) moves it from where the animation had it last. Checked on
+// each call: the mesh (by address), its bone count and the part's bone names, the game thread, the age; inside SEH,
+// journalled ("BonePose.ventPart").
+inline constexpr int kMaxWeaponPartBones = 32;
+struct WeaponPart {
+    ue3::Object const* mesh = nullptr;  // the gun's SkeletalMeshComponent, compared by address
+    int boneCount = 0;                  // the mesh's RefSkeleton size when published
+    std::array<int, kMaxWeaponPartBones> bones{};  // the part, parents first
+    std::array<std::uint64_t, kMaxWeaponPartBones> keys{};  // their RefSkeleton names
+    int count = 0;
+    ik::Vec3 offset;  // component space units (0: the part at the animation's place)
+};
+// Game thread: what the stage writes from the next call on; Clear stops it (the next pose is the animation's alone).
+void PublishWeaponPart(WeaponPart const& part);
+void ClearWeaponPart();
+struct WeaponPartStats {
+    std::uint64_t calls = 0;     // UpdateSkelPose calls for the published mesh (since the hook went in)
+    std::uint64_t written = 0;   // ...where the part was written
+    std::uint64_t rejected = 0;  // ...where something no longer matched
+    std::uint64_t stale = 0;     // ...where the pose wasn't recomposed (the part moved from its remembered place)
+    char const* lastReject = nullptr;
+    bool broken = false;         // an access violation: the stage stopped for good
+};
+WeaponPartStats GetWeaponPartStats();
+
 // LE1 only: false (logged) for other games or if the address isn't a function start.
 bool Install(hook::Context& init);
 // Removes the hook and waits (up to 200 ms, if `waitForCalls`) for calls still inside it. False

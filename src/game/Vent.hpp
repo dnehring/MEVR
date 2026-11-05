@@ -23,6 +23,14 @@
 //   3. Claim here: a squeeze not claimed by the grenades, with the hand in the receiver zone, is the vent's;
 //   4. anything else: the squad menu and holsters never take the left grip (since 2026-10-22).
 // Logged once per event; a heartbeat line; "vent" in the snapshot's mod status. LE2/LE3: off.
+//
+// The visible rack (research/45 section 6, [Vent] animate): while the left hand holds the receiver of a hot gun, one
+// part of the gun's own model (its slide, heat sink or receiver cover: a bone of the held SkeletalMeshComponent and the
+// bones below it, chosen per model by core/ik/Vent ChoosePart) follows the hand's pull back along the gun, clamped to
+// the part's travel, and snaps forward on a fast spring at the release, vented or not (ik::vent::Rack). It is written
+// into the gun's pose right after its UpdateSkelPose (engine/bone_pose's weapon-part stage, journalled); a gun whose pose
+// isn't updated by itself gets SkeletalMeshComponent.ForceSkelUpdate (ProcessEvent, the mod's tick) while the part
+// moves. A model without a suitable bone stands down, its bone list logged once. Logs `vent: rack:`.
 namespace mevr::game::vent {
 
 // What the host offers this tick (Mod.cpp fills it from HostServices).
@@ -45,6 +53,16 @@ void Tick(double deltaSeconds, Link const& link);
 bool MasksSupportZone();
 std::string StatusJson();
 void LogStats();
+// Before engine/bone_pose's hook goes (the mod unloads): the rack's part back at its rest place and the stage cleared.
+// `exiting`: the process is going (nothing is called into the game then).
+void PutPartBack(bool exiting);
 void Shutdown();
+
+// `mevr vent ...` (game/ConsoleRequest, the game thread): tests without the controllers.
+//   heat <0..1> [hold] | heat off   the held gun's heat as that fraction of ventMaxHeat (hold: kept each tick until off)
+//   rack [fraction] [seconds]       the part pulled back that fraction of its travel (default 1) for that long (0.5 s),
+//                                   then let go: what a stroke shows, without a vent
+//   part                            the held model, its part and its bones
+std::string Command(std::string const& args);
 
 } // namespace mevr::game::vent

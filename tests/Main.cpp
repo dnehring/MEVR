@@ -5181,6 +5181,165 @@ void TestVent() {
     CHECK(vnt::EdgeTick(0.5).amplitude < vnt::VentPulse(0.5).amplitude);
 }
 
+// The visible rack (research/45 section 6): the hand's pull as the part's clamped offset, the spring forward, the part's choice.
+void TestVentRack() {
+    namespace vnt = mevr::ik::vent;
+    double const dt = 1.0 / 90.0;
+    // The machine's travel: how far the hand came back along the gun since it took the receiver.
+    {
+        vnt::Zone const zone;
+        vnt::Params const params;
+        vnt::Machine machine;
+        double t = 0.0;
+        auto step = [&](vnt::OnGun p, float squeeze, bool newSqueeze) {
+            vnt::Input in;
+            in.now = t;
+            in.onGunValid = true;
+            in.onGun = p;
+            in.newSqueeze = newSqueeze;
+            in.squeeze = squeeze;
+            in.heat = 0.8;
+            vnt::Step const s = machine.Update(in, zone, params);
+            t += dt;
+            return s;
+        };
+        for (int i = 0; i < 14; ++i) {
+            step({0.06, 0.05, 0.0}, 0.0f, false);
+        }
+        CHECK(machine.Travel() == 0.0);
+        CHECK(step({0.06, 0.05, 0.0}, 1.0f, true).event == vnt::Event::Grabbed);
+        step({0.04, 0.05, 0.0}, 1.0f, false);
+        CHECK(std::abs(machine.Travel() - 0.02) < 1e-9);
+        step({0.08, 0.05, 0.0}, 1.0f, false);  // forward of the grab: negative (the part clamps it to its rest place)
+        CHECK(machine.Travel() < 0.0);
+    }
+    // The pull as the part's offset: model units per meter, clamped to 0..its travel; nonsense is 0.
+    CHECK(std::abs(vnt::RackTarget(0.02, 100.0, 3.0) - 2.0) < 1e-12);
+    CHECK(vnt::RackTarget(0.10, 100.0, 3.0) == 3.0);
+    CHECK(vnt::RackTarget(-0.05, 100.0, 3.0) == 0.0);
+    CHECK(vnt::RackTarget(std::numeric_limits<double>::quiet_NaN(), 100.0, 3.0) == 0.0);
+    CHECK(vnt::RackTarget(0.02, 0.0, 3.0) == 0.0 && vnt::RackTarget(0.02, 100.0, 0.0) == 0.0);
+
+    // The part follows while held, never past its travel; let go, it snaps home fast and stops there (no swing past it).
+    vnt::RackParams const p;  // 3 units, 9 Hz, damping 0.5
+    vnt::Rack rack;
+    CHECK(rack.AtRest() && rack.Update(dt, false, 0.0, p) == vnt::RackEvent::None);
+    for (int i = 0; i <= 8; ++i) {
+        CHECK(rack.Update(dt, true, 0.5 * i, p) == vnt::RackEvent::None);
+    }
+    CHECK(rack.Holding() && rack.Offset() == 3.0 && rack.Peak() == 3.0);
+    rack.Update(dt, true, 1.5, p);  // the hand eases forward: so does the part
+    CHECK(rack.Offset() == 1.5 && rack.Peak() == 3.0);
+    rack.Update(dt, true, 3.0, p);
+    CHECK(rack.Update(dt, false, 0.0, p) == vnt::RackEvent::Released);
+    CHECK(!rack.Holding() && rack.Offset() < 3.0 && rack.Offset() > 0.0);
+    double lowest = rack.Offset();
+    bool home = false;
+    int frames = 1;
+    for (; frames < 90 && !home; ++frames) {
+        vnt::RackEvent const e = rack.Update(dt, false, 0.0, p);
+        CHECK(rack.Offset() >= 0.0 && rack.Offset() <= lowest + 1e-9);  // only forward: no bounce back, never past the rest place
+        lowest = rack.Offset();
+        home = e == vnt::RackEvent::Home;
+    }
+    CHECK(home && rack.AtRest() && rack.Offset() == 0.0 && rack.Velocity() == 0.0);
+    CHECK(frames <= 8);  // a snap: home in a few frames at 90 Hz
+    CHECK(rack.ReturnSeconds() > 0.01 && rack.ReturnSeconds() < 0.09);
+    CHECK(rack.Update(dt, false, 0.0, p) == vnt::RackEvent::None);
+    // Any frame time gives the same snap (the spring runs in 2 ms steps); a long frame is clamped.
+    {
+        vnt::Rack a;
+        vnt::Rack b;
+        a.Update(dt, true, 3.0, p);
+        b.Update(dt, true, 3.0, p);
+        a.Update(dt, false, 0.0, p);
+        b.Update(dt, false, 0.0, p);
+        a.Update(1.0 / 45.0, false, 0.0, p);
+        b.Update(1.0 / 90.0, false, 0.0, p);
+        b.Update(1.0 / 90.0, false, 0.0, p);
+        CHECK(a.Offset() > 0.0 && std::abs(a.Offset() - b.Offset()) < 0.02);  // mid-flight, the same place
+        vnt::Rack c;
+        c.Update(dt, true, 2.0, p);
+        c.Update(dt, false, 0.0, p);
+        CHECK(c.Update(5.0, false, 0.0, p) == vnt::RackEvent::Home && c.AtRest());  // 5 s is 0.1 s: home well within it
+    }
+    // Let go at the rest place: released, nothing to return. A hold that never pulled.
+    {
+        vnt::Rack r;
+        r.Update(dt, true, 0.0, p);
+        CHECK(r.Update(dt, false, 0.0, p) == vnt::RackEvent::Released && r.AtRest() && r.Peak() == 0.0);
+    }
+    // A stiffer spring returns sooner; the travel setting clamps the follow.
+    {
+        vnt::RackParams soft = p;
+        soft.returnHz = 4.0;
+        vnt::RackParams tight = p;
+        tight.maxUnits = 1.0;
+        vnt::Rack r;
+        r.Update(dt, true, 3.0, tight);
+        CHECK(r.Offset() == 1.0);
+        vnt::Rack s1;
+        vnt::Rack s2;
+        s1.Update(dt, true, 3.0, p);
+        s2.Update(dt, true, 3.0, soft);
+        s1.Update(dt, false, 0.0, p);
+        s2.Update(dt, false, 0.0, soft);
+        for (int i = 0; i < 30; ++i) {
+            s1.Update(dt, false, 0.0, p);
+            s2.Update(dt, false, 0.0, soft);
+        }
+        CHECK(s1.ReturnSeconds() < s2.ReturnSeconds());
+    }
+
+    // The part's choice. A pistol like the 2026-10-25 one (research/21 section 13): Root with the sockets, the upper barrel's
+    // front with a child, the guard and the grip.
+    std::vector<std::string> const pistol{"Root", "Barrel_Upper_front", "Barrel_Upper_tip", "Barrel_Lower_front", "Guard", "handle"};
+    std::vector<int> const pistolParents{-1, 0, 1, 0, 0, 0};
+    std::vector<int> const sockets{0, 0, 0};  // Flash_1, Tracer, Cooldown: all on Root
+    CHECK(vnt::Subtree(pistolParents, 1) == std::vector<int>({1, 2}));
+    CHECK(vnt::Subtree(pistolParents, 0).size() == pistol.size());
+    vnt::PartChoice c = vnt::ChoosePart(pistol, pistolParents, sockets, "auto", 0);
+    CHECK(c.bone == 1 && c.bones == std::vector<int>({1, 2}) && std::string(c.source) == "the type's list" && c.maxUnits == 3.0);
+    // The setting names one (case-insensitive; the first the model has wins); none; a name the model lacks; the root refused.
+    c = vnt::ChoosePart(pistol, pistolParents, sockets, "Slide, barrel_lower_front", 0);
+    CHECK(c.bone == 3 && std::string(c.source) == "the setting");
+    CHECK(vnt::ChoosePart(pistol, pistolParents, sockets, "none", 0).bone == -1);
+    c = vnt::ChoosePart(pistol, pistolParents, sockets, "Slide", 0);
+    CHECK(c.bone == -1 && c.why.find("none of") != std::string::npos);
+    c = vnt::ChoosePart(pistol, pistolParents, sockets, "Root", 0);
+    CHECK(c.bone == -1 && c.why.find("root") != std::string::npos);
+    // A socket on the part (or below it) protects it: the muzzle must not move.
+    std::vector<int> const muzzleOnTip{0, 2};
+    c = vnt::ChoosePart(pistol, pistolParents, muzzleOnTip, "auto", 0);
+    CHECK(c.bone == -1 && c.why.find("socket") != std::string::npos);
+    // ASLa (research/21 section 16): its sight housing over the grip racks; the sniper's scope parts never do, and a model
+    // without a part by name stands down with why.
+    std::vector<std::string> const rifle{"Root", "handle", "Trigger_Guard", "squash_left", "squash_right", "Scope"};
+    std::vector<int> const rifleParents{-1, 0, 0, 0, 0, 0};
+    c = vnt::ChoosePart(rifle, rifleParents, sockets, "auto", 2);
+    CHECK(c.bone == 5 && c.maxUnits == 3.0);
+    std::vector<std::string> const sniper{"Root", "handle", "Scope_Eye", "Scope_Lens"};
+    std::vector<int> const sniperParents{-1, 0, 0, 0};
+    c = vnt::ChoosePart(sniper, sniperParents, sockets, "auto", 3);
+    CHECK(c.bone == -1 && !c.why.empty());
+    // ...unless a bone is named for a moving part (and not for a sight or a grip): auto takes it.
+    std::vector<std::string> const bolted{"Root", "handle", "Scope_Eye", "Bolt_Handle", "HeatSink_Cover"};
+    std::vector<int> const boltedParents{-1, 0, 0, 0, 0};
+    c = vnt::ChoosePart(bolted, boltedParents, sockets, "auto", 3);
+    CHECK(c.bone == 4 && std::string(c.source) == "its name" && c.maxUnits == 4.0);
+    // The setting may still name a sight's bone on purpose.
+    CHECK(vnt::ChoosePart(sniper, sniperParents, sockets, "Scope_Eye", 3).bone == 2);
+    // Too many bones below one: refused.
+    std::vector<std::string> many{"Root", "Part"};
+    std::vector<int> manyParents{-1, 0};
+    for (int i = 0; i < vnt::kMaxPartBones; ++i) {
+        many.push_back("Child" + std::to_string(i));
+        manyParents.push_back(1);
+    }
+    CHECK(vnt::ChoosePart(many, manyParents, sockets, "Part", 0).bone == -1);
+    CHECK(vnt::ChoosePart({}, {}, {}, "auto", 0).bone == -1);
+}
+
 void TestGrenadeMachine() {
     namespace thr = mevr::ik::throwing;
     using mevr::ik::Vec3;
@@ -9654,6 +9813,7 @@ int main() {
     TestThrowGrip();
     TestGrenadeMachine();
     TestVent();
+    TestVentRack();
     TestSwing();
     TestArcPoints();
     TestFaceButtonsOff();

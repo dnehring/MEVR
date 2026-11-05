@@ -17,7 +17,9 @@
 #include "core/vr/Spectator.hpp"
 #include "game/GamepadMapping.hpp"
 
+#include <array>
 #include <optional>
+#include <string>
 
 // Arm IK settings, from <GAME>MEVR.ini next to the host ASI (written with defaults if missing; a
 // key missing from an older file keeps its default; "key = value" and "key=value" both read, the
@@ -320,6 +322,12 @@ vr::interact::Settings GetInteract();
 //   hapticAmplitude  0..1 (0.5 as designed; 0: none); both hands pulse on a vent
 //   zoneBackM, zoneFrontM, zoneAboveM, zoneBelowM, zoneSideM: the receiver zone in the gun's frame, meters from
 //                    the right hand (core/ik/Vent Zone)
+//   animate          1: the visible rack (research/45 section 6): a part of the gun's own model follows the hand back
+//                    while it holds the receiver of a hot gun, and snaps forward when it lets go
+//   pistolPart, shotgunPart, assaultRiflePart, sniperRiflePart: which bone of the model is that part: auto (the type's
+//                    own choice, ik::vent::AutoPartList), none, or bone names (the first the model has)
+//   partTravelUnits  how far it may go back (model units; 0 or auto: the part's own, ik::vent::PartTravel)
+//   partReturnHz, partDamping: the spring that snaps it forward
 struct Vent {
     bool enabled = true;
     double cooldownS = 4.0;
@@ -331,7 +339,14 @@ struct Vent {
     bool effect = true;
     double hapticAmplitude = 0.5;
     ik::vent::Zone zone;
+    bool animate = true;
+    std::array<std::string, 4> parts{"auto", "auto", "auto", "auto"};  // by weapon type (pistol, shotgun, assault, sniper)
+    double partTravelUnits = 0.0;  // 0: auto
+    double partReturnHz = 9.0;
+    double partDamping = 0.5;
 };
+// The [Vent] key of each type's part, as above.
+char const* VentPartKey(int weaponType);
 Vent GetVent();
 
 // [Hud] (research/41): the player's status on the left wrist (wristStatus, wristWidthM, wristOffset) and the weapon

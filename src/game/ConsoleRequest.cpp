@@ -13,6 +13,7 @@
 #include "game/OmniTool.hpp"
 #include "game/Player.hpp"
 #include "game/Spectator.hpp"
+#include "game/Vent.hpp"
 #include "core/WriteJournal.hpp"
 
 #include <Windows.h>
@@ -803,6 +804,11 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::getline(words, rest);
         return cockpit_probe::Command(rest);  // the in-game cockpit's experiment (research/47)
     }
+    if (verb == "vent") {
+        std::string rest;
+        std::getline(words, rest);
+        return vent::Command(rest);  // the vent's tests without the controllers: heat, the visible rack (research/45)
+    }
     if (verb == "spectator") {
         std::string rest;
         std::getline(words, rest);
@@ -813,7 +819,7 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::getline(words, rest);
         return cockpit_probe::VehicleCommand(rest);  // what a console `open <map>` produced; `enter` gets in
     }
-    return std::string("unknown: mevr loc | mevr setloc X Y Z | mevr density [cellUU] | mevr crowd [cellUU] | mevr stream list|touch | mevr weapon <pistol|shotgun|assault|sniper> | mevr cockpit ... | mevr vehicle [enter] | mevr spectator ...");
+    return std::string("unknown: mevr loc | mevr setloc X Y Z | mevr density [cellUU] | mevr crowd [cellUU] | mevr stream list|touch | mevr weapon <pistol|shotgun|assault|sniper> | mevr vent heat|rack|part | mevr cockpit ... | mevr vehicle [enter] | mevr spectator ...");
 }
 
 ue3::Function* FindConsoleCommand() {

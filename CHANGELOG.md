@@ -32,6 +32,9 @@ Halcyon's MassEffect1-VR renderer, with our hands, body and menus on top. LE1 on
   and squeeze the grip to draw; let go there to put the gun away.
 - Throw real grenades (take one from your chest), strike in melee with a fast swing, and vent an overheated gun by
   racking it with your left hand.
+- When you rack a hot gun, a part of the gun itself (the pistol's slide, the assault rifle's receiver cover) moves
+  back with your hand and snaps forward when you let go. Guns without such a part (the sniper rifles so far) stay
+  still.
 - Give your squad weapons from the game's weapon wheel at your left hand: pull the left trigger, point at a squadmate,
   let go.
 - Use doors, lockers and people by looking at them and pressing A; the prompt appears at the object.

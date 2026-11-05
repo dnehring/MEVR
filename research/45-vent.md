@@ -8,7 +8,8 @@ it's a setting (`[Vent]` in `ASI\LE1MEVR.ini`) and in that file's change log.
 
 Code: `core/ik/Vent` (the classification, unit-tested in `tests/Main.cpp` `TestVent`), `game/Vent` (ME1, hot-reloaded),
 one measurement added to the pose writer (`engine/BonePose` `SupportSample::upMeters` / `sideMeters`), one mask in
-`game/SupportGrip`. Log prefix `vent:`; the snapshot's mod status `"vent"`.
+`game/SupportGrip`. Log prefix `vent:`; the snapshot's mod status `"vent"`. The visible rack (section 6, 2026-11-04):
+`ik::vent::Rack` / `ChoosePart` (`TestVentRack`), `engine/BonePose`'s weapon-part stage, `game/vent` `TickRack`.
 
 ## 1. The weapon's heat (LExSDKv2's LE1 headers, read for names and offsets only)
 
@@ -130,9 +131,90 @@ writer for the support grip (that's where the gun frame comes from). A squeeze w
 
 ## 5. Not done, and open
 
-- The heat's scale and `DoCoolDownEffect`'s meaning are **[verify]** (section 1).
-- No animation: the gun's slide doesn't move. A visible rack would need the weapon's own bones (research/21 lists them
-  per model); later, if the headset says the gesture is worth it.
+- The heat's scale and `DoCoolDownEffect`'s meaning are **[verify]** (section 1; section 6 adds a log line that says what
+  the effect is).
+- ~~No animation: the gun's slide doesn't move.~~ Built 2026-11-04: the visible rack (section 6), **[verify]** in the
+  game: it was written without a game run.
 - The mod writes engine memory for this (two fields); the design doc's rule 3 ("the game stays authoritative") is bent
   because the game offers no function to ask. Both writes are journalled and the game's own tick (`TickHeat`) runs on
   the new values as it would after a cool-down.
+
+## 6. The visible rack (2026-11-04, built without a game run: everything here is [verify])
+
+The owner chose it for the first release: while the left hand holds the vent grip on a hot gun, a visible part of the
+gun's own model follows the hand back along the gun; at the release it snaps forward on a fast spring, vented or not.
+Mod-only (hot reload; no HostServices or shared-struct change). `[Vent] animate = 1` by default.
+
+**The part per model.** research/21 records the player's guns as 8 meshes (section 16: `WPN_<type><a|b>_MDL`), their
+sight bones and, from the 2026-10-25 log (section 13 item 2), a few other bone names; no full bone list is in the
+repository. What that gives (`ik::vent::AutoPartList`, `PartTravel`):
+
+| Type | Auto list (first the model has) | Known from | Travel | How sure |
+|---|---|---|---|---|
+| Pistol (PSTa, PSTb) | `Barrel_Upper_front`, `Slide`, `Barrel_Upper` | a pistol's `Barrel_Upper_front` (and `Barrel_Lower_front`, `Guard`, `handle`), research/21 s13; which of PSTa/PSTb is unknown | 3 units | medium for that model, low for the other: the upper barrel's front is the top of the gun ahead of the hand, the part the draw's unfolding slides forward, so pulling it back reads as a slide; whether its vertices are the whole top is unknown |
+| Shotgun (BLSa, BLSb) | the pistols' names, `Slide`, `Pump` | nothing recorded | 4 | unknown: probably stands down until its bones are logged |
+| Assault rifle (ASLa, ASLb) | `Scope` | s16: ASLa's 12.8-unit housing over the grip, ASLb's 6-unit sight behind it | 3 (ASLb's short sight 2) | medium-low: the receiver's top where the left hand takes hold. It is also the red dot's bone (`game/sights` follows it live), but the move is along the bore, so the sight's line doesn't change; the dot's window rides back and forth with it |
+| Sniper rifle (SNPa, SNPb) | none | s16: only scope parts over the receiver (`Scope_Eye`, `Scope_Lens`; `Scope_Rear`, `Scope_Mid`, `Scope_Forward`) | 4 | stands down: the scope's eyepiece, its picture and its hidden lens sit on those bones |
+
+Failing the list, auto takes the first bone named for a moving part (slide, bolt, cover, heat sink, sink, vent, receiver,
+charging, breech, hatch, eject), never one named for a sight or a grip. Never the root, a bone a socket hangs on or one with
+a socket below it (the muzzle `Flash_*`, `Tracer`, `Cooldown`, `Sabotage`, all on `Root` so far), nor a part of more than 32
+bones. `[Vent] <type>Part = <bone names>` picks one by hand (the first the model has), `none` turns one type off. A model
+without a part logs `vent: rack: the <gun> model <mesh> has no part to rack (<why>): it stays still on a vent. Its bones:
+0 Root (root), 1 ... (under ...), ...`; a model with one logs its choice and its bone list too, once per model and setting.
+A read-only dump of `BIOC_Materials.pcc`'s eight meshes (research/21 s16's method) would settle the shotguns and confirm the
+rest; the in-game lines do the same on the first draw of each.
+
+**How the bone moves** (`engine/bone_pose` weapon-part stage; `game/vent` `TickRack`). The UpdateSkelPose hook already sees
+every skeletal mesh; for the published gun mesh it now adds a component-space offset to the part's bone and every bone below
+it in `SpaceBases`, right after the engine composed the gun's pose and before the render data update reads it (the same seam
+arm IK uses on Shepard's mesh). Checked on each call: the mesh by address, the bone count, each bone's RefSkeleton name, the
+game thread, the request's age; inside SEH; journalled (`BonePose.ventPart`). The write is absolute: an entry that still holds
+our last write (a call that didn't recompose the pose) is moved from the animation's place remembered then, never twice. The
+offset is `back x units`: back = minus the muzzle's barrel (`weapon::Current`) taken into the gun mesh's component space;
+units = `ik::vent::RackTarget(Machine::Travel, unitsPerMeter, maxUnits)`, the hand's pull back along the gun since the grab
+(meters in the gun's frame, section 2) times the view's world units per meter over the mesh's scale, clamped to the part's
+travel (`partTravelUnits` overrides). The mod publishes each tick (one frame of latency); 0.25 s after the part is home the
+stage is cleared. Rejected alternatives: a SkelControl (the guns' AnimTrees have none we know of, and building one at run
+time is far more engine surgery), `HideBone` (no motion).
+
+**A gun not posed every frame [verify].** If the stage sees no UpdateSkelPose of the gun for 3 ticks while the part moves
+(`bNoSkeletonUpdate`, a pose cache, a gun not "recently rendered"), the mod calls `SkeletalMeshComponent.ForceSkelUpdate`
+(ProcessEvent, its tick) each tick while the part moves, so the stage runs at once; if not even that reaches the stage 3
+times, the rack stands down for that gun. Logs `vent: rack: the <gun>'s pose didn't update for 3 ticks ...`.
+
+**The spring** (`ik::vent::Rack`, unit-tested `TestVentRack`): while held the part sits where the hand put it; let go, a
+spring (`partReturnHz` 9, `partDamping` 0.5; 2 ms steps, so any frame time gives the same motion) takes it forward and it
+stops at its rest place without swinging through, like a slide slamming home: about 43 ms, four frames at 90 Hz. A hand still
+pulling back at the release doesn't carry it further. The same on a vent, a slow or short stroke, a lapsed hold (it springs
+back at the lapse) or a lost frame.
+
+**The cool-down effect.** LExSDKv2's headers (names only) say `BioWeaponRanged` keeps six visual effects
+(`m_visualEffects[EBioWeaponVisualEffect]`, `BIO_WEAPON_VISUAL_EFFECT_COOL_DOWN = 3`) and a cached `BioWeaponVFXAppearance`
+(`m_pCachedVFXAppearance`) with `nmCoolDown` (a socket name: every model has a `Cooldown` socket on `Root`), `vfxCoolDown`
+(a `BioVFXTemplate`) and `fCooldownPerSecond`. So `DoCoolDownEffect` most likely spawns that template at the `Cooldown`
+socket: the game's own steam or vent effect, already called on every vent (`[Vent] effect = 1`). Its script wasn't read
+(UnrealScript in SFXGame, not reachable here). The first vent of each weapon appearance now logs `vent: the game's cool-down
+effect on the <weapon>: <appearance>: template <vfx>, at the '<socket>' socket, fCooldownPerSecond N; its effect slot <before>
+-> <after>: the call made one | the slot already held it | the call made none`, which says whether it plays.
+
+**Settings** (`[Vent]`, appended to older files): `animate`, `pistolPart`, `shotgunPart`, `assaultRiflePart`,
+`sniperRiflePart` (auto), `partTravelUnits` (auto), `partReturnHz` (9), `partDamping` (0.5). Logs `vent: rack:` (the choice
+per model, each stroke for the first 20 then every 20th: `the <gun>'s '<bone>' went X units back (Y m of hand pull at N
+units per meter; at most M) and snapped forward in T ms: vented | no vent, <why>`, the standing state, the heartbeat's
+stage counts). Snapshot: `"mod"."vent"."rack"` (`mesh`, `part`, `partBones`, `source`, `maxUnits`, `unitsPerMeter`,
+`offset`, `holding`, `published`, `forced`, `strokes`, `why`, `last`). New reflection rows: `ForceSkelUpdate` (function and
+parms), `m_pCachedVFXAppearance`, `m_visualEffects`, `nmCoolDown`, `vfxCoolDown`, `fCooldownPerSecond`.
+
+**Checking it without the controllers** (`mevr vent`, game/ConsoleRequest): `mevr weapon pistol` draws one; `mevr vent part`
+prints the model, its part, the back axis, the units per meter and the bone list; `mevr vent rack 1 3` pulls the part its
+whole travel for 3 s and lets it go (no vent), so `tools/snapshot.ps1 -Delay 1` catches it back and a second snapshot after
+4 s at rest; `mevr vent heat 0.9 hold` keeps the gun hot for a replayed stroke (`mevr vent heat off`). The whole gesture on
+the fake headset: `python tools/make-rack-recording.py rack.mevrrec 30 6 0` writes a pistol held ahead of the chest and a left
+hand that takes the receiver every 6 s and racks it back at 1.5 m/s over 12 cm; `tools/replay.ps1 -Path rack.mevrrec -Loop
+-Inputs` plays it (the left hand's place on the gun is a guess: if the snapshot's `"mod"."vent"` `onGun` stays outside the
+zone, the tool's `along` and `up` arguments move it).
+
+**Open [verify]:** that the stage sees the gun's pose each frame (heartbeat: poses seen against ticks; `forced` in the
+snapshot); that the chosen bones are the visible slide and cover (a snapshot with `mevr vent rack`); the units per meter
+(a 5 cm pull should put the part at its 3-unit stop); the cool-down effect line.

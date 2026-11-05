@@ -976,6 +976,116 @@ void TurretPre(Mesh* self) {
     TurretPreGuarded(self, t);
 }
 
+// ---- The vent's visible rack (research/45 section 6): one part of the held gun moved after its pose --------------
+std::atomic<Mesh const*> gPartMesh{nullptr};
+SRWLOCK gPartLock = SRWLOCK_INIT;
+WeaponPart gPart;
+DWORD gPartThread = 0;
+ULONGLONG gPartTimeMs = 0;
+std::atomic<bool> gPartBroken{false};
+WeaponPartStats gPartStats;  // the publishing (game) thread only
+// What the stage wrote last (the game thread): an entry that still holds our write wasn't recomposed by the call, so the
+// part moves from the animation's place remembered then, not again from our own write.
+struct PartMemory {
+    Mesh const* mesh = nullptr;
+    int count = 0;
+    std::array<int, kMaxWeaponPartBones> bones{};
+    std::array<std::array<float, 3>, kMaxWeaponPartBones> base{};
+    std::array<std::array<float, 3>, kMaxWeaponPartBones> written{};
+};
+PartMemory gPartMemory;
+
+void PartReject(char const* why) {
+    ++gPartStats.rejected;
+    gPartStats.lastReject = why;
+}
+
+// Reads and writes the gun's pose: no C++ objects with destructors, so it can catch an access violation.
+void PartPostGuarded(Mesh* self, WeaponPart const& p) {
+    __try {
+        int const count = skeleton::RefBoneCount(self);
+        std::span<skeleton::BoneAtom> const bases = skeleton::SpaceBases(self);
+        if (count != p.boneCount || static_cast<int>(bases.size()) != count || p.count <= 0 || p.count > kMaxWeaponPartBones) {
+            PartReject(bases.empty() ? "the gun's pose isn't computed" : "the gun's skeleton changed (bone count)");
+            return;
+        }
+        for (int i = 0; i < p.count; ++i) {
+            int const bone = p.bones[static_cast<std::size_t>(i)];
+            if (bone < 0 || bone >= count || skeleton::RefBoneKey(self, bone) != p.keys[static_cast<std::size_t>(i)]) {
+                PartReject("the gun's skeleton changed (the part's bone names)");
+                return;
+            }
+        }
+        bool same = gPartMemory.mesh == self && gPartMemory.count == p.count;
+        for (int i = 0; same && i < p.count; ++i) {
+            same = gPartMemory.bones[static_cast<std::size_t>(i)] == p.bones[static_cast<std::size_t>(i)];
+        }
+        if (!same) {
+            gPartMemory.mesh = self;
+            gPartMemory.count = p.count;
+            gPartMemory.bones = p.bones;
+        }
+        float const offset[3] = {static_cast<float>(p.offset.x), static_cast<float>(p.offset.y), static_cast<float>(p.offset.z)};
+        bool stale = false;
+        int lowest = p.bones[0];
+        int highest = p.bones[0];
+        for (int i = 0; i < p.count; ++i) {
+            std::size_t const k = static_cast<std::size_t>(i);
+            int const bone = p.bones[k];
+            skeleton::BoneAtom& atom = bases[static_cast<std::size_t>(bone)];
+            float base[3] = {atom.tx, atom.ty, atom.tz};
+            if (same && atom.tx == gPartMemory.written[k][0] && atom.ty == gPartMemory.written[k][1] && atom.tz == gPartMemory.written[k][2]) {
+                // Not recomposed since our write: from the animation's place then.
+                base[0] = gPartMemory.base[k][0];
+                base[1] = gPartMemory.base[k][1];
+                base[2] = gPartMemory.base[k][2];
+                stale = stale || offset[0] != 0.0f || offset[1] != 0.0f || offset[2] != 0.0f;
+            }
+            atom.tx = base[0] + offset[0];
+            atom.ty = base[1] + offset[1];
+            atom.tz = base[2] + offset[2];
+            gPartMemory.base[k] = {base[0], base[1], base[2]};
+            gPartMemory.written[k] = {atom.tx, atom.ty, atom.tz};
+            lowest = (std::min)(lowest, bone);
+            highest = (std::max)(highest, bone);
+        }
+        write_journal::Wrote("BonePose.ventPart", &bases[static_cast<std::size_t>(lowest)],
+            static_cast<std::size_t>(highest - lowest + 1) * sizeof(skeleton::BoneAtom));
+        ++gPartStats.written;
+        gPartStats.stale += stale ? 1 : 0;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        gPartBroken.store(true);
+        gPartMesh.store(nullptr);
+        PartReject("access violation in the vent's part stage: stopped");
+    }
+}
+
+void PartPost(Mesh* self) {
+    if (self == nullptr || self != gPartMesh.load(std::memory_order_acquire) || gPartBroken.load(std::memory_order_relaxed)) {
+        return;
+    }
+    WeaponPart p;
+    DWORD thread = 0;
+    ULONGLONG published = 0;
+    AcquireSRWLockShared(&gPartLock);
+    bool const same = gPart.mesh == self;
+    if (same) {
+        p = gPart;
+        thread = gPartThread;
+        published = gPartTimeMs;
+    }
+    ReleaseSRWLockShared(&gPartLock);
+    if (!same || p.count <= 0 || GetCurrentThreadId() != thread) {
+        return;  // only on the game thread: the stats and the memory live there
+    }
+    ++gPartStats.calls;
+    if (GetTickCount64() - published > kMaxRequestAgeMs) {
+        PartReject("request too old (the mod stopped publishing)");
+        return;
+    }
+    PartPostGuarded(self, p);
+}
+
 // No C++ objects with destructors here, so __finally keeps the in-flight count right even when an
 // exception unwinds through the engine's call (a count left up would keep the mod pinned).
 // The stance's call state is several KB: only the player's mesh, while the stance is published, pays for it (every
@@ -1002,6 +1112,9 @@ void UpdateSkelPoseHook(Mesh* self, float deltaTime, unsigned tickFaceFx, unsign
             UpdateSkelPoseWithStance(self, deltaTime, tickFaceFx, unused);
         } else {
             gOrig(self, deltaTime, tickFaceFx, unused);
+        }
+        if (self != nullptr && self == gPartMesh.load(std::memory_order_acquire)) {
+            PartPost(self);  // the vent's rack: one part of the held gun moved (research/45 section 6)
         }
         AfterUpdateSkelPose(self, deltaTime, caller);
     } __finally {
@@ -1088,6 +1201,7 @@ bool Uninstall(hook::Context& init, bool waitForCalls) {
     Clear();
     ClearStance();
     ClearTurret();
+    ClearWeaponPart();
     if (!hook::Uninstall(init, kHookName)) {
         return false;  // still live, and still calling gOrig
     }
@@ -1102,6 +1216,9 @@ bool Uninstall(hook::Context& init, bool waitForCalls) {
     }
     gBroken = false;
     gStanceBroken = false;
+    gPartBroken = false;
+    gPartStats = {};
+    gPartMemory = {};
     gOrder.Reset();
     gStanceStats = {};
     gHandCapture = {};
@@ -1182,6 +1299,30 @@ void ClearTurret() {
 TurretStats GetTurretStats() {
     TurretStats stats = gTurretStats;
     stats.broken = gTurretBroken.load();
+    return stats;
+}
+
+void PublishWeaponPart(WeaponPart const& part) {
+    AcquireSRWLockExclusive(&gPartLock);
+    gPart = part;
+    gPartThread = GetCurrentThreadId();
+    gPartTimeMs = GetTickCount64();
+    ReleaseSRWLockExclusive(&gPartLock);
+    gPartMesh.store(gPartBroken.load() || part.count <= 0 ? nullptr : part.mesh, std::memory_order_release);
+}
+
+void ClearWeaponPart() {
+    gPartMesh.store(nullptr, std::memory_order_release);
+    AcquireSRWLockExclusive(&gPartLock);
+    gPart = {};
+    gPartTimeMs = 0;
+    ReleaseSRWLockExclusive(&gPartLock);
+    gPartMemory = {};  // the game thread (the hook runs there for the part's mesh)
+}
+
+WeaponPartStats GetWeaponPartStats() {
+    WeaponPartStats stats = gPartStats;
+    stats.broken = gPartBroken.load();
     return stats;
 }
 
