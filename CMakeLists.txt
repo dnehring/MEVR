@@ -420,6 +420,8 @@ set(MEVR_MOD_SOURCES
     src/game/InventoryProbe.hpp
     src/game/GuiCursor.cpp
     src/game/GuiCursor.hpp
+    src/core/vr/GuiEvents.cpp
+    src/core/vr/GuiEvents.hpp
     src/game/Fingers.cpp
     src/game/Fingers.hpp
     src/game/GunKick.cpp
@@ -563,6 +565,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/FrameProbe.hpp
     src/core/vr/GamePointer.cpp
     src/core/vr/GamePointer.hpp
+    src/core/vr/GuiEvents.cpp
+    src/core/vr/GuiEvents.hpp
     src/core/vr/Upscale.cpp
     src/core/vr/Upscale.hpp
     src/core/Embedded.hpp
@@ -878,6 +882,8 @@ if (MEVR_BUILD_TESTS)
         tests/BreadcrumbTests.cpp
         tests/ExeTests.cpp
         tests/PowerWheelTests.cpp
+        tests/GuiEventsTests.cpp
+        src/core/vr/GuiEvents.cpp
         tests/CockpitPanelTests.cpp
         src/core/Exe.cpp
         src/core/ExeCheck.cpp

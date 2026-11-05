@@ -63,8 +63,10 @@ gone, as the menu pointer's does.
 area scaled to the stage), but read it only when real mouse input arrives: `SetCursorPos` alone and posted `WM_MOUSEMOVE` never
 moved it, `SetCursorPos` plus a one-count `SendInput` move did, exactly. Posted button messages do reach the movie, at that cursor
 (`BioSFHandler.SendMouseToScaleForm`). And the Windows cursor stops at the monitor's edge, while the game's window is taller. So
-until 2026-11-05 the pointer's clicks landed wherever the game's cursor happened to be; now the host answers `GetCursorPos` with
-the pointer's point and nudges (`[Pointer] gameCursor`).
+until 2026-11-05 the pointer's clicks landed wherever the game's cursor happened to be. Real input (`SendInput`) clicks then
+landed, but some a tap late. What works every time: the game's own GUI events, `SFXGameModeBase.GuiKey` 6 (motion), 50/52 (the
+left button), 28/29 (the wheel), sent by the mod on the game thread while the host answers `GetCursorPos` with the pointer's
+point (HostServices v30 `takeGuiEvents`, `[Pointer] gameCursor`; research/56 section 6).
 
 
 UE3 on Windows takes the mouse two ways, and which one each screen listens to isn't known until the headset says

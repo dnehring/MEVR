@@ -3,6 +3,7 @@
 #include "game/GuiCursor.hpp"
 
 #include "core/Log.hpp"
+#include "core/vr/GuiEvents.hpp"
 #include "game/GameMenuRequest.hpp"
 #include "game/Player.hpp"
 #include "ue3/Handles.hpp"
@@ -27,6 +28,12 @@ ue3::FieldRef gScaleFormManager{"Engine.PlayerController", "m_oCachedScaleFormMa
 ue3::FieldRef gFocusPanel{"Engine.BioSFManager", "m_FocusPanel"};
 
 std::deque<int> gKeys;  // mevr guikey's events still to send, one per tick (-1: a tick without one)
+vr::gui_events::Scheduler gScheduler;  // the game pointer's events (HostServices v30)
+std::uint64_t gTaken = 0;
+std::uint64_t gSent = 0;
+std::uint64_t gFailed = 0;
+bool gLoggedFirst = false;
+bool gLoggedFailure = false;
 
 ue3::Object* FocusPanel() {
     ue3::Object* const pc = player::Controller();
@@ -109,7 +116,30 @@ std::string KeyCommand(std::string const& args) {
     return std::format("guikey: {} events queued over {} ticks; the log says each (`gui cursor: GuiKey`)", count, gKeys.size());
 }
 
-void Tick() {
+void Tick(std::uint32_t (*take)(std::uint8_t* events, std::uint32_t capacity)) {
+    if (take != nullptr) {
+        std::uint8_t events[vr::gui_events::Queue::kCapacity] = {};
+        std::uint32_t const n = take(events, static_cast<std::uint32_t>(vr::gui_events::Queue::kCapacity));
+        gScheduler.Add(events, n);
+        gTaken += n;
+    }
+    for (std::uint8_t const event : gScheduler.Tick()) {
+        std::string why;
+        if (game_menu_request::GuiKey(event, why)) {
+            ++gSent;
+            if (!gLoggedFirst && event != vr::gui_events::kMouseMove) {
+                gLoggedFirst = true;
+                log::Info("gui cursor: the game pointer's input goes to the game's screens as their own GUI events ({}; research/56 "
+                          "section 6)", why);
+            }
+        } else {
+            ++gFailed;
+            if (!gLoggedFailure) {
+                gLoggedFailure = true;
+                log::Warn("gui cursor: GuiKey {} not sent: {}", event, why);
+            }
+        }
+    }
     if (gKeys.empty()) {
         return;
     }
@@ -121,6 +151,11 @@ void Tick() {
     std::string why;
     bool const ok = game_menu_request::GuiKey(static_cast<std::uint8_t>(event), why);
     log::Info("gui cursor: GuiKey {} {}: {}", event, ok ? "sent" : "not sent", why);
+}
+
+std::string StatusJson() {
+    return std::format("{{\"taken\": {}, \"sent\": {}, \"failed\": {}, \"waiting\": {}}}", gTaken, gSent, gFailed,
+        gScheduler.Waiting());
 }
 
 } // namespace mevr::game::gui_cursor

@@ -389,14 +389,17 @@ switching frameworks.
   (`touchTipM` 0.04 ahead of the aim pose) within `touchHoverM` (0.06) of a screen's visible part takes over from the rays, pressing
   at `touchPressM` (0.005) from the front, letting go past `touchReleaseM` (0.015); haptic tick on arrival, click on press; the
   world UI passes its crop as the touchable part (`NoteGameUiQuad`'s `touchArea`); `touch = 0` off. Rules unit-tested.
-  **The game's own cursor is steered onto the pointer** (2026-11-05, research/56 section 6, `[Pointer] gameCursor`): LE1's Flash
-  screens put their mouse where `GetCursorPos` says (the client area scaled to the stage) and read it only when real mouse input
-  arrives, and the Windows cursor can't leave the monitor (the game's window is taller), so until then the pointer's clicks landed
-  wherever the game's cursor was. The host hooks `GetCursorPos` at attach and answers the pointer's point while it's on a game
-  menu (not the galaxy map), and each move sends a one-count `SendInput` move and back (game window in front). Its clicks and
-  wheel there go by `SendInput` too, after the placement (posted buttons left a tab lit and unclicked), and are dropped while the
-  game's window isn't in front. Some clicks still land a tap late [open, research/56 section 6]; the game's own GUI events
-  (`GuiKey` 50/52 from the mod) are the route being checked. `mevr guimouse` prints the movie's mouse, `mevr guikey` sends events. A tap clicks where the finger touched (pinned through the tap); the hand a wrist screen is projected
+  **The pointer works the game's menus through their own GUI events** (2026-11-05, research/56 section 6, `[Pointer]
+  gameCursor`): LE1's Flash screens put their mouse where `GetCursorPos` says (the client area scaled to the stage) and read it
+  only on mouse input, posted messages never moved it and the Windows cursor can't leave the monitor (the game's window is
+  taller), so until then the pointer's clicks landed wherever the game's cursor was. The host hooks `GetCursorPos` at attach and
+  answers the pointer's point while it's on a game menu (not the galaxy map), and queues GUI events (`core/vr/GuiEvents`); the mod
+  takes them (HostServices v30 `takeGuiEvents`) and sends them through `SFXGameModeBase.GuiKey` on the active mode (6 motion,
+  50/52 the left button, 28/29 the wheel; `game/GuiCursor`): exact and at once, no real input, no window focus (tabs, the squad tab
+  below the monitor's edge, rows, Equip and a swipe's scroll, checked in the game). Without a mod that takes them the host falls back
+  to `SendInput` (a one-count nudge per move, buttons after it, dropped without focus; some clicks then landed a tap late).
+  `mevr guimouse` prints the movie's mouse, `mevr guikey <event|w> ...` sends events. The wrist tap isn't taken while the fingertip
+  goes for the wrist screen or the rail (`omni_rail::GoingForPanel`: the wrist sits in front of their lower part). A tap clicks where the finger touched (pinned through the tap); the hand a wrist screen is projected
   from neither touches nor points at it (`NoteGameUiQuad`'s `projectingHand`), nor at the omni-tool's rail.
 - LE1 galaxy map in the CIC ([research/51](research/51-galaxy-map.md) section 8, HostServices v26; `game/GalaxyMap`,
   `core/vr/GalaxyHologram`, host `plugin/GalaxyHologram` + `GalaxyHologramDraw`; `[Galaxy] hologram`, `inWorld`, `world*`): on foot

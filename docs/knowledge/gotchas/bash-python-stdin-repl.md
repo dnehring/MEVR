@@ -6,7 +6,7 @@ tags: [tooling, claude-code]
 status: stable
 timestamp: 2026-11-04T22:40:00Z
 generated: { by: claude-code/opus-5.5, at: 2026-11-04T22:40:00Z }
-bitten: [2026-11-04, 2026-11-04]
+bitten: [2026-11-04, 2026-11-04, 2026-11-05, 2026-11-05]
 ---
 
 # Symptom

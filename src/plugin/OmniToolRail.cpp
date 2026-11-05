@@ -97,6 +97,8 @@ struct State {
     bool shown = false;
     gp::Pointer pointer;
     rail::Tap tap;
+    std::optional<vr::world_ui::Panel> lastPanel;  // where the rail stood last frame (the tap isn't taken while going for it)
+    std::uint64_t tapsHeld = 0;                    // frames a fingertip near a panel kept the tap off
     LARGE_INTEGER lastCounter{};
     Settings settings;
     std::uint64_t settingsMs = 0;
@@ -402,7 +404,14 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
                               live.right.aim.position.z + d.z / n * kTipAheadM}
                         : live.right.aim.position;
     }
-    bool const tapAllowed = g.settings.tap && !frame.gunDrawn && (frame.gameMode == 0 || frame.gameMode == 7);
+    // Not while the fingertip goes for the wrist screen or the rail (the wrist sits in front of their lower part, research/56
+    // section 6).
+    bool const goingForPanel = handsTracked && ((frame.screen && frame.screen->onWrist && rail::GoingForPanel(tip, frame.screen->panel)) ||
+                                                   (g.lastPanel && rail::GoingForPanel(tip, *g.lastPanel)));
+    if (goingForPanel) {
+        ++g.tapsHeld;
+    }
+    bool const tapAllowed = g.settings.tap && !frame.gunDrawn && (frame.gameMode == 0 || frame.gameMode == 7) && !goingForPanel;
     bool const visibleBefore = g.shown;
     if (g.tap.Step(handsTracked, tip, frame.wrist, tapAllowed, dt)) {
         ++g.taps;
@@ -439,6 +448,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         Hide("nowhere to stand (no screen, the left controller not tracked)");
         return nullptr;
     }
+    g.lastPanel = vr::world_ui::Panel{at->pose, at->widthM, at->heightM};  // the next frame's tap rule
     if (!Init(frame.device, frame.context) || !EnsureSwapchain(frame.session)) {
         return nullptr;
     }

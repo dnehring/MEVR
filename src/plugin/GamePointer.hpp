@@ -50,6 +50,10 @@ bool OwnsTriggers();
 // (`[Pointer] gameCursor`, research/56 section 6). Never removed.
 void InstallCursorHook(mevr::hook::Context& init);
 
+// HostServices v30: the GUI events the pointer queued for the game's menus (core/vr/GuiEvents), up to `capacity`, oldest first;
+// the number taken. Calling it tells the pointer the mod sends them (else it gives the game real input). Any thread.
+std::uint32_t TakeGuiEvents(std::uint8_t* events, std::uint32_t capacity);
+
 // The game's UI on a quad of ours (app space; the whole UI frame edge to edge, as the window's client area), pointed at this
 // frame: the galaxy map's travel question over the hologram's table (research/51 section 8). Present thread, before Step.
 // `touchArea`: the part of the quad a fingertip can touch (quad UV, u0 v0 u1 v1): the visible crop of a world UI screen.

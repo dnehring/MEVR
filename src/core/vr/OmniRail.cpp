@@ -104,7 +104,22 @@ bool Tap::Step(bool tracked, XrVector3f const& tip, XrVector3f const& wrist, boo
         cooldown_ = settings_.cooldownS;
         return true;
     }
+    if (d < settings_.pressM && !allowed) {
+        armed_ = false;  // in the zone while taps are off (going for the screen): it must leave and come back to tap
+    }
     return false;
+}
+
+bool GoingForPanel(XrVector3f const& tip, world_ui::Panel const& panel, float depthM, float marginM) {
+    if (!(panel.widthM > 0.0f) || !(panel.heightM > 0.0f)) {
+        return false;
+    }
+    XrQuaternionf const& q = panel.pose.orientation;
+    XrQuaternionf const inverse{-q.x, -q.y, -q.z, q.w};
+    XrVector3f const rel{tip.x - panel.pose.position.x, tip.y - panel.pose.position.y, tip.z - panel.pose.position.z};
+    XrVector3f const local = overlay::Rotate(inverse, rel);  // +Z: in front of its face
+    return local.z <= depthM && local.z >= -kTapPanelBehindM && std::fabs(local.x) <= 0.5f * panel.widthM + marginM &&
+           std::fabs(local.y) <= 0.5f * panel.heightM + marginM;
 }
 
 } // namespace mevr::vr::omni_rail

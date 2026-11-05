@@ -19,6 +19,7 @@
 #include "core/Log.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/GamePointer.hpp"
+#include "core/vr/GuiEvents.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 
 #include <Windows.h>
@@ -257,6 +258,12 @@ struct Post {
     int wheelDelta = 0;
 };
 std::atomic<bool> gSteeredDown{false};  // a steered button down was sent and its up not yet
+// The game's own GUI events for the mod (HostServices v30): queued here, taken by the mod each tick, which calls GuiKey.
+mevr::vr::gui_events::Queue gGuiEvents;
+std::atomic<std::uint64_t> gModTookMs{0};     // the mod took events then: it sends them
+std::atomic<bool> gModDown{false};            // a button down went to the mod's queue and its up not yet
+std::atomic<std::uint64_t> gGuiEventsQueued{0};
+constexpr std::uint64_t kModTakesMs = 1000;   // the mod counts as taking them this long after its last take
 // A steered button waits this long after the last nudge, so the game has read the cursor's new place in a tick before the press
 // or release (a nudge in the same batch as the button: the tab lit up and its click didn't happen, 2026-11-05). Worker thread.
 constexpr std::uint64_t kButtonAfterNudgeMs = 40;
@@ -387,7 +394,23 @@ bool Steering(Settings const& s) {
 
 // `edge`: the move re-sent just before a button edge: the cursor goes to the point again, without a nudge (the hover's moves
 // already put the game's cursor there; a nudge with the button raced it).
+// The mod sends the game's GUI events for this quad (it took some within a second): no real input at all.
+bool ModSteering(Settings const& s) {
+    return Steering(s) && GetTickCount64() - gModTookMs.load(std::memory_order_acquire) < kModTakesMs;
+}
+
 void SendMove(HWND window, int x, int y, bool pressed, Settings const& s, bool edge = false) {
+    if (ModSteering(s)) {
+        POINT screen{};
+        if (ToScreen(window, x, y, screen)) {
+            gCursorPoint.store(Pack(screen), std::memory_order_relaxed);  // GetCursorPos's answer when the mod's GuiKey reads it
+            gCursorUntilMs.store(GetTickCount64() + kCursorHoldMs, std::memory_order_release);
+            gGuiEvents.Move();
+            gGuiEventsQueued.fetch_add(1, std::memory_order_relaxed);
+        }
+        ++gMoves;
+        return;
+    }
     Post p;
     p.window = window;
     bool const steer = Steering(s);
@@ -409,6 +432,15 @@ void SendMove(HWND window, int x, int y, bool pressed, Settings const& s, bool e
 }
 
 void SendButton(HWND window, int x, int y, bool down, Settings const& s) {
+    if ((down && ModSteering(s)) || (!down && gModDown.load())) {
+        gGuiEvents.Button(down);  // the game's own click (GuiKey 50 / 52 from the mod)
+        gGuiEventsQueued.fetch_add(1, std::memory_order_relaxed);
+        gModDown.store(down);
+        if (down) {
+            ++gClicks;
+        }
+        return;
+    }
     if (Steering(s) || (!down && gSteeredDown.load())) {
         // LE1's screens take a posted button down but not every up (a squad tab lit and stayed lit): real input, in order after the
         // cursor's placement (research/56 section 6).
@@ -451,6 +483,12 @@ void SendWheel(HWND window, int x, int y, int notches, bool pressed, Settings co
         return;
     }
     int const delta = notches * WHEEL_DELTA;
+    if (ModSteering(s)) {
+        gGuiEvents.Wheel(notches);  // GuiKey 28 / 29 a notch
+        gGuiEventsQueued.fetch_add(1, std::memory_order_relaxed);
+        gNotches += notches;
+        return;
+    }
     if (Steering(s)) {
         Post p;
         p.window = window;
@@ -515,13 +553,14 @@ void PublishStatus(bool shown, pointer::Output const* out, int width, int height
         status = std::format(
             "{{\"on\": {}, \"flat\": true, \"kind\": \"{}\", \"worldLocked\": {}, \"quadM\": [{:.3f}, {:.3f}], \"client\": [{}, {}], "
             "\"hit\": {}, \"hand\": \"{}\", \"px\": [{}, {}], \"uv\": [{:.4f}, {:.4f}], \"pressed\": {}, \"moves\": {}, \"clicks\": {}, \"notches\": {}, "
-            "\"touch\": {}, \"touchM\": {:.4f}, \"gameCursor\": {{\"steering\": {}, \"answers\": {}, \"nudges\": {}, \"dropped\": {}}}}}",
+            "\"touch\": {}, \"touchM\": {:.4f}, \"gameCursor\": {{\"steering\": {}, \"answers\": {}, \"nudges\": {}, \"dropped\": {}, \"modEvents\": {}, \"modTakes\": {}}}}}",
             gSettings.gameMenus ? "true" : "false", KindName(gKind), gQuadHeadLocked ? "false" : "true", gQuad.width, gQuad.height,
             width, height, out != nullptr && out->hit ? "true" : "false", gPointer.Hand() == 1 ? "right" : "left",
             out != nullptr ? out->x : 0, out != nullptr ? out->y : 0, out != nullptr ? out->u : 0.0f, out != nullptr ? out->v : 0.0f,
             gPointer.Pressed() ? "true" : "false", gMoves, gClicks, gNotches, out != nullptr && out->touch ? "true" : "false",
             out != nullptr ? out->touchDistance : 0.0f, GetTickCount64() < gCursorUntilMs.load() ? "true" : "false",
-            gCursorAnswers.load(), gCursorNudges.load(), gSteeredDropped.load());
+            gCursorAnswers.load(), gCursorNudges.load(), gSteeredDropped.load(), gGuiEventsQueued.load(),
+            GetTickCount64() - gModTookMs.load() < kModTakesMs ? "true" : "false");
     }
     std::lock_guard<std::mutex> const lock(gStatusMutex);
     gStatus = std::move(status);
@@ -535,6 +574,11 @@ bool Step(Frame const& frame, Dot& dot) {
     bool const pointing = StepInner(frame, dot);  // true: the ray is on the quad (or a press is held), a dot is drawn
     gOwnsTriggers.store(pointing, std::memory_order_release);
     return pointing;
+}
+
+std::uint32_t TakeGuiEvents(std::uint8_t* events, std::uint32_t capacity) {
+    gModTookMs.store(GetTickCount64(), std::memory_order_release);
+    return gGuiEvents.Take(events, capacity);
 }
 
 void InstallCursorHook(mevr::hook::Context& init) {

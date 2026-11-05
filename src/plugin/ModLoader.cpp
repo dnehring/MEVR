@@ -27,6 +27,7 @@
 #include "core/vr/Spectator.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "plugin/Calibration.hpp"
+#include "plugin/GamePointer.hpp"
 #include "plugin/Halcyon.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/Vignette.hpp"
@@ -295,11 +296,15 @@ void HostSetPowerLock(vr::power_wheel::LockView const* view) {
     vr::power_wheel::LockView none;
     vr::power_wheel::PublishLock(view != nullptr ? *view : none);
 }
+std::uint32_t HostTakeGuiEvents(std::uint8_t* events, std::uint32_t capacity) {
+    return host::game_pointer::TakeGuiEvents(events, capacity);
+}
 HostServices WithPowerWheel(HostServices services) {
     services.powerWheelSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::View));
     services.setPowerWheel = &HostSetPowerWheel;
     services.powerLockSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::LockView));  // v29
     services.setPowerLock = &HostSetPowerLock;
+    services.takeGuiEvents = &HostTakeGuiEvents;  // v30: the game pointer's input as GuiKey events (research/56 section 6)
     return services;
 }
 HostServices const gServices = WithPowerWheel(WithWorldUi(WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(WithHudPieces(WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithCrashBreadcrumbs({kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,

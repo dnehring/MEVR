@@ -260,11 +260,28 @@ answers and nudges.
   at the next tap; three taps traced with `mevr calltrace` all worked at once (`HandleInputEvent` -> `SendMouseToScaleForm` ->
   `SetItemFilterSlot`/`ChangeTargetCharacter` on the press), untraced ones mostly didn't. Waiting 40 ms after the last nudge
   before a button and a nudge after it didn't change that. The order of real input against the game's ticks is the suspect.
-- **The deterministic route to try next:** the game's screens take the mouse as GUI events (`SFXGameModeBase.GuiKey` ->
-  `BioSFManager.HandleInputEvent` -> `SendMouseToScaleForm`; BIOGUI_EVENT 50 the left button, 52 its release, 28/29 the wheel,
-  6/7 the mouse's motion). The mod calling `GuiKey` itself on the game thread, with the host's `GetCursorPos` answering the
-  pointer's point, would need no real input, no focus and no race; the host would hand the mod the pointer's edges and wheel
-  (a HostServices field). `mevr guikey <event|w> ...` sends them from the console to check that first.
+- **The deterministic route, and it works (01:19-01:33):** the game's screens take the mouse as GUI events
+  (`SFXGameModeBase.GuiKey` -> `BioSFManager.HandleInputEvent` -> `SendMouseToScaleForm`; BIOGUI_EVENT 6 the mouse's motion, 50
+  the left button, 52 its release, 28/29 the wheel). From the console (`mevr guikey`), with the Windows cursor on a tab and no
+  real input: `SetCursorPos` alone left the movie's mouse where it was, `GuiKey(6)` put it exactly on the cursor (768.8, 344.7
+  against 768.9, 344.8 predicted), and `GuiKey(50)` then `52` three ticks later switched the tab; five tabs in a row (pistol,
+  sniper rifle, assault rifle, shotgun, pistol) each switched at once; four `GuiKey(29)` scrolled the pistol list four rows.
+- **Built:** the host's pointer, while the mod takes them (HostServices v30 `takeGuiEvents`), gives the game's menus no real
+  input at all: `GetCursorPos` answers the pointer's point and it queues the events (`core/vr/GuiEvents`: moves coalesced, a
+  button never dropped); the mod sends them through `GuiKey` on the active mode each tick, a move before each button or wheel
+  notch, at most one of those per tick (`game/GuiCursor`). An older mod that takes nothing gets the `SendInput` path. **In the
+  game, replayed fingertip taps, the game's window never brought to the front:** the shotgun tab (slot 3 -> 2), Ashley's tab
+  below the monitor's edge (member 0 -> 1, her Storm I), the pistol tab (slot 1, her Kessler I), list row 2 (Edge X selected
+  and compared), the Equip button (Banshee X, then Breaker X equipped), and a 6 cm swipe up on the list (scrolled from Avenger
+  X to HMWA X at the top): each at once, every time.
+- **The wrist tap closed the screen** when a replayed hand reached for the Equip button: from the eyes the wrist sits in front
+  of a wrist screen's lower part, and the fingertip passed 3.2 cm from the wrist point on its way (`tip_path.py` over the
+  replay). The tap is now not taken while the fingertip is going for the wrist screen or the rail (`omni_rail::GoingForPanel`:
+  within 15 cm in front of its face, inside it plus 2 cm; the wrist itself is 10 cm under the bottom edge, outside), and a
+  fingertip that enters the tap zone meanwhile must leave and come back (unit-tested). The same reach then equipped the item.
+- **Not covered by the fake headset:** a real finger's accuracy on 0.8-1.4 cm targets (the pinned tap and the game's own
+  hover should help; the headset will tell), and the other five screens (Squad, Map, Journal, Codex, Computer) through the
+  same path.
 
 **The game's model, verified** (`mevr inv`, game/InventoryProbe, 2026-11-04 23:52 on the fake headset, BIOA_UNC20, after the
 cheat manager's `GiveAll`): the equipment screen's handler (`BioSFHandler_PCInventory`) holds `m_oInvInterface`, a

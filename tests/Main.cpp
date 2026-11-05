@@ -7309,6 +7309,23 @@ void TestOmniRail() {
     CHECK(!tap.Step(false, away, wrist, true, 0.01f));  // tracking lost: disarmed
     CHECK(!tap.Step(true, touching, wrist, true, 0.01f));
     CHECK(!tap.Step(true, away, wrist, true, 0.01f) && tap.Step(true, touching, wrist, true, 0.01f));
+    // Going for a wrist screen (research/56 section 6): a fingertip in front of its face, inside it, isn't tapping the wrist; one at
+    // the wrist below its bottom edge is. The screen faces +Z at (0, -0.20, -0.30), 0.55 x 0.31 m; the wrist 10 cm under its edge.
+    wu::Panel face;
+    face.pose.orientation = {0.0f, 0.0f, 0.0f, 1.0f};
+    face.pose.position = {0.0f, -0.20f, -0.30f};
+    face.widthM = 0.55f;
+    face.heightM = 0.31f;
+    CHECK(rail::GoingForPanel({-0.10f, -0.30f, -0.21f}, face));   // 9 cm in front of its lower part
+    CHECK(rail::GoingForPanel({0.0f, -0.20f, -0.31f}, face));     // pressing through it
+    CHECK(!rail::GoingForPanel({0.0f, -0.20f, -0.10f}, face));    // 20 cm in front: not yet
+    CHECK(!rail::GoingForPanel({0.0f, -0.455f, -0.28f}, face));   // at the wrist, 10 cm under the bottom edge
+    CHECK(!rail::GoingForPanel({0.40f, -0.20f, -0.25f}, face));   // beside it
+    // Entering the tap zone while taps are off (going for the screen) disarms: no tap when they come back on there.
+    rail::Tap held;
+    CHECK(!held.Step(true, away, wrist, true, 0.01f) && held.Armed());
+    CHECK(!held.Step(true, touching, wrist, false, 0.01f) && !held.Armed());
+    CHECK(!held.Step(true, touching, wrist, true, 0.01f));
     // The world UI's wrist rule (research/56): a listed screen nothing owns; a locker's equipment stands by the locker; the
     // minigame always; the minigame's own width, the others' 16:9 width.
     wu::Settings const s;
@@ -11100,6 +11117,7 @@ int RunExeTests();
 // tests/GfxTests.cpp: the game's own UI art: the GFx reader, rasterizer and TrueType fonts (core/gfx, research/56 section 5).
 int RunGfxTests();
 int RunPowerWheelTests();
+int RunGuiEventsTests();
 int RunCockpitPanelTests();
 
 // core/vr/PowerWheel: the hand's power wheel (research/55, the concept of 2026-11-04).
@@ -11236,6 +11254,7 @@ int main() {
     gFailures += RunExeTests();
     gFailures += RunGfxTests();
     gFailures += RunPowerWheelTests();
+    gFailures += RunGuiEventsTests();
     gFailures += RunCockpitPanelTests();
     TestUpscale();
     TestMakoGunner();

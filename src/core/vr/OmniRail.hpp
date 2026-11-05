@@ -79,4 +79,15 @@ private:
     float cooldown_ = 0.0f;
 };
 
+// The fingertip going for a panel on the wrist (a game screen or the rail): within depthM in front of its face (or a little
+// behind it, pressing), its place across the face inside the panel and marginM around it. No wrist tap then: seen from the eyes
+// the wrist sits in front of the screen's lower part, and a replayed reach for the equipment screen's Equip button passed 3.2 cm
+// from the wrist point and closed everything (research/56 section 6). A tap on the wrist itself is below the panel's bottom edge
+// (10 cm above the wrist), outside it.
+inline constexpr float kTapPanelDepthM = 0.15f;
+inline constexpr float kTapPanelBehindM = 0.03f;
+inline constexpr float kTapPanelMarginM = 0.02f;
+bool GoingForPanel(XrVector3f const& tip, world_ui::Panel const& panel, float depthM = kTapPanelDepthM,
+    float marginM = kTapPanelMarginM);
+
 } // namespace mevr::vr::omni_rail
