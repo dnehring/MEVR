@@ -11,6 +11,37 @@ grammar. This folder makes that model.
 | 3 | `build/Release/mevr-llm-bench.exe --lib external/llama-cpp --model <gguf> --data scratch/voice-model/eval.jsonl` | accuracy and times on the CPU under the grammar (`core/voice/Llm`, the same runtime the host uses); run it on the stock Qwen3-0.6B-Q8_0 first for the zero-shot baseline. |
 | 4 | `tools/deploy-asi.ps1 -Game LE1` with the GGUF at `models/voice/llm/model.gguf` | the host loads it from `ASI\voice\llm` (`[Voice] llm = 1`, `llmModel`, `llmThreads`). |
 
+## The pipeline (repeatable runs, sweeps)
+
+`setup-env.ps1` makes the venv (`.venv-voice`, Python 3.12, torch CUDA 12.4, transformers, peft, datasets, accelerate,
+gguf) and fetches llama.cpp's convert script into `external/llama-cpp/convert`. Then one command per run:
+
+    python tools/voice-model/pipeline.py run --config tools/voice-model/configs/base.json --name run1
+    python tools/voice-model/pipeline.py sweep --config tools/voice-model/configs/base.json rank=8,16,32 lr=1e-4,2e-4
+    python tools/voice-model/pipeline.py table
+
+A run lives in `scratch/voice-model/runs/<name>/`: `config.json`, `train.jsonl` / `eval.jsonl` (regenerated only when the
+dataset part of the config changes), `train.log` (a `log:` line with the loss every 20 steps; the whole history in
+`log_history.json` at the end), `lora/`, `merged/`, `model-<type>.gguf`, `eval.log`, `bench.log`, and a
+`done-<step>.json` per step keyed by the config's hash, so an interrupted or failed run resumes at the failed step and a
+changed hyperparameter redoes only what depends on it (`--force <step>` redoes one by hand). `runs.tsv` at the runs' root
+collects every run's eval exact-match and bench line for the hyperparameter table.
+
+## Prior art the settings come from
+
+The base config (`configs/base.json`: rank 16, alpha 32, learning rate 2e-4 with a cosine schedule and 3% warmup, 2 epochs,
+batch 16, weight decay 0.01, LoRA on every attention and MLP projection) follows the common LoRA recipe rather than a tuned
+result: Unsloth's hyperparameter guide recommends rank 16 or 32 with alpha equal to the rank or twice it, a learning rate
+in the 1e-4 to 2e-4 range and 1-3 epochs (more overfits) ([LoRA Hyperparameters Guide](https://docs.unsloth.ai/get-started/fine-tuning-guide/lora-hyperparameters-guide),
+[its encyclopedia page](https://docs.unsloth.ai/basics/lora-parameters-encyclopedia)); TinyAgent fine-tuned its 1.1B and 7B
+function-calling models with LoRA for 3 epochs ([TinyAgent cards](https://huggingface.co/squeeze-ai-lab/TinyAgent-7B)), and
+a later paper's LoRA baseline on the same data used 3 epochs, batch 32 and a learning rate of 7e-5 on TinyLlama 1.1B
+([Natural GaLore](https://arxiv.org/pdf/2410.16029)); the narrow fine-tunes the research note cites (FunctionGemma 58% to
+85%, LFM2.5-350M 34.5% to 95.9%) show the jump expected from any sensible setting on a closed task. The sweep to run when
+the first result is in: `rank=8,16,32 lr=1e-4,2e-4 epochs=1,2,3`, judged by the eval exact match, then the bench's time for
+the GGUF types. What matters more than the numbers here is the data: the generator's coverage of phrasings and ASR slips
+(`make_dataset.py`) and, later, real transcripts from the headset.
+
 Environment for step 2 (a venv, never the system Python): `pip install torch --index-url https://download.pytorch.org/whl/cu124`,
 `pip install transformers peft datasets accelerate`, and llama.cpp's source for `convert_hf_to_gguf.py` (`pip install -r
 requirements/requirements-convert_hf_to_gguf.txt` there). The base must stay Qwen (or Granite): never a Gemma model as

@@ -103,3 +103,4 @@ concept/assets/hull reconstruction/assembled/*
 external/moonshine-voice/
 external/llama-cpp/
 models/
+.venv-voice/
