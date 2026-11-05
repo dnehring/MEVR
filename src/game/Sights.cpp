@@ -76,6 +76,7 @@ struct WorldSight {
     engine::UnrealVector top{};  // world, unit: the gun's top as the sight uses it
     double zeroUnits = 0.0;      // [Sights] zeroM in game units (0: parallel)
     bool converge = false;
+    ue3::Object* hitActor = nullptr;  // what the sight line hit (the squad context's aim target)
     // The tick's trace along the line from the sight's centre.
     bool traced = false;
     bool hit = false;
@@ -299,6 +300,7 @@ ue3::Object* TraceOnce(ue3::Object* pawn, engine::UnrealVector const& start, eng
 // Bisects with the hit/no-hit answer when the hit point doesn't come back (as game/throwables does).
 void TraceSightLine(engine::UnrealVector const& center, engine::UnrealVector const& axis) {
     gWorld.traced = false;
+    gWorld.hitActor = nullptr;
 #if defined(MEVR_GAME_LE1)
     ue3::Object* const pawn = gTraceFunction != nullptr ? player::Pawn(player::Controller()) : nullptr;
     if (pawn == nullptr) {
@@ -334,6 +336,7 @@ void TraceSightLine(engine::UnrealVector const& center, engine::UnrealVector con
         gWorld.distance = kConvergeRangeUnits * hi;
     }
     gWorld.what = ue3::runtime::FullName(actor);
+    gWorld.hitActor = actor;
     if (!gLoggedTracePath) {
         gLoggedTracePath = true;
         log::Info("sights: the sight line's trace (Actor.Trace through ProcessEvent): the hit point {}", plausible
@@ -1243,6 +1246,10 @@ std::string GameJson() {
 }
 
 } // namespace
+
+ue3::Object* ConvergeActor() {
+    return gWorld.traced && gWorld.hit ? gWorld.hitActor : nullptr;
+}
 
 std::string StatusJson() {
     namespace json = vr::test_request;

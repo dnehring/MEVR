@@ -422,6 +422,8 @@ set(MEVR_MOD_SOURCES
     src/game/HudPieces.hpp
     src/game/Interact.cpp
     src/game/Interact.hpp
+    src/game/SquadContext.cpp
+    src/game/SquadContext.hpp
     src/game/CockpitProbe.cpp
     src/game/CockpitProbe.hpp
     src/game/Mako.cpp

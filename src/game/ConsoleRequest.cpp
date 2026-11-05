@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include "game/ConsoleRequest.hpp"
 
+#include "game/SquadContext.hpp"
+
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "engine/Legacy.hpp"
@@ -497,6 +499,17 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
             return mako_gunner::Wake(gFound[index]);
         }
         return mako_gunner::StatusJson();
+    }
+    if (verb == "context") {
+        // `mevr context [word [secondsAgo]]`: the squad context's text block now (research/54), with PT1 "<word>" resolved
+        // that many seconds ago (default 0.5) from the pose history; `mevr context prefix`: the cached prefix.
+        std::string word;
+        std::string agoText;
+        words >> word >> agoText;
+        if (word == "prefix") {
+            return squad_context::Prefix();
+        }
+        return squad_context::Block("", word, ini::Number(agoText).value_or(0.5));
     }
     if (verb == "calltrace") {
         // `mevr calltrace <seconds> <word> [-word...]` | `mevr calltrace off`: every script call and ProcessEvent whose

@@ -1554,6 +1554,22 @@ bool IsOpen() {
     return gMachine.IsOpen() || gWheel.Holding();
 }
 
+std::vector<MemberView> Members() {
+    std::vector<MemberView> out;
+    for (int i = 0; i < gCount; ++i) {
+        MemberInfo const& m = gMembers[i];
+        if (m.key == 0) {
+            continue;
+        }
+        out.push_back({reinterpret_cast<ue3::Object*>(m.key), m.classId, m.carried, m.current, m.health, m.name});
+    }
+    return out;
+}
+
+int WeaponTypeOf(ue3::Object* weapon) {
+    return RangedType(weapon);
+}
+
 std::string StatusJson() {
     namespace json = vr::test_request;
     char const* phase = "idle";

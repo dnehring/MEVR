@@ -70,6 +70,7 @@
 #include "game/GalaxyMap.hpp"
 #include "game/WorldUi.hpp"
 #include "game/Spectator.hpp"
+#include "game/SquadContext.hpp"
 #include "game/SquadWeapons.hpp"
 #include "game/SupportGrip.hpp"
 #include "game/Throwables.hpp"
@@ -863,7 +864,7 @@ void PublishStatus() {
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, "
         "\"posture\": {}, \"viewLevel\": {}, \"gunKick\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
-        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}}}",
+        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -875,7 +876,7 @@ void PublishStatus() {
         game::view_level::StatusJson(), game::gun_kick::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
         game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::mako_gunner::StatusJson(), game::cockpit_probe::StatusJson(), game::mako_controls::StatusJson(),
-        game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson());
+        game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson(), game::squad_context::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -1020,6 +1021,7 @@ void Heartbeat() {
         game::fingers::LogStats();
         game::comfort::LogStats();
         game::interact::LogStats();
+        game::squad_context::LogStats();
         game::mako::LogStats();
         game::mako_gunner::LogStats();
         game::mako_controls::LogStats();
@@ -1205,6 +1207,8 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // What A uses: from where the head looks, and its prompt at the object (research/40).
         EnsureSelectionHook();
         game::interact::Tick(deltaSeconds, gSelectionHooked, InteractLink());
+        // The squad's world for squad orders (research/54): the scene every refreshS, a pose sample every tick.
+        game::squad_context::Tick(deltaSeconds);
         {
             auto const floor = HostFloor();  // the cockpit takes a new seat at each recenter (research/47)
             game::cockpit_probe::Tick(floor ? std::optional<std::uint32_t>(floor->recenters) : std::nullopt);
@@ -1336,6 +1340,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::holsters::Shutdown();
     game::squad_weapons::Shutdown(exiting);  // unpauses the game if its menu paused it
     game::throwables::Shutdown();
+    game::squad_context::Shutdown();
     game::vent::Shutdown();
     game::weapon::Shutdown();
     game::camera_probe::Shutdown();
