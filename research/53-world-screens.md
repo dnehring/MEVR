@@ -380,3 +380,25 @@ The user: "I think the hacking mini game may need some work. Or we are comfortab
   pointer's last moves on the opening screen still leave one step of 0.09 rad at the start (`bUsingMouse` true until the first left
   or right press), then the marker stays still. [verify] with a person: reaching and holding the arms with the left wrist up, sliding
   between them, the size, whether In/Out and the arrows read as the puzzle's moves.
+
+### 6.4 The console's button game: in the code, never shown on PC (2026-11-05)
+
+- **What it is.** The user remembered a second hacking game, "clicking face buttons in a sequence". It is the Xbox 360 ME1's
+  bypass, and LE1 still carries it: the base class `BioSkillGame_Handler` (the PC puzzle's `BioSkillGame_PCHandler` derives from
+  it) shows one face button at a time, picked at random (`SetButtonVisible`, `HandleSkillGameDisplayButton`), and each press must
+  match it before `m_fButtonTimeout` runs out (`HandleSkillGameButtonPress`: a wrong button fails the game at once, the timeout
+  too); `m_nTotalButtonsToDisplay` right presses win, `m_fButtonDelayTime` apart. Its handler hears `BIOGUI_EVENT_BUTTON_A` to `_Y`
+  (12 to 15) in `HandleInputEvent`; `SetSwapXandO` swaps A and B for layouts that confirm with B. Its numbers are the game's
+  `BIOGame.ini` `[SFXGame.BioSkillGame] SkillGameConfig`: `NumButtons` 4, 6, 8, a timeout from 2.5 s (Casual) down to 1.0 s
+  (Insanity), a start delay of 0.2 s. Its movie, `GUI_SF_SkillGame.MiniGame`, ships in every `Startup_*.pcc` beside `PCMiniGame`.
+- **The PC game never opens it.** `MassEffectGuiManager.ShowSkillGame` creates the panel tagged `SkillGame`, and the PC's GUI
+  library (`BIOUI.ini` in `Coalesced_INT.bin`: 35 `HandlerLibrary` templates, the console HUD the only one with a `Platform`) has
+  one template for that tag, `BioSkillGame_PCHandler` with `PCMiniGame`. A gamepad doesn't change it: the puzzle only swaps its
+  button help to the pad's glyphs (`HandleButtonRefresh(usingGamepad)`, the movie's `RefreshButtonHelp`). No other template is a
+  minigame. So in VR (Touch reaching the game as Xbox pad 0) every bypass is the rings puzzle, and section 6.3's d-pad covers them.
+- **If it's ever wanted** (a VR option: its four buttons are on the controllers): the `SkillGame` template's `HandlerClass` and
+  `PanelResource` would have to name `SFXGame.BioSkillGame_Handler` and `GUI_SF_SkillGame.MiniGame` before the game opens the panel
+  [verify: whether the native `CreatePanel` reads the default object's library live], and four touch buttons could send 12 to 15
+  through the GUI events as the d-pad sends its directions. Not built.
+- **How it was read:** the scripts decompiled locally with Legendary Explorer's core (the nightly in `mod-manager/`) and the config
+  unpacked from `Coalesced_INT.bin` the same way. The player's game data: nothing of either is in the repository.
