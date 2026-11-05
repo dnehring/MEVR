@@ -334,6 +334,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/Sights.hpp
     src/core/vr/SquadContext.cpp
     src/core/vr/SquadContext.hpp
+    src/core/vr/SquadGesture.cpp
+    src/core/vr/SquadGesture.hpp
     src/core/vr/SquadMenu.cpp
     src/core/vr/SquadMenu.hpp
     src/core/vr/TestRequest.cpp
@@ -414,6 +416,8 @@ set(MEVR_MOD_SOURCES
     src/game/Interact.hpp
     src/game/SquadContext.cpp
     src/game/SquadContext.hpp
+    src/game/SquadOrders.cpp
+    src/game/SquadOrders.hpp
     src/game/CockpitProbe.cpp
     src/game/CockpitProbe.hpp
     src/game/Mako.cpp
@@ -580,6 +584,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/Sights.hpp
     src/core/vr/SquadContext.cpp
     src/core/vr/SquadContext.hpp
+    src/core/vr/SquadGesture.cpp
+    src/core/vr/SquadGesture.hpp
     src/core/vr/SquadMenu.cpp
     src/core/vr/SquadMenu.hpp
     src/core/vr/TestRequest.cpp
@@ -870,6 +876,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/MetricStereo.cpp
         src/core/vr/OverlayPlacement.cpp
         src/core/vr/PoseRecording.cpp
+        src/core/vr/PowerWheel.cpp
         src/core/vr/Recenter.cpp
         src/core/vr/SceneCaptureScope.hpp
         src/core/vr/ScopeCapture.cpp
@@ -880,6 +887,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/Spectator.cpp
         src/core/vr/Sights.cpp
         src/core/vr/SquadContext.cpp
+        src/core/vr/SquadGesture.cpp
         src/core/vr/SquadMenu.cpp
         src/core/vr/TestRequest.cpp
         src/core/vr/Upscale.cpp

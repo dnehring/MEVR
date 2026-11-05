@@ -68,6 +68,7 @@
 #include "game/WorldUi.hpp"
 #include "game/Spectator.hpp"
 #include "game/SquadContext.hpp"
+#include "game/SquadOrders.hpp"
 #include "game/SquadWeapons.hpp"
 #include "game/SupportGrip.hpp"
 #include "game/Throwables.hpp"
@@ -697,6 +698,22 @@ mevr::game::throwables::Link ThrowablesLink() {
     return link;
 }
 
+// Host renderer: the flat squad orders' gesture (research/54): the left grip's report (v11) and the controller pulses (v9).
+mevr::game::squad_orders::Link SquadOrdersLink() {
+    using namespace mevr;
+    game::squad_orders::Link link;
+    if (!gHostOwnsVr) {
+        return link;
+    }
+    if (gHost->version >= 9) {
+        link.haptic = gHost->hapticPulse;
+    }
+    if (MEVR_HOST_HAS(leftGripAway) && gHost->leftGripAway != nullptr) {
+        link.leftGrip = gHost->leftGripAway();
+    }
+    return link;
+}
+
 // Host renderer: the physical vent (research/45): the left grip's report (v11) and the controller pulses (v9/v10).
 mevr::game::vent::Link VentLink() {
     using namespace mevr;
@@ -861,7 +878,7 @@ void PublishStatus() {
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, "
         "\"posture\": {}, \"viewLevel\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
-        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}}}",
+        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}, \"squadOrders\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -873,7 +890,7 @@ void PublishStatus() {
         game::view_level::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
         game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::mako_gunner::StatusJson(), game::cockpit_probe::StatusJson(), game::mako_controls::StatusJson(),
-        game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson(), game::squad_context::StatusJson());
+        game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson(), game::squad_context::StatusJson(), game::squad_orders::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -1018,6 +1035,7 @@ void Heartbeat() {
         game::comfort::LogStats();
         game::interact::LogStats();
         game::squad_context::LogStats();
+        game::squad_orders::LogStats();
         game::mako::LogStats();
         game::mako_gunner::LogStats();
         game::mako_controls::LogStats();
@@ -1202,6 +1220,8 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::interact::Tick(deltaSeconds, gSelectionHooked, InteractLink());
         // The squad's world for squad orders (research/54): the scene every refreshS, a pose sample every tick.
         game::squad_context::Tick(deltaSeconds);
+        // The flat squad orders by gesture (research/54), on this tick's scene: after the grenades' and the vent's claims.
+        game::squad_orders::Tick(deltaSeconds, SquadOrdersLink());
         {
             auto const floor = HostFloor();  // the cockpit takes a new seat at each recenter (research/47)
             game::cockpit_probe::Tick(floor ? std::optional<std::uint32_t>(floor->recenters) : std::nullopt);
@@ -1333,6 +1353,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::squad_weapons::Shutdown(exiting);  // unpauses the game if its menu paused it
     game::throwables::Shutdown();
     game::squad_context::Shutdown();
+    game::squad_orders::Shutdown();
     game::vent::Shutdown();
     game::weapon::Shutdown();
     game::camera_probe::Shutdown();

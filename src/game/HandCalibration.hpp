@@ -320,6 +320,19 @@ struct SquadContext {
     double farM = 30.0;
 };
 SquadContext GetSquadContext();
+// [SquadOrders] (research/54, game/SquadOrders): the flat squad orders by gesture. enabled; gesture: the left-grip gesture
+// (0: `mevr order` only); followWithinM: a point this close to Shepard is "on me"; enemyConeDeg / memberConeDeg: the
+// ray within this of an enemy / a squadmate picks it; minHoldS: a shorter squeeze is a blip; maxHoldS: held longer, called off.
+struct SquadOrders {
+    bool enabled = true;
+    bool gesture = true;
+    double followWithinM = 2.0;
+    double enemyConeDeg = 8.0;
+    double memberConeDeg = 12.0;
+    double minHoldS = 0.08;
+    double maxHoldS = 8.0;
+};
+SquadOrders GetSquadOrders();
 // [Vent] (appended to an older file that lacks it; research/45, game/vent): the physical vent of a hot gun, a
 // mechanic change (docs/trilogy-design.md "Ammo").
 //   enabled          1: with a weapon drawn, squeeze the left grip on the gun's receiver (over and just ahead of

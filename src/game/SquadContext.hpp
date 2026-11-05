@@ -28,6 +28,10 @@ std::string Block(std::string_view said, std::string_view word = {}, double seco
 // The prefix from the roster the game gave so far (the squadmates seen this session, their powers as named).
 std::string Prefix();
 
+// The roster letter of a squadmate's class id (the squad menu's ids: 6 Liara L, 7 Wrex W, 8 Garrus G, 9 Tali T, 11 Ashley A,
+// 12 Kaidan K); 0 for any other.
+char LetterOf(int classId);
+
 std::string StatusJson();
 void LogStats();
 void Shutdown();

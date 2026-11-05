@@ -98,6 +98,7 @@ struct MemberView {
     std::uint8_t carried = 0;
     int current = -1;
     float health = -1.0f;
+    int squadIndex = -1;  // the squad's own index (QuickCommand*'s iSquadMember)
     std::string name;
 };
 std::vector<MemberView> Members();

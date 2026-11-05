@@ -150,6 +150,7 @@ struct MemberInfo {
     int current = -1;
     int classId = -1;
     float health = -1.0f;
+    int squadIndex = -1;
     std::string name = "SQUADMATE";
     std::string role;
     std::string initials = "?";
@@ -710,6 +711,7 @@ Survey SurveySquad(Game const& game, double deltaSeconds, bool busy, bool newPul
         if (fresh || details) {
             ReadDetails(game.pawns[i], gMembers[i], fresh);
         }
+        gMembers[i].squadIndex = game.indices[i];
     }
     for (int i = game.count; i < kMaxMembers; ++i) {
         gMembers[i] = MemberInfo{};
@@ -1561,7 +1563,15 @@ std::vector<MemberView> Members() {
         if (m.key == 0) {
             continue;
         }
-        out.push_back({reinterpret_cast<ue3::Object*>(m.key), m.classId, m.carried, m.current, m.health, m.name});
+        MemberView view;
+        view.pawn = reinterpret_cast<ue3::Object*>(m.key);
+        view.classId = m.classId;
+        view.carried = m.carried;
+        view.current = m.current;
+        view.health = m.health;
+        view.squadIndex = m.squadIndex;
+        view.name = m.name;
+        out.push_back(view);
     }
     return out;
 }
