@@ -460,6 +460,9 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         g.model.DirtyVariable("alone");
         g.needRender = true;
     }
+    if (testloop::SnapshotArmed()) {
+        g.needRender = true;  // the snapshot copies the image as it's released: draw one (it redraws only on change)
+    }
     if (g.ui->ReloadIfChanged()) {
         g.needRender = true;
     }

@@ -83,6 +83,14 @@ was stopped. Replays with controller poses near flat screens need `[Pointer] set
   on a disc beside the wrist screen, rendered by the game in the level in both eyes. Open: whether a template spawn of a BioPawn
   brings its appearance and stays inert (no AI, no squad), its pose while the GUI modes freeze non-player actors (`bPlayersOnly`, the
   omni-tool's lesson: its components may have to ride on Shepard's pawn), and following the wrist each tick.
+- **The template spawn crashes the game (2026-11-04 23:05, fake headset, BIOA_UNC20, the equipment screen up in mode 7).**
+  `mevr holo spawn 1 0.12` (Actor.Spawn on the controller with SpawnClass = the squadmate's class and ActorTemplate = the
+  live squadmate) ended the process with an access violation in ucrtbase.dll (offset 0x17645, a memory copy; WER event 1000),
+  before any line of the spawn's report and without crash breadcrumbs (WER took it first). A live actor isn't an archetype:
+  Spawn copies its properties (arrays, components, controller links) as if it were one. **Don't spawn from a live pawn.**
+  Next routes to try: the game's own UI-world spawning (`BioUIWorld`'s pawn map is filled from the party's appearance;
+  how is [verify] in the decompile), or a `SkeletalMeshActor` spawned bare whose components get the squadmate's meshes
+  and materials (body, head, hair) copied by assignment. Whether mode 7 mattered is open (try on foot first next time).
 - **Decision (the user, 2026-11-04): what the game provides.** One figure, the party member the screen shows (as the game's own
   Equipment and Squad screens show one), changing when the screen's selection changes. No new squad UI for now: the concept
   art's whole squad on the disc (the selected member brighter) and picking a member by touching a hologram wait.

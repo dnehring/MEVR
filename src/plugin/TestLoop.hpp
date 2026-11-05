@@ -52,6 +52,9 @@ void OnFrameBegun(XrSession session, XrSpace appSpace, XrTime displayTime, bool 
 // Our own quads (HalcyonOverlays), right before a swapchain image is released: Halcyon's go through
 // the wrapped xrReleaseSwapchainImage instead.
 void OnImageWritten(XrSwapchain swapchain, ID3D11Texture2D* image);
+// A snapshot is armed: a quad that redraws only on change (the omni-tool's rail) draws and releases an image this frame,
+// or the snapshot has no copy of it. Any thread.
+bool SnapshotArmed();
 // A swapchain whose images never change once filled (the reticle): its pixels (premultiplied
 // sRGB RGBA8, 0xAABBGGRR), drawn into snapshots instead of a copy.
 void SetStaticImage(XrSwapchain swapchain, std::uint32_t width, std::uint32_t height, std::vector<std::uint32_t> pixels);

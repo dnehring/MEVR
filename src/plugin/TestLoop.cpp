@@ -1553,6 +1553,10 @@ void OnFrameBegun(XrSession session, XrSpace appSpace, XrTime displayTime, bool 
     TickCapture();
 }
 
+bool SnapshotArmed() {
+    return gArmed.load(std::memory_order_relaxed);
+}
+
 void OnImageWritten(XrSwapchain swapchain, ID3D11Texture2D* image) {
     if (gArmed.load(std::memory_order_relaxed) && OnPresentThread()) {
         StageImage(swapchain, image);
