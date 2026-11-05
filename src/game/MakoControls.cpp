@@ -193,11 +193,24 @@ void RefundFuel(ue3::Object* vehicle, double deltaSeconds, float scale) {
     refund(gBoosting, gBoostFuel, gMaxBoostFuel, "MakoControls.boostFuel");
 }
 
-// `mevr vehicle jets`: the X button's bJumpJetsOn held on (the player input clears it each frame without a pad).
+// `mevr vehicle jets`: the X button's bJumpJetsOn held on, and let go when the time is up: nothing else clears it while the window
+// has no focus (the pad's input only runs with it), so the jets fired again every time their fuel came back (2026-11-04).
+bool gJetsHeld = false;
 void HoldJets(ue3::Object* controller) {
-    if (controller == nullptr || GetTickCount64() >= gJetsUntilMs) {
+    if (controller == nullptr) {
         return;
     }
+    if (GetTickCount64() >= gJetsUntilMs) {
+        if (gJetsHeld) {
+            gJetsHeld = false;
+            if (std::uint8_t* const on = gJumpJetsOn.In<std::uint8_t>(controller)) {
+                *on = 0;
+                write_journal::Wrote("MakoControls.bJumpJetsOn", on);
+            }
+        }
+        return;
+    }
+    gJetsHeld = true;
     if (std::uint8_t* const on = gJumpJetsOn.In<std::uint8_t>(controller)) {
         *on = 1;
         write_journal::Wrote("MakoControls.bJumpJetsOn", on);
@@ -335,6 +348,7 @@ void TrackBurst(ue3::Object* vehicle, bool jets, float dt, ue3::Rotator const& r
     ++gCounts.bursts;
     ue3::Vector const v = gVelocity.Read<ue3::Vector>(vehicle).value_or(gBurst.velocity);
     float const z = gLocation.Read<ue3::Vector>(vehicle).value_or(ue3::Vector{}).z;
+    double const turned = SignedUnits(rotation.yaw - gBurst.yawUnits) * 360.0 / 65536.0;
     double const yaw = gBurst.yawUnits * (2.0 * std::numbers::pi / 65536.0);
     double const dx = v.x - gBurst.velocity.x;
     double const dy = v.y - gBurst.velocity.y;
@@ -342,9 +356,9 @@ void TrackBurst(ue3::Object* vehicle, bool jets, float dt, ue3::Rotator const& r
     double const right = (-dx * std::sin(yaw) + dy * std::cos(yaw)) / engine::kUnitsPerMeter;
     double const s = std::max(gBurst.seconds, 0.001f);
     log::Info("mako controls: a jet burst of {:.2f} s: the stick asked pitch {:+.1f} roll {:+.1f} deg on average, the Mako held {:+.1f} / {:+.1f}; "
-              "it gained {:+.1f} m/s forward and {:+.1f} m/s right of its heading, {:+.1f} m/s up, and rose {:+.1f} m",
+              "it gained {:+.1f} m/s forward and {:+.1f} m/s right of its heading, {:+.1f} m/s up, rose {:+.1f} m and turned {:+.0f} deg",
         s, gBurst.askPitch / s, gBurst.askRoll / s, gBurst.pitch / s, gBurst.roll / s, forward, right,
-        (v.z - gBurst.velocity.z) / engine::kUnitsPerMeter, (z - gBurst.startZ) / engine::kUnitsPerMeter);
+        (v.z - gBurst.velocity.z) / engine::kUnitsPerMeter, (z - gBurst.startZ) / engine::kUnitsPerMeter, turned);
 }
 
 // While the jump jets fire, the Mako is held at the attitude the stick asks for (mc::JetTarget: pushed the nose down, tilted right
@@ -679,6 +693,7 @@ StickAim Tick(double deltaSeconds, Link const& link, ue3::Object* vehicle, ue3::
         in.recenters = link.floor->recenters;
     }
     in.engineSpeed = EngineSpeed(vehicle);
+    in.jets = gJumping.ReadBool(vehicle).value_or(false);
     in.stop = link.mainMenuOpen ? mc::Stop::Menu : calibrating ? mc::Stop::Calibration : !link.headTrackedView ? mc::Stop::Tracking : mc::Stop::None;
     gOut = gControls.Step(in, gSettings);
     if (gOut.stopped != mc::Stop::None) {
@@ -868,6 +883,13 @@ void Shutdown(bool exiting, void (*publish)(vr::mako_controls::View const* view)
     if (!exiting && gVehicle != nullptr && gOut.driving && ue3::runtime::IsAlive(gVehicle)) {
         WriteInputs(gVehicle, 0.0f, 0.0f);
     }
+    if (!exiting && gJetsHeld && gJetsController != nullptr && ue3::runtime::IsAlive(gJetsController)) {
+        if (std::uint8_t* const on = gJumpJetsOn.In<std::uint8_t>(gJetsController)) {
+            *on = 0;  // a test hold cut by a reload or a shutdown
+            write_journal::Wrote("MakoControls.bJumpJetsOn", on);
+        }
+    }
+    gJetsHeld = false;
     gJetsUntilMs = 0;
     gJetsController = nullptr;
     gAttitude = {};
