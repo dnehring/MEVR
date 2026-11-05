@@ -48,11 +48,12 @@ struct Seat {
     ue3::Object* mesh = nullptr;
     engine::UnrealVector knee[2]{};  // 0 left, 1 right
     engine::UnrealVector heel[2]{};
-    bool held[2]{};                  // the left hand holds the lever, the right the stick
+    bool held[2]{};                  // the left hand holds the lever, the right the stick; either the extraction handle (research/48 27)
     engine::UnrealVector grip[2]{};  // where those grips are now
     bool haveAxes = false;
-    engine::UnrealVector axis[2]{};
-    engine::UnrealVector eye{};      // the cockpit's eye (where the seated player's head is, before leaning)  // each handle's grip axis now (world, unit): a held fist wraps it
+    engine::UnrealVector axis[2]{};  // each handle's grip axis now (world, unit): a held fist wraps it
+    bool pointing[2]{};              // the hand presses the repair button: its index straight out, the other fingers closed
+    engine::UnrealVector eye{};      // the cockpit's eye (where the seated player's head is, before leaning)
 };
 std::optional<Seat> CurrentSeat();
 // While riding with a `seat` layout: the cockpit model's grips (the lever at neutral, the stick upright) and the vehicle's flat

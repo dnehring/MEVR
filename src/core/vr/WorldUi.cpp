@@ -159,17 +159,12 @@ std::optional<Panel> Place(XrVector3f const& eyes, XrVector3f const& headForward
     if (!(widthM > 0.05f) || !(heightOverWidth > 0.01f) || !std::isfinite(widthM) || !std::isfinite(heightOverWidth)) {
         return std::nullopt;
     }
-    float distance = std::max(distanceM, kNearestM);
+    float const distance = PlaceDistance(eyes, anchor, distanceM);
     XrVector3f toward{headForward.x, 0.0f, headForward.z};
     if (anchor) {
         XrVector3f const flat{anchor->x - eyes.x, 0.0f, anchor->z - eyes.z};
-        float const reach = gh::Length(flat);
-        if (reach > kNearestM + kNearAnchorM) {
+        if (gh::Length(flat) > 0.05f) {
             toward = flat;
-            distance = std::clamp(reach - kNearAnchorM, kNearestM, distance);
-        } else if (reach > 0.05f) {
-            toward = flat;  // what it belongs to is right here: the screen at the nearest distance, toward it
-            distance = kNearestM;
         }
     }
     float const flatLength = gh::Length(toward);
@@ -186,6 +181,27 @@ std::optional<Panel> Place(XrVector3f const& eyes, XrVector3f const& headForward
 float WristNearest(float widthM) {
     float const halfAngle = 0.5f * kWristMaxWidthDeg * 3.14159265f / 180.0f;
     return std::max(kWristNearestM, std::isfinite(widthM) ? 0.5f * widthM / std::tan(halfAngle) : 0.0f);
+}
+
+float PlaceDistance(XrVector3f const& eyes, std::optional<XrVector3f> anchor, float distanceM) {
+    float const distance = std::max(distanceM, kNearestM);
+    if (!anchor) {
+        return distance;
+    }
+    XrVector3f const flat{anchor->x - eyes.x, 0.0f, anchor->z - eyes.z};
+    float const reach = gh::Length(flat);
+    if (reach > kNearestM + kNearAnchorM) {
+        return std::clamp(reach - kNearAnchorM, kNearestM, distance);
+    }
+    // what it belongs to is right here: the screen at the nearest distance, toward it
+    return reach > 0.05f ? kNearestM : distance;
+}
+
+CockpitPlacement InCockpit(XrVector3f const& eyes, XrVector3f const& panelAnchor, float widthM, float distanceM) {
+    float const placed = PlaceDistance(eyes, panelAnchor, distanceM);
+    float const onFoot = std::max(distanceM, kNearestM);
+    float const up = placed * std::tan(kCockpitUpDeg * 3.14159265f / 180.0f);
+    return {-up, widthM * kCockpitScale * placed / onFoot};
 }
 
 std::optional<Panel> WristPlace(XrVector3f const& eyes, XrVector3f const& wrist, float widthM, float aboveM, float towardM,

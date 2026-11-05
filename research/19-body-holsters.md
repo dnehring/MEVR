@@ -664,7 +664,8 @@ Other modes:
 
 The power wheel is **hold RB, steer with the right stick, let go to apply**; a tap casts the
 mapped power. So RB's new control must be held while the right stick moves, and the right hand
-now holds the gun (grip) and fires (trigger).
+now holds the gun (grip) and fires (trigger). (Since 2026-11-05 the right stick click is no longer RB: its hold opens
+the wheel through the game's own functions and a tap casts nothing, "Hold only" below.)
 
 | Control | Its job now | As RB | Verdict |
 |---------|-------------|-------|---------|
@@ -696,6 +697,21 @@ now holds the gun (grip) and fires (trigger).
 **Cost:** the mapped power comes about 0.35 s after a quick click, and the wheel opens about 0.4 s
 after the press (0.1 s commit plus the game's 0.3 s). If that's too slow in play,
 `[Holsters] powerWheel = y` moves RB to Y with no delays (and first aid to the wheel).
+
+### Hold only (2026-11-05)
+
+The user: the right stick click should only open the power wheel while held; a tap casts nothing (the cast is the left
+hand's push, research/55 section 7, and the click is also Halcyon's double-click recenter). RB can't give that: the
+game's binding casts the mapped power for **any** RB shorter than its 0.3 s, so a hold let go between the commit and
+0.4 s after the press was a cast too. So the click is no longer RB (`gamepad::Options::modPowerHold`,
+`kFlagModPowerHold`); the mod (`game/holsters`, `gamepad::PowerHoldFromStickClick`, pure, `TestPowerHold`) calls the
+wheel's own functions on the game thread: `SFXGameModeDefault.EnterPowerWheel` once the click has been held 0.3 s alone
+(the game's own hold time, so the wheel opens 0.1 s sooner than through RB), on foot only (game mode 0), and
+`SFXGameModePowerWheel.ExitPowerWheel` at the release (what letting go of RB does in the wheel: `OnRelease
+ExitPowerWheel`). The guards are R3's above (turning, the chord, the double-click's second click); a tap is nothing. If
+either function isn't found the mod doesn't set the flag and the click stays RB as before. `powerWheel = y / x / b` are
+still RB (tap = the mapped power). Logs `holsters: the right stick click held ...` / `... let go ...`; the status block's
+holsters line counts the opens. **[verify in the game]**: the wheel opened and closed this way, steered while held.
 
 ## 7. Haptics as contact
 

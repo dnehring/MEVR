@@ -692,7 +692,9 @@ void Tick(double deltaSeconds, Link const& link) {
         }
         gAim.valid = false;
         mako_controls::Tick(deltaSeconds, link.controls, nullptr, controller, nullptr);  // throttle and steering to zero, the pad back
-        cockpit_panel::Tick(deltaSeconds, {link.controls.mainMenuOpen, link.controls.hapticPulse});  // the button and handle let go
+        // The button and handle let go. The cockpit rides on through the game's GUI over the Mako (the extraction's question:
+        // game/CockpitProbe), and the hands are the menu's there, as with ours.
+        cockpit_panel::Tick(deltaSeconds, {true, link.controls.hapticPulse});
         LogWhy(Why::NotInMako, now);
         return;
     }
@@ -761,6 +763,12 @@ void Tick(double deltaSeconds, Link const& link) {
     gunnerIn.riding = cockpit_probe::Riding() && gSettings.handAim && link.headTrackedView && !link.mainMenuOpen;
     gunnerIn.controllers = &controllers;
     gunnerIn.stickHeld = stickAim.valid;
+    {
+        // Repairing or pulling the extraction handle, the gunner keeps the gun (the user, 2026-11-05); the right hand at the handle
+        // counts already, since reaching up its ray points out through the windshield.
+        vr::cockpit_panel::Output const& panel = cockpit_panel::Current();
+        gunnerIn.panelBusy = panel.pressHand >= 0 || panel.held || panel.inReach[1];
+    }
     gunnerIn.frame = view_anchor::Current();
     mako_gunner::Result const gunner = mako_gunner::Tick(deltaSeconds, gunnerIn);
     gGunnerAims = gunner.gunner;

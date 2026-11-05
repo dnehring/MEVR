@@ -75,6 +75,33 @@ struct RbClickInput {
 // One step. True while the game should see RB.
 bool RbFromStickClick(RbClick& state, RbClickInput const& input);
 
+// The right stick click held opens the game's power wheel and letting go closes it; a tap does nothing (the user,
+// 2026-11-05: hold only, the cast is the left hand's push, research/55). RB can't give that: the game's binding (OnHold
+// 0.3 EnterPowerWheel | OnTap 0.3 TryUseMappedPower) casts the mapped power for any RB shorter than its 0.3 s, so the
+// mod calls the wheel's own functions (game/holsters) and the host sends no RB from the click (Options::modPowerHold).
+// RB's guards stay: a press while turning, with the left stick click (the both-sticks chord) or as the second click of
+// Halcyon's double-click recenter (press to press within kRbDoubleClickMs) never opens it.
+inline constexpr std::uint64_t kPowerHoldMs = 300;  // the game's own hold time
+struct PowerHold {
+    enum class Phase : std::uint8_t {
+        Idle,     // no press, or a press that's over (a tap: nothing)
+        Pending,  // pressed alone, not yet held kPowerHoldMs
+        Open,     // the wheel was opened: it closes at the release
+        Ignored,  // this press doesn't open it
+    };
+    Phase phase = Phase::Idle;
+    bool down = false;              // the click, last step
+    std::uint64_t pressMs = 0;      // this press
+    std::uint64_t lastPressMs = 0;  // the last press Halcyon's double-click counts (0: none)
+};
+struct PowerHoldStep {
+    bool open = false;   // held kPowerHoldMs alone: open the wheel now
+    bool close = false;  // let go after it opened: close it now
+};
+// One step. `input.enabled`: a new press may open the wheel (one already open closes at the release either way);
+// `input.nowMs` a nonzero millisecond clock (0: nothing opens, a hold can't be told from a tap).
+PowerHoldStep PowerHoldFromStickClick(PowerHold& state, RbClickInput const& input);
+
 // Both stick clicks are a chord, not L3 + R3: held kStickHoldMs, Halcyon's menu opens or closes (as
 // before); tapped (the second click down within kStickJoinMs of the first, both up again within
 // kStickTapMs of the first press), the test loop takes a snapshot. A tap is over before a hold could
@@ -267,6 +294,9 @@ struct Options {
     // meaning it began with, and so does a press of rbSource.
     bool rightGripHolds = false;
     RbSource rbSource = RbSource::None;  // the mod sets it from [Holsters] powerWheel
+    // The mod opens the game's power wheel from the right stick click's hold itself (PowerHoldFromStickClick,
+    // kFlagModPowerHold): the click is never RB, so a tap casts nothing.
+    bool modPowerHold = false;
     // Not across the boundary: stickClicksReserved, set by the host while the stick clicks belong to
     // something else (no RB from the right stick click then; nothing sets it since the test loop's chord
     // became the both-sticks tap); countKept, cleared while Halcyon's menu is open (a squeeze kept from
@@ -345,6 +375,7 @@ inline constexpr std::uint32_t kFlagMakoStick = 1u << 21;        // Options::mak
 inline constexpr std::uint32_t kFlagCockpitLook = 1u << 22;      // Options::cockpitLook (a host of 2026-11-03 or later)
 inline constexpr std::uint32_t kFlagPhysicalCrouch = 1u << 23;   // Options::physicalCrouch (a host of 2026-11-04 or later)
 inline constexpr std::uint32_t kFlagPowerWheel = 1u << 24;       // Options::powerWheel (host v28)
+inline constexpr std::uint32_t kFlagModPowerHold = 1u << 25;     // Options::modPowerHold (a host of 2026-11-05 or later)
 std::uint32_t ToFlags(Options const& options);
 Options FromFlags(float distance, float acquire, float release, std::uint32_t flags);
 

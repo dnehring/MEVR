@@ -159,7 +159,8 @@ struct GuideInput {
     bool melee = true;                   // [Throwables] melee
     std::string grenadeHands = "right";  // [Throwables] hands: right | left | both
     bool grenadeButton = true;           // [Throwables] grenadeButton (X)
-    bool meleeButton = true;             // [Throwables] meleeButton (B)
+    bool meleeButton = false;            // [Throwables] meleeButton (B; off by default since 2026-11-05: the gesture only)
+    bool meleeFist = true;               // [Throwables] meleeFist (the right fist punches with the weapon away)
     bool vent = true;                    // [Vent] enabled
     std::string turn = "smooth";         // the Turn style chip: smooth | snap
     std::string walk = "head";           // the Walk toward chip: head | hand | body

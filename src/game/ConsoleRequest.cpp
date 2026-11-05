@@ -25,6 +25,7 @@
 #include "game/Player.hpp"
 #include "game/PowerWheel.hpp"
 #include "game/Spectator.hpp"
+#include "game/Throwables.hpp"
 #include "game/Vent.hpp"
 #include "core/WriteJournal.hpp"
 
@@ -511,6 +512,13 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::string rest;
         std::getline(words, rest);
         return power_wheel::Console(rest);
+    }
+    if (verb == "melee") {
+        // `mevr melee punch|strike`: the right hand's melee now, through the gesture's rules (research/20 "Gesture only"):
+        // punch = a fist (with the weapon away, the pistol whip power), strike = an open hand. No tracked controllers needed.
+        std::string rest;
+        std::getline(words, rest);
+        return throwables::Console(rest);
     }
     if (verb == "say") {
         // `mevr say <words>`: the words as a recognizer would give them (research/54), through the rule parser, the squad

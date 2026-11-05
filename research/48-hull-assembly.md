@@ -1012,9 +1012,17 @@ ready, `hull_assemble.py` places them and builds their mounts, the package carri
   from the shoulder), where the throttle's handle hid its plate from the eye. **The user moved it to the front section**
   (2026-11-05): on the console's top (the hood over the main screen, 1.13 m from the shoulders) it stood in the view out,
   and the user placed it: it "should replace one of the keyboard banks, likely on the right side", the right desk shelf's
-  4 x 3 keypad, low in front of the console. It stands there on a riser, turned to face the eye and tilted 20 degrees
-  toward the pilot; the keypad is gone (the left shelf keeps its own). Its reach and place from the eye are in the
-  manifest's `panels.repair`: the pilot leans forward and down to press it.
+  4 x 3 keypad, low in front of the console; the keypad is gone (the left shelf keeps its own). Turned to face the eye
+  and centred where the keypad was, it hung over the shelf's slanted side lip and sat askew to every edge: "it looks like
+  you just randomly placed it ... It should be aligned to the bottom edge" (the user, 2026-11-05). The shelf's flat top
+  (its dark field) ends at a straight front edge along x (y 0.0194) where a rounded light lip begins, and a slanted lip
+  runs up its left side (the flat 0.075 hull units wide at the front, widening toward the back); its right end is the
+  seam with the next plate. The module now stands **squared to the shelf**, its plate toward the pilot, tilted 20 degrees
+  back, on a riser whose front is 0.004 (1.2 cm) behind the front edge and which is centred on the edge's run (4.9 cm
+  of flat either side there; `ShelfTop`, `ShelfSpan`, and the build stops if the riser leaves the flat at its front or
+  back). A 4.7 cm inset, equal to the side gaps, floated in the middle of the shelf. Its reach and place from the eye are
+  in the manifest's `panels.repair` (1.14 m from the right shoulder, 27 degrees right of the eye's line and 41 down): the
+  pilot leans forward and down to press it.
 - **The seat 0.15 m back in the build.** The game had seated the pilot 0.15 m further back in the hull since the user's
   headset drive (place.py's `--seat-back`, 2026-11-03); the build now does it (`CHAIR_AT` y -0.24), so its reach and views
   are the game's, and `--seat-back` defaults to 0.
@@ -1035,9 +1043,90 @@ ready, `hull_assemble.py` places them and builds their mounts, the package carri
   let go, it swings back. The ring shows the hull's health (the hazard alarm's `GetHealthAndShieldsScaled`): a share of the
   nine lit, green over 60%, amber over 30%, red below. A squeeze at the handle is never the cannon's RB or the boost's LB.
   Calls go straight to the game's functions on the game thread, never through the pad: after a cockpit control is
-  grabbed in a drive, the left hand's X and Y reach the game as nothing (the game side, 2026-11-05). [verify] in the game:
-  what RepairVehicle does with no omni-gel or at full health, and whether LeaveWorld raises a confirm box (on the HUD
-  panel in the cockpit).
+  grabbed in a drive, the left hand's X and Y reach the game as nothing (the game side, 2026-11-05).
+- **In the game, 2026-11-05** (the game side, fake headset, main 0982900, the package of e4e2c61 installed; `mevr cockpit
+  panel repair|extract` and `mevr setprop`, since the fake headset's controllers aren't tracked and the panel stayed
+  inactive):
+  - **The lamps follow the hull**: at 2000/2000 all nine green; with the vehicle's `m_HealthCurrent` set to 1000, five
+    amber (the panel's state; the snapshot's forward view didn't show the button, so the swap on the model is unseen).
+  - **RepairVehicle is a power that spends omni-gel**: `IsCombatEnabled`, then the behaviour's
+    `SetCurrentPower('VehicleRepair', cooldown)`, then `AcquireActive(BioActivePower)`. With no omni-gel (a fresh UNC20),
+    at full hull or at half: nothing, and nothing shows it. With 500 (`InitSalvage 500`): 1000 to 1500 within 3 s; again
+    at once: nothing (the power's cooldown); after another 500: 1500 to 1630. So the button filled its squares for 2 s
+    and then could do nothing.
+  - **The button says when the repair can't run** (the user, 2026-11-05: "If the user presses it and we don't have Omni
+    gel it should show solid red. If cooling down it should flash red every 1.2 seconds"; built, not yet seen in the
+    game). While a fingertip pushes the cap, game/CockpitPanel asks the vehicle behaviour's `VehicleRepair` power (found
+    in its `m_powers` by `m_nmPower`, the power RepairVehicle sets current): its native `IsRequiredResourceAvailable()`
+    (the omni-gel it costs, from whichever inventory the power itself reads) and its `m_fCooldownRemaining` (as the
+    power wheel reads its powers'). Pressed with no omni-gel, the plate's eight squares are solid red; while it cools
+    down, all eight flash red, lit the first 0.6 s of every 1.2 (`refusalFlashS`); no gel wins over a cooldown. Neither
+    fills the squares or calls RepairVehicle; a cooldown that ends under the finger starts the 2 s hold from empty; the
+    repair's own cooldown and the gel it spent don't turn the full squares red while the finger stays (rules in
+    `core/vr/CockpitPanel`, unit-tested). A power that can't be found refuses nothing (the press goes ahead as before).
+    `mevr cockpit panel ask` says what a press would show now; log `cockpit panel: the repair can't run: ...`; status
+    `refused`, `repairPower`. [verify] in the game: that `IsRequiredResourceAvailable` answers false with no gel (a fresh
+    UNC20) and true after `InitSalvage 500`, and that `m_fCooldownRemaining` counts down after a repair.
+  - **LeaveWorld raises the game's own "Return to Normandy?" box** (OK, Cancel; `Pawn.TriggerGlobalEventClass(
+    BioSeqEvt_VehicleLeaveWorld)`, game mode 7). The world UI stands it 0.95 m ahead and 0.5 m down, and the cockpit
+    vanishes while it is up: mode 7 counts as out of the Mako for game/Mako ("mako: left", out of the seat), so the eyes
+    see bare terrain. OK and Cancel by a real pointer or touch are untested (a posted click on Cancel did nothing, the
+    window likely not in front).
+    **Fixed the same day (the game side; seen in the game on the fake headset, 08:04 and 08:06):** the bare terrain was two
+    things. The cockpit's ride (`OnUpdateCamera`) and seat (`RideTick`) held only in game mode 1, and the world UI swapped
+    Shepard's last view on foot in at render time (the hold every on-foot screen uses), a view from wherever Shepard stood
+    before the Mako. Now the ride and the seat hold in modes 1 and 7 with the Mako the pawn (game/CockpitProbe `RideMode`),
+    and with the cockpit riding the world UI holds no view and stands the screen out through the windshield, toward the
+    cockpit's HUD anchor (the `hud ... panel` point) at the usual 0.95 m, its centre 2 degrees above the eyes and 0.85 of its
+    on-foot size (`vr::world_ui::InCockpit`, `kCockpitUpDeg`, `kCockpitScale`, unit-tested). Our quads draw over the world, so
+    the dialog has to stay in the clear glass: +10 degrees (the light under the extraction pod) to -6 (the bar over the
+    console) from the cockpit's eye, measured; the message box's dialog is 18.1 degrees tall at full size. At the anchor's
+    own height (17.5 degrees up) it covered the pod (snapshot 07:57:03). The anchor is the last one a head-tracked frame gave
+    (`NoteCockpit`): in mode 7 Halcyon shows its flat menu screen until our screen is up, and the view anchor goes with it,
+    so a screen that waited for it never came (08:01, the game's frame on Halcyon's flat panel). The panel's hands are the
+    box's then (game/Mako ticks it as under a menu). game/Mako itself still counts mode 7 as out of the Mako (the gunner
+    stops, the pad goes back to the game, so A and B should answer the box [verify]). Log `world ui: MessageBox up
+    (opening N): in the Mako's cockpit, at its windshield ...`; the world UI's status has `inCockpit` and `heldView`.
+  - **The replayed hand works both controls** (`panel.mevrrec`, made from the status's `layout`; 07:56, the package of
+    1290230): a fingertip pushed 2.5 mm into the cap from 4 cm in front along `buttonIn` pressed it, the plate's eight squares
+    went blue and the repair ran 2 s later; a grip squeezed at the handle's `grip` and swung +34 degrees about `hingeAxis` (the
+    grip moves back toward the pilot and up) ran LeaveWorld at 85% held 0.4 s, and the box came up. A replay needs `-Inputs`
+    for the squeeze (without it the buttons are live). The answers before a press: a fresh UNC20 `no omni-gel`, after
+    `InitSalvage 500` `none`, after a repair `cooling down`, its cooldown counting from 27 s down (about 30 s).
+  - **The seat's sample can come too early**: on one of three entries (08:06:37) the ride logged `seated with the head 0.00
+    m forward, 0.00 m right, 0.00 m up` 3 ms after the script ran (the others -0.34 forward, 0.04 right, -0.04 up), and the eye
+    sat 0.34 m forward, inside the console's shell. The host's view was valid but its offset not yet the head's [open].
+  - The seated Shepard's right arm reaching for the handle 1.05 m from the shoulder (past the 0.55 m reach) renders black
+    (unlit) in the snapshots of 07:57:00 and 07:57:03 [open].
+  - Untested: the press direction, the swing's sign and the gunner's hold, for want of tracked controllers. The panel's
+    layout in tracking space is in its status (`"cockpitProbe"."panel"."layout"`) for a replay that reaches to it.
+  - Landing on UNC20 autosaves (`VR00_AutoSave` and the GamerProfile): back the saves up before a Mako run.
+- **Shepard's hand on them** (the user asked, 2026-11-05: is the handle's touch point right, and does the hand grip it; built,
+  not yet seen in the game). The grab point was right (the U's middle against the controller's grip pose), but the seated
+  arm IK (`arm_ik::DriveSeated`) closed a hand only on the lever and the stick, so a hand on the handle stayed at its
+  controller, up to 10 cm off the bar, and didn't follow the swing. Now the held handle is a held control in
+  `cockpit_probe::CurrentSeat`: that hand's fist goes on the bar's middle swung by the handle's current pull about the hinge
+  (the panel's rule, right-handed in the eye's right/forward/up), the knuckles along the bar (its axis is the hinge's), the
+  index curled round it. A hand pushing the repair button's cap points: the index straight out, the other fingers closed,
+  on any controller (`Seat::pointing`; before, only a Touch or Index finger lifted off the trigger pointed).
+- **The arm raised to the handle: tried, reverted; seated Shepard parked** (2026-11-05). Shepard's right arm reaching the
+  overhead handle draws as a black shape folded at the shoulder (the game side's snapshots 07:56-07:57, again 08:39:39 with
+  the hand on the bar). Not a stretch: the target is at the arm's reach (0.55 m, 0.58 held). Tried in adb4dae: the clavicle
+  shrugging toward the reach in the seated pose (`engine/BonePose` collars only, 15 to 30 degrees as the target rises) and the
+  vehicle's light environment's `AmbientGlow` raised while seated. In the game (panel replay, 08:39-08:40) the shrug engaged
+  (23 degrees at the handle) and changed nothing visible; the glow changed nothing measurable (a patch of the driver 48 against
+  51 of 255 at glow 0 and 2). Reverted at the user's word. The user then stopped the work on Shepard in the seat ("he is
+  literally clipping through the chair"): the seated driver's black overhead arm and the body through the chair stay open
+  until it's taken up again. The black is likely not the light environment (a strong glow didn't touch it): the mesh's inside
+  or a two-sided material's back face near the near plane are the next things to look at.
+- **The turret stays in auto mode while they're worked** (the user, 2026-11-05: "If I'm repairing it pulling extraction handle
+  the aim should remain in auto mode"): while a hand presses the cap or holds the handle, or the right hand is within the
+  handle's 10 cm, the Mako's gunner (research/47 "The gunner") has the turret, at once and whatever the hands do
+  (`mako_gunner::Hands::busy`, unit-tested). Reaching up for the handle, the right hand's ray points out through the
+  windshield, often with a finger resting on the trigger: by the gunner's own rules that took the gun. Had the player the
+  gun before, the gunner takes it at the press, not after the 3 s handback; afterwards the next aim by hand or thumbstick
+  takes it again. With `[Mako] gunner = 0` there is no auto mode and nothing changes. Log `mako gunner: the gunner aims the
+  turret (a hand works the cockpit's panel)`.
 
 ## 5. Not done
 

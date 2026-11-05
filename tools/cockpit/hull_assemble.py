@@ -244,16 +244,20 @@ VIEW = ((0.0, -0.52, 0.25), 13.0)  # the concept image's viewpoint (eye, lens mm
 # proud of the pod's; POD_LAMPS the lamps' x either side, their centres up and down the face from its middle, half
 # across, half along. The repair button in place of the keypad on the right desk shelf, low in front of the console
 # (the user, 2026-11-05: it "should replace one of the keyboard banks, likely on the right side", the shelf's; beside the
-# left armrest it hid behind the throttle, and on the console's top it stood in the view out): turned to face the eye,
-# REPAIR_ON is its tilt toward the pilot (degrees) and how high its near edge stands on a riser over the shelf (hull
-# units); RISER the margin round the module and the chamfer. The shelf is about 1.1 m from the right shoulder, so the
-# pilot leans forward and down to press it (Panels reports the reach). A model unit is EXTRACTION_METRES and
-# REPAIR_METRES.
+# left armrest it hid behind the throttle, and on the console's top it stood in the view out). Squared to the shelf, its
+# riser's front parallel to the flat top's front edge and just behind it, centred on that edge's run (the user, the same
+# day: "it should be aligned to the bottom edge"; turned to face the eye and centred on the old keypad it looked placed at
+# random and hung over the shelf's slanted side lip). REPAIR_ON is its tilt toward the pilot (degrees), how high its near
+# edge stands on a riser over the shelf, and how far the riser's front stands behind the flat top's front edge, where
+# the rounded lip begins (hull units); REPAIR_FOOT the module's footprint in its own units (half across, front, back);
+# RISER the margin round the module and the chamfer. The shelf is about 1.1 m from the right shoulder, so the pilot
+# leans forward and down to press it (Panels reports the reach). A model unit is EXTRACTION_METRES and REPAIR_METRES.
 PILOT_SHOULDER = (0.19, -0.02, -0.24)  # not SHOULDER: the A-pillar's shoulder (above)
 EXTRACTION_METRES, REPAIR_METRES = 0.17, 0.14  # the lever's handle 11 cm across; the button 4.3 cm, the module 11 by 13 cm
 POD = (0.29, 90.0, 0.062, 0.02, 0.0015)
 POD_LAMPS = (0.06, 0.0115, 0.012, 0.0075)
-REPAIR_ON = (20.0, 0.004)
+REPAIR_ON = (20.0, 0.004, 0.004)
+REPAIR_FOOT = (0.38, -0.5, 0.444)
 RISER = (0.004, 0.003)
 
 
@@ -1252,8 +1256,9 @@ def PanelPlaces(console, desk):
     """Where the two controls go (POD, REPAIR_ON): each model's matrix into the hull (its own units to hull units), the
     pod's section and face, and where the repair button's riser starts (the shelf's top under the module, from rays
     straight down). The repair button takes the right desk shelf's keypad's place (`desk`: DeskShelf; Details leaves the
-    keypad out), its plate's side turned to the eye. The lever's model faces -y with z up its face; on the pod its face
-    turns toward the pilot and z runs up it."""
+    keypad out), squared to the shelf with its plate's side toward the pilot: the riser's front REPAIR_ON's inset behind
+    the flat top's front edge, centred on that edge's run (ShelfSpan), the whole riser on the flat. The lever's model
+    faces -y with z up its face; on the pod its face turns toward the pilot and z runs up it."""
     M = METRES_PER_UNIT
     chair = Vector(CHAIR_AT)
     ahead, tilt, length, flat, proud = POD
@@ -1270,17 +1275,34 @@ def PanelPlaces(console, desk):
     front = Vector((0, *LEVER_FRONT)) * s  # the box's face's middle
     lever = Matrix.Translation(face + n * proud - rotation.to_3x3() @ front) @ rotation @ Matrix.Scale(s, 4)
     section = [(low_y - length * math.cos(t), top), (low_y, low_z), (low_y + flat, low_z), (low_y + flat + (top - low_z), top)]
-    tilt_back, riser = REPAIR_ON
-    x, y = (desk[0] + desk[2]) / 2 - 0.01, desk[1] + 0.035  # the keypad's middle (Details)
-    turn = math.degrees(math.atan2(EYE[0] - x, -(EYE[1] - y)))  # the model's -y (the plate's side) toward the eye
+    tilt_back, riser, inset = REPAIR_ON
     s = REPAIR_METRES / M
-    turned = Matrix.Rotation(math.radians(turn), 4, "Z")
+    half, foot_front, foot_back = REPAIR_FOOT
+    t = math.radians(tilt_back)
+    hx = half * s + RISER[0]  # the riser's half width and depth (Mounts)
+    hy = (foot_back - foot_front) / 2 * s * math.cos(t) + RISER[0]
+    shelf = ShelfTop(console)
+    front = min(p[1] for poly in shelf for p in poly)  # the flat top's front edge (y), where the rounded lip starts
+    edge = [p for poly in shelf for p in poly if p[1] < front + 0.001]
+    if max(p[0] for p in edge) - min(p[0] for p in edge) < 0.02:
+        raise SystemExit("the repair button: the desk shelf's front edge isn't along x (the module is squared to it)")
+    near, far = front + inset, front + inset + 2 * hy  # the riser's front and back
+    x0, x1 = ShelfSpan(shelf, near + 1e-4)
+    x = (x0 + x1) / 2  # centred on the front edge's run
+    for yy in (near + 1e-4, far):
+        a, b = ShelfSpan(shelf, yy)
+        if x - hx < a or x + hx > b:
+            raise SystemExit(f"the repair button: its riser ({x - hx:.4f} to {x + hx:.4f}) leaves the shelf's flat ({a:.4f} to {b:.4f}) at y {yy:.4f}")
+    mid = (foot_front + foot_back) / 2  # the footprint's middle along the model's y
+    y = near + hy - mid * s * math.cos(t)  # the model's origin, so the footprint's middle is the riser's
+    turn = 0.0
+    turned = Matrix.Identity(4)
     # the shelf under the module's footprint, from rays starting just over it (the console's hood overhangs it: rays from
     # high up landed on the hood), and the room over it for the module with its cover open
     tree = Tree([console])
     hits, room = [], []
-    for a in np.linspace(-0.38, 0.38, 7):
-        for c in np.linspace(-0.5, 0.444, 9):
+    for a in np.linspace(-half, half, 7):
+        for c in np.linspace(foot_front, foot_back, 9):
             p = Vector((x, y, 0.0)) + turned.to_3x3() @ Vector((a, c, 0.0)) * s
             hit = tree.ray_cast(Vector((p.x, p.y, desk[4] + 0.02)), Vector((0, 0, -1)), 0.05)
             if hit[0] is not None:
@@ -1293,8 +1315,10 @@ def PanelPlaces(console, desk):
     if min(room) < 0.8 * s + riser:
         raise SystemExit(f"the repair button: {min(room):.3f} over the shelf, the module with its cover open needs {0.8 * s + riser:.3f}")
     # the foot's middle (the model's origin) so the near edge, which the tilt drops 0.5 of a unit's sine, stands `riser` up
-    foot = Vector((x, y, top + riser + 0.5 * s * math.sin(math.radians(tilt_back))))
-    repair = Matrix.Translation(foot) @ turned @ Matrix.Rotation(math.radians(tilt_back), 4, "X") @ Matrix.Scale(s, 4)
+    foot = Vector((x, y, top + riser + -foot_front * s * math.sin(t)))
+    repair = Matrix.Translation(foot) @ turned @ Matrix.Rotation(t, 4, "X") @ Matrix.Scale(s, 4)
+    print(f"RESULT repair button: squared to the desk shelf, its riser {near - front:.4f} behind the flat's front edge, {x - hx - x0:.4f} "
+          f"and {x1 - x - hx:.4f} from its ends there (hull units)")
     return {"extraction": lever, "repair": repair, "riser": top - 0.003, "shelfTop": top, "repairTurnDeg": turn,
             "pod": {"section": section, "face": face, "up": up, "normal": n}}
 
@@ -1317,11 +1341,12 @@ def Mounts(b, lights, places):
     rotation = m.to_3x3().normalized()
     s = REPAIR_METRES / METRES_PER_UNIT
     normal = rotation @ Vector((0, 0, 1))
-    foot = m @ Vector((0, -0.028, 0))  # the module's footprint's middle (x 0.38 either side, y -0.5 to 0.444)
+    half, foot_front, foot_back = REPAIR_FOOT
+    foot = m @ Vector((0, (foot_front + foot_back) / 2, 0))  # the module's footprint's middle
     margin, chamfer = RISER
     heading = Vector((rotation[0][1], rotation[1][1], 0)).normalized()  # the module's y, level
-    hx = 0.38 * s + margin
-    hy = 0.472 * s * math.cos(math.radians(REPAIR_ON[0])) + margin
+    hx = half * s + margin
+    hy = (foot_back - foot_front) / 2 * s * math.cos(math.radians(REPAIR_ON[0])) + margin
     Sweep(b, [Vector((foot.x, foot.y, places["riser"])), Vector((foot.x, foot.y, foot.z + 0.02))], heading, Chamfered(-hx, hx, -hy, hy, chamfer),
           "DARK", ends=(None, (m.translation - normal * 0.0003, normal)))
 
@@ -1484,16 +1509,42 @@ def Column(console, screen):
     return hit[0], hit[1].normalized(), (x1 - x0) / 2, (z1 - z0) / 2
 
 
-def DeskShelf(console):
-    """The right desk shelf's flat top in front of the centre screen: (x0, y0, x1, y1, z), its largest upward patch with
-    0.05 < x < 0.2 and 0.08 < z < 0.2."""
+def ShelfTop(console):
+    """The right desk shelf's flat top in front of the centre screen, its largest upward patch with 0.05 < x < 0.2 and
+    0.08 < z < 0.2, as its faces' corner loops [[(x, y, z), ...], ...]. Its front edge runs along x; the rounded lip in
+    front of it and the slanted one at its left side are the console's trim (2026-11-05: y 0.0194, z 0.087, rising
+    2.5 degrees toward the back)."""
     bm = bmesh.new()
     bm.from_mesh(console.data)
     up = [f for f in bm.faces if f.normal.z > 0.97 and 0.05 < f.calc_center_median().x < 0.2 and 0.08 < f.calc_center_median().z < 0.2]
     z = max(set(round(f.calc_center_median().z, 3) for f in up), key=lambda h: sum(f.calc_area() for f in up if round(f.calc_center_median().z, 3) == h))
-    top = [f for f in up if abs(f.calc_center_median().z - z) < 0.003]
-    co = np.array([v.co[:] for f in top for v in f.verts])
+    loops = [[v.co[:] for v in f.verts] for f in up if abs(f.calc_center_median().z - z) < 0.003]
     bm.free()
+    return loops
+
+
+def ShelfSpan(loops, y):
+    """Where the line at `y` crosses the shelf's flat top (ShelfTop's loops): (x0, x1), the longest run."""
+    runs = []
+    for loop in loops:
+        xs = [a[0] + (y - a[1]) / (b[1] - a[1]) * (b[0] - a[0]) for a, b in zip(loop, loop[1:] + loop[:1])
+              if (a[1] - y) * (b[1] - y) <= 0 and a[1] != b[1]]
+        if len(xs) >= 2:
+            runs.append((min(xs), max(xs)))
+    merged = []
+    for a, b in sorted(runs):
+        if merged and a <= merged[-1][1] + 1e-4:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], b))
+        else:
+            merged.append((a, b))
+    if not merged:
+        raise SystemExit(f"the desk shelf: nothing of its flat top at y {y:.4f}")
+    return max(merged, key=lambda r: r[1] - r[0])
+
+
+def DeskShelf(console):
+    """The right desk shelf's flat top in front of the centre screen (ShelfTop): (x0, y0, x1, y1, z), its bounds."""
+    co = np.array([p for loop in ShelfTop(console) for p in loop])
     return float(co[:, 0].min()), float(co[:, 1].min()), float(co[:, 0].max()), float(co[:, 1].max()), float(co[:, 2].max())
 
 

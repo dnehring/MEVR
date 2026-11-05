@@ -12,7 +12,9 @@
 //
 // The button: a fingertip pushes its cap in, and the cap follows up to its travel. Pushed past pressShare of the travel it is
 // pressed; held pressed for holdS, the repair runs once. Lifting the finger before that empties the progress. A press needs a
-// tip that came from in front of the cap (one resting beside it, or coming through it from below, doesn't).
+// tip that came from in front of the cap (one resting beside it, or coming through it from below, doesn't). While the game's
+// repair can't run (the user, 2026-11-05) the press fills nothing and runs nothing: with no omni-gel the plate's squares show
+// solid red, while the repair cools down they flash red every refusalFlashS (lit its first half).
 // The lever: a new grip squeeze within grabRadiusM of the handle's grip takes it, and the hand's travel about the hinge swings
 // the handle out, from 0 to the model's pull. Held at the end (pullShare of it) for pullHoldS, the extraction runs once. Let go,
 // it swings back. Each fires once per press or pull: the button must be let go, the handle brought back below half its pull.
@@ -31,7 +33,11 @@ struct Settings {
     float pullShare = 0.85f;       // the handle out this share of its pull: at the end
     float pullHoldS = 0.4f;        // held at the end this long: the extraction
     float returnDegPerS = 240.0f;  // a handle let go swings back this fast
+    float refusalFlashS = 1.2f;    // pressed while the repair cools down: the squares flash red once this often
 };
+
+// Why the game's repair can't run now (game/CockpitPanel asks the vehicle's VehicleRepair power while the button is pushed).
+enum class Refusal : std::uint8_t { None, NoGel, Cooling };
 
 // The pad mapping's grip latch (game/GamepadMapping, vr::mako_controls), so a squeeze here is the same squeeze there.
 inline constexpr float kGripOn = 0.6f;
@@ -63,6 +69,7 @@ struct Input {
     bool active = false;  // riding with the cockpit and its layout: else everything lets go and nothing fires
     Layout layout;
     Hand hands[2];        // 0 left, 1 right
+    Refusal refusal = Refusal::None;  // the repair can't run: no omni-gel wins over a cooldown
 };
 
 struct Haptic {
@@ -77,6 +84,8 @@ struct Output {
     int pressHand = -1;      // the hand pressing (or pushing the cap), -1 none
     float progress = 0.0f;   // 0..1: the hold, the plate's squares
     bool repair = false;     // this step: run the repair
+    Refusal refused = Refusal::None;  // pressed while the repair can't run: the squares show red instead of the progress...
+    bool refusedLit = false;          // ...lit now (solid with no gel; the flash's on half while cooling down)
     float pullDeg = 0.0f;    // the handle's swing out (0..pull)
     bool held = false;
     int holdHand = -1;
@@ -101,6 +110,8 @@ private:
     double hold_ = 0.0;
     bool fired_ = false;     // the repair ran in this press
     int squares_ = 0;        // the progress squares lit (a tick each)
+    Refusal refused_ = Refusal::None;
+    double refusedFor_ = 0.0;  // how long this refusal has shown (the flash starts lit)
     // the lever
     bool down_[2]{};         // each hand's grip latch
     int holdHand_ = -1;
@@ -120,5 +131,6 @@ Colour HealthColour(float health);
 // The progress squares lit for a hold at `progress` (0..1).
 int ProgressLamps(float progress, int count);
 char const* Name(Colour colour);
+char const* Name(Refusal refusal);
 
 }  // namespace mevr::vr::cockpit_panel

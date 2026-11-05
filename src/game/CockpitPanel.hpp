@@ -32,7 +32,8 @@ void AdjustPad(gamepad::Options& options);
 vr::cockpit_panel::Output const& Current();
 // Snapshot JSON.
 std::string StatusJson();
-// `mevr cockpit panel [repair|extract]`: the state, or (for tests) one of the two calls as the controls would make it.
+// `mevr cockpit panel [repair|extract|ask]`: the state, or (for tests) one of the two calls as the controls would make it, or
+// what a press would show now (the VehicleRepair power's answer: no omni-gel, cooling down, or none).
 std::string Command(std::string const& rest);
 
 }  // namespace mevr::game::cockpit_panel

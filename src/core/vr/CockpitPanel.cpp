@@ -113,10 +113,25 @@ Output Panel::Step(Input const& in, Settings const& s) {
         squares_ = 0;
         fired_ = false;
     }
-    if (!pressed_) {
+    // The repair can't run: red instead of the progress. Not once it ran in this press (its own cooldown starts at once).
+    Refusal const refusal = pressed_ && !fired_ ? in.refusal : Refusal::None;
+    if (refusal != refused_) {
+        refused_ = refusal;
+        refusedFor_ = 0.0;
+    } else if (refusal != Refusal::None) {
+        refusedFor_ += dt;
+    }
+    if (refusal != Refusal::None) {
+        double const period = std::max(static_cast<double>(s.refusalFlashS), 0.1);
+        out.refused = refusal;
+        out.refusedLit = refusal == Refusal::NoGel || std::fmod(refusedFor_, period) < period / 2.0;
+    }
+    if (!pressed_ || refusal != Refusal::None) {
         hold_ = 0.0;
         squares_ = 0;
-        fired_ = false;
+        if (!pressed_) {
+            fired_ = false;
+        }
     } else {
         hold_ += dt;
         float const progress = std::min(1.0f, static_cast<float>(hold_ / std::max(s.holdS, 0.05f)));
@@ -223,6 +238,15 @@ char const* Name(Colour colour) {
     case Colour::Blue: return "Blue";
     }
     return "Off";
+}
+
+char const* Name(Refusal refusal) {
+    switch (refusal) {
+    case Refusal::None: return "none";
+    case Refusal::NoGel: return "no omni-gel";
+    case Refusal::Cooling: return "cooling down";
+    }
+    return "none";
 }
 
 }  // namespace mevr::vr::cockpit_panel

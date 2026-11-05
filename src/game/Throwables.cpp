@@ -102,6 +102,7 @@ thr::GrenadeMachine gMachine;
 std::array<thr::SwingDetector, 2> gSwing;
 thr::SampleClock gClock;
 double gTime = 0.0;            // the newest controller sample's time
+Link gLink;                    // the host's offer at the last tick (`mevr melee` strikes with it)
 slots::Anchor gAnchor;
 ik::BodyYaw gOwnYaw;
 bool gOwnYawActive = false;
@@ -293,6 +294,12 @@ ue3::FunctionRef gIsDeadFn{"SFXGame.BioPawn.IsDead"};
 ue3::FunctionRef gGetPercentHealthFn{"SFXGame.BioEpicPawnBehavior.GetPercentHealth"};
 ue3::FunctionRef gSetLocationFn{"Engine.Actor.SetLocation"};
 ue3::FunctionRef gDestroyFn{"Engine.Actor.Destroy"};
+// The melee powers (research/20 section 2: Pistol_Whip, Rifle_Butt), read live for their cooldown, and the right fist's punch
+// with the weapon away: the pistol whip power through the engine's own "cast this" (research/55 section 2).
+ue3::FieldRef gPowers{"SFXGame.BioEpicPawnBehavior", "m_powers"};
+ue3::FieldRef gPowerName{"SFXGame.BioPower", "m_nmPower"};
+ue3::FieldRef gCooldownRemaining{"SFXGame.BioPower", "m_fCooldownRemaining"};
+ue3::FunctionRef gActivatePowerFn{"SFXGame.BioPlayerInput.ActivatePower"};
 // The launch post-handlers read their own blocks (the engine's): each function's parameters.
 ue3::FieldRef gAtPointTarget{gLaunchAtPointFn, "vTarget"};
 ue3::FieldRef gAtPointReturn{gLaunchAtPointFn, "ReturnValue"};
@@ -753,10 +760,44 @@ std::optional<std::uint8_t> CurrentQuickSlot(Game const& game) {
     return equipment != nullptr ? gQuickSlotCurrent.Read<std::uint8_t>(equipment) : std::nullopt;
 }
 
+// One of the player's melee powers, by its 2DA label, with its live cooldown.
+struct MeleePower {
+    ue3::Object* power = nullptr;  // a BioPower; nullptr: the player has none of that name
+    ue3::Name name{};
+    float cooldown = 0.0f;         // seconds left
+};
+
+MeleePower FindMeleePower(Game const& game, std::string_view label) {
+    MeleePower out;
+    auto const list = gPowers.ElementsOf(game.behavior);
+    for (std::int32_t i = 0; list && i < list->count && i < 64; ++i) {
+        void* const slot = list->At(i);
+        ue3::Object* const power = slot != nullptr ? *static_cast<ue3::Object**>(slot) : nullptr;
+        if (power == nullptr || !ue3::runtime::IsAlive(power)) {
+            continue;
+        }
+        ue3::Name const name = gPowerName.Read<ue3::Name>(power).value_or(ue3::Name{});
+        if (ue3::runtime::NameText(name) == label) {
+            out.power = power;
+            out.name = name;
+            out.cooldown = std::max(0.0f, gCooldownRemaining.Read<float>(power).value_or(0.0f));
+            return out;
+        }
+    }
+    return out;
+}
+
+// A stroke that passed the gesture's own rules (ik::throwing::SwingDetector) becomes the game's melee here, or is refused
+// (logged, counted, no haptic). Gesture only since 2026-11-05 (research/20 "Gesture only"): with the weapon drawn either hand's
+// stroke is TryMelee (the B button's exec: pistol whip or rifle butt); with it away (TryMelee would only draw it) the right
+// hand's FIST (grip and trigger held) is the pistol whip power through BioPlayerInput.ActivatePower. No spamming: both hands
+// share one cooldown (meleeCooldownS) and wait out the game's own melee cooldown, read live from the power, so every strike
+// the gesture makes is one the game swings; a stroke refused for it is spent (the next one needs a new stroke).
 void Strike(Link const& link, Game const& game, int hand, thr::SwingStep const& stroke,
-    hand_calibration::Throwables const& settings, engine::TrackingFrame const& frame, ik::Vec3 headTracking) {
-    std::string const what = std::format("the {} hand's {:.1f} m/s stroke ({:.2f} m, {:.2f} toward the front)", HandName(hand), stroke.speed,
-        stroke.travel, stroke.forward);
+    hand_calibration::Throwables const& settings, engine::TrackingFrame const& frame, ik::Vec3 headTracking, bool fist,
+    double coneDegrees) {
+    std::string const what = std::format("the {} hand's {:.1f} m/s stroke ({:.2f} m, {:.2f} toward the front{})", HandName(hand),
+        stroke.speed, stroke.travel, stroke.forward, fist ? ", a fist" : "");
     auto const refuse = [&](std::string const& why) {
         ++gMeleeRefusals;
         gLastMelee = std::format("refused: {}", why);
@@ -768,8 +809,10 @@ void Strike(Link const& link, Game const& game, int hand, thr::SwingStep const& 
     if (!CombatEnabled(game)) {
         return refuse("combat is disabled here");
     }
-    if (!Drawn(game)) {
-        return refuse("the weapon is away: ME1's melee would only draw it");
+    bool const drawn = Drawn(game);
+    thr::MeleeRoute const route = thr::RouteMelee(drawn, hand == kRight, fist, settings.meleeFist);
+    if (char const* const no = thr::Refusal(route)) {
+        return refuse(no);
     }
     if (Storming(game)) {
         return refuse("sprinting");
@@ -777,18 +820,45 @@ void Strike(Link const& link, Game const& game, int hand, thr::SwingStep const& 
     if (CallBool(game.pawn, gIsSwitchingWeapons) || UsingPower(game) || CallBool(game.pawn, gIsThrowingGrenade)) {
         return refuse("switching weapons, using a power or throwing a grenade");
     }
-    if (gTime < gMeleeReadyAt) {
-        return refuse(std::format("cooldown, {:.2f} s left", gMeleeReadyAt - gTime));
+    std::optional<std::uint8_t> const slot = CurrentQuickSlot(game);
+    bool const whip = !drawn || (slot && *slot == 0);  // TryMelee's choice: the pistol whip for slot 0, the rifle butt otherwise
+    char const* const label = whip ? "Pistol_Whip" : "Rifle_Butt";
+    MeleePower const power = FindMeleePower(game, label);
+    if (double const wait = thr::MeleeWait(gTime, gMeleeReadyAt, power.cooldown); wait > 0.0) {
+        return refuse(std::format("cooldown, {:.2f} s left ({})", wait,
+            power.cooldown > gMeleeReadyAt - gTime ? std::format("the game's {}", label) : std::string("meleeCooldownS")));
     }
     Enemy nearest;
-    Enemy const enemy = FindEnemy(game, frame, headTracking, settings.meleeReach, settings.meleeConeDeg, nearest);
+    Enemy const enemy = FindEnemy(game, frame, headTracking, settings.meleeReach, coneDegrees, nearest);
     if (settings.meleeNeedsEnemy && enemy.pawn == nullptr) {
         return refuse(nearest.pawn != nullptr
             ? std::format("no enemy within {:.1f} m and {:.0f} degrees; the nearest hostile is {} at {:.1f} m, {:.0f} degrees",
-                  settings.meleeReach, settings.meleeConeDeg, FullName(nearest.pawn), nearest.meters, nearest.degrees)
+                  settings.meleeReach, coneDegrees, FullName(nearest.pawn), nearest.meters, nearest.degrees)
             : std::string("no hostile around"));
     }
-    CallVoid(game.mode, gTryMelee);  // the B button's exec: directly, never a generated wrapper
+    std::string how;
+    if (drawn) {
+        CallVoid(game.mode, gTryMelee);  // the B button's exec: directly, never a generated wrapper
+        how = std::format("SFXGameModeDefault.TryMelee ({})", whip ? "pistol whip" : "rifle butt");
+    } else {
+        ue3::Object* const input = ObjectOf(gPlayerInput, game.controller);
+        ue3::Function* const activate = gActivatePowerFn.Get();
+        if (power.power == nullptr || input == nullptr || activate == nullptr) {
+            return refuse(power.power == nullptr ? "the player has no Pistol_Whip power to punch with"
+                                                 : "no BioPlayerInput.ActivatePower to punch through");
+        }
+        ue3::Params parms(ue3::runtime::Get(), activate);
+        parms.Set("nmPower", power.name);
+        if (enemy.pawn != nullptr) {
+            parms.Set("oTarget", enemy.pawn);
+            parms.Set("vTargetLocation", ToF(LocationOf(enemy.pawn)));
+        }
+        ue3::runtime::Call(input, activate, parms);  // directly: never a generated wrapper
+        if (!parms.ReturnBool().value_or(false)) {
+            return refuse("the game refused the punch (BioPlayerInput.ActivatePower(Pistol_Whip) returned false)");
+        }
+        how = "BioPlayerInput.ActivatePower(Pistol_Whip) (a punch, the weapon away)";
+    }
     gMeleeReadyAt = gTime + settings.meleeCooldown;
     ++gStrikes;
     Pulse(link, hand, thr::StrikeTick(settings.hapticAmplitude));
@@ -796,10 +866,8 @@ void Strike(Link const& link, Game const& game, int hand, thr::SwingStep const& 
         ? std::format("{} at {:.1f} m, {:.0f} degrees, health {:.0f}%", FullName(enemy.pawn), enemy.meters, enemy.degrees,
               100.0 * Health(enemy.pawn))
         : std::string("no enemy in reach (meleeNeedsEnemy = 0)");
-    gLastMelee = std::format("{} -> TryMelee; {}", what, target);
-    std::optional<std::uint8_t> const slot = CurrentQuickSlot(game);
-    log::Info("throwables: melee: {} -> SFXGameModeDefault.TryMelee ({}); target {}", what,
-        slot && *slot == 0 ? "pistol whip" : "rifle butt", target);
+    gLastMelee = std::format("{} -> {}; {}", what, how, target);
+    log::Info("throwables: melee: {} -> {}; target {}", what, how, target);
     if (enemy.pawn != nullptr) {
         gHitWatch = {true, hand, 0.0, reinterpret_cast<std::uintptr_t>(enemy.pawn), Health(enemy.pawn), FullName(enemy.pawn)};
     }
@@ -1070,6 +1138,7 @@ bool RightHandBusy() {
 
 void Tick(double deltaSeconds, Link const& link) {
     hand_calibration::Throwables const settings = hand_calibration::GetThrowables();
+    gLink = link;
     gEnabled = settings.enabled;
     gButtonFlags = link.buttonFlags;
     for (double& s : gSinceRelease) {
@@ -1248,7 +1317,8 @@ void Tick(double deltaSeconds, Link const& link) {
             // A throw moves the whole body: neither hand strikes just after one.
             bool suppressed = gMachine.Holder() == h || std::min(gSinceRelease[kLeft], gSinceRelease[kRight]) < kNoMeleeAfterRelease;
             if (h == kRight) {
-                suppressed = suppressed || hands[h]->trigger >= kTriggerOn || holsters::RightHandInSlot() ||
+                // The trigger held is firing only with the weapon out; with it away it's half of the fist that punches.
+                suppressed = suppressed || (drawn && hands[h]->trigger >= kTriggerOn) || holsters::RightHandInSlot() ||
                     holsters::SecondsSinceDraw() < kNoMeleeAfterDraw;
             } else {
                 suppressed = suppressed || support_grip::Held();
@@ -1263,7 +1333,8 @@ void Tick(double deltaSeconds, Link const& link) {
                 continue;
             }
             if (stroke.strike) {
-                Strike(link, *game, h, stroke, settings, *frame, headPosition);
+                bool const fist = hands[h]->squeeze >= kGripOn && hands[h]->trigger >= kTriggerOn;
+                Strike(link, *game, h, stroke, settings, *frame, headPosition, fist, settings.meleeConeDeg);
             } else if (stroke.refused != nullptr) {
                 ++gStrokeRefusals;
                 log::Info("throwables: melee: the {} hand's {:.1f} m/s stroke ({:.2f} m) isn't a strike: {}", HandName(h), stroke.speed,
@@ -1388,6 +1459,42 @@ void Shutdown() {
     gIsHostile = gIsDead = gGetPercentHealth = gIsCombatEnabled = gTrace = gSetLocation = gDestroy = gSetVelocity = nullptr;
     gLaunchGrenade = gLaunchAtPoint = gLaunchAtActor = nullptr;
     gLoggedTracePath = false;
+#endif
+}
+
+std::string Console(std::string_view args) {
+#if defined(MEVR_GAME_LE1)
+    std::string verb(args);
+    verb.erase(0, verb.find_first_not_of(' '));
+    verb.erase(verb.find_last_not_of(' ') + 1);
+    if (verb != "punch" && verb != "strike") {
+        return std::format("mevr melee punch|strike: the right hand's strike now, as a fast stroke would make it (punch: a fist, "
+                           "strike: an open hand), through the same rules; the last melee: {}", gLastMelee);
+    }
+    if (!gStarted) {
+        return "melee: the script functions aren't found yet";
+    }
+    std::string why;
+    std::optional<Game> const game = ReadGame(why);
+    std::optional<engine::TrackingFrame> const frame = view_anchor::Current();
+    vr::host_view::State const view = vr::host_view::Latest();
+    if (!game || !frame || !view.valid) {
+        return std::format("melee: no strike: {}", !game ? why : "no head-tracked view (needs VR on foot)");
+    }
+    gTime = std::max(gTime, SteadySeconds());  // no controller samples without tracked controllers: the clock moves on anyway
+    thr::SwingStep stroke;
+    stroke.strike = true;
+    stroke.speed = 4.0;
+    stroke.travel = 0.20;
+    stroke.forward = 1.0;
+    ik::Vec3 const head{view.head.position.x, view.head.position.y, view.head.position.z};
+    hand_calibration::Throwables const settings = hand_calibration::GetThrowables();
+    // Any direction: the body's front (gFrame.yaw) is only kept while the controllers are tracked.
+    Strike(gLink, *game, kRight, stroke, settings, *frame, head, verb == "punch", 180.0);
+    return std::format("melee: {}", gLastMelee);
+#else
+    (void)args;
+    return "melee: LE1 only";
 #endif
 }
 

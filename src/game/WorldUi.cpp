@@ -5,6 +5,8 @@
 #include "core/Log.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/XrToUnreal.hpp"
+#include "core/vr/HudPieces.hpp"
+#include "game/CockpitProbe.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/OmniTool.hpp"
 #include "game/Player.hpp"
@@ -69,6 +71,28 @@ struct Hold {
 };
 Hold gHold;
 bool gScreenUp = false;  // a screen of ours was published last tick (game thread)
+
+// The Mako's cockpit as the last frame with a head-tracked view saw it (tracking space; the cockpit stands still in the room
+// while it rides): its HUD anchor at the windshield and the eyes. Kept through the game's GUI mode, where the view anchor is gone
+// as soon as Halcyon shows its flat menu screen, which it does until our screen is up (2026-11-05 08:01: the box went flat).
+struct Cockpit {
+    bool valid = false;
+    XrVector3f anchor{};
+    XrVector3f eyes{};
+};
+Cockpit gCockpit;
+
+void NoteCockpit() {
+    if (!cockpit_probe::Riding()) {
+        gCockpit = {};
+        return;
+    }
+    vr::hud_pieces::Pieces pieces;
+    cockpit_probe::FillHud(pieces);
+    if (auto const frame = view_anchor::Current(); pieces.cockpit && frame) {
+        gCockpit = {true, pieces.panelAnchor, frame->head.position};
+    }
+}
 bool gWristUp = false;   // ... and it's projected from the wrist (arm IK runs, the view anchor held)
 
 // The last thing A would have used on foot, and when: a screen that opens within kUsedWithinMs of it (the minigame at a crate, a
@@ -352,6 +376,7 @@ void Tick(Link const& link) {
                                                : "the omni-tool's rail closed (or a screen took over)");
     }
     gRailOmniTool = railOmniTool;
+    NoteCockpit();
     if (mode && *mode == 0) {
         if (auto const frame = view_anchor::Current()) {
             gHold.footFrame = frame;  // the room as Shepard's view maps it (the held view's)
@@ -404,7 +429,18 @@ void Tick(Link const& link) {
             return;
         }
     }
-    if (!gHold.haveView || !gHold.footFrame) {
+    // In the Mako's cockpit (the extraction's "Return to Normandy?", the pause menu): the cockpit stays around the eyes through the
+    // GUI mode (game/CockpitProbe), so the screen goes out through its windshield (NoteCockpit's anchor), and Shepard's view on
+    // foot (from wherever Shepard last stood, long before the Mako) is never held: that showed bare terrain under the question
+    // with no cockpit (2026-11-05, research/48 section 27).
+    std::optional<XrVector3f> cockpitAnchor;
+    XrVector3f eyesNow{};
+    if (gCockpit.valid) {
+        cockpitAnchor = gCockpit.anchor;
+        eyesNow = gCockpit.eyes;
+    }
+    bool const inCockpit = cockpitAnchor.has_value();
+    if (!inCockpit && (!gHold.haveView || !gHold.footFrame)) {
         Down(link, "Shepard's view on foot isn't known (opened before any camera update on foot)");
         return;
     }
@@ -437,7 +473,15 @@ void Tick(Link const& link) {
     state.belowM = settings.belowM;
     state.backdrop = settings.backdrop;
     bool const fromWheel = std::any_of(panels.begin(), panels.end(), [](OpenPanel const& o) { return o.visible && wu::FromTag(o.tag) == wu::Screen::MenuBrowser; });
-    if (auto const at = AnchorOf(screen, base->handler, controller, gS.opening, fromWheel)) {
+    if (inCockpit) {
+        wu::CockpitPlacement const place = wu::InCockpit(eyesNow, *cockpitAnchor, state.widthM, settings.distanceM);
+        state.anchored = 1;
+        state.anchor[0] = cockpitAnchor->x;
+        state.anchor[1] = cockpitAnchor->y;
+        state.anchor[2] = cockpitAnchor->z;
+        state.belowM = place.belowM;
+        state.widthM = place.widthM;
+    } else if (auto const at = AnchorOf(screen, base->handler, controller, gS.opening, fromWheel)) {
         {
             XrVector3f const p = engine::ToTracking(*gHold.footFrame, engine::UnrealVector{at->x, at->y, at->z});
             state.anchored = 1;
@@ -447,8 +491,9 @@ void Tick(Link const& link) {
         }
     }
     // On the wrist (the omni-tool, research/57): a listed screen nothing in the world owns; one a use opened (a locker's equipment)
-    // stands by what was used. The bypass minigame is the omni-tool's own, so it always goes on the wrist.
-    bool const onWrist = wu::OnWrist(settings, screen, state.anchored != 0);
+    // stands by what was used. The bypass minigame is the omni-tool's own, so it always goes on the wrist; never in the Mako's
+    // cockpit (its screens stand at the windshield).
+    bool const onWrist = !inCockpit && wu::OnWrist(settings, screen, state.anchored != 0);
     wu::Rect const crop = wu::DefaultCrop(screen);  // the room's; on the wrist the host shows WristCrop
     state.stageCrop[0] = crop.u0;
     state.stageCrop[1] = crop.v0;
@@ -473,12 +518,15 @@ void Tick(Link const& link) {
     std::copy(std::begin(state.anchor), std::end(state.anchor), std::begin(gS.anchor));
     if (!gS.published || wasAnchored != gS.anchored) {
         log::Info("world ui: {} up (opening {}){}{}", gS.screen, gS.opening,
-            gS.anchored ? std::format(": it belongs to what stands at ({:.2f}, {:.2f}, {:.2f}) m in the room", gS.anchor[0], gS.anchor[1], gS.anchor[2])
+            inCockpit ? std::format(": in the Mako's cockpit, at its windshield toward ({:.2f}, {:.2f}, {:.2f}) m, {:.2f} m wide, {:.2f} m below "
+                                    "the eyes (no view held)",
+                            gS.anchor[0], gS.anchor[1], gS.anchor[2], state.widthM, state.belowM)
+            : gS.anchored ? std::format(": it belongs to what stands at ({:.2f}, {:.2f}, {:.2f}) m in the room", gS.anchor[0], gS.anchor[1], gS.anchor[2])
                         : std::string(": nothing in the world to stand it by; straight ahead"),
             onWrist ? "; projected from the left wrist (in the room if the left controller isn't tracked)" : "");
     }
     std::uint64_t const now = GetTickCount64();
-    if (gHold.povLocation != nullptr && now - gHold.povMs < 500) {
+    if (!inCockpit && gHold.povLocation != nullptr && now - gHold.povMs < 500) {
         state.holdRender = 1;
         state.holdLocation[0] = gHold.location.x;
         state.holdLocation[1] = gHold.location.y;
@@ -505,9 +553,9 @@ void Tick(Link const& link) {
     gWristUp = onWrist;
     view_anchor::Hold(onWrist ? gHold.footFrame : std::nullopt);
     SetStatus(std::format("{{\"open\": true, \"screen\": \"{}\", \"stack\": \"{}\", \"opening\": {}, \"anchored\": {}, \"anchor\": [{:.3f}, {:.3f}, {:.3f}], "
-                          "\"placement\": {}, \"omniTool\": {}, \"figure\": {}}}",
+                          "\"placement\": {}, \"inCockpit\": {}, \"heldView\": {}, \"omniTool\": {}, \"figure\": {}}}",
         gS.screen, stack, gS.opening, gS.anchored ? "true" : "false", gS.anchor[0], gS.anchor[1], gS.anchor[2], state.placement,
-        omni_tool::StatusJson(), ui_world_figure::StatusJson()));
+        inCockpit ? "true" : "false", state.holdRender != 0 ? "true" : "false", omni_tool::StatusJson(), ui_world_figure::StatusJson()));
 }
 
 bool WristScreenUp() {

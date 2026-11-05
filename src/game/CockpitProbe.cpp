@@ -355,6 +355,11 @@ struct Ride {
     // vehicle, or at `ride seat`: where the head was then is the cockpit's eye; leaning moves it from there.
     bool seated = false;
     engine::UnrealVector seat{};
+    // Until it's kept, the seat follows the head (seatWaiting): the host's samples counted, those carrying a head offset too.
+    bool seatWaiting = false;
+    std::uint64_t seatSequence = 0;
+    int seatSamples = 0;
+    int seatPlaced = 0;
     ue3::Object* vehicle = nullptr;            // the vehicle whose components are hidden from the eyes
     std::vector<std::pair<ue3::Object*, bool>> hidden;  // each primitive component and its bOwnerNoSee before
     bool chaseValid = false;
@@ -2373,6 +2378,13 @@ void PlacePartIn(Part const& part, engine::Basis const& frame, engine::UnrealVec
     FlushActor(part.actor, true);
 }
 
+// The game modes the ride holds in, the Mako the pawn: driving (1) and the game's GUI over it (7: the extraction's "Return to
+// Normandy?", the pause menu). Out of it in the GUI mode, the eyes saw bare terrain under the question, no cockpit (2026-11-05,
+// research/48 section 27); game/WorldUi puts the screen at the cockpit's windshield then.
+bool RideMode(std::optional<std::uint8_t> mode) {
+    return mode && (*mode == 1 || *mode == 7);
+}
+
 // After the camera's update (the vehicle has moved for this frame; the view isn't built yet).
 void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
     if (!gRide.on) {
@@ -2388,7 +2400,7 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
     auto const at = pawn != nullptr ? player::Location(pawn) : std::nullopt;
     auto const turn = pawn != nullptr ? player::Rotation(pawn) : std::nullopt;
     gRide.riding = false;
-    if (!ue3::IsA(pawn, gVehicleBase) || mode != 1 || !pov || pov->location == nullptr || pov->rotation == nullptr || !at || !turn) {
+    if (!ue3::IsA(pawn, gVehicleBase) || !RideMode(mode) || !pov || pov->location == nullptr || pov->rotation == nullptr || !at || !turn) {
         return;
     }
     gRide.chaseLocation = *pov->location;
@@ -2408,13 +2420,30 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
         PlaceDriver(frame, eye, upm, *turn);
     }
     if (!gRide.seated) {
-        // Until the host has a view (the first frames after a load, VR off), no seat: the head counts from the tracking centre.
+        // Until the seat is kept it follows the head, so the eye stays on the cockpit's. It's kept once the host's view has
+        // published kSeatSamples samples carrying a head offset, or kSeatGiveUp samples in all (a head right at the centre).
+        // The first sample after an entry can carry no offset yet: kept at once, it sat the eye 0.34 m forward, inside the
+        // console (the game side, 2026-11-05 08:06). Without a view (the first frames after a load, VR off), no seat.
+        constexpr int kSeatSamples = 5;
+        constexpr int kSeatGiveUp = 90;
+        if (!gRide.seatWaiting) {
+            gRide.seatWaiting = true;
+            gRide.seatSamples = 0;
+            gRide.seatPlaced = 0;
+        }
         vr::host_view::State const view = vr::host_view::Latest();
         gRide.seat = view.valid ? engine::UnrealVector{view.offsetForward, view.offsetRight, view.offsetUp} : engine::UnrealVector{};
-        gRide.seated = view.valid;
-        if (view.valid) {
-            log::Info("cockpit probe: ride: seated with the head {:.2f} m forward, {:.2f} m right, {:.2f} m up of the tracking centre", gRide.seat.x / upm,
-                gRide.seat.y / upm, gRide.seat.z / upm);
+        if (view.valid && view.sequence != gRide.seatSequence) {
+            gRide.seatSequence = view.sequence;
+            ++gRide.seatSamples;
+            gRide.seatPlaced += view.offsetForward != 0.0f || view.offsetRight != 0.0f || view.offsetUp != 0.0f ? 1 : 0;
+        }
+        if (view.valid && (gRide.seatPlaced >= kSeatSamples || gRide.seatSamples >= kSeatGiveUp)) {
+            gRide.seated = true;
+            gRide.seatWaiting = false;
+            log::Info("cockpit probe: ride: seated with the head {:.2f} m forward, {:.2f} m right, {:.2f} m up of the tracking centre ({} of {} "
+                      "samples with a head offset)",
+                gRide.seat.x / upm, gRide.seat.y / upm, gRide.seat.z / upm, gRide.seatPlaced, gRide.seatSamples);
         }
     }
     // The renderer puts the head at the camera plus its offset: the camera goes where that lands the seated head on the eye.
@@ -2439,7 +2468,7 @@ void RideTick() {
     }
     ue3::Object* const controller = player::Controller();
     ue3::Object* const pawn = controller != nullptr ? player::Pawn(controller) : nullptr;
-    bool const inVehicle = gRide.on && ue3::IsA(pawn, gVehicleBase) && player::GameMode(controller) == 1;
+    bool const inVehicle = gRide.on && ue3::IsA(pawn, gVehicleBase) && RideMode(player::GameMode(controller));
     if (gRide.vehicle != nullptr && (!inVehicle || pawn != gRide.vehicle)) {
         ShowVehicle();
     }
@@ -4784,6 +4813,31 @@ std::optional<Seat> CurrentSeat() {
         }
         seat.grip[side] = at(grip);
         seat.axis[side] = engine::Apply(gRide.frame, {axis.y, axis.x, axis.z});
+    }
+    // The cockpit's panel (game/CockpitPanel, research/48 section 27). The extraction handle held: that hand closes on its bar
+    // (the U's middle, where the grab is measured), swung out as far as the handle is, the knuckles along the bar (it runs along
+    // the hinge's axis). The handle takes a new squeeze at itself overhead, so it never shares a hand with the lever or the stick.
+    vr::cockpit_panel::Output const& panel = cockpit_panel::Current();
+    if (gPanelLayout.set && panel.held && (panel.holdHand == 0 || panel.holdHand == 1)) {
+        engine::UnrealVector const& h = gPanelLayout.hingeM;  // right, forward, up from the eye (metres)
+        engine::UnrealVector const& a = gPanelLayout.hingeAxisM;  // unit (the `panel` line's parse)
+        engine::UnrealVector const v{gPanelLayout.gripM.x - h.x, gPanelLayout.gripM.y - h.y, gPanelLayout.gripM.z - h.z};
+        // v turned about a by the swing, right-handed as the panel's rule in tracking space (the eye's right, forward, up are a
+        // right-handed frame there too): + swings the bar out, toward the pilot and up.
+        double const t = static_cast<double>(panel.pullDeg) * 3.14159265358979323846 / 180.0;
+        double const c = std::cos(t);
+        double const s = std::sin(t);
+        double const dot = a.x * v.x + a.y * v.y + a.z * v.z;
+        engine::UnrealVector const cross{a.y * v.z - a.z * v.y, a.z * v.x - a.x * v.z, a.x * v.y - a.y * v.x};
+        engine::UnrealVector const swung{v.x * c + cross.x * s + a.x * dot * (1.0 - c), v.y * c + cross.y * s + a.y * dot * (1.0 - c),
+            v.z * c + cross.z * s + a.z * dot * (1.0 - c)};
+        int const side = panel.holdHand;
+        seat.held[side] = true;
+        seat.grip[side] = at({h.x + swung.x, h.y + swung.y, h.z + swung.z});
+        seat.axis[side] = engine::Apply(gRide.frame, {a.y, a.x, a.z});
+    }
+    if (panel.pressHand == 0 || panel.pressHand == 1) {
+        seat.pointing[panel.pressHand] = !seat.held[panel.pressHand];
     }
     return seat;
 }

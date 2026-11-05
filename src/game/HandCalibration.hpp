@@ -147,8 +147,9 @@ Controls GetControls();
 //                    0: the old mapping (the grip is RB except a squeeze at a slot)
 //   releaseGrace     seconds after letting go away from the gun's slot before it goes back (a new
 //                    squeeze in time keeps it; never while the trigger is held); negative: it stays out
-//   powerWheel       with gripHolds: the control that is RB (hold: power wheel, tap: mapped power):
-//                    r3 (default) | y | x | b | none
+//   powerWheel       with gripHolds: the control that opens the power wheel: r3 (default; held, the mod opens the
+//                    wheel and a tap does nothing, research/19 "Hold only") | y | x | b (RB: hold the wheel, tap the
+//                    mapped power) | none
 //   weaponWheel      1: the game's weapon wheel stays on its button (LB) as a fallback; 0: no LB
 //                    from the left trigger or grip while holsters are on
 //   holster          0 off; 1 at the held gun's own slot; 2 also at an empty slot
@@ -237,10 +238,13 @@ Squad GetSquad();
 //   meleeSpeedMS     the free hand's speed for a strike (m/s, relative to the head)
 //   meleeGunSpeedMS  the gun hand's
 //   meleeTravelM     the stroke's travel at that speed (m)
-//   meleeCooldownS   seconds between strikes (the game adds its own: 0.96 s pistol, 1.38 s rifle)
+//   meleeCooldownS   seconds between strikes, both hands together; never sooner than the game's own melee cooldown
+//                    (0.96 s pistol whip, 1.38 s rifle butt, read live from the power)
 //   meleeNeedsEnemy  1: only with a living hostile within meleeReachM and meleeConeDeg of the body's front
 //   meleeReachM, meleeConeDeg
-//   meleeButton      1: B still melees; 0: only the physical stroke (on foot)
+//   meleeButton      1: B still melees; 0 (default since 2026-11-05): only the physical stroke (on foot)
+//   meleeFist        1: with the weapon away the right hand strikes as a fist (grip and trigger held): the game's
+//                    pistol whip power through BioPlayerInput.ActivatePower (TryMelee would only draw the gun)
 //   hapticAmplitude  0..1 (0.5 as designed; 0: none); holdBuzz: 1 = a faint buzz while a grenade is held
 struct Throwables {
     bool enabled = true;
@@ -263,7 +267,8 @@ struct Throwables {
     bool meleeNeedsEnemy = true;
     double meleeReach = 2.0;
     double meleeConeDeg = 75.0;
-    bool meleeButton = true;
+    bool meleeButton = false;
+    bool meleeFist = true;
     double hapticAmplitude = 0.5;
     bool holdBuzz = true;
 };

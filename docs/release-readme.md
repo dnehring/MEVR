@@ -120,11 +120,11 @@ below are in `Game\ME1\Binaries\Win64\ASI\LE1MEVR.ini`; most also have a row in 
 | Right grip at a holster | Draw that weapon. Keep the grip squeezed to hold the gun. Let go at its holster to put it away; let go anywhere else and it goes back after 0.3 s unless you squeeze again |
 | Left grip on the gun | Hold it with both hands (anywhere along the gun). With the gun raised to your cheek the game gives you its aimed fire |
 | Left trigger | The weapon wheel, at your left hand. Point your left hand at a squadmate as you pull to start on their weapon; the right stick highlights a weapon; let go of the trigger to give it. B closes the wheel without a change |
-| Right stick click | A tap casts your equipped (mapped) power. Hold it and steer with the right stick for the game's own power wheel; let go to use the highlighted power |
+| Right stick click | Hold it and steer with the right stick for the game's own power wheel; let go to close it. A quick click does nothing (cast your equipped power with a push of your left hand) |
 | Right stick, double-click | Recenter the view |
 | Left stick click | Crouch on or off |
 | A | Use what you look at (talk, open, pick up). Hold to sprint |
-| B | Melee, with a weapon drawn |
+| B | Nothing on foot (melee is a real strike); backs out of menus |
 | X | Hold: the power wheel opens around your left palm; move your hand (or the left stick) toward a power and let go to equip it. Tap: it stays open until you pinch the left trigger. On foot X no longer throws a grenade the game's way (`[PowerWheel] on = 0` gives it back) |
 | Left hand pushed forward | Raise your left arm and point at an enemy: brackets lock onto it. Push your open hand toward it to cast your equipped power there (placed powers like Singularity land where you point if nothing is locked) |
 | Y | Medi-gel |
@@ -144,7 +144,8 @@ foot: the game's own buttons don't pull your gun out for you (medi-gel and power
 - **Grenade:** reach across to the left side of your chest with your right hand and squeeze the right grip: you hold
   a grenade. Throw it with a quick release; let go slowly and it goes back. If your weapon is away, taking a grenade
   draws it (Mass Effect 1 only throws with a weapon out). `[Throwables] hands = both` lets the left hand take them too.
-- **Melee:** a fast punch or swing at an enemy within about 2 m in front of you. B works as well.
+- **Melee:** a fast punch or swing at an enemy within about 2 m in front of you, about once a second at most. With your
+  weapon away, make a fist with your right hand (squeeze the grip and the trigger) and punch.
 - **Vent:** cools a hot gun at once (a change to Mass Effect 1's rules). When the gun's heat is at least 30%, put your
   left hand on the gun just above and ahead of your right hand (a tick in the controller says you're there), squeeze
   the left grip, pull back fast and let go, like racking a slide. Once every 4 s. `[Vent] enabled = 0` turns it off.

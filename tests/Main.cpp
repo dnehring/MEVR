@@ -49,6 +49,7 @@
 #include "core/vr/Recenter.hpp"
 #include "core/vr/SceneCaptureScope.hpp"
 #include "core/vr/CineScreen.hpp"
+#include "core/vr/PresentationHold.hpp"
 #include "core/vr/GalaxyHologram.hpp"
 #include "core/vr/GalaxyMap.hpp"
 #include "core/vr/OmniRail.hpp"
@@ -6587,7 +6588,27 @@ void TestGrenadeMachine() {
     CHECK(s.event == thr::Event::None && machine.Holder() < 0);
 }
 
+// Melee is the gesture only (research/20 "Gesture only", 2026-11-05): which melee a strike is, and the shared wait.
+void TestMeleeRoute() {
+    namespace thr = mevr::ik::throwing;
+    using R = thr::MeleeRoute;
+    // The weapon out: either hand, open or not.
+    CHECK(thr::RouteMelee(true, true, false, true) == R::Weapon && thr::RouteMelee(true, false, false, false) == R::Weapon);
+    // Away: only the right fist.
+    CHECK(thr::RouteMelee(false, true, true, true) == R::Fist);
+    CHECK(thr::RouteMelee(false, true, false, true) == R::OpenHand);
+    CHECK(thr::RouteMelee(false, false, true, true) == R::LeftUnarmed);
+    CHECK(thr::RouteMelee(false, true, true, false) == R::FistOff);
+    CHECK(thr::Refusal(R::Weapon) == nullptr && thr::Refusal(R::Fist) == nullptr);
+    CHECK(thr::Refusal(R::OpenHand) != nullptr && thr::Refusal(R::LeftUnarmed) != nullptr && thr::Refusal(R::FistOff) != nullptr);
+    // No spamming: whichever of our cooldown and the game's ends later.
+    CHECK(thr::MeleeWait(10.0, 10.8, 0.0) > 0.79 && thr::MeleeWait(10.0, 10.8, 0.0) < 0.81);
+    CHECK(thr::MeleeWait(10.0, 10.8, 1.38) > 1.37 && thr::MeleeWait(10.0, 10.8, 1.38) < 1.39);  // the rifle butt's
+    CHECK(thr::MeleeWait(11.0, 10.8, 0.0) == 0.0 && thr::MeleeWait(11.0, 10.8, -1.0) == 0.0);
+}
+
 void TestSwing() {
+    TestMeleeRoute();
     namespace thr = mevr::ik::throwing;
     using mevr::ik::Vec3;
     double const dt = 1.0 / 90.0;
@@ -7203,6 +7224,79 @@ void TestDevChannelsAndDiskBudget() {
     CHECK(PlanPrune(files, 150, 100000).empty());  // nothing old enough
 }
 
+void TestPresentationHold() {
+    namespace pr = mevr::vr::presentation;
+    {   // The front end: start-up's unreadable byte, the title, its camera flight, the menu's load, gameplay, an in-game load.
+        pr::FrontEnd f;
+        CHECK(f.Update(-1));    // start-up: no mode read yet
+        CHECK(f.Update(8));     // the logos' movie mode (its video not always seen decoding)
+        CHECK(f.Update(-1));
+        CHECK(f.Update(7));     // the title
+        CHECK(f.Update(6));     // a key pressed: the camera flight to the main menu is the front end's menu, not a cutscene
+        CHECK(!f.Update(0));    // a frame of mode 0 in the middle of it (seen 6, 0, 7)
+        CHECK(!f.Update(0));
+        CHECK(f.Starting());    // not gameplay yet
+        CHECK(f.Update(6));
+        CHECK(f.Update(7));     // the main menu
+        CHECK(f.Starting());
+        CHECK(f.Update(-1));    // a load from the main menu
+        CHECK(!f.Starting());   // its cinematics are the game's
+        CHECK(f.Update(8));     // the load's movie mode, still after the menus
+        CHECK(f.Update(-1));
+        CHECK(!f.Update(6));    // a new game's opening cutscene: the game's
+        CHECK(!f.Update(8));    // a movie inside it: Halcyon's
+        CHECK(!f.Update(0));    // gameplay
+        CHECK(!f.Update(-1));   // an unreadable byte after gameplay is not the front end
+        CHECK(!f.Update(6));
+        CHECK(!f.Update(-1));   // nor after a cutscene
+        CHECK(f.LastReadable() == 6);
+        CHECK(!f.Update(9));
+        CHECK(!f.Update(-1));   // nor after the galaxy map
+    }
+    {   // A conversation or cutscene after gameplay is the game's, even before any load (a map opened from the command line).
+        pr::FrontEnd f;
+        CHECK(f.Update(-1));
+        for (int i = 0; i < pr::FrontEnd::kGameplayFrames; ++i) {
+            CHECK(!f.Update(0));
+        }
+        CHECK(!f.Starting());
+        CHECK(!f.Update(5));
+    }
+    {   // Plain VR from the start: shown at once.
+        pr::VrEntry v;
+        CHECK(!v.Hold(true, 1000));
+        CHECK(!v.Hold(true, 1010));
+        CHECK(!v.Hold(false, 1020));   // any other view: at once
+        CHECK(v.Covered() == 0);
+    }
+    {   // The title's 6 -> 0 -> 7: the 40 ms of mode 0 shows the cinematic's view, then the menu's panel; never the world.
+        pr::VrEntry v;
+        CHECK(!v.Hold(false, 0));     // the cinematic on the 3D screen
+        CHECK(v.Hold(true, 16));      // mode 0: held
+        CHECK(v.Hold(true, 40));
+        CHECK(!v.Hold(false, 56));    // the main menu's panel
+        CHECK(v.Covered() == 1);
+    }
+    {   // A cutscene's end into gameplay: the world after the hold, and it stays.
+        pr::VrEntry v;
+        CHECK(!v.Hold(false, 0));
+        CHECK(v.Hold(true, 10));
+        CHECK(v.Hold(true, 109));
+        CHECK(!v.Hold(true, 110));    // 100 ms after the first plain VR frame
+        CHECK(!v.Hold(true, 120));
+        CHECK(!v.Hold(false, 130));   // a menu: at once
+        CHECK(v.Hold(true, 140));     // and back: held again
+        CHECK(v.Covered() == 0);
+        CHECK(!v.Hold(true, 240, 100));
+    }
+    {   // A clock that went back while holding ends the hold rather than holding forever.
+        pr::VrEntry v;
+        CHECK(!v.Hold(false, 500));
+        CHECK(v.Hold(true, 510));
+        CHECK(!v.Hold(true, 400));
+    }
+}
+
 void TestCineScreen() {
     namespace cs = mevr::vr::cine_screen;
     // The crop: the two shown parts are c apart and (1 - c) wide, so infinity's disparity is depth of the shown width.
@@ -7371,6 +7465,23 @@ void TestWorldUi() {
     auto const ahead = wu::Place(eyes, {0.6f, -0.8f, 0.0f}, std::nullopt, 1.2f, 1.0f, 0.0f, 0.75f);
     CHECK(ahead && NearXr(ahead->pose.position, {1.2f, 1.7f, 0.0f}, 1e-4));
     CHECK(!wu::Place(eyes, {0.0f, 0.0f, -1.0f}, std::nullopt, 0.0f, 1.0f, 0.0f, 0.75f));
+    // PlaceDistance is Place's own: the far anchor's full distance, the near one's nearest, none's distanceM.
+    CHECK(NearD(wu::PlaceDistance(eyes, XrVector3f{2.2f, 1.2f, 0.0f}, 1.0f), 1.0, 1e-5));
+    CHECK(NearD(wu::PlaceDistance(eyes, XrVector3f{0.2f, 1.2f, -0.6f}, 1.0f), wu::kNearestM, 1e-5));
+    CHECK(NearD(wu::PlaceDistance(eyes, std::nullopt, 0.95f), 0.95, 1e-5));
+    // In the Mako's cockpit: toward its HUD anchor (the game's: 0.3 m up, 1.6 m out), kCockpitUpDeg above the eyes' level (not
+    // at the anchor's height: that covered the extraction pod), kCockpitScale as wide to the eye as on foot (1.2 m at 0.95 m),
+    // whichever way the head looks. A near anchor: the nearest distance, the same angles.
+    XrVector3f const seat{0.0f, 1.2f, 0.0f};
+    XrVector3f const hudAnchor{0.0f, 1.5f, -1.6f};
+    double const upTan = std::tan(wu::kCockpitUpDeg * 3.14159265 / 180.0);
+    wu::CockpitPlacement const cockpit = wu::InCockpit(seat, hudAnchor, 1.2f, 0.95f);
+    CHECK(NearD(cockpit.belowM, -0.95 * upTan, 1e-5) && NearD(cockpit.widthM, 1.2 * wu::kCockpitScale, 1e-5));
+    auto const atWindshield = wu::Place(seat, {1.0f, 0.0f, 0.0f}, hudAnchor, cockpit.widthM, 0.95f, cockpit.belowM, 0.5625f);
+    CHECK(atWindshield && NearXr(atWindshield->pose.position, {0.0f, 1.2f + static_cast<float>(0.95 * upTan), -0.95f}, 1e-4));
+    wu::CockpitPlacement const closeBy = wu::InCockpit(seat, {0.0f, 1.25f, -0.6f}, 1.2f, 0.95f);
+    CHECK(NearD(closeBy.belowM, -wu::kNearestM * upTan, 1e-5) &&
+          NearD(closeBy.widthM, 1.2 * wu::kCockpitScale * wu::kNearestM / 0.95, 1e-5));
     // The whole window around a cropped panel: the crop's corners land on the panel's corners.
     if (toward) {
         wu::Rect const crop{0.14f, 0.2245f, 0.86f, 0.7755f};
@@ -9769,10 +9880,14 @@ void TestMenuSettings() {
             CHECK(ms::Find(k) != nullptr && ms::Find(k)->type == ms::Type::Text);  // the page binds every one
         }
         CHECK(text(shipped, "guide_lt") == "Weapon wheel" && text(shipped, "guide_rt") == "Fire");
-        CHECK(text(shipped, "guide_rstick") == "Turn, click: powers");
+        CHECK(text(shipped, "guide_rstick") == "Turn, hold: powers");
         CHECK(text(shipped, "guide_rstick_how").find("recenter") != std::string::npos);
         CHECK(text(shipped, "guide_rgrip") == "Draw and holster");
-        CHECK(text(shipped, "guide_x") == "Grenade" && text(shipped, "guide_y") == "Medi-gel" && text(shipped, "guide_b") == "Melee");
+        CHECK(text(shipped, "guide_x") == "Grenade" && text(shipped, "guide_y") == "Medi-gel" && text(shipped, "guide_b") == "Back (menus)");
+        CHECK(text(shipped, "guide_melee").find("right fist") != std::string::npos);  // [Throwables] meleeFist (2026-11-05)
+        ms::GuideInput withB = shipped;
+        withB.meleeButton = true;
+        CHECK(text(withB, "guide_b") == "Melee");
         CHECK(text(shipped, "guide_lgrip_how").find("vent") != std::string::npos);
         CHECK(text(shipped, "guide_grenade").rfind("Right hand", 0) == 0);  // [Throwables] hands = right
         CHECK(text(shipped, "guide_lstick_how").find("where you look") != std::string::npos);
@@ -9815,7 +9930,7 @@ void TestMenuSettings() {
         kept.grenadeHands = "left";
         kept.walk = "hand";
         kept.turn = "snap";
-        CHECK(text(kept, "guide_x") == "Nothing" && text(kept, "guide_b") == "Nothing");
+        CHECK(text(kept, "guide_x") == "Nothing" && text(kept, "guide_b") == "Back (menus)");
         CHECK(text(kept, "guide_lgrip") == "Two-handed grip" && text(kept, "guide_lgrip_how").find("vent") == std::string::npos);
         CHECK(text(kept, "guide_lgrip_how").find("grenade") != std::string::npos);
         CHECK(text(kept, "guide_grenade").rfind("Left hand", 0) == 0);
@@ -11293,6 +11408,7 @@ int main() {
     TestOmniRail();
     TestWorldUi();
     TestCineScreen();
+    TestPresentationHold();
     TestDevChannelsAndDiskBudget();
     TestBoneNames();
     TestIk();

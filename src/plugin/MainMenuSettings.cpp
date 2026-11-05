@@ -345,7 +345,8 @@ void Settings::Read(menu::Values& v) {
         g.melee = ini.Num("Throwables", "melee", 1.0f) != 0.0f;
         g.grenadeHands = Lower(ini.Text("Throwables", "hands", "right"));
         g.grenadeButton = ini.Num("Throwables", "grenadeButton", 1.0f) != 0.0f;
-        g.meleeButton = ini.Num("Throwables", "meleeButton", 1.0f) != 0.0f;
+        g.meleeButton = ini.Num("Throwables", "meleeButton", 0.0f) != 0.0f;
+        g.meleeFist = ini.Num("Throwables", "meleeFist", 1.0f) != 0.0f;
         g.vent = v.Flag("vent");
         g.turn = v.Text("turn");
         g.walk = v.Text("walk");

@@ -83,7 +83,19 @@ ue3::Function* gTryHolster = nullptr;
 ue3::Function* gIsInCombatActionState = nullptr;
 ue3::Function* gIsSwitchingWeapons = nullptr;
 ue3::Function* gGetRangedWeaponType = nullptr;
+// The game's power wheel by holding the right stick click (gamepad::PowerHoldFromStickClick, research/19 "Hold only"):
+// EnterPowerWheel after the hold, ExitPowerWheel (what letting go of RB does in the wheel) at the release.
+ue3::ClassRef gGameModePowerWheel{"SFXGame.SFXGameModePowerWheel"};
+ue3::FieldRef gCurrentMode{"SFXGame.SFXGameModeManager", "CurrentMode"};
+ue3::FunctionRef gExitPowerWheelFn{"SFXGame.SFXGameModePowerWheel.ExitPowerWheel"};
+ue3::Function* gEnterPowerWheel = nullptr;
+ue3::Function* gExitPowerWheel = nullptr;
 #endif
+gamepad::PowerHold gPowerHold;
+bool gPowerHoldOn = false;   // this tick: the mod opens the wheel from the click's hold (kFlagModPowerHold)
+bool gPowerOpened = false;   // we opened the wheel and haven't closed it yet
+unsigned gPowerOpens = 0;    // heartbeat counters
+unsigned gPowerRefused = 0;
 
 bool gStarted = false;
 slots::Machine gMachine;
@@ -299,6 +311,87 @@ std::optional<Game> ReadGame(std::string& why) {
         return std::nullopt;
     }
     return game;
+}
+
+// ---- The game's power wheel, held open by the right stick click ----
+// The user, 2026-11-05: the click only opens the wheel while it's held; a tap casts nothing (the cast is the left hand's
+// push, research/55). The game's RB binding (OnHold 0.3 EnterPowerWheel | OnTap 0.3 TryUseMappedPower) casts the mapped
+// power for any RB shorter than 0.3 s, so while gPowerHoldOn the host sends no RB from the click and the mod opens and
+// closes the wheel itself, on the game thread: SFXGameModeDefault.EnterPowerWheel once the click has been held
+// kPowerHoldMs alone (the game's own hold time), SFXGameModePowerWheel.ExitPowerWheel at the release.
+
+// The player controller's game mode manager's mode of class `cls`, and the manager's current mode (EGameModes).
+ue3::Object* ModeOf(ue3::Object* controller, ue3::ClassRef& cls, std::optional<std::uint8_t>* current = nullptr) {
+    ue3::Object* const manager = controller != nullptr ? gGameModeManager.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
+    if (current != nullptr) {
+        *current = manager != nullptr ? gCurrentMode.Read<std::uint8_t>(manager) : std::nullopt;
+    }
+    ue3::TArray<ue3::Object*> const* const modes = manager != nullptr ? gGameModes.In<ue3::TArray<ue3::Object*>>(manager) : nullptr;
+    for (int i = 0; modes != nullptr && i < modes->Count(); ++i) {
+        ue3::Object* const mode = modes->data[i];
+        if (mode != nullptr && ue3::IsA(mode, cls)) {
+            return mode;
+        }
+    }
+    return nullptr;
+}
+
+void CallNoParms(ue3::Object* object, ue3::Function* function) {
+    ue3::Params parms(ue3::runtime::Get(), function);
+    ue3::runtime::Call(object, function, parms);  // directly: never a generated wrapper
+}
+
+constexpr std::uint8_t kModeDefault = 0;     // EGameModes: on foot
+constexpr std::uint8_t kModePowerWheel = 2;  // SFXGameModePowerWheel
+
+void TickPowerHold(vr::controllers::State const& controllers) {
+    gPowerHoldOn = gHolds && gRbSource == gamepad::RbSource::RightStickClick && gEnterPowerWheel != nullptr &&
+        gExitPowerWheel != nullptr && ue3::runtime::Ready();
+    gamepad::RbClickInput in;
+    in.click = controllers.active && controllers.right.stickClick;
+    in.stickX = controllers.right.stickX;
+    in.stickY = controllers.right.stickY;
+    in.otherClick = controllers.active && controllers.left.stickClick;
+    in.enabled = gPowerHoldOn;
+    in.nowMs = controllers.timeMs;  // GetTickCount64 at the sample: the host's clock for RB's same rules
+    gamepad::PowerHoldStep const step = gamepad::PowerHoldFromStickClick(gPowerHold, in);
+    if (step.open) {
+        std::string why;
+        std::optional<Game> const game = ReadGame(why);
+        std::optional<std::uint8_t> before;
+        if (game) {
+            ModeOf(game->controller, gGameModePowerWheel, &before);
+        }
+        if (!game || before != kModeDefault) {
+            ++gPowerRefused;
+            log::Info("holsters: the right stick click held: the power wheel opens only on foot ({})",
+                !game ? why : before ? std::format("game mode {}", *before) : std::string("game mode unknown"));
+        } else {
+            CallNoParms(game->mode, gEnterPowerWheel);
+            std::optional<std::uint8_t> after;
+            ModeOf(game->controller, gGameModePowerWheel, &after);
+            gPowerOpened = after == kModePowerWheel;
+            gPowerOpens += gPowerOpened ? 1 : 0;
+            gPowerRefused += gPowerOpened ? 0 : 1;
+            log::Info("holsters: the right stick click held {} ms: SFXGameModeDefault.EnterPowerWheel {}", gamepad::kPowerHoldMs,
+                gPowerOpened ? std::string("opened the game's power wheel")
+                             : std::format("didn't open it (game mode {} after the call: combat not allowed here?)",
+                                   after ? std::to_string(*after) : std::string("unknown")));
+        }
+    }
+    if (step.close && gPowerOpened) {
+        gPowerOpened = false;
+        ue3::Object* const pc = player::Controller();
+        std::optional<std::uint8_t> now;
+        ue3::Object* const wheel = pc != nullptr && player::IsBioPlayerController(pc) ? ModeOf(pc, gGameModePowerWheel, &now) : nullptr;
+        if (wheel != nullptr && now == kModePowerWheel) {
+            CallNoParms(wheel, gExitPowerWheel);
+            log::Info("holsters: the right stick click let go: SFXGameModePowerWheel.ExitPowerWheel (the game's power wheel closed)");
+        } else {
+            log::Info("holsters: the right stick click let go: the power wheel had already closed (game mode {})",
+                now ? std::to_string(*now) : std::string("unknown"));
+        }
+    }
 }
 
 ue3::Object* QuickSlot(Game const& game, int i) {
@@ -585,6 +678,11 @@ bool TryStartup() {
         log::Warn("holsters: SFXPawn_Player.DrawPrimaryWeapon not found: the game may still draw by itself");
     }
     gFireWeapon = gFireWeaponFn.Get();
+    gEnterPowerWheel = gEnterPowerWheelFn.Get();
+    gExitPowerWheel = gExitPowerWheelFn.Get();
+    log::Info("holsters: the right stick click's hold {}", gEnterPowerWheel != nullptr && gExitPowerWheel != nullptr
+            ? "opens the game's power wheel (SFXGameModeDefault.EnterPowerWheel, SFXGameModePowerWheel.ExitPowerWheel); a tap casts nothing"
+            : "can't open the power wheel itself (EnterPowerWheel or ExitPowerWheel not found): the click stays RB (a tap casts the mapped power)");
     ue3::FunctionRef* const allowed[] = {&gUseFirstAidFn, &gTryUseMappedPowerFn, &gEnterPowerWheelFn};
     std::string allowedText;
     for (std::size_t i = 0; i < gAllowedCallers.size(); ++i) {
@@ -650,8 +748,10 @@ void Tick(double deltaSeconds, Link const& link) {
 #if defined(MEVR_GAME_LE1)
     auto const mode = gStarted ? head_tracking::GameMode() : std::nullopt;
     gHolds = holdsWanted && mode && (*mode == 0 || *mode == 2 || *mode == 3);
+    TickPowerHold(controllers);
 #else
     gHolds = false;
+    gPowerHoldOn = false;
 #endif
     if (!gLoggedHolds || gHolds != gLoggedHoldsValue) {
         gLoggedHolds = true;
@@ -888,6 +988,7 @@ void AdjustPad(gamepad::Options& options) {
     }
     options.rightGripHolds = gHolds;
     options.rbSource = gRbSource;
+    options.modPowerHold = gPowerHoldOn;
     options.rightGripFree = !gHolds && gActive && gNear;
     if (gWheelOff) {
         options.leftTriggerShoulder = false;
@@ -930,7 +1031,7 @@ std::string StatusJson() {
     return std::format("{{\"enabled\": {}, \"active\": {}, \"why\": {}, \"gripHolds\": {}, \"rbSource\": {}, \"inSlot\": {}, "
                        "\"phase\": {}, \"returnLeft\": {}, \"near\": {}, \"contact\": {}, \"yawSource\": {}, \"yaw\": {}, "
                        "\"anchor\": [{}, {}, {}], \"eyeHeight\": {}, \"eyeHeightSource\": {}, \"floorEyeHeight\": {}, "
-                       "\"held\": {}, \"drawn\": {}, \"slots\": [{}]}}",
+                       "\"held\": {}, \"drawn\": {}, \"powerHold\": {{\"on\": {}, \"opened\": {}}}, \"slots\": [{}]}}",
         gEnabled ? "true" : "false", gActive ? "true" : "false", json::JsonString(gWhy), gHolds ? "true" : "false",
         json::JsonString(gamepad::Name(gRbSource)),
         gMachine.InSlot() >= 0 ? json::JsonString(settings.layout.slots[gMachine.InSlot()].name) : std::string("null"),
@@ -943,7 +1044,7 @@ std::string StatusJson() {
 #else
         json::JsonString("none"),
 #endif
-        gCarried.drawn ? "true" : "false", list);
+        gCarried.drawn ? "true" : "false", gPowerHoldOn ? "true" : "false", gPowerOpened ? "true" : "false", list);
 }
 
 void LogStats() {
@@ -959,13 +1060,18 @@ void LogStats() {
     }
     log::Info("    holsters: {}; {}; yaw from {}; in {}; this period: {} entries, {} draws, {} holsters, {} refusals, {} game draws refused, "
               "nearest {}, strongest contact buzz {:.2f}; eye height {:.2f} m from {}{}{}",
-        gWhy, gHolds ? std::format("the grip holds the gun (RB: {})", gamepad::Name(gRbSource)) : std::string("the grip is RB"),
+        gWhy, gHolds ? std::format("the grip holds the gun ({})", gPowerHoldOn
+                                       ? std::format("the right stick click's hold opens the power wheel: {} opened, {} refused",
+                                             gPowerOpens, gPowerRefused)
+                                       : std::format("RB: {}", gamepad::Name(gRbSource)))
+                     : std::string("the grip is RB"),
         gYawSource, gMachine.InSlot() >= 0 ? settings.layout.slots[gMachine.InSlot()].name : "no slot", gEntries, gDraws,
         gHolsters, gRefusals, gRefusedDraws,
         gNearestSlot >= 0 ? std::format("{:.2f} m outside {}", gNearest, settings.layout.slots[gNearestSlot].name) : std::string("-"),
         gContactPeak, gEyeHeight, gEyeSource, gFloorNow >= 0.0 ? std::format(" (head now {:.2f} m above the floor)", gFloorNow) : std::string(),
         where.empty() ? std::string() : std::format("; slots from the anchor:{}", where));
     gEntries = gDraws = gHolsters = gRefusals = gRefusedDraws = 0;
+    gPowerOpens = gPowerRefused = 0;
     gNearest = 1e9;
     gNearestSlot = -1;
     gContactPeak = 0.0f;
@@ -1019,8 +1125,13 @@ void Shutdown() {
     gLoggedWhy.clear();
 #if defined(MEVR_GAME_LE1)
     gSwitchToWeapon = gTryHolster = gIsInCombatActionState = gIsSwitchingWeapons = gGetRangedWeaponType = nullptr;
+    gEnterPowerWheel = gExitPowerWheel = nullptr;
     gAllowedCallers.fill(nullptr);
 #endif
+    gPowerHold = {};
+    gPowerHoldOn = false;
+    gPowerOpened = false;
+    gPowerOpens = gPowerRefused = 0;
 }
 
 } // namespace mevr::game::holsters

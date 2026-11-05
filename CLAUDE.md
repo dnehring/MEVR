@@ -148,6 +148,9 @@ switching frameworks.
   date and the new wording there.** New ones follow `docs/knowledge/how-to-write.md`; `python tools/check-okf.py
   docs/knowledge` (ctest `mevr-okf`) checks the bundle.
 - `reference/`: read-only third-party clones (gitignored). Recreate with `tools/fetch-references.ps1`.
+- `notes/headset-checklist.md`: everything that still needs the user in the headset, by area and owning session, plus
+  what Claude can check alone on the fake headset. Add a line when you build something that needs the headset; delete it
+  (and write the result in its research note) once it's checked.
 - `notes/game-inventory.md`: exe versions and hashes from `tools/inventory-game.ps1`. Re-run after
   game updates. All three exes are 2.0.0.48602 (the build LExSDKv2's RVAs target).
 - `mods/`: raw mod downloads (gitignored). Unpack `.m3m` merge mods with `tools/extract-m3m.ps1`.
@@ -195,8 +198,11 @@ switching frameworks.
   release throws it (the game's `UseGrenade`; its disc re-aimed from the hand in a post-handler of
   `BioGrenade.LaunchGrenadeAtPoint`), a slow one puts it back; a fast stroke with an enemy in reach
   is `TryMelee`. Claimed squeezes run before holsters; a left squeeze in the support grip's zone is the
-  support grip, never a grenade. B/X stay unless
-  `meleeButton`/`grenadeButton = 0` (host v14).
+  support grip, never a grenade. X stays unless `grenadeButton = 0` (host v14). **Melee is the gesture only** (research/20
+  "Gesture only", 2026-11-05): B no longer melees on foot (`meleeButton = 0`, migrated once); with the weapon away the
+  right FIST (grip and trigger) punches through `BioPlayerInput.ActivatePower(Pistol_Whip)` (`meleeFist`; the left hand
+  doesn't, its trigger and grip are the squad's); both hands share one cooldown that also waits out the game's melee
+  power's (`ik::throwing::RouteMelee`, `MeleeWait`). `mevr melee punch|strike` tests it without controllers.
 - No cover snapping, physical crouch (LE1, VR on foot; `game/Posture` + `core/ik/Posture`, research/23,
   `[Hands] noCover`, `physicalCrouch`, `crouchBelow`/`standAbove`/`crouchDwellS`): ME1 takes cover by
   itself (BioPawn's native test, no button; A only leaves it). `engine/cover_acquire` pre-hooks that
@@ -245,8 +251,11 @@ switching frameworks.
   body slot draws that weapon through `SFXGameModeDefault.SwitchToWeapon` (ProcessEvent). The
   right grip holds the gun (`gripHolds = 1`): let go at its slot to holster (`TryHolster`; while the draw still
   animates, `IsSwitchingWeapons`, the game ignores it, so the holster waits for the switch's end unless the grip
-  closes again), elsewhere it goes back after `releaseGrace`; the grip is never RB, RB (power wheel / mapped
-  power) is the right stick click (`powerWheel`). Contact haptics while the hand is in a slot
+  closes again), elsewhere it goes back after `releaseGrace`; the grip is never RB. **The right stick click held 0.3 s opens
+  the game's power wheel, let go closes it, a tap casts nothing** (the user, 2026-11-05; research/19 "Hold only"): the mod calls
+  `EnterPowerWheel`/`ExitPowerWheel` itself (`gamepad::PowerHoldFromStickClick`) and the click is never RB (`kFlagModPowerHold`),
+  because the game's RB casts the mapped power for any press under its 0.3 s; `powerWheel = y/x/b` are still RB.
+  Contact haptics while the hand is in a slot
   (host `core/vr/Haptics`); the slots scale with the standing eye height from the floor (host
   `core/xr/Floor`, STAGE). Squad weapons: below. Settings: `[Holsters]` in `ASI\LE1MEVR.ini`.
   **Only holsters draw** (`onlyHolstersDraw = 1`, 2026-10-25): on foot in VR with tracked controllers, once the
@@ -320,6 +329,13 @@ switching frameworks.
   the eye distance (`core/vr/CineScreen`, unit-tested). `[MEVR]` seams in xr_session.cpp (decision, park, projection, lean, plan,
   submit, and the conversation movie at its authored size instead of Halcyon's half-size VR layout: the wheel 1.75x larger); host
   `plugin/CineScreen`. Logs `cine screen:`, `[VRSTATE] ... -> 3D screen (MEVR)`; snapshot `"cineScreen"`.
+- LE1 start and front end on one panel ([research/56](research/56-start-and-front-end.md), `core/vr/PresentationHold`, host
+  `plugin/PresentationHold`; three `[MEVR]` seams in xr_session.cpp's decision): from start-up until the first load from the menus
+  or 30 frames of a gameplay mode, every other mode is the menu (the flat panel, no second eye): the unreadable byte at start
+  (Halcyon showed the title's 3D backdrop as plain VR for 1.5-2 s), the logos' movie mode, the title and its camera flight (6,
+  which latched a cutscene: the 3D screen came and went); after the menus a load's -1 and 8 too. The camera's name latches a
+  cine only when the byte is unreadable (Halcyon's own comment). Plain VR after another view waits 100 ms (the title's 6, 0, 7
+  flashed the world for a frame). Log `presentation:`.
 - LE1 HUD (Halcyon's renderer, Stereo 2): the game's UI draws go to a body-locked HUD panel quad,
   and a hand reticle on the aim ray replaces the crosshair (`src/plugin/HalcyonOverlays.cpp`,
   [research/15](research/15-hud.md)). Scaleform's non-"over" blend modes (multiply...) go there too,
@@ -543,8 +559,12 @@ switching frameworks.
   rules in `core/vr/CockpitPanel`, unit-tested): the script's `panel` line (place.py from the manifest's `panels`); a fingertip
   pushes the button on the right desk shelf, held 2 s it calls `SFXGameModeVehicle.RepairVehicle`; a grip pulls the overhead handle
   out, held at the end it calls `LeaveWorld` (the game's own functions on the game thread, never the pad); the ring's nine lamps
-  show the hull's health (`Light_*_MIC` swapped onto `Repair_Base`'s elements). `mevr cockpit panel [repair|extract]`; log
-  `cockpit panel:`; snapshot `"cockpitProbe"."panel"`.
+  show the hull's health (`Light_*_MIC` swapped onto `Repair_Base`'s elements). While a hand works them (or the right hand is at the
+  handle) the gunner keeps the turret, at once (`mako_gunner::Hands::busy`; the user: "the aim should remain in auto mode").
+  Pressed while the repair can't run (the vehicle's `VehicleRepair` power: `IsRequiredResourceAvailable`, `m_fCooldownRemaining`)
+  the plate's squares are solid red with no omni-gel and flash red every 1.2 s while it cools down; no hold, no call. Shepard's
+  hand closes on the held handle's bar as it swings (`CurrentSeat`'s held control) and points its index at the cap it presses.
+  `mevr cockpit panel [repair|extract|ask]`; log `cockpit panel:`; snapshot `"cockpitProbe"."panel"`.
   **Hazard lights** (research/47 "Hazard lights", 2026-11-04; `[Cockpit] hazard`, `hazardBelow` 0.30, `hazardPeriodS`, `hazardWash`):
   with the hull's health (the vehicle behavior's `GetHealthAndShieldsScaled`) low, every cockpit element showing a package instance
   (not glass or screens) gets ours over `ProcBuildingSimpleMaterial` with a red render target as `LightTexture` and a beacon's
@@ -709,7 +729,7 @@ switching frameworks.
   the module itself): on foot in VR, X held opens it at the left palm, fixed in the room, facing the eyes, with the player's mappable
   powers (the behaviour's `m_powers` through the shared table `FindPower`: the 2DA label, the shown name, discipline, icon); the left
   hand's travel toward a tile or the left stick picks; letting go of X equips (X tapped: a left trigger pinch, a left grip squeeze or X
-  again). Equip = `BioPlayerInput.MappedPower` (journalled), which the right stick click's tap casts (`TryUseMappedPower`, the game's aim).
+  again). Equip = `BioPlayerInput.MappedPower` (journalled), which the push casts (the right stick click's tap no longer does, 2026-11-05).
   **The lock and the push** (research/55 section 7, `[PowerWheel] lock*`/`push*`): wheel closed, the left arm raised (`lockReachM` ahead of
   the eyes), the hostile nearest the left aim ray (`IsHostile`, not dead or dormant, `FastTrace` from the hand; 9 degrees to take, 16 to
   keep, 35 m, 0.35 s of blocked sight; nothing pointed at: the automatic resolver, the best within 30 degrees of the hand or 20 of the
@@ -835,8 +855,8 @@ Use it to check VR changes yourself instead of asking the user what they see
 - **Player triggers:** End = snapshot, Home = recording on/off (game focused); a quick tap of both
   stick clicks = snapshot (both down within 100 ms of each other and up within 300 ms of the first
   press; held 400 ms they open our main menu instead, never both: `gamepad::UpdateStickChord` in
-  `HalcyonBridge`; L3 is held back 100 ms so the tap is never a crouch, and RB from R3 starts only
-  after 100 ms alone); our menu's Advanced > Diagnostics (Snapshot, Record) and the classic menu's VR
+  `HalcyonBridge`; L3 is held back 100 ms so the tap is never a crouch, and R3 opens the power wheel only
+  after 300 ms alone); our menu's Advanced > Diagnostics (Snapshot, Record) and the classic menu's VR
   hands tab ("Test loop": snapshot in 3 s, record, replay the last recording). There's no controller
   chord for recording (both grips are the gun and the squad menu since 2026-10-22).
 - **Frame timing** ([research/22](research/22-performance-levers.md)): `tools/perf-probe.ps1 [-Seconds 20

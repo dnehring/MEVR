@@ -21,6 +21,7 @@ namespace cp = vr::cockpit_panel;
 
 cp::Panel gPanel;
 cp::Output gOut;
+std::optional<cp::Layout> gLayout;  // the last tick's, in tracking space (the snapshot's, for replays that reach to it)
 cp::Settings const gSettings;
 unsigned gRepairs = 0;
 unsigned gExtractions = 0;
@@ -32,6 +33,17 @@ constexpr cp::Colour kProgressColour = cp::Colour::Blue;
 // The index fingertip ahead of the aim pose along it (the pointing finger over a Touch controller's ring), as the game
 // pointer's touch (plugin/GamePointer, touchTipM).
 constexpr float kTipM = 0.04f;
+// The vehicle's VehicleRepair power as last asked (AskRepair): whether the repair can run.
+struct RepairPower {
+    ue3::Object* behavior = nullptr;  // the cache's key
+    ue3::Object* power = nullptr;
+    bool known = false;               // the power answered
+    bool gel = true;                  // its IsRequiredResourceAvailable: the omni-gel it costs is there
+    float cooldownS = 0.0f;           // its m_fCooldownRemaining
+    std::string why = "not asked yet";
+};
+RepairPower gRepairPower;
+unsigned gRefusals = 0;
 
 XrVector3f AimTip(XrPosef const& aim) {
     XrQuaternionf const q = aim.orientation;
@@ -47,6 +59,71 @@ ue3::FieldRef gGameModes{"SFXGame.SFXGameModeManager", "GameModes"};
 ue3::ClassRef gModeVehicle{"SFXGame.SFXGameModeVehicle"};
 ue3::FunctionRef gRepairVehicle{"SFXGame.SFXGameModeVehicle.RepairVehicle"};
 ue3::FunctionRef gLeaveWorld{"SFXGame.SFXGameModeVehicle.LeaveWorld"};
+// RepairVehicle runs the vehicle behaviour's VehicleRepair power (SetCurrentPower('VehicleRepair'), research/48 section 27):
+// whether it can run now is that power's own answer.
+ue3::ClassRef gVehicleBase{"SFXGame.BioVehicleBase"};
+ue3::FieldRef gVehicleBehavior{"SFXGame.BioVehicleBase", "m_oBehavior"};
+ue3::FieldRef gPowers{"SFXGame.BioEpicPawnBehavior", "m_powers"};
+ue3::FieldRef gPowerName{"SFXGame.BioPower", "m_nmPower"};
+ue3::FieldRef gCooldownRemaining{"SFXGame.BioPower", "m_fCooldownRemaining"};
+ue3::FunctionRef gResourceAvailable{"SFXGame.BioPower.IsRequiredResourceAvailable"};
+constexpr char const* kRepairPower = "VehicleRepair";
+
+// The player's vehicle's VehicleRepair power, or null (`why` says what's missing).
+ue3::Object* FindRepairPower(std::string& why) {
+    if (!ue3::runtime::Ready()) {
+        why = "our reflection layer is off";
+        return nullptr;
+    }
+    ue3::Object* const pc = player::Controller();
+    ue3::Object* const pawn = pc != nullptr ? player::Pawn(pc) : nullptr;
+    if (pawn == nullptr || !ue3::IsA(pawn, gVehicleBase)) {
+        why = "the player's pawn isn't a vehicle";
+        return nullptr;
+    }
+    ue3::Object* const behavior = gVehicleBehavior.Read<ue3::Object*>(pawn).value_or(nullptr);
+    if (behavior == nullptr || !ue3::runtime::IsAlive(behavior)) {
+        why = "the vehicle has no behaviour";
+        return nullptr;
+    }
+    if (behavior == gRepairPower.behavior && gRepairPower.power != nullptr && ue3::runtime::IsAlive(gRepairPower.power)) {
+        return gRepairPower.power;
+    }
+    gRepairPower.behavior = behavior;
+    gRepairPower.power = nullptr;
+    auto const list = gPowers.ElementsOf(behavior);
+    for (std::int32_t i = 0; list && i < list->count && i < 64; ++i) {
+        void* const slot = list->At(i);
+        ue3::Object* const power = slot != nullptr ? *static_cast<ue3::Object**>(slot) : nullptr;
+        if (power != nullptr && ue3::runtime::IsAlive(power) &&
+            ue3::runtime::NameText(gPowerName.Read<ue3::Name>(power).value_or(ue3::Name{})) == kRepairPower) {
+            gRepairPower.power = power;
+            log::Info("cockpit panel: the vehicle's {} power is {}", kRepairPower, ue3::runtime::FullName(power));
+            return power;
+        }
+    }
+    why = std::format("the vehicle's behaviour has no {} power in m_powers", kRepairPower);
+    return nullptr;
+}
+
+// Why the repair can't run now, asked while the button is pushed (game thread). Unknown: none (the press goes ahead).
+cp::Refusal AskRepair() {
+    std::string why;
+    ue3::Object* const power = FindRepairPower(why);
+    ue3::Function* const fn = gResourceAvailable.Get();
+    if (power == nullptr || fn == nullptr) {
+        gRepairPower.known = false;
+        gRepairPower.why = power == nullptr ? why : "SFXGame.BioPower.IsRequiredResourceAvailable not found";
+        return cp::Refusal::None;
+    }
+    ue3::Params parms(ue3::runtime::Get(), fn);
+    ue3::runtime::Call(power, fn, parms);  // a native: runtime::Call clears its index for the call
+    gRepairPower.known = true;
+    gRepairPower.gel = parms.ReturnBool().value_or(true);
+    gRepairPower.cooldownS = std::max(0.0f, gCooldownRemaining.Read<float>(power).value_or(0.0f));
+    gRepairPower.why = "asked";
+    return !gRepairPower.gel ? cp::Refusal::NoGel : gRepairPower.cooldownS > 0.0f ? cp::Refusal::Cooling : cp::Refusal::None;
+}
 
 // The player's vehicle mode: Y and X run these on it in the Mako (BIOInput.ini's [SFXGame.SFXGameModeVehicle], research/46).
 ue3::Object* VehicleMode(std::string& why) {
@@ -111,6 +188,9 @@ void Repair() {
 void Extract() {
     gLast = "extraction: LE1 only";
 }
+cp::Refusal AskRepair() {
+    return cp::Refusal::None;
+}
 #endif
 
 // The lamps as the hull and the hold say (game/CockpitProbe swaps only what changed on the model).
@@ -123,9 +203,12 @@ void ShowLamps(bool riding) {
             want[static_cast<std::size_t>(i)] = cp::HealthColour(*health);
         }
     }
-    int const squares = cp::ProgressLamps(gOut.progress, cp::kProgressLamps);
+    // The plate's squares: the hold's progress, or all red while the repair can't run (solid: no omni-gel; flashing: cooling down).
+    int const squares = gOut.refused != cp::Refusal::None ? (gOut.refusedLit ? cp::kProgressLamps : 0)
+                                                           : cp::ProgressLamps(gOut.progress, cp::kProgressLamps);
+    cp::Colour const colour = gOut.refused != cp::Refusal::None ? cp::Colour::Red : kProgressColour;
     for (int i = 0; i < squares; ++i) {
-        want[static_cast<std::size_t>(cp::kHealthLamps + i)] = kProgressColour;
+        want[static_cast<std::size_t>(cp::kHealthLamps + i)] = colour;
     }
     cockpit_probe::ShowPanelLamps(want.data(), static_cast<int>(want.size()));
     gLamps = want;
@@ -137,6 +220,7 @@ void Tick(double deltaSeconds, Link const& link) {
     cp::Input in;
     in.deltaSeconds = deltaSeconds;
     std::optional<cp::Layout> const layout = link.mainMenuOpen ? std::nullopt : cockpit_probe::PanelLayout();
+    gLayout = layout;
     vr::controllers::State const controllers = vr::controllers::Latest();
     in.active = layout.has_value() && controllers.active;
     if (layout) {
@@ -149,7 +233,15 @@ void Tick(double deltaSeconds, Link const& link) {
         in.hands[h].tip = AimTip(hand.aim);
         in.hands[h].squeeze = hand.squeeze;
     }
+    // Asked only while a fingertip pushes the cap (last tick's), so a press finds the answer waiting.
+    in.refusal = in.active && gOut.pressHand >= 0 ? AskRepair() : cp::Refusal::None;
+    cp::Refusal const refusedBefore = gOut.refused;
     gOut = gPanel.Step(in, gSettings);
+    if (gOut.refused != refusedBefore && gOut.refused != cp::Refusal::None) {
+        ++gRefusals;
+        log::Info("cockpit panel: the repair can't run: {} (the VehicleRepair power's cooldown {:.1f} s): the squares show red",
+            cp::Name(gOut.refused), gRepairPower.cooldownS);
+    }
     if (in.active != gWasActive) {
         gWasActive = in.active;
         log::Info("cockpit panel: {}", in.active ? "the repair button and the extraction lever are in reach" : "the controls are out of use");
@@ -189,10 +281,26 @@ std::string StatusJson() {
     for (cp::Colour const colour : gLamps) {
         lamps += std::format("{}{}", lamps.empty() ? "" : ", ", json::JsonString(cp::Name(colour)));
     }
-    return std::format("{{\"active\": {}, \"pressM\": {}, \"pressed\": {}, \"progress\": {}, \"pullDeg\": {}, \"held\": {}, \"repairs\": {}, "
-                       "\"extractions\": {}, \"lamps\": [{}], \"last\": {}}}",
+    // Where the controls are, in tracking space (metres; null when not riding): a recording that reaches for them is a few
+    // lines from these (the fake headset's head sits at the tracking origin).
+    std::string layout = "null";
+    if (gLayout) {
+        auto const v = [&](XrVector3f const& p) {
+            return std::format("[{}, {}, {}]", json::JsonNumber(p.x), json::JsonNumber(p.y), json::JsonNumber(p.z));
+        };
+        layout = std::format("{{\"buttonTop\": {}, \"buttonIn\": {}, \"travelM\": {}, \"hinge\": {}, \"hingeAxis\": {}, \"grip\": {}, "
+                             "\"pullDeg\": {}}}",
+            v(gLayout->buttonTop), v(gLayout->buttonIn), json::JsonNumber(gLayout->travelM), v(gLayout->hinge), v(gLayout->hingeAxis),
+            v(gLayout->grip), json::JsonNumber(gLayout->pullDeg));
+    }
+    std::string const power = std::format("{{\"known\": {}, \"gel\": {}, \"cooldownS\": {}, \"why\": {}}}", gRepairPower.known ? "true" : "false",
+        gRepairPower.gel ? "true" : "false", json::JsonNumber(gRepairPower.cooldownS), json::JsonString(gRepairPower.why));
+    return std::format("{{\"active\": {}, \"pressM\": {}, \"pressed\": {}, \"progress\": {}, \"refused\": {}, \"refusedLit\": {}, \"refusals\": {}, "
+                       "\"repairPower\": {}, \"pullDeg\": {}, \"held\": {}, \"repairs\": {}, \"extractions\": {}, \"lamps\": [{}], \"last\": {}, "
+                       "\"layout\": {}}}",
         gWasActive ? "true" : "false", json::JsonNumber(gOut.pressM), gOut.pressed ? "true" : "false", json::JsonNumber(gOut.progress),
-        json::JsonNumber(gOut.pullDeg), gOut.held ? "true" : "false", gRepairs, gExtractions, lamps, json::JsonString(gLast));
+        json::JsonString(cp::Name(gOut.refused)), gOut.refusedLit ? "true" : "false", gRefusals, power, json::JsonNumber(gOut.pullDeg),
+        gOut.held ? "true" : "false", gRepairs, gExtractions, lamps, json::JsonString(gLast), layout);
 }
 
 std::string Command(std::string const& rest) {
@@ -203,6 +311,11 @@ std::string Command(std::string const& rest) {
     if (rest == "extract") {
         Extract();
         return "cockpit panel: " + gLast;
+    }
+    if (rest == "ask") {  // what a press would show now, without tracked controllers
+        cp::Refusal const refusal = AskRepair();
+        return std::format("cockpit panel: a press now: {} (the power {}; omni-gel {}, cooldown {:.1f} s)", cp::Name(refusal), gRepairPower.why,
+            gRepairPower.gel ? "there" : "missing", gRepairPower.cooldownS);
     }
     return "cockpit panel: " + StatusJson();
 }

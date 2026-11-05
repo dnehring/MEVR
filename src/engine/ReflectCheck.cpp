@@ -1190,6 +1190,7 @@ void CheckFunctions() {
         "SFXGame.SFXGameModeDefault.TryUseMappedPower",
         "SFXGame.BioPlayerInput.ActivatePower",  // the power wheel's push (research/55 section 4)
         "SFXGame.SFXGameModeDefault.EnterPowerWheel",
+        "SFXGame.SFXGameModePowerWheel.ExitPowerWheel",  // holsters: the right stick click's hold (2026-11-05)
         "SFXGame.SFXGameModeBase.FireWeapon",  // ...and the trigger's, refused without a buzz (2026-11-04)
         "SFXGame.SFXGameModeBase.StopFiringWeapon",  // `mevr vehicle fire mg` (2026-11-04)
         "Engine.PlayerController.GetScaleFormManager",
@@ -1294,6 +1295,7 @@ void CheckFunctions() {
         "Engine.SkeletalMeshComponent.MatchRefBone",
         "SFXGame.BioPower.IsEnabled",  // the power wheel (research/55)
         "SFXGame.BioPlayerInput.IsCombatEnabled",
+        "SFXGame.BioPower.IsRequiredResourceAvailable",  // game/CockpitPanel: the repair's omni-gel
     };
     for (char const* function : functions) {
         CheckFunction(function);
@@ -1349,6 +1351,7 @@ void CheckParams() {
     PARAM(ABioPawn_execIsUsingPower_Parms, "SFXGame.BioPawn.IsUsingPower", bIgnoreWeaponPowers);
     PARAM(ABioPawn_execIsUsingPower_Parms, "SFXGame.BioPawn.IsUsingPower", ReturnValue);
     PARAM(UBioPower_execIsEnabled_Parms, "SFXGame.BioPower.IsEnabled", ReturnValue);  // the power wheel (research/55)
+    PARAM(UBioPower_execIsRequiredResourceAvailable_Parms, "SFXGame.BioPower.IsRequiredResourceAvailable", ReturnValue);  // game/CockpitPanel
     PARAM(UBioPlayerInput_execIsCombatEnabled_Parms, "SFXGame.BioPlayerInput.IsCombatEnabled", ReturnValue);
     PARAM(UBioPower_execIsRequiredWeaponEquipped_Parms, "SFXGame.BioPower.IsRequiredWeaponEquipped", ReturnValue);
     PARAM(UBioPlayerInput_execActivatePower_Parms, "SFXGame.BioPlayerInput.ActivatePower", nmPower);  // the push

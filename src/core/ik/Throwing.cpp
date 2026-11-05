@@ -328,6 +328,36 @@ SwingStep SwingDetector::Update(SwingInput const& input, SwingParams const& para
 
 // ---- Arc ---------------------------------------------------------------------------------------------
 
+MeleeRoute RouteMelee(bool weaponDrawn, bool rightHand, bool fist, bool fistEnabled) {
+    if (weaponDrawn) {
+        return MeleeRoute::Weapon;
+    }
+    if (!fistEnabled) {
+        return MeleeRoute::FistOff;
+    }
+    if (!rightHand) {
+        return MeleeRoute::LeftUnarmed;
+    }
+    return fist ? MeleeRoute::Fist : MeleeRoute::OpenHand;
+}
+
+char const* Refusal(MeleeRoute route) {
+    switch (route) {
+    case MeleeRoute::FistOff: return "the weapon is away (meleeFist = 0: ME1's melee would only draw it)";
+    case MeleeRoute::LeftUnarmed: return "the weapon is away: only the right fist punches (the left hand's trigger and grip are the squad's)";
+    case MeleeRoute::OpenHand: return "the weapon is away and the right hand is open: make a fist (grip and trigger) to punch";
+    case MeleeRoute::Weapon:
+    case MeleeRoute::Fist: break;
+    }
+    return nullptr;
+}
+
+double MeleeWait(double now, double readyAt, double gameCooldownLeft) {
+    double const ours = readyAt - now;
+    double const wait = std::max(ours, gameCooldownLeft);
+    return std::isfinite(wait) && wait > 0.0 ? wait : 0.0;
+}
+
 std::vector<Vec3> ArcPoints(Vec3 start, Vec3 velocity, double gravityZ, double dt, double maxSeconds, double maxDrop) {
     std::vector<Vec3> points;
     if (!Finite(start) || !Finite(velocity) || !std::isfinite(gravityZ) || !(dt > 0.0) || !(maxSeconds > 0.0)) {
