@@ -189,12 +189,12 @@ Ask Claude to run them when the machine is free; each is a console command, a sn
 - Powers: a cast with the weapon away (`mevr powerwheel push`); the glow's render-thread cost. (research/55)
 - Melee: `mevr melee punch` with the weapon away: the pistol whip plays and hurts, no holster draw logged. (research/20)
 - Right stick hold: the game's power wheel opens and closes from an input replay. (research/19 "Hold only")
-- Mako: the cannon and the gunner against several woken enemies; `mevr cockpit panel ask` (no gel / gel / cooldown);
-  `turretSeam` 1, 2, 4 one at a time; the extraction box's placement. (research/47, 48 section 27, 44)
-- Cockpit panel by replay: a recording that reaches for the button and the handle (their places are the panel status's
-  `layout`, tracking space): the press direction, the handle's swing sign, the squares filling blue and the red refusals
-  in a snapshot, the gunner's `(a hand works the cockpit's panel)` log line; the repair button's place on the desk shelf
-  in a seat snapshot. (research/48 section 27)
+- Mako: the cannon and the gunner against several woken enemies; `turretSeam` 1, 2, 4 one at a time. (research/47, 44)
+- Cockpit panel by replay (the press, the swing's sign by the rules, the squares filling blue, `panel ask`'s three answers
+  and the box at the windshield were checked 2026-11-05, research/48 section 27): the red refusals in a snapshot (press
+  during the 30 s cooldown), the handle model's swing seen in a snapshot, the gunner's `(a hand works the cockpit's panel)`
+  line (only logged when the gun was the player's before the press); the repair button's place on the desk shelf in a seat
+  snapshot; the seat sampled too early (`seated with the head 0.00 ...`, 1 entry in 3). (research/48 section 27)
 - Squad orders: `mevr order` / `mevr say` / `mevr context` against woken mercenaries: the squad index base (is Shepard
   index 0?), `QuickCommandAttackTarget` honouring its target, the move point dropped along the swapped Rotation, HOLD
   keeping them put and `GetMemberFormation` reading HOLD back, retreat to cover (does the AI take the slot or stand beside
