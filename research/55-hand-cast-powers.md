@@ -264,7 +264,9 @@ left hand aims and casts. Code: `core/vr/PowerWheel` (`UpdateLock`, `StepPush`, 
   at 4 s (the vortex's lift and release; not separated from its own movement by a clock).
 - **The lock let go of the thrown hostile while it was ragdolled** ("target nothing" 3 s after the push): the scan skipped
   pawns without actor collision as dormant, and a ragdoll drops its cylinder's. Since this test the dormant test is the
-  behaviour's `bActive` (and hidden), not the collision [verify that the lock now holds through a ragdoll].
-- **Still to check** [verify]: the lock through a ragdoll, a cast with the weapon away (question 2), the casting animation
+  behaviour's `bActive` (and hidden), not the collision. **Checked the same night (f1cf826):** Throw at the locked BioPawn_3
+  ragdolled it again (its ragdoll start matched the push) and threw it 2.5 m; polled every 0.5 s for 9 s, the lock stayed on it
+  ("BioPawn_3 (automatic) ... in sight") through the ragdoll and its recovery.
+- **Still to check** [verify]: a cast with the weapon away (question 2), the casting animation
   with arm IK (question 4), the push's thresholds with tracked hands in the headset, the marker's size at 5-35 m in the
   headset.
