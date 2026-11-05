@@ -135,9 +135,12 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] The microphone's lag over your link: tap a controller on the headset while a recording runs with `mevr voice listen 5`;
   the tap's jolt in the poses against the click in the transcript's word times says how much tail `[Voice] tailMs` needs.
   (research/54 step 3)
-- [ ] The model tier in play (`[Voice] llm`, llama.cpp and a GGUF in `ASI\voice\llm`): say something the rules refuse
-  ("Garrus, you know what to do with the big one") and watch the log for the model's answer and its time; the frame cost
-  while it decodes (a perf probe during a few asks). (research/54 "The voice path built", step 4)
+- [ ] The model tier in play (`[Voice] llm`, llama.cpp and the fine-tuned GGUF in `ASI\voice\llm`, `model.gguf` since
+  2026-11-05's run1: 93.9% exact on held-out synthetic lines): say something the rules refuse ("Garrus, you know what to do
+  with the big one", "everyone, deal with the ones on the balcony") and watch the log for the model's answer and its time
+  (the bench says about a second beside the game); the frame cost while it decodes (a perf probe during a few asks). Its
+  misses are mostly which E group a description means, so the first real transcripts are the data the next run needs
+  (`tools/voice-model/README.md`). (research/54 "The fine-tune")
 
 ## 2. Hands, body and the gun (session: VR mod for Mass Effect Legendary Edition)
 - [ ] Arms fully out, then the gun at the cheek: the hands stay on the controllers, the elbows bend naturally, the arm
@@ -245,9 +248,9 @@ Ask Claude to run them when the machine is free; each is a console command, a sn
 - Voice (checked 2026-11-05 afternoon, research/54 "In the game"): the file feed through host, parser and dispatcher, the
   key terms, the acknowledgement's trace (a follow's bark is Shepard's own; a hold is answered by the squadmate; a move
   by our fallback line), the frame probe at the drop zone. Left: an attack's acknowledgement with an enemy present
-  (Eden Prime's Save 7), the early dispatch of a settled partial (needs a long enough line), the model's answer in the
-  game (llama.cpp isn't deployed to `ASI\voice\llm` yet), a probe at a heavy spot with the recognizer's thread priority
-  lowered.
+  (Eden Prime's Save 7), the early dispatch of a settled partial (needs a long enough line), the fine-tuned model's answer
+  in the game (the stock model's nonsense answer proved the loop; run1's GGUF is in `models/voice/llm` for the next deploy),
+  a probe at a heavy spot with the recognizer's thread priority lowered.
 - Omni-tool screens: fingertip replays on Squad, Map, Journal, Codex and Computer; the squad member on the XMods screen
   and with a squad of three; Toggle Helmet where helmets come off (the Normandy) against the flat screen; the UI world
   capture's cost at a heavy spot. (research/57 sections 6-7)

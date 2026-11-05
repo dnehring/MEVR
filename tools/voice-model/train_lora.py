@@ -122,19 +122,10 @@ def main():
                                  learning_rate=args.lr, lr_scheduler_type="cosine", warmup_steps=int(steps * args.warmup),  # transformers 5 has no warmup_ratio
                                  weight_decay=args.weight_decay, logging_steps=20, save_strategy="no", bf16=True, report_to=[], dataloader_num_workers=0, seed=args.seed,
                                  gradient_checkpointing=not args.no_grad_checkpoint)
-    from transformers import TrainerCallback
-
-    class LogLine(TrainerCallback):
-        """transformers 5's progress bar no longer prints the log dicts, so the loss curve was invisible in a run's
-        train.log (run1, 2026-11-05): one plain line per log entry, and the whole history as JSON at the end."""
-
-        def on_log(self, args_, state, control, logs=None, **kwargs):
-            if logs and "loss" in logs:
-                print(f"log: step {state.global_step}/{state.max_steps} epoch {logs.get('epoch', 0):.2f} loss {logs['loss']:.4f} "
-                      f"lr {logs.get('learning_rate', 0):.2e} grad_norm {logs.get('grad_norm', 0):.3f}", flush=True)
-
-    trainer = Trainer(model=model, args=training, train_dataset=train, data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False), callbacks=[LogLine()])
+    trainer = Trainer(model=model, args=training, train_dataset=train, data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False))
     trainer.train()
+    # The whole loss curve (the `{'loss': ...}` lines the progress callback prints every 20 steps reach a piped train.log
+    # late: the pipeline runs this unbuffered for that).
     pathlib.Path(args.out, "log_history.json").write_text(json.dumps(trainer.state.log_history, indent=1), encoding="utf-8")
     model.save_pretrained(os.path.join(args.out, "lora"))
     merged = model.merge_and_unload()

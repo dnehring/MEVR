@@ -21,8 +21,8 @@ gguf) and fetches llama.cpp's convert script into `external/llama-cpp/convert`. 
     python tools/voice-model/pipeline.py table
 
 A run lives in `scratch/voice-model/runs/<name>/`: `config.json`, `train.jsonl` / `eval.jsonl` (regenerated only when the
-dataset part of the config changes), `train.log` (a `log:` line with the loss every 20 steps; the whole history in
-`log_history.json` at the end), `lora/`, `merged/`, `model-<type>.gguf`, `eval.log`, `bench.log`, and a
+dataset part of the config changes), `train.log` (the progress bar and a `{'loss': ...}` line every 20 steps; the whole
+history in `log_history.json` at the end), `lora/`, `merged/`, `model-<type>.gguf`, `eval.log`, `bench.log`, and a
 `done-<step>.json` per step keyed by the config's hash, so an interrupted or failed run resumes at the failed step and a
 changed hyperparameter redoes only what depends on it (`--force <step>` redoes one by hand). `runs.tsv` at the runs' root
 collects every run's eval exact-match and bench line for the hyperparameter table.

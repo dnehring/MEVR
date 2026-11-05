@@ -72,7 +72,10 @@ def sh(cmd, log=None, cwd=None):
     with (open(log, "a", encoding="utf-8") if log else open(os.devnull, "w")) as out:
         out.write("$ " + " ".join(str(c) for c in cmd) + "\n")
         out.flush()
-        proc = subprocess.Popen([str(c) for c in cmd], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", cwd=cwd)
+        # Unbuffered: a child's print() through a pipe is block-buffered, so run1's loss lines reached train.log 8 KB at a
+        # time, long after the progress bar (stderr) showed the step.
+        env = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
+        proc = subprocess.Popen([str(c) for c in cmd], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", cwd=cwd, env=env)
         tail = []
         for line in proc.stdout:
             out.write(line)

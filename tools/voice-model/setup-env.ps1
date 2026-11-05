@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: MIT
 # The fine-tune's environment (tools/voice-model/README.md): a Python 3.12 venv at .venv-voice (gitignored) with torch
 # (CUDA 12.4 wheels), transformers, peft, datasets, accelerate and the gguf package; and llama.cpp's convert script
-# (convert_hf_to_gguf.py with its gguf-py) from the release's source zip, into external/llama-cpp/convert. Idempotent.
+# (convert_hf_to_gguf.py with its gguf-py and conversion packages) from the release's source zip, into
+# external/llama-cpp/convert. Idempotent.
 #   tools/voice-model/setup-env.ps1 [-Python "C:\...\python.exe"] [-LlamaRelease b12128]
 [CmdletBinding()]
 param(
@@ -33,7 +34,7 @@ if ($LASTEXITCODE -ne 0) { throw 'pip install failed' }
 
 # llama.cpp's convert script and its gguf-py, from the tagged source (tools/fetch-voice.ps1 -Llm leaves the zip in TEMP).
 $convert = Join-Path $root 'external\llama-cpp\convert'
-if (-not (Test-Path (Join-Path $convert 'convert_hf_to_gguf.py'))) {
+if (-not (Test-Path (Join-Path $convert 'convert_hf_to_gguf.py')) -or -not (Test-Path (Join-Path $convert 'conversion'))) {
     $src = Join-Path $env:TEMP "llama-$LlamaRelease-src.zip"
     if (-not (Test-Path $src)) {
         Invoke-WebRequest -Uri "https://github.com/ggml-org/llama.cpp/archive/refs/tags/$LlamaRelease.zip" -OutFile $src
@@ -44,6 +45,8 @@ if (-not (Test-Path (Join-Path $convert 'convert_hf_to_gguf.py'))) {
     New-Item -ItemType Directory -Force $convert | Out-Null
     Copy-Item (Join-Path $top.FullName 'convert_hf_to_gguf.py') $convert -Force
     Copy-Item (Join-Path $top.FullName 'gguf-py') (Join-Path $convert 'gguf-py') -Recurse -Force
+    # Since b12128 the script's model classes live in a `conversion` package beside it (run1's GGUF step failed without it).
+    Copy-Item (Join-Path $top.FullName 'conversion') (Join-Path $convert 'conversion') -Recurse -Force
     Write-Output "convert script: $convert"
 }
 Write-Output "Done: $venv"
