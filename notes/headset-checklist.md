@@ -61,7 +61,7 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] Extraction handle overhead: grab it with a new squeeze (never fires the cannon or boosts), pull it toward you, hold
   at the end: the "Return to Normandy?" box shows at the windshield with the cockpit still around you, and takes a
   click, a touch, A and B. Say whether the handle swings the right way and its label reads from the seat. Shepard's hand
-  closes on the bar and follows its swing; pressing the button his index points. (research/48 section 27, hands built
+  closes on the bar and follows its swing; pressing the button, Shepard's index points. (research/48 section 27, hands built
   2026-11-05)
 - [ ] Shepard's right arm reaching up to the handle shows black and folded at the shoulder (research/48 section 27,
   2026-11-05 snapshot 07-57-00): not fixed yet; say whether it bothers you in the headset.
