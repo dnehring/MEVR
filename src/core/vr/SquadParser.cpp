@@ -13,7 +13,7 @@ namespace {
 
 enum class Tag : std::uint8_t {
     None, Stop, Name, All, Order, Power, Weapon, Deictic, Place, Sector, Flag, Elevation, Surface, Type, Generic, Aim, Gaze, Other,
-    LastTarget, Conj, No, Cancel, Repeat, Equip, Until, Stay, NoRetreat, ComeBack
+    LastTarget, Conj, No, Cancel, Repeat, Equip, Until, Stay, NoRetreat, ComeBack, Support
 };
 
 struct Token {
@@ -83,7 +83,9 @@ std::vector<Phrase> const& Vocabulary() {
                    "then back to me", "and then regroup", "come back when it's done", "then on me", "and then fall back", "then return"},
             Tag::ComeBack);
         Add(p, {"and then", "and", "then"}, Tag::Conj);
-        Add(p, {"attack", "take out", "take down", "kill", "shoot", "fire on", "fire at", "open fire", "engage", "focus on", "focus", "hit", "light up",
+        Add(p, {"support", "cover", "back up", "help", "protect", "assist", "stay with", "stick with", "watch", "guard", "cover for"},
+            Tag::Support);
+        Add(p, {"attack", "target", "take out", "take down", "kill", "shoot", "fire on", "fire at", "open fire", "engage", "focus on", "focus", "hit", "light up",
                    "waste", "deal with", "get rid of", "take care of", "drop", "neutralize", "neutralise", "eliminate", "destroy", "go after", "go for"},
             Tag::Order, static_cast<int>(sc::Order::Attack));
         Add(p, {"move", "move up", "move to", "move over", "go to", "go", "get to", "get over", "advance", "flank", "take position", "take cover",
@@ -344,19 +346,40 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
     // 6. Clauses: a conjunction before an order, power, weapon or deictic starts a new one.
     std::vector<std::pair<std::size_t, std::size_t>> clauses;
     std::size_t from = start;
+    auto const isVerbish = [](Tag t) {
+        return t == Tag::Order || t == Tag::Power || t == Tag::Weapon || t == Tag::Equip || t == Tag::Repeat || t == Tag::Cancel || t == Tag::Support ||
+            t == Tag::Deictic || t == Tag::Place;
+    };
+    bool orderSeen = false;
     for (std::size_t i = start; i < tokens.size(); ++i) {
-        if (tokens[i].tag != Tag::Conj || !tokens[i].head) continue;
+        if (!tokens[i].head) continue;
+        if (tokens[i].tag == Tag::Name && orderSeen && i > from) {
+            // A vocative: a new clause, unless the name is the object of a support verb just before it.
+            std::size_t j = i;
+            while (j > from && (tokens[j - 1].tag == Tag::Stop || !tokens[j - 1].head)) --j;
+            // ...or the actor named after "you too" / "same" ("you too, Wrex").
+            bool const object = j > from && (tokens[j - 1].tag == Tag::Support || tokens[j - 1].tag == Tag::Repeat);
+            if (!object) {
+                clauses.emplace_back(from, i);
+                from = i;
+                orderSeen = false;
+            }
+            continue;
+        }
+        orderSeen = orderSeen || isVerbish(tokens[i].tag);
+        if (tokens[i].tag != Tag::Conj) continue;
         std::size_t end = i;
         while (end < tokens.size() && tokens[end].tag == Tag::Conj) ++end;
         bool verbAhead = false;
         for (std::size_t j = end; j < tokens.size() && tokens[j].tag != Tag::Conj; ++j) {
             Tag const t = tokens[j].tag;
-            verbAhead = verbAhead || t == Tag::Order || t == Tag::Power || t == Tag::Weapon || t == Tag::Equip || t == Tag::Repeat || t == Tag::Cancel;
+            verbAhead = verbAhead || isVerbish(t) || t == Tag::Name;
         }
         if (verbAhead && i > from) {
             clauses.emplace_back(from, i);
             from = end;
             i = end - 1;
+            orderSeen = false;
         }
     }
     if (from < tokens.size()) clauses.emplace_back(from, tokens.size());
@@ -369,7 +392,7 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
         std::string unresolved;
         sc::Action& act = clause.action;
         bool anyOrderWord = false;
-        bool cancel = false, repeat = false, equip = false;
+        bool cancel = false, repeat = false, equip = false, support = false;
         std::optional<sc::Order> verb;
         int deictic = -1;
         bool deicticPlace = false;
@@ -386,8 +409,16 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
             if (!t.head) continue;
             switch (t.tag) {
             case Tag::Name:
-                act.who = {sc::Who::Member, static_cast<char>(t.value)};
+                if (support && clause.supportOf == 0) {
+                    clause.supportOf = static_cast<char>(t.value);
+                } else {
+                    act.who = {sc::Who::Member, static_cast<char>(t.value)};
+                }
                 confidence *= std::max(t.similarity, 0.5f);
+                break;
+            case Tag::Support:
+                support = true;
+                anyOrderWord = true;
                 break;
             case Tag::All: act.who.kind = sc::Who::All; break;
             case Tag::Order:
@@ -457,6 +488,12 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
         // The order.
         if (repeat) {
             act.order = sc::Order::Repeat;
+        } else if (support) {
+            act.order = sc::Order::Attack;  // what they attack, or where they are: the dispatcher decides from the supported one's order
+            if (clause.supportOf == 0) {
+                unresolved += "whom to support; ";
+                confidence *= 0.5f;
+            }
         } else if (verb) {
             act.order = *verb;
             if (*verb == sc::Order::Use && act.power.empty() && act.weapon < 0) {
@@ -537,7 +574,7 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
             } else if (described) {
                 unresolved += "the description fits no group; ";
                 confidence *= 0.5f;
-            } else if (act.order == sc::Order::Attack || act.order == sc::Order::Use) {
+            } else if ((act.order == sc::Order::Attack || act.order == sc::Order::Use) && !support) {
                 confidence *= 0.9f;  // the gun's target, then the look (Validate's fallback)
             }
         }

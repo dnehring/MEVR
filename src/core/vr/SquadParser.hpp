@@ -35,6 +35,8 @@ struct DeicticWord {
 
 // What the words said about keeping the order (research/54 "Standing orders"): "until it's clear" / "until they're dead" /
 // "until I say so", "and stay there" (no coming back), "no matter what" (no retreat), "then come back" (the default, said).
+// A squadmate's name after an order starts a new clause ("Liara, target that krogan, Ashley, switch to your sniper"), except
+// as the object of "support" / "cover" / "back up" / "help" / "protect" / "stay with", which is who to support.
 struct StandingHint {
     enum class Until : std::uint8_t { Default, Calm, GroupGone, Relieved } until = Until::Default;
     bool stay = false;
@@ -45,6 +47,7 @@ struct StandingHint {
 struct Clause {
     squad_context::Action action;
     StandingHint standing;
+    char supportOf = 0;      // "support Liara": the squadmate to support (the dispatcher takes her target, else goes to her)
     float confidence = 0.0f;
     std::string unresolved;  // what the rules couldn't settle (empty when nothing)
     std::string words;       // the clause's words

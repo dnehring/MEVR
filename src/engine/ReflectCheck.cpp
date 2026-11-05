@@ -764,6 +764,9 @@ void CheckFields() {
     CheckField("Engine.SkeletalMeshSocket", "RelativeRotation", SDK_FIELD(USkeletalMeshSocket, RelativeRotation));
     CheckField("Engine.SkeletalMeshSocket", "RelativeScale", SDK_FIELD(USkeletalMeshSocket, RelativeScale));
     CheckField("Engine.AnimTree", "SkelControlLists", SDK_FIELD(UAnimTree, SkelControlLists));
+    CheckClass<ACoverLink>("Engine.CoverLink");  // the squad orders' retreat to cover (research/54)
+    CheckField("Engine.CoverLink", "Slots", SDK_FIELD(ACoverLink, Slots));
+    CheckField("Engine.CoverLink", "bDisabled", SDK_BOOL(ACoverLink, bDisabled));
     CheckField("Engine.SkelControlBase", "NextControl", SDK_FIELD(USkelControlBase, NextControl));
     CheckField("Engine.SkelControlBase", "ControlName", SDK_FIELD(USkelControlBase, ControlName));
     CheckField("Engine.SkelControlBase", "ControlStrength", SDK_FIELD(USkelControlBase, ControlStrength));
@@ -1026,6 +1029,7 @@ void CheckPaths() {
     CheckPath("Engine.SkeletalMesh", {"Bounds", "BoxExtent"},
         SDK_AT(offsetof(USkeletalMesh, Bounds) + offsetof(FBoxSphereBounds, BoxExtent), sizeof(FVector)));
     CheckElement("Engine.AnimTree", "SkelControlLists", sizeof(FSkelControlListHead));
+    CheckElement("Engine.CoverLink", "Slots", sizeof(FCoverSlot));
     // game/mako (research/44): the turret each vehicle weapon sits on.
     CheckElement("SFXGame.BioVehicleBehaviorBase", "m_aVehicleWeaponInfo", sizeof(FBioVehicleWeaponInfo));
     CheckPath("SFXGame.BioVehicleBehaviorBase", {"m_aVehicleWeaponInfo", "oVehicleWeaponPtr"},
@@ -1033,6 +1037,7 @@ void CheckPaths() {
     CheckPath("SFXGame.BioVehicleBehaviorBase", {"m_aVehicleWeaponInfo", "nTurretIndex"}, SDK_AT(offsetof(FBioVehicleWeaponInfo, nTurretIndex), 4));
     CheckPath("Engine.AnimTree", {"SkelControlLists", "BoneName"}, SDK_AT(offsetof(FSkelControlListHead, BoneName), 8));
     CheckPath("Engine.AnimTree", {"SkelControlLists", "ControlHead"}, SDK_AT(offsetof(FSkelControlListHead, ControlHead), 8));
+    CheckPath("Engine.CoverLink", {"Slots", "LocationOffset"}, SDK_AT(offsetof(FCoverSlot, LocationOffset), 12));
     CheckElement("Engine.SkeletalMeshComponent", "Attachments", sizeof(FAttachment));
     CheckPath("Engine.SkeletalMeshComponent", {"Attachments", "Component"}, SDK_AT(offsetof(FAttachment, Component), 8));
     CheckPath("Engine.SkeletalMeshComponent", {"Attachments", "BoneName"}, SDK_AT(offsetof(FAttachment, BoneName), 8));
@@ -1163,12 +1168,16 @@ void CheckFunctions() {
         "SFXGame.BioPlayerController.QuickCommandMoveTo",
         "SFXGame.BioPlayerController.QuickCommandAttackTarget",
         "SFXGame.BioPlayerController.QuickCommandFollowPlayer",
+        "SFXGame.BioBaseSquad.SetSquadFollowFormation",
+        "SFXGame.BioBaseSquad.SetMemberHoldPosition",
+        "SFXGame.BioBaseSquad.GetMemberFormation",
         "SFXGame.SFXGameModeWeaponWheel.ExitWeaponWheel",
         "SFXGame.SFXGameModeDefault.TryHolster",
         "SFXGame.SFXGameModeDefault.SwitchToWeapon",
         "SFXGame.SFXPawn_Player.DrawPrimaryWeapon",  // holsters' onlyHolstersDraw (2026-10-25)
         "SFXGame.SFXGameModeDefault.UseFirstAid",         // ...whose draws still go through from these (2026-10-26)
         "SFXGame.SFXGameModeDefault.TryUseMappedPower",
+        "SFXGame.BioPlayerInput.ActivatePower",  // the power wheel's push (research/55 section 4)
         "SFXGame.SFXGameModeDefault.EnterPowerWheel",
         "SFXGame.SFXGameModeBase.FireWeapon",  // ...and the trigger's, refused without a buzz (2026-11-04)
         "SFXGame.SFXGameModeBase.StopFiringWeapon",  // `mevr vehicle fire mg` (2026-11-04)
@@ -1328,6 +1337,10 @@ void CheckParams() {
     PARAM(UBioPower_execIsEnabled_Parms, "SFXGame.BioPower.IsEnabled", ReturnValue);  // the power wheel (research/55)
     PARAM(UBioPlayerInput_execIsCombatEnabled_Parms, "SFXGame.BioPlayerInput.IsCombatEnabled", ReturnValue);
     PARAM(UBioPower_execIsRequiredWeaponEquipped_Parms, "SFXGame.BioPower.IsRequiredWeaponEquipped", ReturnValue);
+    PARAM(UBioPlayerInput_execActivatePower_Parms, "SFXGame.BioPlayerInput.ActivatePower", nmPower);  // the push
+    PARAM(UBioPlayerInput_execActivatePower_Parms, "SFXGame.BioPlayerInput.ActivatePower", oTarget);
+    PARAM(UBioPlayerInput_execActivatePower_Parms, "SFXGame.BioPlayerInput.ActivatePower", vTargetLocation);
+    PARAM(UBioPlayerInput_execActivatePower_Parms, "SFXGame.BioPlayerInput.ActivatePower", ReturnValue);
     PARAM(ABioTriggerStream_eventTouch_Parms, "SFXGame.BioTriggerStream.Touch", Other);  // mevr stream
     PARAM(ABioSPGame_execGetSimpleString_Parms, "SFXGame.BioSPGame.GetSimpleString", StrRef);  // the galaxy hologram
     PARAM(ABioSPGame_execGetSimpleString_Parms, "SFXGame.BioSPGame.GetSimpleString", ReturnValue);
@@ -1375,6 +1388,13 @@ void CheckParams() {
     PARAM(ABioPlayerController_execQuickCommandAttackTarget_Parms, "SFXGame.BioPlayerController.QuickCommandAttackTarget", ReturnValue);
     PARAM(ABioPlayerController_execQuickCommandFollowPlayer_Parms, "SFXGame.BioPlayerController.QuickCommandFollowPlayer", iSquadMember);
     PARAM(ABioPlayerController_execQuickCommandFollowPlayer_Parms, "SFXGame.BioPlayerController.QuickCommandFollowPlayer", ReturnValue);
+    PARAM(ABioBaseSquad_execSetSquadFollowFormation_Parms, "SFXGame.BioBaseSquad.SetSquadFollowFormation", eFormation);
+    PARAM(ABioBaseSquad_execSetSquadFollowFormation_Parms, "SFXGame.BioBaseSquad.SetSquadFollowFormation", bForceFormation);
+    PARAM(ABioBaseSquad_execSetSquadFollowFormation_Parms, "SFXGame.BioBaseSquad.SetSquadFollowFormation", iSquadMember);
+    PARAM(ABioBaseSquad_execSetMemberHoldPosition_Parms, "SFXGame.BioBaseSquad.SetMemberHoldPosition", nIndex);
+    PARAM(ABioBaseSquad_execSetMemberHoldPosition_Parms, "SFXGame.BioBaseSquad.SetMemberHoldPosition", vPosition);
+    PARAM(ABioBaseSquad_execGetMemberFormation_Parms, "SFXGame.BioBaseSquad.GetMemberFormation", nIndex);
+    PARAM(ABioBaseSquad_execGetMemberFormation_Parms, "SFXGame.BioBaseSquad.GetMemberFormation", ReturnValue);
     PARAM(UBioEquipment_execChangeToQuickSlot_Parms, "SFXGame.BioEquipment.ChangeToQuickSlot", Slot);
     PARAM(UBioPawnBehavior_execGetClass_Parms, "SFXGame.BioPawnBehavior.GetClass", ReturnValue);
     PARAM(AWorldInfo_execPauseGame_Parms, "Engine.WorldInfo.PauseGame", bPause);
@@ -1527,6 +1547,9 @@ void CheckParams() {
     PARMS(ABioPlayerController_execQuickCommandMoveTo_Parms, "SFXGame.BioPlayerController.QuickCommandMoveTo");
     PARMS(ABioPlayerController_execQuickCommandAttackTarget_Parms, "SFXGame.BioPlayerController.QuickCommandAttackTarget");
     PARMS(ABioPlayerController_execQuickCommandFollowPlayer_Parms, "SFXGame.BioPlayerController.QuickCommandFollowPlayer");
+    PARMS(ABioBaseSquad_execSetSquadFollowFormation_Parms, "SFXGame.BioBaseSquad.SetSquadFollowFormation");
+    PARMS(ABioBaseSquad_execSetMemberHoldPosition_Parms, "SFXGame.BioBaseSquad.SetMemberHoldPosition");
+    PARMS(ABioBaseSquad_execGetMemberFormation_Parms, "SFXGame.BioBaseSquad.GetMemberFormation");
     PARMS(UBioEquipment_execChangeToQuickSlot_Parms, "SFXGame.BioEquipment.ChangeToQuickSlot");
     PARMS(UBioPawnBehavior_execGetClass_Parms, "SFXGame.BioPawnBehavior.GetClass");
     PARMS(AWorldInfo_execPauseGame_Parms, "Engine.WorldInfo.PauseGame");

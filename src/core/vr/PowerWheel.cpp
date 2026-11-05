@@ -68,6 +68,8 @@ XrQuaternionf FromAxes(XrVector3f x, XrVector3f y, XrVector3f z) {
 std::mutex gLatestMutex;
 View gLatest;
 std::chrono::steady_clock::time_point gLatestAt{};
+LockView gLatestLock;
+std::chrono::steady_clock::time_point gLatestLockAt{};
 
 constexpr float kRadPerDeg = std::numbers::pi_v<float> / 180.0f;
 
@@ -250,25 +252,25 @@ int Pick(Vec2 offset, std::vector<float> const& angles, int current, PickSetting
 PowerInfo const* FindPower(char const* label) {
     // The icons' order is plugin/PowerIcons' Icon: 1 Throw .. 19 Assassination (0 the generic one).
     static constexpr PowerInfo kPowers[] = {
-        {"TK_Throw", "Throw", 0, 1},
-        {"TK_Lift", "Lift", 0, 2},
-        {"SD_Warp", "Warp", 0, 3},
-        {"SD_Singularity", "Singularity", 0, 4},
-        {"KF_Stasis", "Stasis", 0, 5},
-        {"KF_Barrier", "Barrier", 0, 6},
-        {"EL_EMP_Delivery", "Overload", 1, 7},
-        {"EL_Damping_Delivery", "Damping", 1, 8},
-        {"DC_Sabotage_Delivery", "Sabotage", 1, 9},
-        {"DC_Hacking", "AI Hacking", 1, 10},
-        {"MD_Shock", "Neural Shock", 1, 11},
-        {"AR_ShieldBoost", "Shield Boost", 1, 12},
-        {"FT_Adrenaline", "Adrenaline Burst", 2, 13},
-        {"AT_Immunity", "Immunity", 2, 14},
-        {"TC_TakeDown", "Unity", 2, 15},
-        {"LW_Marksman", "Marksman", 2, 16},
-        {"AW_Suppression", "Overkill", 2, 17},
-        {"BW_CarnageSetup", "Carnage", 2, 18},
-        {"SW_Critical", "Assassination", 2, 19},
+        {"TK_Throw", "Throw", 0, 1, Aim::Target},
+        {"TK_Lift", "Lift", 0, 2, Aim::Target},
+        {"SD_Warp", "Warp", 0, 3, Aim::Target},
+        {"SD_Singularity", "Singularity", 0, 4, Aim::Place},
+        {"KF_Stasis", "Stasis", 0, 5, Aim::Place},
+        {"KF_Barrier", "Barrier", 0, 6, Aim::None},
+        {"EL_EMP_Delivery", "Overload", 1, 7, Aim::Place},
+        {"EL_Damping_Delivery", "Damping", 1, 8, Aim::Place},
+        {"DC_Sabotage_Delivery", "Sabotage", 1, 9, Aim::Place},
+        {"DC_Hacking", "AI Hacking", 1, 10, Aim::Target},
+        {"MD_Shock", "Neural Shock", 1, 11, Aim::Target},
+        {"AR_ShieldBoost", "Shield Boost", 1, 12, Aim::None},
+        {"FT_Adrenaline", "Adrenaline Burst", 2, 13, Aim::None},
+        {"AT_Immunity", "Immunity", 2, 14, Aim::None},
+        {"TC_TakeDown", "Unity", 2, 15, Aim::None},
+        {"LW_Marksman", "Marksman", 2, 16, Aim::None},
+        {"AW_Suppression", "Overkill", 2, 17, Aim::None},
+        {"BW_CarnageSetup", "Carnage", 2, 18, Aim::None},
+        {"SW_Critical", "Assassination", 2, 19, Aim::None},
     };
     if (label == nullptr) {
         return nullptr;
@@ -295,6 +297,112 @@ View Latest(std::uint64_t maxAgeMs) {
         out.open = 0;
     }
     return out;
+}
+
+void PublishLock(LockView const& view) {
+    std::lock_guard lock(gLatestMutex);
+    gLatestLock = view;
+    gLatestLockAt = std::chrono::steady_clock::now();
+}
+
+LockView LatestLock(std::uint64_t maxAgeMs) {
+    std::lock_guard lock(gLatestMutex);
+    LockView out = gLatestLock;
+    auto const age = std::chrono::steady_clock::now() - gLatestLockAt;
+    if (gLatestLockAt == std::chrono::steady_clock::time_point{} || age > std::chrono::milliseconds(maxAgeMs)) {
+        out.active = 0;
+    }
+    return out;
+}
+
+std::uint64_t UpdateLock(LockState& state, std::vector<LockCandidate> const& candidates, double time, LockSettings const& settings) {
+    // The current target, while it stays within keepDeg and range and in sight (or blocked less than graceS).
+    if (state.target != 0) {
+        LockCandidate const* current = nullptr;
+        for (LockCandidate const& c : candidates) {
+            if (c.id == state.target) {
+                current = &c;
+            }
+        }
+        bool keep = current != nullptr && current->angleDeg <= settings.keepDeg && current->distanceM <= settings.rangeM;
+        if (keep && !current->visible) {
+            if (state.blockedSince < 0.0) {
+                state.blockedSince = time;
+            }
+            keep = time - state.blockedSince <= settings.graceS;
+        } else if (keep) {
+            state.blockedSince = -1.0;
+        }
+        if (keep) {
+            return state.target;
+        }
+        state.target = 0;
+        state.blockedSince = -1.0;
+    }
+    // The best new one.
+    float bestScore = 1e9f;
+    for (LockCandidate const& c : candidates) {
+        if (!c.visible || c.angleDeg > settings.acquireDeg || c.distanceM > settings.rangeM) {
+            continue;
+        }
+        float const score = c.angleDeg + 0.05f * c.distanceM;
+        if (score < bestScore) {
+            bestScore = score;
+            state.target = c.id;
+        }
+    }
+    if (state.target != 0) {
+        state.since = time;
+        state.blockedSince = -1.0;
+    }
+    return state.target;
+}
+
+bool StepPush(Push& push, double time, XrVector3f hand, XrVector3f forward, LockSettings const& settings) {
+    constexpr double kWindowS = 0.12;
+    constexpr int kMax = 16;
+    // Keep the samples of the last window (and at most kMax), newest last.
+    if (push.count == kMax) {
+        for (int i = 1; i < kMax; ++i) {
+            push.times[i - 1] = push.times[i];
+            push.hands[i - 1] = push.hands[i];
+        }
+        --push.count;
+    }
+    push.times[push.count] = time;
+    push.hands[push.count] = hand;
+    ++push.count;
+    int first = 0;
+    while (first < push.count - 1 && time - push.times[first] > kWindowS) {
+        ++first;
+    }
+    if (first > 0) {
+        for (int i = first; i < push.count; ++i) {
+            push.times[i - first] = push.times[i];
+            push.hands[i - first] = push.hands[i];
+        }
+        push.count -= first;
+    }
+    XrVector3f const f = Normalized(forward, {0.0f, 0.0f, -1.0f});
+    double const dt = time - push.times[0];
+    if (push.count < 2 || dt < 0.03) {
+        return false;
+    }
+    XrVector3f const moved = Sub(hand, push.hands[0]);
+    float const travel = moved.x * f.x + moved.y * f.y + moved.z * f.z;
+    float const speed = static_cast<float>(travel / dt);
+    if (!push.armed) {
+        if (speed < settings.pushSpeedMS * 0.4f) {
+            push.armed = true;
+        }
+        return false;
+    }
+    if (speed >= settings.pushSpeedMS && travel >= settings.pushTravelM && time - push.lastFire >= settings.cooldownS) {
+        push.armed = false;
+        push.lastFire = time;
+        return true;
+    }
+    return false;
 }
 
 XrPosef Place(XrVector3f palm, XrVector3f eye, float towardM) {

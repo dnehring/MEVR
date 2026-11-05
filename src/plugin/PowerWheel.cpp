@@ -5,6 +5,7 @@
 #include "plugin/PowerWheel.hpp"
 
 #include "core/Log.hpp"
+#include "core/vr/InteractLabel.hpp"
 #include "core/vr/PowerWheel.hpp"
 #include "plugin/Glow.hpp"
 #include "plugin/MevrMenu.hpp"
@@ -74,6 +75,12 @@ struct Gpu {
 Gpu gGpu;
 Canvas gWheel{draw::kCanvas, draw::kCanvas};
 Canvas gHint{draw::kHintWidth, draw::kHintHeight};
+Canvas gLock{draw::kLockCanvas, draw::kLockCanvas};
+std::uint8_t gLockCasts = 0;    // the casts counter last seen
+std::uint64_t gLockCastMs = 0;  // when it last went up
+bool gLockShown = false;        // the marker was up last frame (logs each showing's first)
+bool gLoggedLockSize = false;
+std::uint64_t gLockStartMs = 0;  // for its turning ring
 XrSession gSession = XR_NULL_HANDLE;
 std::uint64_t gLastDrawMs = 0;
 std::uint32_t gLoggedSerial = 0;
@@ -105,7 +112,7 @@ bool EnsureGpu(ID3D11Device* device, ID3D11DeviceContext* context) {
     if (gGpu.imgui != nullptr) {
         return gGpu.device.Get() == device;
     }
-    if (!MakeCanvas(device, gWheel) || !MakeCanvas(device, gHint)) {
+    if (!MakeCanvas(device, gWheel) || !MakeCanvas(device, gHint) || !MakeCanvas(device, gLock)) {
         log::Error("power wheel: canvas textures failed; no power wheel in the headset");
         gGpu.failed = true;
         return false;
@@ -298,6 +305,74 @@ XrCompositionLayerQuad Quad(Frame const& frame, Canvas const& c, XrPosef pose, f
     return quad;
 }
 
+// The lock's marker at the locked hostile (or a place power's landing point), as the mod sent it: 0 or 1 quads.
+int LockLayer(Frame const& frame, XrCompositionLayerQuad const** out, int capacity, float dt) {
+    pw::LockView const lock = pw::LatestLock();
+    std::uint64_t const now = GetTickCount64();
+    if (lock.casts != gLockCasts) {
+        gLockCasts = lock.casts;
+        gLockCastMs = now;
+    }
+    bool const wanted = lock.active != 0 && capacity > 0 && frame.worldFrame && !frame.menuOpen && frame.headValid &&
+        frame.session != XR_NULL_HANDLE && frame.context != nullptr && frame.device != nullptr;
+    if (!wanted) {
+        gLockShown = false;
+        return 0;
+    }
+    if (lock.size != sizeof(pw::LockView)) {
+        if (!gLoggedLockSize) {
+            gLoggedLockSize = true;
+            log::Warn("power wheel: the mod's lock view is {} bytes, the host's {}: no marker; rebuild both", lock.size, sizeof(pw::LockView));
+        }
+        return 0;
+    }
+    if (!EnsureGpu(frame.device, frame.context) || !EnsureSwapchain(frame.session, gLock)) {
+        return 0;
+    }
+    // The quad: the brackets' closed box is sizeDeg across as seen from the eyes; the canvas is 1 / kLockBox of that.
+    constexpr float kRad = 3.14159265f / 180.0f;
+    float const boxDeg = std::clamp(lock.sizeDeg, 1.0f, 30.0f);
+    float const canvasDeg = std::min(2.0f * std::atan(std::tan(boxDeg * 0.5f * kRad) / draw::kLockBox) / kRad, 80.0f);
+    vr::interact::Quad placed;
+    if (!vr::interact::Place(lock.target, frame.head, canvasDeg, 1.0f, placed)) {
+        return 0;
+    }
+    if (gLockStartMs == 0) {
+        gLockStartMs = now;
+    }
+    draw::LockDrawView v;
+    v.ready = lock.ready != 0;
+    v.onActor = lock.onActor != 0;
+    v.lockedFor = lock.lockedFor;
+    v.cooldown = lock.cooldown;
+    v.sinceCast = gLockCastMs != 0 ? static_cast<float>(now - gLockCastMs) / 1000.0f : -1.0f;
+    v.time = static_cast<float>(now - gLockStartMs) / 1000.0f;
+    v.icon = Icon(lock.icon);
+    Render(frame.context, gLock, dt, [&](ImDrawList* dl) { draw::DrawLock(dl, v); });
+    if (!Submit(frame.context, gLock)) {
+        return 0;
+    }
+    gLock.quad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
+    gLock.quad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied
+    gLock.quad.space = frame.appSpace;
+    gLock.quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+    gLock.quad.subImage.swapchain = gLock.swapchain;
+    gLock.quad.subImage.imageRect = {{0, 0}, {static_cast<std::int32_t>(gLock.width), static_cast<std::int32_t>(gLock.height)}};
+    gLock.quad.pose = placed.pose;
+    gLock.quad.size = {placed.width, placed.height};
+    out[0] = &gLock.quad;
+    if (!gLockShown) {
+        gLockShown = true;
+        float const dx = lock.target.x - frame.head.x;
+        float const dy = lock.target.y - frame.head.y;
+        float const dz = lock.target.z - frame.head.z;
+        log::Info("power wheel: lock marker {} at ({:.2f}, {:.2f}, {:.2f}) m, {:.1f} m from the eyes, {:.2f} m across ({})",
+            lock.onActor != 0 ? "on a hostile" : "where the power would land", lock.target.x, lock.target.y, lock.target.z,
+            std::sqrt(dx * dx + dy * dy + dz * dz), placed.width, lock.ready != 0 ? "ready" : "not ready");
+    }
+    return 1;
+}
+
 }  // namespace
 
 int Layers(Frame const& frame, XrCompositionLayerQuad const** out, int capacity) {
@@ -306,13 +381,20 @@ int Layers(Frame const& frame, XrCompositionLayerQuad const** out, int capacity)
         gWheel.images.clear();
         gHint.swapchain = XR_NULL_HANDLE;
         gHint.images.clear();
+        gLock.swapchain = XR_NULL_HANDLE;
+        gLock.images.clear();
         gSession = frame.session;
     }
     gWheel.name = "powerwheel";
     gHint.name = "powerhint";
+    gLock.name = "powerlock";
     pw::View const view = pw::Latest();
     if (view.open == 0 || capacity <= 0) {
-        return 0;
+        // The wheel closed: the lock's marker, if the mod has one up.
+        std::uint64_t const now = GetTickCount64();
+        float const dt = gLastDrawMs == 0 ? 1.0f / 72.0f : static_cast<float>(now - gLastDrawMs) / 1000.0f;
+        gLastDrawMs = now;
+        return LockLayer(frame, out, capacity, dt);
     }
     if (view.size != sizeof(pw::View)) {
         if (!gLoggedSize) {
@@ -352,12 +434,8 @@ int Layers(Frame const& frame, XrCompositionLayerQuad const** out, int capacity)
     wheel.time = view.openFor;
     wheel.emblem = view.emblem != 0 ? draw::Emblem::N7 : draw::Emblem::None;
     wheel.upperCase = view.upperCase != 0;
-    // The palm's offset, in canvas pixels, kept within the hub.
-    float const hx = view.hand.x * pixelsPerM;
-    float const hy = view.hand.y * pixelsPerM;
-    float const hl = std::hypot(hx, hy);
-    float const hubPx = wheel.tile.innerRadius * 0.8f;
-    wheel.hand = hl > hubPx ? vr::power_wheel::Vec2{hx * hubPx / hl, hy * hubPx / hl} : vr::power_wheel::Vec2{hx, hy};
+    // The emblem stays at the wheel's centre (the user, 2026-11-04): the rendered hand is what moves toward a tile.
+    wheel.hand = {};
     Render(frame.context, gWheel, dt, [&](ImDrawList* dl) { draw::DrawWheel(dl, gGpu.fonts, wheel); });
     if (!Submit(frame.context, gWheel)) {
         return 0;

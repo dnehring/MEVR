@@ -574,7 +574,7 @@ mevr::game::galaxy_map::Link GalaxyMapLink() {
     return link;
 }
 
-// Host renderer (HostServices v28): the power wheel at the left hand, if the host's View matches ours.
+// Host renderer (HostServices v28): the power wheel at the left hand, if the host's View matches ours; v29 its lock's marker.
 mevr::game::power_wheel::Link PowerWheelLink() {
     using namespace mevr;
     game::power_wheel::Link link;
@@ -582,6 +582,9 @@ mevr::game::power_wheel::Link PowerWheelLink() {
         gHost->powerWheelSize == sizeof(vr::power_wheel::View)) {
         link.publish = gHost->setPowerWheel;
         link.haptic = gHost->hapticPulse;
+        if (MEVR_HOST_HAS(setPowerLock) && gHost->setPowerLock != nullptr && gHost->powerLockSize == sizeof(vr::power_wheel::LockView)) {
+            link.publishLock = gHost->setPowerLock;
+        }
     }
     return link;
 }

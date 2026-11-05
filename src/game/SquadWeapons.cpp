@@ -1578,12 +1578,32 @@ std::vector<MemberView> Members() {
     return out;
 }
 
+std::string GiveWeapon(ue3::Object* pawn, int weapon) {
+#if defined(MEVR_GAME_LE1)
+    std::string why;
+    std::optional<Game> const game = ReadGame(why);
+    if (!game) return why;
+    if (weapon < 0 || weapon >= kWeapons) return "no such weapon type";
+    for (int i = 0; i < game->count && i < gCount; ++i) {
+        if (game->pawns[i] != pawn || gMembers[i].key != reinterpret_cast<std::uintptr_t>(pawn)) continue;
+        gLastResult.clear();
+        Equip(*game, i, weapon);
+        return gLastResult.empty() ? std::string("switched") : gLastResult;
+    }
+    return "not a squadmate the menu knows";
+#else
+    (void)pawn;
+    (void)weapon;
+    return "no squad weapons on this game yet";
+#endif
+}
+
 int WeaponTypeOf(ue3::Object* weapon) {
 #if defined(MEVR_GAME_LE1)
     return RangedType(weapon);
 #else
     (void)weapon;
-    return -1;  // RangedType reads LE1's layout; LE2/LE3 have no squad weapons yet
+    return -1;  // no weapon reading on LE2/LE3 yet
 #endif
 }
 

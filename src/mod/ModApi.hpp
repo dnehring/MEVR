@@ -65,6 +65,7 @@ struct State;
 }
 namespace vr::power_wheel {
 struct View;
+struct LockView;
 }
 namespace vr::squad_menu {
 struct View;
@@ -80,7 +81,7 @@ struct Panel;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 28;
+inline constexpr int kHostServicesVersion = 29;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -339,6 +340,14 @@ struct HostServices {
     // matches its sizeof(View). Any thread.
     std::uint32_t powerWheelSize = 0;
     void (*setPowerWheel)(vr::power_wheel::View const* view) = nullptr;
+
+    // Version 29: the power lock's marker (game/PowerWheel's lock and push, research/55 section 4; core/vr/PowerWheel's
+    // LockView). Each tick the mod sends where the hostile the left hand's ray has locked stands (its chest, tracking space; or
+    // where a place power would land), the equipped power's icon and readiness; the host draws brackets there while it's active
+    // and fresh (250 ms), facing the eyes, a constant angular size. Null forgets it. The lock and the push work without it (no
+    // marker). The mod sends only if powerLockSize matches its sizeof(LockView). Any thread.
+    std::uint32_t powerLockSize = 0;
+    void (*setPowerLock)(vr::power_wheel::LockView const* view) = nullptr;
 };
 
 } // namespace mevr

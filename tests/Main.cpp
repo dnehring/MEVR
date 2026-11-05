@@ -61,6 +61,7 @@
 #include "core/vr/SquadContext.hpp"
 #include "core/vr/SquadGesture.hpp"
 #include "core/vr/SquadParser.hpp"
+#include "core/vr/SquadRetreat.hpp"
 #include "core/vr/SquadStanding.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/FrameProbe.hpp"
@@ -5089,9 +5090,34 @@ void TestSquadParser() {
     CHECK(line(p, 0) == "ALL|-|-|hold|-" && p.clauses[0].standing.stay);
     p = parse("Garrus, hold here, then regroup");
     CHECK(p.clauses.size() == 1 && line(p, 0) == "G|-|-|hold|-" && p.clauses[0].standing.comeBack);
+    // Vocatives split clauses; "target" attacks; "support X" takes X as the one to support, not the actor.
+    sc::Scene two = scene;
+    two.party[2].present = true;  // Liara along
+    sc::Member ashley;
+    ashley.letter = 'A';
+    ashley.present = true;
+    ashley.carried = (1u << 3) | (1u << 2);
+    two.party.push_back(ashley);
+    std::vector<sc::RosterEntry> four = roster;
+    four.emplace_back();
+    four.back().letter = 'A';
+    four.back().name = "Ashley Williams";
+    four.back().aliases = {"Ashley", "Ash", "Williams", "Chief"};
+    std::vector<sc::Group> five = groups;
+    five.push_back(group(4, "krogan warlord", 1, sc::Sector::Ahead, sc::Band::Mid, sc::Elevation::Level, "", 15.0f));
+    p = Parse("liara, target that krogan, ashley, switch to your sniper and support liara", two, five, four, st);
+    CHECK(p.clauses.size() == 3);
+    CHECK(line(p, 0) == "L|-|-|attack|E4" && line(p, 1) == "A|SR|-|-|-" && line(p, 2) == "A|-|-|attack|-" && p.clauses[2].supportOf == 'L');
+    CHECK(p.confidence > 0.99f && p.deictics.size() == 1 && p.deictics[0].word == "that");
+    p = Parse("ashley, cover liara", two, five, four, st);
+    CHECK(p.clauses.size() == 1 && p.clauses[0].action.who.letter == 'A' && p.clauses[0].supportOf == 'L');
+    p = Parse("back up wrex", two, five, four, st);
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "ALL|-|-|attack|-" && p.clauses[0].supportOf == 'W');
+    p = Parse("garrus, support", two, five, four, st);
+    CHECK(p.clauses.size() == 1 && p.clauses[0].supportOf == 0 && p.confidence < 0.6f);
+    p = Parse("wrex, target those, garrus, hold here", two, five, four, st);
+    CHECK(p.clauses.size() == 2 && line(p, 0) == "W|-|-|attack|PT1" && line(p, 1) == "G|-|-|hold|-");
 }
-
-
 void TestSquadStanding() {
     using namespace mevr::vr::squad_standing;
     using mevr::vr::squad_context::Vec3;
@@ -5164,12 +5190,37 @@ void TestSquadStanding() {
     ow.intent = {'G', Kind::HoldAt, bridge, 0, Until::Calm};
     ow.Advance(seen(0.1, bridge, 3, 0, true), s);
     is = ow.Advance(seen(0.1, bridge, 3, 3, true), s);
-    CHECK(ow.Done() && is.kind == Issue::Follow && std::string(is.why) == "overwhelmed");
+    // A retreat: to a point back toward Shepard (no cover offered here), held there until it's calm; a second one only after the cooldown.
+    CHECK(!ow.Done() && is.kind == Issue::Retreat && std::string(is.why) == "overwhelmed" && ow.intent.kind == Kind::HoldAt && ow.retreats == 1);
+    CHECK(!is.cover && is.point.x < bridge.x && std::abs(is.point.x - ow.intent.point.x) < 0.01f);
+    is = ow.Advance(seen(0.1, bridge, 3, 3, true), s);
+    CHECK(is.kind != Issue::Retreat && ow.retreats == 1 && !ow.Done());
+    for (int i = 0; i < 120 && !ow.Done(); ++i) {
+        is = ow.Advance(seen(0.1, ow.intent.point, 0, 0, false), s);
+    }
+    CHECK(ow.Done() && is.kind == Issue::Follow && std::string(is.why) == "the fighting stopped");
+    // With cover offered, the slot behind them is the point. Without retreatToCover, the old follow and done.
+    Standing toCover;
+    toCover.intent = {'G', Kind::HoldAt, bridge, 0, Until::Calm};
+    toCover.Advance(seen(0.1, bridge, 3, 0, true), s);
+    Observation o = seen(0.1, bridge, 3, 3, true);
+    o.shepard = {0.0f, 0.0f, 0.0f};
+    o.threats = {{40.0f, -20.0f, 4.0f}};
+    o.cover = {{24.0f, -16.0f, 4.0f}};
+    is = toCover.Advance(o, s);
+    CHECK(is.kind == Issue::Retreat && is.cover && is.point.x == 24.0f && toCover.intent.point.x == 24.0f);
+    Settings noCover = s;
+    noCover.retreatToCover = false;
+    Standing follow;
+    follow.intent = {'G', Kind::HoldAt, bridge, 0, Until::Calm};
+    follow.Advance(seen(0.1, bridge, 3, 0, true), noCover);
+    is = follow.Advance(seen(0.1, bridge, 3, 3, true), noCover);
+    CHECK(follow.Done() && is.kind == Issue::Follow && std::string(is.why) == "overwhelmed");
     Standing hurt;
     hurt.intent = {'G', Kind::HoldAt, bridge, 0, Until::Calm};
     hurt.Advance(seen(0.1, bridge, 3, 0, true), s);
     is = hurt.Advance(seen(0.1, bridge, 3, 1, true, 0.2f), s);
-    CHECK(hurt.Done() && is.kind == Issue::Follow && std::string(is.why) == "hurt");
+    CHECK(!hurt.Done() && is.kind == Issue::Retreat && std::string(is.why) == "hurt");
     // "No matter what": no retreat; they hold while hurt and overwhelmed.
     Standing brave;
     brave.intent = {'W', Kind::HoldAt, bridge, 0, Until::Calm};
@@ -5215,6 +5266,37 @@ void TestSquadStanding() {
     }
     CHECK(relieved.Done() && std::string(is.why) == "stale");
     CHECK(std::string(Name(Kind::HoldAt)) == "hold" && std::string(Name(Until::Calm)) == "until it's calm" && std::string(Name(Phase::Done)) == "done");
+}
+void TestSquadRetreat() {
+    using namespace mevr::vr::squad_retreat;
+    using mevr::vr::squad_context::Vec3;
+    Settings s;
+    Vec3 const shepard{0.0f, 0.0f, 0.0f};
+    Vec3 const member{10.0f, 0.0f, 0.0f};
+    std::vector<Vec3> const threats = {{20.0f, 0.0f, 0.0f}};
+    // No cover: the ideal point, 7.5 m back (stopped 2.5 m short of Shepard), on the squadmate's level.
+    Choice c = Pick(member, shepard, threats, {}, s);
+    CHECK(!c.cover && std::abs(c.point.x - 2.5f) < 0.01f && std::abs(c.point.y) < 0.01f && c.point.z == 0.0f);
+    // Cover near the ideal point and farther from the threat than the squadmate: taken; cover toward the threat: not.
+    std::vector<Vec3> cover = {{12.0f, 0.0f, 0.0f}, {4.0f, 1.5f, 0.0f}, {3.0f, -6.0f, 0.0f}};
+    c = Pick(member, shepard, threats, cover, s);
+    CHECK(c.cover && c.coverIndex == 1 && c.point.x == 4.0f);
+    // Cover too close to Shepard is skipped; cover farther than coverSearchM from the ideal is skipped.
+    cover = {{1.0f, 0.0f, 0.0f}, {-20.0f, 0.0f, 0.0f}};
+    c = Pick(member, shepard, threats, cover, s);
+    CHECK(!c.cover && std::abs(c.point.x - 2.5f) < 0.01f);
+    // No threats: toward Shepard.
+    c = Pick({0.0f, 10.0f, 0.0f}, shepard, {}, {}, s);
+    CHECK(!c.cover && std::abs(c.point.y - 2.5f) < 0.01f && std::abs(c.point.x) < 0.01f);
+    // The threat beyond Shepard: the pulls cancel sideways to nothing, so toward Shepard; full retreatM when Shepard is far.
+    c = Pick({30.0f, 0.0f, 0.0f}, shepard, {{40.0f, 0.0f, 0.0f}}, {}, s);
+    CHECK(std::abs(c.point.x - 22.0f) < 0.01f);
+    // On Shepard's spot with a threat: straight away from it.
+    c = Pick(shepard, shepard, {{5.0f, 0.0f, 0.0f}}, {}, s);
+    CHECK(std::abs(c.point.x + 8.0f) < 0.01f);
+    // A threat behind (between the squadmate and Shepard): the pulls cancel; falls back toward Shepard.
+    c = Pick(member, shepard, {{5.0f, 0.0f, 0.0f}}, {}, s);
+    CHECK(c.point.x < member.x);
 }
 void TestGameMenuRequest() {
     using namespace mevr::vr::game_menu;
@@ -11226,6 +11308,7 @@ int main() {
     TestSquadGesture();
     TestSquadParser();
     TestSquadStanding();
+    TestSquadRetreat();
     TestCloseLatch();
     TestClickGate();
     TestSquadPad();

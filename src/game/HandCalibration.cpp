@@ -506,11 +506,18 @@ constexpr char const* kSquadOrdersBlock =
     "; calmS after the fighting stops (then they come back), and is given up when hurt (retreatHealth) or overwhelmed\n"
     "; (overwhelmCount hostiles within 8 m). standing = 0: every order is one-shot, as the game's own.\n"
     "standing = 1\n"
+    "holdFormation = 1\n"
     "reassertS = 4\n"
     "holdRadiusM = 4\n"
     "calmS = 8\n"
     "retreatHealth = 0.3\n"
-    "overwhelmCount = 3\n";
+    "overwhelmCount = 3\n"
+    "; A retreat goes to cover between them and the threat (a CoverLink slot within coverSearchM of a point retreatM back\n"
+    "; toward you), held until it's calm; retreatToCover = 0: back to you instead. retreatCooldownS between retreats.\n"
+    "retreatToCover = 1\n"
+    "retreatM = 8\n"
+    "coverSearchM = 10\n"
+    "retreatCooldownS = 10\n";
 // Appended to a settings file that has no [Vent] yet (and part of a new file).
 constexpr char const* kVentBlock =
     "\n"
@@ -1401,6 +1408,9 @@ SquadOrders ReadSquadOrders(Ini const& ini) {
     if (Number(ini, "SquadOrders", "standing", value)) {
         s.standing = value != 0.0;
     }
+    if (Number(ini, "SquadOrders", "holdFormation", value)) {
+        s.holdFormation = value != 0.0;
+    }
     if (Number(ini, "SquadOrders", "reassertS", value)) {
         s.reassertS = std::clamp(value, 0.5, 60.0);
     }
@@ -1415,6 +1425,18 @@ SquadOrders ReadSquadOrders(Ini const& ini) {
     }
     if (Number(ini, "SquadOrders", "overwhelmCount", value)) {
         s.overwhelmCount = static_cast<int>(std::clamp(value, 1.0, 20.0));
+    }
+    if (Number(ini, "SquadOrders", "retreatToCover", value)) {
+        s.retreatToCover = value != 0.0;
+    }
+    if (Number(ini, "SquadOrders", "retreatM", value)) {
+        s.retreatM = std::clamp(value, 1.0, 50.0);
+    }
+    if (Number(ini, "SquadOrders", "coverSearchM", value)) {
+        s.coverSearchM = std::clamp(value, 0.0, 50.0);
+    }
+    if (Number(ini, "SquadOrders", "retreatCooldownS", value)) {
+        s.retreatCooldownS = std::clamp(value, 1.0, 120.0);
     }
     return s;
 }

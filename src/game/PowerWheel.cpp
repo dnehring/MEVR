@@ -12,8 +12,12 @@
 #include "engine/GameAdapter.hpp"
 #include "engine/SettingsFile.hpp"
 #include "game/HeadTracking.hpp"
+#include "game/OmniTool.hpp"
 #include "game/Player.hpp"
 #include "game/SquadWeapons.hpp"
+#include "game/SupportGrip.hpp"
+#include "game/ViewAnchor.hpp"
+#include "engine/XrToUnreal.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Runtime.hpp"
 
@@ -76,9 +80,25 @@ constexpr char kBlock[] =
     "emblem = 1\n"
     "upperCase = 0\n"
     "hintOpenings = 3\n"
-    "haptic = 0.35\n";
+    "haptic = 0.35\n"
+    "; omniTool 1: your left forearm wears Shepard's omni-tool gauntlet (the game's own hologram) while the wheel is open.\n"
+    "omniTool = 1\n"
+    "; The lock and the push: with the wheel closed, raise your left arm (lockReachM ahead of your eyes) and point your hand: the\n"
+    "; enemy nearest its ray (within lockAcquireDeg, kept until lockKeepDeg, in sight, within lockRangeM; lockGraceS of blocked\n"
+    "; sight allowed) is locked and marked; push your left hand along its ray (pushSpeedMS fast, pushTravelM far) to cast the\n"
+    "; equipped power at it, no sooner than pushCooldownS apart. lock 0: off (the right stick click's tap still casts the game's way).\n"
+    "lock = 1\n"
+    "lockAcquireDeg = 9\n"
+    "lockKeepDeg = 16\n"
+    "lockRangeM = 35\n"
+    "lockGraceS = 0.35\n"
+    "lockReachM = 0.20\n"
+    "pushSpeedMS = 1.6\n"
+    "pushTravelM = 0.10\n"
+    "pushCooldownS = 0.6\n";
 
 pw::Settings gSettings;
+pw::LockSettings gLockSettings;
 std::uint64_t gSettingsAtMs = 0;
 std::string gSettingsText;
 bool gTriedAppend = false;
@@ -89,9 +109,9 @@ std::string Describe(pw::Settings const& s) {
     }
     return std::format("X opens it at the left palm, {:.2f} m wide, {:.2f} m toward the eyes; picks past {:.3f} m of hand travel or "
                        "the stick past {:.2f}, {:.0f} deg to change; a tap under {:.2f} s keeps it open; emblem {}, {} names, hint {} "
-                       "openings, haptic {:.2f}",
+                       "openings, haptic {:.2f}; the omni-tool gauntlet {}",
         s.widthM, s.towardM, s.deadZoneM, s.stickPick, s.keepDeg, s.tapS, s.emblem ? "N7" : "none", s.upperCase ? "capital" : "title-case",
-        s.hintOpenings, s.haptic);
+        s.hintOpenings, s.haptic, s.omniTool ? "on the forearm while it's open" : "off");
 }
 
 void RefreshSettings() {
@@ -141,8 +161,24 @@ void RefreshSettings() {
     number("hintOpenings", hint, 0.0f, 100.0f);
     s.hintOpenings = static_cast<int>(hint);
     number("haptic", s.haptic, 0.0f, 1.0f);
+    flag("omniTool", s.omniTool);
+    pw::LockSettings l;
+    flag("lock", l.on);
+    number("lockAcquireDeg", l.acquireDeg, 1.0f, 30.0f);
+    number("lockKeepDeg", l.keepDeg, 1.0f, 45.0f);
+    l.keepDeg = std::max(l.keepDeg, l.acquireDeg);
+    number("lockRangeM", l.rangeM, 2.0f, 100.0f);
+    number("lockGraceS", l.graceS, 0.0f, 3.0f);
+    number("lockReachM", l.reachM, 0.0f, 0.7f);
+    number("pushSpeedMS", l.pushSpeedMS, 0.5f, 6.0f);
+    number("pushTravelM", l.pushTravelM, 0.02f, 0.5f);
+    number("pushCooldownS", l.cooldownS, 0.1f, 5.0f);
+    gLockSettings = l;
     gSettings = s;
-    if (std::string const text = Describe(s); text != gSettingsText) {
+    std::string const lockText = l.on ? std::format("; the lock within {:.0f} deg (kept to {:.0f}), {:.0f} m, the arm {:.2f} m out; a push "
+                                                               "of {:.1f} m/s over {:.2f} m casts", l.acquireDeg, l.keepDeg, l.rangeM, l.reachM, l.pushSpeedMS, l.pushTravelM)
+                                           : std::string("; no lock or push (lock = 0)");
+    if (std::string const text = Describe(s) + lockText; text != gSettingsText) {
         gSettingsText = text;
         log::Info("power wheel: settings: {}", text);
     }
@@ -265,6 +301,367 @@ void Equip(ue3::Object* controller, Power const& power) {
     gEquipped = power.label;
     log::Info("power wheel: equipped {} ({}): the game's mapped power was {}; the right stick click's tap casts it", power.info->name,
         power.label, before.empty() ? "none" : before);
+}
+
+// ---- The lock and the push (research/55 section 4) ----------------------------------------------------------------------
+ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo"};
+ue3::FieldRef gPawnList{"Engine.WorldInfo", "PawnList"};
+ue3::FieldRef gNextPawn{"Engine.Pawn", "NextPawn"};
+ue3::FieldRef gHidden{"Engine.Actor", "bHidden"};
+ue3::FieldRef gCollideActors{"Engine.Actor", "bCollideActors"};
+ue3::FunctionRef gIsHostileFn{"SFXGame.BioPawn.IsHostile"};
+ue3::FunctionRef gIsDeadFn{"SFXGame.BioPawn.IsDead"};
+ue3::FunctionRef gFastTraceFn{"Engine.Actor.FastTrace"};
+ue3::FunctionRef gTraceFn{"Engine.Actor.Trace"};
+ue3::FunctionRef gActivatePowerFn{"SFXGame.BioPlayerInput.ActivatePower"};
+
+constexpr double kChestUnits = 20.0;  // the marker a little above the pawn's centre (its location)
+
+struct Seen {
+    ue3::Object* pawn = nullptr;
+    engine::UnrealVector at{};
+    float angleDeg = 180.0f;
+    float distanceM = 0.0f;
+    bool visible = false;
+};
+pw::LockState gLock;
+pw::Push gPush;
+std::vector<Seen> gSeen;
+ue3::Object* gTarget = nullptr;
+engine::UnrealVector gTargetAt{};
+std::optional<engine::UnrealVector> gPlace;  // where a place power would land (no target)
+std::uint8_t gCasts = 0;
+std::uint64_t gCastCount = 0, gRefused = 0, gLocks = 0, gPushes = 0;
+std::string gLastCast = "none";
+std::string gLockWhy = "not started";
+bool gConsolePush = false;  // `mevr powerwheel push`: a push now
+bool gAimHead = false;      // `mevr powerwheel aimhead on` (tests): the head's ray stands in for the left hand's
+double gGripAt = -1e9;      // the left grip last squeezed (a grenade's throw, a squad order: no push for 0.4 s after)
+
+double Dot3(engine::UnrealVector const& a, engine::UnrealVector const& b) {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+engine::UnrealVector Minus(engine::UnrealVector const& a, engine::UnrealVector const& b) {
+    return {a.x - b.x, a.y - b.y, a.z - b.z};
+}
+engine::UnrealVector Plus(engine::UnrealVector const& a, engine::UnrealVector const& b) {
+    return {a.x + b.x, a.y + b.y, a.z + b.z};
+}
+engine::UnrealVector Scaled(engine::UnrealVector const& a, double k) {
+    return {a.x * k, a.y * k, a.z * k};
+}
+ue3::Vector ToVector(engine::UnrealVector const& v) {
+    return {static_cast<float>(v.x), static_cast<float>(v.y), static_cast<float>(v.z)};
+}
+XrVector3f RotateXr(XrQuaternionf q, XrVector3f v) {
+    XrVector3f const u{q.x, q.y, q.z};
+    auto cross = [](XrVector3f a, XrVector3f b) { return XrVector3f{a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x}; };
+    XrVector3f const t = cross(u, v);
+    XrVector3f const t2{2.0f * t.x, 2.0f * t.y, 2.0f * t.z};
+    XrVector3f const c = cross(u, t2);
+    return {v.x + q.w * t2.x + c.x, v.y + q.w * t2.y + c.y, v.z + q.w * t2.z + c.z};
+}
+
+// The power the game has mapped (the wheel's equip, or the game's own wheel), if it's one of the player's.
+std::optional<Power> ReadyPower(ue3::Object* controller, ue3::Object* pawn) {
+    std::string const mapped = MappedPower(controller);
+    if (mapped.empty() || mapped == "None") {
+        return std::nullopt;
+    }
+    ue3::Object* const behavior = gBehavior.Read<ue3::Object*>(pawn).value_or(nullptr);
+    auto const list = behavior != nullptr ? gPowers.ElementsOf(behavior) : std::nullopt;
+    if (!list) {
+        return std::nullopt;
+    }
+    for (std::int32_t i = 0; i < list->count && i < 64; ++i) {
+        void* const slot = list->At(i);
+        ue3::Object* const power = slot != nullptr ? *static_cast<ue3::Object**>(slot) : nullptr;
+        if (power == nullptr || !ue3::runtime::IsAlive(power)) {
+            continue;
+        }
+        Power p;
+        p.name = gPowerName.Read<ue3::Name>(power).value_or(ue3::Name{});
+        p.label = ue3::runtime::NameText(p.name);
+        if (p.label != mapped) {
+            continue;
+        }
+        p.info = pw::FindPower(p.label.c_str());
+        if (p.info == nullptr) {
+            return std::nullopt;
+        }
+        float const remaining = std::max(0.0f, gCooldownRemaining.Read<float>(power).value_or(0.0f));
+        float const total = gTotalCooldown.Read<float>(power).value_or(0.0f);
+        p.cooldown = total > 0.01f ? std::clamp(remaining / total, 0.0f, 1.0f) : (remaining > 0.0f ? 1.0f : 0.0f);
+        p.enabledCount = gEnabledCount.Read<std::int32_t>(power).value_or(-1);
+        p.suppressed = gSuppressed.Read<std::int32_t>(power).value_or(-1);
+        p.enabled = p.enabledCount != 0 && (gIsEnabledFn.Get() == nullptr || CallBool(power, gIsEnabledFn)) &&
+                    (gIsRequiredWeaponFn.Get() == nullptr || CallBool(power, gIsRequiredWeaponFn));
+        return p;
+    }
+    return std::nullopt;
+}
+
+// The living hostiles near the ray (within keepDeg and range), each with its line of sight from the hand.
+void Scan(ue3::Object* pawn, engine::UnrealVector const& origin, engine::UnrealVector const& direction, double upm,
+    pw::LockSettings const& s) {
+    gSeen.clear();
+    ue3::Object* const world = gWorldInfo.Read<ue3::Object*>(pawn).value_or(nullptr);
+    if (world == nullptr || gIsHostileFn.Get() == nullptr) {
+        return;
+    }
+    int guard = 0;
+    for (ue3::Object* p = gPawnList.Read<ue3::Object*>(world).value_or(nullptr); p != nullptr && guard < 512;
+         p = gNextPawn.Read<ue3::Object*>(p).value_or(nullptr), ++guard) {
+        if (p == pawn || !player::IsBioPawn(p) || gHidden.ReadBool(p).value_or(false) || !gCollideActors.ReadBool(p).value_or(true) ||
+            CallBool(p, gIsDeadFn)) {
+            continue;  // dead, or dormant (hidden, without collision: a base's crew before its encounter)
+        }
+        std::optional<ue3::Vector> const at = player::Location(p);
+        if (!at) {
+            continue;
+        }
+        engine::UnrealVector const point{at->x, at->y, at->z + kChestUnits};
+        engine::UnrealVector const to = Minus(point, origin);
+        double const length = std::sqrt(Dot3(to, to));
+        if (length < 1.0) {
+            continue;
+        }
+        float const distanceM = static_cast<float>(length / upm);
+        float const angle = static_cast<float>(std::acos(std::clamp(Dot3(to, direction) / length, -1.0, 1.0)) * 180.0 / 3.14159265358979);
+        if (distanceM > s.rangeM || angle > s.keepDeg) {
+            continue;  // the cheap tests first
+        }
+        ue3::Params hostile(ue3::runtime::Get(), gIsHostileFn.Get());
+        hostile.Set("Other", p);
+        ue3::runtime::Call(pawn, gIsHostileFn.Get(), hostile);
+        if (!hostile.ReturnBool().value_or(false)) {
+            continue;
+        }
+        Seen seen{p, {at->x, at->y, at->z}, angle, distanceM, true};
+        if (ue3::Function* const trace = gFastTraceFn.Get()) {
+            ue3::Params parms(ue3::runtime::Get(), trace);
+            parms.Set("TraceEnd", ToVector(point));
+            parms.Set("TraceStart", ToVector(origin));
+            ue3::runtime::Call(pawn, trace, parms);
+            seen.visible = parms.ReturnBool().value_or(false);
+        }
+        gSeen.push_back(seen);
+    }
+}
+
+// Where the ray meets the world within range (a place power's landing point), or nullopt.
+std::optional<engine::UnrealVector> Land(ue3::Object* pawn, engine::UnrealVector const& origin, engine::UnrealVector const& direction,
+    double range) {
+    ue3::Function* const fn = gTraceFn.Get();
+    if (pawn == nullptr || fn == nullptr) {
+        return std::nullopt;
+    }
+    ue3::Params parms(ue3::runtime::Get(), fn);
+    parms.Set("TraceEnd", ToVector(Plus(origin, Scaled(direction, range))));
+    parms.Set("TraceStart", ToVector(origin));
+    parms.SetBool("bTraceActors", true);
+    ue3::runtime::Call(pawn, fn, parms);
+    if (parms.Return<ue3::Object*>().value_or(nullptr) == nullptr) {
+        return std::nullopt;
+    }
+    ue3::Vector const at = parms.Get<ue3::Vector>("HitLocation").value_or(ue3::Vector{});
+    engine::UnrealVector const point{at.x, at.y, at.z};
+    double const along = Dot3(Minus(point, origin), direction);
+    if ((at.x == 0.0f && at.y == 0.0f && at.z == 0.0f) || along < 0.0 || along > range + 1.0) {
+        return std::nullopt;
+    }
+    return point;
+}
+
+std::string NameOf(ue3::Object* object) {
+    return object != nullptr ? ue3::runtime::Get().NameText(object) : std::string("nothing");
+}
+
+// The game's own "cast this at that" (research/55 section 2): SetCurrentPower, AcquireActive(BioActivePower), then the
+// running power's SetTargetActor and SetTargetLocation.
+bool Cast(ue3::Object* controller, Power const& power, ue3::Object* target, std::optional<engine::UnrealVector> const& at) {
+    ue3::Object* const input = PlayerInput(controller);
+    ue3::Function* const fn = gActivatePowerFn.Get();
+    if (input == nullptr || fn == nullptr) {
+        gLastCast = std::string(power.info->name) + ": no BioPlayerInput.ActivatePower";
+        return false;
+    }
+    ue3::Params parms(ue3::runtime::Get(), fn);
+    parms.Set("nmPower", power.name);
+    if (target != nullptr) {
+        parms.Set("oTarget", target);
+    }
+    if (at) {
+        parms.Set("vTargetLocation", ToVector(*at));
+    }
+    ue3::runtime::Call(input, fn, parms);
+    bool const ok = parms.ReturnBool().value_or(false);
+    gLastCast = std::format("{} at {}{}: {}", power.info->name, target != nullptr ? NameOf(target) : std::string("no actor"),
+        at ? std::format(" ({:.0f}, {:.0f}, {:.0f})", at->x, at->y, at->z) : std::string(), ok ? "started" : "the game refused it");
+    return ok;
+}
+
+void Refuse(Link const& link, std::string const& why) {
+    ++gRefused;
+    gLastCast = why;
+    log::Info("power wheel: push not cast: {}", why);
+    if (link.haptic != nullptr && gSettings.haptic > 0.0f) {
+        link.haptic(0, 0.12f, gSettings.haptic * 0.5f);  // a long soft buzz: no
+    }
+}
+
+void TickLock(Link const& link, vr::host_view::State const& view, vr::controllers::State const& controllers, ue3::Object* controller,
+    ue3::Object* pawn, bool onFoot) {
+    pw::LockSettings const& s = gLockSettings;
+    pw::LockView marker;
+    auto publish = [&]() {
+        if (link.publishLock != nullptr) {
+            link.publishLock(&marker);
+        }
+    };
+    gSeen.clear();
+    gPlace.reset();
+    bool const pushAsked = gConsolePush;
+    gConsolePush = false;
+    std::optional<Power> const ready = s.on && onFoot && controller != nullptr && pawn != nullptr ? ReadyPower(controller, pawn) : std::nullopt;
+    std::optional<engine::TrackingFrame> const frame = view_anchor::Current();
+    bool const hand = controllers.active && controllers.left.aimValid;
+    char const* why = nullptr;
+    if (!s.on) {
+        why = "off (lock = 0)";
+    } else if (!onFoot) {
+        why = "not on foot";
+    } else if (!ready) {
+        why = "no equipped power of the player's (the game's mapped power)";
+    } else if (!frame || !view.valid) {
+        why = "no head-tracked world view";
+    } else if (!hand && !gAimHead) {
+        why = "the left controller isn't tracked";
+    } else if (gMachine.open || gHeldAfter) {
+        why = "the wheel has the left hand";
+    } else if (support_grip::Held()) {
+        why = "the left hand holds the gun";
+    } else if (squad_weapons::IsOpen()) {
+        why = "the squad's weapon wheel is open";
+    }
+    if (why != nullptr) {
+        gLockWhy = why;
+        gLock = {};
+        gTarget = nullptr;
+        publish();
+        return;
+    }
+    gLockWhy = "ready";
+    XrPosef const aim = hand ? controllers.left.aim : view.head;
+    // The arm raised: the hand ahead of the eyes (as seen flat).
+    XrVector3f const forwardFlat = HeadForwardFlat(view.head.orientation);
+    float const reach = (aim.position.x - view.head.position.x) * forwardFlat.x + (aim.position.z - view.head.position.z) * forwardFlat.z;
+    bool const raised = !hand || reach >= s.reachM;
+    double const upm = frame->unitsPerMeter > 0.0 ? frame->unitsPerMeter : engine::kUnitsPerMeter;
+    engine::UnrealVector const origin = engine::ToWorld(*frame, aim.position);
+    engine::UnrealVector const direction = engine::OrientationToWorld(*frame, aim.orientation).forward;
+    if (ready->info->aim != pw::Aim::None && raised) {
+        Scan(pawn, origin, direction, upm, s);
+    }
+    std::vector<pw::LockCandidate> candidates;
+    for (Seen const& seen : gSeen) {
+        candidates.push_back({reinterpret_cast<std::uint64_t>(seen.pawn), seen.angleDeg, seen.distanceM, seen.visible});
+    }
+    std::uint64_t const id = pw::UpdateLock(gLock, candidates, gClock, s);
+    ue3::Object* target = nullptr;
+    for (Seen const& seen : gSeen) {
+        if (reinterpret_cast<std::uint64_t>(seen.pawn) == id) {
+            target = seen.pawn;
+            gTargetAt = seen.at;
+            if (target != gTarget) {
+                ++gLocks;
+                log::Info("power wheel: {} locked on {} ({:.1f} m, {:.1f} deg from the left hand's ray)", ready->info->name, NameOf(target),
+                    seen.distanceM, seen.angleDeg);
+                if (link.haptic != nullptr && gSettings.haptic > 0.0f) {
+                    link.haptic(0, 0.02f, gSettings.haptic);
+                }
+            }
+        }
+    }
+    gTarget = target;
+    if (target == nullptr && ready->info->aim == pw::Aim::Place && raised) {
+        gPlace = Land(pawn, origin, direction, s.rangeM * upm);
+    }
+
+    // The push: an open left hand (no grip: a grenade's throw or a squad order's point isn't a cast), the arm raised.
+    bool pushed = pushAsked;
+    if (controllers.active && controllers.left.squeeze > 0.5f) {
+        gGripAt = gClock;
+    }
+    if (hand && gClock - gGripAt >= 0.4) {
+        // Every sample counts (a push may start low), but only one that ends with the arm raised casts: a fast reach
+        // elsewhere (walking, grabbing) is spent silently.
+        XrVector3f const along = RotateXr(controllers.left.aim.orientation, {0.0f, 0.0f, -1.0f});
+        pushed = (pw::StepPush(gPush, gClock, controllers.left.aim.position, along, s) && raised) || pushed;
+    }
+    if (pushed) {
+        ++gPushes;
+        if (!ready->enabled) {
+            Refuse(link, std::format("{} can't be cast now (the game says it's unavailable: suppressed, or not with the weapon in hand)",
+                ready->info->name));
+        } else if (ready->cooldown > 0.0f) {
+            Refuse(link, std::format("{} is still cooling down ({:.0f}% to go)", ready->info->name, ready->cooldown * 100.0f));
+        } else {
+            bool ok = false;
+            bool tried = true;
+            switch (ready->info->aim) {
+            case pw::Aim::Target:
+                if (target != nullptr) {
+                    ok = Cast(controller, *ready, target, Plus(gTargetAt, {0.0, 0.0, kChestUnits}));
+                } else {
+                    tried = false;
+                    Refuse(link, std::format("{} needs a locked enemy", ready->info->name));
+                }
+                break;
+            case pw::Aim::Place:
+                if (target != nullptr) {
+                    ok = Cast(controller, *ready, target, Plus(gTargetAt, {0.0, 0.0, kChestUnits}));
+                } else if (gPlace) {
+                    ok = Cast(controller, *ready, nullptr, gPlace);
+                } else {
+                    tried = false;
+                    Refuse(link, std::format("{}: no enemy locked and the hand's ray meets nothing in range", ready->info->name));
+                }
+                break;
+            case pw::Aim::None:
+                ok = Cast(controller, *ready, nullptr, std::nullopt);
+                break;
+            }
+            if (tried) {
+                log::Info("power wheel: push: {}", gLastCast);
+                if (ok) {
+                    ++gCastCount;
+                    ++gCasts;
+                    if (link.haptic != nullptr && gSettings.haptic > 0.0f) {
+                        link.haptic(0, 0.08f, std::min(1.0f, gSettings.haptic * 2.0f));
+                    }
+                } else if (link.haptic != nullptr && gSettings.haptic > 0.0f) {
+                    link.haptic(0, 0.12f, gSettings.haptic * 0.5f);
+                }
+            }
+        }
+    }
+
+    // The marker: on the locked enemy, or where a place power would land.
+    if (target != nullptr || gPlace) {
+        marker.active = 1;
+        marker.ready = ready->enabled && ready->cooldown <= 0.0f ? 1 : 0;
+        marker.discipline = ready->info->discipline;
+        marker.casts = gCasts;
+        marker.onActor = target != nullptr ? 1 : 0;
+        marker.icon = ready->info->icon;
+        engine::UnrealVector const at = target != nullptr ? Plus(gTargetAt, {0.0, 0.0, kChestUnits}) : *gPlace;
+        marker.target = engine::ToTracking(*frame, at);
+        marker.sizeDeg = target != nullptr ? 6.0f : 4.0f;
+        marker.lockedFor = target != nullptr ? static_cast<float>(gClock - gLock.since) : 0.0f;
+        marker.cooldown = ready->cooldown;
+    }
+    publish();
 }
 
 }  // namespace
@@ -408,6 +805,9 @@ void Tick(double deltaSeconds, Link const& link) {
             link.haptic(0, 0.015f, s.haptic);
         }
     }
+    if (gMachine.open && s.omniTool) {
+        omni_tool::Request();  // the forearm wears the game's omni-tool gauntlet while the wheel is open (the world screens tick it)
+    }
     if (gHeldAfter && !gMachine.open) {
         bool const still = controllers.active && (left.trigger > 0.2f || left.squeeze > 0.2f || left.primary);
         gHeldAfter = still;
@@ -445,6 +845,7 @@ void Tick(double deltaSeconds, Link const& link) {
             link.publish(&closed);
         }
     }
+    TickLock(link, view, controllers, controller, pawn, onFoot);
 }
 
 void AdjustPad(gamepad::Options& options) {
@@ -495,6 +896,24 @@ std::string Console(std::string_view args) {
         gConsoleHold = false;
         return "power wheel: closing";
     }
+    if (verb == "push") {
+        gConsolePush = true;
+        return "power wheel: a push on the next tick (casts the equipped power at the lock)";
+    }
+    if (verb == "aimhead") {
+        std::string state;
+        words >> state;
+        gAimHead = state != "off";
+        return std::format("power wheel: the head's ray {} the left hand's for the lock (tests)", gAimHead ? "stands in for" : "no longer stands in for");
+    }
+    if (verb == "lock") {
+        std::string out = std::format("power wheel: lock {}; target {}; place {}; last cast: {}", gLockWhy, NameOf(gTarget),
+            gPlace ? std::format("({:.0f}, {:.0f}, {:.0f})", gPlace->x, gPlace->y, gPlace->z) : std::string("none"), gLastCast);
+        for (Seen const& seen : gSeen) {
+            out += std::format("\n  {}: {:.1f} m, {:.1f} deg, {}", NameOf(seen.pawn), seen.distanceM, seen.angleDeg, seen.visible ? "in sight" : "blocked");
+        }
+        return out;
+    }
     if (verb == "unlearned") {
         std::string state;
         words >> state;
@@ -544,20 +963,27 @@ std::string StatusJson() {
     ue3::Object* const controller = ue3::runtime::Ready() ? player::Controller() : nullptr;
     return std::format("{{\"on\": {}, \"why\": {}, \"open\": {}, \"toggled\": {}, \"serial\": {}, \"roster\": [{}], \"selected\": {}, "
                        "\"hand\": [{}, {}], \"pose\": [{}, {}, {}], \"equipped\": {}, \"mappedPower\": {}, \"last\": {}, \"opened\": {}, "
-                       "\"equips\": {}, \"cancels\": {}, \"picks\": {}}}",
+                       "\"equips\": {}, \"cancels\": {}, \"picks\": {}, \"lock\": {{\"why\": {}, \"target\": {}, \"seen\": {}, \"locks\": {}, "
+        "\"pushes\": {}, \"casts\": {}, \"refused\": {}, \"lastCast\": {}}}}}",
         gSettings.on ? "true" : "false", json::JsonString(gWhy), gMachine.open ? "true" : "false", gMachine.toggled ? "true" : "false",
         gMachine.serial, roster, gMachine.selected, json::JsonNumber(gView.hand.x), json::JsonNumber(gView.hand.y),
         json::JsonNumber(gView.pose.position.x), json::JsonNumber(gView.pose.position.y), json::JsonNumber(gView.pose.position.z),
         json::JsonString(gEquipped), json::JsonString(MappedPower(controller)), json::JsonString(gLastEvent), gOpened, gEquips, gCancels,
-        gPicks);
+        gPicks, json::JsonString(gLockWhy), json::JsonString(NameOf(gTarget)), gSeen.size(), gLocks, gPushes, gCastCount, gRefused,
+        json::JsonString(gLastCast));
 }
 
 void LogStats() {
-    log::Info("power wheel: {}; opened {}, equipped {}, closed unequipped {}, picks {}; last equipped {}", gWhy, gOpened, gEquips, gCancels,
-        gPicks, gEquipped.empty() ? "none" : gEquipped);
+    log::Info("power wheel: {}; opened {}, equipped {}, closed unequipped {}, picks {}; last equipped {}; lock {}: {} locks, {} pushes, "
+              "{} casts, {} refused; last: {}", gWhy, gOpened, gEquips, gCancels, gPicks, gEquipped.empty() ? "none" : gEquipped, gLockWhy,
+        gLocks, gPushes, gCastCount, gRefused, gLastCast);
 }
 
 void Shutdown(Link const& link) {
+    if (link.publishLock != nullptr) {
+        pw::LockView none;
+        link.publishLock(&none);
+    }
     if (link.publish != nullptr && gMachine.open) {
         pw::View closed = gView;
         closed.open = 0;

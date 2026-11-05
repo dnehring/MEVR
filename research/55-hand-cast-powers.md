@@ -175,3 +175,46 @@ with the left stick (which then doesn't walk); X freed from the game's grenade f
   firing). On foot with the wheel on, X never reaches the game (`grenadeButton` off): the physical throw stays.
 - **Not yet checked in the game** [verify]: the roster's reads and `IsEnabled` on a real save, the equip reaching
   `TryUseMappedPower`, the quad's placement at a tracked palm, the glow's cost on the render thread.
+
+## 7. The lock and the push (2026-11-05)
+
+Section 4's lock and cast, built on the wheel's equip: the power the wheel equipped (the game's `MappedPower`) is the one the
+left hand aims and casts. Code: `core/vr/PowerWheel` (`UpdateLock`, `StepPush`, `LockView`; unit-tested in
+`tests/PowerWheelTests.cpp`), `game/PowerWheel` (`TickLock`), the host's marker in `plugin/PowerWheel` + `PowerWheelDraw`
+(`DrawLock`), HostServices v29 `setPowerLock`. Settings `[PowerWheel] lock*`, `push*`.
+
+- **When:** on foot, the wheel closed (and nothing it took still held), the equipped power one of the player's in the shared
+  table, the left controller's aim tracked, the left hand not on the gun (`support_grip::Held`) and the squad's wheel closed,
+  and **the arm raised**: the hand `lockReachM` (0.20 m) ahead of the eyes along the head's flat forward. A power without aim
+  (Barrier, the combat talents) scans nothing; the push casts it at once.
+- **The lock:** each tick the pawns of `WorldInfo.PawnList` that are BioPawns, hostile to the player (`BioPawn.IsHostile`),
+  not dead and not dormant (hidden or without collision: a base's crew before its encounter, as the Mako's gunner skips them),
+  measured from the hand: the angle between the left aim ray and the pawn's chest (its location + 20 units), the distance, and
+  `Actor.FastTrace` from the hand to the chest. `UpdateLock` keeps the current target while it stays within `lockKeepDeg` (16)
+  and `lockRangeM` (35 m) and its line of sight hasn't been blocked longer than `lockGraceS` (0.35 s); otherwise it takes the
+  best visible one within `lockAcquireDeg` (9): the smallest angle, 0.05 degree per metre deciding near ties. A new lock ticks
+  the left hand. The cheap tests (angle, range) run before the script calls.
+- **A place power with nothing locked** (Singularity, Stasis, Overload, Damping, Sabotage: section 3's camera-trace powers):
+  `Actor.Trace` along the hand's ray within the range; where it hits is where the power lands (the marker shows a dashed ring
+  there). Nothing hit: no cast.
+- **The push:** the left hand moving along its own aim ray at `pushSpeedMS` (1.6 m/s) or more, at least `pushTravelM`
+  (0.10 m) of it, over the last 0.12 s; it fires once and re-arms when the hand slows below 40% of that speed, no sooner than
+  `pushCooldownS` (0.6 s) after the last. Only an open hand: no push for 0.4 s after the left grip was squeezed (a grenade's
+  throw from the chest or a squad order's point ends in a release that moves the hand forward).
+- **The cast:** `BioPlayerInput.ActivatePower(nmPower, oTarget, vTargetLocation)` on the game thread (section 2's own path:
+  `SetCurrentPower`, `AcquireActive`, then the running power's `SetTargetActor` / `SetTargetLocation`): a target power at the
+  locked pawn and its chest, a place power at the locked pawn or else the landing point, a power without aim with neither. A
+  cast that starts pulses the hand hard; one refused (nothing locked, cooling down, `IsEnabled` false, the game's `false`)
+  buzzes long and soft, and the reason is logged.
+- **The marker** (HostServices v29, `LockView`, size-checked): the mod sends the target in tracking space
+  (`engine::ToTracking` of the chest) every tick; the host draws a 256 px canvas as the `powerlock` quad there, facing the
+  eyes, the brackets' box `sizeDeg` (6, a place 4) across at any distance (`vr::interact::Place`, as the interaction label).
+  Ready: orange brackets (the game's chosen colour) closing in over 0.18 s, a diamond at the chest; cooling down or blocked:
+  blue, with a ring whose orange part grows as the cooldown runs; the equipped power's icon in a cut-corner box at the lower
+  right; a cast flashes a growing ring. Offline: `mevr-power-wheel-preview`'s `lock-*.png`.
+- **Console** (no tracked controllers needed): `mevr powerwheel push` (a push on the next tick), `aimhead on|off` (the head's
+  ray stands in for the left hand's), `lock` (why it is or isn't ready, the target, every hostile measured, the last cast).
+  Snapshot `"mod"."powerWheel"."lock"`, a `powerlock` layer.
+- **Not yet checked in the game** [verify]: section 4's questions 1-4 (does the target set by `ActivatePower` hold through the
+  release; what a cast with the weapon away does; where the projectile leaves from; the casting animation with arm IK), the
+  push's thresholds in the headset, the marker's size at 5-35 m.

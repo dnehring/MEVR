@@ -2,8 +2,10 @@
 #pragma once
 
 #include "core/vr/SquadContext.hpp"
+#include "core/vr/SquadRetreat.hpp"
 
 #include <cstdint>
+#include <vector>
 
 // Standing orders: the memory above the game's one-shot squad primitives (research/54 "Standing orders"). "Hold the
 // bridge" is not a move: it is an intent kept per squadmate until a condition ends it, re-asserted through the game's
@@ -34,6 +36,9 @@ struct Settings {
     int overwhelmCount = 3;         // ...or with this many hostiles within overwhelmRadiusM
     float overwhelmRadiusM = 8.0f;
     float maxAgeS = 180.0f;         // a standing older than this is stale: they come back
+    float retreatCooldownS = 10.0f; // a second retreat no sooner than this after one
+    bool retreatToCover = true;     // a retreat is a hold at cover between them and the threat (else a follow)
+    squad_retreat::Settings retreat;
 };
 
 struct Intent {
@@ -57,14 +62,20 @@ struct Observation {
     int hostilesNearMember = 0;   // ...within overwhelmRadiusM of the squadmate
     bool groupAlive = false;      // AttackGroup: any member left
     bool combat = false;          // the player's combat state
+    // For a retreat: Shepard, the hostiles near the squadmate, the cover slots near them (the mod fills these only
+    // when a retreat is possible).
+    squad_context::Vec3 shepard;
+    std::vector<squad_context::Vec3> threats;
+    std::vector<squad_context::Vec3> cover;
 };
 
 enum class Phase : std::uint8_t { Active, Returning, Retreating, Done };
 char const* Name(Phase phase);
 
 struct Issue {
-    enum Kind : std::uint8_t { None, MoveTo, Follow, Attack } kind = None;
-    squad_context::Vec3 point;  // MoveTo
+    enum Kind : std::uint8_t { None, MoveTo, Follow, Attack, Retreat } kind = None;
+    squad_context::Vec3 point;  // MoveTo, Retreat
+    bool cover = false;         // Retreat: to a cover slot
     int group = 0;              // Attack
     char const* why = "";
 };
@@ -76,6 +87,8 @@ struct Standing {
     double sinceIssueS = 1e9;   // a fresh standing issues at once
     double calmForS = 0.0;
     bool engaged = false;       // hostiles were ever near the point (a hold at a quiet spot still ends on Calm)
+    double sinceRetreatS = 1e9;
+    int retreats = 0;
     // One tick: what to tell the game now (None most ticks). After Done nothing more.
     Issue Advance(Observation const& seen, Settings const& settings);
     bool Done() const { return phase == Phase::Done; }
