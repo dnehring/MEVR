@@ -355,7 +355,14 @@ switching frameworks.
   `m_bOverheated = false` (journalled), `DoCoolDownEffect` through ProcessEvent, both hands pulse, `ventCooldownS` 4. Arbitration:
   while the left hand is in a hot gun's receiver zone and no support grip is held, `support_grip` reports the squeeze "away from the
   gun" (`vent::MasksSupportZone`), so it reaches the mod: grenades first, then the vent; a cool gun's receiver is the support grip.
-  No game function cools a weapon. Logs `vent:`; snapshot `"mod"."vent"`.
+  No game function cools a weapon. Logs `vent:`; snapshot `"mod"."vent"`. **The visible rack** (section 6, 2026-11-04,
+  `[Vent] animate`, mod only, [verify]): while the hold lasts a part of the gun's own model (`<type>Part = auto`: pistol
+  `Barrel_Upper_front`, assault rifle `Scope`, sniper none; a model without one logs its bone list once) follows the hand
+  back along the gun, clamped to `partTravelUnits`, and springs home at the release (`ik::vent::Rack`), written into the
+  gun's SpaceBases after its UpdateSkelPose (`engine/bone_pose` weapon-part stage, `BonePose.ventPart`; ForceSkelUpdate if
+  the gun isn't posed by itself). `mevr vent heat <f> [hold] | rack [f] [s] | part` test it without controllers,
+  `tools/make-rack-recording.py` the whole gesture under a replay with `-Inputs`. Logs `vent: rack:`; snapshot
+  `"mod"."vent"."rack"`.
 - LE1 game pointer ([research/42](research/42-game-pointer.md), host `plugin/GamePointer`, math `core/vr/GamePointer`; `[Pointer]`):
   while Halcyon shows the game as its flat quad (`menuFlat` mode 7, `galaxyFlat` mode 9; `flatCine = 0` keeps flat conversations and
   cutscenes out), a controller's aim ray on it is the game's mouse: the hit's UV is the window's client pixel (the backbuffer fills

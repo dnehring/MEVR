@@ -1254,6 +1254,7 @@ MEVR_MOD_API void MevrModShutdown() {
         removed(engine::call_function::Uninstall(*gInit), "the CallFunction hook couldn't be removed");
     }
     game::arm_ik::Shutdown();  // stops the writes before the hook goes
+    game::vent::PutPartBack(exiting);  // the rack's part at rest, its pose stage cleared (research/45 section 6)
     if (gInit && gBonePoseHooked) {
         removed(engine::bone_pose::Uninstall(*gInit, !exiting),
             "the UpdateSkelPose hook couldn't be removed, or a call was still inside it");

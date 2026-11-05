@@ -488,7 +488,21 @@ constexpr char const* kVentBlock =
     "zoneFrontM = 0.14\n"
     "zoneAboveM = 0.14\n"
     "zoneBelowM = 0.03\n"
-    "zoneSideM = 0.09\n";
+    "zoneSideM = 0.09\n"
+    "; animate: 1 = a part of the gun's own model (its slide, heat sink or receiver cover) follows your hand back while\n"
+    "; you hold the receiver of a hot gun, and snaps forward when you let go (research/45 section 6). pistolPart,\n"
+    "; shotgunPart, assaultRiflePart, sniperRiflePart: which bone of the model moves: auto (the mod's choice), none, or\n"
+    "; bone names (the first the model has; the log line 'vent: rack:' lists a model's bones when it finds none).\n"
+    "; partTravelUnits: how far the part may go back (the model's units, about cm; auto = the part's own). partReturnHz,\n"
+    "; partDamping: the spring that snaps it forward.\n"
+    "animate = 1\n"
+    "pistolPart = auto\n"
+    "shotgunPart = auto\n"
+    "assaultRiflePart = auto\n"
+    "sniperRiflePart = auto\n"
+    "partTravelUnits = auto\n"
+    "partReturnHz = 9\n"
+    "partDamping = 0.5\n";
 
 // Appended to a settings file that has no [Hud] yet (and part of a new file).
 constexpr char const* kHudBlock =
@@ -1336,15 +1350,33 @@ Vent ReadVent(Ini const& ini) {
     number("zoneAboveM", v.zone.aboveMeters, 0.0, 0.5);
     number("zoneBelowM", v.zone.belowMeters, 0.0, 0.5);
     number("zoneSideM", v.zone.sideMeters, 0.0, 0.5);
+    // The visible rack (research/45 section 6).
+    flag("animate", v.animate);
+    if (auto const s = ini.find("Vent"); s != ini.end()) {
+        for (int type = 0; type < 4; ++type) {
+            if (auto const k = s->second.find(VentPartKey(type)); k != s->second.end()) {
+                v.parts[static_cast<std::size_t>(type)] = k->second.empty() ? std::string("none") : k->second;
+            }
+        }
+    }
+    number("partTravelUnits", v.partTravelUnits, 0.0, 30.0);  // auto (not a number): 0, the part's own
+    number("partReturnHz", v.partReturnHz, 0.5, 60.0);
+    number("partDamping", v.partDamping, 0.0, 4.0);
     return v;
 }
 
 std::string Describe(Vent const& v) {
     return std::format("{}: cooldown {:.1f} s, from {:.2f} of the overheat ({:.2f}); a rack at {:.1f} m/s over {:.2f} m, held at most "
-                       "{:.1f} s; zone {:.2f} behind .. {:.2f} ahead, {:.2f} above .. {:.2f} below, {:.2f} beside; effect {}; haptics {:.2f}",
+                       "{:.1f} s; zone {:.2f} behind .. {:.2f} ahead, {:.2f} above .. {:.2f} below, {:.2f} beside; effect {}; haptics {:.2f}; "
+                       "the gun's part {}",
         v.enabled ? "on" : "off", v.cooldownS, v.minHeat, v.maxHeat, v.speedMin, v.travel, v.holdMax, v.zone.backMeters,
         v.zone.frontMeters, v.zone.aboveMeters, v.zone.belowMeters, v.zone.sideMeters, v.effect ? "the game's" : "none",
-        v.hapticAmplitude);
+        v.hapticAmplitude,
+        v.animate ? std::format("racks (pistol {}, shotgun {}, assault rifle {}, sniper rifle {}; travel {}; spring {:.1f} Hz, damping {:.2f})",
+                        v.parts[0], v.parts[1], v.parts[2], v.parts[3],
+                        v.partTravelUnits > 0.0 ? std::format("{:.1f} units", v.partTravelUnits) : std::string("the part's own"),
+                        v.partReturnHz, v.partDamping)
+                  : std::string("stays still ([Vent] animate = 0)"));
 }
 
 Vent gVent;
@@ -2167,6 +2199,16 @@ Vent GetVent() {
     return gVent;
 }
 
+char const* VentPartKey(int weaponType) {
+    switch (weaponType) {
+    case 0: return "pistolPart";
+    case 1: return "shotgunPart";
+    case 2: return "assaultRiflePart";
+    case 3: return "sniperRiflePart";
+    default: return "";
+    }
+}
+
 vr::hud_pieces::Settings GetHud() {
     return gHud;
 }
@@ -2613,6 +2655,15 @@ void Refresh() {
         {L"WorldUi", "WorldUi", L"wristFollow", "wristFollow", L"1"},
         {L"WorldUi", "WorldUi", L"wristBeam", "wristBeam", L"1"},
         {L"WorldUi", "WorldUi", L"omniTool", "omniTool", L"1"},
+        // The vent's visible rack (2026-11-04, research/45 section 6).
+        {L"Vent", "Vent", L"animate", "animate", L"1"},
+        {L"Vent", "Vent", L"pistolPart", "pistolPart", L"auto"},
+        {L"Vent", "Vent", L"shotgunPart", "shotgunPart", L"auto"},
+        {L"Vent", "Vent", L"assaultRiflePart", "assaultRiflePart", L"auto"},
+        {L"Vent", "Vent", L"sniperRiflePart", "sniperRiflePart", L"auto"},
+        {L"Vent", "Vent", L"partTravelUnits", "partTravelUnits", L"auto"},
+        {L"Vent", "Vent", L"partReturnHz", "partReturnHz", L"9"},
+        {L"Vent", "Vent", L"partDamping", "partDamping", L"0.5"},
     };
     std::string addedKeys;
     for (auto const& k : kNewKeys) {

@@ -881,6 +881,12 @@ void CheckFields() {
     // Vent (research/45)
     CheckField("SFXGame.BioWeaponRanged", "m_fCurrentHeat", SDK_FIELD(ABioWeaponRanged, m_fCurrentHeat));
     CheckField("SFXGame.BioWeaponRanged", "m_bOverheated", SDK_BOOL(ABioWeaponRanged, m_bOverheated));
+    // ...the game's cool-down effect, logged once per weapon (research/45 section 6)
+    CheckField("SFXGame.BioWeaponRanged", "m_pCachedVFXAppearance", SDK_FIELD(ABioWeaponRanged, m_pCachedVFXAppearance));
+    CheckField("SFXGame.BioWeaponRanged", "m_visualEffects", SDK_FIELD(ABioWeaponRanged, m_visualEffects));
+    CheckField("SFXGame.BioWeaponVFXAppearance", "nmCoolDown", SDK_FIELD(UBioWeaponVFXAppearance, nmCoolDown));
+    CheckField("SFXGame.BioWeaponVFXAppearance", "vfxCoolDown", SDK_FIELD(UBioWeaponVFXAppearance, vfxCoolDown));
+    CheckField("SFXGame.BioWeaponVFXAppearance", "fCooldownPerSecond", SDK_FIELD(UBioWeaponVFXAppearance, fCooldownPerSecond));
     CheckField("SFXGame.BioPawnBehavior", "m_oEquipment", SDK_FIELD(UBioPawnBehavior, m_oEquipment));
     // game/combat_stance (research/38): the AnimTree walk, the draw rate, the speed ramp, the walking speed.
     CheckField("Engine.AnimNode", "NodeName", SDK_FIELD(UAnimNode, NodeName));
@@ -1107,6 +1113,7 @@ void CheckFunctions() {
         "Engine.Actor.Destroy",
         // Vent (research/45)
         "SFXGame.BioWeaponRanged.DoCoolDownEffect",
+        "Engine.SkeletalMeshComponent.ForceSkelUpdate",  // the visible rack, a gun not posed each frame (section 6)
         // SquadWeapons, Holsters
         "SFXGame.BioBaseSquad.GetSquadSize",
         "SFXGame.BioBaseSquad.GetMember",
@@ -1445,6 +1452,7 @@ void CheckParams() {
     PARMS(AActor_execSetLocation_Parms, "Engine.Actor.SetLocation");
     PARMS(AActor_execDestroy_Parms, "Engine.Actor.Destroy");
     PARMS(ABioWeaponRanged_eventDoCoolDownEffect_Parms, "SFXGame.BioWeaponRanged.DoCoolDownEffect");
+    PARMS(USkeletalMeshComponent_execForceSkelUpdate_Parms, "Engine.SkeletalMeshComponent.ForceSkelUpdate");
     PARMS(ABioBaseSquad_execGetSquadSize_Parms, "SFXGame.BioBaseSquad.GetSquadSize");
     PARMS(ABioBaseSquad_execGetMember_Parms, "SFXGame.BioBaseSquad.GetMember");
     PARMS(ABioBaseSquad_execGetMemberSwitchWeapon_Parms, "SFXGame.BioBaseSquad.GetMemberSwitchWeapon");
