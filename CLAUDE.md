@@ -743,7 +743,10 @@ switching frameworks.
   release, about 0.58 s after the cast; only other casters' fly, research/55 section 8), so **a bolt from the hand** (a prototype,
   section 9; `mevr powerwheel bolt [on|off|speed n]`, `vfx [all]` maps every power's effects) spawns the enemy version's projectile
   effect (Throw's: a biotic hand) at the left hand with `BioVisualEffect.CreateVFXOnPosition` and flies it to the target in the
-  release delay learned from `BioPawn.ReleasePower`; none where no enemy version is loaded. While on, X never throws a grenade on foot (the pad's `grenadeButton` off); while open the left stick, L3, X, the
+  release delay learned from `BioPawn.ReleasePower`; where no enemy version is loaded, the power's own charge or omni-tool effect.
+  **A cast with the weapon away** spent the cooldown for nothing (the release is the gun-out casting animation's notify): the mod
+  sends `BioPawn.ReleasePower` itself at the learned delay (`mevr powerwheel unarmed on|off`), so casts work with the gun out
+  (left hand alone) and with it holstered. While on, X never throws a grenade on foot (the pad's `grenadeButton` off); while open the left stick, L3, X, the
   left trigger and grip are its own (`gamepad::kFlagPowerWheel`, `Latches::powerHeld` until released) and the squad's trigger stands down
   (`power_wheel::OwnsLeftHand`). The look is the user's concept in the game's own UI language (research/55 section 5: colours and
   edge-lit fills sampled from `GUI_SF_HUD`/`GUI_SF_InGameGui`, our N7 mark, Rajdhani); a two-level bloom (`plugin/Glow`, its own device

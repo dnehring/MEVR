@@ -27,7 +27,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] How Shepard's arms look during the cast animation, with arm IK on. (research/55 section 4)
 - [ ] Cast Throw at an enemy (or Warp, Lift or Stasis where enemies in the level use them): a translucent blue biotic hand
   flies from your left hand and lands as the game's hit does. Is it the right size and brightness at your hand, and facing
-  the right way? (research/55 section 9, a prototype built 2026-11-05)
+  the right way? Where no enemy uses the power (Singularity, tech powers) the bolt is the power's own charge or omni-tool
+  effect instead: does that read as the power? Cast with your gun out in the right hand too: the left hand alone must cast,
+  and the right arm stays on the gun. (research/55 section 9, a prototype built 2026-11-05)
 - [ ] Hold the right stick click 0.3 s: the game's own power wheel opens, steers with the right stick, closes when you let
   go. A quick click does nothing; a double-click still recenters. (research/19 "Hold only")
 
@@ -200,7 +202,7 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 
 ## 7. Claude checks these alone on the fake headset (no need to wear it)
 Ask Claude to run them when the machine is free; each is a console command, a snapshot, a replay or a probe.
-- Powers: a cast with the weapon away (`mevr powerwheel push`); the glow's render-thread cost. (research/55)
+- Powers: the glow's render-thread cost; the self-cast powers (Barrier...) with the weapon away. (research/55)
 - Melee: `mevr melee punch` with the weapon away: the pistol whip plays and hurts, no holster draw logged. (research/20)
 - Right stick hold: the game's power wheel opens and closes from an input replay. (research/19 "Hold only")
 - Mako: the cannon and the gunner against several woken enemies; `turretSeam` 1, 2, 4 one at a time. (research/47, 44)

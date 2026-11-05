@@ -595,7 +595,9 @@ struct Bolt {
 std::optional<Bolt> gBolt;
 bool gBoltOn = true;           // `mevr powerwheel bolt on|off` (a prototype)
 std::string gPushCastPower;    // its power's label
-double gPushCastAt = -100.0;   // our push's cast (gClock), for the release's timing
+double gPushCastAt = -100.0;
+bool gReleasedSinceCast = false;  // BioPawn.ReleasePower seen since our last cast
+bool gReleaseByMod = false;       // ...sent by the mod right now (a cast with the weapon away)   // our push's cast (gClock), for the release's timing
 std::string gLastBolt = "none";
 unsigned gBolts = 0;
 
@@ -616,8 +618,34 @@ ue3::Object* EffectDefaults() {
     return nullptr;
 }
 
+// The fallback where no enemy version is loaded (enemies' effects come with the level): the player's power's own particles, always
+// loaded with it: the caster's charge (PlayerCrust: the biotics' Biotics_Charge_001) or else its release (the tech and self-cast
+// powers' omni-tool prefabs). Only a template with a prefab (particle systems) can fly; `source` names it.
+ue3::FieldRef gBoltPlayerCrust{"SFXGame.BioPowerVFXAppearance", "PlayerCrust"};
+ue3::FieldRef gBoltRelease{"SFXGame.BioPowerVFXAppearance", "vfxReleaseEffect"};
+ue3::FieldRef gBoltPrefab{"SFXGame.BioVFXTemplate", "oPrefab"};
+ue3::Object* FallbackTemplate(ue3::Object* playerPower, std::string& source) {
+    ue3::Object* const look = playerPower != nullptr ? gVfxAppearanceOf.Read<ue3::Object*>(playerPower).value_or(nullptr) : nullptr;
+    if (look == nullptr) {
+        return nullptr;
+    }
+    auto const withPrefab = [](ue3::Object* templ) {
+        return templ != nullptr && gBoltPrefab.Read<ue3::Object*>(templ).value_or(nullptr) != nullptr ? templ : nullptr;
+    };
+    ue3::Object** const crust = gBoltPlayerCrust.In<ue3::Object*>(look);  // FPowerVFXData: the template first
+    if (ue3::Object* const charge = withPrefab(crust != nullptr ? *crust : nullptr)) {
+        source = "its own charge (no enemy version loaded)";
+        return charge;
+    }
+    if (ue3::Object* const release = withPrefab(gBoltRelease.Read<ue3::Object*>(look).value_or(nullptr))) {
+        source = "its own release effect (no enemy version loaded)";
+        return release;
+    }
+    return nullptr;
+}
+
 // The projectile effect for the player's power `label`: its own if it has one, else an enemy version's (TK_Throw ->
-// TK_Throw_NPC or TK_Throw_PLC...) among the loaded powers. Null: none loaded.
+// TK_Throw_NPC or TK_Throw_PLC...) among the loaded powers, else FallbackTemplate's. Null: nothing with particles.
 ue3::Object* BoltTemplate(ue3::Object* playerPower, std::string const& label, std::string& source) {
     auto projectileOf = [](ue3::Object* power) -> ue3::Object* {
         ue3::Object* const look = power != nullptr ? gVfxAppearanceOf.Read<ue3::Object*>(power).value_or(nullptr) : nullptr;
@@ -627,6 +655,7 @@ ue3::Object* BoltTemplate(ue3::Object* playerPower, std::string const& label, st
         source = "its own";
         return own;
     }
+    ue3::Object* const fallback = FallbackTemplate(playerPower, source);
     ue3::Reflection& r = ue3::runtime::Get();
     ue3::Class* const cls = gPowerClassForBolt.Get();
     for (std::int32_t i = 0, n = cls != nullptr ? r.ObjectCount() : 0; i < n; ++i) {
@@ -642,7 +671,7 @@ ue3::Object* BoltTemplate(ue3::Object* playerPower, std::string const& label, st
             }
         }
     }
-    return nullptr;
+    return fallback;  // null if the power has nothing with particles either
 }
 
 bool SetActorLocation(ue3::Object* actor, engine::UnrealVector const& where) {
@@ -673,7 +702,7 @@ void StartBolt(Power const& power, engine::UnrealVector const& from, engine::Unr
     ue3::Object* const templ = BoltTemplate(power.object, power.label, source);
     ue3::Object* const defaults = EffectDefaults();
     if (templ == nullptr || defaults == nullptr || gCreateVfxOnPositionFn.Get() == nullptr) {
-        gLastBolt = std::format("{}: no bolt ({})", power.label, templ == nullptr ? "no projectile effect of an enemy version loaded"
+        gLastBolt = std::format("{}: no bolt ({})", power.label, templ == nullptr ? "no enemy version loaded and no particles of its own"
                                                                                   : "BioVisualEffect not found");
         log::Info("power wheel: {}", gLastBolt);
         return;
@@ -738,9 +767,46 @@ void OnReleasePower(ue3::Object* pawn, ue3::Function* /*function*/, void* /*parm
         d = d > 0.0 ? 0.5 * d + 0.5 * (gClock - gPushCastAt) : gClock - gPushCastAt;
         gPushCastPower.clear();  // only the first release after a cast
     }
-    log::Info("power wheel: the game released the power {:.2f} s after our cast{}", gClock - gPushCastAt,
+    gReleasedSinceCast = true;
+    log::Info("power wheel: {} released the power {:.2f} s after our cast{}", gReleaseByMod ? "the mod (the weapon is away)" : "the game",
+        gClock - gPushCastAt,
         gBolt ? std::format(" (the bolt is {:.0f}% of the way)", 100.0 * std::min(1.0, (gClock - gBolt->startedAt) / gBolt->flightS))
               : std::string());
+}
+
+// A cast with the weapon away (measured 2026-11-05, research/55 section 9): the game accepts it and starts the cooldown, but
+// its release is the casting animation's notify (BioPawn.ReleasePower), which the weapon-away animation never sends: the power
+// was spent for nothing. ME1 itself never casts with the weapon away (the mapped power and the wheel draw it first). So after
+// such a cast the mod sends that event itself, at the delay a release takes with the weapon out, unless the game did.
+ue3::FunctionRef gInCombatStateFn{"SFXGame.BioPawn.IsInCombatActionState"};
+bool gUnarmedRelease = true;   // `mevr powerwheel unarmed on|off` (tests)
+double gUnarmedReleaseAt = -1.0;
+ue3::Object* gUnarmedPawn = nullptr;
+
+bool WeaponOut(ue3::Object* pawn) {
+    ue3::Function* const fn = gInCombatStateFn.Get();
+    if (pawn == nullptr || fn == nullptr) {
+        return true;  // unknown: leave it to the game
+    }
+    ue3::Params parms(ue3::runtime::Get(), fn);
+    ue3::runtime::Call(pawn, fn, parms);
+    return parms.ReturnBool().value_or(true);
+}
+
+void TickUnarmedRelease() {
+    if (gUnarmedReleaseAt < 0.0 || gClock < gUnarmedReleaseAt) {
+        return;
+    }
+    gUnarmedReleaseAt = -1.0;
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const pawn = controller != nullptr ? player::BioPawn(controller) : nullptr;
+    if (gReleasedSinceCast || pawn == nullptr || pawn != gUnarmedPawn || gReleasePowerFn.Get() == nullptr) {
+        return;
+    }
+    ue3::Params parms(ue3::runtime::Get(), gReleasePowerFn.Get());
+    gReleaseByMod = true;
+    ue3::runtime::Call(pawn, gReleasePowerFn.Get(), parms);  // the casting animation's notify, as the game sends it
+    gReleaseByMod = false;
 }
 
 void TickLock(Link const& link, vr::host_view::State const& view, vr::controllers::State const& controllers, ue3::Object* controller,
@@ -870,6 +936,15 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
             }
             if (tried) {
                 log::Info("power wheel: push: {}", gLastCast);
+                if (ok) {
+                    gPushCastAt = gClock;
+                    gReleasedSinceCast = false;
+                    if (gUnarmedRelease && !WeaponOut(pawn)) {
+                        auto const learned = gReleaseDelay.find(ready->label);
+                        gUnarmedReleaseAt = gClock + (learned != gReleaseDelay.end() ? learned->second : kDefaultReleaseS);
+                        gUnarmedPawn = pawn;
+                    }
+                }
                 if (ok && ready->info->aim != pw::Aim::None && gBoltOn) {
                     // The bolt leaves 6 cm ahead of the hand (the test hand with `aimhead`: held out low and left).
                     engine::UnrealVector from = Plus(origin, Scaled(direction, 0.06 * upm));
@@ -1030,6 +1105,7 @@ void Tick(double deltaSeconds, Link const& link) {
     gClock += std::max(deltaSeconds, 0.0);
     RefreshSettings();
     TickBolt();
+    TickUnarmedRelease();
     pw::Settings const& s = gSettings;
 
     ue3::Object* const controller = ue3::runtime::Ready() ? player::Controller() : nullptr;
@@ -1266,6 +1342,12 @@ std::string Console(std::string_view args) {
         words >> state;
         gAimHead = state != "off";
         return std::format("power wheel: the head's ray {} the left hand's for the lock (tests)", gAimHead ? "stands in for" : "no longer stands in for");
+    }
+    if (verb == "unarmed") {
+        std::string state;
+        words >> state;
+        gUnarmedRelease = state != "off";
+        return std::format("power wheel: a cast with the weapon away {}", gUnarmedRelease ? "gets the release from the mod" : "is left to the game");
     }
     if (verb == "bolt") {
         std::string state;

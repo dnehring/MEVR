@@ -114,7 +114,8 @@ thread through `ue3::runtime::Call`, with no hook. What it would be built from:
    0x308, aren't read yet)? If it re-reads, the fallbacks exist already: the selection is ours to steer
    (`engine/SelectionGaze` hooks 0xC79D70 and moves the camera's POV for that call only), and the same POV swap around
    the release would steer a camera trace.
-2. What a cast with the weapon away does (the mapped power draws first; `ActivatePower` doesn't check).
+2. What a cast with the weapon away does (the mapped power draws first; `ActivatePower` doesn't check). **Answered
+   2026-11-05 (section 9): the cooldown is spent and nothing happens, unless the mod sends the release.**
 3. Whether the projectile leaves from the hand our arm IK places (`BioPower.GetProjectileAttachPoint`) and whether it
    follows `m_oTarget`.
 4. How the casting animation looks in first person with arm IK on (the power's `Anim`/`CoverAnim` drive the upper body).
@@ -270,7 +271,7 @@ left hand aims and casts. Code: `core/vr/PowerWheel` (`UpdateLock`, `StepPush`, 
   behaviour's `bActive` (and hidden), not the collision. **Checked the same night (f1cf826):** Throw at the locked BioPawn_3
   ragdolled it again (its ragdoll start matched the push) and threw it 2.5 m; polled every 0.5 s for 9 s, the lock stayed on it
   ("BioPawn_3 (automatic) ... in sight") through the ragdoll and its recovery.
-- **Still to check** [verify]: a cast with the weapon away (question 2), the casting animation
+- **Still to check** [verify]: ~~a cast with the weapon away (question 2)~~ (section 9), the casting animation
   with arm IK (question 4), the push's thresholds with tracked hands in the headset, the marker's size at 5-35 m in the
   headset.
 
@@ -341,3 +342,24 @@ the game's own impact glow showed at the target at the release. Singularity, wit
 along the flight, the shape's own axes [verify]); powers with no enemy version loaded (a fallback: the template by name, a package
 load, or one of our own); the charge (`PlayerCrust`) plays at Shepard's right wrist while the left hand casts; the tech powers'
 omni-tool and the self-cast powers have no flight to show.
+
+### The weapon out and the weapon away (2026-11-05, later)
+
+The user: casts must work with the left hand alone while the right hand holds a weapon. Measured on the fake headset with
+the game's own holster toggle (`TryHolster` from the console; the holsters are idle without tracked controllers) and
+`mevr melee strike` as the probe of the weapon's state (its first refusal says whether the weapon is away):
+
+- **Weapon out:** Throw cast, the release at 0.58 s, the locked mercenary thrown 2.8 m and lifted. Nothing in the push or the
+  lock needs an empty right hand (only the left hand on the gun, the wheel or the squad wheel blocks a cast).
+- **Weapon away:** the cast is accepted (`ActivatePower` true) and **the cooldown starts, but the power never goes off**: no
+  `BioPawn.ReleasePower`, the target didn't move (Throw), so the power was spent for nothing. The release is the casting
+  animation's notify, and the weapon-away animation sends none; ME1 itself never casts with the weapon away (the mapped power and
+  the wheel draw it first, section 2).
+- **The fix (on):** after a push's cast with the weapon away (`BioPawn.IsInCombatActionState` false), the mod sends
+  `BioPawn.ReleasePower` itself (ProcessEvent, no parameters) at the release delay learned with the weapon out (0.58 s), unless
+  the game released first. Measured: Throw with the weapon away thrown 2.7 m and 1.9 m on two casts, the gun stayed holstered.
+  `mevr powerwheel unarmed on|off`; log `power wheel: the mod (the weapon is away) released the power ...`. Only our push's casts:
+  the game's own wheel and mapped power still draw the weapon first, as in ME1. [verify] the casting animation with no gun and
+  the self-cast powers (Barrier and the rest) this way.
+- **The fallback bolt** (no enemy version loaded) flies the power's own charge (`Biotics_Charge_001`): standalone it shows as a
+  translucent biotic forearm and open hand for a moment, then blue streaks along the flight (snapshots of Singularity's).
