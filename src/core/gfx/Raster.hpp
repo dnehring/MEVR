@@ -7,7 +7,7 @@
 #include <optional>
 #include <vector>
 
-// A CPU rasterizer for the movies core/gfx/Swf reads (research/55 section 5, "The game's own art"): a character (shape or
+// A CPU rasterizer for the movies core/gfx/Swf reads (research/56 section 5, "The game's own art"): a character (shape or
 // sprite) at a frame to an image, anti-aliased by exact area coverage (the signed-area accumulation of stb_truetype
 // and font-rs, written here from the math), each fill style filled by the nonzero rule over its fill0/fill1-oriented
 // edges, quadratic curves flattened adaptively. Solid, linear, radial and focal gradient fills (pad, reflect, repeat;

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// tests/GfxTests.cpp: core/gfx (research/55 section 5, "The game's own art"): the SWF/GFx reader, the rasterizer and the
+// tests/GfxTests.cpp: core/gfx (research/56 section 5, "The game's own art"): the SWF/GFx reader, the rasterizer and the
 // TrueType builder, on tiny movies built here byte by byte (no game data): a shape with a hole, a linear gradient, a
 // sprite with two labelled frames and a clip layer, a nine-slice sprite with a scaling grid, a stroke, and a
 // DefineFont3 with a square glyph, an 'O' ring of quadratic curves and a kerning pair. The fonts are loaded back with

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// The omni-tool's rail in the host (plugin/OmniToolRail.hpp, research/55).
+// The omni-tool's rail in the host (plugin/OmniToolRail.hpp, research/56).
 #include "plugin/OmniToolRail.hpp"
 
 #include "plugin/MainMenu.hpp"
@@ -199,7 +199,7 @@ bool Init(ID3D11Device* device, ID3D11DeviceContext* context) {
         }
     });
     g.model = ctor.GetModelHandle();
-    // The game's own art (research/55 section 5), before the document loads so its fonts resolve; without it the rail keeps
+    // The game's own art (research/56 section 5), before the document loads so its fonts resolve; without it the rail keeps
     // its own drawn look.
     rail_art::Status const art = rail_art::Load(device, g.ui->GetRenderer(), {});
     g.art = art.fonts && art.tabs && art.panel;

@@ -594,7 +594,7 @@ void CheckClasses() {
     CheckClass<USFXGameModePowerWheel>("SFXGame.SFXGameModePowerWheel");
     CheckClass<USFXGameModeCommand>("SFXGame.SFXGameModeCommand");
     CheckClass<USFXGameModePhoto>("SFXGame.SFXGameModePhoto");
-    CheckClass<UGFxMovieInfo>("GFxUI.GFxMovieInfo");  // game/GameArt (research/55): the movies' bytes
+    CheckClass<UGFxMovieInfo>("GFxUI.GFxMovieInfo");  // game/GameArt (research/56): the movies' bytes
     CheckClass<UBioPawnBehavior>("SFXGame.BioPawnBehavior");
     CheckClass<UBioEpicPawnBehavior>("SFXGame.BioEpicPawnBehavior");
     CheckClass<UBioActorBehavior>("SFXGame.BioActorBehavior");
@@ -1155,7 +1155,7 @@ void CheckFunctions() {
         "Engine.WorldInfo.PauseGame",
         // GameMenuRequest (research/28): Start's Console_Menu on each mode that declares it
         "SFXGame.SFXGameModeBase.ShowMenuGui",
-        // GameMenuRequest, the omni-tool's rail (research/55): the screens' own functions and the screens' B
+        // GameMenuRequest, the omni-tool's rail (research/56): the screens' own functions and the screens' B
         "SFXGame.SFXGameModeBase.ShowEquipmentGui",
         "SFXGame.SFXGameModeBase.ShowSquadGui",
         "SFXGame.SFXGameModeBase.ShowJournalGui",

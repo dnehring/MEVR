@@ -530,13 +530,13 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
     }
     if (verb == "omni") {
         // `mevr omni <equipment|squad|map|journal|codex|computer|close|holster>`: what the omni-tool rail's entries ask
-        // (research/55), without a hand on the rail.
+        // (research/56), without a hand on the rail.
         std::string which;
         words >> which;
         return game_menu_request::Inject(which);
     }
     if (verb == "holo") {
-        // `mevr holo spawn|effect|scale|move|info|clear` (research/55 section 4: the squad holograms' experiment).
+        // `mevr holo spawn|effect|scale|move|info|clear` (research/56 section 4: the squad holograms' experiment).
         std::string rest;
         std::getline(words, rest);
         return holo_probe::Command(rest);

@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-// TrueType fonts built in memory from a movie's DefineFont3 (or DefineFont2) glyphs (research/55 section 5, "The game's own
+// TrueType fonts built in memory from a movie's DefineFont3 (or DefineFont2) glyphs (research/56 section 5, "The game's own
 // art"), so RmlUi's FreeType engine can load the game's own faces from memory. The glyphs' quadratic edges map to
 // TrueType's on- and off-curve points directly; coordinates / emScale (20 for DefineFont3), y flipped, unitsPerEm
 // 1024; ascender, descender and line gap from the font's layout; advances from its advance table; a format-0 'kern'

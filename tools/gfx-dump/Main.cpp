@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// mevr-gfx-dump: a local look at a Scaleform GFx / SWF movie through core/gfx (research/55 section 5, "The game's own art"):
+// mevr-gfx-dump: a local look at a Scaleform GFx / SWF movie through core/gfx (research/56 section 5, "The game's own art"):
 // its exports, sprites, shapes and fonts; a character drawn to PNG at a frame or label; a nine-slice fit; a font
 // rebuilt as TrueType; and a text sample rendered by FreeType from that TrueType file. It reads the player's own
 // files; what it writes stays local (game art: never commit it).

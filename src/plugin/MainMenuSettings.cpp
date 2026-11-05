@@ -294,7 +294,7 @@ void Settings::Read(menu::Values& v) {
     v.numbers["cine_distance"] = std::clamp(ini.Num("Cinematics", "distanceM", 2.6f), 1.0f, 6.0f);
     v.numbers["cine_depth"] = std::clamp(std::round(ini.Num("Cinematics", "depth", kCineDepthFull) / kCineDepthFull * 100.0f), 0.0f, 150.0f);
     {
-        // The omni-tool's screens (research/53 section 6, research/55): projected from the wrist unless [WorldUi] wrist is none.
+        // The omni-tool's screens (research/53 section 6, research/56): projected from the wrist unless [WorldUi] wrist is none.
         std::string const wrist = Lower(ini.Text("WorldUi", "wrist", "all"));
         v.texts["wrist_screen"] = wrist.empty() || wrist == "none" ? "room" : "wrist";
     }
@@ -582,7 +582,7 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         Put("Cinematics", "depth", fixed(v.Number("cine_depth") / 100.0f * kCineDepthFull, 4), final);
     } else if (key == "wrist_screen") {
         Put("WorldUi", "wrist", v.Text("wrist_screen") == "room" ? std::string("none")
-            : vr::world_ui::ScreenList(vr::world_ui::Settings{}.wristScreens), true);  // the omni-tool's screens (research/55)
+            : vr::world_ui::ScreenList(vr::world_ui::Settings{}.wristScreens), true);  // the omni-tool's screens (research/56)
     } else if (key == "world_ui") {
         Put("WorldUi", "on", onOff("world_ui"), true);
     } else if (key == "galaxy_holo") {

@@ -4470,7 +4470,7 @@ void TestGameMenuRequest() {
     // The values cross the host/mod boundary: unknown ones are None.
     CHECK(FromValue(0) == Action::None && FromValue(1) == Action::PauseMenu && FromValue(2) == Action::Holster);
     CHECK(FromValue(9) == Action::None && FromValue(0xFFFFFFFFu) == Action::None);
-    // The omni-tool's rail (research/55): the five screens by their game functions, and closing them.
+    // The omni-tool's rail (research/56): the five screens by their game functions, and closing them.
     CHECK(FromValue(3) == Action::Equipment && FromValue(7) == Action::Map && FromValue(8) == Action::CloseScreens);
     CHECK(IsScreen(Action::Squad) && IsScreen(Action::Codex) && !IsScreen(Action::PauseMenu) && !IsScreen(Action::CloseScreens));
     CHECK(std::string(ShowFunction(Action::Equipment)) == "ShowEquipmentGui" && std::string(ShowFunction(Action::Journal)) == "ShowJournalGui");
@@ -6476,7 +6476,7 @@ void TestOmniRail() {
     CHECK(!tap.Step(false, away, wrist, true, 0.01f));  // tracking lost: disarmed
     CHECK(!tap.Step(true, touching, wrist, true, 0.01f));
     CHECK(!tap.Step(true, away, wrist, true, 0.01f) && tap.Step(true, touching, wrist, true, 0.01f));
-    // The world UI's wrist rule (research/55): a listed screen nothing owns; a locker's equipment stands by the locker; the
+    // The world UI's wrist rule (research/56): a listed screen nothing owns; a locker's equipment stands by the locker; the
     // minigame always; the minigame's own width, the others' 16:9 width.
     wu::Settings const s;
     CHECK(wu::OnWrist(s, wu::Screen::Journal, false) && !wu::OnWrist(s, wu::Screen::Inventory, true) && wu::OnWrist(s, wu::Screen::SkillGame, true));

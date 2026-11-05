@@ -61,7 +61,7 @@ struct Settings {
     // wrist: the screens projected from the left wrist instead, Shepard's omni-tool (the bypass minigame by default; the user,
     // 2026-11-04; Fallout 4 VR's Pip-Boy, wrist or projected, and Half-Life: Alyx's multitool holograms set the pattern:
     // research/53 section 6). Without a tracked left controller when it opens, the screen stands in the room.
-    // Since 2026-11-04 (research/55, the user: "the entire menu system available via omni-tool"): every personal screen too,
+    // Since 2026-11-04 (research/56, the user: "the entire menu system available via omni-tool"): every personal screen too,
     // the ones the omni-tool's rail opens and the main wheel's (options, save, load); a screen a use opened (a locker's
     // equipment) still stands by what was used (OnWrist). The shop, loot and the rest stay in the room.
     std::uint32_t wristScreens = Bit(Screen::SkillGame) | Bit(Screen::Inventory) | Bit(Screen::XMods) | Bit(Screen::CharacterRecord) |
@@ -154,7 +154,7 @@ Rect DefaultCrop(Screen screen);
 // The part shown when it's projected from the wrist: tighter where the screen is a small box on its stage (the minigame). The host
 // picks it when the screen goes on the wrist; the mod's stageCrop is the room's.
 Rect WristCrop(Screen screen);
-// Whether a screen goes on the wrist (research/55): listed in wristScreens, and not one a use opened (`anchored`: it belongs to
+// Whether a screen goes on the wrist (research/56): listed in wristScreens, and not one a use opened (`anchored`: it belongs to
 // something in the world, a locker's equipment, which keeps standing by it); the bypass minigame (the omni-tool's own) always.
 bool OnWrist(Settings const& settings, Screen screen, bool anchored);
 // Its width there: the bypass minigame's frame (wristWidthM) or a whole 16:9 stage (wristMenuWidthM).

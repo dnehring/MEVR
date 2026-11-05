@@ -1132,7 +1132,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // Its Game menu and Holster buttons, after the unpause above (research/28, HostServices v19).
         if (gHostOwnsVr) {
             game::game_menu_request::Tick(GameMenuRequestLink());
-            game::game_art::Tick();  // the game's UI art for the omni-tool's rail, cached once (research/55)
+            game::game_art::Tick();  // the game's UI art for the omni-tool's rail, cached once (research/56)
         }
     }
     if (gHostOwnsVr) {

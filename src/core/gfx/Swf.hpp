@@ -11,7 +11,7 @@
 #include <unordered_map>
 #include <vector>
 
-// A reader for uncompressed SWF and Scaleform GFx movies (research/55 section 5, "The game's own art"): the character table
+// A reader for uncompressed SWF and Scaleform GFx movies (research/56 section 5, "The game's own art"): the character table
 // (shapes, sprites with their frames and labels, scaling grids, exported names, edit-text bounds, DefineFont2/3 fonts)
 // for the rasterizer (core/gfx/Raster) and the TrueType builder (core/gfx/SwfFont). Game-independent: it reads bytes
 // handed to it and never touches files. Every read is bounds-checked; a bad tag is skipped and counted, never trusted.

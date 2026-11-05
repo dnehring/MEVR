@@ -413,7 +413,7 @@ void Tick(Link const& link) {
             state.anchor[2] = p.z;
         }
     }
-    // On the wrist (the omni-tool, research/55): a listed screen nothing in the world owns; one a use opened (a locker's equipment)
+    // On the wrist (the omni-tool, research/56): a listed screen nothing in the world owns; one a use opened (a locker's equipment)
     // stands by what was used. The bypass minigame is the omni-tool's own, so it always goes on the wrist.
     bool const onWrist = wu::OnWrist(settings, screen, state.anchored != 0);
     wu::Rect const crop = wu::DefaultCrop(screen);  // the room's; on the wrist the host shows WristCrop

@@ -425,7 +425,7 @@ switching frameworks.
   `mevr classes <text>`, `mevr instances <Class> [text]`, `mevr loot <n>`, `mevr lootcorpse <n>`. Eden Prime's real loot and minigame
   cases: research/53 section 5. Logs `world ui:`; snapshot `"mod"."worldUi"`.
   **The bypass minigame is projected from the left wrist** (research/53 section 6, the omni-tool; Fallout 4 VR's Pip-Boy and
-  Half-Life: Alyx's multitool holograms the pattern; `[WorldUi] wrist` (since research/55 every personal screen too), `wristWidthM`
+  Half-Life: Alyx's multitool holograms the pattern; `[WorldUi] wrist` (since research/56 every personal screen too), `wristWidthM`
   0.30, `wristAboveM` 0.06, `wristTowardM`, `wristFollow`, `wristBeam`; the menu's Comfort > Game screens > Omni-tool screens): the host places it each frame from
   the HUD's left wrist point (`WristPlace`: facing the eyes, its bottom edge 10 cm above the wrist across the line of sight), its
   frame only (`WristCrop`), unfolding over 0.18 s, a faint fan of light from the wrist (plugin/WristBeam, a `beam` snapshot layer;
@@ -438,7 +438,7 @@ switching frameworks.
   Half-Life: Alyx's way is the model for working it by hand. `mevr skillgame start [type] [difficulty] [n]` opens the minigame on any placeable without a save
   (the level's `BioSkillGame.InitializeSkillGame`); `mevr panel SkillGame invoke PreGameButtonBOnPress` cancels it. Next: tapping it.
   The skill `game-screen-to-hologram` is the recipe for the next screens.
-- LE1 omni-tool menu ([research/55](research/55-omni-tool-menu.md), 2026-11-04, the user: "the entire menu system available via
+- LE1 omni-tool menu ([research/56](research/56-omni-tool-menu.md), 2026-11-04, the user: "the entire menu system available via
   omni-tool", "a menu on the left side to allow selecting all of the different menus"): **every personal screen is projected from
   the left wrist by default** (`[WorldUi] wrist` lists SkillGame, Inventory, XMods, CharacterRecord, Specialization, Journal, Codex,
   Map, MenuBrowser, Options, Save, Load; an old file's `SkillGame` alone moves once, marker `wristMenuWidthM`; a screen a use opened,

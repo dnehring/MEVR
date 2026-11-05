@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// The omni-tool's rail drawn with ME1's own UI art (plugin/RailArt.hpp, research/55).
+// The omni-tool's rail drawn with ME1's own UI art (plugin/RailArt.hpp, research/56).
 #include "plugin/RailArt.hpp"
 
 #include "core/Ini.hpp"

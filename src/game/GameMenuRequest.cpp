@@ -39,7 +39,7 @@ ue3::ClassRef gModeCommand{"SFXGame.SFXGameModeCommand"};
 ue3::FunctionRef gShowMenuGuiBase{"SFXGame.SFXGameModeBase.ShowMenuGui"};
 ue3::FunctionRef gTryHolster{"SFXGame.SFXGameModeDefault.TryHolster"};
 ue3::FunctionRef gIsInCombatActionState{"SFXGame.BioPawn.IsInCombatActionState"};
-// The omni-tool's rail (research/55): the screens' own functions (declared on SFXGameModeBase only: no mode overrides them, so
+// The omni-tool's rail (research/56): the screens' own functions (declared on SFXGameModeBase only: no mode overrides them, so
 // in game mode 7 the screens open only from the game's Flash wheel), and the GUI manager's focused panel, whose handler takes
 // B as the player's back-out.
 ue3::FunctionRef gShowEquipmentGui{"SFXGame.SFXGameModeBase.ShowEquipmentGui"};
@@ -219,7 +219,7 @@ void Holster() {
     log::Info("main menu: holstered the weapon (SFXGameModeDefault.TryHolster)");
 }
 
-// ---- The omni-tool's rail (research/55) ----
+// ---- The omni-tool's rail (research/56) ----
 // A screen is opened the way its key opens it, on the mode that has the input (on foot or the Mako); with a screen already up
 // (game mode 7) the rail backs out of it first, B on the focused panel as the player would, a few ticks apart, until the game
 // leaves mode 7, then opens the new one. CloseScreens is the backing out alone.
