@@ -42,6 +42,7 @@
 #include "game/Comfort.hpp"
 #include "game/ConsoleRequest.hpp"
 #include "game/SystemSettings.hpp"
+#include "game/GameArt.hpp"
 #include "game/GameMenuRequest.hpp"
 #include "game/Fingers.hpp"
 #include "game/GamepadBridge.hpp"
@@ -1128,6 +1129,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // Its Game menu and Holster buttons, after the unpause above (research/28, HostServices v19).
         if (gHostOwnsVr) {
             game::game_menu_request::Tick(GameMenuRequestLink());
+            game::game_art::Tick();  // the game's UI art for the omni-tool's rail, cached once (research/54)
         }
     }
     if (gHostOwnsVr) {
@@ -1347,6 +1349,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::menu_pause::Shutdown(exiting);  // unpauses the game if the main menu paused it
     game::focus_pause::Shutdown();
     game::game_menu_request::Shutdown();
+    game::game_art::Shutdown();
     write_journal::Connect(nullptr);
     engine::call_function::SetBreadcrumbs(nullptr, nullptr);
     gHost = nullptr;

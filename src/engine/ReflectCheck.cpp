@@ -594,6 +594,7 @@ void CheckClasses() {
     CheckClass<USFXGameModePowerWheel>("SFXGame.SFXGameModePowerWheel");
     CheckClass<USFXGameModeCommand>("SFXGame.SFXGameModeCommand");
     CheckClass<USFXGameModePhoto>("SFXGame.SFXGameModePhoto");
+    CheckClass<UGFxMovieInfo>("GFxUI.GFxMovieInfo");  // game/GameArt (research/54): the movies' bytes
     CheckClass<UBioPawnBehavior>("SFXGame.BioPawnBehavior");
     CheckClass<UBioEpicPawnBehavior>("SFXGame.BioEpicPawnBehavior");
     CheckClass<UBioActorBehavior>("SFXGame.BioActorBehavior");
@@ -689,6 +690,7 @@ void CheckFields() {
     CheckField("Engine.BioSFManager", "m_lstPanels", SDK_FIELD(UBioSFManager, m_lstPanels));  // game/WorldUi (research/53)
     CheckField("Engine.BioSFManager", "m_FocusPanel", SDK_FIELD(UBioSFManager, m_FocusPanel));
     CheckField("Engine.BioSFPanel", "nmTag", SDK_FIELD(UBioSFPanel, nmTag));
+    CheckField("GFxUI.GFxMovieInfo", "RawData", SDK_FIELD(UGFxMovieInfo, RawData));  // game/GameArt
     CheckField("Engine.BioSFPanel", "bFullScreen", SDK_BOOL(UBioSFPanel, bFullScreen));
     CheckField("Engine.BioSFPanel", "m_DefaultHandler", SDK_FIELD(UBioSFPanel, m_DefaultHandler));
     CheckField("Engine.BioSFPanel", "IsVisible", SDK_BOOL(UBioSFPanel, IsVisible));

@@ -396,6 +396,8 @@ set(MEVR_MOD_SOURCES
     src/game/GamepadMapping.hpp
     src/game/GameMenuRequest.cpp
     src/game/GameMenuRequest.hpp
+    src/game/GameArt.cpp
+    src/game/GameArt.hpp
     src/game/Fingers.cpp
     src/game/Fingers.hpp
     src/game/GunKick.cpp
