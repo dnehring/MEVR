@@ -337,3 +337,22 @@ the index base is off by one), whether `QuickCommandAttackTarget` makes the squa
 selection, whether the Rotation swap lands the move point where the ray hit (and whether Halcyon's camera, not the
 controller's rotation, drives the native's trace in VR), the cost of the trace while holding, and the gesture's feel against
 the support grip's and the grenades' zones.
+
+## The rule parser (2026-11-04, later)
+
+Tier 1 of research/54's parser design, [src/core/vr/SquadParser.hpp](../src/core/vr/SquadParser.hpp) (pure, unit-tested,
+`TestSquadParser`): `Parse(transcript, scene, groups, roster)` gives one `Action` per clause with a confidence and what it
+couldn't settle, the deictic words as `PT n` with their word positions (for the pose history: the recognizer's word times, or
+the position as the fallback), and the correction and cancel flags. How it reads: the present squadmates' names and aliases
+match fuzzily (edit-distance similarity, a shared first letter worth a tenth, the best present name at 0.5 or better with a
+0.2 margin over the next: the recognizer's "Gareth" is Garrus beside Wrex), powers by the roster's spoken names, weapons and
+the orders by a vocabulary of everyday phrasings ("take out", "fall back", "on me", "hold position", "switch to"), targets
+by deictics ("those", "that one", "over there": a place with a move verb), descriptions matched against the groups' own
+words (sector, nearest/farthest/biggest, above/below, the surface word with synonyms (bridge = catwalk = walkway), the type
+word), and the explicit kinds ("my target" AIM, "what I'm looking at" GAZE, "the others" OTHER, "same target" LAST); "you
+too"/"again" are repeats; a leading "no" is a correction; "and"/"then" before a verb starts a new clause, the squadmate
+carried over. A description that fits one group is the target over a deictic; fitting several it takes the nearest at 0.7
+confidence; words it can't place cost 0.85 each and are listed in `unresolved`, which is where a model would take over.
+The example parses to `G|SR|-|-|-` and `G|-|-|attack|E1` with `PT1 "those"` at word 7, confidence 1. Not wired to anything
+yet: the next step is `mevr say <words>` through the parser, the context and the dispatcher, the typed stand-in for the
+recognizer.
