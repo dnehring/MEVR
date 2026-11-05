@@ -13,7 +13,9 @@ namespace {
 
 enum class Tag : std::uint8_t {
     None, Stop, Name, All, Order, Power, Weapon, Deictic, Place, Sector, Flag, Elevation, Surface, Type, Generic, Aim, Gaze, Other,
-    LastTarget, Conj, No, Cancel, Repeat, Equip, Until, Stay, NoRetreat, ComeBack, Support
+    LastTarget, Conj, No, Cancel, Repeat, Equip, Until, Stay, NoRetreat, ComeBack, Support,
+    Statement,    // "I'm hit", "watch out", "nice shot": said over the radio, not an order
+    Unsupported   // "hold fire", "medi-gel", "reload": orders the game has no call for (refused by name, not guessed at)
 };
 
 struct Token {
@@ -58,7 +60,23 @@ std::vector<Phrase> const& Vocabulary() {
     static std::vector<Phrase> const v = [] {
         std::vector<Phrase> p;
         Add(p, {"the", "a", "an", "to", "at", "on", "of", "in", "your", "you", "me", "my", "please", "now", "okay", "ok", "hey", "um", "uh",
-                   "with", "for", "it's", "its", "some", "that's", "guy", "one", "ones", "up"}, Tag::Stop);
+                   "with", "for", "it's", "its", "some", "that's", "guy", "one", "ones", "up", "their", "weapons", "weapon", "shields", "shield",
+                   "two", "three", "four", "five", "couple", "few", "pair", "could", "can", "would", "will", "you're", "kindly", "out", "from",
+                   "quick", "quickly", "fast", "asap", "just", "go ahead and", "i need you to", "i want you to", "can you", "could you",
+                   "would you", "will you", "we need to", "you need to", "try to", "try and", "right now", "all right", "alright",
+                   "don't just stand there", "let's", "lets", "gonna", "going to", "need to", "have to", "got to", "gotta", "got", "you've",
+                   "have", "has"},
+            Tag::Stop);
+        Add(p, {"i'm", "i am", "i've", "i", "they're", "they are", "they've", "he's", "she's", "there's", "there are", "we're", "watch out",
+                   "look out", "heads up", "incoming", "behind you", "nice shot", "good shot", "nice", "thanks", "thank you", "good job",
+                   "well done", "ouch", "damn", "dammit", "shit", "oh no", "wow", "i'm hit", "i'm down", "i'm hurt", "i'm dying", "i'm pinned",
+                   "i'm pinned down", "i'm out", "i'm reloading", "i'm overheated", "i'm flanked", "they're flanking", "they're flanking us",
+                   "he's down", "she's down", "we're taking fire", "taking fire", "under fire", "i'm taking fire", "that was close", "good work",
+                   "nice one", "got him", "got them", "he's dead", "they're dead", "all clear", "area clear"},
+            Tag::Statement);
+        Add(p, {"hold fire", "hold your fire", "cease fire", "stop shooting", "stop firing", "don't shoot", "heal", "heal me", "heal up",
+                   "medi gel", "medigel", "revive", "reload", "grenade", "throw a grenade", "use a grenade", "flashbang", "melee"},
+            Tag::Unsupported);
         Add(p, {"everyone", "everybody", "all of you", "you two", "both of you", "squad", "team", "all", "both"}, Tag::All);
         Add(p, {"you too", "you as well", "same", "same thing", "you also"}, Tag::Repeat);
         Add(p, {"again", "do it again", "one more time", "once more", "same again"}, Tag::Repeat);
@@ -86,35 +104,64 @@ std::vector<Phrase> const& Vocabulary() {
         Add(p, {"support", "cover", "back up", "help", "protect", "assist", "stay with", "stick with", "watch", "guard", "cover for"},
             Tag::Support);
         Add(p, {"attack", "target", "take out", "take down", "kill", "shoot", "fire on", "fire at", "open fire", "engage", "focus on", "focus", "hit", "light up",
-                   "waste", "deal with", "get rid of", "take care of", "drop", "neutralize", "neutralise", "eliminate", "destroy", "go after", "go for"},
+                   "waste", "deal with", "get rid of", "take care of", "drop", "neutralize", "neutralise", "eliminate", "destroy", "go after", "go for",
+                   "take", "get", "snipe", "charge", "rush", "fire", "aim for", "aim at", "focus fire", "focus fire on", "concentrate fire",
+                   "concentrate fire on", "concentrate on", "all fire on", "keep on", "keep shooting", "keep firing", "keep at it", "keep it up",
+                   "don't stop", "eyes on", "finish", "finish off", "blast", "nail", "burn", "suppress", "unload on", "unload", "shoot at",
+                   "put down", "gun down", "smoke", "handle", "sort out", "cover fire", "covering fire", "suppressing fire", "suppressive fire",
+                   "give me covering fire", "give me cover fire", "lay down fire", "lay down covering fire", "clear", "smash", "crush",
+                   "wreck", "murder", "obliterate", "flatten", "pound", "hammer", "shred"},
             Tag::Order, static_cast<int>(sc::Order::Attack));
-        Add(p, {"move", "move up", "move to", "move over", "go to", "go", "get to", "get over", "advance", "flank", "take position", "take cover",
-                   "push up", "push", "head", "run", "get up"},
+        // A Move phrase's code names what it describes: "take the high ground" is a move to what's above.
+        Add(p, {"move", "move up", "move to", "move over", "go to", "go", "get to", "get over", "advance", "flank", "take position",
+                   "push up", "push", "head", "run", "get up", "move forward", "push forward", "go up", "get up there", "climb", "get there",
+                   "move in", "spread out", "fan out", "go around", "circle around", "get in"},
             Tag::Order, static_cast<int>(sc::Order::Move));
+        Add(p, {"take the high ground", "get to high ground", "get to the high ground", "high ground"}, Tag::Order,
+            static_cast<int>(sc::Order::Move), "above");
         Add(p, {"follow", "follow me", "on me", "with me", "regroup", "fall back", "come back", "come here", "come on", "get back", "rally", "to me",
-                   "back to me", "stay close", "stick with me", "come to me", "get over here", "over here"},
+                   "back to me", "stay close", "stick with me", "come to me", "get over here", "over here", "cover me", "watch my back",
+                   "protect me", "guard me", "help me", "let's go", "lets go", "stick together", "pull back", "get out of there",
+                   "get out of here", "get me out of here", "get out", "retreat", "back off", "disengage", "stay behind me", "stay with me",
+                   "come with me", "come along", "move with me", "on my six", "form up", "form up on me", "rally on me", "regroup on me",
+                   "stay close to me", "keep up", "keep close", "stick close", "with me now", "back here", "come back here", "get back here",
+                   "leave it", "leave them", "leave him", "forget them", "forget him", "let it go", "break off", "come on back"},
             Tag::Order, static_cast<int>(sc::Order::Follow));
-        // Not "hold there" / "stay there": "there" stays a place, so they hold at the pointed spot.
+        // Not "hold there" / "stay there": "there" stays a place, so they hold at the pointed spot. "Take cover" is a hold: the game's AI
+        // takes cover on its own around a held point, and there's no cover order to give.
         Add(p, {"hold", "hold position", "hold here", "hold up", "stay", "stay here", "stay put", "stop", "wait", "wait here", "don't move",
-                   "freeze"},
+                   "freeze", "hold the line", "dig in", "stay back", "get down", "take cover", "get to cover", "find cover", "into cover",
+                   "get into cover", "behind cover", "hunker down", "stay down", "keep your head down", "halt", "stand your ground",
+                   "hold this position", "hold your position", "hold the position", "hold the fort", "hold it", "hold on", "stay right there",
+                   "don't go anywhere", "keep this spot", "stand there", "post up", "set up", "set up there", "set up here", "hang back",
+                   "stay out of it"},
             Tag::Order, static_cast<int>(sc::Order::Hold));
-        Add(p, {"use", "cast", "give him", "give them", "give it", "throw him", "hit him with", "hit them with", "hit it with"}, Tag::Order,
-            static_cast<int>(sc::Order::Use));
+        // Not "hit him with" / "give him": "him" stays the pointer, and "hit" with a power named is the power's use.
+        Add(p, {"use", "cast", "give", "pop", "pop a", "pop an", "throw a", "throw an", "put a", "put an", "lay down", "drop a", "drop an",
+                   "send a", "send an"},
+            Tag::Order, static_cast<int>(sc::Order::Use));
         Add(p, {"equip", "switch to", "pull out", "draw", "use your", "get your", "grab your", "take your", "bring out", "ready your", "out with"},
             Tag::Equip);
         Add(p, {"pistol", "handgun", "sidearm"}, Tag::Weapon, 0);
         Add(p, {"shotgun", "scattergun", "scatter gun"}, Tag::Weapon, 1);
         Add(p, {"assault rifle", "rifle", "ar", "assault"}, Tag::Weapon, 2);
-        Add(p, {"sniper rifle", "sniper", "sniper's", "long gun", "sr"}, Tag::Weapon, 3);
+        Add(p, {"sniper rifle", "sniper", "sniper's", "long gun", "sr", "long range", "at range", "from range"}, Tag::Weapon, 3);
         Add(p, {"that one", "those ones", "those guys", "that guy", "that thing", "those two", "those three", "that", "those", "these", "this",
-                   "them", "him", "her", "it"},
+                   "them", "him", "her", "it", "that group", "that squad", "that pack", "that bunch", "those bastards", "that bastard",
+                   "this one", "these ones", "these guys", "this guy"},
             Tag::Deictic);
         Add(p, {"over there", "up there", "down there", "right there", "back there", "there", "here"}, Tag::Place);
-        Add(p, {"on the left", "to the left", "left side", "left ones", "leftmost", "left"}, Tag::Sector, static_cast<int>(sc::Sector::Left));
-        Add(p, {"on the right", "to the right", "right side", "right ones", "rightmost", "right"}, Tag::Sector, static_cast<int>(sc::Sector::Right));
-        Add(p, {"straight ahead", "in front", "ahead", "front", "in front of us", "dead ahead", "center", "centre", "middle"}, Tag::Sector,
-            static_cast<int>(sc::Sector::Ahead));
-        Add(p, {"behind", "behind us", "back there", "to the rear", "rear"}, Tag::Sector, static_cast<int>(sc::Sector::Behind));
+        Add(p, {"on the left", "to the left", "left side", "left ones", "leftmost", "left", "far left", "left flank", "on the left flank",
+                   "our left", "my left", "your left", "to our left", "to my left", "to your left"},
+            Tag::Sector, static_cast<int>(sc::Sector::Left));
+        Add(p, {"on the right", "to the right", "right side", "right ones", "rightmost", "right", "far right", "right flank", "on the right flank",
+                   "our right", "my right", "your right", "to our right", "to my right", "to your right"},
+            Tag::Sector, static_cast<int>(sc::Sector::Right));
+        Add(p, {"straight ahead", "in front", "ahead", "front", "in front of us", "dead ahead", "center", "centre", "middle", "forward",
+                   "forwards", "up front", "straight on", "up ahead"},
+            Tag::Sector, static_cast<int>(sc::Sector::Ahead));
+        Add(p, {"behind", "behind us", "back there", "to the rear", "rear", "back", "backwards", "backward", "behind me", "the way we came"},
+            Tag::Sector, static_cast<int>(sc::Sector::Behind));
         Add(p, {"nearest", "closest", "close ones", "near ones", "nearby", "close", "near"}, Tag::Flag, Nearest);
         Add(p, {"farthest", "furthest", "far ones", "far away", "far", "distant"}, Tag::Flag, Farthest);
         Add(p, {"biggest", "big group", "large group", "biggest group", "most of them", "big one", "bigger group"}, Tag::Flag, Biggest);
@@ -163,6 +210,17 @@ bool WordMatches(std::string_view said, std::string_view want, float threshold) 
     if (want.size() < 6 || said.size() < 4) return false;
     return Similarity(said, want) >= threshold;
 }
+
+// Split phrasal verbs: "take them out", "light those guys up", "pick the troopers off". The verb and its particle, with up
+// to three words of object between them, are an attack.
+struct Phrasal {
+    char const* verb;
+    char const* particle;
+};
+constexpr Phrasal kPhrasals[] = {{"take", "out"}, {"take", "down"}, {"light", "up"}, {"blow", "up"}, {"blow", "away"}, {"finish", "off"},
+    {"pick", "off"}, {"wipe", "out"}, {"mop", "up"}, {"clean", "up"}, {"knock", "out"}, {"knock", "down"}, {"put", "down"}, {"gun", "down"},
+    {"shut", "down"}, {"bring", "down"}, {"cut", "down"}, {"mow", "down"}, {"burn", "down"}, {"smoke", "out"}, {"flush", "out"},
+    {"clear", "out"}, {"draw", "out"}};
 
 }  // namespace
 
@@ -318,6 +376,26 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
             }
         }
     }
+    // 4a. Split phrasal verbs ("take them out"): the verb and the particle with the object between them.
+    for (std::size_t i = 0; i < tokens.size(); ++i) {
+        if (tokens[i].tag != Tag::None) continue;
+        for (Phrasal const& ph : kPhrasals) {
+            if (tokens[i].text != ph.verb) continue;
+            bool found = false;
+            for (std::size_t j = i + 1; j < tokens.size() && j <= i + 4 && !found; ++j) {
+                Tag const t = tokens[j].tag;
+                if (tokens[j].text == ph.particle && t == Tag::None) {
+                    tokens[i].tag = Tag::Order;
+                    tokens[i].value = static_cast<int>(sc::Order::Attack);
+                    tokens[j].tag = Tag::Stop;
+                    found = true;
+                } else if (t != Tag::None && t != Tag::Type && t != Tag::Surface) {
+                    break;
+                }
+            }
+            if (found) break;
+        }
+    }
     // 4. The vocabulary, longest phrases first.
     for (Phrase const& p : Vocabulary()) {
         for (std::size_t i = 0; i + p.words.size() <= tokens.size(); ++i) {
@@ -337,6 +415,27 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
             i += p.words.size() - 1;
         }
     }
+    // 4b. "Go sniper": a "go" before a weapon is an equip. A support verb with no squadmate after it ("cover the door", "watch the
+    // left", bare "cover") is a hold there; a bare "help" is a call to come.
+    auto const nextHead = [&](std::size_t i) {
+        for (std::size_t j = i + 1; j < tokens.size(); ++j) {
+            if (tokens[j].head && tokens[j].tag != Tag::Stop) return j;
+        }
+        return tokens.size();
+    };
+    for (std::size_t i = 0; i < tokens.size(); ++i) {
+        if (!tokens[i].head) continue;
+        std::size_t const n = nextHead(i);
+        if (tokens[i].tag == Tag::Order && tokens[i].value == static_cast<int>(sc::Order::Move) && tokens[i].text == "go" && n < tokens.size() &&
+            tokens[n].tag == Tag::Weapon) {
+            tokens[i].tag = Tag::Equip;
+        } else if (tokens[i].tag == Tag::Support && (n >= tokens.size() || tokens[n].tag != Tag::Name) && tokens[i].text != "support" &&
+            !(i + 1 < tokens.size() && !tokens[i + 1].head && tokens[i + 1].text == "for")) {
+            bool const call = tokens[i].text == "help" || tokens[i].text == "assist" || tokens[i].text == "back";
+            tokens[i].tag = Tag::Order;
+            tokens[i].value = static_cast<int>(call ? sc::Order::Follow : sc::Order::Hold);
+        }
+    }
     // 5. A leading "no": a correction (consumed).
     std::size_t start = 0;
     while (start < tokens.size() && (tokens[start].tag == Tag::Stop || (tokens[start].tag == Tag::No && tokens[start].head))) {
@@ -350,11 +449,33 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
         return t == Tag::Order || t == Tag::Power || t == Tag::Weapon || t == Tag::Equip || t == Tag::Repeat || t == Tag::Cancel || t == Tag::Support ||
             t == Tag::Deictic || t == Tag::Place;
     };
+    // A target named without a verb ("Wrex, the destroyer") is an order too, for what follows it.
+    auto const isTargetish = [](Tag t) {
+        return t == Tag::Sector || t == Tag::Flag || t == Tag::Elevation || t == Tag::Surface || t == Tag::Type || t == Tag::Generic || t == Tag::Aim ||
+            t == Tag::Gaze || t == Tag::Other || t == Tag::LastTarget;
+    };
     bool orderSeen = false;
+    bool inStatement = false;
     for (std::size_t i = start; i < tokens.size(); ++i) {
         if (!tokens[i].head) continue;
-        if (tokens[i].tag == Tag::Name && orderSeen && i > from) {
-            // A vocative: a new clause, unless the name is the object of a support verb just before it.
+        // Talk is its own clause: "Garrus, I'm hit, cover me" keeps the order clean (and Garrus carries over).
+        if (tokens[i].tag == Tag::Statement) {
+            if (orderSeen && i > from) {
+                clauses.emplace_back(from, i);
+                from = i;
+                orderSeen = false;
+            }
+            inStatement = true;
+            continue;
+        }
+        if (inStatement && (isVerbish(tokens[i].tag) || tokens[i].tag == Tag::Name || tokens[i].tag == Tag::All) && i > from) {
+            clauses.emplace_back(from, i);
+            from = i;
+            inStatement = false;
+            orderSeen = false;
+        }
+        if ((tokens[i].tag == Tag::Name || tokens[i].tag == Tag::All) && orderSeen && i > from) {
+            // A vocative ("..., Wrex, ..." / "..., everyone, ..."): a new clause, unless the name is the object of a support verb just before it.
             std::size_t j = i;
             while (j > from && (tokens[j - 1].tag == Tag::Stop || !tokens[j - 1].head)) --j;
             // ...or the actor named after "you too" / "same" ("you too, Wrex").
@@ -366,7 +487,7 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
             }
             continue;
         }
-        orderSeen = orderSeen || isVerbish(tokens[i].tag);
+        orderSeen = orderSeen || isVerbish(tokens[i].tag) || isTargetish(tokens[i].tag);
         if (tokens[i].tag != Tag::Conj) continue;
         std::size_t end = i;
         while (end < tokens.size() && tokens[end].tag == Tag::Conj) ++end;
@@ -375,7 +496,8 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
             Tag const t = tokens[j].tag;
             verbAhead = verbAhead || isVerbish(t) || t == Tag::Name;
         }
-        if (verbAhead && i > from) {
+        // Only after an order: "Garrus and Wrex, attack" is one clause for both.
+        if (verbAhead && orderSeen && i > from) {
             clauses.emplace_back(from, i);
             from = end;
             i = end - 1;
@@ -392,7 +514,7 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
         std::string unresolved;
         sc::Action& act = clause.action;
         bool anyOrderWord = false;
-        bool cancel = false, repeat = false, equip = false, support = false;
+        bool cancel = false, repeat = false, equip = false, support = false, statement = false, unsupported = false, generic = false;
         std::optional<sc::Order> verb;
         int deictic = -1;
         bool deicticPlace = false;
@@ -402,15 +524,22 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
         std::vector<std::string> surfaces, types;
         std::optional<sc::Target::Kind> explicitTarget;
         std::vector<std::string> unknown;
+        bool afterDeictic = false;
         for (std::size_t i = a; i < b; ++i) {
             Token const& t = tokens[i];
             if (!clause.words.empty()) clause.words += ' ';
             clause.words += t.text;
             if (!t.head) continue;
+            // "That krogan" with no krogan group here: the word after a deictic is its noun, pointed at, not a mystery.
+            bool const nounOfDeictic = afterDeictic && t.tag == Tag::None;
+            afterDeictic = t.tag == Tag::Deictic;
+            if (nounOfDeictic) continue;
             switch (t.tag) {
             case Tag::Name:
                 if (support && clause.supportOf == 0) {
                     clause.supportOf = static_cast<char>(t.value);
+                } else if (act.who.kind == sc::Who::Member && act.who.letter != static_cast<char>(t.value)) {
+                    act.who = {sc::Who::All};  // "Garrus, Wrex, on me": both (LE1 fields two)
                 } else {
                     act.who = {sc::Who::Member, static_cast<char>(t.value)};
                 }
@@ -423,8 +552,11 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
             case Tag::All: act.who.kind = sc::Who::All; break;
             case Tag::Order:
                 if (!verb) verb = static_cast<sc::Order>(t.value);
+                if (t.code == "above") elevation = sc::Elevation::Above;
                 anyOrderWord = true;
                 break;
+            case Tag::Statement: statement = true; break;
+            case Tag::Unsupported: unsupported = true; break;
             case Tag::Power:
                 act.power = t.code;
                 anyOrderWord = true;
@@ -465,7 +597,7 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
             case Tag::ComeBack: clause.standing.comeBack = true; break;
             case Tag::Repeat: repeat = true; break;
             case Tag::No: confidence *= 0.9f; break;
-            case Tag::Generic:
+            case Tag::Generic: generic = true; break;
             case Tag::Stop:
             case Tag::Conj:
                 break;
@@ -473,6 +605,14 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
                 unknown.push_back(t.text);
                 break;
             }
+        }
+        if (unsupported) {
+            // Named and refused, so the player hears why instead of a guess.
+            parsed.empty = false;
+            clause.confidence = 0.0f;
+            clause.unresolved = "the game has no such order";
+            parsed.clauses.push_back(clause);
+            continue;
         }
         if (cancel) {
             parsed.cancel = true;
@@ -482,8 +622,25 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
             parsed.clauses.push_back(clause);
             continue;
         }
-        // Who: this clause's, else the one carried from the last, else everyone (a power or a weapon needs one).
+        // Who: this clause's, else the one carried from the last, else the one present squadmate who has the power named
+        // ("warp them": Wrex), else everyone (a power or a weapon needs one).
         if (act.who.kind == sc::Who::None) act.who = carried;
+        if (act.who.kind == sc::Who::None && !act.power.empty()) {
+            char owner = 0;
+            int owners = 0;
+            for (sc::RosterEntry const& e : roster) {
+                bool present = false;
+                for (sc::Member const& m : scene.party) present = present || (m.present && m.letter == e.letter);
+                if (!present) continue;
+                for (auto const& [code, spoken] : e.powers) {
+                    if (code == act.power && e.letter != owner) {
+                        owner = e.letter;
+                        ++owners;
+                    }
+                }
+            }
+            if (owners == 1) act.who = {sc::Who::Member, owner};
+        }
         carried = act.who;
         // The order.
         if (repeat) {
@@ -500,10 +657,19 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
                 unresolved += "what to use; ";
                 confidence *= 0.5f;
             }
+            // "Hit them with overload", "overload him": a power named with an attack verb is the power's use.
+            if (*verb == sc::Order::Attack && !act.power.empty()) act.order = sc::Order::Use;
+            // "Stay on him", "hold on the destroyer": a hold on a thing (not a place) keeps attacking it.
+            if (*verb == sc::Order::Hold && surfaces.empty() && !sector && (!types.empty() || (deictic > 0 && !deicticPlace) || explicitTarget)) {
+                act.order = sc::Order::Attack;
+                if (clause.standing.until == StandingHint::Until::Default) clause.standing.until = StandingHint::Until::GroupGone;
+            }
         } else if (!act.power.empty()) {
             act.order = sc::Order::Use;
         } else if (act.weapon >= 0 || equip) {
-            act.order = sc::Order::None;  // an equip
+            // An equip; with a target named ("sniper, those on the bridge") an attack with that weapon.
+            bool const targeted = (deictic > 0 && !deicticPlace) || explicitTarget || sector || elevation || !flags.empty() || !surfaces.empty() || !types.empty();
+            act.order = targeted && act.weapon >= 0 ? sc::Order::Attack : sc::Order::None;
         } else if (clause.standing.stay && deictic < 0 && !explicitTarget) {
             act.order = sc::Order::Hold;  // "stay there" alone: hold where they are
         } else if (deictic > 0 && deicticPlace) {
@@ -517,16 +683,18 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
                 unresolved += "the order; ";
                 confidence *= 0.4f;
             } else {
-                clause.confidence = 0.0f;
-                clause.unresolved = "nothing to do";
-                parsed.clauses.push_back(clause);
-                continue;
+                continue;  // a name alone, fillers, a remark: nothing to do, and nothing a model would find either
             }
         }
         parsed.empty = false;
-        if (equip && act.weapon < 0) {
+        if (equip && act.weapon < 0 && act.power.empty()) {
             unresolved += "which weapon; ";
             confidence *= 0.5f;
+        }
+        if (statement) {
+            // "I'm hit", "nice shot", "watch out": radio talk; an order in the same breath is lost with it (a known gap).
+            unresolved += "sounds like talk, not an order; ";
+            confidence *= 0.3f;
         }
         if (act.who.kind == sc::Who::None && (act.weapon >= 0 || !act.power.empty())) {
             unresolved += "who; ";
@@ -534,8 +702,16 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
         }
         if (act.who.kind == sc::Who::None) act.who.kind = sc::Who::All;
         // The target: an explicit kind, else a description that fits one group, else the deictic, else the description's best.
-        if (explicitTarget) {
+        bool const placeOrder = act.order == sc::Order::Move || act.order == sc::Order::Hold;
+        bool const sectorOnly = sector && !elevation && flags.empty() && surfaces.empty() && types.empty() && !generic && deictic < 0;
+        if (act.order == sc::Order::Follow || act.order == sc::Order::Regroup) {
+            act.target = {};  // "get back here": to the player, wherever "here" was
+        } else if (explicitTarget) {
             act.target.kind = *explicitTarget;
+        } else if (placeOrder && sectorOnly) {
+            act.target = {sc::Target::Direction, static_cast<int>(*sector)};  // "go left", "cover the right": that way, not a group there
+        } else if (act.order == sc::Order::Move && !sector && !elevation && flags.empty() && surfaces.empty() && types.empty() && deictic < 0) {
+            act.target = {sc::Target::Direction, static_cast<int>(sc::Sector::Ahead)};  // "move up", "go": forward
         } else {
             bool const described = sector || elevation || !flags.empty() || !surfaces.empty() || !types.empty();
             std::vector<sc::Group const*> fit;
@@ -582,6 +758,9 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
             confidence *= 0.85f;
         }
         if (!unknown.empty()) {
+            // Strange words around an order the player only implied ("what the hell was that": a deictic, no verb) make it
+            // talk more often than an order.
+            if (!verb && !equip && !support && act.power.empty() && act.weapon < 0) confidence *= 0.6f;
             unresolved += "words: ";
             for (std::string const& u : unknown) unresolved += u + " ";
         }
@@ -590,9 +769,7 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
         parsed.clauses.push_back(clause);
     }
     parsed.confidence = parsed.empty ? 0.0f : 1.0f;
-    for (Clause const& c : parsed.clauses) {
-        if (c.confidence > 0.0f || !parsed.empty) parsed.confidence = std::min(parsed.confidence, c.confidence);
-    }
+    for (Clause const& c : parsed.clauses) parsed.confidence = std::min(parsed.confidence, c.confidence);
     if (parsed.empty) parsed.confidence = 0.0f;
     return parsed;
 }

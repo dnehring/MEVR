@@ -14,10 +14,14 @@
 // G-name along), their weapons and powers (the roster's spoken names and a synonym table), the eight orders with their
 // everyday verbs, and the targets: a deictic word ("those", "that one", "there") becomes PT n with its position for the
 // pose history; a description ("the left ones", "the nearest", "up top", "on the bridge", "the troopers") is matched
-// against the groups' words; "my target" is AIM, "what I'm looking at" GAZE, "the others" OTHER, "again" LAST. A leading
-// "no" is a correction, "belay that" a cancel, "and"/"then" before a verb starts a new clause. The confidence says when
-// to fall through to the model: it drops for a fuzzy name, an ambiguous description and for content words the rules
-// can't place. Unit-tested in tests/Main.cpp.
+// against the groups' words; "my target" is AIM, "what I'm looking at" GAZE, "the others" OTHER, "again" LAST; "go left",
+// "move up", "cover the right" are directions from the player. A leading "no" is a correction, "belay that" a cancel,
+// "and"/"then" before a verb, a squadmate's name after an order, or talk ("I'm hit") starts a new clause. Phrasal verbs
+// split around their object ("take them out"); a power named with no squadmate goes to the one present who has it; "stay
+// on him" keeps attacking, "stay on the bridge" holds there; talk ("nice shot", "they're flanking us") and orders the game
+// can't take ("hold fire", "medi-gel") are refused by name. The confidence says when to fall through to the model: it
+// drops for a fuzzy name, an ambiguous description and for content words the rules can't place. Unit-tested in
+// tests/Main.cpp; the corpus of natural phrasings and its coverage figure in tests/SquadPhrasings.cpp.
 namespace mevr::vr::squad_parser {
 
 struct Settings {

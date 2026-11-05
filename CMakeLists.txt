@@ -858,6 +858,7 @@ if (MEVR_BUILD_TESTS)
         tests/BreadcrumbTests.cpp
         tests/ExeTests.cpp
         tests/PowerWheelTests.cpp
+        tests/SquadPhrasings.cpp
         tests/CockpitPanelTests.cpp
         src/core/Exe.cpp
         src/core/ExeCheck.cpp
