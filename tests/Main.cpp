@@ -45,6 +45,7 @@
 #include "core/vr/MetricStereo.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/PoseRecording.hpp"
+#include "core/vr/PowerWheel.hpp"
 #include "core/vr/Recenter.hpp"
 #include "core/vr/SceneCaptureScope.hpp"
 #include "core/vr/CineScreen.hpp"
@@ -58,6 +59,7 @@
 #include "core/vr/ScopeArt.hpp"
 #include "core/vr/Sights.hpp"
 #include "core/vr/SquadContext.hpp"
+#include "core/vr/SquadGesture.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/FrameProbe.hpp"
 #include "core/vr/TestRequest.hpp"
@@ -4792,6 +4794,91 @@ void TestSquadContext() {
     CHECK(prefix.find("L Liara T'Soni. Weapons -. Powers -.\n") != std::string::npos);
 }
 
+void TestSquadGesture() {
+    using namespace mevr::vr::squad_gesture;
+    using mevr::vr::squad_context::Order;
+    Settings s;
+    Machine m;
+    auto const tick = [&](bool newSqueeze, bool squeezed, Hit hit, int group = 0, float distance = 0.0f, int pointed = -1, bool usable = true,
+                          double dt = 0.1) {
+        Input in;
+        in.dt = dt;
+        in.usable = usable;
+        in.newSqueeze = newSqueeze;
+        in.squeezed = squeezed;
+        in.pointedMember = pointed;
+        in.hit = hit;
+        in.hitGroup = group;
+        in.hitDistanceM = distance;
+        return m.Advance(in, s);
+    };
+    // Nothing without a new squeeze; a squeeze that another feature claimed never reaches here (newSqueeze false).
+    Step st = tick(false, true, Hit::Enemy, 1);
+    CHECK(!st.started && !st.order.given && !m.holding);
+    // Squeeze pointing at nobody, sweep to an enemy, let go: everyone attacks that group.
+    st = tick(true, true, Hit::None);
+    CHECK(st.started && m.holding && m.member == -1);
+    st = tick(false, true, Hit::Enemy, 2);
+    CHECK(!st.started && st.hitChanged && !st.order.given);
+    st = tick(false, true, Hit::Enemy, 2);
+    CHECK(!st.hitChanged);
+    st = tick(false, true, Hit::Enemy, 3);
+    CHECK(st.hitChanged);
+    st = tick(false, false, Hit::Enemy, 3);
+    CHECK(st.order.given && st.order.order == Order::Attack && st.order.group == 3 && st.order.member == -1 && !m.holding);
+    // Squeeze pointing at squadmate 1, let go on the ground far away: that squadmate moves there.
+    st = tick(true, true, Hit::Squadmate, 0, 0.0f, 1);
+    CHECK(st.started && m.member == 1);
+    tick(false, true, Hit::Ground, 0, 12.0f);
+    st = tick(false, false, Hit::Ground, 0, 12.0f);
+    CHECK(st.order.given && st.order.order == Order::Move && st.order.toPoint && st.order.member == 1 && st.order.group == 0);
+    // The ground near Shepard: regroup. The sky: regroup. A squadmate at release (nobody at the start): that one follows.
+    tick(true, true, Hit::None);
+    st = tick(false, false, Hit::Ground, 0, 1.0f);
+    CHECK(st.order.given && st.order.order == Order::Follow && !st.order.toPoint && st.order.member == -1);
+    tick(true, true, Hit::None);
+    st = tick(false, false, Hit::None);
+    CHECK(st.order.given && st.order.order == Order::Follow);
+    tick(true, true, Hit::None);
+    st = tick(false, false, Hit::Squadmate, 0, 0.0f, 0);
+    CHECK(st.order.given && st.order.order == Order::Follow && st.order.member == 0);
+    // The start's squadmate wins over the release's.
+    tick(true, true, Hit::Squadmate, 0, 0.0f, 1);
+    st = tick(false, false, Hit::Squadmate, 0, 0.0f, 0);
+    CHECK(st.order.given && st.order.member == 1);
+    // A blip: squeezed and let go within minHoldS: nothing.
+    st = tick(true, true, Hit::Enemy, 1, 0.0f, -1, true, 0.01);
+    CHECK(st.started);
+    st = tick(false, false, Hit::Enemy, 1, 0.0f, -1, true, 0.01);
+    CHECK(st.cancelled && !st.order.given && std::string(st.why) == "a blip" && !m.holding);
+    // Held too long: called off, and letting go afterwards gives nothing.
+    st = tick(true, true, Hit::Enemy, 1);
+    for (int i = 0; i < 90 && !st.cancelled; ++i) {
+        st = tick(false, true, Hit::Enemy, 1);
+    }
+    CHECK(st.cancelled && std::string(st.why) == "held too long" && !m.holding);
+    st = tick(false, false, Hit::Enemy, 1);
+    CHECK(!st.order.given && !st.cancelled);
+    // No longer usable while holding: called off.
+    tick(true, true, Hit::Enemy, 1);
+    st = tick(false, true, Hit::Enemy, 1, 0.0f, -1, false);
+    CHECK(st.cancelled && !m.holding);
+    // Turned off: no start; turned off while holding: called off.
+    s.enabled = false;
+    st = tick(true, true, Hit::Enemy, 1);
+    CHECK(!st.started && !m.holding);
+    s.enabled = true;
+    tick(true, true, Hit::Enemy, 1);
+    s.enabled = false;
+    st = tick(false, true, Hit::Enemy, 1);
+    CHECK(st.cancelled && std::string(st.why) == "turned off");
+    s.enabled = true;
+    // Not usable: no start.
+    st = tick(true, true, Hit::Enemy, 1, 0.0f, -1, false);
+    CHECK(!st.started);
+    CHECK(std::string(Name(Hit::Ground)) == "the ground" && std::string(Name(Hit::Enemy)) == "an enemy");
+}
+
 void TestGameMenuRequest() {
     using namespace mevr::vr::game_menu;
     // The values cross the host/mod boundary: unknown ones are None.
@@ -8069,6 +8156,18 @@ void TestMakoControls() {
         CHECK(close(out.tiltRightDeg, 20.0) && close(out.steer, 0.5) && close(out.pitch, 0.0) && close(out.spin, 0.0));
         // On the jets a full right tilt drops the right side (research/47 "Flying on the jets", 2026-11-04).
         CHECK(close(out.roll, 1.0) && close(mc::JetTarget(out, 20.0f, 15.0f).rollDeg, 15.0) && close(mc::JetTarget(out, 20.0f, 15.0f).pitchDeg, 0.0));
+        // While the jets fire that tilt only rolls: no steering (it drove one track, and the spinning track turned the Mako 88 degrees
+        // in a burst, its sideways push swung behind it: research/47 "Flying on the jets"); back on the ground it steers again.
+        for (int i = 0; i < 3; ++i) {
+            mc::Input jetting = input(0.0f, 0.0f, identity, 1.0f, {0.05f, 0.0f, 0.0f});
+            jetting.jets = true;
+            out = c.Step(jetting, tilting);
+        }
+        CHECK(close(out.steer, 0.0) && close(out.roll, 1.0));
+        for (int i = 0; i < 3; ++i) {
+            out = c.Step(input(0.0f, 0.0f, identity, 1.0f, {0.05f, 0.0f, 0.0f}), tilting);
+        }
+        CHECK(close(out.steer, 0.5) && close(out.roll, 1.0));
         for (int i = 0; i < 5; ++i) {
             out = c.Step(input(0.0f, 0.0f, about(up, -42.0f), 1.0f, {0.05f, 0.0f, 0.0f}), tilting);  // and twisted right to full
         }
@@ -10569,6 +10668,92 @@ int RunExeTests();
 // tests/GfxTests.cpp: the game's own UI art: the GFx reader, rasterizer and TrueType fonts (core/gfx, research/54).
 int RunGfxTests();
 
+// core/vr/PowerWheel: the hand's power wheel (research/55, the concept of 2026-11-04).
+void TestPowerWheel() {
+    namespace pw = mevr::vr::power_wheel;
+    auto approx = [](float a, float b, float tolerance = 0.05f) { return std::abs(a - b) <= tolerance; };
+
+    // Six entries: the concept's arc of 253 degrees, from the left (184) clockwise to the bottom (-69), the gap toward
+    // the forearm at the bottom left.
+    std::vector<float> const six = pw::Angles(6);
+    CHECK(six.size() == 6);
+    CHECK(approx(six[0], -176.0f) && approx(six[1], 133.4f) && approx(six[2], 82.8f) && approx(six[3], 32.2f) &&
+          approx(six[4], -18.4f) && approx(six[5], -69.0f));
+    CHECK(approx(pw::StepDeg(6), 50.6f));
+    // Fewer entries keep 52 degrees, centred opposite the gap; one sits there.
+    std::vector<float> const three = pw::Angles(3);
+    CHECK(approx(three[0], 109.5f) && approx(three[1], 57.5f) && approx(three[2], 5.5f));
+    CHECK(pw::Angles(1).size() == 1 && approx(pw::Angles(1)[0], 57.5f));
+    CHECK(pw::Angles(0).empty());
+    // More entries close the gap down to 34 degrees apart; past a full ring they share it.
+    CHECK(approx(pw::StepDeg(10), 34.0f));
+    CHECK(approx(pw::StepDeg(12), 30.0f));
+    // Tiles narrow so neighbours keep their spacing.
+    pw::TileSettings tile;
+    CHECK(approx(pw::HalfWidthDeg(6, tile), tile.halfWidthDeg));
+    CHECK(approx(pw::HalfWidthDeg(12, tile), 12.5f));
+
+    // A tile's outline: inside its ring and its sides, the corners cut, symmetric about its middle.
+    tile.halfWidthDeg = 20.0f;
+    pw::Strip const strip = pw::TileStrip(90.0f, tile);
+    CHECK(strip.outer.size() == strip.inner.size() && strip.outer.size() > static_cast<std::size_t>(tile.arcSegments));
+    bool inRing = true;
+    bool inSides = true;
+    for (std::size_t i = 0; i < strip.outer.size(); ++i) {
+        for (pw::Vec2 p : {strip.outer[i], strip.inner[i]}) {
+            float const r = std::hypot(p.x, p.y);
+            float const a = std::atan2(p.y, p.x) * 180.0f / std::numbers::pi_v<float>;
+            inRing = inRing && r >= tile.innerRadius - 0.01f && r <= tile.outerRadius + 0.01f;
+            inSides = inSides && std::abs(a - 90.0f) <= tile.halfWidthDeg + 0.01f;
+        }
+    }
+    CHECK(inRing && inSides);
+    pw::Vec2 const firstOuter = strip.outer.front();
+    pw::Vec2 const lastOuter = strip.outer.back();
+    CHECK(approx(firstOuter.x, -lastOuter.x, 0.01f) && approx(firstOuter.y, lastOuter.y, 0.01f));
+    CHECK(approx(std::hypot(lastOuter.x, lastOuter.y), tile.outerRadius - tile.outerChamfer, 0.05f));
+    pw::Vec2 const top = strip.outer[strip.outer.size() / 2];
+    CHECK(approx(top.x, 0.0f, 0.01f) && approx(top.y, tile.outerRadius, 0.01f));
+    CHECK(pw::Outline(strip).size() == 2 * strip.outer.size());
+    // The concept's straight inner edge: a chord at innerRadius from the centre, the cut ending on the side.
+    {
+        bool straight = true;
+        for (pw::Vec2 p : strip.inner) {
+            straight = straight && (std::abs(p.y - tile.innerRadius) < 0.01f || std::abs(p.x) > tile.innerRadius * std::tan(tile.halfWidthDeg * std::numbers::pi_v<float> / 180.0f) - tile.innerChamfer - 0.01f);
+        }
+        CHECK(straight);
+        float const corner = tile.innerRadius / std::cos(tile.halfWidthDeg * std::numbers::pi_v<float> / 180.0f);
+        CHECK(approx(std::hypot(strip.inner.back().x, strip.inner.back().y), corner + tile.innerChamfer, 0.05f));
+    }
+    // An arc for the inner edge instead.
+    {
+        pw::TileSettings arc = tile;
+        arc.straightInner = false;
+        pw::Strip const arcStrip = pw::TileStrip(90.0f, arc);
+        CHECK(approx(std::hypot(arcStrip.inner[arcStrip.inner.size() / 2].x, arcStrip.inner[arcStrip.inner.size() / 2].y), arc.innerRadius, 0.01f));
+        CHECK(approx(std::hypot(arcStrip.inner.back().x, arcStrip.inner.back().y), arc.innerRadius + arc.innerChamfer, 0.05f));
+    }
+    // Grown about its middle and pushed out: the middle moves out by the push.
+    pw::Strip const grown = pw::Transformed(strip, 90.0f, 300.0f, 1.1f, 10.0f);
+    CHECK(approx(grown.outer[strip.outer.size() / 2].y, 300.0f + (tile.outerRadius - 300.0f) * 1.1f + 10.0f, 0.05f));
+
+    // The pick: the nearest direction past the dead zone; inside it the current stays; a border needs keepDeg more.
+    CHECK(pw::Pick({0.0f, 0.01f}, six, -1) == -1);
+    CHECK(pw::Pick({0.0f, 0.01f}, six, 3) == 3);
+    CHECK(pw::Pick({0.0f, 0.05f}, six, -1) == 2);   // straight up: 82.8
+    CHECK(pw::Pick({-0.05f, 0.0f}, six, -1) == 0);  // left: -176
+    float const border = (six[2] + six[3]) * 0.5f;  // halfway between 82.8 and 32.2
+    auto at = [](float deg) {
+        return pw::Vec2{0.05f * std::cos(deg * std::numbers::pi_v<float> / 180.0f), 0.05f * std::sin(deg * std::numbers::pi_v<float> / 180.0f)};
+    };
+    CHECK(pw::Pick(at(border - 2.0f), six, 2) == 2);   // a little past the border: kept
+    CHECK(pw::Pick(at(border - 8.0f), six, 2) == 3);   // well past it: taken
+    CHECK(pw::Pick(at(-120.0f), six, -1) == 5);        // into the gap, nearer the bottom end
+    CHECK(pw::Pick(at(-140.0f), six, -1) == 0);        // nearer the left end
+    CHECK(pw::Pick(at(90.0f), {}, -1) == -1);
+    CHECK(approx(pw::AngleDiff(-170.0f, 170.0f), 20.0f) && approx(pw::AngleDiff(170.0f, -170.0f), -20.0f));
+}
+
 // core/Ini: the one reader of our settings file, as Win32's profile API reads it.
 void TestIni() {
     namespace ini = mevr::ini;
@@ -10609,6 +10794,7 @@ void TestIni() {
 
 int main() {
     TestIni();
+    TestPowerWheel();
     RunInstallTests(gFailures);
     RunReportTests(gFailures);
     gFailures += RunReflectTests();
@@ -10683,6 +10869,7 @@ int main() {
     TestStickChord();
     TestGameMenuRequest();
     TestSquadContext();
+    TestSquadGesture();
     TestCloseLatch();
     TestClickGate();
     TestSquadPad();

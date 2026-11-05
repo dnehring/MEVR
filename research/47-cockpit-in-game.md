@@ -1260,7 +1260,7 @@ rocket launcher for heavier/crowded targets".
 - **Not yet seen:** a fight with several enemies (the crowd's cannon), a takeover by the stick's thumbstick or the hand in the
   headset (the fake headset's controllers aren't tracked), the gunner against a moving target at range.
 
-## Flying on the jets (2026-11-04, the user; read in the package, measuring pending)
+## Flying on the jets (2026-11-04, the user; read in the package, measured on the fake headset, `BIOA_UNC20`)
 
 The user: whether the right controller can make small corrections in the air (forward, back, left, right); then "when booster is
 firing I don't think we should allow for the directional pitches", and "when I was trying forward/back in jets I don't know if I
@@ -1283,7 +1283,30 @@ noticed any real behavioral change".
 - **A burst's log line** (new): `mako controls: a jet burst of S s: the stick asked pitch P roll R deg on average, the Mako held P' /
   R'; it gained F m/s forward and S m/s right of its heading, U m/s up, and rose H m`. The heartbeat's thrusters line counts the
   bursts and the last pitch and roll targets.
-- **Next:** on the fake headset, a replay with the lever at neutral and the stick held level, pushed, pulled and tilted to each
-  side, a `mevr vehicle jets 1.75` in each: the forward and sideways speed each burst gives against the level one. If a full tilt
-  gains only a few m/s, the angles or the curve go up (or a direct sideways push replaces the roll); the user's next drive logs
-  the same lines.
+- **Measured** (22:37-22:47; a replay grabbing both controls, the lever at neutral, the stick held at one place for the whole run,
+  8 cm of travel: a full tilt; one `mevr vehicle jets 2` per run from rest on the ground with full fuel; the burst line):
+
+  | stick | held (pitch / roll) | gained forward | gained right | turned |
+  |---|---|---|---|---|
+  | level (3 runs) | 0 / 0 | -0.2..+0.3 m/s | -0.5..+0.3 | -2 deg |
+  | pushed (3) | -16 / 0 | **+15.5..+15.7** | 0 | +4 |
+  | pulled (2) | +15..+17 / 0 | **-14.7, -16.2** | 0 | |
+  | right, steering on the ground first (3) | 0 / +12 | -8.5..-9.1 | +7.2..+8.0 | **+87..+95** |
+  | right, the tilt not steering (`tiltSteerMax = 0`) | +1 / +10.6 | -0.7 | **+11.0** | -1 |
+  | left, the tilt not steering | 0 / -13.9 | +0.2 | **-13.5** | 0 |
+
+  Every burst lasted 1.72-1.76 s and rose 13-15 m. So a full push gives the Mako 15.5 m/s (56 km/h) forward over one burst, and
+  a full sideways tilt 11-13 m/s to that side: the tip works, and a small push does little only because of the curve above (a
+  4 cm push asks a quarter of the angle).
+- **Why a sideways tilt turned the Mako 90 degrees:** the tilt also steers (`tiltSteerMax` 0.5), which at zero throttle drives one
+  track (the heartbeat's `tracks L 761..1033 R 0`); in the air that track keeps turning and the Mako yaws about 50 deg/s, its
+  sideways push swinging behind it (8.5 back and 7.2 right is the 11 m/s of a 12-degree roll). Not camera-relative steering
+  (`bUseCameraRelativeVehicleSteering` 0 for one run: still 95 degrees). **Changed:** while the jets fire, the tilt doesn't steer
+  (`Input::jets`; the twist still does). A track already turning from steering on the ground before the jump still turns the
+  Mako in the air (the game's own; the test above tilted the stick for 5 s on the ground first).
+- **A test tool's bug:** `mevr vehicle jets <s>` set `bJumpJetsOn` while it held and never cleared it, and with the window
+  unfocused nothing else does (the pad's input runs only with focus), so the jets fired again every time their fuel came back
+  (every 3.74 s, until cleared by hand). Fixed (cleared when the hold ends, and at a reload). The two bursts of "The stick tilts"
+  (244 + 366 ticks for one `jets 3`) were probably this.
+- **Next:** whether the angles or the curve should be steeper in the air, the user's call: a full tilt is strong, a small one
+  weak.

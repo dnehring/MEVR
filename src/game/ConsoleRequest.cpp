@@ -2,6 +2,7 @@
 #include "game/ConsoleRequest.hpp"
 
 #include "game/SquadContext.hpp"
+#include "game/SquadOrders.hpp"
 
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
@@ -499,6 +500,17 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
             return mako_gunner::Wake(gFound[index]);
         }
         return mako_gunner::StatusJson();
+    }
+    if (verb == "order") {
+        // `mevr order WHO|WEAPON|POWER|ORDER|TARGET`: an action line (research/54) validated against the squad context and
+        // given through the same dispatcher as the gesture, e.g. `ALL|-|-|attack|E1`, `G|-|-|follow|-`, `W|-|-|move|E2`.
+        std::string actionLine;
+        words >> actionLine;
+        auto const action = vr::squad_context::ParseLine(actionLine);
+        if (!action) {
+            return std::string("usage: mevr order WHO|WEAPON|POWER|ORDER|TARGET (ALL|-|-|attack|E1; G|-|-|follow|-; W|-|-|move|E2)");
+        }
+        return squad_orders::Give(*action);
     }
     if (verb == "context") {
         // `mevr context [word [secondsAgo]]`: the squad context's text block now (research/54), with PT1 "<word>" resolved

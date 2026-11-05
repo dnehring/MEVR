@@ -390,7 +390,8 @@ Output Controls::Step(Input const& in, Settings const& settings) {
             }
             // The tilt steers up to tiltSteerMax; the twist adds to it (to full lock, or against it), and alone it spins.
             float const twistPart = stickHeld_ ? SteerFromTwist(twist_, settings) : 0.0f;
-            float const tiltPart = stickHeld_ && !settings.stickTwist ? FromTilt(tiltRight_, settings) * std::clamp(settings.tiltSteerMax, 0.0f, 1.0f) : 0.0f;
+            float const tiltPart = stickHeld_ && !settings.stickTwist && !in.jets
+                ? FromTilt(tiltRight_, settings) * std::clamp(settings.tiltSteerMax, 0.0f, 1.0f) : 0.0f;
             float const target = std::clamp(tiltPart + twistPart, -1.0f, 1.0f);
             float const rate = (stickHeld_ ? kSteerRateHeld : kSteerRateReturn) * dt;
             steer_ = Approach(steer_, target, rate);

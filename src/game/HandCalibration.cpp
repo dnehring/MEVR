@@ -484,6 +484,22 @@ constexpr char const* kSquadContextBlock =
     "maxGroups = 6\n"
     "nearM = 10\n"
     "farM = 30\n";
+// Appended to a settings file that has no [SquadOrders] yet (and part of a new file).
+constexpr char const* kSquadOrdersBlock =
+    "\n"
+    "[SquadOrders]\n"
+    "; The game's squad orders by gesture (research/54): squeeze the LEFT grip with the hand away from the gun and the\n"
+    "; grenade slot, point, let go: on an enemy the squad attacks it; on the ground farther than followWithinM they move\n"
+    "; there; near you, on a squadmate or on nothing they regroup. Pointing at a squadmate as you squeeze orders them alone.\n"
+    "; gesture = 0 keeps only the console's `mevr order`. enemyConeDeg / memberConeDeg: how close the ray must pass.\n"
+    "; minHoldS: a shorter squeeze is a blip. maxHoldS: held longer, the order is called off.\n"
+    "enabled = 1\n"
+    "gesture = 1\n"
+    "followWithinM = 2\n"
+    "enemyConeDeg = 8\n"
+    "memberConeDeg = 12\n"
+    "minHoldS = 0.08\n"
+    "maxHoldS = 8\n";
 // Appended to a settings file that has no [Vent] yet (and part of a new file).
 constexpr char const* kVentBlock =
     "\n"
@@ -1343,6 +1359,42 @@ std::string Describe(SquadContext const& s) {
 
 SquadContext gSquadContext;
 std::string gSquadContextText;
+
+SquadOrders ReadSquadOrders(Ini const& ini) {
+    SquadOrders s;
+    double value = 0.0;
+    if (Number(ini, "SquadOrders", "enabled", value)) {
+        s.enabled = value != 0.0;
+    }
+    if (Number(ini, "SquadOrders", "gesture", value)) {
+        s.gesture = value != 0.0;
+    }
+    if (Number(ini, "SquadOrders", "followWithinM", value)) {
+        s.followWithinM = std::clamp(value, 0.0, 20.0);
+    }
+    if (Number(ini, "SquadOrders", "enemyConeDeg", value)) {
+        s.enemyConeDeg = std::clamp(value, 1.0, 45.0);
+    }
+    if (Number(ini, "SquadOrders", "memberConeDeg", value)) {
+        s.memberConeDeg = std::clamp(value, 1.0, 45.0);
+    }
+    if (Number(ini, "SquadOrders", "minHoldS", value)) {
+        s.minHoldS = std::clamp(value, 0.0, 2.0);
+    }
+    if (Number(ini, "SquadOrders", "maxHoldS", value)) {
+        s.maxHoldS = std::clamp(value, 0.5, 60.0);
+    }
+    return s;
+}
+
+std::string Describe(SquadOrders const& s) {
+    return !s.enabled ? std::string("off")
+         : std::format("{}; follow within {:.1f} m; cones {:.0f} deg (enemy) / {:.0f} deg (squadmate); hold {:.2f}..{:.0f} s",
+               s.gesture ? "the left-grip gesture" : "the console only", s.followWithinM, s.enemyConeDeg, s.memberConeDeg, s.minHoldS, s.maxHoldS);
+}
+
+SquadOrders gSquadOrders;
+std::string gSquadOrdersText;
 
 vr::interact::Settings ReadInteract(Ini const& ini) {
     vr::interact::Settings i;
@@ -2319,6 +2371,10 @@ SquadContext GetSquadContext() {
     return gSquadContext;
 }
 
+SquadOrders GetSquadOrders() {
+    return gSquadOrders;
+}
+
 Vent GetVent() {
     return gVent;
 }
@@ -2451,7 +2507,7 @@ void Refresh() {
     for (auto const& [name, block] : {std::pair{"Controls", kControlsBlock}, std::pair{"Holsters", kHolstersBlock},
              std::pair{"Squad", kSquadBlock}, std::pair{"Throwables", kThrowablesBlock}, std::pair{"Comfort", kComfortBlock},
              std::pair{"Sights", kSightsBlock}, std::pair{"Interact", kInteractBlock}, std::pair{"Vent", kVentBlock}, std::pair{"Hud", kHudBlock}, std::pair{"Mako", kMakoBlock},
-             std::pair{"Cockpit", kCockpitBlock}, std::pair{"Galaxy", kGalaxyBlock}, std::pair{"WorldUi", kWorldUiBlock}, std::pair{"Game", kGameBlock}, std::pair{"SquadContext", kSquadContextBlock}}) {
+             std::pair{"Cockpit", kCockpitBlock}, std::pair{"Galaxy", kGalaxyBlock}, std::pair{"WorldUi", kWorldUiBlock}, std::pair{"Game", kGameBlock}, std::pair{"SquadContext", kSquadContextBlock}, std::pair{"SquadOrders", kSquadOrdersBlock}}) {
         if (ini.find(name) == ini.end() && AppendBlock(path, block, name)) {  // an older file: show the new settings
             ini = ReadIni(path);
             stamp = fs::last_write_time(path, ec);
@@ -2853,6 +2909,11 @@ void Refresh() {
     if (std::string const text = Describe(gSquadContext); text != gSquadContextText) {
         gSquadContextText = text;
         log::Info("squad context: settings: {}", text);
+    }
+    gSquadOrders = ReadSquadOrders(ini);
+    if (std::string const text = Describe(gSquadOrders); text != gSquadOrdersText) {
+        gSquadOrdersText = text;
+        log::Info("squad orders: settings: {}", text);
     }
     gVent = ReadVent(ini);
     if (std::string const text = Describe(gVent); text != gVentText) {

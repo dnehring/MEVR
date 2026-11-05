@@ -87,7 +87,7 @@ bool CallBool(ue3::Object* object, ue3::Function* fn) {
     return parms.ReturnBool().value_or(false);
 }
 
-char LetterOf(int classId) {
+char LetterOfClass(int classId) {
     switch (classId) {
     case 6: return 'L';
     case 7: return 'W';
@@ -187,7 +187,7 @@ void ReadScene(ue3::Object* controller, ue3::Object* pawn, engine::TrackingFrame
     // The party, as the squad menu read it (names, classes, quick slots, health).
     for (squad_weapons::MemberView const& view : squad_weapons::Members()) {
         sc::Member m;
-        m.letter = LetterOf(view.classId);
+        m.letter = LetterOfClass(view.classId);
         if (m.letter == 0) m.letter = view.name.empty() ? '?' : view.name[0];
         m.present = true;
         m.alive = view.health != 0.0f;
@@ -311,6 +311,8 @@ void Tick(double deltaSeconds) {
         ReadScene(controller, pawn, *frame, upm);
     }
 }
+
+char LetterOf(int classId) { return LetterOfClass(classId); }
 
 sc::Scene const& Scene() { return gScene; }
 std::vector<sc::Group> const& Groups() { return gGrouper.Groups(); }

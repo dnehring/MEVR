@@ -104,6 +104,9 @@ struct Input {
     float engineSpeed = 0.0f;    // 0..1: for the rumble
     float stickX = 0.0f;         // the right thumbstick (the turret, while the stick is held)
     float stickY = 0.0f;
+    // The jump jets fire: the stick's sideways tilt tips the Mako (Output::roll) instead of steering; the twist still steers
+    // (research/47 "Flying on the jets": a tilt that also steered turned the Mako 88 degrees in a burst, its push swung behind).
+    bool jets = false;
 };
 
 struct Haptic {

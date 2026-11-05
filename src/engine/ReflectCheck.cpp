@@ -1136,6 +1136,10 @@ void CheckFunctions() {
         "SFXGame.BioEquipment.ChangeToQuickSlot",
         "SFXGame.BioPawnBehavior.GetClass",
         "SFXGame.SFXGameModeDefault.EnterWeaponWheel",
+        // SquadOrders (research/54)
+        "SFXGame.BioPlayerController.QuickCommandMoveTo",
+        "SFXGame.BioPlayerController.QuickCommandAttackTarget",
+        "SFXGame.BioPlayerController.QuickCommandFollowPlayer",
         "SFXGame.SFXGameModeWeaponWheel.ExitWeaponWheel",
         "SFXGame.SFXGameModeDefault.TryHolster",
         "SFXGame.SFXGameModeDefault.SwitchToWeapon",
@@ -1328,6 +1332,13 @@ void CheckParams() {
     PARAM(ABioBaseSquad_execSetMemberSwitchWeapon_Parms, "SFXGame.BioBaseSquad.SetMemberSwitchWeapon", eWeapon);
     PARAM(ABioPlayerController_execSquadOrderEquipWeapon_Parms, "SFXGame.BioPlayerController.SquadOrderEquipWeapon", nWeapon);
     PARAM(ABioPlayerController_execSquadOrderEquipWeapon_Parms, "SFXGame.BioPlayerController.SquadOrderEquipWeapon", pPawn);
+    PARAM(ABioPlayerController_execQuickCommandMoveTo_Parms, "SFXGame.BioPlayerController.QuickCommandMoveTo", iSquadMember);
+    PARAM(ABioPlayerController_execQuickCommandMoveTo_Parms, "SFXGame.BioPlayerController.QuickCommandMoveTo", ReturnValue);
+    PARAM(ABioPlayerController_execQuickCommandAttackTarget_Parms, "SFXGame.BioPlayerController.QuickCommandAttackTarget", iSquadMember);
+    PARAM(ABioPlayerController_execQuickCommandAttackTarget_Parms, "SFXGame.BioPlayerController.QuickCommandAttackTarget", pTarget);
+    PARAM(ABioPlayerController_execQuickCommandAttackTarget_Parms, "SFXGame.BioPlayerController.QuickCommandAttackTarget", ReturnValue);
+    PARAM(ABioPlayerController_execQuickCommandFollowPlayer_Parms, "SFXGame.BioPlayerController.QuickCommandFollowPlayer", iSquadMember);
+    PARAM(ABioPlayerController_execQuickCommandFollowPlayer_Parms, "SFXGame.BioPlayerController.QuickCommandFollowPlayer", ReturnValue);
     PARAM(UBioEquipment_execChangeToQuickSlot_Parms, "SFXGame.BioEquipment.ChangeToQuickSlot", Slot);
     PARAM(UBioPawnBehavior_execGetClass_Parms, "SFXGame.BioPawnBehavior.GetClass", ReturnValue);
     PARAM(AWorldInfo_execPauseGame_Parms, "Engine.WorldInfo.PauseGame", bPause);
@@ -1477,6 +1488,9 @@ void CheckParams() {
     PARMS(ABioBaseSquad_execSetMemberSwitchWeapon_Parms, "SFXGame.BioBaseSquad.SetMemberSwitchWeapon");
     PARMS(ABioPlayerController_execSquadOrderEquipWeapon_Parms, "SFXGame.BioPlayerController.SquadOrderEquipWeapon");
     PARMS(ABioPlayerController_execApplyTacticalOrders_Parms, "SFXGame.BioPlayerController.ApplyTacticalOrders");
+    PARMS(ABioPlayerController_execQuickCommandMoveTo_Parms, "SFXGame.BioPlayerController.QuickCommandMoveTo");
+    PARMS(ABioPlayerController_execQuickCommandAttackTarget_Parms, "SFXGame.BioPlayerController.QuickCommandAttackTarget");
+    PARMS(ABioPlayerController_execQuickCommandFollowPlayer_Parms, "SFXGame.BioPlayerController.QuickCommandFollowPlayer");
     PARMS(UBioEquipment_execChangeToQuickSlot_Parms, "SFXGame.BioEquipment.ChangeToQuickSlot");
     PARMS(UBioPawnBehavior_execGetClass_Parms, "SFXGame.BioPawnBehavior.GetClass");
     PARMS(AWorldInfo_execPauseGame_Parms, "Engine.WorldInfo.PauseGame");

@@ -301,3 +301,39 @@ prefix` the prefix. Log `squad context:` (the settings, the type words, the stat
 `m_powers`, `m_nmPower`, `m_fCooldownRemaining`. Built (`build-ctx`, the mod and the tests, no warnings) but **not yet run in
 the game**: the first session should check the type words and the power names in the log, `mevr context those 0.5` while
 pointing at a group, and the cost of the read (a `PawnList` walk with two ProcessEvents per hostile every 0.25 s).
+
+## The flat orders: the gesture and the dispatcher (2026-11-04, later)
+
+The user chose the flat orders next. Two pieces, built but **not yet run in the game**:
+
+- **The rules**, [src/core/vr/SquadGesture.hpp](../src/core/vr/SquadGesture.hpp) (unit-tested, `TestSquadGesture`): a LEFT grip
+  squeeze that no other feature claimed (the host's `leftGripAway` count excludes the support grip's zone; `throwables::ClaimedLeft`
+  and `vent::ClaimedLeft` are checked) starts a hold; the left aim ray is the pointer; letting go gives the order from what the
+  ray ends on: an enemy (within `enemyConeDeg` 8 of a hostile) = attack that group; the ground farther than `followWithinM` 2 =
+  move there; the ground near Shepard, a squadmate or nothing = follow. The squadmate the ray pointed at (`memberConeDeg` 12)
+  when the squeeze began gets the order alone, else everyone. A squeeze shorter than `minHoldS` 0.08 is a blip, longer than
+  `maxHoldS` 8 is called off, and so is a hold that stops being usable (off foot, untracked, no squad). Haptics: a tick at the
+  start, a lighter one each time what the ray ends on changes, a stronger one at the order. Every left-grip gesture of the mod
+  is then: the support grip on the gun, a grenade at the chest, the vent at a hot receiver, and an order anywhere else.
+- **The dispatcher**, [src/game/SquadOrders.cpp](../src/game/SquadOrders.cpp) (mod; `[SquadOrders]` in `ASI\LE1MEVR.ini`:
+  `enabled`, `gesture`, `followWithinM`, `enemyConeDeg`, `memberConeDeg`, `minHoldS`, `maxHoldS`): `Give(Action)` validates any
+  action against the squad context (`sc::Validate`, with the dispatcher's own history of the last three commands for LAST and
+  OTHER) and calls the game on the game thread: follow (and hold, as follow until the hold order is found, and regroup) =
+  `BioPlayerController.QuickCommandFollowPlayer(iSquadMember)` per recipient; attack = `QuickCommandAttackTarget(iSquadMember,
+  pTarget)` with the group's nearest living member as the target; move = `QuickCommandMoveTo(iSquadMember)` with the
+  controller's `Rotation` turned toward the point for the call and put back after (journalled `SquadOrders.Rotation`; the trace
+  showed the native drops the point along the controller's facing), the point from the gesture's trace (`Engine.Actor.Trace`
+  along the ray, 100 m, bisected when the hit point doesn't come back) or, from the console, the target group's centre.
+  `iSquadMember` is the squad's own index as `squad_weapons` reads it (`MemberView::squadIndex`) **[verify: the trace's Move1
+  moved the one squadmate; whether index 0 is Shepard or the first henchman decides whether Move1 = index 0 or 1]**. Powers
+  (`SquadOrderUsePower`) and weapons aren't dispatched (the squad weapon menu gives weapons). The natives' return values are
+  logged per call. `mevr order WHO|WEAPON|POWER|ORDER|TARGET` (e.g. `ALL|-|-|attack|E1`, `G|-|-|follow|-`, `W|-|-|move|E2`) gives
+  an action line through the same path: the voice parser's output will go in there. New ReflectCheck rows: the three natives,
+  their parameter blocks and parameters. Logs `squad orders:` (the settings, `pointing an order`, `let go on ...`, each order's
+  line and outcome); snapshot `"mod"."squadOrders"` (holding, the pointer's hit, the last outcome, counts).
+
+What the first session should check: the squad index (a Move for "everyone" should move both squadmates; if only one moves,
+the index base is off by one), whether `QuickCommandAttackTarget` makes the squad attack the pawn given or still the game's own
+selection, whether the Rotation swap lands the move point where the ray hit (and whether Halcyon's camera, not the
+controller's rotation, drives the native's trace in VR), the cost of the trace while holding, and the gesture's feel against
+the support grip's and the grenades' zones.
