@@ -1109,18 +1109,16 @@ ready, `hull_assemble.py` places them and builds their mounts, the package carri
   (the panel's rule, right-handed in the eye's right/forward/up), the knuckles along the bar (its axis is the hinge's), the
   index curled round it. A hand pushing the repair button's cap points: the index straight out, the other fingers closed,
   on any controller (`Seat::pointing`; before, only a Touch or Index finger lifted off the trigger pointed).
-- **The arm raised to the handle** (the game side's snapshots 2026-11-05 07:56-07:57; the user: "fix it"; built, not yet seen
-  in the game). Shepard's right arm reaching the overhead handle drew as a black shape with spikes at the shoulder. Not a
-  stretch: the seated reach log had the target 0.55 m from the shoulder, exactly its reach (the 1.05 and 1.14 m lines were
-  before the replayed hand got there). The seated arm IK left the clavicle and spine as the seated animation has them (no torso
-  goal), so the whole lift from a lowered arm to a raised one fell on the shoulder joint's skinning. And the driver, lit by the
-  vehicle's light environment from the sky outside the cabin, is dark wherever it faces down: the raised arm seen from below
-  14/255, the rest of the driver about 22, the cabin's ceiling 140. Now: (1) `engine/BonePose`'s torso has a collars-only mode
-  (`Torso::collarsOnly`: the spine untouched, the clavicles shrug by `ik::PoseCollar` toward a hand beyond 85% of its reach)
-  with a cap per side; the seated driver uses it, the cap 15 degrees for a level reach (as on foot) up to 30 for a target
-  straight above the shoulder (the seated reach log line gives each cap). (2) While seated, the vehicle's light environment's
-  `AmbientGlow` is raised by 0.25 on each channel and put back after (`mevr cockpit glow <value>` tunes it live; it lights the
-  turret in view as much). On foot nothing changes (the torso's own path, the same 15 degrees).
+- **The arm raised to the handle: tried, reverted; seated Shepard parked** (2026-11-05). Shepard's right arm reaching the
+  overhead handle draws as a black shape folded at the shoulder (the game side's snapshots 07:56-07:57, again 08:39:39 with
+  the hand on the bar). Not a stretch: the target is at the arm's reach (0.55 m, 0.58 held). Tried in adb4dae: the clavicle
+  shrugging toward the reach in the seated pose (`engine/BonePose` collars only, 15 to 30 degrees as the target rises) and the
+  vehicle's light environment's `AmbientGlow` raised while seated. In the game (panel replay, 08:39-08:40) the shrug engaged
+  (23 degrees at the handle) and changed nothing visible; the glow changed nothing measurable (a patch of the driver 48 against
+  51 of 255 at glow 0 and 2). Reverted at the user's word. The user then stopped the work on Shepard in the seat ("he is
+  literally clipping through the chair"): the seated driver's black overhead arm and the body through the chair stay open
+  until it's taken up again. The black is likely not the light environment (a strong glow didn't touch it): the mesh's inside
+  or a two-sided material's back face near the near plane are the next things to look at.
 - **The turret stays in auto mode while they're worked** (the user, 2026-11-05: "If I'm repairing it pulling extraction handle
   the aim should remain in auto mode"): while a hand presses the cap or holds the handle, or the right hand is within the
   handle's 10 cm, the Mako's gunner (research/47 "The gunner") has the turret, at once and whatever the hands do

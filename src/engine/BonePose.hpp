@@ -59,11 +59,6 @@ struct Torso {
     std::vector<std::uint64_t> keys;  // RefSkeleton names: the spine bones, then both clavicles (0: none)
     ik::TorsoGoal goal;               // component space
     bool collars = true;              // clavicles shrug toward far hand targets (ik::PoseCollar)
-    // Not `enabled`: the spine keeps its animation and only the clavicles shrug (the Mako's seated driver, whose arm straight up
-    // at the overhead handle folded at a shoulder the animation left down: research/48 section 27). Needs `chain` and `keys`.
-    bool collarsOnly = false;
-    double collarFraction = 0.5;                          // ik::PoseCollar's share of the turn toward the target...
-    std::array<double, 2> collarMaxDegrees{15.0, 15.0};  // ...and its most, each side
 };
 
 // The support grip (game/support_grip): the right hand holds a gun that has a place for the left

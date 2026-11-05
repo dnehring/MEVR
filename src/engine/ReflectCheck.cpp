@@ -533,7 +533,6 @@ void CheckClasses() {
     CheckClass<UPlayerInput>("Engine.PlayerInput");
     CheckClass<UActorComponent>("Engine.ActorComponent");
     CheckClass<UPrimitiveComponent>("Engine.PrimitiveComponent");
-    CheckClass<UDynamicLightEnvironmentComponent>("Engine.DynamicLightEnvironmentComponent");  // the seated driver's glow
     CheckClass<UMeshComponent>("Engine.MeshComponent");
     CheckClass<USkeletalMeshComponent>("Engine.SkeletalMeshComponent");
     CheckClass<USkeletalMesh>("Engine.SkeletalMesh");
@@ -831,7 +830,6 @@ void CheckFields() {
     CheckField("Engine.MeshComponent", "Materials", SDK_FIELD(UMeshComponent, Materials));
     CheckField("Engine.PrimitiveComponent", "LightEnvironment", SDK_FIELD(UPrimitiveComponent, LightEnvironment));
     CheckField("Engine.LightEnvironmentComponent", "bEnabled", SDK_BOOL(ULightEnvironmentComponent, bEnabled));
-    CheckField("Engine.DynamicLightEnvironmentComponent", "AmbientGlow", SDK_FIELD(UDynamicLightEnvironmentComponent, AmbientGlow));  // the seated driver
     CheckField("Engine.Texture", "SRGB", SDK_BOOL(UTexture, SRGB));
     CheckField("Engine.Texture", "NeverStream", SDK_BOOL(UTexture, NeverStream));
     CheckField("Engine.Texture", "LODGroup", SDK_FIELD(UTexture, LODGroup));
