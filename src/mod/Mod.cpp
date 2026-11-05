@@ -37,6 +37,7 @@
 #include "game/BodyCalibration.hpp"
 #include "game/BodyFollow.hpp"
 #include "game/CallTrace.hpp"
+#include "game/MakoGunner.hpp"
 #include "game/CameraProbe.hpp"
 #include "game/CombatStance.hpp"
 #include "game/Comfort.hpp"
@@ -862,7 +863,7 @@ void PublishStatus() {
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, "
         "\"posture\": {}, \"viewLevel\": {}, \"gunKick\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
-        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}}}",
+        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -873,7 +874,7 @@ void PublishStatus() {
         game::sights::StatusJson(), game::scope_capture::StatusJson(), game::throwables::StatusJson(), game::vent::StatusJson(), game::posture::StatusJson(),
         game::view_level::StatusJson(), game::gun_kick::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
-        game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::cockpit_probe::StatusJson(), game::mako_controls::StatusJson(),
+        game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::mako_gunner::StatusJson(), game::cockpit_probe::StatusJson(), game::mako_controls::StatusJson(),
         game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson());
     gHost->setStatus(status.c_str());
 }
@@ -1020,6 +1021,7 @@ void Heartbeat() {
         game::comfort::LogStats();
         game::interact::LogStats();
         game::mako::LogStats();
+        game::mako_gunner::LogStats();
         game::mako_controls::LogStats();
         game::spectator::LogStats();
         game::body_calibration::LogStats();
@@ -1164,6 +1166,9 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // The Mako (research/44): the controller's aim for the turret and the vehicle's motion, before comfort reads it
         // for the vignette and hand aim publishes the ray.
         game::mako::Tick(deltaSeconds, MakoLink());
+        if (game::mako::GunnerAiming()) {
+            EnsureCallFunctionHook();  // the gunner's shots are aimed in the script hook (game/hand_aim), controllers or not
+        }
         // Our own turn (snap or smooth) before arm IK: the view anchor then maps the view the next frame shows, so the
         // hands and the body are posed for it (research/31). Its pad flags go out with the support grip's below.
         game::comfort::Tick(deltaSeconds, ComfortLink());
@@ -1346,6 +1351,7 @@ MEVR_MOD_API void MevrModShutdown() {
     // The physical controls: throttle and steering zero, the picture gone. Their pad flags went with setSupportGrip's reset above.
     game::mako_controls::Shutdown(exiting, gHost != nullptr && MEVR_HOST_HAS(setMakoControls) ? gHost->setMakoControls : nullptr);
     game::mako::Shutdown();  // the turret's pose seam cleared, the vehicle forgotten
+    game::mako_gunner::Shutdown();  // the gunner's triggers let go
     game::body_calibration::Shutdown();
     game::menu_pause::Shutdown(exiting);  // unpauses the game if the main menu paused it
     game::focus_pause::Shutdown();

@@ -1218,3 +1218,44 @@ would even see the cannon a little bit)". Chosen (of three offered): shots from 
   under the roof's lamp bar at the windshield's top edge, the barrel's tip just visible there.
 - **Not yet seen:** the cannon's own shell (its spawn point may be the muzzle or the start: both are at the barrel now), the turret
   turned far to a side (the barrels then cross the windshield's top corners), the headset's view of it.
+
+## The gunner (2026-11-04, the user; fake headset, `BIOA_UNC20`; mod only)
+
+The user: "an auto-aim system to simulate the idea that a squadmate is actually running the cannon and gun. However we can take
+direct control if we choose to aim with either the joystick or our right hand doing a movement/aim." Chosen (of the options
+offered): the gunner **aims and fires**. Later, after watching it kill: "the only thing I'd want it to consider is switching to the
+rocket launcher for heavier/crowded targets".
+
+- **Who aims** (`core/vr/MakoGunner`, unit-tested; `game/MakoGunner`): riding in the cockpit, the gunner by default. The stick's
+  thumbstick past 0.25 (the stick held) takes the turret at once, as before. So does the free right hand aiming: tracked, off the
+  stick, the index on the trigger (the touch sensor) or pulling it, its ray out through the front (not at the floor or the seat).
+  The gunner takes it back `gunnerHandbackS` (3 s) after the last of either; the hand's last aim is held until then. Not riding,
+  or `[Mako] gunner = 0`: the old rules (the stick's aim while held, else the hand's).
+- **Targets:** `WorldInfo.PawnList`'s BioPawns that the driver's `BioPawn.IsHostile(Other)` names, not `IsDead`, within
+  `gunnerRangeM` (120 m) and seen from the muzzle (`Actor.FastTrace` from `BioWeaponRanged.GetMuzzleLoc`), re-read 4 times a
+  second. The nearest wins; the current one is kept unless another is nearer than 0.7 of its distance. The aim point is the
+  target's middle, put through the hand aim's own path (`GetAdjustedAimFor`'s handler and the turret seams), so the gunner needs the
+  CallFunction hook even without controllers (`Mod.cpp` installs it once the gunner aims).
+- **Firing:** after 0.35 s on a new target (the turret swings over), the machine gun in 1.2 s bursts with 0.5 s pauses (the vehicle
+  game mode's `SFXGameModeBase.FireWeapon` / `StopFiringWeapon`, RT's functions), and the cannon (`SFXGameModeVehicle.FireCannon` /
+  `StopFiringCannon`, RB's) at most every 3 s at a **heavy target** (collision radius 1.4 m or more [verify which enemies reach it: the
+  trooper measured is 0.3 m]) **or a crowd**: `gunnerCrowd` (3) or more hostiles, the target counted, within
+  `gunnerCrowdRadiusM` (6 m) of it (`CountNeighbours` over the scan's positions; a crowd that gathers or thins around the same
+  target switches the cannon on or off, logged). The machine gun keeps firing between cannon shots. The player's own trigger fires
+  the machine gun where the gunner aims; the gunner then neither starts nor stops it, so its pauses don't cut the player's fire.
+- **Measured:** `IsWorldLocationWithinTurretCone` answered false even dead ahead, so the cone is not checked (`Candidate.inCone`
+  stays true; the turret's own constraint limits where it can point). The first trials found nothing to shoot: **a base's crew
+  before its encounter is dormant** (UNC20's mercenaries: `bHidden`, no collision, `HealthMax` 0; bullets pass through them, and
+  `InitializeForPlay` puts them back to sleep), so the scan skips hidden or non-colliding pawns (the scan's `dormant` count). With
+  one pawn brought 30 m ahead (`mevr vehicle bring 2 30`) and woken (`mevr gunner wake 0`: shown, collision on), the gunner took it
+  in its first scan and the next one found it dead about 3 s later (`targets BioPawn_2 30 m away (the machine gun, 0.6 m wide; 1
+  hostile in range)`, one burst). **The user saw the gunner kill the enemy** on the screen. The level's only
+  `BioSeqAct_BioActorFactory` instances are the Thresher Maw's tentacles, so no encounter could be started by hand; the crowd rule
+  is unit-tested but not yet seen in a fight.
+- Tools: `mevr gunner` (who aims, the target with its health and shields, the scan's counts, each candidate's distance, sight,
+  width and neighbours, the bursts and cannon shots), `mevr gunner wake <n>` (tests: the n-th of `mevr instances` shown and given
+  collision). Logs `mako gunner:` (each target with its weapon and why, each takeover, a 5 s line in the status block); snapshot
+  `"mod"."makoGunner"`. Settings `[Mako] gunner`, `gunnerRangeM`, `gunnerHandbackS`, `gunnerCannon`, `gunnerCrowd`,
+  `gunnerCrowdRadiusM`.
+- **Not yet seen:** a fight with several enemies (the crowd's cannon), a takeover by the stick's thumbstick or the hand in the
+  headset (the fake headset's controllers aren't tracked), the gunner against a moving target at range.

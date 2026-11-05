@@ -6,7 +6,7 @@ tags: [tooling, build, windows]
 status: stable
 timestamp: 2026-11-04T09:00:00Z
 generated: { by: claude-code/opus-5.5, at: 2026-11-04T09:00:00Z }
-bitten: [2026-11-04, 2026-11-04, 2026-11-04]
+bitten: [2026-11-04, 2026-11-04, 2026-11-04, 2026-11-04]
 ---
 
 # Symptom
@@ -16,11 +16,12 @@ bitten: [2026-11-04, 2026-11-04, 2026-11-04]
 | the monolithic build fails in `game/GalaxyDump` while `build/` compiled: `SetProp` "is not a member" / redefinition | a function named `SetProp` (601a938), caught by the scope session's players' build |
 | `error C2513: 'const float': no variable declared before '='`, then `syntax error: '>'`, `illegal else` | `float const far = ...` in core/vr/WorldUi.cpp |
 | `error C2513: 'const auto': no variable declared before '='`, then a C4834 "discarding return value" on every later use | `auto const near = [](...)` a test lambda in tests/Main.cpp (the finger touch tests) |
+| a declaration named `small` that won't compile (rpcndr.h's `#define small char`), and `far` again | the Mako gunner's tests in tests/Main.cpp (renamed `tiny`, `distant`) |
 
 # Cause
 
 `Windows.h` defines function-like and object-like macros for many plain words: `SetProp` -> `SetPropW`, `far` and
-`near` -> nothing (16-bit leftovers), `min`/`max` (unless `NOMINMAX`), `GetObject`, `DrawText`, `CreateWindow`... Which
+`near` -> nothing (16-bit leftovers), `small` -> `char` (rpcndr.h), `min`/`max` (unless `NOMINMAX`), `GetObject`, `DrawText`, `CreateWindow`... Which
 macros a translation unit sees depends on its include order, so a name can compile in one target (the hot-reload mod)
 and break in another (the monolithic ASI, which pulls in more headers), or compile into a call to a different
 function. The compiler's error then points at the mangled line, not at the name.
@@ -28,8 +29,8 @@ function. The compiler's error then points at the mangled line, not at the name.
 # Check
 
 A baffling syntax error on an ordinary declaration, or one target compiling where another doesn't: look up the name
-as a macro (`#define <name>` in the Windows SDK headers, or hover it). `far`, `near`, `SetProp`, `GetObject`, `min`,
-`max` are the usual ones.
+as a macro (`#define <name>` in the Windows SDK headers, or hover it). `far`, `near`, `small`, `SetProp`, `GetObject`,
+`min`, `max` are the usual ones.
 
 # Fix in place
 

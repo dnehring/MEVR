@@ -53,6 +53,10 @@ struct StickAim {
 // direction the turret aims now (null: not aiming), where the thumbstick's aim starts from when the stick is grabbed.
 StickAim Tick(double deltaSeconds, Link const& link, ue3::Object* vehicle, ue3::Object* controller, engine::UnrealVector const* currentAim);
 
+// While the gunner aims (game/mako_gunner): the thumbstick's turret aim follows it, so a thumb that takes the gun starts from
+// where the turret points.
+void FollowAim(ue3::Object* vehicle, engine::UnrealVector const& direction);
+
 // The pad flags for this tick: a squeeze at a control isn't RB or LB, what the held controls' buttons are.
 void AdjustPad(gamepad::Options& options);
 // The mod drives: a control has been grabbed in this drive.

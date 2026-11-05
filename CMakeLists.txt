@@ -310,6 +310,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/MakoControls.hpp
     src/core/vr/CockpitHazard.cpp
     src/core/vr/CockpitHazard.hpp
+    src/core/vr/MakoGunner.cpp
+    src/core/vr/MakoGunner.hpp
     src/core/vr/InteractLabel.cpp
     src/core/vr/InteractLabel.hpp
     src/core/vr/HostView.hpp
@@ -450,6 +452,8 @@ set(MEVR_MOD_SOURCES
     src/game/OmniTool.hpp
     src/game/CallTrace.cpp
     src/game/CallTrace.hpp
+    src/game/MakoGunner.cpp
+    src/game/MakoGunner.hpp
     src/game/Spectator.cpp
     src/game/SceneCaptureRig.cpp
     src/game/Spectator.hpp
@@ -545,6 +549,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/MakoControls.hpp
     src/core/vr/CockpitHazard.cpp
     src/core/vr/CockpitHazard.hpp
+    src/core/vr/MakoGunner.cpp
+    src/core/vr/MakoGunner.hpp
     src/core/vr/InteractLabel.cpp
     src/core/vr/InteractLabel.hpp
     src/core/vr/HostView.hpp
@@ -856,6 +862,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/HudPieces.cpp
         src/core/vr/MakoControls.cpp
         src/core/vr/CockpitHazard.cpp
+        src/core/vr/MakoGunner.cpp
         src/core/vr/InteractLabel.cpp
         src/core/vr/Colour.cpp
         src/core/vr/ColourStrip.cpp

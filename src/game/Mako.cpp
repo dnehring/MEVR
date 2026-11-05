@@ -12,6 +12,7 @@
 #include "engine/XrToUnreal.hpp"
 #include "game/BodyCalibration.hpp"
 #include "game/CockpitProbe.hpp"
+#include "game/MakoGunner.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/HeadTracking.hpp"
 #include "game/Player.hpp"
@@ -84,6 +85,7 @@ enum class Why {
     NoControllers,  // the right controller isn't tracked
     NoAnchor,       // no view anchor (the host's view hasn't mapped tracking space yet)
     Aiming,
+    Gunner,         // the gunner aims (research/47 "The gunner")
 };
 
 char const* Name(Why why) {
@@ -95,6 +97,7 @@ char const* Name(Why why) {
     case Why::NoControllers: return "the game aims the turret (the right controller isn't tracked)";
     case Why::NoAnchor: return "the game aims the turret (no view anchor yet)";
     case Why::Aiming: return "the right controller aims the turret";
+    case Why::Gunner: return "the gunner aims the turret (research/47 \"The gunner\")";
     }
     return "?";
 }
@@ -113,6 +116,7 @@ struct Aim {
     std::string what;
     XrVector3f trackOrigin{};
     XrVector3f trackDirection{};
+    bool trackValid = true;  // the reticle's ray (the gunner without a view anchor has none)
     bool calibrated = false;
 };
 
@@ -146,6 +150,7 @@ ue3::Object* gVehicleBehavior = nullptr;
 std::string gVehicleName;
 Aim gAim;
 Start gStart;
+bool gGunnerAims = false;  // this tick's aim is the gunner's
 bool gToldMuzzle = false;
 std::uint64_t gMuzzleShots = 0;  // shot starts moved to the gun's muzzle (riding in the cockpit)
 vr::comfort::VehicleMotion gMotion;
@@ -615,6 +620,60 @@ bool TryStartup() {
 #endif
 }
 
+#if defined(MEVR_GAME_LE1)
+// The turret model, from the mod's tick (after the world tick; the pose seam carries it into the next frame's pose).
+void AimTurretModel() {
+    if (gSettings.turret && (gSettings.turretSeam & 1) != 0 && gVehicleBehavior != nullptr && ue3::runtime::IsAlive(gVehicleBehavior)) {
+        AimTurrets(gVehicleBehavior, Seam::ModTick);
+    } else if (gTurretPublished && (!gSettings.turret || (gSettings.turretSeam & 4) == 0)) {
+        engine::bone_pose::ClearTurret();
+        gTurretPublished = false;
+    }
+}
+
+// The gunner's aim (research/47 "The gunner"): from the turret's middle (150 units up the vehicle's axis, as the thumbstick's
+// ray) to its target, or straight ahead of the vehicle without one; the reticle on it when there is a view.
+void GunnerAim(ue3::Object* pawn, mako_gunner::Result const& gunner, std::optional<engine::TrackingFrame> const& frame) {
+    std::optional<ue3::Vector> const at = player::Location(pawn);
+    std::optional<ue3::Rotator> const turn = player::Rotation(pawn);
+    if (!at || !turn) {
+        gAim.valid = false;
+        return;
+    }
+    engine::Basis const axes = engine::ToBasis(engine::UnrealRotation{turn->pitch, turn->yaw, turn->roll});
+    constexpr double kTurretUp = 150.0;
+    Aim next;
+    next.valid = true;
+    next.atMs = GetTickCount64();
+    next.origin = {at->x + axes.up.x * kTurretUp, at->y + axes.up.y * kTurretUp, at->z + axes.up.z * kTurretUp};
+    engine::UnrealVector direction = axes.forward;
+    if (gunner.target) {
+        engine::UnrealVector const to = Sub(*gunner.target, next.origin);
+        double const length = Len(to);
+        if (length > 1.0) {
+            direction = Times(to, 1.0 / length);
+        }
+    }
+    next.direction = direction;
+    TraceAim(pawn, next, static_cast<double>(gSettings.aimRangeM) * engine::kUnitsPerMeter);
+    if (gunner.target) {
+        // The target itself, not whatever the line meets first: the turret turns to it and the shots converge on it.
+        next.target = *gunner.target;
+        next.distanceUnits = Len(Sub(*gunner.target, next.origin));
+        next.hit = true;
+        next.what = gunner.what;
+    }
+    next.trackValid = frame.has_value();
+    if (frame) {
+        next.trackOrigin = frame->head.position;
+        next.trackDirection = engine::DirectionToTracking(*frame, Sub(next.target, engine::ToWorld(*frame, frame->head.position)));
+    }
+    gAim = next;
+    ++gCounts.aims;
+    mako_controls::FollowAim(pawn, next.direction);
+}
+#endif
+
 void Tick(double deltaSeconds, Link const& link) {
     double const now = Now();
     gSettings = hand_calibration::GetMako();
@@ -624,9 +683,11 @@ void Tick(double deltaSeconds, Link const& link) {
     ue3::Object* const pawn = controller != nullptr ? player::Pawn(controller) : nullptr;
     bool const inVehicle = mode && *mode == kGameModeVehicle && pawn != nullptr && ue3::IsA(pawn, gVehicleBase);
     if (!inVehicle) {
+        gGunnerAims = false;
         if (gVehicle != nullptr) {
             log::Info("mako: left {}", gVehicleName);
             ForgetVehicle();
+            mako_gunner::Stop("left the Mako");
         }
         gAim.valid = false;
         mako_controls::Tick(deltaSeconds, link.controls, nullptr, controller, nullptr);  // throttle and steering to zero, the pad back
@@ -685,10 +746,35 @@ void Tick(double deltaSeconds, Link const& link) {
     // thumbstick's ray for the turret instead of the hand's.
     mako_controls::StickAim const stickAim =
         mako_controls::Tick(deltaSeconds, link.controls, pawn, controller, gAim.valid ? &gAim.direction : nullptr);
+    vr::controllers::State const controllers = vr::controllers::Latest();
+
+    // The gunner (research/47 "The gunner"): riding in the cockpit, a squadmate aims and fires until the player's thumbstick or
+    // aiming hand takes the gun.
+    mako_gunner::Inputs gunnerIn;
+    gunnerIn.vehicle = pawn;
+    gunnerIn.behavior = gVehicleBehavior;
+    gunnerIn.controller = controller;
+    gunnerIn.riding = cockpit_probe::Riding() && gSettings.handAim && link.headTrackedView && !link.mainMenuOpen;
+    gunnerIn.controllers = &controllers;
+    gunnerIn.stickHeld = stickAim.valid;
+    gunnerIn.frame = view_anchor::Current();
+    mako_gunner::Result const gunner = mako_gunner::Tick(deltaSeconds, gunnerIn);
+    gGunnerAims = gunner.gunner;
+    if (gunner.gunner) {
+        GunnerAim(pawn, gunner, gunnerIn.frame);
+        AimTurretModel();
+        LogWhy(Why::Gunner, now);
+        return;
+    }
+    if (gunner.holdHand && gAim.valid) {
+        gAim.atMs = GetTickCount64();  // the hand stopped aiming: the turret stays where it left it until the gunner's back
+        AimTurretModel();
+        LogWhy(Why::Aiming, now);
+        return;
+    }
 
     // The aim.
     Why why = Why::Aiming;
-    vr::controllers::State const controllers = vr::controllers::Latest();
     std::optional<engine::TrackingFrame> frame;
     if (!gSettings.handAim) {
         why = Why::Off;
@@ -755,19 +841,17 @@ void Tick(double deltaSeconds, Link const& link) {
             gAim.direction.y, gAim.direction.z, gAim.hit ? std::format("hits {}", gAim.what) : std::string("hits nothing; its end"),
             gAim.distanceUnits / engine::kUnitsPerMeter);
     }
-    // The turret model, from the mod's tick (after the world tick; the pose seam carries it into the next frame's pose).
-    if (gSettings.turret && (gSettings.turretSeam & 1) != 0 && gVehicleBehavior != nullptr && ue3::runtime::IsAlive(gVehicleBehavior)) {
-        AimTurrets(gVehicleBehavior, Seam::ModTick);
-    } else if (gTurretPublished && (!gSettings.turret || (gSettings.turretSeam & 4) == 0)) {
-        engine::bone_pose::ClearTurret();
-        gTurretPublished = false;
-    }
+    AimTurretModel();
     LogWhy(why, now);
 #else
     (void)deltaSeconds;
     (void)link;
     LogWhy(Why::NotInMako, now);
 #endif
+}
+
+bool GunnerAiming() {
+    return gGunnerAims && gAim.valid && GetTickCount64() - gAim.atMs <= kAimFreshMs;
 }
 
 Motion CurrentMotion() {
@@ -844,7 +928,7 @@ bool ShotRotation(ue3::Rotator const& game, ue3::Rotator& out) {
 }
 
 std::optional<vr::aim_ray::Ray> AimRay() {
-    if (!gAim.valid || !gSettings.reticle || GetTickCount64() - gAim.atMs > kAimFreshMs) {
+    if (!gAim.valid || !gAim.trackValid || !gSettings.reticle || GetTickCount64() - gAim.atMs > kAimFreshMs) {
         return std::nullopt;
     }
     vr::aim_ray::Ray ray;

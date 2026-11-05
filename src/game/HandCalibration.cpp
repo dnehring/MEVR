@@ -1477,6 +1477,25 @@ Mako ReadMako(Ini const& ini) {
     if (Number(ini, "Mako", "thrusterPitchDeg", value)) {
         m.thrusterPitchDeg = static_cast<float>(std::clamp(value, 0.0, 45.0));
     }
+    if (Number(ini, "Mako", "gunner", value)) {
+        m.gunner.on = value != 0.0;
+    }
+    if (Number(ini, "Mako", "gunnerRangeM", value)) {
+        m.gunner.rangeM = static_cast<float>(value);
+    }
+    if (Number(ini, "Mako", "gunnerHandbackS", value)) {
+        m.gunner.handbackS = static_cast<float>(value);
+    }
+    if (Number(ini, "Mako", "gunnerCannon", value)) {
+        m.gunner.cannon = value != 0.0;
+    }
+    if (Number(ini, "Mako", "gunnerCrowd", value)) {
+        m.gunner.crowdCount = static_cast<int>(std::lround(value));
+    }
+    if (Number(ini, "Mako", "gunnerCrowdRadiusM", value)) {
+        m.gunner.crowdRadiusM = static_cast<float>(value);
+    }
+    m.gunner = vr::mako_gunner::Sanitized(m.gunner);
     if (Number(ini, "Mako", "spinRateDeg", value)) {
         m.spinRateDeg = static_cast<float>(std::clamp(value, 0.0, 180.0));
     }
@@ -2679,6 +2698,13 @@ void Refresh() {
         {L"Cockpit", "Cockpit", L"hazardPeriodS", "hazardPeriodS", L"1.1"},
         {L"Cockpit", "Cockpit", L"hazardWash", "hazardWash", L"1"},
         {L"Cockpit", "Cockpit", L"showTurret", "showTurret", L"1"},
+        // The Mako's gunner (research/47 "The gunner", 2026-11-04).
+        {L"Mako", "Mako", L"gunner", "gunner", L"1"},
+        {L"Mako", "Mako", L"gunnerRangeM", "gunnerRangeM", L"120"},
+        {L"Mako", "Mako", L"gunnerHandbackS", "gunnerHandbackS", L"3"},
+        {L"Mako", "Mako", L"gunnerCannon", "gunnerCannon", L"1"},
+        {L"Mako", "Mako", L"gunnerCrowd", "gunnerCrowd", L"3"},
+        {L"Mako", "Mako", L"gunnerCrowdRadiusM", "gunnerCrowdRadiusM", L"6"},
         // [Comfort] (2026-10-23, research/31): a section our menu started (it writes only the keys it changes).
         {L"Comfort", "Comfort", L"turn", "turn", L"game"},
         {L"Comfort", "Comfort", L"snapDeg", "snapDeg", L"45"},

@@ -8,6 +8,7 @@
 #include "ue3/Memory.hpp"
 #include "game/CallTrace.hpp"
 #include "game/CockpitProbe.hpp"
+#include "game/MakoGunner.hpp"
 #include "game/GalaxyDump.hpp"
 #include "game/HoloProbe.hpp"
 #include "game/GalaxyMap.hpp"
@@ -480,6 +481,21 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
             dependent = gFound[index];
         }
         return galaxy_dump::SkillGame(pc, pawn, sub.empty() ? "state" : sub, a, b, dependent);
+    }
+    if (verb == "gunner") {
+        // `mevr gunner`: the Mako's gunner (research/47 "The gunner"): who aims, its target, the last scan's candidates.
+        // `mevr gunner wake <n>` (tests): the n-th of `find` / `instances` (a dormant enemy) shown and given collision.
+        std::string sub;
+        words >> sub;
+        if (sub == "wake") {
+            std::size_t index = 0;
+            words >> index;
+            if (index >= gFound.size()) {
+                return "usage: mevr gunner wake <n> (mevr instances BioPawn <name> first)";
+            }
+            return mako_gunner::Wake(gFound[index]);
+        }
+        return mako_gunner::StatusJson();
     }
     if (verb == "calltrace") {
         // `mevr calltrace <seconds> <word> [-word...]` | `mevr calltrace off`: every script call and ProcessEvent whose

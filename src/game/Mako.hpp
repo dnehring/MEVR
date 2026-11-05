@@ -50,6 +50,9 @@ Motion CurrentMotion();
 // For game/hand_aim's GetAdjustedAimFor handler: the shot's rotation (unwound next to `game`) while the controller
 // aims the turret; false otherwise (the game's aim stays).
 bool ShotRotation(ue3::Rotator const& game, ue3::Rotator& out);
+// The gunner aims the turret this tick (research/47 "The gunner"): game/hand_aim then asks ShotRotation even with hand aim
+// off (the squadmate's shots go where it aims, controllers or not).
+bool GunnerAiming();
 // For game/hand_aim's AimRay(): the controller's ray in tracking space while it aims the turret and [Mako] reticle
 // is on; nullopt otherwise.
 std::optional<vr::aim_ray::Ray> AimRay();
