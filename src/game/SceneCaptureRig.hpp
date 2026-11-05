@@ -23,6 +23,7 @@ struct Options {
     float farUnits = 0.0f;     // 0: the engine's
     float rate = 150.0f;       // SceneCaptureComponent.FrameRate (a re-pointed capture renders every frame anyway)
     bool postProcess = true;   // the player's post-process chain
+    ue3::Object* postProcessChain = nullptr;  // with postProcess: this chain instead of the player's (the UI world's own)
 };
 
 class Rig {
@@ -43,6 +44,8 @@ public:
 
     // What the host needs to find the texture (UTexture.Resource: an FTextureResource* in engine memory).
     std::uint64_t Resource() const;
+    // The render target itself (the capture's probe holds it: the host knows its capture by it in the capture loop).
+    std::uint64_t Target() const { return reinterpret_cast<std::uint64_t>(target_); }
     std::uint64_t Generation() const { return generation_; }
     int Width() const { return options_.width; }
     int Height() const { return options_.height; }

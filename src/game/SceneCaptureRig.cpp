@@ -220,7 +220,9 @@ bool Rig::Create(char const* tag, Options const& options, ue3::Vector const& at)
     WriteField(gMaxUpdateDist, component_, kMaxUpdateDist, "CaptureRig.MaxUpdateDist");
     gEnableFog.WriteBool(component_, true);
     gEnableParticles.WriteBool(component_, true);
-    ue3::Object* const chain = options.postProcess ? PostProcessChain(controller) : nullptr;
+    ue3::Object* const chain = !options.postProcess ? nullptr
+        : options.postProcessChain != nullptr       ? options.postProcessChain
+                                                    : PostProcessChain(controller);
     gEnablePostProcess.WriteBool(component_, chain != nullptr);
     gUseMainPostProcess.WriteBool(component_, chain != nullptr);
     WriteField(gPostProcess, component_, chain, "CaptureRig.PostProcess");
@@ -244,7 +246,8 @@ bool Rig::Create(char const* tag, Options const& options, ue3::Vector const& at)
     Flush();
     log::Info("capture rig {}: {} with {} into {} ({}x{} {}, {:.1f} degrees across, post process {})", tag_, ue3::runtime::FullName(actor_),
         ue3::runtime::FullName(component_), ue3::runtime::FullName(target_), options.width, options.height,
-        options.floatTarget ? "FloatRGB" : "A8R8G8B8", options.fovDeg, chain != nullptr ? "the player's" : "off");
+        options.floatTarget ? "FloatRGB" : "A8R8G8B8", options.fovDeg,
+        chain == nullptr ? std::string("off") : options.postProcessChain != nullptr ? ue3::runtime::FullName(chain) : std::string("the player's"));
     return true;
 }
 

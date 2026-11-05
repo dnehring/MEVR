@@ -41,6 +41,7 @@
 #include "plugin/Calibration.hpp"
 #include "plugin/Colour.hpp"
 #include "plugin/GalaxyHologram.hpp"
+#include "plugin/UiWorldFigure.hpp"
 #include "plugin/WorldUi.hpp"
 #include "plugin/GamePointer.hpp"
 #include "plugin/Halcyon.hpp"
@@ -95,6 +96,8 @@ constexpr float kDegToRad = kPi / 180.0f;
 constexpr int64_t kSwapchainFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;  // the menu's family: every runtime has it
 constexpr UINT kReticleSize = 128;
 float gPanelBackdrop = 0.0f;  // the world UI's backdrop for this frame's panel blit (research/53; 0: the HUD as it is)
+// The UI world's squad member behind the world UI's panel this frame (research/56 section 7; nullopt: none).
+std::optional<mevr::host::ui_world_figure::Picture> gPanelFigure;
 constexpr float kGalaxyUiWidthM = 1.50f;  // the game's UI frame over the galaxy hologram's table (its travel box ~1 m of it)
 
 // Logs a line to our log and to Halcyon's (one-shots that belong next to Halcyon's [XRSUBMIT] lines).
@@ -209,7 +212,9 @@ constexpr char kPanelShader[] = R"(
 #endif
 Texture2D<float4> src : register(t0);
 Texture2D<float4> tint : register(t1);
-cbuffer Params : register(b0) { uint4 info; float4 params; int4 window; int4 masks[3]; };
+Texture2D<float4> figure : register(t2);
+SamplerState figureSampler : register(s0);
+cbuffer Params : register(b0) { uint4 info; float4 params; int4 window; int4 masks[3]; float4 figureRect; float4 figureParams; };
 struct VSOut { float4 pos : SV_Position; };
 VSOut VSMain(uint id : SV_VertexID) {
     float2 p = float2((id == 2) ? 3.0 : -1.0, (id == 1) ? 3.0 : -1.0);
@@ -236,21 +241,38 @@ float4 PSMain(VSOut i) : SV_Target {
         }
     float4 s = sum / float(f * f);
     float a = 1.0 - (1.0 - saturate(s.a)) * (behind / float(f * f));
-    if (a < 1.0 / 1024.0) return float4(0, 0, 0, 0);
-    float3 c = max(s.rgb, 0.0) / a;
-    if (params.x > 0.5) {
-        c *= params.y;
-        c /= max(1.0, max(c.r, max(c.g, c.b)));
+    float3 c = 0;
+    if (a < 1.0 / 1024.0) {
+        a = 0;
     } else {
-        c = saturate(c);
-        c = (c <= 0.04045) ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4);
+        c = max(s.rgb, 0.0) / a;
+        if (params.x > 0.5) {
+            c *= params.y;
+            c /= max(1.0, max(c.r, max(c.g, c.b)));
+        } else {
+            c = saturate(c);
+            c = (c <= 0.04045) ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4);
+        }
+        if (params.z > 0.0) {
+            // A game screen standing in the room (research/53): its dark parts at params.z's opacity, the bright ones solid.
+            a *= lerp(params.z, 1.0, saturate(max(c.r, max(c.g, c.b)) * 4.0));
+        }
     }
-    if (params.z > 0.0) {
-        // A game screen standing in the room (research/53): its dark parts at params.z's opacity, the bright ones solid.
-        a *= lerp(params.z, 1.0, saturate(max(c.r, max(c.g, c.b)) * 4.0));
+    // The UI world's picture behind the game's UI over the 16:9 stage (research/56 section 7: the equipment and squad screens'
+    // squad member): figureRect its origin and inverse size in source pixels, figureParams its opacity and decode gamma.
+    float4 under = 0;
+    if (figureParams.x > 0.0) {
+        float2 uv = (float2(base) + 0.5 * float(f) - figureRect.xy) * figureRect.zw;
+        if (all(uv >= 0.0) && all(uv <= 1.0)) {
+            float3 fc = pow(max(figure.SampleLevel(figureSampler, uv, 0).rgb, 0.0), figureParams.y);
+            under = float4(fc * figureParams.x, figureParams.x);
+        }
     }
+    float aOut = a + under.a * (1.0 - a);
+    if (aOut < 1.0 / 1024.0) return float4(0, 0, 0, 0);
+    c = (c * a + under.rgb * (1.0 - a)) / aOut;
     c = MEVR_PANEL_OUT(c, i.pos);
-    return float4(c * a, a);
+    return float4(c * aOut, aOut);
 }
 float4 GridPS(VSOut i) : SV_Target {
     int2 o = int2(i.pos.xy) * int2(window.zw);
@@ -269,8 +291,10 @@ struct PanelParams {
     float params[4];        // linear source (1/0), white scale, the world UI's backdrop (0: none), 0
     std::int32_t window[4]; // blit: the window's origin (source pixels), 0, 0; grid: 0, 0, cell width, cell height
     std::int32_t masks[3][4];  // each x0, y0, x1, y1 (source pixels); x1 <= x0: none
+    float figureRect[4];       // the UI world's picture (research/56 section 7): the stage's origin (source pixels), 1/width, 1/height
+    float figureParams[4];     // its opacity (0: none), decode gamma, 0, 0
 };
-static_assert(sizeof(PanelParams) == 96);
+static_assert(sizeof(PanelParams) == 128);
 
 using D3DCompileFn = HRESULT(WINAPI*)(LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MACRO*, ID3DInclude*, LPCSTR,
     LPCSTR, UINT, UINT, ID3DBlob**, ID3DBlob**);
@@ -306,6 +330,7 @@ struct Pipeline {
     ComPtr<ID3D11BlendState> opaque;
     ComPtr<ID3D11DepthStencilState> noDepth;
     ComPtr<ID3D11RasterizerState> raster;
+    ComPtr<ID3D11SamplerState> linearClamp;  // the UI world's picture (research/56 section 7)
     bool tried = false;
     bool ready = false;
 };
@@ -344,6 +369,12 @@ bool EnsurePipeline(ID3D11Device* device) {
     rd.CullMode = D3D11_CULL_NONE;
     rd.DepthClipEnable = TRUE;
     ok = ok && SUCCEEDED(device->CreateRasterizerState(&rd, gPipeline.raster.GetAddressOf()));
+    D3D11_SAMPLER_DESC sd{};
+    sd.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    sd.AddressU = sd.AddressV = sd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sd.ComparisonFunc = D3D11_COMPARISON_NEVER;
+    sd.MaxLOD = D3D11_FLOAT32_MAX;
+    ok = ok && SUCCEEDED(device->CreateSamplerState(&sd, gPipeline.linearClamp.GetAddressOf()));
     gPipeline.ready = ok;
     if (!ok) {
         mevr::log::Error("overlays: HUD panel pipeline creation failed");
@@ -379,12 +410,13 @@ public:
         c_->GSGetShader(&gs_, nullptr, nullptr);
         c_->HSGetShader(&hs_, nullptr, nullptr);
         c_->DSGetShader(&ds_, nullptr, nullptr);
-        c_->PSGetShaderResources(0, 2, srv_);
+        c_->PSGetShaderResources(0, 3, srv_);
+        c_->PSGetSamplers(0, 1, &sampler_);
         c_->PSGetConstantBuffers(0, 1, &cb_);
     }
     ~StateGuard() {
-        ID3D11ShaderResourceView* none[2] = {nullptr, nullptr};
-        c_->PSSetShaderResources(0, 2, none);
+        ID3D11ShaderResourceView* none[3] = {nullptr, nullptr, nullptr};
+        c_->PSSetShaderResources(0, 3, none);
         c_->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, rtvs_, dsv_);
         c_->OMSetBlendState(blend_, blendFactor_, sampleMask_);
         c_->OMSetDepthStencilState(depth_, stencilRef_);
@@ -398,7 +430,8 @@ public:
         c_->GSSetShader(gs_, nullptr, 0);
         c_->HSSetShader(hs_, nullptr, 0);
         c_->DSSetShader(ds_, nullptr, 0);
-        c_->PSSetShaderResources(0, 2, srv_);
+        c_->PSSetShaderResources(0, 3, srv_);
+        c_->PSSetSamplers(0, 1, &sampler_);
         c_->PSSetConstantBuffers(0, 1, &cb_);
         for (auto*& r : rtvs_) {
             Release(r);
@@ -415,6 +448,8 @@ public:
         Release(ds_);
         Release(srv_[0]);
         Release(srv_[1]);
+        Release(srv_[2]);
+        Release(sampler_);
         Release(cb_);
     }
     StateGuard(StateGuard const&) = delete;
@@ -449,7 +484,8 @@ private:
     ID3D11GeometryShader* gs_ = nullptr;
     ID3D11HullShader* hs_ = nullptr;
     ID3D11DomainShader* ds_ = nullptr;
-    ID3D11ShaderResourceView* srv_[2] = {};
+    ID3D11ShaderResourceView* srv_[3] = {};
+    ID3D11SamplerState* sampler_ = nullptr;
     ID3D11Buffer* cb_ = nullptr;
 };
 
@@ -706,6 +742,22 @@ ID3D11Texture2D* Blit(ID3D11DeviceContext* context, ID3D11Device* device, QuadSw
             params.masks[m][2] = masks.rects[m].x1;
             params.masks[m][3] = masks.rects[m].y1;
         }
+        // The world UI's panel: the UI world's squad member behind the game's UI, over the 16:9 stage (research/56 section 7).
+        ID3D11ShaderResourceView* figure = nullptr;
+        if (&swapchain == &gPanelSwapchain && gPanelFigure && gPanelFigure->srv != nullptr && gPanelFigure->opacity > 0.0f) {
+            mevr::vr::world_ui::Rect const stage = mevr::vr::world_ui::Stage(static_cast<float>(gPanel.width), static_cast<float>(gPanel.height));
+            float const w = (stage.u1 - stage.u0) * static_cast<float>(gPanel.width);
+            float const h = (stage.v1 - stage.v0) * static_cast<float>(gPanel.height);
+            if (w > 1.0f && h > 1.0f) {
+                params.figureRect[0] = stage.u0 * static_cast<float>(gPanel.width);
+                params.figureRect[1] = stage.v0 * static_cast<float>(gPanel.height);
+                params.figureRect[2] = 1.0f / w;
+                params.figureRect[3] = 1.0f / h;
+                params.figureParams[0] = std::clamp(gPanelFigure->opacity, 0.0f, 1.0f);
+                params.figureParams[1] = gPanelFigure->decodeGamma;
+                figure = gPanelFigure->srv;
+            }
+        }
         context->UpdateSubresource(gPipeline.params.Get(), 0, nullptr, &params, 0, 0);
         StateGuard guard(context);
         D3D11_VIEWPORT viewport{0.0f, 0.0f, static_cast<float>(swapchain.width), static_cast<float>(swapchain.height), 0.0f, 1.0f};
@@ -729,6 +781,11 @@ ID3D11Texture2D* Blit(ID3D11DeviceContext* context, ID3D11Device* device, QuadSw
         context->HSSetShader(nullptr, nullptr, 0);
         context->DSSetShader(nullptr, nullptr, 0);
         context->PSSetShaderResources(0, 2, sources);
+        if (figure != nullptr) {
+            ID3D11SamplerState* const sampler = gPipeline.linearClamp.Get();
+            context->PSSetShaderResources(2, 1, &figure);
+            context->PSSetSamplers(0, 1, &sampler);
+        }
         context->PSSetConstantBuffers(0, 1, &constants);
         context->Draw(3, 0);
         if (corrected) {
@@ -1587,6 +1644,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         gRadarSwapchain.Forget();
         gLeverQuad.Forget();
         gStickQuad.Forget();
+        mevr::host::ui_world_figure::Forget();
         gSession = session;
     }
     auto const& cfg = MELEVR::Config::Get();
@@ -1732,6 +1790,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
             gPanel.height, wrist);
     }
     gPanelBackdrop = worldShown ? std::max(worldShown->backdrop, 1.0f / 256.0f) : 0.0f;
+    gPanelFigure = worldShown && device != nullptr ? mevr::host::ui_world_figure::ForFrame(device.Get(), gPanelBackdrop) : std::nullopt;
     if (frame.worldFrame && engaged && uiToPanel && gPanel.texture != nullptr && count < capacity && device != nullptr &&
         (!worldUi || worldShown)) {
         gPanelDrawsLastFrame.store(draws, std::memory_order_relaxed);

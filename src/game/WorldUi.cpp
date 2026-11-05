@@ -8,6 +8,7 @@
 #include "game/HandCalibration.hpp"
 #include "game/OmniTool.hpp"
 #include "game/Player.hpp"
+#include "game/UiWorldFigure.hpp"
 #include "game/ViewAnchor.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Runtime.hpp"
@@ -294,6 +295,7 @@ void SetStatus(std::string json) {
 }
 
 void Down(Link const& link, char const* why) {
+    ui_world_figure::Off(why);
     if (gS.published && link.setState != nullptr) {
         link.setState(nullptr);
         log::Info("world ui: {} down ({})", gS.screen.empty() ? "the screen" : gS.screen, why);
@@ -489,6 +491,7 @@ void Tick(Link const& link) {
         state.povRotationAddress = reinterpret_cast<std::uint64_t>(gHold.povRotation);
         state.povFovAddress = reinterpret_cast<std::uint64_t>(gHold.povFov);
     }
+    ui_world_figure::Tick(settings, screen, state);  // the equipment and squad screens' squad member behind them (research/56 section 7)
     link.setState(&state);
     gEmitterOnly = false;  // the screen's state took its place
     gS.published = true;
@@ -502,9 +505,9 @@ void Tick(Link const& link) {
     gWristUp = onWrist;
     view_anchor::Hold(onWrist ? gHold.footFrame : std::nullopt);
     SetStatus(std::format("{{\"open\": true, \"screen\": \"{}\", \"stack\": \"{}\", \"opening\": {}, \"anchored\": {}, \"anchor\": [{:.3f}, {:.3f}, {:.3f}], "
-                          "\"placement\": {}, \"omniTool\": {}}}",
+                          "\"placement\": {}, \"omniTool\": {}, \"figure\": {}}}",
         gS.screen, stack, gS.opening, gS.anchored ? "true" : "false", gS.anchor[0], gS.anchor[1], gS.anchor[2], state.placement,
-        omni_tool::StatusJson()));
+        omni_tool::StatusJson(), ui_world_figure::StatusJson()));
 }
 
 bool WristScreenUp() {
@@ -518,6 +521,7 @@ std::string StatusJson() {
 
 void Shutdown(Link const& link) {
     Down(link, "the mod unloads");
+    ui_world_figure::Shutdown();
 }
 
 } // namespace mevr::game::world_ui

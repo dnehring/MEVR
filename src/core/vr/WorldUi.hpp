@@ -78,7 +78,15 @@ struct Settings {
     // gauntlet and the hand's display, BIOG_V_T_Omni_Tool_Z; the user, 2026-11-04: "core Mass Effect with the omni-tool").
     // Mod only (game/OmniTool).
     bool omniTool = true;
+    // figure: the equipment, XMods and squad screens' squad member (the game's UI world through its own camera, research/56
+    // section 7) behind the screen, as the flat game shows it; figureOpacity its opacity (0: the backdrop's). Mod and host.
+    bool figure = true;
+    float figureOpacity = 0.0f;
 };
+// The screens whose squad member stands in the game's UI world (the figure).
+inline constexpr bool ShowsFigure(Screen screen) {
+    return screen == Screen::Inventory || screen == Screen::XMods || screen == Screen::CharacterRecord;
+}
 
 // Where a screen stands.
 enum class Placement : std::uint8_t {
@@ -126,6 +134,20 @@ struct State {
     float emitter[3] = {};
     std::uint8_t emitterValid = 0;
     std::uint8_t emitterPad[3] = {};
+    // The figure (grew 2026-11-05, research/56 section 7): the equipment and squad screens' squad member stands in the game's UI
+    // world, which the game renders only while a screen is full screen. A scene capture of ours (game/UiWorldFigure) looks through
+    // the UI world's camera; the host renders that one capture with the UI world's scene (plugin/UiWorldFigure, in the capture
+    // loop's hook) and draws its picture behind the game's UI, over the 16:9 stage, at figureOpacity.
+    std::uint8_t figure = 0;          // the capture is pointed at the UI world's camera and enabled
+    std::uint8_t figurePad[3] = {};
+    std::uint16_t figureWidth = 0;    // its render target, pixels
+    std::uint16_t figureHeight = 0;
+    std::int32_t figureFormat = 0;    // EPixelFormat
+    float figureOpacity = 0.0f;
+    std::uint64_t figureResource = 0; // the render target's FTextureResource* (engine memory)
+    std::uint64_t figureTarget = 0;   // the render target (UTextureRenderTarget2D*), as the capture's probe holds it
+    std::uint64_t levelWorld = 0;     // the level's UWorld (the eye renders' scene is its Scene: the host finds the field)
+    std::uint64_t uiWorld = 0;        // the UI world's UWorld (BioUIWorld.m_pWorld)
 };
 
 void Publish(State const& state);

@@ -15,6 +15,7 @@
 #include "game/GalaxyDump.hpp"
 #include "game/HoloProbe.hpp"
 #include "game/GuiCursor.hpp"
+#include "game/UiWorldFigure.hpp"
 #include "game/InventoryProbe.hpp"
 #include "game/GalaxyMap.hpp"
 #include "game/GameMenuRequest.hpp"
@@ -589,6 +590,12 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::getline(words, rest);
         return gui_cursor::Command(rest);
     }
+    if (verb == "uiworld") {
+        // `mevr uiworld`: the game's UI world, its camera and our capture of it (research/56 section 7).
+        std::string rest;
+        std::getline(words, rest);
+        return ui_world_figure::Command(rest);
+    }
     if (verb == "guikey") {
         // `mevr guikey <event|w> ...` (research/56 section 6): GUI events through GuiKey, one per tick.
         std::string rest;
@@ -942,7 +949,7 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::getline(words, rest);
         return cockpit_probe::VehicleCommand(rest);  // what a console `open <map>` produced; `enter` gets in
     }
-    return std::string("unknown: mevr loc | mevr setloc X Y Z | mevr density [cellUU] | mevr crowd [cellUU] | mevr stream list|touch | mevr weapon <pistol|shotgun|assault|sniper> | mevr vent heat|rack|part | mevr kick [recoilDeg] [shots] [ms] | mevr cockpit ... | mevr vehicle [enter] | mevr spectator ... | mevr omni <screen> | mevr holo ... | mevr inv ... | mevr guimouse | mevr guikey ...");
+    return std::string("unknown: mevr loc | mevr setloc X Y Z | mevr density [cellUU] | mevr crowd [cellUU] | mevr stream list|touch | mevr weapon <pistol|shotgun|assault|sniper> | mevr vent heat|rack|part | mevr kick [recoilDeg] [shots] [ms] | mevr cockpit ... | mevr vehicle [enter] | mevr spectator ... | mevr omni <screen> | mevr holo ... | mevr inv ... | mevr guimouse | mevr guikey ... | mevr uiworld");
 }
 
 ue3::Function* FindConsoleCommand() {

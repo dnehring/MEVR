@@ -711,7 +711,8 @@ constexpr char const* kWorldUiBlock =
     "; Map, PartySelect, MenuBrowser, Options, Save, Load, MessageBox, Achievement, AdditionalContent, SkillGame, DesignerUI,\n"
     "; GameOver; all = every one). The loot stands at its container, the minigame and a locker's equipment at what you used.\n"
     "; on = 0: the game's screens on the flat panel, the world gone (Halcyon's own). Inventory, XMods and CharacterRecord show a\n"
-    "; 3D model of their own in the game's UI world, which isn't in the room yet.\n"
+    "; squad member of their own in the game's UI world: figure 1 draws it behind the screen as the flat game does, at\n"
+    "; figureOpacity (0: the backdrop's).\n"
     "; wrist: the screens projected from your left wrist instead, Shepard's omni-tool (none: all in the room); one a use opened\n"
     "; (a locker's equipment) still stands by what you used, except the bypass minigame (SkillGame). wristWidthM: the minigame's\n"
     "; width there, wristMenuWidthM every other screen's; its bottom edge wristAboveM over the wrist as you see it, moved\n"
@@ -731,7 +732,9 @@ constexpr char const* kWorldUiBlock =
     "wristTowardM = 0.00\n"
     "wristFollow = 1\n"
     "wristBeam = 1\n"
-    "omniTool = 1\n";
+    "omniTool = 1\n"
+    "figure = 1\n"
+    "figureOpacity = 0\n";
 
 constexpr char const* kGameBlock =
     "\n"
@@ -1978,6 +1981,12 @@ vr::world_ui::Settings ReadWorldUi(Ini const& ini) {
     if (Number(ini, "WorldUi", "omniTool", value)) {
         s.omniTool = value != 0.0;
     }
+    if (Number(ini, "WorldUi", "figure", value)) {
+        s.figure = value != 0.0;
+    }
+    if (Number(ini, "WorldUi", "figureOpacity", value)) {
+        s.figureOpacity = static_cast<float>(std::clamp(value, 0.0, 1.0));
+    }
     return s;
 }
 
@@ -2004,7 +2013,10 @@ std::string Describe(vr::world_ui::Settings const& s) {
                                      : std::format(" (the minigame {:.2f} m wide, the others {:.2f} m, {:.2f} m over the wrist, {:.2f} m toward the eyes, "
                                                    "{}, {}, {})", s.wristWidthM, s.wristMenuWidthM, s.wristAboveM, s.wristTowardM, s.wristFollow ? "riding on it" : "left where it was projected",
                                            s.wristBeam ? "a fan of light from the wrist" : "no fan of light",
-                                           s.omniTool ? "the game's omni-tool on the forearm" : "no omni-tool"));
+                                           s.omniTool ? "the game's omni-tool on the forearm" : "no omni-tool")) +
+           (s.figure ? std::format("; the squad member behind the equipment and squad screens (opacity {})",
+                           s.figureOpacity > 0.0f ? std::format("{:.2f}", s.figureOpacity) : std::string("the backdrop's"))
+                     : std::string("; no squad member behind the equipment and squad screens"));
 }
 
 vr::world_ui::Settings gWorldUi;
@@ -2905,6 +2917,9 @@ void Refresh() {
         {L"WorldUi", "WorldUi", L"wristFollow", "wristFollow", L"1"},
         {L"WorldUi", "WorldUi", L"wristBeam", "wristBeam", L"1"},
         {L"WorldUi", "WorldUi", L"omniTool", "omniTool", L"1"},
+        // The squad member behind the equipment and squad screens (2026-11-05, research/56 section 7).
+        {L"WorldUi", "WorldUi", L"figure", "figure", L"1"},
+        {L"WorldUi", "WorldUi", L"figureOpacity", "figureOpacity", L"0"},
         // The vent's visible rack (2026-11-04, research/45 section 6).
         {L"Vent", "Vent", L"animate", "animate", L"1"},
         {L"Vent", "Vent", L"pistolPart", "pistolPart", L"auto"},

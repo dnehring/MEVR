@@ -7,6 +7,7 @@
 #include "plugin/DrawReplay.hpp"
 #include "plugin/MetricStereo.hpp"
 #include "plugin/MevrMenu.hpp"
+#include "plugin/UiWorldFigure.hpp"
 #include "halcyon/le1/mevr_bridge.h"
 
 #include <Windows.h>
@@ -1588,7 +1589,12 @@ void CaptureSceneHook(void* captureInfo, void* mainRenderer) {
     t_captureRenderer = nullptr;
     ++t_captureDepth;
     std::uint32_t const drawsBefore = MELEVR::MevrBridge::g_perfDraws;
-    gCaptureSceneOrig(captureInfo, mainRenderer);
+    // The UI world's squad member (research/56 section 7): our capture of it renders the UI world's scene, not the eye's.
+    ui_world_figure::CaptureSwap const figure = ui_world_figure::BeginCapture(captureInfo, mainRenderer);
+    if (!figure.skip) {
+        gCaptureSceneOrig(captureInfo, mainRenderer);
+    }
+    ui_world_figure::EndCapture(mainRenderer, figure);
     t_captureDraws += MELEVR::MevrBridge::g_perfDraws - drawsBefore;
     --t_captureDepth;
     t_captureRenderer = outerRenderer;

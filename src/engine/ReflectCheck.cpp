@@ -671,6 +671,15 @@ void CheckFields() {
     CheckField("Engine.WorldInfo", "bPlayersOnly", SDK_BOOL(AWorldInfo, bPlayersOnly));
     CheckField("Engine.WorldInfo", "bPlayersOnlyPending", SDK_BOOL(AWorldInfo, bPlayersOnlyPending));
     CheckField("SFXGame.BioWorldInfo", "m_bPausedByFocusLoss", SDK_BOOL(ABioWorldInfo, m_bPausedByFocusLoss));  // game/FocusPause
+    // The UI world's squad member behind the equipment and squad screens (game/UiWorldFigure, research/56 section 7).
+    CheckClass<ACameraActor>("Engine.CameraActor");
+    CheckField("SFXGame.BioWorldInfo", "m_UIWorld", SDK_FIELD(ABioWorldInfo, m_UIWorld));
+    CheckField("SFXGame.BioUIWorld", "m_pWorld", SDK_FIELD(UBioUIWorld, m_pWorld));
+    CheckField("SFXGame.BioUIWorld", "m_pCameraActor", SDK_FIELD(UBioUIWorld, m_pCameraActor));
+    CheckField("SFXGame.BioUIWorld", "m_PostProcessChain", SDK_FIELD(UBioUIWorld, m_PostProcessChain));
+    CheckField("SFXGame.BioUIWorld", "m_bLoaded", SDK_BOOL(UBioUIWorld, m_bLoaded));
+    CheckField("Engine.CameraActor", "FOVAngle", SDK_FIELD(ACameraActor, FOVAngle));
+    CheckField("Engine.CameraActor", "AspectRatio", SDK_FIELD(ACameraActor, AspectRatio));
     CheckField("Engine.PrimitiveComponent", "bOwnerNoSee", SDK_BOOL(UPrimitiveComponent, bOwnerNoSee));
     CheckField("Engine.Actor", "Instigator", SDK_FIELD(AActor, Instigator));
     CheckField("Engine.Actor", "Tag", SDK_FIELD(AActor, Tag));

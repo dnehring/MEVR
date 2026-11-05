@@ -476,6 +476,8 @@ set(MEVR_MOD_SOURCES
     src/game/GalaxyMap.hpp
     src/game/WorldUi.cpp
     src/game/WorldUi.hpp
+    src/game/UiWorldFigure.cpp
+    src/game/UiWorldFigure.hpp
     src/game/OmniTool.cpp
     src/game/OmniTool.hpp
     src/game/CallTrace.cpp
@@ -689,6 +691,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/GalaxyHologram.hpp
     src/plugin/WorldUi.cpp
     src/plugin/WorldUi.hpp
+    src/plugin/UiWorldFigure.cpp
+    src/plugin/UiWorldFigure.hpp
     src/plugin/GalaxyHologramDraw.cpp
     src/plugin/GalaxyHologramDraw.hpp
     src/plugin/SightPictures.cpp

@@ -18,6 +18,7 @@
 #include "plugin/RecenterTilt.hpp"
 #include "plugin/SightLayers.hpp"
 #include "plugin/Spectator.hpp"
+#include "plugin/UiWorldFigure.hpp"
 
 #include "halcyon/le1/mevr_bridge.h"
 #include "halcyon/le1/vr_menu.h"
@@ -809,7 +810,7 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
         "  \"hostView\": {{\"valid\": {}, \"headLook\": {}, \"headAim\": {}, \"lookYawUU\": {}, \"lookPitchUU\": {}, "
         "\"offsetUU\": [{}, {}, {}], \"unitsPerMeter\": {}}},\n  \"recenter\": {},\n  \"sights\": {},\n  \"calibration\": {},\n"
         "  \"colour\": {},\n  \"stereo\": {},\n  \"cineScreen\": {},\n  \"mainMenu\": {},\n  \"gamePointer\": {},\n  \"galaxyHologram\": {},\n"
-        "  \"spectator\": {},\n  \"mod\": {},\n"
+        "  \"spectator\": {},\n  \"figure\": {},\n  \"mod\": {},\n"
         "  \"layers\": [{}\n  ]",
         req::JsonString(trigger), req::JsonString(tag), gFrame, static_cast<long long>(displayTime), UnixMs(), J(gFocused),
         J(MELEVR::Menu::IsOpen()), J(gRecordingActive.load()), replay, head, J(c.active), JHand(c.left), JHand(c.right),
@@ -823,7 +824,8 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
 #else
         std::string("null"),
 #endif
-        game_pointer::StatusJson(), galaxy_hologram::StatusJson(), spectator::StatusJson(), mod, LayersJson(layers));
+        game_pointer::StatusJson(), galaxy_hologram::StatusJson(), spectator::StatusJson(), ui_world_figure::StatusJson(), mod,
+        LayersJson(layers));
 }
 
 void LocateQuads(std::vector<LayerShot>& layers, XrSpace reference, XrTime displayTime);
