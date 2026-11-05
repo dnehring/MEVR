@@ -163,6 +163,16 @@ inline constexpr float kNearAnchorM = 0.35f;
 inline constexpr float kNearestM = 0.55f;
 std::optional<Panel> Place(XrVector3f const& eyes, XrVector3f const& headForward, std::optional<XrVector3f> anchor, float widthM,
     float distanceM, float belowM, float heightOverWidth);
+// How far from the eyes Place stands it (the same rule).
+float PlaceDistance(XrVector3f const& eyes, std::optional<XrVector3f> anchor, float distanceM);
+// In the Mako's cockpit (research/47 "The cockpit by itself"; the extraction's "Return to Normandy?", research/48 section 27):
+// a screen goes toward the cockpit's HUD anchor at the windshield (`panelAnchor`, the anchor Place is given), centred at its
+// height, and keeps the angular size it has on foot (`widthM` at `distanceM`) at the distance Place gives it there.
+struct CockpitPlacement {
+    float belowM = 0.0f;
+    float widthM = 0.0f;
+};
+CockpitPlacement InCockpit(XrVector3f const& eyes, XrVector3f const& panelAnchor, float widthM, float distanceM);
 // The whole window on the shown panel's plane, for a panel that shows `part` of it (window UV): the quad the game pointer maps
 // to the window's pixels.
 Panel WholeWindow(Panel const& shown, Rect const& part);

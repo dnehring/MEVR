@@ -1058,8 +1058,18 @@ ready, `hull_assemble.py` places them and builds their mounts, the package carri
   - **LeaveWorld raises the game's own "Return to Normandy?" box** (OK, Cancel; `Pawn.TriggerGlobalEventClass(
     BioSeqEvt_VehicleLeaveWorld)`, game mode 7). The world UI stands it 0.95 m ahead and 0.5 m down, and the cockpit
     vanishes while it is up: mode 7 counts as out of the Mako for game/Mako ("mako: left", out of the seat), so the eyes
-    see bare terrain. Keeping the ride through the box is the game side's (game/Mako) [open]. OK and Cancel by a real
-    pointer or touch are untested (a posted click on Cancel did nothing, the window likely not in front).
+    see bare terrain. OK and Cancel by a real pointer or touch are untested (a posted click on Cancel did nothing, the
+    window likely not in front).
+    **Fixed the same day (the game side, built, not yet seen in the game):** the bare terrain was two things. The cockpit's
+    ride (`OnUpdateCamera`) and seat (`RideTick`) held only in game mode 1, and the world UI swapped Shepard's last view on
+    foot in at render time (the hold every on-foot screen uses), a view from wherever Shepard stood before the Mako. Now
+    the ride and the seat hold in modes 1 and 7 with the Mako the pawn (game/CockpitProbe `RideMode`), and with the cockpit
+    riding the world UI holds no view and stands the screen toward the cockpit's HUD anchor at the windshield (the
+    `hud ... panel` point, where the HUD panel stands while driving), at its height, as wide to the eye as on foot
+    (`vr::world_ui::InCockpit`, unit-tested: 0.55 m out, 0.69 m wide for the 1.20 m at 0.95 m). The panel's hands are the
+    box's then (game/Mako ticks it as under a menu). game/Mako itself still counts mode 7 as out of the Mako (the gunner
+    stops, the pad goes back to the game, so A and B should answer the box [verify]). Log `world ui: MessageBox up
+    (opening N): in the Mako's cockpit, at its windshield ...`; the world UI's status has `inCockpit` and `heldView`.
   - Untested: the press direction, the swing's sign and the gunner's hold, for want of tracked controllers. The panel's
     layout in tracking space is in its status (`"cockpitProbe"."panel"."layout"`) for a replay that reaches to it.
   - Landing on UNC20 autosaves (`VR00_AutoSave` and the GamerProfile): back the saves up before a Mako run.

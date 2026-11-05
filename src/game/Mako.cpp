@@ -692,7 +692,9 @@ void Tick(double deltaSeconds, Link const& link) {
         }
         gAim.valid = false;
         mako_controls::Tick(deltaSeconds, link.controls, nullptr, controller, nullptr);  // throttle and steering to zero, the pad back
-        cockpit_panel::Tick(deltaSeconds, {link.controls.mainMenuOpen, link.controls.hapticPulse});  // the button and handle let go
+        // The button and handle let go. The cockpit rides on through the game's GUI over the Mako (the extraction's question:
+        // game/CockpitProbe), and the hands are the menu's there, as with ours.
+        cockpit_panel::Tick(deltaSeconds, {true, link.controls.hapticPulse});
         LogWhy(Why::NotInMako, now);
         return;
     }

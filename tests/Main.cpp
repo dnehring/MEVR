@@ -6736,6 +6736,18 @@ void TestWorldUi() {
     auto const ahead = wu::Place(eyes, {0.6f, -0.8f, 0.0f}, std::nullopt, 1.2f, 1.0f, 0.0f, 0.75f);
     CHECK(ahead && NearXr(ahead->pose.position, {1.2f, 1.7f, 0.0f}, 1e-4));
     CHECK(!wu::Place(eyes, {0.0f, 0.0f, -1.0f}, std::nullopt, 0.0f, 1.0f, 0.0f, 0.75f));
+    // PlaceDistance is Place's own: the far anchor's full distance, the near one's nearest, none's distanceM.
+    CHECK(NearD(wu::PlaceDistance(eyes, XrVector3f{2.2f, 1.2f, 0.0f}, 1.0f), 1.0, 1e-5));
+    CHECK(NearD(wu::PlaceDistance(eyes, XrVector3f{0.2f, 1.2f, -0.6f}, 1.0f), wu::kNearestM, 1e-5));
+    CHECK(NearD(wu::PlaceDistance(eyes, std::nullopt, 0.95f), 0.95, 1e-5));
+    // In the Mako's cockpit: toward its HUD anchor at the windshield (0.6 m ahead, 5 cm above the eyes), at its height, as wide
+    // to the eye as on foot (1.2 m at 0.95 m), whichever way the head looks.
+    XrVector3f const seat{0.0f, 1.2f, 0.0f};
+    XrVector3f const windshield{0.0f, 1.25f, -0.6f};
+    wu::CockpitPlacement const cockpit = wu::InCockpit(seat, windshield, 1.2f, 0.95f);
+    CHECK(NearD(cockpit.belowM, -0.05, 1e-5) && NearD(cockpit.widthM, 1.2 * wu::kNearestM / 0.95, 1e-5));
+    auto const atWindshield = wu::Place(seat, {1.0f, 0.0f, 0.0f}, windshield, cockpit.widthM, 0.95f, cockpit.belowM, 0.5625f);
+    CHECK(atWindshield && NearXr(atWindshield->pose.position, {0.0f, 1.25f, -wu::kNearestM}, 1e-4));
     // The whole window around a cropped panel: the crop's corners land on the panel's corners.
     if (toward) {
         wu::Rect const crop{0.14f, 0.2245f, 0.86f, 0.7755f};

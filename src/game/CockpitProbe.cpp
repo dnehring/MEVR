@@ -2373,6 +2373,13 @@ void PlacePartIn(Part const& part, engine::Basis const& frame, engine::UnrealVec
     FlushActor(part.actor, true);
 }
 
+// The game modes the ride holds in, the Mako the pawn: driving (1) and the game's GUI over it (7: the extraction's "Return to
+// Normandy?", the pause menu). Out of it in the GUI mode, the eyes saw bare terrain under the question, no cockpit (2026-11-05,
+// research/48 section 27); game/WorldUi puts the screen at the cockpit's windshield then.
+bool RideMode(std::optional<std::uint8_t> mode) {
+    return mode && (*mode == 1 || *mode == 7);
+}
+
 // After the camera's update (the vehicle has moved for this frame; the view isn't built yet).
 void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
     if (!gRide.on) {
@@ -2388,7 +2395,7 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
     auto const at = pawn != nullptr ? player::Location(pawn) : std::nullopt;
     auto const turn = pawn != nullptr ? player::Rotation(pawn) : std::nullopt;
     gRide.riding = false;
-    if (!ue3::IsA(pawn, gVehicleBase) || mode != 1 || !pov || pov->location == nullptr || pov->rotation == nullptr || !at || !turn) {
+    if (!ue3::IsA(pawn, gVehicleBase) || !RideMode(mode) || !pov || pov->location == nullptr || pov->rotation == nullptr || !at || !turn) {
         return;
     }
     gRide.chaseLocation = *pov->location;
@@ -2439,7 +2446,7 @@ void RideTick() {
     }
     ue3::Object* const controller = player::Controller();
     ue3::Object* const pawn = controller != nullptr ? player::Pawn(controller) : nullptr;
-    bool const inVehicle = gRide.on && ue3::IsA(pawn, gVehicleBase) && player::GameMode(controller) == 1;
+    bool const inVehicle = gRide.on && ue3::IsA(pawn, gVehicleBase) && RideMode(player::GameMode(controller));
     if (gRide.vehicle != nullptr && (!inVehicle || pawn != gRide.vehicle)) {
         ShowVehicle();
     }

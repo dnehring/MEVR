@@ -5,6 +5,8 @@
 #include "core/Log.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/XrToUnreal.hpp"
+#include "core/vr/HudPieces.hpp"
+#include "game/CockpitProbe.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/OmniTool.hpp"
 #include "game/Player.hpp"
@@ -375,7 +377,22 @@ void Tick(Link const& link) {
             return;
         }
     }
-    if (!gHold.haveView || !gHold.footFrame) {
+    // In the Mako's cockpit (the extraction's "Return to Normandy?", the pause menu): the cockpit stays around the eyes through the
+    // GUI mode (game/CockpitProbe), so the screen goes to its windshield, where the HUD panel stands while driving, and Shepard's
+    // view on foot (from wherever Shepard last stood, long before the Mako) is never held: that showed bare terrain under the
+    // question with no cockpit (2026-11-05, research/48 section 27).
+    std::optional<XrVector3f> cockpitAnchor;
+    XrVector3f eyesNow{};
+    if (cockpit_probe::Riding()) {
+        vr::hud_pieces::Pieces pieces;
+        cockpit_probe::FillHud(pieces);
+        if (auto const frame = view_anchor::Current(); pieces.cockpit && frame) {
+            cockpitAnchor = pieces.panelAnchor;
+            eyesNow = frame->head.position;
+        }
+    }
+    bool const inCockpit = cockpitAnchor.has_value();
+    if (!inCockpit && (!gHold.haveView || !gHold.footFrame)) {
         Down(link, "Shepard's view on foot isn't known (opened before any camera update on foot)");
         return;
     }
@@ -403,7 +420,7 @@ void Tick(Link const& link) {
     state.distanceM = settings.distanceM;
     state.belowM = settings.belowM;
     state.backdrop = settings.backdrop;
-    bool const onWrist = (settings.wristScreens & wu::Bit(screen)) != 0;
+    bool const onWrist = !inCockpit && (settings.wristScreens & wu::Bit(screen)) != 0;
     wu::Rect const crop = wu::DefaultCrop(screen);  // the room's; on the wrist the host shows WristCrop
     state.stageCrop[0] = crop.u0;
     state.stageCrop[1] = crop.v0;
@@ -424,7 +441,15 @@ void Tick(Link const& link) {
         state.emitterValid = 1;
     }
     bool const fromWheel = std::any_of(panels.begin(), panels.end(), [](OpenPanel const& o) { return o.visible && wu::FromTag(o.tag) == wu::Screen::MenuBrowser; });
-    if (auto const at = AnchorOf(screen, base->handler, controller, gS.opening, fromWheel)) {
+    if (inCockpit) {
+        wu::CockpitPlacement const place = wu::InCockpit(eyesNow, *cockpitAnchor, state.widthM, settings.distanceM);
+        state.anchored = 1;
+        state.anchor[0] = cockpitAnchor->x;
+        state.anchor[1] = cockpitAnchor->y;
+        state.anchor[2] = cockpitAnchor->z;
+        state.belowM = place.belowM;
+        state.widthM = place.widthM;
+    } else if (auto const at = AnchorOf(screen, base->handler, controller, gS.opening, fromWheel)) {
         {
             XrVector3f const p = engine::ToTracking(*gHold.footFrame, engine::UnrealVector{at->x, at->y, at->z});
             state.anchored = 1;
@@ -438,12 +463,15 @@ void Tick(Link const& link) {
     std::copy(std::begin(state.anchor), std::end(state.anchor), std::begin(gS.anchor));
     if (!gS.published || wasAnchored != gS.anchored) {
         log::Info("world ui: {} up (opening {}){}{}", gS.screen, gS.opening,
-            gS.anchored ? std::format(": it belongs to what stands at ({:.2f}, {:.2f}, {:.2f}) m in the room", gS.anchor[0], gS.anchor[1], gS.anchor[2])
+            inCockpit ? std::format(": in the Mako's cockpit, at its windshield toward ({:.2f}, {:.2f}, {:.2f}) m, {:.2f} m wide, {:.2f} m below "
+                                    "the eyes (no view held)",
+                            gS.anchor[0], gS.anchor[1], gS.anchor[2], state.widthM, state.belowM)
+            : gS.anchored ? std::format(": it belongs to what stands at ({:.2f}, {:.2f}, {:.2f}) m in the room", gS.anchor[0], gS.anchor[1], gS.anchor[2])
                         : std::string(": nothing in the world to stand it by; straight ahead"),
             onWrist ? "; projected from the left wrist (in the room if the left controller isn't tracked)" : "");
     }
     std::uint64_t const now = GetTickCount64();
-    if (gHold.povLocation != nullptr && now - gHold.povMs < 500) {
+    if (!inCockpit && gHold.povLocation != nullptr && now - gHold.povMs < 500) {
         state.holdRender = 1;
         state.holdLocation[0] = gHold.location.x;
         state.holdLocation[1] = gHold.location.y;
@@ -468,9 +496,9 @@ void Tick(Link const& link) {
     gWristUp = onWrist;
     view_anchor::Hold(onWrist ? gHold.footFrame : std::nullopt);
     SetStatus(std::format("{{\"open\": true, \"screen\": \"{}\", \"stack\": \"{}\", \"opening\": {}, \"anchored\": {}, \"anchor\": [{:.3f}, {:.3f}, {:.3f}], "
-                          "\"placement\": {}, \"omniTool\": {}}}",
+                          "\"placement\": {}, \"inCockpit\": {}, \"heldView\": {}, \"omniTool\": {}}}",
         gS.screen, stack, gS.opening, gS.anchored ? "true" : "false", gS.anchor[0], gS.anchor[1], gS.anchor[2], state.placement,
-        omni_tool::StatusJson()));
+        inCockpit ? "true" : "false", state.holdRender != 0 ? "true" : "false", omni_tool::StatusJson()));
 }
 
 bool WristScreenUp() {
