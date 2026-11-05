@@ -1579,7 +1579,12 @@ std::vector<MemberView> Members() {
 }
 
 int WeaponTypeOf(ue3::Object* weapon) {
+#if defined(MEVR_GAME_LE1)
     return RangedType(weapon);
+#else
+    (void)weapon;
+    return -1;  // no weapon reading on LE2/LE3 yet
+#endif
 }
 
 std::string StatusJson() {

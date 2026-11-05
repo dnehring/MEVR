@@ -334,6 +334,7 @@ struct SquadOrders {
     double minConfidence = 0.6;  // `mevr say`: a parse below this isn't given
     // Standing orders (research/54): kept per squadmate and re-asserted through the game's orders until a condition ends them.
     bool standing = true;
+    bool holdFormation = true;   // a hold through the game's own HOLD formation (0: a move, re-asserted when they drift)
     double reassertS = 4.0;      // a drifted hold or a dropped target is re-ordered this often at most
     double holdRadiusM = 4.0;    // this far from the held point is drifted
     double calmS = 8.0;          // a hold ends this long after the last hostile near it and the last combat

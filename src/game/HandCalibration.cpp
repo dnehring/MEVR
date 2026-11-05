@@ -490,6 +490,7 @@ constexpr char const* kSquadOrdersBlock =
     "; calmS after the fighting stops (then they come back), and is given up when hurt (retreatHealth) or overwhelmed\n"
     "; (overwhelmCount hostiles within 8 m). standing = 0: every order is one-shot, as the game's own.\n"
     "standing = 1\n"
+    "holdFormation = 1\n"
     "reassertS = 4\n"
     "holdRadiusM = 4\n"
     "calmS = 8\n"
@@ -1355,6 +1356,9 @@ SquadOrders ReadSquadOrders(Ini const& ini) {
     }
     if (Number(ini, "SquadOrders", "standing", value)) {
         s.standing = value != 0.0;
+    }
+    if (Number(ini, "SquadOrders", "holdFormation", value)) {
+        s.holdFormation = value != 0.0;
     }
     if (Number(ini, "SquadOrders", "reassertS", value)) {
         s.reassertS = std::clamp(value, 0.5, 60.0);

@@ -45,6 +45,14 @@ ue3::FunctionRef gMoveToFn{"SFXGame.BioPlayerController.QuickCommandMoveTo"};
 ue3::FunctionRef gAttackFn{"SFXGame.BioPlayerController.QuickCommandAttackTarget"};
 ue3::FunctionRef gFollowFn{"SFXGame.BioPlayerController.QuickCommandFollowPlayer"};
 ue3::FunctionRef gTraceFn{"Engine.Actor.Trace"};
+// The game's own hold (research/54 "A real hold"): the member's hold position and its formation on the player's squad.
+ue3::FieldRef gBehavior{"SFXGame.BioPawn", "m_oBehavior"};
+ue3::FieldRef gSquadOf{"SFXGame.BioEpicPawnBehavior", "Squad"};
+ue3::FunctionRef gSetFormationFn{"SFXGame.BioBaseSquad.SetSquadFollowFormation"};
+ue3::FunctionRef gSetHoldPositionFn{"SFXGame.BioBaseSquad.SetMemberHoldPosition"};
+ue3::FunctionRef gGetFormationFn{"SFXGame.BioBaseSquad.GetMemberFormation"};
+constexpr std::uint8_t kFormationFollow = 1;  // BioBaseSquad.EFollowFormation
+constexpr std::uint8_t kFormationHold = 2;
 
 sg::Machine gMachine;
 std::vector<sc::Command> gHistory;
@@ -264,6 +272,46 @@ std::string CallMove(ue3::Object* controller, int index, engine::UnrealVector co
     return CallResult(parms, called);
 }
 
+// The player's BioBaseSquad (through Shepard's behaviour), or null.
+ue3::Object* Squad() {
+    ue3::Object* const pawn = player::BioPawn(player::Controller());
+    if (pawn == nullptr) return nullptr;
+    auto const behavior = gBehavior.Read<ue3::Object*>(pawn);
+    if (!behavior || *behavior == nullptr) return nullptr;
+    auto const squad = gSquadOf.Read<ue3::Object*>(*behavior);
+    return squad ? *squad : nullptr;
+}
+
+// The game's own hold: the member's hold position, then the HOLD formation for that member (the route the Follow native
+// takes for FOLLOW, which fires the squad's acknowledgement). The formation read back says whether the game took it.
+std::string CallHold(int index, engine::UnrealVector const& point) {
+    ue3::Object* const squad = Squad();
+    if (squad == nullptr) return "no squad";
+    ue3::Function* const setPosition = gSetHoldPositionFn.Get();
+    ue3::Function* const setFormation = gSetFormationFn.Get();
+    ue3::Function* const getFormation = gGetFormationFn.Get();
+    if (setPosition == nullptr || setFormation == nullptr) return "the squad's hold functions weren't found";
+    ue3::Params position(ue3::runtime::Get(), setPosition);
+    position.Set("nIndex", static_cast<std::int32_t>(index));
+    position.Set("vPosition", ue3::Vector{static_cast<float>(point.x), static_cast<float>(point.y), static_cast<float>(point.z)});
+    bool const placed = ue3::runtime::Call(squad, setPosition, position);
+    ue3::Params formation(ue3::runtime::Get(), setFormation);
+    formation.Set("eFormation", kFormationHold);
+    formation.SetBool("bForceFormation", true);
+    formation.Set("iSquadMember", static_cast<std::int32_t>(index));
+    bool const formed = ue3::runtime::Call(squad, setFormation, formation);
+    std::string now = "?";
+    if (getFormation != nullptr) {
+        ue3::Params read(ue3::runtime::Get(), getFormation);
+        read.Set("nIndex", static_cast<std::int32_t>(index));
+        if (ue3::runtime::Call(squad, getFormation, read)) {
+            std::uint8_t const f = read.Return<std::uint8_t>().value_or(0);
+            now = f == kFormationHold ? "HOLD" : f == kFormationFollow ? "FOLLOW" : std::format("{}", f);
+        }
+    }
+    return std::format("hold position {}, formation {} (now {})", placed ? "set" : "not set", formed ? "set" : "not set", now);
+}
+
 // ---- Standing orders --------------------------------------------------------------------------------------------------
 
 ss::Settings StandingSettings(hand_calibration::SquadOrders const& s) {
@@ -410,16 +458,20 @@ std::string Dispatch(sc::Resolved const& r, sc::Action const& action, std::optio
         }
         for (Recipient const& rc : to) {
             engine::UnrealVector where = point.value_or(engine::UnrealVector{});
+            std::optional<ue3::Vector> const at = player::Location(rc.pawn);
             if (!point) {
-                std::optional<ue3::Vector> const at = player::Location(rc.pawn);
                 if (!at) {
                     note("no position");
                     continue;
                 }
                 where = {at->x, at->y, at->z};
+            }
+            bool const distant = point && at && Len(Sub(where, {at->x, at->y, at->z})) / gUpm > s.holdRadiusM;  // not `far`: a Windows.h macro
+            if (distant) note(CallMove(controller, rc.index, where));
+            if (s.holdFormation) {
+                note(CallHold(rc.index, where));
+            } else if (!distant) {
                 note("holds here");
-            } else {
-                note(CallMove(controller, rc.index, where));
             }
             if (s.standing) {
                 ss::Intent intent;
@@ -433,7 +485,7 @@ std::string Dispatch(sc::Resolved const& r, sc::Action const& action, std::optio
             }
         }
         what = std::format("hold {}: {} for {} -> {}", point ? std::format("at ({:.0f}, {:.0f}, {:.0f})", point->x, point->y, point->z) : std::string("here"),
-            point ? "QuickCommandMoveTo" : "the standing order", names, returns);
+            s.holdFormation ? "the game's HOLD formation" : "a move, re-asserted", names, returns);
         break;
     }
     case sc::Order::Attack: {

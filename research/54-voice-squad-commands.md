@@ -405,3 +405,16 @@ Issue becomes the game call, logged as `squad orders: <who>'s standing <kind> or
 re-asserting a move; retreat as a move to cover between the squadmate and Shepard rather than a follow; "overwhelmed" from the
 squad AI's own perception (`m_aPerceivedSquads`) rather than our distance count; and whether a re-issued `QuickCommandMoveTo`
 interrupts the AI's current job or queues behind it **[verify]**.
+
+### A real hold: the game's own HOLD formation (2026-11-04, later)
+
+The user chose the real hold over a retreat to cover. LE1's squad has it: `BioBaseSquad.EFollowFormation` (FOLLOW 1, HOLD 2),
+`SetMemberHoldPosition(nIndex, vPosition)`, `SetSquadFollowFormation(eFormation, bForceFormation, iSquadMember)` (the route the
+Follow native itself took in the trace, firing `OnSetSquadFollowFormation` and the acknowledgement chatter) and `GetMemberFormation
+(nIndex)` to read it back. `CallHold` in `game/SquadOrders` sets the member's hold position and forces HOLD for that member on
+the player's squad (Shepard's behaviour's `Squad`), after a `QuickCommandMoveTo` when the point is farther than `holdRadiusM`,
+and logs the formation read back ("now HOLD"). The standing order stays on top (calm, retreat, drift) and its end releases the
+hold through the follow order, which sets FOLLOW again. `[SquadOrders] holdFormation = 0` keeps the re-asserted move alone.
+Whether the HOLD formation makes the AI stay put against its own follow logic, and whether a hold position far from the
+squadmate makes them walk to it or needs the move first, are the next in-game checks **[verify]**. Also fixed:
+`squad_weapons::WeaponTypeOf` is LE1-only (LE2/LE3 return -1), which had broken the trilogy build since b7c7e56.
