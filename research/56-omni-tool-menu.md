@@ -83,6 +83,9 @@ was stopped. Replays with controller poses near flat screens need `[Pointer] set
   on a disc beside the wrist screen, rendered by the game in the level in both eyes. Open: whether a template spawn of a BioPawn
   brings its appearance and stays inert (no AI, no squad), its pose while the GUI modes freeze non-player actors (`bPlayersOnly`, the
   omni-tool's lesson: its components may have to ride on Shepard's pawn), and following the wrist each tick.
+- **Decision (the user, 2026-11-04): what the game provides.** One figure, the party member the screen shows (as the game's own
+  Equipment and Squad screens show one), changing when the screen's selection changes. No new squad UI for now: the concept
+  art's whole squad on the disc (the selected member brighter) and picking a member by touching a hologram wait.
 - **The experiment's verbs** (`game/HoloProbe`, a dev tool): `mevr holo spawn [self|n] [scale]`, `mevr holo effect <type>
   [fraction]`, `mevr holo scale|move|info|clear`.
 
