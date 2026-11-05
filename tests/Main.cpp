@@ -28,6 +28,7 @@
 #include "core/vr/ColourStrip.hpp"
 #include "core/vr/Upscale.hpp"
 #include "core/vr/CombatStance.hpp"
+#include "core/vr/CockpitHazard.hpp"
 #include "core/vr/Comfort.hpp"
 #include "core/vr/GameMenuRequest.hpp"
 #include "core/vr/GamePointer.hpp"
@@ -8540,6 +8541,49 @@ void TestMetricStereo() {
 
 // Comfort (research/31): the snap's state machine, the smooth turn, yaw units, the camera guessed through a turn (and
 // body follow across a snap), the vignette's fade and picture, walking toward the left hand, the pad flag, the menu.
+// The Mako cockpit's hazard lights (core/vr/CockpitHazard, research/47 "Hazard lights").
+void TestCockpitHazard() {
+    namespace hz = mevr::vr::cockpit_hazard;
+    hz::Settings s;  // under 30%, clear over 40%
+    // The alarm starts under `below`, holds until over `clearAbove` (no flicker at the edge), needs a vehicle and the setting.
+    CHECK(!hz::Alarm(false, 0.50f, true, s));
+    CHECK(!hz::Alarm(false, 0.30f, true, s));
+    CHECK(hz::Alarm(false, 0.29f, true, s));
+    CHECK(hz::Alarm(true, 0.35f, true, s));   // between: stays on
+    CHECK(!hz::Alarm(false, 0.35f, true, s));  // between: stays off
+    CHECK(!hz::Alarm(true, 0.40f, true, s));   // repaired past it
+    CHECK(!hz::Alarm(true, 0.10f, false, s));  // no vehicle
+    CHECK(hz::Alarm(true, std::nullopt, true, s) && !hz::Alarm(false, std::nullopt, true, s));  // a missed read keeps what was
+    hz::Settings off = s;
+    off.on = false;
+    CHECK(!hz::Alarm(true, 0.05f, true, off));
+    // The beacon: a full flash at once and at every period, dark half way, always within 0..1.
+    CHECK(NearD(hz::Flash(0.0, 1.0f), 1.0, 1e-6) && NearD(hz::Flash(2.0, 1.0f), 1.0, 1e-5));
+    CHECK(NearD(hz::Flash(0.5, 1.0f), 0.0, 1e-6));
+    CHECK(hz::Flash(0.25, 1.0f) > 0.0f && hz::Flash(0.25, 1.0f) < 0.5f);  // a sharp peak: a quarter period in it's below half
+    bool inRange = true;
+    for (int i = 0; i < 200; ++i) {
+        float const f = hz::Flash(i * 0.037, 1.1f);
+        inRange = inRange && f >= 0.0f && f <= 1.0f;
+    }
+    CHECK(inRange);
+    CHECK(hz::Flash(-3.0, 1.0f) == hz::Flash(0.0, 1.0f));  // no negative time
+    // The levels: the lamps from dim to bright, the wash from dark to a little over the cabin's own brightness.
+    hz::Levels const dark = hz::LevelsAt(0.0f);
+    hz::Levels const bright = hz::LevelsAt(1.0f);
+    CHECK(NearD(dark.lamp, hz::kLampLow, 1e-6) && NearD(bright.lamp, hz::kLampHigh, 1e-6));
+    CHECK(NearD(dark.wash, hz::kWashLow, 1e-6) && NearD(bright.wash, hz::kWashHigh, 1e-6));
+    CHECK(NearD(hz::LevelsAt(5.0f).lamp, hz::kLampHigh, 1e-6));  // clamped
+    // Sanitized: clearAbove at least 2% over below, the period 0.2..5 s.
+    hz::Settings odd;
+    odd.below = 0.5f;
+    odd.clearAbove = 0.3f;
+    odd.periodS = 0.01f;
+    hz::Settings const fixed = hz::Sanitized(odd);
+    CHECK(NearD(fixed.clearAbove, 0.52, 1e-6) && NearD(fixed.periodS, 0.2, 1e-6));
+    CHECK(hz::Describe(s).find("30%") != std::string::npos && hz::Describe(off).find("off") != std::string::npos);
+}
+
 void TestComfort() {
     namespace cf = mevr::vr::comfort;
     namespace ms = mevr::vr::menu_settings;
@@ -9576,6 +9620,7 @@ int main() {
     gFailures += RunBreadcrumbTests();
     gFailures += RunExeTests();
     TestUpscale();
+    TestCockpitHazard();
     TestComfort();
     TestCombatStance();
     TestPoseGraft();

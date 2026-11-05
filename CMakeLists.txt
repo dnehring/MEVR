@@ -306,6 +306,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/HudPieces.hpp
     src/core/vr/MakoControls.cpp
     src/core/vr/MakoControls.hpp
+    src/core/vr/CockpitHazard.cpp
+    src/core/vr/CockpitHazard.hpp
     src/core/vr/InteractLabel.cpp
     src/core/vr/InteractLabel.hpp
     src/core/vr/HostView.hpp
@@ -531,6 +533,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/HudPieces.hpp
     src/core/vr/MakoControls.cpp
     src/core/vr/MakoControls.hpp
+    src/core/vr/CockpitHazard.cpp
+    src/core/vr/CockpitHazard.hpp
     src/core/vr/InteractLabel.cpp
     src/core/vr/InteractLabel.hpp
     src/core/vr/HostView.hpp
@@ -838,6 +842,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/GameMenuRequest.cpp
         src/core/vr/HudPieces.cpp
         src/core/vr/MakoControls.cpp
+        src/core/vr/CockpitHazard.cpp
         src/core/vr/InteractLabel.cpp
         src/core/vr/Colour.cpp
         src/core/vr/ColourStrip.cpp

@@ -49,6 +49,7 @@ Halcyon's MassEffect1-VR renderer, with our hands, body and menus on top. LE1 on
 - Recenter with R or a double-click of the right stick; a badly tilted start is fixed by recentering.
 
 ### The Mako
+- When the Mako's hull is badly damaged, the cockpit's lights turn red and flash like a warning beacon until it's repaired.
 - Drive it with a throttle lever and a flight stick in the cockpit: grab them, tilt the stick to steer, fire with the
   trigger and A, and pitch the Mako on its thrusters in the air.
 - The turret follows your right hand.

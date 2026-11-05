@@ -1149,3 +1149,43 @@ frames after a load) present without the cockpit too.
 - **Two minutes of driving** (`make-drive-recording.py 130 --controls --hands-from`: the turns, then straight on across Trebin), the
   probe over 120 s, 14,065 frames: render thread median 3.21 ms (p90 7.34), GPU at most 3.64 (p90 8.99), game thread 2.39 (p90 2.97):
   within 11.11 ms at p90 with the screens staggered. Hitches to 54 ms (streaming) are there without the cockpit too.
+
+## Hazard lights (2026-11-04, the user; fake headset, `BIOA_UNC20` from the on-foot quicksave)
+
+The user: "when the Mako is at low health we want the interior lights to go to red and do something like a strobing hazard to
+indicate we're in danger."
+
+- **The interior lights are materials, not lights.** The cabin's light is baked into its textures and drawn unlit; the lamps are
+  `Hull_Shell`'s `lamp*` elements on `_Glow_MIC`s over `EngineBuildings.ProcBuildingSimpleMaterial` (section "Window glass":
+  DiffuseTexture x LightTexture x LightmapBrightness, unlit). No light reaches the parts (section "Window glass"), so a red light
+  actor would change nothing; the material is the lever.
+- **How it goes red.** For each element of the cockpit's parts that shows one of the package's own instances (not the glass, not
+  the screens' or the console's displays: path words `glass`, `screen`, `display`, `aim`), `MeshComponent.
+  CreateAndSetMaterialInstanceConstant` puts an instance of ours on it, re-parented to the glow parent: the element's own image as
+  `DiffuseTexture` (read from its instance's `Texture`, `DiffuseTexture` or `Emissive`), a 4x4 `TextureRenderTarget2D` created with
+  a red clear colour as `LightTexture` (a render target nothing draws into shows its clear colour: the purple of section "A live
+  picture" was the same thing), and `LightmapBrightness` set each tick. The parameter names come from the package's lamp instances'
+  own arrays (there is no name-from-text lookup). When the alarm ends each element gets its own material back (`SetMaterial`); a
+  new level, a rebuilt part or the mod's shutdown too.
+- **The beacon** (`core/vr/CockpitHazard`, unit-tested): a flash every `hazardPeriodS` (1.1 s), a cosine cubed (a sharp peak, dark
+  half the time), the first at once; the lamps' brightness 0.8 to 10 (the package's own glow is 7), the rest of the cabin 0.22 to
+  1.05 of its own brightness, all through a red of (1.0, 0.045, 0.03) linear.
+- **When.** The hull's health from the vehicle's behavior's own `BioEpicPawnBehavior.GetHealthAndShieldsScaled` (its
+  `m_PawnAttributes.m_HealthCurrent` over `m_HealthMax`'s current value; shields not counted), read every 0.1 s while riding: the
+  alarm starts under `hazardBelow` (0.30) and stops over it plus 0.10 (repaired), so it never flickers at the edge.
+- **Measured** (`mevr cockpit hazard health 0.2`, which writes the hull's `m_HealthCurrent`, journalled): `cockpit hazard: alarm on
+  (low hull; hull 20%, shields 100%)`, `red: 3 lamps, 16 elements washed, 4 kept`. Mean RGB of the left eye's regions:
+
+  | | ceiling | the console's top | outside, through the windshield |
+  |---|---|---|---|
+  | normal | 42, 38, 44 | 118, 109, 125 | 74, 47, 40 |
+  | at a flash | 55, 10, 16 | 144, 15, 28 | 71, 45, 39 |
+  | between flashes | 30-38, 7-9, 11-12 | 75-105, 11-13, 18-22 | 69-71, 44-45, 38-39 |
+  | repaired (`health 1.0`) | 43, 39, 45 | 118, 109, 125 | (the scene had moved) |
+
+  The view out, the centre screen and the radar keep their colours; `19 of 19 elements restored`, and the repaired cabin reads as
+  before. Not yet seen: the alarm from real damage in a fight (the same field the game lowers), and how the flash feels in the
+  headset (`hazardPeriodS`, the levels in `core/vr/CockpitHazard.hpp`).
+- **Settings and tools:** `[Cockpit] hazard = 1`, `hazardBelow = 0.30`, `hazardPeriodS = 1.1`, `hazardWash = 1` (0: only the lamps).
+  `mevr cockpit hazard [state|on|off|auto|health <0..1>]`; log `cockpit hazard:`, the heartbeat's `cockpit: hazard ...`; snapshot
+  `"cockpitProbe"."hazard"`.
