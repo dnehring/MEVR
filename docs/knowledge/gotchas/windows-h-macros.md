@@ -6,7 +6,7 @@ tags: [tooling, build, windows]
 status: stable
 timestamp: 2026-11-04T09:00:00Z
 generated: { by: claude-code/opus-5.5, at: 2026-11-04T09:00:00Z }
-bitten: [2026-11-04, 2026-11-04, 2026-11-04, 2026-11-04]
+bitten: [2026-11-04, 2026-11-04, 2026-11-04, 2026-11-04, 2026-11-05]
 ---
 
 # Symptom
@@ -17,6 +17,7 @@ bitten: [2026-11-04, 2026-11-04, 2026-11-04, 2026-11-04]
 | `error C2513: 'const float': no variable declared before '='`, then `syntax error: '>'`, `illegal else` | `float const far = ...` in core/vr/WorldUi.cpp |
 | `error C2513: 'const auto': no variable declared before '='`, then a C4834 "discarding return value" on every later use | `auto const near = [](...)` a test lambda in tests/Main.cpp (the finger touch tests) |
 | a declaration named `small` that won't compile (rpcndr.h's `#define small char`), and `far` again | the Mako gunner's tests in tests/Main.cpp (renamed `tiny`, `distant`) |
+| `error C2059: syntax error: '['` on `bool near[2]{};`, then structured-binding and ATL-attribute errors through the file; mevr-tests compiled it | a struct field in core/vr/CockpitPanel.hpp (renamed `inReach`, 2026-11-05) |
 
 # Cause
 

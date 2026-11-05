@@ -347,6 +347,9 @@ std::string gLockWhy = "not started";
 bool gConsolePush = false;  // `mevr powerwheel push`: a push now
 bool gAimHead = false;      // `mevr powerwheel aimhead on` (tests): the head's ray stands in for the left hand's
 double gGripAt = -1e9;      // the left grip last squeezed (a grenade's throw, a squad order: no push for 0.4 s after)
+// The last scan's counts (`mevr powerwheel lock`): pawns walked, alive and awake, within range and a cone, hostile.
+int gScanPawns = 0, gScanAwake = 0, gScanNear = 0, gScanHostile = 0;
+std::string gScanNote;
 
 double Dot3(engine::UnrealVector const& a, engine::UnrealVector const& b) {
     return a.x * b.x + a.y * b.y + a.z * b.z;
@@ -428,6 +431,10 @@ void Scan(ue3::Object* pawn, engine::UnrealVector const& origin, engine::UnrealV
     float const handLimit = std::max(s.keepDeg, s.autoLock ? s.autoHandDeg + pw::kAutoKeepMarginDeg : 0.0f);
     float const gazeLimit = s.autoLock ? s.autoGazeDeg + pw::kAutoKeepMarginDeg : -1.0f;
     gSeen.clear();
+    gScanPawns = gScanAwake = gScanNear = gScanHostile = 0;
+    gScanNote = std::format("\n    the ray from ({:.0f}, {:.0f}, {:.0f}) along ({:.2f}, {:.2f}, {:.2f}); the eyes at ({:.0f}, {:.0f}, {:.0f}) looking along "
+                            "({:.2f}, {:.2f}, {:.2f})",
+        origin.x, origin.y, origin.z, direction.x, direction.y, direction.z, eye.x, eye.y, eye.z, gaze.x, gaze.y, gaze.z);
     ue3::Object* const world = gWorldInfo.Read<ue3::Object*>(pawn).value_or(nullptr);
     if (world == nullptr || gIsHostileFn.Get() == nullptr) {
         return;
@@ -435,10 +442,12 @@ void Scan(ue3::Object* pawn, engine::UnrealVector const& origin, engine::UnrealV
     int guard = 0;
     for (ue3::Object* p = gPawnList.Read<ue3::Object*>(world).value_or(nullptr); p != nullptr && guard < 512;
          p = gNextPawn.Read<ue3::Object*>(p).value_or(nullptr), ++guard) {
+        ++gScanPawns;
         if (p == pawn || !player::IsBioPawn(p) || gHidden.ReadBool(p).value_or(false) || !gCollideActors.ReadBool(p).value_or(true) ||
             CallBool(p, gIsDeadFn)) {
             continue;  // dead, or dormant (hidden, without collision: a base's crew before its encounter)
         }
+        ++gScanAwake;
         std::optional<ue3::Vector> const at = player::Location(p);
         if (!at) {
             continue;
@@ -452,15 +461,21 @@ void Scan(ue3::Object* pawn, engine::UnrealVector const& origin, engine::UnrealV
         float const distanceM = static_cast<float>(length / upm);
         float const angle = AngleTo(origin, direction, point);
         float const gazeAngle = AngleTo(eye, gaze, point);
+        if (distanceM <= s.rangeM && gScanNote.size() < 900) {  // `mevr powerwheel lock`: the awake pawns in range
+            gScanNote += std::format("\n    {} at ({:.0f}, {:.0f}, {:.0f}): {:.1f} m, {:.1f} deg from the ray, {:.1f} from the gaze",
+                ue3::runtime::Get().NameText(p), at->x, at->y, at->z, distanceM, angle, gazeAngle);
+        }
         if (distanceM > s.rangeM || (angle > handLimit && gazeAngle > gazeLimit)) {
             continue;  // the cheap tests first
         }
+        ++gScanNear;
         ue3::Params hostile(ue3::runtime::Get(), gIsHostileFn.Get());
         hostile.Set("Other", p);
         ue3::runtime::Call(pawn, gIsHostileFn.Get(), hostile);
         if (!hostile.ReturnBool().value_or(false)) {
             continue;
         }
+        ++gScanHostile;
         Seen seen{p, {at->x, at->y, at->z}, angle, gazeAngle, distanceM, true};
         if (ue3::Function* const trace = gFastTraceFn.Get()) {
             ue3::Params parms(ue3::runtime::Get(), trace);
@@ -936,6 +951,8 @@ std::string Console(std::string_view args) {
     if (verb == "lock") {
         std::string out = std::format("power wheel: lock {}; target {}{}; place {}; last cast: {}", gLockWhy, NameOf(gTarget), gTarget != nullptr && gLock.automatic ? " (automatic)" : "",
             gPlace ? std::format("({:.0f}, {:.0f}, {:.0f})", gPlace->x, gPlace->y, gPlace->z) : std::string("none"), gLastCast);
+        out += std::format("\n  last scan: {} pawns, {} awake, {} near the ray or gaze and in range, {} hostile{}", gScanPawns, gScanAwake,
+            gScanNear, gScanHostile, gScanNote);
         for (Seen const& seen : gSeen) {
             out += std::format("\n  {}: {:.1f} m, {:.1f} deg from the hand, {:.1f} from the gaze, {}", NameOf(seen.pawn), seen.distanceM, seen.angleDeg,
                 seen.gazeDeg, seen.visible ? "in sight" : "blocked");
