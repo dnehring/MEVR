@@ -194,6 +194,13 @@ left hand aims and casts. Code: `core/vr/PowerWheel` (`UpdateLock`, `StepPush`, 
   and `lockRangeM` (35 m) and its line of sight hasn't been blocked longer than `lockGraceS` (0.35 s); otherwise it takes the
   best visible one within `lockAcquireDeg` (9): the smallest angle, 0.05 degree per metre deciding near ties. A new lock ticks
   the left hand. The cheap tests (angle, range) run before the script calls.
+- **The automatic resolver** (`autoLock`, the user 2026-11-05: pointing within 9 degrees may be too fine in VR): with nothing
+  pointed at, the best visible hostile within `autoLockHandDeg` (30) of the hand's ray or `autoLockGazeDeg` (20) of the eyes'
+  forward (measured from the eyes) is locked: the least hand angle + gaze angle, 0.1 degree per metre, so the one hand and gaze
+  agree on wins. It's kept while within those cones plus 6 degrees; any other hostile pointed at (within 9) takes over at once,
+  and pointing at the automatic target makes it a pointed lock. A pointed lock that drifts past 16 degrees but stays in the
+  automatic cones stays locked (automatic now, its lock time kept). Logged as `resolved automatically`; the console's `lock`
+  and the snapshot's `"automatic"` say which.
 - **A place power with nothing locked** (Singularity, Stasis, Overload, Damping, Sabotage: section 3's camera-trace powers):
   `Actor.Trace` along the hand's ray within the range; where it hits is where the power lands (the marker shows a dashed ring
   there). Nothing hit: no cast.

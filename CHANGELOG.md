@@ -51,7 +51,8 @@ Halcyon's MassEffect1-VR renderer, with our hands, body and menus on top. LE1 on
   it stays open until you pinch the left trigger. The equipped power is the one a tap of the right stick click casts.
   X no longer throws a grenade the game's way on foot (throw real ones from your chest).
 - Cast with your hand: with the wheel closed, raise your left arm and point it at an enemy; orange brackets lock onto the
-  one nearest your hand's line (they stay on it while you sway, and through a moment behind cover). Push your open left
+  one nearest your hand's line (they stay on it while you sway, and through a moment behind cover). Point roughly and the
+  lock finds the enemy your hand and your eyes agree on. Push your open left
   hand toward it to cast the equipped power at it. Singularity and the other placed powers land where your hand points
   when no enemy is locked.
 

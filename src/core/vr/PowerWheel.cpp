@@ -316,15 +316,33 @@ LockView LatestLock(std::uint64_t maxAgeMs) {
 }
 
 std::uint64_t UpdateLock(LockState& state, std::vector<LockCandidate> const& candidates, double time, LockSettings const& settings) {
-    // The current target, while it stays within keepDeg and range and in sight (or blocked less than graceS).
+    std::uint64_t const previous = state.target;
+    double const previousSince = state.since;
+    auto pointed = [&](LockCandidate const& c) {
+        return c.visible && c.angleDeg <= settings.acquireDeg && c.distanceM <= settings.rangeM;
+    };
+    // The current target, while it stays in its cone and range and in sight (or blocked less than graceS).
     if (state.target != 0) {
         LockCandidate const* current = nullptr;
+        bool otherPointed = false;
         for (LockCandidate const& c : candidates) {
             if (c.id == state.target) {
                 current = &c;
+            } else if (pointed(c)) {
+                otherPointed = true;
             }
         }
-        bool keep = current != nullptr && current->angleDeg <= settings.keepDeg && current->distanceM <= settings.rangeM;
+        bool keep = current != nullptr && current->distanceM <= settings.rangeM;
+        if (keep && state.automatic) {
+            keep = settings.autoLock && !otherPointed && !pointed(*current) &&
+                   (current->angleDeg <= settings.autoHandDeg + kAutoKeepMarginDeg || current->gazeDeg <= settings.autoGazeDeg + kAutoKeepMarginDeg);
+            if (current != nullptr && pointed(*current)) {
+                state.automatic = false;  // now pointed at: a pointed lock from here on, the same target
+                keep = true;
+            }
+        } else if (keep) {
+            keep = current->angleDeg <= settings.keepDeg;
+        }
         if (keep && !current->visible) {
             if (state.blockedSince < 0.0) {
                 state.blockedSince = time;
@@ -339,10 +357,11 @@ std::uint64_t UpdateLock(LockState& state, std::vector<LockCandidate> const& can
         state.target = 0;
         state.blockedSince = -1.0;
     }
-    // The best new one.
+    // The best one pointed at.
     float bestScore = 1e9f;
+    state.automatic = false;
     for (LockCandidate const& c : candidates) {
-        if (!c.visible || c.angleDeg > settings.acquireDeg || c.distanceM > settings.rangeM) {
+        if (!pointed(c)) {
             continue;
         }
         float const score = c.angleDeg + 0.05f * c.distanceM;
@@ -351,8 +370,22 @@ std::uint64_t UpdateLock(LockState& state, std::vector<LockCandidate> const& can
             state.target = c.id;
         }
     }
+    // Nothing pointed at: the automatic resolver.
+    if (state.target == 0 && settings.autoLock) {
+        for (LockCandidate const& c : candidates) {
+            if (!c.visible || c.distanceM > settings.rangeM || (c.angleDeg > settings.autoHandDeg && c.gazeDeg > settings.autoGazeDeg)) {
+                continue;
+            }
+            float const score = c.angleDeg + c.gazeDeg + 0.1f * c.distanceM;
+            if (score < bestScore) {
+                bestScore = score;
+                state.target = c.id;
+                state.automatic = true;
+            }
+        }
+    }
     if (state.target != 0) {
-        state.since = time;
+        state.since = state.target == previous ? previousSince : time;
         state.blockedSince = -1.0;
     }
     return state.target;

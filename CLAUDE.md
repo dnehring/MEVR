@@ -694,7 +694,8 @@ switching frameworks.
   again). Equip = `BioPlayerInput.MappedPower` (journalled), which the right stick click's tap casts (`TryUseMappedPower`, the game's aim).
   **The lock and the push** (research/55 section 7, `[PowerWheel] lock*`/`push*`): wheel closed, the left arm raised (`lockReachM` ahead of
   the eyes), the hostile nearest the left aim ray (`IsHostile`, not dead or dormant, `FastTrace` from the hand; 9 degrees to take, 16 to
-  keep, 35 m, 0.35 s of blocked sight) is locked (`UpdateLock`) and marked by the host's `powerlock` quad (brackets facing the eyes); an open
+  keep, 35 m, 0.35 s of blocked sight; nothing pointed at: the automatic resolver, the best within 30 degrees of the hand or 20 of the
+  gaze, `autoLock`) is locked (`UpdateLock`) and marked by the host's `powerlock` quad (brackets facing the eyes); an open
   left hand pushed along its ray (1.6 m/s over 0.10 m, `StepPush`) casts the mapped power with `BioPlayerInput.ActivatePower(nmPower,
   oTarget, vTargetLocation)` at it (a place power with none: where `Actor.Trace` along the ray lands; no aim: at once). Console
   `mevr powerwheel push|aimhead on|lock`. While on, X never throws a grenade on foot (the pad's `grenadeButton` off); while open the left stick, L3, X, the

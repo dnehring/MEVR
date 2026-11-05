@@ -95,7 +95,12 @@ constexpr char kBlock[] =
     "lockReachM = 0.20\n"
     "pushSpeedMS = 1.6\n"
     "pushTravelM = 0.10\n"
-    "pushCooldownS = 0.6\n";
+    "pushCooldownS = 0.6\n"
+    "; autoLock 1: nothing pointed at, the enemy within autoLockHandDeg of your hand's line or autoLockGazeDeg of where you look\n"
+    "; is locked by itself (the one both agree on best); pointing at another takes over.\n"
+    "autoLock = 1\n"
+    "autoLockHandDeg = 30\n"
+    "autoLockGazeDeg = 20\n";
 
 pw::Settings gSettings;
 pw::LockSettings gLockSettings;
@@ -173,10 +178,14 @@ void RefreshSettings() {
     number("pushSpeedMS", l.pushSpeedMS, 0.5f, 6.0f);
     number("pushTravelM", l.pushTravelM, 0.02f, 0.5f);
     number("pushCooldownS", l.cooldownS, 0.1f, 5.0f);
+    flag("autoLock", l.autoLock);
+    number("autoLockHandDeg", l.autoHandDeg, 0.0f, 60.0f);
+    number("autoLockGazeDeg", l.autoGazeDeg, 0.0f, 60.0f);
     gLockSettings = l;
     gSettings = s;
     std::string const lockText = l.on ? std::format("; the lock within {:.0f} deg (kept to {:.0f}), {:.0f} m, the arm {:.2f} m out; a push "
-                                                               "of {:.1f} m/s over {:.2f} m casts", l.acquireDeg, l.keepDeg, l.rangeM, l.reachM, l.pushSpeedMS, l.pushTravelM)
+                                                               "of {:.1f} m/s over {:.2f} m casts; automatic lock {}", l.acquireDeg, l.keepDeg, l.rangeM, l.reachM, l.pushSpeedMS, l.pushTravelM,
+                                                    l.autoLock ? std::format("within {:.0f} deg of the hand or {:.0f} of the gaze", l.autoHandDeg, l.autoGazeDeg) : std::string("off"))
                                            : std::string("; no lock or push (lock = 0)");
     if (std::string const text = Describe(s) + lockText; text != gSettingsText) {
         gSettingsText = text;
@@ -320,7 +329,8 @@ constexpr double kChestUnits = 20.0;  // the marker a little above the pawn's ce
 struct Seen {
     ue3::Object* pawn = nullptr;
     engine::UnrealVector at{};
-    float angleDeg = 180.0f;
+    float angleDeg = 180.0f;  // from the hand's ray
+    float gazeDeg = 180.0f;   // from the eyes' forward
     float distanceM = 0.0f;
     bool visible = false;
 };
@@ -401,9 +411,22 @@ std::optional<Power> ReadyPower(ue3::Object* controller, ue3::Object* pawn) {
     return std::nullopt;
 }
 
-// The living hostiles near the ray (within keepDeg and range), each with its line of sight from the hand.
-void Scan(ue3::Object* pawn, engine::UnrealVector const& origin, engine::UnrealVector const& direction, double upm,
-    pw::LockSettings const& s) {
+// The angle between `direction` (a unit vector) and the line from `from` to `point`, degrees.
+float AngleTo(engine::UnrealVector const& from, engine::UnrealVector const& direction, engine::UnrealVector const& point) {
+    engine::UnrealVector const to = Minus(point, from);
+    double const length = std::sqrt(Dot3(to, to));
+    if (length < 1.0) {
+        return 0.0f;
+    }
+    return static_cast<float>(std::acos(std::clamp(Dot3(to, direction) / length, -1.0, 1.0)) * 180.0 / 3.14159265358979);
+}
+
+// The living hostiles near the hand's ray (within keepDeg) or, with the automatic resolver, within its cones of the hand's
+// ray or the eyes' forward, and in range; each with its line of sight from the hand.
+void Scan(ue3::Object* pawn, engine::UnrealVector const& origin, engine::UnrealVector const& direction, engine::UnrealVector const& eye,
+    engine::UnrealVector const& gaze, double upm, pw::LockSettings const& s) {
+    float const handLimit = std::max(s.keepDeg, s.autoLock ? s.autoHandDeg + pw::kAutoKeepMarginDeg : 0.0f);
+    float const gazeLimit = s.autoLock ? s.autoGazeDeg + pw::kAutoKeepMarginDeg : -1.0f;
     gSeen.clear();
     ue3::Object* const world = gWorldInfo.Read<ue3::Object*>(pawn).value_or(nullptr);
     if (world == nullptr || gIsHostileFn.Get() == nullptr) {
@@ -427,8 +450,9 @@ void Scan(ue3::Object* pawn, engine::UnrealVector const& origin, engine::UnrealV
             continue;
         }
         float const distanceM = static_cast<float>(length / upm);
-        float const angle = static_cast<float>(std::acos(std::clamp(Dot3(to, direction) / length, -1.0, 1.0)) * 180.0 / 3.14159265358979);
-        if (distanceM > s.rangeM || angle > s.keepDeg) {
+        float const angle = AngleTo(origin, direction, point);
+        float const gazeAngle = AngleTo(eye, gaze, point);
+        if (distanceM > s.rangeM || (angle > handLimit && gazeAngle > gazeLimit)) {
             continue;  // the cheap tests first
         }
         ue3::Params hostile(ue3::runtime::Get(), gIsHostileFn.Get());
@@ -437,7 +461,7 @@ void Scan(ue3::Object* pawn, engine::UnrealVector const& origin, engine::UnrealV
         if (!hostile.ReturnBool().value_or(false)) {
             continue;
         }
-        Seen seen{p, {at->x, at->y, at->z}, angle, distanceM, true};
+        Seen seen{p, {at->x, at->y, at->z}, angle, gazeAngle, distanceM, true};
         if (ue3::Function* const trace = gFastTraceFn.Get()) {
             ue3::Params parms(ue3::runtime::Get(), trace);
             parms.Set("TraceEnd", ToVector(point));
@@ -560,12 +584,14 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
     double const upm = frame->unitsPerMeter > 0.0 ? frame->unitsPerMeter : engine::kUnitsPerMeter;
     engine::UnrealVector const origin = engine::ToWorld(*frame, aim.position);
     engine::UnrealVector const direction = engine::OrientationToWorld(*frame, aim.orientation).forward;
+    engine::UnrealVector const eye = engine::ToWorld(*frame, view.head.position);
+    engine::UnrealVector const gaze = engine::OrientationToWorld(*frame, view.head.orientation).forward;
     if (ready->info->aim != pw::Aim::None && raised) {
-        Scan(pawn, origin, direction, upm, s);
+        Scan(pawn, origin, direction, eye, gaze, upm, s);
     }
     std::vector<pw::LockCandidate> candidates;
     for (Seen const& seen : gSeen) {
-        candidates.push_back({reinterpret_cast<std::uint64_t>(seen.pawn), seen.angleDeg, seen.distanceM, seen.visible});
+        candidates.push_back({reinterpret_cast<std::uint64_t>(seen.pawn), seen.angleDeg, seen.gazeDeg, seen.distanceM, seen.visible});
     }
     std::uint64_t const id = pw::UpdateLock(gLock, candidates, gClock, s);
     ue3::Object* target = nullptr;
@@ -575,8 +601,9 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
             gTargetAt = seen.at;
             if (target != gTarget) {
                 ++gLocks;
-                log::Info("power wheel: {} locked on {} ({:.1f} m, {:.1f} deg from the left hand's ray)", ready->info->name, NameOf(target),
-                    seen.distanceM, seen.angleDeg);
+                log::Info("power wheel: {} locked on {} ({:.1f} m, {:.1f} deg from the left hand's ray, {:.1f} from the gaze; {})",
+                    ready->info->name, NameOf(target), seen.distanceM, seen.angleDeg, seen.gazeDeg,
+                    gLock.automatic ? "resolved automatically: nothing pointed at" : "pointed at");
                 if (link.haptic != nullptr && gSettings.haptic > 0.0f) {
                     link.haptic(0, 0.02f, gSettings.haptic);
                 }
@@ -907,10 +934,11 @@ std::string Console(std::string_view args) {
         return std::format("power wheel: the head's ray {} the left hand's for the lock (tests)", gAimHead ? "stands in for" : "no longer stands in for");
     }
     if (verb == "lock") {
-        std::string out = std::format("power wheel: lock {}; target {}; place {}; last cast: {}", gLockWhy, NameOf(gTarget),
+        std::string out = std::format("power wheel: lock {}; target {}{}; place {}; last cast: {}", gLockWhy, NameOf(gTarget), gTarget != nullptr && gLock.automatic ? " (automatic)" : "",
             gPlace ? std::format("({:.0f}, {:.0f}, {:.0f})", gPlace->x, gPlace->y, gPlace->z) : std::string("none"), gLastCast);
         for (Seen const& seen : gSeen) {
-            out += std::format("\n  {}: {:.1f} m, {:.1f} deg, {}", NameOf(seen.pawn), seen.distanceM, seen.angleDeg, seen.visible ? "in sight" : "blocked");
+            out += std::format("\n  {}: {:.1f} m, {:.1f} deg from the hand, {:.1f} from the gaze, {}", NameOf(seen.pawn), seen.distanceM, seen.angleDeg,
+                seen.gazeDeg, seen.visible ? "in sight" : "blocked");
         }
         return out;
     }
@@ -963,13 +991,13 @@ std::string StatusJson() {
     ue3::Object* const controller = ue3::runtime::Ready() ? player::Controller() : nullptr;
     return std::format("{{\"on\": {}, \"why\": {}, \"open\": {}, \"toggled\": {}, \"serial\": {}, \"roster\": [{}], \"selected\": {}, "
                        "\"hand\": [{}, {}], \"pose\": [{}, {}, {}], \"equipped\": {}, \"mappedPower\": {}, \"last\": {}, \"opened\": {}, "
-                       "\"equips\": {}, \"cancels\": {}, \"picks\": {}, \"lock\": {{\"why\": {}, \"target\": {}, \"seen\": {}, \"locks\": {}, "
+                       "\"equips\": {}, \"cancels\": {}, \"picks\": {}, \"lock\": {{\"why\": {}, \"target\": {}, \"automatic\": {}, \"seen\": {}, \"locks\": {}, "
         "\"pushes\": {}, \"casts\": {}, \"refused\": {}, \"lastCast\": {}}}}}",
         gSettings.on ? "true" : "false", json::JsonString(gWhy), gMachine.open ? "true" : "false", gMachine.toggled ? "true" : "false",
         gMachine.serial, roster, gMachine.selected, json::JsonNumber(gView.hand.x), json::JsonNumber(gView.hand.y),
         json::JsonNumber(gView.pose.position.x), json::JsonNumber(gView.pose.position.y), json::JsonNumber(gView.pose.position.z),
         json::JsonString(gEquipped), json::JsonString(MappedPower(controller)), json::JsonString(gLastEvent), gOpened, gEquips, gCancels,
-        gPicks, json::JsonString(gLockWhy), json::JsonString(NameOf(gTarget)), gSeen.size(), gLocks, gPushes, gCastCount, gRefused,
+        gPicks, json::JsonString(gLockWhy), json::JsonString(NameOf(gTarget)), gTarget != nullptr && gLock.automatic ? "true" : "false", gSeen.size(), gLocks, gPushes, gCastCount, gRefused,
         json::JsonString(gLastCast));
 }
 
