@@ -193,6 +193,13 @@ float FromTilt(float tiltDeg, Settings const& settings, float deadZoneDeg) {
     return settings.stickInvert ? -value : value;
 }
 
+JetAttitude JetTarget(Output const& out, float maxPitchDeg, float maxRollDeg) {
+    if (!out.stickHeld) {
+        return {};
+    }
+    return {-out.pitch * std::max(maxPitchDeg, 0.0f), out.roll * std::max(maxRollDeg, 0.0f)};
+}
+
 void TiltFromTravel(XrVector3f const& travel, XrVector3f const& right, XrVector3f const& forward, float heightM, float& rightDeg, float& forwardDeg) {
     float const height = std::max(heightM, 0.02f);
     rightDeg = std::atan2(Dot(travel, right), height) * kDegrees;
@@ -236,7 +243,7 @@ void Controls::StopAll(Stop stop, Output& out) {
     lever_ = 0.0f;
     steer_ = 0.0f;
     twist_ = 0.0f;
-    tiltRight_ = tiltForward_ = pitch_ = 0.0f;
+    tiltRight_ = tiltForward_ = pitch_ = roll_ = 0.0f;
     spin_ = 0.0f;
     leverHeld_ = false;
     stickHeld_ = false;
@@ -389,6 +396,7 @@ Output Controls::Step(Input const& in, Settings const& settings) {
             steer_ = Approach(steer_, target, rate);
             spin_ = Approach(spin_, twistPart, rate);
             pitch_ = settings.stickTwist ? 0.0f : FromTilt(tiltForward_, settings, settings.stickPitchDeadZoneDeg);
+            roll_ = settings.stickTwist ? 0.0f : FromTilt(tiltRight_, settings, settings.stickPitchDeadZoneDeg);
             if (!stickHeld_) {
                 twist_ = 0.0f;
             }
@@ -424,6 +432,7 @@ Output Controls::Step(Input const& in, Settings const& settings) {
     out.tiltRightDeg = tiltRight_;
     out.tiltForwardDeg = tiltForward_;
     out.pitch = pitch_;
+    out.roll = roll_;
     out.driving = driving_;
     out.placed = placed_;
     out.leverHeld = leverHeld_;

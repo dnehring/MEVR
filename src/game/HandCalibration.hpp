@@ -393,11 +393,13 @@ struct Mako {
     float aimRangeM = 200.0f;
     bool calibratedLine = true;
     // The thrusters (the user, 2026-11-03): their fuel burns this fast while they fire (0.4: 2.5 times as long; 1: the game's).
-    // While they fire the Mako is held level (roll 0) and at the pitch the stick asks for: thrusterPitchDeg at a full forward or
-    // back tilt (0: always level), turning at most thrusterRateDeg a second; thrusterStabilize = 0: none of it.
+    // While the jump jets fire the Mako is held at the attitude the stick asks for (level when it isn't held): thrusterPitchDeg at a
+    // full forward or back tilt, thrusterRollDeg at a full left or right one (0: always level that way), turning at most
+    // thrusterRateDeg a second; thrusterStabilize = 0: none of it. The booster is the game's own (the user, 2026-11-04).
     float thrusterBurnScale = 0.4f;
     bool thrusterStabilize = true;
     float thrusterPitchDeg = 20.0f;
+    float thrusterRollDeg = 15.0f;
     float thrusterRateDeg = 60.0f;
     // Steering with the throttle at zero spins the Mako on the spot at up to this many degrees a second (the user, 2026-11-03:
     // the tank simulation's own turn in place drove both tracks forward and pivoted); 0: the game's pivot.

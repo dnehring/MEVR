@@ -120,6 +120,8 @@ struct Output {
     float tiltRightDeg = 0.0f;    // the stick's tilt (tilt mode): its top to the player's right
     float tiltForwardDeg = 0.0f;  // ... and away from the player
     float pitch = 0.0f;           // -1..1 from the forward tilt (+: pushed, the nose down), past the dead zone; 0 in twist mode
+    float roll = 0.0f;            // -1..1 from the tilt to the right (+: the right side down) for the jump jets, past the same dead
+                                  // zone as the pitch; 0 in twist mode
     float spin = 0.0f;            // -1..1 (+ right): the twist alone, for turning on the spot at zero throttle
     bool driving = false;    // a control has been grabbed in this drive: the mod's values go to the physics
     bool placed = false;     // the controls have a place
@@ -154,6 +156,16 @@ float SteerFromTwist(float twistDeg, Settings const& settings);
 // full at stickTiltDeg.
 float FromTilt(float tiltDeg, Settings const& settings);
 float FromTilt(float tiltDeg, Settings const& settings, float deadZoneDeg);
+
+// The attitude the jump jets hold the Mako at while they fire (research/47 "Flying on the jets", 2026-11-04). They push along the
+// Mako's own up (BioVehicleWheeled.Tick: its Z axis times ThrusterForce), so a tilted Mako drifts that way: the stick pushed tips
+// the nose down (forward), pulled lifts it (back), tilted right drops the right side (right). Degrees in UE's signs (pitch + nose
+// up, roll + right side down); level while the stick isn't held. The booster gets none of it: the game's own (the user).
+struct JetAttitude {
+    float pitchDeg = 0.0f;
+    float rollDeg = 0.0f;
+};
+JetAttitude JetTarget(Output const& out, float maxPitchDeg, float maxRollDeg);
 // The stick's tilt (degrees: to the right, forward) for the hand moved `travel` from where it grabbed, the grip `heightM` over the
 // pivot: atan(travel / height) along the seat's right and forward.
 void TiltFromTravel(XrVector3f const& travel, XrVector3f const& right, XrVector3f const& forward, float heightM, float& rightDeg, float& forwardDeg);
@@ -192,6 +204,7 @@ private:
     float tiltRight_ = 0.0f;
     float tiltForward_ = 0.0f;
     float pitch_ = 0.0f;
+    float roll_ = 0.0f;
     XrVector3f leverLast_{};
     bool leverHeld_ = false;
     bool stickHeld_ = false;
