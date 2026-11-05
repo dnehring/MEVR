@@ -242,7 +242,9 @@ switching frameworks.
   CallFunction hook is in, the game's own draws with the weapon away (`SFXPawn_Player.DrawPrimaryWeapon`: melee and
   grenade buttons, the weapon wheel, the holster key's toggle) are skipped by `engine/call_function`'s skip handler (it
   consumes the call's EX_EndFunctionParms; only for a script function without parameters), with a short buzz in the
-  right hand. Medi-gel and powers still draw (callers `SFXGameModeDefault.UseFirstAid`, `TryUseMappedPower`,
+  right hand. The trigger too (RT is `SFXGameModeBase.FireWeapon`, which draws first), without the buzz (a fist pulls it).
+  **The skip only works since 2026-11-04** (research/19 "The trigger's draw"): FFrame is packed on 4 bytes, `Node` at 0x14 in
+  LE1 (`engine::adapter::kFrame`), and the old 0x18 made every skip fail silently. Medi-gel and powers still draw (callers `SFXGameModeDefault.UseFirstAid`, `TryUseMappedPower`,
   `EnterPowerWheel`, matched against the skip handler's caller; the lead's decision 2026-10-26). A grenade taken with
   the weapon away is ours (`holsters::AllowGameDraw`). Logs `holsters: the game wanted to draw your weapon (<caller>):
   refused`, `... for <caller>: let through` and, for a draw by any other route, `holsters: the <gun> came out without a
@@ -791,6 +793,9 @@ Use it to check VR changes yourself instead of asking the user what they see
   `tools/perf-ab.ps1 -Key <key> -Values a,b` alternates one and captures each; `tools/eye-diff.ps1` compares one
   frame's two eyes call by call (run it first: it says whether the replay's substitution covers the eye's constants).
   There is no depth pre-pass to skip: `0x76C1D0` is the base pass (research/32).
+- **Call trace:** `tools/console.ps1 "mevr calltrace 10 drawprimary fireweapon -canfire"` logs every script call (with its
+  caller, the frame's Node) and ProcessEvent whose function path holds a word and no `-word`, for that many seconds, at most
+  600 lines (`game/call_trace`, `call trace:`): how to find which route the game takes. Nothing while off.
 - **Console:** `tools/console.ps1 "UMBRA OCCLUSIONCULLING"` writes `console.request`; the mod (`game/ConsoleRequest`,
   hot-reloaded) runs each line through `PlayerController.ConsoleCommand` on the game thread and writes what it
   printed to `console.result` (log `console:`). Flat or in VR, wherever there is a local player: A/Bs without a restart.

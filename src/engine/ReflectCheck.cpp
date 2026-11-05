@@ -1124,6 +1124,7 @@ void CheckFunctions() {
         "SFXGame.SFXGameModeDefault.UseFirstAid",         // ...whose draws still go through from these (2026-10-26)
         "SFXGame.SFXGameModeDefault.TryUseMappedPower",
         "SFXGame.SFXGameModeDefault.EnterPowerWheel",
+        "SFXGame.SFXGameModeBase.FireWeapon",  // ...and the trigger's, refused without a buzz (2026-11-04)
         "Engine.PlayerController.GetScaleFormManager",
         // Posture, ViewLevel, Comfort, MenuPause (migrated in stage 1)
         "SFXGame.BioPawn.ShouldCrouch",

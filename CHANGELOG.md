@@ -24,6 +24,8 @@ Halcyon's MassEffect1-VR renderer, with our hands, body and menus on top. LE1 on
 ### Your hands
 - You aim with the controller, not your head. Your arms, hands and fingers follow the controllers; the gun is in
   your hand.
+- Only reaching a holster draws your weapon: the trigger, melee, grenade and holster buttons no longer pull it out
+  when it's away (medi-gel and powers still do, they need it).
 - On Quest (Touch) and Index controllers your fingers follow the touch sensors too: lift your finger off the trigger
   to point, lift your thumb off the stick for a thumbs-up, and keep your finger off the trigger along the gun's frame.
 - Hold a rifle with both hands: the left hand grabs the foregrip.

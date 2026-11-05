@@ -174,10 +174,9 @@ pointing finger and a thumbs-up without hand tracking.
   -0.15, 1, 1, 1] (15 bones), thumbs-up [-0.8, 1, 1, 1, 1], fist [1, 1, 1, 1, 1]; the pictures show five different
   hands (the extended digit in the point a thin index, in the thumbs-up the thicker thumb from the side of the hand).
   On the gun: off the trigger -0.5, touching it 0. Two test-rig details: the right trigger with the weapon away drew
-  the pistol by a route the holsters don't refuse (`holsters: the pistol came out without a holster grab ... not
-  through DrawPrimaryWeapon`: the holsters' line for a draw by another route, so `onlyHolstersDraw` doesn't hold for
-the trigger [verify which route]), so the right hand turned to its gun rule during the fist
-  phases; the left hand was measured with `[Controls] leftTrigger = none` for the test (put back after). And the game's
+  the pistol (`holsters: the pistol came out without a holster grab ...`), so the right hand turned to its gun rule
+  during the fist phases (fixed the same day: the holsters' refusal had never run in LE1, research/19 "The trigger's
+  draw"); the left hand was measured with `[Controls] leftTrigger = none` for the test (put back after). And the game's
   `pause` stops the pose writer, so a paused world can't be used to look at a pose.
 
 ## In the headset (not verified without one)

@@ -6,6 +6,7 @@
 #include "engine/Legacy.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Memory.hpp"
+#include "game/CallTrace.hpp"
 #include "game/CockpitProbe.hpp"
 #include "game/GalaxyDump.hpp"
 #include "game/GalaxyMap.hpp"
@@ -476,6 +477,25 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
             dependent = gFound[index];
         }
         return galaxy_dump::SkillGame(pc, pawn, sub.empty() ? "state" : sub, a, b, dependent);
+    }
+    if (verb == "calltrace") {
+        // `mevr calltrace <seconds> <word> [-word...]` | `mevr calltrace off`: every script call and ProcessEvent whose
+        // function's path holds a word and no -word (case-insensitive), with its caller, to the log for that long
+        // (game/call_trace).
+        std::string first;
+        words >> first;
+        if (first == "off" || first.empty()) {
+            return call_trace::Stop();
+        }
+        std::optional<double> const seconds = ini::Number(first);
+        if (!seconds) {
+            return "usage: mevr calltrace <seconds> <word> [word...] | off";
+        }
+        std::vector<std::string> filters;
+        for (std::string word; words >> word;) {
+            filters.push_back(word);
+        }
+        return call_trace::Start(*seconds, filters);
     }
     if (verb == "omnitool") {
         // `mevr omnitool on [lifetime s] | off [fade s] | state`: the game's omni-tool on Shepard's arm (research/53 section 6).

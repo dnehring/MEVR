@@ -36,6 +36,7 @@
 #include "game/ArmIk.hpp"
 #include "game/BodyCalibration.hpp"
 #include "game/BodyFollow.hpp"
+#include "game/CallTrace.hpp"
 #include "game/CameraProbe.hpp"
 #include "game/CombatStance.hpp"
 #include "game/Comfort.hpp"
@@ -1327,6 +1328,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::camera_probe::Shutdown();
     game::combat_stance::Shutdown();  // the game's speed ramp and animation rates back, the pre-stage stopped
     game::fingers::Shutdown();
+    game::call_trace::Shutdown();
     game::view_level::Shutdown();
     if (gHost != nullptr && MEVR_HOST_HAS(setVignette) && gHost->setVignette != nullptr) {
         gHost->setVignette(0.0f);  // no vignette without the mod (the host also forgets on unload)

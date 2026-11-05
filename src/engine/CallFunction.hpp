@@ -32,6 +32,12 @@ void AddPostHandler(ue3::Function* function, Handler handler);
 void AddSkipHandler(ue3::Function* function, SkipHandler handler);
 void ClearHandlers();
 
+// A development trace (game/call_trace): sees every script call before it runs, with the frame's Node (the calling
+// function, state or class; unchecked: the observer must check it's a listed object before reading it). Null: off, one
+// atomic load per call.
+using Observer = void (*)(ue3::Object* context, ue3::Function* function, ue3::Function* caller);
+void SetObserver(Observer observer);
+
 // Crash breadcrumbs (HostServices v18, research/36): called around each handler (begin's token goes to end).
 // Null (an older host): not recorded.
 using BeginCrumb = std::uint64_t (*)(ue3::Function* function, ue3::Object* object);

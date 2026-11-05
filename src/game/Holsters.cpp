@@ -72,6 +72,11 @@ ue3::FunctionRef gUseFirstAidFn{"SFXGame.SFXGameModeDefault.UseFirstAid"};
 ue3::FunctionRef gTryUseMappedPowerFn{"SFXGame.SFXGameModeDefault.TryUseMappedPower"};
 ue3::FunctionRef gEnterPowerWheelFn{"SFXGame.SFXGameModeDefault.EnterPowerWheel"};
 std::array<ue3::Function*, 3> gAllowedCallers{};
+// The trigger's draw (research/19 "The trigger's draw", 2026-11-04): RT is the exec SFXGameModeBase.FireWeapon, which
+// draws when the weapon is away. Refused like the rest but without the buzz: a pull with an empty hand is also a fist or
+// a thumbs-up now (research/43 "Touch sensors"), not an attempt to draw.
+ue3::FunctionRef gFireWeaponFn{"SFXGame.SFXGameModeBase.FireWeapon"};
+ue3::Function* gFireWeapon = nullptr;
 
 ue3::Function* gSwitchToWeapon = nullptr;
 ue3::Function* gTryHolster = nullptr;
@@ -501,10 +506,12 @@ bool OnDrawPrimaryWeapon(ue3::Object* context, ue3::Function* /*function*/, ue3:
         return false;
     }
     ++gRefusedDraws;
-    gRefusedBuzz = true;
+    bool const trigger = caller != nullptr && caller == gFireWeapon;
+    gRefusedBuzz = gRefusedBuzz || !trigger;
     log::Info("holsters: the game wanted to draw your weapon ({}): refused, only a grab at a holster draws "
-              "([Holsters] onlyHolstersDraw = 1)",
-        caller != nullptr ? ue3::runtime::FullName(caller) : std::string("called from native code"));
+              "([Holsters] onlyHolstersDraw = 1){}",
+        caller != nullptr ? ue3::runtime::FullName(caller) : std::string("called from native code"),
+        trigger ? "; the trigger's, so no buzz" : "");
     return true;
 }
 #endif
@@ -577,6 +584,7 @@ bool TryStartup() {
     } else {
         log::Warn("holsters: SFXPawn_Player.DrawPrimaryWeapon not found: the game may still draw by itself");
     }
+    gFireWeapon = gFireWeaponFn.Get();
     ue3::FunctionRef* const allowed[] = {&gUseFirstAidFn, &gTryUseMappedPowerFn, &gEnterPowerWheelFn};
     std::string allowedText;
     for (std::size_t i = 0; i < gAllowedCallers.size(); ++i) {
@@ -584,8 +592,9 @@ bool TryStartup() {
         allowedText += std::format("{}{} ({})", i > 0 ? ", " : "", allowed[i]->Path(), gAllowedCallers[i] != nullptr ? "found" : "NOT FOUND");
     }
     if (gDrawSkipReady) {
-        log::Info("holsters: the game's own draws are still let through from: {} (a caller not found is refused like the rest)",
-            allowedText);
+        log::Info("holsters: the game's own draws are still let through from: {} (a caller not found is refused like the rest); "
+                  "the trigger's ({}) refused without a buzz",
+            allowedText, gFireWeapon != nullptr ? "SFXGameModeBase.FireWeapon found" : "SFXGameModeBase.FireWeapon NOT FOUND: buzzes");
     }
     return gStarted;
 #else
