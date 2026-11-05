@@ -332,6 +332,13 @@ struct SquadOrders {
     double minHoldS = 0.08;
     double maxHoldS = 8.0;
     double minConfidence = 0.6;  // `mevr say`: a parse below this isn't given
+    // Standing orders (research/54): kept per squadmate and re-asserted through the game's orders until a condition ends them.
+    bool standing = true;
+    double reassertS = 4.0;      // a drifted hold or a dropped target is re-ordered this often at most
+    double holdRadiusM = 4.0;    // this far from the held point is drifted
+    double calmS = 8.0;          // a hold ends this long after the last hostile near it and the last combat
+    double retreatHealth = 0.3;  // below this a squadmate gives up a standing order and falls back...
+    int overwhelmCount = 3;      // ...or with this many hostiles within 8 m
 };
 SquadOrders GetSquadOrders();
 // [Vent] (appended to an older file that lacks it; research/45, game/vent): the physical vent of a hot gun, a

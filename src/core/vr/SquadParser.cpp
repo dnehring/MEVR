@@ -13,7 +13,7 @@ namespace {
 
 enum class Tag : std::uint8_t {
     None, Stop, Name, All, Order, Power, Weapon, Deictic, Place, Sector, Flag, Elevation, Surface, Type, Generic, Aim, Gaze, Other,
-    LastTarget, Conj, No, Cancel, Repeat, Equip
+    LastTarget, Conj, No, Cancel, Repeat, Equip, Until, Stay, NoRetreat, ComeBack
 };
 
 struct Token {
@@ -65,6 +65,23 @@ std::vector<Phrase> const& Vocabulary() {
         Add(p, {"belay that", "belay", "cancel", "cancel that", "never mind", "nevermind", "forget it", "as you were", "disregard", "stand down"},
             Tag::Cancel);
         Add(p, {"no", "no no", "not that", "wait no", "nope"}, Tag::No);
+        Add(p, {"until it's clear", "until its clear", "until it's over", "until the fighting stops", "until it's quiet", "until it's safe",
+                   "until it quiets down", "till it's clear", "until clear", "until it calms down", "until the area is clear", "while it's hot"},
+            Tag::Until, 1);
+        Add(p, {"until they're dead", "until they are dead", "until they're all dead", "until they're gone", "until that group is dead",
+                   "until they're down", "till they're dead", "until they are gone", "until it's dead", "until he's dead"},
+            Tag::Until, 2);
+        Add(p, {"until i say otherwise", "until i say so", "until i tell you", "until further notice", "until i call you back",
+                   "until i say", "till i say so"},
+            Tag::Until, 3);
+        Add(p, {"and stay there", "stay there", "and stay put", "stay put there", "don't come back", "and stay", "and hold there"},
+            Tag::Stay);
+        Add(p, {"no matter what", "whatever happens", "don't retreat", "don't fall back", "hold at all costs", "at all costs", "do not retreat",
+                   "don't give it up", "never retreat"},
+            Tag::NoRetreat);
+        Add(p, {"and then come back", "then come back", "then regroup", "and come back", "then fall back", "then come back to me",
+                   "then back to me", "and then regroup", "come back when it's done", "then on me", "and then fall back", "then return"},
+            Tag::ComeBack);
         Add(p, {"and then", "and", "then"}, Tag::Conj);
         Add(p, {"attack", "take out", "take down", "kill", "shoot", "fire on", "fire at", "open fire", "engage", "focus on", "focus", "hit", "light up",
                    "waste", "deal with", "get rid of", "take care of", "drop", "neutralize", "neutralise", "eliminate", "destroy", "go after", "go for"},
@@ -75,8 +92,9 @@ std::vector<Phrase> const& Vocabulary() {
         Add(p, {"follow", "follow me", "on me", "with me", "regroup", "fall back", "come back", "come here", "come on", "get back", "rally", "to me",
                    "back to me", "stay close", "stick with me", "come to me", "get over here", "over here"},
             Tag::Order, static_cast<int>(sc::Order::Follow));
-        Add(p, {"hold", "hold position", "hold here", "hold there", "hold up", "stay", "stay here", "stay there", "stay put", "stop", "wait",
-                   "wait here", "don't move", "freeze"},
+        // Not "hold there" / "stay there": "there" stays a place, so they hold at the pointed spot.
+        Add(p, {"hold", "hold position", "hold here", "hold up", "stay", "stay here", "stay put", "stop", "wait", "wait here", "don't move",
+                   "freeze"},
             Tag::Order, static_cast<int>(sc::Order::Hold));
         Add(p, {"use", "cast", "give him", "give them", "give it", "throw him", "hit him with", "hit them with", "hit it with"}, Tag::Order,
             static_cast<int>(sc::Order::Use));
@@ -136,9 +154,11 @@ bool SameSurface(std::string_view a, std::string_view b) {
     return false;
 }
 
+// Short words match exactly: "there" is one letter from "these", "hold" from "hole"; the fuzz is for the long ones a recognizer
+// mangles ("singularity", "overload", "destroyer").
 bool WordMatches(std::string_view said, std::string_view want, float threshold) {
     if (said == want) return true;
-    if (want.size() < 4 || said.size() < 3) return false;
+    if (want.size() < 6 || said.size() < 4) return false;
     return Similarity(said, want) >= threshold;
 }
 
@@ -406,6 +426,12 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
             case Tag::Other: explicitTarget = sc::Target::Other; break;
             case Tag::LastTarget: explicitTarget = sc::Target::Last; break;
             case Tag::Cancel: cancel = true; break;
+            case Tag::Until:
+                clause.standing.until = t.value == 1 ? StandingHint::Until::Calm : t.value == 2 ? StandingHint::Until::GroupGone : StandingHint::Until::Relieved;
+                break;
+            case Tag::Stay: clause.standing.stay = true; break;
+            case Tag::NoRetreat: clause.standing.noRetreat = true; break;
+            case Tag::ComeBack: clause.standing.comeBack = true; break;
             case Tag::Repeat: repeat = true; break;
             case Tag::No: confidence *= 0.9f; break;
             case Tag::Generic:
@@ -441,6 +467,8 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
             act.order = sc::Order::Use;
         } else if (act.weapon >= 0 || equip) {
             act.order = sc::Order::None;  // an equip
+        } else if (clause.standing.stay && deictic < 0 && !explicitTarget) {
+            act.order = sc::Order::Hold;  // "stay there" alone: hold where they are
         } else if (deictic > 0 && deicticPlace) {
             act.order = sc::Order::Move;
         } else if (deictic > 0 || explicitTarget || sector || elevation || !flags.empty() || !surfaces.empty() || !types.empty()) {

@@ -3,6 +3,7 @@
 
 #include "core/vr/SquadContext.hpp"
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -32,8 +33,18 @@ struct DeicticWord {
     bool place = false;    // "there", "over there": a place, not a thing
 };
 
+// What the words said about keeping the order (research/54 "Standing orders"): "until it's clear" / "until they're dead" /
+// "until I say so", "and stay there" (no coming back), "no matter what" (no retreat), "then come back" (the default, said).
+struct StandingHint {
+    enum class Until : std::uint8_t { Default, Calm, GroupGone, Relieved } until = Until::Default;
+    bool stay = false;
+    bool noRetreat = false;
+    bool comeBack = false;
+};
+
 struct Clause {
     squad_context::Action action;
+    StandingHint standing;
     float confidence = 0.0f;
     std::string unresolved;  // what the rules couldn't settle (empty when nothing)
     std::string words;       // the clause's words

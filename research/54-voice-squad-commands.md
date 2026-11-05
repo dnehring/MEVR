@@ -358,3 +358,50 @@ each clause's deictics are resolved from the pose history 0.5 s ago (typed words
 traces the left hand's ray for the point, each action is validated and dispatched like the gesture's, and a parse below
 `[SquadOrders] minConfidence` (0.6) is refused with the unresolved words (where a model would take over). The typed stand-in
 for the recognizer: `tools/console.ps1 "mevr say Garrus, take out those troops on the bridge"`. Not yet run in the game.
+
+## Standing orders: memory above the game's one-shot orders (2026-11-04, later)
+
+The user, before any in-game check: "how we'd handle more complex grammar and memory, like 'hold the bridge': they would hold
+at the position, but when the fighting stops they'd likely return to Shepard, or if they're getting overwhelmed they'd try to
+retreat; more advanced squad AI." And: what did the research say about this kind of behaviour?
+
+**What the research covered, and what it didn't.** The precedents all put a code layer between the language and the game.
+PUBG Ally (Krafton, 2026) runs a behaviour tree for everything fast (movement, aiming, immediate combat) and gives the 2B model
+only the reasoning; F.A.C.U.L. (Tencent) ranks targets in code from the player's position, facing and cover and hands the
+model a classification; ME3's Kinect orders were one-shot with the target latched when spoken. ReALM and KnowNo gave the
+dialogue-state rule (keep the state in code, show the model a summary, act on a confident best guess and keep corrections cheap).
+None of the sources describes standing orders with conditions, a retreat rule or how a game's own squad AI fights such a layer;
+the engine side found LE1's primitives (`QuickCommand*`, the per-member records in `BioBaseSquad`, the AI controller's own job
+queue, `m_fPowerUsePercent`) and nothing like "hold until clear". So this design is the precedents' split (intents in code, the
+model only names them) applied to LE1's primitives, not a measured result: the thresholds below are starting values, and
+whether LE1's henchman AI accepts being re-ordered every few seconds, or fights it (its own follow formation, cover search
+`m_fMoveToCoverSearch*`, the 1.5 s move delay), is the first thing to measure **[verify]**.
+
+**The engine**, [src/core/vr/SquadStanding.hpp](../src/core/vr/SquadStanding.hpp) (pure, unit-tested, `TestSquadStanding`): one
+`Standing` per squadmate holds an `Intent` (HoldAt a point or AttackGroup; until Calm / GroupGone / Seconds / Relieved; `returnAfter`;
+`mayRetreat`) and advances on an `Observation` each tick (alive, health, position, hostiles near the point and near the squadmate,
+the group alive, the player's combat state), answering with an `Issue` for the game: MoveTo when a held squadmate drifts past
+`holdRadiusM` 4 (at most every `reassertS` 4), Attack again every `reassertS` while the group lives, Follow when the order ends by
+itself with `returnAfter` ("then come back", the default; "and stay there" turns it off), and Follow at once when hurt
+(`retreatHealth` 0.3) or overwhelmed (`overwhelmCount` 3 hostiles within 8 m) unless "no matter what". Calm means no living
+hostile within `calmRadiusM` 25 of the point and no combat for `calmS` 8; a standing older than `maxAgeS` 180 is stale. `[SquadOrders]
+standing = 0` makes every order one-shot, as the game's own.
+
+**The grammar** (`core/vr/SquadParser`, `StandingHint` per clause): "until it's clear" / "until the fighting stops" (Calm), "until
+they're dead" / "until they're gone" (GroupGone), "until I say so" (Relieved), "and stay there" (stay), "no matter what" / "at all
+costs" (no retreat), "then come back" / "then regroup" (come back, said). "Hold the bridge" takes the place from the enemies'
+surface word (the game has no place objects: the group on the bridge gives the point), "hold there" from the pointed place,
+"hold here" the squadmate's own position. Short words now match exactly ("there" is one letter from "these"); the fuzz is for words
+of six letters or more.
+
+**The dispatcher** (`game/SquadOrders`): a hold moves them there (`QuickCommandMoveTo`, no longer a follow) and keeps a HoldAt
+standing; "move ... and stay / until ..." keeps one too; an attack keeps an AttackGroup standing until the group is gone; follow and
+regroup drop the recipient's standing; "belay that" drops them all (the game's own order can't be undone). Each tick the standings
+are observed from the squad context's scene (the squadmate's health as the squad menu read it, the hostiles' places) and each
+Issue becomes the game call, logged as `squad orders: <who>'s standing <kind> order: <issue> (<why>) -> <return>` and `... ends
+(<why>)`; snapshot `"mod"."squadOrders"."standings"`.
+
+**Still open:** a real hold order (LE1's `SetSquadFollowFormation` with a hold formation, or the Tactics HUD's Hold) would beat
+re-asserting a move; retreat as a move to cover between the squadmate and Shepard rather than a follow; "overwhelmed" from the
+squad AI's own perception (`m_aPerceivedSquads`) rather than our distance count; and whether a re-issued `QuickCommandMoveTo`
+interrupts the AI's current job or queues behind it **[verify]**.
