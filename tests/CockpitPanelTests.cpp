@@ -107,6 +107,72 @@ void TestButton() {
     CHECK(!out.pressed && out.pressHand == -1);
 }
 
+cp::Output Refused(cp::Panel& panel, cp::Settings const& s, float y, cp::Refusal refusal, double dt = 0.05) {
+    cp::Input in = Base();
+    in.deltaSeconds = dt;
+    in.hands[1].tip = {0.0f, y, 0.0f};
+    in.refusal = refusal;
+    return panel.Step(in, s);
+}
+
+// The repair can't run (the user, 2026-11-05): no omni-gel, solid red; cooling down, a red flash every 1.2 s; neither fills
+// the squares or runs the repair; a repair that ran in this press isn't refused by its own cooldown.
+void TestRefusal() {
+    cp::Settings s;
+    cp::Panel panel;
+    // in front, not pressed: nothing shows whatever the game says
+    cp::Output out = Refused(panel, s, 0.02f, cp::Refusal::NoGel);
+    CHECK(out.refused == cp::Refusal::None && !out.refusedLit);
+    // pressed with no gel: solid red, no progress, no repair however long it's held
+    out = Refused(panel, s, -0.0028f, cp::Refusal::NoGel);
+    CHECK(out.pressed && out.refused == cp::Refusal::NoGel && out.refusedLit);
+    bool fired = false;
+    bool alwaysLit = true;
+    for (int i = 0; i < 80; ++i) {
+        out = Refused(panel, s, -0.0028f, cp::Refusal::NoGel);
+        fired = fired || out.repair;
+        alwaysLit = alwaysLit && out.refusedLit && out.progress == 0.0f;
+    }
+    CHECK(!fired && alwaysLit);
+    // let go: nothing shows
+    out = Refused(panel, s, 0.01f, cp::Refusal::NoGel);
+    CHECK(!out.pressed && out.refused == cp::Refusal::None && !out.refusedLit);
+    // pressed while cooling down: lit for the first 0.6 s of every 1.2
+    panel.Reset();
+    Refused(panel, s, 0.02f, cp::Refusal::Cooling);
+    out = Refused(panel, s, -0.0028f, cp::Refusal::Cooling);
+    CHECK(out.refused == cp::Refusal::Cooling && out.refusedLit);
+    int lit = 0;
+    int dark = 0;
+    bool litAt[48]{};
+    for (int i = 0; i < 48; ++i) {  // 2.4 s
+        out = Refused(panel, s, -0.0028f, cp::Refusal::Cooling);
+        litAt[i] = out.refusedLit;
+        (out.refusedLit ? lit : dark) += 1;
+        fired = fired || out.repair;
+    }
+    CHECK(!fired && lit > 20 && dark > 20);
+    CHECK(litAt[5] && !litAt[13] && litAt[25] && !litAt[37]);  // 0.30 s lit, 0.70 dark, 1.30 lit, 1.90 dark
+    // the cooldown ends during the hold: the progress starts from empty and the repair runs after the full hold
+    int fires = 0;
+    for (int i = 0; i < 39; ++i) {
+        out = Refused(panel, s, -0.0028f, cp::Refusal::None);
+        fires += out.repair ? 1 : 0;
+    }
+    CHECK(fires == 0 && out.refused == cp::Refusal::None && out.progress > 0.9f);
+    out = Refused(panel, s, -0.0028f, cp::Refusal::None);
+    CHECK(out.repair);
+    // the repair's own cooldown (and the gel it spent) don't turn the full squares red while the finger stays
+    out = Refused(panel, s, -0.0028f, cp::Refusal::Cooling);
+    CHECK(out.refused == cp::Refusal::None && !out.repair && out.progress == 1.0f);
+    out = Refused(panel, s, -0.0028f, cp::Refusal::NoGel);
+    CHECK(out.refused == cp::Refusal::None);
+    // pressed again later: refused again
+    Refused(panel, s, 0.02f, cp::Refusal::Cooling);
+    out = Refused(panel, s, -0.0028f, cp::Refusal::Cooling);
+    CHECK(out.refused == cp::Refusal::Cooling && out.refusedLit);
+}
+
 cp::Output Grip(cp::Panel& panel, cp::Settings const& s, cp::Hand const& hand, double dt = 0.05) {
     cp::Input in = Base();
     in.deltaSeconds = dt;
@@ -221,6 +287,7 @@ void TestGunnerWhileBusy() {
 
 int RunCockpitPanelTests() {
     TestButton();
+    TestRefusal();
     TestLever();
     TestLamps();
     TestGunnerWhileBusy();

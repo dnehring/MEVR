@@ -1052,9 +1052,21 @@ ready, `hull_assemble.py` places them and builds their mounts, the package carri
   - **RepairVehicle is a power that spends omni-gel**: `IsCombatEnabled`, then the behaviour's
     `SetCurrentPower('VehicleRepair', cooldown)`, then `AcquireActive(BioActivePower)`. With no omni-gel (a fresh UNC20),
     at full hull or at half: nothing, and nothing shows it. With 500 (`InitSalvage 500`): 1000 to 1500 within 3 s; again
-    at once: nothing (the power's cooldown); after another 500: 1500 to 1630. So the button fills its squares for 2 s
-    and then may do nothing; `SetCurrentPower`'s out `fCooldownRemaining` and the gel count are readable for a refusal
-    the lamps could show [open].
+    at once: nothing (the power's cooldown); after another 500: 1500 to 1630. So the button filled its squares for 2 s
+    and then could do nothing.
+  - **The button says when the repair can't run** (the user, 2026-11-05: "If the user presses it and we don't have Omni
+    gel it should show solid red. If cooling down it should flash red every 1.2 seconds"; built, not yet seen in the
+    game). While a fingertip pushes the cap, game/CockpitPanel asks the vehicle behaviour's `VehicleRepair` power (found
+    in its `m_powers` by `m_nmPower`, the power RepairVehicle sets current): its native `IsRequiredResourceAvailable()`
+    (the omni-gel it costs, from whichever inventory the power itself reads) and its `m_fCooldownRemaining` (as the
+    power wheel reads its powers'). Pressed with no omni-gel, the plate's eight squares are solid red; while it cools
+    down, all eight flash red, lit the first 0.6 s of every 1.2 (`refusalFlashS`); no gel wins over a cooldown. Neither
+    fills the squares or calls RepairVehicle; a cooldown that ends under the finger starts the 2 s hold from empty; the
+    repair's own cooldown and the gel it spent don't turn the full squares red while the finger stays (rules in
+    `core/vr/CockpitPanel`, unit-tested). A power that can't be found refuses nothing (the press goes ahead as before).
+    `mevr cockpit panel ask` says what a press would show now; log `cockpit panel: the repair can't run: ...`; status
+    `refused`, `repairPower`. [verify] in the game: that `IsRequiredResourceAvailable` answers false with no gel (a fresh
+    UNC20) and true after `InitSalvage 500`, and that `m_fCooldownRemaining` counts down after a repair.
   - **LeaveWorld raises the game's own "Return to Normandy?" box** (OK, Cancel; `Pawn.TriggerGlobalEventClass(
     BioSeqEvt_VehicleLeaveWorld)`, game mode 7). The world UI stands it 0.95 m ahead and 0.5 m down, and the cockpit
     vanishes while it is up: mode 7 counts as out of the Mako for game/Mako ("mako: left", out of the seat), so the eyes
