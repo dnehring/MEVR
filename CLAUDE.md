@@ -697,8 +697,10 @@ switching frameworks.
   keep, 35 m, 0.35 s of blocked sight; nothing pointed at: the automatic resolver, the best within 30 degrees of the hand or 20 of the
   gaze, `autoLock`) is locked (`UpdateLock`) and marked by the host's `powerlock` quad (brackets facing the eyes); an open
   left hand pushed along its ray (1.6 m/s over 0.10 m, `StepPush`) casts the mapped power with `BioPlayerInput.ActivatePower(nmPower,
-  oTarget, vTargetLocation)` at it (a place power with none: where `Actor.Trace` along the ray lands; no aim: at once). Console
-  `mevr powerwheel push|aimhead on|lock`. While on, X never throws a grenade on foot (the pad's `grenadeButton` off); while open the left stick, L3, X, the
+  oTarget, vTargetLocation)` at it (a place power with none: where `Actor.Trace` along the ray lands; no aim: at once); measured
+  2026-11-05: the running `BioActivePower` keeps that target and point through the release. Console `mevr powerwheel
+  push|aimhead on|lock`; powers on a save without them: `GiveBonusTalent 49` then `ScaleTalentByIncrement 49 1` (Throw; 57
+  Singularity: the cheat takes the 2DA's BonusID, research/55 section 7). While on, X never throws a grenade on foot (the pad's `grenadeButton` off); while open the left stick, L3, X, the
   left trigger and grip are its own (`gamepad::kFlagPowerWheel`, `Latches::powerHeld` until released) and the squad's trigger stands down
   (`power_wheel::OwnsLeftHand`). The look is the user's concept in the game's own UI language (research/55 section 5: colours and
   edge-lit fills sampled from `GUI_SF_HUD`/`GUI_SF_InGameGui`, our N7 mark, Rajdhani); a two-level bloom (`plugin/Glow`, its own device

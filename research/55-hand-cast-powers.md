@@ -220,8 +220,32 @@ left hand aims and casts. Code: `core/vr/PowerWheel` (`UpdateLock`, `StepPush`, 
   blue, with a ring whose orange part grows as the cooldown runs; the equipped power's icon in a cut-corner box at the lower
   right; a cast flashes a growing ring. Offline: `mevr-power-wheel-preview`'s `lock-*.png`.
 - **Console** (no tracked controllers needed): `mevr powerwheel push` (a push on the next tick), `aimhead on|off` (the head's
-  ray stands in for the left hand's), `lock` (why it is or isn't ready, the target, every hostile measured, the last cast).
-  Snapshot `"mod"."powerWheel"."lock"`, a `powerlock` layer.
-- **Not yet checked in the game** [verify]: section 4's questions 1-4 (does the target set by `ActivatePower` hold through the
-  release; what a cast with the weapon away does; where the projectile leaves from; the casting animation with arm IK), the
-  push's thresholds in the headset, the marker's size at 5-35 m.
+  ray stands in for the left hand's), `lock` (why it is or isn't ready, the target, the last scan's counts: pawns walked, awake,
+  near the ray or gaze and in range, hostile; the ray and the gaze in the world; every awake pawn in range; the candidates and
+  their line of sight; the last cast). Snapshot `"mod"."powerWheel"."lock"`, a `powerlock` layer.
+
+### In the game (2026-11-05, the fake headset, VR00's Soldier save on UNC20)
+
+- **Giving a Soldier the powers for a test:** `GiveBonusTalent` takes the `BonusID` column of
+  `BIOG_2DA_Talents_X.Talent_BonusTalents`, not the row: `GiveBonusTalent 49` adds talent 247 (Throw's setup, rank 1) and
+  talent 49 (Throw, rank 0, so its power's `m_nEnabled` stays 0); `ScaleTalentByIncrement 49 1` then gives Throw rank 1
+  (`m_nEnabled` 1, the power enabled). Singularity: `GiveBonusTalent 57`, `ScaleTalentByIncrement 57 1`. Never save after.
+- **Finding hostiles without a fight in the save:** UNC20's mercenaries (`BIOA_UNC20_00_DSG` BioPawn_1-5, about 900 m from the
+  landing) are dormant: hidden, no collision, and hidden again by the game a while after `mevr gunner wake <n>`. Woken, with
+  Shepard moved next to them (`god`, `ghost`, `set SFXPawn_Player Location (...)`; without ghost he fell through the
+  terrain), `lock` counted 6 awake, 2 hostile in the cones, both "in sight" once the eyes were above the terrain.
+- **The lock and the marker work:** nothing within 9 degrees, the automatic resolver took BioPawn_3 at 18.4 m, 18.3 degrees off
+  the gaze ("resolved automatically"); the host's `powerlock` quad drew the orange brackets on it with the Throw icon, then
+  blue brackets with the cooldown ring growing after the cast (snapshots).
+- **The cast lands on the lock (section 4's question 1: yes):** the push's `ActivatePower` returned true for Throw and for
+  Singularity (each one's cooldown started; the game's purple biotic screen flash showed). The player's `BioActivePower`
+  afterwards: `m_oTargetToAimAt` = BioPawn_3, `m_vLocationToAimAt` = (64868.41, -39562.45, -26702.12), exactly the chest point
+  the mod sent, `m_bAnimationReadyForPowerRelease` true, `m_ePowerState` 4: the target set through `ActivatePower` held
+  through the release. `m_vCastingStartLocation` is the caster's location (question 3: the power leaves from the pawn, not
+  the hand). The woken mercenary didn't visibly react (no throw, no vortex in snapshots 0.5-3.8 s after): a dormant pawn's
+  stasis or the release coming later than 3.8 s [verify on an awake encounter].
+- **The marker shows "ready" between the push and the release** (the cooldown starts at the release): a cast in progress
+  could dim it too [open].
+- **Still to check** [verify]: an awake encounter (the power's effect on the target), a cast with the weapon away
+  (question 2), the casting animation with arm IK (question 4), the push's thresholds with tracked hands in the headset, the
+  marker's size at 5-35 m in the headset.
