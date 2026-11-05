@@ -200,10 +200,137 @@ void TestPad() {
 
 }  // namespace
 
+// The lock (research/55 section 4): taken within acquireDeg, the nearest angle winning, kept to keepDeg, held through a
+// short block of the line of sight, let go after graceS of it.
+void TestLock() {
+    pw::LockSettings const s;  // acquire 9, keep 16, range 35 m, grace 0.35 s
+    pw::LockState state;
+    using C = pw::LockCandidate;
+    // Nothing near the ray: none.
+    CHECK(pw::UpdateLock(state, {C{1, 12.0f, 10.0f, true}}, 0.0, s) == 0);
+    // Within acquireDeg: the smaller angle wins; out of sight or out of range: never taken.
+    CHECK(pw::UpdateLock(state, {C{1, 8.0f, 10.0f, true}, C{2, 3.0f, 20.0f, true}, C{3, 1.0f, 5.0f, false}, C{4, 0.5f, 40.0f, true}}, 0.1,
+              s) == 2);
+    CHECK(state.target == 2 && state.since == 0.1);
+    // Kept while it drifts past acquireDeg (to 14) even with another nearer the ray, and its time kept.
+    CHECK(pw::UpdateLock(state, {C{1, 2.0f, 10.0f, true}, C{2, 14.0f, 20.0f, true}}, 0.2, s) == 2 && state.since == 0.1);
+    // Past keepDeg: the best other.
+    CHECK(pw::UpdateLock(state, {C{1, 2.0f, 10.0f, true}, C{2, 17.0f, 20.0f, true}}, 0.3, s) == 1 && state.since == 0.3);
+    // A near tie: the nearer one (0.05 degree per metre).
+    pw::LockState tie;
+    CHECK(pw::UpdateLock(tie, {C{7, 4.0f, 30.0f, true}, C{8, 4.5f, 5.0f, true}}, 0.0, s) == 8);
+    // Blocked for less than the grace: kept; longer: let go (and nothing else to take).
+    pw::LockState blocked;
+    CHECK(pw::UpdateLock(blocked, {C{5, 2.0f, 10.0f, true}}, 1.0, s) == 5);
+    CHECK(pw::UpdateLock(blocked, {C{5, 2.0f, 10.0f, false}}, 1.1, s) == 5);
+    CHECK(pw::UpdateLock(blocked, {C{5, 2.0f, 10.0f, false}}, 1.4, s) == 5);
+    CHECK(pw::UpdateLock(blocked, {C{5, 2.0f, 10.0f, false}}, 1.5, s) == 0);
+    // Seen again: taken again, and a fresh block starts its own grace.
+    CHECK(pw::UpdateLock(blocked, {C{5, 2.0f, 10.0f, true}}, 1.6, s) == 5);
+    CHECK(pw::UpdateLock(blocked, {C{5, 2.0f, 10.0f, false}}, 1.7, s) == 5 && blocked.blockedSince == 1.7);
+    CHECK(pw::UpdateLock(blocked, {C{5, 2.0f, 10.0f, true}}, 1.8, s) == 5 && blocked.blockedSince < 0.0);
+    // Gone from the list (dead, out of the scan): let go.
+    CHECK(pw::UpdateLock(blocked, {}, 1.9, s) == 0 && blocked.target == 0);
+}
+
+// The push: the hand along its own ray, fast and far enough over the last 0.12 s; once, until it slows; the cooldown.
+void TestPush() {
+    pw::LockSettings const s;  // 1.6 m/s over 0.10 m, cooldown 0.6 s
+    XrVector3f const forward{0.0f, 0.0f, -1.0f};
+    double const dt = 1.0 / 90.0;
+    // A slow reach (0.5 m/s): never.
+    {
+        pw::Push p;
+        bool fired = false;
+        for (int i = 0; i < 90; ++i) {
+            fired = pw::StepPush(p, i * dt, {0.0f, 0.0f, -0.5f * static_cast<float>(i * dt)}, forward, s) || fired;
+        }
+        CHECK(!fired);
+    }
+    // A push at 2.5 m/s: fires once (about 0.04 s in, at 0.10 m of travel), not again while it keeps going.
+    {
+        pw::Push p;
+        int fires = 0;
+        int firstAt = -1;
+        for (int i = 0; i < 20; ++i) {
+            if (pw::StepPush(p, i * dt, {0.0f, 0.0f, -2.5f * static_cast<float>(i * dt)}, forward, s)) {
+                ++fires;
+                firstAt = firstAt < 0 ? i : firstAt;
+            }
+        }
+        CHECK(fires == 1);
+        CHECK(firstAt >= 3 && firstAt <= 6);
+        // The hand stops (re-arms), then pushes again before the cooldown: nothing; after it: fires.
+        float z = -2.5f * static_cast<float>(19 * dt);
+        int i = 20;
+        for (; i < 40; ++i) {
+            CHECK(!pw::StepPush(p, i * dt, {0.0f, 0.0f, z}, forward, s));
+        }
+        CHECK(p.armed);
+        double const start = i * dt;
+        CHECK(start - p.lastFire < s.cooldownS);
+        bool early = false;
+        for (int k = 0; k < 12; ++k, ++i) {
+            z -= 2.5f * static_cast<float>(dt);
+            early = early || (i * dt - p.lastFire < s.cooldownS && pw::StepPush(p, i * dt, {0.0f, 0.0f, z}, forward, s));
+        }
+        CHECK(!early);
+        // Wait out the cooldown, still, then push.
+        for (; i * dt - p.lastFire < s.cooldownS + 0.1; ++i) {
+            pw::StepPush(p, i * dt, {0.0f, 0.0f, z}, forward, s);
+        }
+        bool again = false;
+        for (int k = 0; k < 20; ++k, ++i) {
+            z -= 2.5f * static_cast<float>(dt);
+            again = pw::StepPush(p, i * dt, {0.0f, 0.0f, z}, forward, s) || again;
+        }
+        CHECK(again);
+    }
+    // Fast but sideways, or pulled back toward the body: never.
+    {
+        pw::Push side;
+        pw::Push back;
+        bool fired = false;
+        for (int i = 0; i < 30; ++i) {
+            float const d = 2.5f * static_cast<float>(i * dt);
+            fired = pw::StepPush(side, i * dt, {d, 0.0f, 0.0f}, forward, s) || fired;
+            fired = pw::StepPush(back, i * dt, {0.0f, 0.0f, d}, forward, s) || fired;
+        }
+        CHECK(!fired);
+    }
+    // The ray tilted down 45 degrees: a push along it counts.
+    {
+        pw::Push p;
+        XrVector3f const down{0.0f, -0.70710678f, -0.70710678f};
+        bool fired = false;
+        for (int i = 0; i < 20; ++i) {
+            float const d = 2.5f * static_cast<float>(i * dt);
+            fired = pw::StepPush(p, i * dt, {0.0f, -d * 0.70710678f, -d * 0.70710678f}, down, s) || fired;
+        }
+        CHECK(fired);
+    }
+}
+
+// The lock view's latest copy, as the host reads it: what was sent, inactive once an inactive one is.
+void TestLockView() {
+    pw::LockView v;
+    v.active = 1;
+    v.icon = 4;
+    v.target = {1.0f, 1.5f, -8.0f};
+    pw::PublishLock(v);
+    pw::LockView const got = pw::LatestLock();
+    CHECK(got.active == 1 && got.icon == 4 && Close(got.target.z, -8.0f) && got.size == sizeof(pw::LockView));
+    pw::PublishLock(pw::LockView{});
+    CHECK(pw::LatestLock().active == 0);
+}
+
 int RunPowerWheelTests() {
     TestMachine();
     TestPlacement();
     TestTableAndView();
     TestPad();
+    TestLock();
+    TestPush();
+    TestLockView();
     return gFailures;
 }

@@ -532,6 +532,69 @@ void DrawHint(ImDrawList* dl, Fonts const& fonts, HintView const& view) {
     }
 }
 
+void DrawLock(ImDrawList* dl, LockDrawView const& view) {
+    float const size = static_cast<float>(kLockCanvas);
+    ImVec2 const c{size * 0.5f, size * 0.5f};
+    Theme const theme = view.ready ? Orange() : Blue();
+    float const alpha = view.ready ? 1.0f : 0.70f;
+    float const closed = size * kLockBox * 0.5f;  // the brackets' half box, closed
+    if (view.onActor) {
+        // The brackets close in from half again as wide over 0.18 s.
+        float const half = closed * (1.0f + 0.5f * (1.0f - Ease(view.lockedFor / 0.18f)));
+        float const arm = closed * 0.42f;
+        for (int sx = -1; sx <= 1; sx += 2) {
+            for (int sy = -1; sy <= 1; sy += 2) {
+                float const fx = static_cast<float>(sx);
+                float const fy = static_cast<float>(sy);
+                ImVec2 const corner{c.x + fx * half, c.y + fy * half};
+                std::array<ImVec2, 3> const points{ImVec2{corner.x, corner.y - fy * arm}, corner, ImVec2{corner.x - fx * arm, corner.y}};
+                dl->AddPolyline(points.data(), 3, WithAlpha(theme.border, alpha), 0, 6.0f);
+                dl->AddPolyline(points.data(), 3, WithAlpha(theme.borderCore, alpha), 0, 2.0f);
+            }
+        }
+        Node(dl, c, 9.0f, WithAlpha(theme.border, alpha));
+        Node(dl, c, 4.0f, WithAlpha(theme.borderCore, alpha));
+    } else {
+        // A place: a slowly turning dashed ring with a cross, smaller.
+        float const r = closed * 0.70f;
+        DashedCircle(dl, c, r, WithAlpha(theme.border, alpha), 4.0f, 30.0f, 15.0f, view.time * 40.0f);
+        float const cross = r * 0.35f;
+        dl->AddLine({c.x - cross, c.y}, {c.x + cross, c.y}, WithAlpha(theme.borderCore, alpha), 2.0f);
+        dl->AddLine({c.x, c.y - cross}, {c.x, c.y + cross}, WithAlpha(theme.borderCore, alpha), 2.0f);
+    }
+    // The cooldown ring just outside the box: the run part orange, the rest blue.
+    float const ringR = closed * 1.28f;
+    float const done = 1.0f - std::clamp(view.cooldown, 0.0f, 1.0f);
+    if (done < 1.0f) {
+        float const start = -kPi * 0.5f;
+        dl->PathArcTo(c, ringR, start, start + 2.0f * kPi, 64);
+        dl->PathStroke(WithAlpha(kLine, 0.35f), 0, 2.0f);
+        if (done > 0.0f) {
+            dl->PathArcTo(c, ringR, start, start + 2.0f * kPi * done, 64);
+            dl->PathStroke(WithAlpha(kChevron, 0.95f), 0, 4.0f);
+        }
+    }
+    // The equipped power's icon in a cut-corner box, below and right of the brackets.
+    if (view.icon != 0) {
+        float const s = size * 0.20f;
+        ImVec2 const o{c.x + closed * 1.15f, c.y + closed * 0.75f};
+        float const cut = s * 0.25f;
+        std::array<ImVec2, 5> const box{ImVec2{o.x, o.y}, ImVec2{o.x + s, o.y}, ImVec2{o.x + s, o.y + s - cut}, ImVec2{o.x + s - cut, o.y + s},
+            ImVec2{o.x, o.y + s}};
+        dl->AddConvexPolyFilled(box.data(), 5, WithAlpha(theme.fillCentre, alpha));
+        dl->AddPolyline(box.data(), 5, WithAlpha(theme.border, alpha), ImDrawFlags_Closed, 2.0f);
+        float const pad = s * 0.12f;
+        dl->AddImage(ImTextureRef(view.icon), {o.x + pad, o.y + pad}, {o.x + s - pad, o.y + s - pad}, {0.0f, 0.0f}, {1.0f, 1.0f},
+            WithAlpha(theme.label, alpha));
+    }
+    // A cast: a ring growing out of the brackets over 0.35 s.
+    if (view.sinceCast >= 0.0f && view.sinceCast < 0.35f) {
+        float const t = view.sinceCast / 0.35f;
+        float const r = closed * (0.6f + 0.9f * Ease(t));
+        dl->AddCircle(c, std::min(r, size * 0.5f - 4.0f), WithAlpha(kBeamCore, 1.0f - t), 64, 6.0f * (1.0f - t) + 1.0f);
+    }
+}
+
 // ---- Fonts -----------------------------------------------------------------------------------------------------------
 namespace {
 

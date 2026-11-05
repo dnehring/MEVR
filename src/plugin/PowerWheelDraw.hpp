@@ -69,4 +69,22 @@ struct HintView {
 };
 void DrawHint(ImDrawList* dl, Fonts const& fonts, HintView const& view);
 
+// The lock's marker (research/55 section 4), on a square canvas the host puts at the locked hostile, facing the eyes: four
+// corner brackets closing in as it locks, a diamond at its chest, the equipped power's icon in a cut-corner box below
+// and right, and a ring whose orange part grows as the power's cooldown runs out. Ready: orange (the game's chosen
+// colour); cooling down or blocked: the blue of the other tiles. Where a place power would land (no hostile): a dashed
+// ring with a cross. A cast flashes an expanding ring.
+inline constexpr unsigned kLockCanvas = 256;
+inline constexpr float kLockBox = 0.50f;  // the brackets' box, closed, as a part of the canvas (the quad's angular size is that box's)
+struct LockDrawView {
+    bool ready = true;
+    bool onActor = true;
+    float lockedFor = 1.0f;   // seconds since it locked
+    float cooldown = 0.0f;    // still to run, 0..1
+    float sinceCast = -1.0f;  // seconds since the last cast (negative: none to show)
+    float time = 0.0f;
+    ImTextureID icon = 0;
+};
+void DrawLock(ImDrawList* dl, LockDrawView const& view);
+
 }  // namespace mevr::host::power_wheel_draw

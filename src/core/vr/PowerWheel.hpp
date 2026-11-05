@@ -87,15 +87,20 @@ struct Settings {
     bool upperCase = false;    // the names in capitals (the concept's); 0: title case (the game's)
     int hintOpenings = 3;      // the hint card shows beside the wheel the first this many openings each session
     float haptic = 0.35f;      // 0..1: a tick on the left hand when the pick changes, a pulse when a power is equipped
+    bool omniTool = true;      // Shepard's forearm wears the game's omni-tool gauntlet while it's open (the user, 2026-11-04)
 };
 
 // The player's mappable powers by their 2DA label (BIOG_2DA_Talents_X.Powers_Powers, research/55 section 3): the name
 // the wheel shows, the discipline (0 biotic, 1 tech, 2 combat) and the icon (plugin/PowerIcons' Icon, the same order).
+// How the power aims (its 2DA AimType): none (it acts on the caster or the squad), an actor (selected target), or a
+// place (camera trace: where it lands, an actor there or not).
+enum class Aim : std::uint8_t { None, Target, Place };
 struct PowerInfo {
     char const* label;
     char const* name;
     std::uint8_t discipline;
     std::int32_t icon;
+    Aim aim;
 };
 // Null: not one of the player's mappable powers (melee, healing, NPC powers...).
 PowerInfo const* FindPower(char const* label);
@@ -170,5 +175,67 @@ struct Machine {
 };
 Event Step(Machine& machine, MachineInput const& input, std::vector<float> const& angles, Settings const& settings);
 char const* Name(Event event);
+
+// ---- The lock and the push (research/55 section 4) -------------------------------------------------------------------
+
+// [PowerWheel] lock* and push* keys: the equipped power aimed with the left hand, cast with a push of it.
+struct LockSettings {
+    bool on = true;             // the lock and the push (0: the right stick click's tap only, the game's own aim)
+    float acquireDeg = 9.0f;    // a hostile within this of the left hand's ray is locked...
+    float keepDeg = 16.0f;      // ...and kept until it leaves this
+    float rangeM = 35.0f;
+    float graceS = 0.35f;       // the line of sight may be blocked this long before the lock lets go
+    float reachM = 0.20f;       // the hand this far ahead of the eyes (the arm raised) before anything is locked
+    float pushSpeedMS = 1.6f;   // the left hand's speed along its ray that casts...
+    float pushTravelM = 0.10f;  // ...over at least this travel
+    float cooldownS = 0.6f;     // between pushes
+};
+
+// A hostile as the lock sees it this tick.
+struct LockCandidate {
+    std::uint64_t id = 0;
+    float angleDeg = 180.0f;  // from the hand's ray
+    float distanceM = 0.0f;
+    bool visible = false;     // nothing between the hand and it
+};
+struct LockState {
+    std::uint64_t target = 0;  // 0: none
+    double since = 0.0;        // when it locked
+    double blockedSince = -1.0;  // the line of sight blocked since (negative: clear)
+};
+// One step: the current target is kept while it's within keepDeg and range and its line of sight hasn't been blocked for
+// graceS; else the best visible hostile within acquireDeg and range is taken (the smallest angle, a nearer one winning a
+// near tie: 0.05 degree per metre). Returns the target (0: none).
+std::uint64_t UpdateLock(LockState& state, std::vector<LockCandidate> const& candidates, double time, LockSettings const& settings);
+
+// The push that casts: the left hand moved along its own ray at pushSpeedMS or more over the last 0.12 s, at least
+// pushTravelM of it. Once fired, it re-arms when the hand slows below 40% of that speed, and fires no sooner than
+// cooldownS after the last.
+struct Push {
+    double times[16] = {};
+    XrVector3f hands[16] = {};
+    int count = 0;
+    bool armed = true;
+    double lastFire = -1e9;
+};
+bool StepPush(Push& push, double time, XrVector3f hand, XrVector3f forward, LockSettings const& settings);
+
+// The lock's marker, as the mod sends it each tick (HostServices v29, setPowerLock); the host draws it at the target.
+struct LockView {
+    std::uint32_t size = sizeof(LockView);  // the mod's sizeof(LockView): the host draws only a matching one
+    std::uint8_t active = 0;      // draw it
+    std::uint8_t ready = 0;       // the power can be cast now (else cooling down or blocked: drawn dim)
+    std::uint8_t discipline = 0;
+    std::uint8_t casts = 0;       // + 1 at each cast (a flash)
+    std::uint8_t onActor = 1;     // on a locked hostile (else where a place power would land)
+    std::uint8_t padding[3] = {};
+    std::int32_t icon = 0;
+    XrVector3f target{};          // the locked hostile's chest, tracking space
+    float sizeDeg = 6.0f;         // its angular size
+    float lockedFor = 0.0f;       // seconds since it locked (the brackets close in)
+    float cooldown = 0.0f;        // the power's cooldown still to run, 0..1
+};
+void PublishLock(LockView const& view);
+LockView LatestLock(std::uint64_t maxAgeMs = 250);
 
 }  // namespace mevr::vr::power_wheel

@@ -126,6 +126,7 @@ below are in `Game\ME1\Binaries\Win64\ASI\LE1MEVR.ini`; most also have a row in 
 | A | Use what you look at (talk, open, pick up). Hold to sprint |
 | B | Melee, with a weapon drawn |
 | X | Hold: the power wheel opens around your left palm; move your hand (or the left stick) toward a power and let go to equip it. Tap: it stays open until you pinch the left trigger. On foot X no longer throws a grenade the game's way (`[PowerWheel] on = 0` gives it back) |
+| Left hand pushed forward | Raise your left arm and point at an enemy: brackets lock onto it. Push your open hand toward it to cast your equipped power there (placed powers like Singularity land where you point if nothing is locked) |
 | Y | Medi-gel |
 | Both stick clicks, held | Open or close the VR menu (or `\` on the keyboard) |
 | Both stick clicks, tapped | Save what each eye sees, for a bug report (`%LOCALAPPDATA%\MEVR\snapshots`) |

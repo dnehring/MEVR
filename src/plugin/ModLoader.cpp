@@ -291,9 +291,15 @@ void HostSetPowerWheel(vr::power_wheel::View const* view) {
     closed.open = 0;
     vr::power_wheel::Publish(view != nullptr ? *view : closed);
 }
+void HostSetPowerLock(vr::power_wheel::LockView const* view) {
+    vr::power_wheel::LockView none;
+    vr::power_wheel::PublishLock(view != nullptr ? *view : none);
+}
 HostServices WithPowerWheel(HostServices services) {
     services.powerWheelSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::View));
     services.setPowerWheel = &HostSetPowerWheel;
+    services.powerLockSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::LockView));  // v29
+    services.setPowerLock = &HostSetPowerLock;
     return services;
 }
 HostServices const gServices = WithPowerWheel(WithWorldUi(WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(WithHudPieces(WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithCrashBreadcrumbs({kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,

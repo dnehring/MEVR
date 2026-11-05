@@ -17,6 +17,8 @@
 #include <vector>
 
 namespace mevr::game::omni_tool {
+
+bool gRequested = false;  // Request since the last Tick
 namespace {
 
 #if defined(MEVR_GAME_LE1)
@@ -295,7 +297,13 @@ bool Show(float lifeS) {
 
 } // namespace
 
+void Request() {
+    gRequested = true;
+}
+
 void Tick(bool wanted) {
+    wanted = wanted || gRequested;  // the power wheel's request (research/55)
+    gRequested = false;
 #if defined(MEVR_GAME_LE1)
     if (!ue3::runtime::Ready()) {
         return;

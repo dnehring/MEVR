@@ -314,6 +314,36 @@ int main(int argc, char** argv) {
         Save(out / "hint.png", draw::kHintWidth, draw::kHintHeight, OverBackdrop(picture));
     }
 
+    // The lock's marker (research/55 section 4): locked and ready, closing in, cooling down, a place, a cast's flash. Shown
+    // over the backdrop at 2x for a closer look.
+    {
+        unsigned const m = draw::kLockCanvas;
+        auto lock = [&](draw::LockDrawView const& v, std::string const& name) {
+            Picture const picture = Render(gpu, m, m, [&](ImDrawList* dl) { draw::DrawLock(dl, v); }, true);
+            Save(out / (name + ".png"), m, m, OverBackdrop(picture));
+        };
+        draw::LockDrawView v;
+        v.icon = IconId(gpu, I::Throw);
+        lock(v, "lock-ready");
+        draw::LockDrawView closing = v;
+        closing.lockedFor = 0.06f;
+        lock(closing, "lock-closing");
+        draw::LockDrawView cooling = v;
+        cooling.ready = false;
+        cooling.cooldown = 0.35f;
+        lock(cooling, "lock-cooling");
+        draw::LockDrawView place = v;
+        place.onActor = false;
+        place.icon = IconId(gpu, I::Singularity);
+        place.time = 0.4f;
+        lock(place, "lock-place");
+        draw::LockDrawView cast = v;
+        cast.sinceCast = 0.10f;
+        cast.ready = false;
+        cast.cooldown = 0.98f;
+        lock(cast, "lock-cast");
+    }
+
     // Every icon on a tile's glass.
     {
         int const count = static_cast<int>(I::Count);

@@ -1149,6 +1149,7 @@ void CheckFunctions() {
         "SFXGame.SFXPawn_Player.DrawPrimaryWeapon",  // holsters' onlyHolstersDraw (2026-10-25)
         "SFXGame.SFXGameModeDefault.UseFirstAid",         // ...whose draws still go through from these (2026-10-26)
         "SFXGame.SFXGameModeDefault.TryUseMappedPower",
+        "SFXGame.BioPlayerInput.ActivatePower",  // the power wheel's push (research/55 section 4)
         "SFXGame.SFXGameModeDefault.EnterPowerWheel",
         "SFXGame.SFXGameModeBase.FireWeapon",  // ...and the trigger's, refused without a buzz (2026-11-04)
         "SFXGame.SFXGameModeBase.StopFiringWeapon",  // `mevr vehicle fire mg` (2026-11-04)
@@ -1292,6 +1293,10 @@ void CheckParams() {
     PARAM(UBioPower_execIsEnabled_Parms, "SFXGame.BioPower.IsEnabled", ReturnValue);  // the power wheel (research/55)
     PARAM(UBioPlayerInput_execIsCombatEnabled_Parms, "SFXGame.BioPlayerInput.IsCombatEnabled", ReturnValue);
     PARAM(UBioPower_execIsRequiredWeaponEquipped_Parms, "SFXGame.BioPower.IsRequiredWeaponEquipped", ReturnValue);
+    PARAM(UBioPlayerInput_execActivatePower_Parms, "SFXGame.BioPlayerInput.ActivatePower", nmPower);  // the push
+    PARAM(UBioPlayerInput_execActivatePower_Parms, "SFXGame.BioPlayerInput.ActivatePower", oTarget);
+    PARAM(UBioPlayerInput_execActivatePower_Parms, "SFXGame.BioPlayerInput.ActivatePower", vTargetLocation);
+    PARAM(UBioPlayerInput_execActivatePower_Parms, "SFXGame.BioPlayerInput.ActivatePower", ReturnValue);
     PARAM(ABioTriggerStream_eventTouch_Parms, "SFXGame.BioTriggerStream.Touch", Other);  // mevr stream
     PARAM(ABioSPGame_execGetSimpleString_Parms, "SFXGame.BioSPGame.GetSimpleString", StrRef);  // the galaxy hologram
     PARAM(ABioSPGame_execGetSimpleString_Parms, "SFXGame.BioSPGame.GetSimpleString", ReturnValue);

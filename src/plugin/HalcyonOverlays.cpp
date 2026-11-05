@@ -2197,7 +2197,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         }
     }
 
-    // ---- The power wheel at the left hand (plugin/PowerWheel, research/55) and its hint card: on top of ours ----
+    // ---- The power wheel at the left hand (plugin/PowerWheel, research/55), its hint card, the lock's marker: on top of ours ----
     if (count < capacity) {
         mevr::host::power_wheel::Frame wheel;
         wheel.session = session;
@@ -2206,8 +2206,10 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         wheel.device = device.Get();
         wheel.worldFrame = frame.worldFrame;
         wheel.menuOpen = frame.menuOpen;
-        XrCompositionLayerQuad const* wheelLayers[2] = {};
-        int const n = mevr::host::power_wheel::Layers(wheel, wheelLayers, static_cast<int>(std::min<unsigned>(2u, capacity - count)));
+        wheel.head = ToVec(frame.headPosition);
+        wheel.headValid = frame.headValid;
+        XrCompositionLayerQuad const* wheelLayers[3] = {};
+        int const n = mevr::host::power_wheel::Layers(wheel, wheelLayers, static_cast<int>(std::min<unsigned>(3u, capacity - count)));
         for (int i = 0; i < n; ++i) {
             layersOut[count++] = wheelLayers[i];
         }
