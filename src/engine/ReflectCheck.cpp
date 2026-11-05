@@ -939,6 +939,16 @@ void CheckFields() {
     CheckField("SFXGame.BioActorBehavior", "ActorGameName", SDK_FIELD(UBioActorBehavior, ActorGameName));
     CheckField("SFXGame.BioActorBehavior", "m_oActorType", SDK_FIELD(UBioActorBehavior, m_oActorType));
     CheckField("SFXGame.BioActorBehavior", "bActive", SDK_BOOL(UBioActorBehavior, bActive));  // the power lock skips dormant pawns
+    // The cast leaves the hand (research/55 section 8): the running power's caster and power, the projectile it spawned.
+    CheckClass<ABioLinePowerProjectile>("SFXGame.BioLinePowerProjectile");
+    CheckField("SFXGame.BioActivePower", "m_oCaster", SDK_FIELD(UBioActivePower, m_oCaster));
+    CheckField("SFXGame.BioActivePower", "m_oPower", SDK_FIELD(UBioActivePower, m_oPower));
+    CheckField("SFXGame.BioLinePowerProjectile", "m_oCaster", SDK_FIELD(ABioLinePowerProjectile, m_oCaster));
+    CheckField("SFXGame.BioLinePowerProjectile", "m_oPower", SDK_FIELD(ABioLinePowerProjectile, m_oPower));
+    CheckField("SFXGame.BioLinePowerProjectile", "m_vStartLocation", SDK_FIELD(ABioLinePowerProjectile, m_vStartLocation));
+    CheckField("SFXGame.BioLinePowerProjectile", "m_vLastLocation", SDK_FIELD(ABioLinePowerProjectile, m_vLastLocation));
+    CheckField("SFXGame.BioLinePowerProjectile", "m_vTargetLocation", SDK_FIELD(ABioLinePowerProjectile, m_vTargetLocation));
+    CheckField("SFXGame.BioLinePowerProjectile", "m_oProjectileVFX", SDK_FIELD(ABioLinePowerProjectile, m_oProjectileVFX));
     CheckField("SFXGame.BioActorType", "ActorGameName", SDK_FIELD(UBioActorType, ActorGameName));
     CheckField("SFXGame.BioEquipment", "m_QuickSlotArray", SDK_FIELD(UBioEquipment, m_QuickSlotArray));
     CheckField("SFXGame.BioEquipment", "m_eQuickSlotCurrent", SDK_FIELD(UBioEquipment, m_eQuickSlotCurrent));
@@ -1151,6 +1161,7 @@ void CheckFunctions() {
         "SFXGame.SFXGameModeDefault.UseFirstAid",         // ...whose draws still go through from these (2026-10-26)
         "SFXGame.SFXGameModeDefault.TryUseMappedPower",
         "SFXGame.BioPlayerInput.ActivatePower",  // the power wheel's push (research/55 section 4)
+        "SFXGame.BioActivePower.ReleaseProjectilePower",  // ...and the cast leaving the hand (section 8)
         "SFXGame.SFXGameModeDefault.EnterPowerWheel",
         "SFXGame.SFXGameModePowerWheel.ExitPowerWheel",  // holsters: the right stick click's hold (2026-11-05)
         "SFXGame.SFXGameModeBase.FireWeapon",  // ...and the trigger's, refused without a buzz (2026-11-04)

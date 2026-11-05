@@ -556,4 +556,25 @@ Event Step(Machine& m, MachineInput const& in, std::vector<float> const& angles,
     return Event::None;
 }
 
+Launch FromHand(XrVector3f hand, XrVector3f target, XrVector3f spawnedVelocity, float speed) {
+    Launch out;
+    out.start = hand;
+    out.velocity = spawnedVelocity;
+    float const own = Length(spawnedVelocity);
+    float const v = own > 1e-3f ? own : speed;
+    XrVector3f const to = Sub(target, hand);
+    float const distance = Length(to);
+    if (!(v > 0.0f) || !(distance > 1e-3f) || !std::isfinite(distance)) {
+        return out;
+    }
+    out.velocity = {to.x / distance * v, to.y / distance * v, to.z / distance * v};
+    out.aimed = true;
+    return out;
+}
+
+XrVector3f LaunchPoint(XrPosef const& aim, float ahead) {
+    XrVector3f const forward = Rotate(aim.orientation, {0.0f, 0.0f, -1.0f});
+    return {aim.position.x + forward.x * ahead, aim.position.y + forward.y * ahead, aim.position.z + forward.z * ahead};
+}
+
 }  // namespace mevr::vr::power_wheel

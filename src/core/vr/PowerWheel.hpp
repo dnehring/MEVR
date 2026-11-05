@@ -250,4 +250,17 @@ struct LockView {
 void PublishLock(LockView const& view);
 LockView LatestLock(std::uint64_t maxAgeMs = 250);
 
+// ---- The cast leaves the hand (research/55 section 8, 2026-11-05) ----------------------------------------------------
+// A biotic's projectile (BioLinePowerProjectile) is spawned by the game at Shepard's casting point; the mod moves it to the
+// left hand. In any frame (the game's world units): from `hand` toward the projectile's own target at its own speed.
+struct Launch {
+    XrVector3f start{};
+    XrVector3f velocity{};
+    bool aimed = false;  // false: the target is on the hand (or no speed): the velocity is the game's, unchanged
+};
+// `spawnedVelocity` the game's velocity (its length the speed; 0: `speed`), `target` where it flies.
+Launch FromHand(XrVector3f hand, XrVector3f target, XrVector3f spawnedVelocity, float speed);
+// The hand's point for a launch: `ahead` metres in front of the left controller's aim pose, along its forward.
+XrVector3f LaunchPoint(XrPosef const& aim, float ahead);
+
 }  // namespace mevr::vr::power_wheel

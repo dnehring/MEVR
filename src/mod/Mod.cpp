@@ -305,6 +305,7 @@ void TryInstallScriptHooks() {
     game::galaxy_map::TryStartup();  // the camera-update handler holding the view in the CIC while the map is open in-world
     game::sights::TryStartup();  // the scoped shots' aimed fire (a CallFunction handler, registered before the hook)
     game::view_level::TryStartup();  // the level camera (PlayerTick and SetWeaponRecoil handlers, before the hooks)
+    game::power_wheel::TryStartup();  // the cast leaves the hand (research/55 section 8: a ReleaseProjectilePower handler)
     if (!gHandAimAvailable) {
         log::Warn("hand aim: BioPlayerController.GetAdjustedAimFor not found; hand aim unavailable");
     }
@@ -1217,6 +1218,9 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::holsters::Tick(deltaSeconds, HolsterLink());
         // The power wheel at the left hand (research/55) before the squad's: a pinch that equips a power is never a squad pull.
         game::power_wheel::Tick(deltaSeconds, PowerWheelLink());
+        if (game::power_wheel::WantsScriptHook()) {
+            EnsureCallFunctionHook();  // the projectile leaves the hand in the script hook (ReleaseProjectilePower), controllers or not
+        }
         game::squad_weapons::Tick(deltaSeconds, SquadLink());
         game::throwables::Tick(deltaSeconds, throwablesLink);
         game::vent::Tick(deltaSeconds, ventLink);

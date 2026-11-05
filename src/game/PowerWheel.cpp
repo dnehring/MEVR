@@ -9,6 +9,7 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/TestRequest.hpp"
+#include "engine/CallFunction.hpp"
 #include "engine/GameAdapter.hpp"
 #include "engine/SettingsFile.hpp"
 #include "game/HeadTracking.hpp"
@@ -24,6 +25,7 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <format>
@@ -101,10 +103,16 @@ constexpr char kBlock[] =
     "; is locked by itself (the one both agree on best); pointing at another takes over.\n"
     "autoLock = 1\n"
     "autoLockHandDeg = 30\n"
-    "autoLockGazeDeg = 20\n";
+    "autoLockGazeDeg = 20\n"
+    "; fromHand 1: a biotic's projectile (Throw, Lift, Warp...) leaves from your left hand (fromHandAheadM in front of it)\n"
+    "; instead of Shepard's casting point, toward the same target at its own speed; 0: the game's own start.\n"
+    "fromHand = 1\n"
+    "fromHandAheadM = 0.06\n";
 
 pw::Settings gSettings;
 pw::LockSettings gLockSettings;
+bool gFromHand = true;        // [PowerWheel] fromHand: the projectile leaves the left hand (research/55 section 8)
+float gHandAheadM = 0.06f;    // ...this far in front of the controller's aim pose
 std::uint64_t gSettingsAtMs = 0;
 std::string gSettingsText;
 bool gTriedAppend = false;
@@ -182,13 +190,21 @@ void RefreshSettings() {
     flag("autoLock", l.autoLock);
     number("autoLockHandDeg", l.autoHandDeg, 0.0f, 60.0f);
     number("autoLockGazeDeg", l.autoGazeDeg, 0.0f, 60.0f);
+    bool fromHand = true;
+    float ahead = 0.06f;
+    flag("fromHand", fromHand);
+    number("fromHandAheadM", ahead, -0.1f, 0.3f);
+    gFromHand = fromHand;
+    gHandAheadM = ahead;
     gLockSettings = l;
     gSettings = s;
     std::string const lockText = l.on ? std::format("; the lock within {:.0f} deg (kept to {:.0f}), {:.0f} m, the arm {:.2f} m out; a push "
                                                                "of {:.1f} m/s over {:.2f} m casts; automatic lock {}", l.acquireDeg, l.keepDeg, l.rangeM, l.reachM, l.pushSpeedMS, l.pushTravelM,
                                                     l.autoLock ? std::format("within {:.0f} deg of the hand or {:.0f} of the gaze", l.autoHandDeg, l.autoGazeDeg) : std::string("off"))
                                            : std::string("; no lock or push (lock = 0)");
-    if (std::string const text = Describe(s) + lockText; text != gSettingsText) {
+    std::string const handText = gFromHand ? std::format("; projectiles leave the left hand ({:.2f} m ahead of it)", gHandAheadM)
+                                           : std::string("; projectiles leave from Shepard's casting point (fromHand = 0)");
+    if (std::string const text = Describe(s) + lockText + handText; text != gSettingsText) {
         gSettingsText = text;
         log::Info("power wheel: settings: {}", text);
     }
@@ -554,6 +570,209 @@ void Refuse(Link const& link, std::string const& why) {
     }
 }
 
+// ---- The cast leaves the hand (research/55 section 8) --------------------------------------------------------------------
+// The game spawns a biotic's BioLinePowerProjectile inside the native BioActivePower.ReleaseProjectilePower (the running
+// power's script calls it at the casting animation's release) at Shepard's casting point, and keeps no reference to it. A
+// CallFunction post-handler on that native finds the projectile it just spawned (the newest of that exact class whose caster
+// is the player and that hasn't flown yet), moves it to the left hand (Actor.SetLocation) and points it from there at its own
+// target at its own speed. The hand's point is kept each tick (gHandWorld). Any cast of the player's counts: our push, the
+// game's power wheel, the mapped power.
+ue3::FunctionRef gReleaseProjectileFn{"SFXGame.BioActivePower.ReleaseProjectilePower"};
+ue3::ClassRef gLineProjectile{"SFXGame.BioLinePowerProjectile"};
+ue3::FieldRef gActiveCaster{"SFXGame.BioActivePower", "m_oCaster"};
+ue3::FieldRef gActivePowerOf{"SFXGame.BioActivePower", "m_oPower"};
+ue3::FieldRef gProjCaster{"SFXGame.BioLinePowerProjectile", "m_oCaster"};
+ue3::FieldRef gProjPower{"SFXGame.BioLinePowerProjectile", "m_oPower"};
+ue3::FieldRef gProjStart{"SFXGame.BioLinePowerProjectile", "m_vStartLocation"};
+ue3::FieldRef gProjLast{"SFXGame.BioLinePowerProjectile", "m_vLastLocation"};
+ue3::FieldRef gProjTarget{"SFXGame.BioLinePowerProjectile", "m_vTargetLocation"};
+ue3::FieldRef gProjVfx{"SFXGame.BioLinePowerProjectile", "m_oProjectileVFX"};
+ue3::FieldRef gActorLocation{"Engine.Actor", "Location"};
+ue3::FieldRef gActorVelocity{"Engine.Actor", "Velocity"};
+ue3::FieldRef gActorBase{"Engine.Actor", "Base"};
+ue3::FieldRef gProjectileSpeed{"Engine.Projectile", "Speed"};
+ue3::FunctionRef gSetLocationFn{"Engine.Actor.SetLocation"};
+
+std::optional<engine::UnrealVector> gHandWorld;  // the left hand's launch point, kept each tick on foot
+double gHandWorldAt = -1.0;
+std::array<std::uintptr_t, 8> gLaunched{};       // projectiles already moved (by address)
+std::size_t gLaunchedNext = 0;
+std::string gLastLaunch = "none";
+unsigned gHandLaunches = 0;
+unsigned gHandLaunchMisses = 0;
+// The last launch's flight, watched for a while: how far it flew and how near its target it ended.
+struct Flight {
+    std::uintptr_t projectile = 0;
+    double age = 0.0;
+    std::string power;
+    engine::UnrealVector start{};
+    engine::UnrealVector target{};
+    engine::UnrealVector last{};
+    double nearest = 1e18;  // units from the target
+    int ticks = 0;
+};
+Flight gFlight;
+
+std::optional<engine::UnrealVector> VectorAt(ue3::FieldRef& field, ue3::Object const* object) {
+    std::optional<ue3::Vector> const v = field.Read<ue3::Vector>(object);
+    if (!v) {
+        return std::nullopt;
+    }
+    return engine::UnrealVector{v->x, v->y, v->z};
+}
+
+double Distance(engine::UnrealVector const& a, engine::UnrealVector const& b) {
+    return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z));
+}
+
+bool SetActorLocation(ue3::Object* actor, engine::UnrealVector const& where) {
+    ue3::Function* const fn = gSetLocationFn.Get();
+    if (actor == nullptr || fn == nullptr) {
+        return false;
+    }
+    ue3::Params parms(ue3::runtime::Get(), fn);
+    parms.Set("NewLocation", ToVector(where));
+    ue3::runtime::Call(actor, fn, parms);  // an opcode native: through runtime::Call (gotchas/process-event-skips-opcode-natives)
+    return parms.ReturnBool().value_or(false);
+}
+
+// The projectile the release just spawned: the newest live one of exactly that class cast by `pawn` with `power`, not moved yet
+// and still where it was spawned (it hasn't ticked).
+ue3::Object* NewProjectile(ue3::Object* pawn, ue3::Object* power) {
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Class* const cls = gLineProjectile.Get();
+    if (cls == nullptr) {
+        return nullptr;
+    }
+    ue3::Object* found = nullptr;
+    for (std::int32_t i = r.ObjectCount() - 1; i >= 0; --i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o == nullptr || r.ClassOf(o) != cls || !r.IsAlive(o)) {
+            continue;
+        }
+        if (gProjCaster.Read<ue3::Object*>(o).value_or(nullptr) != pawn ||
+            (power != nullptr && gProjPower.Read<ue3::Object*>(o).value_or(nullptr) != power)) {
+            continue;
+        }
+        auto const address = reinterpret_cast<std::uintptr_t>(o);
+        if (std::find(gLaunched.begin(), gLaunched.end(), address) != gLaunched.end()) {
+            continue;
+        }
+        std::optional<engine::UnrealVector> const at = VectorAt(gActorLocation, o);
+        std::optional<engine::UnrealVector> const start = VectorAt(gProjStart, o);
+        if (at && start && Distance(*at, *start) > 50.0) {
+            continue;  // already flying: an older one
+        }
+        found = o;
+        break;
+    }
+    return found;
+}
+
+void OnReleaseProjectile(ue3::Object* activePower, ue3::Function* /*function*/, void* /*result*/) {
+    if (!gFromHand || activePower == nullptr) {
+        return;
+    }
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const pawn = controller != nullptr && player::IsBioPlayerController(controller) ? player::BioPawn(controller) : nullptr;
+    if (pawn == nullptr || gActiveCaster.Read<ue3::Object*>(activePower).value_or(nullptr) != pawn) {
+        return;  // a squadmate's or an enemy's
+    }
+    ue3::Object* const power = gActivePowerOf.Read<ue3::Object*>(activePower).value_or(nullptr);
+    std::string const powerName = power != nullptr ? ue3::runtime::NameText(gPowerName.Read<ue3::Name>(power).value_or(ue3::Name{}))
+                                                   : std::string("a power");
+    if (!gHandWorld || gClock - gHandWorldAt > 0.25) {
+        gLastLaunch = powerName + ": no tracked left hand, from Shepard's casting point";
+        return;
+    }
+    ue3::Object* const projectile = NewProjectile(pawn, power);
+    if (projectile == nullptr) {
+        ++gHandLaunchMisses;
+        gLastLaunch = powerName + ": released, but no new projectile of its found (not a projectile power?)";
+        log::Info("power wheel: {}", gLastLaunch);
+        return;
+    }
+    engine::UnrealVector const hand = *gHandWorld;
+    engine::UnrealVector const spawned = VectorAt(gActorLocation, projectile).value_or(hand);
+    engine::UnrealVector const caster = VectorAt(gActorLocation, pawn).value_or(spawned);
+    engine::UnrealVector const target = VectorAt(gProjTarget, projectile).value_or(spawned);
+    engine::UnrealVector const velocity = VectorAt(gActorVelocity, projectile).value_or(engine::UnrealVector{});
+    float const speed = gProjectileSpeed.Read<float>(projectile).value_or(0.0f);
+    auto const xr = [](engine::UnrealVector const& v) {
+        return XrVector3f{static_cast<float>(v.x), static_cast<float>(v.y), static_cast<float>(v.z)};
+    };
+    pw::Launch const launch = pw::FromHand(xr(hand), xr(target), xr(velocity), speed);
+    gLaunched[gLaunchedNext] = reinterpret_cast<std::uintptr_t>(projectile);
+    gLaunchedNext = (gLaunchedNext + 1) % gLaunched.size();
+    if (!SetActorLocation(projectile, hand)) {
+        ++gHandLaunchMisses;
+        gLastLaunch = std::format("{}: the game's start kept (the hand's point is blocked: inside something?)", powerName);
+        log::Info("power wheel: {}; spawned {:.0f} units from Shepard, the hand {:.0f} from it", gLastLaunch, Distance(spawned, caster),
+            Distance(hand, spawned));
+        return;
+    }
+    for (ue3::FieldRef* const field : {&gProjStart, &gProjLast}) {
+        if (ue3::Vector* const v = field->In<ue3::Vector>(projectile)) {
+            *v = ToVector(hand);
+            write_journal::Wrote(field == &gProjStart ? "PowerWheel.projectile start" : "PowerWheel.projectile last location", v);
+        }
+    }
+    if (launch.aimed) {
+        if (ue3::Vector* const v = gActorVelocity.In<ue3::Vector>(projectile)) {
+            *v = {launch.velocity.x, launch.velocity.y, launch.velocity.z};
+            write_journal::Wrote("PowerWheel.projectile velocity", v);
+        }
+    }
+    // Its visual effect: carried along if it's based on the projectile, else moved with it.
+    std::string vfxText = "no visual effect";
+    if (ue3::Object* const vfx = gProjVfx.Read<ue3::Object*>(projectile).value_or(nullptr); vfx != nullptr && ue3::runtime::IsAlive(vfx)) {
+        bool const based = gActorBase.Read<ue3::Object*>(vfx).value_or(nullptr) == projectile;
+        std::optional<engine::UnrealVector> const at = VectorAt(gActorLocation, vfx);
+        if (based) {
+            vfxText = "its effect rides on it";
+        } else if (at && Distance(*at, spawned) < 60.0 && SetActorLocation(vfx, hand)) {
+            vfxText = "its effect moved with it";
+        } else {
+            vfxText = at ? std::format("its effect left {:.0f} units from the spawn point", Distance(*at, spawned)) : "its effect not placed";
+        }
+    }
+    ++gHandLaunches;
+    double const upm = engine::kUnitsPerMeter;
+    gLastLaunch = std::format("{} from the left hand ({:.2f} m from where the game spawned it, {:.2f} m from Shepard's origin), "
+                              "toward its target {:.1f} m away at {:.0f} units/s; {}",
+        powerName, Distance(hand, spawned) / upm, Distance(spawned, caster) / upm, Distance(hand, target) / upm,
+        launch.aimed ? std::sqrt(launch.velocity.x * launch.velocity.x + launch.velocity.y * launch.velocity.y +
+                                 launch.velocity.z * launch.velocity.z)
+                     : speed,
+        vfxText);
+    log::Info("power wheel: {}", gLastLaunch);
+    gFlight = {reinterpret_cast<std::uintptr_t>(projectile), 0.0, powerName, hand, target, hand, Distance(hand, target), 0};
+}
+
+// The last launch, until it's gone (or 4 s): where it went.
+void WatchFlight(double deltaSeconds) {
+    if (gFlight.projectile == 0) {
+        return;
+    }
+    gFlight.age += std::max(deltaSeconds, 0.0);
+    auto* const projectile = reinterpret_cast<ue3::Object*>(gFlight.projectile);
+    bool const alive = ue3::runtime::IsAlive(projectile) && ue3::runtime::Get().ClassOf(projectile) == gLineProjectile.Get();
+    if (alive) {
+        if (std::optional<engine::UnrealVector> const at = VectorAt(gActorLocation, projectile)) {
+            gFlight.last = *at;
+            gFlight.nearest = std::min(gFlight.nearest, Distance(*at, gFlight.target));
+            ++gFlight.ticks;
+        }
+    }
+    if (!alive || gFlight.age > 4.0) {
+        double const upm = engine::kUnitsPerMeter;
+        log::Info("power wheel: the {} flew {:.1f} m in {:.2f} s ({} ticks seen) and came within {:.2f} m of its target{}", gFlight.power,
+            Distance(gFlight.start, gFlight.last) / upm, gFlight.age, gFlight.ticks, gFlight.nearest / upm,
+            alive ? " (still flying after 4 s)" : "");
+        gFlight = {};
+    }
+}
+
 void TickLock(Link const& link, vr::host_view::State const& view, vr::controllers::State const& controllers, ue3::Object* controller,
     ue3::Object* pawn, bool onFoot) {
     pw::LockSettings const& s = gLockSettings;
@@ -570,6 +789,19 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
     std::optional<Power> const ready = s.on && onFoot && controller != nullptr && pawn != nullptr ? ReadyPower(controller, pawn) : std::nullopt;
     std::optional<engine::TrackingFrame> const frame = view_anchor::Current();
     bool const hand = controllers.active && controllers.left.aimValid;
+    // The launch point a projectile leaves from (OnReleaseProjectile), whatever the lock does. With `aimhead` (tests, no
+    // tracked controllers) a hand held out in front: 0.40 m ahead of the eyes, 0.15 m left and 0.20 m down.
+    gHandWorld.reset();
+    if (frame && view.valid && onFoot && (hand || gAimHead)) {
+        XrPosef handAim = controllers.left.aim;
+        if (!hand) {
+            XrVector3f const offset = RotateXr(view.head.orientation, {-0.15f, -0.20f, -0.40f});
+            handAim.orientation = view.head.orientation;
+            handAim.position = {view.head.position.x + offset.x, view.head.position.y + offset.y, view.head.position.z + offset.z};
+        }
+        gHandWorld = engine::ToWorld(*frame, pw::LaunchPoint(handAim, gHandAheadM));
+        gHandWorldAt = gClock;
+    }
     char const* why = nullptr;
     if (!s.on) {
         why = "off (lock = 0)";
@@ -713,9 +945,26 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
 
 }  // namespace
 
+bool WantsScriptHook() {
+    return gFromHand && gHandWorld.has_value() && gReleaseProjectileFn.Get() != nullptr;
+}
+
+bool TryStartup() {
+    ue3::Function* const release = gReleaseProjectileFn.Get();
+    if (release == nullptr) {
+        log::Warn("power wheel: BioActivePower.ReleaseProjectilePower not found: projectiles leave from Shepard's casting point");
+        return false;
+    }
+    engine::call_function::AddPostHandler(release, &OnReleaseProjectile);
+    log::Info("power wheel: a post-handler on BioActivePower.ReleaseProjectilePower moves the player's projectiles to the left hand "
+              "([PowerWheel] fromHand)");
+    return true;
+}
+
 void Tick(double deltaSeconds, Link const& link) {
     gClock += std::max(deltaSeconds, 0.0);
     RefreshSettings();
+    WatchFlight(deltaSeconds);
     pw::Settings const& s = gSettings;
 
     ue3::Object* const controller = ue3::runtime::Ready() ? player::Controller() : nullptr;
@@ -1014,19 +1263,21 @@ std::string StatusJson() {
     return std::format("{{\"on\": {}, \"why\": {}, \"open\": {}, \"toggled\": {}, \"serial\": {}, \"roster\": [{}], \"selected\": {}, "
                        "\"hand\": [{}, {}], \"pose\": [{}, {}, {}], \"equipped\": {}, \"mappedPower\": {}, \"last\": {}, \"opened\": {}, "
                        "\"equips\": {}, \"cancels\": {}, \"picks\": {}, \"lock\": {{\"why\": {}, \"target\": {}, \"automatic\": {}, \"seen\": {}, \"locks\": {}, "
-        "\"pushes\": {}, \"casts\": {}, \"refused\": {}, \"lastCast\": {}}}}}",
+        "\"pushes\": {}, \"casts\": {}, \"refused\": {}, \"lastCast\": {}}}, \"fromHand\": {{\"on\": {}, \"launches\": {}, \"misses\": {}, "
+        "\"last\": {}}}}}",
         gSettings.on ? "true" : "false", json::JsonString(gWhy), gMachine.open ? "true" : "false", gMachine.toggled ? "true" : "false",
         gMachine.serial, roster, gMachine.selected, json::JsonNumber(gView.hand.x), json::JsonNumber(gView.hand.y),
         json::JsonNumber(gView.pose.position.x), json::JsonNumber(gView.pose.position.y), json::JsonNumber(gView.pose.position.z),
         json::JsonString(gEquipped), json::JsonString(MappedPower(controller)), json::JsonString(gLastEvent), gOpened, gEquips, gCancels,
         gPicks, json::JsonString(gLockWhy), json::JsonString(NameOf(gTarget)), gTarget != nullptr && gLock.automatic ? "true" : "false", gSeen.size(), gLocks, gPushes, gCastCount, gRefused,
-        json::JsonString(gLastCast));
+        json::JsonString(gLastCast), gFromHand ? "true" : "false", gHandLaunches, gHandLaunchMisses, json::JsonString(gLastLaunch));
 }
 
 void LogStats() {
     log::Info("power wheel: {}; opened {}, equipped {}, closed unequipped {}, picks {}; last equipped {}; lock {}: {} locks, {} pushes, "
-              "{} casts, {} refused; last: {}", gWhy, gOpened, gEquips, gCancels, gPicks, gEquipped.empty() ? "none" : gEquipped, gLockWhy,
-        gLocks, gPushes, gCastCount, gRefused, gLastCast);
+              "{} casts, {} refused; last: {}; from the hand: {} launches, {} not moved; last: {}", gWhy, gOpened, gEquips, gCancels, gPicks,
+        gEquipped.empty() ? "none" : gEquipped, gLockWhy, gLocks, gPushes, gCastCount, gRefused, gLastCast, gHandLaunches, gHandLaunchMisses,
+        gLastLaunch);
 }
 
 void Shutdown(Link const& link) {
