@@ -43,6 +43,8 @@ Halcyon's MassEffect1-VR renderer, with our hands, body and menus on top. LE1 on
 - A guided calibration (about a minute) measures your height, arms and how you aim, and is saved per controller type.
 - Crouch for real to crouch in the game; no automatic cover snapping.
 - Shepard's body stays under you as you turn and lean.
+- Shepard's legs run where he runs: when you strafe, only his upper body turns toward you, so his feet no longer
+  skate sideways (backing up, his legs still turn part of the way).
 
 ### Comfort
 - Smooth turning (the game's own), or snap turns of 30, 45 or 60 degrees.
@@ -68,5 +70,7 @@ Halcyon's MassEffect1-VR renderer, with our hands, body and menus on top. LE1 on
 - Needs `MassEffect1.exe` version 2.0.0.48602 (Steam or the EA app); on any other version the mod stays off.
 - Tested on a Quest 3 (Steam Link) and a PS VR2, both through SteamVR. Other headsets and runtimes may work.
 - The heaviest scenes don't hold 90 frames a second everywhere; a lower render resolution helps.
+- Walking more than about 0.75 m around your room from where you recentered leaves Shepard behind: recenter (R or a
+  double-click of the right stick) to stand over him again.
 - Steam's "verify files" can remove the ASI loader: run MEVR Setup's Repair.
 - The binaries aren't code-signed yet: Windows SmartScreen or your antivirus may warn about them.

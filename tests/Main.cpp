@@ -1563,6 +1563,156 @@ void TestBodyFollow() {
         state = follow.Update(in);
         CHECK(state.anchored == FollowAnchor::None && NearD(state.feet.x, 1.2, 0.01));
     }
+
+    // 6. The legs keep the run (2026-11-04). The pawn's run, strafe and backpedal animations point where it faces
+    // (body.forward, +X here); the old whole-body turn took the hips (and the legs) toward the view by all the spine's
+    // 30 degrees couldn't: strafing (the shoulders 90 degrees from the pawn) the legs ran 60 degrees off where the body
+    // went. Moving, the legs keep the pawn's facing and the spine twists up to 60 from them; the body turns only the rest.
+    {
+        double const deg = std::numbers::pi / 180.0;
+        CHECK(NearD(LegsTurn(90.0 * deg, 60.0 * deg), 30.0 * deg, 1e-12));
+        CHECK(LegsTurn(-45.0 * deg, 60.0 * deg) == 0.0 && NearD(LegsTurn(-180.0 * deg, 60.0 * deg), -120.0 * deg, 1e-12));
+        CHECK(LegsTurn(std::numeric_limits<double>::quiet_NaN(), 1.0) == 0.0);
+
+        // Moving or standing: the speed with hysteresis (60 on, 30 off, units a second), the weight blending at 4 a second.
+        LegsFollow legs;
+        LegsInput in;
+        in.deltaSeconds = 1.0 / 90.0;
+        in.facing = 90.0 * deg;
+        LegsState s = legs.Update(in);  // standing: the first update goes straight to the standing rule
+        CHECK(!s.moving && s.weight == 0.0 && NearD(s.legsTurn, 30.0 * deg, 1e-12));
+        in.speed = 400.0;
+        for (int i = 0; i < 9; ++i) {
+            s = legs.Update(in);
+            CHECK(s.moving && s.started == (i == 0));
+        }
+        CHECK(NearD(s.weight, 0.4, 1e-9));
+        for (int i = 0; i < 20; ++i) {
+            s = legs.Update(in);
+        }
+        CHECK(s.weight == 1.0 && NearD(s.spineFromLegs, 60.0 * deg, 1e-12));
+        in.speed = 45.0;  // slowing: still moving above the stop speed
+        CHECK(legs.Update(in).moving);
+        in.speed = 20.0;
+        CHECK(!legs.Update(in).moving);
+        in.speed = 45.0;  // below the move speed: still standing
+        CHECK(!legs.Update(in).moving);
+        in.speed = std::numeric_limits<double>::quiet_NaN();  // unreadable: standing
+        CHECK(!legs.Update(in).moving);
+        // Off: never moving.
+        LegsSettings offSettings;
+        offSettings.on = false;
+        LegsFollow off(offSettings);
+        in.speed = 400.0;
+        CHECK(!off.Update(in).moving && off.Last().weight == 0.0);
+
+        // Running backward: the facing near 180 degrees keeps the side it came from, so noise around 180 never flips the
+        // legs 2 x 60 degrees from one side to the other; 30 degrees past 180 it takes the short side again.
+        legs.Reset();
+        in.speed = 400.0;
+        for (double const f : {150.0, 179.0, -179.0, -170.0}) {
+            in.facing = f * deg;
+            s = legs.Update(in);
+        }
+        CHECK(s.weight == 1.0);  // a reset goes straight to where it belongs
+        CHECK(NearD(s.facing, 190.0 * deg, 1e-9) && NearD(s.legsTurn, 130.0 * deg, 1e-9) && NearD(s.spineFromLegs, 60.0 * deg, 1e-9));
+        in.facing = 179.5 * deg;
+        CHECK(NearD(legs.Update(in).facing, 179.5 * deg, 1e-9));
+        in.facing = -145.0 * deg;  // 215: past the band
+        s = legs.Update(in);
+        CHECK(NearD(s.facing, -145.0 * deg, 1e-9) && NearD(s.legsTurn, -85.0 * deg, 1e-9));
+        // Reset (a re-anchor, the torso not driven): no side kept.
+        legs.Reset();
+        in.facing = -179.0 * deg;
+        CHECK(NearD(legs.Update(in).facing, -179.0 * deg, 1e-9));
+
+        // The pose. Strafing: the shoulders wanted 90 degrees from the pawn's facing.
+        auto const legsYaw = [&](std::vector<Transform> const& p) {
+            return YawBetween(before[hip].translation - before[pelvis].translation, p[hip].translation - p[pelvis].translation, body.up) / deg;
+        };
+        auto const poseFor = [&](double away, double weight, double legsTurnDeg, std::vector<Transform> const& start, std::vector<Transform>& pose) {
+            TorsoGoal goal;
+            goal.reference = {head, -1};
+            goal.head = start[head].translation;
+            goal.forward = Rotate(AxisAngleQ(0, 0, 1, away), {1, 0, 0});
+            goal.body = pelvis;
+            goal.maxTwistDegrees = 30.0;
+            goal.legsWeight = weight;
+            goal.legsTurnDegrees = legsTurnDeg;
+            goal.legsTwistDegrees = 60.0;
+            pose = start;
+            return PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal);
+        };
+        for (double const away : {90.0, -90.0, 179.5, 45.0}) {
+            Vec3 const wanted = Rotate(AxisAngleQ(0, 0, 1, away), {1, 0, 0});
+            double const turn = LegsTurn(away * deg, 60.0 * deg) / deg;
+            std::vector<Transform> standing;
+            TorsoResult const old = poseFor(away, 0.0, turn, before, standing);
+            std::vector<Transform> moving;
+            TorsoResult const now = poseFor(away, 1.0, turn, before, moving);
+            CHECK(old.ok && now.ok && facingError(old, wanted) < 2.0 && facingError(now, wanted) < 2.0);
+            // Standing: exactly the old rule (the legs 30 from the shoulders); moving: the legs 60 closer to the run.
+            CHECK(NearD(old.bodyTurnDegrees, old.standingTurnDegrees, 1e-9) && NearD(std::abs(old.bodyTurnDegrees), std::abs(away) - 30.0, 0.5));
+            CHECK(NearD(now.bodyTurnDegrees, turn, 1e-6) && NearD(legsYaw(moving), turn, 1e-6) && !now.limited);
+            CHECK(NearD(now.standingTurnDegrees, old.standingTurnDegrees, 1e-9) && std::abs(now.shouldersFromLegsDegrees) < 1e-6);
+            // The legs went rigidly with the body bone; God, Root and Camera never move.
+            CHECK(NearT(Relative(moving[hip], moving[pelvis]), Relative(before[hip], before[pelvis]), 1e-6));
+            CHECK(NearT(moving[0], before[0], 0.0) && NearT(moving[1], before[1], 0.0) && NearT(moving[rig.camera], before[rig.camera], 0.0));
+        }
+        // Weight 0 is the old pose exactly, whatever legsTurnDegrees says.
+        {
+            std::vector<Transform> a;
+            std::vector<Transform> b;
+            poseFor(120.0, 0.0, 0.0, before, a);
+            TorsoGoal goal;
+            goal.reference = {head, -1};
+            goal.head = before[head].translation;
+            goal.forward = Rotate(AxisAngleQ(0, 0, 1, 120.0), {1, 0, 0});
+            goal.body = pelvis;
+            goal.maxTwistDegrees = 30.0;
+            b = before;
+            CHECK(PoseTorso(b, rig.parents, *chain, *left, *right, body, goal).ok);
+            for (std::size_t i = 0; i < a.size(); ++i) {
+                CHECK(NearT(a[i], b[i], 0.0));
+            }
+        }
+        // Half way (the weight blending as a move starts): the body's turn half way between the two rules.
+        {
+            std::vector<Transform> half;
+            TorsoResult const r = poseFor(90.0, 0.5, 30.0, before, half);
+            CHECK(r.ok && NearD(r.bodyTurnDegrees, 0.5 * (r.standingTurnDegrees + 30.0), 1e-6) && facingError(r, Rotate(AxisAngleQ(0, 0, 1, 90.0), {1, 0, 0})) < 2.0);
+            // The short way round: the standing rule +149.5, the legs -120.5 (the side kept past 180 degrees): half way is
+            // 194.5 = -165.5, through 180, never back through 0.
+            std::vector<Transform> wrap;
+            TorsoResult const w = poseFor(179.5, 0.5, -120.5, before, wrap);
+            CHECK(w.ok && NearD(w.bodyTurnDegrees, -165.5, 0.5) && facingError(w, Rotate(AxisAngleQ(0, 0, 1, 179.5), {1, 0, 0})) < 2.0);
+        }
+        // A combat stance: the animation already turned the shoulders 30 degrees from the legs (into the gun). Moving with
+        // the view 80 degrees the other way: the legs keep the pawn's facing up to the limit (the body 20), and the spine
+        // twists 90 from the animated shoulders (60 from the legs) without stopping short.
+        {
+            std::vector<Transform> stance = before;
+            int const lowerBack = chain->spine.front();
+            Quat const turn = AxisAngleQ(0, 0, 1, 30.0);
+            Vec3 const at = stance[lowerBack].translation;
+            for (std::size_t i = 0; i < stance.size(); ++i) {
+                int b = static_cast<int>(i);
+                while (b >= 0 && b != lowerBack) {
+                    b = rig.parents[b];
+                }
+                if (b == lowerBack) {
+                    stance[i].rotation = Normalize(turn * stance[i].rotation);
+                    stance[i].translation = at + Rotate(turn, stance[i].translation - at);
+                }
+            }
+            std::vector<Transform> pose;
+            TorsoResult const r = poseFor(-80.0, 1.0, LegsTurn(-80.0 * deg, 60.0 * deg) / deg, stance, pose);
+            CHECK(r.ok && !r.limited && NearD(r.shouldersFromLegsDegrees, 30.0, 0.5) && NearD(r.bodyTurnDegrees, -20.0, 1e-6));
+            CHECK(facingError(r, Rotate(AxisAngleQ(0, 0, 1, -80.0), {1, 0, 0})) < 2.0 && NearD(r.twistDegrees, -90.0, 2.0));
+            // Standing it would have been the old rule: what the spine's 30 can't take of the 110 from the animated shoulders.
+            CHECK(NearD(r.standingTurnDegrees, -80.0, 0.5));
+        }
+    }
 }
 
 // The arm-length calibration's T pose (tracking space, meters).

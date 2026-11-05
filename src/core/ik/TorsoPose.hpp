@@ -70,6 +70,14 @@ struct TorsoGoal {
     bool bodyMoves = false;
     Vec3 bodyAt;
     double maxBodyShift = 0.0;
+    // The legs keep the run (research/29, 2026-11-04; core/ik/BodyFollow's LegsFollow). With `legsWeight` above 0 the
+    // body's turn goes from the rule above (the part of the facing turn beyond maxTwistDegrees, measured from the
+    // animated shoulders) toward `legsTurnDegrees` (measured from `body.forward`, the pawn's facing, where its run
+    // animation points) by that weight, the short way round. The spine then twists the rest: up to `legsTwistDegrees`
+    // from the legs, plus however far the animation itself turned the shoulders from them. 0: the rule above alone.
+    double legsWeight = 0.0;
+    double legsTurnDegrees = 0.0;
+    double legsTwistDegrees = 60.0;
 };
 
 struct TorsoResult {
@@ -91,6 +99,10 @@ struct TorsoResult {
     Vec3 bodyShift;
     Vec3 wantedBodyShift;
     bool shiftLimited = false;
+    // The legs (TorsoGoal::legsWeight): the turn the standing rule alone would have made, and how far the animation had
+    // turned the shoulders from the legs (`body.forward`) before anything moved (a combat stance's turn into the gun).
+    double standingTurnDegrees = 0.0;
+    double shouldersFromLegsDegrees = 0.0;
     // The reference point (eyes or head): animated, where the goal wanted it, and where it ended up.
     Vec3 oldReference;
     Vec3 goalReference;
@@ -112,5 +124,9 @@ double PoseCollar(std::span<Transform> pose, std::span<int const> parents, int c
 // A fraction of a rotation (the same axis, `fraction` of the angle), for spreading one turn over
 // several joints.
 Quat Fraction(Quat q, double fraction);
+
+// The signed turn (radians, (-pi, pi]) about `up` from `from` to `to`, both made horizontal against it: PoseTorso's
+// sense of a turn (TorsoGoal::legsTurnDegrees, TorsoResult's turns). 0 when either is (nearly) vertical.
+double YawBetween(Vec3 from, Vec3 to, Vec3 up);
 
 } // namespace mevr::ik

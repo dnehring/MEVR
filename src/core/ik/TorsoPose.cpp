@@ -74,6 +74,14 @@ double Angle(Quat q) {
     return 2.0 * std::acos(std::clamp(std::abs(n.w), 0.0, 1.0));
 }
 
+double Wrap(double a) {
+    if (!std::isfinite(a)) {
+        return 0.0;
+    }
+    a = std::remainder(a, 2.0 * std::numbers::pi);
+    return a <= -std::numbers::pi ? a + 2.0 * std::numbers::pi : a;
+}
+
 // Turns `bone` and everything below it about the bone's own position.
 void TurnSubtree(std::span<Transform> pose, std::span<int const> parents, int bone, Quat delta, std::vector<unsigned char>& in) {
     int const count = static_cast<int>(pose.size());
@@ -114,6 +122,16 @@ Quat Fraction(Quat q, double fraction) {
         return {};
     }
     return About({n.x / s, n.y / s, n.z / s}, angle * fraction);
+}
+
+double YawBetween(Vec3 from, Vec3 to, Vec3 up) {
+    Vec3 const u = Normalize(up, {0.0, 0.0, 1.0});
+    Vec3 const a = Horizontal(from, u);
+    Vec3 const b = Horizontal(to, u);
+    if (!(Length(a) > 1e-9) || !(Length(b) > 1e-9) || !Finite(a) || !Finite(b)) {
+        return 0.0;
+    }
+    return SignedAngle(Normalize(a), Normalize(b), u);
 }
 
 std::optional<TorsoChain> FindTorsoChain(std::span<std::string const> names, std::span<int const> parents,
@@ -224,7 +242,22 @@ TorsoResult PoseTorso(std::span<Transform> pose, std::span<int const> parents, T
         return result;
     }
     result.oldReference = referenceSum * (1.0 / references);
-    result.wantedTurnDegrees = SignedAngle(Facing(pose, left, right, up, wantedFacing), wantedFacing, up) * kDegrees;
+    Vec3 const animatedFacing = Facing(pose, left, right, up, wantedFacing);
+    result.wantedTurnDegrees = SignedAngle(animatedFacing, wantedFacing, up) * kDegrees;
+    // The legs (TorsoGoal::legsWeight): how far the animation turned the shoulders from the legs (the pawn's facing).
+    double const legsWeight = goal.body >= 0 && goal.bodyTurns && std::isfinite(goal.legsWeight) && std::isfinite(goal.legsTurnDegrees)
+        ? std::clamp(goal.legsWeight, 0.0, 1.0)
+        : 0.0;
+    double const shouldersFromLegs = YawBetween(body.forward, animatedFacing, up);
+    result.shouldersFromLegsDegrees = shouldersFromLegs * kDegrees;
+    // The spine's twist limit: the standing rule's, or (the legs keeping the run) the legs' limit from the legs, which
+    // from the animated shoulders is that plus the animation's own turn. The body's turn meets it exactly when the
+    // view is past the limit, hence the hair of slack.
+    double twistLimit = maxTwist;
+    if (legsWeight > 0.0) {
+        double const legsTwist = std::isfinite(goal.legsTwistDegrees) ? std::max(0.0, goal.legsTwistDegrees) / kDegrees : maxTwist;
+        twistLimit = std::max(maxTwist, legsTwist + std::abs(shouldersFromLegs) + 1e-6);
+    }
 
     // The whole body first (TorsoGoal::body): the turn the spine can't take, then the slide under the
     // view. Rigid, about the body bone; everything below is measured on the moved pose.
@@ -237,9 +270,12 @@ TorsoResult PoseTorso(std::span<Transform> pose, std::span<int const> parents, T
         if (goal.bodyTurns) {
             double const total = result.wantedTurnDegrees / kDegrees;
             double const excess = std::abs(total) > maxTwist ? std::copysign(std::abs(total) - maxTwist, total) : 0.0;
-            if (excess != 0.0) {
-                TurnSubtree(base, parents, goal.body, About(up, excess), in);
-                result.bodyTurnDegrees = excess * kDegrees;
+            result.standingTurnDegrees = excess * kDegrees;
+            // Moving, the legs keep the pawn's facing (legsTurnDegrees from it); blended the short way round.
+            double const turn = legsWeight > 0.0 ? Wrap(excess + legsWeight * Wrap(goal.legsTurnDegrees / kDegrees - excess)) : excess;
+            if (turn != 0.0) {
+                TurnSubtree(base, parents, goal.body, About(up, turn), in);
+                result.bodyTurnDegrees = turn * kDegrees;
                 bodyMoved = true;
             }
         }
@@ -281,8 +317,8 @@ TorsoResult PoseTorso(std::span<Transform> pose, std::span<int const> parents, T
 
     // The twist, limited.
     double twist = SignedAngle(oldFacing, wantedFacing, up);
-    if (std::abs(twist) > maxTwist) {
-        twist = std::copysign(maxTwist, twist);
+    if (std::abs(twist) > twistLimit) {
+        twist = std::copysign(twistLimit, twist);
         result.limited = true;
     }
     Quat const twistTurn = About(up, twist);

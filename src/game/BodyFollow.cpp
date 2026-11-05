@@ -9,7 +9,9 @@
 #include "engine/XrToUnreal.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/Player.hpp"
+#include "game/Weapon.hpp"
 #include "engine/BonePose.hpp"
+#include "ue3/Handles.hpp"
 
 #include <Windows.h>
 
@@ -17,6 +19,7 @@
 #include <cmath>
 #include <cstdint>
 #include <format>
+#include <limits>
 #include <numbers>
 
 namespace mevr::game::body_follow {
@@ -36,14 +39,26 @@ constexpr double kYawGapDegrees = 15.0;
 constexpr double kReferenceGapMeters = 0.10;
 constexpr double kBigTurnDegrees = 60.0;
 constexpr double kBigShiftMeters = 0.35;
+// The legs' `torso: legs keep the run` line while the pawn moves: at most this often.
+constexpr std::uint64_t kLegsLogEveryMs = 5000;
+
+#if defined(MEVR_GAME_LE1)
+// The pawn's speed (the legs keep the run while it moves). engine/ReflectCheck has its row.
+ue3::FieldRef gVelocity{"Engine.Actor", "Velocity"};
+#endif
 
 ik::BodyFollow gFollow;
+ik::LegsFollow gLegs;
 bool gDriven = false;
 std::optional<vr::floor::State> gFloor;
 std::uint64_t gNextLogMs = 0;
 std::uint64_t gNextAnchorLogMs = 0;
 unsigned gAnchors = 0;
 unsigned gOffLines = 0;
+unsigned gLegsStarts = 0;       // moves begun (standing -> moving) since the last heartbeat
+unsigned gLegsMovingTicks = 0;  // ticks the legs kept the run since the last heartbeat
+std::uint64_t gNextLegsLogMs = 0;
+bool gToldNoSpeed = false;
 
 // This tick's inputs, for the log and the snapshot (world yaws in degrees, UE: + turns right).
 struct Last {
@@ -61,6 +76,12 @@ struct Last {
     ik::FollowAnchor lastAnchor = ik::FollowAnchor::None;
     std::uint32_t recenters = 0;
     bool haveRecenters = false;
+    // The legs (research/29 "The legs keep the run"): whether the rule ran this tick, its state, the pawn's speed.
+    bool legsUsed = false;
+    ik::LegsState legs;
+    double speed = 0.0;         // units a second, horizontal; NaN: unreadable
+    double legsTwistDeg = 60.0;
+    bool weaponDrawn = false;
 };
 Last gLast;
 
@@ -111,6 +132,23 @@ double FacingYaw(hand_targets::Targets const& targets, double headYaw) {
     return headYaw;
 }
 
+// The pawn's horizontal speed (units a second), NaN when it can't be read (then the legs count as standing: the old rule).
+double PawnSpeed(ue3::Object const* pawn) {
+#if defined(MEVR_GAME_LE1)
+    if (pawn != nullptr) {
+        if (auto const v = gVelocity.Read<ue3::Vector>(pawn)) {
+            double const speed = std::hypot(static_cast<double>(v->x), static_cast<double>(v->y));
+            if (std::isfinite(speed)) {
+                return speed;
+            }
+        }
+    }
+#else
+    (void)pawn;
+#endif
+    return std::numeric_limits<double>::quiet_NaN();
+}
+
 ik::Vec3 ToComponent(ik::Affine const& worldToComponent, engine::UnrealVector const& world) {
     return ik::TransformPoint(worldToComponent, {world.x, world.y, world.z});
 }
@@ -132,6 +170,8 @@ struct Off {
     double wantedTurn = 0.0;
     double twist = 0.0;
     double bend = 0.0;
+    double standingTurn = 0.0;       // the turn the standing rule alone would have made (degrees)
+    double shouldersFromLegs = 0.0;  // how far the animation had turned the shoulders from the legs (degrees)
 };
 
 std::optional<Off> LastOff(double unitsPerMeter) {
@@ -150,7 +190,47 @@ std::optional<Off> LastOff(double unitsPerMeter) {
     off.shift = ik::Length(r.bodyShift) / unitsPerMeter;
     off.wantedShift = ik::Length(r.wantedBodyShift) / unitsPerMeter;
     off.shiftCapped = r.shiftLimited;
+    off.standingTurn = r.standingTurnDegrees;
+    off.shouldersFromLegs = r.shouldersFromLegsDegrees;
     return off;
+}
+
+// The legs' part of a line: "legs keep the run (...)" or "standing".
+std::string LegsText() {
+    if (!gLast.legsUsed) {
+        return "the legs turn with the body (legsFollowMotion off, or no whole body)";
+    }
+    ik::LegsState const& l = gLast.legs;
+    std::string const speed = std::isfinite(gLast.speed) ? std::format("{:.0f} u/s", gLast.speed) : std::string("speed unreadable");
+    if (!l.moving && l.weight <= 0.0) {
+        return std::format("legs: standing ({}): the hips turn what the spine's 30 deg can't", speed);
+    }
+    return std::format("legs: {} ({}, {}, weight {:.2f}): shoulders {:.0f} deg from the legs, the spine {:.0f} (limit {:.0f}) + the whole body {:.0f}",
+        l.moving ? "keep the run" : "settling", speed, gLast.weaponDrawn ? "weapon drawn" : "holstered", l.weight, l.facing * kDegrees,
+        l.spineFromLegs * kDegrees, gLast.legsTwistDeg, l.legsTurn * kDegrees);
+}
+
+// While the pawn moves: a `torso: legs keep the run` line at most every kLegsLogEveryMs, with what the standing rule would
+// have turned (the last write's), so a strafe (shoulders 90 from the legs: the body 30 instead of 60) reads off the log.
+void NoteLegs(ik::LegsState const& legs) {
+    if (legs.started) {
+        ++gLegsStarts;
+    }
+    if (!legs.moving) {
+        return;
+    }
+    ++gLegsMovingTicks;
+    std::uint64_t const now = GetTickCount64();
+    if (now < gNextLegsLogMs) {
+        return;
+    }
+    gNextLegsLogMs = now + kLegsLogEveryMs;
+    auto const off = LastOff(gLast.unitsPerMeter);
+    log::Info("torso: {}{}", LegsText(),
+        off ? std::format("; last write: the whole body {:.0f} deg (the standing rule: {:.0f}), the spine {:.0f}; the animation had the shoulders "
+                          "{:.0f} deg from the legs",
+                  off->bodyTurn, off->standingTurn, off->twist, off->shouldersFromLegs)
+            : std::string());
 }
 
 void LogAnchor(ik::FollowState const& state) {
@@ -185,14 +265,14 @@ void LogIfOff() {
     log::Info("torso: {}{}{}{} ({}): head yaw {:.0f} (world {:.0f}), body yaw {:.0f} (world {:.0f}), pawn {:.0f}, "
               "ControlRotation {:.0f}, camera {:.0f} deg; turn wanted {:.0f} = body {:.0f} + spine {:.0f} (short {:.0f}), bend {:.0f} deg; "
               "the view {:.2f} m from where the game put Shepard, body slid {:.2f} m{}; Shepard's head {:.2f} m from the head's pivot; "
-              "lean {:.2f} m (head pivot ({:.2f}, {:.2f}), feet ({:.2f}, {:.2f}) m)",
+              "lean {:.2f} m (head pivot ({:.2f}, {:.2f}), feet ({:.2f}, {:.2f}) m); {}",
         yawOff ? "shoulders turned off the player's" : "", headOff ? (yawOff ? ", head off the view" : "head off the view") : "",
         off->shiftCapped ? (yawOff || headOff ? ", body slide capped" : "body slide capped") : "",
         !yawOff && !headOff && !off->shiftCapped ? "large correction" : "", gLast.mode, gLast.headYaw, gLast.worldHead,
         gLast.state.yaw * kDegrees, gLast.worldBody, gLast.pawnYaw, gLast.controlYaw, gLast.cameraYaw, off->wantedTurn, off->bodyTurn,
         off->twist, off->yawGap, off->bend, off->wantedShift, off->shift,
         off->shiftCapped ? " (capped: [Hands] bodyMoveMaxM; recenter with R to bring the view back over him)" : "",
-        off->referenceGap, std::hypot(s.lean.x, s.lean.z), s.pivot.x, s.pivot.z, s.feet.x, s.feet.z);
+        off->referenceGap, std::hypot(s.lean.x, s.lean.z), s.pivot.x, s.pivot.z, s.feet.x, s.feet.z, LegsText());
 }
 
 } // namespace
@@ -279,6 +359,40 @@ bool Fill(hand_targets::Targets const& targets, ik::Affine const& worldToCompone
     forward = forward - frame.up * ik::Dot(forward, frame.up);
     goal.forward = ik::Normalize(forward, frame.forward);
 
+    // The legs keep the run (research/29, 2026-11-04): while the pawn moves, its legs keep its facing (where the game's
+    // run, strafe and backpedal animations point) and only the spine twists toward the view, up to legsTwistDeg from
+    // them; the whole body turns beyond that. Standing (or the speed unreadable): the hips take what the spine can't.
+    gLast.legsUsed = false;
+    if (goal.body >= 0 && goal.bodyTurns && move.legsFollowMotion) {
+        ik::LegsSettings legsSettings;
+        legsSettings.twistLimitRadians = move.legsTwistDegrees / kDegrees;
+        gLegs.SetSettings(legsSettings);
+        if (state.anchored != ik::FollowAnchor::None) {
+            gLegs.Reset();
+        }
+        double const speed = PawnSpeed(pawn);
+        if (!std::isfinite(speed) && !gToldNoSpeed) {
+            gToldNoSpeed = true;
+            log::Warn("torso: the pawn's velocity (Engine.Actor.Velocity) can't be read: the legs turn with the body while moving too");
+        }
+        ik::LegsInput legsIn;
+        legsIn.facing = ik::YawBetween(frame.forward, goal.forward, frame.up);
+        legsIn.speed = speed;
+        legsIn.deltaSeconds = deltaSeconds;
+        ik::LegsState const legs = gLegs.Update(legsIn);
+        goal.legsWeight = legs.weight;
+        goal.legsTurnDegrees = legs.legsTurn * kDegrees;
+        goal.legsTwistDegrees = move.legsTwistDegrees;
+        gLast.legsUsed = true;
+        gLast.legs = legs;
+        gLast.speed = speed;
+        gLast.legsTwistDeg = move.legsTwistDegrees;
+        gLast.weaponDrawn = weapon::Key() != 0;
+        NoteLegs(legs);
+    } else {
+        gLegs.Reset();
+    }
+
     // The inputs, for the log and the snapshot.
     gLast.valid = true;
     gLast.state = state;
@@ -305,6 +419,7 @@ bool Fill(hand_targets::Targets const& targets, ik::Affine const& worldToCompone
 
 void Reset() {
     gFollow.Reset();
+    gLegs.Reset();
     gDriven = false;
     gLast.valid = false;
 }
@@ -324,23 +439,34 @@ std::string StatusJson() {
     ik::FollowState const& s = gLast.state;
     std::string result = "null";
     if (auto const off = LastOff(gLast.unitsPerMeter)) {
-        result = std::format("{{\"wantedTurnDeg\": {}, \"bodyTurnDeg\": {}, \"spineTwistDeg\": {}, \"yawGapDeg\": {}, \"bendDeg\": {}, "
+        result = std::format("{{\"wantedTurnDeg\": {}, \"bodyTurnDeg\": {}, \"standingTurnDeg\": {}, \"spineTwistDeg\": {}, "
+                             "\"shouldersFromLegsDeg\": {}, \"yawGapDeg\": {}, \"bendDeg\": {}, "
                              "\"viewFromBodyM\": {}, \"bodySlideM\": {}, \"slideCapped\": {}, \"headFromPivotM\": {}}}",
-            json::JsonNumber(off->wantedTurn), json::JsonNumber(off->bodyTurn), json::JsonNumber(off->twist), json::JsonNumber(off->yawGap),
+            json::JsonNumber(off->wantedTurn), json::JsonNumber(off->bodyTurn), json::JsonNumber(off->standingTurn), json::JsonNumber(off->twist),
+            json::JsonNumber(off->shouldersFromLegs), json::JsonNumber(off->yawGap),
             json::JsonNumber(off->bend), json::JsonNumber(off->wantedShift), json::JsonNumber(off->shift),
             off->shiftCapped ? "true" : "false", json::JsonNumber(off->referenceGap));
+    }
+    std::string legs = "null";
+    if (gLast.legsUsed) {
+        ik::LegsState const& l = gLast.legs;
+        legs = std::format("{{\"moving\": {}, \"weight\": {}, \"speedUps\": {}, \"weaponDrawn\": {}, \"shouldersFromLegsDeg\": {}, "
+                           "\"legsTurnDeg\": {}, \"spineFromLegsDeg\": {}, \"twistLimitDeg\": {}, \"starts\": {}}}",
+            l.moving ? "true" : "false", json::JsonNumber(l.weight), std::isfinite(gLast.speed) ? json::JsonNumber(gLast.speed) : std::string("null"),
+            gLast.weaponDrawn ? "true" : "false", json::JsonNumber(l.facing * kDegrees), json::JsonNumber(l.legsTurn * kDegrees),
+            json::JsonNumber(l.spineFromLegs * kDegrees), json::JsonNumber(gLast.legsTwistDeg), gLegsStarts);
     }
     return std::format("{{\"driven\": true, \"mode\": {}, \"lastAnchor\": {}, \"anchors\": {}, \"offLines\": {}, \"recenters\": {}, "
                        "\"headYawDeg\": {}, \"facingYawDeg\": {}, \"bodyYawDeg\": {}, \"worldYawDeg\": {{\"head\": {}, \"body\": {}, "
                        "\"pawn\": {}, \"controlRotation\": {}, \"camera\": {}}}, \"pivot\": [{}, {}, {}], \"feet\": [{}, {}], "
-                       "\"leanM\": {}, \"unitsPerMeter\": {}, \"result\": {}}}",
+                       "\"leanM\": {}, \"unitsPerMeter\": {}, \"legs\": {}, \"result\": {}}}",
         json::JsonString(gLast.mode), json::JsonString(ik::Name(gLast.lastAnchor)), gAnchors, gOffLines,
         gLast.haveRecenters ? std::to_string(gLast.recenters) : std::string("null"), json::JsonNumber(gLast.headYaw),
         json::JsonNumber(gLast.facingYaw), json::JsonNumber(s.yaw * kDegrees), json::JsonNumber(gLast.worldHead),
         json::JsonNumber(gLast.worldBody), json::JsonNumber(gLast.pawnYaw), json::JsonNumber(gLast.controlYaw),
         json::JsonNumber(gLast.cameraYaw), json::JsonNumber(s.pivot.x), json::JsonNumber(s.pivot.y), json::JsonNumber(s.pivot.z),
         json::JsonNumber(s.feet.x), json::JsonNumber(s.feet.z), json::JsonNumber(std::hypot(s.lean.x, s.lean.z)),
-        json::JsonNumber(gLast.unitsPerMeter), result);
+        json::JsonNumber(gLast.unitsPerMeter), legs, result);
 }
 
 void LogStats() {
@@ -349,23 +475,29 @@ void LogStats() {
     }
     auto const off = LastOff(gLast.unitsPerMeter);
     log::Info("    torso: {}; re-anchored {} times (last: {}), {} off-the-player ticks; body yaw {:.0f} vs head {:.0f} deg (tracking), "
-              "pawn {:.0f} vs body {:.0f} deg (world){}",
+              "pawn {:.0f} vs body {:.0f} deg (world); {} (moves begun: {}, ticks keeping the run: {}){}",
         gLast.mode, gAnchors, ik::Name(gLast.lastAnchor), gOffLines, gLast.state.yaw * kDegrees, gLast.headYaw, gLast.pawnYaw,
-        gLast.worldBody,
-        off ? std::format("; last write: hips {:.0f} + spine {:.0f} of {:.0f} deg, slid {:.2f} of {:.2f} m, head {:.2f} m off", off->bodyTurn,
-                  off->twist, off->wantedTurn, off->shift, off->wantedShift, off->referenceGap)
+        gLast.worldBody, LegsText(), gLegsStarts, gLegsMovingTicks,
+        off ? std::format("; last write: hips {:.0f} (standing rule {:.0f}) + spine {:.0f} of {:.0f} deg, slid {:.2f} of {:.2f} m, head {:.2f} m off",
+                  off->bodyTurn, off->standingTurn, off->twist, off->wantedTurn, off->shift, off->wantedShift, off->referenceGap)
             : std::string());
     gOffLines = 0;
+    gLegsStarts = 0;
+    gLegsMovingTicks = 0;
 }
 
 void Shutdown() {
     gFollow = ik::BodyFollow{};
+    gLegs = ik::LegsFollow{};
     gDriven = false;
     gFloor.reset();
     gLast = {};
     gAnchors = 0;
     gOffLines = 0;
-    gNextLogMs = gNextAnchorLogMs = 0;
+    gLegsStarts = 0;
+    gLegsMovingTicks = 0;
+    gNextLogMs = gNextAnchorLogMs = gNextLegsLogMs = 0;
+    gToldNoSpeed = false;
 }
 
 } // namespace mevr::game::body_follow

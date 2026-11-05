@@ -79,4 +79,48 @@ FollowState BodyFollow::Update(FollowInput const& in) {
     return out;
 }
 
+double LegsTurn(double facing, double limit) {
+    if (!std::isfinite(facing) || !std::isfinite(limit)) {
+        return 0.0;
+    }
+    double const excess = std::abs(facing) - std::max(0.0, limit);
+    return excess > 0.0 ? std::copysign(excess, facing) : 0.0;
+}
+
+LegsState LegsFollow::Update(LegsInput const& in) {
+    if (!std::isfinite(in.facing)) {
+        return last_;  // nothing new: keep what was there
+    }
+    double const dt = std::isfinite(in.deltaSeconds) ? std::max(0.0, in.deltaSeconds) : 0.0;
+    double const speed = std::isfinite(in.speed) ? std::max(0.0, in.speed) : 0.0;
+    bool const wasMoving = active_ && moving_;
+    moving_ = settings_.on && (speed > settings_.moveSpeed || (wasMoving && speed > settings_.stopSpeed));
+    double const target = moving_ ? 1.0 : 0.0;
+    double const facing = Wrap(in.facing);
+    if (!active_) {
+        // Starting over: the weight where it belongs, the facing on its short side.
+        weight_ = target;
+        facing_ = facing;
+        active_ = true;
+    } else {
+        double const step = std::clamp(settings_.blendPerSecond, 0.0, 1e6) * dt;
+        weight_ = target > weight_ ? std::min(target, weight_ + step) : std::max(target, weight_ - step);
+        // Continuous: the facing goes on from where it was (past 180 degrees on the side it came from) ...
+        facing_ += Wrap(facing - facing_);
+        // ... until it is the band past it: then the short side again.
+        if (std::abs(facing_) > std::numbers::pi + std::max(0.0, settings_.sideBandRadians)) {
+            facing_ = Wrap(facing_);
+        }
+    }
+    LegsState out;
+    out.moving = moving_;
+    out.started = moving_ && !wasMoving;
+    out.weight = weight_;
+    out.facing = facing_;
+    out.legsTurn = LegsTurn(facing_, settings_.twistLimitRadians);
+    out.spineFromLegs = facing_ - out.legsTurn;
+    last_ = out;
+    return out;
+}
+
 } // namespace mevr::ik

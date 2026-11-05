@@ -30,6 +30,9 @@
 //           bodyFollowsHead               1: the spine puts the shoulders under the headset
 //           bodyMove, leanM, bodyMoveMaxM 1 (default): the whole body (not God or Camera) turns and steps
 //                                         under the view (research/29, game/body_follow); 0: spine only
+//           legsFollowMotion, legsTwistDeg 1 (default): while the pawn moves its legs keep its facing (the run
+//                                         animation's) and the spine twists toward the view up to legsTwistDeg
+//                                         (30..90, default 60) from them; 0: the hips turn with the view moving too
 //           armStretch                    1-1.25: how far the arms may stretch to reach
 //           trackingScale                 Unreal units per meter for hands and head; 0: the view's
 //           noCover, physicalCrouch, crouchBelow, standAbove, crouchDwellS: physical cover and
@@ -72,11 +75,13 @@ double ArmLength();
 // [Hands] reachNearFaceM: a hand this close to the eyes (meters) follows its controller 1:1 (no reach
 // scaling), so a gun at the cheek sits where the controller is; 0: off.
 double ReachNearFace();
-// [Hands] bodyMove, leanM, bodyMoveMaxM (game/body_follow, research/29).
+// [Hands] bodyMove, leanM, bodyMoveMaxM, legsFollowMotion, legsTwistDeg (game/body_follow, research/29).
 struct BodyMove {
     bool on = true;            // the whole body turns and steps under the view
     double leanMeters = 0.20;  // the head may lean this far from the feet before they step
     double maxMeters = 0.75;   // the body moves at most this far from where the game put it
+    bool legsFollowMotion = true;    // moving, the legs keep the pawn's facing (where its run animation points)
+    double legsTwistDegrees = 60.0;  // ...and the spine twists at most this far from them (30..90)
 };
 BodyMove GetBodyMove();
 // [Hands] levelCamera: keep the game camera level while the hand aims (game/view_level).
