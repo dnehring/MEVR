@@ -389,13 +389,13 @@ switching frameworks.
   (`touchTipM` 0.04 ahead of the aim pose) within `touchHoverM` (0.06) of a screen's visible part takes over from the rays, pressing
   at `touchPressM` (0.005) from the front, letting go past `touchReleaseM` (0.015); haptic tick on arrival, click on press; the
   world UI passes its crop as the touchable part (`NoteGameUiQuad`'s `touchArea`); `touch = 0` off. Rules unit-tested.
-  **LE1's Flash cursor follows raw relative mouse motion only** (2026-11-05, research/56 section 6): `SetCursorPos` and posted
-  `WM_MOUSEMOVE` never moved it, posted clicks land at it (`BioSFHandler.SendMouseToScaleForm`), so until then the pointer's clicks
-  went wherever the game's cursor was. The mod steers it onto the pointer's point (`game/GuiCursor`, rules `core/vr/GuiCursor`,
-  HostServices v30 `gamePointer`: the focused movie's `_root._xmouse/_ymouse` read each tick, `SendInput` relative moves while the
-  game's window is in front, 0.82 stage units per count to start, the gain learned); `mevr guimouse [to x y | off]`, snapshot
-  `"mod"."guiCursor"`. A tap clicks where the finger touched (pinned through the tap); the hand a wrist screen is projected from
-  neither touches nor points at it (`NoteGameUiQuad`'s `projectingHand`), nor at the omni-tool's rail.
+  **The game's own cursor is steered onto the pointer** (2026-11-05, research/56 section 6, `[Pointer] gameCursor`): LE1's Flash
+  screens put their mouse where `GetCursorPos` says (the client area scaled to the stage) and read it only when real mouse input
+  arrives, and the Windows cursor can't leave the monitor (the game's window is taller), so until then the pointer's clicks landed
+  wherever the game's cursor was. The host hooks `GetCursorPos` at attach and answers the pointer's point while it's on a game
+  menu (not the galaxy map), and each move sends a one-count `SendInput` move and back (game window in front). `mevr guimouse`
+  prints the movie's mouse. A tap clicks where the finger touched (pinned through the tap); the hand a wrist screen is projected
+  from neither touches nor points at it (`NoteGameUiQuad`'s `projectingHand`), nor at the omni-tool's rail.
 - LE1 galaxy map in the CIC ([research/51](research/51-galaxy-map.md) section 8, HostServices v26; `game/GalaxyMap`,
   `core/vr/GalaxyHologram`, host `plugin/GalaxyHologram` + `GalaxyHologramDraw`; `[Galaxy] hologram`, `inWorld`, `world*`): on foot
   near the console our hologram of the galaxy (from the 2DA tables) stands over the projector (the game's own projector hologram

@@ -81,7 +81,7 @@ struct Panel;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 30;
+inline constexpr int kHostServicesVersion = 29;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -348,13 +348,6 @@ struct HostServices {
     // marker). The mod sends only if powerLockSize matches its sizeof(LockView). Any thread.
     std::uint32_t powerLockSize = 0;
     void (*setPowerLock)(vr::power_wheel::LockView const* view) = nullptr;
-
-    // Version 30: the game pointer's point on one of the game's menus (research/56 section 6, game/GuiCursor). LE1's Flash
-    // cursor follows raw mouse motion only, so the mod steers it onto this point; the host's clicks then land where the
-    // fingertip or the ray is. Returns 1 and the point as window UV (0..1 from the client area's top left) while the pointer
-    // is on a flat menu or a game screen in the room or on the wrist (not the galaxy map) and was there within 100 ms; else 0.
-    // Any thread.
-    std::uint32_t (*gamePointer)(float* u, float* v) = nullptr;
 };
 
 } // namespace mevr

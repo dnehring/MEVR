@@ -218,26 +218,35 @@ back-out's B goes).
 `GiveAll`):** a replayed fingertip (`make_screen_touches.py`, a scratch generator: the wrist pose of `make-wrist-recording.py`, the
 right index fingertip from 10 cm in front along the screen's normal to 1 cm through) pressed list row 3 (Breaker X) at (1365, 1418)
 px of the 2344 x 2392 window, 5 mm from the aimed point; the game didn't select it. Why:
-- **LE1's Flash screens move their mouse by raw relative mouse motion only.** The equipment movie's `_root._xmouse`/`_ymouse` (read
-  with `mevr panel Inventory var`) stayed at (418.3, 265.5) stage units after a posted `WM_MOUSEMOVE`, after `SetCursorPos` (the
-  game window in front) and after `BioPlayerInput.SmoothGuiMouse`'s result was replaced for 10 ticks (a CallFunction post-handler,
-  `game/GuiCursor`'s first form: one X and one Y call per `PlayerInput`, confirmed); four `SendInput` relative moves of 10 counts
-  moved it to (451.0, 265.5): **0.82 stage units per count** (1.5 window pixels at this window; the stage is 1280 x 1306 here,
-  `Stage.width`/`height`, the window's aspect).
+- **LE1's Flash screens read the Windows cursor's place, and only when real mouse input arrives.** The equipment movie's
+  `_root._xmouse`/`_ymouse` (read with `mevr panel Inventory var`) stayed at (418.3, 265.5) stage units after a posted
+  `WM_MOUSEMOVE`, after `SetCursorPos` alone (the game window in front) and after `BioPlayerInput.SmoothGuiMouse`'s result was
+  replaced for 10 ticks (one X and one Y call per `PlayerInput`); a `SendInput` relative move moved it. Then (00:41) `SetCursorPos`
+  followed by a one-count `SendInput` move and back put it exactly where the cursor was, three times out of three: **movie x =
+  cursor x * Stage.width / client width, movie y = cursor y * the same - (Stage.height - 720) / 2** (the 720-tall content centred
+  in a 1280 x 1306 stage; client 2344 x 2392: (1001, 800) -> (546.6, 143.8), (600, 1200) -> (327.6, 362.2), (1400, 300) ->
+  (764.5, -129.3), each within 0.1 of the prediction).
+- **The Windows cursor can't reach the window's lower part:** the game's window (2344 x 2392, the stereo target's aspect) is
+  taller than the monitor (5120 x 1440), and the cursor stops at the monitor's edge, so the movie's mouse never went below 492.7
+  (client y 1439). A first steering by relative moves (00:37, `SendInput` in a loop from the mod, the movie's mouse read back)
+  reached a row (row 3's tap selected Breaker X: its middle sits just above that edge) but not the weapon-type tabs or the squad
+  tabs (Ashley's at client y 1697, below it): both taps landed with the cursor held at the edge.
 - **Clicks do arrive as posted messages:** a posted `WM_LBUTTONDOWN`/`UP` ran `BioSFHandler.SendMouseToScaleForm` on every handler
   on the stack (a call trace), at wherever that cursor was. So the pointer's clicks (ray or fingertip) have always gone to the
-  game's own cursor, not to the pointer's point: research/42's "which of the two mouse paths" is neither.
+  game's own cursor, not to the pointer's point: research/42's "which of the two mouse paths": the cursor's place, read on real input only.
 - **The left hand pointed at its own screen:** the projecting hand's fingertip touched the wrist screen (4 mm away in a replay; it
   scrolled the list twice) and its ray moved the game's cursor. The host now leaves the projecting hand's fingertip out on a wrist
   screen and the rail (`NoteGameUiQuad`'s `projectingHand`); its ray too (next deploy).
 - **A tap clicks where the finger touched:** the touch's point is pinned from contact through the tap's button up (or a hold's
   button down), so sliding while pressing or pulling out aside doesn't move the click (`core/vr/GamePointer`, unit-tested).
 
-**Next:** steer the game's cursor onto the pointer's point: the host publishes the pointer's window point (HostServices v30), the mod
-reads the focused movie's `_xmouse`/`_ymouse` each tick and injects the relative motion that closes the gap (`SendInput`, only
-while the game's window is in front; the gain adapted from what each move did), so hover, clicks and the wheel land where the
-finger or the ray is. Better, if Ghidra shows it: the native place the raw deltas accumulate into, written directly (no
-foreground need, the Windows cursor untouched).
+**The fix (host, `plugin/GamePointer`, `[Pointer] gameCursor = 1`):** user32's `GetCursorPos` is hooked at attach; while the
+pointer (a fingertip or a ray) is on one of the game's menus (flat or a world UI screen; not the galaxy map) it answers the
+pointer's point (screen coordinates of the client pixel, not clamped to the monitor) for 150 ms after each frame on the screen,
+and each move puts the Windows cursor there too and sends a one-count `SendInput` move and back (with the game's window in front;
+else a warning), from the pointer's worker thread, before the click that follows. `mevr guimouse` (`game/GuiCursor`, a dev probe)
+prints the movie's mouse and where the cursor the game sees would put it; the snapshot's `"gamePointer"."gameCursor"` counts the
+answers and nudges. [verify in the game: the tabs below the monitor's edge]
 
 **The game's model, verified** (`mevr inv`, game/InventoryProbe, 2026-11-04 23:52 on the fake headset, BIOA_UNC20, after the
 cheat manager's `GiveAll`): the equipment screen's handler (`BioSFHandler_PCInventory`) holds `m_oInvInterface`, a

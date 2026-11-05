@@ -584,7 +584,7 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         return game_menu_request::Inject(which);
     }
     if (verb == "guimouse") {
-        // `mevr guimouse [push <dx> <dy> [n] | to <x> <y> | off]` (research/56 section 6: the game's GUI cursor steered).
+        // `mevr guimouse`: where the game's Flash cursor is (research/56 section 6).
         std::string rest;
         std::getline(words, rest);
         return gui_cursor::Command(rest);

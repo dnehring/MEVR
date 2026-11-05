@@ -14,6 +14,7 @@
 #include "plugin/Halcyon.hpp"
 #include "plugin/MevrMenu.hpp"
 
+#include "core/Hook.hpp"
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/vr/Controllers.hpp"
@@ -24,7 +25,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <bit>
 #include <cmath>
 #include <condition_variable>
 #include <deque>
@@ -69,6 +69,13 @@ struct Settings {
     float touchHoverM = 0.06f;
     float touchPressM = 0.005f;
     float touchReleaseM = 0.015f;
+    // The game's Flash cursor steered onto the pointer's point (research/56 section 6, measured 2026-11-05): LE1's screens put
+    // their mouse where GetCursorPos says the Windows cursor is (client area, scaled to the stage) and read it only when real
+    // mouse input arrives; posted moves never moved it, and the Windows cursor can't leave the monitor (the game's window is
+    // taller). So while the pointer is on one of the game's menus (not the galaxy map) GetCursorPos answers the pointer's point
+    // (hooked at attach), and each move sends a one-count SendInput move and back, with the game's window in front, so the game
+    // reads it before the click that follows.
+    bool gameCursor = true;
     bool operator==(Settings const&) const = default;
 };
 
@@ -81,10 +88,6 @@ bool gSettingsLogged = false;
 pointer::Quad gQuad;
 float gTouchArea[4] = {0.0f, 0.0f, 1.0f, 1.0f};  // the touchable part (quad UV): the world UI's visible crop
 int gProjectingHand = -1;                        // the hand a wrist screen is projected from: its fingertip doesn't touch it
-// The pointer's last point on one of the game's menus (LatestMenuPoint): window UV as bits, and when.
-std::atomic<std::uint32_t> gMenuU{0};
-std::atomic<std::uint32_t> gMenuV{0};
-std::atomic<std::uint64_t> gMenuMs{0};
 bool gWasTouching = false;                       // the last step's point was a fingertip's (haptic tick on arrival)
 std::uint64_t gQuadMs = 0;
 MELEVR::MevrBridge::PanelKind gKind = MELEVR::MevrBridge::PanelKind::GameMenu;
@@ -106,6 +109,32 @@ bool gHaveLast = false;
 unsigned gMoves = 0;            // this appearance
 unsigned gClicks = 0;
 int gNotches = 0;
+
+// The game's cursor (Settings::gameCursor): GetCursorPos's answer (screen x, y packed) and until when it holds; any thread.
+constexpr std::uint64_t kCursorHoldMs = 150;
+using tGetCursorPos = BOOL WINAPI(LPPOINT);
+tGetCursorPos* gGetCursorPosOrig = nullptr;
+bool gCursorHooked = false;
+std::atomic<std::uint64_t> gCursorPoint{0};
+std::atomic<std::uint64_t> gCursorUntilMs{0};
+std::atomic<std::uint64_t> gCursorAnswers{0};
+std::atomic<std::uint64_t> gCursorNudges{0};
+std::atomic<bool> gLoggedNudgeForeground{false};
+
+std::uint64_t Pack(POINT p) {
+    return static_cast<std::uint64_t>(static_cast<std::uint32_t>(p.x)) | (static_cast<std::uint64_t>(static_cast<std::uint32_t>(p.y)) << 32);
+}
+
+BOOL WINAPI GetCursorPosHook(LPPOINT point) {
+    if (point != nullptr && GetTickCount64() < gCursorUntilMs.load(std::memory_order_acquire)) {
+        std::uint64_t const packed = gCursorPoint.load(std::memory_order_relaxed);
+        point->x = static_cast<LONG>(static_cast<std::int32_t>(packed & 0xFFFFFFFFu));
+        point->y = static_cast<LONG>(static_cast<std::int32_t>(packed >> 32));
+        gCursorAnswers.fetch_add(1, std::memory_order_relaxed);
+        return TRUE;
+    }
+    return gGetCursorPosOrig != nullptr ? gGetCursorPosOrig(point) : FALSE;
+}
 
 // Any thread: the status for snapshots.
 std::atomic<bool> gOwnsTriggers{false};  // OwnsTriggers(): written by Step (Present thread), read by the XInput hook
@@ -173,6 +202,7 @@ void RefreshSettings(std::uint64_t now) {
         s.touchHoverM = std::clamp(ReadFloat(L"touchHoverM", s.touchHoverM, path), 0.01f, 0.3f);
         s.touchPressM = std::clamp(ReadFloat(L"touchPressM", s.touchPressM, path), -0.05f, 0.05f);
         s.touchReleaseM = std::clamp(ReadFloat(L"touchReleaseM", s.touchReleaseM, path), s.touchPressM + 0.002f, 0.1f);
+        s.gameCursor = readBool(L"gameCursor", s.gameCursor);
     }
     if (!gSettingsLogged || !(s == gSettings)) {
         gSettingsLogged = true;
@@ -188,6 +218,9 @@ void RefreshSettings(std::uint64_t now) {
         mevr::log::Info("game pointer: touch {} (a fingertip {:.3f} m ahead of the aim pose: within {:.3f} m of a screen it points, at "
                         "{:.3f} m it presses, back past {:.3f} m it lets go)", s.touch ? "on" : "off ([Pointer] touch = 0)", s.touchTipM,
             s.touchHoverM, s.touchPressM, s.touchReleaseM);
+        mevr::log::Info("game pointer: the game's own cursor {}", !s.gameCursor ? "is left alone ([Pointer] gameCursor = 0)"
+            : gCursorHooked ? "is steered onto the pointer (GetCursorPos answered, a one-count move to make the game read it)"
+                            : "can't be steered: GetCursorPos isn't hooked");
     }
     gSettings = s;
     pointer::Settings ps = gPointer.GetSettings();
@@ -217,6 +250,7 @@ struct Post {
     WPARAM wparam = 0;
     LPARAM lparam = 0;
     bool log = false;     // [Pointer] logMessages when it was queued
+    bool nudge = false;   // then a one-count SendInput move and back, so the game reads the cursor (Settings::gameCursor)
 };
 std::mutex gPostMutex;
 std::condition_variable gPostReady;
@@ -236,6 +270,20 @@ char const* MessageName(UINT m) {
 void Deliver(Post const& p, bool log) {
     if (p.cursor) {
         SetCursorPos(p.screen.x, p.screen.y);
+    }
+    if (p.nudge) {
+        if (GetForegroundWindow() == p.window) {
+            INPUT moves[2] = {};
+            moves[0].type = moves[1].type = INPUT_MOUSE;
+            moves[0].mi.dwFlags = moves[1].mi.dwFlags = MOUSEEVENTF_MOVE;
+            moves[0].mi.dx = 1;
+            moves[1].mi.dx = -1;
+            if (SendInput(2, moves, sizeof(INPUT)) == 2) {
+                gCursorNudges.fetch_add(1, std::memory_order_relaxed);
+            }
+        } else if (!gLoggedNudgeForeground.exchange(true)) {
+            mevr::log::Warn("game pointer: the game's window isn't in front: its cursor isn't moved (SendInput would reach another program)");
+        }
     }
     if (p.message != 0) {
         PostMessageW(p.window, p.message, p.wparam, p.lparam);
@@ -276,8 +324,15 @@ void Send(Post const& p, Settings const& s) {
 void SendMove(HWND window, int x, int y, bool pressed, Settings const& s) {
     Post p;
     p.window = window;
-    // SetCursorPos: Halcyon's hook passes it through while its menu is closed.
-    p.cursor = s.setCursor && ToScreen(window, x, y, p.screen);
+    bool const steer = s.gameCursor && gCursorHooked && gKind == MELEVR::MevrBridge::PanelKind::GameMenu;
+    // SetCursorPos: Halcyon's hook passes it through while its menu is closed. Steering the game's cursor also puts the Windows
+    // cursor over the game's window, so the nudge's own mouse move goes to it.
+    p.cursor = (s.setCursor || steer) && ToScreen(window, x, y, p.screen);
+    if (steer && p.cursor) {
+        gCursorPoint.store(Pack(p.screen), std::memory_order_relaxed);  // GetCursorPos's answer: not clamped to the monitor
+        gCursorUntilMs.store(GetTickCount64() + kCursorHoldMs, std::memory_order_release);
+        p.nudge = true;
+    }
     if (s.moveMessages) {
         p.message = WM_MOUSEMOVE;
         p.wparam = pressed ? MK_LBUTTON : 0;
@@ -373,12 +428,13 @@ void PublishStatus(bool shown, pointer::Output const* out, int width, int height
         status = std::format(
             "{{\"on\": {}, \"flat\": true, \"kind\": \"{}\", \"worldLocked\": {}, \"quadM\": [{:.3f}, {:.3f}], \"client\": [{}, {}], "
             "\"hit\": {}, \"hand\": \"{}\", \"px\": [{}, {}], \"uv\": [{:.4f}, {:.4f}], \"pressed\": {}, \"moves\": {}, \"clicks\": {}, \"notches\": {}, "
-            "\"touch\": {}, \"touchM\": {:.4f}}}",
+            "\"touch\": {}, \"touchM\": {:.4f}, \"gameCursor\": {{\"steering\": {}, \"answers\": {}, \"nudges\": {}}}}}",
             gSettings.gameMenus ? "true" : "false", KindName(gKind), gQuadHeadLocked ? "false" : "true", gQuad.width, gQuad.height,
             width, height, out != nullptr && out->hit ? "true" : "false", gPointer.Hand() == 1 ? "right" : "left",
             out != nullptr ? out->x : 0, out != nullptr ? out->y : 0, out != nullptr ? out->u : 0.0f, out != nullptr ? out->v : 0.0f,
             gPointer.Pressed() ? "true" : "false", gMoves, gClicks, gNotches, out != nullptr && out->touch ? "true" : "false",
-            out != nullptr ? out->touchDistance : 0.0f);
+            out != nullptr ? out->touchDistance : 0.0f, GetTickCount64() < gCursorUntilMs.load() ? "true" : "false",
+            gCursorAnswers.load(), gCursorNudges.load());
     }
     std::lock_guard<std::mutex> const lock(gStatusMutex);
     gStatus = std::move(status);
@@ -392,6 +448,15 @@ bool Step(Frame const& frame, Dot& dot) {
     bool const pointing = StepInner(frame, dot);  // true: the ray is on the quad (or a press is held), a dot is drawn
     gOwnsTriggers.store(pointing, std::memory_order_release);
     return pointing;
+}
+
+void InstallCursorHook(mevr::hook::Context& init) {
+    HMODULE const user32 = GetModuleHandleW(L"user32.dll");
+    auto* const target = user32 != nullptr ? reinterpret_cast<tGetCursorPos*>(GetProcAddress(user32, "GetCursorPos")) : nullptr;
+    gCursorHooked = target != nullptr && mevr::hook::Install(init, "GetCursorPos", target, &GetCursorPosHook, gGetCursorPosOrig);
+    if (!gCursorHooked) {
+        mevr::log::Warn("game pointer: GetCursorPos not hooked: the game's cursor can't be steered onto the pointer");
+    }
 }
 
 bool OwnsTriggers() {
@@ -540,12 +605,10 @@ static bool StepInner(Frame const& frame, Dot& dot) {
         }
     }
     SendWheel(window, gLastX, gLastY, out.wheelNotches, out.pressed, gSettings);
-    PublishStatus(true, &out, input.width, input.height);
-    if (gKind == MELEVR::MevrBridge::PanelKind::GameMenu) {
-        gMenuU.store(std::bit_cast<std::uint32_t>(std::clamp(out.u, 0.0f, 1.0f)), std::memory_order_relaxed);
-        gMenuV.store(std::bit_cast<std::uint32_t>(std::clamp(out.v, 0.0f, 1.0f)), std::memory_order_relaxed);
-        gMenuMs.store(GetTickCount64(), std::memory_order_release);
+    if (gSettings.gameCursor && gCursorHooked && gKind == MELEVR::MevrBridge::PanelKind::GameMenu && gHaveLast) {
+        gCursorUntilMs.store(GetTickCount64() + kCursorHoldMs, std::memory_order_release);  // still on it: the answer holds
     }
+    PublishStatus(true, &out, input.width, input.height);
 
     // The dot: at the hit, a hair in front of the quad, facing like it.
     XrVector3f const normal = mevr::vr::overlay::Rotate(gQuad.pose.orientation, {0.0f, 0.0f, 1.0f});
@@ -559,16 +622,6 @@ static bool StepInner(Frame const& frame, Dot& dot) {
         dot.size *= 1.0f + 2.0f * t;
     }
     dot.pressed = out.pressed;
-    return true;
-}
-
-bool LatestMenuPoint(float& u, float& v, std::uint64_t maxAgeMs) {
-    std::uint64_t const at = gMenuMs.load(std::memory_order_acquire);
-    if (at == 0 || GetTickCount64() - at > maxAgeMs) {
-        return false;
-    }
-    u = std::bit_cast<float>(gMenuU.load(std::memory_order_relaxed));
-    v = std::bit_cast<float>(gMenuV.load(std::memory_order_relaxed));
     return true;
 }
 

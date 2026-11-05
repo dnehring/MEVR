@@ -5,7 +5,10 @@
 
 #include <openxr/openxr.h>
 
-#include <cstdint>
+namespace mevr::hook {
+class Context;
+}
+
 #include <string>
 
 // The game pointer (research/42): while Halcyon shows the game on its flat screen (the game's own menus: inventory,
@@ -43,9 +46,9 @@ std::string StatusJson();
 // the galaxy map's travel question, research/51 section 8). Any thread.
 bool OwnsTriggers();
 
-// The pointer's point on one of the game's menus (a flat menu or a world UI screen, not the galaxy map) within `maxAgeMs`, as
-// window UV (HostServices v30: the mod steers the game's Flash cursor onto it, research/56 section 6). Any thread.
-bool LatestMenuPoint(float& u, float& v, std::uint64_t maxAgeMs);
+// At attach (plugin/Entry): user32's GetCursorPos hooked, so that the game's Flash cursor can be put on the pointer's point
+// (`[Pointer] gameCursor`, research/56 section 6). Never removed.
+void InstallCursorHook(mevr::hook::Context& init);
 
 // The game's UI on a quad of ours (app space; the whole UI frame edge to edge, as the window's client area), pointed at this
 // frame: the galaxy map's travel question over the hologram's table (research/51 section 8). Present thread, before Step.

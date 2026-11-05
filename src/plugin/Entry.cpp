@@ -21,6 +21,7 @@
 #include "plugin/ProcessEventHook.hpp"
 
 #if defined(MEVR_WITH_HALCYON)
+#include "plugin/GamePointer.hpp"
 #include "plugin/GameThreadCalls.hpp"
 #include "plugin/Halcyon.hpp"
 #include "plugin/PerfProbe.hpp"
@@ -205,6 +206,7 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
     HookExitProcess(init);
 #if defined(MEVR_WITH_HALCYON) && defined(MEVR_GAME_LE1)
     mevr::host::render_levers::Install(init);  // research/22: the render thread's levers and accounting
+    mevr::host::game_pointer::InstallCursorHook(init);  // research/56 section 6: the game's cursor onto the pointer
 #endif
     mevr::log::Info("host attached");
     return true;
