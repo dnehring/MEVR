@@ -273,3 +273,33 @@ left hand aims and casts. Code: `core/vr/PowerWheel` (`UpdateLock`, `StepPush`, 
 - **Still to check** [verify]: a cast with the weapon away (question 2), the casting animation
   with arm IK (question 4), the push's thresholds with tracked hands in the headset, the marker's size at 5-35 m in the
   headset.
+
+## 8. The cast from the hand: the player's powers have no projectile (2026-11-05)
+
+The user asked for the cast to leave the left hand. Built, measured in the game on the fake headset (UNC20's awake
+mercenaries, Throw and Singularity), and taken back out (a321189, reverted): **in LE1 the player's powers fly nothing**.
+
+- **How a release happens:** never through script. The casting animation's notify is the event `BioPawn.ReleasePower`
+  (ProcessEvent from native code), whose script calls `BioActivePower.AnimationReadyForPowerRelease`; about 30 ms later the
+  running power's native tick does the release. The private native `ReleaseProjectilePower` (exec 0xBB21A0, which only calls
+  the power's vtable slot 0x358) is never called from script, so a CallFunction handler on it never runs (a call trace of
+  "release projectile" during casts showed none).
+- **Other casters' powers fly:** each spawns a `BioLinePowerProjectile` (seen by a ProcessEvent post-handler on
+  `Engine.Projectile.PostBeginPlay`, the spawn's event, before `InitializeData` fills its caster, power and target; 15 in a
+  few minutes from the woken mercenaries BioPawn_1, _2, _5). The class's `InitializeData` and `TickAuthoritative` are natives
+  that hand over to vtable slots 0x818 and 0x478.
+- **The player's don't:** Throw and Singularity cast through `ActivatePower` (and landing on the locked mercenary: it was
+  thrown each time) spawned no projectile of any class in the 4 s after the cast; every power projectile seen had another
+  caster (the player was SFXPawn_Player_1). So Shepard's powers land at the release, at the target, with no travel; the
+  1.6 s from push to effect (section 7) is the casting animation, not a flight.
+- **Clearing the running power's `m_bCasterIsPlayer`** right after the cast (an experiment) changed nothing: still no
+  projectile, so the projectile path isn't that flag.
+
+**What's possible instead** (the user's choice): a visual only, a biotic bolt or beam drawn from the left hand to the target
+at the release (`BioPawn.ReleasePower` on the player's pawn marks the moment; the game's own casting beam,
+`BioActivePower.m_oCachedBeamEffect` / `m_bDisplayingCastingBeam`, may be one to reuse [verify]), which changes nothing in
+the rules; or a real projectile for the player's powers (spawning a `BioLinePowerProjectile` at the hand with
+`InitializeData` and holding back the game's instant release), which makes powers travel and miss like the enemies' (a
+mechanic change, and the release isn't reachable from script). The mover of a321189 (the spawn handler, a launch from the
+hand at the projectile's own speed toward its own target, `vr::power_wheel::FromHand` / `LaunchPoint`, unit-tested) is the
+start of the second if it's wanted.

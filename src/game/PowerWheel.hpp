@@ -28,12 +28,7 @@ struct Link {
     void (*haptic)(int hand, float seconds, float amplitude) = nullptr;
 };
 
-// Before the CallFunction hook goes in (Mod.cpp): the post-handler that moves the player's power projectiles to the left hand
-// (research/55 section 8, [PowerWheel] fromHand). False if the game's function isn't found.
-bool TryStartup();
 void Tick(double deltaSeconds, Link const& link);
-// A launch point is kept (fromHand on, on foot, the left hand tracked or `aimhead`): the script hook must be in.
-bool WantsScriptHook();
 // The pad options (before the support grip publishes them): X off on foot while it's on; the left hand its own while open.
 void AdjustPad(gamepad::Options& options);
 bool IsOpen();

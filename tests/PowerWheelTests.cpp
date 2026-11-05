@@ -476,34 +476,6 @@ void TestLockView() {
     CHECK(pw::LatestLock().active == 0);
 }
 
-// The cast leaves the hand (research/55 section 8): from the hand toward the projectile's own target at its own speed.
-void TestFromHand() {
-    // The game's velocity: 1300 units/s toward +X; the target 1000 units ahead, the hand 50 up and 30 left of the spawn.
-    pw::Launch const l = pw::FromHand({0.0f, -30.0f, 50.0f}, {1000.0f, 0.0f, 0.0f}, {1300.0f, 0.0f, 0.0f}, 0.0f);
-    CHECK(l.aimed && Close(l.start.y, -30.0f) && Close(l.start.z, 50.0f));
-    float const speed = std::sqrt(l.velocity.x * l.velocity.x + l.velocity.y * l.velocity.y + l.velocity.z * l.velocity.z);
-    CHECK(Close(speed, 1300.0f, 0.1f));  // its own speed
-    CHECK(l.velocity.x > 1290.0f && l.velocity.y > 0.0f && l.velocity.z < 0.0f);  // toward the target: right and down a little
-    // No velocity yet: the class's speed.
-    pw::Launch const still = pw::FromHand({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 100.0f}, {}, 1300.0f);
-    CHECK(still.aimed && Close(still.velocity.z, 1300.0f, 0.1f));
-    // The target on the hand, or no speed at all: the game's velocity, unchanged.
-    pw::Launch const onHand = pw::FromHand({5.0f, 5.0f, 5.0f}, {5.0f, 5.0f, 5.0f}, {10.0f, 0.0f, 0.0f}, 0.0f);
-    CHECK(!onHand.aimed && Close(onHand.velocity.x, 10.0f));
-    CHECK(!pw::FromHand({0.0f, 0.0f, 0.0f}, {100.0f, 0.0f, 0.0f}, {}, 0.0f).aimed);
-    // The launch point: ahead of the aim pose along its forward (-Z when unrotated).
-    XrPosef aim{};
-    aim.orientation = {0.0f, 0.0f, 0.0f, 1.0f};
-    aim.position = {0.1f, 1.2f, -0.3f};
-    XrVector3f const p = pw::LaunchPoint(aim, 0.06f);
-    CHECK(Close(p.x, 0.1f) && Close(p.y, 1.2f) && Close(p.z, -0.36f));
-    // Turned 90 degrees left (about +Y): forward is -X.
-    float const h = std::sqrt(0.5f);
-    aim.orientation = {0.0f, h, 0.0f, h};
-    XrVector3f const q = pw::LaunchPoint(aim, 0.10f);
-    CHECK(Close(q.x, 0.0f) && Close(q.z, -0.3f));
-}
-
 int RunPowerWheelTests() {
     TestMachine();
     TestPlacement();
@@ -514,6 +486,5 @@ int RunPowerWheelTests() {
     TestAutoLock();
     TestPush();
     TestLockView();
-    TestFromHand();
     return gFailures;
 }
