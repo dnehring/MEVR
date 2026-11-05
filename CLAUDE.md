@@ -455,7 +455,16 @@ switching frameworks.
   input (no mode overrides them; in mode 7 only the Flash wheel opens screens). [verify] in the game: the backing out, the tap's
   distances, legibility. Logs `omni-tool:`, `omni-tool rail:`; snapshot layer `omnirail`; offline look `mevr-menu-preview`'s
   `rail-*.png`. **Replays with controller poses move the real cursor** when a screen falls back to the flat panel (the game
-  pointer's `SetCursorPos`): `[Pointer] setCursor = 0` for such tests.
+  pointer's `SetCursorPos`): `[Pointer] setCursor = 0` for such tests. `mevr omni <equipment|squad|map|journal|codex|computer|
+  close|holster>` hands the mod the request an entry gives (no hand on the rail).
+  **The rail is drawn with ME1's own art** (research/56 section 5; the user, 2026-11-04: "ME1's screens, exactly"; hand-drawn
+  imitations were rejected twice): the mod (`game/GameArt`) copies six of the game's Scaleform movies' `RawData` to
+  `%LOCALAPPDATA%\MEVR\gameart` once per level (the player's own data: **never commit or ship game art**); the host
+  (`plugin/RailArt`, `core/gfx`: a GFx reader, a CPU rasterizer with morph shapes and nine-slices, DefineFont3 to TrueType)
+  registers Biomass, Tigensu and Myriad with RmlUi ("ME1 Biomass"...) and makes `mevr:me1-tab*` (PC_Journal's `leftTab` states,
+  the game's orange on hover) and `mevr:me1-panel` (PCInventory's frame #324, its title notch at native size); `art` on the
+  document's body switches the RCSS to them, else the rail's own look. Offline: `mevr-menu-preview --gameart <folder>`,
+  `mevr-gfx-dump`. A second `menu::Ui`'s Shutdown releases RmlUi's render managers before its renderer (RmlUi's rule).
 - LE1 Mako ([research/44](research/44-mako.md), `game/Mako`; `[Mako]` in `ASI\LE1MEVR.ini`): game mode 1 with a
   `BioVehicleBase` pawn, the right controller's aim ray (or the pistol calibration's line) traced in the world (`Actor.Trace`,
   `aimRangeM` 200) is the aim point: shots through HandAim's `GetAdjustedAimFor` handler (direction from the start the

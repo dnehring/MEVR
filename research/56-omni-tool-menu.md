@@ -145,6 +145,19 @@ byte by byte.
   through `FT_Get_Kerning`). Parsing all 22,000 glyphs of the 7 MB file takes 100-150 ms (once, when the cache is built).
 - Timing (Release, one thread): the tab 1.5-2 ms at 2x, #324 9 ms, the whole equipment screen about 30 ms at 1x.
 
+**The rail in the game's art** (`plugin/RailArt`, 2026-11-04). The mod (`game/GameArt`) copies the movies' `RawData` to
+`%LOCALAPPDATA%\MEVR\gameart\<Package.Movie>.gfx` 90 ticks into a level (packages not in memory loaded through
+`DynamicLoadObject`; a file rewritten only when its size changes). The host reads three of them when the rail's document is made
+and whenever they change (looked at every 2 s): the fonts (`FontAsTtf`, registered with RmlUi from memory as "ME1 Biomass",
+"ME1 Tigensu", "ME1 Myriad"), `leftTab`'s primaryNormal, primaryMouseOn, selectedMouseOff and selectedMouseOn frames at 300 x 60
+(insets left 50, right 15, `cornerScale` 60 / 41.1), and #324 at 360 x 620 with insets left 262 (the side bump and the whole
+title notch, about 200 x 30, at the game's size: squeezed by a 60 px inset it held no title), top 60, right 60, bottom 50. All
+of it in 158 ms, once (the fonts' 7 MB parse is most of it). The document's body gets `art` only when all three loaded; the RCSS
+(`body.art ...`, `box-sizing: border-box` since the textures are exactly the boxes' sizes) puts the title in Biomass in the
+notch, the entries in Tigensu on the tabs, no icons (the game's tabs have none). Offline look:
+`mevr-menu-preview --gameart <folder>` (`rail-alone`, `-squad`, `-hover`, `-equipment.png`). [verify] in the game: the cache
+written on a real level, the art picked up without a restart, legibility of 26 dp Tigensu at 0.42 m.
+
 **Not drawn** (counted in `RenderNotes` for the log): bitmap fills (transparent), edit texts and static texts (DefineText;
 none in these movies), buttons, imported characters (resolve them from the named movie's exports), filters (glow, drop
 shadow, blur) and blend modes other than normal (drawn as normal; layer groups aren't composited as a group). Nested sprites
