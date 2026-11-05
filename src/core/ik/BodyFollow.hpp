@@ -5,6 +5,7 @@
 #include "core/ik/Rigid.hpp"
 
 #include <cstdint>
+#include <numbers>
 
 // Where the player's body is, under the headset (research/29): the head's pivot (the top of the
 // neck, which turning or nodding the head doesn't move), the feet (a point on the floor plan that
@@ -80,6 +81,65 @@ private:
     Vec3 feet_;
     BodyYaw yaw_;
     FollowState last_;
+};
+
+// The legs under a moving body (research/29 "The legs keep the run", 2026-11-04). The game's run animations point
+// where the pawn faces: an explore-mode Shepard faces where he runs, a combat one strafes and backpedals against his
+// own facing. Turning the hips with the body toward the view while the pawn moves shows the legs running one way while
+// the body goes another, the feet skating (a moonwalk). So while the pawn moves the legs keep the pawn's facing and only
+// the spine twists toward the view, up to `twistLimitRadians` from the legs; past that the whole body (the legs too)
+// turns by the rest, so the shoulders still face the player's way (the arms hang from them). Standing, the old rule
+// holds (TorsoGoal: the hips take whatever the spine's 30 degrees can't); `weight` blends between the two. Running
+// backward (the facing near 180 degrees from the legs) the twist keeps the side it reached first until the facing is
+// `sideBandRadians` past 180, so noise around 180 never flips the legs from one side to the other.
+struct LegsSettings {
+    bool on = true;                                // [Hands] legsFollowMotion
+    double twistLimitRadians = 60.0 * std::numbers::pi / 180.0;  // [Hands] legsTwistDeg
+    double moveSpeed = 60.0;       // units a second: the pawn counts as moving above this (LE1's walk is 130, its run 400)...
+    double stopSpeed = 30.0;       // ...and as standing again below this
+    double blendPerSecond = 4.0;   // the weight's change a second (a quarter second from standing to moving and back)
+    double sideBandRadians = 30.0 * std::numbers::pi / 180.0;
+};
+
+struct LegsInput {
+    // From the legs' facing (the pawn's: where its run animation points) to the shoulders' wanted facing, radians about
+    // the body's up, in TorsoPose's sense (YawBetween).
+    double facing = 0.0;
+    double speed = 0.0;         // the pawn's horizontal speed, units a second (not finite: unknown, counted as standing)
+    double deltaSeconds = 0.0;
+};
+
+struct LegsState {
+    bool moving = false;
+    bool started = false;        // this update began a move (standing -> moving)
+    double weight = 0.0;         // 0: the standing rule; 1: the legs keep the pawn's facing
+    double facing = 0.0;         // LegsInput::facing unwrapped: the side kept (radians, |facing| <= pi + the side band)
+    double legsTurn = 0.0;       // the whole body's turn that leaves the spine at most the limit from the legs (radians)
+    double spineFromLegs = 0.0;  // what the spine twists from the legs then (facing - legsTurn, radians)
+};
+
+// The rule alone: the body's turn for shoulders `facing` radians from the legs with the spine twisting at most `limit`
+// (0 within the limit, the rest beyond it, the sign of `facing`).
+double LegsTurn(double facing, double limit);
+
+class LegsFollow {
+public:
+    explicit LegsFollow(LegsSettings const& settings = {}) : settings_(settings) {}
+    LegsState Update(LegsInput const& in);
+    // The next update starts over: no side kept, and the weight goes straight to where it belongs (a re-anchor, or the
+    // torso wasn't driven).
+    void Reset() { active_ = false; }
+    void SetSettings(LegsSettings const& settings) { settings_ = settings; }
+    LegsSettings const& Settings() const { return settings_; }
+    LegsState const& Last() const { return last_; }
+
+private:
+    LegsSettings settings_;
+    bool active_ = false;
+    bool moving_ = false;
+    double weight_ = 0.0;
+    double facing_ = 0.0;
+    LegsState last_;
 };
 
 } // namespace mevr::ik

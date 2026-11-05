@@ -46,6 +46,8 @@ struct Values {
     bool bodyMove = true;        // [Hands] bodyMove
     double leanM = 0.20;         // [Hands] leanM
     double bodyMoveMaxM = 0.75;  // [Hands] bodyMoveMaxM
+    bool legsFollowMotion = true;  // [Hands] legsFollowMotion (research/29, 2026-11-04)
+    double legsTwistDeg = 60.0;    // [Hands] legsTwistDeg
     double recoilHaptic = 0.5;   // [Hands] recoilHaptic
     bool aimAssist = false;      // [Hands] aimAssist
     bool exploreStance = false;      // [Hands] exploreStance (research/38 A; off since 2026-10-25: the gun's bones follow the explore pose)
@@ -110,6 +112,12 @@ constexpr char const* kDefaultFile =
     "bodyMove = 1\n"
     "leanM = 0.20\n"
     "bodyMoveMaxM = 0.75\n"
+    "; legsFollowMotion: 1 (with bodyMove) keeps Shepard's legs running where he runs while he moves (the game's run,\n"
+    "; strafe and backpedal animations point where he faces): only his spine twists toward your view, at most legsTwistDeg\n"
+    "; degrees (30-90) from his legs, and his whole body turns beyond that. Standing, his hips turn with you as before.\n"
+    "; 0: the hips turn with you while running too (as before 2026-11-04: the legs could run one way, the body face another).\n"
+    "legsFollowMotion = 1\n"
+    "legsTwistDeg = 60\n"
     "; armStretch: how far Shepard's arms may stretch to keep the hands on the controllers (1-1.25).\n"
     "armStretch = 1.25\n"
     "; trackingScale: Unreal units per meter of hand and head motion; 0 = the view's own scale.\n"
@@ -723,6 +731,12 @@ Values ReadValues(Ini const& ini) {
     }
     if (Number(ini, "Hands", "bodyMoveMaxM", values.bodyMoveMaxM)) {
         values.bodyMoveMaxM = std::clamp(values.bodyMoveMaxM, 0.0, 3.0);
+    }
+    if (Number(ini, "Hands", "legsFollowMotion", flag)) {
+        values.legsFollowMotion = flag != 0.0;
+    }
+    if (Number(ini, "Hands", "legsTwistDeg", values.legsTwistDeg)) {
+        values.legsTwistDeg = std::isfinite(values.legsTwistDeg) ? std::clamp(values.legsTwistDeg, 30.0, 90.0) : 60.0;
     }
     if (Number(ini, "Hands", "recoilHaptic", values.recoilHaptic)) {
         values.recoilHaptic = std::clamp(values.recoilHaptic, 0.0, 1.0);
@@ -2080,7 +2094,7 @@ double ReachNearFace() {
 }
 
 BodyMove GetBodyMove() {
-    return {gValues.bodyMove, gValues.leanM, gValues.bodyMoveMaxM};
+    return {gValues.bodyMove, gValues.leanM, gValues.bodyMoveMaxM, gValues.legsFollowMotion, gValues.legsTwistDeg};
 }
 
 bool LevelCamera() {
@@ -2532,6 +2546,9 @@ void Refresh() {
         {L"Hands", "Hands", L"bodyMove", "bodyMove", L"1"},
         {L"Hands", "Hands", L"leanM", "leanM", L"0.20"},
         {L"Hands", "Hands", L"bodyMoveMaxM", "bodyMoveMaxM", L"0.75"},
+        // The legs keep the run while Shepard moves (2026-11-04, research/29 "The legs keep the run").
+        {L"Hands", "Hands", L"legsFollowMotion", "legsFollowMotion", L"1"},
+        {L"Hands", "Hands", L"legsTwistDeg", "legsTwistDeg", L"60"},
         // The weapon drawn, like exploring (2026-10-25, research/38).
         {L"Hands", "Hands", L"exploreStance", "exploreStance", L"0"},
         {L"Hands", "Hands", L"exploreStanceStorm", "exploreStanceStorm", L"1"},
@@ -2672,10 +2689,13 @@ void Refresh() {
     if (!gApplied || values != gValues) {
         gApplied = true;
         Apply(values);
-        log::Info("hands: calibration pitch {:.1f}, yaw {:.1f}, roll {:.1f} degrees, gun roll {:.1f} degrees; body follows head {} (whole body {}, lean {:.2f} m, at most {:.2f} m), "
-                  "arm stretch {:.2f}, tracking scale {}, arm length {} (from {}), {}",
+        log::Info("hands: calibration pitch {:.1f}, yaw {:.1f}, roll {:.1f} degrees, gun roll {:.1f} degrees; body follows head {} (whole body {}, lean {:.2f} m, at most {:.2f} m; "
+                  "{}), arm stretch {:.2f}, tracking scale {}, arm length {} (from {}), {}",
             values.pitch, values.yaw, values.roll, values.gunRoll, values.bodyFollowsHead ? "on" : "off",
-            values.bodyMove ? "turns and steps" : "off", values.leanM, values.bodyMoveMaxM, values.armStretch,
+            values.bodyMove ? "turns and steps" : "off", values.leanM, values.bodyMoveMaxM,
+            values.legsFollowMotion ? std::format("moving, the legs keep the run and the spine twists up to {:.0f} deg", values.legsTwistDeg)
+                                    : std::string("the hips turn with the view while moving too"),
+            values.armStretch,
             values.trackingScale > 0.0 ? std::format("{:.1f} units/m", values.trackingScale) : std::string("the view's"),
             values.armLength > 0.0 ? std::format("{:.3f} m", values.armLength) : std::string("not calibrated"),
             ini::Utf8(path.filename()),

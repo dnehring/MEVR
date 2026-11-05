@@ -157,9 +157,11 @@ exact for any head turn; the yaw at once after a recenter (was 34 degrees off); 
 
 ## Risks [verify in headset]
 
-- **Legs:** the hips turn with the body, so running sideways or backward in explore mode shows legs
-  running one way while the body faces another (a moonwalk); the slide makes the feet skate while the
-  view moves relative to the pawn. In first person they're mostly out of sight.
+- **Legs** (addressed 2026-11-04 below, "The legs keep the run"): the hips turned with the body, so running
+  sideways or backward in explore mode showed legs running one way while the body faced another (a moonwalk).
+  Now, moving, the legs keep the pawn's facing up to the spine's 60 degrees; what's left: backing up still turns
+  the legs 120 degrees off the run (the explore set has no backward run), and the slide still makes the feet skate
+  while the view moves relative to the pawn. In first person they're mostly out of sight.
 - **Held leans:** the feet settle under a held lean in a few seconds (Shepard straightens up and his
   feet slide forward); `leanM` larger keeps leans longer.
 - **The neck model** (10 cm down, 9 cm back) is an average; at 50 units per meter Shepard's own head
@@ -167,9 +169,192 @@ exact for any head turn; the yaw at once after a recenter (was 34 degrees off); 
 - **Clipping:** with the body under the view, looking down shows the chest from right above; the head is
   hidden (Halcyon's `[FPSHEAD]`), the neck stump may show at extreme pitches.
 - **The cap:** a player who walks more than 0.75 m from where they recentered leaves Shepard behind (the
-  log says capped and to recenter). Moving the pawn itself (room-scale) or turning the pawn to the body
-  yaw would fix the legs and the cap, but they change game mechanics: not done.
+  log says capped and to recenter). Moving the pawn itself (room-scale) would fix it but changes a game
+  mechanic; its complete design is below ("Room-scale: the design", 2026-11-04), not built: it needs the
+  game to verify.
 - **No feedback loop expected:** `Camera` and `God` aren't written (489ef51's judder came from moving
   them); the hands don't depend on the body; the first/third person test uses the animated head.
 - Bullet hits on the player use the pawn's cylinder **[verify]**: the mesh moving away from it changes
   nothing in play.
+
+## The legs keep the run (2026-11-04)
+
+The first risk above, fixed. The whole-body turn (`TorsoGoal::body`) turned the body bone (`Root`: the spine and
+the legs) by whatever the spine's 30 degrees couldn't take of the turn from the animated shoulders to the body yaw.
+Standing that's right. Moving, it turned the legs off the way the run animation runs: strafing (the shoulders wanted
+90 degrees from the pawn) the legs ran 60 degrees off where Shepard went, backing up (180) 150. The feet skated.
+
+### Where the game's animations point
+
+From research/38 section C (`BioPlayerController.PlayerWalking`): `PlayerMoveExplore` turns the pawn to the stick's
+direction (`SetDesiredRotation(MoveRot)`, at 270 degrees a second), so the explore run always runs where the pawn
+faces; `PlayerMoveCombat` (weapon drawn) faces ControlRotation and accelerates along the pawn's own axes, so its
+strafe and backpedal are relative to the pawn's facing too **[verify: the combat AnimTree's directional blend wasn't
+read]**. Either way the legs' animation belongs to the pawn's rotation: the mesh component's forward, arm IK's
+`BodyAxes` (`BodyFrame::forward`). That is the legs' facing here, not the thighs' line from the pose (the gait's own
+hip sway would come back as a counter-turn: robotic hips).
+
+### The rule
+
+While the pawn moves, the legs keep the pawn's facing and only the spine twists toward the body yaw, up to
+`[Hands] legsTwistDeg` (60, the old spine-only limit) from the legs; past that the whole body, legs too, turns by the
+rest, so the shoulders still face the player's way (the arms hang from them: cause 1 above stays fixed). Standing, the
+old rule. `core/ik/BodyFollow`'s `LegsTurn(facing, limit)` and `LegsFollow`; `TorsoGoal::legsWeight`,
+`legsTurnDegrees`, `legsTwistDegrees`.
+
+| Case (shoulders wanted from the pawn's facing) | Spine | Whole body (legs) | Before |
+|---|---|---|---|
+| Standing, any (or the speed unreadable) | at most 30 from the animated shoulders | the rest | the same |
+| Moving where the view looks (about 0) | the facing | 0 | 0 |
+| Strafing (90) | 60 | 30: the legs 30 off the run | 60 |
+| Backing up (180) | 60, on the side the facing reached first | 120 | 150 |
+| Weapon drawn, the player turned 90 degrees in the room | 60 | 30 | 60 |
+
+- **Backing up.** The explore set has no backward run, so no rule makes it right; the options were (1) twist to the
+  limit and turn the body by the rest (chosen), (2) the legs toward the view, as before (the full moonwalk: a forward
+  run sliding backward), (3) the legs flipping to the view past some angle (a 120-degree jump of the hips, at a
+  threshold the facing crosses back and forth), (4) a real backward run (the explore run's sequences at a negative
+  `AnimNodeSequence.Rate`, or blended to the combat backpedal: AnimTree writes like research/38's, **[open]**). (1)
+  is continuous in the angle (no snap anywhere), keeps the shoulders the player's, leaves the legs on the run up to 60
+  degrees and 30 degrees closer to it than before beyond, writes no animation, and backing up in first person the player looks ahead with the
+  legs under and behind the view. Near 180 the sign of the facing flips with noise, which would swing the legs
+  2 x 60 degrees from one side to the other: the facing is unwrapped (it goes on past 180 on the side it came from)
+  until it is 30 degrees past, then takes the short side again (`LegsSettings::sideBandRadians`).
+- **Weapon drawn.** The game's strafe and backpedal are drawn against the pawn's facing (ControlRotation), so the old
+  turn spoiled them whenever the body yaw left it: a player turned in the room (the head's yaw away from
+  ControlRotation, cause 1's "combat mode turns the pawn too") walked with the directional legs 60 degrees off for a
+  90-degree turn. Same rule. The animation's shoulders may be turned from the legs already (a stance into the gun):
+  the spine's limit counts from the legs, so from the animated shoulders it may twist the limit plus that
+  (`TorsoResult::shouldersFromLegsDegrees`, logged). With `[Hands] exploreStance = 1` (off by default) the body
+  composes from the explore pose while the pawn strafes in combat: the explore run's legs under a strafing pawn are
+  the game's own moonwalk, not body follow's **[verify if it's ever turned on]**.
+- **Third person** with `bodyMove`: the same rule (the hips turn there too).
+- **Moving or standing:** `Engine.Actor.Velocity`, horizontal, above 60 units a second, standing again below 30
+  (LE1's walk is 130, its run 400: research/38's `CreatureSpeeds`). Between the rules the body's turn blends by a
+  weight at 4 a second (a quarter second each way), the short way round, from the turn measured as it is that tick
+  (the pawn's own turn toward the stick shows at once, no lag). A re-anchor (start, recenter, tracking jump) or the
+  torso not being driven starts over: no side kept, the weight straight where it belongs. The velocity unreadable
+  (a failed lookup, LE2/LE3): standing, with one warning.
+
+### Code, settings, logs
+
+- `core/ik/BodyFollow` (`LegsSettings`, `LegsInput`, `LegsState`, `LegsFollow`, `LegsTurn`), `core/ik/TorsoPose`
+  (the blend, the spine's limit from the legs, `YawBetween`, `TorsoResult::standingTurnDegrees` /
+  `shouldersFromLegsDegrees`), `game/BodyFollow` (the speed, the facing from the pawn's to the wanted, the goal's
+  fields). Mod only (hot-reloaded); no host change, no new reflection lookup (`Engine.Actor.Velocity` has its
+  ReflectCheck row), no engine write beyond the pose the writer already journals.
+- `[Hands] legsFollowMotion = 1` (0: the old rule moving too), `legsTwistDeg = 60` (30..90), appended to older files.
+- `torso: legs: keep the run (400 u/s, holstered, weight 1.00): shoulders 90 deg from the legs, the spine 60 (limit
+  60) + the whole body 30; last write: the whole body 30 deg (the standing rule: 60), the spine 60; the animation had
+  the shoulders 0 deg from the legs` at most every 5 s while moving; the heartbeat's `torso:` line carries the same
+  state, the moves begun and the ticks spent keeping the run, and `hips N (standing rule M)`; the off-the-player line
+  ends with it. Snapshot: `mod.torso.legs` (`moving`, `weight`, `speedUps`, `weaponDrawn`, `shouldersFromLegsDeg`,
+  `legsTurnDeg`, `spineFromLegsDeg`, `twistLimitDeg`, `starts`) and `mod.torso.result.standingTurnDeg` /
+  `shouldersFromLegsDeg`.
+- Offline: `TestBodyFollow` part 6: the turn rule; the speed's hysteresis and the weight's blend; the side kept past
+  180 and given up 30 degrees on; the pose for strafes either way, backing up and 45 degrees (the legs exactly
+  `LegsTurn` off the pawn, the shoulders on the wanted facing within 2 degrees, not limited, `God`, `Root` and
+  `Camera` bit-identical); weight 0 bit-identical to the old solve; half way, including through 180; a stance with the
+  shoulders 30 degrees from the legs twisted 90 from them without stopping short.
+
+### Checking it in the game (fake headset)
+
+1. Build `MEVR-LE1-mod` from main (mod only: the host and HostServices are unchanged; hot reload is enough).
+2. `tools/fake-headset.ps1 -On`, `tools/launch-game.ps1` (or `-Steam`), load an on-foot save (Eden Prime); VR on.
+3. `python tools/make-walk-recording.py <dir>\walk.mevrrec 3 90 --pitch -60` (the stick forward, strafe right, back,
+   strafe left, stand, 3 s each; the head looking down at the legs) and `tools/replay.ps1 -Path <dir>\walk.mevrrec
+   -Loop -Inputs`.
+4. The log's `torso: legs:` lines: strafing, shoulders about 90 from the legs, the whole body about 30 (the standing
+   rule 60); backing up, about 180 and 120 (150), the side not flipping between lines; standing, `legs: standing` and
+   the heartbeat's hips equal to the standing rule's.
+5. `tools/snapshot.ps1 -Count 15 -Interval 1`: each JSON's `mod.torso.legs` and `result`; the left-eye PNGs show the
+   legs under the view: strafing, the feet pointing along the move.
+6. A/B: `[Hands] legsFollowMotion = 0` in `ASI\LE1MEVR.ini` (read within a second), the same snapshots: the body's
+   turn back to the standing rule.
+7. Weapon drawn: `[Holsters] releaseGrace = -1` (the gun stays out without a held grip), `tools/console.ps1 "mevr
+   weapon pistol"`, and a recording with the player turned in the room: `--yaw 90` (`--grip` holds the right grip
+   instead). Walking: `weapon drawn`, shoulders about 90 from the legs, the whole body 30.
+
+## Room-scale: the design (2026-11-04, not built)
+
+The cap above (Shepard left behind past `bodyMoveMaxM`) asks for the pawn to follow the player's real steps. It is a
+mechanic change (the player's position moves without the stick) and touches the camera, the view anchor and arm IK on
+the game thread, and the game's movement physics; none of it can be checked without the game, so it is designed here
+and not built.
+
+### The facts it rests on
+
+- **The view.** Halcyon's view is the game camera's `CameraCache.POV` (made in `Camera.UpdateCamera` on the game
+  thread: the `Camera` bone plus the camera mode's offsets) moved by a view-space offset it sets at Present for the next
+  `CalcSceneView`: the head's tracking position times the lean gain (`xr_session.cpp`, the "Render-side view offset"
+  block; forward times `ForwardLeanEmphasis`). The mod maps tracking space through the same view
+  (`view_anchor::FromHost`: `engine::FromCameraView(POV, look, offset, head)`). So tracking space's origin sits at the
+  POV, turned with the camera's yaw: the room hangs on the pawn's camera. Stick walking moves both; a stick turn turns
+  the room about the camera.
+- **The tick.** The mod ticks after `UGameEngine::Tick` returns (`plugin/Entry.cpp`): the world tick, the camera's
+  update and the viewport's draw are inside it. What the mod changes in its tick reaches the next frame's
+  `UpdateCamera` and `CalcSceneView` together (research/31 relies on the same order for the mod's own turn).
+- **The body's state** (feet, the head's pivot) is in tracking space.
+
+### The step
+
+Each tick, after body follow's update and before arm IK computes anything: `W` = the body's wanted slide (the feet as
+the view maps them minus `Root`, horizontal, world units). Past `[Hands] roomScaleM` (0.30 m in units), the pawn moves
+by `W (|W| - r) / |W|`, at most `roomScaleMaxMS` (2 m/s) times the tick. `Engine.Actor.Move(Delta)` (a native with its
+own opcode: through `ue3::runtime::Call`, gotchas/process-event-skips-opcode-natives) sweeps the pawn's cylinder:
+walls stop it. The real displacement `D` is the pawn's `Location` after minus before (Move returns false when
+blocked; partial moves happen). Only on foot (mode 0), first person, the whole body on, `Physics` walking, not in
+cover, and not while something holds Shepard's view (a wrist screen's `view_anchor::Hold`, the galaxy hologram's or a
+world screen's held view) or the menu pauses. New ReflectCheck rows: `Engine.Actor.Move` (Delta, ReturnValue),
+`Engine.Actor.Physics`.
+
+### The view stays still: the room offset
+
+Without more the view moves `D` with the pawn (the room hangs on it): the world slides, the move doubled. The mod keeps
+`O`, the pawn's room-scale displacement in the camera's yaw frame (forward, right; units): `O += inverse(yaw(POV)) D`,
+and a `Camera.UpdateCamera` post-handler (on foot, the player's camera) subtracts `yaw(POV) O` from the POV's location
+(`write_journal::Wrote("BodyFollow.roomOffset", ...)`). Not in cinematic modes (the director's camera), the Mako or the
+galaxy map's own view. Post-handlers run in registration order (`engine/ProcessEvent`), so this one registers before
+`world_ui`'s and `galaxy_map`'s, which record "Shepard's view" from the POV on foot.
+
+- **No host seam.** The pawn's move and `O` change in the same mod tick; the next `UpdateCamera` sees both (the bone
+  moved `D`, the offset takes it back). Tracking space's origin stays put in the world, so body follow's feet need no
+  re-anchor and its jump test sees nothing (the raw head doesn't move). The alternative, a `[MEVR]` seam subtracting
+  `O` from the head's position in Halcyon's lean (HostServices v28), would apply it at Present, a frame apart from the
+  move (a jitter of one tick's step), and needs a host redeploy.
+- **Kept until a recenter** (the host floor counter: the room re-origins at the head and the view goes back over
+  Shepard, as a recenter does now) or a new pawn. Turning the setting off stops moving the pawn but keeps `O` to the
+  next recenter, so nothing jumps.
+- **A stick turn** turns the room about the camera, and `O` with it (it's in the camera's frame): the view swings by
+  the small `head - O`, not by the whole walked distance (a side benefit: today a snap turn swings the view on the
+  full offset from the recenter point).
+
+### What else has to know `O`
+
+- **The comfort turn's guess** (`view_anchor` with `vr::comfort::TurnCamera`): when the mod turns ControlRotation
+  without the pawn (explore), the POV (bone minus `yaw O`) moves by `(I - R) yaw O`, but the guess keeps the location:
+  up to 0.77 `|O|` off for a 45-degree snap, one tick of misplaced hands and body. Guess on `POV + yaw O`, then subtract
+  `yaw' O`. With the pawn turned the guess is right as it is (the bone and the POV turn about the same pivot).
+- **Arm IK's transform this tick:** if Move doesn't update the mesh's `LocalToWorld` at once **[verify]**, the targets
+  must be put in the moved component (translated by `-D`), or the hands and body sit `D` off for a frame.
+- **Snapshots and logs:** `mod.torso.roomScale` (on, `O`, the last `D`, blocked ticks), `torso: room-scale: ...`.
+
+### The game's side (the risks)
+
+- **Slopes and stairs:** Move sweeps sideways; an upward ramp or a step blocks it (the walking physics' step-up isn't
+  run). `Actor.MoveSmooth` slides along what it hits; three moves (up by the step height, across, down) is UE's
+  `stepUp`. Measure where a plain Move stops on Eden Prime's ramps first.
+- **Ledges:** a move over an edge leaves the pawn without a floor and the next walking tick makes it fall (realistic;
+  a fall to death from a step in the room too: a trace down before each move could refuse a drop deeper than a step).
+- **Triggers:** Move touches volumes as walking would (`BioTriggerStream` streams areas in), which is the point.
+- **Conversations and cutscenes:** Halcyon's lean applies in a VR cine as well (the head's offset on the director's
+  camera); `O` doesn't touch it, so the walked distance offsets the cine camera, as it does today.
+- The slide's cap stays as the backstop (a blocked move).
+
+### When it's built
+
+`[Hands] roomScale` (on; 0 off), `roomScaleM` 0.30, `roomScaleMaxMS` 2.0 in the default text and the migration list;
+an entry in `docs/trilogy-design.md`'s change log; the step, `O`'s bookkeeping (a stick turn after a move keeps the
+view, a recenter clears it) and the turn guess's correction in `core/` with tests; in the game, a head recording
+walking 2 m forward in the room (`make-walk-recording.py` moves the stick; it needs a head-translation option): no
+`capped` lines, Shepard under the head at the end, and against a wall the move blocked and the old cap.

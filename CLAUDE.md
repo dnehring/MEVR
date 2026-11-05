@@ -252,7 +252,13 @@ switching frameworks.
   degrees can't (the explore pawn faces where it runs) and slides under the view (feet that step after the
   head's pivot, `[Hands] leanM` 0.20, at most `bodyMoveMaxM` 0.75); the spine leans the head bone to the
   pivot. Re-anchors on start, recenter (host floor counter) and tracking jumps. `[Hands] bodyMove = 0`: the
-  old spine-only lean. Log `torso:`; snapshot `"torso"`.
+  old spine-only lean. Log `torso:`; snapshot `"torso"`. **Moving, the legs keep the run** (2026-11-04, research/29
+  "The legs keep the run"; `core/ik/BodyFollow` `LegsFollow`, `TorsoGoal::legsWeight`): with `Engine.Actor.Velocity`
+  above 60 u/s the legs keep the pawn's facing (where the run, strafe and backpedal animations point) and the spine
+  twists up to `[Hands] legsTwistDeg` 60 from them; the whole body turns only by the rest, keeping its side when
+  backing up (`legsFollowMotion = 0`: the old rule; log `torso: legs:`, snapshot `torso.legs`; replay
+  `tools/make-walk-recording.py`'s walk with `-Inputs`). Room-scale (the pawn following real steps past the cap) is
+  designed there, not built.
 - LE1 weapon drawn, like exploring ([research/38](research/38-combat-stance.md), `game/CombatStance`, rules in
   `core/vr/CombatStance`; `[Hands]` in `ASI\LE1MEVR.ini`, on by default except `exploreStance`; our menu's Controls > Weapon drawn): VR on
   foot, first person. `exploreStance` (A, mod; **off by default until the headset confirms the redesign**): drawn and

@@ -26,8 +26,13 @@ struct Object;
 // (not the eyes: turning the head doesn't move the shoulders). Without bodyMove: the spine alone, as
 // before (Shepard's eyes moved as far as the headset moved from the recenter point).
 //
-// Logs `torso:` when the shoulders end up off the player's (rate-limited) and on each re-anchor; the
-// snapshot JSON gets the same inputs (StatusJson).
+// While the pawn moves ([Hands] legsFollowMotion, research/29 "The legs keep the run", 2026-11-04) the legs keep
+// the pawn's facing, where the game's run, strafe and backpedal animations point (Engine.Actor.Velocity above
+// 60 units a second, below 30 standing again), and the spine twists toward the view up to legsTwistDeg from them;
+// the whole body turns only by the rest (core/ik/BodyFollow's LegsFollow, TorsoGoal::legsWeight). Standing: as above.
+//
+// Logs `torso:` when the shoulders end up off the player's (rate-limited), on each re-anchor and every 5 s while
+// the legs keep the run; the snapshot JSON gets the same inputs (StatusJson, "legs").
 namespace mevr::game::body_follow {
 
 // The mod, every tick (host renderer, HostServices v10): the recenter counter. Nullopt: unknown
