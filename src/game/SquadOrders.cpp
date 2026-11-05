@@ -5,6 +5,7 @@
 #include "core/WriteJournal.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/SquadGesture.hpp"
+#include "core/vr/SquadParser.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/HandCalibration.hpp"
@@ -382,6 +383,65 @@ void Tick(double deltaSeconds, Link const& link) {
 
 std::string Give(sc::Action const& action) {
     return GiveResolved(action, std::nullopt);
+}
+
+std::string Say(std::string_view transcript, double secondsAgo) {
+    namespace sp = vr::squad_parser;
+    hand_calibration::SquadOrders const s = hand_calibration::GetSquadOrders();
+    sc::Scene const& scene = squad_context::Scene();
+    std::vector<sc::Group> const& groups = squad_context::Groups();
+    sp::Settings ps;
+    sp::Parsed const parsed = sp::Parse(transcript, scene, groups, squad_context::Roster(), ps);
+    std::string lines;
+    for (sp::Clause const& c : parsed.clauses) {
+        lines += std::format("{}{} ({:.2f}{}{})", lines.empty() ? "" : "; ", sc::Line(c.action), c.confidence,
+            c.unresolved.empty() ? "" : ", unresolved: ", c.unresolved);
+    }
+    log::Info("squad orders: say \"{}\" -> {}{}{}{}", transcript, parsed.empty ? "nothing that looks like an order" : lines,
+        parsed.correction ? "; a correction" : "", parsed.cancel ? "; a cancel" : "", parsed.notes.empty() ? "" : "; " + parsed.notes);
+    if (parsed.empty) {
+        return "nothing that looks like an order";
+    }
+    if (parsed.confidence < s.minConfidence) {
+        std::string why;
+        for (sp::Clause const& c : parsed.clauses) {
+            if (!c.unresolved.empty()) why += (why.empty() ? "" : "; ") + c.unresolved;
+        }
+        return std::format("not sure ({:.2f} < {:.2f}): {}; parsed {}", parsed.confidence, s.minConfidence, why.empty() ? "-" : why, lines);
+    }
+    // The deictics, from where the head and the hands pointed `secondsAgo`; a place for a move from the left hand's ray now.
+    std::vector<sc::Deictic> deictics;
+    std::optional<engine::UnrealVector> place;
+    for (sp::DeicticWord const& d : parsed.deictics) {
+        deictics.push_back({d.index, d.word, squad_context::ResolveAgo(secondsAgo)});
+        if (d.place && !place && gPointer.valid) {
+            double const upm = engine::kUnitsPerMeter;
+            if (auto const frame = view_anchor::Current()) {
+                place = TraceRay(player::BioPawn(player::Controller()), gPointer.origin, gPointer.direction,
+                    frame->unitsPerMeter > 0.0 ? frame->unitsPerMeter : upm);
+            }
+        }
+    }
+    std::string outcomes;
+    for (sp::Clause const& c : parsed.clauses) {
+        std::string outcome;
+        if (c.action.order == sc::Order::Cancel) {
+            outcome = "cancelled: nothing undone yet (the game has no cancel; a follow order would call them back)";
+        } else {
+            sc::Resolved const r = sc::Validate(c.action, scene, groups, deictics, gHistory);
+            std::optional<engine::UnrealVector> point;
+            if (r.ok && r.order == sc::Order::Move && c.action.target.kind == sc::Target::Pointed) {
+                point = place;
+            }
+            outcome = !r.ok ? std::format("refused: {}", r.problem)
+                : r.notReady ? std::format("not ready: {} in {:.0f} s", r.power, r.readyInS)
+                             : Dispatch(r, c.action, point);
+            gLast = std::format("{} -> {}", sc::Line(c.action), outcome);
+            log::Info("squad orders: {}", gLast);
+        }
+        outcomes += std::format("{}{}: {}", outcomes.empty() ? "" : "\n", sc::Line(c.action), outcome);
+    }
+    return outcomes;
 }
 
 std::string StatusJson() {

@@ -25,7 +25,9 @@ std::vector<vr::squad_context::Group> const& Groups();
 std::vector<vr::squad_context::Candidate> ResolveAgo(double secondsAgo);
 // The text block for now: `said` as the SAY line, and with `word` a PT1 line resolved `secondsAgo`.
 std::string Block(std::string_view said, std::string_view word = {}, double secondsAgo = 0.0);
-// The prefix from the roster the game gave so far (the squadmates seen this session, their powers as named).
+// The roster the game gave so far: the squadmates seen this session with their names, weapons and powers as named.
+std::vector<vr::squad_context::RosterEntry> Roster();
+// The prefix from that roster.
 std::string Prefix();
 
 // The roster letter of a squadmate's class id (the squad menu's ids: 6 Liara L, 7 Wrex W, 8 Garrus G, 9 Tali T, 11 Ashley A,
