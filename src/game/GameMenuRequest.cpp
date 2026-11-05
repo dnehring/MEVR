@@ -365,6 +365,10 @@ void StepSwitch() {
         log::Info("omni-tool: the game's screens are closed (game mode {})", current);
         return;
     }
+    if (action == gm::Action::PauseMenu) {
+        OpenPauseMenu();  // on the active mode, whichever it is (the Mako's and the wheels' overrides run)
+        return;
+    }
     if (current != 0 && current != 1) {
         gLast = std::format("{}: not here (game mode {})", gm::Name(action), current);
         log::Info("omni-tool: {} not opened: the game's screens open on foot or in the Mako (game mode {})", gm::Name(action), current);
@@ -375,8 +379,8 @@ void StepSwitch() {
 
 void Run(gm::Action action) {
     switch (action) {
-    case gm::Action::PauseMenu: OpenPauseMenu(); return;
     case gm::Action::Holster: Holster(); return;
+    case gm::Action::PauseMenu:  // the game opens none over its own screens (ShowMenuGui returns 0 in mode 7): back out first
     case gm::Action::Equipment:
     case gm::Action::Squad:
     case gm::Action::Journal:
