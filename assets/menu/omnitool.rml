@@ -7,9 +7,9 @@
 	<title>MEVR omni-tool</title>
 	<link type="text/rcss" href="omnitool.rcss"/>
 </head>
-<body data-model="omnitool">
+<body data-model="omnitool" data-class-art="art">
 	<div class="panel">
-		<div class="head" data-if="alone">
+		<div class="head" data-if="alone || art">
 			<div class="kicker">Omni-Tool</div>
 			<div class="sub">Touch a screen to open it</div>
 			<div class="rule"/>

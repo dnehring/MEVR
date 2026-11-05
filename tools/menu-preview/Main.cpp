@@ -4,7 +4,11 @@
 // device of its own (hardware, else WARP), over a stand-in for the game picture blurred by the host's own
 // backdrop passes. Sample values stand in for the real settings.
 //
-//   mevr-menu-preview [output folder] [--warp] [--assets <folder>] [--fonts <folder>]
+//   mevr-menu-preview [output folder] [--warp] [--assets <folder>] [--fonts <folder>] [--gameart <folder>]
+//
+// --gameart: a folder holding the movies game/GameArt caches (GUI_SF_Fonts.Fonts.gfx, GUI_SF_Journal.PC_Journal.gfx,
+// GUI_SF_Inventory.PCInventory.gfx; the player's own game data, never committed): the omni-tool rail is drawn in the game's
+// own art as the host does (plugin/RailArt), else in its own look.
 //
 //   section-<name>.png       each section (the menu over the stand-in world, as the headset composites it)
 //   section-<name>-<x>.png   a section's other states (Comfort's snap and movement, Display's image quality rows with
@@ -28,6 +32,7 @@
 #include "plugin/menu/MenuRenderer.hpp"
 #include "plugin/menu/MenuStrip.hpp"
 #include "plugin/menu/MenuUi.hpp"
+#include "plugin/RailArt.hpp"
 
 #include "mevr/BuildInfo.hpp"  // generated: About's commit
 #include "mevr/Version.hpp"    // generated: About's version
@@ -263,6 +268,7 @@ int main(int argc, char** argv) {
     bool warp = false;
     fs::path assets;
     fs::path fonts;
+    fs::path gameArt;
     for (int i = 1; i < argc; ++i) {
         std::string const a = argv[i];
         if (a == "--warp") {
@@ -271,6 +277,8 @@ int main(int argc, char** argv) {
             assets = argv[++i];
         } else if (a == "--fonts" && i + 1 < argc) {
             fonts = argv[++i];
+        } else if (a == "--gameart" && i + 1 < argc) {
+            gameArt = argv[++i];
         } else {
             output = a;
         }
@@ -685,7 +693,8 @@ int main(int argc, char** argv) {
 
     // The omni-tool's rail (research/55): a second document, omnitool.rml, in a context of its own as the host makes it
     // (plugin/OmniToolRail). rail-alone.png: tapped open on the wrist; rail-squad.png: beside the squad screen;
-    // rail-hover.png: the pointer on Map. Over a dark stand-in for the room.
+    // rail-hover.png: the pointer on Map; rail-equipment.png: beside the equipment screen. Over a dark stand-in for the room;
+    // with --gameart in the game's own art.
     {
         constexpr int rw = 360;
         constexpr int rh = 1000;
@@ -696,6 +705,7 @@ int main(int argc, char** argv) {
         railSetup.height = rh;
         Rml::String active;
         bool alone = true;
+        bool art = false;
         Rml::DataModelHandle handle;
         Target railTarget;
         bool ok = railUi.Init(railSetup) && MakeTarget(device.Get(), rw, rh, railTarget);
@@ -705,8 +715,14 @@ int main(int argc, char** argv) {
             if (ok) {
                 ctor.Bind("active", &active);
                 ctor.Bind("alone", &alone);
+                ctor.Bind("art", &art);
                 ctor.BindEventCallback("pick", [](Rml::DataModelHandle, Rml::Event&, Rml::VariantList const&) {});
                 handle = ctor.GetModelHandle();
+                if (!gameArt.empty()) {
+                    mevr::host::rail_art::Status const status = mevr::host::rail_art::Load(device.Get(), railUi.GetRenderer(), {}, gameArt);
+                    art = status.fonts && status.tabs && status.panel;
+                    std::printf("omni-tool rail: %s\n", status.summary.c_str());
+                }
                 ok = railUi.LoadDocument();
             }
         }
@@ -737,6 +753,10 @@ int main(int argc, char** argv) {
         railShot("rail-squad");
         railUi.Context()->ProcessMouseMove(rw / 2, rh / 2 - 60, 0);
         railShot("rail-hover");
+        railUi.Context()->ProcessMouseMove(-50, -50, 0);
+        active = "equipment";
+        handle.DirtyVariable("active");
+        railShot("rail-equipment");
         railUi.Shutdown();
     }
     ui.Shutdown();

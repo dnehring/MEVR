@@ -12,6 +12,7 @@
 #include "game/GalaxyDump.hpp"
 #include "game/HoloProbe.hpp"
 #include "game/GalaxyMap.hpp"
+#include "game/GameMenuRequest.hpp"
 #include "game/GunKick.hpp"
 #include "game/Holsters.hpp"
 #include "game/OmniTool.hpp"
@@ -527,6 +528,13 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         words >> which;
         return galaxy_dump::ShowGui(pc, which);
     }
+    if (verb == "omni") {
+        // `mevr omni <equipment|squad|map|journal|codex|computer|close|holster>`: what the omni-tool rail's entries ask
+        // (research/55), without a hand on the rail.
+        std::string which;
+        words >> which;
+        return game_menu_request::Inject(which);
+    }
     if (verb == "holo") {
         // `mevr holo spawn|effect|scale|move|info|clear` (research/55 section 4: the squad holograms' experiment).
         std::string rest;
@@ -868,7 +876,7 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::getline(words, rest);
         return cockpit_probe::VehicleCommand(rest);  // what a console `open <map>` produced; `enter` gets in
     }
-    return std::string("unknown: mevr loc | mevr setloc X Y Z | mevr density [cellUU] | mevr crowd [cellUU] | mevr stream list|touch | mevr weapon <pistol|shotgun|assault|sniper> | mevr vent heat|rack|part | mevr kick [recoilDeg] [shots] [ms] | mevr cockpit ... | mevr vehicle [enter] | mevr spectator ...");
+    return std::string("unknown: mevr loc | mevr setloc X Y Z | mevr density [cellUU] | mevr crowd [cellUU] | mevr stream list|touch | mevr weapon <pistol|shotgun|assault|sniper> | mevr vent heat|rack|part | mevr kick [recoilDeg] [shots] [ms] | mevr cockpit ... | mevr vehicle [enter] | mevr spectator ... | mevr omni <screen> | mevr holo ...");
 }
 
 ue3::Function* FindConsoleCommand() {

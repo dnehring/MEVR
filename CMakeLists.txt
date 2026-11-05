@@ -700,7 +700,8 @@ function(mevr_add_plugin game)
         if (MEVR_MAIN_MENU)
             # Our VR main menu (research/28): LE1 only for now, in the host (not hot-reloaded).
             set(with_main_menu ON)
-            list(APPEND host_sources src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/OmniToolRail.cpp src/plugin/OmniToolRail.hpp src/plugin/MainMenuSettings.cpp
+            list(APPEND host_sources src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/OmniToolRail.cpp src/plugin/OmniToolRail.hpp src/plugin/RailArt.cpp src/plugin/RailArt.hpp
+                src/plugin/MainMenuSettings.cpp
                 src/plugin/MainMenuSettings.hpp src/plugin/SetupRequest.cpp src/plugin/SetupRequest.hpp src/plugin/ReportRequest.cpp
                 src/plugin/ReportRequest.hpp src/install/ReportMarks.hpp src/core/Json.cpp src/core/Json.hpp)
         endif ()
@@ -1122,6 +1123,10 @@ if (MEVR_BUILD_TESTS AND MEVR_MAIN_MENU)
     add_executable(mevr-menu-preview
         tools/menu-preview/Main.cpp
         src/core/PngFile.cpp
+        src/plugin/RailArt.cpp
+        src/core/gfx/Raster.cpp
+        src/core/gfx/Swf.cpp
+        src/core/gfx/SwfFont.cpp
     )
     # The generated headers: About shows this build's version and commit, as in the game.
     target_include_directories(mevr-menu-preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${MEVR_GENERATED_DIR})

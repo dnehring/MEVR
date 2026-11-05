@@ -15,6 +15,7 @@
 #include "core/vr/OmniRail.hpp"
 #include "halcyon/le1/mevr_bridge.h"
 #include "plugin/MevrMenu.hpp"
+#include "plugin/RailArt.hpp"
 #include "plugin/Halcyon.hpp"
 #include "plugin/TestLoop.hpp"
 
@@ -87,6 +88,7 @@ struct State {
     Rml::DataModelHandle model;
     Rml::String active;      // the entry of the screen up ("" none)
     bool alone = true;       // no screen beside it: its header shows
+    bool art = false;        // the game's own fonts, tab and frame are loaded (plugin/RailArt): the document draws with them
     Rml::String picked;      // set by the document's pick(id) event, handled after the input step
     Swapchain swapchain;
     XrCompositionLayerQuad quad{XR_TYPE_COMPOSITION_LAYER_QUAD};
@@ -190,12 +192,18 @@ bool Init(ID3D11Device* device, ID3D11DeviceContext* context) {
     }
     ctor.Bind("active", &g.active);
     ctor.Bind("alone", &g.alone);
+    ctor.Bind("art", &g.art);
     ctor.BindEventCallback("pick", [](Rml::DataModelHandle, Rml::Event&, Rml::VariantList const& args) {
         if (!args.empty()) {
             g.picked = args[0].Get<Rml::String>();
         }
     });
     g.model = ctor.GetModelHandle();
+    // The game's own art (research/55 section 5), before the document loads so its fonts resolve; without it the rail keeps
+    // its own drawn look.
+    rail_art::Status const art = rail_art::Load(device, g.ui->GetRenderer(), {});
+    g.art = art.fonts && art.tabs && art.panel;
+    log::Info("omni-tool rail: {}{}", art.summary, g.art ? "" : " (its own look until the game's art is cached)");
     if (!g.ui->LoadDocument()) {
         log::Error("omni-tool rail: omnitool.rml didn't load from {} (deployed? see the rmlui: lines); no rail",
             ini::Utf8(main_menu::AssetsFolder()));
@@ -268,8 +276,8 @@ bool Submit() {
 void Publish(bool shown, char const* place) {
     std::lock_guard lock(gStatusMutex);
     gStatus = std::format("{{\"shown\": {}, \"open\": {}, \"place\": \"{}\", \"active\": \"{}\", \"taps\": {}, \"picks\": {}, \"last\": \"{}\", "
-                          "\"pose\": [{:.3f}, {:.3f}, {:.3f}], \"size\": [{:.3f}, {:.3f}]}}",
-        shown, gOpen.load(std::memory_order_relaxed), place, g.active, g.taps, g.picks, g.last, g.quad.pose.position.x,
+                          "\"art\": {}, \"pose\": [{:.3f}, {:.3f}, {:.3f}], \"size\": [{:.3f}, {:.3f}]}}",
+        shown, gOpen.load(std::memory_order_relaxed), place, g.active, g.taps, g.picks, g.last, g.art, g.quad.pose.position.x,
         g.quad.pose.position.y, g.quad.pose.position.z, g.quad.size.width, g.quad.size.height);
 }
 
@@ -450,6 +458,15 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         g.needRender = true;
     }
     if (g.ui->ReloadIfChanged()) {
+        g.needRender = true;
+    }
+    if (rail_art::CacheChanged()) {
+        // The mod (game/GameArt) cached the movies, or they changed: the art again, and the document again so new fonts resolve.
+        rail_art::Status const art = rail_art::Load(g.device.Get(), g.ui->GetRenderer(), {});
+        g.art = art.fonts && art.tabs && art.panel;
+        log::Info("omni-tool rail: the cache changed; {}", art.summary);
+        g.ui->LoadDocument();
+        g.model.DirtyVariable("art");
         g.needRender = true;
     }
     PointerStep(*at, dt);

@@ -408,6 +408,25 @@ void Tick(Link const& link) {
 #endif
 }
 
+std::string Inject(std::string const& which) {
+    struct Name {
+        char const* word;
+        gm::Action action;
+    };
+    static constexpr Name kNames[] = {{"equipment", gm::Action::Equipment}, {"squad", gm::Action::Squad}, {"map", gm::Action::Map},
+        {"journal", gm::Action::Journal}, {"codex", gm::Action::Codex}, {"computer", gm::Action::PauseMenu},
+        {"menu", gm::Action::PauseMenu}, {"close", gm::Action::CloseScreens}, {"holster", gm::Action::Holster}};
+    for (Name const& name : kNames) {
+        if (which == name.word) {
+            log::Info("main menu request: {} asked from the console (mevr omni {})", gm::Name(name.action), which);
+            gm::Take(gSchedule, name.action);
+            return std::format("omni: {} taken; it runs in {} ticks once nothing of ours pauses the game (log `main menu request:`, "
+                               "`omni-tool:`)", gm::Name(name.action), gm::kSettleTicks);
+        }
+    }
+    return "usage: mevr omni <equipment|squad|map|journal|codex|computer|close|holster>";
+}
+
 void Shutdown() {
     gSchedule = {};
     gToldOldHost = false;

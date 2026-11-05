@@ -112,3 +112,51 @@ body {
 .i-codex { decorator: icon(codex); }
 .i-computer { decorator: icon(gamemenu); }
 .i-close { decorator: icon(close); }
+
+/* ---- The game's own art (plugin/RailArt, research/55): used once the mod has cached the game's movies; `art` on the body.
+ * The frame is the inventory's item-list panel (its title notch takes the title), the buttons the journal's tab in its states
+ * (normal, the game's orange mouse-on, selected), the type the game's own: Biomass for the title, Tigensu on the tabs. Sizes
+ * match rail_art::Sizes (the textures are made at exactly these pixels). */
+body.art .panel {
+	position: relative;     /* the title's place is the frame's notch */
+	box-sizing: border-box; /* the texture is exactly this size, padding included */
+	width: 360dp;
+	height: 620dp;
+	gap: 8dp;
+	padding: 62dp 20dp 48dp 40dp;
+	decorator: image(mevr:me1-panel);
+}
+body.art .head {
+	position: absolute;
+	left: 66dp;    /* in the frame's title notch (panel x 51..252, y 3..33) */
+	top: 5dp;
+	padding: 0dp;
+	align-items: flex-start;
+}
+body.art .kicker {
+	font-family: "ME1 Biomass";
+	font-weight: normal;
+	font-size: 21dp;
+	line-height: 26dp;
+	letter-spacing: 0em;
+	color: #B9F3F6;
+	font-effect: glow(1dp 4dp 0dp 0dp rgba(110,220,240,40%));
+}
+body.art .sub, body.art .rule, body.art .box { display: none; }
+body.art .entry, body.art .entry.close {
+	box-sizing: border-box;
+	width: 300dp;
+	height: 60dp;
+	margin-top: 0dp;
+	padding: 0dp 0dp 0dp 52dp;
+	font-family: "ME1 Tigensu";
+	font-weight: normal;
+	font-size: 26dp;
+	letter-spacing: 0em;
+	color: #D2F1F8;
+	font-effect: none;
+	decorator: image(mevr:me1-tab);
+}
+body.art .entry:hover { color: #FFF3DE; decorator: image(mevr:me1-tab-hover); }
+body.art .entry.on { color: #FFFFFF; decorator: image(mevr:me1-tab-selected); }
+body.art .entry.on:hover { decorator: image(mevr:me1-tab-selected-hover); }

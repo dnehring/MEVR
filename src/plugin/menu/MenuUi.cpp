@@ -124,6 +124,10 @@ void Ui::Shutdown() {
     if (gRmlInitialised && owner_ && renderer_ != nullptr) {  // only the one that set RmlUi up takes it down
         Rml::Shutdown();
         gRmlInitialised = false;
+    } else if (gRmlInitialised && renderer_ != nullptr) {
+        // A second context's renderer goes before RmlUi does: RmlUi's render manager for it (and the font textures made
+        // through it) must be released first (Core.h's rule), or Rml::Shutdown later calls into the freed renderer.
+        Rml::ReleaseRenderManagers();
     }
     renderer_.reset();
 }

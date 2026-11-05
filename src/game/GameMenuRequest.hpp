@@ -21,6 +21,10 @@ struct Link {
 };
 
 void Tick(Link const& link);
+// `mevr omni <equipment|squad|map|journal|codex|computer|close|holster>` (a dev verb, research/55): the same request the
+// omni-tool rail's entry gives, as if the host had handed it over, so switching screens is testable without a hand on the
+// rail. Returns what it did, for console.result.
+std::string Inject(std::string const& which);
 // Forgets a request not yet run.
 void Shutdown();
 std::string StatusJson();
