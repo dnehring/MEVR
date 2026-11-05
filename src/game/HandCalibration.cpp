@@ -611,7 +611,10 @@ constexpr char const* kCockpitBlock =
     "hazard = 1\n"
     "hazardBelow = 0.30\n"
     "hazardPeriodS = 1.1\n"
-    "hazardWash = 1\n";
+    "hazardWash = 1\n"
+    "; showTurret: 1 = the Mako's own turret stays in view over the cabin and its shots come from the gun's muzzle; 0 = hidden,\n"
+    "; the game's shot start (in front of your face).\n"
+    "showTurret = 1\n";
 
 // Appended to a settings file that has no [Game] yet (and part of a new file).
 constexpr char const* kGalaxyBlock =
@@ -1573,12 +1576,16 @@ Cockpit ReadCockpit(Ini const& ini) {
         c.hazard.wash = value != 0.0;
     }
     c.hazard = vr::cockpit_hazard::Sanitized(c.hazard);
+    if (Number(ini, "Cockpit", "showTurret", value)) {
+        c.turret = value != 0.0;
+    }
     return c;
 }
 
 std::string Describe(Cockpit const& c) {
-    return std::format("{}, script {}, the chase camera {}{}; {}", c.enabled ? "on" : "off", c.script, c.followCamera ? "follows the Mako" : "the game's",
-        c.seated ? ", Shepard seated" : "", vr::cockpit_hazard::Describe(c.hazard));
+    return std::format("{}, script {}, the chase camera {}{}; {}; {}", c.enabled ? "on" : "off", c.script, c.followCamera ? "follows the Mako" : "the game's",
+        c.seated ? ", Shepard seated" : "", vr::cockpit_hazard::Describe(c.hazard),
+        c.turret ? std::string("the Mako's turret over the cabin, shots from its muzzle") : std::string("the turret hidden, the game's shot start"));
 }
 
 Cockpit gCockpit;
@@ -2548,14 +2555,14 @@ void Refresh() {
             }
         }
     }
-    // [WorldUi] since 2026-11-04 (research/54): the omni-tool takes every personal screen. A file without the marker
+    // [WorldUi] since 2026-11-04 (research/55): the omni-tool takes every personal screen. A file without the marker
     // wristMenuWidthM whose wrist still holds the old default (the bypass minigame alone) gets the new list; any other is kept.
     if (auto const s = ini.find("WorldUi"); s != ini.end() && s->second.find("wristMenuWidthM") == s->second.end()) {
         if (auto const k = s->second.find("wrist"); k != s->second.end()) {
             std::string const listText = vr::world_ui::ScreenList(vr::world_ui::Settings{}.wristScreens);
             std::wstring const list(listText.begin(), listText.end());  // the screens' tags are ASCII
             if (_stricmp(k->second.c_str(), "SkillGame") == 0 && WritePrivateProfileStringW(L"WorldUi", L"wrist", list.c_str(), path.wstring().c_str()) != 0) {
-                log::Info("hands: [WorldUi] wrist SkillGame -> {}: the omni-tool's screens (research/54) in {}", listText,
+                log::Info("hands: [WorldUi] wrist SkillGame -> {}: the omni-tool's screens (research/55) in {}", listText,
                     ini::Utf8(path));
                 ini = ReadIni(path);
                 stamp = fs::last_write_time(path, ec);
@@ -2671,6 +2678,7 @@ void Refresh() {
         {L"Cockpit", "Cockpit", L"hazardBelow", "hazardBelow", L"0.30"},
         {L"Cockpit", "Cockpit", L"hazardPeriodS", "hazardPeriodS", L"1.1"},
         {L"Cockpit", "Cockpit", L"hazardWash", "hazardWash", L"1"},
+        {L"Cockpit", "Cockpit", L"showTurret", "showTurret", L"1"},
         // [Comfort] (2026-10-23, research/31): a section our menu started (it writes only the keys it changes).
         {L"Comfort", "Comfort", L"turn", "turn", L"game"},
         {L"Comfort", "Comfort", L"snapDeg", "snapDeg", L"45"},
@@ -2694,7 +2702,7 @@ void Refresh() {
         // Screens projected from the wrist (2026-11-04, research/53 section 6).
         {L"WorldUi", "WorldUi", L"wrist", "wrist", L"SkillGame"},
         {L"WorldUi", "WorldUi", L"wristWidthM", "wristWidthM", L"0.30"},
-        // The omni-tool's screens (2026-11-04, research/54). The marker wristMenuWidthM comes after the wrist list's migration above.
+        // The omni-tool's screens (2026-11-04, research/55). The marker wristMenuWidthM comes after the wrist list's migration above.
         {L"WorldUi", "WorldUi", L"wristMenuWidthM", "wristMenuWidthM", L"0.55"},
         {L"WorldUi", "WorldUi", L"wristAboveM", "wristAboveM", L"0.10"},
         {L"WorldUi", "WorldUi", L"wristTowardM", "wristTowardM", L"0.00"},

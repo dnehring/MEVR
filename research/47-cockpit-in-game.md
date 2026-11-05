@@ -1189,3 +1189,32 @@ indicate we're in danger."
 - **Settings and tools:** `[Cockpit] hazard = 1`, `hazardBelow = 0.30`, `hazardPeriodS = 1.1`, `hazardWash = 1` (0: only the lamps).
   `mevr cockpit hazard [state|on|off|auto|health <0..1>]`; log `cockpit hazard:`, the heartbeat's `cockpit: hazard ...`; snapshot
   `"cockpitProbe"."hazard"`.
+
+## The cannon over the cabin (2026-11-04, the user; fake headset, `BIOA_UNC20`)
+
+The user: "the cannon/fire needs to be at the top of the cabin, since the cannon would be hanging over our viewport (ideally we
+would even see the cannon a little bit)". Chosen (of three offered): shots from the roof edge, the cockpit kept as it is.
+
+- **Measured** (`mevr vehicle guns`, new: the ridden Mako's weapons, its turret bones and sockets, every component with its
+  attachment, each from the cockpit's eye along the vehicle's axes; `mevr vehicle fire mg [s]`, new: RT's `FireWeapon`, the
+  machine gun): the cockpit's eye (`ride 0 1.0 0.8`) sat **in the turret**: `Turret_Mount_1` 0.15 m behind and 0.05 m under it,
+  `Turret_Mount_2` 0.46 m ahead. The shots started 2.56 m straight ahead of the eye at its height (the vehicle's
+  `GetWeaponStartTraceLocation`, a native: the camera's line, at the muzzle's distance), and the machine gun's muzzle flash filled
+  the middle of the windshield. The two `BioWeaponRanged` are bare actors (parked 300 m away, no components); **the turret is five
+  `SkeletalMeshComponent`s of the vehicle hung on its bones**: `_1696` (the base) on `Turret_Mount_1`, `_97`, `_98` (the cannon,
+  the machine gun) and two hidden ones on `Turret_Mount_2`, all `bOwnerNoSee` while riding with the rest of the Mako. The Mako
+  mesh itself has two material elements (`VEH_ROVa_Mat_1a`, `_1b`).
+- **Tried:** the shots' start rewritten to a point over the windshield (the trace moved, the flash didn't: it is drawn at the
+  gun's muzzle); the turret's attachments moved 0.75 / 0.55 m up and shown (the flash and the barrel's tip at the windshield's top
+  edge, but the real Mako's turret then floated over its hull, which the centre screen's chase view shows); **the cockpit's eye
+  lowered 0.55 m instead** (`ride 0 1.0 0.25`) with the turret shown: the same view from the seat, nothing on the vehicle moved.
+- **Kept:** `place.py`'s ride eye defaults to `0 1.0 0.25` (the installed `cockpit.txt` regenerated: only its ride line changed;
+  the whole cockpit, the seated Shepard and the controls follow the eye); `HideVehicle` keeps the components hung on a
+  `Turret_Mount` bone in view (`[Cockpit] showTurret = 1`; log `... its turret's 5 kept in view over the cabin`); and the shots
+  start at the firing gun's muzzle, `BioWeaponRanged.GetMuzzleLoc` (the cannon's 2.60 m ahead and 0.56 m up of the lowered eye,
+  the machine gun's 2.56 and 0.46). The start query's `CurrentWeapon` comes empty from the native, so the gun is the vehicle's
+  `Pawn.Weapon` (else its last weapon); log `mako: riding in the cockpit, shots start at the gun's muzzle (...; the gun from the
+  vehicle's Weapon), not the game's (...): 0.42 m apart`. Measured after: the start 2.55 m ahead and 0.49 m up; the flash comes from
+  under the roof's lamp bar at the windshield's top edge, the barrel's tip just visible there.
+- **Not yet seen:** the cannon's own shell (its spawn point may be the muzzle or the start: both are at the barrel now), the turret
+  turned far to a side (the barrels then cross the windshield's top corners), the headset's view of it.

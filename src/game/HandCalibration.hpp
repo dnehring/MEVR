@@ -416,6 +416,10 @@ struct Cockpit {
     bool followCamera = true;
     bool seated = true;
     vr::cockpit_hazard::Settings hazard;  // hazard, hazardBelow, hazardPeriodS, hazardWash (the red alarm lights)
+    // showTurret = 1 (research/47 "The cannon over the cabin"): riding in the cockpit, the Mako's own turret (its base, the cannon and
+    // the machine gun) stays visible to the eyes over the cabin, and its shots start at the firing gun's muzzle (the game's start is
+    // the camera's, at the eye's height). The cockpit's eye sits under the turret (place.py's ride line, 0.25 m over the origin).
+    bool turret = true;
 };
 Cockpit GetCockpit();
 

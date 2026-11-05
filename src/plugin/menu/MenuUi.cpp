@@ -143,7 +143,7 @@ bool Ui::Init(UiSetup const& setup) {
         return false;
     }
     if (gRmlInitialised) {
-        // A second document beside the first (the omni-tool's rail, research/54): RmlUi, its interfaces and the fonts are the
+        // A second document beside the first (the omni-tool's rail, research/55): RmlUi, its interfaces and the fonts are the
         // first one's; this one gets a context of its own, drawn by a renderer of its own.
         documents_ = setup.documents;
         documentName_ = setup.document.empty() ? std::wstring(L"main.rml") : setup.document;

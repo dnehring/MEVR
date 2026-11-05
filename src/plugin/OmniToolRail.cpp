@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// The omni-tool's rail in the host (plugin/OmniToolRail.hpp, research/54).
+// The omni-tool's rail in the host (plugin/OmniToolRail.hpp, research/55).
 #include "plugin/OmniToolRail.hpp"
 
 #include "plugin/MainMenu.hpp"

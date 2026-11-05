@@ -11,6 +11,7 @@
 #include "engine/ProcessEvent.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/BodyCalibration.hpp"
+#include "game/CockpitProbe.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/HeadTracking.hpp"
 #include "game/Player.hpp"
@@ -69,6 +70,9 @@ ue3::FunctionRef gSetTurretAim{"SFXGame.BioVehicleBehaviorBase.SetDesiredTurretA
 ue3::FunctionRef gVehicleTick{"SFXGame.BioVehicleWheeled.Tick"};
 ue3::FunctionRef gVehicleStartTrace{"SFXGame.BioVehicleWheeled.GetWeaponStartTraceLocation"};
 ue3::FieldRef gVehicleStartReturn{gVehicleStartTrace, "ReturnValue"};
+ue3::FieldRef gVehicleStartWeapon{gVehicleStartTrace, "CurrentWeapon"};
+ue3::FieldRef gMakoPawnWeapon{"Engine.Pawn", "Weapon"};
+ue3::FunctionRef gMuzzleLoc{"SFXGame.BioWeaponRanged.GetMuzzleLoc"};
 ue3::FunctionRef gTrace{"Engine.Actor.Trace"};
 #endif
 
@@ -142,6 +146,8 @@ ue3::Object* gVehicleBehavior = nullptr;
 std::string gVehicleName;
 Aim gAim;
 Start gStart;
+bool gToldMuzzle = false;
+std::uint64_t gMuzzleShots = 0;  // shot starts moved to the gun's muzzle (riding in the cockpit)
 vr::comfort::VehicleMotion gMotion;
 Motion gMotionNow;
 vr::comfort::VehicleMotionResult gMotionResult;
@@ -519,14 +525,48 @@ void OnVehicleTick(ue3::Object* context, ue3::Function* /*function*/, void* /*pa
 }
 
 // The vehicle's answer for where a shot starts (its native, asked through ProcessEvent just before the shot's aim
-// query): remembered, so the shot's direction can run from there toward the aim point. Not rewritten.
+// query): remembered, so the shot's direction can run from there toward the aim point. Riding in the cockpit with [Cockpit]
+// showTurret it is the firing gun's own muzzle (BioWeaponRanged.GetMuzzleLoc; research/47 "The cannon over the cabin"): the game's
+// start is the camera's, at the eye's height, so the shots came out of the middle of the windshield.
 void OnVehicleStartTrace(ue3::Object* context, ue3::Function* /*function*/, void* parms, void* /*result*/) {
     if (context == nullptr || context != gVehicle) {
         return;
     }
-    ue3::Vector const* const at = gVehicleStartReturn.In<ue3::Vector>(parms);
+    ue3::Vector* const at = gVehicleStartReturn.In<ue3::Vector>(parms);
     if (at == nullptr) {
         return;
+    }
+    // Which gun: the query's own CurrentWeapon (the native passes none: measured 2026-11-04), else the vehicle's active weapon,
+    // else the last of its weapons' info (the machine gun; the cannon's muzzle is 10 cm from it).
+    char const* from = "CurrentWeapon";
+    ue3::Object* weapon = gVehicleStartWeapon.Read<ue3::Object*>(parms).value_or(nullptr);
+    if (weapon == nullptr) {
+        from = "the vehicle's Weapon";
+        weapon = gMakoPawnWeapon.Read<ue3::Object*>(context).value_or(nullptr);
+    }
+    if (weapon == nullptr && gVehicleBehavior != nullptr && ue3::runtime::IsAlive(gVehicleBehavior)) {
+        from = "the vehicle's last weapon";
+        if (auto const infos = gWeaponInfo.ElementsOf(gVehicleBehavior, 16); infos && infos->count > 0) {
+            weapon = gInfoWeapon.Read<ue3::Object*>(infos->At(infos->count - 1)).value_or(nullptr);
+        }
+    }
+    if (weapon != nullptr && gMuzzleLoc.Get() != nullptr && cockpit_probe::Riding() && hand_calibration::GetCockpit().turret &&
+        ue3::runtime::IsAlive(weapon)) {
+        ue3::Params muzzle(ue3::runtime::Get(), gMuzzleLoc.Get());
+        if (ue3::runtime::Call(weapon, gMuzzleLoc.Get(), muzzle)) {
+            if (std::optional<ue3::Vector> const tip = muzzle.Return<ue3::Vector>()) {
+                if (!gToldMuzzle) {
+                    gToldMuzzle = true;
+                    log::Info("mako: riding in the cockpit, shots start at the gun's muzzle ({:.0f}, {:.0f}, {:.0f}; the gun from {}), not the "
+                              "game's ({:.0f}, {:.0f}, {:.0f}): {:.2f} m apart", tip->x, tip->y, tip->z, from, at->x, at->y, at->z,
+                        std::sqrt((tip->x - at->x) * (tip->x - at->x) + (tip->y - at->y) * (tip->y - at->y) + (tip->z - at->z) * (tip->z - at->z)) /
+                            engine::kUnitsPerMeter);
+                }
+                *at = *tip;
+                write_journal::Wrote("Mako.muzzleStart", at, sizeof(*at));
+                ++gMuzzleShots;
+            }
+        }
     }
     gStart.valid = true;
     gStart.atMs = GetTickCount64();
@@ -732,6 +772,13 @@ void Tick(double deltaSeconds, Link const& link) {
 
 Motion CurrentMotion() {
     return gMotionNow;
+}
+
+std::optional<engine::UnrealVector> LastShotStart(std::uint64_t maxAgeMs) {
+    if (!gStart.valid || GetTickCount64() - gStart.atMs > maxAgeMs) {
+        return std::nullopt;
+    }
+    return gStart.at;
 }
 
 std::optional<TurretAim> CurrentTurretAim() {

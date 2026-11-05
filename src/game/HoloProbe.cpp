@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// The squad holograms' experiment (game/HoloProbe.hpp, research/54 section 4).
+// The squad holograms' experiment (game/HoloProbe.hpp, research/55 section 4).
 #include "game/HoloProbe.hpp"
 
 #include "core/Log.hpp"

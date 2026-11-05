@@ -10,7 +10,7 @@
 #include <optional>
 #include <string_view>
 
-// The omni-tool's rail (research/54; the user, 2026-11-04: "the entire menu system available via omni-tool", "we do need a
+// The omni-tool's rail (research/55; the user, 2026-11-04: "the entire menu system available via omni-tool", "we do need a
 // menu on the left side to allow selecting all of the different menus"): a column of the game's screens to the left of the
 // screen projected from the left wrist, or alone on the wrist when none is up; tapping the left wrist with the right index
 // fingertip opens and closes it. This is the game-independent part (unit-tested in tests/Main.cpp): the entries, where the

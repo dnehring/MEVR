@@ -11,7 +11,7 @@
 struct ID3D11Device;
 struct ID3D11DeviceContext;
 
-// The omni-tool's rail in the host (research/54): the column of the game's screens to the left of the screen projected from
+// The omni-tool's rail in the host (research/55): the column of the game's screens to the left of the screen projected from
 // the left wrist (or alone on the wrist), drawn with the main menu's RmlUi (assets/menu/omnitool.rml, a second context of
 // plugin/menu's Ui) into a quad of its own. Its entries ask the mod to open a screen through the main menu's request slot
 // (HostServices v19: vr::game_menu::Action); a controller's ray or the index fingertip is its mouse (vr::game_pointer). Tapping

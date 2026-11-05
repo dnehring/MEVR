@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /*
- * The omni-tool's rail (research/54) in ME1's own UI language, so it sits beside the game's screens as one of them (the owner,
+ * The omni-tool's rail (research/55) in ME1's own UI language, so it sits beside the game's screens as one of them (the owner,
  * 2026-11-04: "those left menu items don't really look like they are in mass-effect"). Read from the game's equipment screen:
  * octagonal panels with a slate-blue edge and a thin inner line over a dark navy gradient; slanted tabs, dark teal, the
  * selected one bright cyan with white text and a glow (its squad list); light-blue line icons in rounded squares (its weapon

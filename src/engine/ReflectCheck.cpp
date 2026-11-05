@@ -594,7 +594,7 @@ void CheckClasses() {
     CheckClass<USFXGameModePowerWheel>("SFXGame.SFXGameModePowerWheel");
     CheckClass<USFXGameModeCommand>("SFXGame.SFXGameModeCommand");
     CheckClass<USFXGameModePhoto>("SFXGame.SFXGameModePhoto");
-    CheckClass<UGFxMovieInfo>("GFxUI.GFxMovieInfo");  // game/GameArt (research/54): the movies' bytes
+    CheckClass<UGFxMovieInfo>("GFxUI.GFxMovieInfo");  // game/GameArt (research/55): the movies' bytes
     CheckClass<UBioPawnBehavior>("SFXGame.BioPawnBehavior");
     CheckClass<UBioEpicPawnBehavior>("SFXGame.BioEpicPawnBehavior");
     CheckClass<UBioActorBehavior>("SFXGame.BioActorBehavior");
@@ -1138,6 +1138,7 @@ void CheckFunctions() {
         "SFXGame.SFXGameModeDefault.TryUseMappedPower",
         "SFXGame.SFXGameModeDefault.EnterPowerWheel",
         "SFXGame.SFXGameModeBase.FireWeapon",  // ...and the trigger's, refused without a buzz (2026-11-04)
+        "SFXGame.SFXGameModeBase.StopFiringWeapon",  // `mevr vehicle fire mg` (2026-11-04)
         "Engine.PlayerController.GetScaleFormManager",
         // Posture, ViewLevel, Comfort, MenuPause (migrated in stage 1)
         "SFXGame.BioPawn.ShouldCrouch",
@@ -1151,7 +1152,7 @@ void CheckFunctions() {
         "Engine.WorldInfo.PauseGame",
         // GameMenuRequest (research/28): Start's Console_Menu on each mode that declares it
         "SFXGame.SFXGameModeBase.ShowMenuGui",
-        // GameMenuRequest, the omni-tool's rail (research/54): the screens' own functions and the screens' B
+        // GameMenuRequest, the omni-tool's rail (research/55): the screens' own functions and the screens' B
         "SFXGame.SFXGameModeBase.ShowEquipmentGui",
         "SFXGame.SFXGameModeBase.ShowSquadGui",
         "SFXGame.SFXGameModeBase.ShowJournalGui",
@@ -1334,6 +1335,7 @@ void CheckParams() {
     PARAM(APawn_eventGetWeaponStartTraceLocation_Parms, "SFXGame.BioPawn.GetWeaponStartTraceLocation", ReturnValue);
     // Mako (research/44)
     PARAM(APawn_eventGetWeaponStartTraceLocation_Parms, "SFXGame.BioVehicleWheeled.GetWeaponStartTraceLocation", ReturnValue);
+    PARAM(ABioVehicleWheeled_execGetWeaponStartTraceLocation_Parms, "SFXGame.BioVehicleWheeled.GetWeaponStartTraceLocation", CurrentWeapon);
     PARAM(UBioVehicleBehaviorBase_execSetDesiredTurretAimPoint_Parms, "SFXGame.BioVehicleBehaviorBase.SetDesiredTurretAimPoint", nTurretIndex);
     PARAM(UBioVehicleBehaviorBase_execSetDesiredTurretAimPoint_Parms, "SFXGame.BioVehicleBehaviorBase.SetDesiredTurretAimPoint",
         vTargetLocation);

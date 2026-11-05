@@ -217,8 +217,10 @@ def main():
     parser.add_argument("--metres-per-hull-unit", type=float, default=None, help="default: the manifest's scale")
     parser.add_argument("--yaw-sign", type=float, default=1.0)
     parser.add_argument("--script", help="write the cockpit's script to this file instead of printing console lines")
-    parser.add_argument("--eye", type=float, nargs=3, default=(0.0, 1.0, 0.8),
-                        help="the cockpit's eye from the Mako's origin, metres: right forward up (default 0 1.0 0.8)")
+    # 0.25 m up (not 0.8): the Mako's own turret pivot is 0.75 m over the origin, so the cockpit sits under it and its barrels
+    # show at the top of the windshield (research/47 "The cannon over the cabin", 2026-11-04).
+    parser.add_argument("--eye", type=float, nargs=3, default=(0.0, 1.0, 0.25),
+                        help="the cockpit's eye from the Mako's origin, metres: right forward up (default 0 1.0 0.25)")
     parser.add_argument("--seat-back", type=float, default=0.15,
                         help="the pilot this many metres further back in the hull than the manifest's eye (default 0.15)")
     args = parser.parse_args()

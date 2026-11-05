@@ -15,7 +15,7 @@ enum class Action : std::uint32_t {
     None = 0,
     PauseMenu = 1,  // the game's pause menu (Start: Console_Menu = ShowMenuGui)
     Holster = 2,    // put the weapon away (Back: Console_Holster = TryHolster), only while one is drawn
-    // The omni-tool's rail (research/54, 2026-11-04): one of the game's own screens, as its key opens it (the game mode's
+    // The omni-tool's rail (research/55, 2026-11-04): one of the game's own screens, as its key opens it (the game mode's
     // Show<Screen>Gui), or every game screen closed (the screens' own B, as the player backs out).
     Equipment = 3,  // ShowEquipmentGui: the Inventory panel
     Squad = 4,      // ShowSquadGui: the character record (talents), over the main wheel

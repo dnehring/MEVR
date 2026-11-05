@@ -512,7 +512,7 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         return galaxy_dump::ShowGui(pc, which);
     }
     if (verb == "holo") {
-        // `mevr holo spawn|effect|scale|move|info|clear` (research/54 section 4: the squad holograms' experiment).
+        // `mevr holo spawn|effect|scale|move|info|clear` (research/55 section 4: the squad holograms' experiment).
         std::string rest;
         std::getline(words, rest);
         return holo_probe::Command(rest);
