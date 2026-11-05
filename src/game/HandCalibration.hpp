@@ -347,6 +347,7 @@ struct SquadOrders {
     double memberConeDeg = 12.0;
     double minHoldS = 0.08;
     double maxHoldS = 8.0;
+    double minConfidence = 0.6;  // `mevr say`: a parse below this isn't given
 };
 SquadOrders GetSquadOrders();
 // [Vent] (appended to an older file that lacks it; research/45, game/vent): the physical vent of a hot gun, a

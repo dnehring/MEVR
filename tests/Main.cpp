@@ -60,6 +60,7 @@
 #include "core/vr/Sights.hpp"
 #include "core/vr/SquadContext.hpp"
 #include "core/vr/SquadGesture.hpp"
+#include "core/vr/SquadParser.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/FrameProbe.hpp"
 #include "core/vr/TestRequest.hpp"
@@ -4878,6 +4879,131 @@ void TestSquadGesture() {
     CHECK(!st.started);
     CHECK(std::string(Name(Hit::Ground)) == "the ground" && std::string(Name(Hit::Enemy)) == "an enemy");
 }
+
+void TestSquadParser() {
+    using namespace mevr::vr::squad_parser;
+    namespace sc = mevr::vr::squad_context;
+    // Helpers.
+    auto const toks = Tokens("Garrus, EQUIP your sniper! and... take-out those");
+    CHECK(toks.size() == 8 && toks[0] == "garrus" && toks[1] == "equip" && toks[5] == "take" && toks[6] == "out" && toks[7] == "those");
+    CHECK(Similarity("garrus", "garrus") == 1.0f && std::abs(Similarity("garrus", "gareth") - 0.5f) < 0.01f && Similarity("", "abc") == 0.0f);
+    CHECK(Singular("troopers") == "trooper" && Singular("geth") == "geth" && Singular("enemies") == "enemy" && Singular("boss") == "boss");
+    // The scene: Garrus and Wrex along; the groups as in TestSquadContext.
+    sc::Scene scene;
+    scene.combat = true;
+    sc::Member garrus;
+    garrus.letter = 'G';
+    garrus.present = true;
+    garrus.carried = (1u << 3) | (1u << 2);
+    garrus.powers = {{"OVR", 0.0f}, {"DMP", 9.0f}};
+    sc::Member wrex;
+    wrex.letter = 'W';
+    wrex.present = true;
+    wrex.carried = 1u << 1;
+    wrex.powers = {{"THR", 0.0f}};
+    sc::Member liara;
+    liara.letter = 'L';
+    scene.party = {garrus, wrex, liara};
+    auto const group = [](int id, char const* type, int count, sc::Sector sector, sc::Band band, sc::Elevation elevation, char const* surface, float distance) {
+        sc::Group g;
+        g.id = id;
+        g.type = type;
+        g.members.assign(static_cast<std::size_t>(count), 0);
+        g.sector = sector;
+        g.band = band;
+        g.elevation = elevation;
+        g.surface = surface;
+        g.distanceM = distance;
+        return g;
+    };
+    std::vector<sc::Group> groups = {group(1, "geth trooper", 3, sc::Sector::Left, sc::Band::Far, sc::Elevation::Above, "bridge", 32.0f),
+        group(2, "geth destroyer", 1, sc::Sector::Ahead, sc::Band::Near, sc::Elevation::Level, "", 8.0f),
+        group(3, "geth trooper", 2, sc::Sector::Right, sc::Band::Mid, sc::Elevation::Level, "", 23.0f)};
+    groups[0].farthest = groups[0].leftmost = groups[0].highest = groups[0].biggest = true;
+    groups[1].nearest = true;
+    groups[2].rightmost = true;
+    std::vector<sc::RosterEntry> roster(3);
+    roster[0].letter = 'G';
+    roster[0].name = "Garrus Vakarian";
+    roster[0].aliases = {"Garrus", "Vakarian", "the turian"};
+    roster[0].powers = {{"OVR", "overload"}, {"DMP", "damping"}, {"SAB", "sabotage"}};
+    roster[1].letter = 'W';
+    roster[1].name = "Urdnot Wrex";
+    roster[1].aliases = {"Wrex", "the krogan", "big guy"};
+    roster[1].powers = {{"THR", "throw"}, {"WRP", "warp"}, {"LFT", "lift"}};
+    roster[2].letter = 'L';
+    roster[2].name = "Liara T'Soni";
+    roster[2].aliases = {"Liara", "the asari"};
+    roster[2].powers = {{"SNG", "singularity"}, {"STS", "stasis"}};
+    Settings st;
+    auto const parse = [&](char const* text) { return Parse(text, scene, groups, roster, st); };
+    auto const line = [](Parsed const& p, std::size_t i) { return i < p.clauses.size() ? sc::Line(p.clauses[i].action) : std::string("(none)"); };
+    // The example: two clauses, the deictic kept with its position, the description picking the bridge group.
+    Parsed p = parse("Garrus, equip your sniper and take out those troops on the bridge");
+    CHECK(!p.empty && p.clauses.size() == 2 && line(p, 0) == "G|SR|-|-|-" && line(p, 1) == "G|-|-|attack|E1");
+    CHECK(p.deictics.size() == 1 && p.deictics[0].index == 1 && p.deictics[0].word == "those" && p.deictics[0].position == 7 && !p.deictics[0].place);
+    CHECK(p.confidence > 0.99f && !p.correction && !p.cancel && p.clauses[1].unresolved.empty());
+    // Name, power, deictic.
+    p = parse("Wrex, throw that one");
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "W|-|THR|use|PT1" && p.deictics.size() == 1 && p.deictics[0].word == "that one" && p.confidence > 0.99f);
+    // Everyone, follow; a name with "on me"; "the krogan"; "big guy".
+    CHECK(line(parse("everyone fall back"), 0) == "ALL|-|-|follow|-");
+    CHECK(line(parse("Garrus, on me"), 0) == "G|-|-|follow|-");
+    CHECK(line(parse("the krogan, hold position"), 0) == "W|-|-|hold|-");
+    CHECK(line(parse("big guy, come here"), 0) == "W|-|-|follow|-");
+    // Descriptions: sector, flag, elevation, type, surface; "the left ones" with no verb attacks.
+    CHECK(line(parse("the ones on the left"), 0) == "ALL|-|-|attack|E1");
+    CHECK(line(parse("attack the nearest"), 0) == "ALL|-|-|attack|E2");
+    CHECK(line(parse("Wrex, shoot the destroyer"), 0) == "W|-|-|attack|E2");
+    CHECK(line(parse("everybody move up to the catwalk"), 0) == "ALL|-|-|move|E1");
+    p = parse("take out the troopers");
+    CHECK(line(p, 0) == "ALL|-|-|attack|E3" && p.confidence < 0.8f && p.clauses[0].unresolved.find("2 groups") != std::string::npos);
+    CHECK(line(parse("kill the troopers up top"), 0) == "ALL|-|-|attack|E1");
+    CHECK(line(parse("the troopers on the right"), 0) == "ALL|-|-|attack|E3");
+    // Explicit targets.
+    CHECK(line(parse("attack my target"), 0) == "ALL|-|-|attack|AIM");
+    CHECK(line(parse("Garrus, overload what I'm looking at"), 0) == "G|-|OVR|use|GAZE");
+    CHECK(line(parse("now the others"), 0) == "ALL|-|-|attack|OTHER");
+    CHECK(line(parse("Wrex, same target"), 0) == "W|-|-|attack|LAST");
+    // A place: move there. "You too, Wrex" and "again": repeat.
+    p = parse("Wrex, go over there");
+    CHECK(line(p, 0) == "W|-|-|move|PT1" && p.deictics.size() == 1 && p.deictics[0].place && p.deictics[0].word == "over there");
+    CHECK(line(parse("Garrus, over there"), 0) == "G|-|-|move|PT1");
+    CHECK(line(parse("you too, Wrex"), 0) == "W|-|-|repeat|-");
+    CHECK(line(parse("do it again"), 0) == "ALL|-|-|repeat|-");
+    // A correction and a cancel.
+    p = parse("no, the ones on the right");
+    CHECK(p.correction && line(p, 0) == "ALL|-|-|attack|E3");
+    p = parse("belay that");
+    CHECK(p.cancel && !p.empty && p.clauses.size() == 1 && p.clauses[0].action.order == sc::Order::Cancel);
+    // A fuzzy name: Gareth is Garrus (Wrex is nowhere near); a name that isn't along stays unknown.
+    p = parse("Gareth, overload");
+    CHECK(line(p, 0) == "G|-|OVR|use|-");
+    CHECK(p.confidence >= 0.4f && p.confidence < 0.6f);
+    CHECK(p.notes.find("'gareth' taken as G") != std::string::npos);
+    p = parse("Liara, singularity on the big group");
+    CHECK(p.clauses.size() == 1 && p.clauses[0].action.power == "SNG" && p.clauses[0].action.target.kind == sc::Target::Group &&
+        p.clauses[0].action.target.index == 1 && p.clauses[0].unresolved.find("who") != std::string::npos && p.confidence < 0.6f);
+    // A weapon with an attack: both; a weapon alone: an equip.
+    CHECK(line(parse("Garrus, shoot him with your sniper"), 0) == "G|SR|-|attack|PT1");
+    CHECK(line(parse("Wrex, switch to the shotgun"), 0) == "W|SG|-|-|-");
+    // Unknown words lower the confidence and are listed; nothing at all is empty.
+    p = parse("Garrus, do the thing with the flibbertigibbet");
+    CHECK(!p.empty && p.confidence < 0.6f && p.clauses[0].unresolved.find("flibbertigibbet") != std::string::npos);
+    p = parse("");
+    CHECK(p.empty && p.clauses.empty() && p.confidence == 0.0f);
+    p = parse("um okay");
+    CHECK(p.empty && p.confidence == 0.0f);
+    // The carried squadmate: "Garrus, hold, then follow me" keeps Garrus for both; everyone resets it.
+    p = parse("Garrus, hold, then follow me");
+    CHECK(p.clauses.size() == 2 && line(p, 0) == "G|-|-|hold|-" && line(p, 1) == "G|-|-|follow|-");
+    p = parse("Garrus attack those and everyone else fall back");
+    CHECK(p.clauses.size() == 2 && line(p, 0) == "G|-|-|attack|PT1" && line(p, 1) == "ALL|-|-|follow|-");
+    // Deictic indices count across clauses.
+    p = parse("Wrex throw that one and Garrus overload those");
+    CHECK(p.deictics.size() == 2 && p.deictics[1].index == 2 && line(p, 1) == "G|-|OVR|use|PT2");
+}
+
 
 void TestGameMenuRequest() {
     using namespace mevr::vr::game_menu;
@@ -10883,6 +11009,7 @@ int main() {
     TestGameMenuRequest();
     TestSquadContext();
     TestSquadGesture();
+    TestSquadParser();
     TestCloseLatch();
     TestClickGate();
     TestSquadPad();
