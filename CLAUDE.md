@@ -761,9 +761,12 @@ switching frameworks.
   after `ackFallbackS` when no line came; `[SquadOrders] ack*`); power orders through `powerRoute = tactical | ai` [verify]. **The model tier**: `core/voice/Grammar` (per-scene GBNF, unit-tested), `core/voice/Llm`
   (llama.cpp's shared build loaded by name, the prefix cached, greedy under the grammar; compiled only with `external/llama-cpp`),
   `plugin/VoiceModel` (`[Voice] llm`, a GGUF in `ASI\voice\llm`), asked by the mod when the rules say "not sure"; data and fine-tune in
-  `tools/voice-model` (not trained yet). Benches: `mevr-voice-bench` + `tools/voice-bench.py` over `tools/voice-tts-corpus.ps1`'s WAVs,
+  `tools/voice-model` (`pipeline.py`: one config per run, resumable steps, sweeps, `runs.tsv`; research/54 "The fine-tune": the
+  first LoRA on Qwen3-0.6B, 20,000 synthetic lines, 58 min on the 4090, 939 of 1,000 held-out lines exact; its q8_0 GGUF is
+  `models/voice/llm/model.gguf`, which deploy-asi ships). Benches: `mevr-voice-bench` + `tools/voice-bench.py` over `tools/voice-tts-corpus.ps1`'s WAVs,
   `mevr-llm-bench`. Logs `voice:`, `voice model:`, `squad orders: ... answered`; snapshots `"voice"` (host), `"mod"."voice"`,
-  `"mod"."squadAck"`. Never run in the game yet (the checklist, section 1).
+  `"mod"."squadAck"`. Run in the game on the fake headset with a file feed (research/54 "In the game"); a real microphone and the
+  fine-tuned model's answers in play are the checklist's (section 1).
 - LE1 power wheel at the left hand ([research/55](research/55-hand-cast-powers.md), HostServices v28 `setPowerWheel`, v29 `setPowerLock`; `core/vr/PowerWheel`,
   `game/PowerWheel`, host `plugin/PowerWheel` + `PowerWheelDraw` + `PowerIcons` + `Glow`; `[PowerWheel]` in `ASI\LE1MEVR.ini`, appended by
   the module itself): on foot in VR, X held opens it at the left palm, fixed in the room, facing the eyes, with the player's mappable
